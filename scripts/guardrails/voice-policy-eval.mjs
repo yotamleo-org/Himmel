@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// voice-policy-eval.mjs — CLI over voice-policy.json (HIMMEL-1522).
+// voice-policy-eval.mjs — CLI over voice-policy.json.
 //
 // Deliberately shaped like egress-matrix-eval.mjs: same first-match-wins walk,
 // same one-line tab-separated output, same "unknown fails to the safe side"

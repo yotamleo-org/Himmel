@@ -20,13 +20,13 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 LIB="$REPO_ROOT/scripts/guardrails/lib.sh"
 
-# HIMMEL-3213: a leg's shell can export guard overrides (EDIT_ON_MAIN_OK, ...)
+# a leg's shell can export guard overrides (EDIT_ON_MAIN_OK, ...)
 # that reach the predicates under test and flip every "override UNSET" case
 # (main_checkout_verdict). Clear them before any case runs; the case that needs
 # one still sets it explicitly on its own invocation.
@@ -115,7 +115,7 @@ rm -rf "$work" "$origin"
 
 echo "== rc=2 fail-closed contract =="
 # Non-git dir: every predicate that touches git must return rc=2 (not 1).
-# is_dirty is the deliberate exception (HIMMEL-3101, see below): it never
+# is_dirty is the deliberate exception: it never
 # returns rc=2 at all - a `git status` it cannot run is fail-safe dirty (0).
 ngd=$(mktemp -d)
 is_on_main "$ngd"; rc=$?
@@ -176,7 +176,7 @@ rm -rf "$d"
 echo "== is_merged_into_main: HIMMEL-114 FF-merged + no main advance -> false (chosen tradeoff) =="
 # Pin the chosen tradeoff: an FF-merged branch where main has NOT advanced
 # since produces ahead=0 + behind=0 (referentially identical to a fresh
-# branch). HIMMEL-114 treats both as "not merged" because blocking fresh
+# branch). This treats both as "not merged" because blocking fresh
 # branches' first commit was the more painful failure mode.
 # If a future "fix" tries to restore FF-merge detection by removing the
 # ahead=0+behind=0 short-circuit, this test will start failing - that's
@@ -195,9 +195,9 @@ if [ "$rc" -eq 1 ]; then pass "FF-merged + no advance -> false (chosen tradeoff 
 rm -rf "$d"
 
 echo "== is_merged_into_main: HIMMEL-1947 FF-merged + main advances after -> false (widened tradeoff) =="
-# Pins the WIDENED tradeoff: HIMMEL-114 only pinned FF-merge-no-advance
-# (above). HIMMEL-1947 replaced the behind-count check with the
-# first-parent-chain check, which extends the same "not merged" tradeoff to
+# Pins the WIDENED tradeoff beyond FF-merge-no-advance
+# (above): the first-parent-chain check (not a behind-count)
+# extends the same "not merged" tradeoff to
 # FF-merged branches where main has since advanced too - an FF-merge creates
 # no new commit, so the feature tip stays on main's first-parent chain
 # permanently and remains referentially indistinguishable from a fresh
@@ -233,8 +233,8 @@ rm -rf "$d"
 echo "== is_merged_into_main: HIMMEL-1947 fresh branch, main advances -> false (regression repro) =="
 # Regression repro: a fresh branch with no commits of its own, where main
 # advances past the branch point before the branch's first commit. Pre-fix
-# this produced ahead=0 + behind>0 and the HIMMEL-114 short-circuit (which
-# only caught behind=0) didn't fire, so the direct-merge arm's `git branch
+# this produced ahead=0 + behind>0 and a behind=0
+# short-circuit didn't fire, so the direct-merge arm's `git branch
 # --merged main` - which lists every ref reachable from main, including
 # this still-empty branch - returned 0 (merged): hard-blocking the first
 # commit on every fresh worktree branch as soon as main moved.
@@ -333,7 +333,7 @@ rc=$?
 if [ "$rc" -eq 0 ]; then pass "big-history direct-merged branch -> true"; else fail "big-history direct-merged branch -> expected 0 got $rc (124 = timed out)"; fi
 rm -rf "$d"
 
-# HIMMEL-297: master is a protected default too. A repo whose default branch is
+# master is a protected default too. A repo whose default branch is
 # `master` (no `main` ref at all) must resolve default_branch=master, treat
 # master as on-main, and use master as the merge/behind base.
 setup_master_repo() {
@@ -396,7 +396,7 @@ rm -rf "$work" "$origin"
 
 echo "== default_branch: both local main+master, origin/HEAD unset -> main + stderr ambiguity note (HIMMEL-323) =="
 # A repo with NO remote (so origin/HEAD is unset) that has BOTH local main and
-# master. The local-ref order returns main, but silently — HIMMEL-323 adds a
+# master. The local-ref order returns main, but with a
 # stderr ambiguity note so the wrong-on-a-master-default-mirror guess is visible.
 d=$(fixture_mktemp_dir) || exit 1
 git -C "$d" init -q -b main
@@ -457,7 +457,7 @@ is_himmel_dev_repo "$bare"; rc=$?
 if [ "$rc" -eq 2 ]; then pass "is_himmel_dev_repo bare repo -> rc=2"; else fail "is_himmel_dev_repo bare repo -> expected 2 got $rc"; fi
 rm -rf "$bare_parent"
 
-# HIMMEL-1131: the marker is gitignored and lives ONLY in the primary worktree,
+# the marker is gitignored and lives ONLY in the primary worktree,
 # so detection must resolve it from --git-common-dir, not the current worktree
 # root — else every himmel-dev gate silently no-ops inside a worktree (where
 # himmel work happens). Prove the gate FIRES from a linked worktree.
@@ -506,7 +506,7 @@ git -C "$td" worktree remove --force "$wtd" 2>/dev/null
 rm -rf "$td" "$wtparent"
 
 # ============================================================================
-# HIMMEL-2526: guard_canon_path / repo_root_for_path / primary_checkout_root /
+# guard_canon_path / repo_root_for_path / primary_checkout_root /
 # main_checkout_verdict — the shared destination-based write-fence predicate
 # family.
 #
@@ -542,14 +542,14 @@ if [ "$out" = "$GC_BASE_REAL/a" ]; then pass "guard_canon_path: relative path re
 out=$(guard_canon_path ""); rc=$?
 if [ "$rc" -eq 1 ] && [ -z "$out" ]; then pass "guard_canon_path: empty input -> rc=1, no output"; else fail "guard_canon_path: empty input -> expected rc=1+empty got rc=$rc out=[$out]"; fi
 
-# codex-1 (HIMMEL-2526): an EXISTING REGULAR FILE must canonicalise too — the
+# codex-1: an EXISTING REGULAR FILE must canonicalise too — the
 # walk must pop the file's basename into the tail and cd into its containing
 # DIRECTORY, not try (and fail) to cd into the file itself.
 touch "$GC_BASE/a/existing-file.txt"
 out=$(guard_canon_path "$GC_BASE/a/existing-file.txt" 2>/dev/null); rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/existing-file.txt" ]; then pass "guard_canon_path: EXISTING regular file canonicalises (codex-1, HIMMEL-2526)"; else fail "guard_canon_path: EXISTING regular file -> expected rc=0+$GC_BASE_REAL/a/existing-file.txt got rc=$rc out=[$out]"; fi
 
-# codex-3 (HIMMEL-2526 CR round 3): a symlink at the FINAL path component
+# codex-3: a symlink at the FINAL path component
 # whose target is a regular file (not a directory) must be FOLLOWED to its
 # referent — the ancestor walk's `cd`+`pwd -P` only dereferences a symlink
 # that resolves to a DIRECTORY; a symlink to a regular file fell out of the
@@ -560,7 +560,7 @@ ln -sf "$GC_BASE_REAL/a/existing-file.txt" "$GC_BASE/a/link-to-file"
 out=$(guard_canon_path "$GC_BASE/a/link-to-file" 2>/dev/null); rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/existing-file.txt" ]; then pass "guard_canon_path: final-component symlink resolves to its referent (codex-3, HIMMEL-2526 CR round 3)"; else fail "guard_canon_path: final-component symlink -> expected rc=0+$GC_BASE_REAL/a/existing-file.txt got rc=$rc out=[$out]"; fi
 
-# codex-3 (HIMMEL-2526 CR round 3): a DANGLING symlink (target does not
+# codex-3: a DANGLING symlink (target does not
 # exist) must NOT make guard_canon_path return 1 — every caller in this file
 # treats rc=1 as "cannot canonicalise" and fails CLOSED on it, so a dangling
 # symlink would become a false-positive DENY on an ordinary write.
@@ -568,7 +568,7 @@ ln -sf "$GC_BASE/a/does-not-exist.txt" "$GC_BASE/a/dangling-link"
 out=$(guard_canon_path "$GC_BASE/a/dangling-link" 2>/dev/null); rc=$?
 if [ "$rc" -eq 0 ] && [ -n "$out" ]; then pass "guard_canon_path: dangling symlink does NOT return 1 (codex-3, HIMMEL-2526 CR round 3)"; else fail "guard_canon_path: dangling symlink -> expected rc=0+non-empty got rc=$rc out=[$out]"; fi
 
-# HIMMEL-2597 (cap raised 8 -> 40): exhausting the depth cap is NOT success.
+# exhausting the depth cap is NOT success.
 # A chain of MORE than 40 hops ending at a real file must return rc=1 with NO
 # output — printing the still-symlinked head as though fully resolved would
 # let an over-cap chain from a worktree into the primary checkout classify as
@@ -585,7 +585,7 @@ done
 out=$(guard_canon_path "$GC_BASE/a/long-chain-0" 2>/dev/null); rc=$?
 if [ "$rc" -eq 1 ] && [ -z "$out" ]; then pass "guard_canon_path: >40-hop chain -> rc=1, no output (HIMMEL-2597, cap=40, depth-cap exhaustion is not success)"; else fail "guard_canon_path: >40-hop chain -> expected rc=1+empty got rc=$rc out=[$out] (HIMMEL-2597, cap=40)"; fi
 
-# Control (HIMMEL-2597 cap-raise ruling): a ~10-hop chain — RED under the OLD
+# Control: a ~10-hop chain — RED under the OLD
 # cap of 8, but well inside the NEW cap of 40 — must now RESOLVE (rc=0,
 # correct referent). This is the whole point of the ruled-on cap raise: a
 # legitimate long chain that never leaves the worktree is a false positive
@@ -609,12 +609,12 @@ ln -sf "$GC_BASE_REAL/a/short-chain-1" "$GC_BASE/a/short-chain-0"
 out=$(guard_canon_path "$GC_BASE/a/short-chain-0" 2>/dev/null); rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/short-chain-target.txt" ]; then pass "guard_canon_path: a short (2-hop) chain still resolves to its referent at rc=0 (HIMMEL-2597 control)"; else fail "guard_canon_path: short chain -> expected rc=0+$GC_BASE_REAL/a/short-chain-target.txt got rc=$rc out=[$out] (HIMMEL-2597 control)"; fi
 
-# codex-3 (HIMMEL-2526 CR round 3) / HIMMEL-2597: a symlink LOOP (A -> B -> A)
+# A symlink LOOP (A -> B -> A)
 # must terminate rather than hang the hook — the depth cap (40, raised from
 # the original 8) must fire, and the call must FAIL CLOSED (rc=1, no output):
 # the capped walk never settles on a non-symlink, so printing its last
 # landing spot as though resolved would be exactly the exhaustion-is-not
-# -success bug HIMMEL-2597 fixes. Raising the cap does not weaken this row —
+# -success bug. Raising the cap does not weaken this row —
 # a genuine A<->B cycle never resolves no matter how many hops are allowed,
 # so it still exhausts whatever the cap is and still denies; only the
 # iteration count before it fires changes. Run under `timeout` in a fresh
@@ -636,7 +636,7 @@ else
     fi
 fi
 
-# HIMMEL-2597 task 2: a link whose referent sits inside a symlinked
+# a link whose referent sits inside a symlinked
 # DIRECTORY must have that ancestor physically re-canonicalised — not just
 # the original call's own ancestor prefix. Two hops max (well inside the
 # depth-40 budget), so a pass here cannot be masked by the depth cap.
@@ -647,7 +647,7 @@ ln -sf "$GC_BASE_REAL/a/symdir-alias/target.txt" "$GC_BASE/a/link-through-symdir
 out=$(guard_canon_path "$GC_BASE/a/link-through-symdir" 2>/dev/null); rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/symdir-real/target.txt" ]; then pass "guard_canon_path: a hop through a symlinked ANCESTOR directory is physically resolved (HIMMEL-2597 task 2)"; else fail "guard_canon_path: hop through symlinked ancestor -> expected rc=0+$GC_BASE_REAL/a/symdir-real/target.txt (real dir, not the alias) got rc=$rc out=[$out] (HIMMEL-2597 task 2)"; fi
 
-# HIMMEL-2597 (per-hop ancestor fix, RED row): the per-hop step must resolve
+# the per-hop step must resolve
 # the LONGEST existing ancestor, not just try the referent's IMMEDIATE
 # parent directory. `deep-missing -> alias-to-primary/missing-dir/f.txt`
 # where `missing-dir` does not exist: the immediate parent
@@ -662,7 +662,7 @@ ln -sf "$GC_BASE_REAL/a/alias-to-deep-primary/missing-dir/f.txt" "$GC_BASE/a/dee
 out=$(guard_canon_path "$GC_BASE/a/deep-missing" 2>/dev/null); rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/deep-primary/missing-dir/f.txt" ]; then pass "guard_canon_path: a hop with a non-existent tail still resolves its symlinked ANCESTOR, not just the immediate parent (HIMMEL-2597 per-hop ancestor fix)"; else fail "guard_canon_path: hop with non-existent tail -> expected rc=0+$GC_BASE_REAL/a/deep-primary/missing-dir/f.txt (real dir, not the alias) got rc=$rc out=[$out] (HIMMEL-2597 per-hop ancestor fix)"; fi
 
-# HIMMEL-2597 task 3: guard_canon_path_nofollow must return the directory
+# guard_canon_path_nofollow must return the directory
 # ENTRY's own canonical path (preserving its name) on a final-component
 # symlink, while guard_canon_path on the SAME input still dereferences to the
 # referent — assert both in the same block so the pair is the assertion.
@@ -718,14 +718,14 @@ else
     fail "guard_canon_path_nofollow: entry through symlinked ancestor -> expected rc=0+$GC_BASE_REAL/a/symdir-real/entry-link (real ancestor, entry name kept) got rc=$rc_nofollow out=[$out_nofollow] (HIMMEL-2597 task 3d)"
 fi
 
-# codex-7 (HIMMEL-2526): a Windows drive-absolute path (C:/...) must be
+# codex-7: a Windows drive-absolute path (C:/...) must be
 # recognised as ALREADY absolute, matching block-write-into-main-checkout.sh's
 # own _bwimc_resolve_abs — otherwise it gets prefixed with $PWD, resolving a
 # DIFFERENT location on Git Bash. Real Git-Bash `cd`/`pwd -P` semantics for a
 # drive letter are UNVERIFIED on this Linux station; this row only asserts the
 # $PWD-prefix bug is gone, not full Windows-correct resolution.
 #
-# codex-5 (HIMMEL-2526 CR round 3): the property this row wants is "not
+# codex-5: the property this row wants is "not
 # $PWD-prefixed", NOT "does not start with /". On a REAL Git Bash where the
 # `C:/win-repo` ancestor actually EXISTS, `cd "C:/win-repo" && pwd -P`
 # correctly resolves through MSYS's own drive-letter translation to

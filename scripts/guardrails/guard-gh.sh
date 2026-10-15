@@ -96,8 +96,8 @@ You may be opening a PR from stale code. To override, re-issue with --allow-merg
 EOF
             exit 2
         fi
-        # HIMMEL-3101 made is_dirty fail-safe instead of fail-closed: a
-        # `git status` failure now returns 0 (treat as dirty) with its own
+        # is_dirty is fail-safe rather than fail-closed: a
+        # `git status` failure returns 0 (treat as dirty) with its own
         # stderr warning, never rc=2. So an uninspectable worktree (e.g. a
         # corrupt index) takes this WARN path below, not the pred_check
         # rc=2 exit above - is_dirty's warning precedes guard-gh's own.

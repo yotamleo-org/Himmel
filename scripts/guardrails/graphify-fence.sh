@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/guardrails/graphify-fence.sh - structural data-egress fence for
-# `graphify` invocations (HIMMEL-621/622 Phase G-F).
+# `graphify` invocations.
 #
 # Invoked with ONE arg: the shell command string. It acts ONLY when that
 # command invokes `graphify` in COMMAND POSITION; a bare mention (a grep/echo
@@ -43,17 +43,16 @@
 #   GRAPHIFY_SALUS_LOCAL_OK=1     - allow salus corpus x local-ollama (per-run
 #                                   opt-in; PHI stays on-machine but even local
 #                                   salus extraction needs an explicit opt-in).
-# (HIMMEL-2224: luna-clippings x zai-glm was the other conditional cell;
-# HIMMEL-1749 dropped the GLM/Z.ai Coding Plan, so that cell is now an
-# explicit deny and GRAPHIFY_CLIPPINGS_GLM_OK can no longer open it.)
+# (luna-clippings x zai-glm is an explicit deny since the GLM/Z.ai Coding Plan
+# was dropped, so GRAPHIFY_CLIPPINGS_GLM_OK can no longer open it.)
 # This flag can't flip a hard-deny cell (salus x any cloud, gemini anywhere).
-# Persisted opt-in (HIMMEL-4185; a file, not an env var, so no per-call prefix
+# Persisted opt-in (a file, not an env var, so no per-call prefix
 # can set it):
 #   graphify.salus_ollama_cloud_ok = true in $HOME/.himmel/config.json - allow
 #                                   salus x ollama-cloud. Absent, unreadable,
 #                                   malformed or not the JSON literal true = deny;
 #                                   so is a symlinked config or ~/.himmel
-#                                   (HIMMEL-4696). $HOME is the trust root in
+# $HOME is the trust root in
 #                                   hook AND --eval mode: the caller's HOME is
 #                                   read as-is, with no passwd-home pinning (any
 #                                   seam to test it is itself caller-settable).
@@ -71,7 +70,7 @@
 #                      see _ollama_provider) -> ollama-cloud; any other host
 #                      or an unparseable value -> ollama-unverified (HARD deny
 #                      on every corpus, before the matrix). Loopback is exactly
-#                      localhost / 127.0.0.1 / [::1] BY DECISION (HIMMEL-4696):
+#                      localhost / 127.0.0.1 / [::1] BY DECISION:
 #                      other 127.x and 0.0.0.0 are refused, fail-closed; widen
 #                      only with a ticket that also widens semantic-update.sh.
 #   deepseek        -> deepseek
@@ -80,12 +79,12 @@
 #                      `openai` (falls to matrix default deny)
 #   glm | zai       -> zai-glm
 #   gemini | google -> google-gemini
-#   claude | claude-cli | claude-api -> ENDPOINT-AWARE (HIMMEL-1049 + codex-adv-1; claude-api
-#                      is HIMMEL-5544's API-lane backend, the claude-cli path): graphify's
+#   claude | claude-cli | claude-api -> ENDPOINT-AWARE (claude-api
+#                      is the API-lane backend, the claude-cli path): graphify's
 #                      claude backend honors ANTHROPIC_BASE_URL, so classify by
 #                      the effective endpoint, not the name -
 #                        claude-cli / claude-api ONLY, any CLAUDE_CODE_USE_* reroute selector
-#                          SET (HIMMEL-1070; see _CLAUDE_REROUTE_VARS) ->
+#                          SET ->
 #                          anthropic-rerouted -> HARD DENY on every corpus. These
 #                          reroute the claude CLI to Bedrock/Vertex/Foundry/a
 #                          gateway without touching ANTHROPIC_BASE_URL, so they
@@ -116,14 +115,13 @@
 #   GRAPHIFY_LEDGER        - ledger path (default ~/.claude/graphify-egress.jsonl)
 #   GRAPHIFY_TOOL_CWD      - the cwd the command will run in (threaded from the
 #                            hook payload's .tool_input.cwd; default $PWD).
-#                            HIMMEL-779: relative + bare-word targets resolve
+#                            relative + bare-word targets resolve
 #                            against THIS, not the hook process's $PWD.
 #   GRAPHIFY_DECLARED_BACKEND - a backend declared out-of-band when the CLI form
 #                            carries no --backend (graphify `update` is LLM-free
-#                            and takes none). HIMMEL-779: satisfies the no-backend
+#                            and takes none). Satisfies the no-backend
 #                            demand for a non-himmel corpus AND still flows through
-#                            the egress matrix (not a bypass). SCOPED (HIMMEL-779 CR
-#                            round-1): honored ONLY when (a) the subcommand is one
+#                            the egress matrix (not a bypass). SCOPED: honored ONLY when (a) the subcommand is one
 #                            of the LLM-free set (today: exactly `update`, see
 #                            _llm_free_subcmd) AND (b) the corpus is non-himmel -
 #                            for himmel-code with no flag the local-ollama default
@@ -135,22 +133,22 @@
 #                            Like GRAPHIFY_SALUS_LOCAL_OK/GRAPHIFY_CLIPPINGS_GLM_OK
 #                            above, this is a launching-shell-only trust boundary:
 #                            set it in the shell that launches the agent, not
-#                            per-call. HIMMEL-881: a `.graphify-backend` file
+#                            per-call. A `.graphify-backend` file
 #                            alongside the `.graphify-corpus` marker is a second,
 #                            in-session way to satisfy the same declaration (see
-#                            the HIMMEL-881 NOW HANDLED note below) - this env var
+#                            the `.graphify-backend` note below) - this env var
 #                            still wins when BOTH are present.
 #
 # Exit codes: 0 = allow (ledger written where the matched cell requires it);
 # 2 = deny (stderr carries the reason).
 #
-# NOW HANDLED (closed in the HIMMEL-621 hardening round, no longer limitations):
+# Handled:
 # command-position wrappers (exec/nohup/timeout/sudo/env -i/stdbuf/nice/time/
 # command/builtin, chained), graphify reached via xargs / find -exec (DENIED
 # outright as not statically fenceable), a backslash-escaped `\graphify`, and a
 # position-0 path-like token (classified, not swallowed as the subcommand).
 #
-# NOW HANDLED (HIMMEL-778):
+# Handled:
 #   - MSYS drive-path normalization: `_normalize` translates a leading MSYS-form
 #     `/c/...` (or bare `/c`) into drive-lettered `c:/...` so an MSYS candidate
 #     and the Bash tool's always-MSYS $PWD match the drive-lettered corpus roots
@@ -179,7 +177,7 @@
 #     have handover content relabeled by a planted marker - accepted (work
 #     artifacts, lower sensitivity than vault content; always-ledgered).
 #
-# NOW HANDLED (HIMMEL-779):
+# Handled:
 #   - Bare-word target swallowed: a bare (no slash/drive/extension) token that
 #     EXISTS under the tool-call cwd is a TARGET, classified against the corpus
 #     roots - not swallowed as a subcommand word (position 0) nor skipped as a
@@ -195,7 +193,7 @@
 #     subcommands) take NO --backend on the CLI, so a non-himmel corpus could
 #     never satisfy the no-backend demand. A declared backend via env
 #     (GRAPHIFY_DECLARED_BACKEND) now satisfies it and still flows through the
-#     egress matrix (not a bypass). SCOPED (CR round-1): honored only when the
+#     egress matrix (not a bypass). SCOPED: honored only when the
 #     subcommand is in the LLM-free set (_llm_free_subcmd; today: exactly
 #     `update`) AND the corpus is non-himmel - it previously applied to ANY
 #     subcommand/corpus whenever the env var was set, which let a declared
@@ -218,7 +216,7 @@
 #     resolving against a cwd the fence can no longer vouch for. An absolute
 #     target is cwd-independent and still classifies normally.
 #
-# NOW HANDLED (HIMMEL-881):
+# Handled:
 #   - `.graphify-backend` file-declared backend: GRAPHIFY_DECLARED_BACKEND is a
 #     launching-shell-only env var (a per-call VAR=x prefix or an in-session
 #     export never reaches the PreToolUse hook process), so an in-session/
@@ -249,9 +247,9 @@
 #     path listed beside it); mixed staged+real invocations need --backend or
 #     the launching-shell env var.
 #
-# NOW HANDLED (HIMMEL-845):
-#   - Cross-drive drive-relative target: HIMMEL-808 anchored a Windows
-#     drive-RELATIVE `X:tail` token to the tool-call cwd, which is exact ONLY
+# Handled:
+#   - Cross-drive drive-relative target: a Windows
+#     drive-RELATIVE `X:tail` token is anchored to the tool-call cwd, which is exact ONLY
 #     when that cwd is on drive X. Windows keeps a SEPARATE cwd PER DRIVE (the
 #     hidden `=C:`/`=D:` env vars), so `D:tail` from a C: cwd really resolves
 #     under D:'s own current directory - a path this fence never sees, while the
@@ -264,7 +262,7 @@
 #     untouched. See _cross_drive_relative for the accepted POSIX collateral.
 #     Maintained in lockstep with the twin in lesson-write-fence.sh.
 #
-# NOW HANDLED (HIMMEL-2615):
+# Handled:
 #   - `setsid` (flag-consuming, same transparent shape as `nohup`) and the
 #     repo's own quiet runner `scripts/quiet-run.sh <label> -- <cmd...>`, whose
 #     `--` tail is re-classified as the clause - reached both when executed
@@ -315,8 +313,7 @@
 #       trade-off: a false deny (an absolute-safe cd the agent could have
 #       resolved) costs a retry; silently trusting a guessed post-cd cwd would
 #       be fail-open.
-#   (g) backend DECLARATIONS are assertions, not runtime bindings (HIMMEL-881
-#       codex-adv round-3, adjudicated accepted-by-design): for no-backend
+#   (g) backend DECLARATIONS are assertions, not runtime bindings (accepted by design): for no-backend
 #       LLM-free subcommands the fence cannot see which cloud key graphify's
 #       auto-detection will actually pick, so BOTH declaration paths - the
 #       operator-set GRAPHIFY_DECLARED_BACKEND env var AND the agent-writable
@@ -361,12 +358,12 @@ CMD="${1:-}"
 PHI_CONFIG_DIR="${CLAUDE_GLM_CONFIG_DIR:-$HOME/.config/claude-glm}"
 LEDGER="${GRAPHIFY_LEDGER:-$HOME/.claude/graphify-egress.jsonl}"
 # Ledger `tool` field. Script-internal, NOT read from the environment: only the
-# --eval direct-invoke mode (HIMMEL-1084, see below) overrides it, so every
+# --eval direct-invoke mode overrides it, so every
 # hook-mode ledger line keeps "tool":"graphify".
 LEDGER_TOOL="graphify"
 # Ledger `purpose` field, same scoping: empty (field omitted) in hook mode so
 # hook-mode lines stay byte-identical; --eval sets "extraction", the field the
-# matrix's allow+log ledger contract names and the pre-HIMMEL-1084
+# matrix's allow+log ledger contract names and the
 # refresh-graph-map.sh ledger already carried.
 LEDGER_PURPOSE=""
 LUNA_ROOT="${LUNA_VAULT:-${LUNA_VAULT_PATH:-}}"
@@ -374,7 +371,7 @@ LUNA_ROOT="${LUNA_VAULT:-${LUNA_VAULT_PATH:-}}"
 HANDOVER_ROOT=""
 HANDOVER_LIB="$SCRIPT_DIR/../lib/handover-path.sh"
 if [ -f "$HANDOVER_LIB" ]; then
-    # HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+    # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
     # shellcheck disable=SC1091
     if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
     # shellcheck source=../lib/handover-path.sh
@@ -390,14 +387,14 @@ HIMMEL_ROOT="${GRAPHIFY_HIMMEL_ROOT:-$(git -C "$SCRIPT_DIR" rev-parse --show-top
 # necessarily the command's cwd (the agent may have cd'd). The hook threads
 # the payload's .tool_input.cwd here as GRAPHIFY_TOOL_CWD so relative targets
 # and bare-word targets resolve against the REAL command cwd, not the hook
-# process cwd (HIMMEL-779: a relative path into a protected corpus otherwise
+# process cwd (a relative path into a protected corpus otherwise
 # resolves under the project root and misses -> fail-open). Defaults to $PWD
 # for direct/check-mode invocation (and an empty GRAPHIFY_TOOL_CWD falls back
 # to $PWD via the :- expansion, so a no-cwd payload stays correct).
 TOOL_CWD="${GRAPHIFY_TOOL_CWD:-$PWD}"
 
-# Extraction-shaped subcommands (defense-in-depth commentary, NOT the gate as of
-# HIMMEL-621): update label cluster-only add merge-graphs merge-driver path.
+# Extraction-shaped subcommands (defense-in-depth commentary, NOT the gate):
+# update label cluster-only add merge-graphs merge-driver path.
 # ANY subcommand carrying an unclassifiable path-like token now DENIES.
 
 deny() { # <reason>
@@ -405,7 +402,7 @@ deny() { # <reason>
     exit 2
 }
 
-# HIMMEL-3683 (J1323C F1): every depth-0 quote/substitution span later scanned
+# every depth-0 quote/substitution span later scanned
 # by _gf_deny_on_hidden_clause_separator costs a fixed ~char-count-of-CMD
 # amount of work (a bounded lookback rebuild + word-split per span), so a
 # command padded with many small spans (e.g. a flood of `''` pairs) costs
@@ -415,31 +412,29 @@ deny() { # <reason>
 # open). Deny oversized input before any scan runs at all, rather than
 # tighten the scan's own per-span cost again - this is the fence's FIRST
 # check on CMD, ahead of every other predicate in this file.
-# ponytail: a legitimate graphify command over 32768 bytes false-denies here;
-# upgrade path is HIMMEL-3731's incremental last-two-words tracking, which
+# ponytail: a legitimate graphify command over 32768 bytes false-denies here; upgrade path HIMMEL-3731
+# (incremental last-two-words tracking), which
 # would make the scan itself O(1) per span instead of bounding total input.
 _GF_MAX_CMD_BYTES=32768
 # `${#CMD}` is a CHARACTER count under the shell's locale, not a byte count -
 # in a multibyte (UTF-8) locale a command padded with multibyte characters
 # undercounts its true byte length, so the cap must measure real bytes
-# (codex-3683-panel-2).
 _GF_CMD_BYTES=$(LC_ALL=C printf '%s' "$CMD" | wc -c)
 if [ "$_GF_CMD_BYTES" -gt "$_GF_MAX_CMD_BYTES" ]; then
     deny "routed command is ${_GF_CMD_BYTES} bytes, over the ${_GF_MAX_CMD_BYTES}-byte fence cap (fail-closed, HIMMEL-3683/J1323C F1 - a command this size cannot be scanned within the hook timeout)"
 fi
 
-# HIMMEL-1776 (fence parity by extraction): file-readability and endpoint-host
+# file-readability and endpoint-host
 # predicates shared with scripts/graphify/refresh-graph-map.sh, the scheduled
 # path this interactive fence never runs on. ONE implementation instead of two
-# hand-kept copies that can drift (HIMMEL-1748 / PR #1680 fixed exactly that
-# drift once already).
+# hand-kept copies that can drift.
 PHI_EGRESS_LIB="$SCRIPT_DIR/phi-egress-lib.sh"
 { [ -f "$PHI_EGRESS_LIB" ] && [ -r "$PHI_EGRESS_LIB" ]; } || deny "shared predicates lib missing or unreadable at $PHI_EGRESS_LIB (fail-closed)"
 # shellcheck source=./phi-egress-lib.sh
 # shellcheck disable=SC1091
 . "$PHI_EGRESS_LIB" || deny "failed to load shared predicates lib $PHI_EGRESS_LIB (fail-closed)"
 
-# HIMMEL-2610: guard_is_long_abbrev/guard_long_opt_name (GNU getopt_long
+# guard_is_long_abbrev/guard_long_opt_name (GNU getopt_long
 # unambiguous-abbreviation matching) for the nice/time wrapper arms below.
 GUARD_LIB="$SCRIPT_DIR/lib.sh"
 { [ -f "$GUARD_LIB" ] && [ -r "$GUARD_LIB" ]; } || deny "shared guard lib missing or unreadable at $GUARD_LIB (fail-closed)"
@@ -447,7 +442,7 @@ GUARD_LIB="$SCRIPT_DIR/lib.sh"
 # shellcheck disable=SC1091
 . "$GUARD_LIB" || deny "failed to load shared guard lib $GUARD_LIB (fail-closed)"
 
-# _gf_deny_on_endpoint_override -> HIMMEL-1085. Called right before a
+# _gf_deny_on_endpoint_override: called right before a
 # graphify command-position invocation is actually evaluated; denies when
 # classify_clause's wrapper walk saw a command-local (or `env`-local)
 # assignment of an endpoint-selector var ahead of it. Named as the var only
@@ -473,7 +468,7 @@ _strip_wrap() {
 }
 
 # _record_backend <raw-value> -> stash the backend for verdict eval and flag
-# conflicting distinct values (HIMMEL-779). Reads/writes the caller's
+# conflicting distinct values. Reads/writes the caller's
 # backend/backend_norm/backend_set/backend_conflict locals (bash dynamic scope,
 # so this must be called from evaluate_invocation). Values are compared
 # lower-cased + quote-stripped, so `--backend GLM` and `--backend glm` are NOT a
@@ -489,7 +484,7 @@ _record_backend() {
 }
 
 # _record_model <raw-value> -> same contract as _record_backend for graphify's
-# --model (HIMMEL-4185): two distinct values in one invocation are a conflict.
+# --model: two distinct values in one invocation are a conflict.
 _record_model() {
     local nv; nv="$(_lc "$(_strip_wrap "$1")")"
     if [ -n "$ollama_model_flag" ] && [ "$ollama_model_flag" != "$nv" ]; then
@@ -512,12 +507,12 @@ _strip_cmd() {
 
 # _wrapper_base <_strip_cmd'd token> -> last path segment, so a path-qualified
 # launcher wrapper (/usr/bin/env, /bin/sudo, C:/tools/timeout) is recognized
-# by its bare name (HIMMEL-2087). classify_clause's wrapper walk previously
+# by its bare name. classify_clause's wrapper walk previously
 # matched wrapper tokens by bare name only, so a path-qualified form walked
 # straight past every wrapper case, stopped the token walk, and never reached
-# evaluate_invocation - bypassing both the HIMMEL-1085 endpoint-override
+# evaluate_invocation - bypassing both the endpoint-override
 # denial and the fence's ordinary corpus x provider policy. Mirrors
-# guard_cmdpos_grammar's EXEPFX (lib.sh HIMMEL-1180), which already tolerates
+# guard_cmdpos_grammar's EXEPFX, which already tolerates
 # this for block-destructive-commands.sh: optional drive prefix, then
 # everything up to the last `/` (backslash is moot here - _strip_cmd already
 # deletes it above, same as every other path token this file classifies).
@@ -533,7 +528,7 @@ _wrapper_base() {
 _abs() {
     local p; p="$(_strip_wrap "$1")"
     # Backslashes -> forward slashes BEFORE the absolute/relative split
-    # (HIMMEL-808): on POSIX a backslash-form target ('\tmp\x' or 'C:\x')
+    # on POSIX a backslash-form target ('\tmp\x' or 'C:\x')
     # matches neither /* nor [A-Za-z]:* below, gets anchored to cwd, and
     # normalizes to a non-corpus path -> allow. Windows-payload parity on
     # every host; fail-closed for the rare POSIX filename containing a
@@ -549,14 +544,14 @@ _abs() {
         [A-Za-z]:/*) : ;;             # Windows drive-ROOTED absolute (C:/...)
         [A-Za-z]:*)  p="$TOOL_CWD/${p#?:}" ;;
                      # Windows drive-RELATIVE (C:foo = foo relative to the
-                     # cwd on drive C). HIMMEL-808: the old [A-Za-z]:* arm
-                     # classified this absolute, and _normalize mangled it
+                     # cwd on drive C). A plain [A-Za-z]:* arm would
+                     # classify this absolute, and _normalize would mangle it
                      # into a synthetic non-corpus path. Anchor to the
                      # current cwd instead - exact when cwd is on that drive
                      # (the attack shape), and a fail-closed lexical
-                     # approximation otherwise. HIMMEL-779: anchor to the
+                     # approximation otherwise. Anchor to the
                      # TOOL-CALL cwd (GRAPHIFY_TOOL_CWD), not the hook $PWD.
-                     # HIMMEL-845: "fail-closed lexical approximation" was NOT
+                     # "fail-closed lexical approximation" was NOT
                      # fail-closed - a CROSS-drive token anchored here produced
                      # a benign-classifying synthetic path. This arm is now only
                      # ever reached for a token whose drive is PROVEN to be the
@@ -571,7 +566,7 @@ _abs() {
 # _is_abs_target <stripped-token> -> 0 if the token is POSIX-absolute or
 # Windows drive-rooted absolute (cwd-independent); 1 for anything else
 # (relative, bare, drive-relative, ~-relative). Used by the in-command-cd
-# drift guard (HIMMEL-779 FIX 2, see CD_SEEN): once a prior clause in the same
+# drift guard: once a prior clause in the same
 # invocation ran cd/pushd/popd, the fence cannot know the shell's real cwd, so
 # only an absolute target is safe to classify - anything else is denied.
 _is_abs_target() {
@@ -584,14 +579,14 @@ _is_abs_target() {
 }
 
 # _gf_apply_chdir <raw-dir-token> -> mutate TOOL_CWD for the rest of THIS
-# clause (HIMMEL-3641: env -C/--chdir, sudo -D/--chdir change the child
+# clause (env -C/--chdir, sudo -D/--chdir change the child
 # process's cwd before graphify ever runs, so the fence must resolve later
 # path arguments and the no-path-arg CWD fallback against THAT directory,
 # not the tool call's real cwd). Every downstream cwd-dependent path (_abs,
 # _exists_under_cwd, classify's cross-drive check, evaluate_invocation's
 # no-path-arg fallback) reads TOOL_CWD, so this one mutation point is enough.
 # On anything this file cannot resolve lexically - a missing/empty argument,
-# one carrying any character a real shell could still act on (see the J1290R
+# one carrying any character a real shell could still act on (see the
 # note below), or (mirrors the CD_SEEN drift guard just above) a RELATIVE
 # argument once a prior clause already ran cd/pushd/popd and the real cwd is
 # unknown - this records the reason instead of denying outright, exactly like
@@ -602,7 +597,7 @@ _is_abs_target() {
 # confirmed graphify is the command being run.
 _gf_apply_chdir() {
     local raw="$1"
-    # HIMMEL-3641 J1290O F1: a SECOND chdir inside one wrapper invocation
+    # a SECOND chdir inside one wrapper invocation
     # (env -C a -C ., --chdir=a --chdir=., sudo -D a -D .) stacks each
     # relative DIR onto the already-mutated TOOL_CWD from the first one; GNU
     # env/sudo instead take the LAST flag and resolve it against the
@@ -617,13 +612,13 @@ _gf_apply_chdir() {
         _GF_CHDIR_DENY_REASON="chdir wrapper (env -C/--chdir, sudo -D/--chdir) given more than once in one invocation: $raw"
         return 0
     fi
-    # HIMMEL-3641 J1290R (R1/R2/R3): two rounds of trying to lexically model
+    # two rounds of trying to lexically model
     # what a real shell would do with this argument - unwrap surrounding
     # quotes, expand a bare ~/~/..., reject $/backtick - each produced its own
     # wrong-directory ALLOW (an attached/quoted `~` is NOT shell-expanded and
     # stays literal, but was expanded to $HOME anyway; a whole-token-wrapped
     # backtick lost its backticks before the unresolvable-substitution check
-    # ever ran). Per J1290R: stop modelling shell expansion entirely. The DIR
+    # ever ran). Do not model shell expansion at all. The DIR
     # argument is honoured only when its RAW token is a plain path - letters,
     # digits, `.`, `_`, `/`, `+`, `-` and nothing else, so no ~, $, backtick,
     # quote, backslash, glob or space survives - which is also why this no
@@ -642,7 +637,7 @@ _gf_apply_chdir() {
     _GF_CHDIR_APPLIED=1
 }
 
-# _gf_deny_on_chdir_unresolved -> HIMMEL-3641. Called right before a graphify
+# _gf_deny_on_chdir_unresolved: called right before a graphify
 # command-position invocation is actually evaluated, alongside
 # _gf_deny_on_endpoint_override; denies when _gf_apply_chdir saw an
 # env -C/--chdir or sudo -D/--chdir it could not resolve ahead of graphify.
@@ -652,7 +647,7 @@ _gf_deny_on_chdir_unresolved() {
 }
 
 # _gf_deny_if_graphify_follows <toks index to scan from> <deny reason> ->
-# HIMMEL-3641 J1290R R2/R3: fail-closed scan, same shape as the existing
+# fail-closed scan, same shape as the existing
 # xargs/find -exec and bundled -*C*/-*D* arms in classify_clause below - deny
 # if graphify appears anywhere later in the same clause, otherwise leave the
 # clause alone (return normally; the caller still returns 0). Reads the
@@ -661,7 +656,7 @@ _gf_deny_on_chdir_unresolved() {
 _gf_deny_if_graphify_follows() {
     local k="$1"
     while [ "$k" -lt "$n" ]; do
-        # HIMMEL-3641 round-6 codex-1: substring match, not exact - a later
+        # substring match, not exact - a later
         # token can carry graphify GLUED into another flag's value (e.g. a
         # bundled env -S"graphify ..."), same as the -*S* arm's own scan.
         case "$(_strip_cmd "${toks[$k]}")" in
@@ -674,7 +669,7 @@ _gf_deny_if_graphify_follows() {
 
 # _exists_under_cwd <bare-token> -> 0 if <tool-call-cwd>/<token> exists on disk.
 # A bare-word (no slash/drive/extension) target the agent dropped without a ./
-# prefix (HIMMEL-779): used to keep it from being swallowed as a subcommand word
+# prefix: used to keep it from being swallowed as a subcommand word
 # at position 0, or skipped as a non-path arg at a later position. Only ever
 # called for tokens is_path_like already rejected (no slash), so the append is a
 # clean single segment. Resolves against the TOOL-CALL cwd, not the hook $PWD.
@@ -739,8 +734,7 @@ _drive_of() {
 # letter + colon with NO slash after it) that cannot be PROVEN to resolve
 # against <base>.
 #
-# HIMMEL-845 (LIVE FAIL-OPEN, found empirically during the HIMMEL-809 CR):
-# HIMMEL-808 closed the drive-relative hole by ANCHORING `X:tail` to the cwd
+# Drive-relative `X:tail` is ANCHORED to the cwd
 # (`_abs`'s `[A-Za-z]:*` arm). That anchor is exact ONLY when the cwd is itself
 # on drive X. Windows keeps a SEPARATE current directory PER DRIVE (the hidden
 # `=C:`/`=D:` environment variables), so `D:tail` from a process whose cwd is on
@@ -814,7 +808,7 @@ _salus_marked() {
 #   ""                                      no marker found
 #   "declared<TAB><corpus><TAB><dir>"       first line is a valid corpus name;
 #                                            <dir> is the marker's own directory
-#                                            (HIMMEL-881: so a caller can look for
+#                                            (so a caller can look for
 #                                            a co-located `.graphify-backend` file
 #                                            in the SAME dir, not any ancestor)
 #   "__marker_unreadable__<TAB><markerpath>" marker exists but is not a readable regular file
@@ -852,7 +846,7 @@ _graphify_corpus_marker() {
 # _graphify_backend_marker <dir> -> checks EXACTLY <dir> (NO ancestor walk - a
 # `.graphify-backend` file elsewhere in the tree does not count, only the SAME
 # directory as the `.graphify-corpus` marker that declared the corpus, see the
-# HIMMEL-881 header note) for a file declaring a backend name that satisfies the
+# header note) for a file declaring a backend name that satisfies the
 # GRAPHIFY_DECLARED_BACKEND substitution in apply_verdict when the env var is
 # unset. Same fail-closed contract as `.graphify-corpus`: single-line, trimmed,
 # non-empty, safe-charset content only. Echoes ONE of:
@@ -894,7 +888,7 @@ _under_any_list() {
     [ -e "$listfile" ] || { echo miss; return; }
     _guard_file_readable "$listfile" || { echo unreadable; return; }
     while IFS= read -r root || [ -n "$root" ]; do
-        # HIMMEL-3242: trim + skip whole-line `#` comments, same rules as
+        # trim + skip whole-line `#` comments, same rules as
         # refresh-graph-map.sh's _corpus_is_salus_root. Untrimmed, an indented or
         # space-padded root never prefix-matched (fail-OPEN on the hook path).
         # Trimming can only make MORE lines match; an entry that trims to ""
@@ -915,7 +909,7 @@ _under_any_list() {
 # ("__cross_drive__", "__unreadable__", "__marker_*__"), or "" (unclassifiable).
 classify() {
     local apfs ap name rc mk rest mcorpus mdir
-    # HIMMEL-845, FIRST (before _abs ever anchors): a drive-RELATIVE `X:tail`
+    # a drive-RELATIVE `X:tail`
     # token whose drive is not provably the TOOL_CWD's drive resolves against
     # Windows' per-drive cwd for X, which this fence cannot see. _abs would
     # anchor it to TOOL_CWD and hand back a synthetic path that classifies as a
@@ -953,10 +947,10 @@ classify() {
     # can NOT relax classification). Consult a `.graphify-corpus` staging marker
     # so a scratchpad COPY can declare its origin corpus. Marker-derived hits
     # carry an `@declared` suffix plus a tab-separated marker directory
-    # (callers strip the suffix, but always ledger the invocation; HIMMEL-881:
-    # the directory lets apply_verdict look for a co-located `.graphify-backend`
+    # (callers strip the suffix, but always ledger the invocation; the
+    # directory lets apply_verdict look for a co-located `.graphify-backend`
     # file in that SAME directory, not any other ancestor).
-    # GATED on a configured luna root (silent-failure CR round): the real-root-
+    # GATED on a configured luna root: the real-root-
     # beats-marker guarantee for the most sensitive non-PHI corpus depends on
     # LUNA_VAULT/LUNA_VAULT_PATH being set - with it EMPTY the luna branch above
     # is skipped and a marker planted inside the (invisible) vault could relax
@@ -1008,7 +1002,7 @@ is_path_like() {
     return 1
 }
 
-# NO-BACKEND policy (HIMMEL-621): when `--backend` is absent the fence cannot
+# NO-BACKEND policy: when `--backend` is absent the fence cannot
 # see which provider graphify's own cloud-key auto-detect will select (the key
 # list DEEPSEEK_API_KEY/ZAI_API_KEY/DASHSCOPE_API_KEY/OPENAI_API_KEY/... is
 # graphify-internal). So the rule is corpus-based, not key-sniffing: no-backend
@@ -1017,7 +1011,7 @@ is_path_like() {
 
 # _ollama_url_host <value> <bare-ok 0|1> -> echoes the lower-cased host of an
 # ollama endpoint, or returns 1 when it cannot be parsed with confidence
-# (HIMMEL-4185, fail-closed). <bare-ok>=1 is OLLAMA_HOST's grammar as graphify
+# <bare-ok>=1 is OLLAMA_HOST's grammar as graphify
 # normalizes it: a bare port or `:port` means localhost, and a missing scheme is
 # http. OLLAMA_BASE_URL (bare-ok=0) is used by graphify VERBATIM, so it must
 # carry an http(s) scheme. Userinfo (`@`), query, fragment, whitespace and any
@@ -1043,7 +1037,7 @@ _ollama_url_host() {
     if [ "${BASH_REMATCH[1]}" = "[::1]" ]; then echo "::1"; else echo "${BASH_REMATCH[1]}"; fi
 }
 
-# _ollama_provider -> local-ollama | ollama-cloud | ollama-unverified (HIMMEL-4185).
+# _ollama_provider -> local-ollama | ollama-cloud | ollama-unverified.
 # The endpoint is resolved in graphify's own order (llm.py
 # _resolve_ollama_base_url): OLLAMA_BASE_URL when SET (even empty - graphify
 # uses it verbatim), else a non-empty OLLAMA_HOST, else the loopback default.
@@ -1071,7 +1065,7 @@ _ollama_provider() {
         *) echo ollama-unverified; return ;;
     esac
     model="$(_lc "${ollama_model_flag:-${OLLAMA_MODEL:-}}")"
-    # HIMMEL-4696: trim surrounding whitespace (a trailing space/tab/newline in
+    # trim surrounding whitespace (a trailing space/tab/newline in
     # OLLAMA_MODEL must not hide the suffix) and ignore an explicit :latest tag.
     model="${model#"${model%%[![:space:]]*}"}"
     model="${model%"${model##*[![:space:]]}"}"
@@ -1079,7 +1073,7 @@ _ollama_provider() {
     # ponytail: a name heuristic - a local alias of a cloud model (`ollama cp
     # gpt-oss:120b-cloud mine`) carries no -cloud/:cloud marker and classifies as
     # local-ollama; the daemon's own model list is not consulted. Upgrade path:
-    # ask the local daemon (`ollama show`) for remote_host, HIMMEL-4696 follow-up.
+    # ask the local daemon (`ollama show`) for remote_host.
     case "$model" in
         *-cloud|*:cloud) echo ollama-cloud ;;
         *)               echo local-ollama ;;
@@ -1087,14 +1081,14 @@ _ollama_provider() {
 }
 
 # _salus_ollama_cloud_optin -> 0 only when the PERSISTED user opt-in is set
-# (HIMMEL-4185): $HOME/.himmel/config.json parses as JSON and its
+# $HOME/.himmel/config.json parses as JSON and its
 # graphify.salus_ollama_cloud_ok is the literal `true`. Absent, unreadable,
 # malformed, or any other value is no opt-in (deny). No env override exists.
 _salus_ollama_cloud_optin() {
     local f
     [ -n "${HOME:-}" ] || return 1
     f="$HOME/.himmel/config.json"
-    # HIMMEL-4696: a symlinked config, or a symlinked ~/.himmel, is no opt-in -
+    # a symlinked config, or a symlinked ~/.himmel, is no opt-in -
     # a link can be planted without writing the operator's own file.
     [ -L "$HOME/.himmel" ] && return 1
     [ -L "$f" ] && return 1
@@ -1104,7 +1098,7 @@ process.exit(j && j.graphify && j.graphify.salus_ollama_cloud_ok === true ? 0 : 
 }
 
 # The CLAUDE_CODE_USE_* selectors that reroute the CLI's model traffic AWAY from
-# the Anthropic API, none of which touch ANTHROPIC_BASE_URL (HIMMEL-1070). The
+# the Anthropic API, none of which touch ANTHROPIC_BASE_URL. The
 # list is explicit, not a `CLAUDE_CODE_USE_*` wildcard, because the CLI ships
 # same-prefixed vars that are ordinary FEATURE flags and must NOT deny
 # (CLAUDE_CODE_USE_COWORK_PLUGINS / _NATIVE_FILE_SEARCH / _POWERSHELL_TOOL);
@@ -1116,7 +1110,7 @@ _CLAUDE_REROUTE_VARS="CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE
 # _claude_reroute_var -> echoes the name of the FIRST reroute selector that is
 # SET (any non-empty value), or "" when none is.
 #
-# SET, not "truthy" (CodeRabbit-major on HIMMEL-1070): an earlier cut treated
+# SET, not "truthy": an earlier cut treated
 # `0` / `false` as OFF, which assumed a boolean PARSE the docs never promise.
 # The docs only ever show `=1` and never define an off-value; Claude Code is a
 # Node app, where a plain `Boolean(process.env.X)` check reads the STRING "0" as
@@ -1126,7 +1120,7 @@ _CLAUDE_REROUTE_VARS="CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE
 # cost is a false deny for an operator who writes `=0` to mean "off" (loud, one
 # `unset` away); the cost of the other misread is silent cross-cloud egress.
 #
-# CASE-INSENSITIVE (CodeRabbit-major on HIMMEL-1070, public round). bash matches
+# CASE-INSENSITIVE. bash matches
 # variable names case-SENSITIVELY; Node's process.env on Windows does NOT. Proven
 # on this box:
 #   env claude_code_use_bedrock=1 node -e 'process.env.CLAUDE_CODE_USE_BEDROCK' -> "1"
@@ -1150,7 +1144,7 @@ _claude_reroute_var() {
     # round-trip through line-oriented `env` output, so a leading newline cannot
     # hide the selector or forge a lookalike variable line.
     #
-    # HIMMEL-1133: keep the comparison builtin-only. The previous external `tr`
+    # keep the comparison builtin-only. The previous external `tr`
     # fold could fail or be absent even on command -p's default PATH; an empty fold
     # then missed every lowercase selector and silently allowed rerouted egress.
     # nocasematch removes both that fail-open dependency and the command -p surface.
@@ -1172,7 +1166,7 @@ _claude_reroute_var() {
 }
 
 # _map_anthropic_endpoint -> resolve the claude/claude-cli backend to a provider
-# by its EFFECTIVE endpoint (HIMMEL-1049 codex-adv-1). graphify's `claude`
+# by its EFFECTIVE endpoint. graphify's `claude`
 # backend honors ANTHROPIC_BASE_URL ("claude also reaches custom
 # Anthropic-compatible endpoints (LiteLLM proxy, gateways): set
 # ANTHROPIC_BASE_URL and ANTHROPIC_MODEL"), so the backend NAME alone does not
@@ -1182,7 +1176,7 @@ _claude_reroute_var() {
 # check so a claude extraction under those launchers is classified by its REAL
 # provider (zai-glm) and hits the matrix's zai-glm cell + ledger, instead of
 # being waved through as anthropic. Fail-closed on an unknown custom gateway.
-# Classification is by EXACT hostname (CodeRabbit-critical on HIMMEL-1049):
+# Classification is by EXACT hostname:
 # substring matching on the raw URL is spoofable - `api.anthropic.com.evil/`
 # and `evil/api.anthropic.com` both CONTAIN "api.anthropic.com" yet reach an
 # attacker. So parse the URL down to its hostname (pure-bash, bash-3.2 idiom
@@ -1198,7 +1192,7 @@ _claude_reroute_var() {
 #     "anthropic-custom" (undeclared -> matrix default deny; fail-closed)
 _map_anthropic_endpoint() {
     local backend_name="${1:-}" u host
-    # REROUTE SELECTORS FIRST (HIMMEL-1070, public-CR-critical): these reroute
+    # REROUTE SELECTORS FIRST: these reroute
     # the `claude` CLI away from Anthropic WITHOUT touching ANTHROPIC_BASE_URL,
     # so the endpoint check below is blind to them - unset base-url +
     # CLAUDE_CODE_USE_BEDROCK=1 returned `anthropic` and egressed corpus content
@@ -1210,7 +1204,7 @@ _map_anthropic_endpoint() {
     # anthropic-custom purely so the deny message can name the RIGHT variable;
     # both are equally hard-denied).
     #
-    # claude-cli ONLY (CodeRabbit-major on HIMMEL-1070): these are Claude CODE
+    # claude-cli ONLY: these are Claude CODE
     # env vars, so they bind only to the backend that actually SHELLS that CLI.
     # Verified in graphify's own llm.py: `claude-cli` dispatches _call_claude_cli
     # (:1484) and inherits the env, while `claude` is a plain HTTP call to
@@ -1222,7 +1216,7 @@ _map_anthropic_endpoint() {
     # applies to BOTH, because the `claude` backend genuinely does read
     # ANTHROPIC_BASE_URL. (graphify also has a separate first-class `bedrock`
     # backend, which maps to the literal `bedrock` -> undeclared -> default deny.)
-    # claude-api (HIMMEL-5544) is semantic-update.sh's API-credit lane backend: it
+    # claude-api is semantic-update.sh's API-credit lane backend: it
     # runs graphify's claude-cli path through scripts/api-lane/claude-api.sh, so
     # it shells the same CLI and takes the same reroute rule.
     if { [ "$backend_name" = "claude-cli" ] || [ "$backend_name" = "claude-api" ]; } && [ -n "$(_claude_reroute_var)" ]; then
@@ -1230,8 +1224,8 @@ _map_anthropic_endpoint() {
     fi
     u="${ANTHROPIC_BASE_URL:-}"
     [ -n "$u" ] || { echo anthropic; return; }
-    # _guard_endpoint_host (shared, HIMMEL-1776) rejects a backslash BEFORE host
-    # classification (CodeRabbit-major on HIMMEL-1049: some HTTP clients fold
+    # _guard_endpoint_host rejects a backslash BEFORE host
+    # classification (some HTTP clients fold
     # `\` into `/`, so `https://evil.com\@api.anthropic.com` could resolve to
     # evil.com while a naive userinfo strip sees api.anthropic.com), and
     # requires an explicit HTTPS scheme (a plaintext http:// endpoint would
@@ -1288,7 +1282,7 @@ _json_escape() {
 # classified via a `.graphify-corpus` marker - invocation-wide, not just the
 # winning token) an extra `"declared":true` field is emitted so a mis-declared
 # marker cannot dodge audit. When the optional 7th arg is non-empty ("env" or
-# "file", HIMMEL-881: which path supplied a backend for the no-backend
+# "file": which path supplied a backend for the no-backend
 # GRAPHIFY_DECLARED_BACKEND substitution) an extra `"declared_backend_source"`
 # field is emitted so audits can distinguish env-declared vs file-declared runs;
 # apply_verdict's allow branch calls this for EVERY declaration-reached run
@@ -1309,7 +1303,7 @@ ledger_append() {
 
 # _llm_free_subcmd <subcommand> -> 0 if the subcommand is LLM-free (does local,
 # non-provider work; today: exactly `update`). GRAPHIFY_DECLARED_BACKEND
-# (HIMMEL-779) is honored ONLY for one of these - a case pattern, not a fixed
+# is honored ONLY for one of these - a case pattern, not a fixed
 # string, so a future LLM-free subcommand extends by adding one arm here.
 _llm_free_subcmd() {
     case "$1" in
@@ -1329,11 +1323,11 @@ _llm_free_subcmd() {
 # (env or file): a run whose backend came from a declaration rather than an
 # explicit --backend leaves a ledger line on every allow-family verdict, even
 # a plain `allow` cell on a real (non-marker) root, so limitation (g)'s audit
-# guarantee holds for both declaration paths. <subcmd> (HIMMEL-779 CR round-1) is the recorded graphify subcommand
-# token, used to scope GRAPHIFY_DECLARED_BACKEND (and, HIMMEL-881, the
+# guarantee holds for both declaration paths. <subcmd> is the recorded graphify subcommand
+# token, used to scope GRAPHIFY_DECLARED_BACKEND (and the
 # `.graphify-backend` file) to the LLM-free set - empty when the invocation had
 # no genuine subcommand word (a position-0 path-like token). <marker_dir>
-# (HIMMEL-881) is a NEWLINE-SEPARATED dedup'd list of the directory of EVERY
+# is a NEWLINE-SEPARATED dedup'd list of the directory of EVERY
 # `.graphify-corpus` marker that classified a token in the invocation (the
 # cwd-fallback path passes its single dir as a 1-entry list) - the ONLY
 # directories apply_verdict will check for co-located `.graphify-backend`
@@ -1359,13 +1353,13 @@ apply_verdict() {
         # subcommand is LLM-free - for himmel-code with no flag the
         # local-ollama default stands unconditionally (this whole block is
         # skipped, see the outer `&&`); a declared value must NOT override it
-        # (HIMMEL-779 CR round-1). A provider-using (non-LLM-free) subcommand
+        # A provider-using (non-LLM-free) subcommand
         # with no --backend still hits the deny below even when a declaration
         # is available - declaration cannot substitute for a real --backend on
         # a subcommand whose CLI actually accepts one. Either declared value
         # flows through the SAME matrix eval + provider map as a real
         # --backend token (it is NOT a bypass). Two declaration paths, in
-        # precedence order (HIMMEL-881 adds the second):
+        # precedence order:
         #   1. GRAPHIFY_DECLARED_BACKEND env var (launching-shell-only; a
         #      per-call VAR=x prefix or in-session export never reaches this
         #      hook process).
@@ -1434,7 +1428,7 @@ apply_verdict() {
     provider="$(map_provider "$backend_effective")"
 
     # HARD-DENY the unverified-endpoint sentinel BEFORE the matrix eval
-    # (CodeRabbit-major on HIMMEL-1049). `anthropic-custom` is what
+    # `anthropic-custom` is what
     # _map_anthropic_endpoint returns when it CANNOT vouch for the claude
     # backend's endpoint (unknown/lookalike host, plaintext http, scheme-less,
     # backslash authority). Letting it reach the matrix would hand it to the
@@ -1442,7 +1436,7 @@ apply_verdict() {
     # RATIFIED providers (codex/GLM/alibaba/anthropic/deepseek), NOT for an
     # arbitrary host an attacker can point ANTHROPIC_BASE_URL at. An endpoint we
     # cannot verify must fail closed on EVERY corpus, public code included.
-    # Same fail-closed treatment for the reroute sentinel (HIMMEL-1070): a
+    # Same fail-closed treatment for the reroute sentinel: a
     # CLAUDE_CODE_USE_* selector sends the claude CLI's traffic to AWS Bedrock /
     # Google Vertex / a Foundry/gateway endpoint, none of them ratified matrix
     # providers - so they must not reach the matrix and land on the
@@ -1454,14 +1448,14 @@ apply_verdict() {
     fi
 
     if [ "$provider" = "anthropic-custom" ]; then
-        # Do NOT echo the raw ANTHROPIC_BASE_URL (CodeRabbit-major): it can carry
+        # Do NOT echo the raw ANTHROPIC_BASE_URL: it can carry
         # userinfo/credentials/query tokens (https://user:SECRET@host/...), and
         # this message lands on stderr + in the hook trail. Name the VARIABLE, not
         # its value; the operator can inspect it themselves.
         deny "claude backend points at an unverified endpoint (ANTHROPIC_BASE_URL is set to an unrecognized/unsupported value - not echoed, it may carry credentials); refusing on every corpus (fail-closed). Fix: unset ANTHROPIC_BASE_URL, or point it at https://api.anthropic.com or the ratified gateway https://api.z.ai (https only, exact host); or pick a backend that does not read it (e.g. --backend ollama for local extraction)"
     fi
 
-    # HIMMEL-4185: same reasoning as anthropic-custom above. An ollama endpoint
+    # same reasoning as anthropic-custom above. An ollama endpoint
     # that is neither loopback nor ollama.com (a LAN or remote host, or a value
     # that does not parse) is not a ratified provider, and must not reach the
     # `himmel-code x * x *` wildcard. The value is not echoed.
@@ -1492,8 +1486,8 @@ apply_verdict() {
             # Always ledger a run reached via ANY declaration, even on a plain
             # `allow` cell: a marker-declared corpus (declared=1) OR a
             # declared-backend substitution (declared_backend_source non-empty
-            # - env or file; HIMMEL-881 final CR: an env-declared run on a
-            # real root previously left NO ledger line here, contradicting
+            # - env or file; an env-declared run on a
+            # real root must leave a ledger line, per
             # limitation (g)'s audit guarantee). Same principle as the
             # declared-marker always-ledger; a failed write DENIES.
             if [ "$declared" = 1 ] || [ -n "$declared_backend_source" ]; then
@@ -1509,11 +1503,11 @@ apply_verdict() {
             ;;
         conditional)
             case "$corpus/$provider" in
-                # luna-clippings/zai-glm was retired here by HIMMEL-2224: that
-                # matrix cell is now an explicit deny (HIMMEL-1749 DROP), so no
-                # opt-in can reach it anymore.
+                # luna-clippings/zai-glm is not listed: that
+                # matrix cell is an explicit deny, so no
+                # opt-in can reach it.
                 salus/local-ollama)     optvar="GRAPHIFY_SALUS_LOCAL_OK=1";   optval="${GRAPHIFY_SALUS_LOCAL_OK:-}" ;;
-                # HIMMEL-4185: a PERSISTED opt-in, not a per-run env var.
+                # a PERSISTED opt-in, not a per-run env var.
                 salus/ollama-cloud)
                     optvar="graphify.salus_ollama_cloud_ok=true in \$HOME/.himmel/config.json (persistent; absent, unreadable or malformed = deny)"
                     optval=0
@@ -1557,7 +1551,7 @@ _deny_on_classify_sentinel() {
 # (most-restrictive-wins), applies the CWD fallback, then applies the verdict.
 evaluate_invocation() {
     local have_sub=0 subcmd="" want_backend=0 backend="" backend_norm="" backend_set=0 backend_conflict=0
-    # HIMMEL-4185: graphify's --model picks the ollama model (a `-cloud` one
+    # graphify's --model picks the ollama model (a `-cloud` one
     # leaves the box); _ollama_provider reads ollama_model_flag by dynamic scope.
     local want_model=0 ollama_model_flag="" model_conflict=0
     local unclassifiable=0 best_rank=-1 best_corpus="" best_target="" any_declared=0 marker_dirs="" any_real_root=0
@@ -1590,11 +1584,11 @@ evaluate_invocation() {
         esac
         if [ "$have_sub" = 0 ]; then
             st="$(_strip_wrap "$tok")"
-            # Position-0 path (HIMMEL-621): if the first positional is itself
+            # Position-0 path: if the first positional is itself
             # path-like it is a target, NOT a subcommand word - classify it
             # (fall through) instead of swallowing it. Otherwise it is the
             # subcommand token: record + skip (never classified).
-            # HIMMEL-779: a BARE word (no slash/drive/extension) that EXISTS
+            # a BARE word (no slash/drive/extension) that EXISTS
             # under the tool-call cwd is likewise a target the agent dropped
             # without a ./ prefix, not a subcommand word - classify it so a
             # bare PHI dir name cannot be swallowed and let the cwd fallback
@@ -1607,12 +1601,11 @@ evaluate_invocation() {
         st="$(_strip_wrap "$tok")"
         [ -n "$st" ] || continue
         # A path-like token, OR a bare word that exists under the tool-call
-        # cwd, is a target (HIMMEL-779: bare-word targets were previously
-        # skipped as "non-path args", so a bare PHI dir name alongside a safe
-        # path let the safe path win the rank). is_path_like is checked first
+        # cwd, is a target (skipping bare words as "non-path args" would let a bare PHI dir
+        # name alongside a safe path lose the rank to the safe path). is_path_like is checked first
         # so _exists_under_cwd only ever stats a clean single bare segment.
         is_path_like "$st" || _exists_under_cwd "$st" || continue
-        # FIX 2 (HIMMEL-779 CR round-1): a PRIOR clause in this invocation ran
+        # FIX 2: a PRIOR clause in this invocation ran
         # cd/pushd/popd (CD_SEEN, set below the clause loop) - a relative or
         # bare-word target can no longer be trusted to resolve against
         # TOOL_CWD (the shell may have moved). Deny rather than guess; an
@@ -1657,7 +1650,7 @@ evaluate_invocation() {
                 best_rank="$r"; best_corpus="$c"; best_target="$st"
             fi
         else
-            # Unconditional (HIMMEL-621): an unclassifiable path-like token
+            # Unconditional: an unclassifiable path-like token
             # denies for ANY subcommand, not only the extraction-shaped ones.
             unclassifiable=1
         fi
@@ -1667,7 +1660,7 @@ evaluate_invocation() {
         deny "unclassifiable path in graphify '$subcmd' invocation (fail-closed): $CMD"
     fi
 
-    # HIMMEL-779: order-insensitive backend parse. Two DISTINCT backend values
+    # order-insensitive backend parse. Two DISTINCT backend values
     # in one invocation DENY (instead of last-wins) so a blocked backend placed
     # before an allowed one cannot be hidden. The same value repeated is not a
     # conflict. Checked after the unclassifiable deny; either way it fails closed.
@@ -1684,7 +1677,7 @@ evaluate_invocation() {
     fi
 
     # No classified path-like token -> the corpus is the one around the CWD
-    # (the TOOL-CALL cwd; HIMMEL-779). FIX 2 (HIMMEL-779 CR round-1): if a
+    # FIX 2: if a
     # PRIOR clause in this invocation changed directory (cd/pushd/popd, see
     # CD_SEEN below the clause loop), the tool-call cwd captured before the
     # whole command ran no longer reflects where THIS clause actually
@@ -1722,12 +1715,12 @@ classify_clause() {
     local -a toks args
     toks=("$@")
 
-    # Skip leading env-var assignments (X=y) and command wrappers (HIMMEL-621),
+    # Skip leading env-var assignments (X=y) and command wrappers,
     # so a wrapper set placed before graphify - exec / nohup / timeout 600 /
     # sudo / env -i / stdbuf -oL / ... - does not hide the invocation from the
     # command-position walk. Wrappers may chain (`sudo nohup timeout 600 ...`).
     #
-    # HIMMEL-1085: while walking past a leading/env-local assignment, also
+    # while walking past a leading/env-local assignment, also
     # check whether it is one of the ENDPOINT-SELECTOR vars _map_anthropic_endpoint
     # reads from ITS OWN process environment (ANTHROPIC_BASE_URL,
     # CLAUDE_CODE_USE_BEDROCK, CLAUDE_CODE_USE_VERTEX, ANTHROPIC_API_KEY,
@@ -1752,7 +1745,7 @@ classify_clause() {
                 esac
                 i=$((i+1)); continue ;;                    # leading VAR=val assignment
         esac
-        # HIMMEL-2087: match the wrapper NAME on its bare basename, so a
+        # match the wrapper NAME on its bare basename, so a
         # path-qualified wrapper (/usr/bin/env, /bin/sudo, ...) is recognized
         # the same as the bare form. `$s` stays the full (path-qualified)
         # token for everything below (inner-loop flag scans etc.) - only the
@@ -1765,11 +1758,11 @@ classify_clause() {
                     case "$gf_w" in
                         -n)   i=$((i+2)) ;;                 # flag + separate value
                         --*)
-                            # HIMMEL-2610: --adj/--adjus/... are unambiguous
+                            # --adj/--adjus/... are unambiguous
                             # GNU abbreviations of nice's only value-taking
                             # long option, --adjustment; the old literal
                             # match missed them, under-consuming by one
-                            # token (same misalignment class as HIMMEL-2592).
+                            # token.
                             if guard_is_long_abbrev "adjustment" "$gf_w"; then
                                 if [ "$GUARD_LOPT_HAS_EQ" = 1 ]; then i=$((i+1)); else i=$((i+2)); fi
                             else
@@ -1787,7 +1780,7 @@ classify_clause() {
                     case "$gf_w" in
                         -o|-f) i=$((i+2)) ;;                # flag + value
                         --*)
-                            # HIMMEL-2610: --o/--out/... and --f/--for/... are
+                            # --o/--out/... and --f/--for/... are
                             # unambiguous abbreviations of --output/--format;
                             # same under-consumption class as nice above.
                             if guard_is_long_abbrev "output" "$gf_w" || guard_is_long_abbrev "format" "$gf_w"; then
@@ -1833,7 +1826,7 @@ classify_clause() {
             builtin)
                 i=$((i+1)); continue ;;                    # builtin NAME [args] - no options
             setsid)
-                # HIMMEL-2615: setsid [-c|-f|-w|--ctty|--fork|--wait] CMD. Same
+                # setsid [-c|-f|-w|--ctty|--fork|--wait] CMD. Same
                 # shape as nohup - no setsid option takes a SEPARATE value - so
                 # consume the leading flags and keep walking. It was simply
                 # missing from the wrapper list, and `setsid graphify ...`
@@ -1848,7 +1841,7 @@ classify_clause() {
                 done
                 continue ;;
             quiet-run.sh)
-                # HIMMEL-2615: scripts/quiet-run.sh <label> -- <cmd...> execs its
+                # scripts/quiet-run.sh <label> -- <cmd...> execs its
                 # own `--` tail, so that tail IS the clause. The runner's grammar
                 # is strict - label at $1, a LITERAL `--` at $2, usage/exit 2
                 # otherwise - so mirroring its own parse (skip exactly one token,
@@ -1863,10 +1856,10 @@ classify_clause() {
                 # below at the wrong position and silently drop the real
                 # separator (and the graphify tail after it) from view.
                 #
-                # History (do not re-attempt a cleverer version of this):
-                # CR round 1 tried a per-quote-type PARITY count (odd `'` OR
-                # odd `"`, counted separately, OR any backslash -> ambiguous).
-                # CR round 2 broke it with adjacent quoted segments in one
+                # Rejected approach (do not re-attempt a cleverer version of this):
+                # a per-quote-type PARITY count (odd `'` OR
+                # odd `"`, counted separately, OR any backslash -> ambiguous)
+                # breaks on adjacent quoted segments in one
                 # fragment, e.g. label `'"'"a -- b"` (real argv label is
                 # `"a -- b`, one word): fragment 1 is `'"'"a` - two `'` and
                 # two `"`, EVEN on both types, so parity called it balanced.
@@ -1921,7 +1914,7 @@ classify_clause() {
                 # never runs at all, so denying it costs nothing either.)
                 k=$((i+1))
                 while [ "$k" -lt "$n" ]; do
-                    # HIMMEL-3641 round-7 codex-1 sweep: substring, not exact
+                    # substring, not exact
                     # - graphify can be glued into a later token's value
                     # (env -S"graphify ..."), same as the -*S* arm's scan.
                     case "$(_strip_cmd "${toks[$k]}")" in
@@ -1936,7 +1929,7 @@ classify_clause() {
                 _GF_CHDIR_APPLIED=0                        # HIMMEL-3641 J1290O F1: scope to THIS invocation
                 while [ "$i" -lt "$n" ]; do
                     gf_w="$(_strip_cmd "${toks[$i]}")"
-                    # HIMMEL-3641 J1290R R2: a quote, backtick, backslash or
+                    # a quote, backtick, backslash or
                     # substitution character inside an option-shaped token
                     # (env '-C'<dir>, "-C<dir>", -\C<dir>, `-C<dir>) strips to
                     # something that LOOKS like -C/-D/--chdir once _strip_cmd
@@ -1950,7 +1943,7 @@ classify_clause() {
                     case "$gf_w" in
                         -*)
                             if [ "${toks[$i]}" != "$gf_w" ]; then
-                                # HIMMEL-3641 J1290S codex-1: "graphify" can be
+                                # "graphify" can be
                                 # embedded INSIDE this same mismatched token
                                 # (env -S"graphify ..." splits into a token
                                 # whose stripped form never equals the raw
@@ -1970,7 +1963,7 @@ classify_clause() {
                         -C)
                             _gf_apply_chdir "${toks[$((i+1))]:-}"
                             if [ -n "${_GF_CHDIR_DENY_REASON:-}" ]; then
-                                # HIMMEL-3641 J1290S S1: a separate-token DIR
+                                # a separate-token DIR
                                 # argument _gf_apply_chdir could not resolve
                                 # (e.g. a tokenizer-split $(...)/`...`/"..."
                                 # fragment) must not let the walk step past it
@@ -1983,7 +1976,7 @@ classify_clause() {
                                 return 0
                             fi
                             i=$((i+2)) ;;                                    # HIMMEL-3641: -C DIR
-                        # HIMMEL-3641 J1290O F2: pass the RAW token's suffix
+                        # pass the RAW token's suffix
                         # (${toks[$i]}), not $gf_w - $gf_w is already
                         # _strip_cmd'd, which deletes $/`/quotes/() before
                         # _gf_apply_chdir's own substitution check ever sees
@@ -1991,16 +1984,16 @@ classify_clause() {
                         # instead of failing closed.
                         -C?*) _gf_apply_chdir "${toks[$i]#-C}"; i=$((i+1)) ;;        # HIMMEL-3641: -CDIR attached
                         --*)
-                            # HIMMEL-2610: --u/--uns/... are unambiguous GNU
+                            # --u/--uns/... are unambiguous GNU
                             # abbreviations of env's only value-taking long
                             # option, --unset; the old literal-only match
                             # missed them (same under-consumption class as
-                            # nice/time above). HIMMEL-3641: --chdir/--ch/...
+                            # nice/time above). --chdir/--ch/...
                             # (env -C's long form) is the other value-taking
                             # long option and is checked first so an
                             # ambiguous-with-neither abbreviation still falls
                             # through to the generic -*) arm below.
-                            # HIMMEL-3641 codex-1 (J1290R): this arm is checked
+                            # this arm is checked
                             # BEFORE -*C* below - a long option's raw token
                             # starts with `--` and can contain an uppercase C
                             # anywhere in its name or value (--chdir=/tmp/CorpusDir,
@@ -2012,7 +2005,7 @@ classify_clause() {
                             # arms this way changes no *correct* -*C* match.
                             if guard_is_long_abbrev "chdir" "$gf_w"; then
                                 if [ "$GUARD_LOPT_HAS_EQ" = 1 ]; then
-                                    # HIMMEL-3641 J1290O F2: raw value after
+                                    # raw value after
                                     # the FIRST `=` in the raw token, not
                                     # $GUARD_LOPT_VAL (parsed from $gf_w,
                                     # already _strip_cmd'd - see the -CDIR
@@ -2021,7 +2014,7 @@ classify_clause() {
                                 else
                                     _gf_apply_chdir "${toks[$((i+1))]:-}"
                                     if [ -n "${_GF_CHDIR_DENY_REASON:-}" ]; then
-                                        # HIMMEL-3641 J1290S S1: see the -C DIR
+                                        # see the -C DIR
                                         # arm's comment above - same
                                         # fail-closed fix for --chdir DIR's
                                         # separate-token form.
@@ -2033,7 +2026,7 @@ classify_clause() {
                             elif guard_is_long_abbrev "unset" "$gf_w"; then
                                 if [ "$GUARD_LOPT_HAS_EQ" = 1 ]; then i=$((i+1)); else i=$((i+2)); fi
                             elif guard_is_long_abbrev "split-string" "$gf_w"; then
-                                # HIMMEL-3641 J1290R R2: the long-option
+                                # the long-option
                                 # spelling of -S - see the -*S* note below for
                                 # why the value is scanned as a substring, not
                                 # matched exactly.
@@ -2049,7 +2042,7 @@ classify_clause() {
                             else
                                 i=$((i+1))
                             fi ;;
-                        # HIMMEL-3641 J1290O F4: a bundled short option
+                        # a bundled short option
                         # containing -C's letter (-iC, -vC, -i0C, ...) cannot
                         # be positionally resolved without modelling GNU
                         # getopt bundling - which flag in the bundle actually
@@ -2059,12 +2052,12 @@ classify_clause() {
                         # Fail closed the same way xargs/find -exec do above:
                         # scan the rest of the clause for graphify and deny
                         # if present, leave any other command alone. Checked
-                        # AFTER --* above (HIMMEL-3641 codex-1/J1290R) so a
+                        # AFTER --* above so a
                         # long option is never routed here.
                         -*C*)
                             k=$((i+1))
                             while [ "$k" -lt "$n" ]; do
-                                # HIMMEL-3641 round-7 codex-1: substring, not
+                                # substring, not
                                 # exact - see the -*S* note above.
                                 case "$(_strip_cmd "${toks[$k]}")" in
                                     *graphify*)
@@ -2073,7 +2066,7 @@ classify_clause() {
                                 k=$((k+1))
                             done
                             return 0 ;;
-                        # HIMMEL-3641 J1290R R2: env -S/--split-string (and a
+                        # env -S/--split-string (and a
                         # bundled short option containing -S's letter, e.g.
                         # -iS) re-splits its VALUE into a whole new argv at
                         # runtime - a shebang-line mechanism this fence cannot
@@ -2113,7 +2106,7 @@ classify_clause() {
                     case "$gf_w" in
                         -k|-s) i=$((i+2)) ;;               # flag + value
                         --*)
-                            # HIMMEL-2610: --k/--ki/... and --s/--si/... are
+                            # --k/--ki/... and --s/--si/... are
                             # unambiguous abbreviations of timeout's two
                             # value-taking long options, --kill-after and
                             # --signal; same under-consumption class as
@@ -2136,7 +2129,7 @@ classify_clause() {
                     case "$gf_w" in
                         -i|-o|-e) i=$((i+2)) ;;            # bare short opt + separate MODE value
                         --*)
-                            # HIMMEL-2610: stdbuf had NO long-option handling
+                            # stdbuf had NO long-option handling
                             # at all - --input/--output/--error (and any
                             # unambiguous abbreviation of each) take a
                             # SEPARATE value exactly like their short forms
@@ -2159,13 +2152,13 @@ classify_clause() {
                 _GF_CHDIR_APPLIED=0                        # HIMMEL-3641 J1290O F1: scope to THIS invocation
                 while [ "$i" -lt "$n" ]; do
                     gf_w="$(_strip_cmd "${toks[$i]}")"
-                    # HIMMEL-3641 J1290R R2: same raw-vs-stripped mismatch
+                    # same raw-vs-stripped mismatch
                     # guard as env's wrapper walk above (sudo '-D'<dir>,
                     # "-D<dir>", -\D<dir>, ...) - see that arm's comment.
                     case "$gf_w" in
                         -*)
                             if [ "${toks[$i]}" != "$gf_w" ]; then
-                                # HIMMEL-3641 J1290S codex-1: same fix as
+                                # same fix as
                                 # env's wrapper walk above - check THIS token
                                 # for an embedded "graphify" before scanning
                                 # only the later ones.
@@ -2183,39 +2176,39 @@ classify_clause() {
                         -D)
                             _gf_apply_chdir "${toks[$((i+1))]:-}"
                             if [ -n "${_GF_CHDIR_DENY_REASON:-}" ]; then
-                                # HIMMEL-3641 J1290S S1: see env -C's arm
+                                # see env -C's arm
                                 # comment above - same fail-closed fix, sudo's
                                 # -D DIR twin.
                                 _gf_deny_if_graphify_follows $((i+1)) "$_GF_CHDIR_DENY_REASON"
                                 return 0
                             fi
                             i=$((i+2)) ;;                                    # HIMMEL-3641: -D DIR
-                        # HIMMEL-3641 J1290O F2: raw suffix, not $gf_w - see
+                        # raw suffix, not $gf_w - see
                         # the env -CDIR note above.
                         -D?*) _gf_apply_chdir "${toks[$i]#-D}"; i=$((i+1)) ;;        # HIMMEL-3641: -DDIR attached
                         --)                      i=$((i+1)); break ;;  # end of sudo options
                         --*)
-                            # HIMMEL-2610: sudo had NO long-option handling
+                            # sudo had NO long-option handling
                             # at all - --user/--group/--other-user/--prompt/
                             # --close-from/--role/--type/--host (and any
                             # unambiguous abbreviation of each) each take a
                             # SEPARATE value, same as their short forms above.
-                            # HIMMEL-3641: --chdir (-D's long form) is checked
+                            # --chdir (-D's long form) is checked
                             # first, same rationale as env's --chdir above.
-                            # HIMMEL-3641 codex-1 (J1290R): checked BEFORE
+                            # checked BEFORE
                             # -*D* below - see the env --* note above; same
                             # ordering rationale (a --chdir=/tmp/DataDir or
                             # --host=DBhost value can contain -D's letter).
                             if guard_is_long_abbrev "chdir" "$gf_w"; then
                                 if [ "$GUARD_LOPT_HAS_EQ" = 1 ]; then
-                                    # HIMMEL-3641 J1290O F2: raw value, not
+                                    # raw value, not
                                     # $GUARD_LOPT_VAL - see env's --chdir=
                                     # note above.
                                     _gf_apply_chdir "${toks[$i]#*=}"; i=$((i+1))
                                 else
                                     _gf_apply_chdir "${toks[$((i+1))]:-}"
                                     if [ -n "${_GF_CHDIR_DENY_REASON:-}" ]; then
-                                        # HIMMEL-3641 J1290S S1: see env -C's
+                                        # see env -C's
                                         # arm comment above - same fail-closed
                                         # fix, sudo --chdir DIR's twin.
                                         _gf_deny_if_graphify_follows $((i+1)) "$_GF_CHDIR_DENY_REASON"
@@ -2231,15 +2224,15 @@ classify_clause() {
                             else
                                 i=$((i+1))
                             fi ;;
-                        # HIMMEL-3641 J1290O F4: bundled short option
+                        # bundled short option
                         # containing -D's letter (-nD, -EHD, ...) - see the
                         # env -*C* note above; same fail-closed shape. Checked
-                        # AFTER --* above (HIMMEL-3641 codex-1/J1290R) so a
+                        # AFTER --* above so a
                         # long option is never routed here.
                         -*D*)
                             k=$((i+1))
                             while [ "$k" -lt "$n" ]; do
-                                # HIMMEL-3641 round-7 codex-1 sweep: substring,
+                                # substring,
                                 # not exact - see the env -*C* note above.
                                 case "$(_strip_cmd "${toks[$k]}")" in
                                     *graphify*)
@@ -2261,7 +2254,7 @@ classify_clause() {
 
     raw="${toks[$i]}"; s="$(_strip_cmd "$raw")"
 
-    # xargs / find -exec (HIMMEL-621): graphify reached as a DEFERRED target of
+    # xargs / find -exec: graphify reached as a DEFERRED target of
     # xargs or find -exec/-execdir is not statically fenceable (the real arg
     # list is materialised at runtime). Fail closed - DENY outright rather than
     # attempt to parse the deferred invocation. A bare mention that is NOT the
@@ -2270,7 +2263,7 @@ classify_clause() {
         xargs|*/xargs)
             j=$((i+1))
             while [ "$j" -lt "$n" ]; do
-                # HIMMEL-3641 round-7 codex-1 sweep: substring, not exact -
+                # substring, not exact -
                 # see the env -*S* note above.
                 case "$(_strip_cmd "${toks[$j]}")" in
                     *graphify*)
@@ -2313,7 +2306,7 @@ classify_clause() {
                         ;;
                     -*) j=$((j+1)); continue ;;
                     *)
-                        # HIMMEL-2615: `bash <script> <args...>` - re-resolve the
+                        # `bash <script> <args...>` - re-resolve the
                         # clause from the script token, so a script the wrapper
                         # walk above knows (scripts/quiet-run.sh) is still
                         # recognised when it is launched through an explicit
@@ -2364,7 +2357,7 @@ classify_clause() {
     return 0
 }
 
-# --- direct-eval mode (HIMMEL-1084): the non-hook contract ------------------
+# --- direct-eval mode: the non-hook contract ------------------
 #   graphify-fence.sh --eval <corpus> <backend> <abs-target> <tool-label>
 # EXACTLY five args. The PreToolUse hook always passes ONE arg (the command
 # string), so it can never reach this branch - hook behaviour is unchanged.
@@ -2424,7 +2417,7 @@ tmp="${tmp//;/$'\n'}"
 tmp="${tmp//|/$'\n'}"
 tmp="${tmp//&/$'\n'}"
 
-# CD_SEEN (HIMMEL-779 CR round-1, FIX 2): 1 once a PRIOR clause's
+# CD_SEEN: 1 once a PRIOR clause's
 # command-position token was a cwd-changing builtin (cd/pushd/popd). The while
 # loop below is NOT subshelled (here-string redirection, not a pipe), so this
 # mutation is visible to every later iteration in this same process - a
@@ -2432,7 +2425,7 @@ tmp="${tmp//&/$'\n'}"
 # relative target (see the CD_SEEN checks in evaluate_invocation).
 CD_SEEN=0
 
-# HIMMEL-3641: an env -C/sudo -D chdir wrapper only changes ITS OWN child
+# an env -C/sudo -D chdir wrapper only changes ITS OWN child
 # process's cwd, never a later shell clause's - so TOOL_CWD is reset to the
 # tool call's real cwd before each top-level clause, exactly like
 # _GF_ENDPOINT_OVERRIDE below, and a chdir wrapper in one &&/;-joined clause
@@ -2444,7 +2437,7 @@ while IFS= read -r clause || [ -n "$clause" ]; do
     # shellcheck disable=SC2086 # intentional word split for tokenisation
     set -- $clause
     [ "$#" -gt 0 ] || continue
-    # HIMMEL-1085: reset once per TOP-LEVEL clause, not inside classify_clause
+    # reset once per TOP-LEVEL clause, not inside classify_clause
     # itself - that function recurses to unwrap `bash -c`/`sh -c`, and a reset
     # there would erase an override the outer call already captured before the
     # inner call ever reaches the graphify token.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermetic smoke test for scripts/guardrails/lesson-write-fence.sh
-# (HIMMEL-767 deliverable 3). Builds a temp git repo fixture with the
+# Builds a temp git repo fixture with the
 # repo-relative layout enforcement-paths.json's entries target, a copy of
 # the real policy file, and drives both the CLI `check` mode and the
 # PreToolUse hook mode (JSON on stdin) against it. Never touches the real
@@ -14,7 +14,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -111,7 +111,7 @@ run_hook() {
 
 # run_hook_timed <bound-seconds> <expect: allow|deny> <name> <json> <loop:0|1> [policy]
 # Same as run_hook, plus asserts the fence decided within <bound-seconds> -
-# for judge J1298D C1: a fail-CLOSED cap must decide in O(1), not merely
+# so a fail-CLOSED cap must decide in O(1), not merely
 # "eventually deny", or the fix does not actually close the timeout.
 run_hook_timed() {
     local bound="$1" expect="$2" name="$3" json="$4" loop="$5" policy="${6:-$POLICY_COPY}"
@@ -128,7 +128,7 @@ run_hook_timed() {
 }
 
 # run_check_batch <cwd> <name1> <expect1> <path1> [<name2> <expect2> <path2> ...]
-# HIMMEL-2169: batches N cases that were each their OWN hook-mode run_hook
+# batches N cases that were each their OWN hook-mode run_hook
 # spawn into ONE `fence check <path>...` process, verifying each path's
 # verdict line (printed in argument order, one per input path) against its
 # expected allow|deny - same per-case pass/fail semantics as run_hook, minus
@@ -139,7 +139,7 @@ run_hook_timed() {
 # evaluate_command/_scan_redirects/_operand_targets) cannot be represented
 # here and must stay a run_hook call.
 #
-# HIMMEL-2169 CR fix (codex-1, Important / codex-2, Suggestion): the earlier
+# the earlier
 # version only checked each line's verdict PREFIX, not its reported path, so
 # a misassociated/misordered verdict line (`check` printing lines out of
 # argument order, or repeating one) would still read as a pass - losing the
@@ -171,7 +171,7 @@ run_check_batch() {
     else
         fail "check-batch rc sanity (cwd=$cwd, n=$n): got rc=$rc expected rc=$exp_rc out=$out"
     fi
-    # CR fix (codex-2, round 4): the per-case loop below only ever examines
+    # The per-case loop below only ever examines
     # lines[0..n-1] - it never notices EXTRA trailing lines, so `check` mode
     # emitting a duplicate/unexpected trailing line (violating its
     # one-line-per-input contract) would pass silently. Verify the line count
@@ -185,7 +185,7 @@ run_check_batch() {
     while [ "$i" -lt "$n" ]; do
         local nm="${names[$i]}" exp="${expects[$i]}" path="${paths[$i]}" line="${lines[$i]:-}"
         local v c p extra
-        # Strict 3-field parse (CR fix, codex-2, round 3): a prefix-only match
+        # Strict 3-field parse: a prefix-only match
         # (verdict + one more tab) accepted a malformed 2-column line - e.g.
         # `deny\t<expected-path>` with the class field missing entirely - as
         # long as the trailing text happened to equal the expected path.
@@ -223,7 +223,7 @@ pwsh_json() { # <command> <cwd>
     cmd="${cmd//\\/\\\\}"; cmd="${cmd//\"/\\\"}"
     printf '{"tool_name":"PowerShell","tool_input":{"command":"%s","cwd":"%s"}}' "$cmd" "$cwd"
 }
-# apply_patch_json <patch-text> <cwd> - HIMMEL-2170: Codex's create/edit
+# apply_patch_json <patch-text> <cwd> - Codex's create/edit
 # envelope. Unlike bash_json/pwsh_json, <patch-text> is genuinely multi-line
 # (an "*** Add/Update/Delete File:" header line plus a diff body), so this
 # also escapes embedded newlines as JSON `\n` (order matters: backslashes,
@@ -278,7 +278,7 @@ run_hook deny "5: MultiEdit file_path -> deny" \
     "$(printf '{"tool_name":"MultiEdit","tool_input":{"file_path":"%s","cwd":"%s"}}' "$REPO/CLAUDE.md" "$REPO")" 1
 run_hook allow "5: Edit file_path non-enforcement -> allow" \
     "$(printf '{"tool_name":"Edit","tool_input":{"file_path":"%s","cwd":"%s"}}' "$REPO/README.md" "$REPO")" 1
-# CR fix (codex-1, round 4, HIMMEL-2169): sections 2/3/4's active-Write cases
+# Sections 2/3/4's active-Write cases
 # were all converted to check-mode batches, which never construct a
 # `tool_name":"Write"` payload at all. Edit/NotebookEdit/MultiEdit above share
 # the SAME hook-mode case arm (`Edit|Write|NotebookEdit|MultiEdit)`) as Write,
@@ -288,7 +288,7 @@ run_hook allow "5: Edit file_path non-enforcement -> allow" \
 # every active Write payload silently allowed, and nothing above would catch
 # it. One retained active hook-mode Write case closes that gap.
 #
-# CR fix (codex-1, round 5): a DENY-only canary proves the Write dispatch can
+# A DENY-only canary proves the Write dispatch can
 # reach a deny, but not that it still ALLOWS a non-enforcement path - a
 # regression that made the Write arm unconditionally deny (independent of
 # classify_target's actual verdict) would pass this deny canary just as
@@ -385,22 +385,22 @@ MSYS_TARGET="$(msys_form "$REPO")/scripts/hooks/y.sh"
 BACKSLASH_TARGET="$REPO/scripts/hooks/y.sh"
 BACKSLASH_TARGET="${BACKSLASH_TARGET//\//\\}"
 
-# Drive-RELATIVE Windows form (codex-adv HIMMEL-808): C:scripts\hooks\y.sh
+# Drive-RELATIVE Windows form: C:scripts\hooks\y.sh
 # with repo cwd means <repo>/scripts/hooks/y.sh on Windows — must deny on
 # every host (the old [A-Za-z]:* arm classified it absolute and _normalize
 # mangled it into a synthetic non-repo path -> allow).
-# HIMMEL-2169: batched into ONE check-mode call (pure path-classification,
+# batched into ONE check-mode call (pure path-classification,
 # all cwd=$REPO, all ABSOLUTE - no cwd-relative anchoring involved) - the
 # mixed-case/traversal cases further below (originally after the 845 block)
 # are folded in here too, since they share the same cwd and require no
 # ordering relative to 845.
 #
-# The two DRIVE-RELATIVE cases stay run_hook spawns below (CR fix, codex-1):
+# The two DRIVE-RELATIVE cases stay run_hook spawns below:
 # `_cross_drive_relative` checks the token's drive against the payload cwd's
 # drive; when the base drive is undeterminable it fails closed to DENY (same
 # final verdict as a correctly-resolved same-drive anchor), so batching them
 # would have kept the assertion GREEN while silently testing the wrong code
-# path - the cross-drive fallback instead of the HIMMEL-808 same-drive anchor
+# path - the cross-drive fallback instead of the same-drive anchor
 # these cases exist to verify. Same reasoning as the relative-path-anchored
 # case below and the 845 same-drive pair further down: check mode anchors via
 # the real process `$PWD`, and this fixture's mktemp workspace lives under
@@ -428,8 +428,8 @@ run_hook deny "11: drive-relative slash form -> deny" \
 run_hook deny "11: relative path anchored to payload cwd -> deny" \
     "$(write_json "scripts/hooks/y.sh" "$REPO")" 1
 
-# --- HIMMEL-845: CROSS-drive drive-relative fail-open -----------------------
-# The HIMMEL-808 anchor above is exact ONLY when the payload cwd is on the
+# --- CROSS-drive drive-relative fail-open -----------------------
+# The same-drive anchor above is exact ONLY when the payload cwd is on the
 # token's drive. Windows keeps a SEPARATE cwd PER DRIVE (the hidden `=C:`/`=D:`
 # env vars), so `Z:tail` from a C: cwd resolves under Z:'s own current
 # directory - which this fence cannot read. Anchoring it to the C: cwd anyway
@@ -450,7 +450,7 @@ esac
 # whatever Z:'s per-drive cwd is - e.g. <repo>/scripts, giving the enforcement
 # file <repo>/scripts/hooks/y.sh. Unprovable -> deny.
 #
-# NOT batched (CR fix, codex-1, round 3): `_cross_drive_relative` denies both
+# NOT batched: `_cross_drive_relative` denies both
 # on a GENUINE token-drive-vs-base-drive mismatch AND when the base drive is
 # undeterminable (fail-closed fallback) - same final verdict, different code
 # path. Hook mode's JSON cwd field gives a deterministic, drive-lettered base
@@ -458,7 +458,7 @@ esac
 # under check mode's real $PWD (undeterminable on this fixture's Git-Bash
 # virtual /tmp mount, per the "== 9:" comment above and the "11:" section),
 # it would silently fall through to the undeterminable-fallback branch
-# instead - passing without exercising the mismatch detection this HIMMEL-845
+# instead - passing without exercising the mismatch detection the cross-drive
 # fix specifically added. Same class of gap as the "11: drive-relative" pair.
 run_hook deny "845: cross-drive drive-relative (was fail-OPEN) -> deny" \
     "$(write_json "${OTHER_DRIVE}:hooks/y.sh" "$REPO/docs")" 1
@@ -692,7 +692,7 @@ run_hook allow "19: multi-target, ALL non-fenced -> allow" \
 run_hook allow "19: inactive (HIMMEL_LESSON_LOOP unset) -> exit 0 even for a fenced target" \
     "$(apply_patch_json "$(printf '*** Begin Patch\n*** Add File: %s/scripts/hooks/y.sh\n+hi\n*** End Patch\n' "$REPO")" "$REPO")" 0
 
-# HIMMEL-2170 CR round 1: "*** Move to: " is an OPTIONAL line immediately
+# "*** Move to: " is an OPTIONAL line immediately
 # following "*** Update File: " (verified against codex-rs/apply-patch/src/
 # parser.rs, openai/codex@18b9e7fd9e3f6670cc4f300338e44050b2c301e4 -
 # MOVE_TO_MARKER + the update_hunk/change_move grammar). An Update on an
@@ -702,7 +702,7 @@ run_hook deny "19: Update allowed-source + Move to fenced destination -> deny" \
 run_hook allow "19: Update allowed-source + Move to allowed destination -> allow" \
     "$(apply_patch_json "$(printf '*** Begin Patch\n*** Update File: %s/scripts/foo.sh\n*** Move to: %s/README.md\n@@\n-a\n+b\n*** End Patch\n' "$REPO" "$REPO")" "$REPO")" 1
 
-# CodeRabbit round (HIMMEL-2170): a Move-to that is NOT immediately preceded
+# A Move-to that is NOT immediately preceded
 # by an Update File line is malformed patch syntax per the grammar (Move-to
 # is a sub-production of update_hunk only) - it must deny fail-closed, the
 # SAME as any other unparseable apply_patch, not be silently classified as
@@ -720,7 +720,7 @@ echo "== 20: HIMMEL-2610 - env/timeout/sudo wrapper arms recognize abbreviated l
 # two the flag+value pair needs - the value token then gets misread as the
 # wrapper's resolved clause head, hiding the real write verb behind it.
 # `guard_is_long_abbrev` (scripts/guardrails/lib.sh) now recognizes any
-# unambiguous getopt_long-style prefix, same as HIMMEL-2592's precedent.
+# unambiguous getopt_long-style prefix, same as block-write-into-main-checkout.sh.
 run_hook deny "20: env --unset FOO cp x scripts/hooks/a.sh (control, unabbreviated)" \
     "$(bash_json "env --unset FOO cp x scripts/hooks/a.sh" "$REPO")" 1
 run_hook deny "20: env --u FOO cp x scripts/hooks/a.sh (abbrev of --unset)" \
@@ -743,7 +743,7 @@ run_hook deny "20: timeout --foreground 5 cp x scripts/hooks/a.sh (unrelated no-
 run_hook deny "20: sudo --preserve-env cp x scripts/hooks/a.sh (unrelated no-value flag)" \
     "$(bash_json "sudo --preserve-env cp x scripts/hooks/a.sh" "$REPO")" 1
 
-# HIMMEL-2610 J1267O F4: every row above already expects deny=1 for the
+# every row above already expects deny=1 for the
 # UNABBREVIATED control too, so a build with the abbreviation fix reverted
 # (env's -u/--unset case falling through to the generic `-*` -> i+=1 arm)
 # still ends up denying — the misaligned walk lands on `cp x
@@ -759,14 +759,12 @@ run_hook deny "20: env --u cat cp x scripts/hooks/a.sh (swallowed value names a 
     "$(bash_json "env --u cat cp x scripts/hooks/a.sh" "$REPO")" 1
 
 # reason assertion (not just rc): the abbreviated exploit must deny for an
-# enforcement-path reason, not some other unrelated denial. J1298R: this used
-# to assert the specific `class=hooks` operand-classification reason (proof
-# the abbreviation fix let the walk resolve onto the real `cp` write and
-# classify its target); the new unconditional env/sudo wrapper check (24,
-# below) now intercepts this clause FIRST, before the option-cluster walk
-# ever runs, and denies via its own coarser raw-text-signal reason instead -
-# still an enforcement-path denial, just a different one, and a strictly
-# EARLIER deny is not a relaxation.
+# enforcement-path reason, not some other unrelated denial. The unconditional
+# env/sudo wrapper check (24, below) intercepts this clause FIRST, before the
+# option-cluster walk ever runs, and denies via its own coarser
+# raw-text-signal reason instead of the operand-classification reason
+# (`class=hooks`) - still an enforcement-path denial,
+# and a strictly EARLIER deny is not a relaxation.
 out=$(printf '%s' "$(bash_json "env --u FOO cp x scripts/hooks/a.sh" "$REPO")" \
     | env HIMMEL_LESSON_LOOP=1 LESSON_FENCE_POLICY="$POLICY_COPY" "$BASH_BIN" "$FENCE" 2>&1); rc=$?
 if [ "$rc" -eq 2 ] && grepq "$out" -i "enforcement-path signal"; then
@@ -797,7 +795,7 @@ echo "== 22: HIMMEL-3658/HIMMEL-3659 - env -a and case-folded env/sudo short opt
 # fell out of that fold: (a) env's `-a`/`--argv0` and `-S`/`--split-string`
 # (both real, value-taking, no case ambiguity of their own) were simply
 # never in the set at all, so the walk under-consumed by one token, same
-# swallowed-value-names-a-read-only-verb shape as HIMMEL-2610/HIMMEL-3632
+# swallowed-value-names-a-read-only-verb shape as the abbreviated-flag cases
 # above; (b) sudo's `-H`/`--set-home` and `-P`/`--preserve-groups` (real,
 # no-arg FLAGS) got lowered onto the value-taking `-h`/`-p` (host/prompt)
 # and consumed the real wrapped command as a bogus option VALUE, pushing
@@ -808,7 +806,7 @@ echo "== 22: HIMMEL-3658/HIMMEL-3659 - env -a and case-folded env/sudo short opt
 # lowered token, and no `-c` entry existed either.
 run_hook deny "22: env -a cat cp x scripts/hooks/a.sh (env -a swallowed as read-only verb)" \
     "$(bash_json "env -a cat cp x scripts/hooks/a.sh" "$REPO")" 1
-# HIMMEL-3658/J1298O M1: this row's own premise above was wrong. env -S's
+# this row's own premise above was wrong. env -S's
 # value is CODE (GNU env word-splits and executes it), not opaque data like
 # -a/-u/-C's values, so real `env -S cat cp x scripts/hooks/a.sh` just runs
 # `cat cp x scripts/hooks/a.sh` - a genuine read, not a write; "swallowed as
@@ -840,7 +838,7 @@ run_hook allow "22: env -i printenv (control: -i stays a flag, unchanged)" \
     "$(bash_json "env -i printenv" "$REPO")" 1
 
 echo "== 22b: round-6 CR fix (codex-1) - env -S's value is CODE, not opaque data =="
-# codex critic panel, round 1: this fix's own committed HIMMEL-3658 fix
+# The value-taking-option fix
 # (above) grouped env's `-S`/`--split-string` with `-a`/`-u`/`-C` as an
 # ordinary value-taking option to skip - but unlike those three, `-S`'s
 # value is not opaque data: GNU env word-splits it itself and executes the
@@ -858,7 +856,7 @@ run_hook deny "22b: env -S 'echo hi' (round-9 fail-closed redesign: benign split
     "$(bash_json "env -S 'echo hi'" "$REPO")" 1
 
 echo "== 22c: round-6 CR fix (codex-1, round 2) - env -S accepts its value glued onto the letter =="
-# codex critic panel, round 2 (Suggestion): the round-1 fix above matched
+# The check above must not match
 # only the exact `-S` token, missing GNU env's glued short-option form
 # `-SSTRING` (empirically verified: `env -S'echo hi'` behaves identically to
 # `env -S 'echo hi'`, coreutils 9.11) - `env -Stee scripts/hooks/a.sh` still
@@ -913,9 +911,9 @@ run_hook deny "23: sudo -nC cat cp x scripts/hooks/a.sh (bundle: -n flag + -C va
 
 # controls: a bundle of ALL flags (no value-taking letter at the end) must
 # still resolve the head onto the real verb and ALLOW a genuine read; a lone
-# value-taking option must still correctly ALLOW its own read. J1298R: these
-# six were retargeted from `scripts/hooks/a.sh` to the unguarded `README.md`
-# - the new unconditional env/sudo wrapper check (24, below) now denies ANY
+# value-taking option must still correctly ALLOW its own read. These
+# six target the unguarded `README.md` rather than `scripts/hooks/a.sh`
+# - the unconditional env/sudo wrapper check (24, below) denies ANY
 # env/sudo-headed clause naming an enforcement-path signal regardless of
 # parse success, so a policy-matching target here would deny for THAT
 # reason and no longer prove these option letters resolve correctly. An
@@ -1113,9 +1111,9 @@ run_hook allow "27: sudo -u root cp y /etc/foo (control: -u value, unrelated abs
     "$(bash_json "sudo -u root cp y /etc/foo" "$REPO")" 1
 
 echo "== 28: console-authorized round-9 redesign - env -S/--split-string fails closed UNCONDITIONALLY =="
-# pr-check round 3 (codex-1, Critical): a quoted single-token `-S` value from
-# a protected cwd (`env -S 'cp y a.sh'` @scripts/hooks) still ALLOWed at
-# J1298B's head - `_clause_head_idx` skipped `-S`'s value as an ordinary
+# A quoted single-token `-S` value from
+# a protected cwd (`env -S 'cp y a.sh'` @scripts/hooks) would ALLOW if
+# `_clause_head_idx` skipped `-S`'s value as an ordinary
 # 2-token-wide opaque option value (grouped with `-a`/`-u`/`-C`), and because
 # the value arrived as a SINGLE quoted token, that skip consumed the whole
 # clause in one step, leaving nothing for `_operand_targets` to scan.
@@ -1194,13 +1192,13 @@ run_hook deny "30: cat <(cp y scripts/x/../hooks/a.sh) (process substitution, no
 run_hook allow "30: sudo cp y scripts/x/../other/a.sh (control: normalizes clean, no enforcement signal)" \
     "$(bash_json "sudo cp y scripts/x/../other/a.sh" "$REPO")" 1
 
-# C1 (Critical, main DENY -> effective head ALLOW via a >15s hook timeout,
-# TIMING-VERIFIED by J1298D: quadratic in the /../ hop count, ~19.5-20.5s at
-# 20000 hops on the pre-fix union scan). A clause whose raw text carries no
+# A >15s hook timeout fails OPEN (main DENY -> effective head ALLOW):
+# normalization is quadratic in the /../ hop count, ~19.5-20.5s at
+# 20000 hops on the uncapped union scan. A clause whose raw text carries no
 # policy substring reaches the normalize arm; padding it past
 # MAX_NORMALIZE_LEN must now fail CLOSED in O(1) - not "eventually deny",
 # but decide well inside the 15s hook budget. hop20000 below reproduces
-# J1298D's own worst-case payload (~100KB, well over the 4096-byte cap):
+# a worst-case payload (~100KB, well over the 4096-byte cap):
 # pre-fix this took 19.5-20.5s; post-fix normalization never runs at all and
 # the deny fires immediately, so the 5s bound below is still generous.
 hop20000=""
@@ -1219,15 +1217,15 @@ run_hook_timed 5 allow "30: sudo cp y scripts/${hop500}other/a.sh (padded under 
     "$(bash_json "sudo cp y scripts/${hop500}other/a.sh" "$REPO")" 1
 
 echo "== 31: judge J1298E - per-entry _lc fork cost x clause count, whole-command deadline =="
-# C1 (Critical, TIMING-VERIFIED by J1298E: main DENY -> effective head ALLOW
-# via a >15s hook timeout). Unlike section 30's C1 (one long clause, quadratic
-# in /../ hop count), this padded the CLAUSE COUNT instead: hundreds of cheap
+# Main DENY -> effective head ALLOW
+# via a >15s hook timeout. Unlike section 30 (one long clause, quadratic
+# in /../ hop count), this pads the CLAUSE COUNT instead: hundreds of cheap
 # `sudo true x; ` clauses, each one re-forking `_lc` (a `printf | tr`
 # subprocess) once per policy entry via classify_target's basename/prefix
 # loops and _clause_has_enforcement_signal's raw/normalized loops - four call
-# sites, all repeating the fork on every clause. J1298E measured this at
+# sites, all repeating the fork on every clause. Measured at
 # K=300 (~3.9KB): main 4.2s, pre-fix head 16.0s - past the 15s hook timeout,
-# so main's deny becomes an effective ALLOW at head. Fix: lower every
+# so main's deny becomes an effective ALLOW at head. The fix lowers every
 # ENTRY_VALUE ONCE at policy-load time (ENTRY_VALUE_LC) instead of per-clause.
 sudo300=""
 i=0
@@ -1235,7 +1233,7 @@ while [ "$i" -lt 300 ]; do sudo300="${sudo300}sudo true x; "; i=$((i+1)); done
 run_hook_timed 10 deny "31: sudo true x;x300 + sudo cp y scripts/hooks/a.sh (J1298E C1, K=300 per-entry-fork cost)" \
     "$(bash_json "${sudo300}sudo cp y scripts/hooks/a.sh" "$REPO")" 1
 
-# Same shape at J1298E's K=420 (~5.5KB): main 5.9s, pre-fix head 23.2s. Past
+# Same shape at K=420 (~5.5KB): main 5.9s, pre-fix head 23.2s. Past
 # the per-entry-fork fix this clause count alone no longer approaches the
 # timeout, but the whole-command deadline (MAX_EVAL_SECONDS) below is what
 # now bounds it regardless - this row also exercises that deadline.
@@ -1255,14 +1253,14 @@ run_hook_timed 10 deny "31: python3 -c x;x560 + python3 -c write scripts/hooks/a
     "$(bash_json "${py560}python3 -c \"open('scripts/hooks/a.sh','w')\"" "$REPO")" 1
 
 echo "== 32: judge J1298F - single-clause token floods, per-token fork cost inside a clause =="
-# C1 (Critical, TIMING-VERIFIED by J1298F: main DENY -> effective head ALLOW
-# via a >15s hook timeout). Unlike section 31's C1 (many cheap clauses,
+# Main DENY -> effective head ALLOW
+# via a >15s hook timeout. Unlike section 31 (many cheap clauses,
 # fork cost paid once per clause at four call sites), this pads ONE clause
 # with many tokens: _env_split_string_used and _wrapper_is_env_or_sudo used
 # to fork $(_strip_wrap) then $(_lc) (a printf|tr subprocess) for EVERY
 # token of that single clause, and the whole-command deadline
 # (MAX_EVAL_SECONDS) only fires BETWEEN clauses, so it could never reach
-# inside one. J1298F measured main 3.4-3.9s vs pre-fix head 16.1-16.3s at
+# inside one. Measured main 3.4-3.9s vs pre-fix head 16.1-16.3s at
 # K=5000 tokens (~10KB) - past the 15s hook timeout. Fix: lower every token
 # ONCE per clause (_lc_all, one fork total) and check the deadline inside
 # the per-token loops too.
@@ -1272,8 +1270,8 @@ while [ "$i" -lt 5000 ]; do x5000="${x5000}x "; i=$((i+1)); done
 run_hook_timed 12 deny "32: echo x,x5000; tee scripts/hooks/a.sh (J1298F C1, K=5000 single-clause token flood, no wrapper needed)" \
     "$(bash_json "echo ${x5000}; tee scripts/hooks/a.sh" "$REPO")" 1
 
-# Same shape via the wrapper-prefix scan (_wrapper_is_env_or_sudo): J1298F
-# measured main 8.6-9.3s vs pre-fix head 16.4-17.5s at K=2000 `nice` tokens
+# Same shape via the wrapper-prefix scan (_wrapper_is_env_or_sudo):
+# main 8.6-9.3s vs pre-fix head 16.4-17.5s at K=2000 `nice` tokens
 # (~10KB).
 nice2000=""
 i=0
@@ -1281,7 +1279,7 @@ while [ "$i" -lt 2000 ]; do nice2000="${nice2000}nice "; i=$((i+1)); done
 run_hook_timed 12 deny "32: nice,x2000 tee scripts/hooks/a.sh (J1298F C1, K=2000 wrapper-prefix token flood)" \
     "$(bash_json "${nice2000}tee scripts/hooks/a.sh" "$REPO")" 1
 
-# Same shape, `timeout` wrapper token: J1298F measured main 9.2s vs pre-fix
+# Same shape, `timeout` wrapper token: main 9.2s vs pre-fix
 # head 17.3s at K=1000 (~10KB).
 timeout1000=""
 i=0

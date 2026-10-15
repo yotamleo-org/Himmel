@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Hermetic smoke test for scripts/guardrails/graphify-fence.sh, the narrow hook
 # scripts/hooks/block-graphify-egress.sh, and the egress-matrix-eval.mjs helper
-# (HIMMEL-621/622 Phase G-F). Builds a temp HOME + fixture vault/handover/himmel
+# Builds a temp HOME + fixture vault/handover/himmel
 # roots + fake PHI config lists, invokes the fence against REAL graphify-grammar
 # command strings (`graphify <subcommand> <path> [--backend=x]`), and asserts the
 # matrix verdict plus the fail-closed behaviour confirmed by the CR live probes.
 #
-# Hermeticity (CR round-2): run_fence scrubs every env var that could leak from
+# Hermeticity: run_fence scrubs every env var that could leak from
 # the developer's shell (GRAPHIFY_*_OK, OPENAI_BASE_URL, DEEPSEEK_BASE_URL,
 # LUNA_VAULT, OLLAMA_HOST, and all ten cloud provider keys) so a real key set in
 # the outer environment cannot flip a fixture verdict.
@@ -18,7 +18,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -110,20 +110,20 @@ run_fence() {
     fi
 }
 
-# HIMMEL-2120 Task-3 manifest (corpus-reduction plan): every run_fence case in
+# every run_fence case in
 # this file from here through the CLAUDE_CODE_USE_* reroute section (:110-408
 # at review time) was mapped to its graphify-fence.sh branch and disposition
 # `keep` / `drop->survivor`. Drops were gated to intra-branch duplicates with
 # NO ticket-ID or salus/PHI-corpus citation (Global Constraint - when in
-# doubt, keep); 64 of 65 cases keep on that bar (ticket-cited: HIMMEL-1122/
-# 1257/1049/1070/1133; salus/PHI: the salus + denylist-root rows; distinct
+# doubt, keep); 64 of 65 cases keep on that bar (ticket-cited cases;
+# salus/PHI: the salus + denylist-root rows; distinct
 # code path or literal otherwise - e.g. two-sided OR-pattern alias/lookalike
 # coverage that a single case cannot prove). Exactly ONE case dropped: the
 # former "luna x claude(http://api.z.ai) -> deny (https only)" sibling of the
 # surviving "http://api.anthropic.com" case just below - see that case's
 # comment for the branch trace. Full per-case table: task-3-report.md under
 # .superpowers/sdd/2026-08-26-himmel-2120-corpus-reduction/.
-# HIMMEL-4811: use the session checkout graph, not the cached /tmp setup
+# use the session checkout graph, not the cached /tmp setup
 # graph. Cloud has no configured luna root; even a planted marker stays inert.
 CLOUD_CACHE="$WS/himmel-setup"
 mkdir -p "$CLOUD_CACHE/graphify-out" "$HIMMEL/graphify-out"
@@ -151,39 +151,39 @@ run_fence deny no "$HIMMEL" "salus x ollama no-optin -> deny" \
 run_fence allow yes "$HIMMEL" "salus x ollama opt-in -> allow+ledger" \
     "graphify update $SALUS/notes/patient.md --backend ollama" GRAPHIFY_SALUS_LOCAL_OK=1
 
-# luna journal (non-Clippings) + GLM -> DENY (HIMMEL-2224/1749: the GLM/Z.ai
-# Coding Plan lapsed 2026-08-17, so this cell was reversed from HIMMEL-1122's
-# allow+log to an explicit deny — no CN/cloud extraction lane remains for
-# luna-personal now that kimi/moonshot is also retired (HIMMEL-2101);
+# luna journal (non-Clippings) + GLM -> DENY (the GLM/Z.ai
+# Coding Plan lapsed 2026-08-17, so this cell is
+# an explicit deny — no CN/cloud extraction lane remains for
+# luna-personal now that kimi/moonshot is also retired;
 # claude-cli, the operating substrate, is the sanctioned semantic backend).
 run_fence deny no "$HIMMEL" "luna-personal x glm -> deny (GLM de-listed, HIMMEL-2224/1749)" \
     "graphify update $LUNA/journal-2026.md --backend glm"
 
-# kimi/Moonshot is retired (operator ruling 2026-08-24/2026-09-15, HIMMEL-2101):
+# kimi/Moonshot is retired:
 # there is no kimi backend any more. graphify-fence.sh no longer classifies it
 # (the deleted _map_kimi_endpoint mapping), so --backend kimi now falls to the
 # undeclared-literal-backend default: deny on any non-himmel-code corpus.
 run_fence deny no "$HIMMEL" "luna-personal x kimi (retired, HIMMEL-2101) -> deny (unclassified backend, fail-closed default)" \
     "graphify update $LUNA/journal-2026.md --backend kimi"
 
-# luna Clippings + GLM -> deny (HIMMEL-2224: the cell is now a plain matrix
+# luna Clippings + GLM -> deny (the cell is a plain matrix
 # deny, not a conditional gated by a missing opt-in)
 run_fence deny no "$HIMMEL" "clippings x glm no-optin -> deny" \
     "graphify update $LUNA/Clippings/clip.md --backend glm"
 
 # luna Clippings + GLM WITH the retired GRAPHIFY_CLIPPINGS_GLM_OK=1 opt-in ->
-# still DENY (HIMMEL-2224/1749: the cell flipped from conditional to explicit
-# deny, so the retired opt-in can no longer open it — the single most
+# still DENY (the cell is an explicit
+# deny rather than conditional, so the retired opt-in can no longer open it — the single most
 # valuable control here, proving the flag is dead, not merely unset).
 run_fence deny no "$HIMMEL" "clippings x glm opt-in -> deny (retired opt-in, HIMMEL-2224/1749)" \
     "graphify update $LUNA/Clippings/clip.md --backend glm" GRAPHIFY_CLIPPINGS_GLM_OK=1
 
-# luna personal + deepseek -> DENY (HIMMEL-1257: DeepSeek de-listed, bad results)
+# luna personal + deepseek -> DENY
 run_fence deny no "$HIMMEL" "luna-personal x deepseek -> deny (HIMMEL-1257 de-listed)" \
     "graphify update $LUNA/journal-2026.md --backend deepseek"
 
 # luna personal + openai backend WITH deepseek base url -> DENY (maps to the
-# de-listed deepseek provider). NOTE (HIMMEL-1257): post de-listing, deepseek
+# de-listed deepseek provider). NOTE: post de-listing, deepseek
 # behaves exactly like an undeclared provider everywhere (deny on vaults, allow
 # on himmel-code's wildcard), so the OPENAI_BASE_URL->deepseek MAPPING is no
 # longer observable by verdict — a himmel-code probe would allow whether or not
@@ -223,7 +223,7 @@ run_fence allow no "$HIMMEL" "himmel-code x claude -> allow (warn-not-block)" \
 run_fence allow no "$HIMMEL" "himmel-code x claude-cli -> allow (alias)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend claude-cli"
 
-# claude-api (HIMMEL-5544: semantic-update.sh's API-credit lane backend, which
+# claude-api (semantic-update.sh's API-credit lane backend, which
 # shells the same CLI as claude-cli) classifies as anthropic and carries the same
 # reroute and endpoint rules; salus stays a hard deny.
 run_fence allow no "$HIMMEL" "himmel-code x claude-api -> allow (anthropic)" \
@@ -258,29 +258,29 @@ run_fence deny no "$HIMMEL" "denylist-root x claude -> salus hard deny" \
 echo "== claude backend is ENDPOINT-AWARE (codex-adv-1: no Anthropic-labelled Z.ai egress) =="
 
 # THE HOLE: claude backend under a claude-glm launcher (ANTHROPIC_BASE_URL=api.z.ai)
-# actually egresses to Z.ai. It must classify as zai-glm, NOT anthropic. HIMMEL-2224/
-# 1749 reversed luna-personal x zai-glm x extraction to a plain DENY (GLM/Z.ai Coding
-# Plan lapsed), so the guard moved from the ledger line to the VERDICT itself: correct
+# actually egresses to Z.ai. It must classify as zai-glm, NOT anthropic.
+# luna-personal x zai-glm x extraction is a plain DENY (GLM/Z.ai Coding
+# Plan lapsed), so the guard is the VERDICT itself: correct
 # zai-glm classification now denies outright; a misclassification as anthropic would
-# come back ALLOW (luna-personal x anthropic is allow, HIMMEL-1049), so this `deny`
+# come back ALLOW, so this `deny`
 # assertion still discriminates correct zai-glm classification from an anthropic
-# misclassification just as surely as the old ledger check did (HIMMEL-1122 origin).
+# misclassification.
 run_fence deny no "$HIMMEL" "luna-personal x claude(z.ai baseurl) -> zai-glm deny (GLM de-listed, HIMMEL-2224/1749)" \
     "graphify update $LUNA/journal-2026.md --backend claude" ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
 
-# same z.ai gateway on Clippings -> deny (HIMMEL-2224: the cell itself is now a
+# same z.ai gateway on Clippings -> deny (the cell itself is a
 # plain matrix deny, not a conditional cell gated by a missing opt-in)
 run_fence deny no "$HIMMEL" "clippings x claude(z.ai baseurl) -> zai-glm deny (GLM de-listed, HIMMEL-2224/1749)" \
     "graphify update $LUNA/Clippings/clip.md --backend claude" ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
 
 # z.ai gateway on himmel-code -> zai-glm -> himmel-code STILL allows any ratified
-# lane (HIMMEL-2224 de-listing is private-content egress only, not public code)
+# lane
 run_fence allow no "$HIMMEL" "himmel-code x claude(z.ai baseurl) -> zai-glm allow" \
     "graphify update $HIMMEL/scripts/thing.sh --backend claude" ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
 
 # plain --backend glm twin of the case above -> same allow, without going
-# through the claude/ANTHROPIC_BASE_URL endpoint-aware path (HIMMEL-2224
-# positive control: himmel-code x glm still allows post de-listing)
+# through the claude/ANTHROPIC_BASE_URL endpoint-aware path (positive
+# control: himmel-code x glm still allows after de-listing)
 run_fence allow no "$HIMMEL" "himmel-code x glm -> allow (public code, HIMMEL-2224)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend glm"
 
@@ -296,7 +296,7 @@ run_fence deny no "$HIMMEL" "luna-personal x claude(unknown gateway) -> deny (fa
 run_fence deny no "$HIMMEL" "salus x claude(z.ai baseurl) -> hard deny (PHI invariant)" \
     "graphify update $SALUS/notes/patient.md --backend claude" ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
 
-# EXACT-host match, not substring (CodeRabbit-critical): spoofed lookalike hosts
+# EXACT-host match, not substring: spoofed lookalike hosts
 # that CONTAIN a trusted host as a substring must NOT be classified as trusted.
 # api.anthropic.com.<attacker> -> NOT anthropic -> luna-personal default deny.
 run_fence deny no "$HIMMEL" "luna x claude(api.anthropic.com.evil) -> deny (no substring trust)" \
@@ -320,12 +320,12 @@ run_fence deny no "$HIMMEL" "luna x claude(scheme-less api.anthropic.com) -> den
 run_fence deny no "$HIMMEL" "luna x claude(file:// scheme) -> deny (needs https)" \
     "graphify update $LUNA/journal-2026.md --backend claude" ANTHROPIC_BASE_URL=file:///api.anthropic.com
 # plaintext http:// to a trusted host -> deny (cleartext egress; https required).
-# Survivor of a HIMMEL-2120 manifest-gated drop: the https-scheme check
+# The https-scheme check
 # (_map_anthropic_endpoint's `case "$u" in https://*) : ;; *) echo
 # anthropic-custom; return ;; esac`) rejects on scheme alone, before the host
 # is ever read, so the former "http://api.z.ai" sibling case exercised the
 # identical branch with a destination the code never inspects - no
-# distinguishing coverage. Dropped, not cited by a ticket, non-PHI (luna).
+# distinguishing coverage, so only this case is kept.
 run_fence deny no "$HIMMEL" "luna x claude(http://api.anthropic.com) -> deny (https only)" \
     "graphify update $LUNA/journal-2026.md --backend claude" ANTHROPIC_BASE_URL=http://api.anthropic.com
 # backslash-in-authority (WHATWG \-as-/ confusion) -> fail-closed deny: a naive
@@ -336,7 +336,7 @@ run_fence deny no "$HIMMEL" "luna x claude(backslash authority) -> deny (fail-cl
 # An UNVERIFIED endpoint hard-denies on EVERY corpus — including himmel-code,
 # whose `* *` matrix wildcard is for RATIFIED providers, NOT an arbitrary host an
 # attacker can point ANTHROPIC_BASE_URL at. Without the anthropic-custom
-# hard-deny these would ALLOW via the wildcard (CodeRabbit-major regression pins).
+# hard-deny these would ALLOW via the wildcard.
 run_fence deny no "$HIMMEL" "himmel-code x claude(unknown gateway) -> hard deny (not the wildcard)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend claude" ANTHROPIC_BASE_URL=https://litellm.internal.example/v1
 run_fence deny no "$HIMMEL" "himmel-code x claude(api.anthropic.com.evil) -> hard deny" \
@@ -370,7 +370,7 @@ run_fence deny no "$HIMMEL" "luna x claude-cli(bedrock + trusted base-url) -> ha
     "graphify update $LUNA/journal-2026.md --backend claude-cli" CLAUDE_CODE_USE_BEDROCK=1 ANTHROPIC_BASE_URL=https://api.anthropic.com
 run_fence deny no "$HIMMEL" "luna x claude-cli(bedrock=yes) -> hard deny (non-boolean = on)" \
     "graphify update $LUNA/journal-2026.md --backend claude-cli" CLAUDE_CODE_USE_BEDROCK=yes
-# SET-not-truthy (CodeRabbit-major regression pins): `0` and `false` are SET, and
+# SET-not-truthy: `0` and `false` are SET, and
 # a Node truthiness check reads the STRING "0" as TRUE — so a bash-minded "0 = off"
 # read would be the exact fail-open this fix closes. Only unset/empty is off.
 run_fence deny no "$HIMMEL" "luna x claude-cli(bedrock=0) -> hard deny (0 is SET, not off)" \
@@ -386,7 +386,7 @@ run_fence deny no "$HIMMEL" "luna x claude-cli(mantle) -> hard deny" \
     "graphify update $LUNA/journal-2026.md --backend claude-cli" CLAUDE_CODE_USE_MANTLE=1
 run_fence deny no "$HIMMEL" "luna x claude-cli(anthropic_aws) -> hard deny" \
     "graphify update $LUNA/journal-2026.md --backend claude-cli" CLAUDE_CODE_USE_ANTHROPIC_AWS=1
-# CASE-INSENSITIVE (CodeRabbit-major regression pins): bash matches var names
+# CASE-INSENSITIVE: bash matches var names
 # case-SENSITIVELY, Node's process.env on Windows does NOT — so a lowercase
 # selector turns Bedrock ON for the CLI while an exact-case fence read it as
 # unset and allowed the run. Proven: `env claude_code_use_bedrock=1 node -e
@@ -403,13 +403,13 @@ run_fence allow no "$HIMMEL" "himmel-code x claude-cli(lowercase cowork flag) ->
 # a lowercase selector with an EMPTY value is still off
 run_fence allow no "$HIMMEL" "himmel-code x claude-cli(lowercase bedrock empty) -> allow (empty = off)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend claude-cli" claude_code_use_bedrock=
-# LOCALE-INDEPENDENT matching (CodeRabbit-major): under tr_TR, lowercase/uppercase
+# LOCALE-INDEPENDENT matching: under tr_TR, lowercase/uppercase
 # equivalence differs around 'i', so an unpinned nocasematch could miss
 # claude_code_use_anthropic_aws and ALLOW the run. _claude_reroute_var pins
 # LC_ALL=C before enabling nocasematch. Runs under a Turkish locale when the box
 # has one; SKIPs (never silently passes) otherwise, since without the locale the C
 # comparison is what runs anyway and the case proves nothing.
-# The locale MUST arrive via LANG/LC_CTYPE, never LC_ALL (CodeRabbit-minor): the
+# The locale MUST arrive via LANG/LC_CTYPE, never LC_ALL: the
 # fence pins LC_ALL=C itself, so an LC_ALL-driven case would be overridden by the
 # very line under test and prove nothing.
 if locale -a 2>/dev/null | grep -qi '^tr_TR'; then
@@ -441,7 +441,7 @@ run_fence deny no "$HIMMEL" "luna x claude-cli(lowercase bedrock, fake tr on PAT
     "graphify update $LUNA/journal-2026.md --backend claude-cli" claude_code_use_bedrock=1 PATH="$hj_tr:$PATH"
 run_fence deny no "$HIMMEL" "luna x claude-cli(lowercase bedrock, fake env on PATH) -> hard deny (builtin compgen)" \
     "graphify update $LUNA/journal-2026.md --backend claude-cli" claude_code_use_bedrock=1 PATH="$hj_env:$PATH"
-# HIMMEL-1133 regression: model a host where the OLD `command -p tr` lookup
+# model a host where the OLD `command -p tr` lookup
 # errors, without modifying the machine's real default PATH. BASH_ENV installs a
 # narrow command wrapper inside the fence process: only `command -p tr ...`
 # returns 127; every other command builtin call delegates unchanged. The old fold
@@ -456,7 +456,7 @@ command() {
 EOF
 run_fence deny no "$HIMMEL" "luna x claude-cli(lowercase bedrock, command -p tr unusable) -> hard deny (builtin-only)" \
     "graphify update $LUNA/journal-2026.md --backend claude-cli" claude_code_use_bedrock=1 BASH_ENV="$no_command_p_tr_env"
-# NEWLINE-IN-VALUE (CodeRabbit-major, private #1263): a LIVE fail-open, measured.
+# NEWLINE-IN-VALUE: a LIVE fail-open, measured.
 # The sweep used to parse `env` output line-by-line, so a selector whose value
 # STARTS with a newline printed as `claude_code_use_bedrock=` + `x` — the first
 # line read as an EMPTY value and hit the empty-skip, the selector went unseen and
@@ -476,7 +476,7 @@ run_fence allow no "$HIMMEL" "himmel-code x claude-cli(harmless var forging a se
 # EMPTY is the only off value besides unset — it must NOT false-deny
 run_fence allow no "$HIMMEL" "himmel-code x claude-cli(bedrock empty) -> allow (empty = off)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend claude-cli" CLAUDE_CODE_USE_BEDROCK=
-# BACKEND-SCOPED (CodeRabbit-major regression pins): `claude` is the HTTP API
+# BACKEND-SCOPED: `claude` is the HTTP API
 # path — it never execs the CLI, so a selector set for the operator's INTERACTIVE
 # Claude Code (e.g. they run Claude Code on Bedrock, but extract over the API)
 # is inert for it. Denying these was a false deny on a legitimate config.
@@ -511,7 +511,7 @@ echo "== HIMMEL-1085: command-local endpoint-selector assignments in front of gr
 # environment, while the graphify SUBPROCESS still inherits it. Every case
 # below embeds the assignment IN THE COMMAND STRING ($cmd itself) -- no
 # trailing ambient VAR=val args -- so a false ALLOW here is exactly the bypass
-# HIMMEL-1085 reports. luna-personal is the observing corpus: claude x
+# the endpoint-override bypass. luna-personal is the observing corpus: claude x
 # anthropic allows there (warn-not-block baseline just above), so only a
 # command-local override changes the verdict.
 
@@ -537,7 +537,7 @@ run_fence deny no "$HIMMEL" "luna x claude-cli, env CLAUDE_CODE_USE_BEDROCK=1 ->
 run_fence deny no "$HIMMEL" "luna x claude, timeout 600 env ANTHROPIC_BASE_URL=z.ai -> deny (wrapped)" \
     "timeout 600 env ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic graphify update $LUNA/journal-2026.md --backend claude"
 
-# HIMMEL-2087: path-qualified wrappers (/usr/bin/env, /bin/sudo, ...) must be
+# path-qualified wrappers (/usr/bin/env, /bin/sudo, ...) must be
 # recognized the same as their bare form -- classify_clause previously matched
 # wrapper tokens by bare name only, so a path-qualified form walked past every
 # wrapper case, stopped the token walk before reaching graphify, and skipped
@@ -550,7 +550,7 @@ run_fence deny no "$HIMMEL" "luna x claude, /usr/bin/timeout 600 /usr/bin/env AN
     "/usr/bin/timeout 600 /usr/bin/env ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic graphify update $LUNA/journal-2026.md --backend claude"
 
 # himmel-code (allow-any wildcard) must ALSO deny -- the command-local override
-# hard-denies exactly like an ambient one would (HIMMEL-1049's anthropic-custom
+# hard-denies exactly like an ambient one would (the anthropic-custom
 # hard-deny is not the wildcard's to waive), pinning that this is not a
 # luna-only artifact of the observing corpus.
 run_fence deny no "$HIMMEL" "himmel-code x claude, command-local ANTHROPIC_BASE_URL=z.ai -> deny (not the wildcard)" \
@@ -644,7 +644,7 @@ run_fence deny no "$HIMMEL" "sudo graphify salus -> deny" \
 run_fence deny no "$HIMMEL" "sudo nohup timeout 600 graphify salus -> deny" \
     "sudo nohup timeout 600 graphify update $SALUS/notes/patient.md --backend glm"
 
-# (W8) HIMMEL-2087: path-qualified wrappers (/usr/bin/env, /bin/sudo, ...) ->
+# (W8) path-qualified wrappers (/usr/bin/env, /bin/sudo, ...) ->
 # deny, same as their bare form -- classify_clause matched wrapper tokens by
 # bare name only, so a path-qualified wrapper walked past the wrapper case,
 # stopped the token walk, and never reached the corpus x provider policy below.
@@ -669,7 +669,7 @@ echo "== HIMMEL-2615: setsid + quiet-run.sh wrapper laundering =="
 # line): `setsid` was simply missing from the wrapper walk, and
 # scripts/quiet-run.sh's `--` tail was never re-classified as the clause -
 # either invoked directly or through an explicit `bash <script>` launch. The
-# nohup/env rows in the HIMMEL-621 block above are the unchanged negative
+# nohup/env rows in the block above are the unchanged negative
 # controls proving the wrapper walk itself was already working; these rows
 # add the two shapes it was missing.
 
@@ -681,7 +681,7 @@ run_fence deny no "$HIMMEL" "setsid graphify salus -> deny" \
 run_fence deny no "$HIMMEL" "setsid -f graphify salus -> deny" \
     "setsid -f graphify update $SALUS/notes/patient.md --backend glm"
 
-# (S3) HIMMEL-2087 parity: path-qualified setsid -> deny, same as bare form
+# (S3) parity: path-qualified setsid -> deny, same as bare form
 run_fence deny no "$HIMMEL" "/usr/bin/setsid graphify salus -> deny (path-qualified setsid)" \
     "/usr/bin/setsid graphify update $SALUS/notes/patient.md --backend glm"
 
@@ -707,7 +707,7 @@ run_fence deny no "$HIMMEL" "/some/abs/path/scripts/quiet-run.sh graphify salus 
 run_fence deny no "$HIMMEL" "bash -c 'quiet-run.sh graphify salus' -> deny (bash -c unwrap + runner)" \
     "bash -c \"bash scripts/quiet-run.sh lbl -- graphify update $SALUS/notes/patient.md --backend glm\""
 
-# (S9) the exact shape from the HIMMEL-2615 incident: setsid + nohup +
+# (S9) the exact shape from a past incident: setsid + nohup +
 # `bash <script>` all stacked in front of the runner -> deny
 run_fence deny no "$HIMMEL" "setsid nohup bash scripts/quiet-run.sh graphify salus -> deny (incident shape)" \
     "setsid nohup bash scripts/quiet-run.sh lbl -- graphify update $SALUS/notes/patient.md --backend glm"
@@ -771,8 +771,8 @@ run_fence allow no "$HIMMEL" "quiet-run.sh label with no -- -> allow (runner its
 # one `'` and one `"` in its first word-split fragment - an EVEN *pooled*
 # quote count, which the CR-round-1 combined-count guard trusted as a whole
 # aligned label even though neither quote type is actually balanced within
-# this fragment on its own. That per-type-parity fix was ITSELF broken by CR
-# round 2 (see [codex-1 round-2] below) and replaced with a simpler rule: ANY
+# this fragment on its own. A per-type-parity rule is itself bypassable, so
+# the rule is simply: ANY
 # of `'`/`"`/`\` anywhere in the raw label token makes it ambiguous, full
 # stop, no counting at all. This label plainly contains both -> deny
 # (fail-closed unparsable-label scan), now for the simpler reason.
@@ -808,18 +808,17 @@ run_fence deny no "$HIMMEL" "quiet-run.sh backslash label a\\ -- -> deny (fail-c
 run_fence deny no "$HIMMEL" "quiet-run.sh via bash \"scripts/quiet-run.sh\" (quoted path) -> deny [codex-1]" \
     "bash \"scripts/quiet-run.sh\" lbl -- graphify update $SALUS/notes/patient.md --backend glm"
 
-# (S22) CR round 2 [codex-1] FLIPPED this row's expectation - it used to
-# assert that a legitimate single-word quoted label (`'lbl'`) aligned and
-# reached the real himmel-code x deepseek ALLOW verdict, under the CR-round-1
+# (S22) A legitimate single-word quoted label (`'lbl'`) would align and
+# reach the real himmel-code x deepseek ALLOW verdict under a
 # per-quote-type PARITY guard (one balanced `'` pair, no `"`, no backslash ->
-# "balanced" -> trusted). CR round 2 broke that guard outright: adjacent
+# "balanced" -> trusted). Such a guard is broken outright by adjacent
 # quoted segments in one fragment (e.g. label `'"'"a -- b"`, real argv label
 # `"a -- b`) make BOTH quote types count EVEN in fragment 1 while a double
 # quote is still genuinely open across the space - the first `"` there is
 # literal DATA (inside a `'` pair), the second is the OPERATOR that closes
 # later, and a character count cannot tell data from operator apart. No
-# parity rule can (see the arm's own comment). The fix replaces parity with
-# one conservative rule: ANY `'`, `"`, or `\` in the raw label token makes it
+# parity rule can (see the arm's own comment). The rule is
+# one conservative rule instead of parity: ANY `'`, `"`, or `\` in the raw label token makes it
 # ambiguous, no exceptions - so `'lbl'` now ALSO denies. This is a known,
 # accepted false positive (a real quoted-but-otherwise-plain label loses),
 # not a regression: it fails in the safe direction, and only fires because
@@ -830,11 +829,11 @@ run_fence deny no "$HIMMEL" "quiet-run.sh via bash \"scripts/quiet-run.sh\" (quo
 run_fence deny no "$HIMMEL" "quiet-run.sh 'lbl' (quoted label) -> deny (accepted false positive, CR round 2)" \
     "bash scripts/quiet-run.sh 'lbl' -- graphify update $HIMMEL/scripts/thing.sh --backend deepseek"
 
-# (S23) CR round 2 [codex-1]: the adjacent-quoted-segments bypass itself -
+# (S23) the adjacent-quoted-segments bypass itself -
 # label `'"'"a -- b"` (real argv label is `"a -- b`, one word); word-split
 # fragments are `'"'"a` / `--` / `b"` / `--` / `graphify ...`. Fragment 1
 # holds two `'` and two `"` - EVEN on both types - which is exactly what
-# defeated the CR-round-1 per-type-parity guard (see the arm's own comment
+# defeats a per-type-parity guard (see the arm's own comment
 # for the data-vs-operator explanation: one quote is literal content INSIDE
 # the other type's pair, the other is a real operator closed only in a later
 # fragment, and no count can distinguish them). The current rule denies
@@ -842,7 +841,7 @@ run_fence deny no "$HIMMEL" "quiet-run.sh 'lbl' (quoted label) -> deny (accepted
 run_fence deny no "$HIMMEL" "quiet-run.sh adjacent-quoted-segments label '\"'\"a -- b\" -> deny (fail-closed) [codex-1 round-2]" \
     "bash scripts/quiet-run.sh '\"'\"a -- b\" -- graphify update $SALUS/notes/patient.md --backend glm"
 
-# (S24) CR round 2 [codex-1] mirror: the two quote types swapped
+# (S24) mirror: the two quote types swapped
 # (`"'"'a -- b'`) - proves the fix is not accidentally sensitive to which
 # quote type opens the ambiguous run.
 run_fence deny no "$HIMMEL" "quiet-run.sh adjacent-quoted-segments label \"'\"'a -- b' -> deny (fail-closed, types swapped) [codex-1 round-2]" \
@@ -883,7 +882,7 @@ run_fence deny no "$HIMMEL" "command -p graphify salus -> deny" \
 run_fence deny no "$HIMMEL" "exec -a name graphify salus -> deny" \
     "exec -a name graphify update $SALUS/notes/patient.md --backend glm"
 
-# (F7) codex-1 CR finding (round 1): `command -v`/`command -V` are identify-only
+# (F7) codex-1 CR finding: `command -v`/`command -V` are identify-only
 # lookups (type/which), never an invocation of NAME - unlike `command -p`,
 # which does invoke. Both must skip past the flag the same way, but only -v/-V
 # make the whole clause a no-op.
@@ -915,7 +914,7 @@ echo "== HIMMEL-2610: nice/time abbreviated long options =="
 # the flag TOKEN itself and not its separate value - the wrapper walk then
 # resolved the option's VALUE token as the wrapper's head, never reaching
 # `graphify` at all, and the whole clause went unclassified (allow). Same
-# misalignment mechanism as HIMMEL-2592 / HIMMEL-2610's other sites.
+# misalignment mechanism as the other wrapper sites.
 
 # (G1) nice --adj (unambiguous abbreviation of --adjustment) -> deny
 run_fence deny no "$HIMMEL" "nice --adj 5 graphify salus -> deny (abbrev)" \
@@ -1029,7 +1028,7 @@ echo "== fail-closed infra (ledger / trap / node / phi-roots) =="
 
 # (6) unwritable-ledger fixture: GRAPHIFY_LEDGER parent is a regular file so
 # mkdir -p fails. kimi/Moonshot (the only allow+log matrix cell this fixture
-# used to exercise directly) is retired (HIMMEL-2101) — the equivalent
+# used to exercise directly) is retired — the equivalent
 # unwritable-ledger case on the DECLARED-path branch is covered by S6b below,
 # which reuses this same $WS/ledblocker file.
 : > "$WS/ledblocker"
@@ -1039,7 +1038,7 @@ out=$( cd "$HIMMEL" && env -u HOME -u CLAUDE_GLM_CONFIG_DIR "$BASH_BIN" "$FENCE"
 if [ "$rc" -eq 2 ]; then pass "trap: HOME unset -> rc 2"; else fail "trap: HOME unset expected rc=2 got rc=$rc out=$out"; fi
 
 # (8) node absent -> rc 2. PATH needs coreutils but NOT node; on apt-node
-# systems node lives IN /usr/bin (HIMMEL-966), so mirror it minus node.
+# systems node lives IN /usr/bin, so mirror it minus node.
 NONODE_BIN=/usr/bin
 if [ -x /usr/bin/node ] || [ -x /usr/bin/node.exe ]; then
     NONODE_BIN="$WS/nonode-bin"
@@ -1057,7 +1056,7 @@ run_fence deny no "$HIMMEL" "node absent -> rc 2 (fail-closed)" \
 run_fence deny no "$HIMMEL" "unreadable phi-roots -> rc 2" \
     "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$PHI_BADROOTS"
 
-# (9b) HIMMEL-3242: the phi-roots / egress-denylist reader trims surrounding
+# (9b) the phi-roots / egress-denylist reader trims surrounding
 # whitespace and skips whole-line `#` comments, the same rules as
 # refresh-graph-map.sh's _corpus_is_salus_root guard. Untrimmed, an indented or
 # CRLF/space-padded salus root never prefix-matched and the target fell through
@@ -1111,8 +1110,8 @@ run_fence deny no "$LUNA" ".. traversal Clippings/../../salus -> deny" \
 
 # (10b) .. traversal escaping Clippings resolves to luna-personal (NOT treated as
 # a Clippings path). luna-clippings and luna-personal are verdict-IDENTICAL for
-# every remaining extraction provider now that moonshot is retired (HIMMEL-2101:
-# both corpora fall to the same plain `allow` via the anthropic operating-
+# every remaining extraction provider now that moonshot is retired (both
+# corpora fall to the same plain `allow` via the anthropic operating-
 # substrate cell, or default-deny for everything else), so a verdict-alone
 # discriminator no longer proves reclassification. Assert directly on the
 # ledger's "corpus" field instead (strictly stronger). Vehicle:
@@ -1131,14 +1130,14 @@ else
 fi
 
 # (11) uppercase --backend CLAUDE-CLI is lower-cased -> anthropic -> luna-personal
-# allow (HIMMEL-2101: claude-cli is the sanctioned semantic backend, kimi/
+# allow (claude-cli is the sanctioned semantic backend, kimi/
 # moonshot is retired). Pins case-insensitive backend normalization: an
 # un-lowered "CLAUDE-CLI" would miss the claude|claude-cli case arm and fall
 # to the default (undeclared-literal) branch, which denies on luna-personal.
 run_fence allow no "$HIMMEL" "uppercase --backend CLAUDE-CLI -> allow (case-insensitive backend normalization)" \
     "graphify update $LUNA/journal-2026.md --backend CLAUDE-CLI"
 
-# (12a) no --backend + himmel path -> local-ollama -> allow (corpus rule, HIMMEL-621)
+# (12a) no --backend + himmel path -> local-ollama -> allow
 run_fence allow no "$HIMMEL" "no-backend himmel -> allow (local-ollama)" \
     "graphify update $HIMMEL/scripts/thing.sh"
 
@@ -1162,7 +1161,7 @@ run_fence allow no "$HIMMEL/scripts" "query cwd-himmel no-key -> allow" \
 
 # (14b) query with cwd in luna-personal + --backend deepseek -> luna-personal
 # x deepseek x extraction -> deny (egress-matrix.json: an explicit deny row,
-# REVERSED 2026-07-22 HIMMEL-1257 — DeepSeek de-listed for luna-personal
+# DeepSeek de-listed for luna-personal
 # extraction). This vehicle actually discriminates cwd classification: the
 # SAME --backend deepseek is a plain `allow` under the himmel-code wildcard
 # row (corpus "himmel-code", provider "*", purpose "*"), so if this cwd were
@@ -1198,7 +1197,7 @@ payload=$(printf '{"tool_name":"Bash","tool_input":{"command":"graphify update %
 out=$(printf '%s' "$payload" | env $CLEAN_ENV HOME="$HOME" LUNA_VAULT_PATH="$LUNA" HANDOVER_DIR="$HANDDIR" CLAUDE_GLM_CONFIG_DIR="$PHI" GRAPHIFY_HIMMEL_ROOT="$HIMMEL" "$BASH_BIN" "$HOOK" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "hook: graphify himmel -> delegated allow rc=0"; else fail "hook: expected rc=0 got rc=$rc out=$out"; fi
 
-# HIMMEL-2610: the hook's CMDPOS pre-filter regex must recognize abbreviated
+# the hook's CMDPOS pre-filter regex must recognize abbreviated
 # nice/time long options (not just their literal full spellings), or the
 # wrapped clause under-consumes a token, CMDPOS never matches "graphify" at
 # command position, and the hook exits 0 WITHOUT EVER INVOKING THE FENCE — a
@@ -1257,13 +1256,12 @@ payload=$(printf '{"tool_name":"Bash","tool_input":{"command":"sudo --us root gr
 out=$(printf '%s' "$payload" | env $CLEAN_ENV HOME="$HOME" LUNA_VAULT_PATH="$LUNA" HANDOVER_DIR="$HANDDIR" CLAUDE_GLM_CONFIG_DIR="$PHI" GRAPHIFY_HIMMEL_ROOT="$HIMMEL" "$BASH_BIN" "$HOOK" 2>&1); rc=$?
 if [ "$rc" -eq 2 ] && grepq "$out" -i "DENY"; then pass "hook: sudo --us graphify salus -> delegated deny rc=2 (abbrev reaches fence)"; else fail "hook: sudo --us expected rc=2 + DENY got rc=$rc out=$out"; fi
 
-# HIMMEL-2610: stdbuf was MISSING from the hook's CMDPOS pre-filter wrapper
+# stdbuf was MISSING from the hook's CMDPOS pre-filter wrapper
 # alternation entirely (unlike sudo/env/timeout/nice/time above) - ANY
 # stdbuf-wrapped graphify call, regardless of flag spelling (even a bare
 # short option), never matched CMDPOS and the hook exited 0 WITHOUT EVER
 # INVOKING THE FENCE. This is a routing-layer bypass, distinct from and
 # broader than the abbreviation gap inside graphify-fence.sh's own stdbuf arm
-# (operator-applied one-line CMDPOS fix, HIMMEL-2610).
 
 # stdbuf -o (short option, was already correct fence-side, but blocked at the
 # routing layer pre-fix) wrapping a salus deny -> rc=2
@@ -1315,7 +1313,7 @@ if [ "$rc" -eq 0 ]; then pass "hook: malformed JSON no-graphify -> allow rc=0"; 
 echo "== ledger line CONTENT (verdict + corpus fields) =="
 
 # declared-backend + plain allow: luna-personal x claude-cli -> ledger line
-# carries verdict + corpus (HIMMEL-2101: kimi/moonshot's native allow+log lane
+# carries verdict + corpus (kimi/moonshot's native allow+log lane
 # is retired — no matrix cell produces "allow+log" any more, so this now pins
 # the declared-backend-substitution always-ledgers-on-allow path instead;
 # GRAPHIFY_DECLARED_BACKEND, not an explicit --backend flag, so a ledger line
@@ -1331,7 +1329,7 @@ fi
 
 # A legal POSIX path may contain ESC (0x1b). The ledger must encode it as a
 # Unicode escape so the physical JSONL line remains parseable. Vehicle:
-# GRAPHIFY_DECLARED_BACKEND=claude-cli (HIMMEL-2101: kimi/moonshot's allow+log
+# GRAPHIFY_DECLARED_BACKEND=claude-cli (kimi/moonshot's allow+log
 # lane is retired — a declared backend is what still guarantees a ledger line
 # on this real, non-marker root).
 FENCE_CTRL_PATH="$LUNA/$(printf 'control\033path.md')"
@@ -1346,8 +1344,8 @@ else
 fi
 
 # conditional: salus x local-ollama opt-in -> ledger line carries conditional +
-# salus. Moved here (HIMMEL-2224): clippings x zai-glm was the OTHER
-# conditional cell exercised by this case, but HIMMEL-2224/1749 reversed it to
+# salus. Moved here: clippings x zai-glm was the OTHER
+# conditional cell exercised by this case, but it is now
 # a plain deny, so it can no longer produce a "conditional" ledger line. The
 # only conditional cell the fence can still reach at extraction is
 # salus x local-ollama (GRAPHIFY_SALUS_LOCAL_OK=1).
@@ -1360,12 +1358,12 @@ else
     fail "ledger content conditional: got $(cat "$LEDGER" 2>/dev/null)"
 fi
 
-# nested handover root (HIMMEL-817, post-HIMMEL-343 fold): HANDOVER_DIR INSIDE
+# nested handover root: HANDOVER_DIR INSIDE
 # the vault -> the path classifies as the VAULT corpus (luna-personal, rank 4),
 # NOT handover-state (rank 2) — vault roots are checked first, so a fold-style
 # setup tightens classification and the handover-state row keeps serving only
 # Mode-B external state repos. claude-cli extraction verdict is a plain allow
-# (HIMMEL-2101: kimi/moonshot's allow+log lane is retired); declared via
+# declared via
 # GRAPHIFY_DECLARED_BACKEND so a ledger line exists to inspect.
 mkdir -p "$LUNA/handovers/op"
 : > "$LUNA/handovers/op/next-session-1.md"
@@ -1380,7 +1378,7 @@ fi
 
 echo "== egress-matrix-eval.mjs unit =="
 
-# de-listed alibaba cell (was pending-operator, explicit deny post-HIMMEL-1257) -> verdict deny
+# de-listed alibaba cell -> verdict deny
 v=$(node "$EVAL_HELPER" luna-clippings alibaba embedding 2>/dev/null | cut -f1)
 if [ "$v" = deny ]; then pass "eval: de-listed alibaba cell -> deny"; else fail "eval: alibaba cell expected deny got '$v'"; fi
 
@@ -1409,7 +1407,7 @@ run_fence allow no "$HIMMEL" "MSYS /c/... under himmel root -> himmel-code allow
     "graphify update /c/fake/himmel/doc.md --backend deepseek" GRAPHIFY_HIMMEL_ROOT="C:/fake/himmel"
 
 # (M2) MSYS-form path under the luna root -> luna-personal (allow + ledger).
-# claude-cli is the sanctioned luna-personal backend (HIMMEL-2101; kimi/
+# claude-cli is the sanctioned luna-personal backend (kimi/
 # moonshot's allow+log lane is retired) — declared via GRAPHIFY_DECLARED_BACKEND
 # so a ledger line exists to prove the MSYS path resolved under this root.
 run_fence allow yes "$HIMMEL" "MSYS /c/... under luna root -> luna-personal allow+ledger" \
@@ -1439,7 +1437,7 @@ run_fence deny no "$HIMMEL" "backslash-form absolute salus path -> deny" \
 
 echo "== HIMMEL-845: cross-drive drive-relative fail-open =="
 
-# HIMMEL-808 anchored a drive-RELATIVE `X:tail` token to the tool-call cwd,
+# A drive-RELATIVE `X:tail` token is anchored to the tool-call cwd,
 # which is exact ONLY when that cwd is on drive X. Windows keeps a SEPARATE cwd
 # PER DRIVE (the hidden `=C:`/`=D:` env vars), so `Z:tail` from a C: cwd
 # resolves under Z:'s own current directory - one this fence cannot read.
@@ -1502,7 +1500,7 @@ STAGED_HIM="$WS/stghim";     mkdir -p "$STAGED_HIM";   : > "$STAGED_HIM/copy.md"
 
 # (S1) staged copy declares luna-personal + claude-cli -> allow + ledger (the
 # corpus marker's declared=1 always ledgers on an allow-family verdict, even
-# the plain `allow` claude-cli/anthropic now gets — HIMMEL-2101, kimi/moonshot
+# the plain `allow` claude-cli/anthropic now gets, kimi/moonshot
 # retired)
 run_fence allow yes "$HIMMEL" "staged marker luna-personal + claude-cli -> allow+ledger" \
     "graphify update $STAGED/copy.md --backend claude-cli"
@@ -1522,7 +1520,7 @@ run_fence deny no "$HIMMEL" "staged dir no marker -> deny (unclassifiable)" \
 # (S5) marker INSIDE the real luna root claiming himmel-code -> luna-personal wins
 # (real root beats the marker; classification NOT relaxed; no declared:true
 # field — the corpus is NOT marker-declared). Backend declared via
-# GRAPHIFY_DECLARED_BACKEND=claude-cli (HIMMEL-2101, kimi/moonshot retired) so
+# GRAPHIFY_DECLARED_BACKEND=claude-cli so
 # a ledger line exists to inspect on this real, non-marker-declared root; that
 # is a SEPARATE declared_backend_source field from the corpus "declared" bit
 # this case asserts is absent.
@@ -1628,7 +1626,7 @@ fi
 # (D3) staged luna-personal-declared path + real himmel-code path in ONE
 # invocation -> most-restrictive still wins (luna-personal x claude-cli ->
 # allow) AND declared:true is present (the corpus marker's declared=1 always
-# ledgers). HIMMEL-2101: kimi/moonshot's allow+log lane is retired — the
+# ledgers). kimi/moonshot's allow+log lane is retired — the
 # matrix cell claude-cli reaches (anthropic, operating substrate) is a plain
 # allow.
 rm -f "$LEDGER"
@@ -1643,7 +1641,7 @@ fi
 
 echo "== HIMMEL-779 gap 1: bare-word target resolved against tool-call cwd =="
 
-# (B1) POSITION-0 BARE-WORD swallowed as a subcommand (HIMMEL-779): a bare
+# (B1) POSITION-0 BARE-WORD swallowed as a subcommand: a bare
 # (no slash/drive/extension) dir name that EXISTS under the tool-call cwd is a
 # target, not a subcommand word. Nest a .salus-marked PHI dir inside the safe
 # himmel corpus; the bare name must classify salus -> deny, not be eaten as a
@@ -1665,14 +1663,14 @@ run_fence allow no "$HIMMEL/scripts" "bare word not on disk -> still subcommand 
 
 echo "== HIMMEL-779 gap 2: relative path resolves against tool-call cwd =="
 
-# (C1) Hook-cwd mismatch fail-open (HIMMEL-779): the fence's own $PWD is the
+# (C1) Hook-cwd mismatch fail-open: the fence's own $PWD is the
 # SAFE himmel corpus, but the tool-call cwd (GRAPHIFY_TOOL_CWD, what the hook
 # payload carries in .tool_input.cwd) is the luna vault. A relative path must
 # resolve against the TOOL-CALL cwd -> luna-personal -> deny, not against the
 # fence $PWD -> himmel -> allow (the fail-open). Uses --backend deepseek
-# DELIBERATELY (HIMMEL-1257): luna-personal x deepseek = DENY while himmel-code x
+# DELIBERATELY: luna-personal x deepseek = DENY while himmel-code x
 # deepseek = ALLOW, so the deny actually catches the fail-open (glm now allows on
-# BOTH corpora post-HIMMEL-1122, and gemini denies on both — either would be a
+# BOTH corpora, and gemini denies on both — either would be a
 # vacuous test that passes even when the resolution is wrong).
 run_fence deny no "$HIMMEL" "relative path resolves vs tool-call cwd (luna) -> deny" \
     "graphify update journal-2026.md --backend deepseek" GRAPHIFY_TOOL_CWD="$LUNA"
@@ -1686,7 +1684,7 @@ run_fence allow no "$HIMMEL" "relative path resolves vs tool-call cwd (himmel) -
 # path into the luna corpus (payload cwd=$LUNA) denies even though the hook
 # process runs from the safe himmel corpus (the production shape: the hook's
 # own $PWD is the project root, not the command's cwd). --backend deepseek for
-# the same asymmetry reason as C1 (luna deny / himmel allow, HIMMEL-1257).
+# the same asymmetry reason as C1.
 rm -f "$LEDGER"
 payload=$(printf '{"tool_name":"Bash","tool_input":{"command":"graphify update journal-2026.md --backend deepseek","cwd":"%s"}}' "$LUNA")
 # shellcheck disable=SC2086 # CLEAN_ENV is an intentional word-split flag list
@@ -1699,21 +1697,21 @@ echo "== HIMMEL-779 gap 3: update-subcommand backend declaration + order-insensi
 # LLM-free), yet the fence demands a declared provider for a non-himmel
 # corpus. A declared backend via env (GRAPHIFY_DECLARED_BACKEND) must satisfy
 # the requirement AND still flow through the egress matrix -> luna-personal x
-# claude-cli -> allow+ledger (HIMMEL-779 gap 3a; declared_backend_source
+# claude-cli -> allow+ledger (declared_backend_source
 # always ledgers on allow). claude-cli is the sanctioned luna-personal
-# backend (HIMMEL-2101: kimi/moonshot is retired).
+# backend.
 run_fence allow yes "$HIMMEL" "declared backend (claude-cli) on update luna -> allow+ledger" \
     "graphify update $LUNA/journal-2026.md" GRAPHIFY_DECLARED_BACKEND=claude-cli
 
 # (D2) declared backend still routed through the matrix: a deny-provider (gemini)
 # declared via env on luna-personal -> deny (declaration is not a bypass). gemini
-# is the churn-proof denier (hard-deny everywhere, unaffected by the HIMMEL-2224
-# zai-glm reversal above) — kept as the vehicle so this case does not depend on
+# is the churn-proof denier (hard-deny everywhere, unaffected by the
+# zai-glm deny above) — kept as the vehicle so this case does not depend on
 # glm's currently-denying policy either.
 run_fence deny no "$HIMMEL" "declared backend (gemini) on luna -> deny (matrix still applies)" \
     "graphify update $LUNA/journal-2026.md" GRAPHIFY_DECLARED_BACKEND=gemini
 
-# (D3) multi-distinct-backend last-wins order sensitivity (HIMMEL-779 gap 3b):
+# (D3) multi-distinct-backend last-wins order sensitivity:
 # a BLOCKED backend (gemini) placed BEFORE an allowed one (deepseek) used to
 # let the allowed one win (last-wins) -> allow; distinct conflicting backends
 # must now DENY regardless of order so a blocked backend cannot be hidden.
@@ -1747,7 +1745,7 @@ run_fence allow no "$HIMMEL" "declared backend ignored for himmel-code no-flag -
 # pinned): --backend gemini denies even though GRAPHIFY_DECLARED_BACKEND=ollama
 # (a safe value) is also set - the declared var is consulted ONLY when
 # --backend is absent. gemini is the churn-proof denier (glm now allows on luna
-# post-HIMMEL-1122, so it can no longer show the explicit-wins deny).
+# so it can no longer show the explicit-wins deny).
 run_fence deny no "$HIMMEL" "explicit --backend gemini wins over safe declared ollama -> deny" \
     "graphify update $LUNA/journal-2026.md --backend gemini" GRAPHIFY_DECLARED_BACKEND=ollama
 
@@ -1764,7 +1762,7 @@ run_fence deny no "$HIMMEL" "in-command cd then relative graphify target -> deny
 # (F2b) same in-command cd, but the graphify target is ABSOLUTE -> unaffected
 # by the cd-drift guard, normal matrix result (luna-personal x claude-cli ->
 # allow+ledger via GRAPHIFY_DECLARED_BACKEND; claude-cli is the sanctioned
-# luna-personal backend, HIMMEL-2101 — kimi/moonshot's allow+log lane is
+# luna-personal backend — kimi/moonshot's allow+log lane is
 # retired, so a declared backend is what still ledgers here).
 run_fence allow yes "$HIMMEL" "in-command cd then ABSOLUTE graphify target -> unaffected (allow+ledger)" \
     "cd $LUNA && graphify update $LUNA/journal-2026.md" GRAPHIFY_TOOL_CWD="$HIMMEL" GRAPHIFY_DECLARED_BACKEND=claude-cli
@@ -1778,7 +1776,7 @@ payload=$(printf '{"tool_name":"Bash","tool_input":{"command":"graphify update s
 out=$( cd "$HIMMEL" && printf '%s' "$payload" | env $CLEAN_ENV HOME="$HOME" LUNA_VAULT_PATH="$LUNA" HANDOVER_DIR="$HANDDIR" CLAUDE_GLM_CONFIG_DIR="$PHI" GRAPHIFY_HIMMEL_ROOT="$HIMMEL" "$BASH_BIN" "$HOOK" 2>&1 ); rc=$?
 if [ "$rc" -eq 0 ]; then pass "hook: no-cwd payload + relative safe path -> allow (fallback pin)"; else fail "hook no-cwd fallback: expected rc=0 got rc=$rc out=$out"; fi
 
-# (F2c2, CR round-2) inherited-env regression: a no-cwd payload must DROP any
+# inherited-env regression: a no-cwd payload must DROP any
 # GRAPHIFY_TOOL_CWD already present in the hook's own environment (e.g. leaked
 # from the launching shell) rather than anchor to it - the hook must unset it
 # and fall back to its own $PWD. GRAPHIFY_TOOL_CWD is set here to the UNSAFE
@@ -1818,7 +1816,7 @@ run_fence deny no "$WS" "bare-word PHI dir resolves via TOOL_CWD not fence \$PWD
 
 echo "== HIMMEL-881: .graphify-backend file-declared backend (update subcommand) =="
 
-# HIMMEL-2101: kimi/moonshot is retired (operator ruling — there is no kimi
+# kimi/moonshot is retired (operator ruling — there is no kimi
 # backend). STAGED_BE = claude-cli is the "allow example" (luna-personal x
 # anthropic x extraction = allow, via the operating-substrate cell — the
 # corpus marker's declared=1 ledgers regardless); STAGED_BE2 = gemini is the
@@ -1851,7 +1849,7 @@ printf 'claude-cli\n' > "$STAGED_BE_WRONGDIR/.graphify-backend"   # WRONG dir: p
 # (BE1) file-declared backend (claude-cli) satisfies `update` on a non-himmel
 # corpus with no --backend and no env var -> allow+ledger (the corpus
 # marker's declared=1 always ledgers; luna-personal x claude-cli x extraction
-# is a plain `allow` matrix cell via anthropic — HIMMEL-2101, kimi/moonshot's
+# is a plain `allow` matrix cell via anthropic; kimi/moonshot's
 # allow+log lane is retired).
 run_fence allow yes "$HIMMEL" "file-declared backend satisfies update on non-himmel corpus -> allow+ledger" \
     "graphify update $STAGED_BE/copy.md"
@@ -2059,7 +2057,7 @@ else
 fi
 
 # env-declared backend -> ledger carries declared_backend_source:"env"
-# (claude-cli is the sanctioned luna-personal backend, HIMMEL-2101 — kimi/
+# (claude-cli is the sanctioned luna-personal backend — kimi/
 # moonshot's allow+log lane is retired; an allow line must exist to carry the
 # source field, so a denying provider would make this vacuous)
 rm -f "$LEDGER"
@@ -2074,7 +2072,7 @@ fi
 # real --backend flag (no declaration involved) -> no declared_backend_source field.
 # Vehicle: $STAGED (a corpus-marker-declared luna-personal dir, declared=1 --
 # always ledgers) + an explicit --backend claude-cli flag, so a real allow
-# ledger line exists to grep. HIMMEL-2101: kimi/moonshot's native, non-declared
+# ledger line exists to grep. kimi/moonshot's native, non-declared
 # allow+log lane is retired, so a plain --backend flag on a REAL (non-marker)
 # root no longer produces any ledger line at all, which would make this
 # negative grep pass vacuously.
@@ -2087,7 +2085,7 @@ else
     fail "ledger content unexpected declared_backend_source: got $(cat "$LEDGER" 2>/dev/null)"
 fi
 
-# --- HIMMEL-1084: direct-eval mode (non-hook callers) ------------------------
+# --- direct-eval mode (non-hook callers) ------------------------
 # `graphify-fence.sh --eval <corpus> <backend> <abs-target> <tool>` (exactly 5
 # args) is the contract a scheduled/non-agent graphify caller uses instead of a
 # private copy of this fence's matrix eval + ledger. The hook passes exactly
@@ -2170,7 +2168,7 @@ else
     fail "HIMMEL-1084 E8 hook-mode ledger tool: $(cat "$LEDGER" 2>/dev/null)"
 fi
 
-# E9 (CR codex-1) --eval with the wrong operand count denies instead of falling
+# E9 --eval with the wrong operand count denies instead of falling
 # through to hook-mode parsing (where a bare "--eval" is not a graphify clause
 # and would exit 0 - a false allow for a malformed preflight)
 e9=0
@@ -2262,7 +2260,7 @@ run_fence deny no "$HIMMEL" "env -C salus -C himmel stacked in one env -> deny (
 run_fence deny no "$HIMMEL" "env --chdir=salus --chdir=himmel stacked -> deny (F1)" \
     "env --chdir=$SALUS --chdir=$HIMMEL graphify update notes/patient.md --backend glm"
 
-# (C18) F1: the J1290O repro - env -C<himmel> -C<relative sibling salus>,
+# (C18) F1: env -C<himmel> -C<relative sibling salus>,
 # run from the shared parent dir. Old code anchors the second RELATIVE -C
 # against the already-mutated TOOL_CWD (<himmel>/salusvault, non-PHI ->
 # allow); real env resolves the LAST -C against the ORIGINAL cwd (real
@@ -2451,22 +2449,18 @@ run_fence deny no "$SALUS" "env -S \"true graphify ...\" (hidden invocation) fro
 run_fence deny no "$HIMMEL" "env -C\`pwd\` (backtick-wrapped value) -> deny (R3, fail-closed)" \
     "env -C\`pwd\` graphify update notes/patient.md --backend glm"
 
-# (R1 consequence) documentation row, not a fix target: J1290R rated this an
-# acceptable over-deny, so no code change was made for it. Before this round,
-# an UNQUOTED, SEPARATE-token `~/x` (real bash *would* shell-expand this one,
-# since the tilde is the first character of its own word) was correctly
-# allowed via $HOME/x. The "stop modelling shell expansion" fix in this round
-# denies ALL `~` forms without exception, so this previously-correct case now
-# also fails closed - a deliberate, accepted trade documented here so a
-# future reader does not mistake it for a regression. HIMMEL-3641 J1290S M2:
-# this row used to be tagged "(R4, ...)" - J1290R's own R1-R3 findings never
-# included a fourth item (its actual fourth contribution was the codex-1
-# --*-vs--*C*/-*D* ordering fix above, not this one), so the tag is corrected
-# to what it actually is: a consequence of R1 (the unquoted-tilde finding).
+# (R1 consequence) documentation row, not a fix target: an
+# acceptable over-deny. An UNQUOTED, SEPARATE-token `~/x` (real bash *would* shell-expand this one,
+# since the tilde is the first character of its own word) would be
+# allowed via $HOME/x if shell expansion were modelled. The fence does not model
+# shell expansion and denies ALL `~` forms without exception, so this case also
+# fails closed - a deliberate, accepted trade documented here so a
+# future reader does not mistake it for a regression. It is a consequence of
+# R1 (the unquoted-tilde finding).
 run_fence deny no "$HIMMEL" "env -C ~/x (unquoted separate-token tilde, previously-correct case) -> deny (R1 consequence, accepted over-deny)" \
     "env -C ~/x graphify update notes/patient.md --backend glm" "HOME=$HIMMEL"
 
-# HIMMEL-3641 J1290S S1: a separate-token chdir DIR argument that the
+# a separate-token chdir DIR argument that the
 # tokenizer splits across multiple raw tokens ($(...) command substitution,
 # a backtick form, or a double-quoted "$(...)") sets
 # _GF_CHDIR_DENY_REASON inside _gf_apply_chdir, but the walk used to step
@@ -2487,7 +2481,7 @@ run_fence deny no "$HIMMEL" "env --chdir \$(echo salus) (long-option twin) -> de
 run_fence deny no "$HIMMEL" "sudo -D \$(echo salus) (sudo twin) -> deny (S1)" \
     "sudo -D \$(echo $SALUS) graphify update notes/patient.md --backend glm"
 
-# HIMMEL-3641 J1290S codex-1 (round-5 critic panel): the raw-vs-stripped
+# the raw-vs-stripped
 # mismatch guard (added in the same R2 round as env -S handling) only scans
 # LATER tokens for a literal "graphify" via _gf_deny_if_graphify_follows -
 # but env -S"graphify ..." (the flag glued to its double-quoted value, no
@@ -2500,8 +2494,7 @@ run_fence deny no "$HIMMEL" "sudo -D \$(echo salus) (sudo twin) -> deny (S1)" \
 run_fence deny no "$SALUS" "env -S\"graphify ...\" (glued double-quoted value) from salus -> deny (codex-1)" \
     "env -S\"graphify update notes/patient.md --backend glm\""
 
-# HIMMEL-3641 round-6 codex-1 (critic panel, distinct from the round-5
-# finding above): _gf_deny_if_graphify_follows itself only exact-matched
+# _gf_deny_if_graphify_follows itself only exact-matched
 # "graphify"/"*/graphify" on later tokens, so an unresolvable env -C
 # argument's fail-closed scan-ahead missed a LATER token that carries
 # graphify glued into another flag's value (env -S"graphify ...") instead
@@ -2510,14 +2503,12 @@ run_fence deny no "$SALUS" "env -S\"graphify ...\" (glued double-quoted value) f
 run_fence deny no "$SALUS" "env -C \$(...) unresolvable, later -S\"graphify ...\" glued token -> deny (round-6 codex-1)" \
     "env -C \$(echo /nonexistent) -S\"graphify update notes/patient.md --backend glm\""
 
-# HIMMEL-3641 round-7 codex-1 (critic panel) + class sweep: every OTHER
-# fail-closed "scan the rest of the clause for graphify and deny" arm had
-# the same exact-match bug as the two fixed above - a later token carrying
-# graphify GLUED into another flag's value (env -S"graphify ...") was
-# never matched. round-7's own citation is the env -*C* bundled-short-opt
+# Every fail-closed "scan the rest of the clause for graphify and deny" arm
+# must match a later token carrying
+# graphify GLUED into another flag's value (env -S"graphify ..."), not only
+# a bare token. Covered: the env -*C* bundled-short-opt
 # arm; the sudo -*D* mirror, xargs/find -exec's deferred-target scan, and
-# quiet-run.sh's unparsable-label tail scan share the identical shape and
-# are swept in the same fix per CLAUDE.md's "sweep the whole class" rule.
+# quiet-run.sh's unparsable-label tail scan, which share the identical shape.
 run_fence deny no "$HIMMEL" "env -iC DIR (bundled), later -S\"graphify ...\" glued token -> deny (round-7 codex-1)" \
     "env -iC /nonexistent -S\"graphify update notes/patient.md --backend glm\""
 run_fence deny no "$HIMMEL" "sudo -nD DIR (bundled), later env -S\"graphify ...\" glued token -> deny (round-7 sweep)" \
@@ -2583,12 +2574,11 @@ else
 fi
 
 
-# (X19) J1323A F1: the hidden-separator scan must be linear, not quadratic -
+# (X19) the hidden-separator scan must be linear, not quadratic -
 # a large routed command has to decide well under the hook's 15s timeout, or
 # a timed-out PreToolUse hook fails OPEN and a main-DENY becomes an ALLOW.
-# codex-1 (PR #1323 round 15): kept at a fixed 65536 bytes this payload now
-# hits HIMMEL-3683/J1323C F1's own size cap (32768 bytes) before the scan
-# this row means to exercise ever runs, so a pass here stopped being evidence
+# A payload over the fence's size cap (32768 bytes) would be denied before the scan
+# this row means to exercise ever runs, so a pass would not be evidence
 # the SCAN is linear - only that the (separately-tested, X27/X28) cap denies
 # quickly. Sized under the cap so the scan path is what actually executes,
 # and the deny is asserted to come from THIS scan (not the cap).
@@ -2632,7 +2622,7 @@ start_ns=$(timer_start)
 # shellcheck disable=SC2086 # CLEAN_ENV is an intentional word-split flag list
 out=$( cd "$HIMMEL" && env $CLEAN_ENV "$BASH_BIN" "$FENCE" "$X19_CMD" 2>&1 ); rc=$?
 elapsed_ms=$(timer_elapsed_ms "$start_ns")
-# codex-2 (PR #1323 round 3): a fast result alone is not evidence the scan
+# codex-2: a fast result alone is not evidence the scan
 # ran correctly - a crash or an erroneous allow both return quickly too.
 # Assert the expected deny (rc=2) alongside the timing, and (codex-1 round
 # 15) that it was NOT the size cap that fired, or this would again test the
@@ -2643,7 +2633,7 @@ else
     fail "under-cap large routed command rc=$rc in ${elapsed_ms}ms, cap-fired=$(grepq "$out" "fence cap" && echo yes || echo no) (want rc=2, <5000ms, scan-path deny) (X19) out=$out"
 fi
 
-# (X20/X21) J1323A F2: the hidden-separator deny must be scoped to a
+# (X20/X21) the hidden-separator deny must be scoped to a
 # substitution that is itself a chdir argument, not fire on ANY substitution
 # containing a separator just because "graphify" appears somewhere in the
 # command - the everyday `git commit`/`gh pr create` heredoc-body form must
@@ -2656,17 +2646,17 @@ run_fence allow no "$HIMMEL" "gh pr create heredoc body mentioning graphify as d
     "$X21_CMD"
 
 
-# (X23) J1323B F1: X19 only padded the command at nesting depth 0, so it
+# (X23) X19 only padded the command at nesting depth 0, so it
 # never exercised the stack's push/pop/top-of-stack cost - the actual
 # quadratic (a string stack popped/pushed with `${stack%q}`/`${stack}q`,
 # O(depth) per character) hid entirely inside a deeply nested substitution
 # such as `x=$(cat <<'EOF' <N x '('> EOF)`, where X19's flat padding never
 # goes. Pad AT depth instead: N '(' characters nested inside one $(...) via
 # a heredoc body (each '(' is data to the heredoc, but pushes the fence's
-# stack all the same). J1323C F1's 32768-byte size cap (checked before any
-# scan runs) now denies both of this test's original sizes on byte count
-# alone, so they no longer reach the stack scan at all - shrink under the
-# cap (codex-3683-panel-3) so the timing check still exercises the O(depth)
+# stack all the same). The 32768-byte size cap (checked before any
+# scan runs) denies larger sizes on byte count
+# alone, so they would never reach the stack scan - stay under the
+# cap so the timing check still exercises the O(depth)
 # stack fix itself, not the unrelated size cap.
 for X23_N in 8192 30000; do
     X23_PARENS=$(head -c "$X23_N" /dev/zero | tr '\0' '(')
@@ -2686,7 +2676,7 @@ for X23_N in 8192 30000; do
 done
 
 
-# (X25) codex-2 (PR #1323 round 4): a trailing unquoted \$ as the LAST
+# (X25) codex-2: a trailing unquoted \$ as the LAST
 # character of the routed command (no substitution actually opens) read one
 # array index past the end under this file's `set -u`, aborting the scan;
 # the fail-closed EXIT trap turned that abort into a DENY regardless of
@@ -2697,7 +2687,7 @@ run_fence allow no "$HIMMEL" "trailing bare \$ (no substitution, no graphify) ->
     'echo hello $'
 
 
-# (X27) J1323C F1: a per-span lookback rebuild-plus-word-split cost, stacked
+# (X27) a per-span lookback rebuild-plus-word-split cost, stacked
 # in front of an unrelated quadratic elsewhere in this file, crosses the
 # hook's 15s timeout on a large-enough routed command (a flood of `''` pairs
 # combined with a deeply nested heredoc) - and a timed-out --optional hook
@@ -2730,8 +2720,8 @@ run_fence allow no "$HIMMEL" "ordinary graphify command well under the size cap 
     "graphify update notes/patient.md --backend glm"
 
 
-# (X34) codex-2 (critic panel round 4): the lb_prev fallback that resolves a
-# bare --chdir word (added for J1323C F2, e.g. `-C ../$(...)` where "../"
+# (X34) codex-2: the lb_prev fallback that resolves a
+# bare --chdir word (e.g. `-C ../$(...)` where "../"
 # glues onto the substitution as one shell word) trusted -C/--chdir as the
 # PRECEDING word without checking whether the word actually touching the
 # substitution is glued to it. `-C foo $(...)` has "foo" as its own complete
@@ -2740,12 +2730,11 @@ run_fence allow no "$HIMMEL" "ordinary graphify command well under the size cap 
 run_fence allow no "$HIMMEL" "-C flag with an unrelated word before an unrelated substitution -> allow (X34)" \
     "echo -C foo \$(echo a; echo b) graphify"
 
-# (F2) J1323D F2: the cut hidden-clause-separator scan (removed HIMMEL-3683
-# PR #1323, formerly scripts/guardrails/graphify-fence.sh:2278-2510) had an
-# over-broad -C/-D/--chdir prefix match that false-denied a chdir flag
+# (F2) a hidden-clause-separator scan with an
+# over-broad -C/-D/--chdir prefix match would false-deny a chdir flag
 # followed by an UNRELATED substitution merely containing a separator -
 # common real shapes like `git -C $(...) status` and `make -C $(...) test`
-# must ALLOW now that the scan is gone.
+# must ALLOW (the fence has no such scan).
 # shellcheck disable=SC2016 # single-quoted: the literal $(...) text is the
 # payload under test, not a real expansion
 run_fence allow no "$HIMMEL" "git -C \$(cd .. && pwd) status; graphify query x -> allow (F2A)" \
@@ -2755,14 +2744,14 @@ run_fence allow no "$HIMMEL" "git -C \$(cd .. && pwd) status; graphify query x -
 run_fence allow no "$HIMMEL" "make -C \$(git rev-parse --show-toplevel; true) test && graphify query x -> allow (F2B)" \
     'make -C $(git rev-parse --show-toplevel; true) test && graphify query x'
 
-# (F1) J1323D F1: the cut scan itself is what pushed hook execution past the
+# (F1) a hidden-separator scan could push hook execution past the
 # 15s PreToolUse timeout on a sub-32KB-cap flood input (a timed-out
 # --optional hook fails OPEN). This asserts the shape still denies
 # functionally - not a timing SLA: main's own unrelated quoting/clause-
 # splitting cost on this ;'' padding shape is itself close to the hook's 15s
-# budget at this size, independent of this PR's change. A bounded (not
-# merely faster) redesign is tracked in HIMMEL-3771, not fixed by this PR.
-# codex-2 (PR #1323 round 15): rc=2 alone does not prove THIS deny reason
+# budget at this size. A bounded (not
+# merely faster) redesign is a separate upgrade path.
+# codex-2: rc=2 alone does not prove THIS deny reason
 # fired (a cap or a crash also returns rc=2) - and this row's own chdir arg
 # (SALUS) resolves cleanly, so the actual reason is the ordinary corpus x
 # backend policy deny (egress matrix), not chdir at all. Assert that text.
@@ -2864,7 +2853,7 @@ rm -f "$HOME/.himmel"; mkdir -p "$HOME/.himmel"
 printf '{"graphify":{"salus_ollama_cloud_ok":true}}\n' > "$OPTIN_CFG"
 o_eval "S3 control: a regular file holding true is still an opt-in" 0 ollama-cloud salus "$SALUS/notes" OLLAMA_MODEL=x-cloud
 rm -f "$OPTIN_CFG"
-# L1/L2: the loopback rule stays narrow (documented decision, HIMMEL-4696 item 2).
+# L1/L2: the loopback rule stays narrow.
 o_eval "L1 127.0.0.2 is not the loopback the fence trusts -> fails closed" 2 "ollama endpoint" himmel-code "$HIMMEL" OLLAMA_HOST=127.0.0.2
 o_eval "L2 0.0.0.0 is not the loopback the fence trusts -> fails closed" 2 "ollama endpoint" himmel-code "$HIMMEL" OLLAMA_HOST=0.0.0.0
 # H1/H2: HOME is the trust root in --eval mode too (documented, no passwd-home

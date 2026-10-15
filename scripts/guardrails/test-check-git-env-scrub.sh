@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/guardrails/test-check-git-env-scrub.sh — HIMMEL-3570: exercises
+# scripts/guardrails/test-check-git-env-scrub.sh: exercises
 # check-git-env-scrub.sh against tracked fixtures under
 # scripts/guardrails/git-env-scrub-cases/ (deliberately NOT named fixtures/ or
 # test-fixtures/ — the checker itself excludes paths under those directory
@@ -111,8 +111,7 @@ else
     printf '%s\n' "$OUT" | sed 's/^/    /'
 fi
 
-# ---- CR fixup (HIMMEL-3570): detector gaps the panel's self-review found
-# before the console-facing review saw them ----
+# ---- detector gaps: quoted, multi-word, bare-exec, multiline and comment shapes ----
 expect_red "T19 git inside a double-quoted \$(...) cmdsub is caught"     quoted-cmdsub-unscrubbed.sh
 expect_red "T20 quoted multi-word command string ('git status') is caught" quoted-multiword-unscrubbed.mjs
 expect_red "T21 bare exec( ) (no Sync/File) is caught"                   exec-bare-unscrubbed.mjs
@@ -178,7 +177,7 @@ else
     printf '%s\n' "$T25_OUT" | sed 's/^/    /'
 fi
 
-# ---- HIMMEL-3571 ----
+# ---- multi-line spawn calls ----
 
 # T26/T27 -- an execFileSync( call whose 'git' argument is on the next line.
 expect_red   "T26 multi-line execFileSync(\\n 'git' ...) is caught"        multiline-unscrubbed.mjs
@@ -202,7 +201,7 @@ else
     printf '%s\n' "$T28_OUT" | sed 's/^/    /'
 fi
 
-# ---- HIMMEL-5393: exemption forgery, exotic shell shapes, JS window, new
+# ---- exemption forgery, exotic shell shapes, JS window, new
 # extensions, and the gate's own environment ----
 
 # Item 2 -- exemption forgery.
@@ -336,7 +335,7 @@ fi
 # (cloud-route.mjs carries one; the template fix made it visible to the scan).
 expect_green "T65 new Error('git ...') message is not a spawn"                error-message-scrubbed.mjs
 
-# T66/T67 -- round 2 (HIMMEL-5393): `-u NAME` only scrubs behind an `env`
+# T66/T67 -- `-u NAME` only scrubs behind an `env`
 # wrapper; a line comment between `(` and the git argument hides nothing.
 expect_red   "T66 '-u NAME' words that are git arguments are not a scrub"      dash-u-not-env-unscrubbed.sh
 expect_red   "T67 line comment between '(' and 'git' does not hide the spawn"  comment-before-git-unscrubbed.mjs

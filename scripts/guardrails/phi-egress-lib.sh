@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # scripts/guardrails/phi-egress-lib.sh — shared fail-closed predicates for the
-# PHI/egress guard family (HIMMEL-1776: fence parity by extraction, ask 3).
+# PHI/egress guard family.
 #
 # WHY: scripts/guardrails/graphify-fence.sh (the interactive path) and
 # scripts/graphify/refresh-graph-map.sh (the scheduled path) each classify (a)
 # PHI-root/egress-denylist file readability and (b) an Anthropic endpoint URL
 # down to a hostname. Before this file existed, each had its OWN copy of
 # both checks, and the scheduled copy fell behind the fence's fail-closed
-# behavior at least once (HIMMEL-1748 / PR #1680 fixed it after the drift was
-# found in review). A parity TEST can only catch drift already committed;
+# behavior at least once, found only in review. A parity TEST can only catch drift already committed;
 # sourcing ONE implementation from both call sites makes the drift itself
 # impossible instead of merely detectable.
 #
@@ -28,14 +27,13 @@
 # special file, or present-but-unreadable). Callers must NOT collapse
 # "unreadable" into "absent": an EXISTING-but-unreadable PHI-roots/denylist
 # file must still deny, not silently proceed as if it declared nothing
-# (the fail-open shape HIMMEL-1776 names).
 _guard_file_readable() {
     [ -f "$1" ] && [ -r "$1" ]
 }
 
 # _guard_endpoint_host <url> -> prints the lowercased, syntactically-validated
 # hostname on stdout and returns 0; returns 1 (nothing printed) when <url> is
-# empty, contains a backslash (HIMMEL-1049: some HTTP clients fold `\` into
+# empty, contains a backslash (some HTTP clients fold `\` into
 # `/`, so a backslash before the real authority can smuggle a different host
 # past a naive parser), is not an explicit `https://` URL (plaintext,
 # scheme-less, and arbitrary-scheme values all fail closed), or otherwise

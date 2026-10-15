@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/guardrails/hook-probe.mjs (HIMMEL-4425).
+# Smoke test for scripts/guardrails/hook-probe.mjs.
 # Feeds planned calls to the REAL wired PreToolUse chain and asserts the
 # PROBE verdict, the hook named in the deny, that side-effect state stays
 # redirected, and that a settings fixture lacking the guard flips deny to allow.
@@ -8,7 +8,7 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 # A leg may run with a bypass exported; the probe must see the guards un-bypassed.
 unset EDIT_ON_MAIN_OK EDIT_LIVE_SETTINGS_OK
 
-# grepq <text> [grep-args...] — here-string grep, no pipeline (HIMMEL-1430).
+# grepq <text> [grep-args...] — here-string grep, no pipeline.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -109,7 +109,7 @@ else
 fi
 
 # The probe must fail CLOSED exactly where runChain in run-hook-with-bash.js does
-# (HIMMEL-4425 NO-GO F1/F2): a chain it cannot fully evaluate is a DENY, never ALLOW.
+# a chain it cannot fully evaluate is a DENY, never ALLOW.
 # chain_settings <file> <member>... writes a one-entry Bash chain settings fixture.
 chain_settings() {
     local file="$1" members="" m; shift

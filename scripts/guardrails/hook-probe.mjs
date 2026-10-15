@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // hook-probe.mjs — run the REAL wired PreToolUse chain against ONE planned tool
-// call and say which hook would refuse it (HIMMEL-4425).
+// call and say which hook would refuse it.
 //
 // WHY: a leg learns a command is refused only by being refused, or writes an
-// ad-hoc probe. Static simulation (the removed /guardrail-sim, HIMMEL-4381, and
+// ad-hoc probe. Static simulation (the removed /guardrail-sim, and
 // any future successor) PLANS: it predicts from the hook source what should
 // happen. This probe PROVES: it feeds the real PreToolUse payload to each hook
 // the settings file wires for that tool and reports what the hook actually
@@ -159,8 +159,8 @@ function singleLabel(command) {
 }
 
 // Mirror of runChain's member verdict (run-hook-with-bash.js). Only a MUST_RUN
-// member fails closed on a crash (HIMMEL-3601), a timeout or a buffer overflow
-// (HIMMEL-2060); an advisory member's failure is a non-blocking error row.
+// member fails closed on a crash, a timeout or a buffer overflow
+// an advisory member's failure is a non-blocking error row.
 export function classifyMember(result, mustRun) {
   if (result && result.error && !isRecoverableEpipe(result)) {
     const code = result.error.code;

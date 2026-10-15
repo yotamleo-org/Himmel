@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-3018 fixture: frozen snapshot of this script at commit
+# frozen snapshot of this script at commit
 # 5e8e4cca8ecafa2864e8f4aa97c06012ab33e6cc (post-HIMMEL-2705-step-2,
 # pre-HIMMEL-2831-item-1 -- quoted-path parsing had landed, path-name
 # scanning had not). Committed statically, not `git show <sha>`'d at test
@@ -9,7 +9,6 @@
 # controls T13a and T13c.
 # ---
 # scripts/guardrails/leak-classes.sh — commit-time + CI leak-class gate
-# (HIMMEL-2561 / HIMMEL-2705 step 2).
 #
 # WHY: propagate-public.sh's scan_sensitive() only ran at propagation time,
 # the moment a private branch was carved out for the public mirror. HIMMEL-2705
@@ -77,7 +76,7 @@
 # exempts THAT LINE for THAT CLASS only — the marker text itself is matched
 # regardless of comment-prefix style, so any of the three works anywhere.
 #
-# ALLOW_HOME_NAMES (HIMMEL-2561 tree survey, 2026-09-08): the handover's base
+# ALLOW_HOME_NAMES: the handover's base
 # list (you, user, <user>, $USER, ${USER}, me, example, <you>, %USERNAME%,
 # $env:USERNAME) -- adopter, operator, runner, vagrant, ubuntu and documents
 # were confirmed unused against the tracked tree and removed from it --
@@ -250,7 +249,7 @@ if [ "$MODE" = staged ]; then
     # only walks `git diff --cached` hunks, so a file with no staged content
     # change of its own never appears there at all -- removing its exemption
     # alone would otherwise commit its full existing content unchecked
-    # (HIMMEL-2561 round-11 finding, codex-1). PREV_IGNORE_PATTERNS is only
+    # PREV_IGNORE_PATTERNS is only
     # ever consulted to compute that removed set below; it plays no other
     # role in this run.
     PREV_IGNORE_PATTERNS=()
@@ -328,7 +327,7 @@ DENYLIST_PATH="${HIMMEL_LEAK_DENYLIST:-$HOME/.claude/himmel-leak-denylist.txt}"
 # Diagnostics below print a path, not $DENYLIST_PATH itself: the default
 # lives under $HOME, and this script's own job is to redact home paths from
 # output, so printing it raw would leak the operator's home directory in
-# every captured scan log (CR round-13 codex-3 finding).
+# every captured scan log.
 DENYLIST_DISPLAY_PATH="$DENYLIST_PATH"
 case "$DENYLIST_DISPLAY_PATH" in
     "$HOME"/*) DENYLIST_DISPLAY_PATH="~${DENYLIST_DISPLAY_PATH#"$HOME"}" ;;
@@ -414,7 +413,7 @@ redact_spans() {
                     spanlen = e - s + 1
                     # Same reveal-window cap as before: at or under 4 chars,
                     # keep one fewer than the span length so at least one
-                    # character always stays hidden (CR round-8 codex-4).
+                    # character always stays hidden.
                     keep = (spanlen > 4) ? 4 : spanlen - 1
                     if (keep < 0) keep = 0
                     out = out substr(c, s, keep) "…"
@@ -462,10 +461,10 @@ check_home_path() {
     # lowercase "/users/" at the root is common in unrelated text (e.g. a
     # GitHub REST API path "/users/{user}/settings/..."), so it must stay
     # case-sensitive; only the drive-prefixed WSL/Git-Bash forms go
-    # case-insensitive (public #581 CodeRabbit round 2, false-positive fix) --
+    # case-insensitive --
     # every letter of "users" is folded, not just the first, so forms like
-    # C:/USERS/... are also caught (HIMMEL-2850, /pr-check panel round 1).
-    # CR (public #585, HIMMEL-2854 item 6): a file:// URI's extra slash
+    # C:/USERS/... are also caught.
+    # CR: a file:// URI's extra slash
     # (file:///home/...) sits right where the leading-context alternative
     # would need to match "/" itself -- which the negated class always
     # excludes -- so neither alternative can ever match there. Two literal
@@ -474,7 +473,7 @@ check_home_path() {
     # without loosening the negated class for anything else (so a bare
     # "http://home/..." -- "home" as an ordinary hostname label, not a
     # /home/ path -- still does not match).
-    # HIMMEL-2828 follow-up (console-flagged): the word-char class also
+    # the word-char class also
     # excludes a small set of trailing prose/doc-markup punctuation --
     # backtick, quote, comma, semicolon, colon, or a closing paren/bracket --
     # and the single-word terminator accepts that same set, so a quoted or
@@ -484,7 +483,7 @@ check_home_path() {
     # the punctuation into the next occurrence's own "/" as if it were a
     # multi-word terminator). Non-ASCII bytes stay admitted -- only this
     # fixed ASCII punctuation set is excluded.
-    # HIMMEL-2828 regression fix (console-flagged, public #664): the same
+    # the same
     # widened, non-ASCII-admitting word-char class also swallowed ERE
     # metacharacters -- a line that itself DEFINES a home-path regex (e.g.
     # `leak_pattern='(/Users/|[A-Za-z]:\Users\|...)'` in a guardrail script,
@@ -502,7 +501,7 @@ check_home_path() {
     # ellipsis ("..." or "…", e.g. a Windows 8.3 short-name placeholder like
     # "C:\Users\RUNNER~1\...") is also not reported: an ellipsis right after
     # the match marks truncated/placeholder example text, not a real path.
-    # HIMMEL-2856: a Windows file:// URI's drive letter carries file://'s
+    # a Windows file:// URI's drive letter carries file://'s
     # own extra slash too (file:///C:/Users/... -> leading-context consumes
     # "file://", leaving "/C:/Users/..."), so the drive-prefixed forms also
     # need a leading-slash variant, "/[A-Za-z]:/Users/". Lowercase
@@ -709,7 +708,6 @@ unquote_diff_path() {
     # output, so a decoded `\n`-escaped path (e.g. a name ending in a
     # literal newline byte) would otherwise lose it here and could
     # wrongly inherit a different file's exact-file ignore exemption
-    # (/pr-check panel round 1, codex-1).
     printf '%s.' "$s"
 }
 
@@ -755,7 +753,7 @@ run_staged() {
     # --cached; the parser's fallback then keeps "i/<realpath>" verbatim,
     # which can spuriously match an unrelated directory-style
     # .leak-classes-ignore entry (e.g. a repo directory literally named
-    # "i/") and exempt every staged file (HIMMEL-2826). Pinning both off
+    # "i/") and exempt every staged file. Pinning both off
     # forces the plain "b/" prefix this parser is written against,
     # regardless of the running station's git config.
     if ! diff_output="$(git -c core.quotePath=false -c diff.mnemonicPrefix=false -c diff.noprefix=false -c diff.outputIndicatorNew=+ -c diff.outputIndicatorOld=- -c diff.outputIndicatorContext=' ' diff --no-color --no-ext-diff --no-textconv --no-renames --cached --text -U0 --)"; then

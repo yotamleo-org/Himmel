@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// test-voice-policy.mjs — invariants for the voice action policy (HIMMEL-1522).
+// test-voice-policy.mjs — invariants for the voice action policy.
 //
 // The policy is EXPECTED to change as trust grows, so these tests pin the
 // things that must survive a re-tiering, not the current tier of every action.
@@ -79,7 +79,7 @@ assert(evaluate(p, "some-future-capability").verdict === "confirm",
 // 9. The runtime profile must actually implement the read-side HARD rules.
 //    The policy denies `secrets` and `salus`, but plan mode only stops WRITES —
 //    voice-permissions.json is what stops the reads. Making the pre-commit hook
-//    fire on that file (codex-4) is pointless unless something checks it, so
+//    fire on that file is pointless unless something checks it, so
 //    assert the denies exist rather than trusting the file's presence.
 {
   const profPath = join(here, "..", "voice", "voice-permissions.json");
@@ -92,8 +92,8 @@ assert(evaluate(p, "some-future-capability").verdict === "confirm",
     assert(deny.includes(".env"), "voice profile must deny reads of .env (policy marks `secrets` HARD)");
     assert(/\.ssh|\.pem|\.key|id_rsa|credential/.test(deny),
       "voice profile must deny reads of key/credential material (policy marks `secrets` HARD)");
-    // CR round 6 — the list claimed to enforce the HARD `secrets` rule while
-    // omitting the one file that holds this harness's own MCP API keys.
+    // The list enforces the HARD `secrets` rule, so it includes the
+    // one file that holds this harness's own MCP API keys.
     assert(deny.includes(".claude.json"),
       "voice profile must deny reads of .claude.json — it holds MCP server specs including API keys");
     // Bash is denied outright, not pattern-matched: a deny-list over ways to
@@ -101,15 +101,15 @@ assert(evaluate(p, "some-future-capability").verdict === "confirm",
     // completed, so successive review rounds just kept finding the next one.
     assert((prof.permissions?.deny ?? []).some(r => r === "Bash" || r.startsWith("Bash(")),
       "voice profile must deny Bash — pattern-matching read commands is not completable");
-    // Both shells, or neither (CR round 9). Denying Bash while leaving
+    // Both shells, or neither. Denying Bash while leaving
     // PowerShell enabled is incoherent on a Windows-primary machine: plan mode
     // blocks writes, not Invoke-WebRequest, so a full shell remains an egress
     // path on a channel that cannot authenticate its speaker.
     assert((prof.permissions?.deny ?? []).some(r => r === "PowerShell" || r.startsWith("PowerShell(")),
       "voice profile must deny PowerShell as well as Bash — it is a full shell with its own egress verbs");
-    // Round 6 gave voice its own session id so it could not --resume the
-    // operator's typed session. That closed the resume path; the transcript
-    // FILES were still readable, which is the same exposure by another route.
+    // Voice has its own session id so it cannot --resume the
+    // operator's typed session. That closes the resume path; the transcript
+    // FILES must also be unreadable, the same exposure by another route.
     assert(deny.includes(".claude/projects"),
       "voice profile must deny the session-transcript store — isolating the session does not isolate the JSONL it wrote");
 
@@ -162,10 +162,10 @@ assert(evaluate(p, "some-future-capability").verdict === "confirm",
     assert(failsClosed.test(src), `${f} must FAIL CLOSED when the profile is missing, not warn and continue`);
   }
 
-  // 11. CR round 6 — three confirmed bypasses that this file's deny rules
+  // 11. Three bypasses that this file's deny rules
   //     structurally CANNOT cover, so they are asserted on the launchers.
   //     Every pattern below matches the real call shape; a mention of the flag
-  //     in a comment must not satisfy it (the round-5 lesson).
+  //     in a comment must not satisfy it.
   const round6 = [
     ["jarvis.py", [
       [/"--strict-mcp-config"/,

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Hermetic test suite for scripts/guardrails/leak-classes.sh (HIMMEL-2561 /
-# HIMMEL-2705 step 2 / HIMMEL-2518 RED-control contract). Every case runs
+# Hermetic test suite for scripts/guardrails/leak-classes.sh (RED-control
+# contract). Every case runs
 # against a scratch git repo under mktemp — never this repo's own tree —
 # so a scanner regression here can never be masked by real-tree noise, and
 # a real-tree false positive elsewhere can never fail this suite.
 #
 # Covers: one positive-detection case per class, the same-line allow-comment
 # convention, the absent-denylist skip line, the --staged/--tree split, the
-# redaction format, and one RED control per class (HIMMEL-2518): a scratch
+# redaction format, and one RED control per class: a scratch
 # mutant with that class's call site in scan_line() disabled, proving the
 # real script's detection — not the fixture or the harness — is what makes
 # the positive-detection case go red.
@@ -37,7 +37,7 @@ skip() { printf '  SKIP  %s\n' "$1"; skips=$((skips+1)); }
 # T9j/T9k-T9m build filenames containing ", newline, TAB, CR -- all rejected
 # by NTFS. Skip those fixture blocks LOUDLY under Windows Git-Bash (MINGW/
 # MSYS/CYGWIN) rather than let mkdir/git add fail silently into a false
-# green (HIMMEL-2864 finding 2).
+# green.
 is_windows_ntfs() { case "$(uname -s 2>/dev/null || echo x)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; *) return 1 ;; esac; }
 
 if ! WS="$(mktemp -d "${TMPDIR:-/tmp}/leak-classes-test.XXXXXX")"; then
@@ -185,7 +185,7 @@ fi
 
 # T1b: home-path, Windows profile name with an embedded space -- the
 # username segment must still match up to the next '/' or '\' rather than
-# stopping at the first space (HIMMEL-2561 round-4 finding).
+# stopping at the first space.
 r=$(new_repo)
 printf 'path is C:\\Users\\Jane Smith\\Documents\\file.txt\n' > "$r/winspace.txt"  # leak-allow: home-path test fixture
 git -C "$r" add winspace.txt
@@ -199,7 +199,6 @@ fi
 # T1c: home-path, JSON/log-escaped Windows profile path -- a literal DOUBLE
 # backslash in the file (as a JSON string like "C:\\Users\\NAME
 # HERE\\Documents" serializes it), not the single-backslash form T1b covers
-# (CR round-5 codex-2 finding).
 r=$(new_repo)
 printf 'path is C:\\\\Users\\\\Jane Smith\\\\Documents\\\\file.txt\n' > "$r/winjson.txt"  # leak-allow: home-path test fixture
 git -C "$r" add winjson.txt
@@ -212,7 +211,7 @@ fi
 
 # T1d: home-path, tracked SYMLINK -- --tree must scan the link's committed
 # TARGET STRING, never dereference it to read whatever the link resolves to
-# on disk outside the repo (CR round-5 codex-3 finding).
+# on disk outside the repo.
 r=$(new_repo)
 if ! MSYS=winsymlinks:nativestrict ln -s "/home/alexphantom/outside-repo-secret" "$r/link-to-home" 2>/dev/null || [ ! -L "$r/link-to-home" ]; then  # leak-allow: home-path test fixture
     echo "  SKIP T1d: this host cannot create symlinks"
@@ -226,7 +225,7 @@ else
 fi
 fi
 
-# T1e (HIMMEL-2825): ALLOW_HOME_NAMES no longer globally exempts real-looking
+# T1e: ALLOW_HOME_NAMES no longer globally exempts real-looking
 # human names (alice, bob, diane, jose, claude, jane, john) -- a real
 # adopter's own username commonly collides with one of these, which used to
 # make their genuine home-path leak a false negative. The fixture files that
@@ -287,8 +286,8 @@ else
 fi
 
 # T1h: home-path, a single-word name followed by unrelated trailing prose on
-# the same line, no path separator ever closing the match before EOL (HIMMEL-
-# 2835: check_home_path()'s name-capture used to allow an embedded space with
+# the same line, no path separator ever closing the match before EOL
+# (check_home_path()'s name-capture used to allow an embedded space with
 # the SAME end-of-line terminator a single-word name used, so it greedily
 # swallowed every following word into "the name" -- e.g. a real --tree run
 # against this tree's own content reported bogus multi-word "names" like
@@ -325,7 +324,7 @@ fi
 # prefix alternation was case-sensitive and had no /mnt/ form, so real WSL
 # and lowercase Git Bash logs (e.g. /mnt/c/Users/<name>, /c/users/<name>)
 # passed the gate unflagged. Split into two INDEPENDENT fixtures/assertions
-# (CodeRabbit round-2: a single fixture combining both forms would let either
+# (a single fixture combining both forms would let either
 # alternative silently fail to match while the other still flags the file,
 # masking a regression in either one).
 r=$(new_repo)
@@ -366,8 +365,8 @@ else
 fi
 
 # T1l: a drive-prefixed form must fold EVERY letter of "users", not just the
-# first -- /pr-check critic panel round 1 (HIMMEL-2850): the prior
-# [Uu]sers fix only case-folded the leading letter, so a fully-uppercase
+# first -- a
+# [Uu]sers class only case-folds the leading letter, so a fully-uppercase
 # Windows path like C:/USERS/realname/project still evaded detection.  # leak-allow: home-path doc example
 r=$(new_repo)
 printf 'see C:/USERS/realname3/project\n' > "$r/allcaps.txt"  # leak-allow: home-path test fixture
@@ -383,7 +382,6 @@ fi
 # T1m: a file:// URI's extra slash (file:///home/...) sits right where the
 # leading-context alternative needs to match "/" itself -- which the negated
 # class always excludes -- so the home-path detector used to miss it entirely
-# (CodeRabbit public #585 thread, HIMMEL-2854 item 6).
 r=$(new_repo)
 printf 'see file:///home/alexphantom/x for details\n' > "$r/fileuri.txt"  # leak-allow: home-path test fixture
 git -C "$r" add fileuri.txt
@@ -408,7 +406,7 @@ else
     fail "T1n home-path http control (rc=$SCAN_RC) out=$SCAN_OUT"
 fi
 
-# T1o: home-path, non-ASCII username (HIMMEL-2828) -- the username segment
+# T1o: home-path, non-ASCII username -- the username segment
 # character class used to be ASCII-only, so a real username that STARTS with
 # an accented character (e.g. "élodie") never matched at all: the name-chars
 # `+` quantifier requires at least one ASCII whitelist char right after the
@@ -426,7 +424,7 @@ else
     fail "T1o home-path non-ASCII username (rc=$SCAN_RC) out=$SCAN_OUT"
 fi
 
-# T1r (HIMMEL-2828 follow-up, console-flagged): the same widened, non-ASCII-
+# T1r: the same widened, non-ASCII-
 # admitting single-word terminator that fixed T1o also swallows trailing
 # prose/doc-markup punctuation into the captured name -- a quote, comma, or
 # closing paren right after an allowlisted placeholder used to stop the old
@@ -456,7 +454,7 @@ else
     fail "T1s home-path punctuation-adjacent leak control (rc=$SCAN_RC) out=$SCAN_OUT"
 fi
 
-# T1p: home-path, Windows file:// URI with a drive letter (HIMMEL-2856) --
+# T1p: home-path, Windows file:// URI with a drive letter --
 # file:///C:/users/<name>/... (lowercase "users") was missed: after the
 # file:// boundary's extra leading slash, the path continues /C:/users/...
 # and neither existing alternative matches it (the case-insensitive
@@ -490,7 +488,7 @@ else
     fail "T1q home-path non-Users drive-letter control (rc=$SCAN_RC) out=$SCAN_OUT"
 fi
 
-# T1t: HIMMEL-2828 regression fix (console-flagged, public #664) -- a line
+# T1t: a line
 # that itself DEFINES a home-path regex (in a guardrail script or its test)
 # used to be misread as a real leaked path, because ERE syntax like
 # "|[A-Za-z]:" or "[A-Za-z0-9._-]+" was just as word-char-admissible to the
@@ -529,7 +527,7 @@ else
     fail "T1t2 home-path ellipsis-placeholder control (rc=$SCAN_RC) out=$SCAN_OUT"
 fi
 
-# T1x (HIMMEL-2954 finding 1): a real dotted username (a common corporate
+# T1x: a real dotted username (a common corporate
 # first.last shape) is captured whole instead of stopping at the first dot --
 # before this fix, "user" alone would satisfy the allowlist and the rest of
 # the identity ("smith") never got rescanned.
@@ -571,7 +569,7 @@ else
     fail "T1x3 home-path trailing-dot control (rc=$SCAN_RC) out=$SCAN_OUT"
 fi
 
-# T1y (HIMMEL-2954 finding 2): a genuine, non-allowlisted home path truncated
+# T1y: a genuine, non-allowlisted home path truncated
 # by a literal "..." in tool output (not a Windows 8.3 short name) must still
 # be reported -- before this fix, ANY name followed by "..." was suppressed.
 r=$(new_repo)
@@ -613,9 +611,9 @@ else
     fail "T1u home-path RED-preserving control (rc=$SCAN_RC) out=$SCAN_OUT"
 fi
 
-# T1v (HIMMEL-2951): finishes HIMMEL-2825's ALLOW_HOME_NAMES drift for the
-# three residual names removed here (ada, somebody, yotamleo -- the fourth,
-# jarrod, stays allowlisted pending a vendored-tree follow-up). Same proof as
+# T1v: ALLOW_HOME_NAMES no longer lists
+# these three names (ada, somebody, yotamleo; jarrod is
+# covered by T1w). Same proof as
 # T1e: an unmarked home path under one of these formerly-allowlisted names is
 # now flagged like any other real name.
 r=$(new_repo)
@@ -648,8 +646,8 @@ else
     fail "T1v2 home-path marked-fixture control (rc=$SCAN_RC) out=$SCAN_OUT"
 fi
 
-# T1w (HIMMEL-2958): finishes HIMMEL-2951's ALLOW_HOME_NAMES drift for the
-# last residual name, jarrod -- its only fixture dependents sat in the
+# T1w: ALLOW_HOME_NAMES no longer lists the
+# last name, jarrod -- its only fixture dependents sat in the
 # vendored marketplace/plugins/claude-hud/tests/render.test.js, which now
 # carry their own same-line leak-allow markers. Same proof as T1e/T1v: an
 # unmarked home path under the formerly-allowlisted name is now flagged.
@@ -696,7 +694,7 @@ fi
 # T6b: overlapping denylist tokens -- a shorter token ("srv") that is also a
 # literal substring of a longer one ("srv-secret-prod") must not be redacted
 # first, which would break the longer match apart and print its remaining
-# sensitive suffix unredacted (CR round-6 codex-2 finding).
+# sensitive suffix unredacted.
 r=$(new_repo)
 dl="$WS/denylist-t6b.txt"
 printf 'srv\nsrv-secret-prod\n' > "$dl"
@@ -711,7 +709,7 @@ fi
 
 # T6c: a standalone denylist token at or under 4 characters must not have its
 # entire value fall inside redact_line's reveal window -- a bare "srv…" would
-# be the full secret, not a redaction (CR round-8 codex-4 finding).
+# be the full secret, not a redaction.
 r=$(new_repo)
 dl="$WS/denylist-t6c.txt"
 printf 'srv\n' > "$dl"
@@ -855,8 +853,7 @@ fi
 
 # T9c: --staged must read .leak-classes-ignore from the git INDEX, not the
 # working tree -- an unstaged local edit to the ignore file must never
-# suppress a leak in the commit actually being made (HIMMEL-2561 round-4
-# finding). Stage the leak WITHOUT the ignore entry, then edit the ignore
+# suppress a leak in the commit actually being made. Stage the leak WITHOUT the ignore entry, then edit the ignore
 # file on disk (unstaged) to exempt it: --staged must still catch the leak;
 # --tree, which reads the ignore file off disk, must not.
 r=$(new_repo)
@@ -899,7 +896,7 @@ fi
 
 # T9e: removing a file's exemption from .leak-classes-ignore, WITHOUT staging
 # any change to the file itself, must still be caught by --staged
-# (round-11 CR finding, codex-1). `git diff --cached` never lists a file with
+# `git diff --cached` never lists a file with
 # no staged content change at all, so the diff-hunk loop alone would never
 # look at it; only the full-blob rescan of newly-unignored files added for
 # this finding catches it.
@@ -973,7 +970,7 @@ fi
 # be scanned -- git's own diff machinery would otherwise print "Binary files
 # ... differ" with zero "+" lines for it under -U0, letting a leak in that
 # file pass --staged (the pre-commit hook's ONLY mode) completely unscanned
-# (CR round-14 codex-1 finding). --text on the diff invocation forces a
+# --text on the diff invocation forces a
 # textual diff regardless of the attribute.
 r=$(new_repo)
 printf '* -diff\n' > "$r/.gitattributes"
@@ -991,7 +988,6 @@ fi
 # strip used to take literally -- baking the tab into current_file. An
 # EXACT-FILE .leak-classes-ignore exemption for that filename therefore
 # stopped matching under --staged, so the exempted file was wrongly flagged
-# (HIMMEL-2831 #2 repro, verbatim).
 r=$(new_repo)
 printf 'file with space.txt\n' > "$r/.leak-classes-ignore"
 printf 'home path /home/alexphantom/leak here\n' > "$r/file with space.txt"  # leak-allow: home-path test fixture
@@ -1029,8 +1025,7 @@ fi
 # captured output, so without unquote_diff_path()'s trailing sentinel (a `.`
 # appended by printf, stripped by the caller) a decoded name's own real
 # trailing newline byte would silently vanish right there and the file would
-# wrongly inherit the shorter name's exemption (/pr-check panel round 1,
-# codex-1).
+# wrongly inherit the shorter name's exemption.
 if is_windows_ntfs; then
     skip "T9k (windows: NTFS filename)"
 else
@@ -1075,9 +1070,9 @@ fi
 # T9m: a filename containing a literal carriage-return byte gets fully
 # C-quoted by git with a backslash-r escape ("b/weird\rcr.txt"); the escape
 # must decode to a real CR byte, not stay as the two literal characters
-# `\` and `r` (/pr-check panel round 2, codex-1: unquote_diff_path decoded
-# only \\ \" \t \n, leaving git's other named C escapes -- \r \a \b \v \f --
-# undecoded and open to the same collision as T9l's \t case).
+# `\` and `r` (unquote_diff_path must decode more than
+# only \\ \" \t \n: git's other named C escapes -- \r \a \b \v \f --
+# would otherwise stay undecoded and open to the same collision as T9l's \t case).
 if is_windows_ntfs; then
     skip "T9m (windows: NTFS filename)"
 else
@@ -1101,11 +1096,11 @@ echo "== HIMMEL-2831 #1: a leak-shaped FILE PATH itself, not just its content ==
 # each case was a genuine miss before this session's scan_path() /
 # scan_new_staged_paths() additions, not just a fixture artifact.
 #
-# HIMMEL-3018: previously extracted via `git show 5e8e4cca:<path>` at test
+# previously extracted via `git show 5e8e4cca:<path>` at test
 # time. That commit is reachable from main today, so the extraction passed --
 # but it fails FATAL on a shallow clone or a source archive, the same class
-# HIMMEL-3154 fixed elsewhere (#810). Replaced with a committed static
-# snapshot, consistent with that fix.
+# of failure fixed elsewhere. Replaced with a committed static
+# snapshot.
 PRE_SCRIPT="$WS/leak-classes-pre-2831-1.sh"
 if ! cp "$REPO_ROOT/scripts/guardrails/fixtures/red-control/leak-classes.pre-2831-1.sh" "$PRE_SCRIPT" \
         || [ ! -s "$PRE_SCRIPT" ]; then
@@ -1335,7 +1330,7 @@ run_class_red_control() {
     # whatever the calling shell has exported: a station denylist token that
     # happens to be a substring of this class's fixture text would otherwise
     # make check_hostname_hits() fire during the mutant run and flip its exit
-    # code for a reason unrelated to the class under test (HIMMEL-2829).
+    # code for a reason unrelated to the class under test.
     red_control_run --cwd "$repo" --env HIMMEL_LEAK_DENYLIST="$WS/no-such-denylist.txt" -- bash -c '
         out=$(bash "$1" --tree 2>&1); rc=$?
         case "$out" in *"'"$class"'"*) hit=yes ;; *) hit=no ;; esac
@@ -1429,7 +1424,7 @@ HIMMEL_LEAK_DENYLIST="$dl" run_class_red_control "T12-mac-address-under-station-
 
 echo "== RED controls: HIMMEL-2831 #2 / HIMMEL-2854 #6 follow-ups =="
 
-# RED-home-path-file-uri (HIMMEL-2854 #6): revert check_home_path's
+# RED-home-path-file-uri: revert check_home_path's
 # leading-context regex to its pre-fix form -- the file:// URI in T1m must
 # then go completely unreported.
 r=$(new_repo)
@@ -1460,14 +1455,13 @@ if mutate_call_site \
     fi
 fi
 
-# RED-home-path-metachars (HIMMEL-2828 regression fix, console-flagged
-# #664): revert the ERE-metacharacter exclusion this fix added to the
+# RED-home-path-metachars: revert the ERE-metacharacter exclusion added to the
 # name-char class -- unlike the RED controls above, this fix REMOVES a false
 # positive rather than adding a detection, so the polarity is reversed: the
 # REAL (fixed) script must stay CLEAN on this fixture, and the MUTANT
 # (reverted to pre-fix) must misreport it as a leak. The exclusion appears
 # five times in one regex line (four negated-class copies, one positive
-# terminator copy -- HIMMEL-2954 added a fourth negated-class copy for the
+# terminator copy -- the fourth negated-class copy serves the
 # `(\.<seg>)*` dotted-username join on the single-word alternative);
 # mutate_call_site's own single-occurrence contract can't express that, so
 # this control does its own occurrence-counted, index()-based substring
@@ -1520,7 +1514,7 @@ else
     fi
 fi
 
-# RED-home-path-ellipsis (HIMMEL-2828 regression fix, console-flagged #664):
+# RED-home-path-ellipsis:
 # revert the doc-ellipsis skip check in check_home_path's match loop -- the
 # RUNNER~1\... placeholder in T1t2 must then be reported as a leak.
 r=$(new_repo)
@@ -1559,7 +1553,7 @@ elif mutate_call_site "$ellipsis_anchor" "$ellipsis_replacement" "$mutant"; then
     fi
 fi
 
-# RED-staged-unquote (HIMMEL-2831 #2): revert run_staged()'s "+++" header
+# RED-staged-unquote: revert run_staged()'s "+++" header
 # parse to the pre-fix plain strip (no unquote_diff_path call) -- the
 # space-containing exact-file exemption in T9i must then go back to being
 # wrongly flagged.
@@ -1592,7 +1586,7 @@ if mutate_call_site \
     fi
 fi
 
-# RED-staged-unquote-trailing-newline (codex-1, /pr-check panel round 1):
+# RED-staged-unquote-trailing-newline:
 # revert unquote_diff_path()'s trailing sentinel -- both the printf that
 # appends it and the caller's strip of it -- so a decoded name's real
 # trailing newline byte is the last byte of the captured `$(...)` output
@@ -1675,7 +1669,7 @@ if mutate_call_site \
     fi
 fi
 
-# RED-staged-unquote-cr (/pr-check panel round 2, codex-1): revert the \r
+# RED-staged-unquote-cr: revert the \r
 # decode step in unquote_diff_path() to a no-op (leave the literal
 # backslash-r pair undecoded) -- the T9m fixture must then wrongly inherit
 # the literal, undecoded ignore entry's exemption. \a \b \v \f decode is the
@@ -1711,7 +1705,7 @@ if mutate_call_site \
     fi
 fi
 
-# HIMMEL-3018 (same class as HIMMEL-3154/#810): guard against reintroducing
+# guard against reintroducing
 # extraction of a historical commit's blob via `git show <sha>:<path>` -- a
 # RED-control mutant must come from a committed fixtures/red-control/
 # snapshot, never a live git-show of a past ref, which is unreachable from a

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/guardrails/lesson-write-fence.sh - structural write-fence over
-# enforcement-path files, for the lesson-loop (HIMMEL-767 deliverable 3).
+# enforcement-path files, for the lesson-loop.
 #
 # WHY: the self-evolving loop (lessons -> tickets/draft-PRs) is PROPOSE-ONLY.
 # It must never be able to widen or disable the guards that would otherwise
@@ -23,7 +23,7 @@
 #
 #   hook mode (default): PreToolUse JSON on stdin.
 #     1. `[ "${HIMMEL_LESSON_LOOP:-0}" = "1" ] || exit 0` - inert otherwise
-#        (zero always-on cost, HIMMEL-177). The thin hook
+# The thin hook
 #        (block-lesson-enforcement-writes.sh) also fast-exits on this; the
 #        double-gate is deliberate so this fence stays safe under direct
 #        invocation too.
@@ -35,7 +35,7 @@
 #        file_path). Any deny-list hit -> exit 2, stderr names the class +
 #        why + the propose-only recovery (file a ticket / draft-PR body
 #        proposing the change; enforcement edits are operator-lane).
-#     3b. apply_patch (HIMMEL-2170, Codex's create/edit envelope - it has no
+#     3b. apply_patch (Codex's create/edit envelope - it has no
 #        Edit/Write/NotebookEdit/MultiEdit tool at all): no `.tool_input.
 #        file_path` either - every target lives inside `*** Add File:`/
 #        `*** Update File:`/`*** Delete File:` lines in `.tool_input.command`
@@ -45,14 +45,14 @@
 #        (malformed/unparseable patch text) is itself a DENY under
 #        HIMMEL_LESSON_LOOP=1 - fail-closed, matching every other malformed-
 #        input case in this file (see point 2 above).
-#     4. Bash|PowerShell: round-4 REWRITE - an ARCHITECTURE INVERSION, not
-#        another shape patch. Rounds 1-3b each closed one more per-verb
-#        write-shape gap on a DENY-LIST of known writers (glued redirects,
+#     4. Bash|PowerShell: an ARCHITECTURE INVERSION, not
+#        another shape patch. A DENY-LIST of known writers needs one more per-verb
+#        write-shape gap each time (glued redirects,
 #        `-tDIR` attached, PowerShell built-in aliases, `ln -sf`,
 #        `truncate`, `mkdir`, ...) - a known convergence signature: every
-#        adversarial CR round finds a NEW write shape the deny-list misses,
+#        adversarial review finds a NEW write shape the deny-list misses,
 #        because enumerating "every way to write a file" is an open set.
-#        Round 4 inverts to a READ-ONLY ALLOW-LIST instead: a small closed
+#        This design inverts to a READ-ONLY ALLOW-LIST instead: a small closed
 #        set of command-position verbs PROVEN to only read are exempt from
 #        operand checking; every OTHER verb - known writer, unknown
 #        mutator, or a future tool this fence has never heard of - has ALL
@@ -70,16 +70,16 @@
 #             `echo x>scripts/hooks/a.sh` arrives as ONE token
 #             (`x>scripts/hooks/a.sh`) and the target must be extracted from
 #             inside it. Covers the standalone forms (`>`, `>>`, `<`, a lone
-#             `N>`/`N>>` for ANY number of digits N - round 5, was
-#             single-digit only) and any GLUED form (`word>file`, `word>>file`,
+#             `N>`/`N>>` for ANY number of digits N, not just
+#             single-digit) and any GLUED form (`word>file`, `word>>file`,
 #             `N>file`, `>file`, `>>file`) alongside `dd`'s `of=TARGET`
 #             convention (same position/verb-independent treatment - an
 #             unambiguous key, and `dd` is not allow-listed either way).
 #             `>|` (noclobber-override) and `>&` (both-streams-to-a-FILE) are
 #             normalized to a plain `> ` in `evaluate_command`, BEFORE the
 #             `;`/`|`/`&` clause split, so their target lands in this same
-#             scan instead of being stranded across the split (round 6 -
-#             see `evaluate_command`'s own header comment for the mechanics).
+#             scan instead of being stranded across the split;
+#             see `evaluate_command`'s own header comment for the mechanics.
 #             ACCEPTED: `<` (a READ) denies exactly like `>` here - this
 #             fence cannot tell redirect direction apart from a bare
 #             operator any more reliably than it tells shell dialects apart;
@@ -88,14 +88,14 @@
 #             over-deny already accepted in this file.
 #          b. Resolve the command-position VERB, after skipping leading
 #             `VAR=val` assignments (any letter-case, `[A-Za-z_]
-#             [A-Za-z0-9_]*=`, round 5) and the common wrappers `command`/
+#             [A-Za-z0-9_]*=`) and the common wrappers `command`/
 #             `exec`/`builtin`/`nohup`/`time`/`nice` (transparent) and
 #             `env`/`sudo`/`timeout` (consume their own flags/duration
 #             first) - `_clause_head_idx`, adapted from graphify-fence.sh's
-#             wrapper walk (HIMMEL-621). Wrappers may chain. `git commit`
+#             wrapper walk. Wrappers may chain. `git commit`
 #             names no target file at the git-hook-routing layer but IS a
 #             candidate here (see `c.` below - `commit` is not a read verb).
-#             As of round 5, `_check_git_hook_routing` (see the PLUS section
+#             `_check_git_hook_routing` (see the PLUS section
 #             below) resolves its own git-clause head through this same
 #             function, so `command git ...`/`env git ...`/`sudo git ...`/
 #             `timeout N git ...` are recognized as git clauses instead of
@@ -125,7 +125,7 @@
 #             `_git_is_read_only`; every other git verb, including bare
 #             `add`/`rm`/`commit`/`config` writes, is a candidate), and the
 #             interpreters `node`/`python`/`python3`/`bash`/`sh`/`pwsh`/
-#             `bun`/`deno` (round 5, `_interpreter_is_read_only`) - exempt
+#             `bun`/`deno` - exempt
 #             ONLY when executing a SCRIPT FILE, i.e. no inline-eval flag is
 #             present (consistent with the already-allowed `bash
 #             scripts/hooks/test-x.sh`); an inline-eval flag - node/bun/deno
@@ -154,12 +154,12 @@
 #             regression, not a bug - use `cat`/`grep` to inspect an
 #             enforcement file instead of `cp`-ing it out). Bare relative
 #             operands are candidates too regardless of `is_path_like` (the
-#             verb's own grammar already says it is a file operand - round 2
-#             fix, unchanged). A dash-prefixed token contributes only its
+#             verb's own grammar already says it is a file operand).
+#             A dash-prefixed token contributes only its
 #             INLINE value: PowerShell/long-option `-Path:X`/`-Path=X`/
 #             `--target-directory=X` (`_ps_inline_value`, first `:`/`=`
 #             after the leading dash) and the `cp`/`install` GLUED short
-#             flag `-tDIR` (no separator - GNU grammar, round 4). The SPACE
+#             flag `-tDIR`. The SPACE
 #             forms (`-t DIR`, `--target-directory DIR`, `-Path VALUE`, ...)
 #             need no special handling: the un-dashed value token gets
 #             classified on its own next iteration regardless of which flag
@@ -168,7 +168,7 @@
 #             `mv`'s source does, without a PowerShell-specific dispatch.
 #             `-Value`/`-Value:x`/`-Value=x` (any case, space form skips its
 #             value token too) are skipped everywhere, not just for three
-#             named PowerShell cmdlets (round-3b's fix, generalized): that
+#             named PowerShell cmdlets: that
 #             parameter name conventionally holds literal CONTENT being
 #             written, not a target - `Set-Content /tmp/ok.txt -Value
 #             scripts/hooks/a.sh` still writes only `/tmp/ok.txt`. `-Value`
@@ -191,13 +191,13 @@
 #        file (an included config file can itself set `core.hooksPath`). A
 #        real `--get`/`--get-all` token anywhere in the clause is a read
 #        carve-out and is allowed. Every token in the clause is passed
-#        through `_strip_wrap` before this match (round-3b CR fix): a
+#        through `_strip_wrap` before this match: a
 #        quoted key - `git -c 'core.hooksPath=X' commit`,
 #        `git config "core.hooksPath" X` - would otherwise arrive as one
 #        token still carrying its surrounding quote chars and never match
 #        the bare key; the `--get`/`--get-all` carve-out check is stripped
 #        the same way.
-#        PLUS one more non-file shape, round 7: process substitution
+#        PLUS one more non-file shape: process substitution
 #        (`>(...)`/`<(...)`) with a PROVEN-READ-ONLY outer verb previously
 #        slipped past the whole model - `echo x > >(tee scripts/hooks/a.sh)`
 #        and `cat foo > >(tee scripts/hooks/a.sh)` both allowed, because the
@@ -208,7 +208,7 @@
 #        is the procsub opener itself (`>(tee`), not the writer buried inside
 #        it. `_clause_has_procsub` scans every token of the clause for a
 #        bare `>(` or `<(` substring; if found, `_clause_has_enforcement_signal`
-#        (the same coarse substring scan round 5 added for interpreter
+#        (the same coarse substring scan used for interpreter
 #        inline-eval, `4.c` above) runs over the clause's RAW text and denies
 #        on a hit - UNCONDITIONALLY, before the verb is even resolved, so no
 #        outer-verb exemption (read-only allow-list OR interpreter) can short
@@ -226,15 +226,15 @@
 # load-bearing backstop for these, same posture as the sibling fences):
 #   - `git apply` / `patch`: the target path lives inside the diff BODY, not
 #     as a command token - not statically detectable.
-#   - inline interpreter writers (`python -c "..."`, `node -e "..."`): round
-#     5 (`_clause_has_enforcement_signal`, see `4.c` above) denies these when
+#   - inline interpreter writers (`python -c "..."`, `node -e "..."`):
+#     (`_clause_has_enforcement_signal`, see `4.c` above) denies these when
 #     the eval string contains an enforcement-path signal as a literal
 #     substring, but a target path assembled via STRING CONCATENATION inside
 #     the eval (`'scripts/' + 'hooks/' + name`, `os.path.join(...)`) never
 #     appears as one contiguous substring and is not caught - the target is
 #     inside a quoted/computed string, not a bare token, so this remains an
-#     accepted residual gap, narrower than before round 5 but not closed.
-#   - process substitution (`>(...)`/`<(...)`) is COVERED as of round 7 (see
+#     accepted residual gap, narrow but not closed.
+#   - process substitution (`>(...)`/`<(...)`) is COVERED (see
 #     the `PLUS` section after `4.`'s git hook-routing shape-deny above) via
 #     the same coarse `_clause_has_enforcement_signal` substring scan as the
 #     interpreter inline-eval check, and carries the identical residual: a
@@ -272,16 +272,16 @@
 #     `includeif.*`) is SHAPE-detected (git/git.exe command-position token
 #     + a matching config-key token), not file-detected - a value spread
 #     across an unusual quoting form could evade the scan. (A single layer
-#     of surrounding quotes on the key token IS stripped before matching,
-#     round-3b; a wrapper ahead of the git token - `command`/`env`/`sudo`/
-#     `timeout`/... - is resolved via `_clause_head_idx`, round 5, closing
+#     of surrounding quotes on the key token IS stripped before matching;
+#     a wrapper ahead of the git token - `command`/`env`/`sudo`/
+#     `timeout`/... - is resolved via `_clause_head_idx`, closing
 #     that half of the gap - see `4.` above; multi-layer or otherwise
 #     unusual quoting, or a wrapper this fence does not recognize, remains a
 #     gap.)
 #
-# Cross-drive fail-closed (HIMMEL-845): a Windows drive-RELATIVE `X:tail` token
+# Cross-drive fail-closed: a Windows drive-RELATIVE `X:tail` token
 # resolves against Windows' PER-DRIVE current directory for X, not the process
-# cwd, so HIMMEL-808's cwd anchor is exact only when the cwd is itself on drive
+# cwd, so the cwd anchor is exact only when the cwd is itself on drive
 # X. `classify_target` now consults `_cross_drive_relative` FIRST and classifies
 # the token as a `cross-drive` DENY unless its drive letter is provably the
 # cwd's. Same-drive `X:tail` anchors exactly as before; drive-ROOTED `X:/tail`
@@ -339,8 +339,8 @@ _on_exit() {
 _init_paths() {
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     POLICY="${LESSON_FENCE_POLICY:-$SCRIPT_DIR/enforcement-paths.json}"
-    # HIMMEL-2610: guard_is_long_abbrev (GNU getopt_long-style unambiguous
-    # long-option abbreviation matching, the same rule HIMMEL-2592 used in
+    # guard_is_long_abbrev (GNU getopt_long-style unambiguous
+    # long-option abbreviation matching, the same rule used in
     # block-write-into-main-checkout.sh) is shared via lib.sh rather than
     # forked, so _clause_head_idx's wrapper arms below can recognize an
     # abbreviated `env --u`/`timeout --k`/`sudo --u` the same as the full
@@ -378,7 +378,7 @@ _abs() {
     local p; p="$(_strip_wrap "$1")"
     local base="${2:-$PWD}"
     # Backslashes -> forward slashes BEFORE the absolute/relative split
-    # (HIMMEL-808): on POSIX a backslash-form target ('\tmp\x' or 'C:\x')
+    # on POSIX a backslash-form target ('\tmp\x' or 'C:\x')
     # matches neither /* nor [A-Za-z]:* below, gets anchored to cwd, and
     # normalizes to a non-enforcement path -> allow. Windows-payload parity
     # on every host; fail-closed for the rare POSIX filename containing a
@@ -394,13 +394,13 @@ _abs() {
         [A-Za-z]:/*) : ;;             # Windows drive-ROOTED absolute (C:/...)
         [A-Za-z]:*)  p="$base/${p#?:}" ;;
                      # Windows drive-RELATIVE (C:foo = foo relative to the
-                     # cwd on drive C). Codex-adv HIMMEL-808: the old
+                     # cwd on drive C). The old
                      # [A-Za-z]:* arm classified this absolute, and
                      # _normalize mangled it into a synthetic non-repo path
                      # -> allow. Anchor to the payload cwd instead — exact
                      # when cwd is on that drive (the attack shape), and a
                      # fail-closed lexical approximation otherwise.
-                     # HIMMEL-845: that "approximation" was NOT fail-closed - a
+                     # that "approximation" was NOT fail-closed - a
                      # CROSS-drive token anchored here normalized outside the
                      # repo and ALLOWED. This arm is now only ever reached for a
                      # token whose drive is PROVEN to be the cwd's drive (where
@@ -459,8 +459,7 @@ _drive_of() {
 # against <base>. Parity twin of graphify-fence.sh's _cross_drive_relative -
 # keep the two in lockstep.
 #
-# HIMMEL-845 (LIVE FAIL-OPEN, found empirically during the HIMMEL-809 CR):
-# HIMMEL-808 closed the drive-relative hole by ANCHORING `X:tail` to the payload
+# # The drive-relative hole is closed by ANCHORING `X:tail` to the payload
 # cwd (`_abs`'s `[A-Za-z]:*` arm). That anchor is exact ONLY when the cwd is
 # itself on drive X. Windows keeps a SEPARATE current directory PER DRIVE (the
 # hidden `=C:`/`=D:` environment variables), so `D:tail` from a process whose
@@ -504,7 +503,7 @@ _cross_drive_relative() {
 
 # is_path_like <stripped-token> -> 0 if the token looks like a filesystem
 # path (NOT a URL). Verbatim from graphify-fence.sh. No write-target scan
-# position in this fence gates on it any more (round-3 CR fix - a bare
+# position in this fence gates on it any more (a bare
 # word IS a candidate in a known write-target position; see the `4.`
 # header note) - kept as a filter for a future scan of tokens whose role
 # is NOT yet known.
@@ -550,14 +549,13 @@ _nearest_toplevel() {
 
 ENTRY_MATCH=(); ENTRY_VALUE=(); ENTRY_VALUE_LC=(); ENTRY_CLASS=(); ENTRY_WHY=(); ENTRY_COUNT=0
 
-# Judge J1298E C1 (Critical, main DENY -> effective head ALLOW via timeout):
-# every per-clause scan loop below (classify_target's basename/prefix loops,
-# _clause_has_enforcement_signal's raw/normalized loops) used to lower each
-# ENTRY_VALUE with a fresh `_lc` call - a `printf | tr` FORK - on every
-# clause, so the fork cost scaled with ENTRY_COUNT * clauses-in-command
+# Forking `_lc` (a `printf | tr` FORK) to lower each ENTRY_VALUE on every
+# clause (classify_target's basename/prefix loops,
+# _clause_has_enforcement_signal's raw/normalized loops) would scale the
+# fork cost with ENTRY_COUNT * clauses-in-command
 # instead of ENTRY_COUNT alone. A padded command with hundreds of cheap
-# env/sudo clauses (`sudo true x; ` xK) drove that product past the 15s
-# PreToolUse hook timeout, which fails OPEN. Fix: lower every ENTRY_VALUE
+# env/sudo clauses (`sudo true x; ` xK) could then drive that product past the 15s
+# PreToolUse hook timeout, which fails OPEN. So every ENTRY_VALUE is lowered
 # ONCE here, at policy-load time, into ENTRY_VALUE_LC - every per-clause
 # loop below reads the cached value instead of re-forking.
 _cache_entry_value_lc() {
@@ -592,7 +590,7 @@ load_policy() {
 classify_target() {
     local raw="$1" cwd="${2:-$PWD}"
     local ap ap_lc base_lc i v_lc
-    # HIMMEL-845, FIRST (before _abs ever anchors): a drive-RELATIVE `X:tail`
+    # a drive-RELATIVE `X:tail`
     # token whose drive is not provably the cwd's drive resolves against
     # Windows' per-drive cwd for X, which this fence cannot see. _abs would
     # anchor it to the payload cwd and hand back a synthetic path that
@@ -680,7 +678,7 @@ _check_target() {
 # _redirect_target_in_token <token> -> echoes the target substring after the
 # FIRST unquoted redirection operator found ANYWHERE inside the token (not
 # just at its start), or returns 1 with no output if the token carries no
-# such operator. This closes the glued-redirect gap (round 4): this fence's
+# such operator. This closes the glued-redirect gap: this fence's
 # word-splitter (like graphify-fence's) only splits on whitespace, so a real
 # shell's own `>`/`<` metacharacter-splitting never happens here -
 # `echo x>scripts/hooks/a.sh` arrives as ONE token (`x>scripts/hooks/a.sh`),
@@ -712,11 +710,9 @@ _is_all_digits() {
 # _is_standalone_fd_redirect <token> -> 0 iff the token IS EXACTLY an
 # fd-prefixed redirect operator with nothing glued after it (`N>`/`N>>` for
 # ANY number of digits N - `5>`, `10>`, `123>>`, ...), i.e. the standalone
-# form whose target is the NEXT token. Round-5 CR fix (panel codex-1,
-# CRITICAL): the standalone-token case in `_scan_redirects` previously
-# matched fd prefixes via the glob char class `[0-9]`, which matches exactly
+# form whose target is the NEXT token. A glob char class `[0-9]` matches exactly
 # ONE character, so a realistic multi-digit fd (`10>`, well past the
-# standard 0/1/2) fell through to the glued-token fallback
+# standard 0/1/2) would fall through to the glued-token fallback
 # (`_redirect_target_in_token`), which extracts an EMPTY target for a token
 # with nothing after its own operator - silently dropping the actual target
 # (the NEXT token) from consideration entirely, so `cat file 10>
@@ -753,15 +749,12 @@ _is_standalone_fd_redirect() {
 # is written - because this fence cannot tell redirect direction apart from
 # a bare operator any more reliably than it can tell shell dialects apart;
 # see the header's over-blocking-is-safe posture.
-# J1298F-followup (found while verifying codex-1): this runs FIRST in
+# This runs FIRST in
 # process_clause_for_write, unconditionally, on the full token array, calling
-# `_is_standalone_fd_redirect`/`_redirect_target_in_token` per token with no
-# deadline check at all - timing-verified as the ACTUAL dominant cost for a
-# K=20000 padding-token clause (~24s alone, dwarfing every fork-eliminated
-# loop below it) even after `_clause_head_idx`/`_check_git_hook_routing` were
-# fixed. Same class as J1298F C1/codex-1: an unbounded per-token loop with no
-# deadline check outruns the 15s hook timeout. Now checks the deadline every
-# iteration like the other per-token loops in this file.
+# `_is_standalone_fd_redirect`/`_redirect_target_in_token` per token, so it
+# checks the deadline every iteration like the other per-token loops in this
+# file: an unbounded per-token loop (K=20000 padding tokens cost ~24s here
+# alone) would outrun the 15s hook timeout, which fails open.
 REDIR_SKIP=()
 _scan_redirects() {
     local cwd="$1"; shift
@@ -807,8 +800,8 @@ _scan_redirects() {
 
 # _clause_head_idx <tok...> -> echoes the index of the command-position
 # verb, after skipping leading `VAR=val` assignments and the common
-# transparent/argument-eating command wrappers (round 4, adapted from
-# graphify-fence.sh's classify_clause wrapper walk, HIMMEL-621, trimmed to
+# transparent/argument-eating command wrappers (adapted from
+# graphify-fence.sh's classify_clause wrapper walk, trimmed to
 # the wrappers this fence's own accepted-limitations list calls out):
 # `command`/`exec`/`builtin`/`nohup`/`time`/`nice` consume no args of their
 # own; `env`/`sudo`/`timeout` consume their OWN flags (and, for `timeout`,
@@ -822,27 +815,25 @@ _scan_redirects() {
 # an accepted gap - see the header's ACCEPTED-limitations list. The
 # assignment pattern (`[A-Za-z_][A-Za-z0-9_]*=`) is checked here against the
 # already-lowered `s`, so uppercase/mixed-case names (`FOO=1 cat ...`)
-# matched even before round 5 - the round-5 fix (panel codex-2) widens the
-# character class anyway, as a defensive/self-documenting POSIX env-var-name
-# grammar (letter/underscore then word chars), not a case-insensitivity fix
-# that was already covered by the pre-lowering.
+# match; the character class is written as a defensive/self-documenting POSIX
+# env-var-name grammar (letter/underscore then word chars), not as a
+# case-insensitivity fix, which the pre-lowering already covers.
 #
-# HIMMEL-3757: `_bundle_value_at_end` and the case-sensitive short-option
-# matching it supported (HIMMEL-3658/HIMMEL-3659) were reverted from the
-# `env`/`sudo` arms below after judge J1298C found the replacement letter
-# sets opened 12 NEW main-DENY -> head-ALLOW gaps (`env -c`/`-U`, `sudo
+# The `env`/`sudo` arms below match short options case-insensitively; a
+# case-sensitive match (`_bundle_value_at_end`) is deliberately not used because the replacement letter
+# sets would open 12 NEW main-DENY -> head-ALLOW gaps (`env -c`/`-U`, `sudo
 # -d`/`-G`/`-H`/`-P`, each + `cat`). Head-index accuracy for these wrappers
-# is tracked as HIMMEL-3757, scoped so any future fix there can only ADD
-# denials relative to main.
+# is a known gap; any fix there may only ADD denials relative to the
+# current behaviour.
 #
-# J1298F-followup (codex-1, Important -> agreed): this used to fork
-# `_strip_wrap`+`_lc` per token in every loop below, exactly the shape J1298F
-# C1 fixed in `_env_split_string_used`/`_wrapper_is_env_or_sudo` - timing-
-# verified 56s/233s for K=8000/20000 padding tokens with no wrapper needed
+# This indexes the global `LC_TOK` array instead of forking
+# `_strip_wrap`+`_lc` per token in every loop below (as
+# `_env_split_string_used`/`_wrapper_is_env_or_sudo` do): a fork per token costs
+# 56s/233s for K=8000/20000 padding tokens with no wrapper needed
 # (this outer loop matches `nice` cheaply and runs unconditionally), both far
-# past the 15s hook timeout with zero deadline check anywhere in this
-# function. Now indexes the global `LC_TOK` array instead of forking, exactly
-# like `_env_split_string_used`/`_wrapper_is_env_or_sudo` - the CALLER must
+# past the 15s hook timeout, which fails open, so the loops also check the
+# deadline. Because it reads the global array,
+# the CALLER must
 # have already run `_lc_all` on this SAME token array first (an internal
 # `_lc_all` call here would double the cost instead of eliminating it: this
 # function always runs inside a `$(...)` command substitution, so a caller
@@ -866,7 +857,7 @@ _clause_head_idx() {
                 i=$((i+1)); continue ;;
             env)
                 i=$((i+1))
-                # HIMMEL-2610: `--u`/`--uns`/... are unambiguous GNU
+                # `--u`/`--uns`/... are unambiguous GNU
                 # abbreviations of env's only value-taking long option,
                 # --unset (empirically verified: `env --u FOO true` behaves
                 # identically to `env --unset FOO true`). The old literal
@@ -875,16 +866,14 @@ _clause_head_idx() {
                 # --unset's VALUE as the resolved verb - if that value is
                 # crafted to name a proven-read-only verb (e.g. `cat`), the
                 # real wrapped write command was never scanned at all.
-                # HIMMEL-3757: this arm's short-option matching was made
-                # case-sensitive (HIMMEL-3658) to recognize `-a`/`--argv0` as
-                # value-taking, but judge J1298C found the replacement letter
-                # set opened 2 NEW main-DENY -> head-ALLOW gaps (`-c`, `-U`)
-                # that main's case-insensitive match had covered by accident.
-                # Reverted to main's exact case-insensitive matching; env -a
-                # and this arm's other head-index gaps are tracked as
-                # HIMMEL-3757 (ADD-only denials from here). The separate flat
+                # Short-option matching in this arm is case-insensitive: matching case-
+                # sensitively (to recognize `-a`/`--argv0` as value-taking) would open 2 NEW
+                # main-DENY -> head-ALLOW gaps (`-c`, `-U`)
+                # that the case-insensitive match covers by accident. `env -a` and
+                # this arm's other head-index gaps are known; denials may only be ADDED.
+                # The separate flat
                 # `-S`/`--split-string` deny below (`_env_split_string_used`)
-                # is untouched by this revert.
+                # is independent of this matching.
                 while [ "$i" -lt "$n" ]; do
                     [ "$SECONDS" -ge "$MAX_EVAL_SECONDS" ] && break
                     w="${LC_TOK[$i]}"
@@ -906,7 +895,7 @@ _clause_head_idx() {
                 continue ;;
             timeout)
                 i=$((i+1))
-                # HIMMEL-2610: same shape as env's --unset above - --k/--s
+                # same shape as env's --unset above - --k/--s
                 # are unambiguous abbreviations of --kill-after/--signal
                 # (empirically verified: `timeout --k 5 10 true` behaves
                 # identically to `timeout --kill-after 5 10 true`).
@@ -930,7 +919,7 @@ _clause_head_idx() {
                 continue ;;
             sudo)
                 i=$((i+1))
-                # HIMMEL-2610: this arm's short flags never had a matching
+                # this arm's short flags never had a matching
                 # long-option literal at all (not even the full spelling),
                 # the same under-consumption shape as env/timeout above -
                 # `sudo --user cat cp x scripts/hooks/a.sh` fell through to
@@ -939,14 +928,11 @@ _clause_head_idx() {
                 # names per `sudo --help` on this station (-r/-t are
                 # SELinux-only and not compiled into this build, so those two
                 # are taken from upstream sudo.ws docs, unverified locally).
-                # HIMMEL-3757: this arm's short-option matching was made
-                # case-sensitive (HIMMEL-3659) to stop folding no-arg -H/-P
-                # onto value-taking -h/-p, but judge J1298C found the
-                # replacement letter set opened 4 NEW main-DENY ->
-                # head-ALLOW gaps (`-d`, `-G`, `-H`, `-P`). Reverted to
-                # main's exact case-insensitive matching; sudo -H/-P and this
-                # arm's other head-index gaps are tracked as HIMMEL-3757
-                # (ADD-only denials from here).
+                # Short-option matching in this arm is case-insensitive: matching case-
+                # sensitively (to stop folding no-arg -H/-P
+                # onto value-taking -h/-p) would open 4 NEW main-DENY ->
+                # head-ALLOW gaps (`-d`, `-G`, `-H`, `-P`). `sudo -H`/`-P` and this
+                # arm's other head-index gaps are known; denials may only be ADDED.
                 while [ "$i" -lt "$n" ]; do
                     [ "$SECONDS" -ge "$MAX_EVAL_SECONDS" ] && break
                     w="${LC_TOK[$i]}"
@@ -1030,14 +1016,14 @@ _git_is_read_only() {
 # the clause's tokens is an inline-eval flag for that interpreter family -
 # i.e. the interpreter is executing a SCRIPT FILE (the pre-existing exempt
 # case, e.g. `bash scripts/hooks/test-x.sh`), not evaluating an inline
-# string. Round-5 CR fix (codex-adv-1, HIGH): before this fix these
-# interpreters were UNCONDITIONAL allow-list members in `_verb_is_read_only`
-# ("running a script is a read of it"), which also silently exempted their
+# string. Making these interpreters UNCONDITIONAL allow-list members in
+# `_verb_is_read_only` ("running a script is a read of it") would also
+# silently exempt their
 # OWN inline-eval forms (`python -c "..."`, `node -e "..."`, `bash -c
 # "..."`, `pwsh -Command "..."`) - a write hidden inside a quoted argument
 # is invisible to `_operand_targets`' token-shaped scan regardless (the
 # token is code + quoting, not a clean path), so exempting the clause
-# outright meant NO check ever ran on it. An inline-eval flag now makes the
+# outright would mean NO check ever runs on it. An inline-eval flag makes the
 # interpreter NOT exempt (return 1); the caller (`process_clause_for_write`)
 # does not fall through to the generic per-token operand scan for these
 # verbs either (it would not catch the target, for the same quoting reason)
@@ -1049,18 +1035,18 @@ _git_is_read_only() {
 # characters - the raw-TEXT counterpart to `_normalize`'s path-SEGMENT
 # collapsing, for callers (below) that substring-scan whole clause text
 # rather than resolve a single path.
-# Judge J1298R N1 (Critical): the collapse above stopped at `//` and `/./ `
-# and never stripped backslashes, so `env -S 'tee scripts/x/../hooks/a.sh'`,
+# The collapse must go beyond `//` and `/./ ` and strip backslashes too,
+# or `env -S 'tee scripts/x/../hooks/a.sh'`,
 # a backslash-escaped `scripts/\hooks/a.sh`, and the same `../` hop against
-# `.claude/settings.json` all evaded the scan.
-# Judge J1298O C1 (Critical, NEW ALLOW vs main): `_clause_has_enforcement_signal`
-# matched the literal substring only, so a policy value written with a
-# single slash (`scripts/hooks/`) missed the identical write spelled
+# `.claude/settings.json` would all evade the scan.
+# `_clause_has_enforcement_signal` must not match the literal substring only:
+# a policy value written with a
+# single slash (`scripts/hooks/`) would miss the identical write spelled
 # `scripts//hooks/a.sh` or `scripts/./hooks/a.sh` - GNU coreutils resolve
 # both exactly as the plain path, so the fence must scan as if normalized
 # too. Text-level only (no filesystem access, no anchoring) since the
 # caller has no single resolved path to normalize.
-# /pr-check critic panel (codex-1, this branch): the `seg/../` loop below
+# /pr-check critic panel: the `seg/../` loop below
 # used to walk left-to-right and, on hitting an unresolvable leading `..`
 # (no real parent segment to consume), `break` out of the WHOLE loop rather
 # than skip just that one hop - so `env -S 'tee /../../../tmp/f
@@ -1141,26 +1127,26 @@ _interpreter_is_read_only() {
 # parseable" gap as `git apply`/`patch`'s diff-body target and `find
 # -exec`/`xargs`'s deferred arguments, called out in the header's ACCEPTED
 # section.
-# Judge J1298A C1 (Critical, NEW ALLOW vs main): checking the NORMALIZED
+# Checking the NORMALIZED
 # text alone is lossy - the `seg/../` collapse in `_normalize_scan_text`
 # deletes a policy signal that the raw text still carries verbatim (e.g.
 # `scripts/hooks/../` collapses to `scripts/`, erasing the `scripts/hooks/`
 # substring), while runtime string-slicing/parameter-expansion
 # (`${x%../}a.sh`, `d[:14]+'a.sh'`) reconstructs the real write target from
-# exactly that raw text. Fix: scan is a UNION, never a replacement - deny if
-# either the raw text (main's original check, unchanged) OR the normalized
+# exactly that raw text. So the scan is a UNION, never a replacement - deny if
+# either the raw text OR the normalized
 # text matches a policy value. Normalization can then only ADD denies
 # (catching `//`/`/./ ` spelling variants) and never remove one.
-# Judge J1298D C1 (Critical, main DENY -> effective head ALLOW via timeout):
-# the union above used to compute norm_lc UNCONDITIONALLY, before ever
-# trying the raw match, and `_normalize_scan_text`'s `seg/../` collapse is
-# quadratic in the number of `/../` hops (scratch/timing.sh: ~13.4s at
-# 16000 hops, ~19.5-20.5s at 20000, vs ~100ms on main) - past this fence's
+# The union above does not compute norm_lc UNCONDITIONALLY: it tries the raw
+# match first, because
+# `_normalize_scan_text`'s `seg/../` collapse is
+# quadratic in the number of `/../` hops (~13.4s at
+# 16000 hops, ~19.5-20.5s at 20000, vs ~100ms for the raw match) - past this fence's
 # 15s PreToolUse hook timeout, which fails OPEN (a timed-out command hook
 # does not block the tool call). A deny-worthy clause padded with enough
-# `a/../` hops could outrun the clock and run unblocked. Fix: (1) try the
-# raw match first and return immediately on a hit, so a clause main already
-# denies via raw text never reaches normalization at all; (2) bound
+# `a/../` hops could outrun the clock and run unblocked. So: (1) try the
+# raw match first and return immediately on a hit, so a clause the raw text
+# already denies never reaches normalization at all; (2) bound
 # normalization itself - a clause whose raw text is longer than
 # MAX_NORMALIZE_LEN skips normalization and denies outright (fail CLOSED),
 # since every caller of this function (procsub, env/sudo wrapper,
@@ -1208,7 +1194,7 @@ _deny_inline_eval() {
 }
 
 # _clause_has_procsub <tok...> -> 0 iff any token in the clause contains a
-# bare `>(` or `<(` - a process-substitution opener. Round 7 (see the `PLUS`
+# bare `>(` or `<(` - a process-substitution opener (see the `PLUS`
 # section after `4.`'s git hook-routing shape-deny, header): a
 # proven-read-only OUTER verb (`echo`/`cat`/`diff`/...) previously let a
 # writer hidden inside `>(...)` slip through, because the read-only
@@ -1238,7 +1224,7 @@ _deny_procsub() {
 
 # _deny_env_split_string <raw-clause-text> -> denies (exit 2), UNCONDITIONALLY,
 # any clause where `_env_split_string_used` fires - no enforcement-path-signal
-# match required. /pr-check critic panel (codex-1, this round): `-S`'s value is
+# match required. /pr-check critic panel: `-S`'s value is
 # CODE env itself word-splits and executes, not a clean operand - when that
 # value lands as a SINGLE token (a quoted argument, e.g. `env -S 'cp y a.sh'`),
 # `_clause_head_idx`'s old value-skip treatment of `-S` consumed the whole
@@ -1259,11 +1245,11 @@ _deny_env_split_string() {
 }
 
 # _lc_all <tok...> -> sets the global array LC_TOK to the case-lowered form
-# of each token, in ONE fork total no matter how many tokens - J1298F C1
-# (Critical): `_env_split_string_used`/`_wrapper_is_env_or_sudo` used to fork
+# of each token, in ONE fork total no matter how many tokens:
+# `_env_split_string_used`/`_wrapper_is_env_or_sudo` would otherwise fork
 # `_lc`+`_strip_wrap` (a `$(...)` subshell each, `_lc` forking `tr` on top)
 # for EVERY token of EVERY clause, so a single padded clause (K tokens)
-# forked ~2-3x K processes, outrunning the 15s hook budget on inputs main
+# would fork ~2-3x K processes, outrunning the 15s hook budget on inputs main
 # denied in seconds (the between-clause `MAX_EVAL_SECONDS` check cannot reach
 # inside a clause). Newline is a safe batch separator here: clause tokens
 # always arrive whitespace-free (`evaluate_command`'s `set -- $clause`
@@ -1285,14 +1271,14 @@ _lc_all() {
 # token anywhere in the clause is a short-option cluster containing `S`
 # (`-S`, glued `-Stee...`, bundled `-uS`/`-iS'...'` - GNU env accepts all
 # these spellings identically) or a long-option abbreviation of
-# `--split-string`. Console ruling (pr-check round 4, codex-1 Critical):
+# `--split-string`. Console ruling:
 # the prior version walked only tok[0..head_idx-1], the wrapper-prefix range
 # `_clause_head_idx` resolves - for a NESTED wrapper (`env env -S '...'`)
 # that walk resolves the FIRST `env`'s option region and treats the SECOND
 # `env` token as the already-resolved verb, so the real `-S` sitting past it
 # was never inspected and the clause fell through to `_operand_targets`
 # unguarded. Fourth Critical in a row against hop/walk-based detection of
-# this flag (J1298A -> J1298B -> pr-check-round-3's codex-1 -> this one) -
+# this flag -
 # per ruling, this is no longer a wrapper walk at all: it is a flat,
 # unconditional scan of every token in the clause, with no head_idx bound,
 # no hop count and no per-option value-skip logic (dropping the old
@@ -1303,16 +1289,16 @@ _lc_all() {
 # clause that happens to spell an `-S`-shaped token (e.g. `env FOO=bar grep
 # -S x`) now also denies, coarser than the walk it replaces - accepted for
 # the same reason `_deny_env_split_string`'s own trade-off note gives.
-# J1298F C1 (Critical, TIMING-VERIFIED: main DENY -> effective head ALLOW via
-# a >15s hook timeout): this used to fork `_strip_wrap`+`_lc` (a `$(...)`
-# subshell each, `_lc` forking `tr` on top of that) for EVERY token, and the
+# Reads the global `LC_TOK` array that `_lc_all` (see its own comment) computes
+# ONCE per clause in the caller - zero forks in this loop. Forking
+# `_strip_wrap`+`_lc` (a `$(...)` subshell each, `_lc` forking `tr` on top) for EVERY token, with the
 # whole-command deadline (`MAX_EVAL_SECONDS`, below `evaluate_command`) only
-# checks BETWEEN clauses - so a single padded clause (K tokens, no wrapper
-# needed at all: this runs unconditionally on every clause) forked ~2-3x K
-# processes with the deadline never able to reach it. Now reads the global
-# `LC_TOK` array `_lc_all` (see its own comment) computed ONCE per clause by
-# the caller - zero forks in this loop - and checks the deadline itself every
-# iteration ($SECONDS is a bash builtin, no fork), so an oversized single
+# checking BETWEEN clauses, would let a single padded clause (K tokens, no wrapper
+# needed at all: this runs unconditionally on every clause) fork ~2-3x K
+# processes with the deadline never able to reach it (a >15s hook timeout
+# fails OPEN), so the loop checks
+# the deadline itself every
+# iteration ($SECONDS is a bash builtin, no fork) and an oversized single
 # clause fails closed instead of outrunning the between-clause check.
 _env_split_string_used() {
     local -a t=("$@")
@@ -1352,19 +1338,17 @@ _deny_wrapper_enforcement_signal() {
 # _wrapper_is_env_or_sudo <head_idx> <tok...> -> 0 iff any token in
 # tok[0..head_idx-1] (the wrapper-prefix range `_clause_head_idx` walks) is,
 # once stripped and lowered, exactly `env` or `sudo`.
-# Judge J1298R (Critical, ruling item 1): every prior fix in this file
-# (round after round of HIMMEL-2610/HIMMEL-3632/HIMMEL-3658/HIMMEL-3659/
-# J1298O) patched `_clause_head_idx`'s env/sudo option-cluster walk to
-# resolve one more bundled/glued/case-folded shape correctly - a losing
+# Patching `_clause_head_idx`'s env/sudo option-cluster walk to
+# resolve one more bundled/glued/case-folded shape correctly is a losing
 # enumeration game, since a NEW option-cluster shape (N2: `-Sp`/`-Np`/`-Su`/
 # `-SD`/`-NC`; N3: glued bundled `-iS'...'`) always resolves the walk to
 # *some* verb, correct or not, and the option tables must never grow again
-# (ruling item 2). This check does not try to resolve the wrapper's options
+# This check does not try to resolve the wrapper's options
 # at all: it fires on the mere PRESENCE of `env`/`sudo` anywhere in the
 # wrapper range, independent of whether the cluster walk parsed the rest
 # correctly, and pairs with `_clause_has_enforcement_signal`'s raw-text scan
 # below exactly like `_env_split_string_used` does - no parse result can
-# turn a hit here into an ALLOW. Accepted cost (ruling item 1, pinned in
+# turn a hit here into an ALLOW. Accepted cost (pinned in
 # tests): a READ through env/sudo of a path matching a policy signal (e.g.
 # `sudo cat scripts/hooks/a.sh`) now DENIES even though `cat` is proven
 # read-only and the cluster walk resolves it correctly - stricter than main,
@@ -1373,7 +1357,7 @@ _deny_wrapper_enforcement_signal() {
 # sudo cat ...`) only routes the clause to the raw-text scan unnecessarily -
 # never a new gap, the same false-positive-is-safe reasoning already used
 # for `_env_split_string_used` above.
-# J1298F C1: same fork-elimination and in-loop deadline as
+# Same fork-elimination and in-loop deadline as
 # `_env_split_string_used` above (see its comment) - reads global `LC_TOK`
 # instead of forking `_lc`/`_strip_wrap` per token.
 _wrapper_is_env_or_sudo() {
@@ -1407,7 +1391,7 @@ _wrapper_is_env_or_sudo() {
 # `-execdir` is present - those turn a pure traversal into a mutator), and
 # `git` (delegated to _git_is_read_only, above). The interpreters
 # (`node`/`python`/`python3`/`bash`/`sh`/`pwsh`/`bun`/`deno`) are NOT static
-# members of this function's allow-list as of round 5 (codex-adv-1) - they
+# members of this function's allow-list - they
 # are clause-conditional too, via `_interpreter_is_read_only`, because a
 # bare binary membership test cannot tell "executing a script FILE" (a
 # read) apart from "evaluating an inline string" (which can write via a
@@ -1458,17 +1442,17 @@ _verb_is_read_only() {
 # candidate, scanned uniformly instead of re-deriving which argument
 # positions a given verb writes to. Skips any index already consumed by
 # _scan_redirects (REDIR_SKIP). A plain non-dash token is a candidate as-is
-# (bare words included, no is_path_like gate - unchanged from round 2/3). A
+# A
 # dash-prefixed token contributes its INLINE value only, via two forms: the
 # PowerShell/long-option `-Path:X`/`-Path=X`/`--target-directory=X`
 # convention (`_ps_inline_value`), and the cp/install GLUED short flag
-# `-tDIR` (no separator at all - GNU cp/install's own grammar, kept from
-# round 2/12 alongside the SPACE form `-t DIR`, which needs no special
+# `-tDIR` (no separator at all - GNU cp/install's own grammar, kept
+# alongside the SPACE form `-t DIR`, which needs no special
 # handling here because the un-dashed value token gets classified on its own
 # next iteration regardless of which flag preceded it). `-Value`/
 # `-Value:x`/`-Value=x` (case-insensitive, space form skips the following
 # value token too) are skipped outright everywhere, not just for the three
-# named PowerShell content-writer cmdlets (round-3b's fix, generalized):
+# named PowerShell content-writer cmdlets:
 # that parameter name conventionally holds literal CONTENT being written,
 # not a target, and misreading it denies a perfectly safe write whose real
 # target is some other non-enforcement file.
@@ -1498,17 +1482,17 @@ _operand_targets() {
     done
 }
 
-# process_clause_for_write <cwd> <clause-raw> <tok...> -> the round-4
+# process_clause_for_write <cwd> <clause-raw> <tok...> -> the
 # INVERTED Bash/PowerShell classifier for one already-split clause. See the
 # `4.` header section for the full model; in short: (1) redirect/`of=`
-# targets always deny, verb-independent (_scan_redirects); (1b) round 7 - if
+# targets always deny, verb-independent (_scan_redirects); (1b) if
 # ANY token carries a process-substitution opener (`>(`/`<(`), the coarse
 # `_clause_has_enforcement_signal` scan runs over the raw clause text and
 # denies on a hit, UNCONDITIONALLY, before the verb is even resolved - this
 # must run before step (4)'s read-only-verb short-circuit, since that is
 # exactly the shape that let a writer hidden inside `>(...)` slip past a
 # proven-read-only outer verb (`echo`/`cat`); (2) resolve the command-position
-# verb, after wrapper stripping (_clause_head_idx); (2a) J1298R - if the
+# verb, after wrapper stripping (_clause_head_idx); (2a) if the
 # wrapper-prefix range names `env`/`sudo` at all, ANYWHERE, the same
 # `_clause_has_enforcement_signal` raw-text scan runs and denies on a hit,
 # UNCONDITIONALLY, regardless of whether the option-cluster walk resolved
@@ -1526,11 +1510,11 @@ _operand_targets() {
 # unanalysable wrapper is this fence's house style already, same as
 # `_deny_procsub`/`_deny_inline_eval` above); (3)
 # if that verb is an interpreter, delegate to `_interpreter_is_read_only` +
-# `_clause_has_enforcement_signal` (round 5 - see those functions); (4) if
+# `_clause_has_enforcement_signal`; (4) if
 # that verb is otherwise proven read-only, allow outright - its operands are
 # reads; (5) otherwise scan every operand as a write-target candidate
 # (_operand_targets). <clause-raw> is the clause's own pre-tokenization text
-# (round 5 addition), needed by steps (1b), (2a), (2b) and (3) - a
+# needed by steps (1b), (2a), (2b) and (3) - a
 # process-substitution, split-string or inline-eval writer's target is not a
 # clean token, so those steps scan the raw text instead of the split
 # <tok...> array.
@@ -1547,22 +1531,21 @@ process_clause_for_write() {
         return 0
     fi
 
-    # J1298F C1: lower every token ONCE per clause (one fork total via
+    # Lower every token ONCE per clause (one fork total via
     # _lc_all), not once per token per check below - see _lc_all's comment.
     _lc_all "${tok[@]}"
 
     local head_idx; head_idx="$(_clause_head_idx "${tok[@]}")"
 
-    # J1298R ruling item 1: this check is UNCONDITIONAL - it runs whether or
+    # This check is UNCONDITIONAL - it runs whether or
     # not the option-cluster walk above resolved the wrapper correctly, and a
-    # miss falls through unchanged to the existing checks below (ruling item
-    # 2: the parser stays an ADDITIONAL deny path, never grown further).
+    # miss falls through unchanged to the existing checks below (the
+    # parser stays an ADDITIONAL deny path, never grown further).
     if _wrapper_is_env_or_sudo "$head_idx" "${tok[@]}"; then
         _clause_has_enforcement_signal "$clause_raw" && _deny_wrapper_enforcement_signal "$clause_raw"
     fi
 
-    # Console-authorized redesign (pr-check round 3, codex-1 Critical; round 4,
-    # codex-1 Critical on the nested-wrapper gap): a genuine `env -S`/
+    # A genuine `env -S`/
     # `--split-string` clause denies UNCONDITIONALLY here, not gated on
     # `_clause_has_enforcement_signal`'s raw-text scan and not bounded by
     # `head_idx`/the wrapper walk - `_env_split_string_used` now scans every
@@ -1607,7 +1590,7 @@ process_clause_for_write() {
 # `--get`/`--get-all` token anywhere in the clause is a read carve-out and
 # is allowed. (Named `_check_git_hook_routing`, not `..._hookspath`, now
 # that it covers include-based routing too.) Every token is passed through
-# `_strip_wrap` before matching (round-3b CR fix): the tokeniser is
+# `_strip_wrap` before matching: the tokeniser is
 # quote-naive, so a quoted key - `git -c 'core.hooksPath=X' commit` or
 # `git config "core.hooksPath" X` - arrives as a single token still
 # carrying its surrounding quote chars; without stripping them first the
@@ -1632,7 +1615,7 @@ _check_git_hook_routing() {
     local n=${#tok[@]}
     [ "$n" -gt 0 ] || return 0
 
-    # J1298F-followup (codex-1): this runs unconditionally on every clause,
+    # This runs unconditionally on every clause,
     # BEFORE process_clause_for_write's own `_lc_all` call - populate LC_TOK
     # here too (one fork total for this call, not per-token) so both
     # `_clause_head_idx` and the per-token loop below stay fork-free and
@@ -1674,7 +1657,7 @@ _check_git_hook_routing() {
 # evaluate_command <command-string> <cwd> -> split into clauses on ; | & and
 # newline (over-splitting is safe: classification only ever tightens toward
 # deny on a spurious extra token, never loosens); evaluate each clause.
-# Round-6 CR fix: `>|` (noclobber-override write) and `>&` (redirect both
+# `>|` (noclobber-override write) and `>&` (redirect both
 # streams to a FILE) each carry a `;|&` split metachar as their SECOND
 # character, so splitting on that metachar first stranded the `>` at the end
 # of clause 1 (no target, since the target sat on the far side of the split)
@@ -1692,15 +1675,14 @@ _check_git_hook_routing() {
 # reduce to the existing `&>` handling: `&>|` -> `&> ` after this step, then
 # the `&` split below produces the same clause shape `&>` already denies.
 #
-# Judge J1298E C1 (Critical, main DENY -> effective head ALLOW via timeout):
-# the per-entry-fork fix above (`ENTRY_VALUE_LC`) removes the QUADRATIC-ish
+# The per-entry-fork fix above (`ENTRY_VALUE_LC`) removes the QUADRATIC-ish
 # blowup for a large ENTRY_COUNT, but the per-clause scan cost (still real,
 # still nonzero: option-cluster walks, wrapper/verb classification, operand
 # scans) is multiplied by the NUMBER of clauses a padded command can carry
 # (`sudo true x; ` xK), and that product is unbounded by anything in this
 # loop - main pays the same per-clause cost via its own inline-eval scan, so
-# this is a pre-existing class this fence widens, not a new one (per the
-# judge's own timing table). A whole-command wall-clock deadline closes
+# this is a pre-existing class this fence widens, not a new one.
+# A whole-command wall-clock deadline closes
 # BOTH: any command whose clause-by-clause evaluation is still running past
 # MAX_EVAL_SECONDS is denied outright, fail-closed, well under this fence's
 # 15s PreToolUse hook timeout (which fails OPEN on a real timeout) - a
@@ -1710,7 +1692,7 @@ _check_git_hook_routing() {
 MAX_EVAL_SECONDS=8
 evaluate_command() {
     local cmd="$1" cwd="$2" tmp clause
-    # J1298F M2: bash IMPORTS $SECONDS from the environment (`env
+    # bash IMPORTS $SECONDS from the environment (`env
     # SECONDS=-100000 bash -c 'echo $SECONDS'` prints -100000), so a caller
     # that exports SECONDS before invoking this hook could otherwise stall
     # the deadline arbitrarily. Reset it here, unconditionally, so the
@@ -1788,7 +1770,7 @@ case "$tool_name" in
         exit 0
         ;;
     apply_patch)
-        # Codex's create/edit envelope (HIMMEL-2170): no tool_input.file_path
+        # Codex's create/edit envelope: no tool_input.file_path
         # at all — every target lives inside "*** Add/Update/Delete File:"
         # lines in tool_input.command instead (see harness-compat.md's
         # empirical event/tool-name matrix). Extract every such target and
@@ -1822,7 +1804,7 @@ case "$tool_name" in
                 '*** Add File: '*)    targets="${targets}${ap_line#'*** Add File: '}"$'\n'; _ap_prev="" ;;
                 '*** Update File: '*) targets="${targets}${ap_line#'*** Update File: '}"$'\n'; _ap_prev="update" ;;
                 '*** Delete File: '*) targets="${targets}${ap_line#'*** Delete File: '}"$'\n'; _ap_prev="" ;;
-                # HIMMEL-2170 CR round 1: a rename/move destination. Per the
+                # a rename/move destination. Per the
                 # official apply_patch grammar (verified against
                 # codex-rs/apply-patch/src/parser.rs,
                 # openai/codex@18b9e7fd9e3f6670cc4f300338e44050b2c301e4 -
@@ -1834,7 +1816,7 @@ case "$tool_name" in
                 # ALLOWED source could move it onto a FENCED destination path
                 # that is never classified.
                 #
-                # CodeRabbit round (HIMMEL-2170): the grammar makes Move-to
+                # The grammar makes Move-to
                 # valid ONLY immediately after an Update File line - a
                 # standalone/misplaced Move-to (no Update immediately before
                 # it) is not a real target at all, it is malformed patch

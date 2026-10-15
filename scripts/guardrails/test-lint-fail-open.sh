@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-lint-fail-open.sh — suite for lint-fail-open.sh (HIMMEL-1776).
+# test-lint-fail-open.sh — suite for lint-fail-open.sh.
 #
 # Usage: bash scripts/guardrails/test-lint-fail-open.sh
 #
@@ -13,7 +13,7 @@
 #   2. Assert the lint passes on the REAL guard surfaces as they stand —
 #      this is the standing assertion every future full-suite run re-makes:
 #      instance six of "unknown treated as benign" cannot merge quietly.
-#   3. Assert the WIRING (round 2, codex-adv-1): the lint is registered as
+#   3. Assert the WIRING: the lint is registered as
 #      a pre-commit gate whose files: scope matches every protected path.
 #      Private Actions are OFF by design, so pre-commit is the only
 #      private-path surface that runs this lint — a green private PR is
@@ -123,7 +123,7 @@ else
     fail "name=value path: expected exit 1 naming unreadable-config, got $LINT_RC" "$(cat "$OUT")"
 fi
 
-# HIMMEL-4137: an `ident=` directory makes `a=b/x.sh` an awk assignment too.
+# an `ident=` directory makes `a=b/x.sh` an awk assignment too.
 mkdir -p "$NV_DIR/a=b"
 cp "$FIX/instance1-unreadable-denylist.sh.fxt" "$NV_DIR/a=b/x.sh.fxt"
 LINT_RC=$(cd "$NV_DIR" && bash "$LINT" "a=b/x.sh.fxt" > "$OUT" 2>&1 </dev/null; echo "$?")

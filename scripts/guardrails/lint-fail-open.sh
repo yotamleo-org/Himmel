@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/guardrails/lint-fail-open.sh — HIMMEL-1776
+# scripts/guardrails/lint-fail-open.sh
 #
 # Lints the SHAPE behind "unknown treated as benign". The five instances on
 # the ticket were one missing convention implemented wrong five times: a
@@ -29,8 +29,7 @@
 #                       MODEL* variable inside a `*)` case arm — arm member-
 #                       ship tracked from the `*)` opener through the closing
 #                       `;;`, so the conventional MULTILINE arm counts, and
-#                       the literal parsed double- OR single-quoted (round 2,
-#                       codex-adv-2) — with no comparison against that
+#                       the literal parsed double- OR single-quoted — with no comparison against that
 #                       literal elsewhere in the file (the hard-deny wiring).
 #                       Instance-2 shape: an unresolvable endpoint fell
 #                       through to "anthropic-custom", which a wildcard
@@ -69,7 +68,7 @@
 # COMPARISON exists (and, for pct-unguarded, that it textually precedes the
 # risky use at no deeper a brace nesting), but not that the branch actually
 # DENIES -- a comparison that only logs, or a same-depth sibling if/else,
-# can still satisfy the lint (panel round 4, codex-1 / round 2, codex-3).
+# can still satisfy the lint.
 # True control-flow/dominance analysis needs a real parser; a keyword-list
 # attempt at "does this branch deny" was tried and reverted -- it does not
 # generalize across this repo's several deny-wrapper idioms (deny(),
@@ -79,11 +78,11 @@
 # expression occurs SOMEWHERE in the function, not that its result is what
 # actually reaches the flagged comparison -- `const x = id ?? null;` earlier
 # in the function does not prove a later `id >= N` (the ORIGINAL, uncoalesced
-# identifier) is guarded (panel round 7, codex-2). Same real-parser ceiling
+# identifier) is guarded. Same real-parser ceiling
 # as the deny-verification gap above; not fixed for the same reason. The
 # pct-unguarded block scanner also only recognizes column-0 `function NAME(`
 # declarations -- arrow functions and class methods on the .mjs surfaces are
-# not scanned at all (panel round 7, codex-3, suggestion).
+# not scanned at all.
 #
 # Usage:
 #   scripts/guardrails/lint-fail-open.sh            # lint the guard surfaces
@@ -98,7 +97,7 @@
 # Exit: 0 clean · 1 findings · 2 misconfiguration (unknown extension, missing
 #       file, or a default-surface scan that found nothing to scan — a scan
 #       that never looked is not green, the same false-green class
-#       run-shell-tests.sh closes at HIMMEL-1128).
+#       run-shell-tests.sh closes).
 #
 # bash 3.2-safe (no mapfile, no associative arrays); Git Bash on Windows OK.
 # The whole tree is scanned with three awk invocations total — on Windows a
@@ -132,14 +131,14 @@ shell_scan() {
                 for (i = 1; i <= nlines; i++) {
                     if (index(lines[i], k) == 0) continue
                     if (lines[i] ~ /fail-open-ok:[[:space:]]*[^[:space:]]/) continue
-                    # codex-1 (round 2): a `-r` test for k anywhere in the
+                    # codex-1: a `-r` test for k anywhere in the
                     # file used to suppress EVERY read of k, even one that
                     # comes textually before the -r test (or on an unrelated
                     # branch). Require the -r test to appear at or before
                     # THIS read line -- order-sensitive, not merely present.
                     if ((k in rline) && rline[k] <= i) continue
                     # A bare `|| true` / `|| :` no-op silences the failure
-                    # instead of handling it (codex-1 round 1) -- strip those
+                    # instead of handling it -- strip those
                     # before deciding the line has real `||` failure
                     # handling. A `||` that survives the strip (e.g.
                     # `|| exit 1`, `|| return 1`) still counts as handled.
@@ -154,12 +153,12 @@ shell_scan() {
             }
         }
         function flush_d2(    i, j, L, lit, varname, seg, sentinel, fallback_arm, classvar, ok, p, before, after, rest) {
-            # Case-arm state (round 2, codex-adv-2): an assignment belongs to
+            # Case-arm state: an assignment belongs to
             # the `*)` fallback arm when a `*)` opener precedes it (or shares
             # its line) and no `;;` / `esac` has closed the arm since. The
             # conventional MULTILINE form puts the assignment on its own line
-            # under the `*)`; round 1 inspected only the assignment line and
-            # missed it. Line-based like the rest of this lint: a case nested
+            # under the `*)`, so the arm check must not inspect only the
+            # assignment line. Line-based like the rest of this lint: a case nested
             # inside a fallback arm closes the arm early — accepted; no guard
             # surface nests case-in-fallback-arm.
             inarm = 0
@@ -187,12 +186,12 @@ shell_scan() {
                 if (lit == "") continue
                 sentinel = (lit ~ /-(custom|rerouted|unknown|unmeasured)$/)
                 fallback_arm = arm[i]
-                # codex-2 (suggestion, round 4): match case-insensitively --
+                # codex-2: match case-insensitively --
                 # a lowercase provider/backend/class/tier/model var in a
                 # fallback arm was silently skipped.
                 classvar = (tolower(varname) ~ /(provider|backend|class|tier|model)/)
                 if (!sentinel && !(fallback_arm && classvar)) continue
-                # codex-1 (round 7): only a comparison AFTER the sentinel is
+                # codex-1: only a comparison AFTER the sentinel is
                 # produced can be the deny that protects it -- every real
                 # fixture (and the failure shape itself: produce, THEN
                 # check) follows this order. A matching comparison earlier
@@ -212,7 +211,7 @@ shell_scan() {
                         # test comparison (x = "lit"), so require a `[` on
                         # the same line -- a real POSIX/bash test bracket a
                         # reassignment of the same literal elsewhere never has.
-                        # codex-2 (round 2): a [ test comparing a DIFFERENT
+                        # codex-2: a [ test comparing a DIFFERENT
                         # variable to the same literal string must not count
                         # either -- require the producing variable name to
                         # appear as a distinct token on the comparison line
@@ -340,7 +339,7 @@ mjs_scan_pct() {
         # order-blind across if/else branches (no true control-flow
         # tracking), but this closes the flagrant "guard placed later in the
         # same function" evasion.
-        # codex-3 (round 2): a guard nested inside a MORE deeply-braced,
+        # codex-3: a guard nested inside a MORE deeply-braced,
         # unrelated conditional (a sibling branch) must not protect a
         # comparison at a shallower depth -- bdepth[] is the brace-nesting
         # depth each line EXECUTES at (counted before that own line brace
@@ -368,7 +367,7 @@ mjs_scan_pct() {
         }
         FNR == 1 { flush(); inblk = 0; n = 0; curdepth = 0; FILE = FILENAME }
         /^(export[[:space:]]+)?(async[[:space:]]+)?function[[:space:]]+[A-Za-z0-9_$]+/ { flush(); inblk = 1; n = 0; curdepth = 0; next }
-        # codex-2 (round 6): /^}/ alone also matched `} else if (...) {`,
+        # codex-2: /^}/ alone also matched `} else if (...) {`,
         # ending the block scan mid-function and hiding every later branch
         # from pct-unguarded. Require the line to be JUST a closing brace
         # (optional trailing ; or whitespace), matching how every function
@@ -467,7 +466,7 @@ else
     # escape the standing scan even though the pre-commit files: scope
     # (scripts/(guardrails|hooks|lanes)/, no depth limit) already triggers
     # the gate on it. `find`, not mapfile (bash 3.2-safe / Git Bash).
-    # codex-4 (panel round 2): `find`'s own errors (e.g. a permission-denied
+    # codex-4: `find`'s own errors (e.g. a permission-denied
     # subdirectory it cannot traverse) must not be silently discarded -- a
     # partial traversal that still exits the loop clean would report green
     # on an incomplete scan. Capture to a file, check find's real exit code.
@@ -502,7 +501,7 @@ else
         case "${f##*/}" in test-*) continue ;; esac
         shell_files+=("$f")
     done
-    # codex-1 (panel round 5): the .mjs/.ts surface under scripts/lanes was
+    # codex-1: the .mjs/.ts surface under scripts/lanes was
     # top-level-only while the pre-commit files: scope already triggers on
     # the whole tree -- same recursion fix as the .sh surface above, same
     # bench/ exclusion (fixtures/lib are bench-harness test data, not guard
@@ -540,7 +539,7 @@ total=$(( ${#shell_files[@]} + ${#js_files[@]} ))
 # cwd, and stable across Git Bash / drive-letter forms. The scans run from
 # $root so the relative paths resolve.
 #
-# HIMMEL-4132/4137: any non-absolute path goes out as `./path` — awk reads a
+# any non-absolute path goes out as `./path` — awk reads a
 # bare `x=1.sh` or `a=b/x.sh` operand as a variable assignment and `-` as
 # stdin, so either would be silently skipped and the scan would pass on a file
 # it never read.

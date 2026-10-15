@@ -1,5 +1,5 @@
 // fixture: a line comment between `(` and the 'git' argument must not hide
-// the spawn (HIMMEL-5393 codex-3).
+// the spawn.
 import { execFileSync } from 'node:child_process';
 
 export function head(r) {

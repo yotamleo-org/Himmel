@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # scripts/guardrails/check-git-env-scrub.sh — gate: trust-path git calls must
-# scrub the repository-redirecting GIT_* variables (HIMMEL-3570, HIMMEL-3571,
-# HIMMEL-5393).
+# scrub the repository-redirecting GIT_* variables.
 #
 # WHY: a git subprocess on a trust path inherits the caller's GIT_* env, so an
 # attacker-set value steers which repo/worktree/index/object store it actually
@@ -10,7 +9,7 @@
 #
 # The scrub set is the 14 variables scripts/lib/git-clean.sh and
 # scripts/lanes/git-clean.mjs clear (GIT_NO_REPLACE_OBJECTS is deliberately
-# NOT in it, HIMMEL-3666). A hand scrub of only the original four no longer
+# NOT in it). A hand scrub of only the original four no longer
 # counts.
 #
 # Trust paths (fixed, not discovered): scripts/handover/**, scripts/lanes/**,
@@ -585,7 +584,7 @@ AWK
 HITS=()
 BASELINE_KEYS=()
 # USED_BASELINE: baseline keys that grandfathered a real hit this run — what
-# is left over in the baseline is stale (HIMMEL-3571).
+# is left over in the baseline is stale.
 USED_BASELINE=()
 FULL_SCAN=0
 
@@ -754,7 +753,7 @@ if [ "$EMIT_BASELINE" -eq 1 ]; then
     exit 0
 fi
 
-# Stale baseline entries (HIMMEL-3571): in the full real-tree scan only, an
+# Stale baseline entries: in the full real-tree scan only, an
 # entry that grandfathered no hit is dead. USED_BASELINE has multiplicity.
 STALE=()
 if [ "$FULL_SCAN" -eq 1 ] && [ "${#BASE_ENTRIES[@]}" -gt 0 ]; then

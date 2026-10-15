@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # scripts/guardrails/leak-classes.sh — commit-time + CI leak-class gate
-# (HIMMEL-2561 / HIMMEL-2705 step 2).
 #
 # WHY: propagate-public.sh's scan_sensitive() only ran at propagation time,
-# the moment a private branch was carved out for the public mirror. HIMMEL-2705
-# moves development onto the public repo directly, so a leak has to be caught
+# the moment a private branch was carved out for the public mirror. Development
+# now happens on the public repo directly, so a leak has to be caught
 # BEFORE it lands — at commit time (pre-commit, --staged) and again on the
 # whole tree in public CI (--tree, a backstop for anything that slipped past
 # pre-commit: a --no-verify commit, a merge, a stale clone). This script is
@@ -29,8 +28,8 @@
 #                         a leading/trailing one; the match still stops at
 #                         the next '/' or '\', so a space only ever extends
 #                         within the same path segment. The name-char class is
-#                         negated ([^/\space]-style, not an ASCII whitelist —
-#                         HIMMEL-2828), so a non-ASCII username like
+#                         negated ([^/\space]-style, not an ASCII whitelist),
+#                         so a non-ASCII username like
 #                         /home/élodie/ is matched too. # leak-allow: home-path doc example
 #                         Only '/', '\' and whitespace end a segment/word.
 #   mac-address           six hex pairs joined by a SINGLE consistent
@@ -58,7 +57,7 @@
 #                         an error) and the script says so on stdout.
 #   telegram-bot-token     [0-9]{8,10}:[A-Za-z0-9_-]{35}, copied verbatim
 #                         from scan_sensitive() in propagate-public.sh (that
-#                         file is being retired under HIMMEL-2705 — copying
+#                         file is being retired — copying
 #                         the regex text, not sourcing it).
 #
 # Same-line allow convention (mirrors gitleaks:allow): a trailing
@@ -68,7 +67,7 @@
 # exempts THAT LINE for THAT CLASS only — the marker text itself is matched
 # regardless of comment-prefix style, so any of the three works anywhere.
 #
-# ALLOW_HOME_NAMES (HIMMEL-2561 tree survey, 2026-09-08): the handover's base
+# ALLOW_HOME_NAMES: the handover's base
 # list (you, user, <user>, $USER, ${USER}, me, example, <you>, %USERNAME%,
 # $env:USERNAME) -- adopter, operator, runner, vagrant, ubuntu and documents
 # were confirmed unused against the tracked tree and removed from it --
@@ -78,22 +77,12 @@
 # `/Users/<name>/` survey actually found in tracked test fixtures (confirmed
 # NOT the real operator identity — a separate grep for the live station's
 # actual $HOME basename came back clean):
-#   HIMMEL-2825 removed 7 of the human-shaped names formerly enumerated here
-#   (alice, bob, diane, jose, claude, jane, john) -- a real adopter whose
-#   actual username matches one of these is common enough that a global
-#   exemption was a genuine false-negative risk. The fixture files that
-#   relied on them now carry their own same-line `# leak-allow: home-path
-#   <reason>` marker instead (scripts/telegram/spawn-glm.test.ts, scripts/
-#   trust/shadow-ledger.mjs + its test, scripts/himmelctl/lib/install-engine.js,
-#   scripts/parity/test-ps-twin-oem-encoding.ps1, docs/internals/
-#   environment-gotchas.md, and this file's own doc comments). HIMMEL-2951
-#   removed 3 more (ada, somebody, yotamleo -- yotamleo being the operator's
-#   real username, the highest-value one) the same way, across scripts/hooks/,
-#   scripts/lanes/tests/, and scripts/test-uninstall-guard.sh. HIMMEL-2958
-#   removed the last one, jarrod: its only fixture dependents (13 lines in
-#   the vendored marketplace/plugins/claude-hud/tests/render.test.js) now
-#   carry their own same-line `// leak-allow: home-path <reason>` marker,
-#   after the VENDORED.manifest re-hash + fork-delta ceremony.
+#   Human-shaped names (alice, bob, diane, jose, claude, jane, john, ada,
+#   somebody, yotamleo, jarrod) are deliberately NOT enumerated: a real
+#   adopter whose actual username matches one is common enough that a global
+#   exemption would be a genuine false-negative risk. Fixture files that
+#   need such a name carry their own same-line `leak-allow: home-path
+#   <reason>` marker instead (a `// ` comment in JS/TS sources).
 #   leaktestuser, leaker, testop, testuser, test, osboxes, nulleak, name,
 #   yourname, wineonlyuser, shouldnotleak, realop, quarantoken, priorleak,
 #   posixuser, profileonlyuser, unixonlyuser, fakeuser, myvault, op, ops,
@@ -117,8 +106,8 @@
 #                         scripts/codex/reap-mcp-fleet.ps1).
 #   parity, mismatched, plainhome, whoever, msysuser, fixture, runner, other,
 #   current-user
-#                        - added post-HIMMEL-2835 (the first real --tree run
-#                         against this tree's content, HIMMEL-2705's public
+#                        - added for the first real --tree run
+#                         against this tree's content (the public
 #                         CI job): fixture/placeholder names in
 #                         ledger-path-parity.test.ts, test-resolve-user-home.sh,
 #                         test-pipeline-cadence.sh, test-host-detectors.ps1,
@@ -131,9 +120,7 @@
 # A name exactly one character long, or starting with '.', is excluded
 # structurally (see above) rather than enumerated — bash 3.2-safe, no
 # associative arrays.
-# HIMMEL-2954 (two narrower refinements to the 0cbd3f6/#664 heuristic,
-# both filed as follow-on panel findings against that fix rather than
-# widening it further):
+# Two narrower refinements to the home-path heuristic:
 #   dotted usernames    the name class is `<seg>(\.<seg>)*`, where <seg> is
 #                        the existing name-char class -- a '.' joins the
 #                        capture ONLY when followed by another name
@@ -164,7 +151,7 @@
 # unstaged local edit can never suppress a leak in the commit being made.
 # --tree reads it off disk, matching what --tree itself scans.
 #
-# Path-name scanning (HIMMEL-2831 #1): the same five detectors above also run
+# Path-name scanning: the same five detectors above also run
 # against a file's PATH itself, via scan_path() (reports at line 0, so a
 # finding reads "<file>:0 <class> ..." and a reader knows the name is what
 # triggered it, not content) — a leak-shaped hostname, home path, MAC, LAN IP
@@ -253,7 +240,7 @@ if [ "$MODE" = staged ]; then
     # only walks `git diff --cached` hunks, so a file with no staged content
     # change of its own never appears there at all -- removing its exemption
     # alone would otherwise commit its full existing content unchecked
-    # (HIMMEL-2561 round-11 finding, codex-1). PREV_IGNORE_PATTERNS is only
+    # PREV_IGNORE_PATTERNS is only
     # ever consulted to compute that removed set below; it plays no other
     # role in this run.
     PREV_IGNORE_PATTERNS=()
@@ -331,7 +318,7 @@ DENYLIST_PATH="${HIMMEL_LEAK_DENYLIST:-$HOME/.claude/himmel-leak-denylist.txt}"
 # Diagnostics below print a path, not $DENYLIST_PATH itself: the default
 # lives under $HOME, and this script's own job is to redact home paths from
 # output, so printing it raw would leak the operator's home directory in
-# every captured scan log (CR round-13 codex-3 finding).
+# every captured scan log.
 DENYLIST_DISPLAY_PATH="$DENYLIST_PATH"
 case "$DENYLIST_DISPLAY_PATH" in
     "$HOME"/*) DENYLIST_DISPLAY_PATH="~${DENYLIST_DISPLAY_PATH#"$HOME"}" ;;
@@ -417,7 +404,7 @@ redact_spans() {
                     spanlen = e - s + 1
                     # Same reveal-window cap as before: at or under 4 chars,
                     # keep one fewer than the span length so at least one
-                    # character always stays hidden (CR round-8 codex-4).
+                    # character always stays hidden.
                     keep = (spanlen > 4) ? 4 : spanlen - 1
                     if (keep < 0) keep = 0
                     out = out substr(c, s, keep) "…"
@@ -444,14 +431,13 @@ check_home_path() {
     # The two forms are two separate alternatives, not one greedy class: a
     # multi-word name (embedded space) may ONLY terminate at a real '/' or
     # '\' -- so it can never swallow trailing prose that isn't itself a path
-    # segment (HIMMEL-2835: the earlier single shared terminator, which also
-    # accepted end-of-line/non-name-char for the space-carrying form, let an
+    # segment (a single shared terminator, which also
+    # accepted end-of-line/non-name-char for the space-carrying form, would let an
     # unterminated /home/... or C:\Users\... reference run to end-of-line and
     # capture every following word as part of the "name"). A single-word name
     # keeps the permissive terminator (end-of-line, '/', '\', or whitespace --
-    # a space simply ends the word, it does not extend it; HIMMEL-2828 widened
-    # the name-char class itself from an ASCII whitelist to this negated form
-    # so a non-ASCII username, e.g. élodie, is part of the word too).
+    # a space simply ends the word, it does not extend it; the name-char class
+    # is a negated form, not an ASCII whitelist, so a non-ASCII username, e.g. élodie, is part of the word too).
     # Both the leading "C:\Users\" and trailing separator also match a
     # doubled backslash, so a JSON/log-escaped path like
     # "C:\\Users\\Jane Smith\\Documents" is still caught (a literal double # leak-allow: home-path doc example
@@ -465,10 +451,10 @@ check_home_path() {
     # lowercase "/users/" at the root is common in unrelated text (e.g. a
     # GitHub REST API path "/users/{user}/settings/..."), so it must stay
     # case-sensitive; only the drive-prefixed WSL/Git-Bash forms go
-    # case-insensitive (public #581 CodeRabbit round 2, false-positive fix) --
+    # case-insensitive --
     # every letter of "users" is folded, not just the first, so forms like
-    # C:/USERS/... are also caught (HIMMEL-2850, /pr-check panel round 1).
-    # CR (public #585, HIMMEL-2854 item 6): a file:// URI's extra slash
+    # C:/USERS/... are also caught.
+    # CR: a file:// URI's extra slash
     # (file:///home/...) sits right where the leading-context alternative
     # would need to match "/" itself -- which the negated class always
     # excludes -- so neither alternative can ever match there. Two literal
@@ -477,7 +463,7 @@ check_home_path() {
     # without loosening the negated class for anything else (so a bare
     # "http://home/..." -- "home" as an ordinary hostname label, not a
     # /home/ path -- still does not match).
-    # HIMMEL-2828 follow-up (console-flagged): the word-char class also
+    # the word-char class also
     # excludes a small set of trailing prose/doc-markup punctuation --
     # backtick, quote, comma, semicolon, colon, or a closing paren/bracket --
     # and the single-word terminator accepts that same set, so a quoted or
@@ -487,7 +473,7 @@ check_home_path() {
     # the punctuation into the next occurrence's own "/" as if it were a
     # multi-word terminator). Non-ASCII bytes stay admitted -- only this
     # fixed ASCII punctuation set is excluded.
-    # HIMMEL-2828 regression fix (console-flagged, public #664): the same
+    # the same
     # widened, non-ASCII-admitting word-char class also swallowed ERE
     # metacharacters -- a line that itself DEFINES a home-path regex (e.g.
     # `leak_pattern='(/Users/|[A-Za-z]:\Users\|...)'` in a guardrail script,
@@ -505,7 +491,7 @@ check_home_path() {
     # ellipsis ("..." or "…", e.g. a Windows 8.3 short-name placeholder like
     # "C:\Users\RUNNER~1\...") is also not reported: an ellipsis right after
     # the match marks truncated/placeholder example text, not a real path.
-    # HIMMEL-2856: a Windows file:// URI's drive letter carries file://'s
+    # a Windows file:// URI's drive letter carries file://'s
     # own extra slash too (file:///C:/Users/... -> leading-context consumes
     # "file://", leaving "/C:/Users/..."), so the drive-prefixed forms also
     # need a leading-slash variant, "/[A-Za-z]:/Users/". Lowercase
@@ -534,8 +520,7 @@ check_home_path() {
         # skipped when the name itself looks like a Windows 8.3 short name
         # (ends "~<digits>", e.g. "RUNNER~1") -- a genuine leaked path that
         # happens to sit before a literal "..." in truncated tool output is
-        # NOT a placeholder and must still be reported (HIMMEL-2954 finding 2;
-        # an allowlisted name, e.g. the documented "<prefix>/<name>/..." doc-
+        # NOT a placeholder and must still be reported (an allowlisted name, e.g. the documented "<prefix>/<name>/..." doc-
         # elision shape, is already suppressed below by home_name_allowed
         # regardless of the ellipsis). name/term/prefix are captured above,
         # before this [[ =~ ]] check, because it overwrites BASH_REMATCH.
@@ -661,7 +646,7 @@ scan_line() {
 # scan_path <file> -- feeds the repo-relative path string itself through the
 # same scan_line dispatch (line 0, so a finding reads "<file>:0 <class> ..."
 # and a reader knows it's the name, not content) so a leak-shaped filename
-# can't slip past a clean diff or clean tree content (HIMMEL-2831 #1). Callers
+# can't slip past a clean diff or clean tree content. Callers
 # must invoke this strictly after skip_path() so a .leak-classes-ignore
 # exemption still holds for the path itself.
 scan_path() {
@@ -669,8 +654,8 @@ scan_path() {
 }
 
 # unquote_diff_path <token> -- reverses the two things git's "+++ b/<path>"
-# header can do to a path that a plain ${f#b/} strip does not undo (HIMMEL-2831
-# #2): a bare disambiguating TAB appended after an otherwise-unquoted path
+# header can do to a path that a plain ${f#b/} strip does not undo:
+# a bare disambiguating TAB appended after an otherwise-unquoted path
 # that contains a space, and full C-style quoting ("b/name" -> a double-quoted,
 # backslash-escaped string) for a path containing a ", \, or control
 # character. core.quotePath=false (set on the git diff invocation below) only
@@ -678,10 +663,8 @@ scan_path() {
 # quoted regardless of that setting, so this reversal is still needed for
 # those. Decodes every NAMED C-style escape git's quote_c_style() can emit
 # (\\ \" \t \n \r \a \b \v \f); an octal \NNN escape for a control byte with
-# no named form (e.g. NUL, ESC, DEL) is not decoded -- deferred, tracked on
-# HIMMEL-2831 alongside item #1, since such raw bytes are not representable
-# in a POSIX filename or are otherwise vanishingly unlikely (/pr-check panel
-# round 2, codex-1).
+# no named form (e.g. NUL, ESC, DEL) is not decoded -- deferred, since such raw bytes are not representable
+# in a POSIX filename or are otherwise vanishingly unlikely.
 unquote_diff_path() {
     local s="$1"
     # $'...' ANSI-C quoting is only expanded as a standalone word -- inside
@@ -689,7 +672,7 @@ unquote_diff_path() {
     # substitution below needs, since the assignment itself is
     # double-quoted) a literal $'\n' etc. on the REPLACEMENT side is taken
     # as five literal characters, not a real control byte (verified against
-    # bash 5.3.15; /pr-check panel round 1 follow-up). Pre-computing each
+    # bash 5.3.15). Pre-computing each
     # control byte into its own unquoted assignment first, then referencing
     # it as a plain "$var" below, sidesteps that: a plain variable
     # expansion works the same regardless of the surrounding quote context.
@@ -722,11 +705,10 @@ unquote_diff_path() {
     # output, so a decoded `\n`-escaped path (e.g. a name ending in a
     # literal newline byte) would otherwise lose it here and could
     # wrongly inherit a different file's exact-file ignore exemption
-    # (/pr-check panel round 1, codex-1).
     printf '%s.' "$s"
 }
 
-# scan_new_staged_paths -- HIMMEL-2831 #1: a staged file's own PATH must be
+# scan_new_staged_paths -- a staged file's own PATH must be
 # scanned once, even for diff shapes where the -U0 hunk-based parser above
 # never represents the file with a "+++ " header at all -- most notably a
 # genuinely EMPTY newly-added file, which produces NO diff body whatsoever
@@ -786,7 +768,7 @@ run_staged() {
     # --cached; the parser's fallback then keeps "i/<realpath>" verbatim,
     # which can spuriously match an unrelated directory-style
     # .leak-classes-ignore entry (e.g. a repo directory literally named
-    # "i/") and exempt every staged file (HIMMEL-2826). Pinning both off
+    # "i/") and exempt every staged file. Pinning both off
     # forces the plain "b/" prefix this parser is written against,
     # regardless of the running station's git config.
     if ! diff_output="$(git -c core.quotePath=false -c diff.mnemonicPrefix=false -c diff.noprefix=false -c diff.outputIndicatorNew=+ -c diff.outputIndicatorOld=- -c diff.outputIndicatorContext=' ' diff --no-color --no-ext-diff --no-textconv --no-renames --cached --text -U0 --)"; then
@@ -875,8 +857,8 @@ scan_unignored_full() {
         # exemption) while STILL being covered by a different, remaining
         # pattern (e.g. an exact-file exemption for that same file) --
         # skip_path() is the current, authoritative exemption check
-        # (codex-1, round 12: without this a directory-to-exact-file
-        # exemption swap made --staged reject files --tree still exempts).
+        # (without this, a directory-to-exact-file
+        # exemption swap would make --staged reject files --tree still exempts).
         skip_path "$f" && continue
         content="$(git show ":$f" 2>/dev/null)" || continue
         lineno=1

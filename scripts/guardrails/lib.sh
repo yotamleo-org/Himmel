@@ -53,7 +53,6 @@ guard_call() {
 # misreads the PRIMARY worktree's HEAD only when GIT_DIR is aimed at the shared
 # .git — and reading HEAD via `--absolute-git-dir` follows that same GIT_DIR, so
 # this is consistency + rc semantics, NOT a defense against a mis-aimed GIT_DIR
-# (HIMMEL-323).
 #
 # Detached-HEAD handling: prints empty string and returns rc=1 (no current
 # branch). Callers MUST distinguish empty branch from a valid branch name -
@@ -90,9 +89,9 @@ _branch() {
 # Order: origin/HEAD symbolic-ref -> whichever of main/master exists locally
 # -> init.defaultBranch -> "main". Used as the diff base by the merged/behind
 # predicates + the CR diff-base scripts so they work on either default
-# (HIMMEL-297: support main AND master). Always prints a non-empty name.
+# Always prints a non-empty name.
 #
-# Tie-break (HIMMEL-323): when origin/HEAD is UNSET *and* BOTH local `main` and
+# Tie-break: when origin/HEAD is UNSET *and* BOTH local `main` and
 # `master` exist, the local-ref order silently prefers `main` — wrong on a
 # master-default mirror that picked up a stray local `main`. We still return
 # `main` (stable, documented default) but emit a one-line stderr ambiguity note
@@ -127,7 +126,6 @@ default_branch() {
 # is_on_main [DIR]
 # True iff current branch is a protected default branch (main OR master).
 # Returns 1 on detached HEAD / feature branch; rc=2 if branch can't be read.
-# (Name kept for caller stability; semantics widened to main+master — HIMMEL-297.)
 is_on_main() {
     local b rc
     b=$(_branch "${1:-.}"); rc=$?
@@ -139,7 +137,7 @@ is_on_main() {
 # True iff REF is refs/heads/main OR refs/heads/master. Used by
 # check-push-target.sh which reads remote refs from git's pre-push stdin.
 # Both protected branches match so a direct push to either is blocked
-# (HIMMEL-297). UNLIKE the other predicates, this takes a REF string.
+# UNLIKE the other predicates, this takes a REF string.
 is_main_ref() {
     [ "${1:-}" = "refs/heads/main" ] || [ "${1:-}" = "refs/heads/master" ]
 }
@@ -147,7 +145,7 @@ is_main_ref() {
 # is_dirty [DIR]
 # True iff `git status --porcelain` has any output (staged, unstaged, or
 # untracked). Conservative - we'd rather warn on a stray file than miss a
-# half-committed change. HIMMEL-3101: fail-safe on a `git status` failure
+# half-committed change. Fail-safe on a `git status` failure
 # itself too - treat an uninspectable repo as dirty rather than clean.
 is_dirty() {
     local dir="${1:-.}"
@@ -160,7 +158,7 @@ is_dirty() {
 }
 
 # is_merged_into_main [DIR]
-# NOTE (HIMMEL-297): "main" throughout this docstring denotes the resolved
+# NOTE: "main" throughout this docstring denotes the resolved
 # default branch (main OR master) per default_branch() — the predicate operates
 # against whichever is the repo's default, not literally "main".
 # True iff current branch is reachable from main via either:
@@ -172,25 +170,23 @@ is_dirty() {
 #   - detached HEAD
 #   - branches with no commits of their own whose HEAD sits on the default
 #     branch's first-parent chain (ahead=0), regardless of behind-count
-#     (HIMMEL-1947, superseding the narrower HIMMEL-114 form)
 # Returns 2 if the resolved default-branch ref (main or master) is missing or
 # git plumbing fails (predicate cannot be evaluated - e.g., shallow clones
 # missing the merge base).
 #
 # Known limitations (chosen tradeoffs, NOT bugs):
-# - FAST-FORWARD MERGE AMBIGUITY (HIMMEL-114, widened by HIMMEL-1947): a
+# - FAST-FORWARD MERGE AMBIGUITY: a
 #   branch that was FF-merged to main produces ahead=0 with HEAD still on
 #   main's first-parent chain (FF-merge creates no new commit, so the tip
 #   stays on that chain permanently) - REGARDLESS of whether main has since
-#   advanced. HIMMEL-114 only pinned the no-advance case; HIMMEL-1947 replaced
-#   the behind-count check with the first-parent-chain check above, which
+#   advanced. The first-parent-chain check above (not a behind-count)
 #   extends the same ambiguity to behind>0 too, because an FF-merged tip and
 #   a fresh branch off main are REFERENTIALLY INDISTINGUISHABLE in the DAG
 #   either way - no graph-only predicate can tell them apart. The
 #   short-circuit treats both as "not merged" because (a) himmel's workflow
 #   uses squash + --no-ff merges via `gh pr merge`, so true FF-merge is rare,
 #   and (b) narrowing this back to catch FF-merges would reintroduce
-#   HIMMEL-1947 itself: blocking the FIRST commit on every fresh branch once
+#   blocking the FIRST commit on every fresh branch once
 #   main has advanced, the more painful failure mode by far. The squash arm
 #   covers most real merge cases via patch-id equivalence. A reflog-based
 #   heuristic could distinguish fresh-from-FF-merged but breaks across clones.
@@ -227,8 +223,8 @@ is_merged_into_main() {
     # ahead>0 is always an active branch -> fall through to the direct-merge
     # and squash arms. ahead=0 means no commits of the branch's own, and two
     # graph shapes land there. BEHIND-count does not separate them
-    # (HIMMEL-114 assumed it did, so it only caught behind=0 and a fresh
-    # branch still got blocked the moment main advanced - HIMMEL-1947); the
+    # (a behind=0 check would block a fresh
+    # branch the moment main advanced); the
     # FIRST-PARENT chain does:
     #   HEAD on $db's first-parent line  -> branch point, nothing committed
     #       yet. Fresh branch, whether or not main has since advanced.
@@ -236,7 +232,7 @@ is_merged_into_main() {
     #       merge, i.e. a genuinely direct-merged feature branch. Blocks.
     # FF-merged-with-no-advance stays indistinguishable from a fresh branch
     # (identical refs) and keeps returning not-merged - the tradeoff
-    # HIMMEL-114 chose and its test still pins.
+    # its test pins.
     local ahead
     ahead=$(git -C "$dir" rev-list "$db..HEAD" --count 2>/dev/null) || return 2
     if [ "$ahead" = "0" ]; then
@@ -246,10 +242,10 @@ is_merged_into_main() {
         # Pure-bash whole-line membership test — no pipeline and no here-string.
         # A `grep -q` pipeline takes SIGPIPE on first match, which `set -o
         # pipefail` reports as a FAILED pipeline on a SUCCESSFUL match
-        # (HIMMEL-1430); a here-string of >= 64 KiB (main passed 1600
+        # a here-string of >= 64 KiB (main passed 1600
         # first-parent commits) wedges Git Bash forever — bash writes it into
         # a pipe before the reader runs and MSYS over-reports the pipe size
-        # (HIMMEL-2027). Newline-framing both sides keeps the match exact.
+        # Newline-framing both sides keeps the match exact.
         case "$first_parents" in
             "$head_sha"|"$head_sha"$'\n'*|*$'\n'"$head_sha"|*$'\n'"$head_sha"$'\n'*)
                 return 1
@@ -283,7 +279,7 @@ is_merged_into_main() {
 
 # is_behind_origin_main [DIR]
 # True iff origin/<default> has commits not in HEAD, where <default> is the
-# resolved default branch (main OR master) per default_branch() — HIMMEL-297.
+# resolved default branch (main OR master) per default_branch().
 # Caller is responsible for running `git fetch` first if freshness matters -
 # this predicate reads the current refs as-is.
 # Returns 1 (not behind) if the origin/<default> ref doesn't exist locally.
@@ -306,14 +302,14 @@ is_behind_origin_main() {
 # A LINKED worktree's per-worktree git dir differs from the shared common
 # dir; a main checkout (normal OR --separate-git-dir) has them equal. That
 # distinction picks the right root in every case — no single path expression
-# does (HIMMEL-1131 / CR #478):
+# does:
 #  - main checkout  -> --show-toplevel is the checkout root (correct for a
 #    normal repo AND --separate-git-dir, where the git dir lives elsewhere so
 #    dirname(common_dir) would point outside the worktree).
 #  - linked worktree -> the PRIMARY checkout is the parent of the shared
 #    common git dir.
 #
-# Extracted from _himmel_dev_marker_path (HIMMEL-2526) so main_checkout_verdict
+# Extracted from _himmel_dev_marker_path so main_checkout_verdict
 # and any other primary-checkout-anchored guard share ONE implementation
 # instead of a second copy of this comparison drifting in.
 primary_checkout_root() {
@@ -354,7 +350,7 @@ is_himmel_dev_repo() {
     # in the primary checkout, so a --show-toplevel lookup returns absent from
     # every linked worktree — and every dependent gate then silently no-ops
     # inside a worktree, which is exactly where himmel feature work happens
-    # (HIMMEL-1131). The worktree list also identifies the primary checkout when
+    # The worktree list also identifies the primary checkout when
     # its git dir lives elsewhere via --separate-git-dir.
     # Honor the optional DIR arg (defaults to PWD) like every other predicate in
     # this lib, resolving the primary marker relative to it.
@@ -373,7 +369,7 @@ warn_doc_guard_off() {
     # checkout to enable the gate in, so don't nudge there. The hint points at the
     # RESOLVED primary marker "$m" (not a bare ".himmel-dev") so that from a linked
     # worktree the operator touches the primary's marker, not a stray file in the
-    # worktree root that would not enable the gate (HIMMEL-1131).
+    # worktree root that would not enable the gate.
     if [ -n "$m" ] && [ -f "$d/docs/commands-catalog.md" ] && [ -f "$d/.pre-commit-config.yaml" ] && [ ! -f "$m" ]; then
         echo "⚠ doc-guard is OFF: this looks like a himmel-source checkout but .himmel-dev is missing. Run 'touch \"$m\"' (see docs/contributing.md) to enable the catalog-sync gate." >&2
     fi
@@ -382,7 +378,7 @@ warn_doc_guard_off() {
 
 # _tolower_ascii STRING -> sets _TOLOWER_OUT to STRING with A-Z folded to a-z.
 #
-# HIMMEL-1741: is_secret_basename used to fold case with `printf | tr`, a fork
+# is_secret_basename used to fold case with `printf | tr`, a fork
 # PAIR per call. block-read-secrets.sh calls the predicate once per tokenised
 # argument of every Bash/PowerShell command, so on Windows with Defender
 # real-time scanning (~667 ms a fork pair, ~10x a normal Git-Bash spawn) that
@@ -397,7 +393,7 @@ warn_doc_guard_off() {
 # no `+=`.
 #
 # LINEAR BY CONSTRUCTION, and that is a correctness requirement, not a nicety
-# (codex-adv, HIMMEL-1741 CR r1). The input here is NOT bounded to a short
+# The input here is NOT bounded to a short
 # filesystem basename: block-read-secrets.sh calls the predicate once per
 # TOKEN of every Bash/PowerShell command, and a token can be a base64
 # `-EncodedCommand` payload, a data: URI or a long JSON blob. The first
@@ -432,7 +428,7 @@ _tolower_ascii() {
     # locally built 3.2.57 (8KB+16KB = 294 s on the macOS nightly) while bash 5 needs
     # 62 ms. Past a length no filesystem basename reaches, one `tr` fork is linear on
     # every bash. LC_ALL=C keeps it ASCII-only like the substitutions; the sentinel
-    # keeps a trailing newline, which $(...) would otherwise strip (HIMMEL-3177).
+    # keeps a trailing newline, which $(...) would otherwise strip.
     if [ "${#b}" -gt 256 ]; then
         b=$(printf '%sx' "$b" | LC_ALL=C tr '[:upper:]' '[:lower:]')
         _TOLOWER_OUT="${b%x}"
@@ -448,12 +444,12 @@ _tolower_ascii() {
     _TOLOWER_OUT="$b"
 }
 
-# guard_cmdpos_grammar — HIMMEL-1180. Sets EXEPFX / ASSIGN / CMDVAL / CMDFLG /
+# guard_cmdpos_grammar — sets EXEPFX / ASSIGN / CMDVAL / CMDFLG /
 # CMDPOS in the
 # CALLER's scope (plain assignment, not `local` — this is meant to be sourced
 # inline into a hook script, the same way the rest of this file's predicates
 # are). Byte-identical to the grammar block-destructive-commands.sh built up
-# over several CR rounds (HIMMEL-851 r1/r2/r4/r5/r6/r7); factored out here so
+# over several CR rounds; factored out here so
 # block-graphify-egress.sh can anchor its OWN atom ("graphify") to command
 # position with the same wrapper/assignment tolerance instead of re-deriving
 # — or worse, drifting from — a second copy.
@@ -467,26 +463,25 @@ _tolower_ascii() {
 #
 # Deliberately NOT a general shell parser. The documented residual is
 # QUOTED-PAYLOAD wrappers (`bash -c "<atom> ..."`, `sh -c`, xargs/nohup
-# chains) — out of scope per HIMMEL-851's own no-general-parser rule, and
-# accepted for the graphify guard too (HIMMEL-1180): this hook is the fast
+# chains) — out of scope under the no-general-parser rule, and
+# accepted for the graphify guard too: this hook is the fast
 # gate for accidental agent egress, not an adversarial boundary — the
 # post-`bash -c` unwrap graphify-fence.sh's own classify_clause does is a
 # SEPARATE, deeper analysis that already handles that case for anything this
 # gate's fast check lets through.
 #
-# HIMMEL-3983/3984 widened the run with the compound keywords (do, then,
+# The run includes the compound keywords (do, then,
 # else, elif, if, while, until, !, {) and the wrappers exec, timeout, nohup,
 # nice, time and xargs, each with its own flags.
-# ponytail: wrappers still outside the run are command/builtin (rm handles
+# ponytail: upgrade path HIMMEL-912 (word-level tokenizer); wrappers still outside the run are command/builtin (rm handles
 # `command` itself; `command -v X` is a lookup, not a call), setsid, stdbuf,
 # ionice, taskset, chrt, chroot, doas, flock, watch, parallel, `env -S`,
-# `su -c`, `sh -c`, and a `case` arm's `pat)`, upgrade path HIMMEL-912's
-# word-level tokenizer.
+# `su -c`, `sh -c`, and a `case` arm's `pat)`.
 #
 # Callers: append their own atom alternation directly after `"$CMDPOS"`, e.g.
 #   grep -Eq "${CMDPOS}graphify(\.exe)?([^[:alnum:]_.-]|\$)"
 guard_cmdpos_grammar() {
-    # HIMMEL-4321: the path run stops at `(` and at a `)` before `{`, both
+    # the path run stops at `(` and at a `)` before `{`, both
     # command-position anchors, so a `((((…` or `){){){…` run is not rescanned
     # from every anchor (quadratic); parity_guard.py's _EXE_PREFIX is the twin.
     EXEPFX='["'\'']?([a-z]:)?(([^[:space:]|;&(`"'\'')]|[)][^({[:space:]])*[)]?[/\\])?'
@@ -497,18 +492,18 @@ guard_cmdpos_grammar() {
     # or wrapper word, not at every `(` of a run.
     EXEPFX_X='["'\'']?([a-z]:)?([^[:space:]|;&`"'\'']*[/\\])?'
     ASSIGN='[[:alnum:]_]+=('\''[^'\'']*'\''|"[^"]*"|[^[:space:]|;&]*)'
-    # HIMMEL-3983: a compound-statement keyword also starts a command, and so
+    # a compound-statement keyword also starts a command, and so
     # does a function body (`f() { ...`, `function f { ...`). A bare `)` is
     # no separator: `fix(x) shutdown` in a message would deny.
     local kw='(do|then|else|elif|if|while|until|function[[:space:]]+[^[:space:]]+|[!]|[{])'
-    # HIMMEL-3984: exec-style wrappers (shapes from block-graphify-egress.sh).
+    # exec-style wrappers (shapes from block-graphify-egress.sh).
     # A flag's optional value only ever over-matches; the bare-flag branch
     # is always there, so a value-shaped atom is never hidden.
-    # HIMMEL-4150: the value may be quoted and hold a space (`exec -a 'a b'`),
+    # the value may be quoted and hold a space (`exec -a 'a b'`),
     # the shape ASSIGN uses; parity_guard.py's _VAL is the twin.
-    # HIMMEL-4158: a value is one shell word of concatenated segments ('…',
+    # a value is one shell word of concatenated segments ('…',
     # "…", $'…', \x, bare), and a flag word may hold such segments too
-    # (`-u'a b'`). The old whitespace-run and HIMMEL-4150 quoted atoms stay as
+    # (`-u'a b'`). The old whitespace-run and quoted atoms stay as
     # alternatives, so the set only grows. CMDVAL / CMDFLG are exported for
     # block-graphify-egress.sh (parity_guard.py: _VALS / _FLGS). A `$` right before `'` always opens
     # $'…' (whose \' does not close it), the reading the Python twin takes.
@@ -534,8 +529,7 @@ guard_cmdpos_grammar() {
 # guard_long_opt_name TOKEN — splits a long-option token into its name and
 # any attached `=VALUE`. Sets GUARD_LOPT_NAME (the part after `--`, before
 # any `=`), GUARD_LOPT_VAL (the part after `=`, "" if there was none) and
-# GUARD_LOPT_HAS_EQ (1 if `=` was present, 0 otherwise). HIMMEL-2610 round 2
-# (codex-1): a caller cannot tell "no `=`" from "`=` with an empty value"
+# GUARD_LOPT_HAS_EQ (1 if `=` was present, 0 otherwise). A caller cannot tell "no `=`" from "`=` with an empty value"
 # (`--prompt=`) from GUARD_LOPT_VAL alone — both are "". `--prompt=` already
 # carries its (empty) operand in this token, same as `--prompt=x`, so a
 # caller deciding whether to consume a SEPARATE next-word operand must test
@@ -550,7 +544,7 @@ guard_long_opt_name() {
     esac
 }
 
-# guard_is_long_abbrev FULL TOKEN — HIMMEL-2610, generalized from HIMMEL-2592's
+# guard_is_long_abbrev FULL TOKEN — generalized from
 # _bwimc_is_long_abbrev (scripts/hooks/block-write-into-main-checkout.sh).
 # True iff TOKEN is `--P` or `--P=V` where P is a non-empty, case-sensitive
 # PREFIX of FULL (the option's full name, no leading `--`). This mirrors how
@@ -600,14 +594,14 @@ guard_is_long_abbrev() {
 # backslash is a path separator on Windows, and tool inputs (Read/Grep
 # file_path, PowerShell commands) carry native backslash paths there, so
 # stripping only `/` would let `C:\repo\.ENV` through as one giant
-# non-matching "basename" (HIMMEL-879). On POSIX a literal backslash in a
+# non-matching "basename". On POSIX a literal backslash in a
 # filename over-matches toward blocking - fail-closed, acceptable.
 #
 # The basename is lowercased BEFORE matching (_tolower_ascii, a builtin-only
-# fold - HIMMEL-1741; bash-3.2-safe, no ${var,,}): git ls-files/check-ignore fold case on Windows/macOS
+# fold; bash-3.2-safe, no ${var,,}): git ls-files/check-ignore fold case on Windows/macOS
 # (core.ignorecase=true), so a mixed-case name (.ENV, ID_RSA) would
 # otherwise dodge these lowercase case-arms while the filesystem still
-# treats it as the same file (HIMMEL-879). Case arms below stay lowercase.
+# treats it as the same file. Case arms below stay lowercase.
 #
 # Trailing SPACES and DOTS are then stripped (same normalization-divergence
 # class): Win32 CreateFile / Node fs strip trailing spaces and dots from
@@ -655,7 +649,7 @@ is_secret_basename() {
 # or python (neither is a dependency of this file today, and this predicate
 # must not add one).
 #
-# WHY (HIMMEL-2526): a destination-based write fence has to compare the
+# WHY: a destination-based write fence has to compare the
 # TARGET path against a protected repo root as a literal prefix. Without
 # canonicalisation, `<worktree>/../scripts/x.sh` — or any other `.`/`..`
 # segment — escapes that prefix check even though it resolves to a path
@@ -676,7 +670,7 @@ is_secret_basename() {
 # Echoes the canonical absolute path (no trailing newline swallowed by a
 # caller's `$(...)`). Returns 1 and echoes nothing when PATH is empty, the
 # existing prefix cannot be entered (e.g. permission denied, or the walk
-# never reaches a directory that exists), or (HIMMEL-2597) the final-component
+# never reaches a directory that exists), or the final-component
 # symlink chain still has not settled after the depth cap below — exhausting
 # the cap is NOT success, and a caller that printed a still-symlinked path as
 # though fully resolved would misclassify it.
@@ -741,14 +735,14 @@ _guard_collapse_dotdot() {
 # codex-1 below), physically resolve that ancestor with `cd`+`pwd -P`, then
 # textually re-append TAIL (collapsing `.`/`..`) via `_guard_collapse_dotdot`.
 # This IS `_guard_canon_path_impl`'s own top-level resolution algorithm,
-# factored out so a second call site (HIMMEL-2597's per-hop symlink-chain
+# factored out so a second call site (the per-hop symlink-chain
 # resolution, below) can reuse the exact same "longest existing ancestor"
 # notion instead of inventing a second, narrower one (which is what
 # regressed: trying only the immediate parent directory, so an ancestor
 # further up that was itself a symlink never got re-resolved whenever that
 # immediate parent didn't exist yet).
 #
-# codex-1 (HIMMEL-2526): walk while NOT A DIRECTORY (was: not existent) — an
+# codex-1: walk while NOT A DIRECTORY (was: not existent) — an
 # EXISTING regular file must still have its basename popped into TAIL so the
 # walk `cd`s into its containing directory, not the file itself (`cd` onto a
 # file always fails, which used to fail the whole function for any
@@ -790,7 +784,7 @@ _guard_canon_path_impl() {
     local path="${1:-}" follow="${2:-1}"
     [ -n "$path" ] || return 1
     case "$path" in
-        # codex-7 (HIMMEL-2526): a Windows drive-absolute path (`C:/...` or
+        # codex-7: a Windows drive-absolute path (`C:/...` or
         # `C:\...`) is ALREADY absolute — matching
         # block-write-into-main-checkout.sh's own _bwimc_resolve_abs. Without
         # this, such a path falls to the `*` branch below and gets prefixed
@@ -801,7 +795,7 @@ _guard_canon_path_impl() {
 
     local existing="$path" tail="" comp
 
-    # HIMMEL-2597 (nofollow-mode directory-symlink fix): the ancestor walk
+    # the ancestor walk
     # inside `_guard_resolve_existing_prefix` stops as soon as
     # `[ -d "$existing" ]` is true — and `-d` FOLLOWS a symlink, so a final
     # component that is a symlink TO A DIRECTORY (unlike one to a regular
@@ -831,7 +825,7 @@ _guard_canon_path_impl() {
     resolved=$(_guard_resolve_existing_prefix "$existing" "$tail") || return 1
 
     if [ "$follow" = "1" ]; then
-        # codex-3 (HIMMEL-2526): the ancestor walk above only follows a
+        # codex-3: the ancestor walk above only follows a
         # symlink that sits in the EXISTING PREFIX and resolves to a
         # DIRECTORY (`cd` + `pwd -P` already dereferences those) — a symlink
         # whose target is a regular file (or nothing) never gets `cd`'d
@@ -851,7 +845,7 @@ _guard_canon_path_impl() {
         # DENY with "cannot-canonicalise", a false positive on an ordinary
         # dangling symlink.
         #
-        # HIMMEL-2597: each hop also re-canonicalises its own referent via
+        # each hop also re-canonicalises its own referent via
         # `_guard_resolve_existing_prefix` (the SAME longest-existing-ancestor
         # walk the top-level resolution above runs) before the next
         # iteration, so a referent reached through the chain that itself sits
@@ -861,10 +855,10 @@ _guard_canon_path_impl() {
         # loop used to leave (a link through a symlinked directory could hide
         # a primary-checkout write inside the hop budget).
         #
-        # HIMMEL-2597 (fix: try the LONGEST existing ancestor, not just the
-        # immediate parent): the first cut of this only tried `cd`ing into
-        # the referent's IMMEDIATE parent directory, and kept the textual
-        # value verbatim whenever that single `cd` failed. That is too coarse
+        # Try the LONGEST existing ancestor, not just the
+        # immediate parent: `cd`ing into only the referent's IMMEDIATE
+        # parent directory, and keeping the textual
+        # value verbatim whenever that single `cd` fails, is too coarse
         # — when the immediate parent does not exist YET (a symlink whose
         # target has a non-existent tail, e.g. `<alias-to-primary>/
         # missing-dir/f.txt`), the whole path stayed textual, INCLUDING any
@@ -885,7 +879,7 @@ _guard_canon_path_impl() {
         # (never on the dangling/readlink-failure `break`s above, which
         # leave the depth below the cap).
         #
-        # HIMMEL-2597 (cap raised 8 -> 40): 8 was tight enough to fail-CLOSE a
+        # 8 was tight enough to fail-CLOSE a
         # legitimate long chain that never leaves the worktree — a false
         # positive, not a safety win. 40 is parity with the kernel's ELOOP
         # limit, which is effectively what `realpath -m` honours in the
@@ -938,7 +932,7 @@ guard_canon_path_nofollow() {
 # and echo the repo root it finds (no trailing slash). Echoes nothing and
 # returns 1 when PATH is inside no repo.
 #
-# Lifted from block-edit-on-main.sh's original inline walk (HIMMEL-2526) so a
+# Lifted from block-edit-on-main.sh's original inline walk so a
 # Bash-mediated write can be fenced by the SAME resolution the Edit/Write hook
 # uses, rather than a second copy that could drift.
 #
@@ -979,7 +973,7 @@ repo_root_for_path() {
 }
 
 # main_checkout_verdict PATH — the shared "may this path be written?"
-# predicate (HIMMEL-2526). PATH must already be canonical and absolute —
+# predicate. PATH must already be canonical and absolute —
 # callers canonicalise first (guard_canon_path, or block-edit-on-main.sh's own
 # canon()).
 #
@@ -1002,7 +996,7 @@ repo_root_for_path() {
 #      blocking it is a false positive — UNLESS its basename is in the
 #      secret-file class (.env, keys, ... — stays denied so an unattended
 #      write can't clobber a real secret) OR is exactly `.single-writer`.
-#      The `.single-writer` carve-out is NEW (HIMMEL-2526 §4): that marker is
+#      The `.single-writer` carve-out is NEW: that marker is
 #      itself gitignored+untracked, so without this exclusion a Bash write
 #      could CREATE it and silently disable this entire fence from inside
 #      the very checkout it's meant to protect. Any `ls-files` rc other than

@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // test-egress-matrix.mjs — invariant checks for scripts/guardrails/egress-matrix.json
-// (HIMMEL-766). Run: node scripts/guardrails/test-egress-matrix.mjs
+// Run: node scripts/guardrails/test-egress-matrix.mjs
 //
 // evaluate() below is also the REFERENCE semantics for consumers
-// (graphify-fence.sh, parity_guard.py, the HIMMEL-765 pilot client):
 // first-match-wins over `rules`, '*' wildcards, then `default`;
 // `conditional` is allow-only-under-condition; `pending-operator` IS a deny.
 // Consumers MUST treat `conditional` as deny unless they positively verify
@@ -44,9 +43,9 @@ function assert(cond, msg) {
 
 // assertExplicitDeny: the cell must deny via its OWN explicit `deny` rule (the
 // exact corpus×provider×purpose), NOT merely fall through to `default: deny`.
-// This pins the HIMMEL-1257 de-listing as legible explicit deny ROWS (the
+// This pins the de-listing as legible explicit deny ROWS (the
 // audit-trail intent) — deleting a row would silently pass a plain
-// `effective === "deny"` check via the default (CodeRabbit HIMMEL-1257).
+// `effective === "deny"` check via the default.
 function assertExplicitDeny(corpus, provider, purpose, msg) {
   const { effective, rule } = evaluate(corpus, provider, purpose);
   assert(effective === "deny", `${msg} — effective must be deny, got ${effective}`);
@@ -77,7 +76,7 @@ for (const [i, r] of m.rules.entries()) {
 }
 
 // 3. salus: every CLOUD provider x every purpose = hard deny; local-ollama = conditional.
-//    EXCEPTION (2026-08-15 operator ruling, HIMMEL-1774): the openrouter cell keeps
+//    EXCEPTION: the openrouter cell keeps
 //    verdict deny (the default does NOT change) but is deliberately NOT hard — the
 //    cell is operator-configurable (A-tier provider, adopter portability). Every
 //    OTHER provider keeps its hard deny.
@@ -87,14 +86,14 @@ for (const p of providers) {
     if (p === "local-ollama") {
       assert(effective === "conditional", `salus x ${p} x ${u} must be conditional (per-run opt-in), got ${effective}`);
     } else if (p === "ollama-cloud" && u === "extraction") {
-      // HIMMEL-4185: salus x ollama-cloud x extraction opens ONLY under the
+      // salus x ollama-cloud x extraction opens ONLY under the
       // persisted user opt-in, via its OWN non-hard conditional row. Every
       // other purpose stays on the salus wildcard hard deny (next branch).
       assert(effective === "conditional" && rule && rule.provider === "ollama-cloud" &&
         rule.corpus === "salus" && rule.hard === undefined,
         `salus x ${p} x ${u} must be conditional via its OWN ollama-cloud row (persisted opt-in, HIMMEL-4185), got ${effective}`);
     } else if (p === "openai-codex" && u === "inference") {
-      // HIMMEL-5002 operator ruling 2026-10-08: codex inference on salus is an
+      // codex inference on salus is an
       // explicit allow via its OWN row, ahead of the hard wildcard deny.
       assert(effective === "allow" && rule && rule.corpus === "salus" && rule.provider === "openai-codex" &&
         rule.purpose === "inference" && rule.hard === undefined,
@@ -116,8 +115,8 @@ assert(salusWildcard && salusWildcard.verdict === "deny" && salusWildcard.hard =
   "salus x * x * wildcard deny must stay HARD (only the openrouter cell is configurable)");
 
 // 3b. voice-audio: every NON-LOCAL provider x every purpose = hard deny;
-//     local-speech = allow (HIMMEL-1522). EXCEPTION (2026-08-15 ruling,
-//     HIMMEL-1774): the openrouter cell stays deny but is NOT hard —
+//     local-speech = allow. EXCEPTION (2026-08-15 ruling):
+//     the openrouter cell stays deny but is NOT hard —
 //     operator-configurable, same scoped ruling as salus above.
 //
 // Held at the salus tier deliberately. The salus deny keys on file paths and
@@ -176,8 +175,8 @@ for (const c of corpora) for (const u of purposes) {
 
 // 5. EVERY pending-operator cell evaluates as deny — programmatic enumeration,
 //    so a future pending cell shadowed by an earlier allow rule fails loudly.
-// HIMMEL-1257: the five HIMMEL-765 Alibaba cells were demoted from
-// pending-operator to explicit deny (Alibaba de-listed, bad results), so there
+// the five Alibaba cells are explicit deny, not
+// pending-operator (Alibaba de-listed, bad results), so there
 // are now ZERO pending-operator cells. The enumeration loop below still runs
 // (no-op on empty). A future pending cell would (correctly) trip the === 0
 // tripwire, forcing a conscious count update in the PR that adds it.
@@ -190,8 +189,8 @@ for (const r of pendingRules) {
 }
 
 // 5e. The luna-personal x deepseek x enrichment cell must exist and, since
-//     HIMMEL-1257 (DeepSeek de-listed), must be `deny` (the 2026-07-10
-//     HIMMEL-833 allow+log ratification was reversed). Pins that the cell is
+//     DeepSeek is de-listed, must be `deny` (the 2026-07-10
+//     allow+log ratification was reversed). Pins that the cell is
 //     not silently deleted and stays denied.
 const enrichmentRule = m.rules.find(r =>
   r.corpus === "luna-personal" && r.provider === "deepseek" && r.purpose === "enrichment");
@@ -233,7 +232,7 @@ assert(evaluate("himmel-code", "brand-new-provider", "inference").effective === 
   "himmel-code x * x * is the deliberate allow-all (change this test consciously if narrowing)");
 
 // 6. Regression guard both directions.
-// HIMMEL-1257: DeepSeek + Alibaba de-listed for vault/handover egress (bad
+// DeepSeek + Alibaba de-listed for vault/handover egress (bad
 // results); the sanctioned set is GLM (zai-glm) + Claude (anthropic) + Codex
 // (openai-codex). himmel-code stays provider-agnostic (public code).
 // Each de-listed cell must deny via its OWN explicit deny row (not default-deny).
@@ -248,11 +247,11 @@ assertExplicitDeny("handover-state", "alibaba", "inference",
 assertExplicitDeny("luna-personal", "alibaba", "embedding",
   "luna-personal x alibaba x embedding — Alibaba de-listed, 765 pilot not pursued (HIMMEL-1257)");
 // The sanctioned providers stay as-ratified (guard against over-broad edits).
-// HIMMEL-2224: zai-glm de-listed too — landing HIMMEL-1749's DROP branch (GLM
+// zai-glm de-listed too — the DROP branch (GLM
 // Coding Plan auto-renew cancelled 2026-08-12, plan lapsed 2026-08-17). Same
 // legible-reversal pattern: four explicit deny ROWS, not deleted rows. moonshot
-// (HIMMEL-1748) was the replacement CN extraction lane at the time, but kimi/
-// moonshot is itself retired now (HIMMEL-2101, operator ruling — there is no
+// was the replacement CN extraction lane at the time, but kimi/
+// moonshot is itself retired now (operator ruling — there is no
 // kimi backend), so unlike zai-glm its rows are DELETED, not reversed to
 // explicit deny — no sanctioned CN extraction lane remains for these
 // corpora; claude-cli (the anthropic operating-substrate cell) is the
@@ -269,7 +268,7 @@ assert(evaluate("himmel-code", "zai-glm", "inference").effective === "allow",
   "himmel-code x zai-glm stays allow — de-listing is for private-content egress, not public code (wildcard)");
 assert(evaluate("handover-state", "openai-codex", "inference").rule?.verdict === "conditional",
   "handover-state x openai-codex x inference must STAY the brief-scoped conditional (the zai-glm de-listing must not touch the codex worker cell)");
-// HIMMEL-2101: kimi/moonshot is retired — its two former allow+log rows are
+// kimi/moonshot is retired — its two former allow+log rows are
 // DELETED (not reversed to explicit deny), so it now falls through to
 // DEFAULT deny like any other unclassified provider (rule === null).
 assert(evaluate("luna-personal", "moonshot", "extraction").rule === null,
@@ -295,7 +294,7 @@ assert(evaluate("luna-personal", "deepseek", "embedding").effective === "deny",
 assert(evaluate("handover-state", "openai-codex", "embedding").effective === "deny",
   "no bulk pipelines over handover-state");
 
-// 6b. openai-codex on luna + salus (HIMMEL-5002, operator ruling 2026-10-08):
+// 6b. openai-codex on luna + salus:
 //     inference ONLY, via explicit rows; every OTHER provider and every other
 //     codex purpose stays denied.
 for (const c of ["luna-personal", "luna-clippings", "salus"]) {
@@ -357,7 +356,7 @@ const firstSalusHard = m.rules.findIndex(r => r.corpus === "salus" && r.provider
 const firstJinaAllow = m.rules.findIndex(r => r.provider === "jina" && r.verdict === "allow");
 assert(firstSalusHard >= 0 && firstSalusHard < firstJinaAllow, "the salus hard wildcard must precede every jina allow row");
 
-// 7. OpenRouter (HIMMEL-1774): declared as its OWN provider — content transits
+// 7. OpenRouter: declared as its OWN provider — content transits
 //    the aggregator, a different trust boundary from the vendor cells, so the
 //    anthropic allowances do NOT carry over. Operator ruling pinned per cell:
 //    ALLOW himmel-code + handover-state (inference — the scripts/claude-openrouter
@@ -399,7 +398,7 @@ assert(evaluate("luna-personal", "openrouter", "enrichment").effective === "deny
 assert(evaluate("handover-state", "openrouter", "embedding").effective === "deny",
   "handover-state x openrouter x embedding must deny (no bulk pipelines over the transit vendor)");
 
-// HIMMEL-4084: only the DeepSeek launcher's approved station condition may
+// only the DeepSeek launcher's approved station condition may
 // authorize inference. Generic consumers still see conditional, not allow.
 for (const corpus of ["himmel-code", "handover-state"]) {
   const { effective, rule } = evaluate(corpus, "deepseek", "inference");
@@ -413,7 +412,7 @@ for (const corpus of ["luna-personal", "luna-clippings", "salus", "voice-audio"]
     `${corpus} DeepSeek inference stays denied`);
 }
 
-// HIMMEL-4335: the scrape backends (Firecrawl, Jina Reader) are declared
+// the scrape backends (Firecrawl, Jina Reader) are declared
 // providers. Public clipped URLs may be sent for `enrichment` with a ledger
 // obligation (allow+log, via their own explicit rows); every other corpus x
 // purpose stays denied, and salus / voice-audio stay HARD-denied.
@@ -433,7 +432,7 @@ for (const p of ["firecrawl", "jina-reader"]) {
   }
 }
 
-// HIMMEL-4328: the hosted agent-native MCP (Builder.io) gets its OWN declared
+// the hosted agent-native MCP (Builder.io) gets its OWN declared
 // provider and an EXPLICIT hard salus deny row, so the cell the
 // block-agent-native-egress.sh hook enforces is legible here, not only implied
 // by the salus wildcard.
@@ -445,7 +444,7 @@ for (const u of purposes) {
     `salus x builder-io x ${u} must deny via its OWN hard builder-io row (HIMMEL-4328)`);
 }
 
-// HIMMEL-4185: ollama-cloud (a `-cloud` ollama model, or an ollama.com
+// ollama-cloud (a `-cloud` ollama model, or an ollama.com
 // endpoint) is a declared provider. Extraction is allowed on every corpus but
 // salus (persisted opt-in, pinned in invariant 3) and voice-audio (hard deny,
 // pinned in 3b); every other purpose stays default-deny outside himmel-code.
@@ -461,7 +460,7 @@ for (const c of ["luna-personal", "luna-clippings", "handover-state"]) {
   }
 }
 
-// 6. HIMMEL-4938 (operator ruling 2026-10-08): the hosted Atlassian MCP server may
+// 6. Operator ruling 2026-10-08: the hosted Atlassian MCP server may
 //    be asked for its published tool catalog (initialize + tools/list) and NOTHING
 //    else. The one allow cell is mcp-tool-catalog x atlassian-mcp x catalog-fetch;
 //    every other purpose, every other corpus and every other provider stays deny.

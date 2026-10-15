@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // egress-matrix-eval.mjs - CLI wrapper over the egress-matrix reference
-// semantics (HIMMEL-766) for shell consumers (graphify-fence.sh, HIMMEL-621/622).
+// semantics for shell consumers.
 //
 // Reuses the SAME first-match-wins evaluation as the reference evaluate() in
 // test-egress-matrix.mjs: iterate `rules`, '*' wildcards, then `default`.

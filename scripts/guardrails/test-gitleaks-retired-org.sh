@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/guardrails/test-gitleaks-retired-org.sh — HIMMEL-3508 regression:
+# scripts/guardrails/test-gitleaks-retired-org.sh — regression:
 # .gitleaks.toml's himmel-retired-org-name rule blocks a retired third-party
 # org's name (a repo we no longer maintain) case-insensitively, while leaving
 # ordinary text and near-miss words alone.

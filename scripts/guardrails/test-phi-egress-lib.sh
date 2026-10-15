@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/guardrails/phi-egress-lib.sh (HIMMEL-1776 fence
+# Smoke test for scripts/guardrails/phi-egress-lib.sh (fence
 # parity by extraction). Exercises the two predicates shared by
 # graphify-fence.sh and refresh-graph-map.sh in isolation; the consumer-level
 # regression coverage lives in test-graphify-fence.sh and
