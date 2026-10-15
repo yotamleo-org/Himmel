@@ -1674,7 +1674,7 @@ assert_rc "R5283- pre-commit run"             0 "$(run_case "$(j_bash 'pre-commi
 assert_rc "R5283- chmod +x script"            0 "$(run_case "$(j_bash 'chmod +x scripts/foo.sh')")"
 
 # The deny names the single-run bypass (hooks/CLAUDE.md: every deny names its bypass).
-_msg=$(printf '%s' "$(j_bash 'git tag -d v1')" | bash "$HOOK" 2>&1 >/dev/null)
+_msg=$(printf '%s' "$(j_bash 'git tag -d v1')" | bash "$(cd "$(dirname "$HOOK")/../lib" && pwd)/sandbox-run.sh" -- bash "$HOOK" 2>&1 >/dev/null)
 case "$_msg" in
     *"DESTRUCTIVE_OK=1"*) echo "PASS deny message names the bypass" ;;
     *) echo "FAIL deny message names the bypass - got: $_msg"; FAILED=$((FAILED + 1)) ;;
