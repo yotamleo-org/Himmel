@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Control for T13(b) of scripts/parity/test-ws5-invariants.sh (HIMMEL-3147).
+# Control for T13(b) of scripts/parity/test-ws5-invariants.sh.
 #
 # T13(b) greps the lines a diff ADDS for loop/service/timer markers. Code that
-# is merely MOVED (a refactor extracting a function, e.g. the HIMMEL-1575
-# startup watchdog hoisted into a shared helper) reads as freshly added at its
-# new home and re-fired the gate -- the same class as HIMMEL-3090 (renames) and
-# HIMMEL-3151 (test fixtures). The rule under test: an added marker line does
+# is merely MOVED (a refactor extracting a function, e.g. a startup
+# watchdog hoisted into a shared helper) reads as freshly added at its
+# new home and re-fires the gate -- the same class as renames and test
+# fixtures. The rule under test: an added marker line does
 # not count when an identical line (compared trimmed) is REMOVED elsewhere in
 # the SAME full-tree diff, one removal cancelling one addition.
 #
@@ -19,7 +19,7 @@
 #   3. added marker while a DIFFERENT marker is removed -> FAIL  (not neutral)
 #   4. one removal, two additions (move + duplicate)    -> FAIL  (one-for-one)
 #
-# Assertions use `case` glob matching, not `printf | grep -q` (HIMMEL-1430).
+# Assertions use `case` glob matching, not `printf | grep -q`.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Pure git + shell against a temp repo; no .ps1 twin needed -- the only

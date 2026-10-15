@@ -1,45 +1,43 @@
 #!/usr/bin/env bash
-# WS5 Task 5 invariants test (HIMMEL-654). Assertion-only: greps the
+# WS5 Task 5 invariants test. Assertion-only: greps the
 # integrated WS5 branch diff (git diff <base>...HEAD) for the four locks that
 # make lane parity durable without growing always-on surface or root-doctrine
 # bloat.
 #
 #   T12 no-bloat     -- root CLAUDE.md does not grow on net (add-del <=1);
-#                       pure churn (net 0) or shrinkage passes. (Changed
-#                       2026-09-06 from a symmetric per-side cap to a
-#                       net-growth cap, HIMMEL-2581 -- the per-side form
-#                       failed ordinary rewordings, e.g. PR #2101/HIMMEL-2413's
-#                       add=2 del=2, and even pure deletions, neither of which
-#                       is the rule-block bloat this check exists to catch.)
+#                       pure churn (net 0) or shrinkage passes. (A net-growth
+#                       cap, not a symmetric per-side one: the per-side form
+#                       failed ordinary rewordings, add=2 del=2, and even pure
+#                       deletions, neither of which is the rule-block bloat
+#                       this check exists to catch.)
 #   T13 no-always-on -- no new SessionStart/PreToolUse hook registration in
 #                       .claude/settings.json or any */hooks.json (except an
 #                       explicit path+event allowlist at T13(a) below,
-#                       HIMMEL-5239; VENDORED.md does NOT exempt a hook), and no
+#                       VENDORED.md does NOT exempt a hook), and no
 #                       unbounded-loop / background-service / JS-timer marker
 #                       in the SHIPPED source the diff adds (test fixtures are
 #                       excluded: a harness loop is not runtime surface; a
-#                       VENDORED.md tree is excluded too, HIMMEL-3093: it is
+#                       VENDORED.md tree is excluded too: it is
 #                       upstream content this repo mirrors, not himmel's own
 #                       surface -- see the corpus loop below). The daemon
 #                       marker skips prose -- *.md and comment lines --
-#                       and adds service-creation shapes (HIMMEL-3233;
-#                       rules at T13(b) below). A lexical read-only-lookup
+#                       and adds service-creation shapes (rules at
+#                       T13(b) below). A lexical read-only-lookup
 #                       carve-out (pgrep / `pkill -0` / `ps ... | grep`) was
 #                       tried and removed after adversarial review proved a
 #                       Critical bypass (a shell function or alias shadowing
 #                       one of those names); the ONLY exemption now is a
 #                       trailing same-line `# t13b-ok: <reason>` -- exact
 #                       spacing, a non-trivial reason -- for that one line,
-#                       T13(b) only (HIMMEL-3432 marker-only exemption;
-#                       rules at T13(b) below).
+#                       T13(b) only (rules at T13(b) below).
 #   T14 locks        -- no per-token-lane wiring in shipped source; the
 #                       gemini/copilot/cursor index rows stay deferred.
 #                       (The former T14(a) claude-codex-launcher prohibition
-#                       was retired 2026-07-13, HIMMEL-979.)
+#                       was retired 2026-07-13.)
 #   T15 x-platform   -- every NEW scripts/**/*.sh ships a .ps1 twin OR carries
 #                       a documented platform-guard marker in its header.
 #
-# Public propagation-snapshot guard (HIMMEL-2642): T12/T13/T15 assume
+# Public propagation-snapshot guard: T12/T13/T15 assume
 # $BASE...HEAD is a normal feature-branch diff -- what one PR authored. A
 # public re-baseline (propagate-public.sh's `snapshot`/`reship` modes) breaks
 # that assumption: it re-projects the ENTIRE private tree onto the public
@@ -110,7 +108,7 @@ if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
 fi
 
 # ----------------------------------------------------------------------------
-# Public propagation-snapshot guard (HIMMEL-2642) -- EXPLICIT MARKER, not an
+# Public propagation-snapshot guard -- EXPLICIT MARKER, not an
 # inferred signal.
 #
 # History: this guard went through three designs. (1) a threshold on added
@@ -131,7 +129,7 @@ fi
 # volume threshold, no second file's absence, no re-derivable statistic --
 # a fact the propagator itself asserts by writing it.
 #
-# Ride-back guard (HIMMEL-2642 follow-up): the marker must never appear on a
+# Ride-back guard: the marker must never appear on a
 # PRIVATE tree (a stray copy would falsely skip T12/T13/T15 there too).
 # scripts/propagate-public.sh is ITSELF private-only, by its own header, and
 # scripts/lib/propagation-drift.sh already relies on exactly that fact as
@@ -156,7 +154,7 @@ fi
 #
 # Captured into a variable rather than piped into `grep -q`: this file runs
 # under `set -o pipefail` (line 54), where grep -q exits at its first match and
-# the producer's SIGPIPE flips the pipeline's status (HIMMEL-1430).
+# the producer's SIGPIPE flips the pipeline's status.
 PUBLIC_PROJECTION_MARKER=".himmel-public-projection"
 PRIVATE_ONLY_SIGNAL="scripts/propagate-public.sh"
 FAIL=0
@@ -180,7 +178,7 @@ trap 'rm -f "$SHIPPED"' EXIT
 # per-token-lane invariants are about production runtime + docs, not harness
 # comments. (This also keeps the test from flagging its own assertion text.)
 #
-# ONE full-tree diff, not a per-file `-- "$f"` loop (HIMMEL-3090): restricting
+# ONE full-tree diff, not a per-file `-- "$f"` loop: restricting
 # the diff to a single new-side pathspec drops git's rename pairing, so an
 # unchanged file moved to a new path (100%-similarity rename) reads as its
 # ENTIRE content being freshly added -- a vendored dependency's own
@@ -190,9 +188,9 @@ trap 'rm -f "$SHIPPED"' EXIT
 # tracks the current file from each hunk's "+++ b/<path>" header instead, so
 # basename exclusion still applies per file.
 #
-# Vendored trees (HIMMEL-3093) get the same treatment, folded into the SAME
+# Vendored trees get the same treatment, folded into the SAME
 # full-tree pass rather than a second per-file loop (which would reintroduce
-# the HIMMEL-3090 rename-blindness this file just fixed): a directory
+# rename-blindness): a directory
 # carrying its own VENDORED.md declares its content copied verbatim from an
 # upstream project himmel did not author (see marketplace/plugins/*/VENDORED.md)
 # -- T13 audits surface HIMMEL SHIPPED BY WRITING IT, not prose or scripts an
@@ -204,21 +202,20 @@ trap 'rm -f "$SHIPPED"' EXIT
 # stderr.
 #
 # The SAME pass also collects the REMOVED lines of the non-skipped files into
-# $REMOVED (HIMMEL-3147). T13(b) uses them to tell moved code from new code: a
+# $REMOVED. T13(b) uses them to tell moved code from new code: a
 # refactor that hoists a setInterval poll out of one file into a shared helper
 # reads, per line, as an add in the new home -- but the identical line is
 # removed from the old one in the same diff. Still one full-tree diff, no
-# per-file loop (HIMMEL-3090). `--- ` headers are dropped, so a removed line
+# per-file loop. `--- ` headers are dropped, so a removed line
 # whose own text starts with `-- ` is missed: that only ever makes a
 # cancellation LESS likely, i.e. the gate stays strict.
 VENDORED_LIST="$(mktemp "${TMPDIR:-/tmp}/ws5-vendored-list.XXXXXX")" || { echo "test-ws5-invariants.sh: mktemp failed" >&2; exit 2; }
 REMOVED="$(mktemp "${TMPDIR:-/tmp}/ws5-removed.XXXXXX")" || { echo "test-ws5-invariants.sh: mktemp failed" >&2; exit 2; }
 # One line per $SHIPPED line, in lockstep: "md" for a *.md file, "sh" for a
 # *.sh/*.bash file, "js" for a *.js/*.ts/*.mjs/*.cjs file, "code" otherwise.
-# T13(b)'s daemon class reads md vs. not-md only (HIMMEL-3233) -- "sh", "js"
-# and "code" are all still eligible for that check (HIMMEL-3432 removed the
-# lookup carve-out that used to read "sh" specifically; HIMMEL-3446 split
-# "js" out of "code" so the marker-comment scan below knows which line
+# T13(b)'s daemon class reads md vs. not-md only -- "sh", "js"
+# and "code" are all still eligible for that check ("js" is split
+# out of "code" so the marker-comment scan below knows which line
 # comment style -- `#` or `//` -- is real for that line).
 # $SHIPPED itself stays bare lines so T14(b)'s grep cannot match a path.
 SHIPPED_KIND="$(mktemp "${TMPDIR:-/tmp}/ws5-shipped-kind.XXXXXX")" || { echo "test-ws5-invariants.sh: mktemp failed" >&2; exit 2; }
@@ -238,7 +235,7 @@ while IFS= read -r f; do
         [ "$d" = "$REPO" ] && break
         d="$(dirname "$d")"
     done
-    # HIMMEL-3064 (CR round 1, PR #777) -- the marker is a directory boundary,
+    # The marker is a directory boundary,
     # but a VENDORED.md also declares its tree's OWN himmel-authored exceptions
     # as `local=<path>` lines relative to itself (lean-skills' context7-mcp).
     # Those are shipped by writing them, so the marker must not exempt them
@@ -269,9 +266,9 @@ git diff "$BASE...HEAD" | awk -v vendored_file="$VENDORED_LIST" -v removed_file=
         sub(/^\+\+\+ [ab]\//, "", f)
         n = split(f, parts, "/")
         base = parts[n]
-        # data ledgers (HIMMEL-2894 suite-durations.tsv) list suite basenames,
+        # data ledgers list suite basenames,
         # which legitimately contain the marker words; T13 is about runtime
-        # surface, and a TSV has none. *.test.(ts|js|mjs|cjs) (HIMMEL-3151)
+        # surface, and a TSV has none. *.test.(ts|js|mjs|cjs)
         # gets the same test-fixture exemption as the shell "test-*"
         # convention: a JS/TS test legitimately asserts on the very marker
         # words T13(b) scans for (e.g. a setInterval-timing test).
@@ -288,16 +285,15 @@ git diff "$BASE...HEAD" | awk -v vendored_file="$VENDORED_LIST" -v removed_file=
 # ----------------------------------------------------------------------------
 # T12 -- no-bloat (AC6): root CLAUDE.md does not grow on net (add-del <=1).
 # Changed 2026-09-06 from a symmetric per-side cap (add<=1 AND del<=1) to a
-# net-growth cap, HIMMEL-2581: the per-side form failed ordinary rewordings
-# (PR #2101/HIMMEL-2413, add=2 del=2 -- the same shape the HIMMEL-2581 doc
-# sweep hit) and even a pure multi-line deletion, neither of which is the
+# net-growth cap: the per-side form failed ordinary rewordings
+# (add=2 del=2) and even a pure multi-line deletion, neither of which is the
 # rule-block bloat this check exists to catch. Verdict computed by
 # t12_verdict() in t12-no-bloat-lib.sh, shared with its control
 # (test-t12-no-bloat-lib.sh) so the threshold itself is exercised directly
 # against synthetic add/del pairs, not just inferred from this suite passing.
 #
 # Sourced INSIDE the not-a-projection branch below, not unconditionally
-# (HIMMEL-2642 follow-up): a propagation-snapshot tree's `.himmel-public-
+#: a propagation-snapshot tree's `.himmel-public-
 # projection` marker can legitimately be present while the marker's own
 # private base SHA predates a later private-only addition of THIS file --
 # ordinary two-step propagation lag (observed live: the open yotamleo/Himmel
@@ -339,7 +335,7 @@ if [ "$PROPAGATION_SNAPSHOT" -eq 1 ]; then
     echo "SKIP T13 no-always-on: $SNAPSHOT_REASON"
 else
     # (a) hook-registration files only: .claude/settings.json + any */hooks.json.
-    # Allowlist (HIMMEL-5239): one "path|event|reason" entry per exemption.
+    # Allowlist: one "path|event|reason" entry per exemption.
     # Exact path AND exact event -- a listed path that also adds the other
     # event, or the same event at an unlisted path, still FAILs. There is no
     # VENDORED.md exemption here: a vendored hook must be listed to pass.
@@ -372,13 +368,13 @@ else
     # (b) shipped-source loop / service / timer markers.
     # A marker line counts only if no identical line (compared after trimming
     # leading/trailing whitespace) is REMOVED elsewhere in the same diff: code
-    # moved between files is not new always-on surface (HIMMEL-3147; same class
-    # as HIMMEL-3090 renames / HIMMEL-3151 test fixtures). One removal cancels
+    # moved between files is not new always-on surface (same class
+    # as renames / test fixtures). One removal cancels
     # ONE addition, so a moved line plus a duplicate still fails, and a marker
     # added while a DIFFERENT line is removed is never neutral.
     #
     # `while true` / `setInterval` match every shipped line, as they always
-    # have. The daemon class (HIMMEL-3233) used to be the bare word `daemon`
+    # have. The daemon class used to be the bare word `daemon`
     # on every line, so prose naming an EXISTING daemon failed (PR #932: a
     # README remedy, a shell comment). It now skips prose only, and is never
     # weaker on code:
@@ -401,7 +397,7 @@ else
     #     (scripts/lib/detach.sh); `nohup ... &` hits 7 lines in 4 files,
     #     each a real detached process;
     #   - the exact command `systemctl [--user] daemon-reload` is carved out
-    #     (HIMMEL-3414, rule at the gsub below); it reloads unit files and
+    #; it reloads unit files and
     #     starts nothing. Known gap, unchanged: `systemctl start` is no shape.
     # ponytail: a heredoc body or multi-line string holding `#` at line start
     # reads as a comment, and a C-preprocessor `#define` line likewise
@@ -415,19 +411,19 @@ else
             if (prev != " " && prev != "\t") return 0
             return (i - 1 != esc_pos) ? 1 : 0
         }
-        # HIMMEL-3446: locate the ONE real trailing t13b-ok marker on this
+        # Locate the ONE real trailing t13b-ok marker on this
         # line, if any -- a quote/brace-depth STACK scan (no shell
         # tokenizer): tracks single/double/backtick quoting, a leading
         # `/* ... */` block comment, and `${...}`/`$(...)` substitution
         # nesting -- INCLUDING a substitution opened while already inside a
-        # double quote or backtick (round 3: `x="$(echo " # t13b-ok: R")"; ..`
+        # double quote or backtick (`x="$(echo " # t13b-ok: R")"; ..`
         # no longer desyncs -- the inner `$(`/backtick pushes a new stack
         # frame instead of being invisible to the scan, so the `#` inside the
         # nested string is correctly seen as still-quoted) -- and skips a
         # `#`/`//` found inside any of them. A backslash escape at top level
         # (`\ ` included) also marks the character it protects as NOT a real
         # word boundary, so `foo\ # t13b-ok: R` does not read the `#` as a
-        # comment open either (round 3, same rationale: an escaped space does
+        # comment open either (same rationale: an escaped space does
         # not end the preceding word in shell). Nesting deeper than 20 stack
         # frames, or left unbalanced at end of line, FAILS CLOSED -- the walk
         # never reaches a top-level `#`/`//` check while still inside an
@@ -441,7 +437,7 @@ else
         # it spells the exact marker, nothing later on the line can be a
         # different "start" -- it is all one comment, or the line has none.
         # Returns the 1-based index of the marker text, or 0 if none.
-        # HIMMEL-3455: two quote-desync gaps closed. (1) On sh/code lines a
+        # Two quote-desync gaps are closed. (1) On sh/code lines a
         # bash ANSI-C dollar-single-quote string is its own frame ("ansi")
         # where a backslash escapes the next char, so a backslash-quote does
         # not close it (plain single quotes keep NO escapes, as in bash).
@@ -652,7 +648,7 @@ else
                 if (substr(code, 1, 2) == "/*") code = trim(substr(code, index(code, "*/") + 2))
                 else code = trim(substr(code, index(code, "-->") + 3))
             }
-            # HIMMEL-3414: `systemctl [--user] daemon-reload` reloads systemd unit
+            # `systemctl [--user] daemon-reload` reloads systemd unit
             # files and starts nothing; it is the only place the word `daemon`
             # is a verb argument rather than a process. Strip that EXACT verb
             # token (twice: a match eats its trailing terminator, so adjacent
@@ -661,7 +657,7 @@ else
             # still fails. It must END the command: end of line, `;` `&` `|`
             # `)` `#`, right away or after a chain of redirections (`>`, an fd
             # redirect like `2>`) each followed by its own target word --
-            # HIMMEL-3417: a redirect that is not itself followed by the end
+            # a redirect that is not itself followed by the end
             # of the command (`>/dev/null --now x`) is not the end, and must
             # NOT strip. Only the verb text is ever removed from `code` -- any
             # redirect operator and target word stay verbatim, so a daemon
@@ -686,7 +682,7 @@ else
                     break
             }
             code = trim(code)
-            # HIMMEL-3432: the read-only-lookup carve-out (a lexical scan for
+            # The read-only-lookup carve-out (a lexical scan for
             # pgrep/pkill/ps token shapes, with chain/subst/backslash-
             # continuation disqualifiers and a *.sh-only kind gate) is
             # REMOVED. It was added because a read-only process lookup
@@ -705,7 +701,7 @@ else
             # lexical scanner cannot tell a real pgrep(1) invocation from an
             # identifier that happens to be spelled the same way -- that is
             # not a bug to patch again, it is what a lexical scan is. Ruling
-            # (AC adversarial review, HIMMEL-3432): stop adding arms:
+            #: stop adding arms:
             # KEEP the general narrowing above (prose/comments skipped,
             # *.md exempt, systemctl daemon-reload carved out) and DROP the
             # lookup-shape carve-out entirely, so a lookup line naming a
@@ -717,13 +713,13 @@ else
             if (!hit && (kind == "code" || kind == "sh" || kind == "js") && code != "" && code !~ /^(#|\/\/|\/\*|\*([ \t]|$)|<!--)/ &&
                 (daemon_hit || service_hit))
                 hit = 1
-            # HIMMEL-3432 AC ruling: a trailing `# t13b-ok: <reason>` on THIS
+            # A trailing `# t13b-ok: <reason>` on THIS
             # shipped line is now the ONLY exemption (the lexical lookup
             # carve-out above is gone). It exempts only THIS line, only
             # T13(b) (not T13(a), not T12/T14/T15), and never a different
             # line (`t` holds only this own line text, so a marker on the
             # line above cannot cancel a hit here).
-            # HIMMEL-3446 (console ruling): the marker only counts when it is
+            # The marker only counts when it is
             # a REAL trailing comment -- find_marker_start above does a
             # minimal quote/brace-depth scan (not a full tokenizer) so a
             # marker spelled inside a quoted string, a backtick/`$()`/`${}`
@@ -744,7 +740,7 @@ else
             # heredoc body line whose text happens to spell a real-looking
             # `# t13b-ok: <reason>` still exempts a daemon shape on that
             # same line (same limit as the pre-existing heredoc ponytail
-            # above). Out of scope here; tracked on HIMMEL-3446.
+            # above). Out of scope here.
             marker_at = 0
             mp = find_marker_start(t, kind)
             if (mp > 0) marker_at = mp + ((substr(t, mp, 1) == "#") ? 11 : 12)
@@ -774,7 +770,7 @@ fi
 
 # ----------------------------------------------------------------------------
 # T14 -- locks (AC8).
-# (a) RETIRED 2026-07-13 (operator decision, HIMMEL-979): the D9 no-claude-codex
+# (a) RETIRED 2026-07-13: the D9 no-claude-codex
 #     lock was superseded -- the claude-codex lane (scripts/claude-codex{,.ps1})
 #     ships with native guard posture (Claude Code IS the harness, same column
 #     as claude-glm). See docs/internals/lane-parity.md "claude-codex lock".
@@ -817,7 +813,7 @@ fi
 # T15 -- cross-platform (AC9): every NEW scripts/**/*.sh ships a .ps1 twin OR
 # a documented platform-guard marker in its header. Predicate shared with
 # scripts/hooks/check-new-shell-platform-guard.sh via
-# scripts/lib/platform-guard.sh (HIMMEL-2682) so the two cannot drift.
+# scripts/lib/platform-guard.sh so the two cannot drift.
 # ----------------------------------------------------------------------------
 if [ "$PROPAGATION_SNAPSHOT" -eq 1 ]; then
     echo "SKIP T15 x-platform: $SNAPSHOT_REASON"

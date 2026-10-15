@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
 # scripts/parity/t12-no-bloat-lib.sh -- shared net-growth verdict for T12
 # (scripts/parity/test-ws5-invariants.sh) and its control
-# (scripts/parity/test-t12-no-bloat-lib.sh). HIMMEL-2581.
+# (scripts/parity/test-t12-no-bloat-lib.sh).
 #
 # T12 changed 2026-09-06 from a symmetric per-side churn cap (add<=1 AND
 # del<=1) to a net-growth cap (add-del<=1). The per-side form rejected every
-# ordinary rewording -- including the HIMMEL-2581 doc-sweep edit that
-# triggered this change (two one-line rewordings, numstat add=2 del=2) and
-# the routine PR #2101/HIMMEL-2413 edit of the identical shape -- and even a
-# pure deletion of 5+ lines, none of which is the "root CLAUDE.md gains a
-# rule block" bloat the check exists to catch. See test-ws5-invariants.sh's
-# own header for the full history.
+# ordinary rewording (two one-line rewordings, numstat add=2 del=2) -- and
+# even a pure deletion of 5+ lines, none of which is the "root CLAUDE.md gains
+# a rule block" bloat the check exists to catch.
 #
 # t12_verdict <add> <del> -- prints the PASS/FAIL line T12 emits (PASS on
 # stdout, FAIL on stderr, matching the caller's own convention) and returns

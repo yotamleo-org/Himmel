@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # test-launcher-context-env-parity.sh — the claude-codex twins must BOTH feed
 # the context-window env pair from the CODEX_CONTEXT_WINDOW variable
-# (HIMMEL-1887), and BOTH default the per-dispatch effort to `medium`, the value
-# lanes.json declares (HIMMEL-2772).
+#, and BOTH default the per-dispatch effort to `medium`, the value
+# lanes.json declares.
 #
 # test-launcher-twin-parity.sh compares only embedded node JS between twins —
 # by its own design — so it is blind to a plain export: a .ps1 twin missing
@@ -57,7 +57,7 @@ check 'claude-codex exports CLAUDE_CODE_AUTO_COMPACT_WINDOW="$CODEX_CONTEXT_WIND
 check 'claude-codex.ps1 sets $env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = $CodexContextWindow' \
   "$PS_TWIN" '^\$env:CLAUDE_CODE_AUTO_COMPACT_WINDOW[[:space:]]*=[[:space:]]*\$CodexContextWindow'
 
-# 5. HIMMEL-2772: the per-dispatch effort default is `medium` (Astra on low/medium
+# 5. The per-dispatch effort default is `medium` (Astra on low/medium
 #    beats the old high pin; `low` is the first lever for mechanical chunks), in
 #    BOTH twins and in the lanes.json prose that documents it. Still overridable:
 #    the bash default stays the `${VAR:-x}` form, the ps1 the `-not $env:VAR` form.

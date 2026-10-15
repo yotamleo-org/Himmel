@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-launcher-twin-parity.sh — the embedded node-JS of every launcher twin pair
-# must be byte-identical (HIMMEL-1792).
+# must be byte-identical.
 #
 # himmel ships cross-platform launchers as TWINS: a bash script plus a
 # byte-parallel .ps1. The security-relevant predicates (the egress-matrix gate,
@@ -9,8 +9,8 @@
 # ("delegates to the IDENTICAL node -e one-liner (no PS re-impl)" — their own
 # header comment). A predicate written twice and drifting is a recurring defect
 # class here (the moonshot fence bypass in PR #1680; the openrouter
-# first-match-wins bug in #1691; and HIMMEL-1774 CR round 3 shipped a
-# PowerShell-ONLY regression green because nothing compared the twins).
+# first-match-wins bug in #1691; a PowerShell-ONLY regression once shipped
+# green because nothing compared the twins).
 #
 # What this asserts, driven ENTIRELY from the files on disk (no hand-maintained
 # fixture that can silently diverge from what shipped):
@@ -26,8 +26,8 @@
 #   4. The claude-glm sanitizer key set is pinned on BOTH twins, so even a
 #      byte-identical edit cannot silently weaken what seeded settings strip.
 #   5. Canary floors: the counts of JS-bearing pairs and matched PS blocks can
-#      never silently drop to zero (the HIMMEL-1128 false-green class).
-#   6. The block extractors are quote/escape-aware (HIMMEL-1792 CR round 1): an
+#      never silently drop to zero (the false-green class).
+#   6. The block extractors are quote/escape-aware: an
 #      embedded ' in bash JS (the `'\''` idiom) and a mid-line '@ inside a PS
 #      here-string no longer truncate the captured block, and any boundary the
 #      extractor cannot determine unambiguously FAILS loudly rather than
@@ -59,8 +59,8 @@ SCRIPTS="$(cd "$HERE/.." && pwd)"              # scripts/
 #   claude-deepseek: 0    — egress, balance, sanitizer and trust all have JS twins
 #   claude-routed: 0
 #   claude-glm-seed-check.sh: 0  (no embedded JS on either side)
-#   HIMMEL-4098 (temporary): the CLAUDE_CODE_AUTO_MODE_SERVER settings strip is bash-only
-#   until HIMMEL-4169 (windows-parked) ports it to the .ps1 twins. It adds one bash-only
+#   Temporary: the CLAUDE_CODE_AUTO_MODE_SERVER settings strip is bash-only
+#   until it is ported to the .ps1 twins (windows-parked). It adds one bash-only
 #   block to codex (3), glm (2), openrouter (2), deepseek (1) and routed (1) — revert those counts then.
 EXPECT_BASH_ONLY="claude-codex:3 claude-glm:2 claude-openrouter:2 claude-deepseek:1 claude-routed:1 claude-glm-seed-check.sh:0"
 
@@ -109,8 +109,8 @@ function sanitizerKeys(s) {
   return keys.sort();
 }
 
-// HIMMEL-4098 (temporary): bash sanitizers also strip env.CLAUDE_CODE_AUTO_MODE_SERVER;
-// the .ps1 twins wait on HIMMEL-4169 (windows-parked). Until then a .ps1 block matches
+// Temporary: bash sanitizers also strip env.CLAUDE_CODE_AUTO_MODE_SERVER;
+// the .ps1 twins wait on a windows-parked port. Until then a .ps1 block matches
 // its bash twin with that one predicate removed. Delete this with the pin split below.
 function parkedNorm(c) {
   return c.replace(' || u==="CLAUDE_CODE_AUTO_MODE_SERVER"', '').replace(' || k.toUpperCase()==="CLAUDE_CODE_AUTO_MODE_SERVER"', '');
@@ -118,7 +118,7 @@ function parkedNorm(c) {
 
 // A block boundary the extractor could not determine. Thrown — never returned
 // as a silent partial: a truncated extent can match the WRONG twin and report
-// parity that was never established (HIMMEL-1792 CR round 1).
+// parity that was never established.
 class ExtractError extends Error {}
 
 // Extract every `node -e '...'` block from a bash twin. Bash cannot escape a
@@ -252,7 +252,7 @@ function psShapeViolations(s) {
 })();
 
 // ---------------------------------------------------------------------------
-// Extractor self-tests (HIMMEL-1792 CR round 1). The old bash extractor stopped
+// Extractor self-tests. The old bash extractor stopped
 // at the first single quote, so a JS block containing the bash `'\''` escape
 // was compared as a TRUNCATED extent — a check that can report parity it never
 // established. These pin the boundary contract — FULL block, or a loud
@@ -293,7 +293,7 @@ function psShapeViolations(s) {
   mustThrow('ps: unterminated here-string', "$J = @'\nconst x=1;\nnode -e $J\n", psJsBlocks);
 })();
 
-// HIMMEL-4093: execute the PS twin's actual Node blocks, not merely compare
+// Execute the PS twin's actual Node blocks, not merely compare
 // two copies that could lose the same safety predicate. No pwsh is required
 // for this embedded-JS case; PS control flow still needs its own smoke suite.
 {
@@ -339,7 +339,7 @@ fixtureFs.openSync=function(p,flags){swap(p,flags);return open.apply(this,argume
   finally { fs.rmSync(root, {recursive:true, force:true}); }
 }
 
-// HIMMEL-4096: execute the PS permission block on real read-only directories.
+// Execute the PS permission block on real read-only directories.
 // Windows chmod has no POSIX owner/execute bits; exact modes apply only on POSIX.
 if (process.platform === 'win32') {
   console.log('SKIP: PS permission JS POSIX-mode regression on Windows');
@@ -390,7 +390,7 @@ let pairsWithJs = 0, matchedPs = 0, totalBashOnly = 0;
 for (const [bashFile, psFile] of pairs) {
   let bs = fs.readFileSync(path.join(scriptsDir, bashFile), 'utf8');
   let ps = fs.readFileSync(path.join(scriptsDir, psFile), 'utf8');
-  // HIMMEL-4091: compare the executing shared seed, including the caller's
+  // Compare the executing shared seed, including the caller's
   // lane-specific sanitizer passed into the module. Never exempt moved JS.
   if (['claude-codex', 'claude-openrouter', 'claude-deepseek'].includes(bashFile)) {
     if (!bs.includes('. "$HERE/lane-mirror-seed.sh"') || !ps.includes("Import-Module (Join-Path $PSScriptRoot 'lane-mirror-seed.psm1')")) {
@@ -413,8 +413,8 @@ for (const [bashFile, psFile] of pairs) {
 
   if (bashFile === 'claude-glm') {
     const expected = ['ANTHROPIC_*', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_*'];
-    // HIMMEL-4098: bash also strips CLAUDE_CODE_AUTO_MODE_SERVER; the .ps1 twin
-    // keeps `expected` until HIMMEL-4169 (windows-parked) ports it — then drop this split.
+    // Bash also strips CLAUDE_CODE_AUTO_MODE_SERVER; the .ps1 twin
+    // keeps `expected` until a windows-parked port lands — then drop this split.
     const bashExpected = ['ANTHROPIC_*', 'CLAUDE_CODE_AUTO_MODE_SERVER', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_*'];
     const bashSanitizer = bb.find((js) => js.includes('delete j.model;') && js.includes('delete j.env[k];'));
     const psSanitizer = pb.find((p) => p.var === '$SanitizerJs');

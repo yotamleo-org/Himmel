@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Control for scripts/parity/t12-no-bloat-lib.sh's t12_verdict() (HIMMEL-2581).
+# Control for scripts/parity/t12-no-bloat-lib.sh's t12_verdict().
 #
 # Proves the T12 net-growth threshold is non-vacuous in BOTH directions,
 # against synthetic add/del pairs -- no real git diff needed, so this
 # exercises the arithmetic directly rather than merely inferring it from
 # test-ws5-invariants.sh passing on our own diff:
 #   - a genuine bloat addition (add=10 del=0, net +10) still FAILS;
-#   - a net-zero rewording (add=2 del=2 -- the exact PR #2101/HIMMEL-2413
-#     and HIMMEL-2581 shape the OLD per-side cap wrongly failed) PASSES;
+#   - a net-zero rewording (add=2 del=2 -- the shape the OLD per-side cap
+#     wrongly failed) PASSES;
 #   - a net-shrink (add=1 del=9 -- a pure deletion) PASSES;
 #   - the <=1 net-growth boundary itself is exact (net=1 passes, net=2 fails).
 #
-# Assertions use `case` glob matching, NOT `printf | grep -q` (HIMMEL-1430,
-# fix-class grep-q-pipe-under-pipefail): this file sets `set -uo pipefail`,
+# Assertions use `case` glob matching, NOT `printf | grep -q`
+# (grep-q-pipe-under-pipefail): this file sets `set -uo pipefail`,
 # so a pipeline's exit status is its LAST stage, and a `grep -q` early-exit
 # match can SIGPIPE the producer, turning a successful match into a failed
 # pipeline. Not live today at this file's ~60-char single-line `$out` (it

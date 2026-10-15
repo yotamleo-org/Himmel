@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# HIMMEL-2743/2803: run the real OEM guard in disposable private/public trees.
+# Run the real OEM guard in disposable private/public trees.
 # Projected generators now converge and stay checked; synthetic preserved-path
 # cases retain marker/path gating and preserve-list drift controls. Archive files
 # remain out of scope. bash 3.2-safe; discovered by run-shell-tests.sh.
@@ -11,7 +11,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUITE=scripts/parity/test-ps-twin-oem-encoding.sh
 
-# HIMMEL-3182: every case below runs the guard as `PATH="$TMP/bin" bash ...`,
+# Every case below runs the guard as `PATH="$TMP/bin" bash ...`,
 # and $TMP/bin's bash is a COPY where `ln -s` is refused (MSYS without the
 # symlink privilege); a copied bash.exe cannot load msys-2.0.dll from there, so
 # each case is rc 127 and fails for that reason, not for the control it names.

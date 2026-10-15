@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# test-ps-twin-oem-encoding.sh -- guard against the HIMMEL-2256 encoding class:
+# test-ps-twin-oem-encoding.sh -- guard against the OEM-encoding class:
 # PowerShell decodes a CAPTURED native command's stdout using
 # [Console]::OutputEncoding, which on a default Windows install is the legacy
 # OEM codepage (cp437/cp850), not UTF-8. Any non-ASCII byte git/gh/node/jq/
@@ -37,8 +37,8 @@ set -uo pipefail
 
 # grepq <text> [grep-args...] -- a `grep -q` test against <text> with NO
 # pipeline, so `set -o pipefail` cannot see a producer SIGPIPE as failure
-# (HIMMEL-1430; see scripts/parity/test-guard-conformance.sh for the same
-# trap documented in full).
+# (see scripts/parity/test-guard-conformance.sh for the same trap documented
+# in full).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -94,7 +94,7 @@ P4='StandardOutput\.ReadToEnd|StandardError\.ReadToEnd|StandardOutput\.ReadToEnd
 # round. This is not a corner case: it is the exact shape used by all ten
 # scripts/lib/{,un}wire-*.ps1 libraries, which pipe a whole settings.json
 # through jq and capture the result (`$out = $raw | jq --indent 2 $filter`) --
-# the most severe instances of the HIMMEL-2256 class in the repo, since they
+# the most severe instances of this class in the repo, since they
 # write the mis-decoded capture back over a real user's config. Anchored to an
 # assignment so a bare validation call whose stdout is discarded, not
 # captured (`$raw | jq -e . > $null`, present in these same files), does NOT
@@ -172,7 +172,7 @@ fingerprint_detector_lines() {
     | LC_ALL=C sort | sha256hex | cut -c1-12
 }
 
-# HIMMEL-4103: command discovery must not look like native stdout capture.
+# Command discovery must not look like native stdout capture.
 # Scratch fixtures exercise the same detector and fingerprint as the fleet scan.
 detector_fixtures() (
   local scratch name line failures=0
@@ -207,9 +207,9 @@ unexempt_fail=0
 fixline_count=0
 
 # archive/ never ships. Snapshot-preserved public copies have independent
-# content; private still checks them like every other tracked twin. HIMMEL-2803
-# removed gen-changelog.ps1 from this list: its fenced private-only block is now
-# scrubbed during snapshot, so the converging public artifact stays in scope.
+# content; private still checks them like every other tracked twin.
+# gen-changelog.ps1 is not listed: its fenced private-only block is scrubbed
+# during snapshot, so the converging public artifact stays in scope.
 SNAPSHOT_PRESERVED_PS1=()
 PUBLIC_PROJECTION=0
 [ ! -f "$REPO/.himmel-public-projection" ] || PUBLIC_PROJECTION=1
@@ -275,7 +275,7 @@ for f in $PS1_FILES; do
     # Carries the fix line -- but presence alone isn't correctness: the fix
     # must also PRECEDE the first capture it's meant to guard, or it's a
     # no-op for that capture (exactly the bug that escaped this guard in
-    # templates/luna-second-brain/scripts/setup.ps1 -- HIMMEL-2256).
+    # templates/luna-second-brain/scripts/setup.ps1).
     fixline_ln=$(grep -nE "$FIXLINE_RE" "$full" | head -1 | cut -d: -f1)
     first_capture_ln=$({ grep -nE "$P1" "$full"; grep_p2 "$full"; grep -nE "$P3" "$full"; grep -nE "$P4" "$full"; grep -nE "$P5" "$full"; } 2>/dev/null | cut -d: -f1 | sort -n | head -1)
     if [ "$fixline_ln" -gt "$first_capture_ln" ]; then
@@ -301,7 +301,7 @@ done
 # [Console]::OutputEncoding assignment does not reach code running inside a
 # `Start-Job -ScriptBlock { ... }` body -- scripts/qmd/ensure-qmd-daemon.ps1
 # needed the fix line a SECOND time, right inside its Start-Job block, for
-# exactly this reason (HIMMEL-2256). So for every Start-Job scriptblock that
+# exactly this reason. So for every Start-Job scriptblock that
 # itself contains a native-stdout capture, the fix line must ALSO appear
 # inside that same block, before the capture -- the file-wide check above
 # cannot see this, since a file-scope fix line before the whole block still
@@ -378,7 +378,7 @@ done
 # native command's stdin is a SEPARATE direction governed by the
 # $OutputEncoding preference variable, which defaults to ASCIIEncoding on
 # Windows PowerShell 5.1: every non-ASCII character is silently replaced with
-# `?` before the native command ever sees it (HIMMEL-2256 twin bug). P5's
+# `?` before the native command ever sees it. P5's
 # shape (`$out = $raw | jq ...`) is exactly this direction, so a file matching
 # P5 must ALSO carry an assignment of $OutputEncoding to UTF8 -- at
 # $global: scope if the assignment sits inside a function, since a bare
@@ -468,7 +468,7 @@ for entry in "${EXEMPT_ENTRIES[@]}"; do
 done
 
 # Canary floor -- 57 non-archive files carry an anchored fix assignment on
-# private (HIMMEL-2743). A quoted/commented fix is not an assignment. A mass
+# private. A quoted/commented fix is not an assignment. A mass
 # revert or bulk deletion must still trip this even if detector hits disappear.
 # Public excludes only tracked, present preserved copies from BOTH sides.
 EXPECT_MIN_FIXLINE_COUNT=57

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Control for T13(a) of scripts/parity/test-ws5-invariants.sh (HIMMEL-5239).
+# Control for T13(a) of scripts/parity/test-ws5-invariants.sh.
 #
 # T13(a) refuses a new SessionStart/PreToolUse registration in any hooks.json
-# or .claude/settings.json. HIMMEL-5239 vendors the i-have-adhd plugin, whose
+# or .claude/settings.json. The vendored i-have-adhd plugin's
 # hooks.json registers one flag-gated SessionStart hook. The ruling is an
 # explicit allowlist of (path, event) pairs, NOT a VENDORED.md exemption: a
 # vendored PreToolUse hook, or a vendored SessionStart hook at an unlisted
@@ -13,7 +13,7 @@
 #   2. the listed path adds SessionStart AND PreToolUse        -> FAIL (event not listed)
 #   3. an unlisted hooks.json beside a VENDORED.md, SessionStart -> FAIL (path not listed)
 #
-# Assertions use `case` glob matching, not `printf | grep -q` (HIMMEL-1430).
+# Assertions use `case` glob matching, not `printf | grep -q`.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Pure git + shell against a temp repo; no .ps1 twin needed -- the only

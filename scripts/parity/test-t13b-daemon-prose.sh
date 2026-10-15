@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Control for T13(b)'s daemon class in scripts/parity/test-ws5-invariants.sh
-# (HIMMEL-3233).
+#.
 #
 # T13(b) used to match the bare word `daemon` on every added line of shipped
 # source, prose included, so a README sentence, a shell comment or a doctor
@@ -16,7 +16,7 @@
 #     enable, launchctl load|bootstrap) count too. Bare nohup/setsid/disown
 #     do not (hook case lists and bounded detach helpers use them routinely);
 #   - the exact command `systemctl [--user] daemon-reload` is carved out
-#     (HIMMEL-3414): it reloads unit files and starts nothing. Nothing else
+#: it reloads unit files and starts nothing. Nothing else
 #     named daemon is exempt, and a spawn beside it still fails.
 #
 # End-to-end against real fixture repos: each case commits a base and a feature
@@ -24,7 +24,7 @@
 # runs it with --base main, and asserts the exit status too, so a fixture that
 # breaks some OTHER section cannot fake a T13(b) verdict.
 #
-# Assertions use `case` glob matching, not `printf | grep -q` (HIMMEL-1430).
+# Assertions use `case` glob matching, not `printf | grep -q`.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Pure git + shell against a temp repo; no .ps1 twin needed -- the only
@@ -91,7 +91,7 @@ run_case js-comment PASS src/probe.ts \
     '// the daemon frames every reply as an SSE event'
 
 echo "== T13(b): real new always-on surface still FAILS =="
-# Known limit (console ruling, HIMMEL-3233): a message naming a daemon still
+# Known limit: a message naming a daemon still
 # fails -- the bare word counts on every code line, quoted or not.
 run_case sh-diagnostic-known-limit FAIL scripts/doctor.sh \
     'emit WARN C40 "the qmd daemon is wedged; restart it: qmd mcp --http --daemon"'
@@ -269,7 +269,7 @@ run_case sh-t13b-ok-double-space-after-hash FAIL scripts/start.sh \
 run_case sh-t13b-ok-double-space-after-colon-ok PASS scripts/start.sh \
     'nohup claude daemon run &  # t13b-ok:  real eight char reason'
 
-# HIMMEL-3446: the marker counts only as a genuine trailing comment (a
+# The marker counts only as a genuine trailing comment (a
 # quote/brace-depth aware scan, not raw substring text), with a reason of
 # >= 8 chars containing a run of 3+ letters. Case names below borrow the
 # reviewer's adv1094b marker-attack fixture matrix.
@@ -328,19 +328,18 @@ run_case py-t13b-ok-marker-genuine PASS src/start.py \
 run_case py-t13b-ok-marker-quoted FAIL src/start.py \
     "s = '# t13b-ok: a real eight char reason'; daemon.start()"
 
-# Real markers already on main (verbatim, HIMMEL-3446 console re-verify: base
-# 08de71f5 predates #1087/58733898 and #1083/a358da5d, which added these).
+# Real markers already on main (verbatim).
 # Pinned so the tightened rules keep accepting the genuine shapes that shipped
 # on other legs' branches, not just the synthetic fixture lines above.
 run_case real-1083-test-fleet-daemon-string PASS scripts/handover/console-kit/test-fleet.sh \
     "    '- 10:27 LIVE — background leg via the daemon'  # t13b-ok: literal fixture text for a mocked leg row, not real automation"
-# shellcheck disable=SC2016  # single-quoted on purpose: literal fixture text, real HIMMEL-3403 argv-match line
+# shellcheck disable=SC2016  # single-quoted on purpose: literal fixture text, real argv-match line
 run_case real-1087-argv-match-marker PASS scripts/handover/headed-arm.sh \
     '        [ "${prev2##*/}" = claude ] && [ "$prev1" = daemon ] && [ "$arg" = run ] && return 0  # t13b-ok: read-only argv match of the Claude Code service, starts nothing'
 run_case real-1087-pgrep-marker PASS scripts/handover/headed-arm.sh \
     "    pids=\"\$(\"\$PGREP\" -f '[c]laude daemon run' 2>/dev/null)\"  # t13b-ok: read-only pgrep lookup of the Claude Code service, starts nothing"
 
-# HIMMEL-3455: the scan tracks bash ANSI-C $'...' strings (a backslash
+# The scan tracks bash ANSI-C $'...' strings (a backslash
 # escapes the next char, so \' does not close them) and JS regex literals
 # (a quote inside /.../ is not a string opener). Each smg- row wrongly
 # exempted the daemon-start line before the fix; each ok- row is the
@@ -381,7 +380,7 @@ run_case ok-js-division-after-regex-trailing-marker PASS src/x.ts \
     'const x = /x/ / 2; daemon.start()  // t13b-ok: genuine reason here'
 run_case ok-js-division-after-call-parens-trailing-marker PASS src/x.ts \
     'const x = f(a) / 2; daemon.start()  // t13b-ok: genuine reason here'
-# HIMMEL-3487: a keyword used as a property name (obj.of, obj.for(...)) is an
+# A keyword used as a property name (obj.of, obj.for(...)) is an
 # operand, so the slash after it is division and the trailing marker counts.
 run_case ok-js-division-after-keyword-property-trailing-marker PASS src/x.ts \
     'const x = obj.of / 2; daemon.start() // t13b-ok: genuine reason here'
@@ -395,11 +394,11 @@ run_case smg-js-regex-after-bare-keyword-past-property FAIL src/x.ts \
 run_case smg-js-regex-after-spread-keyword FAIL src/x.ts \
     'f(...await /"/.exec(s)); const r = "// t13b-ok: genuine reason"; daemon.start()'
 
-# HIMMEL-3446 round 3 (console ruling, AE): a substitution opened while
+# A substitution opened while
 # already inside a quote must push its OWN nested state instead of being
 # invisible to the scan, and a backslash-escaped space must not count as a
 # real word boundary for the `#` that follows it. Each row below wrongly
-# exempted the daemon-start line under the round-2 scanner.
+# exempted the daemon-start line under the earlier scanner.
 echo "== HIMMEL-3446 round 3: nested substitution-in-quote and escaped-space smuggles =="
 # shellcheck disable=SC2016  # single-quoted on purpose: literal fixture text
 run_case smg-nested-cmdsub-in-dq FAIL scripts/start.sh \

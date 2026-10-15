@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Conformance test for the deny-guard x lane sub-table in
-# docs/internals/lane-parity.md (WS5 Task 2, HIMMEL-654).
+# docs/internals/lane-parity.md.
 #
 # Parses the markdown table inside the stable anchor
 #   <!-- BEGIN guard-lane-conformance --> ... <!-- END guard-lane-conformance -->
@@ -43,7 +43,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

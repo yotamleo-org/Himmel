@@ -1,4 +1,4 @@
-# test-ps-twin-oem-encoding.ps1 -- the non-ASCII half of the HIMMEL-2256 guard.
+# test-ps-twin-oem-encoding.ps1 -- the non-ASCII half of the OEM-encoding guard.
 #
 # PowerShell decodes a CAPTURED native command's stdout using
 # [Console]::OutputEncoding, which on a default Windows install is the legacy
@@ -9,8 +9,8 @@
 #
 #     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 #
-# WHY THIS SUITE EXISTS AT ALL. The HIMMEL-2250 leg shipped byte-parity tests
-# that passed three CR rounds with this bug live, because every fixture was
+# WHY THIS SUITE EXISTS AT ALL. Byte-parity tests once passed review with
+# this bug live, because every fixture was
 # ASCII-only -- an ASCII fixture is a VACUOUS control for an encoding class: it
 # cannot fail whether the fix is present or absent. So this file does not just
 # assert the fixed twin behaves; it first proves, on this host, that the
