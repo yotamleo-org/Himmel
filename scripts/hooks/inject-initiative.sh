@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # inject-initiative.sh — SessionStart hook for opt-in initiative mode
-# (HIMMEL-425; leg grammar + profiles HIMMEL-443).
 #
 # Gated by an initiative env var (must be set in the shell that LAUNCHED Claude
 # — bypass convention per scripts/hooks/CLAUDE.md; a per-call prefix does NOT
@@ -34,12 +33,12 @@
 #
 # Hook contract (SessionStart):
 #   - Reads the SessionStart JSON payload from stdin. Only session_id is
-#     consumed (per-session-start dedup below, HIMMEL-813); no other field
+#     consumed (per-session-start dedup below); no other field
 #     is read.
 #   - Exit 0 with stdout → stdout is injected as additional context.
 #   - Non-zero exit → would surface an error; we never block, only ever exit 0.
 #
-# Double-fire dedup (HIMMEL-813): this script is wired at BOTH user scope
+# Double-fire dedup: this script is wired at BOTH user scope
 # (~/.claude/settings.json) and project scope (.claude/settings.json), so a
 # single SessionStart event fires it twice within seconds, doubling the
 # directive. Dedup is keyed on session_id with a ~60s FRESHNESS WINDOW, not a
@@ -72,7 +71,7 @@ trap 'exit 0' ERR
 
 # Drain stdin so the hook contract doesn't break the runtime if it pipes a
 # payload. Captured (not merely discarded) so session_id can be pulled out
-# below for the per-session-start dedup marker (HIMMEL-813).
+# below for the per-session-start dedup marker.
 _ii_payload=""
 if [ -t 0 ]; then
     :
@@ -80,7 +79,7 @@ else
     _ii_payload=$(cat 2>/dev/null) || true
 fi
 
-# --- Source the himmel clone's .env for the initiative vars (R1, HIMMEL-460) -
+# --- Source the himmel clone's .env for the initiative vars -
 # The hook reads HIMMEL_INITIATIVE* from the process env, but a session launched
 # from a shell that never exported them (and without a settings.json `env` block)
 # would see no legs. Populate them from the himmel clone's .env — but ONLY for
@@ -98,7 +97,7 @@ if [ -n "$_ii_root" ] && [ -f "$_ii_root/.env" ]; then
     load_dotenv --root "$_ii_root" HIMMEL_INITIATIVE HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT || true
 fi
 
-# --- Resolve the active legs via the shared resolver (HIMMEL-443) -----------
+# --- Resolve the active legs via the shared resolver -----------
 # The leg grammar lives in ONE place: scripts/lib/initiative-legs.sh. We pass
 # the relevant env vars as named arguments (the resolver never reads ambient
 # env) and get back the normalized, canonical-ordered, deduped active leg set.
@@ -111,7 +110,7 @@ active=$(resolve_legs "${HIMMEL_INITIATIVE:-}" "${HIMMEL_INITIATIVE_OVERNIGHT:-}
 # Off when nothing resolved (unset / falsy / all-unknown subset).
 [ -n "$active" ] || exit 0
 
-# --- Per-session-start dedup (HIMMEL-813) -----------------------------------
+# --- Per-session-start dedup -----------------------------------
 # Only reached once we know we're about to inject (the OFF path above already
 # exited silently, so there is nothing to dedup there). Extraction mirrors
 # the jq-first / grep -oP-fallback convention used elsewhere in this dir
@@ -195,7 +194,7 @@ has_leg() { case " $active " in *" $1 "*) return 0;; *) return 1;; esac; }
 # CSV of recognized tokens for the in-session echo (typo visibility).
 _steps_csv=$(printf '%s' "$active" | tr ' ' ',')
 
-# --- Assemble the directive (POINTER form, HIMMEL-2036) ---------------------
+# --- Assemble the directive (POINTER form) ---------------------
 # The 3,150-byte runbook used to be injected in full on every session start, on
 # both harnesses, whether or not a completion point was ever reached. It now
 # lives in scripts/hooks/initiative-runbook.md and this hook emits a ~370-byte

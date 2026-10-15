@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # auto-arm-on-cap.sh — PreToolUse hook: auto-arm a resume when the usage
-# bank nears the cap (HIMMEL-220, the detect half of HIMMEL-122).
+# bank nears the cap (the detect half).
 #
 # ROOT CAUSE this kills: a session hits the usage cap mid-run with NO
 # armed resume and NO status handover written — the operator wakes up to
 # a cold, stateless restart. Prose ("remember to arm before cap") does
-# not enforce (HIMMEL-195); this hook does, structurally:
+# not enforce; this hook does, structurally:
 #
 #   1. Every PreToolUse, throttled to one real check per
 #      $AUTO_ARM_CHECK_INTERVAL (default 60s; the throttle costs one
@@ -13,7 +13,7 @@
 #   2. Reads the claude-statusline usage cache (same source
 #      resume-slot.sh / cap-reset-time.sh consume). MISSING cache →
 #      quiet no-op (maybe no statusline is installed at all). STALE
-#      cache → quiet no-op too, but NOT indefinitely (HIMMEL-275): the
+#      cache → quiet no-op too, but NOT indefinitely: the
 #      hook firing proves the session is LIVE, so a cache frozen past
 #      $AUTO_ARM_STALE_ESCALATE_AGE across >= $AUTO_ARM_STALE_MIN_CHECKS
 #      consecutive real checks means the statusline writer is not
@@ -23,7 +23,7 @@
 #      stdin-rates path never rewrites the cache during a live session,
 #      so the cache freezes at session start and EVERY long session
 #      crosses this bound; expect routine escalations until the
-#      upstream statusline fix lands (HIMMEL-275). The escalation fires
+#      upstream statusline fix lands. The escalation fires
 #      ONCE per frozen-cache mtime PER SESSION (each concurrent or
 #      subsequent live session gets its own one-shot wind-down block;
 #      the ARM itself stays globally deduped via arm-resume rc=3):
@@ -56,7 +56,7 @@
 #      manually. The snapshot is keyed per window+session and
 #      overwritten in place on retries — no per-interval file spam.
 #
-# Boundary vs the HIMMEL-207 supervisor: the supervisor parks the OWNER
+# Boundary vs the supervisor: the supervisor parks the OWNER
 # (telegram bridge) relaunch at cap reset. This hook arms a WORK-session
 # resume. Both funnel through arm-resume.sh's HIMMEL-Resume-* dedup, so
 # they cannot double-book the scheduler.
@@ -93,7 +93,7 @@
 #                               RESUME_SLOT_THRESHOLD (resume-slot.sh, also
 #                               default 90), which decides ASAP-vs-wait once
 #                               this hook has tripped. Raising one does NOT
-#                               raise the other — set both (HIMMEL-1271).
+#                               raise the other — set both.
 #   AUTO_ARM_CACHE              usage-cache path override
 #   AUTO_ARM_STATE_DIR          throttle/fired marker dir (default /tmp/claude)
 #   AUTO_ARM_CHECK_INTERVAL     seconds between real checks (default 60)
@@ -142,7 +142,7 @@ fi
 hook_dir=$(cd "$(dirname "$0")" && pwd)
 project_dir="${CLAUDE_PROJECT_DIR:-}"
 
-# >>> WS9-QUOTA-GAUGE (HIMMEL-654): best-effort cross-lane quota-gauge observation.
+# >>> WS9-QUOTA-GAUGE: best-effort cross-lane quota-gauge observation.
 # Source the ledger lib best-effort — a missing lib must NOT break this
 # watchdog (fail-open, per scripts/hooks/CLAUDE.md). Adds no hook, no poll.
 # INVARIANT the fail-open guarantee rests on: the sourced lib runs in THIS
@@ -165,7 +165,7 @@ quota_gauge_note_claude() {
 }
 # <<< WS9-QUOTA-GAUGE
 
-# python3 hang armor (HIMMEL-249) — extracted from this hook's original
+# python3 hang armor — extracted from this hook's original
 # inline _py() into scripts/lib/py-armor.sh so the handover scripts share
 # it. Provides py_armor (timeout -k-wrapped python3; caller keeps the
 # file-redirect convention for stdout) + py_armor_mtime. A missing lib is
@@ -195,7 +195,7 @@ ARM_BIN="${AUTO_ARM_BIN:-$hook_dir/../handover/arm-resume.sh}"
 # threshold also rejects multi-dot strings ("9..5") — those would slip
 # past a digits-and-dots filter and silently disable the python check.
 case "$THRESHOLD" in ''|*[!0-9.]*|*.*.*) THRESHOLD=90 ;; esac
-# Range guard (HIMMEL-1278): a numeric but out-of-range value — `970`, a
+# Range guard: a numeric but out-of-range value — `970`, a
 # fat-finger for 97 — passes the filter above yet can never be crossed by a
 # 0-100% utilization, so the watchdog would silently never trip. Fall back to
 # the default, silently (fail-open: never block on its own config). Mirrors
@@ -222,7 +222,7 @@ touch "$last_check" 2>/dev/null || true
 # Hygiene: expire fired/failcount markers older than 8 days so an
 # "unknown resets_at" key can never suppress forever (I3 bound) and
 # /tmp/claude doesn't accumulate archaeology. The auto-arm-stale-*
-# pattern covers the HIMMEL-275 stale-escalation state too (per-wedge-
+# pattern covers the stale-escalation state too (per-wedge-
 # per-session escalated markers, the streak counter, the slot temp
 # file) — this sweep is what bounds an escalated marker's suppression
 # when a wedged cache never recovers. The per-PID sid temp files
@@ -230,8 +230,8 @@ touch "$last_check" 2>/dev/null || true
 # catches orphans left by killed processes.
 find "$STATE_DIR" -maxdepth 1 \( -name 'auto-arm-fired-*' -o -name 'auto-arm-failcount-*' -o -name 'auto-arm-status-*.md' -o -name 'auto-arm-py-*' -o -name 'auto-arm-sid-out*' -o -name 'auto-arm-stale-*' \) -mtime +8 -delete 2>/dev/null || true
 
-# ─── snapshot helpers (shared by the threshold trip + the HIMMEL-275 ───
-# stale-cache escalation; both are rare trip paths, so the work stays lazy)
+# ─── snapshot helpers (shared by the threshold trip + the stale-cache ───
+# escalation; both are rare trip paths, so the work stays lazy)
 # Where status snapshots land: the handover root when the resolver lib is
 # present + functional, else the state dir (the arm matters more than the
 # snapshot's address — I5).
@@ -240,12 +240,12 @@ resolve_snapshot_dir() {
     lib="$hook_dir/../lib/handover-path.sh"
     [ -f "$lib" ] || lib="$project_dir/scripts/lib/handover-path.sh"
     if [ -f "$lib" ]; then
-        # HIMMEL-4449: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+        # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
         # shellcheck disable=SC1091
         if . "$hook_dir/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
         # Run handover_root in a subshell that cds to hook_dir first so
         # the Mode A git rev-parse resolves the MAIN REPO root, not the
-        # session's cwd (which may be a worktree) — HIMMEL-294.
+        # session's cwd (which may be a worktree).
         set +e
         # shellcheck source=../lib/handover-path.sh
         # shellcheck disable=SC1090,SC1091
@@ -317,7 +317,7 @@ cache_mtime=$(py_armor_mtime "$CACHE_PATH")
 cache_age=$((now - cache_mtime))
 stale_count_file="$STATE_DIR/auto-arm-stale-count"
 if [ "$cache_age" -gt "$MAX_CACHE_AGE" ]; then
-    # ─── HIMMEL-275: stale cache must not be an INDEFINITE silent no-op ─
+    # ─── Stale cache must not be an INDEFINITE silent no-op ─
     # This hook only runs while a session is making tool calls, so the
     # invocation itself proves the session is LIVE. A cache frozen past
     # STALE_ESCALATE_AGE during a live session means the statusline
@@ -327,7 +327,7 @@ if [ "$cache_age" -gt "$MAX_CACHE_AGE" ]; then
     # statusline's stdin-rates path never rewrites the cache during a
     # live session (it freezes at session start), so every long session
     # crosses this bound; expect routine escalations until the upstream
-    # statusline fix lands (HIMMEL-275). Short staleness
+    # statusline fix lands. Short staleness
     # (MAX_CACHE_AGE..STALE_ESCALATE_AGE) keeps the original
     # quiet-no-op grace.
     if [ "$cache_age" -le "$STALE_ESCALATE_AGE" ]; then
@@ -391,7 +391,7 @@ if [ "$cache_age" -gt "$MAX_CACHE_AGE" ]; then
     fi
     [ "$stale_count" -lt "$STALE_MIN_CHECKS" ] && exit 0
 
-    # ─── HIMMEL-812: depth limit — a safety child never re-arms ──────────
+    # ─── Depth limit — a safety child never re-arms ──────────
     # The escalation below arms a +5h resume off a wedged cache. That child
     # session wedges the same way ~30min in and escalates again, so the
     # chain sustains itself (observed 2026-07-09: 12 stale snapshots, 4 from
@@ -409,7 +409,7 @@ if [ "$cache_age" -gt "$MAX_CACHE_AGE" ]; then
         exit 1
     fi
 
-    # >>> WS9-QUOTA-GAUGE (HIMMEL-654): usage confirmed INVISIBLE (wedged cache).
+    # >>> WS9-QUOTA-GAUGE: usage confirmed INVISIBLE (wedged cache).
     # Record the dim-lane observation (best-effort) before the safety arm.
     quota_gauge_note_claude "invisible" "" "" "" "statusline usage cache wedged (HIMMEL-275)"
     # <<< WS9-QUOTA-GAUGE
@@ -439,7 +439,7 @@ try:
     with open(sys.argv[1]) as f:
         data = json.load(f)
     if isinstance(data, dict):
-        # HIMMEL-690: pick the BINDING bank, not a hardcoded five_hour. A
+        # pick the BINDING bank, not a hardcoded five_hour. A
         # candidate is a window whose utilization is a number >= threshold
         # AND whose resets_at parses AND lands in (now+120s, now+24h].
         # Among candidates the LATEST reset wins (the bank that stays
@@ -454,7 +454,7 @@ try:
             except (TypeError, ValueError):
                 continue
             if not (0.0 <= u <= 1000.0):
-                # HIMMEL-625 sanity ceiling, mirrored from the fresh-cache
+                # Sanity ceiling, mirrored from the fresh-cache
                 # threshold check: a leaked-timestamp utilization (~1.78e9)
                 # must not elect a bank and drag the safety arm up to 24h out.
                 continue
@@ -561,19 +561,19 @@ PY
         exit 1
     fi
     set +e
-    # --dedup-any (HIMMEL-340): this is a machine-wide SAFETY arm, not a
+    # --dedup-any: this is a machine-wide SAFETY arm, not a
     # per-handover work arm — it must defer to ANY queued resume so a wedged
     # cache across concurrent sessions can never fan out duplicate relaunches.
-    # ARM_RESUME_SAFETY_ARM=1 (HIMMEL-1475): the env var is the guard-exemption
+    # ARM_RESUME_SAFETY_ARM=1: the env var is the guard-exemption
     # signal (a multi-hour cap-reset park is this arm's whole point), set in
     # the child env. --dedup-any stays dedup-scope only — it is a public flag
     # any caller can add, so it must NOT bypass the long-gap guard.
-    # HIMMEL-1382: automerge is per-arm opt-in — this automatic re-arm never
+    # automerge is per-arm opt-in — this automatic re-arm never
     # forwards --automerge, by design (fail-closed policy: a cap re-arm is
     # not the arm that asked). arm-resume.sh's own always-clear-first fix
     # backstops this even if the ambient env carried a grant.
     warn "automerge grant NOT carried across automatic re-arm (per-arm opt-in, HIMMEL-1382)"
-    # --safety-child (HIMMEL-812): marks the relaunch env so the child's own
+    # --safety-child: marks the relaunch env so the child's own
     # stale escalation warns instead of arming — the chain stops at depth 1.
     arm_out=$(ARM_RESUME_SAFETY_ARM=1 bash "$ARM_BIN" --dedup-any --safety-child --time "$slot_hhmm" --handover "$snapshot" 2>&1)
     arm_rc=$?
@@ -627,7 +627,7 @@ PY
 fi
 rm -f "$stale_count_file" 2>/dev/null || true  # fresh cache — the stale streak is broken
 
-# HIMMEL-1712: a cache stamped by a different account is the same "can't
+# a cache stamped by a different account is the same "can't
 # see usage" case as a missing cache — quiet no-op (this watchdog fails
 # OPEN; per scripts/hooks/CLAUDE.md never block the tool call on this
 # check, and a missing/unreadable helper degrades to "can't tell" rather
@@ -658,7 +658,7 @@ command -v python3 >/dev/null 2>&1 || { warn "MALFUNCTION: python3 missing — u
 # enough). A file redirect never blocks the parent.
 py_err="$STATE_DIR/auto-arm-py-err"
 py_out="$STATE_DIR/auto-arm-py-out"
-# HIMMEL-4948: honor the operator's validated bank lift, the way bank-preflight
+# honor the operator's validated bank lift, the way bank-preflight
 # and guard-implementor-dispatch do. A valid lift spends seven_day to 100; a
 # standing lift also spends five_hour to 100 unless CADENCE_BANK_MAX_PCT is
 # explicit. Anything else (missing, expired, other account, unreadable lib) is
@@ -681,7 +681,7 @@ try:
     threshold = float(sys.argv[2])
 except Exception:
     sys.exit(3)  # bad threshold = config malfunction, NOT quiet bad-cache
-# HIMMEL-4948: per-window trip thresholds (a valid bank lift raises them to 100).
+# per-window trip thresholds (a valid bank lift raises them to 100).
 try:
     thresholds = {"five_hour": float(sys.argv[3]), "seven_day": float(sys.argv[4])}
 except Exception:
@@ -695,7 +695,7 @@ if not isinstance(data, dict):
     sys.exit(2)
 
 WINDOW_LEN = {"five_hour": 5 * 3600, "seven_day": 7 * 86400}
-# Sanity ceiling on utilization (HIMMEL-625 false-positive fix). Utilization
+# Sanity ceiling on utilization. Utilization
 # is a 0-100 percentage (a small overage past 100 is conceivable); anything
 # wildly beyond that is corruption, not a real cap. Observed 2026-06-29: the
 # statusline writer leaked a Unix epoch timestamp (1782696700, ~1.78e9,
@@ -762,7 +762,7 @@ if [ "$rc" -eq 3 ]; then
 fi
 if [ "$rc" -eq 4 ]; then
     # Fresh cache but EVERY window's utilization is unusable — null (statusline
-    # PR #2 guard wrote null) or out-of-range corruption (HIMMEL-625: a leaked
+    # PR #2 guard wrote null) or out-of-range corruption (a leaked
     # timestamp). An unevaluable utilization must NOT silently disable the
     # watchdog (parallel to python3-missing MALFUNCTION above: we have a cache
     # but cannot trust it), but it must NOT arm on garbage either.
@@ -798,7 +798,7 @@ fired_key=$(printf '%s-%s-%s' "$window" "$window_key" "$sid" | tr -c 'A-Za-z0-9.
 fired_marker="$STATE_DIR/auto-arm-fired-$fired_key"
 [ -f "$fired_marker" ] && exit 0
 
-# >>> WS9-QUOTA-GAUGE (HIMMEL-654): observe the tripping window ONCE per trip
+# >>> WS9-QUOTA-GAUGE: observe the tripping window ONCE per trip
 # event (best-effort). Placed AFTER the one-shot fired-marker guard so a
 # session pinned above threshold appends ONE row per cap window per session,
 # not one per throttled check — dim-lane honesty, symmetric with the invisible
@@ -891,16 +891,16 @@ if [ ! -f "$ARM_BIN" ]; then
     exit 1
 fi
 set +e
-# --dedup-any (HIMMEL-340): a machine-wide cap is a machine-wide event — this
+# --dedup-any: a machine-wide cap is a machine-wide event — this
 # safety arm must defer to ANY queued resume (operator/supervisor/sibling
 # session) so concurrent sessions hitting the cap never double-book the
 # scheduler. Per-handover multislot is for explicit work arms, not this.
-# ARM_RESUME_SAFETY_ARM=1 (HIMMEL-1475): the env var is the guard-exemption
+# ARM_RESUME_SAFETY_ARM=1: the env var is the guard-exemption
 # signal (--time smart is exempt anyway, but the explicit-HH:MM stale-cache
 # escalation path above sets it too; set here for parity + so a future
 # change to a far explicit HH:MM stays exempt). --dedup-any stays dedup-scope
 # only — a public flag any caller can add must NOT bypass the long-gap guard.
-# HIMMEL-1382: automerge is per-arm opt-in — this automatic re-arm never
+# automerge is per-arm opt-in — this automatic re-arm never
 # forwards --automerge, by design (fail-closed policy: a cap re-arm is not
 # the arm that asked). arm-resume.sh's own always-clear-first fix backstops
 # this even if the ambient env carried a grant.

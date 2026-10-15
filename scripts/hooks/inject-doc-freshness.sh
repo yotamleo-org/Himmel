@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# inject-doc-freshness.sh — SessionStart hook (HIMMEL-587): advisory doc/llms.txt
+# inject-doc-freshness.sh — SessionStart hook: advisory doc/llms.txt
 # freshness nudge over origin/main...HEAD on the current feature branch.
 #
 # ADVISORY injected context, not a guard. Gated by HIMMEL_DOC_FRESHNESS (session

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Hook-integrity verification for run-hook-with-bash.js (HIMMEL-1666,
-// HIMMEL-2528). Required by BOTH launcher copies — scripts/hooks/ and
+// Hook-integrity verification for run-hook-with-bash.js.
+// Required by BOTH launcher copies — scripts/hooks/ and
 // marketplace/plugins/himmel-ops/hooks/ — via a directory-relative
 // `require('./hook-integrity.js')`, so each launcher gets the copy that ships
 // beside it. The two copies of THIS file are byte-identical and
@@ -21,7 +21,7 @@ function normalize(candidate) {
 
 // ------------------------------------------------------------ hook integrity
 //
-// HIMMEL-1666. HIMMEL-1649 closed the DELETE vector for a $CLAUDE_PROJECT_DIR-
+// An earlier change closed the DELETE vector for a $CLAUDE_PROJECT_DIR-
 // relative guard (--fail-closed-when): a MISSING script now fails closed on the
 // GLM lane. The REWRITE vector stayed open — a dispatched worker's envelope
 // grants Edit(<worktree>) and Bash(node *)/Bash(bash *), both of which reach
@@ -30,7 +30,7 @@ function normalize(candidate) {
 // this launcher would run the tampered file and trust its verdict.
 //
 // Chosen direction: content-hash verification, not a dispatcher-owned execution
-// path (the other option HIMMEL-1666 weighed). Project-local hooks stay
+// path (the alternative considered). Project-local hooks stay
 // project-local and versionable; the cost is a pin file per session instead of
 // moving the scripts out of the worktree entirely.
 //
@@ -49,12 +49,12 @@ function normalize(candidate) {
 //
 // Scope: EVERY $CLAUDE_PROJECT_DIR-relative hook this launcher resolves (single
 // or chained), not just the GLM lane — the exposure was never GLM-specific
-// (see HIMMEL-1666). Safe to roll out broadly because it fails OPEN whenever it
+// Safe to roll out broadly because it fails OPEN whenever it
 // cannot form an opinion: no session id on the payload, no pin file for this
 // session because record-hook-integrity.sh never ran (or predates this
 // checkout), or no pin entry for this particular script. It fails CLOSED on an
-// actual pinned mismatch — the one signal that is unambiguous — and, since
-// HIMMEL-2588, on a record that is gone after the recorder ran (see
+// actual pinned mismatch — the one signal that is unambiguous — and
+// also on a record that is gone after the recorder ran (see
 // recorderState). That also means the fix
 // only takes effect from the NEXT session start onward (the operator ruling
 // this ticket shipped under): an already-running session has no pin file yet,
@@ -63,14 +63,14 @@ function normalize(candidate) {
 // HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1, set in the LAUNCHING shell (this repo's
 // standard bypass model — see scripts/hooks/CLAUDE.md), is the documented
 // escape hatch for a legitimate mid-session hook edit (an operator actively
-// developing a hook). HIMMEL-3384: it is honoured only inside a linked
+// developing a hook). It is honoured only inside a linked
 // worktree, only for hook scripts that resolve inside that worktree, and every
-// use is audited (see the HIMMEL-3384 block above verifyProjectHookIntegrity).
+// use is audited (see the block above verifyProjectHookIntegrity).
 //
 // HONEST RESIDUALS:
 // (a) the pin file itself lives in an ordinary user-writable directory; a
 // worker with unrestricted Bash runs as the SAME OS user record-hook-
-// integrity.sh does. HIMMEL-2085 closed the class of attack this used to warn
+// integrity.sh does. The class of attack this used to warn
 // was fully open: block-glm-external-writes.sh's pin-dir write-fence now
 // denies a Bash/PowerShell command that references this directory for EVERY
 // dispatched worker lane (keyed on the general HIMMEL_WORKER marker, not just
@@ -80,18 +80,16 @@ function normalize(candidate) {
 // classic TOCTOU: this reads and hashes the script, then a SEPARATE spawnSync
 // re-opens the same path to execute it, with a window between the two where
 // a concurrently racing process could swap the file. Same adjudication shape
-// as this repo's other deferred TOCTOU residuals (HIMMEL-1663, HIMMEL-1704) —
+// as this repo's other deferred TOCTOU residuals:
 // real, narrow, defense-in-depth, not a same-night fix.
-//
-// ------------------------------------------------------------- HIMMEL-2528
 //
 // The pin above is a SNAPSHOT of the session's checkout, and that snapshot goes
 // stale for an entirely legitimate reason: a worktree cut before a hook change
 // landed on the main line, then brought up to date (a pull, a rebase onto a
 // merged main, a `git checkout` of a sibling branch) now holds hook bytes the
-// session-start pin never saw. Before this ticket that was indistinguishable
+// session-start pin never saw. Previously that was indistinguishable
 // from tampering, so it denied — every hook call, for the rest of the session,
-// on a checkout that is MORE current than the pin. HIMMEL-2528 teaches the
+// on a checkout that is MORE current than the pin. The code now teaches the
 // mismatch path to tell the two populations apart and to ADVANCE the pin when
 // (and only when) the new bytes are provably the project's own history.
 //
@@ -180,7 +178,7 @@ function nonEmptyString(value) {
   return typeof value === 'string' && value.length > 0;
 }
 
-// Schema v2 = all three HIMMEL-2528 fields present. Anything else is LEGACY and
+// Schema v2 = all three v2 record fields present. Anything else is LEGACY and
 // keeps the pre-2528 deny-on-mismatch behaviour.
 function isV2Record(record) {
   return Boolean(record)
@@ -683,15 +681,13 @@ function loadRecordAcrossPublish(sessionId) {
   };
 }
 
-// ---------------------------------------------------------------- HIMMEL-2588
-//
 // "No record" used to mean one thing — fail open — and so deleting, truncating
 // or never publishing the record switched verification off for the session.
 // It is told apart by <session_id>.recorder beside the record, which
 // record-hook-integrity.sh writes `started` into before anything that can fail
 // and ends, on every exit it controls, `done` or `failed`:
 //   - `done` is written ONLY after the recorder re-read a record carrying pins
-//     (HIMMEL-5171, a verified publish). A done recorder with no usable record
+//     (a verified publish). A done recorder with no usable record
 //     behind it means the record is GONE, and that denies.
 //   - no marker: no recorder has run (a session older than this checkout, a
 //     non-git project, a host with no jq) — nothing to verify against, fail open.
@@ -699,7 +695,7 @@ function loadRecordAcrossPublish(sessionId) {
 //     hooks run beside it, and denying them would brick every session start.
 //   - `failed`, or `started` older than any recorder can live (its hooks.json
 //     timeout is 15 s, so it was killed): nothing ever vouched for the session.
-//     HIMMEL-5171: that fails OPEN with one notice per session. It used to deny
+//     that fails OPEN with one notice per session. It used to deny
 //     like `done`, which bricked every hook of the session (Stop included) with
 //     no in-session recovery, on a mere timeout, full disk or old jq.
 //
@@ -772,7 +768,7 @@ function bootstrapDefaultRef(projectDir) {
   return null;
 }
 
-// OPEN RESIDUAL (HIMMEL-2528, reviewed and left open deliberately): the two
+// OPEN RESIDUAL (reviewed and left open deliberately): the two
 // bootstrap probes run `-C projectDir`. Every v2 path instead runs
 // `--git-dir=<record.git_dir>` precisely so a rewritten worktree `.git` — a
 // one-line pointer FILE, writable by the same Edit(<worktree>) grant this whole
@@ -813,11 +809,11 @@ function bootstrapDefaultRef(projectDir) {
 // It exists because the recorder pins ITSELF and the plugin's SessionStart
 // chain runs it THROUGH this launcher: a live session holding a legacy record
 // would deny the changed recorder before it could ever write the v2 record that
-// makes the mismatch path work, so deploying HIMMEL-2528 would brick every
+// makes the mismatch path work, so deploying v2 records would brick every
 // session already running. That is a deploy-ordering argument and buys exactly
 // one deploy past the ordering problem. It is not a security argument.
 //
-// Closure is the signed hook-generation manifest tracked as HIMMEL-2572 — hook
+// Closure is the signed hook-generation manifest — hook
 // content trusted by a signature over the committed tree rather than by
 // whatever origin/<default> resolves to at the moment this runs. Deliberately
 // NOT fixed here.
@@ -937,8 +933,6 @@ function resolveMismatchInner(context) {
   }
 }
 
-// ------------------------------------------------------------- HIMMEL-3384
-//
 // The bypass is honoured only where the operator's own work lives and only
 // where it leaves a trace. It is consulted AFTER the normal check, so a session
 // that sets it pays nothing (and logs nothing) on a hook that verifies clean;
@@ -1069,7 +1063,7 @@ function verifyProjectHookIntegrity(scriptPath, sessionId) {
   return honourBypass(scriptPath, sessionId) ? { ok: true } : result;
 }
 
-// HIMMEL-3390. normalize() above only flips slashes; it does not collapse `..`
+// normalize() above only flips slashes; it does not collapse `..`
 // or follow a symlink, so `<project>/scripts/../scripts/hooks/guard.sh` was
 // project-local yet keyed a pin lookup by that spelling (`scripts/../scripts/…`,
 // never pinned) and skipped verification of a tampered file. Both the
@@ -1097,7 +1091,7 @@ function resolveReal(candidate) {
   }
 }
 
-// HIMMEL-3397. Every identity `candidate` claims on its way to the file that
+// Every identity `candidate` claims on its way to the file that
 // runs, derived the way the kernel walks it: component by component, lstat each.
 // Each link followed becomes an ALIAS of the directory (or file) it resolves to,
 // spelled with its parents already resolved and the link unfollowed, and every
@@ -1142,12 +1136,12 @@ function walkIdentities(candidate, resolvedProject, spelledProject) {
       st = fs.lstatSync(next);
     } catch (e) {
       if (!e || (e.code !== 'ENOENT' && e.code !== 'ENOTDIR')) return null;
-      // Stricter than pre-HIMMEL-3397: a dangling target or a `..`-reachable
+      // Strict: a dangling target or a `..`-reachable
       // loop while some earlier link's identities are still queued (frame
       // in `todo`) fails closed here rather than returning a partial alias
       // list built from a resolution the walk never finished. Deliberate —
       // a partial list is exactly the kind of incomplete pin-key set that
-      // dropped a pin under HIMMEL-3390/3397's predecessors.
+      // dropped a pin.
       if (todo.some((c) => typeof c !== 'string')) return null; // a link's identities are still pending
       const rest = todo.filter((c) => typeof c === 'string');
       return [...aliases.map((a) => a.s), resolved].map((s) => normalize(path.join(s, name, ...rest)));
@@ -1170,7 +1164,7 @@ function walkIdentities(candidate, resolvedProject, spelledProject) {
       // Not UTF-8: the walk cannot spell what the kernel runs, so it cannot
       // add TARGET-based aliases for this link. Below (or at) the project
       // that is exactly the ambiguity a pinned key must not tolerate, so it
-      // still fails closed, unchanged from HIMMEL-3397. Above the project it
+      // still fails closed, unchanged. Above the project it
       // is harmless — but "above" must be judged the same way the `keys`
       // loop below judges "in-project": against BOTH resolvedProject and
       // spelledProject, not resolvedProject alone. A link located exactly AT
@@ -1187,7 +1181,7 @@ function walkIdentities(candidate, resolvedProject, spelledProject) {
       // reaches the real file, because the kernel follows `next` itself on
       // each such call and we never re-spell the byte we could not decode.
       // An ancestor is outside a worker's Edit(<worktree>) grant (the
-      // REWRITE vector HIMMEL-1666 defends against), so trusting its shape
+      // REWRITE vector this module defends against), so trusting its shape
       // here does not reopen it.
       //
       // The containment test below resolves the link's PARENT (`resolved`)
@@ -1199,7 +1193,7 @@ function walkIdentities(candidate, resolvedProject, spelledProject) {
       //     earlier link's own unresolved spelling, not a path that
       //     lexically starts with resolvedProject — even when THIS link's
       //     location is at or below the project. Misclassified as "above",
-      //     skipping the fail-closed check the HIMMEL-3397 C1 rows require.
+      //     skipping the fail-closed check the C1 rows require.
       //   - resolving `next` itself: `next` IS the symlink, so resolving it
       //     follows through to its TARGET, not its location. An in-project
       //     link whose (non-UTF-8, so untrusted) target happens to resolve
@@ -1225,8 +1219,6 @@ function walkIdentities(candidate, resolvedProject, spelledProject) {
   return ids();
 }
 
-// ------------------------------------------------------------- HIMMEL-4575
-//
 // A guard runs the bytes of every file it sources, so verifying only the
 // dispatched member left its libs (scripts/guardrails/lib.sh, scripts/lib/
 // py-armor.sh, scripts/hooks/lib/*.sh, ...) editable without a mismatch. The
@@ -1265,7 +1257,7 @@ const SOURCE_CMD = /(?:^|[;&|{(!]|\b(?:then|do|else|if|elif|while|until))\s*(?:\
 // a hook evals): followed when it resolves, ignored when it does not.
 const SOURCE_ANY = /(?:^|[^A-Za-z0-9_.\/-])(?:\.|source)\s+(?=\S)/g;
 // The value is a lookahead so one match does not swallow the rest of the line:
-// every assignment on it is recorded, not only the leftmost (HIMMEL-4993).
+// every assignment on it is recorded, not only the leftmost.
 const ASSIGN = new RegExp(`(?:^|[\\s;&|{(])(?:local\\s+|export\\s+|readonly\\s+)?(${VAR_NAME})=(?=(\\S.*)$)`, 'g');
 
 function unquoteWord(s) {
@@ -1299,7 +1291,7 @@ function splitRef(expr) {
 }
 
 // The directories a sourced path's prefix can stand for, or null when its real
-// value cannot be modelled (HIMMEL-4584). A prefix is one of: nothing (a
+// value cannot be modelled. A prefix is one of: nothing (a
 // literal relative tail), a self-dir `$( ... )` (dirname of $0/BASH_SOURCE),
 // CLAUDE_PROJECT_DIR/BASH_SOURCE, or a `$VAR` assigned in this file — which
 // resolves only through its assignments, each prefix checked the same way.
@@ -1325,7 +1317,7 @@ function isSelfDirSubst(prefix, fileDir, root, assigns, depth) {
   if (!/^\$\(/.test(prefix) || !/dirname|\bcd\b/.test(prefix)) return false;
   if (/\bcd\s+(?:-P\s+)?["']?[\/.~]/.test(prefix)) return false;
   // One cd only: a second (`cd -`, a bare `cd`) lands on OLDPWD or HOME. The
-  // `..` climbs stay inside the checkout (HIMMEL-4993).
+  // `..` climbs stay inside the checkout.
   if ((prefix.match(/\bcd\b/g) || []).length > 1) return false;
   const ups = (prefix.match(/\/\.\.(?=[\/"'\s)]|$)/g) || []).length;
   if (ups && !within(path.resolve(fileDir, ...Array(ups).fill('..')), root)) return false;
@@ -1548,7 +1540,7 @@ function verifyOneFile(scriptPath, sessionId, strict) {
       }
     }
     if (actual === expected) continue;
-    // -------------------------------- MISMATCH: HIMMEL-2528 re-pin or deny ---
+    // -------------------------------- MISMATCH: re-pin or deny ---
     try {
       const verdict = resolveMismatch({ projectDir, relPath: key, actual, record, sessionId });
       if (!verdict.ok) return verdict;
@@ -1570,7 +1562,7 @@ function verifyOneFile(scriptPath, sessionId, strict) {
 }
 
 // A sourced lib with no pin: a record written before its directory was pinned
-// (every live session when HIMMEL-4575 lands), or a lib a legitimate update
+// (every live session at rollout), or a lib a legitimate update
 // added after SessionStart. Its bytes are accepted only when they are the
 // anchor tip's bytes for that path, or a blob some commit on the anchor line
 // gave that path — the trust root and the history check (c) the member re-pin

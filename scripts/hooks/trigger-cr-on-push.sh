@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Claude Code PostToolUse hook (Bash matcher): after a `git push` that
 # advances an OPEN PR's head, post an `@coderabbitai review` trigger comment
-# (HIMMEL-1906).
 #
-# CodeRabbit's `auto_review` is OFF (.coderabbit.yaml, HIMMEL-1252), so the
+# CodeRabbit's `auto_review` is OFF (.coderabbit.yaml), so the
 # App reviews a PR ONLY on an explicit `@coderabbitai review` comment.
 # trigger-cr-on-pr-create.sh posts that comment on PR CREATE, but its dedup
 # used to be keyed per PR (any existing trigger comment silenced it forever).
@@ -37,8 +36,7 @@
 #
 # ponytail: resolves the PR via `gh pr view` for the CURRENT checked-out
 # branch — it does not parse the pushed ref out of the `git push` command.
-# DELIBERATE (CR round-2 codex-2, re-raised from round 1 — a decision, not an
-# oversight): himmel's structural invariant is one branch per worktree, so
+# DELIBERATE (a decision, not an oversight): himmel's structural invariant is one branch per worktree, so
 # "current checked-out branch" and "the branch this push just advanced" are
 # the same thing in every supported workflow. If that assumption ever breaks
 # — a push naming a DIFFERENT remote ref than the checked-out branch — the
@@ -56,7 +54,7 @@
 # no PR for the branch, ledger unreadable) we exit 0, optionally with a
 # stderr warning — never strand a successful push.
 #
-# FOREIGN REPOS (HIMMEL-2034): a push can advance a PR on an upstream or on
+# FOREIGN REPOS: a push can advance a PR on an upstream or on
 # someone else's fork, and CodeRabbit is not ours to summon there. The guard
 # lives in cr_trigger_post_review (scripts/lib/cr-trigger-ledger.sh) rather
 # than here — that one function is the single seam every trigger post in this
@@ -103,7 +101,7 @@ if [ -z "$cmd" ]; then
     exit 0
 fi
 
-# Strip carriage returns at the CAPTURE boundary (HIMMEL-2234), BEFORE any
+# Strip carriage returns at the CAPTURE boundary, BEFORE any
 # shape-matching below. A CRLF-encoded command reaches this hook with a CR
 # glued to the end of every line, and jq on this platform can emit that CR
 # TWICE for text that already carried one - so a continuation arrives as

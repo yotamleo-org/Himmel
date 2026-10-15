@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# jira-nudge-on-end.sh — Claude Code SessionEnd hook (HIMMEL-618).
+# jira-nudge-on-end.sh — Claude Code SessionEnd hook.
 #
 # If a session committed work clearly tied to a Jira ticket but made NO Jira
 # mutation this session, emit ONE advisory nudge so the operator keeps the
@@ -7,7 +7,7 @@
 # blocks session teardown.
 #
 # Detection (all must hold, else silent exit 0 — no nudge):
-#   1. Gate HIMMEL_JIRA_NUDGE is truthy (default OFF; HIMMEL-425 convention).
+#   1. Gate HIMMEL_JIRA_NUDGE is truthy (default OFF).
 #   2. The `ticket` initiative leg is NOT active (when ON it already injects the
 #      same reminder at SessionStart — suppress to avoid a double-nudge).
 #   3. The transcript yields a parseable first-timestamp (session-start epoch).
@@ -23,9 +23,9 @@
 # invocation — `bash jira-nudge-on-end.sh __himmel_detached <payload-file>`
 # (tests, or a manual debug run reproducing that contract); a plain manual
 # invocation goes through the detaching parent and produces no stdout, since in
-# production the whole body runs full-body DETACHED (HIMMEL-661, see below).
-# Best-effort. NOTE: since HIMMEL-661 the hook depends on lib/detach.sh to do
-# anything at all (pre-661 a missing detach.sh only degraded the relay).
+# production the whole body runs full-body DETACHED (see below).
+# Best-effort. NOTE: the hook depends on lib/detach.sh to do
+# anything at all.
 #
 # Wiring: himmel-ops plugin hooks.json SessionEnd (exec-if-exists), default OFF.
 # Test seams:
@@ -51,13 +51,13 @@ set +e
 set -u 2>/dev/null || true
 trap 'exit 0' EXIT
 
-# --- Full-body detach (HIMMEL-661, extends the HIMMEL-636 pattern) -----------
+# --- Full-body detach ---------------------------------------------------------
 # Re-exec ourselves DETACHED with the SessionEnd payload parked in a temp file,
 # and return 0 instantly. Even the gate-off fast path costs ~1.7s of process
 # spawns on Windows Git Bash (payload jq, git rev-parse, dotenv) — all BEFORE
 # the gate check — which loses the race against Claude Code's SessionEnd
-# teardown: the recurring "Hook cancelled" that HIMMEL-635 (relay detach) and
-# HIMMEL-636 (single-scan transcript parse) shaved but did not eliminate. The
+# teardown: the recurring "Hook cancelled" that relay detach and
+# single-scan transcript parsing shaved but did not eliminate. The
 # sibling refresh-where-are-we-on-end.sh returns in ~0.1s with this same
 # full-body detach and no longer errors. The stdout nudge surface this hook
 # previously stayed synchronous to preserve was already unreliable (a cancelled
@@ -79,7 +79,7 @@ if [ "${1:-}" != "__himmel_detached" ]; then
     if [ -r "$_dlib" ]; then
         # shellcheck source=/dev/null
         . "$_dlib"
-        # HIMMEL-2004: bounded Stop queue (see detach_queued); the relay curl
+        # bounded Stop queue (see detach_queued); the relay curl
         # further down stays on detach_run so the bot token in its URL is never
         # written to a queue entry — the worker runs it inline instead.
         detach_queued jira-nudge-on-end --cleanup "$_tmp" bash "${BASH_SOURCE[0]}" __himmel_detached "$_tmp"
@@ -152,7 +152,7 @@ fi
 # Only the FIRST timestamp is needed. Extract it directly rather than via
 # parse_session_transcript(), which runs FOUR full-file jq scans
 # (FIRST_TS/LAST_TS/LAST_ASSISTANT/COMMANDS) — three of which this hook never
-# uses (HIMMEL-636). We now run detached (HIMMEL-661) so teardown no longer
+# uses. We now run detached so teardown no longer
 # races this scan, but keep the single-scan path — the detached child should
 # still be cheap on a long transcript.
 FIRST_TS=""
@@ -206,7 +206,7 @@ relay_nudge() {
     fi
     if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ] \
         && command -v curl >/dev/null 2>&1; then
-        # Detach the relay (HIMMEL-635, extends the HIMMEL-623 detach pattern):
+        # Detach the relay:
         # a synchronous `curl -m 10` can block
         # session teardown up to 10s and trip the SessionEnd hook budget (the
         # recurring "Hook cancelled"). The relay is best-effort and its result is

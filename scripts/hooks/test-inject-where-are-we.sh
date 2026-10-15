@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/inject-where-are-we.sh (HIMMEL-516).
+# Smoke test for scripts/hooks/inject-where-are-we.sh.
 #
 # Usage: bash scripts/hooks/test-inject-where-are-we.sh
 # Hermetic: HIMMEL_REPO points at a throwaway root carrying only a COPY of
 # scripts/where-are-we (so dock.mjs resolves) and deliberately NO .env (see
-# HERMETIC_ROOT below — HIMMEL-2519), the STATE DIR is a temp override, and
+# HERMETIC_ROOT below), the STATE DIR is a temp override, and
 # the refresh is a STUB — no real jira/gh/git network, no writes to the
 # repo's own .where-are-we, and no leak of the operator's real .env into a
 # gate case.
@@ -13,7 +13,7 @@
 set -uo pipefail
 
 # The suite owns every case's env; an ambient leg shell (HIMMEL_LEAN_LEG=1
-# under --profile leg-impl, HIMMEL-2940) must not silently turn every
+# under --profile leg-impl) must not silently turn every
 # unmarked case into a lean-leg case. Only the two explicit lean cases below
 # set it themselves.
 unset LEG_LANE LEG_CONTEXT LEG_REPO LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG CLAUDE_PROJECT_DIR 2>/dev/null || true
@@ -24,7 +24,7 @@ unset LEG_LANE LEG_CONTEXT LEG_REPO LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LA
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -57,9 +57,9 @@ trap 'rm -rf "$TMP"' EXIT
 # building this fix). Copying means .env — which lives at the repo ROOT, one
 # level above where-are-we/ — is never part of the copy.
 #
-# WHY this matters (HIMMEL-2519): the hook sources scripts/lib/load-dotenv.sh,
-# which treats a KEY as "absent" when it is unset OR EMPTY (HIMMEL-1922,
-# deliberate) and fills any absent key from $HIMMEL_REPO/.env. Pointing
+# WHY this matters: the hook sources scripts/lib/load-dotenv.sh,
+# which treats a KEY as "absent" when it is unset OR EMPTY
+# (deliberate) and fills any absent key from $HIMMEL_REPO/.env. Pointing
 # HIMMEL_REPO at the REAL repo root — as this suite used to — means an
 # operator .env that sets HIMMEL_WHERE_ARE_WE clobbers every case below that
 # passes an EMPTY value for "OFF" (a real value overwrites empty, since empty
@@ -71,7 +71,7 @@ trap 'rm -rf "$TMP"' EXIT
 HERMETIC_ROOT="$TMP/hermetic-repo"
 mkdir -p "$HERMETIC_ROOT/scripts"
 cp -a "$REPO_ROOT/scripts/where-are-we" "$HERMETIC_ROOT/scripts/where-are-we"
-# dock.mjs imports the shared realpath-safe entry check (HIMMEL-3810) by the
+# dock.mjs imports the shared realpath-safe entry check by the
 # relative path ../lib/is-main.mjs - the one file outside where-are-we/ it needs.
 mkdir -p "$HERMETIC_ROOT/scripts/lib"
 cp "$REPO_ROOT/scripts/lib/is-main.mjs" "$HERMETIC_ROOT/scripts/lib/is-main.mjs"
@@ -202,7 +202,7 @@ fi
 # --- Case 2card-adv: card whose field embeds a "# Where are we" line ---------
 # A whole-body search would misclassify this card as the global digest and
 # pointerize it (hiding blockers/locks). The structural first-H1 check must
-# still treat it as a card (first H1 = "# HIMMEL-9") and inject inline.
+# still treat it as a card (first H1 = "# ABC-9") and inject inline.
 # (codex adversarial CR — multiline card field containing the digest heading.)
 state2ca="$TMP/s2card_adv"; mkdir -p "$state2ca"
 printf '%s\n' '{"ts":"2026-01-01T00:00:00Z","source":"jira","key":"HIMMEL-9","kind":"ticket","status":"in-progress\n# Where are we\ndone"}' > "$state2ca/ledger.jsonl"
@@ -296,7 +296,7 @@ else
     fail "broken root -> expected exit 0, got rc=$rc4"
 fi
 
-# --- Case 5 (HIMMEL-2830): lean leg -> nothing, not even latest.md ----------
+# --- Case 5: lean leg -> nothing, not even latest.md ----------
 # Same digest route as Case 2 (which injects a pointer), but under
 # HIMMEL_LEAN_LEG=1 the hook must produce no output AND no side effect: the
 # guard runs before the render, so latest.md is never written either.
@@ -321,7 +321,7 @@ else
     fail "lean guard is not fail-open: rc=$rc5b out='$out5b'"
 fi
 
-# --- Case 6 (HIMMEL-1030): branch comes from the SESSION worktree, not HIMMEL_REPO
+# --- Case 6: branch comes from the SESSION worktree, not HIMMEL_REPO
 # HIMMEL_REPO is the canonical checkout (stays on main); the session runs in a
 # ticket worktree. The hook must resolve the branch from the session's dir:
 # CLAUDE_PROJECT_DIR, else the SessionStart payload's cwd. The "worktree" is a

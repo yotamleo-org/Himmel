@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4923: guard-pr-check-literal treats a git pathspec operand as a mention,
+# guard-pr-check-literal treats a git pathspec operand as a mention,
 # but `git add` / `restore` / `diff` / `show` run clean/smudge filters and
 # textconv drivers named by .gitattributes + repo config, with no `-c` on argv.
 # The hook is a command-text guard and cannot see that, so this lint pins the

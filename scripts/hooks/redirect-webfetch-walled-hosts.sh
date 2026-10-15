@@ -2,7 +2,7 @@
 # redirect-webfetch-walled-hosts.sh — PreToolUse hook (matcher "WebFetch"):
 # denies WebFetch on a login-walled host (x.com, instagram.com, ... — the list
 # is the one line in scripts/web/walled-hosts.conf) and names the working
-# replacement, `bash scripts/web/fetch-url.sh '<url>'` (HIMMEL-4908). Twice a
+# replacement, `bash scripts/web/fetch-url.sh '<url>'`. Twice a
 # session met an x.com link, got WebFetch HTTP 402 and asked the operator for a
 # paste while the Scrapling stealth fetcher returns 200. Second drift on prose
 # -> structural (root CLAUDE.md "Adding a rule").

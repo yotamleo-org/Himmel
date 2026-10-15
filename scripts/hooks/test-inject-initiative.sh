@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-inject-initiative.sh — smoke test for scripts/hooks/inject-initiative.sh.
 #
-# Covers (HIMMEL-425):
+# Covers:
 #   1. Default (env unset) → exits 0 with empty stdout (no directive injected).
 #   2. HIMMEL_INITIATIVE=1 → exits 0, prints the initiative directive.
 #   3. Other truthy values (true/on/yes/all/...) also activate (all four steps).
@@ -10,7 +10,7 @@
 #   6. The injected directive must NOT instruct merging (operator gate).
 #   7. Hook always exits 0 (never blocks session start).
 #
-# Per-part toggles (HIMMEL-425 extension — mirrors CRITIC_PANEL_TIERS):
+# Per-part toggles (mirrors CRITIC_PANEL_TIERS):
 #   8.  A single-token subset lists only that step and omits the others.
 #   9.  A multi-token subset lists exactly the named steps.
 #   10. Steps render in canonical order regardless of input order.
@@ -21,7 +21,7 @@
 #   15. `all` activates all four steps.
 #   16. Duplicate / trailing-comma tokens collapse to a single rendered step.
 #
-# Pointer form (HIMMEL-2036): the hook emits a ~370 B POINTER, not the 3,150 B
+# Pointer form: the hook emits a ~370 B POINTER, not the 3,150 B
 # runbook. Per-leg assertions therefore run against the `Active steps:` CSV
 # (assert_step / assert_no_step) rather than step prose, and three cases guard
 # the new contract:
@@ -37,7 +37,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -51,7 +51,7 @@ fi
 pass=0
 fail=0
 
-# Hermetic isolation (HIMMEL-460): the hook now sources the himmel clone's .env
+# Hermetic isolation: the hook now sources the himmel clone's .env
 # for HIMMEL_INITIATIVE*. Point HIMMEL_REPO at an EMPTY temp dir so the existing
 # process-env cases are unaffected by whatever .env exists on the test machine.
 # The SC3 cases below override HIMMEL_REPO per-case to a fixture with a real .env.
@@ -60,7 +60,7 @@ trap 'rm -rf "$TMPII"' EXIT
 mkdir -p "$TMPII/noenv"
 export HIMMEL_REPO="$TMPII/noenv"
 
-# Isolate the HIMMEL-813 dedup markers (${TMPDIR:-/tmp}/himmel-inject-initiative-*)
+# Isolate the dedup markers (${TMPDIR:-/tmp}/himmel-inject-initiative-*)
 # inside this test's own scratch dir so runs never collide with a real session's
 # markers (or each other, across re-runs) and get swept by the trap above.
 export TMPDIR="$TMPII/markers"
@@ -179,7 +179,7 @@ else
     assert_fail "expected exit 0 when active, got rc=$rc"
 fi
 
-# HIMMEL-2036 — the hook now emits a POINTER, not the runbook. The step BODIES
+# The hook emits a POINTER, not the runbook. The step BODIES
 # live in scripts/hooks/initiative-runbook.md, so the only per-leg signal in the
 # output is the `Active steps:` CSV. These helpers assert membership in THAT
 # CSV, matched on comma boundaries so `pr` can never be satisfied by `prcheck`.
@@ -246,7 +246,7 @@ assert_has "active-steps lists both tokens in order" "Active steps: prcheck,pr" 
 
 # ---------- 14. Safety invariants present in EVERY subset ----------
 # The load-bearing property: no subset may ever drop the no-merge / no-rail-
-# relaxation guards. HIMMEL-2036 moved the step bodies into the runbook file but
+# relaxation guards. The step bodies live in the runbook file but
 # deliberately kept BOTH of these INLINE in the pointer — losing a step list
 # costs a file read, losing "this does not relax any rail" costs a rail.
 echo "Test 14: safety invariants present in every subset"
@@ -266,7 +266,7 @@ echo "Test 16: 'pr,pr,' renders a single pr step"
 out=$(printf '{}' | HIMMEL_INITIATIVE=pr,pr, bash "$hook")
 assert_has "duplicate collapses in the CSV" "Active steps: pr$" "$out"
 
-# ---------- 17. execute leg is carried in the CSV (HIMMEL-443) ---------------
+# ---------- 17. execute leg is carried in the CSV ---------------
 echo "Test 17: prcheck,execute carries the execute leg"
 out=$(printf '{}' | HIMMEL_INITIATIVE=prcheck,execute bash "$hook")
 assert_has "execute leg in canonical order" "Active steps: execute,prcheck" "$out"
@@ -293,7 +293,7 @@ echo "Test 21: plan,prcheck → plan is echoed for typo visibility"
 out=$(printf '{}' | HIMMEL_INITIATIVE=plan,prcheck bash "$hook")
 assert_has "plan echoed in the CSV" "Active steps: plan,prcheck" "$out"
 
-# ---------- SC3 (HIMMEL-460): legs sourced from the himmel clone's .env --------
+# ---------- SC3: legs sourced from the himmel clone's .env --------
 # Fixture himmel root with an .env that activates a subset.
 FIX="$TMPII/himmel"; mkdir -p "$FIX"
 printf 'HIMMEL_INITIATIVE=prcheck,pr\n' > "$FIX/.env"
@@ -326,10 +326,10 @@ assert_has  "fail-open exits 0" "rc=0" "$out"
 body=$(unset HIMMEL_INITIATIVE; printf '{}' | HIMMEL_REPO="$TMPII/noenv" bash "$hook")
 if [ -z "$body" ]; then assert_pass "no directive when no .env + env unset"; else assert_fail "expected OFF, got: $body"; fi
 
-# ---------- 26. Runbook pointer resolves (HIMMEL-2036) -----------------------
+# ---------- 26. Runbook pointer resolves -----------------------
 # The pointer is only worth its bytes if the file it names exists and carries
 # the content that left the hook. Assert BOTH: the emitted path, and that the
-# file at that path still holds the moved bodies (including the HIMMEL-539
+# file at that path still holds the moved bodies (including the
 # tasklist-seed preamble and every leg the resolver can emit). HIMMEL_REPO is
 # pinned to the real repo root so the pointer resolves regardless of which
 # fixture root the SC3 cases above left in the environment.
@@ -355,8 +355,8 @@ else
     assert_fail "runbook path does not resolve to a file (got: $runbook)"
 fi
 
-# ---------- 27. Byte budget (HIMMEL-2036 acceptance) -------------------------
-# The whole point of the pointer: the pre-HIMMEL-2036 directive was 3,150 B on
+# ---------- 27. Byte budget -------------------------
+# The whole point of the pointer: the inline directive was 3,150 B on
 # EVERY session start, on BOTH harnesses. Budget is asserted against the REAL
 # repo root (not a short temp fixture) so the absolute runbook path is paid for
 # honestly, and across the widest leg set the resolver can emit.
@@ -425,7 +425,7 @@ assert_lacks "no ticket body inline"         "Transition the Jira ticket"  "$out
 assert_lacks "no handover body inline"       "[Ww]rite the handover"       "$out"
 
 
-# ---------- HIMMEL-813: per-session-start dedup (double-fire fix) -----------
+# ---------- per-session-start dedup (double-fire fix) -----------
 # The hook is wired at BOTH user scope and project scope, so a single
 # SessionStart event fires it twice within seconds. Dedup is keyed on
 # session_id with a freshness window (NOT once-per-session-id-ever), because a
@@ -474,7 +474,7 @@ assert_has "first call (no session_id) injects"  "HIMMEL_INITIATIVE is active" "
 assert_has "second call (no session_id) injects" "HIMMEL_INITIATIVE is active" "$out2"
 
 # ---------- 33. Orphaned marker (dir exists, ts missing) still injects -------
-# CR round 1: a marker dir whose ts file is gone (winner killed pre-write, or
+# A marker dir whose ts file is gone (winner killed pre-write, or
 # a temp-cleaner swept the file but not the dir) must NOT permanently silence
 # the directive for that session_id. After a one-shot retry the hook fails
 # OPEN: refreshes the stamp and injects.

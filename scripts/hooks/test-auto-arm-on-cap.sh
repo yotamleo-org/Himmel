@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke tests for scripts/hooks/auto-arm-on-cap.sh (HIMMEL-220).
+# Smoke tests for scripts/hooks/auto-arm-on-cap.sh.
 #
 # Stubs arm-resume.sh via AUTO_ARM_BIN and the usage cache via
 # AUTO_ARM_CACHE; never touches the real scheduler or the real cache.
@@ -16,15 +16,15 @@ unset AUTO_ARM_DISABLE AUTO_ARM_THRESHOLD AUTO_ARM_CACHE AUTO_ARM_STATE_DIR
 unset AUTO_ARM_CHECK_INTERVAL AUTO_ARM_MAX_CACHE_AGE AUTO_ARM_MAX_ARM_FAILURES
 unset AUTO_ARM_STALE_ESCALATE_AGE AUTO_ARM_STALE_MIN_CHECKS AUTO_ARM_BIN
 # Isolate the quota-gauge ledger so threshold-trip tests never pollute the
-# operator's real ~/.himmel/quota-gauge.jsonl (HIMMEL-687).
+# operator's real ~/.himmel/quota-gauge.jsonl.
 export HIMMEL_QUOTA_GAUGE_LEDGER="$TMP/quota-gauge.jsonl"
 
-# Leak guard (HIMMEL-687): the real default ledger must be byte-identical
+# Leak guard: the real default ledger must be byte-identical
 # after the suite -- proves the override above actually isolates writes.
 REAL_LEDGER="${HOME:-}/.himmel/quota-gauge.jsonl"
 if [ -f "$REAL_LEDGER" ]; then REAL_LEDGER_BEFORE="$(wc -c < "$REAL_LEDGER" | tr -d ' ')"; else REAL_LEDGER_BEFORE="ABSENT"; fi
 
-# HIMMEL-1712: hermetic identity so every write_cache()/raw fixture below can
+# hermetic identity so every write_cache()/raw fixture below can
 # stamp the SAME matching account hash -- this suite is about threshold/arm
 # logic, not identity, and a dedicated account-mismatch case is added
 # separately below. Set AFTER REAL_LEDGER is captured (that leak-guard checks
@@ -178,7 +178,7 @@ EOF
 done
 rm -f "$ARM_LOG"
 
-# HIMMEL-4106: the z.ai lane matches by host, not by substring. A URL that only
+# the z.ai lane matches by host, not by substring. A URL that only
 # CONTAINS api.z.ai (path, query, lookalike host, userinfo) is the Claude bank.
 echo "Test 1d: z.ai host matching at Claude seven_day 97%"
 for spec in \
@@ -485,7 +485,7 @@ AUTO_ARM_STATE_DIR="$S" AUTO_ARM_CACHE="$C" \
 assert_rc "fallback-lib run exits 0 (below threshold, hook functional)" 0 $?
 assert_file "throttle marker written (hook ran past the lib source)" present "$S/auto-arm-last-check"
 
-# ─── HIMMEL-275: stale-cache escalation (wedged-statusline seam) ─────────
+# ─── Stale-cache escalation (wedged-statusline seam) ─────────
 # Frozen cache file with an ancient mtime + live hook invocations. All
 # guarded on touch -d support (same as Test 6).
 if touch -d '@1' "$TMP/probe-touch" 2>/dev/null; then
@@ -704,7 +704,7 @@ run_hook_sid "$S" "$C" "session-alpha-0001"
 assert_rc "session A re-check — one-shot held (exit 0)" 0 $?
 rm -f "$S/auto-arm-last-check" "$ARM_LOG"
 # Session B under the same frozen mtime: the arm dedups at the scheduler
-# (rc=3 = already armed). HIMMEL-733: dedup counts as ARMED — B is notified
+# (rc=3 = already armed). Dedup counts as ARMED — B is notified
 # on stderr but NOT blocked (the safety net already exists).
 run_hook_sid "$S" "$C" "session-beta-0002" 3
 assert_rc "session B under the same wedge allowed (dedup = armed, exit 0)" 0 $?
@@ -824,7 +824,7 @@ else
     fail=$((fail+1))
 fi
 
-# --- HIMMEL-690: stale-cache safety arm picks the binding bank -------------
+# --- Stale-cache safety arm picks the binding bank -------------
 # The stale slot must consider BOTH windows and target the binding (exhausted)
 # bank's reset, not a hardcoded five_hour. A candidate is a window whose
 # utilization >= threshold AND whose resets_at lands in (now+120s, now+24h].
@@ -917,7 +917,7 @@ S="$TMP/s46"; mkdir -p "$S"
 rm -f "$ARM_LOG"
 # Mirror of Test 42 with utils swapped: seven_day is below threshold so it must
 # be filtered out EVEN THOUGH its reset is later and in range — pins the
-# threshold-filter-before-reset-pick order (the exact bug class HIMMEL-690 fixes).
+# threshold-filter-before-reset-pick order (the exact bug class this guards).
 five_iso=$(python3 -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S+00:00"))')
 seven_iso=$(python3 -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%S+00:00"))')
 five_hhmm=$(python3 -c 'import datetime,sys; print(datetime.datetime.fromisoformat(sys.argv[1]).astimezone().strftime("%H:%M"))' "$five_iso")
@@ -992,7 +992,7 @@ else
 fi
 rm -rf "$S29/auto-arm-status-${fired_key_29}.md"
 
-# ─── HIMMEL-279: null utilization in the threshold-trip python block ─────
+# ─── Null utilization in the threshold-trip python block ─────
 # Fresh cache, threshold check path (NOT the stale path above). These cover
 # the statusline PR #2 null-field guard: key absent = schema drift (silent
 # skip); key present but null = UNKNOWN (warn + skip that window); all null
@@ -1042,7 +1042,7 @@ assert_rc "both-null exits 1 (MALFUNCTION, not silent)" 1 $?
 assert_file "no arm call on all-null signal" absent "$ARM_LOG"
 assert_grep "MALFUNCTION surfaced for all-null cache" "MALFUNCTION" "$STDERR_LOG"
 
-# ─── HIMMEL-625: out-of-range utilization (a leaked epoch timestamp) ─────
+# ─── Out-of-range utilization (a leaked epoch timestamp) ─────
 # Fresh cache, threshold-trip python path. The statusline writer leaked a
 # Unix epoch (1782696700 ~ 1.78e9) into five_hour.utilization on 2026-06-29;
 # the watchdog armed a spurious resume because 1.78e9 >= 90. An out-of-range
@@ -1114,7 +1114,7 @@ assert_rc "real over-100 overage still trips (exits 2)" 2 $?
 assert_file "arm called on a 150% overage" present "$ARM_LOG"
 rm -f "$ARM_LOG"
 
-# --- HIMMEL-1712: account-mismatched cache -- same quiet no-op as a missing
+# --- Account-mismatched cache -- same quiet no-op as a missing
 # or unparseable cache (Tests 9-11); this watchdog fails OPEN and must never
 # arm on a number it cannot attribute to the current session's account.
 echo "Test 39b: account-mismatched cache -- quiet no-op (fail-open, no arm)"
@@ -1130,7 +1130,7 @@ HOME="$HOME_B" AUTO_ARM_STATE_DIR="$S" AUTO_ARM_CACHE="$C" \
 assert_rc "account-mismatched cache run exits 0" 0 $?
 assert_file "no arm call on account mismatch" absent "$ARM_LOG"
 
-# --- HIMMEL-4948: the validated bank lift raises the trip point to 100 -------
+# --- The validated bank lift raises the trip point to 100 -------
 # Fixture lift file + a cache whose seven_day reset is in the FUTURE (the shared
 # write_cache fixture's 2026-06-13 reset is long past, so bank_lift_valid would
 # reject it). Never the operator's real lift file.
@@ -1208,7 +1208,7 @@ assert_rc "explicit CADENCE_BANK_MAX_PCT: five_hour 97 trips (exit 2)" 2 $?
 assert_file "explicit CADENCE_BANK_MAX_PCT: arm called" present "$ARM_LOG"
 rm -f "$ARM_LOG"
 
-# --- HIMMEL-687: leak guard -- real ledger untouched by the suite -----------
+# --- Leak guard -- real ledger untouched by the suite -----------
 echo "Test 40: quota-gauge ledger isolation -- real ~/.himmel/quota-gauge.jsonl untouched"
 if [ -f "$REAL_LEDGER" ]; then REAL_LEDGER_AFTER="$(wc -c < "$REAL_LEDGER" | tr -d ' ')"; else REAL_LEDGER_AFTER="ABSENT"; fi
 if [ "$REAL_LEDGER_BEFORE" = "$REAL_LEDGER_AFTER" ]; then
@@ -1219,7 +1219,7 @@ else
     fail=$((fail+1))
 fi
 
-# --- HIMMEL-687: positive-write guard -- keeps Test 40 non-vacuous ----------
+# --- Positive-write guard -- keeps Test 40 non-vacuous ----------
 # quota_gauge_note_claude is fail-open/silent (auto-arm-on-cap.sh header): if the
 # whole write path ever dies (sourcing fails, append silently errors) NO ledger
 # is written -- neither real nor isolated -- and Test 40 would pass vacuously.

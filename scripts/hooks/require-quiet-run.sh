@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Bash) - deny a bare invocation of a repo shell test suite
-# and name the scripts/quiet-run.sh replacement (HIMMEL-1952).
+# and name the scripts/quiet-run.sh replacement.
 #
 # WHY: scripts/quiet-run.sh already exists, is cataloged
 # (docs/commands-catalog.md, /quiet-run), and CLAUDE.md's Tests section
@@ -43,11 +43,11 @@ fi
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-# HIMMEL-2123: bash builtin `read` instead of `$(cat)` drops one more spawn.
+# Bash builtin `read` instead of `$(cat)` drops one more spawn.
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
 
-# HIMMEL-2060: one jq launch instead of three (validate-JSON + tool_name +
+# One jq launch instead of three (validate-JSON + tool_name +
 # command) - the largest per-call fork lever on a loaded Windows/Git-Bash box,
 # where every jq launch is a full MSYS2 process spawn. Invalid JSON makes the
 # combined query fail exactly like the old standalone `jq empty` did, so the
@@ -58,16 +58,14 @@ IFS= read -r -d '' input 2>/dev/null || true
 # extra fork needed. The Windows jq.exe build writes stdout in TEXT mode, so
 # every "\n" this filter emits - including the tool/command separator AND
 # every line boundary inside a multi-line $cmd - comes back as "\r\n"; strip
-# the stray \r off $tool explicitly. HIMMEL-2322: $cmd's copy used to be
-# "harmless" only because the old cmd_norm fold treated \r and \n as
-# interchangeable separators; the heredoc-body stage below does its own
-# line-based `read`, which treats \r as ordinary line content, not a
+# the stray \r off $tool explicitly. $cmd needs the same: the heredoc-body stage below does its
+# own line-based `read`, which treats \r as ordinary line content, not a
 # terminator - a body/delimiter line ending in a stray \r would never
 # string-match its (clean) heredoc delimiter and the whole rest of the
 # command would look unterminated. Strip every \r from $cmd up front so
 # both stages see plain \n-delimited lines.
 #
-# HIMMEL-2123: two more fixes on top of the HIMMEL-2060 shape above.
+# Further fixes on top of the single-jq shape above.
 #   * `<<<"$input"` feeds jq directly instead of `printf '%s' "$input" |`,
 #     dropping the printf fork that pipeline paid on top of jq's own.
 #   * `// ""` (empty STRING) replaces `// empty` (a zero-output jq
@@ -85,7 +83,7 @@ cmd="${cmd//$'\r'/}"
 [ "$tool" = "Bash" ] || exit 0
 [ -n "$cmd" ] || exit 0
 
-# HIMMEL-4438: re-read the forms the shell actually runs (quotes removed,
+# re-read the forms the shell actually runs (quotes removed,
 # wrappers stripped, `bash -c`/`eval` bodies) through this same hook. The lib
 # is a must-run dependency: if it cannot be sourced, deny.
 if :; then
@@ -102,7 +100,7 @@ if :; then
 fi
 
 # Strip leading structural tokens so a suite invoked in a NESTED command
-# position is still seen at command position (HIMMEL-1952 CR round 3): an
+# position is still seen at command position: an
 # assignment prefix (`FOO=1 bash ...`), a conditional/loop keyword (`if bash
 # ...`), `time`/`env`, or `!`. Subshells, brace groups and command/backtick
 # substitutions need no keyword handling - the segment splitter below breaks
@@ -128,7 +126,7 @@ strip_lead() {
     printf '%s' "$s"
 }
 
-# HIMMEL-2322 stage 1 - strip heredoc BODIES that are not fed to a shell,
+# Stage 1 - strip heredoc BODIES that are not fed to a shell,
 # before the SUITE/QUIET_RUN regexes ever see them. A heredoc body is DATA,
 # not a command: `cat > handover.md <<'EOF' ... EOF` never executes whatever
 # suite-shaped text sits inside it, but the old whole-text regex scan (this
@@ -144,18 +142,18 @@ strip_lead() {
 # CONTAINS the `<<` and any segment AFTER it on that line count - an
 # earlier, unrelated segment naming bash/sh/zsh
 # (`bash scripts/quiet-run.sh foo -- true; cat <<'EOF' > handover.md`) must
-# not turn a later, unrelated heredoc shell-fed (HIMMEL-2322 CR round 1).
+# not turn a later, unrelated heredoc shell-fed.
 # This one rule still covers both `bash <<EOF` (the `<<` segment itself
 # starts with bash) and `cat <<EOF | bash` (a later segment does).
 #
 # The bare-word delimiter alternative also allows an OPTIONAL leading
 # backslash (`<<\EOF`) - real bash treats that exactly like a quoted
 # delimiter (suppresses body expansion; the closing line is still just
-# "EOF", no backslash) (HIMMEL-2322 CR round 1, codex-3). The backslash is
+# "EOF", no backslash). The backslash is
 # its OWN capturing group (BASH_REMATCH[6], empty when absent) so
 # strip_heredoc_bodies can tell "escaped" from "bare and unescaped" without
 # re-matching anything - see the round-3 note below for why that matters.
-# HIMMEL-2322 CR round 2 (codex-2): the bare-word charset itself is widened
+# The bare-word charset itself is widened
 # to letters/digits/underscore/hyphen/dot (`<<END-MARK` is a real, if
 # unusual, delimiter) - the old identifier-only class captured "END" and
 # left "-MARK" attached to the terminator line, which never matched.
@@ -168,7 +166,7 @@ strip_lead() {
 # line and takes bash's leftmost hit - so a quoted heredoc-lookalike
 # EARLIER on the same line as a real heredoc operator (`echo '<<FAKE' &&
 # cat <<'REAL' > x`) still mis-captures the delimiter as "FAKE" instead of
-# "REAL" (HIMMEL-2322 CR round 2, codex-3 residual; not a shape this repo's
+# "REAL" (not a shape this repo's
 # docs/PR bodies use). That mis-capture no longer bypasses anything, though
 # - see the unterminated-heredoc posture below, which is exactly what a
 # never-matching mis-captured delimiter degrades into. Upgrade path: locate
@@ -176,21 +174,21 @@ strip_lead() {
 # delimiter out of the original line at that same offset instead of
 # re-matching the whole line from scratch.
 #
-# HIMMEL-2322 CR round 2 (codex-2/codex-3, BLOCKING): an unterminated
+# An unterminated
 # heredoc (no matching closing-delimiter line before the command ends) used
 # to drop everything from the intro onward - but that made a mis-captured
 # delimiter (never matching its real terminator, hence "unterminated" from
 # this parser's point of view) into a silent bypass: whatever real,
 # genuinely-executing text sat after it vanished along with the fake body.
-# Round 2 inverts this: an unterminated heredoc now strips NOTHING (see the
+# So an unterminated heredoc strips NOTHING (see the
 # end of strip_heredoc_bodies below) - the scan proceeds over that stretch
-# exactly as it did before HIMMEL-2322. A parse this stage can't complete
+# as if no heredoc stage existed. A parse this stage can't complete
 # degrades to a possible false POSITIVE (denying something inert), never to
 # a false NEGATIVE (allowing something that executes) - see the
 # "unterminated heredoc" test below, which now asserts rc=2 for exactly
 # this reason.
 #
-# HIMMEL-2322 CR round 3 (codex-1, BLOCKING): whether a heredoc body can be
+# Whether a heredoc body can be
 # stripped at all depends on the delimiter form, not just on shell_fed -
 # this is plain POSIX heredoc semantics, not a special case invented here.
 # A QUOTED or BACKSLASH-ESCAPED delimiter (`<<'EOF'`, `<<"EOF"`, `<<\EOF`)
@@ -209,7 +207,7 @@ strip_lead() {
 # prose suite line in a `cat <<EOF > doc.md` body) working.
 HEREDOC_INTRO_RE="(^|[^<])<<(-)?[[:space:]]*('([^']*)'|\"([^\"]*)\"|(\\\\?)([A-Za-z0-9_.-]+))"
 
-# HIMMEL-2322 CR round 2 (codex-1): `source`/`.` genuinely execute a
+# `source`/`.` genuinely execute a
 # heredoc body too (`source /dev/stdin <<EOF`, `. /dev/stdin <<EOF`) and
 # were missing from the shell-fed verb set, so their bodies read as inert
 # prose. `strip_lead`'s own `env ` handling already covers `env bash` and
@@ -239,7 +237,7 @@ strip_tabs() {
     printf '%s' "$s"
 }
 
-# Shared quote-span walker (HIMMEL-2322 CR round 1, codex-1) - used by both
+# Shared quote-span walker - used by both
 # stage 1's heredoc-intro detector below and stage 2's prose-unwrapper
 # further down. Walks $2 char by char, and for every single- or
 # double-quoted span asks $1 ("stage2" or "detect") what to do with it:
@@ -263,7 +261,7 @@ strip_tabs() {
 # the rest of the string had none (_QR_PRE is then the whole remainder).
 # Reads s/n and keeps the _wb/_ww/_we window of scan_quotes (dynamic scope):
 # every ${s:...} reference copies the whole of $s in bash 5.x, so the string
-# is touched once per window refill, not once per quote (HIMMEL-5154).
+# is touched once per window refill, not once per quote.
 _qr_until() {
     local p=$1 pat=$2 w=256 chunk
     while :; do
@@ -291,7 +289,7 @@ _qr_at() {
 
 scan_quotes() {
     # Every tested character is ASCII, so walk bytes: ${s:$i:1} re-decodes
-    # the string from the start in a UTF-8 locale (quadratic, HIMMEL-4729).
+    # the string from the start in a UTF-8 locale (quadratic).
     local LC_ALL=C
     local mode=$1 s=$2
     local out="" acc="" i=0 n=${#s} j closed cj span blank _wb=0 _ww="" _we=0
@@ -372,7 +370,7 @@ scan_quotes() {
     printf '%s' "$out$acc"
 }
 
-# HIMMEL-2322 stage 2 - unwrap quoted spans that don't need to stay quoted
+# Stage 2 - unwrap quoted spans that don't need to stay quoted
 # for what this hook does (it never executes anything, so real $IFS-
 # splitting rules don't matter here - only whether a SUITE/QUIET_RUN path
 # sits at command position). A quoted command word
@@ -393,7 +391,7 @@ scan_quotes() {
 neutralize_chars() {
     local LC_ALL=C
     local s=$1
-    # one substitution pass instead of a per-character walk (HIMMEL-5154)
+    # one substitution pass instead of a per-character walk
     local seps=$';&|(){}`\n'
     REPLY=${s//[$seps]/ }
 }
@@ -402,7 +400,7 @@ neutralize_quoted_separators() {
     scan_quotes "stage2" "$1"
 }
 
-# HIMMEL-2322 CR round 1 (codex-1) - detection-only counterpart used by
+# Detection-only counterpart used by
 # strip_heredoc_bodies below to decide whether a `<<` is a real heredoc
 # operator or just quoted TEXT. See scan_quotes' own comment for what
 # "detect" mode does.
@@ -417,19 +415,17 @@ strip_heredoc_bodies() {
     while IFS= read -r line || [ -n "$line" ]; do
         if [ "$in_heredoc" = "1" ]; then
             term=$line
-            # HIMMEL-2322 CR round 2: $dash holds BASH_REMATCH[2], which is
+            # $dash holds BASH_REMATCH[2], which is
             # the literal "-" character when `<<-` was used (or "" when
             # not) - never the string "1". Comparing against "1" here meant
             # strip_tabs never ran, so a real `<<-...EOF` heredoc's
             # tab-indented terminator never matched $delim and the heredoc
-            # always looked unterminated. Round 1's fail-OPEN-on-
-            # unterminated posture happened to mask this (dropping the body
-            # either way, terminated or not); round 2's fail-CLOSED posture
-            # exposed it as a false positive on every `<<-` heredoc.
+            # always looked unterminated, which the fail-CLOSED unterminated
+            # posture turns into a false positive on every `<<-` heredoc.
             [ "$dash" = "-" ] && term=$(strip_tabs "$term")
             if [ "$term" = "$delim" ]; then
                 in_heredoc=0
-                # HIMMEL-2322 CR round 3: keep (don't strip) the body when
+                # Keep (don't strip) the body when
                 # shell_fed, OR when the delimiter was bare/unquoted AND
                 # the body itself contains `$(` or a backtick - see the
                 # round-3 note above HEREDOC_INTRO_RE for why an unquoted
@@ -477,7 +473,7 @@ strip_heredoc_bodies() {
         fi
     done <<<"$text"
 
-    # HIMMEL-2322 CR round 2: never terminated - put the buffered body back
+    # Never terminated - put the buffered body back
     # verbatim instead of dropping it (see the round-2 note above
     # HEREDOC_INTRO_RE for why). $body is empty and this is a no-op for the
     # ordinary case where the loop never entered a heredoc at all.
@@ -491,13 +487,13 @@ cmd_stage2=$(neutralize_quoted_separators "$cmd_stage1")
 
 # Fold newlines to ';' so a heredoc/multi-line command still has a command-
 # position separator right before a later suite invocation (mirrors
-# block-destructive-commands.sh's cmd_lc normalization). HIMMEL-2123: no
+# block-destructive-commands.sh's cmd_lc normalization). No
 # `$`-anchored patterns downstream depend on cmd_norm's exact end-of-string
 # (SUITE/QUIET_RUN below all anchor with `^` only), so `<<<` is safe here
 # and drops the printf fork too.
 cmd_norm=$(tr '\n\r' ';;' <<<"$cmd_stage2")
 
-# HIMMEL-4970: refuse two wait shapes that never end. (1) `until ! pgrep -f
+# Refuse two wait shapes that never end. (1) `until ! pgrep -f
 # <pat>` / `while pgrep -f <pat>` where <pat> matches this command's own text:
 # the harness runs every Bash call as `<shell> -c "... eval '<command>'"`, so
 # the wrapper shell's command line contains <pat> and pgrep -f (which excludes
@@ -558,8 +554,7 @@ SUITE='(scripts/([[:alnum:]_/-]*/)?test-[[:alnum:]_.-]+\.sh|scripts/ci/run-shell
 QUIET_RUN='scripts/quiet-run\.sh'
 
 # Decide per segment (split on ';' '&' '|' and on subshell/brace-group/
-# command-substitution delimiters), not per whole command (HIMMEL-1952
-# CR round 2): a compound command can wrap ONE suite call in quiet-run.sh and
+# command-substitution delimiters), not per whole command: a compound command can wrap ONE suite call in quiet-run.sh and
 # run another bare in a separate segment - a whole-command "any quiet-run
 # invocation anywhere -> allow" check misses that. Each segment is anchored at
 # its own start (same discipline the old CMDPOS anchor gave the whole

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-reconcile-rtk-hook.sh — smoke test for
-# scripts/lib/reconcile-rtk-hook.sh (HIMMEL-399).
+# scripts/lib/reconcile-rtk-hook.sh.
 #
 # The standalone "reconcile now" path: after an operator runs `rtk init -g`
 # OUTSIDE full machine-setup (which appends a bare `rtk hook claude`
@@ -14,7 +14,7 @@
 # Covers:
 #   1.  Fresh: one bare `rtk hook claude` → exactly ONE guard entry, zero bare.
 #   2.  Idempotency: re-running case 1 changes nothing (no-op, rc 0).
-#   3.  Guard + bare coexist (HIMMEL-264 leftover) → collapse to ONE guard.
+#   3.  Guard + bare coexist (legacy leftover) → collapse to ONE guard.
 #   4.  Two bare entries (rtk init -g run twice) → ONE guard.
 #   5.  Two guard entries already present → collapse to ONE.
 #   6.  Unrelated PreToolUse hooks + sibling keys preserved.
@@ -259,7 +259,7 @@ else
 fi
 
 # ---------- 15. Stale guard path + fresh bare → ONE guard at the CURRENT path ----------
-# HIMMEL-985: settings restored from another machine/username/checkout carry a
+# settings restored from another machine/username/checkout carry a
 # guard entry with an old absolute path. Dedup keeps the FIRST guard in
 # document order, so without the normalize stage the stale entry would win and
 # the freshly swapped one be dropped — setup would report success while the

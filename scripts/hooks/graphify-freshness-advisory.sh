@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # graphify-freshness-advisory.sh — SessionStart advisory: warn when the himmel
-# graphify graph cannot be trusted (HIMMEL-1643; the C1 routing line says
+# graphify graph cannot be trusted (the C1 routing line says
 # "treat it as current" — this hook is what keeps that claim honest).
 # SILENT when fresh (every SessionStart line is paid in every session forever).
 # THREE states (r2 panel codex-2): fresh -> nothing; stale OR absent/corrupt ->
 # one banner (an absent graph is definitively not current); the advisory's OWN
 # failures -> silent exit 0 (fail-open covers our bugs, never the graph state).
-# ALWAYS exits 0. Pattern sibling: qmd-staleness-notice.sh (HIMMEL-1286).
+# ALWAYS exits 0. Pattern sibling: qmd-staleness-notice.sh.
 #
 # PLAN DEVIATION (plan-critic r1 F2, restated here per Step 3.5): the spec's
 # literal `graphmap-cadence.sh --run-once` DOES NOT EXIST (that script's verbs
@@ -15,7 +15,7 @@
 # …`), re-printed below via `$out` — not hardcoded here.
 set -uo pipefail
 
-# HIMMEL-1591: warn-only watch for core.bare on the SHARED git config, placed
+# warn-only watch for core.bare on the SHARED git config, placed
 # ahead of the lean-leg exit below because a leg is exactly who burns a run on
 # it. A shared core.bare=true is disguised (reads work, writes go absurd) and
 # its writer is unknown, so this can only detect. One `git config` call, silent
@@ -35,7 +35,7 @@ if [ "$(git -C "$_cb_dir" config --local --type=bool --get core.bare 2>/dev/null
     printf '</system-reminder>\n'
 fi
 
-# HIMMEL-2830 / HIMMEL-2928: a leg launched by headed-arm-leg.sh --profile
+# a leg launched by headed-arm-leg.sh --profile
 # carries HIMMEL_LEAN_LEG=1. SessionStart output is not paid once - it sits in
 # the fixed context floor that is re-read on EVERY API call of that session
 # (measured: 3.9k chars of a 74.3k first-turn floor on leg N158), and a leg never
@@ -109,8 +109,8 @@ esac
 
 # $out is checker output (in turn partly sourced from on-disk manifest/corpus
 # data this hook does not control) embedded inside a system-reminder block the
-# model trusts as harness-authored — a prompt-injection surface (HIMMEL-2077).
-# Two layers, neither sufficient alone (codex CR round on HIMMEL-2077: angle-
+# model trusts as harness-authored — a prompt-injection surface.
+# Two layers, neither sufficient alone (angle-
 # bracket stripping only closes the MARKUP half — a plain-prose injection like
 # "ignore prior instructions" survives it untouched): (1) neutralize angle
 # brackets so the text cannot close this block or forge markup for a fake one;

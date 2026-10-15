@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PostToolUse hook (HIMMEL-5412): page the operator the moment a GitHub token
+# PostToolUse hook: page the operator the moment a GitHub token
 # shows up in a tool call or its result.
 #
 # WHY: block-read-secrets.sh denies the shapes we know print a credential, but

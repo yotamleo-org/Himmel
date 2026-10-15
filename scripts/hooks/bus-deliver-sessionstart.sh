@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # bus-deliver-sessionstart.sh — SessionStart mirror of bus-deliver-hook.sh
-# (HIMMEL-4828). A resumed or fresh session gets any waiting bus mail up front
+# A resumed or fresh session gets any waiting bus mail up front
 # instead of at its first tool call. Same gate, same worker, same cursor: the
 # worker reads hook_event_name from stdin and prints plain text for SessionStart,
 # so a record delivered here is never re-delivered by the PostToolUse hook.

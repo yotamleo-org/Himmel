@@ -1,4 +1,4 @@
-# Smoke test for scripts/hooks/check-doc-guard.ps1 (HIMMEL-454).
+# Smoke test for scripts/hooks/check-doc-guard.ps1.
 #
 # Builds throwaway git repos, exercises each rc case, asserts exact rc.
 # Usage: pwsh -File scripts/hooks/test-doc-guard.ps1

@@ -10,24 +10,24 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const WIRER = join(HERE, 'wire-plugin-hook-bash.mjs');
 const PLUGIN_HOOKS = join(HERE, '..', '..', 'marketplace', 'plugins', 'himmel-ops', 'hooks', 'hooks.json');
 
-// HIMMEL-2047/HIMMEL-2758: an independent restatement of
+// an independent restatement of
 // wire-plugin-hook-bash.mjs's own wired-form prefix, not imported from it —
 // so this spec pins the expected output rather than circularly re-running the
 // generator it is meant to check. The launcher RUNS (via `command -p sh`, not
-// sourced via `.` — dash drops `.`'s operands, HIMMEL-2758) run-node.sh VENDORED into the
+// sourced via `.` — dash drops `.`'s operands) run-node.sh VENDORED into the
 // plugin itself (${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh, byte-identical to
 // scripts/lib/run-node.sh — see test-plugin-hook-bash-wiring.sh's drift
 // check), never $CLAUDE_PROJECT_DIR — see wiredCommand()'s own header
-// comment for why (CR round 2, [codex-1]/[codex-2]).
+// comment for why.
 const WIRED_PREFIX = 'command -p sh "${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh" "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js" ';
 
 // The two SUPERSEDED launcher tokens. A command in either shape must still be
 // recognised as owned (unwired) and MIGRATED to the current form on the next
-// rewrite, exactly like the pre-HIMMEL-2047 bare-`node` legacyWiredCommand()
+// rewrite, exactly like the bare-`node` legacyWiredCommand()
 // already migrates.
 //
-//   `.`   pre-HIMMEL-2758: dash drops its operands.
-//   `sh`  the first HIMMEL-2758 shape, superseded within the same ticket: a
+//   `.`   dash drops its operands.
+//   `sh`  an earlier shape: a
 //         bare `sh` is a PATH lookup, so a host whose PATH excludes the
 //         shell's directory killed the whole chain at rc=127.
 const LEGACY_LAUNCHER_TOKENS = ['.', 'sh'];
@@ -72,7 +72,7 @@ function unwire(text) {
     if (script === 'block-lesson-enforcement-writes.sh') {
       commandHook.command = 'bash -c \'h="$CLAUDE_PROJECT_DIR/scripts/hooks/block-lesson-enforcement-writes.sh"; if [ -f "$h" ]; then exec bash "$h"; elif [ "${HIMMEL_LESSON_LOOP:-0}" = "1" ]; then echo "block-lesson-enforcement-writes: hook script missing while HIMMEL_LESSON_LOOP=1 (stale checkout?) - failing closed" >&2; exit 2; fi\'';
     } else if (script === 'block-glm-external-writes.sh') {
-      // HIMMEL-1649 round 5 [codex-adv-1] — second fail-closed entry. Spelled
+      // Second fail-closed entry. Spelled
       // out here rather than derived from the wirer, so this stays an
       // INDEPENDENT restatement of the expected output instead of a circular
       // re-run of the generator it is meant to pin.
@@ -130,7 +130,7 @@ test('rewrites the exact plugin inventory through the installed launcher', () =>
   });
 });
 
-// HIMMEL-2758 migration: a command still wired by either superseded launcher
+// Migration: a command still wired by either superseded launcher
 // token must be recognised as owned (not refused as an inventory mismatch) and
 // rewritten to the current form on the next pass.
 for (const token of LEGACY_LAUNCHER_TOKENS) {
@@ -155,7 +155,7 @@ for (const token of LEGACY_LAUNCHER_TOKENS) {
   });
 }
 
-// HIMMEL-2758: the live plugin hooks.json must never carry either superseded
+// the live plugin hooks.json must never carry either superseded
 // launcher — the dot form dash drops operands from, nor the bare `sh` form
 // that dies at rc=127 under a restricted PATH.
 test('no hook command in the live plugin hooks.json matches a superseded launcher prefix', () => {

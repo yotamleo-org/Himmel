@@ -1,4 +1,4 @@
-// stop-queue.test.mjs — spec for the bounded detached Stop worker (HIMMEL-2004).
+// stop-queue.test.mjs — spec for the bounded detached Stop worker.
 //
 // The queue exists to replace an UNBOUNDED fan-out (every ending session
 // spawning its own tree of side-effect work) with one worker draining a durable
@@ -76,7 +76,7 @@ test('queueDir prefers the explicit override, else $HOME/.himmel/stop-queue', ()
 // hook.
 test('sanitizeKey refuses separators, traversal and emptiness', () => {
   // No separator survives, and a lossy flattening keeps a digest of the
-  // original so two different raw ids cannot collide (round 4).
+  // original so two different raw ids cannot collide.
   assert.match(sanitizeKey('../../etc/passwd'), /^_\.\._etc_passwd-[0-9a-f]{8}$/);
   assert.match(sanitizeKey('a/b\\c'), /^a_b_c-[0-9a-f]{8}$/);
   assert.equal(sanitizeKey(''), 'unkeyed');
@@ -155,7 +155,7 @@ test('the enqueue CLI returns in well under a second and does no work inline', (
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// HIMMEL-713: the masking case a harness cancellation would otherwise produce.
+// the masking case a harness cancellation would otherwise produce.
 // The `attempt` row is written BEFORE the atomic entry write, so it is the one
 // breadcrumb that survives even if the process is killed the instant after —
 // proven here by its presence and its ordering ahead of `enqueued`, since a
@@ -439,9 +439,9 @@ test('the end-side hooks route their detached work through the queue', () => {
   const settings = JSON.parse(readFileSync(join(HERE, '..', '..', '.claude', 'settings.json'), 'utf8'));
   const commandsFor = (event) => (settings.hooks[event] || [])
     .flatMap((b) => (b.hooks || []).map((h) => String(h.command)));
-  // stop-console-idle-guard.sh (HIMMEL-3144) is a NAMED exception, not a
+  // stop-console-idle-guard.sh is a NAMED exception, not a
   // loosened invariant: every other end-side hook does deferred, detached
-  // work and this queue exists to bound exactly that (HIMMEL-2004). This one
+  // work and this queue exists to bound exactly that. This one
   // hook's whole job is the opposite — it must hand Claude Code a
   // synchronous `{"decision":"block",...}` on stdout BEFORE the session
   // actually stops, which the queue's async enqueue-and-exit contract cannot
@@ -528,11 +528,11 @@ test('a job runs under the enqueuing session gates, not the worker own', async (
   }
 });
 
-// ---------------------------------------------- panel findings (HIMMEL-2004)
+// ---------------------------------------------- panel findings
 
-// NOTE: rounds 1-3 pinned this property through a `superseded` log row and a
-// generation comparison at delete time. Round 4 replaced that whole mechanism
-// with claim-by-rename, which removes the race rather than narrowing it — see
+// NOTE: an earlier design pinned this property through a `superseded` log row and a
+// generation comparison at delete time. That mechanism was replaced
+// by claim-by-rename, which removes the race rather than narrowing it — see
 // "a running job vacates its key path" below, which is the same guarantee
 // asserted against the design that actually holds it.
 
@@ -622,7 +622,7 @@ test('a job that runs and fails is not retried — the attempt budget covers cra
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// ------------------------------------------- panel findings round 2 (2004)
+// ------------------------------------------- panel findings
 
 // [codex-1 r2] The attempt counter used to be written INTO the live entry
 // before running, which re-opened the delete race one step earlier: a newer
@@ -718,7 +718,7 @@ test('the secret denylist covers the common non-TOKEN credential names', () => {
   assert.deepEqual(scrubbed, { PATH: '/usr/bin' });
 });
 
-// [codex-3 r2 / CRITIC-1 r3] Round 2 put the enqueue-failure fallback in the
+// The enqueue-failure fallback must not live in the
 // WIRING as `|| <original command>`. It could not work: stop-queue.mjs reads
 // the hook payload from stdin before it can report failure, so the retried
 // command got EOF and a payload-dependent hook quietly did nothing. Whoever
@@ -801,7 +801,7 @@ test('the denylist is case-insensitive and never eats PATH', () => {
   }), { PATH: '/usr/bin' });
 });
 
-// ------------------------------------------- panel findings round 4 (2004)
+// ------------------------------------------- panel findings
 
 // [codex-1/2 r4] Three rounds of point-fixes kept NARROWING the read-check-then-
 // delete window instead of closing it. Claiming by rename removes the class: the
@@ -868,7 +868,7 @@ test('a timed-out job is retained for the crash budget, not discarded', async ()
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-2028] spawnSync's timeout signalled the DIRECT child only, and every
+// spawnSync's timeout signalled the DIRECT child only, and every
 // real job here is a tree — node run-hook-with-bash.js -> bash <hook>.sh ->
 // curl / bun / python. A job that missed its deadline therefore left its
 // descendants running OUTSIDE the concurrency bound and overlapping its own
@@ -917,7 +917,7 @@ test('a timed-out job takes its whole process TREE with it', async () => {
   }
 });
 
-// [codex-1 HIMMEL-2028] The deadline fires on the DIRECT CHILD's liveness, not
+// The deadline fires on the DIRECT CHILD's liveness, not
 // on 'close'. A job that finished but left a descendant holding its stderr pipe
 // open never reaches 'close' — reading that as a deadline miss would retain a
 // COMPLETED job for retry and repeat every side effect it already performed.
@@ -957,7 +957,7 @@ test('a job that FINISHED but left a pipe-holding survivor is recorded as ran, n
   }
 });
 
-// [codex-1 HIMMEL-2028 r2] A job terminated by someone ELSE exits with a null
+// A job terminated by someone ELSE exits with a null
 // status, no error and no deadline miss of ours — so classifying unfinished work
 // on `timedOut` alone deleted it as completed and lost it. spawnSync's
 // `result.signal` covered this before the async rewrite.
@@ -1030,11 +1030,11 @@ test('sanitizeKey keeps distinct raw inputs distinct', () => {
   assert.equal(sanitizeKey('speak-reply.abc_123'), 'speak-reply.abc_123');
 });
 
-// ------------------------------------------- panel findings round 5 (2004)
+// ------------------------------------------- panel findings
 
-// [codex-1 r5] Round 4 started retaining timed-out jobs under running/, but the
-// successor handoff still only looked at entries/ — so the one job that needed
-// a successor most was the one that could not get one.
+// Timed-out jobs are retained under running/, so the successor handoff must
+// look there too, not only at entries/ — otherwise the one job that needed a
+// successor most is the one that cannot get one.
 test('a retained job still gets a successor worker', async () => {
   const dir = scratch();
   try {
@@ -1093,7 +1093,7 @@ test('status counts unfinished work, not just queued work', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// ------------------------------------------- panel findings round 6 (2004)
+// ------------------------------------------- panel findings
 
 // [codex-1 r6] A command that cannot be SPAWNED sets result.error with no
 // signal. The worker treated that as a completed run and deleted the entry —
@@ -1114,8 +1114,8 @@ test('a job that never started is retained, not deleted as done', async () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [codex-2 r6] readEntries got `prune` in round 2; readRunning arrived in round
-// 4 without it, so status() started deleting malformed CLAIMED entries again.
+// readEntries takes `prune`; readRunning must too, or status() deletes
+// malformed CLAIMED entries.
 test('status does not delete a malformed claimed entry either', () => {
   const dir = scratch();
   try {
@@ -1159,7 +1159,7 @@ test('a non-secret name the denylist happens to match is excepted by name', () =
   assert.equal(scrubbed.GH_TOKEN, undefined);
 });
 
-// [codex-3 r7] The docs claimed a 15-minute TTL after round 6 raised it to an
+// The docs once claimed a 15-minute TTL after it was raised to an
 // hour. A stale number in a reference doc is the drift the docs-audit charter
 // exists for, so pin it here rather than trusting a re-read.
 test('the documented TTL matches the code', () => {
@@ -1274,7 +1274,7 @@ test('two workers racing the same stale lock cannot both drain', async () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3273] The rename above closes "two workers both DELETE the lock", but
+// The rename above closes "two workers both DELETE the lock", but
 // not "a worker renames a lock that is no longer the one it judged stale": the
 // rename is keyed on the PATH, so a worker that saw the stale lock and then lost
 // the CPU renames away whatever sits there when it wakes — including the live
@@ -1296,7 +1296,7 @@ test('a worker that judged the lock stale cannot remove the lock another worker 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3273] Two workers reach the takeover together: one is mid-takeover
+// Two workers reach the takeover together: one is mid-takeover
 // (holds the reclaim gate) when the other arrives. The second must back off, not
 // take the lock over from under the first.
 test('a worker arriving mid-takeover backs off instead of taking the lock over', () => {
@@ -1334,7 +1334,7 @@ test('a reclaim gate left by a dead worker does not wedge the lock', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3275] The reclaim gate serialises takeovers, but the gate itself was
+// The reclaim gate serialises takeovers, but the gate itself was
 // cleared on AGE alone with a path-keyed rmSync. A worker that HOLDS the gate
 // and is merely slow — SIGSTOP, a starved host — is indistinguishable from one
 // that died inside the takeover, so the next worker removes the gate it is
@@ -1382,7 +1382,7 @@ test('a worker cannot clear the reclaim gate a live worker is holding', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3275] The second residual window: releaseLock did not take the gate,
+// The second residual window: releaseLock did not take the gate,
 // so a stale-LOOKING lock whose holder is still alive (the age cap, or a reused
 // pid) could be released between the in-gate staleness check and the rename —
 // and a third worker takes a fresh lock in that gap. The takeover then renames
@@ -1411,11 +1411,11 @@ test('a worker cannot remove a lock that was replaced after it judged it stale',
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3275] A guard, not a race: creating a lock or a gate must never
+// A guard, not a race: creating a lock or a gate must never
 // destroy a directory that is already there, not even an EMPTY one. The
 // identity marker made "create it already populated, so an existing object is
 // never empty" tempting — but a rename onto an empty directory REPLACES it, and
-// a pre-HIMMEL-3275 worker's live gate is a bare mkdir that is permanently
+// an older worker's live gate is a bare mkdir that is permanently
 // empty. Creation therefore stays mkdir-exclusive, and an empty object is only
 // ever removed by rmdir, which the kernel refuses on a populated one.
 test('creating a lock or a gate never replaces an existing empty directory', () => {
@@ -1436,8 +1436,7 @@ test('creating a lock or a gate never replaces an existing empty directory', () 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3275 codex-1] The third window, found by the panel on this branch's
-// own diff: inside the gate, staleness was judged BEFORE the lock's identity
+// The third window: inside the gate, staleness was judged BEFORE the lock's identity
 // was read. A holder that releases in that gap — and a third worker that takes
 // a fresh lock in it — leave the takeover reading the FRESH worker's marker,
 // which it then claims and deletes. The identity check is only worth anything
@@ -1466,7 +1465,7 @@ test('a worker cannot remove a lock that was replaced before it read the owner',
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3275 codex-2] The identity marker is moved, not deleted, so a
+// The identity marker is moved, not deleted, so a
 // reclaimer that dies between winning the CAS and writing its adopted marker
 // leaves a gate holding only `dead.<id>`: nothing owns it, mkdir refuses it
 // because it exists, and rmdir refuses it because it is not empty. Stale-lock
@@ -1495,7 +1494,7 @@ test('a reclaim gate orphaned by a death mid-takeover does not wedge recovery fo
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3275 round 2, codex-1] Adopting an ownerless gate reads the directory
+// Adopting an ownerless gate reads the directory
 // AFTER deciding it has no owner, and the entry it picks is renamed on sight.
 // If a faster worker installs its ownership in that gap, the only entry left is
 // that worker's LIVE `own.<id>` — and renaming it is not a recovery, it is a
@@ -1532,7 +1531,7 @@ test('adopting an orphaned gate never renames away a live worker’s ownership m
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3275 round 2, codex-2] releaseGate wins the CAS and then removes the
+// releaseGate wins the CAS and then removes the
 // gate RECURSIVELY, by path — and nothing bounds the gap between the two. A
 // releaser stopped there for longer than RECLAIM_STALE_MS leaves an ownerless
 // gate, which is exactly what the recovery above adopts; the releaser then
@@ -1565,8 +1564,8 @@ test('a paused gate release cannot delete a gate another worker has adopted', ()
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3275 round 3, codex-1] The same class again, in the one release the
-// round-2 sweep cleared on a reason that does not hold: releaseLock's removal
+// The same class again, in the one release cleared on a reason that
+// does not hold: releaseLock's removal
 // was said to be safe because a takeover adopts an ownerless lock only after
 // lockIsStale calls its holder dead, and the holder here is the live releaser.
 // But lockIsStale returns true on heartbeat AGE regardless of pid liveness
@@ -1602,7 +1601,7 @@ test('a paused lock release cannot delete a lock another worker has taken', () =
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// [HIMMEL-3275 round 4, codex-1] The eviction reads the gate's AGE, then its
+// The eviction reads the gate's AGE, then its
 // OWNER, and those are two reads of two different things. A worker adopting in
 // the gap between them installs its ownership with one rename — which is the
 // point of the single-step adoption — but the pid that says it is alive lived
@@ -1660,7 +1659,7 @@ test('a gate the enqueuing session did not set is not inherited from the worker'
   assert.equal(env.JIRA_PROJECT_KEY, undefined, 'foreign session config leaked into the job');
   assert.equal(env.CLAUDE_PROJECT_DIR, '/b', "the entry's own value must win");
   assert.equal(env.PATH, '/b/bin', 'an owned name must come from the entry, not the worker');
-  // [codex-1 r4, HIMMEL-2030] SYSTEMROOT used to pass through as "the
+  // SYSTEMROOT used to pass through as "the
   // interpreter's, not a session's". The system set is snapshot-owned now — TZ,
   // LANG, LC_*, XDG_* and the version-manager roots are all per-session, and
   // XDG_* names where a tool keeps its credentials — so a snapshotted entry
@@ -1680,7 +1679,7 @@ test('a snapshot-less entry falls back to inheriting rather than starving', () =
   assert.equal(env.PATH, '/a/bin');
   assert.equal(env.HOME, '/a');
   assert.equal(env.SYSTEMROOT, 'C:\\Windows');
-  // [codex-1 r5, HIMMEL-2030] Enough environment to RUN, and no more. This
+  // Enough environment to RUN, and no more. This
   // branch used to take snapshotOwns, whose ENV_PREFIXES half is a wildcard —
   // `^HIMMEL_` also admits HIMMEL_MQTT_PASS, and PASS is not a denylist shape.
   // The worker's own gates go with it: they are another session's answer.
@@ -1846,9 +1845,9 @@ test('drain is a no-op on an empty queue', async () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// ------------------------------------- HIMMEL-2030: the base is an ALLOWLIST
+// ------------------------------------- the base is an ALLOWLIST
 
-// The finding three CR rounds kept deferring. `scrubSecrets` is a NAME-pattern
+// `scrubSecrets` is a NAME-pattern
 // denylist, so it can only strip what someone wrote down — and this box really
 // does carry credentials it does not match (GGS_MQTT_PASS is neither PASSWORD
 // nor PASSWD). The denylist still not matching is the POINT of this case: it is

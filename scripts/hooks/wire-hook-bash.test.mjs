@@ -12,18 +12,18 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const WIRER = join(HERE, 'wire-hook-bash.mjs');
 const SETTINGS = join(HERE, '..', '..', '.claude', 'settings.json');
 
-// Derived from the inventory itself (HIMMEL-1952), not hardcoded — a hardcoded
+// Derived from the inventory itself, not hardcoded — a hardcoded
 // count would rebuild the same wall wire-hook-bash.mjs's own comment warns
 // about for the next capability that adds a hook.
 const SCRIPT_COUNT = EXPECTED_SCRIPT_ORDER.length;
 const REWROTE_RE = new RegExp(`rewrote ${SCRIPT_COUNT} hook command\\(s\\)`);
 const WOULD_REWRITE_RE = new RegExp(`would rewrite ${SCRIPT_COUNT} hook command\\(s\\).*wrote nothing`);
 
-// HIMMEL-2047/HIMMEL-2758: an independent restatement of wire-hook-bash.mjs's
+// An independent restatement of wire-hook-bash.mjs's
 // own wired prefix, not imported from it — so this spec pins the expected
 // output rather than circularly re-running the generator it is meant to
 // check. The wired form RUNS run-node.sh (via `command -p sh`, not sourced via
-// `.` — dash drops `.`'s operands, HIMMEL-2758) when present, falling back to
+// `.` — dash drops `.`'s operands) when present, falling back to
 // bare `node` when it is absent (an old checkout predating this fix) — see
 // wrapWithFallback()'s own header comment for why, including why the launcher
 // is `command -p sh` rather than a bare `sh`.
@@ -31,11 +31,11 @@ const WIRED_LAUNCHER = 'if [ -f "$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh" ];
 
 // The two SUPERSEDED launcher tokens. A command in either shape must still be
 // recognised as OWNED (so it is not refused as foreign/impostor) and MIGRATED
-// to the current form on the next rewrite, exactly like the pre-HIMMEL-2047
+// to the current form on the next rewrite, exactly like the earlier
 // bare-`node` LEGACY_LAUNCHER already migrates.
 //
-//   `.`   pre-HIMMEL-2758: dash drops its operands.
-//   `sh`  the first HIMMEL-2758 shape, superseded within the same ticket: a
+//   `.`   dash drops its operands.
+//   `sh`  an intermediate shape, superseded: a
 //         bare `sh` is a PATH lookup the `.` builtin never needed, so a hook
 //         shell with a restricted PATH died at rc=127 before the chain ran.
 const LEGACY_LAUNCHER_TOKENS = ['.', 'sh'];
@@ -58,7 +58,7 @@ function legacyDotWiredCommand(script, token = '.') {
 // redacted on the public mirror), so the live file this suite exercises is
 // absent there. Every case below is a spec FOR that real file; none can run
 // without it, so skip them — naming the reason — rather than fail on the
-// missing private fixture (HIMMEL-1590). The one case that does not touch
+// missing private fixture. The one case that does not touch
 // settings.json (the permission-gate unit test) stays a plain baseTest.
 const SETTINGS_SKIP = existsSync(SETTINGS)
   ? undefined
@@ -72,7 +72,7 @@ const test = (name, fn) => baseTest(name, SETTINGS_SKIP ? { skip: SETTINGS_SKIP 
 // the suite fails on a correctly-wired repo. Normalize each hook command back
 // to the bare-bash form so the rewrite tests always start unwired, whatever
 // the tree looks like.
-// A `--chain` entry (HIMMEL-2002) has no bare form, so "unwired" for it means
+// A `--chain` entry has no bare form, so "unwired" for it means
 // EXPANDED: one bare entry per member, in order. That keeps the fixture at one
 // unrouted entry per owned script — which is what makes `rewrote N` count
 // EXPECTED_SCRIPT_ORDER.length here, exactly as it did before chains existed.
@@ -151,18 +151,18 @@ test('rewrites the known hook inventory through the Bash resolver', () => {
     }
     // Foreign commands (the trust ledger under the owned events + speak-reply
     // under Stop) coexist and are NOT touched by this tool — the point of
-    // HIMMEL-1552. They remain present, in their original form.
+    // the own-only invariant. They remain present, in their original form.
     const foreign = all.filter((c) => !c.startsWith(WIRED_LAUNCHER));
     assert.ok(foreign.length > 0, 'foreign hook commands coexist with the owned inventory');
     assert.deepEqual(after.permissions, before.permissions);
   });
 });
 
-// HIMMEL-1516 residual. Every test above is a spec for the TOOL, and the tool's
+// Every test above is a spec for the TOOL, and the tool's
 // own-only invariant deliberately ignores foreign events — so nothing asserted
 // the state of the FILE, and `speak-reply.sh` under `Stop` sat on a bare `bash`
 // long after the owned inventory had been routed, keeping exactly the PATH
-// roulette HIMMEL-1516 exists to remove (WSL stub / 0-byte Store alias / the
+// roulette this tool exists to remove (WSL stub / 0-byte Store alias / the
 // "Select an app to open 'bash'" modal). This case is the spec for the file:
 // a hook command that invokes `bash` as a bare token is the bug, whichever
 // event carries it. Mirrors the plugin inventory's identical assertion in
@@ -173,10 +173,10 @@ test('no hook command in the live settings.json invokes bash by bare name', () =
   assert.deepEqual(bare, [], 'every hook command must route through run-hook-with-bash.js');
 });
 
-// HIMMEL-2758 migration: a command still wired by either SUPERSEDED launcher
+// Migration: a command still wired by either SUPERSEDED launcher
 // token must be recognised as OWNED (not refused as impostor/foreign) and
 // rewritten to the current form on the next pass — mirroring how the
-// pre-HIMMEL-2047 bare-`node` LEGACY_LAUNCHER already migrates.
+// earlier bare-`node` LEGACY_LAUNCHER already migrates.
 for (const token of LEGACY_LAUNCHER_TOKENS) {
   test(`migrates a superseded \`${token}\`-wired command to the command -p sh form`, () => {
     withFixture((fixture) => {
@@ -199,7 +199,7 @@ for (const token of LEGACY_LAUNCHER_TOKENS) {
   });
 }
 
-// HIMMEL-2758: sibling of the "no hook command invokes bash by bare name"
+// Sibling of the "no hook command invokes bash by bare name"
 // spec above — the live file must never carry either superseded launcher: the
 // dot form dash drops operands from, nor the bare `sh` form that dies at
 // rc=127 under a restricted PATH.
@@ -258,7 +258,7 @@ test('refuses a missing owned hook script without writing', () => {
   withFixture((fixture) => {
     const settings = JSON.parse(readFileSync(fixture, 'utf8'));
     // Remove the OWNED hook specifically, not just the last array element:
-    // HIMMEL-1635 coexists in this same PostToolUse "Agent" group by
+    // A foreign hook coexists in this same PostToolUse "Agent" group by
     // appending its own foreign hook after auto-arm-on-subagent-cap.sh, so a
     // blind .pop() would remove that coexisting foreign hook instead of
     // simulating the missing-owned-script case this test is about.
@@ -266,7 +266,7 @@ test('refuses a missing owned hook script without writing', () => {
     // Defensive read (h.command ?? '') so a malformed entry without a command
     // field fails as the ownedIndex assertion below, not a TypeError. The guard
     // stops findIndex's -1 from splice(-1, 1), which would drop the coexisting
-    // HIMMEL-1635 foreign hook (the array's last element) instead of the owned
+    // foreign hook (the array's last element) instead of the owned
     // entry this test means to remove.
     const ownedIndex = hooks.findIndex((h) => (h.command ?? '').includes('/scripts/hooks/'));
     assert.ok(ownedIndex >= 0, 'expected an OWNED scripts/hooks/*.sh entry to splice out');
@@ -276,7 +276,7 @@ test('refuses a missing owned hook script without writing', () => {
 
     const result = invoke(fixture);
     assert.equal(result.status, 1);
-    // HIMMEL-1643: install-when-missing makes the wirer TOLERANT of a missing
+    // Install-when-missing makes the wirer TOLERANT of a missing
     // owned script (the size check alone no longer refuses this fixture — the
     // shortfall is fully explained by the one script removed above). It is
     // still refused, but via a DIFFERENT gate: auto-arm-on-subagent-cap.sh is
@@ -291,7 +291,7 @@ test('refuses a missing owned hook script without writing', () => {
   });
 });
 
-// HIMMEL-1643: install-when-missing. wire-hook-bash.mjs is REWRITE-ONLY
+// Install-when-missing. wire-hook-bash.mjs is REWRITE-ONLY
 // before this (plan-critic r1 F1, settled) — any owned script with zero
 // present entries was an unconditional refusal. These tests pin the
 // extended behaviour: a missing SessionStart script (one with a preceding
@@ -339,7 +339,7 @@ test('installs a missing owned SessionStart entry back into place', () => {
     assert.ok(idx > 0, 'qmd-staleness-notice.sh entry was reinstalled');
     assert.ok(sessionHooks[idx].command.startsWith(`${WIRED_LAUNCHER} `));
     assert.match(sessionHooks[idx - 1].command, /inject-initiative\.sh/);
-    // HIMMEL-1643 (codex-adv-3): an installer-produced SessionStart entry must
+    // An installer-produced SessionStart entry must
     // carry a bounded timeout so a hung advisory can never block session startup
     // for the 600s default. The installed entry is indistinguishable from its
     // hand-wired siblings, which all carry an explicit timeout.
@@ -347,7 +347,7 @@ test('installs a missing owned SessionStart entry back into place', () => {
   });
 });
 
-// HIMMEL-4828: bus-deliver-hook.sh is a PostToolUse script, installed through
+// bus-deliver-hook.sh is a PostToolUse script, installed through
 // INSTALL_EVENT; its SessionStart twin takes the default path. The repo's own
 // settings.json carries neither line yet (a child ticket adds it), so this
 // fixture is exactly the "registered by the wirer, not by hand" case.
@@ -470,7 +470,7 @@ test('--check reports the rewrite and writes nothing', () => {
   });
 });
 
-// HIMMEL-1552: the two settings.json writers must coexist. The trust ledger
+// The two settings.json writers must coexist. The trust ledger
 // adds foreign event keys (Stop, Notification, ...) and foreign entries inside
 // the owned events. These three tests pin the own-only contract: foreign shape
 // is accepted, an impostor is still refused, and document-order enumeration
@@ -520,7 +520,7 @@ test('rewrites the correct slots when a foreign event key precedes an owned one'
     // Reorder so a FOREIGN event key (Stop) appears BEFORE the first owned event.
     // A frozen-order textual walk would then mis-slot the first owned command
     // into the foreign slot; document-order enumeration must keep the rewrite on
-    // target (HIMMEL-1552).
+    // target.
     const hooks = settings.hooks;
     const reordered = { Stop: hooks.Stop };
     for (const k of Object.keys(hooks)) if (k !== 'Stop') reordered[k] = hooks[k];
@@ -541,13 +541,13 @@ test('rewrites the correct slots when a foreign event key precedes an owned one'
     assert.match(stopCommand, /speak-reply\.sh/);
     // BYTE-IDENTICAL is the actual invariant. Asserting the absence of the
     // resolver was a proxy for it, and it stopped meaning that once the Stop
-    // slot legitimately NAMED the resolver as an argument (HIMMEL-2004 queues
+    // slot legitimately NAMED the resolver as an argument (queueing
     // the speak-reply invocation rather than running it inline).
     assert.equal(stopCommand, stopBefore, 'the foreign Stop command was left untouched');
   });
 });
 
-// HIMMEL-1577: a KNOWN-inventory script under a FOREIGN event key is foreign
+// A KNOWN-inventory script under a FOREIGN event key is foreign
 // to this tool (hookEntries skips foreign events), so the textual rewrite must
 // leave it byte-identical — not refuse it. Previously the event-blind textual
 // walk classified the known command string as owned, disagreed with the
@@ -588,7 +588,7 @@ test('accepts a known hook script under a foreign event key ordered first', () =
     // known script first within it, so its command field is the first the
     // textual walk visits. An event-blind walk would classify it owned and
     // mis-slot it onto the first owned entry; the fix keeps the rewrite on
-    // target (HIMMEL-1577).
+    // target.
     const hooks = settings.hooks;
     const stopGroup = { hooks: [{ type: 'command', command: planted }] };
     const reordered = { Stop: hooks.Stop ? [stopGroup, ...hooks.Stop] : [stopGroup] };

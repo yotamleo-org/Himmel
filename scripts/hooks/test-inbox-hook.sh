@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-inbox-hook.sh — HIMMEL-2788. Exercises scripts/lib/claudex-inbox.sh's
+# test-inbox-hook.sh — Exercises scripts/lib/claudex-inbox.sh's
 # cursor bookkeeping directly, and the two hook scripts
 # (claudex-inbox-hook.sh / claudex-inbox-sessionstart.sh) end-to-end via a
 # fabricated HANDOVER_DIR + session-name.sh's SESSION_NAME_CMDLINE_FILE test
@@ -160,7 +160,7 @@ else
     fail "shared cursor: PostToolUse hook delivers nothing after SessionStart already consumed it (out='$out2')"
 fi
 
-# HIMMEL-2791: a serialization failure must leave the ruling pending.
+# a serialization failure must leave the ruling pending.
 mkdir -p "$WORK/fail-jq"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/fail-jq/jq"
 chmod +x "$WORK/fail-jq/jq"
@@ -180,12 +180,12 @@ else
     fail "failed jq: ruling lost instead of retried"
 fi
 
-# HIMMEL-2790: pause writer one at mv, then start writer two. The second
+# pause writer one at mv, then start writer two. The second
 # announces either its lock attempt (fixed) or its mv (unlocked baseline).
 # These handshakes force overlap; elapsed time is never the assertion.
 if ! command -v flock >/dev/null 2>&1; then
     # macOS ships no flock and claudex-inbox.sh then delivers UNLOCKED by design, so
-    # the lock-contention handshake below has nothing to observe (HIMMEL-3177).
+    # the lock-contention handshake below has nothing to observe.
     printf 'SKIP: cursor race - flock not installed (unlocked delivery is the documented fallback)\n'
 else
 mkdir -p "$WORK/race-bin" "$WORK/race"
@@ -240,7 +240,7 @@ fi
 
 # Run "$@" with a stdout whose every write fails. /dev/full (ENOSPC) is Linux-only: on
 # macOS a redirect to it fails BEFORE the command runs, so the case proved nothing and the
-# hooks looked broken (HIMMEL-3177). A closed stdout (EBADF) fails every write too.
+# hooks looked broken. A closed stdout (EBADF) fails every write too.
 stdout_fails() {
     if [ -c /dev/full ]; then "$@" > /dev/full 2>/dev/null; else "$@" >&- 2>/dev/null; fi
 }
@@ -299,7 +299,7 @@ else
     fail "missing flock: delivery or commit failed"
 fi
 
-# HIMMEL-2790 (CodeRabbit): a corrupted/hand-recovered cursor file holding a
+# a corrupted/hand-recovered cursor file holding a
 # leading-zero, digit-only value (e.g. "08") must not be misparsed as an
 # invalid octal literal by inbox_peek's arithmetic expansion.
 SESSION_OCTAL="HIMMEL-2788-octal-leg"

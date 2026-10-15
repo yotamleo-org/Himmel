@@ -23,7 +23,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HOOK="$(cd "$(dirname "$0")" && pwd)/auto-approve-safe-bash.sh"
@@ -48,7 +48,7 @@ decide() {
     fi
 }
 
-# HIMMEL-3773/HIMMEL-3776 (judge J1387A): a jq-shim standing in for Windows
+# a jq-shim standing in for Windows
 # jq.exe, which renders every LF of its `-r` output as CRLF. This is the
 # same mechanism the judge used (own jq shim, not a real Windows box) to
 # prove the hook's win-rendering detection and fold. WIN_JQ_SHIM_DIR wraps
@@ -80,11 +80,11 @@ decide_win() {
 # decide_posix — same contract as decide(), but the hook sees POSIX-bracket
 # sed semantics (BSD/macOS sed), a proxy for a platform not available on this
 # Linux test box: under POSIX brackets `\t`/`\n` in `[...]` mean the literal
-# characters `\` and `t`/`n`, not TAB/LF (judge J1397A findings 2/3).
+# characters `\` and `t`/`n`, not TAB/LF.
 POSIX_SED_SHIM_DIR="$(mktemp -d "${TMPDIR:-/tmp}/posix-sed-shim.XXXXXX")" || exit 1
 REAL_SED="$(command -v sed)"
 # GNU sed needs --posix to get POSIX-bracket semantics; BSD/macOS sed rejects
-# the flag (HIMMEL-3699) and already IS POSIX, so it is exec'd as-is there.
+# the flag and already IS POSIX, so it is exec'd as-is there.
 POSIX_SED_FLAG="--posix"
 "$REAL_SED" --posix -n p </dev/null >/dev/null 2>&1 || POSIX_SED_FLAG=""
 cat > "$POSIX_SED_SHIM_DIR/sed" <<EOF
@@ -181,7 +181,7 @@ assert "devnull suffix write"     PASS "$(decide "$(j_bash 'cat foo >/dev/null.b
 assert "sort plain pipe"          ALLOW "$(decide "$(j_bash 'cat f | sort | uniq -c')")"
 # node running the jira CLI (any subcommand) is operator-allow-listed → ALLOW.
 assert "node jira after flags"    ALLOW "$(decide "$(j_bash 'node --no-warnings scripts/jira/dist/index.js list')")"
-# HIMMEL-4780: a literal JIRA_PROJECT_KEY=<KEY> prefix on the jira CLI approves
+# a literal JIRA_PROJECT_KEY=<KEY> prefix on the jira CLI approves
 # exactly like the bare form; the key only picks a project, which --project
 # already may. Scoped to the jira CLI and to a bare literal key.
 assert "JIRA_PROJECT_KEY jira comment" ALLOW "$(decide "$(j_bash 'JIRA_PROJECT_KEY=HIMMEL node /c/repo/scripts/jira/dist/index.js comment HIMMEL-1 --comment-file f.md')")"
@@ -250,7 +250,7 @@ assert "tree plain"               ALLOW "$(decide "$(j_bash 'tree -L 2 src')")"
 assert "base64 decode stdout"     ALLOW "$(decide "$(j_bash 'cat f | base64 -d')")"
 assert "file plain"               ALLOW "$(decide "$(j_bash 'file README.md')")"
 
-# --- Round-6 locks: HIMMEL-2610 — abbreviated long-option write flags must
+# --- abbreviated long-option write flags must
 # be caught the same as the full spelling (GNU getopt_long-style unambiguous
 # abbreviation; `sort`/`file` empirically confirmed to accept it). ---
 assert "sort --outp abbrev write" PASS  "$(decide "$(j_bash 'sort --outp=/tmp/pwned f')")"
@@ -264,7 +264,7 @@ assert "sort --buffer-size ctrl"  ALLOW "$(decide "$(j_bash 'sort --buffer-size=
 assert "tree --dirsfirst ctrl"    ALLOW "$(decide "$(j_bash 'tree --dirsfirst .')")"
 assert "file --mime-type ctrl"    ALLOW "$(decide "$(j_bash 'file --mime-type f')")"
 
-# --- Round-7 locks: HIMMEL-3632 — sort's raw (quote-preserving) token
+# --- sort's raw (quote-preserving) token
 # defeated the `--*`/`-o*` case match, and `--compress-program` (runs an
 # arbitrary program on spill = ACE) was never checked at all. FAIL CLOSED:
 # an unrecognised or program/output-taking sort option must fall through to
@@ -279,13 +279,13 @@ assert "sort -uo clustered write" PASS  "$(decide "$(j_bash 'sort -uo /tmp/pwned
 assert "sort plain"               ALLOW "$(decide "$(j_bash 'sort f')")"
 assert "sort -u plain"            ALLOW "$(decide "$(j_bash 'sort -u f')")"
 assert "sort -k2 plain"           ALLOW "$(decide "$(j_bash 'sort -k2 f')")"
-# HIMMEL-3655: after a literal `--` every word is positional, so a file named
+# after a literal `--` every word is positional, so a file named
 # -o... is read, not an output option. A real -o BEFORE `--` still falls through.
 assert "sort -- -o file ALLOW"    ALLOW "$(decide "$(j_bash 'sort -- -o file')")"
 assert "sort -u -- -ofile ALLOW"  ALLOW "$(decide "$(j_bash 'sort -u -- -ofile')")"
 assert "sort -o out -- f PASS"    PASS  "$(decide "$(j_bash 'sort -o /tmp/pwned -- f')")"
 assert "sort --output= -- PASS"   PASS  "$(decide "$(j_bash 'sort --output=/tmp/pwned -- f')")"
-# A `--` that is the VALUE of a value-taking option ends nothing (judge j2528a).
+# A `--` that is the VALUE of a value-taking option ends nothing.
 assert "sort -T -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -T -- -o /tmp/pwned f')")"
 assert "sort -uT -- -o PASS"      PASS  "$(decide "$(j_bash 'sort -uT -- -o /tmp/pwned f')")"
 assert "sort --temporary-directory -- -o PASS" PASS "$(decide "$(j_bash 'sort --temporary-directory -- -o /tmp/pwned f')")"
@@ -298,7 +298,7 @@ assert "sort --sort -- -o PASS"   PASS  "$(decide "$(j_bash 'sort --sort -- -o /
 assert "sort -t -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -t -- -o /tmp/pwned f')")"
 assert "sort -k -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -k -- -o /tmp/pwned f')")"
 assert "sort -y -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -y -- -o /tmp/pwned f')")"
-# A redirect operator and its target are not sort arguments: a `--` target ends nothing (judge j2528b).
+# A redirect operator and its target are not sort arguments: a `--` target ends nothing.
 assert "sort <<< -- -o PASS"      PASS  "$(decide "$(j_bash 'sort <<< -- -o /tmp/pwned f')")"
 assert "sort < -- -o PASS"        PASS  "$(decide "$(j_bash 'sort < -- -o /tmp/pwned f')")"
 assert "<<< -- sort -o PASS"      PASS  "$(decide "$(j_bash '<<< -- sort -o /tmp/pwned f')")"
@@ -333,14 +333,14 @@ assert "LC_ALL locale prefix"     ALLOW "$(decide "$(j_bash 'LC_ALL=C sort f')")
 assert "TZ prefix"                ALLOW "$(decide "$(j_bash 'TZ=UTC date')")"
 assert "git -C dir still ok"      ALLOW "$(decide "$(j_bash 'git -C /repo log --oneline')")"
 
-# --- HIMMEL-205: cd/pushd/popd navigation so cd-prefixed safe cmds ALLOW ---
+# --- cd/pushd/popd navigation so cd-prefixed safe cmds ALLOW ---
 # The motivating bug: a `cd <repo> && node …/jira transition …` fell through
 # (cd unrecognised) → auto-mode classifier denied the jira write.
 assert "cd && jira transition"    ALLOW "$(decide "$(j_bash 'cd /c/repo && node scripts/jira/dist/index.js transition LUNA-65 Done')")"
 assert "cd && jira (piped, 2 ops)" ALLOW "$(decide "$(j_bash 'cd /c/repo && node scripts/jira/dist/index.js transition LUNA-65 Done 2>&1 | tail -3 && node scripts/jira/dist/index.js transition LUNA-66 Done 2>&1 | tail -3')")"
 assert "cd && cat"                ALLOW "$(decide "$(j_bash 'cd src && cat README.md')")"
 assert "cd alone"                 ALLOW "$(decide "$(j_bash 'cd /some/dir')")"
-# HIMMEL-5187 (ruling j2362b): pushd/popd leave the cwd unknown, so a recursive reader after one prompts
+# pushd/popd leave the cwd unknown, so a recursive reader after one prompts
 assert "pushd && grep -r"         PASS  "$(decide "$(j_bash 'pushd src && grep -rn TODO .')")"
 assert "pushd && grep (no walk)"  ALLOW "$(decide "$(j_bash 'pushd src && grep -n TODO README.md')")"
 assert "popd alone"              ALLOW "$(decide "$(j_bash 'popd')")"
@@ -348,7 +348,7 @@ assert "popd alone"              ALLOW "$(decide "$(j_bash 'popd')")"
 assert "cd && rm still PASS"       PASS  "$(decide "$(j_bash 'cd /tmp && rm -rf foo')")"
 assert "cd \$(…) substitution"     PASS  "$(decide "$(j_bash 'cd $(cat target) && ls')")"
 
-# --- HIMMEL-209: quote-aware split — separators INSIDE quotes are literal ---
+# --- quote-aware split — separators INSIDE quotes are literal ---
 # A jira comment/desc body containing newlines / ; / | / > must still ALLOW.
 # The old quote-blind sed split shredded a multi-line body into junk segments
 # (e.g. "LUNA-36 (catch-up) …") that failed is_safe_bin → whole write denied.
@@ -365,7 +365,7 @@ assert "real redirect still PASS"  PASS  "$(decide "$(j_bash 'cat foo > realfile
 # SAFETY: unbalanced quotes → fail closed (never grant on an ambiguous parse).
 assert "unbalanced quote fails"    PASS  "$(decide "$(j_bash "node scripts/jira/dist/index.js comment LUNA-26 'oops")")"
 
-# --- HIMMEL-212: git push --force-with-lease on a NON-main branch → ALLOW ---
+# --- git push --force-with-lease on a NON-main branch → ALLOW ---
 # These cases depend on the CURRENT branch (the hook calls `git rev-parse
 # --abbrev-ref HEAD`), so they run inside a throwaway repo whose HEAD we control
 # rather than relying on the test's launch directory. decide_in cd's first.
@@ -403,7 +403,7 @@ assert "lease+bare force on feat"  PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git
 assert "fwl targets main ref"      PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git push --force-with-lease origin main')")"
 assert "fwl targets origin/main"   PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git push --force-with-lease origin HEAD:main')")"
 assert "fwl +main force refspec"   PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git push --force-with-lease origin +main')")"
-# HIMMEL-297: master is a protected default too — targeting it is refused
+# master is a protected default too — targeting it is refused
 # even from a feature branch, same as main.
 assert "fwl targets master ref"    PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git push --force-with-lease origin master')")"
 assert "fwl targets HEAD:master"   PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git push --force-with-lease origin HEAD:master')")"
@@ -418,7 +418,7 @@ assert "plain push still PASS"     PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git
 # On main: even a lease push is NOT auto-approved (fail safe; pre-push refuses).
 git -C "$FWL_REPO" checkout -q main
 assert "fwl on main branch"        PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git push --force-with-lease')")"
-# On master: master is a protected default too (HIMMEL-297) — a lease push made
+# On master: master is a protected default too — a lease push made
 # while sitting on master is NOT auto-approved either.
 git -C "$FWL_REPO" checkout -q -b master
 assert "fwl on master branch"      PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git push --force-with-lease')")"
@@ -426,7 +426,7 @@ assert "fwl on master branch"      PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git
 git -C "$FWL_REPO" checkout -q --detach
 assert "fwl detached HEAD"         PASS  "$(decide_in "$FWL_REPO" "$(j_bash 'git push --force-with-lease')")"
 
-# --- HIMMEL-2121: deny a root-anchored find with no -maxdepth ---
+# --- deny a root-anchored find with no -maxdepth ---
 # Specimen: `find / -iname harvest-clips -not -path /node_modules/` survived
 # its dead parent 20+ min and pinned the machine's saturated spawn path.
 assert "find / no maxdepth"        DENY  "$(decide "$(j_bash 'find / -iname harvest-clips -not -path /node_modules/')")"
@@ -470,7 +470,7 @@ assert "find quoted -maxdepth"     ALLOW "$(decide "$(j_bash 'find / "-maxdepth"
 assert "bypass=0 still DENIES"     DENY  "$(FIND_ROOTWALK_OK=0 decide "$(j_bash 'find / -iname x')")"
 assert "bypass=1 still ALLOWS"     ALLOW "$(FIND_ROOTWALK_OK=1 decide "$(j_bash 'find / -iname x')")"
 
-# --- Round-4 lock (cross-model critic panel, codex-2 round 2 confirmed): a
+# --- a
 # -maxdepth+digits pair sitting inside an -exec action's own payload must
 # NOT count as find's own -maxdepth flag.
 assert "maxdepth inside -exec DENY" DENY  "$(decide "$(j_bash 'find / -exec echo -maxdepth 2 ;')")"
@@ -480,7 +480,7 @@ assert "real -maxdepth still ALLOW" ALLOW "$(decide "$(j_bash 'find / -maxdepth 
 # guard handles it, not the rootwalk deny).
 assert "find . -delete still PASS2" PASS  "$(decide "$(j_bash 'find . -delete')")"
 
-# --- HIMMEL-2610 J1267O F2: the root-walk DENY (HIMMEL-2121) predates this
+# --- the root-walk DENY predates this
 # hook's guardrails/lib.sh dependency and must survive lib.sh being missing —
 # a fail-open here silently drops the ONLY thing this hook ever denies. ---
 NOLIB_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/aasb-nolib.XXXXXX")" || { echo "FAIL mktemp for the no-lib fixture"; exit 1; }
@@ -500,7 +500,7 @@ decide_nolib() {
 assert "find / no maxdepth, NO lib.sh present" DENY "$(decide_nolib "$(j_bash 'find / -iname harvest-clips -not -path /node_modules/')")"
 rm -rf "$NOLIB_ROOT"
 
-# --- Round-5 locks (cross-model critic panel, round 4): root-equivalent
+# --- root-equivalent
 # canonicalization, `--` option terminator, and resuming the -maxdepth scan
 # after an action primary's payload ---
 assert "find /// canonicalizes"    DENY  "$(decide "$(j_bash 'find /// -name x')")"
@@ -521,7 +521,7 @@ assert "find / -delete DENY"       DENY  "$(decide "$(j_bash 'find / -delete')")
 # segment_is_safe still keeps this un-approved, so PASS (not ALLOW).
 assert "find / -delete -maxdepth"  PASS  "$(decide "$(j_bash 'find / -delete -maxdepth 2')")"
 
-# --- Round-6 locks (cross-model critic panel, round 5, FINAL): collapse
+# --- collapse
 # backslash runs (double-backslash C:\\, common when an agent types "C:\\"
 # inside double quotes) and add $USERPROFILE/${USERPROFILE} home anchors
 # (Git Bash exports USERPROFILE) ---
@@ -531,7 +531,7 @@ assert "find \${USERPROFILE}/"     DENY  "$(decide "$(j_bash 'find ${USERPROFILE
 # Unchanged: a real MSYS subpath under a drive root still ALLOWS.
 assert "find /c/Users/x/repo ALLOW2" ALLOW "$(decide "$(j_bash 'find /c/Users/x/repo -iname y')")"
 
-# --- HIMMEL-2122: shell-word quote semantics + dot-dot root equivalence ---
+# --- shell-word quote semantics + dot-dot root equivalence ---
 # Single quotes make variable-shaped text literal; find receives a path named
 # `$HOME` / `${USERPROFILE}`, not either environment variable's value.
 assert "find single-quoted HOME literal" ALLOW "$(decide "$(j_bash "find '\$HOME' -name x")")"
@@ -560,7 +560,7 @@ assert "escaped-space binary stays PASS" PASS "$(decide "$(j_bash 'git\ status')
 # real find-level -maxdepth bounds it. Expression arguments remain non-paths.
 assert "find /tmp/.. canonicalizes" DENY  "$(decide "$(j_bash 'find /tmp/.. -name x')")"
 assert "find nested /.. to root"    DENY  "$(decide "$(j_bash 'find /tmp/foo/../.. -name x')")"
-# HIMMEL-5187: a `..` component in ANY find start point is a walk -> a prompt
+# a `..` component in ANY find start point is a walk -> a prompt
 assert "find /tmp/.. with maxdepth" PASS  "$(decide "$(j_bash 'find /tmp/.. -maxdepth 1 -name x')")"
 assert "find /tmp/../var scoped"    PASS  "$(decide "$(j_bash 'find /tmp/../var -name x')")"
 assert "find /tmp/..hidden scoped"  ALLOW "$(decide "$(j_bash 'find /tmp/..hidden -name x')")"
@@ -571,7 +571,7 @@ assert "find single-quoted tilde literal" ALLOW "$(decide "$(j_bash "find '~' -n
 assert "find double-quoted tilde literal" ALLOW "$(decide "$(j_bash 'find "~" -name x')")"
 assert "find escaped tilde literal"       ALLOW "$(decide "$(j_bash 'find \~ -name x')")"
 
-# --- HIMMEL-3131: queue-lock.sh verbs are a sanctioned single-segment write ---
+# --- queue-lock.sh verbs are a sanctioned single-segment write ---
 # `bash` is deliberately not a safe binary and a leading HANDOVER_DIR= is not an
 # innocuous assignment, so `HANDOVER_DIR=<root> bash scripts/handover/queue-lock.sh
 # release <doc> <token>` fell through to the auto-mode classifier, which read a
@@ -594,7 +594,7 @@ assert "ctl: lookalike abs path (absent)"       PASS  "$(decide "$(j_bash "HANDO
 assert "ctl: lookalike abs path (exists + .git)" PASS "$(decide "$(j_bash "HANDOVER_DIR=$QL_R bash $QL_FAKE/scripts/handover/queue-lock.sh release $QL_DOC $QL_TOK")")"
 # The RELATIVE script form resolves against the session cwd, so a fake
 # scripts/handover/queue-lock.sh in a lookalike cwd must not be approved: the
-# payload's absolute `cwd` (never $PWD, HIMMEL-3494) has to be a real
+# payload's absolute `cwd` (never $PWD) has to be a real
 # checkout. j_bash_cwd puts a cwd field in the payload; decide_in runs the hook
 # from a directory with no payload cwd (which now falls through).
 QL_REL="HANDOVER_DIR=$QL_R bash scripts/handover/queue-lock.sh release $QL_DOC $QL_TOK"
@@ -604,7 +604,7 @@ assert "ctl: rel script, payload cwd = sub-dir"        PASS  "$(decide "$(j_bash
 assert "rel script, payload cwd = own checkout"        ALLOW "$(decide "$(j_bash_cwd "$QL_HERE" "$QL_REL")")"
 assert "rel script, payload cwd = primary checkout"    ALLOW "$(decide "$(j_bash_cwd "$QL_PRIMARY" "$QL_REL")")"
 assert "ctl: rel script, no payload cwd, PWD = lookalike"  PASS  "$(decide_in "$QL_FAKE" "$(j_bash "$QL_REL")")"
-# HIMMEL-3494: the root resolves only against an ABSOLUTE payload cwd, never the
+# the root resolves only against an ABSOLUTE payload cwd, never the
 # hook's own $PWD — so no payload cwd, or a relative one, falls through.
 assert "ctl: rel script, no payload cwd, PWD = own checkout" PASS "$(decide_in "$QL_HERE" "$(j_bash "$QL_REL")")"
 assert "ctl: rel script, no payload cwd, PWD = primary"      PASS "$(decide_in "$QL_PRIMARY" "$(j_bash "$QL_REL")")"
@@ -642,8 +642,8 @@ assert "ctl: non-.md doc"                       PASS "$(decide "$(j_bash_cwd "$Q
 assert "ctl: other bash script"                 PASS "$(decide "$(j_bash "bash scripts/handover/merge-on-green.sh 1 --jira-transition")")"
 # Whole-command means NO unquoted separator anywhere — not merely one non-empty
 # segment. scan_cmd emits an EMPTY segment after a trailing separator and the
-# segment count skips it, so these once counted as a lone command (CodeRabbit,
-# round 2): a trailing `&` even backgrounds the lock op. The lone command above
+# segment count skips it, so these once counted as a lone command:
+# a trailing `&` even backgrounds the lock op. The lone command above
 # still approves; each of these is a control that must fall through.
 QL_LONE="HANDOVER_DIR=$QL_R bash scripts/handover/queue-lock.sh status $QL_DOC"
 assert "ctl: trailing &"                        PASS "$(decide "$(j_bash_cwd "$QL_HERE" "$QL_LONE &")")"
@@ -664,7 +664,7 @@ assert "ctl: leading &&"                        PASS "$(decide "$(j_bash_cwd "$Q
 assert "ctl: release trailing &"                PASS "$(decide "$(j_bash_cwd "$QL_HERE" "HANDOVER_DIR=$QL_R bash scripts/handover/queue-lock.sh release $QL_DOC $QL_TOK &")")"
 assert "the lone command still approves"        ALLOW "$(decide "$(j_bash_cwd "$QL_HERE" "$QL_LONE")")"
 
-# --- HIMMEL-3192: Windows Git Bash drive-letter spellings (C:/x, C:\x, /c/x) ---
+# --- Windows Git Bash drive-letter spellings (C:/x, C:\x, /c/x) ---
 # The carve-out took only `/`-prefixed paths, so on Git Bash a `C:/…` word fell
 # through to the classifier (toward a prompt, never toward approval). ONE helper
 # (ql_abs_path) now accepts slash-prefixed and drive-letter paths at all four
@@ -691,7 +691,7 @@ assert "drive: doc alone, acquire"                  ALLOW "$(qd "$QD_S acquire C
 assert "drive: sweep dir"                           ALLOW "$(qd "$QD_S status --sweep $QD_R")"
 assert "drive: sweep dir, HANDOVER_DIR"             ALLOW "$(qd "HANDOVER_DIR=$QD_R $QD_S status --sweep $QD_R")"
 assert "drive: sweep dir, backslash"                ALLOW "$(qd "$QD_S status --sweep 'C:\\luna\\handovers'")"
-# Position 2 (absolute script path). HIMMEL-3494: a drive-letter or backslash
+# Position 2 (absolute script path). a drive-letter or backslash
 # script word is refused outright. On POSIX `C:/x/…` was checked as a checkout
 # root resolved against the hook's $PWD, but bash runs whatever that relative
 # name reaches — and `C:\scripts\handover\queue-lock.sh` is ONE slash-less file
@@ -746,7 +746,7 @@ assert "ctl: UNC sweep dir"                         PASS "$(qd "$QD_S status --s
 assert "ctl: UNC abs script path"                   PASS "$(qd "HANDOVER_DIR=$QL_R bash //host/share/scripts/handover/queue-lock.sh release $QL_DOC $QL_TOK")"
 assert "the POSIX lone command still approves"      ALLOW "$(qd "HANDOVER_DIR=$QL_R $QD_S status $QL_DOC")"
 
-# --- HIMMEL-3198: a root-only HANDOVER_DIR must not turn containment off ---
+# --- a root-only HANDOVER_DIR must not turn containment off ---
 # `HANDOVER_DIR=/` strips to an empty `hd`, which the containment test reads as
 # "no handover dir given" — so ANY absolute .md doc was approved. A bare drive
 # root (`C:/`, canonical `/c`) contains a whole drive and is the same hole. The
@@ -785,7 +785,7 @@ assert "HANDOVER_DIR=/a/b + contained doc"          ALLOW "$(qd "HANDOVER_DIR=/a
 assert "HANDOVER_DIR=C:/a + contained doc"          ALLOW "$(qd "HANDOVER_DIR=C:/a $QD_S status /c/a/x.md")"
 assert "ctl: HANDOVER_DIR=/a/b + doc outside it"    PASS  "$(qd "HANDOVER_DIR=/a/b $QD_S status /a/x.md")"
 
-# --- HIMMEL-3486: /pr-check step 3.6's impacted-suites.sh literals ---
+# --- /pr-check step 3.6's impacted-suites.sh literals ---
 # The step is a required gate, yet `bash scripts/cr/impacted-suites.sh A..B`
 # fell to the classifier and was denied [Out-of-Place Publication]. The hook
 # approves exactly the two runbook shapes (the listing, and `--check` with its
@@ -905,7 +905,7 @@ assert "ctl: is backtick in quoted word"     PASS "$(is_dec "$IS_W" "bash \"\`pw
 assert "ctl: is <( in quoted word"           PASS "$(is_dec "$IS_W" "bash \"<(x)/scripts/cr/impacted-suites.sh\" $IS_R")"
 assert "ctl: is >( in quoted word"           PASS "$(is_dec "$IS_W" "bash \">(x)/scripts/cr/impacted-suites.sh\" $IS_R")"
 assert "ctl: is glob in path"                PASS "$(is_dec "$IS_W" "bash scripts/cr/impacted-suite?.sh $IS_R")"
-# HIMMEL-3880: bash 3.2 brace-expands `{a,b}` in a double-quoted string nested
+# bash 3.2 brace-expands `{a,b}` in a double-quoted string nested
 # inside "$(...)", so the row once handed is_dec the plain impacted-suites
 # literal (a legit ALLOW) on macOS. Each brace command is assigned first (an
 # assignment is never brace-expanded), and a precondition proves it still
@@ -941,7 +941,7 @@ IS_OUT=$(j_bash_cwd "$IS_W" "$IS_REL $IS_R" | HIMMEL_REPO="$IS_W" bash "$HOOK" 2
 assert "ctl: is HIMMEL_REPO = own worktree"  PASS "$(grepq "$IS_OUT" '"permissionDecision":"allow"' && echo ALLOW || echo PASS)"
 rm -rf "$IS_TMP"
 
-# --- HIMMEL-3660: auto-approve must not cook brace/parameter expansion literally ---
+# --- auto-approve must not cook brace/parameter expansion literally ---
 # The shell EXPANDS these before the command runs, but a literal-word match
 # sees one un-exploded token and misses the write/delete/exec flag hiding
 # inside it. FAIL CLOSED: these must PASS (fall through to a normal prompt),
@@ -956,9 +956,9 @@ assert "find -name still ALLOW"       ALLOW "$(decide "$(j_bash "find . -name '*
 assert "quoted literal brace ALLOW"   ALLOW "$(decide "$(j_bash "echo '{a,b}'")")"
 assert "sort quoted literal brace"    ALLOW "$(decide "$(j_bash "sort '{a,b}' f")")"
 
-# --- HIMMEL-3660 / J1300O finding (a): segment_is_rootwalk_find must treat an
+# --- segment_is_rootwalk_find must treat an
 # uncookable word ($VAR, brace) as OPAQUE and keep scanning, never bail out of
-# the whole HIMMEL-2121 root-walk DENY the instant one word can't be cooked.
+# the whole root-walk DENY the instant one word can't be cooked.
 assert "rootwalk \$X quoted survives cook-fail" DENY "$(decide "$(j_bash 'find / -name "$X"')")"
 assert "rootwalk \$X unquoted survives cook-fail" DENY "$(decide "$(j_bash 'find / -name $X')")"
 assert "rootwalk \${X} survives cook-fail" DENY "$(decide "$(j_bash 'find / -name ${X}')")"
@@ -971,7 +971,7 @@ assert "rootwalk brace path-operand survives cook-fail" DENY "$(decide "$(j_bash
 # Control: the $(...) rootwalk DENY (round-3 lock, :346) must still hold.
 assert "rootwalk \$(...)  still DENY"  DENY "$(decide "$(j_bash 'find / -iname $(hostname)')")"
 
-# --- HIMMEL-3660 / J1300O finding (b): an UNQUOTED glob word (*, ?, [) in a
+# --- an UNQUOTED glob word (*, ?, [) in a
 # guarded arm must fall through to normal permission, never auto-approve —
 # real exploit: with a file named `-oPWNED` present, `sort -* f` wrote PWNED.
 assert "sort -* glob"                 PASS "$(decide "$(j_bash 'sort -* f')")"
@@ -989,7 +989,7 @@ assert "base64 -* glob"               PASS "$(decide "$(j_bash 'base64 -*')")"
 assert "find quoted glob still ALLOW" ALLOW "$(decide "$(j_bash "find . -name '*.md'")")"
 assert "sort quoted glob still ALLOW" ALLOW "$(decide "$(j_bash "sort '-*' f")")"
 
-# --- HIMMEL-3732 / HIMMEL-3733 (J1300A findings 6,7): an unquoted `(` in ANY
+# --- an unquoted `(` in ANY
 # word is zsh glob-qualifier / grouping syntax under zsh defaults — arbitrary
 # code (`f(e:'cmd':)`) or a real write (`(-)oPWNED`) — independent of which
 # binary carries it, so this is a GLOBAL refusal, not confined to the six
@@ -1009,7 +1009,7 @@ assert "cmd-subst paren still PASS"    PASS "$(decide "$(j_bash 'cat "$(pwd)/f"'
 assert "plain cat README still ALLOW"  ALLOW "$(decide "$(j_bash 'cat README.md')")"
 assert "plain git log still ALLOW"     ALLOW "$(decide "$(j_bash 'git log --oneline -1')")"
 
-# --- HIMMEL-3750 (J1366A finding 1): zsh parameter-flag expansions reach code
+# --- zsh parameter-flag expansions reach code
 # execution or defeat quoting even INSIDE double quotes, so SCAN_MASK's
 # quoted-span blanking never sees them — must be caught on the RAW text.
 assert "param-flag (e) exec via char-code \$(" PASS "$(decide "$(j_bash 'echo "${(e)${:-${(#):-36}${(#):-40}touch PWN${(#):-41}}}"')")"
@@ -1023,20 +1023,20 @@ assert "dollar-brace-eq splits through quotes" PASS "$(decide "$(j_bash 'ls "${=
 # Checked and left alone: quoted \${~...} (GLOB_SUBST) does NOT glob under
 # zsh -f (VERIFIED) — quoting still protects it, so it stays ALLOW.
 assert "param-flag (~) quoted stays ALLOW"    ALLOW "$(decide "$(j_bash 'echo "${~x}"')")"
-# HIMMEL-3750 (J1366A finding 4) regression: a backslash-newline between \$
+# regression: a backslash-newline between \$
 # and ( hides \$( from the raw tripwire on main; head must still refuse it.
 assert "backslash-newline \$( regression" PASS "$(decide "$(j_bash "echo \$\\"$'\n''(touch PWN)')")"
 # Accepted false refusal (brief-documented): a SINGLE-QUOTED literal '\${('
 # is refused too, since the fix reads the RAW command text, not the mask.
 assert "single-quoted literal \${( (accepted false refusal)" PASS "$(decide "$(j_bash "grep '\${(' f")")"
-# codex-1 (round 3): a backslash-newline between \$ and = INSIDE double quotes
+# codex-1: a backslash-newline between \$ and = INSIDE double quotes
 # is folded away by the shell before parsing, same as finding 4's \$( case,
 # but the newline sits inside the quotes here so the unquoted-separator
 # fallback that protects finding 4 does not fire. Confirmed ALLOW (bypass) on
 # the pre-fix code; the fold added above joins it into "\$=x" before the
 # tripwires run, so it now falls through like any other \$= case.
 assert "backslash-newline \$= regression" PASS "$(decide "$(j_bash "ls \"\$\\"$'\n''=x"')")"
-# Judge J1370A (round 4, NO-GO): the round-3 fold above folded EVERY
+# The fold above folded EVERY
 # backslash-newline pair unconditionally, even when the backslash was itself
 # escaped by a preceding backslash — an even run of backslashes before the
 # newline pairs off completely in real shell parsing, leaving the newline a
@@ -1051,7 +1051,7 @@ assert "double escaped-backslash-newline stays PASS (finding 1d)" PASS "$(decide
 # Control: a genuine (odd, single) backslash-newline continuation of an
 # otherwise benign command must still fold and stay ALLOW.
 assert "genuine single-backslash continuation still ALLOW" ALLOW "$(decide "$(j_bash "echo a \\"$'\n'"b")")"
-# codex-1 (round 5): an ODD run of 3+ backslashes before the newline still
+# codex-1: an ODD run of 3+ backslashes before the newline still
 # has a genuine (single) continuation, but the code used to pre-COLLAPSE the
 # other (N-1, always even) backslashes down to (N-1)/2 literal backslash
 # BYTES before scan_cmd ever saw them. scan_cmd's own backslash-escape walk
@@ -1064,7 +1064,7 @@ assert "genuine single-backslash continuation still ALLOW" ALLOW "$(decide "$(j_
 # and correctly leaves the `;` unescaped, so this must stay PASS (fall
 # through), not get folded into a single approved segment.
 assert "odd(3) backslash-newline leaves real separator visible (codex-1)" PASS "$(decide "$(j_bash "echo hi\\\\\\"$'\n'"; touch PWN")")"
-# codex-1 (round 6): fold_backslash_newline() toggled its single-quote state
+# codex-1: fold_backslash_newline() toggled its single-quote state
 # on ANY `'`, even one appearing INSIDE double quotes, where it is a plain
 # literal character, not a quote delimiter. `echo "'$\<NL>(touch PWN)"` has
 # its apostrophe inside double quotes; the old code wrongly treated it as
@@ -1073,7 +1073,7 @@ assert "odd(3) backslash-newline leaves real separator visible (codex-1)" PASS "
 # VERIFIED (real bash): this exact string, run as a script, executes
 # `touch PWN`. Must fall through to PASS, not ALLOW.
 assert "apostrophe inside dquotes no longer blocks fold (codex-1 round 6)" PASS "$(decide "$(j_bash "echo \"'\$\\"$'\n'"(touch PWN)\"")")"
-# codex-1 (round 7): the `"` toggle in fold_backslash_newline() fired on ANY
+# codex-1: the `"` toggle in fold_backslash_newline() fired on ANY
 # `"` byte, even one immediately preceded by a backslash (an ESCAPED quote,
 # which stays a literal char and never closes the real double-quoted span).
 # `echo "\"'$\<NL>(touch PWN)"` has that escaped `"` right after the opening
@@ -1088,7 +1088,7 @@ assert "escaped dquote no longer mistoggles state (codex-1 round 7)" PASS "$(dec
 assert "echo \${HOME} still ALLOW"     ALLOW "$(decide "$(j_bash 'echo "${HOME}"')")"
 assert "echo \$PWD still ALLOW"        ALLOW "$(decide "$(j_bash 'echo "$PWD"')")"
 
-# --- HIMMEL-3762 (J1370A finding 2): a backslash-newline INSIDE a `#`
+# --- a backslash-newline INSIDE a `#`
 # comment must not fold as a continuation — the shell ends a comment at the
 # very next newline unconditionally, backslash or not, so a real command
 # hiding on the next line must stay its own segment (PASS), never get
@@ -1107,7 +1107,7 @@ assert "\$# does not block a real continuation"            ALLOW "$(decide "$(j_
 assert "\${#x} does not block a real continuation"          ALLOW "$(decide "$(j_bash "echo \${#x} \\"$'\n'"echo c")")"
 assert "mid-word # does not block a real continuation"     ALLOW "$(decide "$(j_bash "echo foo#bar \\"$'\n'"echo c")")"
 
-# --- J1385A (HIMMEL-3762 NO-GO finding 1): a comment must still SPLIT on an
+# --- a comment must still SPLIT on an
 # unquoted separator exactly as it does outside a comment — the fix must only
 # suppress the backslash-newline continuation fold, never the segment break.
 # main already denies (PASS) these, so head must match, never widen to ALLOW.
@@ -1116,21 +1116,21 @@ assert "&& after a comment start still splits the segment" PASS "$(decide "$(j_b
 assert "| after a comment start still splits the segment"  PASS "$(decide "$(j_bash 'echo hi #x | sh')")"
 assert "& after a comment start still splits the segment"  PASS "$(decide "$(j_bash 'echo hi #x & touch M')")"
 
-# codex-1 (round 2): a quote character inside a real comment must not enter
+# codex-1: a quote character inside a real comment must not enter
 # quote state — a real shell gives comments zero quote semantics, so a
 # balanced quote spanning the newline must never mask the real separator and
 # hide a following command inside SCAN_MASK. main already denies (PASS) these.
 assert "dquote inside a comment does not mask the next newline (codex-1)" PASS "$(decide "$(j_bash "echo hi #say \"x"$'\n'"touch MARKER\"")")"
 assert "squote inside a comment does not mask the next newline (codex-1)" PASS "$(decide "$(j_bash "echo hi #it's fine"$'\n'"touch MARKER'")")"
 
-# --- HIMMEL-3734 (J1300A finding 7): a brace-expanded root among the
+# --- a brace-expanded root among the
 # find path operands (\`{/,.}\` -> \`/ .\`) must DENY as a root-walk.
 assert "find brace-expanded root DENY" DENY "$(decide "$(j_bash 'find {/,.} -name x')")"
 # codex-1: // is POSIX root too (mirrors is_root_anchor's own /|// case).
 assert "find brace-expanded // root DENY" DENY "$(decide "$(j_bash 'find {//,.} -name x')")"
-# codex-2 (round 3): any run of slashes only (///, not just / and //) is root.
+# codex-2: any run of slashes only (///, not just / and //) is root.
 assert "find brace-expanded /// root DENY" DENY "$(decide "$(j_bash 'find {///,.} -name x')")"
-# codex-1 (round 8): `/.` is root too (mirrors is_root_anchor's own trailing
+# codex-1: `/.` is root too (mirrors is_root_anchor's own trailing
 # `/.` strip) — VERIFIED: unfixed hook returned PASS (not DENY) for this exact
 # command before the fix.
 assert "find brace-expanded /. root DENY" DENY "$(decide "$(j_bash 'find {/.,a} -name x')")"
@@ -1138,7 +1138,7 @@ assert "find brace-expanded /. root DENY" DENY "$(decide "$(j_bash 'find {/.,a} 
 assert "find brace non-root stays PASS" PASS "$(decide "$(j_bash 'find {a,b} -name x')")"
 assert "find brace maxdepth-value unaffected" DENY "$(decide "$(j_bash 'find / -maxdepth {1,2} -name x')")" # gnu-ok: fixture string fed to the hook under test, never executed as a shell command
 
-# --- HIMMEL-3773 (J1385A/B finding 3): the CRLF->LF fold used to run
+# --- the CRLF->LF fold used to run
 # unconditionally, so a real backslash+CR+LF was seen as backslash+LF, a
 # genuine continuation, and the command that followed the CR was swallowed
 # into the prior approved segment. Real bash never treats `\`+CR as a
@@ -1164,7 +1164,7 @@ assert "lone CR (no LF) is untouched by fold_crlf, no exploit" ALLOW "$(decide "
 # backslash-preceded CR, never for a bare backslash+LF.
 assert "genuine LF-only continuation still ALLOW"            ALLOW "$(decide "$(j_bash "echo a \\"$'\n'"echo b")")"
 
-# --- HIMMEL-3773 round 2 / HIMMEL-3776 (judge J1387A): a genuine `\`+LF
+# --- a genuine `\`+LF
 # continuation, run under Windows jq.exe (every LF of jq's -r output
 # rendered as CRLF), reaches the hook as `\`+CR+LF — byte-identical to the
 # CRLF-continuation attack payload. Detecting the rendering from the CR jq
@@ -1178,7 +1178,7 @@ assert "win-jq: crafted \\+CRLF join still PASS (destructive join blocked)" \
 assert "native jq: same payload, unaffected by win-jq detection, stays PASS" \
     PASS "$(decide "$(j_bash "find . \\"$'\n'"echo -delete")")"
 # Control: a genuine continuation under win-jq rendering must still ALLOW —
-# this is the HIMMEL-3776 usability loss the round-1 fix introduced, closed
+# this is a usability loss an earlier fix introduced, closed
 # by folding on the win-jq path instead of deferring it.
 assert "win-jq: genuine continuation still ALLOW (HIMMEL-3776 closed)" \
     ALLOW "$(decide_win "$(j_bash "git status \\"$'\n'"  --help")")"
@@ -1187,7 +1187,7 @@ assert "win-jq: genuine continuation still ALLOW (HIMMEL-3776 closed)" \
 assert "win-jq: CR-free command unaffected" \
     ALLOW "$(decide_win "$(j_bash 'git log --oneline -1')")"
 
-# --- HIMMEL-3777: the &-branch's fd-dup lookback (2>&1 / >&2, line ~908)
+# --- the &-branch's fd-dup lookback (2>&1 / >&2, line ~908)
 # reads the raw previous byte without checking whether THAT byte was itself
 # the escaped payload of a preceding `\x` pair. An escaped `\&` followed by
 # a real, live `&` then misreads the escaped `&` as a fd-dup neighbor and
@@ -1206,7 +1206,7 @@ assert "escaped amp, odd (3) backslashes: still escapes (HIDDEN-RAN)" \
 assert "escaped amp, even (2) backslashes: real && (HIDDEN-RAN, pre-existing PASS)" \
     PASS "$(decide "$(j_bash 'echo hi \\&& touch M')")"
 # BOTH &s individually backslash-escaped is truly literal text — no operator
-# ever reaches the &-branch, no hidden run. HIMMEL-3793: it still falls through
+# ever reaches the &-branch, no hidden run. It still falls through
 # now (uniform rule: any unquoted `\&` stops auto-approving), a harmless prompt.
 assert "both amps escaped: literal, no hidden run (falls through, HIMMEL-3793)" \
     PASS "$(decide "$(j_bash 'echo a\&\&b touch M')")"
@@ -1228,7 +1228,7 @@ assert "double-quoted backslash before real &&: visible chain (control)" \
 assert "2>&1 fd-dup still safe post-fix"   ALLOW "$(decide "$(j_bash 'grep x f 2>&1 | head')")"
 assert "amp-redirect &>devnull still safe post-fix" ALLOW "$(decide "$(j_bash 'grep x f &>/dev/null')")"
 
-# --- HIMMEL-3782 (judge J1387B): an unquoted `>&2` followed by a lone CR is
+# --- an unquoted `>&2` followed by a lone CR is
 # not a valid fd-dup word to real bash — the CR glues onto the digit, so the
 # redirect target word is "2<CR>" (not the digit 2), and bash opens a REAL
 # FILE named "2<CR>" instead of duplicating fd 2. VERIFIED (real bash, scratch
@@ -1264,11 +1264,11 @@ assert "fd-dup >&2 + lone CR, CRLF-shim rendering (must not ALLOW)" \
 assert "fd-dup 2>&1 + lone CR, CRLF-shim rendering (must not ALLOW)" \
     PASS "$(decide_win "$(j_bash "grep x f 2>&1"$'\r')")"
 
-# --- J1397A finding 1: ordinary trailing fd-dup must still ALLOW under the
+# --- ordinary trailing fd-dup must still ALLOW under the
 # CRLF-shim (Windows jq.exe) rendering. jq.exe's own final-line CRLF leaves a
 # stray, unpaired CR on the end of every command it renders (the LF/CR pair
 # `$()` strips is only jq's very last newline); before this fix that stray CR
-# was indistinguishable from a HIMMEL-3782 crafted CR and fell through to
+# was indistinguishable from a crafted CR and fell through to
 # PASS on every ordinary command ending in a bare fd-dup. Must go back to
 # ALLOW, while the genuinely crafted CR above (which arrives DOUBLED under
 # this same rendering) still stays PASS.
@@ -1277,8 +1277,8 @@ assert "ordinary >&2, no CR, still ALLOW under CRLF-shim (J1397A finding 1)" \
 assert "ordinary 2>&1, no CR, still ALLOW under CRLF-shim (J1397A finding 1)" \
     ALLOW "$(decide_win "$(j_bash 'ls 2>&1')")"
 
-# --- HIMMEL-3786 (judge J1391A): pin the escaped ->-before-fd-dup-& shapes
-# (2\>&1 / \>&2) that #1391 (HIMMEL-3777) fixed but never got an explicit test
+# --- pin the escaped ->-before-fd-dup-& shapes
+# (2\>&1 / \>&2) that #1391 fixed but never got an explicit test
 # row for. Escaping the `>` leaves a live, unescaped `&` right after it — the
 # exact shape the &-branch's fd-dup lookback misparsed before #1391; the fix
 # keeps it from being read as a hidden second command, at the cost of not
@@ -1289,7 +1289,7 @@ assert "escaped \\>&1 before fd-dup &: not falsely ALLOW/DENY (HIMMEL-3786 pin)"
 assert "escaped \\>&2: not falsely ALLOW/DENY (HIMMEL-3786 pin)" \
     PASS "$(decide "$(j_bash 'grep x f \>&2 | head')")"
 
-# --- J1397A findings 2/3: the fd-dup boundary class must use [:blank:]
+# --- the fd-dup boundary class must use [:blank:]
 # (space + tab, POSIX-portable) instead of the GNU-only \t/\n bracket
 # escapes, so BSD/macOS sed (where `\t`/`\n` inside `[...]` mean the literal
 # characters `\` and `t`/`n`, not TAB/LF) behaves identically to GNU sed.
@@ -1302,7 +1302,7 @@ assert "word-glued >&2nd.txt: PASS under GNU sed (control)" \
 assert "word-glued >&2nd.txt: PASS under POSIX sed too (J1397A finding 3)" \
     PASS "$(decide_posix "$(j_bash 'grep x f >&2nd.txt')")"
 
-# --- HIMMEL-3793 (J1397A finding 4): a backslash-escaped CR, or a trailing
+# --- a backslash-escaped CR, or a trailing
 # backslash, right after an fd-dup target still writes a junk file. SCAN_MASK
 # blanks BOTH bytes of an unquoted `\<x>` pair to spaces, so the fd-dup
 # boundary check at :1571 sees a plain space right after the digit and treats
@@ -1343,12 +1343,12 @@ assert "uniq single positional (no 2nd/output arg) still ALLOW (control)" \
 assert "a plain backslash-escaped & INSIDE quotes still ALLOW (control)" \
     ALLOW "$(decide "$(j_bash 'grep "\&" f')")"
 
-# --- HIMMEL-3886: an unquoted brace span (`{a,b}` / `{a..b}`) in ANY word must
+# --- an unquoted brace span (`{a,b}` / `{a..b}`) in ANY word must
 # never reach an allow. The shell expands it into several argv words before the
 # command runs, so `git log {--output=/tmp/PWN,-1}` runs `git log
 # --output=/tmp/PWN -1` while every arm's literal-word match sees one harmless
 # token. Each command is held in a single-quoted assignment (never
-# brace-expanded, by bash 3.2 either — HIMMEL-3880) and passed by variable.
+# brace-expanded, by bash 3.2 either) and passed by variable.
 BR_ROWS='git log {--output=/tmp/PWN,-1}
 git log {--output,PWN} -1
 git log {--output=/tmp/brace\ proof,-1}
@@ -1375,7 +1375,7 @@ done <<EOF
 $BR_ROWS
 EOF
 # The raw payload through a file, with no nested "$(...)" between the brace
-# text and the hook's stdin (the HIMMEL-3880 macOS shape).
+# text and the hook's stdin (the macOS shape).
 BR_TMP="$(mktemp -d "${TMPDIR:-/tmp}/aasb-brace.XXXXXX")" || exit 1
 BR_CMD='git log {--output=/tmp/PWN,-1}'
 j_bash "$BR_CMD" > "$BR_TMP/brace.json"
@@ -1393,9 +1393,9 @@ rm -rf "$BR_TMP"
 # Controls: a brace the shell does NOT expand (quoted, escaped, no comma or
 # `..`, a git reflog selector, a lone group brace) keeps its old decision.
 assert "git log quoted brace still ALLOW"     ALLOW "$(decide "$(j_bash "git log '{--output=PWN,-1}'")")"
-# HIMMEL-3894: build this payload in a variable first. Nested inside
+# build this payload in a variable first. Nested inside
 # "$(… "$(j_bash '…')")", bash 3.2 brace-expands the inner `"{a,b}"` and the
-# hook would see `git log "--output=PWN"` instead (the HIMMEL-3880 shape).
+# hook would see `git log "--output=PWN"` instead (the macOS shape).
 BR_DQ=$(j_bash 'git log "{--output=PWN,-1}"')
 assert "git log dq brace still ALLOW"         ALLOW "$(decide "$BR_DQ")"
 assert "git log escaped brace still ALLOW"    ALLOW "$(decide "$(j_bash 'git log \{--output=PWN,-1\}')")"
@@ -1425,7 +1425,7 @@ assert "CR-joined -c word never ALLOW" PASS "$(decide "$(j_bash 'git -c'$'\r''co
 assert "win-jq: multi-line CRLF command still ALLOW" \
     ALLOW "$(decide_win "$(j_bash 'git status'$'\n''git log -1')")"
 
-# --- HIMMEL-3886: the node arm skipped every `-*` word before the script, so
+# --- the node arm skipped every `-*` word before the script, so
 # an `=`-form code-loading flag rode along with the Jira CLI marker. Only a
 # small allowlist of inert flags may precede the script now.
 NODE_ROWS='node --require=./x.js scripts/jira/dist/index.js list
@@ -1442,7 +1442,7 @@ done <<EOF
 $NODE_ROWS
 EOF
 
-# --- HIMMEL-3894: the git/gh/xxd/file/tree/base64 arms matched flags on raw
+# --- the git/gh/xxd/file/tree/base64 arms matched flags on raw
 # tokens with exact or `-X*` patterns. A denied short flag packed into a
 # cluster, a unique-prefix abbreviation of a denied long option, a quoted or
 # escaped spelling, and a leading glob all reach the option unseen. Every row
@@ -1535,7 +1535,7 @@ assert "gh pr checks --watch still ALLOW"  ALLOW "$(decide "$(j_bash 'gh pr chec
 assert "xxd -ps still ALLOW"               ALLOW "$(decide "$(j_bash 'xxd -ps in')")"
 assert "lease push literal still ALLOW"    ALLOW "$(decide_in "$FWL_REPO" "$(j_bash 'git push --force-with-lease origin feat/x')")"
 
-# --- HIMMEL-3907: a value-taking option before the git subcommand / gh verb
+# --- a value-taking option before the git subcommand / gh verb
 # shifts which word the tool reads as the subcommand. Fail closed: only known
 # value-less git globals are skipped; any dash word before the gh verb falls
 # through. Rows are decision checks only; nothing here runs the command.
@@ -1554,7 +1554,7 @@ assert "gh pr view 1 -R o/r still ALLOW"             ALLOW "$(decide "$(j_bash '
 assert "gh pr list --repo o/r still ALLOW"           ALLOW "$(decide "$(j_bash 'gh pr list --repo o/r')")"
 assert "lease push --no-pager still ALLOW"           ALLOW "$(decide_in "$FWL_REPO" "$(j_bash 'git --no-pager push --force-with-lease origin feat/x')")"
 
-# --- HIMMEL-3668: `uniq in out` writes OUTPUT; `rg --pre` / `-z` / `ag --pager`
+# --- `uniq in out` writes OUTPUT; `rg --pre` / `-z` / `ag --pager`
 # run a program. Fall through on those; plain reads keep auto-approving.
 assert "uniq in out falls through"            PASS  "$(decide "$(j_bash 'uniq in out')")"
 assert "uniq -c in out falls through"         PASS  "$(decide "$(j_bash 'uniq -c in out')")"
@@ -1592,7 +1592,7 @@ assert "rg --pre glob falls through"          PASS  "$(decide "$(j_bash 'rg --pr
 assert "rg pattern ALLOW"                     ALLOW "$(decide "$(j_bash 'rg pattern')")"
 assert "rg -n pat dir ALLOW"                  ALLOW "$(decide "$(j_bash 'rg -n pat dir')")"
 assert "rg -i --hidden pat ALLOW"             ALLOW "$(decide "$(j_bash 'rg -i --hidden pat')")"
-# HIMMEL-3985: a short-option cluster stops at an argument-taking letter, the
+# a short-option cluster stops at an argument-taking letter, the
 # rest of the word is its value (-e zebra), not a -z flag.
 assert "rg -ezebra file ALLOW"                ALLOW "$(decide "$(j_bash 'rg -ezebra file')")"
 assert "rg -nezebra file ALLOW"               ALLOW "$(decide "$(j_bash 'rg -nezebra file')")"
@@ -1604,12 +1604,12 @@ assert "ag -nz pat falls through"             PASS  "$(decide "$(j_bash 'ag -nz 
 assert "grep -r x . ALLOW"                    ALLOW "$(decide "$(j_bash 'grep -r x .')")"
 assert "ag pat ALLOW"                         ALLOW "$(decide "$(j_bash 'ag pat')")"
 
-# HIMMEL-4752 (judge j2011 on HIMMEL-4678): U+2028 (LINE SEPARATOR) is not
+# U+2028 (LINE SEPARATOR) is not
 # whitespace to bash, so a command holding it gets NO opinion, never an allow.
 # A bare U+2028 was allowed on base and head (harmless: bash reports command
 # not found), but an auto-approver abstains when it cannot read the words the
 # way the shell does.
-# CORPUS NOTE (HIMMEL-4678, PR 2011 claimed "0 auto-approve changes"): that
+# CORPUS NOTE (PR 2011 claimed "0 auto-approve changes"): that
 # holds for the station corpus, not for adversarial Unicode-whitespace input.
 # There the rewritten tokenizer differs from the old one on Unicode spaces
 # only, and the new reading is closer to bash's (bash splits words on space,
@@ -1620,8 +1620,8 @@ assert "bare U+2028 never ALLOW"              PASS  "$(decide "$(j_bash "$LS")")
 assert "ls with U+2028 argument never ALLOW"  PASS  "$(decide "$(j_bash "ls${LS}-l")")"
 assert "plain ls -l still ALLOW"              ALLOW "$(decide "$(j_bash 'ls -l')")"
 
-# HIMMEL-4967 (judge j2148 on HIMMEL-4752): the abstain cases (U+2028, FF, VT)
-# used to exit before the HIMMEL-2121 root-walk DENY, downgrading a deny to no
+# The abstain cases (U+2028, FF, VT)
+# used to exit before the root-walk DENY, downgrading a deny to no
 # opinion. The deny runs first now; the abstain still holds for everything else.
 FF=$'\f'
 VT=$'\v'
@@ -1630,7 +1630,7 @@ assert "find / FF DENY"                       DENY  "$(decide "$(j_bash "find / 
 assert "find / VT DENY"                       DENY  "$(decide "$(j_bash "find / -name x${VT}")")"
 assert "find / U+2028 bypass still PASS"      PASS  "$(FIND_ROOTWALK_OK=1 decide "$(j_bash "find / -name x${LS}")")"
 assert "find / maxdepth U+2028 PASS"          PASS  "$(decide "$(j_bash "find / -maxdepth 2 -name x${LS}")")"
-# HIMMEL-5034 (judge j2194 on HIMMEL-4967): bash splits words on space, tab and
+# Bash splits words on space, tab and
 # newline only, so a FF/VT/U+2028 inside the keyword or in place of the space
 # makes ONE word (command not found), never a root walk. No DENY for these.
 TB=$'\t'
@@ -1642,7 +1642,7 @@ assert "U+2028 before find / is one word PASS" PASS  "$(decide "$(j_bash "${LS}f
 assert "find U+2028 / is one word PASS"        PASS  "$(decide "$(j_bash "find${LS}/ -name x")")"
 assert "for-loop FF find / is one word PASS"   PASS  "$(decide "$(j_bash "for f in a; do ${FF}find / -name x; done")")"
 assert "tab-separated find / still DENY"       DENY  "$(decide "$(j_bash "find${TB}/ -name x")")"
-# Judge j2231a on HIMMEL-5034: the queue-lock and all-segments-safe ltrims must
+# The queue-lock and all-segments-safe ltrims must
 # agree with the root-walk one. A POSIX [[:space:]] ltrim strips U+2029/U+2002/
 # U+3000 in a UTF-8 locale, so a led `find /` went DENY to ALLOW. Never ALLOW.
 PS=$'\xe2\x80\xa9'
@@ -1654,7 +1654,7 @@ assert "U+3000 before find / never ALLOW"      PASS  "$(decide "$(j_bash "${ID}f
 assert "true; U+2029 find / never ALLOW"       PASS  "$(decide "$(j_bash "true; ${PS}find / -name x")")"
 assert "impacted-suites literal FF never ALLOW" PASS "$(decide "$(j_bash "bash scripts/cr/impacted-suites.sh${FF}")")"
 
-# --- HIMMEL-5088: CR is a word byte to bash, so `find / <CR>-maxdepth 1` walks
+# --- CR is a word byte to bash, so `find / <CR>-maxdepth 1` walks
 # the whole tree (the CR word is a path operand, not an option) -> DENY. The
 # other whole-disk walkers on / must never ALLOW: PASS (a prompt), not DENY.
 CR=$'\r'
@@ -1684,7 +1684,7 @@ assert "ctl: grep x / (no -r) stays ALLOW"     ALLOW "$(decide "$(j_bash "grep x
 assert "ctl: rg x src stays ALLOW"             ALLOW "$(decide "$(j_bash "rg x src")")"
 assert "tree -L 1 / (old ctl) never ALLOW"      PASS  "$(decide "$(j_bash "tree -L 1 /")")"
 assert "ctl: tree src stays ALLOW"             ALLOW "$(decide "$(j_bash "tree src")")"
-# /pr-check round 1: an attached rg/ag -e/-f pattern must not leave / as the
+# An attached rg/ag -e/-f pattern must not leave / as the
 # discarded "pattern"; `--` ends options, so `-R` after it is a filename.
 assert "rg -efoo / never ALLOW"                PASS  "$(decide "$(j_bash "rg -efoo /")")"
 assert "ag -efoo / never ALLOW"                PASS  "$(decide "$(j_bash "ag -efoo /")")"
@@ -1692,14 +1692,14 @@ assert "rg -e foo / never ALLOW"               PASS  "$(decide "$(j_bash "rg -e 
 assert "grep -r -- x / never ALLOW"            PASS  "$(decide "$(j_bash "grep -r -- x /")")"
 assert "ls -- -R / (-R is a filename) ALLOW"   ALLOW "$(decide "$(j_bash "ls -- -R /")")"
 assert "ctl: rg -efoo src stays ALLOW"         ALLOW "$(decide "$(j_bash "rg -efoo src")")"
-# round 2: --files has no pattern operand; -g's value is not a pattern flag;
+# --files has no pattern operand; -g's value is not a pattern flag;
 # bare `recurse` is only the argument of -d / --directories.
 assert "rg --files / never ALLOW"              PASS  "$(decide "$(j_bash "rg --files /")")"
 assert "rg --files -g x / never ALLOW"         PASS  "$(decide "$(j_bash "rg --files -g x /")")"
 assert "rg -gfoo / src (pattern /) ALLOW"      ALLOW "$(decide "$(j_bash "rg -gfoo / src")")"
 assert "grep recurse / (no -r) ALLOW"          ALLOW "$(decide "$(j_bash "grep recurse /")")"
 assert "grep -d recurse x / never ALLOW"       PASS  "$(decide "$(j_bash "grep -d recurse x /")")"
-# round 3: an option's value is not itself an option or a path operand.
+# An option's value is not itself an option or a path operand.
 assert "rg -nefoo / never ALLOW"               PASS  "$(decide "$(j_bash "rg -nefoo /")")"
 assert "tree -I -L / never ALLOW"              PASS  "$(decide "$(j_bash "tree -I -L /")")"
 assert "tree -P -L / never ALLOW"              PASS  "$(decide "$(j_bash "tree -P -L /")")"
@@ -1716,7 +1716,7 @@ assert "tree -aP -L / never ALLOW"             PASS  "$(decide "$(j_bash "tree -
 assert "tree -aL 1 / never ALLOW"              PASS  "$(decide "$(j_bash "tree -aL 1 /")")"
 assert "tree -aI x -L 1 / never ALLOW"          PASS  "$(decide "$(j_bash "tree -aI x -L 1 /")")"
 assert "ctl: grep -rne x src stays ALLOW"      ALLOW "$(decide "$(j_bash "grep -rne x src")")"
-# judge j2340a: default is PASS; only exact modelled spellings are "not a walk".
+# Default is PASS; only exact modelled spellings are "not a walk".
 assert "grep -id recurse x / never ALLOW"      PASS  "$(decide "$(j_bash "grep -id recurse x /")")"
 assert "grep -drecurse x / never ALLOW"        PASS  "$(decide "$(j_bash "grep -drecurse x /")")"
 assert "grep --recur x / never ALLOW"          PASS  "$(decide "$(j_bash "grep --recur x /")")"
@@ -1738,7 +1738,7 @@ assert "ctl: grep -rn -A3 x src stays ALLOW"   ALLOW "$(decide "$(j_bash "grep -
 assert "ctl: grep -r -d skip x src stays ALLOW" ALLOW "$(decide "$(j_bash "grep -r -d skip x src")")"
 assert "ctl: ls -la / stays ALLOW"             ALLOW "$(decide "$(j_bash "ls -la /")")"
 assert "ctl: du -sh ~/src stays ALLOW"         ALLOW "$(decide "$(j_bash "du -sh ~/src")")"
-# judge j2340b: a word the cooker cannot decode (an unresolved $VAR) is unknown,
+# A word the cooker cannot decode (an unresolved $VAR) is unknown,
 # never skipped; any tree on a root operand is PASS (no -L exemption); ag has
 # its own option tables (-D / -A / -B / -C and bare --context take no value).
 assert 'grep -r x $PWD/../.. never ALLOW'      PASS  "$(decide "$(j_bash 'grep -r x $PWD/../../../../..')")"
@@ -1771,7 +1771,7 @@ assert 'rg "CR" / never ALLOW'                  PASS  "$(decide "$(j_bash 'rg "'
 assert "grep -r CR / (unquoted lone CR) never ALLOW" PASS "$(decide "$(j_bash "grep -r "$'\r'" /")")"
 assert "ctl: grep -r 'CR' src stays ALLOW"     ALLOW "$(decide "$(j_bash "grep -r '"$'\r'"' src")")"
 
-# --- HIMMEL-5187: (1) -files0-from takes its paths from a file/stdin, so the
+# --- (1) -files0-from takes its paths from a file/stdin, so the
 # operand list is unknowable -> PASS. (2) a relative walk after a cd to a root
 # or unproven directory walks that directory -> PASS; a relative `..` chain is
 # resolved against the payload cwd. (3) xxd/uniq output operand glued to a CR.

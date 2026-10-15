@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
-# Cadence-scoped PreToolUse Bash ALLOW hook (HIMMEL-1682 S2a).
+# Cadence-scoped PreToolUse Bash ALLOW hook.
 #
-# WHY: the daily vault-lint cadence leg (HIMMEL-1386) runs the
+# WHY: the daily vault-lint cadence leg runs the
 # obsidian-triage:vault-lint skill, whose engine is
 #   python <himmel-root>/marketplace/plugins/obsidian-triage/skills/vault-lint/vault_lint.py <vault>
 # `python` is deliberately NOT in auto-approve-safe-bash.sh's safe set (it is a
 # programmable interpreter), so the literal engine command prompts for approval
-# — and a prompt at 04:00 with nobody to answer it wastes the run (HIMMEL-1682:
-# the vault lint died on a permission plea two nights running, classified as a
-# vacuous "complete"). The runner fires claude in the VAULT cwd (not the himmel
+# — and a prompt at 04:00 with nobody to answer it wastes the run (a permission plea once killed the vault lint,
+# classified as a vacuous "complete"). The runner fires claude in the VAULT cwd (not the himmel
 # repo), so the model emits an ABSOLUTE engine path; that path's Windows drive
 # colon also breaks the allow-list `:*` prefix syntax, so a static
 # `permissions.allow` belt is unreliable here. This hook is the authoritative
 # fix: it reads the full command TEXT and decides itself, so neither the static
-# matcher's metacharacter bail (HIMMEL-203) nor the colon problem can reach it.
+# matcher's metacharacter bail nor the colon problem can reach it.
 #
 # This hook grants ONLY the enumerated cadence engine scripts — initially just
 # the vault-lint engine. Grow ENGINE_LIST per leg as more cadence engines are
@@ -24,7 +23,7 @@
 #     through to the normal permission flow. FAIL-OPEN: missing jq, unparseable
 #     input, not-an-enumerated-engine -> silent exit 0, no decision.
 #   * Only ever EMITS "allow". The deny-list + block-* deny hooks remain the
-#     hard backstop; a deny from them WINS over an allow here (HIMMEL-203).
+#     hard backstop; a deny from them WINS over an allow here.
 #   * Wired ONLY in cadence-settings.json (--settings for cadence runs), so
 #     interactive sessions are untouched.
 #
@@ -41,8 +40,8 @@
 #   5. An enumerated engine invocation is:
 #        binary == python|python3|node|bash   (bare interpreter name; no path,
 #                                    no .exe — a `$cmd`/absolute interpreter
-#                                    binary is NOT granted: fail-safe,
-#                                    HIMMEL-203 stance). HIMMEL-2124 also grants
+#                                    binary is NOT granted: fail-safe).
+#                                    It also grants
 #                                    TWO engines (harvest-clip-body-batch.py,
 #                                    ig-media-fetch.py) invoked as `uv run
 #                                    [--python <ver>] python <script>` — the
@@ -59,10 +58,10 @@
 #            is a LITERAL path (no $ ` or substitution) whose normalised form
 #            equals <himmel-root>/<enumerated suffix> EXACTLY, where
 #            himmel-root is derived from THIS hook's own location. A tail-only
-#            match is not enough (HIMMEL-1682 CR round 2) — see ROOT ANCHOR.
+#            match is not enough — see ROOT ANCHOR.
 #            Consequently a RELATIVE engine path is never granted: it depends
 #            on a cwd the hook cannot vouch for.
-#      HIMMEL-2124 follow-up (cache root anchor): the obsidian-triage plugin
+#      Cache root anchor: the obsidian-triage plugin
 #      itself RUNS from the Claude Code plugin cache
 #      (~/.claude/plugins/cache/himmel/obsidian-triage/<version>/...), so a
 #      leg session's engine path legitimately resolves there, not just under
@@ -74,10 +73,9 @@
 #      other rule above and below (bare interpreter, literal-path-only,
 #      flag/arg constraints) is unchanged; this only widens WHERE the same
 #      enumerated file may live.
-#   6. Trailing args are constrained too (HIMMEL-1682 leg-16, codex-adv HIGH:
-#      an unconstrained trailing-arg grant let an injected `--config <file>`
+#   6. Trailing args are constrained too: an unconstrained trailing-arg grant let an injected `--config <file>`
 #      point vault_lint.py's report_path -- join()'d without containment and
-#      opened "w" -- at an attacker-writable path riding this hook's auto-allow).
+#      opened "w" -- at an attacker-writable path riding this hook's auto-allow.
 #      Every remaining token after the engine script must be EITHER:
 #        - a per-engine safe flag: boolean, no value, cannot redirect I/O (see
 #          flag_is_safe; vault-lint's set is `--json`/`--no-report`, derived
@@ -103,7 +101,7 @@
 #      vault_lint.py's OWN containment (its `--config`/report_path join has
 #      none) is a separate, not-yet-fixed engine-side concern -- tracked for a
 #      follow-up ticket, out of scope for this hook.
-#   7. HIMMEL-2124: a `gh api repos/...` segment is ALSO granted, but ONLY
+#   7. A `gh api repos/...` segment is ALSO granted, but ONLY
 #      when it is READ-shaped -- the harvest/luna-ingest legs only ever read
 #      github metadata through this hook, never write it. Granted iff ALL
 #      hold: the (quote-reassembled) endpoint right after `api` starts with
@@ -131,7 +129,7 @@ set -uo pipefail
 # List every interpreter binary a leg may use (python AND python3) so a
 # paraphrased interpreter name still matches the same engine.
 VAULT_LINT_SUFFIX="marketplace/plugins/obsidian-triage/skills/vault-lint/vault_lint.py"
-# HIMMEL-2124: harvest/triage/ig-media-enrich cadence legs, enumerated exactly
+# The harvest/triage/ig-media-enrich cadence legs, enumerated exactly
 # as those leg sessions specified. All live under the obsidian-triage plugin's
 # tools/ dir (tools/lib/ for evidence-kind.mjs), same ROOT ANCHOR posture as
 # vault_lint above -- one specific file beside this hook's own checkout, never
@@ -142,7 +140,7 @@ EVIDENCE_KIND_SUFFIX="marketplace/plugins/obsidian-triage/tools/lib/evidence-kin
 DAILY_TIMELINE_SUFFIX="marketplace/plugins/obsidian-triage/tools/daily-timeline.mjs"
 IG_MEDIA_FETCH_SUFFIX="marketplace/plugins/obsidian-triage/tools/ig-media-fetch.py"
 ENSURE_DEPS_SUFFIX="marketplace/plugins/obsidian-triage/tools/ensure-deps.sh"
-# HIMMEL-2124 acceptance-leg gap (2026-08-26): the harvest-clips.md thin-body
+# The harvest-clips.md thin-body
 # enrich rungs (~lines 210-211) dispatch these two X/reddit enrichers, but
 # they were missing from ENGINE_LIST -- 5 thin X-tweet clips parked as
 # retryable partial on a permission plea because of it. Same tools/ root +
@@ -157,7 +155,7 @@ node:${IS_THIN_SUFFIX} node:${EVIDENCE_KIND_SUFFIX} node:${DAILY_TIMELINE_SUFFIX
 node:${FXTWITTER_SUFFIX} node:${REDDIT_ENRICH_SUFFIX} \
 bash:${ENSURE_DEPS_SUFFIX}"
 
-# HIMMEL-2176 (A18): `--print-engine-list` prints ENGINE_LIST one token per
+# `--print-engine-list` prints ENGINE_LIST one token per
 # line, then exits -- placed AFTER the assembly above (so it reflects the
 # real value) but BEFORE both the ENGINE_ROOT_POSIX guard below (which would
 # otherwise silently `exit 0` and swallow the print on a machine where the
@@ -174,7 +172,7 @@ if [ "${1:-}" = "--print-engine-list" ]; then
     exit 0
 fi
 
-# ROOT ANCHOR (HIMMEL-1682 CR round 2, panel finding codex-1). The suffix above
+# ROOT ANCHOR. The suffix above
 # is a REGISTRY key, never sufficient on its own: a bare tail match is not tied
 # to any particular checkout, so combined with the benign `cd` wrapper below,
 #   cd /tmp/evil && python marketplace/.../vault_lint.py
@@ -195,7 +193,7 @@ if command -v cygpath >/dev/null 2>&1; then
     ENGINE_ROOT_MIXED=$(cygpath -m "$ENGINE_ROOT_POSIX" 2>/dev/null || printf '%s' "$ENGINE_ROOT_POSIX")
 fi
 
-# Secondary (plugin-cache) anchor (HIMMEL-2124 follow-up). obsidian-triage
+# Secondary (plugin-cache) anchor. obsidian-triage
 # leg sessions actually run the plugin from the Claude Code plugin cache, not
 # this checkout, so a cache-rooted engine path is an equally sanctioned copy
 # — see SAFETY MODEL point 5 addendum above. Derived from $HOME (same pattern
@@ -215,14 +213,13 @@ path_is_rooted_engine() {
     cand="$1"
     # POSIX form: EXACT compare. A case-only difference names a different file
     # on a case-sensitive filesystem, so folding case here would widen the grant
-    # (HIMMEL-1682 CR round 5 Major).
     [ "$cand" = "${ENGINE_ROOT_POSIX}/$2" ] && return 0
     # Mixed (Windows) form: case-insensitive, per the drive-letter/path-case note
     # — but ONLY when cygpath actually produced a DISTINCT Windows-style root.
     # Without cygpath, ENGINE_ROOT_MIXED is the SAME string as ENGINE_ROOT_POSIX,
     # so a case-insensitive re-compare here would auto-allow a case-twin POSIX
-    # path that names a DIFFERENT file on a case-sensitive filesystem
-    # (HIMMEL-1682 CR round 8, panel codex-1). Refuse rather than re-compare the
+    # path that names a DIFFERENT file on a case-sensitive filesystem.
+    # Refuse rather than re-compare the
     # identical POSIX string; this keeps every accept branch at most as
     # permissive as the exact POSIX byte-for-byte compare above.
     if [ "$ENGINE_ROOT_MIXED" != "$ENGINE_ROOT_POSIX" ]; then
@@ -231,7 +228,7 @@ path_is_rooted_engine() {
         [ "$lc_cand" = "$lc_b" ] && return 0
     fi
     # Checkout anchor missed -- try the plugin-cache secondary anchor
-    # (HIMMEL-2124 follow-up) before giving up.
+    # Before giving up.
     path_is_cache_rooted_engine "$cand" "$2"
 }
 
@@ -265,7 +262,7 @@ path_is_cache_rooted_engine() {
         if command -v cygpath >/dev/null 2>&1; then
             vd_mixed=$(cygpath -m "$vd_posix" 2>/dev/null || printf '%s' "$vd_posix")
         fi
-        # Same HIMMEL-1682 CR round 8 guard: only re-compare case-insensitively
+        # Same guard as above: only re-compare case-insensitively
         # when cygpath produced a DISTINCT mixed form.
         [ "$vd_mixed" != "$vd_posix" ] || continue
         lc_cand=$(_lc "$cand")
@@ -283,7 +280,7 @@ is_engine_binary() {
 }
 
 # Optional `uv run [--python <ver>] python` prefix ahead of the script token
-# (HIMMEL-2124) -- the one shape harvest-clip-body-batch.py's own leg docs use
+# -- the one shape harvest-clip-body-batch.py's own leg docs use
 # (ig-media-enrich.md/x-media-enrich.md). Only this segment's own caller
 # (segment_is_engine) may treat a match as an engine invocation, and it does
 # so ONLY for the harvest suffix -- see the via_uv guard there. `--python`'s
@@ -320,7 +317,7 @@ match_uv_prefix() {
 # SESSION_CWD_MIXED, computed later in the main flow from the hook payload's
 # `.tool_input.cwd`/`.cwd` -- or nested under it? Mirrors path_is_rooted_engine's
 # dual-form (exact POSIX, case-insensitive mixed) compare and the same
-# cygpath-less guard (HIMMEL-1682 CR round 8): without a cygpath-produced
+# cygpath-less guard: without a cygpath-produced
 # DISTINCT mixed root, re-comparing the identical POSIX string case-
 # insensitively would auto-allow a case-twin POSIX path naming a DIFFERENT
 # file on a case-sensitive filesystem.
@@ -360,15 +357,14 @@ norm_path() {
 # (marketplace/plugins/obsidian-triage/skills/vault-lint/SKILL.md):
 #   --json       prints full detail to stdout only; no file I/O change.
 #   --no-report  suppresses the written report; removes a write, adds none.
-# `--config PATH` is deliberately EXCLUDED (HIMMEL-1682 leg-16, codex-adv
-# HIGH): it points the engine at an attacker-choosable JSON file whose
+# `--config PATH` is deliberately EXCLUDED: it points the engine at an attacker-choosable JSON file whose
 # `report_path` is join()'d without containment and opened "w" in
 # vault_lint.py -- an arbitrary-file-write primitive riding this hook's
 # auto-allow. vault_lint.py's argparse defines no other path-valued flag, so
 # none is added here; a future one would need its own containment check, not
 # a bare inclusion in this list.
 #
-# HIMMEL-2124 addendum: several of the newly-enumerated engines document
+# Several of the newly-enumerated engines document
 # VALUE-taking flags (`--limit N`, `--scan-only FILE`, ...). This function only
 # ever judges the FLAG TOKEN itself -- segment_is_engine's tail loop checks
 # each token independently, so a flag's value is a SEPARATE token that still
@@ -410,7 +406,7 @@ flag_is_safe() {
             esac
             return 1 ;;
         "$FXTWITTER_SUFFIX")
-            # HIMMEL-2124 acceptance-leg gap: --vault/--limit are value-taking
+            # --vault/--limit are value-taking
             # but the value is a SEPARATE token still gated by
             # arg_is_vault_safe (same one-hop pattern as DAILY_TIMELINE_SUFFIX's
             # --vault / HARVEST_SUFFIX's --limit above); --dry-run/--reflag take
@@ -450,8 +446,7 @@ arg_is_vault_safe() {
     case "$tok" in *'$'*) return 1 ;; esac
     norm=$(norm_path "$tok")
     [ -n "$norm" ] || return 1
-    # Same fail-safe for the other shell-expansion forms (HIMMEL-1682
-    # leg-16, gate panel + codex-adv): a literal-looking relative token
+    # Same fail-safe for the other shell-expansion forms: a literal-looking relative token
     # still expands OUTSIDE the vault at shell runtime via tilde expansion
     # (`~/private-vault`), brace expansion (`{a,b}`), or glob metacharacters
     # (`*`, `?`, `[`) -- none of those are provable from the token text
@@ -485,7 +480,7 @@ script_matches_engine() {
         [ "$ebin" = "$bin" ] || continue
         if path_is_rooted_engine "$norm" "$esuf"; then
             # Consumed by segment_is_engine to scope flag_is_safe to the
-            # engine that actually matched (HIMMEL-1682 leg-16).
+            # engine that actually matched.
             MATCHED_SUFFIX="$esuf"
             IFS="$OLDIFS"; return 0
         fi
@@ -495,7 +490,7 @@ script_matches_engine() {
 }
 
 # Quote-aware reassembly of a token the caller's naive whitespace split may
-# have shredded (HIMMEL-1682 S2b, panel finding codex-1). A quoted script path
+# have shredded. A quoted script path
 # CONTAINING SPACES survives `IFS=' ' read -ra` as multiple array elements
 # (`"C:/spaced` `path/vault_lint.py"`), so norm_path's single-quote-pair strip
 # never sees the whole path and the suffix match silently fails-closed —
@@ -552,8 +547,7 @@ segment_is_engine() {
     local n=${#w[@]}
     [ "$n" -ge 2 ] || return 1
     local i=0
-    # A leading VAR=val assignment is deliberately NOT skipped (HIMMEL-1682,
-    # panel finding codex-1). An earlier revision skipped them on the premise
+    # A leading VAR=val assignment is deliberately NOT skipped. An earlier revision skipped them on the premise
     # that an assignment "cannot turn vault_lint.py into code exec" — that
     # premise is FALSE: PYTHONPATH shadows a stdlib module the engine imports,
     # so `PYTHONPATH=/tmp python vault_lint.py` reaches arbitrary code execution
@@ -562,7 +556,7 @@ segment_is_engine() {
     # token must be the interpreter itself, and an env-prefixed invocation falls
     # through ungranted to the normal permission flow.
     #
-    # ONE exception (HIMMEL-2124 RETASK R2124A): the EXACT literal assignment
+    # ONE exception: the EXACT literal assignment
     # `PYTHONUTF8=1`, and ONLY when it immediately precedes the `uv run` chain,
     # is allowed. This is the documented invocation shape for the two
     # uv-capable engines (commands/ig-media-enrich.md:88 etc, README.md:118) --
@@ -576,7 +570,7 @@ segment_is_engine() {
     fi
     local bin script_idx via_uv=0
     if [ "${w[$start]}" = "uv" ]; then
-        # HIMMEL-2124: `uv run [--python <ver>] python <script>` -- the shape
+        # `uv run [--python <ver>] python <script>` -- the shape
         # harvest-clip-body-batch.py's and ig-media-fetch.py's own leg docs
         # use. Restricted to those two engines below (after
         # script_matches_engine resolves MATCHED_SUFFIX), not opened up to
@@ -608,7 +602,7 @@ segment_is_engine() {
     esac
     script_matches_engine "$bin" "$script" || return 1
     # The uv-run prefix (with or without the PYTHONUTF8=1 lead-in above) is
-    # granted ONLY for the two engines documented as using it (HIMMEL-2124) --
+    # granted ONLY for the two engines documented as using it --
     # a match against any other python-bin suffix (e.g. vault_lint) via
     # `uv run ... python <script>` is refused: that leg's own docs invoke it
     # with the bare interpreter, so widening this to "any python engine, via
@@ -619,8 +613,7 @@ segment_is_engine() {
             *) return 1 ;;
         esac
     fi
-    # Trailing args are constrained too (HIMMEL-1682 leg-16, codex-adv HIGH —
-    # see the file header SAFETY MODEL point 6). MATCHED_SUFFIX was set by
+    # Trailing args are constrained too (see the file header SAFETY MODEL point 6). MATCHED_SUFFIX was set by
     # script_matches_engine above. Every remaining token must be a per-engine
     # safe flag or a path that can only resolve inside the vault; ANY other
     # token -> do not grant (fall through to the normal permission flow).
@@ -649,10 +642,8 @@ segment_is_engine() {
 }
 
 # A benign nav wrapper that may prefix the engine call (changes cwd only).
-# Tightened (HIMMEL-1682 panel finding codex-1, Suggestion): a judge review
-# confirmed the previous "cmd + arbitrary trailing tokens" shape was not
-# exploitable (extras become invalid cd args; bash rejects >1 arg, nothing
-# executes) — but a grant shouldn't cover more shape than the cadence needs.
+# "cmd + arbitrary trailing tokens" would not be exploitable (extras become
+# invalid cd args; bash rejects >1 arg, nothing executes) — but a grant shouldn't cover more shape than the cadence needs.
 # Require cmd + AT MOST one dir argument, allowing that argument to be a
 # quoted, spaced path via the same reassembly used for the engine script.
 segment_is_nav() {
@@ -669,7 +660,7 @@ segment_is_nav() {
     [ $((1 + REASM_CONSUMED)) -eq "$n" ]
 }
 
-# Is this segment a READ-shaped `gh api repos/...` call (HIMMEL-2124 — see
+# Is this segment a READ-shaped `gh api repos/...` call (see
 # SAFETY MODEL point 7)? The endpoint is the (quote-reassembled) token
 # immediately after `api` (every documented cadence usage puts it there, e.g.
 # `gh api repos/cli/cli` / `gh api "repos/${owner}/${repo}/issues/${n}"`);
@@ -748,11 +739,11 @@ segment_is_gh_read() {
     return 0
 }
 
-# Quote-aware structural scan (modelled on auto-approve-safe-bash's scan_cmd,
-# HIMMEL-209). Walks char by char tracking single/double-quote state so command
+# Quote-aware structural scan (modelled on auto-approve-safe-bash's scan_cmd).
+# Walks char by char tracking single/double-quote state so command
 # separators (; | || && & newline) and `>` redirects INSIDE quotes stay literal.
 # Produces two globals, returns 1 (do not grant) on unbalanced quotes OR an
-# unquoted bare `&` (backgrounding — HIMMEL-1682 CR round 5):
+# unquoted bare `&` (backgrounding):
 #   SCAN_SEGS — top-level segments (ORIGINAL text, one per line) split ONLY at
 #               UNQUOTED separators.
 #   SCAN_MASK — the command with every quoted span (+ quote delims + escaped
@@ -806,7 +797,7 @@ split_and_mask() {
                 case "$p" in                         # fd-dup 2>&1 / >&2 -> keep
                     '>'|'<'|'&') seg="$seg$c"; SCAN_MASK="$SCAN_MASK&"; i=$((i + 1)); continue ;;
                 esac
-                # HIMMEL-1682 CR round 5 Major: a bare (unquoted) & backgrounds the
+                # A bare (unquoted) & backgrounds the
                 # preceding segment. Splitting it into a segment break left a
                 # trailing "python <engine> vault &" producing an engine segment
                 # plus an EMPTY tail; the main loop skips empty tails, so the hook
@@ -839,7 +830,7 @@ tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
 [ -n "$cmd" ] || exit 0
 
-# Session cwd (HIMMEL-1682 leg-16), same field + fallback order
+# Session cwd, same field + fallback order
 # block-graphify-egress.sh / block-terminal-write-fence.sh already trust: the
 # tool call's own cwd wins over the session-level one, since that is where the
 # agent will actually run the command. This is the vault root arg_is_vault_safe
@@ -882,7 +873,7 @@ esac
 # Shell-level redirect to a real file -> not granted. A grant must enable ONLY
 # the enumerated engine + its arg list, never reshape the process's I/O at the
 # shell level, so BOTH output (`>`/`>>`) and unquoted INPUT (`<`) redirection
-# are rejected (HIMMEL-1682 CR r3 nitpick: an unquoted `< file` formerly slipped
+# are rejected (an unquoted `< file` would otherwise slip
 # past a `>`-only check). /dev/null sinks + fd-dups are stripped first as
 # benign; the heredoc and process-substitution forms (`<<`, `<(`) are already
 # rejected above, so a surviving unquoted `<`/`>` is a real file redirect.
@@ -897,8 +888,7 @@ case "$rd" in
 esac
 
 # --- Every segment must be an enumerated engine or a benign nav wrapper,
-# AND at least one segment must actually BE an enumerated engine (HIMMEL-1688
-# item 2). Without this, a nav-only command (e.g. a bare `cd /tmp`) satisfied
+# AND at least one segment must actually BE an enumerated engine. Without this, a nav-only command (e.g. a bare `cd /tmp`) satisfied
 # the "every segment is engine-or-nav" test vacuously and collected an
 # allow with a false "vault-lint engine" reason, even though no engine was
 # present. Harmless in effect (cd executes nothing), but contradicts this

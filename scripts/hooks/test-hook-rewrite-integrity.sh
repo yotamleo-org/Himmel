@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# E2E coverage for the HIMMEL-1666 rewrite-vector fix: a dispatched worker with
+# E2E coverage for the rewrite-vector fix: a dispatched worker with
 # Edit(<worktree>) can rewrite a project-local guard's ON-DISK content (not
-# just delete it — the vector HIMMEL-1649 already closed). This proves
+# just delete it — the delete vector is already closed). This proves
 # run-hook-with-bash.js denies the tampered file instead of running it, once
 # record-hook-integrity.sh has pinned the worktree at SessionStart — the
-# worker-shaped session HIMMEL-1666 asks for.
+# worker-shaped session.
 #
-# HIMMEL-2528 extends it with the RE-PIN path: a mismatch is no longer always
+# The RE-PIN path extends it: a mismatch is no longer always
 # tampering — a worktree brought up to date holds hook bytes the session-start
 # pin never saw. Rows 1-28 below drive scripts/hooks/hook-integrity.js's
 # three-check verification (tip / monotonic anchor / pinned blob on the anchor
@@ -21,7 +21,7 @@ set -uo pipefail
 HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HOOKS_DIR/../.." && pwd)"
 
-# HIMMEL-3092: a console leg's shell exports guard overrides (INLINE_IMPL_OK,
+# A console leg's shell exports guard overrides (INLINE_IMPL_OK,
 # HIMMEL_CONSOLE_LEG, HIMMEL_HOOK_INTEGRITY_BYPASS_OK, ...) that reach the hook
 # under test and flip every "override UNSET" case. Clear them before any case
 # runs; a case that needs one still sets it explicitly on its own invocation.
@@ -41,7 +41,7 @@ command -v node >/dev/null 2>&1 || { echo "SKIP: node not on PATH"; exit 0; }
 # shellcheck disable=SC1091
 . "$HOOKS_DIR/../lib/canon-path.sh"
 
-# HIMMEL-3179: canonicalise the fixture root so a path the rows BUILD compares
+# Canonicalise the fixture root so a path the rows BUILD compares
 # equal to the one the hooks REPORT (macOS TMPDIR ends in "/" and lives behind
 # the /var -> /private/var symlink).
 T="$(mktemp -d "${TMPDIR:-/tmp}/himmel-hook-rewrite-integrity.XXXXXX")"
@@ -57,8 +57,7 @@ ok()  { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf '  FAIL %s\n' "$1"; }
 # absent <pattern> <file>...: succeeds only when every file exists, is readable
 # and grep finds no match (rc 1). `! grep` would also pass on a read error
-# (rc 2), so an absence row could go green over a file that was never written
-# (HIMMEL-5186).
+# (rc 2), so an absence row could go green over a file that was never written.
 absent() {
   local pat="$1" f rc
   shift
@@ -116,7 +115,7 @@ else
 fi
 
 # The rewrite vector: a worker with Edit(<worktree>) overwrites the guard's
-# content in place (not a delete — HIMMEL-1649 already covers that) to always
+# content in place (not a delete — that is covered separately) to always
 # allow.
 cat > "$GUARD" <<'TAMPER_EOF'
 #!/usr/bin/env bash
@@ -133,7 +132,7 @@ else
   bad "tampered guard: expected rc=2 with a DENY message, got rc=$rc_after err=$(cat "$T/after.err")"
 fi
 
-# HIMMEL-3384: the documented bypass is worktree-only and audited. In the
+# The documented bypass is worktree-only and audited. In the
 # PRIMARY checkout (cwd = $PROJECT) it is not honoured, so the tampered guard
 # is still denied ...
 BYPASS_OUT="$T/bypass.out"
@@ -178,7 +177,7 @@ else
   bad "worktree bypass: expected rc=0 + 1 audit line, got rc=$rc_wt lines=$audit_lines err=$(cat "$BYPASS_ERR")"
 fi
 
-# HIMMEL-3384 (adversarial round): the worktree, "linked" and the audit sink come
+# The worktree, "linked" and the audit sink come
 # from CLAUDE_PROJECT_DIR and the session's RECORDED repo, never from `git
 # rev-parse` in cwd (which follows a `.git` pointer FILE a worker can rewrite).
 bypass_run() { # <cwd> <project dir> <guard>
@@ -263,7 +262,7 @@ else
   bad "no pin file: expected rc=0 (fail open), got rc=$rc_nopins err=$(cat "$T/nopins.err")"
 fi
 
-# HIMMEL-2588: "no record" is two states. The recorder leaves
+# "no record" is two states. The recorder leaves
 # <session_id>.recorder beside the record, `started` before anything that can
 # fail and `done` on exit; once it reads `done` (or `started` older than any
 # recorder can live) a missing, empty or unparseable record DENIES.
@@ -466,7 +465,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-5171 — a recorder that did not publish a verified record must not
+# A recorder that did not publish a verified record must not
 # leave the marker `done`. Each trigger runs the REAL recorder with one
 # failure injected through a PATH stub, then the launcher against what it
 # left. On the base every one of these is a deny for the rest of the session.
@@ -560,7 +559,7 @@ else
 fi
 
 # ===========================================================================
-# HIMMEL-2528 — re-pin on a legitimately advanced checkout
+# Re-pin on a legitimately advanced checkout
 # ===========================================================================
 
 REL='scripts/hooks/g.sh'
@@ -877,7 +876,7 @@ expect_deny "row 13: an unresolvable anchor_ref is denied" 'could not be resolve
 # shellcheck source=../lib/host-caps.sh
 . "$REPO_ROOT/scripts/lib/host-caps.sh"
 if ! host_can_deny_write; then
-  # root, or NTFS/MSYS: chmod 500 does not stop a write there (HIMMEL-3182)
+  # root, or NTFS/MSYS: chmod 500 does not stop a write there
   host_skip "row 14: a read-only directory does not stop a write on this host"
 else
   fixture r14
@@ -906,7 +905,7 @@ else
   fi
 fi
 
-# --- rows 15-16: the bounded bootstrap exception (HIMMEL-2528 §4) ----------
+# --- rows 15-16: the bounded bootstrap exception ----------
 # record-hook-integrity.sh pins ITSELF and the plugin's SessionStart chain runs
 # it through this launcher, so a live session holding a LEGACY record would deny
 # the changed recorder before it could ever write a v2 record. The exception is
@@ -1148,7 +1147,7 @@ wait "$SIBLING_PID" 2>/dev/null
 expect_allow "row 26: a lock timeout re-reads and honours a sibling's published advancement"
 rm -rf "$LOCK26"
 
-# --- row 27: the HIMMEL-2526 must-run entry -------------------------------
+# --- row 27: the destination-write fence must-run entry --------------------
 if node -e 'const m = require(process.argv[1]); process.exit(m.MUST_RUN_CHAIN_MEMBERS.has("block-write-into-main-checkout.sh") ? 0 : 1);' "$LAUNCHER"; then
   ok "row 27: MUST_RUN_CHAIN_MEMBERS carries block-write-into-main-checkout.sh"
 else
@@ -1671,7 +1670,7 @@ else
 fi
 
 # ===========================================================================
-# HIMMEL-4575 — the sourced-lib closure is verified, not only the member
+# The sourced-lib closure is verified, not only the member
 # ===========================================================================
 # A guard that sources a lib runs that lib's bytes as guard code, so a lib
 # edited mid-session is as tampered as an edited member. The member below
@@ -1845,11 +1844,11 @@ else
   bad "row 46: dispatched closure gaps: $(cat "$T/closure.out")"
 fi
 
-# HIMMEL-4584 — a sourced path resolves only through the ref's real value.
-# HIMMEL-4585 ships only the fail-closed half: the source scan reads quoted
+# A sourced path resolves only through the ref's real value.
+# Only the fail-closed half is implemented: the source scan reads quoted
 # spans and heredoc bodies as code, exactly as before, so a `source` inside
-# them still denies (judge j2149c: a text mask for "this is data" fails open by
-# construction — HIMMEL-4998 owns solving the false denies at a non-text
+# them still denies (a text mask for "this is data" fails open by
+# construction; the false denies need a solution at a non-text
 # layer). Unit rows against sourcedClosure: a throwaway root with one pinnable
 # lib, one member file per case.
 SC="$T/sc"
@@ -1867,8 +1866,8 @@ console.log(r.libs.length + " " + r.unresolved.length);
 }
 # shellcheck disable=SC2016 # literal shell text for the fixtures, expanded by their reader
 {
-# Row 49 on origin/main denied these (quoted text is scanned). An earlier
-# revision of this PR masked them as data; that mask was fail-open (j2149c), so
+# Row 49 on origin/main denied these (quoted text is scanned).
+# A mask treating them as data would be fail-open, so
 # the rows now pin the deny.
 sc_case "row 49: a source inside a single-quoted string still denies (scanned as code, as on main)" 0 1 <<'E'
 echo 'if source "$MISSING"'
@@ -2007,7 +2006,7 @@ x=$(( 1 << b ))
 source "$MISSING"
 b
 E
-# Row 58/62: every way to run quoted text as code (the j2149 and j2149b shapes).
+# Row 58/62: every way to run quoted text as code.
 sc_case "row 58: eval of a double-quoted string runs its source" 0 1 <<'E'
 eval "true; source \"$MISSING\""
 E
@@ -2091,7 +2090,7 @@ sc_case "row 61 control: a real assignment after a quoted word on the same line 
 echo 'x'; D="$(dirname "$0")"
 source "$D/../lib/armor.sh"
 E
-# Row 63 — judge j2149c: 13 ways a text mask passed a quoted `source` as data
+# Row 63: 13 ways a text mask passed a quoted `source` as data
 # while Bash ran it. With no mask each one denies.
 sc_case "row 63 a01: a brace group piped into bash" 0 1 <<'E'
 { echo '

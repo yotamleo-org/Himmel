@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bus-deliver-run.js — node entry for bus-deliver-hook.sh (HIMMEL-4828).
+// bus-deliver-run.js — node entry for bus-deliver-hook.sh.
 //
 // Hook-integrity coverage for marketplace/plugins/himmel-bus/lib/*.mjs: the
 // launcher pins and verifies scripts/hooks files, but the delivery worker lives

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// hooks/narrow-allow.mjs — sanctioned settings narrowing chokepoint (HIMMEL-1513).
+// hooks/narrow-allow.mjs — sanctioned settings narrowing chokepoint.
 //
 // `.claude/settings.json` is deliberately deny-listed for direct agent edits.
 // This script performs one narrow transformation: remove specific entries
@@ -184,7 +184,7 @@ function defaultSettingsPath() {
   return join(projectDir, '.claude', 'settings.json');
 }
 
-// Per-process unique temp path (HIMMEL-1586). A FIXED name (.narrow-allow.tmp)
+// Per-process unique temp path. A FIXED name (.narrow-allow.tmp)
 // would collide between concurrent narrow-allow runs: one truncates the
 // other's staged output mid-write, and a catch-path cleanup would delete a
 // temp the winner is about to rename — defeating the atomicity this PR added.
@@ -195,7 +195,7 @@ export function tempPathFor(settingsPath) {
   return join(dirname(settingsPath), `.narrow-allow.tmp.${process.pid}.${randomUUID()}`);
 }
 
-// Atomic settings write (HIMMEL-1586): stage a UNIQUE sibling temp in the
+// Atomic settings write: stage a UNIQUE sibling temp in the
 // same directory, then rename it over the target. rename is atomic within a
 // directory on every platform this repo targets, so an interruption between
 // stage and swap can never leave settings.json truncated or empty —
@@ -220,7 +220,7 @@ export function writeSettingsAtomic(settingsPath, output, tmpPath = tempPathFor(
   // chmod the staged temp to match before the rename. POSIX-only in effect;
   // on Windows mode bits are a no-op (ACLs govern), so the chmod is harmlessly
   // best-effort there. A missing target (first-time write) leaves the temp's
-  // default mode in place. FAIL-CLOSED on POSIX (CR round 2, HIMMEL-1624):
+  // default mode in place. FAIL-CLOSED on POSIX:
   // only ENOENT is a sanctioned stat miss; any other stat error, or a POSIX
   // chmod failure, aborts BEFORE the rename — silently proceeding is exactly
   // the 0o600 -> 0o644 loosening this block exists to prevent. Windows keeps
@@ -254,7 +254,7 @@ async function main() {
     const args = parseArgs(process.argv.slice(2));
     if (args.removals.length === 0) fail('at least one --remove <entry> is required');
     const settingsPath = resolve(args.settingsPath || defaultSettingsPath());
-    // HIMMEL-1552: hold the shared settings lock across the whole read ->
+    // Hold the shared settings lock across the whole read ->
     // transform -> write/rename, so the three sanctioned settings writers
     // (wire-hook-bash, wire-trust-hooks, narrow-allow) serialise rather than
     // race. Without it, a concurrent writer's change that lands AFTER this

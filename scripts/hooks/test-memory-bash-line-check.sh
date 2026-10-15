@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test for scripts/hooks/memory-bash-line-check.sh (HIMMEL-4891): a Bash write
+# Test for scripts/hooks/memory-bash-line-check.sh: a Bash write
 # to the auto-memory MEMORY.md (heredoc, sed -i, tee, printf >>) bypasses
 # guard-memory-capture.sh, so the PostToolUse hook re-checks the file.
 # Usage: bash scripts/hooks/test-memory-bash-line-check.sh
@@ -64,7 +64,7 @@ MEMORY_CAPTURE_OK=1 run Bash "$cmd"; assert_rc "MEMORY_CAPTURE_OK=1 bypass" 0 "$
 rm -f "$IDX"
 run Bash "$cmd"; assert_rc "missing index allowed" 0 "$?"
 
-# 9: a star in the command text must not glob (HIMMEL-4891 judge): bounded run.
+# 9: a star in the command text must not glob : bounded run.
 printf -- '- short\n' > "$IDX"
 jq -nc --arg c "echo '/*/*/*/*/*/*/*/.claude/projects/*/memory/MEMORY.md'" \
   '{tool_name:"Bash",tool_input:{command:$c}}' > "$SB/star.json"

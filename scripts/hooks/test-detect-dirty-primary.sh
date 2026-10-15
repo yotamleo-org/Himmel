@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for detect-dirty-primary.sh (HIMMEL-2526).
+# Smoke test for detect-dirty-primary.sh.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+, incl. Git Bash on Windows.
 # No .ps1 twin — the hook under test has none either (see its own header).
@@ -68,7 +68,7 @@ pass=0; fail=0
 ok()  { pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
 bad() { fail=$((fail+1)); printf '  FAIL %s\n' "$1"; }
 
-# RED-control contract (HIMMEL-2518): scratch space for the stderr captures
+# RED-control contract: scratch space for the stderr captures
 # red_control_run writes, under the fixture root — never /tmp directly.
 # Consumed by the sourced red-control.sh below (shellcheck cannot follow
 # that indirection).

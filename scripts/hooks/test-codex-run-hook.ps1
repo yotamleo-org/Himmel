@@ -1,5 +1,5 @@
 ﻿# Unit test for .codex/run-hook.cmd + .codex/codex-hook-adapter.sh — the Codex
-# hook wrapper + decision adapter (HIMMEL-427/HIMMEL-2019). Tests the Windows
+# hook wrapper + decision adapter. Tests the Windows
 # wrapper on its native interpreter (cmd.exe via PowerShell). The
 # Unix/bash branch is covered by the .sh twin. Mirrors the .sh assertions:
 # CLAUDE_PROJECT_DIR derived+exported, stdin forwarded, a non-block exit code
@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Continue'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $HOOKS   = $PSScriptRoot
 $WRAPPER = Join-Path $HOOKS '..' | Join-Path -ChildPath '..' | Join-Path -ChildPath '.codex' | Join-Path -ChildPath 'run-hook.cmd'
@@ -41,7 +41,7 @@ $dummy = "read -r line || true`necho `"PROJDIR=[`$CLAUDE_PROJECT_DIR]`"`necho `"
 [System.IO.File]::WriteAllText((Join-Path $T 'scripts\hooks\dummy.sh'), $dummy)
 $blocker = "read -r line || true`necho `"blocking-reason-xyz`" >&2`nexit 2`n"
 [System.IO.File]::WriteAllText((Join-Path $T 'scripts\hooks\blocker.sh'), $blocker)
-# HIMMEL-1987: emits a Claude permissionDecision:"allow"/updatedInput envelope
+# emits a Claude permissionDecision:"allow"/updatedInput envelope
 # (auto-approve-safe-bash / rtk-hook-guard shape) on stdout, exits 0.
 $allowdummy = "cat >/dev/null`nprintf '%s\n' '{`"hookSpecificOutput`":{`"hookEventName`":`"PreToolUse`",`"permissionDecision`":`"allow`",`"updatedInput`":{`"command`":`"rtk git status`"},`"permissionDecisionReason`":`"safe`"}}'`nexit 0`n"
 [System.IO.File]::WriteAllText((Join-Path $T 'scripts\hooks\allowdummy.sh'), $allowdummy)
@@ -69,7 +69,7 @@ try {
     # trailing \r inside the brackets; stdin forwarding is what we're asserting.
     Check "stdin forwarded to the guardrail" ($out -match 'STDIN=\[fromstdin')
 
-    # HIMMEL-1987: Codex rejects a Claude permissionDecision:"allow"/updatedInput
+    # Codex rejects a Claude permissionDecision:"allow"/updatedInput
     # envelope, so the adapter no longer forwards guardrail stdout to Codex's
     # stdout at all — it re-emits it only as advisory on the adapter's OWN
     # stderr. Capture stdout ALONE (stderr suppressed) and assert it's empty.
@@ -89,7 +89,7 @@ try {
     Check "explicit --sandbox flag -> adapter exits 0 (proceeds cleanly)" ($frc -eq 0)
     Check "explicit --sandbox flag still forwards stdin" ($fout -match 'STDIN=\[fromstdin')
 
-    # 1c) ALLOW-SWALLOW (HIMMEL-1987): a guardrail that emits a Claude
+    # 1c) ALLOW-SWALLOW: a guardrail that emits a Claude
     #     permissionDecision:"allow" (optionally with updatedInput) on stdout and
     #     exits 0 — auto-approve-safe-bash / rtk-hook-guard shape. Codex rejects
     #     that envelope ("unsupported permissionDecision:allow"), so the adapter
@@ -131,7 +131,7 @@ try {
     Check "block -> guardrail stderr becomes the deny reason" ($bout -match 'blocking-reason-xyz')
     Check "block -> hookEventName mirrors the inbound event" ($bout -match '"hookEventName":"PermissionRequest"')
 
-    # 2b) NON-PERMISSION lifecycle exit-2 (HIMMEL-565): a guardrail that exits 2 on
+    # 2b) NON-PERMISSION lifecycle exit-2: a guardrail that exits 2 on
     #     a non-permission event (PostToolUse auto-arm success) must surface its
     #     message via additionalContext, NOT a bogus PreToolUse permission deny.
     Push-Location $T
@@ -157,7 +157,7 @@ try {
     # 2e) Unknown/garbage inbound event on exit-2 normalises to PostToolUse — never
     #     echoes the raw event string into the hookEventName const, never a deny.
     #     Use a clearly-bogus event name: `Stop` is now a first-class adapter branch
-    #     (HIMMEL-599), so it is no longer "unknown".
+    #, so it is no longer "unknown".
     Push-Location $T
     $unkout = ('{"hook_event_name":"BogusEvent"}' | & cmd.exe /c '.codex\run-hook.cmd' blocker.sh 2>&1 | Out-String)
     $unkrc = $LASTEXITCODE
@@ -184,7 +184,7 @@ try {
 
     # 3c) Git Bash exists but cannot run the adapter (unusable inside the hook
     #     sandbox, or a fork failure under memory pressure) -> fail-closed deny.
-    #     HIMMEL-1981: the adapter exits 0 on every normal path, so a nonzero code
+    #     the adapter exits 0 on every normal path, so a nonzero code
     #     in sandbox mode means it never ran; the wrapper must NOT propagate it
     #     (Codex renders "hook exited with code 1" AND fails open) but emit the
     #     deny Codex honours and exit 0. Checked AFTER the adapter call, which
@@ -279,7 +279,7 @@ try {
     else { $env:HIMMEL_CODEX_HOOK_BASH = $oldHookBash }
     Check "explicit --no-sandbox skips startup deny and surfaces child rc" (($rc5 -eq 99) -and ($nsout -notmatch '"permissionDecision":"deny"'))
 
-    # 4) CHAIN (HIMMEL-1989) through the WINDOWS wrapper. The chain semantics
+    # 4) CHAIN through the WINDOWS wrapper. The chain semantics
     #    (order, first-deny short-circuit, allow swallow, fail-closed) live in the
     #    adapter and are pinned by the .sh twin; what is Windows-specific — and
     #    what this covers — is whether the `+`-separated chain survives cmd.exe's

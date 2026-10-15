@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Coverage for HIMMEL-2528: record-hook-integrity.sh's schema-v2 pin (anchor_ref
+# Coverage for record-hook-integrity.sh's schema-v2 pin (anchor_ref
 # / anchor / git_dir), its idempotent merge over an existing v2 record, its
 # all-or-nothing fallback to the legacy v1 shape, and the per-session record
 # lock (scripts/hooks/hook-integrity-lock.sh) it now holds across the
 # read-merge-publish. House style follows test-hook-rewrite-integrity.sh:
 # a real fixture repo, ok()/bad() counters, one summary line, `[ "$fail" -eq 0 ]`.
 #
-# Rows 1/2/4/5/6 exercise schema-v2 behaviour that does not exist in the pre-
-# HIMMEL-2528 recorder at all (it never wrote anchor_ref/anchor/git_dir, and
+# Rows 1/2/4/5/6 exercise schema-v2 behaviour that does not exist in the legacy
+# Recorder at all (it never wrote anchor_ref/anchor/git_dir, and
 # never merged) — each would fail against that recorder simply because the
 # keys/merge semantics it asserts on did not exist. Rows 9-12 exercise the
-# lock, which the pre-HIMMEL-2528 recorder had no notion of at all: it wrote
+# lock, which the legacy recorder had no notion of at all: it wrote
 # straight over $dest with no regard for any `$dest.lock` directory, so row 9
 # and row 11 (expecting the record to be left UNTOUCHED while a lock is held)
 # would fail against it — it would clobber the record every time regardless.
@@ -21,7 +21,7 @@
 # the pre-chmod; kept anyway as a regression guard for the new step).
 #
 # Rows 15-21 came out of the review panel on this branch and each one fails
-# against the FIRST cut of HIMMEL-2528, not just against the pre-2528 recorder:
+# against the FIRST cut of the v2 recorder, not just against the legacy recorder:
 # 15 the suite skipping on an in-repo file, 16 `rm -rf`-based reclaim letting
 # two contenders both win, 17/18 `kill -0`'s EPERM being read as death (the JS
 # twin reads it as ALIVE), 19/20 a swallowed owner-file write leaving an
@@ -49,7 +49,7 @@
 # Row 3 used to assert that a no-origin repo got a legacy record with no
 # further comment; it now also carries the refusal and the flag. The legacy v1
 # shape is still WRITTEN when the anchor resolves but --git-common-dir
-# canonicalization fails, and still READ (and replaced) when a pre-HIMMEL-2528
+# canonicalization fails, and still READ (and replaced) when a legacy
 # record is already on disk -- row 4 covers that, now from a planted legacy
 # record rather than one this recorder produced.
 set -uo pipefail
@@ -202,7 +202,7 @@ fi
 # RIGHT blob sha, for a file in BOTH scanned directories (scripts/hooks AND
 # scripts/guardrails). This is the only place in the suite that checks a
 # pin's VALUE against `git rev-parse HEAD:<path>` rather than just the shape
-# around it; carried over from the pre-HIMMEL-2528 smoke test's
+# around it; carried over from the legacy smoke test's
 # "hooks/hook-a.sh pinned to its git blob sha" / "guardrails/guard-b.sh
 # pinned to its git blob sha" assertions. Reuses row1's fixture/record: it
 # already has a real file in both directories.
@@ -295,7 +295,7 @@ fi
 # The legacy record is PLANTED by hand rather than produced by a first
 # no-origin run: since row 3's fail-closed anchor check the recorder no longer
 # emits one that way, and the input this path has to handle is a record written
-# by the PRE-HIMMEL-2528 recorder anyway. Planting it tests the same branch
+# by the legacy recorder anyway. Planting it tests the same branch
 # against the exact shape it will actually meet in the field.
 # ---------------------------------------------------------------------------
 P4="$(new_fixture row4 main)"
@@ -383,7 +383,7 @@ if [ -f "$REC7" ] && [ "$stray_tmpdir" -eq 0 ] && [ "$stray_outdir" -eq 0 ]; the
   # shellcheck source=../lib/host-caps.sh
   . "$REPO_ROOT/scripts/lib/host-caps.sh"
   if ! host_modes_stick; then
-    # HIMMEL-3182: NTFS/MSYS reports 444 for a chmod 400 file
+    # NTFS/MSYS reports 444 for a chmod 400 file
     host_skip "row7: published record mode 400: chmod does not stick on this host"
     ok "row7: staged beside dest (no TMPDIR/out_dir temp survives) [mode not checked: chmod does not stick here]"
   elif command -v stat >/dev/null 2>&1; then
@@ -443,7 +443,7 @@ if [ "$rc9" -eq 0 ] && [ "$after9" = "$before9" ] && [ -d "$LOCK9" ]; then
 else
   bad "row9: rc=$rc9 before='$before9' after='$after9' lockdir=$([ -d "$LOCK9" ] && echo present || echo gone)"
 fi
-# HIMMEL-2588: the lock holder is still publishing, so this run must not mark
+# The lock holder is still publishing, so this run must not mark
 # the session's recorder `done` (the launcher would deny on a record not yet
 # written). It leaves `started`; the launcher's 60 s staleness rule covers it.
 state9="$(cat "$OUT9/sess-9.recorder" 2>/dev/null)"
@@ -528,7 +528,7 @@ rm -rf "$LOCK12"
 
 # ---------------------------------------------------------------------------
 # Row 13: no session_id in the payload -> writes nothing, still exits 0
-# (regression coverage carried over from the pre-HIMMEL-2528 smoke test).
+# (regression coverage carried over from the legacy smoke test).
 # ---------------------------------------------------------------------------
 P13="$(new_fixture row13 main)"
 OUT13="$T/row13/out"
@@ -801,10 +801,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Row 22 (round-2 panel, codex-2): the recorder does not source a TAMPERED lock
-# lib. Round 1 closed this class one file over by inlining default_branch()
-# (row 21) while the same commit opened it again on the lock lib, which was
-# sourced unverified from scripts/lib/ -- a directory nothing pins. The lib
+# Row 22: the recorder does not source a TAMPERED lock
+# lib. Inlining default_branch (row 21) closes this class for one file, but
+# the lock lib was also sourced unverified from scripts/lib/ -- a directory nothing pins. The lib
 # moved into the pinned scripts/hooks/ AND the recorder now compares it against
 # the blob at $anchor_ref before the dot; being pinned alone would not have
 # been enough, since verifyProjectHookIntegrity only ever checks the ONE script
@@ -1006,7 +1005,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Row 25 (HIMMEL-4828): the himmel-bus delivery worker's lib is pinned too, but
+# Row 25: the himmel-bus delivery worker's lib is pinned too, but
 # only its .mjs files -- bus-deliver-run.js compares them to these pins before
 # importing. A .mjs elsewhere, and a non-.mjs file in that lib dir, stay unpinned.
 # ---------------------------------------------------------------------------

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# test-graphify-freshness-advisory.sh — three-state contract (HIMMEL-1643)
+# test-graphify-freshness-advisory.sh — three-state contract
 # shellcheck disable=SC2015,SC2164 # compact status assertions; fixture cd's are into mktemp -d dirs this script just created
 set -uo pipefail
 # The suite owns every case's env; an ambient leg shell (HIMMEL_LEAN_LEG=1
-# under --profile leg-impl, HIMMEL-2940) must not silently turn every
+# under --profile leg-impl) must not silently turn every
 # unmarked case into a lean-leg case. Only the two explicit T9/T9b lean
 # cases below set it themselves.
 unset LEG_LANE LEG_CONTEXT LEG_REPO LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG 2>/dev/null || true
@@ -116,11 +116,11 @@ out=$(GRAPHIFY_ADVISORY_CHECKER="$HERE/../graphify/check-graph-freshness.sh" bas
 # T7 non-integer GRAPHIFY_STALENESS_MAX_AGE_DAYS on a FRESH graph -> still
 # silent rc0. check-graph-freshness.sh exits 1 for BOTH "stale" and "usage
 # error", so a bad budget would otherwise false-banner STALE every session;
-# the hook validates it (HIMMEL-1643).
+# the hook validates it.
 out=$(GRAPHIFY_ADVISORY_OUT="$tmp/fresh/graphify-out" GRAPHIFY_STALENESS_MAX_AGE_DAYS="not-a-number" bash "$HOOK"); rc=$?
 [ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T7 non-integer budget silent on fresh graph" || fail "T7 non-integer budget: rc=$rc out='$out'"
 
-# T8 (HIMMEL-2077): checker output containing an embedded tag-close/forged-tag
+# T8: checker output containing an embedded tag-close/forged-tag
 # attempt must not survive into the banner literally — angle brackets are the
 # injection primitive (closing this system-reminder block, or opening a fake
 # one) and the hook must neutralize them before embedding $out.
@@ -136,14 +136,14 @@ out=$(GRAPHIFY_ADVISORY_OUT="$tmp/fresh/graphify-out" GRAPHIFY_ADVISORY_CHECKER=
 [ "$rc" -eq 0 ] || fail "T8 rc=$rc"
 case "$out" in *"</system-reminder><system-reminder>"*) fail "T8 injected tag sequence survived unescaped: $out";; *) pass "T8 embedded tag sequence neutralized";; esac
 case "$out" in *"INJECTED"*) pass "T8 checker text still visible (just neutralized, not dropped)";; *) fail "T8 checker text lost entirely: $out";; esac
-# codex-2 (CR round on HIMMEL-2077): angle-bracket stripping alone does not
+# Angle-bracket stripping alone does not
 # stop plain-PROSE injection ("ignore prior instructions" carries no markup
 # to neutralize) — the banner must also explicitly frame the checker output
 # as untrusted data, so a model reading it treats it as quoted evidence, not
 # harness-authored instruction.
 case "$out" in *"untrusted data"*) pass "T8 banner frames checker output as untrusted data";; *) fail "T8 missing untrusted-data framing: $out";; esac
 
-# T9 (HIMMEL-2830) a lean leg hears nothing, even when the graph IS stale.
+# T9 a lean leg hears nothing, even when the graph IS stale.
 # The banner is ~3.9k chars of a leg's ~75k fixed context floor, re-read on
 # every API call of that session, for an advisory a leg never acts on.
 out=$(HIMMEL_LEAN_LEG=1 GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
@@ -154,7 +154,7 @@ out=$(HIMMEL_LEAN_LEG=1 GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$H
 out=$(HIMMEL_LEAN_LEG=0 GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
 case "$out" in *"graphify graph is STALE"*) pass "T9b HIMMEL_LEAN_LEG=0 keeps today's banner (fail-open)";; *) fail "T9b lean guard is not fail-open: $out";; esac
 
-# T10 (HIMMEL-1591) core.bare on the shared git config -> loud warning, both
+# T10 core.bare on the shared git config -> loud warning, both
 # directions. Fixture: a scratch repo plus a linked worktree of it, so the
 # hook is proven to read the SHARED config from a worktree session. A fresh
 # graph keeps the graphify half silent, so any output here is the core.bare

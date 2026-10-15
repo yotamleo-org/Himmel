@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // bench-hook-stack.mjs — measure the Claude-side hook stack's latency so the
 // per-hook `timeout` values in .claude/settings.json can be SIZED rather than
-// guessed (HIMMEL-1985, follow-up to HIMMEL-1982's Codex-side runner fix).
+// guessed.
 //
 // WHY: Claude Code defaults an unset command-hook timeout to 600s. A wedged
 // hook therefore stalls a tool call for ten minutes, and a timed-out PreToolUse
@@ -60,7 +60,7 @@ const { resolveBash } = createRequire(import.meta.url)('./run-hook-with-bash.js'
 
 // p95 target for a single hook, in ms. Matching ENTRIES run concurrently, so
 // the stack's cost is roughly the slowest matching entry, not their sum — but a
-// `--chain` entry (HIMMEL-2002) runs its own members serially, so that row's
+// `--chain` entry runs its own members serially, so that row's
 // p95 is their sum.
 export const SLO_P95_MS = 1000;
 
@@ -180,7 +180,7 @@ export function matcherMatches(matcher, tool) {
   }
 }
 
-// The member scripts of a `--chain` entry (HIMMEL-2002), with $CLAUDE_PROJECT_DIR
+// The member scripts of a `--chain` entry, with $CLAUDE_PROJECT_DIR
 // expanded, or null when the command is not a chain. Only the first branch of
 // the launcher's `if …; then <chain>; else <chain>; fi` wrapper is read — both
 // branches name the same members.
@@ -275,11 +275,11 @@ export function statusFor(row) {
 // Short label for a hook command: the script it ultimately runs.
 export function labelFor(command) {
   const parts = String(command).split(/\s+/).filter(Boolean);
-  // A --chain entry (HIMMEL-2002) runs several scripts from ONE launcher, so
+  // A --chain entry runs several scripts from ONE launcher, so
   // the tail token would name only the last of them.
   if (parts.includes('--chain')) {
     const members = parts.slice(parts.indexOf('--chain') + 1)
-      // Skip further flags (`--lifecycle`, HIMMEL-2003) — only members are named.
+      // Skip further flags (`--lifecycle`) — only members are named.
       .filter((p) => !p.startsWith('--'))
       .map((p) => p.replace(/^"|"$/g, '').split(/[\\/]/).pop());
     return `chain(${members.join('+')})`;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/cadence-approve-engines.sh (HIMMEL-1682 S2a).
+# Smoke test for scripts/hooks/cadence-approve-engines.sh.
 #
 # Usage: bash scripts/hooks/test-cadence-approve-engines.sh
 #
@@ -25,7 +25,7 @@ set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` with NO pipeline. printf-into-`grep
 # -q` is a pipefail trap (grep -q exits on first match → producer SIGPIPE →
-# pipeline reports failed). A here-string is not a pipeline. (HIMMEL-1430.)
+# pipeline reports failed). A here-string is not a pipeline.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HOOK="$(cd "$(dirname "$0")" && pwd)/cadence-approve-engines.sh"
@@ -38,7 +38,7 @@ HOOK="$(cd "$(dirname "$0")" && pwd)/cadence-approve-engines.sh"
 FAILED=0
 
 ENG="marketplace/plugins/obsidian-triage/skills/vault-lint/vault_lint.py"
-# HIMMEL-1682 CR round 2: the grant is ROOT-ANCHORED to the checkout the hook
+# The grant is ROOT-ANCHORED to the checkout the hook
 # ships in, so the absolute fixtures must be derived from the hook's own
 # location — not hardcoded to one operator's primary checkout, which also made
 # these cases silently unrunnable from a worktree.
@@ -55,12 +55,12 @@ ABS_BS=$(printf '%s' "$ABS" | tr '/' '\\')
 # exists to refuse.
 ABS_WRONG_ROOT="C:/tmp/evil/${ENG}"
 
-# HIMMEL-1682 leg-16: a real (existing, resolvable) directory to stand in for
+# A real (existing, resolvable) directory to stand in for
 # the vault root, so the trailing-arg containment tests below aren't tied to
 # any one operator's actual vault path. Cleaned up alongside the other
 # mktemp fixtures via the trap set further down.
 VAULT_FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/cadence-vault.XXXXXX")
-# HIMMEL-3179: the hook resolves the vault arg and the session cwd through
+# The hook resolves the vault arg and the session cwd through
 # `cd && pwd`, so hand it the canonical spelling of the fixture (macOS TMPDIR
 # ends in "/" and sits behind /var -> /private/var).
 VAULT_FIXTURE=$(canon_path "$VAULT_FIXTURE") || { echo "setup: canon_path failed for the vault fixture" >&2; exit 1; }
@@ -71,7 +71,7 @@ else
 fi
 
 j_bash() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(printf '%s' "$1" | jq -Rs .)"; }
-# Same as j_bash but also carries a top-level `.cwd` (HIMMEL-1682 leg-16) —
+# Same as j_bash but also carries a top-level `.cwd` —
 # the field arg_is_vault_safe containment-checks an absolute trailing arg
 # against, mirroring the `.tool_input.cwd // .cwd` field the hook reads.
 j_bash_cwd() { printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":%s}' "$(printf '%s' "$1" | jq -Rs .)" "$(printf '%s' "$2" | jq -Rs .)"; }
@@ -99,12 +99,12 @@ assert() {
 }
 
 # --- ALLOW: the enumerated vault-lint engine, in every form the model emits ---
-# HIMMEL-1682 leg-16: the vault arg is now containment-checked (see below), so
+# The vault arg is now containment-checked (see below), so
 # an absolute vault path must be paired with a matching `.cwd` — VAULT_FIXTURE
 # stands in for "the vault the cadence session is running in".
 assert "absolute engine path (win)"  ALLOW "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" \"${VAULT_FIXTURE_MIXED}\"" "$VAULT_FIXTURE_MIXED")")"
 assert "backslash engine path (win)" ALLOW "$(decide "$(j_bash "python \"${ABS_BS}\" vault")")"
-# HIMMEL-1973 regression: the EXACT shape the 2026-08-20 04:00 health leg
+# Regression: the EXACT shape the 2026-08-20 04:00 health leg
 # emitted — Windows BACKSLASH absolute engine path AND a backslash ABSOLUTE
 # vault arg, with the session cwd arriving in backslash form too (the cadence
 # runner's `cd /d` leaves it that way). This hook grants that command
@@ -116,7 +116,7 @@ assert "backslash engine path (win)" ALLOW "$(decide "$(j_bash "python \"${ABS_B
 VAULT_FIXTURE_BS=$(printf '%s' "$VAULT_FIXTURE_MIXED" | tr '/' '\\')
 assert "HIMMEL-1973 08-20 shape: backslash engine + backslash vault + backslash cwd" ALLOW "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS_BS}\" \"${VAULT_FIXTURE_BS}\"" "$VAULT_FIXTURE_BS")")"
 assert "python3 interpreter"         ALLOW "$(decide "$(j_bash "python3 \"${ABS}\" vault")")"
-# HIMMEL-1682 leg-16 (codex-adv HIGH): trailing args are no longer
+# Trailing args are no longer
 # unconstrained (see file header SAFETY MODEL point 6). A bare `$VAULT`
 # variable reference is an unprovable literal — the hook cannot audit what
 # the cadence's shell environment would expand it to — so it now falls
@@ -131,7 +131,7 @@ assert "pushd && engine"             ALLOW "$(decide "$(j_bash "pushd /himmel &&
 
 # --- PASS: the grant stays narrow (this is the test that keeps the fix honest) ---
 assert "wrong script"                PASS "$(decide "$(j_bash 'python /tmp/evil.py vault')")"
-# HIMMEL-1682 CR round 2 codex-1: the grant is anchored to THIS checkout's root.
+# The grant is anchored to THIS checkout's root.
 # A tail-only match let `cd <attacker dir> && python marketplace/.../vault_lint.py`
 # auto-allow an attacker's file; these three keep that hole closed.
 assert "relative engine path (unanchored)"  PASS "$(decide "$(j_bash "python \"${ENG}\" \"vault\"")")"
@@ -145,8 +145,7 @@ trap 'rm -f "$EMPTY_ROOT_HOOK"; rm -rf "$SPACED_ROOT" "$VAULT_FIXTURE"' EXIT
 sed 's@^ENGINE_ROOT_POSIX=.*@ENGINE_ROOT_POSIX=""@' "$HOOK" > "$EMPTY_ROOT_HOOK"
 assert "empty root anchor grants nothing" PASS "$(decide_with_hook "$EMPTY_ROOT_HOOK" "$(j_bash "python /${ENG} vault")")"
 
-# HIMMEL-1682 S2b (panel finding codex-1, judge-verified AGREED, Important):
-# a checkout under a SPACED directory must still grant when the (quoted)
+# A checkout under a SPACED directory must still grant when the (quoted)
 # script path itself contains spaces — the naive whitespace tokenizer
 # shatters a quoted-but-spaced path across multiple array elements, so
 # norm_path never sees the full path unless the hook reassembles it first.
@@ -154,7 +153,7 @@ assert "empty root anchor grants nothing" PASS "$(decide_with_hook "$EMPTY_ROOT_
 # layout closely enough for ENGINE_ROOT_POSIX's `cd .../.. && pwd` to
 # resolve — only scripts/hooks/ needs to physically exist).
 mkdir -p "$SPACED_ROOT/scripts/hooks"
-# HIMMEL-1682 CR round 4: canonicalize SPACED_ROOT (cd && pwd) right after
+# Canonicalize SPACED_ROOT (cd && pwd) right after
 # creating it. On macOS, TMPDIR ends with a trailing slash, so the naive
 # "${TMPDIR:-/tmp}/himmel spaced $$" concatenation above leaves a literal
 # "//" in SPACED_ROOT — but the hook derives ENGINE_ROOT_POSIX via
@@ -179,10 +178,10 @@ assert "spaced checkout root, cd wrapper + quoted script" ALLOW "$(decide_with_h
 # even runs, but the contract ("unterminated -> no grant") is exactly what
 # the reassembly fix must never violate, so it stays covered here.
 assert "unterminated quote in script path" PASS "$(decide_with_hook "$SPACED_HOOK" "$(j_bash "python \"${SPACED_ABS} vault")")"
-# HIMMEL-1682 codex-1: an env prefix must NOT be skipped over. PYTHONPATH can
+# An env prefix must NOT be skipped over. PYTHONPATH can
 # shadow a stdlib module vault_lint.py imports, which is arbitrary code
 # execution — so an env-prefixed invocation must fall through ungranted.
-# HIMMEL-1682 CR r3: the negatives here and below (env-prefix, compound-rm,
+# The negatives here and below (env-prefix, compound-rm,
 # output-redirect, pipe) build from ${ABS}, not ${ENG}. A RELATIVE engine path
 # is refused by the ROOT ANCHOR regardless of these rules, so an ${ENG} payload
 # stays PASS even if the targeted rule is deleted (mutation-insensitive). ${ABS}
@@ -197,7 +196,7 @@ assert "rm (not python)"             PASS "$(decide "$(j_bash 'rm foo')")"
 assert "variable script (unprovable)" PASS "$(decide "$(j_bash 'python "$ENGINE" vault')")"
 assert "compound with rm segment"    PASS "$(decide "$(j_bash "python \"${ABS}\" vault && rm foo")")"
 assert "output redirect to file"     PASS "$(decide "$(j_bash "python \"${ABS}\" vault > out.txt")")"
-# HIMMEL-1682 CR r3 nitpick: unquoted INPUT redirection must be rejected too,
+# Unquoted INPUT redirection must be rejected too,
 # not just `>` — `< file` slips past a `>`-only filter (segment_is_engine
 # ignores trailing tokens, so the redirect guard is the only thing that catches
 # it). Built from ${ABS} so the refusal attributes to the redirect filter.
@@ -206,7 +205,7 @@ assert "heredoc with nav-like body"  PASS "$(decide "$(j_bash "python \"${ABS}\"
 assert "pipe to head segment"        PASS "$(decide "$(j_bash "python \"${ABS}\" vault | head")")"
 assert "command substitution"        PASS "$(decide "$(j_bash 'python "$(pwd)/vault_lint.py" vault')")"
 assert "non-Bash tool"               PASS "$(decide "$(printf '{"tool_name":"Read","tool_input":{"command":"%s"}}' "python ${ENG}")")"
-# HIMMEL-1688 item 2 (codex-2 @ 88517e1b, deferred from S2a/S2b): a nav-only
+# A nav-only
 # command has every segment engine-or-nav (vacuously true — there is no
 # engine segment at all), so the old loop fell through to emit_allow with a
 # false "vault-lint engine" reason. Requiring at least one segment to
@@ -214,14 +213,14 @@ assert "non-Bash tool"               PASS "$(decide "$(printf '{"tool_name":"Rea
 assert "bare cd (nav-only, no engine)" PASS "$(decide "$(j_bash "cd /tmp")")"
 assert "cd && pushd (nav-only, no engine)" PASS "$(decide "$(j_bash "cd /tmp && pushd /himmel")")"
 
-# HIMMEL-1682 CR round 5 Major (finding 1): path_is_rooted_engine must compare
+# path_is_rooted_engine must compare
 # the POSIX form EXACTLY. Folding case on every platform let a case-mismatched
 # POSIX path (a DIFFERENT file on a case-sensitive filesystem) collect the
 # grant. ROOT is the hook's own POSIX root (derived the same way the hook
 # derives ENGINE_ROOT_POSIX); flip the case of one path segment so the
 # candidate is neither the exact POSIX root nor (since it still starts with
 # "/", not a drive letter) the mixed-form root.
-# HIMMEL-1682 CR r7 (Minor): flip the LAST path segment of ROOT, not a
+# Flip the LAST path segment of ROOT, not a
 # hardcoded "/himmel/" inner segment. ROOT comes from `cd ... && pwd` (no
 # trailing slash), so on a checkout whose final dir is "himmel" the old
 # `s@/himmel/@/Himmel/@` never matched, this took the SKIP branch, and the
@@ -241,7 +240,7 @@ fi
 # only used the mixed/Windows form) must still be granted.
 assert "POSIX form, exact case -> allowed" ALLOW "$(decide "$(j_bash "python \"${ROOT}/${ENG}\" vault")")"
 
-# HIMMEL-1682 CR round 8 (panel codex-1, Important): on a POSIX host WITHOUT
+# On a POSIX host WITHOUT
 # cygpath, the cygpath branch is skipped so ENGINE_ROOT_MIXED collapses to
 # ENGINE_ROOT_POSIX — making the mixed-form case-insensitive compare a
 # case-insensitive RE-compare of the POSIX path. That auto-allows a case-twin
@@ -260,7 +259,7 @@ else
     echo "SKIP cygpath-less case-twin refusal — ROOT's last segment has no letters to flip ($ROOT)" >&2
 fi
 
-# HIMMEL-1682 CR round 5 Major (finding 2): a trailing bare `&` must not slip
+# A trailing bare `&` must not slip
 # past as an empty segment the main loop skips — that let the shell run the
 # granted engine detached in the background, defeating this PR's own
 # run_in_background deny.
@@ -273,9 +272,8 @@ assert "quoted & inside an argument -> still allowed" ALLOW "$(decide "$(j_bash 
 # && (logical AND) is a distinct, pre-existing, unaffected code path.
 assert "&& logical-AND still splits (unaffected)" PASS "$(decide "$(j_bash "python \"${ABS}\" vault && rm foo")")"
 
-# HIMMEL-1682 leg-16 (codex-adv HIGH, judge-accepted): after this hook
-# validated the interpreter + rooted engine path, it used to auto-approve
-# EVERY remaining argument. In the cadence's own unattended threat model
+# After this hook validates the interpreter + rooted engine path it must not
+# auto-approve EVERY remaining argument. In the cadence's own unattended threat model
 # (prompt injection from untrusted vault clips), an injected trailing
 # `--config <file>` reaches vault_lint.py, whose config-loaded report_path is
 # join()'d without containment and opened "w" — an arbitrary user-writable
@@ -308,7 +306,7 @@ assert "../ traversal arg -> refused" PASS "$(decide_with_hook "$HOOK" "$(j_bash
 assert "SKILL.md canonical form, absolute vault == cwd -> allowed" ALLOW "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" \"${VAULT_FIXTURE_MIXED}\"" "$VAULT_FIXTURE_MIXED")")"
 assert "SKILL.md canonical form, vault == \".\" (cwd-relative) -> allowed" ALLOW "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" \".\"" "$VAULT_FIXTURE_MIXED")")"
 
-# HIMMEL-1682 leg-16 round 2 (gate panel + codex-adv): a literal-looking
+# A literal-looking
 # RELATIVE trailing arg still passes arg_is_vault_safe's `..`/`$` checks but
 # shell-EXPANDS outside the vault at runtime via tilde/brace/glob expansion.
 # None of these must auto-allow -- they fall through to the normal
@@ -316,13 +314,13 @@ assert "SKILL.md canonical form, vault == \".\" (cwd-relative) -> allowed" ALLOW
 assert "tilde-expansion vault arg -> refused"  PASS "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" \"~/private-vault\"" "$VAULT_FIXTURE_MIXED")")"
 # Built in a variable first: bash 3.2 (macOS) brace-expands a quoted `{a,b}` written
 # inside a "$(...)" nested in another "$(...)", so the hook would receive `"a"`
-# and the case would test nothing (HIMMEL-3177).
+# and the case would test nothing.
 BRACE_CMD="python \"${ABS}\" \"{a,b}\""
 assert "brace-expansion vault arg -> refused"  PASS "$(decide_with_hook "$HOOK" "$(j_bash_cwd "$BRACE_CMD" "$VAULT_FIXTURE_MIXED")")"
 assert "glob (*) vault arg -> refused"         PASS "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" \"*.md\"" "$VAULT_FIXTURE_MIXED")")"
 assert "glob ([...]) vault arg -> refused"     PASS "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" \"foo[0-9]\"" "$VAULT_FIXTURE_MIXED")")"
 
-# --- HIMMEL-2124: harvest/triage/ig-media-enrich cadence engines + scoped
+# --- harvest/triage/ig-media-enrich cadence engines + scoped
 # gh-api read approval. Fixtures mirror the vault-lint ones above (ROOT /
 # ROOT_MIXED / VAULT_FIXTURE_MIXED already derived).
 HARVEST_ENG="marketplace/plugins/obsidian-triage/tools/harvest-clip-body-batch.py"
@@ -331,7 +329,7 @@ EVIDENCE_KIND_ENG="marketplace/plugins/obsidian-triage/tools/lib/evidence-kind.m
 DAILY_TIMELINE_ENG="marketplace/plugins/obsidian-triage/tools/daily-timeline.mjs"
 IG_MEDIA_FETCH_ENG="marketplace/plugins/obsidian-triage/tools/ig-media-fetch.py"
 ENSURE_DEPS_ENG="marketplace/plugins/obsidian-triage/tools/ensure-deps.sh"
-# HIMMEL-2124 acceptance-leg gap (2026-08-26): the two X/reddit enrich rungs.
+# The two X/reddit enrich rungs.
 FXTWITTER_ENG="marketplace/plugins/obsidian-triage/tools/fxtwitter-enrich.mjs"
 REDDIT_ENRICH_ENG="marketplace/plugins/obsidian-triage/tools/reddit-enrich.mjs"
 HARVEST_ABS="${ROOT_MIXED}/${HARVEST_ENG}"
@@ -362,7 +360,7 @@ assert "harvest-clip-body-batch.py: uv run --python . (dot version) -> refused" 
 assert "harvest-clip-body-batch.py: uv run --python .. (dotdot version) -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "uv run --python .. python \"${HARVEST_ABS}\" --dry-run" "$VAULT_FIXTURE_MIXED")")"
 
-# HIMMEL-2124 RETASK R2124A: ig-media-fetch.py's documented invocation is
+# ig-media-fetch.py's documented invocation is
 # `PYTHONUTF8=1 uv run --python 3.12 python <script>` (commands/
 # ig-media-enrich.md:88,132,178,183, README.md:118) -- the uv-run prefix and
 # the single literal PYTHONUTF8=1 lead-in both had to widen to cover it.
@@ -389,7 +387,7 @@ assert "ig-media-fetch.py: python + --limit" ALLOW \
 assert "ensure-deps.sh: bare bash invocation" ALLOW \
     "$(decide "$(j_bash "bash \"${ENSURE_DEPS_ABS}\"")")"
 
-# HIMMEL-2124 acceptance-leg gap (2026-08-26): fxtwitter-enrich.mjs /
+# fxtwitter-enrich.mjs /
 # reddit-enrich.mjs, each via its documented invocation (tools/README.md:60-62,
 # 153-154 for fxtwitter; the reddit-enrich.mjs usage string for reddit).
 assert "fxtwitter-enrich.mjs: node + --vault/--dry-run" ALLOW \
@@ -408,7 +406,7 @@ assert "ig-media-fetch.py: relative (unanchored) -> refused" PASS \
 assert "fxtwitter-enrich.mjs: right suffix, wrong root -> refused" PASS \
     "$(decide "$(j_bash "node \"C:/tmp/evil/${FXTWITTER_ENG}\" --vault vault")")"
 
-# HIMMEL-2124 acceptance-leg gap: excluded/unknown flag, and wrong-binary
+# Excluded/unknown flag, and wrong-binary
 # (python against a node-pinned .mjs suffix -- script_matches_engine's bin
 # pinning must refuse it regardless of flag_is_safe).
 assert "fxtwitter-enrich.mjs: unenumerated flag --scrape-config -> refused" PASS \
@@ -426,12 +424,10 @@ assert "uv run against vault_lint (wrong engine) -> refused" PASS \
 assert "harvest engine && rm segment -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${HARVEST_ABS}\" --dry-run && rm foo" "$VAULT_FIXTURE_MIXED")")"
 
-# --- gh api scoped read approval (HIMMEL-2124, SAFETY MODEL point 7).
-# RETASK R2124A (3rd review round): rewritten from a denylist (name each
-# dangerous flag) to an ALLOWLIST (name each safe flag) after the denylist
-# shape failed three rounds running (-X/-f/--method/--hostname enumerated
-# one at a time, then --raw-field missed, then a backslash-escaped
-# `--met\hod` evaded the literal-string comparison). Every pin below either
+# --- gh api scoped read approval (SAFETY MODEL point 7).
+# An ALLOWLIST (name each safe flag), not a denylist (name each dangerous
+# flag): a denylist misses forms such as --raw-field or a backslash-escaped
+# `--met\hod` evading the literal-string comparison. Every pin below either
 # stays on the small safe-flag allowlist (--jq/-q, --paginate, --cache,
 # --slurp, -H/--header) -> ALLOW, or is anything else at all -> REFUSE, with
 # no per-flag enumeration needed on the refuse side. ---
@@ -481,7 +477,7 @@ assert "gh api repos/... glued quoted \"-XPOST\" -> refused" PASS \
     "$(decide "$(j_bash 'gh api repos/cli/cli "-XPOST"')")"
 
 # The same quote-classification gap, in segment_is_engine's trailing-arg loop:
-# a quoted excluded flag on a NEW (HIMMEL-2124) engine must still be refused,
+# a quoted excluded flag on a newly-enumerated engine must still be refused,
 # not waved through as a harmless-looking relative path.
 assert "harvest-clip-body-batch.py: quoted \"--config\" -> refused" PASS \
     "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${HARVEST_ABS}\" \"--config\" /tmp/evil.json" "$VAULT_FIXTURE_MIXED")")"
@@ -495,7 +491,7 @@ assert "harvest-clip-body-batch.py: quoted \"--config\" -> refused" PASS \
 assert "gh api endpoint with an embedded quoted separator -> still judged consistently" ALLOW \
     "$(decide "$(j_bash 'gh api "repos/x/y; echo hi"')")"
 
-# == plugin-cache root anchor (HIMMEL-2124) ==
+# == plugin-cache root anchor ==
 # obsidian-triage actually RUNS from the Claude Code plugin cache
 # (~/.claude/plugins/cache/himmel/obsidian-triage/<version>/...), not just
 # this checkout -- a leg session's emitted engine path legitimately resolves
@@ -509,7 +505,7 @@ touch "$FAKE_HOME/.claude/plugins/cache/himmel/obsidian-triage/0.9.9/tools/harve
 touch "$FAKE_HOME/.claude/plugins/cache/himmel/obsidian-triage/0.9.9/tools/ig-media-fetch.py"
 touch "$FAKE_HOME/.claude/plugins/cache/himmel/obsidian-triage/0.9.9/tools/lib/evidence-kind.mjs"
 touch "$FAKE_HOME/.claude/plugins/cache/himmel/obsidian-triage/0.9.9/skills/vault-lint/vault_lint.py"
-# HIMMEL-2124 acceptance-leg gap (2026-08-26): the two enrich rungs.
+# The two enrich rungs.
 touch "$FAKE_HOME/.claude/plugins/cache/himmel/obsidian-triage/0.9.9/tools/fxtwitter-enrich.mjs"
 touch "$FAKE_HOME/.claude/plugins/cache/himmel/obsidian-triage/0.9.9/tools/reddit-enrich.mjs"
 # Non-version dir basename -- same engine file, must NOT cache-anchor.
@@ -557,8 +553,7 @@ assert "cache root: evidence-kind.mjs -> allowed" ALLOW \
 assert "cache root: vault_lint.py -> allowed" ALLOW \
     "$(decide_with_hook_home "$HOOK" "$(j_bash_cwd "python \"${CACHE_ROOT_MIXED}/0.9.9/skills/vault-lint/vault_lint.py\" \".\"" "$VAULT_FIXTURE_MIXED")" "$FAKE_HOME")"
 
-# 4b. ALLOW — fxtwitter-enrich.mjs via the cache root (HIMMEL-2124 acceptance-
-# leg gap, 2026-08-26).
+# 4b. ALLOW — fxtwitter-enrich.mjs via the cache root.
 assert "cache root: fxtwitter-enrich.mjs -> allowed" ALLOW \
     "$(decide_with_hook_home "$HOOK" "$(j_bash_cwd "node \"${CACHE_ROOT_MIXED}/0.9.9/tools/fxtwitter-enrich.mjs\" --vault \".\" --dry-run" "$VAULT_FIXTURE_MIXED")" "$FAKE_HOME")"
 
@@ -584,7 +579,7 @@ assert "cache root: version dir exists, engine file missing -> refused" PASS \
 assert "cache root: uv run against vault_lint (wrong engine) -> refused" PASS \
     "$(decide_with_hook_home "$HOOK" "$(j_bash_cwd "uv run python \"${CACHE_ROOT_MIXED}/0.9.9/skills/vault-lint/vault_lint.py\" \".\"" "$VAULT_FIXTURE_MIXED")" "$FAKE_HOME")"
 
-# --- HIMMEL-2176 (A18): --print-engine-list ---
+# --- --print-engine-list ---
 # himmelctl status (a later PR) shells out to this flag instead of a copied
 # literal list, so the flag's output must be derived from -- and asserted
 # against -- the hook's OWN ENGINE_LIST construction, never a re-typed

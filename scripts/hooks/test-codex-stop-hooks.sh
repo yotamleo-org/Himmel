@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test (HIMMEL-599): himmel's SessionEnd hooks must FIRE under Codex
+# Regression test: himmel's SessionEnd hooks must FIRE under Codex
 # via the Stop lifecycle event.
 #
 # Background. himmel has three SessionEnd hooks: refresh-where-are-we-on-end +
@@ -7,7 +7,7 @@
 # $CLAUDE_PROJECT_DIR) and end-session-wiki (user-scope settings-template via
 # run-pwsh.sh + the .sh twin). Under Codex none of them ran: .codex/hooks.json had
 # no Stop key, and the plugin wrapper's $CLAUDE_PROJECT_DIR is unset under Codex
-# (the same no-op class HIMMEL-596 fixed for SessionStart). Fix: wire all three
+# (the same no-op class already fixed for SessionStart). Fix: wire all three
 # into .codex/hooks.json Stop via run-hook.sh --sandbox.
 #
 # Stop is SIDE-EFFECTING, not context-injecting. The authoritative Codex
@@ -32,7 +32,7 @@
 #      (proves the Stop branch is taken, not the additionalContext wrap, and that an
 #      advisory hook never blocks teardown).
 #   3) BEHAVIORAL positive (jira-nudge gate ON, hermetic temp git repo) - since
-#      HIMMEL-661 the hook full-body-detaches, so the adapter surfaces NO nudge
+#      the hook full-body-detaches, so the adapter surfaces NO nudge
 #      text on stdout or stderr; this case polls a stubbed relay-command log for
 #      the ticket and separately asserts stdout stays empty (nothing reaches the
 #      Codex Stop decision parser).
@@ -85,7 +85,7 @@ wired_cmd() {
 # A minimal Codex end-side input payload. $1 = cwd, $2 = transcript_path
 # (empty -> null), $3 = event name (default Stop). The event is a PARAMETER
 # because the adapter branches on `hook_event_name`: telegram-session-end is
-# wired to SessionEnd (HIMMEL-2021), so smoking it with a Stop payload would
+# wired to SessionEnd, so smoking it with a Stop payload would
 # leave the adapter's SessionEnd dispatch untested.
 stop_payload() {
   _sp_ev="${3:-Stop}"
@@ -112,7 +112,7 @@ hook_event() {
 # a gated-OFF assertion into a false red. Gate vars are then set explicitly per case.
 ENV_CLEAN="-u CLAUDE_PROJECT_DIR -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_OVERNIGHT -u HIMMEL_INITIATIVE -u HIMMEL_WHERE_ARE_WE -u HIMMEL_JIRA_NUDGE"
 
-# telegram-session-end joined the end set in HIMMEL-2021 (the operator-reaching
+# telegram-session-end is in the end set (the operator-reaching
 # relay a Codex session previously ended without). It is the one member NOT on
 # Stop: Codex fires Stop on every assistant TURN, and the queue cannot collapse
 # that (detach_queued drains stdin, so entryKey has no session dimension and
@@ -155,7 +155,7 @@ fi
 # jira-nudge's `[ -d cwd ]` precondition holds before it exits at the gate).
 # Two more explicit gates, both for telegram-session-end: an EMPTY
 # TELEGRAM_GROUP_CHAT_ID is that hook's deliberate-suppression contract
-# (HIMMEL-1926) and must never fall back to the repo .env, and a per-run
+# and must never fall back to the repo .env, and a per-run
 # HIMMEL_STOP_QUEUE_DIR keeps the enqueue off the operator's live queue so the
 # worker draining it is this test's own, inheriting that suppression, rather
 # than a long-lived worker from a real session.
@@ -164,7 +164,7 @@ for h in $STOP_HOOKS; do
   if [ -z "$cmd" ]; then bad "$h smoke: not wired (cannot run)"; continue; fi
   out="$TMP_ROOT/smoke-$h.out"
   # The payload's event matches the event this hook is WIRED to, so each smoke
-  # exercises the adapter branch that will actually run it (HIMMEL-2021).
+  # exercises the adapter branch that will actually run it.
   ev="$(hook_event "$h")"
   payload="$(stop_payload "$REPO_ROOT" "" "$ev")"
   # shellcheck disable=SC2086 # $ENV_CLEAN flags + $cmd are intentional splits
@@ -181,7 +181,7 @@ done
 # == 3) Behavioral positive: jira-nudge gate ON -> detached relay fires ==
 # Hermetic temp git repo with a commit referencing TESTKEY-1 inside the session
 # window (transcript first-timestamp = far past), no breadcrumb, relay stubbed.
-# Since HIMMEL-661 the hook full-body-detaches: the adapter surfaces NO nudge
+# The hook full-body-detaches: the adapter surfaces NO nudge
 # text (parent returns ~0.1s, child stdout goes to /dev/null) — the operator
 # surface is the relay, so this case polls for the stubbed relay's marker
 # written by the detached child.

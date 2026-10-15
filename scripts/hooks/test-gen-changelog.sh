@@ -32,7 +32,7 @@ setup_commits() {
   git -C "$R" commit -q --allow-empty -m "fix: baseline bug fix"
 }
 
-# Fixture: version-tag grouping (HIMMEL-2250). v0.1.0 is a real version tag;
+# Fixture: version-tag grouping. v0.1.0 is a real version tag;
 # recovered-stash mimics the non-version tags this repo actually carries
 # (recovery stashes etc.) and must NOT get a section of its own.
 setup_tagged_commits() {
@@ -48,7 +48,7 @@ setup_tagged_commits() {
   git -C "$R" commit -q --allow-empty -m "feat: newest thing"
 }
 
-# Fixture: Finding-2 repro (HIMMEL-2250 CR) — a backfilled ANNOTATED tag on an
+# Fixture: Finding-2 repro — a backfilled ANNOTATED tag on an
 # OLDER commit gets a newer creatordate than a lightweight tag on a NEWER
 # commit; `--sort=-creatordate` would order it first and compute the
 # `<prev>..<tag>` ranges against the wrong predecessor.
@@ -81,7 +81,7 @@ run_test() {
   else
     printf '  FAIL  %s (subshell rc=%s)\n' "$name" "$rc"
     # A bare "subshell rc=N" hid why every generation failed on the macOS
-    # nightly (HIMMEL-3177); show the body's stderr so the next run says why.
+    # nightly; show the body's stderr so the next run says why.
     sed -n '1,20s/^/        stderr: /p' "$errf"
     _failures=$((_failures + 1))
   fi
@@ -115,7 +115,7 @@ run_test "output is end-of-file-fixer clean (single trailing newline)" '
 '
 
 # ---------------------------------------------------------------------------
-# Step 2: HIMMEL-2250 — version-tag grouping + --check staleness mode
+# Step 2: version-tag grouping + --check staleness mode
 # ---------------------------------------------------------------------------
 
 run_test "tagless output unchanged (single Unreleased, no version headings)" '
@@ -160,7 +160,7 @@ run_test "--check exits 0 when current, 1 when stale, writes nothing" '
 '
 
 # ---------------------------------------------------------------------------
-# Step 3: CR-round regression cases (HIMMEL-2250 findings 1, 2, 4)
+# Step 3: regression cases
 # ---------------------------------------------------------------------------
 
 run_test "--check reports the true entry count when a new commit opens a new section" '
@@ -212,8 +212,8 @@ run_test "pre-release tag (v0.1.0-rc.1) DOES get a changelog section" '
 '
 
 # ---------------------------------------------------------------------------
-# Step 5: CR round 3 -- misleading-zero drift message + same-commit tag
-# tie-break (HIMMEL-2250 findings 1, 2)
+# Step 5: misleading-zero drift message + same-commit tag
+# tie-break
 # ---------------------------------------------------------------------------
 
 run_test "tag-only drift (no new commits) reports true staleness, not a misleading zero count" '
@@ -246,7 +246,7 @@ run_test "same-commit fold keeps a pre-release at a DIFFERENT commit and a diffe
 '
 
 # ---------------------------------------------------------------------------
-# Step 6: HIMMEL-2363 -- a version tag on a side branch (not an ancestor of
+# Step 6: a version tag on a side branch (not an ancestor of
 # HEAD) outranks the real latest release by raw `git rev-list --count`,
 # corrupting release ranges: already-released commits reappear under
 # `## [Unreleased]` AND under their real release section.
@@ -363,7 +363,7 @@ setup_slow_merge_base() {
   chmod +x "$R/shim/git"
 }
 
-# HIMMEL-2376 (private-repo #2077): the merge-base sentinel from HIMMEL-2363 had
+# The merge-base sentinel had
 # no signal trap, so an interrupted run left `gen-changelog-mb-err.*` behind in
 # TMPDIR. The wait-for-sentinel loop below is a NEGATIVE CONTROL, not politeness:
 # it FAILS the case when the sentinel never appears, so a run that never reached
@@ -384,9 +384,9 @@ run_test "HIMMEL-2376: an interrupted run leaves no merge-base sentinel behind" 
   ! ls "$TMPDIR"/gen-changelog-mb-err.* >/dev/null 2>&1
 '
 
-# HIMMEL-2379: bash defers a trapped signal while it waits on a synchronous
+# Bash defers a trapped signal while it waits on a synchronous
 # child, so a git that never returns kept the script alive and leaked its temp
-# files despite the HIMMEL-2376 trap. The stand-in child is UNBOUNDED (it blocks
+# files despite the trap. The stand-in child is UNBOUNDED (it blocks
 # until killed, never a finite sleep), so a pass cannot be a lucky timeout; the
 # stub is always killed on the way out and every wait here is bounded.
 run_test "HIMMEL-2379: TERM while git hangs exits promptly and removes the temp files" '
@@ -418,7 +418,7 @@ run_test "HIMMEL-2379: TERM while git hangs exits promptly and removes the temp 
   ! ls "$TMPDIR"/gen-changelog.* >/dev/null 2>&1
 '
 
-# HIMMEL-2379 (CR codex-1): the hung git can sit several shells deep -- the tag
+# The hung git can sit several shells deep -- the tag
 # filter runs git inside a process-substitution pipeline -- so killing only
 # generate()'s direct children left it running after the script exited.
 run_test "HIMMEL-2379: TERM while a NESTED git hangs also kills the git process" '

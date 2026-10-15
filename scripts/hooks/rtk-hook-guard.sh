@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rtk-hook-guard.sh — wrapper around `rtk hook claude` (HIMMEL-241).
+# rtk-hook-guard.sh — wrapper around `rtk hook claude`.
 #
 # ROOT CAUSE this kills: the rtk PreToolUse hook rewrites `find …` to
 # `rtk find …`, but `rtk find` REJECTS compound predicates/actions at
@@ -10,14 +10,14 @@
 # '*/_done/*' -not -name _deferred.md`, so the rewrite silently breaks
 # every pipeline run.
 #
-# Fix (HIMMEL-241 option 1): register THIS script as the PreToolUse hook
+# Fix: register THIS script as the PreToolUse hook
 # instead of bare `rtk hook claude`. It delegates to rtk, and only when
 # rtk rewrote the command to `rtk find …` AND that command uses a
 # predicate rtk rejects (-not/-exec/-o/-a/-delete/!/\(…\)) or silently
 # drops (-prune), it suppresses the rewrite — empty output means the
 # original command runs unmodified through the normal permission flow.
 # Simple finds and other commands keep rtk's rewrite verbatim, except
-# claudex git rewrites (HIMMEL-2953; see the lane suppression below).
+# claudex git rewrites (see the lane suppression below).
 #
 # Rejected-token set verified against rtk 0.40.0 (see
 # test-rtk-hook-guard.sh). -prune is included although rtk only warns
@@ -42,7 +42,7 @@ command -v rtk >/dev/null 2>&1 || exit 0
 out=$(printf '%s' "$payload" | rtk hook claude 2>/dev/null) || exit 0
 [ -n "$out" ] || exit 0
 
-# HIMMEL-2953: the claudex classifier cannot establish the executable behind
+# the claudex classifier cannot establish the executable behind
 # `rtk git`. Keep git in its original permission flow, never emit an allow.
 # CLAUDE_CONFIG_DIR is exported by claude-codex, including non-headed launches.
 # Scan conservatively before extraction so missing jq / output-shape drift
@@ -58,7 +58,7 @@ if [ "${config_dir##*/}" = ".claude-codex" ]; then
     esac
 fi
 
-# HIMMEL-3283: Claude Code's own worktree-isolation screen refuses a command
+# Claude Code's own worktree-isolation screen refuses a command
 # that runs `rtk` with git among its operands ("what runs it ... cannot be read
 # here"), and this rewrite hands it exactly that. Measured over the local
 # transcripts: 0 of 8701 rtk-rewritten git calls refused in unpinned sessions,
@@ -73,10 +73,10 @@ fi
 # own worktree is never refused.
 # ponytail: `.claude/worktrees/` is the only worktree root recognised — a
 # worktree elsewhere (`git worktree add ../x`) keeps the rewrite, so a pinned
-# session there can still be refused. The backslash arm below (HIMMEL-3362)
+# session there can still be refused. The backslash arm below
 # is exercised only by Linux-simulated payloads (a literal backslash cwd
 # string) — reproduction on an actual Windows harness is still unconfirmed
-# (HIMMEL-3125, Windows is alpha).
+# (Windows is alpha).
 case "$out" in
 *git*)
     wt_cwd=""
@@ -104,7 +104,7 @@ case "$out" in
     ;;
 esac
 
-# Extract the rewritten command VALUE and scan only that (HIMMEL-264).
+# Extract the rewritten command VALUE and scan only that.
 # Scanning rtk's whole JSON output was brittle to output-shape drift: a
 # future permissionDecisionReason containing "-not" would suppress a
 # safe rewrite (lost savings), and a renamed command field would

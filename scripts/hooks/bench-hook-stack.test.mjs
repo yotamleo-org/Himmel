@@ -1,4 +1,4 @@
-// Spec for the hook-stack benchmark + the HIMMEL-1985 timeout invariant.
+// Spec for the hook-stack benchmark + the hook timeout invariant.
 //
 // Scope (operator, 2026-08-20): pin OUR contract — the report shape the
 // re-benchmark recipe in docs/internals/enforcement.md tells a reader to
@@ -239,7 +239,7 @@ test('SKIP covers every hook that emits something outbound and irreversible', ()
 });
 
 // Resolve EVERY script a hook command ultimately runs, expanding the two path
-// variables the configs use. Plural since HIMMEL-2002: a --chain entry runs
+// variables the configs use. Plural: a --chain entry runs
 // several scripts from one launcher, and scanning only the tail one would let a
 // chained hook reach outbound unscanned. The launcher itself is excluded — it
 // is the wrapper, not a guardrail.
@@ -346,16 +346,16 @@ for (const config of CONFIGS) {
     const untimed = hooks.filter((h) => h.timeout === null).map((h) => labelFor(h.command));
     assert.deepEqual(untimed, [], `left on Claude Code's 600s default: ${untimed.join(', ')}`);
     // The policy is a small closed SET, not a range: 15s fast tier, 60s
-    // external-call tier, plus the 10/20/30s bounds that predate HIMMEL-1985
-    // and are deliberately grandfathered. A range check would silently bless a
+    // external-call tier, plus the 10/20/30s bounds, which are deliberately
+    // grandfathered. A range check would silently bless a
     // 7s or 45s one-off and let the documented tiers rot.
     //
-    // 3s is the fail-open ADVISORY-GUARD tier added by HIMMEL-2480: a hook that
+    // 3s is the fail-open ADVISORY-GUARD tier: a hook that
     // exits 0 when its tool is absent and whose only job is to nudge is priced
     // to get out of the way, not to finish. Adding the tier here — rather than
-    // raising the hook's timeout into an existing one — is the fix for
-    // HIMMEL-2496, because raising it would undo exactly the pricing 2480
-    // landed. It sits ON the headroom floor asserted below (1000 * 3 / 1000),
+    // raising the hook's timeout into an existing one — is the fix,
+    // because raising it would undo exactly the pricing this tier
+    // sets. It sits ON the headroom floor asserted below (1000 * 3 / 1000),
     // so it is the smallest tier this policy can ever admit.
     const ALLOWED = [3, 10, 15, 20, 30, 60];
     const outOfBand = hooks.filter((h) => !ALLOWED.includes(h.timeout));
@@ -365,7 +365,7 @@ for (const config of CONFIGS) {
   });
 }
 
-// ------------------------------------------- HIMMEL-1843: the Bash matcher count
+// ------------------------------------------- the Bash matcher count
 
 // A Bash tool call fires every PreToolUse group whose matcher pattern matches
 // Bash — not just the literal `Bash` matcher. Verified against
@@ -375,7 +375,7 @@ for (const config of CONFIGS) {
 // (shadow-ledger.mjs, invoked directly — not through the chain dispatcher),
 // and `Bash|Monitor` (block-subagent-park.sh) — each its own cold node
 // process, so the real per-Bash-call cost is 4 process starts, not the 1 a
-// reader of only the `Bash` chain would assume. HIMMEL-4569 added a second `*`
+// reader of only the `Bash` chain would assume. A second `*`
 // group (guard-leg-context-handoff.sh) — its own process because
 // auto-arm-on-cap.sh stays out of every chain — so the count is now 5. Docs:
 // docs/internals/hook-cost-baseline.md. Pins the count so a future matcher

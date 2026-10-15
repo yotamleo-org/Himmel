@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic test for scripts/hooks/jira-nudge-on-end.sh (HIMMEL-618).
+# Hermetic test for scripts/hooks/jira-nudge-on-end.sh.
 #
 # Builds a throwaway git repo + transcript + breadcrumb under a redirected HOME
 # and drives the SessionEnd hook across the detection matrix. Asserts the hook
@@ -15,7 +15,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -39,7 +39,7 @@ STUB_DIR="$ROOT_TMP/stubs"
 mkdir -p "$STUB_DIR"
 TRIPWIRE="$ROOT_TMP/node-was-called"
 REAL_NODE="$(command -v node 2>/dev/null || true)"
-# HIMMEL-2004: the hook now legitimately runs node — it enqueues its detached
+# the hook now legitimately runs node — it enqueues its detached
 # body on the bounded Stop queue instead of spawning its own tree. The wire this
 # stub exists to trip is the JIRA CLI (`node .../scripts/jira/dist/index.js`),
 # so only a jira invocation is recorded; every other call is handed to the real
@@ -118,7 +118,7 @@ build_case() {
 # ---- run helper ------------------------------------------------------------
 # run_hook <gate> <initiative> → echoes stdout
 # Drives the hook in CHILD MODE (`__himmel_detached <payload-file>`) — the
-# production parent full-body-detaches (HIMMEL-661) and its stdout goes to
+# production parent full-body-detaches and its stdout goes to
 # /dev/null, so the detection matrix asserts on the child's direct stdout.
 # The parent path itself is covered by the fast-return + relay cases below.
 run_hook() {
@@ -199,7 +199,7 @@ build_case "$PAST" "feat/HIMMEL-123" "did work" 0 0 || exit 1
 OUT="$(run_hook 1 "")"
 assert_no_nudge "unresolved-key suppresses" "$OUT"
 
-# 8b. PARENT MODE end-to-end (HIMMEL-635 + HIMMEL-661): drive the production
+# 8b. PARENT MODE end-to-end: drive the production
 #     entry path (piped payload, no child-mode args) through the real Telegram
 #     branch (no JIRA_NUDGE_RELAY_CMD seam) with a `curl` stub that DROPS A
 #     MARKER then sleeps past the hook budget. The parent must return FAST
@@ -231,7 +231,7 @@ CURLEOF
     mkdir -p "$TMPDIR_8B"
     _t0=$(date +%s)
     # HIMMEL_STOP_QUEUE_OFF: this case times the hook's own relay through a PATH
-    # stub, and since HIMMEL-2004 the production parent hands that child to the
+    # stub, and the production parent hands that child to the
     # bounded Stop queue — a node worker whose spawn does not reproduce this
     # fixture's stubbed PATH faithfully enough to time. The relay contract is
     # what is under test here, so exercise it on the legacy detach path; the
@@ -290,7 +290,7 @@ OUT="$(env -u JIRA_PROJECT_KEY \
 assert_nudge "neither-channel still nudges stdout (child mode)" "$OUT"
 if [ ! -f "$PF_8C" ]; then pass "child deletes its payload temp file"; else fail "child deletes its payload temp file"; fi
 
-# 8d. Full-body detach keeps the PARENT fast (HIMMEL-661). The discriminating
+# 8d. Full-body detach keeps the PARENT fast. The discriminating
 #     test: inject latency at the START of the child body (JIRA_NUDGE_TEST_DELAY)
 #     — BEFORE the gate check — so a regression that un-detaches the body would
 #     block the parent for 12s and fail the fast-return assertion. Gate is OFF

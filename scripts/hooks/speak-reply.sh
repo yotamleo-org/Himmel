@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop hook: speak the reply through the local voice daemon (HIMMEL-1522). BETA.
+# Stop hook: speak the reply through the local voice daemon. BETA.
 #
 # OFF BY DEFAULT, and deliberately so. This is a FEATURE GATE, not a setting we
 # expect to leave on: it exists so voice can be tried per-session while the real

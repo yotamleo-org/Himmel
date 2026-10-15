@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Cadence-scoped PreToolUse Bash DENY hook for run_in_background (HIMMEL-1682 S2b).
+# Cadence-scoped PreToolUse Bash DENY hook for run_in_background.
 #
 # WHY: unattended cadence legs have twice elected to background a slow step
 # ("find is slow on this filesystem", "waiting for the media fetch") and then
 # wait for a task notification that an unattended run can never act on — parking
-# forever and recording a vacuous "complete". Decisive evidence (HIMMEL-1682): a
+# forever and recording a vacuous "complete". Decisive evidence: a
 # 15,373-file vault scan takes ~2s on this filesystem, so the "slow" excuse was a
 # confabulation; the parking is a BEHAVIOURAL default (the session electing to
 # background work), not a genuine performance problem. This is the second+ drift
@@ -23,7 +23,7 @@
 #     behaviour-shaping hook, not a security floor, so a parse hiccup must NOT
 #     block the whole cadence.
 #   * exit 2 is the deny form whose precedence over a hook "allow" is guaranteed
-#     (HIMMEL-203: "a deny rule and an exit-2 hook WIN over a hook allow"), so a
+#     ("a deny rule and an exit-2 hook WIN over a hook allow"), so a
 #     backgrounded command that auto-approve-safe-bash would otherwise grant is
 #     still denied. Wired FIRST in cadence-settings.json for clarity.
 #   * Wired ONLY in cadence-settings.json (--settings for cadence runs), so

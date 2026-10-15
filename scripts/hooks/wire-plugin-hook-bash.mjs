@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// hooks/wire-plugin-hook-bash.mjs — sanctioned plugin wiring chokepoint (HIMMEL-1526).
+// hooks/wire-plugin-hook-bash.mjs — sanctioned plugin wiring chokepoint.
 // Kept separate from wire-hook-bash.mjs because installed-plugin commands use
 // CLAUDE_PLUGIN_ROOT plus optional project-local targets, a different grammar.
 
@@ -17,11 +17,11 @@ const EXPECTED_COUNTS = Object.freeze({
 const EXPECTED_HOOKS = Object.freeze([
   { event: 'PreToolUse', script: 'inject-minerva-critic.sh', source: 'plugin' },
   { event: 'PreToolUse', script: 'block-docker-privesc.sh' },
-  // HIMMEL-5282: infra, database and docker destroy verbs (audit gap G9).
+  // infra, database and docker destroy verbs (audit gap G9).
   { event: 'PreToolUse', script: 'block-infra-destroy.sh' },
   { event: 'PreToolUse', script: 'block-merged-pr-commit.sh' },
   { event: 'PreToolUse', script: 'block-unresolved-cr-merge.sh' },
-  // HIMMEL-1649 [codex-adv-1]: fail CLOSED when this hook is missing AND the
+  // Fail CLOSED when this hook is missing AND the
   // session is a DISPATCHED WORKER. `--optional` alone exits 0 on a missing
   // script, so a worker holding Edit(<worktree>/**) + Bash(node *)/Bash(bash *)
   // could DELETE this file — one command — and silently disable the guard for
@@ -30,8 +30,8 @@ const EXPECTED_HOOKS = Object.freeze([
   // by buildGlmEnv (scripts/telegram/glm-env.ts), which only the orchestrator
   // path reaches, and it asserts the session runs in a himmel worktree where
   // this hook is guaranteed present. Its absence is the NORMAL state for an
-  // interactive GLM session. Round 5 keyed this on ANTHROPIC_BASE_URL and
-  // BRICKED the interactive launcher: its documented primary workload runs with
+  // interactive GLM session. Keying this on ANTHROPIC_BASE_URL
+  // BRICKS the interactive launcher: its documented primary workload runs with
   // cwd in the luna vault, where the hook legitimately does not exist, so every
   // Bash/PowerShell/MCP call exited 2 before running — and the wrapper refuses
   // before the hook that reads GLM_EXTERNAL_WRITES_OK can bypass it.
@@ -43,23 +43,23 @@ const EXPECTED_HOOKS = Object.freeze([
   { event: 'PreToolUse', script: 'guard-implementor-dispatch.sh' },
   { event: 'PreToolUse', script: 'guard-console-dispatch.sh' },
   { event: 'PreToolUse', script: 'guard-subagent-model.sh' },
-  // HIMMEL-4328: plugin-shipped so it fires in a salus session too, where
+  // plugin-shipped so it fires in a salus session too, where
   // $CLAUDE_PROJECT_DIR/scripts/hooks/ does not exist.
   { event: 'PreToolUse', script: 'block-agent-native-egress.sh', source: 'plugin' },
-  // HIMMEL-4564: plugin-shipped because a judge's cwd is under ~/.cache, outside
+  // plugin-shipped because a judge's cwd is under ~/.cache, outside
   // any checkout, where project settings and $CLAUDE_PROJECT_DIR never load.
   { event: 'PreToolUse', script: 'guard-judge-writes.sh', source: 'plugin' },
   { event: 'SessionStart', script: 'inject-where-are-we.sh' },
   { event: 'SessionStart', script: 'inject-doc-freshness.sh' },
   { event: 'SessionStart', script: 'inject-worktree-nudge.sh' },
-  // HIMMEL-1666: pins every $CLAUDE_PROJECT_DIR-relative hook to its
+  // pins every $CLAUDE_PROJECT_DIR-relative hook to its
   // git-committed content before any tool call in the session can run, so
   // run-hook-with-bash.js can detect a worker rewriting a guard's on-disk
-  // content mid-session (the vector HIMMEL-1649's --fail-closed-when does not
+  // content mid-session (the vector --fail-closed-when does not
   // cover — that closes only the DELETE case). See run-hook-with-bash.js's
   // "hook integrity" section for the read side.
   { event: 'SessionStart', script: 'record-hook-integrity.sh' },
-  // HIMMEL-2526: records the PRIMARY checkout's tracked `git status
+  // records the PRIMARY checkout's tracked `git status
   // --porcelain` output at session start, keyed by session_id, so
   // detect-dirty-primary.sh (a PostToolUse hook in the PROJECT chain, not
   // this one — a Bash-mediated write bypasses block-edit-on-main.sh's
@@ -133,7 +133,7 @@ function unwiredCommand(expected) {
     return `bash "\${CLAUDE_PLUGIN_ROOT}/hooks/${expected.script}"`;
   }
   if (expected.failClosedWhen) {
-    // Derived from the entry, not hardcoded (HIMMEL-1649 round 5): a SECOND
+    // Derived from the entry, not hardcoded: a SECOND
     // fail-closed hook would otherwise generate a recognizer that probes
     // HIMMEL_LESSON_LOOP and names the lesson hook. Split on the FIRST '='
     // only — the value can itself contain '=' (a URL query, say). The `:-0`
@@ -158,18 +158,18 @@ function unwiredCommand(expected) {
 //   bash -c '. /tmp/probe.sh a b'   -> COUNT=2 ARGS=a b   rc=0
 // The dot-wired form silently dropped run-hook-with-bash.js and every hook
 // argument under dash — every guardrail this plugin wires was SILENTLY OFF
-// on any Debian/Ubuntu box (HIMMEL-2758). Running run-node.sh as a child
+// on any Debian/Ubuntu box. Running run-node.sh as a child
 // process instead of sourcing it fixes this: a child process always
 // receives its own argv regardless of which shell launches it.
 //
 // WHY `sh` and not a bare `node`: that launcher was unresolvable whenever
 // node fell off PATH (the nvm-windows migration window that dropped these
-// SessionEnd hooks silently — HIMMEL-2047). run-node.sh resolves node at
+// SessionEnd hooks silently). run-node.sh resolves node at
 // runtime (resolve-node.sh's resolve_node()) and execs it — the same helper
-// HIMMEL-2015 gave individual project hook scripts, applied here to the
+// project hook scripts use, applied here to the
 // launcher itself.
 //
-// WHY `sh` and not `bash`: HIMMEL-1516 banned the bare `bash` token from
+// WHY `sh` and not `bash`: the bare `bash` token is banned from
 // this inventory because of Windows PATH roulette (the WSL stub, the 0-byte
 // Store alias, the "Select an app to open 'bash'" modal). `sh` is not that:
 // Claude Code already runs the whole hook command through `sh -c`, so `sh`
@@ -195,14 +195,13 @@ function unwiredCommand(expected) {
 // bare-node fallback branch here at all, so the whole chain would simply be
 // dead. `command -p` is the POSIX-specified "search the standard utilities
 // PATH" form, so the launcher resolves from the system default whatever PATH
-// was inherited (critic-panel [codex-1], HIMMEL-2758 CR round 4).
+// was inherited.
 //
 // VENDORED into the plugin (marketplace/plugins/himmel-ops/hooks/run-node.sh
 // + resolve-node.sh, byte-identical to scripts/lib/'s copies — same pattern
 // run-hook-with-bash.js already uses), NOT sourced from
 // $CLAUDE_PROJECT_DIR/scripts/lib/: that path is attacker-controlled for any
-// project the plugin is active in, and CR round 2's critic-panel finding
-// [codex-1] (Critical) is right that sourcing an arbitrary project file
+// project the plugin is active in, and sourcing an arbitrary project file
 // there — unconditionally, ahead of run-hook-with-bash.js's own
 // `--optional` existsSync gate — would let an untrusted opened repo execute
 // code on every hook event. Routing through ${CLAUDE_PLUGIN_ROOT} instead
@@ -224,7 +223,7 @@ function wiredCommand(expected) {
   return `${launcher} --optional${failClosed} "$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"`;
 }
 
-// Pre-HIMMEL-2047 wired form: bare `node`, unresolvable if node is off PATH.
+// Legacy wired form: bare `node`, unresolvable if node is off PATH.
 // Recognised (as unwired, in rewritePluginHooksText below) so an
 // already-wired-the-old-way entry still migrates to wiredCommand() above.
 function legacyWiredCommand(expected) {
@@ -242,10 +241,10 @@ function legacyWiredCommand(expected) {
 // unwired, in rewritePluginHooksText below) so an already-wired-the-old-way
 // entry still migrates to wiredCommand() above.
 //
-//   `.`   pre-HIMMEL-2758: POSIX-unspecified for operands beyond the filename,
+//   `.`   POSIX-unspecified for operands beyond the filename,
 //         and dash (the plugin's worst case: /bin/sh on Debian/Ubuntu) drops
 //         them, silently no-op'ing every guardrail this plugin wires.
-//   `sh`  the first HIMMEL-2758 shape, superseded WITHIN the same ticket: a
+//   `sh`  a
 //         bare `sh` is a PATH lookup, so a host whose PATH excludes the
 //         shell's directory killed the whole chain at rc=127.
 //

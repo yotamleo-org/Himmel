@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Latency test for the PreToolUse Bash hook chain (HIMMEL-4678).
+# Latency test for the PreToolUse Bash hook chain.
 #
 # Usage: bash scripts/hooks/test-hook-chain-latency.sh
 #
@@ -21,12 +21,12 @@
 #     stays under P95_BUDGET_MS.
 #
 # Budgets, measured 2026-10-07 on the station at load average 8-10 with two
-# copies of this test running concurrently (HIMMEL-4678):
+# copies of this test running concurrently:
 #   * p95: the slowest member (block-write-into-main-checkout.sh) peaked at
 #     292 ms loaded; the budget is that x2 (the run-shell-tests.sh rule).
 #   * SCALE_MAX is a ratio, which load mostly cancels, so it is NOT doubled:
 #     the quadratic walkers this test was written against ran 9-14x. The pair is
-#     160 -> 640 lines (HIMMEL-4729): the UTF-8 pattern ops it fixed only went
+#     160 -> 640 lines: the UTF-8 pattern ops it fixed only went
 #     superlinear above about 20 KB, so the old 40 -> 160 pair could not see them.
 # Env overrides exist for slower boxes, never to make a red go green.
 #
@@ -85,7 +85,7 @@ payload() {  # payload <command> <file>
 }
 
 # A python heredoc of prose -- the shape that starved the chain on the station
-# (HIMMEL-2975's 15 KB heredoc): multibyte text, quotes on every line.
+# (a 15 KB heredoc): multibyte text, quotes on every line.
 prose() {  # prose <lines>
     local i out="python3 - <<'PYEOF'"$'\n'
     for ((i = 0; i < $1; i++)); do
@@ -93,8 +93,8 @@ prose() {  # prose <lines>
     done
     printf '%sPYEOF' "$out"
 }
-# 160 -> 640 lines (about 11 KB -> 45 KB): the superlinear UTF-8 pattern ops of
-# HIMMEL-4729 only show above about 20 KB, so the old 40 -> 160 pair hid them.
+# 160 -> 640 lines (about 11 KB -> 45 KB): the superlinear UTF-8 pattern ops
+# only show above about 20 KB, so the old 40 -> 160 pair hid them.
 payload "$(prose 160)" "$SANDBOX/small.json"
 payload "$(prose 640)" "$SANDBOX/big.json"
 
@@ -177,7 +177,7 @@ for m in $MEMBERS; do
     fi
 done
 
-# Pathological shapes (HIMMEL-5154). The prose heredoc above is the shape the
+# Pathological shapes. The prose heredoc above is the shape the
 # chain starved on, but each member has its own quadratic trap that prose never
 # reaches: a long multibyte word, quoted multibyte, a quote-dense line, a
 # `${...}` run, a `$"..."` run. One row per member, N and 4N repeats; a row

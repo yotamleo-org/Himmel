@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # refresh-where-are-we-on-end.sh — SessionEnd hook: refresh the where-are-we
-# ledger at session end so the NEXT session opens fresh (HIMMEL-572, L2 of epic
-# HIMMEL-514).
+# ledger at session end so the NEXT session opens fresh.
 #
 # This is the END-of-session counterpart to inject-where-are-we.sh (SessionStart):
 #   - SessionStart RENDERS synchronously from the existing ledger and spawns a
@@ -9,7 +8,7 @@
 #     - SessionEnd (here) refreshes the ledger reflecting the work just done, so the
 #     next session's SessionStart render is already current and its stale-spawn is
 #     redundant. It runs collect.mjs DETACHED (setsid/double-fork via lib/detach.sh)
-#     so session exit is not blocked; HIMMEL-576 proved such a child survives the
+#     so session exit is not blocked; such a child survives the
 #     hook's process-group teardown. The detached child stamps the freshness marker
 #     (mtime) the SessionStart render reads ONLY on success, so "refreshed Nh ago"
 #     reflects this end-of-session refresh.
@@ -38,21 +37,21 @@ set -euo pipefail
 # Always exit clean; never block session teardown on our own bug.
 trap 'exit 0' ERR
 
-# --- Full-body detach (HIMMEL-636) ------------------------------------------
+# --- Full-body detach ------------------------------------------
 # Re-exec ourselves DETACHED and return 0 instantly so the synchronous preamble
 # below (git rev-parse, .env load, node resolution) runs in the detached child
 # and can never race Claude Code's SessionEnd teardown timer — the residual
-# "Hook cancelled" that HIMMEL-623/635 left behind by detaching only the collect
+# "Hook cancelled" left behind by detaching only the collect
 # sub-step while the preamble still ran in the foreground. The child writes only
 # files (ledger + freshness marker), so deferring it loses no operator-visible
-# surface; HIMMEL-576 proved such a child survives the hook's process-group
+# surface; such a child survives the hook's process-group
 # teardown.
 if [ "${1:-}" != "__himmel_detached" ]; then
     # Drain stdin (SessionEnd pipes a JSON payload) so the contract doesn't break.
     if [ -t 0 ]; then :; else cat >/dev/null 2>&1 || true; fi
     # shellcheck source=/dev/null
     . "$(dirname "${BASH_SOURCE[0]}")/../lib/detach.sh"
-    # HIMMEL-2004: through the BOUNDED Stop queue, not a per-session tree. Same
+    # Through the BOUNDED Stop queue, not a per-session tree. Same
     # instant return; one worker drains it. detach_queued falls back to
     # detach_run wherever the queue is unavailable.
     detach_queued where-are-we-on-end bash "$0" __himmel_detached
@@ -103,7 +102,7 @@ mkdir -p "$_wa_dir" 2>/dev/null || exit 0
 
 # --- Refresh DETACHED; the child stamps the marker only on success ----------
 # Previously this blocked session exit (synchronous) because a detached job was
-# assumed to risk being reaped. HIMMEL-576 proved a setsid/double-fork child
+# assumed to risk being reaped. A setsid/double-fork child
 # survives the hook's process-group teardown, so we detach here too (consistent
 # with the SessionStart hook, which already spawns its refresh detached) and exit
 # immediately. The detached child runs `<collect> && touch marker`, so a failed

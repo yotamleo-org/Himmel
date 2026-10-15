@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PermissionDenied hook (HIMMEL-3724 §4c): appends one redacted JSON line per
+# PermissionDenied hook: appends one redacted JSON line per
 # denial to ~/.himmel/state/classifier-denials.jsonl, so tick.sh can surface a
 # classifier denial as an operator-visible event instead of a silent
 # re-dispatch.
@@ -44,8 +44,8 @@ session_id=$(printf '%s' "$input" | jq -r '.session_id // ""' 2>/dev/null) || ex
 tool=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null) || exit 0
 cwd=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null) || exit 0
 # The PermissionDenied payload carries the denial text in `reason` (Claude Code
-# hooks reference); `denial_reason` is the name this hook wrongly read until
-# HIMMEL-4681, kept as a fallback.
+# hooks reference); `denial_reason` is the name this hook wrongly read, kept as
+# A fallback.
 denial_reason=$(printf '%s' "$input" | jq -r '.reason // .denial_reason // ""' 2>/dev/null) || exit 0
 tool_input_flat=$(printf '%s' "$input" | jq -r '[.tool_input // {} | .. | strings] | join(" ")' 2>/dev/null) || exit 0
 

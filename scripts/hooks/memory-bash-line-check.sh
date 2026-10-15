@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# PostToolUse Bash hook (HIMMEL-4891): re-check the auto-memory MEMORY.md line
+# PostToolUse Bash hook: re-check the auto-memory MEMORY.md line
 # rule after a Bash command that names it.
 #
 # guard-memory-capture.sh only sees Write/Edit payloads; a heredoc, `sed -i`,
 # `tee` or `printf >>` reaches the index unseen, and an over-long routing line
-# was only caught a session later by the SessionStart state check (HIMMEL-3314).
+# was only caught a session later by the SessionStart state check.
 # A Bash command line is opaque, so this reads the FILE after the call, with
 # the same rule the guard uses (memory-line-check.sh, one definition).
 #

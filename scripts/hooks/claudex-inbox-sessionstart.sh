@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claudex-inbox-sessionstart.sh — SessionStart chain member (HIMMEL-2788),
+# claudex-inbox-sessionstart.sh — SessionStart chain member,
 # the "catches up a resumed session" half of the claudex file inbox. See
 # claudex-inbox-hook.sh (the PostToolUse half) for the full design note.
 #
@@ -15,7 +15,7 @@
 # commit only after successful delivery; concurrent invocations serialize.
 # A failed delivery stays pending for the next invocation.
 #
-# Fail OPEN: a lifecycle member is always advisory (HIMMEL-2003) and this
+# Fail OPEN: a lifecycle member is always advisory and this
 # script never exits non-zero.
 set -uo pipefail
 

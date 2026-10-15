@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/hooks/mcp-policy.sh (HIMMEL-4676): MCP call tracking plus
+# Tests for scripts/hooks/mcp-policy.sh: MCP call tracking plus
 # the gating seam.
 #
 #   observe (shipped): the hook NEVER denies — unknown server, unlisted tool,

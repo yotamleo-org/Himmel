@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install the client-side force-push floor into a .single-writer repo
-# (HIMMEL-5284, audit gap G11).
+# (audit gap G11).
 #
 # Usage: bash <himmel>/scripts/hooks/install-single-writer-floor.sh <repo-path>
 #
@@ -10,7 +10,7 @@
 #      check-single-writer-push-floor.sh (refuses a non-fast-forward push to
 #      main and a delete of main; fast-forwards still go through).
 #   2. .git/hooks/reference-transaction -- via install-main-ref-transaction.sh
-#      (the existing HIMMEL-2095 guard; a no-op in a .single-writer repo by
+#      (the existing guard; a no-op in a .single-writer repo by
 #      design, installed so the repo carries the same hook set as the himmel
 #      checkout and `himmel-doctor` C32 sees it).
 #
@@ -73,7 +73,7 @@ tmp=$(mktemp "$hooks_dir/.himmel-single-writer-floor.XXXXXX") || die "cannot cre
 cat > "$tmp" <<'HOOK' || { rm -f "$tmp"; die "cannot write $tmp"; }
 #!/usr/bin/env bash
 # himmel-single-writer-floor-v1
-# Shim installed by scripts/hooks/install-single-writer-floor.sh (HIMMEL-5284).
+# Shim installed by scripts/hooks/install-single-writer-floor.sh.
 # Static bytes; the target lives in `git config himmel-single-writer-floor.target`.
 # FAIL-CLOSED if the target is gone: this hook is the repo's only force-push
 # floor, so a pruned checkout must refuse loudly, never silently stop protecting.

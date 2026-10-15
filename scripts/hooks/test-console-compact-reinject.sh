@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/console-compact-reinject.sh (HIMMEL-2973 S1):
+# Smoke suite for scripts/hooks/console-compact-reinject.sh:
 # a console session gets its `## Live state` + `## Compact instructions`
 # re-injected verbatim on SessionStart:compact; every other session gets
 # NOTHING — that negative case is the one that matters most, since this hook
@@ -46,7 +46,7 @@ Carry the queue and last GO forward verbatim.
 DOC
 }
 
-# HIMMEL-3599: the HIMMEL_CONSOLE_DOC fast path is now gated on the
+# the HIMMEL_CONSOLE_DOC fast path is now gated on the
 # session's OWN -n name matching the doc's basename, never honored on its
 # own -- every fast-path case below runs as this fixed console identity.
 CMDLINE_SC="$TMP/cmdline-some-console"
@@ -207,12 +207,12 @@ esac
 echo "== HIMMEL-3599: a LEG/JUDGE session (own name NOT *-console) inherits a console's ambient HIMMEL_CONSOLE_DOC/WORKDIR -- must stay SILENT, never trust it =="
 # Reproduces the leak: headed-arm-leg.sh launches a leg/judge from a Bash
 # subprocess of the console's own claude process, which had HIMMEL_CONSOLE_DOC
-# set on ITS OWN env (HIMMEL-2973 S3, headed-arm.sh CONSOLE_ENV). Nothing
+# set on ITS OWN env (headed-arm.sh CONSOLE_ENV). Nothing
 # strips that var for a non-console role, so it rides along as ordinary
 # ambient env into the leg/judge's process -- exactly the shape this hook
 # must refuse. At base (pre-fix) the hook honored HIMMEL_CONSOLE_DOC BEFORE
 # ever checking the session's own name, so this printed the console's real
-# Live state (the HIMMEL-3599 judge-session leak). Fixed: it must print
+# Live state (the judge-session leak). Fixed: it must print
 # nothing.
 CMDLINE_LEG_LEAK="$TMP/cmdline-leg-leak"
 printf 'claude\0-n\0himmel-3599-legN1\0' > "$CMDLINE_LEG_LEAK"

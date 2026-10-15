@@ -2,11 +2,11 @@
 # read-clamp.sh — PreToolUse hook (matchers "Read|Grep" and "Bash"): denies a
 # whole-file Read/cat/sed/head of a file over HIMMEL_READ_CLAMP_LINES lines,
 # and denies a repeated Read of the exact same (path, offset, limit) triple,
-# inside a console-spawned leg-impl session (HIMMEL-2993).
+# inside a console-spawned leg-impl session.
 #
 # WHY: measured over 12 merged-PR leg sessions, repeated Reads of the same
 # file cost ~4.5% of a PR's token bill and whole-file reads ~2.2% (6.7%
-# together, the #2/#3 levers after HIMMEL-2990). The instructional layer
+# together, the #2/#3 levers). The instructional layer
 # (preface read-range sentence, #692) already exists; this is the structural
 # step (root CLAUDE.md "second drift -> hook").
 #
@@ -68,13 +68,13 @@ row=$(jq -r --arg sep "$SOH" '
 
 # Split by parameter expansion, NOT `IFS="$SOH" read`: bash 3.2 (macOS
 # /bin/bash) never splits on \001 -- CTLESC is its internal quote byte -- so
-# `read` returned the whole row in $tool and every gate below silently allowed
-# (HIMMEL-3177). block-read-secrets.sh splits the same way.
+# `read` returned the whole row in $tool and every gate below silently allowed.
+# block-read-secrets.sh splits the same way.
 #
 # Under a UTF-8 locale each `%%`/`#` pattern match re-decodes the multibyte
-# command (688 ms at 45 KB, HIMMEL-4729). The delimiter is ASCII and a UTF-8
+# command (688 ms at 45 KB). The delimiter is ASCII and a UTF-8
 # sequence never contains an ASCII byte, so the split runs byte-wise under a
-# function-local LC_ALL=C, as in HIMMEL-4678. The head comes from `%%` (a left
+# function-local LC_ALL=C. The head comes from `%%` (a left
 # to right scan that stops at the first SOH) and the rest by offset: `#*SOH`
 # tries every prefix length and is quadratic in the head even under C.
 split_row() {
@@ -104,7 +104,7 @@ clamp_deny() {  # $1 = path, $2 = line count
 # strip_quotes: strips one matching pair of surrounding quotes from a captured
 # Bash target -- `cat "/path.txt"` otherwise checks a filename that literally
 # includes the quote characters, which never exists and silently bypasses the
-# clamp (HIMMEL-2993 CR).
+# clamp.
 strip_quotes() {
     local t="$1"
     case "$t" in

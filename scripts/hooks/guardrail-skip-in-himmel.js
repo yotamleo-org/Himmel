@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// guardrail-skip-in-himmel.js  (HIMMEL-709)
+// guardrail-skip-in-himmel.js
 //
 // Runtime-guard wrapper for the THREE generic himmel guardrails that the
 // user-level ~/.claude/settings.json declares to protect NON-himmel repos

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/trigger-cr-on-push.sh (HIMMEL-1906).
+# Smoke test for scripts/hooks/trigger-cr-on-push.sh.
 #
-# HIMMEL-1906: a push that advances an open PR's head must re-trigger
+# A push that advances an open PR's head must re-trigger
 # CodeRabbit at most ONCE per head SHA — this is the fix for the bug where
 # trigger-cr-on-pr-create.sh's old per-PR dedup silently blackholed every fix
 # round after the first review (PRs #1717/#1718). This suite exercises the
@@ -9,7 +9,7 @@
 # (scripts/lib/cr-trigger-ledger.sh) redirected to a throwaway file via
 # CR_TRIGGER_LEDGER_PATH, so no test writes into this repo's real .git/.
 #
-# Covers (acceptance, per the HIMMEL-1906 brief):
+# Covers (acceptance):
 #   1. first trigger on a head -> posts, records the SHA
 #   2. second request on the SAME head -> no-op, no second comment
 #   3. a new head after a push -> posts (the whole point)
@@ -108,7 +108,7 @@ export FAKE_GH_COMMENT_LOG="$COMMENT_LOG"
 export FAKE_GH_COMMENTS_FILE="$COMMENTS_FILE"
 export CR_TRIGGER_LEDGER_PATH="$LEDGER_PATH"
 
-# Foreign-repo guard (HIMMEL-2034): the hook now posts only on a repo whose
+# Foreign-repo guard: the hook now posts only on a repo whose
 # CodeRabbit gate is ours — the cwd's armed origin, or a repo named in
 # CR_TRIGGER_REPOS. Every fixture below is a PR on acme/widget, which is
 # nobody's origin, so allowlist it once here; the foreign-repo test overrides
@@ -189,7 +189,7 @@ else
 fi
 
 # Test 3b: a stale @coderabbitai comment from the FIRST head does not block --
-# the SECOND head's legitimate trigger. This is the exact bug HIMMEL-1906
+# the SECOND head's legitimate trigger. This is the exact bug the ledger
 # fixes: the per-PR comment scan is repo-wide, not per-head, so it must not
 # gate the push path (see scan_existing=0 in the hook / cr-trigger-ledger.sh).
 echo "TEST: a stale trigger comment from an OLDER head does not block a NEW head's trigger"
@@ -226,7 +226,7 @@ else
     fail "expected 2 posts (one per PR) for the same shared head SHA, got posted=$(posted_count)" "out: $out; ledger: $(cat "$LEDGER_PATH" 2>/dev/null)"
 fi
 
-# Test 3d: CR_TRIGGER_SUPPRESS=1 -> no post, head NOT recorded (HIMMEL-3141) --
+# Test 3d: CR_TRIGGER_SUPPRESS=1 -> no post, head NOT recorded --
 # Same seam as trigger-cr-on-pr-create.sh — both hooks route through
 # cr_trigger_post_review in scripts/lib/cr-trigger-ledger.sh, so ONE knob
 # covers both. Not recorded in the ledger: the review is deferred, not
@@ -245,7 +245,7 @@ else
 fi
 
 # Test 3e: CR_TRIGGER_SUPPRESS unset (default) -> trigger still fires --------
-# Opt-out, never opt-in (HIMMEL-1362): the direction that catches a default
+# Opt-out, never opt-in: the direction that catches a default
 # silently flipped to off.
 echo "TEST: CR_TRIGGER_SUPPRESS unset -> the trigger still fires (default ON)"
 reset_state
@@ -397,7 +397,7 @@ fi
 
 
 # Test F: a push advancing a PR on a FOREIGN repo -> NO post, advisory -------
-# HIMMEL-2034: the same exposure as the `gh pr create` hook — a push to an
+# The same exposure as the `gh pr create` hook — a push to an
 # upstream/fork branch advances a PR that is not ours to summon CodeRabbit on.
 # The guard lives in cr_trigger_post_review (scripts/lib/cr-trigger-ledger.sh),
 # the one seam both hooks post through; this asserts it holds from here.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude Code PostToolUse hook (Bash matcher): after a SUCCESSFUL `gh pr create`,
-# post an `@coderabbitai review` trigger comment on the new PR (HIMMEL-1362).
+# post an `@coderabbitai review` trigger comment on the new PR.
 #
 # CodeRabbit's `auto_review` is OFF on this repo by design (.coderabbit.yaml),
 # so the App reviews a PR ONLY when someone posts an explicit `@coderabbitai
@@ -22,7 +22,7 @@
 #     hook's post ever fails, the gate refuses green until a genuine review
 #     exists at head).
 #
-# ONE REVIEW PER HEAD SHA (HIMMEL-1906): dedup used to be keyed per PR (scan
+# ONE REVIEW PER HEAD SHA: dedup used to be keyed per PR (scan
 # for ANY existing `@coderabbitai review` comment) — that made sense when this
 # hook only fired at PR creation, but it silently blackholed every later fix
 # round: a push after the first review left the PR's comment list non-empty,
@@ -53,8 +53,8 @@ set -euo pipefail
 # ─── helpers ────────────────────────────────────────────────────────────────
 warn() { echo "trigger-cr-on-pr-create: $*" >&2; }
 
-# Shared per-head-SHA ledger (HIMMEL-1906) — see scripts/lib/cr-trigger-ledger.sh
-# for the dedup contract, and for cr_trigger_repo_armed (HIMMEL-2034), the
+# Shared per-head-SHA ledger — see scripts/lib/cr-trigger-ledger.sh
+# for the dedup contract, and for cr_trigger_repo_armed, the
 # foreign-repo guard. Sourcing failure fails CLOSED for the POST specifically
 # (warn + exit 0, post nothing): without the lib this hook can neither dedup
 # nor tell whose repo the PR is on. The hook itself still exits 0, so a
@@ -64,7 +64,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 if ! { [ -r "$SCRIPT_DIR/../lib/cr-trigger-ledger.sh" ] && . "$SCRIPT_DIR/../lib/cr-trigger-ledger.sh"; } 2>/dev/null; then
     # Was: fall back to a per-PR comment scan and post anyway. That fallback is
-    # gone (HIMMEL-2034) — this lib now also owns cr_trigger_repo_armed, the
+    # gone — this lib now also owns cr_trigger_repo_armed, the
     # check that keeps the trigger off FOREIGN repos, so a run without it
     # cannot tell whose PR it is about to comment on. Not posting is the cheap
     # failure: the merge gate refuses green until a review lands at head, which
@@ -132,7 +132,7 @@ if [ -z "$cmd" ]; then
     exit 0
 fi
 
-# HIMMEL-1373 — quote-blind matcher fix. The anchored regex below reads `;` `&`
+# Quote-blind matcher fix. The anchored regex below reads `;` `&`
 # `|` backtick and `$(` as command separators, so `echo "; gh pr create"` put
 # `gh pr create` at a command position though nothing ran it. Blank out quoted
 # spans first (this block is BYTE-IDENTICAL in the PreToolUse/PostToolUse twin):
@@ -152,7 +152,7 @@ fi
 # ponytail: handles quoting only; any `#`, `<<`, `$'`, `eval`, ` -c ` or
 # double-quoted substitution bails to the unchanged scan (a comment, heredoc
 # body or ANSI-C quote can pair apostrophes across a real invocation, and a
-# nested shell body runs its quoted text as code); HIMMEL-5663's tokenizer
+# nested shell body runs its quoted text as code); a tokenizer
 # (inlined per hook) is the upgrade path.
 # shellcheck disable=SC1003,SC2016  # literal \ and $( in case patterns
 strip_quoted_spans() {
@@ -216,14 +216,14 @@ strip_quoted_spans() {
 # while still catching real calls hidden in subshells:
 #   $(gh pr create -t foo)        (command substitution)
 #   `gh pr create -t foo`         (legacy backtick substitution)
-# Deliberate divergence from the sibling (glm-3, round 2): `\s*` sits OUTSIDE
+# Deliberate divergence from the sibling: `\s*` sits OUTSIDE
 # the alternation here. grep matches per LINE, so `^` already anchors every
 # line of a multi-line command — but an INDENTED continuation line, ordinary
 # in this harness:
 #   git add . && \
 #     gh pr create -t foo
 # starts with whitespace, which `(^|[...]\s*)` rejects: a silent false
-# negative that leaves the PR unreviewed, the exact failure HIMMEL-1362
+# negative that leaves the PR unreviewed, the exact failure this hook
 # exists to close. `(^|[...])\s*` accepts it while keeping every negative
 # case above negative.
 # shellcheck disable=SC2016  # literal $ inside the character class — intentional
@@ -233,19 +233,19 @@ strip_quoted_spans() {
 # nothing on a whole platform (CR codex-2 + glm-3, independently agreed).
 # `\b` is replaced by an explicit "end of token" alternation.
 #
-# HIMMEL-1975 — this line is now BYTE-IDENTICAL to the PreToolUse sibling
-# check-cr-marker-on-pr-create.sh; keep it that way (HIMMEL-1362 lockstep, and
-# the two have already diverged once). Two changes landed together:
+# This line is BYTE-IDENTICAL to the PreToolUse sibling
+# check-cr-marker-on-pr-create.sh; keep it that way (lockstep; the two
+# have already diverged once). Two changes landed together:
 #   - the end-of-token class widened from `[[:space:]]` to `[^[:alnum:]_-]`, so
 #     an argument-less invocation ending on a metacharacter (`gh pr create;`,
 #     `$(gh pr create)`, `gh pr create>out`) is no longer silently skipped —
-#     the sibling has had this since HIMMEL-1372, this twin had not;
+#     the sibling had this first, this twin did not;
 #   - the command position gained `{` / `!` plus one optional reserved-word or
 #     wrapper prefix, closing `{ gh pr create; }`, `if gh pr create`,
 #     `! gh pr create`, `then|else|elif|while|until|do gh pr create` and
 #     `sudo|env|nohup|timeout|command|exec|xargs … gh pr create`.
 # The full rationale (why exactly these heads, why `[^|;&]*` is bounded, and
-# why this is not a tokenizer — HIMMEL-912) lives on the sibling, next to the
+# why this is not a tokenizer) lives on the sibling, next to the
 # same line; it is not duplicated here so the two cannot drift in prose either.
 stripped=$(strip_quoted_spans "$cmd")
 # shellcheck disable=SC2016  # literal $ inside the character class — intentional
@@ -283,7 +283,7 @@ if [ -z "$num" ] || [ -z "$repo_path" ] || [ "$repo_path" = "$rest" ]; then
     exit 0
 fi
 
-# HIMMEL-2034: `gh pr create` can open a PR on ANY repo — an upstream, someone
+# `gh pr create` can open a PR on ANY repo — an upstream, someone
 # else's fork — and this hook used to comment on whatever it was. Check before
 # any gh call, so a foreign PR costs no API round-trip either. Redundant with
 # the same check inside cr_trigger_post_review (that one covers the sibling
@@ -314,7 +314,7 @@ if [ -n "$head_sha" ]; then
 fi
 warn "WARNING: could not resolve the head SHA for PR #$num — falling back to the per-PR comment scan"
 
-# Fallback (head SHA unresolvable): the pre-HIMMEL-1906
+# Fallback (head SHA unresolvable): the older
 # per-PR scan. Idempotency (one review per PR): if a `@coderabbitai (full
 # )?review` trigger already exists on the PR, do not double-post.
 existing=$(gh api "repos/$repo_path/issues/$num/comments" --paginate --jq '.[].body' 2>/dev/null || true)

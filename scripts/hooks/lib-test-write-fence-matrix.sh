@@ -1,5 +1,5 @@
-# The HIMMEL-2592 generated grammar matrix, shared by the sliced matrix shards
-# test-block-write-into-main-checkout-matrix{1,2,3}.sh (HIMMEL-4164: one loop
+# The generated grammar matrix, shared by the sliced matrix shards
+# test-block-write-into-main-checkout-matrix{1,2,3}.sh (one loop
 # over every cell took ~6 min, so the cell stream is split across three suites
 # to stay under the CI per-suite cap). SOURCED after lib-test-write-fence.sh;
 # not a suite (no test- prefix). `_matrix_run_slice K N` runs the cells whose
@@ -40,18 +40,18 @@
 
 # _matrix_src_verbs / _matrix_srcless_verbs — the VERB axis, generated.
 #
-# SPELLING AXIS (HIMMEL-2592 CR round 4): an option that takes a destination
+# SPELLING AXIS: an option that takes a destination
 # DIRECTORY has FOUR spellings, and the option that FLIPS destination
-# semantics to ENTRY has TWO. Round 4 found `--target-directory DIR`
-# (long-spaced) as a fail-open precisely because the axis listed only one
+# semantics to ENTRY has TWO. `--target-directory DIR`
+# (long-spaced) was a fail-open precisely because the axis listed only one
 # spelling — so the GENERATOR owns them now, across cp/mv/ln alike. Fixing
 # one spelling and leaving three is the Mode-1 pattern in miniature; making
-# the spelling an axis is what stops a fifth form appearing in round 5.
+# the spelling an axis is what stops a further form appearing unlisted.
 # Each entry is "label<TAB>command-template" so there is no second, separately
 # maintained label->template lookup to drift out of step.
 #
-# ROUND 5 (RETASK R-N1-SED-4b91d7): round 4's own prediction came true, but
-# not as a fifth ENUMERABLE spelling — GNU getopt_long's unambiguous long-
+# ABBREVIATIONS: a further form appears, but
+# not as an ENUMERABLE spelling — GNU getopt_long's unambiguous long-
 # option ABBREVIATION makes the spelling axis INFINITE (`--targ`, `--tar`,
 # `--ta`, ... are all live). An infinite axis cannot be enumerated, so the
 # fix moved from the axis to a RULE (_bwimc_is_long_abbrev, a prefix test).
@@ -68,15 +68,15 @@ _matrix_srcless_verbs() {
     printf '%s\t%s\n' "tee"    "printf 'x\\n' | tee {DEST} >/dev/null"
     printf '%s\t%s\n' "touch"  "touch {DEST}"
     printf '%s\t%s\n' "sed -i" "sed -i 's/x/y/' {DEST}"
-    # HIMMEL-2592 round 4: `sed -i`'s destination has TWO spellings of its
+    # `sed -i`'s destination has TWO spellings of its
     # own, and `--follow-symlinks`/`--in-place` FLIP its resolution mode —
-    # the exact fifth-form-in-round-5 shape this SPELLING AXIS comment warns
+    # the exact further-unlisted-form shape this SPELLING AXIS comment warns
     # about, now applied to sed instead of cp/mv/ln. Both listed here so the
     # generator owns them rather than a fifth spelling appearing unlisted.
     printf '%s\t%s\n' "sed -i --follow-symlinks" "sed -i --follow-symlinks 's/x/y/' {DEST}"
     printf '%s\t%s\n' "sed --in-place"           "sed --in-place 's/x/y/' {DEST}"
-    # ROUND 5: one representative ABBREVIATION of --follow-symlinks (see the
-    # SPELLING AXIS / ROUND 5 comment above for why one, not several).
+    # One representative ABBREVIATION of --follow-symlinks (see the
+    # SPELLING AXIS / ABBREVIATIONS comment above for why one, not several).
     printf '%s\t%s\n' "sed -i --follow" "sed -i --follow 's/x/y/' {DEST}"
     printf '%s\t%s\n' ">"      "printf 'x\\n' > {DEST}"
     printf '%s\t%s\n' ">|"     "printf 'x\\n' >| {DEST}"
@@ -85,8 +85,8 @@ _matrix_srcless_verbs() {
 _matrix_src_verbs() {
     # Base verbs that take a SOURCE, with their command prefix.
     local bases=( "mv" "cp" "ln -s" )
-    # The four spellings of a destination-DIRECTORY option, plus ROUND 5's
-    # one representative ABBREVIATION (see the SPELLING AXIS / ROUND 5
+    # The four spellings of a destination-DIRECTORY option, plus one
+    # representative ABBREVIATION (see the SPELLING AXIS / ABBREVIATIONS
     # comment above _matrix_srcless_verbs for why one, not several).
     local tdir_labels=( "-tDIR" "-t DIR" "--target-directory=DIR" "--target-directory DIR" "--targ DIR" )
     local tdir_tmpls=(  "-t{DEST}" "-t {DEST}" "--target-directory={DEST}" "--target-directory {DEST}" "--targ {DEST}" )
@@ -233,7 +233,7 @@ _matrix_hashfile() {
     else cksum "$1" 2>/dev/null | awk '{print $1"-"$2}'; fi
 }
 
-# _matrix_stat_probe — RETASK R-N1-SED-4b91d7 round 2. A ONE-TIME check (run
+# _matrix_stat_probe — A ONE-TIME check (run
 # once before the matrix's cell loop, never per snapshot call, never per
 # cell) of whether THIS host's `stat` can give _matrix_snapshot what it
 # needs: an inode AND a SUB-SECOND mtime, via GNU's `-c '%i|%y'`. This is NOT
@@ -310,7 +310,7 @@ _matrix_snapshot() {
 # divergence this asserts away. It is a first-class row, not a comment, so it
 # survives any future refactor of the cell loop.
 #
-# HIMMEL-4391: the self-test no longer asks through its own helper (which
+# the self-test no longer asks through its own helper (which
 # always queried first, so a reordered REAL loop left it green). The per-cell
 # step — snapshot, ask both fence modes + reason, run, snapshot — is ONE
 # function, _matrix_cell_exec, and both the real cell loop below and this
@@ -466,12 +466,12 @@ else
     bad "matrix enumerator is broken — $M_SRCTAKING_N + $M_SRCLESS_N = $M_TOTAL_N cells, expected $M_EXPECTED over $M_VERB_N verbs"
 fi
 
-# HIMMEL-4164: this slice runs only its share of the (fully validated) stream.
+# this slice runs only its share of the (fully validated) stream.
 MATRIX_CELLS=$(printf '%s\n' "$MATRIX_CELLS" | awk -v n="$MATRIX_SLICE_N" -v k="$MATRIX_SLICE_K" 'NR % n == k % n')
 
 # ---- run every cell: ground truth first, then BOTH fence entry modes ----
 #
-# RETASK R-N1-SED-4b91d7 round 2: gated on _matrix_stat_probe. The snapshot
+# Gated on _matrix_stat_probe. The snapshot
 # diff below is the oracle for classes A/B — an unusable stat would silently
 # compare EMPTY inode/mtime fields and could derive the wrong verdict for a
 # same-second metadata-only write while still printing a green matrix. A
@@ -510,7 +510,7 @@ while IFS=$'\t' read -r m_verb m_kind m_place m_srck m_tmpl; do
     m_json="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":$(printf '%s' "$m_cmd" | jq -Rs .),\"cwd\":\"$M_WT\"}}"
     m_lbl="$m_verb | $m_kind | $m_place | src=$m_srck"
 
-    # ORDER IS LOAD-BEARING (HIMMEL-2592 CR round 4, codex-1). The contract is
+    # ORDER IS LOAD-BEARING. The contract is
     # exactly:
     #     snapshot
     #  -> ask BOTH fence modes AND capture the deny reason
@@ -525,7 +525,7 @@ while IFS=$'\t' read -r m_verb m_kind m_place m_srck m_tmpl; do
     # the class-A branch, and carried the identical defect. The hook is
     # read-only, so three pre-mutation invocations need no extra fixture.
     # The sequence is _matrix_cell_exec, the same function
-    # _matrix_order_selftest drives (HIMMEL-4391), so that guard covers THIS
+    # _matrix_order_selftest drives, so that guard covers THIS
     # ordering and not a lookalike.
     _matrix_cell_exec "$M_PRIMARY" "$M_WT" "$m_json" "$m_cmd"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/claude-glm-seed-check.sh (HIMMEL-654 WS5 Task 1).
+# Smoke test for scripts/claude-glm-seed-check.sh.
 #
 # Verifies the glm-launcher config-seed drift check against injected fixture
 # trees: identical -> exit 0; a mutated seeded skills/ file -> exit 1 AND the

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # auto-arm-on-subagent-cap.sh — PostToolUse hook: auto-arm a resume when the
-# usage cap surfaces as a subagent (Agent tool) result text (HIMMEL-276).
+# usage cap surfaces as a subagent (Agent tool) result text.
 #
 # WHY: The PreToolUse hook auto-arm-on-cap.sh detects the cap through the
 # statusline usage cache. But when the cap hits MID-AGENT-WAVE the session's
@@ -50,7 +50,7 @@ warn() { echo "auto-arm-on-subagent-cap: $*" >&2; }
 # Bounded read, done before every early-exit branch below: the harness sends
 # one JSON line and closes stdin, but a fast exit here (kill switch,
 # MALFUNCTION) can close our read end while the harness is still mid-write on
-# a large payload, SIGPIPE'ing it under pipefail (HIMMEL-2345). Draining
+# a large payload, SIGPIPE'ing it under pipefail. Draining
 # stdin first — even on paths that discard $payload — makes every exit below
 # safe regardless of payload size. py_armor enforces its own timeout on the
 # python parse so even a pathological input cannot hang the tool-call loop.
@@ -63,7 +63,7 @@ IFS= read -t 5 -r payload 2>/dev/null || true
 hook_dir=$(cd "$(dirname "$0")" && pwd)
 project_dir="${CLAUDE_PROJECT_DIR:-}"
 
-# py-armor: same lib as auto-arm-on-cap.sh (python3 hang armor, HIMMEL-249).
+# py-armor: same lib as auto-arm-on-cap.sh (python3 hang armor).
 # A missing lib is a watchdog MALFUNCTION (exit 1, non-blocking) per contract.
 _py_lib="$hook_dir/../lib/py-armor.sh"
 [ -f "$_py_lib" ] || _py_lib="$project_dir/scripts/lib/py-armor.sh"
@@ -162,7 +162,7 @@ result_text=$(printf '%s' "$parse_line" | cut -f3-)
 # ─── sentinel scan (fast path — pure shell, no python) ─────────────────────
 # Sentinel strings that indicate the cap was hit inside a subagent.
 #
-# FALSE-POSITIVE GUARD (HIMMEL-294): a subagent reviewing this hook's own
+# FALSE-POSITIVE GUARD: a subagent reviewing this hook's own
 # docs may QUOTE the sentinel strings in double quotes or backticks. Those
 # are not real cap hits. Strip backtick-quoted spans and double-quoted spans
 # from the text BEFORE matching so quoted sentinels don't trip the watchdog.
@@ -200,12 +200,12 @@ resolve_snapshot_dir() {
     lib="$hook_dir/../lib/handover-path.sh"
     [ -f "$lib" ] || lib="$project_dir/scripts/lib/handover-path.sh"
     if [ -f "$lib" ]; then
-        # HIMMEL-4449: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+        # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
         # shellcheck disable=SC1091
         if . "$hook_dir/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
         # Run handover_root in a subshell that cds to hook_dir first so
         # the Mode A git rev-parse resolves the MAIN REPO root, not the
-        # session's cwd (which may be a worktree) — HIMMEL-294.
+        # session's cwd (which may be a worktree).
         set +e
         # shellcheck source=../lib/handover-path.sh
         # shellcheck disable=SC1090,SC1091
@@ -278,7 +278,7 @@ if [ ! -f "$ARM_BIN" ]; then
     exit 1
 fi
 set +e
-# --dedup-any (HIMMEL-340): a subagent-cap is a machine-wide event — this
+# --dedup-any: a subagent-cap is a machine-wide event — this
 # safety arm must defer to ANY queued resume so it never fans out duplicate
 # relaunches alongside the PreToolUse watchdog or a sibling session.
 arm_out=$(bash "$ARM_BIN" --dedup-any --time smart --handover "$snapshot" 2>&1)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-template-version.sh (HIMMEL-524).
+# Smoke test for scripts/hooks/check-template-version.sh.
 #
 # Builds throwaway git repos, exercises each rc case, asserts exact rc.
 # Usage: bash scripts/hooks/test-template-version.sh
@@ -112,7 +112,7 @@ run_test "passes owned content WITH version bump (rc=0)" '
   expect_rc 0 bash "$SCRIPT"
 '
 
-# Required contract: skip-class file alone -> pass (skipexists plugin asset, HIMMEL-525).
+# Required contract: skip-class file alone -> pass (skipexists plugin asset).
 run_test "skipexists plugin asset alone passes (rc=0)" '
   setup_repo && cd "$R" || exit 1; mk_market "$MP" 0.1.0; git add "$MP"; git commit -qm seed;
   mkdir -p templates/luna-second-brain/.obsidian/plugins/foo;
@@ -138,7 +138,7 @@ run_test "non-template change passes (rc=0)" '
 
 # Deletion of a single owned file, staged, without a bump -> fail. The gate is
 # diff-driven, not working-tree-driven, so a deletion must be caught the same
-# as an addition/modification (HIMMEL-524 CR round 3).
+# as an addition/modification.
 run_test "blocks staged deletion of owned content without bump (rc=1)" '
   setup_repo && cd "$R" || exit 1; mk_market "$MP" 0.1.0; git add "$MP"; git commit -qm seed;
   mkdir -p templates/luna-second-brain/docs; : > templates/luna-second-brain/docs/foo.md;
@@ -226,7 +226,7 @@ run_test "pre-push blocks when range never bumps (rc=1)" '
 
 # pre-push: main bumps AFTER the branch split, branch itself never bumps ->
 # must still fail. prev_v has to compare at the MERGE-BASE, not the current
-# main tip, or the main-side bump falsely clears the branch (HIMMEL-524 CR).
+# main tip, or the main-side bump falsely clears the branch.
 run_test "pre-push blocks when main bumps after split but branch never bumps (rc=1)" '
   setup_repo_with_origin && cd "$R" || exit 1; git checkout -qb feat/z;
   mkdir -p templates/luna-second-brain/docs; : > templates/luna-second-brain/docs/foo.md;
@@ -241,7 +241,7 @@ run_test "pre-push blocks when main bumps after split but branch never bumps (rc
 # the destination (untracked, non-owned) path and never classify the deleted
 # source -- --no-renames forces delete+add so both sides surface. Explicitly
 # set diff.renames=true so the fixture proves the flag matters rather than
-# happening to pass under an unconfigured default (HIMMEL-524 CR round 4).
+# happening to pass under an unconfigured default.
 run_test "blocks rename of owned file OUT of template dir without bump (rc=1)" '
   setup_repo && cd "$R" || exit 1; git config diff.renames true;
   mk_market "$MP" 0.1.0; git add "$MP"; git commit -qm seed;
@@ -266,7 +266,7 @@ run_test "owned_class() case arms match upgrade.sh classify() (source parity)" '
 # block -- a comment added to one copy but not the other must not false-fail
 # the parity test above. Synthetic fixtures (not the real source files), so
 # this is independent of whether the two real functions currently carry
-# comments (HIMMEL-524 CR round 5).
+# comments.
 run_test "extract_case_arms filters comments/blanks inside the case block" '
   f1=$(mktemp -t tv-test-arms1.XXXXXX);
   f2=$(mktemp -t tv-test-arms2.XXXXXX);
@@ -279,7 +279,7 @@ run_test "extract_case_arms filters comments/blanks inside the case block" '
 
 # pre-push: a FAILED fetch (network blip etc.) without NO_FETCH must fail
 # closed, not silently fall back to a stale local origin/$db that could carry
-# an upstream bump the branch never earned (HIMMEL-524 CR round 5).
+# an upstream bump the branch never earned.
 run_test "pre-push fails closed when fetch fails without NO_FETCH (rc=2)" '
   setup_repo_with_origin && cd "$R" || exit 1; git checkout -qb feat/fetchfail;
   git remote set-url origin "$R/does-not-exist";
@@ -288,7 +288,7 @@ run_test "pre-push fails closed when fetch fails without NO_FETCH (rc=2)" '
 
 # pre-commit: a diff that git genuinely CANNOT compute must fail closed, not
 # fall through as an empty touched set (which would exit 0). Corrupt the
-# index so `git diff --cached` itself fails (HIMMEL-524 CR round 5).
+# index so `git diff --cached` itself fails.
 run_test "pre-commit fails closed when the staged diff cannot be computed (rc=2)" '
   setup_repo && cd "$R" || exit 1; mk_market "$MP" 0.1.0; git add "$MP"; git commit -qm seed;
   mkdir -p templates/luna-second-brain/docs; : > templates/luna-second-brain/docs/foo.md;
@@ -298,8 +298,7 @@ run_test "pre-commit fails closed when the staged diff cannot be computed (rc=2)
 '
 
 # pre-push: same contract for the range diff -- corrupt HEAD'"'"'s commit
-# object so `git diff $base...HEAD` itself fails, must fail closed (HIMMEL-524
-# CR round 5).
+# object so `git diff $base...HEAD` itself fails, must fail closed.
 run_test "pre-push fails closed when the range diff cannot be computed (rc=2)" '
   setup_repo_with_origin && cd "$R" || exit 1; git checkout -qb feat/corrupt;
   mkdir -p templates/luna-second-brain/docs; : > templates/luna-second-brain/docs/foo.md;

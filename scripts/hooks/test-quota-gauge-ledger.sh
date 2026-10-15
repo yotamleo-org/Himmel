@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/lib/quota-gauge-ledger.sh (WS9/HIMMEL-654).
+# Smoke test for scripts/lib/quota-gauge-ledger.sh.
 #
 # Appends two rows via the bash twin, asserts exactly 2 whole
 # JSON-parseable lines; the path resolver honors HIMMEL_QUOTA_GAUGE_LEDGER;

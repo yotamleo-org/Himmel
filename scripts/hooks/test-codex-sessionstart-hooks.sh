@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test (HIMMEL-596): the three ADVISORY SessionStart hooks
+# Regression test: the three ADVISORY SessionStart hooks
 # (inject-initiative, inject-where-are-we, inject-doc-freshness) must FIRE under
 # Codex.
 #
@@ -13,7 +13,7 @@
 # wire all three into .codex/hooks.json SessionStart via run-hook.sh --sandbox
 # (the wrapper derives the repo root from its OWN location, harness-agnostically),
 # exactly like check-update-available (the existing advisory SessionStart hook)
-# and the HIMMEL-589 security guards.
+# and the security guards.
 #
 # This suite asserts:
 #   1) STATIC WIRING — each of the 3 hooks (+ retained check-update-available) is
@@ -65,7 +65,7 @@ wired_cmd() {
 # HIMMEL_OVERNIGHT in the launching shell can't flip inject-initiative's
 # resolve_legs onto HIMMEL_INITIATIVE_OVERNIGHT and turn the gate-ON case into a
 # false red (the .env load is non-clobbering, so this guards only process-env
-# leakage). CR: pr-test-analyzer HIMMEL-596.
+# leakage).
 HOOK_ENV_CLEAN="-u CLAUDE_PROJECT_DIR -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_OVERNIGHT"
 run_codex_hook() {
   local hook="$1"; shift
@@ -105,7 +105,7 @@ fi
 # guards already prove passthrough) but "Codex receives the directive as
 # context". Under Codex that channel is hookSpecificOutput.additionalContext, so
 # the adapter wraps an advisory SessionStart hook's exit-0 output into that JSON
-# (HIMMEL-596). Gate ON: HIMMEL_INITIATIVE=all → resolve_legs yields a non-empty
+#. Gate ON: HIMMEL_INITIATIVE=all → resolve_legs yields a non-empty
 # interactive set → the directive is emitted as additionalContext JSON, exit 0.
 # CLAUDE_PROJECT_DIR is UNSET, so this also proves run-hook.sh re-derives the
 # repo root under Codex.
@@ -121,8 +121,8 @@ else
   bad "inject-initiative: gate ON → additionalContext carries the directive (got: ${on_out:-<empty>})"
 fi
 
-# Gate OFF: HIMMEL_INITIATIVE=off → empty set → no directive, exit 0. Since
-# HIMMEL-2003 the wired command is the whole SessionStart CHAIN, so its sibling
+# Gate OFF: HIMMEL_INITIATIVE=off → empty set → no directive, exit 0. The
+# wired command is the whole SessionStart CHAIN, so its sibling
 # members' context legitimately lands in this output — assert the DIRECTIVE is
 # absent, which is what the gate actually controls, not overall emptiness.
 off_out="$(run_codex_hook inject-initiative.sh HIMMEL_INITIATIVE=off)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/require-quiet-run.sh (HIMMEL-1952).
+# Smoke test for scripts/hooks/require-quiet-run.sh.
 #
 # Usage: bash scripts/hooks/test-require-quiet-run.sh
 #
@@ -84,7 +84,7 @@ run_case "$(j_bash 'cat scripts/test-check-ci.sh')"
 assert_rc "cat suite file" 0 "$RC"
 
 # 7. Nested suite path -> denied, the literal pre-approved label "suite"
-# (HIMMEL-3437; only that exact label is auto-allowed since HIMMEL-3402 - a
+# (only that exact label is auto-allowed - a
 # derived per-suite label falls to the classifier), not a name derived from
 # the filename.
 run_case "$(j_bash 'bash scripts/hooks/test-block-destructive-commands.sh')"
@@ -97,7 +97,7 @@ run_case "$(j_bash './scripts/test-check-ci.sh')"
 assert_rc "direct ./ exec" 2 "$RC"
 
 # 9. quiet-run.sh merely MENTIONED (not invoked) alongside a bare suite run
-# -> still denied. This is the bypass HIMMEL-1952's CR fixed: a substring
+# -> still denied. This is the bypass shape: a substring
 # check on "quiet-run.sh" anywhere in the command let this through as an
 # allow, silently skipping the deny entirely.
 run_case "$(j_bash 'echo quiet-run.sh; bash scripts/test-check-ci.sh')"
@@ -110,8 +110,7 @@ assert_rc "quiet-run.sh in comment" 2 "$RC"
 run_case "$(j_bash 'bash scripts/test-check-ci.sh --note=quiet-run.sh')"
 assert_rc "quiet-run.sh as argument" 2 "$RC"
 
-# 11. HIMMEL-2322: the ceiling this used to pin (finding 2, "documented not
-# fixed") is now fixed - a heredoc body is DATA, and `cat` never feeds this
+# 11. A heredoc body is DATA, and `cat` never feeds this
 # one to a shell, so suite-shaped text sitting inside it must not deny.
 run_case "$(j_bash 'cat <<EOF
 bash scripts/test-check-ci.sh
@@ -119,7 +118,7 @@ EOF')"
 assert_rc "heredoc DATA no longer a false positive (HIMMEL-2322)" 0 "$RC"
 
 # 12. Compound command: a wrapped quiet-run call, then a SEPARATE bare suite
-# call -> still denied. This is the CR round 2 finding: the old allow-check
+# call -> still denied. The old allow-check
 # was whole-command, so finding a quiet-run invocation ANYWHERE exit-0'd
 # before the suite regexes ran against the rest of the command.
 run_case "$(j_bash 'bash scripts/quiet-run.sh ok -- echo ok; bash scripts/test-check-ci.sh')"
@@ -139,7 +138,7 @@ assert_rc "sanctioned single quiet-run wrap (regression)" 0 "$RC"
 run_case "$(j_bash 'bash scripts/quiet-run.sh a -- true; bash scripts/quiet-run.sh b -- true')"
 assert_rc "two chained quiet-run calls" 0 "$RC"
 
-# 16. Nested command positions (CR round 3): the segment anchor only saw the
+# 16. Nested command positions: the segment anchor only saw the
 # START of a ';'/'&'/'|' segment, so a suite run behind an assignment prefix,
 # a conditional keyword, a subshell, or a command substitution slipped past.
 # Each of these executes the suite bare and floods the context.
@@ -171,7 +170,7 @@ run_case "$(j_bash 'bash scripts/test-check.ci.sh')"
 assert_rc "dotted suite filename" 2 "$RC"
 assert_contains "dotted suite filename replacement"     "bash scripts/quiet-run.sh suite -- bash scripts/test-check.ci.sh" "$ERR"
 
-# 19. HIMMEL-2322 - heredoc bodies fed to a real shell still deny: a heredoc
+# 19. heredoc bodies fed to a real shell still deny: a heredoc
 # piped into bash, or bash reading its own heredoc, genuinely executes its
 # body, so a suite call sitting inside one of these must still bounce.
 run_case "$(j_bash "cat <<'EOF' | bash
@@ -189,7 +188,7 @@ bash scripts/test-check-ci.sh
 EOF')"
 assert_rc "bash -s heredoc variant (HIMMEL-2322)" 2 "$RC"
 
-# 20. HIMMEL-2322 - a quoted command word must still match: the SUITE/
+# 20. a quoted command word must still match: the SUITE/
 # INTERP_RE regexes see plain text, so a quoted suite path has to be
 # unwrapped (there are no embedded separators here to neutralize).
 run_case "$(j_bash 'bash "scripts/ci/run-shell-tests.sh"')"
@@ -198,7 +197,7 @@ assert_rc "double-quoted suite path (HIMMEL-2322)" 2 "$RC"
 run_case "$(j_bash "bash 'scripts/test-check-ci.sh'")"
 assert_rc "single-quoted suite path (HIMMEL-2322)" 2 "$RC"
 
-# 21. HIMMEL-2322 - a command that BOTH writes a prose heredoc AND
+# 21. a command that BOTH writes a prose heredoc AND
 # separately runs a bare suite: stripping the prose heredoc body must not
 # hide the real, un-heredoc'd invocation right after it.
 run_case "$(j_bash "cat > handover.md <<'EOF'
@@ -207,7 +206,7 @@ EOF
 bash scripts/ci/run-shell-tests.sh")"
 assert_rc "prose heredoc plus separate bare suite (HIMMEL-2322)" 2 "$RC"
 
-# 22. HIMMEL-2322 - the reported shape (2026-08-31): a heredoc body
+# 22. the reported shape (2026-08-31): a heredoc body
 # redirected to a file, whose prose happens to quote a suite command, must
 # not be denied - nothing in it executes.
 run_case "$(j_bash "cat > handover.md <<'EOF'
@@ -244,13 +243,13 @@ bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF2")"
 assert_rc "two heredocs, only second is prose (HIMMEL-2322)" 0 "$RC"
 
-# 27. HIMMEL-2322 CR round 2 - unterminated heredoc: no closing delimiter
-# line before the command ends. Round 1 dropped everything from the intro
-# onward here (an rc=0 "assume it's prose" guess); CR round 2 flipped that
+# 27. unterminated heredoc: no closing delimiter
+# line before the command ends. Dropping everything from the intro
+# onward here (an rc=0 "assume it's prose" guess) is wrong,
 # because it's exactly what turned a MIS-CAPTURED delimiter into a silent
 # bypass (a genuinely-executing suite call after the "body" got dropped
 # along with it). Now nothing is stripped when a heredoc can't be closed -
-# the scan proceeds over that text as it did before HIMMEL-2322, so this
+# the scan proceeds over that text as it did before heredoc stripping, so this
 # case denies again (a possible false positive, never a false negative).
 run_case "$(j_bash "cat <<'EOF'
 bash scripts/ci/run-shell-tests.sh scripts/hooks")"
@@ -274,7 +273,7 @@ bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF")"
 assert_rc "gh pr create body-file heredoc (HIMMEL-2322)" 0 "$RC"
 
-# 30. HIMMEL-2322 CR round 1 - an EARLIER, unrelated segment on the intro
+# 30. an EARLIER, unrelated segment on the intro
 # line naming bash/sh/zsh must not make a LATER, unrelated heredoc
 # shell-fed. Only the segment containing '<<' and segments after it count.
 run_case "$(j_bash "echo hi; cat <<'EOF' > handover.md
@@ -287,7 +286,7 @@ bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF")"
 assert_rc "sanctioned quiet-run call before an unrelated heredoc (HIMMEL-2322)" 0 "$RC"
 
-# 31. HIMMEL-2322 CR round 1 (codex-1, BLOCKING) - a QUOTED `<<EOF` in prose
+# 31. a QUOTED `<<EOF` in prose
 # is not a real heredoc operator; the old (non-quote-aware) detector opened
 # a fake heredoc anyway and swallowed the REAL bare suite call on the next
 # line as its "body", silently allowing it. Both quote kinds close the same
@@ -300,7 +299,7 @@ run_case "$(j_bash 'echo "<<EOF"
 bash scripts/ci/run-shell-tests.sh')"
 assert_rc "quoted double-quote heredoc-lookalike does not swallow the next line (HIMMEL-2322)" 2 "$RC"
 
-# 32. HIMMEL-2322 CR round 1 (codex-3, suggestion) - an escaped bare
+# 32. an escaped bare
 # delimiter (`<<\EOF`) suppresses body expansion exactly like a quoted one;
 # its prose body must not be denied either.
 run_case "$(j_bash "cat <<\EOF > doc.md
@@ -308,7 +307,7 @@ prose line bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF")"
 assert_rc "escaped bare heredoc delimiter allows its prose body (HIMMEL-2322)" 0 "$RC"
 
-# 33. HIMMEL-2322 CR round 1 - controls proving a REAL heredoc intro is
+# 33. controls proving a REAL heredoc intro is
 # still detected after the quote-aware detector change (not just the fake
 # ones above).
 run_case "$(j_bash "cat <<'EOF' > doc.md
@@ -321,8 +320,8 @@ bash scripts/ci/run-shell-tests.sh
 EOF")"
 assert_rc "real single-quoted heredoc piped to bash still denies (HIMMEL-2322)" 2 "$RC"
 
-# 34. HIMMEL-2322 CR round 1 (codex-2, DISPROVED - regression pin) - the
-# panel claimed `cat <<EOF | env bash` reads as prose because `env` isn't
+# 34. The panel
+# claimed `cat <<EOF | env bash` reads as prose because `env` isn't
 # bash/sh/zsh. It doesn't: strip_lead already strips the `env ` prefix
 # before line_invokes_shell's own regex runs, so the segment reduces to
 # `bash` and matches. Pinned so a future round can't "fix" this back into a
@@ -332,7 +331,7 @@ bash scripts/ci/run-shell-tests.sh
 EOF")"
 assert_rc "heredoc piped through env bash still denies (HIMMEL-2322)" 2 "$RC"
 
-# 35. HIMMEL-2322 CR round 2 (codex-1, BLOCKING) - `source`/`.` genuinely
+# 35. `source`/`.` genuinely
 # execute a heredoc body too; they were missing from the shell-fed verb
 # set, so a suite call inside one of these read as inert prose.
 run_case "$(j_bash "source /dev/stdin <<EOF
@@ -345,7 +344,7 @@ bash scripts/ci/run-shell-tests.sh
 EOF")"
 assert_rc ". /dev/stdin heredoc denies (HIMMEL-2322 CR round 2)" 2 "$RC"
 
-# 36. HIMMEL-2322 CR round 2 (codex-2, BLOCKING) - `<<END-MARK` is a real
+# 36. `<<END-MARK` is a real
 # delimiter, but the old identifier-only charset captured just "END",
 # never matched the "END-MARK" terminator, and (pre round-2 fail-closed
 # fix) swallowed everything after it - including a real, separate bare
@@ -364,7 +363,7 @@ bash scripts/ci/run-shell-tests.sh scripts/hooks
 END-MARK")"
 assert_rc "END-MARK heredoc prose body still allows (HIMMEL-2322 CR round 2)" 0 "$RC"
 
-# 38. HIMMEL-2322 CR round 2 (codex-3, BLOCKING) - a quoted heredoc-
+# 38. a quoted heredoc-
 # lookalike EARLIER on the same line as a REAL heredoc operator still
 # mis-captures the delimiter (documented ceiling, see the comment above
 # HEREDOC_INTRO_RE) - but the round-2 fail-closed posture means that
@@ -376,7 +375,7 @@ REAL
 bash scripts/ci/run-shell-tests.sh")"
 assert_rc "quoted-then-real heredoc mis-capture still denies the trailing call (HIMMEL-2322 CR round 2)" 2 "$RC"
 
-# 39. HIMMEL-2322 CR round 3 (codex-1, BLOCKING) - an UNQUOTED heredoc
+# 39. an UNQUOTED heredoc
 # delimiter leaves the body subject to command substitution, which
 # genuinely executes while bash builds the heredoc - regardless of
 # shell_fed. `$(...)` and backtick forms both count.
@@ -419,7 +418,7 @@ EOF")"
 assert_rc "shell-fed heredoc with \$(...) body still denies (HIMMEL-2322 CR round 3)" 2 "$RC"
 
 
-# --- HIMMEL-4438: the forms the shell runs, not the text it was given ---
+# --- the forms the shell runs, not the text it was given ---
 run_case "$(j_bash "bash -c 'bash scripts/test-check-ci.sh'")"
 assert_rc "4438 bash -c suite" 2 "$RC"
 run_case "$(j_bash "sh -ec 'bash scripts/test-check-ci.sh'")"
@@ -442,7 +441,7 @@ RC=$(printf '%s' "$(j_bash 'git status')" | bash "$nolib/require-quiet-run.sh" >
 assert_rc "4438 missing guard-unwrap lib denies" 2 "$RC"
 rm -rf "$nolib"
 
-# HIMMEL-4970: a pgrep -f wait whose pattern occurs in its own command text
+# a pgrep -f wait whose pattern occurs in its own command text
 # self-matches the wrapper shell and never ends; a sleepless `do :; done` busy
 # loops. Pid waits and the [c]lear bracket trick stay allowed.
 run_case "$(j_bash "until ! pgrep -f 'check-ci.sh 2152' >/dev/null; do sleep 5; done; echo done")"
@@ -467,7 +466,7 @@ run_case "$(j_bash "pgrep -f check-ci.sh")"
 assert_rc "4970 allow: one-shot pgrep -f" 0 "$RC"
 run_case "$(j_bash "until ! pgrep -f 'check-ci.sh 2152' >/dev/null; do sleep 5; done")" "QUIET_RUN_BYPASS=1"
 assert_rc "4970 bypass" 0 "$RC"
-# CR round 1: only the polarities that hang are refused; the loop head alone is
+# Only the polarities that hang are refused; the loop head alone is
 # scanned; a finite `for ... do :; done` is not a busy loop.
 run_case "$(j_bash "until pgrep -f check-ci.sh >/dev/null; do sleep 2; done")"
 assert_rc "4970 allow: until pgrep (self-match ends it)" 0 "$RC"

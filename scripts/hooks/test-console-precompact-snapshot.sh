@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/console-precompact-snapshot.sh (HIMMEL-2973
-# S3): a PreCompact hook that snapshots a console's authority-bearing state to
+# Smoke suite for scripts/hooks/console-precompact-snapshot.sh:
+# a PreCompact hook that snapshots a console's authority-bearing state to
 # <HIMMEL_CONSOLE_WORKDIR>/precompact-<n>.snap at the moment of compaction, so
 # compacted-check.sh (G11) can prove the post-compaction COMPACTED bullet
 # matches. The hook exits 0 ALWAYS (a PreCompact failure must never block a

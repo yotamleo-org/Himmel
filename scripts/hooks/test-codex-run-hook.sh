@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Unit test for .codex/run-hook.sh + .codex/codex-hook-adapter.sh — the Codex
-# hook wrapper + decision adapter (HIMMEL-427). Tests the UNIX (bash) branch of
+# hook wrapper + decision adapter. Tests the UNIX (bash) branch of
 # the Unix wrapper. The Windows run-hook.cmd wrapper is tested by the .ps1 twin.
 #
 # Sets up an ISOLATED temp tree (<T>/.codex/{run-hook.sh,codex-hook-adapter.sh}
@@ -14,7 +14,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
@@ -40,7 +40,7 @@ TC="$(cd "$T" && pwd)"
 #    a deny and still exits nonzero renders as a "PreToolUse hook (failed)"
 #    banner, so the adapter always exits 0 here regardless of the guardrail's
 #    own code. Proof-of-execution is the derived CLAUDE_PROJECT_DIR + forwarded
-#    stdin, both on the adapter's OWN stderr (HIMMEL-1987): Codex rejects a
+#    stdin, both on the adapter's OWN stderr: Codex rejects a
 #    Claude permissionDecision:"allow" / updatedInput, so the adapter captures
 #    guardrail stdout and re-emits it only as advisory stderr — the adapter's
 #    STDOUT stays empty.
@@ -73,7 +73,7 @@ case "$fout" in
   *) bad "explicit --sandbox flag still forwards stdin ($fout)";;
 esac
 
-# 1b-bis) --lifecycle (HIMMEL-1981) marks a no-permission-gate hook. The Unix
+# 1b-bis) --lifecycle marks a no-permission-gate hook. The Unix
 #     wrapper exports the flag so adapter precondition failures report honestly,
 #     then strips it before running the guardrail.
 lout="$(printf 'fromstdin\n' | bash "$T/.codex/run-hook.sh" --sandbox --lifecycle dummy.sh 2>&1)"; lrc=$?
@@ -98,7 +98,7 @@ if [ "$irc" -eq 0 ] && grepq "$iout" -F -e '"permissionDecision":"deny"'; then
   ok "inherited HIMMEL_CODEX_HOOK_LIFECYCLE does not promote a gate hook"
 else bad "inherited HIMMEL_CODEX_HOOK_LIFECYCLE promoted a gate hook (rc=$irc, out=$iout)"; fi
 
-# 1c) ALLOW-SWALLOW (HIMMEL-1987): a guardrail that emits a Claude
+# 1c) ALLOW-SWALLOW: a guardrail that emits a Claude
 #     permissionDecision:"allow" (optionally with updatedInput) on stdout and
 #     exits 0 — auto-approve-safe-bash / rtk-hook-guard shape. Codex rejects that
 #     envelope ("unsupported permissionDecision:allow"), so the adapter must NOT
@@ -163,7 +163,7 @@ case "$bout" in
   *) bad "block -> hookEventName mirrors the inbound event ($bout)";;
 esac
 
-# 2b) NON-PERMISSION lifecycle exit-2 (HIMMEL-565): a guardrail that exits 2 on a
+# 2b) NON-PERMISSION lifecycle exit-2: a guardrail that exits 2 on a
 #     non-permission event (PostToolUse auto-arm success, SessionStart,
 #     UserPromptSubmit) must surface its message via additionalContext — NOT a
 #     bogus PreToolUse permission deny. Those events have no permission gate; the
@@ -216,7 +216,7 @@ esac
 #     must NOT echo the attacker-controllable event string into the hookEventName
 #     const (Codex's strict parser would reject it, dropping the message), and
 #     must NOT become a permission deny. Use a clearly-bogus event name: `Stop` is
-#     now a first-class adapter branch (HIMMEL-599), so it is no longer "unknown".
+#     now a first-class adapter branch, so it is no longer "unknown".
 unkout="$(printf '{"hook_event_name":"BogusEvent"}\n' | bash "$T/.codex/run-hook.sh" blocker.sh)"; unkrc=$?
 if [ "$unkrc" -eq 0 ]; then ok "unknown-event exit-2 -> wrapper exits 0"; else bad "unknown-event exit-2 -> wrapper exits 0 (got $unkrc)"; fi
 case "$unkout" in
@@ -252,7 +252,7 @@ if [ "$rc" -eq 0 ] && grepq "$uout" '"permissionDecision":"deny"'; then
   ok "unset CLAUDE_PROJECT_DIR -> fail-closed deny (rc 0)"
 else bad "unset CLAUDE_PROJECT_DIR -> fail-closed deny (rc=$rc, out=$uout)"; fi
 
-# 4) CHAIN CONTRACT (HIMMEL-1989). One adapter invocation runs N guardrails in
+# 4) CHAIN CONTRACT. One adapter invocation runs N guardrails in
 #    declared order, `+`-separated. These pin the contract `.codex/hooks.json`
 #    depends on; they are written against fixtures, not the real guardrails, so
 #    a guardrail's own behaviour change cannot make them pass vacuously.
@@ -288,7 +288,7 @@ run_chain() {  # <chain> [extra-wrapper-flags...]; sets $cout/$crc, resets the l
 }
 
 # 4a) Every member runs, in the declared order, and a clean chain emits nothing
-#     on stdout (the allow/advisory swallow of HIMMEL-1987 is per-chain now).
+#     on stdout (the allow/advisory swallow is per-chain).
 run_chain 'c1.sh+c2.sh+c3.sh'
 if [ "$crc" -eq 0 ] && [ "$clog" = "c1.sh c2.sh c3.sh " ]; then
   ok "chain runs every member in declared order"
@@ -371,11 +371,11 @@ if grepq "$clog" -F -e 'S1=[payload-xyz]' && grepq "$clog" -F -e 'S2=[payload-xy
 else bad "chain replays the hook payload to every member (log='$clog')"; fi
 
 # 4i) --lifecycle + chain: bodies are JOINED into one additionalContext, and the
-#     no-permission-gate contract (HIMMEL-1981) still holds — no deny envelope.
+#     no-permission-gate contract still holds — no deny envelope.
 : > "$CHAIN_LOG"
 lcout="$(printf '%s' '{"hook_event_name":"SessionStart"}' | bash "$T/.codex/run-hook.sh" --sandbox --lifecycle 'cctxa.sh+cctxb.sh' 2>/dev/null)"; lcrc=$?
 # The joined body is newline-separated INSIDE the JSON string, so the escape is
-# literal `\n` here — matching it proves ORDER, not just presence (HIMMEL-2003).
+# literal `\n` here — matching it proves ORDER, not just presence.
 if [ "$lcrc" -eq 0 ] && grepq "$lcout" -F -e 'CTX-A\nCTX-B' && grepq "$lcout" -F -e 'additionalContext' && ! grepq "$lcout" -F -e 'permissionDecision'; then
   ok "--lifecycle chain joins every member's context in order, no deny envelope"
 else bad "--lifecycle chain joins every member's context in order (rc=$lcrc, out=$lcout)"; fi

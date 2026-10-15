@@ -17,7 +17,7 @@ $TestdataDir = Join-Path $PSScriptRoot 'testdata'
 $FixturePath = Join-Path $TestdataDir 'fixture.jsonl'
 $BaselinePath = Join-Path $TestdataDir 'session-note.baseline.md'
 
-# Crystallizer test seam (HIMMEL-576): point the detached crystallizer at the
+# Crystallizer test seam: point the detached crystallizer at the
 # claude STUB (no-op) so these tests NEVER spawn a real claude / bill the Max plan.
 # Inherited by the hook child pwsh and onward to crystallize-note.ps1.
 $env:CRYSTALLIZE_CLAUDE_BIN = (Join-Path $TestdataDir 'bin\claude-stub.ps1')
@@ -28,7 +28,7 @@ $script:fails = 0
 function Pass([string]$m) { "PASS: $m" }
 function Fail([string]$m) { "FAIL: $m"; $script:fails++ }
 
-# Log/marker relocated per-machine, OUTSIDE any repo (HIMMEL-1215): mirrors the
+# Log/marker relocated per-machine, OUTSIDE any repo: mirrors the
 # hook's own $projectSlug derivation exactly (path separators/colon -> "-") so
 # tests can compute the expected log/marker path for a given (USERPROFILE, proj).
 function Get-EswSlug([string]$ProjDir) { return ($ProjDir -replace '[\\/:]', '-') }
@@ -118,7 +118,7 @@ try {
     $log = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
     if ($log -match 'skipped: vault') { Pass 'skip logged' } else { Fail 'skip not logged' }
 
-    # Case 2b (HIMMEL-1215 CR): the relocated per-machine log dir + log file are
+    # Case 2b: the relocated per-machine log dir + log file are
     # hardened owner-only — the Windows equivalent of the .sh twin's 0700/0600
     # (icacls /inheritance:r /grant:r <current-user>). dry_run logs + the degraded
     # note can carry raw transcript text (secrets), so no other local user may
@@ -218,7 +218,7 @@ try {
     Remove-Item -LiteralPath $sb3Vault -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $sb3Proj  -Recurse -Force -ErrorAction SilentlyContinue
 
-    # ---- Husk-skip cases (Cases 6–7, HIMMEL-576) -----------------------------
+    # ---- Husk-skip cases (Cases 6–7) -----------------------------
     $huskVault = Join-Path ([System.IO.Path]::GetTempPath()) ("eswt-husk-" + [guid]::NewGuid().ToString('N'))
     $huskProj  = Join-Path ([System.IO.Path]::GetTempPath()) ("eswt-huskp-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $huskVault -Force | Out-Null
@@ -264,7 +264,7 @@ try {
     if (Test-Path $spawnMark) { Pass 'crystallizer spawned for a non-husk note' } else { Fail 'crystallizer was not spawned' }
     $env:STUB_MODE = 'noop'; Remove-Item Env:\CRYSTALLIZE_MARKER -ErrorAction SilentlyContinue
 
-    # Case 9 (HIMMEL-590 F2): the mechanical Summary drops a leading system-reminder
+    # Case 9: the mechanical Summary drops a leading system-reminder
     # reaction and surfaces the substantive line. Exercises the PowerShell-side
     # heuristic (independent from the bash twin) through the real hook. Only the
     # Summary SECTION is asserted (the Raw Conversation echoes the full turn).
@@ -310,7 +310,7 @@ try {
     }
     if ($f2Sum2 -match '^Wired the webhook retry path') { Pass 'F2(ps): leading uppercase/trailing-ws ack dropped (twin parity)' } else { Fail 'F2(ps): bare-ack branch did not drop the ack line' }
 
-    # Case 10 (HIMMEL-663): unreadable crystallize_rules logs a warning with the
+    # Case 10: unreadable crystallize_rules logs a warning with the
     # tilde-EXPANDED path (fail-open but not invisible).
     $rulesCfg = Join-Path $huskProj '.claude\end-session-wiki.json'
     Set-Content -LiteralPath $rulesCfg -Value '{"enabled":true,"crystallize_rules":"~/missing-rules.md"}'
@@ -320,7 +320,7 @@ try {
     $expandedMissing = Join-Path (Join-Path $SB 'home') 'missing-rules.md'
     if ($rulesLog -and $rulesLog.Contains($expandedMissing)) { Pass 'rules(hook): log carries the tilde-EXPANDED path' } else { Fail 'rules(hook): log missing the expanded path' }
 
-    # Case 11 (HIMMEL-663): crystallize_rules plumbs through to the spawned
+    # Case 11: crystallize_rules plumbs through to the spawned
     # crystallizer — config parse -> ~/ expansion -> export -> across the
     # Start-Process boundary -> rules content lands in the claude prompt (argv).
     $rulesFile = Join-Path (Join-Path $SB 'home') 'rules-marker.md'
@@ -339,7 +339,7 @@ try {
     if ($argvDump -match 'HOOK_RULES_MARKER') { Pass 'rules(hook): rules content reached the claude prompt across the spawn boundary' } else { Fail 'rules(hook): rules content missing from the spawned prompt' }
     Remove-Item -LiteralPath $rulesCfg -Force -ErrorAction SilentlyContinue
 
-    # Case 12 (HIMMEL-672): crystallize_model precedence — config supplies the
+    # Case 12: crystallize_model precedence — config supplies the
     # DEFAULT model; a CRYSTALLIZE_MODEL already set in the launching shell wins
     # (per-session operator switch). Twin of the .sh suite's Case 13.
     $modelCfg = Join-Path $huskProj '.claude\end-session-wiki.json'
@@ -365,7 +365,7 @@ try {
     if ($argvLinesM -contains 'arg=cfg-pin-model') { Fail 'model(hook): config model leaked into argv despite env override' } else { Pass 'model(hook): config model correctly absent when env override is set' }
     Remove-Item -LiteralPath $modelCfg -Force -ErrorAction SilentlyContinue
 
-    # Case 13 (HIMMEL-1345): a high-entropy operand is elided; surrounding
+    # Case 13: a high-entropy operand is elided; surrounding
     # command/flag/path text and an unrelated ordinary command both survive.
     # Exact real-world shape that wedged the vault autosync: a GitHub GraphQL
     # global node ID copied verbatim tripped gitleaks' generic-api-key rule.
@@ -402,7 +402,7 @@ try {
     if ($elideContent -match 'git status') { Pass 'HIMMEL-1345: an unrelated ordinary command in the same session is untouched' } else { Fail 'HIMMEL-1345: an ordinary command in the same session was altered' }
     Remove-Item -LiteralPath $elideVault -Recurse -Force -ErrorAction SilentlyContinue
 
-    # Case 14 (HIMMEL-1345): ordinary commands with no high-entropy operand are
+    # Case 14: ordinary commands with no high-entropy operand are
     # unchanged. Negative case — a scrubber that elides everything would still
     # pass Case 13 alone. Uses a command with REPEATED internal spaces and a
     # spacing-sensitive quoted argument — a scrubber that unconditionally
@@ -425,7 +425,7 @@ try {
     } else { Fail "HIMMEL-1345: an ordinary command's text was altered" }
     Remove-Item -LiteralPath $noElideVault -Recurse -Force -ErrorAction SilentlyContinue
 
-    # Case 15 (HIMMEL-1345): single-case high-entropy tokens are NOT elided
+    # Case 15: single-case high-entropy tokens are NOT elided
     # (mixed-case gate negative coverage). Regression guard for THIS twin's
     # `-notmatch` -> `-cnotmatch` fix: case-insensitive `-notmatch` never
     # enforced mixed case at all, and no suite had a negative case here to
@@ -455,7 +455,7 @@ try {
     if ($singleCaseContent -match [regex]::Escape("client --env $TokScreamUpper")) { Pass 'HIMMEL-1345: ALL-UPPERCASE/SCREAMING_SNAKE high-entropy token is NOT elided' } else { Fail 'HIMMEL-1345: ALL-UPPERCASE/SCREAMING_SNAKE high-entropy token was elided or altered' }
     Remove-Item -LiteralPath $singleCaseVault -Recurse -Force -ErrorAction SilentlyContinue
 
-    # Case 16 (HIMMEL-1345): a STANDALONE padded base64 operand (no key=
+    # Case 16: a STANDALONE padded base64 operand (no key=
     # prefix) is elided. Regression guard for the Get-ScrubbedWord key=value
     # mis-split bug: it used to find the FIRST "=" in a token and treat
     # everything before it as a "key=" prefix, testing ONLY the suffix for
@@ -484,8 +484,8 @@ try {
     if ($standaloneContent -match [regex]::Escape('git config env=prod')) { Pass 'HIMMEL-1345: an ordinary short key=value word is untouched' } else { Fail 'HIMMEL-1345: an ordinary short key=value word was altered' }
     Remove-Item -LiteralPath $standaloneVault -Recurse -Force -ErrorAction SilentlyContinue
 
-    # Case 17 (HIMMEL-1345, second round): a MIXED-CASE opaque prefix before a
-    # non-padding "=" is elided whole (CodeRabbit finding). Case 16's
+    # Case 17: a MIXED-CASE opaque prefix before a
+    # non-padding "=" is elided whole. Case 16's
     # charset-only keypart gate is not enough on its own: it accepts ANY
     # alphanumeric prefix, so a standalone opaque token whose "=" sits
     # partway through on a non-padding boundary -- e.g.
@@ -520,7 +520,7 @@ try {
     Remove-Item -LiteralPath $huskVault -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $huskProj  -Recurse -Force -ErrorAction SilentlyContinue
 
-    # ---- 401 multi-vault retry cases (HIMMEL-711) ----------------------------
+    # ---- 401 multi-vault retry cases ----------------------------
     # A 401 from the target vault's key must trigger discovery of the operator's
     # OTHER vault keys and a retry. The network is stubbed via ESW_PUT_CMD (no
     # real Invoke-RestMethod / no real Obsidian); USERPROFILE is sandboxed so
@@ -576,11 +576,11 @@ try {
     $log14 = Get-Content -LiteralPath $mvLog -Raw -ErrorAction SilentlyContinue
     $mvNote = Get-ChildItem -Path (Join-Path $vaultA 'sessions') -Recurse -Filter *.md -ErrorAction SilentlyContinue | Select-Object -First 1
     if (($log14 -match 'local fs fallback') -and $mvNote) { Pass '401-retry(ps): all keys 401 -> on-disk fallback preserved' } else { Fail '401-retry(ps): all-keys-401 did not fall back to disk' }
-    # The loud degradation flag (HIMMEL-711): a persisted marker must be written so
+    # The loud degradation flag: a persisted marker must be written so
     # a SessionStart / where-are-we surface can pick up the silent-disk fallback.
     $marker14 = Get-EswMarkerPath -HomeDir $mvHome -ProjDir $mvProj
     if ((Test-Path -LiteralPath $marker14) -and ((Get-Content -LiteralPath $marker14 -Raw) -match 'DEGRADED')) { Pass '401-retry(ps): degradation marker persisted on disk-only fallback' } else { Fail '401-retry(ps): no degradation marker written on disk-only fallback' }
-    # HIMMEL-1215 CR: the degraded marker is ALSO owner-only hardened + written
+    # The degraded marker is ALSO owner-only hardened + written
     # UTF-8 no-BOM — the text-only check above would pass even if protection
     # failed or a BOM were reintroduced, so assert both explicitly.
     if (Test-OwnerOnly $marker14) { Pass 'ACL: degraded marker owner-only' } else { Fail 'ACL: degraded marker not hardened owner-only' }

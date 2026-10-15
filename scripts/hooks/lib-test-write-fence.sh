@@ -1,5 +1,5 @@
-# Shared fixture + harness for the block-write-into-main-checkout suite family
-# (HIMMEL-4164). SOURCED by test-block-write-into-main-checkout.sh and its
+# Shared fixture + harness for the block-write-into-main-checkout suite family.
+# SOURCED by test-block-write-into-main-checkout.sh and its
 # sibling shards test-block-write-into-main-checkout-<family>.sh; not a suite
 # itself (no test- prefix, so CI does not discover it). Source it from the
 # shard's own dir:  . "$(dirname "$0")/lib-test-write-fence.sh"
@@ -33,7 +33,7 @@ git config --global user.name t
 unset CODEX_EXTERNAL_WRITES_OK 2>/dev/null || true
 unset EDIT_ON_MAIN_OK 2>/dev/null || true
 
-# HIMMEL-4391: every setup step is checked. A failed git init / commit /
+# Every setup step is checked. A failed git init / commit /
 # worktree add used to leave a missing or half-built fixture that the rows then
 # "tested" (and could still pass on), so the suite aborts at the first failure.
 _fixture_die() {  # _fixture_die <what failed>
@@ -78,11 +78,11 @@ TMPFIX=$(mktemp -d /tmp/himmel-2526-bwimc-tmpfix.XXXXXX) || exit 1
 mkrepo_committed "$TMPFIX/primary" main
 
 # $FIX/wt/link-to-primary.txt — a worktree symlink pointing AT a file inside
-# the PRIMARY checkout (CR round 3, codex-3).
+# the PRIMARY checkout.
 printf 'orig\n' > "$FIX/primary/existing.txt"
 ln -sf "$FIX/primary/existing.txt" "$FIX/wt/link-to-primary.txt"
 
-# HIMMEL-2592 round 9 codex-3: two primary-side files whose NAMES are the
+# Two primary-side files whose NAMES are the
 # whole finding — one contains "-i" as a substring (the real filename from
 # the live false positive: an unanchored `sed...-i` entry-gate regex
 # matched the "-i" inside "invariants"), one does not. Same content, same
@@ -91,7 +91,7 @@ ln -sf "$FIX/primary/existing.txt" "$FIX/wt/link-to-primary.txt"
 printf 'a\n' > "$FIX/primary/test-ws5-invariants.sh"
 printf 'a\n' > "$FIX/primary/run-shell-tests.sh"
 
-# HIMMEL-2592 fixtures (operation-chosen path resolution + operand classes).
+# Fixtures (operation-chosen path resolution + operand classes).
 printf 'wt\n'   > "$FIX/wt/wtfile.txt"
 printf 'wt\n'   > "$FIX/wt/z.txt"
 printf 'orig\n' > "$FIX/primary/a.txt"
@@ -102,7 +102,7 @@ printf 'orig\n' > "$FIX/primary/somedir/inner.txt"
 # deletes the REFERENT's contents THROUGH the link (deny) — the pair is what
 # proves resolution follows the OPERAND SHAPE, not just the verb.
 ln -sfn "$FIX/primary/somedir" "$FIX/wt/dirlink"
-# HIMMEL-2592 round 8 codex-2: a worktree entry literally NAMED "2" that is
+# A worktree entry literally NAMED "2" that is
 # a symlink into the primary — `cp -t 2 > /dev/null src` types "2" as a
 # GENUINE -t value (a real space separates it from the unrelated redirect
 # that follows), so it must still deny; a naive "any digit before a
@@ -120,12 +120,12 @@ ln -sf "$FIX/wt/wtfile.txt" "$FIX/primary/link-to-wt.txt"
 mkdir -p "$FIX/wt/somedir"
 printf 'w\n' > "$FIX/wt/somedir/inner.txt"
 ln -sfn "$FIX/wt/somedir" "$FIX/primary/dirlink-out"
-# CR round 1 codex-2: a worktree link to a WORKTREE directory — the
+# A worktree link to a WORKTREE directory — the
 # false-positive control that keeps the `ln`-into-a-directory rule from
 # degenerating into "deny every ln whose destination is a link".
 mkdir -p "$FIX/wt/realsub"
 ln -sfn "$FIX/wt/realsub" "$FIX/wt/wtdirlink"
-# CR round 3 codex-3: a REAL worktree directory whose CHILD entry is a link
+# A REAL worktree directory whose CHILD entry is a link
 # into the primary. Creating `<wt>/childdir/z.txt` replaces that child ENTRY
 # (ln, mv) but writes THROUGH it (cp) — the pair is what pins the split.
 mkdir -p "$FIX/wt/childdir"
@@ -178,7 +178,7 @@ _run_stderr() {
 }
 
 # _check_one_reason / check_both_reason — a DENY row that asserts the deny
-# REASON, not merely rc=2. Load-bearing (HIMMEL-2592): an rc-only assertion
+# REASON, not merely rc=2. Load-bearing: an rc-only assertion
 # reports an area as covered when it is not. The canonical example is
 # `tee /dev/null > <primary>/f` — before this round it DID deny, but because
 # the tee operand loop swallowed the bare `>` as a bogus filename and then
@@ -215,7 +215,7 @@ check_one() {
     if [ "$got" = "$expect" ]; then ok "$label"; else bad "$label — expected $expect got $got"; fi
 }
 
-# Shared by the -heredoc and -forms shards (the HIMMEL-3622 command-
+# Shared by the -heredoc and -forms shards (the command-
 # substitution row helper and the primary/worktree roots its rows aim at).
 _subst_row() { # label verdict command [cwd]
     local j
