@@ -193,7 +193,7 @@ bash "$FM" remove "${lk%.md}.fleet.json" N90 >/dev/null 2>&1
 bash "$SCRIPT" "$lk" >/dev/null 2>&1
 check '15. with no lockless row the line is dropped' 0 "$(grep -c '^lockless:' "$lk")"
 
-# 16. HIMMEL-5074 N3/B1b: an empty lane reads unknown (not the next field), and only the
+# 16. an empty lane reads unknown (not the next field), and only the
 # boolean true is lockless: the string "true" stays a locked, visible row.
 lk2="$HANDOVER_DIR/b/HIMMEL-nextleg-M-console.md"
 lk2d="$HANDOVER_DIR/b/HIMMEL-4869-N91-pilot.md"; lk2s="$HANDOVER_DIR/b/HIMMEL-4869-N92-str.md"

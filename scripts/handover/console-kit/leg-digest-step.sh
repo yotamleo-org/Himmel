@@ -44,7 +44,7 @@
 # (HIMMEL_LEG_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER).
 #
 # Platform guard: Linux bash 3.2+ (console kit; /proc, GNU date and timeout;
-# no .ps1 twin - Windows is parked under HIMMEL-4102).
+# no .ps1 twin - Windows is parked).
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -93,7 +93,7 @@ cp "$W/cfg.toml" "$W/v/.gitleaks.toml"
 check 'the vault .gitleaks.toml is the default config' 'GITLEAKS FINDING generic-api-key' "$(TICK_VAULT_DIR="$W/v" bash "$BG" "$W/fp.md")"
 fi
 
-# HIMMEL-4911 CR round 1: deleted and non-ASCII paths, leading-zero thresholds
+# deleted and non-ASCII paths, leading-zero thresholds
 mkvault q
 echo u > "$W/q/ünï.md"; git -C "$W/q" "${GA[@]}" add 'ünï.md'; git -C "$W/q" "${GA[@]}" commit -q -m u; git -C "$W/q" push -q 2>/dev/null
 echo v2 >> "$W/q/ünï.md"; touch -d '50 minutes ago' "$W/q/ünï.md"  # gnu-ok
@@ -105,7 +105,7 @@ mkvault r
 tabf="$(printf 'a\tb.md')"; echo t > "$W/r/$tabf"; git -C "$W/r" "${GA[@]}" add -- "$tabf"; git -C "$W/r" "${GA[@]}" commit -q -m t; echo t2 >> "$W/r/$tabf"; touch -d '50 minutes ago' "$W/r/$tabf"  # gnu-ok
 check 'a tab in a path is counted with its real mtime' 'STALL:50m,1' "$(vs r)"
 
-# HIMMEL-4911 CR round 3: a failed upstream read is unknown, a missing upstream is ok
+# a failed upstream read is unknown, a missing upstream is ok
 git init -q -b main "$W/nu"; echo x > "$W/nu/x.md"; git -C "$W/nu" add x.md; git -C "$W/nu" "${GA[@]}" commit -q -m x
 check 'a vault with no upstream reads ok' 'ok' "$(vs nu)"
 mkvault w

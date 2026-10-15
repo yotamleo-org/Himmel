@@ -722,7 +722,7 @@ wait_exit "$WPID"
 check "(y4) a tick line with no cloud= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
-# --- (v) HIMMEL-5037: vmrun= wakes only on a class move TO DEAD / STUCK; the
+# --- (v) vmrun= wakes only on a class move TO DEAD / STUCK; the
 # busy count moving, a move back to ok/off and an absent field never wake. ----
 vmrun_line() { sed "s#  *denials=none# vmrun=$1 denials=none#" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
 reset_stub

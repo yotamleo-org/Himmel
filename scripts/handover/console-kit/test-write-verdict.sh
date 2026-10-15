@@ -552,7 +552,7 @@ printf 'class: option-parsing\nlayer-decision: classifier the reader rejects a C
 rc=0; out=$(wv q34 NO-GO "$SHA_A" --evidence-file "$evd/ld-crlf.md" 2>&1) || rc=$?
 contains "19: a CRLF layer-decision line warns like the gate's regex rejects it" "$out" "layer-decision line lacks a layer keyword"
 
-# --- 20. HIMMEL-5165/5173: a verdict written from the PR's own judge dir releases that dir ---
+# --- 20. a verdict written from the PR's own judge dir releases that dir ---
 # --pr 7$$ so the dir j7$$ (the PR's own) and j7$$a are the only ones that may carry the marker.
 PR20="7$$"
 trap 'rm -rf "$tmp" "$evd" "$outd" "$scratch/j$PR20" "$scratch/j${PR20}a" "$scratch/j${PR20}ab" "$scratch/j${PR20}a.b" "$scratch/j${PR20}c" "$scratch/j${PR20}d" "$scratch/j8$$" "$fake_scratch"' EXIT

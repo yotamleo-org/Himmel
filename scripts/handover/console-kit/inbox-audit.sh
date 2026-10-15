@@ -2,7 +2,7 @@
 # inbox-audit.sh — Per-shift audit for inbox-send.sh's
 # console-side sent-record: every token-quoting bullet in an inbox must have
 # a matching ledger line, or it is unaccounted for — either forged (a
-# console relay is barred from --token by HIMMEL-2975, so a token bullet
+# console relay is barred from --token, so a token bullet
 # with no record was never sent by this script) or lost to an exit-4
 # ledger-write failure (see inbox-send.sh header). Read-only: writes
 # nothing, only reports.

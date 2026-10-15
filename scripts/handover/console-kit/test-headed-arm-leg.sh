@@ -74,14 +74,14 @@
 #       launcher-env=, not only a HANDOVER_DIR this wrapper resolves itself
 #       (case 26/29). The whitespace refusal from case 29c is Darwin-only
 #       (HEADED_ARM_UNAME seam, mirroring headed-arm.sh's own): on Darwin it
-#       still refuses with exit 12; on any other platform, the pre-HIMMEL-2534
+#       still refuses with exit 12; on any other platform, the earlier
 #       behavior is restored exactly - plain `export` reaches the leg via
 #       ordinary inheritance, no token is added for that one var, and a
 #       stderr warning explains why.
-#   35. HIMMEL-3545 (invariant pin, not a regression repro): HANDOVER_DIR
+#   35. (invariant pin, not a regression repro): HANDOVER_DIR
 #       unset but self-resolvable (case 26's shape) and the doc directory
 #       outside that root still gets the additionalDirectories grant, named
-#       exactly - proving HIMMEL-3155's leg_propagate_env export already
+#       exactly - proving the leg_propagate_env export already
 #       carries the self-resolved root to the grant check, and that the
 #       grant is never /, $HOME, or the resolved root's own repo.
 #   36. a sanctioned operator ruling opens a leg-level 1M opt-in -
@@ -144,7 +144,7 @@ export HIMMEL_FLEET_SLOTS="$tmp/pinned-fleet-slots"
 export XDG_RUNTIME_DIR="$tmp/pinned-xdg-runtime"
 # every real launch appends a launch record under the himmelctl
 # cache dir; pinned so this suite never writes into the operator's real
-# ~/.claude/himmel (the HIMMEL-3260 lesson: a suite must not touch shared state).
+# ~/.claude/himmel (a suite must not touch shared state).
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
 # the re-dispatch refusal reads page/ack records from this dir;
 # pinned so no ambient ~/.himmel/state record can refuse (or pass) a case here.
@@ -259,7 +259,7 @@ chmod 755 "$SKIPPED_FLEET_PREFLIGHT"
 # verdict so case 13b can assert headed-arm-leg.sh actually consults the
 # SKIPPED-BANK token it computes (CADENCE_BANK_LANE="$LANE") instead of
 # discarding it, same rationale as SKIPPED_FLEET_PREFLIGHT above.
-# HIMMEL-2774 codex-3 (this round): also write a `pid` file into the
+# Also write a `pid` file into the
 # reservation it is standing in for, matching CADENCE_BANK_CALLER_PID - the
 # real bank-preflight.sh now does the same, and headed-arm-leg.sh's release
 # path on this refusal only deletes a reservation it can verify it owns.
@@ -495,7 +495,7 @@ for lane in native claudex; do
   contains "--lane $lane, caller-preset launcher-env: sibling token kept" "$lenv" "KEEP_ME=1"
 done
 
-# HIMMEL-3456 (CodeRabbit on #1140): leg_propagate_env lets a caller-preset
+# leg_propagate_env lets a caller-preset
 # token win on a name clash, so a preset HIMMEL_CONSOLE_NAME=.. used to reach
 # the leg unvalidated - past a valid --console, or with no source at all. The
 # launcher drops the preset token and propagates only the name it resolved.
@@ -681,7 +681,7 @@ contains "dry-run --relay, explicit opus model: refusal is the tier gate" "$out"
 # + the same HIMMEL_CONSOLE_LEG=1 marker every leg carries (design §3.2, "the
 # judge is a leg" - Guard E refuses a judge's own GO identically, no separate
 # marker). Defaults MODEL to claude-opus-5-5 at high effort on the native lane
-# only (HIMMEL-3630: Opus 5.5 high measured ~2.7x cheaper per verdict than
+# only (Opus 5.5 high measured ~2.7x cheaper per verdict than
 # Fable 5.1 with comparable wall time and zero missed findings in the dataset
 # - Fable is retired as the judge DEFAULT, kept only as an explicit,
 # tier-gated choice); withholds IMPL_GUARD_OK/INLINE_IMPL_OK (a judge does not
@@ -722,7 +722,7 @@ not_contains "dry-run --judge, ambient leg-only env: launcher-env drops the inhe
 not_contains "dry-run --judge, ambient leg-only env: launcher-env drops the stale LEG_CLAUDE_BIN token" "$out" "/tmp/stale-claude-bin"
 not_contains "dry-run --judge, ambient leg-only env: launcher-env drops the stale HEADED_ARM_LAUNCHER token" "$out" "/tmp/stale-launcher"
 
-# HIMMEL-3630 (console ruling, W-N519-b4c60d80): the Opus default is not an
+# The Opus default is not an
 # exemption from TIER_GATE - the gate matches by MODEL PREFIX regardless of
 # how MODEL got set, so a --judge launch with NO Tier line in its doc must
 # still be refused even though no explicit model was named. some/doc.md
@@ -742,7 +742,7 @@ check "dry-run --judge, explicit fable model: still hits the tier gate (exit 2)"
 contains "dry-run --judge, explicit fable model: refusal is the fable tier gate" "$out" "refusing fable launch"
 
 # --judge --lane claudex: the Opus/high-effort default is scoped to the
-# native lane only (HIMMEL-3133 explicitly leaves composing --judge with
+# native lane only (the design explicitly leaves composing --judge with
 # claudex out of scope) - claudex keeps its own gpt-6.1-sol/medium-effort
 # default untouched, and some/doc.md (no Tier line) proves that default never
 # reached the Opus/Fable tier gate.
@@ -1023,7 +1023,7 @@ for bad_or_model in claude-haiku-4-5 gpt-6.1-sol claude-sonnet-99-9 anthropic/cl
   contains "openrouter: refusal explains model mapping" "$out" "OpenRouter model"
 done
 
-# HIMMEL-4084 slice 3: lane registry. deepseek is admitted with its own
+# lane registry. deepseek is admitted with its own
 # launcher, the launcher's own default model and LEG_LANE=deepseek; glm is a
 # registry row that refuses until it has a launcher contract; unknown stays 2.
 rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane deepseek HIMMEL-9999-ds "$some_doc" "$tmp/no-signal" "$PAST" "$tmp/ds.log" 2>&1)" || rc=$?
@@ -1415,7 +1415,7 @@ exec17b4="$(bash -c "$cmd17b4" 2>/dev/null || true)"
 check "compact-hook exec: executing the generated command outputs the real contract content" "$exec17b4" "$contractcontent17b4"
 
 # 17c. Omitting --profile changes nothing: no shim, no lean flag, and a
-# dry-run report byte-identical to the pre-HIMMEL-2830 three-line form. This
+# dry-run report byte-identical to the earlier three-line form. This
 # is the case that keeps every console that never passes --profile working.
 env8b="$(cat "$d8/env-record" 2>/dev/null || true)"
 not_contains "no --profile: launcher is unchanged (no shim)" "$rec8" "leg-claude-launcher.sh"
@@ -1474,7 +1474,7 @@ check "full launch --profile: seeded settings carry gate permissions" "$rc" "0"
 
 # a leg must stay cd-based, never EnterWorktree-pinned - a pinned
 # session's isolation screen refuses /pr-check step 0's canonical fence.
-# HIMMEL-3285 also seeds the .locks deny below (same array), so this checks
+# The same change also seeds the .locks deny below (same array), so this checks
 # EnterWorktree is present, not that it is the array's only member.
 contains "full launch --profile: seeded settings deny EnterWorktree" \
   "$(jq -c '.permissions.deny' "$d17/HIMMEL-3333-leg.leg-settings.json" 2>/dev/null)" 'EnterWorktree'
@@ -1526,7 +1526,7 @@ check "full launch --profile: seeded settings deny NOTHING for Write/MultiEdit/N
 # let a leg edit a SIBLING leg's or a JUDGE's doc under the same handover
 # bucket. The .locks deny above still wins regardless,
 # since a lock file is never `.md`. Only Edit is emitted, matching the
-# HIMMEL-3645 dead-rule note above.
+# dead-rule note above.
 some_doc_canon="$(cd -P "$(dirname "$some_doc")" && pwd -P)/$(basename "$some_doc")"
 check "full launch --profile: seeded settings grant Edit on the leg's own doc only" \
   "$(jq --arg f "$some_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(/" + $f + ")"))' "$d17/HIMMEL-3333-leg.leg-settings.json" 2>/dev/null)" \
@@ -1572,8 +1572,7 @@ check "full launch --profile (space in handover root): .locks deny resolves with
   "$(jq -c '.permissions.deny' "$d17s/HIMMEL-3333-space.leg-settings.json" 2>/dev/null)" \
   "$(jq -cn --arg d "$space_root" '["EnterWorktree", ("Edit(/" + $d + "/.locks/**)")]')"
 
-# HIMMEL-3285 (CR round 2, codex-1; behaviour changed CR round 4/5, codex-1,
-# HIMMEL-3544): a doc placed directly AT the handover root (dirname(doc) ==
+# A doc placed directly AT the handover root (dirname(doc) ==
 # HANDOVER_DIR) must never collapse the grant to the whole root - rather than
 # refusing the launch outright, the wrapper now skips
 # only the additionalDirectories grant and launches normally, falling back to
@@ -1907,7 +1906,7 @@ rm -f "$tmp/shim-argv"
   bash "$SHIM" --model claude-sonnet-5 "load doc") || true
 check "shim: LEG_PROFILE_NO_SETTING_SOURCES unset adds no --setting-sources" \
   "$(cat "$tmp/shim-argv" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc]"
-# HIMMEL-4118 F1: under =1 the final argv must keep the empty list. A caller argv that names
+# under =1 the final argv must keep the empty list. A caller argv that names
 # --setting-sources again (last wins) would re-load the scopes, so the shim refuses, execs nothing.
 for over in '--setting-sources user,project' '--setting-sources=user'; do
   rm -f "$tmp/shim-argv"; rc=0
@@ -2013,7 +2012,7 @@ else
   echo "ok - mcpServers=[no-such-server]: no config file written"
 fi
 
-# (d) no mcpServers field -> byte-identical to pre-HIMMEL-2935: no file, no
+# (d) no mcpServers field -> byte-identical to the earlier behaviour: no file, no
 # LEG_PROFILE_MCP_CONFIG in the launched environment.
 full_launch_mcp d "HIMMEL-4444-leg" mcp-none
 check "no mcpServers field: full launch exit 0" "$rc" "0"
@@ -2042,7 +2041,7 @@ contains "dry-run: no mcpServers field reports mcp=null mcp-config=<none>" "$dry
 # CLAUDE.md: "raise effort before tier" - an Opus or Fable leg costs
 # materially more per turn than the Sonnet default, so it launches only when
 # its brief names a Tier line whose reason opens with one of the three
-# sanctioned category tags (HIMMEL-2997: a closed tag + free text, so the
+# sanctioned category tags (a closed tag + free text, so the
 # free text after the tag is never validated). Matched by MODEL PREFIX so a
 # [1m] suffix cannot dodge it.
 doc_no_tier="$tmp/tier-doc-none.md"
@@ -2305,7 +2304,7 @@ sha26="$(printf 'a%.0s' $(seq 1 40))"
 # primary-like cwd, HANDOVER_DIR cleared like the launch above) and must sit
 # inside this suite's own temp dir; anything else (a live root leaking in)
 # skips the write and fails loudly instead of minting a fake GO there.
-# HIMMEL-3543/3572: go.sh now resolves through go_resolve_root, which prefers
+# go.sh now resolves through go_resolve_root, which prefers
 # the anchor's .env HANDOVER_DIR over a cwd-derived inline root - so the
 # console's resolved root is passed explicitly (as the wrapper exports it),
 # the guard mirrors go_resolve_root itself, and a scratch HOME keeps go.sh
@@ -2654,7 +2653,7 @@ contains "28h ... and the launch log says the record was not written" "$(cat "$d
 
 # With no resolvable cache dir (HOME empty, no HIMMELCTL_CACHE_DIR) nothing is
 # written at all: falling back to /tmp would leave residue uninstall cannot find
-# (the accepted HIMMEL-3260 HOME-unset divergence, not repeated here).
+# (the accepted HOME-unset divergence, not repeated here).
 d28g="$tmp/c28g"; mk_launch_stubs "$d28g" "HIMMEL-3270-N7-nohome"; mkdir -p "$tmp/repo28g"
 rc=0
 HOME='' HIMMELCTL_CACHE_DIR='' run_leg "$d28g" "$tmp/repo28g" "HIMMEL-3270-N7-nohome" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
@@ -2664,7 +2663,7 @@ check "28i no resolvable cache dir: nothing written under /tmp/.claude" "$([ -e 
 
 # --- 29. --headless: the leg runs as a Claude Code background
 # session instead of in a konsole window. Stubs: the claude binary the shim
-# execs (HIMMEL-3795: HEADED_ARM_LEG_CLAUDE_BIN, converted into LEG_CLAUDE_BIN
+# execs (HEADED_ARM_LEG_CLAUDE_BIN, converted into LEG_CLAUDE_BIN
 # by the wrapper itself - an ambient LEG_CLAUDE_BIN is scrubbed unconditionally
 # now) doubles as the CLI headed-arm.sh asks for the
 # session census (HEADED_ARM_CLAUDE_CLI). Its launch call writes its argv to
@@ -2953,7 +2952,7 @@ contains "31b the wrapper still appends its own vars after the caller's" "$lenv2
 # 31c. A leg-process value containing whitespace is refused loudly (exit 12)
 # rather than silently mis-split into extra bogus HEADED_ARM_LAUNCHER_ENV
 # tokens - the var is a whitespace-split token list with no quoting scheme
-# (same contract as CODEX_BANK_PROBE_CMD). HIMMEL-2534 follow-up (case 32):
+# (same contract as CODEX_BANK_PROBE_CMD). (case 32):
 # this refusal is Darwin-only, so pin the seam explicitly rather than rely on
 # the test runner's real platform (this box happens to be Darwin too, but
 # case 32c below proves the non-Darwin branch takes a different path).
@@ -2964,7 +2963,7 @@ check "31c a whitespace-carrying leg-process value is refused with exit 12" "$rc
 contains "31c the refusal names the offending var" "$err29c" "LEG_PROFILE_SETTINGS"
 contains "31c the refusal explains why (HEADED_ARM_LAUNCHER_ENV cannot carry a spacey value)" "$err29c" "cannot carry"
 
-# 32a. HIMMEL-2534 follow-up (GAP): a caller-preset HANDOVER_DIR - the normal
+# 32a. (GAP): a caller-preset HANDOVER_DIR - the normal
 # case for a grouped console, which sets it before this wrapper ever runs -
 # must reach launcher-env= exactly like the wrapper-resolved case (26/31)
 # does. Before this fix, the resolve-if-unset block was skipped entirely
@@ -2980,9 +2979,9 @@ err30b="$(HEADED_ARM_UNAME=Darwin bash "$SCRIPT" --dry-run --profile leg-impl HI
 check "32b Darwin still refuses a whitespace-carrying value with exit 12" "$rc" "12"
 contains "32b the refusal still names the offending var" "$err30b" "LEG_PROFILE_SETTINGS"
 
-# 32c. HIMMEL-2534 follow-up (REGRESSION RISK): on any platform other than
+# 32c. (REGRESSION RISK): on any platform other than
 # Darwin, plain-export inheritance already carried a whitespace-carrying
-# leg-process value to the leg BEFORE HIMMEL-2534 (e.g. a Linux leg). That
+# leg-process value to the leg BEFORE the change (e.g. a Linux leg). That
 # must stay literally true - the launch still succeeds, no token is added
 # for that one var (it would corrupt HEADED_ARM_LAUNCHER_ENV's token list),
 # and a warning on stderr explains why.
@@ -3003,7 +3002,7 @@ contains "32c non-Darwin: the warning names the platform" "$out32c" "harmless on
 # sides (HIMMEL_CONSOLE_LEG via leg_propagate_env, HIMMEL_CONSOLE_NAME via a
 # bare export) passes every other case in this file - only these two rows
 # distinguish it, by asserting the token reaches launcher-env=, not just the
-# --dry-run report string cases 3-6/HIMMEL-3435 above already cover.
+# --dry-run report string cases 3-6 above already cover.
 
 # 33a. --console <name>: the flag-sourced name reaches launcher-env=.
 out33a="$(bash "$SCRIPT" --dry-run --console opsdesk --profile leg-impl HIMMEL-9999-leg-33a some/doc.md /tmp/nosig 99999999999 "$tmp/leg33a.log" claude-sonnet-5 2>&1)"
@@ -3017,7 +3016,7 @@ lenv33b="$(printf '%s\n' "$out33b" | grep '^headed-arm-leg: lane=')"
 contains "33b launcher-env carries HIMMEL_CONSOLE_NAME=ambient-console (inherited)" "$lenv33b" "HIMMEL_CONSOLE_NAME=ambient-console"
 
 # 34. lanes.json's claude-tier effort reaches the native lane's
-# CLAUDE_CODE_EFFORT_LEVEL, mirroring the HIMMEL-3482 native-Telegram-dispatch
+# CLAUDE_CODE_EFFORT_LEVEL, mirroring the native-Telegram-dispatch
 # match rule (exact model id, or "claude-<tier-id>-" prefix). Own fixture
 # registry via HEADED_ARM_LEG_LANES_JSON (same seam shape as
 # HEADED_ARM_LEG_PROFILES above), never the real scripts/lanes/lanes.json -
@@ -3051,11 +3050,11 @@ lenv34d="$(printf '%s\n' "$out34d" | grep '^headed-arm-leg: lane=')"
 contains "34d claudex lane still exports its own LEG_EFFORT-default effort" "$lenv34d" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
 # --- 35. HANDOVER_DIR unset, but a root IS
-# self-resolvable (case 26's HIMMEL-3155 shape: a console-like cwd with an
+# self-resolvable (case 26's shape: a console-like cwd with an
 # inline handovers/ dir) and the leg's own doc lives OUTSIDE that root, not
 # at/under it: the additionalDirectories grant must still fire and must name
 # exactly the doc's own directory, not the unset HANDOVER_DIR var read
-# directly. This is not a regression repro - HIMMEL-3155's leg_propagate_env
+# directly. This is not a regression repro - the leg_propagate_env
 # export (headed-arm-leg.sh:239, ~466-475) already carries the self-resolved
 # root to the :811 grant check on unmodified code, so this case is a pin
 # proving that continues to hold, not a fix. It fails only against a mutant
@@ -3096,7 +3095,7 @@ check "self-resolved root, doc outside it: grant is never the repo root" \
 # HEADED_ARM_LAUNCHER_ENV token leg-1's own launch added - are still live in
 # that shell when it arms leg-2. Before the fix, leg-2's launcher-env kept
 # leg-1's stale triplet forever, since a real leg never collides with its OWN
-# by-NAME path (only a sibling can). Same bug class HIMMEL-3456 already fixed
+# by-NAME path (only a sibling can). Same bug class already fixed
 # for HIMMEL_CONSOLE_NAME (see the "preset token" cases above), same fix
 # (leg_env_drop_token) now applied to the triplet.
 leg1_settings37="$tmp/leg-1.leg-settings.json"
@@ -3391,7 +3390,7 @@ check "41h consult sandbox fails closed when unavailable" "$(printf '%s' "$cset4
 check "41h consult sandbox has no unsandboxed retry" "$(printf '%s' "$cset41" | jq -r '.sandbox.allowUnsandboxedCommands' 2>/dev/null)" "false"
 check "41h consult sandbox does NOT auto-allow Bash (classifier still gates)" "$(printf '%s' "$cset41" | jq -r '.sandbox.autoAllowBashIfSandboxed' 2>/dev/null)" "false"
 check "41h consult sandbox allowWrite is exactly the consult doc FILE" "$(printf '%s' "$cset41" | jq -c '.sandbox.filesystem.allowWrite' 2>/dev/null)" "[\"$some_doc_canon41\"]"
-# HIMMEL-4066 round 6: the consult's own settings PIN env scrub off and defaultMode to auto
+# the consult's own settings PIN env scrub off and defaultMode to auto
 # (the classifier-gated mode the preface describes), so a user/local scrub=1 or
 # bypassPermissions cannot reach it; flag scope outranks user/project/local.
 check "41j consult settings pin CLAUDE_CODE_SUBPROCESS_ENV_SCRUB to 0" "$(printf '%s' "$cset41" | jq -r '.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB' 2>/dev/null)" "0"
@@ -3401,7 +3400,7 @@ d41n="$tmp/c41n"; mk_launch_stubs "$d41n" "HIMMEL-4061-n"
 RUN_LEG_ARGS="--profile design-motion" run_leg "$d41n" "$tmp/repo41c" "HIMMEL-4061-n" "claude-sonnet-5-5" >/dev/null 2>&1 || true
 wait_record "$d41n" || true
 check "41h a NON-consult profiled launch carries no .sandbox key" "$(jq 'has("sandbox")' "$d41n/HIMMEL-4061-n.leg-settings.json" 2>/dev/null)" "false"
-# HIMMEL-4061 NO-GO round: additionalDirectories is a sandbox WRITE ROOT, so a consult
+# additionalDirectories is a sandbox WRITE ROOT, so a consult
 # must never get its doc's directory (the shared handover bucket) granted. The doc here
 # sits in a bucket SUBDIR of the handover root (the real caller shape), not in $tmp.
 b41="$HANDOVER_DIR/u41/r41"; mkdir -p "$b41"; fx_brief '# fixture' >"$b41/consult41.md"; ln -sf "$b41/consult41.md" "$b41/consult41-link.md"
@@ -3468,7 +3467,7 @@ check "41g a dot-dot path into a worktree refuses (exit 2)" "$rc" "2"
 rc=0; out="$(LEG_REPO="$tmp/nonexistent41" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41g an unresolvable repo fails closed (exit 2)" "$rc" "2"
 
-# HIMMEL-4066 (a): a consult doc INSIDE the repo is always write-denied (the repo is in
+# (a): a consult doc INSIDE the repo is always write-denied (the repo is in
 # denyWrite), so arm time refuses it instead of launching a window that cannot answer.
 mkdir -p "$tmp/repo41c/docs"; : > "$tmp/repo41c/docs/in-repo-consult.md"
 rc=0; out="$(LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-a "$tmp/repo41c/docs/in-repo-consult.md" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
@@ -3476,7 +3475,7 @@ check "41i a consult doc inside the repo refuses (exit 2)" "$rc" "2"
 contains "41i in-repo refusal says why" "$out" "inside the repo"
 rc=0; out="$(LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4066-a "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i a consult doc outside the repo still passes (exit 0)" "$rc" "0"
-# HIMMEL-4118 F1: the consult is confined only by the in-repo shim, so a HEADED_ARM_LEG_SHIM
+# the consult is confined only by the in-repo shim, so a HEADED_ARM_LEG_SHIM
 # pointing anywhere else (here: a stub that would exec claude without --setting-sources) refuses.
 printf '%s\n' '#!/usr/bin/env bash' 'exec claude "$@"' > "$tmp/other-shim41.sh"
 rc=0; out="$(HEADED_ARM_LEG_SHIM="$tmp/other-shim41.sh" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4118-f1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
@@ -3509,7 +3508,7 @@ check "41i-4142 a non-consult launch with foreign CLAUDE_BIN/TARGET still passes
 not_contains "41i-4142 a non-consult launch refuses no seam" "$out" "--consult refuses"
 rc=0; out="$(HEADED_ARM_LEG_TARGET="$HERE/../console-kit/../headed-arm.sh" HEADED_ARM_LEG_PROFILES="$HERE/../console-kit/../../lanes/plugin-profiles.mjs" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4142-s1 "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4142 a consult whose TARGET/PROFILES resolve to the in-repo files passes (exit 0)" "$rc" "0"
-# HIMMEL-4142 S2 (TOCTOU): an override reached through a symlinked directory passes the
+# TOCTOU: an override reached through a symlinked directory passes the
 # canonical check, so what runs must be the CANONICAL path, never the retargetable spelling.
 ln -sfn "$(cd -P "$HERE/../../lanes" && pwd -P)" "$tmp/lanes-link41"
 ln -sfn "$(cd -P "$HERE/.." && pwd -P)" "$tmp/handover-link41"
@@ -3533,7 +3532,7 @@ ln -sfn "$(cd -P "$HERE" && pwd -P)" "$tmp/kit-link4152"
 rc=0; out="$(unset HEADED_ARM_LEG_TARGET; LEG_REPO="$tmp/repo41c" bash "$tmp/kit-link4152/headed-arm-leg.sh" --dry-run --consult --profile design-motion HIMMEL-4152-t "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4152 a consult via a symlinked kit dir passes (exit 0)" "$rc" "0"
 contains "41i-4152 the default exec target is the canonical headed-arm.sh" "$out" "would exec: $target_canon41 "
-# HIMMEL-4152 (J1678): bash startup tokens in the launcher env would run caller code before
+# bash startup tokens in the launcher env would run caller code before
 # the shim, so a consult refuses each; a non-consult launch passes them through (unchanged).
 for tok4152 in "BASH_ENV=$tmp/x.sh" "ENV=$tmp/x.sh" "BASH_FUNC_command%%=() { :; }" "SHELLOPTS=xtrace" "BASHOPTS=extglob"; do
   rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4152" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4152-b "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
@@ -3542,7 +3541,7 @@ for tok4152 in "BASH_ENV=$tmp/x.sh" "ENV=$tmp/x.sh" "BASH_FUNC_command%%=() { :;
 done
 rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 BASH_ENV=$tmp/x.sh" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4152-b "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4152 a non-consult launch with a startup token still passes (exit 0)" "$rc" "0"
-# HIMMEL-4152 (J1678): a real consult launch with a hostile caller runtime: a fake bash first
+# a real consult launch with a hostile caller runtime: a fake bash first
 # on PATH, a BASH_ENV file defining command(), an exported command function and ENV. None of
 # them may run inside headed-arm.sh or the launcher, the konsole env carries none of them,
 # and the PATH handed to the launcher is the pinned one. Each hook logs only when $0 (or the
@@ -3625,7 +3624,7 @@ for m4152 in startup fn; do
     *) check "41k-4152 [$m4152] direct entry ends in the pinned claude or a refusal (rc=$rc out=$out)" bad ok ;;
   esac
 done
-# HIMMEL-4159 (J1678b): loader and node preload tokens in the launcher env would run caller
+# loader and node preload tokens in the launcher env would run caller
 # code inside the consult's process tree, so a consult refuses each; a non-consult launch
 # passes them through (unchanged).
 for tok4159 in "LD_PRELOAD=$tmp/x.so" "LD_LIBRARY_PATH=$tmp" "LD_AUDIT=$tmp/x.so" "NODE_OPTIONS=--require=$tmp/x.js"; do
@@ -3635,7 +3634,7 @@ for tok4159 in "LD_PRELOAD=$tmp/x.so" "LD_LIBRARY_PATH=$tmp" "LD_AUDIT=$tmp/x.so
   rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="FOO=1 $tok4159" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --profile design-motion HIMMEL-4159-p "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
   check "41i-4159 a non-consult launch with a '${tok4159%%=*}' token still passes (exit 0)" "$rc" "0"
 done
-# HIMMEL-4159 (J1678b): a token that is not NAME=VALUE becomes `env`'s command operand at the
+# a token that is not NAME=VALUE becomes `env`'s command operand at the
 # launch site, so a consult refuses it; a non-consult dry run is unchanged.
 for tok4159 in "$tmp/evil4159" "1X=1" "FOO-BAR=1" "=1" "-i"; do
   rc=0; out="$(HEADED_ARM_LAUNCHER_ENV="X=1 $tok4159" LEG_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-4159-s "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
@@ -3733,7 +3732,7 @@ for sc41 in user project local managed; do
   done
 done
 rm -f "$tmp/repo41c/.claude/settings.json" "$tmp/repo41c/.claude/settings.local.json"
-# HIMMEL-4069 carry: the scopes the consult no longer loads still contribute their hooks,
+# the scopes the consult no longer loads still contribute their hooks,
 # deny/ask rules and env (and nothing else) to the consult's own settings, and the launch
 # hands the shim LEG_PROFILE_NO_SETTING_SOURCES=1 (-> `--setting-sources ""`).
 h41="$tmp/home41-carry"; rm -rf "$h41"; mkdir -p "$h41/.claude" "$tmp/repo41c/.claude"

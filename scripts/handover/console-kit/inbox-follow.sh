@@ -19,7 +19,7 @@
 #
 # --once drains the unread tail and exits (no live follow).
 # --peek delivers nothing and leaves the cursor alone: rc 0 when a complete
-# unread line is waiting, rc 1 when not, rc 3 when the inbox cannot be read (HIMMEL-3509: console-wait.sh prints its
+# unread line is waiting, rc 1 when not, rc 3 when the inbox cannot be read (console-wait.sh prints its
 # WAKE header first, then lets --once stream, so no line's cursor moves before
 # the line itself is out).
 # INBOX_FOLLOW_POLL_SEC is the live poll interval (default 1s).

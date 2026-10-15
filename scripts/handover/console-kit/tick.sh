@@ -494,7 +494,7 @@ done
 # the same way ceiling_summary below cross-references argv against a
 # separate invariant. "skip" (no --doc given, same as hb=skip above) and
 # "unknown" (doc given but no `## Live state`/`legs:` line found -- e.g. a
-# pre-HIMMEL-2973 doc) are both distinct from "ok": neither says the state
+# an older doc) are both distinct from "ok": neither says the state
 # agrees, only that there was nothing to disagree about.
 list_has() {  # list_has <needle> <word> [word...]
     local needle="$1" w
@@ -862,8 +862,8 @@ elif [ "$held_n" -gt 0 ] && [ "$matched_n" -eq 0 ]; then
     filter_unusable=1
 fi
 if [ "$filter_unusable" -eq 1 ]; then
-    # A field that cannot be computed must say so (HIMMEL-3130 NOTFOUND-vs-
-    # MISSING, HIMMEL-3002 unreadable=): procs=0 and procs=unknown must be
+    # A field that cannot be computed must say so (NOTFOUND-vs-
+    # MISSING, unreadable=): procs=0 and procs=unknown must be
     # distinguishable, or a real scan failure reads as "no legs running".
     # An empty --legs is the same case: there is no dispatch set to count
     # against, so "0" would be a bare guess (and, worse, a matched-nothing
@@ -897,8 +897,8 @@ fi
 # turn than the sonnet default - CLAUDE.md "raise effort before tier"). Any
 # non-Claude id (e.g. a claudex gpt-* model) buckets under "other" rather than
 # one unbounded per-model list. A leg matched by the same filter but carrying
-# no --model token at all buckets under "unknown" (codex-2, HIMMEL-2976 round
-# 1 CR) rather than falling out of every bucket while still counted in
+# no --model token at all buckets under "unknown"
+# rather than falling out of every bucket while still counted in
 # procs=.
 # same dispatched-name filter as procs= above, same
 # unknown-vs-empty distinction on a real census failure or an empty
@@ -1544,7 +1544,7 @@ if [ "$burn" -eq 1 ]; then
         burn_label="$(leg_label "$leg")"
         burn_line="$(bash "$REPO/scripts/lanes/leg-burn.sh" "$stem" 2>/dev/null)" || burn_line=""
         if [ -z "$burn_line" ]; then
-            # HIMMEL-3167/3277: the session name has no -YYYY-MM-DD suffix, and a
+            # the session name has no -YYYY-MM-DD suffix, and a
             # legacy-spelled doc's session is the derived <TICKET>-N<k> name; try
             # every candidate leg_identity names until one has a transcript.
             burn_ident="$(leg_identity "$leg")"

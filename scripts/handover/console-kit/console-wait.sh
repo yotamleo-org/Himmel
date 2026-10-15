@@ -30,13 +30,13 @@
 #                               until a sample succeeds.
 #
 # The action key is the tick fields a console acts on: legs=, livestate=,
-# prs=, tails=, legset=, board= and tracker= (HIMMEL-3933; class only, the STALE
+# prs=, tails=, legset=, board= and tracker= (class only, the STALE
 # age is dropped; tracker= is absent from an older tick line, never a failure),
-# vault= (HIMMEL-4911; class only, wakes ONLY on a move to STALL or PUSH-LAG --
+# vault= (class only, wakes ONLY on a move to STALL or PUSH-LAG --
 # never on a change of its age or count, nor a move back to ok/skip/unknown --
 # and the wake adds a `vault: reproduce with git -C <vault> hook run pre-commit`
 # line; absent from an older tick line, never a failure),
-# cloud= (HIMMEL-5163; class only, wakes ONLY on a move to STALL -- never on a
+# cloud= (class only, wakes ONLY on a move to STALL -- never on a
 # change of the ticket list, nor a move back to ok/skip; absent from an older
 # tick line, never a failure),
 # unowned-prs= is NOT in the action key (its minutes grow every tick): a
@@ -46,10 +46,10 @@
 # woken for) outlives the waiter like the underfill one; it clears after two
 # consecutive samples reading none, so one failed gh read is not an all-clear. A tick
 # line without the field is skipped.
-# vmrun= (HIMMEL-5037; class only, wakes ONLY on a move to DEAD or STUCK -- never
+# vmrun= (class only, wakes ONLY on a move to DEAD or STUCK -- never
 # on the busy count, nor a move back to ok/off; absent from an older tick line,
 # never a failure),
-# denials= (HIMMEL-3724 -- a new leg, a higher count or a higher class
+# denials= (a new leg, a higher count or a higher class
 # (SHIP-STEP > PAUSE-RISK > REPEAT) is exactly the alert this exists to
 # surface; the same denial ageing out of tick.sh's 30-min window, moving it to
 # none or lowering a count, is NOT a wake, so one denial wakes once) and the
@@ -245,7 +245,7 @@ sample() {
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
         case "$f" in board|tracker|vault|cloud|vmrun) v="${v%%:*}" ;; esac
-        # HIMMEL-5037: vmrun= keeps its class only (off|ok|DEAD|STUCK), not the counts.
+        # vmrun= keeps its class only (off|ok|DEAD|STUCK), not the counts.
         [ "$f" = vmrun ] && v="${v%%,*}"
         key="$key$f=$v|"
     done
@@ -285,7 +285,7 @@ drop_board_ok() {
         fi
         # cloud= wakes only on a class move TO STALL, never back to ok/skip.
         [ "$f" = cloud ] && [ "$cloud_new" != STALL ] && continue
-        # HIMMEL-5037: vmrun= wakes only on a class move TO DEAD / STUCK.
+        # vmrun= wakes only on a class move TO DEAD / STUCK.
         if [ "$f" = vmrun ]; then
             case "$vmrun_new" in DEAD|STUCK) ;; *) continue ;; esac
         fi

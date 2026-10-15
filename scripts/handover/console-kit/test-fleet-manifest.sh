@@ -7,7 +7,7 @@
 #   2. add is idempotent; a second leg appends in order; list prints docs
 #   3. remove by label and by doc; removing an absent leg is not an error
 #   4. a relative doc is refused (tick would resolve it against a different root)
-#   5. keys the writer does not own survive a rewrite (room for HIMMEL-1873)
+#   5. keys the writer does not own survive a rewrite (room for a wider leg manifest)
 #   6. list on a missing or invalid manifest fails (a bad leg entry included);
 #      add refuses to clobber an invalid one
 #   6b. add refuses a doc with whitespace or a glob character (tick word-splits)

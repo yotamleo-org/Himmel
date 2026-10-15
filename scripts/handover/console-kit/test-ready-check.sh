@@ -268,7 +268,7 @@ contains "later-in-progress: names the in-progress run" "$out" "pr-title-lint=IN
 # --- 2h. control: a later QUEUED run (no startedAt/completedAt at all) after
 # an earlier timestamped SUCCESS — a run that has not started yet has no
 # timestamp to lose a max_by comparison with, so it must still govern and
-# item 2 FAILs (HIMMEL-3690 codex-1: an untimed later run must not lose to an
+# item 2 FAILs (an untimed later run must not lose to an
 # earlier timestamped one) --------------------------------------------------
 reset_stubs
 STUB_ROLLUP='[{"name":"pr-title-lint","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-01-01T08:10:00Z","completedAt":"2026-01-01T08:12:00Z"},{"name":"pr-title-lint","status":"QUEUED","conclusion":null}]'

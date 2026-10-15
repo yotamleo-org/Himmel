@@ -35,20 +35,20 @@
 #   - every check-run at <sha> is status=completed with a conclusion in
 #     {success,skipped,neutral}, at least one check-run exists, and the
 #     combined commit status (when it has any statuses at all) is not
-#     failure/error. check-runs is the authoritative read (HIMMEL-3572
-#     ruling: the combined-status endpoint alone can read `pending` with
+#     failure/error. check-runs is the authoritative read (the
+#     combined-status endpoint alone can read `pending` with
 #     zero statuses while Actions check-runs are red) - the combined-status
 #     read is a second, belt-and-suspenders refusal, never the primary one;
 #   - the commit's `CI` workflow run (read via the Actions API, not
 #     check-runs) exists and is status=completed conclusion=success
-#     (HIMMEL-3627: on a commit whose CI run has not started, the only
+#     (on a commit whose CI run has not started, the only
 #     check-runs are the unrelated Pages ones, which check-runs above would
 #     pass vacuously).
 #
 # Every read that feeds a refusal decision (git remote/ls-remote, gh api) is
 # itself fail-closed: a transient failure of the READ refuses with a plain
 # "could not confirm" message, never falls through as if the read had come
-# back clean (HIMMEL-3572 CR round: a failed `git ls-remote` used to read as
+# back clean (a failed `git ls-remote` used to read as
 # "no tags exist", and a failed `gh api` used to read as "nothing to flag").
 #
 # --dry-run runs every check and prints the plan; no origin write, no tag.

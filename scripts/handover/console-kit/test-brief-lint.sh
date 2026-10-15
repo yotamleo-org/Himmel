@@ -123,7 +123,7 @@ rc=0; out="$(run_leg "$tmp/fixture_plain_ok.md" --profile leg-impl)" || rc=$?
 rc=0; out="$(run_leg "$tmp/tmpl_bad.md" --relay)" || rc=$?
 { [ "$rc" -eq 0 ] && ! printf '%s' "$out" | grep -q -- 'no-prior-art-check'; } && ok "4f relay launch is not gated" || bad "4f relay launch is not gated (rc=$rc): $out"
 
-# 5. HIMMEL-4749 description field.
+# 5. description field.
 PA='> **Prior art:** none found (qmd -c jira-himmel "x")'
 mk_raw desc_none '# brief' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'
 mk_raw desc_ph '---' 'description: <one plain-language line: what this leg is doing and why>' '---' '# brief' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'

@@ -258,7 +258,7 @@ else
 fi
 fi
 
-# HIMMEL-2790 (CodeRabbit): a pre-existing, wrongly-permissioned lock
+# A pre-existing, wrongly-permissioned lock
 # directory must be tightened to 700 — mkdir -m only sets the mode at
 # creation, so a leftover directory from an older run or a looser umask was
 # previously accepted as-is.

@@ -23,7 +23,7 @@
 # arm the leg launched on); a leg added with no --arm carries no `arm` key.
 # Only `legs[].doc` drives tick; label (leg-identity.sh's N<k>) is what remove
 # matches and what a human reads. Any other key, top-level or per leg, is
-# carried through every rewrite untouched, so HIMMEL-1873's wider leg manifest
+# carried through every rewrite untouched, so a wider leg manifest
 # (chains, lanes, write-sets) can grow in the same object.
 #
 # add is idempotent (a doc already listed is left alone); removing a leg that is

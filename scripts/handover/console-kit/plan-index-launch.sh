@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # plan-index-launch.sh <out> <cmd...> -- the detached wrapper tick.sh runs for a
 # plan-index --refresh. Takes <out>/.launch first so an overlapping tick's duplicate exits
-# before it can clobber the live refresh's .run.log/.last-fail/.last-run (HIMMEL-4059: its own
+# before it can clobber the live refresh's .run.log/.last-fail/.last-run (its own
 # file so the test drives the production wrapper, and a single-quoted trap that reads "$o" only
 # when it fires).
 o=$1; shift

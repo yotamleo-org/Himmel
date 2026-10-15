@@ -10,7 +10,7 @@
 # an independent judge's record is a second non-author check (the go.sh
 # --trust-reviewed trust model). Granted only when every condition holds:
 #   (a) verdicts/<qid>/ holds a record for <new-head> that write-verdict.sh
-#       wrote and signed (the HIMMEL-4984 mac), naming this PR (and this branch,
+#       wrote and signed (the mac), naming this PR (and this branch,
 #       when it carries one), and every record in the qid parses;
 #   (b) the PR is an OPEN same-repo type/slug branch that has reached the cap
 #       (.round >= 3) and has .head state, i.e. there is a round to grant;

@@ -180,7 +180,7 @@ if [ -z "$rollup" ] || [ "$rollup" = "null" ]; then
 else
     # Judge each check IDENTITY by its LATEST run, not any matching row — a
     # superseded CANCELLED run must not fail a check whose later run at the
-    # same head is green (HIMMEL-3690; evidence: PR #1317's pr-title-lint
+    # same head is green (evidence: PR #1317's pr-title-lint
     # CANCELLED 08:19:58Z then SUCCESS 08:26:47Z). Identity = CheckRun `name`
     # plus `workflowName` when present, else StatusContext `context`. Latest
     # = greatest startedAt/completedAt (CheckRun) or createdAt/startedAt
@@ -324,14 +324,14 @@ else
     # Same config source as check-commit-msg.sh: load TICKET_ID_PATTERN /
     # JIRA_PROJECT_KEY from the primary checkout's .env (live env wins) —
     # without this, a fresh shell with nothing exported always falls through
-    # to the bare "#123" pattern and flags every "[HIMMEL-1234]"-style subject.
+    # to the bare "#123" pattern and flags every "[TICKET-1234]"-style subject.
     RC_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
     # shellcheck source=../../lib/load-dotenv.sh
     # shellcheck disable=SC1091
     if . "$RC_SCRIPT_DIR/../../lib/load-dotenv.sh" 2>/dev/null; then
         # pin to this script's OWN checkout, never the caller's
         # CWD repo (load_dotenv with no --root resolves via the process CWD's
-        # git repo — see HIMMEL-3532 / bank-preflight.sh for the failure mode).
+        # git repo — see bank-preflight.sh for the failure mode).
         load_dotenv --root "$(_load_dotenv_primary_for "$RC_SCRIPT_DIR/../../..")" TICKET_ID_PATTERN JIRA_PROJECT_KEY || true
     fi
     TICKET_PATTERN="${TICKET_ID_PATTERN:-}"

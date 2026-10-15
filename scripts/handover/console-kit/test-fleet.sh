@@ -319,7 +319,7 @@ for AGCMD in /nonexistent "$W/bin/agents-bad"; do
     eq "agents source ($(basename "$AGCMD")): N10 falls back to the Live-state pid (dead, lock held)" "$(printf '%s' "$J4" | q 'L("N10").mode+":"+L("N10").alive')" "?:false"
 done
 
-# ------------------------------------------------------------------ HIMMEL-3412(b): readSweep rc contract
+# ------------------------------------------------------------------ readSweep rc contract
 # A sweep that dies with an rc other than 0/20 is not a complete sweep, even if it
 # printed some slug= rows before it died: legs go UNKNOWN, not a partial trust.
 cat > "$W/bin/queue-lock-partial" <<'STUB'

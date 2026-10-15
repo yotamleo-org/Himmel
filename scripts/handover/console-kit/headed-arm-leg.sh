@@ -6,8 +6,8 @@
 # plain launch reports") - and adds the leg-only env the console lane does not
 # need.
 #
-# WHY (console correction 12:1x on HIMMEL-2766, on the ticket): legs were
-# ALREADY on the standard window today - the HIMMEL-2658 mechanism is the
+# WHY: legs were
+# ALREADY on the standard window today - the mechanism is the
 # model-id suffix (`<model>[1m]` + `--autocompact auto` = 1M; no suffix =
 # standard - see docs/internals/lane-calibration.md "Context mode" and
 # headed-arm.sh's own --context handling, which this wrapper reuses rather
@@ -47,17 +47,17 @@
 # a REPEAT, or an unreadable record launches. Exit 14 joins 2 usage, 10 fleet
 # cap, 11 bank exhausted, 12 macOS whitespace.
 #
-# --headless (HIMMEL-3403; or LEG_HEADLESS=1 in the launching shell, the flag
+# --headless (or LEG_HEADLESS=1 in the launching shell, the flag
 # wins): the same launch with no konsole - the leg runs as a Claude Code
 # background session (headed-arm.sh adds --bg), and its env goes into the
 # per-leg settings file because the session inherits the claude daemon's env,
 # not ours. Needs a profile; native lane only. End a headless leg: `kill <pid>`
 # (the pid= in the log's `headless=1` line, or `claude agents --json`), then
-# `claude rm <short-id>`. Where -p vs --bg fits which job: HIMMEL-3410.
+# `claude rm <short-id>`. Where -p vs --bg fits which job: docs/internals/headless-modes.md.
 # A headless leg cannot pass seams to chokepoints: the seam
 # guard ignores the per-leg settings file and refuses (exit 96) whenever a
 # seam differs from the claude daemon's env, so merge-on-green.sh and go.sh
-# refuse there. Use a headed leg for anything that ships; design: HIMMEL-3930.
+# refuse there. Use a headed leg for anything that ships.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm.sh
 # itself (konsole is Linux/KDE-only) - no .ps1 twin; the Windows station
@@ -251,7 +251,7 @@ usage() {
 # token list is the ONLY channel to the leg, so such a value is refused
 # loudly (exit 12) rather than silently corrupted. On every other platform, a
 # plain `export` already reaches the leg via ordinary environment
-# inheritance (this was true before HIMMEL-2534 and must stay true), so the
+# inheritance (this was true before and must stay true), so the
 # value is left there untouched, a stderr warning explains why no token was
 # added, and this function returns without exit.
 leg_propagate_env() {
@@ -654,7 +654,7 @@ fi
 
 NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-}"
 
-# HIMMEL-4013 role-to-profile rule: a `profile: <name>` line in the brief's first
+# role-to-profile rule: a `profile: <name>` line in the brief's first
 # 60 lines selects the leg's profile when neither --profile nor LEG_PROFILE did
 # (an explicit flag/env is the override and always wins; --no-profile opts out
 # and is left alone). Only the explicit field is honoured here - inferring a
@@ -721,7 +721,7 @@ fi
 # default further down, unchanged: a known gap (design §3.2 P1), not this
 # ticket's to close. Fable is retired as the judge DEFAULT (Opus
 # 5.5 high measured ~2.7x cheaper per verdict than Fable 5.1 with comparable
-# wall time and zero missed findings in the HIMMEL-3595 dataset); the effort
+# wall time and zero missed findings in the measured dataset); the effort
 # default is set here, before the native-lane effort resolver below, so that
 # resolver's own "an explicit CLAUDE_CODE_EFFORT_LEVEL wins" check treats it
 # exactly like a caller-set value and never falls through to lanes.json's
@@ -821,7 +821,7 @@ if [ -z "${HANDOVER_DIR:-}" ]; then
     fi
 fi
 
-# HIMMEL-2534 (coordinator follow-up): propagate HANDOVER_DIR whenever it is
+# Propagate HANDOVER_DIR whenever it is
 # non-empty, not only when the block above just resolved it - the normal
 # case for a grouped console already exports HANDOVER_DIR before this
 # wrapper ever runs (Mode B above), and that caller-preset value needs the
@@ -836,7 +836,7 @@ fi
 # INSIDE the handover root (exit 15). The root commonly lives in an Obsidian
 # vault, which indexes every file regardless of .gitignore, so a judge whose
 # cwd is in the vault and whose scratch is a repo tree hung it twice (609k
-# files; HIMMEL-3705's docs-only fix never reached console-written briefs).
+# files; a docs-only fix never reached console-written briefs).
 # This is the one launcher every leg and judge goes through, so the gate lives
 # here. Both paths are realpath'd (symlinks followed) and the resume_cwd's
 # not-yet-existing tail is resolved through its deepest existing ancestor, so
@@ -1004,7 +1004,7 @@ unset -v _ab_in
 
 # console-only knobs that must never reach a leg's own process,
 # and therefore never reach the konsole child this wrapper execs into via
-# headed-arm.sh (whose env -u list only clears the three HIMMEL-2545
+# headed-arm.sh (whose env -u list only clears the three
 # session-identity vars, not this one). CONSOLE_CONTEXT is read by
 # headed-arm.sh to pick a CONSOLE's --autocompact ceiling; a leg's ceiling is
 # already pinned above via LEG_CONTEXT/RESOLVED_AUTOCOMPACT, which never
@@ -1075,8 +1075,8 @@ unset -v _leg_env_scrub
 # they are excluded by name, not by re-deriving a second list. The three
 # LEG_PROFILE_* names are excluded because the loop above already scrubbed
 # them; HEADED_ARM_LAUNCHER_ENV is excluded because it is the container being
-# cleaned, not a name inside it. LEG_CLAUDE_BIN is NOT excluded (HIMMEL-3720
-# left it as a plain-var exception; HIMMEL-3795 closes it): unlike the six
+# cleaned, not a name inside it. LEG_CLAUDE_BIN is NOT excluded:
+# unlike the six
 # names above, this wrapper never reads LEG_CLAUDE_BIN back as deliberate
 # input on this native lane - only the claudex branch and the
 # HEADED_ARM_LEG_CLAUDE_BIN test seam below ever set it again, both via a
@@ -1163,7 +1163,7 @@ if [ "$RESOLVED_AUTOCOMPACT" != "200000" ] && [ "$AB_ARM" != "400k" ]; then
     # positional - a var it consumes in THIS SAME process tree, so a plain
     # export (never leg_propagate_env) is the right channel, same convention
     # leg_propagate_env's own header documents for HEADED_ARM_REPO etc. The
-    # HIMMEL-3139 scrub above already ran unconditionally and unset any
+    # The scrub above already ran unconditionally and unset any
     # ambient value before this point; this is a deliberate, narrow re-set
     # for the one sanctioned exec below, not a change to that scrub. Any
     # further headed-arm-leg.sh launch this leg itself makes re-scrubs it
@@ -1266,8 +1266,8 @@ fi
 # per-launch console decision, not part of the leg's identity. Opt-out
 # ONLY: leaving it unset changes nothing, which is the ticket's explicit
 # requirement (the auto-trigger hook exists because manual triggering was
-# left to discretion once already and every open PR went unreviewed,
-# HIMMEL-1362) - a default-off seam here would recreate that exact failure.
+# left to discretion once already and every open PR went unreviewed)
+# so a default-off seam here would recreate that exact failure.
 if [ -n "${LEG_SUPPRESS_CR_TRIGGER:-}" ]; then
     leg_propagate_env CR_TRIGGER_SUPPRESS 1
 fi
@@ -1276,7 +1276,7 @@ fi
 # guard-implementor-dispatch / orchestrator-inline-guard.
 # headed-arm.sh's shared console/leg child-env block does not set these.
 # Export into THIS process so both survive konsole's `-e env -u ...`, which
-# only unsets the three HIMMEL-2545 vars and otherwise inherits as-is.
+# only unsets the three vars and otherwise inherits as-is.
 # --judge: a judge does not implement, so neither permission is
 # exported for it. The --dry-run report below reads both via ${VAR:-<unset>}
 # rather than a bare $VAR, since a judge launch never sets them at all and
@@ -1302,7 +1302,7 @@ if [ "$JUDGE" -eq 1 ]; then
     [ -n "$_judge_qid" ] && leg_propagate_env HIMMEL_CONSOLE_JUDGE_QID "$_judge_qid"
 fi
 # HIMMEL_CONSOLE_NAME: the owning console's session name, so a
-# leg's HIMMEL-3430 merge-block alert (scripts/lib/merge-block-alert.sh,
+# leg's merge-block alert (scripts/lib/merge-block-alert.sh,
 # untouched by this ticket - it already reads this var) can route to the
 # console's own inbox instead of DMing the operator. Resolved from the first
 # of three sources that yields a name - never guessed from the process tree:
@@ -1315,7 +1315,7 @@ fi
 # refused on above (it lands in the same inbox-lookup path), but a failure
 # there does not abort the launch the way a bad --console flag does: this
 # seam is best-effort alert routing, not load-bearing for the leg, and
-# HIMMEL-3430's own no-name fallback (operator DM) already covers "no usable
+# The alert's own no-name fallback (operator DM) already covers "no usable
 # name" cleanly. A candidate failing the charset check is therefore treated
 # exactly like an empty source - try the next one, or export nothing.
 _console_name_ok() {
@@ -1897,7 +1897,7 @@ EOF_CS_FILES
     # fail the same way either way.
     if [ "$LANE" = "native" ]; then
         # %q shell-quotes PROFILE_CONTRACT (log dir + leg name are caller
-        # args, HIMMEL-2990 CR round 1): the generated command is re-parsed
+        # args): the generated command is re-parsed
         # by a DIFFERENT shell when the hook fires, so an unescaped quote or
         # $(...) in the path would break out of it.
         _leg_contract_cmd="$(printf 'cat %q' "$PROFILE_CONTRACT")"
@@ -2024,7 +2024,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     fi
     printf '\n'
     # Printed ONLY under --profile: with the flag omitted this whole line is
-    # absent and the dry-run report is byte-identical to the pre-HIMMEL-2830
+    # absent and the dry-run report is byte-identical to the earlier
     # one, matching the argv guarantee it describes.
     if [ -n "$PROFILE" ]; then
         printf 'headed-arm-leg: profile=%s settings=%s preface=%s contract=%s lean=%s mcp=%s mcp-config=%s autocompact=%s\n' \
@@ -2254,7 +2254,7 @@ if [ "$CONSULT" -ne 1 ] && [ -n "${HEADED_ARM_REPO:-}" ]; then
         || echo "headed-arm-leg: WARN trust pre-accept not applied (see above); the leg may stop at the folder-trust prompt" >&2
 fi
 
-# HIMMEL-4832 (himmel-bus T9): a profile that lists himmel-bus in mcpServers
+# A profile that lists himmel-bus in mcpServers
 # opts in. The launcher registers the session under its own name before launch
 # (the only party that knows it before the model exists), hands the leg
 # HIMMEL_BUS_NAME and nothing else, and tells headed-arm.sh to bind the claude

@@ -9,7 +9,7 @@
 #               the wrap gate a console runs on itself)
 #   --projects  defaults to ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects
 #
-# The signal (chosen 2026-10-09, evidence in the HIMMEL-5071 PR body):
+# The signal (chosen 2026-10-09, evidence in the PR body that introduced this):
 #   - The registry: Claude Code writes <projects>/<proj>/<sid>/subagents/
 #     agent-<id>.meta.json when it LAUNCHES a child (its toolUseId, its
 #     requestShape) and appends the child's own transcript beside it.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # vm-runner.sh — the console's ONE entry point for the himmel-vm self-hosted
-# Actions runner (HIMMEL-5037 phase 2b). The host loop is scripts/vm/ci-runner.sh;
+# Actions runner. The host loop is scripts/vm/ci-runner.sh;
 # this wraps it in one user-level systemd unit per VM and the repo kill switch.
 #
 #   vm-runner.sh on  [--vms N]   check policy, ensure the clones, set the repo

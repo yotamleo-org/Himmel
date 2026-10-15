@@ -27,7 +27,7 @@
 #   inbox-send.sh <session-name> --file <path> [--token <retask-token>] [--doc <path>]
 #   inbox-send.sh --pending
 #     Lists every inbox/*.md whose size exceeds its cursor — i.e. a ruling
-#     the named leg has not yet consumed. Leg doc HIMMEL-2788 fact 7: "the
+#     the named leg has not yet consumed. The design asks that "the
 #     console tick can list inbox/*.md whose size > cursor" so an
 #     undelivered ruling stays visible instead of silently waiting on the
 #     leg's next tool call / resume.

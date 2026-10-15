@@ -9,7 +9,7 @@
 #   3. by= falls back to <user>@<host> without CONSOLE_SESSION_NAME.
 #   4. idempotent: a re-run overwrites in place, no temp file left behind.
 #   5. HIMMEL_CONSOLE_LEG set -> exit 3, nothing written (a leg never writes its own GO;
-#      this covers a --judge leg too - HIMMEL-3133, same marker, no separate one).
+#      this covers a --judge leg too - same marker, no separate one).
 #   6. HIMMEL_CONSOLE_RELAY set -> exit 3, and its message names the console, never
 #      a judge, as the writer.
 #   7. unresolvable handover root -> exit 1.
@@ -172,7 +172,7 @@ check    "relay: no GO file written" "$(find "$ROOT6" -type f | wc -l | tr -d ' 
 rm -rf "$ROOT6"
 
 # --- 7. "the judge is a leg" - go.sh's own gate is the leg
-# marker (HIMMEL_CONSOLE_JUDGE, HIMMEL-4564, only feeds guard-judge-writes.sh),
+# marker (HIMMEL_CONSOLE_JUDGE, only feeds guard-judge-writes.sh),
 # so nothing anywhere in go.sh's output should still claim
 # "only the judge writes a GO" (stale pre-3133 wording: only the CONSOLE does,
 # whether the caller is a plain leg, a --judge leg, or a relay).

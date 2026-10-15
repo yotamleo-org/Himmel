@@ -42,7 +42,7 @@ LUNA = os.path.expanduser('~/Documents/luna')
 HANDOVERS = ''
 LAYERS = ['bugs', 'enhancements', 'features', 'misc', 'audit']
 VER_RE = re.compile(r'^v1\.0\.(\d+)([a-z]?)$')  # a trail '<version>a', 'b', ... takes its parent's overflow (HIMMEL-4026)
-# HIMMEL-4872/4873: the train is every v1.N.x: v1.0.x, the v1.1.x line (ex v1.0.2b..h) and the milestone minors v1.2.0+.
+# the train is every v1.N.x: v1.0.x, the v1.1.x line (ex v1.0.2b..h) and the milestone minors v1.2.0+.
 TRAIN_RE = re.compile(r'^v1\.\d+\.\d+[a-z]?$')
 SKIP_RE = re.compile(r'HIMMEL-3882|/dashboard|/artifacts|backlog|\.bak|/graphify-out/')
 KEY_RE = re.compile(r'HIMMEL-\d+')
@@ -74,7 +74,7 @@ def plan_globs():
              if os.path.exists(p)])
 
 
-# HIMMEL-3990 ask 5: a ticket is in progress when a live leg works it. A leg doc is HIMMEL-<n>-N<k>-*.md in the
+# a ticket is in progress when a live leg works it. A leg doc is HIMMEL-<n>-N<k>-*.md in the
 # bucket; it is live while its queue lock is held and fresh and its newest marker is not WRAPPED / HALTED.
 LEG_RE = re.compile(r'^HIMMEL-(\d+)-(N\d+[a-z]?)-.*\.md$')
 MARK_RE = re.compile(r'^- (?:\d{1,2}:\d{2}\s+)?(?:\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|RESUMED)(?:[^A-Za-z0-9_].*)?$')
@@ -953,7 +953,7 @@ def main():
         lab = next((x for x in m.get('labels', []) if isinstance(x, str) and x.startswith('theme-') and len(x) > 6), '')
         if lab:
             theme[k] = by_slug.get(lab[6:], lab[6:])
-    # HIMMEL-3957 row fields: user-facing impact (stage1 explain), readiness + T-shirt range (stage2).
+    # user-facing impact (stage1 explain), readiness + T-shirt range (stage2).
     for p in sorted(glob.glob(os.path.join(ROOT, 'stage1', 'C??.explain.tsv'))):
         for r in read_tsv(p)[1]:
             uimp[r['key']] = clip(r.get('user_impact') or '', 400)

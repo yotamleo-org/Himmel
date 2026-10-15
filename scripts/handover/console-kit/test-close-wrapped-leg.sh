@@ -16,7 +16,7 @@
 #   6. 1 match, 0 worktree paths in doc                    -> rc 0, clean.sh NOT called
 #   7. 1 match, 2 worktree paths in doc                    -> rc 0, clean.sh NOT called
 #   8. 1 match, 1 worktree, NO MERGED/READY line in the doc  -> rc 0, clean.sh
-#      --only <wt> --only-allow-unmerged called anyway (HIMMEL-3747: the doc's
+#      --only <wt> --only-allow-unmerged called anyway (the doc's
 #      own Results bullets no longer gate the prune -- clean-garden.sh
 #      resolves the branch's PR state itself)
 #   9. clean.sh reports "not a prune candidate" (its own PR-state gate
@@ -351,7 +351,7 @@ rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "two-worktree: rc 0" "$rc" "0"
 not_contains "two-worktree: clean.sh not called" "$(cat "$CALLS")" "clean.sh"
 
-# --- 8. 1 match, 1 worktree, NO MERGED/READY line in the doc (HIMMEL-3747:
+# --- 8. 1 match, 1 worktree, NO MERGED/READY line in the doc (
 # the doc's own bullets no longer gate the prune) -------------------------------
 mkdoc "- 10:00 WRAPPED - done" "worktree: \`$WT/.claude/worktrees/demo\`"
 reset_calls
@@ -480,7 +480,7 @@ check "no-transcript-match: rc 0 (still closes)" "$rc" "0"
 contains "no-transcript-match: says it cannot resolve unambiguously" "$out" "cannot resolve unambiguously"
 exact_count "no-transcript-match: kill still called exactly once" "$(cat "$CALLS")" "kill -TERM 210" "1"
 
-# --- 17: HIMMEL-3635 -- a colon-suffixed `WRAPPED:` marker bullet (tick.sh's
+# --- 17: a colon-suffixed `WRAPPED:` marker bullet (tick.sh's
 # leg_tail_status already accepts this shape; close-wrapped-leg's own
 # marker-bullet check must accept it too, via the shared parser).
 mkdoc "- 10:00 WRAPPED: done"
@@ -488,7 +488,7 @@ reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "wrapped-colon: rc 0 (accepted as WRAPPED)" "$rc" "0"
 
-# --- 17b: HIMMEL-3747 Ask 4 -- WRAPPED not leading the FINAL timestamped
+# --- 17b: WRAPPED not leading the FINAL timestamped
 # bullet is still accepted (a leg that reports the lock release before the
 # marker word).
 mkdoc "- 10:15 Released lock \`tok-123\`, appended WRAPPED, ending turn"
@@ -496,7 +496,7 @@ reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "wrapped-anywhere: rc 0 (accepted as WRAPPED)" "$rc" "0"
 
-# --- 17c: HIMMEL-3747 Ask 4 control -- WRAPPED mentioned in an EARLIER
+# --- 17c: control -- WRAPPED mentioned in an EARLIER
 # bullet does not retroactively count once a later, non-WRAPPED bullet is the
 # final timestamped one.
 mkdoc "- 10:20 LIVE - still going, resumed after the earlier wrap discussion" "- 10:00 WRAPPED - done"
@@ -504,7 +504,7 @@ reset_calls
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "wrapped-earlier-only: rc 4 (last bullet is LIVE, not WRAPPED)" "$rc" "4"
 
-# --- 18: HIMMEL-3638 console add-on -- a live session named exactly the
+# --- 18: a live session named exactly the
 # FULL doc stem (-RESUME and date intact), as the console launches legs this
 # shift, must match as this leg's one live session.
 rm -rf "$W/proc"; mkdir -p "$W/proc"
@@ -521,7 +521,7 @@ rm -rf "$W/proc"; mkdir -p "$W/proc"
 mkcmdline 210 claude -n "$SESSION_NAME" work
 pgrep_x_stub 210
 
-# --- 19: HIMMEL-3638 -- the pre-signal capture must not read a STALE
+# --- 19: the pre-signal capture must not read a STALE
 # transcript that happens to share a customTitle-bearing decoy line but is
 # from a prior day (mtime-scoped: only today's files are searched). A stale
 # decoy alongside the real, fresh transcript must still resolve to exactly
@@ -549,7 +549,7 @@ check "mtime-scoped-capture: rc 0 (still closes)" "$rc" "0"
 note_count19=$(find "$ESW_SB3/vault/sessions" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 check "mtime-scoped-capture: exactly one note written (stale decoy excluded, not ambiguous)" "$note_count19" "1"
 
-# --- 20: HIMMEL-3638 timing guard -- a projects dir with many STALE, large
+# --- 20: timing guard -- a projects dir with many STALE, large
 # decoy transcripts (simulating scale) plus one fresh, large transcript whose
 # customTitle match sits within the head window and is followed by megabytes
 # of padding. The fix must not open every byte of every file: this is a
@@ -598,7 +598,7 @@ else
     fails=$((fails+1))
 fi
 
-# --- 21: HIMMEL-3638/F3 -- the ONLY matching transcript is older than the
+# --- 21: the ONLY matching transcript is older than the
 # mtime window (e.g. the console closes a leg more than a day after it
 # WRAPPED). The mtime-scoped search alone matches 0 files; the fix must fall
 # back to an all-time search rather than skipping the pre-signal capture.

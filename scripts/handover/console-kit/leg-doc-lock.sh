@@ -12,7 +12,7 @@
 #
 # The lock is `flock -x` on fd 9, held on a file keyed by the doc's canonical
 # path in ${TMPDIR:-/tmp}/himmel-inbox-doc-$UID - the directory inbox-send.sh
-# has used since HIMMEL-2790, so it stays one lock, and nothing lands beside
+# has used, so it stays one lock, and nothing lands beside
 # the doc in the handover repo (a `<doc>.lock` sidecar would show as untracked
 # in the vault). The Edit tool and other hand edits take no lock; a rewriter
 # keeps its own re-check for those.
@@ -24,7 +24,7 @@
 #
 # Platform guard: bash 3.2+. flock is util-linux; where it is absent (macOS)
 # doc_lock returns 3 and the caller writes unlocked, exactly as before
-# HIMMEL-4795.
+# locking existed.
 
 # doc_lock <doc> <caller-name>: open fd 9 on <doc>'s lock file and take an
 # exclusive flock, waiting for any other writer. rc 0 locked (release with
@@ -73,7 +73,7 @@ leg_doc_add_session_id() {
     local _ls_doc="$1" _ls_sid="$2" _ls_sum _ls_tmp="" _ls_rc=1 _ls_lock=0
     # pipefail-ok: a 36-byte printf is fully written before grep can exit, so no SIGPIPE
     printf '%s' "$_ls_sid" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || return 1
-    # rc 3 (no flock) writes unlocked, as before HIMMEL-4795; rc 1 records nothing.
+    # rc 3 (no flock) writes unlocked, as before locking existed; rc 1 records nothing.
     doc_lock "$_ls_doc" leg-doc-lock || _ls_lock=$?
     [ "$_ls_lock" -eq 1 ] && return 1
     _ls_sum="$(cksum < "$_ls_doc" 2>/dev/null)"

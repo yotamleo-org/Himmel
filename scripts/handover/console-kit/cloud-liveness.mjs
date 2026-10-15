@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // cloud-liveness.mjs — Is each claude.ai cloud session still alive?
 //
-// A cloud session cannot message the console, so nothing told it that HIMMEL-5077's
-// session stopped after one commit or that HIMMEL-4686's never produced a branch
+// A cloud session cannot message the console, so nothing told it that one
+// session stopped after one commit or that another never produced a branch
 // (both found only because the operator asked). This reads the bucket's
 // cloud-sessions.tsv (launch time, ticket, session; written when the console
 // launches a session) against the forge and says, per session:

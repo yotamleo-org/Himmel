@@ -156,7 +156,7 @@ if ! . "$HERE/leg-transcripts.sh"; then
 fi
 
 ident=$(leg_identity "$DOC")
-# HIMMEL-3638 console add-on: leg_identity's names strip -RESUME, but a
+# leg_identity's names strip -RESUME, but a
 # console may launch a leg's session under the FULL doc stem (-RESUME and
 # date intact) - accept that shape too, locally here (not in leg-identity.sh,
 # which other callers rely on for the stripped forms).
@@ -223,8 +223,8 @@ fi
 LEG_CONFIG_DIR="${leg_cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
 PROJECTS_DIR="${CLOSE_WRAPPED_LEG_PROJECTS_DIR:-$LEG_CONFIG_DIR/projects}"
 if [ -r "$END_SESSION_WIKI" ] && [ -d "$PROJECTS_DIR" ]; then
-    # The two-pass customTitle search lives in leg-transcripts.sh (HIMMEL-4670
-    # P3), shared with leg-digest-step.sh --doc: same "exactly one" semantics.
+    # The two-pass customTitle search lives in leg-transcripts.sh,
+    # shared with leg-digest-step.sh --doc: same "exactly one" semantics.
     candidates=$(printf '%s\n%s\n' "${ident#*$'\t'}" "$doc_stem" | tr ',' '\n' | sed '/^$/d')
     transcript_matches=$(resolve_leg_transcripts "$PROJECTS_DIR" "$candidates" \
         "${CLOSE_WRAPPED_LEG_MTIME_DAYS:-1}" "${CLOSE_WRAPPED_LEG_CUSTOMTITLE_HEAD:-40}")
@@ -406,7 +406,7 @@ echo "$out"
 if [ "$rc" -ne 0 ]; then
     # clean-garden.sh's own --only failure text always contains "not a prune
     # candidate" (its wording is shared across a benign skip AND a PARTIAL or
-    # FAILED removal - codex-2, HIMMEL-3747 CR round 1), so a substring match
+    # FAILED removal), so a substring match
     # on that text alone can't tell a benign skip apart from a dangerous
     # partial/gutted-tree removal. Read its "prune summary" counts instead:
     # only a summary with 0 partial and 0 failed is a benign skip.

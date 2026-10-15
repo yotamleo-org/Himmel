@@ -298,7 +298,7 @@ else
 fi
 contains 'the comma-separated form resolves every leg, not just the last (HIMMEL-3130)' "$comma_out" 'legs=N61:FRESH,N65:FREE'
 
-# HIMMEL-3130 (ticket DONE WHEN): legs= must never silently disagree with how
+# legs= must never silently disagree with how
 # many docs --legs named -- the original bug's contradiction was legs= naming
 # ONE leg while procs= (a separately-scanned live table) reported more
 # processes alive, with nothing reconciling the two. Assert the leg-entry
@@ -631,7 +631,7 @@ mk_pgrep_x "$W/bin-drift" 106
 drift_out="$(PATH="$W/bin-drift:$PATH" bash "$SUT" --legs 'HIMMEL-111-legN61')"
 contains 'a drifted leg surfaces in ceiling= (HIMMEL-2974)' "$drift_out" 'ceiling=DRIFT:HIMMEL-111-legN61'
 
-# HIMMEL-2999 (ticket acceptance b): a single real console session whose
+# A single real console session whose
 # free-text -p value contains an embedded newline plus the literal word
 # "claude" and a fake "-n HIMMEL-999-fake-legN1-2026-01-01" must NOT be
 # counted. Pre-fix, `pgrep -af` prints this one process's argv across two
@@ -724,9 +724,9 @@ contains '--verbose --burn labels the burn line' "$(bash "$SUT" --verbose --burn
 
 # --- current-convention leg names (<TICKET>-N<k>-<slug>, no
 # "-leg" substring at all -- docs/handover/console-template.md:104 is the
-# contract every console since HIMMEL-2975 writes) must resolve/count/compare
+# contract every console writes) must resolve/count/compare
 # identically to the legacy -legN<k> spelling. This fixture is the ticket's
-# own RED control (console G, 2026-09-17, HIMMEL-3145 evidence): two live
+# own RED control: two live
 # legs named this way used to report procs=0 models=none and an
 # unconditional livestate=DRIFT naming every leg twice -- confirmed against
 # scripts/handover/console-kit/tick.sh@6ac483e4 before this fix.
@@ -757,7 +757,7 @@ contains 'a legacy -legN<k>- doc still resolves to N<k> (HIMMEL-3145 regression)
 
 # --- (ticket root cause 3 / acceptance): a field that cannot be
 # computed must say so. A fatal census scan (pgrep itself failing, rc>1 and
-# not the HIMMEL-3002 degraded-scan rc=3) discards the whole session table --
+# not the degraded-scan rc=3) discards the whole session table --
 # procs=/models= must report "unknown", never a clean "0"/"none" that reads
 # as "no legs are running" when the truth is "the scan itself broke".
 mkdir -p "$W/bin-census-fail"
@@ -1013,7 +1013,7 @@ contains 'a stale Live state with prose on the line is DRIFT naming only real le
 contains 'the unarmed leg is named, with no phantom leg beside it (HIMMEL-3280)' "$(t3277 "$l191 $l192")" 'legset=STALE:unarmed=N199'
 
 # A malformed-but-entry-shaped span must be REPORTED, never dropped: dropping it
-# trades a phantom for a disappearance (HIMMEL-3277's failure facing the other
+# trades a phantom for a disappearance (the mirror-image failure facing the other
 # way). Reported by label only -- the span carries a nonce and a lock token.
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
 printf '%s\n' '# console' '' '## Live state' '' \
@@ -1102,7 +1102,7 @@ wrap_case 'a span on the next field: line is not an entry' 'livestate=DRIFT:N192
 # Realistic detail-bullet spans -- a file:line cite, a worktree path, a bare sha,
 # a tick.sh:line cite -- must not become entries or MALFORMED labels. This pins
 # the block terminator, not the classifier (the same cite on the legs: line
-# itself is pinned in the HIMMEL-3284 cases below).
+# itself is pinned in the cases below).
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
 wrap_case 'prose bullets directly under legs: (no blank line) are not entries or MALFORMED' 'livestate=ok ' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121`' \
@@ -1162,7 +1162,7 @@ for marker in '- ' '* ' '+ ' '1. ' '  - ' '> ' '# '; do
         'legs: `N191:J-N191-0a1b2c:tok-191:120`' \
         "${marker}N192 detail: \`N192:J-N192-3d4e5f:tok-192:121\`" 'queue: none' 'last GO: none' 'acked: none'
 done
-# One-line behaviour is untouched: prose, MALFORMED and DRIFT read as HIMMEL-3280 left them.
+# One-line behaviour is untouched: prose, MALFORMED and DRIFT read as they did before.
 # shellcheck disable=SC2016  # backtick leg spans, literal fixture text
 wrap_case 'a one-line block with prose still reads ok' 'livestate=ok ' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121` (the `legs:` key)' 'queue: none' 'last GO: none' 'acked: none'
@@ -1204,7 +1204,7 @@ contains 'a wrapped (FREE) leg with no session is a real procs=0 (HIMMEL-3277)' 
 # The doc under test is the REAL docs/handover/console-template.md, not a fixture
 # copy of its line: the template shipped `legs: <none dispatched yet, or
 # `N1:<nonce>:<lock-token>:<pid>`, `N2:…`>`, whose two backtick spans are exactly
-# the entry shape HIMMEL-3280/3281/3284 taught the parser to read. RED control
+# the entry shape the parser was taught the parser to read. RED control
 # (pre-fix template, this fixture, a console that has dispatched nothing):
 #   livestate=MALFORMED:N2;DRIFT:N1
 tpl3287="$HERE/../../../docs/handover/console-template.md"
@@ -1217,8 +1217,8 @@ case "$o3287" in
     *) pass 'the template placeholder must read neither MALFORMED nor DRIFT (HIMMEL-3287)' ;;
 esac
 # The template's other three defects, pinned against its own text. (b) the
-# tick no longer runs as a 30-min Monitor re-arm loop (HIMMEL-3287 pinned the
-# cap; HIMMEL-3509 replaced the loop with the console-wait.sh event waiter);
+# tick no longer runs as a 30-min Monitor re-arm loop (a test pinned the
+# cap; the console-wait.sh event waiter replaced the loop with the console-wait.sh event waiter);
 # (c) a bare --legs name resolves against the handover ROOT and reads
 # NOTFOUND; (d) an unquoted --model {{MODEL}} is a zsh glob (claude-opus-5[1m]).
 tick3287="$(grep -F '| tick |' "$tpl3287")"
@@ -1326,8 +1326,8 @@ contains 'a console doc with no Live state section reads legset=unknown (HIMMEL-
 # `resolved` case below): tails=N305:FINDING -- for a bullet that says the finding
 # is settled. Fix: RESOLVED joins the vocabulary and the bullet's status is its
 # highest-precedence marker (WRAPPED > READY > RESOLVED > BLOCKED > HALTED >
-# FINDING > LIVE), matched as a whole word. (HIMMEL-3393 superseded the precedence
-# half: the status is the bullet's leading marker; see the HIMMEL-3393 block below.)
+# FINDING > LIVE), matched as a whole word. (the leading-marker rule superseded the precedence
+# half: the status is the bullet's leading marker; see the block below.)
 d3305="$W/handover/HIMMEL-3305-N305-resolved-2026-09-20-RESUME.md"
 tail3305() {  # tail3305 <bullet>... -- the tails= entry of a leg doc holding these bullets
     printf '%s\n' '# leg' '- 19:40 LIVE — working' "$@" > "$d3305"
@@ -1341,7 +1341,7 @@ contains 'a resolved FINDING reads RESOLVED, not FINDING (HIMMEL-3305)' "$(tail3
 # and a new finding after a resolved one reads as open again.
 contains 'a LIVE bullet after the resolution reads LIVE (HIMMEL-3305)' "$(tail3305 "$open3305" "$res3305" '- 20:05 LIVE — PR open, CI running')" 'N305:LIVE'
 contains 'a second FINDING after a resolved one reads FINDING (HIMMEL-3305)' "$(tail3305 "$open3305" "$res3305" '- 20:20 FINDING the base moved under the diff')" 'N305:FINDING'
-# Word order must not decide the status: the LEADING marker does (HIMMEL-3393
+# Word order must not decide the status: the LEADING marker does (it
 # replaced the highest-precedence-anywhere rule). RESOLVED first reads RESOLVED
 # however many other markers the sentence names; LIVE first reads LIVE.
 contains 'RESOLVED before FINDING and LIVE reads RESOLVED (HIMMEL-3305)' "$(tail3305 '- 20:10 RESOLVED FINDING, back to LIVE')" 'N305:RESOLVED'
@@ -2109,7 +2109,7 @@ contains 'a corrupt vault reads vault=unknown and the tick still runs (HIMMEL-49
 
 # --- cloud=<ok|STALL:<ticket>[,...]|skip> -- cloud-sessions.tsv against the
 # forge. Fixtures are REAL: the tsv rows are the 2026-10-10 launch rows, the PR JSON is the
-# trimmed `gh pr list` output for PR 2314 (HIMMEL-5077: open, one commit, CLOUD-DONE, no
+# trimmed `gh pr list` output for PR 2314 (open, one commit, CLOUD-DONE, no
 # shepherd), PR 2306 and PR 1982. 4655 and 4686 produced no branch.
 # RED control (pre-change tick.sh): the line carries no cloud= field at all.
 c5163="$W/cloud5163"

@@ -3,7 +3,7 @@
 # tickets a console can dispatch. READ-ONLY: it prints, it never launches,
 # creates a worktree or writes the mirror. console-wait.sh prints it with the
 # `WAKE underfilled` block; a console can also run it by hand. It absorbs the
-# spare-capacity suggestion of HIMMEL-4431.
+# spare-capacity suggestion it replaced.
 #
 #   next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST]
 #                        [--held FILE] [--no-classify]

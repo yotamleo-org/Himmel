@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-vm-runner.sh — hermetic suite for vm-runner.sh (HIMMEL-5037 phase 2b):
+# test-vm-runner.sh — hermetic suite for vm-runner.sh:
 # on / off / status / the tick token / the doctor rows. gh, systemctl,
 # journalctl, VBoxManage and the VM lib are stubs; nothing touches a real VM,
 # unit or repo variable.
