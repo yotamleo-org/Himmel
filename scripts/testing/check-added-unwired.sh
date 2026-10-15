@@ -91,9 +91,9 @@ judge() {  # <path> <kind> -> prints a reason when unwired
         test-*.sh)
           case "$p" in scripts/*|templates/*|marketplace/*|packaging/*) ;; *) echo "outside the runner's scan roots, so run-shell-tests.sh never finds it"; return 0 ;; esac
           [ -s "$runner" ] || { echo "cannot read scripts/ci/run-shell-tests.sh at $ref"; return 0; }
-          if bash "$HERE/../handover/suite-coverage.sh" --runner "$runner" --root "$top" "$p" 2>&1 | grep -qE 'SKIP_LIST\) — uncovered|unknown'; then
-            echo "run-shell-tests.sh skips it (SKIP_LIST) or cannot classify it"
-          fi ;;
+          cov=$(bash "$HERE/../handover/suite-coverage.sh" --runner "$runner" --root "$top" "$p" 2>&1)
+          printf '%s\n' "$cov" | grep -qE 'runs in PR CI|nightly only|superseded by' \
+            || echo "run-shell-tests.sh skips it (SKIP_LIST) or cannot classify it" ;;
         *)
           # a node/bun test file is run by a wrapper suite that names it
           git grep -lIE -e "$(bn_re "$b")" "$ref" -- . ':(exclude)handovers' 2>/dev/null | sed "s#^$ref:##" | grep -vxF "$p" | grep -q . && return 0
@@ -103,6 +103,7 @@ judge() {  # <path> <kind> -> prints a reason when unwired
             [ "$d" = "${d%/*}" ] && break
             d="${d%/*}"
           done
+          show package.json | jq -e '.scripts.test' >/dev/null 2>&1 && return 0
           echo "no file names it and no package.json above it has a test script" ;;
       esac ;;
     skill)
