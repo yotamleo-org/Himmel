@@ -19,6 +19,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 HOME_F="$TMP/home"; BIN="$TMP/bin"; WT="$TMP/wt"; SCRATCH="$TMP/scratch"; HANDOVER="$TMP/handover"
 mkdir -p "$HOME_F/.claude" "$BIN" "$WT" "$SCRATCH" "$HANDOVER"
+printf '%s\n' '{}' >"$HOME_F/.claude/settings.json"
 : >"$TMP/argv"
 
 # the real srt NO_PROXY value (sandbox-utils.js, 0.0.79): it carries the private ranges

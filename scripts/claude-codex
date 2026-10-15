@@ -555,8 +555,9 @@ SEED_LOCK_TIMEOUT="${CLAUDE_LANE_SEED_LOCK_TIMEOUT:-60}"
 SEED_LOCK_STALE="${CLAUDE_LANE_SEED_LOCK_STALE:-120}"
 
 # Without a user settings file the seed carries no permissions.deny rules, leaving the client
-# classifier alone to stop a force push to main. Refuse rather than run unseeded.
-if [ "$PREFLIGHT_ONLY" -ne 1 ] && [ ! -f "$HOME/.claude/settings.json" ]; then
+# classifier alone to stop a force push to main. Refuse rather than run unseeded. Inside the srt
+# box HOME is a scratch dir with no user settings, and the box is the enforcement there.
+if [ "$PREFLIGHT_ONLY" -ne 1 ] && [ "$SRT_ACTIVE" -ne 1 ] && [ ! -f "$HOME/.claude/settings.json" ]; then
   echo "claude-codex: REFUSED - $HOME/.claude/settings.json is missing, so the lane would launch without the seeded permissions.deny rules. Create it (an empty {} is enough) and re-run." >&2
   exit 4
 fi
