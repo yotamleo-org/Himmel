@@ -2994,6 +2994,61 @@ impacted_active=0
 impacted_nl=""
 impacted_repo_root=""
 if [ -n "$impacted_range" ]; then
+  # A merge-forward of main makes <first parent>..HEAD cover everything main
+  # merged. When the base is off main and the range holds a merge, rebase it
+  # onto merge-base(main, head): the PR's own changes only.
+  case "$impacted_range" in
+    *..*)
+      _imp_b="${impacted_range%%..*}"; _imp_h="${impacted_range#*..}"; _imp_h="${_imp_h#.}"
+      _imp_main=$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null || echo refs/remotes/origin/main)
+      if _imp_bs=$(git rev-parse --verify --quiet --end-of-options "${_imp_b}^{commit}") \
+         && _imp_hs=$(git rev-parse --verify --quiet --end-of-options "${_imp_h}^{commit}") \
+         && git rev-parse --verify --quiet --end-of-options "${_imp_main}^{commit}" >/dev/null \
+         && ! git merge-base --is-ancestor "$_imp_bs" "$_imp_main" \
+         && [ "$(git rev-list --merges --count "$_imp_bs..$_imp_hs" 2>/dev/null)" != 0 ] \
+         && _imp_mb=$(git merge-base "$_imp_main" "$_imp_hs"); then
+        echo "run-shell-tests.sh: --impacted ${impacted_range} holds a merge-forward; using ${_imp_mb}..${_imp_hs} (the PR's own changes)" >&2
+        impacted_range="${_imp_mb}..${_imp_hs}"
+      fi
+      ;;
+  esac
+  # A modified *.sh whose diff touches only comment/blank lines selects no
+  # suite: point the head at a synthetic tree with those files reverted to the
+  # base, and name each one. Added/deleted files and shebang edits stay code.
+  case "$impacted_range" in
+    *..*)
+      _imp_b="${impacted_range%%..*}"; _imp_h="${impacted_range#*..}"; _imp_h="${_imp_h#.}"
+      if _imp_bs=$(git rev-parse --verify --quiet --end-of-options "${_imp_b}^{commit}") \
+         && _imp_hs=$(git rev-parse --verify --quiet --end-of-options "${_imp_h}^{commit}") \
+         && _imp_mb=$(git merge-base "$_imp_bs" "$_imp_hs") \
+         && _imp_mod=$(git diff --name-only --diff-filter=M --no-renames "$_imp_mb" "$_imp_hs" -- '*.sh'); then
+        _imp_idx=$(mktemp "${TMPDIR:-/tmp}/rst-imp-idx.XXXXXX") || _imp_idx=""
+        _imp_n=0
+        while IFS= read -r _imp_f; do
+          [ -n "$_imp_f" ] && [ -n "$_imp_idx" ] || continue
+          _imp_code=$(git diff -U0 --no-renames "$_imp_mb" "$_imp_hs" -- "$_imp_f" | grep -E '^[+-]' | grep -Ev '^(\+\+\+|---)' | grep -Ev '^[+-][[:space:]]*(#([^!]|$)|$)' | head -n 1)
+          [ -z "$_imp_code" ] || continue
+          git diff -U0 --no-renames "$_imp_mb" "$_imp_hs" -- "$_imp_f" | grep -qE '^[+-]' || continue
+          if [ "$_imp_n" -eq 0 ]; then
+            rm -f "$_imp_idx"
+            GIT_INDEX_FILE="$_imp_idx" git read-tree "$_imp_hs" || break
+          fi
+          _imp_mode_blob=$(git ls-tree "$_imp_mb" -- "$_imp_f" | awk '{print $1" "$3}')
+          GIT_INDEX_FILE="$_imp_idx" git update-index --cacheinfo "${_imp_mode_blob% *},${_imp_mode_blob#* },$_imp_f" || break
+          echo "run-shell-tests.sh: --impacted: SKIP comment-only $_imp_f" >&2
+          _imp_n=$((_imp_n + 1))
+        done <<EOF_IMP_MOD
+$_imp_mod
+EOF_IMP_MOD
+        if [ "$_imp_n" -gt 0 ]; then
+          _imp_tree=$(GIT_INDEX_FILE="$_imp_idx" git write-tree) \
+            && _imp_syn=$(git -c user.name=rst -c user.email=rst@localhost commit-tree "$_imp_tree" -p "$_imp_mb" -m synthetic-comment-filter) \
+            && impacted_range="${_imp_mb}..${_imp_syn}"
+        fi
+        [ -z "$_imp_idx" ] || rm -f "$_imp_idx"
+      fi
+      ;;
+  esac
   if ! _impacted_out=$(bash "$REPO_ROOT/scripts/cr/impacted-suites.sh" "$impacted_range" --shell); then
     echo "run-shell-tests.sh: --impacted '${impacted_range}' could not be resolved — refusing to guess a suite list" >&2
     exit 2

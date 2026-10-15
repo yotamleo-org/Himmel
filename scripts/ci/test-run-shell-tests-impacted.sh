@@ -80,7 +80,7 @@ printf '# doc\n' > "$SB/docs/note.md"
 git -C "$SB" add -A
 git -C "$SB" commit -q -m "chore: base"
 BASE=$(git -C "$SB" rev-parse HEAD)
-printf '# changed\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
+printf 'echo changed\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
 git -C "$SB" commit -q -am "fix: uninstall-plugins"
 CODE_RANGE="$BASE..$(git -C "$SB" rev-parse HEAD)"
 printf '# changed\n' >> "$SB/docs/note.md"
@@ -223,6 +223,55 @@ if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
   pass "24n: a CRLF --only-list selects the same suite as an LF one"
 else
   fail "24n: rc=$rc ran='$ran' output: $out"
+fi
+
+# 24o: a merge-forward of main must not widen the range. Main moves on from BASE
+# (mainthing.sh + its suite), the PR branch merges it in, and the caller passes
+# the merge's first parent as the base: the impacted set must still be the PR's own.
+printf '# mainthing\n' > "$SB/scripts/lib/mainthing.sh"
+mksuite scripts/test-mainthing.sh mainthing '# drives lib/mainthing.sh'
+P0=$(git -C "$SB" rev-parse HEAD)
+git -C "$SB" checkout -q -b mainline "$BASE"
+git -C "$SB" add -A
+git -C "$SB" commit -q -m "feat: mainthing"
+git -C "$SB" update-ref refs/remotes/origin/main "$(git -C "$SB" rev-parse HEAD)"
+git -C "$SB" checkout -q -b pr "$P0"
+git -C "$SB" merge -q --no-edit mainline
+FWD_RANGE="$(git -C "$SB" rev-parse HEAD^1)..$(git -C "$SB" rev-parse HEAD)"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$FWD_RANGE" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
+  pass "24o: a merge-forward range runs the PR's own suites only, not what main merged"
+else
+  fail "24o: rc=$rc ran='$ran' output: $out"
+fi
+
+# 24p: a comment-only edit of a changed script selects no suite and is named;
+# a comment edit next to a code edit in the same range still selects.
+git -C "$SB" checkout -q "$P0"
+git -C "$SB" checkout -q -b cmt
+printf '# just a comment\n\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
+git -C "$SB" commit -q -am "docs: comment"
+CMT_RANGE="$P0..$(git -C "$SB" rev-parse HEAD)"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$CMT_RANGE" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ -z "$ran" ] && grepq "$out" 'SKIP comment-only scripts/machine-setup/uninstall-plugins\.sh'; then
+  pass "24p: a comment-only edit runs no suite and is named 'SKIP comment-only'"
+else
+  fail "24p: rc=$rc ran='$ran' output: $out"
+fi
+printf 'echo code\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
+git -C "$SB" commit -q -am "fix: code"
+MIX_RANGE="$P0..$(git -C "$SB" rev-parse HEAD)"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$MIX_RANGE" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
+  pass "24p: a range with a real code edit still runs the driving suite"
+else
+  fail "24p: rc=$rc ran='$ran' output: $out"
 fi
 
 rst_tally
