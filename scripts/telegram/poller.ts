@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, mkdtemp, copyFile, rm } from "node:fs/promises";
+import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, mkdtemp, copyFile, rm, open } from "node:fs/promises";
 import { existsSync, readFileSync, lstatSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -350,21 +350,39 @@ export type DeliveredMsg = { from: number; chat_id: number; text: string; ts?: n
 
 // True when the session inbox already holds a line stamped with this update_id:
 // the record was enqueued before a crash stopped the inbound cursor ack, so the
-// replay must not enqueue (or spawn) it a second time.
-async function inboxHasUpdate(inboxFile: string, updateId: number | undefined): Promise<boolean> {
+// replay must not enqueue (or spawn) it a second time. With tailBytes only the
+// end of the file is read: an unmarked enqueue is always the inbox's last line.
+async function inboxHasUpdate(inboxFile: string, updateId: number | undefined, tailBytes?: number): Promise<boolean> {
   if (typeof updateId !== "number") return false;
-  let buf = ""; try { buf = await readFile(inboxFile, "utf8"); } catch { return false; }
+  let buf = "";
+  try {
+    if (tailBytes === undefined) buf = await readFile(inboxFile, "utf8");
+    else {
+      const fh = await open(inboxFile, "r");
+      try {
+        const size = (await fh.stat()).size, len = Math.min(size, tailBytes), b = Buffer.alloc(len);
+        await fh.read(b, 0, len, size - len);
+        buf = b.toString("utf8");
+      } finally { await fh.close(); }
+    }
+  } catch { return false; }
   for (const ln of buf.split("\n")) if (ln.includes('"update_id"')) { try { if (JSON.parse(ln).update_id === updateId) return true; } catch {} }
   return false;
 }
 
-// Highest update_id already enqueued, persisted at the bridge root so it survives
-// the session inbox being consumed and truncated. A corrupt or missing marker
-// reads as undefined and the caller falls back to the inbox check.
+// Highest update_id already enqueued, persisted at the bridge root as "<id> <epoch ms>"
+// so it survives the session inbox being consumed and truncated. A corrupt,
+// missing or stale marker reads as undefined and the caller falls back to the
+// full inbox check. Stale after a day: Telegram restarts update_id at a random
+// value once a bot has been idle for a week, and a replay only follows a restart.
+const HANDLED_HW_MAX_AGE_MS = 24 * 3600 * 1000;
+const HANDLED_HW_INBOX_TAIL_BYTES = 64 * 1024;
 async function readHandledHighWater(hwFile: string): Promise<number | undefined> {
   let raw = ""; try { raw = await readFile(hwFile, "utf8"); } catch { return undefined; }
-  const n = Number(raw.trim());
-  return raw.trim() !== "" && Number.isSafeInteger(n) && n >= 0 ? n : undefined;
+  const m = /^(\d+) (\d+)$/.exec(raw.trim());
+  if (!m) return undefined;
+  const id = Number(m[1]), at = Number(m[2]);
+  return Number.isSafeInteger(id) && Number.isSafeInteger(at) && Date.now() - at < HANDLED_HW_MAX_AGE_MS ? id : undefined;
 }
 
 // Append the message to the session inbox unless this update_id was already
@@ -374,9 +392,9 @@ async function appendInboxOnce(inboxFile: string, hwFile: string, line: string, 
   const id = msg.update_id;
   const hw = typeof id === "number" ? await readHandledHighWater(hwFile) : undefined;
   if (typeof id === "number" && hw !== undefined && id <= hw) return false;
-  if (hw === undefined && await inboxHasUpdate(inboxFile, id)) return false;
+  if (await inboxHasUpdate(inboxFile, id, hw === undefined ? undefined : HANDLED_HW_INBOX_TAIL_BYTES)) return false;
   await appendLine(inboxFile, JSON.stringify({ text: line, from: msg.from, ts: msg.ts ?? 0, ...(typeof id === "number" ? { update_id: id } : {}), ...(msg.image_path ? { image_path: msg.image_path } : {}), ...(msg.document_path ? { document_path: msg.document_path, document_name: msg.document_name } : {}) }));
-  if (typeof id === "number") { try { await atomicWrite(hwFile, String(id)); } catch (e) { console.error("[poller] could not persist handled-update high-water mark: " + e); await unlink(hwFile).catch(() => {}); } }
+  if (typeof id === "number") { try { await atomicWrite(hwFile, id + " " + Date.now()); } catch (e) { console.error("[poller] could not persist handled-update high-water mark: " + e); await unlink(hwFile).catch(() => {}); } }
   return true;
 }
 export type RunFn = (session: string, modelOverride?: ModelOverride) => Promise<void>;
