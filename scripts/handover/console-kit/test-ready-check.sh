@@ -812,6 +812,30 @@ contains "suite outside the runner's scan roots: check 11 fails (run-shell-tests
 unw_run scripts/tools/test-found.sh
 contains "suite under a scan root: check 11 passes" "$out" "[PASS] 11."
 
+# test helpers: reached by the suite that uses them, but a plain script a suite alone names is not
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/tests\"; printf 'node stub-jira.js\n' > \"\$REPO/scripts/cfg/tests/test-cfg.sh\""
+unw_run scripts/cfg/tests/stub-jira.js
+contains "tests/ stub named by its suite: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'source testlib-pass.sh\n' > \"\$REPO/scripts/tools/test-found.sh\""
+unw_run scripts/tools/testlib-pass.sh
+contains "testlib helper named by its suite: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/g\"; printf 'python3 g-cases/a.py\n' > \"\$REPO/scripts/g/test-g.sh\""
+unw_run scripts/g/g-cases/a.py
+contains "-cases/ helper named by its suite: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'bash lonely.sh\n' > \"\$REPO/scripts/tools/test-found.sh\""
+unw_run scripts/tools/lonely.sh
+contains "plain script named only by a suite: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/tests\""
+unw_run scripts/cfg/tests/stub-orphan.js
+contains "tests/ stub nothing names: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA=''
+unw_run scripts/cfg/tests/orphan.test.ts
+contains "node/bun test file nothing runs: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf 'run: bun test scripts/cfg --dots\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/cfg/tests/ran.test.ts
+contains "test file under a dir a CI job runs bun test on: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA=''
+
 # existing debt is never judged: the same unwired hook, status modified
 git -C "$REPO" checkout -q --detach "$UNW_BASE" && git -C "$REPO" clean -fdq
 mkdir -p "$REPO/scripts/hooks" && printf '#!/usr/bin/env bash\n' > "$REPO/scripts/hooks/old-hook.sh"

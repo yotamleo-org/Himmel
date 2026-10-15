@@ -11,8 +11,9 @@
 #          is on scripts/testing/unwired-hooks-allowlist.txt.
 #   suite  test-*.sh: scripts/ci/run-shell-tests.sh finds it (scan roots scripts,
 #          templates, marketplace, packaging) and suite-coverage.sh does not call it
-#          SKIP_LIST. *.test.*: another file names it (a wrapper suite runs it) or a
-#          package.json above it has a "test" script.
+#          SKIP_LIST. *.test.*: another file names it (a wrapper suite runs it), a
+#          .github/workflows job runs bun test / node --test / vitest / jest on a
+#          directory above it, or a package.json above it has a "test" script.
 #   skill  SKILL.md under <plugin>/skills/<name>/ where <plugin> has
 #          .claude-plugin/plugin.json (a marketplace/plugins/<p> must also be named in
 #          marketplace/.claude-plugin/marketplace.json), or under .claude/skills/ or
@@ -23,6 +24,8 @@
 #          script, or a runbook/cadence doc: operator-run tools are wired by the doc
 #          that says when to run them; a suite or handovers/ file never counts).
 #          A referencer that is itself an unwired added file does not count.
+#          A test helper (under a tests?/ or *-cases/ dir, or named testlib-*) is also
+#          wired by a suite that names it; an added suite still unwired does not count.
 # Standalone by design (no reference needed): fixtures/testdata paths, ALLOW_PATH_RE.
 #
 # Usage: check-added-unwired.sh <ref> <added-file>...   (run inside the repo)
@@ -31,6 +34,7 @@
 set -uo pipefail
 
 ALLOW_PATH_RE='(^|/)(fixtures|testdata|node_modules)/'
+TEST_HELPER_RE='(^|/)(tests?|[^/]*-cases)/|(^|/)testlib-[^/]*$'
 
 if [ "$#" -lt 2 ]; then
   echo "usage: check-added-unwired.sh <ref> <added-file>..." >&2
@@ -97,6 +101,14 @@ judge() {  # <path> <kind> -> prints a reason when unwired
         *)
           # a node/bun test file is run by a wrapper suite that names it
           git grep -lIE -e "$(bn_re "$b")" "$ref" -- . ':(exclude)handovers' 2>/dev/null | sed "s#^$ref:##" | grep -vxF "$p" | grep -q . && return 0
+          # a CI job that runs the test command on a directory above it
+          d="${p%/*}"
+          while :; do
+            dre=$(printf '%s' "$d" | sed 's/[.+]/\\&/g')
+            git grep -qIE -e "(bun test|node --test|vitest|jest)[^#]*[ '\"]${dre}(/[^ ]*)?( |\$|'|\")" -e "cd ${dre}[^#]*(bun|node|vitest|jest)" "$ref" -- .github/workflows 2>/dev/null && return 0
+            [ "$d" = "${d%/*}" ] && break
+            d="${d%/*}"
+          done
           d="${p%/*}"
           while :; do
             exists "$d/package.json" && show "$d/package.json" | jq -e '.scripts.test' >/dev/null 2>&1 && return 0
@@ -122,8 +134,12 @@ judge() {  # <path> <kind> -> prints a reason when unwired
       case "$b" in  # TS/JS import without the extension: from './sector.js', require('./sector')
         *.ts|*.tsx|*.js|*.mjs) pat="$pat|/${b%.*}(\\.[jt]sx?|\\.mjs)?['\"]" ;;
       esac
-      git grep -lIE -e "$pat" "$ref" -- . ':(exclude)handovers' ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*' 2>/dev/null \
-        | sed "s#^$ref:##" | grep -vxF "$p" > "$tmp/refs" || true
+      if printf '%s\n' "$p" | grep -qE "$TEST_HELPER_RE"; then
+        # a test helper is reached by the suite that uses it
+        git grep -lIE -e "$pat" "$ref" -- . ':(exclude)handovers' 2>/dev/null
+      else
+        git grep -lIE -e "$pat" "$ref" -- . ':(exclude)handovers' ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*' 2>/dev/null
+      fi | sed "s#^$ref:##" | grep -vxF "$p" > "$tmp/refs" || true
       # an added referencer still unwired itself does not count
       while IFS= read -r r; do
         [ -n "$r" ] || continue
