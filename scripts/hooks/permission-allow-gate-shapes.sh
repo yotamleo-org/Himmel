@@ -57,11 +57,23 @@ shapes="${HIMMEL_GATE_SHAPES_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck disable=SC2016 # sed program is a literal bracket class, nothing to expand
 esc_top="$(printf '%s' "$top" | sed 's/[][\.*^$(){}?+|/]/\\&/g')"
 tab="$(printf '\t')"
-while IFS="$tab" read -r id re _fence; do
+# The absolute-worktree spelling is unquoted in the command, so a root holding a
+# shell metacharacter gets only the relative spelling.
+wt_re=""
+case "$top" in *[!A-Za-z0-9_./+-]*) ;; *) wt_re="(${esc_top}/)?" ;; esac
+while IFS="$tab" read -r id re _fence needs; do
     case "$id" in ''|'#'*) continue ;; esac
     [ -n "$re" ] || continue
-    re="${re//\{WT\}/(${esc_top}/)?}"
+    re="${re//\{WT\}/$wt_re}"
     if [[ "$cmd" =~ $re ]]; then
+        if [ "$needs" = "tracked-sh" ]; then
+            # Every .sh the command names must be a file in the worktree's git index.
+            set -f
+            for w in $cmd; do
+                case "$w" in *.sh) git -C "$top" ls-files --error-unmatch -- "${w#"$top"/}" >/dev/null 2>&1 || { set +f; exit 0; } ;; esac
+            done
+            set +f
+        fi
         printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'
         exit 0
     fi

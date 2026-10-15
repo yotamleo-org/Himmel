@@ -48,7 +48,6 @@ expect "impacted-suites --check --from-file" allow "$WT" Bash "bash scripts/cr/i
 expect "review-round promote" allow "$WT" Bash "bash scripts/cr/review-round.sh promote --branch 'feat/himmel-1-x' --head $SHA"
 expect "write-verdicts aggregate" allow "$WT" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch feat/himmel-1-x --from-file .tmp/v.txt"
 expect "check-ci" allow "$WT" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
-expect "quiet-run suite" allow "$WT" Bash "bash scripts/quiet-run.sh suite -- bash scripts/hooks/test-foo.sh"
 expect "SKIP=no-history-comments commit" allow "$WT" Bash "SKIP=no-history-comments git commit -F .tmp/msg.txt"
 
 expect "primary checkout passes through" pass "$T/repo" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
@@ -65,6 +64,20 @@ expect "newline-joined command passes through" pass "$WT" Bash "$(printf 'bash s
 expect "quiet-run suite outside the worktree passes through" pass "$WT" Bash "bash scripts/quiet-run.sh suite -- bash /tmp/test-evil.sh"
 expect "quiet-run suite with dot-dot passes through" pass "$WT" Bash "bash scripts/quiet-run.sh suite -- bash ../../../tmp/test-evil.sh"
 expect "other worktree's absolute path passes through" pass "$WT" Bash "bash /elsewhere/scripts/check-ci.sh 123 --max-wait 600"
+
+# A tracked-only row: the suite file must be in the git index.
+mkdir -p "$WT/scripts/hooks"
+printf '#!/bin/sh\n' > "$WT/scripts/quiet-run.sh"; printf '#!/bin/sh\n' > "$WT/scripts/hooks/test-foo.sh"
+git -C "$WT" add scripts/quiet-run.sh scripts/hooks/test-foo.sh
+printf '#!/bin/sh\n' > "$WT/scripts/hooks/test-untracked.sh"
+expect "quiet-run suite of a tracked file" allow "$WT" Bash "bash scripts/quiet-run.sh suite -- bash scripts/hooks/test-foo.sh"
+expect "quiet-run suite of an untracked file passes through" pass "$WT" Bash "bash scripts/quiet-run.sh suite -- bash scripts/hooks/test-untracked.sh"
+
+# A worktree root with a shell metacharacter never gets an absolute spelling.
+git -C "$T/repo" worktree add -q "$T/repo/.claude/worktrees/le;g" -b unsafe 2>/dev/null || exit 1
+UW="$T/repo/.claude/worktrees/le;g"
+expect "unsafe worktree root: absolute spelling passes through" pass "$UW" Bash "bash $UW/scripts/check-ci.sh 123 --max-wait 600"
+expect "unsafe worktree root: relative spelling still allowed" allow "$UW" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
 
 # Data-driven: a shape absent from the file is not allowed, even if the code knows nothing of it.
 printf 'only\t^bash scripts/hello\\.sh$\tnone\n' > "$T/shapes.tsv"
