@@ -10,9 +10,9 @@
 #   ./scripts/quiet-run.sh npm-install -- npm install
 #   ./scripts/quiet-run.sh pytest -- pytest -xvs tests/
 set -euo pipefail
-# HIMMEL-3914: refuse a chokepoint seam that differs from the session's launch env.
+# refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
-# what is sourced before the seam guard (HIMMEL-3914).
+# what is sourced before the seam guard.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
 _csg_lib="$_csg_dir/lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
@@ -46,13 +46,13 @@ for arg in "$@"; do
     esac
 done
 
-# HIMMEL-4782: an untracked test-*.sh is accepted when it is a regular,
+# an untracked test-*.sh is accepted when it is a regular,
 # non-symlink file whose physical path lies inside the worktree, so a RED-first
 # run of a new suite works before its first commit. $1 is the path exactly as
 # bash will execute it (relative to the cwd); $2 the worktree top level.
 # Anything outside the worktree, any symlink (a link can be retargeted after
 # this check) and any link in a parent directory that leaves the worktree is
-# refused - the reason the tracked-only rule existed (HIMMEL-2967).
+# refused - the reason the tracked-only rule existed.
 untracked_suite_in_worktree() {
     local path="$1" top="$2" dir real_top real_dir
     [ -f "$path" ] && [ ! -L "$path" ] || return 1
@@ -79,7 +79,7 @@ if [ "$LABEL" = "suite" ] && [ "${1:-}" = "bash" ]; then
         while [ "${SUITE_PATH#./}" != "$SUITE_PATH" ]; do
             SUITE_PATH="${SUITE_PATH#./}"
         done
-        # HIMMEL-3181: on Git-Bash git prints the toplevel in mixed form
+        # on Git-Bash git prints the toplevel in mixed form
         # (D:/a/repo) while a caller's absolute path is POSIX (/d/a/repo);
         # strip either. Never empty (an empty pattern would match every path).
         REPO_TOPLEVEL_POSIX="$REPO_TOPLEVEL"
@@ -117,7 +117,7 @@ if [ "$LABEL" = "suite" ] && [ "${1:-}" = "bash" ]; then
     fi
 fi
 
-# HIMMEL-1818: label `suite` is a suite chokepoint -- whatever it runs (bash
+# label `suite` is a suite chokepoint -- whatever it runs (bash
 # test-*.sh, bun test, node --test) takes a slot of the machine-wide suite
 # budget first, and a busy budget fails loud with rc 75 (SUITE_LOCK_WAIT=<n>
 # waits instead). A missing lib refuses rather than running unbudgeted.
@@ -142,7 +142,7 @@ LOG="${TMPDIR:-/tmp}/quiet-run-${LABEL}-$(date +%Y%m%d-%H%M%S)-$$.log"
     echo ""
 } >>"$LOG"
 
-# HIMMEL-2221: a wrapper that dies leaves its command (and everything that
+# a wrapper that dies leaves its command (and everything that
 # command spawned) running with no owning session. Run the command as its own
 # process group (`set -m`; unlike a bare `&` it keeps stdin) and, on
 # TERM/INT/HUP, reap that whole group before exiting 128+signal.
@@ -153,7 +153,7 @@ LOG="${TMPDIR:-/tmp}/quiet-run-${LABEL}-$(date +%Y%m%d-%H%M%S)-$$.log"
 # trap (TERM/HUP still reap). With a tty on stdin the command stays in the
 # foreground group instead: a background group that reads the terminal is
 # stopped by SIGTTIN, and ^C already reaches the whole foreground group there,
-# so that path keeps the pre-HIMMEL-2221 shape (a `kill <pid>` of the wrapper
+# so that path keeps the earlier shape (a `kill <pid>` of the wrapper
 # alone still orphans it). A command that opens /dev/tty while stdin is not a
 # tty is stopped the same way in the grouped path.
 # shellcheck disable=SC2329,SC2317  # invoked only through the traps below
@@ -193,7 +193,7 @@ else
 fi
 # The one-line `OK quiet-run <label> (...)` / `ERR quiet-run <label> exit=<rc> (...)`
 # shape is read by scripts/eval/lane-quality/trajectory.py as a test run's outcome
-# (HIMMEL-4698) - keep it stable.
+#  - keep it stable.
 if [ "$RC" -eq 0 ]; then
     DUR=$(( $(date +%s) - START ))
     echo "OK quiet-run $LABEL (${DUR}s, log: $LOG)"

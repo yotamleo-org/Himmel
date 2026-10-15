@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-uninstall-provenance.sh -- HIMMEL-3332 S6 RED tests (RED3-RED8): the
+# test-uninstall-provenance.sh -- RED tests (RED3-RED8): the
 # ledger-driven excision scripts/uninstall.sh does not have yet. Six hermetic
 # cases, each with its own scratch HOME + scratch HIMMEL_PROVENANCE_DIR,
 # seeding a REAL ledger via scripts/lib/provenance.sh (or deliberately
@@ -22,7 +22,7 @@ command -v jq >/dev/null 2>&1 || { echo "test-uninstall-provenance: jq required"
 # shellcheck source=scripts/lib/provenance-identity.sh
 . "$lib/provenance-identity.sh"
 
-# HIMMEL-3332 S6 safety: the real-ledger tripwire. REAL_HOME is captured
+# S6 safety: the real-ledger tripwire. REAL_HOME is captured
 # before ANY case below exports its own scratch HOME, so a bug that let a
 # case's HOME leak back to the operator's real one is caught by an
 # existence/sha mismatch at the end of the run instead of silently touching
@@ -36,7 +36,7 @@ real_ledger_state() {
 REAL_LEDGER_BEFORE=$(real_ledger_state)
 
 TMPDIR="$(cd -P -- "${TMPDIR:-/tmp}" && pwd)" || exit 1; export TMPDIR
-# HIMMEL-3903: an empty /tmp/.git kept appearing on this host. Record which of these
+# an empty /tmp/.git kept appearing on this host. Record which of these
 # already exist so the end-of-suite guard fails if THIS suite creates one.
 GIT_LEAK_PRE=""; for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do [ -e "$_p" ] && GIT_LEAK_PRE="$GIT_LEAK_PRE $_p"; done
 SUITE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/uninstall-prov.XXXXXX")" || { echo "FAIL: mktemp" >&2; exit 1; }
@@ -99,7 +99,7 @@ chmod 755 "$FAKE_CLAUDE"
 # uninstall.sh unwired the fork checkout or global symlink before removing
 # the collection, since prod's `qmd collection remove` is served through
 # exactly one of those two paths.
-# HIMMEL-3525 S16: `collection show <name>` answers the uninstall verdict's
+# S16: `collection show <name>` answers the uninstall verdict's
 # live-identity read with QMD_STUB_SHOW_PATH as the Path; unset, it answers
 # qmd's own "Collection not found" (exit 1).
 FAKE_QMD="$SUITE_TMP/bin/qmd"
@@ -130,7 +130,7 @@ esac
 QMD_STUB_EOF
 chmod 755 "$FAKE_QMD"
 
-# fake crontab stub (HIMMEL-3525 S18): `-l` prints CRONTAB_STATE_FILE (a
+# fake crontab stub: `-l` prints CRONTAB_STATE_FILE (a
 # per-case scratch table; missing/empty means "no crontab for tester", the
 # same message real crontab gives an unset table -- both _provid_job and
 # uninstall.sh's [3/8] cron rewrite classify that string as ABSENT/no-op, never
@@ -156,7 +156,7 @@ esac
 CRONTAB_STUB_EOF
 chmod 755 "$FAKE_CRONTAB"
 
-# fake jq shim (RED53, HIMMEL-3637 R3-codex2): a real jq passthrough for every
+# fake jq shim: a real jq passthrough for every
 # call EXCEPT prov_read_units' own fold query, which it forces to fail
 # (exit 1) when RED53_FORCE_JQ_FAIL=1 is exported -- prov_read_units' filter
 # is the only jq invocation in this codebase carrying `--argjson havepath`
@@ -188,7 +188,7 @@ chmod 755 "$FAKE_JQ"
 # marketplace stub state for one case. Sets the CASE_* globals the rest of
 # the case (and run_uninstall) uses.
 new_case() {
-  # HIMMEL-3336: CASE_DIR is grounded in a literal mktemp template (not "$1")
+  # CASE_DIR is grounded in a literal mktemp template (not "$1")
   # so the real-home-callers static scan can verify HOME stays scratch.
   CASE_DIR="$(mktemp -d "$SUITE_TMP/case.XXXXXX")" || { echo "FAIL: mktemp CASE_DIR ($1)" >&2; exit 1; }
   mkdir -p "$CASE_DIR/home/.claude" "$CASE_DIR/cwd" "$CASE_DIR/prov"
@@ -236,7 +236,7 @@ run_uninstall() {
     _run_uninstall_inner "$@" )
 }
 
-# HIMMEL-3787 S2b: with RUN_TTY_ANSWER set, uninstall.sh runs on a real pty
+# S2b: with RUN_TTY_ANSWER set, uninstall.sh runs on a real pty
 # (util-linux `script`) with that answer typed at its first prompt, so the
 # [ -t 0 ] && [ -t 1 ] TTY offers are reachable; otherwise stdin is /dev/null.
 _run_uninstall_inner() {
@@ -339,7 +339,7 @@ cat > "$CASE_SETTINGS" <<JSON
 JSON
 printf '{"display":{"customLineCommand":"bash \\"/fake/scripts/statusline/hud-custom-lines.sh\\""}}\n' \
   > "$HOME/.claude/claude-hud.json"
-# HIMMEL-3334: a leftover config at the pre-migration swept path
+# a leftover config at the pre-migration swept path
 # (plugins/claude-hud/config.json, inside Claude Code's plugin-manager
 # sweep) is ledger-independent -- gated by unwire_hud_config's
 # customLineCommand shape check -- but it is KEPT while the statusLine
@@ -404,7 +404,7 @@ printf '#!/bin/sh\necho himmel9\n' > "$DEST9"
   prov_end ok >/dev/null )
 rm -f "$SNAP9"
 BACKUP9=$(find "$(prov_dir)/provenance-backups" -type f | head -n1)
-# HIMMEL-3386: assert rc=0 BEFORE the survival check. A backup that survives
+# assert rc=0 BEFORE the survival check. A backup that survives
 # an uninstall that crashed early looks identical to one that survives a
 # clean dry-run, so the survival check alone is vacuous against a crash.
 # (--skip-settings used to be withheld here because it skipped the
@@ -497,7 +497,7 @@ new_case red13
 # shellcheck disable=SC2031
 HUD13="$HOME/.claude/claude-hud.json"
 mkdir -p "$(dirname "$HUD13")"
-# HIMMEL-3334: a leftover legacy-path config, same reasoning as RED6 --
+# a leftover legacy-path config, same reasoning as RED6 --
 # kept while the loaded-but-silent ledger keeps the statusLine wired.
 # shellcheck disable=SC2031
 HUD13_LEGACY="$HOME/.claude/plugins/claude-hud/config.json"
@@ -526,7 +526,7 @@ handover_kept13=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$CASE_SETTINGS")
 hud_kept13=$([ -f "$HUD13" ] && echo yes || echo no)
 hud_legacy_kept13=$([ -f "$HUD13_LEGACY" ] && echo yes || echo no)
 notinledger13=$(printf '%s\n' "$out13" | grep -c 'kept (not in ledger)')
-# HIMMEL-3332 S6 slice2: workspace-trust is now ledger-decided too, so a
+# S6 slice2: workspace-trust is now ledger-decided too, so a
 # loaded-but-silent ledger also keeps it "not in ledger" -- a 4th line,
 # alongside statusLine, env.HANDOVER_DIR and the hud config.
 check "RED13 codex-4: loaded-but-silent ledger keeps statusLine/HANDOVER_DIR/hud-config(new path) like the no-ledger branch, legacy swept-path leftover kept while statusLine is wired" \
@@ -581,10 +581,10 @@ printf '#!/bin/sh\necho operator-edited-after-install\n' > "$DEST15"
 BACKUP15=$(find "$(prov_dir)/provenance-backups" -type f | head -n1)
 [ -n "$BACKUP15" ] || { echo "FAIL - RED15 setup: backup for DEST15 not found"; fails=$((fails+1)); }
 LEDGER_PATH15="$(prov_ledger_path)"
-# (HIMMEL-3386: the former note about --skip-settings and the unbound
+# (the former note about --skip-settings and the unbound
 # `_LEDGER_PROTECTED` was stale -- uninstall.sh initialises it globally now.)
 run_uninstall --yes --purge-state --keep-backups --skip-tasks --skip-plugins --skip-hooks >/dev/null
-# HIMMEL-3787 S2a (J1393A Minor 1): the OLD contract left the ledger deleted
+# S2a: the OLD contract left the ledger deleted
 # and provenance-backups/ behind as a permanent orphan at these exact paths.
 # The fixed contract retain-MOVES both together into one never-auto-deleted
 # retained-<stamp>/ directory -- so the old paths are now BOTH gone, and a
@@ -663,7 +663,7 @@ echo "==== RED19 (HIMMEL-3332 S6 slice2): workspace-trust json-key ledger excisi
 # uninstall.sh has no code path that ever reads ~/.claude.json -- these four
 # rows are proven RED against the unfixed tree.
 # These fixtures put ~/.claude.json under the case's scratch HOME, which the
-# wet-run fence (HIMMEL-2505) reads as a live operator profile. The HOME is a
+# wet-run fence reads as a live operator profile. The HOME is a
 # temp dir, so lift the fence the way test-uninstall.sh's u_run_fx does --
 # for these four calls only.
 run_uninstall_fx() { export HIMMEL_UNINSTALL_REAL_HOME=1; run_uninstall "$@"; local rc=$?; unset HIMMEL_UNINSTALL_REAL_HOME; return "$rc"; }
@@ -726,7 +726,7 @@ _red_seed_git_fork() {
   # <dir> -- init a one-commit git repo at $1, matching the real fork
   # checkout's shape (a build stamp file that is byte-identical to a fresh
   # clone). Returns with the tree clean and HEAD pushed to a bare "origin".
-  # HIMMEL-3524: qmd_unwire_fork_checkout now checks live git state before
+  # qmd_unwire_fork_checkout now checks live git state before
   # removing, so every fixture standing in for a real (always-git) fork
   # checkout needs an actual repo, not a plain directory -- a plain directory
   # is itself the "unknown state" the fix is required to keep, not remove.
@@ -735,7 +735,7 @@ _red_seed_git_fork() {
   git -C "$dir" init -q
   git -C "$dir" config user.email test@example.invalid
   git -C "$dir" config user.name "Test"
-  # HIMMEL-3534: match the real fork's .gitignore shape (node_modules/,
+  # match the real fork's .gitignore shape (node_modules/,
   # dist/ are the build's own output; notes/ stands in for the fork's many
   # OTHER ignored patterns -- archive/, *.sqlite, etc -- that are NOT build
   # output and so stay off the allowlist).
@@ -744,7 +744,7 @@ _red_seed_git_fork() {
   git -C "$dir" add -A
   git -C "$dir" commit -q -m seed
   # The build stamp is written AFTER the seed commit, same as a real build:
-  # untracked, never gitignored (HIMMEL-3534 FINDING) -- present in every
+  # untracked, never gitignored -- present in every
   # fixture from here on so RED27/RED28's clean-tree cases match a real
   # built fork, not one caught mid-build.
   printf 'ok\n' > "$dir/.himmel-build-ok"
@@ -798,7 +798,7 @@ check "RED20a: stub kept line printed" \
 new_case red20b
 CASE_QMD_FORK_DIR="$CASE_DIR/qmd-fork"
 CASE_BUN_INSTALL="$CASE_DIR/bun"
-# HIMMEL-3524: a real fork checkout is always a git work tree; a plain
+# a real fork checkout is always a git work tree; a plain
 # directory is the "unknown state" the fix now keeps rather than removes, so
 # this --purge-state-removes fixture needs a clean git checkout to reach rm.
 _red_seed_git_fork "$CASE_QMD_FORK_DIR"
@@ -982,7 +982,7 @@ echo "==== RED26 (HIMMEL-3332 slice3, critic panel codex-1): qmd collection remo
 new_case red26
 CASE_QMD_FORK_DIR="$CASE_DIR/qmd-fork"
 CASE_BUN_INSTALL="$CASE_DIR/bun"
-# HIMMEL-3524: a real fork checkout is always a git work tree; a plain
+# a real fork checkout is always a git work tree; a plain
 # directory is the "unknown state" the fix now keeps rather than removes, so
 # this --purge-state-removes fixture needs a clean git checkout to reach rm.
 _red_seed_git_fork "$CASE_QMD_FORK_DIR"
@@ -1078,7 +1078,7 @@ check "RED27d: a user-modified kept line is printed" \
   "$(printf '%s\n' "$out27d" | grep -c 'kept:.*user-modified: unpushed local commits')" "1"
 
 echo "==== RED28 (HIMMEL-3534): a qmd fork checkout carrying user data in a git-ignored path is kept ===="
-# HIMMEL-3524's git-dirty check (RED27) is blind to ignored paths --
+# an earlier change's git-dirty check (RED27) is blind to ignored paths --
 # `status --porcelain` never lists them, so a user file placed inside one
 # (next to node_modules/ or dist/) read as clean and was silently rm -rf'd.
 # The fix diffs ignored paths against an allowlist of what the fork's own
@@ -1332,10 +1332,10 @@ unset ENTRY33
 
 echo "==== RED34 (HIMMEL-3334 F1, judge J1269O): a legacy-path replace backup survives a rewire's bare rm -f, restored by uninstall ===="
 # Scenario from the verdict: an operator has their own (non-himmel) config at
-# the pre-HIMMEL-3334 swept path; a pre-PR install REPLACES it there and
+# the earlier swept path; a pre-PR install REPLACES it there and
 # records a ledger `replace` row with a backup of the original bytes -- the
 # only place those bytes still exist once wire-statusline.sh's own
-# HIMMEL-3334 migration later `rm -f`s that path with no provenance of its
+# migration later `rm -f`s that path with no provenance of its
 # own (scripts/lib/wire-statusline.sh ~406-411) while publishing the new
 # un-swept claude-hud.json. Before this fix, uninstall's hud branch only ever
 # consulted the ledger for the NEW path ($_p), so the legacy path's own
@@ -1367,7 +1367,7 @@ check "RED34 uninstall: legacy-path replace backup restored after a rewire's bar
 
 echo "==== RED35 (HIMMEL-3334 C1, judge J1269A): a legacy-path replace backup survives uninstall even when NOT rewired ===="
 # Scenario from the verdict (C1): unlike RED34, this box was never re-wired
-# since HIMMEL-3334 -- the legacy path still holds himmel's own (post-replace)
+#  -- the legacy path still holds himmel's own (post-replace)
 # bytes when uninstall runs, so the "legacy exists" branch (not the F1
 # file-absent branch RED34 covers) is the one that must consult the ledger
 # before ever touching the file.
@@ -1651,7 +1651,7 @@ check "RED43 uninstall: no-ledger legacy config byte-identical to himmel's own t
   "$AFTER43_BYTES" "ABSENT"
 
 echo "==== RED50 (HIMMEL-3637): --purge-state must refuse while a recorded backup's original path has not been restored ===="
-# J1274O P1 wet-run repro (a): the adopted project lives OUTSIDE this case's
+# P1 wet-run repro (a): the adopted project lives OUTSIDE this case's
 # cwd (run_uninstall always cd's into $CASE_DIR/cwd), so the adopter-scripts
 # restore step cannot reach it and the file stays overwritten by himmel's
 # copy. --purge-state must then refuse to delete the only backup, not
@@ -1804,8 +1804,8 @@ check "RED54: --purge-state refuses (non-zero) when the per-row backup check its
 check "RED54: refusing means deleting nothing — the backup survives" "$BACKUPS54_AFTER" "$BACKUPS54_BEFORE"
 
 echo "==== RED55 (HIMMEL-3787): a torn/unparsable ledger row's own backup must refuse --purge-state (backup-dir orphan scan); a healthy row alongside it still restores normally ===="
-# J1390A Minor (b): a torn row is dropped SILENTLY at ledger LOAD (before it
-# ever reaches prov_read_units), so the HIMMEL-3637 per-unit scan above never
+# Minor (b): a torn row is dropped SILENTLY at ledger LOAD (before it
+# ever reaches prov_read_units), so the per-unit scan above never
 # sees it and has nothing to refuse on. Simulates a crash mid-append: the
 # backup file for DEST_TORN55 was written successfully, but its ledger row
 # never finished writing (truncated line, unparsable).
@@ -2247,7 +2247,7 @@ check "RED65: no orphan-backup refusal for the .ours snapshot" \
 check "RED65: the snapshot is purged with the state (no orphan left behind)" \
   "$(find "$(prov_dir)/provenance-backups" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
 
-# ---- HIMMEL-3787 S2d: the himmel-marked working-principles block ---------------
+# ---- S2d: the himmel-marked working-principles block ---------------
 # seed_block <target> [<preexisting-text>] -- install the block with the REAL
 # writer (wire_user_claude_md) inside a provenance session, so the ledger holds
 # exactly what an S2d install records. <preexisting-text> is written first, so
@@ -2492,7 +2492,7 @@ check "RED75b: the run says kept (block-malformed)" "$(printf '%s\n' "$out75b" |
 check "RED75b: no sidecar" "$([ -e "$T75B.himmel-uninstall-backup" ] && echo present || echo none)" "none"
 
 
-# ── HIMMEL-3787 S3: the reconcile report ────────────────────────────────────
+# ── the reconcile report ────────────────────────────────────
 # seed_kept_file <name> -- RED5's fixture: an adopter-script replace whose live
 # bytes the operator edited after install (verdict keep user-modified). Sets
 # S3_DEST and S3_BACKUP.
@@ -2603,7 +2603,7 @@ REAL_LEDGER_AFTER=$(real_ledger_state)
 check "tripwire: operator's real ~/.himmel/provenance.jsonl untouched by this suite" \
   "$REAL_LEDGER_AFTER" "$REAL_LEDGER_BEFORE"
 
-# HIMMEL-3903: this suite must not leave a .git in /tmp or $TMPDIR.
+# this suite must not leave a .git in /tmp or $TMPDIR.
 for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do
   case " $GIT_LEAK_PRE " in *" $_p "*) continue ;; esac
   [ -e "$_p" ] && check "suite created $_p" present absent

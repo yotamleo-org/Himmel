@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# d1-verdict — WS7 D1 lane-gate verdict record writer (HIMMEL-654, spec D1.4).
+# d1-verdict — WS7 D1 lane-gate verdict record writer (spec D1.4).
 #
 # The unquarantine gate's PASS/FAIL persistence. A Claude-family validating
 # session (⚑ Fork A default owner) that has run the D1 lane gate on a cheap-lane
@@ -24,7 +24,7 @@
 #
 # Enforcement honesty: writing this record is BEHAVIORALLY enforced v1
 # (validating-session discipline). Nothing structurally requires it: the
-# unwired GLM lane-marker hook was removed in HIMMEL-4899. The CR-marker hook
+# unwired GLM lane-marker hook was removed. The CR-marker hook
 # already structurally enforces the panel/CR half; this is the lane-rubric half.
 #
 # bash 3.2-safe; node is the JSON tool the cr scripts already depend on.

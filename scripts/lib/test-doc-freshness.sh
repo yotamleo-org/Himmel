@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic test suite for scripts/lib/doc-freshness.sh (HIMMEL-587).
+# Hermetic test suite for scripts/lib/doc-freshness.sh.
 # Builds throwaway git repos; asserts findings + always-exit-0. Exit 0 if all pass.
 # shellcheck disable=SC2034,SC2016,SC2317,SC2329,SC1090
 set -uo pipefail

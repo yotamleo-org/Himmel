@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/handover/auto-commit.sh (HIMMEL-140).
+# Smoke test for scripts/handover/auto-commit.sh.
 #
 # Covers:
 #   1. Branch creation from ticket-tagged message
@@ -19,7 +19,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -103,7 +103,7 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 # macOS: mktemp yields /var/folders/... (a symlink to /private/var) but git
 # reports the physical toplevel and macOS realpath has no -m, so the two never
-# line up. Resolve it once here (HIMMEL-3719).
+# line up. Resolve it once here.
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd -P)
 echo "test: TMP_ROOT=$TMP_ROOT"
 SLUG="dpz$$"
@@ -171,7 +171,7 @@ git -C "$HANDOVER_REPO" checkout -q main 2>/dev/null \
   || true
 # Recreate the handovers tree — checkout main strips any tree that only
 # exists on a feature branch (handovers/$SLUG/notes.md was added on
-# handover/HIMMEL-140-... and main has no commits touching that path).
+# handover/PROJ-140-... and main has no commits touching that path).
 mkdir -p "$HANDOVER_REPO/handovers/$SLUG"
 
 echo "more content" > "$HANDOVER_REPO/handovers/$SLUG/notes.md"
@@ -197,7 +197,7 @@ git -C "$HANDOVER_REPO" checkout -q main 2>/dev/null \
   || true
 # Recreate the handovers tree — checkout main strips any tree that only
 # exists on a feature branch (handovers/$SLUG/notes.md was added on
-# handover/HIMMEL-140-... and main has no commits touching that path).
+# handover/PROJ-140-... and main has no commits touching that path).
 mkdir -p "$HANDOVER_REPO/handovers/$SLUG"
 echo "untagged content" > "$HANDOVER_REPO/handovers/$SLUG/freeform.md"
 out=$(run_auto_commit "freeform thought" 2>&1)
@@ -214,7 +214,7 @@ git -C "$HANDOVER_REPO" checkout -q main 2>/dev/null \
   || true
 # Recreate the handovers tree — checkout main strips any tree that only
 # exists on a feature branch (handovers/$SLUG/notes.md was added on
-# handover/HIMMEL-140-... and main has no commits touching that path).
+# handover/PROJ-140-... and main has no commits touching that path).
 mkdir -p "$HANDOVER_REPO/handovers/$SLUG"
 before_branch=$(git -C "$HANDOVER_REPO" rev-parse --abbrev-ref HEAD)
 echo "direct content" > "$HANDOVER_REPO/handovers/$SLUG/direct.md"
@@ -241,7 +241,7 @@ git -C "$HANDOVER_REPO" checkout -q main 2>/dev/null \
   || true
 # Recreate the handovers tree — checkout main strips any tree that only
 # exists on a feature branch (handovers/$SLUG/notes.md was added on
-# handover/HIMMEL-140-... and main has no commits touching that path).
+# handover/PROJ-140-... and main has no commits touching that path).
 mkdir -p "$HANDOVER_REPO/handovers/$SLUG"
 echo "nopush content" > "$HANDOVER_REPO/handovers/$SLUG/nopush.md"
 out=$(run_auto_commit --no-push "HIMMEL-999 nopush check" 2>&1)
@@ -271,7 +271,7 @@ git -C "$HANDOVER_REPO" checkout -q main 2>/dev/null \
   || true
 # Recreate the handovers tree — checkout main strips any tree that only
 # exists on a feature branch (handovers/$SLUG/notes.md was added on
-# handover/HIMMEL-140-... and main has no commits touching that path).
+# handover/PROJ-140-... and main has no commits touching that path).
 mkdir -p "$HANDOVER_REPO/handovers/$SLUG"
 sha_before=$(git -C "$HANDOVER_REPO" rev-parse HEAD)
 echo "dryrun content" > "$HANDOVER_REPO/handovers/$SLUG/dryrun.md"
@@ -286,7 +286,7 @@ assert_contains "--dry-run announces target branch" \
 rm -f "$HANDOVER_REPO/handovers/$SLUG/dryrun.md"
 
 # Test 7: cross-machine resume — origin has a branch the local clone hasn't fetched.
-# Simulates: machine A pushed `handover/HIMMEL-777-cross-machine` directly to
+# Simulates: machine A pushed `handover/PROJ-777-cross-machine` directly to
 # origin; machine B starts from a stale clone that never saw the branch. The
 # checkout path must `git fetch` before `--track origin/<branch>`.
 
@@ -335,7 +335,7 @@ else
     FAIL=$((FAIL+1))
 fi
 
-# HIMMEL-571: single-writer marker → commit on default branch, never branch,
+# single-writer marker → commit on default branch, never branch,
 # refuse if parked. Runs in its OWN fresh repo + bare origin so the marker
 # never contaminates the shared HANDOVER_REPO cases above and the
 # "no handover/* ref" assertion is meaningful.
@@ -500,7 +500,7 @@ else
 fi
 assert_contains "sw7: warns about unresolvable origin/HEAD" "could not resolve origin/HEAD" "$out"
 
-# HIMMEL-1830/1831: leg-split guard (exit 8). Own fresh repo + bare origin,
+# leg-split guard (exit 8). Own fresh repo + bare origin,
 # same shape as the single-writer block above, to keep these cases isolated.
 
 echo "TEST: HIMMEL-1830/1831 leg-split guard"
@@ -638,7 +638,7 @@ assert_rc "ls9: newline parent path refuses with exit 8" "8" "$rc"
 assert_contains "ls9: names first newline-path file" "newline-session-7.md" "$out"
 assert_contains "ls9: names second newline-path file" "newline-session-8.md" "$out"
 
-# T-ls10 (HIMMEL-1839): a staged addition pair OUTSIDE $rel_root that collides
+# T-ls10: a staged addition pair OUTSIDE $rel_root that collides
 # on the widened stem rule (foo.md + foo-2.md) must NOT trip the guard — the
 # staged-additions queries must be scoped to $rel_root, not the whole repo.
 # One legit in-root file gets the run past the earlier *.md pre-check.
@@ -675,7 +675,7 @@ assert_contains "ls11: names second in-root file" "inroot-26.md" "$out"
 assert_eq "ls11: no commit created (HEAD unchanged)" "$ls11_before" "$(git -C "$LS_REPO" rev-parse HEAD)"
 
 # T-ls12 (CR finding, codex-1 Important): two bare ticket-ID filenames
-# ("HIMMEL-1830.md" + "HIMMEL-1831.md") must NOT collide. A bare all-caps
+# must NOT collide. A bare all-caps
 # stem ("HIMMEL") looks like nothing but a JIRA project key, so both parse
 # as stem="HIMMEL" (the ticket's own number gets mistaken for a leg number)
 # unless the guard specifically excludes that shape -- two unrelated

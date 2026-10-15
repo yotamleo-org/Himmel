@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# load-dotenv.sh — shell-side .env key loader (HIMMEL-335).
+# load-dotenv.sh — shell-side .env key loader.
 #
 # Reads the primary checkout's .env and exports requested keys into the
 # environment ONLY if they are currently ABSENT, where absent means UNSET **or
@@ -7,7 +7,7 @@
 # config source for the handover shell tooling (HANDOVER_DIR, USER_SLUG) — not
 # just for the Jira CLI.
 #
-# HIMMEL-1922: the empty half is load-bearing, not incidental. Every caller
+# The empty half is load-bearing, not incidental. Every caller
 # guards with `[ -z "${KEY-}" ]` — empty is not a usable value — so a loader
 # that counted set-empty as "already provided" loaded nothing and still
 # returned 0. The Jira CLI's loadEnv() (scripts/jira/src/client.ts) uses JS
@@ -18,15 +18,15 @@
 #   load_dotenv [KEY ...]
 #   load_dotenv --root <dir> [KEY ...]
 # With no keys, does nothing: every consumer must name its allowlist.
-# ponytail: Bun auto-loads cwd .env before any explicit reader;
-# HIMMEL-4915 audits launch sites and passes --no-env-file.
+# ponytail: HIMMEL-4915 audits launch sites and passes --no-env-file;
+# Bun auto-loads cwd .env before any explicit reader.
 #
 # The .env path is resolved like the Jira CLI: the parent of
 # `git rev-parse --git-common-dir`, so from inside a git worktree it still
 # finds the PRIMARY checkout's .env (the gitignored .env is not copied into
 # worktrees). Falls back to two levels up from this script if git is absent.
 #
-# `--root <dir>` (HIMMEL-460): load <dir>/.env and BYPASS the CWD-based
+# `--root <dir>`: load <dir>/.env and BYPASS the CWD-based
 # `_load_dotenv_root` resolution entirely (no `git rev-parse` against the
 # process CWD). The caller has already resolved the correct root — used by the
 # SessionStart inject-initiative hook so a session launched inside an UNRELATED
@@ -54,7 +54,7 @@ _load_dotenv_root() {
     ( cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd )
 }
 
-# _load_dotenv_primary_for <dir> (HIMMEL-1482) — resolve the .env-bearing root for
+# _load_dotenv_primary_for <dir> — resolve the .env-bearing root for
 # a CANDIDATE directory, for launchers that pin the .env to their OWN repo root via
 # `load_dotenv --root` (which deliberately bypasses _load_dotenv_root's CWD-based
 # resolution). The gitignored .env lives ONLY in the primary checkout and is never
@@ -66,7 +66,7 @@ _load_dotenv_root() {
 #                                    .env exists; emit ONE advisory line to stderr
 #   otherwise                      → echo <dir> (caller's missing-.env path applies
 #                                    — load_dotenv then no-ops, rc 0)
-# Mirrors glm-env.ts mainCheckoutRoot() (HIMMEL-654) for the bash side. Returns the
+# Mirrors glm-env.ts mainCheckoutRoot() for the bash side. Returns the
 # path on stdout; the advisory is the helper's ONLY stderr output.
 _load_dotenv_primary_for() {  # $1 = candidate root dir
     local dir="${1:-}" common primary dir_abs toplevel gitdir dir_phys
@@ -79,7 +79,7 @@ _load_dotenv_primary_for() {  # $1 = candidate root dir
     # the same idiom _load_dotenv_root uses.
     if common=$(cd "$dir" && git rev-parse --git-common-dir 2>/dev/null) && [ -n "$common" ]; then
         primary=$(cd "$dir" && cd "$common/.." 2>/dev/null && pwd) || primary=""
-        # HIMMEL-1482 R2: restrict the fallback to GENUINE linked-worktree ROOTS.
+        # Restrict the fallback to GENUINE linked-worktree ROOTS.
         # r1 gated only on `primary != candidate`, so ANY directory inside ANY
         # checkout qualified — a hermetically pinned root like <worktree>/scripts
         # (or <primary>/scripts) resolved common-dir to the real .git, differed
@@ -120,7 +120,7 @@ _load_dotenv_envfile() {
         printf '%s/.env' "$_lf_root"
         return 0
     fi
-    # HIMMEL-3059 S3: a read-only install tree (e.g. a packaged /usr/share
+    # A read-only install tree (e.g. a packaged /usr/share
     # prefix) can never HAVE an in-tree .env, so an adopter's overrides land
     # under the himmelctl cache dir instead. Readers check there FIRST, then
     # fall back to the git-resolved root, so an existing writable clone's
@@ -145,7 +145,7 @@ load_dotenv() {
     local _ld_key _ld_line _ld_val _ld_rc=0
     local _ld_pending=()
     for _ld_key in "${_ld_keys[@]}"; do
-        # Absent means UNSET **or EMPTY** (HIMMEL-1922). `declare -p` is Bash
+        # Absent means UNSET **or EMPTY**. `declare -p` is Bash
         # 3.2-compatible and short-circuits the indirect expansion when the key
         # is genuinely unset, so this stays `set -u`-safe. Every caller guards
         # with `[ -z "${KEY-}" ]`, i.e. empty is not a usable value; a loader
@@ -237,7 +237,7 @@ _load_dotenv_extract() {
                 seen[key] = 1
                 print key "=" strip_comment(substr(line, equals + 1))
             }
-            # HIMMEL-2462: drop an unquoted trailing comment. The marker is
+            # Drop an unquoted trailing comment. The marker is
             # WHITESPACE followed by "#", per the dotenv convention — so
             # `URL=http://x/#frag` keeps its fragment and only a real gutter
             # comment goes. A value is quoted only when it BEGINS with a quote
@@ -252,7 +252,7 @@ _load_dotenv_extract() {
             # data; an UNTERMINATED quote keeps the whole remainder rather
             # than guessing where a broken value ends. Trailing whitespace is
             # left to _load_dotenv_trim. Surrounding quotes are still NOT
-            # stripped (HIMMEL-1493 covers that).
+            # stripped.
             #
             # Why this matters: .env.example USED TO ship
             # `JIRA_PROJECT_KEY=HIMMEL   # default project for jira ops`, and
@@ -302,7 +302,7 @@ _load_dotenv_extract() {
 # The directory is fixed at $HOME/.himmel; no env var selects another one.
 # ponytail: the path follows $HOME, so a caller that controls HOME picks the
 # file; clear-cr-marker's seam guard does not cover HOME (it is always set).
-# Upgrade path (HIMMEL-5395): pin the directory from the passwd entry if a gate ever runs
+# Upgrade path: pin the directory from the passwd entry if a gate ever runs
 # under a caller-chosen HOME.
 # ponytail: policy keys live in config.json, not the tracked himmel.conf,
 # because no guard covers writes to himmel.conf yet; move them once one does.

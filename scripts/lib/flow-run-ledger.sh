@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Flow-run ledger append helpers (HIMMEL-921). Bash twin of
+# Flow-run ledger append helpers. Bash twin of
 # scripts/telegram/flow-run-ledger.ts. Emits byte-identical canonical JSONL
 # lifecycle rows and appends them to ~/.himmel/flow-runs.jsonl by default.
 # bash 3.2-safe (no associative arrays, no mapfile).
@@ -26,7 +26,7 @@ FLOW_RUN_ROTATE_BYTES=10485760
 # twin. The classifier scans only the run-log tail.
 FLOW_RUN_TRUNCATION_SIGNATURE_RE='Background tasks still running.*terminating'
 
-# The ONE retryable-upstream signature list (HIMMEL-1152). A cadence leg that
+# The ONE retryable-upstream signature list. A cadence leg that
 # dies on a transient Anthropic API failure — the 2026-07-17 harvest run died
 # on the literal line `API Error: Server error mid-response. The response above
 # may be incomplete.` after harvesting 7 clips — is worth re-invoking: every
@@ -111,7 +111,7 @@ flow_run_row_end() {
 }
 
 # flow_run_classify <exit_code> [log_path] [extra_marker_re] [required_marker]
-# required_marker (HIMMEL-1716): when the leg's prompt asks the agent to print
+# required_marker: when the leg's prompt asks the agent to print
 # a bare terminal marker ONLY on genuine completion (PIPELINE-LEG-DONE), a
 # zero exit with no such line in the log tail is a leg that parked, was
 # blocked on a prompt, or bailed early -- classify it `parked`, never
@@ -164,7 +164,7 @@ flow_run_is_transient() {
 flow_run_append() {
     local line="${1:-}" path dir size
     path=$(flow_run_ledger_path)
-    # HIMMEL-2241: a MISSED test redirect must fail LOUD, never silently
+    # A MISSED test redirect must fail LOUD, never silently
     # pollute production telemetry. run-shell-tests.sh exports
     # HIMMEL_SUITE_LOCK_HELD for the whole suite run, so a write reaching here
     # with the marker set and NO explicit override is a fixture spawning a real

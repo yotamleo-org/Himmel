@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// scripts/lib/gen-secrets-doc.mjs — HIMMEL-2176 Task 5 (externalization Stage
-// 1, PR-B, design A14/A15).
+// scripts/lib/gen-secrets-doc.mjs — externalization Stage 1
+// (design A14/A15).
 //
 // .env.example's generated secrets block (bounded by the BEGIN/END markers
 // below) is rendered straight from scripts/himmelctl/lib/secrets-manifest.json
 // — the SAME manifest the wizard's secrets step reads. One source, two
 // consumers: editing the manifest and re-running `write` is the only
 // supported way to change either. Modeled on scripts/lib/gen-commands-
-// catalog.mjs's three-verb shape (HIMMEL-2064) — see that file for the
+// catalog.mjs's three-verb shape — see that file for the
 // CI/pre-commit staged-vs-working-tree rationale this one reuses verbatim.
 //
 // Usage:
@@ -25,7 +25,7 @@ export const END_MARKER = '# === GENERATED: secrets manifest -- END ===';
 
 const REQUIRED_FIELDS = ['name', 'storage', 'obtain', 'probe', 'required', 'feature'];
 
-// HIMMEL-2305: the closed set of feature areas a secret can be scoped by --
+// The closed set of feature areas a secret can be scoped by --
 // mirrors scripts/himmelctl/lib/adopter-profile.js's own FEATURE_IDS
 // constant (kept as a literal copy, not a cross-import: that module is CJS,
 // this one is ESM, and the set is small and closed enough that duplicating
@@ -62,7 +62,7 @@ export function validateManifestShape(secrets) {
   return problems;
 }
 
-// HIMMEL-2305: the TRACKED .env.example block stays selection-independent
+// The TRACKED .env.example block stays selection-independent
 // (every adopter sees the full union of keys — see the module header on why
 // scoping applies only to the per-machine wizard walk / status nags, never
 // here) but is reorganized into these labeled per-feature sections, in this
@@ -126,12 +126,11 @@ export function regenerateEnvExample(envExampleText, secrets, mode) {
   return { text: out.join('\n'), changed, violations: [] };
 }
 
-// Manifest malformation gate (HIMMEL-2176 CR round 3, retask
-// stage1-build-6d2e): a missing or null `secrets` key used to be silently
+// Manifest malformation gate: a missing or null `secrets` key used to be silently
 // coerced to [] at the call site, so a malformed manifest produced an EMPTY
 // generated block instead of failing -- the drift gate this generator exists
 // to run happily accepted it. Same fail-open-silently class this repo lints
-// for (HIMMEL-1776) and rules against (HIMMEL-1128): the generator's entire
+// for and rules against: the generator's entire
 // purpose is that documentation cannot silently drift, so it must not trust
 // the one input (the manifest) it exists to validate. `check`, `write`, and
 // `check --staged` all route through this one function (main(), below), so

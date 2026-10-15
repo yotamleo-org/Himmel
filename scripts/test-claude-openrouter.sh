@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Hermetic tests for scripts/claude-openrouter (HIMMEL-1774). bash 3.2-safe.
+# Hermetic tests for scripts/claude-openrouter. bash 3.2-safe.
 # Twin of test-claude-routed.sh's harness, adapted for the OpenRouter lane's
 # defining behavior: the egress-matrix HARD gate. The real egress matrix
 # declares the `openrouter` provider with allow cells for himmel-code +
-# handover-state ONLY (operator ruling, HIMMEL-1774): an unclassified cwd
+# handover-state ONLY: an unclassified cwd
 # (corpus "unknown") and the vault corpora still REFUSE fail-closed against
 # the REAL matrix, while a himmel-code cwd proceeds; the wildcard/fixture
 # tests use CLAUDE_OPENROUTER_EGRESS_MATRIX hermetic matrices. The OpenRouter
@@ -57,7 +57,7 @@ done
 exit 0
 MOCK
   chmod +x "$BIN/claude"
-  # curl stub (HIMMEL-4076): the credit probe is a launch GATE now, so every test
+  # curl stub: the credit probe is a launch GATE now, so every test
   # needs a deterministic balance. Body comes from $BIN/credits.json (default: $20
   # remaining); a missing file makes the stub fail like an unreachable API.
   printf '{"data":{"total_credits":21,"total_usage":1}}' > "$BIN/credits.json"
@@ -96,7 +96,7 @@ write_wildcard_matrix() {
 JSON
 }
 
-# CR round 2 (HIMMEL-1774): purpose-scoped fixtures. The matrix's rules are
+# purpose-scoped fixtures. The matrix's rules are
 # (corpus, provider, purpose) cells and the launcher performs INFERENCE, so an
 # allow scoped to a DIFFERENT purpose must not authorize the lane, while an
 # explicit "inference" cell must (the "*" case is write_allow_matrix above).
@@ -116,7 +116,7 @@ write_inference_purpose_matrix() {
 JSON
 }
 
-# CR round 4 (HIMMEL-1774): first-match-wins fixtures. An explicit deny placed
+# first-match-wins fixtures. An explicit deny placed
 # ABOVE a later permissive openrouter row must win — the real matrix depends on
 # that ordering, and a gate that scanned past the deny for a later allow would
 # silently void every explicit vault deny the moment a wildcard-corpus allow is
@@ -147,7 +147,7 @@ t "missing key exits 2" 2
 [ ! -f "$WORK/child-env.txt" ] || { echo "FAIL: claude launched without key"; FAILS=$((FAILS+1)); }
 
 # --- T2 (CENTERPIECE): the real matrix allows ONLY himmel-code + handover-state
-# (HIMMEL-1774 operator ruling). An UNCLASSIFIED cwd (temp dir -> corpus
+# An UNCLASSIFIED cwd (temp dir -> corpus
 # "unknown") refuses fail-closed with exit 3, claude never launched, and the
 # message names the corpus with no permitting cell.
 setup; KEY="or-test-123"
@@ -164,7 +164,7 @@ setup; KEY="or-test-123"; OR_CWD="$HERE/.."
 t "real matrix allows himmel-code cwd (declared cell)" 0
 grep -q "ANTHROPIC_AUTH_TOKEN=or-test-123" "$WORK/child-env.txt" || { echo "FAIL: declared cell did not launch himmel-code"; FAILS=$((FAILS+1)); }
 
-# --- T2f (HIMMEL-5099): a foreign git repo nested inside the checkout is not himmel-code.
+# --- T2f: a foreign git repo nested inside the checkout is not himmel-code.
 setup; KEY="or-test-123"
 NESTED="$(mktemp -d "$HERE/../.nested-foreign.XXXXXX")" || exit 1
 git -C "$NESTED" init -q
@@ -223,7 +223,7 @@ done
 # (verified 2026-08-15; every OpenRouter Claude Code example carries this shape).
 grep -qxF "ANTHROPIC_API_KEY=" "$WORK/child-env.txt" || { echo "FAIL: ANTHROPIC_API_KEY not exported empty"; FAILS=$((FAILS+1)); }
 
-# --- T3a (HIMMEL-3334 F2): the un-swept claude-hud.json path (new, alongside
+# --- T3a: the un-swept claude-hud.json path (new, alongside
 # the legacy plugins/claude-hud/config.json) is seeded, staleness-tracked and
 # mirror-deleted too — a lane must not lose the HUD after an operator's box
 # has migrated off the legacy path.
@@ -241,20 +241,20 @@ rm -f "$FAKEHOME/.claude/claude-hud.json"
 t "deleted new-path hud source mirrors removal" 0
 [ ! -f "$FAKEHOME/.claude-openrouter/claude-hud.json" ] || { echo "FAIL: stale claude-hud.json (new path) survived source deletion"; FAILS=$((FAILS+1)); }
 
-# --- HIMMEL-4098: a settings env CLAUDE_CODE_AUTO_MODE_SERVER beats the launcher export, so the seed must strip it
+# --- a settings env CLAUDE_CODE_AUTO_MODE_SERVER beats the launcher export, so the seed must strip it
 [ -f "$FAKEHOME/.claude-openrouter/settings.json" ] || { echo "FAIL: seeded settings.json missing"; FAILS=$((FAILS+1)); }
 grep -q "HIMMEL_INITIATIVE" "$FAKEHOME/.claude-openrouter/settings.json" || { echo "FAIL: seeded settings.json unreadable or lost the kept env key (matcher control)"; FAILS=$((FAILS+1)); }
 ! grep -q "CLAUDE_CODE_AUTO_MODE_SERVER" "$FAKEHOME/.claude-openrouter/settings.json" 2>/dev/null || { echo "FAIL: env.CLAUDE_CODE_AUTO_MODE_SERVER survived the seed"; FAILS=$((FAILS+1)); }
 
 # --- T3b: model pin — the pinned model is a Claude slug AND the window is the 1M
-# tier (the HIMMEL-1774 §5 requirement).
+# tier.
 setup; KEY="or-test-123"
 write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
 t "model pin is a Claude 1M tier" 0
 grep -qE "ANTHROPIC_MODEL=anthropic/claude" "$WORK/child-env.txt" || { echo "FAIL: model is not a Claude slug"; FAILS=$((FAILS+1)); }
 grep -qF "CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000" "$WORK/child-env.txt" || { echo "FAIL: context window is not the 1M tier"; FAILS=$((FAILS+1)); }
 
-# --- HIMMEL-5248: the client classifier side query carries no reasoning and the gateway 400s on a
+# --- the client classifier side query carries no reasoning and the gateway 400s on a
 # mandatory-reasoning slug, so the launcher must hand the child a thinking body (the `thinking` shape
 # is what worked live; `reasoning.effort` did not). A caller-set CLAUDE_CODE_EXTRA_BODY wins.
 grep -qF 'CLAUDE_CODE_EXTRA_BODY={"thinking":{"type":"enabled","budget_tokens":2048}}' "$WORK/child-env.txt" || { echo "FAIL: child lacks the default thinking EXTRA_BODY"; FAILS=$((FAILS+1)); }
@@ -287,7 +287,7 @@ t "ambient ANTHROPIC_API_KEY neutralized to empty" 0
 grep -qxF "ANTHROPIC_API_KEY=" "$WORK/child-env.txt" || { echo "FAIL: ambient ANTHROPIC_API_KEY not neutralized"; FAILS=$((FAILS+1)); }
 unset ANTHROPIC_API_KEY
 
-# --- T3f/T3g/T3h (CR round 2): the egress gate is PURPOSE-aware. The launcher
+# --- T3f/T3g/T3h: the egress gate is PURPOSE-aware. The launcher
 # performs inference, so (f) an allow scoped to a DIFFERENT purpose must NOT
 # authorize it (still exit 3, claude never launched, refusal names the purpose),
 # (g) a purpose:"*" rule still authorizes (no regression), and (h) an explicit
@@ -309,7 +309,7 @@ write_inference_purpose_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
 t "inference-purpose allow authorizes" 0
 grep -q "ANTHROPIC_AUTH_TOKEN=or-test-123" "$WORK/child-env.txt" || { echo "FAIL: inference-purpose cell did not launch"; FAILS=$((FAILS+1)); }
 
-# --- T3i/T3j (CR round 4): the gate honours the matrix's FIRST-MATCH-WINS
+# --- T3i/T3j: the gate honours the matrix's FIRST-MATCH-WINS
 # semantics. (i) An explicit deny placed ABOVE a later permissive openrouter row
 # must WIN — the real matrix relies on exactly this ordering to keep its vault
 # denies effective above any future wildcard-corpus allow. (j) A "conditional"
@@ -347,9 +347,9 @@ write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
 t "quoted .env key launches" 0
 grep -qF "ANTHROPIC_AUTH_TOKEN=quoted-val-789" "$WORK/child-env.txt" || { echo "FAIL: surrounding quotes not stripped from key"; FAILS=$((FAILS+1)); }  # gitleaks:allow
 
-# --- T6: PHI refusal (HIMMEL-1774 §2) — .salus marker and phi-roots both refuse
+# --- T6: PHI refusal — .salus marker and phi-roots both refuse
 # with exit 3 EVEN under a declared allow cell (PHI is absolute, no override),
-# matching the sibling structure. HIMMEL-1773: the marker-based guard is inert on
+# matching the sibling structure.: the marker-based guard is inert on
 # the real vault, but its STRUCTURE is what this asserts.
 setup; KEY="or-test-123"; touch "$WORK/.salus"
 write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
@@ -373,7 +373,7 @@ t "denylist refuses under declared cell" 3
 t "denylist + --force proceeds under declared cell" 0 --force
 
 # --- T8: a broken/missing node fails CLOSED — the egress matrix cannot be
-# consulted, so claude is NEVER launched un-audited (HIMMEL-1771 fail-open class).
+# consulted, so claude is NEVER launched un-audited.
 # Simulated with a node shim that exits 127 (command -v still finds it, so the
 # presence guard passes; the consultation then propagates the nonzero exit).
 setup; KEY="or-test-123"
@@ -391,7 +391,7 @@ if [ "$t8_rc" -eq 0 ]; then echo "FAIL: broken node launched (exit 0)"; cat "$WO
 [ ! -f "$WORK/child-env.txt" ] || { echo "FAIL: launched claude with a broken node"; FAILS=$((FAILS+1)); }
 rm -f "$BIN/node"
 
-# --- T9: the credit probe is a launch GATE (HIMMEL-4076). An UNKNOWN balance or
+# --- T9: the credit probe is a launch GATE. An UNKNOWN balance or
 # one below OPENROUTER_MIN_CREDIT_USD (default 3) refuses with exit 5 and never
 # launches claude; a balance at/above the floor launches and prints the line.
 setup; KEY="or-test-123"
@@ -414,7 +414,7 @@ OPENROUTER_MIN_CREDIT_USD=junk t "garbage floor falls back to 3 (3.00 admitted)"
 printf '{"data":{"total_credits":21,"total_usage":20}}' > "$BIN/credits.json"
 OPENROUTER_MIN_CREDIT_USD=junk t "garbage floor falls back to 3 (1.00 refused)" 5
 
-# --- T9b: the per-key MONTHLY cap (GET /key limit_remaining) gates too (HIMMEL-4076):
+# --- T9b: the per-key MONTHLY cap (GET /key limit_remaining) gates too:
 # a 403 "Key limit exceeded" hit a real probe while /credits still showed $19+.
 # limit null = no cap (launch); an unreadable /key refuses; limit_remaining under
 # the floor or exhausted refuses; otherwise the smaller figure is reported.
@@ -474,7 +474,7 @@ else
   echo 'FAIL: non-leg Haiku label names the wrong model'; FAILS=$((FAILS+1))
 fi
 
-# --- HIMMEL-4083: tiers stay independent, including in a managed leg.
+# --- tiers stay independent, including in a managed leg.
 setup; KEY="or-test-123"
 write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
 for lane in standalone openrouter; do

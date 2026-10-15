@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/test-panel-first-pass.sh -- smoke test for panel-first-pass.sh
-# (HIMMEL-2226). Bash 3.2 safe.
+# Bash 3.2 safe.
 #
 # Hermetic: builds a throwaway git repo under mktemp plus a throwaway
 # "scripts" tree that mirrors the real scripts/cr, scripts/guardrails,
@@ -19,7 +19,7 @@
 # No writes outside the fixture: asserted at the end by checking the script's
 # own mktemp scratch files (cr-panel-avail.*) never survive in the shared
 # system temp dir. (A whole-repo `git status --porcelain` diff was tried
-# first and dropped: this worktree has other HIMMEL-2226 workers committing
+# first and dropped: this worktree has other workers committing
 # unrelated scripts/cr/* files concurrently, so that diff is contaminated by
 # noise that has nothing to do with this script.)
 set -uo pipefail
@@ -94,7 +94,7 @@ chmod +x "$fx/scripts/cr/panel-first-pass.sh"
 CALL_LOG="$tmp/panel-calls.log"
 export CALL_LOG
 # ARGS_LOG records the stub's argv so a test can assert WHICH base literal the
-# panel actually received (HIMMEL-1984 capture-once, HIMMEL-2598 T12).
+# panel actually received (capture-once, T12).
 ARGS_LOG="$tmp/panel-args.log"
 export ARGS_LOG
 cat > "$fx/scripts/cr/critic-panel.sh" <<'STUBEOF'
@@ -110,7 +110,7 @@ STUBEOF
 chmod +x "$fx/scripts/cr/critic-panel.sh"
 SCRIPT="$fx/scripts/cr/panel-first-pass.sh"
 
-# HIMMEL-5268: review-round.sh verifies --base-sha against the remote through
+# review-round.sh verifies --base-sha against the remote through
 # `gh api repos/<o>/<r>/compare/<sha>...<branch>`. This fixture has no GitHub
 # remote, so a PATH-side gh stub answers that one call (review-round.sh keeps
 # calling the real gh from PATH; there is no env seam that skips the check).
@@ -162,7 +162,7 @@ feature_sha="$(git -C "$repo" rev-parse feature)"
 empty_sha="$(git -C "$repo" rev-parse feature-empty)"
 
 # Snapshot the shared system temp dir's cr-panel-avail.* files BEFORE running
-# anything -- other processes on this machine (including concurrent HIMMEL-2226
+# anything -- other processes on this machine (including concurrent
 # workers running the real critic-panel.sh) may already have some sitting
 # there, so "no leaked scratch files" must be a pre/post DIFF, not a bare
 # absence check.
@@ -195,7 +195,7 @@ if [ -f "$CALL_LOG" ]; then bad "T3 panel invoked despite CR_PROFILE=none"; else
 
 # T4: empty diff -> skip, exit 0, no panel call (feature-empty == main).
 rm -f "$CALL_LOG" "$tmp/err"
-# panel-first-pass only runs for the branch checked out in cwd (HIMMEL-3495).
+# panel-first-pass only runs for the branch checked out in cwd.
 git -C "$repo" worktree add -q "$tmp/wt-empty" feature-empty
 out="$( (cd "$tmp/wt-empty" && bash "$SCRIPT" --head "$empty_sha" --branch feature-empty) 2>"$tmp/err" )"; rc=$?
 if [ "$rc" -eq 0 ]; then ok "T4 empty diff exits 0"; else bad "T4 empty diff exit (got $rc)"; fi
@@ -233,7 +233,7 @@ if [ "$rc" -eq 0 ]; then ok "T6 panel exit 1 degrades to exit 0"; else bad "T6 p
 assert_has "$err" "critic panel unavailable (all critics failed) - claude-only review" "T6 fail-open message on stderr"
 assert_has "$err" "panel-availability: codex unavailable (rc=1)" "T6 availability line surfaced on stderr"
 assert_lacks "$out" "PHANTOM-FINDING-MUST-NOT-SURVIVE" "T6 findings reset to empty on fail-open"
-# HIMMEL-2542 elapsed tell: the panel WAS invoked and came back with nothing,
+# elapsed tell: the panel WAS invoked and came back with nothing,
 # which is exactly when a reader needs to see how long that took.
 assert_has "$err" "panel-elapsed:" "T6 elapsed tell printed for an invoked panel with an empty findings block"
 if [ -f "$CALL_LOG" ] && [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" = "1" ]; then
@@ -242,7 +242,7 @@ else
     bad "T6 unexpected panel call count"
 fi
 
-# T6b (HIMMEL-1932): stubbed panel exit 6 (refused to certify) -> still fails
+# T6b: stubbed panel exit 6 (refused to certify) -> still fails
 # open to claude-only, but the note says REFUSED, never "all critics failed".
 rm -f "$CALL_LOG" "$tmp/err"
 out="$( (cd "$repo" && FAKE_RC=6 FAKE_OUT='PHANTOM-FINDING-MUST-NOT-SURVIVE' \
@@ -256,7 +256,7 @@ assert_lacks "$out" "PHANTOM-FINDING-MUST-NOT-SURVIVE" "T6b findings reset to em
 # the later cases were not budgeted for, so give them a fresh counter.
 rm -rf "$repo/.git/cr-review-rounds"
 
-# T6c (HIMMEL-1932): exit 6 whose ledger row could NOT be written leaves nothing
+# T6c: exit 6 whose ledger row could NOT be written leaves nothing
 # for clear-cr-marker.sh to hold, so the fence must ABORT (exit 7), not degrade.
 rm -f "$CALL_LOG" "$tmp/err"
 out="$( (cd "$repo" && FAKE_RC=6 FAKE_ERR='critic-panel.sh: could not record certify-refused on the CR ledger' \
@@ -266,7 +266,7 @@ if [ "$rc" -eq 7 ]; then ok "T6c unrecorded refusal aborts at exit 7"; else bad 
 assert_has "$err" "could not be recorded" "T6c abort names the unrecorded refusal"
 rm -rf "$repo/.git/cr-review-rounds"
 
-# T6d (HIMMEL-1932, CodeRabbit): an exit-6 refusal is never retried through rtk;
+# T6d: an exit-6 refusal is never retried through rtk;
 # a retry that returned 1 would overwrite rc and fail open past the exit-7 abort.
 mkdir -p "$tmp/rtkbin"
 printf '#!/usr/bin/env bash\necho "diff --git a/f.txt b/f.txt"\n' > "$tmp/rtkbin/rtk"
@@ -295,7 +295,7 @@ assert_has "$out" "captured diff base: main ($main_sha)" "T7 captured-base line"
 assert_lacks "$err" "panel-elapsed:" "T7 no elapsed tell when the panel returned findings"
 
 # =============================================================================
-# T8 (HIMMEL-2542): a --head that names NO commit in this repo is an input-pin
+# T8: a --head that names NO commit in this repo is an input-pin
 # failure, not a critic outage. Pre-fix this exited 0 with "critic panel
 # unavailable - claude-only review (git diff failed rc=128)" in under a second,
 # so a caller that trusted rc=0 recorded a claude-only round and cleared the
@@ -312,7 +312,7 @@ assert_lacks "$err" "critic panel unavailable" "T8 must NOT report a critic outa
 assert_lacks "$out" "MUST-NOT-REVIEW" "T8 no findings from a run that never reviewed"
 if [ -f "$CALL_LOG" ]; then bad "T8 panel invoked on an unresolvable pin"; else ok "T8 panel never invoked"; fi
 
-# T9: NEGATIVE CONTROL for T8 (HIMMEL-2518 control contract). A mutant with the
+# T9: NEGATIVE CONTROL for T8. A mutant with the
 # T8 guard deleted must RUN, PRODUCE a value, and produce the SPECIFIC wrong
 # value the ticket reported - rc=0 plus the "critic panel unavailable" line.
 # A mutant that merely "differs" (e.g. crashed on a syntax error) proves
@@ -349,12 +349,12 @@ else
 fi
 
 # =============================================================================
-# T10 (HIMMEL-2598, the ticket's primary acceptance): a SECOND fixture with a
+# T10: a SECOND fixture with a
 # bare upstream + repo2 whose LOCAL main has been rewound one commit behind
 # origin/main -- exactly the "unpulled primary checkout" state that made
 # panel-first-pass.sh review other people's already-merged commits as if they
 # were this branch's own (cost a paid critic call + a misattributed finding
-# on HIMMEL-2528 round 5). The diff base must resolve refs/remotes/origin/main,
+# in an earlier review). The diff base must resolve refs/remotes/origin/main,
 # never the stale local ref.
 up="$tmp/upstream.git"
 mkdir -p "$up"
@@ -410,7 +410,7 @@ else
     bad "T10 fetch did not refresh origin/main (got $r2_fetched_origin_main, want $r2_upstream_main)"
 fi
 
-# T12: CONTROL, HIMMEL-1984 capture-once. Reads $ARGS_LOG from the T10 run
+# T12: CONTROL, capture-once. Reads $ARGS_LOG from the T10 run
 # above -- checked here, BEFORE T11 below invokes the panel again and would
 # append a second line to it, so "exactly one --base-sha handoff" stays a
 # clean read of T10's run alone. The panel must receive the SAME base literal
@@ -433,7 +433,7 @@ fi
 
 # T11: CONTROL, no remote -> resolves the LOCAL branch. Reuses the EXISTING
 # $repo fixture (it has no origin remote). T3/T4/T7 already exercise this
-# line incidentally; this row names it explicitly as HIMMEL-2598's documented
+# line incidentally; this row names it explicitly as the documented
 # fallback control (no origin/$db to prefer, so $db itself must still work).
 # Runs AFTER the T12 read above so its panel invocation can't add a second
 # line to $ARGS_LOG before T12 counts it.
@@ -469,7 +469,7 @@ else
     assert_lacks "$out" "main ($r2_upstream_main)" "T13 control does not carry the correct fetched origin sha"
 fi
 
-# T14 (codex-2 CR round 2, HIMMEL-2780/2787): a repo whose refs/heads carries
+# T14: a repo whose refs/heads carries
 # a branch literally named "origin/main" that SHADOWS refs/remotes/origin/main
 # in git's ambiguous-ref precedence (refs/heads/<name> is checked before
 # refs/remotes/<name>). cr_resolve_base_ref must return the fully-qualified
@@ -517,7 +517,7 @@ else
     bad "T14 resolved ref rev-parsed to $r3_rev, want the tracking commit $r3_tracking_main (got shadow $r3_shadow_main?)"
 fi
 
-# T15 (HIMMEL-5268): the base verification refuses end to end. The stub says the
+# T15: the base verification refuses end to end. The stub says the
 # captured base is not on the remote default branch, so review-round.sh exits 8
 # at intake and the panel is never invoked; the passing rows above prove the
 # same fixture reaches the panel when the stub answers "ahead".

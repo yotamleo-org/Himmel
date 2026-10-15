@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/observability-registry.sh (HIMMEL-1680).
+# Tests for scripts/lib/observability-registry.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

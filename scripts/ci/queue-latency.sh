@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/queue-latency.sh — HIMMEL-3840
+# scripts/ci/queue-latency.sh
 #
 # One read-only line for the console tick: how saturated is GitHub Actions?
 #   ci-queue: jobs_in_progress=N/20 macos=M/5 queued=Q oldest_wait=Xm

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# forge-localgit.sh — the `local-git` forge backend (HIMMEL-4762, HIMMEL-4748
-# spec section 3). A local-git repo has no hosted PRs: a change is a branch,
+# forge-localgit.sh — the `local-git` forge backend
+# (spec section 3). A local-git repo has no hosted PRs: a change is a branch,
 # its id is `br-<branch>` (lowercased, `/` to `-`), and opening it writes a
 # change record under <git-common-dir>/himmel/changes/<id>.json that every
 # worktree of the repo shares. Verbs not defined here (pr_*, checks, merge)

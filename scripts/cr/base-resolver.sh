@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared origin-first CR diff-base resolution (HIMMEL-2787).
+# Shared origin-first CR diff-base resolution.
 # Bash 3.2-safe. Sourcing defines functions only.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 
@@ -28,7 +28,7 @@ cr_fetch_base() {
 # through git's ambiguous-ref precedence, where refs/tags/<name> and
 # refs/heads/<name> are checked BEFORE refs/remotes/<name> — a tag or branch
 # literally named origin/main would shadow the verified tracking ref and send
-# callers to the wrong commit (codex-2 CR round 2, HIMMEL-2780/2787).
+# callers to the wrong commit.
 cr_resolve_base_ref() {
     local _crr_repo="$1" _crr_input="$2" _crr_branch
     case "$_crr_input" in

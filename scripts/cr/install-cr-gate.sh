@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OWNER_MARKER="# himmel-cr-gate-v1"
 
 # is_himmel_hook FILE — ownership check for --status/--remove/--force
-# (codex, CR round, HIMMEL-2035). `grep -Fq "$OWNER_MARKER" FILE` matched the
+# `grep -Fq "$OWNER_MARKER" FILE` matched the
 # marker text ANYWHERE in the file, so a foreign hook that merely mentions
 # "# himmel-cr-gate-v1" in an unrelated comment would read as himmel-owned —
 # letting --remove delete it, or a reinstall replace it. build_hook_content
@@ -78,7 +78,7 @@ if ! git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "install-cr-gate: $TARGET is not a git work tree" >&2
     exit 2
 fi
-# NOTE (HIMMEL-2650): this only catches an rc!=0 failure. Git < 2.31 does not
+# NOTE: this only catches an rc!=0 failure. Git < 2.31 does not
 # reject an unrecognised --path-format - it echoes the option back as an
 # ordinary output line and still exits 0 with a garbage, non-absolute value,
 # which this `|| {...}` cannot see. Follow-up ticket tracks giving this (and
@@ -88,8 +88,7 @@ target_common_dir=$(git -C "$TARGET" rev-parse --path-format=absolute --git-comm
     exit 2
 }
 
-# Effective hooks dir. Two scopes, two different right answers
-# (HIMMEL-2035 CR round 1, [codex-1]/[codex-2]).
+# Effective hooks dir. Two scopes, two different right answers.
 #
 # REPO-LOCAL core.hooksPath -> ask GIT where it points; never re-derive it.
 # The hand-rolled `case` this replaced resolved a relative value against the
@@ -107,7 +106,7 @@ target_common_dir=$(git -C "$TARGET" rev-parse --path-format=absolute --git-comm
 # such a shim, which is why the gate does fire on a box configured that way —
 # but it cannot be assumed, and an un-chained global dir would otherwise leave
 # the adopter with an "installed" report over an inert gate.
-# NOTE (HIMMEL-2650): the `-n` check below only catches an EMPTY result. Git
+# NOTE: the `-n` check below only catches an EMPTY result. Git
 # < 2.31 echoes an unrecognised --path-format back as an ordinary output
 # line, so this comes back non-empty but garbage (not an absolute path) -
 # the check does not see that either. Follow-up ticket tracks value
@@ -121,12 +120,12 @@ target_toplevel=$(git -C "$TARGET" rev-parse --path-format=absolute --show-tople
 
 # The question that decides where we write is NOT "what scope is the config
 # in" — it is "does git's effective hooks dir live INSIDE this repo".
-# [codex-1], CR round 2: a REPO-LOCAL core.hooksPath can name a shared
+# A REPO-LOCAL core.hooksPath can name a shared
 # absolute or home directory just as easily as a global one can, so a
 # scope-based test claimed a per-repo guarantee it did not deliver. One
 # containment check covers both scopes and is the property we actually mean.
 #
-# Compared on RESOLVED real paths, not the nominal ones (codex CR round 4):
+# Compared on RESOLVED real paths, not the nominal ones:
 # a lexical prefix compare of $git_hooks_dir as-is would read a `.git/hooks`
 # that is itself a SYMLINK to a shared external directory as "inside this
 # repo" (it textually starts with $target_common_dir) and happily write the
@@ -168,13 +167,13 @@ pre_push_hook="$hooks_dir/pre-push"
 # rather than silently write through an escape. Checking here too, before
 # mkdir -p, would miss a hooks_dir that does not exist YET but sits behind
 # an existing symlinked ancestor — mkdir -p follows that symlink and creates
-# the real target through it regardless (codex CR round, HIMMEL-2035).
+# the real target through it regardless.
 
 # shellcheck disable=SC2016  # the single-quoted bodies below are the HOOK's
 # source text; $gate/$@ must reach the generated file unexpanded.
 build_hook_content() {
     # The baked path is interpolated with printf %q, NOT sed into a
-    # double-quoted assignment ([codex-3], CR round 2). The old
+    # double-quoted assignment. The old
     # `sed "s|@@HIMMEL_GATE@@|$1|"` broke two ways on a checkout path holding
     # shell/sed metacharacters — `|` ended the sed expression and `&` expanded
     # to the whole match, corrupting the path; and landing the result inside
@@ -185,8 +184,8 @@ build_hook_content() {
     printf '#!/usr/bin/env bash\n'
     printf '# himmel-cr-gate-v1\n'
     # A LITERAL, machine-readable copy of the baked path, so --status can read
-    # it back with plain string ops. Round 3 [codex-1]: --status used to
-    # recover the path by `eval`-ing the `gate=` line below — but that line
+    # it back with plain string ops. --status must not recover the path by
+    # `eval`-ing the `gate=` line below — that line
     # lives in a FOREIGN repo's hook, and the owner-marker comment guarding it
     # is just a comment anyone can paste. Inspecting a repo must never execute
     # anything it contains. This line is data; the `gate=` line is code, and
@@ -205,8 +204,8 @@ do_status() {
     if ! is_himmel_hook "$pre_push_hook"; then
         echo "foreign"; exit 1
     fi
-    # Read the LITERAL path line — never eval the `gate=` line ([codex-1],
-    # round 3). `sed` here only strips a fixed prefix; nothing is executed, so
+    # Read the LITERAL path line — never eval the `gate=` line.
+    # `sed` here only strips a fixed prefix; nothing is executed, so
     # a hostile hook that keeps the owner-marker comment can at worst make
     # --status print a wrong path, never run a command.
     baked=$(sed -n 's/^# himmel-cr-gate-path: //p' "$pre_push_hook" 2>/dev/null | head -n1)
@@ -263,14 +262,14 @@ do_install() {
         else
             echo "install-cr-gate: WARNING: git resolves core.hooksPath=$hooks_path_any from GLOBAL/SYSTEM config and runs hooks ONLY from there, so it will NOT run $pre_push_hook. $(if [ -f "$shared_pre_push" ]; then echo "$shared_pre_push exists but does not appear to chain to the repo hook."; else echo "There is no $shared_pre_push to chain from."; fi) THE GATE IS INSTALLED BUT INERT until the owner of this machine runs ONE of:" >&2
             # The remedy names the RESOLVED ABSOLUTE hooks dir, never the
-            # relative `.git/hooks` ([codex-1], round 4). In a LINKED WORKTREE
+            # relative `.git/hooks`. In a LINKED WORKTREE
             # `.git` is a FILE (a gitdir pointer), so `.git/hooks` does not
             # exist — following that advice would point core.hooksPath at a
             # missing directory and disable EVERY hook in the repo, which is
             # strictly worse than the inert gate it was meant to fix.
             echo "  (a) give this repo its own hooks dir:  git -C '$TARGET' config --local core.hooksPath '$hooks_dir'" >&2
             echo "  (b) chain the machine-wide hook, by adding to $shared_pre_push:" >&2
-            # --git-common-dir, not --git-dir (codex, CR round, HIMMEL-2035):
+            # --git-common-dir, not --git-dir:
             # in a LINKED WORKTREE --git-dir resolves to the worktree-local
             # gitdir (.git/worktrees/<name>), but the gate above was installed
             # into hooks_dir under the COMMON gitdir — a pasted --git-dir shim
@@ -298,7 +297,7 @@ do_install() {
     fi
 
     # Resolve the baked gate path from himmel's PRIMARY checkout, never a
-    # worktree and never dirname "$0" (HIMMEL-2035 A4): all feature work
+    # worktree and never dirname "$0": all feature work
     # happens in worktrees under .claude/worktrees/ that /clean_garden
     # deletes once merged, so a path baked from one would silently brick
     # every adopter's push gate the day that worktree is pruned. And
@@ -310,7 +309,7 @@ do_install() {
     baked_gate=$(to_native_path "$himmel_root/scripts/hooks/check-cr-before-push.sh")
 
     # REFUSE a gate path holding a newline or other control character
-    # ([codex-2], round 4). The `gate=` line is %q-quoted and safe, but the
+    # The `gate=` line is %q-quoted and safe, but the
     # machine-readable `# himmel-cr-gate-path:` line is a COMMENT: a newline in
     # the path ends that comment and everything after it becomes SHELL SOURCE
     # in the generated hook. Refusing is the honest fix — a checkout path with
@@ -335,7 +334,7 @@ do_install() {
     # when it did not exist before this mkdir -p — including the case where
     # a not-yet-existing hooks_dir sat behind an ALREADY-existing symlinked
     # ancestor, which mkdir -p follows through regardless of the pre-check
-    # above ([codex-1], CR round, HIMMEL-2035).
+    # above.
     hooks_dir_real=$(_real_dir "$hooks_dir")
     case "$hooks_dir_real/" in
         "$target_common_dir_real"/*|"$target_toplevel_real"/*) ;;

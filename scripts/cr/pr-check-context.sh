@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # scripts/cr/pr-check-context.sh - the /pr-check runbook's step-0 TRUSTED
-# ANCHOR entry point: resolves and prints the shared per-run context
-# (HIMMEL-2226), decides the himmel/adopter lane from the HIMMEL_REPO anchor,
+# ANCHOR entry point: resolves and prints the shared per-run context,
+# decides the himmel/adopter lane from the HIMMEL_REPO anchor,
 # and deliberately delegates to the reviewed branch's own copy of itself when
-# that branch touches scripts/cr/ (HIMMEL-2335).
+# that branch touches scripts/cr/.
 #
 # WHY this is a script and not a fence: Claude Code's worktree-isolation guard
 # screens every Bash-tool command in a worktree-isolated session and refuses
 # anything it cannot statically verify safe - including sourcing a
-# runtime-determined path (`. "$var/lib.sh"`). A 13-shape bisection
-# (HIMMEL-2335) found two more refusal rules the old step-0 fence tripped at
-# once: (R1) expansion of an env var the guard cannot resolve is refused EVEN
+# runtime-determined path (`. "$var/lib.sh"`). A 13-shape bisection found two
+# more refusal rules the old step-0 fence tripped at once: (R1) expansion of an env var the guard cannot resolve is refused EVEN
 # WHEN THE VAR IS SET - `echo "$HIMMEL_REPO"` refused, `d=$(printenv
 # HIMMEL_REPO); echo "$d"` accepted; (R2) a `[ ]` test on a value derived from
 # command substitution is refused - `a=$(printenv X); if [ -z "$a" ]` refused,
@@ -40,8 +39,8 @@
 # script, against real shell variables the guard never sees (see "Anchor +
 # delegation" below).
 #
-# Anchor + delegation (HIMMEL-2335). himmel's location MUST come from outside
-# the repo under review (HIMMEL-2226 Finding 1: a crafted repo can carry its
+# Anchor + delegation. himmel's location MUST come from outside
+# the repo under review (a crafted repo can carry its
 # own scripts/cr/critic-panel.sh or bake any path into its own pre-push
 # hook), so this script reads HIMMEL_REPO from its OWN process environment -
 # never re-derived from cwd or a repo-supplied file - and refuses (exit 2) if
@@ -57,8 +56,7 @@
 # On the himmel lane, when NOT already the anchor itself, the branch's
 # changes to the guarded paths in cr_guarded below - scripts/cr/,
 # scripts/lib/, scripts/guardrails/lib.sh, scripts/check-ci.sh and
-# scripts/handover/resolve-active-item.sh (HIMMEL-3382, widened by
-# HIMMEL-3493: the merge-base diff of COMMITTED history PLUS WORKING-TREE and
+# scripts/handover/resolve-active-item.sh (the merge-base diff of COMMITTED history PLUS WORKING-TREE and
 # UNTRACKED changes, scoped to those paths; the runbook's step-0 himmel-lane
 # precheck runs the same diff, and its silence is necessary, not sufficient,
 # for this script's "no") are classified TRI-STATE into
@@ -80,10 +78,10 @@
 # decides delegation happens and logs it - the branch copy never elects
 # itself.
 #
-# THE single guarantee (HIMMEL-2335 round 6): himmel_dir may be left pointing
+# THE single guarantee: himmel_dir may be left pointing
 # at the BRANCH ONLY IF cr_diff_state=no (the diff touches no cr_guarded
 # path and their bytes match the anchor's at step 0 - see the ponytail at
-# the end-of-decision assertion, HIMMEL-3497), OR the delegation is provably
+# the end-of-decision assertion), OR the delegation is provably
 # logged (verified_delegate=yes -
 # this run IS a verified delegate a genuine anchor handed off to - OR
 # ledger_written=yes - this run IS the anchor and its own ledger-append.sh
@@ -96,7 +94,7 @@
 # single assertion is what now guarantees it structurally: a future branch of
 # this decision that forgets to reset himmel_dir is caught there instead of
 # shipping. A failed ledger write (most commonly: the anchor checkout
-# predates HIMMEL-2335, so its ledger-append.sh does not know the
+# predates the delegation kind, so its ledger-append.sh does not know the
 # "delegation" kind yet - a genuine bootstrap defect, not just a test
 # artifact, since ANY branch that both adds a new ledger kind and delegates
 # hits it) no longer aborts the run - the invariant is "never delegate
@@ -104,7 +102,7 @@
 # instead WARNS on stderr, does NOT delegate, and the end-of-decision
 # assertion falls back to the anchor's own (trusted, conservative) code.
 #
-# Identity handshake, not a boolean (HIMMEL-2335 round 4, CR panel [codex-2]).
+# Identity handshake, not a boolean.
 # PR_CHECK_ANCHOR_DELEGATED is set to the DELEGATING ANCHOR'S OWN PATH, never
 # a bare `1`. A bare boolean was unsafe: ANY pre-existing non-empty value in
 # the process environment - a stray export, a leftover from an earlier run, a
@@ -117,11 +115,11 @@
 # at all) - the exact "logged claim vs. unlogged reality" gap the ledger
 # exists to prevent.
 #
-# HIMMEL-2378: binding the guard to the anchor's PATH alone (round 4's fix)
-# still let a STALE value verify - a value equal to $anchor left over from an
+# Binding the guard to the anchor's PATH alone would still let a STALE value
+# verify - a value equal to $anchor left over from an
 # EARLIER run in the same shell verifies at ANY LATER branch/head, not just
 # the run it was minted for, reproducing the same suppressed-ledger-row /
-# delegated=yes gap round 4 closed, just narrower (stray/stale values only -
+# delegated=yes gap a bare boolean has, just narrower (stray/stale values only -
 # forging the value outright grants no capability the actor does not already
 # have from controlling $HIMMEL_REPO itself, so that is not the threat this
 # closes). PR_CHECK_ANCHOR_DELEGATED now carries a 4-field capability,
@@ -129,8 +127,8 @@
 # to the (branch, head) it is handed off for. The nonce is also recorded in a
 # file under the shared git-common-dir, BRANCH- AND HEAD-SCOPED
 # ($git_dir/cr-delegation/$branch/$head, mirroring cr-prior-blocking/<branch>
-# and cr-aggregate-verdicts/<branch> in write-verdicts.sh - "round 1b" there,
-# for the branch half only) - NOT one shared file: $git_dir is the SAME
+# and cr-aggregate-verdicts/<branch> in write-verdicts.sh) - NOT one shared
+# file: $git_dir is the SAME
 # shared git-common-dir across every worktree in the checkout, and himmel
 # runs concurrent /pr-check on independent branches by design
 # (overnight-shift), so a single unscoped file would let lane B's mint
@@ -140,7 +138,7 @@
 # delegates AGAIN, writing a second, spurious `delegation` ledger row for
 # the same (branch, head). Branch-scoping closes that: two concurrent
 # anchors touching different branches mint to different files and never
-# collide. CR round 3 [codex-1]: branch alone was only HALF the reason -
+# collide. Branch alone is only HALF the reason -
 # two overlapping checks on the SAME branch at DIFFERENT heads still
 # collided on one slot (the identical defect, one level down), so head is
 # also part of the path, not just a field inside the file. mkdir -p's the
@@ -148,7 +146,7 @@
 # nested branch like fix/x needs the same treatment write-verdicts.sh's own
 # branch-scoped paths do) and its own write's exit status is checked - see
 # the mint site below; a failed write must not delegate, same posture as a
-# failed ledger-append.sh call - and, CR round 1 [codex-2], the mint (both
+# failed ledger-append.sh call - and the mint (both
 # the nonce and the capability FILE) happens before the ledger row is ever
 # appended: a failed WRITE after an already-logged row would leave a real
 # `delegation` row on record for a handoff that never happened, and worse,
@@ -157,8 +155,8 @@
 # never occurred. Minting first means a failed write never reaches
 # ledger-append.sh at all. The delegate verifies the anchor field the same
 # inode-safe way as before AND that branch/head/nonce all match its own
-# resolved branch/head and the file's contents, THEN CONSUMES it - CR round 1
-# [codex-3]: via `rm -f` (unlink), not `: >` truncation - an unlink is
+# resolved branch/head and the file's contents, THEN CONSUMES it via
+# `rm -f` (unlink), not `: >` truncation - an unlink is
 # atomic (the directory entry either still names this inode or it doesn't,
 # no partial-write window) - with its OWN exit status checked: an
 # unconsumable capability is by definition not one-time, so a failed rm
@@ -169,12 +167,12 @@
 # single-writer convention rules out independently of this script.) A
 # leftover from an earlier run now carries an earlier head and is rejected,
 # not merely an earlier path. Legacy shape: a bare anchor PATH with no "|"
-# (what an anchor checkout that predates HIMMEL-2378 still emits) is CR
-# round 1 [codex-1] NO LONGER accepted - once the anchor itself carries this
+# (what an older anchor checkout still emits) is NO LONGER accepted - once
+# the anchor itself carries this
 # code it only ever mints the new 4-field shape, so after the upgrade window
 # the only bare-path values still in circulation are exactly the
-# stale/stray ones this ticket exists to reject; accepting them unbound and
-# unconsumed would have swallowed this ticket's whole purpose. Consequence,
+# stale/stray ones this check exists to reject; accepting them unbound and
+# unconsumed would swallow this check's whole purpose. Consequence,
 # deliberately accepted: an OLDER anchor handing a bare path to a NEWER
 # delegate no longer verifies either - the delegate declines and (himmel
 # lane, diff still touching scripts/cr/) delegates AGAIN itself, minting the
@@ -190,7 +188,7 @@
 # delegated=yes is printed ONLY on the verified-handshake path.
 #
 # Usage: pr-check-context.sh
-#   No arguments - /pr-check itself takes none, ever (HIMMEL-2226). There is
+#   No arguments - /pr-check itself takes none, ever. There is
 #   no retarget: cwd selects the repo under review; HIMMEL_REPO (this
 #   script's own env, re-read on every invocation including a delegated one)
 #   selects the trusted anchor; the anchor/lane comparison above then picks
@@ -245,15 +243,15 @@
 #     boolean" above): the branch copy the anchor handed off to, which then
 #     produces the actual context>
 #   pr-check-context: cr_diff_files=<comma-joined, sorted, deduped set this
-#     run decided on for cr_diff_state (HIMMEL-3382) - the merge-base diff of
+#     run decided on for cr_diff_state - the merge-base diff of
 #     committed history plus working-tree/untracked changes under the
-#     cr_guarded paths (HIMMEL-3493); empty when cr_diff_state is
+#     cr_guarded paths; empty when cr_diff_state is
 #     no or unknown>
 # Nothing else is written to stdout; diagnostics go to stderr.
 #
-# Side effects: pre-truncates (via scripts/cr/write-verdicts.sh, HIMMEL-2131)
+# Side effects: pre-truncates (via scripts/cr/write-verdicts.sh)
 # the two branch-scoped verdict scratch files under the reviewed repo's
-# shared git-common-dir - see the HIMMEL-1219 comments below for why. A
+# shared git-common-dir - see the comments below for why. A
 # delegating anchor run also appends one `delegation` row to the CR ledger
 # before handing off, and does NOT itself truncate the verdict-scratch files
 # - the delegate run does that when IT resolves context, exactly once.
@@ -275,10 +273,10 @@
 #      delegation" above.
 #   3  the current branch name contains a character outside the safe alphabet
 #      [A-Za-z0-9._/+-] that could break out of a substituted-literal fence
-#      downstream (HIMMEL-2226); nothing is printed and no side effect runs
+#      downstream; nothing is printed and no side effect runs
 set -uo pipefail
 
-# CodeRabbit security finding (HIMMEL-3382): clear every git-repo-selection
+# CodeRabbit security finding: clear every git-repo-selection
 # env var this process may have inherited from its caller BEFORE the first
 # git call below - GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR would otherwise
 # silently retarget every `git` invocation in this script (including the
@@ -286,8 +284,7 @@ set -uo pipefail
 # GIT_INDEX_FILE/GIT_OBJECT_DIRECTORY/GIT_ALTERNATE_OBJECT_DIRECTORIES/
 # GIT_PREFIX carry the same risk for the index and object store.
 #
-# Console adversarial round 1 (HIMMEL-3454 finding 4): GIT_CONFIG_* was not
-# covered, and a config value can retarget or hide input the same way a
+# GIT_CONFIG_* is cleared too: a config value can retarget or hide input the same way a
 # GIT_DIR override can - GIT_CONFIG_COUNT/KEY_0/VALUE_0=core.excludesFile
 # hides an untracked file, GIT_CONFIG_PARAMETERS='core.fileMode=false' hides
 # a mode change, and GIT_CONFIG_GLOBAL pointed at a scratch file carrying
@@ -298,16 +295,15 @@ set -uo pipefail
 # unset - unsetting it would let a system-level gitconfig back in, which is
 # the opposite of this block's purpose.
 #
-# Console adversarial delta review (HIMMEL-3382): GIT_LITERAL_PATHSPECS/
-# GIT_GLOB_PATHSPECS/GIT_NOGLOB_PATHSPECS/GIT_ICASE_PATHSPECS were not
-# covered either. The diff/ls-files calls below rely on the `:(top)` magic
+# GIT_LITERAL_PATHSPECS/GIT_GLOB_PATHSPECS/GIT_NOGLOB_PATHSPECS/
+# GIT_ICASE_PATHSPECS are cleared as well. The diff/ls-files calls below rely on the `:(top)` magic
 # pathspec to anchor at the worktree root regardless of cwd; an inherited
 # GIT_LITERAL_PATHSPECS=1 turns `:(top)scripts/cr/` into a literal,
 # non-existent path, so every one of the three calls silently returns empty
 # and cr_diff_state falls back to "no" - a fail-open on exactly the diff this
 # script exists to catch.
 #
-# HIMMEL-3472: GIT_REPLACE_REF_BASE too - it points git at a replace-ref
+# GIT_REPLACE_REF_BASE is cleared too - it points git at a replace-ref
 # namespace of the caller's choosing (the diff calls below also pass
 # --no-replace-objects, the same pair guard-pr-check-literal.sh uses).
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
@@ -323,8 +319,8 @@ export GIT_CONFIG_NOSYSTEM=1
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# HIMMEL-2335 - the trust anchor. Read from THIS script's own environment,
-# never re-derived from cwd or a repo-supplied file (HIMMEL-2226 Finding 1) -
+# The trust anchor. Read from THIS script's own environment,
+# never re-derived from cwd or a repo-supplied file -
 # a crafted repo under review must never be able to steer where himmel's
 # scripts are believed to live. Refuses on unset OR EMPTY: a set-but-empty
 # HIMMEL_REPO cannot reach this check at all through the runbook's own
@@ -340,7 +336,7 @@ if [ -z "$anchor" ]; then
     exit 2
 fi
 
-# HIMMEL-3359 - the himmel-lane RELATIVE entry. A leg may start step 0 as the
+# The himmel-lane RELATIVE entry. A leg may start step 0 as the
 # bare literal `bash scripts/cr/pr-check-context.sh` (the one shape a
 # permission allow rule can match; the canonical fence is a compound no rule
 # can). That runs THIS copy - the branch's - so a copy that is not the
@@ -400,7 +396,7 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     exit 2
 fi
 
-# HIMMEL-2335 - lane comparison, moved here from the runbook's old step-0
+# Lane comparison, moved here from the runbook's old step-0
 # fence (an inline `[ "$cwd_common" -ef "$HIMMEL_REPO/.git" ]` test on a
 # command-substitution value is refused by the worktree-isolation guard;
 # see the header comment). Inode compare (`-ef`), not a string compare, so a
@@ -408,7 +404,7 @@ fi
 # the two paths cannot misclassify the lane - a foreign repo cannot fake a
 # match short of being a registered worktree of the anchor itself.
 #
-# HIMMEL-2650 - `--path-format=absolute` needs git >= 2.31, but this repo's
+# `--path-format=absolute` needs git >= 2.31, but this repo's
 # declared minimum is git 2.30; an unrecognised `--path-format` is not
 # rejected by `git rev-parse` - it is echoed back as an ordinary output line
 # and the command still exits 0 with a garbage, non-absolute value (verified
@@ -486,10 +482,10 @@ else
 fi
 
 branch=$(git branch --show-current)
-# HIMMEL-2226 - refuse a branch name carrying a shell metacharacter BEFORE it
+# Refuse a branch name carrying a shell metacharacter BEFORE it
 # is printed. Every later /pr-check fence substitutes this value as literal
 # TEXT (e.g. --branch '<branch>'), and the branch is repo-controlled on an
-# adopter repo or a throwaway clone of an upstream PR (HIMMEL-2035), so a
+# adopter repo or a throwaway clone of an upstream PR, so a
 # single quote in the name breaks out of the substituted literal and injects
 # shell - the same substituted-literal class as $ARGUMENTS and <marker>. A
 # prose "escape or refuse" convention cannot fire before the shell parses
@@ -515,7 +511,7 @@ head=$(git rev-parse HEAD)
 git_dir=$(git rev-parse --git-common-dir)
 marker="$git_dir/cr-pending/$branch"
 
-# HIMMEL-2335 round 4 (CR panel [codex-2]) / HIMMEL-2378 - identity handshake
+# Identity handshake
 # bound to (branch, head) and one-time, not a bare boolean and not merely
 # anchor-path equality (see the header comment "Identity handshake, not a
 # boolean"). PR_CHECK_ANCHOR_DELEGATED carries "$anchor|$branch|$head|$nonce"
@@ -526,18 +522,17 @@ marker="$git_dir/cr-pending/$branch"
 # conceivably could, which is why the fields are peeled off the RIGHT below
 # (three single-field strips), leaving whatever remains - "|" included - as
 # the anchor field, rather than a left-to-right split desyncing on it.
-# CR round 1 [codex-1]: a bare anchor PATH from an anchor checkout that
-# predates HIMMEL-2378 never contains "|" either, but is NO LONGER accepted
-# below - see the header comment "Identity handshake, not a boolean" for why
+# A bare anchor PATH from an older anchor checkout never contains "|" either,
+# but is NO LONGER accepted below - see the header comment "Identity handshake, not a boolean" for why
 # and for the one-extra-hop consequence.
 guard_val="${PR_CHECK_ANCHOR_DELEGATED:-}"
 verified_delegate=no
-# Branch- AND head-scoped (CR round 3 [codex-1] - branch-scoping alone was
-# only half the reason: it fixed lane-A-vs-lane-B (two DIFFERENT branches
-# colliding on one slot), but left run-at-head-A-vs-run-at-head-B on the
+# Branch- AND head-scoped: branch-scoping alone is
+# only half the reason: it separates lane-A-vs-lane-B (two DIFFERENT branches
+# colliding on one slot), but would leave run-at-head-A-vs-run-at-head-B on the
 # SAME branch unfixed - two overlapping checks on the same branch at
-# different heads still overwrote each other's slot before either
-# consumed it, same defect class, one level down). head as a nested path
+# different heads would still overwrite each other's slot before either
+# consumed it, same defect class, one level down. Head as a nested path
 # component (not appended into one filename): mkdir -p already creates the
 # branch's own directory for a nested branch like fix/x (see the mint site
 # below), so nesting head one level deeper costs nothing extra and needs
@@ -576,18 +571,17 @@ if [ -n "$guard_val" ]; then
             cf_branch="${cf_rest%|*}"
             if [ -n "$cf_nonce" ] && [ "$cf_nonce" = "$g_nonce" ] \
                && [ "$cf_branch" = "$branch" ] && [ "$cf_head" = "$head" ]; then
-                # CR round 2 [codex-1]: consume by CLAIMING the file, and
+                # Consume by CLAIMING the file, and
                 # let the claim decide the verdict. `rm` WITHOUT -f is the
                 # claim primitive: unlink is atomic, so of two processes
                 # racing on the same capability exactly ONE gets rc=0 and
-                # the loser gets ENOENT and fails closed. Round 1 used
-                # `rm -f`, which is NOT a claim at all - it reports success
-                # even when another process already removed the file, so
-                # both racers would have set verified_delegate=yes. The
-                # earlier comment leaned on the single-writer convention to
-                # excuse that; a convention this script does not enforce is
-                # not a substitute for a primitive that is correct on its
-                # own. stderr is dropped because losing the race is an
+                # the loser gets ENOENT and fails closed. `rm -f` is NOT a claim
+                # at all - it reports success even when another process
+                # already removed the file, so both racers would set
+                # verified_delegate=yes. Leaning on the single-writer
+                # convention to excuse that is no substitute: a convention
+                # this script does not enforce is not a primitive that is
+                # correct on its own. stderr is dropped because losing the race is an
                 # ordinary outcome here, not an error to report.
                 if rm "$cap_file" 2>/dev/null; then
                     verified_delegate=yes
@@ -596,14 +590,13 @@ if [ -n "$guard_val" ]; then
         fi
         ;;
     *)
-        # CR round 1 [codex-1]: the legacy (pre-HIMMEL-2378, round-4) bare
-        # anchor-path shape is EXPLICITLY REFUSED here, not merely "falls
+        # The legacy bare anchor-path shape is EXPLICITLY REFUSED here, not merely "falls
         # through" - once the anchor itself carries this code it only ever
         # mints the new 4-field shape, so the only bare-path values still in
         # circulation afterward are exactly the stale/stray ones this
-        # ticket exists to reject (a leftover export, a value pasted from an
+        # check exists to reject (a leftover export, a value pasted from an
         # old terminal); accepting them unbound and un-consumed would
-        # swallow this whole ticket's purpose. verified_delegate stays "no"
+        # swallow this check's whole purpose. verified_delegate stays "no"
         # - the normal delegation logic below then either delegates (and
         # logs it) or soft-declines (and warns), same as any other
         # unverified value. Consequence, deliberately accepted: an OLDER
@@ -617,7 +610,7 @@ if [ -n "$guard_val" ]; then
     esac
 fi
 
-# HIMMEL-3359 - a non-anchor copy that reached here carried a capability of
+# A non-anchor copy that reached here carried a capability of
 # the right shape, but only the FULLY verified delegate may run on: anything
 # else (a stale or forged value that merely names this anchor) hands off to
 # the anchor now, before this copy sources the branch's lib.sh or can elect
@@ -634,7 +627,7 @@ if ! [ "$HIMMEL_ROOT" -ef "$anchor" ] && [ "$verified_delegate" = no ]; then
     hand_off_to_anchor
 fi
 
-# guardrails/lib.sh gives default_branch (main OR master, HIMMEL-297).
+# guardrails/lib.sh gives default_branch (main OR master).
 # shellcheck source=../guardrails/lib.sh
 # shellcheck disable=SC1091
 if ! . "$HIMMEL_ROOT/scripts/guardrails/lib.sh" 2>/dev/null; then
@@ -646,7 +639,7 @@ fi
 base=$(default_branch "$repo")
 [ -n "$base" ] || base=main
 
-# HIMMEL-2773 - refuse to certify a session whose CWD resolves to the default
+# Refuse to certify a session whose CWD resolves to the default
 # branch (main/master) or a detached HEAD. /pr-check resolves the repo and
 # branch from $PWD alone; a session sitting in the PRIMARY checkout (on main)
 # would otherwise review main itself and could clear MAIN's own CR marker
@@ -655,8 +648,8 @@ base=$(default_branch "$repo")
 # default_branch is resolved, before any side effect (delegation capability,
 # verdict-file truncation) runs - and BEFORE the first byte of stdout, so a
 # refused run never emits a context a caller could mistake for a real one.
-# Distinct exit code 4 - not 2 or 3 - for the same reason HIMMEL-2226 gave the
-# metachar refusal its own code: diagnosable apart from every other failure
+# Distinct exit code 4 - not 2 or 3 - for the same reason the metachar
+# refusal has its own code: diagnosable apart from every other failure
 # this script can report.
 if [ -z "$branch" ]; then
     echo "pr-check-context: HEAD is detached - refusing to certify a detached checkout; check out the leg's own worktree branch and re-run" >&2
@@ -667,7 +660,7 @@ if [ "$branch" = "$base" ]; then
     exit 4
 fi
 
-# Console adversarial round 1 (HIMMEL-3454 finding 2/5): a bare branch name
+# A bare branch name
 # is ambiguous - `git merge-base HEAD main` can resolve a same-named TAG
 # ahead of the branch, silently shrinking the diff. Match the runbook's own
 # step-0 precheck, which always spells this out in full: prefer the
@@ -678,27 +671,26 @@ if ! git rev-parse --verify -q "$base_ref" >/dev/null 2>&1; then
     base_ref="refs/heads/$base"
 fi
 
-# HIMMEL-2335 - deliberate delegation. himmel lane ONLY: the trusted anchor
+# Deliberate delegation. himmel lane ONLY: the trusted anchor
 # decides whether execution hands off to the branch's own copy of this
 # script, and logs that decision - the branch never elects itself. Every
 # precondition below must hold, or this run does its own work exactly as
 # before (delegated stays "no").
 #
-# HIMMEL-3382 - the diff: the merge-base diff of COMMITTED history PLUS
-# WORKING-TREE and UNTRACKED changes, scoped to cr_guarded (HIMMEL-3382 added
-# scripts/guardrails/lib.sh, which this script sources; HIMMEL-3493 added
-# scripts/lib/, scripts/check-ci.sh and scripts/handover/resolve-active-item.sh,
-# which a "no" run executes from the branch). The runbook's step-0 himmel-lane
+# The diff: the merge-base diff of COMMITTED history PLUS
+# WORKING-TREE and UNTRACKED changes, scoped to cr_guarded (which includes
+# scripts/guardrails/lib.sh, which this script sources, and scripts/lib/,
+# scripts/check-ci.sh and scripts/handover/resolve-active-item.sh, which a
+# "no" run executes from the branch). The runbook's step-0 himmel-lane
 # precheck (both twins) runs the same diff over the same paths, but this
-# script ALSO compares bytes (HIMMEL-3472) and ignores __pycache__/, so the
+# script ALSO compares bytes and ignores __pycache__/, so the
 # precheck's silence is necessary, not sufficient, for a "no" here - the
 # fence fails safe. Each of the three git calls
 # below is scoped to those paths directly via its own pathspec, not a
 # post-hoc `grep '^scripts/cr/'` filter, and each has its own exit status
 # checked separately - nothing here pipes a git call's output into grep, so
-# the pre-HIMMEL-3382 pipefail/SIGPIPE hazard this comment used to document
-# (a failed `git diff` piped into `grep -q` misread as a clean diff) cannot
-# recur. cr_diff_files carries the exact set decided on (sorted, deduped,
+# the pipefail/SIGPIPE hazard (a failed `git diff` piped into `grep -q`
+# misread as a clean diff) cannot occur. cr_diff_files carries the exact set decided on (sorted, deduped,
 # printed on stdout below) - cr_diff_state is TRI-STATE, computed once:
 # =no (every git call succeeded, the set is empty), =yes (every git call
 # succeeded, the set is non-empty), or =unknown (merge-base or any of the
@@ -706,7 +698,7 @@ fi
 # end-of-decision assertion below treats "unknown" the same as "yes": both
 # refuse to leave himmel_dir at the branch unlogged).
 #
-# HIMMEL-3472 - the git diff alone can read clean while the branch's bytes
+# The git diff alone can read clean while the branch's bytes
 # differ, and a false "no" leaves himmel_dir at the branch unlogged. A leg
 # can move refs/remotes/origin/main to its own HEAD (the ref lives in the
 # shared git-common-dir), map the base's tree onto its own with a replace
@@ -725,7 +717,7 @@ fi
 # or ahead of the branch's base (T37: main's later scripts/cr/ commit is not
 # the branch's change), so it delegates nothing and the anchor's copy runs.
 #
-# HIMMEL-3493 - the scope is what a "no" run executes from the branch, not
+# The scope is what a "no" run executes from the branch, not
 # just scripts/cr/: later /pr-check fences run <himmel_dir>/scripts/cr/*,
 # which source the shared libs under scripts/lib/ (load-dotenv,
 # shared-branch-lock, gh-graphql-budget, cr-default-base, proc-tree, ...),
@@ -758,8 +750,8 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # dynamically poller.ts, whose static imports load the rest of the
 # scripts/telegram files below and scripts/lanes/plugin-profiles.mjs.
 #
-# HIMMEL-3491 added the anchored gateAllow literal for the merge-gate entry
-# point to plugin-profiles.mjs (already guarded), so the lexical scanner now
+# plugin-profiles.mjs (already guarded) carries an anchored gateAllow literal
+# for the merge-gate entry point, so the lexical scanner
 # reads scripts/handover/merge-on-green.sh as an edge from that file too
 # (the literal is a JS string, never sourced/exec'd from plugin-profiles.mjs
 # itself - over-matching is the closure's own documented fail-safe
@@ -767,27 +759,27 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # clean-garden.sh, clean.sh, scripts/_new-worktree.sh, the observability
 # session-run-{hook,ledger} scripts and unlanded-work.sh.
 #
-# HIMMEL-3616 added scripts/lib/check-pr-title.sh (already guarded, under
-# scripts/lib/), which sources scripts/hooks/check-commit-msg.sh to reuse its
+# scripts/lib/check-pr-title.sh (already guarded, under
+# scripts/lib/) sources scripts/hooks/check-commit-msg.sh to reuse its
 # conventional-commit regex rather than copy it - both merge-on-green.sh and
 # leg-pr-open.sh reach it through that one file, so check-commit-msg.sh is
 # guarded too.
 #
-# HIMMEL-3783 generalized the merge-on-green.sh anchor literal above into
-# anchorShipStepRules, which now also emits an anchored gateAllow literal for
+# anchorShipStepRules generalizes the merge-on-green.sh anchor literal above
+# and also emits an anchored gateAllow literal for
 # leg-pr-open.sh in plugin-profiles.mjs - the same over-matching fail-safe
 # makes the scanner read scripts/lanes/leg-pr-open.sh as an edge from
 # plugin-profiles.mjs. leg-pr-open.sh itself runs leg-burn.sh (to compute the
 # ship PR's leg-burn line) and sources leg-burn.sh's lib/burn-weights.sh, so
 # both join the guarded set too.
-# HIMMEL-4038: plugin-profiles.mjs lazily imports skill-listing.mjs / skill-cost.mjs
+# plugin-profiles.mjs lazily imports skill-listing.mjs / skill-cost.mjs
 # (and skill-listing.mjs imports role-requires.mjs), so the closure test reaches
 # them; they are guarded for the same reason plugin-profiles.mjs is.
-# HIMMEL-4053: scripts/lanes/plugin-profiles.json is data, but profile-settings.sh
+# scripts/lanes/plugin-profiles.json is data, but profile-settings.sh
 # (guarded) reads it to resolve the bare profile hermes-critic.sh applies, so a
 # branch could rewrite the profile its own review runs under - guarded like
 # egress-matrix.json above.
-# HIMMEL-4452: leg-pr-open.sh runs console-kit/leg-jira-status.sh (HIMMEL-4419) to
+# leg-pr-open.sh runs console-kit/leg-jira-status.sh to
 # move the ticket to In Review, so it is guarded. The Jira CLI it then runs is the
 # PRIMARY checkout's untracked scripts/jira/dist build, never branch bytes: the
 # closure test excludes scripts/jira/dist/.
@@ -880,21 +872,20 @@ cr_diff_state=unknown
 cr_diff_files=
 ledger_written=no
 if [ "$anchor_lane" = "himmel" ] && [ "$himmel_dir_is_anchor" = no ]; then
-    # Console adversarial round 1 (HIMMEL-3454 finding 1): a plain pathspec
-    # is resolved relative to CWD, not the repo root - invoked from a
-    # subdirectory it silently misses the guarded paths entirely. ":(top)"
-    # anchors each pathspec to the worktree root regardless of cwd (finding 3): dropping --exclude-standard from the untracked-files
+    # A plain pathspec is resolved relative to CWD, not the repo root -
+    # invoked from a subdirectory it silently misses the guarded paths
+    # entirely. ":(top)" anchors each pathspec to the worktree root
+    # regardless of cwd. Dropping --exclude-standard from the untracked-files
     # call also counts a GITIGNORED file under these paths - an unreviewed
     # scripts/cr/ change hidden behind .gitignore must not read as "no diff".
-    # HIMMEL-3472: no replace refs, no repo-configured fsmonitor. --full-name
+    # No replace refs, no repo-configured fsmonitor. --full-name
     # on the untracked leg: run from a subdirectory it otherwise prints
     # cwd-relative paths while both diff legs print top-relative ones.
     if mb=$(gitd merge-base HEAD "$base_ref" 2>/dev/null); then
         if committed_files=$(gitd diff --name-only "$mb"..HEAD -- "${cr_pathspecs[@]}" 2>/dev/null); then
             if worktree_files=$(gitd diff --name-only HEAD -- "${cr_pathspecs[@]}" 2>/dev/null); then
                 if untracked_files=$(gitd ls-files --others --full-name -- "${cr_pathspecs[@]}" 2>/dev/null); then
-                    # HIMMEL-3472 (HIMMEL-3454 round-1 codex-2): the
-                    # normalizer's own status is checked too - a failed
+                    # The normalizer's own status is checked too - a failed
                     # sort would otherwise yield an empty set, read as "no".
                     # awk, not grep -v: grep exits 1 on an empty result.
                     if cr_diff_files=$(printf '%s\n%s\n%s\n' "$committed_files" "$worktree_files" "$untracked_files" | awk 'length' | sort -u); then
@@ -920,7 +911,7 @@ if [ "$anchor_lane" = "himmel" ] && [ "$himmel_dir_is_anchor" = no ]; then
         echo "pr-check-context: could not compute merge-base HEAD..$base_ref - cr_diff_state=unknown (never delegate on an unknown diff)" >&2
     fi
 
-    # HIMMEL-3472 - the byte comparison against the anchor (see above). Only
+    # The byte comparison against the anchor (see above). Only
     # a "no" is checked: "yes" already delegates with a row, and unknown
     # stays unknown.
     if [ "$cr_diff_state" = no ]; then
@@ -945,9 +936,8 @@ if [ "$anchor_lane" = "himmel" ] && [ "$himmel_dir_is_anchor" = no ]; then
     if [ "$cr_diff_state" = yes ] \
        && [ "$verified_delegate" = no ] \
        && [ -f "$himmel_dir/scripts/cr/pr-check-context.sh" ]; then
-        # CR round 1 [codex-2]: mint the nonce and write the capability file
-        # BEFORE logging the ledger row - reordered from an earlier draft
-        # that logged first. Order matters: a failed WRITE after an
+        # Mint the nonce and write the capability file
+        # BEFORE logging the ledger row. Order matters: a failed WRITE after an
         # already-appended ledger row would leave a real `delegation` row on
         # record for a handoff that never happened - and worse,
         # ledger_written would already be yes, which is condition (c) of the
@@ -968,8 +958,8 @@ if [ "$anchor_lane" = "himmel" ] && [ "$himmel_dir_is_anchor" = no ]; then
             cap_nonce=$(head -c16 /dev/urandom 2>/dev/null | od -An -tx1 | tr -d ' \n') || cap_nonce=""
         fi
         [ -n "$cap_nonce" ] || cap_nonce="$RANDOM$RANDOM$$-$head"
-        # mkdir -p the branch's own directory - now $head's immediate
-        # parent (CR round 3 [codex-1]: cr-delegation/<branch>/<head>, not
+        # mkdir -p the branch's own directory - $head's immediate
+        # parent (cr-delegation/<branch>/<head>, not
         # just <branch>) - a nested branch like fix/himmel-2378-x still
         # needs cr-delegation/fix/himmel-2378-x/ created first, same as
         # write-verdicts.sh's own branch-scoped paths, and check the
@@ -980,7 +970,7 @@ if [ "$anchor_lane" = "himmel" ] && [ "$himmel_dir_is_anchor" = no ]; then
             # (a) the capability exists on disk - NOW the ANCHOR's own
             # ledger-append.sh logs the delegation it is about to make. On
             # success, hand off below. On failure - most commonly the anchor
-            # checkout predates HIMMEL-2335 and its ledger-append.sh does
+            # checkout predates the delegation kind and its ledger-append.sh does
             # not know the "delegation" kind yet - the invariant is "never
             # delegate UNLOGGED", and declining to delegate satisfies it
             # exactly, so this WARNS and falls through to the single
@@ -1005,7 +995,7 @@ if [ "$anchor_lane" = "himmel" ] && [ "$himmel_dir_is_anchor" = no ]; then
                 # actual context instead of re-delegating forever.
                 PR_CHECK_ANCHOR_DELEGATED="$anchor|$branch|$head|$cap_nonce" exec bash "$himmel_dir/scripts/cr/pr-check-context.sh"
             fi
-            # CR round 4 [codex-2]: the capability was minted for a handoff
+            # The capability was minted for a handoff
             # that is not happening, so drop it rather than leave an orphan
             # under cr-delegation/<branch>/<head> - now that the slot is
             # head-scoped, repeated failures across heads accumulate one
@@ -1021,9 +1011,8 @@ fi
 # own resolved anchor) - never merely "the env var was set to something".
 [ "$verified_delegate" = no ] || delegated=yes
 
-# HIMMEL-2335 round 6 - the single end-of-decision assertion. This REPLACES
-# the three separate per-branch himmel_dir="$anchor" patches that CR rounds
-# 3, 4 and 5 each added independently for the SAME underlying defect (a
+# The single end-of-decision assertion. It stands in for separate per-branch
+# himmel_dir="$anchor" patches against the SAME underlying defect (a
 # branch of this decision left himmel_dir at the BRANCH when it should not
 # have: soft-decline/ledger-write-failure, spoofed recursion guard, and an
 # unknown merge-base). himmel_dir may be left pointing at the BRANCH (i.e.
@@ -1038,8 +1027,7 @@ fi
 #       check and the later fences that execute them, so an edit made to the
 #       branch's guarded files AFTER step 0 (a background job, a swapped
 #       hard link) runs unchecked (TOCTOU). Only running the anchor's copy on
-#       "no" closes that, at the cost of the relative himmel-lane spelling
-#       (HIMMEL-3338); tracked on HIMMEL-3497.
+#       "no" closes that, at the cost of the relative himmel-lane spelling.
 #   (b) verified_delegate=yes     - this run IS the verified delegate a
 #       genuine anchor handed off to (the identity handshake above), OR
 #   (c) ledger_written=yes        - this run IS the anchor and its own
@@ -1062,7 +1050,7 @@ if [ "$himmel_dir_is_anchor" = no ] \
     himmel_dir="$anchor"
 fi
 
-# HIMMEL-1219 - reset the prior-pass blocking scratch NOW, before the
+# Reset the prior-pass blocking scratch NOW, before the
 # step-3.2 phase-A adjudicator can write it. It persists in the shared
 # git-common-dir across runs and worktrees; without this reset a stale
 # verdict from a PRIOR run would leak into step 3.2 phase B's conserve/run
@@ -1071,19 +1059,19 @@ fi
 # included) runs, unconditionally, before any producer - so this is the
 # single guard the reset cannot be skipped through.
 #
-# HIMMEL-1219 round 3 - the file holds panel/codex ADJUDICATION VERDICTS
+# The file holds panel/codex ADJUDICATION VERDICTS
 # (one "VERDICT [<slug>-N] = <verdict>" line per candidate, written in step
 # 3.2 phase A after the session adjudicates them), not a raw candidate count.
 # Step 3.2 phase B derives the blocking count structurally from those
 # verdicts - a candidate blocks unless EVERY collected verdict for its ID is
-# disproved, the same rule step 4 uses (round 5) - so an all-disproved round
+# disproved, the same rule step 4 uses - so an all-disproved round
 # reads as 0 blockers and CodeRabbit RUNS. The reset below is a TRUNCATE to
 # empty (the known-clean verdicts log), not a "0" integer. An empty, missing,
 # or unreadable file at read time still parses as 0 blockers -> RUN
 # CodeRabbit (fail-open, never silently conserve): a forgotten phase-A write
 # fails OPEN, not closed.
 #
-# Branch-scoped (round 1b): $git_dir is the SHARED git-common-dir common to
+# Branch-scoped: $git_dir is the SHARED git-common-dir common to
 # every worktree in the checkout, so an unscoped file would have two
 # CONCURRENT /pr-check runs on different branches racing on ONE file - run
 # B's reset wiping run A's verdicts mid-flight, then run A reading 0
@@ -1092,7 +1080,7 @@ fi
 # verdicts making A silently conserve a call it should spend). Scoped per
 # branch exactly like the marker above (cr-pending/<branch>).
 #
-# HIMMEL-1219 round 5 - the aggregate-verdicts file (cr-aggregate-verdicts/
+# The aggregate-verdicts file (cr-aggregate-verdicts/
 # <branch>) that step 4's orphan-check diffs the prior-blocking file against
 # is pre-truncated too. The session rewrites it in step 4, but this
 # pre-truncate guarantees a STALE aggregate from a prior run can never mask
@@ -1100,11 +1088,11 @@ fi
 # every phase-A candidate an orphan -> fail-closed, never a false-clean.
 # Branch-scoped for the same concurrent-worktree reason as above.
 #
-# HIMMEL-2131 - both files are written through write-verdicts.sh, the
+# Both files are written through write-verdicts.sh, the
 # classifier-sanctioned single-purpose writer, rather than a bare `: > file`
 # redirect: the auto-mode classifier denies that inline shape as a
 # self-declare-clean write (it pattern-matches the rm-the-CR-marker shape
-# HIMMEL-1064 exists to stop). Empty stdin is a valid input for
+# that denial exists to stop). Empty stdin is a valid input for
 # write-verdicts.sh and writes an empty file, rc=0 - exactly the truncate
 # these two calls need. write-verdicts.sh resolves its own target via
 # --git-common-dir from $PWD, which is unchanged here, so it lands in the
@@ -1118,13 +1106,12 @@ if ! printf '' | bash "$HIMMEL_ROOT/scripts/cr/write-verdicts.sh" aggregate --br
     exit 2
 fi
 
-# HIMMEL-2226 round 2 - the step-2 lane check used to substitute the printed
-# marker= path as a literal into an awk fence ('<marker>'), which a
-# repo-controlled branch name (it is embedded in the marker path) can break
-# out of - a single quote inside the branch name terminates the string and
-# injects shell. The marker path never leaves this script as anything but a
-# real shell variable, so the lane read belongs here instead: same field
-# parse the runbooks used to run themselves (-F' [|] ' is a literal bracket
+# The lane is read here, not by substituting the printed marker= path as a
+# literal into an awk fence ('<marker>'): a repo-controlled branch name (it
+# is embedded in the marker path) can break out of that - a single quote
+# inside the branch name terminates the string and injects shell. The marker
+# path never leaves this script as anything but a real shell variable. Same
+# field parse as the runbooks' own (-F' [|] ' is a literal bracket
 # class, NOT \| - gawk warns on \| and reads it as alternation, splitting on
 # every space and returning the wrong field). No marker yet -> empty lane;
 # the runbooks already stop at "nothing to do" before the lane matters, so
@@ -1135,7 +1122,7 @@ if [ -f "$marker" ]; then
     lane=$(awk -F' [|] ' '{print $3; exit}' "$marker" 2>/dev/null)
 fi
 
-# HIMMEL-2773 - repo + branch FIRST, so the reviewer sees what this run is
+# Repo + branch FIRST, so the reviewer sees what this run is
 # certifying before anything else (himmel_dir, delegation, etc.) scrolls by.
 printf 'pr-check-context: repo=%s\n' "$repo"
 printf 'pr-check-context: branch=%s\n' "$branch"
@@ -1146,16 +1133,16 @@ printf 'pr-check-context: marker=%s\n' "$marker"
 printf 'pr-check-context: lane=%s\n' "$lane"
 printf 'pr-check-context: anchor_lane=%s\n' "$anchor_lane"
 printf 'pr-check-context: delegated=%s\n' "$delegated"
-# HIMMEL-3382 - the exact set this run decided on (comma-joined, empty when
+# The exact set this run decided on (comma-joined, empty when
 # cr_diff_state is no or unknown): the runbook points at this line instead
 # of restating the diff recipe itself.
 cr_diff_files_csv=$(printf '%s\n' "$cr_diff_files" | grep -v '^$' | tr '\n' ',' | sed 's/,$//')
 printf 'pr-check-context: cr_diff_files=%s\n' "$cr_diff_files_csv"
 
-# HIMMEL-5601 - base skew, informational on every profile (CR_PROFILE=none
+# Base skew, informational on every profile (CR_PROFILE=none
 # included): commits HEAD lacks from the diff base, and commits local <base>
-# carries beyond origin/<base>. Same two counts the pre-push guard warns on
-# (HIMMEL-1178); "unknown" when a ref is missing, never a number guessed.
+# carries beyond origin/<base>. Same two counts the pre-push guard warns on;
+# "unknown" when a ref is missing, never a number guessed.
 behind_base=$(gitd rev-list --count "HEAD..$base_ref" 2>/dev/null) || behind_base=unknown
 main_ahead=unknown
 if gitd rev-parse --verify -q "refs/remotes/origin/$base" >/dev/null 2>&1 \

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# luna-upgrade-all.sh — multi-vault luna template upgrade sweep (HIMMEL-462).
+# luna-upgrade-all.sh — multi-vault luna template upgrade sweep.
 #
 # Discovers candidate luna-second-brain vaults from the registry
 # (~/.claude/luna-vaults.json) and a depth-1 scan of configured roots,
@@ -20,7 +20,7 @@
 #       [--force-unstamped]
 #   bash scripts/luna-upgrade-all.sh restore --vault <path> [--from <ts>] [--list]
 #
-# Template resolution order (HIMMEL-2460) — see resolve_template below:
+# Template resolution order — see resolve_template below:
 #   --template-dir > this script's OWN checkout > $HIMMEL_DIR > $HIMMEL_REPO
 #   > the $HOME-relative candidate scan
 set -uo pipefail
@@ -30,7 +30,7 @@ set -uo pipefail
 SELF_REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ---------------------------------------------------------------------------
-# Manifest header field parser — BSD/macOS-sed-safe (C1 fix: HIMMEL-462).
+# Manifest header field parser — BSD/macOS-sed-safe.
 # GNU sed treats \t in bracket-classes as TAB, but BSD sed treats it literally,
 # so [^\t]* would truncate at the first 't' character.  Use a literal tab and
 # shell parameter-expansion instead.
@@ -139,7 +139,7 @@ done
 
 # ---------------------------------------------------------------------------
 # resolve_template: locate himmel's upgrade.sh.
-# Order (HIMMEL-2460): --template-dir > this script's OWN checkout >
+# Order: --template-dir > this script's OWN checkout >
 # $HIMMEL_DIR > $HIMMEL_REPO > $HOME-relative candidates.
 #
 # An AMBIENT pointer must not outrank the checkout you are running from — a
@@ -361,8 +361,8 @@ dry_run_plan() {
 
 # ---------------------------------------------------------------------------
 # is_dirty_owned <vault> <dry_out>: exit 0 if the vault has an uncommitted change
-# under a path the upgrade would touch (HIMMEL-4719). The owned set is read from
-# the engine's own dry-run plan: its PLAN-PATH <action> <path> rows (HIMMEL-4796),
+# under a path the upgrade would touch. The owned set is read from
+# the engine's own dry-run plan: its PLAN-PATH <action> <path> rows,
 # plus the stamp and the _CLAUDE.md merge sidecar. A vault dirty only elsewhere
 # (handovers/, notes) is safe to apply. Non-git vault: not dirty.
 is_dirty_owned() {
@@ -444,7 +444,7 @@ has_conflict_line() {
 
 # ---------------------------------------------------------------------------
 # has_local_edit_line <text>: exit 0 if any plan line is a LOCAL-EDIT
-# (HIMMEL-2886: a template-owned "overwrite"-class file the vault edited
+# (a template-owned "overwrite"-class file the vault edited
 # locally since its last upgrade — upgrade.sh withheld the write).
 has_local_edit_line() {
     local text="$1"
@@ -783,7 +783,7 @@ cmd_apply() {
     fi
 
     # Dirty-git precondition (luna-family; unstamped with git also checked):
-    # only an uncommitted change under a path the upgrade touches blocks (HIMMEL-4719).
+    # only an uncommitted change under a path the upgrade touches blocks.
     if is_dirty_owned "$vault" "$dry_out"; then
         printf 'SKIPPED-DIRTY\t%s\n' "$vault"
         exit 3
@@ -826,7 +826,7 @@ cmd_apply() {
             exit 1
             ;;
         3)
-            # HIMMEL-3037: upgrade.sh's NEEDS-RECONCILE — the only non-success
+            # upgrade.sh's NEEDS-RECONCILE — the only non-success
             # is withheld local edits (no write failed, stamp NOT written).
             # Its own signal, not PARTIAL: nothing broke, an operator decision
             # is pending.

@@ -24,7 +24,7 @@ CR_LEDGER="$L" bash "$LA" avail --branch b --head H5 --model qwen3coder --respon
 check "avail responding_model does not change dedup key" "$(grep -c '"kind":"avail".*"head":"H5"' "$L")" "1"
 check "avail stores first responding_model" "$(L="$L" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="avail"&&r.head==="H5");console.log(o.model+","+o.responding_model)')" "qwen3coder,qwen-flash"
 
-# ── HIMMEL-1613: avail monotone supersede — a timeout on run 1 followed by a
+# ── avail monotone supersede — a timeout on run 1 followed by a
 # success on run 2 at the SAME (head,model) used to hit the flat dedup above
 # and get silently dropped, permanently wedging clear-cr-marker at that SHA.
 AV="$tmp/avail-supersede.jsonl"
@@ -41,7 +41,7 @@ check "avail ok->unavailable downgrade writes NOTHING" "$(grep -c '"kind":"avail
 check "avail ok->unavailable downgrade names the reason" "$(grep -c 'DOWNGRADE' "$tmp/downgrade.err")" "1"
 check "avail downgrade leaves the ok row as the last record" "$(L="$AV" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="avail"&&r.head==="SH1");console.log(rs[rs.length-1].status)')" "ok"
 
-# HIMMEL-5110 item 2: a certify-refused row is a deliberate fail-closed
+# A certify-refused row is a deliberate fail-closed
 # refusal, not a transient failure, so it is NEVER swallowed by the downgrade
 # drop: an earlier ok at the same (head,model) must not hide it from the gate.
 AVR="$tmp/avail-refusal.jsonl"
@@ -58,7 +58,7 @@ check "HIMMEL-5110: an identical certify-refused repeat is still a quiet no-op" 
 CR_LEDGER="$AV" bash "$LA" avail --branch b --head SH1 --model glm --status ok
 check "avail identical repeat after supersede still dedups" "$(grep -c '"kind":"avail".*"head":"SH1"' "$AV")" "2"
 
-# ── HIMMEL-2128: same-status RECLASSIFICATION — `reason` is now gate-relevant
+# ── same-status RECLASSIFICATION — `reason` is now gate-relevant
 # (CR_FLOOR_FALLBACK reads it to judge VERIFIED exhaustion), so a lane first
 # classified unavailable(reason=quota) that later degrades to a different
 # reason (e.g. config) must not keep showing the stale reason forever. A
@@ -74,7 +74,7 @@ CR_LEDGER="$AV2" bash "$LA" avail --branch b --head SH5 --model codex --status u
 CR_LEDGER="$AV2" bash "$LA" avail --branch b --head SH5 --model codex --status unavailable --reason quota
 check "avail unavailable(quota) -> unavailable(quota) still dedups (same reason)" "$(grep -c '"kind":"avail".*"head":"SH5"' "$AV2")" "1"
 
-# ── HIMMEL-1640: avail supersession identity is (head, model) ONLY ──────────
+# ── avail supersession identity is (head, model) ONLY ──────────
 # The prior-record matcher ignores artifact/perspective. A recovery (unavailable
 # -> ok) supersedes even across DIFFERENT review arms, and an ok -> unavailable
 # downgrade is refused even across arms. Availability is a property of the
@@ -97,7 +97,7 @@ check "avail downgrade across perspective exits 0 (quiet refusal)" "$?" "0"
 check "avail downgrade across perspective writes NOTHING" "$(grep -c '"kind":"avail".*"head":"SH3"' "$AVI")" "1"
 check "avail downgrade across perspective names the reason" "$(grep -c 'DOWNGRADE' "$tmp/downgrade-arm.err")" "1"
 
-# ── usage kind (HIMMEL-485): chars/4 token estimate, dedup on (head,model) ──
+# ── usage kind: chars/4 token estimate, dedup on (head,model) ──
 CR_LEDGER="$L" bash "$LA" usage --branch b --head H1 --model codex --prompt-chars 4000 --response-chars 800
 CR_LEDGER="$L" bash "$LA" usage --branch b --head H1 --model codex --prompt-chars 4000 --response-chars 800
 check "usage dedup on (head,model)" "$(grep -c '"kind":"usage"' "$L")" "1"
@@ -120,7 +120,7 @@ check "non-numeric prompt-chars -> est_prompt_tokens 0" "$(L="$L" node -e 'const
 CR_LEDGER="$L" bash "$LA" usage --branch b --head H4 --model codex --prompt-chars 0 --response-chars 0
 check "zero-char usage -> est_total 0, estimated" "$(L="$L" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="usage"&&r.head==="H4");console.log(o.est_total_tokens+","+o.estimated)')" "0,true"
 
-# ── WS4 (HIMMEL-414): artifact/perspective segmentation ─────────────────────
+# ── WS4: artifact/perspective segmentation ─────────────────────
 # The dedup key gains artifact+perspective so a second arm (same head, same
 # finding_id, perspectives flipped) is NOT silently dropped.
 LP="$tmp/persp.jsonl"
@@ -132,7 +132,7 @@ check "perspective off+on both recorded (no silent drop)" "$(grep -c '"kind":"fi
 CR_LEDGER="$LP" bash "$LA" finding --branch b --head HP --model m --id p-1 --severity major --file f --line 1 --verdict agreed --perspective on
 check "same head+id+artifact+perspective dedups" "$(grep -c '"kind":"finding"' "$LP")" "2"
 # avail: same head+model across two perspective arms. Unlike finding/usage
-# above, avail's supersession identity is (head, model) ONLY (HIMMEL-1640) — a
+# above, avail's supersession identity is (head, model) ONLY — a
 # critic's availability is global to the commit, not per-arm — so a second ok
 # on a different perspective arm dedups as a quiet no-op, NOT one row per arm.
 CR_LEDGER="$LP" bash "$LA" avail --branch b --head HP --model m --status ok --perspective off
@@ -161,7 +161,7 @@ check "unknown kind rejected" "$?" "2"
 
 check "valid json lines" "$(L="$L" node -e 'require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).forEach(l=>JSON.parse(l));console.log("ok")')" "ok"
 
-# ── HIMMEL-1176: --reason/--detail plumbing (additive, back-compat) ────────
+# ── --reason/--detail plumbing (additive, back-compat) ────────
 LR="$tmp/reason.jsonl"
 CR_LEDGER="$LR" bash "$LA" avail --branch b --head RH1 --model glm --status unavailable --reason quota-5h --detail "429 usage limit reached"
 check "reason field stored" "$(L="$LR" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="RH1");console.log(o.reason)')" "quota-5h"
@@ -173,7 +173,7 @@ check "no --reason -> reason key absent" "$(L="$LR" node -e 'const o=require("fs
 check "no --detail -> detail key absent" "$(L="$LR" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="RH2");console.log("detail" in o)')" "false"
 
 # Identity is still (head,model) for avail, but a same-status write whose
-# reason/detail DIFFERS now APPENDS rather than dedups (HIMMEL-2128 — see the
+# reason/detail DIFFERS now APPENDS rather than dedups (see the
 # SH4/SH5 reclassification cases below): reason is gate-relevant to
 # CR_FLOOR_FALLBACK, so a stale reason must not silently persist forever.
 CR_LEDGER="$LR" bash "$LA" avail --branch b --head RH1 --model glm --status unavailable --reason auth --detail "different text"
@@ -193,7 +193,7 @@ CR_LEDGER="$LR" bash "$LA" avail --branch b --head RH5 --model m --status unavai
 line two"
 check "detail flattens newlines" "$(L="$LR" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="RH5");console.log(o.detail)')" "line one line two"
 
-# ── HIMMEL-1176: detail secret-scrub ────────────────────────────────────────
+# ── detail secret-scrub ────────────────────────────────────────
 CR_LEDGER="$LR" bash "$LA" avail --branch b --head RH6 --model m --status unavailable --reason auth --detail "auth failed, token: abcdef0123456789ghijklm"  # gitleaks:allow (fake fixture for the scrub test)
 check "detail scrubs a token=<value> shape" "$(L="$LR" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="RH6");console.log(o.detail.includes("abcdef0123456789ghijklm"))')" "false"  # gitleaks:allow (fake fixture)
 contains_json_detail() { L="$LR" HEAD_="$1" NEEDLE="$2" node -e 'const fs=require("fs"),e=process.env;const o=fs.readFileSync(e.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head===e.HEAD_);console.log(o.detail.includes(e.NEEDLE))'; }
@@ -202,10 +202,10 @@ check "detail scrub leaves [REDACTED] marker" "$(contains_json_detail RH6 '[REDA
 CR_LEDGER="$LR" bash "$LA" avail --branch b --head RH7 --model m --status unavailable --reason auth --detail "Authorization: Bearer sk-abcdefghij0123456789"  # gitleaks:allow (fake fixture for the scrub test)
 check "detail scrubs a Bearer token" "$(contains_json_detail RH7 'sk-abcdefghij0123456789')" "false"  # gitleaks:allow (fake fixture)
 
-# HIMMEL-1996: modern keys are HYPHENATED (`sk-proj-…`, `sk-ant-…`) - the bare
+# Modern keys are HYPHENATED (`sk-proj-…`, `sk-ant-…`) - the bare
 # alphanumeric class this scrub started with stopped at the first hyphen and let
 # the whole key through. Keep in lockstep with Get-ScrubbedToken in
-# scripts/observability/agent-runtime-census.ps1 (HIMMEL-1988).
+# scripts/observability/agent-runtime-census.ps1.
 CR_LEDGER="$LR" bash "$LA" avail --branch b --head RHA --model m --status unavailable --reason auth --detail "401: incorrect api key sk-proj-FAKEFAKEFAKEFAKEFAKE0000"  # gitleaks:allow (fake fixture for the scrub test)
 check "detail scrubs a hyphenated sk- key" "$(contains_json_detail RHA 'sk-proj-FAKEFAKEFAKEFAKEFAKE0000')" "false"  # gitleaks:allow (fake fixture)
 check "the hyphenated-key scrub leaves a marker" "$(contains_json_detail RHA '[REDACTED]')" "true"
@@ -222,7 +222,7 @@ _tg_id="123456789"; _tg_sec="AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsawX"
 CR_LEDGER="$LR" bash "$LA" avail --branch b --head RH9 --model m --status unavailable --reason http-4xx --detail "telegram token ${_tg_id}:${_tg_sec} leaked"
 check "detail scrubs a telegram-bot-token shape" "$(contains_json_detail RH9 "${_tg_id}:${_tg_sec}")" "false"
 
-# ── HIMMEL-2078: --text plumbing (the panel's one-line prose claim) ─────────
+# ── --text plumbing (the panel's one-line prose claim) ─────────
 LT="$tmp/text.jsonl"
 CR_LEDGER="$LT" bash "$LA" finding --branch b --head TX1 --model m --id t-1 --severity imp --file f --line 1 --verdict "" --text "- [t-1]: the thing is wrong [f:1]"
 check "finding stores text" "$(L="$LT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="TX1");console.log(o.text)')" "- [t-1]: the thing is wrong [f:1]"
@@ -243,14 +243,14 @@ check "text flattens newlines" "$(L="$LT" node -e 'const o=require("fs").readFil
 CR_LEDGER="$LT" bash "$LA" finding --branch b --head TX5 --model m --id t-5 --severity imp --file f --line 1 --verdict "" --text 'the "quoted" claim'
 check "text with quotes round-trips" "$(L="$LT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="TX5");console.log(o.text)')" 'the "quoted" claim'
 
-# text secret-scrub (critic-panel.sh CR round, HIMMEL-2078): review prose can
+# text secret-scrub: review prose can
 # quote a secret straight out of the diff being reviewed — reuse the same
 # scrub --detail already gets.
 CR_LEDGER="$LT" bash "$LA" finding --branch b --head TX6 --model m --id t-6 --severity imp --file f --line 1 --verdict "" --text "found a leaked Bearer sk-abcdefghij0123456789 in the diff"  # gitleaks:allow (fake fixture for the scrub test)
 check "text scrubs a secret" "$(L="$LT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="TX6");console.log(o.text.includes("sk-abcdefghij0123456789"))')" "false"  # gitleaks:allow (fake fixture)
 check "text scrub leaves a [REDACTED] marker" "$(L="$LT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="TX6");console.log(o.text.includes("[REDACTED]"))')" "true"
 
-# HIMMEL-2078 CR round (CodeRabbit): a token split across an EMBEDDED newline
+# A token split across an EMBEDDED newline
 # (e.g. word-wrapped in the reviewed diff) must still be scrubbed — flatten
 # happens before the scrub, not after, or sed's line-at-a-time processing
 # never sees the token+value pair as one line.
@@ -258,7 +258,7 @@ CR_LEDGER="$LT" bash "$LA" finding --branch b --head TX7 --model m --id t-7 --se
 abcdefghijklmnopqrst"  # gitleaks:allow (fake fixture for the scrub test)
 check "text scrubs a token split across an embedded newline" "$(L="$LT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="TX7");console.log(o.text.includes("abcdefghijklmnopqrst")+","+o.text.includes("[REDACTED]"))')" "false,true"  # gitleaks:allow (fake fixture)
 
-# HIMMEL-2078 CR round 2 (codex): a LONE carriage return (not paired with a
+# A LONE carriage return (not paired with a
 # following \n) must flatten the same way \n does.
 CR_LEDGER="$LT" bash "$LA" finding --branch b --head TX8 --model m --id t-8 --severity imp --file f --line 1 --verdict "" --text $'Token:\rzxywvutsrqponmlkjihg'  # gitleaks:allow (fake fixture for the scrub test)
 check "text scrubs a token split across a lone carriage return" "$(L="$LT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="TX8");console.log(o.text.includes("zxywvutsrqponmlkjihg")+","+o.text.includes("[REDACTED]"))')" "false,true"  # gitleaks:allow (fake fixture)
@@ -274,7 +274,7 @@ LMX="$tmp/mixed-consumer.jsonl"
 check "mixed ledger (legacy row with no text + a new row with text) parses cleanly" \
     "$(node -e 'const rs=require("fs").readFileSync(process.argv[1],"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);console.log(("text" in rs[0])+","+rs[1].text)' "$LMX")" "false,has text"
 
-# ── HIMMEL-1294: conflicting re-append + the amend verb ─────────────────────
+# ── conflicting re-append + the amend verb ─────────────────────
 # The wedge this ticket is about: re-appending a finding with a LOWER severity
 # hit the dedup key, wrote nothing, and exited 0. The caller believed the
 # record was corrected; the gate kept reading the original and kept refusing.
@@ -293,7 +293,7 @@ CR_LEDGER="$AM" bash "$LA" finding --branch b --head AH1 --model codex-adv --id 
 check "identical re-append still exits 0 (idempotent)" "$?" "0"
 check "identical re-append adds no line" "$(wc -l < "$AM" | tr -d ' ')" "1"
 
-# HIMMEL-2020: callers may still pass an abbreviated HEAD. The writer normalizes
+# Callers may still pass an abbreviated HEAD. The writer normalizes
 # all SHA-like short heads before writing, so panel rows and later verdict rows
 # land under one full-SHA key instead of parallel short/full rows.
 GIT_FULL=$(git rev-parse --verify HEAD)
@@ -320,7 +320,7 @@ CR_LEDGER="$HN" bash "$LA" finding --branch b --head "$GIT_SHORT" --model codex 
 CR_LEDGER="$HN" bash "$LA" finding --branch b --head "$GIT_SHORT" --model codex --id codex-2 --severity sug --file f --line 3 --verdict disproved 2>/dev/null
 check "empty-verdict prior + severity change still refuses (not verdict-only)" "$?" "3"
 
-# codex-1, HIMMEL-2020 round 2: the verdict-only check must compare against
+# The verdict-only check must compare against
 # the EFFECTIVE state, not the raw append-only row - otherwise a SECOND
 # verdict change on an already-amended finding reads the raw rows still-empty
 # verdict field and silently mints another auto-amend, overwriting the first
@@ -334,7 +334,7 @@ CR_LEDGER="$RV" bash "$LA" finding --branch b --head "$GIT_SHORT" --model codex 
 check "re-verdicting an ALREADY-amended finding refuses (not another auto-amend)" "$?" "3"
 check "the already-amended finding gets no second amend" "$(L="$RV" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend"&&r.finding_id==="codex-3");console.log(rs.length)')" "1"
 
-# codex-1, HIMMEL-2020 round 3: a LEGACY finding row stored under a short head
+# A LEGACY finding row stored under a short head
 # (written before this ticket) must still be found by the finding-dedup
 # lookup when a caller re-appends using that SAME short spelling - matching
 # only the normalized full key missed it and created a parallel row instead
@@ -349,7 +349,7 @@ CR_LEDGER="$LG" bash "$LA" finding --branch b --head "$GIT_SHORT" --model codex 
 check "verdict append against a legacy short-keyed row refuses (collision, not a new row)" "$?" "3"
 check "legacy short row collision writes no parallel finding row" "$(L="$LG" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);console.log(rs.filter(r=>r.kind==="finding"&&r.finding_id==="codex-4").length)')" "1"
 
-# codex-1, HIMMEL-2020 round 4: a STALE pre-existing pair - a legacy short-head
+# A STALE pre-existing pair - a legacy short-head
 # row AND a full-head row already both recorded for the same finding_id (the
 # exact shape the original bug used to produce) - must refuse the write as
 # AMBIGUOUS rather than silently picking one via pop() and leaving the other
@@ -364,7 +364,7 @@ check "a stale short+full duplicate pair refuses (ambiguous, not a guess)" "$?" 
 check "ambiguity refusal names the count" "$(grep -c 'matches 2 distinct existing rows' "$tmp/ambiguous.err")" "1"
 check "ambiguity refusal writes nothing" "$(wc -l < "$AMB" | tr -d ' ')" "2"
 
-# HIMMEL-2029: the amend verb's OWN target lookup reused this SAME
+# The amend verb's OWN target lookup reused this SAME
 # resolve-then-compare matching, so on a stale short+full pair like $AMB it
 # could match BOTH rows and silently amend whichever was LAST in ledger order
 # via .pop() - not necessarily the row named by --head. It must instead
@@ -405,7 +405,7 @@ check "amend ambiguity refusal names the short raw head" "$(grep -c "$GIT_SHORT"
 check "amend ambiguity refusal names the full raw head" "$(grep -c "$GIT_FULL" "$tmp/amend-ambiguous.err")" "1"
 check "amend ambiguity refusal writes nothing" "$(wc -l < "$AMB_C" | tr -d ' ')" "2"
 
-# codex-1, HIMMEL-2029 CR round 4: the exact-match preference must compare
+# The exact-match preference must compare
 # against a row EFFECTIVE (post-amend) head, not its raw stored head - a row
 # a PRIOR amend already re-keyed elsewhere still carries its ORIGINAL raw
 # head forever (append-only), so matching on raw heads could silently prefer
@@ -446,7 +446,7 @@ CR_LEDGER="$REKEY_DUP" bash "$LA" amend --branch b --head bbbb2220 --id codex-11
 check "amend refuses when a re-keyed row and an unrelated row share one effective head (genuine ambiguity)" "$?" "3"
 check "amend refusal on shared effective heads writes nothing" "$(wc -l < "$REKEY_DUP" | tr -d ' ')" "3"
 
-# codex-1, HIMMEL-2020 round 5: a finding RE-KEYED by a prior amend (--set
+# A finding RE-KEYED by a prior amend (--set
 # head=) lives, EFFECTIVELY, at its new head while its raw stored row still
 # reads the old one. A later finding-append at the NEW (re-keyed-to) head
 # must collide with it via key(effective(o)), not fall through to a brand-new
@@ -461,9 +461,9 @@ CR_LEDGER="$RK" bash "$LA" finding --branch b --head "$GIT_FULL" --model codex -
 check "verdict append at the re-keyed head collides (not a duplicate row)" "$?" "3"
 check "re-keyed finding collision writes no duplicate finding row" "$(L="$RK" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);console.log(rs.filter(r=>r.kind==="finding"&&r.finding_id==="codex-6").length)')" "1"
 
-# HIMMEL-2020 review round 1: amend's --head is a LOOKUP key, not a write key.
+# Amend's --head is a LOOKUP key, not a write key.
 # A finding re-keyed via `--set head=` onto a sha this repo cannot resolve (the
-# HIMMEL-1294 escape hatch explicitly allows this) must still be reachable by a
+# escape hatch explicitly allows this) must still be reachable by a
 # FOLLOW-UP amend using that same literal spelling - normalizing/refusing on
 # that lookup would dead-end the exact re-key it was meant to enable.
 FH="$tmp/foreign-head.jsonl"; : > "$FH"
@@ -481,8 +481,7 @@ check "the original finding line is untouched" "$(L="$AM" node -e 'const o=requi
 check "amend records the target + the set" "$(L="$AM" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="amend");console.log(o.target_head+","+o.finding_id+","+o.set.severity)')" "AH1,codex-adv-1,sug"
 check "amend records the reason" "$(L="$AM" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="amend");console.log(o.reason)')" "out of diff, pre-existing, already public"
 
-# HIMMEL-2405 (AE round-2 ruling, supersedes the original HIMMEL-2405 fix and
-# HIMMEL-2909): amend without --branch now prefers the UNIQUE matching
+# Amend without --branch prefers the UNIQUE matching
 # finding row's own branch over the caller's checkout branch - an escalation
 # amend run from the primary checkout (branch "my-current-branch") for a
 # finding raised on "origin-branch" must stamp "origin-branch", not
@@ -509,7 +508,7 @@ NCB="$tmp/no-match-current-branch.jsonl"; : > "$NCB"
 check "amend with no matching row falls back to caller branch then refuses with no target (not a detached-HEAD refusal)" "$?" "3"
 check "the no-target refusal (not detached-HEAD) confirms the caller-branch fallback ran" "$(grep -c 'detached HEAD' "$tmp/no-match-cb.err")" "0"
 
-# HIMMEL-3467: an explicit --branch that differs from the matching finding
+# An explicit --branch that differs from the matching finding
 # row's own branch used to write an amend no reader ever retrieves (they key
 # on the finding row's branch) - a silent no-op disposition. It refuses now,
 # before writing, so it can never poison a later lookup either.
@@ -530,14 +529,14 @@ check "  ...and keeps it (never overridden by the checkout)" "$(L="$BR" node -e 
 # A branch-less legacy finding: readers look its amends up in the "" bucket,
 # so any explicit real branch is unreachable - refuse and say to omit it.
 BRL="$tmp/branch-mismatch-legacy.jsonl"; : > "$BRL"
-# Written raw: the finding verb now always stamps a branch (HIMMEL-4604), and
+# Written raw: the finding verb now always stamps a branch, and
 # refuses on a detached HEAD (CI's checkout), so only a raw row is branch-less.
 printf '{"kind":"finding","ts":"2020-01-01T00:00:00Z","head":"BLH1","model":"m","finding_id":"find-brl-1","severity":"imp","file":"f","line":3,"verdict":"agreed","artifact":"diff","perspective":"off"}\n' > "$BRL"
 CR_LEDGER="$BRL" bash "$LA" amend --branch some-branch --head BLH1 --id find-brl-1 --set severity=sug --reason x 2>"$tmp/brl.err"
 check "an explicit --branch on a branch-less legacy finding refuses (HIMMEL-3467)" "$?" "3"
 check "  ...and tells the caller to omit --branch" "$(grep -c 'omit --branch' "$tmp/brl.err")" "1"
 
-# Positive (revised per HIMMEL-2405 AE round-2 ruling): the caller's cwd is
+# Positive: the caller's cwd is
 # NOT on a branch (detached HEAD) and no --branch was given, but there IS a
 # UNIQUE matching finding row for this head/id/artifact/perspective - the
 # target's own branch is inferred and used, rather than refusing. Detached
@@ -563,10 +562,10 @@ check "amend refuses when detached HEAD, no --branch, and no matching row (HIMME
 check "amend refusal on a detached HEAD with no match names it" "$(grep -c 'detached HEAD' "$tmp/no-match-detached.err")" "1"
 check "amend refusal on a detached HEAD with no match wrote nothing" "$(wc -l < "$NM" | tr -d ' ')" "1"
 
-# HIMMEL-2405 panel round 2 (codex-1): branch inference used to match ONLY the
-# raw stored head, so a finding re-keyed by a prior amend onto a NEW head was
-# invisible to it - a follow-up amend naming that new head, with no --branch,
-# from a DIFFERENT checkout fell back to the caller's own (wrong) branch and
+# Branch inference must match not ONLY the
+# raw stored head: a finding re-keyed by a prior amend onto a NEW head is
+# invisible to a raw-only match - a follow-up amend naming that new head, with no --branch,
+# from a DIFFERENT checkout would fall back to the caller's own (wrong) branch and
 # then could not locate the finding at all under that wrong branch's scope.
 RKB="$tmp/rekeyed-branch-infer.jsonl"; : > "$RKB"
 CR_LEDGER="$RKB" bash "$LA" finding --branch origin-branch --head RKH1 --model m --id find-rk-infer-1 --severity imp --file f --line 3 --verdict agreed
@@ -575,7 +574,7 @@ CR_LEDGER="$RKB" bash "$LA" amend --branch origin-branch --head RKH1 --id find-r
 check "follow-up amend on a re-keyed head with no --branch succeeds (HIMMEL-2405 codex-1)" "$?" "0"
 check "the follow-up amend infers the ORIGINAL owning branch, not the caller's checkout" "$(L="$RKB" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);console.log(rs.filter(r=>r.kind==="amend").pop().branch)')" "origin-branch"
 
-# HIMMEL-3466: branch inference counted EVERY amend that ever re-keyed the id
+# Branch inference counted EVERY amend that ever re-keyed the id
 # onto --head, not only a finding's CURRENT effective head. branch-p's finding
 # moves A -> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1 -> bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2; branch-q has its own finding at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1.
 # An amend --head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1 with no --branch must resolve to branch-q alone,
@@ -589,21 +588,21 @@ CR_LEDGER="$RK2" bash "$LA" finding --branch branch-q --head aaaaaaaaaaaaaaaaaaa
 check "amend on a stale intermediate re-key head does not refuse on the stale candidate (HIMMEL-3466)" "$?" "0"
 check "  ...it resolves to the finding currently at that head" "$(L="$RK2" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);console.log(rs.filter(r=>r.kind==="amend").pop().branch)')" "branch-q"
 
-# HIMMEL-2405 panel round 3 (codex-1): a unique matching finding row with an
+# A unique matching finding row with an
 # EMPTY (legacy/branch-less) branch must resolve e.BRANCH="" (inherit the
 # finding's own scope), NOT the caller's checkout branch. clear-cr-marker.sh
 # and handover-bridge.sh key amendSetFor on the TARGET FINDING ROW's own
 # branch (o.branch||"") - for a branch-less finding that collapses the
 # "scoped" and "legacy" lookup keys to the same "" bucket, so an amend
 # stamped with any other branch is invisible to both readers and a
-# successful `amend` silently never takes effect. (A prior round-2 "fix"
-# here stamped the caller's branch instead, believing this was the same
-# cross-branch leak HIMMEL-2405 closes; it is not - a branch-less finding is
+# successful `amend` silently never takes effect. (Stamping the caller's
+# branch instead would look like closing a cross-branch leak, but a
+# branch-less finding is
 # deliberately readable from any branch by design, and an amend to it must
-# stay branch-less to remain visible. That prior fix is what this test now
-# guards against as the regression.)
+# stay branch-less to remain visible. This test guards against that
+# regression.)
 LGB="$tmp/legacy-branch-infer.jsonl"; : > "$LGB"
-# HIMMEL-4604: the finding verb now stamps the current branch, so a legacy
+# The finding verb now stamps the current branch, so a legacy
 # branch-less row is seeded raw, the way such rows predate the stamp.
 printf '{"kind":"finding","ts":"2026-01-01T00:00:00Z","branch":"","head":"LGH1","model":"m","finding_id":"find-legacy-1","severity":"imp","file":"f","line":3,"verdict":"agreed"}\n' > "$LGB"
 check "the legacy finding row was written with an empty branch" "$(L="$LGB" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.kind==="finding");console.log(JSON.stringify(o.branch))')" '""'
@@ -644,8 +643,8 @@ check "amend requires at least one --set" "$?" "2"
 CR_LEDGER="$AM" bash "$LA" amend --branch b --head AH1 --id codex-adv-1 --set model=evil --reason x 2>/dev/null
 check "amend refuses to set a non-amendable key" "$?" "2"
 
-# ── HIMMEL-2405: the amend identity key gains branch ────────────────────────
-# Two branches can legitimately sit at the SAME head (HIMMEL-1175), and
+# ── the amend identity key gains branch ────────────────────────
+# Two branches can legitimately sit at the SAME head, and
 # finding ids are minted in per-producer stream order (not globally unique),
 # so branch A and branch B can both mint "codex-9" at the same head. An amend
 # recorded for branch B must never leak into branch A's view of that finding.
@@ -657,7 +656,7 @@ check "amend refuses to set a non-amendable key" "$?" "2"
 # and wrongly refuse (rc=3) a re-append that only ever changed the verdict.
 XBR="$tmp/cross-branch-amend.jsonl"
 CR_LEDGER="$XBR" bash "$LA" finding --branch branch-a --head XH1 --model codex --id codex-9 --severity crit --file f --line 3 --verdict ""
-# Injected raw: since HIMMEL-3467 the amend verb refuses a --branch that no
+# Injected raw: the amend verb refuses a --branch that no
 # matching finding row carries, so this pre-existing foreign-branch record can
 # only come from a ledger written before that refusal.
 printf '{"kind":"amend","ts":"2020-01-01T00:00:00Z","branch":"branch-b","target_head":"XH1","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"severity":"sug"},"reason":"branch B own adjudication, must not leak into branch A"}\n' >> "$XBR"
@@ -668,7 +667,7 @@ check "branch A's new amend is scoped to branch-a, not branch-b" "$(L="$XBR" nod
 check "branch B's amend is untouched and still severity=sug" "$(L="$XBR" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend"&&r.branch==="branch-b");console.log(rs[0].set.severity)')" "sug"
 
 # (b) Back-compat: a LEGACY amend with an empty branch (written before
-# HIMMEL-2909 started stamping one) still applies to ANY branch.
+# branch stamping existed) still applies to ANY branch.
 LGB="$tmp/legacy-empty-branch-amend.jsonl"
 CR_LEDGER="$LGB" bash "$LA" finding --branch branch-c --head XH2 --model codex --id codex-12 --severity crit --file f --line 3 --verdict ""
 printf '{"kind":"amend","ts":"2020-01-01T00:00:00Z","branch":"","target_head":"XH2","finding_id":"codex-12","artifact":"diff","perspective":"off","set":{"severity":"sug"},"reason":"legacy pre-branch amend"}\n' >> "$LGB"
@@ -681,7 +680,7 @@ check "legacy back-compat: no content-mismatch refusal, appended a verdict-only 
 CR_LEDGER="$AM" bash "$LA" amend --branch b --head AH1 --id codex-adv-1 --set head="$GIT_SHORT" --reason "raised against $GIT_SHORT, mis-keyed onto the fixing head"
 check "amend can re-key the head" "$(L="$AM" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend");console.log(rs[rs.length-1].set.head)')" "$GIT_SHORT"
 
-# codex-1 round 3: a re-key to something the gate cannot recognise as a head
+# A re-key to something the gate cannot recognise as a head
 # makes the finding vanish from gate 4 entirely - fail OPEN. Validate exactly
 # the shape the gate consumes (isHex: 7-64 hex chars), no narrower, no wider.
 CR_LEDGER="$AM" bash "$LA" amend --branch b --head AH1 --id codex-adv-1 --set head=HEAD~1 --reason x 2>/dev/null
@@ -689,7 +688,7 @@ check "amend rejects a non-sha head (would silently unblock)" "$?" "2"
 CR_LEDGER="$AM" bash "$LA" amend --branch b --head AH1 --id codex-adv-1 --set head=abc123 --reason x 2>/dev/null
 check "amend rejects a too-short head" "$?" "2"
 
-# HIMMEL-2029: a SHA-256 repo's full head is 64 hex chars, not 40 - the old
+# A SHA-256 repo's full head is 64 hex chars, not 40 - the old
 # 7-40 ceiling rejected every such head as "not a head" at all (fail OPEN).
 # Isolated ledger: an amend here must not disturb $AM's ongoing re-key narrative.
 SHA256_HEAD="deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
@@ -701,7 +700,7 @@ check "amend records the 64-hex head" "$(L="$SH" node -e 'const rs=require("fs")
 CR_LEDGER="$SH" bash "$LA" amend --branch b --head AH9 --id codex-9 --set head="${SHA256_HEAD}f" --reason x 2>/dev/null
 check "amend rejects a 65-char head (too long for either scheme)" "$?" "2"
 
-# HIMMEL-2321: a producer self-write (codex-adv-harvest.sh, mirroring
+# A producer self-write (codex-adv-harvest.sh, mirroring
 # critic-panel.sh's existing --batch-file self-write)
 # records `text` at panel time (verdict empty). The interactive step-4.5
 # finding call NEVER sends --text (.claude/commands/pr-check.md step 4.5) -
@@ -729,7 +728,7 @@ CR_LEDGER="$TXB" bash "$LA" finding --branch b --head "$GIT_FULL" --model codera
 check "verdict-only re-append converges after a --batch-file producer write too" "$?" "0"
 check "  ...via an amend, not a refusal (batch path)" "$(L="$TXB" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);console.log(rs.filter(r=>r.kind==="finding").length+","+rs.filter(r=>r.kind==="amend").length)')" "1,1"
 
-# HIMMEL-2321 CR round 2 (codex-1): the regression the round-1 fix opened.
+# The regression the round-1 fix opened.
 # Unconditionally dropping `text` from BOTH sides of the comparison made a
 # genuinely DIFFERENT finding that reuses an id (a reordered/updated producer
 # run remapping the same id onto new text - the realistic case, since ids are
@@ -754,7 +753,7 @@ CR_LEDGER="$TXDB" bash "$LA" finding --batch-file "$TXDBG2" 2>"$tmp/txdb.err"
 check "batch mode: a second producer write with DIFFERENT text under the same id still refuses" "$?" "3"
 check "  ...only the first write landed (batch path)" "$(wc -l < "$TXDB" | tr -d ' ')" "1"
 
-# codex-1 round 4: after a re-key, the original row still reads the OLD head
+# After a re-key, the original row still reads the OLD head
 # (append-only), so a second amend aimed at the NEW head - the only head an
 # operator can see in the effective state - must still resolve. Otherwise the
 # recovery path breaks exactly when it is being used to recover.
@@ -762,7 +761,7 @@ CR_LEDGER="$AM" bash "$LA" amend --branch b --head "$GIT_SHORT" --id codex-adv-1
 check "amend resolves a finding through a prior re-key" "$?" "0"
 check "the follow-up amend still keys on the ORIGINAL head" "$(L="$AM" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend");console.log(rs[rs.length-1].target_head)')" "AH1"
 
-# ── HIMMEL-1294: the deferral field ─────────────────────────────────────────
+# ── the deferral field ─────────────────────────────────────────
 CR_LEDGER="$AM" bash "$LA" finding --branch b --head AH3 --model glm --id glm-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1293 --reason "pre-existing, already public" --fu-class hardening
 check "finding stores deferred_to" "$(L="$AM" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.head==="AH3");console.log(o.verdict+","+o.deferred_to)')" "deferred,HIMMEL-1293"
 CR_LEDGER="$AM" bash "$LA" finding --branch b --head AH4 --model glm --id glm-2 --severity imp --file f --line 1 --verdict deferred --deferred-to "not a ticket" 2>/dev/null
@@ -801,7 +800,7 @@ CR_LEDGER="$AM" bash "$LA" amend --branch b --head AH1 --id codex-adv-1 --set re
 check "amend can set the finding-level reason" "$?" "0"
 check "amend --set reason lands in set, not on the amend reason" "$(L="$AM" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend");const r=rs[rs.length-1];console.log(r.set.reason+"|"+r.reason)')" "out of scope for this branch|deferring after review"
 
-# ── HIMMEL-4034: a deferral must carry a follow-up class (escape|hardening|polish) ─
+# ── a deferral must carry a follow-up class (escape|hardening|polish) ─
 FU="$tmp/fu-class.jsonl"
 CR_LEDGER="$FU" bash "$LA" finding --branch b --head FU1 --model m --id fu-1 --severity imp --file f --line 1 --verdict deferred --deferred-to HIMMEL-1293 --reason r 2>/dev/null
 check "finding --deferred-to without --fu-class is refused" "$?" "2"
@@ -823,7 +822,7 @@ check "amend rejects an invalid fu_class" "$?" "2"
 CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set reason=updated --reason x
 check "control: amending only the reason needs no fu_class" "$?" "0"
 
-# ── HIMMEL-1500: `attempt` kind — per-invocation timing, NEVER deduped ──────
+# ── `attempt` kind — per-invocation timing, NEVER deduped ──────
 AT="$tmp/attempt.jsonl"
 CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH1 --model glm --responding-model glm-5.2 --status timeout --attempt 1 --duration-secs 451 --detail "rc=124"
 CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH1 --model glm --responding-model glm-5.2 --status ok --attempt 2 --duration-secs 12 --detail "rc=0"
@@ -859,7 +858,7 @@ check "attempt rejects a non-numeric --attempt" "$?" "2"
 CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH4 --model glm --status ok --duration-secs abc >/dev/null 2>&1
 check "attempt rejects a non-numeric --duration-secs" "$?" "2"
 
-# ── HIMMEL-2335: `delegation` kind — one row per anchor->branch delegation,
+# ── `delegation` kind — one row per anchor->branch delegation,
 # NEVER deduped (same posture as `attempt`) ─────────────────────────────────
 DG="$tmp/delegation.jsonl"
 CR_LEDGER="$DG" bash "$LA" delegation --branch fix/himmel-2335-prcheck-anchor --head cccccccccccccccccccccccccccccccccccccccc --reason "diff touches scripts/cr/ - branch self-review required" --detail "anchor=fake-anchor-dir delegate=fake-delegate-dir"
@@ -895,7 +894,7 @@ check "delegation identical repeat exits 0 (not a refusal)" "$?" "0"
 check "delegation identical repeat still appends a SECOND row (never deduped)" \
     "$(grep -c '"kind":"delegation".*"head":"cccccccccccccccccccccccccccccccccccccccc"' "$DG")" "2"
 
-# ── HIMMEL-2035 T4 SC4: foreign-repo fence ──────────────────────────────────
+# ── foreign-repo fence ──────────────────────────────────
 # ledger-append.sh already resolves its ledger via
 # `git rev-parse --git-common-dir` off cwd (no -C — see line 225), so it
 # already writes into whatever repo the caller's cwd sits in; no --repo flag
@@ -965,7 +964,7 @@ himmel_ledger_leak=""
 case "$appended_himmel_ledger" in *"$FX_HEAD"*) himmel_ledger_leak="$FX_HEAD" ;; esac
 check "himmel's OWN ledger is untouched by the foreign-repo append" "${himmel_ledger_leak:-clean}" "clean"
 
-# ── HIMMEL-2052: full-SHA heads short-circuit resolveHead (no git spawn) ────
+# ── full-SHA heads short-circuit resolveHead (no git spawn) ────
 # Root cause: resolveHead used to shell out to `git rev-parse --verify` once
 # per DISTINCT stored head hit during the dedup scan - on a ledger that has
 # accumulated hundreds of distinct heads that was hundreds of process spawns
@@ -1011,7 +1010,7 @@ check "full-SHA-only dedup scan writes the new row" "$(grep -c '"finding_id":"co
 # this fix, proving the batched git-cat-file resolution preserves exactly the
 # same match semantics as the old per-head `git rev-parse --verify` calls.
 
-# ── HIMMEL-2052: `finding --batch-file` ─────────────────────────────────────
+# ── `finding --batch-file` ─────────────────────────────────────
 BHEAD=$(printf '%040d' 12345)
 BF="$tmp/batch-basic.jsonl"
 BFL="$tmp/batch-basic-ledger.jsonl"; : > "$BFL"
@@ -1052,9 +1051,9 @@ check "batch mode writes nothing for the refused row" "$(wc -l < "$BFL3" | tr -d
 
 # batch mode refuses a row MISSING a required key (branch/model/severity/
 # file/line/verdict) - a syntactically-valid object short one of these must
-# not silently write `undefined` into a ledger record (codex-1, HIMMEL-2052
-# CR round). Presence, not truthiness: an EMPTY value for the same key is a
-# legitimate citation-less finding (HIMMEL-1494) and must still write - see
+# not silently write `undefined` into a ledger record.
+# Presence, not truthiness: an EMPTY value for the same key is a
+# legitimate citation-less finding and must still write - see
 # the companion check below.
 BF4="$tmp/batch-missing-key.jsonl"
 BFL4="$tmp/batch-missing-key-ledger.jsonl"; : > "$BFL4"
@@ -1067,7 +1066,7 @@ check "batch mode names the missing key in stderr" "$(grep -c 'branch' "$tmp/bat
 # Companion: a row with an EMPTY value (key present) for file/line/verdict -
 # the actual shape critic-panel.sh emits for a citation-less finding - still
 # writes normally. branch must be non-empty here (see the empty-branch
-# refusal below, HIMMEL-2405 AE round-2): unlike file/line/verdict, an empty
+# refusal below): unlike file/line/verdict, an empty
 # branch has no legitimate meaning and would silently mint a row into the
 # back-compat "" bucket every branch's lookup checks.
 BF5="$tmp/batch-empty-values.jsonl"
@@ -1077,10 +1076,10 @@ CR_LEDGER="$BFL5" bash "$LA" finding --batch-file "$BF5" 2>"$tmp/batch-empty-val
 check "batch mode accepts a row with present-but-empty file/line/verdict" "$?" "0"
 check "batch mode writes the empty-value row" "$(wc -l < "$BFL5" | tr -d ' ')" "1"
 
-# Negative (HIMMEL-2405 AE round-2): a row with a present-but-EMPTY branch is
+# Negative: a row with a present-but-EMPTY branch is
 # refused, not silently accepted - unlike file/line/verdict, there is no
 # legitimate all-branches finding row, and accepting "" here would defeat
-# this ticket's branch isolation for every finding this batch writes.
+# branch isolation for every finding this batch writes.
 BF6="$tmp/batch-empty-branch.jsonl"
 BFL6="$tmp/batch-empty-branch-ledger.jsonl"; : > "$BFL6"
 printf '{"branch":"","head":"%s","model":"codex","id":"e-3","severity":"imp","file":"f","line":3,"verdict":""}\n' "$BHEAD" > "$BF6"
@@ -1104,7 +1103,7 @@ check "batch mode verdict-only re-append exits 0" "$?" "0"
 check "batch mode verdict-only re-append writes an amend, not a duplicate finding row" \
     "$(L="$BFV" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);console.log(rs.filter(r=>r.kind==="finding").length+","+rs.filter(r=>r.kind==="amend").length)')" "1,1"
 
-# ── HIMMEL-2078: --batch-file text plumbing (spec.text bypasses the
+# ── --batch-file text plumbing (spec.text bypasses the
 # shell-side scrub, so ledger-append.sh's node writer must sanitize it too) ──
 BFT="$tmp/batch-text.jsonl"; : > "$BFT"
 BFTF="$tmp/batch-text-rows.jsonl"
@@ -1114,11 +1113,11 @@ LONG_BATCH_TEXT="$(printf 'z%.0s' $(seq 1 600))"
   printf '{"branch":"b","head":"%s","model":"codex","id":"bt-2","severity":"imp","file":"f","line":2,"verdict":""}\n' "$BHEAD"
   printf '{"branch":"b","head":"%s","model":"codex","id":"bt-3","severity":"imp","file":"f","line":3,"verdict":"","text":"%s"}\n' "$BHEAD" "$LONG_BATCH_TEXT"
   printf '{"branch":"b","head":"%s","model":"codex","id":"bt-4","severity":"imp","file":"f","line":4,"verdict":"","text":"diff leaks aws key AKIAABCDEFGHIJKLMNOP here"}\n' "$BHEAD"  # gitleaks:allow (fake fixture for the scrub test)
-  # HIMMEL-2078 CR round (CodeRabbit): a JSON-escaped \n embedded in spec.text
+  # A JSON-escaped \n embedded in spec.text
   # decodes to a real newline splitting the token from its value — must still
   # scrub (flatten before scrub in the node writer too).
   printf '{"branch":"b","head":"%s","model":"codex","id":"bt-5","severity":"imp","file":"f","line":5,"verdict":"","text":"Token:\\napikeyvalue1234567890"}\n' "$BHEAD"  # gitleaks:allow (fake fixture for the scrub test)
-  # HIMMEL-2078 CR round 2 (codex): a JSON-escaped \r (lone carriage return)
+  # A JSON-escaped \r (lone carriage return)
   # must also flatten before the scrub sees it.
   printf '{"branch":"b","head":"%s","model":"codex","id":"bt-6","severity":"imp","file":"f","line":6,"verdict":"","text":"Token:\\rzxywvutsrqponmlkjihg"}\n' "$BHEAD"  # gitleaks:allow (fake fixture for the scrub test)
 } > "$BFTF"
@@ -1127,14 +1126,14 @@ check "batch mode exits 0 with mixed text/no-text rows" "$?" "0"
 check "batch mode stores text" "$(L="$BFT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.finding_id==="bt-1");console.log(o.text)')" "- [bt-1]: batch claim [f:1]"
 check "batch mode: no text key -> absent" "$(L="$BFT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.finding_id==="bt-2");console.log("text" in o)')" "false"
 check "batch mode caps text to <=500 chars" "$(L="$BFT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.finding_id==="bt-3");console.log(o.text.length<=500)')" "true"
-# HIMMEL-2078 CR round: --batch-file is critic-panel.sh's real call path
-# (HIMMEL-2052) and bypasses the shell-side scrub entirely, so the node
+# --batch-file is critic-panel.sh's real call path
+# and bypasses the shell-side scrub entirely, so the node
 # writer itself must scrub spec.text — not just flatten/cap it.
 check "batch mode scrubs a secret in text" "$(L="$BFT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.finding_id==="bt-4");console.log(o.text.includes("AKIAABCDEFGHIJKLMNOP")+","+o.text.includes("[REDACTED]"))')" "false,true"  # gitleaks:allow (fake fixture)
 check "batch mode scrubs a token split across an embedded newline" "$(L="$BFT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.finding_id==="bt-5");console.log(o.text.includes("apikeyvalue1234567890")+","+o.text.includes("[REDACTED]"))')" "false,true"  # gitleaks:allow (fake fixture)
 check "batch mode scrubs a token split across a lone carriage return" "$(L="$BFT" node -e 'const o=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).find(r=>r.finding_id==="bt-6");console.log(o.text.includes("zxywvutsrqponmlkjihg")+","+o.text.includes("[REDACTED]"))')" "false,true"  # gitleaks:allow (fake fixture)
 
-# HIMMEL-2896: fingerprint the complete claim before the 500-character display
+# Fingerprint the complete claim before the 500-character display
 # cap. Claims whose persisted text is identical but whose suffix differs must
 # not collide. Single-row and batch writers must derive the same fingerprint.
 FP_PREFIX="$(printf 'x%.0s' $(seq 1 520))"
@@ -1244,7 +1243,7 @@ check "batch numeric/string round controls normalize to numbers" "$(L="$BRVL" no
 check "batch numeric/string disposition-round controls normalize to numbers" "$(L="$BRVL" node -e 'const r=require("fs").readFileSync(process.env.L,"utf8").trim().split("\n").filter(Boolean).map(JSON.parse);console.log(r.filter(x=>x.disposition_round!==undefined).map(x=>typeof x.disposition_round+":"+x.disposition_round).sort().join(","))')" "number:4,number:5"
 check "batch absent round metadata remains absent" "$(L="$BRVL" node -e 'const r=require("fs").readFileSync(process.env.L,"utf8").trim().split("\n").filter(Boolean).map(JSON.parse).find(x=>x.finding_id==="round-absent");console.log(("round" in r)+","+("disposition_round" in r))')" "false,false"
 
-# HIMMEL-2901: an amend that sets a VERDICT records the round it adjudicated in,
+# An amend that sets a VERDICT records the round it adjudicated in,
 # explicitly or from the ambient CR_REVIEW_ROUND. A bookkeeping amend is not an
 # adjudication, so it records no round at all.
 ARL="$tmp/amend-round.jsonl"
@@ -1261,7 +1260,7 @@ CR_LEDGER="$ARL" CR_REVIEW_ROUND=nope bash "$LA" amend --branch b --head "$AR_HE
 check "an unusable ambient round is ignored, not refused" "$?" "0"
 check "an unusable ambient round records no adjudication round" "$(L="$ARL" node -e 'const r=require("fs").readFileSync(process.env.L,"utf8").trim().split("\n").map(JSON.parse);const a=r.filter(x=>x.kind==="amend").pop();console.log(String(a.disposition_round))')" "undefined"
 
-# ── HIMMEL-3104: `score` kind — one row per COMPLETED critic run, carrying the
+# ── `score` kind — one row per COMPLETED critic run, carrying the
 # verdict counts and the durable raw-response path; never deduped.
 SC="$tmp/score.jsonl"
 SC_HEAD=$(printf '%040d' 3104)
@@ -1282,7 +1281,7 @@ CR_LEDGER="$SC" bash "$LA" score --head "$SC_HEAD" --model codex --critical x --
 check "score with a non-integer count is refused (rc 2)" "$?" "2"
 check "refused score writes nothing" "$(grep -c '"kind":"score"' "$SC")" "2"
 
-# ── HIMMEL-3204: the JS program must reach node on stdin, never as argv ──────
+# ── the JS program must reach node on stdin, never as argv ──────
 # The writer's ~37 KB program used to be `node -e '<program>'`: on Windows a
 # command line is capped at 32,767 chars, so every ledger write died with
 # "Argument list too long" and the CR gate lost its evidence store. This shim
@@ -1321,7 +1320,7 @@ printf 'garbage that must not be run as JS\n' | PATH="$E2/bin:$PATH" CR_LEDGER="
 check "a piped caller stdin is ignored, not run as the program" "$(grep -c '"finding_id":"e-3"' "$E2L")" "1"
 check "no argv-cap error reached the caller" "$(grep -c 'Argument list too long' "$tmp/e2big.err")" "0"
 
-# ── HIMMEL-3207: a scheme word split from its secret by a CR/LF run ─────────
+# ── a scheme word split from its secret by a CR/LF run ─────────
 # The per-character flatten turns `Bearer\r\n<tok>` into `Bearer  <tok>` (TWO
 # spaces); the scrub patterns used to expect exactly one, so the raw token was
 # persisted (the ledger is mirrored into handover notes). The scrub patterns now
@@ -1363,7 +1362,7 @@ check "control: prose mentioning Bearer / a bare numeric id is byte-identical" "
 crlf_add CN4 "a"$'\r\n'"b"$'\n\n'"c"
 check "control: a plain CRLF/LF run still flattens per character (no re-spacing)" "$(crlf_text CN4)" "a  b  c"
 
-# ── HIMMEL-3207 (2nd site): batch spec.detail took no scrub/flatten/cap ─────
+# ── Batch spec.detail takes the same scrub/flatten/cap ─────
 # The batch producer path stored spec.detail raw, while argv --detail is
 # flattened -> scrubbed -> capped at 200. Same treatment now, JS twin of the shell.
 CRDH=$(printf '%040d' 32071); CRDF="$tmp/crlf-batch-detail.jsonl"
@@ -1376,8 +1375,8 @@ check "control: batch spec.detail with no secret is byte-identical" "$(crlf_bdet
 check "batch spec.detail is capped at 200 like argv --detail" "$(crlf_bdetail cd-4 | tr -d '\n' | wc -c | tr -d ' ')" "200"
 check "batch spec.detail flattens an embedded newline like argv --detail" "$(crlf_bdetail cd-5)" "line one line two"
 
-# ── HIMMEL-3209: reason / deferred_to were the free-text fields #899 left raw ─
-# Since HIMMEL-3124 legs write free-text dispositions into `reason` and
+# ── reason / deferred_to were the free-text fields #899 left raw ─
+# Legs write free-text dispositions into `reason` and
 # `deferred_to` routinely, and the ledger is mirrored into handover notes. Every
 # entry point that stores either field now takes the same flatten -> scrub as
 # --detail. Entry points: batch spec.reason, batch spec.deferred_to, argv
@@ -1429,7 +1428,7 @@ CR_LEDGER="$RSL" bash "$LA" delegation --branch b --head "$RSH" --reason "handed
 check "argv delegation --reason: Bearer<tok> is redacted" "$(rs_field delegation - reason)" "handed off Bearer [REDACTED]"
 check "no raw token reached the ledger file at any entry point" "$(grep -c "$_c_tok" "$RSL")" "0"
 
-# ── HIMMEL-3340: a `disproved` verdict whose evidence is a shell/platform
+# ── a `disproved` verdict whose evidence is a shell/platform
 # measurement must name the binary AND version it ran against. An agreed
 # verdict that is wrong costs a wasted fix; a disproved one that is wrong closes
 # the question for good (four dash-drops-dot-operands rows were disproved on a
@@ -1483,7 +1482,7 @@ CR_LEDGER="$DB" bash "$LA" finding --branch b --head DBG2 --model codex --id cod
 check "control: finding --verdict disproved naming dash 0.5.13.4-1.1 is accepted" "$?" "0"
 check "the amend rows that were accepted are exactly the 13 controls" "$(db_rows)" "13"
 
-# ── HIMMEL-3357: follow-ups to the bar. (1) the version check is per OCCURRENCE,
+# ── follow-ups to the bar. (1) the version check is per OCCURRENCE,
 # not per name; (3) a `finding --batch-file` spec row is held to the same bar; (2)
 # an `amend` to disproved whose FINDING names a shell/platform must carry evidence
 # naming each such shell with a version - the generic step-4.5 reason no longer
@@ -1554,7 +1553,7 @@ check "every shell the finding names needs a version in the evidence (dash + bas
 CR_LEDGER="$PA" bash "$LA" amend --branch b --head PAH --id codex-4 --set verdict=agreed --reason "adjudicated by /pr-check step 4.5" 2>"$tmp/pa.err"
 check "control: agreed on a finding that names a shell keeps the generic reason" "$?" "0"
 
-# ── HIMMEL-3373: the claim check compares VERSIONS, not just names. A finding
+# ── the claim check compares VERSIONS, not just names. A finding
 # that names bash 3.2 is not answered by evidence measured on bash 5.3.
 PV="$tmp/disproval-version.jsonl"; : > "$PV"
 pv_finding() { CR_LEDGER="$PV" bash "$LA" finding --branch b --head PVH --model codex --id "codex-$1" --severity imp --file f --line 3 --verdict "" --text "$2"; }
@@ -1592,7 +1591,7 @@ check "version: control - both named versions covered is accepted" "$?" "0"
 pv_amend 7 "measured on dash 0.5.13.4-1.1: count=0"
 check "version: control - dash 0.5.13 finding vs dash 0.5.13.4-1.1 evidence (same major.minor) is accepted" "$?" "0"
 
-# ── HIMMEL-4604: the single-row finding verb holds verdict and branch to the
+# ── the single-row finding verb holds verdict and branch to the
 # batch writers' bar. A verdict outside the lowercase set is refused (gate 4d
 # compares lowercase), and a missing --branch is stamped with the current
 # branch; with no branch to stamp (detached HEAD) the row is refused.
@@ -1612,7 +1611,7 @@ check "the refused empty-branch row wrote nothing" "$(grep -c '"head":"VB3"' "$V
 CR_LEDGER="$VB" bash "$LA" finding --branch b --head VB4 --model m --id vb-5 --severity major --file f --line 1
 check "control: finding with no --verdict (unadjudicated) is accepted" "$?" "0"
 
-# ── HIMMEL-5155: a fresh finding append prints one confirmation line (the AG-UI
+# ── a fresh finding append prints one confirmation line (the AG-UI
 # journal mapper keys on it); a dedup no-op or a refusal prints none.
 CF="$tmp/confirm.jsonl"
 CR_LEDGER="$CF" bash "$LA" finding --branch b --head CFX1 --model m --id cf-1 --severity imp --file f --line 1 --verdict agreed 2>"$tmp/cf1.err"

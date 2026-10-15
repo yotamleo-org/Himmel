@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-fleet-reservation-key.sh — HIMMEL-3014 + HIMMEL-3017. Pins the ONE
+# test-fleet-reservation-key.sh. Pins the ONE
 # source of truth for a fleet reservation's on-disk key
 # (scripts/lib/fleet-reservation-key.sh): bank-preflight.sh reserves under it
 # and arm-resume.sh releases by it, so the two can never disagree.

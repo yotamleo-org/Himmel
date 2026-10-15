@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/impacted-selection.sh — HIMMEL-3897 (HIMMEL-3815 slice G).
+# scripts/ci/impacted-selection.sh
 #
 # Decides, for one PR run, whether the fixed shell-unit shards run the FULL
 # corpus or only the IMPACTED suites, and prints the decision as a manifest
@@ -12,8 +12,8 @@
 # (scripts/cr/impacted-suites.sh + its anchor hand-off) into a temp dir and
 # execs THAT copy, which makes the decision. A PR therefore cannot narrow its
 # own selection except by editing one of those files — and every one of them
-# is a trust path, which forces `full` here and a trust-reviewed GO at merge
-# (HIMMEL-3895). A base that predates this script decides `full`.
+# is a trust path, which forces `full` here and a trust-reviewed GO at merge.
+# A base that predates this script decides `full`.
 #
 # Output, one `key value` per line, in this order:
 #   mode full|impacted
@@ -88,7 +88,7 @@ fi
 
 # ---- decision (running from the base extraction) ----------------------------
 tools="$IMPSEL_BASE_TOOLS"
-# HIMMEL-4997: -z, because without it git C-quotes a name holding a double quote,
+# -z, because without it git C-quotes a name holding a double quote,
 # backslash or tab, the anchored trust match below misses it and the PR stays on
 # the impacted path. The NUL list feeds the trust match; tr makes the
 # one-per-line copy the verdict prints.
@@ -101,7 +101,7 @@ changed=$(tr '\0' '\n' < "$tools/changed.z")
 trust_re=$(grep -vE '^[[:space:]]*(#|$)' "$tools/scripts/ci/ci-trust-paths.txt" 2>/dev/null) || trust_re=""
 [ -n "$trust_re" ] || verdict_full "trust-list-empty" "$base_sha" "$selector_blob"
 # grep: 0 = a trust path changed, 1 = none did, anything else = broken list.
-# HIMMEL-5174: create the output first in a checked step. A redirect that cannot
+# Create the output first in a checked step. A redirect that cannot
 # open its target is also rc 1, which the case below reads as "no trust path".
 : > "$tools/hits.z" || verdict_full "trust-match-failed" "$base_sha" "$selector_blob"
 grep -z -E -f <(printf '%s\n' "$trust_re") "$tools/changed.z" > "$tools/hits.z"; grc=$?

@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# test-detach.sh — regression test for scripts/lib/detach.sh (HIMMEL-623).
+# test-detach.sh — regression test for scripts/lib/detach.sh.
 #
 # Usage: bash scripts/lib/test-detach.sh
 #
 # Guards the two properties detach_run must hold so a SessionEnd hook never
 # overruns its budget (the recurring "Hook cancelled"):
 #   1. detach_run RETURNS IMMEDIATELY — independent of how long the child runs.
-#      The HIMMEL-623 bug: on MSYS (no setsid) the old ( cmd & ) double-fork let
+#      The bug: on MSYS (no setsid) the old ( cmd & ) double-fork let
 #      the shell INTERMITTENTLY wait for the backgrounded child at exit, so a
 #      slow child blocked the caller. `disown` removes the job from the shell's
 #      table so neither the call nor the caller's exit waits for it.
 #   2. The child STILL RUNS to completion after the caller returns (detach must
 #      not drop the work — the refresh/crystallization has to land).
 #
-# The caller-returns cases assert ORDERING, not a wall-clock bound (HIMMEL-2472):
+# The caller-returns cases assert ORDERING, not a wall-clock bound:
 # the child is held on a release file the test only creates AFTER the caller has
 # come back, so "the caller did not wait" reads as "the child's completion marker
 # is still absent on return". A blocking detach never sees the release, so the
@@ -61,7 +61,7 @@ else
 fi
 
 # --- Case 3: a CALLER THAT EXITS does not wait for the child (the real bug) ---
-# HIMMEL-623 manifests at shell EXIT, not at the detach_run call (the old
+# The bug manifests at shell EXIT, not at the detach_run call (the old
 # ( cmd & ) double-fork also returned from the call immediately). The meaningful
 # guard is: a child shell that sources the lib, detach_runs a slow child, and
 # EXITS must terminate FAST — independent of the child's duration. We force the
@@ -86,7 +86,7 @@ else
     fail "no-setsid fallback: child never completed (disown dropped the work)"
 fi
 
-# --- Case 4: HIMMEL_DETACH_INLINE runs the work SYNCHRONOUSLY (HIMMEL-2004) ---
+# --- Case 4: HIMMEL_DETACH_INLINE runs the work SYNCHRONOUSLY ---
 # The bounded Stop worker sets this on every job it runs. If detach_run kept
 # detaching under it, the queued work would escape the worker the moment it
 # started and the concurrency bound would buy nothing. So here the marker MUST
@@ -102,7 +102,7 @@ else
     fail "HIMMEL_DETACH_INLINE=1 still detached — queued work escapes the concurrency bound"
 fi
 
-# --- Case 5: detach_queued enqueues instead of spawning a tree (HIMMEL-2004) --
+# --- Case 5: detach_queued enqueues instead of spawning a tree --
 # The whole point of the queue: N callers leave N entries for ONE worker rather
 # than N independent trees. Point the queue at a scratch dir so the real one is
 # untouched, and assert the call ENQUEUED rather than spawning its own child.

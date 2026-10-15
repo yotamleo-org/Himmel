@@ -3,14 +3,14 @@
 #
 # -WithJira      : require Jira configuration — abort if JIRA_PROJECT_KEY is
 #                  unset. Without the switch the check downgrades to a skip
-#                  notice (HIMMEL-285).
+#                  notice.
 # -WithGraphify  : install the graphify knowledge-graph CLI (himmel fork) at
 #                  the end of setup. Without the switch, interactive shells
 #                  prompt; non-interactive shells skip. Adoption verdict is
-#                  still open (HIMMEL-621) — this only installs the CLI.
+#                  still open — this only installs the CLI.
 # -FillEnv  : after creating .env, interactively prompt for each must-set value
 #             (Enter to skip). Non-interactive shells no-op. Shells out to the
-#             bash fill-env.sh (Git Bash verified in [0/9]). (HIMMEL-453)
+#             bash fill-env.sh (Git Bash verified in [0/9]).
 
 [CmdletBinding()]
 param(
@@ -19,7 +19,7 @@ param(
     [switch]$FillEnv
 )
 
-# $RepoRoot is resolved AFTER the [0/9] preflight (R6, HIMMEL-460): the preflight
+# $RepoRoot is resolved AFTER the [0/9] preflight: the preflight
 # may auto-install git, so `git rev-parse` must not run before it.
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -30,14 +30,14 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 trap { Write-Host "setup interrupted: $_" -ForegroundColor Red; exit 1 }
 
 Write-Host "==> himmel setup"
 Write-Host ""
 
-# --- prereq verify (HIMMEL-123) ---
+# --- prereq verify ---
 # Fail fast with install hints. PowerShell setup runs only the
 # PS-friendly path (pre-commit + jira plugin); operator-facing tooling
 # expects Git Bash for the bash-driven scripts. We still verify the
@@ -54,7 +54,7 @@ $hints = @{
     'gh'      = 'https://cli.github.com (GitHub CLI v2.x)'
     'bash'    = 'Install Git for Windows (Git Bash) — most operator scripts need bash'
 }
-# Reject the Windows Store "App Execution Alias" stubs (HIMMEL-499): a fresh
+# Reject the Windows Store "App Execution Alias" stubs: a fresh
 # Windows ships 0-byte python/python3 reparse points under WindowsApps that print
 # "Python was not found ... Microsoft Store" and exit non-zero. Get-Command finds
 # them, so python looks present, then `python -m pip` fails downstream. Treat a
@@ -71,9 +71,9 @@ foreach ($tool in @('git', 'node', 'npm', 'bun', 'python', 'jq', 'gh', 'bash')) 
     }
 }
 
-# R6 (HIMMEL-460): best-effort FETCH of the auto-installable missing tools via
+# R6: best-effort FETCH of the auto-installable missing tools via
 # winget -> scoop -> choco BEFORE failing. node/npm/bun ARE winget-installable
-# (HIMMEL-499) so a clean PS+winget box can complete setup; npm ships with node.
+#  so a clean PS+winget box can complete setup; npm ships with node.
 # Mirrors setup.sh's ensure-tools step. NOTE: the check below is a HARD exit, not
 # a soft flag — a still-missing required tool aborts setup.
 if ($missing.Count -gt 0) {
@@ -108,7 +108,7 @@ if ($missing.Count -gt 0) {
                 Write-Host "    $installer install '$tool' failed — install it manually." -ForegroundColor Yellow
             }
         }
-        # winget/scoop/choco do NOT update the running process PATH (HIMMEL-499 F3) —
+        # winget/scoop/choco do NOT update the running process PATH —
         # re-hydrate from the registry so the re-check below sees freshly-installed tools.
         $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
         # Git for Windows ships bash.exe in its bin\ but does NOT add it to PATH, and a
@@ -129,7 +129,7 @@ if ($missing.Count -gt 0) {
             $env:Path = "$gitBin;$env:Path"
         }
         # winget's real Python may land behind the WindowsApps stub in PATH order;
-        # prepend the real install dir so `python` resolves to it (HIMMEL-499 F4).
+        # prepend the real install dir so `python` resolves to it.
         $realPy = Get-Command python -All -ErrorAction SilentlyContinue |
             Where-Object { $_.Source -notlike '*\WindowsApps\*' } | Select-Object -First 1
         if ($realPy) {
@@ -153,10 +153,10 @@ if ($missing.Count -gt 0) {
 Write-Host "  All foundational tools present."
 Write-Host ""
 
-# --- repo root (relocated past the preflight — R6, HIMMEL-460) ---
+# --- repo root (relocated past the preflight — R6) ---
 # git is now guaranteed present; safe to resolve the checkout root. Resolve from
 # the SCRIPT's own location ($PSScriptRoot = scripts/), not the caller's cwd, so
-# setup works when invoked from anywhere (HIMMEL-499 F5).
+# setup works when invoked from anywhere.
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 if (-not $RepoRoot) { $RepoRoot = Split-Path -Parent $PSScriptRoot }
 Set-Location $RepoRoot
@@ -171,7 +171,7 @@ if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
     Write-Host ""
 }
 
-# --- JIRA_PROJECT_KEY verify (HIMMEL-146; gated per HIMMEL-285) ---
+# --- JIRA_PROJECT_KEY verify ---
 # Mirrors scripts/setup/check-jira-key.sh: hard-fail only with -WithJira.
 Write-Host "[0.4/9] Verifying JIRA_PROJECT_KEY..."
 if ($env:JIRA_PROJECT_KEY) {
@@ -240,10 +240,10 @@ if (Get-Command node -ErrorAction SilentlyContinue) {
 # Honors $env:BUN_INSTALL for relocated bun roots, matching the bash lib.
 $QmdBunRoot = if ($env:BUN_INSTALL) { $env:BUN_INSTALL } else { Join-Path $HOME '.bun' }
 $QmdBunJs = Join-Path $QmdBunRoot 'install\global\node_modules\@tobilu\qmd\dist\cli\qmd.js'
-# HIMMEL-877: qmd installs from a local clone of the carried fork
-# yotamleo/qmd (HIMMEL-3956: launcher signal forwarding, until tobi/qmd#1030
-# merges -- HIMMEL-3982 pins back to upstream tobi/qmd), pinned to an immutable commit SHA rather than a mutable
-# branch (HIMMEL-911), never `bun add -g @tobilu/qmd` directly (EPERM-wedges
+# qmd installs from a local clone of the carried fork
+# yotamleo/qmd (launcher signal forwarding, until tobi/qmd#1030
+# merges -- an earlier change pins back to upstream tobi/qmd), pinned to an immutable commit SHA rather than a mutable
+# branch, never `bun add -g @tobilu/qmd` directly (EPERM-wedges
 # on this project's machines; bun blocks its postinstall script).
 # scripts/lib/qmd-bin.sh is the single chokepoint for the clone+build+link
 # recipe.
@@ -273,13 +273,13 @@ Write-Host "[4/9] Registering qmd collection 'himmel'..."
 # ONE Git Bash resolution for every `bash <script>` this installer runs below.
 # [0/9] only proves SOME bash is on PATH, and on Windows a bare `bash` resolves
 # to the System32 WSL stub, which cannot read a C:/... path at all -- the
-# -notmatch clause rejects it on the fallback path (HIMMEL-1992; same rule as
+# -notmatch clause rejects it on the fallback path (same rule as
 # the -FillEnv block below and docs/internals/environment-gotchas.md).
 $GitBash = "C:\Program Files\Git\bin\bash.exe"
 if (-not (Test-Path $GitBash)) {
     # -All, not the first hit: when the System32 stub LEADS PATH, a real Git
     # Bash further down is still usable, and taking only the first match would
-    # conclude "no Git Bash" and skip every step below (CR round 1, codex-3).
+    # conclude "no Git Bash" and skip every step below.
     # Same idiom this script already uses for the WindowsApps python stub.
     $bc = Get-Command bash -All -ErrorAction SilentlyContinue |
         Where-Object { $_.Source -and $_.Source -notmatch 'System32|Sysnative|WindowsApps' } |
@@ -287,7 +287,7 @@ if (-not (Test-Path $GitBash)) {
     $GitBash = if ($bc) { $bc.Source } else { $null }
 }
 # Neutralize the broken qmd plugin-cache stub first so plain `qmd` works
-# inside Claude's Bash tool too (HIMMEL-163). The fixer is bash. Native exe
+# inside Claude's Bash tool too. The fixer is bash. Native exe
 # non-zero exits do NOT throw in pwsh -- check $LASTEXITCODE explicitly.
 if ($GitBash) {
     & $GitBash "$RepoRoot/scripts/lib/fix-qmd-stub.sh"
@@ -333,7 +333,7 @@ if (-not (Test-Path ".env")) {
 } else {
     Write-Host "  .env already exists -- skipping"
 }
-# -FillEnv (HIMMEL-453): prompt for the must-set values via the bash fill-env.sh
+# -FillEnv: prompt for the must-set values via the bash fill-env.sh
 # (one implementation). Default-off; non-interactive shells no-op inside
 # fill-env.sh. $GitBash comes from the single resolution at [4/9] -- same rule
 # as that block: a bare `bash` on Windows often resolves to the System32 WSL
@@ -359,7 +359,7 @@ if ($FillEnv -and (Test-Path ".env")) {
 }
 
 # --- handover root ---
-# Reports where Claude will read/write handover state (per HIMMEL-118
+# Reports where Claude will read/write handover state (
 # resolver). Bash-only -- shells out to scripts/handover-link.sh via
 # Git for Windows bash. Skipped with a note if bash is unavailable.
 #
@@ -376,7 +376,7 @@ Write-Host "[6/9] Handover root check..."
 # $GitBash comes from the single resolution at [4/9]. This block used to
 # re-resolve it WITHOUT the System32 filter, so on a WSL box it could hand this
 # check the stub -- which exits 127 on the C:/ script path and reads as a
-# handover misconfig (HIMMEL-1992).
+# handover misconfig.
 if ($GitBash) {
     # Pass the script as an argument (bash <script> <args>) rather than
     # via `-c "bash '$script' doctor"` -- the latter spawns a redundant
@@ -385,7 +385,7 @@ if ($GitBash) {
     # doesn't need the file to have execute bits (Windows NTFS lacks
     # them anyway).
     $HandoverScript = (Join-Path $RepoRoot "scripts\handover-link.sh").Replace('\', '/')
-    # EAP-relax + try/finally (HIMMEL-150 back-port from luna-brain).
+    # EAP-relax + try/finally (back-port from luna-brain).
     # Under $ErrorActionPreference='Stop' (set at the top of this script),
     # bash stderr captured via 2>&1 surfaces as a terminating PS ErrorRecord
     # and trips the trap. Relax EAP for the bash invocation only; wrap in
@@ -413,7 +413,7 @@ if ($GitBash) {
 
 Write-Host ""
 
-# --- telegram onboarding (HIMMEL-227) ---
+# --- telegram onboarding ---
 # Scaffold-only: creates the channel dir + bot-token .env template, reports
 # pairing/bridge status, prints the operator next-steps. It NEVER writes
 # access.json and NEVER starts the bridge (operator-managed -- injection
@@ -432,7 +432,7 @@ try {
 }
 Write-Host ""
 
-# --- Claude plugins (HIMMEL-359) ---
+# --- Claude plugins ---
 # The standalone-himmel path (this script) is what README + getting-started
 # point new users at, then tell them to run /handover — so it installs the
 # marketplace plugins (handover, triage, obsidian, …), not just the repo
@@ -456,7 +456,7 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
 }
 Write-Host ""
 
-# --- statusline + HIMMEL_REPO (HIMMEL-359 / HIMMEL-453) ---
+# --- statusline + HIMMEL_REPO ---
 # Wire the himmel statusline AND env.HIMMEL_REPO into ~/.claude/settings.json via
 # the shared helpers. Both write settings.json, need no claude binary, idempotent.
 Write-Host "[9/9] Wiring statusline + HIMMEL_REPO + UNIVERSAL hooks (user scope)..."
@@ -474,12 +474,12 @@ try {
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  WARNING: wire-himmel-repo failed; setup continues." -ForegroundColor Yellow
     }
-    # R3 (HIMMEL-460): wire the UNIVERSAL hooks (PreToolUse trio + SessionStart
+    # R3: wire the UNIVERSAL hooks (PreToolUse trio + SessionStart
     # inject-initiative) at USER scope so a session launched anywhere gets them.
     . (Join-Path $RepoRoot "scripts\lib\wire-pretooluse-hooks.ps1")
     try { Set-PretooluseHooks -SettingsPath $settingsJson -Prefix $RepoRoot } catch { Write-Host "  WARNING: wire-pretooluse-hooks failed; setup continues." -ForegroundColor Yellow }
     try { Set-SessionStartHook -SettingsPath $settingsJson -Prefix $RepoRoot -HookBasename 'inject-initiative.sh' } catch { Write-Host "  WARNING: wire SessionStart inject-initiative failed; setup continues." -ForegroundColor Yellow }
-    # R4 (HIMMEL-460): advise on user/project hook duplication (silent in-repo).
+    # R4: advise on user/project hook duplication (silent in-repo).
     & pwsh -NoProfile -File (Join-Path $RepoRoot "scripts\lib\detect-hook-dup.ps1") `
         -UserSettings $settingsJson -ProjectSettings (Join-Path $RepoRoot ".claude\settings.json") -HimmelRoot $RepoRoot
 } finally {
@@ -487,10 +487,10 @@ try {
 }
 Write-Host ""
 
-# --- graphify (knowledge-graph CLI) -- OPTIONAL (HIMMEL-891) ---
+# --- graphify (knowledge-graph CLI) -- OPTIONAL ---
 # Opt-in only. Triggered by -WithGraphify OR interactive prompt (default N).
 # Non-interactive shells without the switch skip silently. Adoption verdict
-# stays open (HIMMEL-621); this only installs
+# stays open; this only installs
 # the CLI (delegates to the ONE bash implementation, scripts/lib/graphify-bin.sh
 # -- Git Bash is a verified [0/9] prereq, so it is always present here).
 #
@@ -523,7 +523,6 @@ if ($installGraphify) {
     try {
         # $GitBash (resolved once at [4/9]) -- never a bare `bash`, which on
         # Windows is the System32 WSL stub and exits 127 on this C:/ path
-        # (HIMMEL-1992).
         if (-not $GitBash) {
             Write-Host "  WARNING: Git Bash not found; skipping the graphify install." -ForegroundColor Yellow
             Write-Host "  Retry manually: bash `"$RepoRoot/scripts/lib/graphify-bin.sh`" install" -ForegroundColor Yellow
@@ -534,10 +533,10 @@ if ($installGraphify) {
                 Write-Host "  Retry manually: bash `"$RepoRoot/scripts/lib/graphify-bin.sh`" install" -ForegroundColor Yellow
             } else {
                 # Register the MCP server so the install delivers the mcp__graphify__*
-                # tools, not just the CLI (HIMMEL-1047). user scope; delegates to the
+                # tools, not just the CLI. user scope; delegates to the
                 # ONE bash impl. WARN-not-fail; idempotent.
                 & $GitBash "$RepoRoot/scripts/lib/graphify-bin.sh" register-mcp user
-                # HIMMEL-2480: re-price the hook-guard entries the install just wrote.
+                # re-price the hook-guard entries the install just wrote.
                 & $GitBash "$RepoRoot/scripts/lib/graphify-bin.sh" price-hooks
             }
         }

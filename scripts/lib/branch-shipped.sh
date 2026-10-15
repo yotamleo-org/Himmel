@@ -4,7 +4,7 @@
 # Purpose:
 #   Provide branch_has_merged_pr <branch> <primary_worktree_dir>, a
 #   fail-open, timeout-bounded predicate consumed by:
-#     - the PreToolUse merged-PR commit guard (HIMMEL-512)
+# - the PreToolUse merged-PR commit guard
 #     - the worktree-create path (skip creating a worktree for a merged branch)
 #     - /himmel-doctor (C-series check)
 #

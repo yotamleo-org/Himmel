@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Platform guard (gitbash-only): bash + jq only.
 # test-provenance-identity.sh -- tests for scripts/lib/provenance-identity.sh
-# (HIMMEL-3525 S16): the live-identity reader for register-kind units. A stub
+# the live-identity reader for register-kind units. A stub
 # `qmd` first on PATH stands in for the registrar; BUN_INSTALL points at a
 # directory with no qmd.js so qmd_cmd always falls back to it. Scratch HOME,
 # nothing real is read or written.
@@ -93,7 +93,7 @@ for k in mcp unit tool; do
     check "kind $k has no reader -> no output" "$out" ""
 done
 
-# ── job (HIMMEL-3525 S18): cron only, one crontab -l snapshot per call ─────
+# ── job: cron only, one crontab -l snapshot per call ─────
 
 cat > "$td/bin/crontab" <<'CRON_STUB'
 #!/usr/bin/env bash
@@ -124,8 +124,8 @@ check "job, 2+ matching lines -> UNREADABLE (never guess which one)" "$(prov_ide
 unset CRONTAB_STUB_MODE CRONTAB_STUB_TABLE
 rm -f "$td/bin/crontab"
 
-# ── deferred from S17 round 3: _provid_marketplace's stype read must never
-# let a non-object .source crash the reader (HIMMEL-3525) ──────────────────
+# ── _provid_marketplace's stype read must never
+# let a non-object .source crash the reader ──────────────────
 
 mkt_dir="$td/mkt-cfg/plugins"; mkdir -p "$mkt_dir"
 printf '{"weird":{"source":"just-a-string"}}\n' > "$mkt_dir/known_marketplaces.json"

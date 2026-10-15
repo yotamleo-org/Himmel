@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/lib/user-slug.sh (HIMMEL-145).
+# Smoke test for scripts/lib/user-slug.sh.
 #
 # Covers:
 #   1. $USER_SLUG set -> resolver returns its value.
@@ -16,7 +16,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -73,7 +73,7 @@ export -f gh
 REPO="$TMP_ROOT/repo"
 git init -q "$REPO"
 ( cd "$REPO" && git config user.email "test@test.com" )
-# Forge seam (HIMMEL-326): source #2 resolves via forge_user_slug, which needs a
+# Forge seam: source #2 resolves via forge_user_slug, which needs a
 # resolvable forge. A github origin selects the github backend, whose
 # `gh api user` is the exported stub function below.
 git -C "$REPO" remote add origin https://github.com/test/test.git
@@ -156,7 +156,7 @@ assert_eq "verify gh rc=0" "0" "$rc"
 assert_contains "verify mentions forge source" "forge username via github CLI" "$out"
 assert_contains "verify reports gh slug" "octocat-hub" "$out"
 
-# Test 9: severity label on the unresolved diagnostic (HIMMEL-2537) ---
+# Test 9: severity label on the unresolved diagnostic ---
 # The default stays ERR so every pre-existing caller is unchanged; a caller
 # that CONTINUES past an unresolved slug passes WARN, because a block opening
 # with "ERR" above a run that then completes normally teaches the reader the

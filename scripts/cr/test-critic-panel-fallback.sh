@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/test-critic-panel-fallback.sh -- HIMMEL-729 quota-exhaustion fallback.
+# scripts/cr/test-critic-panel-fallback.sh -- quota-exhaustion fallback.
 # Focused tests for the panel's per-member QUOTA-EXHAUSTION -> OpenRouter
 # fallback + visible WARN (the consumer half of the alibaba quota guard).
 #
@@ -16,10 +16,10 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
-# Hermetic: the panel reads CR_PROFILE (HIMMEL-558). Clear ambient values so the
+# Hermetic: the panel reads CR_PROFILE. Clear ambient values so the
 # default free-tier path is used.
 unset CR_PROFILE CRITIC_PANEL_TIERS CRITIC_LEDGER_APPEND CR_LEDGER \
     CRITIC_FIRST_PASS CRITICS_JSON CRITIC_PARALLEL CRITIC_TIMEOUT_SECS \
@@ -38,12 +38,12 @@ LEDGER_NOOP="$tmp/ledger-noop.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$LEDGER_NOOP"
 chmod +x "$LEDGER_NOOP"
 export CRITIC_LEDGER_APPEND="$LEDGER_NOOP"
-# HIMMEL-3104: the panel's own ledger writes are stubbed above, but each real
+# the panel's own ledger writes are stubbed above, but each real
 # critic-first-pass.sh member writes a `score` row + raw response beside the
 # ledger — the PRODUCTION one (git common dir) unless CR_LEDGER is explicit.
 export CR_LEDGER="$tmp/cr-ledger.jsonl"
 
-# HIMMEL-2241: case 11 deliberately does NOT stub CRITIC_FIRST_PASS, so the
+# case 11 deliberately does NOT stub CRITIC_FIRST_PASS, so the
 # real critic-first-pass.sh -> scripts/hermes/invoke.sh chain runs and appends
 # flow-run rows. CRITIC_LEDGER_APPEND above stubs the CR-findings ledger, a
 # different file. Redirect the flow-run ledger into this test's scratch dir.
@@ -78,7 +78,7 @@ check_not_contains() {
 
 # skip <label> -- a case that could not run in this environment. Must NEVER
 # be reported with the "ok - " pass token: a skip credited as a pass hides
-# the fact that nothing was asserted (HIMMEL-2258 audit; HIMMEL-2226 fix).
+# the fact that nothing was asserted.
 skip() {
     echo "SKIP - $1"
     _skips=$((_skips + 1))
@@ -151,7 +151,7 @@ if [ "\$model" = "$PRI" ]; then
             exit 1 ;;
         alloctier)
             # Only the documented code — deliberately NO "quota…exhaust"
-            # wording, so this case fails without the HIMMEL-736 branch.
+            # wording, so this case fails without the alloctier branch.
             printf 'Error: 403 AllocationQuota.FreeTierOnly: the platform automatically stopped the service for this model\\n' >&2
             exit 1 ;;
         timeout)
@@ -236,7 +236,7 @@ check_contains "2: plain unavailable (rc=1)" "$stderr2" "panel-availability: qwe
 check_not_contains "2: NO WARN line" "$stderr2" "WARN critic-panel"
 check_not_contains "2: NO fallback token" "$stderr2" "fallback("
 check "2: fallback model NEVER invoked" "$fb_calls2" "0"
-# HIMMEL-1176: reason= is APPENDED after the untouched (rc=1) — a generic
+# reason= is APPENDED after the untouched (rc=1) — a generic
 # "connection refused" body matches no signature -> generic-rc-1.
 check_contains "2: reason=generic-rc-1 appended (HIMMEL-1176)" "$stderr2" \
     "panel-availability: qwen3coder unavailable (rc=1) reason=generic-rc-1"
@@ -251,7 +251,7 @@ check_contains "3: timeout-unavailable line" "$stderr3" "panel-availability: qwe
 check_not_contains "3: NO WARN line" "$stderr3" "WARN critic-panel"
 check_not_contains "3: NO fallback token" "$stderr3" "fallback("
 check "3: fallback model NEVER invoked on timeout" "$fb_calls3" "0"
-# HIMMEL-1176: rc 124/137 always classifies timeout, appended after the
+# rc 124/137 always classifies timeout, appended after the
 # existing "(timeout Ns)" wording.
 check_contains "3: reason=timeout appended (HIMMEL-1176)" "$stderr3" "reason=timeout"
 
@@ -270,15 +270,15 @@ check_contains "4: no-fallback row -> plain unavailable on exhaustion" "$stderr4
 check_not_contains "4: NO WARN line" "$stderr4" "WARN critic-panel"
 check "4: fallback model NEVER invoked when row has empty fallback_models" \
     "$(grep -cF -- "$FB" "$tmp/cap4")" "0"
-# HIMMEL-1176: the primary's own exhaustion-signature text classifies quota-5h
+# the primary's own exhaustion-signature text classifies quota-5h
 # even though no fallback ran (fallback_models empty gates only the retry).
 check_contains "4: reason=quota-5h appended (HIMMEL-1176)" "$stderr4" \
     "panel-availability: qwen3coder unavailable (rc=1) reason=quota-5h"
 
 # ===========================================================================
 # Case 5: GENERIC AccessDenied (auth/permission, e.g. Alibaba
-# AccessDenied.Unpurchased = service not activated) -> NO fallback (codex
-# adversarial CR on HIMMEL-729): falling back would mask a dead primary lane
+# AccessDenied.Unpurchased = service not activated) -> NO fallback:
+# falling back would mask a dead primary lane
 # as a healthy critic. AccessDenied counts only when PAIRED with an
 # exhaustion/quota/arrearage phrase.
 # ===========================================================================
@@ -290,8 +290,8 @@ check_not_contains "5: NO WARN line" "$stderr5" "WARN critic-panel"
 check_not_contains "5: NO fallback token" "$stderr5" "fallback("
 check "5: fallback model NEVER invoked on bare AccessDenied" \
     "$(grep -cF -- "$FB" "$tmp/cap5")" "0"
-# HIMMEL-1176: a bare (unpaired) AccessDenied classifies auth, never a quota
-# bucket — the same HIMMEL-729 pairing rule that gates the fallback trigger.
+# a bare (unpaired) AccessDenied classifies auth, never a quota
+# bucket — the same pairing rule that gates the fallback trigger.
 check_contains "5: reason=auth appended, NOT a quota class (HIMMEL-1176)" "$stderr5" \
     "panel-availability: qwen3coder unavailable (rc=1) reason=auth"
 
@@ -310,7 +310,7 @@ check "6: fallback invoked exactly once on paired AccessDenied" \
 
 # ===========================================================================
 # Case 7: Alibaba Stop-on-Exhaust 403 AllocationQuota.FreeTierOnly
-# (HIMMEL-736) — the documented free-tier-exhaustion code. Matches NO prior
+# — the documented free-tier-exhaustion code. Matches NO prior
 # branch (no "exceeded"/"exhaust" adjacency the old signature required in the
 # same clause, no AccessDenied) — must be recognised as exhaustion and fall
 # back ONCE to OpenRouter.
@@ -323,7 +323,7 @@ check "7: fallback invoked exactly once on FreeTierOnly" \
     "$(grep -cF -- "$FB" "$tmp/cap7")" "1"
 
 # ===========================================================================
-# HIMMEL-737 fallback CHAIN (ordered fallback_models array). Cases 1-7 above
+# fallback CHAIN (ordered fallback_models array). Cases 1-7 above
 # already exercise the LEGACY single-string fallback_model -> 1-element-chain
 # path (the $JSON fixture uses "fallback_model"), so legacy back-compat is
 # covered. Cases 8-10 below exercise a 2-element chain.
@@ -415,7 +415,7 @@ check_contains "10: exhausted -> unavailable (primary rc preserved)" "$stderr10"
 check "10: each fallback invoked exactly once" \
     "$([ "$(grep -cF -- "$FB1" "$tmp/cap10")" = "1" ] && [ "$(grep -cF -- "$FB2" "$tmp/cap10")" = "1" ] && echo ok)" "ok"
 check "10: all-exhausted -> exit 1" "$rc10" "1"
-# HIMMEL-1176: an exhausted fallback chain keeps the PRIMARY's reason
+# an exhausted fallback chain keeps the PRIMARY's reason
 # (the primary always quota-exhausts in this stub -> quota-5h), never the
 # last fallback attempt's, plus a detail note that the chain was exhausted.
 check_contains "10: chain-exhausted keeps the PRIMARY's reason=quota-5h" "$stderr10" \
@@ -459,14 +459,14 @@ if [ -n "$_TIMEOUT_BIN" ]; then
         "$([ "$(grep -cF -- "$FB1" "$tmp/cap10p")" = "1" ] && [ "$(grep -cF -- "$FB2" "$tmp/cap10p")" = "1" ] && echo ok)" "ok"
     check "10p: parallel all-exhausted -> exit 1" "$rc10p" "1"
 else
-    # HIMMEL-2226 (HIMMEL-2258 audit): this branch used to emit the "ok - "
-    # pass token, so a runner without GNU timeout silently credited 10 passes
-    # for assertions that never ran. Route through skip() instead.
+    # Never emit the "ok - " pass token here: a runner without GNU timeout
+    # would silently credit 10 passes for assertions that never ran. Route
+    # through skip() instead.
     for _i in 1 2 3 4 5 6 7 8 9 10; do skip "9p/10p case $_i: no timeout binary"; done
 fi
 
 # ===========================================================================
-# Case 11 (HIMMEL-737 integration): quota text reaches the signature END TO
+# Case 11: quota text reaches the signature END TO
 # END through the REAL critic-first-pass.sh. The provider 403 arrives as the
 # member's "review" BODY (rc 0, malformed) - before the cfp raw-head stderr
 # fix the exhaustion text was buried in a temp file and the chain stayed dark.
@@ -505,11 +505,11 @@ check_contains "11: responded 1/1 through the real cfp path" "$out11" "(1/1 crit
 check "11: exactly 2 invoke calls (primary + one fallback)" "$(cat "$INT_CNT")" "2"
 
 # ===========================================================================
-# Case 11b (HIMMEL-3109): a codex-shaped 401/token_expired auth failure,
+# Case 11b: a codex-shaped 401/token_expired auth failure,
 # preceded by a >300-byte hermes gateway banner, must reach the ledger as
 # reason=auth end to end through the REAL critic-first-pass.sh -> invoke.sh
 # chain (seam = HERMES_PY, as in case 11) - not reduced to malformed-output.
-# Before HIMMEL-3109, this exact shape (a banner pushing the decisive "401"
+# Without the fix, this exact shape (a banner pushing the decisive "401"
 # line past critic-first-pass.sh's old 300-char HEAD excerpt) classified
 # malformed-output; the RED-control block right after this case proves that
 # on this same payload against the pre-fix file.
@@ -535,7 +535,7 @@ check_contains "11b: e2e real 401 payload (banner-padded past old 300c bound) ->
 check_not_contains "11b: NOT reduced to malformed-output" "$stderr11b" "reason=malformed-output"
 
 # ===========================================================================
-# Case 11c (HIMMEL-3109): hermes returns rc=0 with a WHOLLY EMPTY body on all
+# Case 11c: hermes returns rc=0 with a WHOLLY EMPTY body on all
 # 3 retry attempts. rc=0 must not be trusted as success, and an empty body
 # must not be misread as malformed-output either - failure-classify.sh's own
 # "invoke failed (rc=0)" marker (critic-first-pass.sh's fail-open text on
@@ -560,12 +560,11 @@ check_not_contains "11c: NOT reported ok (rc=0 is not trusted as success)" "$std
     "panel-availability: qwen3coder ok"
 
 # ===========================================================================
-# Case 11d/11e (HIMMEL-3105 + HIMMEL-3119): a sole-critic, no-fallback lane
-# whose HTTP 429 prose body reaches the ledger avail row. HIMMEL-3119's
-# primary-path wiring (process_member's no-fallback branch classifying the
-# primary attempt's captured files) was already correct after
-# HIMMEL-3109/3110 - the single-line 429 body classifies quota-5h (verified
-# 2026-09-18 before this change). Two narrower residuals remained and are
+# Case 11d/11e: a sole-critic, no-fallback lane
+# whose HTTP 429 prose body reaches the ledger avail row. The primary-path
+# wiring (process_member's no-fallback branch classifying the
+# primary attempt's captured files) is correct for the single-line 429 body,
+# which classifies quota-5h. Two narrower residuals are
 # pinned here through the REAL critic-first-pass.sh -> invoke.sh chain
 # (seam = HERMES_PY, as in cases 11b/11c):
 #   11d - the decisive 429 line sits OUTSIDE critic-first-pass.sh's 2000-byte
@@ -616,7 +615,7 @@ check_not_contains "11e: detail is NOT the trailing support prose" \
     "$stderr11e" "reason=quota-5h: Contact support if this persists."
 
 # ===========================================================================
-# HIMMEL-953: fallback_trigger="any" widens the retry condition to ANY
+# fallback_trigger="any" widens the retry condition to ANY
 # non-zero rc (incl. timeout), not just a quota-exhaustion signature match —
 # opt-in per row (e.g. the qwenor seat, whose whole chain is same-tier
 # OpenRouter free candidates: a plain rate-limit on one candidate is reason
@@ -666,7 +665,7 @@ check_contains "15: exhausted timeout+any -> unavailable keeps timeout wording" 
     "panel-availability: qwen3coder unavailable (timeout"
 check "15: fallback attempted exactly once on exhausted timeout+any" "$(grep -cF -- "$FB" "$tmp/cap15")" "1"
 
-# --- Case 16 (codex-adv, HIMMEL-953): a chain of HUNG candidates shares ONE
+# --- Case 16: a chain of HUNG candidates shares ONE
 # seat budget — total fallback wall-clock is bounded by CRITIC_TIMEOUT_SECS
 # and candidates past the budget are SKIPPED, not each handed a fresh full
 # member timeout (4x240s stacking risk in sequential mode). ---
@@ -697,7 +696,7 @@ STUBEOF
     check_contains "16: budget-exhausted line after a hung candidate" "$stderr16" \
         "fallback-chain budget exhausted"
     check "16: candidate past the budget skipped (never invoked)" "$(grep -cF -- "$FB2" "$tmp/cap16")" "0"
-    # HIMMEL-2296: the no-stacking invariant is proven STRUCTURALLY — by how
+    # the no-stacking invariant is proven STRUCTURALLY — by how
     # many candidates the stub was actually handed — not by wall clock. Correct
     # behaviour invokes exactly two: $PRI (fails fast) then $FB (hangs, killed
     # on the shared seat budget). A chain handing each candidate a fresh full
@@ -708,7 +707,7 @@ STUBEOF
     # detector: reproduced 25-34s on an idle-extracted repro of this one case.
     check "16: exactly primary + one fallback attempted (no chain stacking)" \
         "$(grep -c . "$tmp/cap16")" "2"
-    # RESIDUAL, stated rather than papered over (panel round 2, codex-2): the
+    # RESIDUAL, stated rather than papered over: the
     # count proves at most primary+one fallback were ATTEMPTED, which catches
     # the documented regression (a fresh full timeout per candidate lets the
     # chain reach FB2, giving three lines). It does NOT by itself prove the
@@ -733,11 +732,11 @@ STUBEOF
     check_contains "16: member ends unavailable" "$stderr16" \
         "panel-availability: qwen3coder unavailable"
 else
-    # HIMMEL-2226 (HIMMEL-2258 audit): was "ok - " (a silently-credited pass).
+    # was "ok - " (a silently-credited pass).
     skip "16: no timeout binary"
 fi
 
-# --- Case 17 (codex-adv, HIMMEL-953): fallback attempts PRESERVE the row's
+# --- Case 17: fallback attempts PRESERVE the row's
 # route_provider — an all-OpenRouter chain must not fall back name-routed
 # (":free" ids are unresolvable without --provider openrouter). ---
 JSON_RP="$tmp/critics-rp.json"
@@ -766,7 +765,7 @@ check "17: fallback invocation carries the row's route_provider" \
 check_contains "17: fallback succeeded through the routed provider" "$(cat "$tmp/err17")" \
     "panel-availability: qwenor fallback($FB)"
 
-# --- Case 18 (codex-adv, HIMMEL-953): PARALLEL mode — each member's fallback
+# --- Case 18: PARALLEL mode — each member's fallback
 # must use ITS OWN row's route_provider, not the residual provider of the
 # last-parsed registry row. ---
 JSON_2P="$tmp/critics-2p.json"
@@ -796,8 +795,8 @@ check "18: parallel fallback never rides the residual row's provider" \
     "$(grep -cF -- "$FB provider=alibaba-coding-plan" "$tmp/cap18")" "0"
 check_contains "18: both members responded" "$(cat "$tmp/out18")" "(2/2 critics responded)"
 
-# --- Case 19 (codex-adv, HIMMEL-953): WITHOUT fallback_provider the chain
-# stays NAME-ROUTED (empty --provider) — the HIMMEL-729 cross-provider
+# --- Case 19: WITHOUT fallback_provider the chain
+# stays NAME-ROUTED (empty --provider) — the cross-provider
 # contract must survive the opt-in. ---
 JSON_NR="$tmp/critics-nr.json"
 printf '{"panel":[{"slug":"qwenor","model":"%s","provider":"openrouter","route_provider":"openrouter","tier":"free","fallback_models":["%s"],"fallback_trigger":"any"}]}'     "$PRI" "$FB" > "$JSON_NR"
@@ -809,7 +808,7 @@ printf '%s' "$DIFF" | CRITICS_JSON="$JSON_NR" CRITIC_FIRST_PASS="$STUB_NR"     b
 check "19: name-routed fallback keeps an EMPTY provider (no row inheritance)"     "$(grep -cF -- "$FB provider=openrouter" "$tmp/cap19")" "0"
 check "19: name-routed fallback WAS attempted"     "$(grep -cF -- "$FB provider=" "$tmp/cap19")" "1"
 
-# --- Cases 20-22 (HIMMEL-1569/1500): a TIMEOUT must be retryable.
+# --- Cases 20-22: a TIMEOUT must be retryable.
 #
 # WHY: process_member short-circuits rc 124/137 to `unavailable (timeout)`
 # UNLESS a fallback chain is configured AND fires. The glm row had no chain, so
@@ -856,7 +855,7 @@ JSON_SELF="$tmp/critics-self.json"
 printf '{"panel":[{"slug":"glm","model":"%s","provider":"zai","route_provider":"glm","tier":"free","timeout_secs":%s,"fallback_models":["%s"],"fallback_trigger":"any","fallback_provider":"glm"}]}' \
     "$PRI" "$SELF_TO" "$PRI" > "$JSON_SELF"
 
-# HIMMEL-3699: both cases assert a real `timeout` kill (rc 124); the panel
+# both cases assert a real `timeout` kill (rc 124); the panel
 # resolves it via scripts/lib/timeout-bin.sh and stock macOS has none, so they
 # SKIP there like 9p/10p/16 instead of failing on the missing binary.
 if [ -n "$_TIMEOUT_BIN" ]; then
@@ -871,7 +870,7 @@ if [ -n "$_TIMEOUT_BIN" ]; then
         "$(cat "$tmp/err20")" "panel-availability: glm fallback($PRI)"
 
     # Case 21 (control): the SAME hang WITHOUT fallback_trigger must still be
-    # terminal — the default contract (HIMMEL-729/737: only a quota signature on a
+    # terminal — the default contract (only a quota signature on a
     # NON-timeout failure retries) is not widened for every other row.
     JSON_NOTRIG="$tmp/critics-self-notrigger.json"
     printf '{"panel":[{"slug":"glm","model":"%s","provider":"zai","route_provider":"glm","tier":"free","timeout_secs":%s,"fallback_models":["%s"],"fallback_provider":"glm"}]}' \
@@ -888,9 +887,8 @@ else
     skip "21: no timeout binary"
 fi
 
-# Case 22 (HIMMEL-1221) checked that the SHIPPED registry's glm row carried a
-# retry config. HIMMEL-1904 retired the glm critic row itself (subscription
-# cancelled), so the row this case asserted on no longer exists — removed.
+# Case 22 is intentionally absent: the SHIPPED registry no longer carries a glm
+# critic row (subscription cancelled), so there is nothing to assert on.
 
 if [ "$fails" -eq 0 ]; then
     if [ "$_skips" -gt 0 ]; then

@@ -1,4 +1,4 @@
-// Tests for scripts/lib/project-mode.mjs (HIMMEL-4758). Walks the same two
+// Tests for scripts/lib/project-mode.mjs. Walks the same two
 // tables as test-project-mode.sh, so the JS and shell resolvers cannot drift:
 // fixtures/project-modes.tsv and fixtures/forge-origins.tsv.
 // Run: node --test scripts/lib/project-mode.test.mjs

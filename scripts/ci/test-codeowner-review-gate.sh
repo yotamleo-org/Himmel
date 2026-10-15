@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Suite for scripts/ci/codeowner-review-gate.mjs + .github/workflows/codeowner-review-gate.yml
-# (HIMMEL-3372).
 #
 # Part 1 — decision logic over JSON/text fixtures (offline, no network):
 #   pr.json, permission.json, reviews.json, files.txt, CODEOWNERS.
@@ -364,16 +363,16 @@ wf_violations() {
   # `edited` covers a retarget: the new base carries its own CODEOWNERS and base sha.
   grep -qE 'types: *\[opened, synchronize, reopened, ready_for_review, edited\]' "$s" || echo "pull_request types wrong"
   grep -qE 'types: *\[submitted, dismissed, edited\]' "$s" || echo "pull_request_review types wrong"
-  # HIMMEL-3380: the check is required, so a missing gate script fails closed on
+  # The check is required, so a missing gate script fails closed on
   # EVERY base. No 404 exemption, no default-branch test, and nothing downstream
   # may be gated on the fetch having "found" a script.
   grep -qE 'HTTP 404|default_branch|DEFAULT_BRANCH|BASE_REF|bootstrap|present=|steps\.fetch\.outputs' "$s" && echo "has a 404/bootstrap exemption branch"
   grep -qE '^    name: codeowner-review-gate$' "$s" || echo "job name is not codeowner-review-gate"
-  # HIMMEL-3588: cancel-in-progress leaves CANCELLED contexts in the PR's
+  # Cancel-in-progress leaves CANCELLED contexts in the PR's
   # statusCheckRollup that block the ruleset even when the latest run is
   # green — this gate must let every queued run complete.
   grep -qE '^[[:space:]]*cancel-in-progress:[[:space:]]*true' "$s" && echo "has cancel-in-progress: true"
-  # HIMMEL-3835: collapse duplicate runs BEFORE they create jobs. With
+  # Collapse duplicate runs BEFORE they create jobs. With
   # cancel-in-progress: false and no `queue: max`, a newer pending run replaces
   # an older pending one. A job-level `if:` skip is forbidden: a skipped job
   # reports success under the required context and masks an earlier red run.

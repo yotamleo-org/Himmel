@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # scripts/ci/test-shell-unit-dispatch-name.sh -- regression suite for
-# HIMMEL-3788: a manual `workflow_dispatch` run of ci.yml must never produce a
+# A manual `workflow_dispatch` run of ci.yml must never produce a
 # check-run named like the PR's own required `shell-unit (ubuntu-latest)`
 # check. Before the fix, the `shell-unit` aggregating job had no `name:`
 # override, so GitHub derived the check-run name purely from the job id +
 # matrix value -- identical for every trigger event. A dispatch on a PR branch
 # posted that same-named check at the PR head (then failing on the macOS gate,
 # the normal state), shadowing the PR's own green pull_request-triggered run.
-# HIMMEL-3853 removed the all-OS dispatch input so a dispatch can no longer
+# The all-OS dispatch input is gone, so a dispatch can no longer
 # reach the macOS gate at all; this suite keeps the name-collision guard, which
 # is independent of that. Pure text + evaluated-expression
 # assertions over the workflow file; no network.

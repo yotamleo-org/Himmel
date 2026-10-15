@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/ci/test-main-sweep-red-workflow.sh -- shape guard for
-# .github/workflows/main-sweep-red.yml (HIMMEL-3841 slice E): the reporter that
+# .github/workflows/main-sweep-red.yml: the reporter that
 # runs scripts/ci/main-sweep-red-issue.sh after each completed main CI sweep
-# (cron / dispatch since HIMMEL-5113). Text assertions over the workflow with
+# (cron / dispatch). Text assertions over the workflow with
 # comments stripped; no network.
 #
 # It pins the properties that make the reporter safe: it triggers only on a
@@ -12,7 +12,7 @@
 #
 # ponytail: line-oriented text checks, not a YAML parse (a reformatted-but-equal
 # file would fail loudly rather than pass silently), upgrade to a real parser if
-# the repo ever vendors one for workflows (HIMMEL-3841).
+# the repo ever vendors one for workflows.
 #
 # Usage: bash scripts/ci/test-main-sweep-red-workflow.sh
 # Env:   MAIN_SWEEP_RED_YML  workflow under test (default: the tracked file).
@@ -45,7 +45,7 @@ fi
 if has '^[[:space:]]+types: \[completed\]'; then ok "fires on completed runs only"; else bad "types must be [completed]"; fi
 if has '^[[:space:]]+branches: \[main\]'; then ok "limited to runs on main"; else bad "branches must be [main]"; fi
 
-# Only the cron / dispatch sweep is main's health (HIMMEL-5113: no push run).
+# Only the cron / dispatch sweep is main's health.
 if has "github.event.workflow_run.event == 'schedule'" \
    && has "github.event.workflow_run.event == 'workflow_dispatch'" \
    && ! has "workflow_run.event == 'push'" \

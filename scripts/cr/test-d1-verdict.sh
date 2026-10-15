@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/d1-verdict.sh (HIMMEL-654 WS7, spec D1.4).
+# Smoke test for scripts/cr/d1-verdict.sh (WS7, spec D1.4).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$DIR/d1-verdict.sh"

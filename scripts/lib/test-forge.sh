@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the forge-dispatch seam (HIMMEL-326): forge_detect across every
+# Tests for the forge-dispatch seam: forge_detect across every
 # remote-URL shape + verb routing to each backend via the GH_CMD / BITBUCKET_CMD
 # stub seams. No network. Mirrors the repo's bash test convention.
 #
@@ -32,13 +32,13 @@ assert_eq() {
 TMP_ROOT=$(mktemp -d)
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
 
-# HIMMEL-1924: a successful github create/edit now posts an `@coderabbitai
+# A successful github create/edit now posts an `@coderabbitai
 # review` trigger. Disarm it for the routing cases below so they stay hermetic
 # and machine-independent — this checkout IS armed (`git config --local
 # himmel.coderabbit true`), so without this the trigger would fire during the
 # legacy assertions. The trigger cases at the end arm it explicitly (CR_APP=1).
 export CR_APP=0
-# HIMMEL-2034: the trigger seam now posts only on a repo whose CR gate is ours.
+# The trigger seam now posts only on a repo whose CR gate is ours.
 # The trigger stub's PR URLs are on acme/widget (not this checkout's origin),
 # so allowlist it — the foreign-repo refusal itself is covered by the two hook
 # suites.
@@ -72,7 +72,7 @@ assert_eq "bitbucket https usr" "bitbucket" "$(detect_for 'https://user@bitbucke
 assert_eq "bitbucket ssh"      "bitbucket" "$(detect_for 'git@bitbucket.org:ws/repo.git')"
 assert_eq "uppercase host"     "github"    "$(detect_for 'https://GitHub.com/owner/repo')"
 
-# HIMMEL-3325: the forge is the URL's HOST, not a substring of the URL. Every
+# The forge is the URL's HOST, not a substring of the URL. Every
 # origin shape git produces still routes to its own forge, and a URL that merely
 # CONTAINS github.com / bitbucket.org in a path segment or a longer hostname does
 # not. Same table scripts/himmelctl/test/test-wizard-statusreport.sh feeds
@@ -126,7 +126,7 @@ assert_eq "gh pr_has_merged"    "2" "$(FORGE=github GH_CMD="$GH_STUB" forge_pr_h
 assert_eq "gh issue_create url" "https://github.com/owner/repo/issues/5" "$(FORGE=github GH_CMD="$GH_STUB" forge_issue_create owner/repo "A nit" "Fix it." cr-deferred)"
 
 # ── github pr_mergeable: LOCAL git merge-tree, not GitHub's async field ───────
-# HIMMEL-1232: gh_forge_pr_mergeable reads only base+head refs from gh (a
+# gh_forge_pr_mergeable reads only base+head refs from gh (a
 # synchronous field read, stubbed here) and computes the conflict locally with
 # `git merge-tree`. So this exercises a REAL merge against real commits, not a
 # mocked mergeable string.
@@ -250,7 +250,7 @@ esac
 # A failing CLI must propagate (best-effort handling lives in pr-open, not here).
 assert_eq "bb pr_set_body CLI-fail → rc1" "1" "$(FORGE=bitbucket BITBUCKET_CMD="$BB_FAIL" forge_pr_set_body 7 T B >/dev/null 2>&1; echo $?)"
 
-# ── issue_create routing (HIMMEL-327, spec §5.2) ─────────────────────────────
+# ── issue_create routing ─────────────────────────────
 echo "TEST: bitbucket issue_create — url on success, rc3 on issues-disabled"
 assert_eq "bb issue_create url" "https://bitbucket.org/ws/repo/issues/5" "$(FORGE=bitbucket BITBUCKET_CMD="$BB_STUB" forge_issue_create ws/repo "A nit" "Fix it." cr-deferred)"
 
@@ -273,8 +273,8 @@ case "$args" in
     *) fail "issue_create arg mapping" "got: $args" ;;
 esac
 
-# ── CodeRabbit trigger at the seam (HIMMEL-1924) ─────────────────────────────
-# A PR opened/advanced from inside a script matches neither HIMMEL-1906 hook
+# ── CodeRabbit trigger at the seam ─────────────────────────────
+# A PR opened/advanced from inside a script matches neither CR-trigger hook
 # (they match the bash command string), so the seam itself must post the
 # `@coderabbitai review` trigger — exactly once per head SHA, via the SAME
 # ledger the hooks use, and never on an unarmed repo or on bitbucket.
@@ -319,11 +319,11 @@ else
 fi
 
 # 2. same head again -> ledger no-op (this is what makes the seam and the two
-#    HIMMEL-1906 hooks double-post-safe: they share this ledger).
+#    CR-trigger hooks double-post-safe: they share this ledger).
 FORGE=github GH_CMD="$TRIG_STUB" CR_APP=1 TRIG_HEAD=sha-aaa forge_pr_create T B main feat/x >/dev/null 2>&1
 assert_eq "a second call at the SAME head posts nothing" "1" "$(trig_count)"
 
-# 3. a new head -> posts again (the fix-round case HIMMEL-1906 exists for).
+# 3. a new head -> posts again (the fix-round case the ledger exists for).
 FORGE=github GH_CMD="$TRIG_STUB" CR_APP=1 TRIG_HEAD=sha-bbb forge_pr_create T B main feat/x >/dev/null 2>&1
 assert_eq "a NEW head posts again" "2" "$(trig_count)"
 
@@ -349,7 +349,7 @@ assert_eq "bitbucket create posts no trigger" "3" "$(trig_count)"
 assert_eq "pr_create stdout is still just the URL" "https://github.com/acme/widget/pull/42" \
     "$(FORGE=github GH_CMD="$TRIG_STUB" CR_APP=1 TRIG_HEAD=sha-fff forge_pr_create T B main feat/x 2>/dev/null)"
 
-# ── HIMMEL-4762: the local-git kind ──────────────────────────────────────────
+# ── the local-git kind ──────────────────────────────────────────
 echo "TEST: FORGE=local-git derives the change id from the branch"
 LG_REPO="$TMP_ROOT/lg-repo"
 git init -q -b main "$LG_REPO"

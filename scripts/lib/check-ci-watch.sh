@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# check-ci-watch.sh — cache-backed PR watch (HIMMEL-3850) and foreground
-# workflow/job watch (HIMMEL-4856). Both share one adaptive backoff.
+# check-ci-watch.sh — cache-backed PR watch and foreground
+# workflow/job watch. Both share one adaptive backoff.
 # Usage: check-ci-watch.sh [PR selector]
 #        check-ci-watch.sh --run <id> <job-name-or-empty> <max-wait>
 # PR contract: 0 + success text; 1 + X rows on red; 2 + stderr on unreadable.

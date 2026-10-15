@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ScriptDir = $PSScriptRoot
 $Installer = Join-Path $ScriptDir "setup.ps1"

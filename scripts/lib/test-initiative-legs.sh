@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # `A && B || C` reporting pattern is intentional here
 # test-initiative-legs.sh — unit test for scripts/lib/initiative-legs.sh
-# (HIMMEL-443). Verifies the pure leg resolver: named-arg inputs → normalized,
+# Verifies the pure leg resolver: named-arg inputs → normalized,
 # canonical-ordered, deduped active leg set, across interactive + overnight
 # profiles, subsets, falsy values, case/space tolerance, and selector precedence.
 set -u

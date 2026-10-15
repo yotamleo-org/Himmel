@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # detach.sh — run a command detached from the caller so it survives the caller
-# returning AND exiting (HIMMEL-576 + HIMMEL-572 + HIMMEL-623).
+# returning AND exiting.
 #
 # Source this, then: detach_run <cmd> [args...]
 #
 # Why: a SessionEnd hook spawns slow best-effort work (a where-are-we ledger
 # refresh, an LLM crystallization) and MUST return immediately — the harness
-# cancels a hook that overruns its budget (the recurring "Hook cancelled" of
-# HIMMEL-623). Two things have to hold for that:
+# cancels a hook that overruns its budget (the recurring "Hook cancelled").
+# Two things have to hold for that:
 #
 #   1. The spawn must not block, and — just as important — the caller's eventual
 #      EXIT must not wait for the child. On Linux `setsid` starts the child in a
@@ -16,7 +16,7 @@
 #      Bash ship no `setsid`; there the previous `( cmd & )` double-fork was
 #      meant to release the child, but on MSYS bash still INTERMITTENTLY waits
 #      for the backgrounded grandchild at shell exit. Reproduced on Windows Git
-#      Bash (HIMMEL-623): the where-are-we SessionEnd hook returned in a jittery
+#      Bash: the where-are-we SessionEnd hook returned in a jittery
 #      1.4–4.9s with a fixed 6s child even though it "detached" — long enough to
 #      blow the hook budget. `disown` removes the job from this shell's table so
 #      the exit never waits for it; that is the portable, deterministic fix and
@@ -25,20 +25,20 @@
 #      hanging; stdout/stderr to /dev/null so the child never holds the hook's
 #      output pipe open.
 #
-# CONSTRAINT (HIMMEL-636): detached SessionEnd work must be self-contained host
+# CONSTRAINT: detached SessionEnd work must be self-contained host
 # tooling (node/git/curl). It must NOT depend on headless `claude` print/--bg
-# modes — those bill to a separate, volatile bucket (HIMMEL-128) and a detached
-# failure is silent. If a SessionEnd step ever needs an LLM (e.g. the HIMMEL-576
+# modes — those bill to a separate, volatile bucket and a detached
+# failure is silent. If a SessionEnd step ever needs an LLM (e.g. the
 # crystallizer), migrate it to an ARMED-session model (a scheduled INTERACTIVE
 # `claude` via the arm-resume scheduler), not a fire-and-forget child here.
 #
 # bash 3.2-safe (`disown` is a 3.2 builtin; it is guarded so a non-bash sh that
 # happens to source this still degrades to a plain background job).
 # DETACH_NO_SETSID=1 forces the no-setsid fallback even where setsid exists — a
-# test seam so the disown branch (the HIMMEL-623 fix, which only matters on
+# test seam so the disown branch (the fix, which only matters on
 # setsid-less platforms) is exercisable on a Linux CI box that has setsid.
 #
-# HIMMEL_DETACH_INLINE=1 (HIMMEL-2004) turns every detach_run in the process
+# HIMMEL_DETACH_INLINE=1 turns every detach_run in the process
 # tree into a plain synchronous call. The bounded Stop worker sets it on the
 # jobs it runs: work that has ALREADY been serialised by the queue must not
 # fan back out of it, or the bound buys nothing. Nothing else sets it, so the
@@ -69,11 +69,11 @@ detach_run() {
 }
 
 # detach_queued <key> <cmd> [args...] — the BOUNDED variant of detach_run
-# (HIMMEL-2004). Instead of spawning an independent tree per caller, it drops
+# Instead of spawning an independent tree per caller, it drops
 # one durable entry in the Stop queue (scripts/hooks/stop-queue.mjs) and returns;
 # a single worker drains the queue one job at a time. N sessions ending together
 # then cost one drain rather than N trees — which is the whole point, since
-# HIMMEL-1993 measured this box's kernel pool leaking in proportion to exactly
+# a measured kernel-pool leak on this box scaled in proportion to exactly
 # that fan-out.
 #
 # <key> NAMES the work; it is not a dedup identity here. The queue keys an entry

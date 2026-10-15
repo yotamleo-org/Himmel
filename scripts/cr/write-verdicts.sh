@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/cr/write-verdicts.sh — classifier-sanctioned writer for the
-# /pr-check runbook's branch-scoped verdict scratch files (HIMMEL-2131).
+# /pr-check runbook's branch-scoped verdict scratch files.
 #
-# WHY: the runbook's structural-persistence contract (HIMMEL-1219 rounds 3-5)
+# WHY: the runbook's structural-persistence contract
 # has the orchestrating session persist adjudication VERDICT lines to
 # <git-common-dir>/cr-prior-blocking/<branch> (step 3.2 phase A) and
 # <git-common-dir>/cr-aggregate-verdicts/<branch> (step 4), so step 4's
@@ -17,16 +17,16 @@
 # Usage:
 #   bash scripts/cr/write-verdicts.sh <prior-blocking|aggregate|sweep> [--branch <branch>] [--from-file <path>]
 #   Verdict lines come from STDIN by default, or from --from-file <path> when
-#   given (HIMMEL-3798 round 3: the guard's regex-matched inline heredoc/`<`
-#   redirect shapes were cut after a third real bypass in three rounds — see
+#   given (the guard's regex-matched inline heredoc/`<`
+#   redirect shapes were cut after repeated real bypasses — see
 #   scripts/hooks/guard-pr-check-literal.sh's header. --from-file replaces
 #   them: the caller writes the verdict lines to a file with a real editing
 #   tool first, then runs ONE simple literal command naming it. The guard
 #   accepts the path only as a single literal token with no shell
 #   metacharacters; this script separately refuses a symlinked, missing,
 #   unreadable or empty --from-file path (fails closed) before reading it —
-#   the same "sanctioned arbitrary-file-READ primitive" concern HIMMEL-2131
-#   round 2 raised against an unrestricted `--file` is narrowed by the
+#   the same "sanctioned arbitrary-file-READ primitive" concern raised
+#   against an unrestricted `--file` is narrowed by the
 #   guard-side literal-path restriction plus the exact-grammar check below,
 #   which refuses the whole write on the first line that is not a valid
 #   verdict, same as the STDIN path always has.
@@ -36,19 +36,19 @@
 #   VERDICT [<id>] = agreed|disproved|conflict|unaddressed
 #   VERDICT [<id>] = deferred -> <TICKET>
 # (id: non-empty, no ']'; TICKET: the same shape ledger-append.sh's
-# valid_ticket() requires, e.g. HIMMEL-1294 — HIMMEL-2375: a bare `deferred`
+# valid_ticket() requires, e.g. ABC-1294 — a bare `deferred`
 # with no ticket is untracked and indistinguishable from a free pass around
 # conservation, so it is REJECTED like any other malformed line, not silently
 # accepted as a 5th bare verdict). ANY other non-blank line refuses the WHOLE
 # write (rc=2) — nothing is written, so a malformed line can never land a
 # partial/corrupt file the runbook's awk parsers then misread. The refusal
 # reports only the LINE NUMBER and the expected grammar, NEVER the offending
-# line's content (HIMMEL-2131 review round 2: echoing it back would disclose
+# line's content (echoing it back would disclose
 # whatever the caller piped in — secrets included — to this script's stderr).
 # Zero verdict lines is a VALID input (the runbook's own fail-open
 # "no candidates" state) and writes an empty file, rc=0.
 #
-# HIMMEL-3357: a bare `disproved` line carries no evidence, and that is by
+# A bare `disproved` line carries no evidence, and that is by
 # design - these scratch files feed orphan-check.sh's counts and never reach the
 # CR ledger. The evidentiary bar for `disproved` is enforced where the verdict
 # enters the ledger, in scripts/cr/ledger-append.sh, so this grammar stays
@@ -61,7 +61,7 @@
 # fences REPLACE the file's contents every run) — no append mode; YAGNI, the
 # runbook never needs one.
 #
-# HIMMEL-4566 — `sweep` mode records the CLASS SWEEP of an agreed finding, to
+# `sweep` mode records the CLASS SWEEP of an agreed finding, to
 # <git-common-dir>/cr-class-sweeps/<branch>. It APPENDS, unlike the two
 # verdict modes: step 0 truncates those every run, and the round that clears
 # the marker is never the round that agreed the finding, so a truncated record
@@ -82,10 +82,10 @@
 #
 # Allow rule: permission-rule prefix matching is LITERAL. The himmel lane runs
 # the cwd-relative literal, which the shipped `gateAllow` rule
-# `Bash(bash scripts/cr/write-verdicts.sh:*)` matches (HIMMEL-4040, HIMMEL-3383,
-# HIMMEL-3495); no extra operator rule is needed (HIMMEL-2601).
+# `Bash(bash scripts/cr/write-verdicts.sh:*)` matches; no extra operator rule
+# is needed.
 set -uo pipefail
-# HIMMEL-3395: a relative-entry copy that is not the anchor's hands off to it.
+# A relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
 
@@ -98,7 +98,7 @@ esac
 branch=""
 from_file=""
 while [ $# -gt 0 ]; do case "$1" in
-  # codex-3, HIMMEL-2131 round 2: check $# BEFORE consuming "$2" — a trailing
+  # Check $# BEFORE consuming "$2" — a trailing
   # `--branch` with nothing after it must hit this rc=2 usage error, not a
   # `set -u` crash on "$2" NOR (the ${2:-}-only fix's own bug) a `shift 2`
   # that silently no-ops when only 1 positional arg remains, leaving "--branch"
@@ -112,7 +112,7 @@ while [ $# -gt 0 ]; do case "$1" in
   *) echo "write-verdicts.sh: unknown arg $1" >&2; exit 2 ;;
 esac; done
 
-# HIMMEL-3798 round 4: --from-file fails closed before anything downstream
+# --from-file fails closed before anything downstream
 # reads it — a symlinked, missing or unreadable path is refused. A genuinely
 # empty regular file is NOT refused: /pr-check's own runbook mandates an
 # empty --from-file for the "3.0/3.1 produced no candidates" case (it is the
@@ -141,7 +141,7 @@ git_dir=$(git rev-parse --git-common-dir 2>/dev/null) || git_dir=""
 [ -n "$branch" ] || branch=$(git branch --show-current 2>/dev/null || true)
 [ -n "$branch" ] || { echo "write-verdicts.sh: cannot resolve the branch (detached HEAD?) — pass --branch explicitly." >&2; exit 2; }
 
-# Path-escape refusal (HIMMEL-2131 review round 1): $branch — whether typed
+# Path-escape refusal: $branch — whether typed
 # via --branch or read back from `git branch --show-current` — becomes a path
 # segment below with no further checks. An unvalidated `../../evil`, a
 # leading `/` or `\`, or a `C:`-style drive-absolute value escapes
@@ -171,7 +171,7 @@ target="$git_dir/$subdir/$branch"
 # `[^]]+` is a valid POSIX bracket expression (a leading ']' right after '^'
 # is a literal member, not a syntax error) matching "one or more non-']'".
 verdict_re='^VERDICT \[[^]]+\] = (agreed|disproved|conflict|unaddressed)$'
-# HIMMEL-2375: `deferred` is a 5th verdict, accepted ONLY with a trailing
+# `deferred` is a 5th verdict, accepted ONLY with a trailing
 # ` -> <TICKET>` — a real finding dispositioned onto another ticket rather
 # than fixed on this branch. Ticket shape mirrors ledger-append.sh's
 # valid_ticket() exactly (scripts/cr/ledger-append.sh), so any line accepted
@@ -179,7 +179,7 @@ verdict_re='^VERDICT \[[^]]+\] = (agreed|disproved|conflict|unaddressed)$'
 # with the bare word `deferred` and no ticket matches NEITHER regex and falls
 # through to the generic malformed-line refusal below.
 deferred_re='^VERDICT \[[^]]+\] = deferred -> [A-Z][A-Z0-9]*-[0-9]+$'
-# HIMMEL-4566: the sweep grammar. clear-cr-marker.sh gate 4d parses the same
+# The sweep grammar. clear-cr-marker.sh gate 4d parses the same
 # shape with a JS twin of this regex - keep the two in step.
 sweep_re='^SWEEP \[[^]@]+@[0-9a-f]{7,64}\] class=[^[:space:]].* :: (sites=[^,]*[^[:space:],][^,]*(,[^,]*[^[:space:],][^,]*)+|single-site search=[^[:space:]].*)$'
 
@@ -187,7 +187,7 @@ lines=""
 nr=0
 while IFS= read -r line || [ -n "$line" ]; do
   nr=$((nr + 1))
-  # known-findings grep-q-pipe-under-pipefail (HIMMEL-2131 round 2): a
+  # known-findings grep-q-pipe-under-pipefail: a
   # `<producer> | grep -q` under `set -o pipefail` lets grep's early exit on
   # first match SIGPIPE the producer, and pipefail then reports that SIGPIPE
   # as the pipeline's failure — a here-string feeds grep directly with no
@@ -206,15 +206,14 @@ while IFS= read -r line || [ -n "$line" ]; do
   lines="$lines$line"$'\n'
 done
 
-# Symlink-through truncate defense (codex-2 round 2 + codex-1 round 3,
-# HIMMEL-2131): an auto-approved writer following a pre-planted symlink at the
+# Symlink-through truncate defense: an auto-approved writer following a pre-planted symlink at the
 # target OR at ANY path component under the git dir (a nested branch like
 # feat/x means cr-prior-blocking/feat is itself a walkable component) would
 # truncate/create whatever the link points to instead of the intended scratch
 # file. Walk every component from $git_dir/$subdir down to the target and
 # refuse on the first symlink — BEFORE mkdir -p, so a symlinked ancestor
 # component is never followed to create directories outside the intended
-# subtree in the first place (round 4 codex-1: mkdir -p running first let a
+# subtree in the first place (mkdir -p running first would let a
 # planted parent-component symlink get walked before this check ever ran).
 # `[ -L ]` on a not-yet-existing path is simply false, so the walk tolerates
 # components mkdir -p has not created yet. Lexical belt within the
@@ -238,7 +237,7 @@ if [ -L "$target" ]; then
   exit 2
 fi
 
-# HIMMEL-4641: a sweep record is judged here by the gate's own check
+# A sweep record is judged here by the gate's own check
 # (clear-cr-marker.sh --check-sweeps), so one the gate would refuse is refused
 # now, not rounds later. Only the gate's refusal (rc 14) refuses; any other
 # result (no node, an adopter checkout, an older gate that lacks the flag) leaves

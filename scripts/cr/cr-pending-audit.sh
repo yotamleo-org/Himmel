@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# cr/cr-pending-audit.sh — machine classification of pending CR markers
-# (HIMMEL-1553): NEEDS-ACTION with a named remedy, never a narrative.
+# cr/cr-pending-audit.sh — machine classification of pending CR markers:
+# NEEDS-ACTION with a named remedy, never a narrative.
 #
-# Live incident (2026-08-04): HIMMEL-1519 needed ZERO code changes — it was
+# Live incident (2026-08-04): a ticket needed ZERO code changes — it was
 # blocked by a stale CR marker, and two tools printed the exact remedy
 # ("re-run /pr-check on this HEAD"). The orchestrator instead reasoned to the
 # conclusion "structurally unopenable", wrote that into the append-only ledger
@@ -83,16 +83,16 @@ needs_action=0
 orphans=0
 
 # branch_matches_ticket <branch> — boundary-guarded on BOTH sides (non-alnum,
-# hyphen allowed), case-insensitive: HIMMEL-151 never matches a himmel-1519
-# branch, and himmel-1519abc is not a HIMMEL-1519 branch (codex-2 class, CR
-# round 2 — a digit-only trailing guard let a letter suffix count).
+# hyphen allowed), case-insensitive: ticket 151 never matches a branch named
+# for ticket 1519, and a branch named for 1519abc is not a 1519 branch (a
+# digit-only trailing guard would let a letter suffix count).
 branch_matches_ticket() {
     printf '%s' "$1" | grep -qiE "(^|[^a-zA-Z0-9])${ticket}([^a-zA-Z0-9]|\$)"
 }
 
 # ledger_counts <full-tip> — echoes "<responders> <blocking>" for the tip.
 # Prefix head-match + skipped malformed lines are ADVISORY-SAFE here (header);
-# amends ARE applied so an already-corrected finding (HIMMEL-1294) is not
+# amends ARE applied so an already-corrected finding is not
 # re-reported as blocking. Requires node; without it, report unknown ("? ?")
 # and let the classifier fall back to the authoritative gate remedy.
 ledger_counts() {
@@ -101,27 +101,25 @@ ledger_counts() {
       const fs=require("fs"),e=process.env;
       const lines=fs.existsSync(e.LEDGER)?fs.readFileSync(e.LEDGER,"utf8").split("\n").filter(Boolean):[];
       const tip=String(e.TIP).toLowerCase();
-      // 7-64 hex chars (HIMMEL-2029): a SHA-1 repo full head is 40 hex, a
+      // 7-64 hex chars: a SHA-1 repo full head is 40 hex, a
       // SHA-256 repo full head is 64 - the old 7-40 ceiling rejected every
       // 41-64-char head in a SHA-256 repo as "not a head" at all. Plain
-      // prefix matching, no extra length gate (codex-1 CR round 2 raised, and
-      // an attempted "shorter than tip.length" gate round 3 disproved: it
-      // rejected every real 40-63-char SHA-256 abbreviation, which a genuine
-      // abbreviated head legitimately can be). The cross-format concern round
-      // 2 raised - an unrelated commit whose full spelling happens to
-      // textually prefix this tip - needs an actual accidental hex-prefix
-      // collision across a 160+ bit hash, which is cryptographically
-      // negligible, not a realistic engineering risk; this audit is
-      // ADVISORY-ONLY besides (see the file header), so plain prefix
-      // matching is the correct, simpler tradeoff.
+      // prefix matching, no extra length gate: a "shorter than tip.length"
+      // gate would reject every real 40-63-char SHA-256 abbreviation, which a
+      // genuine abbreviated head legitimately can be. The cross-format concern
+      // - an unrelated commit whose full spelling happens to textually prefix
+      // this tip - needs an actual accidental hex-prefix collision across a
+      // 160+ bit hash, which is cryptographically negligible, not a realistic
+      // engineering risk; this audit is ADVISORY-ONLY besides (see the file
+      // header), so plain prefix matching is the correct, simpler tradeoff.
       const at=(h)=>{h=String(h||"").trim().toLowerCase();
         return /^[0-9a-f]{7,64}$/.test(h)&&(h===tip||tip.indexOf(h)===0);};
       // Amends key on target_head, NOT head. Current ledger-append writes
       // normalize abbreviated heads to full SHAs, but legacy ledgers may still
       // contain the SAME commit in both short and full forms. An exact-string
       // head match here silently skips an amend recorded in the other form and
-      // re-reports an already-corrected finding as blocking (codex-1/glm-5, CR
-      // round 2 — the chain runbook carries this exact trap). Heads are
+      // re-reports an already-corrected finding as blocking (the chain runbook
+      // carries this exact trap). Heads are
       // therefore compared by hex prefix in EITHER direction, the same posture
       // as at() above. Advisory-safe:
       // this only applies corrections, and the authoritative gate keeps its
@@ -129,8 +127,8 @@ ledger_counts() {
       // set.head re-key updates o.head and later amends match the moved head
       // (mirrors ledger-append original-or-effective matching).
       // Same posture as at() above - plain prefix matching, no extra length
-      // gate (an attempted one broke the ordinary short+full same-commit
-      // pairing this function exists for, CR round 3).
+      // gate (one would break the ordinary short+full same-commit
+      // pairing this function exists for).
       const sameHead=(x,y)=>{x=String(x||"").trim().toLowerCase();y=String(y||"").trim().toLowerCase();
         if(!/^[0-9a-f]{7,64}$/.test(x)||!/^[0-9a-f]{7,64}$/.test(y))return false;
         return x.indexOf(y)===0||y.indexOf(x)===0;};
@@ -143,9 +141,8 @@ ledger_counts() {
       // avail row with status "ok" is a critic that responded. usage rows and
       // avail "unavailable" (failed/rate-limited attempts) are NOT evidence —
       // counting them classified an interrupted review as "gates-may-pass"
-      // while the authoritative gate would refuse it (adversarial round 3,
-      // failed-attempt-as-completed-review; worst exactly here, because this
-      // panel is labelled more trustworthy than inherited prose).
+      // while the authoritative gate would refuse it (worst exactly here,
+      // because this panel is labelled more trustworthy than inherited prose).
       let responders=0,blocking=0;
       for(const l of lines){let o;try{o=JSON.parse(l);}catch{continue;}
         if(o.kind==="amend")continue;

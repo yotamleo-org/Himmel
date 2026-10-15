@@ -2,8 +2,8 @@
 # selector: tree-scan
 # scripts/ci/test-run-shell-tests.sh — hermetic test for run-shell-tests.sh.
 #
-# HIMMEL-2895 split this file's expensive case groups into siblings so the
-# sharded shell-unit job (HIMMEL-2872) can place them independently — the
+# This file's expensive case groups live in sibling files so the
+# sharded shell-unit job can place them independently — the
 # sharder parallelises across FILES, so one 382s file was a hard floor on
 # every shard count. The family, with the measured per-group wall clock that
 # decided the cut:
@@ -31,30 +31,30 @@
 #   3. --skip-extra test-skipme.sh → [SKIP], sentinel absent, exit 0.
 #   4. --list <sandbox> lists-only, no sentinels, exit 0.
 #   5. <sandbox> --list ≡ --list <sandbox> (same output, same exit 0).
-#   6-10. scan-root grammar and discovery-failure cases (HIMMEL-1128): a
+#   6-10. scan-root grammar and discovery-failure cases: a
 #       trailing-slash root, zero discovered suites, a masked discovery error
 #       in either stage, and an all-skipped EXECUTION root.
-#   11. path-specific slow-suite budgets vs an explicit SUITE_TIMEOUT
-#       (HIMMEL-1542), plus the malformed-value fallback.
-#   12/13. conditional-suite filter (HIMMEL-1589) and SUITE_REQUIRE_TOOL
-#       capability gating (HIMMEL-1792).
-#   14. SUITE_TIER / SUITE_TIER_MODE (HIMMEL-2120): fast/extended/all filter
+#   11. path-specific slow-suite budgets vs an explicit SUITE_TIMEOUT,
+# plus the malformed-value fallback.
+#   12/13. conditional-suite filter and SUITE_REQUIRE_TOOL
+#       capability gating.
+#   14. SUITE_TIER / SUITE_TIER_MODE: fast/extended/all filter
 #       plus its exit-2 invalid-mode case and its composition with SKIP_LIST
 #       and SUITE_REQUIRE_TOOL.
-#   15. Docs-only fast lane (HIMMEL-2166): --changed-since + an all-docs diff
+#   15. Docs-only fast lane: --changed-since + an all-docs diff
 #       skips the whole corpus (ran=0 reported as a pass); a mixed or empty
 #       diff leaves the fast lane inert.
 #   2267. _suite_timeout_for's path-specific timeout table, asserted directly
 #       against the function body rather than through a full run.
-#   19. --pr <N> / SUITE_REPORT_PR (HIMMEL-2383): the runner posts its
+#   19. --pr <N> / SUITE_REPORT_PR: the runner posts its
 #       after-report to a PR, and does not post when it must not.
-#   22. --shard <i>/<n> partitions the run list (HIMMEL-2872).
+#   22. --shard <i>/<n> partitions the run list.
 #
 # Usage: bash scripts/ci/test-run-shell-tests.sh
 #
 # Exit codes: 0 — all cases passed; 1 — at least one failed.
 #
-# HIMMEL-2915: every sandbox `mktemp -d` below is templated and checked —
+# Every sandbox `mktemp -d` below is templated and checked —
 # a failed allocation leaves the variable empty, is reported via `fail`, and
 # the case body it would have populated is skipped instead of writing at "/".
 set -uo pipefail
@@ -277,7 +277,7 @@ rm -rf "$sb6"
 fi
 
 # --------------------------------------------------------------------------
-# Case 7 — zero discovered suites must FAIL, not silently green (HIMMEL-1128).
+# Case 7 — zero discovered suites must FAIL, not silently green.
 # A scan root that resolves to no runnable suite (a typo'd path, an empty dir)
 # used to print "OK: all 0 run suites passed" and exit 0 — a false green on a
 # process-integrity gate. The runner must exit non-zero when nothing ran.
@@ -328,7 +328,7 @@ rm -rf "$sb7"
 fi
 
 # --------------------------------------------------------------------------
-# Case 8 — discovery error masked by a partial result (HIMMEL-1128, codex-adv).
+# Case 8 — discovery error masked by a partial result.
 # A `find` that emits at least one suite and THEN exits non-zero (unreadable
 # subtree, I/O error) used to slip past: the emitted suite ran, ran>0, and the
 # zero-suite guard passed → green on an incomplete scan. The runner must fail
@@ -366,8 +366,8 @@ rm -rf "$sb8" "$fakebin"
 fi
 
 # --------------------------------------------------------------------------
-# Case 9 — sort discovery-stage error masked by a partial result (HIMMEL-1128,
-# codex-adv). Mirror of Case 8 for the second discovery stage: a `sort` that
+# Case 9 — sort discovery-stage error masked by a partial result.
+# Mirror of Case 8 for the second discovery stage: a `sort` that
 # emits one suite and THEN exits non-zero must fail the runner, not green.
 # --------------------------------------------------------------------------
 echo "== Case 9: sort discovery error -> non-zero exit =="
@@ -401,7 +401,7 @@ fi
 
 # --------------------------------------------------------------------------
 # Case 10 — all-skipped EXECUTION root must fail (ran==0), but --list of the
-# same root must SUCCEED (HIMMEL-1128). Suites were discovered (discovered>0),
+# same root must SUCCEED. Suites were discovered (discovered>0),
 # so this is distinct from the empty-root case: the execution path enforces
 # run>0, while --list legitimately prints the skip plan and exits 0.
 # --------------------------------------------------------------------------
@@ -434,7 +434,7 @@ fi
 
 # --------------------------------------------------------------------------
 # Case 11 — known slow suites get path-specific budgets unless the operator
-# supplies an explicit global SUITE_TIMEOUT (HIMMEL-1542). A sleep stub records
+# supplies an explicit global SUITE_TIMEOUT. A sleep stub records
 # the watchdog delay without waiting for it; the suite exits before the stub's
 # real sleep completes, so the runner cancels the watchdog normally.
 #
@@ -478,8 +478,8 @@ if [ "$rc11b" -eq 0 ] && [ "$(cat "$sb11/explicit-timeout.log" 2>/dev/null)" = "
 else
   fail "explicit timeout override: rc=$rc11b recorded=$(cat "$sb11/explicit-timeout.log" 2>/dev/null) (want rc=0, 7)"
 fi
-# A MALFORMED SUITE_TIMEOUT must not count as an explicit global override
-# (HIMMEL-1542 CR round 1). Presence-only detection let an empty / zero /
+# A MALFORMED SUITE_TIMEOUT must not count as an explicit global override.
+# Presence-only detection let an empty / zero /
 # non-numeric value pin every suite to the 180s fallback, which is precisely
 # the rc=124 failure the path-specific budgets exist to prevent.
 for bad in '' '0' 'abc'; do
@@ -497,7 +497,7 @@ rm -rf "$sb11"
 fi
 
 # --------------------------------------------------------------------------
-# Case 12 — conditional-suite filter (HIMMEL-1589).
+# Case 12 — conditional-suite filter.
 #   a. flag absent           -> conditional suite RUNS (filter inert)
 #   b. flag + matching change-> conditional suite RUNS
 #   c. flag + no match       -> conditional suite SKIPped with the reason
@@ -516,7 +516,7 @@ COND12='scripts/test-cond.sh  ^scripts/cond-trigger\.sh$  # injected conditional
 # The fixtures live under $1/scripts/ and the runner is pointed at that dir,
 # because the built-in table entries are repo-root-relative
 # ("scripts/test-cond.sh"). A flat sandbox would not match them and
-# the case would silently stop exercising the production table (HIMMEL-2260).
+# the case would silently stop exercising the production table.
 # The nested namesake is the collision control: same basename, different
 # directory, so it must NOT inherit the conditional rule.
 mk_cond_sandbox() {  # $1 = sandbox dir; test-pass.sh + the prop stub + a namesake
@@ -550,7 +550,7 @@ cat > "$fakebin12/git" <<'SHEOF'
 case "$1" in
   rev-parse)
     # The runner resolves the ref via `rev-parse --end-of-options "<ref>^{commit}"`
-    # BEFORE diffing (HIMMEL-1589). Mimic real git: an OPTION-shaped value
+    # BEFORE diffing. Mimic real git: an OPTION-shaped value
     # (--exit-code, etc.) is not a commit and does not resolve -> exit 1, which
     # drives the runner's fail-open path; anything else resolves to a stable
     # pseudo-SHA so the runner feeds `git diff` a non-empty commit.
@@ -668,7 +668,7 @@ rm -rf "$fakebin12"
 fi
 
 # --------------------------------------------------------------------------
-# Case 13 — capability-conditional suites / SUITE_REQUIRE_TOOL (HIMMEL-1792).
+# Case 13 — capability-conditional suites / SUITE_REQUIRE_TOOL.
 #   a. the REAL table entry (test-claude-openrouter-pwsh.sh / pwsh) against
 #      this host's actual pwsh availability: RUNS where pwsh exists (the point
 #      of the ticket — the suite must not be a never-run), loud [SKIP] with the
@@ -681,7 +681,7 @@ fi
 echo "== Case 13: capability-conditional suites (SUITE_REQUIRE_TOOL) =="
 
 # Same scripts/ layer as mk_cond_sandbox, and for the same reason: the built-in
-# SUITE_REQUIRE_TOOL entry is repo-root-relative (HIMMEL-2260).
+# SUITE_REQUIRE_TOOL entry is repo-root-relative.
 mk_cap_sandbox() {  # $1 = sandbox dir; test-pass.sh + the pwsh-suite stub
   mkdir -p "$1/scripts"
   cat > "$1/scripts/test-pass.sh" <<'SHEOF'
@@ -743,7 +743,7 @@ fi
 rm -rf "$sb13b"
 fi
 
-# Darwin corpus coverage must not become a green capability skip (HIMMEL-4912).
+# Darwin corpus coverage must not become a green capability skip.
 sb13d=$(mktemp -d "${TMPDIR:-/tmp}/rst-case13d.XXXXXX") || { fail "13d: mktemp failed"; sb13d=""; }
 if [ -n "$sb13d" ]; then
 mkdir -p "$sb13d/bin" "$sb13d/scripts/lib" "$sb13d/scripts/eval/guard-corpus" "$sb13d/scripts/hooks"
@@ -775,7 +775,7 @@ else fail "13e: missing Darwin sandbox green-washed: rc=$rc13e out: $out13e"; fi
 rm -rf "$sb13d"
 fi
 
-# 13f — the two real-pre-commit integration suites (HIMMEL-2475) are in the
+# 13f — the two real-pre-commit integration suites are in the
 # built-in table: with pre-commit off PATH they are [SKIP]ped loudly by the
 # runner, not run and reported PASS after their own `exit 0` guard; with a
 # pre-commit on PATH they RUN. The sandbox PATH carries every runner
@@ -818,8 +818,8 @@ fi
 rm -rf "$sb13f"
 fi
 
-# 13g — the HIMMEL-2475 sweep rows (gitleaks, flock, node x2, jq x6) are each
-# pinned behaviourally (HIMMEL-5120): with the row's tool off PATH the suite is
+# 13g — the sweep rows (gitleaks, flock, node x2, jq x6) are each
+# pinned behaviourally: with the row's tool off PATH the suite is
 # [SKIPped loudly with `capability: <tool> not on PATH` and never executed. One
 # sandbox per tool holds every suite that tool gates; the PATH carries every
 # runner dependency except that tool, so the verdict cannot depend on this host.
@@ -869,7 +869,7 @@ for tool13g in gitleaks flock node jq; do
 done
 
 # --------------------------------------------------------------------------
-# Case 14: tier suites / SUITE_TIER + SUITE_TIER_MODE (HIMMEL-2120).
+# Case 14: tier suites / SUITE_TIER + SUITE_TIER_MODE.
 #   The production SUITE_TIER table now carries three extended entries (Task
 #   6), but every case here still drives the filter through the SUITE_TIER
 #   env override — the same seam SUITE_REQUIRE_TOOL already exposes for its
@@ -1040,10 +1040,10 @@ rm -rf "$sb14h"
 fi
 
 # --------------------------------------------------------------------------
-# Case 15 — docs-only fast lane (HIMMEL-2166).
+# Case 15 — docs-only fast lane.
 #   a. docs-only diff (every changed path *.md or under docs/) -> every suite
 #      [SKIP]ped, ran=0 reported as a genuine pass (exit 0), not the
-#      HIMMEL-1128 false-green refusal.
+#      false-green refusal.
 #   b. mixed diff (one non-docs path among several docs paths) -> the fast
 #      lane does NOT fire; suites run as normal (--changed-since alone does
 #      not skip anything here, since neither fixture suite is SUITE_CONDITIONAL
@@ -1146,9 +1146,9 @@ fi
 
 
 # --------------------------------------------------------------------------
-# Case 2267 — _suite_timeout_for's HIMMEL-2267 timeout-table arms
+# Case 2267 — _suite_timeout_for's timeout-table arms
 # (scripts/ci/test-suite-concurrency.sh, and
-# until HIMMEL-2895 this file's own 1200s arm) were new/revised on that branch
+# until it was split, this file's own 1200s arm) were new/revised on that branch
 # and had no assertion. Each arm uses a dual "path|*/path" pattern because the
 # real caller passes a scan-root-prefixed path (see the comment above
 # tier_lookup): a pattern that fails to match doesn't error, it silently
@@ -1176,13 +1176,13 @@ else
       fail "2267: _suite_timeout_for '$1' (tier ${3:-all}) expected ${2}s got '$got'"
     fi
   }
-  # HIMMEL-5375: adoption must not fall back to the 600s cap it hit in CI.
+  # Adoption must not fall back to the 600s cap it hit in CI.
   check_timeout_2267 "scripts/test-adopt.sh" "1200"
   check_timeout_2267 "/repo/scripts/test-adopt.sh" "1200"
   check_timeout_2267 "scripts/ci/test-suite-concurrency.sh" "1500"
   check_timeout_2267 "/repo/scripts/ci/test-suite-concurrency.sh" "1500"
 
-  # HIMMEL-4912: per-hook namespace/runtime inspection measured 1407s alone
+  # Per-hook namespace/runtime inspection measured 1407s alone
   # and 1434s with another suite (full replay, ~6x on CI). PR CI runs the fast
   # subset (117s local) under a 1200s cap; the nightly keeps the full cap.
   check_timeout_2267 "scripts/eval/guard-corpus/test-guard-corpus.sh" "1800" fast
@@ -1195,18 +1195,18 @@ else
   check_timeout_2267 "scripts/hooks/test-block-destructive-commands.sh" "3000"
   check_timeout_2267 "/repo/scripts/hooks/test-block-destructive-commands.sh" "3000"
 
-  # HIMMEL-3175 (nightly #843): the 1879 suite previously had no dedicated arm,
+  # Nightly #843: the 1879 suite previously had no dedicated arm,
   # so the 600s default killed it on every OS (603s on ubuntu). Its tier comment
   # records 843s idle.
   check_timeout_2267 "scripts/handover/test-arm-resume-1879.sh" "1700"
   check_timeout_2267 "/repo/scripts/handover/test-arm-resume-1879.sh" "1700"
 
-  # HIMMEL-3648 (#1307): the write-fence suite hit the 600s default twice on
+  # The write-fence suite hit the 600s default twice on
   # ubuntu CI (603s, CAP EXCEEDED, assertions passing).
   check_timeout_2267 "scripts/hooks/test-block-write-into-main-checkout.sh" "1200"
   check_timeout_2267 "/repo/scripts/hooks/test-block-write-into-main-checkout.sh" "1200"
 
-  # HIMMEL-2895. The third HIMMEL-2267 arm was this file's own 1200s budget,
+  # The third arm was this file's own 1200s budget,
   # sized to a 712s measurement of the pre-split 3086-line suite. The split
   # left six suites whose slowest is 114s, so every one of them falls under
   # the 600s default with ~5x headroom -- and the arm is GONE rather than
@@ -1230,9 +1230,9 @@ else
   # through for the wrong reason.
   check_timeout_2267 "scripts/ci/test-not-in-any-arm-2895.sh" "600"
 
-  # HIMMEL-2358. Ticket-cited pristine standalone figure: 799s, rc=0, genuine
-  # PASS (measured on overlord8, Windows/Git-Bash, per HIMMEL-2350's own
-  # diagnosis of that box). A fresh scratch-HOME re-measurement here (Linux
+  # Ticket-cited pristine standalone figure: 799s, rc=0, genuine
+  # PASS (measured on overlord8, Windows/Git-Bash).
+  # A fresh scratch-HOME re-measurement here (Linux
   # CachyOS, 2026-09-26, via scripts/lib/clean-sandbox.sh) completed in ~27s,
   # rc=0, PASS -- the ~30x gap is Windows/Git-Bash node-spawn overhead on this
   # heavily node-spawning suite (winpath/hermetic-path.sh throughout), not a
@@ -1244,7 +1244,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case 19 — --pr <N> / SUITE_REPORT_PR (HIMMEL-2383): the runner posts its
+# Case 19 — --pr <N> / SUITE_REPORT_PR: the runner posts its
 # own SUMMARY block as a PR comment via a GH_CMD-stubbed `gh`, opt-in only,
 # best-effort (a post failure never changes the run's own exit code), and
 # never fires under --list.
@@ -1335,7 +1335,7 @@ else
 fi
 
 # 19f: --pr with an option-looking value refuses instead of consuming it
-# (HIMMEL-2383 CR finding codex-2, round 6) — `--pr --list` used to eat
+# — `--pr --list` used to eat
 # "--list" as the PR number, silently dropping the flag and later handing
 # the literal string "--list" to `gh pr comment`.
 gh19f="$sb19/gh-19f"
@@ -1349,8 +1349,8 @@ else
   fail "19f: --pr --list -> rc=$rc19f gh.log='$(cat "$sb19/gh.log" 2>/dev/null)' output: $out19f"
 fi
 
-# 19g: SUITE_REPORT_PR gets the SAME validation as --pr (HIMMEL-2383 CR
-# finding codex-2, round 7) — the --pr flag validates inline, but
+# 19g: SUITE_REPORT_PR gets the SAME validation as --pr:
+# the --pr flag validates inline, but
 # SUITE_REPORT_PR sets report_pr's default before that loop runs and used
 # to bypass it entirely.
 gh19g="$sb19/gh-19g"
@@ -1364,7 +1364,7 @@ else
   fail "19g: SUITE_REPORT_PR='not-a-number' -> rc=$rc19g gh.log='$(cat "$sb19/gh.log" 2>/dev/null)' output: $out19g"
 fi
 
-# 19h (HIMMEL-2383 round-13 CR finding codex-2): --changed-since alongside
+# 19h: --changed-since alongside
 # --pr posts a CHANGED-SINCE marker line — base-status.sh must not read a
 # conditionally-filtered run as full scope coverage. Real git (this test
 # runs inside the worktree, a real repo) resolves "HEAD" fine; the fixture
@@ -1387,13 +1387,13 @@ fi
 
 
 # --------------------------------------------------------------------------
-# Case 22 (HIMMEL-2872) — --shard <i>/<n> partitions the run list.
+# Case 22 — --shard <i>/<n> partitions the run list.
 #
 # The shard split is what lets CI's shell-unit job fan out across a runner
 # matrix, so the property that has to hold is EXACTNESS, not "roughly even":
 # the union of shards 1..n must equal the unsharded run list and the shards
 # must be pairwise disjoint. Anything weaker silently drops suites off the
-# gate — the HIMMEL-1128 false-green class, reached through the parallelism
+# gate — the false-green class, reached through the parallelism
 # instead of through discovery.
 #
 # The split is taken AFTER SKIP_LIST/--skip-extra/tier/conditional/capability
@@ -1490,8 +1490,8 @@ fi
 rm -rf "$sb22d"
 fi
 
-# 22e — a shard that is assigned NOTHING (ZERO suites) is a pass, not a refusal
-# (HIMMEL-3699): os-verify splits a short impacted list across a fixed shard
+# 22e — a shard that is assigned NOTHING (ZERO suites) is a pass, not a refusal:
+# os-verify splits a short impacted list across a fixed shard
 # count, and a matrix cell with no suites must not turn the run red. It says so
 # explicitly, so a green cell is never silent about running nothing.
 sb22e=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22e.XXXXXX") || { fail "22e: mktemp failed"; sb22e=""; }
@@ -1618,9 +1618,9 @@ fi
 
 
 
-# Case 22-dur (HIMMEL-2894) — --shard assignment is a duration-aware bin-pack.
+# Case 22-dur — --shard assignment is a duration-aware bin-pack.
 #
-# Round-robin (HIMMEL-2872's v1) balances by construction only when every
+# Round-robin balances by construction only when every
 # suite costs about the same. It does not: run 34408076490 put the corpus's
 # two heaviest suites (389s + 330s) on the same shard by modulo luck, so the
 # slowest shard took 18m23s against a 6.5m floor. The assignment is now a
@@ -1690,7 +1690,7 @@ fi
 
 # 22j — a suite the ledger has never heard of is still assigned to EXACTLY one
 # shard. A lookup miss that dropped the suite would take it off the gate while
-# every shard reported green — HIMMEL-1128's false-green class reached through
+# every shard reported green — the false-green class reached through
 # the ledger. This ledger covers s1..s3 only; s4..s6 are misses.
 sb22j=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22j.XXXXXX") || { fail "22j: mktemp failed"; sb22j=""; }
 if [ -n "$sb22j" ]; then
@@ -1721,8 +1721,8 @@ rm -rf "$sb22j"
 fi
 
 # 22k — the ledger is ADVISORY. Missing, empty and malformed all land on the
-# HIMMEL-2872 round-robin partition — byte-identical to what the runner planned
-# before this ticket — by two different routes that must be indistinguishable
+# round-robin partition — byte-identical to what the runner planned
+# before the ledger existed — by two different routes that must be indistinguishable
 # from the outside. A MISSING ledger is the runner's one fallback: shell
 # builtins decide it off a committed file, so every shard reaches the same
 # verdict and says so once on stderr. A ledger that is present but carries no
@@ -1733,7 +1733,7 @@ fi
 sb22k=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22k.XXXXXX") || { fail "22k: mktemp failed"; sb22k=""; }
 if [ -n "$sb22k" ]; then
 mk_shard_sandbox "$sb22k" 6
-# The pre-HIMMEL-2894 partition for 6 suites over 2 shards, spelled out.
+# The round-robin partition for 6 suites over 2 shards, spelled out.
 rr1_22k=$(printf '%s/test-s1.sh\n%s/test-s3.sh\n%s/test-s5.sh' "$sb22k" "$sb22k" "$sb22k")
 rr2_22k=$(printf '%s/test-s2.sh\n%s/test-s4.sh\n%s/test-s6.sh' "$sb22k" "$sb22k" "$sb22k")
 empty22k="$sb22k/empty.tsv";  : > "$empty22k"
@@ -1830,7 +1830,7 @@ fi
 # surface at the second one. These four cases each kill exactly ONE tool in the
 # join|sort|pack|verify chain and assert the same thing: rc != 0, an empty
 # assignment, and the single refusal message. Never a silent re-partition,
-# which is the HIMMEL-1128 false-green class this guard exists for.
+# which is the false-green class this guard exists for.
 #
 # Each stub is keyed on a token unique to its target's own argv, so every other
 # sort and awk in the runner still execs the real tool:
@@ -1906,7 +1906,7 @@ fi
 rm -rf "$sb22m"
 fi
 
-# 22q-22r (HIMMEL-2930) — the ONE guard's other two directions. 22m-p each
+# 22q-22r — the ONE guard's other two directions. 22m-p each
 # kill a tool outright, so the plan comes out short and check 2 (completeness)
 # already catches it. These two let the join finish and emit a COMPLETE plan —
 # every eligible suite placed exactly once — so check 2 alone would pass them
@@ -2140,7 +2140,7 @@ rm -rf "$sb22v"
 fi
 
 # --------------------------------------------------------------------------
-# Case 23 (HIMMEL-3193) — scan root `.` covers scripts/ + templates/ +
+# Case 23 — scan root `.` covers scripts/ + templates/ +
 # marketplace/. The CI shards ran `scripts` only, so ~65 suites under the
 # other two trees never gated a PR.
 # --------------------------------------------------------------------------
@@ -2185,8 +2185,8 @@ else
 fi
 
 # 23e: every quarantined templates/marketplace suite is a visible [SKIP] whose
-# reason names a ticket — never a silent drop (HIMMEL-3193 plan (b)). Zero
-# quarantined suites is valid: HIMMEL-3196 un-quarantined the last ones, so the
+# reason names a ticket — never a silent drop. Zero
+# quarantined suites is valid: the last ones were un-quarantined, so the
 # check must not assume one exists.
 q23_ok() { [ -z "$1" ] || ! grep -qvE 'HIMMEL-[0-9]+' <<< "$1"; }
 q23=$(grep -E '^\[SKIP\] (marketplace|templates)/' <<< "$o23")
@@ -2232,7 +2232,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Case 24 — skipped=<n> (HIMMEL-3194). A suite that prints a SKIP line and
+# Case 24 — skipped=<n>. A suite that prints a SKIP line and
 # exits 0 is a PASS to the runner, so a skipped suite and a real pass were
 # indistinguishable in the CI summary. The runner now counts, per suite (not
 # per case), the PASSING suites whose output holds a SKIP line, and reports
@@ -2312,12 +2312,12 @@ rm -rf "$sb24"
 fi
 
 # --------------------------------------------------------------------------
-# Case 25 — SKIP_LIST_NON_LINUX (HIMMEL-3203): scripts/test-adopt.sh runs on
+# Case 25 — SKIP_LIST_NON_LINUX: scripts/test-adopt.sh runs on
 #   Linux and stays [SKIP]ped off-Linux. The real table entry is driven with a
 #   sentinel-writing stub at scripts/test-adopt.sh; `uname` is stubbed on PATH
 #   so every host exercises the Darwin / MINGW branches deterministically.
 #     a. uname -s = Linux   -> [PASS] scripts/test-adopt.sh, stub ran
-#     b. uname -s = Darwin  -> [SKIP] with the HIMMEL-3203 reason, stub never ran
+#     b. uname -s = Darwin  -> [SKIP] with the off-Linux reason, stub never ran
 #     c. uname -s = MINGW64_NT-10.0 -> same skip
 # --------------------------------------------------------------------------
 echo "== Case 25 (HIMMEL-3203): test-adopt.sh runs on Linux, skipped off-Linux =="

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # single quotes in node -e intentional (shell vars arrive via env)
-# scripts/cr/known-findings.sh — known-findings self-review (HIMMEL-2058)
+# scripts/cr/known-findings.sh — known-findings self-review
 # Deterministic (no LLM) pre-panel check: matches a diff against the recurring
 # CR finding classes in scripts/cr/known-findings.json and emits a checklist the
 # session fixes or pre-rebuts BEFORE /pr-check step 3 spends a critic round.
@@ -16,13 +16,13 @@
 #   known-findings.sh --list                    markdown table (human index)
 #   known-findings.sh --ladder                  class count per rung (design|gate|advisory|prompt|human),
 #                                               then the promotion queue: prompt/advisory classes with
-#                                               agreed ledger recurrences, most first (HIMMEL-4426)
+#                                               agreed ledger recurrences, most first
 #   known-findings.sh --refresh [--learnings <export.csv>]
 # Env: KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json),
 #      CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
 # Exit: 0 (advisory — a match is NOT a failure), 2 usage / missing input.
 set -uo pipefail
-# HIMMEL-3395: a relative-entry copy that is not the anchor's hands off to it.
+# a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
 
@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
                  # Range optional (panel r5 codex-1): a bare `--diff` resolves
                  # <default-branch>...HEAD itself, so the runbook line stays a
                  # literal single command the permission allow-list can match
-                 # (HIMMEL-203) instead of a `$(...)`/`||` compound.
+                 # instead of a `$(...)`/`||` compound.
                  if [ $# -ge 2 ] && [ "${2#-}" = "$2" ]; then RANGE="$2"; shift 2; else RANGE=""; shift; fi;;
     --prompt)    MODE=prompt; shift;;
     --list)      MODE=list; shift;;
@@ -78,7 +78,7 @@ const MODE = process.env.MODE, KF = process.env.KF, JSON_OUT = process.env.JSON 
 const ROOT = process.env.REPO_ROOT;
 const db = JSON.parse(fs.readFileSync(KF, "utf8"));
 const classes = db.classes || [];
-// HIMMEL-4426: `rung` is the top rung of the correction ladder the class has
+// `rung` is the top rung of the correction ladder the class has
 // reached (see the `_schema` note). A class without a valid one is a schema
 // error, never a silent miss in the --ladder count. Checked in the catalogue-
 // maintenance modes only: --diff and --prompt sit on the critic hot path, where
@@ -104,7 +104,7 @@ const isTestFile = (f) => /(^|\/)test-[^/]*\.(sh|ps1)$|\.test\.[a-z]+$|(^|\/)tes
 const baseName = (f) => f.split("/").pop();
 
 if (MODE === "list") {
-  // Paste-safe markdown cells (HIMMEL-2450): escape | and collapse newlines.
+  // Paste-safe markdown cells: escape | and collapse newlines.
   const cell = (v) => String(v ?? "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
   console.log("| id | kind | rung | source | detector | title |");
   console.log("|---|---|---|---|---|---|");
@@ -191,7 +191,7 @@ if (MODE === "diff") {
         const pair = new RegExp(`^(test[-_]${stem}|${stem}[._]test)\\.[A-Za-z0-9]+$`);
         // A `bin.*` CLI entry point has no natural like-named test file --
         // it is the dispatcher a whole test/ dir exercises, not a `test-bin.*` unit
-        // (HIMMEL-2827: scripts/himmelctl/bin.js paired with
+        // (e.g. scripts/himmelctl/bin.js paired with
         // scripts/himmelctl/test/test-wizard-questions.sh). Any changed test
         // under the entry point own dir or a subdirectory counts, no
         // stem-name pair required; every other stem still needs its exact pair.
@@ -263,7 +263,7 @@ if (MODE === "refresh") {
     if (r.kind === "finding") { const k = key(r.head, r.finding_id); if (!first[k]) first[k] = r; if (r.verdict) verdict[k] = r.verdict; else if (!(k in verdict)) verdict[k] = ""; }
     else if (r.kind === "amend" && r.set && r.set.verdict) { const k = key(r.target_head, r.finding_id); if (k in verdict) verdict[k] = r.set.verdict; }
   }
-  // HIMMEL-2078: first[k] already carries the new optional .text field on
+  // first[k] already carries the new optional .text field on
   // each finding row (the panel one-line prose claim) untouched -- this loop
   // just never projects it into agg / the written catalog, which only
   // tracks per-class COUNTS, not individual findings. Surfacing text for

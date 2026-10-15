@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/check-plugin-drift.sh (HIMMEL-322).
+# Smoke test for scripts/check-plugin-drift.sh.
 # Structural checks (no network needed) + one end-to-end run (uses network iff
 # gh is available; the script itself fail-opens when it isn't).
 set -uo pipefail
@@ -10,7 +10,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,7 +27,7 @@ bad() { echo "FAIL - $1" >&2; fails=$((fails + 1)); }
 # tool_link <src> <dst> -- put a tool on a masked PATH dir. Where `ln -s` makes a
 # real link that is the link; where it COPIES (Git Bash without the symlink
 # privilege) a copied bash.exe/dirname.exe cannot load its DLLs and answers rc=127
-# (HIMMEL-3182), so a one-line exec wrapper stands in for it instead.
+# so a one-line exec wrapper stands in for it instead.
 # shellcheck source=lib/host-caps.sh
 . "$ROOT/scripts/lib/host-caps.sh"
 if host_symlinks_real; then
@@ -40,9 +40,9 @@ fi
 if bash -n "$SCRIPT"; then ok "syntax (bash -n)"; else bad "syntax"; fi
 
 # 2. The marketplace.json parser yields the git-remote pinned remotes (>=1; expect
-#    claude-obsidian — sourced via an explicit HTTPS url since HIMMEL-549, so the
+#    claude-obsidian — sourced via an explicit HTTPS url, so the
 #    parser must accept both the {github,repo} and {url,url} shapes; obsidian/kepano
-#    was dropped, it installs from its own marketplace, HIMMEL-435). Mirrors the
+#    was dropped, it installs from its own marketplace). Mirrors the
 #    script's own parser.
 pins="$(python3 - "$MJSON" <<'PY' | tr -d '\r'
 import json, sys
@@ -55,7 +55,7 @@ PY
 )"
 if grepq "$pins" -x "claude-obsidian"; then ok "parser finds claude-obsidian pin"; else bad "parser missing claude-obsidian"; fi
 if grepq "$pins" -x "obsidian"; then bad "obsidian pin still present — should have been dropped (HIMMEL-435)"; else ok "obsidian (kepano) pin absent — dropped as expected"; fi
-# HIMMEL-2854: plannotator-effective-html is pinned by `sha`, not `ref`
+# plannotator-effective-html is pinned by `sha`, not `ref`
 # (marketplace/.claude-plugin/marketplace.json) — a predicate that only
 # checks `ref` silently drops it from the pinned-remotes inventory this
 # mirror feeds, even though the production parser (check-plugin-drift.sh)
@@ -119,8 +119,8 @@ fi
 #     same-version prerelease must NOT be picked as latest over the stable tag
 #     (would be a phantom BEHIND), and a genuinely-newer stable IS picked.
 TAG_RE='^v?[0-9]+\.[0-9]+(\.[0-9]+)?$'
-# Run the PRODUCTION highest_version helper, not a mirror (HIMMEL-1054 CR
-# round): the function body is extracted verbatim from the script under test,
+# Run the PRODUCTION highest_version helper, not a mirror:
+# the function body is extracted verbatim from the script under test,
 # so a divergence in the real selector cannot pass silently here. (The script
 # executes on source, so a plain `source` is not an option.)
 eval "$(sed -n '/^highest_version() {/,/^}/p' "$SCRIPT")"
@@ -129,7 +129,7 @@ if [ "$(pick "$(printf 'v1.9.1\nv1.9.2\nv1.9.2-alpha\nv1.8.1\n')")" = "v1.9.2" ]
 if [ "$(pick "$(printf 'v1.9.2\nv1.9.3\n')")" = "v1.9.3" ]; then ok "stable-tag select: newer stable wins"; else bad "newer stable not selected"; fi
 if [ -z "$(pick "$(printf 'v1.9.2-alpha\nv1.9.3-rc1\n')")" ]; then ok "stable-tag select: all-prerelease -> empty (drives the UNCHECKED path)"; else bad "all-prerelease should select nothing, got '$(pick "$(printf 'v1.9.2-alpha\nv1.9.3-rc1\n')")'"; fi
 
-# 3d. The real upstreams.json registers the two SHA-pinned lib forks (HIMMEL-1046)
+# 3d. The real upstreams.json registers the two SHA-pinned lib forks
 #     against their TRUE upstreams — graphify via latest_source=release (its tags
 #     are non-monotonic: a stale v1.0.0 predates the current v0.9.x line), qmd via
 #     the default highest-tag path.
@@ -146,10 +146,10 @@ PY
 if grepq "$reg_probe" 'graphify|Graphify-Labs/graphify|tag_release|base|release'; then ok "graphify entry -> true upstream Graphify-Labs, tag_release/base, latest_source=release"; else bad "graphify registry entry wrong/missing: $(printf '%s' "$reg_probe" | grep graphify)"; fi
 if grepq "$reg_probe" 'qmd|tobi/qmd|tag_release|base'; then ok "qmd entry -> true upstream tobi/qmd, tag_release/base"; else bad "qmd registry entry wrong/missing: $(printf '%s' "$reg_probe" | grep '^qmd')"; fi
 
-# 3e. HIMMEL-1435 zero-gap inventory: claude-obsidian must be a plain tag-pinned
-#     resync target (no fork block — the fork was retired at v2.2.0, HIMMEL-2925)
+# 3e. zero-gap inventory: claude-obsidian must be a plain tag-pinned
+#     resync target (no fork block — the fork was retired at v2.2.0)
 #     whose duplicated synced_base matches plugin-upstreams.json; qmd is likewise
-#     a plain SHA-pinned entry with no fork block since HIMMEL-3045 de-forked it
+#     a plain SHA-pinned entry with no fork block de-forked it
 #     (it was the last remaining fork-block entry until then); every third-party
 #     plugin actually bundled in the luna template must have a registry row
 #     whose base matches its manifest; deliberate omissions stay explicit in
@@ -168,8 +168,8 @@ assert 'fork' not in co
 
 qmd = entries['qmd']
 assert qmd['tracked_repo'] == 'tobi/qmd'
-# HIMMEL-3956 re-carried the fork (launcher signal forwarding) until
-# tobi/qmd#1030 lands; HIMMEL-3982 drops this block again.
+# re-carried the fork (launcher signal forwarding) until
+# tobi/qmd#1030 lands; an earlier change drops this block again.
 assert qmd['fork']['fork_repo'] == 'https://github.com/yotamleo/qmd.git'
 assert qmd['fork']['upstream_repo'] == 'https://github.com/tobi/qmd.git'
 assert qmd['fork']['pin_file'] == 'scripts/lib/qmd-bin.sh'
@@ -193,7 +193,7 @@ for plugin_id, (entry_name, repo) in expected.items():
     assert entry['synced_base'].lstrip('v') == manifest['version'].lstrip('v'), (entry_name, entry['synced_base'], manifest['version'])
     assert 'version_pin' not in entry
 
-# github-sync (HIMMEL-3066): opt-in, out of community-plugins.json, vendored
+# github-sync: opt-in, out of community-plugins.json, vendored
 # under optional/plugins/ instead of .obsidian/plugins/ — checked separately
 # since it is no longer one of the always-installed community entries above.
 assert 'github-sync' not in community
@@ -221,7 +221,7 @@ else
   bad "zero-gap inventory invalid: $audit_out"
 fi
 
-# 3e. --manifest-only (HIMMEL-3464): local, no-network check that every
+# 3e. --manifest-only: local, no-network check that every
 #     marketplace plugin manifest carries a "version" field. RED against a
 #     scratch fixture with one manifest missing the field (never against the
 #     real tree), then GREEN once every fixture manifest has one.
@@ -240,14 +240,12 @@ real_out="$(bash "$SCRIPT" --manifest-only 2>&1)"; real_rc=$?
 if [ "$real_rc" -eq 0 ]; then ok "--manifest-only: real tree — every marketplace plugin manifest carries a version"; else bad "--manifest-only: real tree failed (rc=$real_rc): $real_out"; fi
 
 # 3f. --manifest-only: an empty/absent plugins dir must not silently pass
-#     (codex-1, HIMMEL-3464 CR round 2).
 W_EMPTY="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-empty.XXXXXX")" || { bad "--manifest-only empty-dir fixture: mktemp -d failed"; exit 1; }
 empty_out="$(DRIFT_PLUGINS_DIR="$W_EMPTY/no-such-dir" bash "$SCRIPT" --manifest-only 2>&1)"; empty_rc=$?
 if [ "$empty_rc" -ne 0 ]; then ok "--manifest-only: RED — empty plugins dir exits non-zero"; else bad "--manifest-only: empty plugins dir did not fail (rc=0)"; fi
 rm -rf -- "$W_EMPTY"
 
 # 3g. --manifest-only: a truthy non-string version (bool/number) must not pass
-#     (codex-2, HIMMEL-3464 CR round 2).
 W_TYPE="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-type.XXXXXX")" || { bad "--manifest-only version-type fixture: mktemp -d failed"; exit 1; }
 mkdir -p "$W_TYPE/plugin-c/.claude-plugin"
 printf '{"name": "plugin-c", "version": true}\n' > "$W_TYPE/plugin-c/.claude-plugin/plugin.json"
@@ -256,7 +254,7 @@ if [ "$type_rc" -ne 0 ]; then ok "--manifest-only: RED — non-string version (b
 rm -rf -- "$W_TYPE"
 
 # 3h. --manifest-only: a manifest that decodes to non-object JSON (null, list)
-#     must not crash on .get() (codex-1, HIMMEL-3464 CR round 3).
+#     must not crash on .get().
 W_NULL="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-null.XXXXXX")" || { bad "--manifest-only null-manifest fixture: mktemp -d failed"; exit 1; }
 mkdir -p "$W_NULL/plugin-d/.claude-plugin"
 printf 'null\n' > "$W_NULL/plugin-d/.claude-plugin/plugin.json"
@@ -265,7 +263,7 @@ if [ "$null_rc" -ne 0 ]; then ok "--manifest-only: RED — non-object manifest (
 if grepq "$null_out" "Traceback"; then bad "--manifest-only: non-object manifest crashed instead of failing cleanly: $null_out"; else ok "--manifest-only: non-object manifest fails cleanly, no traceback"; fi
 rm -rf -- "$W_NULL"
 
-# 3i. --bump-required (HIMMEL-3551): a commit that changes a plugin file
+# 3i. --bump-required: a commit that changes a plugin file
 #     without bumping that plugin's plugin.json "version" must fail, both in
 #     staged mode (pre-commit shape) and range mode (CI shape). Throwaway git
 #     repo fixtures — this check is inherently diff-based, unlike the
@@ -314,7 +312,7 @@ noop_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; noop_rc=$?
 if [ "$noop_rc" -eq 0 ]; then ok "--bump-required (staged): no plugin changes -> pass"; else bad "--bump-required (staged): no-op case failed (rc=$noop_rc): $noop_out"; fi
 rm -rf -- "$W_BUMP"
 
-# HIMMEL-5177: replay #2331/#2334's competing 0.4.60 -> 0.4.61 bumps.
+# replay #2331/#2334's competing 0.4.60 -> 0.4.61 bumps.
 # Manifest copied from e65befe4^:marketplace/plugins/himmel-ops/.claude-plugin/plugin.json;
 # e65befe4 (#2331) changed only its version to 0.4.61, also used by #2334.
 W_CURRENT="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-current.XXXXXX")" || exit 1
@@ -346,7 +344,7 @@ W_CURRENT="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-current.XXXXXX")" || exit 1
   ]
 }
 JSON
-  # The job runs the checker from the base tip (HIMMEL-5195), so the base
+  # The job runs the checker from the base tip, so the base
   # branch must carry it, as the real repo does.
   mkdir -p scripts/lib
   cp "$SCRIPT" scripts/check-plugin-drift.sh
@@ -401,7 +399,7 @@ current_out="$(run_current_job 2>&1)"; current_rc=$?
 if [ "$current_rc" -eq 0 ]; then ok "current-base job accepts a fresh bump and ignores base-only plugins"; else bad "current-base fresh bump failed (rc=$current_rc): $current_out"; fi
 current_out="$(run_current_job missing-base 2>&1)"; current_rc=$?
 if [ "$current_rc" -ne 0 ] && ! grepq "$current_out" 'every changed plugin bumped'; then ok "current-base job fails closed on fetch failure, even with a cached base ref"; else bad "current-base job ignored fetch failure (rc=$current_rc): $current_out"; fi
-# HIMMEL-5195: a PR branched before #2341 carries the OLD checker (two-dot
+# a PR branched before #2341 carries the OLD checker (two-dot
 # diff) while the workflow comes from the merge ref and passes the live base
 # tip, so a PR that never touched the plugin read 0.4.61 -> 0.4.60 "not a
 # bump" (PR 2328 at 24e9cf97). Replay: branch off stored-base (0.4.60), change
@@ -448,7 +446,7 @@ fi
 # 5. Fail-open path, deterministically (hide gh from PATH). The script's headline
 #    safety property: gh absent -> exit 0 + skip, so CI / fresh clones never break.
 #    A system-directory PATH (e.g. /usr/bin:/bin) does NOT hide gh — gh, jq, git,
-#    sha256sum etc. all live in /usr/bin on this station (HIMMEL-2524's inverse
+#    sha256sum etc. all live in /usr/bin on this station (an earlier change's inverse
 #    mistake: hiding by directory re-admits the very tool named). Build a minimal
 #    stub dir instead, naming only what this fail-open path itself needs (bash to
 #    run the script, dirname for its `$(dirname "$0")` ROOT resolution) and
@@ -530,7 +528,7 @@ GH
 # `shasum -a 256`), so a wrong tmpfile/decode would fail the CURRENT assertion.
 # The real sha256sum is resolved HERE (the mask below hides it from the script
 # under test, not from this stub); python3 is the fallback where it is absent
-# (macOS), and the runner's Git Bash has no python3 (HIMMEL-3182).
+# (macOS), and the runner's Git Bash has no python3.
 REAL_SHA256SUM="$(command -v sha256sum 2>/dev/null || true)"; export REAL_SHA256SUM
 cat >"$W5C/bin/shasum" <<'SHASUM'
 #!/usr/bin/env bash
@@ -603,7 +601,7 @@ JSON
  "fix-bad-track":{"upstream_repo":"AgriciDaniel/claude-obsidian","track":"bogus"}
 }
 JSON
-  # Stub the carried-upstreams registry + marketplaces (HIMMEL-869) to /dev/null so
+  # Stub the carried-upstreams registry + marketplaces to /dev/null so
   # this override-branch fixture run stays hermetic + deterministic (no real
   # carried-upstream checks firing alongside the fixture under test).
   fx_out="$(DRIFT_MJSON="$fix_m" DRIFT_UPSTREAMS="$fix_u" DRIFT_REGISTRY=/dev/null DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$SCRIPT" 2>&1)"; fx_rc=$?
@@ -621,7 +619,7 @@ fi
 # is exercised implicitly on this Windows checkout (python3 emits CRLF; check #2 +
 # the real run both depend on it).
 
-# 7. Carried-upstreams registry (HIMMEL-869): fully hermetic — a stubbed `gh` on
+# 7. Carried-upstreams registry: fully hermetic — a stubbed `gh` on
 #    PATH serves canned SHAs/tags from a state dir, a fixture upstreams.json +
 #    fixture known_marketplaces.json cover every kind/mode + the UNCHECKED shapes,
 #    and a throwaway git checkout backs the commit_head/checkout + marketplace
@@ -721,7 +719,7 @@ KJSON
 empty_mjson="$W7/empty_mjson.json"
 printf '{"plugins":[]}' >"$empty_mjson"
 printf '{}' >"$W7/empty_ups.json"
-# pin-holds rows for carried upstreams (HIMMEL-3952): eco "upstream", key = the
+# pin-holds rows for carried upstreams: eco "upstream", key = the
 # registry name. Both holds reviewed 2.0.0, but base-held-expired's upstream
 # has since shipped v3.0.0, so its hold no longer applies.
 cat >"$W7/holds.json" <<'JSON'
@@ -741,14 +739,14 @@ if grepq "$sec7" '^  pin-full: CURRENT'; then ok "commit_head pin full-SHA -> CU
 if grepq "$sec7" '^  pin-short: BEHIND'; then ok "commit_head pin short-SHA resolved -> BEHIND"; else bad "commit_head pin-short not BEHIND; $(printf '%s' "$sec7" | grep pin-short)"; fi
 if grepq "$sec7" '^  checkout-ok: CURRENT'; then ok "commit_head checkout present -> CURRENT"; else bad "checkout-ok not CURRENT; $(printf '%s' "$sec7" | grep checkout-ok)"; fi
 if grepq "$(printf '%s' "$sec7" | grep 'checkout-missing')" 'UNCHECKED'; then ok "commit_head checkout absent -> UNCHECKED"; else bad "checkout-missing not UNCHECKED"; fi
-# 7a-expand (HIMMEL-3537): checkout_path is ${UNSET:-default}, default text
+# 7a-expand: checkout_path is ${UNSET:-default}, default text
 # itself carries a bare $VAR (DRIFT_TEST_DEFAULT_DIR=$CK1) — proves both the
 # ${VAR:-default} fallback AND the second substitution pass that expands a
 # $VAR embedded in the default's own text. A failed expand would leave the
 # literal '${...}' string as checkout_path, which is not a directory ->
 # "checkout not present", never CURRENT.
 if grepq "$sec7" '^  checkout-expand: CURRENT'; then ok "expand(): \${VAR:-default} with \$VAR inside the default resolves to a real checkout -> CURRENT"; else bad "checkout-expand not CURRENT; $(printf '%s' "$sec7" | grep checkout-expand)"; fi
-# 7a-gcs (HIMMEL-3537): no .git dir, but a .gcs-sha file (Claude Code's own
+# 7a-gcs: no .git dir, but a .gcs-sha file (Claude Code's own
 # GCS-tarball marketplace install shape) -> read that as the local commit
 # instead of failing UNCHECKED. The fixture .gcs-sha carries leading/trailing
 # whitespace and a newline to prove the tr -d '[:space:]' strip.
@@ -759,7 +757,7 @@ if grepq "$sec7" '^  base-cur: CURRENT'; then ok "tag_release base synced -> CUR
 if grepq "$sec7" '^  base-behind: BEHIND'; then ok "tag_release base stale -> BEHIND"; else bad "base-behind not BEHIND"; fi
 if grepq "$sec7" '^  base-held: HELD '; then ok "tag_release base with a matching pin-holds row -> HELD, not BEHIND"; else bad "base-held not HELD; $(printf '%s' "$sec7" | grep base-held)"; fi
 if grepq "$sec7" '^  base-held-expired: BEHIND'; then ok "tag_release hold expires once upstream moves past the reviewed release -> BEHIND"; else bad "base-held-expired not BEHIND; $(printf '%s' "$sec7" | grep base-held-expired)"; fi
-# 7b-vm (HIMMEL-4583): a hold whose release is "vm-proof" names the proof route
+# 7b-vm: a hold whose release is "vm-proof" names the proof route
 # that vm.mode resolves (scripts/lib/vm-mode.sh), never a hardcoded local VM, and
 # under vm.mode=none it stays HELD and says no VM can release it.
 cat >"$W7/holds-vm.json" <<'JSON'
@@ -781,13 +779,13 @@ l7="$(run7vm '{"vm":{"mode":"remote","remote":{"ssh":"ops@vm.example","port":220
 if grepq "$l7" -F 'HELD' && grepq "$l7" -F 'release: vm-proof via remote-vm ops@vm.example:2201'; then ok "vm-proof hold, vm.mode=remote -> remote VM route"; else bad "vm-proof remote route missing; $l7"; fi
 l7="$(run7vm '{"vm":{"mode":"none"}}')"
 if grepq "$l7" -F 'HELD' && grepq "$l7" -F 'vm.mode=none' && grepq "$l7" -F 'operator ack' && grepq "$l7" -F 'never auto-released'; then ok "vm-proof hold, vm.mode=none -> stays HELD, operator ack + rollback point"; else bad "vm-proof none not HELD-with-ack; $l7"; fi
-# HIMMEL-4597 (J1932 T1): a resolver error stays HELD but offers only "fix the config", never the ack route.
+# (J1932 T1): a resolver error stays HELD but offers only "fix the config", never the ack route.
 l7="$(run7vm '{"vm":{"mode":"Local"}}')"
 if grepq "$l7" -F 'HELD' && grepq "$l7" -F 'vm.mode config error' && grepq "$l7" -F 'fix ~/.himmel/config.json' && ! grepq "$l7" -F 'operator ack'; then ok "vm-proof hold, vm.mode config error -> HELD, fix config, no ack route"; else bad "vm-proof error offers the ack route or no fix-config; $l7"; fi
 if grepq "$sec7" '^  probe-cur: CURRENT'; then ok "tag_release probe synced -> CURRENT"; else bad "probe-cur not CURRENT"; fi
 if grepq "$sec7" '^  probe-behind: BEHIND'; then ok "tag_release probe stale -> BEHIND"; else bad "probe-behind not BEHIND"; fi
 if grepq "$(printf '%s' "$sec7" | grep 'probe-ahead')" 'CURRENT'; then ok "tag_release probe installed-ahead -> CURRENT (not a phantom BEHIND)"; else bad "probe-ahead not CURRENT; $(printf '%s' "$sec7" | grep probe-ahead)"; fi
-# 7b-extra (HIMMEL-869 CR fix): a version_regex containing a literal '|'
+# 7b-extra: a version_regex containing a literal '|'
 # (regex alternation) must round-trip through the emitter/consumer protocol
 # intact. Under a pipe-delimited protocol this record's own fields would
 # misalign (v2/version_regex truncates at the first '|', the remainder spills
@@ -827,7 +825,7 @@ else
 fi
 rm -rf "$W7"
 
-# 8. Probe watchdog fallback (HIMMEL-869 CR fix 1): when `timeout` is absent
+# 8. Probe watchdog fallback: when `timeout` is absent
 #    from PATH, a hanging version_command must not wedge the run — the
 #    bash-native watchdog fallback bounds it to the same 10s budget, and a
 #    killed probe reads UNCHECKED (never CURRENT/BEHIND). PATH is rebuilt from
@@ -882,7 +880,7 @@ if grepq "$w8_out" -E '^  hang-tool: (CURRENT|BEHIND)'; then bad "hanging probe:
 if [ "$w8_rc" -eq 3 ]; then ok "hanging probe run exits 3 (incomplete)"; else bad "hanging probe run rc=$w8_rc; expected 3"; fi
 rm -rf "$W8"
 
-# 9. Marketplace entry lacking installLocation (HIMMEL-869 CR fix 3): older/
+# 9. Marketplace entry lacking installLocation: older/
 #    foreign known_marketplaces.json shapes must skip with a named per-entry
 #    UNCHECKED note, never fall through to the checkout-missing branch with an
 #    empty path (which would read as "checkout not present on this machine ()"
@@ -913,7 +911,7 @@ fi
 if [ "$w9_rc" -eq 3 ]; then ok "missing-installLocation-only run exits 3 (incomplete)"; else bad "missing-installLocation run rc=$w9_rc; expected 3"; fi
 rm -rf "$W9"
 
-# 10. Probe timeout path (HIMMEL-869 CR round-3): with `timeout` AVAILABLE on
+# 10. Probe timeout path: with `timeout` AVAILABLE on
 #     PATH (the normal/common case — no PATH masking here, unlike test 8's
 #     fallback exercise), a probe that prints a version line and THEN hangs
 #     must be killed by `timeout` (rc=124) and read UNCHECKED, never parsed
@@ -938,7 +936,7 @@ cat > "$W10/upstreams.json" <<'JSON'
 JSON
 printf '{"plugins":[]}' >"$W10/empty_mjson.json"
 printf '{}' >"$W10/empty_ups.json"
-# Stock macOS ships neither `timeout` nor `gtimeout` (HIMMEL-2589) -- the
+# Stock macOS ships neither `timeout` nor `gtimeout` -- the
 # ambient PATH cannot be trusted to have one, so resolve it explicitly via
 # scripts/lib/timeout-bin.sh and put it on this test's own PATH, same as
 # `tool_link` does for bash/dirname above, rather than assuming the host has
@@ -965,7 +963,7 @@ else
 fi
 rm -rf "$W10"
 
-# 11. latest_source=release (HIMMEL-1046): for a NON-MONOTONIC-tag upstream, the
+# 11. latest_source=release: for a NON-MONOTONIC-tag upstream, the
 #     guard must read the maintainer's latest NON-prerelease via the Releases API,
 #     NOT the highest semver tag (a stale higher tag would be a phantom latest).
 #     The stub serves BOTH a stale-higher tag (v1.0.0) and the real release
@@ -1033,7 +1031,7 @@ if grepq "$(printf '%s' "$bad_out" | grep 'bad-src')" "unknown latest_source"; t
 if grepq "$bad_out" -E '^  bad-src: (CURRENT|BEHIND)'; then bad "unknown latest_source fell through to a tag-mode verdict"; else ok "unknown latest_source never produced a CURRENT/BEHIND verdict"; fi
 rm -rf "$W11"
 
-# 12. Pin scan (HIMMEL-3807): every npm/bun dep, pre-commit rev, workflow
+# 12. Pin scan: every npm/bun dep, pre-commit rev, workflow
 #     `uses:`, gitleaks `ver=` and OXLINT_VERSION= literal is discovered by
 #     scanning the repo and compared to its latest stable — hermetic, `curl`
 #     (npm registry) and `gh` (releases) stubbed from a state dir. A
@@ -1135,7 +1133,7 @@ if grepq "$pin_sec" '^  pypi:pypi-second 3\.0\.0 .*: CURRENT'; then ok "pin-scan
 if grepq "$pin_sec" 'pypi:pypi-dev'; then bad "a .dev version suffix was truncated and reported"; else ok "pin-scan: a pip pin with a version suffix is not misreported"; fi
 if grepq "$pin_sec" '^  npm:vend-pkg 1\.0\.0 (vend): VENDORED'; then ok "pin-scan: pin inside a VENDORED.md tree -> VENDORED, not BEHIND npm-latest"; else bad "vend-pkg not VENDORED; $(printf '%s' "$pin_sec" | grep vend-pkg)"; fi
 if [ "$pin_rc" -eq 2 ]; then ok "pin-scan drift run exits 2"; else bad "pin-scan drift run rc=$pin_rc; expected 2"; fi
-# A vm-proof hold on a pin (HIMMEL-4583) names the route vm.mode resolves; none keeps it HELD.
+# A vm-proof hold on a pin names the route vm.mode resolves; none keeps it HELD.
 printf '{"holds":[{"eco":"gh","key":"owner/heldrepo","current":"v1.0.0","latest_reviewed":"v2.0.0","release":"vm-proof","reason":"fixture vm hold"}]}\n' > "$W12/holds-vm.json"
 printf '{"vm":{"mode":"none"}}\n' > "$W12/vm-none.json"
 HIMMEL_VM_MODE_CONFIG="$W12/vm-none.json" pin_run "$W12/holds-vm.json"
@@ -1168,7 +1166,7 @@ if grepq "$cov_out" -F 'scripts/hooks/check-oxlint-complexity.sh' && grepq "$cov
 if grepq "$cov_out" -E '^  gh:gitleaks/gitleaks v[0-9.]+ \([^)]*\.github/workflows/ci\.yml[^)]*\.pre-commit-config\.yaml'; then ok "pin-scan reads the ci.yml gitleaks literal into the same row as the hook rev"; else bad "ci.yml gitleaks pin not discovered with the hook rev; $(printf '%s' "$cov_out" | grep gitleaks)"; fi
 rm -rf "$W12" "$PIN_EMPTY"
 
-# 13. Non-semver tag streams + git-subdir sources (HIMMEL-4012). Hermetic: a
+# 13. Non-semver tag streams + git-subdir sources. Hermetic: a
 #     stubbed gh serves tags/heads from a state dir; a fixture marketplace.json
 #     and plugin-upstreams.json carry the shapes under test.
 #     (a) an override with `tag_prefix` ("skill-v") compares only that stream's
@@ -1219,7 +1217,7 @@ if grepq "$out13" '^  stream-behind: BEHIND'; then ok "tag_prefix: newer skill-v
 if grepq "$out13" '^  stream-none: ? no stable version tags'; then ok "tag_prefix: no tag in the stream -> UNCHECKED, never a false CURRENT"; else bad "stream-none not UNCHECKED; $(grep stream-none "$W13/out.txt")"; fi
 if grepq "$out13" '^  sub-ok: CURRENT'; then ok "git-subdir sha pin at HEAD -> CURRENT"; else bad "git-subdir sub-ok not CURRENT; $(grep sub-ok "$W13/out.txt")"; fi
 if grepq "$out13" '^  sub-behind: BEHIND'; then ok "git-subdir sha pin behind HEAD -> BEHIND"; else bad "git-subdir source missing from the pinned-remote class; $(grep sub-behind "$W13/out.txt")"; fi
-# HIMMEL-4019: standalone adoption targets must be checked even when absent
+# standalone adoption targets must be checked even when absent
 # from our marketplace. Reuse the same gh boundary and state fixture.
 printf '{"plugins":[]}' >"$W13/m.json"
 cat >"$W13/u.json" <<JSON
@@ -1240,7 +1238,7 @@ out14="$(GHSTATE="$W13/state" PATH="$W13/bin:$PATH" DRIFT_MJSON="$W13/m.json" DR
 if [ "$rc14" -eq 3 ] && grepq "$out14" 'parse failed'; then ok "invalid standalone track is INCOMPLETE, never current"; else bad "invalid standalone target rc=$rc14; $out14"; fi
 rm -rf "$W13"
 
-# 15. Registry tag_prefix on a latest_source=release entry (HIMMEL-4258): bun
+# 15. Registry tag_prefix on a latest_source=release entry: bun
 #     publishes `bun-v1.4.3`, which the bare-version release match rejected as
 #     UNCHECKED. tag_prefix strips the stream prefix so synced_base stays a bare
 #     version (what .bun-version holds) and the BEHIND line names a bare version
@@ -1270,7 +1268,7 @@ JSON
 done
 rm -rf "$W15"
 
-# 16. Merge-forward (GH #2205, HIMMEL-5261): during `git merge origin/main` the
+# 16. Merge-forward: during `git merge origin/main` the
 #     staged diff against HEAD carries everything the base brought in, so a
 #     branch that never touched the plugin failed the gate on the base's
 #     change. With MERGE_HEAD present only what the branch contributes over

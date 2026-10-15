@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared lane mirror/lock (HIMMEL-4091), sourced by the three launchers.
+# Shared lane mirror/lock, sourced by the three launchers.
 # bash 3.2-safe. Caller supplies CONFIG_DIR, HOME, seed_fail, sanitize_settings,
 # and optional seed_stamp / seed_after_leaves / seed_after_mirror callbacks.
 seed_stamp() { :; }

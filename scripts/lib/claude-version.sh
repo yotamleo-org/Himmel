@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude Code CLI version floor -- the ONE place the minimum lives (HIMMEL-5501).
+# Claude Code CLI version floor -- the ONE place the minimum lives.
 #
 # WHY: every console / leg launch passes `--autocompact` and an Opus 5.5 id. An
 # older CLI rejects the flag (needs 2.1.221+) or the model (needs 2.1.280+) at

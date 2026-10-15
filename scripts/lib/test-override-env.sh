@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # selector: tree-scan
 # scripts/lib/test-override-env.sh -- suite for scripts/lib/override-env.sh
-# (HIMMEL-3092): the guard-override list, the scrub, the drift gate that keeps
+# the guard-override list, the scrub, the drift gate that keeps
 # the list complete, and the runner wiring that applies it to every suite.
 #
 # Ambient guard overrides leak from a console leg's shell into hook suites and
@@ -23,7 +23,7 @@ LIB_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$LIB_DIR/../.." && pwd)"
 LIB="$LIB_DIR/override-env.sh"
 
-# The five vars a console leg leaks (HIMMEL-3092 DONE WHEN) plus the kill switch.
+# The five vars a console leg leaks plus the kill switch.
 LEAKED="INLINE_IMPL_OK HIMMEL_CONSOLE_LEG CLAUDE_CODE_CHILD_SESSION HIMMEL_HOOK_INTEGRITY_BYPASS_OK IMPL_GUARD_OK IMPL_GUARD_DISABLE"
 
 echo "== Case 1: lib present, defines the API =="
@@ -120,7 +120,7 @@ else
   else
     fail "JS env read not caught: [$jsout]"
   fi
-  # JS bracket shapes: process.env["NAME_OK"] / process.env['NAME_OK'] (HIMMEL-3211)
+  # JS bracket shapes: process.env["NAME_OK"] / process.env['NAME_OK']
   printf 'if (process.env["JS_BRACKET_OK"]) process.exit(0);\n' > "$sb5/hook-bracket-dq.js"
   printf "if (process.env['JS_BRACKET_SQ_OK']) process.exit(0);\n" > "$sb5/hook-bracket-sq.js"
   dqout=$(override_env_undeclared "$sb5/hook-bracket-dq.js")
@@ -135,7 +135,7 @@ else
   else
     fail "single-quoted bracket read not caught: [$sqout]"
   fi
-  # Whitespace inside the brackets is still a literal read (codex-1 round 1).
+  # Whitespace inside the brackets is still a literal read.
   printf 'if (process.env[ "JS_SPACED_OK" ]) process.exit(0);\n' > "$sb5/hook-bracket-ws.js"
   wsout=$(override_env_undeclared "$sb5/hook-bracket-ws.js")
   if [ "$wsout" = "JS_SPACED_OK" ]; then
@@ -143,7 +143,7 @@ else
   else
     fail "padded bracket read not caught: [$wsout]"
   fi
-  # A name that merely STARTS with an _OK token inside the quotes is a different variable (codex-1 round 2).
+  # A name that merely STARTS with an _OK token inside the quotes is a different variable.
   printf 'const v = process.env["FEATURE_OK-extra"];\n' > "$sb5/hook-bracket-ext.js"
   extout=$(override_env_undeclared "$sb5/hook-bracket-ext.js")
   if [ -z "$extout" ]; then
@@ -151,7 +151,7 @@ else
   else
     fail "bracket read with a trailing suffix wrongly reported: [$extout]"
   fi
-  # A concatenated key is a different (computed) name, and an unclosed bracket is not a read (codex-1 round 3).
+  # A concatenated key is a different (computed) name, and an unclosed bracket is not a read.
   printf 'const v = process.env["FEATURE_OK" + "-extra"];\n' > "$sb5/hook-bracket-cat.js"
   printf 'const v = process.env["UNCLOSED_OK"\n' > "$sb5/hook-bracket-open.js"
   catout=$(override_env_undeclared "$sb5/hook-bracket-cat.js")

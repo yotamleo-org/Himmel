@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# resume-slot.sh — pick the BEST relaunch slot from current usage (HIMMEL-204).
+# resume-slot.sh — pick the BEST relaunch slot from current usage.
 #
 # arm-resume.sh's `--time auto` always returned the next cap RESET, so it
 # parked the next session hours away even when the bank was wide open. That
@@ -17,7 +17,7 @@
 #   claude session is live. Schema:
 #     { "five_hour": { "utilization": <float %>, "resets_at": "<ISO8601 UTC>" },
 #       "seven_day": { "utilization": <float %>, "resets_at": "<ISO8601 UTC>" } }
-#   Schema drift (HIMMEL-732/738): newer statusline builds write resets_at as
+#   Schema drift: newer statusline builds write resets_at as
 #   a RAW EPOCH STRING like "1783760400" — both forms are accepted.
 #
 # Usage:
@@ -30,7 +30,7 @@
 # Optional:
 #   --threshold <pct>   Utilization at/above which a window counts as
 #                       exhausted. Must be 0-100. Default 90. Env override:
-#                       RESUME_SLOT_THRESHOLD (HIMMEL-1271) — an explicit
+#                       RESUME_SLOT_THRESHOLD — an explicit
 #                       flag still wins; a non-numeric OR out-of-range env
 #                       value falls back to the default instead of erroring
 #                       (an out-of-range FLAG errors). This is the
@@ -49,7 +49,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# python3 hang armor (HIMMEL-249): the Windows Store python3 stub can wedge
+# python3 hang armor: the Windows Store python3 stub can wedge
 # (ignores SIGTERM, orphan child holds the $() pipe). This script sits on
 # the resume-critical path — arm-resume --time smart calls it — so every
 # python call goes through the shared armor.
@@ -57,7 +57,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/py-armor.sh"
 
-# Shipped default stays 90 (HIMMEL-1271): the threshold is how much runway is
+# Shipped default stays 90: the threshold is how much runway is
 # left to write a handover before the bank walls, so the conservative value is
 # the right default for adopters. An operator who wants a tighter wall sets
 # RESUME_SLOT_THRESHOLD in their environment (and, separately,
@@ -173,7 +173,7 @@ if [ "$MAX_AGE_SEC" -gt 0 ]; then
     fi
 fi
 
-# HIMMEL-1712: a cache stamped by a different account is unusable here for
+# a cache stamped by a different account is unusable here for
 # the same reason a stale cache is — don't arm/wait on someone else's
 # numbers. Mirrors the python die() contract below (exit 2, "ERR
 # resume-slot: ..." on stderr, empty stdout) without touching the python
@@ -191,11 +191,11 @@ fi
 
 # All the decision logic lives in one python3 block: parse the two windows,
 # compare utilization (floats) to the threshold, and emit the chosen target.
-# python3 is a required-env tool (HIMMEL-123); keeping ISO parsing + float
+# python3 is a required-env tool; keeping ISO parsing + float
 # compare + epoch math in one place avoids brittle bash float handling. The
 # block OWNS its error reporting (clean ERR lines to stderr, no traceback) and
 # exits 2 on any unusable-cache condition; the bash wrapper just relays the rc.
-# py_armor_capture (HIMMEL-249) caps the call AND routes stdout through a
+# py_armor_capture caps the call AND routes stdout through a
 # file instead of $() — a wedged Store stub becomes a visible nonzero rc
 # (124/137), never an indefinite hang of the smart resolver.
 set +e
@@ -231,7 +231,7 @@ def reset_epoch(window):
     iso = (data.get(window) or {}).get("resets_at")
     if not iso:
         return None
-    # Schema drift (HIMMEL-732, missed here until HIMMEL-738): newer
+    # Schema drift: newer
     # statusline builds write resets_at as a raw epoch — a bare digit string
     # like "1783760400" (or a JSON number). Mirror cap-reset-time.sh: detect
     # that form first, before the ISO 8601 path.
@@ -276,7 +276,7 @@ for w in windows:
         exhausted.append((w, e))
 
 asap = now + buffer_min * 60
-# HIMMEL-1968: with an operator-raised threshold (RESUME_SLOT_THRESHOLD=97 on
+# with an operator-raised threshold (RESUME_SLOT_THRESHOLD=97 on
 # 2026-08-19) a 96% weekly is "free" by the rule and resolves ASAP — correct,
 # but it launched a session straight into a nearly exhausted weekly bank with
 # nothing louder than the 96% inside the reason string. Any window at/over

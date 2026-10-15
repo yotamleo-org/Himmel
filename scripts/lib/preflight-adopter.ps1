@@ -15,7 +15,7 @@
 # detection is not duplicated between the two entry points; only the severity
 # policy differs.
 #
-# Checks (each closes a HIMMEL-842 gap from the preflight design spec):
+# Checks (each closes a gap from the preflight design spec):
 #   Test-PreflightUvPipx        — uv OR pipx present (gap 1: pre-commit install)
 #   Test-PreflightNpmInvocable  — npm invocable when node is (gap 2: npm-less
 #                                 distro node)

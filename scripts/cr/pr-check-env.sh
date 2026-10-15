@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/pr-check-env.sh - resolve /pr-check's CR_* / HIMMEL_DOC_FRESHNESS
-# flags for the orchestrating session (HIMMEL-2226).
+# flags for the orchestrating session.
 #
 # WHY a script and not a bash fence: .claude/commands/pr-check.md's flag-
 # resolution fences source scripts/lib/load-dotenv.sh with
@@ -11,7 +11,7 @@
 # Bash-tool shells anyway. Moving the source into a script whose OWN location
 # resolves the himmel root sidesteps both problems.
 #
-# The --root pin below is load-bearing (HIMMEL-2035): the .env that steers
+# The --root pin below is load-bearing: the .env that steers
 # gate policy is himmel's, never the reviewed repo's, and the gitignored .env
 # exists ONLY in the primary checkout, never a linked worktree. Preserve the
 # pin exactly - _load_dotenv_primary_for, never a bare --root.
@@ -24,11 +24,11 @@
 # Stdout contract - one line per requested variable, in the order requested:
 #   pr-check-env: <NAME>=<value>
 # An unset/empty variable prints the runbook's own documented placeholder for
-# that variable when one exists (currently only CR_CLAUDE_AGENTS, per step 3.5
-# / HIMMEL-926: "<unset: inline adjudication, no Claude reviewer agents>");
+# that variable when one exists (currently only CR_CLAUDE_AGENTS, per step 3.5:
+# "<unset: inline adjudication, no Claude reviewer agents>");
 # every other variable prints an empty value, same as the fences it replaces.
 # When CR_REQUIRE_CROSS_MODEL is among the requested names, one extra line
-# follows it (HIMMEL-2026):
+# follows it:
 #   pr-check-env: CR_REQUIRE_CROSS_MODEL_NORMALISED=<0|1>
 # using the exact truthiness rule as clear-cr-marker.sh gate 3b and the
 # step-2.5 docs-audit fence (1|true|on|yes, case-insensitive, trimmed).
@@ -37,7 +37,7 @@
 # already live in the environment is never overwritten.
 #
 # A copy that is not $HIMMEL_REPO's hands off to the anchor's copy first
-# (HIMMEL-3375, below).
+# (below).
 #
 # Exit: 0 = resolved (even when every variable is unset); 2 = an argument is
 # not a plausible env var name (^[A-Za-z_][A-Za-z0-9_]*$), or the anchor
@@ -48,15 +48,15 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# HIMMEL-3375 - the himmel-lane RELATIVE entry. A leg may run this as the
+# the himmel-lane RELATIVE entry. A leg may run this as the
 # fixed literal `bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS` (the one
 # shape a permission allow rule can match), which runs THIS copy - the
 # branch's. What it prints steers gate policy (CR_REQUIRE_CROSS_MODEL,
 # CR_PROFILE, CR_CLAUDE_AGENTS), so a copy that is not the trusted anchor's
 # never decides anything: it hands straight to the anchor's copy, with the
 # same arguments. HIMMEL_REPO is read from this process's own environment,
-# never derived from cwd or a file the branch supplies (HIMMEL-2226 Finding 1;
-# the same anchor pr-check-context.sh uses). The hand-off runs HERE, before
+# never derived from cwd or a file the branch supplies (the same
+# anchor pr-check-context.sh uses). The hand-off runs HERE, before
 # this copy sources or runs any other file of the branch's own (load-dotenv.sh
 # is sourced only further down). An unset or empty HIMMEL_REPO, or an anchor
 # with no copy of this script, fails closed rather than letting this copy
@@ -64,7 +64,7 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # anchor would loop forever, so it refuses instead.
 # ponytail: this guard is defense in depth, NOT the trust root. It lives in
 # the branch's own bytes, so a branch that deletes it also deletes the
-# hand-off. The trust root is the runbook condition (HIMMEL-3359 ruling): the
+# hand-off. The trust root is the runbook condition: the
 # bare literal is permitted only in a himmel checkout at its worktree root and
 # on a diff that touches no scripts/cr/ file; anything else enters by the
 # anchored "<himmel_dir>/scripts/cr/pr-check-env.sh" spelling.
@@ -133,7 +133,7 @@ done
 load_dotenv --root "$(_load_dotenv_primary_for "$HIMMEL_ROOT")" "${VARS[@]}" || true
 
 # Runbook-documented unset placeholder, by variable name. Only CR_CLAUDE_AGENTS
-# has one today (step 3.5 / HIMMEL-926); every other variable falls through to
+# has one today (step 3.5); every other variable falls through to
 # an empty value, same as the fences it replaces.
 _pce_unset_text() {
     case "$1" in

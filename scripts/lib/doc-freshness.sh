@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/doc-freshness.sh — advisory doc/llms.txt freshness detector (HIMMEL-587).
+# scripts/lib/doc-freshness.sh — advisory doc/llms.txt freshness detector.
 #
 # ADVISORY ONLY. Always exits 0 — never blocks. The sole blocking gate is
 # scripts/hooks/check-doc-guard.sh. Emits "advise" findings for docs whose

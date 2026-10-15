@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# kill-tree.sh — HIMMEL-2514. Sourceable process-tree killer, split out of
+# kill-tree.sh. Sourceable process-tree killer, split out of
 # claude-headless.sh's inline `kill_tree` so it is independently testable
 # (claude-headless.sh itself is not sourceable — it validates argv and exits
 # on failure at parse time).
@@ -12,7 +12,7 @@
 # on any cyclic/racing ppid entry — and is what produced the bash SIGSEGV
 # observed both times.
 #
-# CR round 1 (verified): a SINGLE snapshot fixes the fork-storm and the
+# A SINGLE snapshot fixes the fork-storm and the
 # cycle/depth hazards, but narrows correctness — a process forked after the
 # snapshot but before its parent is signalled is invisible to that one
 # snapshot and survives. So this walks in bounded SWEEPS: each sweep takes
@@ -29,7 +29,7 @@
 # independent of tree size — that bound is the property this ticket cares
 # about.
 #
-# CR round 2 (verified, deferred as HIMMEL-2523, NOT fixed here): sweeping
+# Known limitation (not fixed here): sweeping
 # NARROWS the late-fork window, it does not CLOSE it. Signalling is
 # post-order, so an earlier sweep can already have killed an intermediate
 # parent by the time the next sweep re-snapshots; a child forked after that
@@ -59,11 +59,11 @@ _kill_tree_visited=""
 # this host: `[ 0 -lt 99999999999999999999 ]` errors, and an erroring `if`
 # reads as false) never reaches a numeric `[ -gt ]`/`-lt` test itself. Only
 # once the lengths are equal (both small) does it fall through to an actual
-# numeric compare. A value below $5=minimum is rejected too (CR round 2:
+# numeric compare. A value below $5=minimum is rejected too:
 # KILL_TREE_SWEEPS=0 validated clean under a ceiling-only check, so the
 # sweep loop ran zero times and kill_tree signalled NOTHING, silently — the
 # same failure class the ceiling exists to close, just from the other
-# side); by this point `stripped` is already bounded by the ceiling check
+# side. By this point `stripped` is already bounded by the ceiling check
 # above, so the floor compare cannot itself error either. $1=name (for the
 # warning) $2=value $3=ceiling $4=fallback $5=minimum. Echoes the validated
 # value on stdout; warns once on stderr.

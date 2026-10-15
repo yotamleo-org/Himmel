@@ -1,7 +1,7 @@
-# codex-render-client-lease.ps1 (HIMMEL-1474) - publish a short-lived client
+# codex-render-client-lease.ps1 - publish a short-lived client
 # lease while a pr-check codex adversarial render is alive. The sweep validates
 # every field independently; this writer is best-effort and fail-open.
-# HIMMEL-1509: when -LeaseDir names a render-lease registry entry (see
+# when -LeaseDir names a render-lease registry entry (see
 # scripts/lib/render-lease.sh), each heartbeat iteration also refreshes that
 # lease's `heartbeat` file and records the cxc tokens observed for the render's
 # cwd in its `tokens` file - the sweep's strongest liveness signal, independent
@@ -41,7 +41,7 @@ function Get-NormalizedPath {
 }
 
 # `$PID` is a read-only automatic variable: the identity helper must never bind
-# that name or the heartbeat dies before its first write (HIMMEL-1474 r2).
+# that name or the heartbeat dies before its first write.
 function Test-ClientIdentity {
   param([int]$ClientProcessId, [datetime]$ExpectedStartUtc)
   try {
@@ -66,7 +66,7 @@ $writtenPaths = New-Object System.Collections.Generic.HashSet[string] ([System.S
 try {
   while (Test-ClientIdentity -ClientProcessId $ClientPid -ExpectedStartUtc $clientStartUtc) {
     $heartbeat = [datetime]::UtcNow.ToString('o')
-    # HIMMEL-1509: refresh the registry lease heartbeat FIRST, before the
+    # refresh the registry lease heartbeat FIRST, before the
     # broker scan can fail - a live render must stay provably live even while
     # its broker is not yet up or WMI is unavailable. Atomic tmp+move; the
     # Test-Path guard never resurrects a released lease dir.
@@ -99,7 +99,7 @@ try {
       # $tokenLeaseDir, NOT $leaseDir: PowerShell names are case-insensitive,
       # so a local named $leaseDir would CLOBBER the -LeaseDir registry param
       # after the first iteration and starve the registry heartbeat into the
-      # cxc token dir (HIMMEL-1509 r2 critical).
+      # cxc token dir.
       $tokenLeaseDir = Join-Path $tempRoot "cxc-$token"
       if (-not (Test-Path -LiteralPath $tokenLeaseDir)) { continue }
       $leasePath = Join-Path $tokenLeaseDir $leaseName
@@ -118,7 +118,7 @@ try {
         Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
       }
     }
-    # HIMMEL-1509 r9 (codex-2): the tokens file tracks EVERY observation, not
+    # the tokens file tracks EVERY observation, not
     # just non-empty ones - a stale token set must never outlive its broker
     # and keep protecting unrelated orphan trees. An empty scan removes the
     # file, degrading token protection to the sweep's cwd-matching fallback

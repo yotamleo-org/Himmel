@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermetic test for the merged-worktree untracked-stray prune logic in
-# clean-garden.sh (HIMMEL-431). Temp git repo + real worktrees + a stub gh
+# clean-garden.sh. Temp git repo + real worktrees + a stub gh
 # whose merged-PR query returns >0 so the dirty check is reached. Follows the
 # pattern of scripts/test-cr-marker-sweep.sh.
 set -euo pipefail
@@ -11,7 +11,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -110,7 +110,7 @@ mkdir -p "$WT_BAK/docs"; printf 'x\n' > "$WT_BAK/docs/AGENTS.md.bak"
 # WT_SCAN: break the worktree's gitdir pointer so `git -C status` fails (rc!=0)
 # -> classify_worktree returns "scanfail" -> conservative skip (fail-closed).
 rm -f "$WT_SCAN/.git"
-# WT_PYCACHE: the real HIMMEL-2584 shape — nested __pycache__ dirs from the bug
+# WT_PYCACHE: the real shape — nested __pycache__ dirs from the bug
 # report, with NO .gitignore rule for pycache in this fixture repo, so the
 # files reach classify_worktree as untracked (reproducing a worktree PINNED at
 # a commit before the .gitignore fix, not one that already ignores them).
@@ -132,14 +132,14 @@ mkdir -p "$WT_PYSRC/scripts/lib"; printf 'x\n' > "$WT_PYSRC/scripts/lib/vbox.py"
 mkdir -p "$WT_PYNEW/scripts/__pycache__"
 printf 'x\n' > "$WT_PYNEW/scripts/newthing.py"
 printf 'x\n' > "$WT_PYNEW/scripts/__pycache__/newthing.cpython-314.pyc"
-# WT_VITEST: the real HIMMEL-3754 shape — a vitest run's reporter output
+# WT_VITEST: the real shape — a vitest run's reporter output
 # (scripts/jira/.vitest/json/output.json), the only untracked file in the
 # worktree, with NO .gitignore rule for it in this fixture repo (reproducing
 # a worktree pinned before the .gitignore fix, same as WT_PYCACHE above).
 mkdir -p "$WT_VITEST/scripts/jira/.vitest/json"
 printf '{}\n' > "$WT_VITEST/scripts/jira/.vitest/json/output.json"
 
-# HIMMEL-4334: leg ship scratch at the worktree ROOT (PR body/title, commit
+# leg ship scratch at the worktree ROOT (PR body/title, commit
 # msg tmp, panel logs, suite verdicts, scratch dirs) is discardable; the same
 # names nested below the root are not.
 for f in .pr-body.txt .pr-body-3.md .pr-title.txt .git-pr-body.md .git-pr-title.txt \
@@ -155,7 +155,7 @@ mkdir -p "$WT_SCRNEST/pkg"; printf 'x\n' > "$WT_SCRNEST/pkg/.pr-body.txt"
 mkdir -p "$WT_SCRPFX/.pr-body-notes"; printf 'x\n' > "$WT_SCRPFX/.pr-body-notes/design.md"
 printf 'x\n' > "$WT_SCRWIP/.pr-body.txt"; printf 'changed\n' >> "$WT_SCRWIP/README"
 
-# HIMMEL-4334 (judge NO-GO): git lists an untracked NESTED REPO as one collapsed
+# (judge NO-GO): git lists an untracked NESTED REPO as one collapsed
 # entry ending in "/" (`.scratch/nested/`), which the `<dir>/*` scratch arms
 # would match -- a force-prune would destroy its unpushed commits.
 mk_nested_repo() {
@@ -167,7 +167,7 @@ mk_nested_repo() {
 WT_NEST1=$(mk_wt wt-nest1 feat/nest1)   # case 20: nested repo under .scratch/ -> kept
 WT_NEST2=$(mk_wt wt-nest2 feat/nest2)   # case 21: nested repo under .himmel-scratch/ -> kept
 WT_NEST3=$(mk_wt wt-nest3 feat/nest3)   # case 22: nested repo under .os-verify-logs-*/ -> kept
-# case 23 (judge J1806u): same as 21 but the worktree carries the REAL repo
+# case 23: same as 21 but the worktree carries the REAL repo
 # .gitignore; an ignored .himmel-scratch/ would hide the nested repo from the
 # scan and `git worktree remove` would delete it. Case 24: the file does not
 # ignore .himmel-scratch at all.
@@ -290,7 +290,7 @@ fi
 if [ -d "$WT_SCAN" ]; then pass "11: scanfail worktree kept (fail-closed on unknown state)"; else fail "11: scanfail worktree was pruned (must fail closed)" "$out"; fi
 case "$out" in *"feat/scan working-tree scan failed"*) pass "11: WARN reports working-tree scan failed" ;; *) fail "11: expected 'working-tree scan failed' for feat/scan" "$out" ;; esac
 
-# case 12: real HIMMEL-2584 shape — nested __pycache__/*.pyc, no pycache rule
+# case 12: real shape — nested __pycache__/*.pyc, no pycache rule
 # in this fixture's .gitignore -> allowlisted stray -> pruned + NOTE.
 if [ ! -d "$WT_PYCACHE" ]; then pass "12: pycache-stray worktree pruned"; else fail "12: pycache-stray worktree NOT pruned" "$out"; fi
 if grepq "$(printf '%s\n' "$out" | grep -F "feat/pycache")" "discarding untracked strays:.*\.pyc"; then
@@ -328,7 +328,7 @@ else
     pass "14: WARN does not name the sibling .pyc (only the non-stray source is listed as forgotten)"
 fi
 
-# case 15: real HIMMEL-3754 shape — untracked .vitest/json/output.json, no
+# case 15: real shape — untracked .vitest/json/output.json, no
 # vitest-output rule in this fixture's .gitignore -> allowlisted stray ->
 # pruned + NOTE.
 if [ ! -d "$WT_VITEST" ]; then pass "15: vitest-output-stray worktree pruned"; else fail "15: vitest-output-stray worktree NOT pruned" "$out"; fi

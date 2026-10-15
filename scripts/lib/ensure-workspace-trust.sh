@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ensure-workspace-trust.sh <dir>  (HIMMEL-386)
+# ensure-workspace-trust.sh <dir>
 #
 # Pre-trust <dir> in Claude Code's config (~/.claude.json) so an autonomous
 # `claude` launch with that dir as cwd does NOT stall on the interactive
@@ -10,12 +10,12 @@
 #
 # Sets projects[<key>].hasTrustDialogAccepted = true via an atomic
 # read-modify-write. <key> matches how Claude stores it (observed as of
-# HIMMEL-386): on Windows the `cygpath -m` mixed form (C:/Users/...),
+# writing): on Windows the `cygpath -m` mixed form (C:/Users/...),
 # elsewhere the absolute path from `cd "$dir" && pwd`.
 #
 # Config path: $WORKSPACE_TRUST_CONFIG, else $HOME/.claude.json.
 #
-# Concurrency (HIMMEL-418): the read-modify-write commits via write-to-temp +
+# Concurrency: the read-modify-write commits via write-to-temp +
 # atomic rename, so a coincident reader/writer never sees a half-written file.
 # A small randomized jitter (TRUST_WRITE_JITTER_MS, default 500, 0 disables)
 # runs before the read to de-synchronize two launches that fire within ~1s,
@@ -66,7 +66,7 @@ fi
 
 config="${WORKSPACE_TRUST_CONFIG:-$HOME/.claude.json}"
 
-# HIMMEL-418: jitter the read-modify-write so two launches within ~1s don't
+# Jitter the read-modify-write so two launches within ~1s don't
 # read the same old file and lose one update (atomic rename below already
 # prevents corruption; this addresses the residual lost-update race). Default
 # 500ms cap; 0 disables (test seam). Git Bash `sleep` accepts fractional secs.
@@ -113,7 +113,7 @@ try {
     fs.writeFileSync(tmp, JSON.stringify(j, null, 2));
     fs.renameSync(tmp, p);
 } catch (e) {
-    // Fail-open (HIMMEL-386/418): warn, leave any existing config untouched
+    // Fail-open: warn, leave any existing config untouched
     // (the rename is the commit point and never ran), orphan no temp file.
     try { fs.unlinkSync(tmp); } catch (_) {}
     console.error("ensure-workspace-trust: could not write " + p + ": " + e.message);

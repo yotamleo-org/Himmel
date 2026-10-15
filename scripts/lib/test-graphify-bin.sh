@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/test-graphify-bin.sh — smoke test for graphify-bin.sh resolver
-# (HIMMEL-891; de-forked to upstream PyPI in HIMMEL-1048 / issue #469).
+# (installs from upstream PyPI).
 #
 # Hermetic: the operator machine already carries a REAL `uv tool install
 # graphifyy` — every scenario below scrubs any PATH dir carrying a real `uv` or
@@ -9,7 +9,7 @@
 # No network, no real installs.
 #
 # The stub dir also carries a pre-linked floor of bash + the utilities the target
-# reaches for (HIMMEL-2530). That is not optional decoration: scrub_path drops a
+# reaches for. That is not optional decoration: scrub_path drops a
 # PATH dir wholesale, so on any distro that packages a scrubbed tool into
 # /usr/bin the scrub takes the interpreter with it. See the tool-floor block
 # below for the contract and for how the floor was measured.
@@ -40,7 +40,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/hermetic-path.sh"
 # The stub uv below reads UV_TOOL_BIN_DIR as "this is the scoped staging
-# install" (HIMMEL-4513), and the platform seam picks the update strategy --
+# install", and the platform seam picks the update strategy --
 # neither may leak in from the operator's shell.
 unset UV_TOOL_BIN_DIR GRAPHIFY_PLATFORM_OVERRIDE GRAPHIFY_MCP_HOLDER_DETAILS
 
@@ -64,12 +64,12 @@ assert() {
 fail() { echo "  FATAL: $*" >&2; exit 1; }
 
 tmpdir="$(mktemp -d -t graphify-bin.XXXXXX)"
-# holder_pid: the ONE live process the HIMMEL-4513 holder test spawns. Reaped
+# holder_pid: the ONE live process the holder test spawns. Reaped
 # by its exact pid on any exit, never by pattern.
 holder_pid=""
 trap '[ -n "$holder_pid" ] && kill "$holder_pid" 2>/dev/null; rm -rf "$tmpdir"' EXIT
 
-# ── Hermetic tool floor (HIMMEL-2530) ───────────────────────────────────────
+# ── Hermetic tool floor ───────────────────────────────────────
 # scrub_path drops every PATH dir carrying a scrubbed tool WHOLESALE. Where a
 # distro packages the scrubbed tool into /usr/bin (Arch ships uv, node and
 # python3 there; graphify installs to ~/.local/bin), that takes bash and the
@@ -78,7 +78,7 @@ trap '[ -n "$holder_pid" ] && kill "$holder_pid" 2>/dev/null; rm -rf "$tmpdir"' 
 # of the target. hermetic-path.sh's header states the contract this suite was
 # breaking: link bash + every tool the target needs into a stub dir BEFORE the
 # scrub, then prepend that dir on every hermetic invocation. Same class as
-# HIMMEL-2470 (node) and HIMMEL-2520 (bun).
+# the node and bun stubs.
 #
 # UTILS is the measured floor, not a guess: a logging-shim dir over the whole
 # suite recorded which binaries each scrub site actually reaches for. Re-derive
@@ -152,7 +152,7 @@ echo "[test-graphify-bin] has_graphify is presence-only"
 noreal_home="$tmpdir/noreal"; mkdir -p "$noreal_home"
 # $utils_bin gives a working interpreter with no graphify (and no uv), and the
 # HG sentinel PROVES has_graphify ran and returned false rather than inferring
-# it from an exit code (HIMMEL-2530). This control was VACUOUS on both counts:
+# it from an exit code. This control was VACUOUS on both counts:
 # bash itself was unresolvable, so the subshell died at rc 127 and the old
 # `rc -ne 0` assertion passed without has_graphify ever executing. Asserting on
 # rc cannot tell "has_graphify said no" from "the subshell never reached it";
@@ -167,7 +167,7 @@ assert "has_graphify=false with no graphify on PATH" grep -q '^HG=no$' <<<"$nore
 #    reads after the de-fork; it REPLACES an earlier graphifyy line, as real uv
 #    does), writes a PyPI-shaped receipt plus a fake venv python, and drops a
 #    working `graphify` shim into UV_BIN_DIR unless STUB_UV_INSTALL_RC != 0.
-#    HIMMEL-4513 additions:
+#    Additions:
 #    - a SCOPED install (UV_TOOL_BIN_DIR set: the staging install) puts its
 #      venv under the scoped UV_TOOL_DIR and its shim in UV_TOOL_BIN_DIR, and
 #      never touches UV_LIST_FILE (the live install's provenance);
@@ -433,7 +433,7 @@ assert "update at-pin: reports up to date" grep -qi 'up to date' <<<"$out"
 # shellcheck disable=SC2016
 assert "update at-pin: no install call" bash -c '! grep -q "tool install" "$1"' _ "$gup_log"
 
-# Shared fixture for the direct-copy skill refresh (HIMMEL-1750 redesign):
+# Shared fixture for the direct-copy skill refresh:
 # a fake uv tool venv shaped like the real Windows install. Its python stub
 # resolves the package path and importlib metadata but deliberately has NO
 # graphify.__version__ response (the real 0.9.40 package has no such attribute).
@@ -445,7 +445,7 @@ make_fake_graphify_venv() { # <tooldir> <version> -> echoes the fake package dir
     "$pkg/skills/codex/references" "$pkg/skills/claw/references"
   printf 'FAKE POSIX SKILL BODY v%s\n' "$ver" > "$pkg/skill.md"
   printf 'FAKE WINDOWS SKILL BODY v%s\n' "$ver" > "$pkg/skill-windows.md"
-  # Distinct per-platform bundles (HIMMEL-3050): codex and hermes package their
+  # Distinct per-platform bundles: codex and hermes package their
   # own skill body, never claude's -- a fixture that reused claude's content
   # here would let a cross-platform mixup pass silently (it did, before the fix).
   printf 'FAKE CODEX SKILL BODY v%s\n' "$ver" > "$pkg/skill-codex.md"
@@ -524,7 +524,7 @@ case "$(uname -s 2>/dev/null || echo)" in
     expected_refs="$srr_pkg/skills/claude/references/quickstart.md"
     ;;
 esac
-# codex/hermes package their OWN bundle (never claude's -- HIMMEL-3050); the
+# codex/hermes package their OWN bundle (never claude's); the
 # host-uname branch above is claude/windows-only and does not apply here.
 expected_codex_skill="$srr_pkg/skill-codex.md"
 expected_codex_refs="$srr_pkg/skills/codex/references/quickstart.md"
@@ -589,8 +589,8 @@ assert "unsafe staging targets: SKILL.md remains a directory" test -d "$sru_home
 assert "unsafe staging targets: staged directory cleaned" test ! -e "$sru_home/.claude/skills/graphify/SKILL.md.tmp"
 
 echo "[test-graphify-bin] _graphify_skill_refresh: PRESENT codex skill dir is refreshed; ABSENT hermes dir is left untouched and NOT created (HIMMEL-3050)"
-# HIMMEL-1750 pinned "other platforms are NEVER touched" back when the refresh
-# only knew about Claude. HIMMEL-3050 widens the refresh to every platform
+# This once pinned "other platforms are NEVER touched" back when the refresh
+# only knew about Claude. The refresh now widens to every platform
 # ALREADY installed on this station -- codex and hermes drift on every pin
 # bump the same way Claude used to. The invariant that must survive unchanged:
 # a platform with no existing skill dir is still never created (the widening
@@ -707,7 +707,7 @@ echo x
 EOF
 chmod +x "$gud_bin/graphify"
 gud_log="$tmpdir/gup-diff-log"; : > "$gud_log"
-# GRAPHIFY_MCP_HOLDERS=0 (HIMMEL-1274): pin the holder probe to "clear". Without
+# GRAPHIFY_MCP_HOLDERS=0: pin the holder probe to "clear". Without
 # it this test is NOT hermetic — the real probe finds the DEVELOPER'S own live
 # graphify-mcp servers (every Claude Code session spawns one) and the new
 # pre-flight guard correctly skips the reinstall, so the assertion below goes
@@ -748,10 +748,9 @@ out=$(HOME="$knone_home" PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$knone_too
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; printf "EXTRAS=[%s]\n" "$(_graphify_installed_extras)"' 2>&1)
 assert "non-kimi recorded extras pass through unchanged" grep -q '^EXTRAS=\[\[all\]\]$' <<<"$out"
 
-# --- HIMMEL-1274: the pre-flight holder guard + verify-after ----------------
+# --- the pre-flight holder guard + verify-after ----------------
 # These pin GRAPHIFY_PLATFORM_OVERRIDE to a Git Bash uname, so they cover the
-# Windows wording and the no-staging path; the POSIX SKIPs (HIMMEL-4513,
-# codex-1) and POSIX staging are covered further down.
+# Windows wording and the no-staging path; the POSIX SKIPs and POSIX staging are covered further down.
 echo "[test-graphify-bin] graphify_update: live graphify-mcp holders -> SKIP the reinstall, leave the install alone"
 gh_home="$tmpdir/gup-held"; mkdir -p "$gh_home"
 gh_tools="$tmpdir/gup-held-tools"; mkdir -p "$gh_tools/graphifyy"
@@ -808,7 +807,7 @@ assert "held platforms: names hermes's own repair command" grep -q 'graphify ins
 assert "held platforms: does NOT name a platform that was never present" \
   bash -c '! grep -q "graphify install --platform agents" <<<"$1"' _ "$out"
 
-# HIMMEL-1601: the reinstall-guard SKIP is a routine outcome on any busy
+# The reinstall-guard SKIP is a routine outcome on any busy
 # workstation and can persist forever -- it must (a) still refresh the SKILL
 # (a separate, non-locked target the package-reinstall refusal has no
 # business blocking) and (b) escalate with a persisted, printed consecutive-
@@ -862,7 +861,7 @@ out4=$(HOME="$psc_home" PATH="$psc_bin:$stub_dir/bin:$base_path" UV_TOOL_DIR="$p
       bash -c 'unset CLAUDE_CONFIG_DIR; . "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "skip-track after reset: counter restarts at 1" grep -q 'SKIPPED 1 consecutive' <<<"$out4"
 
-# HIMMEL-1289: a BROKEN probe must read as UNAVAILABLE, never as "0 holders".
+# A BROKEN probe must read as UNAVAILABLE, never as "0 holders".
 # Both critics caught that the first attempt at this was itself fail-open:
 # `pgrep … | grep -c .` always emits a digit, so the numeric validator could
 # never fire and a broken pgrep reported a clear machine — letting the guarded
@@ -902,7 +901,7 @@ exit 0
 # shellcheck disable=SC2016
 assert "pgrep rc 0 with 3 matches -> 3"   "$(command -v bash)" -c 'PATH="$1:/usr/bin:/bin"; export PATH; GRAPHIFY_PROC_ROOT="$3"; export GRAPHIFY_PROC_ROOT; . "$2/graphify-bin.sh"; out=$(_graphify_mcp_holders) && [ "$out" = "3" ]' _ "$probe_dir" "$SCRIPT_DIR" "$tmpdir/no-proc"
 
-# HIMMEL-5295: pgrep -f matches the WHOLE command line, so a process that only
+# Pgrep -f matches the WHOLE command line, so a process that only
 # MENTIONS graphify-mcp (the shell running the update) was counted as a holder
 # and skipped a safe upgrade. Real /proc, a fake pgrep that reports exactly the
 # pids under test via HOLDER_PIDS.
@@ -975,7 +974,7 @@ chmod +x "$probe_dir/pgrep"
 #
 # Single level, absolute interpreter, PATH set INSIDE the child and SCRIPT_DIR
 # passed POSITIONALLY — the same shape as the two ps-fallback asserts below
-# (CodeRabbit round). The earlier nested form interpolated SCRIPT_DIR into the
+# The earlier nested form interpolated SCRIPT_DIR into the
 # inner `bash -c` string, so a repo path containing a quote would have broken
 # the command; and its inner `bash` was looked up under the REWRITTEN PATH,
 # which is the 127 trap this suite hit twice already. PGREP_PAT_LOG rides in as
@@ -986,7 +985,7 @@ assert "pgrep pattern carries the entrypoint needle" grep -q 'graphify-mcp' "$pa
 assert "pgrep pattern carries the uv tool-dir needle too" grep -q 'uv\[' "$pat_log"
 
 # Same parity on the `ps` FALLBACK — which needs pgrep to be genuinely absent,
-# not merely missing from the fixture dir (CodeRabbit round). The first draft
+# not merely missing from the fixture dir. The first draft
 # used PATH="$probe_dir:/usr/bin:/bin", which still exposes the HOST's pgrep:
 # _graphify_mcp_holders would then take the pgrep branch, run the real pgrep
 # against the real process table, and never reach the fake ps at all. It passed
@@ -1099,7 +1098,7 @@ PWSHFAKE
 chmod +x "$win_dir/pwsh"
 ps_log="$tmpdir/ps-command.txt"
 # SCRIPT_DIR goes in as a POSITIONAL arg, not interpolated into the command
-# string (CodeRabbit round): a repo path containing a quote would otherwise
+# string: a repo path containing a quote would otherwise
 # break the command the same way the apostrophe this very test is about breaks
 # the PowerShell one.
 # shellcheck disable=SC2016
@@ -1130,7 +1129,7 @@ gb_log="$tmpdir/gup-broken-log"; : > "$gb_log"
 # the update path is never even reached. The stub flips once the uv log shows
 # an install ran, which is exactly what uv does when it removes the old entry
 # points and then fails to replace the locked directory. Keyed on the LIVE
-# `--force` install: the staging install before it (HIMMEL-4513) never touches
+# `--force` install: the staging install before it never touches
 # the live entry points.
 cat > "$gb_bin/graphify" <<'EOF'
 #!/usr/bin/env bash
@@ -1154,14 +1153,14 @@ assert "empty recorded extras: upgrade spec is just [ollama] (no [kimi] extra, H
   grep -qE 'tool install --force --with mcp graphifyy\[ollama\]==[0-9]' "$gb_log"
 assert "broken-after-install: names it BROKEN" grep -q 'BROKEN' <<<"$out"
 assert "broken-after-install: gives the repair command" grep -q "uv tool install --force --with mcp 'graphifyy" <<<"$out"
-# Assert BOTH quotes, like the held scenario above (CodeRabbit round). Matching
+# Assert BOTH quotes, like the held scenario above. Matching
 # only the opening quote + package prefix leaves this site able to lose its
 # CLOSING quote and still pass — an asymmetry between two assertions that exist
 # for one reason.
 #
 # Deliberately NOT the held scenario's `\[all,ollama\]` pattern: this fixture's
 # uv-receipt records no extras, so the spec carries only the always-added
-# [ollama] (HIMMEL-2481: no [kimi] default; HIMMEL-4513: ollama). The two
+# [ollama] (no [kimi] default). The two
 # scenarios pin quoting for both the operator-preserved and the default shape.
 assert "broken-after-install: the repair command single-quotes the whole spec" \
   grep -qE "uv tool install --force --with mcp 'graphifyy\[ollama\]==[0-9][^']*'" <<<"$out"
@@ -1180,7 +1179,7 @@ gs_list="$tmpdir/gup-survive-list"; printf 'graphifyy v0.0.1\n' > "$gs_list"
 gs_bin="$tmpdir/gup-survive-bin"; mkdir -p "$gs_bin"
 # Unlike the broken-after-install stub above, this one NEVER flips: the install
 # fails and leaves the working entry point untouched. STUB_UV_FORCE_RC fails
-# only the LIVE swap (HIMMEL-4513): the staging install before it succeeds, so
+# only the LIVE swap: the staging install before it succeeds, so
 # this still reaches the post-swap-failure branch it exists to pin.
 printf '#!/usr/bin/env bash\necho x\n' > "$gs_bin/graphify"; chmod +x "$gs_bin/graphify"
 gs_log="$tmpdir/gup-survive-log"; : > "$gs_log"
@@ -1195,9 +1194,9 @@ gs_broken=$(grep -c 'BROKEN' <<<"$out" || true)   # counted, not negated in a su
 assert "install-failed-binary-survives: does NOT cry BROKEN" [ "$gs_broken" = 0 ]
 assert "install-failed-binary-survives: the install was actually attempted" grep -qE 'tool install --force --with mcp graphifyy' "$gs_log"
 
-# --- HIMMEL-1293: an UNPROBEABLE host must fail CLOSED ----------------------
+# --- an UNPROBEABLE host must fail CLOSED ----------------------
 # The probe returns rc 1 for "this platform offers no probe" — NOT for "the
-# machine is clear". Until HIMMEL-1293 the caller conflated the two and ran
+# machine is clear". Historically the caller conflated the two and ran
 # `uv tool install --force` anyway, which is the destructive step: uv removes
 # the old entry points before replacing the tool dir, so an unprobeable host
 # with a live holder went from working graphify to broken graphify. The
@@ -1226,7 +1225,7 @@ assert "unprobeable: NO uv install attempted (this is the whole fix)" \
   bash -c '! grep -q "tool install" "$1"' _ "$gp_log"
 # Both remedies must be printed — fail-closed is only acceptable because the
 # operator is told exactly how to get unstuck. A silent decline would recreate
-# the permanent-staleness failure of the HIMMEL-1274 Windows self-match bug.
+# the permanent-staleness failure of the Windows self-match bug.
 assert "unprobeable: gives the manual install command" \
   grep -qE "uv tool install --force --with mcp 'graphifyy\[ollama\]==[0-9][^']*'" <<<"$out"
 assert "unprobeable: names the GRAPHIFY_UNPROBED_OK override" grep -q 'GRAPHIFY_UNPROBED_OK=1' <<<"$out"
@@ -1295,9 +1294,9 @@ assert "holders+override: still reports the holder SKIP" grep -q 'SKIP: 2 graphi
 assert "holders+override: NO uv install attempted" \
   bash -c '! grep -q "tool install" "$1"' _ "$gpv_log"
 
-# --- HIMMEL-4513: POSIX skips under live holders, stages + swaps when clear --
+# --- POSIX skips under live holders, stages + swaps when clear --
 # On Linux/macOS `uv tool install --force` over a held venv does not half-fail
-# the way HIMMEL-1274 does on Windows, but it is still unsafe (codex-1): a live
+# the way it does on Windows, but it is still unsafe: a live
 # graphify-mcp has only its already-imported modules in memory and serve.py
 # lazy-imports the rest inside its tool handlers, so a live swap mixes versions
 # inside every holder. So POSIX SKIPs with holders > 0 too, naming them. With
@@ -1461,7 +1460,7 @@ if [ "$lf_posix" -eq 1 ]; then
     "$late_count" "$late_count" > "$late_bin/pgrep"
   chmod +x "$late_bin/pgrep"
   lf_extra_path="$late_bin"
-  # The fake pids must look live to the real-holder filter (HIMMEL-5295): a pid
+  # The fake pids must look live to the real-holder filter: a pid
   # absent from /proc is dropped as vanished, and 101-103 need not exist here.
   late_proc="$tmpdir/lf-held-late-proc"; mkdir -p "$late_proc/self"
   for late_pid in 101 102 103; do
@@ -1579,7 +1578,7 @@ assert "update ahead-of-pin: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "update ahead-of-pin: reports not behind / leaving as-is" grep -qiE 'not behind|leaving as-is' <<<"$out"
 # shellcheck disable=SC2016
 assert "update ahead-of-pin: no install call (never downgrade)" bash -c '! grep -q "tool install" "$1"' _ "$gua_log"
-# HIMMEL-1750 (CR codex-adv r2): the ahead-of-pin branch must still refresh a
+# The ahead-of-pin branch must still refresh a
 # STALE skill to the INSTALLED version (package left untouched) — this is the
 # motivating package-ahead/skill-stale case.
 assert "update ahead-of-pin: stale skill refreshed to installed version" grep -qi 'skill refreshed' <<<"$out"
@@ -1683,12 +1682,12 @@ assert "setup.sh calls graphify_install" grep -q 'graphify_install' "$repo_root/
 assert "adopt.sh sources graphify-bin.sh" grep -q 'lib/graphify-bin.sh' "$repo_root/scripts/adopt.sh"
 assert "adopt.sh calls graphify_install" grep -q 'graphify_install' "$repo_root/scripts/adopt.sh"
 
-# HIMMEL-1047: MCP registration is the shared graphify_register_mcp impl, exposed
+# MCP registration is the shared graphify_register_mcp impl, exposed
 # via the `register-mcp` CLI case, called by both installers (adopt at its scope,
 # setup at user scope) and delegated to by the pwsh mirrors.
 assert "graphify-bin.sh defines graphify_register_mcp" grep -q 'graphify_register_mcp()' "$SCRIPT_DIR/graphify-bin.sh"
 assert "graphify-bin.sh CLI exposes register-mcp" grep -q 'register-mcp) graphify_register_mcp' "$SCRIPT_DIR/graphify-bin.sh"
-# Scope forwarding (HIMMEL-1047 CR): setup.sh pins user scope; adopt.sh forwards
+# Scope forwarding: setup.sh pins user scope; adopt.sh forwards
 # its own $SCOPE (project|user) — not a hardcoded scope.
 assert "setup.sh registers at user scope" grep -q 'graphify_register_mcp user' "$repo_root/scripts/setup.sh"
 # The grep pattern intentionally matches the LITERAL string graphify_register_mcp "$SCOPE"
@@ -1701,7 +1700,7 @@ assert "graphify_register_mcp uses bare name for project scope" grep -q 'mcp_arg
 assert "setup.ps1 delegates register-mcp to bash" grep -q 'graphify-bin.sh" register-mcp' "$repo_root/scripts/setup.ps1"
 assert "adopt.ps1 delegates register-mcp to bash" grep -q 'graphify-bin.sh" register-mcp' "$repo_root/scripts/adopt.ps1"
 
-# set -e regression (HIMMEL-1047 CR, codex): a nonzero `claude mcp add` — the
+# set -e regression: a nonzero `claude mcp add` — the
 # COMMON "already exists" idempotent case (rc=1) — must NOT abort a set -e caller
 # (adopt.sh is `set -euo pipefail`). Hermetic: a stub claude returns exists/rc1;
 # project scope avoids any uv/graphify-mcp dependency (bare name).
@@ -1724,7 +1723,7 @@ assert "already-exists rc!=0 handled as idempotent skip" \
   bash -c 'printf "%s" "$1" | grep -qi "already registered at project scope"' _ "$se_out"
 rm -rf "$se_stub"
 
-# ─── graphify_price_hooks (HIMMEL-2480) ──────────────────────────────────────
+# ─── graphify_price_hooks ──────────────────────────────────────
 # node checker: reads a fixture's .claude/settings.json + .codex/hooks.json
 # and prints KEY=VALUE facts, so the shell assertions below stay plain grep/
 # test comparisons instead of embedding JSON logic in bash.
@@ -1804,7 +1803,7 @@ echo "[test-graphify-bin] graphify_price_hooks: POSITIVE CONTROL — reprices th
 # Shaped exactly like a fresh `graphify install --platform claude` writes it
 # (install.py::_claude_pretooluse_hooks): matchers Bash|Grep and Read|Glob, no
 # timeout, absolute exe path -- flanked by unrelated entries that must survive
-# in place. Plus the matching stock Codex hook-check entry (HIMMEL-2480).
+# in place. Plus the matching stock Codex hook-check entry.
 pos_fixture="$tmpdir/price-positive"
 mkdir -p "$pos_fixture/.claude" "$pos_fixture/.codex"
 cat > "$pos_fixture/.claude/settings.json" <<'EOF'
@@ -2045,7 +2044,7 @@ echo "[test-graphify-bin] graphify_price_hooks: operator hints are copy-pasteabl
 # shellcheck disable=SC2016
 assert "graphify-bin.sh: no ' -- then ' copy-paste trap in any hint" \
   bash -c '! grep -q -- " -- then " "$1"' _ "$SCRIPT_DIR/graphify-bin.sh"
-# HIMMEL-3050: the four hints now read "--platform $label" (per-platform,
+# The four hints now read "--platform $label" (per-platform,
 # shared across claude/codex/hermes call sites) instead of a hardcoded
 # "--platform claude" literal.
 # shellcheck disable=SC2016
@@ -2057,7 +2056,7 @@ assert "graphify-bin.sh: each install hint is followed by its own re-price echo"
 assert "check-claude-md-budget.sh: no ' -- then ' copy-paste trap" \
   bash -c '! grep -q -- " -- then " "$1"' _ "$repo_root/scripts/ci/check-claude-md-budget.sh"
 
-# ─── graphify_price_hooks: node vs python engine parity (HIMMEL-2480 follow-up) ──
+# ─── graphify_price_hooks: node vs python engine parity ──
 # Shared fixture writer -- same stock-upstream shape as pos_fixture above
 # (unrelated entry, hook-guard search, hook-guard read, unrelated entry; plus
 # a .codex/hooks.json unrelated entry + hook-check), but the first unrelated
@@ -2131,7 +2130,7 @@ EOF
 # control below guards against). $novm/$nofnm are nonexistent dirs, not "".
 novm="$tmpdir/no-such-nvm-root"
 nofnm="$tmpdir/no-such-fnm-root"
-# HIMMEL-2530: prepend a tool floor that admits the python engines but NOT node,
+# Prepend a tool floor that admits the python engines but NOT node,
 # so scrubbing node cannot also take bash/coreutils out with /usr/bin.
 nonode_bin="$tmpdir/nonode-bin"
 build_hermetic_bin "$nonode_bin" python3 python
@@ -2209,7 +2208,7 @@ write_price_identity_fixture "$no_engine_fixture"
 cp "$no_engine_fixture/.claude/settings.json" "$tmpdir/no-engine-settings-before.json"
 cp "$no_engine_fixture/.codex/hooks.json" "$tmpdir/no-engine-codex-before.json"
 
-# HIMMEL-2530: tool floor only -- no engine is admitted here, which is the point
+# Tool floor only -- no engine is admitted here, which is the point
 # of the case, but bash and the coreutils must still resolve.
 noengine_bin="$tmpdir/noengine-bin"
 build_hermetic_bin "$noengine_bin"
@@ -2479,7 +2478,7 @@ run_finding1_case pos5-ourown '{ "type": "command", "command": "command -v graph
 run_finding1_case neg1-advisory '{ "type": "command", "command": "bash scripts/hooks/graphify-freshness-advisory.sh" }' survive
 run_finding1_case neg2-shim '{ "type": "command", "command": "bash scripts/hooks/my-graphify-hook-guard-shim.sh" }' survive
 run_finding1_case neg3-nocommand '{ "type": "command" }' survive
-# HIMMEL-2489: the trailing boundary must also reject a LONGER hyphenated
+# The trailing boundary must also reject a LONGER hyphenated
 # subcommand. Under the shipped \b these two NEGATIVES matched ("-" is a
 # non-word char, so \b sits right after "hook-guard"), and an operator hook
 # for an unrelated subcommand was silently deleted on reprice. The bare
@@ -2493,17 +2492,17 @@ run_finding1_case pos6-eos '{ "type": "command", "command": "graphify hook-guard
 # python did not (its \w is Unicode-aware), so one engine deleted a hook the
 # other kept. \u00e9 is JSON-escaped so this file stays pure ASCII.
 run_finding1_case neg6-nonascii '{ "type": "command", "command": "graphify hook-guard\u00e9" }' survive
-# #2125 CR round 2: a command ending in a newline is a real shape, and the
+# a command ending in a newline is a real shape, and the
 # newline IS a token boundary -- so this one stays a guard, in both engines.
 run_finding1_case pos8-trailing-nl '{ "type": "command", "command": "graphify hook-guard\n" }' guard
-# #2125 CR round 2: the row that pins the boundary SPELLING. A tidy-up to the
+# the row that pins the boundary SPELLING. A tidy-up to the
 # shorter (?!\S) or (?=\s|$) passes every other row and breaks HERE: both read
 # \s, and JS \s matches U+FEFF while Python's does not (the mirror cases are
 # U+0085 and U+001C, where Python matches and JS does not). Under either
 # spelling node deletes this hook and python keeps it. U+FEFF is not a shell
 # separator, so the correct answer is SURVIVE in both.
 run_finding1_case neg7-bom '{ "type": "command", "command": "graphify hook-guard\ufeff" }' survive
-# HIMMEL-2489 CR round 2 follow-up: the LEADING boundary has the identical
+# the LEADING boundary has the identical
 # \s cross-engine split as the trailing one above, just mirrored -- JS \s
 # matches U+FEFF where Python's does not, and Python's \s matches U+0085
 # (NEL) and U+001C (FS) where JS's does not. A leading \s would let one
@@ -2515,7 +2514,7 @@ run_finding1_case neg7-bom '{ "type": "command", "command": "graphify hook-guard
 run_finding1_case neg8-lead-bom '{ "type": "command", "command": "\ufeffgraphify hook-guard search" }' survive
 run_finding1_case neg9-lead-nel '{ "type": "command", "command": "\u0085graphify hook-guard search" }' survive
 run_finding1_case neg10-lead-fs '{ "type": "command", "command": "\u001cgraphify hook-guard search" }' survive
-# [codex-1] CR round 3 (HIMMEL-2489 follow-up): the SEPARATOR between the
+# the SEPARATOR between the
 # executable and the subcommand had the identical \s cross-engine split --
 # JS \s matches U+FEFF, Python's matches U+0085 (NEL) / U+001C (FS) -- so
 # `graphify<U+FEFF>hook-guard` (ONE unrelated argv token, not two words) was
@@ -2525,7 +2524,7 @@ run_finding1_case neg10-lead-fs '{ "type": "command", "command": "\u001cgraphify
 run_finding1_case neg11-mid-bom '{ "type": "command", "command": "graphify\ufeffhook-guard search" }' survive
 run_finding1_case neg12-mid-nel '{ "type": "command", "command": "graphify\u0085hook-guard search" }' survive
 run_finding1_case neg13-mid-fs '{ "type": "command", "command": "graphify\u001chook-guard search" }' survive
-# HIMMEL-2489 panel finding (post-merge follow-up): a raw CARRIAGE RETURN is
+# a raw CARRIAGE RETURN is
 # NOT a shell token separator -- unlike the BOM/NEL/FS rows above, a bare CR
 # is not even whitespace the shell treats as an argument separator; the shell
 # passes `<CR>graphify`, `graphify<CR>hook-guard` and `hook-guard<CR>-wrapper`
@@ -2547,7 +2546,7 @@ run_finding1_case py-pos5-ourown '{ "type": "command", "command": "command -v gr
 run_finding1_case py-neg1-advisory '{ "type": "command", "command": "bash scripts/hooks/graphify-freshness-advisory.sh" }' survive python
 run_finding1_case py-neg2-shim '{ "type": "command", "command": "bash scripts/hooks/my-graphify-hook-guard-shim.sh" }' survive python
 run_finding1_case py-neg3-nocommand '{ "type": "command" }' survive python
-# HIMMEL-2489: the trailing boundary must also reject a LONGER hyphenated
+# The trailing boundary must also reject a LONGER hyphenated
 # subcommand. Under the shipped \b these two NEGATIVES matched ("-" is a
 # non-word char, so \b sits right after "hook-guard"), and an operator hook
 # for an unrelated subcommand was silently deleted on reprice. The bare
@@ -2561,17 +2560,17 @@ run_finding1_case py-pos6-eos '{ "type": "command", "command": "graphify hook-gu
 # python did not (its \w is Unicode-aware), so one engine deleted a hook the
 # other kept. \u00e9 is JSON-escaped so this file stays pure ASCII.
 run_finding1_case py-neg6-nonascii '{ "type": "command", "command": "graphify hook-guard\u00e9" }' survive python
-# #2125 CR round 2: a command ending in a newline is a real shape, and the
+# a command ending in a newline is a real shape, and the
 # newline IS a token boundary -- so this one stays a guard, in both engines.
 run_finding1_case py-pos8-trailing-nl '{ "type": "command", "command": "graphify hook-guard\n" }' guard python
-# #2125 CR round 2: the row that pins the boundary SPELLING. A tidy-up to the
+# the row that pins the boundary SPELLING. A tidy-up to the
 # shorter (?!\S) or (?=\s|$) passes every other row and breaks HERE: both read
 # \s, and JS \s matches U+FEFF while Python's does not (the mirror cases are
 # U+0085 and U+001C, where Python matches and JS does not). Under either
 # spelling node deletes this hook and python keeps it. U+FEFF is not a shell
 # separator, so the correct answer is SURVIVE in both.
 run_finding1_case py-neg7-bom '{ "type": "command", "command": "graphify hook-guard\ufeff" }' survive python
-# HIMMEL-2489 CR round 2 follow-up: the LEADING boundary has the identical
+# the LEADING boundary has the identical
 # \s cross-engine split as the trailing one above, just mirrored -- JS \s
 # matches U+FEFF where Python's does not, and Python's \s matches U+0085
 # (NEL) and U+001C (FS) where JS's does not. A leading \s would let one
@@ -2583,7 +2582,7 @@ run_finding1_case py-neg7-bom '{ "type": "command", "command": "graphify hook-gu
 run_finding1_case py-neg8-lead-bom '{ "type": "command", "command": "\ufeffgraphify hook-guard search" }' survive python
 run_finding1_case py-neg9-lead-nel '{ "type": "command", "command": "\u0085graphify hook-guard search" }' survive python
 run_finding1_case py-neg10-lead-fs '{ "type": "command", "command": "\u001cgraphify hook-guard search" }' survive python
-# [codex-1] CR round 3 (HIMMEL-2489 follow-up): the SEPARATOR between the
+# the SEPARATOR between the
 # executable and the subcommand had the identical \s cross-engine split --
 # JS \s matches U+FEFF, Python's matches U+0085 (NEL) / U+001C (FS) -- so
 # `graphify<U+FEFF>hook-guard` (ONE unrelated argv token, not two words) was
@@ -2593,7 +2592,7 @@ run_finding1_case py-neg10-lead-fs '{ "type": "command", "command": "\u001cgraph
 run_finding1_case py-neg11-mid-bom '{ "type": "command", "command": "graphify\ufeffhook-guard search" }' survive python
 run_finding1_case py-neg12-mid-nel '{ "type": "command", "command": "graphify\u0085hook-guard search" }' survive python
 run_finding1_case py-neg13-mid-fs '{ "type": "command", "command": "graphify\u001chook-guard search" }' survive python
-# HIMMEL-2489 panel finding (post-merge follow-up): same CR rows as the node
+# same CR rows as the node
 # block above, run under the forced-python engine -- a raw CR is one argv
 # token in the shell, not a separator, so all three must SURVIVE in python
 # too.

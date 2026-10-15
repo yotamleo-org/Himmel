@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # handover/auto-commit — auto-branch + commit + push handover mutations.
 #
-# HIMMEL-59 (v2) wedge HIMMEL-140: replaces the v1 direct-main path
+# v2 replaces the v1 direct-main path
 # with a per-ticket feature-branch flow. Every mutation creates or
 # reuses `<branch_prefix><TICKET>-<slug>` in the handover repo,
 # commits there, and auto-pushes for resilience.
@@ -13,7 +13,7 @@
 # - Stage tracked + untracked *.md files under the resolved root, commit
 #   on the per-ticket branch, push immediately.
 # - Branch prefix sourced from `~/.claude/handover/registry.json` per-repo
-#   (`branch_prefix` field; default `handover/` per HIMMEL-139). Falls
+#   (`branch_prefix` field; default `handover/`). Falls
 #   back to `handover/` if the registry is missing, malformed, or has
 #   no entry for the resolved handover repo.
 # - Ticket extraction: regex `[A-Z][A-Z0-9]+-[0-9]+` against the message.
@@ -35,15 +35,15 @@
 #   6  branch create/checkout failed
 #   7  single-writer repo parked off its default branch — refused
 #   8  leg-split refused — this commit would add a SECOND never-committed
-#      numbered handover file for the same leg series (HIMMEL-1830/1831).
+#      numbered handover file for the same leg series.
 #      Override: HANDOVER_LEG_SPLIT_OK=1.
 #
-# .single-writer marker at the handover repo root (HIMMEL-571) → commit
+# .single-writer marker at the handover repo root → commit
 # directly on the default branch (no per-ticket branch, no PR), the same
 # path as HANDOVER_DIRECT_MAIN. Refuses (exit 7) if the repo is parked on a
 # non-default branch rather than entangle handover state onto a feature branch.
 #
-# HIMMEL-1830/1831 leg-split guard: refuses (exit 8) when the staged *.md
+# Leg-split guard: refuses (exit 8) when the staged *.md
 # additions include TWO never-committed files sharing the same session stem
 # (e.g. "foo-25.md" + "foo-26.md", or "foo.md" + "foo-2.md") — the shape
 # that orphaned session-25's STATE behind session-26's ORDERS. Keyed on the
@@ -138,7 +138,7 @@ if ! command -v git >/dev/null 2>&1; then
     exit 2
 fi
 
-# Resolve mode + root via the HIMMEL-118 resolver.
+# Resolve mode + root via the handover resolver.
 mode=$(handover_mode)
 if [ "$mode" != "B" ]; then
     cat >&2 <<EOF
@@ -163,7 +163,7 @@ fi
 if ! root=$(handover_root_ensure); then
     # _ensure prints its own error to stderr on rc=2. Use _ensure (not
     # pure handover_root) because auto-commit is a WRITE operation that
-    # legitimately requires the Mode A inline dir to exist (HIMMEL-150).
+    # legitimately requires the Mode A inline dir to exist.
     exit 2
 fi
 
@@ -242,7 +242,7 @@ if [ -z "$rel_root" ]; then
     exit 2
 fi
 
-# HIMMEL-140 helpers ----------------------------------------------------------
+# Branch helpers ----------------------------------------------------------
 
 # Read branch_prefix for the handover repo from ~/.claude/handover/registry.json.
 # Compares canonicalised, lowercased paths so Windows c:/ vs C:/ doesn't bite.
@@ -350,7 +350,7 @@ _switch_to_branch() {
 
 # Echo the repo's default branch name (origin/HEAD short name, minus the
 # `origin/` prefix), or empty when it can't be determined. Used by the
-# single-writer guard (HIMMEL-571) to decide whether HEAD is parked off the
+# single-writer guard to decide whether HEAD is parked off the
 # default branch. Empty result → guard treats the repo as on-default
 # (fail-open: never mis-refuse a repo whose default we can't read).
 _default_branch() {
@@ -368,7 +368,7 @@ _default_branch() {
 # risky when the new branch's tree differs significantly from current HEAD.
 # HANDOVER_DIRECT_MAIN=1 short-circuits the resolution and keeps v1
 # behavior (commit on whatever branch is checked out). A .single-writer
-# marker (HIMMEL-571) does the same but additionally guards that HEAD is on
+# marker does the same but additionally guards that HEAD is on
 # the default branch (sw_parked → refuse later, exit 7).
 direct_reason=""
 sw_parked=0
@@ -399,8 +399,7 @@ fi
 # (`< <(git ...)`) does NOT propagate the command's exit status to the
 # caller -- `set -e`/`pipefail` never see it, so a git failure (corrupt repo,
 # transient error) would otherwise look identical to "no output" and every
-# caller below would silently proceed as if nothing changed (codex CR
-# finding, HIMMEL-1831). Routed through a temp file instead so the exit
+# caller below would silently proceed as if nothing changed. Routed through a temp file instead so the exit
 # status is checked explicitly and a git error fails LOUDLY.
 _hp_collect_or_die() {
     local _cb="$1" _hp_tmp
@@ -436,7 +435,7 @@ if [ "${#mdchange_paths[@]}" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
     exit 0
 fi
 
-# HIMMEL-1830/1831 leg-split guard collector. Paths arrive NUL-delimited and
+# Leg-split guard collector. Paths arrive NUL-delimited and
 # stay in Bash arrays, so a legal newline inside a path cannot split one index
 # entry into two. Bash 3.2 has no associative arrays; parallel indexed arrays
 # keep the parent-dir + stem key paired with each staged path.
@@ -504,13 +503,12 @@ _leg_split_print() {
 
 # _leg_split_unstage_all -- unstages EVERYTHING under $rel_root on a
 # refusal. A narrower cleanup that unstaged only the two colliding paths
-# (CR round 1) still left every OTHER *.md file this invocation staged
+# still left every OTHER *.md file this invocation staged
 # sitting in the index, where a later unrelated commit could sweep them in
-# too (CR round 2, codex-1 Important) -- a refusal commits nothing, so
+# too -- a refusal commits nothing, so
 # nothing under root should remain staged, full stop, whether staged by
 # THIS run's `git add -A` or from before it (the retry shape, T-ls6). Warns
-# rather than silently swallowing a reset failure (CR round 2, codex-2
-# Suggestion): the guard's refusal message promises nothing gets committed,
+# rather than silently swallowing a reset failure: the guard's refusal message promises nothing gets committed,
 # and a failed reset would leave that promise only half true.
 _leg_split_unstage_all() {
     if ! git -C "$handover_repo" reset HEAD -- "$rel_root" >/dev/null 2>&1; then
@@ -560,7 +558,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
-# Single-writer guard (HIMMEL-571): a .single-writer repo must commit on its
+# Single-writer guard: a .single-writer repo must commit on its
 # default branch. If it's parked elsewhere, refuse rather than entangle the
 # handover state onto a feature branch. Enforced AFTER the no-op early-exit
 # above (a no-op stays a quiet exit 0) and BEFORE staging (nothing committed).
@@ -607,7 +605,7 @@ _unstage_if_non_md() {
 }
 _hp_collect_or_die _unstage_if_non_md diff --cached --name-only
 
-# Leg-split guard (HIMMEL-1830/1831): inspect the REAL post-stage additions,
+# Leg-split guard: inspect the REAL post-stage additions,
 # including files that were already staged before this invocation. `-z` plus
 # read -d '' preserves every legal path byte except Git's NUL separator.
 if [ "${HANDOVER_LEG_SPLIT_OK:-}" != "1" ]; then
@@ -661,7 +659,7 @@ if [ "$DO_PUSH" -eq 1 ]; then
         exit 5
     fi
     rm -f /tmp/auto-commit.err.$$
-    # HIMMEL-141: best-effort PR open/update on the branched path.
+    # best-effort PR open/update on the branched path.
     # Skipped when HANDOVER_PR_AUTO=0, when not on a handover/* branch,
     # or when pr-open.sh is missing. Failures inside pr-open are
     # already treated as best-effort (exit 0); auto-commit must never

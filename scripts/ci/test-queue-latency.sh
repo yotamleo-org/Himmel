@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test for scripts/ci/queue-latency.sh (HIMMEL-3840).
+# Test for scripts/ci/queue-latency.sh.
 # A fake gh serves canned Actions API fixtures and applies the script's own
 # --jq expression with real jq, so the filters are exercised, not stubbed.
 set -uo pipefail

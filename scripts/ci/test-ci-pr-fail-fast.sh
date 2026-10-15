@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# scripts/ci/test-ci-pr-fail-fast.sh -- fail-fast policy of .github/workflows/ci.yml
-# (HIMMEL-5036): the shell-unit-shard and bun-suites matrices stop at the first red
+# scripts/ci/test-ci-pr-fail-fast.sh -- fail-fast policy of .github/workflows/ci.yml:
+# the shell-unit-shard and bun-suites matrices stop at the first red
 # leg on pull_request ONLY; push-to-main and the nightly keep every leg running so a
 # red stays attributable. A PR with one red shard plus fail-fast-cancelled siblings
 # must still read FAILED: the shell-unit aggregator's first step is executed here

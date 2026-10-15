@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# forge-bitbucket.sh — Bitbucket Cloud backend for the forge seam (HIMMEL-326).
+# forge-bitbucket.sh — Bitbucket Cloud backend for the forge seam.
 #
 # Symmetric with forge-github.sh: every verb shells out to the himmel
 # `bitbucket` CLI (scripts/bitbucket/dist/index.js) the same way the github
@@ -119,7 +119,7 @@ bb_forge_pr_has_merged() {
 # verified §5.1 signal, atomic — nothing merged); surface that distinctly from a
 # generic failure so a caller can tell "rebase needed" from "auth/network died".
 #
-# VETTED_HEAD_SHA (HIMMEL-1058) is accepted for seam parity and IGNORED: the
+# VETTED_HEAD_SHA is accepted for seam parity and IGNORED: the
 # Bitbucket Cloud merge endpoint has no --match-head-commit equivalent, so the
 # TOCTOU window cannot be closed here. It stays theoretical on this backend —
 # the CR/CI gates that produce a vetted SHA are GitHub-only (pr-merge.sh runs
@@ -161,7 +161,7 @@ bb_forge_issue_create() {
     return 1
 }
 
-# ── change-id verbs (HIMMEL-4762, spec section 3) ───────────────────────────
+# ── change-id verbs ───────────────────────────
 # Thin wrappers: on Bitbucket a change id is the PR id.
 
 # echo the open PR id for BRANCH, or "" if none (= bb_forge_pr_find_open).

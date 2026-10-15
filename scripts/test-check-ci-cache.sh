@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for the shared per-PR CI status cache, the adaptive watch helper and the
-# API-budget wait (HIMMEL-3850 — the fleet exhausted the shared GitHub quota by
+# API-budget wait (the fleet exhausted the shared GitHub quota by
 # every waiting leg polling `gh pr checks --watch` on its own).
 #
 #   scripts/lib/gh-ci-cache.sh   cic_init / cic_get: one file per PR, head-tagged,
@@ -421,7 +421,7 @@ printf 'pass\tunit-tests\n' > "$CASE_DIR/rows"
     ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 120} bash "$CHECK_CI" 42 --max-wait 900 >"$CASE_DIR/o.out" 2>"$CASE_DIR/o.err" ); rc=$?
 if [ "$rc" -eq 0 ] && grep -q -- '--watch' "$CASE_DIR/calls.log"; then pass "11 CHECK_CI_CACHE=0 -> legacy gh pr checks --watch, rc 0"; else fail "11 legacy" "rc=$rc"; fi
 
-# 12 — HIMMEL-4890: check-ci prunes aged pr-/run- rows and their .wait heartbeats from the
+# 12 — check-ci prunes aged pr-/run- rows and their .wait heartbeats from the
 # cache dir, and nothing else. Fixtures live under the case dir, never the real cache.
 _age() {   # _age <path> — mtime two hours back (GNU touch -d, BSD touch -t fallback)
     touch -d '2 hours ago' "$1" 2>/dev/null || touch -t "$(date -v-2H +%Y%m%d%H%M.%S)" "$1"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/test-merge-block-alert.sh -- fixture test for
-# scripts/lib/merge-block-alert.sh (HIMMEL-3381).
+# scripts/lib/merge-block-alert.sh.
 #
 # Pins the alert's contract: ONE stderr line always, ONE operator DM per
 # (repo, PR, head), a failed delivery never changes the caller's status and
@@ -145,7 +145,7 @@ new_case c7b
 )
 if grep -q 'console-route.ts reply 555 MERGE-BLOCKED octo/demo#42' "$CASE/bun.log"; then pass; else fail "7: control — with a sandbox BRIDGE_ROOT the default sender runs bun console-route.ts reply <chat> (got: $(cat "$CASE/bun.log"))"; fi
 
-# --- 7c. a hung MERGE_BLOCK_ALERT_CMD is bounded (HIMMEL-4226) ---------------
+# --- 7c. a hung MERGE_BLOCK_ALERT_CMD is bounded ---------------
 # The seam runs under the same bound as the bun send, so a sender that never
 # returns cannot hang the runner that called the alert. Needs a GNU timeout.
 if command -v timeout >/dev/null 2>&1; then
@@ -168,7 +168,7 @@ if command -v timeout >/dev/null 2>&1; then
     else fail "7c: a hung sender was not bounded (took ${_el}s)"; fi
 fi
 
-# alert_watch <case> [env...] -- <repo> <pr> <head> <rule...>; merge_watch_alert (HIMMEL-3430)
+# alert_watch <case> [env...] -- <repo> <pr> <head> <rule...>; merge_watch_alert
 run_watch_alert() {
     local c="$1"; shift
     (
@@ -181,7 +181,7 @@ run_watch_alert() {
 }
 console_case() { mkdir -p "$1/bridge/consoles"; : > "$1/bridge/consoles/$2.md"; }
 
-# --- 8. post-GO console-leg red (HIMMEL-4071: MERGE_WATCH_POST_GO=1, set by
+# --- 8. post-GO console-leg red (MERGE_WATCH_POST_GO=1, set by
 #        merge-on-green) -> NO operator DM, one console-inbox line (row a) ----
 new_case c8
 console_case "$CASE" opsdesk
@@ -230,8 +230,7 @@ eq "11: a later merge_block_alert for the same head still DMs (separate sentinel
 # --- 12. .watch sentinel create fails for a reason OTHER than already-
 #          existing, while the plain (non-.watch) sentinel merge_block_alert's
 #          own fallback writes still fits -- must fall back to the operator
-#          DM, not be swallowed as if already delivered (HIMMEL-3430 panel
-#          finding). Forced via a head long enough that "<key>.watch" trips
+#          DM, not be swallowed as if already delivered. Forced via a head long enough that "<key>.watch" trips
 #          this filesystem's 255-byte NAME_MAX while the plain "<key>"
 #          (6 bytes shorter) still fits -- a real, not simulated, create
 #          failure that is not "already exists" ------------------------------
@@ -242,7 +241,7 @@ MERGE_WATCH_POST_GO=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_watch
 eq "12: watch-sentinel name-too-long falls back to operator DM" 1 "$(count "$CASE/alerts.log")"
 eq "12: no console-inbox line" 0 "$(count "$CASE/bridge/consoles/opsdesk.md")"
 
-# --- 13. _mba_append_if_exists (HIMMEL-3440): O_CREAT-free append -- appends
+# --- 13. _mba_append_if_exists: O_CREAT-free append -- appends
 #          to a file that already exists, and never creates one that doesn't
 #          (the primitive behind _mba_route_console; the previous separate
 #          `[ -f ]` check followed by `>>` had a TOCTOU window where a file
@@ -277,7 +276,7 @@ eq "13: a missing file returns nonzero" 1 "$rc2"
 eq "13: a missing file is NOT created" "absent" "$([ -e "$f2" ] && echo present || echo absent)"
 
 # --- 14. HIMMEL_TEST_FIXTURE=1 with no bridge root named -> the console route
-#         refuses the DEFAULT $HOME inbox (HIMMEL-3478: test-check-ci.sh wrote
+#         refuses the DEFAULT $HOME inbox (test-check-ci.sh once wrote
 #         fixture lines into the live console inbox). Case 8 is the control.
 new_case c14
 mkdir -p "$CASE/home/.claude/handover/bridge/consoles"
@@ -295,7 +294,7 @@ eq "14: returns 0" 0 "$rc"
 eq "14: the default-path console inbox gains no line" 0 "$(count "$CASE/home/.claude/handover/bridge/consoles/opsdesk.md")"
 eq "14: no operator DM" 0 "$(count "$CASE/alerts.log")"
 
-# --- 15. HIMMEL-4071: a PRE-GO console-leg red (no MERGE_WATCH_POST_GO) never
+# --- 15. a PRE-GO console-leg red (no MERGE_WATCH_POST_GO) never
 #         reaches the console inbox or the operator: the leg owns it, it has
 #         the exit code. Case 8 is the control (same call, post-GO).
 new_case c15

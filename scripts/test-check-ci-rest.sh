@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4857: real cache/watch against a call-counting gh seam, no live API.
+# real cache/watch against a call-counting gh seam, no live API.
 # Breaks caught: unconditional REST reads, wrong-budget sleeps, unbounded
 # fallback churn, stale/malformed conditional data becoming a green verdict.
 set -uo pipefail

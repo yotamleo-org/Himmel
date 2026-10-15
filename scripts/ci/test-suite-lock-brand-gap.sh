@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# scripts/ci/test-suite-lock-brand-gap.sh -- HIMMEL-3799 / HIMMEL-3791
+# scripts/ci/test-suite-lock-brand-gap.sh
 # regression suite for the advisory suite lock's claim gap and its reclaim
 # guard.
 #
-# HIMMEL-3799: _suite_lock_claim used to fork (proc_tree_process_identity --
+# _suite_lock_claim used to fork (proc_tree_process_identity --
 # pwsh on Windows) BETWEEN the lock mkdir and the owner-file brand. A slow
 # probe left the live lock unbranded long enough for a second run to read it
 # as a crash husk and reclaim it: two holders. Case 1 reproduces that with a
@@ -11,7 +11,7 @@
 # is fixed and longer than the loser's whole husk spin), and asserts the two
 # runs never overlap.
 #
-# HIMMEL-3791: a mkdir failure on the `.reclaim` guard that is NOT another
+# A mkdir failure on the `.reclaim` guard that is NOT another
 # reclaimer holding it (EACCES on a read-only parent) is a permanent refusal,
 # not contention -- it must not burn the SUITE_LOCK_WAIT budget. Cases 2-3
 # cover _suite_sem_reclaim and _suite_lock_reclaim.

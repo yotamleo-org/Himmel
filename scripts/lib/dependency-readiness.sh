@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # dependency-readiness.sh — read-only WARN-only readiness gate for skills that
-# depend on an external API key (HIMMEL-1393).
+# depend on an external API key.
 #
 # Sourced by /himmel-doctor C17 (scripts/himmel-doctor.sh) and by
 # himmel-update's dependency-readiness advisory step (scripts/himmel-update.sh).
@@ -8,7 +8,7 @@
 #   dependency_readiness_scan  — declaration-map-driven presence check, both
 #                                 drift directions, emits READY-DRIFT lines.
 #
-# Motivating case (2026-07-29 skill-hygiene audit, HIMMEL-1393): a
+# Motivating case (2026-07-29 skill-hygiene audit): a
 # `~/.config/obsidian-second-brain/.env` credentials file had existed for six
 # weeks while `docs/tooling-catalog.md` still called the research toolkit
 # "disabled" — a stale doc misinforming an entire investigation into whether

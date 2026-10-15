@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/load-dotenv.sh (HIMMEL-335).
+# Tests for scripts/lib/load-dotenv.sh.
 # Each case runs load_dotenv in its own $(...) subshell to isolate the
 # exported env between cases — the subshell-scoped export is intentional.
 # shellcheck disable=SC2030,SC2031
@@ -103,7 +103,7 @@ fi
 out=$( cd "$NONGIT" && unset HANDOVER_DIR && . "$NONGIT/scripts/lib/load-dotenv.sh" && load_dotenv HANDOVER_DIR; rc=$?; printf '%s|%s' "${HANDOVER_DIR:-<unset>}" "$rc" )
 assert_eq "T10 git-absent fallback clean no-op" "<unset>|0" "$out"
 
-# ── --root mode (HIMMEL-460): explicit root, CWD git resolution bypassed ─────
+# ── --root mode: explicit root, CWD git resolution bypassed ─────
 ROOTDIR="$TMP/explicit-root"
 mkdir -p "$ROOTDIR"
 printf 'HIMMEL_INITIATIVE=prcheck,pr\n' > "$ROOTDIR/.env"
@@ -127,12 +127,12 @@ assert_eq "T13 --root non-clobbering" "live" "$got"
 out=$( cd "$NONGIT" && unset HIMMEL_INITIATIVE && load_dotenv --root "$NONGIT" HIMMEL_INITIATIVE; rc=$?; printf '%s|%s' "${HIMMEL_INITIATIVE:-<unset>}" "$rc" )
 assert_eq "T14 --root no .env no-op" "<unset>|0" "$out"
 
-# ── _load_dotenv_primary_for (HIMMEL-1482): primary-checkout fallback for a ───
+# ── _load_dotenv_primary_for: primary-checkout fallback for a ───
 # pinned --root — the claude-codex path. A launcher invoked from a worktree copy
 # of itself has <parent> = worktree root (no .env); the helper resolves the
 # primary and reads .env there. canonicalize() compares paths by their resolved
 # form (avoids macOS /var → /private/var and MSYS /tmp vs C:/… mismatches; a bare
-# `cd && pwd` is the LOGICAL path and canonicalises neither — HIMMEL-3179).
+# `cd && pwd` is the LOGICAL path and canonicalises neither).
 canon() { canon_path_native "$1" 2>/dev/null; }
 PFREPO="$TMP/pf-repo"; mkdir -p "$PFREPO"; git -C "$PFREPO" init --quiet
 git -C "$PFREPO" config user.email t@example.com
@@ -177,7 +177,7 @@ assert_eq "T19 non-git returns candidate" "$(canon "$PFNONGIT")" "$(canon "$(_lo
 adv=$( _load_dotenv_primary_for "$PFNONGIT" 2>&1 1>/dev/null )
 if [ -z "$adv" ]; then echo "PASS T19 no advisory on non-git"; else echo "FAIL T19 advisory leaked: $adv"; FAILED=$((FAILED + 1)); fi
 
-# T20 (HIMMEL-1482 R2): a NESTED dir INSIDE a worktree (NOT the worktree root)
+# T20: a NESTED dir INSIDE a worktree (NOT the worktree root)
 # must NOT read the primary .env. A hermetically pinned root like
 # <worktree>/scripts resolves common-dir to the real .git and (under r1) differed
 # from the candidate → silently loaded the operator's .env. The candidate is not
@@ -188,7 +188,7 @@ assert_eq "T20 nested-in-worktree returns candidate" "$(canon "$PFWTNEST")" "$(c
 adv=$( _load_dotenv_primary_for "$PFWTNEST" 2>&1 1>/dev/null )
 if [ -z "$adv" ]; then echo "PASS T20 no advisory on nested-in-worktree"; else echo "FAIL T20 advisory leaked: $adv"; FAILED=$((FAILED + 1)); fi
 
-# T21 (HIMMEL-1482 R2): a NESTED dir INSIDE the primary checkout must NOT fall
+# T21: a NESTED dir INSIDE the primary checkout must NOT fall
 # back either — git-dir == git-common-dir here (primary checkout), so there is no
 # linked worktree to fall back from, and the candidate is not the toplevel.
 PFPRIMNEST="$PFREPO/nested"; mkdir -p "$PFPRIMNEST"
@@ -199,9 +199,9 @@ if [ -z "$adv" ]; then echo "PASS T21 no advisory on nested-in-primary"; else ec
 
 git -C "$PFREPO" worktree remove --force "$PFWT" 2>/dev/null || true
 
-# ── HIMMEL-1912: one-pass loader invariants ─────────────────────────────────
+# ── one-pass loader invariants ─────────────────────────────────
 
-# T22 (HIMMEL-1922): an already-set EMPTY environment value counts as ABSENT,
+# T22: an already-set EMPTY environment value counts as ABSENT,
 # so the .env value loads over it. Every caller guards with `[ -z "${KEY-}" ]`,
 # so a loader that treated set-empty as "already provided" loaded nothing and
 # still returned 0 — the silent-failure class this family of tickets removes.
@@ -209,7 +209,7 @@ printf 'DOTENV_KEEP=from-file\n' > "$REPO/.env"
 got=$( cd "$REPO" && export DOTENV_KEEP= && load_dotenv DOTENV_KEEP && printf '<%s>' "$DOTENV_KEEP" )
 assert_eq "T22 set-empty env is filled from .env" "<from-file>" "$got"
 
-# T22b (HIMMEL-1922): the other half of the same rule — a live NON-EMPTY value
+# T22b: the other half of the same rule — a live NON-EMPTY value
 # still wins over .env. Without this, T22 alone would also pass a loader that
 # clobbered unconditionally.
 printf 'DOTENV_KEEP=from-file\n' > "$REPO/.env"
@@ -241,7 +241,7 @@ printf 'root=ROOTVAL\nkeys=KEYSVAL\nenvfile=ENVFILEVAL\nkey=KEYVAL\nline=LINEVAL
 got=$( cd "$REPO" && unset root keys envfile key line val pending DOTENV_LOCAL_CONTROL && load_dotenv root keys envfile key line val pending DOTENV_LOCAL_CONTROL && printf '%s|%s|%s|%s|%s|%s|%s|%s' "${root:-<unset>}" "${keys:-<unset>}" "${envfile:-<unset>}" "${key:-<unset>}" "${line:-<unset>}" "${val:-<unset>}" "${pending:-<unset>}" "${DOTENV_LOCAL_CONTROL:-<unset>}" )
 assert_eq "T27 local-name keys load" "ROOTVAL|KEYSVAL|ENVFILEVAL|KEYVAL|LINEVAL|VALVAL|PENDINGVAL|CONTROLVAL" "$got"
 
-# T28 (HIMMEL-2462): an unquoted trailing ` #…` comment is stripped. The fixture
+# T28: an unquoted trailing ` #…` comment is stripped. The fixture
 # line is `.env.example`'s JIRA_PROJECT_KEY verbatim — the one the commit-msg
 # gate builds its ticket pattern from. Before this, every machine installed from
 # .env.example ran the gate with the pattern
@@ -265,7 +265,7 @@ assert_eq "T29 unspaced # stays in the value" "<http://x/#frag>" "$got"
 
 # T29b NEGATIVE CONTROL: a `#` inside quotes is data even with a space before it.
 # The surrounding quotes are NOT stripped — that is pre-existing behaviour this
-# change deliberately leaves alone (HIMMEL-1493 covers quote handling).
+# change deliberately leaves alone (quote handling is separate).
 printf 'DOTENV_TOKEN="abc #def"\n' > "$REPO/.env"
 got=$( cd "$REPO" && unset DOTENV_TOKEN && load_dotenv DOTENV_TOKEN && printf '<%s>' "$DOTENV_TOKEN" )
 assert_eq "T29b quoted # is data" '<"abc #def">' "$got"
@@ -323,7 +323,7 @@ printf 'DOTENV_LWSQ=   "abc # def" # trail\n' > "$REPO/.env"
 got=$( cd "$REPO" && unset DOTENV_LWSQ && load_dotenv DOTENV_LWSQ && printf '<%s>' "$DOTENV_LWSQ" )
 assert_eq "T34 leading whitespace before opening quote is skipped" '<"abc # def">' "$got"
 
-# T35 (codex, round 3): inside a SINGLE-quoted value a backslash is a LITERAL
+# T35: inside a SINGLE-quoted value a backslash is a LITERAL
 # character, not an escape — shell/dotenv convention. A trailing-backslash
 # Windows path like 'C:\' must still close on the real closing quote; escaping
 # applies only inside DOUBLE quotes (T32). Built via an intermediate variable
@@ -340,7 +340,7 @@ printf '%s\n' "$bsq_line" > "$REPO/.env"
 got=$( cd "$REPO" && unset DOTENV_BSQ2 && load_dotenv DOTENV_BSQ2 && printf '<%s>' "$DOTENV_BSQ2" )
 assert_eq "T36 single-quoted mid-value backslash is literal" "<'a\\b'>" "$got"
 
-# ── HIMMEL-3059 S3: himmelctl-cache-dir-first fallback ──────────────────────
+# ── himmelctl-cache-dir-first fallback ──────────────────────
 # When the install prefix is read-only (e.g. a packaged /usr/share tree), the
 # adopter path can't write an in-tree .env, so it lands under the himmelctl
 # cache dir instead. Readers must check there FIRST, then fall back to the

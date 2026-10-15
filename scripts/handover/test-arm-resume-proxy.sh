@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-proxy.sh -- regression test for the HIMMEL-901
+# test-arm-resume-proxy.sh -- regression test for the
 # HIMMEL_HEADROOM_PROXY arm-time flag added to
 # scripts/handover/arm-resume.sh + scripts/lib/headroom-proxy.sh.
 #
@@ -17,7 +17,7 @@
 # Everything below runs under --dry-run: touches no real scheduler, no real
 # ~/.headroom-venv, no real network. bash-3.2-safe, ASCII-only.
 #
-# CR round additions: mode-marker lines (HIMMEL-897 trail), absolute-curl
+# mode-marker lines, absolute-curl
 # baking, metachar escaping proof, lib fail-open, cygpath-failure, and the
 # curl-missing arm-time deactivation.
 #
@@ -31,15 +31,15 @@ LIB="$SCRIPT_DIR/../lib/headroom-proxy.sh"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-# HIMMEL-3103: every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
+# every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.
 . "$SCRIPT_DIR/../lib/fleet-slots-shield.sh"
 fleet_slots_shield "$TMP" || exit 1
-# HIMMEL-3074: real crontab arms create the arm log dir and probe the log
+# real crontab arms create the arm log dir and probe the log
 # FILE for append; keep that under the suite's TMP, not the operator's
 # real ~/.himmel/arm-resume.
 export ARM_RESUME_LOG_DIR="$TMP/arm-logs"
-# HIMMEL-3846: keep the real bank-preflight's usage-cache refresh off the live cache.
+# keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 
 # Hermetic shields (same as test-arm-resume.sh / test-arm-resume-queue-lock.sh):
@@ -85,10 +85,10 @@ git init -q "$WORK_REPO"
 HANDOVER_DIR="$TMP/statedocs/handovers"
 mkdir -p "$HANDOVER_DIR"
 git init -q "$TMP/statedocs"
-# A near future time keeps these proxy fixtures inside the HIMMEL-1475
+# A near future time keeps these proxy fixtures inside the
 # explicit-HH:MM long-gap limit.
 #
-# Recomputed PER CALL (HIMMEL-1879), not captured once: this suite can run
+# Recomputed PER CALL, not captured once: this suite can run
 # longer than the 30-minute offset, and past that point the target rolls to
 # TOMORROW, lands >60 min out, and the guard refuses rc=9 on cases that assert
 # rc=0 -- a wall-clock race in the fixture, not a behaviour under test
@@ -113,7 +113,7 @@ make_handover() {
 
 # Empty-scheduler stub (same pattern as test-arm-resume.sh SCHED_STUB_T17):
 # /query (and atq/at) return nothing, rc 0 -- reads as "no existing jobs" so
-# dedup/collision never interferes with these HIMMEL-901-specific assertions.
+# dedup/collision never interferes with these KEY-901-specific assertions.
 SCHED_STUB="$TMP/sched-stub"
 mkdir -p "$SCHED_STUB"
 cat > "$SCHED_STUB/schtasks" <<'EOF'
@@ -128,7 +128,7 @@ cat > "$SCHED_STUB/at" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-# HIMMEL-1337: arm-resume now tries a fast PowerShell wildcard listing before
+# arm-resume now tries a fast PowerShell wildcard listing before
 # `schtasks /query`, whenever SCHTASKS_CMD is left at its default -- exactly
 # the shape every call in this suite uses (no test here sets SCHTASKS_CMD).
 # Without this stub, `command -v powershell` would fall through this dir to
@@ -140,7 +140,7 @@ cat > "$SCHED_STUB/powershell" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-# HIMMEL-3181: macOS routes to _crontab_schedule and Windows to the .bat
+# macOS routes to _crontab_schedule and Windows to the .bat
 # branch; both REFUSE (rc=2) when `claude` does not resolve on PATH at arm
 # time, and the nightly macOS/Windows runners have no claude installed. A stub
 # keeps every dry-run arm below independent of the host's claude.
@@ -170,7 +170,7 @@ assert_not_contains "T1 no detached proxy start" 'cmd /c "' "$out"
 # T2: HIMMEL_HEADROOM_PROXY=1 in the process env -- the dry-run launcher
 #     carries the livez check (ABSOLUTE curl path -- CR round), the detached
 #     start, the env injection, the fail-open branch structure, and one
-#     mode-marker line per branch (proxied / bare-fallback, HIMMEL-897).
+#     mode-marker line per branch (proxied / bare-fallback).
 #     CMD-specific shapes are gated to Windows; the POSIX twin shapes are
 #     pinned by T5/T6 via the OSTYPE override.
 # ---------------------------------------------------------------------------
@@ -248,7 +248,7 @@ mkdir -p "$ENVROOT/scripts/handover" "$ENVROOT/scripts/lib"
 cp "$ARM" "$ENVROOT/scripts/handover/arm-resume.sh"
 cp "$SCRIPT_DIR"/../lib/*.sh "$ENVROOT/scripts/lib/"
 cp "$LIB" "$ENVROOT/scripts/lib/headroom-proxy.sh"
-# HIMMEL-4013: arm-resume resolves its plugin profile through ../lanes (fail-closed).
+# arm-resume resolves its plugin profile through ../lanes (fail-closed).
 cp -R "$SCRIPT_DIR/../lanes" "$ENVROOT/scripts/lanes"
 
 # T3b: process env UNSET, repo-root .env carries HIMMEL_HEADROOM_PROXY=1 ->
@@ -336,7 +336,7 @@ esac
 #     child process honors an inherited/exported OSTYPE.
 # ---------------------------------------------------------------------------
 MACBIN="$TMP/macbin"; mkdir -p "$MACBIN"
-# HIMMEL-3074: the crontab renderer resolves claude ABSOLUTELY at arm time and
+# the crontab renderer resolves claude ABSOLUTELY at arm time and
 # refuses (rc 2) when it cannot -- CI has no claude, so the stub dir carries one.
 printf '#!/bin/sh\nexit 0\n' > "$MACBIN/claude"; chmod +x "$MACBIN/claude"
 printf '#!/bin/sh\necho "at MUST NOT be called on macOS" >&2; exit 1\n' > "$MACBIN/at"; chmod +x "$MACBIN/at"
@@ -479,7 +479,7 @@ assert_not_contains "T7c broken lib: truthy .env fallback disabled" "livez" "$ou
 # T8 (CR round): cygpath failure on the headroom+curl conversion -> rc 4,
 #     ERR text, and no leftover temp .bat. The stub delegates the batched
 #     3-path call (-w + 3 args = $# 4) AND the single-path calls ($# 2:
-#     bash.exe -w, flow-run-ledger.sh -m — HIMMEL-921) to the REAL cygpath
+#     bash.exe -w, flow-run-ledger.sh -m) to the REAL cygpath
 #     and refuses the 2-path headroom+curl call ($# 3), so the failure lands
 #     exactly on the headroom conversion. Windows-only: the .bat branch is
 #     the only cygpath consumer (POSIX launchers never call it).
@@ -537,7 +537,7 @@ done
 BASH_ABS=$(command -v bash)
 RESTRICTED_PATH="$SCHED_STUB:$NOCURL"
 [ -n "$PY3BIN" ] && [ ! -e "$NOCURL/python3" ] && RESTRICTED_PATH="$RESTRICTED_PATH:$(dirname "$PY3BIN")"
-# HIMMEL-4013: arm-resume resolves its plugin profile with node (fail-closed);
+# arm-resume resolves its plugin profile with node (fail-closed);
 # CI keeps node outside /usr/bin, so name its dir too.
 NODEBIN=$(command -v node 2>/dev/null || true)
 [ -n "$NODEBIN" ] && [ ! -e "$NOCURL/node" ] && RESTRICTED_PATH="$RESTRICTED_PATH:$(dirname "$NODEBIN")"

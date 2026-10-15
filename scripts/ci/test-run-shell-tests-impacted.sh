@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # fixture suite bodies are single-quoted on purpose: their $vars must stay literal
 # scripts/ci/test-run-shell-tests-impacted.sh — the run-shell-tests.sh
-# --impacted <base>..<head> cases (HIMMEL-2821): the one-shot runner for the
+# --impacted <base>..<head> cases: the one-shot runner for the
 # list scripts/cr/impacted-suites.sh prints.
 #
 # The runner cds to its own checkout and shells out to THAT checkout's
@@ -55,10 +55,10 @@ trap 'rm -rf "$SB" "$SUITE_LOCK_SANDBOX"' EXIT
 mkdir -p "$SB/scripts/ci" "$SB/scripts/lib" "$SB/scripts/cr" \
          "$SB/scripts/machine-setup" "$SB/tests" "$SB/docs"
 cp "$RUNNER" "$SB/scripts/ci/run-shell-tests.sh"
-# HIMMEL-3914: every chokepoint fails closed without its seam-guard lib.
+# Every chokepoint fails closed without its seam-guard lib.
 cp "$SRC_ROOT/scripts/lib/chokepoint-seam-guard.sh" "$SB/scripts/lib/chokepoint-seam-guard.sh"
 cp "$IS_SRC" "$SB/scripts/cr/impacted-suites.sh"
-# impacted-suites.sh sources its anchor hand-off first (HIMMEL-3495).
+# impacted-suites.sh sources its anchor hand-off first.
 cp "$SRC_ROOT/scripts/cr/anchor-handoff.sh" "$SB/scripts/cr/anchor-handoff.sh"
 for lib in proc-tree.sh git-test-env.sh override-env.sh runtime-preflight.sh suite-semaphore.sh; do
   cp "$SRC_ROOT/scripts/lib/$lib" "$SB/scripts/lib/$lib"

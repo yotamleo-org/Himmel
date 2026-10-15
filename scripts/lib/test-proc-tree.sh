@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Unit tests for the tri-state contract of proc_tree_process_alive and
-# proc_tree_process_identity_matches in scripts/lib/proc-tree.sh (HIMMEL-1520).
+# proc_tree_process_identity_matches in scripts/lib/proc-tree.sh.
 #
 # THE BUG: proc_tree_process_alive used a bare `[ -d /proc/$pid ]` on
 # Windows/MSYS and a bare `kill -0 2>/dev/null` on POSIX. Both collapse
@@ -78,7 +78,7 @@ _PROC_TREE_PROC_ROOT="$tmp/proc-root-does-not-exist"
 rc=0; proc_tree_process_alive 9999 || rc=$?
 check "T3 windows arm: unreadable root -> probe unavailable (2), NOT confirmed (1)" "$rc" "2"
 
-# T3b (CR round 2): proc root READABLE but NOT SEARCHABLE. On POSIX the search
+# T3b: proc root READABLE but NOT SEARCHABLE. On POSIX the search
 # (execute) bit is what permits stat-ing "$root/$pid", so without it the pid
 # probe fails for a process that is genuinely THERE -- and a root that only
 # passes -r would be reported as confirmed absence. Must be rc 2.
@@ -107,7 +107,7 @@ check "T4 identity_matches: confirmed absence -> rc 1" "$rc" "1"
 # report T3's probe-unavailable state as a confirmed mismatch/exit. Before
 # this fix, T3's scenario returned 1 from proc_tree_process_alive (same as
 # T2), and identity_matches laundered it straight into "confirmed" rc 1 --
-# exactly the HIMMEL-1501-class defect this ticket closes one layer down.
+# exactly the defect class this change closes one layer down.
 _PROC_TREE_PROC_ROOT="$tmp/proc-root-does-not-exist"
 rc=0; proc_tree_process_identity_matches 9999 "some-identity" || rc=$?
 check "T5 identity_matches: probe unavailable -> rc 2, NEVER confirmed (1)" "$rc" "2"
@@ -148,7 +148,7 @@ rc=0; proc_tree_process_alive 4242 || rc=$?
 check "T8 posix arm: simulated EPERM -> probe unavailable (2), NOT confirmed" "$rc" "2"
 unset -f kill
 
-# --- proc_tree_liveness_matches (HIMMEL-1838/HIMMEL-3778) ---------------------
+# --- proc_tree_liveness_matches ---------------------
 # An empty expected identity means the identity probe FAILED AT RECORD TIME
 # (e.g. `ps` unavailable when the owner was branded), not that the pid is
 # unprobeable now -- so liveness_matches must fall back to the identity-free
@@ -178,8 +178,7 @@ rc=0; proc_tree_liveness_matches 4242 "some-identity" || rc=$?
 check "T11 liveness_matches: non-empty identity delegates to identity_matches (rc 1 propagated)" "$rc" "1"
 unset -f proc_tree_process_identity_matches
 
-# --- proc_tree_process_identity: TZ/COLUMNS independence (HIMMEL-3791 judge
-# finding J1396A). The identity is `ps -o lstart= -o command=`; lstart is
+# --- proc_tree_process_identity: TZ/COLUMNS independence. The identity is `ps -o lstart= -o command=`; lstart is
 # printed in the caller's TZ and command is truncated to the caller's COLUMNS,
 # so a live holder recorded in one environment looked "dead" to a contender
 # reading it in another -- a false-positive double-acquire. Real background

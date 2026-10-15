@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # handover/flush — session-end consolidation sweep across handover/* branches.
 #
-# HIMMEL-143 (HIMMEL-59 v2 child). Walks the resolved handover repo
+# Walks the resolved handover repo
 # and reconciles state for every local `handover/*` branch:
 #
 #   - Unpushed (HEAD ahead of origin/<branch>, or origin/<branch>
@@ -27,18 +27,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
-# default_branch() resolves the handover repo's default (main OR master,
-# HIMMEL-297) for the PR base / merged-check below.
+# default_branch() resolves the handover repo's default (main OR master)
+# for the PR base / merged-check below.
 # shellcheck source=../guardrails/lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../guardrails/lib.sh"
-# Forge-dispatch seam (HIMMEL-326): the PR-state queries route through forge_*,
+# Forge-dispatch seam: the PR-state queries route through forge_*,
 # so flush works against a GitHub or Bitbucket Cloud handover repo.
 # shellcheck source=../lib/forge.sh
 # shellcheck disable=SC1091
@@ -50,7 +50,7 @@ DRY_RUN=0
 CLEANUP=0
 NO_PR_OPEN=0
 # Empty unless explicitly pinned; resolved to the handover repo's default
-# branch (main OR master) once the repo root is known (HIMMEL-297).
+# branch (main OR master) once the repo root is known.
 DEFAULT_BASE="${HANDOVER_PR_BASE:-}"
 
 usage() {
@@ -108,14 +108,14 @@ if ! handover_repo=$($GIT_CMD -C "$root" rev-parse --show-toplevel 2>&1); then
     exit 2
 fi
 
-# Resolve the PR base = the handover repo's default branch (main OR master,
-# HIMMEL-297), unless HANDOVER_PR_BASE pinned it explicitly above.
+# Resolve the PR base = the handover repo's default branch (main OR master),
+# unless HANDOVER_PR_BASE pinned it explicitly above.
 if [ -z "$DEFAULT_BASE" ]; then
     DEFAULT_BASE=$(default_branch "$handover_repo")
 fi
 
 # Forge queries run pinned to the handover repo — its origin determines the
-# forge (GitHub or Bitbucket, HIMMEL-326) — regardless of flush's own cwd.
+# forge — regardless of flush's own cwd.
 forge_in_handover() { ( cd "$handover_repo" && "$@" ); }
 
 # Detect whether the forge CLI is usable (forge resolvable + authenticated).
@@ -229,7 +229,7 @@ for branch in "${branches[@]}"; do
     # 3. Merged state ---------------------------------------------------
     # `merge-base --is-ancestor <branch> origin/<default>` covers
     # fast-forward + merge-commit (tip is an ancestor of the default branch).
-    # For squash-merged branches (the HIMMEL-141 mode), the tip is NOT an
+    # For squash-merged branches, the tip is NOT an
     # ancestor; instead detect via `git cherry origin/<default> <branch>`
     # — all commits with a `-` prefix means everything was applied upstream.
     is_merged=0

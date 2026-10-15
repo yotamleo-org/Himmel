@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/lane-classify.sh (HIMMEL-654 WS7, spec D1.1).
+# Smoke test for scripts/cr/lane-classify.sh (WS7, spec D1.1).
 # The suite is the spec: positive markers classify cheap; absence never does.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

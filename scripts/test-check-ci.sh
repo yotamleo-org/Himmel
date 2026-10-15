@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/check-ci.sh (HIMMEL-949).
+# Tests for scripts/check-ci.sh.
 #
 # Hermetic: `gh` is a PATH stub whose behavior is driven by GH_STUB_MODE +
 # counter files; CHECK_CI_POLL_INTERVAL=0 removes the grace-window sleeps,
@@ -7,7 +7,7 @@
 # escalation wait defaults to 0 so ordinary bounded-loop cases never sleep.
 # Never talks to GitHub.
 #
-# HIMMEL-1953: no case may consume real wall clock waiting on a simulated poll —
+# no case may consume real wall clock waiting on a simulated poll —
 # CHECK_CI_SLEEP_CMD=: neutralizes check-ci.sh's three sleeps — and no case may
 # run unbounded: each is wrapped in `timeout` (CHECK_CI_CASE_TIMEOUT, default
 # 600s), so a stuck case FAILS with its number instead of hanging the suite.
@@ -18,12 +18,12 @@
 #       0 unresolved threads                 → rc 0
 #   3.  checks registered, watch red         → rc 1, FAILED + fast-red hint
 #   4.  checks never register, --grace 0     → rc 2, "no checks registered"
-#   5.  unknown option                       → rc 64, usage, verdict line (HIMMEL-3317)
+#   5.  unknown option                       → rc 64, usage, verdict line
 #   5b. --help                               → rc 0, usage, no verdict line
 #   5c. `--pr <n>` (the real-world mistake)  → rc 64 + verdict; a genuine
 #       cannot-evaluate (case 1/4) still rc 2 — the false-positive control
 #   (1/2/3/11 additionally assert exactly one exact-match
-#   "check-ci: verdict exit=N" line — HIMMEL-974)
+#   "check-ci: verdict exit=N" line)
 #   6.  --grace non-numeric                  → rc 64
 #   7.  two positional selectors             → rc 64
 #   8.  selector is passed through to gh as an exact token
@@ -34,10 +34,10 @@
 #   13. non-numeric CHECK_CI_POLL_INTERVAL   → warns, falls back, still runs
 #   14. --settle non-numeric                 → rc 64
 #   15. --threads-only + unresolved threads  → rc 3, and NO gh pr checks calls
-#   16. unresolved thread on page TWO        → rc 3 (pagination, codex round 2)
-#   17. probe gh error (auth/network)        → rc 2, never a fake red (codex round 3)
+#   16. unresolved thread on page TWO        → rc 3 (pagination)
+#   17. probe gh error (auth/network)        → rc 2, never a fake red
 #   18. PR head moves during the run         → rc 2 (verdict bound to head SHA)
-#   19. CHANGES_REQUESTED review             → rc 3 (codex round 4)
+#   19. CHANGES_REQUESTED review             → rc 3
 #   20. gh error mid-watch (auth/network)    → rc 2, never a fake red (CR follow-up)
 #   21. malformed hasNextPage (not true/false) → rc 2 (CR follow-up)
 #   22. hasNextPage true with empty/null cursor → rc 2 (CR follow-up)
@@ -48,22 +48,22 @@
 #   39. a posted prior-head outside-diff finding still blocks (operator
 #       ruling 2026-09-21: best effort covers ABSENCE only, not a posted
 #       finding) → rc 3; dispositioned at the governing prior head → rc 0
-#   39e-39h. TWO prior heads carry findings (HIMMEL-3365): every prior head
+#   39e-39h. TWO prior heads carry findings: every prior head
 #       governs; the newer one never masks the older → rc 3 until each is
 #       dispositioned at the head that raised it, then rc 0
 #   43. zero head reviews, no prior finding → rc 0 (PR #1321 benign shape)
 #   89. "Review completed" + a PR-wide review present → rc 0 (no false block)
 #
-#   HIMMEL-3360 retired --escalate, review_freshness_gate's stale-anchor
+#   retired --escalate, review_freshness_gate's stale-anchor
 #   escalation, the review-object-absent panel-carry gate (exit 4), and the
 #   PR-wide-review-freshness gate — CodeRabbit's status/review state is
 #   advisory-only now (thread + body-findings gates still certify the merge).
 #   The former cases 44-52, 77-93 and 3152-a/b/c/d all exercised that removed
 #   machinery and are gone, not renumbered; see cases 27-34f, 3360d, 3360e,
-#   39, 39b, 39c below for their HIMMEL-3360 replacements.
+#   39, 39b, 39c below for their replacements.
 set -uo pipefail
 
-# HIMMEL-1495 — an --automerge-armed launching shell carries ARMAUTOMERGE=1 +
+# an --automerge-armed launching shell carries ARMAUTOMERGE=1 +
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
 # not decide the result (the 34e/34f precedent that lives in THIS file,
 # generalized to the armed-session bypass pair). check-ci.sh does not consult
@@ -71,7 +71,7 @@ set -uo pipefail
 # one — case 58 below pins today's insensitivity.
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
 
-# HIMMEL-3850 — this suite pins the pre-cache behaviour (gh's own --watch, one gh
+# this suite pins the pre-cache behaviour (gh's own --watch, one gh
 # call per probe) that CHECK_CI_CACHE=0 preserves; the cached path has its own
 # suite (test-check-ci-cache.sh). An ambient shared cache would also leak rows
 # between cases.
@@ -112,10 +112,10 @@ cat > "$STUBDIR/gh" <<'EOF'
 # echoed in the script's parsed shape: "<count> <hasNextPage> <endCursor>".
 # Args are logged to GH_STUB_ARGS.
 echo "$*" >> "$GH_STUB_ARGS"
-# HIMMEL-3385: the value of the --jq flag among the args ("" if none).
+# the value of the --jq flag among the args ("" if none).
 _jq_arg() { while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then printf '%s' "${2:-}"; return; fi; shift; done; }
 cmd="${1:-}"
-# HIMMEL-4136: the GraphQL budget probe (`gh api -i graphql`, lib/gh-graphql-budget.sh)
+# the GraphQL budget probe (`gh api -i graphql`, lib/gh-graphql-budget.sh)
 # when GH_STUB_RL_PROBE names a counter file. Call 1 (the startup preflight) spends
 # 4 real seconds and reports a healthy budget; every later call (_rl_recover)
 # reports it exhausted with the reset 6 s away.
@@ -144,7 +144,7 @@ if [ "$cmd" = "api" ]; then
             exit 0 ;;
     esac
     case "${2:-}" in
-        # HIMMEL-3381: the EFFECTIVE required-check set. Rulesets (rules/branches)
+        # the EFFECTIVE required-check set. Rulesets (rules/branches)
         # and classic protection are two separate endpoints; the default is "no
         # rule at all" so every pre-3381 case keeps its verdict untouched.
         repos/octo/demo/rules/branches/main)
@@ -154,7 +154,7 @@ if [ "$cmd" = "api" ]; then
                 none) : ;;
                 fail) echo "HTTP 500: rules boom" >&2; exit 1 ;;
                 req:*) printf '%s\n' "${GH_STUB_RULES#req:}" | tr ',' '\n' ;;
-                # HIMMEL-3385: a RAW ruleset payload run through the --jq expression
+                # a RAW ruleset payload run through the --jq expression
                 # check-ci.sh actually passed, so a producer id the script's own
                 # expression drops stays dropped here too.
                 json:*) printf '%s' "${GH_STUB_RULES#json:}" | jq -r "$(_jq_arg "$@")" ;;
@@ -169,12 +169,12 @@ if [ "$cmd" = "api" ]; then
             esac
             exit 0 ;;
         repos/octo/demo/commits/sha1/check-runs*)
-            # HIMMEL-3385: the producer read. Raw check-runs JSON through the real
+            # the producer read. Raw check-runs JSON through the real
             # --jq expression; "fail" is an unreadable read; anything else keeps the
             # old empty payload every pre-3385 caller sees.
             case "${GH_STUB_PRODUCERS:-none}" in
                 fail) echo "HTTP 500: check-runs boom" >&2; exit 1 ;;
-                # HIMMEL-3434: real `gh api --jq` propagates a jq error() as gh's own
+                # real `gh api --jq` propagates a jq error() as gh's own
                 # non-zero exit — the stub must too, or a null-id fixture can never
                 # exercise the caller's producers-unreadable path.
                 json:*) printf '%s' "${GH_STUB_PRODUCERS#json:}" | jq -r "$(_jq_arg "$@")"; exit $? ;;
@@ -182,7 +182,7 @@ if [ "$cmd" = "api" ]; then
             esac
             exit 0 ;;
         repos/octo/demo/commits/sha1/status\?*)
-            # HIMMEL-3391: the combined-status read that names which contexts are
+            # the combined-status read that names which contexts are
             # published as commit STATUSES. Raw combined-status JSON through the real
             # --jq expression; "fail" is an unreadable read; none = no status at all.
             case "${GH_STUB_STATUSCTX:-none}" in
@@ -191,7 +191,7 @@ if [ "$cmd" = "api" ]; then
             esac
             exit 0 ;;
         # CodeRabbit's REAL shape: a commit STATUS on the head SHA, carrying
-        # creator identity (HIMMEL-1072/1058). The list endpoint is newest-first.
+        # creator identity. The list endpoint is newest-first.
         # 136622811 = coderabbitai[bot].
         repos/octo/demo/commits/sha1/statuses*)
             case "$GH_STUB_MODE" in
@@ -200,7 +200,7 @@ if [ "$cmd" = "api" ]; then
                 cr-failure)     echo '[{"context":"CodeRabbit","state":"failure","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
                 cr-spoofed)     echo '[{"context":"CodeRabbit","state":"success","created_at":"2026-07-16T19:10:05Z","creator":{"id":999999,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
                 cr-query-error) echo "statuses boom" >&2; exit 1 ;;
-                # HIMMEL-1317: the REAL payload a repo with automatic reviews
+                # the REAL payload a repo with automatic reviews
                 # disabled gets on every untriggered PR. state=success, and the
                 # refusal lives ONLY in .description — which this reader used to
                 # drop, making a declined review byte-identical to a clean one.
@@ -227,29 +227,29 @@ if [ "$cmd" = "api" ]; then
                 # merely restores the old behaviour. Pins the regex to
                 # unambiguous phrasings.
                 cr-nearmiss)    echo '[{"context":"CodeRabbit","state":"success","description":"No review changes requested","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
-                # HIMMEL-1354: the REAL payload observed on PR #1456 @ 46358386
+                # the REAL payload observed on PR #1456 @ 46358386
                 # on 2026-07-28 when CodeRabbit declined for rate limiting.
                 # state=success again, refusal again only in .description — and
-                # this wording matched NONE of the HIMMEL-1317 deny-list
+                # this wording matched NONE of the deny-list
                 # alternatives, so it classified as a clean success and check-ci
                 # printed "all checks green" + "verdict exit=0" on a head that
                 # had no review at all.
                 cr-ratelimited) echo '[{"context":"CodeRabbit","state":"success","description":"Review rate limited","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
-                # HIMMEL-1354: a wording NOBODY has enumerated, in either list.
+                # a wording NOBODY has enumerated, in either list.
                 # Under the old deny-list this passed as clean by default; under
                 # the allow-list it fails CLOSED. This is the structural point of
                 # the inversion — it asserts behaviour on the UNKNOWN case, which
                 # is the one that keeps producing incidents.
                 cr-unknownword) echo '[{"context":"CodeRabbit","state":"success","description":"Review deferred for reasons we have never seen","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
-                # CR follow-up (HIMMEL-1354 R2): jq's test() is an UNANCHORED
+                # jq's test() is an UNANCHORED
                 # search, so an unanchored allow-list SUBSTRING-matches this
                 # description ("No review completed" contains "review
                 # completed") and would read as a clean success — reopening
-                # the exact hole HIMMEL-1354 exists to close. Pins that the
+                # the exact hole an earlier change exists to close. Pins that the
                 # built-in default is anchored so only an EXACT allow-listed
                 # description passes.
                 cr-substrmatch) echo '[{"context":"CodeRabbit","state":"success","description":"No review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
-                # HIMMEL-1356: a state=success whose description is MISSING, null
+                # a state=success whose description is MISSING, null
                 # or EMPTY. CodeRabbit has never been observed to emit these (24
                 # sampled real payloads all carried one), so the gate must not
                 # certify them on the strength of an absent field — they read
@@ -266,7 +266,7 @@ if [ "$cmd" = "api" ]; then
                 *)              echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
             esac
             exit 0 ;;
-        # CodeRabbit's review-BODY findings (HIMMEL-1126/1147) — a separate
+        # CodeRabbit's review-BODY findings — a separate
         # endpoint from the commit status above; head-independent (the real
         # API lists every review on the PR, filtering by commit_id is the
         # reader's job). Default '[]' (no review posted yet) keeps every
@@ -277,15 +277,15 @@ if [ "$cmd" = "api" ]; then
                 body-outside) echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"sha1","body":"> **⚠️ Outside diff range comments (1)**\n> \n> `stub.sh:5`\n> _x_ | _🟡 Minor_ | _y_\n> \n> **A stub outside-diff finding.**"}]' ;;
                 body-nitpick) echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"sha1","body":"Nitpick comments (1)"}]' ;;
                 body-drift)   echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"sha1","body":"Outside diff range comments were noted but the count did not survive a format change"}]' ;;
-                # HIMMEL-3124: a REAL captured review body (fixture file), one substantive
+                # a REAL captured review body (fixture file), one substantive
                 # bot review at the head — the per-finding outside-diff reader parses it.
                 body-file)    jq -n --rawfile b "$GH_STUB_BODY_FILE" '[{user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"sha1",submitted_at:"2026-07-16T19:10:00Z",id:1,body:$b}]' ;;
-                # HIMMEL-3360: a REAL captured review body at a PRIOR head
+                # a REAL captured review body at a PRIOR head
                 # (shaOLD, not the certified sha1) — the governing-prior-head
                 # gate reads this via cr_body_outside_findings called with
                 # head=shaOLD.
                 body-a2-file) jq -n --rawfile b "$GH_STUB_BODY_FILE" '[{user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"shaOLD",submitted_at:"2026-07-16T19:10:00Z",id:1,body:$b}]' ;;
-                # HIMMEL-3365: TWO prior heads, each carrying its own REAL captured
+                # TWO prior heads, each carrying its own REAL captured
                 # review body — shaOLD (older, GH_STUB_BODY_FILE) and shaOLD2
                 # (newer, GH_STUB_BODY_FILE2); nothing at the certified sha1.
                 body-a3-file) jq -n --rawfile b "$GH_STUB_BODY_FILE" --rawfile c "$GH_STUB_BODY_FILE2" '[{user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"shaOLD",submitted_at:"2026-07-16T19:10:00Z",id:1,body:$b},{user:{id:136622811,login:"coderabbitai[bot]"},commit_id:"shaOLD2",submitted_at:"2026-07-16T19:20:00Z",id:2,body:$c}]' ;;
@@ -312,12 +312,12 @@ if [ "$cmd" = "api" ]; then
                     else
                         echo '[{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"shaOLD","body":"Outside diff range comments (2)"},{"user":{"id":136622811,"login":"coderabbitai[bot]"},"commit_id":"sha1","body":"**Actionable comments posted: 0**"}]'
                     fi ;;
-                # HIMMEL-1959: the escalation request lands, but the ONLY
+                # the escalation request lands, but the ONLY
                 # thing that ever appears at the head is an EMPTY incremental
                 # review object. That is review evidence at the head which is
                 # NOT the requested full review — head_reviews>0 while
                 # substantive==0 — so the poll must not accept it.
-                # HIMMEL-1959 CR round 1: the SECOND invocation. The empty
+                # The SECOND invocation: the empty
                 # review object from a prior escalation has PERSISTED at the
                 # head, so it is present on the very first read of this run.
                 # A2 must still fire — keying its entry on head_reviews made
@@ -357,13 +357,13 @@ if [ "$cmd" = "api" ]; then
             case " $* " in
                 *" -f body="*)
                     # The full-review REQUEST fails while claims still succeed:
-                    # the partial-failure shape case 93 pins (HIMMEL-1964).
+                    # the partial-failure shape case 93 pins.
                     if [ "$GH_STUB_MODE" = "body-a2-postfail" ]; then
                         case " $* " in
                             *"body=@coderabbitai"*) echo "comment post boom" >&2; exit 1 ;;
                         esac
                     fi
-                    # HIMMEL-1964: ids ascend with the post order (as GitHub's
+                    # ids ascend with the post order (as GitHub's
                     # do — that ordering IS the single-flight tie-break), and a
                     # posted CLAIM is remembered so a later list replays it.
                     c=$(cat "$GH_STUB_COMMENTS" 2>/dev/null)
@@ -385,7 +385,7 @@ if [ "$cmd" = "api" ]; then
                     # posted in this run — a competing caller whose claim landed
                     # concurrently with ours and got the lower id.
                     if [ "$GH_STUB_MODE" = "body-a2-marker" ]; then
-                        # The pre-HIMMEL-1964 marker: no attempt= field.
+                        # The earlier marker: no attempt= field.
                         echo '900 <!-- himmel:cr-escalate:sha1 -->'
                     fi
                     oldifs=$IFS; IFS=,
@@ -401,10 +401,10 @@ if [ "$cmd" = "api" ]; then
             esac
             exit 0 ;;
         repos/octo/demo/issues/comments/*)
-            # Claim rollback (HIMMEL-1964): DELETE of a single comment by id.
+            # Claim rollback: DELETE of a single comment by id.
             exit 0 ;;
     esac
-    # CodeRabbit's review-FRESHNESS query (HIMMEL-1181) — a separate GraphQL
+    # CodeRabbit's review-FRESHNESS query — a separate GraphQL
     # query from the reviewThreads one below (both are `gh api graphql`, so
     # this MUST be intercepted first on query text, before the GH_STUB_THREADS
     # fallthrough — the reviews query must not consume the GH_STUB_API
@@ -414,16 +414,16 @@ if [ "$cmd" = "api" ]; then
     # gate's default '[]'.
     #
     # Every BOT node carries a non-empty `body` and a non-zero
-    # `comments.totalCount` on purpose: HIMMEL-1824 taught the reader to DROP
+    # `comments.totalCount` on purpose: an earlier change taught the reader to DROP
     # empty review shells (`chat.auto_reply` and incremental passes mint
     # COMMENTED objects with neither), so a bodyless fixture classifies as
     # `none` no matter which oid it names — silently disarming both the
-    # `fresh` default and every `stale` case here (HIMMEL-1374, 2026-08-20).
+    # `fresh` default and every `stale` case here.
     case "$*" in
         *"reviews(last:"*)
             case "${GH_STUB_FRESHNESS:-fresh}" in
                 fresh)    echo '{"data":{"repository":{"pullRequest":{"reviews":{"totalCount":1,"nodes":[{"author":{"login":"coderabbitai","__typename":"Bot"},"commit":{"oid":"sha1"},"state":"COMMENTED","body":"fixture review body","comments":{"totalCount":1}}]}}}}}' ;;
-                # HIMMEL-3123: a bot object AT the head that is a thread REPLY —
+                # a bot object AT the head that is a thread REPLY —
                 # body empty, one inline comment. It survives the shell filter
                 # (comments > 0) but delivers no verdict at the head.
                 threadsonly) echo '{"data":{"repository":{"pullRequest":{"reviews":{"totalCount":1,"nodes":[{"author":{"login":"coderabbitai","__typename":"Bot"},"commit":{"oid":"sha1"},"state":"COMMENTED","body":"","comments":{"totalCount":1}}]}}}}}' ;;
@@ -509,7 +509,7 @@ if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
                 *) echo '{"changedFiles":1}' ;;
             esac
             exit 0 ;;
-        # HIMMEL-2278: the machine-generated-PR classifier's ONE probe. Emits
+        # the machine-generated-PR classifier's ONE probe. Emits
         # check-ci.sh's parsed shape: sentinel, author login, author is_bot,
         # file count, then one line per changed path. The DEFAULT (`none`) is a
         # deliberately ordinary human code PR, so every pre-2278 case in this
@@ -523,7 +523,7 @@ if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
                 # word, not the author's, so this must stay out of the class.
                 dep-impostor) printf 'MPR_OK\ndependabot[bot]\nfalse\n1\nscripts/check-ci.sh\n' ;;
                 graph)      printf 'MPR_OK\nyotamleo\nfalse\n2\ngraphify-out/graph.json\ngraphify-out/GRAPH_REPORT.md\n' ;;
-                # codex-2, HIMMEL-2278 CR round 2: only graph.json changed this
+                # only graph.json changed this
                 # publish (GRAPH_REPORT.md came out byte-identical), so the PR
                 # diff is ONE artifact path. Still the class.
                 graph-single) printf 'MPR_OK\nyotamleo\nfalse\n1\ngraphify-out/graph.json\n' ;;
@@ -534,7 +534,7 @@ if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
                 # case PATTERNS and the changed path the subject, never the
                 # reverse, or one glob-named file matches the whole class.
                 globname)   printf 'MPR_OK\nyotamleo\nfalse\n1\n*\n' ;;
-                # codex-1, HIMMEL-2278 CR round 1: an rc=0 probe that ADVERTISES
+                # An rc=0 probe that ADVERTISES
                 # 3 files but was truncated after emitting only its two artifact
                 # paths. Reading a partial file list as a complete one would
                 # classify a code PR into the class.
@@ -554,7 +554,7 @@ if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
             printf 'https://github.com/octo/demo/pull/42\t%s\t%s\tmain\n' "${GH_STUB_DECISION:-null}" "$head"
             exit 0 ;;
         *"baseRefName"*) echo "main"; exit 0 ;;
-        # HIMMEL-3473: GitHub's own merge verdict, in check-ci's parsed shape
+        # GitHub's own merge verdict, in check-ci's parsed shape
         # "<head> <state>". GH_STUB_MERGE_STATE is a comma list consumed one
         # read at a time (the last value repeats); "fail" is an unreadable read.
         *"mergeStateStatus"*)
@@ -584,17 +584,17 @@ case " $* " in *" --watch "*) is_watch=1 ;; esac
 # structured red confirm (--json bucket): the script's --jq yields a bare count
 case " $* " in
     *" --json "*)
-        # HIMMEL-2062: watch_decidable's probe is a DIFFERENT --json shape
+        # watch_decidable's probe is a DIFFERENT --json shape
         # (bucket,name) from the fail-bucket-count probe below — branch on the
         # field list before falling into the bare-count logic, or a blocking
         # mode's decidable check would get a bare number instead of its
         # "CHECKCI_OK\n<pending names>" shape.
         case " $* " in
             *"bucket,name"*)
-                # HIMMEL-3381: the required gate's own row read ("<bucket><TAB><name>").
+                # the required gate's own row read ("<bucket><TAB><name>").
                 # GH_STUB_CHECKS is a newline list of "<bucket>:<name>".
                 case " $* " in
-                    # HIMMEL-4071: the failed-job link read ("<name><TAB><link>").
+                    # the failed-job link read ("<name><TAB><link>").
                     *'\(.name)\t\(.link)'*) printf '%b' "${GH_STUB_FAILLINKS:-}"; exit 0 ;;
                     *'\(.bucket)\t\(.name)'*)
                         # late:<n>     first read lacks <n>, later reads carry it green
@@ -613,7 +613,7 @@ case " $* " in
                         esac
                         exit 0 ;;
                 esac
-                # HIMMEL-2907: _pending_checks_report's --jq is a DIFFERENT
+                # _pending_checks_report's --jq is a DIFFERENT
                 # shape over these SAME --json bucket,name fields —
                 # "<count>\n<names>", no CHECKCI_OK sentinel — distinguished
                 # here by its unique "length" substring (nested inside the
@@ -632,7 +632,7 @@ case " $* " in
                 esac
                 case "$GH_STUB_MODE" in
                     blocking-cr-decidable) printf 'CHECKCI_OK\nCodeRabbit\n' ;;
-                    # codex-2, HIMMEL-2062 CR round 1: a pending check whose
+                    # A pending check whose
                     # name merely CONTAINS "coderabbit" (not an exact match)
                     # must NOT be read as the ignorable rollup — proves
                     # watch_decidable's case is an exact match, not a glob.
@@ -661,7 +661,7 @@ case " $* " in
                 njson=$(grep -c "^pr checks .*--json" "$GH_STUB_ARGS" 2>/dev/null); njson=${njson:-1}
                 if [ "$njson" -le 1 ]; then echo 0; else echo 1; fi ;;
             red-liar|zombie|zombie-young|zombie-no-status|zombie-status-error) echo 0 ;;
-            # HIMMEL-2062: blocking-cr-decidable/blocking-cap-pending are GREEN
+            # blocking-cr-decidable/blocking-cap-pending are GREEN
             # shapes (0 failed) — the cap/decidable path must not misread the
             # generic default (1 failed, meant for the red-confirm caller) as
             # a red verdict. blocking-cap-red is the one case that IS red.
@@ -671,7 +671,7 @@ case " $* " in
         esac
         exit 0 ;;
 esac
-# HIMMEL-4136: the first plain `pr checks` call fails as a rate limit, once.
+# the first plain `pr checks` call fails as a rate limit, once.
 if [ -n "${GH_STUB_RL_ONCE:-}" ] && [ ! -e "$GH_STUB_RL_ONCE" ]; then
     : > "$GH_STUB_RL_ONCE"
     echo "GraphQL: API rate limit exceeded for user ID 1." >&2
@@ -717,16 +717,16 @@ case "$GH_STUB_MODE" in
         exit 8 ;;
     cr-absent|cr-pending|cr-failure|cr-spoofed|cr-query-error|cr-paged|cr-skipped|cr-desc-error|cr-completed|cr-nearmiss|cr-ratelimited|cr-unknownword|cr-substrmatch|cr-nodesc|cr-nulldesc|cr-emptydesc)
         # Checks are GREEN and threads are clean in every one of these — the
-        # verdict must turn entirely on CodeRabbit's status (HIMMEL-1072).
+        # verdict must turn entirely on CodeRabbit's status.
         if [ "$is_watch" -eq 1 ]; then echo "All checks were successful"; exit 0; fi
         exit 0 ;;
     body-outside|body-file|body-a2-file|body-a3-file|body-nitpick|body-drift|body-error|body-a2|body-empty|body-a2-escalate|body-a2-marker|body-a2-timeout|body-a2-escalate-outside|body-b2-escalate|body-b2-escalate-outside|body-b2-timeout|body-b2-head-review|body-a2-escalate-empty|body-a2-empty-persisted|body-a2-postfail)
         # Checks GREEN, threads clean, CodeRabbit CONCLUDED (default statuses
         # fixture) in every one of these — the verdict must turn entirely on
-        # the review-BODY findings gate (HIMMEL-1126/1147/1219).
+        # the review-BODY findings gate.
         if [ "$is_watch" -eq 1 ]; then echo "All checks were successful"; exit 0; fi
         exit 0 ;;
-    # HIMMEL-2062: blocking modes — the --watch arm sleeps a BOUNDED few
+    # blocking modes — the --watch arm sleeps a BOUNDED few
     # seconds so a supervision bug cannot hang the suite; check-ci.sh's own
     # background+decidable/cap logic is expected to kill it well before that
     # sleep completes. The plain (non-watch, non-json) probe just says
@@ -736,11 +736,11 @@ case "$GH_STUB_MODE" in
         if [ "$is_watch" -eq 1 ]; then sleep 3; echo "All checks were successful"; exit 0; fi
         exit 8 ;;
     blocking-cap-pending)
-        # HIMMEL-2206 case 104: record this stub's own pid (colocated with the
+        # case 104: record this stub's own pid (colocated with the
         # stub itself, same idiom as counting-sleep above — $STUBDIR is not in
         # this process's env) so the test can confirm it actually dies when
         # check-ci.sh stops the watch early, instead of being left orphaned.
-        # codex-2, CR round 4: kill -0 on that pid is NOT proof of death — this
+        # kill -0 on that pid is NOT proof of death — this
         # very ticket establishes kill -0 succeeds on a killed-but-unreaped
         # zombie too, so case 104 also drops a SEPARATE marker file right
         # after the sleep (the natural-completion side effect an orphaned
@@ -760,14 +760,14 @@ case "$GH_STUB_MODE" in
         if [ "$is_watch" -eq 1 ]; then sleep 3; echo "X ci fail"; exit 1; fi
         exit 8 ;;
     blocking-long-pending)
-        # HIMMEL-4136: a check pending far past any deadline the suite asks
+        # a check pending far past any deadline the suite asks
         # for — the watch outlives the cap AND the extension, so check-ci
         # must reach its own deadline arithmetic to stop it.
         if [ "$is_watch" -eq 1 ]; then sleep 30; echo "All checks were successful"; exit 0; fi
         exit 8 ;;
     blocking-cap-extend)
-        # HIMMEL-2907: round 1 runs past the cap exactly like blocking-cap-
-        # pending (a healthy shard still mid-run); round 2 — check-ci.sh's
+        # The first wait runs past the cap exactly like blocking-cap-
+        # pending (a healthy shard still mid-run); the second — check-ci.sh's
         # one-time extension — resolves green immediately, the same shape a
         # real slow-but-healthy shard finishing during the extra --max-wait
         # window would produce.
@@ -779,7 +779,7 @@ case "$GH_STUB_MODE" in
         fi
         exit 8 ;;
     green-then-slow)
-        # HIMMEL-4131: the first watch is instantly green (the settle path is then
+        # the first watch is instantly green (the settle path is then
         # taken); every later watch runs past any cap the suite sets.
         if [ "$is_watch" -eq 1 ]; then
             w=$(cat "$GH_STUB_WATCH" 2>/dev/null); w=${w:-0}
@@ -797,8 +797,8 @@ chmod +x "$STUBDIR/gh" || { echo "FATAL: chmod on gh stub failed"; exit 1; }
 
 # counting-sleep — a CHECK_CI_SLEEP_CMD that logs one line per call (to a
 # fixed file next to itself, not baked-in $STUBDIR, so it stays correct if
-# STUBDIR is ever relocated) and still really sleeps its argument (HIMMEL-2062
-# CR round 2, case 101): proving the POLL=0 floor fix needs an ACTUAL per-call
+# STUBDIR is ever relocated) and still really sleeps its argument;
+# proving the POLL=0 floor fix needs an ACTUAL per-call
 # delay, or the loop would spin just as fast with or without the floor.
 cat > "$STUBDIR/counting-sleep" <<'EOF'
 #!/usr/bin/env bash
@@ -807,7 +807,7 @@ exec sleep "$1"
 EOF
 chmod +x "$STUBDIR/counting-sleep" || { echo "FATAL: chmod on counting-sleep stub failed"; exit 1; }
 
-# HIMMEL-3381: the merge-block alert sender (MERGE_BLOCK_ALERT_CMD). Records
+# the merge-block alert sender (MERGE_BLOCK_ALERT_CMD). Records
 # "<chat_id> <text>" per call; ALERT_FAIL=1 in its env makes it fail like a dead
 # bridge. The operator id comes from a fixture access.json — the FIRST POSITIVE
 # allowFrom entry, so the negative group id ahead of it must be skipped.
@@ -824,24 +824,24 @@ OUT=""; ERR=""; RC=0
 # Per-case opt-in overrides, reset after every run:
 SETTLE_OVERRIDE=0; THREADS_OVERRIDE=0; POLL_OVERRIDE=0; HEAD_OVERRIDE=stable; DECISION_OVERRIDE=null
 ESCALATE_WAIT_OVERRIDE=0; ESCALATE_POLL_OVERRIDE=0
-# SLEEP_CMD_OVERRIDE drives CHECK_CI_SLEEP_CMD (HIMMEL-1953). `:` — no case may
+# SLEEP_CMD_OVERRIDE drives CHECK_CI_SLEEP_CMD. `:` — no case may
 # burn real wall clock on a simulated poll — is the default and the invariant.
 # A case OPTS BACK IN to a real sleep only when the interval itself is what it
 # measures (case 50 counts re-reads per interval; against a no-op that count
 # becomes a function of how fast the host forks, which is not a contract).
 SLEEP_CMD_OVERRIDE=":"
 # MARKERS_OVERRIDE seeds escalation-claim comments a PREVIOUS invocation left on
-# the PR (HIMMEL-1964); empty = a head nobody has claimed yet.
+# the PR; empty = a head nobody has claimed yet.
 MARKERS_OVERRIDE=""
-# FRESHNESS_OVERRIDE drives GH_STUB_FRESHNESS (HIMMEL-1181). Default 'fresh'
+# FRESHNESS_OVERRIDE drives GH_STUB_FRESHNESS. Default 'fresh'
 # matches every case that doesn't care about the review-freshness gate.
 FRESHNESS_OVERRIDE=fresh
 FILES_OVERRIDE=README.md
 CR_BOT_LOGINS_OVERRIDE=""
 # CR_PROFILE_OVERRIDE=none exercises the CodeRabbit-less-repo opt-out
-# (HIMMEL-1072); empty = a normal repo where the signal is required.
+# empty = a normal repo where the signal is required.
 CR_PROFILE_OVERRIDE=""
-# CR_APP_OVERRIDE pins the HIMMEL-1125 availability probe EXPLICITLY. Default 1
+# CR_APP_OVERRIDE pins the availability probe EXPLICITLY. Default 1
 # = "this repo has CodeRabbit", which is what every pre-1125 case assumed. It is
 # set rather than left to the probe on purpose: the probe reads the checkout's
 # repo-local `git config himmel.coderabbit` (NOT the committed .coderabbit.yaml
@@ -850,14 +850,14 @@ CR_PROFILE_OVERRIDE=""
 # clone the tests happen to run from.
 # CR_APP_OVERRIDE=0 = the adopter WITHOUT CodeRabbit (cases 35+).
 CR_APP_OVERRIDE=1
-# MPR_OVERRIDE drives the stub's author/files reply for the HIMMEL-2278
+# MPR_OVERRIDE drives the stub's author/files reply for the
 # machine-generated-PR classifier. Default `none` = an ordinary human code PR,
 # so every pre-existing case runs the classifier for real and asserts, by
 # keeping its old verdict, that it changed nothing for them.
 MPR_OVERRIDE=none
 BODY_FILE_OVERRIDE=""
 BODY_FILE2_OVERRIDE=""
-# HIMMEL-3381: drive the required-check stubs. Defaults = no rule, one green check.
+# drive the required-check stubs. Defaults = no rule, one green check.
 RULES_OVERRIDE=none
 CLASSIC_OVERRIDE=none
 PRODUCERS_OVERRIDE=none
@@ -866,12 +866,12 @@ CHECKS_OVERRIDE="pass:unit-tests"
 KEEP_ALERT_STATE=0
 ALERT_FAIL_OVERRIDE=""
 ACCESS_OVERRIDE="$STUBDIR/access.json"
-# HIMMEL-3473: GitHub's mergeStateStatus sequence + the head it reports. Default
+# GitHub's mergeStateStatus sequence + the head it reports. Default
 # CLEAN at the watched head, so every pre-3473 case keeps its verdict.
 MERGE_STATE_OVERRIDE=CLEAN; MERGE_HEAD_OVERRIDE=sha1
 BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""
 
-# --- HIMMEL-1953: no real sleeping, and no unbounded case -------------------
+# --- no real sleeping, and no unbounded case -------------------
 #
 # SLEEP_CMD_OVERRIDE (default `:`, see above) is passed as check-ci.sh's
 # CHECK_CI_SLEEP_CMD below, turning its three wall-clock waits into no-ops.
@@ -932,7 +932,7 @@ run() {
     : > "$STUBDIR/claims"
     : > "$STUBDIR/reqrows-count"
     : > "$STUBDIR/msc"
-    # HIMMEL-3381: alert state resets per run unless a case sets KEEP_ALERT_STATE=1
+    # alert state resets per run unless a case sets KEEP_ALERT_STATE=1
     # (the dedupe case runs the SAME head twice and must see ONE alert).
     if [ "$KEEP_ALERT_STATE" -ne 1 ]; then : > "$STUBDIR/alerts.log"; rm -rf "$STUBDIR/alert-sentinels"; fi
     # SC2086: $CASE_RUNNER_ARGS must word-split — this script builds it itself
@@ -1014,7 +1014,7 @@ run_in_repo() {
 assert_rc()      { if [ "$RC" -eq "$1" ]; then pass "$2"; else fail "$2" "rc=$RC want $1"; fi; }
 assert_out_has() { if printf '%s' "$OUT" | grep -iF -- "$1" >/dev/null; then pass "$2"; else fail "$2" "stdout missing: $1"; fi; }
 assert_err_has() { if printf '%s' "$ERR" | grep -iF -- "$1" >/dev/null; then pass "$2"; else fail "$2" "stderr missing: $1"; fi; }
-# Negative assertion (HIMMEL-3376): grep must find NOTHING. rc 1 (absent) passes,
+# Negative assertion: grep must find NOTHING. rc 1 (absent) passes,
 # rc 0 (present) fails with DETAIL, rc >=2 (grep itself errored: bad pattern,
 # unreadable file) FAILS — the `if grep …; then fail; else pass; fi` idiom read
 # that error as absence. Reads stdin unless GREP_ARGS carries a file operand;
@@ -1037,7 +1037,7 @@ selftest_lacks() { ( pass() { echo PASS; }; fail() { echo FAIL; }; assert_grep_l
 if [ "$(selftest_lacks -F -- absent)" = PASS ]; then pass "3376 assert_grep_lacks: absent pattern passes"; else fail "3376 assert_grep_lacks: absent pattern passes"; fi
 if [ "$(selftest_lacks -F -- needle)" = FAIL ]; then pass "3376 assert_grep_lacks: present pattern fails"; else fail "3376 assert_grep_lacks: present pattern fails"; fi
 if [ "$(selftest_lacks -E '[')" = FAIL ]; then pass "3376 assert_grep_lacks: a grep error (rc 2) fails, not passes"; else fail "3376 assert_grep_lacks: a grep error (rc 2) fails, not passes"; fi
-# Exactly ONE verdict line, exact-match to the expected code (HIMMEL-974) —
+# Exactly ONE verdict line, exact-match to the expected code —
 # a substring check would pass on a double-fired trap or a wrong-code line.
 assert_verdict() {
     local n
@@ -1082,7 +1082,7 @@ assert_err_has "no checks registered within 0s" "4 grace-timeout message"
 assert_verdict 2 "4 a genuine cannot-evaluate still exits 2 WITH its verdict (HIMMEL-3317 false-positive control)"
 
 # 5 — unknown option: a usage error is rc 64 (EX_USAGE), NOT 2, and it carries the
-# un-maskable verdict line too — no gate ran, so a caller must be able to tell (HIMMEL-3317)
+# un-maskable verdict line too — no gate ran, so a caller must be able to tell
 run red --bogus
 assert_rc 64 "5 unknown option rc 64"
 assert_err_has "usage" "5 usage on stderr"
@@ -1262,15 +1262,15 @@ run red-liar
 assert_rc 2 "26 red-liar rc 2"
 assert_err_has "no check is in the fail bucket" "26 structured-confirm message"
 
-# --- HIMMEL-3360: CodeRabbit is best effort — its own commit STATUS is
+# --- CodeRabbit is best effort — its own commit STATUS is
 # advisory only, never a block. The old cases 27-30 here pinned exit 2/1 on
 # absent/pending/failure/spoofed; they now pin the advisory NOTE + exit 0
-# instead. (The HIMMEL-980 "zombie check-run override" this section used to
+# instead. (The "zombie check-run override" this section used to
 # also cover keyed off a CodeRabbit CHECK-RUN — which CodeRabbit has never
 # posted [it posts a commit STATUS] — and was already unreachable; gone.)
 
 # 27 — the regression that merged #1243 used to require an absent status to
-# block. HIMMEL-3360 reversed that: checks green, threads clean, CodeRabbit
+# block. An earlier change reversed that: checks green, threads clean, CodeRabbit
 # never posted on this head — advisory NOTE, still green.
 run cr-absent
 assert_rc 0 "27 absent CodeRabbit status is advisory only, not a block (HIMMEL-3360)"
@@ -1286,7 +1286,7 @@ run cr-failure
 assert_rc 0 "29 failed CodeRabbit status is advisory only, not a block (HIMMEL-3360)"
 assert_err_has "check-ci: NOTE — CodeRabbit failure on head" "29 failure prints the advisory NOTE"
 
-# 30 — identity, not display name (HIMMEL-1058): a success status carrying the
+# 30 — identity, not display name: a success status carrying the
 # CodeRabbit context but a foreign creator.id does not satisfy the identity
 # check, so cr_signal_state reads it as absent — advisory NOTE, not a block.
 run cr-spoofed
@@ -1298,22 +1298,22 @@ CR_PROFILE_OVERRIDE=none
 run cr-absent
 assert_rc 0 "31 CR_PROFILE=none allows an absent CodeRabbit"
 
-# 32 — HIMMEL-3360: the status query itself failing is the same advisory NOTE
+# 32 — the status query itself failing is the same advisory NOTE
 # as an absent status (state=unreadable), never a block — an unreadable
 # advisory signal cannot be a gate outcome. Threads + body findings still gate.
 run cr-query-error
 assert_rc 0 "32 CodeRabbit status query error is a NOTE, rc 0"
 assert_err_has "NOTE — CodeRabbit unreadable" "32 unreadable-status NOTE"
 
-# 34 — coderabbit-2 / HIMMEL-3360: a FULL page of unrelated statuses with no
+# 34 — coderabbit-2 /: a FULL page of unrelated statuses with no
 # CodeRabbit among them ("paged") is indeterminate, and indeterminate is
 # advisory too — a NOTE, rc 0. (Numbered 34: a "33" already exists further down.)
 run cr-paged
 assert_rc 0 "34 full status page without CodeRabbit is a NOTE, rc 0"
 assert_err_has "NOTE — CodeRabbit paged" "34 paged NOTE"
 
-# 34b/34c — HIMMEL-1317: a SKIPPED review (state=success, refusal only in
-# .description — automatic reviews disabled) used to fail CLOSED; HIMMEL-3360
+# 34b/34c: a SKIPPED review (state=success, refusal only in
+# .description — automatic reviews disabled) used to fail CLOSED; a later change
 # made every CodeRabbit-status shape advisory. cr_signal_state's own
 # classification (scripts/lib/cr-signal.sh) still projects this payload to
 # state=skipped — cr_signal_gate no longer branches on it, it just prints the
@@ -1335,8 +1335,8 @@ assert_rc 0 "34c a genuinely completed review still certifies"
 run cr-nearmiss
 assert_rc 0 "34d skip-ish wording on a COMPLETED review does not block"
 
-# 34e/34f — HIMMEL-1354, the SECOND drift of the 34b class, now retired by
-# HIMMEL-3360: a rate-limited decline (34e) and a wholly UNENUMERATED success
+# 34e/34f —, the SECOND drift of the 34b class, now retired by
+# a rate-limited decline (34e) and a wholly UNENUMERATED success
 # wording (34f) both project to the same state=skipped as 34b (cr-signal.sh's
 # classification is unchanged; only cr_signal_gate's reaction to it is), so
 # both now print the identical advisory NOTE and stay green — enumerated or
@@ -1345,10 +1345,10 @@ assert_rc 0 "34d skip-ish wording on a COMPLETED review does not block"
 # leak into cr-signal.sh's classification of $state.
 unset CR_OK_DESC_RE CR_SKIP_DESC_RE
 
-# Exact-head ledger fixtures — still consumed by the HIMMEL-3124 outside-diff
+# Exact-head ledger fixtures — still consumed by the outside-diff
 # disposition cases below. The panel-carry mechanism that used to consume
 # them here (rate-limited/absent/skip signal carry) was removed by
-# HIMMEL-3360: CodeRabbit's status is advisory on its own now, with no panel
+# a later change: CodeRabbit's status is advisory on its own now, with no panel
 # evidence needed to carry it.
 EMPTY_LEDGER_REPO=$(mktemp -d "$STUBDIR/empty-ledger.XXXXXX") || { echo "FATAL: mktemp -d failed"; exit 1; }
 git -C "$EMPTY_LEDGER_REPO" init --quiet
@@ -1359,7 +1359,7 @@ git -C "$LEDGER_REPO" init --quiet
 git -C "$LEDGER_REPO" -c user.email=t@t -c user.name=t commit --allow-empty -m seed --quiet --no-verify
 printf '%s\n' '{"kind":"avail","ts":"2026-08-03T00:00:00Z","branch":"feat/x","head":"sha1","model":"codex","status":"ok","artifact":"diff","perspective":"off","responding_model":"gpt-5.5"}' > "$LEDGER_REPO/.git/cr-critic-scores.jsonl"
 
-# HIMMEL-2380: a repo whose himmel.coderabbit marker git cannot parse as a
+# a repo whose himmel.coderabbit marker git cannot parse as a
 # boolean. `ture` is a real typo, not a synthetic value — and the failure it
 # provokes is git's own: `git config --bool --get` exits 128 with "bad boolean
 # config value", where an UNSET key exits 1. Both leave cr-available.sh's
@@ -1371,14 +1371,14 @@ git -C "$BROKEN_MARKER_REPO" init --quiet
 git -C "$BROKEN_MARKER_REPO" -c user.email=t@t -c user.name=t commit --allow-empty -m seed --quiet --no-verify
 git -C "$BROKEN_MARKER_REPO" config --local himmel.coderabbit ture
 : > "$BROKEN_MARKER_REPO/.git/cr-critic-scores.jsonl"
-# Prove the fixture actually IS broken before any case trusts it (HIMMEL-2320:
+# Prove the fixture actually IS broken before any case trusts it (
 # a zero is not evidence without a positive control). If a future git parsed
 # `ture`, 2380-a would pass for the wrong reason — it would be asserting a
 # warning about a repo that is merely unarmed.
 if git -C "$BROKEN_MARKER_REPO" config --bool --local --get himmel.coderabbit >/dev/null 2>&1; then
     echo "FATAL: the broken-marker fixture is not broken — this git parses 'ture' as a boolean"; exit 1
 fi
-# HIMMEL-2769: a repo that DECLARES it expects CodeRabbit (a committed
+# a repo that DECLARES it expects CodeRabbit (a committed
 # .coderabbit.yaml) but whose marker was never armed on this clone — the
 # CR-UNARMED cases below. No marker at all, distinct from BROKEN_MARKER_REPO.
 CR_YAML_UNARMED_REPO=$(mktemp -d "$STUBDIR/cr-yaml-unarmed.XXXXXX") || { echo "FATAL: mktemp -d failed"; exit 1; }
@@ -1387,7 +1387,7 @@ printf 'reviews:\n  profile: chill\n' > "$CR_YAML_UNARMED_REPO/.coderabbit.yaml"
 git -C "$CR_YAML_UNARMED_REPO" add .coderabbit.yaml
 git -C "$CR_YAML_UNARMED_REPO" -c user.email=t@t -c user.name=t commit --quiet --no-verify -m seed
 
-# 34e — HIMMEL-3360 required case (b): CI green + 0 threads + CR rate-limited,
+# 34e — required case (b): CI green + 0 threads + CR rate-limited,
 # no ledger/panel evidence at all — the exact fixture the old panel-carry
 # mechanism needed evidence to certify. It is advisory on its own now.
 run_in_repo "$EMPTY_LEDGER_REPO" cr-ratelimited
@@ -1395,14 +1395,14 @@ assert_rc 0 "34e rate-limited CodeRabbit status is advisory only, no panel evide
 assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34e rate-limited (state=skipped) prints the advisory NOTE"
 
 # 34f — the structural half: a wording NOBODY enumerated. Under the retired
-# allow-list this failed closed; HIMMEL-3360 made the status advisory
+# allow-list this failed closed; an earlier change made the status advisory
 # regardless of wording, enumerated or not.
 run cr-unknownword
 assert_rc 0 "34f an UNENUMERATED success wording is advisory only, not a block (HIMMEL-3360)"
 
-# 34j/k/l — HIMMEL-1356: a state=success with a MISSING / null / EMPTY
+# 34j/k/l: a state=success with a MISSING / null / EMPTY
 # description is not an affirmative review. cr-signal.sh used to keep the
-# pre-HIMMEL-1354 reading (green) for these because the allow-list applied only
+# earlier reading (green) for these because the allow-list applied only
 # to a non-empty description; they now project to state=skipped and take the
 # same advisory NOTE as 34b/34e/34f. Positive control (34m): the SAME state
 # with the observed wording stays green — no NOTE.
@@ -1429,14 +1429,14 @@ assert_err_lacks "34n released empty description prints no skipped NOTE" "skippe
 # substring-match follow-ups) are gone: --escalate no longer exists
 # (scripts/check-ci.sh brief item 1) and cr_signal_gate no longer reads
 # CR_OK_DESC_RE/CR_SKIP_DESC_RE or calls cr_signal_description at all — every
-# one of those cases exercised machinery HIMMEL-3360 removed.
+# one of those cases exercised machinery an earlier change removed.
 
-# HIMMEL-3360 required case (e): the removed --escalate flag is now an
+# required case (e): the removed --escalate flag is now an
 # unrecognized flag, sysexits EX_USAGE.
 run cr-completed --escalate
 assert_rc 64 "3360e --escalate is a removed flag, exit 64 usage (HIMMEL-3360)"
 
-# HIMMEL-3360 required case (d): CI green + ONE unresolved coderabbitai
+# required case (d): CI green + ONE unresolved coderabbitai
 # thread + CR status absent — the thread gate still blocks even though the
 # CodeRabbit status gate is advisory-only; the two gates are independent.
 # The unconditional review_state_gate call at the top of the script (before
@@ -1456,7 +1456,7 @@ run register-then-green
 assert_rc 3 "33 late thread post-watch blocks"
 assert_err_has "unresolved review thread" "33 late-thread reason printed"
 
-# --- HIMMEL-1126/1147: review-BODY findings (S1) — checks green, threads
+# --- review-BODY findings (S1) — checks green, threads
 # clean, CodeRabbit concluded success in every case below; only the reviews
 # fixture differs, so these isolate the NEW body gate ---
 
@@ -1487,10 +1487,10 @@ run body-error
 assert_rc 2 "38 body-findings query failure cannot certify"
 assert_err_has "could not read CodeRabbit's review-body findings" "38 body-query-failure reason printed"
 
-# --- HIMMEL-3124: outside-diff findings have an adjudicated-deferral path --------
+# --- outside-diff findings have an adjudicated-deferral path --------
 # An outside-diff finding carries no thread, so it used to have NO disposition
 # path: exit 3 until a commit moved the head — which discards CodeRabbit's
-# review (HIMMEL-1252) and burns an account-wide review slot. A finding is now
+# review and burns an account-wide review slot. A finding is now
 # cleared by ONE ledger row at THIS head (recorded through ledger-append.sh's
 # existing `finding` interface): verdict deferred with a tracked ticket AND a
 # non-empty reason, or verdict disproved with a reason. Every negative below is
@@ -1679,7 +1679,7 @@ assert_rc 3 "39b3 a disposition at the wrong head does not clear the finding"
 BODY_FILE_OVERRIDE="$OD_BQ_BODY"; run_in_repo "$LEDGER_REPO" body-a2-file
 assert_rc 3 "39d unrelated ledger rows do not disposition the finding"
 
-# 39e..39h — HIMMEL-3365: TWO prior heads carry outside-diff findings (shaOLD
+# 39e..39h: TWO prior heads carry outside-diff findings (shaOLD
 # older, shaOLD2 newer; sha1 has no review). Every prior head governs, each
 # finding dispositioned at the head that raised it — the newer prior review
 # never masks the older one's findings.
@@ -1713,7 +1713,7 @@ assert_err_has "shaOLD2" "39h NOTE names the newer prior head"
 BODY_FILE_OVERRIDE=; BODY_FILE2_OVERRIDE=
 
 # 39c — unresolved threads still block this same body shape; the thread gate
-# is untouched by HIMMEL-3360 and stays orthogonal to CodeRabbit's status.
+# is untouched by and stays orthogonal to CodeRabbit's status.
 THREADS_OVERRIDE=2
 run_in_repo "$LEDGER_REPO" body-a2
 assert_rc 3 "39c unresolved threads still block despite an incremental-silent body"
@@ -1758,9 +1758,9 @@ run body-empty
 assert_rc 0 "43 benign zero-head-review shape stays green"
 assert_out_has "all checks green + all review threads resolved" "43 benign shape reaches normal success"
 
-# 87/88 (HIMMEL-1374/HIMMEL-1465) are gone: both exercised
+# 87/88 are gone: both exercised
 # review_freshness_gate's `none` (zero-reviews-ever) discrimination, which
-# HIMMEL-3360 removed along with the rest of the freshness gate — a
+# removed along with the rest of the freshness gate — a
 # "completed" status with zero PR-wide reviews is now advisory the same as
 # every other shape, cannot-evaluate no longer applies.
 
@@ -1769,7 +1769,7 @@ assert_out_has "all checks green + all review threads resolved" "43 benign shape
 run cr-completed
 assert_rc 0 "89 completed status with a PR-wide review present stays green"
 
-# ── HIMMEL-1125: the availability gate ────────────────────────────────────────
+# ── the availability gate ────────────────────────────────────────
 # CR_APP=0 stubs "CodeRabbit is not configured for this repo" (no CLI, no App),
 # which is the acceptance criterion's adopter. The contract these cases pin:
 # the CodeRabbit-SPECIFIC requirement disarms; every generic gate stays armed.
@@ -1814,13 +1814,13 @@ run cr-absent
 assert_rc 0 "57 adopter clean run succeeds"
 assert_grep_lacks "57 disarmed gate is silent about CodeRabbit" "output mentioned CodeRabbit: $ERR" -i "coderabbit" <<<"$OUT$ERR"
 
-# 58 — HIMMEL-1495 hermeticity canary. This certifier does not consult the
+# 58 — hermeticity canary. This certifier does not consult the
 # armed-session bypass env (ARMAUTOMERGE/CR_MERGE_GATE_OK), so a block fixture
 # STILL blocks (rc 2) with both exported into the suite's env — pinning that
 # insensitivity so a future change wiring either var into check-ci.sh fails
 # HERE (the block-case reads rc 0) rather than failing every block-case open.
 # The startup unset above is the matching defense-in-depth.
-# HIMMEL-3360: cr-absent no longer blocks (CodeRabbit status is advisory), so
+# absent no longer blocks (CodeRabbit status is advisory), so
 # it can no longer serve as this canary's block-case; a thread-query failure
 # (cannot-evaluate, rc 2) is orthogonal to CR status and still blocks.
 export ARMAUTOMERGE=1 CR_MERGE_GATE_OK=1
@@ -1829,7 +1829,7 @@ run register-then-green
 assert_rc 2 "58 armed bypass env does not open a block-case (HIMMEL-1495)"
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
 
-# ── HIMMEL-2062: bounded watch — early exit + --max-wait cap ─────────────────
+# ── bounded watch — early exit + --max-wait cap ─────────────────
 
 # 94 — --max-wait validation: non-integer
 run red --max-wait soon
@@ -1856,7 +1856,7 @@ assert_err_has "ending the watch early (HIMMEL-2062)" "96 early-exit message pri
 
 # 97 — cap: a NON-CodeRabbit check is still pending when --max-wait elapses —
 # cannot certify green over unfinished work even though nothing has failed.
-# HIMMEL-4630: every cap case below (97-100, 104, 2907-b/c, 4136-b) runs a 4s
+# every cap case below (97-100, 104, 2907-b/c, 4136-b) runs a 4s
 # budget, not 1s — a loaded machine can spend a 1s budget before the first watch
 # and take another path — and asserts the cap message by prefix, since the cap
 # printed is a share of whatever budget is left. The stubs' 3s watch still
@@ -1877,7 +1877,7 @@ assert_err_has "watch cap reached (" "98 cap message printed on the red path too
 assert_err_has "checks FAILED" "98 red_exit fires after the bounded watch"
 
 # 99 — a POLL configured LARGER than --max-wait must not make the cap
-# overshoot by a full POLL interval (codex-1, HIMMEL-2062 CR round 1): the
+# overshoot by a full POLL interval: the
 # supervisor now checks the deadline BEFORE sleeping and clamps the sleep to
 # the remaining budget, so a 50s poll against a 1s cap still returns in
 # roughly 1s, not roughly 50s. Opts into a REAL sleep (like case 50) — the
@@ -1896,8 +1896,8 @@ else
 fi
 
 # 100 — a pending check whose name merely CONTAINS "coderabbit" (not an exact
-# match) must not be misread as the ignorable rollup (codex-2, HIMMEL-2062 CR
-# round 1): watch_decidable stays false, so the watch runs to the cap instead
+# match) must not be misread as the ignorable rollup,
+# so watch_decidable stays false, so the watch runs to the cap instead
 # of short-circuiting green through the decidable path.
 run blocking-cr-substring --max-wait 4
 assert_rc 2 "100 substring-named pending check keeps watch_decidable false"
@@ -1905,7 +1905,7 @@ assert_err_has "watch cap reached (" "100 cap message printed, not an early deci
 assert_err_has "non-CodeRabbit checks still pending" "100 cap-with-pending refusal"
 
 # 101 — CHECK_CI_POLL_INTERVAL=0 must not turn the supervisor loop into a
-# sleep-fork storm (codex-1, HIMMEL-2062 CR round 2): the floor makes an
+# sleep-fork storm: the floor makes an
 # unfloored `sleep 0` behave as a 1s poll, so the watch, sleep command call
 # count over a --max-wait 2 window stays roughly bounded by MAX_WAIT (a
 # handful) rather than however many iterations a real-time-based cap loop can
@@ -1913,7 +1913,7 @@ assert_err_has "non-CodeRabbit checks still pending" "100 cap-with-pending refus
 # stub in this suite that really sleeps (see its definition above) — without
 # a real per-call delay, pre- and post-fix would spin identically fast and
 # this count could never tell them apart.
-# HIMMEL-2267: --max-wait must stay strictly BELOW the blocking-cap-pending
+# --max-wait must stay strictly BELOW the blocking-cap-pending
 # stub's 3s sleep (same margin cases 98-100 rely on) — at --max-wait 3 the cap
 # and the stub's green verdict race, and on a quiet/fast box the stub's rc=0
 # lands first, failing the assert_rc 2 below nondeterministically. Do not
@@ -1929,7 +1929,7 @@ else
     fail "101 POLL=0 does not sleep-fork-storm (floored to ~1/s)" "sleep calls=$sleeps want 1..6 for a 2s cap"
 fi
 
-# ── HIMMEL-2206: kill -0 is not a valid liveness probe for a backgrounded
+# ── kill -0 is not a valid liveness probe for a backgrounded
 # job — once it exits it is a zombie until reaped, and kill -0 on a zombie
 # SUCCEEDS (confirmed on this very host: a plain `true &` still answers
 # kill -0 across several unyielded loop iterations with no intervening
@@ -1971,7 +1971,7 @@ assert_err_lacks "103 does not fall through to the cap path" "stderr: $ERR" -iF 
 # pid to $STUBDIR/watch-pid (same idiom as counting-sleep — this process has
 # no $STUBDIR in its env) before it sleeps.
 #
-# codex-2, HIMMEL-2206 CR round 4: kill -0 alone is NOT proof of death — this
+# kill -0 alone is NOT proof of death — this
 # very ticket establishes it also succeeds against a killed-but-unreaped
 # zombie, so asserting "dead" via kill -0 here would be exactly the
 # unreliable signal this change replaces. The stub also drops a SEPARATE
@@ -1982,7 +1982,7 @@ assert_err_lacks "103 does not fall through to the cap path" "stderr: $ERR" -iF 
 # lingering process-table entry cannot fake an absent side effect.
 : > "$STUBDIR/watch-pid"
 rm -f "$STUBDIR/completed-naturally"
-# HIMMEL-4630: the stub watches 8s against a 6s budget (cap <= 3s), so a loaded
+# the stub watches 8s against a 6s budget (cap <= 3s), so a loaded
 # machine that spends part of the budget first still caps the watch after the
 # stub has recorded its pid; the poll below covers the stub's whole 8s.
 GH_STUB_CAP_SLEEP=8 run blocking-cap-pending --max-wait 6
@@ -2015,7 +2015,7 @@ else
     fail "105b watch_round polls an atomically-written rc sentinel file" "sentinel write/poll pattern not found in $SCRIPT"
 fi
 
-# 106 — HIMMEL-2206 CR round 5 (REJECTED deferral, fixed in-branch): the
+# 106 — (REJECTED deferral, fixed in-branch): the
 # pid-SIDECAR FILE never appearing must not leave gh orphaned — the earlier
 # fix only closed the pid-write RACE (sidecar lands late), not the FAILURE
 # (sidecar never lands at all: write error, or the wrapper dies before the
@@ -2043,7 +2043,7 @@ rm -f "$STUBDIR/completed-naturally" "$STUBDIR/watch-pid" "$STUBDIR/term-trap-fi
         exec gh pr checks --watch --fail-fast
     ) 2>/dev/null &
     gh_pid=$!
-    # codex-1, HIMMEL-2206 CR round 6: the trap-fired marker is TEST-ONLY
+    # The trap-fired marker is TEST-ONLY
     # instrumentation (production's trap is exactly `kill "$gh_pid"
     # 2>/dev/null`, unmodified) — it directly proves the trap itself
     # executes on TERM, since this platform can independently propagate a
@@ -2059,7 +2059,7 @@ rm -f "$STUBDIR/completed-naturally" "$STUBDIR/watch-pid" "$STUBDIR/term-trap-fi
 no_sidecar_wpid=$!
 sleep 0.3
 kill "$no_sidecar_wpid" 2>/dev/null
-# codex-1, HIMMEL-2206 CR round 6: poll well PAST the stub's 3s sleep (same
+# poll well PAST the stub's 3s sleep (same
 # margin as case 104) — the earlier fixed 2s wait checked before the 3s mark,
 # so a genuinely leaked process could still pass this test by not having
 # reached the marker YET, not because it was actually killed.
@@ -2080,12 +2080,12 @@ else
     fail "106b the TERM trap itself actually executes on early stop" "term-trap-fired marker never appeared — the trap did not run"
 fi
 
-# --- HIMMEL-2907: a cap reached with nothing failed extends ONCE for one more
+# --- a cap reached with nothing failed extends ONCE for one more
 # full --max-wait round before refusing — a slow-but-healthy shard (shell-unit
 # shard 7, 12m16s-12m45s) must not read as "cannot evaluate" on the first cap.
 
 # 2907-a — RED control: the pending shard finishes during the one-time
-# extension (round 1 hits the cap with the check still running; round 2 —
+# extension (the first wait hits the cap with the check still running; the second —
 # the extension — resolves green). Today this is rc 2; after the fix rc 0,
 # with the WAITING notice naming the count and the still-pending job.
 run blocking-cap-extend --max-wait 2
@@ -2108,12 +2108,12 @@ fi
 assert_err_has "still pending (unit-tests)" "2907-b the exit-2 line names the pending job"
 assert_err_has "DEADLINE-PENDING" "2907-b the exit-2 line names a deadline-with-pending, not an error (HIMMEL-4131)"
 
-# --- HIMMEL-4131: --max-wait bounds the WHOLE run ---------------------------
+# --- --max-wait bounds the WHOLE run ---------------------------
 # Real sleeps: elapsed wall time is the signal. Each stub watch runs 3s+ (8s for
 # green-then-slow after its first), so a per-round cap would stack rounds.
 
-# 4131-b — an instantly green round 1, then settle, then a slow round 2: the
-# settle wait and round 2 share the deadline. Per-round caps took ~2+2+2 = 6s+.
+# 4131-b — an instantly green first wait, then settle, then a slow second wait: the
+# settle wait and the second wait share the deadline. Per-wait caps took ~2+2+2 = 6s+.
 POLL_OVERRIDE=1
 SETTLE_OVERRIDE=3
 SLEEP_CMD_OVERRIDE="sleep"
@@ -2128,7 +2128,7 @@ else
     fail "4131-b settle and round 2 share the --max-wait deadline" "elapsed=${t_elapsed}s want <=5s for --max-wait 3"
 fi
 
-# 4131-c — the deadline lands mid-extension: round 1 takes half, the extension
+# 4131-c — the deadline lands mid-extension: the first wait takes half, the extension
 # is cut at the deadline while still pending, and the verdict says pending.
 POLL_OVERRIDE=1
 SLEEP_CMD_OVERRIDE="sleep"
@@ -2145,7 +2145,7 @@ assert_err_has "extending once" "4131-c the extension started inside the deadlin
 assert_err_has "DEADLINE-PENDING" "4131-c the verdict says pending, not broken"
 
 # 4131-e — a leading-zero --max-wait is decimal (08 is not an octal error).
-# HIMMEL-4136 (J1660): the case must REACH the deadline arithmetic, or it passes
+# (J1660): the case must REACH the deadline arithmetic, or it passes
 # with the 10# normalisation removed. register-then-green certified with only
 # its rc asserted; blocking-long-pending holds a check pending through the cap
 # AND the extension, so every deadline split ($(( ... )) over MAX_WAIT) runs.
@@ -2160,8 +2160,8 @@ assert_err_has "the 8s --max-wait deadline passed" "4131-e the deadline is decim
 assert_err_lacks "4131-e no arithmetic error on a leading-zero --max-wait" "value too great for base" -iF "value too great for base"
 
 # 4131-d — a deadline that cuts the settle window short must not certify green:
-# the late-registering check set never had its window (codex-1, round 1).
-# HIMMEL-4136: --max-wait below --settle is now refused up front (4136-a), so
+# the late-registering check set never had its window.
+# --max-wait below --settle is now refused up front (4136-a), so
 # the window is cut by the time the first watch already spent: settle 5 inside
 # a 5s deadline still truncates it.
 POLL_OVERRIDE=1
@@ -2179,7 +2179,7 @@ else
     fail "4131-d the truncated settle stays inside --max-wait" "elapsed=${t_elapsed}s want <=6s for --max-wait 5"
 fi
 
-# --- HIMMEL-4136: J1660 follow-ups ------------------------------------------
+# --- J1660 follow-ups ------------------------------------------
 
 # 4136-a — a --max-wait below --settle can never certify green (the settle wait
 # alone outlasts the deadline), so it is a usage error, refused before any gate.
@@ -2195,7 +2195,7 @@ assert_rc 64 "4136-a CHECK_CI_MAX_WAIT below CHECK_CI_SETTLE is refused too"
 run register-then-green --settle 5 --max-wait 5
 # Only the ACCEPTANCE is under test, not the run's outcome: the settle wait comes
 # out of a wall-clock deadline of the same length, so under load the run can end
-# rc 2 (DEADLINE-PENDING) for a boundary that was correctly let through (HIMMEL-4594).
+# rc 2 (DEADLINE-PENDING) for a boundary that was correctly let through.
 if [ "$RC" -eq 0 ] || [ "$RC" -eq 2 ]; then pass "4136-a --max-wait equal to --settle is accepted"; else fail "4136-a --max-wait equal to --settle is accepted" "rc=$RC want 0 (green) or 2 (deadline), not a usage error or a crash"; fi
 assert_err_lacks "4136-a the equal boundary is not refused as below --settle" "refusal text present" -F "is below --settle"
 run register-then-green --settle 30 --max-wait 0
@@ -2203,7 +2203,7 @@ assert_rc 0 "4136-a --max-wait 0 (unbounded) is accepted with any --settle"
 
 # 4136-b — CHECK_CI_DISTINCT_DEADLINE=1 (merge-on-green's opt-in) turns ONLY the
 # DEADLINE-PENDING verdict into exit 7; a red stays 1, and the default stays 2.
-# HIMMEL-4594: the watch must outlive a deadline that a loaded machine cannot
+# the watch must outlive a deadline that a loaded machine cannot
 # eat whole before the first watch — a 1s budget and a 3s stub watch did not.
 # blocking-long-pending holds the check pending far past the 4s budget.
 CHECK_CI_DISTINCT_DEADLINE=1 run blocking-long-pending --max-wait 4
@@ -2247,14 +2247,14 @@ else
     fail "2907-d default --max-wait raised to 900s" "MAX_WAIT default is not 900 in $SCRIPT"
 fi
 
-# --- HIMMEL-2278: the machine-generated-PR class ----------------------------
+# --- the machine-generated-PR class ----------------------------
 #
 # Baseline for every case here: `cr-absent` — checks green, threads clean, and
 # CodeRabbit posted NO status on the head. That used to be rc 2 for every PR
 # except the two machine-generated shapes a `machine_pr_gate()` classifier
 # carved out (bot-authored dependency bump, pure regenerated-artifact publish).
 #
-# HIMMEL-3360 changed the baseline itself: cr_signal_gate no longer fails
+# changed the baseline itself: cr_signal_gate no longer fails
 # closed on ANY CodeRabbit status (absent/pending/failure/skipped/paged/
 # unreadable) for ANY PR, machine-generated or not — that gate is advisory-only
 # across the board, so the classifier had nothing left to decide and was
@@ -2281,7 +2281,7 @@ assert_err_has "NOTE — CodeRabbit absent" "2278-b absent status is the plain N
 
 # 2278-c — the former spoof control (artifact paths PLUS a code path). No
 # longer distinguishable from the positives at the cr_signal_gate exit code
-# (HIMMEL-3360: absent is advisory for every diff shape) — kept to pin that a
+#  (absent is advisory for every diff shape) — kept to pin that a
 # misclassification-prone probe reply still doesn't crash or mis-exit.
 MPR_OVERRIDE=graph-plus-code
 run cr-absent
@@ -2294,19 +2294,19 @@ assert_rc 0 "2278-d ordinary code PR is advisory-only on an absent review (HIMME
 
 # 2278-e — a human account whose login merely LOOKS like the bot's. is_bot is
 # GitHub's; the impostor stays outside the class, but that no longer changes
-# the exit code either way (HIMMEL-3360).
+# the exit code either way.
 MPR_OVERRIDE=dep-impostor
 run cr-absent
 assert_rc 0 "2278-e dependabot login without is_bot — advisory regardless (HIMMEL-3360)"
 
 # 2278-f — the classifier's own probe erroring is not evidence of anything;
-# no longer observable via cr_signal_gate's exit code (HIMMEL-3360).
+# no longer observable via cr_signal_gate's exit code.
 MPR_OVERRIDE=probe-fail
 run cr-absent
 assert_rc 0 "2278-f an erroring author/files probe — advisory regardless (HIMMEL-3360)"
 
 # 2278-g — a response missing the MPR_OK sentinel must not parse as a bot
-# author with zero files; no longer observable via the exit code (HIMMEL-3360).
+# author with zero files; no longer observable via the exit code.
 MPR_OVERRIDE=garbage
 run cr-absent
 assert_rc 0 "2278-g a sentinel-less probe response — advisory regardless (HIMMEL-3360)"
@@ -2318,18 +2318,18 @@ run cr-absent
 assert_rc 0 "2278-h a glob-named path — advisory regardless (HIMMEL-3360)"
 
 # 2278-l — an empty changed-file list is not "all paths are artifacts"; no
-# longer observable via the exit code (HIMMEL-3360).
+# longer observable via the exit code.
 MPR_OVERRIDE=empty
 run cr-absent
 assert_rc 0 "2278-l an empty file list — advisory regardless (HIMMEL-3360)"
 
 # 2278-m — a truncated-but-rc-0 probe: it advertises 3 files but emits only
-# the two artifact paths; no longer observable via the exit code (HIMMEL-3360).
+# the two artifact paths; no longer observable via the exit code.
 MPR_OVERRIDE=truncated
 run cr-absent
 assert_rc 0 "2278-m a truncated file list — advisory regardless (HIMMEL-3360)"
 
-# --- HIMMEL-2278 CR round 2: the class tolerates SILENCE, and only silence ---
+# --- the class tolerates SILENCE, and only silence ---
 #
 # codex-1 disproved the first cut's blanket `CR_ARMED=0`: it also silenced
 # cr_body_gate and review_freshness_gate, so on the day the App DOES review a
@@ -2339,19 +2339,19 @@ assert_rc 0 "2278-m a truncated file list — advisory regardless (HIMMEL-3360)"
 # are the controls that the narrowing actually narrowed.
 
 # 2278-n — the #2035 shape verbatim: state=success with a rate-limited
-# description. rc 0 — advisory for every PR now (HIMMEL-3360), not just this
+# description. rc 0 — advisory for every PR now, not just this
 # class.
 MPR_OVERRIDE=dependabot
 run cr-ratelimited
 assert_rc 0 "2278-n a rate-limited App is advisory, for every PR (HIMMEL-3360)"
 
-# 2278-o — a FAILED App status: HIMMEL-3360 made failure/error advisory-only
+# 2278-o — a FAILED App status: an earlier change made failure/error advisory-only
 # for every PR (not just this class) — rc 0, an advisory NOTE, never a block.
 MPR_OVERRIDE=dependabot
 run cr-failure
 assert_rc 0 "2278-o a failed App status is advisory-only now, for every PR (HIMMEL-3360)"
 
-# 2278-p — nor is a PENDING one: also advisory now, for every PR (HIMMEL-3360).
+# 2278-p — nor is a PENDING one: also advisory now, for every PR.
 MPR_OVERRIDE=dependabot
 run cr-pending
 assert_rc 0 "2278-p a pending App review is advisory-only now, for every PR (HIMMEL-3360)"
@@ -2392,8 +2392,8 @@ run cr-absent
 assert_rc 3 "2278-k CHANGES_REQUESTED still blocks a machine-generated PR"
 
 
-# ── HIMMEL-2380: the honest line, and the silence it must not break ──────────
-# Console ruling 88. HIMMEL-2380 asked for an unconditional "CodeRabbit: not
+# ── the honest line, and the silence it must not break ──────────
+# Console ruling 88. An earlier change asked for an unconditional "CodeRabbit: not
 # configured" line on every disarmed run; case 57 above forbids the word
 # "CodeRabbit" anywhere in a clean adopter run, and cr-available.sh's header
 # calls that silence the point ("an adopter must not notice it exists"). The
@@ -2439,7 +2439,7 @@ run_in_repo "$BROKEN_MARKER_REPO" cr-absent
 assert_rc 0 "2380-c CR_PROFILE=none over a broken marker is still green"
 assert_err_lacks "2380-c an explicit opt-out suppresses the broken-marker warning" "warned anyway: $ERR" -F "himmel.coderabbit marker holds a value"
 
-# ── HIMMEL-2769: CR-UNARMED — a declared-CodeRabbit repo left unarmed fails
+# ── CR-UNARMED — a declared-CodeRabbit repo left unarmed fails
 # loud instead of certifying a review nobody armed. `not-configured` is the
 # adopter's silent steady state (case 2380-b) ONLY when the repo never
 # declared CodeRabbit in the first place; a committed .coderabbit.yaml is
@@ -2471,7 +2471,7 @@ assert_rc 0 "2769-c an adopter with no .coderabbit.yaml stays default-disarmed (
 assert_err_lacks "2769-c no .coderabbit.yaml -> no CR-UNARMED line" "printed anyway: $ERR" -F "CR-UNARMED"
 
 # --- 2704: CodeRabbit is the App, and check-ci NEVER consults a CLI ----------
-# HIMMEL-2704 retired the CodeRabbit CLI. check-ci.sh was always App-only, and
+# retired the CodeRabbit CLI. check-ci.sh was always App-only, and
 # these two cases PIN that rather than assuming it.
 #
 # Why a planted binary and not an empty PATH: "no coderabbit on PATH" is a
@@ -2793,8 +2793,7 @@ assert_rc 1 "3434-b control: success-then-fail on one name reads FAIL"
 # 3434-c — an old failure followed by a still-pending latest run must not read
 # as FAILED: the gate must not fold a pending latest run into "seen"
 # (fail-open) either — with no grace left to actually wait it out, the honest
-# verdict is BLOCKED, the same as any other required check that never settled
-# (round-4 console adversarial finding, HIMMEL-3434).
+# verdict is BLOCKED, the same as any other required check that never settled.
 RULES_OVERRIDE="json:$_rule_id"; CHECKS_OVERRIDE="$_both_checks"; PRODUCERS_OVERRIDE="json:$_runs_fail_then_pending"
 run cr-completed --grace 0
 assert_rc 5 "3434-c fail-then-pending on one name is not refused as FAILED, but is not a silent PASS either — it BLOCKS once grace is exhausted"
@@ -2830,7 +2829,7 @@ if [ "$(alert_count)" = 1 ]; then pass "3434-g one alert once the null-started_a
 
 # 3434-h — the true latest run (highest id) wins no matter where a null-
 # started_at row sits in the API's response order: the winner must not be
-# order-dependent (codex round-2 finding on HIMMEL-3434).
+# order-dependent.
 RULES_OVERRIDE="json:$_rule_id"; CHECKS_OVERRIDE="$_both_checks"; PRODUCERS_OVERRIDE="json:$_runs_order_dependent"
 run cr-completed --grace 0
 assert_rc 0 "3434-h the highest-id run wins regardless of API response order (non-transitive comparator control)"
@@ -2838,8 +2837,7 @@ if [ "$(alert_count)" = 0 ]; then pass "3434-h no alert once the true latest (hi
 
 # 3434-i — a check-run with a null id makes the producer read unreadable
 # (fail closed, exit 5): an id-less row must never first-win the id fold —
-# with no id there is no way to tell it apart from a stale duplicate (console
-# round-4 adversarial finding, HIMMEL-3434).
+# with no id there is no way to tell it apart from a stale duplicate.
 _runs_null_id='{"check_runs":[{"name":"codeowner-review-gate","status":"completed","conclusion":"success","app":{"id":15368},"started_at":"2026-09-22T00:16:00Z","id":null}]}'
 RULES_OVERRIDE="json:$_rule_id"; CHECKS_OVERRIDE="$_both_checks"; PRODUCERS_OVERRIDE="json:$_runs_null_id"
 run cr-completed --grace 0
@@ -2863,7 +2861,7 @@ RULES_OVERRIDE="json:$_rule_id"; CHECKS_OVERRIDE="$_both_checks"; PRODUCERS_OVER
 run cr-completed --grace 0
 assert_rc 0 "3434-k control: an id tie still prefers the completed row when it sits earlier in the array (order-independent)"
 
-# ── HIMMEL-3473: the verdict equals GitHub's own mergeStateStatus ─────────────
+# ── the verdict equals GitHub's own mergeStateStatus ─────────────
 # No case below encodes a model of GitHub's merge rule: each fixes what GitHub
 # SAYS and asserts check-ci says the same. The #1115 replay is the RED: every
 # latest run green, cancelled runs earlier in the same context, GitHub BLOCKED.

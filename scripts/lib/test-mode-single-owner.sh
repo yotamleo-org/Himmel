@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Single-owner lint for the project mode (HIMMEL-4758, HIMMEL-4748 I2).
+# Single-owner lint for the project mode.
 #
 # scripts/lib/project-mode.sh (and its twin project-mode.mjs) is the ONE place
 # that decides the tracker from JIRA_PROJECT_KEY and the forge from an origin
@@ -9,7 +9,7 @@
 #   js     a read of env.JIRA_PROJECT_KEY
 #   both   a github.com / bitbucket.org host literal
 # ALLOW lists the surfaces whose own test is owned by a later work package
-# (merge-on-green.sh by WP3b; detect.mjs left it in WP4, HIMMEL-4762); each
+# (merge-on-green.sh by WP3b; detect.mjs left it in WP4); each
 # removes its entry.
 # A RED control proves the patterns can fire before the real surfaces are read.
 set -uo pipefail

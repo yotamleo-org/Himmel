@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in scripts/cr/test-known-findings.sh
-# Test harness for context-fill.sh (HIMMEL-2212). Builds a throwaway
+# Test harness for context-fill.sh. Builds a throwaway
 # CLAUDE_CONFIG_DIR holding fake session transcripts + fake claude-hud
 # snapshots, then asserts the three verdicts the ticket asks for: a fresh
 # snapshot reads back exactly, a missing/stale/malformed one fails LOUD with
@@ -9,7 +9,7 @@
 # Fixtures are placed via the script's own --cache-path resolver so the suite
 # stays platform-neutral (the HUD hashes a Windows path under Git Bash and a
 # POSIX path elsewhere). The end-to-end proof against a REAL running HUD is
-# recorded in the HIMMEL-2212 PR body, not here - a hermetic suite must not
+# recorded in the PR body, not here - a hermetic suite must not
 # depend on a live statusline.
 set -uo pipefail
 
@@ -158,13 +158,13 @@ not_contains "isolation: session B never reads A's 69,000-turn input" "$outb_hum
 # --- 4. stale snapshot -> loud STALE, empty stdout, no fabricated number -----
 # Backdate the transcript's mtime to match: this fixture represents a session
 # that has genuinely been quiet for 4000s (transcript untouched, not just the
-# snapshot), so only the AGE check - not the HIMMEL-2342 lag check - should
+# snapshot), so only the AGE check - not the lag check - should
 # fire here.
 now_s="$(date +%s)"
 stale_ms="$(awk -v s="$now_s" 'BEGIN{printf "%.0f", (s-4000)*1000}')"
 backdate "$CFG/projects/C--fixture-repo/$SID_A.jsonl" "$((now_s - 4000))"
 place "$SID_A" "$(snapshot 42 500000 58 "$stale_ms" "leg-A")" > /dev/null
-# HIMMEL-4955: a stale snapshot with usable transcript usage is no longer a bare
+# a stale snapshot with usable transcript usage is no longer a bare
 # STALE. The latest assistant turn's input tokens (69000) over the snapshot's
 # window (500000) give a labelled ESTIMATE on stdout, exit 5 - never exit 0, so
 # a caller that only trusts rc 0 as "measured" (guard, tick, /context-hop) is
@@ -340,7 +340,7 @@ out="$(CLAUDE_CODE_SESSION_ID="no-such-session-id" bash "$SCRIPT" 2>/dev/null)";
 check "unknown session id: exit 4"          "$rc" "4"
 check "unknown session id: stdout is EMPTY" "$out" ""
 
-# --- 6b. HIMMEL-2545: the rc=4 hint names the child-session cause -----------
+# --- 6b. the rc=4 hint names the child-session cause -----------
 # A session launched from inside a claude tool call inherits
 # CLAUDE_CODE_CHILD_SESSION=1, claude saves no transcript for it, and this
 # script's honest rc=4 then reads as "fill is blind on this station". The hint
@@ -430,7 +430,7 @@ err="$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE
 check        "2545 non-numeric pid rejected before filesystem access: still exit 4" "$rc" "4"
 not_contains "2545 non-numeric pid rejected before filesystem access: NO hint"      "$err" "$HINT_MARK"
 
-# (h) HIMMEL-2545 CR round-2 codex-5: an EMPTY CLAUDE_CODE_FORCE_SESSION_PERSISTENCE
+# (h) an EMPTY CLAUDE_CODE_FORCE_SESSION_PERSISTENCE
 # value is meaningless (no launcher in this diff ever sets it that way) and
 # must be treated as ABSENT, not present - the hint must still fire.
 mkproc "$PROC" 4246 claude 'CLAUDE_CODE_CHILD_SESSION=1' 'CLAUDE_CODE_FORCE_SESSION_PERSISTENCE='
@@ -458,7 +458,7 @@ check "CONTEXT_FILL_TRANSCRIPT resolves the same key as the session id" "$p_ov" 
 p_rel="$(cd "$CFG/projects/C--fixture-repo" && CONTEXT_FILL_TRANSCRIPT="$SID_A.jsonl" env -u CLAUDE_CODE_SESSION_ID bash "$SCRIPT" --cache-path)"
 check "relative CONTEXT_FILL_TRANSCRIPT resolves to the same key as absolute" "$p_rel" "$pa"
 
-# --- 8a. frozen HUD snapshot: saved_at lags the session transcript (HIMMEL-2342) --
+# --- 8a. frozen HUD snapshot: saved_at lags the session transcript --
 # The write-skip bug: when native used_percentage reads 0 while current_usage
 # is non-zero (a documented in-flight tick), the HUD's cache-write gate
 # (hasGoodContext) skips the write, but the render path still shows a live,
@@ -489,7 +489,7 @@ out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" --percent 2>/dev/null)"; r
 check "healthy snapshot: --percent exit 0"    "$rc" "0"
 check "healthy snapshot: --percent prints 55" "$out" "55"
 
-# --- 8a. HIMMEL-2653: --warn-at handover nudge ------------------------------
+# --- 8a. --warn-at handover nudge ------------------------------
 # fill 55 (>= default 50) -> the warning line appears in human mode.
 place "$SID_A" "$(snapshot 55 200000 45 "$(now_ms)" "leg-A")" > /dev/null
 err="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>&1 >/dev/null)"
@@ -522,7 +522,7 @@ contains "warn-at 69000: warns at the exact input-token threshold" "$err" "WARNI
 err="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" --warn-at 70000 2>&1 >/dev/null)"
 not_contains "warn-at 70000: 69000 input tokens stays silent" "$err" "WARNING"
 
-# codex-1 (HIMMEL-2779): a literal JSONL `null` line parses cleanly via
+# a literal JSONL `null` line parses cleanly via
 # JSON.parse but is not an object, so `row.type` on it throws unless guarded.
 # A transcript that happens to contain one (e.g. a truncated/corrupted write)
 # must not crash last_assistant_input_tokens() -- the null line is skipped and
@@ -587,7 +587,7 @@ bash "$SCRIPT" --bogus >/dev/null 2>&1; check "unknown option -> exit 2" "$?" "2
 bash "$SCRIPT" --percent --bogus >/dev/null 2>&1; check "trailing argument after --percent -> exit 2" "$?" "2"
 bash "$SCRIPT" --cache-path --bogus >/dev/null 2>&1; check "trailing argument after --cache-path -> exit 2" "$?" "2"
 
-# CR round 3 (HIMMEL-2653): the --warn-at-composing loop must not silently let
+# the --warn-at-composing loop must not silently let
 # two DIFFERENT output-mode flags coexist with the last one winning -- that is
 # exactly the "trailing argument" shape the old single-arg parser rejected.
 bash "$SCRIPT" --percent --cache-path >/dev/null 2>&1; check "conflicting output modes (--percent --cache-path) -> exit 2" "$?" "2"

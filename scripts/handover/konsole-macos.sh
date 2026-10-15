@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/konsole-macos.sh - HIMMEL-2534: give headed-arm.sh a TTY
+# scripts/handover/konsole-macos.sh - give headed-arm.sh a TTY
 # on macOS, where konsole does not exist.
 #
 # This is a SHIM, not a port: it accepts the exact konsole argv headed-arm.sh
@@ -34,7 +34,7 @@
 # App resolution (ARM_TERMINAL_APP / ARM_APP_DIRS, including
 # $HOME/Applications where a user-installed iTerm typically lives) is shared
 # with arm-resume.sh's own macOS headed launch via
-# scripts/lib/macos-app-resolve.sh (HIMMEL-3474) -- one copy of the decision
+# scripts/lib/macos-app-resolve.sh -- one copy of the decision
 # instead of two drifting apart. A missing app WARNs and falls back to
 # Terminal.app, which is present on every Mac -- fail open, never refuse a
 # launch over a bad app name.
@@ -42,7 +42,7 @@
 # Seams (tests only): KONSOLE_MACOS_STARTUP_TICKS overrides the number of
 # 0.1s ticks the pid wait below allows (default 200 = 20s, which covers a
 # COLD app launch - measured ~16s for a first-ever iTerm start on the
-# HIMMEL-2534 station, ~1s warm), so a suite can exercise the timeout path
+# test station, ~1s warm), so a suite can exercise the timeout path
 # without paying it. ARM_TERMINAL_APP / ARM_APP_DIRS are the shared
 # macos-app-resolve.sh's own seams, reused here deliberately (see below).
 #
@@ -54,10 +54,10 @@
 # scratch body is removed on the way out, so a window that opens AFTER the
 # budget shows a missing-file error rather than running an unconfirmed
 # session - deliberate, see codex-review S8), or its startup ack could not be
-# written; a body runs its command only after that ack (HIMMEL-3484).
+# written; a body runs its command only after that ack.
 set -u
 
-# HIMMEL-3474: shared with arm-resume.sh's own macOS headed launch -- one
+# shared with arm-resume.sh's own macOS headed launch -- one
 # copy of the ARM_TERMINAL_APP / ARM_APP_DIRS resolution instead of two.
 . "$(cd "$(dirname "$0")" && pwd)/../lib/macos-app-resolve.sh"
 
@@ -111,7 +111,7 @@ fi
 
 # Same resolution order, variable names and fail-open policy as
 # arm-resume.sh's macOS headed launch -- one vocabulary for one decision,
-# shared via scripts/lib/macos-app-resolve.sh (HIMMEL-3474).
+# shared via scripts/lib/macos-app-resolve.sh.
 # codex-review S10: arm-resume.sh documents ARM_TERMINAL_APP=none as "opt out
 # to a headless inline launch". This launcher exists solely to give the
 # session a TTY, so it has no headless mode to opt into -- treating "none" as
@@ -128,13 +128,13 @@ TERM_APP="$(macos_resolve_term_app konsole-macos)"
 # `echo $$`. 20s is generous for a cold app launch and still bounded, so a
 # launch that silently never starts fails loudly instead of hanging an arm.
 _ticks="${KONSOLE_MACOS_STARTUP_TICKS:-200}"
-# HIMMEL-2534 CR fix (N346): `[ -ge ]` on a non-numeric _ticks doesn't abort -
+# `[ -ge ]` on a non-numeric _ticks doesn't abort -
 # it errors to stderr every iteration and evaluates false, so a malformed
 # KONSOLE_MACOS_STARTUP_TICKS (e.g. "abc") spins this loop forever instead of
 # failing bounded. Validated BEFORE `open -a` (N357, codex-1): a refusal
 # after the launch would leave a running, untracked session behind.
 # headed-arm.sh validates the same var with this same pattern before it
-# sizes its own budget from it (HIMMEL-3484), so both sides refuse alike.
+# sizes its own budget from it, so both sides refuse alike.
 case "$_ticks" in
     ''|*[!0-9]*)
         echo "konsole-macos: KONSOLE_MACOS_STARTUP_TICKS must be a plain decimal integer, got '$_ticks'" >&2
@@ -147,7 +147,7 @@ RUNDIR="$(mktemp -d "${TMPDIR:-/tmp}/konsole-macos.XXXXXX")" || {
     echo "konsole-macos: could not create a scratch dir for the launch body" >&2
     exit 3
 }
-# ponytail (HIMMEL-2534 CR fix, N346): this delete races the terminal app's
+# Limitation: this delete races the terminal app's
 # own read of $CMDFILE if `open -a` is slow handing it to `sh`. Probed as
 # safe -- a `.command` `sh` has already opened keeps running to completion
 # after the unlink, standard POSIX unlink-while-open semantics -- but that is
@@ -162,12 +162,12 @@ CMDFILE="$RUNDIR/session.command"
 # %q-quote every element so an argv value carrying spaces/quotes (a claude
 # prompt, a tabtitle) survives the trip through the .command file's shell.
 _q_cmd=$(printf '%q ' "${CMD[@]}")
-# HIMMEL-2534, measured: `open -a` does NOT inherit the launching shell's
+# Measured: `open -a` does NOT inherit the launching shell's
 # environment the way konsole inherits its parent's -- the .command body
 # starts from a fresh login-shell environment. Without this, $PATH is
 # whatever the GUI session has and the launcher (`claude`) either resolves
 # to a different binary or is not found at all, which is the same class of
-# bug HIMMEL-3074 fixed on arm-resume.sh's macOS path. Propagate PATH
+# bug fixed on arm-resume.sh's macOS path. Propagate PATH
 # explicitly, exactly as arm-resume.sh's generated crontab runner does.
 # PATH ONLY. Every other variable the arming shell exported is deliberately
 # dropped (codex-review I2): the macOS arm starts from the GUI session's
@@ -178,7 +178,7 @@ _q_cmd=$(printf '%q ' "${CMD[@]}")
 # clear. But anything an operator exported in the launching shell -- e.g.
 # HANDOVER_DIR, JIRA_PROJECT_KEY, a hook-bypass var -- does NOT reach the
 # armed session here; the CLAUDE_CODE_MAX_* / FLEET_CAP fan-out caps are the
-# one exception, forwarded below (HIMMEL-3484). Propagating a wider allowlist
+# one exception, forwarded below. Propagating a wider allowlist
 # is a deliberate non-goal for now; widening it is a policy decision about
 # what an armed successor should inherit, not a shim detail.
 _q_path=$(printf '%q' "$PATH")
@@ -192,7 +192,7 @@ _q_rundir=$(printf '%q' "$RUNDIR")
     printf '#!/bin/sh\n'
     printf '# generated by konsole-macos.sh -- headed session body\n'
     printf 'PATH=%s; export PATH\n' "$_q_path"
-    # HIMMEL-3484: the fan-out caps are the one exception to PATH ONLY above -
+    # the fan-out caps are the one exception to PATH ONLY above -
     # dropping them runs a Mac leg uncapped, which is a safety loss, not a
     # policy choice about what a successor inherits.
     for _v in $(compgen -e); do
@@ -214,7 +214,7 @@ _q_rundir=$(printf '%q' "$RUNDIR")
     # The shim has already given up on it, so running the command would leave
     # an untracked session a retry could duplicate - stop here instead.
     printf 'echo $$ > %s || exit 1\n' "$_q_pidfile"
-    # HIMMEL-3484 startup handshake: a pid written after the shim's last
+    # Startup handshake: a pid written after the shim's last
     # check but before its exit-4 cleanup lands, and the body would run a
     # session the shim already reported as failed. So the body waits for the
     # shim's go/ack, and exits once the shim or its scratch dir is gone.
@@ -257,7 +257,7 @@ while [ ! -s "$PIDFILE" ]; do
     _waited=$((_waited + 1))
 done
 CHILD="$(cat "$PIDFILE")"
-# The ack the body is waiting on (HIMMEL-3484). Written only here, never on
+# The ack the body is waiting on. Written only here, never on
 # the timeout path above, so a body that missed the budget can never run.
 : > "$GOFILE" || {
     echo "konsole-macos: could not write the startup ack for the session" >&2

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/test-cygpath-stub.sh — unit tests for cygpath-stub.sh (HIMMEL-3114).
+# scripts/lib/test-cygpath-stub.sh — unit tests for cygpath-stub.sh.
 #
 # The cadence suites assert emitted paths against this stub's mapping, so the
 # mapping itself must be pinned independently: a stub that drifted would move

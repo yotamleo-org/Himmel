@@ -35,7 +35,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ScriptDir = $PSScriptRoot
 $Launcher  = Join-Path $ScriptDir 'claude-openrouter.ps1'
@@ -148,7 +148,7 @@ function Invoke-Launcher {
   if ($script:MATRIX) { $env:CLAUDE_OPENROUTER_EGRESS_MATRIX = $script:MATRIX }
   else { Remove-Item Env:CLAUDE_OPENROUTER_EGRESS_MATRIX -ErrorAction SilentlyContinue }
   Remove-Item Env:CLAUDE_OPENROUTER_CWD -ErrorAction SilentlyContinue
-  # HIMMEL-4076: the credit probe GATES the launch, so every case talks to the
+  # the credit probe GATES the launch, so every case talks to the
   # hermetic loopback credits server (body = $TMP\credits.json; absent -> HTTP 500 -> UNKNOWN).
   $env:OPENROUTER_API_BASE = "http://127.0.0.1:$script:CreditPort/api/v1"
   $env:MOCK_ENV_OUT        = $ChildEnv
@@ -175,7 +175,7 @@ try {
 
   # --- T2 (REQUIRED): the REAL matrix refuses an unclassified cwd fail-closed.
   # The temp WORK dir classifies as corpus "unknown"; the real matrix declares
-  # openrouter cells ONLY for himmel-code + handover-state (HIMMEL-1774 ruling),
+  # openrouter cells ONLY for himmel-code + handover-state,
   # so the lane must REFUSE with exit 3, claude never launched. ---
   New-Sandbox; $script:KEY = 'or-test-123'  # gitleaks:allow
   Assert-Exit (Invoke-Launcher) 3 'real matrix refuses unclassified cwd fail-closed'
@@ -215,7 +215,7 @@ try {
     Where-Object { Select-String -LiteralPath $_.FullName -SimpleMatch -Quiet -Pattern 'or-test-123' }  # gitleaks:allow
   if ($leaked) { Fail 'key leaked into config dir' } else { Pass 'no key material in config dir' }
 
-  # --- T3b (HIMMEL-3334 F2): the un-swept claude-hud.json path (new, alongside
+  # --- T3b: the un-swept claude-hud.json path (new, alongside
   # the legacy plugins\claude-hud\config.json) is seeded and staleness-tracked
   # too — a lane must not lose the HUD after an operator's box has migrated off
   # the legacy path.
@@ -253,7 +253,7 @@ try {
     if ($emptyKey) { Pass 'ANTHROPIC_API_KEY exported empty' } else { Fail 'ANTHROPIC_API_KEY not exported empty' }
   } else { Fail 'T3 launch produced no child env dump' }
 
-  # --- T5: the credit probe is a launch GATE (HIMMEL-4076): UNKNOWN or below
+  # --- T5: the credit probe is a launch GATE: UNKNOWN or below
   # OPENROUTER_MIN_CREDIT_USD (default 3) -> exit 5 and claude never launches. ---
   New-Sandbox; $script:KEY = 'or-test-123'  # gitleaks:allow
   Write-AllowMatrix (Join-Path $WORK 'matrix.json'); $script:MATRIX = Join-Path $WORK 'matrix.json'
@@ -272,7 +272,7 @@ try {
   Assert-Exit (Invoke-Launcher) 0 'garbage floor falls back to 3 (3.00 admitted)'
   Remove-Item Env:OPENROUTER_MIN_CREDIT_USD -ErrorAction SilentlyContinue
 
-  # --- T5b: the per-key monthly cap (GET /key) gates too (HIMMEL-4076). ---
+  # --- T5b: the per-key monthly cap (GET /key) gates too. ---
   Set-Credits 21 1
   Write-KeyLimit 1.5
   Assert-Exit (Invoke-Launcher) 5 'key limit_remaining 1.50 below floor refuses (exit 5)'
@@ -322,7 +322,7 @@ try {
   if (FileHas $ChildEnv 'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME=anthropic/claude-haiku-4.5') { Pass 'Haiku label identifies override' } else { Fail 'Haiku label names the wrong model' }
   Remove-Item Env:OPENROUTER_HAIKU -ErrorAction SilentlyContinue
 
-  # --- HIMMEL-4083: independent defaults, overrides and exact slug refusal. ---
+  # --- independent defaults, overrides and exact slug refusal. ---
   New-Sandbox; $script:KEY = 'or-test-123'  # gitleaks:allow
   Write-AllowMatrix (Join-Path $WORK 'matrix.json'); $script:MATRIX = Join-Path $WORK 'matrix.json'
   foreach ($lane in 'standalone', 'openrouter') {

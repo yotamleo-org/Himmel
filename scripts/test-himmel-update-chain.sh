@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-himmel-update-chain.sh — hermetic tests for the six-item update chain
-# (HIMMEL-893): dirty-tree pre-check, per-item status table, and abort-on-
+# dirty-tree pre-check, per-item status table, and abort-on-
 # first-failure semantics in scripts/himmel-update.sh.
 #
 # Same mock-clone technique as test-himmel-update.sh (himmel-update.sh
@@ -38,7 +38,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/himmel-update.sh"
@@ -207,7 +207,7 @@ assert_contains "abort: qmd_fork not-attempted" "qmd_fork  *not-attempted" "$out
 assert_contains "abort: hermes not-attempted" "hermes  *not-attempted" "$out"
 assert_contains "abort: luna_template not-attempted" "luna_template  *not-attempted" "$out"
 assert_not_contains "abort: never reached step [3/6]" "\\[3/6\\]" "$out"
-# HIMMEL-893 CR fix: a mid-chain failure must NOT skip the pre-existing
+# A mid-chain failure must NOT skip the pre-existing
 # best-effort advisory steps (update_codex, rewire_statusline,
 # report_plugin_gap, reconcile_plugins, report_cadence_stale,
 # report_guardrail_block) — they predate this ticket and always ran
@@ -259,7 +259,7 @@ assert_eq "check: full repo state unchanged (tracked + untracked)" "$before_stat
 assert_eq "check: fake HOME unchanged (no config mutation)" "$before_home" "$after_home"
 
 # ─── Test 5: a genuine hermes failure aborts the chain like any other item ──
-# HIMMEL-893 CR fix: update_hermes used to swallow a real pull failure as a
+# update_hermes used to swallow a real pull failure as a
 # non-aborting warn, so hermes never appeared as "failed" and luna_template
 # always ran regardless. Build a REAL NousResearch-named local checkout (bare
 # repo, no real network) with a genuine non-fast-forward divergence — a real
@@ -296,7 +296,7 @@ assert_eq "hermes fail: rc non-zero" "1" "$rc"
 assert_contains "hermes fail: hermes reported failed" "hermes  *failed" "$out"
 assert_contains "hermes fail: luna_template not-attempted" "luna_template  *not-attempted" "$out"
 assert_not_contains "hermes fail: never reached step [6/6]" "\\[6/6\\]" "$out"
-# Same HIMMEL-893 CR contract as Test 3: the pre-existing best-effort
+# Same contract as Test 3: the pre-existing best-effort
 # advisory steps still run unconditionally even after this mid-chain failure.
 assert_contains "hermes fail: advisory step (update_codex) still ran after chain failure" "codex plugin re-sync" "$out"
 

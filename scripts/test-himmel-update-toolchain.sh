@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-himmel-update-toolchain.sh — report_toolchain's node-vs-.nvmrc verdict
-# (HIMMEL-3088). himmel-update.sh --only toolchain compares the installed node
+# himmel-update.sh --only toolchain compares the installed node
 # against the pin at the PIN's own granularity (major / major.minor /
 # major.minor.patch) and says match / behind / ahead — report-only, always rc 0.
 #

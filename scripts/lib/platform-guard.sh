@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/platform-guard.sh -- shared T15 cross-platform predicate
-# (HIMMEL-2682), used by scripts/parity/test-ws5-invariants.sh's T15 and
+# used by scripts/parity/test-ws5-invariants.sh's T15 and
 # scripts/hooks/check-new-shell-platform-guard.sh so the two cannot drift.
 #
 # Every NEW scripts/**/*.sh must ship a .ps1 twin OR carry a documented

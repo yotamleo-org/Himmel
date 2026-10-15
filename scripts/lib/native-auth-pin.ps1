@@ -1,5 +1,5 @@
 # native-auth-pin.ps1 -- PowerShell counterpart of native-auth-pin.sh
-# (HIMMEL-1867, epic HIMMEL-1859). PowerShell cadence sites (voice-loop.ps1 is
+# PowerShell cadence sites (voice-loop.ps1 is
 # a converted site in this epic) cannot source the bash chokepoint, so the twin
 # carries the SAME two behaviours over the SAME canonical variable set defined
 # in native-auth-pin.sh's header -- that header is the single definition this

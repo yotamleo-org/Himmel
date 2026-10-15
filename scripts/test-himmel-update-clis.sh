@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-himmel-update-clis.sh — himmel-update.sh reports and upgrades the agent
-# CLIs and says so in the chain-status table (HIMMEL-5383):
+# CLIs and says so in the chain-status table:
 #   --only clis       codex (upgraded through its install method) + claude (report only)
 #   --only toolchain  a failing `bun upgrade` names its owner and the exact remedy
 #   --only plugins    a missing @himmel plugin gets a table row + its install line

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# test-ship-jira-transition-docs.sh — HIMMEL-3271. Pins that the leg-facing ship
+# test-ship-jira-transition-docs.sh — Pins that the leg-facing ship
 # sequence names `--jira-transition` and states BOTH halves of the rule.
 #
-# `merge-on-green.sh` makes the Jira auto-transition opt-in (HIMMEL-3143), so a
+# `merge-on-green.sh` makes the Jira auto-transition opt-in, so a
 # leg whose PR completes its ticket must ask for it; a leg whose ticket spans
 # further PRs must NOT (closing a sliced ticket on its first slice is the
-# HIMMEL-3059 regression). A doc that only says "pass the flag" recreates
-# HIMMEL-3143, so every assertion set below checks the omit branch too.
+# regression to avoid). A doc that only says "pass the flag" recreates
+# it, so every assertion set below checks the omit branch too.
 #
 # The rule is prose read by a model, so what can be pinned is that it is there,
 # in every site a leg or a console reads the ship sequence, and that the sites
@@ -70,7 +70,7 @@ absent 'preface Wrapping up no longer tells every leg to close the ticket out un
 # merge-on-green.sh skips an Epic on purpose (skip=never-touch-type) and
 # when it cannot verify the type (skip=cannot-verify-type); a leg that treated
 # "result was not ok" as "transition it by hand" would override the standing
-# never-touch-Epic invariant (a Story transitions, HIMMEL-5540).
+# never-touch-Epic invariant.
 contains 'preface Wrapping up: a skip=never-touch-type result is never closed by hand' "$wrap" 'skip=never-touch-type'
 contains 'preface Wrapping up: a skip=cannot-verify-type result is never closed by hand' "$wrap" 'skip=cannot-verify-type'
 contains 'preface Wrapping up: those deliberate skips go to the console' "$wrap" 'report it to the console'

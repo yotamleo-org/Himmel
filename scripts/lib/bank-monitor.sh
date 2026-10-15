@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bank-monitor.sh — wake-up-budgeted bank burn projection (HIMMEL-2767).
+# bank-monitor.sh — wake-up-budgeted bank burn projection.
 #
 # One fresh cache observation records one sample. The persisted ring retains the
 # latest 30 minutes, then computes percentage-point/hour rates and projections
@@ -8,8 +8,8 @@
 # Output occurs only when the state changes or the earliest projection crosses
 # from >=24h/unknown to <24h; repeated below-threshold observations are silent.
 # This script is one-shot: collect enough points with a 300-second Bash poll,
-# distinct from the console tick's 180-second sample cadence (console-wait.sh,
-# HIMMEL-3509; it wakes the console only on a change, not on every sample):
+# distinct from the console tick's 180-second sample cadence (console-wait.sh;
+# it wakes the console only on a change, not on every sample):
 #   while :; do bash scripts/lib/bank-monitor.sh; sleep 300; done
 #
 # Test seams:
@@ -19,7 +19,7 @@
 #   BANK_STATE_FILE  emission state; its .samples sibling is the sample ring
 #   REPO             checkout containing scripts/lanes/bank-status.ts
 #
-# HIMMEL-4421: the BANK line also carries seven_day_reset_in=<h>h and
+# the BANK line also carries seven_day_reset_in=<h>h and
 # unspent_at_reset=<pct> = max(0, 100 - (seven_day + seven_day_rate x reset_in)),
 # the weekly quota the current burn leaves unspent at the reset (advisory only;
 # it gates nothing). Either reads ? when the rate or resets_at is unknown or the
@@ -69,7 +69,7 @@ five_reset_epoch="$(jq -r '.five_hour.resets_at | if type == "number" then floor
 case "$five_reset_epoch" in ''|*[!0-9]*) five_reset_epoch="" ;; esac
 real_now="$now"
 
-# HIMMEL-1712: a cache stamped by a different account is the same
+# a cache stamped by a different account is the same
 # can't-trust-this-number case valid_pct's own failures above already
 # quiet-no-op on. A missing/unreadable helper degrades to "can't tell",
 # which this treats the same as a mismatch.

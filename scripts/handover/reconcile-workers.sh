@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # reconcile-workers.sh -- reconcile offload-lane worker metadata after an
-# unclean dispatcher/session exit (HIMMEL-1463).
+# unclean dispatcher/session exit.
 #
 # A worker wrapper normally moves meta.json from status=running to a terminal
 # state. If the dispatching Claude session exits first, the wrapper and worker
@@ -16,7 +16,7 @@
 #   bash scripts/handover/reconcile-workers.sh --list-live
 #   bash scripts/handover/reconcile-workers.sh --report
 #
-# --report (HIMMEL-1880) reconciles exactly like the default mode and also
+# --report reconciles exactly like the default mode and also
 # prints one line per running seat to stdout, then a count summary:
 #   SEAT <DIED|NEVER-STARTED|STILL-RUNNING> <lane>/<task> pid=<pid> detail=<why> meta=<path>
 #   reconcile-report: died=<n> never-started=<n> still-running=<n>
@@ -135,7 +135,7 @@ worker_pid_alive() {
     return 1
 }
 
-# _worker_census -- HIMMEL-2066 batch replacement for the old per-file
+# _worker_census -- batch replacement for the old per-file
 # _worker_meta_fields: ONE node process for the whole census run instead of
 # one `node -e` spawn per meta.json. ~0.5s node startup x hundreds of
 # meta.json files under Windows/Git-Bash ate the ASAP arm lead and tripped
@@ -239,7 +239,7 @@ catch (e) { console.error(`ERR reconcile-workers: cannot stat ${path.dirname(p)}
 }
 
 # _worker_mark_orphaned_unprobeable <meta.json> -- terminal-mark a row whose
-# pid was never written (HIMMEL-1511) once it exceeds the unprobeable ceiling
+# pid was never written once it exceeds the unprobeable ceiling
 # backstop. Re-read both status and pid so a worker that acquired its first real
 # pid after census wins the race and exits 3, same convention as
 # _worker_mark_orphaned above.
@@ -348,7 +348,7 @@ _report_seat() {
     printf 'SEAT %s %s/%s pid=%s detail=%s meta=%s\n' "$1" "${lane:-unknown}" "${task_name:-unknown}" "${pid:-absent}" "$2" "$meta"
 }
 
-# HIMMEL-2066: gather every meta.json path FIRST, then hand the whole batch
+# gather every meta.json path FIRST, then hand the whole batch
 # to one _worker_census node process below, instead of spawning node once
 # per file inside this loop. Zero files -> census_paths stays empty ->
 # _worker_census is never invoked at all.
@@ -393,7 +393,7 @@ if [ -n "$census_paths" ]; then
     # Read from fd 3, not the loop body's inherited stdin (fd 0): the loop
     # body below calls several node helpers per candidate row, and if any of
     # them ever reads from an inherited stdin (a test stub intercepting node
-    # this way caught it -- HIMMEL-2066), that read would silently steal
+    # this way caught it), that read would silently steal
     # bytes meant for THIS loop's next iteration, dropping rows. Row fields
     # are single-line JSON scalars from this codebase's own writers (status/
     # pid/branch/etc. are never multi-line strings), so a bare newline always
@@ -412,14 +412,14 @@ if [ -n "$census_paths" ]; then
             probe_rc=$?
         fi
         if [ "$probe_rc" -ne 1 ]; then
-            # HIMMEL-1511: a pid that was NEVER written (empty, 0, or junk --
+            # a pid that was NEVER written (empty, 0, or junk --
             # the same set worker_pid_alive itself short-circuits on above,
             # matching writeLiveWorkerMeta's fallback marker shape) gets an
             # absolute-ceiling backstop so it cannot block arming forever.
             # A pid that failed to PROBE (tasklist/probe-command failure)
             # keeps a real recorded pid here and is deliberately excluded --
             # that stays a pure grace-based case, not the relic shape.
-            # HIMMEL-1880: a never-written pid with no started_at and no
+            # a never-written pid with no started_at and no
             # unprobeable-write marker never recorded a start at all.
             never_started=0
             case "$pid" in

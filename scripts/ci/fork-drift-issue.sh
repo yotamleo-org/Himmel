@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/ci/fork-drift-issue.sh — maintain ONE consolidated upstream-drift
-# tracking issue from the nightly fork-drift workflow (HIMMEL-1046).
+# tracking issue from the nightly fork-drift workflow.
 #
 # The drift guard (scripts/check-plugin-drift.sh) reports via an EXIT CODE:
 #   0 = every tracked upstream CURRENT

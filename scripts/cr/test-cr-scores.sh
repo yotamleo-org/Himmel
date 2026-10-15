@@ -8,7 +8,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"; CS="$HERE/cr-scores.sh"
@@ -63,7 +63,7 @@ not_contains() { grepq "$2" -F "$3" && { echo "FAIL - $1: output must NOT contai
   echo '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"b","head":"H4","model":"alpha","status":"ok"}'
   echo '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"b","head":"H1","model":"beta","status":"ok"}'
   echo '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"b","head":"H2","model":"beta","status":"ok"}'
-  # usage (HIMMEL-485): codex 2 calls (est_total 1200 + 600 = 1800), alpha 1 call (400).
+  # usage: codex 2 calls (est_total 1200 + 600 = 1800), alpha 1 call (400).
   # ts are LATER than every other record so per-head ts minima (and thus the window
   # ordering exercised by test 8) are unchanged by these rows.
   echo '{"kind":"usage","ts":"2026-01-01T00:02:00Z","branch":"b","head":"H1","model":"codex","prompt_chars":4000,"response_chars":800,"est_prompt_tokens":1000,"est_completion_tokens":200,"est_total_tokens":1200,"estimated":true}'
@@ -130,7 +130,7 @@ contains "all-time alpha total 12 appears" "$win_out" "12"
 # which differs from all-time alpha 67%. Assert "0%" appears (windowed agreed%).
 contains "windowed alpha shows different agreed pct" "$win_out" "0%"
 
-# 9. Usage section (HIMMEL-485): per-model est tokens + cumulative.
+# 9. Usage section: per-model est tokens + cumulative.
 contains "usage section header present" "$out" "Usage (estimated tokens"
 contains "usage codex row present" "$out" "codex"
 contains "usage codex est_total 1800" "$out" "1800"
@@ -153,7 +153,7 @@ partial_out="$(CR_LEDGER="$L3" bash "$CS" 2>&1)"
 not_contains "partial usage record produces no NaN" "$partial_out" "NaN"
 contains "partial usage record cumulative is 0" "$partial_out" "cumulative: est_total=0 over 1"
 
-# ── WS4 (HIMMEL-414): artifact/perspective segmenting reader ─────────────────
+# ── WS4: artifact/perspective segmenting reader ─────────────────
 # Perspective filter: a dedicated single-model ledger so percentages are unambiguous.
 L4="$tmp/persp-scores.jsonl"
 {
@@ -184,10 +184,10 @@ contains "legacy records coerce to perspective off (alpha 67 present)" "$off_leg
 on_legacy="$(CR_LEDGER="$L" bash "$CS" --perspective on 2>&1)"
 not_contains "legacy records absent from perspective on (no 67)" "$on_legacy" "67"
 
-# ── HIMMEL-1176: Unavailability breakdown (additive, reason-capture) ────────
+# ── Unavailability breakdown (additive, reason-capture) ────────
 # 12. A reason-less ledger (every fixture used above) must render NO
 #     "Unavailability breakdown" section — output stays byte-identical to
-#     pre-HIMMEL-1176 (same precedent as the Usage section: rendered only
+#     pre-capture (same precedent as the Usage section: rendered only
 #     when the underlying record type is present).
 not_contains "no breakdown section on a reason-less ledger" "$out" "Unavailability breakdown"
 
@@ -217,7 +217,7 @@ echo '{"kind":"avail","ts":"2026-03-01T00:00:00Z","branch":"b","head":"EH1","mod
 empty_reason_out="$(CR_LEDGER="$L7" bash "$CS" 2>&1)"
 not_contains "empty-string reason does not trigger breakdown section" "$empty_reason_out" "Unavailability breakdown"
 
-# ── HIMMEL-1299: --by-branch review spend ──────────────────────────────────
+# ── --by-branch review spend ──────────────────────────────────
 # The claim under test: a call is one `avail` record = one (head, model) pair,
 # and rounds are the distinct heads. A branch reviewed over 3 rounds by 2 lanes
 # therefore cost 6 calls — the number that was unanswerable before, and the
@@ -264,7 +264,7 @@ contains "branch-less records are not attributed" "$bb_nb" "no branch-attributed
 base_out="$(CR_LEDGER="$L" bash "$CS" 2>&1)"
 not_contains "default output does not gain the spend table" "$base_out" "Review spend per branch"
 
-# ── HIMMEL-2067: unadjudicated findings at each branch's latest head ───────
+# ── unadjudicated findings at each branch's latest head ───────
 # feat/wedge: QH1 (older, superseded) then QH2 (latest by ts). At QH2: w-1 has
 # no verdict (stays unadjudicated), w-2 has no verdict but is adjudicated by a
 # later amend (must NOT count), w-3 is already disproved (must NOT count).
@@ -290,8 +290,8 @@ lu_one="$(CR_LEDGER="$LU" bash "$CS" --by-branch feat/wedge 2>&1)"
 contains "branch-filtered report still shows the per-branch unadjudicated count" "$lu_one" "1 unadjudicated at latest head"
 not_contains "branch filter drops the repo-wide unadjudicated total" "$lu_one" "Unadjudicated at latest head (HIMMEL-2067)"
 
-# ── HIMMEL-2579: scoring pass tallies the amend-MERGED verdict ──────────────
-# Since HIMMEL-2321 a finding row is always written with an EMPTY verdict; the
+# ── scoring pass tallies the amend-MERGED verdict ──────────────
+# A finding row is always written with an EMPTY verdict; the
 # real verdict arrives only as a later `amend` record keyed on target_head.
 # amend-1: adjudicated (must count as agreed). amend-2: no matching amend
 # (target_head does not match its finding's head) -> stays unadjudicated.
@@ -319,7 +319,7 @@ contains "amend-merged finding counts as agreed; total stays 3 (denominator unto
 # findings is counted agreed.
 not_contains "amend-merged finding does not make delta 100pct agreed" "$amend_out" "delta                   3        100%"
 
-# ── HIMMEL-2579: drop advice uses the merged verdict, not the raw one ───────
+# ── drop advice uses the merged verdict, not the raw one ───────
 # codex: 12 raw-empty findings, 8 of which are amended to "agreed" -> merged
 # agreed% = 8/12 = 67% (>=40 threshold -> NO drop advice). Off the raw rows
 # alone every finding would tally as empty-verdict -> 0% agreed -> drop advice
@@ -344,7 +344,7 @@ drop_amend_out="$(CR_LEDGER="$LD" CR_SCORES_DROP_BELOW=40 CR_SCORES_MIN_N=10 bas
 not_contains "merged verdicts above threshold suppress drop advice for codex" "$drop_amend_out" "consider dropping codex"
 contains "codex merged agreed% shows 67" "$drop_amend_out" "67%"
 
-# ── HIMMEL-3161: `fixed` verdicts count as agreement ────────────────────────
+# ── `fixed` verdicts count as agreement ────────────────────────
 # epsilon: 10 findings, ALL verdict="fixed". A fixed finding is an accepted
 # finding (the code was changed in response to it) — it must count toward
 # agreed% and must NOT trigger drop advice, even though `total` >= MIN_N.
@@ -358,7 +358,7 @@ fixed_out="$(CR_LEDGER="$LF" CR_SCORES_DROP_BELOW=40 CR_SCORES_MIN_N=10 bash "$C
 not_contains "all-fixed critic gets NO drop advice" "$fixed_out" "consider dropping epsilon"
 contains "all-fixed critic shows 100% agreed" "$fixed_out" "100%"
 
-# ── HIMMEL-3104: `score` rows (one per completed critic run) are invisible to
+# ── `score` rows (one per completed critic run) are invisible to
 # every table: the same ledger with a score row added at each head (stamped at
 # that head's earliest ts, the worst case for the last-N-heads window) renders
 # byte-identically, plain and --by-branch.

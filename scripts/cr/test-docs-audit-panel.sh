@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/docs-audit-panel.sh (HIMMEL-2226).
+# Smoke test for scripts/cr/docs-audit-panel.sh.
 #
 # Hermetic: builds a throwaway "toolroot" fixture (mirroring the real
 # scripts/cr, scripts/lib, scripts/guardrails layout so the SUT's
@@ -136,8 +136,8 @@ check "$(cat "$stderr_file")" "docs-audit cross-model critic skipped: empty diff
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T5 stub was invoked on an empty diff"; fail=1; }
 
 # 6. Stubbed panel exit 7 (input-pin mismatch): ABORT, exit 7, nothing on
-# stdout, the exact ABORT block on stderr and nothing else (HIMMEL-1175,
-# HIMMEL-1984 - never a degrade).
+# stdout, the exact ABORT block on stderr and nothing else
+# (never a degrade).
 export CR_REQUIRE_CROSS_MODEL=1
 unset CR_PROFILE 2>/dev/null || true
 export STUB_RC=7 STUB_OUT="should-be-discarded" STUB_ERR="panel-availability: fake unavailable (rc=7)"
@@ -163,7 +163,7 @@ contains "$(cat "$stderr_file")" "docs-audit cross-model critic unavailable (all
 contains "$(cat "$stderr_file")" "panel-availability: fake unavailable (rc=1)" "T7 stderr re-emits the panel's availability line"
 [ -e "$STUB_MARKER" ] || { echo "FAIL: T7 stub was never invoked"; fail=1; }
 
-# 7b. HIMMEL-5110: panel exit 6 is the deliberate certify refusal, not a failed
+# 7b. panel exit 6 is the deliberate certify refusal, not a failed
 # panel: same fail-open degrade, but the message must say REFUSED.
 export CR_REQUIRE_CROSS_MODEL=1
 unset CR_PROFILE 2>/dev/null || true
@@ -187,7 +187,7 @@ not_contains "$(cat "$stdout_file")" "panel-availability" "T8 stdout must not ca
 not_contains "$(cat "$stderr_file")" "docsaudit-1" "T8 stderr must not carry the findings"
 [ -e "$STUB_MARKER" ] || { echo "FAIL: T8 stub was never invoked"; fail=1; }
 
-# 9. HIMMEL-2542: a --head that names no commit in this repo ABORTs at exit 7
+# 9. a --head that names no commit in this repo ABORTs at exit 7
 # naming the ARGUMENT, before any git command consumes it. Pre-fix, the bare
 # `git rev-parse` accepted the well-formed 40-hex value, `git diff` then failed
 # rc=128, and the lane reported "cross-model critic unavailable" at exit 0 -
@@ -203,7 +203,7 @@ contains "$(cat "$stderr_file")" "--head $bogus_sha does not resolve to a commit
 not_contains "$(cat "$stderr_file")" "critic unavailable" "T9 must not report a critic outage for a caller error"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T9 the panel was invoked on an unresolvable pin"; fail=1; }
 
-# 10. NEGATIVE CONTROL for T9 (HIMMEL-2518 control contract): a mutant with the
+# 10. NEGATIVE CONTROL for T9: a mutant with the
 # T9 guard deleted must RUN, PRODUCE a value, and produce the SPECIFIC wrong
 # value - exit 0 plus the misleading "cross-model critic unavailable" line.
 # Each property gets its own failure message so a crashed mutant can never pass

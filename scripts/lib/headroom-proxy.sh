@@ -1,6 +1,5 @@
 # shellcheck shell=bash
 # scripts/lib/headroom-proxy.sh -- HIMMEL_HEADROOM_PROXY flag resolution
-# (HIMMEL-901).
 #
 # Small + sourceable (no top-level side effects, never calls exit) so both
 # arm-resume.sh and its test suite can use the SAME parser instead of two

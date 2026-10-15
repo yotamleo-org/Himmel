@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/test-git-test-env.sh -- regression test for git_test_env_repair
-# and the init.templateDir hygiene fix (HIMMEL-2231).
+# and the init.templateDir hygiene fix.
 #
 # THE TICKET'S HYPOTHESIS WAS WRONG: it guessed "a racing `git -c` from a
 # sibling process writes our git env". Environment variables cannot cross
@@ -32,7 +32,7 @@
 # shellcheck disable=SC1090         # `. "$LIB"` -- LIB is derived from BASH_SOURCE, not a literal
 set -uo pipefail
 
-# HIMMEL-2267: scripts/ci/run-shell-tests.sh calls git_test_env_pin_perf once in
+# scripts/ci/run-shell-tests.sh calls git_test_env_pin_perf once in
 # its OWN shell before spawning suites, exporting HIMMEL_GIT_TEST_ENV_PERF plus
 # a GIT_CONFIG_COUNT/GIT_CONFIG_KEY_n/GIT_CONFIG_VALUE_n block; every suite it
 # spawns -- this one included -- inherits both. git_test_env_pin_perf early-
@@ -338,7 +338,7 @@ echo "git_test_env_pin_perf's templateDir closes the fixed-shared-path finding:"
   fi
 ) || bad "case 9: aborted before completing (rc=$?)"
 
-# --- case 10: a malformed GIT_CONFIG_COUNT is repaired, loudly (HIMMEL-2231) -
+# --- case 10: a malformed GIT_CONFIG_COUNT is repaired, loudly -
 # codex-2 review, this ticket: a SET-but-non-numeric COUNT (e.g. `abc`) used
 # to be treated as count=0 by the truncation walk, which made the walk a
 # no-op and left the malformed value exported -- every later `git` call then
@@ -407,7 +407,7 @@ echo "pin_perf re-pins when repair clears the marker on a malformed COUNT:"
   fi
 ) || bad "case 11: aborted before completing (rc=$?)"
 
-# HIMMEL-4236: cleanup belongs to the allocator, not an inheriting child.
+# Cleanup belongs to the allocator, not an inheriting child.
 echo
 echo "template cleanup survives child inheritance, re-pin and failure exits:"
 bash "$HERE/clean-sandbox.sh" --scratch "$tmpd/cleanup" -- bash -eu -c '

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # fixture suite bodies are single-quoted on purpose: their $vars must stay literal
 # scripts/ci/test-run-shell-tests-flake.sh — the run-shell-tests.sh cases for
-# the one-shot flake retry and the FLAKE ledger (HIMMEL-5116).
+# the one-shot flake retry and the FLAKE ledger.
 #
 # A suite that fails is re-run ONCE, alone. Passing on the retry makes it a
 # FLAKE: not PASS, not FAIL, a visible summary line, one jsonl row in the ledger
@@ -23,22 +23,22 @@
 #   F11 a retry that only prints SKIP and exits 0 stays FAIL
 #   F12 an unwritable ledger WARNs, verdict unchanged
 #   F13 a prior flake of the same suite name from another repo, or an old row
-#       with no repo id, never raises the ticket line (HIMMEL-5121)
+#       with no repo id, never raises the ticket line
 #   F14 a suite that fails both attempts keeps BOTH logs under FAIL_LOG_DIR
 #   F15 a repo id override with a backslash or quote is reduced to a safe
 #       charset and still matches its own rows
 #   F16 one repo is one id across URL spellings and worktrees; a relative or
 #       local-path origin stays case-exact and keeps its .git, a default port
-#       drops (HIMMEL-5144, HIMMEL-5145); an absolute local origin is
+#       drops; an absolute local origin is
 #       lexically normalised, a file:// path is percent-decoded and its scheme
-#       is case-insensitive, file://host/... drops the host like git
-#       (HIMMEL-5169); a decoded or literal trailing newline and %00 keep
-#       their own ids (HIMMEL-5161, HIMMEL-5169)
+#       is case-insensitive, file://host/... drops the host like git;
+# a decoded or literal trailing newline and %00 keep
+#       their own ids
 #   F17 with no override, the row's repo is the shared lib's id for the
-#       runner's own checkout (HIMMEL-5147)
+#       runner's own checkout
 #   F18 a runner that cannot read the id lib writes no ledger row, names the
-#       lib and prints no unbound-variable line (HIMMEL-5156, HIMMEL-5157)
-#   F19 neither caller defines the id functions itself (HIMMEL-5156)
+#       lib and prints no unbound-variable line
+#   F19 neither caller defines the id functions itself
 #
 # Usage: bash scripts/ci/test-run-shell-tests-flake.sh
 set -uo pipefail
@@ -95,7 +95,7 @@ if [ "$(ledger_rows "$sb")" = 1 ] && grepq "$(cat "$sb/ledger.jsonl")" -F '"suit
 else
   fail "F1: ledger: $(cat "$sb/ledger.jsonl" 2>&1)"
 fi
-# The ledgers.json registry (HIMMEL-4290) requires the v/ts/host/source/kind envelope.
+# The ledgers.json registry requires the v/ts/host/source/kind envelope.
 row=$(cat "$sb/ledger.jsonl" 2>/dev/null)
 if grepq "$row" -F '"v":1' && grepq "$row" -E '"host":"[^"]+"' \
     && grepq "$row" -F '"source":"run-shell-tests"' && grepq "$row" -F '"kind":"flake"'; then
@@ -379,7 +379,7 @@ else
   fail "F16: ids: [$i1] [$i2] [$i3] [$i4] [$i5] vs other [$i6]"
 fi
 case "$i1" in *github*|*tok*) fail "F16: the id leaks the URL: $i1" ;; esac
-# HIMMEL-5145: a plain relative or absolute path origin keeps its case and its
+# A plain relative or absolute path origin keeps its case and its
 # .git (two distinct dirs on a case-sensitive fs); a default port drops, others stay.
 mk_url_repo "$sb/p1" "Repo/project";  mk_url_repo "$sb/p2" "repo/project"
 mk_url_repo "$sb/p3" "/srv/r";        mk_url_repo "$sb/p4" "/srv/r.git"
@@ -390,7 +390,7 @@ mk_url_repo "$sb/q3" "http://github.com:80/o/r.git"
 mk_url_repo "$sb/q4" "http://github.com/o/r"
 mk_url_repo "$sb/q5" "ssh://git@github.com:2222/o/r.git"
 mk_url_repo "$sb/q6" "https://github.com:22/o/r"
-# A relative origin is resolved against the checkout (HIMMEL-5156), so the case
+# A relative origin is resolved against the checkout, so the case
 # row compares the normaliser's output for one shared base, not two directories.
 p1=$(_flake_norm_url "Repo/project" "$sb" 2>&1); p2=$(_flake_norm_url "repo/project" "$sb" 2>&1)
 p3=$(_flake_repo_id "$sb/p3" 2>&1); p4=$(_flake_repo_id "$sb/p4" 2>&1); p5=$(_flake_repo_id "$sb/p5" 2>&1)
@@ -404,7 +404,7 @@ if [ -n "$p3" ] && [ "$p3" != "$p4" ] && [ "$p3" = "$p5" ]; then
 else
   fail "F16: local path ids: /srv/r [$p3] /srv/r.git [$p4] /srv/r/ [$p5]"
 fi
-# HIMMEL-5156: file:// is a local path, not a network URL, so file:///srv/r.git
+# File:// is a local path, not a network URL, so file:///srv/r.git
 # is the /srv/r.git directory (not /srv/r), and a relative origin is resolved
 # against the main checkout, so one repo's worktrees share an id and the same
 # relative text from two parents does not.
@@ -416,9 +416,9 @@ if [ -n "$f1" ] && [ "$f1" != "$p3" ] && [ "$f1" = "$p4" ] && [ "$f2" = "$p3" ];
 else
   fail "F16: file:// ids: file:///srv/r.git [$f1] /srv/r [$p3] /srv/r.git [$p4] file:///srv/r [$f2]"
 fi
-# HIMMEL-5157: an absolute local origin is lexically normalised like a relative
+# An absolute local origin is lexically normalised like a relative
 # one, a file:// path is percent-decoded and its scheme is case-insensitive, and
-# file://host/path drops the host like git (HIMMEL-5169).
+# file://host/path drops the host like git.
 mk_url_repo "$sb/a1" "/srv/x/../r.git"
 mk_url_repo "$sb/a2" "/srv/./r.git"
 mk_url_repo "$sb/a3" "/srv//r.git"
@@ -462,7 +462,7 @@ mk_url_repo "$sb/h8" "file://HOST.example:99/srv/r.git"
 h1=$(_flake_repo_id "$sb/h1" 2>&1); h2=$(_flake_repo_id "$sb/h2" 2>&1); h3=$(_flake_repo_id "$sb/h3" 2>&1)
 h4=$(_flake_repo_id "$sb/h4" 2>&1); h5=$(_flake_repo_id "$sb/h5" 2>&1); h6=$(_flake_repo_id "$sb/h6" 2>&1)
 h7=$(_flake_repo_id "$sb/h7" 2>&1); h8=$(_flake_repo_id "$sb/h8" 2>&1)
-# HIMMEL-5169: git ignores the host of file://host/path, so the host never
+# Git ignores the host of file://host/path, so the host never
 # enters the id; the path after it is the whole directory.
 if [ -n "$h1" ] && [ "$h1" = "$h2" ] && [ "$h1" = "$h6" ] && [ "$h1" != "$h3" ] && [ "$h1" != "$p4" ]; then
   pass "F16: file://host/r.git is /r.git (host dropped like git), not the checkout-relative host/r.git"
@@ -474,7 +474,7 @@ if [ "$h7" = "$p3" ] && [ "$h8" = "$p4" ] && [ "$h4" = "$p4" ] && [ "$h5" = "$p4
 else
   fail "F16: host dropped: host/srv/r [$h7] want [$p3]; HOST.example:99 [$h8], localhost [$h4], localhostx [$h5] want [$p4]"
 fi
-# HIMMEL-5161: a decoded trailing newline is part of the path, so
+# A decoded trailing newline is part of the path, so
 # file:///srv/r%0A is a different directory from file:///srv/r (command
 # substitution would strip it); %00 stays escaped, so it is not /srv/r either;
 # file://LOCALHOST/... is the local path; file://host/r.git is not /host/r.git.
@@ -511,7 +511,7 @@ if _isid "$nl6" && _isid "$nl7" && [ "$nl6" = "$nl7" ]; then
 else
   fail "F16: host newline: %0A [$nl6] vs plain [$nl7] must match"
 fi
-# HIMMEL-5184: git rejects a path-less file:// origin (file://host, file://a,
+# Git rejects a path-less file:// origin (file://host, file://a,
 # file://), so no usable repo has one; they are pinned to the root id, the same
 # as file:/// and /, instead of left to drift.
 mk_url_repo "$sb/pl1" "file://host"
@@ -527,7 +527,7 @@ if _isid "$pl1" && [ "$pl1" = "$pl5" ] && [ "$pl2" = "$pl5" ] && [ "$pl3" = "$pl
 else
   fail "F16: path-less: host [$pl1] a [$pl2] empty [$pl3] file:/// [$pl4] / [$pl5] [a] [$pl6] must match"
 fi
-# HIMMEL-5184: git's host_end skips a bracketed host, so the path is what
+# Git's host_end skips a bracketed host, so the path is what
 # follows the ] (git ls-remote 'file://[a/b]/p' runs upload-pack on /p); the
 # first @[ anywhere in the URL starts the bracket, as in git; an unclosed [ is
 # not skipped.
@@ -574,7 +574,7 @@ if _isid "$br13" && [ "$br12" = "$br13" ] && [ "$br12" != "$br14" ]; then
 else
   fail "F16: file://[a/b]@[c/d [$br12] want /b]@[c/d [$br13], never /d [$br14]"
 fi
-# HIMMEL-5169: the origin is read with a sentinel, so a literal trailing
+# The origin is read with a sentinel, so a literal trailing
 # newline in the config value (not a decoded one) stays part of the path
 mk_url_repo "$sb/ln1" "/srv/r"
 git -C "$sb/ln1" config remote.origin.url $'/srv/r\n'
@@ -586,7 +586,7 @@ if _isid "$ln1" && _isid "$ln2" && [ "$ln1" != "$p3" ] && [ "$ln1" != "$ln2" ] &
 else
   fail "F16: literal newline: /srv/r\\n [$ln1] /srv/r\\n\\n [$ln2] vs /srv/r [$p3] must all differ"
 fi
-# HIMMEL-5169: the relative join keeps a trailing newline too (its own
+# The relative join keeps a trailing newline too (its own
 # sentinel); the origin below ends in a slash after the newline, so only the
 # join, not the config read, could drop it
 rl1=$(_flake_norm_url $'r\n/' /srv/co; printf x); rl1=${rl1%x}
@@ -599,7 +599,7 @@ fi
 mk_url_repo "$sb/ra/co" "../r.git"; mk_url_repo "$sb/rb/co" "../r.git"
 gq -C "$sb/ra/co" commit -q --allow-empty -m x
 # The worktree sits under a parent other than the checkout's, so a lib that
-# resolved the relative origin against the worktree would give another id (HIMMEL-5157).
+# resolved the relative origin against the worktree would give another id.
 mkdir -p "$sb/rw"
 git -C "$sb/ra/co" worktree add -q "$sb/rw/co-wt" -b rwt 2>/dev/null
 r1=$(_flake_repo_id "$sb/ra/co" 2>&1); r2=$(_flake_repo_id "$sb/rb/co" 2>&1); r3=$(_flake_repo_id "$sb/rw/co-wt" 2>&1)
@@ -668,7 +668,7 @@ rm -rf "$sb"
 fi
 
 # --- F18 ------------------------------------------------------------------------
-# HIMMEL-5156: a runner that cannot read the id lib fails closed — it writes no
+# A runner that cannot read the id lib fails closed — it writes no
 # ledger row (never "repo":""), names the lib, and the run's verdict is unchanged.
 echo "== F18: a missing id lib writes no ledger row =="
 sb=$(mktemp -d "${TMPDIR:-/tmp}/rst-flake18.XXXXXX") || { fail "F18: mktemp failed"; sb=""; }
@@ -689,7 +689,7 @@ rm -rf "$sb"
 fi
 
 # --- F19 ------------------------------------------------------------------------
-# HIMMEL-5156 (j2305a follow-up 2): the lib is the one definition. F17 and R5 run
+# The lib is the one definition. F17 and R5 run
 # with the checkout's own plain-https origin, which a stale copy hashes the same
 # way, so only a structural check catches a re-added copy in either caller.
 echo "== F19: neither caller defines the id functions itself =="

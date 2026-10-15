@@ -44,7 +44,7 @@ try {
 
 const states = new Map();
 const latest = new Map();
-// HIMMEL-2901: "first seen" is the earliest round this fingerprint was ever
+// "first seen" is the earliest round this fingerprint was ever
 // OBSERVED on this branch, derived rather than persisted. An inherited re-raise
 // carries its own observation round, so reading `round` off the latest event
 // would report a later re-raise as the first sighting.
@@ -73,7 +73,7 @@ for (const row of ledgerRows) {
           ? (previous.disposition_severity || previous.severity)
           : state.severity;
       }
-      // HIMMEL-2901: remember WHICH adjudication this inherited from, so a
+      // remember WHICH adjudication this inherited from, so a
       // later correction to that original row still reaches the ceiling it
       // handed down. `previous._originKey` collapses a chain of re-raises onto
       // the one row that was actually adjudicated.
@@ -113,7 +113,7 @@ for (const row of ledgerRows) {
 
   if (Object.prototype.hasOwnProperty.call(row.set, 'verdict') && target.fingerprint && target.verdict) {
     const event = { ...target, disposition_severity: target.severity, _sourceKey: targetKey };
-    // HIMMEL-2901: the amend states the round it adjudicated in. The producer
+    // the amend states the round it adjudicated in. The producer
     // round remains the fallback so pre-2901 amends keep rendering as before.
     if (validRound(row.disposition_round)) event.disposition_round = Number(row.disposition_round);
     else if (validRound(target.round)) event.disposition_round = Number(target.round);
@@ -130,7 +130,7 @@ for (const row of ledgerRows) {
        Object.prototype.hasOwnProperty.call(row.set, 'severity'))) {
     const key = dispositionKey(target);
     const current = latest.get(key);
-    // HIMMEL-2901: the amended row is authoritative either because it IS the
+    // the amended row is authoritative either because it IS the
     // current event, or because the current event merely inherited its
     // disposition from it. Any other row of the same fingerprint is a
     // bystander and must not move the ceiling.
@@ -196,7 +196,7 @@ for (const line of input) {
     if (prior.deferred_to) row.deferred_to = prior.deferred_to;
     if (prior.fu_class) row.fu_class = prior.fu_class;
     const ticket = prior.verdict === 'deferred' && prior.deferred_to ? ` [${prior.deferred_to}]` : '';
-    // HIMMEL-2901: name both rounds only when the finding was adjudicated in a
+    // name both rounds only when the finding was adjudicated in a
     // later round than it was first seen in; otherwise one round is the truth.
     const rounds = validRound(firstSeenRound) && String(firstSeenRound) !== String(sourceRound)
       ? `first seen r${firstSeenRound} · dispositioned r${sourceRound}`

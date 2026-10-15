@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # test-luna-upgrade-vm.sh -- host-driven, CROSS-OS VM e2e for the luna-second-
-# brain upgrade roundtrip (HIMMEL-493 Linux + HIMMEL-522 Windows, epic
-# HIMMEL-483). Copies the shipped templates/luna-second-brain/ tree to a clean
+# brain upgrade roundtrip (Linux + Windows). Copies the shipped templates/luna-second-brain/ tree to a clean
 # Ubuntu OR Windows VM over ssh (key auth) and, on the VM:
 #   A. runs the shipped hermetic engine suite (scripts/test-upgrade.sh) against
 #      the REAL template -- proves the T1..Tn cases pass on the VM, not just the
@@ -18,7 +17,7 @@
 # (templates/luna-second-brain/scripts/upgrade.sh, the deterministic core the
 # skill orchestrates) on a fresh VM. No claude / no LLM call -- deterministic.
 #
-# Cross-OS notes (HIMMEL-522): the guest is detected via `echo %OS%`
+# Cross-OS notes: the guest is detected via `echo %OS%`
 # (Windows_NT on cmd.exe, the Windows OpenSSH default shell; literal "%OS%" on a
 # POSIX guest). On Windows the engine runs under Git Bash; staging streams a
 # plain tar over ssh stdin and the remote body is fed via stdin with vars
@@ -27,7 +26,7 @@
 # On Windows `python3` is the Microsoft Store stub (on PATH but emits no stdout),
 # so a working python is resolved by probing stdout, not `command -v`. A
 # bootstrap-floor Linux VM lacking python3 gets a best-effort `sudo apt-get`
-# install (scoped NOPASSWD drop-in, HIMMEL-492).
+# install.
 #
 # Usage:
 #   bash scripts/test-luna-upgrade-vm.sh [user@host] [port] [identity]
@@ -50,11 +49,11 @@
 set -uo pipefail
 
 # The default target is vm.mode's VM, not a hardcoded local one; vm.mode=none
-# SKIPs (HIMMEL-4583).
+# SKIPs.
 # shellcheck source=lib/vm-mode.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/lib/vm-mode.sh"
 # rc 1 = a configured none: SKIP (exit 3); rc 2 = a resolver error: a loud
-# config error (exit 2), never a SKIP (HIMMEL-4597, J1932 T2).
+# config error (exit 2), never a SKIP.
 vm_mode_e2e_guard "$(basename -- "$0")" || { vm_guard_rc=$?; [ "$vm_guard_rc" = 1 ] && exit 3; exit "$vm_guard_rc"; }
 HOSTSPEC="${1:-$VM_MODE_HOST}"
 PORT="${2:-$VM_MODE_PORT}"
@@ -99,7 +98,7 @@ echo "[detect] guest OS probe='$GUEST_OS' -> GUEST_WIN=$GUEST_WIN"
 
 # 1. stage the real template to $REMOTE_DIR (a Git-Bash path on both OSes). Every
 #    path applies the shared secret excludes (.env, .env.*, *.local.json) and the
-#    guest is asserted clean afterwards (HIMMEL-2540); the template's public
+#    guest is asserted clean afterwards; the template's public
 #    .env.example (template-owned, overwritten by the engine) is kept explicitly.
 # shellcheck source=lib/vm-guest-excludes.sh
 . "$REPO/scripts/lib/vm-guest-excludes.sh" \
@@ -109,7 +108,7 @@ while IFS= read -r _x; do RSYNC_SECRET_EXCL+=("$_x"); done < <(vm_guest_rsync_ex
 while IFS= read -r _x; do TAR_SECRET_EXCL+=("$_x"); done < <(vm_guest_tar_excludes)
 # The exclude list must be in force BEFORE any copy: with no errexit a failed load
 # would leave the arrays empty and the secrets already in the guest when the
-# post-copy assert fires (HIMMEL-2540).
+# post-copy assert fires.
 if [ "${#RSYNC_SECRET_EXCL[@]}" -eq 0 ] || [ "${#TAR_SECRET_EXCL[@]}" -eq 0 ]; then
   echo "==> REFUSING: the secret-exclusion list is empty; nothing was copied" >&2; exit 1
 fi
@@ -186,7 +185,7 @@ PYBIN="$(_have_py || true)"
 HAVE_PY=0; [ -n "$PYBIN" ] && HAVE_PY=1
 
 # On a bootstrap-floor Linux VM python3 may be absent; install best-effort via
-# the scoped NOPASSWD drop-in (HIMMEL-492). Windows has python; skip apt there.
+# the scoped NOPASSWD drop-in. Windows has python; skip apt there.
 if [ "$HAVE_PY" -ne 1 ] && [ "${WIN:-0}" != 1 ]; then
   echo "  [setup] no working python -- installing via sudo apt-get (HIMMEL-492 NOPASSWD) ..."
   sudo -n apt-get install -y python3 >/tmp/luna-upgrade-py.log 2>&1 \

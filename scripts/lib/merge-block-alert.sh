@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/merge-block-alert.sh — the ONE operator alert for "GitHub blocks
-# this merge" (HIMMEL-3381).
+# this merge".
 #
 # WHY: a merge/CI-watch path that GitHub blocks (a required check FAILED or never
 # reported, a required review outstanding, a ruleset refusing) used to end in a
@@ -29,7 +29,7 @@
 #
 # Under HIMMEL_TEST_FIXTURE=1 the DEFAULT sender refuses unless BRIDGE_ROOT names
 # a sandbox — a suite that reaches this by accident must not DM the operator
-# (same guard restart-bridge.sh carries, HIMMEL-2551). HIMMEL-3478: the console-
+# (same guard restart-bridge.sh carries). The console-
 # routing path (_mba_route_console) carries the same refusal, keyed on
 # MERGE_WATCH_ALERT_BRIDGE_ROOT/BRIDGE_ROOT — a fixture suite must not write
 # into a real console's live bridge inbox either.
@@ -48,7 +48,7 @@ _mba_operator_chat() {
 
 _mba_send() {
     local chat="$1" text="$2"
-    # One 30 s bound for the seam and the bun send alike (HIMMEL-4226); no GNU
+    # One 30 s bound for the seam and the bun send alike; no GNU
     # timeout (stock macOS) runs both unbounded.
     local tmo=""
     command -v timeout >/dev/null 2>&1 && tmo="timeout -k 5 ${MERGE_BLOCK_ALERT_TIMEOUT_SECS:-30}"
@@ -108,13 +108,13 @@ merge_block_alert() {
     esac
 }
 
-# HIMMEL-3430: merge_watch_alert — the alert for a MID-WORK check-ci red (this
+# merge_watch_alert — the alert for a MID-WORK check-ci red (this
 # leg's own CI watch, not an actual merge attempt). merge_block_alert above is
 # unchanged and still called directly by merge-on-green.sh/pr-merge.sh for a
 # genuinely refused merge, so those always DM the operator regardless of
 # console context.
 #
-# HIMMEL-4071: the console route below applies ONLY post-GO
+# The console route below applies ONLY post-GO
 # (MERGE_WATCH_POST_GO=1, set by merge-on-green.sh around its check-ci call). A
 # console-spawned leg's own pre-GO watch red prints the MERGE-BLOCKED line and
 # stops: the leg has the exit code and owns the fix, and nothing wakes the
@@ -122,7 +122,7 @@ merge_block_alert() {
 #
 # When this leg is console-spawned (console_leg(), from go-gate.sh) AND its
 # console's session name is known (HIMMEL_CONSOLE_NAME — exported into every
-# leg by the launcher since HIMMEL-3435), the alert is appended to that
+# leg by the launcher since the launcher gained that export), the alert is appended to that
 # console's own bridge inbox instead: the console is already watching the PR,
 # so an operator page mid-work is a false alarm. No console name, or the
 # console's inbox was never armed (routeToConsole's own rule in
@@ -150,7 +150,7 @@ _mba_console_inbox_path() {
     printf '%s/consoles/%s.md' "$root" "$name"
 }
 
-# HIMMEL-3440: append $2 (no trailing newline) to file $1 ONLY if it already
+# Append $2 (no trailing newline) to file $1 ONLY if it already
 # exists — an O_WRONLY|O_APPEND open with NO O_CREAT, so a route attempt
 # against an inbox deleted moments earlier can never recreate it (a separate
 # `[ -f ]` check followed by `>>` has a TOCTOU window: `>>` implies O_CREAT,
@@ -221,7 +221,7 @@ merge_watch_alert() {
     fi
 
     if console_leg; then
-        # HIMMEL-4071: a red on the leg's OWN pre-GO watch is the leg's to fix —
+        # A red on the leg's OWN pre-GO watch is the leg's to fix —
         # it already has check-ci's exit code, so neither the console inbox
         # (which wakes a full-context console) nor the operator is told.
         # merge-on-green.sh runs only after the console's GO and marks its

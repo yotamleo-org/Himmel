@@ -24,11 +24,11 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 # dir_is_empty <dir> — true (rc 0) iff <dir> has no entries, dotfiles
-# included, using only bash builtins/globs -- no `ls`. HIMMEL-2771 CR
+# included, using only bash builtins/globs -- no `ls`.
 # round-2: under the hermetic PATH built below, `ls` is NOT guaranteed
 # reachable -- scrub_path() drops a PATH directory WHOLESALE to remove a
 # named tool, and on a box where `ls` shares a directory with one of the
@@ -36,13 +36,13 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 # A missing `ls` makes `[ -z "$(ls -A "$dir")" ]` evaluate `[ -z "" ]` --
 # TRUE no matter what is actually in the directory, silently turning a
 # containment assertion into one that can never fail (already hit 3x per
-# scripts/lib/hermetic-path.sh: HIMMEL-2470/2520/2530). Without `nullglob`
+# scripts/lib/hermetic-path.sh:). Without `nullglob`
 # an unmatched glob stays literal, so an unmatched literal must still be
 # filtered out -- but `[ -e "$f" ]` ALONE follows a symlink to test its
 # TARGET, so a DANGLING symlink (an unmatched-glob false positive's exact
 # opposite: a real directory entry whose target does not exist) is `-e`
 # false and was silently skipped, reporting an occupied directory as empty
-# (HIMMEL-2771 CR round-6, codex-2, confirmed -- this is what let the
+# (this is what let the
 # round-5 cr2771r5-symlink-dangling control's whole subject, a dangling
 # symlink, slip past this assertion undetected). `[ -L "$f" ]` sees the
 # LINK ITSELF regardless of what it points at (or fails to), so an
@@ -74,11 +74,11 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 norm() { jq -rn --arg v "$1" '$v'; }
 
 work=$(mktemp -d)
-# HIMMEL-3332: adopt.sh records what it installs; keep every run out of the real
+# adopt.sh records what it installs; keep every run out of the real
 # ~/.himmel/provenance.jsonl (individual cases below pin their own ledger).
 export HIMMEL_PROVENANCE_DIR="$work/prov"
 
-# HIMMEL-842 CR round-2 (F1): scripts/jira/dist + scripts/jira/node_modules are
+# scripts/jira/dist + scripts/jira/node_modules are
 # gitignored build artifacts that MAY already exist in this checkout (a primary
 # checkout that has run adopt.sh/setup.sh before). build_jira_cli's "already
 # built" skip fires the instant either is present, which would make scenarios
@@ -98,7 +98,7 @@ if [ -e "$real_jira_node_modules" ]; then
   node_modules_backup="$work/node_modules-backup"
   mv "$real_jira_node_modules" "$node_modules_backup"
 fi
-# HIMMEL-839 CR round-2: the repo-.env-preserve scenario below temporarily
+# The repo-.env-preserve scenario below temporarily
 # writes a HANDOVER_DIR= line into THIS repo's real .env ($HIMMEL_ROOT is
 # resolved by adopt.sh from its own script path — not overridable via HOME —
 # so there is no fake-checkout stand-in for it). Declared here, set only at
@@ -123,7 +123,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Stub claude so adopt's install-plugins step is a no-op. `plugin list` must echo
-# the enabled plugin specs so install-plugins.sh's presence-verify (HIMMEL-361)
+# the enabled plugin specs so install-plugins.sh's presence-verify
 # passes offline — without it `set -e` aborts adopt at the first core install.
 mkdir -p "$work/bin"
 cat > "$work/bin/claude" <<STUB
@@ -140,11 +140,11 @@ chmod +x "$work/bin/claude"
 . "$repo_root/scripts/lib/hermetic-path.sh"
 
 # xargs: Arch co-locates node with coreutils in /usr/bin, so the toolchain
-# scrub drops it (same class as the HIMMEL-874 sed fix).
+# scrub drops it (same class as the sed fix).
 for _tool in bash git jq python3 grep sed cat cp mv rm ln mkdir chmod diff wc tr head tail basename dirname mktemp dd sort cut xargs; do
   link_hermetic_tool "$_tool"
 done
-# HIMMEL-3332: adopt.sh records what it installs; provenance.sh (and copy_recorded's
+# adopt.sh records what it installs; provenance.sh (and copy_recorded's
 # cmp) need these under the scrubbed PATH, or every record warns instead of writing.
 for _tool in date stat uname id awk cmp find; do
   link_hermetic_tool "$_tool"
@@ -157,7 +157,7 @@ if command -v sha256sum >/dev/null 2>&1; then link_hermetic_tool sha256sum; else
 # hermetic-path.sh regressed to an empty suffix, the writer would emit
 # extensionless stubs, the expectation below would ALSO go extensionless and
 # still match, and the rejection branch would be skipped by its own
-# [ -n ... ] guard. The test could then never fail (HIMMEL-1686 CR).
+# [ -n ... ] guard. The test could then never fail.
 case "$(uname -s 2>/dev/null || echo unknown)" in
   MINGW*|MSYS*|CYGWIN*|Windows_NT*) hermetic_suffix='.exe' ;;
   *)                                hermetic_suffix='' ;;
@@ -167,7 +167,7 @@ esac
 # [ -e "$work/bin/bash" ]. On MSYS/Git-Bash, test -e resolves bash -> bash.exe,
 # so the plain file test reports an extensionless stub that does not exist and
 # this check fires on every healthy Windows run. find matches real directory
-# entries and does not do the .exe fallback. (HIMMEL-1686 CR proposed the
+# entries and does not do the .exe fallback. A reviewer proposed the
 # [ -e ]/[ -L ] form on portability grounds; the premise is wrong -- BSD find
 # does support -maxdepth -- and the replacement breaks the suite on Windows.
 # Verified live: swapping it made the green baseline fail.)
@@ -175,7 +175,7 @@ if [ -n "$hermetic_suffix" ] && [ -n "$(find "$work/bin" -maxdepth 1 -name bash 
   fail "link_hermetic_tool self-test: extensionless bash stub was created on Windows"
 fi
 
-# ── HIMMEL-874 unit test: link_hermetic_tool's two failure-fallback branches ──
+# ── unit test: link_hermetic_tool's two failure-fallback branches ──
 # Force `ln -s` to fail deterministically (a stub `ln` fronting PATH — the
 # function calls bare `ln`, so it resolves via PATH) and assert both
 # fallbacks: the wrapper-script proxy (any non-bash tool, here jq) and the
@@ -196,7 +196,7 @@ PATH="$ut/stub:$PATH" link_hermetic_tool bash "$ut/bin"
 [ "$("$ut/bin/bash$hermetic_suffix" -c 'echo ok')" = "ok" ] || fail "link_hermetic_tool self-test: bash copy-fallback produced a non-working bash"
 echo "ok: link_hermetic_tool wrapper-fallback (jq) + bash copy-fallback verified under forced ln failure"
 
-# Hermeticity (HIMMEL-752 CR): scrub every dir carrying a real qmd, bun, npm,
+# Hermeticity: scrub every dir carrying a real qmd, bun, npm,
 # node, uv, or pipx from the suite-wide PATH. With bun absent, wire_qmd_core
 # takes its documented clean-skip branch, so NO test can fire a real
 # fix-qmd-stub (~/.claude mutation), a real `qmd pull` (~2.1 GB), or a real
@@ -204,7 +204,7 @@ echo "ok: link_hermetic_tool wrapper-fallback (jq) + bash copy-fallback verified
 # 10/11 re-add their own stubbed bun on top of this scrubbed base to exercise
 # the qmd path.
 #
-# HIMMEL-842: ALSO scrub npm dirs (node + npm share a bin dir, so this drops
+# ALSO scrub npm dirs (node + npm share a bin dir, so this drops
 # real node too). With npm AND bun both absent suite-wide, build_jira_cli takes
 # its "no npm or bun - skipping build" branch, so NO test fires a real
 # `npm install` in scripts/jira (network + repo mutation). Tests 14/15 re-add a
@@ -215,11 +215,11 @@ echo "ok: link_hermetic_tool wrapper-fallback (jq) + bash copy-fallback verified
 # also run over a synthetic PATH (self-test below) without touching the
 # suite's real PATH.
 #
-# The himmelctl wizard + shim suites appended at the bottom (HIMMEL-887 T10)
+# The himmelctl wizard + shim suites appended at the bottom
 # need a REAL node — they shell out to bin.js — so they cannot run under the
 # scrubbed PATH below. Capture the pre-scrub environment PATH here and pass it
 # to each of those suites explicitly.
-# HIMMEL-2771: pip bootstrap must stay offline while real Python still handles
+# pip bootstrap must stay offline while real Python still handles
 # the adopter's JSON/file operations.
 real_python3=$(command -v python3)
 rm -f "$work/bin/python3"
@@ -233,7 +233,7 @@ exec "$real_python3" "\$@"
 STUB
 chmod +x "$work/bin/python3"
 
-# HIMMEL-2892: wire-statusline.sh drops the hud config under
+# wire-statusline.sh drops the hud config under
 # ${CLAUDE_CONFIG_DIR:-$HOME/.claude}. Every case here already fakes HOME, but a
 # RUNNER that exports CLAUDE_CONFIG_DIR would win over that and take the drop to
 # their real config dir — pin it at a throwaway dir for the whole suite.
@@ -250,7 +250,7 @@ for _tool in qmd bun npm node uv pipx; do
   fi
 done
 
-# ── HIMMEL-874 self-test: co-located essential + scrubbed tool ──────────────
+# ── self-test: co-located essential + scrubbed tool ──────────────
 # Reproduce the stock-Ubuntu regression shape synthetically: a single dir
 # carrying BOTH a scrubbed tool (npm) and an essential one (sed) must be
 # dropped wholesale by scrub_path, and sed must still resolve afterward — via
@@ -287,7 +287,7 @@ HOME="$base_home" bash "$adopt" --profile core --scope project --target "$proj" 
 for f in scripts/hooks/block-edit-on-main.sh scripts/guardrails/lib.sh scripts/worktree.sh; do
   [ -f "$proj/$f" ] || fail "core/project did not copy $f"
 done
-# HIMMEL-4758: check-commit-msg.sh sources the resolver; a target without it fails closed.
+# check-commit-msg.sh sources the resolver; a target without it fails closed.
 [ -f "$proj/scripts/lib/project-mode.sh" ] || fail "core/project did not copy scripts/lib/project-mode.sh"
 s="$proj/.claude/settings.json"
 [ -f "$s" ] || fail "core/project did not write $s"
@@ -302,7 +302,7 @@ HOME="$base_home" bash "$adopt" --profile core --scope project --target "$proj" 
 diff -q "$work/before.json" "$s" >/dev/null || fail "core/project not idempotent"
 echo "ok: core/project idempotent on re-run"
 
-# ── 1c. HIMMEL-3309: --scope project must not write home rule files ─────────
+# ── 1c. --scope project must not write home rule files ─────────
 # wire_user_claude_md's two do_core() calls (~/.claude/CLAUDE.md, ~/.codex/
 # AGENTS.md) were unconditional in BOTH scopes -- the flag's name promises
 # project-only writes. $base_home already ran two project-scope installs
@@ -315,7 +315,7 @@ if [ -e "$base_home/.codex/AGENTS.md" ]; then
 fi
 echo "ok: core/project does not write ~/.claude/CLAUDE.md or ~/.codex/AGENTS.md (HIMMEL-3309)"
 
-# ── 1b. HIMMEL-2435: self-copy guard ─────────────────────────────────────────
+# ── 1b. self-copy guard ─────────────────────────────────────────
 # A brand-new adopter clones himmel and runs the installer FROM INSIDE that
 # clone (TARGET == HIMMEL_ROOT). do_core() mutates its TARGET, so this can't
 # be reproduced by pointing --target at the live checkout ($repo_root) --
@@ -327,8 +327,8 @@ echo "ok: core/project does not write ~/.claude/CLAUDE.md or ~/.codex/AGENTS.md 
 # against itself.
 fakeClone="$work/fake-himmel-clone"; mkdir -p "$fakeClone"
 # -P: copy tracked symlinks as symlinks. Without it GNU cp follows a symlink to
-# a directory (tier-return-configdir/projects, HIMMEL-2977), refuses it without
-# -r and exits 1 -- xargs reports that as rc=123 (HIMMEL-3201).
+# a directory, refuses it without
+# -r and exits 1 -- xargs reports that as rc=123.
 ( cd "$repo_root" && git ls-files -z ) | xargs -0 cp -P --parents -t "$fakeClone"
 [ -f "$fakeClone/scripts/adopt.sh" ] || fail "HIMMEL-2435 fixture: scripts/adopt.sh did not land in the fake clone"
 [ -L "$fakeClone/scripts/lanes/tests/fixtures/tier-return-configdir/projects" ] \
@@ -376,7 +376,7 @@ grepq "$outC2435" -i "already in place" \
   && fail "HIMMEL-2435 negative control: a genuinely different target should NOT print the self-copy skip note (got: $outC2435)"
 echo "ok: HIMMEL-2435 negative control a genuinely different --target still gets its portable core copied (the guard does not over-skip)"
 
-# ── 1e. HIMMEL-3326: the adoption page's worktree step must resolve in a
+# ── 1e. the adoption page's worktree step must resolve in a
 # --scope project install ────────────────────────────────────────────────────
 # A starter (--scope project) install ships scripts/worktree.sh + its
 # sourced lib/ closure but NO .claude/commands/worktree.md -- there is no
@@ -416,7 +416,7 @@ set -e
   || fail "HIMMEL-3326: bash scripts/worktree.sh feat/try-himmel did not create .claude/worktrees/feat+try-himmel: $out1e"
 echo "ok: HIMMEL-3326 the adoption page's starter-trail worktree step (bash scripts/worktree.sh) resolves and works in a real --scope project install"
 
-# ── 1f. HIMMEL-3303 item (b): machine-level footprint block ─────────────────
+# ── 1f. machine-level footprint block ─────────────────
 # Printed BEFORE any install step, naming the paths that stay shared/machine-
 # level regardless of --scope (qmd models, bun, claude-hud config,
 # workspace-trust entry, plugin content cache + ledger).
@@ -439,7 +439,7 @@ grepq "$out1f" "installed_plugins.json" \
   || fail "HIMMEL-3303 (b): footprint block missing the plugin install ledger"
 echo "ok: HIMMEL-3303 (b) --scope project prints the machine-level footprint block before installing"
 
-# J1274O F1: himmel's own state dir (ledger, backups of overwritten user files,
+# F1: himmel's own state dir (ledger, backups of overwritten user files,
 # the uninstall bundle) is machine-level too; qmd-fork lives there when bun is present.
 grepq "$out1f" "$HIMMEL_PROVENANCE_DIR" \
   || fail "HIMMEL-3303 F1: footprint block does not name the himmel state dir ($HIMMEL_PROVENANCE_DIR)"
@@ -447,7 +447,7 @@ grepq "$out1f" "backups" \
   || fail "HIMMEL-3303 F1: footprint block does not say the state dir holds the backups of overwritten files"
 grepq "$out1f" "qmd-fork" \
   && fail "HIMMEL-3303 F1: footprint block names qmd-fork although bun is absent"
-# J1274O F3: a bare adopt.sh never writes ~/.claude.json (applyWorkspaceTrust is himmelctl-only)
+# F3: a bare adopt.sh never writes ~/.claude.json (applyWorkspaceTrust is himmelctl-only)
 grepq "$out1f" "workspace-trust.*himmelctl" \
   || fail "HIMMEL-3303 F3: the workspace-trust line does not say it is himmelctl-only (a bare adopt.sh never writes it)"
 bun1f="$work/bun1f"; mkdir -p "$bun1f"
@@ -457,7 +457,7 @@ grepq "$out1fb" "qmd-fork" \
   || fail "HIMMEL-3303 F1: with bun present the footprint block does not name qmd-fork"
 echo "ok: HIMMEL-3303 F1/F3 footprint names the himmel state dir (+ qmd-fork with bun) and words the trust line accurately"
 
-# J1274R R1: a --scope project marketplace add still clones into the machine-
+# R1: a --scope project marketplace add still clones into the machine-
 # wide marketplaces dir and registers in the global known_marketplaces.json.
 grepq "$out1f" "plugins/marketplaces" \
   || fail "HIMMEL-3303 R1: footprint block does not name the marketplace clones dir"
@@ -465,13 +465,13 @@ grepq "$out1f" "known_marketplaces.json" \
   || fail "HIMMEL-3303 R1: footprint block does not name the global marketplace registry"
 echo "ok: HIMMEL-3303 R1 footprint names the marketplace clones dir and the global registry"
 
-# J1274S S1: with bun present, a bare adopt registers the clone as a qmd
+# S1: with bun present, a bare adopt registers the clone as a qmd
 # collection in the machine-wide qmd config, not just the fork clone dir.
 grepq "$out1fb" "qmd/index.yml" \
   || fail "HIMMEL-3303 S1: with bun present the footprint block does not name the qmd collection registry (qmd/index.yml)"
 echo "ok: HIMMEL-3303 S1 footprint names the qmd collection registry when bun is present"
 
-# ── 1g. HIMMEL-3303 item (4): bare adopt.sh leaves a standalone uninstaller ──
+# ── 1g. bare adopt.sh leaves a standalone uninstaller ──
 # scripts/himmelctl/bin.js's PATH-shim step already writes this bundle
 # (bin.js:4847) so `uninstall` survives deleting the clone -- but only inside
 # the himmelctl wizard flow. A bare (non-himmelctl) `adopt.sh` run must
@@ -514,7 +514,7 @@ grepq "$out1g" "the fallback still works" \
   || fail "HIMMEL-3303 (4): adopt.sh did not print the delete-the-clone fallback line"
 grepq "$out1g" "$prov1g/uninstall/standalone.js uninstall" \
   || fail "HIMMEL-3303 (4): the printed fallback command does not point at the standalone bundle"
-# J1274O F2: the uninstaller is cwd-scoped -- the printed line must say where to run it
+# F2: the uninstaller is cwd-scoped -- the printed line must say where to run it
 grepq "$out1g" "run from the adopted project directory.*$proj1g" \
   || fail "HIMMEL-3303 F2: the printed uninstall line does not say to run it from the adopted project directory ($proj1g)"
 echo "ok: HIMMEL-3303 (4) a bare adopt.sh run writes the same standalone uninstall bundle himmelctl's PATH-shim step builds"
@@ -543,7 +543,7 @@ esac
 [ ! -d "$work/ignored/scripts" ] || fail "core/user must NOT copy scripts into a repo"
 echo "ok: core/user wires ~/.claude to himmel abs path, copies no scripts"
 
-# ── 3b. HIMMEL-3309 control: --scope user still writes the home rule files ──
+# ── 3b. control: --scope user still writes the home rule files ──
 # Negative control for 1c: the same wire_user_claude_md calls must still fire
 # under --scope user, or a guard that over-skips (e.g. unconditionally
 # disabled) would also pass 1c.
@@ -560,12 +560,12 @@ echo "ok: core/user still writes ~/.claude/CLAUDE.md + ~/.codex/AGENTS.md (HIMME
 vault="$work/vault"
 HOME="$base_home" bash "$adopt" --profile luna --target "$vault" >/dev/null
 [ -f "$vault/README.md" ] || fail "luna profile did not scaffold the vault (README.md missing)"
-# F1 (HIMMEL-458): project scope wires LUNA_VAULT_PATH into $TARGET/.claude.
+# F1: project scope wires LUNA_VAULT_PATH into $TARGET/.claude.
 lv=$(jq -r '.env.LUNA_VAULT_PATH' "$vault/.claude/settings.json" 2>/dev/null)
 [ "$lv" = "$(norm "$vault")" ] || fail "luna/project did not persist LUNA_VAULT_PATH ([$lv] != [$(norm "$vault")])"
 echo "ok: luna scaffolds the vault + persists LUNA_VAULT_PATH (project scope)"
 
-# HIMMEL-839: luna profile also seeds HANDOVER_DIR at <vault>/handovers so a
+# luna profile also seeds HANDOVER_DIR at <vault>/handovers so a
 # fresh adopter's handover state doesn't silently default to the inline
 # <repo-root>/handovers stub.
 hd=$(jq -r '.env.HANDOVER_DIR' "$vault/.claude/settings.json" 2>/dev/null)
@@ -573,7 +573,7 @@ hd=$(jq -r '.env.HANDOVER_DIR' "$vault/.claude/settings.json" 2>/dev/null)
 [ -d "$vault/handovers" ] || fail "luna/project did not create <vault>/handovers"
 echo "ok: luna scaffolds the vault + persists HANDOVER_DIR (project scope)"
 
-# ── 4b. HIMMEL-839 CR round-2: PRESERVE an existing settings.json HANDOVER_DIR ──
+# ── 4b. PRESERVE an existing settings.json HANDOVER_DIR ──
 # A routine re-adopt must reproduce state, never silently reset an
 # operator-selected root (own settings.json env.HANDOVER_DIR from a prior
 # /handover-setup or adopt run).
@@ -586,7 +586,7 @@ hd=$(jq -r '.env.HANDOVER_DIR' "$preserve_target/.claude/settings.json" 2>/dev/n
 grepq "$out" 'leaving it' || fail "HIMMEL-839 preserve: missing the leaving-it message (got: $out)"
 echo "ok: HIMMEL-839 preserves an existing settings.json env.HANDOVER_DIR (re-adopt reproduces, not resets)"
 
-# ── 4c. HIMMEL-839 CR round-2: PRESERVE an existing repo .env HANDOVER_DIR ──
+# ── 4c. PRESERVE an existing repo .env HANDOVER_DIR ──
 # The other place HANDOVER_DIR can already live: the primary checkout's own
 # .env (set-handover-dir.sh / Mode B — what /handover-setup actually writes).
 # settings.json env takes PROCESS-ENV precedence over .env, so writing it here
@@ -607,7 +607,7 @@ hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$preserve_target2/.claude/settings.j
 grepq "$out" 'via /handover-setup' || fail "HIMMEL-839 preserve: missing the .env-preserve message (got: $out)"
 echo "ok: HIMMEL-839 preserves an existing repo .env HANDOVER_DIR (does not shadow it via settings.json)"
 
-# ── 4d. HIMMEL-839 CR round-2: canonicalize a relative --luna-target ────────
+# ── 4d. canonicalize a relative --luna-target ────────
 # A relative --luna-target must not persist a CWD-dependent relative path.
 relhome="$work/relhome"; mkdir -p "$relhome"
 relbase="$work/relbase"; mkdir -p "$relbase"
@@ -619,8 +619,8 @@ expected_rel="$(norm "$relbase/rel-vault/handovers")"
 case "$hd" in /*|[A-Za-z]:/*) : ;; *) fail "HIMMEL-839 canonicalize: HANDOVER_DIR is not absolute: $hd" ;; esac
 echo "ok: HIMMEL-839 canonicalizes a relative --luna-target to an absolute HANDOVER_DIR"
 
-# ── 4e. HIMMEL-2466: handover.mode=inline must NOT wire HANDOVER_DIR ────────
-# Default (no --handover-mode) preserves today's HIMMEL-839 behaviour (cases
+# ── 4e. handover.mode=inline must NOT wire HANDOVER_DIR ────────
+# Default (no --handover-mode) preserves today's behaviour (cases
 # 4/4b/4c/4d above); --handover-mode inline is the new no-op path.
 inline_vault="$work/inline-vault"
 inline_target="$work/inline-target"; mkdir -p "$inline_target"
@@ -630,7 +630,7 @@ hd=$(jq -r '.env.HANDOVER_DIR // "ABSENT"' "$inline_target/.claude/settings.json
 [ -d "$inline_vault/handovers" ] && fail "HIMMEL-2466: handover.mode=inline must not create <vault>/handovers"
 echo "ok: HIMMEL-2466 handover.mode=inline leaves settings.json without env.HANDOVER_DIR"
 
-# ── 4f. HIMMEL-2466 control: --handover-mode external is still today's behaviour ──
+# ── 4f. control: --handover-mode external is still today's behaviour ──
 external_vault="$work/external-vault"
 external_target="$work/external-target"; mkdir -p "$external_target"
 HOME="$base_home" bash "$adopt" --profile luna --target "$external_target" --luna-target "$external_vault" --handover-mode external >/dev/null
@@ -644,10 +644,10 @@ HOME="$base_home" bash "$adopt" --profile all --scope project --target "$allrepo
 [ -f "$allrepo/scripts/worktree.sh" ] || fail "all: core did not land in --target"
 [ -f "$allvault/README.md" ] || fail "all: vault did not land in --luna-target"
 [ ! -f "$allrepo/README.md" ] || fail "all: vault scaffold leaked into the core --target"
-# F1 (HIMMEL-458): project scope wires LUNA_VAULT_PATH=$allvault into $allrepo/.claude.
+# F1: project scope wires LUNA_VAULT_PATH=$allvault into $allrepo/.claude.
 lv=$(jq -r '.env.LUNA_VAULT_PATH' "$allrepo/.claude/settings.json" 2>/dev/null)
 [ "$lv" = "$(norm "$allvault")" ] || fail "all/project did not persist LUNA_VAULT_PATH ([$lv] != [$(norm "$allvault")])"
-# HIMMEL-839: same for HANDOVER_DIR=$allvault/handovers — this is the exact
+# same for HANDOVER_DIR=$allvault/handovers — this is the exact
 # --profile all repro shape from the ticket (VM adopter needed HANDOVER_DIR
 # set manually; adopt.sh should seed it).
 hd=$(jq -r '.env.HANDOVER_DIR' "$allrepo/.claude/settings.json" 2>/dev/null)
@@ -659,14 +659,14 @@ HOME="$home" bash "$adopt" --profile core --scope user --target "$work/ignored" 
 [ "$(jq '.hooks.PreToolUse | length' "$us")" = "3" ] || fail "core/user not idempotent on re-run"
 echo "ok: core/user idempotent on re-run"
 
-# ── 8. F1 (HIMMEL-458): user-scope persists LUNA_VAULT_PATH to ~/.claude ──────
+# ── 8. F1: user-scope persists LUNA_VAULT_PATH to ~/.claude ──────
 # 8a. F1-SC1(a): all/user --luna-target -> env.LUNA_VAULT_PATH in ~/.claude.
 fh="$work/f1a-home"; mkdir -p "$fh"; fv="$work/f1a-vault"
 HOME="$fh" bash "$adopt" --profile all --scope user --target "$work/ign-a" --luna-target "$fv" >/dev/null
 got=$(jq -r '.env.LUNA_VAULT_PATH' "$fh/.claude/settings.json")
 [ "$got" = "$(norm "$fv")" ] || fail "F1-SC1(a) all/user: LUNA_VAULT_PATH=[$got] != [$(norm "$fv")]"
 echo "ok: F1-SC1(a) all/user --luna-target persists LUNA_VAULT_PATH"
-# HIMMEL-839: this is the literal ticket repro shape (`adopt.sh --profile all
+# this is the literal ticket repro shape (`adopt.sh --profile all
 # --scope user --luna-target ...`) — HANDOVER_DIR must land in ~/.claude too.
 got=$(jq -r '.env.HANDOVER_DIR' "$fh/.claude/settings.json")
 [ "$got" = "$(norm "$fv/handovers")" ] || fail "HIMMEL-839 all/user: HANDOVER_DIR=[$got] != [$(norm "$fv/handovers")]"
@@ -710,7 +710,7 @@ aa=$(jq -r '.hooks.PreToolUse[].hooks[].command | select(test("auto-approve-safe
 [ "$(printf '%s\n' "$aa" | wc -l)" = "1" ] || fail "hookpath: expected exactly ONE auto-approve entry (got: $aa)"
 # shellcheck disable=SC1003  # '\' is a literal-backslash glob pattern, not a quote escape
 case "$aa" in *'\'*) fail "hookpath: auto-approve command still contains a backslash: $aa" ;; esac
-# HIMMEL-3574: the wired command now guards a missing script (if [ -f ]; then
+# the wired command now guards a missing script (if [ -f ]; then
 # bash "..."; else warn+exit 0; fi) instead of a bare bash "...", so the
 # forward-slash+quoted check matches that shape.
 case "$aa" in 'if [ -f "'*'/scripts/hooks/auto-approve-safe-bash.sh" ]; then bash "'*'/scripts/hooks/auto-approve-safe-bash.sh"; else echo "himmel: hook script missing ('*'/scripts/hooks/auto-approve-safe-bash.sh) -- re-run the install (himmelctl install) or unwire it (himmelctl uninstall)" >&2; exit 0; fi') : ;; *) fail "hookpath: auto-approve not forward-slash+quoted: $aa" ;; esac
@@ -734,7 +734,7 @@ jq -e '.hooks.PreToolUse[].hooks[].command | select(test("rtk-hook-guard"))' "$s
   || fail "hookpath(nested): expected exactly one auto-approve after re-wire"
 echo "ok: co-located non-himmel hook survives re-wire (hook-object granularity)"
 
-# ── 10. HIMMEL-752 qmd wiring: --dry-run emits the qmd step DRY lines ───────
+# ── 10. qmd wiring: --dry-run emits the qmd step DRY lines ───────
 # Force has_qmd=false deterministically: fake HOME (no ~/.bun/.../qmd.js) on the
 # suite-wide qmd/bun-scrubbed PATH (computed at the top), so wire_qmd_core
 # reaches its install/register steps even on a dev box that has a real qmd
@@ -748,7 +748,7 @@ exit 0
 STUB
 chmod +x "$qbin/bun"
 qhome="$work/qhome"; mkdir -p "$qhome"
-# --with-graphify rides this dry-run (HIMMEL-891 CR-5b): opted-in + --dry-run
+# --with-graphify rides this dry-run: opted-in + --dry-run
 # must emit the graphify DRY line (and nothing real — dry-run never installs).
 set +e
 out=$(PATH="$qbin:$work/bin:$qmd_free_path" HOME="$qhome" bash "$adopt" \
@@ -760,21 +760,21 @@ grepq "$out" 'DRY: qmd_install'      || fail "dry-run missing qmd_install DRY li
 grepq "$out" 'DRY: qmd pull'         || fail "dry-run missing qmd pull DRY line"
 grepq "$out" 'DRY: qmd_register_collection .* himmel$' || fail "dry-run missing himmel register DRY line"
 grepq "$out" 'DRY: qmd_register_collection .* luna$'   || fail "dry-run missing luna register DRY line"
-# HIMMEL-839: dry-run must also report the HANDOVER_DIR seed step (no mkdir,
+# dry-run must also report the HANDOVER_DIR seed step (no mkdir,
 # no settings.json write — mirrors the mkdir-then-wire pair as DRY lines).
 grepq "$out" 'DRY: mkdir -p .*/qvault/handovers$' || fail "dry-run missing HANDOVER_DIR mkdir DRY line"
 grepq "$out" 'DRY: wire env.HANDOVER_DIR' || fail "dry-run missing HANDOVER_DIR wire DRY line"
 grepq "$out" 'Wiring graphify (opt-in' || fail "dry-run --with-graphify missing the graphify wiring banner"
 grepq "$out" 'DRY: graphify_install'   || fail "dry-run --with-graphify missing graphify_install DRY line"
-# HIMMEL-1047: --with-graphify also registers the MCP server at the adopt scope
+# --with-graphify also registers the MCP server at the adopt scope
 # (here --scope user), so the dry-run must emit the mcp-add DRY line.
 grepq "$out" 'DRY: claude mcp add -s user graphify' || fail "dry-run --with-graphify missing the graphify MCP registration DRY line"
-# HIMMEL-842 gap 3: build_jira_cli runs after install_plugins; with npm scrubbed
+# gap 3: build_jira_cli runs after install_plugins; with npm scrubbed
 # suite-wide and bun stubbed present, it picks bun and emits its DRY build line.
 grepq "$out" 'DRY:.*(cd scripts/jira && bun install && bun run build)' || fail "dry-run missing build_jira_cli DRY line"
 echo "ok: dry-run emits all qmd step DRY lines (core G1/G3/G4 + luna G5) + build_jira_cli + graphify opt-in DRY"
 
-# ── 11. HIMMEL-877 qmd WARN-not-fail: a failing qmd install never aborts adopt
+# ── 11. qmd WARN-not-fail: a failing qmd install never aborts adopt
 # bun present (stubbed) + a `git` stub that fails on `clone` + has_qmd=false
 # (scrubbed PATH, fake HOME) -> qmd_install is invoked, the fork clone fails,
 # and wire_qmd_core WARNs, but adopt still exits 0 (qmd is best-effort). The
@@ -792,9 +792,9 @@ cat > "$fbin/git" <<'STUB'
 exit 0
 STUB
 chmod +x "$fbin/git"
-# Argv-logging uv stub (HIMMEL-891 CR-5a): this run passes NO --with-graphify,
+# Argv-logging uv stub: this run passes NO --with-graphify,
 # so graphify must stay completely un-wired — the stub's log proves no
-# `uv tool install` ever fires on a default core adopt (the HIMMEL-621
+# `uv tool install` ever fires on a default core adopt (the
 # open-verdict contract: opt-in only, never default).
 cat > "$fbin/uv" <<STUB
 #!/usr/bin/env bash
@@ -812,7 +812,7 @@ set -e
 grepq "$out" 'Installing qmd fork' || fail "qmd_install not invoked (call order)"
 grepq "$out" -E 'WARNING.*qmd install failed' || fail "missing qmd install WARNING (WARN-not-fail)"
 echo "ok: qmd install failure WARNs and adopt continues (WARN-not-fail, rc=0)"
-# HIMMEL-891 CR-5a: graphify default-OFF, behaviorally asserted on the run above.
+# graphify default-OFF, behaviorally asserted on the run above.
 if grepq "$out" 'Wiring graphify'; then
   fail "default core adopt (no --with-graphify) ran the graphify wiring (opt-in regression)"
 fi
@@ -821,7 +821,7 @@ if grep -q 'tool install' "$work/uv-calls-11"; then
 fi
 echo "ok: graphify stays un-wired on a default core adopt (opt-in only, zero uv installs)"
 
-# ── 11b. HIMMEL-877 CR codex-adv-1: an existing UPSTREAM install MIGRATES ────
+# ── 11b. an existing UPSTREAM install MIGRATES ────
 # A real @tobilu/qmd directory at the bun-global path + a working stubbed bun
 # make has_qmd TRUE -- the exact population the fork change repairs. The
 # install gate is qmd_fork_served (not presence), so adopt must still run
@@ -841,10 +841,10 @@ STUB
 chmod +x "$mbin/bun"
 # The stub answers the pin check with the pin adopt.sh will actually check:
 # the ambient QMD_FORK_REF override when one is set (the same precedence
-# _qmd_fork_ref uses, and the shape HIMMEL-2452's own positive control ran),
+# _qmd_fork_ref uses, and the shape an earlier change's own positive control ran),
 # otherwise the compiled-in default read out of qmd-bin.sh. A hardcoded copy
 # drifts on the next pin bump and silently fails this case before it reaches
-# the migration branch it asserts on (HIMMEL-2452).
+# the migration branch it asserts on.
 QMD_STUB_HEAD_SHA="${QMD_FORK_REF:-$(sed -n 's/.*QMD_FORK_REF:-\([0-9a-f]\{40\}\).*/\1/p' \
   "$repo_root/scripts/lib/qmd-bin.sh" | head -1)}"
 [ -n "$QMD_STUB_HEAD_SHA" ] \
@@ -854,15 +854,15 @@ cat > "$mbin/git" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1" = "-C" ]; then shift 2; fi
 case "$1" in
-  # HIMMEL-911 replaced `git clone` with init+fetch-by-sha+checkout, so the
+  # replaced `git clone` with init+fetch-by-sha+checkout, so the
   # stub must materialize the dir on `init` (clone kept for back-compat) and
   # answer the belt-and-braces `rev-parse HEAD` with the pinned fork SHA --
   # otherwise install refuses before the migration ("moving aside") branch
-  # this case exercises ever runs (HIMMEL-934).
+  # this case exercises ever runs.
   clone|init) target="${!#}"; mkdir -p "$target/.git"; exit 0 ;;
   # Only the exact `rev-parse HEAD` query the pin check performs gets the
   # SHA; other rev-parse forms keep the silent-success default (coderabbit
-  # finding, HIMMEL-934 CR round).
+  # finding).
   rev-parse) [ "${2:-}" = "HEAD" ] && echo "${QMD_STUB_HEAD_SHA:-}"; exit 0 ;;
   *) exit 0 ;;
 esac
@@ -886,7 +886,7 @@ grepq "$out" 'moving aside' || fail "upstream dir was not moved aside"
   || fail "global path does not serve the fork after migration"
 echo "ok: existing upstream install migrates to the fork (backup + link, not skipped)"
 
-# ── 12. HIMMEL-842 gap 2: node-without-npm + no JS package manager -> HARD fail ──
+# ── 12. node-without-npm + no JS package manager -> HARD fail ──
 # Stub node on PATH but provide NO npm; bun is already absent suite-wide, so the
 # node-without-npm check finds no JS package manager and adopt must exit non-zero
 # with the bun.sh + NodeSource install hints. npm dirs are scrubbed from the
@@ -916,7 +916,7 @@ grepq "$out" 'bun.sh' || fail "node-without-npm msg missing bun.sh hint"
 grepq "$out" -i 'nodesource' || fail "node-without-npm msg missing nodesource hint"
 echo "ok: node-without-npm + no JS package manager -> hard fail (rc=$rc) + install hints"
 
-# ── 13. HIMMEL-842 gap 2: node-without-npm WITH bun -> soft warn, adopt proceeds ─
+# ── 13. node-without-npm WITH bun -> soft warn, adopt proceeds ─
 # bun covers every himmel JS build, so node-without-npm is only a SOFT warn when
 # bun is present (no hard fail). --dry-run keeps the run side-effect-free.
 nbin2="$work/nbin2"; mkdir -p "$nbin2"
@@ -934,7 +934,7 @@ if grepq "$out" 'no JS package manager'; then
 fi
 echo "ok: node-without-npm + bun present -> soft warn, adopt proceeds (rc=0)"
 
-# ── 14. HIMMEL-842 gap 3: build_jira_cli success path (stub npm exit 0) ───────
+# ── 14. build_jira_cli success path (stub npm exit 0) ───────
 # npm scrubbed suite-wide; re-add a stub npm (exit 0) so build_jira_cli picks npm,
 # the (cd scripts/jira && npm install && npm run build) subshell "succeeds", and
 # adopt reports the build + continues. dist/index.js is not actually created by
@@ -954,7 +954,7 @@ if grepq "$out" 'jira CLI build failed'; then
 fi
 echo "ok: build_jira_cli success path (stub npm) reports built, adopt exits 0"
 
-# ── 15. HIMMEL-842 gap 3: build_jira_cli WARN-not-fail (stub npm exit 1) ──────
+# ── 15. build_jira_cli WARN-not-fail (stub npm exit 1) ──────
 # A failing build must WARN with the manual command and return 0 — matches
 # wire_qmd_core's contract; a broken jira build never aborts adopt.
 bfbin="$work/bfbin"; mkdir -p "$bfbin"
@@ -969,7 +969,7 @@ grepq "$out" -E 'WARNING.*jira CLI build failed' || fail "build_jira_cli: missin
 grepq "$out" 'npm install && npm run build'     || fail "build_jira_cli: missing manual command in WARNING"
 echo "ok: build_jira_cli failure WARNs with manual command, adopt continues (rc=0)"
 
-# ── 16. HIMMEL-842 gap 3: build_jira_cli skip when no JS package manager ──────
+# ── 16. build_jira_cli skip when no JS package manager ──────
 # npm AND bun both absent (the scrubbed suite base) -> build_jira_cli skips with
 # the manual command and never attempts a build. A real run, not --dry-run, so
 # the skip branch (not the DRY branch) is exercised.
@@ -985,7 +985,7 @@ if grepq "$out" 'Building jira CLI'; then
 fi
 echo "ok: build_jira_cli skips (no npm/bun) with manual command, no build attempted"
 
-# ── 17. HIMMEL-842 gap 3: build_jira_cli idempotent when dist AND node_modules
+# ── 17. build_jira_cli idempotent when dist AND node_modules
 # already built (F3: the skip now requires BOTH halves present) ─────────────
 # The suite-wide move-aside at the top guarantees scripts/jira/dist and
 # scripts/jira/node_modules are both absent entering this scenario; create
@@ -1007,7 +1007,7 @@ if grepq "$out" 'Building jira CLI'; then
 fi
 echo "ok: build_jira_cli idempotent when dist/index.js + node_modules already present (skips build)"
 
-# ── 18. HIMMEL-842 gap 3 (F3): dist present but node_modules ABSENT -> build
+# ── 18. dist present but node_modules ABSENT -> build
 # must NOT skip ────────────────────────────────────────────────────────────
 # A stale dist/ without node_modules/ previously passed as "already built"
 # then failed at runtime — F3's fix requires BOTH halves present to skip.
@@ -1026,7 +1026,7 @@ if grepq "$out" 'jira CLI dist already built'; then
 fi
 echo "ok: build_jira_cli builds when dist present but node_modules absent (F3 invariant)"
 
-# ── 19. HIMMEL-842 gap 3 (F5): build_jira_cli bun branch, REAL invocation ────
+# ── 19. build_jira_cli bun branch, REAL invocation ────
 # npm absent (suite-wide scrub), bun stubbed; assert the bun install/build
 # lines actually ran (success path is enough per F5) — the bun branch was
 # previously only exercised via --dry-run (scenario 10).
@@ -1051,7 +1051,7 @@ grepq "$out" 'BUN_BUILD_STUB_RAN'   || fail "build_jira_cli bun real-invocation:
 grepq "$out" 'jira CLI built' || fail "build_jira_cli bun real-invocation: missing success message"
 echo "ok: build_jira_cli bun branch real-invocation runs install + build (F5)"
 
-# ── 19b. HIMMEL-2441: install_precommit_hooks places the git gate hooks ──────
+# ── 19b. install_precommit_hooks places the git gate hooks ──────
 # A stub `pre-commit` in a dedicated $pcbin dir (put FIRST on PATH, ahead of
 # any real pre-commit the dev box might have installed via pipx/uv outside
 # the qmd/bun/npm/node/uv/pipx scrub list) logs its argv to a file and exits
@@ -1064,7 +1064,7 @@ pcbin="$work/pcbin"; mkdir -p "$pcbin"
 pchome="$work/pchome"; mkdir -p "$pchome"
 
 # default: no --skip-hooks, and the target carries its OWN
-# .pre-commit-config.yaml (HIMMEL-3306: without one adopt places the native
+# .pre-commit-config.yaml (without one adopt places the native
 # gates instead -- see 19d) -> pre-commit install runs against $TARGET with
 # all 3 hook types, adopt reports success, rc=0, the config is left untouched.
 cat > "$pcbin/pre-commit" <<STUB
@@ -1091,7 +1091,7 @@ grepq "$out" 'git hooks installed (pre-commit, commit-msg, pre-push).' \
   || fail "HIMMEL-2441 default: missing the git-hooks-installed message (got: $out)"
 echo "ok: HIMMEL-2441 default adopt wires pre-commit/commit-msg/pre-push hooks into \$TARGET"
 
-# HIMMEL-2771: collect all five controls so the first missing fallback does
+# collect all five controls so the first missing fallback does
 # not hide the behavioural failure. Each subshell retains the fail idiom.
 native_failures=0
 native_free_path=$(scrub_path "$qmd_free_path" pre-commit uv pipx)
@@ -1109,7 +1109,7 @@ for native_case in missing framework pep668 unwritable behaviour; do
       npath="$pcbin:$npath"
       : > "$work/pre-commit.argv"
     fi
-    # HIMMEL-3306: pre-commit is only attempted for an adopter with a config of
+    # pre-commit is only attempted for an adopter with a config of
     # their own, so the framework case and both bootstrap-failure fallbacks
     # need one to reach it at all (the no-config path is 19d).
     case "$native_case" in
@@ -1160,7 +1160,7 @@ STUB
         [ "$nrc" -ne 0 ] || fail "HIMMEL-2771 unwritable: adopt exited 0 with no gates"
         grepq "$nout" 'git gate hooks — FAILED (native:' \
           || fail "HIMMEL-2771 unwritable: failure summary absent"
-        # HIMMEL-2814: $ntarget is the PRIMARY checkout with core.hooksPath
+        # $ntarget is the PRIMARY checkout with core.hooksPath
         # unset, so the fallback payload copy (now always attempted for
         # Git's own shared per-repository hooks dir, per the gap-1 fix) is
         # the FIRST write into the unwritable hooks dir and fails before the
@@ -1197,7 +1197,7 @@ STUB
 done
 [ "$native_failures" -eq 0 ] || fail "HIMMEL-2771 controls: $native_failures failed, $((5 - native_failures)) passed"
 
-# ── 19d. HIMMEL-3306: no config of the adopter's own => the gates must GATE ──
+# ── 19d. no config of the adopter's own => the gates must GATE ──
 # The framework stubs skip ("config file not found") on every commit and push
 # when the target has no .pre-commit-config.yaml, so adopt must place the native
 # gates even though a working `pre-commit` is on PATH -- the recommended path
@@ -1289,14 +1289,14 @@ PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" --profile
   || fail "HIMMEL-3306 skip-hooks: --skip-hooks still ran pre-commit"
 echo "ok: HIMMEL-3306 --skip-hooks still places nothing"
 
-# HIMMEL-2771: exercise the remaining bootstrap exits and Git's configured
+# exercise the remaining bootstrap exits and Git's configured
 # hooks directory. User scope must also carry its own native gate payloads.
 for fallback_case in uv-fails pipx-fails unresolved user-hooks-path skip; do
   ntarget="$work/fallback-$fallback_case"; nbin="$work/fallback-bin-$fallback_case"
   mkdir -p "$ntarget" "$nbin"
   HOME="$pchome" git -C "$ntarget" init -q
   nscope=project; hook_dir="$ntarget/.git/hooks"; extra_flag=""
-  # HIMMEL-3306: the installer-failure fallbacks only run for a target with its own config.
+  # the installer-failure fallbacks only run for a target with its own config.
   printf 'repos: []\n' > "$ntarget/.pre-commit-config.yaml"
   case "$fallback_case" in
     uv-fails|pipx-fails|unresolved)
@@ -1327,7 +1327,7 @@ for fallback_case in uv-fails pipx-fails unresolved user-hooks-path skip; do
   echo "ok: HIMMEL-2771 $fallback_case"
 done
 
-# HIMMEL-2771 CR round-1 (Important, confirmed): install_native_hooks() must
+# install_native_hooks() must
 # not clobber a pre-existing hand-written hook, must stay idempotent about
 # its OWN generated hooks, and must refuse an absolute/shared core.hooksPath
 # rather than write dispatcher hooks into it (they resolve $(git rev-parse
@@ -1400,7 +1400,7 @@ grepq "$out" 'git gate hooks — FAILED (native:' \
   || fail "HIMMEL-2771 CR hookspath-outside: missing the FAILED summary line"
 grepq "$out" 'core.hooksPath' \
   || fail "HIMMEL-2771 CR hookspath-outside: FAILED line does not name core.hooksPath"
-# HIMMEL-2771: pure-shell -- `ls` is not guaranteed reachable under the hermetic PATH here (see dir_is_empty above).
+# pure-shell -- `ls` is not guaranteed reachable under the hermetic PATH here (see dir_is_empty above).
 dir_is_empty "$croutside3" \
   || fail "HIMMEL-2771 CR hookspath-outside: a hook was written into the outside hooksPath dir"
 echo "ok: HIMMEL-2771 CR hookspath-outside refuses to write into a shared/absolute hooksPath"
@@ -1448,7 +1448,7 @@ grepq "$(cat "$crrelbase/reltarget/.git/hooks/commit-msg")" 'HIMMEL-2771: native
   || fail "HIMMEL-2771 CR relative-target: hook is not the native gate"
 echo "ok: HIMMEL-2771 CR relative-target still places the native gate"
 
-# HIMMEL-2771 CR round-2 (confirmed): _native_hooks_canon() used LOGICAL
+# _native_hooks_canon() used LOGICAL
 # cd+pwd, so a core.hooksPath pointing at a path INSIDE the target that is
 # itself a symlink to a directory OUTSIDE it was accepted as "inside" and the
 # adopter wrote hooks THROUGH the symlink into the outside directory -- the
@@ -1470,12 +1470,12 @@ grepq "$out" 'git gate hooks — FAILED (native:' \
   || fail "HIMMEL-2771 CR2 symlink-escape: missing the FAILED summary line"
 grepq "$out" 'core.hooksPath' \
   || fail "HIMMEL-2771 CR2 symlink-escape: FAILED line does not name core.hooksPath"
-# HIMMEL-2771: pure-shell -- `ls` is not guaranteed reachable under the hermetic PATH here (see dir_is_empty above).
+# pure-shell -- `ls` is not guaranteed reachable under the hermetic PATH here (see dir_is_empty above).
 dir_is_empty "$croutside6" \
   || fail "HIMMEL-2771 CR2 symlink-escape: a hook was written through the symlink into the outside dir"
 echo "ok: HIMMEL-2771 CR2 symlink-escape refuses a hooksPath symlinked outside the target"
 
-# HIMMEL-2771 CR round-3 (confirmed): _native_hooks_canon()'s walk-up reattaches
+# _native_hooks_canon()'s walk-up reattaches
 # the not-yet-existing tail of a hooksPath UNCHANGED, so a tail containing ".."
 # was never folded -- the containment check then compared a string that still
 # held "..", which `mkdir -p` resolves past $TARGET. A hooksPath shaped like
@@ -1498,12 +1498,12 @@ grepq "$out" 'git gate hooks — FAILED (native:' \
   || fail "HIMMEL-2771 CR3 dotdot-escape: missing the FAILED summary line"
 grepq "$out" 'core.hooksPath' \
   || fail "HIMMEL-2771 CR3 dotdot-escape: FAILED line does not name core.hooksPath"
-# HIMMEL-2771: pure-shell -- `ls` is not guaranteed reachable under the hermetic PATH here (see dir_is_empty above).
+# pure-shell -- `ls` is not guaranteed reachable under the hermetic PATH here (see dir_is_empty above).
 dir_is_empty "$croutside10" \
   || fail "HIMMEL-2771 CR3 dotdot-escape: a hook was written through the unfolded ../.. into the outside dir"
 echo "ok: HIMMEL-2771 CR3 dotdot-escape refuses a hooksPath whose unfolded ../.. tail escapes the target"
 
-# HIMMEL-2771 CR round-4 (confirmed): folding "." and ".." out of the
+# folding "." and ".." out of the
 # not-yet-existing tail (the round-3 fix above) can RE-EXPOSE a symlink the
 # walk-up never looked at. A hooksPath shaped "new/../hookslink" -- "new"
 # absent, "hookslink" a symlink INSIDE the target pointing OUTSIDE it --
@@ -1530,12 +1530,12 @@ grepq "$out" 'git gate hooks — FAILED (native:' \
   || fail "HIMMEL-2771 CR4 dotdot-symlink-escape: missing the FAILED summary line"
 grepq "$out" 'core.hooksPath' \
   || fail "HIMMEL-2771 CR4 dotdot-symlink-escape: FAILED line does not name core.hooksPath"
-# HIMMEL-2771: pure-shell -- `ls` is not guaranteed reachable under the hermetic PATH here (see dir_is_empty above).
+# pure-shell -- `ls` is not guaranteed reachable under the hermetic PATH here (see dir_is_empty above).
 dir_is_empty "$croutside11" \
   || fail "HIMMEL-2771 CR4 dotdot-symlink-escape: a hook was written through the re-exposed symlink into the outside dir"
 echo "ok: HIMMEL-2771 CR4 dotdot-symlink-escape refuses a hooksPath whose ../ fold re-exposes a symlink out of the target"
 
-# HIMMEL-2771 CR round-5 (codex-1, confirmed): the containment check above
+# The containment check above
 # refused an ORDINARY linked worktree outright -- its default hooks dir lives
 # in the PRIMARY checkout's common git dir, outside $TARGET, with
 # core.hooksPath UNSET (not misconfigured -- this is Git's own default
@@ -1573,7 +1573,7 @@ for hook in commit-msg pre-commit pre-push; do
 done
 echo "ok: HIMMEL-2771 CR5 worktree-default: adopt gates an ordinary linked worktree with core.hooksPath unset"
 
-# HIMMEL-2771 CR round-5 (codex-2, confirmed): the directory-level containment
+# The directory-level containment
 # check cannot see a per-file SYMLINK escape -- $hooks_dir itself is
 # legitimately inside the target; it is this one directory ENTRY that
 # escapes. Shape (a): a DANGLING symlink at $hooks_dir/commit-msg bypasses the
@@ -1595,7 +1595,7 @@ out=$(PATH="$crbin13:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
 set -e
 [ "$rc" -eq 0 ] \
   || fail "HIMMEL-2771 CR5 symlink-dangling: adopt exited $rc: $out"
-# HIMMEL-2771: pure-shell -- `ls` is not guaranteed reachable under the hermetic PATH here (see dir_is_empty above).
+# pure-shell -- `ls` is not guaranteed reachable under the hermetic PATH here (see dir_is_empty above).
 dir_is_empty "$croutside13" \
   || fail "HIMMEL-2771 CR5 symlink-dangling: a file was created outside the target through the dangling symlink"
 [ -f "$crtarget13/.git/hooks/commit-msg" ] \
@@ -1606,7 +1606,7 @@ grepq "$(cat "$crtarget13/.git/hooks/commit-msg")" 'HIMMEL-2771: native invarian
   || fail "HIMMEL-2771 CR5 symlink-dangling: replacement entry is not the native gate"
 echo "ok: HIMMEL-2771 CR5 symlink-dangling: a dangling hook symlink is backed up (not followed) and replaced with a real file"
 
-# HIMMEL-2771 CR round-5 (codex-2, confirmed): shape (b) -- a symlink at
+# shape (b) -- a symlink at
 # $hooks_dir/commit-msg pointing at an OUTSIDE file that already carries our
 # marker made the marker check (`grep -qF`, which follows the link) look like
 # "already ours" and skip the backup, so the subsequent `cat >` truncated a
@@ -1619,9 +1619,10 @@ mkdir -p "$crtarget14" "$crbin14"
 HOME="$pchome" git -C "$crtarget14" init -q
 mkdir -p "$crtarget14/.git/hooks"
 sentinel14='echo "SENTINEL cr2771r5-symlink-marker: outside file must not be truncated"'
+markerline14='# HIMMEL-2771: native invariant gate; lint hooks require pre-commit.'
 cat > "$croutside14" <<OUTSIDEHOOK
 #!/usr/bin/env bash
-# HIMMEL-2771: native invariant gate; lint hooks require pre-commit.
+$markerline14
 $sentinel14
 OUTSIDEHOOK
 chmod +x "$croutside14"
@@ -1640,7 +1641,7 @@ grepq "$(cat "$croutside14")" -F "$sentinel14" \
   || fail "HIMMEL-2771 CR5 symlink-marker: hooks-dir entry is still a symlink after adopt"
 echo "ok: HIMMEL-2771 CR5 symlink-marker: a symlink to a marker-bearing outside file is backed up (not followed) and replaced with a real file"
 
-# HIMMEL-2771 CR round-6 (codex-1, confirmed): round-5's fix above teaches
+# The earlier fix above teaches
 # adopt to ACCEPT the shared Git common-directory hooks layout, but the
 # payload (scripts/hooks/*.sh + guardrails/lib.sh) was copied only into
 # $TARGET (the linked worktree). Git's hooks are per-REPOSITORY, not
@@ -1649,7 +1650,7 @@ echo "ok: HIMMEL-2771 CR5 symlink-marker: a symlink to a marker-bearing outside 
 # dispatcher resolves `$root/scripts/hooks/<script>` against ITS OWN
 # toplevel (the primary, not the adopted worktree), finds nothing, and every
 # commit/push there starts failing with a bash "No such file or directory"
-# error -- round 5 traded a false refusal for a real breakage of a checkout
+# error -- an earlier version traded a false refusal for a real breakage of a checkout
 # the adopter never named. Drive the PRIMARY's own commit-msg dispatcher
 # directly rather than `git commit`: the pre-commit dispatcher fires too on
 # a real commit, and check-worktree-isolation.sh legitimately refuses
@@ -1697,7 +1698,7 @@ set -e
   || fail "HIMMEL-2771 CR6 worktree-primary-gate: an unticketed message exited 0 in the PRIMARY -- the gate did not actually run: $pout15b"
 echo "ok: HIMMEL-2771 CR6 worktree-primary-gate: the PRIMARY checkout's shared dispatcher finds its payload copy and genuinely gates"
 
-# HIMMEL-2771 CR round-6 (codex-2, confirmed): direct self-test of
+# direct self-test of
 # dir_is_empty itself, because every containment control above -- including
 # the round-5 cr2771r5-symlink-dangling control, whose whole SUBJECT is a
 # dangling symlink -- trusts this helper's verdict. `[ -e "$f" ]` alone
@@ -1721,7 +1722,7 @@ dir_is_empty "$cr2771r6dirempty/plain-empty" \
   || fail "HIMMEL-2771 CR6 dir-is-empty-dangling: dir_is_empty reported a genuinely empty directory as non-empty"
 echo "ok: HIMMEL-2771 CR6 dir-is-empty-dangling: dir_is_empty sees a dangling symlink as an occupied entry and a genuinely empty dir as empty"
 
-# HIMMEL-2771 CR round-2 (confirmed): a pre-existing foreign hook is backed up
+# A pre-existing foreign hook is backed up
 # to <hook>.himmel-backup but the generated dispatcher never ran it again, so
 # the adopter's own gate was silently disabled. This is the control that
 # matters -- it proves enforcement was preserved, not merely that a file was
@@ -1757,7 +1758,7 @@ set -e
   || fail "HIMMEL-2771 CR2 chain-fails: refused commit created HEAD"
 echo "ok: HIMMEL-2771 CR2 chain-fails: a chained backup hook can still fail the operation"
 
-# HIMMEL-2771 CR round-2: the flip side of chain-fails -- a chained backup
+# The flip side of chain-fails -- a chained backup
 # hook that PASSES must not break the himmel gate itself (no double-negative,
 # no rc-mangling that turns a real himmel-gate refusal into a pass).
 crtarget8="$work/cr2771r2-chain-passes"; crbin8="$work/cr2771r2-chain-passes-bin"
@@ -1797,7 +1798,7 @@ set -e
   || fail "HIMMEL-2771 CR2 chain-passes: unticketed commit landed -- himmel gate was masked by the passing backup hook: $cout2"
 echo "ok: HIMMEL-2771 CR2 chain-passes: a passing chained backup hook does not break the himmel gate"
 
-# HIMMEL-2771 CR round-2 (confirmed): git feeds pre-push its ref list on
+# git feeds pre-push its ref list on
 # STDIN, and running the himmel gate (which drains stdin -- see
 # check-push-target.sh's own header) before the backup left the backup
 # reading an already-drained, EOF stdin. A backed-up hook whose refusal
@@ -1897,7 +1898,7 @@ grepq "$out" "DRY: (cd $pctarget19b4 && pre-commit install --allow-missing-confi
   || fail "HIMMEL-2441 --dry-run: missing the DRY git-hooks line (got: $out)"
 echo "ok: HIMMEL-2441 --dry-run prints the git-hooks DRY line, pre-commit never invoked"
 
-# HIMMEL-2771: framework hook installation failure falls back to native gates.
+# framework hook installation failure falls back to native gates.
 cat > "$pcbin/pre-commit" <<STUB
 #!/usr/bin/env bash
 echo "\$*" >> "$work/pre-commit.argv"
@@ -1919,7 +1920,7 @@ grepq "$out" "git gate hooks — placed (native, no pre-commit framework: lint h
   || fail "HIMMEL-2771 install-fails: native fallback absent"
 echo "ok: HIMMEL-2771 failing pre-commit install falls back to native gates (rc=0)"
 
-# HIMMEL-2441/2483 [codex-1, CR round 2]: a real `uv tool install pre-commit`
+# A real `uv tool install pre-commit`
 # can succeed while its bin dir isn't on PATH yet -- prove adopt.sh resolves
 # the bootstrapped binary to an absolute path instead of trusting a bare
 # `pre-commit` call that would silently miss it. No real pre-commit anywhere
@@ -1969,7 +1970,7 @@ echo "ok: HIMMEL-2441/2483 a PATH-less uv bootstrap still resolves pre-commit to
 rm -f "$pchome/pre-commit-2483.argv" "$pchome/.local/bin/pre-commit"
 rmdir "$pchome/.local/bin" "$pchome/.local" 2>/dev/null || true
 
-# HIMMEL-2441/2483 [round-3 panel, Important #1]: --dry-run must describe the
+# --dry-run must describe the
 # planned pre-commit install regardless of host state. No real pre-commit
 # anywhere (reuses $uvbin/$pc_free_path from the row above) and a uv stub
 # present -- in --dry-run the bootstrap's own `run uv tool install ...` never
@@ -1998,7 +1999,7 @@ echo "ok: HIMMEL-2441/2483 --dry-run describes the planned pre-commit install ev
 rm -f "$pchome/pre-commit-2483.argv" "$pchome/.local/bin/pre-commit"
 rmdir "$pchome/.local/bin" "$pchome/.local" 2>/dev/null || true
 
-# HIMMEL-2771: no installer can run in dry-run; describe both framework
+# no installer can run in dry-run; describe both framework
 # bootstrap and the native fallback without writing any hooks.
 pctarget19b8="$work/pctarget19b8"; mkdir -p "$pctarget19b8"
 ( cd "$pctarget19b8" && HOME="$pchome" git init -q )
@@ -2020,7 +2021,7 @@ echo "ok: HIMMEL-2771 --dry-run prints framework and native plans without placin
 # exported), so this is belt-and-braces, not load-bearing.
 rm -f "$pcbin/pre-commit"
 
-# ── 19c. HIMMEL-2818: plugin failure must not leave an adopter ungated ───────
+# ── 19c. plugin failure must not leave an adopter ungated ───────
 # A second claude stub shadows the suite's successful one only for these runs.
 # Empty plugin-list output models a failed install, not an already-installed
 # plugin (whose nonzero install status is legitimately tolerated).
@@ -2082,7 +2083,7 @@ for hook_mode in default skip; do
   echo "ok: HIMMEL-2818 $hook_mode: plugin failure stays fatal and hook placement respects the opt-out"
 done
 
-# HIMMEL-2814 gap 1 (mirror of cr2771r6-worktree-primary-gate, reversed): adopt
+# gap 1 (mirror of cr2771r6-worktree-primary-gate, reversed): adopt
 # the PRIMARY checkout itself -- its resolved hooks dir is `$TARGET/.git/hooks`,
 # INSIDE $TARGET -- and only THEN add a SIBLING worktree, with no re-run of
 # adopt.sh against it. Pre-fix, install_native_hooks() keyed the fallback
@@ -2143,7 +2144,7 @@ set -e
   || fail "HIMMEL-2814 gap1 shared-payload: an unticketed message exited 0 in the sibling worktree -- the gate did not actually run: $woutG1b"
 echo "ok: HIMMEL-2814 gap1 shared-payload: adopting the PRIMARY checkout leaves a fallback payload that gates a SIBLING worktree added afterward, with no re-run of adopt.sh"
 
-# HIMMEL-2814 gap 1, push variant (contract item 3): the same sibling
+# gap 1, push variant (contract item 3): the same sibling
 # worktree's pre-push dispatcher genuinely gates a REAL `git push` (not just a
 # hand-invoked commit-msg dispatcher) via its fallback payload -- proving the
 # fix covers the pre-push hook too, not only commit-msg.
@@ -2172,7 +2173,7 @@ poutG1b=$(HOME="$pchome" git -C "$crwtG1" push origin cr2814g1-worktree-branch:r
 set -e
 [ "$prcG1b" -eq 0 ] \
   || fail "HIMMEL-2814 gap1 shared-payload push: a push to a non-main ref from the SIBLING worktree was refused: $poutG1b"
-# HIMMEL-5308: the gate sources scripts/lib/git-clean.sh; a payload without it
+# the gate sources scripts/lib/git-clean.sh; a payload without it
 # prints source errors on every push and git_env_scrub never runs.
 grepq "$poutG1b" 'No such file|cannot open|not found' \
   && fail "HIMMEL-5308 shared-payload push: the pre-push gate printed source errors (payload is missing a file it sources): $poutG1b"
@@ -2186,7 +2187,7 @@ grepq "$poutG1c" "Direct push to 'main' is not allowed" \
   || fail "HIMMEL-5308 BRANCH_NAME_OK=1 push to main was refused but not by the main gate: $poutG1c"
 echo "ok: HIMMEL-2814 gap1 shared-payload push: the SIBLING worktree's pre-push dispatcher (added after the primary adopt) genuinely gates a real git push via its fallback payload"
 
-# HIMMEL-2814 gap 2: the generated pre-push dispatcher's `cat > "$reffile"`
+# gap 2: the generated pre-push dispatcher's `cat > "$reffile"`
 # stdin-capture return status was unchecked -- a read error or a full
 # $TMPDIR would leave a TRUNCATED ref list that check-push-target.sh then
 # validates instead of the refs actually being pushed, letting a push that
@@ -2218,12 +2219,12 @@ printf '%s\n' "\$f"
 MKTEMPSHIM
 chmod +x "$crbinG2/mktemp"
 
-# HIMMEL-2814: confirm chmod 0444 actually blocks writes for the current user
+# confirm chmod 0444 actually blocks writes for the current user
 # before relying on it below to force the capture failure -- as root (or on a
 # filesystem where mode bits don't gate writes) this is a silent no-op and the
 # suite would then fail because the push simply succeeded, not because the
 # gate misbehaved. Same "fixture requires an unprivileged user" convention as
-# the HIMMEL-2771 unwritable-hooks-dir case above.
+# The unwritable-hooks-dir case above.
 probe_g2=$("$crbinG2/mktemp")
 if : > "$probe_g2" 2>/dev/null; then
   fail "HIMMEL-2814 gap2 capture-checked: fixture requires an unprivileged user (chmod 0444 did not block a write to $probe_g2)"
@@ -2245,7 +2246,7 @@ grepq "$poutG2" 'failed to capture the pushed ref list' \
   || fail "HIMMEL-2814 gap2 capture-checked: remote received the ref even though capture failed"
 echo "ok: HIMMEL-2814 gap2 capture-checked: a failed stdin-ref-list capture aborts the pre-push dispatcher instead of validating a truncated ref list"
 
-# ── 21. HIMMEL-2892: the hook block MERGES into an existing settings.json ────
+# ── 21. the hook block MERGES into an existing settings.json ────
 # Regression control for the 2026-09-09 dogfood incident: `himmelctl install
 # --scope project` inside a repo whose .claude/settings.json already carried a
 # hand-curated hook block REGENERATED that block from the manifest (98+/38-):
@@ -2296,7 +2297,7 @@ after_b=$(jq -Sc '.hooks.PreToolUse[1].hooks[1]' "$s2892")
   || fail "HIMMEL-2892 (c): the adopter's timeout was reset (got: $(jq -r '.hooks.PreToolUse[1].hooks[0].timeout' "$s2892"))"
 c2892=$(jq -r '.hooks.PreToolUse[1].hooks[0].command' "$s2892")
 # shellcheck disable=SC2016  # literal $CLAUDE_PROJECT_DIR (the project-scope prefix), not an expansion
-# HIMMEL-3574: the wired command now guards a missing script (if [ -f ]; then
+# the wired command now guards a missing script (if [ -f ]; then
 # bash "..."; else warn+exit 0; fi) instead of a bare bash "...".
 case "$c2892" in
   'if [ -f "$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-on-main.sh" ]; then bash "$CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-on-main.sh"; else echo "himmel: hook script missing ($CLAUDE_PROJECT_DIR/scripts/hooks/block-edit-on-main.sh) -- re-run the install (himmelctl install) or unwire it (himmelctl uninstall)" >&2; exit 0; fi') : ;;
@@ -2312,10 +2313,10 @@ esac
   || fail "HIMMEL-2892 (d): expected 4 PreToolUse stanzas (2 seeded + the 2 genuinely-absent himmel hooks appended), got $(jq '.hooks.PreToolUse | length' "$s2892")"
 echo "ok: HIMMEL-2892 the hook block merges into an existing settings.json (foreign matcher + co-located entry + adopter matcher/timeout preserved; himmel command repointed in place)"
 
-# ── 19x. HIMMEL-3332 S4: copy_portable + the user-scope gate copies record what
+# ── 19x. copy_portable + the user-scope gate copies record what
 # they overwrite. Every copy into the adopter's tree is one `file` row in the
 # install-provenance ledger; an OVERWRITE keeps the user's bytes (and mode) in a
-# backup, so uninstall can put them back (HIMMEL-3310: a same-named user file was
+# backup, so uninstall can put them back (a same-named user file was
 # silently gone at install time). Scratch HOME + scratch ledger throughout.
 prov_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 prov_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
@@ -2383,7 +2384,7 @@ row="$(prov_row "$p4led/provenance.jsonl" "$p4gate/scripts/guardrails/lib.sh")"
   || fail "HIMMEL-3332 S4: a fresh user-scope gate copy must be a create row: $row"
 echo "ok: HIMMEL-3332 S4 user-scope gate copies record create + replace rows with a backup"
 
-# HIMMEL-3541 class 5: the native git hooks, the adopter's displaced hook and
+# class 5: the native git hooks, the adopter's displaced hook and
 # the shared-dir payload are all written into the repo, so each gets a ledger
 # row (the VM round trip's no-unrecorded-write check reads these); uninstall
 # [5/8] still removes/restores them from the manifest, not from these rows.
@@ -2411,7 +2412,7 @@ row="$(jq -c 'select(.kind=="tree" and (.path|endswith("/.git/hooks/himmel-paylo
   || fail "HIMMEL-3541: the shared-dir hook payload must be a tree create row: $row"
 echo "ok: HIMMEL-3541 native git hooks, the displaced hook and the payload are ledger rows"
 
-# wire_handover_dir_luna skips a HANDOVER_DIR the operator already chose (HIMMEL-839);
+# wire_handover_dir_luna skips a HANDOVER_DIR the operator already chose;
 # the ledger must say the key was theirs, or uninstall removes it anyway.
 p4hd="$work/p4-hd"; mkdir -p "$p4hd/.claude"
 printf '%s' '{"env":{"HANDOVER_DIR":"/some/operator/chosen/handovers"}}' > "$p4hd/.claude/settings.json"
@@ -2423,7 +2424,7 @@ row="$(jq -c 'select(.kind=="json-key" and .unit=="/env/HANDOVER_DIR")' "$p4led/
   || fail "HIMMEL-3332 S4: the recorded skip must not change the operator's HANDOVER_DIR"
 echo "ok: HIMMEL-3332 S4 a preserved HANDOVER_DIR is recorded as noop preexisted"
 
-# ── 20. HIMMEL-887 T10: himmelctl wizard + machine-setup shim suites ──────────
+# ── 20. himmelctl wizard + machine-setup shim suites ──────────
 # A plain `bash scripts/test-adopt.sh` run also exercises the himmelctl install
 # wizard + the T7/T8 bootstrap/deprecation-shim suites, so a regression in any
 # of them fails THIS harness, not just the CI shell-test sweep. Each suite runs
@@ -2478,7 +2479,7 @@ run_wizard_suite himmelctl/test/test-wizard-deps.sh             "test-wizard-dep
 run_wizard_suite himmelctl/test/test-wizard-deps-lint.sh        "test-wizard-deps-lint"
 run_wizard_suite machine-setup/test-ubuntu-shim.sh             "test-ubuntu-shim"
 
-# The win11 shim suite is a .ps1 (static source-parse of win11.ps1, HIMMEL-887
+# The win11 shim suite is a .ps1 (static source-parse of win11.ps1
 # T8) — needs pwsh. Skip (not fail) when pwsh is absent, same guard as the
 # bootstrap.ps1 cases in test-wizard-bootstrap.sh.
 _win11_shim="$repo_root/scripts/machine-setup/test-win11-shim.ps1"

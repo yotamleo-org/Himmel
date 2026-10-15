@@ -1,5 +1,5 @@
 # shellcheck shell=sh
-# pty-run.sh -- run a command under a pty with its stdin held OPEN (HIMMEL-2534).
+# pty-run.sh -- run a command under a pty with its stdin held OPEN.
 #
 # Sourced by the `at` job body arm-resume.sh writes, which /bin/sh executes at
 # fire time: POSIX sh only, no %q, no arrays, no [[ ]].

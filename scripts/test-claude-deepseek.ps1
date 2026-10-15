@@ -1,5 +1,5 @@
 #Requires -Version 7
-# Hermetic PS smoke tests (HIMMEL-4084). No network: launch cases must stop at
+# Hermetic PS smoke tests. No network: launch cases must stop at
 # egress; seed cases execute the twin's actual JS against scratch JSON.
 # Full bash contract and JS parity complement these platform-specific cases.
 $ErrorActionPreference = 'Stop'
@@ -124,7 +124,7 @@ foreach ($Name in @('CLAUDE_LANE_SEED_LOCK_TIMEOUT','CLAUDE_LANE_SEED_LOCK_STALE
 }
 if ($Result.Code -ne 0 -or $Result.Output.Contains('ds-ps-hermetic-secret')) { throw "Same-process environment restoration failed: $($Result.Output)" }
 $Count++
-# HIMMEL-4096: a second native curl must not turn .Source into an array or
+# a second native curl must not turn .Source into an array or
 # displace the first PATH match. The decoy fails if the launcher selects it.
 $DecoyBin = Join-Path $Scratch 'decoy-bin'
 [System.IO.Directory]::CreateDirectory($DecoyBin) | Out-Null
@@ -140,7 +140,7 @@ $Result = Run-Clean $Pwsh @('-NoProfile','-File',$Runner,$Launcher,$ExpectedCurl
 $ToolPath = $OriginalToolPath
 if ($Result.Code -ne 0 -or $Result.Output.Contains('DECOY_CURL_INVOKED') -or $Result.Output.Contains('ds-ps-hermetic-secret')) { throw "First curl on PATH was not used safely: $($Result.Output)" }
 $Count++
-# HIMMEL-4091: exercise the real shared PS mirror/lock without a network or
+# exercise the real shared PS mirror/lock without a network or
 # model process. These cases run on pwsh hosts; Linux without pwsh skips them.
 $MirrorRunner = Join-Path $Scratch 'mirror-seed.ps1'
 $MirrorText = @'

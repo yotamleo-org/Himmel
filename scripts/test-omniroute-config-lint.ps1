@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ScriptDir = $PSScriptRoot
 $Lint = Join-Path $ScriptDir 'omniroute-config-lint.ps1'
@@ -234,7 +234,7 @@ try {
   Assert-Exit (Invoke-Lint @($f)) 1 'duplicate-key config rejected (exit 1, both twins)'
   Have 'FAIL: duplicate JSON key "autoRoutingEnabled"'
 
-  # --- T22 (CR F6, #836 — CR round 2): NESTED duplicate key. The engine keys this
+  # --- T22: NESTED duplicate key. The engine keys this
   # lint exists to catch live in nested objects (rtkConfig.enabled etc.), and the
   # scanner's per-object stack is what distinguishes a real nested dup from the
   # many legitimate same-name "enabled" keys across DIFFERENT objects (the
@@ -250,7 +250,7 @@ try {
   Assert-Exit (Invoke-Lint @($f2)) 1 'nested duplicate-key config rejected (exit 1, both twins)'
   Have 'FAIL: duplicate JSON key "enabled"'
 
-  # --- T23 (CR F6, #836 — CR round 2): CASE-VARIANT sibling keys — a DOCUMENTED
+  # --- T23: CASE-VARIANT sibling keys — a DOCUMENTED
   # ENGINE DIVERGENCE, deliberately pinned per twin (not parity). ConvertFrom-Json
   # REJECTS keys differing only in case ("keys with different casing") BEFORE the
   # dup scan runs → this twin exits 2 (invalid JSON, fail-closed — the safe

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-adopt-portable-libs.sh -- every library a portable hook sources is itself
-# in adopt.sh's PORTABLE_FILES (HIMMEL-4994).
+# in adopt.sh's PORTABLE_FILES.
 #
 # A project-scope install copies PORTABLE_FILES into the target and nothing
 # else. A hook that sources a lib outside that list fails closed in the

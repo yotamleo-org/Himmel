@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# go-gate.sh — shared predicates for the HIMMEL-2919 console-GO merge gate.
+# go-gate.sh — shared predicates for the console-GO merge gate.
 #
-# Extracted (HIMMEL-3142) so merge-on-green.sh and block-unresolved-cr-merge.sh
+# Extracted so merge-on-green.sh and block-unresolved-cr-merge.sh
 # enforce the exact same rule instead of drifting. Before this, only
 # merge-on-green.sh consulted `.locks/go/` — a console-spawned leg that ran
 # `gh pr merge` directly never consulted it at all, so the console's GO was
 # advisory on that path (PR #798 merged with no GO file anywhere).
 #
-# console_leg() (HIMMEL-3149) closes the outer half: the test for whether the
+# console_leg() closes the outer half: the test for whether the
 # caller's session IS a console-spawned leg (HIMMEL_CONSOLE_LEG truthy) was
 # hand-copied at merge-on-green.sh's _truthy(), block-unresolved-cr-merge.sh's
 # gate 3, and go.sh's own inline check — byte-identical today, but nothing
@@ -19,7 +19,7 @@
 
 # console_leg — rc 0 iff HIMMEL_CONSOLE_LEG is truthy (this process IS a
 # console-spawned leg, exported by headed-arm-leg.sh). Same five falsy
-# spellings every call site used before HIMMEL-3149, case-insensitive,
+# spellings every call site used before this helper, case-insensitive,
 # whitespace-stripped: empty, 0, false, off, no — anything else is truthy.
 console_leg() {
     case "$(printf '%s' "${HIMMEL_CONSOLE_LEG:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
@@ -31,7 +31,7 @@ console_leg() {
 # go_gate <pr-num> <head-sha> <go-root> <nwo>
 #   Pure: no gh call, no fs write — only a read under <go-root>/.locks/go/.
 #   Callers resolve <pr-num>/<head-sha>, <go-root> (go_resolve_root()) and
-#   <nwo> (HIMMEL-3578: owner/repo, so a GO minted for one repo's PR #N at a
+#   <nwo> (owner/repo, so a GO minted for one repo's PR #N at a
 #   given sha never validates for another repo's PR #N at the same sha)
 #   themselves. A fresh gh query INSIDE this function would let the GO check
 #   drift from the exact head the caller already certified — for
@@ -41,8 +41,7 @@ console_leg() {
 #
 #   rc 0 = the GO file <go-root>/.locks/go/<pr-num>.<head-sha> exists,
 #          carries the line `head=<head-sha>` exactly, AND carries a
-#          `mac=` line equal to go_mac <pr-num> <head-sha> <nwo> (HIMMEL-3543,
-#          HIMMEL-3578) — the merge is bound, and bound by the console that
+#          `mac=` line equal to go_mac <pr-num> <head-sha> <nwo> — the merge is bound, and bound by the console that
 #          holds the GO key, to this exact repo.
 #   rc 2 = refused; one-line reason on stdout naming the exact GO path, so the
 #          leg (or the operator reading its output) can tell which condition
@@ -67,7 +66,7 @@ _go_gate_verify() {
     local pr_num="$1" head_sha="$2" go_root="$3" nwo="$4"
     local go_file="${go_root:-<unresolved handover root>}/.locks/go/$pr_num.$head_sha"
     local body="" want="" got="" trust="" what="PR #$1"
-    # HIMMEL-4762: the first arg is a change id, ^([0-9]+|br-[a-z0-9._-]+)$ — a
+    # The first arg is a change id, ^([0-9]+|br-[a-z0-9._-]+)$ — a
     # PR number, or a local-git change (br-<branch>, forge_change_id). Anything
     # else (a path, a glob, an empty id) is refused before the GO file is read.
     case "$pr_num" in
@@ -85,7 +84,7 @@ _go_gate_verify() {
         printf '%s at %s has no console GO (%s) — this is a console-spawned leg; send READY to your console and wait for GO; a GO for an older head is stale, never reuse it.\n' "$what" "$head_sha" "$go_file"
         return 2
     fi
-    # HIMMEL-3895: a trust-reviewed GO signs its reviewer id too (go_mac's 4th
+    # A trust-reviewed GO signs its reviewer id too (go_mac's 4th
     # arg), so verify whichever form the file carries — a trust line added to an
     # ordinary GO, or edited in a trust GO, verifies as neither.
     trust=$(printf '%s\n' "$body" | sed -n 's/^trust-reviewed=//p' | head -n 1)
@@ -109,7 +108,7 @@ go_trust_id_ok() {
     [ "${#1}" -le 128 ]
 }
 
-# go_trust_gate <pr-num> <head-sha> <go-root> <nwo> — HIMMEL-3895. rc 0 iff
+# go_trust_gate <pr-num> <head-sha> <go-root> <nwo>. rc 0 iff
 # go_gate passes AND the GO is trust-reviewed (a well-formed trust-reviewed=
 # id, covered by the verified mac); the id on stdout. rc 2 = refused, the
 # reason on stdout. A merge touching a trust path (scripts/ci/ci-trust-paths.txt)
@@ -130,7 +129,7 @@ go_trust_gate() {
     printf '%s\n' "$trust"
 }
 
-# go_fixred_file <go-root> <pr-num> <head-sha> <run-id> — HIMMEL-5134. Path of
+# go_fixred_file <go-root> <pr-num> <head-sha> <run-id>. Path of
 # the console-written fix-GO: the second way through merge-on-green.sh's
 # main-red gate (the first is a `Fixes-main-red:` commit line). One file per
 # (PR, head, red run), so a GO for an old run is a different file and a newer
@@ -139,7 +138,7 @@ go_fixred_file() {
     printf '%s/.locks/go/fix-main-red.%s.%s.%s\n' "$1" "$2" "$3" "$4"
 }
 
-# go_fixred_gate <pr-num> <head-sha> <go-root> <nwo> <run-id> — HIMMEL-5134. rc 0
+# go_fixred_gate <pr-num> <head-sha> <go-root> <nwo> <run-id>. rc 0
 # iff <go-root>/.locks/go/fix-main-red.<pr>.<sha>.<run> exists, carries
 # `head=<sha>` and `fix-main-red-run=<run-id>` exactly, and a `mac=` line equal
 # to HMAC under the GO key of "himmel-go-fixred-v1|<nwo>|<pr>|<sha>|<run>" — its
@@ -175,7 +174,7 @@ go_fixred_gate() {
     fi
 }
 
-# go_verdict_scope <anchor> — HIMMEL-4589. The `<user>/<bucket>` a trust verdict
+# go_verdict_scope <anchor>. The `<user>/<bucket>` a trust verdict
 # for the repo at <anchor> may live under: <user> = user_slug (USER_SLUG from the
 # env, else the anchor's .env, else the forge login), <bucket> = the slugified
 # basename of the anchor's PRIMARY checkout (the parent of its git-common-dir, so
@@ -193,7 +192,7 @@ go_verdict_scope() (
     # shellcheck source=scripts/lib/user-slug.sh
     # shellcheck disable=SC1091
     . "$here/user-slug.sh" 2>/dev/null || exit 1
-    # HIMMEL-4622: the .env lives only in the primary checkout, so resolve it the
+    # The .env lives only in the primary checkout, so resolve it the
     # way console.sh does; the forge/git fallback runs with the anchor as cwd.
     load_dotenv --root "$(_load_dotenv_primary_for "$1" 2>/dev/null)" USER_SLUG >/dev/null 2>&1 || true
     slug=$(cd "$1" 2>/dev/null && user_slug 2>/dev/null) || exit 1
@@ -206,7 +205,7 @@ go_verdict_scope() (
     printf '%s/%s' "$slug" "$bucket"
 )
 
-# go_trust_verdict <go-root> <qid> <head-sha> <anchor> <pr> — HIMMEL-3832. Before
+# go_trust_verdict <go-root> <qid> <head-sha> <anchor> <pr>. Before
 # go.sh signs a trust-reviewed GO, the judge it names must have ruled GO on that
 # exact head. The verdict line is the first non-blank line under the `## Verdict`
 # heading (docs/handover/verdict-template.md), and it parses only as exactly
@@ -214,14 +213,14 @@ go_verdict_scope() (
 # (one trailing full stop allowed). rc 0 iff <qid> is a path segment
 # ([A-Za-z0-9][A-Za-z0-9._-]*, so never `..` or a `/`), and across every *.md
 # in <go-root>/<user>/<bucket>/verdicts/<qid>/ — ONLY the scope go_verdict_scope
-# resolves for <anchor> (HIMMEL-4589: another user's or repo's verdict dir, which
+# resolves for <anchor> (another user's or repo's verdict dir, which
 # a judge there can write for any qid, never counts; an unresolved scope refuses)
-# — no file is unparsed or unreadable whole (HIMMEL-4984: an unreadable, empty or
+# — no file is unparsed or unreadable whole (an unreadable, empty or
 # NUL-bearing record refuses, never skips), none is NO-GO for <head-sha>, and at least one is GO for
 # <head-sha>. A verdict for another head is ignored (an earlier round). Fail
 # closed: a GO naming no head, trailing text, or no verdict line refuses. rc 2 =
 # refused, the reason on stdout. Read-only.
-# HIMMEL-4928: a GO for <head-sha> also names its PR. write-verdict.sh writes
+# A GO for <head-sha> also names its PR. write-verdict.sh writes
 # `pr: <n>` as the second line after the verdict line (the line review-round.sh
 # does not read), and the GO counts only when <n> equals <pr>: two PRs on one
 # head are told apart, and a verdict file with no pr: line (written before this
@@ -250,7 +249,7 @@ go_trust_verdict() {
     esac
     for f in "$root/$scope/verdicts/$qid"/*.md; do
         [ -f "$f" ] || continue
-        # HIMMEL-4984: one read; the mac, the scope check and every field come from it.
+        # One read; the mac, the scope check and every field come from it.
         # A record that cannot be read whole (unreadable, empty, NUL byte) vetoes:
         # it may be a NO-GO main would honour, so it is never skipped.
         if ! go_verdict_snapshot "$f"; then
@@ -270,7 +269,7 @@ go_trust_verdict() {
             printf 'the verdict in %s is NO-GO for head %s.\n' "$f" "$sha"
             return 2
         fi
-        # HIMMEL-4984: a GO counts only when write-verdict.sh signed it, and a
+        # A GO counts only when write-verdict.sh signed it, and a
         # post-cap scope record (delta-scope:) is round-admission evidence,
         # never merge trust.
         name=${f##*/}; name=${name%.md}
@@ -301,8 +300,8 @@ go_trust_verdict() {
 }
 
 # trust_path_check <nwo> <pr-num> <head-sha> <default-branch> <anchor> —
-# HIMMEL-3910. Does PR <pr-num> touch a CI trust path? Moved out of
-# merge-on-green.sh (HIMMEL-3895) so block-unresolved-cr-merge.sh asks the
+# Does PR <pr-num> touch a CI trust path? Moved out of
+# merge-on-green.sh so block-unresolved-cr-merge.sh asks the
 # exact same question: a direct `gh pr merge` used to pass a trust-path PR on
 # an ordinary GO. Every fail-closed case below is merge-on-green's, unchanged.
 #   - The list comes from the DEFAULT branch through the API, never the PR head,
@@ -317,7 +316,7 @@ go_trust_verdict() {
 #     equal to <head-sha>.
 #   - On a match, <anchor> must contain origin's HEAD: a stale anchor runs a
 #     stale gate.
-#   - HIMMEL-4762, local-git: when <pr-num> is a br-<branch> change id, <nwo> is
+# local-git: when <pr-num> is a br-<branch> change id, <nwo> is
 #     the repo id local:<git-common-dir> (forge_repo_id) and no API is asked. The
 #     list is `git show <default-branch>:scripts/ci/ci-trust-paths.txt` and the
 #     files are `git diff --no-renames --name-only <default-branch>...<head-sha>`
@@ -332,7 +331,7 @@ go_trust_verdict() {
 # and its `exit`s never reach the sourcing caller.
 trust_path_check() (
     tp_nwo=$1 tp_pr=$2 tp_sha=$3 tp_branch=$4 anchor=$5 gh_bin=${GH:-gh}
-    # HIMMEL-3570 scrub: `git -C "$anchor"` below must read the anchor, not an
+    # Scrub: `git -C "$anchor"` below must read the anchor, not an
     # inherited GIT_DIR. Subshell body, so the caller's env is untouched.
     unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
     refuse() { printf '%s %s\n' "$1" "$2"; exit 2; }
@@ -464,7 +463,7 @@ trust_path_check() (
     printf 'hit %s\n' "$hit"
 )
 
-# --- HIMMEL-3543/HIMMEL-3578: GO authentication ------------------------------
+# --- GO authentication ------------------------------
 # A GO used to be the mere existence of a file with a head= line, so any
 # process able to write the handover root (a console-spawned leg included)
 # could forge its own. go.sh now signs "himmel-go-v2|<nwo>|<pr>|<sha>" with
@@ -480,7 +479,7 @@ trust_path_check() (
 # Write to ~/.config/himmel/go-hmac.key), or (5) plant a key before the
 # console's first GO (go.sh only tests -e, not owner or mode) — each a
 # deliberate evasion the classifier sees, not an accidental two-line write,
-# upgrade path: a separate-uid or OS-keyring signer (HIMMEL-3578).
+# upgrade path: a separate-uid or OS-keyring signer.
 
 # go_key_file — path of the console's GO signing key.
 go_key_file() {
@@ -489,20 +488,20 @@ go_key_file() {
 
 # go_mac <pr-num> <head-sha> <nwo> — HMAC-SHA256(key,
 # "himmel-go-v2|<nwo>|<pr>|<sha>") as 64 lowercase hex on stdout. rc 1 (nothing
-# printed) when HOME is unset, <nwo> is empty (HIMMEL-3578: a mac with no repo
+# printed) when HOME is unset, <nwo> is empty (a mac with no repo
 # bound would validate against any repo — fail closed instead), the key is
 # missing/unreadable/not 64 hex, or openssl is absent. The key is read with the
 # `read` builtin and reaches openssl on stdin only — never argv, where any
 # user's `ps` could see it. HMAC is built by hand (RFC 2104) because openssl's
 # own HMAC takes its key on argv. The v1→v2 domain-tag bump means a GO minted
-# before HIMMEL-3578 fails this verification by construction — it must be
-# re-minted once. HIMMEL-3895: an optional 4th arg <trust-id> switches to the
+# before the repo-bound tag fails this verification by construction — it must be
+# re-minted once. an optional 4th arg <trust-id> switches to the
 # separate domain tag "himmel-go-trust-v1|<nwo>|<pr>|<sha>|<trust-id>", so a
 # trust-reviewed mac never verifies as an ordinary one, nor the reverse.
 go_mac() {
     local nwo="$3"
     [ -n "$nwo" ] || return 1
-    # HIMMEL-4762: a local-git change id (br-<branch>) signs under its own domain
+    # A local-git change id (br-<branch>) signs under its own domain
     # tags, so no br-* GO verifies as a numeric PR's, nor the reverse; <nwo> is
     # then the repo id forge_repo_id prints (local:<git-common-dir>).
     case "$1" in
@@ -521,7 +520,7 @@ go_mac() {
     fi
 }
 
-# go_msg_mac <domain> <msg> — HIMMEL-4984: HMAC-SHA256(key, "<domain>|<msg>") as
+# go_msg_mac <domain> <msg>: HMAC-SHA256(key, "<domain>|<msg>") as
 # 64 lowercase hex on stdout, the body go_mac signs with. The domain tag keeps
 # every use apart: himmel-go-v2 / himmel-go-trust-v1 are go_mac's, and
 # himmel-verdict-v1 signs a write-verdict.sh record, so a verdict mac is never
@@ -560,7 +559,7 @@ go_msg_mac() {
     printf '%s\n' "$inner"
 }
 
-# --- HIMMEL-4984: verdict records are signed with the GO key ------------------
+# --- verdict records are signed with the GO key ------------------
 # write-verdict.sh ends every record with `mac: <64 hex>`: go_msg_mac under the
 # himmel-verdict-v1 domain over "<user>/<bucket>|<qid>|<name>|<sha256 of every
 # byte above the mac line>". The record's own path (scope, qid, name) is in the
@@ -571,7 +570,7 @@ go_msg_mac() {
 # buys nothing.
 # ponytail: same-uid ceiling - the key sits in the operator's HOME like the GO
 # key, so a same-uid process that reads it can sign; the upgrade path is a
-# separate-uid or keyring signer (HIMMEL-3578).
+# separate-uid or keyring signer.
 
 # _go_sha256 — sha256 of stdin as 64 lowercase hex.
 _go_sha256() {
@@ -596,7 +595,7 @@ go_verdict_mac_ok() {
     go_verdict_mac_ok_text "$GO_VERDICT_SNAP" "$2" "$3" "$4"
 }
 
-# go_verdict_snapshot <file> — HIMMEL-4984: read the record's bytes ONCE into
+# go_verdict_snapshot <file>: read the record's bytes ONCE into
 # GO_VERDICT_SNAP (a trailing sentinel keeps the final newline). A caller
 # verifies the mac and parses its fields from this one copy, so a rewrite
 # between the two reads cannot make a verified mac vouch for different bytes.
@@ -635,7 +634,7 @@ go_verdict_mac_ok_text() {
     [ -n "$want" ] && [ "$got" = "$want" ]
 }
 
-# --- HIMMEL-3572 row 1: one root for the GO writer and the gate --------------
+# row 1: one root for the GO writer and the gate --------------
 # go.sh and merge-on-green.sh run in different processes (the console, the
 # leg) whose HANDOVER_DIR can disagree: a console armed with a clean env had
 # none, fell back to the harness repo's inline handovers/ stub, and wrote an
@@ -645,13 +644,13 @@ go_verdict_mac_ok_text() {
 
 # _go_in_harness <path> <anchor> — rc 0 iff <path> lies inside the anchor's
 # own git repository (any worktree of it): the harness's inline stub.
-# HIMMEL-3570: an inherited GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE
+# An inherited GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE
 # overrides `-C`, so a caller's env — not the path we were given — would pick
 # the repo rev-parse answers about, which is exactly the GO root this
-# function decides. HIMMEL-3572 round 2: GIT_CEILING_DIRECTORIES joins the
+# function decides. GIT_CEILING_DIRECTORIES joins the
 # scrub too — exporting it at the repo's top directory stops `-C` from
 # discovering ANY repo above it, flipping this rc 0 -> 1 (reproduced: the
-# HIMMEL-3572 split-root shape). unset scrubs each call's own subshell only,
+# split-root shape). unset scrubs each call's own subshell only,
 # so a sourcing caller's env is never mutated.
 _go_in_harness() {
     local a b
@@ -693,7 +692,7 @@ go_resolve_root() {
     handover_root
 }
 
-# --- HIMMEL-4762: the READY / MERGED line grammar, one owner -----------------
+# --- the READY / MERGED line grammar, one owner -----------------
 # parse_ready_line <line> — the one parser of a leg's READY and MERGED lines;
 # fleet.mjs's parseReadyLine mirrors it, and scripts/lib/fixtures/ready-lines.tsv
 # pins the two to the same answers. Accepted, with an optional `- ` bullet and

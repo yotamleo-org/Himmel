@@ -2,8 +2,8 @@
 # advisory-rows.sh — enumerate advisory critic rows for the minerva panel lanes.
 #
 # Prefer FREE rows (a cost-free cross-model second opinion); if the registry has
-# NO free rows, fall back to PAID rows rather than an empty panel (HIMMEL-1221
-# G3 — an empty advisory panel silently degrades minerva to claude-only, losing
+# NO free rows, fall back to PAID rows rather than an empty panel (an empty
+# advisory panel silently degrades minerva to claude-only, losing
 # the whole point of the cross-model lane; the paid spend is worth it when free
 # is unavailable). The Claude critic remains the GATE; this panel stays advisory.
 #

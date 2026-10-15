@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # cr-ledger-evidence.sh — does the CR critic panel carry the gate at this SHA?
-# (HIMMEL-1465.)
 #
 # WHY THIS EXISTS. CodeRabbit's App review is rate limited at times, and when it
 # is it posts state=success + description="Review rate limited" — a DECLINED
-# review that cr-signal.sh projects to state=skipped (HIMMEL-1354). Both the
+# review that cr-signal.sh projects to state=skipped. Both the
 # certifier (check-ci.sh) and the merge hook (cr-merge-gate.sh, the CR gate
 # behind block-unresolved-cr-merge.sh) fail CLOSED on that, so a rate-limited
 # App blocks a merge even when the critic PANEL (codex+glm) had already reviewed
@@ -15,12 +14,12 @@
 # This lib is the ONE reader for that evidence. The verdict it derives MIRRORS
 # scripts/cr/clear-cr-marker.sh gates 3-4 exactly — the same amend application,
 # the same atHead resolution (short SHAs resolved through git, never prefix
-# match — the HIMMEL-2190 prefix step only SKIPS heads that cannot match,
+# match — the prefix step only SKIPS heads that cannot match,
 # it never accepts one), the same responder floor (>=1 `avail ... status=ok`), and the same
 # blocking definition (crit|imp whose verdict is neither `disproved` nor a
 # TRACKED `deferred`). clear-cr-marker is the reference; this is the same
 # evaluation factored for the two MERGE gates. A future unification would move
-# clear-cr-marker onto this reader too — left out of HIMMEL-1465 to keep that
+# clear-cr-marker onto this reader too — left out to keep that
 # change off the most-sensitive surface (clear-cr-marker is untouched here).
 #
 # Evidence-gated, fail-closed, NEVER a free pass: this only ANSWERS the question
@@ -40,7 +39,7 @@
 #          line / zero responders / a blocking finding). stdout: a short
 #          machine reason (no-git-dir|no-node|ledger-unreadable|malformed:N|
 #          no-responders|blocking:<ids>). The caller treats rc 1 uniformly as
-#          "evidence absent -> current verdict stands" (HIMMEL-1465): for
+# "evidence absent -> current verdict stands": for
 #          check-ci that is exit 2, for cr-merge-gate it is rc 2 (block).
 #
 # GATE INTEGRITY (mirrors clear-cr-marker.sh / merge-on-green.sh): the ledger
@@ -114,7 +113,7 @@ cr_ledger_carries_gate() {
           // the resolve path, where prefix collisions are the actual risk.
           if (e.FULL_SHA === h) return true;
           if (!isHex(h)) return false;
-          // HIMMEL-2190: PREFIX PRE-FILTER, identical to clear-cr-marker.sh (see
+          // PREFIX PRE-FILTER, identical to clear-cr-marker.sh (see
           // the long note there). git resolves an abbreviation by object-name
           // prefix, so resolve(h) can only return FULL_SHA when h is a prefix of
           // it; a non-prefix head needs no git call. Performance only - the
@@ -143,7 +142,7 @@ cr_ledger_carries_gate() {
               return true;
           } catch { return false; }
       };
-      // HIMMEL-3360 prior-head path: a fixed verdict disposes only when its
+      // prior-head path: a fixed verdict disposes only when its
       // reason names a sha that resolves, sits on the current head, is not the
       // prior head, and is not older than the prior head.
       const priorPath = e.CUR_HEAD !== "" && e.CUR_HEAD !== e.FULL_SHA;
@@ -229,7 +228,7 @@ cr_ledger_carries_gate() {
     return 1
 }
 
-# cr_ledger_outside_dispositioned <full-sha> <id> <file> <line> — HIMMEL-3124.
+# cr_ledger_outside_dispositioned <full-sha> <id> <file> <line>
 # Has ONE outside-diff CodeRabbit finding (id from cr_body_outside_findings) been
 # explicitly ADJUDICATED at this exact head? Outside-diff findings live only in a
 # review BODY (no thread to resolve), so the ledger row is the sole disposition
@@ -245,7 +244,7 @@ cr_ledger_carries_gate() {
 #   non-empty reason (the clear-cr-marker gate 4 rule). agreed|unaddressed|
 #   conflict or an empty verdict never dispose of it. Severity is NOT consulted:
 #   an explicit disposition suffices at every severity (the operator ruling).
-# Optional 5th arg <current-head> (HIMMEL-3360, the PRIOR-head path): when the
+# Optional 5th arg <current-head> (the PRIOR-head path): when the
 # gate reads CodeRabbit's latest review at a prior head because the current
 # head carries no review, `fixed` is ALSO a disposition — but on evidence only:
 # the reason must name a sha (7-40 hex) that resolves, is an ancestor of (or is)
@@ -292,7 +291,7 @@ cr_ledger_outside_dispositioned() {
               return true;
           } catch { return false; }
       };
-      // HIMMEL-3360 prior-head path: a fixed verdict disposes only when its
+      // prior-head path: a fixed verdict disposes only when its
       // reason names a sha that resolves, sits on the current head, is not the
       // prior head, and is not older than the prior head.
       const priorPath = e.CUR_HEAD !== "" && e.CUR_HEAD !== e.FULL_SHA;

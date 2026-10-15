@@ -47,7 +47,7 @@ $proj3 = Join-Path $td 'proj3/.claude/settings.json'
 $out = & pwsh -NoProfile -File $det -UserSettings $user -ProjectSettings $proj3 -HimmelRoot '/opt/himmel' 2>&1 | Out-String
 Check 'SC5 detects SessionStart dup' ($out -match 'inject-initiative') $true
 
-# SC5e: HIMMEL-3574 new wired-command shape (missing-script guard) is still
+# SC5e: new wired-command shape (missing-script guard) is still
 # recognised as the same himmel hook.
 New-Item -ItemType Directory -Force (Join-Path $td 'proj4/.claude') | Out-Null
 $proj4 = Join-Path $td 'proj4/.claude/settings.json'

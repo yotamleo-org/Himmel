@@ -1,4 +1,4 @@
-// scripts/lib/gen-secrets-doc.test.mjs — HIMMEL-2176 Task 5, design §7 V8.
+// scripts/lib/gen-secrets-doc.test.mjs — design §7 V8.
 // Three mandatory suites: (1) manifest shape + every probe id resolves in
 // probes.js's real PROBES dispatch map, (2) every manifest name appears in
 // the generated .env.example block, (3) red-then-green on the CI check
@@ -33,7 +33,7 @@ function loadRealSecrets() {
   return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')).secrets;
 }
 
-// CR fix (codex-3, retask stage1-build-6d2e): a manifest entry naming probe
+// (codex-3, retask stage1-build-6d2e): a manifest entry naming probe
 // "luna-sources" only actually gets validated if fetch-health.py's registry
 // carries a matching source AND scripts/install/manifest.json's own
 // luna-sources item lists that source in ITS `sources` array — the id-only
@@ -84,7 +84,7 @@ test('validateManifestShape: flags a duplicate name', () => {
   assert.deepEqual(problems, ['duplicate secret name: X']);
 });
 
-// ── 1c. HIMMEL-2305: the `feature` field — closed enum, required ──────────
+// ── 1c. the `feature` field — closed enum, required ──────────
 
 test('validateManifestShape: flags a missing "feature" field loudly (not silently)', () => {
   const problems = validateManifestShape([{ name: 'X', storage: 's', obtain: 'o', probe: 'p', required: 'optional' /* feature missing */ }]);
@@ -139,7 +139,7 @@ test('an unknown probe id fails LOUDLY, not silently (the whole point of carryin
   assert.equal(bad[0].probe, 'cmd:does_not_exist');
 });
 
-// CR fix (codex-3, retask stage1-build-6d2e): the "probe id resolves in
+// (codex-3, retask stage1-build-6d2e): the "probe id resolves in
 // PROBES" check above is satisfied by every luna-sources secret regardless
 // of whether that secret's own fetch-health.py source is actually in the
 // luna-sources item's `sources` list -- BITBUCKET_EMAIL/BITBUCKET_API_TOKEN
@@ -160,7 +160,7 @@ test('every luna-sources secret\'s fetch-health.py source is actually in install
   }
 });
 
-// ── 1b. Manifest malformation gate (CR round 3, retask stage1-build-6d2e) ──
+// ── 1b. Manifest malformation gate ──
 // A missing/null/non-array/empty `secrets` key used to be silently coerced
 // to [] -- the drift gate happily accepted a malformed manifest and
 // generated an EMPTY secrets block, defeating the generator's entire
@@ -276,7 +276,7 @@ test('every manifest-entry name appears in the generated .env.example block', ()
   }
 });
 
-// HIMMEL-2305: the tracked block stays selection-independent (full union,
+// The tracked block stays selection-independent (full union,
 // every adopter sees every key) but is reorganized into labeled per-feature
 // sections — a scoping-out only ever applies to the per-machine wizard walk/
 // status nags, never here (see gen-secrets-doc.mjs's own header).

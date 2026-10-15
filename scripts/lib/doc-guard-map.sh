@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/doc-guard-map.sh — shared 4-col doc-guard map loader (HIMMEL-587).
+# scripts/lib/doc-guard-map.sh — shared 4-col doc-guard map loader.
 #
 # Map format: 4-col TSV  strength<TAB>trigger<TAB>path-regex<TAB>required-doc
 #   strength ∈ {block, advise}   trigger ∈ {add, modify}

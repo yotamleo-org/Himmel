@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Shared ledger + post-once helper for CodeRabbit trigger hooks (HIMMEL-1906).
+# Shared ledger + post-once helper for CodeRabbit trigger hooks.
 #
-# CodeRabbit's `auto_review` is OFF (.coderabbit.yaml, HIMMEL-1252), so the
+# CodeRabbit's `auto_review` is OFF (.coderabbit.yaml), so the
 # App reviews a PR ONLY on an explicit `@coderabbitai review` comment. Two
 # PostToolUse hooks post that comment structurally:
 #   - trigger-cr-on-pr-create.sh  fires on `gh pr create`
 #   - trigger-cr-on-push.sh       fires on `git push`
 # Both match the BASH COMMAND STRING, so a PR opened or advanced from INSIDE
-# a script matches neither (HIMMEL-1924). scripts/lib/forge-github.sh is the
+# a script matches neither. scripts/lib/forge-github.sh is the
 # third caller: it triggers from the create/edit seam every such script
 # already routes through. All three obey the SAME invariant: trigger at most
 # ONCE per (repo, PR, head SHA) — so the seam and the hooks can never
@@ -40,8 +40,8 @@
 # (a flat, append-only, greppable audit file) — --git-common-dir (not
 # --git-dir) so a worktree checkout shares the ledger with its sibling
 # worktrees and the main checkout, matching the existing CR-marker
-# precedent (check-cr-before-push.sh's `.git/cr-pending/<branch>`,
-# HIMMEL-1540). `.git/` is never tracked, so this needs no gitignore entry;
+# precedent (check-cr-before-push.sh's `.git/cr-pending/<branch>`).
+# `.git/` is never tracked, so this needs no gitignore entry;
 # it survives across sessions and is pruned for free when a merged worktree
 # is removed.
 #
@@ -50,10 +50,10 @@
 # ledger is treated as "not yet triggered" (post proceeds) and a failed
 # write after posting only warns.
 #
-# CR_TRIGGER_SUPPRESS (HIMMEL-3141): a console's opt-out from posting the
+# CR_TRIGGER_SUPPRESS: a console's opt-out from posting the
 # CodeRabbit trigger for one leg (a PR the App will never review, or one
-# the console wants left unreviewed). CodeRabbit is best effort
-# (HIMMEL-3360): this knob never rations or sequences its reviews, and no
+# the console wants left unreviewed). CodeRabbit is best effort:
+# this knob never rations or sequences its reviews, and no
 # caller waits on one. Checked ONCE here, in cr_trigger_post_review —
 # the single function BOTH hooks (and the forge seam) route every post
 # through — rather than in either hook individually: a seam on only one
@@ -77,7 +77,7 @@
 # LEG_SUPPRESS_CR_TRIGGER, folded to this var the same way LEG_REPO folds to
 # HEADED_ARM_REPO).
 #
-# On the refusal note (HIMMEL-3141 option 3): a refused trigger attempt
+# On the refusal note (option 3): a refused trigger attempt
 # ("Review limit reached … Next included review available in N minutes")
 # still counts toward CodeRabbit's rolling 7-day attempt total that sets
 # the allowance. Deriving availability from the rate plus the last
@@ -126,7 +126,7 @@ cr_trigger_ledger_record() {
 }
 
 
-# ─── foreign-repo guard (HIMMEL-2034) ───────────────────────────────────────
+# ─── foreign-repo guard ───────────────────────────────────────
 # On 2026-08-22 trigger-cr-on-pr-create.sh posted `@coderabbitai review` on
 # JuliusBrussee/caveman#896 — an UPSTREAM PR opened from this machine. The
 # hooks parse owner/repo out of whatever PR URL `gh` printed and comment on
@@ -207,12 +207,12 @@ cr_trigger_repo_armed() {
 
 # cr_trigger_rate_limited <repo_path> -- rc 0 + "sha description" on stdout
 # iff the account reads rate-limited RIGHT NOW, evidenced by CodeRabbit's own
-# status on the LAST head this repo already triggered (HIMMEL-3319). A brand
+# status on the LAST head this repo already triggered. A brand
 # new PR's own head carries no CodeRabbit status yet, so there is no local
 # evidence to read from IT — the account-wide limit only shows up on whatever
 # head we most recently asked CodeRabbit to review. Reuses cr-signal.sh's
 # EXISTING reader (no new parser): the same rate-limit wording check-ci.sh
-# already trusts for the HIMMEL-3360 rate-limited=NOTE gate.
+# already trusts for the rate-limited=NOTE gate.
 #
 # That status is only ever trusted for CR_TRIGGER_RATE_LIMIT_TTL_SECONDS
 # (default 3600) past its own created_at, never indefinitely: nothing here
@@ -258,8 +258,7 @@ cr_trigger_rate_limited() {
         *) return 1 ;;
     esac
 
-    # HIMMEL-3319 follow-up (codex-1, pr-check round 1): the status on
-    # prior_sha is frozen the instant CodeRabbit posts it — nothing here ever
+    # The status on prior_sha is frozen the instant CodeRabbit posts it — nothing here ever
     # asks CodeRabbit to re-review that exact old SHA, so trusting this
     # signal forever would skip every later head permanently the first time
     # a repo hits the limit, never actually retrying "once the window
@@ -279,7 +278,7 @@ cr_trigger_rate_limited() {
           | select(.context == $ctx)
         ] | first | (.created_at // "")' 2>/dev/null) || return 1
     [ -n "$created_at" ] || return 1
-    # gnu-ok: GNU -d paired with the BSD -j -f fallback (macOS date has no -d; HIMMEL-3177)
+    # gnu-ok: GNU -d paired with the BSD -j -f fallback (macOS date has no -d)
     posted_epoch=$(date -u -d "$created_at" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$created_at" +%s 2>/dev/null) || return 1
     now_epoch=$(date -u +%s) || return 1
     [ $(( now_epoch - posted_epoch )) -lt "${CR_TRIGGER_RATE_LIMIT_TTL_SECONDS:-3600}" ] || return 1
@@ -306,7 +305,7 @@ cr_trigger_rate_limited() {
 cr_trigger_post_review() {
     local sha="$1" num="$2" repo_path="$3" scan_existing="$4" existing
 
-    # CR_TRIGGER_SUPPRESS (HIMMEL-3141): see the header note above for the
+    # CR_TRIGGER_SUPPRESS: see the header note above for the
     # full rationale. Checked first — cheapest, and a suppressed leg should
     # never pay for the foreign-repo / gh round-trips below just to no-op.
     # Deliberately does NOT touch the ledger: the trigger is deferred, not
@@ -317,7 +316,7 @@ cr_trigger_post_review() {
         return 0
     fi
 
-    # HIMMEL-2034: never comment on a repo whose CR gate is not ours. Checked
+    # never comment on a repo whose CR gate is not ours. Checked
     # HERE, in the one function all three callers (both PostToolUse hooks and
     # the forge seam) route their post through, so no caller can forget it.
     if ! cr_trigger_repo_armed "$repo_path"; then
@@ -330,7 +329,7 @@ cr_trigger_post_review() {
         return 0
     fi
 
-    # HIMMEL-3319: while the account reads rate-limited, every new head burns
+    # while the account reads rate-limited, every new head burns
     # another wasted attempt. Deliberately does NOT record the ledger, same
     # "deferred, not satisfied" reasoning as CR_TRIGGER_SUPPRESS above — a
     # later create/push for this exact head must still be free to post once

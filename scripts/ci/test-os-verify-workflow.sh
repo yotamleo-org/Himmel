@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# scripts/ci/test-os-verify-workflow.sh -- static suite for HIMMEL-3839: the
-# dispatch-only os-verify.yml that replaces ci.yml's force_all_os input.
+# scripts/ci/test-os-verify-workflow.sh -- static suite for # dispatch-only os-verify.yml that replaces ci.yml's force_all_os input.
 # The workflow exists to verify impacted suites on ONE chosen OS on demand, so
 # three properties must hold or it is worse than what it replaces:
 #   1. it can only ever be DISPATCHED (a pull_request/push/schedule trigger
 #      would put the paid macOS/Windows legs back on every PR);
 #   2. every job name carries the `os-verify / ` prefix, so a dispatch on a PR
 #      head can never post a check-run that satisfies (or shadows) one of the
-#      required contexts by name -- the HIMMEL-3788 precedent;
+#      required contexts by name;
 #   3. a real failure fails the job (no continue-on-error).
 # Pure text assertions over the workflow file plus mutation controls that prove
 # each check can fail; no network.
@@ -106,7 +105,7 @@ check_permissions_exact() {
 }
 
 # check_concurrency <file> -- rc 0 iff a group keyed on the ref AND the os input
-# exists and never cancels a running proof (HIMMEL-3853).
+# exists and never cancels a running proof.
 check_concurrency() {
   local b
   b="$(top_block "$1" concurrency)"
@@ -211,7 +210,7 @@ else bad "matrix has $nshards shards but --shard args say '${argn:-none}'"; fi
 if check_no_continue_on_error "$WF"; then ok "no continue-on-error: a red suite fails the job"
 else bad "continue-on-error present: a red suite would not fail the job"; fi
 
-# --- 6b. least privilege, injection-safe, non-stacking (HIMMEL-3853) ---------
+# --- 6b. least privilege, injection-safe, non-stacking ---------
 if check_permissions_exact "$WF"; then ok "permissions are exactly contents: read"
 else bad "permissions are not exactly contents: read"; fi
 if check_no_inputs_in_run "$WF"; then ok "no \${{ inputs.* }} inside a run: body (inputs reach the shell via env:)"

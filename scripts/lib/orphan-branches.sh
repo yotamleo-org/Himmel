@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # orphan-branches.sh — detect pushed branches with no PR + report chain health.
-# (HIMMEL-1325 chunk C — the lean-invoke branch→PR orphan guard.)
+# (the lean-invoke branch→PR orphan guard.)
 #
 # THE INVARIANT (the durable signal, not session liveness):
 #   Every branch on origin must have a PR. A branch WITH a PR survives its
@@ -9,7 +9,7 @@
 #   not evidence work finished — so this keys off branch+PR pairing, never
 #   process liveness.
 #
-# HOW IT AVOIDS THE FALSE-POSITIVE TRAP (HIMMEL-1325): a global
+# HOW IT AVOIDS THE FALSE-POSITIVE TRAP: a global
 #   `gh pr list --state all --limit 1000` is TRUNCATED past ~999 refs, so a
 #   "is my branch in that list" membership test flags every older branch as
 #   orphaned — 81 false positives on 2026-07-28. This lib NEVER issues a
@@ -70,7 +70,7 @@ _ob_timeout_cmd() {
 # rc to uncertain/pending, so 124 lands correctly and consistently with the
 # timeout-binary path).
 #
-# Why this exists (HIMMEL-1325): _ob_timeout_cmd returns empty when no timeout
+# Why this exists: _ob_timeout_cmd returns empty when no timeout
 # binary is present, and without this fallback _ob_gh_list runs `gh`
 # UNBOUNDED — a hung call hangs the whole scan with no ceiling, on a lib whose
 # whole point is to be bounded by ORPHAN_BRANCH_TIMEOUT.
@@ -149,7 +149,7 @@ _ob_fetch() {
 
 # _OB_LIST_JQ — the --jq filter handed to `gh pr list`; one tab row per PR:
 # <number> <state> <mergeCommit oid | -> <ci>, ci = green|none|pending|failed
-# derived from statusCheckRollup (HIMMEL-3197). Before this the ci state cost a
+# derived from statusCheckRollup. Before this the ci state cost a
 # SECOND call per open branch — `gh pr checks <n>`, measured at 4 GraphQL requests
 # each (GH_DEBUG=api) on a budget every leg on the box shares — and rc=1 there was
 # ambiguous between a red check and "no checks reported" (cli/cli#9390, #9682,
@@ -204,7 +204,7 @@ _ob_gh_list() {
     else
         # No `timeout` binary (stock macOS / minimal containers): the portable
         # _ob_bounded runner enforces the same ORPHAN_BRANCH_TIMEOUT budget so a
-        # hung gh cannot hang the scan unbounded (HIMMEL-1325).
+        # hung gh cannot hang the scan unbounded.
         _ob_bounded "$secs" "$tmp" "$primary" "${GH_CMD:-gh}" pr list --head "$branch" \
             --state all --limit 100 \
             --json number,state,mergeCommit,statusCheckRollup --jq "$_OB_LIST_JQ"
@@ -317,7 +317,7 @@ orphan_branch_scan() {
     # $(( )) cutoff below ("value too great for base" -> scan aborts; verified on
     # 2026-07-28). Same $((10#$var)) idiom as scripts/check-ci.sh. `max` needs
     # none: it is only ever used in a [ -ge ] test (decimal), never in $(( ))
-    # (HIMMEL-1325). The cutoff re-applies 10# as defense-in-depth at the one
+    # The cutoff re-applies 10# as defense-in-depth at the one
     # arithmetic site the value actually reaches.
     local days="${ORPHAN_BRANCH_DAYS:-30}"
     days=$((10#$days))

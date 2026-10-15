@@ -60,7 +60,7 @@ fi
 # Self-contained resume prompt. Single line so it survives both schtasks
 # (CMD quoting) and `at` (heredoc). Avoid backticks and $() so the operator's
 # shell does not pre-interpolate anything before scheduling.
-# HIMMEL-1719: the pointer clause names § Launch preamble (docs/handover/overnight-mode.md) — single line, quoting-safe charset; test section 1719 pins both.
+# the pointer clause names § Launch preamble (docs/handover/overnight-mode.md) — single line, quoting-safe charset; test section 1719 pins both.
 RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble standing instructions in docs/handover/overnight-mode.md before Phase 1."
 
 # Platform detection. Prefer OSTYPE (set by bash); fall back to uname.
@@ -75,7 +75,7 @@ detect_platform() {
 
 platform=$(detect_platform)
 
-# HIMMEL-4013: the emitted claude command runs under the role-matched plugin
+# the emitted claude command runs under the role-matched plugin
 # profile (role-profile.sh on the handover doc), never the full plugin set.
 # Fails closed: an unresolvable profile emits nothing.
 SR_LANES="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lanes" && pwd)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-worker-lifecycle.sh -- HIMMEL-1463 regression suite for the pre-arm
+# test-worker-lifecycle.sh -- regression suite for the pre-arm
 # live-worker guard, stale-running reconciliation, and shared-lock cleanup.
 #
 # PID liveness is fully stubbed. No assertion depends on a real process or on
@@ -36,7 +36,7 @@ assert_file_contains() {
 TMP="$(mktemp -d -t worker-lifecycle.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
-# HIMMEL-2765: arm-resume.sh now calls scripts/lib/bank-preflight.sh's
+# arm-resume.sh now calls scripts/lib/bank-preflight.sh's
 # fleet-size cap before every real (non-dry-run) arm. Without this, every
 # case here that reaches that far would call the REAL fleet count against
 # THIS machine's own ambient process table and could spuriously refuse
@@ -49,7 +49,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 
-# HIMMEL-2774: bank-preflight.sh now RESERVES a fleet slot per declared launch
+# bank-preflight.sh now RESERVES a fleet slot per declared launch
 # (CADENCE_BANK_LAUNCH=1, set unconditionally by arm-resume.sh for every
 # non-dry-run arm) under ${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u) — a
 # real, per-user, machine-shared directory this suite never pinned. Without
@@ -62,8 +62,7 @@ export FLEET_PS_CMD="$FLEET_PS_STUB"
 # arm-resume.sh releases its reservation on EVERY exit (its EXIT trap,
 # _arm_fleet_release_pending), a successful "RESUME ARMED" included — the
 # name it reserves can never match the `-n` name the scheduled task later
-# launches under, so holding it would only double-count (HIMMEL-2774,
-# HIMMEL-3017). So a clean case leaves nothing behind for the next one.
+# launches under, so holding it would only double-count. So a clean case leaves nothing behind for the next one.
 # reset_fleet_slots is kept as belt-and-braces for the cases that do not exit
 # cleanly (a killed arm, a stubbed preflight): a reservation left by one would
 # make the next case reusing that name a refused "duplicate declared launch",
@@ -72,7 +71,7 @@ export FLEET_PS_CMD="$FLEET_PS_STUB"
 export XDG_RUNTIME_DIR="$TMP/xdg"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-# HIMMEL-3103: assert-only (no HIMMEL_FLEET_SLOTS export) — reset_fleet_slots
+# assert-only (no HIMMEL_FLEET_SLOTS export) — reset_fleet_slots
 # below clears the XDG-derived dir, so the slot dir must stay XDG-derived, under
 # this suite's TMP and never the production dir the live fleet counts.
 . "$SCRIPT_DIR/../lib/fleet-slots-shield.sh"
@@ -115,9 +114,9 @@ export HANDOVER_DIR
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
 export SKILL_TELEMETRY_DIR="$TMP/telemetry"
-# HIMMEL-1965: the shipped-work preflight (HIMMEL-1331) derives a ticket ID from
+# the shipped-work preflight derives a ticket ID from
 # the handover and probes LIVE Jira/GitHub for it. This suite's fixture is
-# himmel-1463.md, so the moment HIMMEL-1463 itself shipped, every arm here that
+# himmel-1463.md, so the moment that ticket itself shipped, every arm here that
 # does not pass --force started refusing with rc=11 -- T2 and T9 failed on the
 # status of the very ticket the suite was written for.
 #
@@ -129,20 +128,20 @@ export SKILL_TELEMETRY_DIR="$TMP/telemetry"
 # Shield it. This suite exercises the reconciler and the pre-arm worker guard;
 # test-arm-resume.sh owns the shipped-work gate and sets this per-case.
 export ARM_SHIPPED_OK=1
-# HIMMEL-3846: keep the real bank-preflight's usage-cache refresh off the live cache.
+# keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 export ARM_BRIDGE_LIVE=0
 export ARM_MAX_SLOTS=0
 # This suite deliberately arms a $TMP fixture (resume_cwd is $WORK_REPO,
 # under $TMP) -- declare it, or every T2/T6/T9 arm that reaches arm-resume.sh
-# hits the HIMMEL-1365 temp-target refusal (rc=12). Same shield
+# hits the temp-target refusal (rc=12). Same shield
 # test-arm-resume.sh / test-arm-resume-identity.sh / test-arm-resume-long-gap.sh
-# / test-arm-resume-queue-lock.sh carry (HIMMEL-1622/1623).
+# / test-arm-resume-queue-lock.sh carry.
 export ARM_TEMP_CWD_OK=1
 
 SCHED_STUB="$TMP/sched-stub"
 mkdir -p "$SCHED_STUB"
-# HIMMEL-938/1879 (same fix as test-arm-resume.sh's SCHED_STUB_T17): a
+# Same fix as test-arm-resume.sh's SCHED_STUB_T17: a
 # stateless "always exit 0, never list anything" schtasks fake is internally
 # inconsistent with arm-resume's post-arm EXISTENCE verify, which re-queries
 # after /create and reads an empty answer as "the create registered nothing"
@@ -187,7 +186,7 @@ cat > "$SCHED_STUB/powershell" <<'EOF'
 exit 1
 EOF
 chmod +x "$SCHED_STUB/powershell"
-# HIMMEL-2642: this station has a real `at` binary, so schedule_arm's
+# this station has a real `at` binary, so schedule_arm's
 # `linux)` case takes the `at`-heredoc path (arm-resume.sh ~5122), never
 # _crontab_schedule -- there is no separate crontab-path gap to fix here.
 # The same schtasks statelessness bug the /query stub above fixes existed
@@ -245,13 +244,13 @@ exit 0
 EOF
 chmod +x "$SCHED_STUB/at" "$SCHED_STUB/atq" "$SCHED_STUB/atrm" "$SCHED_STUB/claude"
 
-# HIMMEL-3719: macOS always takes arm-resume's crontab branch (never `at`), so
+# macOS always takes arm-resume's crontab branch (never `at`), so
 # the arms here would land in the operator's REAL crontab and T9's second arm
 # would dedup against T6's leftover entry (rc=3). Give it a file-backed crontab
 # stub (same shape as test-arm-resume-cron.sh) plus a private runner dir and no
 # Terminal window. Linux takes the `at` stubs above and never calls it.
 # ponytail: a stub stands in for real crontab, so no real cron round-trip is
-# exercised here; test-arm-resume-cron.sh owns that contract, HIMMEL-3719.
+# exercised here; test-arm-resume-cron.sh owns that contract,
 CRON_STORE="$TMP/cron.store"; : > "$CRON_STORE"
 cat > "$SCHED_STUB/crontab" <<EOF
 #!/bin/sh
@@ -264,7 +263,7 @@ EOF
 chmod +x "$SCHED_STUB/crontab"
 export ARM_RUNNER_DIR="$TMP/arm-runners" ARM_TERMINAL_APP=none
 
-# mktemp shim for T1b (HIMMEL-708 fallout): arm-resume's --time HH:MM
+# mktemp shim for T1b: arm-resume's --time HH:MM
 # resolution now round-trips through py_armor_capture, which ALSO calls
 # mktemp -- so a global broken TMPDIR (the old way this case forced a
 # failure) trips that earlier, unrelated mktemp call instead of the
@@ -287,8 +286,8 @@ chmod +x "$SCHED_STUB/mktemp"
 
 NEAR_HHMM=$(node -e 'const d = new Date(Date.now() + 5 * 60 * 1000); process.stdout.write(String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"))')
 
-# _set_mtime_seconds_ago <path> <secs> -- portable mtime override (HIMMEL-1511
-# ceiling tests need a controlled session-dir age without waiting real hours).
+# _set_mtime_seconds_ago <path> <secs> -- portable mtime override (ceiling
+# tests need a controlled session-dir age without waiting real hours).
 _set_mtime_seconds_ago() {
     node -e '
 const fs = require("fs");
@@ -334,7 +333,7 @@ mkdir -p "$SECURE_STDERR_TMP"
 out=$(OLD_CENSUS_PATH_FILE="$OLD_CENSUS_PATH_FILE" TMPDIR="$SECURE_STDERR_TMP" PATH="$SCHED_STUB:$PATH" LIVE_PIDS=111 bash -c '
 old="/tmp/arm-resume.census-err.$$"
 printf "%s\n" "$old" > "$OLD_CENSUS_PATH_FILE"
-# HIMMEL-1520: this plants the sentinel at the same predictable shared /tmp
+# this plants the sentinel at the same predictable shared /tmp
 # path a symlink-planting attacker would target, so guard the write itself
 # with noclobber -- an existing path (planted or otherwise) fails the setup
 # loudly instead of a blind `>` silently following a symlink onto it.
@@ -488,7 +487,7 @@ assert_contains "T6 bypass warning lists worker" "task=bypass-live pid=777" "$ou
 assert_contains "T6 bypass reaches scheduler success" "RESUME ARMED" "$out"
 assert_file_contains "T6 live bypass metadata remains running" '"status":"running"' "$BYPASS_DIR/meta.json"
 
-# T7: HIMMEL-1511 -- an unprobeable row whose pid was NEVER written (the
+# T7: an unprobeable row whose pid was NEVER written (the
 # writeLiveWorkerMeta fallback marker shape: pid=0 or the field deleted
 # entirely) ages out past the absolute ceiling backstop even though
 # liveness stays unprobeable forever.
@@ -520,7 +519,7 @@ assert_contains "T8 relic within ceiling warns unprobeable" "unprobeable codex/r
 assert_file_contains "T8 relic metadata remains running" '"status":"running"' "$CEIL_NEW_DIR/meta.json"
 rm -rf "$CEIL_NEW_DIR"
 
-# T8x: HIMMEL-1520 -- a row sitting EXACTLY at RECONCILE_UNPROBEABLE_CEILING_SECS
+# T8x: a row sitting EXACTLY at RECONCILE_UNPROBEABLE_CEILING_SECS
 # must count as exceeded (>=), not survive one more cycle (the prior `>` bug).
 # Real elapsed time between an mtime write and the check always makes the
 # observed age strictly greater than any nominal ceiling, so this pins the
@@ -533,7 +532,7 @@ EOF
 _set_mtime_seconds_ago "$CEIL_EXACT_DIR" 10
 CEIL_EXACT_MTIME_MS=$(_stat_mtime_ms "$CEIL_EXACT_DIR")
 # bash `$(( ))` is integer-only and syntax-errors on the fractional mtimeMs a
-# sub-millisecond filesystem (ext4) returns (HIMMEL-1567). Do the add in node
+# sub-millisecond filesystem (ext4) returns. Do the add in node
 # instead of truncating -- truncating here would defeat the exact-tie this
 # test is built to pin (see _stat_mtime_ms's doc comment above).
 CEIL_EXACT_NOW_MS=$(node -e 'process.stdout.write(String(Number(process.argv[1]) + 5000))' "$CEIL_EXACT_MTIME_MS")
@@ -590,7 +589,7 @@ rm -rf "$RACE_DIR"
 # T8b: a session-dir stat failure remains fail-open (no orphaning) but now
 # emits a diagnostic instead of being indistinguishable from not-exceeded.
 #
-# HIMMEL-2066: the census is now ONE batched node call reading paths on
+# the census is now ONE batched node call reading paths on
 # stdin instead of one call per meta.json, so this stub can no longer spot
 # "the call for STAT_DIR" via argv[3] -- it reads the whole piped stdin and
 # checks whether STAT_DIR's path is IN the batch instead. The race is still
@@ -640,7 +639,7 @@ assert_contains "T8b ceiling stat failure is diagnosable" "ERR reconcile-workers
 assert_contains "T8b stat-failed row remains unprobeable" "unprobeable codex/stat-failure" "$out"
 assert_not_contains "T8b stat failure does not authorize orphaning" "orphaned codex/stat-failure" "$out"
 
-# T9: HIMMEL-1511 -- a malformed meta.json makes the reconciler return rc=2
+# T9: a malformed meta.json makes the reconciler return rc=2
 # (parse failure), which used to refuse arm-resume unconditionally BEFORE
 # ARM_WITH_LIVE_WORKERS was ever evaluated -- the documented emergency
 # override could not reach this branch. Now ARM_WITH_LIVE_WORKERS=1
@@ -662,7 +661,7 @@ assert_contains "T9 refusal names the offending meta path" "glm-malformed/meta.j
 # otherwise (and correctly) hit the real dedup-block path (rc=3) instead of
 # the scenario this case means to exercise. Reset both so this arm starts
 # from a clean scheduler, like every T-case before the stubs gained real
-# state (HIMMEL-2642 added the at-jobs half of this reset).
+# state.
 rm -f "$TMP/sched-stub.tasks"
 : > "$CRON_STORE"
 rm -rf "$AT_DB"
@@ -676,7 +675,7 @@ assert_contains "T9 override still names the offending meta path" "glm-malformed
 assert_contains "T9 override reaches scheduler success" "RESUME ARMED" "$out"
 rm -rf "$MALFORMED_DIR"
 
-# T10: HIMMEL-2066 -- one census batch mixing a terminal row, a live running
+# T10: one census batch mixing a terminal row, a live running
 # row, and a malformed row must reconcile the good rows exactly as before
 # and still surface the parse failure as rc=2 for the batch as a whole.
 T10_TERMINAL_DIR="$WORKER_BRIDGE_ROOT/glm-sessions/glm-t10-terminal"

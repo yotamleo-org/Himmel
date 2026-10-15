@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/commit-class.sh — conventional-commit subject classifier (HIMMEL-587).
+# scripts/lib/commit-class.sh — conventional-commit subject classifier.
 # Factored from scripts/gen-changelog.sh so the changelog generator and the
 # doc-freshness detector classify commit subjects identically.
 # cc_classify <subject> → echoes one of: feat | fix | changed | other

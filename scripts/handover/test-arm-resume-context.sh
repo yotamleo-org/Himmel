@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-context.sh — HIMMEL-2658 --context 1m|standard arm guard.
+# test-arm-resume-context.sh — --context 1m|standard arm guard.
 #
 # Operator ruling: context window (the [1m] model-id suffix + the actual
 # cost-driving --autocompact lever) is an ARMING-TIME choice per console/leg,
@@ -23,12 +23,12 @@
 # (d), and (f)'s command-rendering assertions ('opus\[1m\]', '--autocompact
 # auto', etc.) target arm-resume.sh's POSIX `at`/crontab emitter
 # SPECIFICALLY -- the same scope test-arm-resume-tier.sh's own body
-# comments document (its HIMMEL-2642 notes at cases a/c/c2/d2, e.g. ~line
+# comments document (its notes at cases a/c/c2/d2, e.g. ~line
 # 225: "the POSIX `at`-heredoc branch (arm-resume.sh's `linux)` case), NOT
 # the Windows .bat path"). On a real Windows host arm-resume.sh takes the
 # schtasks/.bat branch instead, where `cadence_cmd_escape` double-quotes
 # BOTH operands (`--model "opus[1m]"`, `--autocompact "auto"`) rather than
-# %q-quoting them bare. HIMMEL-3181: the positive command-rendering
+# %q-quoting them bare. The positive command-rendering
 # assertions therefore go through assert_contains_either and accept either
 # rendering. No .ps1 twin (project convention: a documented platform guard
 # suffices for a test harness).
@@ -42,7 +42,7 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume-context.XXXXXX") || {
     exit 1
 }
 trap 'rm -rf "$TMP"' EXIT
-# HIMMEL-3103: every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
+# every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.
 . "$(dirname "$ARM")/../lib/fleet-slots-shield.sh"
 fleet_slots_shield "$TMP" || exit 1
@@ -61,14 +61,14 @@ unset CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK 2>/dev/null || true
 export WORKER_BRIDGE_ROOT="$TMP/worker-bridge-shield"
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
-# Temp-target shield (HIMMEL-1365): every fixture here lives under $TMP,
+# Temp-target shield: every fixture here lives under $TMP,
 # which is exactly the shape arm-resume refuses for a REAL scheduled task.
 # This suite's scheduler is PATH-stubbed, so no real task is ever created;
 # --dry-run is exempt from rc=12 anyway, but --time smart's resume-slot.sh
 # hop can still read the work-dir before DRY_RUN is known, so keep the
 # opt-out for parity with the sibling suite.
 export ARM_TEMP_CWD_OK=1
-# Dotenv-read shield (HIMMEL-2254): defeats a FILE read (not just an env
+# Dotenv-read shield: defeats a FILE read (not just an env
 # var) so an operator .env carrying ARMAUTOMERGE=1 can't leak an unexpected
 # assertion-breaking prefix into the emitted command.
 export ARM_RESUME_DOTENV_ROOT="$TMP/dotenv-shield"
@@ -96,7 +96,7 @@ assert_contains() {
     esac
 }
 
-# HIMMEL-3181: the POSIX at-body leaves the operands bare (`--model opus `,
+# the POSIX at-body leaves the operands bare (`--model opus `,
 # `--autocompact auto`) while the Windows .bat renderer double-quotes them
 # (`--model "opus"`, `--autocompact "auto"`, see the platform-guard note above);
 # accept whichever the host's real branch renders. Each needle still pins its
@@ -130,9 +130,9 @@ HANDOVER_DIR="$TMP/statedocs/handovers"
 mkdir -p "$HANDOVER_DIR"
 git init -q "$TMP/statedocs"
 
-# future_time — same near-future HH:MM cache as the sibling suites (HIMMEL-1579)
+# future_time — same near-future HH:MM cache as the sibling suites
 # so a slow box doesn't roll the target to tomorrow mid-suite and trip the
-# unrelated HIMMEL-1475 long-gap guard (rc=9).
+# unrelated long-gap guard (rc=9).
 _FT_FILE="$TMP/future-time.cache"
 future_time() {
     local _now _target _value
@@ -165,7 +165,7 @@ make_handover() {
 
 # ---------------------------------------------------------------------------
 # Scheduler stub — same empty-scheduler shape as test-arm-resume-tier.sh's
-# (itself HIMMEL-1879's SCHED_STUB_T17): /query reports back what /create
+# (itself SCHED_STUB_T17): /query reports back what /create
 # registered, /delete removes it, at/atq/powershell are no-ops. Keeps every
 # arm below from touching (or dedup-blocking against) a real HIMMEL-Resume
 # job on this machine.
@@ -213,7 +213,7 @@ cat > "$SCHED_STUB/powershell" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-# HIMMEL-3181: macOS routes to _crontab_schedule and Windows to the .bat
+# macOS routes to _crontab_schedule and Windows to the .bat
 # branch; both REFUSE (rc=2) when `claude` does not resolve on PATH at arm
 # time, and the nightly macOS/Windows runners have no claude installed. A stub
 # keeps every dry-run arm below independent of the host's claude.
@@ -275,7 +275,7 @@ assert_not_contains "b: no [1m] suffix anywhere in output" '[1m]' "$out"
 #     --autocompact auto. The relaunch command itself renders the model
 #     through printf '%q' on this Linux station's POSIX `at` branch, which
 #     backslash-escapes the brackets (opus\[1m\]) -- verified against a real
-#     dry-run (HIMMEL-2658 manual check). The guard-line echo above it is
+#     dry-run. The guard-line echo above it is
 #     the unescaped, human-readable report; assert both.
 # ---------------------------------------------------------------------------
 HO_C=$(make_handover)
@@ -311,7 +311,7 @@ assert_not_contains "d: RED CONTROL — model not suffixed (unescaped)" 'claude-
 assert_not_contains "d: RED CONTROL — model not suffixed (escaped)" 'claude-fable-5-1\[1m\]' "$out"
 
 # ---------------------------------------------------------------------------
-# (e) HIMMEL-3884: console handovers default to 1m/auto; ordinary arms
+# (e) console handovers default to 1m/auto; ordinary arms
 #     retain standard/200000. Reverting the shared resolver breaks e1.
 # ---------------------------------------------------------------------------
 HO_E1=$(make_handover "arm-context-console.md")
@@ -348,7 +348,7 @@ out=$(run_arm --time "$(future_time)" --handover "$HO_F" --model 'opus[1m]' --co
 rc=$?
 assert_rc "f: --context standard with a pre-suffixed --model exits 0" 0 "$rc"
 assert_contains "f: guard line names the stripped suffix" 'stripped an operator-typed [1m] suffix from --model' "$out"
-# HIMMEL-2642-style rendering note (see case c): the plain model on this
+# Rendering note (see case c): the plain model on this
 # Linux station's POSIX `at` branch renders bare/unquoted via printf '%q',
 # with a trailing space as its right boundary (same shape test-arm-resume-
 # tier.sh's case (a) asserts on --model opus).
@@ -363,7 +363,7 @@ assert_not_contains "f: relaunch command does not carry --model opus[1m] (unesca
 assert_not_contains "f: relaunch command does not carry --model opus[1m] (escaped)" '--model opus\[1m\]' "$out"
 
 # ---------------------------------------------------------------------------
-# (g) HIMMEL-2658 RETASK follow-up: a [1m]-suffixed Fable-family --model on
+# (g) RETASK follow-up: a [1m]-suffixed Fable-family --model on
 #     a NON-console handover is still classified Fable-family by the
 #     ruling-30 guard (arm-resume.sh's *fable* case glob, ~line 794) --
 #     proving the suffix cannot smuggle a Fable pin past that guard. Refused
@@ -378,7 +378,7 @@ assert_rc "g: [1m]-suffixed Fable model, no --fable-ok, still refused" 20 "$rc"
 assert_contains "g: stderr names --fable-ok" '--fable-ok' "$out"
 
 # ---------------------------------------------------------------------------
-# (h) HIMMEL-2779: --tier leg makes the standard autocompact ceiling
+# (h) --tier leg makes the standard autocompact ceiling
 #     structural. The exact argv pair matters; absence of [1m] is not enough.
 # ---------------------------------------------------------------------------
 HO_H1=$(make_handover)
@@ -431,7 +431,7 @@ exit 1
 EOF
 chmod +x "$REAL_SCHED/at" "$REAL_SCHED/atq" "$REAL_SCHED/powershell"
 
-# HIMMEL-3181: the stub above backs the POSIX `at` path only. macOS arms via
+# the stub above backs the POSIX `at` path only. macOS arms via
 # crontab and Windows via schtasks, so on those hosts a real arm here would
 # touch the runner's REAL crontab (or fail rc=2 for want of a schtasks stub) --
 # SKIP with a stdout line the runner counts, never a silent pass.
@@ -452,9 +452,9 @@ case "${OSTYPE:-$(uname -s 2>/dev/null)}" in
 esac
 
 # ---------------------------------------------------------------------------
-# (j) HIMMEL-3282: a console arm through arm-resume.sh (the Windows schtasks
+# (j) a console arm through arm-resume.sh (the Windows schtasks
 #     station's path) records its resolved launch context DURABLY, in the same
-#     row shape headed-arm.sh writes (HIMMEL-3279), so the scorecard reader
+#     row shape headed-arm.sh writes, so the scorecard reader
 #     attributes it after the tmpfs arm log is gone. RED before the fix: no
 #     record existed, sc_launch_context said `unknown` for an arm-resume
 #     console. The scheduler stub is the at/atq one above, so this runs the
@@ -558,7 +558,7 @@ case "${OSTYPE:-$(uname -s 2>/dev/null)}" in
 esac
 
 # ---------------------------------------------------------------------------
-# (k) HIMMEL-5501: [1m] only on the 4.6 family; native-1M and non-Anthropic ids
+# (k) [1m] only on the 4.6 family; native-1M and non-Anthropic ids
 #     launch bare with --autocompact auto. RED before the suffix predicate:
 #     every non-Fable id got [1m].
 # ---------------------------------------------------------------------------
@@ -572,7 +572,7 @@ for m in claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5 gpt-5.6-sol glm-5.1 
 done
 
 # ---------------------------------------------------------------------------
-# (l) HIMMEL-5501: a Claude Code below the version floor refuses an armed
+# (l) a Claude Code below the version floor refuses an armed
 #     launch (rc=2, names the version and `claude update`); a dry run only
 #     warns. Stub binaries via HEADED_ARM_CLAUDE_CLI; version shape copied from
 #     the real `claude --version` (2.1.296 (Claude Code)).

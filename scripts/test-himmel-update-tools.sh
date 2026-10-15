@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-himmel-update-tools.sh — himmel-update.sh upgrades probe-mode station
-# tools that the drift guard reads BEHIND (HIMMEL-4088).
+# tools that the drift guard reads BEHIND.
 #
 # Before this ticket the updater never called apply-tool-upgrade.sh, so an
 # operator running /himmel-update got "everything current" while the drift guard

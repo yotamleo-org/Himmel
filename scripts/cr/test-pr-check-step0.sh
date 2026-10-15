@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/pr-check-step0.sh (HIMMEL-3798).
+# Smoke test for scripts/cr/pr-check-step0.sh.
 #
 # Runs the script under test against an isolated mktemp fixture only - never
 # the real repo. The fixture's scripts/cr/pr-check-context.sh is a stub, so

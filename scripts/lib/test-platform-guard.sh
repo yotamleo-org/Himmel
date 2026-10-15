@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-platform-guard.sh — direct unit tests for platform_guard_ok
-# (HIMMEL-2682). Exercises the predicate itself, not just its two consumers
+# Exercises the predicate itself, not just its two consumers
 # (scripts/hooks/check-new-shell-platform-guard.sh's suite and
 # scripts/parity/test-ws5-invariants.sh's T15 both cover it end-to-end
 # already; this asserts the function directly against a scratch file).

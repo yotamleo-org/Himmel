@@ -22,7 +22,7 @@
 #       Mode A inline path does not yet exist (pure `handover_root` only —
 #       use `handover_root_ensure` if you need the dir created)
 #
-# Pure / side-effecting split (HIMMEL-150 — back-port from luna-brain):
+# Pure / side-effecting split (back-port from luna-brain):
 #   - `handover_root` is now PURE — never mkdirs. Status/doctor/read-only
 #     callers cannot trigger filesystem mutation as a side effect of a
 #     read. Returns rc=2 with diagnostic when the Mode A inline dir is
@@ -37,7 +37,7 @@
 #     which uses pure; flush.sh refuses Mode A explicitly and only runs
 #     in Mode B where pure and _ensure behave identically.)
 #
-# Deployment guidance (HIMMEL-335):
+# Deployment guidance:
 #   Mode A (inline <repo>/handovers/) is the default and works out of the
 #   box. To centralize handover state in a separate repo (Mode B) — so
 #   handover commits don't land on your feature branches — run
@@ -47,8 +47,8 @@
 #
 #       export HANDOVER_DIR="/abs/path/to/your-state-repo/handovers"
 #
-#   HIMMEL-129 (done 2026-05-25) shipped the bucket-layout layer that
-#   splits <state-root>/ into per-repo subfolders
+#   The bucket-layout layer (shipped 2026-05-25) splits
+#   <state-root>/ into per-repo subfolders
 #   (`cross/`, `himmel/`, `luna/`, `luna_brain/`). The v2 handover skill
 #   auto-detects the layer when any bucket dir exists. This resolver
 #   stays single-root; the bucket layer is applied by callers (skill +
@@ -106,7 +106,7 @@ handover_mode() {
 # _arm_realpath_walk <path> -- pure-bash `realpath -m`: resolve every existing
 # directory component physically (cd -P) and normalise ./.. lexically past the
 # first missing one. For hosts whose realpath lacks -m (macOS/BSD) and that have
-# no armored python (HIMMEL-3177). ponytail: a symlink LEAF that is a file (or
+# no armored python. ponytail: a symlink LEAF that is a file (or
 # dangling) is kept as written, where GNU realpath -m would follow it.
 _arm_realpath_walk() {
     local _in="$1" _cur="" _seg _rest _phys
@@ -135,7 +135,6 @@ _arm_realpath_walk() {
 # armored python3 pathlib, else a pure-bash walk (_arm_realpath_walk), else the
 # input unchanged (best effort). Shared by arm-resume.sh's scheduler identity
 # and the arms-registry contract so those two keys cannot drift
-# (HIMMEL-1304/HIMMEL-1344).
 _arm_realpath() {
     local _p=""
     _p=$(realpath -m "$1" 2>/dev/null) || _p=""
@@ -161,7 +160,7 @@ _hp_ascii_lower() {
         _hp_ch="${_hp_s:$_hp_i:1}"
         case "$_hp_ch" in
             # Explicit list, NOT [A-Z]: a range expands by locale collation and
-            # under en_US on bash 3.2 also matches lowercase (HIMMEL-3200).
+            # under en_US on bash 3.2 also matches lowercase.
             [ABCDEFGHIJKLMNOPQRSTUVWXYZ])
                 _hp_prefix="${_hp_upper%%"$_hp_ch"*}"
                 _hp_ch="${_hp_lower:${#_hp_prefix}:1}"
@@ -173,14 +172,14 @@ _hp_ascii_lower() {
 }
 
 # _arm_cache_dir -- one PRIVATE scratch dir per top-level process, backing
-# both caches below (HIMMEL-2073). Every call site of _arm_identity_path is
+# both caches below. Every call site of _arm_identity_path is
 # `x=$(_arm_identity_path ...)`; command substitution forks a SUBSHELL, so an
 # in-memory cache variable set inside it dies with it (a naive
 # `_ARM_CYGPATH_AVAILABLE=""` var, the _py_armor_have_gnu_timeout pattern,
 # never actually caches anything here — verified: it measured ZERO
 # improvement). A FILE survives the subshell boundary.
 #
-# Created via `mktemp -d` (CR round 1, codex-1 CRITICAL): an earlier draft
+# Created via `mktemp -d`: an earlier draft
 # derived the cache path from `$$` alone in the SHARED, world-writable temp
 # dir — predictable, so another local user could pre-plant a symlink at that
 # exact path and have this script's `>`/`>>` write through it onto any file
@@ -195,7 +194,7 @@ _hp_ascii_lower() {
 # OUT of one), so every subshell this library's functions run in shares the
 # SAME directory without needing to derive it again.
 #
-# No EXIT trap here on purpose (CR round 2, codex-2 Important — a leaked dir
+# No EXIT trap here on purpose (a leaked dir
 # per process is real: arm-resume.sh fires from recurring scheduled tasks, so
 # it accumulates, unlike the single small file py-armor.sh's own harmless-leak
 # precedent covers). arm-resume.sh already owns an EXIT trap of its own (`trap
@@ -206,7 +205,7 @@ _hp_ascii_lower() {
 # risking exactly that collision. Self-cleaning instead: sweep this library's
 # own >1-day-old cache dirs before creating a new one.
 #
-# OWNERSHIP is the primary guard (CR round 5, codex-1 CRITICAL): no
+# OWNERSHIP is the primary guard: no
 # content-shape heuristic, however narrow, can be airtight against a
 # DELIBERATE adversary who knows the heuristic and crafts a directory to
 # pass it — the round-3/round-4 fixes (name + regular-file checks) each
@@ -224,7 +223,7 @@ _hp_ascii_lower() {
 # else) — the shape check catches that case, ownership catches the
 # adversarial one; together they cover both.
 #
-# HIMMEL-2125 -- AGE IS THE FIRST FILTER, and it costs ONE `find` for the whole
+# AGE IS THE FIRST FILTER, and it costs ONE `find` for the whole
 # sweep. It used to be the LAST: the loop paid a `basename` fork per entry
 # inside every candidate dir plus a `find` fork per dir, and only then asked
 # whether the dir was even old enough to delete. Since this GC runs at SOURCE
@@ -334,16 +333,16 @@ _arm_cygpath_available() {
         # usability check above and here), the shell's own diagnostic lands
         # on the ALREADY-redirected fd2 (/dev/null), not the real stderr.
         # Reordered the other way around, the open failure fires before
-        # 2>/dev/null takes effect and prints raw regardless (HIMMEL-2583).
+        # 2>/dev/null takes effect and prints raw regardless.
         [ -n "$_f" ] && { printf '%s' "$_avail" 2>/dev/null > "$_f" || true; }
     fi
     [ "$_avail" = yes ]
 }
 
 # _arm_identity_path <path> -- the canonical handover identity first shipped
-# in arm-resume.sh for scheduler-row dedup (HIMMEL-1304). It lives in this
+# in arm-resume.sh for scheduler-row dedup. It lives in this
 # shared library now because queue-lock.sh must consume the exact same identity
-# from arms.jsonl (HIMMEL-1344). On Windows, cygpath folds C:/, C:\ and /c/
+# from arms.jsonl. On Windows, cygpath folds C:/, C:\ and /c/
 # spellings together, then case-folding matches NTFS semantics; POSIX paths
 # retain case because it can distinguish real files there.
 #
@@ -367,20 +366,20 @@ _arm_cygpath_available() {
 # IFS is set to) as COLLAPSING — adjacent tabs merge into one delimiter, so
 # the common case (`$PLATFORM` unset -> an EMPTY middle field,
 # `path<TAB><TAB>value`) split as path/value/"" instead of path/""/value,
-# silently missing on every lookup (CR round 1, codex-2 IMPORTANT). 0x1F is
+# silently missing on every lookup. 0x1F is
 # not whitespace-class, so `read` splits on it exactly, empty fields
 # included — a plain `read -r` split stays a safe, dependency-free lookup
 # with no `grep`/`awk` subprocess spent just to consult the cache. $PWD is in
-# the key too (CR round 2, codex-3 Suggestion): _arm_realpath resolves a
+# the key too: _arm_realpath resolves a
 # RELATIVE `$1` against the CURRENT directory, so the same relative-path
 # STRING can legitimately mean two different files across a `cd` — keying on
 # text alone would serve the wrong directory's answer back. $OSTYPE is in the
-# key too (CR round 3, codex-2 Suggestion): it is the OTHER input the
+# key too: it is the OTHER input the
 # auto-detect branch below reads when $PLATFORM is unset, so a caller
 # overriding $OSTYPE instead of $PLATFORM (the same override shape
 # test-handover-path.sh already exercises for $PLATFORM) hit the identical
 # stale-cross-platform-answer class T8c/T8d caught for $PLATFORM. Residual
-# (CR round 1 codex-4 + round 2 codex-4, both Suggestion, accepted): a path,
+# a path,
 # $PLATFORM, $OSTYPE, or $PWD containing a literal 0x1F or newline byte would
 # still break the split — POSIX allows any byte but NUL/`/` in a path, so
 # this is not a hard guarantee, only true for every realistic value on this
@@ -414,7 +413,7 @@ _arm_identity_path() {
         _hp_ascii_lower "$_p"; _p="$_HP_LOWER"
     fi
     if [ "$_platform" = macos ]; then
-        # HIMMEL-3719: APFS is case-insensitive by default, so Foo.md and foo.md
+        # APFS is case-insensitive by default, so Foo.md and foo.md
         # are one file. Fold only when the lowercased path exists AND is the
         # same file (-ef); a case-sensitive volume, a missing path or a distinct
         # file keeps today's identity (fail safe).
@@ -426,7 +425,7 @@ _arm_identity_path() {
     # stderr redirected FIRST (see the matching comment in
     # _arm_cygpath_available above) so a failed `>>` open never reaches the
     # real stderr even if $_ARM_CACHE_DIR vanished between the usability
-    # check and here (HIMMEL-2583).
+    # check and here.
     [ -n "$_cf" ] && { printf '%s\037%s\037%s\037%s\037%s\n' "$1" "${PLATFORM:-}" "${OSTYPE:-}" "$PWD" "$_p" 2>/dev/null >> "$_cf" || true; }
     printf '%s' "$_p"
 }
@@ -474,7 +473,7 @@ _arm_registry_identity_from_canonical() {
             # exists: /work/Foo.md and /work/foo.md are two different files with
             # two different scheduler identities, and one folded key would let
             # a re-arm prune or a queue-lock consume retire the OTHER handover's
-            # pending record (HIMMEL-1344 codex-adv round).
+            # pending record.
             printf 'absolute:%s' "$_ho"
             ;;
     esac
@@ -489,7 +488,7 @@ _arm_registry_identity_path_from_root() {
 }
 
 # _arm_registry_identity_path <handover-path> <handover-root> -- durable
-# cross-machine arms-registry key (HIMMEL-1344). Paths under the handover root
+# cross-machine arms-registry key. Paths under the handover root
 # are stored ROOT-RELATIVE; outside-root paths retain a canonical absolute key.
 _arm_registry_identity_path() {
     local _root
@@ -497,7 +496,7 @@ _arm_registry_identity_path() {
     _arm_registry_identity_path_from_root "$1" "$_root"
 }
 
-# --- flat-JSON helpers for the handover lock/registry files (HIMMEL-882) ---
+# --- flat-JSON helpers for the handover lock/registry files ---
 # Shared by scripts/handover/queue-lock.sh and scripts/handover/arm-resume.sh
 # (both already source this lib) for owner.json and the cross-machine arms
 # registry (.locks/arms.jsonl). PURE BASH, ZERO FORKS by design: results are
@@ -674,7 +673,7 @@ _hp_arms_record_matches_path() {
     # differently-named target, whose target spelling is what the registry stored,
     # was rejected here even though the canonical keys below would have matched --
     # a missed duplicate-arm on the foreign scan and a stale same-host record that
-    # survives the rewrite. (CR round 1: panel [codex-1] + CodeRabbit, agreed.)
+    # survives the rewrite.
     if [ "$_hp_stored_leaf" != "$_hp_raw_leaf" ] \
         && [ ! -L "$_HP_UNESC" ] && [ ! -L "$_hp_raw" ]; then
         return 0
@@ -687,22 +686,22 @@ _hp_arms_record_matches_path() {
 # _hp_session_stem_num <basename.md> -- parse a handover session filename
 # into $_HP_STEM (series name) + $_HP_NUM (leg number string, may carry
 # leading zeros e.g. "01"). Used by auto-commit.sh's write-time half of the
-# HIMMEL-1830/1831 one-file-per-leg guard (the arm-time half already landed
-# independently in arm-resume.sh as the rc-17 split-leg check, HIMMEL-1830 /
-# PR #1794 -- this helper is not shared with it).
+# one-file-per-leg guard (the arm-time half already landed
+# independently in arm-resume.sh as the rc-17 split-leg check -- this helper is
+# not shared with it).
 #
 # Matches "<stem>-<digits>.md" -- the greedy `.+` plus the right-anchored
 # `-([0-9]+)\.md$` naturally picks the LAST hyphen-number run, so a stem that
-# itself contains digits (e.g. "HIMMEL-654-dispatch-session-25.md") still
-# splits correctly (stem="HIMMEL-654-dispatch-session", num="25"). The
+# itself contains digits (e.g. "PROJ-654-dispatch-session-25.md") still
+# splits correctly (stem="PROJ-654-dispatch-session", num="25"). The
 # supported unnumbered leg-1 spelling "<stem>.md" maps to the same stem with
 # num="1", so "<stem>.md" + "<stem>-2.md" cannot bypass the write-time guard.
 #
 # A bare-ticket-key stem is rejected (CR findings, codex-1 Important x2): a
 # JIRA project key is, by this codebase's own convention, an all-caps token
-# (HIMMEL, LUNA, GGS, ...). "HIMMEL-1830.md" parses as stem="HIMMEL"
+# (HIMMEL, LUNA, GGS, ...). "PROJ-1830.md" parses as stem="PROJ"
 # num="1830" -- indistinguishable from a real leg number -- so two unrelated
-# tickets' one-off notes ("HIMMEL-1830.md" + "HIMMEL-1831.md") would collide
+# tickets' one-off notes ("PROJ-1830.md" + "PROJ-1831.md") would collide
 # on the same stem and false-refuse a commit with no actual leg split.
 # Rejecting every hyphen-free stem was too broad a fix: it also silently
 # stopped catching the guard's own documented examples ("foo-25.md" +

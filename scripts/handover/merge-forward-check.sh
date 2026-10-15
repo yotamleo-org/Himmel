@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/merge-forward-check.sh — HIMMEL-4114 (corrects HIMMEL-4112).
+# scripts/handover/merge-forward-check.sh.
 # Read-only decision for the leg preface's merge-forward rule. Invariant: a leg
 # never merges, or merges forward past, a red its own change introduced.
 # Merge-forward cures ONLY a red inherited from a broken base.
@@ -32,7 +32,7 @@
 # --base-sha must equal `git merge-base origin/main HEAD` (computed here, after a
 # fetch, from the leg's own repo) and --main-base-sha (the base run's headSha
 # from `gh run list --commit`); --latest-sha (the latest run's headSha) must equal
-# an ancestor-or-equal of `git rev-parse origin/main` (HIMMEL-5124: main CI is a
+# an ancestor-or-equal of `git rev-parse origin/main` (main CI is a
 # 7 h cron plus dispatch, so the latest completed run is usually behind the tip)
 # and a descendant-or-equal of the verdict run (the covering run, else the
 # merge-base), so a run from before the base cannot stand in for latest.
@@ -45,7 +45,7 @@
 # `gh run view <id> --json conclusion` (`none` when no run exists at the merge-base):
 # a cancelled run keeps the job rows that had finished, and its aggregator job fails
 # because its shards were cancelled, so the rows alone read as a real red.
-# HIMMEL-4260 / HIMMEL-5124: main CI runs on a cron and on dispatch, so most
+# main CI runs on a cron and on dispatch, so most
 # merge-bases have NO run at their own commit (an empty --main-base file), and a
 # run that exists may be cancelled. Either way the base verdict comes from the
 # next completed main run covering the merge-base — the
@@ -57,10 +57,10 @@
 # REFUSEs: wait for the next cron or dispatch run. A run whose conclusion is
 # cancelled is cancelled whatever its job rows say, and --main-base-conclusion /
 # --base-cover-conclusion carry that, so the script no longer trusts the rows alone.
-# HIMMEL-5137: only success and failure are completed verdicts; any other conclusion
+# only success and failure are completed verdicts; any other conclusion
 # REFUSEs (cancelled routes a base to the cover), and none is accepted for the base
 # only with an empty file and never for a cover.
-# HIMMEL-5461: the covering run is usually the one that carries the fix, so a red the PR
+# the covering run is usually the one that carries the fix, so a red the PR
 # inherited reads green there and looked like the PR's own. --base-cases-local <file>
 # (`<job><TAB><case>`, the cases reproduced FAILING at the merge-base by running the failing
 # suite there in a scratch worktree) lets a COVERING-run verdict yield: a job green on the
@@ -151,7 +151,7 @@ for f in "$prc" "$bc"; do
 done
 lc_cmd=""; lc_log=""
 if [ -n "$lc" ]; then
-  # HIMMEL-5461: the file is bound to THIS merge-base (a copied PR-cases file carries no such header) and
+  # the file is bound to THIS merge-base (a copied PR-cases file carries no such header) and
   # names the command and log that produced it, so the ALLOW line is checkable by the console.
   lc_mb="$(awk '/^# merge-base /{print $3; exit}' "$lc")"
   lc_cmd="$(awk '/^# command /{sub(/^# command +/, ""); print; exit}' "$lc")"
@@ -210,7 +210,7 @@ if [ "$psha" != "$head" ]; then
   exit 1
 fi
 
-# HIMMEL-5137: only success and failure are completed verdicts whose rows are trusted; cancelled
+# only success and failure are completed verdicts whose rows are trusted; cancelled
 # routes to the cover below; none means no run exists, so it must come with an empty file
 case "$bconc" in
   success|failure|cancelled) ;;
@@ -276,7 +276,7 @@ while IFS= read -r job; do
   l="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && $2!="success" {print $2; f=1; exit} ($1 "")==(ENVIRON["J"] "") {s=1} END {if (!f && s) print "success"}' "$latest")"
   pcases="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") {print $2}' "$prc")"
   case "$b" in failure|timed_out|startup_failure) inherited=1 ;; *) inherited=0 ;; esac
-  # HIMMEL-5461: the covering run may already hold the fix, so it reads green though the case failed at the
+  # the covering run may already hold the fix, so it reads green though the case failed at the
   # merge-base. Only a covering-run verdict yields to a local reproduction at the merge-base: a completed run
   # at the merge-base itself is that commit's own verdict. Every one of the PR's failing cases must reproduce.
   local_ok=0; unrepro=""

@@ -1,4 +1,4 @@
-# Shared PowerShell lane mirror/lock (HIMMEL-4091). No credentials/history copied.
+# Shared PowerShell lane mirror/lock. No credentials/history copied.
 # The caller's state retains its sanitizer, identity stamp and trust policy.
 function Get-LaneSeedFingerprint($Seed, [string]$Relative = '', [string]$Destination = '') {
   $FingerprintJs = @'

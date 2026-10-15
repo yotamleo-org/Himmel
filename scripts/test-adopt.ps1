@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ScriptDir = $PSScriptRoot
 $Installer = Join-Path $ScriptDir "adopt.ps1"
@@ -20,7 +20,7 @@ function Fail($m) { Write-Host "  FAIL: $m" -ForegroundColor Red; $script:fails+
 $TMP = Join-Path ([System.IO.Path]::GetTempPath()) ("himmel-adopt-native-test-" + [System.Guid]::NewGuid().ToString("N").Substring(0,8))
 New-Item -ItemType Directory -Force -Path $TMP | Out-Null
 
-# HIMMEL-842 CR round-2 (F1): scripts/jira/dist + scripts/jira/node_modules are
+# scripts/jira/dist + scripts/jira/node_modules are
 # gitignored build artifacts that MAY already exist in this checkout (a primary
 # checkout that ran adopt.ps1/setup.ps1 before). Build-JiraCli's "already
 # built" skip fires the instant either is present, which would make scenarios

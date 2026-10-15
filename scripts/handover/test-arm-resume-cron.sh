@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-cron.sh — HIMMEL-3074 crontab entry: a defined, runnable
+# test-arm-resume-cron.sh — crontab entry: a defined, runnable
 # execution shape on a TTY-less scheduler.
 #
 # Adopter issue himmel#774 (macOS 26): the crontab entry arm-resume.sh
@@ -63,12 +63,12 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume-cron.XXXXXX") || {
     exit 1
 }
 trap 'rm -rf "$TMP"' EXIT
-# HIMMEL-3679: every case in this suite stubs crontab/at via mac_env, but the
+# every case in this suite stubs crontab/at via mac_env, but the
 # suite-level guard is defense-in-depth against a case that doesn't. Snapshot
 # now, before any case runs, and diff again right before the summary.
 CRONTAB_SNAPSHOT_BEFORE=$(crontab -l 2>/dev/null || true)
 ATQ_SNAPSHOT_BEFORE=$(atq 2>/dev/null || true)
-# HIMMEL-3103: every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
+# every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.
 . "$(dirname "$ARM")/../lib/fleet-slots-shield.sh"
 fleet_slots_shield "$TMP" || exit 1
@@ -93,7 +93,7 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK HIMMEL_HEADROOM_PROXY 2>/dev/null || true
 # The log-directory seam under test: keep every fixture log under $TMP so
 # the suite never writes into the operator's real $HOME/.himmel.
 export ARM_RESUME_LOG_DIR="$TMP/arm-logs"
-# HIMMEL-3846: a real arm runs the REAL bank-preflight; keep its usage-cache
+# a real arm runs the REAL bank-preflight; keep its usage-cache
 # refresh off the live /tmp/claude/statusline-usage-cache.json.
 export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 # Runner-file seam (fold of Goomal's fix/arm-resume-macos-cron): every REAL
@@ -102,7 +102,7 @@ export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-c
 # throwaway dir so this suite never writes into the operator's real $HOME.
 export ARM_RUNNER_DIR="$TMP/arm-runners"
 
-# HIMMEL-1712: hermetic identity so every raw usage-cache fixture below can
+# hermetic identity so every raw usage-cache fixture below can
 # stamp a matching account hash — resume-slot.sh now refuses (rc=2) a cache
 # whose .account doesn't match the current session, and CLAUDE_ACCOUNT_CONFIG
 # overrides current_account_hash's HOME lookup regardless of which g_env/
@@ -272,7 +272,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# (a-headed) CR round 3 (#780): the headed `.command` launch must NOT inherit
+# (a-headed) the headed `.command` launch must NOT inherit
 # the headless runner's stdin/log redirect. The `.command` file owns a real
 # Terminal TTY; redirecting stdin to /dev/null gives claude immediate EOF and
 # hiding stdout in the log defeats the whole point of opening the window.
@@ -287,7 +287,7 @@ assert_contains "a-headed: headed launch still resolves claude absolutely" "CLAU
 assert_not_contains "a-headed: RED CONTROL — headed .command body carries no stdin/log redirect" "< /dev/null" "$out"
 
 # ---------------------------------------------------------------------------
-# (a-appresolve) HIMMEL-3474: arm-resume.sh's headed macOS launch resolves
+# (a-appresolve) arm-resume.sh's headed macOS launch resolves
 # ARM_TERMINAL_APP / ARM_APP_DIRS through the SAME shared
 # scripts/lib/macos-app-resolve.sh konsole-macos.sh uses (see
 # scripts/handover/test-konsole-macos.sh's own cases 5a-5c for that caller).
@@ -414,7 +414,7 @@ else
 fi
 _mode_c=$(host_mode_of "$RUNNER_PATH_C")
 if ! host_modes_stick; then
-    # HIMMEL-3182: NTFS/MSYS keeps the file at 755 whatever the script chmods
+    # NTFS/MSYS keeps the file at 755 whatever the script chmods
     host_skip "c: runner file mode 700: chmod does not stick on this host (read back $_mode_c)"
 elif [ "$_mode_c" = "700" ]; then
     echo "PASS c: runner file mode 700"
@@ -433,7 +433,7 @@ else
     echo "FAIL c: log directory not created: $ARM_RESUME_LOG_DIR"; FAILED=$((FAILED + 1))
 fi
 assert_contains "c: success output names the log path" "$ARM_RESUME_LOG_DIR/" "$out"
-# CR round 1 on #780: the arm probes the log FILE for append (`: >> $log_file`),
+# the arm probes the log FILE for append (`: >> $log_file`),
 # not just the dir -- a dir that exists with a file that cannot be opened for
 # append fails at fire time AFTER self_clean, the same silent no-op. The
 # probe's artifact is the (empty) log file it leaves behind.
@@ -442,7 +442,7 @@ if ls "$ARM_RESUME_LOG_DIR"/HIMMEL-Resume-*.log >/dev/null 2>&1; then
 else
     echo "FAIL c: no log file under $ARM_RESUME_LOG_DIR after a successful arm -- append was not probed"; FAILED=$((FAILED + 1))
 fi
-# (c-exec) EXECUTE the generated runner FILE the way cron would (CR round 1 on
+# (c-exec) EXECUTE the generated runner FILE the way cron would (on
 #     #780: an artifact that is only string-matched cannot fail on a quoting,
 #     grouping or redirect regression). Run it under /bin/sh with cron's PATH
 #     (/usr/bin:/bin) plus the stub dir WITHOUT claude in front -- so the stub
@@ -514,7 +514,7 @@ installed=$(cat "$CRON_STORE" 2>/dev/null || true)
 assert_not_contains "c2: RED CONTROL -- no entry installed on refusal" "# HIMMEL-Resume-" "$installed"
 
 # ---------------------------------------------------------------------------
-# (e) CR round 2 on #780: a `crontab -l` failure that is NOT the trusted
+# (e) a `crontab -l` failure that is NOT the trusted
 #     "no crontab yet" signature must never be treated as an empty crontab,
 #     at arm time OR at fire time -- either would wipe every unrelated cron
 #     job. Two sub-cases, each with its own stub so the failure is genuinely
@@ -594,12 +594,12 @@ fi
 assert_contains "e2: RED CONTROL -- unrelated job survives a failed self-clean" "unrelated-job" "$(cat "$CRON_STORE" 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
-# (f) HIMMEL-3122: the age-gated stale-runner prune (HIMMEL-Resume-*.sh/
+# (f) the age-gated stale-runner prune (HIMMEL-Resume-*.sh/
 #     .command, mtime +7) ran BEFORE the runner write. A --force re-arm of a
 #     task whose OWN prior runner had gone stale (parked, not yet fired)
 #     pruned that file first; if the replacement write then failed for a
 #     reason unrelated to the prune, schedule_arm exited 4 having already
-#     deleted the runner -- and because HIMMEL-1304 defers the old crontab
+#     deleted the runner -- and because schedule_arm defers the old crontab
 #     entry's replacement until the NEW job is registered, that untouched old
 #     entry is left installed pointing at a now-missing file.
 #
@@ -700,7 +700,7 @@ assert_rc "d: portable '{p;q;}' form runs under this host's sed" 0 "$rc"
 assert_contains "d: portable form prints the H1" "# ABC-1 title" "$h1"
 # `notes.md`: a basename with no key, no ticket: frontmatter, no --worktree —
 # so ONLY src-3 (the H1 sed) can supply the ticket in the task name.
-# Case (c) left a real entry at future_time in the crontab store; the HIMMEL-407
+# Case (c) left a real entry at future_time in the crontab store; the
 # exact-minute collision check (rc 6) would refuse this dry-run on that seat,
 # which is not what (d) measures — empty the store first.
 : > "$CRON_STORE"
@@ -712,7 +712,7 @@ assert_contains "d: ticket inferred from the H1 via the portable sed" "HIMMEL-Re
 assert_not_contains "d: no sed diagnostic on stderr" "extra characters at the end of q command" "$out"
 
 # ---------------------------------------------------------------------------
-# (g) HIMMEL-3121: `--time` defaults to `smart`, and the post-arm banner states
+# (g) `--time` defaults to `smart`, and the post-arm banner states
 #     only what is true.
 #
 #   g1  --handover with NO --time reaches the smart path (dry-run, bank-free
@@ -795,7 +795,7 @@ assert_contains "g5: it armed" "RESUME ARMED" "$out"
 assert_not_contains "g5: the imperative /exit order is gone" "PLEASE /exit YOUR CURRENT CLAUDE SESSION NOW." "$out"
 assert_contains "g5: the self-resume NOTE is present" "NOTE (self-resume only):" "$out"
 
-# HIMMEL-3679: the real crontab/at queue must be byte-identical to what this
+# the real crontab/at queue must be byte-identical to what this
 # run started with -- any case that reached the real scheduler despite its
 # stub is a leak into the operator's own crontab/at, not a test failure to
 # shrug off.

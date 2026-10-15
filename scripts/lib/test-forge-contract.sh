@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-forge-contract.sh — the forge contract (I6, HIMMEL-4762 / HIMMEL-4748
+# test-forge-contract.sh — the forge contract (I6
 # WP4): one case list run against all four forge backends.
 #   github     recorded fixtures replayed through a GH_CMD stub
 #   bitbucket  documented-shape fixtures replayed through a BITBUCKET_CMD stub

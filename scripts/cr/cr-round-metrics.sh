@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/cr-round-metrics.sh — review-round and repeat-finding baseline (HIMMEL-5059)
+# scripts/cr/cr-round-metrics.sh — review-round and repeat-finding baseline
 # Usage: cr-round-metrics.sh [--days N] [--now ISO-8601] [--known <known-findings.json>]
 #                            [--groups <file of branch<TAB>group>]
 # Reads CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl),
@@ -9,7 +9,7 @@
 # `amend` record sets it, so verdicts are amend-merged keyed on (target_head, finding_id,
 # artifact, perspective). A "PR" is a ledger branch; its rounds are the highest `round`
 # stamped on its finding rows (distinct heads when no row carries a round). The review
-# cap is three rounds (review-round.sh), so a cap hit is a branch that reached round 4+.
+# cap is three rounds (review-round.sh), so a cap hit is a branch that reached a fourth round or later.
 # A finding is a REPEAT when its class already appeared on an earlier branch (by first
 # finding ts, history before the window counts); a class repeating inside one branch is
 # the fix-and-re-review loop and is not counted. known_findings.matched counts findings

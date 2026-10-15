@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# preflight-adopter.sh — shared adopter preflight checks (HIMMEL-842 fix-batch).
+# preflight-adopter.sh — shared adopter preflight checks.
 #
 # Sourced (not executed) by both scripts/adopt.sh (auto-invoked from
 # require_tools) and scripts/preflight-adopter.sh (the standalone check-only
@@ -17,7 +17,7 @@
 # all; the standalone runner just counts. The detection is not duplicated between
 # the two entry points; only the severity policy differs.
 #
-# Checks (each closes a HIMMEL-842 gap from the preflight design spec):
+# Checks (each closes a gap from the preflight design spec):
 #   preflight_check_uv_pipx       — uv OR pipx present (gap 1: pre-commit install)
 #   preflight_check_npm_invocable — npm invocable when node is (gap 2: npm-less
 #                                   distro node)

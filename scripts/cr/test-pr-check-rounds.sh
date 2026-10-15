@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Focused acceptance tests for the branch-scoped /pr-check round cap
-# (HIMMEL-2780). Bash 3.2-safe; no network or paid critic calls.
+# Focused acceptance tests for the branch-scoped /pr-check round cap.
+# Bash 3.2-safe; no network or paid critic calls.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
 
@@ -32,7 +32,7 @@ cp "$HERE/review-round.sh" "$fx/scripts/cr/review-round.sh"
 cp "$HERE/ledger-append.sh" "$fx/scripts/cr/ledger-append.sh"
 cp "$HERE/write-verdicts.sh" "$fx/scripts/cr/write-verdicts.sh"
 cp "$HERE/clear-cr-marker.sh" "$fx/scripts/cr/clear-cr-marker.sh"
-# HIMMEL-3914: every chokepoint fails closed without its seam-guard lib.
+# Every chokepoint fails closed without its seam-guard lib.
 cp "$HERE/../lib/chokepoint-seam-guard.sh" "$fx/scripts/lib/chokepoint-seam-guard.sh"
 cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$fx/scripts/lib/load-dotenv.sh"
@@ -96,7 +96,7 @@ STUB
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-# HIMMEL-4632: review-round.sh resolves the branch's PR by --head to bind a
+# review-round.sh resolves the branch's PR by --head to bind a
 # judge record (`--json number`; clear-cr-marker asks for number,headRefOid).
 if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${3:-}" = --head ]; then
     for arg in "$@"; do
@@ -107,7 +107,7 @@ if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${3:-}" = --head ]; then
         fi
     done
 fi
-# HIMMEL-5257: review-round.sh reads the last reviewed head's check-runs through
+# review-round.sh reads the last reviewed head's check-runs through
 # `gh api`; the stub prints the fixture's "<status> <conclusion> <name>" rows.
 if [ "${1:-}" = api ] && [ "${2:-}" = --paginate ]; then
     case "${3:-}" in
@@ -117,7 +117,7 @@ if [ "${1:-}" = api ] && [ "${2:-}" = --paginate ]; then
             exit 0 ;;
     esac
 fi
-# HIMMEL-5268: review-round.sh reads the remote default branch name, then asks
+# review-round.sh reads the remote default branch name, then asks
 # the remote how --base-sha relates to it
 # (`gh api repos/<o>/<r>/compare/<sha>...<branch> --jq .status`). The stub
 # HONOURS the branch argument: only the remote default ($GH_REMOTE_DEFAULT, main)
@@ -253,7 +253,7 @@ case "${1:-}" in
 esac
 STUB
 chmod +x "$tmp/bin/cat"
-# review-round only writes the branch checked out in cwd (HIMMEL-3495), so each
+# review-round only writes the branch checked out in cwd, so each
 # branch runs from its own linked worktree; the state dir is the shared one.
 git -C "$repo" worktree add -q -b contended "$tmp/wt-contended" main
 git -C "$repo" worktree add -q -b independent "$tmp/wt-independent" main
@@ -277,7 +277,7 @@ assert_eq "$(cat "$git_dir/cr-review-rounds/contended.round")" "2" "contended st
 assert_eq "$independent_rc" "0" "different branch starts while contended branch is locked"
 assert_eq "$independent_out" "1" "different branch keeps an independent counter"
 
-# HIMMEL-3495: review-round writes shared per-branch state, so every verb
+# review-round writes shared per-branch state, so every verb
 # refuses a --branch other than the one checked out in cwd, and a detached
 # HEAD. Run from the feature checkout against the `other` branch's state.
 other_round_before="$(cat "$git_dir/cr-review-rounds/other.round")"
@@ -297,7 +297,7 @@ assert_eq "$panel_foreign_rc" "2" "panel-first-pass refuses a --branch not check
 assert_has "$panel_foreign_out" "not the branch checked out" "panel-first-pass foreign-branch refusal names the reason"
 assert_eq "$(cat "$git_dir/cr-review-rounds/other.round")" "$other_round_before" "a refused panel run leaves the other branch's round untouched"
 
-# HIMMEL-4600: a 4th FULL round is refused. Re-reviewing the round-3 head is
+# A 4th FULL round is refused. Re-reviewing the round-3 head is
 # a full round of code three rounds already saw, so it never runs the panel.
 before_full4_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
 full4_out="$(cd "$repo" && bash "$SCRIPT" --head "$head3" --branch feature 2>&1)"; full4_rc=$?
@@ -310,7 +310,7 @@ assert_eq "$(wc -l < "$PANEL_CALLS" | tr -d ' ')" "$before_full4_calls" "a refus
 # origin/main gets the ONE delta round, scoped to round-3 head..new head.
 git -C "$repo" checkout -q main
 printf 'main-forward-2\n' > "$repo/main2.txt"
-# HIMMEL-4995: main also adds a line above the branch's hunk, so the branch's
+# Main also adds a line above the branch's hunk, so the branch's
 # own diff shifts (a changed context line) and this merge is not a free
 # clean-merge - it keeps the one delta round, as before.
 printf 'top\nbase\n' > "$repo/f.txt"
@@ -382,7 +382,7 @@ three_rounds() {
     git -C "$repo" checkout -q -b "$1" main
     printf '%s\n' "$1" > "$repo/$1.txt"
     git -C "$repo" add "$1.txt"
-    # HIMMEL-4697: an optional third argument bumps the branch's plugin.json.
+    # An optional third argument bumps the branch's plugin.json.
     [ -z "${3:-}" ] || write_plugin "$1" "$3"
     git -C "$repo" commit -q -m "$1"
     cap_r3_head="$(git -C "$repo" rev-parse "$1")"
@@ -397,7 +397,7 @@ fix_commit() {
     cap_fix_head="$(git -C "$repo" rev-parse "$1")"
 }
 
-# The HIMMEL-4600 RED: three rounds, round 3 raised a finding, the leg fixed
+# The RED: three rounds, the third raised a finding, the leg fixed
 # it at a new head. clear-cr-marker refuses that head (no critic reviewed it)
 # until the one delta round runs; then it clears through the real gate.
 three_rounds fixpath suggestion
@@ -421,8 +421,8 @@ assert_has "$fixpath_out" "pr-check: delta round 4 on fixpath (from $cap_r3_head
 assert_eq "$fixpath_clear2_rc" "0" "the fix head clears after the one delta round"
 if [ -e "$git_dir/cr-pending/fixpath" ]; then fail "the delta round's rows clear the marker"; else pass "the delta round's rows clear the marker"; fi
 
-# HIMMEL-5185: the delta round itself raised findings and the leg fixed them.
-# postcap_setup <branch> <delta panel mode>: round 3 raised a finding that was
+# The delta round itself raised findings and the leg fixed them.
+# postcap_setup <branch> <delta panel mode>: the third round raised a finding that was
 # fixed at the fix commit, the one delta round ran there in <mode> (stub-1, plus
 # a second critic finding stub-2), and every row sits at the delta head
 # (postcap_d_head). postcap_fix <branch> adds the commit that answers them.
@@ -502,7 +502,7 @@ postcap_fix postcapzero
 postcap_out="$(postcap_start postcapzero)"; postcap_rc=$?
 assert_eq "$postcap_rc" "8" "a delta round with no findings buys no post-cap round"
 
-# The documented ceiling (ponytail at ledger_query, HIMMEL-3557): critic rows are
+# The documented ceiling (ponytail at ledger_query): critic rows are
 # session-writable, so a leg-written finding row under a model name outside the
 # excluded three IS a critic row and buys the round. A buy costs one review
 # round, never a merge. This row pins that behaviour so a tightening shows up.
@@ -539,7 +539,7 @@ postcap_fix postcaphead
 postcap_out="$(postcap_start postcaphead)"; postcap_rc=$?
 assert_eq "$postcap_rc" "8" "a fixed amend on another head buys no post-cap round"
 
-# A new commit after a CLEAN round 3 is new work, not a fix: no delta round.
+# A new commit after a CLEAN third round is new work, not a fix: no delta round.
 three_rounds newwork clean
 fix_commit newwork
 newwork_out="$(cd "$repo" && bash "$SCRIPT" --head "$cap_fix_head" --branch newwork 2>&1)"; newwork_rc=$?
@@ -638,12 +638,12 @@ assert_eq "$evil_rc" "8" "a merge that adds its own edit gets no merge-forward d
 assert_has "$evil_out" "neither answers a round-3 finding nor only merges" "evil-merge refusal names the reason"
 assert_eq "$(cat "$git_dir/cr-review-rounds/evilmerge.round")" "3" "a refused evil merge leaves the counter at 3"
 
-# HIMMEL-4697: plugin-version-bump-required makes a plugin PR bump its
+# plugin-version-bump-required makes a plugin PR bump its
 # plugin.json version inside the merge of main, so that merge never equals a
 # clean merge tree. Only a version-only resolution above both parents passes.
 write_plugin() {
     mkdir -p "$repo/marketplace/plugins/$1/.claude-plugin"
-    # HIMMEL-4703: plugin_nested=1 nests the only version key under "meta".
+    # plugin_nested=1 nests the only version key under "meta".
     if [ -n "${plugin_nested:-}" ]; then
         printf '{\n  "name": "%s",\n  "meta": {\n    "version": "%s"\n  },\n  "description": "%s"\n}\n' \
             "$1" "$2" "${3:-fixture}" > "$repo/marketplace/plugins/$1/.claude-plugin/plugin.json"
@@ -741,7 +741,7 @@ pv7_out="$(cd "$repo" && bash "$SCRIPT" --head "$plugin_head" --branch pvoutside
 assert_eq "$pv7_rc" "8" "a conflict outside plugin.json gets no merge-forward delta round"
 assert_has "$pv7_out" "neither answers a round-3 finding nor only merges" "outside-conflict refusal keeps today's message"
 
-# HIMMEL-4703: the refusals HIMMEL-4697's merge judge read in the code.
+# The refusals the merge judge read in the code.
 # (5) A prerelease or v-prefixed resolved version: refused.
 for pv in pvrc:0.1.3-rc1 pvvprefix:v0.1.3; do
     plugin_case "${pv%%:*}" 0.1.1 0.1.2 main-bumps
@@ -823,7 +823,7 @@ plugin_nested=
 (cd "$repo" && bash "$SCRIPT" --head "$plugin_head" --branch pvnested >/dev/null 2>&1); pv_rc=$?
 assert_eq "$pv_rc" "8" "a plugin.json with only a nested version key gets no merge-forward delta round"
 
-# HIMMEL-4616: a delta round whose panel produced no rows is still pending, so
+# A delta round whose panel produced no rows is still pending, so
 # the SAME <from> <to> pair may start again without a second counter bump; once
 # a critic reviewed the head, or for any other pair, the one delta round is used.
 three_rounds pendingdelta suggestion
@@ -849,7 +849,7 @@ pdo_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$(git -C "$repo
 assert_eq "$pdo_rc" "8" "a pending delta round is never reused for a different head"
 assert_has "$pdo_out" "delta round was already used" "different-pair refusal names the reason"
 
-# HIMMEL-4634: round-3 findings are keyed by id + artifact + perspective, so
+# Round-3 findings are keyed by id + artifact + perspective, so
 # settling one finding does not hide another that shares its id.
 three_rounds keyedr3 clean
 for ap in "diff off" "spec on"; do
@@ -866,7 +866,7 @@ fix_commit keyedr3
 (cd "$repo" && bash "$SCRIPT" --head "$cap_fix_head" --branch keyedr3 >/dev/null 2>&1); keyedr3_rc=$?
 assert_eq "$keyedr3_rc" "0" "settling one finding does not hide another with the same id"
 
-# HIMMEL-4635: in the delta round an Important counts as classified only when
+# In the delta round an Important counts as classified only when
 # fu_class is exactly hardening.
 three_rounds polishimp suggestion
 fix_commit polishimp
@@ -881,7 +881,7 @@ assert_eq "$defer_polish_rc" "4" "a delta-round Important classed polish is refu
 assert_has "$(cat "$tmp/defer-polish.err")" "explicit fu_class amend" "polish Important refusal names the remedy"
 if [ -e "$git_dir/cr-pending/polishimp" ]; then pass "polish Important leaves the marker pending"; else fail "polish Important leaves the marker pending"; fi
 
-# HIMMEL-4618: the delta Important deferral clears the new head through the
+# The delta Important deferral clears the new head through the
 # REAL clear-cr-marker.sh, not the stub installed below.
 three_rounds important suggestion
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" amend \
@@ -971,7 +971,7 @@ calls="$(cat "$PANEL_CALLS" 2>/dev/null)"
 expected_prefix="$(printf '%s\n%s\n%s\n%s' "$head1" "$head2" "$head3" "$other_head")"
 assert_has "$calls" "$expected_prefix" "early rounds run the actual captured heads"
 
-# review-round.sh promote (HIMMEL-2911): agreed findings absent at a clean
+# review-round.sh promote: agreed findings absent at a clean
 # round head become terminal `fixed` amends, idempotently.
 promote_ledger="$git_dir/cr-critic-scores.jsonl"
 git -C "$repo" checkout -q -b promote main
@@ -1024,8 +1024,8 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --set verdict=deferred --set deferred_to=HIMMEL-9010 --set fu_class=hardening --reason "deferred by hand"
 
 # (h) agreed at an earlier head, its fingerprint reappears at the clean head
-# but that reappearance is deferred, not resolved (codex-1, HIMMEL-2911 CR
-# round 3) -> still-open: deferred means the issue is still real.
+# but that reappearance is deferred, not resolved
+# -> still-open: deferred means the issue is still real.
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch promote --head "$promote_head_a" --model stub --id find-h \
     --severity sug --file promote.txt --line 7 --verdict "" \
@@ -1042,7 +1042,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --set verdict=deferred --set deferred_to=HIMMEL-9011 --reason "tracked, out of scope"
 
 # (i) agreed on a DIVERGENT commit that is not an ancestor of the clean head
-# (codex-2, HIMMEL-2911 CR round 3) -> still-open even with no fingerprint
+# -> still-open even with no fingerprint
 # match: --head never reviewed past that commit, so its absence proves nothing.
 git -C "$repo" checkout -q -b promote-divergent main
 printf 'divergent\n' > "$repo/divergent.txt"
@@ -1058,7 +1058,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_divergent" --id find-i \
     --set verdict=agreed --reason "leg agrees with iota"
 
-# (f) agreed AT the clean head itself (codex-1, HIMMEL-2911 CR round 1) ->
+# (f) agreed AT the clean head itself ->
 # still-open: no later commit could have fixed a finding raised THIS round.
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch promote --head "$promote_head_b" --model stub --id find-f \
@@ -1069,8 +1069,8 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --set verdict=agreed --reason "leg agrees with zeta"
 
 # (g) agreed at an earlier head, its fingerprint reappears at the clean head
-# but that reappearance is already disproved (codex-2, HIMMEL-2911 CR round
-# 1) -> promoted: a DISPOSITIONED occurrence is not a live re-raise.
+# but that reappearance is already disproved
+# -> promoted: a DISPOSITIONED occurrence is not a live re-raise.
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch promote --head "$promote_head_a" --model stub --id find-g \
     --severity sug --file promote.txt --line 6 --verdict "" \
@@ -1086,8 +1086,8 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_b" --id find-g2 \
     --set verdict=disproved --reason "not reproducible at this head"
 
-# (m) no amend at all, no verdict on the finding row (the exact #617 shape:
-# HIMMEL-2917) -> still-open, tagged unadjudicated: nobody dispositioned it,
+# (m) no amend at all, no verdict on the finding row (the exact #617 shape)
+# -> still-open, tagged unadjudicated: nobody dispositioned it,
 # so the round is not certified clean over it either.
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch promote --head "$promote_head_a" --model stub --id find-m \
@@ -1124,7 +1124,7 @@ assert_has "$promote_out2" "still-open find-m@" "second promote run still report
 find_m_amends="$(LEDGER="$promote_ledger" node -e 'const fs=require("fs"),e=process.env;let n=0;for(const l of fs.readFileSync(e.LEDGER,"utf8").trim().split("\n")){const o=JSON.parse(l);if(o.kind==="amend"&&o.finding_id==="find-m")n++}process.stdout.write(String(n))')"
 assert_eq "$find_m_amends" "0" "an unadjudicated (empty-verdict) row is never written to"
 
-# CR_LEDGER pin (codex-1, HIMMEL-2911 CR round 4): an ambient CR_LEDGER in the
+# CR_LEDGER pin: an ambient CR_LEDGER in the
 # caller's environment must not redirect the amend write to a different file
 # than the one promote just read and evaluated.
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
@@ -1140,9 +1140,9 @@ assert_has "$promote_out_env" "promoted find-j@" "an ambient CR_LEDGER does not 
 if [ -e "$bogus_ledger" ]; then fail "ambient CR_LEDGER redirected the amend write"; else pass "ambient CR_LEDGER never gets a write"; fi
 assert_has "$(cat "$promote_ledger" 2>/dev/null)" '"finding_id":"find-j"' "find-j's fixed amend lands in the real ledger promote evaluated"
 
-# HIMMEL-3461: review-round.sh's own amendsByKey gains the branch dimension,
-# mirroring ledger-append.sh / clear-cr-marker.sh / handover-bridge.sh
-# (HIMMEL-2405). Two branches can legitimately share a head (HIMMEL-1175), so
+# review-round.sh's own amendsByKey gains the branch dimension,
+# mirroring ledger-append.sh / clear-cr-marker.sh / handover-bridge.sh.
+# Two branches can legitimately share a head, so
 # an amend recorded while judging one branch must never leak into another
 # branch's promote decision.
 git -C "$repo" branch branchkey-b "$promote_head_a"
@@ -1150,9 +1150,9 @@ git -C "$repo" branch branchkey-b "$promote_head_a"
 # (n) cross-branch: an amend recorded for branch "promote" at promote_head_a
 # must NOT apply to a same-id finding on branch "branchkey-b" at the same
 # head, even though the two branches share both the head and the finding id.
-# ledger-append.sh itself now refuses to WRITE a mismatched --branch amend
-# (HIMMEL-3467), so this exercises review-round.sh's READ side directly by
-# injecting the raw ledger row a pre-HIMMEL-3467 writer (or a foreign branch's
+# ledger-append.sh itself now refuses to WRITE a mismatched --branch amend,
+# so this exercises review-round.sh's READ side directly by
+# injecting the raw ledger row an older writer (or a foreign branch's
 # own legitimate amend that later collided) could have produced.
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch branchkey-b --head "$promote_head_a" --model stub --id find-n \
@@ -1171,7 +1171,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --set verdict=agreed --reason "leg agrees with xi on its own branch"
 
 # (p) legacy back-compat: an amend row with NO branch field at all (written
-# before branches were stamped, HIMMEL-2405) still applies to ANY branch.
+# before branches were stamped) still applies to ANY branch.
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch branchkey-b --head "$promote_head_a" --model stub --id find-p \
     --severity sug --file promote.txt --line 12 --verdict "" \
@@ -1194,7 +1194,7 @@ assert_eq "$promote_rc3" "1" "a malformed ledger row makes promote exit 1"
 assert_has "$(cat "$tmp/promote3.err")" "malformed CR ledger row" "malformed-ledger refusal names the reason"
 assert_eq "$promote_lines_after" "$((promote_lines_before + 1))" "malformed-ledger run appends nothing beyond the injected garbage line"
 
-# HIMMEL-4700: a judge NO-GO on the last reviewed head, as the console-kit
+# A judge NO-GO on the last reviewed head, as the console-kit
 # verdict writer records it, buys exactly one delta round. The records are
 # written by the real writer from the fixture anchor, so the scope the writer
 # and review-round.sh resolve must agree.
@@ -1208,7 +1208,7 @@ vroot="$tmp/hroot"
 mkdir -p "$vroot"
 HANDOVER_DIR="$vroot" USER_SLUG=tuser
 export HANDOVER_DIR USER_SLUG
-# HIMMEL-4984: records carry a mac under the GO key; the fixture gets its own.
+# Records carry a mac under the GO key; the fixture gets its own.
 mkdir -p "$tmp/jhome/.config/himmel"
 printf '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n' > "$tmp/jhome/.config/himmel/go-hmac.key"
 chmod 600 "$tmp/jhome/.config/himmel/go-hmac.key"
@@ -1222,7 +1222,7 @@ resign() {
     rs_mac="$(printf '%s' "$rs_body" | bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$fx/scripts/lib/go-gate.sh" tuser/fx "$1" "$(basename "$2" .md)")" || fail "resign $1"
     { printf '%s' "$rs_body"; printf 'mac: %s\n' "$rs_mac"; } > "$2"
 }
-# The writer takes evidence only from /tmp/claude-<uid>/ (HIMMEL-4714).
+# The writer takes evidence only from /tmp/claude-<uid>/.
 jscratch="/tmp/claude-$(id -u)"
 [ -d "$jscratch" ] || mkdir -m 700 "$jscratch" || fail "cannot create $jscratch"
 jev="$(mktemp -d "$jscratch/pr-check-rounds.XXXXXX")" || { fail "mktemp -d in $jscratch"; exit 1; }
@@ -1262,7 +1262,7 @@ jn3_out="$(start_round "$jn_fix2" clean judgenogo)"; jn3_rc=$?
 assert_eq "$jn3_rc" "0" "a fresh judge NO-GO on the reviewed delta head buys one more delta round"
 assert_has "$jn3_out" "pr-check: delta round 5 on judgenogo (from $jn_fix)" "the next judge round is scoped from the delta head"
 
-# HIMMEL-5185 guards of the post-cap round, each shown RED by deleting it.
+# Guards of the post-cap round, each shown RED by deleting it.
 # (a) A head a judge record already bought a round from is not eligible: the
 # .verdicts history carries a record keyed on the reviewed head.
 postcap_setup pcjudged suggestion
@@ -1304,7 +1304,7 @@ postcap_fix pcunrev
 postcap_out="$(postcap_start pcunrev)"; postcap_rc=$?
 assert_eq "$postcap_rc" "8" "a used pair ending on another head buys no post-cap round"
 
-# HIMMEL-4632: the record binds to this branch's PR (its pr: line, and its
+# The record binds to this branch's PR (its pr: line, and its
 # branch: line when present); a GO, another head, another PR, a record with no
 # pr: line, or an unresolvable PR buys no delta round.
 printf 'class: tool-defaults\n\nthe fix does not hold\n' > "$jev/judge-evidence.md"
@@ -1326,12 +1326,12 @@ for pb_case in pb-accept pb-branch-ok pb-go pb-other-head pb-other-pr pb-no-pr-l
         bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$pb_case" "$pb_word" "$pb_head" \
         --pr "$pb_pr" ${pb_branch:+--branch "$pb_branch"} --evidence-file "$jev/judge-evidence.md" \
         >/dev/null 2>"$tmp/judge-$pb_case.err" || fail "judge writes $pb_case"
-    # HIMMEL-4984: a hand-copied exact-format record (no mac) or an edited one.
+    # A hand-copied exact-format record (no mac) or an edited one.
     [ "$pb_case" != pb-unsigned ] || sed -i.bak '/^mac: /d' "$vscope/$pb_case/judge.md"
     [ "$pb_case" != pb-edited ] || sed -i.bak 's/does not hold/holds/' "$vscope/$pb_case/judge.md"
     rm -f "$vscope/$pb_case/judge.md.bak"
     if [ "$pb_case" = pb-no-pr-line ]; then
-        # Model a record written before HIMMEL-4928 added the pr: line.
+        # Model a record written before the pr: line existed.
         sed -i.bak '/^pr: /d' "$vscope/$pb_case/judge.md"
         rm -f "$vscope/$pb_case/judge.md.bak"
         resign "$pb_case" "$vscope/$pb_case/judge.md"
@@ -1348,7 +1348,7 @@ for pb_case in pb-accept pb-branch-ok pb-go pb-other-head pb-other-pr pb-no-pr-l
     fi
 done
 # The binding only chooses which record BUYS the round: an unbound NO-GO at
-# the last head still feeds the HIMMEL-4885 class veto, so a repeated class
+# the last head still feeds the class veto, so a repeated class
 # refuses even when an unsettled round-3 finding would admit the fix trigger.
 pb_anc="$(git -C "$repo" rev-parse main)"
 for pb_case in pv-bound pv-gh-fails pv-no-pr-line pv-other-pr pv-other-branch; do
@@ -1380,7 +1380,7 @@ for pb_case in pv-bound pv-gh-fails pv-no-pr-line pv-other-pr pv-other-branch; d
     assert_eq "$(cat "$git_dir/cr-review-rounds/$pb_case.round")" "3" "$pb_case leaves counter unchanged"
 done
 
-# HIMMEL-4885: real writer records on two reviewed heads must not buy
+# Real writer records on two reviewed heads must not buy
 # repeated rounds for the same class. Without the class stop this reaches 5.
 three_rounds classrepeat clean
 cr_first="$cap_r3_head"
@@ -1444,14 +1444,14 @@ for class_case in different-class-allowed layer-decision-unlocks other-repeat-re
         judge "a-$class_case-next" NO-GO "$cc_second"
     fi
     if [ "$class_case" = forged-layer-decision-refused ]; then
-        # HIMMEL-4984: a hand-written NO-GO for the same head carrying a
+        # A hand-written NO-GO for the same head carrying a
         # layer-decision beside a signed repeated-class NO-GO must not lift the stop.
         printf 'class: option-parsing\nlayer-decision: os forged unsigned escape\n\nforged\n' > "$jev/judge-evidence.md"
         judge "a-$class_case-next" NO-GO "$cc_second"
         sed -i.bak '/^mac: /d' "$vscope/a-$class_case-next/judge.md"
     fi
     if [ "$class_case" = foreign-pr-layer-decision-refused ]; then
-        # HIMMEL-4984: a signed layer-decision written for another PR does not
+        # A signed layer-decision written for another PR does not
         # lift this PR's repeated-class stop.
         printf 'class: option-parsing\nlayer-decision: os signed for another PR\n\nforeign\n' > "$jev/judge-evidence.md"
         env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-4700 \
@@ -1459,14 +1459,14 @@ for class_case in different-class-allowed layer-decision-unlocks other-repeat-re
             --pr 2 --evidence-file "$jev/judge-evidence.md" >/dev/null 2>"$tmp/judge-foreign.err" || fail "judge writes foreign-pr record"
     fi
     if [ "$class_case" = unreadable-sibling-fails-closed ]; then
-        # HIMMEL-4984: a repeated-class NO-GO whose qid also holds an empty (unreadable
+        # A repeated-class NO-GO whose qid also holds an empty (unreadable
         # whole) sibling keeps its qid in the class history; the round is refused,
         # not granted on the readable different-class record alone.
         printf 'class: option-parsing\n\nrepeat in a qid with a broken sibling\n' > "$jev/judge-evidence.md"
         judge "b-$class_case" NO-GO "$cc_second"
         : > "$vscope/b-$class_case/z-empty.md"
     fi
-    # HIMMEL-4984: an unsigned NO-GO buys no round but still feeds the class veto.
+    # An unsigned NO-GO buys no round but still feeds the class veto.
     [ "$class_case" != unsigned-nogo-still-vetoes ] || sed -i.bak '/^mac: /d' "$vscope/$class_case-next/judge.md"
     cc_out="$(start_round "$cc_third" clean "$class_case")"; cc_rc=$?
     assert_eq "$cc_rc" "$cc_want" "$class_case"
@@ -1512,7 +1512,7 @@ for consumed_case in consumed-qid-repeat-refused consumed-qid-layer-unlocks; do
         assert_has "$cq_out" "layer-decision:" "$consumed_case names class remedy"
     fi
 done
-# HIMMEL-4945: a git error (exit 128: the earlier head is missing from this
+# A git error (exit 128: the earlier head is missing from this
 # clone) is not proof the earlier NO-GO is off this PR. The record must keep
 # its class veto; only a clean exit 1 drops it.
 three_rounds ancestry-error-keeps-record clean
@@ -1620,7 +1620,7 @@ judge jlink-1 NO-GO "$cap_r3_head"
 mv "$vscope/jlink-1" "$tmp/jlink-real"
 ln -s "$tmp/jlink-real" "$vscope/jlink-1"
 judge_refused jlink "a symlinked verdict directory is refused"
-# HIMMEL-4720: a record with the writer's layout but a bad stamp is refused.
+# A record with the writer's layout but a bad stamp is refused.
 three_rounds jstamp clean
 fix_commit jstamp
 judge jstamp-1 NO-GO "$cap_r3_head"
@@ -1634,7 +1634,7 @@ sed -i.bak 's/^written-at: .*/written-at: yesterday/' "$vscope/jwhen-1/judge.md"
 rm -f "$vscope/jwhen-1/judge.md.bak"
 judge_refused jwhen "a laid-out record with a malformed written-at stamp is refused"
 
-# HIMMEL-4720: one record buys one round even when .head never moved. The
+# One record buys one round even when .head never moved. The
 # counter write fails after the delta and verdict writes landed, so the
 # .verdicts line is the only thing refusing a second round from that head,
 # even when a fresh, unconsumed record exists for it.
@@ -1662,7 +1662,7 @@ jy_rc=0; start_round "$(git -C "$repo" rev-parse jonly)" clean jonly >/dev/null 
 assert_eq "$jy_rc" "8" "the consumed record alone refuses a second round from the same head"
 assert_eq "$(cat "$git_dir/cr-review-rounds/jonly.round")" "3" "the refused round leaves the counter at 3"
 
-# HIMMEL-4720: a record is consumed by qid across branches, so two branches
+# A record is consumed by qid across branches, so two branches
 # with the same last reviewed head cannot each spend the same NO-GO.
 three_rounds jbr1 clean
 jbr_r3="$cap_r3_head"
@@ -1687,7 +1687,7 @@ jbr_rc=0; start_round "$cap_fix_head" clean jbr2 >/dev/null || jbr_rc=$?
 assert_eq "$jbr_rc" "8" "the same judge record buys no round on a second branch with the same reviewed head"
 assert_eq "$(cat "$git_dir/cr-review-rounds/jbr2.round")" "3" "the refused second-branch round leaves its counter at 3"
 
-# HIMMEL-4738: a consumed-qid scan that fails refuses the record rather than
+# A consumed-qid scan that fails refuses the record rather than
 # reading as "not consumed". chmod is ignored by root, so a grep shim fails
 # the cross-branch scan and a directory stands in for the per-head file.
 real_grep="$(command -v grep)"
@@ -1715,7 +1715,7 @@ assert_eq "$jh_rc" "8" "an unreadable per-head .verdicts refuses the judge recor
 assert_has "$jh_out" "cannot read" "the unreadable per-head .verdicts is named"
 assert_eq "$(cat "$git_dir/cr-review-rounds/jhscan.round")" "3" "the refused per-head scan-failure round leaves the counter at 3"
 
-# HIMMEL-4952: a judge-signed record admits ONE post-cap delta round for a
+# A judge-signed record admits ONE post-cap delta round for a
 # test- or lint-only delta. The record is a GO written by the real writer for
 # the delta's NEW head, carrying `delta-scope:` and `delta-from:` evidence lines.
 scope_commit() {
@@ -1792,7 +1792,7 @@ sg_rc=0; start_round "$sg_head" clean scopeforge >/dev/null || sg_rc=$?
 assert_eq "$sg_rc" "8" "a hand-written scope record is refused"
 rm -rf "$vscope/sg-1"
 
-# HIMMEL-4984: a record admits a scope round only when it carries a valid mac
+# A record admits a scope round only when it carries a valid mac
 # and binds to this branch and PR; any NO-GO for the new head blocks it.
 for sx_case in sx-ok sx-unsigned sx-edited sx-other-pr sx-other-branch sx-nogo-beside sx-bound-nogo-beside sx-unreadable-sibling; do
     three_rounds "$sx_case" clean
@@ -1821,7 +1821,7 @@ for sx_case in sx-ok sx-unsigned sx-edited sx-other-pr sx-other-branch sx-nogo-b
             printf 'class: tool-defaults\n\na NO-GO for the same head\n' > "$jev/judge-evidence.md"
             judge "$sx_case-nogo" NO-GO "$sx_head" ;;
         sx-bound-nogo-beside)
-            # HIMMEL-5109: a NO-GO written with --bind-reviewed still vetoes its judged head
+            # A NO-GO written with --bind-reviewed still vetoes its judged head
             printf 'class: tool-defaults\n\na bound NO-GO for the same head\n' > "$jev/judge-evidence.md"
             (cd "$repo" && env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-5109 \
                 bash "$fx/scripts/handover/console-kit/write-verdict.sh" "$sx_case-nogo" NO-GO "$sx_head" \
@@ -1901,7 +1901,7 @@ assert_has "$(cat "$git_dir/cr-review-rounds/scopelint.delta")" "scope:sl-1" "th
 assert_has "$(cat "$git_dir/cr-review-rounds/fixpath.delta")" " fix" "the fix trigger still records fix"
 assert_has "$(cat "$git_dir/cr-review-rounds/feature.delta")" " merge-forward" "the merge-forward trigger still records merge-forward"
 
-# HIMMEL-4995: a CLEAN merge of main past the cap is admitted without spending
+# A CLEAN merge of main past the cap is admitted without spending
 # the one delta round; a merge that changes the PR's own diff or resolves a
 # conflict is not, unless a judge-signed merge-resolution record binds it.
 main_commit() {
@@ -2034,14 +2034,14 @@ scope_judge co-1 "$co_m" merge-resolution "$co_b"
 co_rc=0; start_round "$co_m" clean cmoff >/dev/null || co_rc=$?
 assert_eq "$co_rc" "8" "a merge-resolution record cannot admit a merge with no parent on main"
 
-# HIMMEL-4638 T1: an inherited delta_reuse never skips the counter bump on a
+# An inherited delta_reuse never skips the counter bump on a
 # round before the cap (delta_reuse was only initialised inside delta_check).
 git -C "$repo" checkout -q -b t1init main
 (cd "$repo" && delta_reuse=1 bash "$fx/scripts/cr/review-round.sh" start --branch t1init >/dev/null 2>&1); t1_rc=$?
 assert_eq "$t1_rc" "0" "an exported delta_reuse does not break a round-1 start"
 assert_eq "$(cat "$git_dir/cr-review-rounds/t1init.round")" "1" "an exported delta_reuse does not skip the round-1 counter bump"
 
-# HIMMEL-4638 T2: a pending delta pair is reusable only while no critic finding
+# A pending delta pair is reusable only while no critic finding
 # row exists at its head, even if the avail row never landed.
 three_rounds t2row suggestion
 fix_commit t2row
@@ -2053,7 +2053,7 @@ t2_out="$(start_round "$cap_fix_head" clean t2row)"; t2_rc=$?
 assert_eq "$t2_rc" "8" "a critic finding row at the pending head makes the delta round used"
 assert_has "$t2_out" "delta round was already used" "finding-row refusal names the used delta"
 
-# HIMMEL-4638 T3: a second start on a pending pair whose first start's caller
+# A second start on a pending pair whose first start's caller
 # is still alive is refused; once that caller is gone the pair restarts.
 three_rounds t3conc suggestion
 fix_commit t3conc
@@ -2071,7 +2071,7 @@ t3b_out="$(start_round "$cap_fix_head" clean t3conc)"; t3b_rc=$?
 assert_eq "$t3b_rc" "0" "a pending delta round restarts once the earlier start's caller is gone"
 assert_has "$t3b_out" "delta round 4 on t3conc" "the restarted pair is still the delta round"
 
-# HIMMEL-5109: a judge NO-GO on a test- or comment-only descendant of the last
+# A judge NO-GO on a test- or comment-only descendant of the last
 # reviewed head is bound to that head and buys the one round; a descendant
 # that changes code does not. A layer-decision without its keyword is named.
 for td_case in td-testpath td-comment td-code td-mode td-coding td-define td-gobuild td-rustattr td-psreq td-cssid; do
@@ -2120,7 +2120,7 @@ tm_out="$(start_round "$tm_next" clean td-malformed)"; tm_rc=$?
 assert_eq "$tm_rc" "8" "a layer-decision without its keyword does not lift the class stop"
 assert_has "$tm_out" "lacks a layer keyword" "the refusal names the malformed layer-decision"
 
-# HIMMEL-5109 class veto: a repeated NO-GO class on a comment-only descendant
+# Class veto: a repeated NO-GO class on a comment-only descendant
 # is still vetoed (the alt binding reaches judge_class_check).
 printf 'class: option-parsing\n\nfirst\n' > "$jev/judge-evidence.md"
 three_rounds jcl clean
@@ -2138,7 +2138,7 @@ jo="$(start_round "$jcl_f2" clean jcl)"; jrc=$?
 assert_eq "$jrc" "8" "JCL repeated class on a comment-only descendant NO-GO is vetoed"
 assert_has "$jo" "repeated NO-GO class option-parsing" "JCL names the class"
 
-# HIMMEL-5128: a delta round whose panel left no critic rows still advanced
+# A delta round whose panel left no critic rows still advanced
 # .head to the unreviewed pair head, so a later judge NO-GO for the last
 # critic-reviewed head was never consulted. The scope base falls back to the
 # pending pair's <from> when .head has no critic avail row.
@@ -2167,7 +2167,7 @@ sd2_out="$(start_round "$sd_fix3" clean stranded)"; sd2_rc=$?
 assert_eq "$sd2_rc" "8" "the fallback buys no second round on the consumed record"
 assert_has "$sd2_out" "no judge NO-GO for $sd_fix2 is recorded" "the refusal names the check against the reviewed delta head"
 
-# HIMMEL-5257: a CI-red last reviewed head buys one bounded post-cap round.
+# A CI-red last reviewed head buys one bounded post-cap round.
 # cired_case <branch> <rows>: the delta round ran and left a finding open (so
 # the post-cap-fixed trigger stays closed), the head it reviewed is
 # postcap_d_head, and gh api reports <rows> for it; a small commit follows.
@@ -2244,7 +2244,7 @@ cired_out="$(postcap_start ciredmf)"; cired_rc=$?
 assert_eq "$cired_rc" "0" "the base side of a merge-forward does not count against the CI-red cap ($cired_out)"
 assert_has "$(cat "$git_dir/cr-review-rounds/ciredmf.delta" 2>/dev/null)" "postcap-ci-red" "the merge-forward round is the CI-red one"
 
-# HIMMEL-5268: a binary change is one "Binary files differ" line however big it
+# A binary change is one "Binary files differ" line however big it
 # is, so the captured-base measure cannot bound it and refuses.
 postcap_setup ciredbin suggestion
 cired_rows "$RED"
@@ -2256,7 +2256,7 @@ cired_out="$(postcap_start ciredbin)"; cired_rc=$?
 assert_eq "$cired_rc" "8" "a binary change refuses the CI-red round on the captured-base path ($cired_out)"
 assert_eq "$(ls "$git_dir/cr-review-rounds/ciredbin.cired" 2>/dev/null)" "" "a binary-refused unlock leaves no marker"
 
-# HIMMEL-5268: a caller-supplied --base-sha is checked against the base this
+# A caller-supplied --base-sha is checked against the base this
 # repository resolves; the reviewed head as its own base measures 0 lines.
 # Control first: the real base, a 5-line delta, is granted by a direct call.
 postcap_setup ciredforgeok suggestion
@@ -2277,7 +2277,7 @@ cired_out="$(cd "$repo" && GH_COMPARE_STATUS=diverged bash "$fx/scripts/cr/revie
 assert_eq "$cired_rc" "8" "a --base-sha that is the reviewed head cannot shrink the delta to 0 ($cired_out)"
 assert_eq "$(ls "$git_dir/cr-review-rounds/ciredforge.cired" 2>/dev/null)" "" "a forged-base refusal leaves no marker"
 
-# HIMMEL-5268 (judge j2415a): the base is verified once at argument intake, so
+# The base is verified once at argument intake, so
 # every consumer (merge-forward shape, clean-merge, the CI-red measure) gets a
 # verified base. A merge-forward head given as its own base is refused up front.
 postcap_setup ciredintake suggestion
@@ -2290,7 +2290,7 @@ assert_eq "$cired_rc" "8" "a merge head given as its own --base-sha is refused a
 assert_has "$cired_out" "not on the remote main history" "the intake refusal names the remote base check"
 assert_eq "$(cat "$git_dir/cr-review-rounds/ciredintake.round")" "4" "an intake refusal does not advance the round counter"
 
-# No local ref names or vouches for the base (j2415b): the remote default branch
+# No local ref names or vouches for the base: the remote default branch
 # is read through gh and the remote compare is the only authority. A rewritten
 # refs/remotes/origin/main is simply not consulted.
 postcap_setup ciredref suggestion
@@ -2326,7 +2326,7 @@ cired_out="$(cd "$repo" && GH_DEFAULT_RC=1 bash "$fx/scripts/cr/review-round.sh"
 assert_eq "$cired_rc" "8" "an unreadable remote default branch refuses the base round ($cired_out)"
 assert_has "$cired_out" "cannot be verified" "the offline refusal says the base cannot be verified"
 
-# j2415b RED: a leg retargets refs/remotes/origin/HEAD at its own pushed PR
+# RED: a leg retargets refs/remotes/origin/HEAD at its own pushed PR
 # branch. The old code read the default branch name from that local ref, so the
 # local equality passed and `compare H...<pr-branch>` came back identical. The
 # stub honours its branch argument (the remote default stays main and does not
@@ -2342,7 +2342,7 @@ git -C "$repo" update-ref -d refs/remotes/origin/ciredhead
 assert_eq "$cired_rc" "8" "a retargeted origin/HEAD cannot name the base ($cired_out)"
 assert_has "$cired_out" "not on the remote main history" "the remote default (main), not the local ref, is compared"
 
-# j2415c RED: --base-sha must be exactly 40 lowercase hex. A ref name or short
+# RED: --base-sha must be exactly 40 lowercase hex. A ref name or short
 # sha passes the commit check on a good commit and every later consumer would
 # re-resolve the raw string, so a racing update-ref could retarget them.
 postcap_setup ciredname suggestion

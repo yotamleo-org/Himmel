@@ -1,42 +1,42 @@
 #!/usr/bin/env bash
-# Branch-scoped /pr-check review-round state and round-4 cap (HIMMEL-2780).
-# HIMMEL-4600: after three full rounds the only round left is ONE delta round,
+# Branch-scoped /pr-check review-round state and round-4 cap.
+# After three full rounds the only round left is ONE delta round,
 # scoped to the last critic-reviewed head..the new head and allowed only when
 # that head raised a finding (the new head answers it) or the new head only
 # merges the base into it. A 4th full round and a second delta are refused.
 # State lives under the repository's shared git common directory, so head
 # commits and merge-forwards do not reset it and linked worktrees agree.
-# HIMMEL-4700: a third trigger - a judge NO-GO on the last reviewed head, as
+# A third trigger - a judge NO-GO on the last reviewed head, as
 # console-kit/write-verdict.sh records it in this repo's verdict scope - buys
 # one more delta round per reviewed head, even after the fix/merge-forward
 # delta was used. Consumed records are kept in <branch>.verdicts.
-# HIMMEL-4995: a CLEAN merge of the base (conflict-free, the PR's own diff
+# A CLEAN merge of the base (conflict-free, the PR's own diff
 # unchanged) is admitted past the cap without spending the one delta round; a
 # conflict-resolving merge needs a judge GO carrying `delta-scope:
-# merge-resolution` and `delta-from:`, bound like the HIMMEL-4952 scope records.
-# HIMMEL-4984: every verdict record read here (NO-GO delta, layer-decision,
+# merge-resolution` and `delta-from:`, bound like the scope records.
+# Every verdict record read here (NO-GO delta, layer-decision,
 # scope) must carry write-verdict.sh's mac under the GO key; a hand-written or
 # edited record disqualifies its qid. Scope records also bind to this branch's
 # PR/branch, and any NO-GO for the new head blocks the scope round. The key is
-# readable by the same uid, so the ceiling is a same-uid forger (HIMMEL-3578);
+# readable by the same uid, so the ceiling is a same-uid forger;
 # a lint-only record still rests on the judge's word.
-# HIMMEL-5185: once the delta round ran, one more delta round, from the head it
+# Once the delta round ran, one more delta round, from the head it
 # reviewed, is admitted without a judge record when that head raised critic
 # findings and every one is recorded fixed there. Consumed once: the .delta pair
 # carries trigger postcap-fixed and a post-cap round never chains into another.
-# HIMMEL-5257: once the delta round (and any post-cap round) is spent, a CI-red
+# Once the delta round (and any post-cap round) is spent, a CI-red
 # reviewed head buys ONE more bounded delta round with no judge record: the last
 # reviewed head has a COMPLETED check-run with conclusion failure (read through
 # gh api, none still running), the delta since it is at most 40 diff lines, and
 # the PR has not had this unlock before (.cired). Recorded in the ledger.
-# HIMMEL-5268: a non-empty --base-sha is verified once at intake against the
+# A non-empty --base-sha is verified once at intake against the
 # REMOTE only (gh api: default branch name, then compare <sha>...<default> must
 # be identical or ahead); no local ref names or vouches for it. Offline, no gh
 # or an unreadable answer therefore refuses every --base-sha round (exit 8).
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
-# HIMMEL-3495: a relative-entry copy that is not the anchor's hands off to it.
+# A relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
 
@@ -51,7 +51,7 @@ usage() {
     exit 2
 }
 
-# test_path_p <path>: the test-path rule of the HIMMEL-4952 scope record.
+# test_path_p <path>: the test-path rule of the scope record.
 # Filename patterns match the basename only: * crosses / in case.
 test_path_p() {
     case "$1" in
@@ -63,7 +63,7 @@ test_path_p() {
     return 1
 }
 
-# HIMMEL-5109: trivial_descendant <from> <to> succeeds when <to> is a strict
+# trivial_descendant <from> <to> succeeds when <to> is a strict
 # descendant of <from> and <from>..<to> changes only test paths (the
 # judge_scope_record rule) or only comment lines. A judge often reviews a head
 # after such a commit, which never got its own panel round. Also the one
@@ -88,7 +88,7 @@ trivial_descendant() {
 $_td_paths
 EOF
     [ "$_td_ok" -eq 0 ] || return 0
-    # HIMMEL-5416: --tests-only drops the comment branch for the clear-cr-marker
+    # --tests-only drops the comment branch for the clear-cr-marker
     # fallback, which clears with no critic review of from..to.
     [ "${_td_tests_only:-0}" -eq 0 ] || return 1
     # Binary edits and mode/create/delete changes carry no +/- text line, so a
@@ -113,7 +113,7 @@ EOF
 verb="${1:-}"
 [ -n "$verb" ] || usage
 shift
-# HIMMEL-5109: read-only, writes no state, so it needs no --branch: the answer
+# read-only, writes no state, so it needs no --branch: the answer
 # is a pure function of the two commits in cwd's repository.
 if [ "$verb" = "trivial-descendant" ]; then
     _td_tests_only=0
@@ -147,7 +147,7 @@ if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
     echo "review-round: invalid branch name '$branch'" >&2
     exit 2
 fi
-# HIMMEL-3495: every verb writes shared per-branch state (round counter,
+# Every verb writes shared per-branch state (round counter,
 # ledger amends, marker clearance), and a relative run is auto-allowed from any
 # leg's worktree - so only the branch checked out in cwd may be written. A
 # detached HEAD has no branch and is refused too.
@@ -157,7 +157,7 @@ if [ -z "$current_branch" ] || [ "$current_branch" != "$branch" ]; then
     exit 2
 fi
 
-# HIMMEL-5268: --base-sha is caller input and every merge-forward and CI-red
+# --base-sha is caller input and every merge-forward and CI-red
 # measure below trusts it, so it is verified once, here, before any consumer
 # reads it. No local ref names or vouches for the base: the default branch name
 # is read from the remote (gh api repos/{owner}/{repo}) and the remote compare
@@ -171,7 +171,7 @@ if [ -n "$base_sha" ]; then
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
     # Only a full sha is a stable name: a ref or short sha would be re-resolved
     # by every consumer below, and a racing update-ref could retarget them after
-    # this check passed (j2415c).
+    # this check passed.
     case "$base_sha" in
         *[!0-9a-f]*|'')
             echo "review-round: --base-sha '$base_sha' must be exactly 40 lowercase hex chars - refused (HIMMEL-5268)" >&2
@@ -205,14 +205,14 @@ if [ -z "$git_dir" ]; then
     exit 5
 fi
 state="$git_dir/cr-review-rounds/$branch.round"
-# HIMMEL-4600: "<from> <to> <trigger>" of the one delta round, once it ran.
+# "<from> <to> <trigger>" of the one delta round, once it ran.
 delta_state="$git_dir/cr-review-rounds/$branch.delta"
 delta_run="$git_dir/cr-review-rounds/$branch.delta.run"
-# HIMMEL-4700: "<from> <to> <qid>/<name>", one line per judge-triggered round.
+# "<from> <to> <qid>/<name>", one line per judge-triggered round.
 verdict_state="$git_dir/cr-review-rounds/$branch.verdicts"
-# HIMMEL-4600: the head the last counted round ran on (start --head).
+# The head the last counted round ran on (start --head).
 head_state="$git_dir/cr-review-rounds/$branch.head"
-# HIMMEL-5257: "<from> <to> <failing check names>" once the CI-red unlock was used.
+# "<from> <to> <failing check names>" once the CI-red unlock was used.
 cired_state="$git_dir/cr-review-rounds/$branch.cired"
 state_dir="$(dirname "$state")"
 mkdir -p "$state_dir" || {
@@ -234,13 +234,13 @@ read_round() {
     return 0
 }
 
-# HIMMEL-4600: ledger_query <avail|finding|row> <full sha> reads only critic-panel
+# ledger_query <avail|finding|row> <full sha> reads only critic-panel
 # rows on this branch at that sha (full or >=7-char prefix); claude,
 # claude-floor and codex-adv rows are the session's own and never count (the
 # clear-cr-marker gate 3b exclusion). "avail" prints "ok" when a critic
 # reviewed the sha. "finding" prints "finding" when a critic finding there
 # still asks for a fix: its verdict after amends is agreed, fixed or unset,
-# and no row ever deferred or disproved it. "row" (HIMMEL-4638) prints "row"
+# and no row ever deferred or disproved it. "row" prints "row"
 # when any critic finding row exists there, whatever its verdict.
 ledger_query() {
     LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" MODE="$1" FROM="$2" node -e '
@@ -250,13 +250,13 @@ try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } c
 const at = (h) => { h = String(h || "").toLowerCase(); return h.length >= 7 && e.FROM.startsWith(h); };
 // ponytail: "critic" is any model name outside that list, and critic finding rows
 // and their fixed amends are session-writable through ledger-append.sh, so a leg
-// can buy the HIMMEL-5185 post-cap round with a row under a non-excluded model
+// can buy the post-cap round with a row under a non-excluded model
 // name (it buys a review round, never a merge); tie critic rows to a source the
-// leg cannot write, HIMMEL-3557.
+// leg cannot write.
 const critic = (m) => m !== "claude" && m !== "claude-floor" && m !== "codex-adv";
 let reviewed = false, rowed = false;
 const verdicts = new Map(), settled = new Set();
-// HIMMEL-4634: one finding is id + artifact + perspective, as the defer
+// One finding is id + artifact + perspective, as the defer
 // analysis and clear-cr-marker key it; a bare id merges distinct findings.
 const keyOf = (o) => [String(o.finding_id), o.artifact || "diff", o.perspective || "off"].join("\u001f");
 const note = (id, v) => {
@@ -279,7 +279,7 @@ else if ([...verdicts].some(([id, v]) => !settled.has(id) && (v === "" || v === 
 '
 }
 
-# HIMMEL-4697: plugin-version-bump-required makes a plugin PR bump its
+# plugin-version-bump-required makes a plugin PR bump its
 # plugin.json version inside its merge of the base, so that merge never equals
 # a clean merge tree. version_only_merge <ours> <theirs> <new> succeeds only
 # when every path where <new>'s tree differs from the merge of <ours> and
@@ -300,7 +300,7 @@ plugin_json_path() {
 }
 # plugin_version <file>: prints the one "version" value, which must sit alone
 # on its line as plain X.Y.Z; fails on any other shape or a second version key.
-# The key must also be the file's top-level one, not nested (HIMMEL-4703).
+# The key must also be the file's top-level one, not nested.
 # shellcheck disable=SC2016  # JavaScript source is literal here
 plugin_version() {
     [ "$(awk '/"version"[[:space:]]*:/ { n++ } END { print n + 0 }' "$1")" = "1" ] || return 1
@@ -367,7 +367,7 @@ EOF
     [ "$_vo_ok" -eq 1 ]
 }
 
-# HIMMEL-4885: a branch is one PR. Its consumed qids plus the candidate
+# A branch is one PR. Its consumed qids plus the candidate
 # qid are its verdict history, not every other PR in the verdict scope.
 # Legacy classless records contribute no classes. A decision in the current
 # candidate evidence is the explicit way out of a repeated-class stop.
@@ -375,7 +375,7 @@ EOF
 judge_class_check() {
     VERDICT_DIR="$dir" HISTORY="$verdict_state" CANDIDATE="$1" WANT="$2" SIGNED="$3" ALT="${4:-}" node -e '
 const fs = require("fs"), path = require("path"), cp = require("child_process"), crypto = require("crypto"), e = process.env;
-// HIMMEL-4984: a layer-decision counts only from a record whose mac verified; the
+// A layer-decision counts only from a record whose mac verified; the
 // bash side hands over qid/name:sha256 of the bytes it verified, and the record
 // read here must hash to the same bytes (no window between verify and read).
 const signed = new Set((e.SIGNED || "").split(" ").filter(Boolean));
@@ -405,14 +405,14 @@ const records = (qid) => {
       if (fields.length !== 1 || classes.some(c => !allowed.has(c))) throw Error("invalid history class " + file);
     }
     return { head: verdict[2], nogo: verdict[1] === "NO-GO", classes,
-      // HIMMEL-5109: a layer-decision line that lacks the layer keyword is not honoured; say so.
+      // A layer-decision line that lacks the layer keyword is not honoured; say so.
       malformed: evidence.some(l => /^layer-decision:/.test(l) && !/^layer-decision: (text|os|classifier|accept)\s+\S.*$/.test(l)),
       decision: isSigned && evidence.some(l => /^layer-decision: (text|os|classifier|accept)\s+\S.*$/.test(l)) };
   });
 };
 try {
   const candidateRecords = candidates.flatMap(records);
-  // HIMMEL-5109: a NO-GO on a test- or comment-only descendant counts as bound to WANT.
+  // A NO-GO on a test- or comment-only descendant counts as bound to WANT.
   const alt = new Set((e.ALT || "").split(" ").filter(Boolean));
   const current = candidateRecords.filter(r => r.nogo && (r.head === e.WANT || alt.has(r.head)));
   if (current.some(r => r.decision)) process.exit(0);
@@ -427,7 +427,7 @@ try {
   }
   for (const r of candidateRecords) {
     if (!r.nogo || r.head === e.WANT || alt.has(r.head)) continue;
-    // HIMMEL-4945: only a clean exit 1 means "not an ancestor"; a git error
+    // Only a clean exit 1 means "not an ancestor"; a git error
     // (128: missing or shallow history), a spawn error or a signal keeps the
     // record, so an unreadable history never drops an earlier NO-GO.
     const anc = cp.spawnSync("git", ["merge-base", "--is-ancestor", r.head, e.WANT]);
@@ -448,18 +448,18 @@ try {
 '
 }
 
-# record_binds <l9> <l10> <l11> - HIMMEL-4632, shared with the HIMMEL-4984 scope
+# record_binds <l9> <l10> <l11> - shared with the scope
 # path. A record binds to this branch's PR: its `pr:` line (line 10,
 # write-verdict.sh's fixed place) must name the PR gh resolves for the branch,
 # and a `branch:` line (line 11, optional) must name the branch. No pr: line, or
 # no resolvable PR, binds nothing. The binding only picks which records BUY the
-# round: every NO-GO for the head still feeds the HIMMEL-4885 class veto, and an
+# round: every NO-GO for the head still feeds the class veto, and an
 # unresolvable PR (pr_want="-") refuses (exit 8) in the caller. The PR is
 # resolved by --head, never `gh pr view <branch>` (a branch named 42 would
 # resolve to PR 42), and bounded: this runs under the counter lock. pr_want
 # caches it for the calling subshell, which must set it to "" first.
 # ponytail: the binding is covered by the record mac (HIMMEL-4984), whose key
-# is same-uid readable (HIMMEL-3578).
+# is same-uid readable.
 record_binds() {
     [ -z "$1" ] || return 1
     case "$2" in 'pr: '[1-9]*) ;; *) return 1 ;; esac
@@ -479,16 +479,15 @@ record_binds() {
     [ "${2#pr: }" = "$pr_want" ]
 }
 
-# HIMMEL-4700: print space-separated "<qid>/<name>" records ruling NO-GO for
+# Print space-separated "<qid>/<name>" records ruling NO-GO for
 # head $1 (one per qid), in console-kit/write-verdict.sh format, under this repo's
 # verdict scope; rc 1 when there is none. A qid counts only when every record
 # in it parses, so a hand-written or edited file disqualifies its qid.
-# HIMMEL-4720: a consumed qid buys no other round. HIMMEL-4885: a qid
+# A consumed qid buys no other round. A qid
 # consumed on this branch still contributes current-head class vetoes.
 # ponytail: same-uid ceiling - the writer's stamp is a format check, not
 # authentication, and any same-uid process can write into verdicts/; the
-# upgrade path is a separate-uid verdict store (HIMMEL-4714 security note,
-# HIMMEL-3578).
+# upgrade path is a separate-uid verdict store.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 judge_nogo_record() (
     want="$1"
@@ -517,9 +516,9 @@ judge_nogo_record() (
         qid="${qdir##*/}"
         if [ ! -d "$qdir" ] || [ -L "$qdir" ]; then continue; fi
         case "$qid" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
-        # HIMMEL-4720: a qid consumed on any branch buys no other round, so
+        # A qid consumed on any branch buys no other round, so
         # two branches sharing a last reviewed head cannot each spend it.
-        # HIMMEL-4738: a scan that fails (rc 2) refuses the record - only rc 1
+        # A scan that fails (rc 2) refuses the record - only rc 1
         # means "not consumed".
         consumed=0 bound=""
         if [ -d "$git_dir/cr-review-rounds" ]; then
@@ -548,7 +547,7 @@ judge_nogo_record() (
             if [ -L "$f" ] || [ ! -f "$f" ]; then bad=1; break; fi
             name="${f##*/}"; name="${name%.md}"
             case "$name" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) bad=1; break ;; esac
-            # HIMMEL-4984: one read; the mac and every field come from this copy.
+            # One read; the mac and every field come from this copy.
             # A record that cannot be read whole may be a NO-GO: its qid stays in
             # the class history (the class check then fails closed on it).
             if ! go_verdict_snapshot "$f"; then snapfail=1; bad=1; break; fi
@@ -565,12 +564,12 @@ EOF_SNAP
             fi
             word="$(printf '%s\n' "$l8" | sed -nE 's/^\*\*(GO|NO-GO)\*\* for head `([0-9a-f]{40})`\.?$/\1 \2/p')"
             [ -n "$word" ] || { bad=1; break; }
-            # HIMMEL-4984: a record buys a round only when write-verdict.sh signed
+            # A record buys a round only when write-verdict.sh signed
             # it; one hand-written or edited withholds the round from its qid, but
             # its NO-GO still feeds the class veto (a NO-GO only narrows).
             mac_ok=0
             if go_verdict_mac_ok_text "$snap" "$scope" "$qid" "$name"; then mac_ok=1; else macbad=1; fi
-            # HIMMEL-5109: a NO-GO on a test- or comment-only descendant of the
+            # A NO-GO on a test- or comment-only descendant of the
             # reviewed head is bound to it; the judged head joins the class check.
             judged=""
             case "$word" in
@@ -609,7 +608,7 @@ EOF_SNAP
     printf '%s\n' "$hits"
 )
 
-# HIMMEL-4995: merge_forward_shape <from> <to> succeeds when <to> merges the
+# merge_forward_shape <from> <to> succeeds when <to> merges the
 # captured base into <from> and nothing else: at least one merge, every
 # non-merge commit it brought already on the base. Sets mf_merged_base.
 merge_forward_shape() {
@@ -647,7 +646,7 @@ clean_merge_forward() {
     [ "$_cm_a" = "$_cm_b" ]
 }
 
-# HIMMEL-4952: print "<qid>/<name> <scope>" for a judge GO on head $2 (the
+# Print "<qid>/<name> <scope>" for a judge GO on head $2 (the
 # delta's new head) written by console-kit/write-verdict.sh, whose evidence
 # carries exactly one `delta-scope: test-only|lint-only` and one
 # `delta-from: $1` line; rc 1 when there is none, rc 8 when a record is
@@ -656,7 +655,7 @@ clean_merge_forward() {
 # branch is skipped, so one record buys one round.
 # ponytail: lint-only has no path rule (lint is not recognisable from a path),
 # so the judge's record alone admits it, same-uid ceiling as judge_nogo_record;
-# the upgrade path is a lint-config path allowlist plus HIMMEL-3578.
+# the upgrade path is a lint-config path allowlist plus a separate-uid verdict store.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 judge_scope_record() (
     from="$1" want="$2"
@@ -678,7 +677,7 @@ judge_scope_record() (
     re_session='^writer-session: [A-Za-z0-9-]+$'
     re_written='^written-at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
     pr_want=""
-    # HIMMEL-4984: any NO-GO for the new head, in any qid (consumed or not, signed
+    # Any NO-GO for the new head, in any qid (consumed or not, signed
     # or not - a NO-GO only narrows), blocks the scope round: a GO beside it is
     # not the judges' last word.
     for nf in "$dir"/*/*.md; do
@@ -715,7 +714,7 @@ judge_scope_record() (
             if [ -L "$f" ] || [ ! -f "$f" ]; then bad=1; break; fi
             name="${f##*/}"; name="${name%.md}"
             case "$name" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) bad=1; break ;; esac
-            # HIMMEL-4984: one read; the mac and every field come from this copy.
+            # One read; the mac and every field come from this copy.
             if ! go_verdict_snapshot "$f"; then
                 echo "review-round: ${f#"$dir"/} cannot be read whole (unreadable, empty or NUL) - the scope round is refused (HIMMEL-4984)" >&2
                 exit 8
@@ -733,16 +732,16 @@ EOF_SNAP
             fi
             word="$(printf '%s\n' "$l8" | sed -nE 's/^\*\*(GO|NO-GO)\*\* for head `([0-9a-f]{40})`\.?$/\1 \2/p')"
             [ -n "$word" ] || { bad=1; break; }
-            # HIMMEL-4984: the same bytes the GO is judged on also veto, so a
+            # The same bytes the GO is judged on also veto, so a
             # NO-GO that lands after the veto scan above still blocks the round.
             if [ "$word" = "NO-GO $want" ]; then
                 echo "review-round: ${f#"$dir"/} rules NO-GO for $want - the scope round is refused (HIMMEL-4984)" >&2
                 exit 8
             fi
-            # HIMMEL-4984: signed by write-verdict.sh, or the qid is disqualified.
+            # Signed by write-verdict.sh, or the qid is disqualified.
             go_verdict_mac_ok_text "$snap" "$scope" "$qid" "$name" || { bad=1; break; }
             if [ -n "$hit" ] || [ "$word" != "GO $want" ]; then continue; fi
-            # HIMMEL-4984: the record names this branch's PR (and branch, when it
+            # The record names this branch's PR (and branch, when it
             # carries one); a record for another PR or branch is refused.
             if ! record_binds "" "$l10" "$l11"; then
                 [ "$pr_want" != "-" ] || exit 8
@@ -779,12 +778,12 @@ EOF
     exit 1
 )
 
-# HIMMEL-5257: ci_red_delta_lines <from> <to> prints how many diff lines the PR's
+# ci_red_delta_lines <from> <to> prints how many diff lines the PR's
 # own diff changed from <from> to <to>; the base side of a merge-forward is not
 # counted (own_diff compares each head with its own base point). A changed line
 # counts twice (old and new). Without a captured base every line counts.
 # Fails (rc 1) when it cannot be measured or when either own diff has a binary
-# change (HIMMEL-5268).
+# change.
 ci_red_delta_lines() {
     if [ -z "$base_sha" ]; then
         _cl_num="$(git diff --numstat --no-renames "$1" "$2" 2>/dev/null)" || return 1
@@ -794,7 +793,7 @@ ci_red_delta_lines() {
             END { if (bad) n = 999999; print n + 0 }'
         return 0
     fi
-    # HIMMEL-5268: base_sha was verified at argument intake (top of this file).
+    # base_sha was verified at argument intake (top of this file).
     _cl_ob="$(git merge-base "$1" "$base_sha" 2>/dev/null)" || return 1
     _cl_nb="$(git merge-base "$2" "$base_sha" 2>/dev/null)" || return 1
     _cl_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-round.XXXXXX")" || return 1
@@ -812,7 +811,7 @@ ci_red_delta_lines() {
     return 1
 }
 
-# HIMMEL-5257: ci_red_unlock <from> <to> succeeds when <from>, the last reviewed
+# ci_red_unlock <from> <to> succeeds when <from>, the last reviewed
 # head, is CI-red and <from>..<to> is within the line cap. Red means a COMPLETED
 # check-run with conclusion failure read from the API for <from>, and no
 # check-run there still running. Sets ci_red_names. The caller has already
@@ -857,7 +856,7 @@ EOF
     return 0
 }
 
-# HIMMEL-5257: record the unlock: one ledger row naming the failing checks, then
+# Record the unlock: one ledger row naming the failing checks, then
 # the once-per-PR marker staged as $cired_tmp. The caller moves it into place
 # only after the .delta round is recorded, so a failed state write never
 # consumes the unlock. Readers key on kind, so the row is ignored by every
@@ -869,9 +868,9 @@ ci_red_record() {
     printf '%s %s %s\n' "$delta_from" "$delta_to" "$ci_red_names" > "$cired_tmp" || return 1
 }
 
-# HIMMEL-4600: decide whether the round after the third may run, as the one
+# Decide whether the round after the third may run, as the one
 # delta round. Sets delta_from/delta_to/delta_trigger, or says why not and
-# returns 8 (2 for an unresolvable --head). HIMMEL-4700: a judge NO-GO on the
+# returns 8 (2 for an unresolvable --head). A judge NO-GO on the
 # last reviewed head is a third trigger, checked even once the delta was used;
 # it sets delta_verdict.
 delta_check() {
@@ -881,7 +880,7 @@ delta_check() {
     delta_used=""
     delta_verdict=""
     if [ -f "$delta_state" ]; then
-        # HIMMEL-4616: a delta round whose panel produced no critic rows is
+        # A delta round whose panel produced no critic rows is
         # still pending, so the SAME <from> <to> pair may start again. Any
         # other pair, or a head a critic already reviewed, has used it up.
         read -r pend_from pend_to pend_trigger < "$delta_state" 2>/dev/null || pend_from=""
@@ -890,7 +889,7 @@ delta_check() {
             && [ "$cur_to" = "$pend_to" ] \
             && [ "$(ledger_query avail "$pend_to")" != "ok" ] \
             && [ "$(ledger_query row "$pend_to")" != "row" ]; then
-            # HIMMEL-4638: the first start's caller is still alive, so its
+            # The first start's caller is still alive, so its
             # panel may be running; a second panel would only burn the bank.
             run_pid=""
             [ ! -f "$delta_run" ] || read -r run_pid < "$delta_run" || run_pid=""
@@ -929,7 +928,7 @@ delta_check() {
     if [ -n "$last_reviewed" ]; then
         delta_from="$(git rev-parse --verify --quiet "$last_reviewed^{commit}" 2>/dev/null)" || delta_from=""
     fi
-    # HIMMEL-5128: start persists .head before the panel runs, so a delta round
+    # Start persists .head before the panel runs, so a delta round
     # whose panel left no critic rows (unavailable, claude-only) leaves .head on
     # an unreviewed head. The used pair's <from> is then the latest
     # critic-reviewed head, so scope from it: the judge record and the
@@ -966,7 +965,7 @@ EOF
     delta_verdict="$(judge_nogo_record "$delta_from" "$delta_to")"
     judge_rc=$?
     [ "$judge_rc" -ne 8 ] || return 8
-    # HIMMEL-4995: a clean merge-forward is admitted without spending the one
+    # A clean merge-forward is admitted without spending the one
     # delta round, whether or not it was already used. It is checked before the
     # fix trigger: a clean merge carries no fix, so it must not spend the round.
     if clean_merge_forward "$delta_from" "$delta_to"; then
@@ -1001,8 +1000,8 @@ EOF
             fi
         fi
     fi
-    # HIMMEL-4700: one judge-triggered round per last reviewed head.
-    # HIMMEL-4738: an unreadable .verdicts refuses, never reads as unconsumed.
+    # One judge-triggered round per last reviewed head.
+    # An unreadable .verdicts refuses, never reads as unconsumed.
     head_scan=1
     if [ -e "$verdict_state" ] || [ -L "$verdict_state" ]; then
         head_scan=0
@@ -1011,7 +1010,7 @@ EOF
             echo "review-round: cannot read $verdict_state (grep rc $head_scan) - no judge NO-GO is honoured for $delta_from" >&2
         fi
     fi
-    # HIMMEL-5185: the delta round ran on <delta_from>, critic findings were
+    # The delta round ran on <delta_from>, critic findings were
     # raised there and every one is recorded fixed at that head: one more delta
     # round, from it, with no judge record. Consumed once: the .delta pair then
     # carries the trigger, so a post-cap round never chains into another, and a
@@ -1036,7 +1035,7 @@ EOF
         delta_trigger="verdict:${first_verdict%%/*}"
         return 0
     fi
-    # HIMMEL-4952: a judge-signed test- or lint-only record for the new head.
+    # A judge-signed test- or lint-only record for the new head.
     scope_hit="$(judge_scope_record "$delta_from" "$delta_to")"
     scope_rc=$?
     [ "$scope_rc" -ne 8 ] || return 8
@@ -1047,7 +1046,7 @@ EOF
         return 0
     fi
     delta_verdict=""
-    # HIMMEL-5257: the delta round was spent and the last reviewed head is
+    # The delta round was spent and the last reviewed head is
     # CI-red: one more bounded round, once per PR, no judge record needed.
     if [ -n "$delta_used" ] && [ "$delta_used" != "unreadable" ] \
         && [ ! -e "$cired_state" ] && [ ! -L "$cired_state" ] \
@@ -1062,7 +1061,7 @@ EOF
 # Once the delta was used every refusal keeps naming it; otherwise print $1.
 delta_refuse() {
     if [ -n "$delta_used" ]; then
-        # HIMMEL-5128: name the check that fired; the used-delta note follows it.
+        # Name the check that fired; the used-delta note follows it.
         [ -z "$1" ] || echo "$1" >&2
         echo "review-round: the one delta round was already used on $branch ($delta_used) - a second delta round is refused, and $full_note; only a judge NO-GO on the last reviewed head (console-kit/write-verdict.sh) buys another; ask the console" >&2
     else
@@ -1088,7 +1087,7 @@ if [ "$verb" = "start" ]; then
         bash "$lock_lib" status "." "$branch" 2>/dev/null || true)
     # lock_owner is a single small JSON status line (well under the pipe
     # buffer), so printf's write completes atomically before grep could
-    # exit early and SIGPIPE it (HIMMEL-1430 class).
+    # exit early and SIGPIPE it.
     if ! printf '%s' "$lock_owner" | grep -q '^{"pid":'; then  # pipefail-ok: bounded small input, see comment above
         echo "review-round: counter lock holder state for $branch is missing or unreadable — refusing" >&2
         exit 5
@@ -1105,10 +1104,10 @@ if [ "$verb" = "start" ]; then
         delta_check
         delta_rc=$?
         if [ "$delta_rc" -eq 0 ] && [ "${delta_reuse:-0}" -eq 0 ] && [ "${delta_free:-0}" -eq 0 ]; then
-            # HIMMEL-4700: the delta round is recorded first and the judge
+            # The delta round is recorded first and the judge
             # record consumed after it; a failed consume restores the prior
             # .delta, so a record is never spent on a round that never started.
-            # Once both land, a failed counter write below is the HIMMEL-4616
+            # Once both land, a failed counter write below is the
             # pending pair, which restarts without the record.
             tmp_delta="$delta_state.tmp.$$"
             cired_tmp="$cired_state.tmp.$$"
@@ -1126,7 +1125,7 @@ if [ "$verb" = "start" ]; then
                 || ! printf '%s %s %s\n' "$delta_from" "$delta_to" "$delta_trigger" > "$tmp_delta" \
                 || ! mv "$tmp_delta" "$delta_state" \
                 || ! { [ "$delta_trigger" != "postcap-ci-red" ] || mv "$cired_tmp" "$cired_state"; }; then
-                # HIMMEL-5257: a CI-red round that did not fully land puts the
+                # A CI-red round that did not fully land puts the
                 # spent .delta back, so the unlock is not half-consumed.
                 if [ "$delta_trigger" = "postcap-ci-red" ] && [ -f "$bak_delta" ]; then
                     mv -f "$bak_delta" "$delta_state" 2>/dev/null || true
@@ -1189,7 +1188,7 @@ if [ "$verb" = "start" ]; then
         rm -f "$tmp_head" "$head_state"
     fi
     if [ -n "$delta_from" ]; then
-        # HIMMEL-4638: written under the counter lock, so the pid check in
+        # Written under the counter lock, so the pid check in
         # delta_check and this claim cannot interleave between two starts.
         # Best effort - a failed write only loses the guard.
         printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
@@ -1207,28 +1206,28 @@ if [ "$verb" = "start" ]; then
     exit 0
 fi
 
-# promote (HIMMEL-2911): the /pr-check flow writes verdict=agreed as a leg-agrees
+# promote: the /pr-check flow writes verdict=agreed as a leg-agrees
 # intermediate (write-verdicts.sh + step 4.5's ledger-append.sh amend) and
 # nothing ever promotes it to a terminal verdict — until now it was only ever
 # hand-amended to `fixed`. Given a CLEAN round at --head (the caller asserts
 # this — promote does not itself re-check the panel, same posture as `defer`
 # not re-running it), every `finding` row on --branch whose LATEST amend
 # (joined on target_head + finding_id + artifact + perspective — NOT branch,
-# since pre-HIMMEL-2911 rows can carry branch:"") is `agreed` is promoted to
+# since older rows can carry branch:"") is `agreed` is promoted to
 # `fixed` UNLESS (a) its OWN row is recorded exactly at --head — a finding
 # raised and agreed in the very round being certified clean has had no later
 # commit that could have fixed it, so it is left agreed rather than stamped
-# resolved on zero evidence (codex-1, HIMMEL-2911 CR round 1) — or (b) it is
+# resolved on zero evidence — or (b) it is
 # re-raised at --head: a DIFFERENT finding row on the same branch, at --head,
 # sharing the same stored `fingerprint` (ledger-append.sh already computes
 # this at write time — promote reads it, never recomputes it) whose OWN
 # effective verdict is still live (empty/agreed/conflict/unaddressed/deferred,
-# never fixed/disproved — codex-2, HIMMEL-2911 CR round 1: a matching
+# never fixed/disproved — a matching
 # occurrence that is itself already fixed/disproved is not an open re-raise;
-# codex-1, HIMMEL-2911 CR round 3: `deferred` stays live — it means the issue
+# `deferred` stays live — it means the issue
 # is REAL and tracked, so it must not let an older occurrence be stamped
 # fixed) — or (c) --head is not actually a git descendant of that finding own
-# head (codex-2, HIMMEL-2911 CR round 3: an unrelated or divergent --head
+# head (an unrelated or divergent --head
 # never reviewed past that commit, so its absence there is not evidence of
 # anything). Terminal rows (fixed/disproved/deferred) are left untouched;
 # conflict/unaddressed were never agreed and are only WARNed. A finding whose
@@ -1240,7 +1239,7 @@ fi
 # A row whose effective verdict is EMPTY (no amend at all) is also still-open,
 # tagged `(unadjudicated)`: nobody looked, so the round cannot be certified
 # clean over it either — never counted as WARN (that means a human already
-# disagreed) and never silently skipped (HIMMEL-2917).
+# disagreed) and never silently skipped.
 # Exit 0 = no still-open findings; exit 3 = one or more rows are still-open
 # (the caller's round was not actually clean for that finding, whether it was
 # left agreed or never adjudicated at all); exit 1 = a malformed ledger row
@@ -1287,7 +1286,7 @@ function resolvesToHead(value) {
   }
   return resolveCache.get(h) === e.FULL_HEAD;
 }
-// codex-2, HIMMEL-2911 CR round 3: "not re-raised at --head" is only
+// "not re-raised at --head" is only
 // meaningful evidence of a fix when --head actually descends from the
 // finding own commit — otherwise an unrelated or divergent clean head
 // (a stale/incomparable --head) would let a later, never-reviewed commit
@@ -1311,9 +1310,9 @@ function isAncestorOfHead(commit) {
 // perspective) key in ledger (chronological) order — a later amend field
 // wins, a field a later amend never touched keeps its earlier value. Same
 // shape as ledger-append.shs own amendsByKey/effective().
-// HIMMEL-3461: the key gains branch, matching ledger-append.sh,
-// clear-cr-marker.sh and handover-bridge.sh byte-for-byte (HIMMEL-2405). Two
-// branches can legitimately sit at the same head (HIMMEL-1175), and finding
+// The key gains branch, matching ledger-append.sh,
+// clear-cr-marker.sh and handover-bridge.sh byte-for-byte. Two
+// branches can legitimately sit at the same head, and finding
 // ids are minted in per-producer stream order (not globally unique), so an
 // amend recorded while judging one branch must never leak into this gate
 // judgment of another. A legacy amend row with an empty branch (written
@@ -1334,11 +1333,10 @@ const amendSetFor = (branch, head, id, artifact, perspective) => {
 };
 const findingRows = rows.filter((o) => o.kind === "finding" && o.branch === e.BRANCH);
 const atHead = findingRows.filter((o) => resolvesToHead(o.head));
-// Only a LIVE occurrence at --head is a genuine re-raise (codex-2, HIMMEL-2911
-// CR round 1): a matching finding at --head that is itself already
+// Only a LIVE occurrence at --head is a genuine re-raise: a matching finding at --head that is itself already
 // fixed/disproved is a DISPOSITIONED instance, not an open one, and must not
 // keep an older agreed row still-open forever just because its fingerprint
-// once reappeared. deferred stays LIVE (codex-1, HIMMEL-2911 CR round 3):
+// once reappeared. deferred stays LIVE:
 // deferred means the issue is REAL and tracked, never fixed, so a deferred
 // reappearance must not let an older agreed occurrence of the SAME issue be
 // promoted to fixed — that would be a false claim the code changed.
@@ -1363,7 +1361,7 @@ for (const row of findingRows) {
   else if (verdict === "") action = "still-open-unadjudicated";
   else if (verdict !== "agreed") continue;
   else if (resolvesToHead(row.head)) {
-    // codex-1, HIMMEL-2911 CR round 1: a finding raised (and agreed) AT the
+    // A finding raised (and agreed) AT the
     // very head being asserted clean has had no later commit that could have
     // fixed it — promoting it here would stamp an untouched, still-present
     // issue as resolved on zero evidence. Leave it agreed; it needs a real
@@ -1475,7 +1473,7 @@ if [ ! -f "$ledger" ]; then
 fi
 cap_reason='Suggestion deferred after the three-round /pr-check cap.'
 delta_reason='Finding deferred in the one delta round after the three-round /pr-check cap.'
-# HIMMEL-4600: --head is the head the one delta round reviewed.
+# --head is the head the one delta round reviewed.
 delta_mode=0
 if [ -f "$delta_state" ]; then
     delta_reviewed="$(awk '{print $2; exit}' "$delta_state" 2>/dev/null)" || delta_reviewed=""
@@ -1536,7 +1534,7 @@ for (const o of findings.values()) {
   const trackedDeferred = verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(ticket) && reason;
   const resolved = verdict === "disproved" || trackedDeferred;
   if (e.DELTA === "1") {
-    // HIMMEL-4600: the delta round blocks only on Critical or escape-class;
+    // The delta round blocks only on Critical or escape-class;
     // every other open finding is deferred. An Important needs an explicit
     // fu_class amend from the adjudicator first: an escape-class Important
     // is fixed in the PR, so it is never deferred by default.
@@ -1603,7 +1601,7 @@ fi
 
 # defer_to is a single small ticket-key string (well under the pipe
 # buffer), so printf's write completes atomically before grep could exit
-# early and SIGPIPE it (HIMMEL-1430 class).
+# early and SIGPIPE it.
 if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$'; then  # pipefail-ok: bounded small input, see comment above
     primary_root="$HIMMEL_ROOT"
     himmel_common="$(git -C "$HIMMEL_ROOT" rev-parse --git-common-dir 2>/dev/null)" || himmel_common=""

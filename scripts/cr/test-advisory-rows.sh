@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/test-advisory-rows.sh — guard for HIMMEL-1221 G3: the minerva
+# scripts/cr/test-advisory-rows.sh — guard: the minerva
 # advisory panel enumeration prefers FREE rows but falls back to PAID rows when
 # the registry has NO free rows (instead of an empty panel → claude-only). Tests
 # the real helper minerva calls, so a regression in it (or in the behavior) is

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/test-macos-breakage.sh -- HIMMEL-3902: the os:macos cadence
+# scripts/ci/test-macos-breakage.sh -- the os:macos cadence
 # breakage metric. Fixture JSON for two cadence runs -> the new-breakage list;
 # the record builder; the gh-facing previous-run lookup and per-week read-back,
 # driven by a fake `gh` that serves fixtures. No network, no auth.
@@ -36,12 +36,12 @@ else bad "baseline diff gave '$got' (want empty)"; fi
 mkdir -p "$TMP/logs"
 : > "$TMP/logs/scripts_sci_stest-macos-breakage.sh.log"
 : > "$TMP/logs/scripts_shandover_stest-arm-resume.sh.log"
-# fixture logs as run-shell-tests' own self-tests name them (HIMMEL-3906)
+# fixture logs as run-shell-tests' own self-tests name them
 : > "$TMP/logs/test-127-3.sh.log"
 : > "$TMP/logs/test-slowpoke.sh.log"
 # run from a subdirectory: the tracked lookup must not depend on the caller's cwd
 sfl() ( cd "$ROOT/scripts/ci" && bash "$SCRIPT" suites-from-logs "$@" )
-# HIMMEL-3906: no completion sentinel = a killed shard's partial log set -> no report, distinct rc 3
+# No completion sentinel = a killed shard's partial log set -> no report, distinct rc 3
 got="$(sfl "$TMP/logs" 2>"$TMP/sfl-nosent.err")"; rc=$?
 if [ "$rc" = 3 ] && [ -z "$got" ] && grep -q 'run-complete' "$TMP/sfl-nosent.err"; then
   ok "suites-from-logs without the completion sentinel emits nothing and exits 3"
@@ -177,7 +177,7 @@ bash "$SCRIPT" record --run-id 5 --head-sha h5 --run-at 2026-09-30T00:00:00Z --s
 if jq -e '.infra_suspect == true' "$TMP/rec5.json" >/dev/null; then ok "1 of 8 reports on a success run is infra_suspect"
 else bad "incomplete report set not flagged infra_suspect"; fi
 
-# HIMMEL-3906: a TMPDIR containing spaces must not split report's record list
+# A TMPDIR containing spaces must not split report's record list
 SPTMP="$TMP/tmp with space"; mkdir -p "$SPTMP"
 rep="$(TMPDIR="$SPTMP" PATH="$TMP/fake:$PATH" FAKE_RUNS="$TMP/runs.json" FAKE_DIR="$TMP/recs" \
        bash "$SCRIPT" report --repo o/r --limit 10 2>&1)"

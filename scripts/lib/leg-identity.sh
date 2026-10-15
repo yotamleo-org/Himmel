@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# leg-identity.sh — the ONE derivation of a leg's identity (HIMMEL-3277).
+# leg-identity.sh — the ONE derivation of a leg's identity.
 #
 # A console files a leg's brief as a handover doc and launches the leg under a
 # session name (`claude -n <session>`). Every instrument that joins the two --
 # tick.sh's legs=/procs=/models=/livestate=, and any later reader that maps a
 # leg doc to a live session -- must derive the mapping HERE, never re-guess it
 # with a local regex: a guess that silently matches nothing reads as a
-# confident zero (HIMMEL-3145, HIMMEL-3269, HIMMEL-3277).
+# confident zero.
 #
 # Canonical (docs/handover/leg-brief-template.md):
 #   doc     <TICKET>-N<k>-<slug>-<date>-RESUME.md      (the -RESUME and the
@@ -15,16 +15,16 @@
 #                     to write in its `## Live state` legs: line.
 # Also accepted, because live and archived docs carry it: the legacy family
 #   <TICKET>[-<slug>]-leg[N]<k>-<date>-RESUME.md
-# (the pre-HIMMEL-3277 template spelled it -leg<k>-, older consoles -legN<k>-).
+# (the older template spelled it -leg<k>-, older consoles -legN<k>-).
 # It yields the same N<k> label, and the session name the console derives
 # for it: <TICKET>-N<k>[-<slug>]. Anything else falls back to the whole stem as
 # its own label, which is self-consistent but joins to no session.
 #
-# A SUCCESSOR leg carries its letters (HIMMEL-3278): N38b is a different session
+# A SUCCESSOR leg carries its letters: N38b is a different session
 # from N38, so the label keeps them -- a label that dropped them would let
 # tick.sh's livestate=/procs= conflate two live sessions. The base an instrument
 # that counts relaunches of ONE leg groups by is leg_base, below.
-# HIMMEL-3278: a legacy doc's ticket key is <KEY>-<digits>, or -- for the
+# A legacy doc's ticket key is <KEY>-<digits>, or -- for the
 # handful of drift/gh-named legs -- a bare UPPERCASE <KEY> alone, and then only
 # with the N spelling (HIMMEL-drift-graphify-0955-legN5). Lowercase prose
 # ("next-session-leg5") and an N-less fleet series (HIMMEL-linux-fleet-...-leg1,
@@ -92,7 +92,7 @@ leg_base() {
     fi
 }
 
-# HIMMEL-4749: a leg's human description -- one plain-language line saying what
+# A leg's human description -- one plain-language line saying what
 # the leg is doing and why, shown NEXT TO the label (never instead: tooling keys
 # on the label). It lives in the leg doc's front matter as `description: <text>`
 # (docs/handover/leg-brief-template.md). Every reader goes through these
@@ -129,7 +129,7 @@ leg_description_field() {
 # is used whole);
 # then the doc stem.
 # ponytail: the ticket-title and PR-title fallbacks HIMMEL-4749 orders between
-# the field and the H1 need the HIMMEL-4748 tracker/forge seams; slot them in
+# the field and the H1 need the tracker/forge seams; slot them in
 # here when WP2/WP4 land.
 leg_description() {
     local doc="$1" val stem

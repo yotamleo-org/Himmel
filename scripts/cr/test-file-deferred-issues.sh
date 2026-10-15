@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for file-deferred-issues.sh routing through the forge seam (HIMMEL-327).
+# Tests for file-deferred-issues.sh routing through the forge seam.
 # Exercises the GitHub path (FORGE=github via a `gh` stub on PATH + GH_CMD) and
 # the Bitbucket issues-disabled graceful degrade (FORGE=bitbucket, CLI exit 3 →
 # warn + exit 0, spec §5.2). No network: every forge call is stubbed.
@@ -143,7 +143,7 @@ assert_contains "bitbucket names finding 2" "$out" "docs/readme.md: LOW: missing
 assert_not_contains "bitbucket files nothing" "$out" "filed http"
 assert_not_contains "bitbucket no summary line" "$out" "file-deferred-issues: summary"
 
-# ── Critic-panel shape (HIMMEL-2068): a real captured `critic-panel.sh`
+# ── Critic-panel shape: a real captured `critic-panel.sh`
 # transcript (`.git/panel-out/claudex+himmel-1449-fetch-health.findings`,
 # committed here verbatim) — severity lives in the `## <section>` heading, the
 # finding line is `- [id]: text [path:line]`. Quoted heredoc: the content has

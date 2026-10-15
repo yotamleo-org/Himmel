@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/artifact-critic.sh — thin artifact-mode wrapper for critic-first-pass.sh (HIMMEL-414).
+# scripts/cr/artifact-critic.sh — thin artifact-mode wrapper for critic-first-pass.sh.
 # Bash 3.2 safe.
 set -uo pipefail
 
@@ -50,11 +50,11 @@ done
 [ -f "$charter" ] || { echo "artifact-critic.sh: charter file not found: $charter" >&2; exit 2; }
 
 # Load the Z.ai critic credential from the primary checkout's .env so the glm
-# artifact-critic lane (provider zai / route_provider glm, HIMMEL-1096)
+# artifact-critic lane (provider zai / route_provider glm)
 # authenticates with NO manual env export — mirroring critic-panel.sh's
-# HIMMEL-1221 load. minerva's Stage-2/4 advisory panel calls this script per
+# load. minerva's Stage-2/4 advisory panel calls this script per
 # registry row; without this load the glm row sees "No usable credentials found
-# for provider 'zai'" on .env-keyed machines (HIMMEL-1646). Gated on the
+# for provider 'zai'" on .env-keyed machines. Gated on the
 # model/slug being a zai/glm lane (the artifact-path analog of the panel's
 # registry grep) so the load_dotenv subshell cost stays off the claude/codex
 # artifact rows. load_dotenv sets a key ONLY when currently UNSET (a live env
@@ -69,7 +69,7 @@ case "$_lane_lc" in
         # shellcheck disable=SC1091
         . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null || true
         if command -v load_dotenv >/dev/null 2>&1; then
-            # HIMMEL-1648: pin to SCRIPT-ROOT resolution so an artifact run from
+            # pin to SCRIPT-ROOT resolution so an artifact run from
             # an unrelated git repo still reads himmel's .env, not THAT repo's.
             load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" GLM_API_KEY ZAI_API_KEY Z_AI_API_KEY 2>/dev/null || true
         fi

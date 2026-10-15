@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sourceable cadence observability-registry merge helper (HIMMEL-1680).
+# Sourceable cadence observability-registry merge helper.
 # Registration is bookkeeping: every failure warns and returns success so an
 # otherwise-good scheduler arm/disarm is never blocked by monitoring state.
 
@@ -16,7 +16,7 @@ _observability_registry_warn() {
     printf 'WARN observability-registry: %s\n' "$1" >&2
 }
 
-# mkdir-based mutex around the read-modify-write below (codex-2, HIMMEL-1680
+# mkdir-based mutex around the read-modify-write below (codex-2
 # CR): two concurrent arms (e.g. codex-sweep + graphmap racing at boot)
 # without this could both read the same generation and one's merge would
 # clobber the other's. mkdir is atomic; ~2s of retries then gives up and
@@ -39,7 +39,7 @@ _observability_registry_unlock() {
 
 # _observability_registry_update_body <action> <flow> <cadence> <task>
 # <registry> <registry_dir> -- does the actual read-merge-write. Split out
-# from _observability_registry_update (codex-1, CR round 2 fix-of-a-fix): a
+# from _observability_registry_update: a
 # bash RETURN trap is NOT scoped to one call -- it stays installed after this
 # function returns and fires on every LATER function return anywhere in the
 # process, referencing a $registry local that no longer exists (observed:
@@ -52,7 +52,7 @@ _observability_registry_update_body() {
 
     input="$registry"
     if [ ! -f "$input" ]; then
-        # codex-2 (CR round 2): `|| input=""` keeps a failing mktemp from
+        # codex-2: `|| input=""` keeps a failing mktemp from
         # tripping a caller's `set -e` -- without it the whole assignment
         # statement's nonzero exit would abort the caller's shell instead of
         # reaching this warn-and-return-0 path.

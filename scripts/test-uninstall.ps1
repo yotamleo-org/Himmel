@@ -1,5 +1,5 @@
 ﻿# test-uninstall.ps1 — PowerShell smoke test for scripts/uninstall.ps1
-# (HIMMEL-227 offboard; PS sibling of test-uninstall.sh, CR round 1).
+#  (offboard; PS sibling of test-uninstall.sh).
 # State-touching invocations point $env:TELEGRAM_CHANNEL_DIR + $env:BRIDGE_ROOT
 # at temp dirs and pass -SkipTasks -SkipPlugins -SkipHooks, so the operator's
 # real bridge, scheduled tasks, plugins, and git hooks are never touched.
@@ -21,13 +21,13 @@ $ErrorActionPreference = 'Continue'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $script:Failed = 0
 $Cli = Join-Path $PSScriptRoot 'uninstall.ps1'
 
 function Assert-Rc {
-    # HIMMEL-839 CR round-2: [int]-typed Expected/Actual made every non-numeric
+    # [int]-typed Expected/Actual made every non-numeric
     # call in the SC6 settings-unwire block (e.g. 'statusLine removed' 'null'
     # ...) throw a non-terminating ParameterBindingArgumentTransformation
     # error -- PowerShell writes it to the error stream and silently skips
@@ -78,7 +78,7 @@ $SavedCacheDir = $env:HIMMELCTL_CACHE_DIR
 $env:HIMMELCTL_CACHE_DIR = Join-Path $Tmp 'cache-default'
 
 # Redirect the [6/7] settings-unwire target away from the operator's REAL
-# ~/.claude/settings.json for the whole suite (HIMMEL-460). SC6 cases re-seed it.
+# ~/.claude/settings.json for the whole suite. SC6 cases re-seed it.
 $UserSettingsFile = Join-Path $Tmp 'user-settings.json'
 $env:HIMMEL_USER_SETTINGS = $UserSettingsFile
 Set-Content -Path $UserSettingsFile -Value '{}'
@@ -164,7 +164,7 @@ try {
         Write-Host 'FAIL telegram state removed despite -KeepTelegramState'; $script:Failed++
     }
 
-    # 4b. HIMMEL-3058: the DEFAULT (no -PurgeState) keeps operator state and says
+    # 4b. the DEFAULT (no -PurgeState) keeps operator state and says
     # how to remove it; -PurgeState with -KeepTelegramState is refused (rc=2).
     New-State
     $env:TELEGRAM_CHANNEL_DIR = $Channel
@@ -378,7 +378,7 @@ function Unregister-ScheduledTask {
     }
     }
 
-    # ── SC6 (HIMMEL-460): [6/7] settings unwire ─────────────────────────────
+    # ── SC6: [6/7] settings unwire ─────────────────────────────
     $SeedSettings = {
         @'
 {
@@ -446,7 +446,7 @@ function Unregister-ScheduledTask {
     Assert-Has 'dry-run prints [6/7] DRY' 'DRY: unwire statusLine' $out
     Assert-Rc 'dry-run leaves settings unchanged' $before (Get-Content $UserSettingsFile -Raw)
 
-    # ── SC7 (HIMMEL-2458): steps 4+5 must never SILENTLY skip ───────────────
+    # ── SC7: steps 4+5 must never SILENTLY skip ───────────────
     # The PATH-layer cause is Linux-only, but the failure it produced is not:
     # a `claude` or `python` the run cannot find used to print "skipping",
     # then "Uninstall complete." at rc=0, leaving every plugin installed and
@@ -511,7 +511,7 @@ function Unregister-ScheduledTask {
         $env:PATH = $SavedPath
     }
 
-    # ── SC8 (HIMMEL-2459): the himmelctl cache + state dir is removed ───────
+    # ── SC8: the himmelctl cache + state dir is removed ───────
     $Cache = Join-Path $Tmp 'himmel-cache'
     $NewCache = {
         Remove-Item -Recurse -Force $Cache -ErrorAction SilentlyContinue
@@ -602,7 +602,7 @@ function Unregister-ScheduledTask {
     Assert-Rc 'refused cache path exits 2, not 0' 2 $script:Rc
     Assert-NotHas 'refused cache path claims no completion' 'Uninstall complete.' $out
 
-    # 20c. HIMMEL-2505/HIMMEL-2459: a wildcard is not a path -- -Path on
+    # 20c. a wildcard is not a path -- -Path on
     #      Remove-Item/Test-Path expands it, so 'C:\*' passes every root/home
     #      comparison above (GetFullPath('C:\*') is 'C:\*', not a root, not
     #      $HOME). Refuse the wildcard characters outright: a directory-

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # the awk program below is single-quoted on
 # purpose -- it must not be expanded by this shell.
-# scripts/ci/run-unchecked-mktemp-under-bwk.sh — HIMMEL-3653: builds a pinned
+# scripts/ci/run-unchecked-mktemp-under-bwk.sh — builds a pinned
 # one-true-awk (BWK) from source, puts it first on PATH as `awk`, and runs
 # scripts/lib/test-unchecked-mktemp.sh under it.
 #
-# WHY. HIMMEL-3624 fixed a bracket-expression bug in scripts/lib/
+# WHY. A bracket-expression bug in scripts/lib/
 # unchecked-mktemp.sh that only failed under BWK (macOS /usr/bin/awk) —
-# `gawk --posix`/`--lint=fatal` both accept the broken regex (J1288O),
+# `gawk --posix`/`--lint=fatal` both accept the broken regex,
 # so a lint substitute would not have caught it. Only a real BWK run does.
 # The only prior BWK coverage was the nightly macOS shell-unit-shard leg,
 # which is continue-on-error (advisory). This gives the gate a PR-time,
@@ -33,7 +33,7 @@ ln -s "$build_dir/a.out" "$shim_dir/awk"
 # a broken/crashing binary masquerading as "reproduced the parse error").
 # Then the negative probe: BWK is the only awk that fails "nonterminated
 # character class" on a bare `/` inside a bracket expression (the exact
-# HIMMEL-3624 trigger) — gawk accepts it.
+# trigger) — gawk accepts it.
 if ! echo x | "$shim_dir/awk" '{ print }' >/dev/null 2>&1; then
   echo "run-unchecked-mktemp-under-bwk: built awk failed on a trivial well-formed program at $BWK_COMMIT -- build is broken, not a real one-true-awk build" >&2
   exit 1

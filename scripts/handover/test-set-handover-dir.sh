@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/handover/set-handover-dir.sh (HIMMEL-335).
+# Tests for scripts/handover/set-handover-dir.sh.
 set -uo pipefail
 
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/set-handover-dir.sh"

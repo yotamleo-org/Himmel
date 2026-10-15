@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # leg-resume-brief.sh -- reconstruct a leg's recoverable state from git
-# alone and append a RESUME BRIEF skeleton to its handover doc (HIMMEL-2369).
+# alone and append a RESUME BRIEF skeleton to its handover doc.
 #
 # WHY: on 2026-09-01 a leg sat idle for ~1.5h waiting on an operator settings
 # edit, holding its queue lock and burning its prompt cache, then had to be
@@ -90,14 +90,14 @@ _lrb_backtick_fence() {
     printf '%*s' "$((max + 1))" '' | tr ' ' '`'
 }
 
-# _lrb_md_value <text> -- HIMMEL-2369 CR (round 6): the ONE function that
+# _lrb_md_value <text> -- the ONE function that
 # renders an untrusted repo/filesystem-derived value INTO the brief's
 # markdown. Every value this script reads from the repo under inspection
 # (commit subjects, dirty paths, the branch name, the worktree path, the
 # repo root) must go through this, and ONLY this -- sanitizing and wrapping
 # used to be separate steps applied by hand at each call site, and that
-# separation is exactly what kept leaking: round 4 sanitized subjects and
-# missed paths; round 5 sanitized paths and missed the code-span delimiter
+# separation is exactly what kept leaking: sanitizing subjects missed paths, and sanitizing paths
+# missed the code-span delimiter
 # itself (a bare `%s` wrap breaks if the value contains its own backtick --
 # it closes the span early and everything after renders as document prose
 # again). Making the ENCODING a property of HOW a value is emitted, not a
@@ -237,16 +237,16 @@ _lrb_main() {
     fi
 
     local script_dir root
-    # HIMMEL-2403: --repo overrides the self-discovery below (a leg whose
+    # --repo overrides the self-discovery below (a leg whose
     # branch lives in a different repo). An empty --repo "" is an error, not
-    # a fallback: `git -C ""` would silently use the cwd (see codex-1 round 4).
+    # a fallback: `git -C ""` would silently use the cwd.
     if [ "$repo_set" -eq 1 ]; then
         if [ -z "$repo" ] || ! root=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null); then
             echo "leg-resume-brief: --repo '$repo' is not a git repository" >&2
             return 1
         fi
     else
-        # codex-1 (round 4): an unresolved script_dir must never flow into the
+        # An unresolved script_dir must never flow into the
         # git call below silently. A failed `cd` here would leave script_dir="",
         # and `git -C ""` is a documented no-op that falls back to the CURRENT
         # working directory -- if that cwd happens to be a different repo with a
@@ -320,7 +320,7 @@ _lrb_main() {
         status_reason="no worktree for this branch"
     fi
 
-    # codex-1 (round 2): same disambiguation class as branch_ref above,
+    # Same disambiguation class as branch_ref above,
     # applied to the base -- a bare "origin/main"/"main" lookup can be
     # hijacked by a same-named TAG exactly like a bare branch lookup could.
     # base_ref_full is what every git call below actually resolves;
@@ -358,7 +358,7 @@ _lrb_main() {
     brief=$(
         printf '\n## RESUME BRIEF (generated %s by leg-resume-brief.sh)\n\n' "$(_lrb_now_iso)"
         [ -n "$prior_note" ] && printf '%s\n\n' "$prior_note"
-        # codex-2 (round 4) + codex-1 (rounds 5-6): the branch, worktree
+        # The branch, worktree
         # path, base/head subjects, and dirty paths below are ALL repo- or
         # filesystem-controlled text, not this tool's own words -- label them
         # as data for whoever loads this doc as a briefing, not only in this
@@ -424,7 +424,7 @@ _lrb_main() {
         printf -- '- [ ] (fill from the mission doc'"'"'s step list)\n'
     )
 
-    # codex-1 (round 3): a failed WRITE must never be reported as success --
+    # A failed WRITE must never be reported as success --
     # the whole point of this tool is a leg trusting "the brief is saved"
     # before it wraps. `set -uo pipefail` does NOT check a plain command's
     # exit status for you, so both write paths (stdout for --dry-run, the

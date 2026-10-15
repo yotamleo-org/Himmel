@@ -4,7 +4,7 @@
 # reused from provenance.sh, bring their own hasher fallback).
 #
 # provenance-read.sh -- reads and interprets the install-provenance ledger
-# written by provenance.sh (HIMMEL-3332 S6). scripts/uninstall.sh sources this
+# written by provenance.sh. scripts/uninstall.sh sources this
 # to decide, per recorded artifact, whether uninstall owns it (remove/restore)
 # or must leave it alone (keep/skip/heuristic). It never writes install-* rows;
 # it writes only the uninstall-* rows (uninstall-begin, removed/restored/kept/
@@ -25,7 +25,7 @@
 #   esac
 #   prov_read_cleanup
 #
-# Design contract: HIMMEL-3332-install-provenance.md (spec) + the S6 design
+# Design contract: the install-provenance spec + the S6 design
 # note (ledger facts, fold, verdict, excision, this API) -- read those before
 # touching the fold/verdict logic below, they are not re-derived here.
 
@@ -38,7 +38,7 @@ _PROVREAD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # _provread_guarded <cmd> [args] -- <path>... -- every destructive site here
 # (a removal, or an mv over a target) goes through uninstall.sh's `guarded`
-# when the sourcing script defines it (HIMMEL-3415: it re-judges each path
+# when the sourcing script defines it (it re-judges each path
 # against the real home at the moment of use and exits rc=3 on refusal);
 # otherwise the command just runs. Temp-file cleanups stay bare.
 _provread_guarded() {
@@ -100,7 +100,7 @@ JQ
 # valid rows already filtered to the artifact ops. See the design doc "Fold"
 # section for the grouping/eff_pre/eff_post/ours rules this implements.
 read -r -d '' _PROVREAD_FOLD_JQ <<'JQ'
-# git-hook is not a register kind (HIMMEL-3525 Q4): a hook is a file, and a
+# git-hook is not a register kind: a hook is a file, and a
 # writer that lands will record it as kind file.
 def is_register_kind: . as $k | (["plugin","marketplace","mcp","collection","job","unit","tool"] | index($k)) != null;
 def presha(r): if (r|has("pre"))|not then null elif r.pre.state=="absent" then "ABSENT" else r.pre.sha end;
@@ -116,7 +116,7 @@ def eff_pre_of($N):
     ).pre
   end;
 def group_key(r):
-  # HIMMEL-3541: a register-kind unit installed at two scopes in the same
+  # A register-kind unit installed at two scopes in the same
   # round (project then user) must fold SEPARATELY -- otherwise the folded
   # record's .path (first row) and .fields (last row, cli_scope/project_path)
   # come from different scopes, and only one scope's file is ever touched at
@@ -153,7 +153,7 @@ def build_chains($rows):
           governed: (($N|length) > 0),
           preexisted_only: (if ($N|length)==0 then ($rows | any(.preexisted==true)) else false end),
           ours: (if $isreg then ($rows | any(.preexisted==false)) else null end),
-          # HIMMEL-3525 §4.1: the identities himmel recorded for registrations
+          # The identities himmel recorded for registrations
           # IT created. A later preexisted=true row (a re-run over a
           # registration the user re-pointed) must never join this set.
           ours_ids: (if $isreg then ([ $rows[] | select(.preexisted==false and .identity_v!=null and .post.sha!=null) | .post.sha ] | unique) else null end),
@@ -162,7 +162,7 @@ def build_chains($rows):
           ours_posts: (if $isreg then ([ $rows[] | select(.preexisted==false and .post.sha!=null) | .post.sha ] | unique) else null end),
           eff_pre: (if ($N|length)>0 then eff_pre_of($N) else null end),
           eff_post: (if ($N|length)>0 then $N[-1].post else $lastRow.post end),
-          # HIMMEL-3787 S2c: the snap of the row that produced eff_post (null when that
+          # The snap of the row that produced eff_post (null when that
           # row predates snapshots or carries snap:null -- readers treat both alike)
           eff_snap: (($lastForFields.snap // null)),
           fields: extra_fields($lastForFields),
@@ -331,7 +331,7 @@ _provread_json_present() {
 # `.hooks` array. This covers both shapes wire-pretooluse-hooks.sh's single
 # writer produces today -- the PreToolUse trio, whose tracked element IS the
 # top-level stanza, and the SessionStart hook, whose tracked element is the
-# hook OBJECT nested inside a stanza's `.hooks[]` (HIMMEL-3332 S6: without
+# hook OBJECT nested inside a stanza's `.hooks[]` (without
 # this, a SessionStart unit's current element is never found and every
 # verdict on it reads `keep already-absent`, which then falsely PROTECTS it
 # and skips the whole hooks helper -- test-e2e-symmetry.sh caught this).
@@ -402,7 +402,7 @@ prov_read_current() {
             fi
             ;;
         block)
-            # HIMMEL-3787 S2d: the live BEGIN..END text, read by the strip's own
+            # The live BEGIN..END text, read by the strip's own
             # scanner so the verdict and the strip agree on which lines are
             # himmel's. Markers that cannot be told apart from text (torn,
             # duplicated, CRLF, open fence) read MALFORMED, never a guess.
@@ -421,7 +421,7 @@ prov_read_current() {
 }
 
 # _provread_register_verdict <unit-json> <kind> -- the verdict for a register
-# unit himmel created (ours=true), HIMMEL-3525 design §4.2 and §5. The live
+# unit himmel created (ours=true), design §4.2 and §5. The live
 # identity token must be one himmel recorded for a registration it created
 # (ours_ids); anything else keeps. The writer records the token with
 # --post-text, which stores its sha, so the live token is hashed once more
@@ -494,7 +494,7 @@ _provread_is_container() {
 # this is NOT the same test as prov_read_unit_resolved (§5.1) --
 # already-absent-with-no-backup counts here but never holds a backup anyway.
 #
-# HIMMEL-3787 (codex-1, panel round 1): this used to also accept a bare
+# This used to also accept a bare
 # `remove`/`restore` VERDICT (a recommendation prov_read_verdict computes
 # from the child's CURRENT live state, not a record that the action ran).
 # In the normal flow that was harmless -- the settings-unwire step physically
@@ -596,7 +596,7 @@ prov_read_verdict() {
         fi
         printf 'keep user-modified\n'; return 0
     fi
-    # HIMMEL-3787 S2d: a block's whole delta is its own text -- there is no
+    # A block's whole delta is its own text -- there is no
     # pre-state to restore, so an unmodified block is removed, never restored.
     if [ "$kind" = "block" ]; then printf 'remove ours\n'; return 0; fi
     # F2 (parent review): `.eff_pre.state // "absent"` fail-coalesces a NULL
@@ -617,7 +617,7 @@ prov_read_verdict() {
 # which is what the purge scan and a non-purge prune re-check both need.
 # Every other state -- keep user-modified, keep already-absent, a failed
 # outcome, an uncomputable verdict, a unit never visited this session --
-# holds the backup (this is what closes J1390A Finding 4).
+# holds the backup (a backup is never dropped on an unresolved outcome).
 prov_read_unit_resolved() {
     local u="$1" outcome="${2:-}" verdict action reason
     case "$outcome" in
@@ -661,7 +661,7 @@ prov_read_apply() {
 
     case "$kind" in file|json-key|json-elem|block) ;; *) _provread_err "prov_read_apply: unsupported kind $kind"; return 2 ;; esac
     case "$action" in remove|restore) ;; *) _provread_err "prov_read_apply: action must be remove or restore"; return 2 ;; esac
-    # HIMMEL-3787 S2d: himmel's block carries no pre-state -- nothing to restore.
+    # himmel's block carries no pre-state -- nothing to restore.
     if [ "$kind" = "block" ] && [ "$action" = "restore" ]; then _provread_err "prov_read_apply: a block has no restore"; return 2; fi
 
     if [ "$dry" = 1 ]; then
@@ -704,7 +704,7 @@ prov_read_apply() {
             local tmp
             tmp="$path.provread.$$.tmp"
             cp -p "$backup" "$tmp" || { _provread_err "cannot stage restore of $path"; return 1; }
-            # HIMMEL-3332 S6 R2-codex3: verify the STAGED copy's sha BEFORE it
+            # Verify the STAGED copy's sha BEFORE it
             # ever replaces the target -- a corrupted backup must be caught
             # here, not after it has already overwritten a working file.
             if [ -n "$eff_sha" ] && [ "$(prov_sha_file "$tmp" 2>/dev/null)" != "$eff_sha" ]; then
@@ -721,7 +721,7 @@ prov_read_apply() {
             patharr=$(_provread_ptr_path "$ptr") || return 1
             if [ ! -f "$path" ] || ! jq -e . "$path" >/dev/null 2>&1; then _provread_err "$path is not valid JSON -- refusing to modify"; return 1; fi
             if [ "$action" = "remove" ]; then
-                # HIMMEL-3541: parent_created -- the install created the key's
+                # parent_created -- the install created the key's
                 # parent object for it, so drop that parent too once empty.
                 local pcreated
                 pcreated=$(printf '%s' "$u" | jq '.fields.parent_created == true')
@@ -735,7 +735,7 @@ prov_read_apply() {
                 eff_sha=$(printf '%s' "$u" | jq -r '.eff_pre.sha // empty')
                 if [ -z "$backup" ] || [ ! -f "$backup" ]; then _provread_err "no readable backup for $ptr in $path"; return 1; fi
                 val=$(cat "$backup") || { _provread_err "cannot read backup $backup"; return 1; }
-                # HIMMEL-3332 S6 R2-codex3: verify the backup's content hash
+                # Verify the backup's content hash
                 # against eff_pre.sha (the writer computes it with
                 # prov_sha_json over the same pre-value, provenance.sh's
                 # _prov_body json-key case) BEFORE it is spliced into the
@@ -780,7 +780,7 @@ prov_read_apply() {
                         # like unwire-pretooluse-hooks.sh -- unconditionally
                         # prune the wrapper stanza if its .hooks[] is now empty;
                         # then, like the flat branch, drop the container itself
-                        # when himmel created it and it is now empty (HIMMEL-3541).
+                        # when himmel created it and it is now empty.
                         local full stanzapath
                         full=$(jq -c -n --argjson p "$patharr" --argjson r "$relpath" '$p + $r')
                         stanzapath=$(jq -c -n --argjson p "$patharr" --argjson r "$relpath" '$p + [$r[0]]')
@@ -798,7 +798,7 @@ prov_read_apply() {
                 eff_sha=$(printf '%s' "$u" | jq -r '.eff_pre.sha // empty')
                 if [ -z "$backup" ] || [ ! -f "$backup" ]; then _provread_err "no readable backup for $ptr in $path"; return 1; fi
                 val=$(cat "$backup") || { _provread_err "cannot read backup $backup"; return 1; }
-                # HIMMEL-3386: same guard as the json-key restore above -- the
+                # Same guard as the json-key restore above -- the
                 # writer hashes a json-elem pre-value with prov_sha_json too
                 # (_prov_body's json case), so a corrupted-but-valid-JSON
                 # backup is refused BEFORE it is spliced into the array.
@@ -853,7 +853,7 @@ prov_read_drop_env_if_ours() {
 
 _PROV_READ_IID="" _PROV_READ_MODE="" PROV_READ_N_REMOVED=0 PROV_READ_N_RESTORED=0
 PROV_READ_N_KEPT=0 PROV_READ_N_FAILED=0 _PROV_READ_FAILED_BACKUPS="" _PROV_READ_DONE_BACKUPS=""
-# HIMMEL-3787 S3: one compact JSON record per outcome of THIS session (dry runs
+# One compact JSON record per outcome of THIS session (dry runs
 # included -- they write no ledger row, but the reconcile report still needs them).
 _PROV_READ_OUTCOMES="" PROV_READ_LAST_IID=""
 
@@ -882,7 +882,7 @@ prov_read_session_begin() {
 # <detail> is free text for the reconcile report only (never written to the ledger).
 prov_read_outcome() {
     local status="$1" u="$2" reason="$3" backup="${4:-}" detail="${5:-}" _rec
-    # HIMMEL-3787 S2c: a resolved unit's ours snapshot goes with its backup
+    # A resolved unit's ours snapshot goes with its backup
     local snap=""
     case "$status" in removed|restored) snap=$(printf '%s' "$u" | jq -r '.eff_snap // empty' 2>/dev/null) ;; esac
     case "$status" in removed) PROV_READ_N_REMOVED=$((PROV_READ_N_REMOVED + 1))
@@ -951,7 +951,7 @@ prov_read_prune_backups() {
     bdir="$dir/provenance-backups"
     [ -e "$bdir" ] || return 0
     if [ -L "$bdir" ]; then _provread_err "refusing symlink $bdir"; return 1; fi
-    # HIMMEL-3386: the done list is "\n<path>\n<path>..." -- pad it with a
+    # The done list is "\n<path>\n<path>..." -- pad it with a
     # trailing newline and match "\n<path>\n" so a finished foo.bak.extra
     # cannot authorise deleting foo.bak (whole entries, not a prefix).
     done_list="$_PROV_READ_DONE_BACKUPS
@@ -989,7 +989,7 @@ EOF
 
 # prov_read_owned <outfile> -- writes uninstall-plugins.sh's --ledger-owned
 # file (TAB-separated plugin/marketplace rows) for register units whose
-# verdict is `remove` (HIMMEL-3525 S17; a unit kept for identity is not owned
+# verdict is `remove` (a unit kept for identity is not owned
 # in uninstall-plugins.sh's eyes, and its existing not-owned path keeps it --
 # no change inside uninstall-plugins.sh).
 prov_read_owned() {
@@ -1010,7 +1010,7 @@ $units
 EOF
 }
 
-# prov_read_reconcile_report -- HIMMEL-3787 S3 (design §7): the end-of-run
+# prov_read_reconcile_report (design §7): the end-of-run
 # report, printed to stdout for a wet run and (labelled DRY:) a dry run. Fed by
 # this session's outcome records (_PROV_READ_OUTCOMES), so a dry run's kept
 # units show up too. Counts what was reverted / skipped, then lists every unit

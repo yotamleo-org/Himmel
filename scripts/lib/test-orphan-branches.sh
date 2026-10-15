@@ -16,7 +16,7 @@
 # so a stub matches on $4 (the --head value) and prints tab rows
 # <number> <state> <mergeoid|-> <ci>; ci is green|none|pending|failed, derived from
 # statusCheckRollup by the jq filter (T26 runs that real filter on fixtures).
-# HIMMEL-3197: there is NO per-PR `gh pr checks` call any more (4 GraphQL calls
+# There is NO per-PR `gh pr checks` call any more (4 GraphQL calls
 # each) — T27 pins one gh call per branch.
 set -uo pipefail
 
@@ -26,7 +26,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -120,7 +120,7 @@ make_head_stub() {
 
 # Source the library under test.  RED before orphan-branches.sh exists.
 OB_LIB="$SCRIPT_DIR/orphan-branches.sh"
-# Distinguish MISSING from BROKEN (HIMMEL-1325): a single `. … 2>/dev/null` test
+# Distinguish MISSING from BROKEN: a single `. … 2>/dev/null` test
 # returned non-zero for BOTH a missing file and one that exists but failed to
 # source, so a genuine syntax error in the lib masqueraded as "not found" and hid
 # the real cause. Check existence first; on a present-but-failing source, surface
@@ -480,7 +480,7 @@ else
 fi
 unset GH_CMD FORGE ORPHAN_BRANCH_DAYS ORPHAN_BRANCH_MAX
 
-# ── T20: no checks at all -> ci=none, not failed (HIMMEL-1325) ------------------
+# ── T20: no checks at all -> ci=none, not failed ------------------
 # `gh pr checks` used to exit 1 for BOTH a red check AND "no checks reported"
 # (cli/cli#9390, #9682, #7401), so the lib had to inspect its output. The rollup
 # is unambiguous: an empty statusCheckRollup is `none` (T26 pins the filter).
@@ -499,7 +499,7 @@ else
 fi
 unset GH_CMD FORGE ORPHAN_BRANCH_DAYS ORPHAN_BRANCH_MAX
 
-# ── T21: an OPEN row with NO ci column -> ci=pending (fail-safe) (HIMMEL-3197) --
+# ── T21: an OPEN row with NO ci column -> ci=pending (fail-safe) --
 # A row a stub/older gh emitted without the 4th column must never read as green or
 # failed — pending is the conservative "not known" state the old rc!=0 path used.
 t="$TMPDIR_ROOT/t21"; mk_repo "$t/rep"; mk_origin_main "$t/rep"
@@ -516,7 +516,7 @@ else
 fi
 unset GH_CMD FORGE ORPHAN_BRANCH_DAYS ORPHAN_BRANCH_MAX
 
-# ── T22: leading-zero ORPHAN_BRANCH_DAYS must not parse as octal (HIMMEL-1325) -
+# ── T22: leading-zero ORPHAN_BRANCH_DAYS must not parse as octal -
 # $(( )) parses a leading-zero value as OCTAL, so "08" is an error ("value too
 # great for base") and the scan ABORTS (verified pre-fix: line 266 error, exit 1,
 # empty stdout). Base-10 normalization (10#$days) must let a config like 08 scan.
@@ -534,7 +534,7 @@ else
 fi
 unset GH_CMD FORGE ORPHAN_BRANCH_DAYS ORPHAN_BRANCH_MAX
 
-# ── T23: no `timeout` binary -> scan still bounds gh via _ob_bounded (HIMMEL-1325)
+# ── T23: no `timeout` binary -> scan still bounds gh via _ob_bounded
 # Stock macOS / minimal containers have no GNU timeout, so _ob_timeout_cmd returns
 # empty and the scan must fall back to the portable _ob_bounded runner rather than
 # run gh UNBOUNDED. Override the detector to SIMULATE that host (no pgrep needed —
@@ -579,7 +579,7 @@ else
     fail "T24: fast path wrong (rc=$_rc, out=$(cat "$_btmp" 2>/dev/null), err=$(cat "$_berr" 2>/dev/null))"
 fi
 
-# ── T26: the real jq filter derives ci from statusCheckRollup (HIMMEL-3197) ------
+# ── T26: the real jq filter derives ci from statusCheckRollup ------
 # The stubs above replace gh, so they never run the --jq filter; this runs the
 # lib's own filter (_OB_LIST_JQ — the string handed to `gh pr list --jq`) on
 # rollup fixtures. Precedence mirrors `gh pr checks` (rc 8 pending wins over rc 1
@@ -618,7 +618,7 @@ else
     fail "T26: jq missing or _OB_LIST_JQ undefined — the ci derivation filter was not exercised"
 fi
 
-# ── T27: one gh call per branch, none of them `gh pr checks` (HIMMEL-3197) ------
+# ── T27: one gh call per branch, none of them `gh pr checks` ------
 # `gh pr checks <n>` costs 4 GraphQL requests per open PR (measured with
 # GH_DEBUG=api: 4 POST /graphql); the branch's own `pr list --json …,statusCheckRollup`
 # is 1. Three branches (2 open, 1 merged) must therefore cost exactly 3 gh calls.
@@ -652,7 +652,7 @@ else
 fi
 unset GH_CMD FORGE ORPHAN_BRANCH_DAYS ORPHAN_BRANCH_MAX ORPHAN_PUBLIC_CLONE
 
-# ── T28: several OPEN PRs on one head branch -> the WORST ci wins (HIMMEL-3197) --
+# ── T28: several OPEN PRs on one head branch -> the WORST ci wins --
 # `gh pr list --head <b>` is not filtered by base, so one branch can carry several
 # OPEN PRs (one per base). A green row AFTER a pending/failed row must not read as
 # ci-green (last-row-wins did): pending > failed > none > green, and the reported

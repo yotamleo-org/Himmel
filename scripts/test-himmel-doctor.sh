@@ -9,13 +9,13 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
-# HIMMEL-2095: anchored to THIS SCRIPT's own location, not `git rev-parse
+# anchored to THIS SCRIPT's own location, not `git rev-parse
 # --show-toplevel` (which resolves against the CALLER's cwd instead). That
 # distinction was invisible as long as every check this suite exercises
-# existed identically in every checkout -- but check_c32 (HIMMEL-2095) is
+# existed identically in every checkout -- but check_c32 is
 # new and, until this branch merges, lives ONLY in this worktree's copy of
 # scripts/himmel-doctor.sh. Invoked via an absolute path from a cwd outside
 # this worktree (e.g. the primary checkout), `--show-toplevel` silently
@@ -46,14 +46,14 @@ export SALUS_VAULT_PATH=""
 # launching shell would otherwise point C27 at the operator's real config dir.
 export CLAUDE_GLM_CONFIG_DIR=""
 
-# Hermeticity (HIMMEL-2176): C28 reads himmelctl's own state.json (recorded
+# Hermeticity: C28 reads himmelctl's own state.json (recorded
 # guardrail-block-global consent) at ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}
 # — HOME is redirected per-case so the default already resolves under the
 # per-case temp HOME, but an inherited HIMMELCTL_CACHE_DIR from the launching
 # shell would otherwise point C28 at the operator's real himmelctl state.
 export HIMMELCTL_CACHE_DIR=""
 
-# Hermeticity (HIMMEL-2581): C31 resolves the codex config through
+# Hermeticity: C31 resolves the codex config through
 # $CODEX_HOME (default $HOME/.codex) — HOME is redirected per-case so the
 # default already lands in the temp HOME, but an inherited CODEX_HOME from
 # the launching shell would otherwise point C31 at the operator's real codex
@@ -61,7 +61,7 @@ export HIMMELCTL_CACHE_DIR=""
 # unrelated case unpredictably. Dedicated C31 cases set it per-case.
 export CODEX_HOME=""
 
-# Hermeticity (HIMMEL-2095): C33 resolves the graph-cadence ledger via
+# Hermeticity: C33 resolves the graph-cadence ledger via
 # handover_root(), which honors $HANDOVER_DIR first, else falls back to
 # <repo-root>/handovers (git-toplevel-relative, NOT HOME-relative — the
 # per-case HOME redirection every other check's hermeticity leans on does
@@ -82,7 +82,7 @@ unset OLLAMA_NO_CLOUD
 # Keep every unrelated case hermetic; dedicated C19 cases opt back in.
 export DOCTOR_OBSERVABILITY_SKIP=1
 
-# Hermeticity (HIMMEL-2010): C20 now FAILS on node-major drift, and it reads the
+# Hermeticity: C20 now FAILS on node-major drift, and it reads the
 # REAL node/.nvmrc in every case that does not seam them — so on a drifted host
 # it would flip the exit code of every unrelated case here. Bypass it globally;
 # the C20 cases set NODE_MAJOR_DRIFT_OK=0 (and CI/GITHUB_ACTIONS empty) per-case.
@@ -92,7 +92,7 @@ export NODE_MAJOR_DRIFT_OK=1
 # so cases that blank CI would FAIL there. Skip it globally; the C65 cases opt back in.
 export DOCTOR_C65_SKIP=1
 
-# Hermeticity (HIMMEL-2024): C21 reads the operator's REAL hermes install
+# Hermeticity: C21 reads the operator's REAL hermes install
 # (LOCALAPPDATA/hermes) unless seamed — point it at a nonexistent dir globally
 # (check_c21's `[ ! -d ]` guard) so unrelated cases get a deterministic
 # "no hermes install found" INFO instead of leaking this machine's actual
@@ -100,15 +100,15 @@ export DOCTOR_C65_SKIP=1
 DOCTOR_HERMES_HOME_EMPTY="$(mktemp -d)/no-hermes"
 export DOCTOR_HERMES_HOME="$DOCTOR_HERMES_HOME_EMPTY"
 
-# C25 (HIMMEL-1820) performs a live platform process scan (PowerShell CIM on
+# C25 performs a live platform process scan (PowerShell CIM on
 # Windows, ps on POSIX). Keep every unrelated case hermetic and
 # host-independent -- what real processes run must never flip a test verdict;
 # dedicated C25 cases opt back in via the shim seam.
 export DOCTOR_ORPHAN_SCAN_SKIP=1
 
-# Hermeticity (HIMMEL-2545): C29 scans the REAL /proc tree for claude
+# Hermeticity: C29 scans the REAL /proc tree for claude
 # child-session launchers unless seamed -- this dev box routinely has several
-# such legs running right now (the exact HIMMEL-2545 bug), and every
+# such legs running right now, and every
 # unrelated case would otherwise pick up a WARN C29-child-session it is not
 # testing. Point at a nonexistent dir globally (check_c29's `[ ! -d ]` guard
 # reads that as a clean procfs-absent skip, never a false WARN); dedicated
@@ -116,7 +116,7 @@ export DOCTOR_ORPHAN_SCAN_SKIP=1
 HIMMEL_DOCTOR_PROC_BASE="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-noproc.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
 export HIMMEL_DOCTOR_PROC="$HIMMEL_DOCTOR_PROC_BASE/no-proc"
 
-# Hermeticity (HIMMEL-2515): C24's systemd probe and C30 both resolve through
+# Hermeticity: C24's systemd probe and C30 both resolve through
 # systemctl via this seam -- and on THIS station it is not just present but
 # ENABLED and ACTIVE (a real, operator-depended-on telegram-bridge.service).
 # tool_dirs()'s PATH scrub does not save us here the way it does for gh/node:
@@ -130,7 +130,7 @@ export HIMMEL_DOCTOR_PROC="$HIMMEL_DOCTOR_PROC_BASE/no-proc"
 # from this suite -- read-only verification of it happens by hand, at most
 # once, outside the test run.
 #
-# Templated + guarded mktemp (CR round 1 E4): matches the C29 seam directly
+# Templated + guarded mktemp: matches the C29 seam directly
 # above, not DOCTOR_HERMES_HOME_EMPTY's untemplated form near the top of this
 # file -- C29's is the more recent convention (this seam's own dedicated test
 # rows already use it), and it also drops the one shell-lint mktemp advisory
@@ -139,13 +139,13 @@ export HIMMEL_DOCTOR_PROC="$HIMMEL_DOCTOR_PROC_BASE/no-proc"
 HIMMEL_DOCTOR_SYSTEMCTL_BASE="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-nosystemctl.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
 export HIMMEL_DOCTOR_SYSTEMCTL="$HIMMEL_DOCTOR_SYSTEMCTL_BASE/no-systemctl"
 
-# Hermeticity (HIMMEL-969): C8's runner-home defaults resolve via
+# Hermeticity: C8's runner-home defaults resolve via
 # cadence_user_home (USERPROFILE via cygpath on Windows) — per-case HOME
 # redirection does NOT cover that, so pin all four seams to empty dirs
 # globally; C8 cases override them per-case. EVERY seam in C8's table must be
 # pinned here: an unpinned one falls through to the operator's REAL
 # ~/.claude/<cadence> dir, so an armed cadence on the dev box would leak into
-# the "no armed cadence runners" and "no false nudges" cases (HIMMEL-568 added
+# the "no armed cadence runners" and "no false nudges" cases (added
 # the qmd seam).
 C8_EMPTY="$(mktemp -d)"
 export PIPELINE_BAT_DIR="$C8_EMPTY/pipeline" SWEEP_BAT_DIR="$C8_EMPTY/sweep" GRAPHMAP_BAT_DIR="$C8_EMPTY/graphmap" QMD_CADENCE_BAT_DIR="$C8_EMPTY/qmd"
@@ -168,56 +168,56 @@ FAKEROOT="$(mktemp -d)"; FAKEBIN="$FAKEROOT/bin"; mkdir -p "$FAKEBIN"
 printf '#!/bin/sh\necho Linux\n' > "$FAKEBIN/uname"; chmod +x "$FAKEBIN/uname"
 
 # Keep unrelated cases from probing the operator's real qmd daemon on
-# localhost:8181 for C40 (HIMMEL-3056): an absent curl seam makes C40 an INFO
+# localhost:8181 for C40: an absent curl seam makes C40 an INFO
 # skip. Dedicated C40 cases override this seam per invocation with a stub curl.
 export HIMMEL_DOCTOR_QMD_CURL="$FAKEROOT/no-such-curl"
-# Same for C45-qmd-daemon (HIMMEL-3062): never read the operator's real qmd
+# Same for C45-qmd-daemon: never read the operator's real qmd
 # pidfile; dedicated cases point this seam at a fixture.
 export HIMMEL_DOCTOR_QMD_PIDFILE="$FAKEROOT/no-such-pidfile"
-# Same for C47-runaway-procs (HIMMEL-3959): never scan the operator's real
+# Same for C47-runaway-procs: never scan the operator's real
 # process table; an absent ps seam makes C47 silent, dedicated cases stub it.
 export HIMMEL_DOCTOR_RUNAWAY_PS="$FAKEROOT/no-such-ps"
-# Same for C54-hook-copy-reaper (HIMMEL-4531): never run the real reaper over
+# Same for C54-hook-copy-reaper: never run the real reaper over
 # the operator's process table; an absent script makes C54 silent, dedicated
 # cases stub it.
 export HIMMEL_DOCTOR_HOOK_REAPER="$FAKEROOT/no-such-reaper"
-# Same for C48-tmp-usage (HIMMEL-4224): never read the operator's real /tmp
+# Same for C48-tmp-usage: never read the operator's real /tmp
 # fill level; an absent df seam makes C48 silent, dedicated cases stub it.
 export HIMMEL_DOCTOR_TMP_DF="$FAKEROOT/no-such-df"
-# Same for C49-qmd-embed-model (HIMMEL-4232): never read the operator's real
+# Same for C49-qmd-embed-model: never read the operator's real
 # qmd index; an absent index makes C48 silent, dedicated cases point at a fixture.
 export HIMMEL_DOCTOR_QMD_INDEX="$FAKEROOT/no-such-index.sqlite"
-# Same for C50-qmd-fork-stamp (HIMMEL-4268): never read the operator's real qmd
+# Same for C50-qmd-fork-stamp: never read the operator's real qmd
 # fork clone or QMD_FORK_REF; an unset dir resolves to a nonexistent fixture path.
 export QMD_FORK_DIR="$FAKEROOT/no-such-qmd-fork"
 unset QMD_FORK_REF
-# Same for C51-firecrawl-parked (HIMMEL-4371): never read the operator's real
+# Same for C51-firecrawl-parked: never read the operator's real
 # parked-items state; an absent file is OK, dedicated cases point at a fixture.
 export HIMMEL_FIRECRAWL_PARKED="$FAKEROOT/no-such-parked.jsonl"
-# Same for C52-graphify-ollama (HIMMEL-4513): never run the operator's real uv
+# Same for C52-graphify-ollama: never run the operator's real uv
 # graphifyy venv python; an absent venv is OK, dedicated cases point at a fixture.
 export HIMMEL_DOCTOR_GRAPHIFY_VENV="$FAKEROOT/no-such-graphify-venv"
-# Same for C53-vm-mode (HIMMEL-4583): never probe the operator's real VM; an
+# Same for C53-vm-mode: never probe the operator's real VM; an
 # absent probe seam makes C53 report the mode only, dedicated cases stub it.
 export HIMMEL_DOCTOR_VM_PROBE="$FAKEROOT/no-such-vm-probe"
-# Same for C59-codex-bank-cache (HIMMEL-5220): never read the operator's real
+# Same for C59-codex-bank-cache: never read the operator's real
 # codex bank cache; an absent file is INFO, dedicated cases point at a fixture.
 export CODEX_BANK_CACHE="$FAKEROOT/no-such-codex-bank.json"
 
-# Same for C60/C61 (HIMMEL-5382): never read the operator's real hermes checkout
+# Same for C60/C61: never read the operator's real hermes checkout
 # or run the real codex CLI / npm registry; absent seams are an INFO skip,
 # dedicated cases point them at fixtures.
 export DOCTOR_HERMES_CHECKOUT="$FAKEROOT/no-such-hermes-checkout"
 export DOCTOR_CODEX_BIN="$FAKEROOT/no-such-codex"
 unset DOCTOR_CODEX_LATEST
-# Same for C64-vm-runner (HIMMEL-5037): never run the real vm-runner.sh doctor
+# Same for C64-vm-runner: never run the real vm-runner.sh doctor
 # (it would probe the operator's VirtualBox and GitHub); absent seam = INFO skip.
 export DOCTOR_VM_RUNNER="$FAKEROOT/no-such-vm-runner.sh"
-# C63 (HIMMEL-5501): never run the operator's real claude; absent seam = INFO.
+# C63: never run the operator's real claude; absent seam = INFO.
 export DOCTOR_CLAUDE_BIN="$FAKEROOT/no-such-claude"
 
 # Keep unrelated cases from probing the operator's real qmd 'skills'
-# collection for C44 (HIMMEL-2222): most invocations below never override
+# collection for C44: most invocations below never override
 # PATH, so an inherited bun/qmd install would otherwise make check_c44 run a
 # LIVE `qmd collection list` and leak this machine's real collection state
 # (missing here) into every unrelated "clean -> rc0" assertion. Point the
@@ -225,12 +225,12 @@ export DOCTOR_CLAUDE_BIN="$FAKEROOT/no-such-claude"
 # skip; dedicated C44 cases override it per invocation with their own stub.
 export HIMMEL_DOCTOR_SKILL_INDEX_QMD="$FAKEROOT/no-such-skill-qmd"
 
-# Same for C46 (HIMMEL-4037): never run the operator's real `claude plugin list`;
+# Same for C46: never run the operator's real `claude plugin list`;
 # an absent seam is an INFO skip, dedicated C46 cases point it at a stub.
 export HIMMEL_DOCTOR_CLAUDE_BIN="$FAKEROOT/no-such-claude"
 
 # Keep unrelated cases from scanning this checkout's own .mcp.json files (and the
-# operator's generated mcp-profiles) for C41 (HIMMEL-2762): point the scan root at
+# operator's generated mcp-profiles) for C41: point the scan root at
 # an empty dir. HOME is redirected per case, so ~/.claude.json is already hermetic.
 # Dedicated C41 cases override this seam per invocation.
 mkdir -p "$FAKEROOT/no-mcp-root"
@@ -247,7 +247,7 @@ DOCTOR_UNLANDED_EMPTY="$FAKEROOT/doctor-unlanded-empty"; mkdir -p "$DOCTOR_UNLAN
 export DOCTOR_UNLANDED_DIR="$DOCTOR_UNLANDED_EMPTY"
 
 # Keep unrelated cases from running the real sweep-health check for C42
-# (HIMMEL-3405: it makes live gh calls and reads the operator's real branches): a
+#  (it makes live gh calls and reads the operator's real branches): a
 # stub that prints nothing and exits 0. Dedicated C42 cases override this seam.
 DOCTOR_SWEEP_HEALTH_STUB="$FAKEROOT/sweep-health-clean.sh"
 printf '#!/bin/sh\nexit 0\n' > "$DOCTOR_SWEEP_HEALTH_STUB"
@@ -280,7 +280,7 @@ WRAPPER='"bash \"/x/scripts/lib/run-node.sh\" \"/y/hooks/session-start.js\""'
 # write_guardrail_settings <claude-dir> <node-path> — writes a settings.json
 # whose hooks.PreToolUse carries the 3 user-level guardrail entries in the
 # EXACT shape guardrail-block.mjs generates for --guardrail-mode global
-# (HIMMEL-2013), pointed at <node-path>; SessionStart/UserPromptSubmit stay empty.
+# pointed at <node-path>; SessionStart/UserPromptSubmit stay empty.
 write_guardrail_settings() {
     local claude_dir="$1" node_path="$2" bash_path wrapper
     mkdir -p "$claude_dir"
@@ -321,11 +321,11 @@ t="$(mktemp -d)"; write_settings "$t/claude" "$WRAPPER"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then pass "clean -> rc0"; else fail "clean -> rc=$rc; $(printf '%s' "$out" | grep FAIL)"; fi
 # write_settings' fixture carries no PreToolUse block at all -> guardrail-block.mjs
-# detects mode=project -> C1-guardrail has nothing to check (HIMMEL-2013).
+# detects mode=project -> C1-guardrail has nothing to check.
 if grepq "$out" 'OK   C1-guardrail'; then pass "clean -> C1-guardrail OK (no guardrail block)"; else fail "clean -> $(printf '%s' "$out" | grep C1-guardrail)"; fi
 rm -rf "$t"
 
-# HIMMEL-4363: a full doctor run refreshes the statusline counts; a subset run
+# a full doctor run refreshes the statusline counts; a subset run
 # (a *_SKIP seam set) never does. State dir pinned to a temp dir.
 echo "== counts file: full run writes it, subset run does not =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-counts.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }; write_settings "$t/claude" "$WRAPPER"
@@ -334,7 +334,7 @@ if grepq "$sub_out" 'Summary:' && [ ! -e "$t/sub/counts" ]; then pass "subset ru
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" HIMMEL_DOCTOR_STATE_DIR="$t/full" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_ORPHAN_SCAN_SKIP=0 bash "$DOC" --no-color 2>&1)"
 want="$(printf '%s\n' "$out" | sed -n -E 's/^Summary: ([0-9]+) FAIL +([0-9]+) WARN.*/fail=\1 warn=\2/p')"
 if [ -n "$want" ] && [ "$(cat "$t/full/counts" 2>/dev/null)" = "$want" ]; then pass "full run writes counts matching its Summary ($want)"; else fail "full run counts '$(cat "$t/full/counts" 2>/dev/null)' != '$want'"; fi
-# HIMMEL-4382: last.tsv is written with the counts from the same run, and a run
+# last.tsv is written with the counts from the same run, and a run
 # from a linked worktree judges the station (primary) checkout, so it publishes
 # the same state; a --root run judges another checkout and publishes nothing.
 if [ -e "$t/full/last.tsv" ]; then
@@ -354,7 +354,7 @@ if git -C "$REPO_ROOT" worktree add -q --detach "$WTD" HEAD 2>/dev/null; then
 else fail "could not create the worktree fixture"; fi
 rm -rf "$t"
 
-# HIMMEL-4254 P1: --json is the config UI's status feed. stdout must carry
+# P1: --json is the config UI's status feed. stdout must carry
 # ONLY one JSON object per emit() call (everything else goes to stderr), and
 # the row count and exit code must match a text run of the same fixture.
 echo "== --json -> stdout is one JSON object per emit, nothing else =="
@@ -438,7 +438,7 @@ out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME=
 if grepq "$out" 'WARN C2-obsidian'; then pass "C2 -> WARN (shadow)"; else fail "C2 -> $(printf '%s' "$out" | grep C2)"; fi
 rm -rf "$t"
 
-# HIMMEL-4721: C3 ignores handovers/ churn and WARNs only on a non-handover path
+# C3 ignores handovers/ churn and WARNs only on a non-handover path
 # dirty longer than the sync cadence (default 30 min).
 c3_run() { # $1 = tmp root
     DOCTOR_MCP_PLUGINS_GLOB="$1/none/*.mcp.json" CLAUDE_DIR="$1/claude" HOME="$1/home" bash "$DOC" --no-color 2>&1
@@ -470,7 +470,7 @@ out="$(HIMMEL_DOCTOR_C3_NOW=$(( $(date +%s) + 7200 )) c3_run "$t")"
 if grepq "$out" 'OK  *C3-luna' && ! grepq "$out" 'WARN C3-luna'; then pass "C3 handovers-only -> OK"; else fail "C3 handovers-only -> $(printf '%s' "$out" | grep C3)"; fi
 rm -rf "$t"
 
-# HIMMEL-4724: porcelain paths are read NUL-delimited (never quoted), renames
+# porcelain paths are read NUL-delimited (never quoted), renames
 # age their destination, and a deletion ages by the vault's last commit.
 echo "== C3: fresh dirty non-ASCII / quote-bearing names -> OK (not resolved as a missing quoted path) =="
 t="$(mktemp -d)" || exit 1; c3_vault "$t"; echo dirty > "$v/café.md"; echo dirty > "$v/say \"hi\".md"
@@ -506,7 +506,7 @@ if grepq "$out" 'WARN C3-luna.*gone.md'; then pass "C3 old deletion -> WARN"; el
 rm -rf "$t"
 
 echo "== C4: forge decided on the origin's HOST, not a URL substring (fixtures/forge-origins.tsv) =="
-# HIMMEL-3337: check_c4 is run in isolation (the whole doctor is ~12 s a run) with a
+# check_c4 is run in isolation (the whole doctor is ~12 s a run) with a
 # stub emit, once per row of the answer table forge.sh's and status-report's suites
 # read. INFO C4-forge must fire exactly when forge_detect says bitbucket.
 _c4_body="$(awk '/^check_c4\(\)/{found=1} found{print} found && /^\}$/{exit}' "$DOC")"
@@ -542,7 +542,7 @@ if [ -z "$_c4_got" ]; then pass "C4 ignores an inherited FORGE (github origin st
 rm -rf "$_c4_repo"
 
 echo "== issue repo: resolve_issue_repo decides on the origin's HOST, not a URL substring =="
-# HIMMEL-3368: resolve_issue_repo used to match `*github.com[:/]*` anywhere in the
+# resolve_issue_repo used to match `*github.com[:/]*` anywhere in the
 # origin URL. Run in isolation (it only reads REPO_FLAG, the env and the origin),
 # once per row: <expected owner/repo | none><TAB><origin url>.
 _ri_body="$(awk '/^resolve_issue_repo\(\)/{found=1} found{print} found && /^\}$/{exit}' "$DOC")"
@@ -699,7 +699,7 @@ out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME=
 if grepq "$out" 'OK   C6-mcp'; then pass "C6 -> OK (absolute)"; else fail "C6 -> $(printf '%s' "$out" | grep C6)"; fi
 rm -rf "$t"
 
-# C6-hooks (HIMMEL-611): a hook command leading with a bare interpreter that is
+# C6-hooks: a hook command leading with a bare interpreter that is
 # absent on THIS host. Use $TOOLS_PATH (real coreutils dirs — keeps bash + its
 # DLLs working on MINGW) which excludes pwsh; guard the WARN assertion in case a
 # host genuinely has pwsh on that path.
@@ -789,7 +789,7 @@ _defbranch1c="$(git -C "$t/repo" rev-parse --abbrev-ref HEAD)"
 git -C "$t/repo" checkout -q -b feat/shipped-untracked
 git -C "$t/repo" checkout -q "$_defbranch1c"
 git -C "$t/repo" worktree add -q "$t/wt-shipped-untracked" "feat/shipped-untracked"
-# The HIMMEL-1692 headline shape: nothing tracked is modified, but a forgotten
+# The headline shape: nothing tracked is modified, but a forgotten
 # untracked file (the real incident was a 502-line spec) sits in a merged
 # worktree. A tracked-only probe would call this clean and hand back the flat
 # "prune with /clean", which clean-garden may well refuse as forgotten work.
@@ -815,7 +815,7 @@ _defbranch1b="$(git -C "$t/repo" rev-parse --abbrev-ref HEAD)"
 git -C "$t/repo" checkout -q -b feat/shipped-dirty
 git -C "$t/repo" checkout -q "$_defbranch1b"
 git -C "$t/repo" worktree add -q "$t/wt-shipped-dirty" "feat/shipped-dirty"
-# Dirty the worktree (HIMMEL-1692): /clean will refuse to prune this one, so
+# Dirty the worktree: /clean will refuse to prune this one, so
 # the C7 remediation must say so instead of pointing at /clean as if it works.
 printf 'uncommitted\n' >> "$t/wt-shipped-dirty/README.md"
 make_gh_stub "$t/stub" "feat/shipped-dirty"
@@ -909,7 +909,7 @@ if [ "$_static_fail" -eq 0 ]; then
     pass "C7 STATIC: no destructive verbs in check_c7 body"
 fi
 
-# ── C8: stale cadence runner detection (HIMMEL-588/HIMMEL-969) ───────────────
+# ── C8: stale cadence runner detection ───────────────
 echo "== C8: no armed cadence runners -> OK C8-cadence =="
 t="$(mktemp -d)"; mkdir -p "$t/claude"; write_settings "$t/claude" "$WRAPPER"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
@@ -920,7 +920,7 @@ if grepq "$out" 'OK   C8-cadence: no armed cadence runners (skipped)'; then pass
 rm -rf "$t"
 
 echo "== C8: stale codex-sweep runner -> WARN + codex re-arm hint =="
-# HIMMEL-2965: codex-sweep only ever arms a .bat, and only on Windows —
+# sweep only ever arms a .bat, and only on Windows —
 # cadence_runner_stamp now reads only the CURRENT platform's runner extension,
 # so this fixture forces the Windows branch via the CADENCE_RUNNER_PLATFORM_OS
 # test seam to keep exercising the real (Windows) codex-sweep path.
@@ -1059,7 +1059,7 @@ printf '#!/bin/sh\necho ollama version fake\n' > "$FAKEOLLAMA/ollama"; chmod +x 
 # worktree list` finds nothing and short-circuits to OK immediately, instead
 # of scanning this checkout's real worktrees/branches — a real worktree
 # branch forces a live gh/forge call that can hang well past its own timeout
-# on some hosts (HIMMEL-784 investigation; filed separately), unrelated to
+# on some hosts, unrelated to
 # C14 itself.
 C14_WT_ROOT="$FAKEROOT/c14-empty"; mkdir -p "$C14_WT_ROOT"
 
@@ -1084,7 +1084,7 @@ out="$(PATH="$FAKEOLLAMA:$TOOLS_PATH" OLLAMA_NO_CLOUD=1 DOCTOR_WORKTREE_ROOT="$C
 if grepq "$out" 'OK   C14-ollama-no-cloud' && grepq "$out" 'pin is set'; then pass "C14 -> OK (pin set)"; else fail "C14 set -> $(printf '%s' "$out" | grep C14)"; fi
 rm -rf "$t"
 
-# ── C16: delegate to `himmelctl status --json` for install/wiring truth (HIMMEL-755 F) ──
+# ── C16: delegate to `himmelctl status --json` for install/wiring truth ──
 # winpath <path> — MSYS/cygwin path -> Windows form (node.exe misresolves
 # MSYS /tmp-style paths for HIMMELCTL_REPO_ROOT/HIMMELCTL_CACHE_DIR), mirrors
 # scripts/himmelctl/test/test-wizard-status-cmd.sh's own helper.
@@ -1158,10 +1158,10 @@ else
     pass "C16 -> WARN (skipped: node/jq not both available on this host)"
 fi
 
-# ── C16 severity discrimination (HIMMEL-3323) ──────────────────────────────────
+# ── C16 severity discrimination ──────────────────────────────────
 # Every path on which C16's himmelctl delegation does NOT happen used to emit
 # INFO, so "the install validator is broken" read as "nothing to do". The split
-# (same n/a vs degraded line HIMMEL-3307 draws in status-report.js): a clean
+#  (same n/a vs degraded line draws in status-report.js): a clean
 # absence of the opt-in (no install profile / no node AND no profile) stays INFO;
 # "this should have worked and did not" (bin.js missing, status exits non-zero,
 # unparsable/wrong-schema output, jq missing, no node WITH a profile) is WARN
@@ -1274,7 +1274,7 @@ else
     pass "C16 severity discrimination -> (skipped: node/jq not both available on this host)"
 fi
 
-# ── C17: dependency readiness -- enabled skill vs required API key (HIMMEL-1393) ──
+# ── C17: dependency readiness -- enabled skill vs required API key ──
 echo "== C17: skill not enabled -> OK (nothing to check, no false-positive) =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/claude/commands"; write_settings "$t/claude" "$WRAPPER"
 out="$(DOCTOR_WORKTREE_ROOT="$C14_WT_ROOT" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" \
@@ -1363,7 +1363,7 @@ rm -rf "$t"
 
 # ── C19: installed observability drift + local endpoint readiness ──────────────
 # The rule-group assertions below depend on check_c19 successfully parsing the
-# stub Prometheus response with jq (codex-1 CR finding, HIMMEL-1676) — on a
+# stub Prometheus response with jq — on a
 # jq-less host check_c19 takes its own "jq unavailable" fallback path instead,
 # so both C19 cases branch their expectation on the SAME probe check_c19 itself
 # uses, rather than assuming jq is present.
@@ -1424,8 +1424,8 @@ case "$url" in
 esac
 EOF
 chmod +x "$t/bin/curl"
-# HIMMEL-4668: the assets were seeded from THIS tree, so judge this tree — the
-# doctor otherwise compares against the primary checkout (HIMMEL-4382), which
+# the assets were seeded from THIS tree, so judge this tree — the
+# doctor otherwise compares against the primary checkout, which
 # drifts from a leg worktree whose base predates the primary's head.
 out="$(HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_OBSERVABILITY_DESIRED=1 DOCTOR_OBSERVABILITY_INSTALL_DIR="$t/install" DOCTOR_CURL_BIN="$t/bin/curl" \
     GRAFANA_TELEGRAM_BOT_TOKEN="test-token" GRAFANA_TELEGRAM_CHAT_ID="123" \
@@ -1498,8 +1498,8 @@ else
     pass "C19 cmp/diff-unavailable -> (skipped: could not build a cmp/diff-less PATH on this host)"
 fi
 
-# ── C20: running node major vs .nvmrc (HIMMEL-1986 / HIMMEL-2010) ─────────────
-# The drift is a FAIL now (HIMMEL-2010) — the doctor still never edits .nvmrc or
+# ── C20: running node major vs .nvmrc ─────────────
+# The drift is a FAIL now — the doctor still never edits .nvmrc or
 # switches a runtime, it just refuses to let the two disagree silently. CI and
 # NODE_MAJOR_DRIFT_OK=1 keep it visible as a non-fatal WARN.
 C20_NODE="$FAKEROOT/c20node"; mkdir -p "$C20_NODE"
@@ -1638,7 +1638,7 @@ else
 fi
 rm -rf "$t"
 
-# HIMMEL-2437: with NO DOCTOR_HERMES_HOME/HERMES_HOME/LOCALAPPDATA override at
+# with NO DOCTOR_HERMES_HOME/HERMES_HOME/LOCALAPPDATA override at
 # all, check_c21's own default-root resolution must land on $HOME/.hermes —
 # NEVER $HOME/AppData/Local/hermes (a Windows layout under a POSIX $HOME) and
 # never $HOME/.local/share/hermes (the old non-hermes-upstream fallback). The
@@ -1693,7 +1693,7 @@ else
 fi
 rm -rf "$t"
 
-# ── C23: unlanded local work (HIMMEL-2070) ───────────────────────────────────
+# ── C23: unlanded local work ───────────────────────────────────
 # make_c23_repo <dir> — a base "main" with an origin/main ref pointed at it
 # (no real remote needed; unlanded-work.sh's default --base is origin/main).
 make_c23_repo() {
@@ -1764,7 +1764,7 @@ else
 fi
 rm -rf "$t"
 
-# codex-3 (HIMMEL-2070 CR round 1): an unresolvable --base (or any scan
+# an unresolvable --base (or any scan
 # failure) must not read as the same "no unlanded work" OK a genuinely clean
 # repo gets — unlanded-work.sh always exits 0 by contract, writing its
 # diagnostic to stderr instead, so a discarded stderr made an operational
@@ -1780,7 +1780,7 @@ else
 fi
 rm -rf "$t"
 
-# codex-3 (HIMMEL-2070 CR round 7): `cd` into a nonexistent scan_dir
+# `cd` into a nonexistent scan_dir
 # short-circuits before unlanded-work.sh ever runs, so nothing lands on
 # stderr — the empty-TSV/empty-stderr combination must still read INFO, not
 # a false-clean OK, driven by the cd's own exit status.
@@ -1795,7 +1795,7 @@ else
 fi
 rm -rf "$t"
 
-# ── C24: expected-but-absent cadence tasks (HIMMEL-1680) ─────────────────────
+# ── C24: expected-but-absent cadence tasks ─────────────────────
 # fake_task_probe [--windows|--posix] <dir> <existing-task-names...> — a
 # scheduler-probe stub for either an EXPLICITLY named platform, or (with
 # neither flag) whichever platform this test process happens to run on:
@@ -1803,7 +1803,7 @@ rm -rf "$t"
 # "does <name> exist" shape is faked — good enough for check_c24, which only
 # ever asks that question.
 #
-# HIMMEL-2515 CR round 3 finding 1: sensing the CALLING PROCESS's own ambient
+# Sensing the CALLING PROCESS's own ambient
 # uname (the no-flag default) is safe ONLY for a caller whose matching doctor
 # invocation ALSO leaves is_windows() ambient (no $FAKEBIN pin on its PATH).
 # Any caller that pins the doctor to a specific platform via $FAKEBIN MUST
@@ -1868,13 +1868,13 @@ fake_task_probe() {
 }
 
 # fake_systemctl <dir> <state> [mainpid] [nrestarts] — a stub `systemctl`
-# used by both C24's HimmelTelegramBridge probe and C30 (HIMMEL-2515). Never
+# used by both C24's HimmelTelegramBridge probe and C30. Never
 # touches anything real; only answers `--user is-enabled <unit>` and
 # `--user show <unit> -p <MainPID|NRestarts> --value`, the exact two shapes
 # check_c24/check_c30 invoke. <state> (every literal is-enabled text below
 # was VERIFIED against this box's real systemd 261 -- `man systemctl` Table 3
 # plus live is-enabled queries against real units in each state, none of
-# them telegram-bridge.service -- not assumed; see CR round 1 E1, which
+# them telegram-bridge.service -- not assumed; E1, which
 # caught an earlier "could not be found" guess that real systemd never
 # actually prints for a missing unit):
 #   enabled         — is-enabled prints "enabled", rc 0
@@ -1886,7 +1886,7 @@ fake_task_probe() {
 #                     -- the unit file does not exist on this host at all
 #   busfail         — is-enabled prints THIS STATION's own real bus-failure
 #                     wording, rc 1 (transient/environment failure -- must
-#                     NOT read as absence). CR round 1 E5: captured from a
+#                     NOT read as absence). Captured from a
 #                     genuine forced failure, not guessed --
 #                     `XDG_RUNTIME_DIR=/nonexistent DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 #                     systemctl --user is-enabled telegram-bridge.service`
@@ -1905,7 +1905,7 @@ fake_task_probe() {
 #   busfailold      — the OLDER systemd wording ("Failed to connect to bus:
 #                     ..."), covered by its own row so both forms are
 #                     verified by a test row, not just asserted in a comment.
-#   permdenied      — CR round 1 finding 2: an unrecognized/failed is-enabled
+#   permdenied — an unrecognized/failed is-enabled
 #                     answer that is NEITHER a named enablement state NOR the
 #                     bus-unreachable wording above -- the shape that used to
 #                     fall through _systemd_user_unit_state's `*)` wildcard
@@ -1929,14 +1929,14 @@ fake_task_probe() {
 # print (any literal text works here already, e.g. "abc" -- so a
 # non-numeric-but-non-empty success case needs no sentinel at all), but
 # either may instead be one of two sentinels:
-#   FAIL  (CR round 2, HIMMEL-2515): makes the corresponding `--user show
+#   FAIL: makes the corresponding `--user show
 #         <unit> -p <MainPID|NRestarts> --value` query FAIL (rc 1, nothing
 #         on stdout) while `is-enabled` still answers per <state> as normal
 #         -- is-enabled and show are two separate invocations in
 #         check_c30/_c24_cron_has_task's caller, and this is what lets a
 #         test row fail ONLY the show query without touching the
 #         is-enabled gate above it.
-#   EMPTY (CR round 3, finding 2): makes the query SUCCEED (rc 0) but print
+#   EMPTY: makes the query SUCCEED (rc 0) but print
 #         nothing -- distinct from FAIL, and from a literal "0", because
 #         `${3:-0}`/`${4:-0}` cannot represent a genuinely empty value
 #         through normal argument defaulting (bash treats an empty arg the
@@ -2071,8 +2071,8 @@ else
 fi
 rm -rf "$t"
 
-# ── C24 (HIMMEL-2515): HimmelTelegramBridge's systemd probe ──────────────────
-# CR round 1 finding 1: check_c24's task loop branches on is_windows() FIRST
+# ── C24: HimmelTelegramBridge's systemd probe ──────────────────
+# check_c24's task loop branches on is_windows() FIRST
 # (schtasks vs. systemd/crontab), before it ever looks at the task name -- so
 # on a real Windows/Git-Bash host every row below would take the schtasks
 # branch and never touch fake_systemctl at all. fake_task_probe already
@@ -2080,7 +2080,7 @@ rm -rf "$t"
 # MINGW/MSYS/CYGWIN, crontab elsewhere), so on Windows these rows would find
 # the (nameless) fake_task_probe call's task absent via schtasks and WARN --
 # exactly the failure the RED control below reproduces. Every row here
-# therefore puts $FAKEBIN (the "echo Linux" uname stub used since HIMMEL-2010
+# therefore puts $FAKEBIN (the "echo Linux" uname stub used
 # to exercise the non-Windows --fix path, defined near the top of this file)
 # FIRST on PATH, ahead of $t/probe -- this pins is_windows() to false
 # regardless of the real host, so the systemd probe these rows exist to test
@@ -2127,7 +2127,7 @@ else
 fi
 rm -rf "$t"
 
-# ── C24 (HIMMEL-2515 CR round 3, finding 1): the FIXTURE must follow the
+# ── C24: the FIXTURE must follow the
 # PINNED platform, not the test process's ambient host ─────────────────────
 # The RED/GREEN pair above proves the doctor's OWN is_windows() branch is
 # pinnable via $FAKEBIN. This pair proves the companion half: fake_task_probe
@@ -2154,7 +2154,7 @@ printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$t/mingw/uname"; chmod +x "$t/ming
 # real crontab from this suite) -- so if the fixture disagrees with the pin,
 # the crontab probe finds NOTHING to read, not even a stub.
 #
-# HIMMEL-2515 CR round 4 note: this scenario's OWN crontab is genuinely
+# Note: this scenario's OWN crontab is genuinely
 # unreachable (the mismatched fixture wrote schtasks, not crontab), which
 # used to trip the whole-function early return and read as a blanket
 # "scheduler unreachable" INFO regardless of what systemd said. Since round
@@ -2324,9 +2324,9 @@ else
 fi
 rm -rf "$t"
 
-# ── C24 (HIMMEL-2515, CR round 4): crontab availability must be PER-BACKEND,
+# ── C24: crontab availability must be PER-BACKEND,
 # not a whole-function early return ──────────────────────────────────────────
-# CR round 4 finding: check_c24 probed the scheduler ONCE before its per-task
+# finding: check_c24 probed the scheduler ONCE before its per-task
 # loop and early-returned when it was unavailable -- so on a systemd-only
 # Linux host with no `crontab` on PATH at all, that return fired BEFORE the
 # per-task loop ever ran, and the systemd probe for HimmelTelegramBridge
@@ -2368,7 +2368,7 @@ mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$
 printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HimmelTelegramBridge","HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
 fake_systemctl "$t/probe" enabled 424242 0
 out="$(PATH="$FAKEBIN:$t/probe:$NOGH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-# CR round 5: pre-fix, this INDETERMINATE line hardcoded the bridge's cause
+# pre-fix, this INDETERMINATE line hardcoded the bridge's cause
 # (systemd bus unreachable) and remedy (check telegram-bridge.service) even
 # though HIMMEL-CodexOrphanSweep is a crontab-ONLY sibling -- crontab, not
 # systemd, is what's unreachable here. Assert the corrected per-task
@@ -2399,7 +2399,7 @@ else
 fi
 rm -rf "$t"
 
-# ── C25: orphaned scratchpad watcher sweep (HIMMEL-1820) ──────────────────────
+# ── C25: orphaned scratchpad watcher sweep ──────────────────────
 # The shim seam replaces the platform producer (PowerShell CIM / ps) with a
 # fixture emitter of pid|ppid|cmdline lines, so the bash-side detection --
 # scratchpad-pattern match, parent-liveness, dead-parent naming -- runs for
@@ -2509,7 +2509,7 @@ if [ "$_static25" -eq 0 ]; then
 fi
 
 # write_himmelctl_state <cache_dir> <consent> — writes <cache_dir>/state.json
-# carrying ONLY the guardrail-block-global override C28 reads (HIMMEL-2176).
+# carrying ONLY the guardrail-block-global override C28 reads.
 # <consent> is 'yes'/'no'/'' (empty -> overrides:{}, i.e. never asked).
 write_himmelctl_state() {
     local cache_dir="$1" consent="$2"
@@ -2594,9 +2594,9 @@ rm -rf "$t"
 # /proc/<pid>/environ (NUL-separated KEY=VALUE entries, same shape
 # context-fill.sh's own mkproc()/launched_as_child_session() test fixture
 # uses). <comm> lets a case impersonate the konsole LAUNCHER (comm=konsole)
-# whose cmdline also quotes `claude ... -n HIMMEL-...` (HIMMEL-2545 panel
-# finding: that launcher process is not claude, and must never be flagged).
-# HIMMEL-2545: the WARN must read THIS file, never the doctor's own
+# whose cmdline also quotes `claude ... -n HIMMEL-...`
+# (that launcher process is not claude, and must never be flagged).
+# the WARN must read THIS file, never the doctor's own
 # environment.
 c29_mkproc() {
     local root="$1" pid="$2" name="$3" comm="$4"; shift 4
@@ -2656,7 +2656,7 @@ fi
 rm -rf "$t"
 
 echo "== C29 CONTROL: konsole LAUNCHER (not claude) whose cmdline quotes claude -n HIMMEL-... -> no WARN =="
-# Live false positive (HIMMEL-2545 panel finding): headed-arm.sh's konsole
+# Live false positive: headed-arm.sh's konsole
 # process has a cmdline naming `claude ... -n HIMMEL-...` (that is the
 # command it was told to run) and ALSO inherits CLAUDE_CODE_CHILD_SESSION=1
 # from whatever armed it, with no persistence flag of its own -- identical
@@ -2828,7 +2828,7 @@ else
 fi
 rm -rf "$t"
 
-# ── C30: telegram-bridge liveness (HIMMEL-2515) ───────────────────────────────
+# ── C30: telegram-bridge liveness ───────────────────────────────
 # Reuses fake_systemctl (defined above, alongside C24's HimmelTelegramBridge
 # rows). check_c30 must never touch the REAL telegram-bridge.service -- every
 # case below points HIMMEL_DOCTOR_SYSTEMCTL at a fake binary or a nonexistent
@@ -3010,9 +3010,9 @@ else
 fi
 rm -rf "$t"
 
-# ── C31: codex still wires the dropped tokensave server (HIMMEL-2581) ────────
+# ── C31: codex still wires the dropped tokensave server ────────
 # tokensave was evaluated and dropped (it lost to plain Grep+Read on every
-# measured op). The finding is now inverted from the old HIMMEL-2578 check:
+# measured op). The finding is now inverted from the old check:
 # an ENABLED [mcp_servers.tokensave] table in the codex config is itself the
 # WARN, and the remedy is to remove it by hand. One seam: CODEX_HOME (codex's
 # OWN env var, not a test-only invention) selects the config file. THIS
@@ -3041,7 +3041,7 @@ rm -rf "$t"
 #              — proves the body scan still stops at the next table header.
 #   wired-disabled-large  same as wired-disabled, but with several THOUSAND
 #              filler key lines between `enabled = false` and the next table
-#              header. This size is the entire point (HIMMEL-1430 regression
+#              header. This size is the entire point (regression
 #              guard): `enabled = false` lands on line 4 of the body while a
 #              large remainder is still unwritten, which is exactly the
 #              shape that turns a `printf | grep -q` pipeline's SUCCESSFUL
@@ -3563,7 +3563,7 @@ fi
 rm -rf "$t"
 
 # write_c32_shim DEST -- writes a C32 test fixture matching the REAL
-# installer's shim shape (round 5): 100% STATIC content, marker only, no
+# installer's shim shape: 100% STATIC content, marker only, no
 # per-checkout data embedded in the file AT ALL. check_c32 never reads
 # anything from a hook file beyond the plain marker-presence grep; the
 # target value comes from HIMMEL_DOCTOR_MAIN_REF_TARGET below (which stands
@@ -3712,9 +3712,9 @@ mkdir -p "$t/claude" "$t/hooks"; write_settings "$t/claude" "$WRAPPER"
 canary="$t/PWNED_CANARY"
 rm -f "$canary"
 # Two earlier rounds each carried the target INSIDE the hook file's TEXT --
-# an `eval`-ed shell assignment (round 2), then a literal comment line
-# (round 2's own fix, broken by an embedded newline in round 3) -- and each
-# broke a different way. Round 3's redesign removes the question rather
+# an `eval`-ed shell assignment, then a literal comment line
+# (whose fix was broken by an embedded newline) -- and each
+# broke a different way. The redesign removes the question rather
 # than patching it a third time: the target lives ONLY in git config now
 # (see install-main-ref-transaction.sh's header), and check_c32 never reads
 # hook-file content beyond the plain marker grep. Proven here: the fixture
@@ -3722,7 +3722,7 @@ rm -f "$canary"
 # `target=$(...)` shape -- UNCOMMENTED, a literal `target=` assignment, not
 # decoration. This case exists to catch the round-2 RCE coming back (a
 # marker-carrying hook executing arbitrary commands during a read-only
-# himmel-doctor run) -- panel round 9 caught that an earlier draft of this
+# himmel-doctor run) -- an earlier draft of this
 # fixture had this same line commented out (`# target=$(...)`), so it began
 # with `# ` and could never match check_c32's own eval-based parser had one
 # ever been restored: the case would have stayed green even with the RCE
@@ -3772,7 +3772,7 @@ mkdir -p "$t/claude" "$t/hooks"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/usr/bin/env bash\n# some other tool'"'"'s hook\nexit 0\n' > "$t/hooks/reference-transaction"
 out="$(HIMMEL_DOCTOR_MAIN_REF_HOOKS_DIR="$t/hooks" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 # `-F 'NOT'` alone is too loose -- BOTH WARN branches say "NOT" ("is NOT
-# Himmel's HIMMEL-2095 guard" vs "guard NOT installed at"), so that
+# Himmel's guard" vs "guard NOT installed at"), so that
 # assertion would pass even if check_c32 emitted the MISSING-hook message
 # for a hook that is actually present-but-foreign (the exact confusion this
 # case exists to catch). Pin the foreign branch's own phrase and rule out
@@ -3785,7 +3785,7 @@ fi
 rm -rf "$t"
 
 # =============================================================================
-# C33: graphify graph staleness (HIMMEL-2095)
+# C33: graphify graph staleness
 # =============================================================================
 
 echo "== C33: no handover root resolvable -> OK, never WARN =="
@@ -3839,7 +3839,7 @@ rm -rf "$t"
 # it does not bite the file is READABLE, so the test would assert a WARN the
 # code correctly does not emit. Probing the fixture rather than the platform
 # keeps it honest about what it actually established -- this is codex-3's
-# class (HIMMEL-2655), applied here at the point it was learned rather than
+# class, applied here at the point it was learned rather than
 # repeated as a new instance of it.
 echo "== C33: ledger present but UNREADABLE -> WARN, never the empty-ledger OK =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c33.XXXXXX")" || { fail "C33 unreadable: mktemp -d failed"; exit 1; }
@@ -4012,7 +4012,7 @@ else
 fi
 rm -rf "$t"
 
-# ── C34: HIMMEL-2653 cost-guard wiring ─────────────────────────────────────
+# ── C34: cost-guard wiring ─────────────────────────────────────
 # check_c32 reads TRACKED REPO FILES (hooks.json, the two guard scripts,
 # context-fill.sh) through $REPO_ROOT, not operator machine state, so there
 # is no HOME/CLAUDE_DIR seam to redirect. himmel-doctor.sh resolves
@@ -4033,7 +4033,7 @@ run_doctor_fake_repo() {
     (cd "$1" && HIMMEL_REPO="$1" HIMMEL_DOCTOR_ROOT="$1" CLAUDE_DIR="$2/claude" HOME="$2" DOCTOR_OBSERVABILITY_SKIP=1 bash "$DOC" --no-color 2>/dev/null)
 }
 
-# HIMMEL-4868: missing validation/reporting would hide a configured invalid lift.
+# missing validation/reporting would hide a configured invalid lift.
 echo "== C34: configured lift reports validation reason =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-lift.XXXXXX")" || exit 1
 c32_fixture_base "$t"
@@ -4161,7 +4161,7 @@ else
 fi
 rm -rf "$t"
 
-# ── C15: HIMMEL-2733 tier-aware plugin drift ────────────────────────────────
+# ── C15: tier-aware plugin drift ────────────────────────────────
 # check_c15 reads REPO_ROOT/docs/setup/settings-template.json — same
 # git-toplevel-first / HIMMEL_REPO-fallback resolution as C34 above — so
 # these fixtures reuse the same from-scratch fake-repo + run_doctor_fake_repo
@@ -4276,7 +4276,7 @@ else
 fi
 rm -rf "$t"
 
-# codex CR round 2 (panel finding codex-1): every C36 case below now pins its
+# every C36 case below now pins its
 # platform explicitly rather than relying on the ambient host -- the POSIX
 # cases put $FAKEBIN first (the same "echo Linux" uname stub the C24 GREEN
 # rows use) so is_windows() reads false and the TMPDIR override actually
@@ -4381,7 +4381,7 @@ else
 fi
 rm -rf "$t"
 
-# --- C37 (HIMMEL-3123, deferred from HIMMEL-3064): vendored-skill overlap ------
+# --- C37: vendored-skill overlap ------
 # One case per branch of check_c37_vendored_skill_dupes: OK (rc 0), WARN (rc 10),
 # and every INFO skip (no node, detector absent, rc 2, any other rc, no jq,
 # unparsable --json). Every case runs in a FAKE repo whose scripts/lib is a
@@ -4514,7 +4514,7 @@ else
 fi
 rm -rf "$c37_t"
 
-# --- C38 / C39 (HIMMEL-3170): uv + GNU timeout presence, reported up front ----
+# --- C38 / C39: uv + GNU timeout presence, reported up front ----
 # Seams: HIMMEL_DOCTOR_UV (uv command, default `uv`) and HIMMEL_DOCTOR_TIMEOUT_BINS
 # (space-separated GNU-timeout candidates, default `timeout gtimeout`). /usr/bin
 # holds the REAL uv and timeout on this station and TOOLS_PATH cannot scrub it, so
@@ -4638,7 +4638,7 @@ else
 fi
 rm -rf "$c3839_t"
 
-# --- C40 (HIMMEL-3056): qmd vector-search health ------------------------------
+# --- C40: qmd vector-search health ------------------------------
 # Seam: HIMMEL_DOCTOR_QMD_CURL (the curl binary C40 uses, default `curl`). The
 # stub answers by C40_MODE and logs each call's -m bound + JSON-RPC method, so a
 # case can assert the vec probe is BOUNDED (-m) and really sent a vec sub-query.
@@ -4674,7 +4674,7 @@ case "$d" in
             reset) finish 000 52 ;;
             empty204) finish 204 0 ;;
             foreign) pfx; printf '%s' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"other-server"}}}'; finish 200 ;;
-            # HIMMEL-5227: the HIMMEL-5002 daemon's real reply without its bearer token.
+            # the daemon's real reply without its bearer token.
             auth) case "$k" in *"Authorization: Bearer "*) ;; *) printf '%s' '{"error":"Unauthorized"}'; finish 401 ;; esac ;;
         esac
         [ "$mode" = init_multiline ] && { printf '{\n  "result": {\n    "serverInfo": {\n      "version": "2.8.3",\n      "name": "qmd"\n    }\n  }\n}\n'; finish 200; }
@@ -4700,7 +4700,7 @@ STUB
     chmod +x "$c40_t/curl"
     : > "$c40_t/log"
 }
-# HIMMEL-4432: C40 composes himmelctl status's qmd-daemon item, so a case feeds it
+# C40 composes himmelctl status's qmd-daemon item, so a case feeds it
 # a status fixture (DOCTOR_STATUS_JSON) instead of running a 13s real status. The
 # item's verdict mirrors what the status probe reads off the same stub curl
 # (covered in test-wizard-qmd-daemon.sh): refused -> absent, wedged/foreign/empty
@@ -5120,7 +5120,7 @@ else
 fi
 rm -rf "$c40_t"
 
-# --- C45-qmd-daemon (HIMMEL-3062): daemon RSS + uptime vs the recycle ceiling --
+# --- C45-qmd-daemon: daemon RSS + uptime vs the recycle ceiling --
 # The qmd daemon grows native memory over hours until vec queries time out. The
 # qmd plugin's SessionStart hook recycles it over QMD_RSS_CEILING_MB; this row
 # reports RSS and uptime (one ps call, no network) and WARNs over the ceiling.
@@ -5188,7 +5188,7 @@ else
 fi
 rm -rf "$c44d_t"
 
-# --- C41 (HIMMEL-2762): MCP server credential on the command line --------------
+# --- C41: MCP server credential on the command line --------------
 # A key passed as an argv element is readable by any local user through ps and
 # /proc/<pid>/cmdline. C41 scans the MCP server specs (user ~/.claude.json incl.
 # per-project entries, plus <root>/.mcp.json, <root>/.claude/mcp-profiles/local.*.json
@@ -5344,7 +5344,7 @@ else
 fi
 rm -rf "$c41_t"
 
-# --- C42 (HIMMEL-3405): sweep health alarms ------------------------------------
+# --- C42: sweep health alarms ------------------------------------
 # C42 delegates to `clean-garden.sh --health` (alarm lines only, empty = healthy,
 # exit 0/1) and WARNs once per line. Seam: DOCTOR_SWEEP_HEALTH_SCRIPT -- a stub
 # here, so no case makes a live forge call or reads real branches.
@@ -5410,9 +5410,9 @@ else
 fi
 rm -rf "$c42_t"
 
-# --- C43 (HIMMEL-1117): bare `rtk hook claude` PreToolUse entry ---------------
+# --- C43: bare `rtk hook claude` PreToolUse entry ---------------
 # `rtk init -g` re-adds this entry, bypassing rtk-hook-guard.sh and regressing
-# HIMMEL-241. Read-only detection only, mirrors C6-hooks' settings.json fixture
+# the guard. Read-only detection only, mirrors C6-hooks' settings.json fixture
 # shape.
 echo "== C43: bare 'rtk hook claude' PreToolUse entry -> WARN =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/c43-bare.XXXXXX")"; mkdir -p "$t/claude"
@@ -5453,8 +5453,8 @@ else
 fi
 rm -rf "$t"
 
-# --- C46 (HIMMEL-4037): enabledPlugins true for a plugin that is not installed -
-# HIMMEL-5084: project/local settings come from a fixture dir, never the host checkout's .claude/
+# --- C46: enabledPlugins true for a plugin that is not installed -
+# project/local settings come from a fixture dir, never the host checkout's .claude/
 c46_proj="$(mktemp -d "${TMPDIR:-/tmp}/c46-proj.XXXXXX")" || { echo "FATAL: C46 setup mktemp failed" >&2; exit 1; }
 export HIMMEL_DOCTOR_PROJECT_CLAUDE_DIR="$c46_proj"
 echo "== C46: enabled-but-not-installed plugin -> WARN naming the file =="
@@ -5697,7 +5697,7 @@ else
     fail "C44 qmd absent -> $(printf '%s' "$out" | grep -A1 C44)"
 fi
 
-# --- C47-runaway-procs (HIMMEL-3959): long-lived himmel-shaped process pegging a core --
+# --- C47-runaway-procs: long-lived himmel-shaped process pegging a core --
 # WARN (report only, never kill) on a current-user process older than
 # HIMMEL_DOCTOR_RUNAWAY_MIN_AGE_MIN (default 30) whose ps CPU is >=
 # HIMMEL_DOCTOR_RUNAWAY_CPU_PCT (default 90) and whose cmdline is himmel-shaped
@@ -5762,7 +5762,7 @@ else
 fi
 rm -rf "$c47_t"
 
-# --- C54-hook-copy-reaper (HIMMEL-4531): orphaned hook copies, report-only ---
+# --- C54-hook-copy-reaper: orphaned hook copies, report-only ---
 # Runs hook-copy-reaper.sh WITHOUT --kill: rc 0 -> OK, rc 1 -> WARN with each
 # pid=/age=/cpu=/script= row, any other rc -> WARN naming the failure.
 # Seam: HIMMEL_DOCTOR_HOOK_REAPER (a stub; it logs its argv to C54_ARGV).
@@ -5810,7 +5810,7 @@ for c54_rc in 2 3 127; do
 done
 rm -rf "$c54_t"
 
-# --- C48-tmp-usage (HIMMEL-4224): /tmp at 80 % or more -> WARN naming tmp-reap.sh ---
+# --- C48-tmp-usage: /tmp at 80 % or more -> WARN naming tmp-reap.sh ---
 c48_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c48.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c48_t/home" "$c48_t/claude"
 # shellcheck disable=SC2016 # the stub expands C48_PCT at ITS run time
@@ -5843,7 +5843,7 @@ else
     fail "C48 absent df -> $(printf '%s' "$out" | grep C48)"
 fi
 rm -rf "$c48_t"
-# --- C49-qmd-embed-model (HIMMEL-4232): index vectors vs the configured model --
+# --- C49-qmd-embed-model: index vectors vs the configured model --
 # A configured embed model that differs from the model the index's vectors came
 # from returns garbage on vec search (or fails on a dimension change). The row
 # WARNs; qmd-reindex.sh refuses. Seam: HIMMEL_DOCTOR_QMD_INDEX (the index file);
@@ -5889,7 +5889,7 @@ else
     pass "C49 skipped: sqlite3 not installed"
 fi
 
-# --- C56-qmd-orphans (HIMMEL-4860): orphaned embedding chunks ------------------
+# --- C56-qmd-orphans: orphaned embedding chunks ------------------
 # Orphans are vectors whose content hash no longer exists. They bloat the index
 # and slow vec scans but never hide a document, so the row is separate from
 # C40 (pending docs). Seams: HIMMEL_DOCTOR_QMD_INDEX gates the row (silent when
@@ -5924,7 +5924,7 @@ out="$(PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c56_t/claude" HOME="$c56_t/home" bash 
 if grepq "$out" 'C56-qmd-orphans'; then fail "C56 no index -> $(printf '%s' "$out" | grep -A1 C56)"; else pass "C56 no index -> silent"; fi
 rm -rf "$c56_t"
 
-# --- C50-qmd-fork-stamp (HIMMEL-4268): build stamp vs deployed HEAD vs pin ------
+# --- C50-qmd-fork-stamp: build stamp vs deployed HEAD vs pin ------
 # Fixture fork clone (a throwaway git repo: commit A older, B newer), a fixture
 # stamp file and a fixture QMD_FORK_REF; the live station fork is never read.
 c50_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c50.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
@@ -5977,7 +5977,7 @@ c50_json="$(QMD_FORK_DIR="$c50_t/fork" QMD_FORK_REF="$c50_a" PATH="$FAKEBIN:$PAT
 if grepq "$c50_json" 'C50-qmd-fork-stamp'; then pass "C50 in --json"; else fail "C50 not in --json"; fi
 rm -rf "$c50_t"
 
-# --- HIMMEL-4333 / HIMMEL-4287: C41 operator ack, C22 fixture exclusion, C19 desired gate, C21 record ---
+# --- /: C41 operator ack, C22 fixture exclusion, C19 desired gate, C21 record ---
 n_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-n1200.XXXXXX")" || { fail "N1200 setup: mktemp -d failed"; exit 1; }
 mkdir -p "$n_t/home" "$n_t/root" "$n_t/claude"
 cat > "$n_t/home/.claude.json" <<'EOF'
@@ -6100,12 +6100,12 @@ rm -rf "$FAKEROOT"
 # temp dir per run - cleaned up here alongside FAKEROOT, this file's own
 # established end-of-run cleanup convention (it has no EXIT trap).
 rm -rf "$HIMMEL_DOCTOR_PROC_BASE"
-# Same reasoning for HIMMEL_DOCTOR_SYSTEMCTL_BASE (HIMMEL-2515, CR round 1
-# E4) -- templated like HIMMEL_DOCTOR_PROC_BASE above, so it gets the same
+# Same reasoning for HIMMEL_DOCTOR_SYSTEMCTL_BASE:
+# templated like HIMMEL_DOCTOR_PROC_BASE above, so it gets the same
 # cleanup.
 rm -rf "$HIMMEL_DOCTOR_SYSTEMCTL_BASE"
 echo
-# --- C51-firecrawl-parked (HIMMEL-4371): parked items + unavailable status ------
+# --- C51-firecrawl-parked: parked items + unavailable status ------
 c51_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c51.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c51_t/home" "$c51_t/claude" "$c51_t/vault"
 : > "$c51_t/vault/a.md"
@@ -6157,7 +6157,7 @@ out="$(c51_run "$c51_t/s6.jsonl")"
 if grepq "$out" 'WARN C51-firecrawl-parked'; then pass "C51 follow-web parked -> WARN"; else fail "C51 follow-web -> $(printf '%s' "$out" | grep -A1 C51)"; fi
 rm -rf "$c51_t"
 
-# --- C52-graphify-ollama (HIMMEL-4513): the uv graphifyy venv must import openai
+# --- C52-graphify-ollama: the uv graphifyy venv must import openai
 # (the [ollama] extra graph-cadence's semantic step needs). Seam:
 # HIMMEL_DOCTOR_GRAPHIFY_VENV points at a fixture venv whose bin/python exits 0/1.
 c52_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c52.XXXXXX")" || { fail "C52 setup: mktemp -d failed"; exit 1; }
@@ -6190,7 +6190,7 @@ out="$(c52_run "$c52_t/ok")"
 if grepq "$out" 'OK   C52-graphify-ollama' && ! grepq "$out" 'WARN C52-graphify-ollama'; then pass "C52 extra present -> OK"; else fail "C52 present -> $(printf '%s' "$out" | grep -A1 C52)"; fi
 rm -rf "$c52_t"
 
-# --- C53-vm-mode (HIMMEL-4583): the mode, and a read-only reachability probe ----
+# --- C53-vm-mode: the mode, and a read-only reachability probe ----
 c53_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c53.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c53_t/home/.himmel" "$c53_t/claude"
 # shellcheck disable=SC2016  # $1 $2 expand in the probe stub
@@ -6198,10 +6198,10 @@ printf '#!/bin/sh\necho "$1 $2" >> "%s/probe.log"\nexit 0\n' "$c53_t" > "$c53_t/
 # shellcheck disable=SC2016  # $1 $2 expand in the probe stub
 printf '#!/bin/sh\necho "$1 $2" >> "%s/probe.log"\nexit 1\n' "$c53_t" > "$c53_t/down"
 chmod +x "$c53_t/up" "$c53_t/down"
-# A stub ssh (HIMMEL-4599): the operator's real ssh would read their real
+# A stub ssh: the operator's real ssh would read their real
 # ~/.ssh/config. It answers only -G, from $c53_t/ssh-g.out when that is set,
 # else as an empty config would; any other call is logged and fails, and -G
-# itself fails while $c53_t/ssh-g.fail exists (HIMMEL-4631).
+# itself fails while $c53_t/ssh-g.fail exists.
 mkdir -p "$c53_t/bin"
 cat > "$c53_t/bin/ssh" <<STUB
 #!/bin/sh
@@ -6215,7 +6215,7 @@ printf 'user x\nhostname %s\nport %s\n' "\${1#*@}" "\$port"
 STUB
 chmod +x "$c53_t/bin/ssh"
 # A stub timeout: macOS ships none, and the alias rows must not depend on the
-# host having coreutils (HIMMEL-4981). It drops the duration and runs the rest.
+# host having coreutils. It drops the duration and runs the rest.
 printf '#!/bin/sh\nshift\nexec "$@"\n' > "$c53_t/bin/timeout"
 chmod +x "$c53_t/bin/timeout"
 c53_run() { # <config json> <probe>
@@ -6272,7 +6272,7 @@ out="$(c53_run '{"vm":{"mode":"cloud"}}' "$c53_t/up")"
 if grepq "$out" 'WARN C53-vm-mode' && grepq "$out" -F 'is not local|remote|none'; then pass "C53 invalid -> WARN"; else fail "C53 invalid -> $(printf '%s' "$out" | grep -A1 C53)"; fi
 rm -rf "$c53_t"
 
-# --- C55-project-mode (HIMMEL-4767, HIMMEL-4748 WP8): the resolver's tracker/forge ---
+# --- C55-project-mode: the resolver's tracker/forge ---
 # The row reads scripts/lib/project-mode.sh in the judged checkout; it never
 # re-derives the mode. A fixture repo carries a copy of the resolver.
 c55_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c55.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
@@ -6300,7 +6300,7 @@ out="$(c55_run)"
 if ! grepq "$out" -F 'C55-project-mode'; then pass "C55 no resolver -> silent"; else fail "C55 no resolver -> $(printf '%s' "$out" | grep -A1 C55)"; fi
 rm -rf "$c55_t"
 
-# --- C58-mcp-sdk-v1 (HIMMEL-4866): the v1 MCP SDK gate row ---
+# --- C58-mcp-sdk-v1: the v1 MCP SDK gate row ---
 c58_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c58.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c58_t/repo/scripts/lint" "$c58_t/home"
 cp "$REPO_ROOT/scripts/lint/check-mcp-sdk-v1.sh" "$c58_t/repo/scripts/lint/check-mcp-sdk-v1.sh"
@@ -6325,7 +6325,7 @@ out="$(c58_run)"
 if ! grepq "$out" -F 'C58-mcp-sdk-v1'; then pass "C58 no gate -> silent"; else fail "C58 no gate -> $(printf '%s' "$out" | grep -A1 C57)"; fi
 rm -rf "$c58_t"
 
-# --- C59-codex-bank-cache (HIMMEL-5220): a codex cache older than its TTL ---
+# --- C59-codex-bank-cache: a codex cache older than its TTL ---
 c59_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c59.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c59_t/home"
 c59_write() { # <age seconds>
@@ -6355,7 +6355,7 @@ out="$(c59_run)"
 if grepq "$out" -F 'INFO C59-codex-bank-cache' && ! grepq "$out" -F 'WARN C59-codex-bank-cache'; then pass "C59 missing -> INFO"; else fail "C59 missing -> $(printf '%s' "$out" | grep -A1 C59)"; fi
 rm -rf "$c59_t"
 
-# --- C60-hermes-origin / C61-codex-cli (HIMMEL-5382) ---
+# --- C60-hermes-origin / C61-codex-cli ---
 c60_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c60.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c60_t/home"
 c60_run() { DOCTOR_HERMES_CHECKOUT="$c60_t/hermes" CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1; }
@@ -6399,7 +6399,7 @@ echo "== C61-codex-cli: codex absent -> INFO =="
 out="$(DOCTOR_CODEX_BIN="$c60_t/none" DOCTOR_CODEX_LATEST=0.162.1 CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" -F 'INFO C61-codex-cli' && ! grepq "$out" -F 'WARN C61-codex-cli'; then pass "C61 absent -> INFO"; else fail "C61 absent -> $(printf '%s' "$out" | grep -A1 C61)"; fi
 
-# --- C63-claude-cli (HIMMEL-5501): installed claude below the console-launch floor ---
+# --- C63-claude-cli: installed claude below the console-launch floor ---
 # Fixture shape copied from this station's real `claude --version` output.
 printf '#!/usr/bin/env bash\necho "2.1.296 (Claude Code)"\n' > "$c60_t/claude-new"; chmod +x "$c60_t/claude-new"
 printf '#!/usr/bin/env bash\necho "2.1.200 (Claude Code)"\n' > "$c60_t/claude-old"; chmod +x "$c60_t/claude-old"
@@ -6418,7 +6418,7 @@ out="$(c62_run "$c60_t/none")"
 if grepq "$out" -F 'INFO C63-claude-cli' && ! grepq "$out" -F 'WARN C63-claude-cli'; then pass "C63 absent -> INFO"; else fail "C63 absent -> $(printf '%s' "$out" | grep -A1 C63)"; fi
 rm -rf "$c60_t"
 
-# --- C64-vm-runner (HIMMEL-5037): rows come from vm-runner.sh doctor ---
+# --- C64-vm-runner: rows come from vm-runner.sh doctor ---
 c64_t="$(mktemp -d)" || exit 1
 printf '%s\n' '#!/usr/bin/env bash' 'printf "OK\tC64-vm-runner\tsnapshot ci-runner-v1 present\n"' 'printf "FAIL\tC64-vm-runner\trunner DEAD: variable on, no unit up\n"' > "$c64_t/runner-fail.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'printf "OK\tC64-vm-runner\tfork-approval policy all_external_contributors\n"' > "$c64_t/runner-ok.sh"
@@ -6437,7 +6437,7 @@ out="$(c64_run "$c64_t/none.sh")"
 if grepq "$out" -F 'INFO C64-vm-runner' && ! grepq "$out" -F 'FAIL C64-vm-runner'; then pass "C64 absent -> INFO"; else fail "C64 absent -> $(printf '%s' "$out" | grep C64)"; fi
 rm -rf "$c64_t"
 
-# --- C62-oxlint-runner (HIMMEL-5529): can the oxlint commit gates run? ---
+# --- C62-oxlint-runner: can the oxlint commit gates run? ---
 c62_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c62.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c62_t/home"
 printf '#!/bin/sh\nexit 0\n' > "$c62_t/bun"; chmod +x "$c62_t/bun"

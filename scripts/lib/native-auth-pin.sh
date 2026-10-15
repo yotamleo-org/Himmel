@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # native-auth-pin.sh -- the native-auth chokepoint for headless claude
-# (HIMMEL-1867, second child of epic HIMMEL-1859). Source this library and call
+# Source this library and call
 # its entry points from every cadence site that launches claude in headless
 # (print) mode, so the launch can never be silently proxied off native auth.
 #
@@ -62,12 +62,12 @@
 # `${var^^}` (the prefix test is a case-insensitive glob), no `grep -P`;
 # enumeration is the `"${!A@}"`-style prefix expansion -- no external tool and no
 # builtin, so neither a shadowed PATH entry nor a function or alias can blind it
-# (HIMMEL-4459, HIMMEL-4461). JSON screening shells out to
+# JSON screening shells out to
 # node -- an established himmel dependency (claude-glm's screen does the same).
 #
-# LAUNCH GATE (HIMMEL-4459) -- the guarantee, and what carries it.
-# native_auth_pin_env returns non-zero when a target variable is still set. Since
-# HIMMEL-4461 that verdict rides on no builtin: enumeration and verification are
+# LAUNCH GATE -- the guarantee, and what carries it.
+# native_auth_pin_env returns non-zero when a target variable is still set. That
+# verdict rides on no builtin: enumeration and verification are
 # expansions and the status is a final `[[ ]]` (no `return`), so a function or
 # alias shadowing `unset`/`return`/`builtin`/`compgen`, or a readonly/nameref
 # loop variable set beforehand, can stop the strip but not hide it. A shadowed
@@ -98,12 +98,12 @@
 # CLAUDE_CODE_USE_ pair) -- the names a child on Linux/macOS actually reads, since
 # environment names are case-sensitive there. The pin itself strips every
 # mixed-case spelling for the case-insensitive Windows reader, and refuses
-# (non-zero) when one survives (HIMMEL-4461).
+# (non-zero) when one survives.
 # ponytail: the launch gate is exact-case and callers ignore the pin's rc, so on a
 # case-insensitive Windows reader a mixed-case survivor of a shadowed `unset` is
-# not refused at launch; extend the gate when Windows is unparked (HIMMEL-4102).
+# not refused at launch; extend the gate when Windows is unparked.
 #
-# What this guarantees (HIMMEL-4459, narrowed by HIMMEL-4461): an INHERITED
+# What this guarantees: an INHERITED
 # exact-case variable cannot reach a launch through these callers, and a shadowed
 # unset/return/builtin/compgen/exit/cd or `[` cannot turn a refusal into a launch
 # or set a variable between the gate and the launch -- every caller does its `cd`
@@ -122,15 +122,15 @@
 
 # The predicate lives once, as the case glob inside native_auth_pin_env (no
 # fork per variable -- a `tr` per variable was brutally slow on Windows). The
-# node screen and the PowerShell twin (not mirrored for HIMMEL-4459; Windows is
-# parked, HIMMEL-4102) carry the same predicate in their own runtimes; this
+# node screen and the PowerShell twin (not mirrored; Windows is
+# parked) carry the same predicate in their own runtimes; this
 # header's CANONICAL VARIABLE SET block is the definition they are checked against.
 
 native_auth_pin_env() {
   # No external tool, no builtin in the decision path and no `return`: the
   # enumeration and the verification are `${!X@}` expansions, the checks are
   # `[[ ]]` / case / `for`, and the verdict is the final `[[ ]]`'s status
-  # (HIMMEL-4461). The one builtin that acts is `unset`; a shadowed `unset` that
+  # The one builtin that acts is `unset`; a shadowed `unset` that
   # only no-ops stops the strip without hiding it -- the expansion pass sees the
   # survivor and the pin returns non-zero. One that also rewrites this function's
   # locals can hide it, which is why callers gate the launch on the keyword-only
@@ -141,7 +141,7 @@ native_auth_pin_env() {
   # Plain assignments, not `local` initialisers: a shadowed `local` must not leave
   # an inherited _keep_mock=1 in force.
   _failed=0 _keep_mock=0 _n=0 _nonlo=0 _sawlo=0
-  # Test seam (HIMMEL-4411): a mock-backed test may keep EXACTLY the base URL and
+  # Test seam: a mock-backed test may keep EXACTLY the base URL and
   # key, and only when the base URL is loopback -- so a headless launch can be
   # pointed at scripts/testing/mock-anthropic without the pin ever letting a real
   # or proxy host through. Everything else in the canonical set is still stripped.
@@ -167,12 +167,12 @@ native_auth_pin_env() {
       esac
     fi
   fi
-  # Enumerate by EXPANSION (HIMMEL-4461): "${!A@}" and friends are parameter
+  # Enumerate by EXPANSION: "${!A@}" and friends are parameter
   # expansions, not commands, so no function, alias or PATH entry can blind them,
   # and every canonical name -- any case mix -- starts with one of these four
   # letters. Each expansion still scans bash's whole variable table (as compgen
-  # does), so a huge environment stays slow -- measured, deferred (HIMMEL-4474).
-  # Loop-variable sentinel (HIMMEL-4461): a readonly `_name` set before the call
+  # does), so a huge environment stays slow -- measured, deferred.
+  # Loop-variable sentinel: a readonly `_name` set before the call
   # makes `local` fail and `for _name` abort silently, and a nameref `_name`
   # (with `local` shadowed) walks VALUES instead of names. A plain self-named
   # assignment exposes both -- it errors out on a readonly (aborting the call,

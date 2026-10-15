@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/plugin-eval-preflight.sh (HIMMEL-2931). Non-billing:
+# Smoke test for scripts/plugin-eval-preflight.sh. Non-billing:
 # never invokes the real `claude plugin eval`, only ever a PATH-stub `claude`.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.

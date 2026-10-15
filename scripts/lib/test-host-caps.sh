@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/host-caps.sh (HIMMEL-3182).
+# Tests for scripts/lib/host-caps.sh.
 # Usage: bash scripts/lib/test-host-caps.sh
 # Hermetic: PATH stubs stand in for the hosts that cannot express the case -- a
 # no-op `chmod` for NTFS, a copying `ln` for MSYS, a `stat` that only speaks the

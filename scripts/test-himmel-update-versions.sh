@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-himmel-update-versions.sh — hermetic tests for HIMMEL-3400: the read-only
+# test-himmel-update-versions.sh — hermetic tests for: the read-only
 # `himmel-update.sh --versions` ecosystem report, and the `--help` / unknown-flag
 # contract (before this ticket `--help` fell through to a REAL update).
 #
@@ -288,7 +288,7 @@ assert_contains "plugins: older installed copy -> behind, names the drift" "^ *p
 out=$(plugins_row "") || true
 assert_contains "plugins: declared but not installed -> behind" "^ *plugins  *behind  *0/1 installed" "$out"
 
-# HIMMEL-3416: an unreadable installed OR source version must report unknown,
+# an unreadable installed OR source version must report unknown,
 # never claim "current" (version equality was never established).
 printf '{"plugins":{"alpha@himmel":[{}]}}\n' > "$TMP/installed-noiv.json"
 rc=0
@@ -309,7 +309,7 @@ assert_eq "plugins: unreadable source version -> rc 0 (installed is current)" "0
 assert_contains "plugins: unreadable source version -> installed reported current (HIMMEL-5485)" "^ *plugins  *current" "$out"
 assert_not_contains "plugins: unreadable source version -> not unknown" "^ *plugins  *unknown" "$out"
 
-# HIMMEL-5485: a local manifest that does not parse is an unread source -> unknown.
+# a local manifest that does not parse is an unread source -> unknown.
 mkdir -p "$CHECKOUT_DIR/marketplace/plugins/gamma/.claude-plugin"
 printf '{ not json\n' > "$CHECKOUT_DIR/marketplace/plugins/gamma/.claude-plugin/plugin.json"
 printf '{"name":"himmel","plugins":[{"name":"gamma","version":"1.0.0"}]}\n' > "$TMP/market-gamma.json"
@@ -320,7 +320,7 @@ out=$(HIMMEL_MARKETPLACE_JSON="$TMP/market-gamma.json" HIMMEL_INSTALLED_PLUGINS_
 assert_eq "plugins: malformed local manifest + marketplace version -> rc 3" "3" "$rc"
 assert_contains "plugins: malformed local manifest -> unknown, not current" "^ *plugins  *unknown" "$out"
 
-# HIMMEL-5485: an external plugin (git-subdir/url source) has no local dir, so
+# an external plugin (git-subdir/url source) has no local dir, so
 # its source version comes from the marketplace entry, then the installed sha.
 ext_row() {   # <market-json> <installed-json> -> the --versions output, its rc
     printf '%s\n' "$1" > "$TMP/market-ext.json"

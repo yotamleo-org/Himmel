@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/resolve-active-item.sh — resolve the current branch's Jira
-# ticket to its handover work-item directory (HIMMEL-416 F2 / C1).
+# ticket to its handover work-item directory.
 #
 # Exit: 0 = item dir printed to stdout; 3 = graceful skip (not in a git repo,
 # no repo match in registry, no ticket in branch, or no matching item dir);
@@ -17,7 +17,7 @@ esac; done
 
 # 1. Handover root (Mode B respects $HANDOVER_DIR).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=/dev/null

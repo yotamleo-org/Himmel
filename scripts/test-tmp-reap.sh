@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2086,SC2010  # A && B || C reporters; positional split of /proc stat; ls /proc/<pid>/fd probe
-# scripts/test-tmp-reap.sh - suite for tmp-reap.sh (HIMMEL-4224), the /tmp
+# scripts/test-tmp-reap.sh - suite for tmp-reap.sh, the /tmp
 # preserve-then-reap reaper. Hermetic: every root is a scratch dir reached
 # through TMP_REAP_TMP_ROOT / TMP_REAP_ARCHIVE_ROOT / TMP_REAP_SESSIONS_DIR;
 # the real /tmp, ~/.himmel and ~/.claude are never touched.
@@ -18,8 +18,8 @@
 #      an empty census root refuses; a same-uid unreadable entry detached from every live
 #      session (ppid chain reads to pid 1) only warns, one under a live session refuses
 #  11. FAMILIES does not glob against the caller's cwd
-#  13. a judge dir's .holder (HIMMEL-4325): live keeps, dead reaps at once, unknown/absent = today's path
-#  15. a verdict marker (.verdict-written, HIMMEL-5165) releases a judge dir even with a live holder
+#  13. a judge dir's .holder: live keeps, dead reaps at once, unknown/absent = today's path
+#  15. a verdict marker releases a judge dir even with a live holder
 #  14. judge-dir.sh creates the dir + holder, refuses a bad PR/suffix, fails loudly
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
@@ -200,7 +200,7 @@ check "a real zombie is skipped: --apply rc 0" "$rc" 0
 # Non-dumpable same-uid daemons (kwin, systemd --user, 1Password) always read as unreadable. One whose
 # ppid chain reads cleanly to pid 1 without crossing a live session pid cannot hold a session's scratch.
 rm -rf "$FP/300"; mkdir -p "$FP/1" "$FP/400" "$FP/401" "$FP/402" "$FP/403"
-# fst <pid> <comm> <ppid> <starttime>: a stat line with field 22 (starttime) set (HIMMEL-4437)
+# fst <pid> <comm> <ppid> <starttime>: a stat line with field 22 (starttime) set
 fst() { printf '%s (%s) S %s 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 %s\n' "$1" "$2" "$3" "$4"; }
 fst 1 systemd 0 1 > "$FP/1/stat"
 fst 400 kwin 1 4000 > "$FP/400/stat"
@@ -227,7 +227,7 @@ out="$(TMP_REAP_UID="$(id -u)" TMP_REAP_PROC="$FP" reap --apply)"; rc=$?
 check "unreadable grandchild with a broken chain: --apply rc 2" "$rc" 2
 rm -rf "$FP/401" "$FP/402"
 
-# HIMMEL-4437: a non-dumpable child a dead session spawned and that outlived it is reparented to pid 1 but can
+# a non-dumpable child a dead session spawned and that outlived it is reparented to pid 1 but can
 # still hold that session's scratch. An unreadable detached process that started at or after the oldest dead
 # session's procStart is NOT detached (refuse); one that started before it (a desktop daemon) only warns.
 rm -rf "$FP/403"; mkdir -p "$FP/500"
@@ -363,7 +363,7 @@ check "14. creates and prints the dir" "$d" "$JD/j9201"
 check "14. rc 0" "$rc" 0
 check "14. holder = ancestor session pid + start time" "$(cat "$JD/j9201/.holder")" "$$ $(pstart $$)"
 d="$(jd 9201 b)"; check "14. suffix dir" "$d" "$JD/j9201b"
-# HIMMEL-5173: the SAME live holder asking again shares nothing once the dir has contents
+# the SAME live holder asking again shares nothing once the dir has contents
 mkdir -p "$JD/j9210"; : > "$JD/j9210/evidence.md"; echo "$$ $(pstart $$)" > "$JD/j9210/.holder"
 d="$(jd 9210 2>/dev/null)"; rc=$?
 check "14. same live holder, dir with contents: refused (HIMMEL-5173)" "$rc" 1

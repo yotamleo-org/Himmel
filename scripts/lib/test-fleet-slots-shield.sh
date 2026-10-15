@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-fleet-slots-shield.sh — HIMMEL-3103. The arm-resume test suites source
+# test-fleet-slots-shield.sh. The arm-resume test suites source
 # scripts/lib/fleet-slots-shield.sh so a suite run never reserves a slot in the
 # PRODUCTION fleet dir (${XDG_RUNTIME_DIR}/himmel-fleet-<uid>) that the live
 # fleet's FLEET_CAP counts. This suite is the RED control for that guard: the

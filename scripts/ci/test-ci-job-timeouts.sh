@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/ci/test-ci-job-timeouts.sh -- every job in .github/workflows/ci.yml
-# carries an explicit job-level `timeout-minutes:` (HIMMEL-5036).
+# carries an explicit job-level `timeout-minutes:`.
 #
 # Without one a job inherits GitHub's 360-minute default, so a hung job holds a
 # runner slot for six hours. Note timeout-minutes counts from job START: Actions

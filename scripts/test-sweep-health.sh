@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermetic test for `clean-garden.sh --health` and the STUCK state a real sweep
-# records (HIMMEL-3405). Temp git repo + real worktrees + a stub gh that reports
+# records. Temp git repo + real worktrees + a stub gh that reports
 # every feat/* branch as a merged PR at its tip (both the REST cache the prune
 # loop reads and the `pr list` JSON unlanded-work.sh reads). Reporting only: the
 # suite also proves --health never prunes and a sweep's prune decision is
@@ -8,7 +8,7 @@
 set -uo pipefail
 
 # grepq <text> [grep-args...] — `grep -q` against <text> with NO pipeline
-# (pipefail + early-exit grep = false negatives; HIMMEL-1430).
+#  (pipefail + early-exit grep = false negatives).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/test-claude-version.sh - suite for scripts/lib/claude-version.sh and
-# console_context_model_takes_1m_suffix (HIMMEL-5501).
+# console_context_model_takes_1m_suffix.
 #
 # Fixtures: `claude --version` prints `2.1.296 (Claude Code)` on the station that
 # wrote this (copied from the real binary, not hand-written); the stub claude

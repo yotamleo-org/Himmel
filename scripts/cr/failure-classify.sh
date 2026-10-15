@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # scripts/cr/failure-classify.sh — single-source CR critic failure classifier
-# (HIMMEL-1176). Exposes classify_failure <rc> [out_file] [err_file], which
+# Exposes classify_failure <rc> [out_file] [err_file], which
 # echoes exactly ONE reason class to stdout: timeout, quota-5h, quota-long,
 # rate-limit, auth, http-4xx, http-5xx, upstream-error, malformed-output, empty-response, or
 # generic-rc-N (N = the literal rc). Also owns is_quota_exhaustion — moved
-# here from critic-panel.sh's former _is_quota_exhaustion (HIMMEL-729) so the
+# here from critic-panel.sh's former _is_quota_exhaustion so the
 # quota-exhaustion signature table lives in exactly ONE place; critic-panel.sh
 # sources this file and keeps a thin `_is_quota_exhaustion` wrapper for its
 # existing call site.
@@ -12,7 +12,7 @@
 # Functions only — no side effect when sourced. The CLI form below is
 # BASH_SOURCE-guarded (mirrors scripts/cr/triviality-gate.sh) so it also runs
 # standalone: `bash failure-classify.sh <rc> [out_file] [err_file]`.
-# bash 3.2-safe. Deliberately NO top-level `set` (HIMMEL-1176, codex CR): this
+# bash 3.2-safe. Deliberately NO top-level `set`: this
 # file is SOURCED by critic-panel.sh, and a top-level `set -uo pipefail` would
 # mutate the CALLER's shell options — the exact "no side effect when sourced"
 # contract this header claims. The functions are written -u-safe (every
@@ -20,9 +20,9 @@
 # its own options inside the BASH_SOURCE guard.
 
 # ---------------------------------------------------------------------------
-# is_quota_exhaustion <out_file> <err_file> (HIMMEL-729; table moved here HIMMEL-1176)
+# is_quota_exhaustion <out_file> <err_file>
 # True if the captured stdout OR stderr matches a quota-exhaustion signature.
-# Bare AccessDenied is NOT exhaustion (codex adversarial CR on HIMMEL-729):
+# Bare AccessDenied is NOT exhaustion:
 # e.g. Alibaba's AccessDenied.Unpurchased means "service not activated" and a
 # plain AccessDenied is an auth/permission failure — falling back on those
 # would mask a dead primary lane as a healthy critic. AccessDenied counts only
@@ -48,15 +48,15 @@ is_quota_exhaustion() {
 #   timeout > usage-error > quota-5h > quota-long > rate-limit > auth >
 #   http-4xx > http-5xx > upstream-error > malformed-output > empty-response > generic-rc-N
 #
-# HIMMEL-729 pairing rule preserved: both quota buckets are checked BEFORE
+# Pairing rule: both quota buckets are checked BEFORE
 # auth, so a bare AccessDenied/401/403 classifies auth, while the SAME text
 # paired with a quota/exhaustion phrase classifies quota-5h/quota-long first —
 # auth can only win when no quota phrase is present.
 #
 # rc=2 is critic-first-pass.sh's own documented usage-error exit (the only
 # caller of this function); its stderr usage() text can legitimately contain
-# digit runs that look like an HTTP status (e.g. "(HIMMEL-473)") without being
-# one (HIMMEL-2107). Classify it as usage-error before any text scan runs, so
+# digit runs that look like an HTTP status (e.g. a ticket ID) without being
+# one. Classify it as usage-error before any text scan runs, so
 # a member's malformed invocation never gets reported as a transport failure.
 # ---------------------------------------------------------------------------
 classify_failure() {
@@ -74,7 +74,7 @@ classify_failure() {
     [ -n "$_cf_err" ] && [ -f "$_cf_err" ] && _cf_blob="$_cf_blob
 $(cat "$_cf_err" 2>/dev/null)"
 
-    # HIMMEL-4610: drop the path after cfp's "Raw output: " — its random mktemp
+    # Drop the path after cfp's "Raw output: " — its random mktemp
     # suffix can spell a status code ("cfp-raw.x412b") and flip empty-response
     # or malformed-output to http-4xx/5xx/auth/rate-limit (same skip as
     # first_signal_line below).
@@ -82,7 +82,7 @@ $(cat "$_cf_err" 2>/dev/null)"
 
     _cf_has() { printf '%s' "$_cf_blob" | grep -qiE "$1"; }
 
-    # quota-5h: the existing HIMMEL-729 exhaustion table, the Z.ai 5-hour
+    # quota-5h: the existing exhaustion table, the Z.ai 5-hour
     # sentinel (tests/fixtures/glm-cap/cli-tail-0b.txt: "Usage limit reached
     # for the past 5 hours"), or a bare 429 paired with quota-ish wording.
     if is_quota_exhaustion "$_cf_out" "$_cf_err"; then echo quota-5h; return 0; fi
@@ -92,7 +92,7 @@ $(cat "$_cf_err" 2>/dev/null)"
     fi
 
     # quota-long: weekly/balance/plan-expired sentinels, plus codex's own
-    # usage-limit wording (HIMMEL-3110, captured body:
+    # usage-limit wording (captured body:
     # scripts/cr/testdata/codex-usage-limit-2026-09-16.txt). Codex says
     # "hit your usage limit" / "purchase more credits" and names an absolute
     # reset DATE ("try again at Sep 19th, 2026 10:09 AM") rather than a
@@ -103,7 +103,7 @@ $(cat "$_cf_err" 2>/dev/null)"
     # reset (if ever observed) would need its own quota-5h sentinel rather
     # than being inferred here.
     #
-    # HIMMEL-729 pairing discipline: "hit your usage limit" alone never
+    # Pairing discipline: "hit your usage limit" alone never
     # satisfies the auth check below (401/403/invalid-api-key/unauthorized/
     # access-denied), so a bare auth failure cannot leak into this bucket by
     # sharing a generic word — both distinguishing phrases below are specific
@@ -124,16 +124,16 @@ $(cat "$_cf_err" 2>/dev/null)"
     fi
 
     # other 4xx / 5xx. A bare digit run also matches inside a ticket ID like
-    # "HIMMEL-473" (HIMMEL-2107). Every himmel ticket ID is PROJECT-NNN, so
+    # "PROJ-473". Every himmel ticket ID is PROJECT-NNN, so
     # the number is always immediately preceded by a hyphen; excluding that
-    # one shape (codex CR round 3: requiring an HTTP/status/code keyword
-    # nearby instead lost real "400 Bad Request"/"500 ..." text that carries
+    # one shape (requiring an HTTP/status/code keyword
+    # nearby instead loses real "400 Bad Request"/"500 ..." text that carries
     # no such keyword) keeps recall on genuine status text while a ticket
     # reference can never match.
     if _cf_has '(^|[^0-9-])4[0-9][0-9]([^0-9]|$)'; then echo http-4xx; return 0; fi
     if _cf_has '(^|[^0-9-])5[0-9][0-9]([^0-9]|$)'; then echo http-5xx; return 0; fi
 
-    # HIMMEL-2399: critic-first-pass.sh's "upstream error" marker — the provider
+    # critic-first-pass.sh's "upstream error" marker: the provider
     # answered with an error body (overload, outage), not a review. Checked
     # AFTER the status/quota/auth buckets so a finer class in the vendor's own
     # text still wins; it only replaces what would have read as malformed-output.
@@ -155,7 +155,7 @@ $(cat "$_cf_err" 2>/dev/null)"
 }
 
 # ---------------------------------------------------------------------------
-# first_signal_line <file> (HIMMEL-3105)
+# first_signal_line <file>
 #
 # Echoes the FIRST line of <file> that carries a provider-failure signature,
 # bounded to 300 chars; echoes nothing (rc 0) when none matches or the file is

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/ci/check-claude-md-budget.sh (HIMMEL-2038).
+# Smoke test for scripts/ci/check-claude-md-budget.sh.
 #
 # The gate budgets ONLY himmel's own bytes: the `## graphify` section is
 # upstream-owned (written verbatim by `graphify install --platform claude`) and
@@ -89,8 +89,8 @@ else
     fail "none.md -> no reinstall hint: $out_e2"
 fi
 # ' -- then ' in a pasted shell line ends option parsing for `graphify install`
-# and turns the re-price command into junk positional argv (HIMMEL-2480 CR
-# finding 3) -- the hint must not contain that sequence.
+# and turns the re-price command into junk positional argv;
+# the hint must not contain that sequence.
 if grep -q -- ' -- then ' <<< "$out_e2"; then
     fail "none.md -> reinstall hint has the unrunnable ' -- then ' copy-paste trap"
 else
@@ -117,7 +117,7 @@ else
 fi
 
 # Case H (venv-gated): the REAL installer over the committed file is a no-op
-# modulo ONE carve-out (HIMMEL-5303): the installer text recommends
+# modulo ONE carve-out: the installer text recommends
 # `graphify path`, which CLAUDE.md bans, so himmel strips that single clause.
 # The strip is defined once, in scripts/lint/check-graphify-path-advice.sh
 # --strip; the installer's output is passed through it before the compare, so

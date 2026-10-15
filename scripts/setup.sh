@@ -9,13 +9,13 @@ set -e
 # WARNING then continue to the success footer, fooling the operator.
 trap 'echo "setup interrupted by signal" >&2; exit 130' INT TERM
 
-# REPO_ROOT is resolved AFTER the [0/9] preflight (R6, HIMMEL-460): the
+# REPO_ROOT is resolved AFTER the [0/9] preflight: the
 # preflight may auto-install git, so `git rev-parse --show-toplevel` must not run
 # before it. Until then, resolve THIS script's own dir (no git needed) so the
 # preflight can source its sibling helper.
 SETUP_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-# --- arg parse (HIMMEL-151) ---
+# --- arg parse ---
 # Optional flags only. Unknown args land in setup_extra_args for now —
 # no flag uses them yet, but reserve the pattern.
 WITH_JIRA=0
@@ -59,7 +59,7 @@ export PATH="$HOME/.local/bin:$PATH"
 echo "==> himmel setup"
 echo ""
 
-# --- prereq verify (HIMMEL-123) ---
+# --- prereq verify ---
 # Fail fast with install hints rather than partial-install + cryptic
 # downstream errors. Checks foundational tools that 5+ scripts depend
 # on. Per-platform extras (at, schtasks, realpath -m) are documented
@@ -74,7 +74,7 @@ for _tool in bash git node npm bun python3 jq gh mktemp; do
   fi
 done
 
-# R6 (HIMMEL-460): best-effort FETCH of the auto-installable missing tools
+# R6: best-effort FETCH of the auto-installable missing tools
 # (git/jq/python3) via the platform package manager BEFORE failing — the operator
 # asked "setup should fetch it". The rest keep the flag-loud fallback below. This
 # runs before the relocated `git rev-parse`, so a fresh box missing git is
@@ -88,7 +88,7 @@ if [ "${#_missing[@]}" -gt 0 ]; then
   # bun's official installer (ensure-tools.sh) drops the binary in ~/.bun/bin,
   # which isn't on PATH in this process yet — add it so the re-check below and the
   # rest of setup find the freshly-installed bun, and hint the operator to persist
-  # it for future shells (HIMMEL-548).
+  # it for future shells.
   if [ -x "$HOME/.bun/bin/bun" ] && ! command -v bun >/dev/null 2>&1; then
     PATH="$HOME/.bun/bin:$PATH"; export PATH
     echo "  bun installed to ~/.bun/bin — add it to PATH permanently:"
@@ -133,7 +133,7 @@ fi
 echo "  All foundational tools present."
 echo ""
 
-# --- repo root (relocated past the preflight — R6, HIMMEL-460) ---
+# --- repo root (relocated past the preflight — R6) ---
 # git is now guaranteed present (preflight verified / auto-installed it), so it is
 # safe to resolve the checkout root. A non-zero here means setup.sh was run from
 # outside a git checkout — fail loud rather than letting downstream paths break.
@@ -142,7 +142,7 @@ cd "$REPO_ROOT"
 # shellcheck source=lib/qmd-bin.sh
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/qmd-bin.sh"
-# graphify resolver (HIMMEL-891). Provides has_graphify / graphify_install /
+# graphify resolver. Provides has_graphify / graphify_install /
 # graphify_source / graphify_install_hint, consumed by the OPTIONAL graphify
 # step below.
 # shellcheck source=lib/graphify-bin.sh
@@ -174,7 +174,7 @@ else
 fi
 echo ""
 
-# --- JIRA_PROJECT_KEY verify (HIMMEL-146; gated per HIMMEL-285) ---
+# --- JIRA_PROJECT_KEY verify ---
 # Hard-fail only with --with-jira; default is skip-with-notice so a
 # no-Jira adopter completes setup. Logic lives in the sub-script so it
 # is hermetic-testable (test-check-jira-key.sh).
@@ -187,7 +187,7 @@ if ! bash "$REPO_ROOT/scripts/setup/check-jira-key.sh" "$_jira_mode"; then
 fi
 echo ""
 
-# --- tracker / forge (HIMMEL-4767, HIMMEL-4748 WP8) ---
+# --- tracker / forge ---
 # Asks for both and writes git config himmel.tracker / himmel.forge; an
 # existing value is the default and Enter keeps it. Non-interactive shells
 # skip. Never fatal: an unset mode is auto-detected by scripts/lib/project-mode.sh.
@@ -195,7 +195,7 @@ echo "[0.45/9] Choosing the tracker and forge..."
 bash "$REPO_ROOT/scripts/setup/choose-mode.sh" "$REPO_ROOT" || echo "  WARNING: choose-mode failed; continuing." >&2
 echo ""
 
-# --- USER_SLUG resolution (HIMMEL-145; advisory per HIMMEL-2537) ---
+# --- USER_SLUG resolution ---
 # Verify the operator's user slug resolves at setup time so paths in
 # handover bucket layout, registry.json, and overnight artifacts line
 # up. ADVISORY, not fatal: nothing below consumes the slug and every
@@ -205,7 +205,7 @@ echo ""
 echo "[0.5/9] Resolving USER_SLUG..."
 _user_slug_manual=0
 _slug_rc=0
-# --dotenv-root here too, not just at the footer (CR round 6 [codex-1]): on a
+# --dotenv-root here too, not just at the footer: on a
 # RE-RUN of setup the .env from a previous run already exists, and resolving
 # the way a bare shell does would print the "cannot resolve" diagnostic for a
 # slug the consumers can read perfectly well — a WARN the footer then silently
@@ -247,7 +247,7 @@ fi
 echo "[2/9] Installing git hooks (pre-commit, pre-push, commit-msg)..."
 pre-commit install
 pre-commit install --hook-type pre-push
-# Non-fatal (HIMMEL-1586): the installer refuses (exit 2) to overwrite a
+# Non-fatal: the installer refuses (exit 2) to overwrite a
 # foreign pre-push hook that the `pre-commit install --hook-type pre-push`
 # above may have just left behind. That refusal must not abort the remaining
 # setup steps [3/9]..[9/9] — the push-time self-heal
@@ -257,7 +257,7 @@ if ! bash "$REPO_ROOT/scripts/hooks/install-cr-pre-push-legacy.sh"; then
   echo "  WARNING: CR pre-push legacy hook not installed (see above). Setup continues; the push-time self-heal retries this install on first push." >&2
 fi
 pre-commit install --hook-type commit-msg
-# HIMMEL-2095: reference-transaction is not a `pre-commit install --hook-type`
+# reference-transaction is not a `pre-commit install --hook-type`
 # supported type, so it needs its own installer, same non-fatal pattern as
 # the CR pre-push legacy hook above.
 if ! bash "$REPO_ROOT/scripts/hooks/install-main-ref-transaction.sh"; then
@@ -287,7 +287,7 @@ else
   echo "  cd scripts/jira && npm install && npm run build && NPM_CONFIG_PREFIX=\"\$HOME/.local\" npm link"
 fi
 
-# Bitbucket Cloud CLI — the forge-bitbucket transport (HIMMEL-326). No `npm
+# Bitbucket Cloud CLI — the forge-bitbucket transport. No `npm
 # link`: it's invoked as `node scripts/bitbucket/dist/index.js` (the
 # BITBUCKET_CMD default in scripts/lib/forge-bitbucket.sh), so it only needs
 # dist/ built. Best-effort — a build failure must not abort setup, since only a
@@ -305,12 +305,12 @@ fi
 # --- qmd collection ---
 echo "[4/9] Registering qmd collection 'himmel'..."
 # Neutralize the broken qmd plugin-cache stub first so plain `qmd` works
-# inside Claude's Bash tool too (HIMMEL-163). No-op when the plugin is
+# inside Claude's Bash tool too. No-op when the plugin is
 # absent, already patched, or upstream has shipped a fixed stub.
 bash "$REPO_ROOT/scripts/lib/fix-qmd-stub.sh" || echo "  WARNING: fix-qmd-stub failed — continuing." >&2
 if has_qmd; then
   # qmd_register_collection: idempotent + WARN-not-fail with the same
-  # messages/semantics the inline logic had (HIMMEL-752). `|| true` keeps
+  # messages/semantics the inline logic had. `|| true` keeps
   # this script's `set -e` from aborting on a best-effort qmd failure
   # (a list/add error already WARNed inside the helper).
   qmd_register_collection "$REPO_ROOT" himmel || true
@@ -330,7 +330,7 @@ if [ ! -f ".env" ]; then
 else
   echo "  .env already exists -- skipping"
 fi
-# --fill-env (HIMMEL-453): prompt for the must-set values now. Default-off keeps
+# --fill-env: prompt for the must-set values now. Default-off keeps
 # unattended runs unchanged; non-interactive shells no-op inside fill-env.sh.
 if [ "$FILL_ENV" = "1" ] && [ -f ".env" ]; then
   bash "$REPO_ROOT/scripts/setup/fill-env.sh" "$REPO_ROOT/.env" "$REPO_ROOT/.env.example" \
@@ -340,7 +340,7 @@ elif [ -f ".env" ]; then
 fi
 
 # --- handover root ---
-# Reports where Claude will read/write handover state (per HIMMEL-118
+# Reports where Claude will read/write handover state (
 # resolver). For a fresh clone: prints inline path <repo>/handovers
 # and the resolver auto-creates the dir on first use. For an external
 # HANDOVER_DIR: validates the path exists; warns + continues gate-clean
@@ -362,7 +362,7 @@ fi
 
 echo ""
 
-# --- telegram onboarding (HIMMEL-227) ---
+# --- telegram onboarding ---
 # Scaffold-only: creates the channel dir + bot-token .env template, reports
 # pairing/bridge status, prints the operator next-steps. It NEVER writes
 # access.json and NEVER starts the bridge (operator-managed — injection
@@ -374,7 +374,7 @@ if ! bash "$REPO_ROOT/scripts/setup/onboard-telegram.sh"; then
 fi
 echo ""
 
-# --- Claude plugins (HIMMEL-359) ---
+# --- Claude plugins ---
 # The standalone-himmel path (this script) is what README + getting-started
 # point new users at, then tell them to run /handover — so it installs the
 # marketplace plugins (handover, triage, obsidian, …), not just the repo
@@ -391,7 +391,7 @@ else
 fi
 echo ""
 
-# --- statusline + HIMMEL_REPO (HIMMEL-359 / HIMMEL-453) ---
+# --- statusline + HIMMEL_REPO ---
 # Wire the himmel statusline AND env.HIMMEL_REPO into ~/.claude/settings.json via
 # the shared helpers. Both write settings.json, need no claude binary, idempotent.
 # HIMMEL_REPO default-by-install: the installer knows the clone path, so the leg
@@ -404,7 +404,7 @@ fi
 if ! bash "$REPO_ROOT/scripts/lib/wire-himmel-repo.sh" "$_user_settings" "$REPO_ROOT"; then
   echo "  WARNING: wire-himmel-repo failed; setup continues." >&2
 fi
-# R3 (HIMMEL-460): wire the UNIVERSAL hooks at USER scope so a session launched
+# R3: wire the UNIVERSAL hooks at USER scope so a session launched
 # ANYWHERE (not just inside this repo) gets the portable safety + auto-approve
 # trio AND the SessionStart leg-injector. Referenced by THIS clone's abs path;
 # basename-dedup keeps a re-run from double-wiring. The HIMMEL-DEV-ONLY hooks
@@ -416,7 +416,7 @@ bash "$REPO_ROOT/scripts/lib/wire-pretooluse-hooks.sh" "$_user_settings" "$REPO_
   || echo "  WARNING: wire-pretooluse-hooks failed; setup continues." >&2
 bash "$REPO_ROOT/scripts/lib/wire-pretooluse-hooks.sh" --sessionstart "$_user_settings" "$REPO_ROOT" "inject-initiative.sh" \
   || echo "  WARNING: wire SessionStart inject-initiative failed; setup continues." >&2
-# R4 (HIMMEL-460): advise on user/project hook duplication (silent in-repo).
+# R4: advise on user/project hook duplication (silent in-repo).
 if ! bash "$REPO_ROOT/scripts/lib/detect-hook-dup.sh" "$_user_settings" "$REPO_ROOT/.claude/settings.json" "$REPO_ROOT"; then
   : # detect-hook-dup is advisory-only; never fail setup on it.
 fi
@@ -426,10 +426,10 @@ bash "$REPO_ROOT/scripts/shell/himmel-offload-shims.sh" install \
   || echo "  WARNING: offload shim install failed; setup continues." >&2
 echo ""
 
-# --- graphify (knowledge-graph CLI) — OPTIONAL (HIMMEL-891) ---
+# --- graphify (knowledge-graph CLI) — OPTIONAL ---
 # Opt-in only. Triggered by --with-graphify OR interactive prompt (default N).
 # Non-interactive shells without the flag skip silently. Adoption verdict
-# stays open (HIMMEL-621); this only installs
+# stays open; this only installs
 # the CLI (himmel fork, never over an existing foreign install — see
 # scripts/lib/graphify-bin.sh).
 #
@@ -452,7 +452,7 @@ fi
 if [ "$_install_graphify" = "1" ]; then
   if graphify_install; then
     # Register the MCP server so the install delivers the mcp__graphify__* tools,
-    # not just the CLI (HIMMEL-1047). user scope — setup.sh provisions this
+    # not just the CLI. user scope — setup.sh provisions this
     # machine's own environment. WARN-not-fail; idempotent.
     graphify_register_mcp user
     graphify_price_hooks
@@ -468,11 +468,11 @@ echo ""
 
 echo "Setup complete."
 echo ""
-# HIMMEL-2537: step 0.5 is advisory, so the one thing it left undone has to
-# survive the scrollback the same way HIMMEL-2536's git-hooks row does. A run
+# step 0.5 is advisory, so the one thing it left undone has to
+# survive the scrollback the same way an earlier change's git-hooks row does. A run
 # that ends "Setup complete." while a step was skipped, and says so nowhere the
 # operator will still be looking, is the failure both tickets are about.
-# CR round 1 [codex-1]: step 0.5 runs BEFORE [5/9], which creates .env and,
+# step 0.5 runs BEFORE [5/9], which creates .env and,
 # under --fill-env, prompts for USER_SLUG — so a flag latched at 0.5 would tell
 # an operator who had just typed a slug to go and set one. Re-probe with .env
 # bridged in, the way the consumers this row names actually resolve it. Only
@@ -483,7 +483,7 @@ if [ "$_user_slug_manual" = "1" ]; then
     _user_slug_manual=0
   else
     _footer_slug_rc=$?
-    # HIMMEL-2537 CR round 3 [codex-1]: never let a broken re-probe erase a
+    # Never let a broken re-probe erase a
     # KNOWN unresolved verdict (rc=3) from [0.5/9] — only adopt the footer's
     # own rc while the state is still open (unknown), so an rc=3 known-bad
     # verdict can't be silently upgraded to "unknown" by a second probe that
@@ -506,8 +506,7 @@ if [ "$_user_slug_manual" = "1" ]; then
     echo "STILL MANUAL: USER_SLUG could NOT be verified (check-user-slug.sh exited rc=$_slug_rc);"
     echo "  treat it as unresolved until you have checked, not as confirmed unresolved."
     # The prescribed command carries --dotenv-root for the same reason the
-    # probes do (CR round 9 [codex-1], the round-4 finding on the himmelctl
-    # row repeated here): without it an operator whose slug lives only in
+    # probes do (as on the himmelctl row repeated here): without it an operator whose slug lives only in
     # .env runs a check that reports "unresolved" and concludes their setup
     # is broken, when every consumer reads it fine.
     echo "  Handover bucket paths, registry.json and scratch dir names may or may not be"

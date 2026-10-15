@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/doc-freshness-advisory.sh (HIMMEL-2226).
+# Smoke test for scripts/cr/doc-freshness-advisory.sh.
 #
 # Builds a throwaway fixture git repo under mktemp (never the real repo, never
 # the network) that doubles as the script's own HIMMEL_ROOT: it holds a copy
@@ -66,7 +66,7 @@ printf 'v1\n' >"$repo/src/thing.txt"
 )
 
 # Each fixture is its own anchor (HIMMEL_REPO), so the relative entry runs
-# the fixture's copy rather than handing off (HIMMEL-3395).
+# the fixture's copy rather than handing off.
 
 # 1. Leg inactive (HIMMEL_DOC_FRESHNESS unset) -> no drift output at all,
 # even on a branch that WOULD show drift if the leg were on.

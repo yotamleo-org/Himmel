@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
 # test-e2e-provenance-settings.sh -- the settings.json wire libs record what they
-# did in the install-provenance ledger (HIMMEL-3332 S2). Drives the real
+# did in the install-provenance ledger. Drives the real
 # test-e2e-symmetry.sh install phase (statusline, himmel-repo, the PreToolUse trio,
 # the SessionStart hook) plus luna-vault and handover-dir against a scratch HOME,
 # then asserts the ledger rows: op, kind, unit, scope, backup and pre/post shas.

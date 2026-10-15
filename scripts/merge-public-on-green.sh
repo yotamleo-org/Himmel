@@ -2,13 +2,13 @@
 # merge-public-on-green.sh — sanctioned auto-merge chokepoint for the PUBLIC
 # repo, invoked ONLY by the Telegram bridge's SHA-bound /mergepub command.
 #
-# HIMMEL-1213. Pairs with scripts/handover/merge-on-green.sh (HIMMEL-1042, the
+# Pairs with scripts/handover/merge-on-green.sh (the
 # PRIVATE chokepoint) but is a DELIBERATELY SEPARATE script: merge-on-green.sh's
 # private-only guard is a safety boundary, and a flag that inverts a safety
 # boundary is the failure mode this design explicitly avoids — no shared
 # "which repo class" switch. This script instead PINS to one public repo.
 #
-# Authorization model (HIMMEL-1213 design §3): the operator sends a typed,
+# Authorization model: the operator sends a typed,
 # non-forwarded `/mergepub <pr> <sha12>` from Telegram; the TRUSTED BRIDGE
 # (scripts/telegram/router.ts -> auto-action.ts -> auto-action.sh) — never a
 # Claude agent — parses it and invokes this script directly with the PR number
@@ -16,7 +16,7 @@
 # merge-on-green.sh's ARMAUTOMERGE): the authorization IS the bridge's own
 # TELEGRAM_AUTO_ACTIONS allow-list + operator-identity check, already enforced
 # before this script is ever invoked. No allow-rule for this script (or a
-# public `gh pr merge`) is added anywhere — since HIMMEL-3402 no prefix rule
+# public `gh pr merge`) is added anywhere — no prefix rule
 # reaches it either, so an agent's run goes to the classifier, and gate 0 below
 # refuses it on sight.
 #
@@ -35,14 +35,14 @@
 #       re-verify — refused
 #   13  cannot resolve PR metadata (auth/network) — refused
 #   14  PR base is not the repo's default branch — initial gate OR the
-#       immediately-pre-merge re-verify (HIMMEL-1080 retarget-race lesson,
+#       immediately-pre-merge re-verify (retarget-race lesson,
 #       ported verbatim: a base can be changed without moving the head, so
 #       `--match-head-commit` alone would not catch a mid-wait retarget)
 #   15  head SHA mismatch — the operator-supplied SHA does not prefix-match
 #       the PR's actual head (headRefOid), at the initial read OR the
 #       pre-merge re-verify — "head moved", never merge
 #   16  check-ci gate not green (CI red / unresolved threads / changes
-#       requested / HIMMEL-1126 body findings) — the ONLY pass is exit 0
+#       requested / body findings) — the ONLY pass is exit 0
 #   17  audit sink not writable, or the MERGING record could not be written
 #       — an unauditable merge must not proceed
 #   18  merge failed (gh error, incl. a --match-head-commit head-moved abort
@@ -65,7 +65,7 @@
 # FIRST on PATH — never a caller-settable override.
 #
 # Accepted env seams (both require control of the BRIDGE's launching env, which
-# is already game-over — named here for honesty, per the HIMMEL-1213 gate review):
+# is already game-over — named here for honesty, per the gate review):
 #   * PATH itself resolves `gh` (line: `GH="gh"` + `command -v`). "gh is not
 #     overridable" holds only modulo PATH — auto-action.sh strips the bot token
 #     from the child env but inherits PATH; a hardened child PATH is a follow-up.
@@ -83,7 +83,7 @@ set -uo pipefail
 # any argument parsing, cheapest possible refusal, no API calls. This is what
 # backstops the fact that no allow-rule for this script (or a public
 # `gh pr merge`) is ever added: an agent reaching this script (no allow rule
-# matches it since HIMMEL-3402 removed the `Bash(bash scripts/*)` prefix)
+# matches it since the `Bash(bash scripts/*)` prefix was removed)
 # self-refuses right here, whatever the auto-mode classifier decides.
 # NOTE (defense-in-depth, not the boundary): `env -u CLAUDECODE bash …` or
 # `CLAUDECODE= bash …` clears the marker and sails past this check — but that
@@ -130,7 +130,7 @@ esac
 # blunts prefix-grinding — the agent may push public fix-commits, so a 7-hex
 # prefix could be ground (~2^28, seconds) to a malicious commit sharing the
 # operator-approved prefix, passing both SHA gates AND --match-head-commit even
-# against a diligent operator (HIMMEL-1213 Fable gate-review). Anchored `case` —
+# against a diligent operator. Anchored `case` —
 # NOT `grep -Eq '^…$'`, which matches if ANY line of a multi-line value matches
 # (audit-log line-injection: a `$'sha\nFAKE'` would flow into audit() below).
 # case matches the WHOLE string, so an embedded newline is a non-hex char here.
@@ -145,7 +145,7 @@ fi
 command -v git >/dev/null 2>&1 || { echo "merge-public-on-green: required tool 'git' not on PATH" >&2; exit 11; }
 command -v "$GH" >/dev/null 2>&1 || { echo "merge-public-on-green: required tool 'gh' not on PATH" >&2; exit 11; }
 
-# Audit sink resolution + writer — same shape as merge-on-green.sh (HIMMEL-1042).
+# Audit sink resolution + writer — same shape as merge-on-green.sh.
 _audit_sink() {
     if [ -n "${MERGE_PUBLIC_ON_GREEN_LOG:-}" ]; then printf '%s' "$MERGE_PUBLIC_ON_GREEN_LOG"; return; fi
     local gd; gd=$(git rev-parse --git-dir 2>/dev/null || true)
@@ -253,7 +253,7 @@ case "$pr_state" in
 esac
 
 # 2b. Base-branch gate — PR base must equal the repo's default branch. Fail
-# CLOSED on an undeterminable default branch, never guess (HIMMEL-1080 lesson).
+# CLOSED on an undeterminable default branch, never guess.
 default_branch=$("$GH" repo view "$REPO" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>/dev/null || true)
 if [ -z "$pr_base" ] || [ -z "$default_branch" ]; then
     echo "merge-public-on-green: cannot determine PR #$pr's base ('${pr_base:-<empty>}') or $REPO's default branch ('${default_branch:-<empty>}') — refusing. Re-run." >&2
@@ -281,7 +281,7 @@ case "$head_sha" in
 esac
 
 # 4. Green gate — check-ci.sh exit 0 is the ONLY pass (CI green + zero
-# unresolved threads + no changes-requested + the HIMMEL-1126 body/outside-
+# unresolved threads + no changes-requested + the body/outside-
 # diff gate). check-ci.sh resolves its selector via cwd's git remote when
 # given a bare PR number, but this script runs from the bridge's HIMMEL_REPO
 # cwd (typically the PRIVATE checkout) — so it MUST be pointed at the PR by
@@ -299,7 +299,7 @@ if [ "$ci_rc" -ne 0 ]; then
     exit 16
 fi
 
-# 4b. Re-verify FRESH, immediately before merging (HIMMEL-1080 retarget-race
+# 4b. Re-verify FRESH, immediately before merging (retarget-race
 # lesson, ported verbatim): check-ci.sh above WATCHES CI and can block for
 # minutes; gh allows retargeting a PR's base without moving its head, so the
 # base checked at gate 2b can go stale during that window — `--match-head-
@@ -334,8 +334,8 @@ case "$fresh_head" in
         exit 15 ;;
 esac
 
-# 4c. Fresh REVIEW-STATE re-check, immediately before merging (HIMMEL-1213
-# codex-adv). check-ci at gate 4 certified reviews, but a reviewer can request
+# 4c. Fresh REVIEW-STATE re-check, immediately before merging
+# check-ci at gate 4 certified reviews, but a reviewer can request
 # changes or open an unresolved thread AFTER that returned WITHOUT moving the
 # head — `--match-head-commit` would still pass and `--admin` would bypass the
 # branch protection that catches it, merging code whose approval was effectively

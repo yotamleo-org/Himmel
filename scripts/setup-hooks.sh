@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 GUARDRAIL_BLOCK="$SCRIPT_DIR/hooks/guardrail-block.mjs"
 
-# ── guardrail mode toggle (HIMMEL-709) ───────────────────────────────────────
+# ── guardrail mode toggle ───────────────────────────────────────
 # `--guardrail-mode global|project` manages the himmel-owned user-level
 # guardrail block via guardrail-block.mjs. Optional; a bare `setup-hooks.sh`
 # installs git hooks (below) and only PRINTS guardrail status (no mutation).
@@ -121,14 +121,14 @@ $PYTHON -m pip install pre-commit --quiet
 echo "==> Installing git hooks..."
 $PYTHON -m pre_commit install
 $PYTHON -m pre_commit install --hook-type pre-push
-# Non-fatal (HIMMEL-1586): see setup.sh — a foreign pre-push hook left by
+# Non-fatal: see setup.sh — a foreign pre-push hook left by
 # pre-commit makes the installer refuse (exit 2); that must not abort the
 # remaining steps. The push-time self-heal retries this install on first push.
 if ! bash "$SCRIPT_DIR/hooks/install-cr-pre-push-legacy.sh"; then
   echo "  WARNING: CR pre-push legacy hook not installed (see above). Setup continues; the push-time self-heal retries this install on first push." >&2
 fi
 $PYTHON -m pre_commit install --hook-type commit-msg
-# Non-fatal (HIMMEL-2095), same pattern as the CR pre-push legacy install
+# Non-fatal, same pattern as the CR pre-push legacy install
 # above: `reference-transaction` is not a `pre-commit install --hook-type`
 # supported type, so it needs its own installer. A failure here must not
 # abort the rest of this refresh.

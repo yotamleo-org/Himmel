@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite for scripts/ci/tmp-sweep.sh (HIMMEL-1978).
+# Suite for scripts/ci/tmp-sweep.sh.
 #
 # Pins OUR contract only — the age guard, the prefix allow-list, dry-run vs
 # apply, symlink safety, and the temp-path guard. It does not re-prove find(1).
@@ -59,7 +59,7 @@ make_fixture() {
 
 # tmp-sweep.sh reports its root as `pwd -P`, and Case F's rm stub matches on the
 # root's text: build the fixture roots from the physical spelling (macOS
-# TMPDIR=/var/folders/../T/ is /private/var/.. to the script — HIMMEL-3179).
+# TMPDIR=/var/folders/../T/ is /private/var/.. to the script).
 TMPROOT=$(canon_path "${TMPDIR:-/tmp}") || { echo "FAIL: cannot canonicalise ${TMPDIR:-/tmp}"; exit 1; }
 
 echo "test-tmp-sweep.sh"
@@ -116,7 +116,7 @@ rm -rf "$root_b"
 # the whole point) and are removed with rmdir, never rm -rf: a $HOME path plus
 # a recursive delete would destroy whatever the user happened to keep there.
 #
-# HIMMEL-2258: they are `mktemp -d` roots, like every other fixture in this
+# They are `mktemp -d` roots, like every other fixture in this
 # suite, NOT fixed paths guarded by "skip if it already exists". That guard
 # was a self-skipping shield: one interrupted run leaks the fixed directory
 # and every host that ever hit that leak silently drops these six assertions
@@ -183,7 +183,7 @@ out=$(bash "$SWEEP" --root "$root_e" --older-than 6 --apply --include-bare-mktem
 if [ ! -e "$root_e/tmp.OTHERAP" ]; then pass "--include-bare-mktemp opts the bare tmp. entry in"; else fail "--include-bare-mktemp did not sweep the bare tmp. entry: $out"; fi
 rm -rf "$root_e"
 
-# Case F: --apply exits 3 when a matched entry survives the delete (HIMMEL-1995).
+# Case F: --apply exits 3 when a matched entry survives the delete.
 # The exit status has to come from the filesystem: the delete discards rm's
 # errors on purpose, so only a re-match proves the sweep did what it printed.
 # A real deletion failure is not reproducible by a same-user test: `rm -rf`
@@ -219,7 +219,7 @@ fi
 if grepq "$out" -E 'entries after: '; then pass "the report is still printed"; else fail "shortfall suppressed the report: $out"; fi
 rm -rf "$root_f" "$stub_f"
 
-# Case G: the prefix list is templates, not family stems (HIMMEL-1995).
+# Case G: the prefix list is templates, not family stems.
 #   bench-run-batch-abort-runs-  a real mkdtempSync template     -> matched
 #   telegram-bus-                the renamed telegram bus template -> matched
 #   bench-marks-                 shares the OLD `bench-` stem     -> not ours

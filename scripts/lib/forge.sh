@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# forge.sh — the forge-dispatch seam (HIMMEL-326).
+# forge.sh — the forge-dispatch seam.
 #
 # A single forge abstraction with two backends, selected per-repo from the
 # `origin` remote URL. Source this file, then call the forge_* verbs; each
@@ -11,7 +11,7 @@
 #      remotes and the test override.
 #   2. else `git remote get-url origin`, its HOST (https, ssh://, scp-like; the
 #      domain or a subdomain of it, case-insensitive) matched against
-#      github.com / bitbucket.org — never a substring of the URL (HIMMEL-3325).
+#      github.com / bitbucket.org — never a substring of the URL.
 #   3. else (no origin, or matches neither) → non-zero + actionable message.
 #      Never infer the forge from a non-origin remote (silent wrong-API risk).
 #
@@ -19,7 +19,7 @@
 #   GH_CMD          Default `gh`.
 #   BITBUCKET_CMD   Default `node <primary-checkout>/scripts/bitbucket/dist/index.js`.
 #
-# HIMMEL-4762 (HIMMEL-4748 WP4): two more kinds, local-git and none. The
+# Two more kinds, local-git and none. The
 # detection precedence above now lives in scripts/lib/project-mode.sh
 # (project_mode_forge, which also reads git config himmel.forge). forge_detect
 # keeps its exits for github/bitbucket callers: 2 = invalid, 3 = the origin
@@ -191,16 +191,16 @@ forge_pr_create()      { _forge_dispatch forge_pr_create "$@"; }
 forge_pr_set_body()    { _forge_dispatch forge_pr_set_body "$@"; }
 forge_pr_mergeable()   { _forge_dispatch forge_pr_mergeable "$@"; }
 # args: NUMBER [VETTED_HEAD_SHA]. The optional vetted SHA binds the merge to the
-# commit the gates certified (HIMMEL-1058 TOCTOU) — honored by github
+# commit the gates certified (TOCTOU) — honored by github
 # (--match-head-commit), accepted-and-ignored by bitbucket (no equivalent).
 forge_pr_merge()       { _forge_dispatch forge_pr_merge "$@"; }
 forge_pr_has_merged()  { _forge_dispatch forge_pr_has_merged "$@"; }
-# issue create (CR deferred-issue filing, HIMMEL-327). args: REPO TITLE BODY LABEL.
+# issue create (CR deferred-issue filing). args: REPO TITLE BODY LABEL.
 # Echoes the issue URL on success. The bitbucket backend returns rc 3 when the
 # issue tracker is disabled (spec §5.2) so the caller can degrade gracefully.
 forge_issue_create()   { _forge_dispatch forge_issue_create "$@"; }
 
-# ── change-id verbs (HIMMEL-4762, spec section 3) ───────────────────────────
+# ── change-id verbs ───────────────────────────
 # forge_change_id <branch>: github/bitbucket the open PR number for the branch;
 #   local-git br-<branch, / to -, lowercased>, rc 2 when another branch's change
 #   record already holds that id; none rc 4.

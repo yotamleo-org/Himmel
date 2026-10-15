@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/clean-sandbox.sh (HIMMEL-3321).
+# Tests for scripts/lib/clean-sandbox.sh.
 # Usage: bash scripts/lib/test-clean-sandbox.sh
 # Hermetic: every launch gets a scratch dir under a mktemp root; the operator's
 # real ~/.himmel/provenance.jsonl is hashed before and after and must not move.
@@ -91,8 +91,8 @@ out3=$(bash "$SB" --scratch "$TMP/s3" --keep KEEPME -- env 2>/dev/null)
 assert_contains "T3 --keep KEEPME reaches the child" "KEEPME=bar" "$out3"
 assert_not_contains "T3 an unkept var stays out" "UNKEPT" "$out3"
 
-# T3b: --keep passes the value byte-exact - trailing newlines survive (HIMMEL-3367;
-# a bare $(printenv VAR) strips them). printenv adds one newline of its own, and
+# T3b: --keep passes the value byte-exact - trailing newlines survive
+# (a bare $(printenv VAR) strips them). printenv adds one newline of its own, and
 # the x sentinel stops this capture from stripping the rest.
 nl=$'\n'
 export KEEPNL1="abc$nl" KEEPNL2="abc$nl$nl" KEEPMID="a${nl}b" KEEPEMPTY=""
@@ -174,7 +174,7 @@ case "$PROV_BEFORE$PROV_AFTER" in
     *) assert_eq "T12 real provenance.jsonl untouched" "$PROV_BEFORE" "$PROV_AFTER" ;;
 esac
 
-# T12b: the hasher fallback, on a fixture (HIMMEL-3367). Control first: a present
+# T12b: the hasher fallback, on a fixture. Control first: a present
 # file hashes to 64 hex chars on this box, so the UNHASHABLE case below can fail.
 printf 'x\n' > "$TMP/fixture-prov"
 h_ok=$(prov_state "$TMP/fixture-prov")

@@ -11,14 +11,14 @@
 #         env.LUNA_VAULT_PATH, env.HANDOVER_DIR, the UNIVERSAL hooks — what
 #         setup.ps1/adopt wired)
 #   [7/7] remove the himmelctl cache + state dir ~/.claude/himmel
-#         (install-profile.json, state.json — HIMMEL-2459)
+#          (install-profile.json, state.json)
 #
 # Destructive. Fail-closed: without -Yes an interactive run prompts; a
 # non-interactive run aborts (rc=2). -DryRun prints actions only.
 #
 # A step that HAD to run and could not — its tool is unresolvable — is named
 # with where it was searched, and the run exits 2 WITHOUT printing "Uninstall
-# complete." (HIMMEL-2458). The PATH-layer cause behind that ticket is
+# complete.". The PATH-layer cause behind that ticket is
 # Linux-only (a non-login shell missing ~/.local/bin), but the failure it
 # produced is not: on any platform a missing `claude` or `python` used to leave
 # every plugin installed and every git hook firing while the run reported
@@ -30,7 +30,7 @@
 #        [-KeepTelegramState] [-SkipPlugins] [-SkipTasks] [-SkipHooks]
 #        [-SkipSettings]
 #
-# Code vs state (HIMMEL-3058): by default only himmel's CODE is removed (plugins,
+# Code vs state: by default only himmel's CODE is removed (plugins,
 # hooks, settings wiring, cache). Operator STATE — the telegram pairing and the
 # bridge state (step 2) — is kept unless -PurgeState is passed. -KeepTelegramState
 # is retained for callers that still pass it; it contradicts -PurgeState (rc=2).
@@ -58,7 +58,7 @@ if ($PurgeState -and $KeepTelegramState) {
     [Console]::Error.WriteLine('ERROR: -PurgeState and -KeepTelegramState contradict each other -- pick one.')
     exit 2
 }
-# Operator state is removed only on -PurgeState (HIMMEL-3058).
+# Operator state is removed only on -PurgeState.
 $RemoveState = $PurgeState -and (-not $KeepTelegramState)
 
 $ChannelDir = if ($env:TELEGRAM_CHANNEL_DIR) { $env:TELEGRAM_CHANNEL_DIR }
@@ -73,7 +73,7 @@ $HimmelCacheDir = if ($env:HIMMELCTL_CACHE_DIR) { $env:HIMMELCTL_CACHE_DIR }
                   else { Join-Path $HOME '.claude\himmel' }
 
 # Steps that HAD to run and could not. Non-empty => rc=2 and no completion
-# claim (HIMMEL-2458).
+# claim.
 $StepsIncomplete = [System.Collections.Generic.List[string]]::new()
 
 # Resolve-Tool <name> — full path to the tool, or $null. PATH first, then the
@@ -436,10 +436,10 @@ if ($SkipHooks) {
 }
 Write-Host ""
 
-# --- [6/7] unwire user-scope settings.json (HIMMEL-460) ----------------------
+# --- [6/7] unwire user-scope settings.json ----------------------
 # Symmetric inverse of setup.ps1 [9/10] + adopt -Scope user: remove the
 # statusLine, env.HIMMEL_REPO, env.LUNA_VAULT_PATH, env.HANDOVER_DIR
-# (HIMMEL-839), and the UNIVERSAL hooks. Each helper removes ONLY its own
+# and the UNIVERSAL hooks. Each helper removes ONLY its own
 # key/stanza (refuses invalid JSON, preserves every non-himmel key). The
 # single-key helpers have no dry-run flag, so -DryRun is gated here;
 # unwire-pretooluse-hooks has its own switch.
@@ -465,7 +465,7 @@ if ($SkipSettings) {
 }
 Write-Host ""
 
-# --- [7/7] remove the himmelctl cache + state (HIMMEL-2459) ------------------
+# --- [7/7] remove the himmelctl cache + state ------------------
 # install-profile.json + state.json survived a COMPLETE uninstall, so a
 # re-install started against the PREVIOUS install's profile and state ledger.
 Write-Host "[7/7] Removing himmelctl cache + state ($HimmelCacheDir)..."
@@ -480,12 +480,12 @@ if (Test-SuspiciousRemovePath $HimmelCacheDir) {
 } else {
     # Name the known state files before removing, so -DryRun is auditable.
     # The last four are the session-start update check's stamps + release cache
-    # (check-update-available.sh, HIMMEL-3260) — same dir, removed with it.
+    # (check-update-available.sh) — same dir, removed with it.
     foreach ($f in @('install-profile.json', 'state.json', 'himmel-update-check-last', 'himmel-update-check-first', 'himmel-latest-release', 'himmel-latest-release.fail')) {
         $p = Join-Path $HimmelCacheDir $f
         if (Test-Path -LiteralPath $p -PathType Leaf) { Write-Host "  contains: $p" }
     }
-    # headed-arm-leg.sh (Linux/konsole only, HIMMEL-3270) keeps its launch
+    # headed-arm-leg.sh keeps its launch
     # records in launch-logs\ here; named as a count, like uninstall.sh.
     $launchDir = Join-Path $HimmelCacheDir 'launch-logs'
     if (Test-Path -LiteralPath $launchDir -PathType Container) {
@@ -505,7 +505,7 @@ if (Test-SuspiciousRemovePath $HimmelCacheDir) {
         }
         if ($rmErr -or (Test-Path -LiteralPath $HimmelCacheDir)) {
             # A failed removal is residue that survives the uninstall — the
-            # exact thing HIMMEL-2458 says must not end in "Uninstall
+            # exact thing an earlier change says must not end in "Uninstall
             # complete." at rc=0.
             $detail = if ($rmErr) { " -- $rmErr" } else { '' }
             Write-Host "  ERROR: failed to remove $HimmelCacheDir$detail" -ForegroundColor Red
@@ -519,7 +519,7 @@ if (Test-SuspiciousRemovePath $HimmelCacheDir) {
 Write-Host ""
 
 # A step that HAD to run and could not is not a completed uninstall — saying so,
-# and exiting non-zero, is the point of HIMMEL-2458.
+# and exiting non-zero, is the point of.
 if ($StepsIncomplete.Count -gt 0) {
     Write-Host "Uninstall INCOMPLETE -- $($StepsIncomplete.Count) step(s) did not run:" -ForegroundColor Red
     foreach ($s in $StepsIncomplete) { Write-Host "  - $s" -ForegroundColor Red }

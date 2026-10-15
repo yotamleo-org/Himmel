@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/orphan-check.sh -- /pr-check step-4 structural orphan-check
-# (HIMMEL-1219 round 5; extracted from the runbook fence by HIMMEL-2226).
+# (extracted from the runbook fence).
 #
 # WHY THIS IS A SCRIPT AND NOT A FENCE: `.claude/commands/pr-check.md` used to
 # carry this logic as an inline ```bash fence the orchestrating session ran
@@ -11,7 +11,7 @@
 # work happens -- the fence was therefore UNRUNNABLE, and the operator had to
 # invent a scratch-.sh workaround the runbook never named. Shipping it as a
 # real script removes the parse surface entirely rather than teaching the
-# parser (HIMMEL-2226 direction 3).
+# parser.
 #
 # WHAT IT DOES: orphans = (phase-A candidate IDs) - (aggregate VERDICT IDs).
 # Step 3.2 phase A persists one `VERDICT [<id>] = <verdict>` line per
@@ -22,7 +22,7 @@
 # is treated fail-closed as `unaddressed` -- the caller adds the printed count to
 # its Critical count (N). Uses the SAME VERDICT-line id parse as step 4's
 # exclusion rule, so the phase-A ID set here is identical to the set step 4
-# counts from (/pr-check has had no phase B since HIMMEL-2704).
+# counts from (/pr-check has no phase B).
 #
 # Fail-open / fail-closed, unchanged from the fence:
 #   * missing / empty / unreadable prior-blocking file -> no phase-A candidates
@@ -49,7 +49,7 @@
 #
 # bash 3.2-safe.
 set -uo pipefail
-# HIMMEL-3495: a relative-entry copy that is not the anchor's hands off to it.
+# a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
 
@@ -63,7 +63,7 @@ esac; done
 
 # Derived EXACTLY like write-verdicts.sh and the runbook fences:
 # --git-common-dir is the SHARED git dir across every worktree in the checkout,
-# so both scratch files are branch-scoped (HIMMEL-1219 round 1b) -- himmel runs
+# so both scratch files are branch-scoped -- himmel runs
 # concurrent /pr-check by design and unscoped files would race.
 gd=$(git rev-parse --git-common-dir 2>/dev/null) || gd=""
 [ -n "$gd" ] || { echo "orphan-check.sh: not a git repository (cannot resolve --git-common-dir) -- refusing." >&2; exit 3; }

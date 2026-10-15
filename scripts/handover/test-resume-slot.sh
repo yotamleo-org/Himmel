@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Tests for scripts/handover/resume-slot.sh (HIMMEL-204).
+# Tests for scripts/handover/resume-slot.sh.
 # Cross-platform: pure bash + python3, no scheduler. Synthetic cache fixtures.
 set -uo pipefail
 
 SLOT="$(cd "$(dirname "$0")" && pwd)/resume-slot.sh"
 [ -x "$SLOT" ] || chmod +x "$SLOT"
 
-# Hermetic run (HIMMEL-1271): the operator may have RESUME_SLOT_THRESHOLD
+# Hermetic run: the operator may have RESUME_SLOT_THRESHOLD
 # exported. Every case below asserts against the SHIPPED default unless it sets
 # the var itself, so clear it for the whole suite.
 unset RESUME_SLOT_THRESHOLD
@@ -15,7 +15,7 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 FAILED=0
 
-# HIMMEL-1712: hermetic identity so every raw/mk_cache fixture below can
+# hermetic identity so every raw/mk_cache fixture below can
 # stamp the SAME matching account hash -- this suite is about slot-picking
 # math, not identity, and a dedicated account-mismatch case is added
 # separately below.
@@ -145,7 +145,7 @@ assert_contains "T9 surfaces the unsafe-slot reason" "cannot pick a safe slot" "
 printf 'not json at all {' > "$TMP/bad.json"
 err=$(bash "$SLOT" --cache "$TMP/bad.json" --max-age 0 --emit epoch 2>&1); rc=$?
 assert_rc "T10 malformed JSON exits 2" 2 "$rc"
-# HIMMEL-1712: the account-mismatch check runs in bash before the cache ever
+# the account-mismatch check runs in bash before the cache ever
 # reaches python, and malformed JSON has no readable .account either -- same
 # fail-closed UNKNOWN path as a missing/old-schema cache, so this is now the
 # ERR line malformed JSON surfaces (still rc=2, still no traceback: python
@@ -170,7 +170,7 @@ out=$(bash "$SLOT" --cache "$TMP/sevenonly.json" --max-age 0 --emit reason 2>&1)
 assert_contains "T12 single seven_day exhausted waits for its reset" "wait for seven-day reset" "$out"
 
 # ---------------------------------------------------------------------------
-# T13: wedged python3 stub (HIMMEL-249) — the verdict block must fail
+# T13: wedged python3 stub — the verdict block must fail
 #      BOUNDED + visible (armor kill rc), never hang the smart resolver.
 # ---------------------------------------------------------------------------
 if timeout --version 2>/dev/null | grep -qi coreutils; then
@@ -200,7 +200,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# T14: null utilization on one window (HIMMEL-279) — fail loud (rc 2), NOT
+# T14: null utilization on one window — fail loud (rc 2), NOT
 #      silent 0%-coerce into ASAP. Covers the statusline-PR-#2 null path.
 # ---------------------------------------------------------------------------
 printf '{"five_hour":{"utilization":null,"resets_at":"%s"},"seven_day":{"utilization":30.0,"resets_at":"%s"},"account":"%s"}' \
@@ -215,7 +215,7 @@ t14_empty=0; [ -z "$t14_stdout" ] && t14_empty=1
 assert_true "T14 no epoch/timestamp emitted on null-util die path (stdout is empty)" "$t14_empty"
 
 # ---------------------------------------------------------------------------
-# T15: null utilization on BOTH windows (HIMMEL-279) — fail loud (rc 2),
+# T15: null utilization on BOTH windows — fail loud (rc 2),
 #      the 0%-coerce would have silently scheduled ASAP into a stalled cap.
 # ---------------------------------------------------------------------------
 printf '{"five_hour":{"utilization":null,"resets_at":"%s"},"seven_day":{"utilization":null,"resets_at":"%s"},"account":"%s"}' \
@@ -225,7 +225,7 @@ assert_rc "T15 null both-windows util exits 2" 2 "$rc"
 assert_contains "T15 surfaces null-utilization reason" "utilization is null" "$err"
 
 # ---------------------------------------------------------------------------
-# T16: EPOCH resets_at (HIMMEL-732 schema drift, missed here until HIMMEL-738)
+# T16: EPOCH resets_at
 #      — exhausted window with a raw epoch string like "1783760400" must pick
 #      that reset, not die "resets_at missing/unparseable" (the live failure
 #      that tore auto-arm-on-cap at seven_day=95%).
@@ -246,7 +246,7 @@ assert_rc "T16b numeric resets_at exits 0" 0 "$rc"
 assert_contains "T16b waits for seven-day reset" "wait for seven-day reset" "$out"
 
 # ---------------------------------------------------------------------------
-# T17: RESUME_SLOT_THRESHOLD env override (HIMMEL-1271). The --time smart wall
+# T17: RESUME_SLOT_THRESHOLD env override. The --time smart wall
 #      used to be hardcoded at 90, so an operator who considers a 95% bank
 #      usable still got parked at the window reset. Four contracts:
 #      env honoured / explicit flag beats env / bad env falls back silently /
@@ -303,7 +303,7 @@ assert_rc "T17h bad --threshold flag still exits 1 under a valid env" 1 "$rc"
 assert_contains "T17h bad --threshold flag reports the value it rejected" "ERR resume-slot: --threshold must be a number in 0-100, got: abc" "$err"
 
 # ---------------------------------------------------------------------------
-# T18: RANGE guard (codex-adv, HIMMEL-1271). A syntactically-numeric but
+# T18: RANGE guard. A syntactically-numeric but
 #      out-of-range value — 970, the fat-finger for 97 — would make every
 #      window's 0-100% utilization compare as headroom, so `--time smart`
 #      would pick ASAP and relaunch straight back into a walled bank. As an
@@ -368,7 +368,7 @@ assert_contains "T19c blames the option, not the token after it" "--threshold ne
 assert_not_contains "T19c does not misreport the next arg as unknown" "unknown arg: epoch" "$err"
 
 # ---------------------------------------------------------------------------
-# T20: near-wall WARN (HIMMEL-1968). Under an operator-raised threshold a 96%
+# T20: near-wall WARN. Under an operator-raised threshold a 96%
 #      weekly is headroom by the rule and resolves ASAP (the 2026-08-19 19:37
 #      arm, RESUME_SLOT_THRESHOLD=97) — the slot stays ASAP, but stderr must
 #      carry a loud WARN naming the near-wall window. A genuinely free bank
@@ -389,7 +389,7 @@ assert_rc "T20b free bank exits 0" 0 "$rc"
 assert_not_contains "T20b free bank emits no near-wall WARN" "WARN resume-slot" "$out"
 
 # ---------------------------------------------------------------------------
-# T21: HIMMEL-1712 -- a cache stamped for account A, read by a session whose
+# T21: a cache stamped for account A, read by a session whose
 # identity is B, is unusable -- same exit 2 / empty-stdout / clean-ERR-line
 # shape as any other unusable cache (T6-T11).
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/test-hermes-critic.sh — stub-based tests for hermes-critic.sh
-# (HIMMEL-273). The critic model is stubbed via HERMES_PY (see
+# The critic model is stubbed via HERMES_PY (see
 # scripts/hermes/test-invoke.sh); a throwaway git repo provides the diff.
 #
 # Proves the four contract points:
@@ -11,7 +11,7 @@
 #   4. transport failure   → exit 3
 #
 # Cases 1-7 pass NO --route/--implementer: they assert the DEFAULT route is
-# hermes (HIMMEL-2017 operator ruling), which is what keeps them on the stub.
+# hermes (operator ruling), which is what keeps them on the stub.
 # Cases 8-9 cover the opt-in `--route claude` path with `claude` stubbed on
 # PATH — never the real binary, which would spend the subscription bank.
 #
@@ -28,12 +28,12 @@ command -v node >/dev/null 2>&1 || fail "node is required for these tests"
 work="$(mktemp -d "${TMPDIR:-/tmp}/critic-test.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-# HIMMEL-2241: hermes-critic.sh spawns the REAL scripts/hermes/invoke.sh, which
+# hermes-critic.sh spawns the REAL scripts/hermes/invoke.sh, which
 # appends flow-run lifecycle rows. HERMES_PY stubs the MODEL, not the wrapper,
 # so without this the rows land in the PRODUCTION ledger
 # (~/.himmel/flow-runs.jsonl) and the outcome=error cases below page
 # HimmelFlowRunError for runs that never happened. Redirect into this test's
-# own scratch dir — the HIMMEL-2130 pattern.
+# own scratch dir.
 export HIMMEL_FLOW_RUNS_LEDGER="$work/flow-runs.jsonl"
 
 # ── stub interpreter: emits $STUB_RESPONSE, exits $STUB_RC ──────────────────
@@ -121,7 +121,7 @@ grep -q "CONTEXT PACK TRUNCATED AT 200 BYTES" "$work/pack-capture" || fail "trun
 echo "  ok" >&2
 
 # 7. Master-default repo, NO --base → auto-resolves the diff base via the
-#    master arm of the merge-base fallback chain (HIMMEL-297). With no `main`
+#    master arm of the merge-base fallback chain. With no `main`
 #    anywhere, origin/main / origin/master / main all miss and `master` is the
 #    arm that resolves; reaching the stub at all (exit 0) proves a base was
 #    found rather than the "could not resolve a diff base" exit 2.
@@ -142,7 +142,7 @@ echo "  ok" >&2
 
 # 8. --route claude drives the claude CLI with the isolation + billing flags.
 #    `claude` is STUBBED on PATH: the real binary would spend the subscription
-#    bank on every suite run (HIMMEL-128) and review the fixture for real.
+#    bank on every suite run and review the fixture for real.
 echo "test: claude route uses the claude CLI with isolation flags" >&2
 bindir="$work/bin"
 mkdir -p "$bindir"
@@ -152,12 +152,12 @@ printf '%s\n' "$@" > "$CLAUDE_ARGV_CAPTURE"
 printf '%s' '{"type":"result","subtype":"success","result":"{\"passed\": true, \"security_concerns\": [], \"logic_errors\": [], \"architectural_mismatches\": [], \"suggestions\": [], \"summary\": \"ok\"}"}'
 EOF
 chmod +x "$bindir/claude"
-# The claude route bank-preflights before spending (HIMMEL-128). Point it at a
+# The claude route bank-preflights before spending. Point it at a
 # healthy fixture cache and skip the producer refresh, so the suite stays
 # offline and fast; case 8b drives the exhausted-bank branch.
 # primaries_refreshed_at must be a LIVE stamp: a stale cache yields BANK-STALE,
 # which is a fail-open verdict and would let case 8b pass for the wrong reason.
-# HIMMEL-1712/HIMMEL-3765: bank-preflight distrusts a cache whose account
+# bank-preflight distrusts a cache whose account
 # doesn't match the current identity (BANK-UNKNOWN, checked before the
 # utilization threshold) — stamp a matching account hash so both fixtures
 # below exercise the utilization branch case 8/8b actually test.
@@ -188,7 +188,7 @@ for pair in "-p" "--output-format json" "--permission-mode plan" "--max-turns 1"
         *) fail "claude route: expected '$pair' in claude argv, got: $argv_joined" ;;
     esac
 done
-# HIMMEL-4013: the critic runs under the `bare` plugin profile (--settings <file>),
+# the critic runs under the `bare` plugin profile (--settings <file>),
 # not the operator's full plugin set. The file must exist and enable no plugin
 # beyond the floor (no pr-review-toolkit-himmel).
 settings_file="$(awk 'p==1{ print; exit } /^--settings$/{ p=1 }' "$work/claude-argv")"
@@ -215,7 +215,7 @@ grep -qx -- "bypassPermissions" "$work/claude-argv" \
     && fail "claude route: a crafted --model value injected extra CLI flags"
 echo "  ok" >&2
 
-# 8a2. HIMMEL-4459: exported exit/return/unset/[ shadows must never reach the
+# 8a2. exported exit/return/unset/[ shadows must never reach the
 #      claude launch while a re-route var is ambient. The control (no proxy)
 #      proves the shadowed critic still launches, so the proxied row is not vacuous.
 echo "test: claude route survives exit/return/unset/[ shadows (auth pin)" >&2
@@ -236,7 +236,7 @@ shadow_critic http://evil.invalid
 [ ! -s "$work/claude-argv" ] || fail "shadowed builtins + ambient ANTHROPIC_BASE_URL: claude was launched anyway"
 echo "  ok" >&2
 
-# 8a3. HIMMEL-4461: a shadowed `cd` exporting a proxy URL must not reach the launch
+# 8a3. a shadowed `cd` exporting a proxy URL must not reach the launch
 #      (the cd runs before the gate). The control (plain cd) proves the route launches.
 echo "test: claude route survives a shadowed cd (auth pin)" >&2
 shadow_cd_critic() { # <shadow|plain>
@@ -266,7 +266,7 @@ rc=$?
 grep -q "bank preflight returned SKIPPED-BANK" "$work/err8b" || fail "exhausted bank: stderr did not name the bank refusal"
 echo "  ok" >&2
 
-# 8c. HIMMEL-4082 lane seam: HIMMEL_CLAUDE_LANE routes the claude pass through a
+# 8c. lane seam: HIMMEL_CLAUDE_LANE routes the claude pass through a
 #     lane launcher with the SAME argv; an unknown lane refuses (no fallback).
 #     A mini tree: cr/ copied (so the script's repo root is the mini tree), the
 #     rest of scripts/ symlinked, the two launchers replaced by capturing stubs.
@@ -292,7 +292,7 @@ for l in claude-openrouter claude-codex; do
     chmod +x "$mini/scripts/$l"
 done
 # the reviewed repo for the allowed rows lives under the mini tree: that is the himmel-code corpus
-# HIMMEL-5099: himmel-code is the lib checkout's git common dir, so mini is a git repo and
+# himmel-code is the lib checkout's git common dir, so mini is a git repo and
 # lrepo a worktree of it (a separately init-ed repo nested under mini is refused, below).
 lrepo="$mini/lrepo"
 git -C "$mini" init -q -b main
@@ -315,7 +315,7 @@ for lane in openrouter claudex; do
     [ "$(cat "$work/lane-seen" 2>/dev/null)" = "$l" ] || fail "lane $lane: launcher $l was not used"
     cmp -s "$work/lane-argv" "$work/native-argv" || fail "lane $lane: argv differs from the native claude argv"
 done
-# HIMMEL-4111: the REVIEWED repo (not the scratch cwd) is classified before a
+# the REVIEWED repo (not the scratch cwd) is classified before a
 # non-native lane launches: a salus-marked repo is refused under openrouter with
 # no launcher run, and a himmel-code repo hands the launcher its corpus root.
 : > "$work/lane-argv"; rm -f "$work/lane-seen"; : > "$repo/.salus"
@@ -342,7 +342,7 @@ rc=$?
 [ "$rc" -ne 0 ] || fail "unclassified repo under claudex: expected a refusal, got rc=0"
 [ ! -e "$work/lane-seen" ] || fail "unclassified repo under claudex: the launcher ran anyway"
 grep -q 'no known corpus' "$work/lane-err" || fail "unclassified repo under claudex: stderr did not say so: $(head -c 300 "$work/lane-err")"
-# HIMMEL-5099: a separately init-ed repo nested under the mini tree is a foreign repo, not himmel-code
+# a separately init-ed repo nested under the mini tree is a foreign repo, not himmel-code
 frepo="$mini/foreign"
 mkdir -p "$frepo"
 git -C "$frepo" init -q -b main
@@ -418,12 +418,10 @@ got=$(route_of)
 [ "$got" = "hermes" ] || fail "default route: expected hermes, got '${got:-<none>}'"
 got=$(route_of --implementer hermes)
 [ "$got" = "claude" ] || fail "--implementer hermes: expected claude, got '${got:-<none>}'"
-# HIMMEL-2059: the hermes reviewer now defaults to the critics.json-pinned
-# codex model (gpt-6.1-sol as of HIMMEL-3879; gpt-6-sol before it, HIMMEL-3500; gpt-6-astra before it, HIMMEL-2546;
-# gpt-5.6-sol before that — codex family either way), so a codex implementer
+# the hermes reviewer now defaults to the critics.json-pinned
+# codex model (gpt-6.1-sol; codex family under any pin), so a codex implementer
 # is SAME-family by default — the cross-family guarantee sends this to claude,
-# not hermes (pre-HIMMEL-2059 this asserted hermes, back when the default rode
-# the ox-alpha profile default, a different family from codex).
+# not hermes (the ox-alpha profile default would be a different family from codex).
 got=$(route_of --implementer codex)
 [ "$got" = "claude" ] || fail "--implementer codex (gpt-6.1-sol default, same-family): expected claude, got '${got:-<none>}'"
 got=$(route_of --implementer other)
@@ -513,9 +511,8 @@ rc=$?
 [ -z "$(cat "$work/route-witness")" ] || fail "route both: the second pass ran despite a failed primary (paid call, discarded verdict)"
 echo "  ok" >&2
 
-# 14. HIMMEL-2059: default (no --model, no HERMES_CRITIC_MODEL) resolves to
-#     the critics.json-pinned model (gpt-6.1-sol as of HIMMEL-3879; gpt-6-sol before it, HIMMEL-3500; gpt-6-astra
-#     before it, HIMMEL-2546), with --provider openai-codex forced (family
+# 14. default (no --model, no HERMES_CRITIC_MODEL) resolves to
+#     the critics.json-pinned model (gpt-6.1-sol), with --provider openai-codex forced (family
 #     inference -> codex) — CR critics no longer ride the himmel_agent hermes
 #     profile default.
 echo "test: default hermes model pins gpt-6.1-sol (HIMMEL-2059/HIMMEL-3879)" >&2

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# scripts/ci/check-macos-nightly-health.sh — HIMMEL-3699
+# scripts/ci/check-macos-nightly-health.sh
 #
-# HIMMEL-3902: now run by the summary job of macos-cadence.yml (the os:macos
+# Now run by the summary job of macos-cadence.yml (the os:macos
 # cadence), no longer by ci.yml's shell-unit; it certifies that a macOS job
 # actually passed, and reports any that failed. Original motivation:
 # shell-unit-shard set `continue-on-error: true` for macOS/windows so a red

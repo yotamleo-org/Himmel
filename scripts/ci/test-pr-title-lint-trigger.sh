@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# scripts/ci/test-pr-title-lint-trigger.sh -- regression suite for judge
-# J1284O's F1/F2 fix on HIMMEL-3616: the PR-title lint must (F1) thread the
+# scripts/ci/test-pr-title-lint-trigger.sh -- regression suite:
+# the PR-title lint must (F1) thread the
 # PR author into TICKET_ID_AUTHOR/TICKET_ID_TRUSTED_AUTHOR so the Dependabot
 # exemption applies to a title the same way it already does to a commit
 # (scripts/ci/check-commit-range.sh:86), and (F2) live in its own workflow
@@ -70,7 +70,7 @@ else
   bad "pr-title-lint's concurrency group string also appears in ci.yml (not distinct); got: $title_group"
 fi
 
-# HIMMEL-3835: a superseded run must be replaced while still pending, never
+# A superseded run must be replaced while still pending, never
 # cancelled mid-run (a CANCELLED context), and the required job must carry no
 # job-level `if:` (a skipped job reports success and masks a red title).
 if grep -Eq '^[[:space:]]*cancel-in-progress:[[:space:]]*false' <<< "$body"; then

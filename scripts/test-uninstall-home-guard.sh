@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-2502: test-uninstall.sh's own HOME-isolation preflight (the
+# test-uninstall.sh's own HOME-isolation preflight (the
 # real-home-under-$TMP check + the live-operator-marker check, run before the
 # hermetic PATH is built) must HARD-ABORT the suite when either check fails —
 # not just log a FAIL and fall through to the wet uninstall.sh rows below it.

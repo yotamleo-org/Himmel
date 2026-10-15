@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-preflight-adopter.sh — smoke tests for the standalone check-only adopter
-# preflight (HIMMEL-842 fix-batch): scripts/preflight-adopter.sh + its shared
+# preflight: scripts/preflight-adopter.sh + its shared
 # lib scripts/lib/preflight-adopter.sh.
 #
 # Self-contained: scrubs uv/pipx/node/npm/bun off PATH and re-adds stubs per
@@ -30,7 +30,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -78,10 +78,10 @@ trap cleanup EXIT
 # no scenario below can observe (or be confused by) the real dev machine's
 # toolchain. Scenarios re-add their own stubs on top of this scrubbed base.
 #
-# HIMMEL-880: on stock Ubuntu npm lives in /usr/bin alongside bash itself, so
+# on stock Ubuntu npm lives in /usr/bin alongside bash itself, so
 # the scrub below drops bash wholesale and every `PATH="$tool_free_path" bash
 # ...` invocation below fails to resolve bash before running a single line of
-# the target script (the identical bug HIMMEL-874 fixed in test-adopt.sh).
+# the target script (the identical bug fixed in test-adopt.sh).
 # Pre-link bash + the tools preflight-adopter.sh needs into a hermetic stub
 # dir BEFORE scrubbing, then prepend that stub dir on every invocation below.
 mkdir -p "$work/bin"
@@ -126,7 +126,7 @@ grepq "$out" "neither 'uv' nor 'pipx' found" || fail "uv/pipx gap: missing WARN 
 grepq "$out" 'warning(s)' || fail "uv/pipx gap: missing warning-count summary (got: $out)"
 echo "ok: uv+pipx absent WARNs and exits 0 (non-strict)"
 
-# ── 3b. HIMMEL-4435: same env + --no-vault -> no uv/pipx WARN, 0 warnings ────
+# ── 3b. same env + --no-vault -> no uv/pipx WARN, 0 warnings ────
 mkdir -p "$real_jira_dist"; : > "$real_jira_dist/index.js"
 mkdir -p "$real_jira_node_modules"
 out=$(PATH="$work/bin:$tool_free_path" bash "$preflight" --no-vault 2>&1); rc=$?
@@ -180,7 +180,7 @@ grepq "$out" '0 warnings' || fail "--strict clean env: missing '0 warnings' summ
 echo "ok: --strict exits 0 on a fully clean env"
 
 # ── 8. structural: adopt.sh's require_tools() reuses the shared lib ──────────
-# (no duplicated logic, per the HIMMEL-842 spec) instead of re-implementing
+#  (no duplicated logic, per the spec) instead of re-implementing
 # the check/warn-text logic inline.
 grep -q 'lib/preflight-adopter\.sh' "$adopt" \
   || fail "structural: adopt.sh does not source scripts/lib/preflight-adopter.sh"

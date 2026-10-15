@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/orphan-check.sh (HIMMEL-2226).
+# Smoke test for scripts/cr/orphan-check.sh.
 #
 # Usage: bash scripts/cr/test-orphan-check.sh
 #
@@ -140,7 +140,7 @@ assert_eq "T7 stderr empty" "" "$ERR"
 
 # T8: branch scoping -- concurrent /pr-check on different LINKED WORKTREES
 # shares one git-common-dir, so a run for branch Y must not see branch X's
-# file (HIMMEL-1219 round 1b). Uses two real `git worktree add` checkouts:
+# file. Uses two real `git worktree add` checkouts:
 # driving both checks from $REPO alone cannot catch a SUT that scoped
 # records to each worktree's PRIVATE git dir (--git-dir) instead of the
 # shared --git-common-dir, because a non-worktree repo's --git-dir IS its

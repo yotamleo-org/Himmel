@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/write-verdicts.sh (HIMMEL-2131).
+# Smoke test for scripts/cr/write-verdicts.sh.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$DIR/write-verdicts.sh"
@@ -43,7 +43,7 @@ check "$(cat "$git_dir/cr-prior-blocking/feat/himmel-2131/sub")" "VERDICT [a-1] 
 
 # 4. Malformed line refuses rc=2 and leaves a pre-seeded target untouched.
 # The diagnostic must carry the LINE NUMBER, never the offending line's
-# content (HIMMEL-2131 round 2 — content could be a secret piped in by
+# content (it could be a secret piped in by
 # mistake), so assert the sentinel line text is ABSENT from stderr.
 mkdir -p "$git_dir/cr-prior-blocking"
 printf 'SENTINEL — do not overwrite' >"$git_dir/cr-prior-blocking/t4"
@@ -55,7 +55,7 @@ grep -q 'malformed verdict line at line 2' "$tmp/err4.txt" || { echo "FAIL: T4 m
 grep -q 'not a verdict line' "$tmp/err4.txt" && { echo "FAIL: T4 diagnostic leaked the offending line's content"; fail=1; }
 
 # 4b. Path-escape refusal: '../../evil' must never resolve out of the
-# git-common-dir's cr-prior-blocking/ tree (HIMMEL-2131 review round 1).
+# git-common-dir's cr-prior-blocking/ tree.
 ( cd "$repo" && printf 'VERDICT [x-1] = disproved\n' | bash "$SCRIPT" prior-blocking --branch "../../evil" ) 2>"$tmp/err4b.txt"
 check "$?" "2" "T4b rc"
 [ ! -e "$repo/evil" ] || { echo "FAIL: T4b escaped into $repo/evil"; fail=1; }
@@ -65,7 +65,7 @@ grep -q "'\\.\\.' path segment" "$tmp/err4b.txt" || { echo "FAIL: T4b missing '.
 # 4c. Drive-absolute branch refused (rc + diagnostic only — the refusal fires
 # before any target path is built, so there is nothing on disk to assert
 # against, and asserting a fixed path like /c/tmp/x not existing would depend
-# on the test-runner's own filesystem state, codex-2 HIMMEL-2131 round 4).
+# on the test-runner's own filesystem state).
 ( cd "$repo" && printf 'VERDICT [x-1] = disproved\n' | bash "$SCRIPT" prior-blocking --branch "C:/tmp/x" ) 2>"$tmp/err4c.txt"
 check "$?" "2" "T4c rc"
 grep -q 'drive-absolute' "$tmp/err4c.txt" || { echo "FAIL: T4c missing drive-absolute diagnostic"; fail=1; }
@@ -76,7 +76,7 @@ grep -q 'drive-absolute' "$tmp/err4c.txt" || { echo "FAIL: T4c missing drive-abs
 check "$?" "2" "T4d rc"
 
 # 4e. Symlink-through defense: a pre-planted symlink at the target must not
-# be written through (codex-2, HIMMEL-2131 round 2) — the file it points to
+# be written through — the file it points to
 # stays untouched. `ln -s` silently falls back to a plain copy without
 # admin/Developer-Mode privilege on Windows (same probe idiom as
 # scripts/ci/test-tmp-sweep.sh) — skip the assertion there rather than fail
@@ -90,7 +90,7 @@ if [ -L "$git_dir/cr-prior-blocking/t4e" ]; then
   check "$(cat "$tmp/symlink-victim.txt")" "SENTINEL — do not overwrite via symlink" "T4e symlink target untouched"
   grep -q 'symlink' "$tmp/err4e.txt" || { echo "FAIL: T4e missing symlink diagnostic"; fail=1; }
 
-  # 4f. Ancestor-component symlink (codex-3, HIMMEL-2131 round 4): the
+  # 4f. Ancestor-component symlink: the
   # planted symlink sits at cr-prior-blocking/walktest (a walked path
   # component, not the final target) — writing branch "walktest/x" must still
   # refuse. A distinct component name (not "feat", which T3 already created
@@ -125,7 +125,7 @@ check "$?" "0" "T7 rc"
 [ -f "$git_dir/cr-prior-blocking/t7-explicit" ] || { echo "FAIL: T7 explicit-branch file missing"; fail=1; }
 [ ! -e "$git_dir/cr-prior-blocking/t7-current" ] || { echo "FAIL: T7 wrote to the current branch instead of --branch"; fail=1; }
 
-# 8. HIMMEL-2375: `deferred` with no ticket is REJECTED — untracked and
+# 8. `deferred` with no ticket is REJECTED — untracked and
 # indistinguishable from a free pass around conservation — whole-write
 # refused (rc=2), pre-seeded target untouched, same as any other malformed
 # line (T4).
@@ -135,18 +135,18 @@ printf 'SENTINEL — do not overwrite' >"$git_dir/cr-prior-blocking/t8"
 check "$?" "2" "T8 rc (bare deferred rejected)"
 check "$(cat "$git_dir/cr-prior-blocking/t8")" "SENTINEL — do not overwrite" "T8 target untouched"
 
-# 9. HIMMEL-2375: `deferred -> <TICKET>` is accepted and round-trips
+# 9. `deferred -> <TICKET>` is accepted and round-trips
 # byte-identical.
 ( cd "$repo" && printf 'VERDICT [x-1] = deferred -> HIMMEL-2375\n' | bash "$SCRIPT" prior-blocking --branch t9 )
 check "$?" "0" "T9 rc (deferred with ticket accepted)"
 check "$(cat "$git_dir/cr-prior-blocking/t9")" "VERDICT [x-1] = deferred -> HIMMEL-2375" "T9 contents"
 
-# 10. HIMMEL-2375: a malformed ticket after 'deferred ->' still refuses —
+# 10. A malformed ticket after 'deferred ->' still refuses —
 # mirrors ledger-append.sh's valid_ticket() shape exactly.
 ( cd "$repo" && printf 'VERDICT [x-1] = deferred -> not-a-ticket\n' | bash "$SCRIPT" prior-blocking --branch t10 ) 2>"$tmp/err10.txt"
 check "$?" "2" "T10 rc (malformed ticket rejected)"
 
-# 11. HIMMEL-3798 round 3: --from-file reads verdict content from a path
+# 11. --from-file reads verdict content from a path
 # instead of stdin, round-tripping byte-identical.
 printf 'VERDICT [x-1] = disproved\nVERDICT [codex-adv-2] = agreed\n' >"$tmp/ff11.txt"
 ( cd "$repo" && bash "$SCRIPT" prior-blocking --branch t11 --from-file "$tmp/ff11.txt" )
@@ -188,15 +188,15 @@ else
 fi
 chmod 644 "$tmp/ff14.txt"
 
-# 15. HIMMEL-3798 round 4: --from-file naming a genuinely empty regular file
+# 15. --from-file naming a genuinely empty regular file
 # is ALLOWED, same "no candidates" semantics as empty STDIN (T5) — it is the
-# only sanctioned shape /pr-check can use for that case post-round-3-cut.
+# only sanctioned shape /pr-check can use for that case.
 : >"$tmp/ff15.txt"
 ( cd "$repo" && bash "$SCRIPT" prior-blocking --branch t15 --from-file "$tmp/ff15.txt" ) 2>"$tmp/err15.txt"
 check "$?" "0" "T15 rc (empty --from-file path)"
 check "$(wc -c <"$git_dir/cr-prior-blocking/t15" | tr -d ' ')" "0" "T15 empty target file"
 
-# 16. HIMMEL-4566: sweep mode APPENDS class-sweep records to
+# 16. Sweep mode APPENDS class-sweep records to
 # cr-class-sweeps/<branch> (never truncates — a later round must not erase an
 # earlier round's record), in both accepted shapes.
 ( cd "$repo" && printf 'SWEEP [codex-1@abc1234] class=unquoted path :: sites=a.sh:1, b.sh:4\n' | bash "$SCRIPT" sweep --branch feat/t16 )
@@ -223,7 +223,7 @@ check "$(wc -l <"$git_dir/cr-class-sweeps/feat/t16" | tr -d ' ')" "2" "T17 sweep
 ( cd "$repo" && printf 'SWEEP [codex-1@abc1234] class=x :: sites=a, b\n' | bash "$SCRIPT" aggregate --branch t18 ) 2>/dev/null
 check "$?" "2" "T18 rc (SWEEP line in aggregate mode)"
 
-# 19. HIMMEL-4641: sweep mode runs the gate's own record check at write time. A
+# 19. Sweep mode runs the gate's own record check at write time. A
 # record the gate would refuse (a site absent at the tip) is refused rc=2 with
 # nothing written; the same record naming real files lands. Needs a branch with
 # a tip, an agreed finding for the record's id, and the two files.
@@ -243,7 +243,7 @@ grep -q 'site-not-at-tip:nope.sh' "$tmp/err19.txt" || { echo "FAIL: T19 refusal 
 check "$?" "0" "T19 rc (record the gate accepts)"
 check "$(wc -l <"$git_dir/cr-class-sweeps/feat/t19" | tr -d ' ')" "1" "T19 accepted record landed"
 
-# 20. HIMMEL-5158, intended behaviour pinned: a record naming a site that is not
+# 20. Intended behaviour pinned: a record naming a site that is not
 # committed yet is refused at write time (the gate judges the tip, so an
 # uncommitted file is not evidence), and the same record lands once it is.
 printf 'echo c\n' > "$repo/c.sh"
@@ -254,8 +254,8 @@ grep -q 'site-not-at-tip:c.sh' "$tmp/err20.txt" || { echo "FAIL: T20 refusal doe
 ( cd "$repo" && printf 'SWEEP [t19-1@%s] class=y :: sites=a.sh:1, c.sh:1\n' "${t19_head:0:12}" | bash "$SCRIPT" sweep --branch feat/t19 )
 check "$?" "0" "T20 rc (site committed)"
 
-# 21. HIMMEL-2601: the /pr-check runbook carries no stale "operator also needs a
-# primary-anchored allow rule" note; the spelling rule is HIMMEL-4040 (preamble).
+# 21. The /pr-check runbook carries no stale "operator also needs a
+# primary-anchored allow rule" note; the spelling rule is in the preamble.
 stale_re='Operator note|primary-checkout>/scripts/cr/write-verdicts'
 # Positive control: the matcher must fire on the stale wording, else the scan below is vacuous.
 printf '   #   Operator note: the operator also needs <primary-checkout>/scripts/cr/write-verdicts.sh\n' | grep -Eq "$stale_re" \

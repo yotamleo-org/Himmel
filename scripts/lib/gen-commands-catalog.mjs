@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/lib/gen-commands-catalog.mjs — HIMMEL-2064.
+// scripts/lib/gen-commands-catalog.mjs.
 //
 // docs/commands-catalog.md rows for a command backed by `.claude/commands/<name>.md`
 // carry a machine-generated Description column (byte-equal to that command's
@@ -38,7 +38,7 @@ export function loadGenerated(cmdDir) {
 // ever backs them, by design — see the section intros in docs/commands-catalog.md).
 // An untagged, unmatched row OUTSIDE these sections is not "exempt", it is an
 // ORPHAN: a command-backed row whose `.claude/commands/<name>.md` was removed
-// or renamed (CR round 2, HIMMEL-2064 / HIMMEL-2080) — `write` drops it,
+// or renamed — `write` drops it,
 // `check` flags it. A TAGGED row (`/name (plugin)`) is exempt everywhere,
 // regardless of section, since the tag itself declares it plugin-sourced.
 const EXEMPT_SECTIONS = new Set([
@@ -50,7 +50,7 @@ const EXEMPT_SECTIONS = new Set([
 // "what is being committed"), as a name -> description Map. Mirrors
 // loadGenerated's contract, but sourced from `git show :<path>` blobs instead
 // of the working tree, so an unrelated UNSTAGED edit sitting in a command
-// file cannot influence the check (`--staged`, CR round 2 minor: align with
+// file cannot influence the check (`--staged`; aligned with
 // check-doc-guard.sh's staged-vs-working convention).
 export function loadGeneratedStaged(root, cmdDirRelative) {
   const map = new Map();
@@ -58,7 +58,7 @@ export function loadGeneratedStaged(root, cmdDirRelative) {
   for (const path of listing.split('\0')) {
     if (!path) continue;
     const name = path.slice(cmdDirRelative.length + 1, -'.md'.length);
-    // codex-1, CR round on HIMMEL-2064: git's `*` pathspec crosses directory
+    // git's `*` pathspec crosses directory
     // boundaries (verified: `.claude/commands/*.md` matches a nested
     // `sub/x.md`), but loadGenerated's readdirSync only reads DIRECT
     // entries — a staged nested file would appear only in staged mode and
@@ -83,17 +83,17 @@ const ROW_START_RE = /^\| \//;
 // a single `\|` is itself a CommonMark escape sequence (renders as a bare
 // `|`, silently dropping the backslash) — doubling the backslash first
 // forces the renderer to consume it as its own escape pair, reproducing the
-// original two characters (codex-1, CR round on HIMMEL-2064).
+// original two characters.
 const escapeCell = (s) => s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 const unescapeCell = (s) => s.replace(/\\\|/g, '|').replace(/\\\\/g, '\\');
 
 // The exempt "(tag)" suffix is a closed set of the plugin markers this repo
 // actually emits (see docs/commands-catalog.md rows), not any parenthetical
-// (codex-2, CR round on HIMMEL-2064): an unanchored / \(/ let an unrelated
+// an unanchored / \(/ let an unrelated
 // aside like `/foo (beta)` evade the orphan check by looking tagged.
 const TAG_RE = / \((himmel-ops|obsidian-triage|[\w-]+ plugin)\)$/;
 
-// codex-1, CR round on HIMMEL-2064: `.split(' | ')` only splits on a pipe
+// `.split(' | ')` only splits on a pipe
 // with a space on BOTH sides, so a hand-written cell with an unescaped pipe
 // and no adjacent space (e.g. `note-a|note-b`) stayed inside one cell,
 // passing check clean even though write would still re-escape it once
@@ -121,13 +121,13 @@ function splitUnescaped(s) {
 }
 
 function parseRow(line) {
-  // codex-1, CR round on HIMMEL-2064 (Critical): blindly slicing off the
+  // blindly slicing off the
   // last character assumed a trailing `|` always exists. GFM table rows
   // make the trailing pipe OPTIONAL (only the leading one is guaranteed
   // here, by ROW_START_RE's `^| /`) — a row that legitimately omits it had
   // its last real character silently truncated.
   //
-  // codex-1, CR round on HIMMEL-2105 (Important): a plain `body.endsWith('|')`
+  // a plain `body.endsWith('|')`
   // check can't tell an optional trailing delimiter from a cell whose real
   // content legitimately ends in an escaped literal pipe (`\|`, as produced
   // by escapeCell) — stripping that char corrupts content. Let
@@ -161,7 +161,7 @@ export function regenerateCatalog(catalogText, generated, mode) {
   const violations = [];
   const seen = new Set();
   let inTable = false;
-  // Separate from `inTable` (codex-2, CR round on HIMMEL-2064): `inTable`
+  // Separate from `inTable`: `inTable`
   // covers EITHER header form and drives write's own migration (write always
   // upgrades a recognized header, so an as-yet-unmigrated legacy 2-col table
   // is not drift). `inTableThreeCol` is true only for the ALREADY-3-column
@@ -178,7 +178,7 @@ export function regenerateCatalog(catalogText, generated, mode) {
 
     if (line.trim() === '') { inTable = false; inTableThreeCol = false; out.push(line); continue; }
     if (!ROW_START_RE.test(line)) {
-      // codex-1, HIMMEL-2064 CR round 3: recognize the ALREADY-migrated
+      // recognize the ALREADY-migrated
       // 3-col header too, not just the legacy 2-col one — otherwise a
       // second `write` pass over an already-3-col table never sets inTable,
       // so a newly hand-added 2-cell exempt row in that table is left
@@ -209,7 +209,7 @@ export function regenerateCatalog(catalogText, generated, mode) {
       }
       // exempt (plugin-sourced) — pad to 3 columns only if this row's table
       // was upgraded; otherwise leave as-is.
-      // codex-2, CR round on HIMMEL-2064: `write` already padded an
+      // `write` already padded an
       // unpadded exempt row inside an upgraded table, but `check` never
       // looked at this branch at all — a 2-column exempt row sitting inside
       // an already-3-column table passed check with zero violations even
@@ -220,7 +220,7 @@ export function regenerateCatalog(catalogText, generated, mode) {
       out.push(mode === 'write' && inTable && cells.length < 3 ? buildLine([...cells, '']) : line);
       continue;
     }
-    // codex-2, CR round 3: `seen` used to only record presence, so a
+    // `seen` used to only record presence, so a
     // duplicated row for the same command (copy-paste) silently passed
     // whenever both copies' descriptions matched — flag the second
     // occurrence instead.
@@ -234,7 +234,7 @@ export function regenerateCatalog(catalogText, generated, mode) {
     const want = generated.get(name);
     const have = cells[1] ?? '';
     if (mode === 'check') {
-      // codex-3, CR round on HIMMEL-2064: a legacy 2-column row whose col2
+      // a legacy 2-column row whose col2
       // already equals frontmatter passed `have !== want` even though
       // `write` still restructures it (pads a Notes column, upgrades the
       // table header) — check said clean while write still had a diff.
@@ -243,7 +243,7 @@ export function regenerateCatalog(catalogText, generated, mode) {
       // own idempotency check just below (that row is always well-formed).
       if (have !== want) violations.push({ name, have, want });
       else if (cells.length < 3) violations.push({ name, have: '<legacy 2-column row>', want: '<run write to migrate to 3 columns>' });
-      // codex-1, CR round on HIMMEL-2064: an unescaped `|` inside a
+      // an unescaped `|` inside a
       // hand-written Notes cell splits into extra columns (parseRow's
       // ' | ' split has no way to tell it from a real column boundary) —
       // flag it the same way, so the row is never silently trusted as-is.
@@ -254,7 +254,7 @@ export function regenerateCatalog(catalogText, generated, mode) {
     // write: migrate to 3 columns (Command | Description | Notes), preserving
     // any existing extra prose as Notes. A pre-existing 2-col row whose
     // description already equals the frontmatter gets an empty Notes cell.
-    // codex-1, CR round on HIMMEL-2074: rejoin cells[2..] with ' | ' rather
+    // rejoin cells[2..] with ' | ' rather
     // than taking only cells[2] — an unescaped `|` in a hand-written Notes
     // cell parses into extra cells, and taking cells[2] alone silently
     // truncated everything after that pipe. Rejoining recovers the full
@@ -268,7 +268,7 @@ export function regenerateCatalog(catalogText, generated, mode) {
   // left behind) is invisible to the row-by-row pass above — it has no line
   // to walk. check-doc-guard.sh only proves the catalog FILE was touched in
   // the same commit as a new `.claude/commands/<name>.md`, not that a row for
-  // it actually landed (codex-1, HIMMEL-2064 CR round 1). Catch that here.
+  // it actually landed. Catch that here.
   if (mode === 'check') {
     for (const name of generated.keys()) {
       if (!seen.has(name)) violations.push({ name, have: '<no catalog row>', want: generated.get(name) });

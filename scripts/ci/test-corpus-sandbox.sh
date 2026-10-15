@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4912: architecture lint catches direct hook launches, even when a
+# Architecture lint catches direct hook launches, even when a
 # sandbox marker occurs elsewhere. Fixtures are scanned as data, never run.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

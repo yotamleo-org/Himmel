@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-e2e-symmetry-isolation.sh -- HIMMEL-3336: scripts/test-e2e-symmetry.sh must
+# test-e2e-symmetry-isolation.sh --: scripts/test-e2e-symmetry.sh must
 # stay inside its own fixtures. That suite drives the REAL uninstall.sh through a
-# WET [6/8]; after HIMMEL-3251 that step also removes the user-scope files install
+# WET [6/8]; after that step also removes the user-scope files install
 # writes beside settings.json (~/.claude/CLAUDE.md block, ~/.codex/AGENTS.md
 # block, the claude-hud config). Those manifest rows carry no override env var --
 # they resolve {HOME} -- so a suite that only redirects HIMMEL_USER_SETTINGS
@@ -42,7 +42,7 @@ seed_home() {
   printf 'my own rules\n' > "$1/.claude/CLAUDE.md"
   wire_user_claude_md "$repo_root/docs/setup/user-scope-claude-md-template.md" "$1/.claude/CLAUDE.md" >/dev/null
   wire_user_claude_md "$repo_root/docs/setup/user-scope-claude-md-template.md" "$1/.codex/AGENTS.md" >/dev/null
-  # HIMMEL-3334: the real writer (wire-statusline.sh) now drops this at
+  # the real writer (wire-statusline.sh) now drops this at
   # claude-hud.json, a sibling of plugins/ never swept by Claude Code's
   # plugin-manager reaper -- the shape this fixture models is that path.
   sed 's#<himmel-path>#/fixture/himmel#g' "$repo_root/marketplace/plugins/claude-hud/config/himmel-config.json" \
@@ -75,7 +75,7 @@ ctl_out=$( cd "$td/cwd" && env -u CLAUDE_CONFIG_DIR HOME="$ctl" HIMMEL_UNINSTALL
   HIMMELCTL_CACHE_DIR="$td/nonec" \
   bash "$repo_root/scripts/uninstall.sh" --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks </dev/null 2>&1 ) || true
 printf '%s\n' "$ctl_out" | grep -q '\[6/8\] Unwiring' && check "control: [6/8] ran against the fixture" yes yes || check "control: [6/8] ran against the fixture" no yes
-# HIMMEL-3332 S6: hud config is one of the six ledger-decided rows. This
+# S6: hud config is one of the six ledger-decided rows. This
 # fixture's hud config is a hand copy (seed_home never calls a ledger-aware
 # writer -- there isn't one yet), so a wet uninstall with no ledger now KEEPS
 # it with a hand command instead of stripping it unconditionally like before
@@ -93,7 +93,7 @@ check "e2e suite exits 0"                    "$suite_rc" "0"
 printf '%s\n' "$suite_out" | grep -q '^E2E ALL PASS' && check "e2e suite reports ALL PASS" yes yes || check "e2e suite reports ALL PASS" no yes
 # Not vacuous: the suite still drives the real [6/8] and asserts its own result.
 printf '%s\n' "$suite_out" | grep -q '^ok - uninstall: \[6/8\] ran' && check "e2e suite still runs uninstall [6/8]" yes yes || check "e2e suite still runs uninstall [6/8]" no yes
-# HIMMEL-3332 S6: with a ledger, a pre-existing statusLine is now RESTORED,
+# S6: with a ledger, a pre-existing statusLine is now RESTORED,
 # not stripped -- the renamed RED1 check is this suite's unwire assertion now.
 printf '%s\n' "$suite_out" | grep -q '^ok - RED1 uninstall: user statusLine byte-identical after round trip' && check "e2e suite still asserts the unwire" yes yes || check "e2e suite still asserts the unwire" no yes
 

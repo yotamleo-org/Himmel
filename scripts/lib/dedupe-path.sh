@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # scripts/lib/dedupe-path.sh
 #
-# Order-preserving PATH dedupe (HIMMEL-3640). Claude Code prepends each
+# Order-preserving PATH dedupe. Claude Code prepends each
 # enabled plugin's bin/ dir onto PATH at process startup without checking
 # whether it's already present. A himmel-owned launch chokepoint that hands
 # an inherited (already 2x'd) PATH straight to a nested `claude`/`claude -p`

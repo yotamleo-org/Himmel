@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-himmel-update-axis-b.sh — hermetic tests for the machine-local ("Axis B")
-# catch-up steps added to scripts/himmel-update.sh by HIMMEL-2134:
+# catch-up steps added to scripts/himmel-update.sh by:
 # the --only single-step mode, the cli-proxy-api host roll, the installed-
 # marketplaces catch-up, and the qmd daemon-restart notice.
 #
@@ -26,7 +26,7 @@
 #      with the operator's first-install command, never a phantom roll.
 #   6. marketplaces catch-up: --check lists the manual-tier rows and invokes
 #      the claude stub ZERO times.
-#   7. cli-proxy roll (HIMMEL-2152): APPLY mode (--only cli_proxy) completes
+#   7. cli-proxy roll: APPLY mode (--only cli_proxy) completes
 #      instead of errexiting on an ahead host or an uncomparable stamp, and
 #      later steps still run.
 #   8. Linux without pwsh stops before installing, then restarts; failures
@@ -46,7 +46,7 @@ fi
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-# vm.mode (HIMMEL-4597) comes from each case's fixture HOME or the seam below,
+# vm.mode comes from each case's fixture HOME or the seam below,
 # never from the operator's shell.
 unset HIMMEL_VM_MODE_CONFIG HIMMEL_UPDATE_VM_ACK
 
@@ -83,7 +83,7 @@ assert_pass() { pass=$((pass + 1)); echo "  PASS: $1"; }
 assert_fail() { fail=$((fail + 1)); echo "  FAIL: $1"; }
 
 # grepq — `grep -q` with NO pipeline (pipefail + SIGPIPE would report a
-# SUCCESSFUL early match as a failed pipeline; HIMMEL-1430).
+# SUCCESSFUL early match as a failed pipeline;).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 assert_contains() {
     local desc="$1" pattern="$2" actual="$3"
@@ -156,7 +156,7 @@ write_fake_lane() {   # <clone> <version>
     git -C "$1" commit --quiet -m "fake lane"
 }
 
-# --roll (HIMMEL-3051) is now the ONE call sync_cli_proxy issues, so the fake
+# --roll is now the ONE call sync_cli_proxy issues, so the fake
 # lane owns the stop -> install -> restart sequencing internally instead of
 # himmel-update.sh issuing three separate invocations. The rc knobs keep their
 # old positional meaning; $3 (the call log) records only the OUTER invocation
@@ -399,7 +399,7 @@ assert_eq "--check invoked the claude stub ZERO times" "" "$(cat "$CALLLOG")"
 echo ""
 echo "Test 8b: cli-proxy roll — an AHEAD host is left alone, never downgraded"
 # A bare `!=` treated newer-than-pin as drift and rolled the host BACKWARDS
-# while printing it as an upgrade (CR round 4, codex-2). Pin is 9.9.9.
+# while printing it as an upgrade. Pin is 9.9.9.
 printf '99.0.0\n' > "$FH5/.cli-proxy-api/cli-proxy-api.version"
 OUT="$(run_update "$CLONE5" "$FH5" "$STUB1" --check)"; RC=$?
 assert_eq "--check exits 0 with an ahead host" "0" "$RC"
@@ -412,7 +412,7 @@ assert_not_contains "an ahead host is never rolled" "rolling host" "$OUT"
 echo ""
 echo "Test 8c: cli-proxy roll — an UNPARSEABLE stamp is never rolled"
 # 'custom' used to parse to (0,0,0) and read as behind everything, triggering an
-# unattended roll that clobbered a hand-built install (CR round 5, codex-2).
+# unattended roll that clobbered a hand-built install.
 # "Cannot compare" must be its own outcome, not a silent "behind".
 # 'custom' is the obvious shape; '1.custom' is the one that got through a
 # leading-component-only check by degrading its tail to 0 -> (1,0,0) -> "behind"
@@ -452,7 +452,7 @@ assert_not_contains "build metadata is never rolled" "rolling host" "$OUT"
 
 echo ""
 echo "Test 9: cli-proxy roll — APPLY mode actually rolls the host"
-# The state-changing path (CR round 3, codex-2): every case above asserts on
+# The state-changing path: every case above asserts on
 # --check, which shells out to nothing. Here a fake `pwsh` is put first on PATH
 # and `--only cli_proxy` drives JUST that step, so the roll is exercised without
 # a pull/marketplace/jira-dist cycle and without touching a real proxy.
@@ -756,7 +756,7 @@ printf '#!/bin/sh\nexit 0\n' > "$UV_OK_BIN/uv"; chmod +x "$UV_OK_BIN/uv"
 OUT="$(PATH="$UV_OK_BIN:$NO_UV_BIN" run_update "$CLONE15" "$FH15" "$STUB15" --only graphify)"
 assert_not_contains "uv present: no uv-missing row" "uv missing" "$OUT"
 
-# HIMMEL-4380: --graphify-only is the standing way to clear a pin-sync skip from
+# --graphify-only is the standing way to clear a pin-sync skip from
 # a slot with no live session; it is the same step as --only graphify.
 OUT="$(PATH="$NO_UV_BIN" run_update "$CLONE15" "$FH15" "$STUB15" --graphify-only)"; RC=$?
 assert_eq "--graphify-only exits 0 (advisory)" "0" "$RC"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/leg-timeline.sh — HIMMEL-1485
+# scripts/handover/leg-timeline.sh
 #
 # Reconstruct a per-leg critical-path timeline from data that already exists:
 #   - worker dispatches : ~/.claude/handover/bridge/{glm,claudex}-sessions/*/meta.json
@@ -55,9 +55,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
-# HIMMEL-3533: pin to this script's OWN checkout, never the caller's CWD repo
+# pin to this script's OWN checkout, never the caller's CWD repo
 # (load_dotenv with no --root resolves via the process CWD's git repo — see
-# HIMMEL-3532 / bank-preflight.sh for the failure mode).
+# bank-preflight.sh for the failure mode).
 load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" HANDOVER_DIR USER_SLUG
 
 glm_dir="${LEG_TIMELINE_WORKER_GLM:-$HOME/.claude/handover/bridge/glm-sessions}"
@@ -228,7 +228,7 @@ gather_ledger() {
     const text = buf.toString("utf8");                 // bad bytes -> replacement chars, ignored
     // optional fractional seconds then an optional offset; without the
     // (?:\.\d+)? clause a stamp like T13:40:00.5+02:00 captures truncated
-    // before ".5+02:00", silently stripping the offset (HIMMEL-1485 r7).
+    // before ".5+02:00", silently stripping the offset.
     const RE = /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)/;
     for (const line of text.split(/\r?\n/)){
       const m = line.match(RE);
@@ -264,10 +264,10 @@ fi
 # session-id \t iso(seconds). Sorted numerically by epoch ascending. The since-ts
 # filter is applied separately (next block) to the DISPLAYED table rows only, so
 # the summary pairing below still sees dispatches that predate the window but
-# land inside it (HIMMEL-1485 r5 #1). One node pass over the whole file.
+# land inside it. One node pass over the whole file.
 # A trailing lowercase "z" is a valid offset designator (V8 accepts it; since_ts
 # does too): recognize z/Z case-insensitively so it is not re-suffixed into an
-# invalid "zZ" that Date.parse drops (HIMMEL-1485 r5 #2).
+# invalid "zZ" that Date.parse drops.
 # ---------------------------------------------------------------------------
 node -e '
   const fs = require("fs");
@@ -379,7 +379,7 @@ node -e '
   const inWin = (ms) => Number.isNaN(since) || ms >= since;
   // branch name = label with the appended "@<head>" suffix stripped. Split on
   // the LAST '@' (the head is the trailing hex token) so a branch name that
-  // itself contains '@' is not truncated (HIMMEL-1485 r7).
+  // itself contains '@' is not truncated.
   const branch = (leg) => { const i = leg.lastIndexOf("@"); return i < 0 ? leg : leg.slice(0, i); };
   const rows = [];
   for (const line of fs.readFileSync(0, "utf8").split(/\r?\n/)){
@@ -396,7 +396,7 @@ node -e '
   };
   // Window bounds come from IN-WINDOW rows (the displayed table). Pairing reads
   // the unfiltered set so a pre-window dispatch that lands in-window is no longer
-  // dropped (HIMMEL-1485 r5 #1).
+  // dropped.
   const win = rows.filter(r => inWin(r.ms));
   if (win.length === 0){ process.stdout.write("(no events — nothing to summarize)\n"); process.exit(0); }
 
@@ -480,7 +480,7 @@ node -e '
       const run = fmt(g[1] - g[0]);
       // wait = first gate - earliest worker dispatch of that same branch
       // A worker leg is the RAW shared_branch (no @<head> suffix), so compare it
-      // as-is; only gate labels carry the suffix branch() strips (HIMMEL-4202).
+      // as-is; only gate labels carry the suffix branch() strips.
       let waitStr = "n/a";
       let best = null;
       for (const o of sessions.values()) if (o.disp && o.leg === br && (!best || o.disp.ms < best)) best = o.disp.ms;

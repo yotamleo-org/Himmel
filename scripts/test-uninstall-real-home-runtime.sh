@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # the bash -c bodies expand in the child, on purpose
-# HIMMEL-3415: uninstall.sh's RUNTIME real-home refusal — a fence-lifted
+# uninstall.sh's RUNTIME real-home refusal — a fence-lifted
 # (HIMMEL_UNINSTALL_REAL_HOME=1) wet run whose $HOME claims to be scratch but
 # RESOLVES into the real home (a symlink portal, a nested .claude portal, an
 # override target aimed into the real .claude) is refused rc=3 before any step.
@@ -15,7 +15,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CLI="$HERE/uninstall.sh"
 FAILED=0
-# HIMMEL-3699: physical temp root. On macOS /tmp is a symlink to /private/tmp,
+# physical temp root. On macOS /tmp is a symlink to /private/tmp,
 # and uninstall.sh's real-home check (a) refuses a $HOME whose physical path
 # differs from its spelling — case (s3) builds its scratch HOME under $TMP and
 # was refused on the nightly. TMPDIR is canonicalised (not TMP itself) so the
@@ -357,7 +357,7 @@ if [ "$rc" -eq 0 ] && [ ! -e "$TMP/w/scratch/junk" ]; then pass "(w5) real_home_
 # .provread temp files and the identity reader's per-run cache beside them),
 # and the lib's one `find -delete` runs right after a guarded check of the
 # same dir. The reconcile report's retained-* line only PRINTS that command
-# for the operator (HIMMEL-3787 S3); nothing here runs it.
+# for the operator; nothing here runs it.
 _allowed=$(cat <<'EOF'
 trap 'prov_read_cleanup; rm -f "${_ledger_owned:-}"' EXIT
 rm -f "$_cron_err"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-claude-floor-review.sh — HIMMEL-3107: the context-free CR floor reviewer.
+# test-claude-floor-review.sh — the context-free CR floor reviewer.
 # A fake claude (HIMMEL_CLAUDE_BIN) records its argv, cwd and stdin, so the
 # suite pins that the reviewer invocation carries NO session context, that it
 # refuses to spend when the floor could not unlock, and that it stamps the
@@ -17,11 +17,11 @@ check() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1: expected '$2' got '$3'
 has() { if grep -qF -- "$2" "$3" 2>/dev/null; then ok "$1"; else bad "$1: '$2' not in $3"; fi; }
 hasnt() { if grep -qE -- "$2" "$3" 2>/dev/null; then bad "$1: /$2/ found in $3"; else ok "$1"; fi; }
 
-# HIMMEL-3220: a throwaway HOME and floor key dir — this suite never touches
+# a throwaway HOME and floor key dir — this suite never touches
 # the real ~/.himmel/cr-floor-key.
 export HOME="$W/home" CR_FLOOR_KEY_DIR="$W/keys"
 mkdir -p "$HOME"
-# HIMMEL-1712: bank-preflight distrusts a cache whose account doesn't match
+# bank-preflight distrusts a cache whose account doesn't match
 # the current identity — synthesize one so this fixture still verdicts PROCEED.
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-claude-floor-review-test"}}' > "$HOME/.claude.json"
 # shellcheck source=../lib/usage-cache-identity.sh
@@ -115,7 +115,7 @@ check "1 ledger floor ok row" 1 "$(jq -c 'select(.kind=="avail" and .model=="cla
 has "1 ledger row records same-model + context-free + unlocking lanes" "same-model context-free session=fake-sess-1 unlocked_by=coderabbit(reason=rate-limit) codex(reason=quota-5h)" "$CR_LEDGER"
 check "1 finding recorded unadjudicated" '"claude-floor-1" "imp" ""' "$(jq -r 'select(.kind=="finding") | "\"\(.finding_id)\" \"\(.severity)\" \"\(.verdict)\""' "$CR_LEDGER")"
 has "1 output says NOT cross-model" "NOT COVERED: cross-model review" "$W/out"
-# -- HIMMEL-3220: the artifact is stamped and bound to the dispatch row --
+# -- the artifact is stamped and bound to the dispatch row --
 check "1 artifact dispatch id = the registry row id" "$(jq -r .id "$HIMMEL_REGISTRY_DIR"/live/*.json 2>/dev/null | head -1)" "$(jq -r .dispatch_id "$ART" 2>/dev/null)"
 if node "$FLOOR_MJS" verify "$ART" 2>"$W/verify.err"; then ok "1 artifact stamp verifies"; else bad "1 artifact stamp verifies: $(cat "$W/verify.err")"; fi
 jq -c '.session_id = "forged"' "$ART" > "$W/forged.json"
@@ -230,7 +230,7 @@ run_sut
 check "15 no origin/HEAD or origin/main -> exit 3" 3 "$RC"
 check "15 claude never invoked" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
 
-# 16. HIMMEL-3229: the snapshot holds the RAW committed bytes — no smudge
+# 16. the snapshot holds the RAW committed bytes — no smudge
 # filter, no eol conversion — plus the exec bit; a symlink is an inert file
 # holding its target, so it cannot point the reviewer outside the snapshot.
 mk_repo 16
@@ -355,7 +355,7 @@ for (const p of [path.win32, path.posix]) for (const n of refused)
     console.log(`${p === path.win32 ? "win32" : "posix"} ${JSON.stringify(n)} ${snapshotPath(p === path.win32 ? "C:\\snap" : "/snap", n, p) === null ? "refused" : "ALLOWED"}`);
 console.log(`win32 ok ${snapshotPath("C:\\snap", "a/b.txt", path.win32)}`);
 console.log(`posix ok ${snapshotPath("/snap", "a/b.txt", path.posix)}`);
-// HIMMEL-3240: a component that merely STARTS with two dots is an ordinary name.
+// a component that merely STARTS with two dots is an ordinary name.
 for (const [p, d] of [[path.win32, "C:\\snap"], [path.posix, "/snap"]])
     for (const n of ["..config", "a/..config", "...", "a/..b/c"])
         console.log(`${p === path.win32 ? "win32" : "posix"} dots ${JSON.stringify(n)} ${snapshotPath(d, n, p) === null ? "REFUSED" : "inside"}`);
@@ -365,7 +365,7 @@ check "25 a plain win32 path stays inside" 'win32 ok C:\snap\a\b.txt' "$(grep '^
 check "25 a plain posix path stays inside" 'posix ok /snap/a/b.txt' "$(grep '^posix ok' "$W/out25")"
 check "25 in-tree names starting with two dots stay inside (win32 + posix)" 8 "$(grep -c ' inside$' "$W/out25")"
 
-# 26. HIMMEL-3240: `..config` (and an empty blob) snapshot end to end.
+# 26. `..config` (and an empty blob) snapshot end to end.
 mk_repo 26
 ( cd "$R" && mkdir -p a && : > empty && echo cfg > ..config && echo b > a/..b && git add -A && git commit -qm dots ) >/dev/null 2>&1
 RC=0; ( cd "$R" && node "$FLOOR_MJS" snapshot HEAD "$W/snap26" ) > "$W/out" 2>&1 || RC=$?
@@ -374,7 +374,7 @@ check "26 ..config holds its bytes" cfg "$(cat "$W/snap26/..config" 2>/dev/null)
 check "26 a/..b holds its bytes" b "$(cat "$W/snap26/a/..b" 2>/dev/null)"
 check "26 an empty blob snapshots as an empty file" "yes 0" "$([ -f "$W/snap26/empty" ] && echo yes) $(wc -c < "$W/snap26/empty" 2>/dev/null | tr -d ' ')"
 
-# 27. HIMMEL-3240: blobs are read in BOUNDED batches (a tree larger than one
+# 27. blobs are read in BOUNDED batches (a tree larger than one
 # batch must not need one whole-tree buffer), with every per-record check kept.
 # eachBlob takes the cat-file runner as a seam, so the tamper cases need no git
 # shim (a PATH stub does not work under Windows). Sizes are real, from ls-tree -l.
@@ -421,8 +421,8 @@ has "27 a size that differs from ls-tree is refused" "!= listed" "$W/out27"
 has "27 a failed cat-file is refused" "git cat-file --batch failed" "$W/out27"
 check "27 no tamper case slipped through" 0 "$(grep -c 'NO-ERROR' "$W/out27")"
 
-# 28. HIMMEL-3866: a lone codex-adv row (a RETIRED lane, twin of
-# clear-cr-marker.sh HIMMEL-3818) is neither a responder nor an exhausted lane.
+# 28. a lone codex-adv row (a RETIRED lane, twin of
+# clear-cr-marker.sh) is neither a responder nor an exhausted lane.
 mk_repo 28; row codex-adv ok
 run_sut
 check "28 lone codex-adv ok -> exit 3" 3 "$RC"
@@ -432,7 +432,7 @@ run_sut
 check "28b lone codex-adv quota -> exit 3" 3 "$RC"
 check "28b claude never invoked" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
 
-# 29. HIMMEL-4111: a non-native lane classifies the REVIEWED repo before any
+# 29. a non-native lane classifies the REVIEWED repo before any
 # spend: a salus-marked repo is refused under openrouter (exit 3, claude never
 # invoked); the same repo under the native lane is unaffected (case 1).
 mk_repo 29; row codex unavailable quota; : > "$R/.salus"
@@ -442,7 +442,7 @@ check "29 claude never invoked" no "$([ -e "$REC/argv" ] && echo yes || echo no)
 has "29 names the corpus" 'corpus "salus"' "$W/out"
 check "29 no provenance artifact" no "$([ -e "$R/.git/cr-floor/$HEAD_SHA.json" ] && echo yes || echo no)"
 
-# 30. HIMMEL-4111: claudex refuses a handover-state repo (matrix: conditional)
+# 30. claudex refuses a handover-state repo (matrix: conditional)
 # at the floor site too; the fixture repo doubles as the handover root.
 mk_repo 30; row codex unavailable quota
 HANDOVER_DIR="$R" HIMMEL_CLAUDE_LANE=claudex run_sut

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Focused TDD acceptance tests for stable finding fingerprints and durable
-# branch-scoped re-raise dispositions (HIMMEL-2896). No critic/API calls.
+# branch-scoped re-raise dispositions. No critic/API calls.
 # Platform guard: requires Bash (Git Bash on Windows), Git and Node; invoke
 # with bash rather than PowerShell. Verified locally on Linux.
 set -uo pipefail
@@ -187,7 +187,7 @@ assert_has "$r5_out" "## Already Dispositioned Re-raises (1 found)" "r5 re-raise
 assert_has "$r5_out" "RE-RAISE (r4 disproved)" "r5 re-raise names the original round and verdict"
 assert_eq "$(ledger_value reraised "$head_r5" fingerprint)" "$fp_r4" "line/case/whitespace changes keep the fingerprint stable"
 assert_eq "$(ledger_value reraised "$head_r5" verdict)" "disproved" "r5 re-raise persists the inherited disposition"
-# HIMMEL-2901: this fixture amends with no adjudication round, so disposition_round
+# this fixture amends with no adjudication round, so disposition_round
 # stays the producer round — the documented fallback that keeps pre-2901 rows rendering.
 assert_eq "$(ledger_value reraised "$head_r5" disposition_round)" "4" "r5 re-raise preserves the original disposition round"
 
@@ -308,7 +308,7 @@ run_panel 9 'CACHE cleanup must retain 2 generations [scripts/cr/cache.sh:90]' s
 assert_eq "$?" "0" "r9 deferred re-raise panel run succeeds"
 assert_has "$(cat "$tmp/d9.out")" "RE-RAISE (r7 deferred)" "r9 still reports r7 rather than chaining through r8"
 assert_has "$(cat "$tmp/d9.out")" "## Suggestions (0 found)" "r9 deferred re-raise remains outside suggestion tally"
-# HIMMEL-2901: same no-adjudication-round fallback, carried across two re-raises.
+# same no-adjudication-round fallback, carried across two re-raises.
 assert_eq "$(ledger_value deferred "$head_d9" disposition_round)" "7" "r9 durable row preserves r7 as disposition source"
 
 advance_head d10-changed-claim >/dev/null
@@ -317,7 +317,7 @@ assert_eq "$?" "0" "changed deferred-claim panel run succeeds"
 assert_has "$(cat "$tmp/d10.out")" "## Suggestions (1 found)" "different claim at a settled anchor remains active"
 assert_lacks "$(cat "$tmp/d10.out")" "RE-RAISE (" "different claim is not inherited from the settled fingerprint"
 
-# The HIMMEL-2780 consumer is review-round.sh, not critic-panel.sh. A settled
+# The consumer is review-round.sh, not critic-panel.sh. A settled
 # current-head suggestion must not consume the round-4 suggestion cap or demand
 # a fresh ticket. Seed only the branch counter; no marker/clear path is reached
 # when the current finding is already resolved.
@@ -556,7 +556,7 @@ process.stdout.write(String(finding.fingerprint||""));
 assert_eq "$compat_shape" "1,1" "verdict-only compatibility uses an amend, not a duplicate finding"
 assert_fingerprint "$compat_fp" "original fingerprint survives verdict-only adjudication"
 
-# HIMMEL-2901 item 1: the round a verdict was ADJUDICATED in is its own field.
+# The round a verdict was ADJUDICATED in is its own field.
 # The finding keeps its first-seen observation round; the amend that sets the
 # verdict records the round of the /pr-check pass that wrote it, explicitly via
 # --disposition-round or from CR_REVIEW_ROUND. "First seen" is derived by the
@@ -620,7 +620,7 @@ assert_has "$(cat "$tmp/ae6.out")" "RE-RAISE (first seen r3 · dispositioned r5 
 assert_eq "$(ledger_value adjudication-env "$head_ae6" disposition_round)" "5" \
     "ambient adjudication round reaches the durable row"
 
-# HIMMEL-2901 item 2: a severity correction to the ORIGINAL adjudication must
+# A severity correction to the ORIGINAL adjudication must
 # reach the inherited re-raise that now carries the ceiling. Without it, an
 # Important corrected to Suggestion keeps its Important ceiling forever and a
 # genuine later Important occurrence is wrongly suppressed.
@@ -692,7 +692,7 @@ assert_eq "$?" "0" "bystander-amend panel run succeeds"
 assert_has "$(cat "$tmp/us5.out")" "## Important Issues (0 found)" \
     "amending a row that is not the origin leaves the inherited ceiling intact"
 
-# HIMMEL-2901 item 3: case inside code-bearing fragments is identity. Folding
+# Case inside code-bearing fragments is identity. Folding
 # the whole claim to lowercase made `Foo` and `foo` at the same anchor one
 # fingerprint, so each inherited the other's disposition. Prose case still
 # folds — that is the dedup value the fold exists for.
@@ -765,7 +765,7 @@ assert_has "$(cat "$tmp/bi5.out")" "RE-RAISE (r3 disproved)" \
     "identical identifiers with different prose case still fold onto one fingerprint"
 
 # A dotted identifier that ENDS a sentence is still an identifier: the trailing
-# period is prose punctuation, not part of the name (codex-1, round 1).
+# period is prose punctuation, not part of the name.
 checkout_branch dotted-sentence-end
 head_ds3="$(advance_head dotted-sentence-r3)"
 set_registry critic-a
@@ -792,7 +792,7 @@ assert_eq "$?" "0" "dotted-sentence prose-case panel run succeeds"
 assert_has "$(cat "$tmp/ds5.out")" "RE-RAISE (r3 disproved)" \
     "prose case around an identical dotted identifier still folds onto one fingerprint"
 
-# HIMMEL-2906: an identifier embedded in an expression is still an identifier —
+# an identifier embedded in an expression is still an identifier —
 # isCodeToken classified the WHOLE token, so the trailing `)` in
 # `config.LOGLEVEL(value)` broke the anchored dotted-name regex and both cases
 # folded together (fp2). fp3 classifies components split on non-identifier
@@ -872,7 +872,7 @@ assert_eq "$?" "0" "prose-caps lowercase panel run succeeds"
 assert_has "$(cat "$tmp/pc4.out")" "RE-RAISE (r3 disproved)" \
     "an ALL-CAPS prose word outside backticks still folds onto the lowercase claim"
 
-# codex-1, HIMMEL-2906 round 1: a non-ASCII letter is itself outside
+# A non-ASCII letter is itself outside
 # [A-Za-z0-9_$.], so leaving component-splitting's separator spans unfolded
 # let case-only Unicode prose escape the fold entirely.
 checkout_branch unicode-prose-still-folds

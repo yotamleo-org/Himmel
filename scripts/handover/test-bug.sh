@@ -155,7 +155,7 @@ ptab="$(bash "$B" list --porcelain --bugs "$F")"
 check "porc: tab field count = 4" "$(printf '%s' "$ptab" | awk -F'\t' 'NR==1{print NF}')" "4"
 check "porc: tab sanitized"       "$(printf '%s' "$ptab" | grep -c $'^BUG-1\topen\t0\ttab here$')" "1"
 
-# --finding-id (HIMMEL-446): stored on its own body bullet, queryable with
+# --finding-id: stored on its own body bullet, queryable with
 # status via `find`, drives the CR->bug bridge dedup/reopen/resolve logic.
 seed
 b1="$(bash "$B" add --bugs "$F" --symptom "panel race" --finding-id "gptoss-3")"

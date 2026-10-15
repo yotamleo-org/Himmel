@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/pr-plan.sh — HIMMEL-5524: which pull_request jobs the diff can
+# scripts/ci/pr-plan.sh — which pull_request jobs the diff can
 # affect. Prints `key=value` lines (GITHUB_OUTPUT-compatible):
 #   mode=full|impacted
 #   reason=<why>

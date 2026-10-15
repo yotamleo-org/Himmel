@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermetic test for clean-garden's de-registered worktree husk sweep
-# (HIMMEL-970). Temp git repos + direct .claude/worktrees children.
+# Temp git repos + direct .claude/worktrees children.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,7 +28,7 @@ fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FA
 TMP_ROOT=$(mktemp -d)
 # git reports a worktree by its physical path (macOS /var -> /private/var), and
 # the registered-worktree case greps `git worktree list` for the fixture's own
-# spelling: build it from the physical one (HIMMEL-3179).
+# spelling: build it from the physical one.
 TMP_ROOT=$(canon_path "$TMP_ROOT")
 TMP_ROOT_UNIX="$TMP_ROOT"
 if command -v cygpath >/dev/null 2>&1; then
@@ -44,7 +44,7 @@ make_repo() {
     }
     git -C "$repo" config user.email t@test.com
     git -C "$repo" config user.name t
-    # HIMMEL-3187: a detached `git maintenance run --auto` (spawned by every
+    # a detached `git maintenance run --auto` (spawned by every
     # commit) prunes admin records whose `gitdir` file is gone — the very state
     # the 2267 fixture below creates on purpose. No async pruner.
     git -C "$repo" config maintenance.auto false
@@ -195,7 +195,7 @@ git -C "$WT_G" add dirty.txt
 # forward-pointing .git file. Do NOT `git worktree prune` — that would also
 # clean up other state this test doesn't want to touch.
 rm -f "$REPO_G/.git/worktrees/feat+dead-wt/gitdir"
-# HIMMEL-2267: `git ... | grep -q` is unsafe under `set -o pipefail` (line 4)
+# `git ... | grep -q` is unsafe under `set -o pipefail` (line 4)
 # — grep exits the instant it matches, git gets SIGPIPE, and the PIPELINE's
 # exit status goes non-zero even when git's own output DID contain the match.
 # That inverts this precondition exactly when it matters: if the worktree is
@@ -229,7 +229,7 @@ case "$out_g" in
 esac
 
 echo "RUN H: find failure on the .git presence probe fails CLOSED (refused, not swept)"
-# HIMMEL-2267: prove the presence-check distinguishes find FAILING from find
+# prove the presence-check distinguishes find FAILING from find
 # running and finding nothing. Neither chmod nor icacls can force a real I/O
 # failure here portably: icacls is off-limits (himmel's destructive-command
 # guardrail refuses permission mutation outright), and chmod is a documented
@@ -357,7 +357,7 @@ rm -f "$REPO_K/.git/worktrees/feat+race/gitdir"
 touch_old "$WT_K"
 
 # `du -sk "$stray_dir"` runs after classification and just before the
-# quarantine `mv` — the exact window HIMMEL-1738 #2 closes. Shadow it to
+# quarantine `mv` — the exact window an earlier change closes. Shadow it to
 # inject a write into the husk at that instant (same PATH-shadowing pattern
 # as RUN H's `find` wrapper), then hand off to the real du unchanged.
 REAL_DU_K=$(command -v du)

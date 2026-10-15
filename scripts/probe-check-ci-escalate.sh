@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # probe-check-ci-escalate.sh — the escalation-only fast lane over
-# scripts/test-check-ci.sh (HIMMEL-1964).
+# scripts/test-check-ci.sh.
 #
 # WHY THIS EXISTS. test-check-ci.sh runs ~110 cases and takes ~51 minutes on
 # Git-Bash (every case spawns dozens of stub processes), so nobody iterates on
@@ -25,7 +25,7 @@ SUITE="$SCRIPT_DIR/test-check-ci.sh"
 [ -r "$SUITE" ] || { echo "FATAL: cannot read $SUITE" >&2; exit 1; }
 
 # Every case whose verdict can turn on _cr_body_escalate: the A2 escalation
-# block, the B2 (HIMMEL-1698) block, and the HIMMEL-1964 claim/retry block.
+# block, the B2 block, and the claim/retry block.
 CASES=${*:-"44 45 46 47 48 49 50 51 52 77 78 79 80 81 82 83 84 85 86 90 91 92 93"}
 
 WORK=$(mktemp -d) || { echo "FATAL: mktemp -d failed" >&2; exit 1; }

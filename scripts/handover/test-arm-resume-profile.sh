@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-profile.sh -- HIMMEL-4013: arm-resume.sh's relaunched claude
+# test-arm-resume-profile.sh -- arm-resume.sh's relaunched claude
 # runs under a role-matched plugin profile (--settings <file>), never the
 # operator's full plugin set. Dry-run only: no real scheduler, no network.
 # Covers: role inferred from the handover doc, the explicit --profile override,

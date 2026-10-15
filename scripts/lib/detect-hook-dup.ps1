@@ -1,5 +1,5 @@
-# detect-hook-dup.ps1 -- PowerShell counterpart of detect-hook-dup.sh (R4,
-# HIMMEL-460). ADVISORY warning (always rc 0) when a himmel UNIVERSAL hook is
+# detect-hook-dup.ps1 -- PowerShell counterpart of detect-hook-dup.sh (R4).
+# ADVISORY warning (always rc 0) when a himmel UNIVERSAL hook is
 # wired at BOTH user and a project's settings.json. Suppressed in-repo. Uses jq
 # for parity (no-ops without it).
 #

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bank-lift.sh — HIMMEL-4423. An expiring, account-bound OPERATOR decision to
+# bank-lift.sh — An expiring, account-bound OPERATOR decision to
 # spend the seven_day bank past the launch ceiling before it resets anyway.
 #
 #   bank-lift.sh set [--standing] [cache]   record a window or standing lift

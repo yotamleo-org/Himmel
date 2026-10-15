@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # guard-empty-expansion.sh — re-read a command with its variable expansions
-# removed (HIMMEL-5328, HIMMEL-5330, HIMMEL-5331). Sourced by
+# removed. Sourced by
 # block-bare-qmd-query.sh, block-git-stash.sh and block-read-secrets.sh.
 #
 # Those hooks match the command TEXT at command position. A variable expansion
@@ -15,7 +15,7 @@
 # The command is re-read a second time with each `${name[:]-word}`,
 # `${name[:]=word}` and `${name[:]+word}` replaced by its word, because the word
 # is what runs when the variable is unset or empty (`${V:-git} stash drop`);
-# dropping the expansion alone never shows it (HIMMEL-5525). A plain `${V}` has
+# dropping the expansion alone never shows it. A plain `${V}` has
 # no word and is only dropped.
 #
 # ponytail: every `${…}` and `$name` is dropped, empty or not, so a hook can
@@ -24,17 +24,15 @@
 # `$(…)` and `$'…'` are untouched. A default word is read as if the variable
 # were unset, so the word of `${V:+x}` is taken even when V is empty (also the
 # safe direction). Upgrade path: track variable values across the command
-# (HIMMEL-4178).
 #
 # ponytail: a `${…}` body is an ALLOWLIST (letters, digits, `_`, `: - + = ? # % /
 # @ * ^ , . ~`, space, or a nested `${…}`); anything else in it (`$(`, a backtick,
 # a quote, a backslash, `$[`, a bracket or paren, a bare `$`), or a body the
 # scanner cannot prove balanced, is the class five review rounds kept finding new
-# bypass spellings in (HIMMEL-5328), so when such a command also names the
+# bypass spellings in, so when such a command also names the
 # hook's protected target (TARGET_ERE) it
 # is denied outright, whatever the scanner made of it; this over-denies a real
 # `git stash "${X:-$(cmd)}"`-style call. Upgrade path: a real shell parser
-# (HIMMEL-4178).
 #
 # guard_expansion_recheck HOOK INPUT_JSON COMMAND [TARGET_ERE]
 #   returns 0 when the command holds no expansion, the stripped form equals it,
@@ -116,13 +114,13 @@ guard_expansion_recheck() {
     fi
     # the command with each ${name[:]-word}, ${name[:]=word} and ${name[:]+word}
     # replaced by its word: the protected program can ride in the default word
-    # (HIMMEL-5525), which removing the expansion never shows.
+    # which removing the expansion never shows.
     # Each default expansion is independently set or unset at run time, so every
     # word-or-dropped combination is a form (`${A:-git} ${B:-x} stash drop` with
     # B empty runs `git stash drop`); bit k of the mask picks the word of the
     # k-th one.
     # ponytail: past 5 default expansions only the all-words form is re-read (2^n
-    # forms), upgrade path a real shell parser (HIMMEL-4178).
+    # forms), upgrade path a real shell parser.
     if ! count=$(printf '%s' "$cmd" | LC_ALL=C tr '\n' '\001' | LC_ALL=C awk -v mode=count "$_GEE_AWK"); then
         echo "guard-empty-expansion: cannot count default words - failing closed" >&2
         return 2

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic launcher contract (HIMMEL-4084). Mock only the network and Claude.
+# Hermetic launcher contract. Mock only the network and Claude.
 # Breaks caught: opt-in bypass, wrong routing, torn seed, unknown credit launch,
 # and credentials passed in argv/output. Node drives independent clean fixtures.
 set -eu

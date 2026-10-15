@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# jira-cli-smoke.sh — offline, secret-free smoke of the BUILT jira CLI (HIMMEL-3813).
+# jira-cli-smoke.sh — offline, secret-free smoke of the BUILT jira CLI.
 # Builds scripts/jira, checks `--help` and `--list-commands`, then runs one op
 # (`get`) against a local mock HTTP server that returns the same issue shape the
 # unit suite's request mock does. No network, no credentials: every JIRA_* value

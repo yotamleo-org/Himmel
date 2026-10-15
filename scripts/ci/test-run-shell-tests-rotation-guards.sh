@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # scripts/ci/test-run-shell-tests-rotation-guards.sh — run-shell-tests.sh
-# resume rotation (HIMMEL-2243), sub-cases 17g-17j: the cases where rotation
+# resume rotation, sub-cases 17g-17j: the cases where rotation
 # must DISABLE itself rather than guess.
 #
 # CASE 17 SPANS THREE FILES. If you grepped "Case 17" and landed here, the
 # other two are test-run-shell-tests-rotation.sh (17a-17f: the rotation
 # contract proper) and test-run-shell-tests-rotation-cursor.sh (17k-17m: the
-# cursor file's path — symlink refusal and key encoding). HIMMEL-2895 split
+# cursor file's path — symlink refusal and key encoding). Split
 # them because each sub-case costs 25-51s against the same 25s-sleep sandbox,
 # and the eleven of them were 327s of the original file's 382s — the floor on
 # every shard of the sharded shell-unit job.
@@ -41,7 +41,7 @@ set -uo pipefail
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
-# Case 17 -- resume rotation (HIMMEL-2243), the cases where rotation must disable itself. 17a-17f and 17k-17m are in the -rotation and -rotation-cursor siblings.
+# Case 17 -- resume rotation, the cases where rotation must disable itself. 17a-17f and 17k-17m are in the -rotation and -rotation-cursor siblings.
 # --------------------------------------------------------------------------
 echo "== Case 17 (guards): rotation disables itself rather than guessing (17g-17j) =="
 sb17=$(mktemp -d "${TMPDIR:-/tmp}/himmel-suite-rotate.XXXXXX") || {
@@ -52,7 +52,7 @@ order17="$sb17/order.log"
 cursor17="$sb17/rotate.cursor"
 mk_rotate_sandbox "$sb17" "$order17"
 
-# 17g — HOME unset must degrade, not crash (HIMMEL-2243 FIX 3). A bare $HOME
+# 17g — HOME unset must degrade, not crash. A bare $HOME
 # reference under `set -u` would abort the WHOLE runner on a host that merely
 # lacks a home directory (a bare container runner). SUITE_ROTATE_STATE is
 # deliberately left UNSET here, unlike every other sub-case above, so the
@@ -76,8 +76,8 @@ else
   pass "17g: no unbound-variable abort on HOME"
 fi
 
-# 17h — HOME unset must DISABLE rotation, not synthesise a shared root path
-# (HIMMEL-2243 FIX 4, panel finding [codex-1]). 17g only proves the run does
+# 17h — HOME unset must DISABLE rotation, not synthesise a shared root path.
+# 17g only proves the run does
 # not CRASH with HOME unset -- it uses an ample budget, so it only ever
 # reaches the harmless "clear the cursor" branch and never exercises the
 # WRITE branch that used to build the dangerous "/.himmel/..." path in the
@@ -122,8 +122,8 @@ else
   pass "17h: no /.himmel path was ever synthesised (this is the assertion that fails pre-FIX-4)"
 fi
 
-# 17i — a run narrowed by --skip-extra must not touch an existing cursor
-# (HIMMEL-2243 FIX 8, panel finding [codex-1]). Before this fix, "reached the
+# 17i — a run narrowed by --skip-extra must not touch an existing cursor.
+# Before this fix, "reached the
 # end and executed suites" was treated as "covered the ring": this run skips
 # test-c.sh, still finishes cleanly with an ample budget, and would have
 # CLEARED the pre-seeded cursor -- silently discarding another run's resume

@@ -3,7 +3,7 @@
 # own getClaudeConfigDir() does (marketplace/plugins/claude-hud/src/claude-config-dir.ts).
 # Sourced, never run. Shared by wire-statusline.sh and the other settings.json
 # recorders (wire-himmel-repo/-luna-vault/-handover-dir, wire-pretooluse-hooks)
-# so a leading `~` in CLAUDE_CONFIG_DIR is expanded in ONE place (HIMMEL-3352).
+# so a leading `~` in CLAUDE_CONFIG_DIR is expanded in ONE place.
 #
 # claude_config_dir — print the directory: CLAUDE_CONFIG_DIR wins, with a leading
 # `~` expanded; otherwise $HOME/.claude.

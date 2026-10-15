@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for cr/clear-cr-marker.sh — the HIMMEL-1064 CR-marker clearing
+# Tests for cr/clear-cr-marker.sh — the CR-marker clearing
 # chokepoint. The script has NO env seams for the ledger / check-ci / gh (gate
 # integrity — a caller-pointed ledger would forge the very evidence the clear
 # depends on). So each case builds a REAL temp git repo, copies the script tree
@@ -8,7 +8,7 @@
 # fixed paths under the temp repo's own .git, exactly as the real ones resolve.
 set -uo pipefail
 
-# HIMMEL-1495 — an --automerge-armed launching shell carries ARMAUTOMERGE=1 +
+# An --automerge-armed launching shell carries ARMAUTOMERGE=1 +
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
 # not decide the result (the 34e/34f precedent in test-check-ci.sh,
 # generalized). clear-cr-marker.sh does not consult either var today, so this
@@ -16,7 +16,7 @@ set -uo pipefail
 # below pins today's insensitivity.
 unset ARMAUTOMERGE CR_MERGE_GATE_OK CR_REQUIRE_CROSS_MODEL
 
-# HIMMEL-4297 — a leg shell carries FORCE_COLOR=3, which makes node's
+# A leg shell carries FORCE_COLOR=3, which makes node's
 # console.log colour a bare number/boolean (\e[33m0\e[39m) in the values the
 # gate parses. Pin it on so the suite catches a regression in any environment.
 export FORCE_COLOR=3
@@ -27,7 +27,7 @@ export FORCE_COLOR=3
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,8 +46,8 @@ CODEX_SKILL="$ROOT/.agents/skills/pr-check/SKILL.md"
 # shellcheck source=scripts/lib/fixture-tempdir.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/fixture-tempdir.sh"
-# HIMMEL-2544: case 2f's mutation control goes through the RED-control
-# contract helper (HIMMEL-2518) rather than a hand-rolled comparison, so the
+# Case 2f's mutation control goes through the RED-control
+# contract helper rather than a hand-rolled comparison, so the
 # mutant's exit status, its produced value and the SPECIFIC predicted wrong
 # value are all asserted rather than merely "it differed from something".
 # shellcheck source=scripts/lib/red-control.sh
@@ -60,7 +60,7 @@ LAST_CLEAR_OUT=""
 pass() { PASS=$((PASS + 1)); }
 fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1" >&2; }
 
-# build_repo_template — HIMMEL-2120: builds the make_repo() fixture tree ONCE
+# build_repo_template — builds the make_repo fixture tree ONCE
 # into REPO_TEMPLATE instead of re-running the full git init/commit/push
 # sequence per call (~99 call sites). Micro-A/B (5 reps): build-from-scratch
 # 37.8s vs template-copy 2.0s — the copy path wins by ~18x, so make_repo()
@@ -83,7 +83,7 @@ build_repo_template() {
         git remote add origin .git/test-origin.git
         git push -q -u origin feat/x
     ) >/dev/null 2>&1 || { rm -rf "$REPO_TEMPLATE"; return 1; }
-    # HIMMEL-2120 CR: this file is `set -uo pipefail` (no -e by house style), so
+    # this file is `set -uo pipefail` (no -e by house style), so
     # each of these must be guarded explicitly — an unguarded failure here would
     # let the function return 0 with a half-built template (e.g. no TEMPLATE_SHA,
     # or scripts/cr missing) that every make_repo() copy would then silently share.
@@ -93,35 +93,35 @@ build_repo_template() {
         || { echo "FAIL: mkdir of template scaffold dirs failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$CLEAR" "$REPO_TEMPLATE/scripts/cr/clear-cr-marker.sh" \
         || { echo "FAIL: cp clear-cr-marker.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    # HIMMEL-3914: every chokepoint fails closed without its seam-guard lib.
+    # Every chokepoint fails closed without its seam-guard lib.
     cp "$(dirname "$CLEAR")/../lib/chokepoint-seam-guard.sh" "$REPO_TEMPLATE/scripts/lib/chokepoint-seam-guard.sh" \
         || { echo "FAIL: cp chokepoint-seam-guard.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$LEDGER_APPEND" "$REPO_TEMPLATE/scripts/cr/ledger-append.sh" \
         || { echo "FAIL: cp ledger-append.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$(dirname "$CLEAR")/anchor-handoff.sh" "$REPO_TEMPLATE/scripts/cr/anchor-handoff.sh" \
         || { echo "FAIL: cp anchor-handoff.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    # HIMMEL-3027: clear-cr-marker.sh's new branch-wide gate shells out to its
+    # clear-cr-marker.sh's new branch-wide gate shells out to its
     # sibling review-round.sh promote -- a missing copy would fail every case
     # that reaches that gate at once (promote-error, exit 14).
     cp "$REVIEW_ROUND" "$REPO_TEMPLATE/scripts/cr/review-round.sh" \
         || { echo "FAIL: cp review-round.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    # HIMMEL-1558: the copied tree must carry the branch-lock lib the clear
+    # The copied tree must carry the branch-lock lib the clear
     # path now takes around its read-validate-delete section — the script
     # refuses without it, so a missing copy would fail every case at once.
     cp "$LOCK_LIB" "$REPO_TEMPLATE/scripts/lib/shared-branch-lock.sh" \
         || { echo "FAIL: cp shared-branch-lock.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    # HIMMEL-3107: the floor provenance check binds its base through this lib.
+    # The floor provenance check binds its base through this lib.
     cp "$DEFAULT_BASE_LIB" "$REPO_TEMPLATE/scripts/lib/cr-default-base.sh" \
         || { echo "FAIL: cp cr-default-base.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    # HIMMEL-1565: the ls-remote timeout bound sources this lib; without a copy
+    # The ls-remote timeout bound sources this lib; without a copy
     # here _TIMEOUT_BIN degrades to empty in every case, silently skipping the
     # timeout wrapper the fix depends on.
     cp "$TIMEOUT_BIN_LIB" "$REPO_TEMPLATE/scripts/lib/timeout-bin.sh" \
         || { echo "FAIL: cp timeout-bin.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    # HIMMEL-3220: the floor provenance check verifies the artifact's stamp here.
+    # The floor provenance check verifies the artifact's stamp here.
     cp "$FLOOR_MJS" "$REPO_TEMPLATE/scripts/cr/claude-floor.mjs" \
         || { echo "FAIL: cp claude-floor.mjs into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
-    # HIMMEL-3437: anchor-handoff.sh's self-anchor check now also requires
+    # anchor-handoff.sh's self-anchor check now also requires
     # the anchor's own git index to track the relative entry path (closing
     # the orphaned-worktree bypass) - without this, these scripts/cr/*.sh
     # copies are untracked in the template repo and a relative entry with
@@ -130,7 +130,7 @@ build_repo_template() {
     git -C "$REPO_TEMPLATE" add -A scripts/cr scripts/lib bin \
         || { echo "FAIL: git add of template scaffold scripts failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
 }
-# HIMMEL-3220: a throwaway floor signing key pair — never the real
+# A throwaway floor signing key pair — never the real
 # ~/.himmel/cr-floor-key (the gate reads CR_FLOOR_KEY_DIR).
 FLOOR_KEYS=$(fixture_mktemp_dir) || { echo "FAIL: mktemp for the floor key dir failed" >&2; exit 1; }
 export CR_FLOOR_KEY_DIR="$FLOOR_KEYS/keys"
@@ -151,7 +151,7 @@ make_repo() {
 }
 
 # write_marker <tmp> <sha> [lane] [endpoint] [base]
-# 7-field format (HIMMEL-1540 identity contract): endpoint defaults to the
+# 7-field format (identity contract): endpoint defaults to the
 # repo-relative URL of make_repo's real test-origin bare (clear-cr-marker runs
 # with cwd=$tmp, so ls-remote resolves it); base defaults to the repo's main.
 write_marker() {
@@ -173,10 +173,10 @@ write_ledger() {
 
 avail_ok()   { printf '{"kind":"avail","head":"%s","model":"codex","status":"ok"}' "$1"; }
 avail_bad()  { printf '{"kind":"avail","head":"%s","model":"coderabbit","status":"unavailable"}' "$1"; }
-# HIMMEL-1224 — the Claude-only floor evidence: a self-review avail row with
+# The Claude-only floor evidence: a self-review avail row with
 # model "claude", the ONLY avail row a zero-external-critic adopter produces.
 avail_ok_claude() { printf '{"kind":"avail","head":"%s","model":"claude","status":"ok"}' "$1"; }
-# HIMMEL-3107 — the context-free floor reviewer's row (claude-floor-review.sh
+# The context-free floor reviewer's row (claude-floor-review.sh
 # writes it). Same model family as "claude": never cross-model evidence.
 avail_ok_floor() { printf '{"kind":"avail","head":"%s","model":"claude-floor","status":"ok"}' "$1"; }
 # write_floor_artifact <tmp> <head> [diff-hash-override] [unsigned] — the
@@ -199,8 +199,8 @@ write_floor_artifact() {
     printf '{"id":"00000000-0000-4000-8000-0000000000d1","status":"completed","outcome":{"is_error":false,"session_id":"00000000-0000-4000-8000-000000000001"}}\n' > "$tmp/floor-row.json"
     node "$FLOOR_MJS" sign "$art" "$tmp/floor-row.json" > "$art.signed" && mv "$art.signed" "$art"
 }
-# avail_reason <head> <model> <status> [reason] — HIMMEL-2128: a non-Claude
-# avail row carrying an optional --reason (HIMMEL-1176 failure classification),
+# avail_reason <head> <model> <status> [reason] — a non-Claude
+# avail row carrying an optional --reason (failure classification),
 # the shape CR_FLOOR_FALLBACK=claude-only reads to judge verified exhaustion.
 avail_reason() {
     local head="$1" model="$2" status="$3" reason="${4:-}"
@@ -287,7 +287,7 @@ append_ledger() {
 
 marker_exists() { [ -f "$1/.git/cr-pending/feat/x" ]; }
 
-# write_sweeps <tmp> <SWEEP-lines...> — HIMMEL-4566: the class-sweep records
+# write_sweeps <tmp> <SWEEP-lines...> — the class-sweep records
 # write-verdicts.sh sweep appends for branch feat/x.
 write_sweeps() {
     local tmp="$1" l; shift
@@ -296,7 +296,7 @@ write_sweeps() {
     for l in "$@"; do printf '%s\n' "$l" >> "$tmp/.git/cr-class-sweeps/feat/x"; done
 }
 
-# site_files — HIMMEL-4603: stage a.sh, b.sh and c.sh in the cwd repo, so the
+# site_files — stage a.sh, b.sh and c.sh in the cwd repo, so the
 # sites a sweep record names exist at the tip gate 4d checks them against.
 site_files() {
     printf 'echo a\n' > a.sh; printf 'echo b\n' > b.sh; printf 'echo c\n' > c.sh
@@ -308,7 +308,7 @@ echo "== clear-cr-marker.sh tests =="
 # Codex /pr-check contract: ledger evidence must precede the sanctioned clear
 # chokepoint, and the skill must not self-declare clean with a bare marker rm.
 #
-# HIMMEL-2226 — the skill now resolves `himmel_dir=$(git rev-parse --show-toplevel)`
+# The skill now resolves `himmel_dir=$(git rev-parse --show-toplevel)`
 # and spells every himmel script as "$himmel_dir/scripts/cr/<name>.sh", i.e. the
 # closing quote lands AFTER `.sh`, which silently un-matched the pre-2226
 # `<name>.sh <subcommand>` patterns. What the contract is actually about is
@@ -316,7 +316,7 @@ echo "== clear-cr-marker.sh tests =="
 # these patterns accept the quoted-var form, an absolute literal and a bare
 # relative path alike — and still fail if the invocation disappears.
 #
-# HIMMEL-2321 — the blocking-finding evidence verb is now `amend`, not
+# The blocking-finding evidence verb is now `amend`, not
 # `finding`, and that is the contract change these patterns track. The
 # PRODUCERS (critic-panel.sh, codex-adv-harvest.sh)
 # self-write each finding row with the reviewer's own file/line/text, so the
@@ -336,11 +336,11 @@ fi
 if grep -Eq "$(skill_invocation_re ledger-append avail)" "$CODEX_SKILL"; then pass; else
     fail "Codex skill records critic availability in the CR ledger"
 fi
-# HIMMEL-2343: the full HEAD SHA is no longer captured into a shell variable —
-# PR #2050/HIMMEL-2226 rewrote the runbook from shell-variable form to
-# SUBSTITUTED-LITERAL form, because a Codex fence inherits no variables
-# between blocks (each fenced block is a separate process, confirmed by
-# HIMMEL-2314) — so `head=$(...)` never survives to a later block anyway. Step
+# The full HEAD SHA is no longer captured into a shell variable —
+# the runbook uses SUBSTITUTED-LITERAL form rather than shell-variable form,
+# because a Codex fence inherits no variables
+# between blocks (each fenced block is a separate process) — so
+# `head=$(...)` never survives to a later block anyway. Step
 # 0 calls scripts/cr/pr-check-context.sh, and the runbook's prose instructs
 # carrying its printed `head=` line forward as the SUBSTITUTED LITERAL
 # `<head>` into every later block. Pin all three links of that chain — the
@@ -354,7 +354,7 @@ if grep -Eq 'bash [^[:space:]]*pr-check-context\.sh"?' "$CODEX_SKILL" \
     && grep -Fq -- '--head <head>' "$CODEX_SKILL"; then pass; else
     fail "Codex skill records ledger evidence with the full HEAD SHA"
 fi
-# HIMMEL-2343: the clear invocation is now spelled with the substituted
+# The clear invocation is now spelled with the substituted
 # literal `'<branch>'`, not the shell variable `"$branch"` (same fence-block
 # rationale as above).
 if grep -Eq "$(skill_invocation_re clear-cr-marker "'<branch>'")" "$CODEX_SKILL"; then pass; else
@@ -367,12 +367,12 @@ else
     pass
 fi
 
-# Ordering contract (coderabbit-2, HIMMEL-1171): the skill must document the
+# Ordering contract (coderabbit-2): the skill must document the
 # HEAD capture + ledger evidence (finding + avail) BEFORE it invokes the
 # sanctioned clear chokepoint — guards against a future reorder that would
 # clear before recording evidence. (The ledger-append calls span multiple
 # lines, so ordering tracks each command's FIRST occurrence; the --head <head>
-# binding is asserted separately below.) HIMMEL-2343: the `head` anchor is now
+# binding is asserted separately below.) the `head` anchor is now
 # the pr-check-context.sh invocation itself — that IS the capture point in
 # literal-form (there is no `head=...` shell assignment left to anchor on).
 contract_order_ok() {
@@ -405,7 +405,7 @@ fi
 # Each ledger-append command must bind --head <head> within its OWN
 # (multi-line) continuation block — not merely somewhere in the file (coderabbit
 # r2). Walk each `ledger-append.sh <kind>` command to its end-of-continuation.
-# HIMMEL-2343: the bound literal is now `<head>`, not `"$head"` — same
+# The bound literal is now `<head>`, not `"$head"` — same
 # fence-block rationale as the assertions above.
 # shellcheck disable=SC2016  # awk field refs ($0) below; do not expand
 ledger_command_has_head() {
@@ -460,7 +460,7 @@ rm -rf "$tmp"
 
 # stub_git_log_lsremote_argv <tmp> — records the exact argv of every
 # `ls-remote` invocation to a file, then execs the real git so the flow
-# proceeds normally. Used to pin the `--` separator (HIMMEL-2077): without it,
+# proceeds normally. Used to pin the `--` separator: without it,
 # a marker_endpoint value crafted to start with `-` is parsed as an ls-remote
 # OPTION instead of the repository argument.
 stub_git_log_lsremote_argv() {
@@ -476,7 +476,7 @@ STUB
     chmod +x "$tmp/bin/git"
 }
 
-# 2b1. HIMMEL-2077: `git ls-remote --heads` must invoke with a `--` separator
+# 2b1. `git ls-remote --heads` must invoke with a `--` separator
 # before the endpoint/ref positionals, so a marker_endpoint on-disk value that
 # happens to start with `-` cannot be parsed as an ls-remote OPTION.
 make_repo || exit 1
@@ -492,7 +492,7 @@ else
 fi
 rm -rf "$tmp"
 
-# stub_git_lsremote_sleep <tmp> <sleep-seconds> — HIMMEL-1565: makes `git
+# stub_git_lsremote_sleep <tmp> <sleep-seconds> — makes `git
 # ls-remote` hang past the configured timeout so resolve_marker_remote_head's
 # DISTINCT timeout path (rc=2, not the generic "unreadable" rc=1) can be
 # exercised without a genuinely unreachable network endpoint. Every other git
@@ -534,7 +534,7 @@ STUB
     chmod +x "$tmp/bin/timeout"
 }
 
-# 2b1a. HIMMEL-1565: an unresponsive push endpoint must refuse with a DISTINCT
+# 2b1a. an unresponsive push endpoint must refuse with a DISTINCT
 # "timed out" reason, not the generic "remote-head-unreadable" one, and must
 # not hang the gate past the configured bound (CR_CLEAR_LSREMOTE_TIMEOUT_SECONDS
 # overrides the 20s default so this test does not itself wait 20s).
@@ -592,7 +592,7 @@ else
     rm -rf "$tmp"
 fi
 
-# 2b2. HIMMEL-2020: critic-panel writes raw finding rows at the full SHA, while
+# 2b2. critic-panel writes raw finding rows at the full SHA, while
 # a runbook using a short HEAD used to append the adjudicated verdict under a
 # parallel short key. The short verdict append must normalize onto the full-key
 # finding, so the disproved panel candidate stops blocking the marker.
@@ -660,7 +660,7 @@ if marker_exists "$tmp"; then pass; else fail "garbage head: marker must REMAIN"
 rm -rf "$tmp"
 
 # 2e. A short head naming a DIFFERENT, resolvable commit must not certify the
-# tip (HIMMEL-2190). This is the shape ~every historical row in the real,
+# tip. This is the shape ~every historical row in the real,
 # append-only ledger has, and the one the prefix pre-filter short-circuits: the
 # head resolves fine, it is simply not this commit. The verdict must be
 # identical to what resolve-then-compare produced before the filter existed
@@ -691,20 +691,18 @@ rm -rf "$tmp"
 # clear-cr-marker.sh's own audit line. audit() writes "<ts> clear-cr-marker
 # REFUSED reason=<r> ..." to STDOUT (the transcript); diagnostics go to stderr.
 # Case 2f asserts on this reason because the mutant and the shipped script must
-# refuse for the SAME reason: the HIMMEL-2190 pre-filter is a performance
+# refuse for the SAME reason: the prefix pre-filter is a performance
 # guard, never a decision. That invariance is the half of the evidence that
 # makes the resolve() spawn the ONLY discriminator between the two arms
-# (HIMMEL-2544).
 _audit_reason() {
     printf '%s\n' "$1" \
         | sed -n 's/.*clear-cr-marker REFUSED reason=\([^ ]*\).*/\1/p' \
         | sed -n '1p'
 }
 
-# 2f. HIMMEL-2190 prefix pre-filter, MUTATION test (HIMMEL-2029, GitHub issue
-# #2010 deferred CodeRabbit finding: "the new regression test checks only the
-# unchanged refusal verdict, so it would still pass if the prefix pre-filter
-# were removed"). 2e above pins the VERDICT the filter must never change, but
+# 2f. Prefix pre-filter, MUTATION test (a regression test that checks only the
+# unchanged refusal verdict would still pass if the prefix pre-filter
+# were removed). 2e above pins the VERDICT the filter must never change, but
 # resolve()-then-compare produces the SAME exit-14 refusal with or without the
 # filter, so 2e alone cannot tell whether the filter still runs. This case adds
 # the missing half: prove the filter actually SKIPS the resolve() git spawn for
@@ -715,8 +713,8 @@ _audit_reason() {
 # filter used to skip. Arm (b) is the property that goes RED if the real
 # filter is ever deleted; 2e's verdict-only assertion cannot see that at all.
 #
-# HIMMEL-2544: arm (b) is now stated as a single RED-control CONTRACT assertion
-# (scripts/lib/red-control.sh, HIMMEL-2518) instead of three hand-rolled
+# Arm (b) is now stated as a single RED-control CONTRACT assertion
+# (scripts/lib/red-control.sh) instead of three hand-rolled
 # comparisons. The contract asserts the mutant RAN (rc=14, same refusal), that
 # it PRODUCED a value, and that the value is the SPECIFIC predicted wrong one —
 # `reason=<same> marker=present resolve_spawned=yes`. The audited refusal
@@ -762,7 +760,7 @@ else
     _err=$(cat "$_errfile" 2>/dev/null)
     if [ "$_rc" -eq 14 ]; then pass; else fail "2f unmutated: expected refusal rc=14, got $_rc ($_out — stderr: $_err)"; fi
     if marker_exists "$tmp"; then pass; else fail "2f unmutated: marker must REMAIN (stderr: $_err)"; fi
-    # THREE arms, not two (HIMMEL-2544). The old two-arm form treated a MISSING
+    # THREE arms, not two. The old two-arm form treated a MISSING
     # or EMPTY trace log as proof the filter skipped the spawn — absence of
     # evidence scored as evidence, the same vacuity class the RED-control
     # contract exists to refuse. The unmutated run always spawns other git
@@ -782,7 +780,7 @@ else
     fi
     _reason_unmutated=$(_audit_reason "$_out")
 
-    # Build the mutant: byte-identical except the ONE HIMMEL-2190 pre-filter
+    # Build the mutant: byte-identical except the ONE prefix pre-filter
     # line is removed. Verify the mutation actually applied (present before,
     # absent after, and the diff is exactly that one line) before trusting the
     # result — a no-op edit here would let this whole case pass vacuously,
@@ -851,11 +849,11 @@ else
 fi
 rm -rf "$tmp"
 
-# 3a2. Legacy 3-field marker (pre-HIMMEL-1540 writer, no remote binding at
+# 3a2. Legacy 3-field marker (older writer, no remote binding at
 # all) -> refuse with reason=unbound-marker-remote, and the remedy text must
-# name the up-to-date-push trap + empty-commit recovery (HIMMEL-2104 fix
-# direction 3 — the safety net for unbound paths fix directions 1/2 don't
-# reach, e.g. a marker written before this fix shipped).
+# name the up-to-date-push trap + empty-commit recovery (the safety net for
+# unbound paths the other fixes don't reach, e.g. a marker written by an
+# older writer).
 make_repo || exit 1
 mkdir -p "$tmp/.git/cr-pending/feat"
 printf '2026-07-16T10:00:00+02:00 | %s | full\n' "$sha" > "$tmp/.git/cr-pending/feat/x"
@@ -876,7 +874,7 @@ fi
 rm -rf "$tmp"
 
 # 3b. Pre-endpoint 5-field marker (older writer) → refuse with the SPECIFIC
-# unbound-endpoint reason, never rc alone (HIMMEL-1554): remint by re-push.
+# unbound-endpoint reason, never rc alone: remint by re-push.
 make_repo || exit 1
 mkdir -p "$tmp/.git/cr-pending/feat"
 printf '2026-07-16T10:00:00+02:00 | %s | full | origin | refs/heads/feat/x\n' "$sha" > "$tmp/.git/cr-pending/feat/x"
@@ -899,8 +897,8 @@ rm -rf "$tmp"
 # 3c. Alias mutated AFTER the push (this repo's lane tooling repoints
 # remote.origin.url/pushurl as a quarantine mechanism): the marker's recorded
 # ENDPOINT must be consulted, so clearance still SUCCEEDS while the alias is
-# dead. The pre-HIMMEL-1540 alias-resolving code fails remote-head-unreadable
-# here — the discriminating direction for finding B.
+# dead. Alias-resolving code would fail remote-head-unreadable
+# here — the discriminating direction.
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
@@ -999,7 +997,7 @@ run_clear "$tmp" 14 "only 'unavailable' critics → exit 14 (missing != clean)"
 if marker_exists "$tmp"; then pass; else fail "no responders: marker must REMAIN"; fi
 rm -rf "$tmp"
 
-# 4a. HIMMEL-3104: a `score` row (one per completed critic run, carrying the raw
+# 4a. a `score` row (one per completed critic run, carrying the raw
 # artifact path) is EVIDENCE about a verdict, not a responder — it must never
 # satisfy gate 3 on its own, and must not disturb a clear that has a real avail.
 _score_row() { printf '{"kind":"score","head":"%s","model":"codex","critical":0,"important":0,"suggestions":0,"raw_path":"/x/y.raw"}' "$1"; }
@@ -1065,7 +1063,7 @@ run_clear "$tmp" 14 "Codex no avail-ok evidence → exit 14"
 if marker_exists "$tmp"; then pass; else fail "Codex no-responder path: marker must REMAIN"; fi
 rm -rf "$tmp"
 
-# 4f-1/4f-2. HIMMEL-1613 incident fixture: a critic (glm) that TIMED OUT on
+# 4f-1/4f-2. Incident fixture: a critic (glm) that TIMED OUT on
 # run 1 and SUCCEEDED on run 2 at the SAME head used to have its run-2
 # avail-ok silently dropped by ledger-append.sh's flat (head,model) dedup,
 # permanently wedging this gate at that SHA. ledger-append.sh now
@@ -1083,7 +1081,7 @@ run_clear "$tmp" 0 "HIMMEL-1613: avail unavailable-then-ok at the same head clea
 if marker_exists "$tmp"; then fail "HIMMEL-1613 fixture: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
-# HIMMEL-1640 variant: the supersession identity is (head, model) ONLY, so an
+# Variant: the supersession identity is (head, model) ONLY, so an
 # unavailable -> ok recovery supersedes even when the two readings came back on
 # DIFFERENT artifacts (a critic timed out probing the diff, then succeeded
 # probing the spec at the same head). The writer appends the ok across the
@@ -1115,11 +1113,11 @@ run_clear "$tmp" 0 "HIMMEL-1613: a later ok->unavailable attempt does not un-cle
 if marker_exists "$tmp"; then fail "HIMMEL-1613 negative: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
-# 4g-4j. Claude-only floor / availability escape hatch (HIMMEL-1224). The gate
+# 4g-4j. Claude-only floor / availability escape hatch. The gate
 # must be adopter-portable: a config with ZERO external critics (no codex / glm /
 # CodeRabbit) still clears on the session's own diff review, recorded as
 # `avail --model claude --status ok`. The floor opens for lane ABSENCE, never for
-# a lane that ATTEMPTED and failed (that records `unavailable`, HIMMEL-1126). The
+# a lane that ATTEMPTED and failed (that records `unavailable`). The
 # failed-lane-as-SOLE-evidence → exit 14 shape is already covered by tests 4 / 4f
 # (coderabbit / codex `unavailable`-only); the cases here add the claude-floor
 # story on top of it.
@@ -1149,7 +1147,7 @@ rm -rf "$tmp"
 
 # 4j. The floor itself is fail-closed on a blocker: a Claude self-review that
 # RESPONDED (avail ok) AND recorded a blocking finding stays closed (exit 15) —
-# a review happening is not the same as a review being clean (HIMMEL-1126).
+# a review happening is not the same as a review being clean.
 make_repo || exit 1
 write_marker "$tmp" "$sha"
 append_ledger "$tmp" "Claude floor blocker appends finding" finding \
@@ -1162,10 +1160,10 @@ run_clear "$tmp" 15 "Claude floor with a blocking finding → exit 15"
 if marker_exists "$tmp"; then pass; else fail "Claude floor blocker: marker must REMAIN"; fi
 rm -rf "$tmp"
 
-# 4k-4o. Opt-in cross-model floor (HIMMEL-1237, CR_REQUIRE_CROSS_MODEL). When set,
+# 4k-4o. Opt-in cross-model floor (CR_REQUIRE_CROSS_MODEL). When set,
 # the Claude self-review floor alone is NOT a sufficient responder — a NON-claude
 # critic must have recorded `avail ... ok` at this SHA. Default off keeps the
-# HIMMEL-1224 adopter behaviour (a claude-only floor clears — covered by 4g).
+# adopter behaviour (a claude-only floor clears — covered by 4g).
 # The test copy has no scripts/lib/load-dotenv.sh, so the script's .env load is a
 # no-op and the process env set here is authoritative.
 export CR_REQUIRE_CROSS_MODEL=1
@@ -1189,7 +1187,7 @@ run_clear "$tmp" 0 "cross-model required + claude + codex ok → exit 0"
 if marker_exists "$tmp"; then fail "cross-model met: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
-# 4l1. HIMMEL-3818: the codex adversarial pass is removed, so a retired
+# 4l1. the codex adversarial pass is removed, so a retired
 # `codex-adv` avail row is NOT cross-model evidence. Claude floor + ONLY a
 # codex-adv ok row → exit 14, marker REMAINS; with the panel's codex row beside
 # it the gate clears exactly as in 4l.
@@ -1211,7 +1209,7 @@ run_clear "$tmp" 0 "cross-model required + claude + codex-adv + panel codex ok �
 if marker_exists "$tmp"; then fail "panel codex row present: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
-# 4l2. HIMMEL-2026: a CURRENT docs-audit marker is allowed to clear under the
+# 4l2. a CURRENT docs-audit marker is allowed to clear under the
 # opt-in cross-model floor when the docs-audit lane recorded Claude AND a
 # non-Claude responder at the FULL head SHA. This guards the lane-specific
 # shape the /pr-check docs-audit runbook must now produce.
@@ -1226,7 +1224,7 @@ run_clear "$tmp" 0 "docs-audit + CR_REQUIRE_CROSS_MODEL + claude+codex ok at ful
 if marker_exists "$tmp"; then fail "docs-audit cross-model met: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
-# 4l3. HIMMEL-2026 inverse: the same docs-audit marker remains closed when the
+# 4l3. Inverse: the same docs-audit marker remains closed when the
 # lane records only Claude, because CR_REQUIRE_CROSS_MODEL requires a non-Claude
 # `avail ... ok` responder even on docs-only diffs.
 make_repo || exit 1
@@ -1419,7 +1417,7 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "disproved crit is not blocking → exit 0"
 rm -rf "$tmp"
 
-# 6a-1. HIMMEL-1294 — an `amend` supersede record is APPLIED before gate 4
+# 6a-1. an `amend` supersede record is APPLIED before gate 4
 # judges. Incident 1: a blocking imp recorded honestly wedged the branch, and
 # re-appending at a lower severity silently no-op'd, so the only escapes were a
 # hand-edit of the JSONL or an operator. The amend must actually take effect
@@ -1432,7 +1430,7 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "amend severity imp->sug unblocks gate 4 → exit 0"
 rm -rf "$tmp"
 
-# 6a-1a. HIMMEL-2579 — the message announcing a merged amend must not claim it
+# 6a-1a. the message announcing a merged amend must not claim it
 # was APPLIED at this head. $applied_amends is the list the READ pass merges
 # IN MEMORY while evaluating a run; it is never a write to the ledger. The old
 # wording ("applied amend(s) at <sha>" / audit tag AMENDS with applied=) read
@@ -1469,8 +1467,8 @@ else
 fi
 rm -rf "$tmp"
 
-# 6a-1b. HIMMEL-2405 — the amend key gains branch. Two branches can
-# legitimately sit at the same head (HIMMEL-1175), and finding ids are minted
+# 6a-1b. the amend key gains branch. Two branches can
+# legitimately sit at the same head, and finding ids are minted
 # in per-producer stream order (not globally unique), so an amend recorded
 # while some OTHER branch was being judged must never leak into this run
 # (branch feat/x, from make_repo). Without branch scoping, this amend would
@@ -1490,7 +1488,7 @@ rm -rf "$tmp"
 # happens to be judging, so the finding must actually carry the branch the
 # amend targets. The amend's set carries a terminal verdict (deferred, not a
 # severity-only tweak): review-round.sh's own branch-wide still-open gate
-# (4c, HIMMEL-3027, a separate consumer) treats an agreed verdict still
+# (4c, a separate consumer) treats an agreed verdict still
 # standing at the judged head as needing a real disposition regardless of
 # severity - unrelated to this ticket's branch-keying fix, so the fixture
 # gives it one to isolate what THIS control is actually proving.
@@ -1504,7 +1502,7 @@ run_clear "$tmp" 0 "an amend recorded for THIS branch still unblocks it (HIMMEL-
 rm -rf "$tmp"
 
 # 6a-1d. Back-compat control: a legacy amend with no branch field still
-# applies to any branch (HIMMEL-2405).
+# applies to any branch.
 make_repo || exit 1
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" \
@@ -1514,7 +1512,7 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "a legacy branchless amend still applies to any branch (back-compat) → exit 0"
 rm -rf "$tmp"
 
-# 6a-1e. HIMMEL-2564 — the AMENDS audit line must name only the amend whose
+# 6a-1e. the AMENDS audit line must name only the amend whose
 # target row is at the head being judged, not every amend the ledger has ever
 # recorded for a matching (head,id,artifact,perspective). Ledger holds one
 # amend at a FOREIGN head (never at this tip, so its finding never passes
@@ -1538,13 +1536,13 @@ else
 fi
 rm -rf "$tmp"
 
-# 6a-1f. HIMMEL-2405 AE round-2 (R1) — amendSetFor must key on the FINDING
+# 6a-1f. amendSetFor must key on the FINDING
 # ROW's own branch, not the branch this clear-cr-marker.sh run is judging
 # (e.BRANCH, here feat/x via write_marker). A finding and its amend both
 # recorded for a DIFFERENT branch (feat/y) than the one being judged must
 # still see the amend apply: the main gate-4b loop evaluates every finding at
 # the judged HEAD regardless of its own branch (two branches can share a
-# head, HIMMEL-1175), so keying the lookup on e.BRANCH instead of the row's
+# head), so keying the lookup on e.BRANCH instead of the row's
 # own o.branch would silently miss this amend.
 make_repo || exit 1
 write_marker "$tmp" "$sha"
@@ -1557,7 +1555,7 @@ rm -rf "$tmp"
 
 # 6a-2. Incident 2: the finding was keyed to the head that FIXES it instead of
 # the head it was raised against. An amend that re-keys `head` must move the
-# finding OFF this head entirely. HIMMEL-2564 AE round-2 (item 3): the AMENDS
+# finding OFF this head entirely. The AMENDS
 # audit line must still name this amend, because its ORIGINAL target_head
 # (the judged sha) matches even though the re-keyed head (deadbeef) moved the
 # finding off it — checking only the re-keyed/effective head would silently
@@ -1592,7 +1590,7 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 14 "an amend alone is not a responder → exit 14"
 rm -rf "$tmp"
 
-# 6c. HIMMEL-1294 — a TRACKED deferral clears gate 4. Before this the only
+# 6c. a TRACKED deferral clears gate 4. Before this the only
 # mechanical exits for an honest out-of-diff crit|imp were a downgrade to sug or
 # a false `disproved`, so the gate pushed an honest session toward mis-recording.
 deferred_finding() { printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"deferred","deferred_to":"%s","reason":"%s"}' "$1" "$2" "$3"; }
@@ -1658,7 +1656,7 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 15 "ticket key with a trailing non-digit still blocks → exit 15"
 rm -rf "$tmp"
 
-# 6g. HIMMEL-1327/HIMMEL-2020 — the blocking-findings deferral hint may use the
+# 6g. the blocking-findings deferral hint may use the
 # tip's short form, and the printed command must WORK when run. New writes
 # normalize to full SHA keys; legacy rows may still be short. This captures the
 # PRINTED hint and RUNS it end-to-end (substituting only its placeholders), not a
@@ -1689,7 +1687,7 @@ if [ -n "$hint_head" ] && [ "$hint_head" != "$sha" ]; then pass; else fail "hint
 # verbatim. The relative `scripts/cr/ledger-append.sh` resolves from $tmp, where
 # make_repo copied the script tree — so this exercises the real amend path with
 # the hint's own --head value. HIMMEL_REPO names the fixture as the anchor
-# (HIMMEL-3395): the relative entry then runs the fixture's own copy instead of
+# The relative entry then runs the fixture's own copy instead of
 # refusing (unset, as in CI) or handing off to the operator's checkout (set).
 cmd="$hint"
 cmd=${cmd//<finding-id>/codex-1}
@@ -1717,7 +1715,7 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "sug finding does not block → exit 0"
 rm -rf "$tmp"
 
-# 7. POST-PR: a PR exists and check-ci is green → clear (operator, HIMMEL-1064).
+# 7. POST-PR: a PR exists and check-ci is green → clear (operator).
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" 42; stub_check_ci "$tmp" 0
@@ -1806,7 +1804,7 @@ else
     if marker_exists "$tmp"; then pass; else fail "gh absent: marker must REMAIN"; fi
 
     # 7f. ...but with NO marker, gh is never needed: the documented no-op must
-    # still exit 0 without gh (codex-1 round 2). Requiring gh up-front broke this.
+    # still exit 0 without gh. Requiring gh up-front broke this.
     rm -f "$tmp/.git/cr-pending/feat/x"
     _rc2=0
     (cd "$tmp" && PATH="$_min_path" "$_bash" "$tmp/scripts/cr/clear-cr-marker.sh" 2>&1) >/dev/null || _rc2=$?
@@ -1851,7 +1849,7 @@ if [ -f "$tmp/.git/cr-pending/42" ]; then fail "numeric branch: marker should be
 rm -rf "$tmp"
 
 # 7h2. A SUCCESSFUL gh call returning unexpected text must NOT be filtered down
-# to "no PR" (coderabbit round 2). Stripping non-numeric lines would silently
+# to "no PR". Stripping non-numeric lines would silently
 # take the pre-PR path and skip check-ci — a fail-open on garbage output.
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
@@ -1927,7 +1925,7 @@ run_clear "$tmp" 10 "two branches → exit 10" feat/x feat/y
 rm -rf "$tmp"
 
 # 10. An explicit branch arg other than the checked-out branch is refused
-# (HIMMEL-3495): clearing writes shared per-branch state, so only cwd's branch
+# Clearing writes shared per-branch state, so only cwd's branch
 # may be cleared. A matching explicit arg still clears.
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
@@ -1944,7 +1942,7 @@ run_clear "$tmp" 0 "explicit arg naming the checked-out branch → exit 0" feat/
 if marker_exists "$tmp"; then fail "explicit branch: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
-# 11. --help exits 0 and documents every exit code (the HIMMEL-1042 lesson:
+# 11. --help exits 0 and documents every exit code (use
 # an anchored range, so a header edit cannot truncate the reference).
 help_out=$(bash "$CLEAR" --help 2>&1)
 help_rc=$?
@@ -1962,7 +1960,7 @@ else
     pass
 fi
 
-# HIMMEL-1495 hermeticity canary. clear-cr-marker.sh does not consult the
+# Hermeticity canary. clear-cr-marker.sh does not consult the
 # armed-session bypass env (ARMAUTOMERGE/CR_MERGE_GATE_OK), so a block fixture
 # STILL blocks (exit 14, no responders at the current tip) with both exported
 # into the suite's env — pinning that insensitivity so a future change wiring
@@ -1978,9 +1976,9 @@ if marker_exists "$tmp"; then pass; else fail "armed-env stale marker: marker mu
 rm -rf "$tmp"
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
 
-# HIMMEL-1715. A ledger row can be stamped with a branch+head whose diff does
-# not contain the file the finding is about, and the resulting refusal used to
-# be indistinguishable from a legitimate one. make_repo's feat/x touches ONLY
+# A ledger row can be stamped with a branch+head whose diff does
+# not contain the file the finding is about, and the resulting refusal must be
+# distinguishable from a legitimate one. make_repo's feat/x touches ONLY
 # f.txt, so a finding on scripts/handover/merge-on-green.sh (the real 2026-08-10
 # shape: a docs-only branch wedged by an Important about that file) is provably
 # out of this head's diff. The gate must STILL refuse — the note is diagnostic,
@@ -2019,10 +2017,10 @@ if grepq "$LAST_CLEAR_OUT" -F 'PROVENANCE'; then
 else pass; fi
 rm -rf "$tmp"
 
-# HIMMEL-1715 CR round 1. Our contract: a blocking finding on a file the branch
+# Contract: a blocking finding on a file the branch
 # DOES touch is never flagged out-of-diff, whatever its name looks like. The
-# fixture uses an awkward (non-ASCII) name because that is where the comparison
-# used to break; a backslash/tab name exercises the same path but cannot be
+# fixture uses an awkward (non-ASCII) name because that is where a naive
+# comparison breaks; a backslash/tab name exercises the same path but cannot be
 # created on Windows, so it would skip on the primary dev platform.
 make_repo || exit 1
 _weird=$(printf 'caf\303\251.sh')
@@ -2042,11 +2040,11 @@ if grepq "$LAST_CLEAR_OUT" -F 'PROVENANCE'; then
 else pass; fi
 rm -rf "$tmp"
 
-# ── HIMMEL-1558: the marker lock + the LANE half of the re-validation ───────
+# ── the marker lock + the LANE half of the re-validation ───────
 # The marker has exactly two writers — this script and check-cr-before-push.sh
 # — and the gates between the first read and the unlink take minutes. These
 # cases pin the mutual exclusion and the lane comparison. Every one asserts the
-# specific REFUSAL REASON, never a bare non-zero rc (HIMMEL-1554): fail-closed
+# specific REFUSAL REASON, never a bare non-zero rc: fail-closed
 # bugs and fail-closed features produce identical exit codes.
 
 # marker_lock_dir <tmp> — the branch's lock dir under the CR-marker namespace,
@@ -2272,7 +2270,7 @@ exit \$rc
 STUB
 }
 
-# L8. The acquire succeeded but its holder record is EMPTY (HIMMEL-1994). The
+# L8. The acquire succeeded but its holder record is EMPTY. The
 # pre-unlink re-check compares that record against itself, so "" == "" would
 # PASS for any holder — including a replacement one — and the release would
 # then have no record to be conditional on, i.e. an unconditional rm of a
@@ -2296,7 +2294,7 @@ if grepq "$LAST_CLEAR_OUT" -F 'SHARED_BRANCH_LOCK_NS=himmel-cr-marker bash scrip
     fail "the refusal must name a copy-pasteable namespaced release: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
-# ── HIMMEL-2035 T4 SC5: foreign-repo fence ──────────────────────────────────
+# ── Foreign-repo fence ──────────────────────────────────
 # clear-cr-marker.sh has NO env seams by design (file header) — it resolves
 # marker/lock/log paths via `git rev-parse --git-common-dir` off cwd alone, so
 # it already operates on whichever repo the caller's cwd sits in; no --repo
@@ -2390,7 +2388,7 @@ if [ -z "$log_leak" ]; then pass; else
 if [ -n "$FIXTURE_LOG_SEEN" ]; then pass; else
     fail "the foreign-repo clear wrote no clear-cr-marker.log inside the fixture"; fi
 
-# 8. Unadjudicated findings at the current head (HIMMEL-2067, gate 4b). Gate 4
+# 8. Unadjudicated findings at the current head (gate 4b). Gate 4
 # never blocks on `sug`, so a suggestion could be left with verdict:"" forever
 # and the marker would still clear — this closes that gap.
 
@@ -2431,10 +2429,10 @@ if marker_exists "$tmp"; then fail "amend-adjudicated sug: marker should be GONE
 rm -rf "$tmp"
 
 # 8d. An unadjudicated finding recorded at a SUPERSEDED head (not the current
-# tip) DOES block, branch-wide (HIMMEL-3027, HIMMEL-2917): review-round.sh
+# tip) DOES block, branch-wide: review-round.sh
 # promote walks every round's ledger rows on the branch, not just the tip, and
-# tags an empty verdict at ANY head as still-open. HIMMEL-2067's tip-only rule
-# is superseded here -- promote's stance wins, so a decision must exist for
+# tags an empty verdict at ANY head as still-open. A tip-only rule
+# does not apply here -- promote's stance wins, so a decision must exist for
 # every round before the branch can clear, not just the current one.
 make_repo || exit 1
 (cd "$tmp" && echo x >> f.txt && git commit -qam "later reviewed work" && git push -q origin feat/x) >/dev/null 2>&1
@@ -2453,7 +2451,7 @@ rm -rf "$tmp"
 # 8e. Unadjudicated findings recorded at an EARLIER round head, with the
 # CURRENT round's own finding fully adjudicated, must still block: gate 4b is
 # tip-only and would pass here, but review-round.sh promote's branch-wide
-# still-open check (HIMMEL-3027) catches the earlier round's open business.
+# still-open check catches the earlier round's open business.
 make_repo || exit 1
 _r1="${sha:0:8}"
 (cd "$tmp" && echo x >> f.txt && site_files && git commit -qam "round 2" && git push -q origin feat/x) >/dev/null 2>&1
@@ -2464,7 +2462,7 @@ write_ledger "$tmp" \
     "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r1-sug","severity":"sug","file":"a.sh","line":2,"verdict":""}' "$_r1")" \
     "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r2-fixed","severity":"sug","file":"a.sh","line":3,"verdict":"fixed"}' "${_tip:0:8}")" \
     "$(avail_ok "${_tip:0:8}")"
-# HIMMEL-4566: r2-fixed carries its class-sweep record, so gate 4d passes and
+# r2-fixed carries its class-sweep record, so gate 4d passes and
 # this case still reaches the gate 4c it exists to test.
 write_sweeps "$tmp" "SWEEP [r2-fixed@${_tip:0:8}] class=typo :: single-site search=git grep -n teh -- a.sh b.sh c.sh"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
@@ -2481,9 +2479,9 @@ rm -rf "$tmp"
 # 8f. --dry-run must NEVER mutate the shared ledger via the branch-wide gate
 # 4c check, even when an earlier round head carries an `agreed` finding that
 # `review-round.sh promote` would otherwise flip to `verdict=fixed` as a side
-# effect of computing still-open (HIMMEL-3027 CR, coderabbitai: a real
+# effect of computing still-open (a real
 # `promote` call amends the ledger; --dry-run's contract is report-only).
-# Reproduces the exact shape CodeRabbit flagged: an `agreed`-disposed row at
+# Reproduces the exact shape: an `agreed`-disposed row at
 # an earlier round, tip fully adjudicated -- a non-dry-run run would call
 # promote and it would write; --dry-run must skip that call entirely.
 make_repo || exit 1
@@ -2495,7 +2493,7 @@ write_ledger "$tmp" \
     "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r1-agreed","severity":"imp","file":"a.sh","line":1,"verdict":"agreed"}' "$_r1")" \
     "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r2-fixed","severity":"sug","file":"a.sh","line":3,"verdict":"fixed"}' "${_tip:0:8}")" \
     "$(avail_ok "${_tip:0:8}")"
-# HIMMEL-4566: both rows are agreed-and-fixed on this branch, so gate 4d needs
+# Both rows are agreed-and-fixed on this branch, so gate 4d needs
 # their class-sweep records before this dry run can report a pass.
 write_sweeps "$tmp" "SWEEP [r1-agreed@$_r1] class=unquoted path :: sites=a.sh:1, b.sh:4" \
     "SWEEP [r2-fixed@${_tip:0:8}] class=typo :: single-site search=git grep -n typo -- a.sh b.sh c.sh"
@@ -2510,11 +2508,11 @@ if grepq "$LAST_CLEAR_OUT" -F 'skipping the branch-wide still-open check'; then 
     fail "8f dry-run must say it skipped the mutating branch-wide check: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
-# 8g-8l. HIMMEL-4566 gate 4d: a finding on this branch whose effective verdict
+# 8g-8l. Gate 4d: a finding on this branch whose effective verdict
 # is agreed or fixed needs a class-sweep record (write-verdicts.sh sweep) in
 # <git-common-dir>/cr-class-sweeps/<branch>, keyed <id>@<head>. Shared fixture:
-# round 1 at $sha raised r1 (agreed, fixed by round 2), round 2 at the tip
-# recorded r2 as fixed within the round.
+# the first round at $sha raised r1 (agreed, fixed by the second round), the
+# second round at the tip recorded r2 as fixed within the round.
 sweep_fixture() {
     make_repo || exit 1
     _r1="${sha:0:8}"
@@ -2574,7 +2572,7 @@ write_sweeps "$tmp" "SWEEP [r2@$_tip] class=typo :: single-site search=git grep 
 run_clear "$tmp" 0 "8l deferred-after-agreed and legacy unstamped rows need no sweep -> exit 0"
 rm -rf "$tmp"
 
-# 8m-8t. HIMMEL-4603: a record is bound to evidence the gate re-checks at the
+# 8m-8t. a record is bound to evidence the gate re-checks at the
 # tip. Each case keeps r2's valid record so only r1's record decides.
 _r2_ok="SWEEP [r2@\$_tip] class=typo :: single-site search=git grep -n teh -- a.sh b.sh c.sh"
 # 8m. A forged multi-site record naming a site that does not exist -> refused.
@@ -2623,7 +2621,7 @@ if grepq "$LAST_CLEAR_OUT" -F 'search-scope-single-file'; then pass; else
 rm -rf "$tmp"
 # 8q. A search option that runs a program is refused, and never runs.
 sweep_fixture
-# HIMMEL-4641: the pager is a script that drops a canary, so a run is observable
+# The pager is a script that drops a canary, so a run is observable
 # (a bare touch pager only bumped a.sh's mtime). The control runs git directly
 # in the worktree and must trip the canary, or the absence below proves nothing.
 printf '#!/bin/sh\ntouch "%s/pager.ran"\n' "$tmp" > "$tmp/pager.sh"; chmod +x "$tmp/pager.sh"
@@ -2632,20 +2630,20 @@ if [ -e "$tmp/pager.ran" ]; then pass; else fail "8q control: the pager canary m
 rm -f "$tmp/pager.ran"
 write_sweeps "$tmp" "SWEEP [r1@$_r1] class=unquoted path :: single-site search=git grep --open-files-in-pager=./pager.sh -e echo -- a.sh" "${_r2_ok/\$_tip/$_tip}"
 run_clear "$tmp" 14 "8q a search carrying a program-running option is not a record -> exit 14"
-# HIMMEL-5158: rc 14 alone also held when git itself rejected the option
+# Rc 14 alone also held when git itself rejected the option
 # (search-failed), so the allowlist could be deleted unseen. Name the refusal.
 if grepq "$LAST_CLEAR_OUT" -F 'search-option-refused:--open-files-in-pager=./pager.sh'; then pass; else
     fail "8q must name search-option-refused for the long option: $LAST_CLEAR_OUT"; fi
 if [ -e "$tmp/pager.ran" ] || [ -e "$tmp/a.sh.ran" ] || [ -e "$tmp/echo" ]; then fail "8q the refused search must never run"; else pass; fi
 rm -rf "$tmp"
-# 8r. HIMMEL-4604 (gate side): a raw verdict spelled Agreed is still agreed.
+# 8r. A raw verdict spelled Agreed is still agreed.
 sweep_fixture
 printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r3","severity":"sug","file":"a.sh","line":7,"verdict":"Agreed"}\n' "${_tip:0:8}" >> "$tmp/.git/cr-critic-scores.jsonl"
 write_sweeps "$tmp" "SWEEP [r1@$_r1] class=unquoted path :: sites=a.sh:1, b.sh:4" "${_r2_ok/\$_tip/$_tip}"
 run_clear "$tmp" 14 "8r a raw verdict spelled Agreed still needs a class-sweep record -> exit 14"
 if grepq "$LAST_CLEAR_OUT" -F "r3@${_tip:0:8}"; then pass; else fail "8r must name r3: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
-# 8s. HIMMEL-4605: a class-sweep path that cannot be read is audited as a
+# 8s. a class-sweep path that cannot be read is audited as a
 # sweep failure naming the sweep path, not as an unreadable ledger.
 sweep_fixture
 mkdir -p "$tmp/.git/cr-class-sweeps/feat/x"
@@ -2654,14 +2652,14 @@ if grepq "$LAST_CLEAR_OUT" -F 'reason=class-sweep-unreadable' && grepq "$LAST_CL
     && ! grepq "$LAST_CLEAR_OUT" -F 'reason=ledger-unreadable'; then pass; else
     fail "8s must audit class-sweep-unreadable naming the sweep path: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
-# 8t. HIMMEL-4596: r1 agreed at the abbreviated head, then disproved at the
+# 8t. r1 agreed at the abbreviated head, then disproved at the
 # full head of the same commit. The later row wins, so r1 needs no record.
 sweep_fixture
 printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r1","severity":"imp","file":"a.sh","line":1,"verdict":"disproved"}\n' "$sha" >> "$tmp/.git/cr-critic-scores.jsonl"
 write_sweeps "$tmp" "${_r2_ok/\$_tip/$_tip}"
 run_clear "$tmp" 0 "8t a later full-head row supersedes the abbreviated-head agreed row -> exit 0"
 rm -rf "$tmp"
-# 8u. HIMMEL-4637: a hit path git would quote (core.quotePath) is compared as its
+# 8u. a hit path git would quote (core.quotePath) is compared as its
 # real name. The finding file is u-umlaut.sh and the search's only hit IS that
 # file, so the record must clear (it was refused as search-hits-other-site).
 sweep_fixture
@@ -2676,7 +2674,7 @@ write_sweeps "$tmp" "SWEEP [r1@${_tip:0:8}] class=quoted path :: single-site sea
 run_clear "$tmp" 0 "8u a search whose only hit is a non-ASCII finding file clears -> exit 0"
 if grepq "$LAST_CLEAR_OUT" -F 'search-hits-other-site'; then fail "8u must not report the quoted finding path as another site: $LAST_CLEAR_OUT"; else pass; fi
 rm -rf "$tmp"
-# 8v. HIMMEL-4637: a sites= entry must be a file. scripts/cr is a tree at the
+# 8v. a sites= entry must be a file. scripts/cr is a tree at the
 # tip, which cat-file -e accepts, so the record was a record.
 sweep_fixture
 write_sweeps "$tmp" "SWEEP [r1@$_r1] class=unquoted path :: sites=a.sh:1, scripts/cr" "${_r2_ok/\$_tip/$_tip}"
@@ -2684,7 +2682,7 @@ run_clear "$tmp" 14 "8v a sweep naming a directory as a site is not a record -> 
 if grepq "$LAST_CLEAR_OUT" -F 'site-not-a-file:scripts/cr'; then pass; else
     fail "8v must name site-not-a-file:scripts/cr: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
-# 8w. HIMMEL-4641: a later disproved row at a fabricated head that merely extends
+# 8w. a later disproved row at a fabricated head that merely extends
 # r1's abbreviated head does not resolve to r1's commit, so it must not erase
 # r1's sweep requirement.
 sweep_fixture
@@ -2693,7 +2691,7 @@ write_sweeps "$tmp" "${_r2_ok/\$_tip/$_tip}"
 run_clear "$tmp" 14 "8w a disproved row at a fabricated extension of the head does not supersede r1 -> exit 14"
 if grepq "$LAST_CLEAR_OUT" -F "r1@$_r1"; then pass; else fail "8w must name r1: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
-# 8x. HIMMEL-4641: --check-sweeps judges candidate records with the gate's own
+# 8x. --check-sweeps judges candidate records with the gate's own
 # checks and touches nothing: a bad record exits 14, a good one exits 0, and
 # neither needs a marker.
 sweep_fixture
@@ -2705,7 +2703,7 @@ run_clear "$tmp" 0 "8x --check-sweeps accepts a record the gate would accept" --
 if marker_exists "$tmp"; then pass; else fail "8x --check-sweeps must leave the marker alone"; fi
 rm -rf "$tmp"
 
-# 8y. HIMMEL-5158: two heads that do not resolve (a garbage-collected round, or
+# 8y. two heads that do not resolve (a garbage-collected round, or
 # a typed one) are not "the same commit" merely because both resolve to null.
 # A later disproved row at deadbeef0ff must not erase the agreed row at
 # deadbeef0 - resolve(sh) !== null is what keeps null === null from coalescing.
@@ -2716,7 +2714,7 @@ write_sweeps "$tmp" "SWEEP [r1@$_r1] class=unquoted path :: sites=a.sh:1, b.sh:4
 run_clear "$tmp" 14 "8y a disproved row at one unresolvable head does not supersede an agreed row at another -> exit 14"
 if grepq "$LAST_CLEAR_OUT" -F "r9@deadbeef0(agreed)"; then pass; else fail "8y must name r9@deadbeef0: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
-# 8y-gc. Intended behaviour, pinned (HIMMEL-5158): a round head whose commit is
+# 8y-gc. Intended behaviour, pinned: a round head whose commit is
 # gone is still judged by its own spelling. It is not forgiven, and not refused
 # for being gone: a record naming it (sites checked at the tip) clears it.
 sweep_fixture
@@ -2725,7 +2723,7 @@ write_sweeps "$tmp" "SWEEP [r1@$_r1] class=unquoted path :: sites=a.sh:1, b.sh:4
     "SWEEP [r9@deadbeef0] class=gone :: sites=a.sh:1, c.sh:9"
 run_clear "$tmp" 0 "8y-gc a fixed row at a garbage-collected head is cleared by a record naming it -> exit 0"
 rm -rf "$tmp"
-# 8z. HIMMEL-5158: a sites= entry must be a regular file (100644/100755), not a
+# 8z. a sites= entry must be a regular file (100644/100755), not a
 # symlink (120000). A link names no content, so it proves no sweep of it; an
 # executable regular file is a site like any other.
 sweep_fixture
@@ -2743,7 +2741,7 @@ if grepq "$LAST_CLEAR_OUT" -F 'site-not-a-file:link.sh'; then pass; else
 write_sweeps "$tmp" "SWEEP [r1@${_tip:0:8}] class=linked :: sites=a.sh:1, run.sh:1"
 run_clear "$tmp" 0 "8z a sweep naming an executable regular file as a site clears -> exit 0"
 rm -rf "$tmp"
-# 8z-head. Intended behaviour, pinned (HIMMEL-5158): --check-sweeps with no ref
+# 8z-head. Intended behaviour, pinned: --check-sweeps with no ref
 # for the branch judges against HEAD (the checkout the record was written from),
 # so a record naming a site HEAD lacks is refused and one HEAD has is accepted.
 sweep_fixture
@@ -2755,7 +2753,7 @@ run_clear "$tmp" 14 "8z-head --check-sweeps with no branch ref judges against HE
 printf 'SWEEP [r1@%s] class=unquoted path :: sites=a.sh:1, b.sh:4\n' "$_r1" > "$tmp/cand.txt"
 run_clear "$tmp" 0 "8z-head --check-sweeps with no branch ref judges against HEAD: present sites accepted" --check-sweeps "$tmp/cand.txt" feat/x
 rm -rf "$tmp"
-# 8z-sub. HIMMEL-5158 (j2319a): sites resolve from the repo root, not the cwd.
+# 8z-sub. sites resolve from the repo root, not the cwd.
 # From a subdirectory a nested regular file is a site, and a root symlink whose
 # name a cwd file shadows is still a symlink.
 sweep_fixture
@@ -2769,7 +2767,7 @@ rc=0; out=$(cd "$tmp/sub" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-c
 if [ "$rc" -eq 14 ] && printf '%s' "$out" | grep -qF 'site-not-a-file:l.sh'; then pass; else
     fail "8z-sub a root symlink shadowed by sub/l.sh must be refused from a subdir (rc=$rc): $out"; fi
 rm -rf "$tmp"
-# 8z-grep. HIMMEL-5162: a single-site search's pathspec resolves from the repo
+# 8z-grep. a single-site search's pathspec resolves from the repo
 # root like sites do. From sub/ the cwd-relative reading spans only sub/a.sh (one
 # file), so a root-scoped search over a.sh b.sh c.sh was refused as
 # search-scope-single-file.
@@ -2780,7 +2778,7 @@ printf "SWEEP [r1@%s] class=typo :: single-site search=git grep -n -F 'echo a' -
 rc=0; out=$(cd "$tmp/sub" && PATH="$tmp/bin:$PATH" bash "$tmp/scripts/cr/clear-cr-marker.sh" --check-sweeps "$tmp/cand.txt" feat/x 2>&1) || rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "8z-grep a root-scoped search must clear from a subdir (rc=$rc): $out"; fi
 rm -rf "$tmp"
-# 8z-cost. HIMMEL-5162: a -P pattern over the length cap is refused up front,
+# 8z-cost. a -P pattern over the length cap is refused up front,
 # naming the cap, instead of being left to the search timeout.
 sweep_fixture
 _long=$(printf 'a%.0s' $(seq 1 300))
@@ -2792,7 +2790,7 @@ printf "SWEEP [r1@%s] class=typo :: single-site search=git grep -n -P -e 'echo a
 run_clear "$tmp" 0 "8z-cost a short -P pattern still clears -> exit 0" --check-sweeps "$tmp/cand.txt" feat/x
 rm -rf "$tmp"
 
-# 5a-5e. HIMMEL-2128 — CR_FLOOR_FALLBACK=claude-only gate-3b escape. All five
+# 5a-5e. CR_FLOOR_FALLBACK=claude-only gate-3b escape. All five
 # cases require cross-model (else gate 3b never runs) and a Claude avail-ok row
 # (the floor). The fallback fires ONLY when every non-Claude lane that recorded
 # ANY avail row at this head is unavailable with a VERIFIED-exhaustion reason
@@ -2894,9 +2892,9 @@ run_clear "$tmp" 14 "5g last-write-wins: unavailable(quota) then unavailable(con
 if marker_exists "$tmp"; then pass; else fail "5g last-write-wins: marker must REMAIN"; fi
 rm -rf "$tmp"
 
-# 5h (HIMMEL-2129, HIMMEL-2128 follow-up). critic-panel.sh now records a
+# 5h. critic-panel.sh now records a
 # non-Claude avail row for a critic THIS RUN deselected (tier filter exclusion
-# or the HIMMEL-1950 keep-one cap) instead of leaving silence — see
+# or the keep-one cap) instead of leaving silence — see
 # scripts/cr/critic-panel.sh's _tier_excluded_raw/_keepone_dropped_raw. Pin
 # that its literal reason vocabulary (reason=tier-excluded,
 # reason=keep-one-skipped) is NOT exhaustion-classed here, same as any other
@@ -2914,8 +2912,8 @@ if marker_exists "$tmp"; then pass; else fail "5h deselected-but-available lane:
 rm -rf "$tmp"
 unset CR_FLOOR_FALLBACK
 
-# 5i (codex-2 CR round, HIMMEL-2129): same pin as 5h for the OTHER new reason
-# string critic-panel.sh's HIMMEL-1950 keep-one cap emits
+# 5i: same pin as 5h for the OTHER new reason
+# string critic-panel.sh's keep-one cap emits
 # (reason=keep-one-skipped) -- 5h only exercised reason=tier-excluded, so a
 # regression narrowing EXHAUSTION_REASONS' complement to just that one string
 # would have slipped through unnoticed.
@@ -2931,7 +2929,7 @@ if marker_exists "$tmp"; then pass; else fail "5i deselected-but-available lane:
 rm -rf "$tmp"
 unset CR_FLOOR_FALLBACK
 
-# 5j (HIMMEL-3110). reason=quota-long specifically -- the exact bucket
+# 5j. reason=quota-long specifically -- the exact bucket
 # failure-classify.sh now emits for codex's own usage-limit wording (a
 # multi-day-out absolute reset date). 5a only pins the literal reason
 # "quota"; this closes the loop for the actual string the fixed classifier
@@ -2948,7 +2946,7 @@ if marker_exists "$tmp"; then fail "5j floor-fallback accepted: marker should be
 rm -rf "$tmp"
 unset CR_FLOOR_FALLBACK
 
-# 5k-5m (HIMMEL-3120). The ticket claimed the floor + CR_FLOOR_FALLBACK were
+# 5k-5m. The ticket claimed the floor + CR_FLOOR_FALLBACK were
 # "jointly unsatisfiable"; gate 3b in fact already accepts a verified exhaustion
 # row (5a/5j). These cases pin the two things the suite above left implicit, so
 # the claim cannot silently become true: the AUTH-FAULT RED control, and the row
@@ -3013,7 +3011,7 @@ fi
 rm -rf "$tmp"
 unset CR_FLOOR_FALLBACK
 
-# 5n-5w (HIMMEL-3107). The floor that unlocks CR_FLOOR_FALLBACK is a REAL
+# 5n-5w. The floor that unlocks CR_FLOOR_FALLBACK is a REAL
 # context-free review (scripts/cr/claude-floor-review.sh), never a row the
 # session records about itself: only a `claude-floor` avail-ok row backed by
 # its provenance artifact at <git-common-dir>/cr-floor/<head>.json unlocks it.
@@ -3198,7 +3196,7 @@ if marker_exists "$tmp"; then pass; else fail "5z no remote default: marker must
 if grepq "$LAST_CLEAR_OUT" 'default branch'; then pass; else fail "5z must name the missing default branch: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
-# 5za. HIMMEL-3220: a HAND-WRITTEN artifact — right head, right base, the
+# 5za. a HAND-WRITTEN artifact — right head, right base, the
 # correct diff hash, an invented session id, no stamp — is exactly what the
 # authoring session could forge. It must not unlock the floor.
 make_repo || exit 1
@@ -3238,7 +3236,7 @@ rm -rf "$tmp"
 unset CR_FLOOR_FALLBACK
 
 unset CR_REQUIRE_CROSS_MODEL
-# 6a-6e. HIMMEL-3108 — the floor path gets its OWN identity at the CLEARING
+# 6a-6e. the floor path gets its OWN identity at the CLEARING
 # outcome, not only in the mid-run FLOOR-FALLBACK note. Before this ticket a
 # marker cleared on the same-model floor and one cleared by a genuine codex
 # review ended with a byte-identical `CLEARED branch=... sha=... responders=1`
@@ -3339,7 +3337,7 @@ fi
 if grepq "$LAST_CLEAR_OUT" -F 'via='; then fail "6e default path must carry no basis tag: $LAST_CLEAR_OUT"; else pass; fi
 rm -rf "$tmp"
 
-# 9. GraphQL budget preflight before the PR lookup (HIMMEL-3190). The fixture
+# 9. GraphQL budget preflight before the PR lookup. The fixture
 # copies scripts/lib selectively, so the shared helper is copied in explicitly
 # here; every case above ran WITHOUT it (the documented fail-open on a missing
 # helper). gh is a stub that fakes the X-Ratelimit-* headers of `gh api -i
@@ -3404,7 +3402,7 @@ run_clear "$tmp" 0 "9c healthy budget -> exit 0"
 if [ ! -s "$tmp/sleeps.log" ]; then pass; else fail "9c: healthy budget must not sleep"; fi
 rm -rf "$tmp"
 
-# 10a-10c. HIMMEL-1932 -- a panel certify refusal (critic-panel.sh exit 6) is
+# 10a-10c. a panel certify refusal (critic-panel.sh exit 6) is
 # recorded as an avail row (reason=certify-refused) and HOLDS the gate closed at
 # that SHA, whatever another lane's avail ok says. 10c: it binds one SHA only.
 make_repo || exit 1
@@ -3424,7 +3422,7 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "10c certify-refused row at ANOTHER head does not hold this SHA -> exit 0"
 rm -rf "$tmp"
 
-# 10d. HIMMEL-5110 item 3: the certify-refused extraction fails CLOSED. A node
+# 10d. the certify-refused extraction fails CLOSED. A node
 # failure in that one step used to leave the flag empty, and `${…:-0}` read it
 # as "no refusal". Shim node: the extraction (and only it) dies; the rest of the
 # verdict reads are real, so the clean ledger below WOULD clear without the fix.
@@ -3440,10 +3438,10 @@ if marker_exists "$tmp"; then pass; else fail "10d: marker must REMAIN"; fi
 if grep -q 'reason=certify-refused-unreadable' "$tmp/.git/clear-cr-marker.log" 2>/dev/null; then pass; else fail "10d: audit line names certify-refused-unreadable"; fi
 rm -rf "$tmp"
 
-# 11a-11e. HIMMEL-5416 -- a pre-PR commit after the last review round (rounds
+# 11a-11e. a pre-PR commit after the last review round (rounds
 # 1-3 plus the delta ran at head A, a test-file fix B landed, no PR yet) used to
 # deadlock: no critic row at B, and the one delta round is spent. When B only
-# touches test paths (HIMMEL-5109 rule) and has no ledger rows of its own, gate 3
+# touches test paths and has no ledger rows of its own, gate 3
 # is evaluated at the last counted round head A, which a critic did review.
 # review_b <tmp> <path> <content> -- commit <content> at <path> on top of $sha,
 # push it, and point the marker at the new tip (sets B).
