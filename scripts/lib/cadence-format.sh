@@ -177,8 +177,8 @@
 # The graphmap-publish runner is unchanged (graph-cadence.sh alerts and writes
 # its own rows). The alert call pins the arm-time PATH so the sender finds bun
 # under cron. NOT covered: the codex-sweep runner and every graphmap/qmd/
-# upstream-watch .bat twin (tracks only the pipeline .bat twins;
-# these are ). Re-arm with
+# upstream-watch .bat twin (the pipeline .bat twins are tracked separately).
+# Re-arm with
 # `graphmap-cadence.sh|qmd-cadence.sh|upstream-watch-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
 CADENCE_RUNNER_FORMAT_VERSION=22
