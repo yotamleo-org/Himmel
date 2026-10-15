@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/block-tail-pipe-on-gates.sh (HIMMEL-1696).
+# Smoke test for scripts/hooks/block-tail-pipe-on-gates.sh.
 #
 # Usage: bash scripts/hooks/test-block-tail-pipe-on-gates.sh
 #
@@ -202,7 +202,7 @@ if [ "${res%%|*}" = "0" ]; then
 else
     fail "heredoc body denied as syntax (rc=${res%%|*})"
 fi
-# HIMMEL-5334: a heredoc body is data, and what FOLLOWS it still runs. The body
+# a heredoc body is data, and what FOLLOWS it still runs. The body
 # is dropped through its terminator, so a quoted body with an apostrophe or the
 # payload on the opener line no longer withdraws the whole guard.
 deny "payload after a quoted heredoc body" \
@@ -280,12 +280,12 @@ allow "gate | tail documented in an unquoted heredoc body is data" \
       'cat <<EOF
 never do: bash scripts/check-ci.sh | tail -20
 EOF'
-# HIMMEL-5334: ANSI-C `$'...'` — an escaped quote does not close the string.
+# ANSI-C `$'...'` — an escaped quote does not close the string.
 deny "gate | tail after an ANSI-C string with an escaped quote" \
      "echo \$'it\\'s'; bash scripts/ci/run-shell-tests.sh | tail -5"
 allow "an operator inside an ANSI-C string is data" \
       "echo \$'a\\'| tail'"
-# HIMMEL-5334: an expansion that may be empty does not hide the command word.
+# an expansion that may be empty does not hide the command word.
 deny "plain gate | tail (control)" 'bash scripts/ci/run-shell-tests.sh | tail -5'
 # shellcheck disable=SC2016  # payload is literal command text
 deny "empty expansion glued to the command word" \
@@ -298,7 +298,7 @@ deny "empty expansion between launcher and gate" \
 # shellcheck disable=SC2016  # payload is literal command text
 deny "empty expansion glued to tail" 'bash scripts/ci/run-shell-tests.sh | ${V:-}tail -5'
 # The WORD of a default/alternate expansion is what runs when the test goes
-# that way, so a gate named there is still a gate (judge j2429a, HIGH).
+# that way, so a gate named there is still a gate.
 # shellcheck disable=SC2016  # payload is literal command text
 deny "gate in the :- default word after a launcher" 'bash ${V:-./scripts/check-ci.sh} | tail -5'
 # shellcheck disable=SC2016  # payload is literal command text
@@ -352,7 +352,7 @@ allow "an expansion before a non-gate command is not a gate" '${V:-}echo hi | ta
 # shellcheck disable=SC2016  # payload is literal command text
 deny "redirect target expansion does not swallow the gate word" \
      '2>$LOG bash scripts/check-ci.sh | tail'
-# HIMMEL-5362: the expansion model stops past 32 nested levels (each level
+# the expansion model stops past 32 nested levels (each level
 # re-reads its text) and the guard fails closed; 10 levels are modelled.
 _nest() {
     local k=0 o='' c=''
@@ -363,8 +363,8 @@ _nest() {
 deny "expansions nested 40 deep fail closed" "$(_nest 40)"
 allow "expansions nested 10 deep are modelled" "$(_nest 10)"
 
-# HIMMEL-5362: zsh l/r pad strings and j/s separators are text the expansion
-# yields, so a gate spelled there is a gate (judge j2429c).
+# zsh l/r pad strings and j/s separators are text the expansion
+# yields, so a gate spelled there is a gate.
 # shellcheck disable=SC2016  # payload is literal command text
 deny "zsh (l::) pad string names the gate" 'bash ${(l:21::./scripts/check-ci.sh:)V} | tail -5'
 # shellcheck disable=SC2016  # payload is literal command text
@@ -514,7 +514,7 @@ deny "apostrophe inside a double-quoted argument before the tail stage" \
 allow "escaped pipe is an argument, not a pipeline" \
       'bash scripts/check-ci.sh --pattern \| tail'
 
-# --- HIMMEL-1979: the two lexer residuals the r13 panel deferred -----------
+# --- the two lexer residuals the r13 panel deferred -----------
 # codex-1 r13: normalisation dropped the escape from `\"`, so a VALID leading
 # assignment left every later quote-state walk unbalanced — and an unbalanced
 # walk resolves no command at all, so the gate behind it was never seen.
@@ -536,13 +536,13 @@ deny "sudo -n (bare flag) before the gate" \
 # `-S` takes an operand for env and none for sudo — the divergence one flat
 # table could not express.
 #
-# HIMMEL-3661 (corrects HIMMEL-3632's comment here, which was WRONG): GNU
+# GNU
 # env's `-S`/`--split-string` operand is not a value to skip past like `-a`'s
 # below — env SPLITS it into a brand-new argv and RUNS that, so whatever it
 # contains is an unparsed, unknown program that may itself be a gate. The
 # retired comment called the old skip_next handling "a false DENY, never a
 # bypass" — false: on a QUOTED multi-word operand (`env -S 'bash
-# scripts/check-ci.sh' | tail`, HIMMEL-3661 block below) the whole gate call
+# scripts/check-ci.sh' | tail`, block below) the whole gate call
 # was swallowed as -S's "value" with nothing left to scan — an outright
 # ALLOW/bypass. This one-word row denies below because the fix treats the
 # whole `-S ...` clause as an unknown program that may be a gate
@@ -576,7 +576,7 @@ deny "GNU time -o before the gate" \
 deny "xargs -I{} before the gate" \
      'xargs -I{} bash scripts/check-ci.sh | tail -20'
 
-# --- HIMMEL-1979 negatives: what the wider walk must STILL allow ------------
+# --- negatives: what the wider walk must STILL allow ------------
 # The escaped-quote fix must not turn every escaped quote into a denial — the
 # command behind it is not a gate.
 allow "escaped quote in a leading assignment on a NON-gate command" \
@@ -589,16 +589,16 @@ allow "timeout DURATION does not make a non-gate look like one" \
       'timeout 30 grep x f | head -5'
 allow "xargs -I{} does not make a non-gate look like one" \
       'xargs -I{} echo {} | head -5'
-# EXPECTED RESIDUAL (named ceiling, HIMMEL-1979): a gate invoked from inside a
+# EXPECTED RESIDUAL (named ceiling): a gate invoked from inside a
 # `-c` PAYLOAD is not seen — the payload is a quoted string this scanner reads
 # as data, and catching it means running the scanner over it as a nested
-# program (the HIMMEL-912 tokenizer class). This case asserts the CURRENT
+# program (the tokenizer class). This case asserts the CURRENT
 # fail-open behaviour on purpose, so a future change to it is deliberate rather
 # than accidental. It is not a shape written here: agents write `bash <gate>`.
 allow "EXPECTED RESIDUAL: gate inside a -c payload is not scanned" \
       "bash -c 'scripts/check-ci.sh' | tail -20"
 
-# --- HIMMEL-2610: an ABBREVIATED long option must be recognized the same as
+# --- an ABBREVIATED long option must be recognized the same as
 # the full spelling (GNU getopt_long-style unambiguous abbreviation) — an
 # unrecognized abbreviation left its operand token to be misread as the
 # invoked program, so the gate behind it went unseen. sudo/env/nice/timeout/
@@ -624,7 +624,7 @@ allow "sudo --us operand does not make a non-gate look like one" \
 allow "sudo --E (not a prefix of any operand-taking sudo option) allows" \
       'sudo --E grep x f | head -5'
 
-# --- HIMMEL-2610 J1267O F1: xargs --replace/--eof/--max-lines are
+# --- xargs --replace/--eof/--max-lines are
 # OPTIONAL-argument long options (GNU xargs never consumes a separate next
 # word for them) — the gate must not be swallowed as their operand, in either
 # the abbreviated or full spelling. ---
@@ -641,7 +641,7 @@ deny "xargs --max-l (abbrev of optional-arg --max-lines) before the gate" \
 deny "xargs --max-lines (optional-arg, full spelling) before the gate" \
      'xargs --max-lines scripts/check-ci.sh | tail -20'
 
-# --- HIMMEL-3632: xargs --process-slot-var (real GNU xargs value-taking
+# --- xargs --process-slot-var (real GNU xargs value-taking
 # option) was entirely unrecognized, so its VALUE (not the gate one token
 # further along) was returned as the invoked program — a genuine bypass. ---
 deny "xargs --process-slot-var (full spelling, split operand) before the gate" \
@@ -649,7 +649,7 @@ deny "xargs --process-slot-var (full spelling, split operand) before the gate" \
 deny "xargs --process-s (abbrev of --process-slot-var, split operand) before the gate" \
      'xargs --process-s V bash scripts/check-ci.sh | tail'
 
-# --- HIMMEL-3661: same env -S/--split-string shape as above, in its full and
+# --- same env -S/--split-string shape as above, in its full and
 # abbreviated long-option spellings — `deny` unconditionally now, not as a
 # leftover "known limitation". ---
 deny "env --split-string (full spelling, same shape as env -S above)" \
@@ -657,7 +657,7 @@ deny "env --split-string (full spelling, same shape as env -S above)" \
 deny "env --split (abbrev of --split-string, same shape)" \
      'env --split x bash scripts/check-ci.sh | tail'
 
-# --- HIMMEL-3661: the actual bypass — a QUOTED (or otherwise attached)
+# --- the actual bypass — a QUOTED (or otherwise attached)
 # multi-word split-string operand swallows the ENTIRE gate call with nothing
 # left to scan, which the rows above (a bare unquoted one-word operand
 # followed by the real gate call as trailing words) do not exercise. Every
@@ -675,7 +675,7 @@ deny 'env -S"<gate>" | tail (attached short form, no space)' \
 deny "env FOO=1 before the gate (no -S, unaffected)" \
      'env FOO=1 bash scripts/check-ci.sh | tail'
 
-# --- J1299O finding 1: the LAST stage can ALSO be an env -S/--split-string
+# --- the LAST stage can ALSO be an env -S/--split-string
 # clause. The first-stage sentinel closed the "gate hidden in -S" bypass, but
 # the walk of the LAST stage returned the same sentinel and the tail/head case
 # only accepted literal tail/head/*/tail/*/head — so a real `tail`/`head`
@@ -688,7 +688,7 @@ deny "gate | env -Snice head (attached -S, LAST stage)" \
 deny "gate | env -S 'tail -5' (quoted multi-word -S, LAST stage)" \
      "bash scripts/check-ci.sh | env -S 'tail -5'"
 
-# --- J1299O finding 2: a short-option BUNDLE whose leading letters are env's
+# --- a short-option BUNDLE whose leading letters are env's
 # bare flags (-i/-v/-0, which take no operand) followed by S still hid the
 # gate — `-iS` etc. never matched the `-S | -S*` case (it doesn't start with
 # S), so it fell through to the generic bare-flag arm and the quoted operand
@@ -705,7 +705,7 @@ allow "env -uS ls | tail (operand-letter bundle, NOT split-string)" \
 allow "env FOO=1 before a non-gate (no -S, unaffected)" \
       'env FOO=1 ls | tail'
 
-# --- HIMMEL-3671 (judge J1299R on #1299): a short-option bundle whose LAST
+# --- a short-option bundle whose LAST
 # letter is a value-taking option (-u/--unset, -C/--chdir, -a/--argv0) did not
 # set skip_next past that value, so the value word itself (not the gate one
 # token further along) was returned as the invoked program — a false ALLOW.
@@ -721,14 +721,14 @@ deny "env -0a name <gate> | head (bundle ending in -a)" \
 # Control: the same bundle shape with no gate behind it still allows.
 allow "env -iu X ls | tail (bundle ending in -u, no gate, unaffected)" \
       'env -iu X ls | tail'
-# Control (J1299R Minor 1): the value letter NOT last in the bundle keeps
+# Control: the value letter NOT last in the bundle keeps
 # today's behaviour — the rest of the token is the value, GNU-correct
 # (already covered above as "env -uS ls | tail", restated here for the
 # ticket's exact shape).
 allow "env -uS ls | tail (value letter not last, unchanged)" \
       'env -uS ls | tail'
 
-# --- HIMMEL-3677 (judge J1311O on #1311): a redirect word landing in an
+# --- a redirect word landing in an
 # option's value slot was swallowed by skip_next as if it WERE the value —
 # real bash strips redirections before argv reaches the invoked program, so
 # `env -u 2>/dev/null X <gate>` really runs `env -u X <gate>` with stderr
@@ -749,7 +749,7 @@ deny "env > /dev/null -u X <gate> | tail (bare operator + target, control)" \
 deny "env -S 2>/dev/null x <gate> | tail (redirect on the -S value path, control)" \
      "env -S 2>/dev/null x bash scripts/check-ci.sh | tail"
 
-# --- HIMMEL-3677 round 2 (critic panel r1, codex-1/codex-2): the redirect
+# --- the redirect
 # check above matched on the QUOTE-STRIPPED word, so a quoted option value
 # that merely CONTAINS `>`/`<` (real bash never treats a quoted one as an
 # operator) was misread as a redirect and dropped, leaving a stale pending
@@ -757,16 +757,15 @@ deny "env -S 2>/dev/null x <gate> | tail (redirect on the -S value path, control
 # another option's real operand — rather than the value it was sent to
 # consume. Both PoCs below are real, valid-bash, gate-hiding shapes; empirically
 # confirmed against real bash (the gate really runs). They ALLOWed at the
-# leg's own interim commit 32a5a708 (the fix these two rows were written
-# against); both already DENY at base/main and did before this round
-# (J1314O finding 5 — an earlier version of this comment misstated that).
+# an interim version of the fix (the one these two rows were written
+# against); both already DENY at base/main
 deny "env > 'foo>bar' -u X <gate> | tail (quoted redirect TARGET containing >, codex-1)" \
      "env > 'foo>bar' -u X bash scripts/check-ci.sh | tail"
 deny "env -C '/tmp/a>b' bash -o /tmp/foo <gate> | tail (quoted -C value containing >, codex-2)" \
      "env -C '/tmp/a>b' bash -o /tmp/foo scripts/check-ci.sh | tail"
 
-# --- HIMMEL-3677 round 3 (judge J1314O, NO-GO on #1314 at 664a143d): the
-# quote-aware redirect_char walk invoked_program() grew for round 2 still
+# --- the
+# quote-aware redirect_char walk invoked_program() grew earlier still
 # ALLOWed the ticket's own "bare operator + target in a value slot" shape
 # once the operator was SPACED from its target, and it REGRESSED two more
 # classes base already denied (escaped `\>`/`\<`, process substitution).
@@ -780,14 +779,14 @@ deny "env -C '/tmp/a>b' bash -o /tmp/foo <gate> | tail (quoted -C value containi
 # resolve which word is the actual command. invoked_program()'s own
 # redirect-handling block was reverted to base (d3ef4b3a) semantics since
 # the new stage-level check now owns every case with an unquoted redirect
-# character. Most rows below ALLOWed at 664a143d1eb2d13bca109753f90e953c85c7d756
-# per J1314O's own probe (verdict.md, findings 1-3) — EXCEPT the 13 rows below
-# that route the gate through a `bash `/`sudo ` launcher prefix (all of finding
-# 2, all of finding 3, and both folded `>'out>'` rows): at 664a143d the stale
+# character. Most rows below ALLOWed under the earlier walk
+# — EXCEPT the 13 rows below
+# that route the gate through a `bash `/`sudo ` launcher prefix (and
+# both folded `>'out>'` rows): under the earlier walk the stale
 # skip_next eats the LAUNCHER word instead of the gate, so those 13 rows
 # already DENY there for the wrong reason and do not pin the regression they
-# claim to (J1314R finding 3). The gate-direct round-4 rows further below,
-# with no launcher prefix, are what actually FAILS at 664a143d for those
+# claim to. The gate-direct rows further below,
+# with no launcher prefix, are what actually FAILS under the earlier walk for those
 # classes.
 
 # Finding 1: a SPACED bare redirect operator + its target in a launcher's
@@ -887,7 +886,7 @@ allow "env -C /tmp/a\>b ls | tail (escaped >, no gate, control)" \
 allow "env -u >(cat) ls | tail (process substitution, no gate, control)" \
       'env -u >(cat) ls | tail'
 
-# Round 4 (J1314R): the fail-closed check must be ADDITIVE to invoked_program(),
+# the fail-closed check must be ADDITIVE to invoked_program(),
 # not a replacement — a stage with an unquoted angle bracket but no literal
 # GATE_RE word match must still fall through to invoked_program()'s own
 # word-walk rather than ALLOW outright.
@@ -896,7 +895,7 @@ allow "env -u >(cat) ls | tail (process substitution, no gate, control)" \
 # because stage_mentions_gate's anchored match misses a gate name that
 # normalise glued to an escaped space (env -S) or that sits behind a bare
 # subshell paren invoked_program() would have stripped. env -S is fail-closed
-# by DESIGN (HIMMEL-3661): a split-string clause with no literal gate word at
+# by DESIGN: a split-string clause with no literal gate word at
 # all must still deny once it carries an unquoted redirect, the same as it
 # denies without one.
 deny "env -S 'foo' 2>/dev/null | tail (env -S split-string, no gate word at all, still fail-closed, J1314R f1)" \
@@ -950,7 +949,7 @@ for needle in 'RC=$?' 'PIPESTATUS[0]' 'tail-pipe-ok:' 'clear-cr-marker.sh'; do
     fi
 done
 
-# HIMMEL-3136: the deny reason must not use "orchestrator" as a session role.
+# the deny reason must not use "orchestrator" as a session role.
 if grep -qF -- 'made a session record CLEAR_RC=0' <<< "$msg" && ! grep -qiF -- 'orchestrator' <<< "$msg"; then
     pass "deny reason names the session, not an 'orchestrator' role"
 else
@@ -981,8 +980,8 @@ else
     fail "jq-absent fixture did not patch the hook — the probe line changed shape"
 fi
 
-# --- HIMMEL-2610 J1267O F2: the gate DENY must survive a missing
-# guardrails/lib.sh — this hook had no lib.sh dependency before HIMMEL-2610,
+# --- the gate DENY must survive a missing
+# guardrails/lib.sh — this hook had no lib.sh dependency originally,
 # and a fail-open here silently withdraws every DENY, not just the
 # abbreviation-recognition lib.sh adds. ---
 NOLIB_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/btpog-nolib.XXXXXX")" || { fail "mktemp for the no-lib fixture"; NOLIB_ROOT=""; }
@@ -1059,7 +1058,7 @@ else
     fi
 fi
 
-# --- additionalDirectories guard (HIMMEL-2381) ------------------------------
+# --- additionalDirectories guard ------------------------------
 # The operator hand-authored permissions.additionalDirectories in the primary
 # checkout's settings.json to close outside-cwd Read/Grep/Glob prompts that
 # hang an unattended overnight leg (docs/handover/overnight-mode.md). Pin the
@@ -1083,7 +1082,7 @@ else
         fail "settings.json permissions.additionalDirectories missing/changed: $(jq -c '.permissions.additionalDirectories // empty' "$SETTINGS" 2>/dev/null)"
     fi
 
-    # Positive control (HIMMEL-2320): a pass is not evidence without proof the
+    # Positive control: a pass is not evidence without proof the
     # assertion actually detects absence — show it goes red on a throwaway
     # copy with the key stripped.
     if ! MUTATED=$(mktemp); then
@@ -1099,7 +1098,7 @@ else
 fi
 
 
-# --- HIMMEL-4438: the forms the shell runs, not the text it was given ---
+# --- the forms the shell runs, not the text it was given ---
 deny "4438 bash -c gate | tail" "bash -c 'bash scripts/check-ci.sh 12 | tail -20'"
 deny "4438 sh -ec gate | tail" "sh -ec 'bash scripts/check-ci.sh 12 | tail -20'"
 deny "4438 nested depth 2 gate | tail" "zsh -c \"bash -c 'bash scripts/check-ci.sh 12 | tail -20'\""
@@ -1116,7 +1115,7 @@ res=$(printf '%s' "$(j_bash 'ls')" | bash "$nolib/block-tail-pipe-on-gates.sh" >
 if [ "$res" = 2 ]; then pass "4438 missing guard-unwrap lib denies"; else fail "4438 missing guard-unwrap lib denies — rc=$res"; fi
 rm -rf "$nolib"
 
-# --- HIMMEL-2082: a gate must be the FINAL segment -------------------------
+# --- a gate must be the FINAL segment -------------------------
 # `gate; echo done` makes the task's exit status echo's, not the gate's: twice a
 # background check-ci.sh exit 3 was reported as exit 0 and a PR with a Major
 # finding nearly merged.
@@ -1154,7 +1153,7 @@ allow "2082 allow: gate chained into a gate" 'bash scripts/ci/run-shell-tests.sh
 allow "2082 allow: same-line marker" 'bash scripts/check-ci.sh 12; echo done # tail-pipe-ok: exit irrelevant'
 allow "2082 allow: gate quoted as data" 'echo "bash scripts/check-ci.sh 12; echo done"'
 
-# --- HIMMEL-2082 delta (judge j2255a): separators, wrappers, status reads -----
+# --- separators, wrappers, status reads -----
 # A newline or a lone `&` ends the gate's statement just like `;` does.
 deny "2082 gate NL echo" $'bash scripts/check-ci.sh 12\necho done'
 deny "2082 test suite NL true" $'bash scripts/ci/run-shell-tests.sh x\ntrue'

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-push-target.sh (HIMMEL-2371).
+# Smoke test for scripts/hooks/check-push-target.sh.
 #
-# HIMMEL-2371 root cause: this hook is wired as a pre-commit-configured
+# Root cause: this hook is wired as a pre-commit-configured
 # `stages: [pre-push]` entry. pre-commit's own hook-impl drains ALL of git's
 # pre-push stdin before invoking any configured hook and exposes the pushed
 # ref only via PRE_COMMIT_* env vars — so the hook's stdin is ALWAYS empty
@@ -112,7 +112,7 @@ echo "TEST: PRE_COMMIT=1 with no PRE_COMMIT_REMOTE_BRANCH -> fail CLOSED"
 expect_blocked "PRE_COMMIT=1, PRE_COMMIT_REMOTE_BRANCH unset" \
     env PRE_COMMIT=1 bash "$HOOK" </dev/null
 
-# Test 9-: HIMMEL-5308 branch-name rule for NEW branches ------------------
+# Test 9-: branch-name rule for NEW branches ------------------
 # A new branch must be type/slug, handover/<TICKET>-<slug> or claude/*. An
 # existing remote branch (non-zero remote sha) is never judged retroactively,
 # and a delete push is never judged.
@@ -208,7 +208,7 @@ echo "TEST: pre-commit shape, new valid branch -> PASS"
 expect_pass "configured shape, new valid branch" \
     env PRE_COMMIT=1 PRE_COMMIT_REMOTE_NAME="$RT/remote.git" PRE_COMMIT_REMOTE_BRANCH=refs/heads/fix/x bash "$HOOK" </dev/null
 
-# HIMMEL-5360: a remote whose pushurl differs from its fetch url. The new-ref
+# a remote whose pushurl differs from its fetch url. The new-ref
 # probe must ask the address the push goes to, not the one it is fetched from.
 git init -q --bare "$RT/fetch.git"
 git init -q --bare "$RT/push.git"

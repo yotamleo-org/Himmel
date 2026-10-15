@@ -2994,6 +2994,24 @@ impacted_active=0
 impacted_nl=""
 impacted_repo_root=""
 if [ -n "$impacted_range" ]; then
+  # A merge-forward of main makes <first parent>..HEAD cover everything main
+  # merged. When the base is off main and the range holds a merge, rebase it
+  # onto merge-base(main, head): the PR's own changes only.
+  case "$impacted_range" in
+    *..*)
+      _imp_b="${impacted_range%%..*}"; _imp_h="${impacted_range#*..}"; _imp_h="${_imp_h#.}"
+      _imp_main=$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null || echo refs/remotes/origin/main)
+      if _imp_bs=$(git rev-parse --verify --quiet --end-of-options "${_imp_b}^{commit}") \
+         && _imp_hs=$(git rev-parse --verify --quiet --end-of-options "${_imp_h}^{commit}") \
+         && git rev-parse --verify --quiet --end-of-options "${_imp_main}^{commit}" >/dev/null \
+         && ! git merge-base --is-ancestor "$_imp_bs" "$_imp_main" \
+         && [ "$(git rev-list --merges --count "$_imp_bs..$_imp_hs" 2>/dev/null)" != 0 ] \
+         && _imp_mb=$(git merge-base "$_imp_main" "$_imp_hs"); then
+        echo "run-shell-tests.sh: --impacted ${impacted_range} holds a merge-forward; using ${_imp_mb}..${_imp_hs} (the PR's own changes)" >&2
+        impacted_range="${_imp_mb}..${_imp_hs}"
+      fi
+      ;;
+  esac
   if ! _impacted_out=$(bash "$REPO_ROOT/scripts/cr/impacted-suites.sh" "$impacted_range" --shell); then
     echo "run-shell-tests.sh: --impacted '${impacted_range}' could not be resolved — refusing to guess a suite list" >&2
     exit 2

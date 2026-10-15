@@ -2,7 +2,7 @@
 # Smoke test for scripts/hooks/check-npm-audit-signatures.sh.
 #
 # Scope: the SKIP/BLOCK branching logic (hermetic — no network, no real
-# `npm audit signatures`). Focus is the HIMMEL-502 zero-prod-dep carve-out and
+# `npm audit signatures`). Focus is the zero-prod-dep carve-out and
 # the guarantee it did NOT weaken the real block:
 #   1. zero-prod-dep package (devDeps only)     → SKIP (exit 0), nothing to verify.
 #   2. prod-dep package, node_modules MISSING   → BLOCK (exit 1) — the gate still
@@ -11,7 +11,7 @@
 #   4. prod-dep package + node_modules present   → reaches `npm audit signatures`
 #      (asserted via a stubbed npm; hermetic).
 #
-# Plus the npm VERSION floor (HIMMEL-2440): npm < 11 bundles a registry public
+# Plus the npm VERSION floor: npm < 11 bundles a registry public
 # key that expired 2025-01-29, so `npm audit signatures` fails every package
 # with EEXPIREDSIGNATUREKEY on Debian/Ubuntu's apt npm (9.2.0) and refuses every
 # push. The gate must name the tool and the remedy instead of surfacing the raw
@@ -30,7 +30,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -161,7 +161,7 @@ else
 fi
 rm -rf "$d5"
 
-# --- HIMMEL-2440: the npm version floor -------------------------------------
+# --- the npm version floor -------------------------------------
 
 # Case 6: apt-Ubuntu npm 9.2.0 → BLOCK, naming the floor and the pinned-major
 # remedy, and WITHOUT running the signature check through a verifier whose

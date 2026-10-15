@@ -33,8 +33,8 @@
 # --dry-run       report what WOULD be dropped; writes nothing.
 # --cutoff-hours  default 30 (see WHY above).
 # --ledger        override the ledger path. Default: $HIMMEL_FLOW_RUNS_LEDGER,
-#                 else $HOME/.himmel/flow-runs.jsonl — the same resolution
-#                 scripts/telegram/flow-run-ledger.ts's ledgerPath() uses.
+#                 else the flow-runs row's default_path in ledgers.json
+#                 (HIMMEL_LEDGERS_JSON points at an alternate registry).
 #
 # A live write backs the ledger up first, to <ledger>.bak-<UTC timestamp>,
 # then replaces it via tmp-file + rename (atomic — a concurrent reader, e.g.
@@ -72,7 +72,15 @@ if [ -z "$ledger" ]; then
   if [ -n "${HIMMEL_FLOW_RUNS_LEDGER:-}" ]; then
     ledger="$HIMMEL_FLOW_RUNS_LEDGER"
   else
-    ledger="${HOME:-}/.himmel/flow-runs.jsonl"
+    command -v python3 >/dev/null 2>&1 || { echo "ledger-prune.sh: python3 not found on PATH" >&2; exit 3; }
+    registry="${HIMMEL_LEDGERS_JSON:-$(dirname "${BASH_SOURCE[0]}")/ledgers.json}"
+    ledger="$(python3 - "$registry" "${HOME:-}" <<'PYEOF'
+import json, sys
+registry, home = sys.argv[1], sys.argv[2]
+row = next(r for r in json.load(open(registry, encoding="utf-8"))["ledgers"] if r["id"] == "flow-runs")
+print(row["default_path"].replace("~", home, 1) if row["default_path"].startswith("~/") else row["default_path"])
+PYEOF
+)" || { echo "ledger-prune.sh: cannot resolve the flow-runs path from $registry" >&2; exit 2; }
   fi
 fi
 

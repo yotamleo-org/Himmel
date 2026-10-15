@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for guard-relay-writes.sh (HIMMEL-2975 Task 26, Guard D): the relay's
+# Tests for guard-relay-writes.sh (Guard D): the relay's
 # write-deny fence on console inbox writes, leg handover docs, the console
 # rundir, and the env-override / inbox-send --token Bash shapes that would
 # defeat Guards B/C. Every row runs twice — HIMMEL_CONSOLE_RELAY=1 (expect
@@ -20,13 +20,13 @@ HOOK="$SCRIPT_DIR/guard-relay-writes.sh"
 [ -x "$HOOK" ] || chmod +x "$HOOK" 2>/dev/null || true
 
 # Resolve bash ONCE from the suite's own unmodified PATH — see
-# test-guard-subagent-model.sh's identical BASH_ABS rationale (HIMMEL-1567).
+# test-guard-subagent-model.sh's identical BASH_ABS rationale.
 BASH_ABS=$(command -v bash)
 [ -n "$BASH_ABS" ] || { echo "FATAL: cannot resolve bash on PATH" >&2; exit 1; }
 
 # The fixture path is pid-derived (digits only), NOT a random mktemp suffix: the
 # guard matches write verbs over the whole command text, and a random suffix can
-# spell one (HIMMEL-3202: `...guard.mVddVZ` contains "dd"). Verb-free = the
+# spell one (`...guard.mVddVZ` contains "dd"). Verb-free = the
 # fixture can never be the cause of a row's result. The inherited $TMPDIR is
 # not ours to name either (a macOS `/var/folders/dd/...` has a whole `dd`
 # component), so ask the guard itself whether a read under that base is
@@ -152,7 +152,7 @@ ROWS_JSON=(
     "$(write_payload Write "$SYMLINK_INTO_INBOX")"
     "$(bash_payload "rm -rf $ROOT/inbox")"
     "$(bash_payload "mv $ROOT/inbox /tmp/saved")"
-    # HIMMEL-3202: a READ of a guarded path whose TEXT merely contains a write
+    # a READ of a guarded path whose TEXT merely contains a write
     # verb letter-sequence INSIDE a longer word (teeny/acpx/xmvx/form/…) must
     # allow — the verb match is a command WORD, not a substring.
     "$(bash_payload "cat $ROOT/inbox/teeny.md")"
@@ -249,7 +249,7 @@ RC_ROOT_FAIL="$?"
 assert_rc "handover_root failure denies fail-closed (rc=2)" 2 "$RC_ROOT_FAIL"
 assert_contains "handover_root failure deny reason" "handover-root-unresolved" "$(cat "$TMP/out-root-fail")"
 
-# HIMMEL-3872: BSD readlink -f refuses a missing final component, so the hook
+# BSD readlink -f refuses a missing final component, so the hook
 # falls back to resolving the parent — but only after a one-time probe says
 # the readlink is the BSD kind, and fail-closed for every case it cannot prove.
 run_relay_with() {
@@ -305,7 +305,7 @@ expect_row noprobe-new-file 0 "$(run_relay_with noprobe-new-file "$(write_payloa
 # ponytail: on a GNU host the BSD readlink is modelled as `readlink -e` (every
 # component must exist, as realpath(3) requires), not BSD's exact errno set;
 # upgrade path: the macOS os-verify shard runs these same rows on the real BSD
-# readlink, unshimmed (HIMMEL-3872).
+# readlink, unshimmed.
 mkdir "$TMP/probe-dir"
 BSD_PATH="$PATH"
 if readlink -f -- "$TMP/probe-dir/leaf" >/dev/null 2>&1; then

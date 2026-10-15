@@ -599,5 +599,22 @@ contains 'a theme label that names a plan theme shows the plan name (HIMMEL-5491
 not_contains 'that label is not shown as a new theme of its own (HIMMEL-5491)' "$thtml" '"build-tools"'
 not_contains 'the Jira theme label wins over the stage1 theme (HIMMEL-5491)' "$thtml" '"legacy"'
 
+# --- done-in-future drift: a Done ticket in an unreleased version other than the current one
+# (earliest unreleased by release date) is counted; Done in the current or a released version is not.
+dfm="$W/dfm"
+mkdir -p "$dfm"
+mdir="$dfm"
+mk 60 'Done' '["v1.0.1"]' 'done in released' 'Done'
+mk 61 'Done' '["v1.0.2"]' 'done in current' 'Done'
+mk 62 'Done' '["v1.0.4"]' 'done in future' 'Done'
+mk 63 'To Do' '["v1.0.4"]' 'open in future' 'To Do'
+mdir="$mir"
+printf 'v1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t2026-10-20\nv1.0.4\tfalse\t\n' > "$dfm.versions.tsv"
+dfout="$(render --mirror-dir "$dfm")"
+contains 'the summary counts Done-in-future-version tickets (HIMMEL-5801)' "$dfout" ', 1 done-in-future;'
+printf 'v1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t2026-10-20\n' > "$dfm.versions.tsv"
+dfout="$(render --mirror-dir "$dfm")"
+contains 'no Done ticket past the current version counts zero (HIMMEL-5801)' "$dfout" ', 0 done-in-future;'
+
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

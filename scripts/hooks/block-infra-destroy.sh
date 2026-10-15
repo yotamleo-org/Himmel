@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse hook for Bash/PowerShell (HIMMEL-5282, audit gap G9).
+# PreToolUse hook for Bash/PowerShell.
 #
 # Denies commands that destroy cloud, cluster, database or docker data in one
 # step: terraform/tofu/pulumi destroy, kubectl delete|drain, helm uninstall,
@@ -60,7 +60,7 @@ case "$tool" in
 esac
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) || exit 2
 [ -n "$cmd" ] || exit 0
-# Strip CR at the capture boundary (HIMMEL-2234): a CRLF form must not change a verdict.
+# Strip CR at the capture boundary: a CRLF form must not change a verdict.
 cmd=${cmd//$'\r'/}
 
 case "${BASH_SOURCE[0]}" in

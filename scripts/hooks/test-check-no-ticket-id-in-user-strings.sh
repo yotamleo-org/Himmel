@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-no-ticket-id-in-user-strings.sh (HIMMEL-2371).
+# Smoke test for scripts/hooks/check-no-ticket-id-in-user-strings.sh.
 #
 # Adopters see hook display names, hook deny messages, and slash-command
 # descriptions — a raw HIMMEL-\d+ in one of those leaks project-tracker
@@ -53,7 +53,7 @@ EOF
 out=$(run "$tmp/c2" .pre-commit-config.yaml); rc=$?
 if [ "$rc" -eq 0 ]; then pass "case 2 -> exit 0"; else fail "case 2 -> expected 0 got $rc" "$out"; fi
 
-# Case 2b (codex-1 CR round 2 regression guard): a `name:`-suffixed key
+# Case 2b: a `name:`-suffixed key
 # (`othername:`, not a hook's own `name:` field) carrying a ticket ID must
 # NOT be flagged — a plain `case "$line" in [[:space:]]*name:*)` glob is not
 # a real anchor (`*` is not a quantifier on the class before it) and matched
@@ -72,7 +72,7 @@ else
     fail "case 2b -> expected 0 got $rc" "$out"
 fi
 
-# Case 2c (codex-1 CR round 3 regression guard): a ticket ID placed in a
+# Case 2c: a ticket ID placed in a
 # TRAILING inline YAML comment on the name: line is already compliant (the
 # displayed name pre-commit renders strips everything from the unquoted #) —
 # must NOT be flagged.
@@ -171,7 +171,7 @@ printf 'echo "whatever (%s)" >&2\n' "$ticket8" > "$tmp/c8/README.md"
 out=$(run "$tmp/c8" README.md); rc=$?
 if [ "$rc" -eq 0 ]; then pass "case 8 -> exit 0 (unscanned surface)"; else fail "case 8 -> expected 0 got $rc" "$out"; fi
 
-# Case 9 (perf regression guard, HIMMEL-2371 CR round 1): a large hooks-shaped
+# Case 9: a large hooks-shaped
 # file must scan in well under a second — a per-line subshell fork made this
 # effectively hang (17s for a 190-line file) under MSYS's slow fork().
 echo "== Case 9: a large hook file scans fast (no per-line fork) =="
@@ -193,7 +193,7 @@ else
     fail "case 9 -> rc=$rc elapsed=${elapsed}s (expected rc=0, <=5s)" "$out"
 fi
 
-# Case 10/11 (codex-1 CR round 1, gate mode only): the gate scans the STAGED
+# Case 10/11: the gate scans the STAGED
 # git blob, not the working-tree file — a file staged clean and then dirtied
 # further must not falsely block, and a file staged WITH a violation and then
 # fixed only in the working tree must NOT let the violation through.
@@ -235,7 +235,7 @@ if command -v git >/dev/null 2>&1; then
         fail "case 11 -> expected 1 got $rc" "$out"
     fi
 
-    # Case 12 (codex-2 CR round 3 regression guard): a renamed hook file that
+    # Case 12: a renamed hook file that
     # ALSO gains a ticket ID in its deny message in the same commit must still
     # be caught — --diff-filter=ACM alone excludes a rename-with-content-change
     # (git classifies it as R only, never also M), letting it bypass the gate.
@@ -258,7 +258,7 @@ if command -v git >/dev/null 2>&1; then
     printf '#!/usr/bin/env bash\n%secho "refused, see %s" >&2\nexit 1\n' "$padding" "$ticket12" > "$repo/scripts/hooks/check-new.sh"
     (cd "$repo" && git add scripts/hooks/check-new.sh)
     status=$(cd "$repo" && git diff --cached --name-status)
-    # codex-4 CR round 6: assert git actually classified this as a rename (R)
+    # Assert git actually classified this as a rename (R)
     # — without this, the case could pass via the plain ADDED-file path and
     # never exercise --diff-filter=ACMR's R inclusion at all.
     case "$status" in
@@ -273,7 +273,7 @@ if command -v git >/dev/null 2>&1; then
     fi
     (cd "$repo" && git reset -q --hard >/dev/null 2>&1) || true
 
-    # Case 13 (codex-1 CR round 5 regression guard): a staged filename with a
+    # Case 13: a staged filename with a
     # non-ASCII character. Plain `--name-only` C-quotes it
     # (`"scripts/hooks/check-caf\303\251.sh"`), which would fail to resolve if
     # passed literally to `git show`; `-z` resolves the real path instead.

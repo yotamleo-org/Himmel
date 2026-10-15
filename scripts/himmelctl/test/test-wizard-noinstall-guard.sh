@@ -110,6 +110,10 @@ trap cleanup EXIT
 # resolver (`vm-mode.sh route`) whether a VM can prove the step, and read its
 # rc. Same class as the shell-outs above: bin.js invokes the existing
 # primitive; the config parse and validation stay in scripts/lib/vm-mode.sh.
+#
+# register-state.sh — the wizard's handover step registers the repo's state
+# through this single registry writer and reads its rc; the registry write and
+# validation stay in scripts/handover/register-state.sh.
 allow_full="$work/allow-full.txt"
 cat > "$allow_full" <<'NAMES'
 check-user-slug.sh
@@ -132,6 +136,7 @@ plugin-profile.sh
 ensure-workspace-trust.sh
 release-check.sh
 vm-mode.sh
+register-state.sh
 NAMES
 
 # extract_script_targets — every 'name.sh' / "name.sh" / 'name.ps1' /

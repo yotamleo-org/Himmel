@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test for the nested-xargs render budget of scripts/hooks/lib/guard-unwrap.sh
-# (HIMMEL-4623, follow-up to HIMMEL-4576/4577).
+#
 #
 # A stripped `xargs` adds a second, xargs-kept child render per level. That
 # child re-derived the stripped render its parent had already scanned, so each
@@ -132,7 +132,7 @@ assert_rc "env xargs git stash"        2 "$(run_hook 'printf a | env X=1 xargs g
 assert_rc "xargs xargs git stash"      2 "$(run_hook 'printf a | xargs xargs git stash')"
 assert_rc "benign xargs echo"          0 "$(run_hook 'printf a | xargs echo hi')"
 
-# --- HIMMEL-4543: a shell word in a non-executing builtin's data position is
+# --- a shell word in a non-executing builtin's data position is
 # not read, but every executing position still is ---
 assert_rc "echo bash -c 'git stash' is data"   0 "$(run_hook "echo bash -c 'git stash'")"
 assert_rc "printf a | xargs echo bash -c 'git stash' (wrapper: fails safe)" 2 "$(run_hook "printf a | xargs echo bash -c 'git stash'")"

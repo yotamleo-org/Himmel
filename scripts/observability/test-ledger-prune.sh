@@ -108,4 +108,17 @@ bash "$SCRIPT" --ledger "$ledger8" >/dev/null
 check "$?" "0" "T8 rc"
 grep -q 'still-alerting' "$ledger8" || { echo "FAIL: T8 a row still inside the exporter's alert TTL window was pruned early"; fail=1; }
 
+# 9. The default ledger path comes from ledgers.json, so a moved
+# flow-runs default_path moves the prune with it.
+command -v jq >/dev/null 2>&1 && {
+  mkdir -p "$tmp/home9/moved"
+  jq '(.ledgers[] | select(.id == "flow-runs") | .default_path) = "~/moved/flow.jsonl"' "$DIR/ledgers.json" > "$tmp/ledgers9.json"
+  cat >"$tmp/home9/moved/flow.jsonl" <<EOF
+{"v":1,"ev":"start","flow":"hermes-invoke","run_id":"moved-old","fired_at":"$old"}
+EOF
+  env -u HIMMEL_FLOW_RUNS_LEDGER HOME="$tmp/home9" HIMMEL_LEDGERS_JSON="$tmp/ledgers9.json" bash "$SCRIPT" >/dev/null
+  check "$?" "0" "T9 rc"
+  if grep -q 'moved-old' "$tmp/home9/moved/flow.jsonl"; then echo "FAIL: T9 prune did not follow the registry's moved flow-runs path"; fail=1; fi
+}
+
 [ "$fail" -eq 0 ] && echo "PASS test-ledger-prune" || exit 1

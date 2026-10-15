@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-oxlint-hardening.sh (HIMMEL-2163/2802).
+# Smoke test for scripts/hooks/check-oxlint-hardening.sh
 # Hermetic stubs prove control-flow semantics; real pinned-oxlint fixtures prove
 # clean and nested seeded-violation behavior. Only real bunx absence may skip.
 set -uo pipefail
@@ -62,7 +62,7 @@ make_fixture() {
     local dir
     dir=$(fixture_mktemp_dir) || return 1
     # The gate reports root=/cwd= as `pwd -P`; the assertion below interpolates
-    # this path, so build it from the physical spelling (HIMMEL-3179).
+    # this path, so build it from the physical spelling.
     dir=$(canon_path "$dir") || return 1
     mkdir -p "$dir/scripts/lanes" "$dir/bin"
     cat > "$dir/scripts/lanes/input.mjs" <<'EOF'
@@ -217,7 +217,7 @@ out=$(cd "$NOTOOL" && PATH="$EMPTY_PATH" "$BASH_ABS" "$GATE" 2>&1) || rc=$?
 assert_eq "bunx absent → sole fail-open case" "0" "$rc"
 assert_says "bunx absent → loud WARN" "WARN check-oxlint-hardening: bunx not found" "$out"
 
-# --- `--files` changed-files mode + OXLINT_FAIL_CLOSED (HIMMEL-5526) ---------
+# --- `--files` changed-files mode + OXLINT_FAIL_CLOSED ---------
 # The stub's findings envelope is the real `--format json` shape this gate's
 # jq check already pins ({diagnostics, number_of_files, number_of_rules}).
 FILESFX=$(make_fixture) || exit 1; track_cleanup "$FILESFX"
@@ -263,7 +263,7 @@ out=$(cd "$FILESFX" && PATH="$FILESFX/bin:$PATH" OXLINT_STUB_MODE=clean OXLINT_S
 rec=$(cat "$FILESFX/record.txt" 2>/dev/null || true)
 assert_says "--files keeps a path with a space whole and lints it" "arg=scripts/lanes/my file.mjs" "$rec"
 
-# --- bun present, bunx absent → gate runs oxlint through `bun x` (HIMMEL-5529) --
+# --- bun present, bunx absent → gate runs oxlint through `bun x` --
 # PATH layout copied from the main station: ~/.bun/bin holds `bun` and nothing
 # else (`ls -la ~/.bun/bin` → one 755 `bun`). The runner stub is installed as
 # `bun` and records its args; jq is linked in because the gate needs it.

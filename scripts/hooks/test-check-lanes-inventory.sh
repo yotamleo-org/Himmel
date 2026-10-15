@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-lanes-inventory.sh (HIMMEL-689).
+# Smoke test for scripts/hooks/check-lanes-inventory.sh.
 #
 # Builds throwaway git repos, exercises each rc case, asserts exact rc.
 # Usage: bash scripts/hooks/test-check-lanes-inventory.sh

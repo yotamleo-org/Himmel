@@ -1010,8 +1010,43 @@ function probeTimeoutMs(env) {
   return Number.isSafeInteger(ms) && ms >= 1 ? ms : PROBE_TIMEOUT_MS;
 }
 
+// Whole-run deadline. The per-probe budget above bounds ONE probe; a systemic
+// wedge hits every probe in turn, so a sweep needs its own bound too (~15
+// spawning probes x 60s). The deadline is an absolute epoch-ms a sweep owner
+// puts on ctx.deadline (see statusDeadline); runProbe publishes it here for the
+// duration of the synchronous probe so every spawn inside is clamped to the time
+// left, with no per-probe plumbing.
+let activeDeadline = null;
+
+function clampToDeadline(ms) {
+  if (activeDeadline === null) return ms;
+  return Math.max(1, Math.min(ms, Math.floor(activeDeadline - Date.now())));
+}
+
+// HIMMELCTL_STATUS_TOTAL_TIMEOUT_SECS -> the whole-run budget in ms, or null
+// when disabled (0). Same bad-value convention as probeTimeoutMs: a non-numeric,
+// negative or unsafe value takes the default, never "unbounded".
+const STATUS_TOTAL_TIMEOUT_MS = 300000;
+function statusTotalTimeoutMs(env) {
+  const raw = (env || process.env).HIMMELCTL_STATUS_TOTAL_TIMEOUT_SECS;
+  if (raw === undefined || raw === '') return STATUS_TOTAL_TIMEOUT_MS;
+  const secs = Number(raw);
+  if (secs === 0) return null;
+  if (!Number.isFinite(secs) || secs < 0) return STATUS_TOTAL_TIMEOUT_MS;
+  const ms = Math.round(secs * 1000);
+  return Number.isSafeInteger(ms) && ms >= 1 ? ms : STATUS_TOTAL_TIMEOUT_MS;
+}
+
+// statusDeadline(env, now) -> absolute epoch-ms deadline for a sweep starting
+// at `now`, or null when the whole-run budget is disabled.
+function statusDeadline(env, now) {
+  const ms = statusTotalTimeoutMs(env);
+  return ms === null ? null : (now === undefined ? Date.now() : now) + ms;
+}
+
 function spawnProbeSync(cmd, args, opts) {
   const options = Object.assign({ timeout: probeTimeoutMs(opts && opts.env), killSignal: 'SIGKILL' }, opts);
+  options.timeout = clampToDeadline(options.timeout);
   const r = spawnSync(cmd, args, options);
   r.timedOut = Boolean((r.error && r.error.code === 'ETIMEDOUT') || r.signal);
   r.timeoutMs = options.timeout;
@@ -4122,10 +4157,22 @@ function runProbe(item, ctx) {
   const type = item.probe && item.probe.type;
   const fn = PROBES[type];
   if (!fn) return { actual: 'absent', detail: `unknown probe type '${type}'` };
-  return fn(item, ctx);
+  const deadline = ctx && Number.isFinite(ctx.deadline) ? ctx.deadline : null;
+  if (deadline === null) return fn(item, ctx);
+  // A probe that never ran is not a clean row: degraded, never present/absent.
+  if (Date.now() >= deadline) {
+    return { actual: 'degraded', detail: 'not run: whole-run deadline exceeded before this probe started (raise HIMMELCTL_STATUS_TOTAL_TIMEOUT_SECS, 0 disables)' };
+  }
+  const prev = activeDeadline;
+  activeDeadline = deadline;
+  try {
+    return fn(item, ctx);
+  } finally {
+    activeDeadline = prev;
+  }
 }
 
 // parseDotEnv is also exported for reuse: install-engine.js's
 // HIMMELCTL_SUDO_PASSWORD resolution reads the primary checkout's .env with
 // this SAME minimal parser rather than writing a second one.
-module.exports = { runProbe, parseDotEnv, scopeConfigPathToCtx };
+module.exports = { runProbe, parseDotEnv, scopeConfigPathToCtx, statusDeadline };

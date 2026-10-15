@@ -19,7 +19,7 @@ if [ ${#pkgs[@]} -eq 0 ]; then
     exit 0
 fi
 
-# Resolve bun without trusting PATH alone (HIMMEL-2439). bun's installer exports
+# Resolve bun without trusting PATH alone. bun's installer exports
 # ~/.bun/bin from ~/.bashrc, and Debian/Ubuntu's stock ~/.bashrc opens with
 # `case $- in *i*) ;; *) return;; esac` — it early-returns for every
 # non-interactive shell. A hook inherits the environment of the git process that
@@ -96,7 +96,7 @@ anything_staged() {
     [ -n "$out" ]
 }
 
-# Release bun only (HIMMEL-2010). A canary bun fails
+# Release bun only. A canary bun fails
 # `bun install --frozen-lockfile` on a lockfile that is in fact clean, and this
 # gate then blamed "bun.lock out of sync" — a misleading error that blocked
 # every commit on the box while the lockfile was fine. Refuse the runtime with

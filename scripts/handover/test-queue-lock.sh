@@ -3048,6 +3048,54 @@ else
 fi
 kill "$D_CLAUDE_PID" "$D_WRAPPED_PID" "$D_ENV_PID" 2>/dev/null; wait "$D_CLAUDE_PID" "$D_WRAPPED_PID" "$D_ENV_PID" 2>/dev/null
 
+# --- T104: preflight warns when a declared file overlaps another live session's edits
+P_ROOT="$TMPDIR_ROOT/pf-handovers"; P_REPO="$TMPDIR_ROOT/pf-repo"
+mkdir -p "$P_ROOT/q" "$P_REPO"
+git -C "$P_REPO" init -q -b main && git -C "$P_REPO" config user.email t@t && git -C "$P_REPO" config user.name t
+echo base > "$P_REPO/shared.sh"; echo base > "$P_REPO/other.sh"
+git -C "$P_REPO" add . && git -C "$P_REPO" commit -q -m base
+echo edit >> "$P_REPO/shared.sh"   # the OTHER live session is mid-edit on shared.sh
+P_OTHER="$P_ROOT/q/other-leg.md"; P_MINE="$P_ROOT/q/my-leg.md"
+printf -- '---\nresume_cwd: %s\n---\n# other\n' "$P_REPO" > "$P_OTHER"
+printf -- '---\nresume_cwd: %s\n---\n# mine\n' "$TMPDIR_ROOT/no-such-worktree" > "$P_MINE"
+HANDOVER_DIR="$P_ROOT" bash "$LIB" acquire "$P_OTHER" pf-other-session >/dev/null 2>&1
+out="$(HANDOVER_DIR="$P_ROOT" bash "$LIB" preflight "$P_MINE" shared.sh 2>&1)"; rc=$?
+if [ "$rc" -eq 20 ] && grepq "$out" "COLLISION file=shared.sh .*session=pf-other-session"; then
+    pass "T104: preflight flags a declared file another live session has edited (rc 20)"
+else
+    fail "T104: preflight overlap (rc=$rc out=$out)"
+fi
+out="$(HANDOVER_DIR="$P_ROOT" bash "$LIB" preflight "$P_MINE" unrelated.sh 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && ! grepq "$out" "COLLISION"; then
+    pass "T104b: preflight is clean when no declared file overlaps (rc 0)"
+else
+    fail "T104b: preflight no-overlap (rc=$rc out=$out)"
+fi
+mkdir -p "$P_REPO/newdir"; echo n > "$P_REPO/newdir/fresh.sh"   # untracked file inside an untracked directory
+out="$(HANDOVER_DIR="$P_ROOT" bash "$LIB" preflight "$P_MINE" newdir/fresh.sh 2>&1)"; rc=$?
+if [ "$rc" -eq 20 ] && grepq "$out" "COLLISION file=newdir/fresh.sh "; then
+    pass "T104d: preflight sees a file inside an untracked directory"
+else
+    fail "T104d: preflight untracked dir (rc=$rc out=$out)"
+fi
+P_REPO2="$TMPDIR_ROOT/pf-repo2"; mkdir -p "$P_REPO2"
+git -C "$P_REPO2" init -q -b main && git -C "$P_REPO2" config user.email t@t && git -C "$P_REPO2" config user.name t
+echo base > "$P_REPO2/shared.sh"; git -C "$P_REPO2" add . && git -C "$P_REPO2" commit -q -m base
+P_MINE2="$P_ROOT/q/my-other-repo-leg.md"
+printf -- '---\nresume_cwd: %s\n---\n# mine\n' "$P_REPO2" > "$P_MINE2"
+out="$(HANDOVER_DIR="$P_ROOT" bash "$LIB" preflight "$P_MINE2" shared.sh 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && ! grepq "$out" "COLLISION"; then
+    pass "T104e: preflight ignores a same-named file in a different repository"
+else
+    fail "T104e: preflight cross-repo (rc=$rc out=$out)"
+fi
+out="$(HANDOVER_DIR="$P_ROOT" bash "$LIB" preflight "$P_OTHER" shared.sh 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ]; then
+    pass "T104c: preflight never collides a session with its own lock"
+else
+    fail "T104c: preflight self-collision (rc=$rc out=$out)"
+fi
+
 echo "---"
 echo "PASSED=$PASSED FAILED=$FAILED"
 [ "$FAILED" = 0 ]

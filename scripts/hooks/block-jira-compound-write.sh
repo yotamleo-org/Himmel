@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse Bash guard — bounce jira CLI WRITE verbs in shapes that would
-# otherwise fall through to the auto-mode classifier (HIMMEL-1077).
+# otherwise fall through to the auto-mode classifier.
 #
-# WHY: jira CLI writes are operator-sanctioned (HIMMEL-205 allow-lists them,
+# WHY: jira CLI writes are operator-sanctioned (allow-lists them,
 # auto-approve-safe-bash.sh grants them explicitly). But approval is decided on
 # command SHAPE: the moment a sanctioned `create` is wrapped in `$(…)`, a
 # heredoc, or chained with a segment the gateway cannot vet, the gateway stays
@@ -10,7 +10,7 @@
 # the write cold and denies it as "[External System Writes] unrequested
 # publishing". Incident (2026-07-16): two sanctioned creates denied inside a
 # compound chain; the identical creates as literal single commands were
-# auto-approved seconds later. Root cause = shape, not permission (HIMMEL-203).
+# auto-approved seconds later. Root cause = shape, not permission.
 #
 # This hook converts that opaque, non-actionable denial into a deterministic
 # bounce that names the ONE sanctioned retry shape. Naming exactly one shape is
@@ -41,8 +41,8 @@
 # gateway-approvable jira shape at all — even a literal single write. Bouncing it
 # with "issue ONE literal command" would be advice the agent has already followed
 # and cannot act on — an unactionable loop, the exact failure this guard exists to
-# remove. Staying silent leaves the pre-HIMMEL-1077 status quo (classifier judges
-# it) instead of making it worse. The upstream gap is HIMMEL-1083.
+# remove. Staying silent leaves the pre-guidance status quo (classifier judges
+# it) instead of making it worse. The upstream gap stays open.
 #
 # Same class, same reasoning — a QUOTED VERB (`… index.js "create" …`) is masked
 # as data and not detected. Valid bash, but a shape nothing here writes; making
@@ -59,7 +59,7 @@
 #     a group whose body spans separators (`false && { echo; node … create; }`), and
 #     group parens are blanked by then — so the two are indistinguishable here and the
 #     narrower rule would bounce a write bash never runs. Wrong block > miss in cost,
-#     so the whole tail goes. One exception (HIMMEL-5332): an `&&` whose left
+#     so the whole tail goes. One exception: an `&&` whose left
 #     operand is a bare `echo`/`true`/`:` (no pipe, redirect, group or substitution)
 #     always succeeds, so it is a `;` — `echo ';' && node … create` is NOT conditional.
 #     Masking also treats `\<newline>` as a continuation, `$'…'` as ANSI-C text and
@@ -83,7 +83,7 @@
 #     fail-open would neuter the guard for exactly that shape. Accepted flat-scanner
 #     limitation; the real reachability fix is a shell AST (separate, larger work).
 #   * Multiple heredocs on a line, unparseable delimiters, whitespace CLI paths.
-# Every gap forfeits GUIDANCE only — the write keeps its pre-HIMMEL-1077 classifier
+# Every gap forfeits GUIDANCE only — the write keeps its pre-guidance classifier
 # denial, exactly as before this hook existed. None can produce a wrong block.
 #
 # Bypass (set in the shell that LAUNCHED Claude Code; a per-call prefix does
@@ -103,7 +103,7 @@ set -uo pipefail
 # Bash call, and shelling out to `node …/index.js --list-commands` per call (the
 # block-backend-tier approach, which fires only on rare MCP calls) would tax the
 # hot path. Drift risk is bounded — a verb missing here only means the write
-# keeps its pre-HIMMEL-1077 opaque denial, never a wrong block. Keep in sync when
+# keeps its pre-guidance opaque denial, never a wrong block. Keep in sync when
 # the CLI gains a mutating verb.
 #
 # $1 = verb, $2 = following token (for nested verbs: `worklog add` writes,
@@ -112,7 +112,7 @@ is_write_verb() {
     case "$1" in
         create|comment|transition|edit|link|assign|move|watch|unwatch) return 0 ;;
         attach|project-create|sprint) return 0 ;;
-        # HIMMEL-4815: the incident verb (fix-version) and the rest of the CLI's
+        # the incident verb (fix-version) and the rest of the CLI's
         # mutating surface were missing, so their compound shapes fell through.
         fix-version|rank|unlink|resolution) return 0 ;;
         version-create|version-edit|version-release|version-archive|version-move) return 0 ;;
@@ -150,7 +150,7 @@ hd_is_close() {
 }
 
 # split_bytes <text> <length> -- fill the CALLER's local array SC with <text>,
-# one byte per element (HIMMEL-4678). The walkers below step through a command
+# one byte per element. The walkers below step through a command
 # one character at a time, and bash resolves ${s:i:1} by scanning s from its
 # start (decoding it, in a UTF-8 locale), so indexing the string made every
 # walk O(n^2): a 12 KB heredoc of prose took seconds, outran this guard's 15 s
@@ -197,7 +197,7 @@ quote_mask() {
                 '{') ad=$((ad + 1)) ;;
                 '}') ad=$((ad - 1)); [ "$ad" -le 0 ] && st=0 ;;
             esac
-            # HIMMEL-5332: emit nothing — the expansion may be empty, so `n${Z}ode`
+            # emit nothing — the expansion may be empty, so `n${Z}ode`
             # is the word `node`; a blank would split it into `n` and `ode`.
             i=$((i + 1)); continue
         fi
@@ -319,7 +319,7 @@ quote_mask() {
         fi
         # --- st=0: code ---
         if [ "$c" = "\\" ]; then
-            # HIMMEL-5332: a backslash-newline is a LINE CONTINUATION — bash deletes
+            # a backslash-newline is a LINE CONTINUATION — bash deletes
             # it, so `n\<NL>ode` is the one word `node`. Emit nothing, or the two
             # halves read as two words. Any other escape is one literal character
             # (blanked). esc_end marks the first byte after the escape: a `#` there
@@ -336,7 +336,7 @@ quote_mask() {
             fi
             out+="  "; i=$((i + 2)); esc_end=$i; continue
         fi
-        # HIMMEL-5332: `$'...'` is ANSI-C quoting. A backslash escapes a quote there
+        # `$'...'` is ANSI-C quoting. A backslash escapes a quote there
         # (`$'it\'s'` is ONE string, not one closed at the `\'`), and bash DECODES
         # it: `$'node'` and `$'\x6eode'` are the word `node`. Emit the decoded text,
         # keeping only characters that cannot act as shell syntax; every other one (a
@@ -416,7 +416,7 @@ quote_mask() {
             # delimiter, so a second heredoc on the same line would silently reuse
             # the wrong metadata — which could end a body early and scan inert text
             # as code, i.e. a wrong block. Refuse to guess: unparseable → fail open
-            # (the write keeps its pre-HIMMEL-1077 denial, nothing gets worse). A
+            # (the write keeps its pre-guidance denial, nothing gets worse). A
             # real delimiter queue is not worth it for a shape nothing here writes.
             [ "$hd_set" = 1 ] && return 1
             i=$((i + 2)); out+="  "; hd_q=0; hd_dash=0; hd_set=1; HEREDOC_SEEN=1
@@ -514,7 +514,7 @@ quote_mask() {
             if [ "$pv" = '=' ]; then stk[sp]="0P"; else stk[sp]="0p"; fi
             sp=$((sp + 1)); out+=""$'\n'" "; i=$((i + 2)); continue
         fi
-        # HIMMEL-5332: a bare `$NAME` / `$1` / `$@` may expand to NOTHING, so the word
+        # a bare `$NAME` / `$1` / `$@` may expand to NOTHING, so the word
         # it prefixes or stands beside is still the command (`$V node ...`, `$V${Z}node
         # ...` run node when V and Z are unset). Blank it like `${...}` above. The zsh
         # modifiers (`$V:t`, `$V:r`) and subscript (`$V[1,-3]`) are cut with the name
@@ -697,7 +697,7 @@ segment_has_write() {
                 case "$nm" in
                     ''|[0-9]*|*[!A-Za-z0-9_]*) break ;;
                 esac
-                # HIMMEL-4780: the gateway approves a bare literal
+                # the gateway approves a bare literal
                 # JIRA_PROJECT_KEY=<KEY> and the innocuous locale/TZ names; any
                 # other prefix is a refused shape the deny text must name.
                 case "$nm" in
@@ -758,7 +758,7 @@ segment_has_write() {
     # into a filed ticket by our own guidance.
     case "$scr" in
         scripts/jira/dist/index.js|*/scripts/jira/dist/index.js) ;;
-        # HIMMEL-4815: a `$J` / `${J}` / `"$J"` binary that bind_cli_vars resolved to
+        # a `$J` / `${J}` / `"$J"` binary that bind_cli_vars resolved to
         # the CLI path assigned in this same command. The retry names that path.
         __HIMMEL_JIRA_VAR_*__)
             DETECTED_VAR="${scr#__HIMMEL_JIRA_VAR_}"; DETECTED_VAR="${DETECTED_VAR%__}"
@@ -819,10 +819,10 @@ has_jira_write() {
     # it would file a ticket precisely when the original wanted none (`||`) or when
     # its prerequisite was never met (`&&`). Everything after `&&`/`||` is therefore
     # out of scope: mark the operators, then keep only each statement's text before
-    # them. Undetected = the pre-HIMMEL-1077 status quo; wrong guidance = a real
+    # them. Undetected = the pre-guidance status quo; wrong guidance = a real
     # unwanted mutation. The incident's own shape (`;`-chained, `$(…)`-interpolated)
     # is unconditional and stays fully in scope.
-    # HIMMEL-5332: an `&&` whose left operand is a provably-succeeding simple command
+    # an `&&` whose left operand is a provably-succeeding simple command
     # (`echo ...`, `true`, `:`) does not condition the right side: `echo ';' && node
     # ... create` runs the write whatever `echo` printed. It is UNCONDITIONAL, so it
     # gets the `;` treatment. Left operand = the text since the last `;`/`&`/newline,
@@ -860,7 +860,7 @@ has_jira_write() {
     # needs a real parser. Truncating is the one rule that cannot guess wrong: what
     # precedes the operator runs unconditionally and stays fully in scope (so
     # `node … create … || { echo failed; }` still bounces), and what follows keeps its
-    # pre-HIMMEL-1077 denial. The incident's own `;`-only shape has no marker at all.
+    # pre-guidance denial. The incident's own `;`-only shape has no marker at all.
     t="${t%%$'\001'*}"
     # `&>` / `&>>` / `>&` are REDIRECTS, not separators. Splitting on their `&` moved
     # the redirect target into command position, so `printf &>/tmp/log node …/index.js
@@ -915,7 +915,7 @@ has_jira_write() {
         # a genuinely unconditional one reaches here. Stop scanning; a real write
         # BEFORE the terminator already returned 0 in its own turn.
         #
-        # Terminators (HIMMEL-1182 extends the bare-`exit` break): a bare `exit`; a
+        # Terminators (extends the bare-`exit` break): a bare `exit`; a
         # wrapped `command exit` / `builtin exit`; an assignment-prefixed `FOO=1
         # exit`; and `exec <cmd>` (which REPLACES the shell). A backgrounded
         # `exit &` / `exec cmd &` does NOT terminate the PARENT, but the bare `&`
@@ -1021,7 +1021,7 @@ EOF
     return 1
 }
 
-# --- HIMMEL-4815: variable-binary, loop and xargs shapes ---
+# --- variable-binary, loop and xargs shapes ---
 # Incident (BP console, 2026-10-07): `for k in …; do node $J fix-version HIMMEL-$k
 # …; done` was not bounced — the loop bailed out of has_jira_write and `$J` never
 # matched the CLI path — so it fell through to the classifier, which denied it cold
@@ -1216,21 +1216,21 @@ EOF
 
 # --- Fail open on anything we cannot evaluate ---
 # Drain stdin BEFORE any early exit: bailing out first would SIGPIPE the caller
-# that is still writing the hook input. HIMMEL-2123: a bash builtin `read`
+# that is still writing the hook input. A bash builtin `read`
 # (not `$(cat)`) still drains fully, one less external-process spawn.
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
 [ "${JIRA_COMPOUND_WRITE_OK:-0}" = "1" ] && exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 [ -n "$input" ] || exit 0
-# HIMMEL-2123: tool_name + command in ONE jq call (via `<<<`, no printf fork)
+# tool_name + command in ONE jq call (via `<<<`, no printf fork)
 # instead of two separate `printf | jq` pipelines. `// ""` (empty STRING),
 # not `// empty` (a zero-output jq GENERATOR): in a `+`-concatenation, one
 # operand collapsing to `empty` zeroes out the WHOLE expression, not just
 # that field. Use jq's output only when jq SUCCEEDS: a partial parse
 # (malformed input, trailing garbage) must not reach the block path on
 # half-read values. Windows jq.exe writes CRLF, so strip the stray CR off
-# $tool (same shape as require-quiet-run.sh, HIMMEL-2060).
+# $tool (same shape as require-quiet-run.sh).
 result=$(jq -r '(.tool_name // "") + "\n" + (.tool_input.command // "")' <<<"$input" 2>/dev/null) || exit 0
 tool="${result%%$'\n'*}"
 tool="${tool%$'\r'}"
@@ -1314,7 +1314,7 @@ fi
 # A jira_cli that is not a conservative, shell-safe path has NO sanctioned shape,
 # so emitting it in the "do exactly this" guidance is wrong or dangerous:
 #   * whitespace tokenises the path — unquoted it breaks, quoted it is not
-#     gateway-approvable (the quoted-CLI-path gap; upstream fix HIMMEL-1083);
+#     gateway-approvable (the quoted-CLI-path gap; upstream fix);
 #   * shell-active metacharacters from a crafted DETECTED_SCRIPT token
 #     (`$(…)`, backticks, `;`, `|`, `&`, redirects, globs) would turn the
 #     guidance into an instruction to run INJECTED shell (coderabbit);
@@ -1347,7 +1347,7 @@ case "$verb_label" in
     rank|unlink|'roadmap sync-sprints') verb_args=' …same arguments as before…' ;;
     *)              verb_args=' <TICKET> …same arguments as before…' ;;
 esac
-# Name only the shapes this command HAS (HIMMEL-4780): a list of shapes it lacks
+# Name only the shapes this command HAS: a list of shapes it lacks
 # sends the agent hunting for the wrong one. quote_mask flags each shape as it
 # parses, so inert text (single quotes, escapes, a quoted-delimiter heredoc body)
 # never counts; separators come from the masked text. Wording only — the bounce

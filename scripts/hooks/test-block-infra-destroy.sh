@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/block-infra-destroy.sh (HIMMEL-5282, gap G9).
+# Smoke test for scripts/hooks/block-infra-destroy.sh (gap G9).
 #
 # Usage: bash scripts/hooks/test-block-infra-destroy.sh
 # Exit:  0 all cases passed, 1 at least one failed.

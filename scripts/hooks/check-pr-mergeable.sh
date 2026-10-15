@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-push hook: refuse to push when the open PR for the current branch
-# has mergeable: CONFLICTING (HIMMEL-136).
+# has mergeable: CONFLICTING.
 #
 # Pre-commit framework wires this into the pre-push stage. Stdin
 # contract: "local_ref local_sha remote_ref remote_sha" per line — same
@@ -10,20 +10,20 @@
 # - Drains stdin so the pre-commit framework doesn't deadlock when the
 #   push contains many refs.
 # - Resolves the current branch via `git symbolic-ref HEAD`.
-# - Skips on a protected default (main OR master — HIMMEL-297) / detached
+# - Skips on a protected default (main OR master) / detached
 #   HEAD (no PR ever opens for the default branch; detached pushes have no
 #   head ref to query).
 # - Asks forge_pr_mergeable for the branch's open PR. On GitHub that now
-#   computes the conflict LOCALLY via `git merge-tree` (HIMMEL-1232) rather
+#   computes the conflict LOCALLY via `git merge-tree` rather
 #   than reading GitHub's flaky async `mergeable` field. When no PR exists,
 #   exits 0 (nothing to gate on).
 # - Refuses (exit 1) when the verdict is `CONFLICTING`, UNLESS it is provably
-#   stale (HIMMEL-1074): the base is an ancestor of the local head AND the
+#   stale: the base is an ancestor of the local head AND the
 #   pushed tree has no conflict markers — i.e. the operator already merged the
 #   advanced base in and resolved cleanly, so the verdict (computed against the
 #   stale remote head) no longer reflects the push. The refusal message names
 #   the sanctioned recovery. See the CONFLICTING branch for the full rationale.
-# - HIMMEL-5650: WARNS (never blocks) when this branch's PR CI started under
+# - WARNS (never blocks) when this branch's PR CI started under
 #   PUSH_WARN_MINUTES (default 15) ago and has checks IN PROGRESS — a re-push
 #   cancels them and loses their minutes. Queued-only runs do not warn: ci.yml's
 #   concurrency group replaces them for free. Batch a review round's fixes into
@@ -34,7 +34,7 @@
 #
 # Bypass: SKIP_PR_MERGEABLE=1 git push ... (logs WARNING).
 #
-# HIMMEL-326: routes through the forge seam (scripts/lib/forge.sh), so it gates
+# routes through the forge seam (scripts/lib/forge.sh), so it gates
 # GitHub and Bitbucket Cloud. On Bitbucket forge_pr_mergeable always returns
 # UNKNOWN (no pre-merge mergeable signal — spec §5.1), so this hook never blocks
 # a Bitbucket push; the conflict surfaces at merge time instead.
@@ -84,7 +84,7 @@ if [ -z "$mergeable" ] || [ "$mergeable" = "null" ]; then
     exit 0
 fi
 
-# HIMMEL-5650: warn-only re-push check. `<in-progress checks>|<latest startedAt>`
+# warn-only re-push check. `<in-progress checks>|<latest startedAt>`
 # from the PR's check rollup; anything unparseable is silent (fail open). Only
 # IN_PROGRESS checks count: ci.yml's concurrency group (ci-pr-<n>,
 # cancel-in-progress) replaces a QUEUED run for free, so a re-push over queued
@@ -122,7 +122,7 @@ case "$mergeable" in
         # forge_pr_mergeable is hardcoded UNKNOWN (spec §5.1) — so the base
         # read and the recovery hints below stay gh-flavored.
         #
-        # HIMMEL-1074 — a CONFLICTING verdict can be STALE. forge_pr_mergeable
+        # a CONFLICTING verdict can be STALE. forge_pr_mergeable
         # computes it as `git merge-tree <base> <remote-head>` against the PR's
         # headRefOid: the commit ALREADY on the remote, NOT the local head
         # being pushed. When the base advanced under the PR and the operator
@@ -141,7 +141,7 @@ case "$mergeable" in
         base=$(_gh pr view "$branch" --json baseRefName \
                  --jq '.baseRefName' 2>/dev/null || true)
         stale_ok=0
-        # HIMMEL-1074 CR round: `origin/$base` is a LOCALLY CACHED
+        # `origin/$base` is a LOCALLY CACHED
         # remote-tracking ref — if it wasn't fetched since the real base
         # advanced further, the ancestor check below could pass against a
         # stale cached base while the CURRENT remote base still genuinely
@@ -174,8 +174,8 @@ case "$mergeable" in
             # evidence; this guard only tightens it. It runs ONLY in the
             # CONFLICTING path, so a MERGEABLE PR carrying such a fixture is
             # never inspected. Here-strings (not printf|grep) avoid the
-            # pipefail/SIGPIPE trap (HIMMEL-1430).
-            # HIMMEL-1074 CR round: `2>/dev/null || true` alone would swallow a
+            # pipefail/SIGPIPE trap.
+            # `2>/dev/null || true` alone would swallow a
             # genuine `git diff` failure into an empty string — no markers found
             # in empty output reads as "clean" and stale_ok=1, allowing the push
             # on INCONCLUSIVE evidence (the diff never actually ran). Capture the

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse Bash guard — DENY piping an exit-code-critical himmel gate command
-# into `tail`/`head` (HIMMEL-1696).
+# into `tail`/`head`.
 #
 # WHY: `cmd | tail` makes `$?` the status of TAIL, not of `cmd`. Agents here trim
 # output for context constantly and then read the exit code — silently getting 0
@@ -21,7 +21,7 @@
 # CONTRACT:
 #   * DENY (exit 2, reason on stderr) when a logical command line contains a
 #     pipeline in which ANY stage before the last INVOKES a registered gate
-#     command and whose LAST stage is `tail`/`head` (HIMMEL-4438: `echo x |
+#     command and whose LAST stage is `tail`/`head` (`echo x |
 #     xargs <gate> | tail` truncates the gate too). Stages between are
 #     irrelevant — `gate | grep x | tail` denies too — and `2>&1` is a
 #     redirection, not a stage. A
@@ -40,8 +40,8 @@
 #     is an invocation and denies. A launcher's own OPTIONS (`bash -x <gate>`,
 #     `bash -- <gate>`) are stepped over too, but only once a launcher has been
 #     seen — a leading `-something` on its own is not that shape. Each launcher
-#     carries its OWN small table of the options that take an OPERAND
-#     (HIMMEL-1979): `-p` is sudo's prompt but time's bare portability flag, and
+#     carries its OWN small table of the options that take an OPERAND:
+#     `-p` is sudo's prompt but time's bare portability flag, and
 #     `-S` is env's split-string but sudo's bare stdin flag, so one flat
 #     launcher-agnostic list mis-parsed both directions. `timeout` additionally
 #     steps over its positional DURATION. Tables, not a general option parser —
@@ -57,7 +57,7 @@
 #       scripts/handover/pr-merge.sh, and scripts/<dir>/test-*.sh.
 #     A backslash-separated Windows path is a documented miss — nothing here
 #     writes one, and a miss forfeits guidance only.
-#   * HIMMEL-2082: ALSO DENY a registered gate followed by a later segment
+#   * ALSO DENY a registered gate followed by a later segment
 #     (`gate; echo done`, `gate && x`, `gate || x`) anywhere in the command,
 #     newline and lone `&` separators included; each `$(...)`/backtick body is its
 #     own unit. A gate must be the final segment so the task exit status is the
@@ -75,15 +75,14 @@
 #     another arm, and an `else` arm after a gate, are denied (fail closed).
 #     Checked on the ORIGINAL text only (GUARD_UNWRAP_DEPTH=0).
 #     ponytail: a gate inside a `bash -c`/`eval` payload is not covered by the
-#     trailing rule (guard_unwrap's rendered children skip it), upgrade path
-#     HIMMEL-5105.
+#     trailing rule (guard_unwrap's rendered children skip it), upgrade path: render the children with the trailing rule on.
 #   * Everything else is untouched: `git log | tail`, a bare `tail -f file`, and
 #     the CORRECT shape `gate > out 2>&1; echo "RC=$?"; tail out` all pass.
 #   * Fail OPEN (exit 0) on anything unevaluable — missing jq, empty or
 #     unparseable stdin, a non-Bash tool, a command containing an UNQUOTED
 #     heredoc (`<<`), whose body text a scanner this flat cannot tell from syntax
 #     and which in this repo very often documents this exact shape (the variant
-#     forms below still judge it with the bodies cut out, HIMMEL-5362), or a
+#     forms below still judge it with the bodies cut out), or a
 #     command over the 16KB cost bound (see below). Per
 #     scripts/hooks/CLAUDE.md a workflow
 #     nudge fails open: a hook that cannot parse its input must not deny
@@ -106,11 +105,11 @@
 # is deliberately NOT an env prefix (the shape scripts/hooks/CLAUDE.md documents for PreToolUse
 # bypasses): a `VAR=1 bash scripts/…` prefix on a sanctioned chokepoint is itself
 # denied by block-chokepoint-env-prefix.sh, and a per-call env prefix cannot
-# reach a hook process anyway (HIMMEL-203). The marker is honoured only where it
+# reach a hook process anyway. The marker is honoured only where it
 # is real shell text — one carried inside a quoted argument is data, not an
 # opt-out. Presence is what is verified, not the reason's content.
 #
-# SCANNER CEILING (deliberate, bounded — ADJUDICATED in HIMMEL-1979): this is a
+# SCANNER CEILING (deliberate, bounded — ADJUDICATED): this is a
 # flat character walk, not a shell parser. It tracks quotes (with double-quote
 # backslash escapes, whose escaped character is emitted as DATA so no later walk
 # can read it as syntax), comments, escapes, one level of command substitution,
@@ -118,21 +117,21 @@
 # the shapes agents actually write. Anything it cannot resolve withdraws rather
 # than guesses.
 #
-# The residual list, complete and deliberate. HIMMEL-1979 decided the hook grows
+# The residual list, complete and deliberate. The hook grows
 # only by SMALL bounded pieces and names the rest as its ceiling: 13 panel rounds
-# of lexer-completeness chasing on HIMMEL-1696 established that a complete POSIX
+# of lexer-completeness chasing established that a complete POSIX
 # lexer is not the scope of an advisory-shaped deny hook. Every gap here forfeits
 # GUIDANCE only — the pre-hook status quo — and can never widen any grant.
 #   * NAMED CEILING: a gate invoked from INSIDE a `-c` payload —
 #     `bash -c 'scripts/check-ci.sh' | tail` — is not seen, because the payload
 #     is a quoted string this scanner reads as data. Catching it means re-running
-#     the scanner over that payload as a NESTED PROGRAM, which is the HIMMEL-912
+#     the scanner over that payload as a NESTED PROGRAM, which is the
 #     tokenizer class rather than another table, and it is not a shape written
 #     here (agents write `bash <gate> | tail`). Do not implement `-c` payload
 #     recursion without re-deciding this.
 #   * an UNQUOTED heredoc (`<<`), whose body text a scanner this flat cannot tell
 #     from syntax and which in this repo very often documents this exact shape;
-#     only the variant forms (st_expand, HIMMEL-5362) judge the command with the
+#     only the variant forms (st_expand) judge the command with the
 #     bodies cut out and each `$(...)` of an unquoted body lifted to its own line.
 #   * a command over the 16KB cost bound (see below).
 #   * a backslash-separated Windows path to a gate — nothing here writes one.
@@ -140,18 +139,18 @@
 # bash 3.2-compatible.
 set -fuo pipefail   # -f: the token walk word-splits, and must not glob `*.sh`
 
-# HIMMEL-2123: read stdin with the bash builtin (not `$(cat)`) to drop one
+# read stdin with the bash builtin (not `$(cat)`) to drop one
 # external-process spawn per call, and pull tool_name + command in ONE jq
 # call (not two) so a non-matching call pays a single jq fork instead of
 # two `printf | jq` pipelines (four forks). `<<<"$input"` feeds jq directly,
 # skipping the `printf` fork each pipeline used to pay. Windows jq.exe
 # writes CRLF, so the embedded "\n" separator between the two fields can
 # arrive as "\r\n" — strip the stray CR off $tool the same way
-# require-quiet-run.sh (HIMMEL-2060) already does for the identical shape.
+# require-quiet-run.sh already does for the identical shape.
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
 command -v jq >/dev/null 2>&1 || exit 0
-# HIMMEL-2610 F2 (J1267O): invoked_program's per-launcher operand tables
+# invoked_program's per-launcher operand tables
 # (sudo/env/nice/timeout/xargs/time) call guard_is_long_abbrev/
 # guard_long_opt_name to recognize an abbreviated OR full long option the
 # same way GNU getopt_long does. This hook DENIES via the GATE_RE/pipeline
@@ -187,7 +186,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # `// ""` (empty STRING), not `// empty` (a zero-output jq GENERATOR): in a
 # `+`-concatenation, one operand collapsing to `empty` zeroes out the WHOLE
 # expression's output (cross-product-of-generators semantics), not just
-# that field — caught empirically writing this fix (HIMMEL-2123) in
+# that field — caught empirically writing this fix
 # block-read-secrets.sh, where it went silently blank for every non-Read
 # tool call.
 result=$(jq -r '(.tool_name // "") + "\n" + (.tool_input.command // "")' <<<"$input" 2>/dev/null) || exit 0
@@ -203,13 +202,13 @@ cmd="${result#*$'\n'}"
 # silently blind. Drop CRs before anything treats the text as syntax.
 cmd=${cmd//$'\r'/}
 
-# HIMMEL-5362: set by this hook on the child it runs over an expanded form of
+# set by this hook on the child it runs over an expanded form of
 # the command (below). Read once and unset, so guard_unwrap's own children of
 # that child never inherit it.
 _tp_variant=${GUARD_TAILPIPE_VARIANT:-}
 unset GUARD_TAILPIPE_VARIANT
 
-# HIMMEL-4438: re-read the forms the shell actually runs (quotes removed,
+# re-read the forms the shell actually runs (quotes removed,
 # wrappers stripped, `bash -c`/`eval` bodies) through this same hook. The lib
 # is a must-run dependency: if it cannot be sourced, deny.
 if :; then
@@ -227,7 +226,7 @@ fi
 
 # Registered gate paths, anchored: the token must END with one, at a `/` boundary.
 GATE_RE='(^|/)scripts/(cr/clear-cr-marker\.sh|ci/run-shell-tests\.sh|check-ci\.sh|handover/merge-on-green\.sh|handover/pr-merge\.sh|[A-Za-z0-9._-]+/test-[A-Za-z0-9._-]*\.sh)$'
-# HIMMEL-3661: invoked_program's env case returns this instead of a real
+# invoked_program's env case returns this instead of a real
 # program name when it sees -S/--split-string — see that case's comment.
 # scan_line treats it as a gate match without consulting GATE_RE.
 ENV_SPLIT_SENTINEL='<env-split-string>'
@@ -255,7 +254,7 @@ kind=pipe     # pipe: gate | tail/head; trailing: gate followed by a later segme
 # command that size is not the incident shape this guard exists for.
 [ "${#cmd}" -gt 16000 ] && exit 0
 
-# HIMMEL-5362: judge the argv the shell would really run, not only the text.
+# judge the argv the shell would really run, not only the text.
 # A parameter expansion can hide the command word (`${V:-}bash <gate>`,
 # `$V:t bash <gate>`) or BE it (`${V:-./scripts/check-ci.sh}`, a zsh
 # `(l::)` pad string), and a heredoc body or `$'...'` string can hide what
@@ -305,7 +304,7 @@ case $cmd in
 esac
 
 # split_bytes <text> <length> -- fill the CALLER's local array SC with <text>,
-# one byte per element (HIMMEL-4678). The walkers below step through a command
+# one byte per element. The walkers below step through a command
 # one character at a time, and bash resolves ${s:i:1} by scanning s from its
 # start (decoding it, in a UTF-8 locale), so indexing the string made every
 # walk O(n^2): a 12 KB heredoc of prose took seconds, outran this guard's 15 s
@@ -416,13 +415,13 @@ normalise() {
                 # RAW quote left every later quote-state walk unbalanced, and an
                 # unbalanced walk never resolves a command at all -- so
                 # `FOO="a \" b" bash <gate> | tail` silently passed the guard
-                # (HIMMEL-1979, codex-1 r13). `_` is a word character that can be
+                #. `_` is a word character that can be
                 # neither a quote, a separator, nor part of a gate path.
                 case $c in
                     '|' | ';' | '&' | "$NL") c=' ' ;;
                     '"' | "'") c='_' ;;
                     # An escaped `$` is text: keep the backslash so the trailing
-                    # scan can tell `"\$?"` from a real status read (HIMMEL-2082).
+                    # scan can tell `"\$?"` from a real status read.
                     '$') c='\$' ;;
                 esac
                 out+=$c; p=$c; i=$((i + 2)); continue
@@ -483,7 +482,7 @@ normalise() {
                     # keeps the word joined and can be neither a path nor a
                     # command name we look for. An escaped QUOTE is data for
                     # the same reason, and emitting it raw unbalanced the same
-                    # later walks (HIMMEL-1979).
+                    # later walks.
                     ' ' | "$TAB" | '"' | "'") out+="_" ;;
                     '$') out+='\$' ;;
                     *) out+=${SC[i + 1]-} ;;
@@ -528,7 +527,7 @@ normalise() {
 # The program a pipeline stage actually RUNS: first token that is neither a
 # leading `VAR=value` assignment, a grouping/negation prefix, nor a known
 # launcher or compound-command keyword. Empty when there is none.
-# invoked_program_v sets IP (no subshell: the HIMMEL-2082 trailing scan calls it
+# invoked_program_v sets IP (no subshell: the trailing scan calls it
 # once per statement, and a fork each made a 10 KB chain quadratic-feeling slow);
 # invoked_program is the printing wrapper every older caller uses.
 invoked_program_v() {
@@ -561,11 +560,11 @@ invoked_program_v() {
         pending=''
         # A LEADING redirection is not the command (panel r4, codex-1). A bare
         # operator token (`2>`) also swallows the target word that follows it.
-        # HIMMEL-3677 (J1314O): this word-walk cannot reliably tell a redirect
+        # this word-walk cannot reliably tell a redirect
         # from an escaped, glued or process-substitution word that merely
         # CONTAINS `<`/`>` — scan_line's stage-level fail-closed check now
         # owns that distinction for the first stage of a tail/head pipeline;
-        # this stays exactly as it was pre-HIMMEL-3677 for every other case
+        # this stays exactly as it was before for every other case
         # (the last-stage tail/head check, and any stage with no pipe at all).
         if [ "$skip_next" = 1 ]; then skip_next=0; continue; fi
         case $stripped in
@@ -596,7 +595,7 @@ invoked_program_v() {
                 # `timeout` is the one launcher with a POSITIONAL operand — its
                 # DURATION — between its options and the program it runs, so
                 # `timeout 300 bash <gate> | tail` must step over `300` without
-                # mistaking it for the command (HIMMEL-1979).
+                # mistaking it for the command.
                 [ "$base" = timeout ] && pos_skip=1
                 continue ;;
             if | elif | while | until | then | do | else) continue ;;
@@ -606,7 +605,7 @@ invoked_program_v() {
         # flag (panel r10, codex-1). Only skipped AFTER a launcher: a leading
         # `-something` with no launcher in front of it is not this shape.
         if [ -n "$launcher" ]; then
-            # PER-LAUNCHER operand tables (HIMMEL-1979, codex-2 r13). ONE flat
+            # PER-LAUNCHER operand tables. ONE flat
             # launcher-agnostic list got it wrong in both directions, because the
             # same letter means different things per launcher: `-p` is sudo's
             # prompt (an operand) but time's bare portability flag, so
@@ -629,7 +628,7 @@ invoked_program_v() {
                     # operand-taking option the retired flat list covered stays
                     # covered (panel r1, codex-1): dropping `-D`/`-R`/`-T`/`-U`
                     # would have REGRESSED shapes the hook already caught.
-                    # HIMMEL-2610: guard_is_long_abbrev also catches sudo's real
+                    # guard_is_long_abbrev also catches sudo's real
                     # getopt_long unambiguous abbreviations of these long names
                     # (`--us`/`--user`), so a shortened spelling can't leave its
                     # value token to be misread as the invoked program. An
@@ -663,7 +662,7 @@ invoked_program_v() {
                     # --argv0) take an ordinary operand — a value to skip past,
                     # same attached-value carve-out as sudo above.
                     #
-                    # HIMMEL-3661 (corrects HIMMEL-3632's comment here, which
+                    # (an older comment here
                     # was WRONG): `-S`/`--split-string` is NOT like those
                     # three. GNU env SPLITS its operand into a brand-new argv
                     # and RUNS it, so treating that operand as a value to skip
@@ -679,7 +678,7 @@ invoked_program_v() {
                     # BARE flags (`-iS`, `-vS`, `-ivS`: `-i`/`-v`/`-0` take no
                     # operand of their own, so a leading run of only those
                     # letters followed by `S` is still a split-string clause —
-                    # J1299O finding 2). This does trade in a genuine false
+                    # the same rule). This does trade in a genuine false
                     # DENY of its own — a legitimate `env -S '<non-gate
                     # command>' | tail` now also denies — which is the
                     # accepted fail-closed direction.
@@ -694,7 +693,7 @@ invoked_program_v() {
                             # this bundle carries -S too (operand-letter
                             # bundles like `-uS`/`-CS`/`-aS` never enter this
                             # arm — they start with a letter outside [iv0]).
-                            # HIMMEL-3671 (J1299R): if instead the bundle ENDS
+                            # if instead the bundle ENDS
                             # in a value-taking letter (`-iu`, `-vC`, `-0a`),
                             # that letter's value is the NEXT word, same as
                             # the bare `-u`/`-C`/`-a` case above — skip it so
@@ -807,7 +806,7 @@ invoked_program() {
     printf '%s' "$IP"
 }
 
-# HIMMEL-3677 (J1314O): whether STAGE contains an unquoted `<`/`>` ANYWHERE —
+# whether STAGE contains an unquoted `<`/`>` ANYWHERE —
 # real redirect, escaped (`normalise()` already un-escapes `\>`/`\<` to a bare
 # character before this text is ever seen), glued (`2>/dev/null`), spaced
 # (`2> /dev/null`), or process substitution (`>(cat)`, which is a real bash
@@ -815,7 +814,7 @@ invoked_program() {
 # tell these forms apart with a flag that can only remember ONE pending skip,
 # scan_line treats ANY of them as reason enough to stop trusting invoked_program's
 # word walk for this stage and decide by scanning the raw text instead
-# (fail-closed: J1314O findings 1-3, and the pre-existing `>'out>'` class).
+# (fail-closed, and the pre-existing `>'out>'` class).
 # `$(...)`/backtick bodies are already lifted out to a separate `SUBST`-marked
 # line by normalise(), and `$((...))` bodies to an `ARITH`-marked line, so
 # neither is present in STAGE here — no extra placeholder-skipping needed.
@@ -839,7 +838,7 @@ stage_has_unquoted_angle() {
     return 1
 }
 
-# HIMMEL-3677 (J1314O fail-closed rule): does ANY word of STAGE match
+# Fail-closed rule: does ANY word of STAGE match
 # GATE_RE, quote-stripped — used only once stage_has_unquoted_angle says the
 # stage's real invoked program cannot be trusted, so this does not try to
 # resolve WHICH word is the command; it denies if a gate name appears
@@ -856,7 +855,7 @@ stage_mentions_gate() {
 }
 
 # stage_runs_gate STAGE -- 0 when the pipeline stage STAGE runs a registered gate
-# at command position (HIMMEL-2082). No subshell: the trailing scan asks this once
+# at command position. No subshell: the trailing scan asks this once
 # per statement, and a fork each made a 10 KB chain take a minute. Unlike
 # stage_invokes_gate it does not fall back to "a redirect plus a gate-looking
 # word", so a READ of a gate script that carries a redirect
@@ -947,7 +946,7 @@ exit_nonzero() {
     [[ $s =~ ^exit[[:space:]]+[1-9][0-9]*$ ]]
 }
 
-# scan_unit TEXT -- HIMMEL-2082. 0 (and sets offender/kind) when a gate
+# scan_unit TEXT: 0 (and sets offender/kind) when a gate
 # statement of one command unit is followed by a later segment, so the unit's
 # exit status is the later segment's and not the gate's. A unit is the whole
 # command with its newlines and lone `&` separators (not one physical line), or
@@ -1041,7 +1040,7 @@ EOF
     return 1
 }
 
-# scan_trailing_all NORMALISED -- HIMMEL-2082. Splits the normalised command
+# scan_trailing_all NORMALISED: Splits the normalised command
 # into its units (normalise() prefixes every lifted $(...) body with LIFT) and
 # scans each with scan_unit.
 scan_trailing_all() {
@@ -1081,7 +1080,7 @@ scan_line() {
             tail | head | */tail | */head | "$ENV_SPLIT_SENTINEL") ;;
             *) continue ;;
         esac
-        # HIMMEL-4438: every stage before the last, not only the first — a
+        # every stage before the last, not only the first — a
         # gate fed by `echo x | xargs <gate> | tail` is truncated all the same.
         stages=${pipeline%|*}
         while :; do
@@ -1106,7 +1105,7 @@ stage_invokes_gate() {
     fi
     prog=$(invoked_program "$1")
     [ -n "$prog" ] || return 1
-    # HIMMEL-3661: ENV_SPLIT_SENTINEL means "unknown program that may be a
+    # ENV_SPLIT_SENTINEL means "unknown program that may be a
     # gate" — treat it as a match without consulting GATE_RE.
     if [ "$prog" != "$ENV_SPLIT_SENTINEL" ]; then
         gate_match=$(printf '%s' "$prog" | grep -E "$GATE_RE")
@@ -1128,11 +1127,11 @@ normalised=$(normalise "$cmd")
 # whose only `| tail` is data. Same posture as the other fail-open branches.
 case $normalised in *"$HEREDOC_MARK"*) exit 0 ;; esac
 
-# HIMMEL-2082: a gate followed by a later segment loses its status too. Decided
+# a gate followed by a later segment loses its status too. Decided
 # over the WHOLE command (newlines and lone `&` included), once, before the
 # per-line pipe scan. Original text only: guard_unwrap's rendered children drop
 # the `if`/`then` keywords, so a gate that is a condition would read as a bare
-# gate there. The HIMMEL-5362 text form keeps every keyword, so it is read too.
+# gate there. The text form keeps every keyword, so it is read too.
 if [ "${GUARD_UNWRAP_DEPTH:-0}" = 0 ] || [ "$_tp_variant" = text ]; then
     scan_trailing_all "$normalised" || true
 fi

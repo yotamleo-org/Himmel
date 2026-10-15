@@ -3,7 +3,7 @@
 #
 # Refuses to commit a version-controlled Claude/Codex hook-settings file that
 # carries a MACHINE-ABSOLUTE path or a Windows `.exe` in a hook command
-# (HIMMEL-2156). Both break every adopter who is not the machine the file was
+#. Both break every adopter who is not the machine the file was
 # written on, and an absolute home path leaks the maintainer's username into
 # the public mirror.
 #
@@ -63,14 +63,14 @@ EXE_PATTERN='"command"[[:space:]]*:[[:space:]]*"([^"\]|\\.)*\.[Ee][Xx][Ee]'
 
 # Self-test both patterns at startup. A regex that silently stopped matching
 # would render as a clean pass on every commit — the failure mode this gate
-# cannot afford (HIMMEL-2320: a zero is not evidence without a positive
+# cannot afford (a zero is not evidence without a positive
 # control).
 #
 # Here-strings, not pipes, throughout these probes: under `set -o pipefail` a
 # `producer | grep -q` exits on the first match, the producer then takes
 # SIGPIPE writing the remainder, and the PIPELINE status goes non-zero — which
 # would INVERT the negated guard below and refuse every commit on a pattern
-# that did in fact match (HIMMEL-1430). Each probe is one short line, far under
+# that did in fact match. Each probe is one short line, far under
 # the Git Bash here-string limit.
 selftest() {
     local pat="$1" probe="$2" name="$3"

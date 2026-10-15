@@ -80,7 +80,7 @@ printf '# doc\n' > "$SB/docs/note.md"
 git -C "$SB" add -A
 git -C "$SB" commit -q -m "chore: base"
 BASE=$(git -C "$SB" rev-parse HEAD)
-printf '# changed\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
+printf 'echo changed\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
 git -C "$SB" commit -q -am "fix: uninstall-plugins"
 CODE_RANGE="$BASE..$(git -C "$SB" rev-parse HEAD)"
 printf '# changed\n' >> "$SB/docs/note.md"
@@ -224,5 +224,79 @@ if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
 else
   fail "24n: rc=$rc ran='$ran' output: $out"
 fi
+
+# 24o: a merge-forward of main must not widen the range. Main moves on from BASE
+# (mainthing.sh + its suite), the PR branch merges it in, and the caller passes
+# the merge's first parent as the base: the impacted set must still be the PR's own.
+printf '# mainthing\n' > "$SB/scripts/lib/mainthing.sh"
+mksuite scripts/test-mainthing.sh mainthing '# drives lib/mainthing.sh'
+P0=$(git -C "$SB" rev-parse HEAD)
+git -C "$SB" checkout -q -b mainline "$BASE"
+git -C "$SB" add -A
+git -C "$SB" commit -q -m "feat: mainthing"
+git -C "$SB" update-ref refs/remotes/origin/main "$(git -C "$SB" rev-parse HEAD)"
+git -C "$SB" checkout -q -b pr "$P0"
+git -C "$SB" merge -q --no-edit mainline
+FWD_RANGE="$(git -C "$SB" rev-parse HEAD^1)..$(git -C "$SB" rev-parse HEAD)"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$FWD_RANGE" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
+  pass "24o: a merge-forward range runs the PR's own suites only, not what main merged"
+else
+  fail "24o: rc=$rc ran='$ran' output: $out"
+fi
+
+# 24p: a comment-only edit still selects its driving suite: a suite may read
+# comment lines, so no SKIP is made.
+git -C "$SB" checkout -q "$P0"
+git -C "$SB" checkout -q -b cmt
+printf '# just a comment\n\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
+git -C "$SB" commit -q -am "docs: comment"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$P0..$(git -C "$SB" rev-parse HEAD)" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ] && ! grepq "$out" 'SKIP comment-only'; then
+  pass "24p: a comment-only edit still runs the driving suite"
+else
+  fail "24p: rc=$rc ran='$ran' output: $out"
+fi
+
+# 24q: a base that is on main is not rewritten, even with a merge in the range:
+# the whole range (the PR's suite and main's) runs.
+git -C "$SB" checkout -q -f pr
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$BASE..$(git -C "$SB" rev-parse pr)" 2>&1); rc=$?
+ran=$(sort "$IMP_LOG" | tr '\n' ' ')
+if [ "$rc" -eq 0 ] && [ "$ran" = "mainthing uninstall " ] && ! grepq "$out" 'holds a merge-forward'; then
+  pass "24q: a base on main with a merge in the range is not rewritten"
+else
+  fail "24q: rc=$rc ran='$ran' output: $out"
+fi
+
+# 24r: with no origin/main the range is left as passed (not clamped).
+MAIN_TIP=$(git -C "$SB" rev-parse refs/remotes/origin/main)
+git -C "$SB" update-ref -d refs/remotes/origin/main
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$FWD_RANGE" 2>&1); rc=$?
+ran=$(sort "$IMP_LOG" | tr '\n' ' ')
+if [ "$rc" -eq 0 ] && [ "$ran" = "mainthing " ] && ! grepq "$out" 'holds a merge-forward'; then
+  pass "24r: no origin/main leaves the range wide"
+else
+  fail "24r: rc=$rc ran='$ran' output: $out"
+fi
+
+# 24s: with no merge-base against main the range is left as passed.
+ORPHAN=$(git -C "$SB" commit-tree "$(git -C "$SB" hash-object -t tree -w /dev/null)" -m orphan)
+git -C "$SB" update-ref refs/remotes/origin/main "$ORPHAN"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$FWD_RANGE" 2>&1); rc=$?
+ran=$(sort "$IMP_LOG" | tr '\n' ' ')
+if [ "$rc" -eq 0 ] && [ "$ran" = "mainthing " ] && ! grepq "$out" 'holds a merge-forward'; then
+  pass "24s: no merge-base with main leaves the range wide"
+else
+  fail "24s: rc=$rc ran='$ran' output: $out"
+fi
+git -C "$SB" update-ref refs/remotes/origin/main "$MAIN_TIP"
 
 rst_tally

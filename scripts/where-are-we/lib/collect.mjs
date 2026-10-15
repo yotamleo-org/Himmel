@@ -30,23 +30,54 @@ export function jiraRecords(rows, now) {
   }));
 }
 
+const GREEN_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
+
+// A rollup entry is green when it is a completed CheckRun with a passing
+// conclusion, or a StatusContext in SUCCESS. Anything pending/failed is not.
+function checkIsGreen(c) {
+  if (c.state !== undefined) return c.state === 'SUCCESS';
+  return c.status === 'COMPLETED' && GREEN_CONCLUSIONS.has(c.conclusion);
+}
+
+// Open, conflict-free, merge-state CLEAN, with at least one check and all green.
+function isGreenMergeable(pr) {
+  return String(pr.state).toUpperCase() === 'OPEN'
+    && pr.mergeable === 'MERGEABLE'
+    && pr.mergeStateStatus === 'CLEAN'
+    && Array.isArray(pr.statusCheckRollup)
+    && pr.statusCheckRollup.length > 0
+    && pr.statusCheckRollup.every(checkIsGreen);
+}
+
 /**
  * Map raw GitHub PR objects to ledger records.
- * Only emits fields authoritative for source='pr', kind='pr': status, branch.
+ * Emits fields authoritative for source='pr', kind='pr': status, branch. When the
+ * reader supplied merge data (`mergeable` present) it also emits awaiting_operator:
+ * one entry for a green + mergeable open PR, an explicit [] otherwise so a PR that
+ * went red, conflicted or merged drops out of the digest.
  *
- * @param {Array<{number: number, state: string, headRefName: string}>} prs
+ * @param {Array<{number: number, state: string, headRefName: string, title?: string,
+ *   mergeable?: string, mergeStateStatus?: string, statusCheckRollup?: object[]}>} prs
  * @param {string} now  ISO timestamp string
  * @returns {object[]}
  */
 export function prRecords(prs, now) {
-  return prs.map((pr) => ({
-    ts: now,
-    source: 'pr',
-    key: `#${pr.number}`,
-    kind: 'pr',
-    status: pr.state.toLowerCase(),
-    branch: pr.headRefName,
-  }));
+  return prs.map((pr) => {
+    const rec = {
+      ts: now,
+      source: 'pr',
+      key: `#${pr.number}`,
+      kind: 'pr',
+      status: pr.state.toLowerCase(),
+      branch: pr.headRefName,
+    };
+    if (pr.mergeable !== undefined) {
+      rec.awaiting_operator = isGreenMergeable(pr)
+        ? [`green + mergeable: ${pr.title ?? pr.headRefName}`]
+        : [];
+    }
+    return rec;
+  });
 }
 
 /**

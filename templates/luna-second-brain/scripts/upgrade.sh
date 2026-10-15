@@ -1116,6 +1116,29 @@ PY
     return "$prc"
 }
 
+# A plugin dir is ONE release unit: main.js, manifest.json and styles.css must
+# come from the same version. skipexists_decision <rel> <dst> sets
+# SKIP_DECISION to keep (dst exists), partial (dst missing but a sibling release
+# file is installed — seeding the bundle's copy would mix versions) or seed.
+# FRESH_PLUGINS records dirs found empty at first sight, so files seeded earlier
+# in this same pass don't make their siblings look like a partial install.
+FRESH_PLUGINS=""
+skipexists_decision() {
+    local rel="$1" dst="$2" dir f
+    SKIP_DECISION=seed
+    if [ -f "$dst" ]; then SKIP_DECISION=keep; return 0; fi
+    case "$rel" in
+        .obsidian/plugins/*/main.js|.obsidian/plugins/*/manifest.json|.obsidian/plugins/*/styles.css) ;;
+        *) return 0 ;;
+    esac
+    dir="${dst%/*}"
+    case "$FRESH_PLUGINS" in *"|$dir|"*) return 0 ;; esac
+    for f in main.js manifest.json styles.css; do
+        if [ -f "$dir/$f" ]; then SKIP_DECISION=partial; return 0; fi
+    done
+    FRESH_PLUGINS="$FRESH_PLUGINS|$dir|"
+}
+
 process() {
     local execute="$1" rel class src dst conv src_sha prior_kept
     while IFS= read -r src; do
@@ -1167,12 +1190,15 @@ process() {
                 # stamp write entirely, so its row never reaches a stamp.
                 if [ "$execute" = 1 ]; then record_snapshot "$rel" "$dst"; fi ;;
             skipexists)
-                if [ -f "$dst" ]; then
-                    n_skip_exists=$((n_skip_exists+1))
-                else
-                    plan_row WRITE-NEW "$rel"; n_write=$((n_write+1))
-                    [ "$execute" = 1 ] && { write_file "$src" "$dst" || WRITE_FAILURES=$((WRITE_FAILURES+1)); }
-                fi ;;
+                skipexists_decision "$rel" "$dst"
+                case "$SKIP_DECISION" in
+                    keep) n_skip_exists=$((n_skip_exists+1)) ;;
+                    partial)
+                        plan_row REPORT "$rel" " (partial plugin install — other release files are present; not seeded so versions are not mixed)"; n_report=$((n_report+1)) ;;
+                    *)
+                        plan_row WRITE-NEW "$rel"; n_write=$((n_write+1))
+                        [ "$execute" = 1 ] && { write_file "$src" "$dst" || WRITE_FAILURES=$((WRITE_FAILURES+1)); } ;;
+                esac ;;
             report)
                 if [ ! -f "$dst" ]; then
                     plan_row WRITE-NEW "$rel"; n_write=$((n_write+1))
@@ -1214,12 +1240,15 @@ process() {
             gsdst="$VAULT_DIR/$gsrel"
             case "$gsclass" in
                 skipexists)
-                    if [ -f "$gsdst" ]; then
-                        n_skip_exists=$((n_skip_exists+1))
-                    else
-                        plan_row WRITE-NEW "$gsrel"; n_write=$((n_write+1))
-                        [ "$execute" = 1 ] && { write_file "$gsrc" "$gsdst" || WRITE_FAILURES=$((WRITE_FAILURES+1)); }
-                    fi ;;
+                    skipexists_decision "$gsrel" "$gsdst"
+                    case "$SKIP_DECISION" in
+                        keep) n_skip_exists=$((n_skip_exists+1)) ;;
+                        partial)
+                            plan_row REPORT "$gsrel" " (partial plugin install — other release files are present; not seeded so versions are not mixed)"; n_report=$((n_report+1)) ;;
+                        *)
+                            plan_row WRITE-NEW "$gsrel"; n_write=$((n_write+1))
+                            [ "$execute" = 1 ] && { write_file "$gsrc" "$gsdst" || WRITE_FAILURES=$((WRITE_FAILURES+1)); } ;;
+                    esac ;;
                 *)
                     case "$gsub" in
                         LICENSE)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-cr-best-effort.sh — CodeRabbit is best effort; nothing tracked may
-# schedule, queue, or hold work on it (HIMMEL-3360).
+# schedule, queue, or hold work on it.
 #
 # Operator ruling 2026-09-21: CodeRabbit is one CI-only reviewer beside the
 # local critic panel. The merge gate is CI green + zero unresolved review
