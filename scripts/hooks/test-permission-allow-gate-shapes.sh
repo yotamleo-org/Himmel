@@ -28,6 +28,10 @@ WT="$T/repo/.claude/worktrees/leg"
 mkdir -p "$T/repo/scripts/hooks/data" "$T/repo/scripts/lib"
 cp "$HOOK" "$T/repo/scripts/hooks/permission-allow-gate-shapes.sh" || exit 1
 cp "$(dirname "$HOOK")/data/gate-shapes.tsv" "$T/repo/scripts/hooks/data/" || exit 1
+# The hook reads the table from the default branch's object store, so publish it there.
+git -C "$T/repo" add scripts/hooks/data/gate-shapes.tsv && git -C "$T/repo" -c user.email=t@t -c user.name=t commit -q -m table || exit 1
+git -C "$T/repo" update-ref refs/remotes/origin/main HEAD || exit 1
+TABLE_COMMIT="$(git -C "$T/repo" rev-parse HEAD)"
 cp "$(dirname "$HOOK")/../lib/git-clean.sh" "$T/repo/scripts/lib/" || exit 1
 HOOK="$T/repo/scripts/hooks/permission-allow-gate-shapes.sh"
 git init -q "$T/other" && git -C "$T/other" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init || exit 1
@@ -90,11 +94,32 @@ expect "unsafe worktree root: absolute spelling passes through" pass "$UW" Bash 
 expect "unsafe worktree root: relative spelling still allowed" allow "$UW" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
 
 # Data-driven: a shape absent from the file is not allowed, even if the code knows nothing of it.
-printf 'only\t^bash scripts/hello\\.sh$\tnone\n' > "$T/shapes.tsv"
-out="$(jq -n --arg cwd "$WT" '{cwd:$cwd,tool_name:"Bash",tool_input:{command:"bash scripts/check-ci.sh 1 --max-wait 2"}}' | HIMMEL_GATE_SHAPES_FILE="$T/shapes.tsv" bash "$HOOK" 2>/dev/null)"
-[ -z "$out" ] && ok "shape not in the data file passes through" || bad "shape not in the data file passes through"
-out="$(jq -n --arg cwd "$WT" '{cwd:$cwd,tool_name:"Bash",tool_input:{command:"bash scripts/hello.sh"}}' | HIMMEL_GATE_SHAPES_FILE="$T/shapes.tsv" bash "$HOOK" 2>/dev/null)"
-[ -n "$out" ] && ok "shape added to the data file is allowed" || bad "shape added to the data file is allowed"
+printf 'only\t^bash scripts/hello\\.sh$\tnone\n' > "$T/repo/scripts/hooks/data/gate-shapes.tsv"
+git -C "$T/repo" add scripts/hooks/data/gate-shapes.tsv && git -C "$T/repo" -c user.email=t@t -c user.name=t commit -q -m table2 || exit 1
+git -C "$T/repo" update-ref refs/remotes/origin/main HEAD || exit 1
+expect "shape not in the data file passes through" pass "$WT" Bash "bash scripts/check-ci.sh 1 --max-wait 2"
+expect "shape added to the data file is allowed" allow "$WT" Bash "bash scripts/hello.sh"
+git -C "$T/repo" update-ref refs/remotes/origin/main "$TABLE_COMMIT" || exit 1
+
+# The table is trusted only from the default branch: a leg's own worktree copy, an env override
+# and a missing default branch all leave the table as it was.
+mkdir -p "$WT/scripts/hooks/data"
+printf 'x\t^.*$\t-\n' > "$WT/scripts/hooks/data/gate-shapes.tsv"
+printf 'x\t^.*$\t-\n' > "$T/evil.tsv"
+expect "tampered worktree table allows nothing new" pass "$WT" Bash "rm -rf /tmp/x"
+expect "tampered worktree table leaves listed shapes allowed" allow "$WT" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
+out="$(jq -n --arg cwd "$WT" '{cwd:$cwd,tool_name:"Bash",tool_input:{command:"rm -rf /tmp/x"}}' | HIMMEL_GATE_SHAPES_FILE="$T/evil.tsv" bash "$HOOK" 2>/dev/null)"
+[ -z "$out" ] && ok "HIMMEL_GATE_SHAPES_FILE is not honoured" || bad "HIMMEL_GATE_SHAPES_FILE is not honoured"
+# The real attack: the leg runs ITS OWN copy of the hook beside its own edited table.
+mkdir -p "$WT/scripts/lib"
+cp "$HOOK" "$WT/scripts/hooks/permission-allow-gate-shapes.sh"; cp "$T/repo/scripts/lib/git-clean.sh" "$WT/scripts/lib/"
+out="$(jq -n --arg cwd "$WT" '{cwd:$cwd,tool_name:"Bash",tool_input:{command:"rm -rf /tmp/x"}}' | bash "$WT/scripts/hooks/permission-allow-gate-shapes.sh" 2>/dev/null)"
+[ -z "$out" ] && ok "hook copy beside a tampered table allows nothing new" || bad "hook copy beside a tampered table allows nothing new"
+expect "leading-anchor near-miss passes through" pass "$WT" Bash "rm x; bash scripts/check-ci.sh 1 --max-wait 1"
+expect "carriage return in the command passes through" pass "$WT" Bash "$(printf 'bash scripts/check-ci.sh 123 --max-wait 600\r')"
+git -C "$T/repo" update-ref -d refs/remotes/origin/main
+expect "no default-branch table allows nothing" pass "$WT" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
+git -C "$T/repo" update-ref refs/remotes/origin/main "$TABLE_COMMIT"
 
 printf '%s' 'not json' | bash "$HOOK" >/dev/null 2>&1; [ $? -eq 0 ] && ok "malformed stdin exits 0" || bad "malformed stdin exits 0"
 

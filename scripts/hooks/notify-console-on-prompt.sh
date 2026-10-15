@@ -16,7 +16,8 @@
 # answer the prompt for the leg (no cross-session approval); it only learns of it.
 #
 # An observability tap: never blocks, always exits 0, fails open.
-# env: HIMMEL_PROMPT_ALERT_DIR (debounce state), HIMMEL_INBOX_SEND (sender, tests).
+# env: HIMMEL_PROMPT_ALERT_DIR (debounce state). The sender is always the
+# inbox-send.sh beside this hook; tests run a copy of the hook next to a stub.
 #
 # PLATFORM GUARD: no .ps1 twin, by design — Linux-only console-kit leg surface.
 # Bash 3.2-compatible.
@@ -48,9 +49,10 @@ if [ -f "$stamp" ]; then
 fi
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-sender="${HIMMEL_INBOX_SEND:-$here/../handover/console-kit/inbox-send.sh}"
+sender="$here/../handover/console-kit/inbox-send.sh"
 [ -r "$sender" ] || exit 0
 leg="$(basename "${cwd:-unknown}")"
+case "$leg" in ""|*[!0-9A-Za-z._+-]*) leg=unknown ;; esac
 if timeout 8 bash "$sender" "$HIMMEL_CONSOLE_NAME" "PARKED-ON-PROMPT leg=$leg session=${sid%%-*} - stopped on a permission prompt; the operator answers it, the console never does" >/dev/null 2>&1; then
     : > "$stamp" 2>/dev/null
 fi

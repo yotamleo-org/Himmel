@@ -16,7 +16,10 @@
 #
 # Input: PermissionRequest JSON on stdin. Output on allow:
 #   {"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}
-# env: HIMMEL_GATE_SHAPES_FILE overrides the data file (tests).
+# The shape table is read from the default branch of the hook's own repository
+# (git object store), never from the working tree and never from an env override:
+# a leg edits its worktree copy freely, and a row added there must not widen
+# what the hook allows. A table not yet on the default branch allows nothing.
 #
 # PLATFORM GUARD: no .ps1 twin, by design — Linux-only console-kit leg surface.
 # Bash 3.2-compatible.
@@ -54,8 +57,9 @@ case "$top" in */.claude/worktrees/*) ;; *) exit 0 ;; esac
 [ "$(cd "$cwd" && pwd -P)" = "$(cd "$top" && pwd -P)" ] || exit 0
 git -C "$cwd" worktree list --porcelain 2>/dev/null | grep -Fxq "worktree $top" || exit 0
 
-shapes="${HIMMEL_GATE_SHAPES_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/data/gate-shapes.tsv}"
-[ -r "$shapes" ] || exit 0
+default_ref="$(git --git-dir="$own_common" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null)" || default_ref="refs/remotes/origin/main"
+shapes="$(git --git-dir="$own_common" show "$default_ref:scripts/hooks/data/gate-shapes.tsv" 2>/dev/null)" || exit 0
+[ -n "$shapes" ] || exit 0
 
 # shellcheck disable=SC2016 # sed program is a literal bracket class, nothing to expand
 esc_top="$(printf '%s' "$top" | sed 's/[][\.*^$(){}?+|/]/\\&/g')"
@@ -80,5 +84,5 @@ while IFS="$tab" read -r id re _fence needs; do
         printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'
         exit 0
     fi
-done < "$shapes"
+done <<< "$shapes"
 exit 0
