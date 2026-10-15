@@ -3762,7 +3762,10 @@ check_c48_tmp_usage() {
 # Seam: HIMMEL_FIRECRAWL_PARKED (the state file).
 check_c51_firecrawl_parked() {
     local f="${HIMMEL_FIRECRAWL_PARKED:-}" now
-    [ -n "$f" ] || f="$(ledger_registry_path firecrawl-parked)" || f=""
+    if [ -z "$f" ] && ! f="$(ledger_registry_path firecrawl-parked)"; then
+        emit INFO C51-firecrawl-parked "ledger registry unreadable - cannot locate the Firecrawl-parked state"
+        return 0
+    fi
     if [ ! -f "$f" ] || ! command -v jq >/dev/null 2>&1; then
         emit OK C51-firecrawl-parked "no Firecrawl-parked items"
         return 0

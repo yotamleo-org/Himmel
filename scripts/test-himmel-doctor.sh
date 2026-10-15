@@ -6172,6 +6172,10 @@ jq '(.ledgers[] | select(.id == "firecrawl-parked") | .default_path) = "~/moved/
 out="$(env -u HIMMEL_FIRECRAWL_PARKED HIMMEL_LEDGERS_JSON="$c51_t/ledgers-moved.json" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c51_t/claude" HOME="$c51_t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C51-firecrawl-parked'; then pass "C51 follows the registry path"; else fail "C51 registry path -> $(printf '%s' "$out" | grep -A1 C51)"; fi
 
+echo "== C51-firecrawl-parked: unreadable registry -> INFO, not a healthy OK =="
+out="$(env -u HIMMEL_FIRECRAWL_PARKED HIMMEL_LEDGERS_JSON="$c51_t/no-such-registry.json" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c51_t/claude" HOME="$c51_t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'INFO C51-firecrawl-parked.*registry unreadable'; then pass "C51 unreadable registry -> INFO"; else fail "C51 unreadable registry -> $(printf '%s' "$out" | grep -A1 C51)"; fi
+
 echo "== C51-firecrawl-parked: parked item whose file is gone -> not counted =="
 { c51_row parked "\"call_site\":\"harvest-clip-body-batch\",\"vault\":\"$c51_t/vault\",\"item\":\"gone.md\",\"reason\":\"exhausted\""; } > "$c51_t/s4.jsonl"
 out="$(c51_run "$c51_t/s4.jsonl")"
