@@ -51,7 +51,7 @@
 #   Group 2 -- sanitization collisions must stay TWO slots (defect A, false-+):
 #     G2.1 a+b.md vs ab.md          -> FAIL  arm2 rc=3 ("already scheduled"),
 #                                              1 slot
-#     (G2.2 v1.2.md vs v12.md dropped --: same tr -cd collision
+#     (G2.2 v1.2.md vs v12.md dropped -- same tr -cd collision
 #      branch as G2.1, representative drop)
 #   Group 3 -- --force replace must be transactional (defect B):
 #     G3.1 force fails at rc 7      -> FAIL  pre-existing slot DESTROYED (0)

@@ -58,8 +58,8 @@
 #                      Also bypasses the time-collision check.
 #   --long-gap         Sanction a far park: an explicit HH:MM more than 60 min
 #                      out (rc=9), OR --time smart resolving to a
-#                      multi-hour/day quota-exhaustion park (
-#                      rc=19). Default REFUSES both so a long wait is an
+#                      multi-hour/day quota-exhaustion park
+#                      (rc=19). Default REFUSES both so a long wait is an
 #                      explicit choice, not a silent default (ALWAYS-CONTINUE:
 #                      an orchestrator leg arms <=30-60 min out while work
 #                      remains). ARM_RESUME_SAFETY_ARM=1 is exempt from BOTH
@@ -88,7 +88,7 @@
 #                           guard exempts it. NOT a public flag: set only by
 #                           the in-repo automated callers in their child env.
 #   ARM_NAME_TEMPLATE       Naming template for the derived session identity
-#: placeholders {ticket} {slug}
+#                           placeholders {ticket} {slug}
 #                           {session}. Unset = the built-in ticket-first
 #                           composition. See _compose_arm_name.
 #   ARM_WITH_LIVE_WORKERS   Exact value 1 bypasses the live lane-worker guard
@@ -148,7 +148,7 @@
 #      --dedup-any, any HIMMEL-Resume job exists); pass --force to replace
 #   4  scheduler invocation failed (job NOT armed; stderr above)
 #   5  refused — --channels passed while the bun Telegram bridge is live
-#      (: a 2nd getUpdates consumer 409s + the dev-channels prompt
+#      (a 2nd getUpdates consumer 409s + the dev-channels prompt
 #      hangs an unattended relaunch). Drop --channels (the bun bridge owns
 #      Telegram) or, after stopping the bridge, override with ARM_CHANNELS_OK=1.
 #   6  time collision — the requested time exactly matches another HIMMEL-*
@@ -1376,8 +1376,8 @@ fi
 #   smart  — usage-aware: ASAP when the bank is free, else the binding window's
 #            reset (resume-slot.sh). Operator no longer has to
 #            guess AND we don't park hours away when quota is available.
-#   auto   — next 5-hour cap reset regardless of headroom (cap-reset-time.sh,
-#). Kept for "explicitly wait for the reset".
+#   auto   — next 5-hour cap reset regardless of headroom (cap-reset-time.sh).
+#            Kept for "explicitly wait for the reset".
 #   HH:MM  — explicit local clock time; today if still future, else tomorrow.
 TARGET_EPOCH=""
 # wall-clock at the moment slot resolution starts. The
@@ -2417,7 +2417,7 @@ _validate_key() {
 # Each `grep` is `|| true`-guarded — grep exits 1 on no-match and `set -o
 # pipefail` would otherwise abort the assignment. The last command (src-4's
 # `if`, rc 0 whether or not it fires) keeps the function errexit-safe.
-# _infer_ticket_strict <handover_path> --: sets the global
+# _infer_ticket_strict <handover_path> -- sets the global
 # $_ho_ticket_strict to _infer_ticket's src-1 (frontmatter `ticket:`) match
 # ONLY, or empty on a miss. A dedicated function rather than a side-channel
 # variable set from inside _infer_ticket: _infer_ticket is always invoked as
@@ -3147,7 +3147,7 @@ fi
 # Defaults to "all" so any unscoped caller keeps the pre-340 semantics.
 
 # _crontab_list <scope> — grep the crontab for our HIMMEL-Resume markers
-# (: shared by the linux crontab fallback + the macOS crontab-only
+# (shared by the linux crontab fallback + the macOS crontab-only
 # branch so dedup reads the same store the schedule wrote).
 _crontab_list() {
     local scope="${1:-all}"
@@ -3377,8 +3377,8 @@ list_existing() {
     esac
 }
 
-# _crontab_delete <marker> [soft] — remove exactly one crontab LINE (:
-# shared by the linux crontab branch + the macOS crontab-only branch). `soft`
+# _crontab_delete <marker> [soft] — remove exactly one crontab LINE
+# (shared by the linux crontab branch + the macOS crontab-only branch). `soft`
 # mirrors delete_existing's windows/at-job soft handling: a
 # failed delete WARNs and returns 1 instead of exiting 2, because soft mode is
 # only used by the post-commit replace sweep where the new arm is already
@@ -3994,7 +3994,7 @@ fi
 # innocent pair look simultaneous. Both conditions are heuristics over a naming
 # convention, so ARM_SPLIT_LEG_OK=1 (and --force) opt out in one step; the
 # canonical leg->file mapping for the audited chain lives next to the files, in
-# KEY-654-dispatch-session-legs.md.
+# the <ticket>-dispatch-session-legs.md doc.
 if [ "${ARM_SPLIT_LEG_OK:-}" != "1" ] && [ "$FORCE" -eq 0 ] \
    && [ "${ARM_RESUME_SAFETY_ARM:-}" != "1" ]; then
     _sl_base=$(basename "$HANDOVER_PATH")
@@ -4193,8 +4193,8 @@ fi
 # can't be resolved (HANDOVER_DIR unset and no inline handovers/ dir yet):
 # this mechanism is additive infrastructure and must never brick every arm.
 #
-# LAYERED DEFENSE -- why check-then-append is acceptable here (
-# CR, codex-1): the registry is a git-synced FILE shared across machines,
+# LAYERED DEFENSE -- why check-then-append is acceptable here:
+# the registry is a git-synced FILE shared across machines,
 # so the pre-arm check and the append below cannot be made atomic across
 # hosts -- two hosts arming in the same sync window can both pass the
 # check. That is BY DESIGN: the registry is the ADVISORY EARLY-WARNING
@@ -4321,7 +4321,7 @@ _arm_registry_mutex_release() {
 }
 
 # _arm_registry_replace_and_append <registry-file> <host> <handover-path>
-# <handover-key> <handover-root> <new-record-line> --:
+# <handover-key> <handover-root> <new-record-line>:
 # drop any existing line whose host AND canonical handover identity match
 # (this host's own prior record(s) for this same handover),
 # GC any legacy '"fired":"true"'-marked line in passing (retention, round
@@ -4760,7 +4760,7 @@ fi
 
 # Build and execute the scheduler command directly — no round-trip
 # through schedule-resume.sh's mixed-prose stdout (the v1 bug).
-# _crontab_schedule — install the one-shot crontab entry (: shared by
+# _crontab_schedule — install the one-shot crontab entry (shared by
 # the linux crontab fallback + the macOS crontab-only branch). Uses the script
 # globals RESUME_TIME/RESUME_PROMPT/RESUME_CWD/CHANNELS/TASK_NAME/DRY_RUN (plus
 # PATH/HOME and the ARM_RESUME_LOG_DIR seam).
@@ -4858,8 +4858,8 @@ _crontab_schedule() {
     # line -- see below) so claude's own helpers (node, git, gh, the himmel
     # hook scripts) resolve as they did in the arming shell. PATH ONLY --
     # never a whole-env snapshot: a console-spawned leg's arming shell carries
-    # INLINE_IMPL_OK / HIMMEL_CONSOLE_LEG / HIMMEL_HOOK_INTEGRITY_BYPASS_OK
-    #, and baking those into the relaunch would silently
+    # INLINE_IMPL_OK / HIMMEL_CONSOLE_LEG / HIMMEL_HOOK_INTEGRITY_BYPASS_OK,
+    # and baking those into the relaunch would silently
     # neuter its guardrails. Fold of Goomal's fix/arm-resume-macos-cron: an
     # npm-installed `claude` is a node shim, so a PATH snapshot that resolves
     # `claude` (above) but omits node's own directory can still fail at fire
@@ -5574,8 +5574,8 @@ schedule_arm() {
                         ;;
                 esac
                 # A pattern-leading `%` is the end-anchor in some bash 3.2
-                # builds, so the %->%% doubling silently no-ops on macOS
-                #; keep the % out of the pattern's literal text.
+                # builds, so the %->%% doubling silently no-ops on macOS;
+                # keep the % out of the pattern's literal text.
                 local _pct='%'
                 wsl_launch="${wsl_command//$_pct/%%}"
             fi

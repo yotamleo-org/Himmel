@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-source-key.sh --: arm-resume --source-key dedups a
+# test-arm-resume-source-key.sh -- arm-resume --source-key dedups a
 # re-arm for the SAME source even when the handover path differs (an edited
 # source gets a new content-digest path from vmsdk.trigger_claude), so two
 # guest sessions can never queue for one source.

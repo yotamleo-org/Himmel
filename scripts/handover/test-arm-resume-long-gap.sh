@@ -603,7 +603,7 @@ assert_not_contains "LG5 no refusal on a safety-arm env" "is the queue actually 
 
 # ---------------------------------------------------------------------------
 # LG5b: --dedup-any ALONE (no ARM_RESUME_SAFETY_ARM) does NOT bypass the guard
-#: --dedup-any is a public dedup-scope flag any
+#       --dedup-any is a public dedup-scope flag any
 #       caller can add, not a provenance signal. A far arm with only
 #       --dedup-any is REFUSED just like a bare far arm.
 # ---------------------------------------------------------------------------

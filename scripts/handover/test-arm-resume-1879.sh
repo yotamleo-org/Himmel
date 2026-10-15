@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # scripts/handover/test-arm-resume-1879.sh — the one section of
-# test-arm-resume.sh that a 600s per-suite cap genuinely cannot fit
-#, dispatched via the `--only` seam.
+# test-arm-resume.sh that a 600s per-suite cap genuinely cannot fit,
+# dispatched via the `--only` seam.
 #
-# Section "1879" (: idempotency against an arm that already
+# Section "1879" (idempotency against an arm that already
 # FIRED, and the create-said-yes-but-registered-nothing verify) covers its
 # race windows with real `while [ "$(date +%s)" -le $deadline ]; do sleep 1;
 # done` waits -- there is no dry-run shortcut for "did the scheduler's own

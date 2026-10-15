@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-at-pty.sh --: an `at`-launched claude leg has
+# test-arm-resume-at-pty.sh -- an `at`-launched claude leg has
 # stdin=/dev/null and no tty, so it exits at the first idle cross-session
 # message (five fleet legs lost 2026-09-05). The at body now runs claude under
 # a pty with its stdin held open (scripts/lib/pty-run.sh).

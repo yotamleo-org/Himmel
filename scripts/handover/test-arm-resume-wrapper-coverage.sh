@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# scripts/handover/test-arm-resume-wrapper-coverage.sh — drift guard
-#: asserts every section test-arm-resume.sh --list reports is
+# scripts/handover/test-arm-resume-wrapper-coverage.sh — drift guard:
+# asserts every section test-arm-resume.sh --list reports is
 # selected by at least one of its two per-PR/nightly --only dispatcher
 # wrappers (test-arm-resume-fast.sh, test-arm-resume-1879.sh).
 #
@@ -12,8 +12,8 @@
 # the ones known today.
 #
 # Matching mirrors test-arm-resume.sh's own _sec_selected: --only compares
-# EXACT strings against a section's aliases (test-arm-resume.sh:_sec_selected,
-#), and both wrappers pass the --list-reported label itself (never
+# EXACT strings against a section's aliases (test-arm-resume.sh:_sec_selected),
+# and both wrappers pass the --list-reported label itself (never
 # a shorter alias) — so a plain exact-string membership test against the
 # quoted --only arguments in each wrapper's source is equivalent to what the
 # suite would actually accept.

@@ -12,7 +12,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 # ---------------------------------------------------------------------------
@@ -1949,7 +1949,7 @@ assert_rc "T28c --dedup-any on empty scheduler arms (rc 0)" 0 "$rc"
 # scoped to the arming handover and siblings survived; makes the
 # --dedup-any path agree.
 #
-# The TRANSACTIONAL contract (: the replace runs only AFTER the new
+# The TRANSACTIONAL contract (the replace runs only AFTER the new
 # job is registered + verified, so the FAILURE half — slots survive when the
 # arm refuses rc 7 / rc 8 or fails inside schedule_arm — holds for the
 # own-identity markers) is covered by G3.1-G3.4 in test-arm-resume-identity.sh,
@@ -1960,8 +1960,8 @@ HO_F2=$(make_handover "$WORK_REPO")
 HO_F3=$(make_handover "$WORK_REPO")
 # Seed the two siblings at DISTINCT minutes. They only need to coexist, not to
 # share a minute, and giving them their own slots keeps this test independent of
-# whether the backend under test implements exact-minute collision detection
-#: on one that does, same-minute seeds would refuse rc=6 and the
+# whether the backend under test implements exact-minute collision detection;
+# on one that does, same-minute seeds would refuse rc=6 and the
 # test would fail during setup, before it ever exercised --dedup-any --force.
 TMPDIR="$TMP" SCHED_DB="$DB28F" SCHED_DB_DIR="$DB28FD" SCHTASKS_CMD="$STATEFUL_STUB/schtasks" PATH="$STATEFUL_STUB:$PATH" \
     bash "$ARM" --time "23:57" --handover "$HO_F1" --long-gap >/dev/null 2>&1
@@ -2703,7 +2703,7 @@ make_handover_chained() {
 
 # N9/S6: chained ticketed (frontmatter ticket) -> the identity carries the
 # epic slug AND the chain position on BOTH surfaces: the scheduler row gets
-# ...KEY-654-ws7-gates-s32... and the -n title "ws7-gates s32".
+# ...<ticket>-ws7-gates-s32... and the -n title "<ticket> ws7-gates s32".
 HO=$(make_handover_chained "HIMMEL-654-ws7-gates" 32 "HIMMEL-654")
 out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$HO" --dry-run 2>&1)
 rc=$?
@@ -4779,8 +4779,8 @@ out=$(ARM_VAULT_CWD_OK=1 GH_CMD=/nonexistent/gh TMPDIR="$TMP" SCHTASKS_CMD="$ARM
 rc=$?
 assert_rc "1330 ARM_VAULT_CWD_OK=1 overrides the vault refusal" 0 "$rc"
 
-# The arm above registered THIS handover's task in the (now stateful,
-#) stub scheduler, and --cwd does not change the derived task name,
+# The arm above registered THIS handover's task in the (now stateful)
+# stub scheduler, and --cwd does not change the derived task name,
 # so without a reset the next arm of the SAME handover is a legitimate rc 3
 # dedup hit rather than the vault-guard bypass under test. Clear the stub's
 # scheduler, which is what "a fresh box" meant back when /create registered
@@ -6259,8 +6259,8 @@ assert_rc "2192 --model with a double quote exits 2" 2 "$rc"
 assert_contains "2192 double-quote --model error names the reason" "--model must not contain a double quote" "$out"
 
 # A MODEL containing a CR/LF must ERROR: embedded verbatim into the .bat
-# launch line, a CR/LF could inject an extra batch command (
-# finding). LF, not CR: a lone CR does not survive the command-substitution
+# launch line, a CR/LF could inject an extra batch command.
+# LF, not CR: a lone CR does not survive the command-substitution
 # subshell boundary under this MSYS bash (silently stripped en route), which
 # would make a CR-based test pass for the wrong reason.
 out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" \
@@ -6552,7 +6552,7 @@ fi
 # a non-dry-run arm runs the REAL bank-preflight, whose producer
 # refresh writes the usage cache at $CADENCE_BANK_CACHE. The suite points that
 # at $TMP and swaps in a stub producer that logs the cache path each refresh
-# was handed (: the scratch file only appears if a live OAuth fetch
+# was handed (the scratch file only appears if a live OAuth fetch
 # succeeds, so it proved nothing on hosts where it fails). A non-empty log
 # proves a real arm reached the preflight; every line being $TMP/bank-cache.json
 # proves the redirect held (else it would have rewritten the operator's live

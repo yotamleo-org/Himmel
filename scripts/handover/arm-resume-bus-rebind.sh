@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # arm-resume-bus-rebind.sh <name> <bus-cli> <log> [wait-secs] [rebind-secs]
 #
-# an armed resume launches a NEW claude pid, so the session's name
+# An armed resume launches a NEW claude pid, so the session's name
 # stays bound to the dead pid on the himmel-bus and `bus send` is refused.
 # arm-resume.sh backgrounds this next to the launch (only when <name> already
 # has a bus peer file). It waits for the child claude whose argv carries
 # `-n <name>` (the exact-argv check headed-arm.sh uses), then runs
-# `bus rebind <name> <pid>` ONCE, bounded like headed-arm.sh's bind
-#: poll, TERM, one second of grace, KILL.
+# `bus rebind <name> <pid>` ONCE, bounded like headed-arm.sh's bind:
+# poll, TERM, one second of grace, KILL.
 #
 # Fail-open: a missing child, a refused rebind or a hung bus is a WARN line in
 # <log> and exit 0 - it never touches the launch it runs beside.
