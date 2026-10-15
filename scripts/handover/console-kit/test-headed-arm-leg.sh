@@ -1513,7 +1513,7 @@ check "full launch --profile: additionalDirectories never contains the handover 
 # are dead, so seeding them protects nothing.
 check "full launch --profile: seeded settings deny Edit on .locks/**, naming the resolved handover root" \
   "$(jq -c '.permissions.deny' "$d17/HIMMEL-3333-leg.leg-settings.json" 2>/dev/null)" \
-  "$(jq -cn --arg d "$HANDOVER_DIR" '["EnterWorktree", ("Edit(" + $d + "/.locks/**)")]')"
+  "$(jq -cn --arg d "$HANDOVER_DIR" '["EnterWorktree", ("Edit(/" + $d + "/.locks/**)")]')"
 check "full launch --profile: seeded settings deny NOTHING for Write/MultiEdit/NotebookEdit on .locks/** (dead rules dropped)" \
   "$(jq -c '(.permissions.deny // []) | map(select(startswith("Write(") or startswith("MultiEdit(") or startswith("NotebookEdit(")))' "$d17/HIMMEL-3333-leg.leg-settings.json" 2>/dev/null)" \
   "[]"
@@ -1529,10 +1529,10 @@ check "full launch --profile: seeded settings deny NOTHING for Write/MultiEdit/N
 # HIMMEL-3645 dead-rule note above.
 some_doc_canon="$(cd -P "$(dirname "$some_doc")" && pwd -P)/$(basename "$some_doc")"
 check "full launch --profile: seeded settings grant Edit on the leg's own doc only" \
-  "$(jq --arg f "$some_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(" + $f + ")"))' "$d17/HIMMEL-3333-leg.leg-settings.json" 2>/dev/null)" \
+  "$(jq --arg f "$some_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(/" + $f + ")"))' "$d17/HIMMEL-3333-leg.leg-settings.json" 2>/dev/null)" \
   "true"
 check "full launch --profile: seeded settings do NOT grant a root-wide handover markdown glob" \
-  "$(jq --arg d "$HANDOVER_DIR" '(.permissions.allow // []) | any(. == ("Edit(" + $d + "/**/*.md)"))' "$d17/HIMMEL-3333-leg.leg-settings.json" 2>/dev/null)" \
+  "$(jq --arg d "$HANDOVER_DIR" '(.permissions.allow // []) | any(. == ("Edit(/" + $d + "/**/*.md)"))' "$d17/HIMMEL-3333-leg.leg-settings.json" 2>/dev/null)" \
   "false"
 
 # A handover root containing a space must still resolve correctly -
@@ -1570,7 +1570,7 @@ check "full launch --profile (space in handover root): additionalDirectories nev
   "false"
 check "full launch --profile (space in handover root): .locks deny resolves with the space intact" \
   "$(jq -c '.permissions.deny' "$d17s/HIMMEL-3333-space.leg-settings.json" 2>/dev/null)" \
-  "$(jq -cn --arg d "$space_root" '["EnterWorktree", ("Edit(" + $d + "/.locks/**)")]')"
+  "$(jq -cn --arg d "$space_root" '["EnterWorktree", ("Edit(/" + $d + "/.locks/**)")]')"
 
 # HIMMEL-3285 (CR round 2, codex-1; behaviour changed CR round 4/5, codex-1,
 # HIMMEL-3544): a doc placed directly AT the handover root (dirname(doc) ==
@@ -1685,7 +1685,7 @@ HANDOVER_DIR="$slash_root" \
 check "full launch --profile (trailing slash on HANDOVER_DIR, doc under it): exit 0" "$rc" "0"
 check "full launch --profile (trailing slash on HANDOVER_DIR): .locks deny normalizes, no double slash" \
   "$(jq -c '.permissions.deny' "$d17slash2/HIMMEL-3333-slash2.leg-settings.json" 2>/dev/null)" \
-  "$(jq -cn --arg d "$HANDOVER_DIR" '["EnterWorktree", ("Edit(" + $d + "/.locks/**)")]')"
+  "$(jq -cn --arg d "$HANDOVER_DIR" '["EnterWorktree", ("Edit(/" + $d + "/.locks/**)")]')"
 
 # when HANDOVER_DIR cannot be resolved at
 # all, the root/ancestor comparison has nothing to compare against - an
@@ -1817,7 +1817,7 @@ assert.ok(settings.permissions.allow.includes('Bash(bash "$HIMMEL_REPO/scripts/h
 // dead (Claude Code applies an Edit(path) rule to every file-editing tool).
 assert.deepStrictEqual(settings.permissions.deny, [
   'EnterWorktree',
-  `Edit(${process.env.HANDOVER_DIR}/.locks/**)`,
+  `Edit(/${process.env.HANDOVER_DIR}/.locks/**)`,
 ]);
 assert.deepStrictEqual(JSON.parse(fs.readFileSync(`${dir}/HIMMEL-composed.leg-mcp.json`, 'utf8')),
   {mcpServers: {qmd: {type: 'http', url: 'http://localhost:8181/mcp'}}});
@@ -2609,7 +2609,7 @@ not_contains "HIMMEL-3795: full --judge launch, both seams set: HIMMEL_CONSOLE_J
 # though it resolves its own DOC/HANDOVER_DIR too.
 judge_doc_canon="$(cd -P "$(dirname "$some_doc")" && pwd -P)/$(basename "$some_doc")"
 check "28f --judge launch does not gain the handover-doc Edit allow (judge never implements)" \
-  "$(jq --arg f "$judge_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(" + $f + ")"))' "$d28d/HIMMEL-3270-N5-judge.leg-settings.json" 2>/dev/null)" \
+  "$(jq --arg f "$judge_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(/" + $f + ")"))' "$d28d/HIMMEL-3270-N5-judge.leg-settings.json" 2>/dev/null)" \
   "false"
 
 # The grant is scoped to THIS leg's own doc
@@ -2628,10 +2628,10 @@ LEG_REPO="$tmp/repo17b" HEADED_ARM_LOCK_DIR="$d17b/locks" HEADED_ARM_PROC="$d17b
 wait_record "$d17b" || true
 d17b_doc_canon="$(cd -P "$(dirname "$d17b_doc")" && pwd -P)/$(basename "$d17b_doc")"
 check "HIMMEL-3698: a leg's settings grant Edit on its OWN doc" \
-  "$(jq --arg f "$d17b_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(" + $f + ")"))' "$d17b/HIMMEL-3334-leg.leg-settings.json" 2>/dev/null)" \
+  "$(jq --arg f "$d17b_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(/" + $f + ")"))' "$d17b/HIMMEL-3334-leg.leg-settings.json" 2>/dev/null)" \
   "true"
 check "HIMMEL-3698: a leg's settings do NOT grant Edit on a SIBLING leg's doc in the same bucket" \
-  "$(jq --arg f "$some_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(" + $f + ")"))' "$d17b/HIMMEL-3334-leg.leg-settings.json" 2>/dev/null)" \
+  "$(jq --arg f "$some_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(/" + $f + ")"))' "$d17b/HIMMEL-3334-leg.leg-settings.json" 2>/dev/null)" \
   "false"
 
 # A relaunch of the same session name appends, never replaces: the record is
