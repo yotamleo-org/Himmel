@@ -721,7 +721,10 @@ contains "workflow deleted by the PR: check 10 passes" "$out" "[PASS] 10."
 # only dispatches a workflow that exists there, so it cannot be dispatched yet.
 rm -f "$RUNDIR"/*.json
 cp "$WFDIR/ci.yml" "$WFDIR/brand-new.yml"
+UNW_REAL_SHA="$SHA"
+SHA=$(git -C "$REPO" rev-parse HEAD)  # check 11 now reads the head even when nothing judgeable is added
 wf_run ".github/workflows/brand-new.yml" "added .github/workflows/brand-new.yml"
+SHA="$UNW_REAL_SHA"
 check "workflow added by the PR: exit 0" "$rc" "0"
 contains "workflow added by the PR: check 10 passes" "$out" "[PASS] 10."
 wf_run ".github/workflows/brand-new.yml" "renamed .github/workflows/brand-new.yml"
@@ -843,6 +846,48 @@ contains "test file beside a dir a CI job runs bun test on: check 11 fails" "$ou
 UNW_EXTRA="printf 'run: bun test scripts/cfg/tests/deep\n' > \"\$REPO/.github/workflows/ci.yml\""
 unw_run scripts/cfg/y.test.ts
 contains "test file above the dir a CI job runs bun test on: check 11 fails" "$out" "[FAIL] 11."
+
+# a package.json "test" script wires a file only when its runner's discovery reaches it
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test src\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "pkg test script scoped to src: file outside it fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test tests --dots\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "pkg test script scoped to tests: file under it passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "bare bun test script: file passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"echo hi\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "pkg test script with no test runner: file fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "node --test never discovers a .ts file: fails" "$out" "[FAIL] 11."
+unw_run scripts/cfg/tests/a.test.mjs
+contains "node --test discovers a .mjs file: passes" "$out" "[PASS] 11."
+
+# a referencer counts only when it is itself wired
+UNW_EXTRA="printf 'bun test scripts/cfg/x.test.ts\n' > \"\$REPO/scripts/tools/lonely.sh\""
+unw_run scripts/cfg/x.test.ts scripts/tools/lonely.sh
+contains "test file named only by an unwired added script: names the test" "$out" "scripts/cfg/x.test.ts"
+UNW_EXTRA="printf 'run: bash scripts/tools/job.sh\n' > \"\$REPO/.github/workflows/ci.yml\"; printf 'bun test scripts/cfg/x.test.ts\n' > \"\$REPO/scripts/tools/job.sh\""
+unw_run scripts/cfg/x.test.ts scripts/tools/job.sh
+contains "test file named by a wired added script: check 11 passes" "$out" "[PASS] 11."
+
+# scripts/hooks/<subdir>/ files are libraries judged by a wired sourcing hook
+UNW_EXTRA=''
+unw_run scripts/hooks/lib/newlib.sh
+contains "hook library nothing sources: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf '{\"hooks\":\"scripts/hooks/new-hook.sh\"}\n' > \"\$REPO/.claude/settings.json\"; printf 'source lib/newlib.sh\n' > \"\$REPO/scripts/hooks/new-hook.sh\""
+unw_run scripts/hooks/new-hook.sh scripts/hooks/lib/newlib.sh
+contains "hook library sourced by a wired hook: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'source lib/newlib.sh\n' > \"\$REPO/scripts/hooks/new-hook.sh\""
+unw_run scripts/hooks/new-hook.sh scripts/hooks/lib/newlib.sh
+contains "hook library sourced by an unwired hook: names the library" "$out" "scripts/hooks/lib/newlib.sh"
+
+# an unreadable ref exits 2 even when the only file is an extensionless executable
+rc=0; out=$(cd "$REPO" && bash "$HERE/../../testing/check-added-unwired.sh" 0000000000000000000000000000000000000000 scripts/tools/runme 2>&1) || rc=$?
+check "unreadable ref with an extensionless file: exit 2" "$rc" "2"
 UNW_EXTRA=''
 
 # existing debt is never judged: the same unwired hook, status modified

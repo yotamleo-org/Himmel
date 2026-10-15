@@ -11,9 +11,13 @@
 #          is on scripts/testing/unwired-hooks-allowlist.txt.
 #   suite  test-*.sh: scripts/ci/run-shell-tests.sh finds it (scan roots scripts,
 #          templates, marketplace, packaging) and suite-coverage.sh does not call it
-#          SKIP_LIST. *.test.*: another file names it (a wrapper suite runs it), a
-#          .github/workflows job runs bun test / node --test / vitest / jest on a
-#          directory above it, or a package.json above it has a "test" script.
+#          SKIP_LIST. *.test.*: another WIRED file names it (a wrapper suite runs
+#          it), a .github/workflows job runs bun test / node --test / vitest / jest
+#          on a directory above it, or a package.json above it has a "test" script
+#          whose runner's discovery reaches it (path args narrow; node --test
+#          reaches only JS unless the script loads a TS transform).
+#   hooklib scripts/hooks/<subdir>/*: a wired hook, or another live library under
+#          scripts/hooks/, names its basename (sourced). Judged read-only.
 #   skill  SKILL.md under <plugin>/skills/<name>/ where <plugin> has
 #          .claude-plugin/plugin.json (a marketplace/plugins/<p> must also be named in
 #          marketplace/.claude-plugin/marketplace.json), or under .claude/skills/ or
@@ -52,13 +56,41 @@ exists() { git cat-file -e "$ref:$1" 2>/dev/null; }
 # whole-basename match: not-foo.sh must not reference foo.sh
 bn_re() { printf '(^|[^A-Za-z0-9._-])%s([^A-Za-z0-9._-]|$)' "${1//./\\.}"; }
 
-# kind_of <path> — hook|suite|skill|script|none
+# pkg_runs <pkg dir, "" = root> <file> — the package.json test script runs a known
+# runner whose discovery reaches <file> (path args narrow it; bare = whole package)
+pkg_runs() {
+  local pd="$1" f="$2" ts rel tok prev="" pre have=0 hit=0 pj="package.json"
+  [ -z "$pd" ] || pj="$pd/package.json"
+  ts=$(show "$pj" | jq -r '.scripts.test // empty' 2>/dev/null)
+  case "$ts" in *"bun test"*|*"node --test"*|*vitest*|*jest*) ;; *) return 1 ;; esac
+  case "$ts" in  # node --test globs only reach JS unless the script loads a TS transform
+    *"bun test"*|*vitest*|*jest*) ;;
+    *) case "${f##*/}" in *.js|*.mjs|*.cjs) ;; *) case "$ts" in *strip-types*|*tsx*|*--import*|*--loader*) ;; *) return 1 ;; esac ;; esac ;;
+  esac
+  rel="$f"; [ -z "$pd" ] || rel="${f#"$pd"/}"
+  ts=$(printf '%s' "$ts" | sed -E 's/bun test|node --test|vitest( run)?|jest//g')
+  set -f
+  for tok in $ts; do
+    tok="${tok//[\"\']/}"; tok="${tok#./}"
+    case "$tok" in -*|'&&'|';'|'|'|'||'|'') prev="$tok"; continue ;; esac
+    # a bare word is a path when it exists, or when it is not an option's value (--reporter dot)
+    case "$tok" in *[/*?\{[]*) ;; *) exists "${pd:+$pd/}$tok" || case "$prev" in -*) prev="$tok"; continue ;; esac ;; esac
+    prev="$tok"
+    have=1; pre="${tok%%[*?{[]*}"; pre="${pre%/}"
+    case "$rel" in "$pre"|"$pre"/*) hit=1 ;; esac
+    [ -n "$pre" ] || hit=1
+  done
+  set +f
+  [ "$have" -eq 0 ] || [ "$hit" -eq 1 ]
+}
+
+# kind_of <path> — hook|hooklib|suite|skill|script|none
 kind_of() {
   local p="$1" b="${1##*/}"
   case "$p" in *SKILL.md) printf skill; return ;; esac
   case "$b" in test-*.sh|*.test.*) printf suite; return ;; esac
   case "$p" in
-    scripts/hooks/*/*) printf none; return ;;
+    scripts/hooks/*/*) printf hooklib; return ;;
     scripts/hooks/*)
       case "$b" in lib-*|run-hook-with-bash.js|wire-hook-bash.mjs|wire-plugin-hook-bash.mjs|bench-hook-stack.mjs) printf none; return ;; esac
       case "$b" in *.sh|*.js|*.mjs) printf hook; return ;; esac ;;
@@ -99,8 +131,12 @@ judge() {  # <path> <kind> -> prints a reason when unwired
           printf '%s\n' "$cov" | grep -qE 'runs in PR CI|nightly only|superseded by' \
             || echo "run-shell-tests.sh skips it (SKIP_LIST) or cannot classify it" ;;
         *)
-          # a node/bun test file is run by a wrapper suite that names it
-          git grep -lIE -e "$(bn_re "$b")" "$ref" -- . ':(exclude)handovers' 2>/dev/null | sed "s#^$ref:##" | grep -vxF "$p" | grep -q . && return 0
+          # a node/bun test file is run by a wrapper that names it, when that wrapper is itself wired
+          git grep -lIE -e "$(bn_re "$b")" "$ref" -- . ':(exclude)handovers' 2>/dev/null | sed "s#^$ref:##" | grep -vxF "$p" > "$tmp/refs" || true
+          while IFS= read -r r; do
+            [ -n "$r" ] || continue
+            grep -q "|$r\$" "$tmp/pending" || return 0
+          done < "$tmp/refs"
           # a CI job that runs the test command on a directory above it
           d="${p%/*}"
           while :; do
@@ -111,13 +147,28 @@ judge() {  # <path> <kind> -> prints a reason when unwired
           done
           d="${p%/*}"
           while :; do
-            exists "$d/package.json" && show "$d/package.json" | jq -e '.scripts.test' >/dev/null 2>&1 && return 0
+            exists "$d/package.json" && pkg_runs "$d" "$p" && return 0
             [ "$d" = "${d%/*}" ] && break
             d="${d%/*}"
           done
-          show package.json | jq -e '.scripts.test' >/dev/null 2>&1 && return 0
-          echo "no file names it and no package.json above it has a test script" ;;
+          exists package.json && pkg_runs "" "$p" && return 0
+          echo "no wired file names it and no package.json test script above it runs a runner that discovers it" ;;
       esac ;;
+    hooklib)
+      # a library under scripts/hooks/<subdir>/ is sourced by a wired hook (or another live library)
+      pat="$(bn_re "$b")"
+      git grep -lIE -e "$pat" "$ref" -- scripts/hooks 2>/dev/null | sed "s#^$ref:##" | grep -vxF "$p" > "$tmp/refs" || true
+      while IFS= read -r r; do
+        [ -n "$r" ] || continue
+        rb="${r##*/}"
+        case "$(kind_of "$r")" in
+          hook) printf '%s\n' "$wiring_text" | grep -qE -- "$(bn_re "$rb")" && return 0
+                printf '%s\n' "$hook_allow" | grep -qxF -- "$rb" && return 0 ;;
+          suite) printf '%s\n' "$p" | grep -qE "$TEST_HELPER_RE" && { grep -q "|$r\$" "$tmp/pending" || return 0; } ;;
+          *) grep -q "|$r\$" "$tmp/pending" || return 0 ;;
+        esac
+      done < "$tmp/refs"
+      echo "no wired hook (or live hook library) in scripts/hooks names it" ;;
     skill)
       case "$p" in .claude/skills/*|.agents/skills/*) return 0 ;; esac
       plug="${p%%/skills/*}"
@@ -149,6 +200,8 @@ judge() {  # <path> <kind> -> prints a reason when unwired
   esac
 }
 
+git cat-file -e "$ref^{commit}" 2>/dev/null || { echo "check-added-unwired: cannot read $ref" >&2; exit 2; }
+
 : > "$tmp/added"; : > "$tmp/wired"; : > "$tmp/pending"
 for f in "$@"; do
   printf '%s\n' "$f" >> "$tmp/added"
@@ -159,11 +212,6 @@ for f in "$@"; do
   printf '%s\n' "$f" | grep -qE "$ALLOW_PATH_RE" && continue
   printf '%s|%s\n' "$k" "$f" >> "$tmp/pending"
 done
-
-if [ -s "$tmp/pending" ] && ! git cat-file -e "$ref^{commit}" 2>/dev/null; then
-  echo "check-added-unwired: cannot read $ref" >&2
-  exit 2
-fi
 
 # Fixpoint: an added library counts once a wired added script sources it.
 report=""
