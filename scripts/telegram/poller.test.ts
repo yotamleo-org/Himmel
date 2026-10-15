@@ -1,9 +1,9 @@
 import { beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
-import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, RESTART_WATCHDOG_MS, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, type FetchImageFn } from "./poller";
+import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, RESTART_WATCHDOG_MS, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, type FetchImageFn } from "./poller";
 import { readFile, writeFile, mkdir, utimes } from "node:fs/promises";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, vaultForChat } from "./gate";
 import { describeEnabledOps, KNOWN_OPS } from "./auto-action";
@@ -746,11 +746,9 @@ test("an unresolvable bot username fails OPEN to triage, never drops (LUNA-158)"
   expect(ran).toEqual([{ session: "group_-50", modelOverride: undefined }]);
 });
 
-// The batch is already marked consumed by readNewLines before any of it is
-// handled, so a record that throws used to kill the poller and take every LATER
-// record with it — permanently. That is how an operator message could be lost
-// without ever reaching the floor above. (The remaining crash window between the
-// cursor commit and the inbox append is not closed here.)
+// A record that throws used to kill the poller and take every LATER record
+// with it. That is how an operator message could be lost without ever reaching
+// the floor above.
 const inbound = (text: string, update_id: number, from = 5) =>
   ({ from, chat_id: -50, text, ts: 0, update_id, forwarded: false, caption: false });
 
@@ -3421,4 +3419,50 @@ test("dispatcher: a DIFFERENT error restarts the count instead of alerting", asy
   const d = makeDispatcher(runFn, 4, (_s, err) => { alerts.push(err); }, 3);
   for (let i = 0; i < 6; i++) { await d("S"); for (let j = 0; j < 10; j++) await Promise.resolve(); }
   expect(alerts).toHaveLength(0);
+});
+
+// The inbound cursor advances per record, only after the record is durably
+// handled (enqueued or intentionally discarded).
+const seedInbound = async (r: string, recs: ReturnType<typeof inbound>[]) => {
+  for (const rec of recs) await appendLine(join(r, "inbound.jsonl"), JSON.stringify(rec));
+};
+const ackRoot = () => mkdtempSync(join(tmpdir(), "tg-ack-"));
+
+test("a record interrupted before it is durable is re-delivered on the next pass (HIMMEL-1302)", async () => {
+  const r = ackRoot();
+  await seedInbound(r, [inbound("one", 1), inbound("two", 2), inbound("three", 3)]);
+  // pass 1: record 2 never settles (process killed mid-triage), so the cursor never moves past it
+  const seen1: string[] = [];
+  void ingestBatch(r, async (rec) => { seen1.push(rec.text); if (rec.text === "two") await new Promise<void>(() => {}); });
+  await Bun.sleep(100);
+  expect(seen1).toEqual(["one", "two"]);
+  // pass 2 (restart): record 1 was acked, 2 and 3 come back
+  const seen2: string[] = [];
+  await ingestBatch(r, async (rec) => { seen2.push(rec.text); });
+  expect(seen2).toEqual(["two", "three"]);
+  const seen3: string[] = [];
+  await ingestBatch(r, async (rec) => { seen3.push(rec.text); });
+  expect(seen3).toEqual([]);
+});
+
+test("a throw on record N does not strand N+1..M and the batch is fully acked (HIMMEL-1302)", async () => {
+  const r = ackRoot();
+  await seedInbound(r, [inbound("one", 1), inbound("poison", 2), inbound("three", 3)]);
+  const seen: string[] = [];
+  await ingestBatch(r, async (rec) => { if (rec.text === "poison") throw new Error("EPERM"); seen.push(rec.text); });
+  expect(seen).toEqual(["one", "three"]);
+  const again: string[] = [];
+  await ingestBatch(r, async (rec) => { again.push(rec.text); });
+  expect(again).toEqual([]);
+});
+
+test("a replayed update_id after enqueue-before-commit neither enqueues nor spawns twice (HIMMEL-1302)", async () => {
+  const r = ackRoot();
+  const ran: string[] = [];
+  const msg = { from: 1, chat_id: 7, text: "hello", update_id: 77 };
+  await handleInbound(r, msg, async (s: string) => { ran.push(s); });
+  await handleInbound(r, msg, async (s: string) => { ran.push(s); });
+  const inboxes = readdirSync(join(r, "sessions")).map((d) => readFileSync(join(r, "sessions", d, "inbox.jsonl"), "utf8"));
+  expect(inboxes.join("").trim().split("\n")).toHaveLength(1);
+  expect(ran).toHaveLength(1);
 });

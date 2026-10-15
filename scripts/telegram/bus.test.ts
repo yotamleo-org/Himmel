@@ -394,3 +394,24 @@ test("framePeerLine bounds the ESCAPED text: a raw-fitting run of escapable char
   const mal = framePeerLine("\n".repeat(PEER_TEXT_MAX) + "{");
   expect(mal.length).toBeLessThan(PEER_TEXT_MAX + 200);
 });
+
+// peekNewLines reads without advancing the cursor and reports the byte offset
+// to commit after each record, so a caller can ack per record.
+test("peekNewLines does not advance the cursor; ends are per-record commit offsets", async () => {
+  const { peekNewLines, commitCursorPos } = await import("./bus");
+  const r = root(); await _es(r, "S");
+  const f = join(_sd(r, "S"), "inbox.jsonl"); const cur = f + ".cursor";
+  await appendLine(f, JSON.stringify({ n: 1 }));
+  await appendLine(f, "not json");
+  await appendLine(f, JSON.stringify({ n: 2 }));
+  const first = await peekNewLines<any>(f, cur);
+  expect(first.records.map((o: any) => o.n)).toEqual([1, 2]);
+  expect(existsSync(cur)).toBe(false);
+  const text = readFileSync(f, "utf8");
+  expect(first.ends[0]).toBe(text.indexOf("\n") + 1);
+  expect(first.ends[1]).toBe(text.length);
+  expect(first.consumed).toBe(text.length);
+  await commitCursorPos(cur, first.ends[0]);
+  const second = await peekNewLines<any>(f, cur);
+  expect(second.records.map((o: any) => o.n)).toEqual([2]);
+});

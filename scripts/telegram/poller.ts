@@ -3,7 +3,7 @@ import { existsSync, readFileSync, lstatSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
-import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, repairCursorBeyondEof, truncateFullyConsumed, type Meta, type OnCursorReset } from "./bus";
+import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, type Meta, type OnCursorReset } from "./bus";
 import { classify, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, type ConsoleRouteGate, type ConsoleReplyFn } from "./console-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
@@ -346,7 +346,26 @@ export async function repairThenIngest(root: string, updates: any[], allow: Allo
   await ingestUpdates(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail);
 }
 
-export type DeliveredMsg = { from: number; chat_id: number; text: string; ts?: number; sender_chat?: number; reply_to_message_id?: number; message_id?: number; forwarded?: boolean; caption?: boolean; image_path?: string; document_path?: string; document_name?: string };
+export type DeliveredMsg = { from: number; chat_id: number; text: string; ts?: number; sender_chat?: number; reply_to_message_id?: number; message_id?: number; forwarded?: boolean; caption?: boolean; image_path?: string; document_path?: string; document_name?: string; update_id?: number };
+
+// True when the session inbox already holds a line stamped with this update_id:
+// the record was enqueued before a crash stopped the inbound cursor ack, so the
+// replay must not enqueue (or spawn) it a second time.
+async function inboxHasUpdate(inboxFile: string, updateId: number | undefined): Promise<boolean> {
+  if (typeof updateId !== "number") return false;
+  let buf = ""; try { buf = await readFile(inboxFile, "utf8"); } catch { return false; }
+  for (const ln of buf.split("\n")) if (ln.includes('"update_id"')) { try { if (JSON.parse(ln).update_id === updateId) return true; } catch {} }
+  return false;
+}
+
+// Append the message to the session inbox unless this update_id is already there.
+// Returns false (nothing appended) for a replay.
+// ponytail: dedup only sees an update still in the inbox; a replay after a run consumed and truncated it re-enqueues, upgrade = a persisted handled-id high-water mark.
+async function appendInboxOnce(inboxFile: string, line: string, msg: DeliveredMsg): Promise<boolean> {
+  if (await inboxHasUpdate(inboxFile, msg.update_id)) return false;
+  await appendLine(inboxFile, JSON.stringify({ text: line, from: msg.from, ts: msg.ts ?? 0, ...(typeof msg.update_id === "number" ? { update_id: msg.update_id } : {}), ...(msg.image_path ? { image_path: msg.image_path } : {}), ...(msg.document_path ? { document_path: msg.document_path, document_name: msg.document_name } : {}) }));
+  return true;
+}
 export type RunFn = (session: string, modelOverride?: ModelOverride) => Promise<void>;
 // fromOperator selects the classifier's prompt framing —
 // operator framing must not be told to a shared group's ordinary
@@ -591,12 +610,9 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
     // messagE?` classified `ack`, i.e. the complaint about the drop was eaten by
     // the same drop. Floored, not overridden: verdicts at or above spawn-low are
     // untouched, so the classifier still picks cheap-vs-full model as before.
-    // SCOPE, precisely: this removes the TRIAGE drop. It does not make ingest
-    // crash-durable — `readNewLines` commits inbound.jsonl.cursor for the whole
-    // batch before this handler runs, so a crash between that commit and the
-    // inbox append below still loses the record. That window is pre-existing and
-    // applies to every message, not just floored ones; closing it is a per-record
-    // peek/ack redesign.
+    // SCOPE, precisely: this removes the TRIAGE drop. Crash durability is
+    // ingestBatch's job: it advances inbound.jsonl.cursor only after this handler
+    // returns, so a crash before the inbox append re-delivers the record.
     // Logged when it fires (panel CR glm-1): a rescue is exactly as invisible as
     // the drop it replaces, and "why did this spawn?" is the question the next
     // triage misclassification will be debugged from. Same stream as the drop
@@ -639,7 +655,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // not see it (it would read as part of the request — and on an unknown tag it
   // would be a stale instruction the run cannot act on).
   const line = route.kind === "followup" ? route.text : tag.rest;
-  await appendLine(join(sessionDir(root, session), "inbox.jsonl"), JSON.stringify({ text: line, from: msg.from, ts: msg.ts ?? 0, ...(msg.image_path ? { image_path: msg.image_path } : {}), ...(msg.document_path ? { document_path: msg.document_path, document_name: msg.document_name } : {}) }));
+  if (!(await appendInboxOnce(join(sessionDir(root, session), "inbox.jsonl"), line, msg))) { console.error("[poller] update " + msg.update_id + " already in " + session + " inbox — replay skipped"); return; }
   // Everything above this line can throw BEFORE the append, and handleBatch's
   // drop notice ("could not be queued — please resend") is truthful for those.
   // The dispatch below is AFTER the message is durable, so its failure must not
@@ -1045,17 +1061,14 @@ export async function reconcile(root: string, isAlive: (pid: number) => boolean)
 }
 
 // Drive ONE ingest batch, isolating each record.
-// readNewLines has ALREADY advanced inbound.jsonl.cursor for the whole batch by
-// the time these records are handled, so a throw escaping this loop did double
-// damage: it killed the poller (the main loop wraps only getUpdates in a catch)
-// AND took every LATER record of that batch with it — permanently, because the
-// cursor says they were consumed. Those later records include operator messages
-// that never reached the triage floor, which is the exact loss this ticket
-// exists to close. handleInbound's own I/O is the reachable thrower here
+// A throw escaping this loop would kill the poller (the main loop wraps only
+// getUpdates in a catch) AND take every LATER record of the batch with it. Those
+// later records include operator messages that never reached the triage floor.
+// handleInbound's own I/O is the reachable thrower here
 // (ensureSession / writeMeta / appendLine — EPERM, ENOSPC, EISDIR); triage
 // itself is fail-open. Losing ONE record loudly beats losing the rest silently.
-// This does NOT make ingest durable: the window between the cursor commit and
-// the inbox append remains, and closing it needs per-record peek/ack.
+// A dropped record is still acked (see below), so a persistent fault cannot
+// re-deliver the same record forever.
 // onDrop makes the drop VISIBLE instead of merely survivable.
 // Containing the throw traded a loud crash-loop for a quiet one: before, a
 // persistent session-storage fault killed the poller over and over, which at
@@ -1074,12 +1087,17 @@ export async function reconcile(root: string, isAlive: (pid: number) => boolean)
 // Declaring it void puts that guarantee in the seam instead of in the caller's
 // good behaviour: a notifier that never settles cannot block the loop, because
 // the loop does not wait for it. Same reason AutoGate.fire is fire-and-forget.
+// `ack(i)` runs after record i was handled OR dropped (a drop is loud and
+// final, so it must not wedge the cursor), never before: that ordering is what
+// makes ingest at-least-once. A failed ack is logged and the loop continues; the
+// record is simply re-delivered next pass and the inbox update_id check absorbs it.
 export async function handleBatch(
   fresh: Inbound[],
   handle: (rec: Inbound) => Promise<void>,
   onDrop?: (rec: Inbound, err: unknown) => void,
+  ack?: (index: number) => Promise<void>,
 ): Promise<void> {
-  for (const rec of fresh) {
+  for (const [idx, rec] of fresh.entries()) {
     try {
       await handle(rec);
     } catch (e) {
@@ -1096,7 +1114,22 @@ export async function handleBatch(
         } catch (e2) { console.error(`[poller] drop notice could not be raised for update ${rec.update_id}: ${e2}`); }
       }
     }
+    if (ack) {
+      try { await ack(idx); }
+      catch (e) { console.error(`[poller] inbound cursor ack failed after update ${rec.update_id} — record will be re-delivered and deduped: ${e}`); }
+    }
   }
+}
+
+// One ingest pass with a per-record cursor: peek, handle each record, and move
+// inbound.jsonl.cursor to the end of that record only once it is handled. A crash
+// mid-batch re-delivers the unacked suffix on the next pass. Lines that are not
+// records (blank, unparseable) are committed with the batch tail.
+export async function ingestBatch(root: string, handle: (rec: Inbound) => Promise<void>, onDrop?: (rec: Inbound, err: unknown) => void, onCursorReset?: OnCursorReset): Promise<void> {
+  const cursorFile = join(root, "inbound.jsonl.cursor");
+  const { records, ends, start, consumed } = await peekNewLines<Inbound>(join(root, "inbound.jsonl"), cursorFile, onCursorReset);
+  await handleBatch(records, handle, onDrop, (i) => commitCursorPos(cursorFile, ends[i]));
+  if (consumed > (ends.length ? ends[ends.length - 1] : start)) await commitCursorPos(cursorFile, consumed);
 }
 
 // Overlap guard: drops a call if a prior invocation is still in flight.
@@ -2390,7 +2423,7 @@ export async function main(): Promise<void> {
     // Ordering: see repairThenIngest's own comment for why
     // the repair must run before the ingest append, not after.
     await repairThenIngest(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail, onCursorReset);
-    const fresh = await readNewLines<Inbound>(join(root, "inbound.jsonl"), join(root, "inbound.jsonl.cursor"), onCursorReset);
+    // fresh records are peeked and acked one at a time inside ingestBatch below
     // Per-BATCH, so it resets every poll tick: a chat whose fault persists is
     // re-notified on the next batch rather than silenced for the session.
     const notifiedChats = new Set<number>();
@@ -2406,9 +2439,9 @@ export async function main(): Promise<void> {
     // operator's own posts take in a group he has "Remain anonymous" on for.
     // handleBatch, not a bare for-await: one record's I/O failure must not take
     // the rest of the already-consumed batch with it.
-    await handleBatch(
-      fresh,
-      (i) => handleInbound(root, { from: i.from, chat_id: i.chat_id, text: i.text, ts: i.ts, sender_chat: i.sender_chat, reply_to_message_id: i.reply_to_message_id, message_id: i.message_id, forwarded: i.forwarded, caption: i.caption, image_path: i.image_path, document_path: i.document_path, document_name: i.document_name }, coalesce, autoGate, undefined, (from, chat_id, sender_chat) => isOperatorIdentity(access, from, chat_id, sender_chat), (chatId, text) => sendMessage(token, chatId, text).then(() => undefined), requireMentionFor, botUsername, consoleGate),
+    await ingestBatch(
+      root,
+      (i) => handleInbound(root, { from: i.from, chat_id: i.chat_id, text: i.text, ts: i.ts, sender_chat: i.sender_chat, reply_to_message_id: i.reply_to_message_id, message_id: i.message_id, forwarded: i.forwarded, caption: i.caption, image_path: i.image_path, document_path: i.document_path, document_name: i.document_name, update_id: i.update_id }, coalesce, autoGate, undefined, (from, chat_id, sender_chat) => isOperatorIdentity(access, from, chat_id, sender_chat), (chatId, text) => sendMessage(token, chatId, text).then(() => undefined), requireMentionFor, botUsername, consoleGate),
       // sendMessage, NOT replyViaOutbox: the outbox is
       // written INTO the same session directory whose failure caused the drop,
       // so on an unwritable session it fails too — and the bridge would then eat
@@ -2436,6 +2469,7 @@ export async function main(): Promise<void> {
           .then((ok) => { if (!ok) console.error(`[poller] drop notice UNDELIVERED for update ${i.update_id} chat ${i.chat_id} — this log is now the only record of the drop`); })
           .catch((e) => { console.error(`[poller] drop notice threw for update ${i.update_id}: ${e}`); });
       },
+      onCursorReset,
     );
     await deliverAllPending(root, dispatch, new Date(), () => sessionsList(root), coalesce.isHolding);
     await sweepStuckRunning(root, dispatch.isInFlight, () => sessionsList(root));

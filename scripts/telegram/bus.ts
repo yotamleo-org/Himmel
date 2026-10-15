@@ -265,23 +265,42 @@ export async function repairCursorBeyondEof(file: string, cursorFile: string, on
   return false;
 }
 
-export async function readNewLines<T = any>(file: string, cursorFile: string, onCursorReset?: OnCursorReset): Promise<T[]> {
-  if (await repairCursorBeyondEof(file, cursorFile, onCursorReset)) return [];
+// Read without advancing the cursor, for a caller that acks per record.
+// `ends[i]` is the byte offset to commit once records[i] is durably handled;
+// `consumed` is the offset past every complete line (blank and unparseable lines
+// included — they have no record to ack); `start` is the cursor as read.
+export type PeekedLines<T> = { records: T[]; ends: number[]; start: number; consumed: number };
+export async function peekNewLines<T = any>(file: string, cursorFile: string, onCursorReset?: OnCursorReset): Promise<PeekedLines<T>> {
+  if (await repairCursorBeyondEof(file, cursorFile, onCursorReset)) return { records: [], ends: [], start: 0, consumed: 0 };
   let start = 0;
   try { start = Number(await readFile(cursorFile, "utf8")) || 0; } catch {}
+  const none: PeekedLines<T> = { records: [], ends: [], start, consumed: start };
   let buf = "";
-  try { buf = await readFile(file, "utf8"); } catch { return []; }
+  try { buf = await readFile(file, "utf8"); } catch { return none; }
   const total = Buffer.byteLength(buf, "utf8");
-  if (start === total) return [];
+  if (start === total) return none;
   const slice = Buffer.from(buf, "utf8").subarray(start).toString("utf8");
   const lastNl = slice.lastIndexOf("\n");
-  if (lastNl < 0) return [];
+  if (lastNl < 0) return none;
   const complete = slice.slice(0, lastNl);
-  const consumed = start + Buffer.byteLength(complete + "\n", "utf8");
-  const out: any[] = [];
-  for (const ln of complete.split("\n")) if (ln.trim()) { try { out.push(JSON.parse(ln)); } catch {} }
-  await atomicWrite(cursorFile, String(consumed));
-  return out;
+  const records: T[] = [], ends: number[] = [];
+  let pos = start;
+  for (const ln of complete.split("\n")) {
+    pos += Buffer.byteLength(ln + "\n", "utf8");
+    if (!ln.trim()) continue;
+    try { records.push(JSON.parse(ln)); ends.push(pos); } catch {}
+  }
+  return { records, ends, start, consumed: start + Buffer.byteLength(complete + "\n", "utf8") };
+}
+
+export async function commitCursorPos(cursorFile: string, pos: number): Promise<void> {
+  await atomicWrite(cursorFile, String(pos));
+}
+
+export async function readNewLines<T = any>(file: string, cursorFile: string, onCursorReset?: OnCursorReset): Promise<T[]> {
+  const { records, start, consumed } = await peekNewLines<T>(file, cursorFile, onCursorReset);
+  if (consumed > start) await commitCursorPos(cursorFile, consumed);
+  return records;
 }
 
 // IPC (T6): append a message to <target>'s durable inbox so the
