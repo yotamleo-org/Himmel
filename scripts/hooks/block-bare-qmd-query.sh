@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse hook for Bash.
 #
-# HIMMEL-3956 / HIMMEL-3960: an agent's bare `qmd query|search|vsearch` in Bash
+# An agent's bare `qmd query|search|vsearch` in Bash
 # can orphan a GPU-bound bun process for hours. The qmd launcher is a node
 # trampoline that forwards no signals, so whatever kills it — the Bash tool's
 # own timeout, a `timeout 60` prefix, the session ending — leaves the bun child
@@ -21,37 +21,37 @@
 # qmd is an argument and not the program; and a mere mention (`grep "qmd
 # query"`, `echo qmd query`).
 #
-# The grammar is block-git-stash.sh's command-position shape (HIMMEL-851), with
+# The grammar is block-git-stash.sh's command-position shape, with
 # a wider wrapper set because the wrapper is the evasion here. It is a regex,
 # not a shell parser, with the siblings' residuals in both directions: a
 # separator inside quoted data (`git commit -m "a; qmd query b"`) reads as a
 # command boundary and is a false DENY — the safe direction — and variable
-# indirection (`q=qmd; $q query`) is a miss (HIMMEL-4178). HIMMEL-4574 drops
+# indirection (`q=qmd; $q query`) is a miss. The reader-only exemption drops
 # that false DENY where every command run is a reader (readers_only below):
 # `grep -E 'a|qmd query' f | head` is a pattern, not a boundary.
 #
-# HIMMEL-4121: the regex also runs over the command's words after bash-style
+# The regex also runs over the command's words after bash-style
 # quote removal (qmd_words below), so a verb or program spelled through
 # quote-splitting (`qmd "qu"ery`), `$'…'` (`qmd $'\x71uery'`) or a backslash
 # (`qmd \query`, `q"md" query`) is refused, and `qmd "query"" notes"` — the
 # one argument `query notes` — is not.
-# ponytail: the verb in a variable (`v=query; qmd "$v" x`) is still a miss —
-# nothing is expanded; closing it needs value tracking (HIMMEL-4178).
+# ponytail: the verb in a variable (`v=query; qmd "$v" x`) is still a miss (value tracking: HIMMEL-4178) —
+# nothing is expanded; closing it needs value tracking.
 # ponytail: nested strings (`-c`, eval) are decoded and re-read to depth four
-# (HIMMEL-4151), for every shell the hook names, the launchers that take a
+# for every shell the hook names, the launchers that take a
 # string (`su -c`, `script -c`, `flock -c`, `env -S`, watch, parallel) and a
-# shell's here-string (HIMMEL-4166); what a shell reads from a pipe or a
+# shell's here-string; what a shell reads from a pipe or a
 # process substitution, and an alias for qmd, cannot be read and fail closed
 # on naming qmd and a verb. A shell fed by a file (`sh <f`) is unread.
-# HIMMEL-4244 adds sg, tmux, screen, at/batch, `builtin`, the prefix
+# Also covered: sg, tmux, screen, at/batch, `builtin`, the prefix
 # wrappers (setpriv … pkexec) and elvish/nu/xonsh/pwsh `-c`.
-# HIMMEL-4305: a launcher that types or ships its command elsewhere fails
+# A launcher that types or ships its command elsewhere fails
 # closed on naming qmd and a verb anywhere in its words: tmux (every
 # subcommand; send-keys -H hex decoded), screen (its \ooo, \n and ^X decoded),
 # and the remote and container launchers (ssh, docker, podman, nerdctl,
 # kubectl, oc, lxc, incus, distrobox, toolbox). pwsh/powershell
 # -EncodedCommand is base64-decoded (UTF-16LE) and read as a command.
-# HIMMEL-4330 / HIMMEL-4337: a pipe continues across a newline; the `&` of a
+# A pipe continues across a newline; the `&` of a
 # redirection (`2>&1`, `&>f`) is no boundary; a piped stage that is no plain
 # filter and holds anything that runs its stdin — a shell, an interpreter
 # (python, perl, node, …, whose -c/-e string is read too), eval, xargs, an
@@ -62,12 +62,12 @@
 # ponytail: an expansion is read as a stage's program only in program
 # position (`| nice $l` is unread), and a written file only as the first
 # operand and only when written by the same command; tracking values across
-# commands and wrappers is HIMMEL-4178.
+# commands and wrappers is the upgrade.
 # ponytail: names_verb is a substring test, so a launcher whose words merely
 # contain one (`tmux new -s research 'qmd status'`, `ssh research qmd status`)
 # is over-denied — the safe direction; a word-bounded test is the upgrade,
 # taken when such an over-deny is reported.
-# HIMMEL-4525: where the consumer takes its program from elsewhere, the
+# Where the consumer takes its program from elsewhere, the
 # sanctioned wrapper (qmd-bounded.sh) and a file search (rg, grep, egrep,
 # fgrep, not with --pre) name no verb (names_verb_nb): an interpreter with a
 # code string or script operand, xargs running a plain reader, a file a later
@@ -75,12 +75,12 @@
 # written file run as a program and an interpreter reading its program from
 # stdin keep the strict test: search hits there are executed.
 # A heredoc makes qmd_words decline and the coarser fallback readings below
-# decide; the shared tokenizer (scripts/hooks/lib/shell-tokenize.sh,
-# HIMMEL-912) models heredocs and can replace qmd_words once a third inlined
+# decide; the shared tokenizer (scripts/hooks/lib/shell-tokenize.sh)
+# models heredocs and can replace qmd_words once a third inlined
 # copy is wired into its sync suite.
 #
 # ponytail: Bash only — a PowerShell `qmd query` is unguarded; wire a
-# PowerShell twin if a Windows station starts running qmd ad hoc (HIMMEL-3960).
+# PowerShell twin if a Windows station starts running qmd ad hoc.
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 - allow
@@ -104,7 +104,7 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
-# Input handling is block-git-stash.sh's (HIMMEL-2123): builtin `read` rather
+# Input handling is block-git-stash.sh's: builtin `read` rather
 # than a `cat` substitution, blank or malformed stdin fails closed, and a
 # present non-string `command` is an error rather than a silent allow; a
 # `command: null` falls through to `cmd` rather than reading as empty.
@@ -128,7 +128,7 @@ esac
 
 [ -z "$cmd" ] && exit 0
 
-# HIMMEL-5328: re-read the command with its variable expansions removed, so a
+# Re-read the command with its variable expansions removed, so a
 # `${V:-}qmd query x` or `qmd ${V:-} query x` is judged as the bare query the
 # shell runs when V is empty. A must-run dependency: if it cannot be sourced,
 # deny.
@@ -144,7 +144,7 @@ fi
 guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" 'qmd' || exit 2
 
 # qmd_words CMD — print CMD with each word's quotes and escapes removed the
-# way bash removes them (HIMMEL-4121), so `qmd "qu"ery`, `qmd $'\x71uery'`,
+# way bash removes them, so `qmd "qu"ery`, `qmd $'\x71uery'`,
 # `qmd \query` and `q"md" query` all print `qmd query`, while
 # `qmd "query"" notes"` prints `qmd query_notes` — one word, not the verb.
 # A byte that came from inside quotes, an escape or `$'…'` prints as itself
@@ -158,12 +158,12 @@ guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" 'qmd' || exit 2
 # Returns 1 for what it does not model — an unterminated quote or `$(`, a
 # heredoc (`<<`), a command over 16 KiB — and the caller falls back.
 # A third line, after the second newline and up to a closing `.`, is the
-# decoded text (HIMMEL-4151): the same bytes as the first line, one for one,
+# decoded text: the same bytes as the first line, one for one,
 # but a quoted or escaped byte prints as the byte itself — the value bash
 # hands the program — so a word's span in the first line is its value here.
 # A word made only of empty quotes (`qmd "" query x`) is an empty argument, so
-# it prints as `_` in the first line and as a \001 byte in the decoded line
-# (HIMMEL-4141); empty quotes inside a longer word (`query""`, `""query`)
+# it prints as `_` in the first line and as a \001 byte in the decoded line;
+# empty quotes inside a longer word (`query""`, `""query`)
 # print nothing, as before.
 # Launchers that join their words and re-parse them (eval, watch, parallel,
 # env -S, ssh, sudo, firejail) are read with the empty argument removed; any
@@ -440,16 +440,16 @@ _qw_q() {
 }
 
 # EXEPFX / ASSIGN / SEP are block-git-stash.sh's, verbatim.
-# HIMMEL-5101: EXEPFX stops at `(`, a CMDPOS anchor, so a `((((...` run stays linear.
+# EXEPFX stops at `(`, a CMDPOS anchor, so a `((((...` run stays linear.
 EXEPFX='["'\'']?([a-z]:)?([^[:space:]|;&(`"'\'']*[/\\])?'
 ASSIGN='[[:alnum:]_]+=('\''[^'\'']*'\''|"[^"]*"|[^[:space:]|;&]*)'
 SEP='([[:space:]]|\\[[:space:]]*;+)+[[:space:]]*'
 # A run of options, each optionally taking ONE non-dash value (`-n 10`, `-k 5`).
 OPTV='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*'
 # Wrappers that run their argument as a program. timeout takes its duration.
-# HIMMEL-4218: watch, unbuffer, parallel and systemd-run too; flock takes its
+# watch, unbuffer, parallel and systemd-run too; flock takes its
 # lock file first.
-# HIMMEL-4244: builtin, the privilege, namespace, sandbox, tracing and
+# builtin, the privilege, namespace, sandbox, tracing and
 # session wrappers, and the -c shells elvish, nu, xonsh and pwsh. chroot and
 # sg take one operand before the program, a bwrap option up to two values,
 # and tmux runs the command of a session-starting subcommand.
@@ -458,9 +458,9 @@ TMUXREST="[[:space:]]${TMUXSUB}([[:space:]].*)?\$"
 WRAP='(sudo|doas|nice|ionice|chrt|taskset|stdbuf|setsid|nohup|command|builtin|busybox|exec|eval|coproc|time|xargs|watch|unbuffer|parallel|systemd-run|systemd-inhibit|su|runuser|script|setpriv|unshare|nsenter|firejail|xvfb-run|strace|ltrace|chpst|cgexec|pkexec|screen|elvish|nu|xonsh|pwsh(\.exe)?|powershell(\.exe)?|fish|(r?ba|z|da|k|mk|lk|ok|pdk|po|ya|a|tc|c)?sh(\.exe)?)'"$OPTV"
 WRAP="($WRAP|timeout${OPTV}[[:space:]]+[0-9.]+[smhd]?|(flock|chroot|sg)${OPTV}[[:space:]]+[^-[:space:]][^[:space:]]*|bwrap([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*([[:space:]]+[^-[:space:]][^[:space:]]*)?)?)*|tmux${OPTV}[[:space:]]+${TMUXSUB}${OPTV}|env([[:space:]]+(-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?|$ASSIGN))*|if|then|else|elif|do|while|until|!)"
 # A case arm's `)` is a command position too, and zsh runs `=qmd` as the
-# qmd its PATH finds (HIMMEL-4140).
+# qmd its PATH finds.
 # ponytail: any `)` opens a command, so `echo "$(x)"qmd query` over-denies;
-# telling a case arm from a substitution's close is HIMMEL-4172.
+# telling a case arm from a substitution's close is not done.
 CMDREST='[[:space:]]*(('"$ASSIGN"'|=?'"$EXEPFX$WRAP"')[[:space:]]+)*=?'"$EXEPFX"
 CMDPOS='(^|[|;&()`{])'"$CMDREST"
 # The program: qmd itself, or a JS runtime handed qmd's entry point.
@@ -469,7 +469,7 @@ QMDPROG="${RUNTIME}"'qmd(\.(ts|js|mjs|cjs|exe|cmd))?["'\'']?'
 # qmd's global options (`--index <name>`) sit between the program and the verb.
 QMDOPTVAL='('\''[^'\'']*'\''|"[^"]*"|[^-[:space:]][^[:space:]]*)'
 QMDOPTS='('"${SEP}"'-[^[:space:]]+('"${SEP}${QMDOPTVAL}"')?)*'
-# The verb may be quoted (`qmd "query" x`, HIMMEL-4011); the shell strips the
+# The verb may be quoted (`qmd "query" x`); the shell strips the
 # quote, so it is still the verb. The quotes must match around the verb alone,
 # so `qmd "query notes"` (one argument, not the verb) is not refused.
 QMDVERB='(query|search|vsearch)'
@@ -486,23 +486,23 @@ RAWBOUND='([^[:alnum:]_"'\''-]|$)'
 BAREEND="$BARE"'$'
 # qp_deny OFFSETS — succeed when the raw text up to one of qmd_words' quote
 # offsets ends in a bare verb. The offsets count bytes, so the slice must
-# too: under a UTF-8 locale a multibyte character would shift it (J1666c).
+# too: under a UTF-8 locale a multibyte character would shift it.
 qp_deny() {
     local LC_ALL=C p
     for p in $1; do
-        # A verb quoted inside the string ends in its own quote (J1666d).
+        # A verb quoted inside the string ends in its own quote.
         case "${cmd_lc:0:p}" in *query|*search|*query[\"\']|*search[\"\']) ;; *) continue ;; esac
         [[ ${cmd_lc:0:p} =~ $BAREEND ]] && return 0
     done
     return 1
 }
 
-# Two readings, deny on either (HIMMEL-4121). The raw text keeps what quote
+# Two readings, deny on either. The raw text keeps what quote
 # removal hides — a separator or a nested `bash -c "qmd query"` inside quoted
 # data. The normalised words see the verb and program bash will run after its
 # quote removal. When the normaliser declines (a heredoc, an unterminated
-# quote, over 16 KiB), three readings stand in for it: the pre-HIMMEL-4121
-# raw match; the quote-stripped text, which catches quote-splitting and
+# quote, over 16 KiB), three readings stand in for it: the raw match
+# before quote removal; the quote-stripped text, which catches quote-splitting and
 # backslashes; and, because that text cannot decode `$'…'` or `$"…"`, a deny
 # for a qmd program with either in its arguments, or for a program word
 # spelled with one and followed by one or a verb. It is not a parser: it
@@ -520,7 +520,7 @@ ansi_q() {
 AQ_PROG='[^[:space:];&|]*'$'\002''[^[:space:];&|]*'
 AQ_ARGS="${CMDPOS}${QMDPROG}[[:space:]][^;&|]*"$'\002'
 AQ_WORD="${CMDPOS}${AQ_PROG}[[:space:]][^;&|]*("$'\002'"|${QMDVERB})"
-# HIMMEL-4140 / HIMMEL-4151: a nested shell runs its -c string, and eval its
+# A nested shell runs its -c string, and eval its
 # words joined by blanks, through the same quote removal again. The decoded
 # value of each such word is read as a command, and its own nested strings in
 # turn, to a depth of four; a deeper one is refused. A nested string that
@@ -540,26 +540,26 @@ AQ_WORD="${CMDPOS}${AQ_PROG}[[:space:]][^;&|]*("$'\002'"|${QMDVERB})"
 SUBPROG='(^|[|;&)`{])'"$CMDREST"'(\$\(|`)'
 SUBTOP='(^|[|;&{])'"$CMDREST"'(\$\(|`)'
 CASEWORD='(^|[^[:alnum:]_])case[[:space:]]'
-# HIMMEL-4166: a positional parameter ("$@", $1) as the program or as qmd's
+# A positional parameter ("$@", $1) as the program or as qmd's
 # verb is refused when the command names qmd and a verb (`set -- qmd query
 # x; "$@"`).
 POSPROG='(^|[|;&()`{])'"$CMDREST"'\$\{?[@*0-9]'
 POSVERB="${CMDPOS}${QMDPROG}${QMDOPTS}${SEP}"'\$\{?[@*0-9]'
 NESTSEP=' '$'\t'';&|()`<>'
 NESTWORD='(^|[^[:alnum:]_.-])((r?ba|z|da|k|mk|lk|ok|pdk|po|ya|a|tc|c)?sh|fish|elvish|nu|xonsh|pwsh|powershell|sg|su|runuser|script|flock|source|at|batch|eval|watch|parallel|tmux|screen|env|alias|xargs|python[0-9.]*|pypy[0-9]*|perl[0-9.]*|ruby|irb|node|nodejs|bun|deno|php|lua|luajit|tclsh|expect|rscript|osascript|ssh|docker|podman|nerdctl|kubectl|oc|lxc|incus|distrobox|toolbox)(\.exe)?([^[:alnum:]_.-]|$)|<<<|<\('
-# HIMMEL-4166 / HIMMEL-4218: what each word that runs a nested string does
+# What each word that runs a nested string does
 # with the words after it. sh: a shell, or a launcher taking `-c STRING`
 # (su, runuser, script, flock, sg); it also runs a here-string, a process
 # substitution or, after a `|`, its stdin. src: source and `.`, and at and
-# batch (HIMMEL-4244), which run those three but take no -c. eval: its words
+# batch, which run those three but take no -c. eval: its words
 # joined. run: watch and parallel, which join their words into one command
 # too; tmux: the words after its session-starting subcommand, and all its
-# words joined fail closed (HIMMEL-4305). screen and rem (ssh, docker, …):
+# words joined fail closed. screen and rem (ssh, docker, …):
 # their words joined fail closed; the words stay read as the top level reads
-# them. int: an interpreter, whose -c/-e-style string fails closed (HIMMEL-4337).
+# them. int: an interpreter, whose -c/-e-style string fails closed.
 # env: its -S string and the words after it. alias: a definition naming qmd.
-# HIMMEL-4337: every mode but env and alias runs a piped stdin.
-# HIMMEL-4245: a pipe consumer stage that is a plain non-executing filter
+# Every mode but env and alias runs a piped stdin.
+# A pipe consumer stage that is a plain non-executing filter
 # reads a shell word as an operand (`… | grep -v sh`), not as a program. Its
 # program word is bare or /usr/bin- or /bin-prefixed, behind no wrapper but
 # xargs with plain flag or count options, and no assignment or redirection. Every other stage — any launcher, modelled or
@@ -653,7 +653,7 @@ names_verb() {
     [[ $s == *qmd* ]] && [[ $s == *query* || $s == *search* ]]
 }
 # names_verb_nb TEXT — names_verb for text whose output only ever reaches a
-# consumer as DATA (HIMMEL-4525): the sanctioned wrapper's own name is set
+# consumer as DATA: the sanctioned wrapper's own name is set
 # aside, and so is a simple command whose program is a file search (rg, grep,
 # egrep, fgrep) — its `qmd query` is a pattern, and with `--pre` it is not
 # (rg runs that command per file). Whatever else in TEXT names qmd and a verb
@@ -664,7 +664,7 @@ names_verb() {
 # program keep names_verb: search hits there are executed, not read.
 # ponytail: an interpreter code string that execs its own stdin
 # (`python3 -c 'exec(sys.stdin.read())'`) runs the output; telling it from a
-# reader needs a parser for every language — file under HIMMEL-4178 if seen.
+# reader needs a parser for every language — file a ticket if seen.
 # shellcheck disable=SC1003 # a literal backslash in the tr set
 names_verb_nb() {
     local s seg w rest='' ws k ok
@@ -713,7 +713,7 @@ names_verb_nb() {
 # The helpers below run inside qmd_nested and read its locals (w, dec, n,
 # pipe, pfrom, pp and the caches sk, se, sf, nk, nr).
 # _stage_end START — set se to the end of the simple command holding START:
-# the next `;`, `|`, `(`, `)` or boundary `&` (not a redirection's, HIMMEL-4337)
+# the next `;`, `|`, `(`, `)` or boundary `&` (not a redirection's)
 # outside a `$(…)`, `<(…)`, `>(…)` or backtick.
 # shellcheck disable=SC2016 # literal $ and ` bytes
 _stage_end() {
@@ -761,7 +761,7 @@ _prod_verb() {
     fi
     [ "$nr" = 1 ]
 }
-# XARGSSAFE — HIMMEL-4525: an xargs stage, on the stage's own words, whose
+# XARGSSAFE — an xargs stage, on the stage's own words, whose
 # program is one that only reads or prints its arguments, behind plain flag
 # and count options (no -I/-i/-J replacement string, so the program word is
 # never a token, and no -a/-d/-E/--long option). The tokens it is fed are
@@ -775,7 +775,7 @@ _xargs_safe() {
     [ "$nofilt" = 0 ] || return 1
     [[ $1 =~ $XARGSSAFE ]] && [[ $2 =~ $XARGSSAFE ]]
 }
-# _int_reader STAGE DEC — HIMMEL-4525: succeed when STAGE, an interpreter
+# _int_reader STAGE DEC — succeed when STAGE, an interpreter
 # consumer, is one of the named reader forms, so the pipe reaches it as data:
 # `-m json.tool`, `-c`/`-e`/`-p`/`-ne` with one quoted code string free of
 # anything that can run text (no -i, no runpy/code/importlib, no /dev/ or
@@ -814,7 +814,7 @@ _int_reader() {
     fi
     return 1
 }
-# _qn_runs START — HIMMEL-4337: succeed when the piped stage holding the
+# _qn_runs START — succeed when the piped stage holding the
 # executing element at START runs its stdin: it is no plain filter, read from
 # the pipe or, for an element in program position, from START, and the
 # producer names a verb. The stage end and its filter verdict are cached per
@@ -828,7 +828,7 @@ _qn_runs() {
     fi
     [ "$sf" = 0 ] || return 1
     if [ "$pp" = 1 ] && _filt "${w:s:se-s}" "${dec:s:se-s}"; then return 1; fi
-    # HIMMEL-4525: xargs running a plain program takes its producer's output
+    # xargs running a plain program takes its producer's output
     # as that program's arguments, so the wrapper and a file search are no verb.
     nb=0
     if [ "${2:-}" = x ] && _xargs_safe "${w:s:se-s}" "${dec:s:se-s}"; then nb=1; fi
@@ -841,7 +841,7 @@ _wr_add() { wr="$wr ${1#./} "; }
 _ran_written() {
     case "$wr" in
         *" ${1#./} "*)
-            # HIMMEL-4525: $2 = 1 for an interpreter operand after the one
+            # $2 = 1 for an interpreter operand after the one
             # that supplied the program (an earlier operand or a code
             # string): the file is its argument, read as data.
             if [ "${2:-0}" = 1 ]; then
@@ -911,7 +911,7 @@ qmd_nested() {
     # bash copies $w on every index below, so the scan is quadratic in its
     # length: a long command holding a shell or eval word is refused, not
     # scanned against the chain's budget.
-    # HIMMEL-4526: it also refuses one naming qmd and a verb (a reader with no
+    # It also refuses one naming qmd and a verb (a reader with no
     # NESTWORD, `| awk '{system($0)}'`, `| sed e`, `| $x`), unless every
     # command it runs is a plain reader.
     if [ "$n" -gt 8192 ]; then
@@ -926,7 +926,7 @@ qmd_nested() {
     # the lone `|` (or `|&`) that feeds the current command, and pfrom the
     # boundary before the pipeline's first command, so the producer is every
     # stage before the pipe, dec[pfrom+1, pipe) (`echo … | cat | sh`).
-    # HIMMEL-4245: a subshell, substitution or backtick opened in a piped
+    # A subshell, substitution or backtick opened in a piped
     # stage inherits its stdin, so it pushes a frame (lb, pipe and fb, the
     # pipe a list in the frame falls back to) that its close pops; a group or
     # loop keyword in a piped stage makes the pipe the frame's fallback. A
@@ -935,9 +935,9 @@ qmd_nested() {
     # ponytail: the fallback outlives the group or loop it came from, so a
     # bare shell after it (`echo qmd query x | { cat; }; sh`) is over-denied;
     # match the closing keyword if one is hit.
-    # HIMMEL-4330: pc is set while only blanks follow a lone `|` or `|&`, so a
+    # pc is set while only blanks follow a lone `|` or `|&`, so a
     # newline there (printed `;`) continues the pipeline: the stage restarts
-    # after it and the pipe still feeds it. HIMMEL-4337: pp is set while the
+    # after it and the pipe still feeds it. pp is set while the
     # next word is in program position; ro while the next word is a `>`
     # target and te in a tee's words, both recorded in wr for _ran_written.
     # ri is set while the next word is a `<` target; sw is lb when the
@@ -965,7 +965,7 @@ qmd_nested() {
                         [ "$k" != '>' ] || ro=1
                         ;;
                     '&')
-                        # HIMMEL-4337: `>&`, `<&` and `&>` are one redirection.
+                        # `>&`, `<&` and `&>` are one redirection.
                         if [ "$k" != '|' ] && [ "$k" != '>' ] && [ "$k" != '<' ] && [ "${w:i+1:1}" != '>' ]; then
                             pipe=$fb lb=$i pc=0 pp=1 te=0 ro=0
                         fi
@@ -1034,7 +1034,7 @@ qmd_nested() {
         t=${t#=}
         t=${t##*/}
         [ "$t" != tee ] || te=1
-        # HIMMEL-4337: xargs, a filter as the program, or an expansion as the
+        # xargs, a filter as the program, or an expansion as the
         # program, in a piped stage.
         if [ -n "$pipe" ]; then
             x=0
@@ -1058,7 +1058,7 @@ qmd_nested() {
         else
             case "$tw" in do|then|else|elif|if|while|until|'!'|time|'{'|exec|command|builtin) pp=1 ;; *) pp=0 ;; esac
         fi
-        # HIMMEL-4141: sudo's shell modes (-s, -i, --shell, --login, with
+        # sudo's shell modes (-s, -i, --shell, --login, with
         # abbreviated long options and bundled option arguments) and
         # firejail's default shell join their words with spaces and re-parse
         # them, so an empty argument (the placeholder byte) vanishes there:
@@ -1083,7 +1083,7 @@ qmd_nested() {
         # so: the program comes from an operand, code string or hand-back;
         # sr: stdin is a written file or a here-string; ss: sh -s seen.
         so=0 sr=0 ss=0
-        # HIMMEL-4505: oa: the next word is an option's argument (`-o
+        # oa: the next word is an option's argument (`-o
         # errexit`), no program operand; sx: the -c string reads stdin
         # (`. /dev/stdin`, a nested shell); atw: at and batch, which read
         # their job from stdin unless given -f.
@@ -1178,7 +1178,7 @@ qmd_nested() {
                 # The fd of a redirection (`2>f`, `{fd}<f`), not a word.
                 :
             elif [ "$mode" = tmux ] || [ "$mode" = screen ] || [ "$mode" = rem ]; then
-                # HIMMEL-4305: every word, decoded, is kept joined (sj) and
+                # Every word, decoded, is kept joined (sj) and
                 # concatenated (ct, which catches `send-keys q m d`); tmux's
                 # also feed the TMUXREST reading below. After send-keys -H
                 # each operand is one hex byte.
@@ -1223,7 +1223,7 @@ qmd_nested() {
                 mode=run
                 scr=" ${v#"${BASH_REMATCH[0]}"}"
             elif [ "$enc" = 1 ]; then
-                # HIMMEL-4305: pwsh -EncodedCommand's base64 of UTF-16LE text,
+                # pwsh -EncodedCommand's base64 of UTF-16LE text,
                 # decoded from the case-preserving bytes; a failed decode, or
                 # no base64 to decode it with, fails closed.
                 enc=2 so=1
@@ -1236,7 +1236,7 @@ qmd_nested() {
                 qmd_check "$x" $((depth + 1))
                 if [ "$deny" = 1 ]; then return 0; fi
             elif [ "$mode" = int ]; then
-                # HIMMEL-4337: an interpreter's code string — python's -c,
+                # An interpreter's code string — python's -c,
                 # perl's, ruby's and lua's -e, node's and bun's -e/-p/--eval/
                 # --print, php's -r, deno eval — is no shell: refuse one
                 # naming a verb (so is any option word that names one).
@@ -1279,7 +1279,7 @@ qmd_nested() {
                 # `--command` / su's `--session-command`; the later
                 # words ($0 and its arguments) are read too — more reading
                 # only adds denials.
-                # HIMMEL-4305: pwsh's -EncodedCommand (any prefix, -ec, a
+                # pwsh's -EncodedCommand (any prefix, -ec, a
                 # `--` or `/` lead) is read first: it would match the -c
                 # cluster.
                 x=${t#-} x=${x#-}
@@ -1300,7 +1300,7 @@ qmd_nested() {
                     qmd_check "$t" $((depth + 1))
                     if [ "$deny" = 1 ]; then return 0; fi
                 else
-                    # HIMMEL-4337: a shell's or source's operand that the
+                    # A shell's or source's operand that the
                     # command wrote (`… > f; sh f`). Every operand: an
                     # option's argument (`-o errexit`) would shift the script.
                     # After sh -s the operands are positional args, and an
@@ -1376,13 +1376,13 @@ qmd_nested() {
             return 0
         fi
         # A shell or source, fed by a pipe, runs the producer's output:
-        # refuse a producer naming a verb. HIMMEL-4245: unless the consumer
+        # refuse a producer naming a verb. Unless the consumer
         # stage, to the end of this command, is a plain filter (`… | grep -v
-        # sh` is no shell). HIMMEL-4337: so does every mode but env and
+        # sh` is no shell). So does every mode but env and
         # alias, with or without -c.
-        # HIMMEL-4244: a stage run on by a later `|` then a newline (printed
+        # A stage run on by a later `|` then a newline (printed
         # `;`) reaches the next line, so it is no filter.
-        # HIMMEL-4525: an interpreter that has a program of its own (a code
+        # An interpreter that has a program of its own (a code
         # string or a script operand, so=1) reads the pipe as data, so the
         # wrapper and a file search among the producer are no verb there.
         if [ -n "$piped" ] && [ "$mode" != env ] && [ "$mode" != alias ] &&
@@ -1411,7 +1411,7 @@ qmd_nested() {
             qmd_check "$scr" $((depth + 1))
             if [ "$deny" = 1 ]; then return 0; fi
         fi
-        # HIMMEL-4305: a launcher's words naming qmd and a verb fail closed:
+        # A launcher's words naming qmd and a verb fail closed:
         # tmux's and screen's concatenated (screen's escapes decoded), rem's
         # joined and also read as a command; and an expansion among them
         # fails closed on the command naming one.
@@ -1421,7 +1421,7 @@ qmd_nested() {
                 if [[ $ct == *[qQ]* ]] && names_verb "$ct"; then deny=1; return 0; fi
                 ;;
             rem)
-                # HIMMEL-4525: the wrapper or a file search among a launcher's
+                # The wrapper or a file search among a launcher's
                 # words is no verb; its stdin (a pipe) is still checked above.
                 if [[ $sj == *[qQ]* ]] && names_verb_nb "$sj"; then deny=1; return 0; fi
                 case "$sj" in
@@ -1444,7 +1444,7 @@ qmd_nested() {
 }
 
 # readers_only WORDS — succeed when every command qmd_words' reading of the
-# command runs is a reader that never runs an argument (HIMMEL-4574). Quoted
+# command runs is a reader that never runs an argument. Quoted
 # data there is only ever a pattern or a file name, so the raw-text reading
 # (whose job is a separator or a nested `bash -c` inside quotes) is skipped:
 # `ls | grep 'a|qmd query'` is a mention. WORDS prints quoted operators as `_`,
@@ -1468,7 +1468,7 @@ readers_only() {
     return 0
 }
 
-# HIMMEL-4989: a command word the guard cannot read (a glob, a variable bound
+# A command word the guard cannot read (a glob, a variable bound
 # by read/for/a substitution, a command substitution), or an alias or function
 # defined in the command, can be tmux, screen or pwsh, which type or run a
 # string the guard cannot decode. dyn_check fails closed on such a word in
@@ -1536,7 +1536,7 @@ _dyn_body() {
 # that runs one of them. A substitution anywhere is read as a command too.
 # ponytail: brace expansion (`/usr/bin/{tmux,x}`) and a value bound some other
 # way (declare -n, mapfile into an array) are unread; a heredoc makes
-# qmd_words decline and skips this reading entirely (HIMMEL-4989).
+# qmd_words decline and skips this reading entirely.
 dyn_check() {
     local LC_ALL=C t=$1 dp=$2 ar=${3:-0} n i=0 j c pd bq pp=1 w nx k s inner subs sp lastd tail nm r
     local adang=' ' fdang=' ' vdyn=' ' wopt=0 wx=0 aln='' wo=0 al=0 vm=0 fn=0 bd
@@ -1763,7 +1763,7 @@ qmd_check() {
     # budget, so a slow scan must deny rather than run out the clock.
     checks=$((checks + 1))
     if [ "$depth" -gt 4 ] || [ "$checks" -gt 64 ]; then deny=1; return 0; fi
-    # HIMMEL-4989: a variable the command assigns a literal reads as that
+    # A variable the command assigns a literal reads as that
     # literal (`a=tm; ${a}ux …`): read the command again with it substituted.
     if _resolve_vars "$cmd"; then
         res=$rcmd
@@ -1783,8 +1783,8 @@ qmd_check() {
     crude=$(printf '%s' "$crude" | LC_ALL=C tr -d '"'\''\\')
 
     # Cheap pre-filter: no `qmd` anywhere, even with the quotes removed, and no
-    # `$'…'` or `$"…"` that could spell it — nothing to check. HIMMEL-4305:
-    # tmux, screen and pwsh decode keys, escapes and base64 that can spell it
+    # `$'…'` or `$"…"` that could spell it — nothing to check. tmux,
+    #  screen and pwsh decode keys, escapes and base64 that can spell it
     # with no `qmd` in the text.
     case "$cmd_lc$crude" in
         *qmd*|*\$\'*|*\$\"*|*tmux*|*screen*|*pwsh*|*powershell*) ;;
@@ -1844,7 +1844,7 @@ qmd_check() {
             [[ $cmd_lc$crude == *tmux* || $cmd_lc$crude == *screen* ||
                 $cmd_lc$crude == *pwsh* || $cmd_lc$crude == *powershell* ]] ||
             [[ $cmd == *"\$'"* ]]; }; then
-        # HIMMEL-4526: qmd_words declines past 16 KiB, which leaves only the
+        # qmd_words declines past 16 KiB, which leaves only the
         # bare readings; every pipe, redirect, launcher and stdin reading
         # would be skipped. An oversized command naming qmd and a verb (or an
         # ANSI-C string that could spell one) is no legitimate allow case.

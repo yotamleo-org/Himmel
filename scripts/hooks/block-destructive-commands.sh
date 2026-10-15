@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse hook for Bash/PowerShell.
 #
-# Deterministic destructive-command floor shared by Claude and Codex lanes
-# (HIMMEL-754). Ports the TERMINAL_DESTRUCTIVE command classes from
+# Deterministic destructive-command floor shared by Claude and Codex lanes.
+# Ports the TERMINAL_DESTRUCTIVE command classes from
 # scripts/hermes/assets/parity_guard.py: catastrophic/shared-machine/
 # irreversible terminal shapes only. Routine git/gh/mv/cp, non-recursive rm,
 # curl without remote-exec pipe, and normal git status/commit/push are allowed.
@@ -29,7 +29,7 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
-# HIMMEL-2123: bash builtin `read` instead of `$(cat)` drops one spawn per
+# Bash builtin `read` instead of `$(cat)` drops one spawn per
 # call. The three separate `printf '%s' "$input" | jq ...` pipelines below
 # (validate, extract tool_name, extract command — six forks: printf+jq
 # each) are collapsed into ONE jq call via `<<<` (no printf fork) that
@@ -37,11 +37,11 @@ fi
 # payload makes the whole call fail exactly like the old standalone
 # `jq -e .` did, so the fail-closed branch is unchanged. Windows jq.exe
 # writes CRLF, so the embedded "\n" field separator can arrive as "\r\n" —
-# strip the stray CR off $tool (same shape as require-quiet-run.sh,
-# HIMMEL-2060, and block-tail-pipe-on-gates.sh).
+# strip the stray CR off $tool (same shape as require-quiet-run.sh and
+# block-tail-pipe-on-gates.sh).
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
-# HIMMEL-2123 RETASK R2123A: empty/whitespace-only stdin must fail CLOSED,
+# Empty/whitespace-only stdin must fail CLOSED,
 # same as the old `printf | jq -e .` did on it (jq -e on "" is a parse
 # error -> exit 2). `read -d ''` on EOF leaves $input empty with no error
 # to catch (`|| true` swallows its own rc), and `jq <<<""` on blank input
@@ -65,7 +65,7 @@ esac
 #     error a non-object top-level value throws there, same as the old
 #     per-field `|| true` fallbacks -- both land on empty tool/cmd, which
 #     falls through to allow below exactly as before.
-#   * RETASK R2123A (independent review, HIMMEL-2123): a NON-STRING but
+#   * A NON-STRING but
 #     present `command`/`cmd` (e.g. `"command":["rm -rf /"]`) made jq's `+`
 #     a type error ("string and array cannot be added") -- a DIFFERENT
 #     failure than "cannot index", still swallowed by the same
@@ -100,9 +100,9 @@ esac
 
 [ -z "$cmd" ] && exit 0
 
-# HIMMEL-4438: re-read the forms the shell actually runs (quotes removed,
+# Re-read the forms the shell actually runs (quotes removed,
 # wrappers stripped, `bash -c`/`eval` bodies) through this same hook. The lib
-# is a must-run dependency: if it cannot be sourced, deny. HIMMEL-5358: it is
+# is a must-run dependency: if it cannot be sourced, deny. It is
 # loaded for PowerShell too, because the git argv parser below reads every
 # command through its tokenizer; only the unwrap re-scan stays Bash-only.
 case "${BASH_SOURCE[0]}" in
@@ -119,14 +119,14 @@ if [ "$tool" != PowerShell ]; then
 fi
 
 # parity_guard.norm() lower-cases before applying TERMINAL_DESTRUCTIVE. Newlines
-# separate shell commands, so preserve them as semicolon boundaries. HIMMEL-2123:
-# one `tr` call (a single SET1/SET2 char-class mapping covers both the case fold
+# separate shell commands, so preserve them as semicolon boundaries.
+# One `tr` call (a single SET1/SET2 char-class mapping covers both the case fold
 # and the newline/CR fold) instead of two chained `tr` invocations — same output,
 # one fewer fork. `printf` (not `<<<`) is kept deliberately: many patterns below
 # anchor on `$` (end-of-string), and a herestring's synthetic trailing newline
 # would fold to an extra trailing ';' that a `$`-anchored pattern does not expect.
 cmd_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]\n\r' '[:lower:];;')
-# HIMMEL-3991: the shell drops a backslash-newline pair before it splits words,
+# The shell drops a backslash-newline pair before it splits words,
 # but the fold above turns that newline into `;`, so `git reset \<NL>--hard`
 # reads as two commands. cmd_lc_join drops each pair (`\` + LF, or `\` + CRLF
 # for Windows jq text mode) BEFORE the fold. It is a SECOND scan source, never
@@ -143,7 +143,7 @@ if [[ $cmd == *"$_bsnl"* || $cmd == *"$_bscrlf"* ]]; then
     cmd_lc_join="${cmd_lc_join//"$_bsnl"/}"
     cmd_lc_join="${cmd_lc_join//[$'\r\n']/;}"
 fi
-# HIMMEL-5329: an expansion that is empty at run time can stand before the
+# An expansion that is empty at run time can stand before the
 # command word (`${V:-}rm`, `$V rm`, zsh's `$V:t rm`, `$V[1,-3]rm`,
 # `${(P)V}rm`), so the shell runs `rm` while the text shows `${V:-}rm`.
 # cmd_lc_noexp drops every run of expansions at command position (start of
@@ -174,7 +174,7 @@ fi
 
 # contains ERE -> true iff $cmd_lc (or its joined twin cmd_lc_join) matches ERE.
 #
-# HIMMEL-1741: this was `printf '%s' "$cmd_lc" | grep -Eq "$1"` — a fork PAIR
+# This was `printf '%s' "$cmd_lc" | grep -Eq "$1"` — a fork PAIR
 # (subshell + grep) per call, and the deny floor below calls it 18 times, so
 # every Bash/PowerShell tool call paid 36 process spawns. On Windows with
 # Defender real-time scanning a spawn costs ~667 ms (~10x a normal Git-Bash
@@ -198,7 +198,7 @@ contains() {
 }
 
 # Bracket-class substitutions over ASCII-only classes, run in the C locale: in a
-# UTF-8 locale `${s//[class]/x}` is quadratic on multibyte text (HIMMEL-5154).
+# UTF-8 locale `${s//[class]/x}` is quadratic on multibyte text.
 # Multibyte UTF-8 sequences contain no ASCII byte, so byte semantics give the
 # same string. Result in REPLY.
 _c_strip_quotes() { local LC_ALL=C; REPLY=${1//[\"\'\\]/}; }
@@ -210,7 +210,7 @@ deny() {
 }
 [ "$_noexp_over" = 0 ] || deny "more than 256 expansions at command position"
 
-# Sanctioned CLIProxyAPI proxy lifecycle (HIMMEL-1451): bouncing the proxy
+# Sanctioned CLIProxyAPI proxy lifecycle: bouncing the proxy
 # needs process termination (taskkill / Stop-Process / schtasks /end), all of
 # which the deny floor below refuses at command position. The SAFE path is the
 # cli-proxy-lane.ps1 -Restart/-Stop verb, which does that termination INTERNALLY
@@ -220,12 +220,11 @@ deny() {
 # match is anchored end-to-end with no wildcards -- a near-miss (a different
 # script path, an appended destructive command, or a direct taskkill) does NOT
 # inherit a free pass and still hits the deny floor below. powershell and pwsh
-# both carry the script (HIMMEL-1432 dual-shell convention). r3 documented the
-# combined -Install -Restart [-Force] one-shot pin-roll (.EXAMPLE); r4 added it
-# here so the sanctioned forms enumerated below match the documented lifecycle
-# (HIMMEL-1451 r4 / glm-4).
+# both carry the script (dual-shell convention). The combined -Install -Restart
+# [-Force] one-shot pin-roll (.EXAMPLE) is carved out here so the sanctioned forms
+# enumerated below match the documented lifecycle.
 #
-# codex-1 (CR r4) -- why this carve-out carries NO cwd/repo-root anchor. The
+# Why this carve-out carries NO cwd/repo-root anchor. The
 # sanctioned path is RELATIVE, so a roamed shell CWD could in principle resolve
 # it to an impostor `scripts/setup/cli-proxy-lane.ps1`. But anchoring THIS
 # carve-out cannot close that vector, because the deny floor below INDEPENDENTLY
@@ -236,13 +235,13 @@ deny() {
 # exact case therefore still passes the floor (rc=0 -- verified empirically: a
 # `./`-prefixed path, a `../` escape, and a `cd x; ...` prefix all return rc=0).
 # The relative-resolution vector is a FLOOR-LEVEL residual (script-internals
-# unseen -- the documented no-general-parser gap, HIMMEL-912 class), not a hole
+# unseen -- the documented no-general-parser gap), not a hole
 # this carve-out opens or can close; narrowing the carve-out's text would only
 # hide the blessing while the floor keeps allowing the impostor. The carve-out's
 # real job is forward-compat stability + explicit blessing of the sanctioned
 # shapes (so a future floor rule that DOES match -File/-restart cannot silently
 # break the documented lifecycle) -- not gatekeeping the relative path. Closing
-# the residual belongs to a HIMMEL-912 floor follow-up, out of scope for r4.
+# the residual belongs to a floor follow-up, out of scope here.
 case "$cmd_lc" in
     'powershell -noprofile -file scripts/setup/cli-proxy-lane.ps1 -restart'|\
     'powershell -noprofile -file scripts/setup/cli-proxy-lane.ps1 -restart -force'|\
@@ -264,7 +263,7 @@ esac
 # that parity_guard names tolerates an optional .exe suffix for the Windows lane.
 # Bare-name atoms (format/schtasks/taskkill/shutdown/icacls classes) anchor to
 # COMMAND POSITION - start of command or right after a separator, tolerating
-# whitespace, env-var assignment prefixes, and (HIMMEL-851 CR r1) a BOUNDED set
+# whitespace, env-var assignment prefixes, and a BOUNDED set
 # of launcher wrappers - sudo, env, cmd [/switches] /c, powershell/pwsh
 # [-flags] -c/-command - plus
 # one optional quote before the atom (a quoted word in command position still
@@ -285,14 +284,14 @@ esac
 # documented gap is QUOTED-PAYLOAD wrappers (bash -c "<verb> ...", sh -c,
 # xargs / nohup chains), out of scope per the ticket's no-general-parser rule.
 # This bounded grammar is intentionally NOT an arms race: further wrapper
-# permutations belong to the HIMMEL-912 shared-tokenizer follow-up, and this
+# permutations belong to the shared-tokenizer follow-up, and this
 # CC-hook + the auto-mode classifier remain the outer defense layers. Mirrors
 # parity_guard.py's _cmdpos_destructive (shared contract).
 # Assignment VALUE is quote-aware (CR r5): FOO='a b' / FOO="a b" would
 # otherwise break prefix consumption at the space and drop the verb out of
 # command position. Factored into ASSIGN so the env-prefix (CR r6) reuses it.
 #
-# HIMMEL-1180: EXEPFX/ASSIGN/CMDPOS themselves now live in
+# EXEPFX/ASSIGN/CMDPOS themselves now live in
 # scripts/guardrails/lib.sh's guard_cmdpos_grammar() — shared with
 # block-graphify-egress.sh, which anchors its own atom to command position
 # with this same wrapper/assignment tolerance instead of a second hand-rolled
@@ -306,18 +305,18 @@ if ! { [ -r "$SCRIPT_DIR/../guardrails/lib.sh" ] && . "$SCRIPT_DIR/../guardrails
     exit 2
 fi
 guard_cmdpos_grammar
-# HIMMEL-3984: an rm that find (-exec/-execdir/-ok/-okdir) or fd (-x/-X/
+# An rm that find (-exec/-execdir/-ok/-okdir) or fd (-x/-X/
 # --exec/--exec-batch) runs is at command position too.
 # The flag is matched wherever it sits, with no check that find or fd launched
 # it: it is also the only catch for an rm that a wrapper CMDPOS does not model
 # runs (`watch -x rm`, `stdbuf -o0 -ok rm`, `strace -x rm`). Over-deny only.
-# HIMMEL-4134: an ALLOWLIST is the one exception. A command that is a single
+# An ALLOWLIST is the one exception. A command that is a single
 # echo, printf or : with plain words only (no separator, redirect, quote,
 # backslash, expansion, glob or brace) runs nothing, so `echo x -exec rm -rf y`
 # is text. Add a command word only with a reason it can never execute one.
-# ponytail: the bracket classes, `=~` patterns and the HIMMEL-3983/3984/4146
+# ponytail: the bracket classes, `=~` patterns and the HIMMEL-3983/3984/4146/4134
 # additions are run on Linux bash 5 only (no macOS bash 3.2 here, Git Bash
-# parked, HIMMEL-4102), upgrade path HIMMEL-4134 item 3: run this suite on a
+# parked), upgrade path: run this suite on a
 # macOS station under /bin/bash.
 _rmpos_flag='[[:space:]]-(exec|execdir|ok|okdir|x|-exec|-exec-batch)[[:space:]]+'"${CMDPOS_PFX_X}"
 _rmpos_text='^[[:space:]]*(echo|printf|:)([[:space:]][^];&|<>(){}`$\"*?[!#~'"'"']*)?$'
@@ -326,27 +325,27 @@ if [[ $cmd_lc =~ $_rmpos_text ]]; then
 else
     RMPOS="(${CMDPOS}|${_rmpos_flag})"
 fi
-# HIMMEL-3984: `find -delete` is a recursive delete of its own. The gap is
+# `find -delete` is a recursive delete of its own. The gap is
 # unbounded, like RM_RECURSIVE_PAT's, so a quoted `;` cannot hide the flag.
-# HIMMEL-4255: the mass-delete family (find -delete, find/fd running rm,
+# The mass-delete family (find -delete, find/fd running rm,
 # xargs running rm) also sees through the launchers CMDPOS leaves out:
 # busybox, command [-p|--|-v ...], eval, and a shell's -c (bash/sh/dash/zsh/
 # ksh/mksh/ash/fish, own flags first: `bash -o pipefail -c`). The quoted
 # payload is read as text, so `bash -c 'find d -delete'` matches like the bare
 # form. Over-deny only: `command -v find; ls -delete` denies.
 # parity_guard.py's _X_WRAPS is the twin.
-# ponytail: this widening covers the mass-delete family only, not the
+# ponytail: (HIMMEL-912) this widening covers the mass-delete family only, not the
 # CMDPOS atoms (`bash -c 'rm -rf d'` still passes this hook, the Python twin
-# denies it), upgrade path HIMMEL-912's word-level tokenizer.
+# denies it), upgrade path a word-level tokenizer.
 # Every head here takes an optional .exe, and xargs.exe joins lib.sh's xargs
 # (which has no .exe), with the same flags.
 _xwrap='(busybox(\.exe)?|command(\.exe)?([[:space:]]+-[-[:alnum:]]*)*|eval(\.exe)?|xargs\.exe([[:space:]]+(-[adeilnps]'"${CMDVAL}"'|--[admp][a-z-]*'"${CMDVAL}"'|'"${CMDFLG}"'))*|((ba|da|k|mk|z|a)?sh|fish)(\.exe)?([[:space:]]+'"${CMDFLG}"'('"${CMDVAL}"')?)*[[:space:]]+-[[:alnum:]]*c[[:alnum:]]*)[[:space:]]+'
-# HIMMEL-4321: no `(` or `){` anchor follows these prefixes (the -exec/-x flag,
+# No `(` or `){` anchor follows these prefixes (the -exec/-x flag,
 # a launcher word), so they keep lib.sh's CMDPOS_PFX_X, whose path run crosses
 # `(` and `){`; the stop-at-paren EXEPFX is sound only behind a CMDPOS anchor.
 MASS_PFX="${CMDPOS_PFX_X}(${_xwrap}${CMDPOS_PFX_X})*"
 MASS_CMDPOS="${CMDPOS}(${_xwrap}${CMDPOS_PFX_X})*"
-# HIMMEL-4255: the old single pattern (CMDPOS find .* -delete) was quadratic,
+# The old single pattern (CMDPOS find .* -delete) was quadratic,
 # about 22s on a 100 KB command of `; find x` words. _find_delete cuts the
 # text at its LAST -delete flag with a glob (linear) and looks for a
 # command-position find in what is before it, which is the same set: any find
@@ -363,15 +362,15 @@ _find_delete() {
     fi
     [[ $pre =~ $FIND_VERB_PAT ]]
 }
-# HIMMEL-4255: an rm that find (-exec/-execdir/-ok/-okdir) or fd (-x/-X/
+# An rm that find (-exec/-execdir/-ok/-okdir) or fd (-x/-X/
 # --exec/--exec-batch) runs deletes every match, so it denies with or without
 # -r. Like _rmpos_flag, the flag is not tied to find or fd: over-deny only
 # (`grep -x rm f` denies), and the echo/printf allowlist skips it.
 FIND_RM_PAT='[[:space:]]-(exec|execdir|ok|okdir|x|-exec|-exec-batch)[[:space:]]+'"${MASS_PFX}"'rm(\.exe)?([^[:alnum:]_.-]|$)'
-# HIMMEL-4255: so does an rm that xargs runs (`ls | xargs -0 rm`), with
+# So does an rm that xargs runs (`ls | xargs -0 rm`), with
 # xargs's own options and any launcher between them.
 XARGS_RM_PAT="${MASS_CMDPOS}"'xargs(\.exe)?([[:space:]]+(-[adeilnps]'"${CMDVAL}"'|--[admp][a-z-]*'"${CMDVAL}"'|'"${CMDFLG}"'))*[[:space:]]+'"${MASS_PFX}"'rm(\.exe)?([^[:alnum:]_.-]|$)'
-# HIMMEL-2834: the three rm checks below run against rm_scrub, not cmd_lc.
+# The three rm checks below run against rm_scrub, not cmd_lc.
 # The old anchor was a bare word boundary `(^|[^[:alnum:]_.-])`, which matches
 # the literal ANYWHERE in the command string, not just where a command is
 # actually invoked - reproduced by a grep/sed PATTERN argument that happens to
@@ -388,13 +387,13 @@ XARGS_RM_PAT="${MASS_CMDPOS}"'xargs(\.exe)?([[:space:]]+(-[adeilnps]'"${CMDVAL}"
 # before "rm" now satisfies ${CMDPOS} even though nothing was ever run). So
 # rm_scrub additionally has heredoc bodies (`<<[-]?['"]?WORD['"]?` up to a
 # standalone `;WORD(;|$)` terminator) removed on a COPY before the ${CMDPOS}
-# checks run - in-process string ops only, no forks (HIMMEL-1741), gated
+# checks run - in-process string ops only, no forks, gated
 # behind a cheap `*<<*` substring test so the zero-heredoc common case pays
 # nothing extra. FAIL-CLOSED: an unterminated heredoc (no matching `;WORD`
 # found) stops stripping and rm_scrub falls back to the UNSTRIPPED cmd_lc for
 # that command - a determined bypass gets a false DENY here, never a false
 # ALLOW. Budget-capped (8 heredocs) for the same reason.
-# RESIDUAL (measured, not chased - HIMMEL-912, same no-general-parser rule as
+# RESIDUAL (measured, not chased - same no-general-parser rule as
 # the rest of this file): a heredoc fed to an INTERPRETER whose body is
 # actually executed (`bash <<'EOF'` / `python3 <<'EOF'` containing a real
 # `rm -rf` line) is now allowed exactly like a `cat <<'EOF' > file` body is -
@@ -404,20 +403,20 @@ XARGS_RM_PAT="${MASS_CMDPOS}"'xargs(\.exe)?([[:space:]]+(-[adeilnps]'"${CMDVAL}"
 # char (`;`/`&`/`|`/`(`/backtick) immediately before the literal, e.g.
 # `echo "a; rm -rf x"`, is likewise not scrubbed - out of the ticket's
 # reproduced cases, and the earlier attempt to strip quoted spans generically
-# broke the HIMMEL-851 `rm "-rf" file` quoted-flag DENY case below, which must
+# broke the `rm "-rf" file` quoted-flag DENY case below, which must
 # keep denying (quoting a flag doesn't change what runs).
 # Only a QUOTED delimiter (`<<'EOF'`/`<<"EOF"`) guarantees the shell performs
 # no expansion while building the body - an UNQUOTED delimiter's body still
 # undergoes command substitution, so `cat <<EOF` containing `$(rm -rf x)`
-# stays unstripped and falls through to the ${CMDPOS} match below (codex
-# panel finding, HIMMEL-2834 pr-check round 1). This scrub also works off
+# stays unstripped and falls through to the ${CMDPOS} match below.
+# This scrub also works off
 # `cmd` (real newlines intact), not `cmd_lc` (newlines already folded to `;`,
 # indistinguishable from a real semicolon) - stripping must start only after
 # the true newline that begins the body, never right after the opener token,
 # or a real command on the OPENER's own line (`cat <<EOF; rm -rf x`) gets
 # swallowed into the discarded span (same panel round).
 #
-# HIMMEL-3030: the header above already documented this as gated behind a
+# The header above already documented this as gated behind a
 # cheap `*<<*` test, but only the STRIPPING LOOP was actually gated - the
 # `printf | tr | tr` pipeline that builds rm_scrub_raw ran unconditionally,
 # paying 3 forks on every zero-heredoc call (the common case). `<<` survives
@@ -430,7 +429,7 @@ XARGS_RM_PAT="${MASS_CMDPOS}"'xargs(\.exe)?([[:space:]]+(-[adeilnps]'"${CMDVAL}"
 # newlines to `;` - lowering and separator-folding commute, so both paths
 # produce the same byte string when there is no heredoc to strip.
 #
-# HIMMEL-4126: the per-line check below misses a quote opened on an EARLIER
+# The per-line check below misses a quote opened on an EARLIER
 # line - the opener is then quoted text and the "body" lines run. Before
 # stripping, _hd_carried_clean walks everything before the opener and returns
 # 0 only when it ends outside any quote or comment. It models ', ", \, and a
@@ -440,7 +439,7 @@ XARGS_RM_PAT="${MASS_CMDPOS}"'xargs(\.exe)?([[:space:]]+(-[adeilnps]'"${CMDVAL}"
 # data (any <<, or an @@ mask other than a here-string's <@@), and a lone CR
 # in $cmd (bash reads it as a character; here it is already a newline). It
 # only ever disqualifies, so it can never strip more than before.
-# HIMMEL-4146: an unquoted ${, $(( or $[ is skipped to its closer only when
+# An unquoted ${, $(( or $[ is skipped to its closer only when
 # it closes before any quote, backslash, $, backtick, # or newline (every
 # character the N state acts on, so the skip never walks past one: zsh reads
 # `$((true)#)` as a subshell plus a comment); one left open (or holding any of
@@ -518,7 +517,7 @@ if [[ $rm_scrub_raw == *'<<'* ]]; then
     _hd_nocrlf="${cmd//$'\r\n'/}"
     [[ $_hd_nocrlf == *$'\r'* ]] && _hd_lone_cr=1
     # _hd_find_term: 0 when _hd_body holds the terminator _hd_termpat names,
-    # with _hd_after = the text after it. HIMMEL-4729: the terminator is a
+    # with _hd_after = the text after it. The terminator is a
     # literal (\n, tabs and the delimiter word), so a byte-wise match under a
     # function-local LC_ALL=C finds exactly what the UTF-8 one did; in a UTF-8
     # locale the regex took 0.6 s on a 45 KB body, and `#*MATCH` is quadratic
@@ -531,7 +530,7 @@ if [[ $rm_scrub_raw == *'<<'* ]]; then
         _hd_after="${_hd_body:${#_hd_pre}+${#_hd_m}}"
     }
     # Strips rm_scrub_raw in place. With _hd_check_carried set it also applies
-    # the HIMMEL-4126 disqualifier and sets _hd_carried_hit when that fires.
+    # the carried-quote disqualifier and sets _hd_carried_hit when that fires.
     _hd_strip() {
     _hd_budget=8
     while [ "$_hd_budget" -gt 0 ] && [[ $rm_scrub_raw == *'<<'* ]]; do
@@ -555,7 +554,7 @@ if [[ $rm_scrub_raw == *'<<'* ]]; then
         # the word/string on the SAME line - so treating what follows as a
         # scannable heredoc body can splice a real, sequentially-executed
         # command out of the string entirely whenever a later line happens to
-        # equal the here-string's word (HIMMEL-3029). Disqualify with the same
+        # equal the here-string's word. Disqualify with the same
         # mask-and-continue mechanism as the mid-quote/comment cases below.
         if [[ $_hd_prefix == *'<' ]]; then
             rm_scrub_raw="${_hd_prefix}@@${_hd_opener:2}${rm_scrub_raw:${#_hd_prefix}+${#_hd_opener}}"
@@ -564,16 +563,15 @@ if [[ $rm_scrub_raw == *'<<'* ]]; then
         # An opener sitting inside an OPEN quote on its own physical line is
         # DATA inside a quoted argument (`echo "text <<'EOF'"`), not a
         # redirect operator - a real heredoc redirect is never written
-        # mid-quote. Round 2's fix only checked the character immediately
-        # before `<<`, which missed a quote opened earlier on the same line
-        # with text between it and the `<<` (codex panel finding, HIMMEL-2834
-        # pr-check round 3: this let a real `rm -rf` on the next line hide the
+        # mid-quote. Checking only the character immediately before `<<`
+        # would miss a quote opened earlier on the same line, with text
+        # between it and the `<<`, and a real `rm -rf` on the next line would
+        # hide the same way. So count quote chars on the CURRENT line (since
         # same way). Fixed by counting quote chars on the CURRENT line (since
         # the last real newline) before the opener - an odd count of either
         # quote char means we are still inside that quote, so the opener is
         # data.
-        # Same direction for a `#` earlier on the line (codex panel finding,
-        # HIMMEL-2834 pr-check round 4): once a shell comment starts, the rest
+        # Same direction for a `#` earlier on the line: once a shell comment starts, the rest
         # of the physical line - opener syntax included - is comment text, not
         # a real redirect, and every line after it runs as ORDINARY commands,
         # not heredoc body, so stripping them would hide whatever real command
@@ -597,14 +595,14 @@ if [[ $rm_scrub_raw == *'<<'* ]]; then
             continue
         fi
         _hd_tail="${rm_scrub_raw:${#_hd_prefix}+${#_hd_opener}}"
-        # HIMMEL-3991 (judge J1643): bash joins a backslash-newline on the
+        # Bash joins a backslash-newline on the
         # opener line before it reads the body, so `cat <<'EOF' \<NL>/dev/null`
         # starts its body a line later. Join first, or the strip below takes
         # `/dev/null` as the body and ends on the wrong line, hiding what
         # follows. Only an odd trailing backslash run continues the line; `\\`
         # is an escaped one. Bash reads `\`+CR as an escaped CR, not a
         # continuation, and `\r` is already `\n` here, so with any `\`+CR in
-        # the command a join is unsafe: fail closed (judge J1643b).
+        # the command a join is unsafe: fail closed.
         while [[ $_hd_tail == *$'\n'* ]]; do
             _hd_l="${_hd_tail%%$'\n'*}"
             _hd_bs="${_hd_l##*[!\\]}"
@@ -626,8 +624,8 @@ if [[ $rm_scrub_raw == *'<<'* ]]; then
         # TAB characters (stripped before the delimiter-word comparison, per
         # `<<-` semantics) - without this, a legitimately tab-indented
         # terminator on a `<<-` heredoc is never found, and a benign body gets
-        # a false DENY via the fail-closed unstripped-string fallback below
-        # (HIMMEL-3029). A plain `<<` delimiter gets no such tolerance: bash
+        # a false DENY via the fail-closed unstripped-string fallback below.
+        # A plain `<<` delimiter gets no such tolerance: bash
         # itself requires the terminator flush-left there, so a tab-indented
         # terminator leaves the heredoc genuinely unterminated and the
         # fail-closed path is correct.
@@ -659,12 +657,12 @@ rm_scrub="${rm_scrub_raw//$'\n'/;}"
 fi
 # Separator before the flag tolerates a real space OR a lowercased ${IFS}
 # token (a common word-split bypass), and the flag itself tolerates one
-# leading quote char - both `-rf` and `"-rf"`/`'-rf'` trip it (HIMMEL-851 U2/U3).
+# leading quote char - both `-rf` and `"-rf"`/`'-rf'` trip it.
 RM_R_PAT="${RMPOS}"'rm(\.exe)?([^[:alnum:]_.-][^|;&]*)?([[:space:]]|\$\{ifs\})['\''"]?-[[:alnum:]_]*r'
 if [[ $rm_scrub =~ $RM_R_PAT ]]; then
     deny "recursive rm"
 fi
-# HIMMEL-2610: `--recursive` is the only GNU rm long option starting with
+# `--recursive` is the only GNU rm long option starting with
 # `r` (force/interactive/one-file-system/no-preserve-root/preserve-root/dir/
 # verbose/help/version all start elsewhere), so getopt_long accepts any
 # unambiguous prefix from `--r` up - `--rec`, `--recu`, etc. all spell
@@ -679,7 +677,7 @@ _rm_long_hit=0
 if [[ $rm_scrub =~ $RM_RECURSIVE_PAT ]]; then
     _rm_long_hit=1
 fi
-# HIMMEL-3650: the literal `-r`/`--r` scans above never see a flag the shell
+# The literal `-r`/`--r` scans above never see a flag the shell
 # only assembles at parse time (`rm -"r" d`, `rm -f"r" d`, `rm "--"recursive d`,
 # `rm -\r d`, `rm -$'r' d`, `command rm -r d`). Normalise instead of adding
 # spellings: strip every quote and backslash (the shell would drop them) and a
@@ -689,8 +687,8 @@ fi
 # (`rm -$x`) stays in an option word and denies. An ANSI-C string holding a
 # backslash (`$'\x2dr'`, `$'\055r'`) is unresolvable and denies outright.
 # Over-deny only: `rm -- -r` (a file literally named -r) and
-# `rm "my -r file"` deny - the word-level fix is HIMMEL-912.
-# HIMMEL-3991: rm_scrub has the continuation newline folded to `;`, so
+# `rm "my -r file"` deny - the fix needs a word-level tokenizer.
+# rm_scrub has the continuation newline folded to `;`, so
 # `rm \<NL>-"r" d` ends the rm segment before the quoted flag. Run the scans
 # below on a joined copy too (see cmd_lc_join). With a heredoc, the copy is
 # joined after the body strip, where `\r` is already `\n`, so a CRLF
@@ -708,7 +706,7 @@ if [[ $cmd_lc_join != "$cmd_lc" ]]; then
 fi
 _rm_srcs=("$rm_scrub")
 [[ $rm_join != "$rm_scrub" ]] && _rm_srcs+=("$rm_join")
-# HIMMEL-5329: an empty expansion before the rm word (see cmd_lc_noexp).
+# An empty expansion before the rm word (see cmd_lc_noexp).
 if [[ $rm_join == *'$'* ]]; then
     _noexp_strip "$rm_join"
     [ "$_noexp_over" = 0 ] || deny "more than 256 expansions at command position"
@@ -735,7 +733,7 @@ if [[ $rm_norm =~ $RM_R_PAT ]] || [[ $rm_norm =~ $RM_OPT_DOLLAR_PAT ]]; then
     deny "recursive rm (quote/escape-normalised)"
 fi
 if [[ $rm_norm =~ $RM_RECURSIVE_PAT ]]; then _rm_long_hit=1; fi
-# HIMMEL-4158: rm_norm splits a quoted wrapper value (`nice -n '1 0' find`)
+# rm_norm splits a quoted wrapper value (`nice -n '1 0' find`)
 # into two words, so also read the text with its quotes kept.
 if _find_delete "$rm_norm" || _find_delete "$_rm_src"; then
     deny "recursive delete (find -delete)"
@@ -745,14 +743,14 @@ if [[ ! $cmd_lc =~ $_rmpos_text ]] && { [[ $rm_norm =~ $FIND_RM_PAT ]] || [[ $_r
 fi
 # The glob is a cheap pre-check (the pattern needs both words in this order,
 # and rm_norm only drops characters, so it holds every word _rm_src does):
-# CMDPOS is slow on long `((` runs, HIMMEL-4321.
+# CMDPOS is slow on long `((` runs.
 if [[ $rm_norm == *xargs*rm* ]] && { [[ $rm_norm =~ $XARGS_RM_PAT ]] || [[ $_rm_src =~ $XARGS_RM_PAT ]]; }; then
     deny "mass delete (xargs rm)"
 fi
 done
 # Backslash-newline continuation: newlines are already folded to ';' above, so
 # `rm \<newline>-rf` becomes `rm \;-rf` here - the literal backslash before the
-# folded separator is the tell (HIMMEL-851 U3). `;+` (not a single `;`): on
+# folded separator is the tell. `;+` (not a single `;`): on
 # Windows, jq's text-mode stdout turns the JSON-decoded `\n` into `\r\n`, so
 # ONE real newline folds to TWO semicolons here - tolerate either.
 RM_CONT_PAT="${RMPOS}"'rm(\.exe)?[[:space:]]*\\[[:space:]]*;+[[:space:]]*-[[:alnum:]_]*r'
@@ -762,7 +760,7 @@ if [[ $_rm_src =~ $RM_CONT_PAT ]]; then
 fi
 done
 # /s is bound to the switch (space/another switch/end), not a path prefix -
-# `rd /scripts` must not false-trip on the "/s" substring (HIMMEL-851 U1).
+# `rd /scripts` must not false-trip on the "/s" substring.
 if contains '(^|[^[:alnum:]_.-])(del|erase|rd|rmdir)(\.exe)?([^[:alnum:]_.-]|$)[^|;&]*/s([^[:alnum:]_.-]|$)'; then
     deny "recursive Windows delete"
 fi
@@ -773,17 +771,17 @@ fi
 if contains '(^|[^[:alnum:]_.-])cipher(\.exe)?[[:space:]]+/w'; then
     deny "disk wipe"
 fi
-# Verb split (HIMMEL-1141): schtasks /query is read-only (the diagnostic the
+# Verb split: schtasks /query is read-only (the diagnostic the
 # clip-pipe cadence investigation was blocked from running), so only the
 # mutating verbs are refused — /query and help/no-verb forms stay allowed.
-# Mirrors parity_guard.py's schtasks line (lockstep, HIMMEL-754).
+# Mirrors parity_guard.py's schtasks line (lockstep).
 if contains "${CMDPOS}"'schtasks(\.exe)?[[:space:]]+(/create|/change|/delete|/end|/run|/config)([^[:alnum:]_.-]|$)'; then
     deny "scheduled-task mutation"
 fi
-# HIMMEL-1821: the same CAPABILITY is reachable without schtasks.exe - the
+# The same CAPABILITY is reachable without schtasks.exe - the
 # PowerShell ScheduledTasks module drives the Task Scheduler COM API directly,
-# so guarding one spelling guards nothing. Recognise the invoked-program token
-# (the HIMMEL-1746 lesson). The HIMMEL-1141 read/write split is preserved by
+# so guarding one spelling guards nothing. Recognise the invoked-program token.
+# The read/write split is preserved by
 # omission: get-scheduledtask / get-scheduledtaskinfo / export-scheduledtask
 # are NOT in the verb list and stay allowed as diagnostics. The trailing
 # boundary keeps the object-BUILDER cmdlets allowed - new-scheduledtask and
@@ -798,7 +796,7 @@ fi
 # LOCAL widening on purpose: `{` cannot go into the SHARED CMDPOS without
 # refusing `jq '{format: .x}'`, but no jq/JSON key is spelled
 # `<verb>-scheduledtask`, so here it costs nothing.
-# Mirrors parity_guard.py's ScheduledTasks line (lockstep, HIMMEL-754).
+# Mirrors parity_guard.py's ScheduledTasks line (lockstep).
 SCHEDVERBS='(register|unregister|set|start|stop|disable|enable)-scheduledtask([^[:alnum:]_.-]|$)'
 if contains "${CMDPOS}${SCHEDVERBS}" \
     || contains '(^|[{])[[:space:]]*["'\'']?'"${SCHEDVERBS}"; then
@@ -823,7 +821,7 @@ fi
 # an invocation), while the progid tolerates leading `(`/quotes so the
 # parenthesised expression form `-ComObject ('Schedule.Service')` is refused.
 #
-# RESIDUAL (HIMMEL-1821 CR r3/r4) - these defeat the scheduled-task rules
+# RESIDUAL - these defeat the scheduled-task rules
 # exactly as they already defeat every other atom in this file, measured, not
 # assumed: `ForEach-Object { schtasks /create ... }`, `ForEach-Object
 # { shutdown ... }` and `x=schtasks; $x /create` are all rc=0 today. They are
@@ -841,7 +839,7 @@ fi
 #     so it only ever caught the naive form, while denying a plain
 #     `grep 'GetTypeFromProgID("Schedule.Service")' docs/` - a false positive
 #     bought nothing.
-# A tokenizer closes these, a wider regex does not: HIMMEL-912. The auto-mode
+# A tokenizer closes these, a wider regex does not. The auto-mode
 # classifier and parity_guard remain the outer layers.
 if contains '(^|[|;&(={`])[[:space:]]*new-object[^|;&]*-c[[:alnum:]]*[[:space:]]*[:=]?[[:space:]]*[("'\'']*schedule\.service([^[:alnum:]_.-]|$)'; then
     deny "scheduled-task mutation (com)"
@@ -861,24 +859,23 @@ fi
 if contains "${CMDPOS}"'(icacls|takeown)(\.exe)?([^[:alnum:]_.-]|$)'; then
     deny "permission mutation"
 fi
-# HIMMEL-2054: resolve the repo's default branch (main/master, occasionally
+# Resolve the repo's default branch (main/master, occasionally
 # something else) so the lease carve-out below can tell an explicit non-default
 # branch from a protected one. Empty output on any failure (no origin,
 # detached, not a repo) -- the caller always keeps main/master as a floor.
 git_default_branch() {
     local ref
     ref=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || return 1
-    # HIMMEL-2054 CR round 3 (panel, codex-1): strip the fixed prefix, not
+    # Strip the fixed prefix, not
     # everything up to the LAST slash -- a default branch containing its own
     # slash (e.g. `release/stable`) was reduced to just `stable`, so the
     # actual default never matched $protected.
     printf '%s' "${ref#refs/remotes/origin/}" | LC_ALL=C tr '[:upper:]' '[:lower:]'
 }
 
-# HIMMEL-5358: every git invocation is judged on its argv as the shared
+# Every git invocation is judged on its argv as the shared
 # tokenizer reads it (guard-unwrap.sh sourced shell-tokenize.sh above), never
-# by regexes over flattened text. Three review rounds on PR 2397 (HIMMEL-5274)
-# kept finding a spelling the text rules missed: a quoted `$(…)` as -C's value,
+# by regexes over flattened text, which kept missing a spelling: a quoted `$(…)` as -C's value,
 # an apostrophe in a comment pairing with one on a later line.
 #
 # The walk: each segment's words join the logical command they belong to; a
@@ -1109,16 +1106,16 @@ _gp_inv() {
     return 0
 }
 
-# HIMMEL-5275: destructive gh verbs. gh changes or deletes repository settings
+# Destructive gh verbs. gh changes or deletes repository settings
 # (branch protection, rulesets, secrets, variables, workflows, the repo itself)
 # with the station's admin token, and Bash(gh *) auto-approves every one. The
 # walk below reads gh's argv from _gp_cmd, the same place git's is read, so a
 # path-qualified gh, `command gh`, an env prefix and global flags (-R/--repo)
 # before the verb all reach it. Reads and the merge paths other gates own
 # (block-unresolved-cr-merge, the himmel-gh wrapper) stay allowed.
-# ponytail: a graphql mutation (deleteBranchProtectionRule) and a gh whose
+# ponytail: (HIMMEL-5264) a graphql mutation (deleteBranchProtectionRule) and a gh whose
 # command word is computed ("$G" repo delete) are not modelled past the
-# unresolved text markers, upgrade path HIMMEL-5264 (the audit's G-series).
+# unresolved text markers, upgrade path the audit's G-series.
 _gh_re_unres='[^a-z0-9_-](secret|variable)[[:space:]]+(set|delete|remove)[^a-z0-9_-]|[^a-z0-9_-]workflow[[:space:]]+(disable|enable)[^a-z0-9_-]|[^a-z0-9_-]repo[[:space:]]+(delete|archive|unarchive|rename|transfer|edit)[^a-z0-9_-]|[^a-z0-9_-]release[[:space:]]+(delete|delete-asset)[^a-z0-9_-]|[^a-z0-9_-](ssh|gpg)-key[[:space:]]+(add|delete)[^a-z0-9_-]|[^a-z0-9_-]auth[[:space:]]+(logout|token)[^a-z0-9_-]|[^a-z0-9_-]pr[[:space:]]+merge[[:space:]].*--admin'
 _gh_re_unres_api_m='[^a-z0-9_-]api[[:space:]].*(-x[[:space:]]*|--method[[:space:]=]+)(delete|put|patch|post)'
 _gh_re_unres_api_p='protection|rulesets|secrets|variables|/disable|/enable|/hooks|/keys|/transfer|/environments|repos/[^[:space:]/]+/[^[:space:]/]+([[:space:]]|/?$)'
@@ -1489,7 +1486,7 @@ _gp_scan() {
 }
 
 # Only text that names git or one of its destructive subcommands pays for the
-# walk. A `cd` anywhere still turns the lease carve-out off (HIMMEL-2054): the
+# walk. A `cd` anywhere still turns the lease carve-out off: the
 # default branch is read from the hook's cwd, not the one the push runs in.
 _rm_flag=0 _rm_blind=0
 case "$_rm_long_hit:$cmd_lc" in
@@ -1547,7 +1544,7 @@ fi
 if contains "${CMDPOS}"'export[[:space:]]+destructive_ok='; then
     deny "export DESTRUCTIVE_OK"
 fi
-# Remote exec (HIMMEL-5279): a download piped, substituted or saved-then-run
+# Remote exec: a download piped, substituted or saved-then-run
 # into an interpreter. The bare interpreters (python, node, perl, ...) are a
 # sink only when they read the script from stdin (no arg, or a lone `-`), so
 # `curl x | python3 -m json.tool` and `| node -p ...` stay allowed.

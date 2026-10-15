@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016,SC2088  # the literal ~ and $(...) are the payloads under test
-# Tests for scripts/hooks/block-bare-qmd-query.sh (HIMMEL-3956 / HIMMEL-3960).
+# Tests for scripts/hooks/block-bare-qmd-query.sh.
 #
 # Usage: bash scripts/hooks/test-block-bare-qmd-query.sh
 #
@@ -80,14 +80,14 @@ deny 'git status
 qmd query x'
 deny 'qmd \
   query x'
-# HIMMEL-4011: a quoted verb is still the verb.
+# A quoted verb is still the verb.
 deny 'qmd "query" x'
 deny "qmd 'search' x"
 deny 'qmd "vsearch" x'
 deny "qmd --index luna 'query' x"
 deny "timeout 60 qmd 'query' x"
 deny 'bun ~/.himmel/qmd-fork/src/cli/qmd.ts "search" x'
-# HIMMEL-4121: bash removes quotes and escapes before qmd sees a word, so a
+# Bash removes quotes and escapes before qmd sees a word, so a
 # verb or program spelled through them is still the verb or program.
 deny 'qmd "qu"ery x'
 deny 'qmd q"uery" x'
@@ -144,7 +144,7 @@ E
 qmd $"query" x'
 deny "echo \$((1<<2)); qmd \$'\\x71uery' x"
 deny "echo $(printf 'a%.0s' $(seq 1 17000)); qmd \$'\\x71uery' x"
-# A verb ending a nested -c string: its closing quote ends the word (J1666b).
+# A verb ending a nested -c string: its closing quote ends the word.
 deny "bash -c 'qmd query'"
 deny 'bash -c "qmd search"'
 deny "sh -c 'qmd vsearch'"
@@ -154,7 +154,7 @@ deny "sh -c 'qmd --index foo query'"
 deny 'echo "x; qmd query"'
 deny "qmd query\"x\"; bash -c 'qmd query'"
 deny "echo \"\$(echo \"'\")\"; bash -c 'qmd query'"
-# ... and so does a QUOTED verb ending it (J1666d).
+# ... and so does a QUOTED verb ending it.
 deny "bash -c 'qmd \"query\"'"
 deny 'sh -c "qmd '"'search'"'"'
 deny 'echo "x; qmd '"'query'"'"'
@@ -176,7 +176,7 @@ q$"md" query x'
 deny 'echo $((1<<2)); q$"md" query x'
 deny "echo $(printf 'a%.0s' $(seq 1 17000)); q\$\"md\" query x"
 # Quote offsets are bytes: a multibyte character before them must not shift
-# them under a UTF-8 locale (J1666c).
+# them under a UTF-8 locale.
 U8=$(locale -a 2>/dev/null | grep -iE -m1 '^(c|en_us)\.utf-?8$')
 deny_u8() {
     if [ -z "$U8" ]; then echo "SKIP deny (no UTF-8 locale): $1"; return; fi
@@ -186,7 +186,7 @@ deny_u8 "echo é; bash -c 'qmd query'"
 deny_u8 'bash -c "echo ü; qmd search"'
 deny_u8 "bash -c 'echo 日本; qmd query'"
 deny_u8 "x=ü bash -c 'qmd query'"
-# HIMMEL-4140: more program positions — zsh's =cmd, a case arm, eval.
+# More program positions — zsh's =cmd, a case arm, eval.
 deny '=qmd query x'
 deny 'env =qmd search x'
 deny 'case a in a) qmd query x;; esac'
@@ -194,7 +194,7 @@ deny 'case a in (a|b) qmd vsearch x;; esac'
 deny 'eval qmd query x'
 deny "eval 'qmd \"qu\"ery x'"
 deny 'command eval "qmd \"search\" x"'
-# HIMMEL-4140 / HIMMEL-4151: a nested -c string is decoded like a top-level
+# A nested -c string is decoded like a top-level
 # word (ANSI-C, backslash, adjacent quotes) and read again as a command.
 deny "sh -c 'qmd \"qu\"ery x'"
 deny "bash -c \$'qmd query'"
@@ -204,7 +204,7 @@ deny 'bash -ec "qmd q\"uery\" x"'
 deny "bash -c \"bash -c 'qmd \\\"qu\\\"ery'\""
 deny 'sh -c "$(echo qmd) query"'
 deny 'sh -c "`echo qmd` query"'
-# The same substitution in program position at the top level (J1684b).
+# The same substitution in program position at the top level.
 deny '$(echo qmd) query x'
 deny '`echo qmd` query x'
 deny '$(printf qmd) query x'
@@ -225,14 +225,14 @@ deny "bash -c 'cat <<E
 x
 E
 qmd q\"uery\" x'"
-# J1666e: nested spellings both base and #1666 allowed, each ran a bare verb.
+# Nested spellings that each ran a bare verb.
 deny "nice sh -c 'qmd \\vse'\"arch;echo\""
 deny "bash -c \$'qmd --index foo query\"\";'"
 deny "bash -c 'echo é; qmd '\\''search'\\'';echo'"
 deny "env bash -c \$'qmd --index foo query\"\";'; echo é"
 deny_u8 "bash -c 'echo é; qmd '\\''search'\\'';echo'"
 # zsh's ANSI-C escapes: \C-<end>, a bare \C or \M give nothing, and \c<x> is
-# a plain `c<x>` (the J1666d corpus, run under zsh).
+# a plain `c<x>` (run under zsh).
 deny "cd /tmp && q\"md\" \$'\\C-'query x"
 deny "qmd \$'\\M'search x"
 deny "qmd \$'\\C-'\"vsearch\""
@@ -267,7 +267,7 @@ deny "bash -o pipefail \`sh -c 'qmd q\"uery\"'\` -c true"
 # there is a program: `bash "$(printf qmd)" query x` runs qmd.
 deny "bash -o pipefail \"\$(printf x)\" -c 'qmd status'"
 deny 'bash "$(printf qmd)" query x'
-# HIMMEL-4166: other shells and launchers run a nested string too.
+# Other shells and launchers run a nested string too.
 deny "rbash -c 'qmd query x'"
 deny "mksh -c 'qmd query x'"
 deny "ash -c 'qmd query x'"
@@ -303,7 +303,7 @@ deny "env -i -S'qmd query x'"
 deny 'set -- qmd query x; "$@"'
 deny 'f() { "$@"; }; f qmd query x'
 deny 'set -- query x; qmd "$@"'
-# HIMMEL-4218: wrappers that run their arguments as a program.
+# Wrappers that run their arguments as a program.
 deny 'watch qmd query x'
 deny 'watch -n 5 qmd query x'
 deny "watch 'qmd query x'"
@@ -325,7 +325,7 @@ deny "alias q='qmd'; q search x"
 deny 'source <(echo qmd query x)'
 deny '. <(echo qmd query x)'
 deny 'bash <(echo qmd query x)'
-# HIMMEL-4244: the residual launchers. A -c string, a group operand, a
+# The residual launchers. A -c string, a group operand, a
 # detached session, a job read from stdin, and prefix wrappers.
 deny "sg users -c 'qmd query x'"
 deny "sg users 'qmd \"qu\"ery x'"
@@ -369,7 +369,7 @@ deny 'pkexec qmd query x'
 deny 'pkexec --user root qmd query x'
 deny '/usr/bin/strace -f qmd query x'
 deny "bwrap --bind / / sh -c 'qmd query x'"
-# HIMMEL-4245: a shell that is the consumer's program, behind a wrapper.
+# A shell that is the consumer's program, behind a wrapper.
 deny "echo 'qmd query x' | xargs bash"
 deny "echo 'qmd query x' | env sh"
 deny "echo 'qmd query x' | nice bash"
@@ -394,7 +394,7 @@ allow "tmux new -d 'qmd status'"
 allow 'strace -f qmd status'
 allow "sg users -c 'qmd status'"
 allow "echo 'qmd status' | at now"
-# HIMMEL-4245 (judge J1784g): a consumer stage is cleared of its shell word
+# A consumer stage is cleared of its shell word
 # only when its program is a known non-executing filter. Every other launcher
 # — modelled or not, with operands or not — keeps the shell word fail-closed.
 deny 'echo qmd query x | chrt 10 sh'
@@ -452,7 +452,7 @@ deny 'hash -p /bin/sh grep; echo qmd query x | grep -v sh'
 deny '. ./defs.sh; echo qmd query x | grep -v sh'
 deny "bash -c 'source f; echo qmd query x | grep -v sh'"
 deny 'echo qmd query x | xargs -a f grep -v sh'
-# HIMMEL-4244: a pipe continues across a newline, so a stage span holding a
+# A pipe continues across a newline, so a stage span holding a
 # newline or CR is never a filter (the next line's shell goes unclassified).
 deny $'echo qmd query x | grep -v sh |\nsh'
 deny $'echo qmd query x | grep -v sh | \nsh'
@@ -543,7 +543,7 @@ allow 'grep -rn "qmd search" docs | sed -nE /x/p sh'
 allow 'grep -rn "qmd search" docs | sed -n -e /x/p - sh'
 allow 'grep -rln "qmd search" docs | xargs -0 -n 1 grep -c sh'
 allow "grep -rn 'qmd query' . | awk '{print \$1}' | grep -v source"
-# HIMMEL-4337: a filter that runs its input with no shell word in the stage
+# A filter that runs its input with no shell word in the stage
 # (sed e, awk system, sort --compress-program=PROG), and a consumer redefined
 # as a function, run their stdin: no filter clears them.
 deny 'echo qmd query x | sed e'
@@ -552,7 +552,7 @@ deny 'echo qmd query x | sort --compress-program=sh'
 deny 'cat() { sh; }; echo qmd query x | cat'
 deny "echo qmd query x | awk '{print | \"sh\"}'"
 deny "echo qmd query x | awk '{print | \"sh\"}' | cat"
-# HIMMEL-4330: a newline (or CR) after `|` / `|&` continues the pipeline.
+# A newline (or CR) after `|` / `|&` continues the pipeline.
 deny $'echo qmd query x |\nsh'
 deny $'echo qmd query x | grep -v y |\n sh'
 deny $'echo qmd query x |&\nsh'
@@ -560,7 +560,7 @@ deny $'echo qmd query x |\r\nsh'
 deny $'echo qmd query x |\n\n  sh'
 allow $'echo qmd query x |\ngrep -v sh'
 allow $'echo qmd query x |\nhead -1'
-# HIMMEL-4337: the `&` of a redirection is no command boundary.
+# The `&` of a redirection is no command boundary.
 deny 'echo qmd query x 2>&1 | sh'
 deny 'echo qmd query x 2>&1 | grep -v sh | sh'
 deny 'echo qmd query x &>/dev/null | sh'
@@ -568,7 +568,7 @@ deny 'echo qmd query x >&2 | sh'
 deny 'echo qmd query x 2>&1 |& bash'
 allow 'echo qmd query x 2>&1 | grep y'
 allow 'grep -rn "qmd query" docs 2>&1 | head'
-# HIMMEL-4337: an interpreter, an eval or an expansion that runs its stdin.
+# An interpreter, an eval or an expansion that runs its stdin.
 deny 'echo qmd query x | python3'
 deny 'echo qmd query x | python3.12 -'
 deny 'echo qmd query x | perl'
@@ -598,7 +598,7 @@ allow 'echo qmd query x | wc -l'
 allow 'echo qmd query x | jq .'
 allow 'rg -l x | while read f; do echo "$f"; done'
 allow 'grep -rln "qmd search" docs | while read f; do echo "$f"; done'
-# HIMMEL-4337: a file the same command wrote, then ran.
+# A file the same command wrote, then ran.
 deny 'echo qmd query x > /tmp/x.sh; sh /tmp/x.sh'
 deny 'echo qmd query x >> f.sh; bash f.sh'
 deny 'echo qmd query x > f; source f'
@@ -607,7 +607,7 @@ deny 'echo qmd query x | tee f; bash f'
 deny 'echo qmd query x | tee -a f >/dev/null; bash -x f'
 deny "echo 'import os; os.system(\"qmd query x\")' >> f.py; python3 f.py"
 deny 'echo qmd query x >| f; sh f'
-# Stdin-fed shell/interpreter reading a written file (CR round 2 codex-1).
+# Stdin-fed shell/interpreter reading a written file.
 deny 'echo qmd query x > f; sh < f'
 deny 'echo qmd query x > f; bash 0< f'
 deny 'echo qmd query x > f; python3 < f'
@@ -621,7 +621,7 @@ allow 'echo qmd status > f; sh < f'
 allow 'echo qmd query x > f; wc -l < f'
 allow 'echo qmd query x > f; grep x < f'
 # bash -s operands are positional args, and an operand naming stdin is no
-# program source, src mode included (CR round 3 codex-1/codex-2).
+# program source, src mode included.
 deny 'echo qmd query x > f; bash -s ignored < f'
 deny 'echo qmd query x > f; source /dev/stdin < f'
 deny 'echo qmd query x > f; sh /dev/stdin < f'
@@ -645,7 +645,7 @@ allow 'echo qmd status > f.sh; bash -o errexit f.sh'
 allow 'echo qmd query x > notes.txt; cat notes.txt'
 allow 'bash scripts/foo.sh'
 allow 'echo qmd status > f.sh; sh f.sh'
-# HIMMEL-4305: launchers that type or ship a command elsewhere.
+# Launchers that type or ship a command elsewhere.
 deny "tmux send-keys 'qmd query x' Enter"
 deny "tmux send-keys -t s 'qmd \"qu\"ery x' Enter"
 deny 'tmux send-keys q m d Space query Space x Enter'
@@ -732,12 +732,12 @@ timed 2 'deny: 700 sh words, then a nested -c' "echo ${pad_sh}; bash -ec \"qmd q
 timed 2 'deny: 700 sh words before a nested -c' "echo ${pad_sh}bash -c 'qmd \"qu\"ery x'"
 timed 0 'allow: qmd status, then 700 sh words' "qmd status; echo ${pad_sh}"
 timed 0 'allow: qmd status, then 2000 words' "qmd status; echo ${pad_w}"
-# HIMMEL-5328: this row holds a `$`, so guard_expansion_recheck re-feeds the
+# This row holds a `$`, so guard_expansion_recheck re-feeds the
 # hook once on the stripped text (about 2x). Measured: 812ms idle locally,
 # 1809ms on the loaded CI shard (PR 2506, run 38363586521); budget = 2x CI.
 timed 0 'allow: qmd status, bash -c and 2000 words' "qmd status; bash -c 'echo \$0' ${pad_w}" 3600
 
-# HIMMEL-4505: stdin-fed residuals. A shell option's argument (-o errexit,
+# Stdin-fed residuals. A shell option's argument (-o errexit,
 # -O extglob, --rcfile f) is no program operand, at/batch read their job from
 # stdin, and a -c string that itself reads stdin is not the program source.
 w='echo qmd query x > f; '
@@ -770,7 +770,7 @@ allow "${w}at -f job.sh now"
 allow "${w}sh -c 'echo hi' < g"
 allow "bash -o errexit -c 'qmd status'"
 
-# HIMMEL-4526: past the 8 KB (nested scan) and 16 KB (normaliser) budgets a
+# Past the 8 KB (nested scan) and 16 KB (normaliser) budgets a
 # command naming qmd and a verb denies instead of falling back to a narrower
 # reading. size_deny/size_allow LABEL CMD keep the padded payload out of the log.
 size_deny() { assert_rc "deny: $1" 2 "$(run_case "$(j_bash "$2")")"; }
@@ -832,7 +832,7 @@ allow "git log --grep 'qmd search'"
 allow 'echo qmd query'
 allow 'git status'
 allow 'qmd queryx'
-# HIMMEL-4011 counter-examples: quoting must not widen the match past the verb.
+# Counter-examples: quoting must not widen the match past the verb.
 allow 'qmd "status"'
 allow "qmd 'queryx' y"
 allow 'qmd "query-notes" y'
@@ -841,7 +841,7 @@ allow "qmd 'search the vault' y"
 allow 'echo qmd "query" x'
 allow 'grep -rn "qmd \"query\"" scripts/'
 allow "bash scripts/lib/qmd-bounded.sh 'query' -c luna x"
-# HIMMEL-4121: a word that only STARTS with a quoted verb is a longer word.
+# A word that only STARTS with a quoted verb is a longer word.
 allow 'qmd "query"" notes" y'
 allow "qmd 'query'' notes' y"
 allow 'qmd query" notes" y'
@@ -851,7 +851,7 @@ allow 'qmd "query"x y'
 allow 'echo q"md" "qu"ery x'
 allow 'grep -rn "q\"md\" q\"uery\"" scripts/'
 allow 'printf "%s\n" "a; qmd" status'
-# HIMMEL-4141: a word of empty quotes alone is an empty ARGUMENT, so what
+# A word of empty quotes alone is an empty ARGUMENT, so what
 # follows it is no longer the verb; empty quotes inside a word still vanish.
 allow 'qmd "" query x'
 allow "qmd '' search x"
@@ -904,7 +904,7 @@ deny 'qmd --index "" query x'
 deny 'qmd "" status; qmd query x'
 # `<<` inside $((…)) is a shift, not a heredoc: the words are still read.
 allow "echo \$((1<<2)); qmd \$'query notes' y"
-# HIMMEL-4140 / HIMMEL-4151: a decoded nested string is still read as words.
+# A decoded nested string is still read as words.
 allow "bash -c 'qmd status'"
 allow "bash -c \$'qmd \\x73tatus'"
 allow "eval 'qmd \"query notes\" y'"
@@ -918,7 +918,7 @@ allow "bash </dev/null -c 'qmd status' 2>&1"
 allow "qmd status; bash -c 'IFS=\$'\"'\"'\\t'\"'\"' read -r a <<E
 x
 E'"
-# HIMMEL-4574: a quoted separator in a reader's argument is a pattern, not a
+# A quoted separator in a reader's argument is a pattern, not a
 # command boundary, when every command run is a reader (grep, cat, head, …).
 allow "grep -n 'a\\|qmd query' x"
 allow 'grep -E "qmd-query|qmd query" x'
@@ -927,7 +927,7 @@ allow "ls scripts/hooks | grep -E 'bare|qmd vsearch'"
 allow "grep -n 'x; qmd query' f 2>&1 | wc -l"
 allow "cat f | grep 'a|qmd query'"
 allow "{ grep 'a;qmd query' f; }"
-# The HIMMEL-4479 audit shapes (already allowed on main; kept as regressions).
+# The audit shapes (already allowed on main; kept as regressions).
 allow 'ls scripts/hooks | grep block-bare-qmd-query'
 allow 'git grep -n mcp__qmd__query'
 # ... but a non-reader anywhere, a real separator or an interpreter still denies.
@@ -944,7 +944,7 @@ deny "PATH=/tmp; grep 'a|qmd query' f"
 deny "grep() { sh; }; grep 'a|qmd query' f"
 deny "echo 'x; qmd query' | grep x"
 deny "bash -c 'grep x f; qmd query'"
-# HIMMEL-4989: a command word built from a glob, a parameter expansion or a
+# A command word built from a glob, a parameter expansion or a
 # command substitution can be tmux, screen or pwsh, which type or run a string
 # the guard cannot read; a file the command wrote can be run through sh -c, ENV
 # or BASH_ENV; and an alias or function defined in the command can be tmux.
@@ -1020,7 +1020,7 @@ case "$msg" in
     *) echo "FAIL deny text does not name qmd-bounded.sh: $msg"; FAILED=$((FAILED + 1)) ;;
 esac
 
-# --- HIMMEL-5101: the path prefix stops at an open paren (linear on a `(` run) ---
+# --- the path prefix stops at an open paren (linear on a `(` run) ---
 # Every `(` is a CMDPOS anchor; a prefix that crosses `(` rescans the whole run
 # from each one (quadratic), and a timed-out PreToolUse hook does not deny.
 # shellcheck disable=SC2046 # one word per repeat is the point
@@ -1047,7 +1047,7 @@ deny 'sudo /tmp/a(b)/qmd query x'
 deny 'node /tmp/a(b)/qmd query x'
 allow '/tmp/a(b)/qmd status'
 
-# --- HIMMEL-4525: the sanctioned wrapper, and a file search for the words
+# --- the sanctioned wrapper, and a file search for the words
 # `qmd query`, are no bare verb for a pipe consumer, a written-then-run file or a
 # launcher ---
 # The wrapper's own output is data to an interpreter that has a program of its
@@ -1089,7 +1089,7 @@ deny "grep -rn 'qmd query' scripts | sh"
 deny "rg -n 'qmd query' scripts | bash"
 deny "grep -rn 'qmd query' scripts | python3"
 deny "rg --pre sh -n 'qmd query' scripts | xargs -n1 echo"
-# HIMMEL-4525 review: an interpreter that execs its own stdin runs the hits.
+# An interpreter that execs its own stdin runs the hits.
 deny "grep -h 'qmd query' commands.txt | python3 -c 'import sys; exec(sys.stdin.read())'"
 deny "grep -h 'qmd query' commands.txt | node -e 'require(\"child_process\").execSync(require(\"fs\").readFileSync(0,\"utf8\"))'"
 deny "$BQ | python3 -c 'import os,sys; os.system(sys.stdin.read())'"
@@ -1111,7 +1111,7 @@ deny "$BQ | xargs -n1 qmd query"
 deny "$BQ; qmd query y | python3 -c 'import sys'"
 deny "ssh host '$BQ; qmd query y'"
 deny "grep -rn 'x' scripts; echo qmd query y | python3 -c 'import sys'"
-# HIMMEL-4525 judge: a search that PRINTS text of the caller's choosing
+# A search that PRINTS text of the caller's choosing
 # (-r/--replace, in a cluster or as --replace=) hides the verb in its program,
 # and an interpreter is relaxed only for a named reader form.
 RGR="rg -o -r 'c=\"qmd query x\";__import__(\"os\").system(c)' '.+' -m1 /etc/hostname"
@@ -1129,7 +1129,7 @@ deny "$BQ | python3 -m code"
 deny "$BQ | python3 -c 'import runpy;runpy.run_path(\"/dev/stdin\")'"
 allow "rg -n 'qmd query' scripts | python3 -c 'import sys; print(sys.stdin.read())'"
 allow "rg -l 'qmd query' scripts | python3 parse.py"
-# HIMMEL-4525 codex: a code string is relaxed only when every identifier in it
+# A code string is relaxed only when every identifier in it
 # is a plain reader word, so perl qx and ruby spawn stay strict.
 deny "grep -h 'qmd query' commands.txt | perl -ne 'qx(\$_)'"
 deny "grep -h 'qmd query' commands.txt | perl -ne 'readpipe(\$_)'"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse hook for Bash/PowerShell (HIMMEL-441).
+# PreToolUse hook for Bash/PowerShell.
 #
 # Blocks container invocations that grant root-equivalent host access. Membership
 # in the `docker` group is root-equivalent: a user/agent in it can start a

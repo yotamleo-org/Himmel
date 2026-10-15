@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # block-chokepoint-env-prefix.sh -- PreToolUse hook (matcher "Bash|PowerShell"):
-# DENY env-prefixed invocations of the REGISTERED sanctioned chokepoints
-# (HIMMEL-1746).
+# DENY env-prefixed invocations of the REGISTERED sanctioned chokepoints.
 #
 # The sanctioned chokepoints (scripts/chokepoints.json -- one registry, one
 # reader; the chokepoint paths x their seam variables live THERE, never
@@ -14,7 +13,7 @@
 # prefix
 #     VAR=x bash scripts/handover/merge-on-green.sh
 # cannot match the literal allow-rule (the native permission matcher bails
-# on VAR= shapes, HIMMEL-203), so it falls through to classifier judgment.
+# on VAR= shapes), so it falls through to classifier judgment.
 # This guard gives that class its structural home: registered seams are
 # denied HERE, with an actionable message, instead of resting on the
 # classifier. It is a belt for the sanctioned SET only -- NOT a general
@@ -24,7 +23,7 @@
 # termination is already hook-invisible for any self-authored script -- so
 # this is posture, not an exploit fix.)
 #
-# INVARIANT (HIMMEL-1746 CR rounds 1+2 -- four findings, ONE class): a
+# INVARIANT (four findings, ONE class): a
 # chokepoint is recognized ONLY when its registered path is the
 # INVOKED-PROGRAM TOKEN of a command segment -- the shell word standing at
 # the segment's command position after TOKENIZING the segment (quote-,
@@ -38,11 +37,11 @@
 # over-match cannot happen; and word identity comes from the tokenizer,
 # not from an enumerated boundary character set, so there is no boundary
 # list to leave a character out of -- under-match by "unlisted separator"
-# cannot happen either. All four round-1/2 findings were instances of
+# cannot happen either. All four findings were instances of
 # violating exactly this invariant: substring-searching a string, then
 # patching the characters around the match.
 #
-# HIMMEL-1803 (the env option arm): the scanner's model of `env` is
+# The env option arm: the scanner's model of `env` is
 # DERIVED FROM env's real option grammar (the ENV_LONG_OPTS table below),
 # not from an enumerated list of spellings -- three CR rounds of "add the
 # spelling the last round missed" (-S, then the clustered -vS, then the
@@ -58,7 +57,7 @@
 # (assume the option MAY consume an operand), so no spelling, known or
 # future, can silently park command position on a would-be operand.
 #
-# HIMMEL-1803 round 4 completed that invariant's two missing halves.
+# That invariant has two more halves.
 # The SHORT-cluster arm had no conservative default at all (an unknown
 # letter returned "unknown", a bare word-skip) and lacked GNU's -a
 # (the short spelling of --argv0): both are the long arm's default now.
@@ -70,21 +69,20 @@
 # parse_split_string): a leading -i / -u / -C inside the string is an
 # env OPTION, never the invoked program. scan_split_argv is that model.
 #
-# HIMMEL-1803 round 6 named the property the whole family had been
-# violating piecemeal: the scan is a positional SIMULATION of the argv
-# each interpreter in the chain (shell, env, env's -S splitter) really
-# receives, so every hand-off between stages must be ARGV-FAITHFUL --
+# The property the whole family must satisfy: the scan is a positional
+# SIMULATION of the argv each interpreter in the chain (shell, env, env's
+# -S splitter) really receives, so every hand-off between stages must be ARGV-FAITHFUL --
 # word count, word order, and word content INCLUDING ZERO-LENGTH WORDS
 # -- and every consumption decision must come from the grammar of the
-# interpreter that actually consumes the word. Rounds 1-4 were grammar
-# infidelities (operand consumption mis-modelled); round 6 was a
-# REPRESENTATION infidelity: the word streams between stages were bare
-# newline-delimited lines, and a zero-length word is indistinguishable
+# interpreter that actually consumes the word. A grammar infidelity
+# mis-models operand consumption; a REPRESENTATION infidelity is another
+# failure: a word stream between stages of bare newline-delimited lines
+# fails it, because a zero-length word is indistinguishable
 # from no word in that encoding (and $(...) strips trailing newlines),
 # so empty words -- which GNU env's -S splitter really produces from
 # '' / "" and which real getopt really consumes as operands (env -a ''
-# ARM=1 cmd runs cmd WITH the seam; verified on coreutils env) -- were
-# silently dropped, shifting every later word's role. That mis-denied
+# ARM=1 cmd runs cmd WITH the seam; verified on coreutils env) -- would be
+# silently dropped, shifting every later word's role. That mis-denies
 # as often as it mis-allowed (an empty word standing AT command
 # position means nothing can exec, which is the allow direction).
 # Closed structurally: every word line in every stream now carries a
@@ -94,7 +92,7 @@
 # misreading the verdict as the operand. No stage can drop or invent
 # a word again without breaking the encoding visibly.
 #
-# HIMMEL-2927 (the unassigned-clear class): `env -u NAME` / `env --unset
+# The unassigned-clear class: `env -u NAME` / `env --unset
 # NAME` / `env --unset=NAME` clear a registered seam with no assignment
 # word, and an in-shell `unset NAME` / `export -n NAME` clears it with no
 # assignment word EITHER, from a DIFFERENT segment than the chokepoint's --
@@ -104,7 +102,7 @@
 # change, both still resolved against the SAME registered-name set the
 # INVARIANT already checks:
 #   - inside `env`'s option state, `-u`/`--unset`'s operand (attached,
-#     "=", or the next word -- the same operand-class grammar HIMMEL-1803
+#     "=", or the next word -- the same operand-class grammar
 #     derives every other env option from) is added to that SEGMENT's
 #     names exactly like a leading assignment word would be -- still SAME
 #     SEGMENT, still gated on `env` being a recognized wrapper.
@@ -124,7 +122,7 @@
 # `unset`/`export -n`'s OWN option scanning (scan_segment's `unset)` and
 # `export)` arms) went through three CR rounds each finding the next edge
 # a bash-option-VALIDITY model missed (-fn, the -f leading/trailing
-# boundary, `--`, `-x`) -- round 5's ruling stopped modelling validity at
+# boundary, `--`, `-x`) -- the ruling is to stop modelling validity at
 # all: for `unset`, or an `export` carrying `-n` anywhere in its leading
 # run of option-shaped words (`--` and combined forms included), every
 # remaining word that does not start with `-` is a candidate name, full
@@ -136,7 +134,7 @@
 # guard has no business re-implementing). Over-deny is the safe direction
 # for a guard; a false ALLOW is the defect class this ticket exists for.
 #
-# HIMMEL-2933 (the third clearing shape): a plain or exported ASSIGNMENT in
+# The third clearing shape: a plain or exported ASSIGNMENT in
 # an earlier segment -- `SEAM=0;` / `export SEAM=;` / `export SEAM=0 &&` --
 # clears a registered seam with no `unset`/`export -n`/`env -u` in sight
 # either. A segment consumed ENTIRELY as leading assignment words (no
@@ -147,9 +145,9 @@
 # inspection -- `export SEAM=1` denies too, a documented arming-direction
 # over-deny).
 #
-# HIMMEL-2939 (the fourth clearing shape): `let`/`declare`/`typeset`/
+# The fourth clearing shape: `let`/`declare`/`typeset`/
 # `readonly` all assign in the CURRENT shell exactly like a plain assignment
-# word (HIMMEL-2933) does, `printf -v NAME` and `read NAME` write a shell
+# word does, `printf -v NAME` and `read NAME` write a shell
 # variable the same way, and the legacy `$[NAME=0]` arithmetic construct
 # assigns too, all with no `unset`/`export -n`/`env -u`/plain assignment in
 # sight. Same fail-closed posture, resolved against the SAME registered-name
@@ -163,12 +161,12 @@
 # a segment containing the literal `$[` anywhere has every `NAME=` word in
 # it folded into UNSET_NAMES too, no bracket-depth tracking, same fail-closed
 # direction. `local` is function-scoped and cannot precede a top-level
-# chokepoint, so it is not modelled. `mapfile`/`readarray` (HIMMEL-2943) DO
+# chokepoint, so it is not modelled. `mapfile`/`readarray` DO
 # fold: `mapfile NAME` converts a scalar seam into an array bash does not
 # export to children, same clearing effect as `unset` -- word-bounded scan
 # over every remaining word, same as `let`/`read`, no option-shape model.
 #
-# HIMMEL-3185 (the fifth clearing shape): an arithmetic COMMAND `(( ... ))` or
+# The fifth clearing shape: an arithmetic COMMAND `(( ... ))` or
 # EXPANSION `$(( ... ))` whose body assigns a registered seam clears it in
 # the current shell like `let` does. `((NAME=0))` was already denied only by
 # accident (the split body reads as an assignment WORD); the spaced
@@ -183,20 +181,20 @@
 # (and `$(` / backtick inside double quotes) opens a fresh command
 # position via segmentation, so subshell, $(...), and backtick-wrapped
 # invocations are recognized. Known residual (documented, unchanged
-# posture -- the determined-bypass class this belt does not target,
-# HIMMEL-912; the classifier still sees these commands): deliberately
+# posture -- the determined-bypass class this belt does not target;
+# the classifier still sees these commands): deliberately
 # case-varied paths/vars, a path assembled from shell variables ($X.sh),
 # PowerShell-native $env: syntax, sudo / xargs / find -exec wrappers (the
 # transparent nice / timeout / stdbuf / ionice / chrt wrappers are NOT a
-# residual since HIMMEL-3904: scan_segment steps over them, and an option
+# residual: scan_segment steps over them, and an option
 # wrapper_skip cannot model denies when the segment names a chokepoint),
 # multi-statement command substitutions inside double quotes, and string
 # reconstruction deeper than the bounded eval / `bash -c` recursion.
 #
 # DENY CHANNELS: structured permissionDecision:"deny" JSON on stdout (which
 # overrides the exit code where parsed) PLUS exit 2 + stderr -- the
-# belt-and-braces idiom; see orchestrator-inline-guard.sh (HIMMEL-1791) and
-# test-block-glm-external-writes.sh round 4.
+# belt-and-braces idiom; see orchestrator-inline-guard.sh and
+# test-block-glm-external-writes.sh.
 #
 # FAIL-OPEN POSTURE: this guard is a belt AROUND chokepoints whose bare
 # invocations are already governed by allow-rules + the classifier. Every
@@ -239,26 +237,25 @@ command -v jq >/dev/null 2>&1 || { warn "jq not on PATH -- allowing (fail-open, 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY="${CHOKEPOINT_REGISTRY:-$SCRIPT_DIR/../chokepoints.json}"
 
-# HIMMEL-2123: bash builtin `read` instead of `$(cat)`.
+# Bash builtin `read` instead of `$(cat)`.
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
 [ -n "$input" ] || exit 0
 
-# HIMMEL-2123: tool_name + command in ONE jq call (via `<<<`, no printf fork)
+# tool_name + command in ONE jq call (via `<<<`, no printf fork)
 # instead of two separate `printf | jq` pipelines. `// ""` (empty STRING),
 # not `// empty` (a zero-output jq GENERATOR): in a `+`-concatenation, one
 # operand collapsing to `empty` zeroes out the WHOLE expression, not just
 # that field -- and this hook's case arm allows tool=="" through on purpose,
 # so silently blanking $cmd here would have been a real behavior change, not
 # a coincidental no-op like in the sibling hooks. Windows jq.exe writes
-# CRLF, so strip the stray CR off $tool (same shape as require-quiet-run.sh,
-# HIMMEL-2060).
+# CRLF, so strip the stray CR off $tool (same shape as require-quiet-run.sh).
 # RETASK R2123A (independent review): `|tostring` on both operands -- a
 # NON-STRING but present field (e.g. `"command":["x"]`) makes jq's `+` a
 # type error, a DIFFERENT failure than "field is null" and swallowed by the
 # same `|| true`, silently blanking tool AND cmd. `tostring` is a no-op on
 # an already-string value.
-# HIMMEL-4130 (HIMMEL-3986 sweep): `.command // .cmd` fell through to .cmd
+# `.command // .cmd` fell through to .cmd
 # on a PRESENT but false .command, so the hook judged text the harness does
 # not run. Only a null/absent .command falls back to .cmd; a non-string one
 # is flagged on line 2 and fails closed below.
@@ -290,7 +287,7 @@ if [ "$kind" = "x" ]; then
 fi
 
 [ -n "$cmd" ] || exit 0
-# HIMMEL-1813: the untouched command, newlines included, for the
+# The untouched command, newlines included, for the
 # parse-independent backstop (raw_mention) that runs before scan_text.
 raw_cmd=$cmd
 
@@ -302,7 +299,7 @@ raw_cmd=$cmd
 cmd="${cmd//\\$'\r\n'/}"
 cmd="${cmd//\\$'\n'/}"
 # Fold remaining newlines/CRs to ';' so each line is its own segment (same
-# fold as block-destructive-commands.sh). HIMMEL-2123: `<<<` instead of a
+# fold as block-destructive-commands.sh). `<<<` instead of a
 # `printf |` feed drops one more fork -- segment_cmd/tokenize_seg are a
 # character-by-character walk with no `$`-anchored regex depending on
 # cmd_flat's exact trailing byte, so a herestring's synthetic trailing
@@ -319,17 +316,17 @@ if ! jq -e 'type == "object"' "$REGISTRY" >/dev/null 2>&1; then  # fail-open-ok:
     exit 0
 fi
 
-# A shell-word that opens an assignment: NAME= or NAME+= (append, HIMMEL-1813)
+# A shell-word that opens an assignment: NAME= or NAME+= (append)
 # with a valid variable name.
 ASSIGN_RE='^[A-Za-z_][A-Za-z0-9_]*[+]?='
 
-# HIMMEL-3185: segment_cmd tags an arithmetic body it lifted out of a
+# segment_cmd tags an arithmetic body it lifted out of a
 # `(( ... ))` / `$(( ... ))` with this prefix so scan_segment can tell it from
 # ordinary command text (see arith_body / arith_fold below).
 ARITH_TAG=$'\001ARITH\001'
 
 # split_bytes <text> <length> -- fill the CALLER's local array SC with <text>,
-# one byte per element (HIMMEL-4678). The walkers below step through a command
+# one byte per element. The walkers below step through a command
 # one character at a time, and bash resolves ${s:i:1} by scanning s from its
 # start (decoding it, in a UTF-8 locale), so indexing the string made every
 # walk O(n^2): a 12 KB heredoc of prose took seconds, outran this guard's 15 s
@@ -357,7 +354,7 @@ split_bytes() {
 # documented determined-bypass residual, same posture as the header's
 # string-reconstruction note). Reads segment_cmd's byte array SC (its only
 # caller), so <index> is a byte offset into <text>.
-# HIMMEL-4529: the body ends at the first `)` that is unmatched since
+# The body ends at the first `)` that is unmatched since
 # <index>, which is exactly the stack match of the `(` just before it. One
 # stack pass over SC (first call per segment_cmd text) records every `(`'s
 # match in segment_cmd's AMATCH, so each call is an O(1) lookup: it used to
@@ -404,7 +401,7 @@ arith_body() {
 # A bare variable in `(( ))` has its VALUE evaluated as arithmetic, so
 # `x=SEAM=0; (( x ))` assigns the seam through a value this fold cannot follow
 # (the value could equally come from a file, `read` or the environment), and
-# the guard ALLOWS it. HIMMEL-3195: accepted as a documented residual (operator
+# the guard ALLOWS it. Accepted as a documented residual (operator
 # ruling 2026-09-19), same class as the header's string-reconstruction note;
 # the test suite pins it as a known ALLOW.
 arith_fold() {
@@ -463,7 +460,7 @@ arith_fold() {
 # whose first word stands at COMMAND POSITION. Splits on unquoted ';', '&',
 # '|', '(', ')' and backticks ('&&' / '||' / ';;' leave empty middle
 # segments, which callers skip).
-# PAREN DEPTH (HIMMEL-2929, POSITIVE/whitelist rule -- operator ruling after
+# PAREN DEPTH (POSITIVE/whitelist rule -- operator ruling after
 # the blacklist collapse ("any `((`/`$(`/backtick anywhere disables scoping
 # for the whole call") converged on the wrong invariant: every new grammar
 # shape needed its own patch, never provably done. Inverted instead: a `(`
@@ -505,7 +502,7 @@ arith_fold() {
 # position) -- neither ever touches pdepth, same as their unquoted kin.
 # Backslash escapes stay opaque, so a separator inside a value (VAR='a;b')
 # never splits one assignment. Self-contained on purpose: the repo's shared
-# tokenizer work is fenced off (HIMMEL-1688) and this guard must not grow a
+# tokenizer work is fenced off and this guard must not grow a
 # dependency on it.
 segment_cmd() {
     local s="$1" seg='' c i n sub pdepth=0 confused=0 no_scope="${2:-0}" bdepth=0
@@ -549,7 +546,7 @@ segment_cmd() {
                     ;;
                 \$)
                     if [ "${SC[i + 1]-}" = "(" ]; then
-                        # HIMMEL-3185: `"$(( ... ))"` -- same lift as the
+                        # `"$(( ... ))"` -- same lift as the
                         # unquoted `((` arm; the sub=1 split below still runs.
                         if [ "${SC[i + 2]-}" = "(" ] && arith_body "$s" $((i + 3)); then
                             printf '%s\t%s\n' "$pdepth" "$ARITH_TAG$ARITH_BODY"
@@ -584,7 +581,7 @@ segment_cmd() {
             ;;
         \$)
             # `$[ ... ]` legacy arithmetic expansion is an OPAQUE span, like
-            # `$(( ... ))` (HIMMEL-2929). `$((` is already inert because the
+            # `$(( ... ))`. `$((` is already inert because the
             # `$` here lands in the default case (cmdpos:=0) so its parens are
             # never command-position -- but `$[...]` has no paren to hang that
             # on, and a `;`/`&`/`|`/newline INSIDE it would otherwise split the
@@ -620,7 +617,7 @@ segment_cmd() {
             seg+="$c"; i=$((i + 1)); cmdpos=1
             ;;
         \()
-            # HIMMEL-3185: `((` / `$((` -- lift the arithmetic body out
+            # `((` / `$((` -- lift the arithmetic body out
             # whole, tagged, so scan_segment can fold a seam ASSIGNMENT in
             # it. The body's own text still segments below exactly as
             # before (its parens are opaque), but that path only sees an
@@ -679,7 +676,7 @@ segment_cmd() {
             i=$((i + 1))
             ;;
         \&)
-            # HIMMEL-1813: `>&`, `<&` (after an UNESCAPED < or >) and `&>`
+            # `>&`, `<&` (after an UNESCAPED < or >) and `&>`
             # are redirection operators, never a command separator.
             if [ "$ro" = "1" ] || [ "${SC[i + 1]-}" = ">" ]; then
                 seg+="$c"; i=$((i + 1)); ro=0; continue
@@ -687,7 +684,7 @@ segment_cmd() {
             printf '%s\t%s\n' "$pdepth" "$seg"; seg=''; cmdpos=1; i=$((i + 1))
             ;;
         \|)
-            # HIMMEL-1813: `>|` (noclobber override) is a redirection.
+            # `>|` (noclobber override) is a redirection.
             if [ "$ro" = "1" ]; then
                 seg+="$c"; i=$((i + 1)); ro=0; continue
             fi
@@ -716,7 +713,7 @@ segment_cmd() {
 # from: 'path>/tmp/log' is the word 'path' plus a redirection, and
 # scripts/handover/"merge-on-green.sh" is ONE word equal to the registered
 # path -- no boundary character set involved in either direction.
-# ENCODING (HIMMEL-1803 r6): every word line carries a leading ':'
+# ENCODING: every word line carries a leading ':'
 # sentinel -- a zero-length word ('' / "") is the line ':', never a blank
 # line -- because bare newline-delimited streams cannot represent empty
 # words (a blank line reads as no word, and $(...) strips trailing
@@ -753,8 +750,8 @@ tokenize_seg() {
                 if [ "$c" = "\\" ]; then
                     # bash drops a double-quoted backslash only before
                     # $ ` " \ (newline is already folded to ';'); before
-                    # anything else it stays word content (HIMMEL-1813:
-                    # dropping it hid "...\c" from split_unresolvable).
+                    # anything else it stays word content (dropping it hid
+                    # "...\c" from split_unresolvable).
                     i=$((i + 1))
                     if [ "$i" -lt "$n" ]; then
                         case "${SC[i]-}" in
@@ -781,7 +778,7 @@ tokenize_seg() {
             if [ "$i" -lt "$n" ]; then
                 if [ "${TOK_ENV_SPLIT:-0}" = "1" ] && [ "${SC[i]-}" = "_" ]; then
                     # env -S re-tokenization only: GNU's documented "\_"
-                    # is an ARGUMENT SEPARATOR (HIMMEL-1803 r4) -- end the
+                    # is an ARGUMENT SEPARATOR -- end the
                     # word instead of collapsing the escape to a literal
                     # underscore. A QUOTED "\_" (single or double) stays
                     # word content: quote state wins, as everywhere.
@@ -817,7 +814,7 @@ tokenize_seg() {
             while [ "$i" -lt "$n" ]; do
                 case "${SC[i]-}" in '<'|'>') i=$((i + 1)) ;; *) break ;; esac
             done
-            # HIMMEL-1813: `>&` / `<&` (fd duplication) -- the '&' is part
+            # `>&` / `<&` (fd duplication) -- the '&' is part
             # of the operator; its operand (1, -, a file) is not a word.
             # `>|` likewise: the '|' is part of the operator.
             if [ "${TOK_ENV_SPLIT:-0}" != "1" ]; then
@@ -827,7 +824,7 @@ tokenize_seg() {
             ;;
         '&')
             if [ "${TOK_ENV_SPLIT:-0}" != "1" ] && [ "${SC[i + 1]-}" = ">" ]; then
-                # HIMMEL-1813: `&>` / `&>>` redirect stdout+stderr: a word
+                # `&>` / `&>>` redirect stdout+stderr: a word
                 # before it ends there, the operator and operand are dropped.
                 if [ "$have" = "1" ]; then
                     if [ "$skip_word" = "1" ]; then skip_word=0; else printf ':%s\n' "$w"; fi
@@ -904,7 +901,7 @@ deny() {  # deny <script-path> <var-name> -- both from OUR registry, never
 }
 
 deny_unresolvable() {  # deny_unresolvable <script-path> -- from OUR
-                       # registry, never raw command text (HIMMEL-1813).
+                       # registry, never raw command text.
     local script="$1" msg reason
     msg="block-chokepoint-env-prefix: refusing an env -S / --split-string invocation that mentions a sanctioned chokepoint.
 
@@ -931,7 +928,7 @@ deny_unresolvable() {  # deny_unresolvable <script-path> -- from OUR
 }
 
 deny_raw_mention() {  # deny_raw_mention <script-path> -- from OUR registry,
-                      # never raw command text (HIMMEL-1813 backstop).
+                      # never raw command text (backstop).
     local script="$1" msg reason
     msg="block-chokepoint-env-prefix: refusing a command that names a sanctioned chokepoint together with its seam variable or an env -S / --split-string.
 
@@ -958,7 +955,7 @@ deny_raw_mention() {  # deny_raw_mention <script-path> -- from OUR registry,
 }
 
 deny_text_layer() {  # deny_text_layer <reason constant> -- OUR text only
-                     # (HIMMEL-3921), never raw command text.
+                     # never raw command text.
     local why="$1" msg reason
     msg="block-chokepoint-env-prefix: refusing a command that ${why}.
 
@@ -981,7 +978,7 @@ deny_text_layer() {  # deny_text_layer <reason constant> -- OUR text only
 CR=$'\r'
 NL=$'\n'
 
-# relief_off <text> -- HIMMEL-3955. The scoped scans below run ONLY on a command
+# relief_off <text> -- The scoped scans below run ONLY on a command
 # made of plain words (`[A-Za-z0-9_./=:@%+,-]+`) joined by spaces or tabs: no
 # quote, backslash, $, backtick, redirection, separator, paren, brace, glob
 # metachar or newline. rc 0 (relief OFF) for anything else, and the caller
@@ -1010,20 +1007,20 @@ relief_off() {
     return 0
 }
 
-# env_like_word <plain word> -- rc 0 when its basename is `env`. HIMMEL-3955.
+# env_like_word <plain word> -- rc 0 when its basename is `env`.
 env_like_word() {
     local base=${1##*/}
     [ "$base" = env ]
 }
 
-# env_clear_opt <text> -- HIMMEL-3955. rc 0 when a standalone -u*/-i*/--unset*/--ignore-environment/
+# env_clear_opt <text> -- rc 0 when a standalone -u*/-i*/--unset*/--ignore-environment/
 # bare - token sits in env position: after an `env` word with only option and
 # NAME=val words between (any other plain word, e.g. grep/sed/diff/ls/sort/bash,
 # ends the position). So `grep -i`, `sed -i`, `diff -u`, `ls -i` and a `--id N`
 # flag are not env-clearing; `env -i`, `/usr/bin/env -u X` and
 # `setsid -f env -i` still are. Any text relief_off keeps out takes main's
 # whole-text match.
-# HIMMEL-4095: a LONG option counts only when it is a prefix of
+# A LONG option counts only when it is a prefix of
 # ignore-environment or unset (GNU getopt_long takes any unique prefix: --i,
 # --ign, --un=X) ending at a non-word character (space, =, end, or a quote, $,
 # backslash or glob that may splice more on), or when it starts with the whole
@@ -1035,7 +1032,7 @@ env_clear_opt() { # <text> [<text the allowlist gates on; default <text>>]
     local opt="(^|[^[:alnum:]_-]|\\\$[[:alnum:]_]+)-([ui]|[[:space:]]|\$|-($long))"
     if relief_off "${2-$t}"; then
         [[ $t =~ $opt ]] || return 1
-        # HIMMEL-4779: a text the allowlist keeps out (a quote, a pipe, sed,
+        # A text the allowlist keeps out (a quote, a pipe, sed,
         # sort, git) still clears nothing when pobf_relief's stages put every
         # such token in a read-only stage or among sed's, gh's or an
         # interpreter's own options (grep -n -i 'x', sed -i s/a/b/ f,
@@ -1062,7 +1059,7 @@ env_clear_opt() { # <text> [<text the allowlist gates on; default <text>>]
     return $hit
 }
 
-# seam_assigned <text> <var> -- HIMMEL-3955. rc 0 when <text> assigns <var>
+# seam_assigned <text> <var> -- rc 0 when <text> assigns <var>
 # (`VAR=`/`VAR+=`) the way a launch would. A `--long-option VAR=x` VALUE with no
 # `env` word before it is an ARGUMENT of that program (ledger-append amend
 # --set k=v), not an assignment, and does not count. raw_obfuscated only:
@@ -1087,7 +1084,7 @@ seam_assigned() {
 }
 
 # pobf_word <text> -- rc 0 when <text> holds a path word (one with a `/`) with a
-# glob, grouping or extendedglob metachar in any segment: the HIMMEL-4157
+# glob, grouping or extendedglob metachar in any segment: the
 # anchor-less test. Only a leading `~` (home) or `#` (comment) is exempt, and
 # `$(` / `${` are expansions, not groupings. Caller holds `set -f`.
 pobf_word() {
@@ -1107,7 +1104,7 @@ pobf_tok() {
     body=''
 }
 
-# pobf_rgshape <raw stage> -- HIMMEL-5210: rc 0 when an rg argv word is not
+# pobf_rgshape <raw stage> -- rc 0 when an rg argv word is not
 # plain literal text. Words wholly inside single quotes stay literal; any other
 # word with a backslash, a dollar sign (variable, ANSI-C quote), a backtick, a
 # leading tilde, a glob or brace char, or a double-quoted body with an
@@ -1170,7 +1167,7 @@ pobf_exp() {
         k=$lo
         [ "$m" = r ] && hi=$((n - 1))
         # No body holds a \001, so once x has under two marks no marker is
-        # left and the rest of the range is a no-op (HIMMEL-4447: walking it
+        # left and the rest of the range is a no-op (walking it
         # per digit-token redirect was redirects x tokens).
         while [ "$k" -le "$hi" ]; do
             case "$x" in *"$T1"*"$T1"*) ;; *) break ;; esac
@@ -1199,15 +1196,15 @@ pobf_put() {
     esac
 }
 
-# pobf_xopt <command> <stage text> -- HIMMEL-4402: rc 0 (void relief) when a
+# pobf_xopt <command> <stage text> -- rc 0 (void relief) when a
 # relieved stage carries an option that takes an executable. Run on every
 # stage and again on a substitution's continuation, which inherits its
 # interrupted stage's class but not its option check. Default-void: a git
 # long option not listed as non-executing voids relief; any stage voids on a
 # word naming an option that runs a program (--pager, --exec, -O, -x, -X ...).
 # git-env-ok: no git invocation; "git" is only a word matched in the screened command text
-# ponytail: a closed non-executing list for git; a new safe git option is
-# over-denied until listed, never under-denied, HIMMEL-4402.
+# ponytail: a closed non-executing list for git (HIMMEL-4402); a new safe git option is
+# over-denied until listed, never under-denied.
 POBF_GIT_SAFE=' --oneline --stat --name-only --name-status --no-color --color --count --line-number --max-count --all --since --until --after --before --author --committer --grep --format --pretty --abbrev --abbrev-commit --short --porcelain --branch --cached --others --exclude-standard --ignore-case --files-with-matches --files-without-match --fixed-strings --extended-regexp --basic-regexp --perl-regexp --word-regexp --invert-match --no-index --untracked --show-toplevel --git-dir --abbrev-ref --verify --heads --tags --quiet --null --heading --break --and --or --not --all-match --recurse-submodules --text --full-name --first-parent --merges --no-merges --reverse --skip --diff-filter --follow --decorate --graph --date --shortstat --numstat --summary --patch --no-patch --stdin --revs-only --no-flags --flags --sq --default --symbolic --symbolic-full-name --is-inside-work-tree --is-bare-repository --show-cdup --show-prefix --git-common-dir --absolute-git-dir --deleted --modified --ignored --directory --error-unmatch --eol --stage --unmerged --killed '
 # getopt_long and git parse-options accept any unambiguous prefix of a long
 # option (`sort --compr=cat`, `git grep --open-files=less`): a long word whose
@@ -1215,15 +1212,15 @@ POBF_GIT_SAFE=' --oneline --stat --name-only --name-status --no-color --color --
 # is a usage error, so failing closed on every prefix is safe). ripgrep does not
 # abbreviate; its exact --pre match stays in the stage classifier.
 POBF_XOPT_LONG='open-files-in-pager pager paginate exec ext-diff textconv output upload-pack receive-pack pre compress editor config-env'
-# pobf_xshort <command> <word> -- HIMMEL-5197: rc 0 when a short-option word
+# pobf_xshort <command> <word> -- rc 0 when a short-option word
 # runs a program for that command. -O/-x/-X run one only for git grep -O
 # (--open-files-in-pager) and the find -exec family; for a reader they are
 # line-regexp / exclude-from / sort-by-extension, so relief stands. Man pages:
 # grep egrep fgrep (-x -X), rg (-x), ls (-x -X), diff (-x -X), du (-x -X), file
 # (-X), test and [ (-x -O are tests), rm (-x); the other listed readers have no
 # -O/-x/-X that runs anything. An unlisted command keeps the old screen.
-# ponytail: the reader list is a closed allowlist; a reader missing from it
-# keeps the old -O/-x/-X void (over-deny, never under-deny), HIMMEL-5197.
+# ponytail: the reader list is a closed allowlist (HIMMEL-5197); a reader missing from it
+# keeps the old -O/-x/-X void (over-deny, never under-deny).
 pobf_xshort() {
     case "$1" in
         git) [[ $2 =~ ^-[^-]*O ]] ;;
@@ -1267,7 +1264,7 @@ pobf_xopt_scan() {
     done
     return 1
 }
-# pobf_xglob <raw stage text> -- HIMMEL-5210: rc 0 (void relief) when an
+# pobf_xglob <raw stage text> -- rc 0 (void relief) when an
 # UNQUOTED word can expand into an option word the screen above never saw:
 # brace expansion (`{--hostname-bin,CMD}`) or a glob matching a file named like
 # the option (`--hostname-bi[n]`). Judged on the raw stage text, where a quoted
@@ -1275,8 +1272,8 @@ pobf_xopt_scan() {
 # relieved. Fail-closed on a word that starts with { [ ? * , starts with - and
 # carries one before its first =, or holds a { followed by - (or by - after a
 # comma). The bare shell words [ ] { } [[ ]] are not words that expand.
-# ponytail: any stage with relief and such a word is over-denied (it only
-# matters when the command already names an obfuscated path), HIMMEL-5210:
+# ponytail: any stage with relief and such a word is over-denied (HIMMEL-5210; it only
+# matters when the command already names an obfuscated path):
 # a non-rg reader whose word STARTS with a glob (ls *.md) is denied too, while
 # a mid-word glob (grep -r x src/*) keeps relief; the ceiling is one quoted
 # glob, the upgrade path a screen that resolves the glob against the cwd. rg
@@ -1302,7 +1299,7 @@ pobf_xglob() {
 # theirs); a function may not shadow one.
 POBF_NAMES='ls cat grep egrep fgrep head tail wc echo diff uniq cut stat file du jq basename dirname realpath readlink test tr column nl tac rev fold fmt paste rm find git bash sh zsh dash ksh mksh gh printf sort rg sed gsed awk gawk mawk python python3 node perl ruby command builtin time'
 
-# pobf_relief <raw text> [<env-clear regex>] -- HIMMEL-4157 over-deny relief (judge J1685d: the
+# pobf_relief <raw text> [<env-clear regex>] -- over-deny relief (the
 # anchor-less arm denied 134 of 164 HANDOVER_DIR history rows, because its
 # quote-blind word split counted quoted sed/grep regexes, python programs and
 # heredoc prose as path words). Runs ONLY when that arm is about to deny and
@@ -1324,7 +1321,7 @@ POBF_NAMES='ls cat grep egrep fgrep head tail wc echo diff uniq cut stat file du
 #   - an assignment prefix voids a stage's relief unless it runs a shell on
 #     a literal script (PAGER=, GIT_PAGER=, GH_BROWSER= name a program);
 #   - sed and awk get NO relief: their scripts run programs (sed e, awk
-#     system/getline/pipes) in forms only a parse could rule out (HIMMEL-3930);
+#     system/getline/pipes) in forms only a parse could rule out;
 #   - anything else is scanned like the old split, tokens included
 #     (bash -c 'g?.sh', eval, cat <<EOF | sh).
 # Inside $( ) or backticks a read-only stage still has its words scanned, and
@@ -1335,16 +1332,16 @@ POBF_NAMES='ls cat grep egrep fgrep head tail wc echo diff uniq cut stat file du
 # a command word ending in its name, or its name beside a shell, source, `.`,
 # exec, eval, xargs, env, nohup, setsid or timeout word; and when any file is
 # written (a redirect, tee, cp, mv, install, ln, dd of=) beside a command
-# word with a / or one outside the relief names (CR round 8).
+# word with a / or one outside the relief names.
 # No relief at all on: an unquoted heredoc body with $( or a backtick,
 # <( >( =(, a paren glued to a word (zsh grouping, extglob), alias, function,
 # hash, enable, an unquoted empty paren pair (`name () {`), an assignment to
 # functions/dis_functions/aliases/dis_aliases/galiases/saliases/BASH_ALIASES,
 # a PATH/LD_*/IFS/BASH_ENV/ENV/ZDOTDIR assignment, or an unterminated quote or
 # heredoc.
-# ponytail: an allowed interpreter can still assemble a path with no
+# ponytail: HIMMEL-3930 -- an allowed interpreter can still assemble a path with no
 # metachar, and the read-only set is a closed list a new exec-capable
-# option would slip past; the HIMMEL-3930 structural parse replaces this.
+# option would slip past; the structural parse replaces this.
 # '$(' and '\' below are literal case patterns, not missed expansions;
 # the unquoted $g_* in ${rest%%$g_*} are glob patterns on purpose.
 # shellcheck disable=SC2016,SC1003,SC2295
@@ -1480,12 +1477,12 @@ pobf_relief() {
     # ) closing it (T5); everything after the scan reads F with them as blanks.
     local FM=$F
     F=${F//$T3/ }; F=${F//$T5/ }
-    # No relief (HIMMEL-4442) on an unquoted empty paren pair, on any unquoted
+    # No relief on an unquoted empty paren pair, on any unquoted
     # word functions, dis_functions, aliases, dis_aliases, galiases,
     # dis_galiases, saliases, dis_saliases, commands, BASH_ALIASES, BASH_CMDS,
     # fpath, FPATH, enable or autoload (delimited by a non-identifier char each
     # side, after quote removal), or on set followed by -A or +A.
-    # No relief (HIMMEL-4454) on a definition built at run time, which the text
+    # No relief on a definition built at run time, which the text
     # scan above cannot see: an eval command word, or a source / command-word
     # `.`, whatever it reads (a file, stdin, a here-string or here-doc).
     # Process substitution is refused above.
@@ -1608,8 +1605,7 @@ pobf_relief() {
     done
     # Class per stage: 2 = skip words and tokens, 1 = skip tokens, 0 = scan.
     local rgcfg=0
-    # ponytail: a RIPGREP_CONFIG_PATH name built from pieces is not matched
-    # here, upgrade path HIMMEL-3930, then HIMMEL-5233.
+    # ponytail: a RIPGREP_CONFIG_PATH name built from pieces is not matched here (upgrade HIMMEL-3930, then HIMMEL-5233).
     case "$t$F" in *RIPGREP_CONFIG_PATH*) rgcfg=1 ;; esac
     j=0
     while [ "$j" -lt "$i" ]; do
@@ -1623,12 +1619,12 @@ pobf_relief() {
             [[ $w =~ ^[A-Za-z_][A-Za-z0-9_]*\+?= ]] && { ap=1; continue; }
             c=$w
         done
-        # HIMMEL-5210: strip only a name directly under /bin or /usr/bin; a
+        # Strip only a name directly under /bin or /usr/bin; a
         # further / (`/usr/bin/../../tmp/x/grep`) is another path, so it keeps
         # its full word and no reader relief.
         case "$c" in /bin/*/*|/usr/bin/*/*) ;; /bin/*|/usr/bin/*) c=${c##*/} ;; esac
         pobf_exp "${ST[j]}" p; x=$PX; XP[j]=$x
-        # HIMMEL-4402: mode p pads each quoted token with blanks, so a
+        # Mode p pads each quoted token with blanks, so a
         # quote-split option (-"O", --"open-files-in-pager"=) reads as
         # separate words; the shell joins it. Classify on BOTH readings
         # and keep the lower class (void if either reading matches).
@@ -1679,10 +1675,10 @@ pobf_relief() {
         if [ "${CO[j]-}" -ge 0 ] 2>/dev/null && [ "${CO[j]}" -lt "$j" ]; then
             cls=${CL[CO[j]]}; c=${CW[CO[j]]}; c2=${C2[CO[j]]}; ED[j]=${ED[CO[j]]}
         fi
-        # HIMMEL-4402: any relieved stage, and a continuation (which inherits
+        # Any relieved stage, and a continuation (which inherits
         # its parent's class), voids on an option that takes an executable.
         [ "$cls" != 0 ] && { pobf_xopt "$c" "$x" || pobf_xopt "$c" "$xr" || pobf_xglob "${ST[j]}"; } && cls=0
-        # HIMMEL-5210: rg keeps relief only on plain literal words, and never
+        # rg keeps relief only on plain literal words, and never
         # when RIPGREP_CONFIG_PATH is named anywhere (a config file injects
         # options; its contents are not modelled), nor when the stage continues
         # an interrupted one: a command substitution or backtick body is split
@@ -1735,7 +1731,7 @@ pobf_relief() {
         case "$ea" in *"$w$T2"*) nf=1 ;; esac
         case "$sa" in *"$w"*) nf=1 ;; esac
     done
-    # CR round 8: a written file (a redirect, tee, cp, mv, install, ln, dd
+    # A written file (a redirect, tee, cp, mv, install, ln, dd
     # of=) can run under a name the scan above never ties to it (./run after
     # a cd, a PATH directory, a copy). Beside a command word with a / or one
     # outside the relief names, every stage's relief is voided.
@@ -1769,7 +1765,7 @@ pobf_relief() {
         # 10, 11).
         [ "${SS[j]}" = 1 ] && cls=0
         if [ -n "$eo" ]; then
-            # Env mode (HIMMEL-4779, env_clear_opt): the question is whether a
+            # Env mode (env_clear_opt): the question is whether a
             # -u/-i/bare - token can clear an environment, not where a path
             # word stands. A read-only stage's words are its own data; sed's,
             # gh's and an interpreter's unquoted option words are their own
@@ -1777,9 +1773,9 @@ pobf_relief() {
             # quoted or heredoc text counts (sed '1e env -i ..'); any other
             # stage (env, sudo, su, timeout, xargs, $E, a substitution's
             # output) gets no relief.
-            # ponytail: a quoted text an interpreter or sed's e command runs
+            # ponytail: HIMMEL-3930 -- a quoted text an interpreter or sed's e command runs
             # is read only for a LITERAL token (an escape like \055i slips
-            # past, as it did the old whole-text match), the HIMMEL-3930
+            # past, as it did the old whole-text match), the
             # structural parse closes it.
             [ "$cls$nf${SS[j]}${ED[j]}" = 0001 ] && cls=1
             case "$cls" in
@@ -1807,7 +1803,7 @@ pobf_relief() {
     return 0
 }
 
-# raw_obfuscated <raw text> -- HIMMEL-3921 text layer, run on the UNTOUCHED
+# raw_obfuscated <raw text> -- text layer, run on the UNTOUCHED
 # command. Deny-leaning and parse-free on purpose: every special-case parse
 # rule in a guard became a bypass (PR 1494/1501/1508), so this is a plain scan.
 # Deny when a shell word names a `scripts/` path with a glob/brace metachar
@@ -1816,15 +1812,15 @@ pobf_relief() {
 # declare/typeset/readonly/let/eval word (the verb alone denies, so the
 # obfuscated seam NAME -- export "$n=1" -- is covered when the path is also
 # obfuscated; an obfuscated NAME beside a LITERAL chokepoint path stays a
-# residual of this layer). HIMMEL-4157 closed a glob or grouping that hides
+# residual of this layer). Closed here: a glob or grouping that hides
 # the anchor (scr(ipts)/, (scripts)/, {scripts,x}/, scrip?s/, `cd` then
 # ./g?.sh, ./g(o).sh or bash g?.sh, $D/g*.sh) and the zsh extendedglob
 # operators # ## ^ ~: any path word with a metachar in any segment, and any
 # glob word handed to a shell or `source`, now counts (second loop below).
-# ponytail: still open -- a word assembled wholly from variables ($D/$B, no
+# ponytail: still open until HIMMEL-3930 lands -- a word assembled wholly from variables ($D/$B, no
 # metachar), an obfuscated seam NAME or an obfuscated env word (/usr/bin/en?
 # -i) beside an anchor-less path, and zsh <-> numeric ranges (the tr splits
-# at <); close them with the structural guard once HIMMEL-3930 lands.
+# at <); close them with the structural guard.
 raw_obfuscated() {
     local t="$1" w rest v wv vcmd clr d u kw ov tw='' cw='/.claude/worktrees/' xg=0 write=0 obf=0 hard=0 vdata=0 wonly=1 pobf=0 so=0 SQ="'"
     case "$t" in *'('*) xg=1 ;; esac
@@ -1853,13 +1849,13 @@ raw_obfuscated() {
                 # Blunt, no normaliser: any word containing scripts/ (absolute,
                 # ./, or with a leading directory) spelled with a `/.`
                 # (`/./`, `/../`) or `//` segment can name any path, so it counts.
-                # HIMMEL-4130: the worktree dot directory `/.claude/worktrees/`
+                # The worktree dot directory `/.claude/worktrees/`
                 # is not a traversal, so a plain absolute worktree path stops
                 # counting. It is stripped only from a wholly plain word
                 # ([A-Za-z0-9_./+-]; `+` because worktree dirs are fix+slug) in
                 # a text with no `(` at all: the tr above splits a word at `(`,
                 # so zsh grouping (`g(o).sh`), extglob (`@(x)`) and glob
-                # qualifiers would otherwise look plain (judges J1663, J1663b).
+                # qualifiers would otherwise look plain.
                 # Every other `/.` still counts: /./ /../ a trailing /. or /..,
                 # any other dot directory, and anything quoted or escaped.
                 case "$w" in *//*) obf=1; hard=1 ;; esac
@@ -1868,8 +1864,8 @@ raw_obfuscated() {
                     d=${w//"$cw"/\/}
                 fi
                 case "$d" in *'/.'*) obf=1; hard=1 ;; esac
-                # HIMMEL-4157: zsh extendedglob # ^ ~ count like * ? [ {.
-                # HIMMEL-4933: a glob alone is soft -- the read-only relief at
+                # zsh extendedglob # ^ ~ count like * ? [ {.
+                # A glob alone is soft -- the read-only relief at
                 # the deny (pobf_relief) may clear it; a $var, `/.`, `//` or
                 # ANSI-C word is hard and never gets that relief.
                 case "$rest" in
@@ -1878,12 +1874,12 @@ raw_obfuscated() {
                 esac ;;
         esac
     done
-    # HIMMEL-4148: the tr above splits a word at `(`, so a zsh grouping,
+    # The tr above splits a word at `(`, so a zsh grouping,
     # alternation or glob flag in the basename (g(o).sh, (go).sh, go.s(h),
     # (#i)GO.sh -- this station's Bash runs zsh -c, which globs them to the
     # chokepoint) left every piece plain. Re-split keeping the parens: any `(`
     # after scripts/ in a word counts, like the glob characters above.
-    # HIMMEL-4157: a glob or grouping can hide the scripts/ anchor itself
+    # A glob or grouping can hide the scripts/ anchor itself
     # (scr(ipts)/, {scripts,x}/, scrip?s/, or cd then ./g?.sh), and zsh
     # extendedglob adds non-paren operators (g#o.sh, go##.sh, ^x.sh, g*~x.sh).
     # So ANY path word (one holding a `/`) with a glob, grouping or
@@ -1925,9 +1921,10 @@ raw_obfuscated() {
         # or env -u of a non-literal name, an export/declare/let NAME= or
         # printf -v whose name is assembled ($n, `cmd`), export -n, declare
         # +x, exec -, ${!, or bash startup state; names are read quote-,
-        # backslash- and ${}-joined, as raw_mention reads them. ponytail: a
-        # seam name assembled for read/mapfile/getopts/for (read "$n") beside
-        # an anchor-less path is not seen; close it with the HIMMEL-3930 parse.
+        # backslash- and ${}-joined, as raw_mention reads them.
+        # ponytail: HIMMEL-3930 -- a seam name assembled for read/mapfile/getopts/for
+        # (read "$n") beside an anchor-less path is not seen; close it with the
+        # structural parse.
         u=${t//[\'\"\\]/}
         rest=$u
         while [[ $rest =~ ^(.*)\$\{[^}]*\}(.*)$ ]]; do rest="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"; done
@@ -1956,7 +1953,7 @@ raw_obfuscated() {
             [[ $u =~ ${nl}(unset|export|read|declare|typeset|local|readonly|let|mapfile|readarray|getopts|for|select|-[[:alnum:]]*[vun]|--unset)([=[:blank:]]${seg})?[^[:alnum:]_]${v}([^[:alnum:]_]|$) ]] && write=1
         done
         [ "$write" = 1 ] || return 0
-        # HIMMEL-4157 (J1685d): a glob handed to a shell or source gets no
+        # A glob handed to a shell or source gets no
         # relief; a glob path word only where pobf_relief cannot clear it.
         if [ "$so" = 0 ]; then
             set -f
@@ -1965,17 +1962,17 @@ raw_obfuscated() {
         fi
         deny_text_layer "names a seam or clears the environment beside a path with a glob or grouping in a segment"
     fi
-    # ponytail: the verb scan also matches inside a quoted argument value
+    # ponytail: HIMMEL-4135 -- the verb scan also matches inside a quoted argument value
     # (--set 'reason=...exec...'), skipping quoted spans is a parse rule;
-    # HIMMEL-4135 tracks a proven-safe shape or the HIMMEL-3930 structural parse.
+    # a proven-safe shape or a structural parse would close it.
     # Not even --reason '<no quote inside>' is safe on raw text: in
     # echo $'a --reason ' ; export SEAM=1 ; echo 'b' that "value" is live code.
-    # HIMMEL-4572: a verb is part of a name only when BOTH sides join it to
+    # A verb is part of a name only when BOTH sides join it to
     # one, - or / on its left AND - . or / on its right (block-chokepoint-
     # env-prefix, scripts/eval/, pr-check-env.sh). One joined side is not
     # enough: -printf and --printf= are printf options that read escapes,
     # .env is process.env/os.env, /usr/bin/env is env. They still count as
-    # triggers, but HIMMEL-4933 relieves them (vdata) in argument position of
+    # triggers, but are relieved (vdata) in argument position of
     # read-only stages beside a glob-only path; heading a stage they deny.
     # A heredoc or quoted body is not
     # skipped: written and run in one call (cat >f <<EOF .. EOF; bash f) it
@@ -1987,10 +1984,10 @@ raw_obfuscated() {
         tw=${BASH_REMATCH[2]:-${BASH_REMATCH[4]}}
         case "$tw" in BASH_FUNC_*) tw='BASH_FUNC_*' ;; esac
         tw="the word $tw"
-        # HIMMEL-4933: a verb word that heads a stage (export X; unset X; read
+        # A verb word that heads a stage (export X; unset X; read
         # x; printf ..) acts; one in argument position (grep env, find -printf)
         # is data and may get the read-only relief below.
-        # HIMMEL-4954: a stage also starts after a newline, { or a case-arm ), after a
+        # A stage also starts after a newline, { or a case-arm ), after a
         # then/do/else/elif/if/while/until/! keyword, and past command/builtin/
         # time/nohup (with their options) or a \ escape. A wider match only
         # fails closed: vdata stays 0 and the relief is withheld.
@@ -2003,7 +2000,7 @@ raw_obfuscated() {
     # or verb): standalone -u*/-i*/--unset*/--ignore-environment/bare -, declare/typeset +x,
     # export -n, exec -<opt>, ${! (same set as raw_mention's clear arm). The
     # standalone -u*/-i*/--unset*/--ignore-environment/bare - token counts only in env position
-    # (env_clear_opt, HIMMEL-3955); a seam NAME= counts as an assignment, not
+    # (env_clear_opt); a seam NAME= counts as an assignment, not
     # as a --long-option's value (seam_assigned).
     # shellcheck disable=SC2016 # ${! is the literal trigger text, not an expansion
     [[ $t =~ $clr ]] && { wonly=0; write=1; tw=${tw:-'declare +x, export -n, exec - or ${!'}; }
@@ -2013,7 +2010,7 @@ raw_obfuscated() {
         seam_assigned "$t" "$v" && { wonly=0; write=1; tw="the seam variable $v"; }
     done
     [ "$write" = 1 ] || return 0
-    # HIMMEL-4933: a soft (glob-only) path word that sits only in read-only
+    # A soft (glob-only) path word that sits only in read-only
     # stages (grep -l export scripts/*/x.sh | sort) is data, not a seam write:
     # the same relief the anchor-less arm above applies. A hard word, a
     # shell/source glob operand, or a stage pobf_relief cannot prove read-only
@@ -2027,7 +2024,7 @@ raw_obfuscated() {
     deny_text_layer "writes a seam variable beside an obfuscated (glob, brace, ANSI-C or \$var) path under scripts/ (it matched $tw)"
 }
 
-# raw_mention <text> <any> -- HIMMEL-1813 parse-independent backstop (console
+# raw_mention <text> <any> -- parse-independent backstop (console
 # ruling at b8ae2143, after a new spelling surfaced every parser round). Deny
 # (deny_raw_mention) when <text> names a registered chokepoint's basename AND,
 # anywhere in the same text, an assignment to one of that chokepoint's own
@@ -2040,7 +2037,7 @@ raw_obfuscated() {
 # names_base <text> <basename> -- rc 0 when <basename> occurs in <text> at the
 # start of a path component: the character before it (if any) is not a
 # filename character [A-Za-z0-9_.-]. So `go.sh` matches `x/go.sh` but not
-# `cargo.sh` (HIMMEL-3914). Left boundary only: the text is backslash-stripped,
+# `cargo.sh`. Left boundary only: the text is backslash-stripped,
 # so `go.sh\c` arrives as `go.shc` and a right boundary would miss it. The text
 # is also quote-stripped, so `$x"go.sh"` (x empty -> go.sh) arrives as
 # `$xgo.sh`: a `$` + identifier run on the left also counts as a boundary.
@@ -2062,8 +2059,8 @@ names_base() {
 
 # raw_strip <text> -- raw_mention's join/strip steps into RAW_T (quotes and
 # continuations dropped) and RAW_U (RAW_T minus ${...}). Only these pattern ops
-# re-decode the whole string in a UTF-8 locale (quadratic on a large heredoc,
-# HIMMEL-4729) and every character they test is ASCII, so they alone run under
+# re-decode the whole string in a UTF-8 locale (quadratic on a large
+# heredoc) and every character they test is ASCII, so they alone run under
 # C. The class regexes in raw_mention stay in the caller's locale: [[:space:]]
 # must still match U+3000 and the other Unicode spaces an IFS can split on.
 raw_strip() {
@@ -2072,12 +2069,12 @@ raw_strip() {
     t=${t//\\$'\r\n'/}
     t=${t//\\$'\n'/}
     t=${t//[\'\"\\]/}
-    # HIMMEL-5153: a Unicode space is a separator for the class regexes only in
+    # A Unicode space is a separator for the class regexes only in
     # a UTF-8 locale, so with the ambient locale C/POSIX (no UTF-8 locale
     # installed) U+3000 and friends would pass. Map their UTF-8 byte sequences
     # to an ASCII space here, under C, so the match is the same in every
     # locale. U+00A0, U+0085, U+200B and U+FEFF are included: they are not
-    # iswspace but are valid IFS separators (HIMMEL-5152). Pure-ASCII text
+    # iswspace but are valid IFS separators. Pure-ASCII text
     # (the common case) skips the passes.
     case $t in
         *[!$'\001'-$'\177']*)
@@ -2096,7 +2093,7 @@ raw_strip() {
     RAW_U=$REPLY
 }
 
-# HIMMEL-5154: the result of deleting, again and again, the rightmost
+# The result of deleting, again and again, the rightmost
 # `${...}` (an opener, then no `}`, then the closer) until none is left. The
 # per-delete regex rescan of the whole string was quadratic in the number of
 # expansions; this single left-to-right pass keeps a stack of the `${`
@@ -2104,7 +2101,7 @@ raw_strip() {
 # arrives, which yields the same string (also when a delete joins a `$` and a
 # `{` into a fresh opener). Result in REPLY. Callers run under LC_ALL=C.
 # Literal-pattern deletions of `$((`, `$(` and `${`, in C: in a UTF-8 locale a
-# `${s//lit/}` over multibyte text is quadratic (HIMMEL-5154); the patterns are
+# `${s//lit/}` over multibyte text is quadratic; the patterns are
 # ASCII, so bytes give the same string. Result in REPLY.
 _c_strip_expansion_openers() {
     local LC_ALL=C
@@ -2123,7 +2120,7 @@ strip_brace_exp() {
     parts[nparts - 1]=${parts[nparts - 1]%x$'\n'}
     # The kept text is a stack of chunks, split at every `$`, so a closer
     # drops an opener and its tail by popping chunks instead of re-slicing one
-    # long string (a per-closer prefix copy was quadratic, HIMMEL-5154). A
+    # long string (a per-closer prefix copy was quadratic). A
     # chunk ends in `$` only when it is exactly `$` (isd=1), which is what a
     # following `{` joins into a fresh opener.
     for ((k = 0; k < nparts; k++)); do
@@ -2189,12 +2186,12 @@ raw_mention() {
         # identifier followed by `=` (SEAM=1 cmd, export/declare -x SEAM=,
         # env SEAM=, empty SEAM=). A bare read, `unset SEAM` and `env -u SEAM`
         # were the legitimate clear-and-prove spellings and stay out of THIS
-        # arm; since HIMMEL-3921 the clear arm below denies them beside the
+        # arm; the clear arm below denies them beside the
         # chokepoint word.
         for v in $vars_list; do
             [[ $t =~ (^|[^[:alnum:]_])${v}[+]?= ]] && deny_raw_mention "$script_path"
         done
-        # HIMMEL-5152, beside a chokepoint word: ANY assignment to IFS. Bash
+        # Beside a chokepoint word: ANY assignment to IFS. Bash
         # splits words on whatever characters IFS holds (U+00A0, U+0085,
         # U+200B, U+FEFF, an ANSI-C tab), so a later `$c` can spell
         # `export -n NAME` or `declare +x NAME` with a separator this text layer
@@ -2202,7 +2199,7 @@ raw_mention() {
         # without enumerating separators. A read-only IFS expansion stays out.
         [[ $t =~ (^|[^[:alnum:]_])IFS[+]?= ]] \
             && deny_text_layer "assigns IFS (a word-splitting character the text layer cannot enumerate) beside a sanctioned chokepoint"
-        # HIMMEL-3921, beside a chokepoint word: bash startup state that runs
+        # Beside a chokepoint word: bash startup state that runs
         # before the chokepoint's own first line (BASH_ENV, BASH_FUNC_*,
         # SHELLOPTS, BASHOPTS, extdebug) is refused on sight, and so is CLEARING
         # a seam or the console marker (env -u / --unset / unset / export -n),
@@ -2217,7 +2214,7 @@ raw_mention() {
         # after `env`. A chokepoint is never called through `env -<opt>`.
         [[ $t =~ (^|[^[:alnum:]_-])env[[:space:]]+- ]] \
             && deny_text_layer "env with an option (clears or rewrites the environment) beside a sanctioned chokepoint"
-        # HIMMEL-4049: two launchers whose own option clears the environment,
+        # Two launchers whose own option clears the environment,
         # beside a chokepoint word: `setpriv --reset-env` (getopt_long takes any
         # unique prefix, so any --res* token; no other setpriv option starts so)
         # and `nix-shell --pure` (nix does not abbreviate). `timeout -k` /
@@ -2239,21 +2236,21 @@ raw_mention() {
             || $t =~ (^|[^[:alnum:]_-])unset([^[:alnum:]_]|$) ]] \
             && deny_text_layer "drops or rewrites the environment (unset of anything, declare +x, exec -c, \${!, export -n, -u/-i/--unset*/--ignore-environment/bare -) beside a sanctioned chokepoint"
         # The standalone -u*/-i*/--unset*/--ignore-environment/bare - token counts only in env
-        # position (HIMMEL-3955): grep -i, sed -i, diff -u, a --id flag do not.
+        # position: grep -i, sed -i, diff -u, a --id flag do not.
         env_clear_opt "$t" "$1" \
             && deny_text_layer "drops or rewrites the environment (unset of anything, declare +x, exec -c, \${!, export -n, -u/-i/--unset*/--ignore-environment/bare -) beside a sanctioned chokepoint"
     done <<<"$REG_LINES"
     return 0
 }
 
-# HIMMEL-2927: names cleared by an in-shell `unset` or `export -n` seen so
+# Names cleared by an in-shell `unset` or `export -n` seen so
 # far -- accumulates left-to-right across the whole payload, carried to
 # every LATER segment (see scan_text's fold and scan_segment's `unset`/
 # `export` case). `env -u`/`--unset` is scoped to that ONE invocation's
 # child instead -- it feeds the segment-local `names`, not this global.
 UNSET_NAMES=''
 
-# HIMMEL-4399: every write to UNSET_NAMES goes through unset_add, which adds
+# Every write to UNSET_NAMES goes through unset_add, which adds
 # each whitespace-split word ONCE. scan_segment's `names` already carries the
 # inherited UNSET_NAMES, so the old plain append made an assignment-only
 # segment append the list to itself -- it doubled per segment and `a=;` x 30
@@ -2263,7 +2260,7 @@ UNSET_NAMES=''
 # ponytail: 256 distinct names is a fixed ceiling (a longer genuine list
 # over-denies), raise UNSET_CAP if a real payload trips it.
 UNSET_CAP=256
-# HIMMEL-4414: UNSET_COUNT is the number of words in UNSET_NAMES, kept in step
+# UNSET_COUNT is the number of words in UNSET_NAMES, kept in step
 # by unset_add (and restored with UNSET_NAMES by scan_text's subshell
 # snapshot), so an add is a membership test plus an increment instead of a
 # re-split of the whole list. The cap counts every distinct name in the
@@ -2340,8 +2337,8 @@ check_invocation() {
     return 0
 }
 
-# env_short_cluster <word> -- GNU-getopt walk of ONE env short-option word
-# (HIMMEL-1803 round 2). Short options cluster: "-vS str" is flag -v plus
+# env_short_cluster <word> -- GNU-getopt walk of ONE env short-option word.
+# Short options cluster: "-vS str" is flag -v plus
 # -S whose operand is the NEXT word, "-vSstr" attaches the operand to the
 # same word, and an argument-taking letter mid-cluster ("-vu FOO",
 # "-CS dir") consumes the next word / the rest of the word as ITS operand
@@ -2361,7 +2358,7 @@ check_invocation() {
 # must treat a capture with no newline as verdict-plus-empty-operand,
 # never read the verdict itself as the operand. A letter OUTSIDE the set
 # gets the same
-# CONSERVATIVE DEFAULT env_long_option uses (HIMMEL-1803 r4): assume the
+# CONSERVATIVE DEFAULT env_long_option uses: assume the
 # option MAY consume an operand (arg-attached when letters remain in the
 # word, arg-next when it ends the word) -- never a bare word-skip that
 # parks command position on a would-be operand. Real env exits on an
@@ -2375,7 +2372,7 @@ env_short_cluster() {
         case "$c" in
         i|0|v) i=$((i + 1)); continue ;;
         u)
-            # HIMMEL-2927: same operand shape as C|P|a below, but the
+            # Same operand shape as C|P|a below, but the
             # caller records the operand as a candidate seam name.
             if [ $((i + 1)) -lt "$n" ]; then
                 printf 'unset-attached\n%s\n' "${word:$((i + 1))}"
@@ -2412,8 +2409,8 @@ env_short_cluster() {
     return 0
 }
 
-# ENV_LONG_OPTS -- the env option GRAMMAR the scan derives from
-# (HIMMEL-1803 round 3). Three CR rounds each found a spelling the
+# ENV_LONG_OPTS -- the env option GRAMMAR the scan derives from.
+# Three CR rounds each found a spelling the
 # previous hand-written list missed -- -S, then the clustered -vS, then
 # the separate operand of --unset / --chdir / --argv0 -- so the model is
 # no longer a list of spellings: every option env accepts is classified
@@ -2431,7 +2428,7 @@ env_short_cluster() {
 #             --argv0).
 #   unset  -- mandatory operand, same shape as `arg` (separate word or
 #             "--name=VAL" attached), but the operand is also a candidate
-#             SEAM NAME (HIMMEL-2927): `env -u`/`--unset` clears it with no
+#             SEAM NAME: `env -u`/`--unset` clears it with no
 #             assignment word, the same effect an env-prefixed VAR=x is
 #             denied for -- so its operand is added to the segment's names
 #             like a leading assignment word would be (-u/--unset).
@@ -2524,7 +2521,7 @@ EOF
         elif [ "$cls" = "arg" ]; then printf 'consume-next\n\n'
         else printf 'flag\n\n'; fi ;;
     unset)
-        # HIMMEL-2927: same operand shape as `arg`, but the caller records
+        # Same operand shape as `arg`, but the caller records
         # the operand as a candidate seam name (env -u/--unset clears it
         # with no assignment word).
         if [ "$hasval" = "1" ]; then printf 'unset-attached\n%s\n' "$val"
@@ -2537,7 +2534,7 @@ EOF
 }
 
 # scan_split_argv <split-string text> <names> <depth> <newline-joined
-# appended words> -- the HIMMEL-1803 r4 model of a -S / --split-string
+# appended words> -- the model of a -S / --split-string
 # operand. GNU env does NOT hand that operand to a fresh shell scan: it
 # TOKENIZES the string with its own split-string tokenizer (shell-like
 # quoting and backslash escapes, plus the documented "\_" argument
@@ -2554,7 +2551,7 @@ EOF
 # scan_text: deeper reconstruction stays the documented determined-bypass
 # residual.
 #
-# split_unresolvable <split-string text> -- HIMMEL-1813: true when GNU env's
+# split_unresolvable <split-string text> -- true when GNU env's
 # split-string grammar can produce an argv tokenize_seg does not model.
 # After seven rounds of spelling enumeration (r7 = "\c", ignore the rest)
 # the rule inverts: only an explicit resolvable set passes -- plain text,
@@ -2614,13 +2611,13 @@ split_mention() {
 scan_split_argv() {
     local text="$1" inames="$2" depth="$3" appended="$4"
     local words='' seg_text=''
-    # HIMMEL-1813: past the depth cap nothing is simulated, so a split
+    # Past the depth cap nothing is simulated, so a split
     # string that mentions a registered chokepoint is denied there too.
     if [ "$depth" -gt 5 ]; then
         split_mention "$text$NL$appended"
         return 0
     fi
-    # HIMMEL-1813: a split string the simulation cannot fully model, when
+    # A split string the simulation cannot fully model, when
     # it or the appended words mention a registered chokepoint, is denied
     # outright rather than simulated.
     if split_unresolvable "$text"; then
@@ -2639,7 +2636,7 @@ scan_split_argv() {
     return 0
 }
 
-# wrapper_skip <nice|timeout|stdbuf|ionice|chrt> <index> -- HIMMEL-3904.
+# wrapper_skip <nice|timeout|stdbuf|ionice|chrt> <index>.
 # Step over a transparent process wrapper's own options and operand (W/nw
 # come from scan_segment's dynamic scope) and set WRAP_NEXT to the index of the
 # wrapped command's first word, or -1 when an option cannot be modelled (the
@@ -2714,15 +2711,14 @@ scan_segment() {
     local env_endopts=0 lo_out lo_verdict lo_operand
     local cluster_out cluster_verdict cluster_operand
     local n
-    # HIMMEL-3185: an arithmetic body lifted by segment_cmd is not command
+    # An arithmetic body lifted by segment_cmd is not command
     # text -- fold its seam assignments and stop.
     if [[ $seg == "$ARITH_TAG"* ]]; then
         arith_fold "${seg#"$ARITH_TAG"}"
         return 0
     fi
     names="$inames"
-    # HIMMEL-2939 (collapse, CR round 4 -- console ruling on the pattern
-    # that parked HIMMEL-2929 and ended #635 at round 5): `$[NAME=0]`
+    # `$[NAME=0]`
     # (legacy arithmetic expansion) is not a segmentation boundary the way
     # `$(`/backtick are, so it never opens a fresh command position of its
     # own. Three straight rounds each found the next arithmetic-operator
@@ -2759,7 +2755,7 @@ scan_segment() {
         [ -n "$w" ] || continue
         W[nw]="${w#:}"; nw=$((nw + 1))
     done <<<"$(tokenize_seg "$seg")"
-    # HIMMEL-1813: a here-string is scanned as a script (the heredoc body
+    # A here-string is scanned as a script (the heredoc body
     # is already scanned through the newline fold) UNLESS its command is a
     # non-executing reader. Fail-closed: any other command, a shell or a
     # `source /dev/stdin`, may run it. Every operand is scanned: the
@@ -2806,7 +2802,7 @@ scan_segment() {
             return 0
             ;;
         env)
-            # Option words (HIMMEL-1803, rounds 1-4): what an env option
+            # Option words: what an env option
             # does to the words after it is DERIVED from the option
             # grammar table (env_long_option for long words and long
             # ABBREVIATIONS, env_short_cluster for short/clustered words):
@@ -2846,13 +2842,13 @@ scan_segment() {
                     consume-next)     j=$((j + 2)); continue ;;
                     consume-attached) j=$((j + 1)); continue ;;
                     unset-attached)
-                        # HIMMEL-2927: `--unset=NAME` clears NAME for THIS
+                        # `--unset=NAME` clears NAME for THIS
                         # env invocation's own command -- same segment,
                         # recorded like a leading assignment word.
                         names="$names $lo_operand"
                         j=$((j + 1)); continue ;;
                     unset-next)
-                        # HIMMEL-2927: `--unset NAME` (separate operand).
+                        # `--unset NAME` (separate operand).
                         if [ $((j + 1)) -lt "$nw" ]; then
                             names="$names ${W[$((j + 1))]}"
                         fi
@@ -2898,12 +2894,12 @@ scan_segment() {
                     case "$cluster_verdict" in
                     arg-next) j=$((j + 2)); continue ;;
                     unset-attached)
-                        # HIMMEL-2927: attached `-uNAME` clears NAME for
+                        # Attached `-uNAME` clears NAME for
                         # THIS env invocation's own command -- same segment.
                         names="$names $cluster_operand"
                         j=$((j + 1)); continue ;;
                     unset-next)
-                        # HIMMEL-2927: separate `-u NAME` (or mid-cluster).
+                        # Separate `-u NAME` (or mid-cluster).
                         if [ $((j + 1)) -lt "$nw" ]; then
                             names="$names ${W[$((j + 1))]}"
                         fi
@@ -2941,7 +2937,7 @@ scan_segment() {
                 # A fresh env process: its option parsing starts over
                 # ("env -- A=1 env -S '...'": the outer "--" must not
                 # leak into the inner env's option scan).
-                # HIMMEL-1813: a redirect word of any shape in an env
+                # A redirect word of any shape in an env
                 # segment makes env's options unresolvable (the tokenizer
                 # drops it, so its operand's role is a guess): deny when
                 # the segment mentions a registered chokepoint.
@@ -2957,7 +2953,7 @@ scan_segment() {
             bash|sh|*/bash|*/sh|bash.exe|*/bash.exe|sh.exe|*/sh.exe|.|source)
                 phase=interp; j=$((j + 1)); continue ;;
             nice|*/nice|timeout|*/timeout|stdbuf|*/stdbuf|ionice|*/ionice|chrt|*/chrt)
-                # HIMMEL-3904: a transparent process wrapper re-enters
+                # A transparent process wrapper re-enters
                 # command position (`nice env SEAM=x bash chokepoint`), and
                 # its operands are words, not assignments. An option the
                 # list in wrapper_skip cannot model fails CLOSED when the
@@ -2975,7 +2971,7 @@ scan_segment() {
                 # assignments after them DO lead it.
                 asg_ok=1; j=$((j + 1)); continue ;;
             unset)
-                # HIMMEL-2927 (ruling, pr-check round 5): FAIL-CLOSED by
+                # FAIL-CLOSED by
                 # construction, not by modelling unset's option grammar --
                 # three rounds each found the next edge a validity model
                 # missed (-fn, -f -n boundary, `--`, `-x`), so this stops
@@ -3001,8 +2997,7 @@ scan_segment() {
                 done
                 return 0 ;;
             export)
-                # HIMMEL-2927/HIMMEL-2933 (ruling, pr-check round 5 + the
-                # 2933 extension): same fail-closed simplification as
+                # Same fail-closed simplification as
                 # `unset` above, now applied whether or not `-n` is present.
                 # `export -n NAME` un-exports NAME (the child no longer
                 # inherits it -- the unset direction); `export NAME[=val]`
@@ -3026,9 +3021,7 @@ scan_segment() {
                 return 0
                 ;;
             let|declare|typeset|readonly)
-                # HIMMEL-2939 (collapse, CR round 4 -- console ruling, same
-                # shape as #635 round 5 and the HIMMEL-2929 park): three
-                # straight rounds each found the next `let` operator shape a
+                # Three straight rounds each found the next `let` operator shape a
                 # validity model missed (bare `=`, compound `*=`/`+=`,
                 # comma-joined `,NAME=`, prefix `++`, postfix AFTER a comma)
                 # -- modelling this grammar never terminates, there is
@@ -3045,9 +3038,8 @@ scan_segment() {
                 # it) denies too -- costs nothing; a false ALLOW is the
                 # defect class this ticket exists for.
                 #
-                # CR round 5 (console ruling): round 4 still skipped every
-                # dash-prefixed word (`-*) ;;`) as if it were an option --
-                # that skip IS grammar modelling in disguise. `let`
+                # Skipping every dash-prefixed word (`-*) ;;`) as if it were
+                # an option IS grammar modelling in disguise. `let`
                 # evaluates each operand as arithmetic, where a LEADING `--`
                 # after the `--` option-terminator is the prefix-decrement
                 # operator, not a flag: `let -- '--HIMMEL_CONSOLE_LEG'`
@@ -3068,8 +3060,7 @@ scan_segment() {
                 done
                 return 0 ;;
             read)
-                # HIMMEL-2939 (collapse, CR round 4 continued -- console
-                # ruling): `read NAME [NAME2 ...]` assigns every operand
+                # `read NAME [NAME2 ...]` assigns every operand
                 # name, but an operand can also be an ARRAY-ELEMENT form
                 # (`NAME[0]`) -- whole-word capture folded the literal
                 # "NAME[0]" text, which never exact-matched the registered
@@ -3079,7 +3070,7 @@ scan_segment() {
                 # `-p`/`-d` option's OWN operand is scanned too, documented
                 # over-deny, no option-argument modelling).
                 #
-                # CR round 5 (console ruling): same `-*) ;;` deletion as the
+                # The `-*) ;;` skip is deleted here too, as in the
                 # `let` arm above, for consistency -- no option-shape
                 # modelling anywhere in this collapse, every remaining word
                 # goes through the scan unconditionally.
@@ -3095,13 +3086,12 @@ scan_segment() {
                 done
                 return 0 ;;
             mapfile|readarray)
-                # HIMMEL-2943 (residual deferred off HIMMEL-2939 round 5,
-                # codex-1): `mapfile NAME <<< 0` (readarray is its alias)
+                # `mapfile NAME <<< 0` (readarray is its alias)
                 # reads stdin into array NAME, converting a scalar seam
                 # variable into an array -- bash does not export arrays to
                 # child processes, so a later chokepoint loses the seam with
                 # no name folded into UNSET_NAMES. Same STOP-parsing-grammar
-                # ruling as the `let`/`read` arms above (round 5): no
+                # ruling as the `let`/`read` arms above: no
                 # option-shape model, every remaining word goes through the
                 # word-bounded scan unconditionally, so a value-taking
                 # option's own operand (`-C callback`, `-c quantum`) is
@@ -3118,8 +3108,7 @@ scan_segment() {
                 done
                 return 0 ;;
             printf)
-                # HIMMEL-2939 (collapse, CR round 4 continued -- console
-                # ruling): unlike unset/export/read, printf's other words are
+                # Unlike unset/export/read, printf's other words are
                 # a format string and data, not names -- only `-v`'s operand
                 # (attached or the next word) is a candidate, but that
                 # operand can also be an array-element form (`NAME[0]`) --
@@ -3159,11 +3148,11 @@ scan_segment() {
             ;;
         esac
     done
-    # HIMMEL-2933: a segment consumed ENTIRELY as leading assignment words
+    # A segment consumed ENTIRELY as leading assignment words
     # (phase never left "start", no command word was ever reached) is a
     # bare shell assignment -- `SEAM=0;` / `SEAM=0 OTHER=1;` with nothing
     # after -- which bash runs in the CURRENT shell, so it persists to
-    # every LATER segment exactly like `unset`/`export -n` (HIMMEL-2927).
+    # every LATER segment exactly like `unset`/`export -n`.
     # Fold this segment's collected names into the same accumulator. `env`/
     # `interp` phases exhausting the same way do NOT persist (an env-scoped
     # assignment with no trailing command doesn't export or set anything)
@@ -3177,7 +3166,7 @@ scan_segment() {
 # scan_text <command text> <inherited assignment names> <depth> -- segment
 # and scan; the recursion target for eval / -c strings (depth-capped:
 # deeper reconstruction is the documented determined-bypass residual).
-# HIMMEL-2929: a clear learned at paren-depth >=1 must not outlive its
+# A clear learned at paren-depth >=1 must not outlive its
 # subshell -- snapshot UNSET_NAMES on the way down each depth, restore it
 # on the way back up, so it folds back to what stood outside the `(...)`.
 # depth > 0 means this text IS an eval/`-c` string's re-parsed operand (the
@@ -3186,7 +3175,7 @@ scan_segment() {
 scan_text() {
     local text="$1" inames="$2" depth="$3" line pdepth seg cur=0 force=0
     local -a PSNAP PSNAPN
-    # HIMMEL-1813: past the depth cap a chokepoint mention denies (fail-closed).
+    # Past the depth cap a chokepoint mention denies (fail-closed).
     [ "$depth" -le 5 ] || { raw_mention "$text" 1; return 0; }
     [ "$depth" -gt 0 ] && force=1
     while IFS= read -r line; do
@@ -3200,7 +3189,7 @@ scan_text() {
             cur=$pdepth
         fi
         [[ $seg =~ [^[:space:]] ]] || continue
-        # HIMMEL-2927: an in-shell `unset`/`export -n` or an `env -u`/
+        # An in-shell `unset`/`export -n` or an `env -u`/
         # `--unset` in an EARLIER segment clears a name for every LATER
         # segment in this same payload -- fold the accumulator in fresh
         # each iteration so it reflects only what ran before this segment.
@@ -3214,7 +3203,7 @@ scan_text() {
 REG_LINES=$(jq -r 'to_entries[] | "\(.key)\t\((.value.seam_env_vars // []) | join(" "))"' "$REGISTRY" 2>/dev/null) || REG_LINES=''
 [ -n "$REG_LINES" ] || exit 0
 
-# HIMMEL-2939 (collapse, CR round 4): every seam var name across every
+# Every seam var name across every
 # chokepoint, flattened once -- scan_segment's `let`/`declare`/`$[...]`
 # folds check membership against THIS (the registry's own var set), never
 # against `$names` (the per-segment accumulator check_invocation reads,
@@ -3225,7 +3214,7 @@ while IFS=$'\t' read -r _reg_path _reg_vars; do
     ALL_SEAM_VARS="$ALL_SEAM_VARS $_reg_vars"
 done <<<"$REG_LINES"
 
-# HIMMEL-1813 backstop, on the untouched command. It runs BEFORE scan_text
+# Backstop, on the untouched command. It runs BEFORE scan_text
 # so a nounset abort or a hook timeout inside the parser cannot skip it
 # (console X ruling at 64bc44b1); where both would deny, the backstop's
 # message now fires instead of the parser's more specific one.

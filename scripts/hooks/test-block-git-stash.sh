@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/block-git-stash.sh (HIMMEL-1755).
+# Smoke test for scripts/hooks/block-git-stash.sh.
 #
 # Usage: bash scripts/hooks/test-block-git-stash.sh
 #
@@ -89,13 +89,13 @@ assert_rc "continuation before flag"  2 "$(run_case "$(j_bash 'git stash \
 assert_rc "continuation in -C value"  2 "$(run_case "$(j_bash 'git -C \
 /c/repo stash clear')")"
 
-# HIMMEL-2077: refs/stash is an ordinary ref, reachable through low-level
+# refs/stash is an ordinary ref, reachable through low-level
 # plumbing that bypasses the `stash` keyword grammar entirely.
 assert_rc "update-ref -d refs/stash"   2 "$(run_case "$(j_bash 'git update-ref -d refs/stash')")"
 assert_rc "update-ref write refs/stash" 2 "$(run_case "$(j_bash 'git update-ref refs/stash deadbeef')")"
 assert_rc "symbolic-ref -d refs/stash" 2 "$(run_case "$(j_bash 'git symbolic-ref -d refs/stash')")"
 assert_rc "update-ref -d via -C worktree" 2 "$(run_case "$(j_bash 'git -C /c/repo/.claude/worktrees/other update-ref -d refs/stash')")"
-# codex-1 (CR round on HIMMEL-2077): `update-ref --stdin` reads its ref
+# `update-ref --stdin` reads its ref
 # commands from STDIN DATA, so `refs/stash` in a piped `printf` sits in a
 # DIFFERENT clause than `update-ref` and the same-clause rule above never
 # sees it — refuse `--stdin` unconditionally instead (the batch target is
@@ -146,7 +146,7 @@ assert_rc "Read tool payload"         0 "$(run_case '{"tool_name":"Read","tool_i
 # --- MALFORMED JSON case (expect rc=2, fail closed) ---
 assert_rc "truncated JSON + stash drop" 2 "$(run_case '{"tool_name":"Bash","tool_input":{"command":"git stash drop"')"
 
-# --- EMPTY/BLANK stdin (expect rc=2, fail closed) -- HIMMEL-2123 RETASK R2123A:
+# --- EMPTY/BLANK stdin (expect rc=2, fail closed):
 # `read -d ''` on EOF leaves $input empty with no error to catch, and `jq
 # <<<""` emits zero values with zero errors, so the malformed-JSON guard
 # never fired and this silently fell open (rc=0) before the explicit blank
@@ -154,8 +154,8 @@ assert_rc "truncated JSON + stash drop" 2 "$(run_case '{"tool_name":"Bash","tool
 assert_rc "empty stdin"      2 "$(run_case '')"
 assert_rc "whitespace-only stdin" 2 "$(run_case '   ')"
 
-# --- NON-STRING command field (expect rc=2, fail closed) -- HIMMEL-2123
-# RETASK R2123A: jq's `+` is type-strict, so a present-but-non-string
+# --- NON-STRING command field (expect rc=2, fail closed):
+# jq's `+` is type-strict, so a present-but-non-string
 # `command` (e.g. a JSON array) made the combined extraction throw a type
 # error that the `catch empty` swallowed, silently blanking BOTH tool and
 # cmd and falling through to allow. The hook now closes it by EXPLICITLY
@@ -168,7 +168,7 @@ assert_rc "whitespace-only stdin" 2 "$(run_case '   ')"
 # fire on old -- `tostring` doesn't reproduce it, so explicit fail-closed
 # is the correct fix, not a tostring-based allow.)
 assert_rc "array command + stash drop" 2 "$(run_case '{"tool_name":"Bash","tool_input":{"command":["git stash drop"]}}')"
-# HIMMEL-3986: jq's `//` treats a present false as absent; select on the key.
+# jq's `//` treats a present false as absent; select on the key.
 assert_rc "command:false + cmd:ls" 2 "$(run_case '{"tool_name":"Bash","tool_input":{"command":false,"cmd":"ls"}}')"
 # A null command still reads cmd, as `//` did: never allow what main refused.
 assert_rc "command:null + cmd:stash drop" 2 "$(run_case '{"tool_name":"Bash","tool_input":{"command":null,"cmd":"git stash drop"}}')"
@@ -178,7 +178,7 @@ assert_rc "5745 bash -c 'git stash' (accepted miss)"  0 "$(run_case "$(j_bash "b
 assert_rc "5745 g'i't stash (accepted miss)"          0 "$(run_case "$(j_bash "g'i't stash")")"
 assert_rc "5745 echo 'git stash' (data)"              0 "$(run_case "$(j_bash "echo 'git stash'")")"
 
-# --- HIMMEL-5101: the path prefix stops at an open paren (linear on a `(` run) ---
+# --- The path prefix stops at an open paren (linear on a `(` run) ---
 # Every `(` is a CMDPOS anchor; a prefix that crosses `(` rescans the whole run
 # from each one (quadratic), and a timed-out PreToolUse hook does not deny.
 # shellcheck disable=SC2046 # one word per repeat is the point

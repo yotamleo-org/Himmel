@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # block-himmel-config-writes.sh - PreToolUse hook (matchers "Bash" and
-# "Edit|Write|MultiEdit|NotebookEdit") [HIMMEL-4696]. A SPEED BUMP, not a fence.
+# "Edit|Write|MultiEdit|NotebookEdit"). A SPEED BUMP, not a fence.
 #
 # WHY: graphify.salus_ollama_cloud_ok in ~/.himmel/config.json is the persisted
-# opt-in that lets the graphify fence send salus (PHI) corpora to ollama-cloud
-# (HIMMEL-4185). The matrix reads it from a plain file, so an agent that can
+# opt-in that lets the graphify fence send salus (PHI) corpora to ollama-cloud.
+# The matrix reads it from a plain file, so an agent that can
 # write the file can grant itself an egress it was never given. Granting that
 # opt-in is an OPERATOR call; this hook makes the tool-driven routes cost a
 # denial. There is deliberately NO env bypass - a bypass an agent can request is
 # the thing this hook exists to remove.
 #
-# WIRING (HIMMEL-5290): listed in EXPECTED_SCRIPT_ORDER in wire-hook-bash.mjs
+# WIRING: listed in EXPECTED_SCRIPT_ORDER in wire-hook-bash.mjs
 # (Bash chain and Edit|Write chain, right after block-bank-lift-writes.sh) and
 # wired in .claude/settings.json and .codex/hooks.json. `node
 # scripts/hooks/wire-hook-bash.mjs --check` proves the three agree.
@@ -18,7 +18,7 @@
 # DENIES
 #   Bash - the command text names the config file (`.himmel` and `config.json`
 #     both present, in any quoting/spelling that keeps the two literals) unless
-#     it passes a STRUCTURAL ALLOW-LIST (HIMMEL-5290, judge j2409c): every
+#     it passes a STRUCTURAL ALLOW-LIST: every
 #     character in [A-Za-z0-9 _./~:=,@+-], first word one of cat jq grep head
 #     tail wc stat ls diff sha256sum (not less: +v opens an editor), and no
 #     option in an output position (-o/-O, --output*, +command arguments,
@@ -32,7 +32,7 @@
 #   Edit|Write|MultiEdit|NotebookEdit - file_path / notebook_path whose literal
 #     name is `.himmel/config.json`, or which resolves (`readlink -m`: `..`
 #     segments, symlinked components) to $HOME/.himmel/config.json.
-#   apply_patch (Codex's only edit tool) - WHOLE-PATCH rule (j2409f): any patch
+#   apply_patch (Codex's only edit tool) - WHOLE-PATCH rule: any patch
 #     whose text anywhere contains `.himmel` and a config name (`config.json`,
 #     `config.j*`, `config.*`, `conf*`) denies, whatever the headers,
 #     whitespace or encoding (a patch that merely mentions the path in its
@@ -48,7 +48,7 @@
 # tool for a hook bug; scripts/hooks/CLAUDE.md fail-open-vs-closed rule).
 #
 # ponytail: the allow-list over-denies on purpose (a splitter was patched three
-# times and each patch opened the next escape: j2409a/b/c), upgrade path a real
+# times and each patch opened the next escape), upgrade path a real
 # shared tokenizer, filed if a benign read is blocked often. The TRIGGER's
 # spelling ceiling stays filed: it needs the literals `.himmel` and `config.j*`
 # (or `config.*`/`conf*`) in the text, so an interpreter that assembles the
@@ -97,7 +97,7 @@ fi
 
 tool=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null) || tool=""
 CFG_REAL="${HOME:-/nonexistent}/.himmel/config.json"
-# Caps on an apply_patch payload (HIMMEL-5351); see the apply_patch branch.
+# Caps on an apply_patch payload; see the apply_patch branch.
 MAX_PATCH_BYTES=524288
 MAX_PATCH_HEADERS=1000
 MAX_HEADER_LINE_BYTES=4096
@@ -127,7 +127,7 @@ case "$tool" in
         # of the patch text (same parse as block-bank-lift-writes.sh).
         patch=$(printf '%s' "$input" | jq -r '(.tool_input.command // .tool_input.patch // .tool_input.input // "") | if type == "array" then join("\n") else tostring end' 2>/dev/null) || patch=""
         pcwd=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null) || pcwd=""
-        # Whole-patch rule (j2409f: codex trims Unicode White_Space, so a
+        # Whole-patch rule (codex trims Unicode White_Space, so a
         # header-parse match was a second NO-GO; stop mirroring its parser):
         # deny when the patch text ANYWHERE carries `.himmel` and a config
         # name, whatever the headers, whitespace or encoding. Over-denies a
@@ -142,7 +142,7 @@ case "$tool" in
         esac
         # Additional deny: a header path that RESOLVES to the config without
         # naming .himmel (a symlinked directory or alias).
-        # codex trims Unicode White_Space (j2409f, codex-1 round 3), bash's
+        # codex trims Unicode White_Space, bash's
         # [[:space:]] does not: strip the multi-byte members too, from header
         # lines and from the extracted path, until stable.
         uni_trim() {
@@ -150,7 +150,7 @@ case "$tool" in
             while [ "$v" != "$prev" ]; do
                 # Each pass costs O(length) x ~40 expansions, so a header padded
                 # with alternating space/NBSP runs is quadratic (7.5 KB took 17 s,
-                # 15 KB 98 s, HIMMEL-5351): a real header needs two passes at most.
+                # 15 KB 98 s): a real header needs two passes at most.
                 passes=$((passes + 1))
                 if [ "$passes" -gt 8 ]; then
                     deny "apply_patch header is padded with alternating whitespace runs (the guard cannot trim it inside the hook budget); remove the padding"
@@ -165,7 +165,7 @@ case "$tool" in
             done
             UNI_TRIMMED="$v"
         }
-        # Bounded cost (HIMMEL-5351): the Codex PreToolUse budget is 60 s and
+        # Bounded cost: the Codex PreToolUse budget is 60 s and
         # its behaviour on a hook timeout is undocumented (the docs only say an
         # MCP hook error/timeout "can fail the hook without blocking"), so a
         # padded patch must DENY here instead of running out the clock. The
@@ -256,8 +256,7 @@ lc=$(printf '%s' "${cmd//$'\r'/}" | tr '[:upper:]' '[:lower:]')
 case "$lc" in *.himmel*) ;; *) exit 0 ;; esac
 case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**) ;; *) exit 0 ;; esac
 
-# The command names the file. Structural allow-list (HIMMEL-5290, judge
-# j2409c: the third shell-parsing NO-GO, so no splitter): ALLOW only when
+# The command names the file. Structural allow-list (no shell splitter): ALLOW only when
 #   1. every character is in [A-Za-z0-9 _./~:=,@+-] - no quote, $, backtick,
 #      brace, paren, ; & | < > * ? [ ] # ! backslash, tab, CR or newline, so
 #      there is nothing to parse: no chaining, redirect, substitution, glob;
@@ -265,7 +264,7 @@ case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**) ;; *) exit 0 ;; e
 #   3. no option can put a file in an output position (-o/-O in any short
 #      cluster, --output*, jq --arg*/--rawfile/--slurpfile) and no +command
 #      argument. less is NOT a listed reader: +v launches an editor, -O logs
-#      to a file, and interactive less has shell escapes (codex-1, round 3).
+#      to a file, and interactive less has shell escapes.
 # LC_ALL=C keeps the character ranges byte-exact under a UTF-8 locale.
 LC_ALL=C
 export LC_ALL

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # PreToolUse hook for Bash/PowerShell/mcp__* — GLM-lane external-write deny.
 #
-# WHY (HIMMEL-654 session-9 tail, operator decision #1 — "harden BEFORE
+# WHY (operator decision — "harden BEFORE
 # scaling the offload"): GLM workers (scripts/telegram/spawn-glm.ts) and
 # claude-glm sessions run claude against api.z.ai, usually with
 # --permission-mode bypassPermissions. Third-party lanes have NO auto-mode
 # classifier and bypassPermissions removes the prompt layer. The lanes used to
 # also poison the worktree pushurl, but that was never a wall and it mutated
-# the operator's shared git config to boot, so HIMMEL-1961 removed it: this
+# the operator's shared git config to boot, so it was removed: this
 # hook plus the parent CR gate are now the whole story. It is the
 # deterministic classifier SUBSTITUTE: on the GLM lane, hard-block
 # push / PR / external-write shapes.
@@ -35,7 +35,7 @@
 #     file followup tickets. Atlassian MCP stays blocked (mcp__* below) — Jira
 #     routing is CLI-first (block-backend-tier enforces that in every session).
 #   - the qmd KB (mcp__plugin_qmd_qmd__* tools): read-only knowledge-base
-#     access, COLLECTION-SCOPED (HIMMEL-1239). qmd indexes salus (a PHI medical
+#     access, COLLECTION-SCOPED. qmd indexes salus (a PHI medical
 #     vault) alongside himmel/luna/luna-curated with NO built-in isolation, so
 #     a blanket allow would let the GLM lane egress PHI to api.z.ai via the qmd
 #     MCP path even though egress-matrix.json hard-denies salus by file path.
@@ -80,27 +80,26 @@
 #     (`gh issue list -R o/r`) — allowed
 #   Backstopped by the parent CR gate, which is the load-bearing control;
 #   this hook is the in-session deterministic layer. (The pushurl tripwire
-#   that used to sit alongside them is gone — HIMMEL-1961.)
+#   that used to sit alongside them is gone.)
 #
 # Exit codes: 0 allow; 2 block (stderr shown to the worker).
 # Bypass: GLM_EXTERNAL_WRITES_OK=1 in the env of the shell that spawns the
 # worker (spawn-glm caller / claude-glm launcher). Session-sticky.
 #
-# BYPASS SCOPE — where the trust boundary actually is (HIMMEL-1649 round 4,
-# [codex-1]). "No on-disk content ever executes" is an ENFORCEMENT-mode
+# BYPASS SCOPE — where the trust boundary actually is. "No on-disk content
+# ever executes" is an ENFORCEMENT-mode
 # property, not a global one. Under GLM_EXTERNAL_WRITES_OK the near-miss denies
 # are skipped, so a MALFORMED helper command reaches the on-disk helper and runs
 # it. That is the designed contract, not a gap: bypass mode IS the no-hook
-# environment scripts/glm/append-outbox.sh exists for, and round 3 made that
-# helper the LOCKSTEP implementation of the same fail-closed schema enforced
+# environment scripts/glm/append-outbox.sh exists for, and it is the
+# LOCKSTEP implementation of the same fail-closed schema enforced
 # here — so a malformed payload appends NOTHING in either mode. Only the
 # executor differs: the hook on-lane, the lockstep helper under operator bypass.
 # Hoisting the near-miss deny above the bypass exit would block operator
 # debugging in a mode the operator explicitly opted into, in order to guard
 # against a worker who under bypass can already do strictly more.
 #
-# WHAT THIS HOOK IS AND IS NOT A TRUST ROOT FOR (HIMMEL-1649 round 5,
-# [codex-adv-1] — scoping a claim rounds 3/4 stated too broadly). The honest
+# WHAT THIS HOOK IS AND IS NOT A TRUST ROOT FOR (scoped narrowly). The honest
 # invariant is narrow:
 #   - Under ENFORCEMENT the report verb is executed BY THIS HOOK, never by
 #     on-disk helper content. That part holds.
@@ -118,12 +117,12 @@
 #     `exit 0` neuters the guard for every later tool call.
 # Closing THAT is an architecture change, not a hook edit — run the guard from
 # a dispatcher-owned path outside worker Edit roots, or hash-verify it at
-# invocation against a dispatcher-recorded digest. Tracked in HIMMEL-1666.
+# invocation against a dispatcher-recorded digest.
 # Do not restate the broad "nothing worker-reachable can affect this guard"
 # claim anywhere; it was never true of the hook file itself.
 #
-# HIMMEL-2085 GENERALIZATION — worker-ness, not lane. record-hook-integrity.sh's
-# HIMMEL-1666 pin file lives in an ordinary user-writable directory
+# GENERALIZATION — worker-ness, not lane. record-hook-integrity.sh's
+# pin file lives in an ordinary user-writable directory
 # ($HIMMEL_HOOK_INTEGRITY_DIR, default ~/.claude/himmel/hook-integrity) —
 # outside every worker's Edit(<worktree>) grant, but NOT outside its
 # Bash(node *)/Bash(bash *) reach. `bash -c 'echo ... > .../hook-
@@ -145,7 +144,7 @@
 # ONE new class, gated on worker-ness broadly; it does not widen the rest of
 # the GLM enforcement onto the native lane, which is out of this ticket's scope.
 #
-# HONEST RESIDUAL (kept from record-hook-integrity.sh's own note, HIMMEL-2085):
+# HONEST RESIDUAL (kept from record-hook-integrity.sh's own note):
 # this new class is a command-TEXT fence, same shape as every other class in
 # this file — it denies a Bash/PowerShell command whose text contains the pin
 # directory as a (slash/case-normalized) literal substring. It is NOT a
@@ -155,8 +154,8 @@
 # SCOPE — identical residual to every other command-text hook here. Bypass:
 # HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1, shared with run-hook-with-bash.js's own
 # mid-session-hook-edit escape hatch (the same legitimate operator situation) and
-# scoped exactly as HIMMEL-3384 scopes it there: honoured, and audited, only
-# inside a linked worktree of the session's recorded repo (HIMMEL-3396,
+# scoped exactly as the launcher scopes it there: honoured, and audited, only
+# inside a linked worktree of the session's recorded repo (see
 # bypass_honoured below); the spawners also strip it from every worker child env.
 set -euo pipefail
 
@@ -166,14 +165,14 @@ case "${ANTHROPIC_BASE_URL:-}" in
 esac
 # glm_lane is the ORIGINAL GLM-specific signal (unchanged everywhere below).
 # worker_lane is glm_lane OR the lane-agnostic HIMMEL_WORKER marker any
-# dispatched worker's child env now carries (see the HIMMEL-2085 note above).
+# dispatched worker's child env now carries (see the GENERALIZATION note above).
 # A non-worker (headed operator) session sets neither and exits here — same
 # near-zero overhead as before this change.
 worker_lane=$glm_lane
 [ "${HIMMEL_WORKER:-0}" = "1" ] && worker_lane=1
 [ "$worker_lane" = 1 ] || exit 0
 
-# HIMMEL-1649 round 3 — the bypass is recorded as a FLAG, not an early exit.
+# The bypass is recorded as a FLAG, not an early exit.
 # The report interceptor below is a SERVICE (the hook performs the outbox
 # append); the push/gh/network classifiers are ENFORCEMENT.
 # GLM_EXTERNAL_WRITES_OK disables ENFORCEMENT, never the SERVICE. Exiting here
@@ -199,13 +198,10 @@ if ! command -v jq >/dev/null 2>&1; then
     # historical escape hatch (this check used to sit BELOW the bypass exit);
     # a normal on-lane session still fails closed.
     [ "$glm_bypass" = 1 ] && exit 0
-    # HIMMEL-2085 CR history, both directions tried and rejected in favor of
-    # this one (round 2 [codex-3] Important vs round 3 [codex-1] Critical,
-    # in direct tension -- security wins): round 2 fail-OPENED here for a
-    # native-only worker_lane on the theory that jq-missing denying every
-    # Bash/PowerShell/mcp__* call for that lane (not just pin-dir-relevant
-    # ones) was wider than the single-class scope. Round 3 correctly called
-    # that a REOPENING of the exact pin-forging attack this ticket exists to
+    # jq missing fails CLOSED for every worker_lane, native-only included, even
+    # though that denies every Bash/PowerShell/mcp__* call for the lane (not just
+    # pin-dir-relevant ones), which is wider than the single-class scope. Failing
+    # open here would REOPEN the exact pin-forging attack this class exists to
     # close: with jq absent the pin-dir class cannot evaluate ANY command, so
     # fail-open there means a worker on any jq-less host (or an operator
     # environment that simply lacks jq) gets an entirely inert fence with no
@@ -224,7 +220,7 @@ fi
 input=$(cat)
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
 
-# HIMMEL-1649 round 9 (CodeRabbit, Major): the SHELL tools this hook mediates
+# The SHELL tools this hook mediates
 # are Bash AND PowerShell — hooks.json registers the matcher as
 # "Bash|PowerShell|mcp__.*", and both carry their command text in
 # .tool_input.command. Gating the report interceptor and the near-miss deny on
@@ -241,10 +237,10 @@ tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
 tool_is_shell=0
 case "$tool" in Bash|PowerShell) tool_is_shell=1 ;; esac
 
-# ------------------------------------------------ HIMMEL-3396 scoped bypass
+# ------------------------------------------------ scoped bypass
 # HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 used to switch off BOTH command-text fences
-# below (the HIMMEL-2085 pin-dir fence and the HIMMEL-2528 anchor fence) in any
-# checkout, for any worker that inherited the variable. HIMMEL-3384 scoped the
+# below (the pin-dir fence and the anchor fence) in any
+# checkout, for any worker that inherited the variable. The launcher scopes the
 # same variable for the hook launcher (hook-integrity.js honourBypass); this is
 # the same predicate for these fences, re-stated in bash because that function is
 # not exported and its owner keeps that file closed. It is honoured only when ALL
@@ -374,10 +370,10 @@ bypass_honoured() {
     return 0
 }
 
-# ---------------------------------------------------------- HIMMEL-2085 class
+# ---------------------------------------------------------- pin-dir class
 # Hook-integrity pin-dir write-fence. The ONLY class in this file that runs for
 # any worker_lane (GLM or a native lane carrying HIMMEL_WORKER=1) rather than
-# glm_lane specifically — see the header's HIMMEL-2085 GENERALIZATION note for
+# glm_lane specifically — see the header's GENERALIZATION note for
 # why, and for the command-text-fence residual this accepts.
 if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
     pin_cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
@@ -410,7 +406,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         pin_dir_norm=$(drive_to_posix "$pin_dir_norm")
         cmd_norm=$(printf '%s' "$pin_cmd" | tr '\134' '/' | tr '[:upper:]' '[:lower:]')
         cmd_norm=$(drive_to_posix "$cmd_norm")
-        # Critic-panel finding [codex-1] (round 1): matching only the RESOLVED
+        # Matching only the RESOLVED
         # absolute path misses the shell EXPANDING an unexpanded variable
         # reference at execution time -- `echo x > "$HIMMEL_HOOK_INTEGRITY_DIR/f"`
         # or (on the default) `echo x > "$HOME/.claude/himmel/hook-integrity/f"`
@@ -420,7 +416,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # ($X, ${X}) -- covers a custom HIMMEL_HOOK_INTEGRITY_DIR too, since
         # the var reference is denied regardless of what it resolves to -- AND
         # PowerShell's `$env:X`/`${env:X}` scope-qualified spelling of the
-        # SAME variable (critic-panel finding [codex-2], round 2: the earlier
+        # SAME variable (a plain
         # pattern only matched bash-style `$X`/`${X}`) -- and the fixed
         # default-path suffix (himmel/hook-integrity), which catches
         # $HOME/${HOME}/~ expansion on the default without needing to detect
@@ -432,7 +428,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # `producer | grep -q` pipe -- under `set -euo pipefail` grep's early
         # exit on a match can SIGPIPE the producer and flip a real match into a
         # pipeline failure. $1 is a bounded command/path string, well under the
-        # 64KiB here-string limit (HIMMEL-2027).
+        # 64KiB here-string limit.
         pin_text_hit() {
             grep -qF "$pin_dir_norm" <<< "$1" ||
             grep -qE '\$\{?(env:)?himmel_hook_integrity_dir\}?' <<< "$1" ||
@@ -506,13 +502,13 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         #   from command position is missed" limitation (top of this file),
         #   restated for the pin-dir class rather than a new one. It is also
         #   exactly the "further wrapper layer" this section's own residual
-        #   note has accepted since round 4. Not chased further: a
+        #   note has accepted. Not chased further: a
         #   command-TEXT fence cannot distinguish a wrapper from a whole new
         #   class of legitimate multi-token commands without becoming a real
         #   shell parser -- backstopped by the parent CR gate per the header.
         #
-        # HIMMEL-2200 (three round-5 re-review residuals, root-caused rather
-        # than patched again -- same lesson as the round-5 rewrite above):
+        # Three residuals, root-caused rather
+        # than patched again:
         #   [codex-1]: segment splitting on `;`/`&`/`|` used to run BEFORE
         #   quote-aware tokenization (`split($0, segs, /[;&|]/)` first, quote
         #   scanning per segment second), so a `;` inside a QUOTED path
@@ -535,7 +531,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         #   forge.sh against a cwd the real shell never reached (a failed cd
         #   leaves the shell in its ORIGINAL directory).
         #
-        # HIMMEL-2200 pr-check panel re-review [codex-1]: the escape handling
+        # The escape handling
         # above was itself too broad in two ways. First, it fired
         # unconditionally even when the mediated tool is PowerShell (this
         # hook's matcher covers Bash AND PowerShell alike, tool_is_shell
@@ -553,12 +549,9 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # metacharacters and leaves every other backslash as a literal
         # character in the token.
         #
-        # HIMMEL-2200 pr-check panel re-review round 2 [codex-1], round 3
-        # [codex-1] -- the [codex-3] fix above was itself iterated twice more
-        # and finally ROOT-CAUSED rather than patched a third time. Round 2's
-        # first attempt probed the candidate directory with `test -d` (awk
-        # system()) and only committed the cwd update when it existed on
-        # disk. Round 3 found that probe still wrong in the OTHER direction,
+        # The cd-tracking fix above is ROOT-CAUSED rather than patched. A probe of
+        # the candidate directory with `test -d` (awk system()), committing the cwd
+        # update only when it existed on disk, is wrong in the OTHER direction,
         # with a concrete repro: `rmdir real; cd real; bash forge.sh` -- at
         # HOOK-SCAN time (before any segment has executed) `real` genuinely
         # exists, so the probe says "cd succeeds" and the model follows it,
@@ -583,14 +576,14 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # enumeration of a small, statically-known branch count -- not a
         # general shell parser.
         #
-        # HIMMEL-2214 -- SUBSUMED by the fork model above, no code change.
+        # SUBSUMED by the fork model above, no code change.
         # The ticket names `&&`/`||` short-circuit truthiness: the tokenizer
         # segments on a bare `;`/`&`/`|` and so models `false && cd /existing`
         # as if the cd ran, while a real shell short-circuits and stays put.
         # That was a real fail-OPEN against the round-5 model, which advanced
         # a SINGLE modeled cwd unconditionally -- advancing into /existing
         # meant the original cwd, where the real forge.sh sits, was never
-        # scanned. The round-4 redesign that landed in HIMMEL-2200 closes it
+        # scanned. The fork model closes it
         # as a side effect of its own shape: a cd never REPLACES a candidate,
         # it FORKS, and "this cd did not happen" is exactly the preserved
         # unchanged candidate. A cd skipped by short-circuit is
@@ -599,15 +592,15 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # the model DROP candidates, which is the one direction a fail-closed
         # fence must never move. Pinned by a regression case in the scoped
         # suite; see that case for the both-direction proof against the
-        # pre-HIMMEL-2200 tokenizer.
+        # earlier single-cwd tokenizer.
         #
-        # HIMMEL-2218 [codex-1] (cd-existence TOCTOU) -- MOOT, no code change.
-        # It describes a scan-time `test -d` probe going stale before the real
-        # cd runs. That probe was round 2's attempt and the round-4 redesign
+        # A cd-existence TOCTOU is MOOT, no code change. It would describe a scan-time
+        # `test -d` probe going stale before the real
+        # cd runs. The fork-model redesign
         # DELETED it (no system() call remains); the fork model needs no
         # filesystem prediction at all, so there is no probe left to be stale.
-        # HIMMEL-2218 [codex-2] (PowerShell backtick escapes) and [codex-3]
-        # (backslash-newline line continuation) were genuine fail-opens and
+        # PowerShell backtick escapes and
+        # backslash-newline line continuation were genuine fail-opens and
         # ARE fixed, in scan_line() and the main-block join respectively.
         #
         # PowerShell script-file indirection (dot-sourcing, the `&` call
@@ -629,7 +622,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
             # The awk below stands in SOH NUL SOH for a NUL on an awk that cannot
             # build one (BSD), and that marker is a legal filename: refuse it
             # up front so a script named with it cannot be filtered out of the
-            # scan as "invalid" (HIMMEL-3177).
+            # scan as "invalid".
             # A PowerShell `u{1} escape (any zero-padded spelling) resolves to the
             # SOH byte, so it can rebuild the marker from parts without the
             # literal bytes ever appearing in the command: refuse it too.
@@ -671,7 +664,7 @@ printf '%s' "$pin_cmd" | awk -v initcwd="$tool_cwd" -v pwsh="$pwsh_flag" '
 # RUNTIME. bash -n does not catch it. Keep this program apostrophe-free.
 #
 # ESC is the DIALECT escape character: backslash for bash, backtick for
-# PowerShell (HIMMEL-2218 [codex-2]). One variable drives both the
+# PowerShell. One variable drives both the
 # in-token escape handling in scan_line() and the line-continuation join in
 # the main block, so the two dialects share one mechanism instead of two
 # parallel patches.
@@ -729,8 +722,8 @@ function run_segment(   j, i, target, seen, n2, cand) {
         # A real cd success depends on filesystem state neither this hook
         # nor the eventual real shell has resolved yet at scan time, and an
         # earlier segment in the SAME command may create or remove the target
-        # before the real cd runs -- see the HIMMEL-2200 pr-check panel note
-        # above this awk block for the two concrete exploit shapes. Rather
+        # before the real cd runs.
+        # Rather
         # than guess, FORK: every candidate cwd survives unchanged (the cd
         # fails, the shell stays put) AND gains a second candidate advanced
         # to the joined target (the cd succeeds) -- so whichever branch the
@@ -742,17 +735,16 @@ function run_segment(   j, i, target, seen, n2, cand) {
         # tracks "every cd so far succeeded" -- the single most realistic
         # real-shell outcome. Placing it first and truncating only from the
         # tail (below) guarantees this chain can never be evicted by the cap,
-        # however many distinct cd targets a command chains -- see round 5
-        # [codex-1] just below for why that guarantee matters.
+        # however many distinct cd targets a command chains.
         n2 = 0
         delete seen
         target = join(cwd_cand[1], tok[2])
         seen[target] = 1
         new_cand[++n2] = target
-        # HIMMEL-2225: the two branches per candidate are emitted INTERLEAVED
+        # The two branches per candidate are emitted INTERLEAVED
         # (unchanged, then advanced, per candidate) rather than as an
-        # unchanged block followed by an advanced block. See the round-6
-        # [codex-1] note below the cap for why the block layout was a real
+        # unchanged block followed by an advanced block. See the
+        # note below the cap for why the block layout was a real
         # gap. This is a pure REORDER -- the de-duped SET is identical, only
         # the truncation order changes.
         for (i = 1; i <= ncand; i++) {
@@ -771,20 +763,20 @@ function run_segment(   j, i, target, seen, n2, cand) {
         # Upgrade path if this ever needs raising: none identified, no case
         # has hit it.
         #
-        # HIMMEL-2200 pr-check panel round 5 [codex-1]: an earlier version of
+        # An earlier version of
         # this cap truncated with a plain "keep the first MAXCAND", which is
         # a real bug, not just an approximation -- the set used to be built
         # unchanged-block-first, advanced-block-second, so truncating from
         # the tail systematically dropped EVERY "cd succeeds" candidate once
         # enough distinct cd targets accumulated, silently reopening the
-        # exact fork-model gap this class of fix exists to close. Round 5
-        # answered that with the protected index-1 invariant above, which
+        # exact fork-model gap this class of fix exists to close. The protected index-1 invariant above
+        # answers that, which
         # closes the concrete case that finding demonstrated (chained cds
         # where every one actually succeeds) -- but left the block layout
         # itself in place.
         #
-        # HIMMEL-2225 (pr-check panel round 6 [codex-1]) closes what that
-        # left: with an unchanged block followed by an advanced block, the
+        # What that
+        # left open: with an unchanged block followed by an advanced block, the
         # advanced block IS the tail, so the FIRST thing the cap dropped was
         # every "the latest cd succeeded, but an earlier one did not"
         # candidate -- systematically, all at once, rather than as an even
@@ -826,7 +818,7 @@ function run_segment(   j, i, target, seen, n2, cand) {
         }
     }
 }
-# HIMMEL-2218 [codex-2], round-2 panel: PowerShell backtick escapes are not
+# PowerShell backtick escapes are not
 # just "the next character, literally" -- the backtick introduces a small set of
 # SEQUENCES that stand for control characters, and for anything else the
 # backtick is dropped and the character stands for itself. Modelling only the
@@ -836,10 +828,9 @@ function run_segment(   j, i, target, seen, n2, cand) {
 # forge.sh -- produced a path matching no file and the script went unscanned.
 # That is a fail-OPEN, and unlike the control-character sequences it needs no
 # exotic filename at all.
-# KNOWN INCOMPLETE, tracked in HIMMEL-2236: PowerShell also recognizes `e
-# (ESC, 0x1B), which this resolver models as the literal letter e. Found by the
-# round-5 panel AFTER this PR had claimed the grammar was enumerated -- the
-# enumeration was built from a list written out by hand, so it inherited the
+# ponytail: HIMMEL-2236 -- PowerShell also recognizes `e
+# (ESC, 0x1B), which this resolver models as the literal letter e.
+# The enumeration was built from a list written out by hand, so it inherited the
 # author-s blind spot rather than being derived from the language reference.
 # The lesson is in the ticket: enumerate a grammar from its SPEC
 # (about_Special_Characters), never from memory. Not fixed here because this
@@ -863,7 +854,7 @@ function pwsh_unescape(c) {
     if (c == "0") return NUL
     return c
 }
-# HIMMEL-2218 [codex-1], pr-check panel ROUND 3: PowerShell also has a
+# PowerShell also has a
 # VARIABLE-LENGTH escape, `u{...}, which pwsh_unescape() above cannot express
 # because it resolves exactly one character. Checked against a real PowerShell
 # 7.6.5 rather than inferred, in BOTH contexts:
@@ -897,7 +888,7 @@ function pwsh_unicode(line, p,   rest, hex, i, c, n, d) {
     PWSH_U = sprintf("%c", n)
     return length(hex) + 4
 }
-# HIMMEL-2218 [codex-3]: count the escape characters a line ENDS with. An
+# Count the escape characters a line ENDS with. An
 # ODD count means the last one escapes the newline (a real line continuation);
 # an even count is escaped literal escape characters and the line really ends.
 function trailing_escapes(s,   n, L) {
@@ -915,7 +906,7 @@ function scan_line(line,   p, ch, nextch, uadv) {
         ch = substr(line, p, 1)
         if (esc) { cur = cur (pwsh ? pwsh_unescape(ch) : ch); esc = 0; continue }
         if (inq == SQ) {
-            # HIMMEL-2218 expansion: PowerShell embeds a literal quote by
+            # PowerShell embeds a literal quote by
             # DOUBLING it -- two quote characters in a row INSIDE a
             # single-quoted string are one literal quote character in the
             # token, not a close followed by a reopen. Reading them as
@@ -933,7 +924,7 @@ function scan_line(line,   p, ch, nextch, uadv) {
         }
         if (inq == "\"") {
             if (ch == "\"") { inq = ""; continue }
-            # HIMMEL-2218 [codex-2]: inside a double-quoted PowerShell string
+            # Inside a double-quoted PowerShell string
             # the backtick ALWAYS escapes -- there is no "unrecognized escape
             # keeps the backtick" rule the way bash keeps a backslash before an
             # ordinary character (the bash lookahead just below is deliberately
@@ -956,7 +947,7 @@ function scan_line(line,   p, ch, nextch, uadv) {
         }
         # Unquoted: the dialect escape character consumes the next character
         # literally, so an escaped `;`/`&`/`|`/space belongs to the TOKEN and
-        # is not a segment or token boundary. HIMMEL-2218 [codex-2]: before
+        # is not a segment or token boundary. Before
         # this, the PowerShell arm had no escape handling of any kind, so a
         # backtick-escaped separator inside an unquoted PowerShell path split
         # the command mid-token and the real script file went unscanned.
@@ -987,7 +978,7 @@ function scan_line(line,   p, ch, nextch, uadv) {
     delete tok
 }
 {
-    # HIMMEL-2218 [codex-3]: a bash backslash-newline (or PowerShell
+    # A bash backslash-newline (or PowerShell
     # backtick-newline) continuation joins two PHYSICAL lines into ONE logical
     # command before the real shell parses it. Each awk input record is one
     # physical line, so without this pre-pass a script path split across a
@@ -1000,7 +991,7 @@ function scan_line(line,   p, ch, nextch, uadv) {
     # regression -- the unjoined fragments missed the path just the same --
     # and the join direction adds candidates rather than removing them.
     #
-    # HIMMEL-2218, CodeRabbit review on PR #2005: strip ONE terminal carriage
+    # Strip ONE terminal carriage
     # return first. A command submitted with CRLF line endings keeps the \r in
     # each awk record (RS is \n), so the escape character that continues the
     # line is no longer the LAST character and the join below never fires --
@@ -1038,11 +1029,11 @@ PINSCRIPTS
     fi
 fi
 
-# SHARED line-continuation normalizer (HIMMEL-2528 round 5, codex-1), used by
+# SHARED line-continuation normalizer, used by
 # BOTH command-text fences below: the anchor-tamper class and the GLM-lane
 # shape matchers. Defined once, at top level, on purpose — the two fences each
 # flatten newlines to ';' with the same `tr`, and a second copy of this joiner
-# is the exact defect this ticket keeps re-finding (round 3 fixed one
+# is the exact defect this guards against (a fix once covered one
 # quoting-normalization site and left its twin open for a whole round).
 #
 # WHAT IT REMOVES: bash DELETES a backslash-newline pair before it parses
@@ -1088,20 +1079,20 @@ join_line_continuations() {
     '
 }
 
-# ----------------------------------------------------- HIMMEL-2528 class
+# ----------------------------------------------------- anchor-tamper class
 # Anchor-tamper fence for the hook-integrity monotonic re-pin. Same gate and
-# jq-extraction shape as the HIMMEL-2085 pin-dir class immediately above —
+# jq-extraction shape as the pin-dir class immediately above —
 # runs for any worker_lane (GLM or native HIMMEL_WORKER=1), not glm_lane
 # specifically. See that class's header for why "worker-ness, not lane" is
 # the right scope; this class extends the same reasoning to a second surface.
 #
-# WHY THIS CLASS EXISTS: HIMMEL-2528 changed record-hook-integrity.sh's
+# WHY THIS CLASS EXISTS: record-hook-integrity.sh's
 # pin-mismatch behavior from "deny forever" to a monotonic re-pin — on a
 # mismatch the launcher accepts the on-disk bytes iff they equal the blob at
 # the tip of the record's stored anchor_ref (origin/<default branch>), the
 # stored anchor is an ancestor of that tip, and the previously-pinned blob is
 # reachable in that ref's history for the path (see docs/internals/
-# enforcement.md's HIMMEL-2528 section for the exact accept condition). That
+# enforcement.md's anchor re-pin section for the exact accept condition). That
 # makes refs/remotes/origin/<default> SECURITY-RELEVANT: the re-pin step now
 # trusts whatever that ref currently resolves to as the definition of
 # "legitimately committed hook content." A dispatched worker lane that can
@@ -1127,7 +1118,7 @@ join_line_continuations() {
 #        remotes/origin/, symbolic-ref, remote set-head, remote set-url,
 #        remote add/remove/rm/rename, update-ref, insteadOf,
 #        remote.origin.url. It shares anchor_unquote() with class (ii)
-#        (HIMMEL-2528 round 3): scanning raw text let every one of these
+#        — scanning raw text would let every one of these
 #        keywords through under an ordinary shell quoting form.
 #   (ii) a command-position git-fetch/push/pull shape carrying an EXPLICIT
 #        refspec whose DESTINATION lands in remote-tracking space
@@ -1151,17 +1142,17 @@ join_line_continuations() {
 #   - `packed-refs` / `.git/refs/remotes/` written through a path this fence
 #     never sees spelled out (redirection into a file a worker's Edit grant
 #     already reaches, or a script/tool-call this hook does not mediate) is
-#     invisible the same way the HIMMEL-2085 pin-dir class's own residual is;
+#     invisible the same way the pin-dir class's own residual is;
 #   - anything an OS-user-level attacker does outside the tool-call surface
 #     entirely is out of scope, as documented at the top of this file.
 # These stay OPEN. Closure is a signed hook-generation manifest — hook
 # content trusted by SIGNATURE, not by whatever origin/<default> currently
 # resolves to — tracked as a follow-up ticket (see enforcement.md's
-# HIMMEL-2528 section for the key).
+# anchor re-pin section for the key).
 if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
     anchor_cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
     if [ -n "$anchor_cmd" ]; then
-        # HIMMEL-2528 round 5, codex-1: line continuations, the SEVENTH axis
+        # Line continuations, the SEVENTH axis
         # this class's matching has been defeated on. `git remote
         # \<newline>set-url origin /tmp/evil.git` measured rc=0 ALLOW while
         # the plain spelling bash actually executes measured rc=2 — the
@@ -1180,8 +1171,8 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         anchor_cmd_joined=$(printf '%s' "$anchor_cmd" | join_line_continuations)
         anchor_cmd_lc=$(printf '%s' "$anchor_cmd_joined" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr '\n\r' ';;')
 
-        # SHARED quoting normalization for BOTH classes below (HIMMEL-2528
-        # round 3, codex-2). Round 1 added this to class (ii) only and left
+        # SHARED quoting normalization for BOTH classes below. It was first added to
+        # class (ii) only and left
         # class (i) scanning raw text, which closed one door and left its twin
         # open: `git "remote" "set-url" origin /tmp/decoy`,
         # `git remote 'set-url' …`, `git remote se\t-url …` and
@@ -1224,7 +1215,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         anchor_cmd_norm=$(anchor_unquote "$anchor_cmd_lc")
 
         # ANSI-C fail-closed arm, shared by both classes for the same reason
-        # the normalizer is (HIMMEL-2528 round 3). Round 2 scoped this deny to
+        # the normalizer is. It was first scoped to
         # a fetch/push/pull segment, which is class (ii)'s grammar; class (i)'s
         # keywords are just as forgeable through an undecoded body
         # (`git remote $'\x61dd' evil /tmp/d`), so the shape widened from
@@ -1245,7 +1236,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # class (i)'s keyword scan is unanchored and still covers the wrapper
         # case for every form anchor_unquote() does normalize.
         #
-        # HIMMEL-2528 round 4, codex-3: this arm used to be one regex over the
+        # This arm used to be one regex over the
         # whole lowercased text, anchoring on a LITERAL unquoted `git` at
         # command position — `(^|[;&|(])[[:space:]]*git…`. Scanning raw text is
         # right for the `$'` marker and WRONG for the anchor, and the two
@@ -1311,7 +1302,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # `git remote show origin` and `git remote get-url origin` match none
         # of these and stay allowed.
         #
-        # ACCEPTED OVERMATCH, restated because round 3 widened it: this class
+        # ACCEPTED OVERMATCH: this class
         # is an UNANCHORED substring scan, so a commit MESSAGE naming a fenced
         # phrase already denied before normalization
         # (`git commit -m "docs: note the remote set-url tripwire"`, measured
@@ -1325,7 +1316,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # known-findings [grep-q-pipe-under-pipefail]: here-strings, never a
         # `producer | grep -q` pipe (set -euo pipefail SIGPIPE hazard).
         #
-        # HIMMEL-2528 round 4, codex-2: the remote-verb half of this list used
+        # The remote-verb half of this list used
         # to be six `remote[[:space:]]+<verb>` regexes, which require the verb
         # to sit IMMEDIATELY after `remote`. git does not: `git remote` accepts
         # options before its subcommand, so `git remote -v set-url origin
@@ -1395,10 +1386,10 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # SAME regex against a quoting-normalized copy of the command text
         # instead of widening the regex with `"`-shaped alternatives, so any
         # spelling of the same bare word still collapses to one match. See
-        # anchor_unquote() (defined above, shared with class (i) since round 3)
+        # anchor_unquote() (defined above, shared with class (i))
         # for exactly which quoting forms this normalizes and what stays open.
 
-        # DESTINATION-GATED, not remote-enumerating (HIMMEL-2528 round 2).
+        # DESTINATION-GATED, not remote-enumerating.
         # This used to match on the REMOTE argument: a finite alternation of
         # local-path spellings (`.`, `..`, `./…`, `../…`, `/…`). That axis lost
         # four times running — quoted remotes (codex-6), bare `..`, then bare
@@ -1441,8 +1432,8 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # `git remote add` and `git remote set-url` are both denied by class
         # (i) above — so it is fixed for the life of the lane.
         #
-        # THE SENTENCE ABOVE WAS ONLY TRUE FOR BARE SPELLINGS UNTIL ROUND 3
-        # (codex-2). `git "remote" "add" evil /tmp/d` and
+        # THE SENTENCE ABOVE ONLY HOLDS FOR EVERY SPELLING BECAUSE CLASS (i) NORMALIZES.
+        # Without it, `git "remote" "add" evil /tmp/d` and
         # `git remote 'set-url' origin /tmp/decoy` both measured rc=0 ALLOW,
         # so a worker COULD extend or repoint the remote set this arm reads
         # back out of git. Class (i) scanning anchor_cmd_norm is what makes
@@ -1463,9 +1454,9 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         # class (i) above, which is what keeps that gap narrow.)
         #
         # THIS CLASS INHERITS ITS SAFETY FROM CLASS (i)'s NORMALIZATION —
-        # the load-bearing coupling on this branch (codex-2, round 3). The
+        # the load-bearing coupling on this branch. The
         # parenthesis above is the ONLY thing standing between an allowed
-        # implicit fetch and a forged anchor, and until round 3 it held for
+        # implicit fetch and a forged anchor, and it once held for
         # bare spellings alone. The full pre-fix attack was two commands this
         # hook allowed outright:
         #     git remote 'set-url' origin /tmp/evil.git   # rc=0 pre-fix
@@ -1562,7 +1553,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
         done <<< "$anchor_segs"
 
         # The ANSI-C blanket deny that used to sit here (scoped to a
-        # fetch/push/pull segment) moved UP next to anchor_unquote() in round 3
+        # fetch/push/pull segment) moved UP next to anchor_unquote()
         # and widened to any command-position `git` segment — it is a property
         # of the normalizer's residual, not of either class, and class (i)
         # needed it too. It still covers what it covered here: the destination
@@ -1596,7 +1587,7 @@ fi
 
 # Everything below this point is the ORIGINAL GLM-lane enforcement — outbox
 # report interception, then the mcp/push/gh/network classifiers — unchanged
-# and still scoped to glm_lane only (HIMMEL-2085 and HIMMEL-2528 add no
+# and still scoped to glm_lane only (the two classes above add no
 # native-lane behavior past the two classes above).
 [ "$glm_lane" = 1 ] || exit 0
 
@@ -1612,7 +1603,7 @@ deny() {
     exit 2
 }
 
-# HIMMEL-1649 round 3: the report verb is EXECUTED BY THE HOOK, never by any
+# The report verb is EXECUTED BY THE HOOK, never by any
 # on-disk content. On the exact report shape this hook decodes the payload,
 # validates it, appends the record to the session outbox ITSELF, and then DENIES
 # the Bash call. Deny-after-append is the semantics, and the success message
@@ -1748,7 +1739,7 @@ try {
 } catch {
   structured = false;
 }
-// HIMMEL-1649 round 3 (F2) — consecutive-duplicate suppression. The hook
+// Consecutive-duplicate suppression. The hook
 // appends and then DENIES, which is indistinguishable from a retryable failure
 // to any framework-level retry; and because a prompt-shaped escalation omits
 // ts, every retry would be stamped afresh and become a DISTINCT pending
@@ -1759,8 +1750,8 @@ try {
 // payload arriving immediately after the previous one appends NOTHING while
 // still reporting success. A retry storm converges to one row; the same note
 // sent again LATER, after any different record, still lands.
-// LIMITS — adjudication-blind BY DESIGN in v1, deferred to HIMMEL-1663
-// (round 4, [codex-adv-r4-2], both halves premise-verified): the key is payload
+// ponytail: adjudication-blind BY DESIGN in v1, deferred to HIMMEL-1663
+// The key is payload
 // equality with the LAST row only, carrying no attempt identity, time bound,
 // adjudication state, or lock. So (a) an escalation REFUSED in grants.jsonl and
 // then re-raised VERBATIM is suppressed while the worker is still told
@@ -1772,7 +1763,7 @@ try {
 // worker that issues Bash calls serially.
 const rawSig = require("node:crypto").createHash("sha256").update(text, "utf8").digest("hex");
 let lastSig = null;
-// Round 4 [codex-adv-r4-1] — torn-tail boundary. If an earlier append was
+// Torn-tail boundary. If an earlier append was
 // interrupted the file can end mid-line, and appending straight onto it would
 // CONCATENATE the new JSON into that partial line: consumers
 // (fleet-control/aggregator/escalations.ts jsonl()) skip the combined invalid
@@ -1841,21 +1832,21 @@ try {
 fi
 
 # ---- end of the SERVICE half; everything below is ENFORCEMENT --------------
-# The bypass lands HERE (HIMMEL-1649 round 3): a bypass session has already had
+# The bypass lands HERE: a bypass session has already had
 # its report intercepted, schema-validated and recorded by the block above with
 # identical semantics, so it can no longer silently lose a structured
 # escalation. What it skips is only the near-miss denies and the
 # push/gh/network classifiers.
-# Round 4 [codex-1] — the consequence, stated plainly: with the near-miss denies
+# The consequence, stated plainly: with the near-miss denies
 # skipped, a MALFORMED helper command falls through to ordinary Bash handling
 # and EXECUTES the on-disk helper. Designed, not leaked. The helper is the
 # lockstep implementation of the schema validated above and fail-closes the very
 # same payloads, so the property that survives is the one that matters — a
 # malformed payload appends nothing — with the executor, not the guarantee,
 # differing between the two modes. See the BYPASS SCOPE note in the header.
-# Scope, round 5: "no on-disk content executes" is a claim about the HELPER,
+# Scope: "no on-disk content executes" is a claim about the HELPER,
 # never about this file. A worker whose envelope includes the worktree can
-# rewrite THIS hook — see the trust-root note in the header and HIMMEL-1666.
+# rewrite THIS hook — see the trust-root note in the header.
 [ "$glm_bypass" = 1 ] && exit 0
 
 if [ "$tool_is_shell" = 1 ]; then
@@ -1870,14 +1861,14 @@ if [ "$tool_is_shell" = 1 ]; then
     esac
 fi
 
-# qmd MCP collection fence (HIMMEL-1239). v1 allow-list: ONLY the "himmel"
+# qmd MCP collection fence. v1 allow-list: ONLY the "himmel"
 # collection (non-sensitive, repo-local docs). Widening this list (e.g. adding
 # luna-curated) is a SEPARATE named operator decision — do not add collections
 # here without one. `qmd_himmel_scoped "<value>"` -> 0 iff the value is a
 # fully-qualified qmd://himmel/... virtual path (see header comment above for
 # why bare/relative paths and #docids are rejected instead of allowed).
 qmd_himmel_scoped() {
-    # Whole-STRING prefix match (CR round 5, HIMMEL-1239) — NOT grep's
+    # Whole-STRING prefix match — NOT grep's
     # per-line match. grep -qE '^...' anchors at the start of EACH LINE, so a
     # value with an embedded newline where any line starts with
     # qmd://himmel/ (e.g. "qmd://salus/x\nqmd://himmel/y") passed even though
@@ -1892,14 +1883,14 @@ qmd_himmel_scoped() {
 
 case "$tool" in
     mcp__plugin_qmd_qmd__query)
-        # Single authoritative jq validation (CodeRabbit PR #1353, HIMMEL-1239)
+        # Single authoritative jq validation
         # — do NOT round-trip collections through shell lines: the earlier
         # extract + `[ -z ]` + `grep -vxF` form let collections:["himmel",""]
         # through, because the empty entry collapses out of the newline-joined
         # jq -r output and command-substitution trailing-newline stripping, so
         # `qmd_bad` ended up empty and the deny never fired (an empty-string
         # collection can mean "all collections" to qmd — a PHI-egress path).
-        # This one check subsumes: non-array (was CR round 1 codex-2),
+        # This one check subsumes: non-array,
         # unscoped/empty array, AND any non-"himmel"/blank entry — matches the
         # Python qmd_scope_reason() query branch exactly.
         if ! printf '%s' "$input" | jq -e '(.tool_input.collections) | (type=="array") and (length>0) and (all(.=="himmel"))' >/dev/null 2>&1; then
@@ -1919,8 +1910,8 @@ case "$tool" in
         if [ -z "$qmd_pattern" ]; then
             deny "qmd multi_get on the GLM lane requires a qmd://himmel/... pattern (HIMMEL-1239)."
         fi
-        # Root-cause fix (CR round 4, HIMMEL-1239): this is the 4th finding
-        # rooted in the same mismatch — bash word-splitting (the prior
+        # Root-cause fix: the empty-field loss is rooted in a
+        # mismatch — bash word-splitting (the prior
         # `IFS=',' for qmd_seg in $qmd_pattern` loop) DROPS empty
         # comma-separated fields, so a trailing comma ("a.md,"), a leading
         # comma (",a.md"), and adjacent commas ("a,,b") all lost their empty
@@ -1946,7 +1937,7 @@ case "$tool" in
     mcp__plugin_qmd_qmd__*)
         # status (no scoping input) and any other/future qmd tool: scope
         # cannot be positively determined from the tool-call JSON -> deny
-        # fail-closed (HIMMEL-1239).
+        # fail-closed.
         deny "qmd tool '$tool' has no collection-scoping input the GLM lane can verify — denied fail-closed (HIMMEL-1239)."
         ;;
     mcp__*) deny "MCP tool '$tool' is blocked on the GLM lane." ;;
@@ -1965,7 +1956,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null ||
 # quoted commit-message LINE that STARTS with a blocked verb ("…\ngit push
 # later") now over-blocks — pinned by test; mid-line prose stays allowed.
 #
-# HIMMEL-2528 round 5, codex-1 — THE TWIN. This flattening is the same `tr` the
+# THE TWIN. This flattening is the same `tr` the
 # anchor class uses, and it had the same continuation gap: `git \<newline>push
 # origin main` measured rc=0 ALLOW here while the plain `git push origin main`
 # bash actually runs measured rc=2, because gp_shape/gu_shape want `git` and
@@ -1974,7 +1965,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null ||
 #
 # It is fixed with the SAME shared join_line_continuations(), placed upstream
 # of the flattening exactly as in the anchor class — not a second joiner. A
-# divergent copy is the defect class this ticket keeps re-finding: round 3
+# divergent copy is the defect class to avoid: one fix once
 # normalized quoting for class (ii) and left class (i)'s identical need
 # unserved for a whole round, and this PR's own design note says a fix applied
 # to one member of a twin pair is HALF A FIX.
@@ -2009,10 +2000,10 @@ count_cmd() {
     printf '%s' "$((n))"
 }
 
-# --- Deny-arm count form + session grant-consult (escalation channel, HIMMEL-654) ---
+# --- Deny-arm count form + session grant-consult (escalation channel) ---
 # Each command-text deny arm is a total-vs-allowed COUNT (never an inline deny):
 #   git-push / git-url / network — builtin allowed 0 (no carve-out);
-#   gh — builtin allowed = the issue-ops + pr/run-reads carve-out (HIMMEL-675).
+#   gh — builtin allowed = the issue-ops + pr/run-reads carve-out.
 # The subcommand-position shapes below are unchanged from the pre-grant arms
 # (push flag-tolerant; git-url = remote set-url OR config…url OR-ed into ONE
 # count; gh carve-out; network CLIs). A per-session grant in
@@ -2027,12 +2018,12 @@ gh_allow='gh[[:space:]]+(issue([[:space:]]|$)|pr[[:space:]]+(view|diff|checks|st
 net_shape='(curl|wget|invoke-webrequest|invoke-restmethod|iwr|irm)([[:space:]]|$)'
 
 gp_total=$(count_cmd "$gp_shape"); gp_allowed=0
-# Flat decode (HIMMEL-844 round 10): ONE position-free pass over the whole command, no quote
+# Flat decode: ONE position-free pass over the whole command, no quote
 # state. Drop every dollar-quote opener and decode every backslash escape (bash's ANSI-C set)
 # wherever it sits, so decoys and split segments cannot hide `git` or the key. A NUL escape
 # (\0 \x00 \c@ \c`) truncates a segment in bash, so the pass runs twice: NUL kept as `#`, and
 # NUL dropping everything through the next unescaped quote. Over-approximation only.
-# HIMMEL-4032 adds a fourth, quote-aware stream (words()): bash decodes escapes ONLY inside
+# A fourth, quote-aware stream (words()) exists: bash decodes escapes ONLY inside
 # a dollar-quote body; outside one a backslash quotes the next char (`ns\teadOf` is
 # `nsteadOf`, not a TAB); continuations are already joined upstream. Mixing both hid the key
 # from every flat stream. Added beside the other three, never instead of them: deny-only.
@@ -2076,7 +2067,7 @@ ansic_decode() {
         return out
     }
     # words(): the quote-aware stream. st 0 = bare, 1 = single, 2 = double, 3 = dollar-quote.
-    # HIMMEL-4225: words(1) also reads a # comment at word start and a heredoc body as text
+    # words(1) also reads a # comment at word start and a heredoc body as text
     # that opens no quote, kept verbatim, so a stray apostrophe there cannot desync the rest.
     # A delimiter it cannot classify ($-expansion, backtick, escape in a double or dollar quote, open
     # quote) reads no body; no heredoc inside (( )). words(2) resets the quote state at every
