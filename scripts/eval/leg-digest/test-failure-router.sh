@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/leg-digest/test-failure-router.sh - hermetic suite for the failure router (HIMMEL-4670 P5).
+# scripts/eval/leg-digest/test-failure-router.sh - hermetic suite for the failure router (P5).
 # Scratch state, log, inbox and a stub Jira only; never ~/.himmel, never a real Jira write. No model call.
 # The spec 7 row P5 proof, end to end over a fixture ledger:
 #  a. denied/guard-pr-check-literal with identical retry in 2 distinct legs files exactly ONE ticket,
@@ -29,7 +29,7 @@ ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
 check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 lines() { if [ -f "$1" ]; then grep -c . "$1"; else echo 0; fi; }
-# HIMMEL-4754: decision rows only; the route-intent rows are the pre-send lines.
+# Decision rows only; the route-intent rows are the pre-send lines.
 dlines() { if [ -f "$1" ]; then grep -c '"kind":"route-decision"' "$1"; else echo 0; fi; }
 decs() { jq -c 'select(.kind == "route-decision")' "$1"; }
 CANARY=CANARY4670zq
@@ -45,7 +45,7 @@ cat >"$STUB/jira" <<'EOF'
 d="$(dirname "$0")"
 printf '%s\n' "$*" >>"$d/calls.log"
 op="$1"; shift
-# HIMMEL-4754: with LOGPROBE set, record how many intent lines the log held when a send arrived.
+# With LOGPROBE set, record how many intent lines the log held when a send arrived.
 case "$op" in create|comment) [ -n "${LOGPROBE:-}" ] && { grep -c route-intent "$LOGPROBE" 2>/dev/null; true; } >>"$d/intent-seen.log" ;; esac
 grab() { while [ $# -gt 0 ]; do case "$1" in --desc-file|--comment-file) cp "$2" "$d/body.$op.$(wc -l <"$d/calls.log")"; shift 2 ;; *) shift ;; esac; done; }
 case "$op" in
@@ -209,7 +209,7 @@ echo "a decision-log write that fails leaves the class unacted, so the next run 
 F6="$TMP/f6"; mkdir -p "$F6/log"
 SAVE="$LED"; LED="$F6/l.jsonl"; row N1 denied/guard-w 1; row N2 denied/guard-w 1; LED="$SAVE"
 python3 "$FR" route --ledger "$F6/l.jsonl" --state "$F6/s.json" --log "$F6/log" --inbox "$F6/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F6/out" 2>&1; rc6=$?
-# HIMMEL-4743: an absent or unreadable state would also leave no acted legs, so pin the failure to the log write.
+# An absent or unreadable state would also leave no acted legs, so pin the failure to the log write.
 check "the route call exits non-zero with the log-write error" '[ "$rc6" != 0 ] && grep -q "Is a directory" "$F6/out"'
 check "no acted legs are saved for a decision whose log line failed" '[ -z "$(jq -r ".classes[\"denied/guard-w\"].acted // empty" "$F6/s.json" 2>/dev/null)" ]'
 python3 "$FR" route --ledger "$F6/l.jsonl" --state "$F6/s.json" --log "$F6/ok.jsonl" --inbox "$F6/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # selector: tree-scan
 # scripts/lib/test-red-control-extraction-lint.sh -- unit tests for
-# red-control-extraction-lint.sh (HIMMEL-3018), PLUS the repo-wide gate
+# red-control-extraction-lint.sh, PLUS the repo-wide gate
 # itself: T9 below runs the lint over the real scripts/ tree and FAILS the
 # suite on any hit. run-shell-tests.sh auto-discovers every test-*.sh under
 # scripts/, so this file being red is what makes the class fail CI -- no
@@ -71,7 +71,7 @@ echo "[test-red-control-extraction-lint] T4 a provenance COMMENT naming a git-sh
 fx4="$tmpdir/t4"; mkdir -p "$fx4"
 cat > "$fx4/test-comment.sh" <<'EOF'
 #!/usr/bin/env bash
-# HIMMEL-3154: this commit's PR branch was deleted on squash-merge, so
+# this commit's PR branch was deleted on squash-merge, so
 # `git show <sha>:<path>` is unreachable from a fresh clone of origin.
 # Verified both-direction against `git show 2bab2305:scripts/hooks/block-glm-external-writes.sh`
 cp "$SCRIPT_DIR/fixtures/red-control/foo.sh" "$dest"

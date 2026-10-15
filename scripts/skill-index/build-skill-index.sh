@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # skill-index/build-skill-index — scan installed Claude Code skills,
 # commands, agents; emit one markdown file per item into a directory
-# that qmd can ingest as the `skills` collection (HIMMEL-33).
+# that qmd can ingest as the `skills` collection.
 #
 # qmd backend: ships BM25 + vector search via embeddinggemma-300M.
 # Indexing a directory is a `qmd ingest <dir>` away — this script

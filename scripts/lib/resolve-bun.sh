@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared Bun selection for station updates, bridge launches and service units
-# (HIMMEL-5383). Source-only; Bash 3.2 compatible.
+#. Source-only; Bash 3.2 compatible.
 resolve_bun() {
     if [ -x "$HOME/.bun/bin/bun" ]; then
         printf '%s\n' "$HOME/.bun/bin/bun"

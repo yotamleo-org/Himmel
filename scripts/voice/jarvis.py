@@ -147,7 +147,7 @@ def phrase_in(text: str, phrases: list[str]) -> str | None:
 
 
 def ask_claude(text: str) -> str:
-    # Voice runs in `plan` permission mode (HIMMEL-1522).
+    # Voice runs in `plan` permission mode.
     #
     # voice-policy.json says read/search/status/explain may proceed, writes need
     # confirmation, and push/merge/deploy/secrets/salus are denied. None of that
@@ -168,8 +168,8 @@ def ask_claude(text: str) -> str:
     # permission mode makes the "structural floor" a default instead — and an
     # env var is exactly what a half-remembered debugging session leaves set.
     # Widening requires editing this file, deliberately and reviewably.
-    # --strict-mcp-config with NO --mcp-config = zero MCP servers (CR round 6,
-    # [codex-adv-1]). A bare `claude` inherits the user/project MCP fleet, and
+    # --strict-mcp-config with NO --mcp-config = zero MCP servers.
+    # A bare `claude` inherits the user/project MCP fleet, and
     # an MCP tool is not Read/Bash/Grep — so NO pattern in voice-permissions.json
     # can reach it. Probed: a voice spawn without this flag reported
     # `mcp__tokensave__tokensave_read` available, a file reader completely
@@ -187,7 +187,7 @@ def ask_claude(text: str) -> str:
         msg = f"voice-permissions.json missing at {settings} - refusing to run unprotected"
         print(f"[jarvis] REFUSED: {msg}", file=sys.stderr, flush=True)
         return "My permission profile is missing, so I won't run without it. Check the voice install."
-    # `--` terminates option parsing (CR round 6, [codex-1]). The transcript is
+    # `--` terminates option parsing. The transcript is
     # attacker-influenced text on the SAME argv that carries the permission
     # floor: without the terminator, a transcript starting `--permission-mode`
     # or `--settings` is parsed as a flag rather than as the prompt. Whisper
@@ -298,8 +298,8 @@ def main() -> int:
             # STOP first: it must win even mid-sentence, and it is the one thing
             # allowed through while the assistant is talking.
             if phrase_in(heard, STOP):
-                # Echo rejection must not swallow a REAL stop (CR round 7,
-                # [codex-adv-3]). is_echo() scores the WHOLE utterance, so
+                # Echo rejection must not swallow a REAL stop.
+                # is_echo() scores the WHOLE utterance, so
                 # "here is the status stop" reads as ~80% echo and the genuine
                 # "stop" is discarded — and that happens precisely when barge-in
                 # matters most, since heavy speaker bleed is what makes the rest

@@ -85,7 +85,7 @@ s8="$td/s8.json"; mk "$s8"; b8="$(cat "$s8")"
 bash "$unwire" "$s8" 1 >/dev/null
 check "dry-run no mutation" "$(cat "$s8")" "$b8"
 
-# 9. HIMMEL-3574: the wired command shape changed (a missing-script guard
+# 9. The wired command shape changed (a missing-script guard
 # wraps it, `if [ -f "..." ]; then bash "..."; else echo ...; exit 0; fi`)
 # but an EXISTING install still carries the OLD bare `bash "..."` shape.
 # unwire's match is a substring/regex test against `.command`, so both must

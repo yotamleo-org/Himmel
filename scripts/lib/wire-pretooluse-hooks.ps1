@@ -9,10 +9,10 @@
 # Dedup is by hook BASENAME with REPLACE semantics (a re-run repairs a bad/moved
 # install, never double-wires). Forward-slashes + quotes the hook path so a
 # Windows backslash path does not collapse when the hook command is parsed, and
-# SHELL-ESCAPES it for the double-quoted context it lands in (HIMMEL-2905) --
+# SHELL-ESCAPES it for the double-quoted context it lands in --
 # see $WireHookCmdJq below.
 #
-# The PreToolUse block MERGES; it is never regenerated (HIMMEL-2892). himmel
+# The PreToolUse block MERGES; it is never regenerated. himmel
 # owns exactly one field of an entry it installed -- that entry's `command`.
 # The stanza's matcher, its position, the entry's timeout, and every foreign
 # stanza or co-located foreign entry survive byte-for-byte. A hook registered
@@ -32,7 +32,7 @@ param(
 # wire-pretooluse-hooks.sh -- keep the two byte-identical. Both the PreToolUse
 # specs and the SessionStart hook object are built through it.
 #
-# HIMMEL-2892 round 6 / HIMMEL-2905: jq escapes the JSON layer, but the
+# jq escapes the JSON layer, but the
 # `command` it carries is a SHELL string Claude Code hands to a shell. It lands
 # inside DOUBLE quotes, where exactly four characters keep their meaning -- `\`,
 # `"`, `$` and a backtick -- so shesc() backslash-escapes those four and nothing
@@ -46,7 +46,7 @@ param(
 # $rel, the hook BASENAME, gets no exemption: it is an ARGUMENT of the public
 # Set-SessionStartHook, not a hardcoded literal (CodeRabbit, PR #612).
 #
-# HIMMEL-3574: the command guards its own script path with `[ -f ]` before
+# the command guards its own script path with `[ -f ]` before
 # invoking it -- a wired install/clone that gets deleted previously left the
 # hook exiting 127 on every event (a hook ERROR design forbids), failing open
 # invisibly. Per design (b): still exit 0 on a missing script, but warn on
@@ -89,7 +89,7 @@ function Write-SettingsAtomic {
     $tmp = "$SettingsPath.wirehooks.tmp"
     # UTF-8 *without* BOM, version-independent: `Set-Content -Encoding utf8` emits
     # a BOM under Windows PowerShell 5.1, which has broken settings.json consumers
-    # before (HIMMEL-365/408). WriteAllText(string,string) is BOM-less on all hosts.
+    # before. WriteAllText(string,string) is BOM-less on all hosts.
     [System.IO.File]::WriteAllText($tmp, $Json + "`n")
     Move-Item -Path $tmp -Destination $SettingsPath -Force
 }
@@ -105,10 +105,10 @@ function Set-PretooluseHooks {
     # One spec per himmel-owned hook -- twin of the bash lib's $specs. `pat`
     # identifies an entry THIS installer owns, `cmd` is the command it must
     # carry after the merge, `stanza` is appended only when the target carries
-    # no such entry at all (HIMMEL-2892).
+    # no such entry at all.
     #
     # Built by `jq -n --arg pfx`, never by interpolating $pfx into JSON TEXT
-    # (CodeRabbit round 1): a path may contain a `"`, which makes hand-written
+    #: a path may contain a `"`, which makes hand-written
     # JSON malformed; jq then rejects --argjson outright and the settings file
     # goes unwired while the caller reads success. The jq program below is the
     # bash twin's, verbatim.
@@ -125,7 +125,7 @@ function Set-PretooluseHooks {
     if ($DryRun) { Write-Host "DRY: merge 3 PreToolUse hook stanzas into $SettingsPath (prefix: $Prefix)"; return }
 
     # Captured native stdout is decoded via [Console]::OutputEncoding, the
-    # legacy OEM codepage here, not UTF-8 (HIMMEL-2256; dot-sourcing this
+    # legacy OEM codepage here, not UTF-8 (dot-sourcing this
     # library must not mutate the caller's console encoding at top level).
     # Save/restore around the capture so the caller's encoding is unchanged
     # on every exit path, including a thrown error.
@@ -134,7 +134,7 @@ function Set-PretooluseHooks {
     # $OutputEncoding preference variable, not [Console]::OutputEncoding --
     # on Windows PowerShell 5.1 it defaults to ASCIIEncoding, silently
     # replacing every non-ASCII char with `?` before jq ever sees it
-    # (HIMMEL-2256 twin bug). Must be set at global scope: a bare
+    # Must be set at global scope: a bare
     # $OutputEncoding assignment inside a function is function-local and the
     # child process never sees it.
     #
@@ -153,10 +153,10 @@ function Set-PretooluseHooks {
         # -- keep the two byte-identical. MERGE, never regenerate: every entry
         # matching a spec has its `command` rewritten in place (matcher,
         # position, timeout and every foreign entry survive untouched), and a
-        # canonical stanza is appended only when nothing matched (HIMMEL-2892).
+        # canonical stanza is appended only when nothing matched.
         # Dedup is per (spec, MATCHER): a hook registered under two DISTINCT
         # matchers keeps both registrations; only a repeat under a matcher
-        # already carrying it is dropped (CR round 1, [codex-1]).
+        # already carrying it is dropped.
         $filter = @'
   def wire($spec):
     (reduce .[] as $st ({seen: [], out: []};
@@ -197,13 +197,13 @@ function Set-SessionStartHook {
     $pfx = $Prefix.Replace('\', '/')
     # The command is composed by jq (hookcmd), never by PowerShell string
     # interpolation, so it carries exactly the same shell escaping as the
-    # PreToolUse trio and the bash twin (HIMMEL-2905). The dedup test is built
-    # from the SAME escaped string inside the same jq program (CR round 3), so
+    # PreToolUse trio and the bash twin. The dedup test is built
+    # from the SAME escaped string inside the same jq program, so
     # the two can never disagree and no regex-escaping is needed.
     if ($DryRun) { Write-Host "DRY: merge SessionStart hook $HookBasename into $SettingsPath (prefix: $Prefix)"; return }
 
     # Captured native stdout is decoded via [Console]::OutputEncoding, the
-    # legacy OEM codepage here, not UTF-8 (HIMMEL-2256; dot-sourcing this
+    # legacy OEM codepage here, not UTF-8 (dot-sourcing this
     # library must not mutate the caller's console encoding at top level).
     # Save/restore around the capture so the caller's encoding is unchanged
     # on every exit path, including a thrown error.
@@ -212,7 +212,7 @@ function Set-SessionStartHook {
     # $OutputEncoding preference variable, not [Console]::OutputEncoding --
     # on Windows PowerShell 5.1 it defaults to ASCIIEncoding, silently
     # replacing every non-ASCII char with `?` before jq ever sees it
-    # (HIMMEL-2256 twin bug). Must be set at global scope: a bare
+    # Must be set at global scope: a bare
     # $OutputEncoding assignment inside a function is function-local and the
     # child process never sees it.
     #
@@ -223,7 +223,7 @@ function Set-SessionStartHook {
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         $global:OutputEncoding = [System.Text.UTF8Encoding]::new($false)
         $base = Read-SettingsBase -SettingsPath $SettingsPath -Who 'wire-pretooluse-hooks'
-        # HIMMEL-2913: an entry wired by a PREVIOUS release (pre-2905) carries
+        # an entry wired by a PREVIOUS release (pre-2905) carries
         # the RAW, unescaped basename, which $needle alone cannot match, so
         # $legacy widens the dedup to also catch and replace that older text.
         $filter = $WireHookCmdJq + @'

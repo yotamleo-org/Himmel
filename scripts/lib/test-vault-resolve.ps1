@@ -21,7 +21,7 @@ try {
     # ---- backward-compat ----
     $env:LUNA_VAULT_PATH = ''
     $env:USERPROFILE = (Join-Path $SB 'home')
-    # HIMMEL-590 F7: undeclared default requires a REAL luna vault (.obsidian) or
+    # undeclared default requires a REAL luna vault (.obsidian) or
     # dry-run; otherwise skip so the hook never materializes a phantom vault.
     MkCfg '{"enabled":true}'
     Check 'undeclared + no real luna vault -> skip' '' (Resolve-VaultRoot -ConfigPath $cfg -RegistryPath $noreg)
@@ -37,7 +37,7 @@ try {
     $env:LUNA_VAULT_PATH = 'C:\envvault'
     Check 'LUNA_VAULT_PATH env' 'C:\envvault' (Resolve-VaultRoot -ConfigPath $cfg -RegistryPath $noreg)
 
-    # F1-SC5 (HIMMEL-458): the value wire-luna-vault writes to settings.json
+    # F1-SC5: the value wire-luna-vault writes to settings.json
     # .env.LUNA_VAULT_PATH is actually consumed at resolver step 3. Empty config
     # object + empty registry -> falls through to LUNA_VAULT_PATH.
     MkCfg '{}'
@@ -83,7 +83,7 @@ try {
     MkCfg '{"vault":"futurevault"}'
     Check 'dry_run bypasses marker' (Join-Path $docDocs 'futurevault') (Resolve-VaultRoot -ConfigPath $cfg -RegistryPath $noreg -DryRun $true)
 
-    # ---- CR follow-ups (HIMMEL-403 review) ----
+    # ---- registry edge cases ----
     # registry present but THIS key absent -> convention fallback
     Set-Content -LiteralPath (Join-Path $SB 'reg3.json') -Value '{"vaults":{"other":"/somewhere"}}' -NoNewline
     New-Item -ItemType Directory -Path (Join-Path $docDocs 'medic\.obsidian') -Force | Out-Null
@@ -124,7 +124,7 @@ try {
     $env:LUNA_VAULT_PATH = ''
 
     # UTF-8 BOM-prefixed config/registry must still PARSE, not fail-closed
-    # (HIMMEL-408). PS 5.1 `Set-Content -Encoding utf8` writes exactly this BOM.
+    #. PS 5.1 `Set-Content -Encoding utf8` writes exactly this BOM.
     $bomEnc = New-Object System.Text.UTF8Encoding($true)
     [System.IO.File]::WriteAllText($cfg, '{"vault_path":"C:\\bomvault"}', $bomEnc)
     Check 'BOM-prefixed config parses (not skip)' 'C:\bomvault' (Resolve-VaultRoot -ConfigPath $cfg -RegistryPath $noreg)

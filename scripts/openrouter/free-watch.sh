@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# free-watch.sh - OpenRouter free-tier watcher (HIMMEL-846).
+# free-watch.sh - OpenRouter free-tier watcher.
 #
 # Operator policy (2026-07-09, twice-confirmed): the $20 top-up is NEVER spent;
 # it only unlocks the 1000 free-req/day tier. Panels/fallbacks pin ':free'
@@ -65,7 +65,7 @@ done
 
 command -v jq >/dev/null 2>&1 || { echo "free-watch: jq is required" >&2; exit 1; }
 
-# Registry resolution mirrors critic-panel.sh (HIMMEL-727) in full:
+# Registry resolution mirrors critic-panel.sh in full:
 # --registry flag > CRITICS_JSON env > overlay critics.local.json > shipped.
 # Without the env tier the watcher could report health for a different
 # registry than the one the panel actually runs.
@@ -108,7 +108,7 @@ echo "free-watch: catalog has $FREE_COUNT ':free' models"
 # without losing the previous snapshot (the churn diff survives a retry).
 # Mirrors critic-panel.sh fallback semantics: "fallback_models" array OR legacy
 # "fallback_model" string, on EVERY row - a non-OpenRouter primary can carry an
-# OpenRouter fallback (the HIMMEL-729 quota-exhaustion path). OpenRouter ids
+# OpenRouter fallback (the quota-exhaustion path). OpenRouter ids
 # are the author/slug form; on non-openrouter rows only those count.
 jq -r '.panel[] as $r
        | [$r.model, ($r.fallback_models[]?), ($r.fallback_model // empty)]

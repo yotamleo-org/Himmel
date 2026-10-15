@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# scripts/eval/leg-digest/test-failure-review.sh - hermetic suite for the daily failure review (HIMMEL-4713 P5b).
+# scripts/eval/leg-digest/test-failure-review.sh - hermetic suite for the daily failure review.
 # Scratch ledger, state, out dir, vault, a stub Jira, a stub notifier and a stub crontab only; never ~/.himmel,
 # never a real Jira write, never a real Telegram send, never the real crontab. No model call.
 #  1. a zero-failure day writes "no failures" and sends nothing;
 #  2. the default run is the router's dry-run: no Jira call, no router state or log;
 #  3. --live routes through the router: one ticket filed through the stub, one Telegram line;
 #  4. a capped day says so (live and dry-run);
-#  5. the two unreliable trajectory signals never reach the digest (HIMMEL-4698);
+#  5. the two unreliable trajectory signals never reach the digest;
 #  6. new vs recurring classes; a quiet day (no new class, nothing routed) sends nothing;
 #  7. the daily-note section is upserted, never duplicated;
 #  8. the cadence: arm/status/disarm against a stub crontab, dry-run by default, --live baked only on request,
@@ -30,16 +30,16 @@ export HIMMEL_FAILURE_ROUTES_STATE="$TMP/never-state.json"
 export HIMMEL_FAILURE_INBOX="$TMP/never-inbox.md"
 export HIMMEL_FAILURE_REVIEW_DIR="$TMP/never-review"
 export FAILURE_REVIEW_NOTIFY_CMD="$TMP/stub/notify"
-# The friction subsection reads the real session transcripts; off unless a case sets a stub (HIMMEL-4926).
+# The friction subsection reads the real session transcripts; off unless a case sets a stub.
 export FAILURE_REVIEW_FRICTION_CMD=""
-# The router fails closed without a project key (HIMMEL-4754); the suite names one, the no-key cases unset it.
+# The router fails closed without a project key; the suite names one, the no-key cases unset it.
 export JIRA_PROJECT_KEY=HIMMEL
 export CADENCE_ALERT_FILE="$TMP/cadence-alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/alert-sent" CADENCE_ALERT_SEND_CMD="$TMP/stub/notify"
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
 check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
-# Every call that takes the notify lock runs under this bound, so a lock regression (a self-deadlock, HIMMEL-4801)
+# Every call that takes the notify lock runs under this bound, so a lock regression (a self-deadlock)
 # fails the suite with a message instead of hanging it. Measured: the whole suite runs in ~2 s, so no single call
 # takes more than a second; 30 s is well above any loaded run.
 BOUND=30

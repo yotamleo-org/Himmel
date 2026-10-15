@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/test-red-control-lint.sh -- unit tests for the advisory
-# vacuous-mutation-control lint (HIMMEL-2544, item 2).
+# vacuous-mutation-control lint.
 #
 # A report-only lint is judged on two things and this suite asserts both:
 # what it FLAGS, and -- far more important -- what it leaves alone. T4 is the
@@ -14,7 +14,7 @@
 # wired it up as a gate -- the one outcome its header forbids.
 #
 # T9 scans the repo's real scripts/ tree and REPORTS. It asserts the exit status
-# but deliberately does NOT fail on hits (CR round 1 [codex-3]): failing there
+# but deliberately does NOT fail on hits: failing there
 # would make an advisory tool a gate via run-shell-tests.sh, so a heuristic
 # false positive on some future file would turn the whole shell suite red on
 # unrelated work -- exactly the outcome the always-exit-0 design exists to
@@ -22,30 +22,29 @@
 # review time; T8's fixture-tree count is the deterministic assertion that
 # SHOULD fail on a regression.
 #
-# T11-T14 are the CR round 1 regressions: two false-negative holes the panel
-# found (a flat compliance window, and a bare `$?` counting as a comparison),
+# T11-T14 are the regressions: two false-negative holes
+# (a flat compliance window, and a bare `$?` counting as a comparison),
 # each pinned by the probe that exposed it.
 #
-# T15-T17 are CR round 2: a backward search that stopped at a CLOSED inner
+# T15-T17 are a backward search that stopped at a CLOSED inner
 # conditional, a `[ "$?" ]` nonempty-string test mistaken for an exit-status
 # comparison, and -- the important one -- a failed awk run reporting itself as
 # a clean scan, which was a vacuous green inside the vacuous-green detector.
 #
-# T16f-g and T18 are CR round 3: a `$?` compared INSIDE the then-branch reads
+# T16f-g and T18 are a `$?` compared INSIDE the then-branch reads
 # the conditional's own status (0 because the branch was taken), never the
 # mutant's, and a failed ENUMERATION was the same incomplete-scan class as the
-# awk hole one layer up. Round 3 also repositioned T16d/T16e -- see the fixture
-# comment; they were blessing a shape that proves nothing.
+# awk hole one layer up.
 #
-# T19-T20 are CR round 4: a control's own DIAGNOSTIC MESSAGE ("got != want
+# T19-T20 are a control's own DIAGNOSTIC MESSAGE ("got != want
 # (rc=$rc)") satisfied the rc rule because a variable and a comparison glyph
 # merely co-occurred on the line; and T9 itself read EMPTY STDOUT as proof the
 # tree was clean, when a wholly failed scan produces exactly that. T20 pins the
 # fix by making a failed scan and a clean tree distinguishable to T9's own
 # classifier -- absence is not evidence, inside the tool built to say so.
 #
-# T21-T22 are CR round 5, the last substantive round. The diagnostic-message
-# family came back in a third spelling (`echo "expected $rc != 0"` satisfies
+# T21-T22 cover the diagnostic-message
+# family, which has a third spelling (`echo "expected $rc != 0"` satisfies
 # even the adjacency rule), so it was closed as a CLASS: an echo/printf line
 # establishes no exit-status evidence at all. T21d is the paired negative
 # control -- `[ "$rc" -eq 0 ] && echo ok` must STILL be evidence, because the
@@ -79,7 +78,7 @@ has() {
     esac
 }
 
-# HIMMEL-2503: pin the scratch path ONCE, before arming the trap that consumes
+# pin the scratch path ONCE, before arming the trap that consumes
 # it, and never repoint it afterwards. Every fixture below is derived from it.
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/red-control-lint-test.XXXXXX")" || {
     echo "FATAL: could not create scratch dir" >&2; exit 1; }
@@ -87,7 +86,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 fx="$tmpdir/fx"
 mkdir -p "$fx/lib"
-# The CR round 1 probe fixtures live OUTSIDE $fx on purpose, so T8's
+# The probe fixtures live OUTSIDE $fx on purpose, so T8's
 # fixture-tree count stays the exact number it was written to assert.
 probes="$tmpdir/probes"
 mkdir -p "$probes"
@@ -176,7 +175,7 @@ mk lib/red-control.sh \
     '    echo "T5 RED confirmed"' \
     'fi'
 
-# --- CR round 1 probes ------------------------------------------------------
+# --- probes ------------------------------------------------------
 # Four false-negative shapes the critic panel found. Each was measured NOT
 # flagged (except the last, which was already correct and is pinned so the
 # codex-2 fix cannot over-correct into suppressing it).
@@ -229,7 +228,7 @@ mkp rc-capture-before-if.sh \
     '    echo "P1 RED confirmed: the mutant produced a different value (rc was $rc)"' \
     'fi'
 
-# --- CR round 2 probes ------------------------------------------------------
+# --- probes ------------------------------------------------------
 # [codex-1] an inner conditional that has already CLOSED above the seed: the
 # backward search used to stop at it and never examine the real vacuous guard.
 # shellcheck disable=SC2016  # fixture source text, not an expression.
@@ -280,7 +279,7 @@ mkp bracket-status-n.sh \
 # [codex-2] the shapes that ARE real exit-status comparisons and must keep their
 # exemption -- the negative controls guarding against over-correction.
 #
-# CR round 3 [codex-2] REPOSITIONED both of these. They used to put the `$?`
+# REPOSITIONED both of these. They used to put the `$?`
 # comparison inside the then-branch, where `$?` is the CONDITIONAL's status --
 # 0 precisely because the branch was taken -- so they were asserting that a
 # shape proving nothing deserved an exemption. Moved onto the conditional line,
@@ -308,7 +307,7 @@ mkp status-cmp-ne.sh \
     '    echo "R2D RED confirmed: the mutant crashed or produced a different value"' \
     'fi'
 
-# [codex-2, round 3] the same comparison INSIDE the block: it observes the
+# the same comparison INSIDE the block: it observes the
 # conditional's own status, never the mutant's, and must not exempt anything.
 # shellcheck disable=SC2016  # fixture source text, not an expression.
 mkp status-in-block.sh \
@@ -320,7 +319,7 @@ mkp status-in-block.sh \
     '    echo "R3 RED confirmed: the mutant produced a different value"' \
     'fi'
 
-# --- CR round 4 probes ------------------------------------------------------
+# --- probes ------------------------------------------------------
 # [codex-1] the rc-variable rule used to ask only that an rc-ish variable AND a
 # comparison token appear on the SAME LINE. A human-readable diagnostic
 # satisfies both halves -- the `!=` in the message text bought the exemption --
@@ -337,8 +336,8 @@ mkp diagnostic-message.sh \
     '    echo "R4 RED confirmed: got != want (rc=$rc)"' \
     'fi'
 
-# --- CR round 5 probes ------------------------------------------------------
-# [codex-1] round 4's adjacency requirement is satisfied by quoted diagnostic
+# --- probes ------------------------------------------------------
+# the adjacency requirement is satisfied by quoted diagnostic
 # TEXT, so the same defect came back in a third spelling. Fixed as a CLASS --
 # an echo/printf line never establishes exit-status evidence -- rather than by
 # tightening the regex against this wording, which would only invite a fourth.
@@ -459,7 +458,7 @@ echo "[test-red-control-lint] T9 the real scripts/ tree is scanned and REPORTED,
 # Run with NO arguments and from a foreign cwd, which also pins that the default
 # scan root is resolved from the script own location, never from the caller PWD.
 #
-# CR round 1 [codex-3]: this case must NOT fail on hits. run-shell-tests.sh keys
+# this case must NOT fail on hits. run-shell-tests.sh keys
 # on a suite's exit status, so failing here would quietly make an advisory tool
 # a gate -- and a heuristic text matcher false-positiving on some future file
 # would then turn the whole shell suite red on unrelated work. The lint's own
@@ -468,7 +467,7 @@ echo "[test-red-control-lint] T9 the real scripts/ tree is scanned and REPORTED,
 # suite log and reviewed by a human; the deterministic count assertion that
 # SHOULD fail on a regression is T8's, over the fixture tree.
 #
-# CR round 4 [codex-2]: and it must not read EMPTY STDOUT as proof. The lint is
+# and it must not read EMPTY STDOUT as proof. The lint is
 # deliberately silent on stdout and exits 0 when every scan FAILS, so a broken
 # awk or a failed enumeration produces byte-identical output to a clean tree.
 # Reporting "the invariant holds" from that is absence-of-evidence scored as
@@ -612,7 +611,7 @@ case "$stub_err" in
 esac
 
 echo "[test-red-control-lint] T18 [codex-1] a FAILED enumeration is reported, never read as a clean scan"
-# Round 2's awk hole one layer up: find's exit status used to be discarded, so a
+# The awk hole one layer up: find's exit status used to be discarded, so a
 # traversal failure produced a clean-looking scan over a PARTIAL file list.
 # Driven with a find stub on PATH exactly as T17 drives the awk stub -- and the
 # stub emits ONE real path before failing, so the run has genuine hits AND a

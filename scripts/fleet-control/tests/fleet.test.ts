@@ -43,7 +43,7 @@ test("GET /fleet returns unified lanes, feeds, and coverage", async () => {
 // cycle that already reaches buildFleet and therefore this file. A source
 // grep of fleet.ts here duplicated that same contract more weakly (it stayed
 // green under a recursive setTimeout poll, which does not contain the
-// literal text "setInterval") and was removed (HIMMEL-3580 test audit).
+// literal text "setInterval") and was removed.
 test("buildFleet stamps a valid ISO timestamp", () => {
   const root = makeRoot();
   const doc = buildFleet({ bridgeRoot: root, stateRoot: root, pluginDataRoot: join(root, "codex-plugin-data") });

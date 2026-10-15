@@ -1,12 +1,12 @@
 ﻿# wire-statusline.ps1 — PowerShell counterpart of wire-statusline.sh
-# (HIMMEL-359). Single source of truth for wiring the himmel statusLine into a
+#. Single source of truth for wiring the himmel statusLine into a
 # Claude Code settings.json. Used by adopt.ps1, setup.ps1, and
 # machine-setup/win11.ps1.
 #
 # Dot-source to get Set-HimmelStatusLine, or invoke directly:
 #   pwsh -File wire-statusline.ps1 -SettingsPath <path> -HimmelPath <path>
 #
-# Does THREE things (HIMMEL-718 Task 4.1 — the wiring switch to the forked
+# Does THREE things (the wiring switch to the forked
 # claude-hud renderer; the vendored bash bar is RETAINED as fallback):
 #   1. .statusLine = { type: "command",
 #        command: 'node "<himmel>/marketplace/plugins/claude-hud/dist/index.js"' }
@@ -15,15 +15,15 @@
 #      to ${CLAUDE_CONFIG_DIR:-~/.claude}/claude-hud.json -- the hud's own
 #      override path (marketplace/plugins/claude-hud/src/config.ts's
 #      getConfigOverridePath, deep-merged over the base config), a sibling of
-#      the swept plugins/ dir rather than a file inside it (HIMMEL-3334: the
+#      the swept plugins/ dir rather than a file inside it (the
 #      plugin-manager's reaper sweeps plugins/, silently dropping a config
 #      parked at the old plugins/claude-hud/config.json path). The config dir,
-#      always, never the settings file's own directory (HIMMEL-2892: it is
-#      per-user config, not per-project). A pre-HIMMEL-3334 install's old
+#      always, never the settings file's own directory (it is
+#      per-user config, not per-project). A legacy install's old
 #      config.json is migrated: read as the previous value if the new path
 #      has none yet, and removed once the new path is published.
 #   4. Drops the hud's RUNTIME cache state in that same dir whenever the wiring
-#      actually CHANGED (HIMMEL-3065) -- see Remove-HimmelHudCacheState.
+#      actually CHANGED -- see Remove-HimmelHudCacheState.
 # Idempotent, atomic (temp + move), non-destructive (other keys preserved;
 # file + parent dir created if absent). Normalizes JSON through `jq --indent 2`
 # when jq is on PATH (matches win11.ps1's Write-SettingsJson), else falls back
@@ -54,7 +54,7 @@ function Get-ClaudeConfigDir {
 }
 
 # Drop the hud's RUNTIME cache state -- everything the hud writes under its
-# plugin dir EXCEPT the config.json this script owns (HIMMEL-3065). Twin of the
+# plugin dir EXCEPT the config.json this script owns. Twin of the
 # bash lib's _wire_statusline_purge_hud_cache; see its header for why this is a
 # denylist and why only a CHANGED wiring may call it.
 #
@@ -69,7 +69,7 @@ function Remove-HimmelHudCacheState {
     param([Parameter(Mandatory = $true)] [string]$HudDir)
 
     if (-not (Test-Path $HudDir)) { return }
-    # HIMMEL-3070: the bash twin needs an explicit readability probe because an
+    # the bash twin needs an explicit readability probe because an
     # unlistable dir globs to zero entries there. Here the enumeration itself is
     # the probe: Get-ChildItem on a dir it cannot list raises, and
     # -ErrorAction Stop turns that into the terminating error the caller's catch
@@ -93,7 +93,7 @@ function Set-HimmelStatusLine {
     )
 
     # Captured native stdout is decoded via [Console]::OutputEncoding, the
-    # legacy OEM codepage here, not UTF-8 (HIMMEL-2256; dot-sourcing this
+    # legacy OEM codepage here, not UTF-8 (dot-sourcing this
     # library must not mutate the caller's console encoding at top level).
     # Save/restore around the capture so the caller's encoding is unchanged
     # on every exit path, including a thrown error.
@@ -102,7 +102,7 @@ function Set-HimmelStatusLine {
     # $OutputEncoding preference variable, not [Console]::OutputEncoding --
     # on Windows PowerShell 5.1 it defaults to ASCIIEncoding, silently
     # replacing every non-ASCII char with `?` before jq ever sees it
-    # (HIMMEL-2256 twin bug). Must be set at global scope: a bare
+    # Must be set at global scope: a bare
     # $OutputEncoding assignment inside a function is function-local and the
     # child process never sees it.
     #
@@ -122,13 +122,13 @@ function Set-HimmelStatusLine {
         # halves of the changed-wiring test in (4) are read BEFORE the write.
         $hudDir = Join-Path (Get-ClaudeConfigDir) 'plugins/claude-hud'
         $hudOldConfigPath = Join-Path $hudDir 'config.json'
-        # HIMMEL-3334: the config now lives at the hud's own override path (a
+        # the config now lives at the hud's own override path (a
         # sibling of plugins/, never swept by the plugin-manager reaper),
         # never the old plugins/claude-hud/config.json.
         $hudConfigPath = Join-Path (Get-ClaudeConfigDir) 'claude-hud.json'
         # [string] cast: Get-Content -Raw returns $null for a 0-byte file, and
         # $null.TrimEnd() would throw in the comparison below. A pre-existing
-        # new-path config wins; otherwise fall back to a pre-HIMMEL-3334 old
+        # new-path config wins; otherwise fall back to an old
         # config so an un-migrated install's econ prefix still carries forward.
         $prevHudCfg = if (Test-Path $hudConfigPath) {
             [string](Get-Content $hudConfigPath -Raw)
@@ -136,7 +136,7 @@ function Set-HimmelStatusLine {
             [string](Get-Content $hudOldConfigPath -Raw)
         } else { '' }
 
-        # HIMMEL-3157: an operator suppressing the HUD economics rows prefixes
+        # an operator suppressing the HUD economics rows prefixes
         # .display.customLineCommand with an env var, e.g.
         # `HIMMEL_STATUSLINE_ECON=off ` (see scripts/statusline/hud-custom-lines.sh).
         # Every rewire rebuilds that command from the template, which has no
@@ -213,7 +213,7 @@ function Set-HimmelStatusLine {
         # (3) Stage the hud config under the CONFIG DIR, substituting this clone's
         # path for the <himmel-path> placeholder. Guarded on the source existing so
         # tests wiring against a synthetic himmel path stay a pure statusLine/env op.
-        # HIMMEL-2892: the destination is ${CLAUDE_CONFIG_DIR:-~/.claude}, never
+        # the destination is ${CLAUDE_CONFIG_DIR:-~/.claude}, never
         # $settingsDir -- even for a PROJECT settings path. The hud reads its
         # config from the config dir, so a copy beside a project's
         # .claude/settings.json is inert AND an untracked file inside a repo.
@@ -265,7 +265,7 @@ function Set-HimmelStatusLine {
         }
 
         # Stage the transformed settings BEFORE the purge, so anything that can
-        # fail still leaves the old wiring on disk (CR round 6 — the bash twin's
+        # fail still leaves the old wiring on disk — the bash twin's
         # (2) carries the reasoning).
         $json = $cfg | ConvertTo-Json -Depth 20
         if (Get-Command jq -ErrorAction SilentlyContinue) {
@@ -278,7 +278,7 @@ function Set-HimmelStatusLine {
         # caches and publish the config before the settings rename finally threw.
         Set-Content -Path "$SettingsPath.new" -Value $json -Encoding utf8 -ErrorAction Stop
 
-        # (4) HIMMEL-3065: the wiring CHANGED when either half differs from what
+        # the wiring CHANGED when either half differs from what
         # was already on this machine -- a different hud config, or an EXISTING
         # statusLine command that pointed somewhere else (a moved or renamed
         # clone, an older himmel instance). Both are compared against values
@@ -291,7 +291,7 @@ function Set-HimmelStatusLine {
         # the caches are per-USER, so a machine's second project would
         # otherwise purge every other project's live snapshots).
         # The purge runs BEFORE either file is published, and a failed purge
-        # throws with NOTHING written (CR round 2) — publish-then-purge left a
+        # throws with NOTHING written — publish-then-purge left a
         # failed purge unrepeatable, because the retry saw wiring that already
         # matched and took the no-change path.
         # -cne, not -ne: PowerShell's -ne is case-INSENSITIVE, so a case-only
@@ -314,8 +314,8 @@ function Set-HimmelStatusLine {
         # twin's (4) for the full reasoning.
         if ($hudTmp -and (Test-Path $hudTmp)) {
             Move-Item -Path $hudTmp -Destination $hudConfigPath -Force -ErrorAction Stop
-            # HIMMEL-3334 migration: the new config just published supersedes
-            # a pre-HIMMEL-3334 config left in the swept plugin dir -- drop it,
+            # Migration: the new config just published supersedes
+            # a legacy config left in the swept plugin dir -- drop it,
             # but only when its customLineCommand matches himmel's own shape
             # (the same check unwire-hud-config.sh uses on the bash side), so
             # a file an operator or another tool left at that exact path is

@@ -193,7 +193,7 @@ def notify_path(a):
 
 
 def legacy_notify_path(a):
-    # HIMMEL-4790 named it after the state file's stem, so routes.json and routes.state shared one.
+    # The legacy sidecar was named after the state file's stem, so routes.json and routes.state shared one.
     return os.path.splitext(state_file(a))[0] + ".notify.json"
 
 
@@ -289,7 +289,7 @@ def main(argv=None):
         fcntl.flock(lock, fcntl.LOCK_EX)
         # ponytail: one-time carry of the HIMMEL-4790 stem-named file so its pending line is not dropped; two
         # states that shared it give it to whichever runs first. Drop once no station can still hold one
-        # (HIMMEL-4798, a few weeks after merge).
+        # (a few weeks after merge).
         legacy = legacy_notify_path(a)
         # Only a v1 file is legacy: every file this version writes is v2, so another state's new sidecar that
         # happens to carry this legacy name (routes.json.notify.json for routes.json.state) is never taken.

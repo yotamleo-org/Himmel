@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # wire-luna-vault.sh -- set env.LUNA_VAULT_PATH in a Claude Code settings.json to
-# the scaffolded luna vault path (HIMMEL-458). The end-session-wiki resolver
+# the scaffolded luna vault path. The end-session-wiki resolver
 # reads LUNA_VAULT_PATH from the process env (scripts/lib/vault-resolve.sh step
 # 3); adopt.sh calls this after scaffolding so the resolver finds the vault the
 # operator actually created without a manual export. Sibling of
@@ -19,7 +19,7 @@
 # (the BASH_SOURCE guard below supports both).
 set -euo pipefail
 
-# HIMMEL-3332: record the settings write in the install-provenance ledger
+# record the settings write in the install-provenance ledger
 # (docs/internals/install-provenance.md). Runs after the mv with the PRE-write
 # JSON in $2: a new key is `create`, the same value is `noop`, a different one
 # is `replace` with the prior value backed up. A wire that had to create `.env`
@@ -46,7 +46,7 @@ _wire_luna_vault_record() {
   scope="$(_wire_luna_vault_scope "$settings")" || return 1
   new="$(jq -nc --arg v "$val" '$v')"
   # `.env` absent -> create; an explicit `"env": null` -> replace with the null
-  # kept as the pre-state (HIMMEL-3352); an existing object -> no /env row.
+  # kept as the pre-state; an existing object -> no /env row.
   env_pre="$(printf '%s' "$base" | jq -c 'select(type == "object" and has("env")) | .env')"
   old="$(printf '%s' "$base" | jq -c --arg k "$key" 'select((.env | type == "object") and (.env | has($k))) | .env[$k]')"
   if [ -z "$old" ]; then op=create; pre=(--pre-absent)

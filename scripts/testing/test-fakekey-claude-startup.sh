@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Credential-free Claude startup suite (HIMMEL-4410, epic HIMMEL-4409).
+# Credential-free Claude startup suite.
 #
 # Drives a REAL `claude` CLI through scripts/testing/fakekey-claude.sh: fake key,
 # scratch config dir, loopback-only network namespace, no model turn. Asserts
@@ -32,7 +32,7 @@ failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 skip() { printf '  SKIP  %s\n' "$1"; }
-# grepq <file> <ERE> — no pipeline (pipefail trap, HIMMEL-1430).
+# grepq <file> <ERE> — no pipeline (pipefail trap).
 grepq() { grep -qE -- "$2" "$1" 2>/dev/null; }
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/fakekey-startup.XXXXXX") || exit 1

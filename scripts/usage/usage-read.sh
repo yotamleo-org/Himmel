@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/usage/usage-read.sh -- read CLI for the per-ticket usage store
-# (HIMMEL-3994). Consumers use this instead of touching transcript JSONL.
+# Consumers use this instead of touching transcript JSONL.
 #
 # Usage:
 #   usage-read.sh [--store <dir>] [--ticket KEY] [--all]

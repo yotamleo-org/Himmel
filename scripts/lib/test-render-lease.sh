@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Unit tests for scripts/lib/render-lease.sh (HIMMEL-1509). Hermetic: the
+# Unit tests for scripts/lib/render-lease.sh. Hermetic: the
 # registry lives in a mktemp dir and the proc-tree identity primitives are
 # stubbed, so no real process is probed or signaled and no shared state is
-# touched. The launcher that used it was removed in HIMMEL-3818.
+# touched. The launcher that used it was removed.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

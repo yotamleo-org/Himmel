@@ -1,4 +1,4 @@
-// leg-digest.ts — one leg session's failures as class keys (HIMMEL-4670 P1). Read-only, zero model calls.
+// leg-digest.ts — one leg session's failures as class keys. Read-only, zero model calls.
 //
 //   bun scripts/eval/leg-digest/leg-digest.ts (--transcript <journal.jsonl> | --session <uuid>)
 //       [--denials-ledger <classifier-denials.jsonl>] [--max-bytes N]
@@ -22,7 +22,7 @@ const { spawnSync } = Bun;
 const DIGEST_SCHEMA = 2;
 const LANES = new Set(["native", "claudex", "openrouter", "cloud", "unknown"]);
 const lane = LANES.has(process.env.LEG_LANE ?? "") ? process.env.LEG_LANE! : "unknown";
-// Only conventional lowercase MCP identifiers, never result/argument text (HIMMEL-4816).
+// Only conventional lowercase MCP identifiers, never result/argument text.
 const toolKey = (s: string) => TOOLS.has(s) ? s : /^mcp__[a-z0-9_]{1,160}$/.test(s) ? s : s.startsWith("mcp__") ? "mcp" : "other";
 const REPO = resolve(import.meta.dir, "../../..");
 const TRAJECTORY = join(REPO, "scripts/eval/lane-quality/trajectory.py");
@@ -52,7 +52,7 @@ const GREP_CMD = /(?:^|[\s;&|(])(?:grep|egrep|fgrep|rg|ugrep)\s/;
 // The last stage of a pipeline whose exit status can be a grep's: the grep itself or a filter that passes it through.
 const PASS_THROUGH = /^\s*(?:(?:grep|egrep|fgrep|rg|ugrep|head|tail|sort|uniq|cat)\b)/;
 
-// HIMMEL-4793: the pipeline stages of the last command in `cmd`. Commands split on `;`, `&&`, `||` and newline,
+// The pipeline stages of the last command in `cmd`. Commands split on `;`, `&&`, `||` and newline,
 // stages on `|`, never inside single quotes, double quotes or after a backslash, so a grep pattern like 'a|b' stays
 // whole. ponytail: no `$(...)`, backticks or heredocs, a split inside one still reads as a stage boundary; revisit
 // if the board shows a misclassified row.
@@ -82,7 +82,7 @@ const lastStages = (cmd: string): string[] => {
   return last;
 };
 
-// HIMMEL-4785: a Bash error is sub-classed by this table, first match wins. `out` tests the result text, `cmd` the
+// A Bash error is sub-classed by this table, first match wins. `out` tests the result text, `cmd` the
 // command; `sub` is a fixed name, so no journal text reaches a class key. "usage" takes its script from SCRIPT_NAME
 // and only when the basename is a tracked scripts file; an unmatched error stays error/Bash.
 const BASH_ERRORS: { sub: string; out: RegExp; cmd?: RegExp }[] = [
@@ -91,10 +91,10 @@ const BASH_ERRORS: { sub: string; out: RegExp; cmd?: RegExp }[] = [
   { sub: "usage", out: /\busage:|expected <base>\.\.<head>|\bunknown (?:option|argument)\b|\bcannot set\b|\bunsupported\b/i },
   { sub: "no-such-file", out: /no such file or directory/i },
 ];
-// A grep that matched nothing exits 1 with no output: the compound's answer, not a failure (the HIMMEL-4755 audit's
+// A grep that matched nothing exits 1 with no output: the compound's answer, not a failure (the audit's
 // largest error/Bash bucket).
 const NO_MATCH = /^Exit code 1\s*$/;
-// HIMMEL-4853: the exit-code registry maps basename -> rc -> class. A result or retry rc is a by-design answer
+// The exit-code registry maps basename -> rc -> class. A result or retry rc is a by-design answer
 // (quiet-run 75 busy, check-ci 3 review state), counted apart from failures and never routed. Any other rc, an
 // rc a script does not list, or a script not in the registry stays a failure.
 type Registry = Map<string, Map<string, string>>;
@@ -203,7 +203,7 @@ const agentOf = (a: AgentInfo | undefined): Agent => ({
   model: a?.model && MODEL.test(a.model) ? a.model : null,
 });
 
-// HIMMEL-5516: what the session spent before its first edit. Usage rows are weighted input + cache_creation + output
+// What the session spent before its first edit. Usage rows are weighted input + cache_creation + output
 // at 1 and cache_read at 0.1 (the cost-reduction method), one row per message id (a streamed message repeats its
 // usage on every content-block line, the last one wins). The window ends at the main agent's first Edit, Write,
 // NotebookEdit or `git commit` tool call and includes the message that issued it. Subagent turns before the cut are
@@ -379,7 +379,7 @@ async function main() {
           .sort((a, b) => Math.abs(a.ts - ts) - Math.abs(b.ts - ts))[0];
         if (row) { row.used = true; if (CLASSIFIER_CATEGORIES.has(slug(row.tag))) cat = slug(row.tag); }
       }
-      // spec deviation (console ruling, HIMMEL-4670): the ledger's reason_tag is mostly "unknown", so fall back to the
+      // spec deviation (console ruling): the ledger's reason_tag is mostly "unknown", so fall back to the
       // journal's bracketed category, kept only when it is on the same fixed list.
       if (!cat) { const b = BRACKET.exec(text)?.[1]; if (b && CLASSIFIER_CATEGORIES.has(slug(b))) cat = slug(b); }
       return `classifier:${cat ?? "other"}`;

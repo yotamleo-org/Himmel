@@ -1,6 +1,6 @@
 # test-unwire-singlekey.ps1 -- committed PS test for the single-key unwire helpers
 # (unwire-statusline.ps1, unwire-himmel-repo.ps1, unwire-luna-vault.ps1,
-# unwire-handover-dir.ps1; SC6 + HIMMEL-839). Plus a .sh/.ps1 byte-parity
+# unwire-handover-dir.ps1; SC6). Plus a .sh/.ps1 byte-parity
 # assertion (both libs normalize through `jq --indent 2`, so identical input
 # must yield identical output). Run:
 #   pwsh -File test-unwire-singlekey.ps1
@@ -28,13 +28,13 @@ Remove-Statusline -SettingsPath $s | Out-Null
 Check 'statusLine removed'      (JqVal $s 'has("statusLine")') 'false'
 Check 'statusLine sibling kept' (JqVal $s '.env.X') '1'
 
-# 1c. removes the NEW hud renderer command too (HIMMEL-718) -- single-arg = REMOVE.
+# 1c. removes the NEW hud renderer command too -- single-arg = REMOVE.
 $s = Join-Path $td 'sl1c.json'
 '{"statusLine":{"type":"command","command":"node \"C:/h/marketplace/plugins/claude-hud/dist/index.js\""},"env":{"CLAUDE_HUD_ALLOW_EXTRA_CMD":"1"}}' | Set-Content $s -Encoding utf8
 Remove-Statusline -SettingsPath $s | Out-Null
 Check 'hud statusLine removed' (JqVal $s 'has("statusLine")') 'false'
 
-# 1d. WITH -HimmelPath -> REPOINT to the bash-bar fallback (HIMMEL-718 rollback);
+# 1d. WITH -HimmelPath -> REPOINT to the bash-bar fallback;
 #     the extra-cmd gate is left in place.
 $s = Join-Path $td 'sl1d.json'
 '{"statusLine":{"type":"command","command":"node \"C:/h/marketplace/plugins/claude-hud/dist/index.js\""},"env":{"CLAUDE_HUD_ALLOW_EXTRA_CMD":"1"}}' | Set-Content $s -Encoding utf8
@@ -70,7 +70,7 @@ Remove-LunaVault -SettingsPath $s | Out-Null
 Check 'LUNA_VAULT_PATH removed' (JqVal $s '.env.LUNA_VAULT_PATH // "ABSENT"') 'ABSENT'
 Check 'HIMMEL_REPO kept'        (JqVal $s '.env.HIMMEL_REPO') 'C:/h'
 
-# 5b. handover-dir (HIMMEL-839): removes key, preserves siblings.
+# 5b. handover-dir: removes key, preserves siblings.
 $s = Join-Path $td 'hd1.json'
 '{"env":{"HANDOVER_DIR":"C:/v/handovers","HIMMEL_REPO":"C:/h"}}' | Set-Content $s -Encoding utf8
 Remove-HandoverDir -SettingsPath $s | Out-Null

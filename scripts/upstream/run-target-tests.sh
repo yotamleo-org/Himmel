@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/upstream/run-target-tests.sh — run an upstream target's tests under a
-# throwaway HERMES_HOME (HIMMEL-3053).
+# throwaway HERMES_HOME.
 #
 # /upstream-file builds and tests inside a clone of the target (hermes-agent at
 # least). A test run there inherits this shell's live HERMES_HOME (e.g.

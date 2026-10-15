@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # wire-statusline.sh — single source of truth for wiring the himmel statusLine
-# into a Claude Code settings.json (HIMMEL-359). Used by adopt.sh, setup.sh,
+# into a Claude Code settings.json. Used by adopt.sh, setup.sh,
 # and machine-setup/ubuntu.sh so the command string + merge logic live in one
 # place instead of being duplicated per installer.
 #
 # Usage:
 #   bash wire-statusline.sh <settings-json-path> <himmel-path>
 #
-# Does THREE things (HIMMEL-718 Task 4.1 — the wiring switch to the forked
+# Does THREE things (the wiring switch to the forked
 # claude-hud renderer; the vendored bash bar is RETAINED as fallback):
 #   1. .statusLine = { type: "command",
 #                      command: "[ -f \"<js>\" ] && exec node \"<js>\" || true" }
@@ -20,22 +20,22 @@
 #      it to ${CLAUDE_CONFIG_DIR:-~/.claude}/claude-hud.json (CLAUDE_CONFIG_DIR
 #      trimmed, whitespace-only treated as unset — matching the hud's own
 #      getClaudeConfigDir).
-#      HIMMEL-3334: that is the hud's own CONFIG OVERRIDE path
+#      that is the hud's own CONFIG OVERRIDE path
 #      (getConfigOverridePath() in marketplace/plugins/claude-hud/src/config.ts),
 #      a sibling of `plugins/`, not a file inside it — Claude Code's
 #      plugin-manager sweep (`.last_inuse_sweep`) only reaps `plugins/`, so a
 #      file living beside it is never reaped. The hud deep-merges this override
 #      on top of ${CLAUDE_CONFIG_DIR:-~/.claude}/plugins/claude-hud/config.json
 #      (the hud's own default/base path), so this script never has to write
-#      inside the swept plugin dir at all. A pre-HIMMEL-3334 config left at that
+#      inside the swept plugin dir at all. A legacy config left at that
 #      OLD path is removed once the new one publishes successfully (migration).
 #      That path is the CONFIG DIR, always — never derived from the settings
-#      file's own directory (HIMMEL-2892). The hud config is per-USER config,
+#      file's own directory. The hud config is per-USER config,
 #      not per-project: deriving it relative to the settings path dropped an
 #      untracked .claude/plugins/claude-hud/config.json INSIDE the repo on
 #      every project-scope install.
 #   4. Drops the hud's RUNTIME cache state in that same dir whenever the wiring
-#      actually CHANGED (HIMMEL-3065) — see _wire_statusline_purge_hud_cache.
+#      actually CHANGED — see _wire_statusline_purge_hud_cache.
 #      Both writes are STAGED and validated first, the purge runs next, and the
 #      staged files are published last — so anything that can fail aborts the
 #      wire with the OLD wiring still on disk, and the retry sees the same
@@ -49,12 +49,12 @@ set -euo pipefail
 # shellcheck source=scripts/lib/provenance.sh
 . "$(dirname "${BASH_SOURCE[0]}")/provenance.sh"
 
-# The Claude Code config dir (HIMMEL-3352: shared with the other settings
+# The Claude Code config dir (shared with the other settings
 # recorders, so a leading `~` in CLAUDE_CONFIG_DIR is expanded in one place).
 # shellcheck source=scripts/lib/claude-config-dir.sh
 . "$(dirname "${BASH_SOURCE[0]}")/claude-config-dir.sh"
 
-# HIMMEL-3332: record the two settings keys this script writes (`/statusLine`
+# record the two settings keys this script writes (`/statusLine`
 # and `/env/CLAUDE_HUD_ALLOW_EXTRA_CMD`) in the install-provenance ledger
 # (docs/internals/install-provenance.md). Runs after the settings mv with the
 # PRE-write JSON: a new key is `create`, the same value `noop`, a different one
@@ -73,7 +73,7 @@ _wire_statusline_scope() {
 
 # _wire_statusline_record_key <settings> <scope> <pre-write JSON> <path array JSON> <unit> <new JSON>
 # The key is ABSENT only when its parent object lacks it: an explicit `null` value
-# is a present pre-state (HIMMEL-3352), recorded as `null` so a rollback restores
+# is a present pre-state, recorded as `null` so a rollback restores
 # it. A parent that is not an object (`"env": null`, a string) holds no key.
 _wire_statusline_record_key() {
   local settings="$1" scope="$2" base="$3" path="$4" unit="$5" new="$6" old op
@@ -92,7 +92,7 @@ _wire_statusline_record() {
   local settings="$1" base="$2" cmd="$3" scope env_pre
   scope="$(_wire_statusline_scope "$settings")" || return 1
   # `.env` absent -> create; an explicit `"env": null` -> replace with the null
-  # kept as the pre-state (HIMMEL-3352); an existing object -> no /env row.
+  # kept as the pre-state; an existing object -> no /env row.
   env_pre="$(printf '%s' "$base" | jq -c 'select(type == "object" and has("env")) | .env')"
   if [ -z "$env_pre" ]; then
     prov_record create json-key "$settings" --unit /env --scope "$scope" --class code \
@@ -109,7 +109,7 @@ _wire_statusline_record() {
     /env/CLAUDE_HUD_ALLOW_EXTRA_CMD '"1"'
 }
 
-# HIMMEL-3332: the hud config drop is recorded too (scope user, row hud-config,
+# the hud config drop is recorded too (scope user, row hud-config,
 # class code). `create` when there was no config, `noop` when the bytes are
 # unchanged, `replace` with the prior bytes backed up otherwise — the user's own
 # customLineCommand edits live in that file, and the install still overwrites it.
@@ -148,7 +148,7 @@ _wire_statusline_record_purge() {
 }
 
 # Drop the hud's RUNTIME cache state — everything the hud writes under its
-# plugin dir EXCEPT the config.json this script owns (HIMMEL-3065).
+# plugin dir EXCEPT the config.json this script owns.
 #
 # That dir holds per-session snapshots, not settings: transcript-cache/ (session
 # tokens, the prompt-cache anchor + TTL, compaction state), context-cache/ (the
@@ -174,7 +174,7 @@ _wire_statusline_purge_hud_cache() {
   # A dir the sweep cannot enumerate (mode 300: writable, so staging succeeded,
   # but unlistable) makes the glob below expand to zero entries — the same shape
   # as an empty dir — so the purge would report success with the stale caches
-  # still on disk (HIMMEL-3070). Fail it the way a failed removal fails.
+  # still on disk. Fail it the way a failed removal fails.
   if [ ! -r "$hud_dir" ] || [ ! -x "$hud_dir" ]; then
     echo "wire-statusline: cannot enumerate hud cache dir (not readable): $hud_dir" >&2
     return 1
@@ -223,7 +223,7 @@ wire_statusline() {
   # Forward-slash the himmel path so the `node "..."` command is valid even
   # when a caller passes a Windows backslash path (Git Bash tolerates /c/... ).
   local himmel_fwd="${himmel//\\//}"
-  # HIMMEL-3332 (HIMMEL-3312): guarded, so a deleted clone renders an empty
+  # guarded, so a deleted clone renders an empty
   # statusLine instead of a node stack trace on every session start. unwire's
   # path pattern (_UNWIRE_SL_PAT) matches this form and the older bare one.
   local hud_js="${himmel_fwd}/marketplace/plugins/claude-hud/dist/index.js"
@@ -233,7 +233,7 @@ wire_statusline() {
   # settings path — see (3) below. Resolved up here because the previous hud
   # config is read from it BEFORE the write, to decide whether the wiring
   # changed (4). $hud_dir still hosts the hud's RUNTIME cache (purged below on
-  # a wiring change) and, pre-HIMMEL-3334, the config itself — $hud_cfg_path is
+  # a wiring change) and, formerly, the config itself — $hud_cfg_path is
   # the new, un-swept location the config is written to now.
   local hud_dir; hud_dir="$(claude_config_dir)/plugins/claude-hud"
   local hud_old_cfg="$hud_dir/config.json"
@@ -243,7 +243,7 @@ wire_statusline() {
   elif [ -f "$hud_old_cfg" ]; then prev_hud_cfg="$(cat "$hud_old_cfg")"
   fi
 
-  # HIMMEL-3157: an operator suppressing the HUD economics rows prefixes
+  # an operator suppressing the HUD economics rows prefixes
   # .display.customLineCommand with an env var, e.g. `HIMMEL_STATUSLINE_ECON=off `
   # (see scripts/statusline/hud-custom-lines.sh). Every rewire rebuilds that
   # command from the template, which has no such prefix, so the operator's
@@ -283,7 +283,7 @@ wire_statusline() {
   # (1) Stage the hud config under the CONFIG DIR, substituting this clone's
   # path for the <himmel-path> placeholder. Guarded on the source existing so
   # tests wiring against a synthetic himmel path stay a pure statusLine/env op.
-  # HIMMEL-2892: the destination is ${CLAUDE_CONFIG_DIR:-~/.claude}, never
+  # the destination is ${CLAUDE_CONFIG_DIR:-~/.claude}, never
   # $settings_dir — even when the caller passes a PROJECT settings path. The
   # hud reads its config from the config dir, so a copy beside a project's
   # .claude/settings.json is both inert and an untracked file dropped inside
@@ -325,14 +325,14 @@ wire_statusline() {
   # an `if !` / errexit-exempt context and would report a wire that never
   # happened. The transform can fail on input that PARSED fine — `{"env":"x"}`
   # is valid JSON but `.env.KEY = …` cannot be assigned into a string — which
-  # is exactly why it has to run before the purge and not after (CR round 6).
+  # is exactly why it has to run before the purge and not after.
   printf '%s' "$base" | jq --arg cmd "$cmd" \
     '.statusLine = { type: "command", command: $cmd }
      | .env.CLAUDE_HUD_ALLOW_EXTRA_CMD = "1"' \
     > "$settings.statusline.tmp" \
     || { rm -f "$settings.statusline.tmp" "$hud_cfg_tmp"; return 1; }
 
-  # (3) HIMMEL-3065: the wiring CHANGED when either half differs from what was
+  # the wiring CHANGED when either half differs from what was
   # already on this machine — a different hud config, or an EXISTING statusLine
   # command that pointed somewhere else (a moved or renamed clone, an older
   # himmel instance). Both are compared against values captured BEFORE anything
@@ -351,14 +351,14 @@ wire_statusline() {
   # (synthetic-path callers, e.g. tests); the command half then decides alone.
   #
   # The purge runs BEFORE either file is published, and a failed purge aborts
-  # the wire with NOTHING written (CR round 2): publish-then-purge left a
+  # the wire with NOTHING written: publish-then-purge left a
   # failed purge unrepeatable — the retry saw wiring that already matched,
   # took the no-change path, and the stale state it was meant to drop survived
   # every subsequent run. Aborting first keeps the old wiring on disk, so the
   # retry still sees a changed wiring and purges again.
   if { [ -n "$prev_cmd" ] && [ "$prev_cmd" != "$cmd" ]; } || { [ -n "$hud_cfg" ] && [ "$prev_hud_cfg" != "$hud_cfg" ]; }; then
     local purge_list; purge_list="$(mktemp 2>/dev/null || true)"
-    # HIMMEL-3363: no listing file means no purge row — the purge itself still runs.
+    # no listing file means no purge row — the purge itself still runs.
     [ -n "$purge_list" ] \
       || echo "wire-statusline: warning: provenance record skipped (no temp file for the purge listing; the hud cache is still purged, uninstall will keep it)" >&2
     _wire_statusline_purge_hud_cache "$hud_dir" "$purge_list" \
@@ -399,8 +399,8 @@ wire_statusline() {
     if [ "$hud_rec" = 1 ]; then _wire_statusline_record_hud "$hud_cfg_path" "$hud_snap" || hud_rec=0; fi
     [ "$hud_rec" = 1 ] || echo "wire-statusline: warning: provenance record failed (the hud config is written; uninstall will keep it)" >&2
     rm -f "$hud_snap"
-    # HIMMEL-3334 migration: the new config just published supersedes a
-    # pre-HIMMEL-3334 config left in the swept plugin dir — drop it, but only
+    # Migration: the new config just published supersedes a
+    # legacy config left in the swept plugin dir — drop it, but only
     # when its customLineCommand matches himmel's own shape (the same check
     # unwire-hud-config.sh uses), so a file an operator or another tool left
     # at that exact path is never silently destroyed. Best-effort: a failed

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Zero-cost full Claude turn against a scripted local API (HIMMEL-4411, epic HIMMEL-4409).
+# Zero-cost full Claude turn against a scripted local API.
 #
-# mock-backed — fake key, loopback-only netns, zero spend; the claude launch itself is in fakekey-claude.sh (HIMMEL-4411)
+# mock-backed — fake key, loopback-only netns, zero spend; the claude launch itself is in fakekey-claude.sh
 # Drives a REAL headless claude turn through scripts/testing/fakekey-claude.sh with
 # FAKEKEY_MOCK_FIXTURE: the harness starts scripts/testing/mock-anthropic/ INSIDE
 # the loopback-only network namespace and points ANTHROPIC_BASE_URL at it. The
@@ -82,7 +82,7 @@ if [ "$CT" = '200 {"input_tokens":1}' ]; then pass "U2 count_tokens answers"; el
 NF=$(node -e 'fetch(process.argv[1]+"/v1/nope",{method:"GET"}).then(r=>process.stdout.write(String(r.status)))' "$BASE" 2>/dev/null)
 if [ "$NF" = 404 ] && [ "$(jsonl_q "$ULOG" 'rows.some(r=>r.path==="/v1/nope"&&r.status===404)')" = true ]; then pass "U3 unknown path: 404 and logged"; else fail "U3 404/log (status=$NF)"; fi
 kill "$MOCK_PID" 2>/dev/null; MOCK_PID=""
-# U5/U6 RED controls (HIMMEL-4457): the turn assertions' own expressions against synthetic input.
+# U5/U6 RED controls: the turn assertions' own expressions against synthetic input.
 printf '%s\n' '{"path":"/v1/messages","turn":0}' '{"path":"/v1/messages","turn":1}' >"$WORK/order-ok.log"
 printf '%s\n' '{"path":"/v1/messages","turn":0}' '{"path":"/v1/messages","turn":null}' '{"path":"/v1/messages","turn":1}' >"$WORK/order-extra.log"
 if [ "$(jsonl_q "$WORK/order-ok.log" "$M2_ORDER")" = true ] && [ "$(jsonl_q "$WORK/order-extra.log" "$M2_ORDER")" = false ]; then
@@ -183,7 +183,7 @@ if command -v jq >/dev/null 2>&1; then
   printf '%s' '{"oauthAccount":{"accountUuid":"uuid-mock-turn-test"}}' >"$H/home/.claude.json"
   printf '#!/usr/bin/env bash\ntrue\n' >"$H/no-fleet-ps.sh"; chmod +x "$H/no-fleet-ps.sh"
   # CLAUDE_CODE_* in the process env is a Claude Code marker: with a seam set and no claude ancestor
-  # (CI), bank-preflight's guard refuses (HIMMEL-3914). Claude reads these from its own settings env.
+  # (CI), bank-preflight's guard refuses. Claude reads these from its own settings env.
   printf '%s' '{"env":{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1","CLAUDE_CODE_MAX_RETRIES":"0"}}' >"$H/cfg/settings.json"
   node -e '
 const art=process.argv[1];
@@ -207,7 +207,7 @@ printf 'say hi' | bash "$REPO/scripts/lib/claude-headless.sh" --role mock-turn -
 echo $? >"$H/headless.rc"
 kill "$m" 2>/dev/null; wait "$m" 2>/dev/null
 HEOF
-  # mock-backed — fake key, loopback-only netns, zero spend; bank-preflight faked through its own cache seams (HIMMEL-4411)
+  # mock-backed — fake key, loopback-only netns, zero spend; bank-preflight faked through its own cache seams
   env -i PATH="$(dirname "$(command -v claude)"):$(dirname "$(command -v node)"):/usr/local/bin:/usr/bin:/bin" \
     HOME="$H/home" CLAUDE_CONFIG_DIR="$H/cfg" REPO="$REPO" MOCK="$MOCK" H="$H" \
     ANTHROPIC_API_KEY="$FAKEKEY_KEY" ANTHROPIC_DEFAULT_SONNET_MODEL=canary-model-must-be-stripped \
@@ -217,7 +217,7 @@ HEOF
     FLEET_PS_CMD="$H/no-fleet-ps.sh" \
     unshare -rn timeout 60 sh "$H/run.sh" >"$H/outer.out" 2>&1 # gnu-ok: unshare -rn is Linux-only, so this whole case is
   if grepq "$H/outer.out" "cannot read the claude session's cwd" || grepq "$H/headless.err" "cannot read the claude session's cwd"; then
-    # Run from inside a Claude Code session, bank-preflight's seam guard (HIMMEL-3914) walks to
+    # Run from inside a Claude Code session, bank-preflight's seam guard walks to
     # the session and cannot read its cwd across the user namespace. CI has no claude ancestor.
     skip "H run from inside a Claude Code session: bank-preflight's seam guard refuses across the netns (runs in CI, or detached from the session)"
   else

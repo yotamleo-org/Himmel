@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4912: real filesystem boundary, not assertions about bwrap flags.
+# real filesystem boundary, not assertions about bwrap flags.
 # Regression: dropping the read-only root lets the executing canary row escape.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -150,7 +150,7 @@ else bad "unreadable runtime directory: rc=$RC $OUT"; fi
 OUT=$(bash "$RUNNER" -- python3 -I -c 'import resource; assert resource.getrlimit(resource.RLIMIT_AS)==(1073741824,1073741824); assert resource.getrlimit(resource.RLIMIT_CPU)==(60,60); assert resource.getrlimit(resource.RLIMIT_NPROC)==(128,128)' 2>&1); RC=$?
 if [ "$RC" = 0 ]; then ok 'child address-space CPU and process limits enforced'; else bad "resource limits: rc=$RC $OUT"; fi
 
-# HIMMEL-5055: one validated runtime mask list per run. A stub find logs each
+# one validated runtime mask list per run. A stub find logs each
 # call, so the rows count runtime walks (the -prune call) instead of timing.
 STUBBIN="$TMP/findstub"; FINDLOG="$TMP/finds.log"
 mkdir -p "$STUBBIN"

@@ -55,6 +55,16 @@
       "why": "PHI stays on-machine; opt-in prevents accidental bulk runs"
     },
     {
+      "corpus": "salus", "provider": "openrouter", "purpose": "embedding",
+      "verdict": "deny", "hard": true,
+      "why": "HIMMEL-5756: salus content never reaches OpenRouter for qmd embedding. HARD and ahead of every openrouter allow row and the non-hard salus x openrouter row below: the remote-embed rollout is the first bulk path that could send PHI there. Salus stays on its own local-only qmd index and daemon"
+    },
+    {
+      "corpus": "salus", "provider": "openrouter", "purpose": "rerank",
+      "verdict": "deny", "hard": true,
+      "why": "HIMMEL-5756: salus content never reaches OpenRouter for qmd rerank (query plus candidate text). HARD, same reasoning as the embedding cell above"
+    },
+    {
       "corpus": "salus", "provider": "openrouter", "purpose": "*",
       "verdict": "deny",
       "why": "HIMMEL-1774 operator ruling: OpenRouter (like every cloud provider) NEVER receives PHI. DEFAULT stays deny; `hard` was deliberately REMOVED per the 2026-08-15 operator ruling — OpenRouter is an A-tier provider and adopters may already be routing through it, so this cell is operator-CONFIGURABLE (a future operator can ratify an open by editing this cell alone, the same one-line ratification path every provider cell uses). This is a deliberate configurability decision, NOT guardrail drift. Explicit row placed BEFORE the wildcard hard deny below so the ruling is legible in this file, not only implied"
@@ -206,6 +216,76 @@
       "corpus": "skill-index", "provider": "jina", "purpose": "rerank",
       "verdict": "allow",
       "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the skill-index corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+    },
+    {
+      "corpus": "himmel-code", "provider": "openrouter", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15 (HIMMEL-5712 A/B winner: qwen3-embedding-8b plus cohere rerank-4-fast): qmd may use OpenRouter (US) for embedding of himmel-code. Explicit row; other purposes keep their prior verdict and the salus hard rows above still govern salus"
+    },
+    {
+      "corpus": "himmel-code", "provider": "openrouter", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: qmd may use OpenRouter (US) for rerank of himmel-code. Same ruling as the embedding cell"
+    },
+    {
+      "corpus": "luna-personal", "provider": "openrouter", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15 (\"yes we should include the luna-personal but not salus\"): qmd may use OpenRouter (US) for embedding of the luna vault, full note bodies included. Explicit row ahead of the luna-personal openrouter deny cell, which still governs every other purpose"
+    },
+    {
+      "corpus": "luna-personal", "provider": "openrouter", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank sends the query plus candidate note text to OpenRouter (US); same ruling as the embedding cell. Every other purpose stays denied"
+    },
+    {
+      "corpus": "luna-clippings", "provider": "openrouter", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: qmd may use OpenRouter (US) for embedding of Clippings/. Explicit row ahead of the luna-clippings openrouter deny cell, which still governs every other purpose"
+    },
+    {
+      "corpus": "luna-clippings", "provider": "openrouter", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of Clippings/ candidates on OpenRouter (US); same ruling as the embedding cell"
+    },
+    {
+      "corpus": "operator-repos", "provider": "openrouter", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: embedding of the operator-repos corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+    },
+    {
+      "corpus": "operator-repos", "provider": "openrouter", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of the operator-repos corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+    },
+    {
+      "corpus": "jira-mirror", "provider": "openrouter", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: embedding of the jira-mirror corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+    },
+    {
+      "corpus": "jira-mirror", "provider": "openrouter", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of the jira-mirror corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+    },
+    {
+      "corpus": "roadmap-plan", "provider": "openrouter", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: embedding of the roadmap-plan corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+    },
+    {
+      "corpus": "roadmap-plan", "provider": "openrouter", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of the roadmap-plan corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+    },
+    {
+      "corpus": "skill-index", "provider": "openrouter", "purpose": "embedding",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: embedding of the skill-index corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+    },
+    {
+      "corpus": "skill-index", "provider": "openrouter", "purpose": "rerank",
+      "verdict": "allow",
+      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of the skill-index corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
     },
     {
       "corpus": "himmel-code", "provider": "*", "purpose": "*",

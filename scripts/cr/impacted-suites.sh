@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/impacted-suites.sh — which test suites exercise the files a PR
-# changed (HIMMEL-2821).
+# changed.
 #
 # WHY. PR #2261 changed scripts/machine-setup/uninstall-plugins.sh and merged
 # with scripts/test-uninstall.sh — a suite one directory UP that drives it end
@@ -12,34 +12,34 @@
 #
 # Usage:
 #   impacted-suites.sh [<base>..<head>] [--shell]
-#       With no range (HIMMEL-4781), use $(git merge-base origin/main HEAD)..HEAD
+#       With no range, use $(git merge-base origin/main HEAD)..HEAD
 #       — origin/HEAD's target when set — and print that range to stderr.
 #       Print the union, one repo-relative path per line, sorted. For every
 #       file changed between merge-base(<base>,<head>) and <head> (deletions
 #       included, renames counted as delete+add), list each suite at <head>
 #       whose text references the file's basename — or, for a slash command or
 #       skill, `/<name>`. A changed *.sh whose stem holds a `-` or `_` is also
-#       matched by its bare stem (HIMMEL-5160: `guard_rc block-foo`, no .sh).
+#       matched by its bare stem (`guard_rc block-foo`, no .sh).
 #       A changed suite lists itself. --shell keeps only
 #       test-*.sh (what run-shell-tests.sh can run); the *.test.mjs / .js / .ts
 #       suites are listed without it and are run by their own runner — see
 #       --runner below for which one.
-#       The union is widened over the SOURCE CLOSURE (HIMMEL-3896): a suite that
+#       The union is widened over the SOURCE CLOSURE: a suite that
 #       reaches a changed file only through helpers it `source`s / `.`s (suite ->
 #       A.sh -> changed B.sh, any depth) is listed too. A file that sets the
 #       fence-lifting HIMMEL_UNINSTALL_REAL_HOME variable also lists the
-#       path-scanning callers suite that never names it (HIMMEL-3868).
+#       path-scanning callers suite that never names it.
 #   impacted-suites.sh --selector-miss <base>..<head> --red-file <path>
-#       Selector-miss evidence (HIMMEL-3896). <path> lists suites (one per line)
+#       Selector-miss evidence. <path> lists suites (one per line)
 #       that went red on a main-push full sweep. For each red suite the PR's
 #       selection did NOT list, print `selector-miss: <suite> <changed-file>`
 #       per changed file of the range, exit 1; exit 0 and print nothing when
 #       every red suite was selected. Meant to be called by the post-merge
-#       full-sweep job (HIMMEL-3897 owns wiring it into ci.yml) with the merged
+#       full-sweep job with the merged
 #       PR's range, and its rows kept as the miss ledger.
 #   impacted-suites.sh --check <base>..<head> [--from-file <path>]
 #       The verdict gate. Reads one line per impacted suite from stdin, or
-#       from --from-file <path> when given (HIMMEL-3798 round 3: replaces the
+#       from --from-file <path> when given: replaces the
 #       cut inline heredoc/`<` redirect shapes — write the lines with a real
 #       editing tool, then run ONE simple literal command naming the path):
 #           SUITE <path> = PASS
@@ -50,12 +50,12 @@
 #       verdict but one is BLOCKED — accounted for, yet the suite did not run,
 #       so the /pr-check row is NOT clean until the console/operator rules.
 #   impacted-suites.sh --runner <path>
-#       Print the ONE command CI uses to run a JS/TS suite path (HIMMEL-3436),
+#       Print the ONE command CI uses to run a JS/TS suite path,
 #       e.g. `node --test scripts/hooks/foo.test.mjs` or
 #       `cd scripts/jira && npx vitest run src/foo.test.ts`. The map is read
 #       off .github/workflows/ci.yml, never guessed — a path CI does not run
 #       (or a runner directory this script does not yet know) refuses non-zero
-#       naming the path, rather than defaulting to `bun test` (HIMMEL-3436: a
+#       naming the path, rather than defaulting to `bun test` (a
 #       node:test suite can pass under node --test and fail under bun test on
 #       an unrelated bun fs quirk — a false red no code change caused).
 #   impacted-suites.sh --runner-check
@@ -72,7 +72,7 @@
 #   impacted-suites.sh --run <path>
 #       Run ONE impacted suite (a test-*.sh, or a JS/TS suite via --runner),
 #       first installing its owning package's deps when the nearest
-#       package.json ancestor has no node_modules (HIMMEL-3553: a fresh
+#       package.json ancestor has no node_modules (a fresh
 #       worktree is created with --no-install, so every package but the jira
 #       CLI starts with no node_modules — a leg running a suite raw sees a
 #       false SKIP/FAIL it mislabels "pre-existing"). The install is frozen
@@ -93,19 +93,19 @@
 # as "nothing to run". --run otherwise exits with the suite's own exit code.
 #
 # ponytail: the closure follows `source`/`.` edges between shell files only, by
-# basename (HIMMEL-3896). A suite that reaches a changed file through a script
+# basename. A suite that reaches a changed file through a script
 # it EXECUTES (bash a.sh, no source line), or builds the path at runtime
 # ("$dir/uninstall-$kind.sh"), is still not found — the union under-
 # approximates there; the --selector-miss ledger is how such a gap surfaces, and
 # a suite can widen its own text with the basename it really drives. A
-# path-scanning suite (HIMMEL-3868) is covered by content_rules, one row each.
+# path-scanning suite is covered by content_rules, one row each.
 # A basename shared by many files (lib.sh) over-approximates on purpose; the
 # safe direction for a gate is a suite too many, never one too few.
 #
 # Platform guard: POSIX bash 3.2+ (no mapfile / associative arrays); runs
 # under Git Bash on Windows. No .ps1 twin — it is a git + grep pipeline.
 set -uo pipefail
-# HIMMEL-3495: a relative-entry copy that is not the anchor's hands off to it.
+# A relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
 
@@ -120,8 +120,8 @@ usage() {
     sed -n '2,/^set -uo/p' "$0" | sed -n 's/^# \{0,1\}//p' >&2
 }
 
-# runner_for <path> — print the ONE command CI uses to run a JS/TS suite path
-# (HIMMEL-3436), read off .github/workflows/ci.yml. Exit 2, naming the path,
+# runner_for <path> — print the ONE command CI uses to run a JS/TS suite path,
+# read off .github/workflows/ci.yml. Exit 2, naming the path,
 # for anything this table does not cover — never a guessed default (a
 # node:test suite can genuinely disagree with `bun test` on an unrelated bun
 # fs quirk, so guessing is not a safe fallback here).
@@ -281,12 +281,12 @@ pkg_dir_for() {
 # command for a package dir, chosen by the lockfile it commits
 # (package-lock.json -> npm ci; bun.lock/bun.lockb -> bun install
 # --frozen-lockfile). --ignore-scripts on both: a dependency's own postinstall
-# reaching the network (a Playwright browser download — HIMMEL-3553 N446) must
+# reaching the network (a Playwright browser download N446) must
 # never block or slow a test-dep install; nothing this table maps needs its
-# own postinstall to run to be test-ready (HIMMEL-3553 investigation: every
+# own postinstall to run to be test-ready: every
 # mapped package.json builds its TS via an explicit `pretest`/`build` script,
 # never npm lifecycle). Exit 2, naming the dir, when NEITHER lockfile exists —
-# a missing lockfile is a hard fail, never a guessed install (HIMMEL-3553).
+# a missing lockfile is a hard fail, never a guessed install.
 install_cmd_for() {
     local dir="$1"
     if [ -f "$dir/package-lock.json" ]; then
@@ -302,7 +302,7 @@ install_cmd_for() {
 }
 
 # ensure_deps <suite_path> — install a suite's owning package's deps when its
-# node_modules is missing (HIMMEL-3553: a fresh worktree is created with
+# node_modules is missing (a fresh worktree is created with
 # --no-install, so every package but the jira CLI starts with none). No-op
 # (exit 0, silent) for a suite with no package.json ancestor, or one whose
 # node_modules already exists — "no change to suites that need no npm deps".
@@ -400,7 +400,7 @@ if [ -n "$red_file" ]; then
         echo "impacted-suites.sh: --red-file is not a readable regular file (symlinks refused): $red_file" >&2; exit 2
     fi
 fi
-# HIMMEL-3798 round 4: same fail-closed contract as write-verdicts.sh's
+# Same fail-closed contract as write-verdicts.sh's
 # --from-file — refuse a symlinked, missing or unreadable path before the
 # --check awk ever reads it. A genuinely empty regular file is NOT refused:
 # /pr-check's own runbook mandates an empty --from-file when zero suites are
@@ -440,7 +440,7 @@ if [ -n "$run_path" ]; then
     exit $?
 fi
 
-# HIMMEL-4781: no range = merge-base(default branch, HEAD)..HEAD, announced on
+# No range = merge-base(default branch, HEAD)..HEAD, announced on
 # stderr. Sourced only here: CI always passes a range, and its base-extracted
 # copy (scripts/ci/impacted-selection.sh) carries no scripts/lib.
 if [ -z "$range" ]; then
@@ -492,7 +492,7 @@ fi
 if ! mb=$(git merge-base "$base_sha" "$head_sha"); then
     echo "impacted-suites.sh: no merge-base between '${base}' and '${head}'" >&2; exit 2
 fi
-# HIMMEL-4978: -z, because without it git C-quotes a name holding a double quote,
+# -z, because without it git C-quotes a name holding a double quote,
 # backslash or tab ("a\"b.sh"): no needle matched it and the run listed nothing
 # and exited 0. -z output is raw; tr turns it into the one-per-line lists the
 # loops below read. ponytail: a name holding a newline still splits in two (a
@@ -514,7 +514,7 @@ found="$work/found"
 : > "$found"
 
 suite_re='(^|/)test-[^/]*\.sh$|\.test\.(mjs|js|ts)$'
-# HIMMEL-5167: no here-string or here-document below carries the tree, the changed
+# No here-string or here-document below carries the tree, the changed
 # list or the suite list. A here-string goes through a temp file once it outgrows a
 # pipe (always, on bash before 5.1); on a full temp dir it fails, the command never
 # runs and its rc 1 read as "no match" — a short list at rc 0. A checked write to a
@@ -538,7 +538,7 @@ needle_ere() {
     local esc
     esc=$(printf '%s' "$1" | sed 's/[.[\*^$+?(){}|]/\\&/g') || io_fail "escaping a needle"
     case "$1" in
-        # A `/name` needle (extensionless file, HIMMEL-4606) is its own boundary:
+        # A `/name` needle (extensionless file) is its own boundary:
         # it matches `guard-corpus/diff`, the full path and a variable-built
         # `$HERE/diff`, but never a bare `diff -u`.
         /*) printf '%s($|[^A-Za-z0-9_-])' "$esc" ;;
@@ -556,7 +556,7 @@ add_needle() {
     { needle_ere "$1"; printf '\n'; } >> "$pats" || io_fail "writing a needle"
     printf '%s\n' "$1" >> "$lits" || io_fail "writing a needle literal"
 }
-# add_stem_needle <path> — HIMMEL-5160: a suite often names a script without its
+# add_stem_needle <path> a suite often names a script without its
 # extension (`guard_rc block-chokepoint-env-prefix`), so a changed *.sh whose
 # stem holds a `-` or `_` also gets its bare stem as a needle. A one-word stem
 # (`gate`, `run`) is a common word and is skipped. The leading boundary is
@@ -577,7 +577,7 @@ add_stem_needle() {
 # file_literal <path> [src] — the text a suite would use to name the file: its
 # basename, or "<parent>/<name>" for a generic one. A single-word extensionless
 # basename (`diff`, `gen`, `gh`: no `.`, `-` or `_`) is a common word, so it is
-# named `/<name>` (HIMMEL-4606: scripts/eval/guard-corpus/diff listed 362 suites
+# named `/<name>` (scripts/eval/guard-corpus/diff listed 362 suites
 # on a bare `diff`). A distinctive one (`claude-deepseek`, `BASE_SHA`) keeps the
 # bare name, since a quoted `'claude-deepseek'` has no `/` before it. The source
 # and assignment closures take the same literal (a bare `diff` on an assignment
@@ -605,7 +605,7 @@ file_literal() {
 }
 
 src_lead='(^[[:space:]]*[({]?|^[[:space:]]*[^#[:space:]].*[[:space:];&|({])'
-# bare_source_ere <path> — HIMMEL-4621: for a nested single-word extensionless
+# bare_source_ere <path> for a nested single-word extensionless
 # file (the ones file_literal names `/<name>`), two EREs that match a reference
 # with no `/` before the name, which `/<name>` misses: a `source`/`.` operand
 # after a `cd` (`cd dir && source diff`) and `# shellcheck source=diff`. Only a
@@ -652,7 +652,7 @@ while IFS= read -r f; do
     esac
 done < "$work/changed"
 
-# Source closure (HIMMEL-3896): a shell file joins the closure as a sourcer when
+# Source closure: a shell file joins the closure as a sourcer when
 # (a) a `source`/`.` line names a file already in the closure, (b) it assigns a
 # name containing one (`_LIB="$DIR/x.sh"`, `libs=(x.sh y.sh)`) AND has a
 # `source`/`.` line whose operand is a `$var` — the repo idiom, `. "$_lib"` —
@@ -667,7 +667,7 @@ done < "$work/changed"
 # (`"$dir/$name"`) and a backslash-continued `source \` are not followed —
 # upgrade path is a real dataflow pass if a T6 selector-miss row shows one.
 varsrc="$work/varsrc"   # every .sh file that sources a "$variable"
-# HIMMEL-3963: the start of a source-edge match. The keyword is preceded by the
+# The start of a source-edge match. The keyword is preceded by the
 # line start / an indent, or by a separator after a first character that is not
 # `#` — so the word "source" in a full-line comment (bank-preflight.sh:
 # "# Same source and spelling as tick.sh's ...") is prose, never an edge. Only a
@@ -684,7 +684,7 @@ fi
 tr '\0' '\n' < "$work/varsrc.raw" | sed "s/^${head_sha}://" > "$varsrc" || io_fail "listing variable-sourcing files"
 # grep_narrowed <patfile> <litfile> <outfile> <what> <pathspec>... — write to
 # <outfile>, one path per line, the files at head under <pathspec>... holding a
-# line that matches any ERE in <patfile> (HIMMEL-5363). The answer of
+# line that matches any ERE in <patfile>. The answer of
 # `git grep -z -l -E -f <patfile> <head> -- <pathspec>...`, without its cost: that
 # runs EVERY pattern over EVERY line, which on a 321-file vendored diff (~1.2k
 # patterns, ~1.7k files, 26 rounds) was 3184 CPU-seconds and a cancelled CI job.
@@ -767,7 +767,7 @@ while [ -s "$front" ]; do
         if grep -Fxq -- "$hit" "$seen"; then continue; fi
         printf '%s\n' "$hit" >> "$seen" || io_fail "growing the source closure"
         printf '%s\n' "$hit" >> "$work/next" || io_fail "growing the source closure"
-        # HIMMEL-5174: the closure hit is the SOURCER, not the sourced file, and a
+        # The closure hit is the SOURCER, not the sourced file, and a
         # suite may invoke it by its stem alone (`guard_rc <hook>`, the hook sourcing
         # a changed lib), so it gets the stem needle too.
         add_needle "$(file_literal "$hit")"
@@ -777,15 +777,15 @@ while [ -s "$front" ]; do
 done
 
 # content_rules — one `ERE|suite` row per path-scanning suite that never names
-# the files it guards (HIMMEL-3868): a changed file whose text (at the base or
+# the files it guards: a changed file whose text (at the base or
 # the head) matches the ERE lists the suite. Add a row, not a new mechanism.
 # The row splits on its first `|`, so an ERE never spells one: an alternation is
-# one row per branch (the two ledger rows, HIMMEL-4789, mirror the registry
+# one row per branch (the two ledger rows, mirror the registry
 # lint's own ~/.himmel ledger pattern, .jsonl and .log).
 # ponytail: whole-file, not added-lines — any edit to a file that already spells
 # a ledger path runs the registry lint (0s); upgrade path: diff-hunk matching if
 # a --selector-miss or cost review shows the widening matters.
-# Rows match case-insensitively (HIMMEL-5132: the uninstall rule's suite reads
+# Rows match case-insensitively (the uninstall rule's suite reads
 # the name in any case); the ledger rows widen with it, which only over-selects
 # a 0 s suite.
 content_rules() {
@@ -808,7 +808,7 @@ while IFS= read -r f; do
             git show "${rev}:${f}" >> "$work/content" || io_fail "reading ${f} at ${rev} for the content rules"
         fi
     done
-    # HIMMEL-5132: also match the text as the shell sees it, continuations
+    # Also match the text as the shell sees it, continuations
     # joined and every quote and backslash deleted, so a name split by quotes or
     # a continuation (`HIMMEL""_UNINSTALL_...`) still reaches its row. This is
     # the normalisation test-uninstall-real-home-callers.sh's sets_var applies.
@@ -830,18 +830,18 @@ while IFS= read -r f; do
     done < "$work/content-rules"
 done < "$work/changed"
 
-# scan_roots — one `<glob> <suite>` row per suite that WALKS a repo tree
-# (HIMMEL-4256): a file added, changed or deleted under the tree changes the
+# scan_roots — one `<glob> <suite>` row per suite that WALKS a repo tree —
+# a file added, changed or deleted under the tree changes the
 # suite's result though no suite names it (PR 1734 added
 # scripts/lanes/lib/leg-cost-row.sh; lint-fail-open scans scripts/lanes/ and
-# main went red, HIMMEL-4242). <glob> is a `case` pattern on the repo-relative
+# main went red). <glob> is a `case` pattern on the repo-relative
 # path, and its `*` crosses `/`. Add a row, not a new mechanism.
-# A `!<glob> <suite>` row (HIMMEL-4323) vetoes a file the suite's walk skips; a
+# A `!<glob> <suite>` row vetoes a file the suite's walk skips; a
 # glob with no `/` matches the basename. Mirror the suite's own skip rule
 # exactly, never wider: a veto that over-reaches is an under-selection.
 # ponytail: whole-repo walkers are left out on purpose — scripts/test-adopt.sh
 # and scripts/himmelctl/test/test-versioned-layout.sh copy the whole tree (a
-# `*` row would run 554s+19s on every PR, against HIMMEL-3815);
+# `*` row would run 554s+19s on every PR);
 # scripts/ci/test-run-shell-tests.sh 23c only reacts to a NEW top-level tree;
 # scripts/lib/test-vm-guest-excludes.sh only to a secret-named file. Upgrade
 # path: a row here once a --selector-miss ledger row names one of them.
@@ -979,7 +979,7 @@ while IFS= read -r f; do
     done < "$work/scan-roots"
 done < "$work/changed"
 
-# The CR guarded closure (HIMMEL-4453): scripts/cr/test-cr-guarded-closure.sh
+# The CR guarded closure: scripts/cr/test-cr-guarded-closure.sh
 # DERIVES its file set by walking the runbook + scripts/cr call graph and never
 # names what it reaches, so no reference grep selects it. Every file that walk
 # reaches must lie inside pr-check-context.sh's cr_guarded set (the suite fails
@@ -1025,7 +1025,7 @@ if grep -Fxq -- "$closure_suite" "$suites"; then
         done < "$work/changed"
         if [ "$cg_hit" -eq 0 ] && [ -s "$work/cg-pats" ]; then
             # One search for every changed file; any path a guarded file can name
-            # counts (HIMMEL-4533), not just scripts/handover|lanes|lib.
+            # counts, not just scripts/handover|lanes|lib.
             # shellcheck disable=SC2046  # one pathspec per line, split on purpose
             # The suite's seeds skip test-*, so a test naming the file is no edge.
             grep_narrowed "$work/cg-pats" "$work/cg-lits" "$work/cg.out" "searching the guarded files for the changed files" $(tr '\n' ' ' < "$work/guarded-specs") ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*'
@@ -1040,7 +1040,7 @@ if [ -s "$pats" ]; then
     # about the PR as pushed. -l prefixes each path with "<head_sha>:".
     # rc 1 is "no match"; anything higher is a search that did not run, which
     # must not read as an empty impacted set.
-    # grep_narrowed searches with -z like the diff and ls-tree above (HIMMEL-4997):
+    # grep_narrowed searches with -z like the diff and ls-tree above:
     # a suite path holding a non-ASCII byte, double quote, backslash or tab must
     # come back as itself, not as a quoted "\303\251" the runner cannot open.
     grep_narrowed "$pats" "$lits" "$work/grep.out" "searching the suites for the changed files" \
@@ -1048,7 +1048,7 @@ if [ -s "$pats" ]; then
     cat "$work/grep.out" >> "$found" || io_fail "reading the search result"
 fi
 
-# HIMMEL-5114: a tree-scan suite asserts a property of the WHOLE tree (every
+# A tree-scan suite asserts a property of the WHOLE tree (every
 # .ps1, every launch site, every ledger), so a file it never names can still
 # break it, and the textual match above would skip it. A suite that carries the
 # header line `# selector: tree-scan` is therefore listed whenever the range adds,

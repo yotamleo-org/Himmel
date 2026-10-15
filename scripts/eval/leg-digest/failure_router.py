@@ -307,7 +307,7 @@ def decide(a, table, cls, t, legs, counted, c, state, state_ok, today, jbin, pro
     if c.get("ticket") and c.get("last_comment_day") == today:
         return "skipped:comment-daily", c["ticket"]
     if collide and not c.get("ticket"):
-        # The label search would match the other class's ticket too: never adopt it (HIMMEL-4741).
+        # The label search would match the other class's ticket too: never adopt it.
         return "skipped:slug-collision", None
     if a.dry_run:
         cap = state["created"]["n"] if state["created"].get("day") == today else 0

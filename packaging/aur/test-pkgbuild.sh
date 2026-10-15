@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-pkgbuild.sh -- the AUR package's acceptance test (HIMMEL-3059 S5, design
+# test-pkgbuild.sh -- the AUR package's acceptance test (design
 # §2 and §4.3). Three modes:
 #
 #   (default)       CONTAINER. Builds a tarball + git bundle of this checkout's
@@ -82,7 +82,7 @@ check_print_only() {
 # tool call (fail closed) and any other non-zero rc surfaces a hook error on
 # every event, which design §4.3 also rules out ("expect no hook errors").
 # Runs in the caller's shell (never a subshell) so the counters survive.
-# Expected-fail (XFAIL, HIMMEL-3574): the user-scope safety hooks are wired as
+# Expected-fail (XFAIL): the user-scope safety hooks are wired as
 # `bash "<prefix>/scripts/hooks/X.sh"`, so with the prefix gone bash exits 127
 # (non-blocking, but an error on every event). Only that exact shape is an
 # XFAIL; rc 2 or any other error stays a FAIL.
@@ -163,7 +163,7 @@ PY
   x="$tmp/x"; mkdir -p "$x"; bsdtar -xf "$pkg" -C "$x" 2>/dev/null
   [ "$(cat "$x/usr/bin/himmelctl")" = "$(printf '#!/bin/sh\nexec node /opt/himmel/scripts/himmelctl/bin.js "$@"')" ] \
     && ok "wrapper is exactly: exec node /opt/himmel/scripts/himmelctl/bin.js \"\$@\" (sets no PATH or env)" || bad "wrapper content differs" "$(tr '\n' '|' < "$x/usr/bin/himmelctl")"
-  # HIMMEL-3059 S6b: uninstall.sh's project_is_himmel_checkout() needs this
+  # uninstall.sh's project_is_himmel_checkout() needs this
   # marker to recognise the flat, .git-less, current-symlink-less prefix.
   [ "$(cat "$x/opt/himmel/.himmel-install-kind" 2>/dev/null)" = aur ] \
     && ok "package carries the aur install-kind marker (opt/himmel/.himmel-install-kind = aur)" \
@@ -221,7 +221,7 @@ if [ "$mode" = in-container ]; then
   [ "$(id -u)" = 0 ] && [ -d /src ] && [ -d /art ] || { echo "test-pkgbuild: --in-container runs as root in the container, with /src and /art mounted" >&2; exit 2; }
   pacman -Syu --noconfirm --needed git jq nodejs npm python namcap sudo >/tmp/pacman.log 2>&1 || { echo "FAIL  pacman could not install the test deps"; tail -5 /tmp/pacman.log; exit 1; }
   # builder's passwd home is NOT /build: uninstall's real-home check (c) refuses any target inside the
-  # real home, and the scratch target repos live under /build/w (HIMMEL-4994).
+  # real home, and the scratch target repos live under /build/w.
   useradd -m builder && install -d -o builder /build && echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
   tgz="$(ls /art/himmel-*-linux.tar.gz)"; name="$(basename "$tgz")"; tag="${name#himmel-}"; tag="${tag%-linux.tar.gz}"
   sum="$(cut -d' ' -f1 < "$tgz.sha256")"
@@ -250,7 +250,7 @@ if [ "$mode" = in-container ]; then
   inst aur /usr/bin/himmelctl
   # `install --scope project` wires settings only, so no target has a git hook and converge-check
   # refuses the run as VACUOUS (rc 3). Seed one identical gate hook per target so the gates section
-  # compares a real artifact (HIMMEL-4994).
+  # compares a real artifact.
   # Both steps run as builder: root reading builder's repos trips git's dubious-ownership check,
   # which hides the hooks dir from converge-check.
   su builder -c "for s in clone tarball aur; do mkdir -p $w/target-\$s/.git/hooks; printf '#!/bin/sh\nexit 0\n' > $w/target-\$s/.git/hooks/commit-msg; chmod 755 $w/target-\$s/.git/hooks/commit-msg; done"
@@ -263,7 +263,7 @@ if [ "$mode" = in-container ]; then
     3) bad "converge-check refused the run as VACUOUS (rc 3)" "$(tail -2 /tmp/converge.log | tr '\n' '|')" ;;
     *) bad "the three installs did not converge (rc $crc)" "$(grep -E '^[-+]' /tmp/converge.log | head -12 | tr '\n' '|')" ;;
   esac
-  # Every lib a hook in the installed project tree sources must be installed with it (HIMMEL-4994).
+  # Every lib a hook in the installed project tree sources must be installed with it.
   [ -f "$w/target-aur/scripts/hooks/lib/guard-unwrap.sh" ] && ok "the installed project tree carries scripts/hooks/lib/guard-unwrap.sh" || bad "the installed project tree lacks scripts/hooks/lib/guard-unwrap.sh"
 
   su builder -c "HOME=$w/home-aur himmelctl update </dev/null" >/tmp/update.log 2>&1; urc=$?

@@ -162,7 +162,7 @@ export async function run(input: RunInput): Promise<RunResult> {
   });
 
   const finishedAt = new Date().toISOString();
-  // HIMMEL-101 §6: bytesToClient = length of the formatted summary line AFTER
+  // bytesToClient = length of the formatted summary line AFTER
   // the 200-char cap applied at index.ts:59. This must mirror the index.ts
   // slice exactly so the cached entry agrees with what Claude actually received.
   const rawLine = `exit=${exitCode} | ${summary} | run=${runId}`;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit test for scripts/upstream/run-target-tests.sh (HIMMEL-3053). Exit 0 if all pass.
+# Unit test for scripts/upstream/run-target-tests.sh. Exit 0 if all pass.
 #
 # Stub-only: the "target" is a fake `pytest` on PATH that records the env it
 # received. Nothing here starts hermes or touches a real ~/.hermes — the "live

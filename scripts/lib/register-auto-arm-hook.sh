@@ -3,7 +3,7 @@
 #
 # Idempotently register the auto-arm-on-cap PreToolUse hook (matcher "*") in a
 # Claude Code settings.json. Adapted from ubuntu.sh's inline registration block
-# (HIMMEL-594) and used by macos.sh, with a hermetic test of its own. ubuntu.sh
+# and used by macos.sh, with a hermetic test of its own. ubuntu.sh
 # keeps its own copy (surgical — not refactored), so the two can drift; keep this
 # jq idempotency logic in sync if ubuntu.sh's changes. bash-3.2-safe, atomic
 # write (temp + mv), validates jq output before write.

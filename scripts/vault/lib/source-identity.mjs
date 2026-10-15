@@ -1,4 +1,4 @@
-// Pure logic for scripts/vault/backfill-source-identity.mjs (HIMMEL-3055).
+// Pure logic for scripts/vault/backfill-source-identity.mjs.
 // No I/O here — every function takes plain data in and returns plain data out,
 // so it is unit-testable without a vault, a network, or gh.
 import { createHash } from "node:crypto";

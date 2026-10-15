@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for dispatch-copilot.sh (HIMMEL-772).
+# Hermetic tests for dispatch-copilot.sh.
 # No real copilot install: COPILOT_BIN injects a stub that records its argv
 # and cwd. Asserts the lane invariants: physical-path worktree containment,
 # the allow-list (banned flags refused by name, unknown dash flags refused by

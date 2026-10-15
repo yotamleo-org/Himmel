@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# macos-lane.sh — HIMMEL-4980. Console-owned local macOS test lane over
+# macos-lane.sh — Console-owned local macOS test lane over
 # sickcodes/docker-osx (SSH-only; needs a one-time interactive macOS install, so NOT usable
 # unattended). Plan + cost + EULA note:
 # docs/internals/macos-local-lane.md.

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # check-unwired-hooks.sh — fail when a hook-named script under scripts/hooks is
-# referenced by NO wiring file and is not on the explicit allowlist (HIMMEL-5228).
+# referenced by NO wiring file and is not on the explicit allowlist.
 #
 # A hook that ships but is never registered fails OPEN and silently: the bus
-# delivery hooks sat unwired for exactly this reason (HIMMEL-5030). CI proves
+# delivery hooks sat unwired for exactly this reason. CI proves
 # each hook script in isolation, not that anything calls it.
 #
 # "Hook-named" = a top-level scripts/hooks/*.sh, *.js or *.mjs that is not a

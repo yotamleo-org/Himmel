@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Quota-gauge ledger append helpers (WS9/HIMMEL-654). The bash twin of
+# Quota-gauge ledger append helpers. The bash twin of
 # scripts/telegram/quota-gauge.ts — byte-identical canonical line (AC12/T22) —
 # used by the in-hook Claude writer (Task 3). Sources the path resolver.
 # bash 3.2-safe (no associative arrays, no mapfile).

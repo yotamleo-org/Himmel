@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # scripts/lib/suite-semaphore.sh -- the machine-wide suite concurrency budget
-# (HIMMEL-1818). Sourced by the two suite chokepoints: scripts/quiet-run.sh
-# (label `suite`) and scripts/ci/run-shell-tests.sh. The HIMMEL-1338 scan-root
+#. Sourced by the two suite chokepoints: scripts/quiet-run.sh
+# (label `suite`) and scripts/ci/run-shell-tests.sh. The scan-root
 # lock inside run-shell-tests.sh serialises sweeps of ONE tree; this budget
 # counts every suite on the machine, whatever tree or runner it came from.
 #
 # Model: N slot directories, slot-1..slot-N, under
 #   ${HIMMEL_SUITE_SEMAPHORE_DIR:-${TMPDIR:-/tmp}/himmel-suite-semaphore.d}
-# ponytail: the TMPDIR-keyed default shards the "machine-wide" budget across
+# ponytail: (HIMMEL-1838) the TMPDIR-keyed default shards the "machine-wide" budget across
 # any two processes with different TMPDIR values (e.g. two login sessions) --
 # each gets its own N-slot budget instead of sharing one. Upgrade path tracked
-# as the round-3 TMPDIR sharding axis on HIMMEL-1838.
+# as the round-3 TMPDIR sharding axis.
 # N = HIMMEL_SUITE_SLOTS (default 3). A slot is taken by an atomic `mkdir` and
 # carries an `owner` file: pid, start-time identity (proc-tree.sh), label,
 # started epoch. Liveness is pid + identity, not a TTL alone -- unlike
@@ -29,7 +29,7 @@
 # ANCESTOR of the current process -- a nested quiet-run under the holder, or a
 # suite the runner spawns. A value copied into an unrelated process's
 # environment names an owner that is not its ancestor, so it takes a slot like
-# anyone else (HIMMEL-1818 console ruling, condition a).
+# anyone else.
 # ponytail: a process that WRITES a slot dir by hand, naming its own ancestor as
 # owner, passes the ancestor check -- the semaphore is a budget, not a security
 # boundary; the deny-hook (block-chokepoint-env-prefix.sh) is the fence, and a
@@ -40,7 +40,7 @@
 #   suite_sem_acquire <label> <retry-hint>  -> 0 slot held (or re-entrant),
 #                                              75 busy, 2 bad config (incl. a
 #                                              non-contention reclaim-guard
-#                                              mkdir failure, HIMMEL-3791)
+#                                              mkdir failure)
 #   suite_sem_release                        -> frees only a slot WE acquired
 # bash 3.2-safe; set -e/-u safe. ASCII only.
 
@@ -133,7 +133,7 @@ _suite_sem_stale() {
     case "$SO_PID" in
         ''|*[!0-9]*) SUITE_SEM_STALE_WHY='owner record has no valid pid'; return 0 ;;
     esac
-    # HIMMEL-3778: SO_ID can be empty (the ps probe failed at acquire time,
+    # SO_ID can be empty (the ps probe failed at acquire time,
     # see _suite_sem_try below) -- proc_tree_process_identity_matches alone
     # always answers 2 (unavailable) for an empty expected, which made a
     # confirmed-dead holder with no recorded identity reclaimable ONLY by the
@@ -165,7 +165,7 @@ _suite_sem_stale() {
 # a false-stale verdict -- if _suite_sem_stale wrongly calls a live owner
 # dead (a too-short TTL, clock skew), that owner's own eventual release could
 # still race this mv. Fixing that needs a stronger liveness check than a TTL
-# heuristic, tracked under HIMMEL-1838's liveness-owner unification.
+# heuristic (the liveness-owner unification).
 _suite_sem_reclaim() {
     local slot="$1" guard="$1.reclaim" tomb
     if ! mkdir "$guard" 2>/dev/null; then
@@ -178,7 +178,7 @@ _suite_sem_reclaim() {
         # reclaimer holding it (EACCES, a missing parent, ...). The holder may
         # also have RELEASED it between our failed mkdir and that test, so
         # retry once; only a second failure with the guard still absent is
-        # permanent -> return 3 (HIMMEL-3791). _suite_lock_reclaim in
+        # permanent -> return 3. _suite_lock_reclaim in
         # scripts/ci/run-shell-tests.sh keeps this same shape.
         if ! mkdir "$guard" 2>/dev/null; then
             [ -d "$guard" ] && return 1
@@ -208,7 +208,7 @@ _suite_sem_held_ok() {
     _suite_sem_read_owner "$held" || return 1
     case "$SO_PID" in ''|*[!0-9]*) return 1 ;; esac
     _suite_sem_is_ancestor "$SO_PID" || return 1
-    # HIMMEL-3778: an empty SO_ID (failed ps probe at acquire) must not refuse
+    # an empty SO_ID (failed ps probe at acquire) must not refuse
     # our OWN re-entrant child -- fall back to identity-free liveness, same as
     # _suite_sem_stale above.
     proc_tree_liveness_matches "$SO_PID" "$SO_ID"

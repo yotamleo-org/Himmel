@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Quota-gauge ledger path resolver (WS9/HIMMEL-654).
+# Quota-gauge ledger path resolver.
 # Source this file and call `quota_gauge_ledger_path`. PURE — no fs mutation
 # (the parent dir is created on append in quota-gauge-ledger.sh, not on
 # resolve), so read-only callers cannot trigger filesystem mutation as a

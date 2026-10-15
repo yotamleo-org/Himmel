@@ -27,7 +27,7 @@ render_session_note() {
     # Summary: distil the last assistant turn into its first 4 substantive lines.
     # The opening lines are often throwaway preamble — a reaction to an injected
     # system reminder ("I'll ignore the TaskCreate reminder…") or a bare
-    # acknowledgment ("Sure.", "Got it.") — not a distillation (HIMMEL-590 F2).
+    # acknowledgment ("Sure.", "Got it.") — not a distillation.
     # Drop those LEADING meta lines, then take the first few substantive lines.
     # The reminder match requires `reminder` to CO-OCCUR with the injected
     # `TaskCreate` marker (or the literal `system-reminder` tag), so it drops a
@@ -50,7 +50,7 @@ render_session_note() {
     if [ -z "$summary" ]; then
         # A thinking/tool-only session (no final prose turn) still did real work —
         # surface the command activity instead of claiming the transcript was
-        # unavailable (HIMMEL-576). Only fall back to "unavailable" when there is
+        # unavailable. Only fall back to "unavailable" when there is
         # genuinely nothing.
         if [ -n "${KEPT_COMMANDS:-}" ]; then
             local _ncmd

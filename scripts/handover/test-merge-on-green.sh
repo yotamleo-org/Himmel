@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Tests for handover/merge-on-green.sh — the HIMMEL-1042 armed-chain auto-merge
-# chokepoint. The wrapper has NO env seams for `gh`/`check-ci` (gate integrity,
-# coderabbit): so each case runs a COPY of the script in a temp tree
+# Tests for handover/merge-on-green.sh — the armed-chain auto-merge
+# chokepoint. The wrapper has NO env seams for `gh`/`check-ci` (gate integrity):
+# so each case runs a COPY of the script in a temp tree
 # ($tmp/scripts/handover/merge-on-green.sh) with a stub check-ci at the fixed
 # sibling path ($tmp/scripts/check-ci.sh) and a stub `gh` FIRST on PATH. Asserts
 # the fail-closed gate sequence + that a real merge only ever fires with
 # --squash + --match-head-commit <certified-sha>.
 set -uo pipefail
 
-# HIMMEL-1495 — an --automerge-armed launching shell carries ARMAUTOMERGE=1 +
+# An --automerge-armed launching shell carries ARMAUTOMERGE=1 +
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
 # not decide the result (the 34e/34f precedent in test-check-ci.sh,
 # generalized). merge-on-green.sh gates on a truthy ARMAUTOMERGE
@@ -17,18 +17,18 @@ set -uo pipefail
 # retained; this is the startup defense-in-depth + the CR_MERGE_GATE_OK scrub
 # for the day a sourced lib reads it.)
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
-# HIMMEL-2919: a console-spawned leg's shell carries HIMMEL_CONSOLE_LEG=1, which
+# A console-spawned leg's shell carries HIMMEL_CONSOLE_LEG=1, which
 # arms the console-GO gate — ambient, it would refuse every merge case below.
 # Its own line: RC-2 below mutates the line above by exact match.
 unset HIMMEL_CONSOLE_LEG
-# HIMMEL-3475: an operator/leg launching shell carries HIMMEL_REPO (the
+# An operator/leg launching shell carries HIMMEL_REPO (the
 # harness-wide anchor) — ambient, it would point every case's gate at a real
 # checkout instead of the fixture's own stub. run_mog always passes its own
 # HIMMEL_REPO explicitly (default: the fixture tree itself), which already
 # overrides this per-invocation; unset here too for hermeticity / defense in
 # depth against any direct (non-run_mog) invocation added later.
 unset HIMMEL_REPO
-# HIMMEL-3616: the new pre-merge title gate invokes check-pr-title.sh ->
+# The new pre-merge title gate invokes check-pr-title.sh ->
 # check-commit-msg.sh, whose ticket pattern derives from JIRA_PROJECT_KEY.
 # Exported here (inherited by every case's child bash below, matching the
 # real .env's JIRA_PROJECT_KEY=HIMMEL, ci.yml's commit-lint job) rather than
@@ -41,13 +41,13 @@ export JIRA_PROJECT_KEY=HIMMEL
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOG="$SCRIPT_DIR/merge-on-green.sh"
 
-# HIMMEL-4434: ~70 mktemp sites below (mog-run.*, bare `mktemp -d`, mutant files,
+# ~70 mktemp sites below (mog-run.*, bare `mktemp -d`, mutant files,
 # red-control stderr) each leaked one entry per run. One private parent under
 # TMPDIR, exported as TMPDIR for the rest of the suite and its children, is
 # removed by the one EXIT trap, so every site is covered without a per-site list.
@@ -56,15 +56,15 @@ if [ -z "$MOG_SUITE_TMP" ] || [ ! -d "$MOG_SUITE_TMP" ]; then echo "FAIL: mktemp
 trap 'chmod -R u+rwX "$MOG_SUITE_TMP"; rm -rf "$MOG_SUITE_TMP"' EXIT
 export TMPDIR="$MOG_SUITE_TMP"
 
-# HIMMEL-3543: console-kit/go.sh mints, and the console-GO gate verifies with,
+# console-kit/go.sh mints, and the console-GO gate verifies with,
 # a key under $HOME/.config/himmel — a scratch HOME keeps every GO this suite
 # writes off the operator's real key.
 MOG_HOME=$(mktemp -d "${TMPDIR:-/tmp}/mog-home.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 if [ -z "$MOG_HOME" ] || [ ! -d "$MOG_HOME" ]; then echo "FAIL: mktemp -d produced no HOME sandbox" >&2; exit 1; fi
 export HOME="$MOG_HOME"
 
-# RED-control contract (HIMMEL-2518) for the mutation controls added below
-# (HIMMEL-2544 PR-D): proves a mutant actually ran, produced output, and
+# RED-control contract for the mutation controls added below:
+# proves a mutant actually ran, produced output, and
 # produced the SPECIFIC predicted wrong value, not merely "differs from
 # correct".
 . "$SCRIPT_DIR/../lib/red-control.sh"
@@ -74,7 +74,7 @@ FAIL=0
 pass() { PASS=$((PASS + 1)); }
 fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1" >&2; }
 
-# HIMMEL-5115: the red-main gate reads `gh run list` for main's CI. Every
+# The red-main gate reads `gh run list` for main's CI. Every
 # pre-existing case sees the GREEN window below, a real capture of
 # `gh run list --branch main --workflow CI --json conclusion,createdAt,databaseId,event,headSha,status`
 # (2026-10-10: cancelled pushes over a completed success). Exported once so a
@@ -94,7 +94,7 @@ export STUB_RUN_LIST_JSON_DEFAULT="$MOG_RUN_GREEN"
 #   STUB_CWD_FAIL=1     `gh repo view --json nameWithOwner` (cwd) exits 1.
 #   STUB_SHA            `headRefOid` in the meta query. Default a fixed fake sha.
 #   STUB_BASE            `baseRefName` in the meta query. Default main.
-#   STUB_HEAD_BRANCH     `headRefName` in the meta query (HIMMEL-1970 — the
+#   STUB_HEAD_BRANCH     `headRefName` in the meta query (the
 #                        branch whose worktree is pruned after a confirmed
 #                        merge). Default feat/stub-head (matches nothing).
 #   MOG_CWD              Directory to run merge-on-green FROM. Default: the
@@ -109,7 +109,7 @@ export STUB_RUN_LIST_JSON_DEFAULT="$MOG_RUN_GREEN"
 #                        after check-ci, before merging). Default = STUB_BASE.
 #   STUB_DEFAULT_BRANCH_PREMERGE  `defaultBranchRef.name` in the FIX-1 pre-merge
 #                        re-query. Default = STUB_DEFAULT_BRANCH.
-#   STUB_PR_TITLE        `title` in the HIMMEL-3616 pre-merge title re-query
+#   STUB_PR_TITLE        `title` in the pre-merge title re-query
 #                        (guard 3c) AND jira_auto_transition_on_merge's own
 #                        title read (both --json title). Default a
 #                        conventional, ticketed, unbracketed title, so every
@@ -118,11 +118,10 @@ export STUB_RUN_LIST_JSON_DEFAULT="$MOG_RUN_GREEN"
 #                        (undeterminable → fail closed).
 #   STUB_PR_AUTHOR       `author.login` in guard 3c's --json title,author
 #                        query, threaded into TICKET_ID_AUTHOR/
-#                        TICKET_ID_TRUSTED_AUTHOR (judge J1284O panel round 3,
-#                        codex-1). Default a non-exempt login, so every
+#                        TICKET_ID_TRUSTED_AUTHOR (so the trusted-author exemption can be exercised). Default a non-exempt login, so every
 #                        pre-existing case is unaffected.
 #   STUB_PRIVATE_PREMERGE  `isPrivate` in the FIX-1 pre-merge re-verify
-#                        (HIMMEL-1080 CR round-3 folds isPrivate into the
+#                        (isPrivate is folded into the
 #                        pre-merge repo view). Default = STUB_PRIVATE. Set false
 #                        to simulate a repo made public during the CI wait.
 #   STUB_DEFAULT_BRANCH_NULL=1  the repo-meta query's defaultBranchRef is JSON
@@ -131,7 +130,7 @@ export STUB_RUN_LIST_JSON_DEFAULT="$MOG_RUN_GREEN"
 #                        null JSON, so this proves the coalesce fix rather than
 #                        a hand-picked stub string.
 #   STUB_DEFAULT_BRANCH_PREMERGE_NULL=1  same, for the FIX-1 pre-merge query.
-#   STUB_PROTECTION      the guard-2b branch-protection read (HIMMEL-2869), as
+#   STUB_PROTECTION      the guard-2b branch-protection read, as
 #                        the pre-joined shape the script's own --jq emits:
 #                        "<enforce_admins.enabled>|<#contexts>|<#checks>".
 #                        Default "true|10|0" (the live yotamleo/Himmel shape:
@@ -154,17 +153,16 @@ export STUB_RUN_LIST_JSON_DEFAULT="$MOG_RUN_GREEN"
 #                        protection read only. Unset, it falls back to
 #                        STUB_PROTECTION_JSON, so an existing single-JSON case is
 #                        unaffected. Exists because STUB_PROTECTION_JSON alone is
-#                        replayed verbatim on BOTH reads (coderabbit round-1
-#                        nitpick): without this seam, a case setting
+#                        replayed verbatim on BOTH reads: without this seam, a case setting
 #                        STUB_PROTECTION_JSON together with STUB_PROTECTION_PREMERGE
 #                        would silently exercise UNCHANGED protection across both
 #                        reads — STUB_PROTECTION_PREMERGE would be dead, and the
 #                        case would prove nothing about the pre-merge re-read.
 #   STUB_CI_RC          exit code of the stub check-ci. Default 0.
 #   STUB_CI_RCS         space-separated exit codes, one per check-ci call (the
-#                        last repeats; HIMMEL-4136). Overrides STUB_CI_RC.
+#                        last repeats). Overrides STUB_CI_RC.
 #   STUB_ROUND_STATE / STUB_ROUND_HEAD / STUB_ROUND_FAIL=1  the between-rounds
-#                        `--json state,headRefOid` re-read (HIMMEL-4136).
+#                        `--json state,headRefOid` re-read.
 #                        Defaults OPEN / STUB_SHA.
 #   STUB_MERGE_FAIL=1   `gh pr merge` exits 1 (generic failure).
 #   STUB_MERGE_POLICY_REFUSED=1  merge exits 1 with GitHub's base-policy refusal.
@@ -180,17 +178,17 @@ export STUB_RUN_LIST_JSON_DEFAULT="$MOG_RUN_GREEN"
 #                        existing tests see an unchanged base). Set it to a
 #                        different value to simulate a concurrent retarget.
 #   STUB_POST_OPEN_TIMES  the first N post-merge re-queries report OPEN before
-#                        STUB_POST_STATE takes over (HIMMEL-1697) — a merge
+#                        STUB_POST_STATE takes over — a merge
 #                        accepted server-side that only lands a moment later.
 #                        Default 0 (the first read already reports the state).
 #   NO_CHECK_CI=1       omit the stub check-ci (sibling path absent).
 #   STUB_AUDIT_UNWRITABLE=1  point the audit sink at an unwritable path.
-#   STUB_CLEAR_RC       exit code of the stub clear-cr-marker (HIMMEL-1346).
+#   STUB_CLEAR_RC       exit code of the stub clear-cr-marker.
 #                        Default 0.
 #   STUB_NO_CLEARER=1   omit the stub clear-cr-marker (sibling path absent).
 # After the run: $LAST_GH_LOG = stub gh argv log, $LAST_AUDIT = audit log,
 # $LAST_CLEAR_LOG = stub clear-cr-marker argv log (empty = never invoked),
-# $LAST_ERR = the run's captured stderr (HIMMEL-2227, 11k3 — the gutted-remove
+# $LAST_ERR = the run's captured stderr (the gutted-remove
 # operator message is stderr-only, never the audit log).
 LAST_GH_LOG=""; LAST_AUDIT=""; LAST_CLEAR_LOG=""; LAST_ERR=""; LAST_JIRA_LOG=""
 
@@ -198,14 +196,14 @@ LAST_GH_LOG=""; LAST_AUDIT=""; LAST_CLEAR_LOG=""; LAST_ERR=""; LAST_JIRA_LOG=""
 #
 # Build the scratch tree run_mog executes merge-on-green.sh in: copies of the
 # script + its lib siblings, a stub check-ci.sh, a stub clear-cr-marker.sh,
-# and a stub `gh` FIRST on PATH. Pulled out of run_mog (HIMMEL-2544 PR-D) so a
+# and a stub `gh` FIRST on PATH. Pulled out of run_mog so a
 # RED control can build the SAME fixture around a MUTANT copy of
 # merge-on-green.sh and run it directly through red_control_run — going
 # through run_mog itself would consume the run with run_mog's own pass/fail,
 # leaving nothing for the control to assert against.
 #
-# Takes only the tmpdir (CR round-1 F3 dropped the ghlog/clearlog parameters
-# run_mog originally passed): both stub scripts written below read $GH_LOG /
+# Takes only the tmpdir (no ghlog/clearlog parameters are passed):
+# both stub scripts written below read $GH_LOG /
 # $CLEAR_LOG from the environment at RUNTIME (set by whichever caller execs
 # the copied merge-on-green.sh — run_mog, or a RED control's own
 # red_control_run --env), never from a build-time path here, so carrying them
@@ -230,31 +228,31 @@ mog_build_fixture() {
     # resolves to our stub — no CHECK_CI env override exists any more.
     mkdir -p "$tmp/scripts/handover" "$tmp/scripts/lib" "$tmp/scripts/cr" "$tmp/scripts/hooks" "$tmp/bin"
     cp "${MOG_SRC:-$MOG}" "$tmp/scripts/handover/merge-on-green.sh"
-    # HIMMEL-3437: merge-on-green.sh now sources ../cr/anchor-handoff.sh as its
+    # merge-on-green.sh now sources ../cr/anchor-handoff.sh as its
     # first executable statement. run_mog always invokes the fixture copy by
     # ABSOLUTE path, so the hand-off's relative-entry branch never fires here —
     # but the `.` line itself still requires the sibling to exist to source
     # cleanly, or every case below would fail closed at exit 2 before its own
     # gate logic ever runs. ANCHOR_HANDOFF_SRC is MOG_SRC's own twin.
     cp "${ANCHOR_HANDOFF_SRC:-$SCRIPT_DIR/../cr/anchor-handoff.sh}" "$tmp/scripts/cr/anchor-handoff.sh"
-    # merge-on-green.sh now sources its HIMMEL-2227 in-use predicates from the
+    # merge-on-green.sh now sources its in-use predicates from the
     # shared lib (../lib/worktree-inuse.sh, relative to its own SCRIPT_DIR) —
     # the copy must carry that sibling too. WT_INUSE_SRC is MOG_SRC's own twin
     # (same TEST-HARNESS-ONLY seam, same non-gate-integrity reasoning above):
     # it lets a RED control swap in a scratch MUTANT of the shared lib while
-    # merge-on-green.sh itself stays the real, unmutated script (HIMMEL-2602
-    # RC-1 mutates the ancestry-exclusion logic, which lives in the lib, not
+    # merge-on-green.sh itself stays the real, unmutated script (RC-1
+    # mutates the ancestry-exclusion logic, which lives in the lib, not
     # in merge-on-green.sh's own guard). Defaults to the real file, so every
     # existing case that never sets it is unaffected.
     cp "${WT_INUSE_SRC:-$SCRIPT_DIR/../lib/worktree-inuse.sh}" "$tmp/scripts/lib/worktree-inuse.sh"
-    # HIMMEL-2380: merge-on-green now records the repo's CodeRabbit-availability
+    # merge-on-green now records the repo's CodeRabbit-availability
     # state on its audit lines, and reads it from this sibling. Without the copy
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion
     # below would pass while testing nothing.
     cp "$SCRIPT_DIR/../lib/cr-available.sh" "$tmp/scripts/lib/cr-available.sh"
-    # HIMMEL-2919: the console-GO gate resolves the GO file under handover_root.
+    # The console-GO gate resolves the GO file under handover_root.
     cp "$SCRIPT_DIR/../lib/handover-path.sh" "$tmp/scripts/lib/handover-path.sh"
-    # HIMMEL-3142: the GO file check itself now lives in the shared predicate
+    # The GO file check itself now lives in the shared predicate
     # go_gate() (also used by block-unresolved-cr-merge.sh's own gate).
     # GO_GATE_SRC is MOG_SRC's own twin (same TEST-HARNESS-ONLY seam, same
     # non-gate-integrity reasoning above): it lets a RED control swap in a
@@ -262,24 +260,24 @@ mog_build_fixture() {
     # defines go_gate) while merge-on-green.sh itself stays whichever copy
     # MOG_SRC picked. Defaults to the real file.
     cp "${GO_GATE_SRC:-$SCRIPT_DIR/../lib/go-gate.sh}" "$tmp/scripts/lib/go-gate.sh"
-    # HIMMEL-3381: the GitHub-blocked alert lib (sourced next to cr-available.sh).
+    # The GitHub-blocked alert lib (sourced next to cr-available.sh).
     # Its sender is a stub that only logs, so the suite can never DM the operator.
     cp "$SCRIPT_DIR/../lib/merge-block-alert.sh" "$tmp/scripts/lib/merge-block-alert.sh"
-    # HIMMEL-3914: every chokepoint fails closed without its seam-guard lib.
+    # Every chokepoint fails closed without its seam-guard lib.
     cp "$SCRIPT_DIR/../lib/chokepoint-seam-guard.sh" "$tmp/scripts/lib/chokepoint-seam-guard.sh"
     # ...and its registry: a MOG_ANCHOR_GIT fixture IS the anchor, so a marked
     # run with no claude ancestor (CI) reads the seams from here.
     cp "$SCRIPT_DIR/../chokepoints.json" "$tmp/scripts/chokepoints.json"
-    # HIMMEL-3616: the pre-merge title guard (3c) calls this sibling, which in
+    # The pre-merge title guard (3c) calls this sibling, which in
     # turn invokes check-commit-msg.sh — both must be copied into the fixture
     # tree, since HIMMEL_REPO defaults to the fixture tree itself (himmel_repo_dir
     # above), never the real checkout.
     cp "$SCRIPT_DIR/../lib/check-pr-title.sh" "$tmp/scripts/lib/check-pr-title.sh"
     cp "$SCRIPT_DIR/../hooks/check-commit-msg.sh" "$tmp/scripts/hooks/check-commit-msg.sh"
-    # HIMMEL-4758: check-commit-msg.sh fails closed without its resolver.
+    # check-commit-msg.sh fails closed without its resolver.
     cp "$SCRIPT_DIR/../lib/project-mode.sh" "$tmp/scripts/lib/project-mode.sh"
     chmod +x "$tmp/scripts/lib/check-pr-title.sh" "$tmp/scripts/hooks/check-commit-msg.sh"
-    # HIMMEL-3895: what the gh stub serves as the DEFAULT branch's trust list.
+    # What the gh stub serves as the DEFAULT branch's trust list.
     cp "$SCRIPT_DIR/../ci/ci-trust-paths.txt" "$tmp/trust-paths.base"
     # SC2016 is the point: $1/$2/$STUB_ALERT_FAIL must reach the stub FILE unexpanded.
     # shellcheck disable=SC2016
@@ -292,13 +290,13 @@ mog_build_fixture() {
         : > "$tmp/alerts/owner_repo__77__${STUB_SHA-abc123def456}"
     fi
     if [ "${NO_CHECK_CI:-0}" != "1" ]; then
-        # HIMMEL-3475: the marker (check-ci.ran, sibling to the stub) proves
+        # The marker (check-ci.ran, sibling to the stub) proves
         # THIS stub actually executed — the RED assertion for the anchor fix
         # is that a worktree's own check-ci.sh must NOT run once HIMMEL_REPO
         # points at a distinct anchor tree; asserting only the exit code is
         # weaker and can pass vacuously (a fixture where the two trees agree
         # would look identical either way).
-        # HIMMEL-4136: STUB_CI_RCS ("7 7 0") answers call N with its Nth code
+        # STUB_CI_RCS ("7 7 0") answers call N with its Nth code
         # (the last one repeats); check-ci.count counts the calls and
         # check-ci.distinct records each call's CHECK_CI_DISTINCT_DEADLINE.
         # shellcheck disable=SC2086 # word-split on purpose: one code per line
@@ -318,7 +316,7 @@ STUBCI
         chmod +x "$tmp/scripts/check-ci.sh"
     fi
 
-    # Stub the CR-marker chokepoint at ITS fixed sibling path (HIMMEL-1346),
+    # Stub the CR-marker chokepoint at ITS fixed sibling path,
     # exactly like check-ci above — the wrapper has no env seam for it either.
     # The stub records its argv, so a case can prove the merge path went THROUGH
     # clear-cr-marker.sh (never a raw `rm`) and with which branch.
@@ -329,7 +327,7 @@ STUBCI
         # PREFIXED line to the gh log, which is the suite's only ordering record
         # — that is what pins the clear to BEFORE the merge (11L).
         # shellcheck disable=SC2016
-        # It also records its cwd (HIMMEL-3495): the real clearer refuses a
+        # It also records its cwd: the real clearer refuses a
         # branch other than the one checked out where it runs, so the wrapper
         # must run it from that branch's own worktree.
         printf '#!/usr/bin/env bash\necho "clear-cr-marker $*" >> "$GH_LOG"\necho "$*" >> "$CLEAR_LOG"\npwd -P >> "$CLEAR_LOG.cwd"\nexit %s\n' \
@@ -337,7 +335,7 @@ STUBCI
         chmod +x "$tmp/scripts/cr/clear-cr-marker.sh"
     fi
 
-    # Stub `gh`, FIRST on PATH (no GH_CMD seam). FAILS CLOSED (coderabbit-1): an
+    # Stub `gh`, FIRST on PATH (no GH_CMD seam). FAILS CLOSED: an
     # unsupported verb or an unrecognized --json query exits non-zero rather than
     # falling through to a silent success — otherwise a wrapper that grew a new gh
     # call would be "tested" against a stub that rubber-stamps anything.
@@ -361,27 +359,26 @@ case "$verb" in
             title)
                 # Shared by TWO callers: jira_auto_transition_on_merge's own
                 # title read (--json title -q .title, no --jq) AND the
-                # HIMMEL-3616 pre-merge title gate (--json title --jq '.title').
+                # pre-merge title gate (--json title --jq '.title').
                 # Defaults to a conventional, ticketed (JIRA_PROJECT_KEY=HIMMEL
-                # above), UNBRACKETED title — passes the HIMMEL-3616 gate (so
+                # above), UNBRACKETED title — passes the title gate (so
                 # every pre-existing case, which never sets STUB_PR_TITLE, is
                 # unaffected) while carrying no `[KEY-N]` bracket tag, so
                 # jira_auto_transition's own extraction still resolves to its
                 # no-op skip by default.
                 printf '%s' "${STUB_PR_TITLE-fix(x): HIMMEL-1 stub title}" ;;
             title,author)
-                # HIMMEL-3616 (judge J1284O panel round 3, codex-1): guard 3c's
+                # Guard 3c's
                 # own query, distinct from the "title"-only case above (jira's
                 # caller never asks for author) — tab-separated title\tauthor,
                 # matching the wrapper's --jq expression.
                 printf '%s\t%s' "${STUB_PR_TITLE-fix(x): HIMMEL-1 stub title}" "${STUB_PR_AUTHOR-someone}" ;;
             "state,url,number,headRefOid,baseRefName,headRefName")
-                # Consolidated meta query (HIMMEL-1080 adds baseRefName;
-                # HIMMEL-1970 adds headRefName, LAST, for the post-merge
-                # worktree prune):
+                # Consolidated meta query (baseRefName; then headRefName, LAST, for the
+                # post-merge worktree prune):
                 # state|url|number|headRefOid|baseRefName|headRefName.
                 if [ "${STUB_META_5FIELD:-0}" = "1" ]; then
-                    # Pre-HIMMEL-1970 shape: headRefName missing. The wrapper
+                    # Shape without headRefName. The wrapper
                     # must refuse, not let head_branch collapse onto pr_base.
                     printf '%s|https://github.com/%s/pull/%s|%s|%s|%s' \
                         "${STUB_STATE-OPEN}" "$nwo" "${STUB_NUM:-77}" "${STUB_NUM:-77}" "${STUB_SHA-abc123def456}" "${STUB_BASE-main}"
@@ -393,32 +390,32 @@ case "$verb" in
                 [ "${STUB_POLICY_FAIL:-0}" = "1" ] && { echo "gh: policy query failed" >&2; exit 1; }
                 printf '%s|%s' "${STUB_MERGE_STATE-CLEAN}" "${STUB_REVIEW_DECISION-}" ;;
             "baseRefName")
-                # FIX-1 pre-merge re-query (HIMMEL-1080 CR round-1, codex-adv):
+                # FIX-1 pre-merge re-query:
                 # a fresh baseRefName read right before merging, independent of
                 # the consolidated meta query above. Defaults to STUB_BASE so
                 # existing tests (no premerge override) see an unchanged base.
                 # `-` (not `:-`) so an explicitly-empty STUB_BASE_PREMERGE is
                 # preserved, letting a test simulate an empty pre-merge base
-                # (fail-closed path) rather than silently defaulting (coderabbit).
+                # (fail-closed path) rather than silently defaulting.
                 printf '%s' "${STUB_BASE_PREMERGE-${STUB_BASE-main}}" ;;
             "state,headRefOid")
-                # HIMMEL-4136: merge-on-green's between-rounds re-read, before
+                # merge-on-green's between-rounds re-read, before
                 # it watches a DEADLINE-PENDING check-ci again — the PR must
                 # still be OPEN at the certified head.
                 [ "${STUB_ROUND_FAIL:-0}" = "1" ] && { echo "gh: round query failed" >&2; exit 1; }
                 printf '%s %s' "${STUB_ROUND_STATE:-OPEN}" "${STUB_ROUND_HEAD:-${STUB_SHA-abc123def456}}" ;;
             "state,headRefOid,baseRefName")
                 # Post-merge re-query — shared by BOTH the failure-recovery
-                # path AND the success-path confirmation poll (codex-adv,
-                # HIMMEL-1394): state PLUS the merged head and base, so either
+                # path AND the success-path confirmation poll:
+                # state PLUS the merged head and base, so either
                 # path can tell "this run's sha merged onto the authorized
                 # base" apart from both "a different commit merged
                 # concurrently" and "the same sha merged onto a different
                 # (retargeted) base". The plain "state"-only query this used
-                # to be (pre-HIMMEL-1394 success-path fix) has no caller left
+                # to be has no caller left
                 # in merge-on-green.sh; removed rather than left dead.
                 [ "${STUB_POST_STATE_FAIL:-0}" = "1" ] && { echo "gh: state query failed" >&2; exit 1; }
-                # STUB_POST_OPEN_TIMES=N (HIMMEL-1697): the first N re-queries
+                # STUB_POST_OPEN_TIMES=N: the first N re-queries
                 # report OPEN, the rest report STUB_POST_STATE — a merge that
                 # was accepted server-side and only reflects a moment later.
                 # Routed by call ORDER via the gh argv log (this call is already
@@ -432,19 +429,19 @@ case "$verb" in
                 fi
                 printf '%s %s %s' "${STUB_POST_STATE:-MERGED}" "${STUB_POST_HEAD:-${STUB_SHA-abc123def456}}" "${STUB_POST_BASE:-${STUB_BASE-main}}" ;;
             commits)
-                # HIMMEL-5115 — the PR's commit messages, read only when main is
+                # The PR's commit messages, read only when main is
                 # red, to find a `Fixes-main-red:` declaration. Real jq through
                 # the script's own --jq.
                 [ "${STUB_COMMITS_FAIL:-0}" = "1" ] && { echo "gh: commits failed" >&2; exit 1; }
                 printf '%s' "${STUB_PR_COMMITS_JSON:-{\"commits\":[]\}}" | jq -r "$jqexpr" ;;
             comments)
-                # HIMMEL-2383 after-report pending marker: the wrapper pipes
+                # After-report pending marker: the wrapper pipes
                 # this raw JSON through a REAL jq --arg pass (gh's own --jq
                 # has no --arg support), so this must be realistic
                 # {"comments":[...]} shape, not a pre-filtered count. A
                 # matching comment embeds 'head: <STUB_SHA>' — the wrapper's
-                # jq filter requires that exact head-SHA binding
-                # (HIMMEL-2383 round-2 CR finding codex-5). Default: no
+                # jq filter requires that exact head-SHA binding.
+                # Default: no
                 # comments at all (no after-report posted yet).
                 if [ "${STUB_AFTER_REPORT_SUMMARIES:-0}" != "0" ]; then
                     printf '{"comments":[{"body":"== Summary ==\\n head: %s\\n PASS: 5\\n FAIL: 0\\n"}]}' \
@@ -456,33 +453,33 @@ case "$verb" in
         esac
         ;;
     "repo view")
-        # isPrivate + defaultBranchRef are queried TOGETHER (HIMMEL-1080 folds
-        # the base-branch guard into the SAME query, no extra round-trip) and
+        # isPrivate + defaultBranchRef are queried TOGETHER (the
+        # base-branch guard shares the SAME query, no extra round-trip) and
         # keyed off the repo POSITIONAL ($3) — the PR's own repo, not cwd
-        # (codex-1). nameWithOwner (no positional) = the CURRENT checkout for
-        # the same-repo binding (codex-adv-2).
+        # nameWithOwner (no positional) = the CURRENT checkout for
+        # the same-repo binding.
         case "$json" in
             isPrivate,defaultBranchRef)
                 if [ -z "$jqexpr" ]; then
                     echo "gh stub: 'repo view' isPrivate,defaultBranchRef missing required --jq expression" >&2
                     exit 93
                 fi
-                # (CodeRabbit) Assert the positional repo arg — a regression
+                # Assert the positional repo arg — a regression
                 # back to a cwd-scoped query would otherwise pass silently.
                 if [ "$repo_arg" != "$nwo" ]; then
                     echo "gh stub: 'repo view' isPrivate,defaultBranchRef queried '$repo_arg', expected the PR repo '$nwo'" >&2
                     exit 92
                 fi
                 # This shape is queried TWICE per run — guard 2b (query time)
-                # and the FIX-1 pre-merge re-verify (HIMMEL-1080 CR round-3 folds
-                # isPrivate into the pre-merge repo view). Route by call ORDER via
+                # and the FIX-1 pre-merge re-verify (isPrivate is folded
+                # into the pre-merge repo view). Route by call ORDER via
                 # the gh argv log: 1st occurrence = guard 2b, 2nd = pre-merge.
                 # This call is already appended to GH_LOG (top of stub), so the
                 # match count is 1 on the first call, 2 on the second.
                 n=$(grep -c 'isPrivate,defaultBranchRef' "$GH_LOG" 2>/dev/null || echo 1)
                 if [ "${n:-1}" -le 1 ]; then
-                    # guard 2b (query time). defaultBranchRef is NULLABLE
-                    # (CodeRabbit): feed synthetic null JSON through the SCRIPT'S
+                    # guard 2b (query time). defaultBranchRef is NULLABLE:
+                    # feed synthetic null JSON through the SCRIPT'S
                     # OWN --jq filter (captured above) via real jq, proving the
                     # coalesce fix in merge-on-green.sh rather than a stub string.
                     if [ "${STUB_DEFAULT_BRANCH_NULL:-0}" = "1" ]; then
@@ -503,7 +500,7 @@ case "$verb" in
                 fi ;;
             nameWithOwner)
                 # No positional — this is the CURRENT checkout query
-                # (codex-adv-2), not the PR's repo. Do NOT add a repo_arg check.
+                # not the PR's repo. Do NOT add a repo_arg check.
                 [ "${STUB_CWD_FAIL:-0}" = "1" ] && { echo "gh: api error" >&2; exit 1; }
                 printf '%s' "${STUB_CWD_NWO:-${STUB_NWO:-owner/repo}}" ;;
             *) echo "gh stub: unhandled 'repo view' query: --json '$json'" >&2; exit 90 ;;
@@ -517,7 +514,7 @@ case "$verb" in
         echo "merged"
         ;;
     "run list")
-        # HIMMEL-5115 — the red-main gate's read of main's CI runs. The JSON goes
+        # The red-main gate's read of main's CI runs. The JSON goes
         # through the SCRIPT'S OWN --jq via real jq. Unset STUB_RUN_LIST_JSON
         # serves STUB_RUN_LIST_JSON_DEFAULT, a real green window (exported once,
         # below the fixture builder), so every pre-existing case sees a green main.
@@ -532,7 +529,7 @@ case "$verb" in
         [ "${STUB_RUN_VIEW_FAIL:-0}" = "1" ] && { echo "gh: run view failed" >&2; exit 1; }
         cat "${STUB_RUN_LOG_FILE:-/dev/null}" ;;
     "api repos/"*)
-        # HIMMEL-2869 — public_origin_merge_allowed's branch-protection read.
+        # public_origin_merge_allowed's branch-protection read.
         # Match ONLY the classic protection endpoint; anything else this stub
         # does not recognize fails closed like every other unhandled shape.
         case "$api_path" in
@@ -542,7 +539,7 @@ case "$verb" in
                     exit 93
                 fi
                 # Queried TWICE per run when the widened path is reached: guard
-                # 2b (query time) and the pre-merge re-check (HIMMEL-2869 mirrors
+                # 2b (query time) and the pre-merge re-check (mirrors
                 # the isPrivate/defaultBranchRef routing above). Routed by call
                 # ORDER via the gh argv log — this call is already appended at
                 # the top of the stub, so the match count is 1 on the first call,
@@ -577,7 +574,7 @@ case "$verb" in
                 fi ;;
             */rules/branches/*|*/rulesets/*)
                 # ponytail: canned JSON stands in for the live rules API (org-level rulesets and real response drift are unexercised), a read-only smoke against the live repo's rules if the shapes ever diverge (HIMMEL-3812).
-                # HIMMEL-3808 — the ruleset probe: effective rules for the base
+                # The ruleset probe: effective rules for the base
                 # branch (rules/branches/<b>) then each contributing ruleset
                 # (rulesets/<id>). Real JSON through the SCRIPT'S OWN --jq via
                 # real jq. Routed first-read / pre-merge-read by the per-endpoint
@@ -592,7 +589,7 @@ case "$verb" in
                     */rules/branches/*) rk=RULES; rpat='/rules/branches/' ;;
                     *) rk=RULESET; rpat='/rulesets/' ;;
                 esac
-                # HIMMEL-3857 — STUB_RULESET_JSON_<id> (numeric id) overrides the
+                # STUB_RULESET_JSON_<id> (numeric id) overrides the
                 # shared STUB_RULESET_JSON for that one ruleset, so a case can make
                 # only ONE contributing ruleset weak. Unset = the shared body.
                 json_var="STUB_${rk}_JSON"
@@ -615,7 +612,7 @@ case "$verb" in
                 printf '%s' "$json_val" | jq -r "$jqexpr"
                 ;;
             */contents/scripts/ci/ci-trust-paths.txt\?ref=*)
-                # HIMMEL-3895 — the trust-path list, read from the DEFAULT
+                # The trust-path list, read from the DEFAULT
                 # branch. Defaults to the real list (copied into the fixture as
                 # trust-paths.base), so every case runs against what ships.
                 [ "${STUB_TRUST_LIST_404:-0}" = "1" ] && { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
@@ -626,13 +623,13 @@ case "$verb" in
                     cat "$(dirname "$0")/../trust-paths.base"
                 fi ;;
             */pulls/[0-9]*/files)
-                # HIMMEL-3895 — the PR's changed files. Real JSON through the
+                # The PR's changed files. Real JSON through the
                 # SCRIPT'S OWN --jq via real jq. Default: one non-trust file.
                 [ -n "$jqexpr" ] || { echo "gh stub: pulls/N/files missing --jq" >&2; exit 93; }
                 [ "${STUB_PR_FILES_FAIL:-0}" = "1" ] && { echo "gh: HTTP 502" >&2; exit 1; }
                 printf '%s' "${STUB_PR_FILES_JSON:-$def_files}" | jq -r "$jqexpr" ;;
             */pulls/[0-9]*)
-                # HIMMEL-3895 — head sha + changed_files, read before AND after
+                # Head sha + changed_files, read before AND after
                 # the file listing (routed by call order, as for protection).
                 [ -n "$jqexpr" ] || { echo "gh stub: pulls/N missing --jq" >&2; exit 93; }
                 n=$(grep -cE 'pulls/[0-9]+( |$)' "$GH_LOG" 2>/dev/null || echo 1)
@@ -649,7 +646,7 @@ exit 0
 STUB
     chmod +x "$tmp/bin/gh"
 
-    # STUB_JIRA_BUILD=1 (HIMMEL-374): fake a built Jira CLI + reconcile-config
+    # STUB_JIRA_BUILD=1: fake a built Jira CLI + reconcile-config
     # so jira_auto_transition_on_merge's repo_root/config/node calls are
     # reachable. run_mog's cwd defaults to $tmp itself, so git-init IT and
     # place scripts/jira/ there — repo_root then resolves to $tmp. A stub
@@ -700,8 +697,7 @@ run_mog() {
     # Templated + guarded (known-findings [mktemp-no-template]): a bare
     # `mktemp -d` is a BSD/macOS portability hazard, and an unchecked one
     # leaves $tmp EMPTY so every path below is built at the filesystem root.
-    # This line predates HIMMEL-2544 and the refactor above only moved it, but
-    # the diff carries it now, so it is fixed rather than pre-rebutted.
+    # Fixed rather than pre-rebutted.
     local tmp; tmp=$(mktemp -d "${TMPDIR:-/tmp}/mog-run.XXXXXX")
     if [ -z "$tmp" ] || [ ! -d "$tmp" ]; then
         fail "$name — mktemp -d produced no run sandbox; refusing to build fixture paths on an empty root"
@@ -714,7 +710,7 @@ run_mog() {
     local jiralog="$tmp/jira.log"; : > "$jiralog"
 
     mog_build_fixture "$tmp"
-    # HIMMEL-3485: MOG_POISON=<path under scripts/> replaces that helper in the
+    # MOG_POISON=<path under scripts/> replaces that helper in the
     # WORKTREE tree with a branch-side mutant that leaves a marker and exits 42
     # (sourced: kills the whole gate; executed: a failing clear). Paired with
     # MOG_HIMMEL_REPO at a distinct anchor, it proves the anchor's copy runs.
@@ -725,7 +721,7 @@ run_mog() {
         fi
     fi
 
-    # HIMMEL-3895: MOG_ANCHOR_GIT=1 makes the fixture anchor a git repo whose
+    # MOG_ANCHOR_GIT=1 makes the fixture anchor a git repo whose
     # origin (https://github.com/owner/repo.git, the stub's own nwo) is rewritten
     # by insteadOf to a local bare clone, so the trust gate's anchor-behind
     # ls-remote runs for real and offline. MOG_ANCHOR_BEHIND=1 puts origin one
@@ -744,7 +740,7 @@ run_mog() {
         fi
     fi
 
-    # HIMMEL-5188: MOG_ANCHOR_SETUP=<function> runs after the anchor repo is built
+    # MOG_ANCHOR_SETUP=<function> runs after the anchor repo is built
     # and may add commits / origin refs; it sets MOG_SETUP_SHA, the PR head the
     # stub then certifies as STUB_SHA.
     MOG_SETUP_SHA=""
@@ -754,7 +750,7 @@ run_mog() {
     fi
 
     local err rc
-    # HIMMEL-3475: the anchor. Defaults to the fixture tree itself (MOG_HIMMEL_REPO
+    # The anchor. Defaults to the fixture tree itself (MOG_HIMMEL_REPO
     # unset) — mog_build_fixture already lays out scripts/check-ci.sh,
     # scripts/lib/go-gate.sh and scripts/lib/handover-path.sh at exactly the
     # paths the anchored resolution expects, so every pre-existing case here is
@@ -763,15 +759,15 @@ run_mog() {
     # same before and after". MOG_HIMMEL_REPO points a case at a DISTINCT tree
     # (proving the anchor decides, not the worktree); MOG_NO_HIMMEL_REPO=1
     # sets it EMPTY and MOG_UNSET_HIMMEL_REPO=1 removes it from the child's
-    # environment (env -u, HIMMEL-3483) — the two refusal paths of control (b).
+    # environment (env -u) — the two refusal paths of control (b).
     local himmel_repo_dir="${MOG_HIMMEL_REPO:-$tmp}"
     [ "${MOG_NO_HIMMEL_REPO:-0}" = "1" ] && himmel_repo_dir=""
-    # cwd matters since HIMMEL-1970: the post-merge prune reads `git worktree
+    # cwd matters: the post-merge prune reads `git worktree
     # list` from the checkout the script runs in. Default to the (non-repo)
     # temp dir so the suite is hermetic — it must never see, let alone remove,
     # a worktree of the real himmel checkout. MOG_CWD points a case at its own
     # throwaway fixture repo.
-    # HIMMEL-1953: the confirmation poll's `sleep 2` never runs for real here —
+    # The confirmation poll's `sleep 2` never runs for real here —
     # a test that sleeps is a test that can hang.
     # shellcheck disable=SC2086,SC2016 # the unset flag pair splits into two words, or none; the bash -c body expands in the child
     GH_LOG="$ghlog" CLEAR_LOG="$clearlog" MERGE_ON_GREEN_LOG="$audit" JIRA_LOG="$jiralog" PATH="$tmp/bin:$PATH" \
@@ -818,7 +814,7 @@ assert_err_has() {
 assert_err_lacks() {
     if grepq "$LAST_ERR" -F -- "$2"; then fail "$1 (stderr unexpectedly has '$2')"; else pass; fi
 }
-# HIMMEL-1346 — did the run go through the clear-cr-marker chokepoint, and with
+# Did the run go through the clear-cr-marker chokepoint, and with
 # what argv? An EMPTY log is the assertion that it was never invoked.
 assert_clear_has() {
     if grep -qF -- "$2" "$LAST_CLEAR_LOG" 2>/dev/null; then pass; else fail "$1 (clear-cr-marker log lacks '$2'; got: $(cat "$LAST_CLEAR_LOG" 2>/dev/null))"; fi
@@ -826,7 +822,7 @@ assert_clear_has() {
 assert_clear_not_invoked() {
     if [ -s "$LAST_CLEAR_LOG" ]; then fail "$1 (clear-cr-marker was invoked: $(cat "$LAST_CLEAR_LOG"))"; else pass; fi
 }
-# Scope merge-flag assertions to the `pr merge` invocation itself (coderabbit-1).
+# Scope merge-flag assertions to the `pr merge` invocation itself.
 # Searching the whole GH_LOG would let a flag appearing in ANY other gh call
 # satisfy an assertion about how the MERGE was invoked — which is the one thing
 # these assertions exist to prove.
@@ -839,20 +835,20 @@ assert_merge_lacks() {
     if merge_line | grep -qF -- "$2"; then fail "$1 (pr merge invocation unexpectedly has '$2'; got: $(merge_line))"
     else pass; fi
 }
-# Assert a post-merge state RE-QUERY happened (coderabbit). A literal
+# Assert a post-merge state RE-QUERY happened. A literal
 # "pr view --json state" would also match the initial metadata query
 # (`--json state,url,number,headRefOid`) as a substring, so the assertion would
 # pass even with post-merge confirmation removed entirely — vacuously guarding
 # the one behavior it exists to prove. Anchor on a word boundary after `state`
 # so only the state-ONLY or state+headRefOid re-queries match — never the
 # initial metadata query (which lists FOUR more fields after `state,`).
-# `state,headRefOid,baseRefName` is the failure-recovery re-query (codex-adv,
-# HIMMEL-1394); `state` alone is the success-path confirmation poll — both are
+# `state,headRefOid,baseRefName` is the failure-recovery re-query;
+# `state` alone is the success-path confirmation poll — both are
 # legitimate post-merge re-queries this assertion accepts.
-# The re-query must be PINNED to the resolved PR number + repo (HIMMEL-1694):
+# The re-query must be PINNED to the resolved PR number + repo:
 # a selector-less `pr view` resolves from the current branch, which is wrong
 # after a post-merge checkout switch or from a cwd that is not the PR's tree.
-# Defined ONCE here (coderabbit CR round-1, RC-3 finding) so RC-3's own setup
+# Defined ONCE here so RC-3's own setup
 # guard and paired positive below call the SAME matcher instead of hand-copying
 # the pattern — if the anchor is ever tightened, all three sites move together
 # instead of RC-3 staying green against a stale copy that no longer reflects
@@ -863,7 +859,7 @@ assert_state_requery() {
     if state_requery_matches "$LAST_GH_LOG"; then pass
     else fail "$1 (no PINNED post-merge 'pr view <num> --repo <nwo> --json state[,headRefOid,baseRefName]' re-query found)"; fi
 }
-# Exact resolved identity (coderabbit, #1758): the pin must name THIS PR's
+# Exact resolved identity: the pin must name THIS PR's
 # number and THIS PR's repo, for the pre-merge baseRefName re-query as well as
 # the post-merge state re-query — a regression that targets another PR, or
 # drops the pin from one of the two, must fail.
@@ -874,7 +870,7 @@ assert_pinned_pr_view() {
 
 echo "== merge-on-green.sh tests =="
 
-# HIMMEL-1495 hermeticity probe — when this suite re-execs itself under the
+# Hermeticity probe — when this suite re-execs itself under the
 # armed bypass env (see the guard at the end), short-circuit here. The startup
 # unset above must have already scrubbed the parent's exported ARMAUTOMERGE=1,
 # so the no-opt-in refusal STILL fires (exit 10). Exit 0 = scrub held; exit 1 =
@@ -887,7 +883,7 @@ if [ "${HIMMEL_1495_SELF:-0}" = "1" ]; then
 fi
 
 # 1. No opt-in → refuse (exit 10). Unset in the PARENT shell (no subshell) so
-# pass()/fail() land in the top-level tally (coderabbit-1).
+# pass()/fail() land in the top-level tally.
 unset ARMAUTOMERGE
 run_mog 10 "no ARMAUTOMERGE → exit 10"
 export ARMAUTOMERGE=1
@@ -906,13 +902,13 @@ assert_gh_lacks "no-PR: no merge attempted" "pr merge"
 STUB_PRIVATE=false run_mog 12 "public repo → exit 12"
 assert_gh_lacks "public repo: no merge attempted" "pr merge"
 
-# RC-3 (HIMMEL-2544 PR-D) — the comment on assert_state_requery above claims a
+# RC-3 — the comment on assert_state_requery above claims a
 # LITERAL (unanchored) 'pr view .*--json state' matcher would ALSO match the
 # initial metadata query as a substring. Placed right here, immediately after
 # case 4: that case refuses at the privacy guard BEFORE any post-merge
 # re-query ever fires, so ITS OWN $LAST_GH_LOG carries exactly the initial
 # metadata query and nothing else — a fixture DERIVED from a real run just
-# made, not transcribed by hand into a heredoc (CR round-1 F1: an earlier
+# made, not transcribed by hand into a heredoc (an earlier
 # version of this case hand-typed the gh-log line and claimed it was
 # "verified empirically", which was actually derivation from reading
 # merge-on-green.sh's source — the same prose-only-evidence class this PR
@@ -941,9 +937,9 @@ else
     # mutant; the real discriminating evidence is the SPECIFIC observed value
     # (point c) plus the paired positive assertion below, not point (a).
     #
-    # Templated + guarded like SUITE_HOLDER_DIR above (CR round-2 F7): a bare,
-    # unchecked `mktemp` feeding a later `rm -f` is the same shape HIMMEL-2518
-    # was written to close, even though the blast radius here is smaller
+    # Templated + guarded like SUITE_HOLDER_DIR above: a bare,
+    # unchecked `mktemp` feeding a later `rm -f` is the same shape
+    # a prior fix closed elsewhere, even though the blast radius here is smaller
     # (`rm -f ""` errors rather than deleting anything) — pin the SHAPE before
     # arming the cleanup, not just the exit status.
     rc3_mutant=$(mktemp "${TMPDIR:-/tmp}/mog-2544-rc3-mutant.XXXXXX")
@@ -990,14 +986,14 @@ fi
 STUB_PRIVATE="" run_mog 12 "undeterminable privacy → exit 12 fail-closed"
 
 # 5b. Cross-repo selector: PR repo != current checkout → refuse (exit 12),
-# no merge (codex-adv-2 — standing auth must not reach other private repos).
+# no merge (standing auth must not reach other private repos).
 STUB_NWO="acme/other-private" STUB_CWD_NWO="acme/this-repo" run_mog 12 "cross-repo PR → exit 12"
 assert_gh_lacks "cross-repo: no merge attempted" "pr merge"
 
 # 5c. Cannot resolve cwd repo → fail closed (exit 12).
 STUB_CWD_FAIL=1 run_mog 12 "unresolvable cwd repo → exit 12 fail-closed"
 
-# ── HIMMEL-2869: public-origin merge relaxation ──────────────────────────────
+# ── public-origin merge relaxation ──────────────────────────────
 # Guard 2b's private-only boundary widens to admit ONE named public repo (the
 # configured public origin, `public_origin_merge_allowed`'s
 # HIMMEL_PUBLIC_ORIGIN_NWO) while GitHub itself is enforcing required status
@@ -1022,7 +1018,7 @@ assert_merge_has "2869-1: merge uses --squash" "--squash"
 assert_gh_has "2869-1: reads branch protection on the configured origin" "api repos/yotamleo/Himmel/branches/main/protection"
 assert_audit_has "2869-1: audit records the merge" "MERGED"
 
-# 2869-1b ([codex-1], CR round 1). Every other allow-path case above (2869-1,
+# 2869-1b. Every other allow-path case above (2869-1,
 # 2869-3c) feeds the stub its PRE-JOINED "enforce_admins|contexts|checks"
 # string, so the script's own `--jq` filter never runs on the MERGE direction
 # at all — 2869-7 below is the only case that runs real JSON through the
@@ -1124,7 +1120,7 @@ assert_audit_has "2869-6a: audits not-protected-premerge" "reason=not-protected-
 # list, not slip past as "protected" — proven via REAL jq against synthetic
 # JSON, same technique as the STUB_DEFAULT_BRANCH_NULL cases further below.
 # The allow-direction twin of this refusal is 2869-1b above; both share the
-# ONE have_jq_2869 probe computed at the top of this HIMMEL-2869 block rather
+# ONE have_jq_2869 probe computed at the top of this block rather
 # than each probing separately (the file's own shared `have_jq` guard is
 # computed further down, after this block, so it isn't reused here either).
 if [ "$have_jq_2869" = "1" ]; then
@@ -1137,7 +1133,7 @@ else
     echo "  SKIP: jq not installed — null required_status_checks case (HIMMEL-2869)"
 fi
 
-# HIMMEL-2876: jq length accepts strings and objects too. Removing either
+# jq length accepts strings and objects too. Removing either
 # array type-check must make these real-JSON refusal cases fail.
 if [ "$have_jq_2869" = "1" ]; then
     STUB_NWO="yotamleo/Himmel" STUB_PRIVATE=false \
@@ -1167,7 +1163,7 @@ else
     echo "  SKIP: jq not installed — protection array type-check cases (HIMMEL-2876)"
 fi
 
-# ── HIMMEL-3808: ruleset-based protection alongside classic ─────────────────
+# ── ruleset-based protection alongside classic ─────────────────
 # The gate accepts the base branch's protection from the classic endpoint OR an
 # effective ruleset (rules/branches/<b> + each contributing rulesets/<id>),
 # per HIMMEL_PROTECTION_SOURCE (a fixed literal, like HIMMEL_PUBLIC_ORIGIN_NWO:
@@ -1220,7 +1216,7 @@ if [ "$have_jq_2869" = "1" ]; then
     r3 "no rules at all" '[]' "$R_SET"
 
     # 3808-3b. One contributing ruleset strong, a SECOND (with checks) has a bypass
-    # actor: every contributing ruleset must be clean. Per-id bodies (HIMMEL-3857)
+    # actor: every contributing ruleset must be clean. Per-id bodies
     # so ONLY ruleset 2 carries the bypass — ruleset 1 is read clean first.
     STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
         STUB_RULES_JSON='[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"a"}]}},{"type":"required_status_checks","ruleset_id":2,"parameters":{"required_status_checks":[{"context":"b"}]}}]' \
@@ -1233,7 +1229,7 @@ if [ "$have_jq_2869" = "1" ]; then
 
     # 3808-3c. A bypass actor on a ruleset with NO required_status_checks rule
     # cannot skip a required check: ruleset 1 strong, ruleset 2 bypassable but
-    # contributing only a pull_request rule → accept (HIMMEL-3857).
+    # contributing only a pull_request rule → accept.
     STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_SHA="rs3c" \
         STUB_PROTECTION_FAIL=1 STUB_PROTECTION_PREMERGE_FAIL=1 \
         STUB_RULES_JSON='[{"type":"required_status_checks","ruleset_id":1,"parameters":{"required_status_checks":[{"context":"a"}]}},{"type":"pull_request","ruleset_id":2}]' \
@@ -1270,7 +1266,7 @@ if [ "$have_jq_2869" = "1" ]; then
 
     # 3808-5c. A rules response whose root is an object (not an array) is
     # malformed: a required_status_checks rule nested inside it must NOT satisfy
-    # the gate (codex-1, fail closed).
+    # the gate (fail closed).
     STUB_NWO="yotamleo/Himmel" STUB_CWD_NWO="yotamleo/Himmel" STUB_PRIVATE=false STUB_PROTECTION_FAIL=1 \
         STUB_RULES_JSON='{"x":{"type":"required_status_checks","ruleset_id":17745842,"parameters":{"required_status_checks":[{"context":"a"}]}}}' \
         STUB_RULESET_JSON='{"id":17745842,"enforcement":"active","bypass_actors":[]}' \
@@ -1340,7 +1336,7 @@ fi
 STUB_SHA="" run_mog 13 "empty head SHA → exit 13"
 
 # 7. check-ci not found at the anchor (== the fixture itself, by default) →
-# HIMMEL-3475: this is now the "no anchor" refusal (exit 19), not the old
+# This is now the "no anchor" refusal (exit 19), not the old
 # check-ci-gate-not-green path (exit 14) — the missing file is caught before
 # check-ci.sh is ever invoked.
 NO_CHECK_CI=1 run_mog 19 "missing check-ci at the anchor → exit 19"
@@ -1353,20 +1349,20 @@ assert_gh_lacks "non-green: no merge attempted" "pr merge"
 STUB_SHA="feedface99" STUB_NWO="acme/private-repo" run_mog 0 "all gates pass → merged"
 assert_merge_has "merge uses --squash"              "--squash"
 assert_merge_has "merge pins the certified head SHA" "--match-head-commit feedface99"
-# HIMMEL-1679: no --delete-branch — every branch is worktree-held, so gh's local
+# No --delete-branch — every branch is worktree-held, so gh's local
 # delete failed on every real merge; the repo's deleteBranchOnMerge + /clean own
-# cleanup. HIMMEL-1694: the merge is pinned to the resolved PR number + repo.
+# cleanup. The merge is pinned to the resolved PR number + repo.
 assert_merge_lacks "merge does not ask gh to delete the branch" "--delete-branch"
 assert_merge_has "merge pinned to the resolved PR number + repo" "pr merge 77 --repo acme/private-repo"
 assert_pinned_pr_view "pre-merge base re-query is pinned to THIS PR's number + repo" "baseRefName"
 assert_pinned_pr_view "success-path confirmation poll is pinned to THIS PR's number + repo" "state,headRefOid,baseRefName"
-# codex-1 regression: the privacy check targets the PR's OWN repo, not cwd.
+# Regression guard: the privacy check targets the PR's OWN repo, not cwd.
 assert_gh_has  "privacy check scoped to the PR repo" "repo view acme/private-repo"
 assert_audit_has "audit records MERGING intent"   "MERGING"
 assert_audit_has "audit records MERGED + sha"     "MERGED"
 assert_audit_has "audit records the certified sha" "sha=feedface99"
 
-# HIMMEL-2887: removing the fresh policy guard would call merge despite an
+# Removing the fresh policy guard would call merge despite an
 # outstanding review rule. The call log proves refusal happens BEFORE merge.
 STUB_MERGE_STATE=BLOCKED STUB_REVIEW_DECISION=REVIEW_REQUIRED run_mog 18 "green checks but required review → exit 18 pre-merge (HIMMEL-3381)"
 assert_audit_has "pre-merge policy: deterministic refusal" "REFUSED reason=policy-refused phase=premerge"
@@ -1391,14 +1387,14 @@ assert_gh_lacks "missing policy: no merge attempted" "pr merge"
 STUB_CI_RC=3 STUB_MERGE_STATE=BLOCKED STUB_REVIEW_DECISION=REVIEW_REQUIRED run_mog 14 "red checks take precedence over policy refusal"
 assert_gh_lacks "red checks: policy query not reached" "--json mergeStateStatus,reviewDecision"
 
-# 9b. Base-branch guard (HIMMEL-1080): PR based on the repo's default branch
+# 9b. Base-branch guard: PR based on the repo's default branch
 # still reaches the merge — the guard is additive, not a behavior change for
 # the (common) approved-target case.
 STUB_SHA="basecheck01" STUB_BASE="main" STUB_DEFAULT_BRANCH="main" \
     run_mog 0 "PR on default branch → merged"
 assert_merge_has "base-branch-ok merge pins the certified sha" "--match-head-commit basecheck01"
 
-# 9c. Base-branch guard (HIMMEL-1080): PR based on any OTHER branch is refused
+# 9c. Base-branch guard: PR based on any OTHER branch is refused
 # (exit 12), no merge — the standing allow-rule only covers PRs against the
 # repo's default branch (inject-initiative.sh:236: "squash-merge to PRIVATE
 # main").
@@ -1415,7 +1411,7 @@ STUB_DEFAULT_BRANCH="" run_mog 12 "undeterminable default branch → exit 12 fai
 assert_gh_lacks "undeterminable-default: no merge attempted" "pr merge"
 assert_audit_has "undeterminable-default audits the reason" "reason=base-branch-undeterminable"
 
-# 9e. Base-branch retarget race (HIMMEL-1080 CR round-1, codex-adv [high]): the
+# 9e. Base-branch retarget race: the
 # PR was on the default branch at the gate (guard 2c) but got RETARGETED during
 # check-ci.sh's watch window — the head SHA never moved (gh allows editing a
 # PR's base without touching its head), so --match-head-commit alone would not
@@ -1429,8 +1425,7 @@ assert_audit_has "retargeted-base audits the reason" "reason=base-branch-changed
 assert_audit_has "retargeted-base audit records the base certified at the gate" "pr_base_at_gate=main"
 assert_audit_has "retargeted-base audit records the new base" "pr_base_now=some/other-branch"
 
-# 9e2. Repository made PUBLIC during the CI wait (HIMMEL-1080 CR round-3,
-# coderabbit [major]): the repo passed the private-only boundary at guard 2b
+# 9e2. Repository made PUBLIC during the CI wait: the repo passed the private-only boundary at guard 2b
 # but was flipped public during check-ci.sh's watch window — the same staleness
 # class as the base retarget above. The pre-merge re-verify folds isPrivate into
 # its repo view and must refuse (exit 12); the merge must never fire.
@@ -1439,7 +1434,7 @@ STUB_SHA="pubrace01" STUB_PRIVATE=true STUB_PRIVATE_PREMERGE=false \
 assert_gh_lacks "public-race: no merge attempted" "pr merge"
 assert_audit_has "public-race audits the pre-merge privacy reason" "reason=not-private-premerge"
 
-# 9e3. Empty pre-merge baseRefName (HIMMEL-1080 CR round-3, coderabbit): a fresh
+# 9e3. Empty pre-merge baseRefName: a fresh
 # baseRefName that comes back EMPTY right before merging is undeterminable →
 # refuse (exit 12) fail-closed, never default silently. The stub preserves an
 # explicitly-empty STUB_BASE_PREMERGE (`-`, not `:-`) so this path is reachable.
@@ -1448,7 +1443,7 @@ STUB_SHA="emptybase01" STUB_BASE_PREMERGE="" \
 assert_gh_lacks "empty-premerge-base: no merge attempted" "pr merge"
 assert_audit_has "empty-premerge-base audits undeterminable" "reason=base-branch-undeterminable"
 
-# External `jq` availability (CodeRabbit round-2, HIMMEL-1080): the two null-
+# External `jq` availability: the two null-
 # coalesce cases below feed synthetic null JSON through the SCRIPT'S OWN --jq
 # filter via real jq — proving the coalesce fix in merge-on-green.sh itself
 # rather than a hand-picked stub string. jq is NOT an established dependency
@@ -1459,7 +1454,7 @@ assert_audit_has "empty-premerge-base audits undeterminable" "reason=base-branch
 # unchanged when jq IS installed.
 have_jq=0; command -v jq >/dev/null 2>&1 && have_jq=1
 
-# 9f. Nullable defaultBranchRef at guard 2b/2c (CodeRabbit [minor]): a repo API
+# 9f. Nullable defaultBranchRef at guard 2b/2c: a repo API
 # response with defaultBranchRef: null must be coalesced in the script's OWN
 # --jq filter to "" (undeterminable), not jq's literal "null" string sliding
 # past -z and mislabeling as wrong-base-branch.
@@ -1480,7 +1475,7 @@ else
     echo "  SKIP: jq not installed — null-defaultBranchRef-pre-merge case (CodeRabbit, HIMMEL-1080)"
 fi
 
-# 9h. Pre-merge title gate (HIMMEL-3616, guard 3c): the squash merge below
+# 9h. Pre-merge title gate (guard 3c): the squash merge below
 # makes the PR TITLE main's commit subject verbatim, but only leg-pr-open.sh
 # checked it at open time — the title can still be edited in the GitHub UI any
 # time up to (and during) the check-ci.sh watch. A type-less title re-verified
@@ -1507,7 +1502,7 @@ STUB_SHA="titleok01" STUB_PR_TITLE="fix(x): [HIMMEL-42] thing" \
 assert_merge_has "title-gate-ok merge pins the certified sha" "--match-head-commit titleok01"
 
 # 9k. Pre-merge title gate: a ticketless Dependabot-authored title merges
-# (exit 0) — judge J1284O panel round 3 (codex-1) found guard 3c never
+# (exit 0) — guard 3c once never
 # threaded the PR author, so a title that already passed leg-pr-open.sh's
 # open-time check and the CI title-lint workflow (both exempt
 # dependabot[bot]) was refused here instead. RED-first: the mutant below
@@ -1549,14 +1544,14 @@ assert_audit_has "dry-run audits DRYRUN"    "DRYRUN"
 
 # 11. gh pr merge fails (head moved / conflict) and the PR stays OPEN through the
 # bounded confirmation poll → still fail-closed exit 15, but classified
-# INDETERMINATE, not REFUSED (HIMMEL-1697): a merge accepted server-side and
+# INDETERMINATE, not REFUSED: a merge accepted server-side and
 # reported as failed can still land, so "not merged" is not proven here.
 STUB_MERGE_FAIL=1 STUB_POST_STATE=OPEN run_mog 15 "merge failure + PR OPEN → exit 15 indeterminate"
 assert_state_requery "failed merge re-queries PR state"
 assert_audit_has "unproven merge outcome is INDETERMINATE" "INDETERMINATE reason=merge-pending-unconfirmed"
 assert_audit_lacks "unproven merge outcome is not claimed as a refusal" "REFUSED"
 
-# HIMMEL-2887: an explicit base-policy rejection is definitive, not a queued
+# An explicit base-policy rejection is definitive, not a queued
 # merge. Without the stderr classification this incorrectly exits 15 pending.
 STUB_MERGE_POLICY_REFUSED=1 STUB_POST_STATE=OPEN run_mog 18 "base branch policy prohibits the merge → exit 18 (HIMMEL-3381)"
 assert_merge_has "policy rejection: merge was attempted" "pr merge 77 --repo owner/repo"
@@ -1564,7 +1559,7 @@ assert_audit_has "policy rejection: deterministic refusal" "REFUSED reason=polic
 assert_audit_lacks "policy rejection: never pending-unconfirmed" "INDETERMINATE"
 assert_err_has "policy rejection: surfaces GitHub's refusal" "base branch policy prohibits the merge"
 
-# HIMMEL-3381 (console data point, #1055): "Base branch was modified" is GitHub's
+# "Base branch was modified" is GitHub's
 # TRANSIENT refusal — the PR is still OPEN at the same head and a bare re-run
 # merges. It is NOT a rule, so it stays on exit 15 (indeterminate), never 18.
 STUB_MERGE_BASE_MODIFIED=1 STUB_POST_STATE=OPEN run_mog 15 "'Base branch was modified' + PR OPEN → exit 15, not a policy block (HIMMEL-3381)"
@@ -1574,19 +1569,19 @@ assert_err_lacks "base-modified: no MERGE-BLOCKED alert" "MERGE-BLOCKED"
 
 # 11b. gh exited non-zero but the PR is MERGED at the certified sha/base →
 # success (exit 0), audited with the gh exit for the record. (Historically the
-# worktree-held local-branch delete, PR #1466 / HIMMEL-1679 — that cause is gone
+# worktree-held local-branch delete, PR #1466 — that cause is gone
 # with --delete-branch, but any post-merge gh failure takes this path.)
 STUB_SHA="cafe01" STUB_MERGE_FAIL=1 STUB_POST_STATE=MERGED run_mog 0 "gh rc!=0 + PR MERGED → exit 0"
 assert_state_requery "gh-rc!=0 path re-queries PR state (pinned)"
 assert_audit_has "gh-rc!=0 path records MERGED" "MERGED"
 assert_audit_has "gh-rc!=0 audit names the gh exit" "gh-exit=1"
 assert_audit_lacks "gh-rc!=0 audit carries no cleanup-failed record" "cleanup-failed"
-# HIMMEL-1970: the recovery path prunes too — here from a non-repo cwd, so the
+# The recovery path prunes too — here from a non-repo cwd, so the
 # outcome is "no-repo", but the field must be on the line.
 assert_audit_has "gh-rc!=0 path records a prune outcome" "prune="
 assert_audit_lacks "gh-rc!=0 merge is not recorded as refused" "REFUSED"
 
-# 11c. HIMMEL-1697 — the case the single re-query got WRONG: gh reported a
+# 11c. The case the single re-query got WRONG: gh reported a
 # failure for a request that was actually accepted (queued behind branch
 # protection / a lost response), so the PR reads OPEN first and MERGED a moment
 # later. The bounded poll must see the landing and credit it (exit 0), where the
@@ -1605,8 +1600,7 @@ assert_audit_lacks "indeterminate outcome is not recorded as refused" "REFUSED"
 
 # 11c3. gh's own merge call failed (so --match-head-commit never confirmed
 # $sha) but the PR reports MERGED at a DIFFERENT head — a concurrent actor
-# merged a different commit in the gap. Must NOT be credited to this run
-# (codex-adv review, HIMMEL-1394).
+# merged a different commit in the gap. Must NOT be credited to this run.
 STUB_SHA="cafe01" STUB_MERGE_FAIL=1 STUB_POST_STATE=MERGED STUB_POST_HEAD="deadbeef" \
     run_mog 15 "merge failure + PR MERGED at a different head → exit 15, not credited"
 assert_audit_has "head-mismatch records the mismatch reason" "REFUSED reason=merge-state-head-mismatch"
@@ -1617,7 +1611,7 @@ assert_audit_lacks "head-mismatch is not recorded as MERGED" "MERGED repo="
 # 11c4. gh's own merge call failed, and the PR reports MERGED with the SAME
 # certified head — but landed on a DIFFERENT base than the one guard 3b
 # re-verified (a concurrent `gh pr edit --base` retarget, which does not move
-# the head). Must NOT be credited to this run (codex-adv review, HIMMEL-1394).
+# the head). Must NOT be credited to this run.
 STUB_MERGE_FAIL=1 STUB_POST_STATE=MERGED STUB_POST_BASE="side-branch" \
     run_mog 15 "merge failure + PR MERGED at the certified sha but a different base → exit 15, not credited"
 assert_audit_has "base-mismatch records the mismatch reason" "REFUSED reason=merge-state-base-mismatch"
@@ -1630,7 +1624,7 @@ STUB_AUDIT_UNWRITABLE=1 run_mog 16 "unwritable audit sink → exit 16"
 assert_gh_lacks "unwritable-audit: no merge attempted" "pr merge"
 
 # 11e. gh ACCEPTS the merge (rc 0) but the PR never reports MERGED → exit 15
-# (coderabbit): a zero rc is "accepted", not "merged" — under a merge queue the
+# A zero rc is "accepted", not "merged" — under a merge queue the
 # PR can sit queued. exit 0 must mean MERGED. CLOSED (not OPEN) is used here so
 # the confirmation poll breaks on the first read instead of waiting out its
 # full budget; the OPEN/queued case walks the same branch after the timeout.
@@ -1641,7 +1635,7 @@ assert_state_requery "success path confirms PR state"
 # 11f. gh ACCEPTS the merge (rc 0, e.g. queue admission), and the PR reports
 # MERGED — but at a DIFFERENT head than the certified sha. A concurrent actor
 # merged a different commit while this run's admission sat queued. Must NOT
-# be credited (codex-adv review, HIMMEL-1394 — the success-path analog of 11c3).
+# be credited (the success-path analog of 11c3).
 STUB_SHA="cafe01" STUB_POST_STATE=MERGED STUB_POST_HEAD="deadbeef" \
     run_mog 15 "merge accepted + PR MERGED at a different head → exit 15, not credited"
 assert_audit_has "success-path head-mismatch records the mismatch reason" "REFUSED reason=merge-state-head-mismatch"
@@ -1651,8 +1645,8 @@ assert_audit_lacks "success-path head-mismatch is not recorded as MERGED" "MERGE
 
 # 11g. gh ACCEPTS the merge (rc 0), and the PR reports MERGED at the certified
 # head — but on a DIFFERENT base than guard 3b re-verified. A concurrent
-# `gh pr edit --base` retarget while queued. Must NOT be credited (codex-adv
-# review, HIMMEL-1394 — the success-path analog of 11c4).
+# `gh pr edit --base` retarget while queued. Must NOT be credited
+# (the success-path analog of 11c4).
 STUB_POST_STATE=MERGED STUB_POST_BASE="side-branch" \
     run_mog 15 "merge accepted + PR MERGED at the certified sha but a different base → exit 15, not credited"
 assert_audit_has "success-path base-mismatch records the mismatch reason" "REFUSED reason=merge-state-base-mismatch"
@@ -1660,7 +1654,7 @@ assert_audit_has "success-path base-mismatch audit names the authorized base" "a
 assert_audit_has "success-path base-mismatch audit names the merged base" "merged_base=side-branch"
 assert_audit_lacks "success-path base-mismatch is not recorded as MERGED" "MERGED repo="
 
-# --- 11h..11k. HIMMEL-1970 post-merge worktree prune ------------------------
+# --- 11h..11k. post-merge worktree prune ------------------------
 # A confirmed merge prunes the ONE local worktree checked out on the PR's head
 # branch, so a merged ticket's tree never outlives its PR. Fixture: a real
 # throwaway repo + a real worktree per case (never the himmel checkout — see
@@ -1693,7 +1687,7 @@ prune_branch_gone() { ! git -C "$1" rev-parse --quiet --verify refs/heads/feat/m
 # -z) prints the path RAW, with no quoting or escaping (verified: a literal
 # double quote passes through unquoted too), so a path byte that collides
 # with the parser's own line delimiter breaks a naive line-by-line read at
-# both merge-on-green.sh call sites (HIMMEL-3538). -z (NUL-terminated
+# both merge-on-green.sh call sites. -z (NUL-terminated
 # records) is the only delimiter a path can never contain.
 #
 # Sets globals QP_REPO/QP_WT/QP_SHA instead of the usual echo+`read <<<`
@@ -1750,7 +1744,7 @@ assert_gh_lacks "malformed meta: no merge attempted" "pr merge"
 assert_audit_has "malformed meta is audited" "REFUSED reason=malformed-meta"
 
 # 11h. Clean merged worktree, invoked from the PRIMARY checkout → removed,
-# branch deleted, exit still 0. Also the negative control for the HIMMEL-2227
+# branch deleted, exit still 0. Also the negative control for the
 # in-use probe: nothing holds this tree, so the rename probe must not block a
 # legitimate prune.
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
@@ -1760,7 +1754,7 @@ if [ -d "$P_WT" ]; then fail "11h: merged worktree was not removed"; else pass; 
 if prune_branch_gone "$P_REPO"; then pass; else fail "11h: merged branch was not deleted"; fi
 assert_audit_has "11h: audit records the prune outcome" "prune=removed branch=deleted"
 
-# 11h-q. HIMMEL-3538: same fixture, but the worktree path holds a newline.
+# 11h-q. Same fixture, but the worktree path holds a newline.
 # `git worktree list --porcelain` prints it raw, so a naive line parse never
 # matches "worktree "/"branch refs/heads/feat/mog-prune-q" to the real path
 # and the prune silently skips it. RED before the -z fix.
@@ -1777,8 +1771,8 @@ assert_audit_has "11h-q: audit records the prune outcome" "prune=removed branch=
 
 # 11i. Dirty worktree → plain `git worktree remove` refuses (never --force), the
 # tree survives INTACT, and the merge is still a success. NEGATIVE CONTROL for
-# HIMMEL-2227: `[ -d "$P_WT" ]` alone is not enough here — a GUTTED tree (the
-# HIMMEL-2227 wreck) also satisfies that check, which is exactly the blind spot
+# `[ -d "$P_WT" ]` alone is not enough here — a GUTTED tree (the
+# wreck) also satisfies that check, which is exactly the blind spot
 # this ticket closes. Assert the tree is actually whole, not just present.
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
 printf 'uncommitted\n' >> "$P_WT/work.txt"
@@ -1818,13 +1812,13 @@ MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
 if [ -d "$P_WT" ]; then pass; else fail "11k: worktree with post-merge commits was removed"; fi
 assert_audit_has "11k: audit records the tip mismatch" "prune=tip-differs-kept"
 
-# 11k2. POSITIVE CONTROL (HIMMEL-2227): a worktree held open by a live native
+# 11k2. POSITIVE CONTROL: a worktree held open by a live native
 # process is detected BEFORE the remove and skipped WHOLE. This is the case
 # that FAILS before the fix (the old code let git's non-atomic-on-Windows
 # remove gut the tree, then called it "left in place") and PASSES after it.
 # Windows-gated: a native pwsh process holding a directory is the only thing
 # MEASURED to block the final rmdir — an MSYS bash holder does not (see the
-# HIMMEL-2227 repro table cited in prune_merged_worktree's own comment) — so
+# repro table cited in prune_merged_worktree's own comment) — so
 # the failure mode is not constructible on other platforms.
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
@@ -1836,7 +1830,7 @@ case "$(uname -s)" in
             # Ready marker lives OUTSIDE the worktree (a sibling path), not
             # inside it: an extra untracked file INSIDE the tree perturbs the
             # very git-worktree-remove behaviour under test. Matches the
-            # HIMMEL-2227 repro exactly. cygpath -m (not a bare argv pass) so
+            # repro exactly. cygpath -m (not a bare argv pass) so
             # a native pwsh.exe gets the real Windows path, not MSYS's naive
             # /tmp -> C:\tmp argv mangling (which is a DIFFERENT, wrong root
             # from /tmp's actual mount).
@@ -1886,8 +1880,8 @@ case "$(uname -s)" in
         ;;
 esac
 
-# --- 11k4..11k7. HIMMEL-2517 — a live shell-suite run inside the tree ------
-# The HIMMEL-2227 probe above cannot see this case AT ALL on POSIX: a process's
+# --- 11k4..11k7. a live shell-suite run inside the tree ------
+# The in-use probe above cannot see this case AT ALL on POSIX: a process's
 # cwd blocks neither the rename nor the rmdir, so 11k2 is Windows-gated and the
 # prune sails straight through — which is exactly what happened twice on
 # 2026-09-05 (PRs #2133, #2134) and again at 04:50 on #2150. These four cases
@@ -1906,42 +1900,41 @@ esac
 #   11k4  runner cwd INSIDE the tree                     -> refused
 #   11k5  runner cwd OUTSIDE, argv silent about the tree -> pruned  (control)
 #   11k6  runner cwd OUTSIDE, argv NAMES the tree        -> refused (queued-runner shape)
-#   11k7  non-runner process cwd INSIDE the tree, FOREIGN -> refused (HIMMEL-2602, see below)
+#   11k7  non-runner process cwd INSIDE the tree, FOREIGN -> refused (see below)
 #   11k8  runner argv names a PREFIX-SHARING sibling     -> pruned  (control)
-#   11k9  a non-runner process that NAMES a runner, FOREIGN -> refused (HIMMEL-2602, see below)
+#   11k9  a non-runner process that NAMES a runner, FOREIGN -> refused (see below)
 #   11k10 argv names a path that merely ENDS with ours  -> pruned  (control)
 #   11k11 ONE argument embedding a space and our path  -> pruned  (control)
 #   11k12 relative argv path, runner cwd OUTSIDE tree  -> refused
 #   11k13 relative argv path spelled through ./ and ../ -> refused
-#   11k14 a holder that IS the caller's own ANCESTRY   -> pruned (HIMMEL-2602)
+#   11k14 a holder that IS the caller's own ANCESTRY   -> pruned
 # 11k5 and 11k8/11k10/11k11 are the controls that keep 11k4/11k6/11k12/11k13
 # honest: without them a detector that simply always refused would pass just
 # as well.
 #
-# HIMMEL-2602 CONTRACT REVISION (2026-09-06) — 11k7 and 11k9 were originally
+# CONTRACT REVISION (2026-09-06) — 11k7 and 11k9 were originally
 # NEGATIVE controls for THIS predicate specifically ("the refusal must key on
 # the runner, not on 'anything is in there'"), because worktree_in_use itself
 # was a no-op on Linux at the time: nothing else was watching a non-runner
 # holder, so pruning around it was correct. worktree_in_use now has its OWN
-# live-process detector (scripts/lib/worktree-inuse.sh, HIMMEL-2602) that
-# catches ANY foreign holder, runner or not — and HIMMEL-2517 was written for
+# live-process detector (scripts/lib/worktree-inuse.sh) that
+# catches ANY foreign holder, runner or not — and the 2517 guard was written for
 # a LEG-run merge, where the merge process's own ancestry naturally included
 # the leg holding the tree. Merges are now CONSOLE-run while the leg still
-# holds its tree, and the first post-HIMMEL-2584 merge (PR #2179) proved the
+# holds its tree, and the first merge after that change (PR #2179) proved the
 # hazard for real: merge-on-green pruned that PR's own worktree out from under
 # it. Both fixtures below launch their holder as a SIBLING of the merge-on-green
 # process (a direct child of this test script, same as merge-on-green itself),
 # never an ancestor — so both are now FOREIGN holders under the ancestry
 # predicate and correctly BLOCK the prune. 11k14, below, is the new control
 # that keeps THIS predicate honest: a holder that IS the caller's ancestry
-# must still be pruned around, or HIMMEL-1970's auto-prune is dead on arrival.
+# must still be pruned around, or the auto-prune is dead on arrival.
 case "$(uname -s)" in
     Linux*)
         # A failed mktemp leaves this EMPTY, and every path below is built on
         # it — the holder scripts would be written to, and later deleted from,
         # the filesystem root, and 11k4-11k9 would go vacuously green because no
-        # holder ever started (round-4 CR finding codex-2, the same class as
-        # round 2's on the Case 21 sandboxes). Capture the failure here.
+        # holder ever started. Capture the failure here.
         SUITE_HOLDER_DIR=$(mktemp -d "${TMPDIR:-/tmp}/mog-2517-holder.XXXXXX")
         if [ -z "$SUITE_HOLDER_DIR" ] || [ ! -d "$SUITE_HOLDER_DIR" ]; then
             fail "11k4-11k9: mktemp -d produced no holder sandbox — refusing to build fixture paths on an empty root"
@@ -1961,13 +1954,13 @@ SHEOF
         # "foreign process cwd'd inside the tree" fixtures (11k7, RC-1
         # row-2), whose detector is worktree_in_use's /proc scan -- it names
         # the FIRST /proc entry it finds with a cwd inside the tree, in
-        # lexicographic pid order (HIMMEL-3519). run-shell-tests.sh's idle
+        # lexicographic pid order. run-shell-tests.sh's idle
         # `sleep` inherits its parent's cwd, which is fine there (it argv-
         # matches as a real runner, so a transient sleep child never gets
         # picked); here the holder is meant to be the ONLY process cwd'd
         # inside the tree, so a sleep child that also inherited that cwd
         # could sort before the holder's own pid and get named instead.
-        # HIMMEL-3520: a builtin read on a FIFO idles without any fork; even
+        # A builtin read on a FIFO idles without any fork; even
         # readiness is written by a builtin, so there are no transient children.
         cat > "$SUITE_HOLDER_DIR/sleeper.sh" <<'SHEOF'
 #!/usr/bin/env bash
@@ -2003,7 +1996,7 @@ SHEOF
             rm -f "$HOLDER_READY.idle"
         }
 
-        # 11k0 (HIMMEL-5599). A .idle FIFO left behind at the path a later
+        # 11k0. A .idle FIFO left behind at the path a later
         # holder draws (same $$, same $RANDOM) must not fail its mkfifo, and a
         # stopped holder must leave no .idle behind. RANDOM is reseeded so the
         # collision is deterministic; the stale path is the one CI hit
@@ -2029,7 +2022,7 @@ SHEOF
         fi
 
         # run_mog_as_descendant <ancestor_cwd> <mog_cwd> <mog_script> [argv...]
-        # HIMMEL-2602 (11k14, RC-1) — runs <mog_script> exactly the way
+        # 11k14, RC-1 — runs <mog_script> exactly the way
         # run_mog's own inner invocation does (cd to <mog_cwd>, then `exec
         # bash` so the merge-on-green PROCESS's own cwd is <mog_cwd>), but as
         # the CHILD of a REAL, separate process that cd's to <ancestor_cwd>
@@ -2119,12 +2112,12 @@ SHEOF
         fi
         stop_suite_holder
 
-        # 11k7. HIMMEL-2602 CONTRACT REVISION: a process cwd'd inside the tree
+        # 11k7. CONTRACT REVISION: a process cwd'd inside the tree
         # that is NOT a suite runner (identical script, different name) —
         # ORIGINALLY a negative control ("the refusal must key on the runner,
         # not on 'anything is in there'"), back when worktree_in_use itself
         # was a Linux no-op and nothing else was watching this holder. It now
-        # has its own /proc-based detector (HIMMEL-2602) that catches ANY
+        # has its own /proc-based detector that catches ANY
         # foreign holder, and this fixture launches its holder as a SIBLING of
         # the merge-on-green process (both direct children of this test
         # script) -- never an ancestor -- so it IS foreign under the new
@@ -2145,7 +2138,7 @@ SHEOF
         fi
         stop_suite_holder
 
-        # 11k8. NEGATIVE CONTROL (round-2 CR finding codex-5): a runner whose
+        # 11k8. NEGATIVE CONTROL: a runner whose
         # argv names a SIBLING worktree that merely shares this one's path as a
         # prefix. `.claude/worktrees/` names are branch-derived, so
         # `fix+himmel-2517-prune-race` and `fix+himmel-2517-prune-race-2` coexist
@@ -2164,7 +2157,7 @@ SHEOF
         fi
         stop_suite_holder
 
-        # 11k10. NEGATIVE CONTROL (round-5 CR finding codex-2): the argv match
+        # 11k10. NEGATIVE CONTROL: the argv match
         # needs a LEADING boundary as well as a trailing one. 11k8 covers a path
         # that merely starts with ours; this covers one that merely ENDS with it
         # — a backup or snapshot root such as `/backup<worktree>/scripts`, which
@@ -2182,7 +2175,7 @@ SHEOF
         fi
         stop_suite_holder
 
-        # 11k11. NEGATIVE CONTROL (round-6 CR finding codex-2): ONE argument that
+        # 11k11. NEGATIVE CONTROL: ONE argument that
         # happens to contain a space and our worktree path. Flattened to a
         # string, that is indistinguishable from two arguments and matches every
         # boundary rule rounds 2 and 5 added; read on the kernel's own NUL
@@ -2202,7 +2195,7 @@ SHEOF
         fi
         stop_suite_holder
 
-        # 11k12. POSITIVE (round-8 CR finding codex-2): a runner launched from
+        # 11k12. POSITIVE: a runner launched from
         # OUTSIDE the tree that names it RELATIVELY. Its cwd is the parent, so
         # the cwd check cannot see it, and `wt/scripts` is not the absolute path,
         # so a literal argv comparison cannot either — yet the scan root it walks
@@ -2224,7 +2217,7 @@ SHEOF
         fi
         stop_suite_holder
 
-        # 11k13. POSITIVE (round-9 CR finding codex-2): a relative argument that
+        # 11k13. POSITIVE: a relative argument that
         # reaches the tree through `..`. Prefixing the cwd is not enough — the
         # resulting string names the worktree without SPELLING it — so the
         # comparison has to canonicalize. Same direction as 11k12: a miss here is
@@ -2251,15 +2244,15 @@ SHEOF
         fi
         stop_suite_holder
 
-        # 11k9. HIMMEL-2602 CONTRACT REVISION (round-4 CR finding codex-3 for
-        # the original worktree_has_live_suite_run-only shape): a process that
+        # 11k9. CONTRACT REVISION (the original
+        # worktree_has_live_suite_run-only shape): a process that
         # NAMES a runner without being one — an editor or a `tail -f` opened on
         # `run-shell-tests.sh` — with its cwd inside the merged worktree.
         # ORIGINALLY a negative control against worktree_has_live_suite_run
         # specifically ("naming is not running"). This holder is launched as a
         # SIBLING of the merge-on-green process (both direct children of this
         # test script), never an ancestor, so it is FOREIGN under the new
-        # ancestry predicate too — worktree_in_use's own /proc scan (HIMMEL-2602)
+        # ancestry predicate too — worktree_in_use's own /proc scan
         # now catches it independent of whether it names a runner at all, and
         # the prune is correctly BLOCKED.
         #
@@ -2317,9 +2310,9 @@ SHEOF
             stop_suite_holder
         fi
 
-        # 11k14. POSITIVE (HIMMEL-2602): a holder that IS the caller's own
+        # 11k14. POSITIVE: a holder that IS the caller's own
         # ANCESTRY -> the prune PROCEEDS. This is the row that keeps
-        # HIMMEL-1970 alive and the whole reason ancestry, not a bare
+        # auto-prune alive and the whole reason ancestry, not a bare
         # self-cwd exclusion, is the predicate: merge-on-green's own armed
         # chain leg sits in the tree it just merged, and that leg is this
         # process's own ANCESTOR, not itself. A REAL process, not a
@@ -2355,7 +2348,7 @@ SHEOF
             rm -rf "$oa_tmp"
         fi
 
-        # RC-1 (HIMMEL-2544 PR-D originally; RE-DERIVED for HIMMEL-2602) —
+        # RC-1 —
         # 11k14's own claim ("a holder in mog's own ancestry does not block
         # the prune") is not expressible through red-control.sh's existing
         # red_control_run/_assert pair: their single --cwd becomes BOTH the
@@ -2369,9 +2362,9 @@ SHEOF
         # shape instead.
         #
         # Mutant target: scripts/lib/worktree-inuse.sh's own ancestry
-        # EXCLUSION CHECK -- NOT merge-on-green.sh's HIMMEL-2517 guard. That
+        # EXCLUSION CHECK -- NOT merge-on-green.sh's 2517 guard. That
         # guard's own mutant (this RC-1's ORIGINAL target) no longer isolates
-        # anything as of HIMMEL-2602: worktree_in_use's own /proc scan now
+        # anything now: worktree_in_use's own /proc scan now
         # independently catches the exact case that guard's absence used to
         # expose (measured: the old mutant produced prune=in-use-confirmed
         # wt=present, not the predicted prune=removed wt=absent -- reported
@@ -2466,7 +2459,7 @@ esac
 # via a `git` shim on PATH for this one run: it passes every argument through
 # to the REAL git EXCEPT the exact `worktree remove <fixture-worktree>`
 # invocation, where it reproduces the MEASURED git-for-Windows wreck rather
-# than invented behaviour — see the HIMMEL-2227 repro table in
+# than invented behaviour — see the repro table in
 # prune_merged_worktree's comment. A test-only seam in production code is not
 # acceptable here; a PATH shim is.
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
@@ -2483,7 +2476,7 @@ if [ "\$1" = "-C" ] && [ "\$3" = "worktree" ] && [ "\$4" = "remove" ]; then
     c2=\$(cd "\$2" 2>/dev/null && pwd -P) || c2="\$2"
     c5=\$(cd "\$5" 2>/dev/null && pwd -P) || c5="\$5"
     if [ "\$c2" = "\$P_REPO_NORM" ] && [ "\$c5" = "\$P_WT_NORM" ]; then
-        # Reproduce the MEASURED HIMMEL-2227 wreck: contents + .git gone,
+        # Reproduce the MEASURED wreck: contents + .git gone,
         # admin row pruned away, empty directory left, non-zero exit.
         rm -rf "\$P_WT_NORM"
         "\$REAL_GIT" -C "\$P_REPO_NORM" worktree prune >/dev/null 2>&1
@@ -2501,12 +2494,12 @@ assert_err_has "11k3: operator message says FAILED PARTWAY" "FAILED PARTWAY"
 assert_err_has "11k3: operator message says GUTTED" "GUTTED"
 if prune_branch_gone "$P_REPO"; then fail "11k3: branch deleted despite a gutted (unverified) tree"; else pass; fi
 
-# --- 11L..11o. HIMMEL-1346 CR-marker clear on the merge path ----------------
+# --- 11L..11o. CR-marker clear on the merge path ----------------
 # A merge used to leave the branch's cr-pending marker behind; the marker lives
 # in the SHARED git-common-dir while the pr-create guard resolves the branch
 # from the session cwd, so it then blocked `gh pr create` on UNRELATED branches.
 # The merge path must clear it THROUGH clear-cr-marker.sh (never a raw rm, which
-# is the self-declare-clean pattern HIMMEL-1064 exists to stop) and record the
+# is the self-declare-clean pattern the clearer exists to stop) and record the
 # outcome on the MERGED audit line. Same prune fixture — a real throwaway repo.
 mk_marker() {
     mkdir -p "$1/.git/cr-pending/$(dirname "$2")"
@@ -2534,7 +2527,7 @@ if [ -n "$clear_ln" ] && [ -n "$merge_ln" ] && [ "$clear_ln" -lt "$merge_ln" ]; 
 else
     fail "11L: the marker clear must precede the merge (clear@${clear_ln:-none} merge@${merge_ln:-none})"
 fi
-# 11L-wt. HIMMEL-3495: the run starts in the PRIMARY (on main) while the branch
+# 11L-wt. The run starts in the PRIMARY (on main) while the branch
 # lives in its own worktree. clear-cr-marker.sh refuses a branch other than the
 # one checked out in its cwd (exit 12), so the clear must run from P_WT.
 # Resolved through the parent: the post-merge prune has removed P_WT itself.
@@ -2545,7 +2538,7 @@ else
     fail "11L-wt: the clearer must run in the branch's worktree ($wt_real), ran in: $(cat "$LAST_CLEAR_LOG.cwd" 2>/dev/null || echo none)"
 fi
 
-# 11L-q. HIMMEL-3538: same hazard as 11h-q, but on clear_cr_marker_for_branch's
+# 11L-q. Same hazard as 11h-q, but on clear_cr_marker_for_branch's
 # parse. A worktree path with a newline must still resolve to a `wt` match so
 # the clearer runs (never a spurious marker=no-worktree). RED before the -z
 # fix.
@@ -2583,7 +2576,7 @@ MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
 assert_clear_not_invoked "11o: dry-run leaves the chokepoint uninvoked"
 if [ -f "$P_REPO/.git/cr-pending/feat/mog-prune" ]; then pass; else fail "11o: dry-run removed the marker file"; fi
 
-# 11o-nowt. HIMMEL-3495: the branch is checked out in NO worktree, so the clearer
+# 11o-nowt. The branch is checked out in NO worktree, so the clearer
 # (which would refuse from any cwd) is not run; the line says no-worktree and
 # stderr names the fix. The merge itself is unaffected.
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
@@ -2598,7 +2591,7 @@ case "$LAST_ERR" in
     *) fail "11o-nowt: stderr must name the fix, got: $LAST_ERR" ;;
 esac
 
-# --- 11p..11q. HIMMEL-2383 after-report pending marker -----------------------
+# --- 11p..11q. after-report pending marker -----------------------
 # Red-first: no SUMMARY comment on the PR yet at merge time -> a local marker
 # file is written (same dir shape as cr-pending) and the audit line says so.
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
@@ -2630,7 +2623,7 @@ assert_audit_has "11q: audit records the posted after-report" "after-report=post
 ARMAUTOMERGE=yes run_mog 0 "ARMAUTOMERGE=yes also enables"
 
 # 13. `--help` prints the WHOLE header reference, not a truncated prefix
-# (coderabbit, public round). The old `sed -n '2,30p'` stopped at exit code 11,
+# The old `sed -n '2,30p'` stopped at exit code 11,
 # so an operator diagnosing a 12-16 refusal saw none of those codes. The range
 # is now anchored to the `set -uo pipefail` line, so a header edit cannot
 # silently truncate the reference again — this test is what holds that.
@@ -2664,7 +2657,7 @@ else
     pass
 fi
 
-# HIMMEL-1495 hermeticity guard — prove the startup scrub holds. Re-run this
+# Hermeticity guard — prove the startup scrub holds. Re-run this
 # suite in a subprocess EXPORTING the exact armed bypass env an
 # --automerge-armed shell carries; the reinvoked copy's startup unset must
 # neutralize it, so its probe (no-opt-in still refuses) passes and it exits 0.
@@ -2680,7 +2673,7 @@ if [ "${HIMMEL_1495_SELF:-0}" != "1" ]; then
     fi
     rm -f "$_armed_log"
 
-    # RC-2 (HIMMEL-2544 PR-D) — the comment above claims a specific
+    # RC-2 — the comment above claims a specific
     # counterfactual ("remove the startup 'unset ARMAUTOMERGE
     # CR_MERGE_GATE_OK' and the reinvoked copy instead reads ARMAUTOMERGE=1
     # as opted-in and exits non-zero") that nothing here ever executed.
@@ -2721,7 +2714,7 @@ if [ "${HIMMEL_1495_SELF:-0}" != "1" ]; then
         red_control_run --env CR_MERGE_GATE_OK=1 --env ARMAUTOMERGE=1 --env HIMMEL_1495_SELF=1 \
             -- bash -c 'exec bash "$1" 2>&1' _ "$rc2_mutant"
         # Anchor on the 1495 self-probe's OWN case name (run_mog's `fail()`
-        # emits "FAIL: <name>"), not a bare 'FAIL:' substring (CR round-1 F2).
+        # emits "FAIL: <name>"), not a bare 'FAIL:' substring.
         # The mutant is a full copy of this suite: everything ABOVE the
         # `if [ "${HIMMEL_1495_SELF:-0}" = "1" ]` short-circuit still runs
         # before it (today just top-level setup — function defs, sourcing —
@@ -2751,7 +2744,7 @@ if [ "${HIMMEL_1495_SELF:-0}" != "1" ]; then
     rm -f "$rc2_mutant"
 fi
 
-# RC-4 (HIMMEL-2869) — the guard-2b widening ("&& ! public_origin_merge_allowed
+# RC-4 — the guard-2b widening ("&& ! public_origin_merge_allowed
 # ...") is a single conditional line; prove it is load-bearing rather than
 # vacuously present. Revert JUST that line to the pre-2869 private-only form
 # and confirm case 2869-1's fixture (the configured public origin, protected —
@@ -2823,7 +2816,7 @@ else
 fi
 
 
-# ── HIMMEL-2380: the merge record names its reviewer coverage ────────────────
+# ── the merge record names its reviewer coverage ────────────────
 # check-ci.sh writes to THIS script's stdout, so an operator watching a live run
 # already sees what it says about CodeRabbit. An ARMAUTOMERGE chain has no such
 # operator: the audit log is the only account of the merge that survives it, and
@@ -2860,8 +2853,7 @@ run_mog 0 "2380-4: dry-run records the CR state" -- --dry-run
 assert_audit_has "2380-4: DRYRUN line carries cr=" "DRYRUN"
 assert_audit_has "2380-4: with the state named" "cr=not-configured"
 
-# 2380-5 — the `broken` state, end to end. Raised by the codex critic on this
-# PR's round 2, and it was right: cases 2380-1..4 cover not-configured / armed /
+# 2380-5 — the `broken` state, end to end. Cases 2380-1..4 cover not-configured / armed /
 # disabled and omit the ONE state that motivated the whole field. `broken` is
 # the only one where the pre-2380 behaviour was a genuinely false certification
 # — the marker IS set, so the repo meant to have the CodeRabbit gates, and a
@@ -2876,8 +2868,7 @@ assert_audit_has "2380-4: with the state named" "cr=not-configured"
 # 11-series marker cases do, with MOG_CR_APP left EMPTY so the marker path runs.
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
 git -C "$P_REPO" config --local himmel.coderabbit ture
-# Prove the fixture is actually broken before the case trusts it (HIMMEL-2320 —
-# a zero is not evidence without a positive control). If a future git parsed
+# Prove the fixture is actually broken before the case trusts it (a zero is not evidence without a positive control). If a future git parsed
 # `ture`, this case would pass for the wrong reason: it would be asserting
 # cr=broken on a repo that is merely unarmed, i.e. testing nothing.
 if git -C "$P_REPO" config --bool --local --get himmel.coderabbit >/dev/null 2>&1; then
@@ -2887,7 +2878,7 @@ else
         run_mog 0 "2380-5: an unparseable himmel.coderabbit marker records cr=broken"
     assert_audit_has "2380-5: the merge record names the broken config" "cr=broken"
     # And it MERGED anyway. This is the half that would be easy to get wrong in
-    # the other direction: `broken` warns, it never blocks (HIMMEL-1125 exists
+    # the other direction: `broken` warns, it never blocks (a separate guard exists
     # to stop blocking on CodeRabbit's absence, and a config typo must not wedge
     # a merge). A future change that made `broken` fail closed fails HERE.
     assert_audit_has "2380-5: a broken marker warns but does not block the merge" "MERGED repo="
@@ -2900,7 +2891,7 @@ GO_ROOT=$(cd "$GO_ROOT" && pwd)
 GO_SHA=0123456789abcdef0123456789abcdef01234567
 GO_OLD=fedcba9876543210fedcba9876543210fedcba98
 GO_WRITER="$SCRIPT_DIR/console-kit/go.sh"
-# HIMMEL-3578: go.sh now resolves this repo's nwo via `gh repo view` to bind
+# go.sh now resolves this repo's nwo via `gh repo view` to bind
 # the GO mac. The direct $GO_WRITER invocations below run outside run_mog's
 # own per-call fixture (which stubs gh only for merge-on-green.sh itself), so
 # without this they would hit the real ambient gh CLI. This stub always
@@ -2916,7 +2907,7 @@ case "$1 $2" in
 esac
 STUB
 chmod +x "$GO_WRITER_BIN/gh"
-# HIMMEL-4565: go.sh runs ready-check.sh and refuses unless it passes, so the
+# go.sh runs ready-check.sh and refuses unless it passes, so the
 # writer runs from a repo whose CR ledger holds an ok row for each head, under a
 # gh that answers ready-check green (anything else falls through to the stub
 # above). go_write <root> <go.sh args...> - the head is the last argument.
@@ -2980,7 +2971,7 @@ HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
 no_merge_call "2919-c2: no merge call"
 rm -f "$GO_ROOT/.locks/go/77.$GO_SHA"
 
-# 3543 — a leg-planted GO (the plain lines go.sh wrote before HIMMEL-3543, no
+# 3543 — a leg-planted GO (the plain lines go.sh once wrote, no
 # mac) for the certified head: refused, and the refusal names the mac.
 mkdir -p "$GO_ROOT/.locks/go"
 printf 'pr=77\nhead=%s\nby=leg\nat=2026-09-24T00:00:00Z\n' "$GO_SHA" > "$GO_ROOT/.locks/go/77.$GO_SHA"
@@ -3008,16 +2999,16 @@ TP_ROOT=$(cd "$TP_ROOT" && pwd)
 TP_GO="$TP_ROOT/.locks/go"
 TP_CI='[{"filename":".github/workflows/ci.yml"}]'
 tp_mint() { go_write "$TP_ROOT" "$@"; }
-# HIMMEL-4589: the verdict counts only under <user>/<bucket> (USER_SLUG + the primary checkout basename).
+# The verdict counts only under <user>/<bucket> (USER_SLUG + the primary checkout basename).
 export USER_SLUG=u
 TP_SCOPE="u/$(basename "$(dirname "$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir)")" | tr "[:upper:]" "[:lower:]" | sed -E "s/[^a-z0-9]+/-/g; s/^-+//; s/-+\$//")"
-# HIMMEL-3832: a trust-reviewed GO needs the judge's GO verdict for the head.
+# A trust-reviewed GO needs the judge's GO verdict for the head.
 mkdir -p "$TP_ROOT/$TP_SCOPE/verdicts/judge-N9"
 # shellcheck disable=SC2016  # literal backticks in the verdict line
 printf '## Verdict\n\n**GO** for head `%s`.\n\npr: 77\n' "$GO_SHA" > "$TP_ROOT/$TP_SCOPE/verdicts/judge-N9/a.md"
 # shellcheck disable=SC2016  # literal backticks in the verdict line
 printf '## Verdict\n\n**GO** for head `%s`.\n\npr: 77\n' "$GO_OLD" > "$TP_ROOT/$TP_SCOPE/verdicts/judge-N9/b.md"
-# HIMMEL-4984: a verdict counts only with write-verdict.sh's mac under the GO key.
+# A verdict counts only with write-verdict.sh's mac under the GO key.
 mkdir -p "$HOME/.config/himmel"
 [ -s "$HOME/.config/himmel/go-hmac.key" ] || printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$HOME/.config/himmel/go-hmac.key"
 for tp_v in a b; do
@@ -3045,7 +3036,7 @@ assert_audit_lacks "3895-a2: no DRYRUN would-merge line" "DRYRUN"
 # gate passes, the trust gate still refuses.
 tp_mint 77 "$GO_SHA"
 # HIMMEL_CONSOLE_LEG is a Claude Code marker: with no claude ancestor (CI) and
-# seams set, the anchor copy refuses 96 (HIMMEL-3914 I3). A console leg always
+# seams set, the anchor copy refuses 96. A console leg always
 # runs under its claude session, so these rows run under a fake one.
 # shellcheck disable=SC2317,SC2329  # _as_claude is invoked indirectly, through MOG_WRAP
 _as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
@@ -3149,12 +3140,12 @@ MOG_ANCHOR_URL=git@github.com:owner/repo.git STUB_NWO=other/repo STUB_TRUST_LIST
     tp_run 0 "3895-h4: no trust list, scp-form github.com origin names another repo → merged"
 rm -rf "$TP_ROOT"
 
-# HIMMEL-3142 CR round 3: RED control — the pre-fix script tested
+# RED control — the pre-fix script tested
 # `[ "$go_rc" = "2" ]`, enumerating go_gate's one documented refusal code
 # instead of enforcing "nonzero = failure". A go-gate.sh that sources
 # cleanly but never DEFINES go_gate (truncated) makes the call fail with
 # "command not found" (go_rc=127), which is != "2" — so the pre-fix
-# script (head 6749462a, this ticket's round-2 shipped state) fell
+# script (head 6749462a, the earlier shipped state) fell
 # through the refusal entirely and continued straight to a real merge,
 # with no GO file anywhere. Same fixture as 2919-a (console leg, no GO
 # file) but against a truncated go-gate.sh: prove it wrongly merges
@@ -3167,7 +3158,7 @@ if grep -q '^go_gate()' "$RC5_TRUNC_GOGATE"; then
 elif ! grep -q '^console_leg()' "$RC5_TRUNC_GOGATE"; then
     fail "RC-5 setup: go-gate.sh's console_leg() no longer fits in the first 29 lines — the truncated copy would fail the new console_leg lib-missing check instead of exercising the go_gate missing-symbol source this control targets"
 else
-    # HIMMEL-3154: this commit's PR branch was deleted on squash-merge, so
+    # This commit's PR branch was deleted on squash-merge, so
     # `git show <sha>:<path>` is unreachable from a fresh clone of origin —
     # not flaky, permanently gone the moment the introducing PR merges, while
     # a developer's stale local checkout may still have the object loose and
@@ -3235,7 +3226,7 @@ else
 fi
 rm -f "$RC5_TRUNC_GOGATE"
 
-# HIMMEL-3142 CR round 4: RC-6/RC-7 — `command -v go_gate` (round 3's fix)
+# RC-6/RC-7 — `command -v go_gate` (the earlier fix)
 # answers "is the name go_gate callable", not "did sourcing go-gate.sh define
 # the function". Two distinct ways that diverges, both against a truncated
 # go-gate.sh (does not define go_gate):
@@ -3245,7 +3236,7 @@ rm -f "$RC5_TRUNC_GOGATE"
 #   RC-7: an inherited `export -f go_gate` in the launching shell — a real
 #         bash function, so declare -F ALSO passes it through unless it is
 #         unset first; only `unset -f go_gate` before the source closes it.
-# Pre-fix blob for both is head 6fe4ad20 (round 3's shipped script, the
+# Pre-fix blob for both is head 6fe4ad20 (the earlier shipped script, the
 # `command -v` version).
 RC67_TRUNC_GOGATE=$(mktemp "${TMPDIR:-/tmp}/mog-3142-rc67-gogate.XXXXXX")
 head -n 29 "$SCRIPT_DIR/../lib/go-gate.sh" > "$RC67_TRUNC_GOGATE"
@@ -3254,7 +3245,7 @@ if grep -q '^go_gate()' "$RC67_TRUNC_GOGATE"; then
 elif ! grep -q '^console_leg()' "$RC67_TRUNC_GOGATE"; then
     fail "RC-6/RC-7 setup: go-gate.sh's console_leg() no longer fits in the first 29 lines — the truncated copy would fail the new console_leg lib-missing check instead of exercising the go_gate missing-symbol source this control targets"
 else
-    # HIMMEL-3154: this commit's PR branch was deleted on squash-merge, so
+    # This commit's PR branch was deleted on squash-merge, so
     # `git show <sha>:<path>` is unreachable from a fresh clone of origin —
     # see the note on the RC5_PRE_SHA extraction above. Replaced with a
     # committed fixture snapshot.
@@ -3387,9 +3378,9 @@ EOF
 fi
 rm -f "$RC67_TRUNC_GOGATE"
 
-# --- HIMMEL-374: best-effort Jira auto-transition on merge -------------------
+# --- best-effort Jira auto-transition on merge -------------------
 # No BRACKETED ticket TAG in the PR title => no Jira CLI calls, merge still
-# succeeds. The trailing "HIMMEL-99" (no brackets) satisfies the HIMMEL-3616
+# succeeds. The trailing unbracketed ticket key satisfies the
 # pre-merge title gate's JIRA_PROJECT_KEY=HIMMEL ticket pattern without
 # matching the transition's own `[KEY-N]` bracket tag-extraction regex above —
 # the two ticket notions are deliberately different call sites.
@@ -3399,9 +3390,9 @@ assert_audit_has "jira: no-tag case records the skip reason" "jira-transition=sk
 assert_jira_log_lacks "jira: no-tag case makes no jira comment call" "comment"
 assert_jira_log_lacks "jira: no-tag case makes no jira transition call" "transition"
 
-# HIMMEL-3143: the transition is opt-in per merge. Default (no
+# The transition is opt-in per merge. Default (no
 # --jira-transition) => report what WOULD have happened; no comment, no
-# transition call at all. This is the case that used to close HIMMEL-2975
+# transition call at all. This is the case that used to close an unrelated ticket
 # out from under sibling in-flight work — reproduced here as the RED case
 # against the pre-fix tree (it transitioned unasked; post-fix it must not).
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
@@ -3441,7 +3432,7 @@ assert_audit_has "jira: Epic case records the never-touch skip" "jira-transition
 assert_jira_log_lacks "jira: Epic case makes no jira comment call" "comment"
 assert_jira_log_lacks "jira: Epic case makes no jira transition call" "transition"
 
-# A Story is NOT skipped (HIMMEL-5540): a merged PR that completes a Story must
+# A Story is NOT skipped: a merged PR that completes a Story must
 # close it, so it transitions like a Task when --jira-transition is passed.
 STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Story STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: Story ticket is transitioned on --jira-transition" -- --jira-transition
@@ -3462,7 +3453,7 @@ STUB_JIRA_BUILD=1 STUB_JIRA_COMMENT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-37
 assert_audit_has "jira: failed-comment case records the skip" "jira-transition=skip=comment-failed key=HIMMEL-374"
 assert_jira_log_lacks "jira: failed-comment case makes no jira transition call" "transition"
 
-# --- HIMMEL-3381: GitHub-blocked -> exit 18, one alert, never retried -------
+# --- GitHub-blocked -> exit 18, one alert, never retried -------
 alert_lines() { grep -c . "$LAST_ALERT_LOG" 2>/dev/null || true; }
 assert_alerts() {
     local want="$1" name="$2" got; got=$(alert_lines)
@@ -3503,7 +3494,7 @@ assert_alerts 0 "3381-e: no second DM for the same (repo, PR, head)"
 STUB_ALERT_FAIL=1 STUB_CI_RC=5 run_mog 18 "3381-f: DM delivery failure keeps exit 18"
 assert_err_has "3381-f: says the delivery failed" "DM delivery failed"
 
-# --- HIMMEL-3475: the merge gate must resolve check-ci.sh (and, at the
+# --- the merge gate must resolve check-ci.sh (and, at the
 # console-GO gate, go-gate.sh / handover-path.sh) from the anchor
 # (HIMMEL_REPO), never as a sibling of its own BASH_SOURCE. This script runs
 # from a leg's own worktree, so a sibling resolution lets the branch under
@@ -3521,7 +3512,7 @@ if [ -e "$LAST_TMP/scripts/check-ci.ran" ]; then
 else
     pass
 fi
-# HIMMEL-3483: the genuinely UNSET path (env -u), not only the empty one.
+# The genuinely UNSET path (env -u), not only the empty one.
 MOG_UNSET_HIMMEL_REPO=1 STUB_CI_RC=0 run_mog 19 "3483: HIMMEL_REPO unset (env -u) refuses (exit 19), never falls back to the sibling"
 assert_err_has "3483: names the missing anchor" "HIMMEL_REPO"
 if [ -e "$LAST_TMP/scripts/check-ci.ran" ]; then
@@ -3541,11 +3532,11 @@ if HIMMEL_REPO=x env -u HIMMEL_REPO bash -c '[ -z "${HIMMEL_REPO+set}" ]'; then 
 STUB_CI_RC=0 run_mog 0 "3475-a: worktree is its own anchor (byte-identical) behaves as before"
 if [ -e "$LAST_TMP/scripts/check-ci.ran" ]; then pass; else fail "3475-a: the anchor's (== worktree's) check-ci.sh never ran"; fi
 
-# HIMMEL-4071: merge-on-green runs only after the console's GO, so its check-ci
+# merge-on-green runs only after the console's GO, so its check-ci
 # call is the post-GO path: the stub must see MERGE_WATCH_POST_GO=1.
 if [ "$(cat "$LAST_TMP/scripts/check-ci.postgo" 2>/dev/null)" = 1 ]; then pass; else fail "4071: merge-on-green did not mark its check-ci call post-GO (MERGE_WATCH_POST_GO=1)"; fi
 
-# HIMMEL-4136 (C1, J1660): a saturated CI queue. check-ci exit 7 (opted in via
+# A saturated CI queue. check-ci exit 7 (opted in via
 # CHECK_CI_DISTINCT_DEADLINE=1) = the --max-wait deadline passed with checks
 # still pending and nothing failed. merge-on-green re-watches ONLY that, at most
 # 3 rounds, re-reading the PR (OPEN at the certified head) before every re-watch.
@@ -3650,7 +3641,7 @@ else
         else
             cat > "$mog3475b_mutant_gogate" <<'EOF'
 #!/usr/bin/env bash
-# HIMMEL-3475 test mutant: forges "yes, a console leg, with a valid GO" no
+# Test mutant: forges "yes, a console leg, with a valid GO" no
 # matter what — this test proves the anchored fix never lets it run.
 console_leg() { return 0; }
 go_gate() { return 0; }
@@ -3715,7 +3706,7 @@ if [ -z "$mog3475c_mutant_hpath" ] || [ ! -f "$mog3475c_mutant_hpath" ]; then
 else
 cat > "$mog3475c_mutant_hpath" <<EOF
 #!/usr/bin/env bash
-# HIMMEL-3475 test mutant: forges handover_root() onto a pre-planted fake GO
+# Test mutant: forges handover_root() onto a pre-planted fake GO
 # file's directory no matter what — this test proves the anchored fix never
 # lets it run.
 handover_root() { printf '%s\n' "$mog3475c_fake_go_root"; }
@@ -3754,7 +3745,7 @@ fi
 rm -rf "$mog3475c_base"
 fi
 
-# --- HIMMEL-3485: a MALICIOUS branch, not only a stale one. Every helper the
+# --- a MALICIOUS branch, not only a stale one. Every helper the
 # gate sources or executes must come from the anchor, so a branch that rewrites
 # any one of them cannot change the verdict. Each case poisons ONE helper in
 # the worktree tree (MOG_POISON: marker + exit 42) and points HIMMEL_REPO at a
@@ -3821,14 +3812,14 @@ else
     fail "3485: HIMMEL_REPO=. prefix on the anchored merge gate was not denied by the chokepoint hook"
 fi
 
-# check-ci exit 6 (HIMMEL-3473: GitHub's mergeStateStatus refuses while our
+# check-ci exit 6 (GitHub's mergeStateStatus refuses while our
 # gates are green) is GitHub-blocked: 18 + one alert, never the generic 14.
 STUB_CI_RC=6 run_mog 18 "3485: check-ci exit 6 → exit 18"
 assert_audit_has "3485: exit-6 audit names the rule" "REFUSED reason=github-blocked phase=check-ci rule=merge-state gate=check-ci:6"
 assert_gh_lacks  "3485: exit 6 attempts no merge" "pr merge"
 assert_alerts 1  "3485: exit 6 sends exactly one operator DM"
 
-# HIMMEL-3154: guard against reintroducing extraction of a historical
+# Guard against reintroducing extraction of a historical
 # commit's blob via `git show <sha>:<path>` — the class of fragility this
 # ticket fixed. Once a PR's branch is squash-merged, that commit is
 # permanently unreachable from a fresh clone; a RED-control mutant must come
@@ -3841,14 +3832,14 @@ else
     pass
 fi
 
-# HIMMEL-3437: the entry script itself hands off a relative invocation to the
+# The entry script itself hands off a relative invocation to the
 # HIMMEL_REPO anchor's own copy (scripts/cr/anchor-handoff.sh, generalized by
 # this same ticket). Proven with the REAL, unmutated script — a fixture "wt"
 # tree's copy is mutated AFTER the hand-off line to prove which BYTES decided:
 # a real backdoor injected post-hand-off must never run when entered
 # relatively with HIMMEL_REPO pointing at a clean anchor. RED-at-base for the
 # resolver anchor-handoff.sh itself replaces lives in scripts/cr/test-anchor-handoff.sh
-# T14/T15 (HIMMEL-3437 F1/F2) — a fixture built HERE that skipped sourcing the
+# T14/T15 — a fixture built HERE that skipped sourcing the
 # real hand-off line entirely would only prove its own shape backdoors, not
 # exercise the code under test, so it is not duplicated in this file.
 mog3437_anchor="$(mktemp -d "${TMPDIR:-/tmp}/mog-3437-anchor.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -3901,11 +3892,10 @@ if grepq "$mog3437_unset_out" -F -e "rc=2"; then pass; else fail "3437: relative
 
 rm -rf "$mog3437_anchor" "$mog3437_wt"
 
-# ── HIMMEL-5115 — refuse while main's latest COMPLETED CI run is red ─────────
+# ── refuse while main's latest COMPLETED CI run is red ─────────
 # Real window (gh run list on main, 2026-10-09): the latest completed non-
 # cancelled run 37964772913 FAILED (shell-unit-shard 8, exit 124 in apt-get),
-# two cancelled pushes behind it. main CI runs on a cron/dispatch now
-# (HIMMEL-5113), so "latest completed" is a sweep, and the refusal names the
+# two cancelled pushes behind it. main CI runs on a cron/dispatch now, so "latest completed" is a sweep, and the refusal names the
 # commit range that run covered.
 MOG_RUN_RED='[{"conclusion":"failure","createdAt":"2026-10-09T17:13:47Z","databaseId":37964772913,"event":"push","headSha":"f343c0e266336aee395f2612d8f62ca3b927528f","status":"completed"},{"conclusion":"cancelled","createdAt":"2026-10-09T17:07:20Z","databaseId":37964009625,"event":"push","headSha":"7a635cad090d9d51297e61a48add1d7f7a98fb34","status":"completed"},{"conclusion":"cancelled","createdAt":"2026-10-09T17:06:12Z","databaseId":37963871864,"event":"push","headSha":"ed3a561c2321412eff3f9779eab384219ad5a61a","status":"completed"}]'
 # A cancelled and an in-progress run NEWER than the red one: neither is "completed".
@@ -4034,7 +4024,7 @@ assert_audit_has "5115-j: audited" "REFUSED reason=main-red"
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 22 "5115-k: dry-run on red main → exit 22" -- --dry-run
 rm -f "$MOG_RUN_LOG"
 
-# ── HIMMEL-5134 — console-written fix-GO is the second way through the gate ───
+# ── console-written fix-GO is the second way through the gate ───
 # go.sh --fix-main-red <run> <pr> <head> writes a signed file naming ONE red
 # run; the gate accepts it only when that run is the CURRENT red run, for this
 # PR and head, and never without the signature.
@@ -4094,7 +4084,7 @@ go_write "$MOG_FX_ROOT" --fix-main-red 37964772913 77 "$GO_OLD"
 mog5134_run 22 "5134-h: fix-GO for an older head → exit 22"
 rm -rf "$MOG_FX_ROOT"
 
-# ── HIMMEL-5135 — suite= declaration: say what is accepted ────────────────────
+# ── suite= declaration: say what is accepted ────────────────────
 # The refusal text names what the matcher takes (a failed job name without
 # spaces, or any .sh script named on an ##[error] line) and the way out for the
 # rest (a job name with spaces needs run=<id>); it no longer says test-*.sh.
@@ -4111,7 +4101,7 @@ STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG4" \
     run_mog 0 "5135-b: a non-test- .sh named on an error line → merged"
 rm -f "$MOG_RUN_LOG4"
 
-# ── HIMMEL-5188: merge-time plugin version-bump recheck ──────────────────────
+# ── merge-time plugin version-bump recheck ──────────────────────
 # Two PRs that each bump a plugin to the same version both go green in CI; only
 # the merge gate sees the live base. The fixture manifest is copied from the
 # real himmel-ops plugin.json at this checkout, never invented.
@@ -4135,12 +4125,12 @@ bp_setup() {
     cp "$BP_REAL_ROOT/scripts/lib/vm-mode.sh" "$a/scripts/lib/vm-mode.sh" || return 1
     cp "$BP_REAL_ROOT/$BP_MAN" "$a/$BP_MAN" || return 1
     printf 'base\n' > "$a/marketplace/plugins/himmel-ops/a.txt"
-    # HIMMEL-5203: MOG_BUMP_EMPTY=<blob> commits that checker blob EMPTY at the
+    # MOG_BUMP_EMPTY=<blob> commits that checker blob EMPTY at the
     # base tip; MOG_BUMP_MISSING=<blob> leaves it out of the base tip entirely.
     local bp_b; local -a bp_add=()
     for bp_b in scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh; do
         [ "${MOG_BUMP_EMPTY:-}" != "$bp_b" ] || : > "$a/$bp_b"
-        # HIMMEL-5208: MOG_BUMP_STUBCHK=silent|noise commits a non-empty base-tip
+        # MOG_BUMP_STUBCHK=silent|noise commits a non-empty base-tip
         # checker that exits 0 with no output / with unrelated output.
         if [ "$bp_b" = scripts/check-plugin-drift.sh ]; then
             case "${MOG_BUMP_STUBCHK:-}" in

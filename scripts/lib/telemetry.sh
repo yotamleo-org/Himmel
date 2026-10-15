@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# telemetry.sh — 0-cost live skill-usage telemetry seam (HIMMEL-236).
+# telemetry.sh — 0-cost live skill-usage telemetry seam.
 #
 # WHY: the tool-adoption rubric's measure-BEFORE protocol (rubric §4)
 # cannot baseline skills/tools already in the default path (luna-ingest,
@@ -8,7 +8,7 @@
 # measure-DURING: record outcome-per-session signals as a side-effect of
 # real work, analyse later. This lib is that seam.
 #
-# 0-cost contract (the point of HIMMEL-236 — preserve it):
+# 0-cost contract (the point — preserve it):
 #   - NO stdout output, ever. The record goes to disk, never into model
 #     context. (Diagnostics would cost tokens in hook/skill call sites.)
 #   - NO network, NO LLM invocation, no expensive processes — only

@@ -3,7 +3,7 @@
 # by version tag: `## [Unreleased]` for commits after the newest version tag,
 # then one `## [<tag>] - <date>` section per release, newest release first.
 # With NO version tags (the pre-first-release state) the output is a single
-# `## [Unreleased]` over all history — byte-identical to the pre-HIMMEL-2250
+# `## [Unreleased]` over all history — byte-identical to the pre-version-tag
 # generator, so a tagless repo sees no churn.
 # Non-conventional/merge/revert → ### Other.
 # Fully generated; do not hand-edit. Idempotent on immediate re-run.
@@ -13,7 +13,7 @@
 #   gen-changelog.sh --check    write nothing; exit 1 if the committed file is
 #                               stale (prints the missing-entry count). This is
 #                               the staleness primitive the morning report and
-#                               the release step read — HIMMEL-2250.
+#                               the release step read.
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 OUT="$ROOT/CHANGELOG.md"
@@ -22,19 +22,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Every temp file this script creates is removed from ONE place. Bash EXIT traps
 # are GLOBAL, not per-function: a second `trap ... EXIT` anywhere in the script
 # would silently REPLACE this one, so the merge-base sentinel created inside
-# generate() is cleaned here rather than at its own creation site (HIMMEL-2376,
+# generate() is cleaned here rather than at its own creation site (
 # private #2077). The INT/TERM traps exist only to reach EXIT at all -- an
 # untrapped signal terminates the shell WITHOUT running the EXIT trap, which is
 # how an interrupted run used to leave `gen-changelog-mb-err.*` behind.
 # `rm -f ""` is a silent no-op, so an unset slot costs nothing. The `--`
 # terminator matters: a relative TMPDIR beginning with `-` would otherwise
 # make `rm` parse the generated path as an option and leak both files --
-# a cleanup that silently fails to clean is the defect this ticket fixes
-# (codex-1, CR round 1).
+# a cleanup that silently fails to clean is the defect the traps prevent.
 #
 # Bash also DEFERS a trapped signal while it waits on a synchronous child, so a
 # wedged `git` kept the script alive and the temp files leaked despite the traps
-# above (HIMMEL-2379). generate() therefore runs in the background and the main
+# above. generate() therefore runs in the background and the main
 # shell only `wait`s on it -- `wait` is interrupted by a trapped signal at once --
 # and the EXIT trap kills that job's process tree before removing files.
 # The wedged git can sit several shells deep (the tag filter runs it inside a
@@ -55,7 +54,7 @@ trap 'exit 143' TERM
 
 # Version tags only. The repo also carries non-version tags (recovery stashes
 # etc.); matching them would invent phantom release sections, so the glob is
-# `v` + digit — the scheme proposed in HIMMEL-2250 (`vMAJOR.MINOR.PATCH`, with
+# `v` + digit — the scheme proposed (`vMAJOR.MINOR.PATCH`, with
 # `-rc.N` pre-releases sorting inside the same glob).
 # KEEP IN SYNC with scripts/gen-changelog.ps1 $versionTagGlob.
 VERSION_TAG_GLOB='v[0-9]*'
@@ -116,7 +115,7 @@ generate() {
     # predecessor. Assumes a linear release history (this repo's `main`,
     # squash merges) — a tag on a side branch is not orderable this way, so
     # such tags are filtered out below (with a stderr warning) before the
-    # count sort even runs (HIMMEL-2363).
+    # count sort even runs.
     # KEEP IN SYNC with scripts/gen-changelog.ps1 tag ordering.
     while IFS= read -r t; do
         [ -n "$t" ] && tags+=("$t")
@@ -126,7 +125,7 @@ generate() {
             # Reachable-commit-count ordering is only valid for tags that are
             # ancestors of HEAD — a tag on a side branch has no topological
             # relationship to HEAD history, so its count is meaningless and
-            # sorting by it corrupts every release range (HIMMEL-2363: a
+            # sorting by it corrupts every release range (a
             # side-branch tag with a higher count than the real latest
             # release outranks it, and commits already released reappear
             # under both `## [Unreleased]` and their real release section).
@@ -135,7 +134,7 @@ generate() {
             # `--is-ancestor` exits 1 for "not an ancestor" but >1 for a real
             # git error (bad object, corrupt ref) -- conflating the two would
             # silently drop a release tag on an operational error instead of
-            # failing generation (HIMMEL-2363 CR). The error is recorded to
+            # failing generation. The error is recorded to
             # $mb_err_file (see above) so it fails the whole script, not just
             # this pipeline subshell.
             # KEEP IN SYNC with scripts/gen-changelog.ps1 ancestry filter.
@@ -173,7 +172,7 @@ generate() {
     # A final tag at the SAME commit as a pre-release of its own series
     # (v1.0.0 vs v1.0.0-pre.1) absorbs that pre-release: otherwise the final
     # tag's range is empty and the release content sits under the pre-release
-    # heading (HIMMEL-3603). A pre-release at a different commit, or of another
+    # heading. A pre-release at a different commit, or of another
     # series, keeps its own section.
     # KEEP IN SYNC with scripts/gen-changelog.ps1 same-commit fold.
     local kept=() ft ct
@@ -216,7 +215,7 @@ generate() {
 }
 
 # run_generate <outfile> — generate > <outfile> as a background job the main
-# shell waits on, so INT/TERM reach the trap immediately (HIMMEL-2379). The
+# shell waits on, so INT/TERM reach the trap immediately. The
 # sentinel is created here, not in generate(), because generate() now runs in a
 # subshell whose variable assignments never reach the main shell's trap. `wait`
 # returns generate's exit status, so `set -e` fails the script exactly as the
@@ -241,7 +240,7 @@ if [ "${1:-}" = "--check" ]; then
     fi
     # Explicit template (BSD/macOS portability); capture failure before
     # generate builds paths on an unset $tmp. The EXIT trap that removes this
-    # file is installed once at the top of the script (HIMMEL-2376), not here.
+    # file is installed once at the top of the script, not here.
     tmp="$(mktemp "${TMPDIR:-/tmp}/gen-changelog.XXXXXX")" || {
         echo "gen-changelog: mktemp failed" >&2
         exit 1

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Update an existing himmel checkout (HIMMEL-397).
+# Update an existing himmel checkout.
 #
 # WHY this exists: himmel's marketplace is registered from a LOCAL `directory`
 # source (see docs/setup/settings-template.json), so Claude Code's marketplace
@@ -8,7 +8,7 @@
 # they run from $CLAUDE_PROJECT_DIR. So `git pull` of THIS checkout is the only
 # thing that delivers a himmel update.
 #
-# HIMMEL-893: this is also the SHARED ENGINE behind `himmelctl update`
+# this is also the SHARED ENGINE behind `himmelctl update`
 # (scripts/himmelctl/bin.js's cmdUpdate is a thin wrapper that shells out
 # here) — the full dependency chain lives in ONE place so the two front ends
 # never drift. The chain (see the STATUS_*/update_*/print_status_table
@@ -40,14 +40,14 @@ cd "$ROOT"
 prefer_bun_on_path
 
 # is_dirty_tracked [DIR]
-# HIMMEL-3078: like guardrails/lib.sh's is_dirty(), but untracked files don't
+# like guardrails/lib.sh's is_dirty(), but untracked files don't
 # count. The three pull/switch gates below only need to know about changes
 # `git pull --ff-only` / `git switch --detach` could actually clobber or
 # refuse to move past — untracked strays are neither; git itself refuses a
 # pull or switch that would overwrite one, so the gate protects nothing by
 # also refusing on them. Deliberately NOT a change to is_dirty() itself —
 # the edit-on-main guard shares that predicate and DOES want untracked files
-# counted (HIMMEL-297's "dirty means the same thing everywhere" applies there,
+# counted ("dirty means the same thing everywhere" applies there,
 # not here).
 is_dirty_tracked() {
     local dir="${1:-.}"
@@ -59,7 +59,7 @@ is_dirty_tracked() {
     [ -n "$out" ]
 }
 
-# ─── plugin install-state gap report (HIMMEL-434) ────────────────────────────
+# ─── plugin install-state gap report ────────────────────────────
 # Advisory: `marketplace update` only re-syncs plugins that are ALREADY
 # installed — it never tells you a himmel-marketplace plugin is missing, or is
 # being served from a NON-@himmel marketplace whose `autoUpdate` silently
@@ -125,7 +125,7 @@ report_plugin_gap() {
             # from the marketplace source is an update the re-sync has not landed.
             if [ -n "${VER_FILE:-}" ]; then
                 iv=$(jq -r --arg k "$name@$mp_name" '.plugins[$k][0].version // empty' "$installed_json" 2>/dev/null | tr -d '\r' || true)
-                # Source version read order (HIMMEL-5485): the local plugin.json,
+                # Source version read order: the local plugin.json,
                 # then the marketplace entry's .version (an external plugin has no
                 # local dir). With neither, nothing declares a source, so there is
                 # no drift to count: the installed version (or its commit sha) is
@@ -152,7 +152,7 @@ report_plugin_gap() {
                         unknown_ver="$unknown_ver $name"
                     fi
                 # An unreadable iv means the comparison was never made —
-                # report unknown for this plugin, not "current" (HIMMEL-3416).
+                # report unknown for this plugin, not "current".
                 elif [ -z "$iv" ]; then
                     unknown_ver="$unknown_ver $name"
                 elif [ "$iv" != "$sv" ]; then
@@ -202,7 +202,7 @@ EOF
     return 0
 }
 
-# ─── hermes junior-tier update (HIMMEL-426) ──────────────────────────────────
+# ─── hermes junior-tier update ──────────────────────────────────
 # Hermes (NousResearch/hermes-agent) is an EDITABLE install from a local git
 # checkout (default %LOCALAPPDATA%/hermes/hermes-agent on Windows,
 # ~/.hermes/hermes-agent on Linux/macOS), NOT a himmel plugin and
@@ -211,7 +211,7 @@ EOF
 # à-la-carte: absent/unconfigured/offline is always a clean SKIP (never fails
 # the himmel update) — but once the checkout IS present + configured + the
 # remote IS reachable, a genuine update failure (non-ff pull, or the editable
-# pip refresh erroring) IS a real failure and propagates as such (CR fix — see
+# pip refresh erroring) IS a real failure and propagates as such (see
 # run_hermes_step below, which surfaces it as STATUS_hermes="failed" and
 # aborts the chain like any other item). HERMES_HOME (install root) /
 # HERMES_PY (venv python) override the defaults; HERMES_PY mirrors
@@ -262,7 +262,7 @@ update_hermes() {
     fi
 
     if [ "$mode" = "check" ]; then
-        # Non-mutating remote comparison (CR fix): `git fetch` updates
+        # Non-mutating remote comparison: `git fetch` updates
         # remote-tracking refs + FETCH_HEAD in the EXTERNAL hermes checkout,
         # which violates --check's read-only contract. `git ls-remote` queries
         # the remote directly over the wire without touching any local git
@@ -289,13 +289,13 @@ update_hermes() {
     # (offline / transient network) is a clean SKIP — "couldn't attempt" —
     # never a "failed". Only once the fetch has genuinely succeeded does a
     # non-fast-forward merge (diverged / local edits) count as a real FAILURE
-    # (CR fix: this used to `git pull --ff-only` in one shot and swallow BOTH
+    # (a single `git pull --ff-only` would swallow BOTH
     # cases as a non-aborting warn, hiding a genuine broken update behind
     # "skipped").
     # Capture stderr (never discard it) so a genuine failure — invalid
     # remote, deleted upstream ref, auth failure, repo corruption — can be
-    # told apart from an actually-unreachable remote (HIMMEL-2151 CR
-    # deferral: the old `2>/dev/null` treated EVERY fetch error as offline).
+    # told apart from an actually-unreachable remote
+    # (a plain `2>/dev/null` would treat EVERY fetch error as offline).
     # `2>&1 >/dev/null` dups stderr into the capture pipe, THEN sends stdout
     # (already empty under -q) to /dev/null — set -e safe via the &&/|| form.
     # LC_ALL=C pins git's diagnostics to English, because the offline
@@ -310,8 +310,8 @@ update_hermes() {
         # failure and must abort the chain, not masquerade as "offline".
         # Here-string, not `printf | grep -q` — under pipefail grep -q's
         # early exit SIGPIPEs the producer and a genuine match can read as
-        # failure (HIMMEL-1430); git stderr is tiny, far under the 64 KiB
-        # here-string ceiling (HIMMEL-2027).
+        # failure; git stderr is tiny, far under the 64 KiB
+        # here-string ceiling.
         if grep -qiE 'could not resolve host|failed to connect|connection timed out|connection refused|operation timed out|network is unreachable|temporary failure in name resolution|could not resolve proxy|no route to host|couldn'"'"'t resolve host|network unreachable' <<< "$fetch_err"; then
             echo "    skip: could not reach origin (offline?)."
             return 0
@@ -319,8 +319,8 @@ update_hermes() {
         echo "    FAILED: hermes git fetch failed ($(printf '%s' "$fetch_err" | head -n1)) — resolve in $src." >&2
         return 1
     fi
-    # A non-fast-forward FETCH_HEAD is not automatically a fault here
-    # (HIMMEL-2139): NousResearch FORCE-PUSHES hermes-agent's main — its own
+    # A non-fast-forward FETCH_HEAD is not automatically a fault here:
+    # NousResearch FORCE-PUSHES hermes-agent's main — its own
     # remote-tracking reflog records `forced-update` — so after every rewrite
     # our HEAD stops being an ancestor of upstream and this merge fails
     # PERMANENTLY, wedging the whole update chain until a human hand-resets
@@ -331,7 +331,7 @@ update_hermes() {
     #   * the working tree is clean — uncommitted work is the one thing
     #     `reset --hard` destroys irrecoverably; and
     #   * no commit we hold is authored or committed by this checkout's own
-    #     identity — which keeps HIMMEL-893's contract that a local unpushed
+    #     identity — which keeps the contract that a local unpushed
     #     commit is never silently discarded (test-himmel-update-hermes.sh
     #     Case 5 still FAILs).
     # These guards protect a DESTRUCTIVE operation, so every uncertain path —
@@ -385,13 +385,13 @@ update_hermes() {
         }
         echo "    upstream rewrote history — resynced $old_head -> $(git -C "$src" rev-parse --short HEAD 2>/dev/null || echo '?') ($dropped orphaned upstream commit(s) re-pointed; previous HEAD kept at tag himmel-pre-resync)."
     fi
-    # Resolve the venv python at RUNTIME (HIMMEL-613): HERMES_PY wins only when
+    # Resolve the venv python at RUNTIME: HERMES_PY wins only when
     # it still points at an executable, else probe $src/venv — a moved/rebuilt
     # venv (or a stale HERMES_PY) re-resolves instead of breaking the refresh.
     local py
     py="$(resolve_hermes_py "$src")" || py=""
     if hermes_pm_launcher "$src" >/dev/null; then
-        # PM-managed install (HIMMEL-4307): hermes owns its dependency generations
+        # PM-managed install: hermes owns its dependency generations
         # (Python 3.14 under ~/.hermes/tools); pip-installing into that interpreter
         # would fight the package manager. Code is pulled; hermes refreshes its own deps.
         echo "    note: hermes is PM-managed (.hermes/bin/hermes) — code pulled; dependencies are refreshed by hermes itself, no pip editable refresh."
@@ -405,7 +405,7 @@ update_hermes() {
         echo "    refreshing editable install (deps may have changed)…"
         # The editable pip refresh IS the second half of "update" (code pulled
         # but the install left stale) — a genuine error here is a real
-        # failure, not a best-effort warn (CR fix, same rationale as the pull
+        # failure, not a best-effort warn (same rationale as the pull
         # above).
         if ! "$py" -m pip install -e "$src" --quiet; then
             echo "    FAILED: pip editable refresh failed — see docs/hermes-runbook.md (recover a broken venv pip)." >&2
@@ -420,7 +420,7 @@ update_hermes() {
     return 0
 }
 
-# restart_hermes_gateways <old_head> <new_head> — HIMMEL-2822 / HIMMEL-3052: a
+# restart_hermes_gateways <old_head> <new_head> — a
 # running hermes-gateway unit keeps stale modules in memory until restarted.
 # Stations run either the per-profile shape (hermes-gateway-<profile>.service)
 # or the multiplexed shape (bare hermes-gateway.service) — list BOTH patterns,
@@ -458,12 +458,12 @@ restart_hermes_gateways() {
     return 0
 }
 
-# ─── codex plugin re-sync + hooks.json sanitize (HIMMEL-742 / 605) ───────────
+# ─── codex plugin re-sync + hooks.json sanitize ───────────
 # The codex-CLI side is provisioned by scripts/codex/install-himmel-codex.sh,
 # whose phase 3 strips the top-level `description` key from external-plugin
 # hooks.json (sanitize-plugin-hooks.sh). Codex BEFORE rust-v0.143.0 rejects that
 # key and silently unloads those hooks; upstream fixed it in rust-v0.143.0
-# (PR #30229), so on newer codex the strip is a no-op benefit — HIMMEL-1104/1114.
+# (PR #30229), so on newer codex the strip is a no-op benefit.
 # Running the INSTALLER is a first-install action, so on its own the sanitize
 # would happen once — while a later codex plugin re-sync/update re-adds
 # `description`, silently unloading the hooks again with nothing to re-clean them.
@@ -514,14 +514,14 @@ update_codex() {
     return 0
 }
 
-# ─── codex / claude CLI versions (HIMMEL-5383) ───────────────────────────────
+# ─── codex / claude CLI versions ───────────────────────────────
 # `himmelctl update` is meant to leave the whole station current, but the two
 # agent CLIs were never touched: the operator updated codex by hand and nothing
 # said anything about claude. codex is upgraded through the method that owns it
 # (user-owned npm global or an advertised standalone self-updater; package
 # managers print a needs-you remedy and are never executed),
 # behind the VM-first gate. claude is held to the console-launch floor
-# (HIMMEL-5501) and brought current the same way. Both land in the chain-status
+#  and brought current the same way. Both land in the chain-status
 # table via _probe_tool_row.
 #   sync_agent_clis check | apply
 
@@ -672,7 +672,7 @@ _sync_codex_cli() {
     return 0
 }
 
-# _sync_claude_cli <check|apply> — HIMMEL-5501. claude is held to the floor the
+# _sync_claude_cli <check|apply>. claude is held to the floor the
 # console launch needs (scripts/lib/claude-version.sh) and brought current with
 # npm latest. The updater is picked by owner: npm global -> npm install -g
 # @anthropic-ai/claude-code@latest; anything else the operator owns (the native
@@ -799,14 +799,14 @@ sync_agent_clis() {
     return "$rc"
 }
 
-# ─── stale cadence runner nudge (HIMMEL-588/HIMMEL-969) ──────────────────────
+# ─── stale cadence runner nudge ──────────────────────
 # Cadence runners (.bat/.sh) are GENERATED at arm time and NOT regenerated on a
 # code pull — so a `git pull` that changes the runner format leaves an
 # already-armed cadence firing the OLD format until a manual `arm --force`.
 # This surfaces that right after the pull. Advisory; never fails the update.
 # *_BAT_DIR env seams mirror each emitter's runner home; defaults resolve via
 # cadence_user_home (emitter parity — USERPROFILE via cygpath before $HOME on
-# Windows Git-Bash, HIMMEL-645/969 — a bare $HOME would probe the MSYS dir).
+# Windows Git-Bash — a bare $HOME would probe the MSYS dir).
 report_cadence_stale() {
     local label bat_dir rearm ver uh is_windows=0
     uh="$(cadence_user_home)"
@@ -814,7 +814,7 @@ report_cadence_stale() {
     while IFS='|' read -r label bat_dir rearm; do
         [ -n "$label" ] || continue
         # codex-sweep-cadence only ever arms on Windows (its own arm refuses
-        # elsewhere, HIMMEL-2965) — on any other platform a leftover .bat/.sh
+        # elsewhere) — on any other platform a leftover .bat/.sh
         # twin is n/a, never a recipe that would itself refuse.
         if [ "$label" = "codex-sweep-cadence" ] && [ "$is_windows" -eq 0 ]; then
             if [ -f "$bat_dir/codex-sweep.bat" ] || [ -f "$bat_dir/codex-sweep.sh" ]; then
@@ -839,7 +839,7 @@ EOF
     return 0
 }
 
-# ─── guardrail-mode block drift check (HIMMEL-709) ───────────────────────────
+# ─── guardrail-mode block drift check ───────────────────────────
 # The himmel-owned user-level guardrail block (guardrail-skip-in-himmel.js) is a
 # himmel-managed artifact; the wrapper body auto-updates via this pull, but the
 # baked node/bash/wrapper paths in ~/.claude/settings.json do NOT. If the block
@@ -863,9 +863,9 @@ report_guardrail_block() {
     return 0
 }
 
-# ─── installer-drift pass (HIMMEL-4246) ──────────────────────────────────────
+# ─── installer-drift pass ──────────────────────────────────────
 # `himmelctl status` already knew about drift the updater never looked at (a
-# repo with no pre-commit/commit-msg hook sat degraded for 9 days, HIMMEL-4243).
+# repo with no pre-commit/commit-msg hook sat degraded for 9 days).
 # This pass runs at the END of an update: converge what `himmelctl ensure` can
 # fix safely and idempotently (DRIFT_CONVERGE_IDS, an explicit allow-list — never
 # "everything red"), re-check, and print every red/degraded item it could not
@@ -873,10 +873,10 @@ report_guardrail_block() {
 # Advisory; never fails the update. HIMMEL_DRIFT_CTL overrides the himmelctl
 # command (test seam). Never auto-deletes git config: a leaked url.*.insteadOf
 # is WARN + the unset command only.
-# qmd-index (HIMMEL-4313): ensure registers any missing himmel/luna/skills
+# qmd-index: ensure registers any missing himmel/luna/skills
 # collection (idempotent qmd_install + collection add + ensure-skill-index.sh;
-# it never embeds or reindexes). It does not honour the embed-model swap lock
-# (HIMMEL-4314), so _qmd_swap_held keeps qmd-index in the DRIFT block while a
+# it never embeds or reindexes). It does not honour the embed-model swap lock,
+# so _qmd_swap_held keeps qmd-index in the DRIFT block while a
 # swap holds it.
 DRIFT_CONVERGE_IDS="pre-commit-hooks qmd-index"
 DRIFT_LINES=""
@@ -921,7 +921,7 @@ _drift_add() { DRIFT_LINES="${DRIFT_LINES}$1
 # on other WARN signals only — the registration check always runs on that path,
 # so unrelated degraded signals are not drift); 2 = indeterminate: the check did
 # not run or did not verify (exit 2 no logs, plugin-presence-unchecked, crash, or
-# rc 1 with no WARN line). Never claim a fix — or a clean state — on 2 (HIMMEL-4248).
+# rc 1 with no WARN line). Never claim a fix — or a clean state — on 2.
 _codex_unregistered() {
     local out rc=0; out="$(bash "$1" 2>/dev/null)" || rc=$?
     case "$out" in *plugin-unregistered*) return 0 ;; *plugin-presence-unchecked*) return 2 ;; esac
@@ -1002,7 +1002,7 @@ EOF
     fi
 
     # (3a) a url.*.insteadOf in the LOCAL config that no himmel installer wrote
-    # (the HIMMEL-4243 test-fixture leak) rewrites every remote URL. WARN only.
+    # (a test-fixture leak) rewrites every remote URL. WARN only.
     local key
     while IFS= read -r key; do
         [ -n "$key" ] || continue
@@ -1047,7 +1047,7 @@ EOF
 }
 
 
-# ─── statusLine hud migration (HIMMEL-718) ──────────────────────────────────
+# ─── statusLine hud migration ──────────────────────────────────
 # Existing installs wired to the bash bar need one best-effort re-wire after the
 # repo update. Fresh installs already get the hud renderer from setup/adopt.
 rewire_statusline() {
@@ -1103,8 +1103,8 @@ rewire_statusline() {
     fi
     return 0
 }
-# ─── lean plugin-set reconcile (HIMMEL-1032) ─────────────────────────────────
-# The lean plugin profile (HIMMEL-816) was additive-only: install-plugins
+# ─── lean plugin-set reconcile ─────────────────────────────────
+# The lean plugin profile was additive-only: install-plugins
 # installs the template's `true` plugins but never writes the `false` ones, so
 # a plugin enabled once (manual toggle, old template, himmelctl full-set) stays
 # enabled forever and drifts back after every update (~10% context at session
@@ -1154,7 +1154,7 @@ reconcile_plugins() {
     return 0
 }
 
-# ─── i-have-adhd always-on flag (HIMMEL-5239) ────────────────────────────────
+# ─── i-have-adhd always-on flag ────────────────────────────────
 # Delegated to scripts/machine-setup/enable-i-have-adhd-always.sh, which owns the
 # contract (idempotent; HIMMEL_NO_ADHD_ALWAYS=1 opts out and is never recreated
 # over). Best-effort: never fails an update.
@@ -1170,7 +1170,7 @@ enable_adhd_always() {
     return 0
 }
 
-# ─── retired-plugin removal offer (HIMMEL-2033) ─────────────────────────
+# ─── retired-plugin removal offer ─────────────────────────
 # Delegated to scripts/machine-setup/remove-retired-plugin.sh, which owns the
 # contract (silent when absent; prompt with DEFAULT=remove on a TTY; advisory
 # only and never a silent removal otherwise). Best-effort: never fails an update.
@@ -1186,12 +1186,12 @@ offer_retired_plugin_removal() {
     return 0
 }
 
-# ─── the full dependency chain (HIMMEL-893) ──────────────────────────────────
+# ─── the full dependency chain ──────────────────────────────────
 # Six MANAGED items — the things this file already updates (or, for jira/qmd/
 # luna below, already has a real recipe for elsewhere in this repo that this
 # wires in rather than re-inventing): the checkout pull, the marketplace
 # re-sync, the jira CLI dist rebuild, the qmd fork, hermes, and the luna
-# template. graphify/headroom are NOT managed yet (HIMMEL-890/891 pending) —
+# template. graphify/headroom are NOT managed yet —
 # deliberately absent here.
 #
 # Per-item status is one of: updated | up-to-date | skipped | failed |
@@ -1210,9 +1210,9 @@ STATUS_hermes="not-attempted";        DETAIL_hermes=""
 STATUS_luna_template="not-attempted"; DETAIL_luna_template=""
 # graphify is NOT a chain item (sync_graphify is a best-effort advisory step), so
 # it has no fixed row: print_status_table adds one only when sync_graphify set
-# STATUS_graphify — today only for the uv-missing skip (HIMMEL-3077).
+# STATUS_graphify — today only for the uv-missing skip.
 STATUS_graphify="";                   DETAIL_graphify=""
-# HIMMEL-4088: probe-mode station tools (rtk, twitter-cli, ...) are advisory too.
+# probe-mode station tools (rtk, twitter-cli, ...) are advisory too.
 # Their count is registry-driven, so rows accumulate here as "name|status|detail"
 # lines (written by sync_probe_tools, read back by print_status_table) instead of
 # one fixed STATUS_/DETAIL_ pair each.
@@ -1224,10 +1224,10 @@ PROBE_TOOL_ROWS=""
 #    status table is honest, not just "ran without error".
 update_pull() {
     local before after autostash="" channel
-    # HIMMEL-2705: resolved HERE, not up front for every mode — --plugins-check
+    # resolved HERE, not up front for every mode — --plugins-check
     # and every --only item but `pull` never call update_pull() at all, so a
-    # malformed HIMMEL_UPDATE_CHANNEL or profile value must not abort them (CR
-    # round 4, codex-1: channel validation belongs to the mode that actually
+    # malformed HIMMEL_UPDATE_CHANNEL or profile value must not abort them (
+    # channel validation belongs to the mode that actually
     # needs the pull configuration). A resolution failure here is reported the
     # same way any other chain-item failure is — through STATUS_pull/DETAIL_pull
     # and a non-zero return — not a hard `exit`, so the status table still
@@ -1248,7 +1248,7 @@ update_pull() {
     before=$(git rev-parse HEAD 2>/dev/null || echo "")
     # HIMMEL_UPDATE_AUTOSTASH=1 opts into stash->pull->restore around the pull so a
     # dirty tree (e.g. local skill-dev diffs to skills-lock.json/.gitignore) can be
-    # updated through instead of the HIMMEL-893 pre-check refusing (HIMMEL-1197).
+    # updated through instead of the pre-check refusing.
     [ "${HIMMEL_UPDATE_AUTOSTASH:-}" = "1" ] && autostash="--autostash"
     # shellcheck disable=SC2086  # $autostash is a fixed literal or empty; intentional split
     if ! git pull --ff-only $autostash; then
@@ -1264,7 +1264,7 @@ update_pull() {
     # conflicts: the fast-forward applied, but git left conflict markers in the
     # tree and kept the stash (verified: git 2.55). Detect that here and report
     # failed — otherwise the chain would proceed on a conflicted tree reported as
-    # "updated" (HIMMEL-1197).
+    # "updated".
     if [ -n "$autostash" ] && [ -n "$(git ls-files --unmerged 2>/dev/null)" ]; then
         STATUS_pull="failed"
         DETAIL_pull="pull applied but autostash reapply conflicted — your local changes are preserved in 'git stash list' and left as conflict markers; resolve them (or 'git checkout -- .' then 'git stash pop' later), then re-run"
@@ -1307,7 +1307,7 @@ update_marketplace() {
     local update_rc=0
     "$claude_bin" plugin marketplace update himmel || update_rc=$?
 
-    # HIMMEL-1846: temp_git_* clone dirs left in the plugin cache by past
+    # temp_git_* clone dirs left in the plugin cache by past
     # marketplace re-syncs accumulate (~48/day). -mmin +1440 (>24h) spares
     # anything from an install still in flight; -mtime +1 would need ~48h
     # (day-truncated), missing dirs in the 24-48h range.
@@ -1379,7 +1379,7 @@ update_jira_cli() {
 }
 
 # 4. qmd fork update. qmd ships from the himmel FORK, pinned by commit SHA
-#    (scripts/lib/qmd-bin.sh, HIMMEL-877/911) — `git pull` of THIS checkout
+#    (scripts/lib/qmd-bin.sh) — `git pull` of THIS checkout
 #    never touches that separate clone. qmd_install() (sourced from
 #    qmd-bin.sh) IS the real, existing update mechanism: idempotent, skips
 #    cleanly when already fork-served at the pin, else clones/fetches +
@@ -1396,7 +1396,7 @@ update_qmd_fork() {
     fi
     if ! command -v git >/dev/null 2>&1 || ! command -v bun >/dev/null 2>&1; then
         STATUS_qmd_fork="skipped"; DETAIL_qmd_fork="git or bun not on PATH"
-        # HIMMEL-3068: this precondition-gap skip reads identically to a clean
+        # this precondition-gap skip reads identically to a clean
         # "nothing to do" skip in the status table, but it is not one — qmd
         # will NEVER update on this machine until the missing tool is
         # installed ("verify the artifact, not the return code" per
@@ -1434,7 +1434,7 @@ update_qmd_fork() {
     fi
     if qmd_install; then
         STATUS_qmd_fork="updated"; DETAIL_qmd_fork="$(qmd_cmd --version 2>/dev/null)"
-        # HIMMEL-2134: installing the new build does NOT reload the RUNNING
+        # installing the new build does NOT reload the RUNNING
         # daemon. The shared qmd HTTP MCP daemon on :8181 is a long-lived
         # process; ensure-qmd-daemon.{sh,ps1} only START one when nothing is
         # serving — neither ever restarts one. So after a fork-ref bump the new
@@ -1496,16 +1496,16 @@ report_qmd_daemon_restart() {
     echo "    termination, which an agent may not do — run this yourself:"
     echo ""
     # Scoped to the HTTP DAEMON's FULL argv shape ('qmd … mcp … --http'), not a
-    # bare 'qmd' and not 'qmd.*mcp' (CR round 1, codex-2). qmd also runs as a
+    # bare 'qmd' and not 'qmd.*mcp'. qmd also runs as a
     # per-session STDIO MCP server whose command line matches 'qmd.*mcp' just as
     # well — a looser pattern would have the operator forcibly terminate live
     # stdio servers belonging to OTHER sessions. Only the --http daemon holds
     # the stale code this notice is about.
-    # THREE commands, in order, and the first one only LOOKS (CR round 2,
-    # codex-1). A single force-stop one-liner with "review the matches first"
+    # THREE commands, in order, and the first one only LOOKS.
+    # A single force-stop one-liner with "review the matches first"
     # underneath is advice nobody can act on — the processes are already gone by
     # the time it is read. The pattern is scoped to the HTTP daemon's full argv
-    # shape ('qmd … mcp … --http'), not 'qmd.*mcp' (CR round 1, codex-2): qmd
+    # shape ('qmd … mcp … --http'), not 'qmd.*mcp': qmd
     # also runs as a per-session STDIO MCP server that the looser pattern
     # matches just as well, and stopping those kills other sessions' servers.
     echo "      # 1. LOOK — confirm these are the daemon, and only the daemon:"
@@ -1552,7 +1552,7 @@ report_session_restart_required() {
     echo "    (re-pin refused: not the anchor tip). Exit claude and start a new session."
 }
 
-# Advisory (HIMMEL-3068): the ONE update_qmd_fork skip reason that means qmd is
+# Advisory: the ONE update_qmd_fork skip reason that means qmd is
 # PERMANENTLY disabled on this machine until fixed, not a one-off/transient
 # miss. STATUS_qmd_fork reads "skipped" in the status table either way — the
 # same word a harmless "no update available" skip uses — so without this,
@@ -1577,7 +1577,7 @@ report_qmd_bun_missing() {
 
 # 5. hermes junior-tier update. Reuses update_hermes() (defined above) and
 #    classifies its outcome into STATUS_hermes/DETAIL_hermes for the shared
-#    status table. CR fix: update_hermes now returns NON-ZERO for a genuine
+#    status table. update_hermes returns NON-ZERO for a genuine
 #    failure (checkout present + configured but the pull/pip refresh actually
 #    errored) while staying 0 for every "couldn't attempt" skip (absent,
 #    foreign checkout, offline). This step propagates that distinction —
@@ -1607,7 +1607,7 @@ run_hermes_step() {
 }
 
 # 6. luna template upgrade. Vault-side counterpart to this harness update
-#    (HIMMEL-389) — the vault at LUNA_VAULT_PATH is scaffolded once from
+#  — the vault at LUNA_VAULT_PATH is scaffolded once from
 #    templates/luna-second-brain and never re-reads it; upgrade.sh is the
 #    real, existing content-preserving refresh path (never touches
 #    journal/notes/clips; a _CLAUDE.md conflict is fail-closed — original kept,
@@ -1667,7 +1667,7 @@ update_luna_template() {
         DETAIL_luna_template="$(_last_line_trimmed "$out")"
         return 0
     fi
-    # HIMMEL-3037: rc 3 = upgrade.sh NEEDS-RECONCILE — the only non-success is
+    # rc 3 = upgrade.sh NEEDS-RECONCILE — the only non-success is
     # withheld local edits (zero write failures). Not a failed chain item and
     # not "updated" either: the vault stays unstamped, so --check keeps
     # offering the upgrade until the operator reconciles the withheld files.
@@ -1705,7 +1705,7 @@ qmd_fork
 hermes
 luna_template
 EOF
-    # HIMMEL-3077: the one advisory (non-chain) row — only when it has something
+    # the one advisory (non-chain) row — only when it has something
     # to report, so a healthy run keeps the six-item table.
     if [ -n "$STATUS_graphify" ]; then
         printf '    %-14s %-14s %s\n' "graphify" "$STATUS_graphify" "$DETAIL_graphify"
@@ -1719,7 +1719,7 @@ $PROBE_TOOL_ROWS
 EOF
 }
 
-# ─── --versions report plumbing (HIMMEL-3400) ────────────────────────────────
+# ─── --versions report plumbing ────────────────────────────────
 # The per-component probes above already read "installed" and "available" while
 # they run in check mode; they hand those two values to _ver_row instead of a
 # second copy of each probe living in a report function. _ver_row appends to a
@@ -1806,7 +1806,7 @@ _ver_pm_rows() {
 }
 
 # A packaged / tarball install has no upstream; its himmel row is the same
-# release-tag lookup --check uses (scripts/lib/release-check.sh, HIMMEL-3247).
+# release-tag lookup --check uses (scripts/lib/release-check.sh).
 _ver_nongit_row() {
     local inst rc=0
     # shellcheck source=lib/release-check.sh
@@ -1843,18 +1843,18 @@ _ver_nongit_row() {
 check_pull() {
     local upstream behind ahead ahead_note
     branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
-    # HIMMEL-2705: resolved here, not up front — only the modes that actually
+    # resolved here, not up front — only the modes that actually
     # need the channel resolve it, so a malformed value still exits loud here.
     if ! UPDATE_CHANNEL=$(_resolve_update_channel); then
         return 2
     fi
     if [ -n "$UPDATE_CHANNEL" ]; then
-        # HIMMEL-2705: channel mode follows tags, not the branch's upstream —
+        # channel mode follows tags, not the branch's upstream —
         # its own read-only fetch+compare, never the plain branch/upstream
         # behind/ahead report below.
         echo "branch:   $branch"
         echo "channel:  $UPDATE_CHANNEL"
-        # HIMMEL-3449: propagate _channel_follow's own rc — it already returns
+        # propagate _channel_follow's own rc — it already returns
         # 0 for every non-failure outcome (up to date, no release yet,
         # offline, behind-in-check-mode, HEAD ahead) and 1 only on a genuine
         # failure (e.g. the origin ls-remote query itself failed). A bare
@@ -1925,7 +1925,7 @@ EOF
         [ "$state" = "unknown" ] && unknown=$((unknown + 1))
         printf '    %-14s %-8s %-30s %-30s %s\n' "$id" "$state" "$inst" "$avail" "$note"
     done
-    # HIMMEL-4088: registry-driven probe-tool rows — any id the fixed list above
+    # registry-driven probe-tool rows — any id the fixed list above
     # does not name, in the order sync_probe_tools wrote them.
     local extra_ids
     extra_ids=$(cut -d'|' -f1 "$VER_FILE" 2>/dev/null | grep -vxE 'himmel|plugins|jira_cli|qmd_fork|hermes|luna_template|cli_proxy|node|npm|bun|pm' | awk '!seen[$0]++')
@@ -1948,7 +1948,7 @@ EOF
     return 0
 }
 
-# ─── probe-mode station tools (HIMMEL-4088) ──────────────────────────────────
+# ─── probe-mode station tools ──────────────────────────────────
 # Registry tag_release/probe entries that declare an `upgrade` block (rtk,
 # twitter-cli) name a binary installed on THIS machine. Only the nightly
 # drift-fix cadence used to upgrade them, so with that cadence unarmed an
@@ -2056,10 +2056,10 @@ EOF
 
 _probe_tool_row() { PROBE_TOOL_ROWS="${PROBE_TOOL_ROWS}$1|$2|${3//|//}"$'\n'; }
 
-# ─── graphify pin sync (HIMMEL-1048) ─────────────────────────────────────────
+# ─── graphify pin sync ─────────────────────────────────────────
 # Best-effort advisory: roll an EXISTING graphify install forward to the pinned
 # version so `himmelctl update` propagates a graphify pin bump to other machines.
-# The de-fork (HIMMEL-1048 / issue #469) made graphify a version-pinned upstream
+# The de-fork made graphify a version-pinned upstream
 # PyPI install, so a pin bump only reaches a machine if something reinstalls at
 # the new pin — `git pull` alone updates graphify-bin.sh but not the installed
 # tool. Sources the ONE resolver impl; a missing/foreign install is handled
@@ -2067,7 +2067,7 @@ _probe_tool_row() { PROBE_TOOL_ROWS="${PROBE_TOOL_ROWS}$1|$2|${3//|//}"$'\n'; }
 sync_graphify() {
     local lib="$ROOT/scripts/lib/graphify-bin.sh"
     echo "==> graphify pin sync (HIMMEL-1048)"
-    # HIMMEL-4380 / HIMMEL-4513: this step skips while a live Claude session
+    # this step skips while a live Claude session
     # holds graphify-mcp, on every platform (Windows: the uv tool dir is locked;
     # Linux/macOS: a live swap mixes versions in the holder). Name the way out.
     echo "    (skips while a live Claude session holds graphify-mcp; to clear it, reconnect /mcp or quit the holders, then re-run: bash scripts/himmel-update.sh --graphify-only — e.g. with no session live, from a scheduled slot)"
@@ -2076,10 +2076,10 @@ sync_graphify() {
         return 0
     fi
     if ! command -v uv >/dev/null 2>&1; then
-        # HIMMEL-3077: this precondition-gap skip used to finish green with no
+        # this precondition-gap skip used to finish green with no
         # status-table row, so graphify never installed and every graphify
         # surface failed later with no pointer back — the same "skip that is
-        # not a no-op" shape as HIMMEL-3068's missing-bun qmd skip. Record a
+        # not a no-op" shape as the missing-bun qmd skip. Record a
         # table row and name the platform-correct fix.
         local uv_hint
         if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
@@ -2098,7 +2098,7 @@ sync_graphify() {
         echo "    warn: could not load graphify-bin.sh (non-fatal)." >&2
         return 0
     fi
-    # No blanket "(non-fatal)" here any more (HIMMEL-1274): that wording was
+    # No blanket "(non-fatal)" here any more: that wording was
     # actively wrong in the reported case — the step had left graphify BROKEN,
     # not merely un-updated. graphify_update now reports its own outcome
     # precisely (skipped / still-working / broken, with the repair command), so
@@ -2106,14 +2106,14 @@ sync_graphify() {
     # advisory to the CHAIN (return 0) — himmel-update does not abort on it —
     # but the operator-visible text comes from the step itself.
     graphify_update || echo "    warn: graphify pin sync did not complete — see the message above for the resulting state." >&2
-    # HIMMEL-2480: re-apply the priced hooks — a hand-run `graphify install`
+    # re-apply the priced hooks — a hand-run `graphify install`
     # (which the operator is told to do in several places) re-adds the stock,
     # unpriced entries; this recurring sweep heals that.
     graphify_price_hooks
     return 0
 }
 
-# ─── cli-proxy-api host roll (HIMMEL-2134) ───────────────────────────────────
+# ─── cli-proxy-api host roll ───────────────────────────────────
 # The Axis-B twin of sync_graphify, and the gap scripts/upstreams.json's own
 # cli-proxy-api note names outright: "NOTHING here restarts the running proxy --
 # bumping the pin does NOT swap a live instance ... the operator runs
@@ -2140,7 +2140,7 @@ sync_graphify() {
 # Compare the machine's version stamp to the in-repo pin first and skip when
 # they agree. Never aborts the script (advisory, like sync_graphify).
 # Compare two versions. THREE outcomes, because "cannot tell" must not collapse
-# into either answer (CR round 5, codex-2/codex-3):
+# into either answer:
 #   0 = $1 is strictly LOWER than $2  -> genuinely behind, safe to roll
 #   1 = $1 is equal to or higher      -> not behind, leave alone
 #   2 = CANNOT COMPARE                -> no python3, or a version that does not
@@ -2196,7 +2196,7 @@ PY
 }
 
 # _vm_proof_gate <step> — the gate in front of a host roll that needs VM proof
-# first (scripts/upstreams/pin-holds.json, HIMMEL-4597). Resolves the route with
+# first (scripts/upstreams/pin-holds.json). Resolves the route with
 # scripts/lib/vm-mode.sh and returns 0 only when the roll may proceed:
 #   local/remote  the VM-proof route is printed and the roll goes ahead.
 #   none          HELD (rc 1). Never auto-rolls: only `--only <step>` with
@@ -2254,7 +2254,7 @@ sync_cli_proxy() {
     fi
     # PowerShell's pin literal is the spot scripts/upstreams.json's version_pin
     # template names ("$Version = '{version}'"). On Linux without pwsh, read the
-    # shell twin's hand-maintained VERSION instead (parity tested; HIMMEL-3038).
+    # shell twin's hand-maintained VERSION instead (parity tested).
     if [ "$lane" = "$lane_sh" ]; then
         pin="$(grep -oE '^VERSION="[0-9][0-9A-Za-z.+-]*"' "$lane" 2>/dev/null | head -1 | sed -E 's/.*"([^"]*)".*/\1/')"
     else
@@ -2336,7 +2336,7 @@ sync_cli_proxy() {
     fi
     # Prefer the existing Windows path whenever pwsh is present. Without pwsh,
     # delegate the whole stop -> install -> restart -> verify sequence to the
-    # lane's own --roll (HIMMEL-3051): chaining separate --stop/--install/
+    # lane's own --roll: chaining separate --stop/--install/
     # --restart calls here left a silent-success trap where a refused
     # --install (unit still running) meant --restart relaunched the OLD
     # binary while printing a clean "back up" — --roll's own verify step
@@ -2392,7 +2392,7 @@ sync_cli_proxy() {
     return 1
 }
 
-# ─── installed marketplaces catch-up (HIMMEL-2134) ───────────────────────────
+# ─── installed marketplaces catch-up ───────────────────────────
 # Chain item 2 re-syncs exactly ONE marketplace (himmel), where a failure must
 # abort the update. This is the rest of them — the `mkt-manual` rows that
 # check-plugin-drift.sh reports BEHIND and that /drift-fix step 2 deliberately
@@ -2417,9 +2417,9 @@ sync_marketplaces() {
     return 0
 }
 
-# ─── enabled-but-not-installed @himmel plugin install (HIMMEL-5294) ──────────
+# ─── enabled-but-not-installed @himmel plugin install ──────────
 # `marketplace update` only re-syncs plugins that are ALREADY installed, and
-# update_installed_plugins skips enabled-but-not-installed specs (HIMMEL-4380),
+# update_installed_plugins skips enabled-but-not-installed specs,
 # so a plugin the checkout newly vendors and the settings enable (PR 2382:
 # i-have-adhd) was never installed — himmelctl status read the plugin set as
 # degraded. Install exactly the specs that are (a) declared by this checkout's
@@ -2475,7 +2475,7 @@ EOF
     return 0
 }
 
-# ─── installed plugin version catch-up (HIMMEL-3551) ─────────────────────────
+# ─── installed plugin version catch-up ─────────────────────────
 # sync_marketplaces above only re-syncs a MARKETPLACE REGISTRY (`claude plugin
 # marketplace update <name>`) — it never touches an individual plugin's
 # installed content, so a plugin sourced from its own remote (ponytail,
@@ -2485,10 +2485,10 @@ EOF
 # `source` is a "./plugins/x" string) is excluded — its content is this
 # checkout, already re-read by `claude plugin marketplace update himmel`
 # (chain item 2), so a separate `plugin update` there is redundant — unless
-# its plugin.json version moved past the installed one (HIMMEL-4295). A
+# its plugin.json version moved past the installed one. A
 # url/git-subdir-sourced @himmel plugin (marketplace `source` is an object,
 # e.g. obsidian-second-brain) is NOT the checkout and is updated like any
-# other remote plugin (HIMMEL-4127).
+# other remote plugin.
 # Advisory + failure-isolated, same as sync_marketplaces: one plugin failing
 # to update must never abort the others or the update. MUST run before
 # reconcile_plugins, so a plugin update can never leave a floor-`false` plugin
@@ -2524,7 +2524,7 @@ update_installed_plugins() {
     # its cached OLD version: Claude Code keeps serving
     # plugins/cache/himmel/<name>/<old-version> until `plugin update` runs.
     # So a checkout plugin whose user-scope installed version differs from its
-    # plugin.json version is updated too (HIMMEL-4295).
+    # plugin.json version is updated too.
     local installed="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
     local bumped="" name src want have
     if [ -f "$manifest" ] && [ -f "$installed" ]; then
@@ -2542,7 +2542,7 @@ $(jq -r --slurpfile s "$settings" '.plugins[]? | select(.source | type == "strin
 EOF
     fi
     specs="$(printf '%s%s\n' "$specs" "$bumped" | sed '/^$/d')"
-    # HIMMEL-4380: enabledPlugins also lists plugins that are NOT installed
+    # enabledPlugins also lists plugins that are NOT installed
     # (stale entries), and `claude plugin update` on those prints a red
     # "not installed" failure each. Keep only specs present in
     # installed_plugins.json; the count of the rest is one summary line. An
@@ -2596,7 +2596,7 @@ EOF
 # Compares only as many dot-components as the pin gives (20 = major, 20.11 =
 # major.minor, 20.11.0 = major.minor.patch); a leading "v" is ignored on both.
 # A pin or version that is not plain digits-and-dots (lts/*, a -nightly build)
-# is "unknown" — reported, never an error (HIMMEL-3088).
+# is "unknown" — reported, never an error.
 _node_vs_pin() {
     local have="${1#v}" pin="${2#v}"
     case "$pin"  in ''|*[!0-9.]*|.*|*.|*..*|*.*.*.*) echo unknown; return 0 ;; esac
@@ -2614,7 +2614,7 @@ _node_vs_pin() {
     echo match
 }
 
-# ─── node/npm/bun toolchain (HIMMEL-3068) ────────────────────────────────────
+# ─── node/npm/bun toolchain ────────────────────────────────────
 # Installers pin Node from .nvmrc ONCE, at install time (ubuntu.sh/win11.ps1/
 # macos.sh), and this script consumes node/npm/bun throughout (jira_cli,
 # qmd_fork, the pre-push npm-audit gate...) but until now never checked
@@ -2755,7 +2755,7 @@ report_toolchain() {
     return 0
 }
 
-# ─── release-channel seam (HIMMEL-2705) ──────────────────────────────────────
+# ─── release-channel seam ──────────────────────────────────────
 # `channel: stable|pre` lets a station follow tagged releases (`vX.Y.Z`,
 # optionally `vX.Y.Z-pre.N`) instead of the current branch's tip. Unset (the
 # default) is untouched — update_pull() above only calls into this when
@@ -2782,7 +2782,7 @@ _channel_profile_path() {
 # profile FILE is treated as "no channel set" (a station that never installed
 # via himmelctl must see zero behavior change) — but once a profile exists,
 # we cannot tell whether it carries a channel without reading it, so a
-# missing jq or a malformed profile fails loud too (CR round 3, codex-1): a
+# missing jq or a malformed profile fails loud too: a
 # stable/pre station silently missing jq must not silently start pulling
 # branch-tip commits again.
 _resolve_update_channel() {
@@ -2809,7 +2809,7 @@ _resolve_update_channel() {
         # A separate check from the syntax check above: valid JSON with a
         # non-object root (e.g. a bare `[]` or `"x"`) passes `jq -e .` but
         # would fail INSIDE the .channel lookup below, where `|| echo ""`
-        # (CR round 3, codex-2) would silently swallow that failure as "no
+        #  would silently swallow that failure as "no
         # channel set" instead of erroring loud.
         if ! jq -e 'type == "object"' "$profile" >/dev/null 2>&1; then
             echo "update: profile $profile is not a valid JSON object — cannot read channel" >&2
@@ -2877,7 +2877,7 @@ _channel_tag_max() {
     { [ "$a_pre" -ge "$b_pre" ] && echo "$a"; } || echo "$b"
 }
 
-# Tag names origin actually advertises (CR round 5, codex-1: a plain `git tag
+# Tag names origin actually advertises (a plain `git tag
 # --list` scans EVERY local tag, including ones from another remote or a
 # stray local `git tag` — an unrelated higher-version local tag could hijack
 # or block the resolved channel target even though `git fetch --tags origin`
@@ -2886,8 +2886,8 @@ _channel_tag_max() {
 # source of truth for which tag NAMES are candidates at all.
 _channel_origin_tag_names() {
     local out sha ref
-    # Capture to a variable and check the real exit status (CR round 6,
-    # codex-1) — a `done < <(git ls-remote ...)` process substitution
+    # Capture to a variable and check the real exit status
+    # -- a `done < <(git ls-remote ...)` process substitution
     # discards ls-remote's rc entirely, so a transient failure AFTER the
     # earlier `git fetch --tags origin` succeeded produced an EMPTY name
     # list indistinguishable from "no release on this channel yet",
@@ -2909,7 +2909,7 @@ EOF
 # for the same reason as above: a local tag object can be stale or poisoned
 # even when its NAME matches what origin advertises. Prefers the peeled
 # `^{}` entry (an annotated tag's target commit) over the direct entry (the
-# tag object itself). Queries BOTH refspecs explicitly (CR round 6, codex-2)
+# tag object itself). Queries BOTH refspecs explicitly
 # — `git ls-remote --tags origin "$want"` alone never returns the peeled
 # entry, only the glob form ('v*') does, so an annotated tag resolved to its
 # tag-OBJECT id rather than its commit id; that id then never string-equals
@@ -2943,7 +2943,7 @@ EOF
 # pre: both forms are candidates (a stable release still outranks a -pre.N
 # of the same version, via _channel_tag_max). Echoes the winning tag; rc 1 +
 # no output means no candidate tag exists at all on this channel; rc 2 means
-# the origin query itself failed (CR round 6, codex-1) — distinct from "no
+# the origin query itself failed — distinct from "no
 # candidate", since the caller must fail loud rather than report "no
 # release yet" for a query it never actually completed.
 _channel_resolve_tag() {
@@ -3010,8 +3010,8 @@ _channel_follow() {
     fi
 
     describe=$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo "?")
-    # Origin-verified SHA, not a local `refs/tags/$tag` lookup (CR round 5,
-    # codex-1) — same reasoning as _channel_origin_tag_commit above.
+    # Origin-verified SHA, not a local `refs/tags/$tag` lookup
+    # (same reasoning as _channel_origin_tag_commit above).
     tag_commit=$(_channel_origin_tag_commit "$tag" || echo "")
     head_commit=$(git rev-parse HEAD 2>/dev/null || echo "")
     if [ -z "$tag_commit" ] || [ -z "$head_commit" ]; then
@@ -3053,7 +3053,7 @@ _channel_follow() {
             return 1
         fi
         before="$describe"
-        # HIMMEL-2705: git switch --detach, NEVER git checkout <tag> — this
+        # git switch --detach, NEVER git checkout <tag> — this
         # repo hard-refuses `git checkout -- <path>` shapes; detach is also
         # the semantically correct verb for "move onto a tag, no branch".
         # Detach onto the origin-verified COMMIT, not the tag NAME (CR round
@@ -3082,7 +3082,7 @@ _channel_follow() {
 # directly with HERMES_HOME fixtures — no network, no repo mutation).
 [ "${HIMMEL_UPDATE_LIB:-}" = "1" ] && return 0
 
-# ─── --help and unknown-flag refusal (HIMMEL-3400) ───────────────────────────
+# ─── --help and unknown-flag refusal ───────────────────────────
 # Before this gate an unrecognised argument (a typo'd `--chek`, or `--help`)
 # fell straight through to the REAL update — a pull, a service restart and a
 # vault upgrade. Usage text and the refusal both run before load_dotenv and any
@@ -3120,7 +3120,7 @@ USAGE
 case "${1:-}" in
     ""|--check|--dry-run|--versions|--only|--plugins-check) ;;
     --graphify-only)
-        # HIMMEL-4380: alias for `--only graphify`, the standing way to clear a
+        # alias for `--only graphify`, the standing way to clear a
         # pin-sync skip (every in-session run is blocked by the live
         # graphify-mcp holder) from a slot with no Claude session live.
         shift
@@ -3135,7 +3135,7 @@ case "${1:-}" in
 esac
 
 # Let the repo-root .env supply update opt-ins (HIMMEL_UPDATE_AUTOSTASH), same
-# as the Jira CLI reads .env (HIMMEL-1205) — a live shell env var still wins (load_dotenv only
+# as the Jira CLI reads .env — a live shell env var still wins (load_dotenv only
 # fills UNSET keys). Without this, the var had to be exported in the launching
 # shell; putting it in .env silently did nothing.
 load_dotenv HIMMEL_UPDATE_AUTOSTASH
@@ -3148,8 +3148,8 @@ if [ "${1:-}" = "--plugins-check" ]; then
     exit 0
 fi
 
-# ─── non-git install: a packaged / tarball install has no upstream (HIMMEL-3247) ─
-# P1 of HIMMEL-3059. Everything below this block is built on `git`: pull,
+# ─── non-git install: a packaged / tarball install has no upstream ─
+# Everything below this block is built on `git`: pull,
 # fetch, rev-list. An install with no .git of its own (a release tarball, or a
 # native package under /usr/share) has nothing to pull — and because git walks
 # UP, `git pull` there would act on whatever repo happens to ENCLOSE the install
@@ -3162,7 +3162,7 @@ fi
 #                         network, no git, no silent no-op
 #   --plugins-check, and the other --only items, need no git and run unchanged.
 # ponytail: the update itself is not attempted here — a tarball install in the
-# versioned layout (<base>/<version>/ + <base>/current, HIMMEL-3059 S4) updates
+# versioned layout (<base>/<version>/ + <base>/current) updates
 # through `himmelctl update` (download, verify, extract, swap current); any
 # other non-git install routes to its package manager or a manual re-extract.
 if [ ! -e "$ROOT/.git" ] && { [ "${1:-}" != "--plugins-check" ] && [ "${1:-}" != "--versions" ] && { [ "${1:-}" != "--only" ] || [ "${2:-}" = "pull" ]; }; }; then
@@ -3211,7 +3211,7 @@ if [ ! -e "$ROOT/.git" ] && { [ "${1:-}" != "--plugins-check" ] && [ "${1:-}" !=
     exit 0
 fi
 
-# ─── --only <item> mode (HIMMEL-2134) ────────────────────────────────────────
+# ─── --only <item> mode ────────────────────────────────────────
 # Run ONE step and stop. The point is re-running a single step after it was the
 # one thing that did not land — an operator who has just restarted the qmd
 # daemon by hand, or a cli-proxy roll that correctly refused to bounce a live
@@ -3279,7 +3279,7 @@ if [ "${1:-}" = "--only" ]; then
     exit "$only_rc"
 fi
 
-# ─── --versions mode (HIMMEL-3400) ───────────────────────────────────────────
+# ─── --versions mode ───────────────────────────────────────────
 # One row per updatable component — installed vs available, behind marked — for
 # `himmelctl --version --all`. It runs the SAME read-only probes --check runs
 # (check_pull, report_plugin_gap, update_jira_cli/qmd_fork/luna_template check,
@@ -3318,7 +3318,7 @@ fi
 # ─── --check / --dry-run mode ────────────────────────────────────────────────
 # Reports behind/ahead counts + plugin gap; pulls nothing. Exit 0 always —
 # except a malformed HIMMEL_UPDATE_CHANNEL or profile value, which still
-# exits 2 below (CR round 5, codex-2): that's a configuration failure to
+# exits 2 below: that's a configuration failure to
 # report, not a repo-state fact --check can silently swallow into "0 behind".
 if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     check_pull_rc=0
@@ -3347,7 +3347,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     update_codex check || true
     sync_agent_clis check || true
     update_luna_template check || true
-    # HIMMEL-2134 Axis-B rows: both are read-only in check mode (a version-stamp
+    # both are read-only in check mode (a version-stamp
     # comparison and a registry listing) — neither rolls the proxy nor calls the
     # claude CLI, so --check stays the zero-mutation dry-run it promises to be.
     sync_cli_proxy check || true
@@ -3366,11 +3366,11 @@ fi
 
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
 
-# ─── dirty-tree pre-check (HIMMEL-893) ───────────────────────────────────────
+# ─── dirty-tree pre-check ───────────────────────────────────────
 # A `git pull` into a dirty TRACKED tree is exactly the failure this guards
 # against — refuse up front rather than let `git pull --ff-only` fail
 # confusingly (or, worse, silently mix local edits into the pulled tree).
-# HIMMEL-3078: untracked-only dirt doesn't count here — `--ff-only` never
+# untracked-only dirt doesn't count here — `--ff-only` never
 # touches untracked files and refuses on its own if an incoming path would
 # overwrite one, so gating on them protects nothing and just leaves the
 # checkout stuck on stale strays (a bun.lock, a plugin config). Deliberately
@@ -3378,9 +3378,9 @@ branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
 # unchanged and still counts untracked files for the edit-on-main guard.
 if is_dirty_tracked "$ROOT"; then
     if [ "${HIMMEL_UPDATE_AUTOSTASH:-}" = "1" ]; then
-        # Opt-in (HIMMEL-1197): autostash local changes around the pull instead of
+        # Opt-in: autostash local changes around the pull instead of
         # refusing — update_pull adds --autostash and reports failed (stash kept)
-        # if the reapply conflicts. Set per-invocation to avoid weakening HIMMEL-893.
+        # if the reapply conflicts. Set per-invocation to avoid weakening the default refusal.
         echo "" >&2
         echo "update: dirty tree — HIMMEL_UPDATE_AUTOSTASH=1, autostashing local changes around the pull." >&2
     else
@@ -3392,7 +3392,7 @@ if is_dirty_tracked "$ROOT"; then
     fi
 fi
 
-# ─── the full dependency chain (HIMMEL-893) ──────────────────────────────────
+# ─── the full dependency chain ──────────────────────────────────
 # Six managed items, in order, tracked via chain_rc rather than exiting
 # immediately on failure. The CHAIN still aborts on the first genuine failure
 # (never a clean skip) — each later item is guarded by `[ "$chain_rc" -eq 0 ]`
@@ -3462,7 +3462,7 @@ if [ "$chain_rc" -eq 0 ]; then
 fi
 
 
-# ─── dependency-readiness advisory (HIMMEL-1393) ─────────────────────────────
+# ─── dependency-readiness advisory ─────────────────────────────
 # Best-effort mirror of himmel-doctor's C17 (scripts/himmel-doctor.sh):
 # surfaces the SAME two drift directions (an enabled skill missing its
 # declared API key; an enabled+keyed skill whose docs still call its toolkit
@@ -3493,8 +3493,8 @@ report_dependency_readiness() {
     return 0
 }
 
-# ─── working-principles backfill (HIMMEL-2038) ──────────────────────────────
-# An adopter who installed himmel before HIMMEL-2038 demoted the "working
+# ─── working-principles backfill ──────────────────────────────
+# An adopter who installed himmel before himmel demoted the "working
 # principles" block out of the always-on project CLAUDE.md loses it silently
 # on the next pull unless they manually re-run adopt.sh. Best-effort mirror of
 # adopt.sh's own wire_user_claude_md calls (both user-scope targets) so a
@@ -3516,9 +3516,9 @@ backfill_user_claude_md() {
     return 0
 }
 
-# ─── bus state directories (HIMMEL-5225) ────────────────────────────────────
+# ─── bus state directories ────────────────────────────────────
 # himmel-bus's store.busRoot() creates $XDG_STATE_HOME/himmel and himmel/bus on
-# first use (HIMMEL-5221); this is the belt-and-braces so a station has the
+# first use; this is the belt-and-braces so a station has the
 # private directories before any bus use. Idempotent: only a directory this
 # call creates is made 0700 — an existing one is left exactly as it is.
 # Best-effort, never fails the update.
@@ -3535,10 +3535,10 @@ ensure_bus_state_dirs() {
 }
 
 # ─── existing advisory steps (best-effort; ALWAYS run, chain outcome or not)─
-# None of these are managed CHAIN items (headroom is HIMMEL-890 pending; graphify
-# is now covered by the best-effort sync_graphify step above, HIMMEL-1048) — they
+# None of these are managed CHAIN items (headroom is not yet managed; graphify
+# is now covered by the best-effort sync_graphify step above) — they
 # stay best-effort and never abort the script. They run here UNCONDITIONALLY, even
-# after a mid-chain failure (chain_rc=1) — restoring their pre-HIMMEL-893 behavior
+# after a mid-chain failure (chain_rc=1) — keeping their behavior
 # of always running regardless of the pull/marketplace/jira/qmd/luna outcome,
 # including the security-relevant update_codex hooks.json re-sanitize.
 update_codex apply
@@ -3559,7 +3559,7 @@ offer_retired_plugin_removal apply
 report_cadence_stale
 report_qmd_bun_missing
 report_toolchain apply
-# HIMMEL-4088: `|| true` — a failed tool upgrade is advisory, never aborts the update.
+# `|| true` — a failed tool upgrade is advisory, never aborts the update.
 sync_probe_tools apply || true
 report_guardrail_block
 report_dependency_readiness
@@ -3584,10 +3584,10 @@ cat <<'EOF'
     - hermes (if installed) was pulled + reinstalled; restart its gateway to
       pick up changes (docs/hermes-runbook.md).
 EOF
-# CR fix: only claim Luna files were refreshed when the step actually RAN
+# Only claim Luna files were refreshed when the step actually RAN
 # (updated/up-to-date) — by the time we reach here chain_rc is 0, so
 # STATUS_luna_template is one of updated/up-to-date/skipped (a failure would
-# have exit 1'd above); needs-reconcile (HIMMEL-3037: withheld local edits, not
+# have exit 1'd above); needs-reconcile (withheld local edits, not
 # a failure); skipped (vault/upgrade.sh missing, or LUNA_VAULT_PATH
 # unset) prints nothing, matching the other steps' silence-on-skip.
 case "$STATUS_luna_template" in

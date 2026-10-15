@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-wire-luna-vault.sh -- hermetic tests for wire-luna-vault.sh (HIMMEL-458).
+# test-wire-luna-vault.sh -- hermetic tests for wire-luna-vault.sh.
 # Verifies the settings.json .env.LUNA_VAULT_PATH merge: create, preserve
 # siblings (F1-SC2), forward-slash, refuse invalid JSON (F1-SC3), idempotent,
 # last-adopt-wins overwrite to a different target (F1-SC6).
@@ -14,7 +14,7 @@ fails=0
 check(){ [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 
 td="$(mktemp -d)"
-# HIMMEL-3332: the wire writes provenance rows; keep them out of the real ~/.himmel.
+# the wire writes provenance rows; keep them out of the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$td/prov"
 
 # 1. missing file -> creates {"env":{"LUNA_VAULT_PATH":"C:/Documents/luna"}}.
@@ -65,7 +65,7 @@ printf '   \n' > "$s7"
 bash "$wire" "$s7" "C:/Documents/luna" >/dev/null
 check "whitespace file -> created" "$(jq -r '.env.LUNA_VAULT_PATH' "$s7")" "C:/Documents/luna"
 
-# 8. SEAM (HIMMEL-1269): what wire-luna-vault writes into settings.json .env is
+# 8. SEAM: what wire-luna-vault writes into settings.json .env is
 #    exactly what the end-session-wiki resolver consumes at step 3. Claude Code
 #    applies a settings.json "env" block to the process env at session start;
 #    this test makes that hop explicitly (read the key back, export it) and then
@@ -84,7 +84,7 @@ export LUNA_VAULT_PATH="$wired"
 got8="$(resolve_vault_root "$cfg8" "$reg8")"
 check "seam: settings.json env -> resolver step 3" "$got8" "C:/Users/me/Documents/luna"
 
-# 9. SEAM, MSYS form (HIMMEL-1269 / codex-adv): Git Bash expands the documented
+# 9. SEAM, MSYS form: Git Bash expands the documented
 #    default ~/Documents/luna to /c/Users/..., which the PowerShell hook would
 #    resolve under \c\Users\... . /end-session-wiki-setup step 2c therefore runs
 #    `cygpath -m` before calling the helper; this asserts that prescribed

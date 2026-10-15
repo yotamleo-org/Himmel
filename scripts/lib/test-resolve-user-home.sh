@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/lib/test-resolve-user-home.sh — unit tests for resolve-user-home.sh.
 #
-# Covers resolve_user_home + default_vault (HIMMEL-645/642/458), extracted
-# verbatim from scripts/luna/pipeline-cadence.sh on HIMMEL-2176 Stage 1. Pins
+# Covers resolve_user_home + default_vault, extracted
+# verbatim from scripts/luna/pipeline-cadence.sh. Pins
 # the fallback chain: LUNA_VAULT_PATH override wins over everything; the
 # USERPROFILE+cygpath branch (Windows Git-Bash); plain $HOME fallback when
 # USERPROFILE is unset (POSIX hosts); /tmp as the last-resort floor when both

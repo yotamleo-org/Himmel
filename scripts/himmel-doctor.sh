@@ -8,7 +8,7 @@
 #
 # Exit 0 unless a FAIL finding is present (then 1) — so `--fix` re-checks are
 # scriptable. WARN/INFO never fail the exit. See the /himmel-doctor command md.
-# --json (HIMMEL-4254): stdout carries ONLY one {sev,id,msg,remedy} object per
+# --json: stdout carries ONLY one {sev,id,msg,remedy} object per
 # finding (one per emit() call, OK rows included); every other line goes to
 # stderr. Same checks, same exit code. Needs jq.
 # --only: run just the named checks (C29, or c29,C40), in-process
@@ -18,7 +18,7 @@
 # row; HIMMEL_DOCTOR_PARALLEL=0 runs them in-process, unbounded, as before.
 set -uo pipefail
 
-# HIMMEL-4382: the doctor judges the STATION (primary) checkout, resolved via
+# the doctor judges the STATION (primary) checkout, resolved via
 # git-common-dir like doctor-cadence, so a run from a leg worktree reports what
 # the primary reports. `--root <path>` / HIMMEL_DOCTOR_ROOT judges another
 # checkout (a leg testing its own branch); a run whose root is not the station
@@ -133,7 +133,7 @@ emit() {
 
 is_windows() { case "$(uname -s 2>/dev/null || echo x)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; *) return 1 ;; esac; }
 
-# --- C1-node: RETIRED (HIMMEL-2033) --------------------------------------------
+# --- C1-node: RETIRED --------------------------------------------
 # The response-compression plugin whose SessionStart/UserPromptSubmit node hooks
 # this check classified and healed is gone, so there is nothing left to check.
 # Check ids are NOT renumbered: C1-guardrail below and C2..C21 keep their ids.
@@ -141,7 +141,7 @@ is_windows() { case "$(uname -s 2>/dev/null || echo x)" in MINGW*|MSYS*|CYGWIN*)
 # --- C1-guardrail: user-level guardrail block's baked node path -----------------
 # scripts/setup-hooks.sh|.ps1 --guardrail-mode global bakes the setup-time
 # ABSOLUTE node path into the 3 user-level guardrail hooks. If node moves
-# (e.g. a switch from a winget MSI to nvm-windows, HIMMEL-2013) every tool
+# (e.g. a switch from a winget MSI to nvm-windows) every tool
 # call errors and the guardrails fail OPEN.
 check_c1_guardrail() {
     [ -f "$SETTINGS" ] || return 0
@@ -208,16 +208,16 @@ check_c3() {
     done
     [ -n "$v" ] || { emit OK C3-luna "no local luna vault found (skipped)"; return; }
     if [ ! -f "$v/.single-writer" ]; then emit OK C3-luna "luna vault present, not single-writer (skipped)"; return; fi
-    # HIMMEL-4721: the vault holds the handover root, which legs write to
+    # the vault holds the handover root, which legs write to
     # continuously between github-sync ticks (the plugin owns the commits), so
     # handovers/ churn is ignored. Any other dirty path is a finding only once it
     # is older than the sync cadence (HIMMEL_DOCTOR_C3_DIRTY_MIN, default 30 min).
     local dirty_min="${HIMMEL_DOCTOR_C3_DIRTY_MIN:-30}" rec p age last stale="" fresh=0 skip_orig=0 commit_old=""
     case "$dirty_min" in ''|*[!0-9]*) dirty_min=30 ;; esac
-    # HIMMEL-4724: porcelain v2 -z — paths arrive raw (never C-quoted), so a
+    # porcelain v2 -z — paths arrive raw (never C-quoted), so a
     # non-ASCII or quote-bearing name resolves. A rename ("2") record is followed
     # by its origPath record, which is skipped; its destination is aged by ctime
-    # (a move keeps the old mtime but stamps ctime). HIMMEL-4736: so is an
+    # (a move keeps the old mtime but stamps ctime). So is an
     # untracked path, an unstaged mv's destination. Ages are stat-based against
     # now (HIMMEL_DOCTOR_C3_NOW, an epoch, is a test-only clock seam: a ctime
     # cannot be backdated); stat -c is GNU, stat -f is BSD/macOS.
@@ -255,7 +255,16 @@ check_c3() {
         fi
     done < <(git -C "$v" status --porcelain=v2 -z -uall 2>/dev/null)
     if [ -n "$stale" ]; then
-        emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault's sync plugin owns its commits, so a stall here means the sync is stuck" "check the vault sync (github-sync / scripts/luna/vault-stall-cadence.sh status); do not hand-commit"
+        # Only a vault with a remote or a sync plugin has something that commits
+        # for it; a local-only vault never auto-commits, so the fix is to commit.
+        local has_sync=0 d
+        [ -n "$(git -C "$v" remote 2>/dev/null)" ] && has_sync=1
+        for d in "$v"/.obsidian/plugins/*sync*; do [ -d "$d" ] && has_sync=1; done
+        if [ "$has_sync" = 1 ]; then
+            emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault's sync plugin owns its commits, so a stall here means the sync is stuck" "check the vault sync (github-sync / scripts/luna/vault-stall-cadence.sh status); do not hand-commit"
+        else
+            emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault has no git remote and no sync plugin, so nothing commits it" "commit it (git add -A && git commit in the vault), or add a remote / sync plugin"
+        fi
     elif [ "$fresh" = 1 ]; then
         emit OK C3-luna "luna vault has only fresh (under ${dirty_min} min) non-handover changes — sync tick pending"
     else
@@ -265,7 +274,7 @@ check_c3() {
 
 # --- C4: bitbucket remote where gh-based flows fail -----------------------------
 check_c4() {
-    # HIMMEL-3337: the ORIGIN's host decides, via the one matcher the rest of the
+    # the ORIGIN's host decides, via the one matcher the rest of the
     # harness routes on (forge_detect) — not a substring of the URL. FORGE is unset
     # for the call: it overrides forge_detect but says nothing about this origin.
     # shellcheck source=scripts/lib/forge.sh
@@ -299,7 +308,7 @@ check_c5() {
 # server wired as a bare interpreter name (uvx/bun/deno/python/pwsh) silently fails
 # to start and all its tools vanish. Scans user settings + the himmel plugins.
 #
-# C6-hooks (HIMMEL-611) extends the scan to HOOK commands. A hook wired to lead
+# C6-hooks extends the scan to HOOK commands. A hook wired to lead
 # with a bare interpreter that is NOT installed on THIS host (the canonical case:
 # a `pwsh -NoProfile -File …` SessionEnd twin copied literally onto a host without
 # PowerShell) prints `pwsh: command not found` every session. Unlike the MCP scan
@@ -381,10 +390,10 @@ check_c7() {
         branch_has_merged_pr "$wt_branch" "$wt_root"
         local brc=$?
         if [ "$brc" -eq 0 ]; then
-            # HIMMEL-1692: /clean already refuses to prune a worktree with
+            # /clean already refuses to prune a worktree with
             # TRACKED modifications, so "prune with /clean" is misleading
             # advice for one that is dirty — it will just skip it.
-            # THREE states, not two (codex CR round 4). Tracked modifications
+            # THREE states, not two. Tracked modifications
             # are a definite refusal. Untracked files are the AMBIGUOUS case —
             # clean-garden force-prunes its is_ignorable_stray() allowlist and
             # refuses everything else as forgotten work — but "ambiguous" is not
@@ -395,7 +404,7 @@ check_c7() {
             # Deliberately does NOT re-enumerate the allowlist here: duplicating
             # it in the doctor is what would drift out of sync with the sweep.
             #
-            # Do NOT advise "just commit it" (codex adversarial round 2). On a
+            # Do NOT advise "just commit it". On a
             # NON-GITHUB forge, clean-garden's is_branch_mergeable_for_prune()
             # falls back to a per-branch merged-PR COUNT with no tip match, so a
             # fresh commit on this already-merged branch does not protect it:
@@ -458,7 +467,7 @@ EOF
 
 # --- C8: stale cadence runners (armed before a format change) -----------------
 # The cadence runners (.bat/.sh) are GENERATED at arm time and NOT regenerated
-# on a code change (HIMMEL-588/HIMMEL-969), so a cadence armed before a
+# on a code change, so a cadence armed before a
 # runner-format change keeps firing the old format with no nudge. Read-only:
 # compare the version stamped into the runners against the current
 # CADENCE_RUNNER_FORMAT_VERSION and point stale ones at `arm --force`. No --fix
@@ -466,7 +475,7 @@ EOF
 check_c8() {
     # Defaults must match each emitter's runner home EXACTLY — the emitters
     # key off resolve_user_home (USERPROFILE via cygpath before $HOME on
-    # Windows Git-Bash, HIMMEL-645), NOT $CLAUDE_DIR, so probe via the lib's
+    # Windows Git-Bash), NOT $CLAUDE_DIR, so probe via the lib's
     # cadence_user_home rather than $HOME or $CLAUDE_DIR_R.
     # PIPELINE_BAT_DIR/SWEEP_BAT_DIR/GRAPHMAP_BAT_DIR override those homes.
     local label bat_dir rearm ver saw_any=0 uh
@@ -502,7 +511,7 @@ EOF
 # is absent/disabled the armed resume silently never fires. Detect + remediate
 # only — NEVER sudo (enable lives in the installers). WARN never FAILs: auto-arm
 # is a safety net, its absence must not flip the scripted exit code (mirrors
-# C7/C8). HIMMEL-594.
+# C7/C8).
 check_c9() {
     # shellcheck source=scripts/lib/scheduler-backend.sh
     # shellcheck disable=SC1091
@@ -557,7 +566,7 @@ check_c11() {
     esac
 }
 
-# --- C12: codex startup health (read-only advisory, HIMMEL-747) -----------------
+# --- C12: codex startup health (read-only advisory) -----------------
 # Surfaces a DEGRADED codex CLI startup (skills silently truncated / lifecycle
 # hooks silently ignored / oversized _where-are-we injection) so a codex
 # delegation lane that LOOKS healthy but starts degraded becomes visible. Runs
@@ -647,7 +656,7 @@ check_c14() {
 }
 
 # --- C16: delegate to `himmelctl status --json` for install/wiring TRUTH -------
-# HIMMEL-755 sub-ticket F (doctor<->status dedup). Operator-locked design:
+# Doctor<->status dedup, operator-locked design:
 # `himmelctl status --json` OWNS install/wiring truth (the install manifest's
 # desired-vs-actual diff). C1-C15 stay harness-health checks status does not
 # cover (resolution robustness, shadowing, dirty vaults, drift, PATH-
@@ -660,8 +669,8 @@ check_c14() {
 # unparsable/non-zero result never crashes the doctor or raises a false FAIL
 # (mirrors the read-only advisory stance of C7/C9-C12).
 #
-# Severity is a DISCRIMINATION, not a constant (HIMMEL-3323: a gate you could
-# not run must not be recorded as a gate that ran). Same line HIMMEL-3307 draws
+# Severity is a DISCRIMINATION, not a constant (a gate you could
+# not run must not be recorded as a gate that ran). Same line drawn
 # in himmelctl's status-report.js -- n/a is a clean absence of something never
 # opted into; a probe that could not evaluate stays loud:
 #   INFO  no install profile (rc=2), or no node AND no profile: nothing was ever
@@ -729,7 +738,7 @@ check_c16() {
 resolve_issue_repo() {
     [ -n "$REPO_FLAG" ] && { printf '%s\n' "$REPO_FLAG"; return 0; }
     [ -n "${HIMMEL_DOCTOR_ISSUE_REPO:-}" ] && { printf '%s\n' "$HIMMEL_DOCTOR_ISSUE_REPO"; return 0; }
-    # HIMMEL-3368: the ORIGIN's host decides, via the one matcher the rest of the
+    # the ORIGIN's host decides, via the one matcher the rest of the
     # harness routes on (forge_detect, as check_c4) — not a substring of the URL.
     # FORGE is unset for the call: it overrides forge_detect but says nothing about
     # this origin. Only then is the owner/repo cut from the URL's PATH.
@@ -782,7 +791,7 @@ file_issue() {
     fi
 }
 
-# --- C15: enabled-plugin drift beyond the lean floor (HIMMEL-1032) ----------------
+# --- C15: enabled-plugin drift beyond the lean floor ----------------
 # Read-only WARN: surfaces plugins enabled beyond the lean template floor (the
 # ad-hoc /plugin drift that costs context at session start). Never mutates — it
 # tells the operator what /himmel-update's reconcile WOULD disable so a plugin
@@ -818,7 +827,7 @@ check_c15() {
         object|null) ;;
         *) emit INFO C15-plugins "settings.json has a non-object enabledPlugins — drift not checked"; return ;;
     esac
-    # HIMMEL-2733: onDemandPlugins is the ON-DEMAND tier (installed, shipped
+    # onDemandPlugins is the ON-DEMAND tier (installed, shipped
     # disabled) — a key from it that the operator has intentionally enabled
     # must not be counted as drift below. Same non-object shape-check as
     # enabledPlugins above: a malformed onDemandPlugins skips the whole check
@@ -913,7 +922,7 @@ check_c17() {
 }
 
 # --- C19: observability stack drift + endpoint readiness (read-only advisory) ---
-# HIMMEL-1676: the alerting assets existed in-repo while the installed stack had
+# the alerting assets existed in-repo while the installed stack had
 # no rule groups. Compare the installed copies and query the two local endpoints;
 # every branch is WARN/INFO-only and no --fix path mutates the stack.
 check_c19() {
@@ -922,7 +931,7 @@ check_c19() {
         return
     fi
 
-    # HIMMEL-4287: gate on whether the observability item is DESIRED and
+    # gate on whether the observability item is DESIRED and
     # applicable on this host (himmelctl status: observability-stack /
     # observability-grafana, desired and not n/a), never on the OS. Unknown
     # (no node/profile/jq) stays quiet rather than WARNing on a guess.
@@ -940,7 +949,7 @@ check_c19() {
             return
         fi
         want="$(printf '%s' "$sj" | jq -er '.items | arrays | [.[] | select((.id == "observability-stack" or .id == "observability-grafana") and .desired == true and .severity != "n/a")] | if length > 0 then "1" else "0" end' 2>/dev/null)" || want=""
-        # HIMMEL-4289: the opt-in Linux install (user units under XDG_DATA_HOME) has its own layout.
+        # the opt-in Linux install (user units under XDG_DATA_HOME) has its own layout.
         gmode="$(printf '%s' "$sj" | jq -er '.items | arrays | [.[] | select(.id == "observability-grafana" and .desired == true and .severity != "n/a")] | if length > 0 then "1" else "0" end' 2>/dev/null)" || gmode=0
         if [ -z "$want" ]; then
             emit INFO C19-observability "himmelctl status output unreadable -- observability not checked (cannot tell whether it is desired here)"
@@ -962,7 +971,7 @@ check_c19() {
     fi
     local drift=""
     # compared=1 only on the branch that actually ran cmp/diff (glm-2 CR
-    # finding, HIMMEL-1676): cmp/diff-unavailable already emits its own INFO
+    # finding): cmp/diff-unavailable already emits its own INFO
     # here, so it must not ALSO fall through to the "match the repo copies" OK
     # below — that would claim a verification that never happened.
     local compared=0
@@ -1028,7 +1037,7 @@ check_c19() {
         emit WARN C19-observability "flow exporter on $exporter_url is not answering" "start himmel-observability-flow-exporter, then re-run"
     fi
 
-    # Grafana liveness (codex-adv CR finding, HIMMEL-1676): the checks above
+    # Grafana liveness (codex-adv CR finding): the checks above
     # (Prometheus rule-group count, Telegram vars set) can all read OK while
     # the component that actually evaluates + delivers alerts is down —
     # README.md's Alert rules section is explicit that "No Alertmanager is
@@ -1046,12 +1055,12 @@ check_c19() {
     fi
 }
 
-# --- C20: running node major vs .nvmrc (HIMMEL-1986 / HIMMEL-2010) --------------
-# FAILS on drift. It shipped advisory (HIMMEL-1986) because the drift was TRUE
+# --- C20: running node major vs .nvmrc --------------
+# FAILS on drift. It shipped advisory because the drift was TRUE
 # on the box it landed on — on OVERLORD8 (2026-08-20/21) .nvmrc pinned 24 while
 # every hook, the Jira CLI, run-hook-with-bash.js and the lanes suites ran on
 # v26.7.0, and a default-fail check would have been an outage, not a gate. That
-# machine is now aligned (HIMMEL-2010), so the ladder's second rung applies: a
+# machine is now aligned, so the ladder's second rung applies: a
 # rediscovered-every-session drift becomes structural, not a louder warning.
 # The doctor still never edits .nvmrc and never switches a runtime — WHICH major
 # to converge on stays the operator's call, the FAIL only refuses to let the two
@@ -1070,7 +1079,7 @@ check_c20() {
     local nvmrc pin node_bin cur cur_major sev=FAIL why=""
     nvmrc="${DOCTOR_NVMRC:-$REPO_ROOT/.nvmrc}"
     if [ ! -f "$nvmrc" ]; then emit OK C20-node "no .nvmrc in this checkout (skipped)"; return; fi
-    # The pin is parsed by the shared runtime policy (HIMMEL-1991), not a second
+    # The pin is parsed by the shared runtime policy, not a second
     # copy here: `24`, `v24`, `24.1.0` -> 24; `lts/iron` -> empty (nothing to
     # compare, which is a skip and never a drift).
     pin="$(RUNTIME_PREFLIGHT_NVMRC="$nvmrc" runtime_preflight_pin)"
@@ -1084,7 +1093,7 @@ check_c20() {
         return
     fi
     cur="$("$node_bin" --version 2>/dev/null | tr -d '\r')"
-    # Same anchored parser as the pin above (HIMMEL-1991): a prefix-only read
+    # Same anchored parser as the pin above: a prefix-only read
     # would report `v24-corrupt` as ALIGNED with a pin of 24 instead of saying
     # it could not read the version at all.
     cur_major="$(_runtime_preflight_major "$cur")"
@@ -1103,9 +1112,9 @@ check_c20() {
 }
 
 # --- C21: hermes himmel_agent profile default vs lanes.json record (advisory) ---
-# HIMMEL-2024: hermes-critic.sh and hermes-oneshot both defer to whichever
+# hermes-critic.sh and hermes-oneshot both defer to whichever
 # model the himmel_agent hermes profile currently defaults to (deliberately
-# NOT pinned in this repo — that is the point of HIMMEL-2017/#1811), so a
+# NOT pinned in this repo — that is deliberate), so a
 # silent hermes-side profile-default swap changes their behaviour with
 # nothing here to notice it. Advisory only (WARN, never FAIL): this never
 # edits the hermes profile or lanes.json, and never invokes the hermes CLI —
@@ -1194,7 +1203,7 @@ check_c21() {
         "if the swap is real and lasting: update profileDefaultModel on the hermes-oneshot/hermes-critics rows in scripts/lanes/lanes.json and re-profile (docs/internals/lane-calibration.md, ox-alpha section); if temporary, no action needed"
 }
 
-# --- C22: hook chain budget skips/denies (read-only advisory, HIMMEL-2060) ------
+# --- C22: hook chain budget skips/denies (read-only advisory) ------
 # run-hook-with-bash.js --chain durably logs every member the shared chain
 # budget starved to .claude/logs/hook-chain-skips.jsonl (one JSON row per
 # skip/deny). Counts per member so a member starved often enough to matter is
@@ -1208,20 +1217,20 @@ check_c22() {
     case "$window_h" in ''|*[!0-9]*) window_h=24 ;; esac
     window_h=$((10#$window_h))  # HIMMEL-4724: 08/09 are decimal, not invalid octal
     cutoff=$(( $(date +%s) - window_h * 3600 ))
-    # HIMMEL-4721: only rows inside the recent window are a finding. The log is
-    # append-only and written by the hook chain (scripts/hooks, HIMMEL-4678), so
+    # only rows inside the recent window are a finding. The log is
+    # append-only and written by the hook chain (scripts/hooks), so
     # it is not rotated here — the window makes its age harmless to this check.
     # A row with a missing/unparseable ts cannot be proven old, so it counts.
-    # Grouped by reason too (HIMMEL-2060 CR round 5, codex-2): an ENOBUFS row
+    # Grouped by reason too: an ENOBUFS row
     # is an output-buffer overflow (a chatty hook), not budget starvation —
     # folding both into one "starved" label made the remedy text below
     # misleading for a box that is only seeing chatty-hook overflows.
-    # HIMMEL-4287: the log also records the hook suites' own fixture members
+    # the log also records the hook suites' own fixture members
     # (hang/hog/flood and anything under a scripts/**/test or fixtures dir); only a real
     # hook's starvation is a finding, so those rows are dropped before counting.
     summary="$(jq -rs --argjson cut "$cutoff" 'map(select((.member // "") | test("^(hang[0-9]*|hog[0-9]*|flood[0-9]*)\\.sh$|(^|/)scripts/([^/]+/)*(tests?|fixtures?)/") | not)) | map(select((try (.ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) catch 9999999999) >= $cut)) | group_by(.action + "/" + .member + "/" + (.reason // "?")) | map({action: .[0].action, member: .[0].member, reason: (.[0].reason // "?"), n: length}) | sort_by(-.n) | .[] | "\(.n)x \(.action) \(.member) (\(.reason))"' "$log" 2>/dev/null)" || jq_rc=$?
     # A malformed/partially-written row makes the WHOLE `jq -s` slurp fail
-    # (HIMMEL-2060 CR round 1, codex-2) — distinguish that from a genuinely
+    #  — distinguish that from a genuinely
     # empty log rather than reporting both as the same clean OK.
     if [ "$jq_rc" -ne 0 ]; then
         emit INFO C22-chain-skips "hook-chain-skips.jsonl present but could not be parsed (a malformed row?) — counts not checked"
@@ -1240,7 +1249,7 @@ check_c22() {
         "reason=ETIMEDOUT is budget starvation (see HIMMEL-2060 / DEFAULT_CHAIN_BUDGET_MS in scripts/hooks/run-hook-with-bash.js); reason=ENOBUFS is an output-buffer overflow (a chatty hook), not a budget problem; a 'deny' action means a must-run security guard hit either one and the chain failed closed"
 }
 
-# --- C23: unlanded local work (read-only advisory, HIMMEL-2070) -----------------
+# --- C23: unlanded local work (read-only advisory) -----------------
 # scripts/unlanded-work.sh finds local branches ahead of origin/main that
 # never became a PR — the gap /clean's patch-id rail can't see (a squash
 # rewrites the patch-id) and never looked for in the first place (it only
@@ -1254,7 +1263,7 @@ check_c23() {
     # Test seam (mirrors DOCTOR_WORKTREE_ROOT on C7): scan a different repo dir
     # instead of this checkout, so the suite can hermetically fixture branches.
     local scan_dir="${DOCTOR_UNLANDED_DIR:-$REPO_ROOT}"
-    # Capture stderr separately (codex-3, HIMMEL-2070 CR round 1): unlanded-work.sh
+    # Capture stderr separately: unlanded-work.sh
     # always exits 0 by contract even when it could not scan at all (e.g. an
     # unresolvable --base) — it writes the diagnostic to stderr instead. A
     # discarded stderr made an operational failure and a genuinely clean repo
@@ -1265,7 +1274,7 @@ check_c23() {
     local tsv sub_rc
     tsv="$(cd "$scan_dir" 2>/dev/null && bash "$script" --tsv 2>"$stderr_tmp")"; sub_rc=$?
     local scan_stderr; scan_stderr="$(cat "$stderr_tmp" 2>/dev/null)"; rm -f "$stderr_tmp"
-    # A `cd` failure (codex-3, HIMMEL-2070 CR round 7) short-circuits the `&&`
+    # A `cd` failure short-circuits the `&&`
     # before the script ever runs, so nothing lands in stderr_tmp — the
     # non-zero $sub_rc is the ONLY signal that distinguishes "cd into
     # scan_dir failed" from "the scan genuinely found nothing", so it must be
@@ -1294,7 +1303,7 @@ check_c23() {
     emit OK C23-unlanded "no unlanded work"
 }
 
-# --- C24: expected-but-absent cadence tasks (read-only advisory, HIMMEL-1680) ---
+# --- C24: expected-but-absent cadence tasks (read-only advisory) ---
 # The cadence scripts (codex-sweep-cadence.sh, graphmap-cadence.sh, ...)
 # self-register every task they arm into observability_registry_path()'s
 # .expected_tasks[] (and unregister it on disarm). An operator-armed cadence
@@ -1305,7 +1314,7 @@ check_c23() {
 # mirroring the read-only advisory stance of C7-C9: a missing cadence is a
 # nudge to re-arm, not a guardrail break.
 #
-# HIMMEL-2515: the Telegram bridge's Linux persistence is a systemd --user
+# the Telegram bridge's Linux persistence is a systemd --user
 # unit (scripts/himmelctl/lib/bridge-persistence.js installSystemdUnit()),
 # not a crontab row — but the registry names it "HimmelTelegramBridge" (the
 # Windows scheduled-task name; kept stable across platforms on purpose, so
@@ -1339,11 +1348,10 @@ check_c23() {
 # whether the enablement symlink lives in /etc, permanent, or /run,
 # runtime-only) to "disabled", reproducing THIS TICKET'S OWN false-absent
 # bug in a narrower case (a bridge enabled with `enable --runtime` would
-# read as expected-but-absent). Caught by CR round 1 (E1) before ever
-# shipping.
+# read as expected-but-absent).
 _systemd_user_unit_state() {
     local bin="$1" unit="$2" out
-    # LC_ALL=C (CR round 1 E5): the stdout enum (enabled/not-found/...) is
+    # LC_ALL=C: the stdout enum (enabled/not-found/...) is
     # never translated, but the bus-failure diagnostic below is a strerror()
     # tail and IS locale-dependent on this box (`locale -a` lists de_DE.utf8
     # among others) -- this repo has already been bitten once by parsing an
@@ -1353,9 +1361,9 @@ _systemd_user_unit_state() {
     case "$out" in
         *"Failed to connect to"*"bus"*)
             # Transient/environment failure, not a unit-state answer at all —
-            # NOT evidence the unit is absent (HIMMEL-2515). The wording is
-            # systemd-version-dependent -- both forms observed for real (CR
-            # round 1 E5, this station's systemd 261, forced via
+            # NOT evidence the unit is absent. The wording is
+            # systemd-version-dependent -- both forms observed for real (
+            # this station's systemd 261, forced via
             # XDG_RUNTIME_DIR=/nonexistent DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent):
             #   older systemd: "Failed to connect to bus: No such file or directory"
             #   this station:  "Failed to connect to user scope bus via local
@@ -1404,11 +1412,7 @@ _systemd_user_unit_state() {
             # A systemd is-enabled answer this helper does not recognise yet
             # (a future state, a permission-denied/other failed invocation, or
             # a translated/locale string) — genuinely UNVERIFIED, not "not
-            # enabled". Default to "unknown", never "disabled" (CR round 1
-            # finding 2, HIMMEL-2515): the original comment here argued the
-            # conservative default was deliberate, and it was right that
-            # unfamiliar output must never be read as "armed" — but wrong
-            # about which bucket is the SAFE one. "disabled" asserts the unit
+            # enabled". Default to "unknown", never "disabled": "disabled" asserts the unit
             # IS installed, a fact this branch never established (a bare
             # permission error proves nothing about install state either way).
             # Both callers already have a real inconclusive-answer path for
@@ -1424,7 +1428,7 @@ _systemd_user_unit_state() {
 # has a row whose comment marker is exactly "# <task>" at end of line, false
 # (rc 1) otherwise (including "no crontab for this user" at all).
 #
-# HIMMEL-1430 / HIMMEL-2515: the shape this replaces,
+# the shape this replaces,
 # `crontab -l 2>/dev/null | grep -qE "# ${task}\$"`, is a
 # `<producer> | grep -q` pipeline under this file's `set -uo pipefail`
 # (line 10) — grep -q exits the instant it matches, crontab then takes
@@ -1437,7 +1441,7 @@ _systemd_user_unit_state() {
 # pipe in the way (this repo's `known-findings.sh` prescribes the same
 # capture-then-match shape). A here-string is used for the match rather than
 # a second pipe; a crontab is comfortably under the ~64 KiB here-string
-# size that wedges Git Bash (HIMMEL-2027), so it's safe at this size.
+# size that wedges Git Bash, so it's safe at this size.
 #
 # This fixes BOTH call sites in check_c24's task loop below: the new
 # systemctl-"unknown" fallback branch, and the PRE-EXISTING `else` branch a
@@ -1469,22 +1473,13 @@ check_c24() {
         emit OK C24-cadence-registry "registry present but no cadence tasks expected"
         return
     fi
-    # codex-1 (CR round 3): probe the scheduler ITSELF once before looping --
+    # Probe the scheduler ITSELF once before looping --
     # without this, an access-denied/transient schtasks or crontab error
     # reads identically to "every expected task is gone" and WARNs on all of
-    # them, a false alarm distinct from a genuinely absent task. That
-    # reasoning is still correct -- but HIMMEL-2515 CR round 4 found it had
-    # been wired as a single WHOLE-FUNCTION early return, unconditionally,
-    # which was right back when crontab was the only backend this check ever
-    # spoke to. Once the systemd probe for HimmelTelegramBridge below was
-    # added, a crontab-only early return became wrong: on a systemd-only
-    # Linux host with no cron installed at all (common on modern minimal
-    # distros), it returned before the per-task loop ever ran, so the
-    # systemd probe never executed and the bridge's enablement was never
-    # checked at all -- precisely the visibility this ticket exists to
-    # provide. Availability is now tracked PER BACKEND: a missing/failing
+    # them, a false alarm distinct from a genuinely absent task.
+    # Availability is tracked PER BACKEND: a missing/failing
     # crontab only takes crontab-probed tasks off the table (each becomes
-    # INDETERMINATE per-task below, reusing CR round 1's existing bucket
+    # INDETERMINATE per-task below, reusing the existing bucket
     # rather than inventing a second one); a systemd-probed task is
     # unaffected by crontab's availability. The whole-check bail a few lines
     # down still fires when it is genuinely the right call -- crontab
@@ -1534,14 +1529,11 @@ check_c24() {
                     # Bus unreachable/unrecognized: not evidence of absence —
                     # fall back to the same crontab probe a systemctl-less
                     # host would use, UNLESS crontab is already known
-                    # unavailable (CR round 4) -- then skip straight to
+                    # unavailable -- then skip straight to
                     # indeterminate instead of invoking a crontab already
                     # known unable to answer. If crontab ALSO has no row,
                     # NEITHER probe established absence — this task's
-                    # enablement is genuinely INDETERMINATE, not missing (CR
-                    # round 1 finding 3, HIMMEL-2515: this is the ticket's
-                    # own false-absent bug re-entering through the "unknown"
-                    # fallback path). Track it apart from $missing so it
+                    # enablement is genuinely INDETERMINATE, not missing. Track it apart from $missing so it
                     # never joins the expected-but-absent WARN, while still
                     # surfacing it below rather than dropping it silently.
                     if [ "$crontab_unavailable" -eq 1 ] || ! _c24_cron_has_task "$task"; then
@@ -1551,12 +1543,12 @@ check_c24() {
                 *) missing="$missing $task" ;; # disabled OR notfound -- neither counts as armed
             esac
         elif [ "$crontab_unavailable" -eq 1 ]; then
-            # CR round 4: this task's only backend is crontab and crontab is
-            # unreachable — INDETERMINATE (CR round 1's existing bucket),
+            # This task's only backend is crontab and crontab is
+            # unreachable — INDETERMINATE (the existing bucket),
             # never silently dropped and never joining the
             # expected-but-absent WARN (that would blame the task for
             # something crontab, not it, made unknowable). Tracked in its own
-            # $indeterminate_crontab_only bucket too (CR round 5) so the
+            # $indeterminate_crontab_only bucket too so the
             # diagnostic below can name crontab, not systemd, as this task's
             # cause — this branch is never reached for HimmelTelegramBridge
             # while crontab is unavailable (the whole-check bail above
@@ -1579,17 +1571,14 @@ EOF
     else
         emit OK C24-cadence-registry "all $(printf '%s\n' "$expected" | grep -c .) expected cadence task(s) present on the live scheduler"
     fi
-    # codex-1 (CR round 5): this used to be a single emit hardcoding ONE cause
-    # (systemd bus unreachable) and ONE remedy (check systemctl) for every
-    # $indeterminate task -- but since CR round 4 a task reaches this bucket
-    # via two unrelated routes: HimmelTelegramBridge when the systemd probe
-    # answered "unknown" (crontab consulted as a fallback, or itself
-    # unavailable), or a crontab-only sibling when CRONTAB ITSELF is what's
-    # unreachable ($indeterminate_crontab_only above) -- nothing to do with
-    # systemd or the bridge. Telling that sibling's operator to check
-    # telegram-bridge.service names a cause this check never established and
-    # hands a remedy that cannot help: the same false-attribution class this
-    # whole ticket exists to remove, now in the operator-facing text.
+    # A task reaches the $indeterminate bucket via two unrelated routes:
+    # HimmelTelegramBridge when the systemd probe answered "unknown"
+    # (crontab consulted as a fallback, or itself unavailable), or a
+    # crontab-only sibling when CRONTAB ITSELF is what's unreachable
+    # ($indeterminate_crontab_only above) -- nothing to do with systemd or the
+    # bridge. Telling that sibling's operator to check telegram-bridge.service
+    # names a cause this check never established and hands a remedy that
+    # cannot help, so the cause and remedy are chosen per route.
     # Attribute per task instead: the bridge (the only task ever routed
     # through the systemd probe) gets its own line, naming BOTH backends when
     # crontab was also unavailable rather than picking one; any crontab-only
@@ -1611,7 +1600,7 @@ EOF
     fi
 }
 
-# --- C25: orphaned scratchpad watcher processes (HIMMEL-1820) -------------------
+# --- C25: orphaned scratchpad watcher processes -------------------
 # On 2026-08-16 a watch-branches.sh poll loop written into a Claude session's
 # scratchpad was found still running ~10 hours after its session had died --
 # orphaned, spinning off children, and helping make the box unresponsive.
@@ -1742,12 +1731,12 @@ $seen"
     fi
 }
 
-# --- C26: salus profile marker present but PHI guard marker absent (advisory, HIMMEL-2173) ---
+# --- C26: salus profile marker present but PHI guard marker absent (advisory) ---
 # The salus medical-vault profile installer/upgrade drops `.salus-profile`
 # (template machinery) at the vault root; the PHI launcher guards (claude-glm/
 # claude-codex/claude-routed + their .ps1 twins + the hermes parity guard, and
 # scripts/telegram/phi-egress-guard.ts) test for `.salus` before refusing a cloud/
-# codex launch there (now `.salus-profile` too, as a defense — HIMMEL-2173
+# codex launch there (now `.salus-profile` too, as a defense
 # part 2). A vault that carries the profile marker but no `.salus` looks
 # PHI-protected to the operator (it opted into the medical profile) yet had no
 # armed guard before part 2 shipped. Kept as a standing detectability layer
@@ -1777,7 +1766,7 @@ check_c26() {
         "touch '$v/.salus' (or re-run the salus profile installer/upgrade — HIMMEL-2173 part 1 ships it automatically going forward)"
 }
 
-# --- C27: PHI/egress guard signal readability (HIMMEL-1776 ask 5) ---------------
+# --- C27: PHI/egress guard signal readability ---------------
 # graphify-fence.sh (interactive) honors $CLAUDE_GLM_CONFIG_DIR (default
 # ~/.config/claude-glm) for its phi-roots/egress-denylist lookup.
 # refresh-graph-map.sh's scheduled salus guard deliberately does NOT: it
@@ -1785,10 +1774,10 @@ check_c26() {
 # r4 — a caller-controllable env var must not steer a fail-closed check).
 # BOTH fail CLOSED (deny every corpus) when a listed file exists but is not
 # a readable regular file — the shared _guard_file_readable predicate,
-# scripts/guardrails/phi-egress-lib.sh (HIMMEL-1776 ask 3). Denying is the
+# scripts/guardrails/phi-egress-lib.sh. Denying is the
 # safe outcome, but an operator who never sees that deny message still has
 # an armed guard whose SALUS-classification signal is silently broken (the
-# HIMMEL-1773 inert-guard shape). This check surfaces the same readability
+# inert-guard shape). This check surfaces the same readability
 # signal read-only, before it ever blocks a real extraction. Checking only
 # $CLAUDE_GLM_CONFIG_DIR would falsely certify config the scheduled guard
 # never reads when the override is set and differs — check the scheduled
@@ -1833,11 +1822,11 @@ check_c27() {
     emit OK C27-guard-signals "phi-roots/egress-denylist under ${dirs[*]} (where present) are readable regular files"
 }
 
-# --- C28: guardrail-block-global armed-but-inert (HIMMEL-2176) ------------------
-# HIMMEL-2176 gave guardrail-block-global (this operator's GLOBAL guardrail
-# hooks, distinct from a per-project guardrail-scope item) a REAL install
+# --- C28: guardrail-block-global armed-but-inert ------------------
+# guardrail-block-global (this operator's GLOBAL guardrail
+# hooks, distinct from a per-project guardrail-scope item) has a REAL install
 # path — `himmelctl ensure` can now wire it, via install-engine.js's
-# 'guardrail-block-global' wire target — but its round-3 ruling forbids ever
+# 'guardrail-block-global' wire target — but its ruling forbids ever
 # doing so without an explicit, RECORDED consent (himmelctl's own state.json
 # target.items['guardrail-block-global'].overrides.consent). C1-guardrail
 # above already covers "wired and healthy" (OK) vs "wired but degraded"
@@ -1851,7 +1840,7 @@ check_c27() {
 # Read-only; no --fix (the whole point of the ask-first gate is that this
 # is never auto-wired without the operator's own explicit answer).
 #
-# HIMMEL-2176 panel finding: this used to also early-return OK when
+# this used to also early-return OK when
 # $SETTINGS itself was absent. That conflated "nothing to check" ($gb
 # absent — this checkout has no guardrail-block.mjs, genuinely nothing to
 # probe) with "guardrails available but never wired at all" (no user-level
@@ -1905,7 +1894,7 @@ check_c28_guardrail_consent() {
     esac
 }
 
-# --- C29: claude child-session launchers running without persistence (advisory, HIMMEL-2545) ---
+# --- C29: claude child-session launchers running without persistence (advisory) ---
 # claude exports CLAUDE_CODE_CHILD_SESSION=1 and CLAUDE_PID into every process
 # it spawns. A claude session launched from inside another claude session's
 # Bash tool therefore inherits a "throwaway child" marker: claude saves NO
@@ -1930,7 +1919,7 @@ check_c28_guardrail_consent() {
 # healthy run. The honest source is each candidate PROCESS's own /proc
 # environ, read directly — never our own env.
 #
-# A SECOND trap (HIMMEL-2545 panel finding, from a live false positive):
+# A SECOND trap (seen as a live false positive):
 # headed-arm.sh's konsole launcher process ALSO has a cmdline that names
 # `claude ... -n HIMMEL-...` (that is the command it was told to run) and
 # ALSO inherited CLAUDE_CODE_CHILD_SESSION=1 from whatever armed it — but
@@ -1953,7 +1942,7 @@ check_c28_guardrail_consent() {
 # gated below on comm==claude PLUS the environ check, both exact; this can
 # only ever affect the DISPLAYED name for a pid already correctly flagged):
 # the name used to come from grep -Eo against the FLATTENED cmdline
-# (`-n HIMMEL-[^ ]*`), the same weakness round 9 fixed in headed-arm.sh's
+# (`-n HIMMEL-[^ ]*`), the same weakness fixed in headed-arm.sh's
 # own dedup match - a flattened string cannot tell an actual `-n` OPTION
 # from the same text sitting inside a PROMPT argument. A session whose
 # prompt happens to contain "-n HIMMEL-decoy" ahead of its genuine
@@ -1964,7 +1953,7 @@ check_c28_guardrail_consent() {
 # and take the value immediately following a literal "-n" element, rather
 # than matching a pattern against space-joined text. Two checks in this PR
 # disagreeing about how to read a command line is the same inconsistency
-# round 6's codex-4 fixed for the persistence-variable contract - C29 and
+# fixed for the persistence-variable contract - C29 and
 # headed-arm.sh now read argv the same way.
 _c29_argv_n_value() { # _c29_argv_n_value <cmdline-file> - echoes the value
                        # immediately following the FIRST element that
@@ -2113,14 +2102,14 @@ check_c29() {
     printf '%s' "$rows"
 }
 
-# --- C30: telegram-bridge liveness (read-only advisory, HIMMEL-2515) ------------
+# --- C30: telegram-bridge liveness (read-only advisory) ------------
 # C24 only answers "is the systemd unit ARMED" (is-enabled reads WantedBy
 # symlinks; it says nothing about whether the process is actually running).
 # Type=simple + Restart=on-failure means a crash-looping bridge reports
 # "enabled" indefinitely with no other signal from C24's probe. This check
 # reads the live unit's MainPID and confirms that pid is still alive (kill
 # -0) rather than trusting ActiveState/is-enabled alone — added alongside the
-# C24 fix above (scope extension recorded on HIMMEL-2515) because C24
+# C24 fix above because C24
 # answering "armed" invites exactly this "but is it actually up" follow-up.
 # Read-only, like C24: only ever queries systemctl show/is-enabled, never
 # start/stop/restart/reload/kill — this station's bridge is a LIVE
@@ -2135,7 +2124,7 @@ check_c29() {
 check_c30() {
     local systemctl_bin="${HIMMEL_DOCTOR_SYSTEMCTL:-systemctl}" unit="telegram-bridge.service"
     if ! command -v "$systemctl_bin" >/dev/null 2>&1; then
-        # Scoped to SYSTEMD persistence specifically (CR round 3, finding 3):
+        # Scoped to SYSTEMD persistence specifically:
         # this check only ever speaks to the systemd unit, so it must not
         # imply a whole-host verdict. C24 explicitly supports a Windows
         # `HimmelTelegramBridge` SCHEDULED TASK as an alternative persistence
@@ -2152,7 +2141,7 @@ check_c30() {
     # false-alarm-trains-operators-to-ignore-it failure C24 already
     # demonstrated — see the banner above).
     #
-    # "notfound" and "disabled" get DISTINCT OK messages (E2, CR round 1):
+    # "notfound" and "disabled" get DISTINCT OK messages:
     # both are correctly OK (nothing armed, nothing to WARN about), but they
     # are not the same fact -- "notfound" means the unit file does not exist
     # at all, "disabled" means it IS installed and someone (deliberately or
@@ -2177,7 +2166,7 @@ check_c30() {
             return
             ;;
     esac
-    # CR round 2: the MainPID `show` query's exit status was never checked --
+    # The MainPID `show` query's exit status was never checked --
     # a query that FAILS (bus dropped mid-run, unit torn down between the
     # is-enabled gate above and this query, a resource limit, ...) prints
     # nothing to stdout, and the sanitiser two lines down used to read that
@@ -2196,16 +2185,13 @@ check_c30() {
         return
     fi
     # Sanitisation stays for the SUCCESS path only: a query that returned rc 0
-    # but printed something non-numeric (or nothing) still isn't a pid --
-    # and CR round 3 finding 2: that is a DIFFERENT answer from a literal
-    # numeric "0", not the same one. A literal "0" (or a numeric pid that is
-    # no longer alive) genuinely establishes the bridge is not running --
-    # that is what the WARN below is for. An empty/non-numeric value from a
-    # query that itself SUCCEEDED establishes nothing either way (the query
-    # answered with something that isn't a pid at all) -- treating it as "0"
-    # asserted "armed but not running" from evidence that never said so, the
-    # same bug class the mainpid_rc check above already fixed for a FAILED
-    # query; this closes the same hole for a successful-but-unreadable one.
+    # but printed something non-numeric (or nothing) still isn't a pid, and
+    # that is a DIFFERENT answer from a literal numeric "0". A literal "0" (or a
+    # numeric pid that is no longer alive) genuinely establishes the bridge is not
+    # running -- that is what the WARN below is for. An empty/non-numeric value
+    # from a query that itself SUCCEEDED establishes nothing either way, so
+    # treating it as "0" would assert "armed but not running" from evidence that
+    # never said so.
     case "$mainpid" in
         ''|*[!0-9]*)
             emit INFO C30-bridge-liveness "$unit is enabled but its MainPID query returned an unreadable value ('$mainpid') — bridge-liveness undetermined, not evidence it is down" \
@@ -2225,7 +2211,7 @@ check_c30() {
     # trigger, so there is nothing to protect by returning early).
     nrestarts="$("$systemctl_bin" --user show "$unit" -p NRestarts --value 2>/dev/null)"
     nrestarts_rc=$?
-    # Item 4 (mine, CR round 3): the two ways this can come up empty are NOT
+    # The two ways this can come up empty are NOT
     # the same fact -- a FAILED query (rc != 0) genuinely means "NRestarts
     # query failed", but a SUCCESSFUL query that printed something
     # non-numeric named that same failure on no evidence of it. Track which
@@ -2246,10 +2232,10 @@ check_c30() {
     fi
 }
 
-# --- C31: codex still wires the dropped tokensave server (HIMMEL-2581) -----
+# --- C31: codex still wires the dropped tokensave server -----
 # tokensave was evaluated (a GPT-6 audit, a Claude Fable audit, and a
 # measured 3-op benchmark, all three independently) and DROPPED — it lost to
-# plain Grep+Read on all three measured symbol-level ops (HIMMEL-2581). The
+# plain Grep+Read on all three measured symbol-level ops. The
 # finding this check reports is now the OPPOSITE of what it used to report:
 # a codex config that still declares an ENABLED [mcp_servers.tokensave]
 # table is itself the problem, because codex will keep trying to spawn a
@@ -2353,9 +2339,9 @@ check_c31() {
     # itself — via its own exit status — so there is no pipeline for
     # `pipefail` to invert (a `printf | grep -q` producer/consumer pair can
     # SIGPIPE on an early match, turning a SUCCESSFUL match into a failed
-    # pipeline, HIMMEL-1430) and no here-string to materialise the body
+    # pipeline) and no here-string to materialise the body
     # into a shell variable, which would hit Git Bash's ~64 KiB here-string
-    # limit on a large config (HIMMEL-2027).
+    # limit on a large config.
     if awk -v start="$hdr_line" '
         NR == start { in_body = 1; next }
         in_body && /^[[:space:]]*\[/ { exit }
@@ -2370,7 +2356,7 @@ check_c31() {
         "remove the [mcp_servers.tokensave] table (and its [mcp_servers.tokensave.tools.*] sub-tables) from $cfg_q by hand — the doctor does not edit codex config"
 }
 
-# --- C35: VM after-report runner reachable (HIMMEL-2623) -------------------
+# --- C35: VM after-report runner reachable -------------------
 # Advisory only — scripts/vm/after-report.sh has its own loud fallback to the
 # host invocation when the VM runner is unavailable, so nothing here is ever
 # a FAIL; this row just tells the operator WHY that fallback would fire
@@ -2430,7 +2416,7 @@ check_c35() {
     # fact as after-report.sh being willing to USE them right now — with
     # VBOXMANAGE_PATH unset (the normal state in an interactive shell) it
     # refuses outright unless HIMMEL_VM_AR_LIVE=1 is set for that one
-    # invocation (HIMMEL-2623 incident hardening). Saying plain "reachable"
+    # invocation. Saying plain "reachable"
     # here would read as "ready to go" in exactly the configuration the
     # runner itself explicitly does not trust.
     if [ -z "${VBOXMANAGE_PATH:-}" ] && [ "${HIMMEL_VM_AR_LIVE:-0}" != "1" ]; then
@@ -2444,7 +2430,7 @@ check_c35() {
     emit OK C35-vm-ar "VM after-report runner reachable (VBoxManage + venv python present, opt-in guard satisfied for this environment)"
 }
 
-# --- C32: main-branch reference-transaction guard installed (HIMMEL-2095) -------
+# --- C32: main-branch reference-transaction guard installed -------
 # scripts/hooks/check-main-ref-transaction.sh refuses a `git commit
 # --no-verify` (then `push --no-verify`) landing directly on refs/heads/main
 # — the exact bypass class d05ef8ca/913073df/378c21f9/310646da used, since
@@ -2512,7 +2498,7 @@ check_c32() {
     # Where THIS checkout's git actually looks for a hook -- git's OWN
     # resolution (`--path-format=absolute --git-path hooks`), the exact
     # call install-main-ref-transaction.sh uses (see that installer's
-    # header, round 3): already correct for core.hooksPath unset, relative,
+    # header): already correct for core.hooksPath unset, relative,
     # or absolute, and already correct regardless of invoking cwd. A
     # hand-rolled re-derivation of "common dir + /hooks" here would be a
     # FOURTH copy of arithmetic that has already been wrong twice on this
@@ -2602,7 +2588,7 @@ check_c32() {
                 "bash $REPO_ROOT/scripts/hooks/install-main-ref-transaction.sh   # re-run to configure the target"
             return
         fi
-        # `-f`, not just `-r` (round 9, mirrors the shim's own fix -- see
+        # `-f`, not just `-r` (mirrors the shim's own check -- see
         # install-main-ref-transaction.sh's header): `[ -r DIR ]` is TRUE
         # for a readable directory, so this check would otherwise certify
         # a target shape the shim itself would brick on (bash fails to
@@ -2628,7 +2614,7 @@ check_c32() {
         "bash $REPO_ROOT/scripts/hooks/install-main-ref-transaction.sh"
 }
 
-# --- C33: graphify graph staleness (HIMMEL-2095) --------------------------------
+# --- C33: graphify graph staleness --------------------------------
 # scripts/graphify/graph-cadence.sh (arm-time task HIMMEL-GraphPublish-Himmel,
 # scripts/luna/graphmap-cadence.sh, 6-hour interval) appends one JSONL row to
 # <handover-root>/.graph-cadence/ledger.jsonl per fire. This check reads only
@@ -2768,7 +2754,7 @@ check_c33_graph_stale() {
 # e.g. "AgentFoo"). A bare grep for the filename anywhere in the file passes
 # just as confidently for a mention under a different event, a different
 # matcher, or a disabled/commented block - which is not proof the guard is
-# actually wired on Agent dispatch (CR round 3, HIMMEL-2653). Requires jq and
+# actually wired on Agent dispatch. Requires jq and
 # a parseable file; both absent count as "not verified", never as registered.
 _c34_subagent_guard_registered() {
     command -v jq >/dev/null 2>&1 || return 1
@@ -2782,8 +2768,8 @@ _c34_subagent_guard_registered() {
     ' "$1" >/dev/null 2>&1
 }
 
-# --- C34-cost-guards: HIMMEL-2653 cost guards actually in force ------------------
-# HIMMEL-2653 found the fleet burning 73% of its weekly bank in ~1.5 days
+# --- C34-cost-guards: cost guards actually in force ------------------
+# The fleet was found burning 73% of its weekly bank in ~1.5 days
 # while the live dispatch gate watched only the five-hour window, plus
 # subagents at 50.06% of raw spend (general-purpose alone 49.85%) with no
 # structural nudge toward naming a model. This reports whether the three
@@ -2841,7 +2827,7 @@ check_c34() {
     fi
 }
 
-# --- C36: stray .git at the system temp dir root (HIMMEL-2739) -----------------
+# --- C36: stray .git at the system temp dir root -----------------
 # Incident 2026-09-07 09:4x: a subagent's fixture work ran `git init` relative
 # to an inherited (unset/broken) cwd and it landed at /tmp, leaving an EMPTY
 # /tmp/.git behind. From then on block-edit-on-main walked UP from every
@@ -2889,7 +2875,7 @@ check_c36_stray_tmp_git() {
 }
 
 # --- C37: lean-skills@himmel vendored-skill overlap with an enabled upstream ----
-# (HIMMEL-3064). lean-skills@himmel vendors 11 of superpowers' skills plus
+# lean-skills@himmel vendors 11 of superpowers' skills plus
 # grilling from mattpocock/skills so a session lists 13 skills instead of 25.
 # That is only a win while the upstream plugins stay disabled -- an adopter
 # who ALSO enables superpowers@claude-plugins-official or
@@ -2932,8 +2918,8 @@ check_c37_vendored_skill_dupes() {
 }
 
 # --- C38: uv on PATH (graphify is uv-managed) --------------------------------------
-# (HIMMEL-3170, follow-up promised on adopter issue #769.) himmel-update reports
-# a missing uv and never installs/updates graphify without it (HIMMEL-3077), but
+# (follow-up promised on adopter issue #769.) himmel-update reports
+# a missing uv and never installs/updates graphify without it, but
 # only when that path runs -- this surfaces it up front. WARN only: a box that
 # never uses graphify is fine without uv. The remedy is the platform install
 # line; docs/setup/new-machine.md carries the fuller "why".
@@ -2954,10 +2940,10 @@ check_c38_uv() {
 }
 
 # --- C39: functional GNU timeout on macOS -------------------------------------------
-# (HIMMEL-3170.) macOS ships no GNU `timeout`; Homebrew coreutils installs it as
+#  macOS ships no GNU `timeout`; Homebrew coreutils installs it as
 # `gtimeout`. Without one, scripts/graphify/refresh-graph-map.sh runs graph
 # extraction with its run deadline DISABLED and skips the bounded pre-pull
-# auto-commit/fetch (HIMMEL-3126). The probe mirrors refresh-graph-map's own:
+# auto-commit/fetch. The probe mirrors refresh-graph-map's own:
 # being on PATH is insufficient -- the bounded calls need `-k`, so accept only a
 # candidate that passes `-k 1 1 true`. Darwin only: elsewhere `timeout` ships with
 # coreutils, so the check is an OK skip, never a WARN.
@@ -2979,7 +2965,7 @@ check_c39_gtimeout_darwin() {
         "brew install coreutils (installs gtimeout; no PATH change needed — see docs/setup/new-machine.md)"
 }
 
-# --- C40: qmd vector-search health (HIMMEL-3056) --------------------------------
+# --- C40: qmd vector-search health --------------------------------
 # On 2026-09-16 every vec sub-query to the qmd MCP server timed out while lex
 # kept working -- semantic retrieval was silently down and agents reported
 # coverage they did not have. A timeout is indistinguishable from a slow query;
@@ -2994,21 +2980,21 @@ check_c39_gtimeout_darwin() {
 # The probe spans every collection and loads the embedding model on a cold
 # server (~6s warm on a loaded 21k-doc box), hence the 30s default.
 # Test seams: HIMMEL_DOCTOR_QMD_URL (default http://localhost:8181/mcp --
-# localhost, NOT 127.0.0.1: the server binds ::1 only, HIMMEL-3041),
+# localhost, NOT 127.0.0.1: the server binds ::1 only),
 # HIMMEL_DOCTOR_QMD_CURL (default curl), HIMMEL_DOCTOR_QMD_VEC_TIMEOUT (seconds,
 # a positive integer -- 0 / non-numeric / empty falls back to 30 with an INFO,
-# since curl -m 0 is "no timeout", HIMMEL-3224).
+# since curl -m 0 is "no timeout").
 check_c40_qmd_vec() {
     local url="${HIMMEL_DOCTOR_QMD_URL:-http://localhost:8181/mcp}"
     local curl_bin="${HIMMEL_DOCTOR_QMD_CURL:-curl}"
     local vec_timeout=30 init_timeout=10
-    # HIMMEL-4494: the operator switched the daemon off on purpose (flag file or
+    # the operator switched the daemon off on purpose (flag file or
     # QMD_DAEMON_DISABLED=1, same seam as ensure-qmd-daemon.sh): INFO, never WARN.
     if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "${QMD_DAEMON_OFF_FLAG:-$HOME/.himmel/state/qmd-daemon.off}" ]; then
         emit INFO C40-qmd-vec "qmd off by operator (qmd-daemon-off flag) -- vector-health check skipped; turn on: bash marketplace/plugins/qmd/scripts/qmd-daemon-switch.sh on"
         return
     fi
-    # HIMMEL-4383: the initialize budget is a measured loaded figure, not a guess.
+    # the initialize budget is a measured loaded figure, not a guess.
     # Live 2026-10-05: idle 0.33-0.39s; under 8 concurrent vec queries the peak was
     # 2.87s, so the old 3s flapped a healthy daemon. 10s is ~2x that peak. A genuine
     # wedge still WARNs; the budget only stops a slow-but-alive daemon reading as one.
@@ -3027,7 +3013,7 @@ check_c40_qmd_vec() {
 
     # ponytail: the remedy points at the qmd README instead of printing the literal start command, because the ws5 T13(b) marker scan false-positives on that command's flag (HIMMEL-3233); the README carries it verbatim.
     local remedy="see the server log ~/.cache/qmd/mcp.log; restart the qmd server (stop the 'qmd mcp' process, then start a session; start command: see marketplace/plugins/qmd/README.md)"
-    # HIMMEL-4432: daemon liveness (the initialize round-trip) is owned by
+    # daemon liveness (the initialize round-trip) is owned by
     # `himmelctl status`'s qmd-daemon item; C40 composes it the way C16 composes
     # status. Not wanted = INFO, absent = INFO skip (qmd is optional), degraded =
     # WARN with status's detail. Only a live daemon reaches the vec probe below.
@@ -3054,7 +3040,7 @@ check_c40_qmd_vec() {
             return
             ;;
         degraded)
-            # HIMMEL-5227: status's detail already names the listener and the one
+            # status's detail already names the listener and the one
             # fix; a token problem is not cured by restarting the server.
             case "$qd_detail" in
             *"bearer token"*) remedy="set QMD_HTTP_AUTH_FILE to the qmd server's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md" ;;
@@ -3068,7 +3054,7 @@ check_c40_qmd_vec() {
     local init_payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"himmel-doctor","version":"1"}}}'
     local vec_payload='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"searches":[{"type":"vec","query":"himmel doctor vector probe"}],"limit":1,"rerank":false}}}'
     local init init_rc init_code=""
-    # HIMMEL-5227: the daemon requires a bearer token (HIMMEL-5002); it goes to
+    # the daemon requires a bearer token; it goes to
     # curl as a config on stdin (never argv), read through the plugin's helper.
     local qd_tok qd_auth=()
     qd_tok="$(bash "$REPO_ROOT/marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" --token 2>/dev/null)" || qd_tok=""
@@ -3088,7 +3074,7 @@ check_c40_qmd_vec() {
         emit INFO C40-qmd-vec "no qmd server answering on $url -- vector-health check skipped (qmd is optional)"
         return
     fi
-    # HIMMEL-5227: a 401/403 is a qmd daemon that wants its token, not a foreign
+    # a 401/403 is a qmd daemon that wants its token, not a foreign
     # listener; checked before the empty-body fault so a body-less 401 is named too.
     case "$init_code" in
     401|403)
@@ -3183,7 +3169,7 @@ check_c40_qmd_vec() {
     local pending
     pending="$(printf '%s' "$instr" | sed -n 's/.*Note: \([0-9][0-9]*\) documents need embedding.*/\1/p' | head -1)"
     if [ -n "$pending" ]; then
-        # HIMMEL-4860: un-embedded docs are invisible to vec search, a real degradation,
+        # un-embedded docs are invisible to vec search, a real degradation,
         # but the nightly reindex leaves up to a day of fresh notes (~45 docs measured
         # 2026-10-07: 25 new + 18 updated), so only a backlog at/above the floor WARNs.
         # HIMMEL_DOCTOR_QMD_PENDING_WARN overrides the floor (positive integer).
@@ -3197,7 +3183,7 @@ check_c40_qmd_vec() {
     fi
 }
 
-# --- C45-qmd-daemon: qmd daemon RSS + uptime vs the recycle ceiling (HIMMEL-3062)
+# --- C45-qmd-daemon: qmd daemon RSS + uptime vs the recycle ceiling
 # The qmd HTTP daemon grows native memory over hours (6.8 GB after ~4.5 h) until
 # vec queries time out while lex keeps working. The qmd plugin's SessionStart
 # hook (ensure-qmd-daemon.sh) recycles it once RSS passes QMD_RSS_CEILING_MB
@@ -3232,7 +3218,7 @@ check_c45_qmd_daemon() {  # t13b-ok: doctor row that reads ps only, starts nothi
     fi
 }
 
-# --- C49-qmd-embed-model: index vectors vs the configured embed model (HIMMEL-4232)
+# --- C49-qmd-embed-model: index vectors vs the configured embed model
 # qmd stores the embed model per vector but searches without filtering by it, so
 # a configured model that differs from the index's returns errors (a dimension
 # change) or silent garbage (same dimension). This row WARNs; qmd-reindex.sh
@@ -3257,7 +3243,7 @@ check_c49_qmd_embed_model() {
     esac
 }
 
-# --- C56-qmd-orphans: orphaned embedding chunks (HIMMEL-4860) ------------------
+# --- C56-qmd-orphans: orphaned embedding chunks ------------------
 # Orphans are vectors whose content hash no longer exists; qmd-reindex.sh now runs
 # `qmd cleanup`, and before that nothing did (10,618 chunks, 6 % on 2026-10-07).
 # They bloat the index and slow vec scans but never hide a document, so this is
@@ -3295,7 +3281,7 @@ check_c56_qmd_orphans() {
     fi
 }
 
-# --- C50-qmd-fork-stamp: build stamp vs deployed HEAD vs the pin (HIMMEL-4268) ---
+# --- C50-qmd-fork-stamp: build stamp vs deployed HEAD vs the pin ---
 # `himmelctl update` once rolled the station's qmd fork back to the pin with
 # nothing reporting it. Three values must agree: the fork clone's build-success
 # stamp (.himmel-build-ok, the SHA the artifacts were BUILT from), the clone's
@@ -3340,7 +3326,7 @@ check_c50_qmd_fork_stamp() {
     fi
 }
 
-# --- C41: MCP server credential on the command line (HIMMEL-2762) ---------------
+# --- C41: MCP server credential on the command line ---------------
 # An MCP server entry launched as `npm exec <server> --api-key <key>` puts the key
 # in argv, so any local user reads it via ps or /proc/<pid>/cmdline, and it lands
 # in every process listing a session captures. The fix is the server's `env`
@@ -3437,7 +3423,7 @@ check_c41_mcp_argv_key() {
     fi
 }
 
-# --- C42: sweep health alarms (read-only advisory, HIMMEL-3405) -------------------
+# --- C42: sweep health alarms (read-only advisory) -------------------
 # scripts/clean-garden.sh --health prints ONLY alarm lines -- LOST-COMMITS (work
 # pushed after its PR merged, never shipped), STUCK (a worktree/branch the sweep
 # keeps skipping), SWEEP-ERROR (the sweep could not classify a branch) -- and
@@ -3475,13 +3461,13 @@ check_c42_sweep_health() {
     done <<< "$out"
 }
 
-# --- C43: bare `rtk hook claude` PreToolUse entry (HIMMEL-1117) ----------------
+# --- C43: bare `rtk hook claude` PreToolUse entry ----------------
 # `rtk init -g` unconditionally appends a bare `rtk hook claude` PreToolUse
 # entry to ~/.claude/settings.json; himmel's setup swaps it for
 # rtk-hook-guard.sh (scripts/lib/reconcile-rtk-hook.sh), whose whole job is
 # suppressing `rtk find` rewrites that carry a compound predicate/action
 # (-not/-exec/-o/-a/-delete/!/(...)/-prune) rtk find rejects or silently
-# mishandles at runtime -- the HIMMEL-241 bug that broke every LUNA runbook
+# mishandles at runtime -- the bug that broke every LUNA runbook
 # clip scan. An operator re-running `rtk init -g` on their own (outside
 # machine-setup) re-adds the bare entry and silently bypasses the guard; rtk
 # then also prints its usual "No hook installed" banner, which is otherwise
@@ -3508,7 +3494,7 @@ check_c43_rtk_bare_hook() {
     fi
 }
 
-# --- C44: /skill-find's qmd 'skills' collection missing or empty (HIMMEL-2222) --
+# --- C44: /skill-find's qmd 'skills' collection missing or empty --
 # /skill-find's own docs anticipate a missing collection ("if $SKILL_INDEX_DIR
 # is empty, run ...") but that only helps a session that already invoked the
 # skill and read past the raw `Collection not found: skills` failure -- and
@@ -3551,7 +3537,7 @@ check_c44_skill_index() {
     files_line="$(printf '%s\n' "$list_out" | grep -A2 '^skills (' | grep 'Files:')"
     count="$(printf '%s' "$files_line" | grep -oE '[0-9]+' || true)"
     if [ -z "$count" ] || [ "$count" -eq 0 ]; then
-        # HIMMEL-4436: a starter install never enables the qmd items, so nothing can
+        # a starter install never enables the qmd items, so nothing can
         # build the collection -- not wanted is INFO, not a FAIL. Unknown (no node,
         # jq or status) keeps the FAIL. Seam: DOCTOR_STATUS_JSON=<file> (as C19).
         local sj="" node_bin="" qmd_wanted=""
@@ -3575,7 +3561,7 @@ check_c44_skill_index() {
     emit OK C44-skill-index "'skills' qmd collection present ($count files)"
 }
 
-# --- C46: enabledPlugins true for a plugin that is not installed (HIMMEL-4037) --
+# --- C46: enabledPlugins true for a plugin that is not installed --
 # The /plugin Errors tab reports "enabled in project settings but isn't
 # installed here" for exactly this. WARN, naming the settings file, so the
 # source is findable. Scopes read: user (+ local) under CLAUDE_DIR and this
@@ -3587,7 +3573,7 @@ check_c44_skill_index() {
 # bites.
 # HIMMEL_DOCTOR_CLAUDE_BIN (test seam, mirrors C44's): the claude executable
 # that answers `plugin list --json`; a missing one is an INFO skip.
-# HIMMEL_DOCTOR_PROJECT_CLAUDE_DIR (test seam, HIMMEL-5084): the directory read
+# HIMMEL_DOCTOR_PROJECT_CLAUDE_DIR (test seam): the directory read
 # for the project/local settings files instead of "$REPO_ROOT/.claude", so a test
 # never sees the host checkout's own settings.local.json.
 check_c46_plugin_enabled_missing() {
@@ -3602,7 +3588,7 @@ check_c46_plugin_enabled_missing() {
     # A failed or non-array listing is a skip; a valid EMPTY array is a real
     # answer (nothing installed, so every enabled entry is missing).
     local list_json installed
-    # Scope-exact (HIMMEL-4046): an install counts only if it applies to this
+    # Scope-exact: an install counts only if it applies to this
     # checkout, i.e. user scope (no projectPath) or a project/local install whose
     # projectPath is this checkout. An install for another project does not.
     if ! list_json="$("$bin" plugin list --json 2>/dev/null)" || [ -z "$list_json" ] || ! installed="$(printf '%s' "$list_json" | jq -r --arg root "$REPO_ROOT" 'if type == "array" then .[] | select((.projectPath // null) == null or .projectPath == $root) | .id // empty else error("not an array") end' 2>/dev/null | sort -u)"; then
@@ -3631,13 +3617,13 @@ check_c46_plugin_enabled_missing() {
     fi
 }
 
-# --- C47-runaway-procs: long-lived himmel-shaped process pegging a core (HIMMEL-3959) ---
+# --- C47-runaway-procs: long-lived himmel-shaped process pegging a core ---
 # Runaway qmd queries and orphaned hook.sh fixtures ran ~99 % CPU for hours unnoticed.
 # WARN on a current-user process older than HIMMEL_DOCTOR_RUNAWAY_MIN_AGE_MIN (30) at
 # >= HIMMEL_DOCTOR_RUNAWAY_CPU_PCT (90) whose cmdline is qmd / hook.sh / bash scripts/.
 # Report only (pid, etime, %CPU, cmdline); never kills. Seam: HIMMEL_DOCTOR_RUNAWAY_PS.
 # ponytail: ps pcpu is the lifetime average, not a short sample, and the optional
-# reparented-to-init clause is not built; add either if a miss bites (HIMMEL-3959).
+# reparented-to-init clause is not built; add either if a miss bites.
 check_c47_runaway_procs() {  # t13b-ok: doctor row that reads ps only, kills nothing
     local ps_bin="${HIMMEL_DOCTOR_RUNAWAY_PS:-ps}"
     local min_age="${HIMMEL_DOCTOR_RUNAWAY_MIN_AGE_MIN:-30}" cpu_min="${HIMMEL_DOCTOR_RUNAWAY_CPU_PCT:-90}"
@@ -3670,11 +3656,11 @@ check_c47_runaway_procs() {  # t13b-ok: doctor row that reads ps only, kills not
     fi
 }
 
-# --- C54-hook-copy-reaper: orphaned hook copies spinning a core (HIMMEL-4531) ---
+# --- C54-hook-copy-reaper: orphaned hook copies spinning a core ---
 # Runs scripts/handover/console-kit/hook-copy-reaper.sh REPORT-ONLY (never --kill):
 # rc 0 -> OK, rc 1 -> one WARN per pid=/age=/cpu=/script= row, any other rc -> WARN
 # naming the failure (never a silent OK). C47 matches hook.sh by name and misses
-# arbitrarily named /tmp/claude-*/ copies reparented to the user subreaper (HIMMEL-4183).
+# arbitrarily named /tmp/claude-*/ copies reparented to the user subreaper.
 # Seam: HIMMEL_DOCTOR_HOOK_REAPER (the reaper script; absent -> silent).
 check_c54_hook_copy_reaper() {  # t13b-ok: doctor row that runs the reaper report-only, kills nothing
     local reaper="${HIMMEL_DOCTOR_HOOK_REAPER:-$REPO_ROOT/scripts/handover/console-kit/hook-copy-reaper.sh}"
@@ -3698,9 +3684,9 @@ check_c54_hook_copy_reaper() {  # t13b-ok: doctor row that runs the reaper repor
     esac
 }
 
-# --- C55-project-mode (HIMMEL-4767, HIMMEL-4748 WP8): which tracker, which forge -
+# --- C55-project-mode: which tracker, which forge -
 # Reports scripts/lib/project-mode.sh's answer for the judged checkout; the
-# resolver is the one owner (HIMMEL-4758), this row never re-derives it. A
+# resolver is the one owner, this row never re-derives it. A
 # refusal (rc 2: an invalid or contradictory setting) is a WARN carrying the
 # resolver's own message. A checkout without the resolver gets no row.
 check_c55_project_mode() {
@@ -3719,7 +3705,7 @@ check_c55_project_mode() {
     emit OK C55-project-mode "tracker=$tracker forge=$forge ($req)"
 }
 
-# --- C58-mcp-sdk-v1 (HIMMEL-4866): no v1 MCP SDK dependency or import -----------
+# --- C58-mcp-sdk-v1: no v1 MCP SDK dependency or import -----------
 # Runs scripts/lint/check-mcp-sdk-v1.sh against the judged checkout. A finding
 # is a WARN naming the hits; the gate is also enforced at commit time. Vendored
 # and externally configured servers are NOTEs of the gate, never a compliance
@@ -3736,7 +3722,7 @@ check_c58_mcp_sdk_v1() {
     esac
 }
 
-# --- C48-tmp-usage: /tmp at 80 % or more (HIMMEL-4224) --------------------------
+# --- C48-tmp-usage: /tmp at 80 % or more --------------------------
 # On 2026-10-03 the /tmp tmpfs filled and fleet Bash hit ENOSPC. WARN at >= 80 % used
 # and name scripts/tmp-reap.sh (dry-run by default) as the remedy. Report only.
 # Seam: HIMMEL_DOCTOR_TMP_DF (a df stand-in printing `df -P /tmp` output).
@@ -3752,12 +3738,12 @@ check_c48_tmp_usage() {
     fi
 }
 
-# --- C51-firecrawl-parked (HIMMEL-4371) ------------------------------------------
+# --- C51-firecrawl-parked ------------------------------------------
 # Items parked because Firecrawl was unavailable (credits exhausted, rate-limited).
 # Folds the enveloped state file the harvest tool and follow-web write: `parked`
 # adds, `resolved` removes, `available` clears the status and follow-web rows.
 # A harvest item whose vault file is gone no longer counts. doctor-cadence diffs
-# this WARN between runs and DMs once for a new one (HIMMEL-4251).
+# this WARN between runs and DMs once for a new one.
 # Seam: HIMMEL_FIRECRAWL_PARKED (the state file).
 check_c51_firecrawl_parked() {
     local f="${HIMMEL_FIRECRAWL_PARKED:-$HOME/.himmel/state/firecrawl-parked.jsonl}" now
@@ -3799,9 +3785,9 @@ check_c51_firecrawl_parked() {
     emit WARN C51-firecrawl-parked "$n item(s) parked: Firecrawl unavailable (${reason:-unknown})" "parked items retry automatically on the next harvest once credits return (reset ${rd:-unknown})"
 }
 
-# --- C52: graphify [ollama] extra (HIMMEL-4513 / HIMMEL-4512 item 7) -----------
+# --- C52: graphify [ollama] extra -----------
 # graph-cadence's semantic step runs `graphify --backend ollama` only when
-# GRAPH_CADENCE_SEMANTIC_BACKEND=ollama (HIMMEL-5367; default claude-cli), which
+# GRAPH_CADENCE_SEMANTIC_BACKEND=ollama (default claude-cli), which
 # needs the extra's openai client inside the uv graphifyy venv. Any other
 # backend skips the check. Never runs graphify itself
 # (a graphify invocation auto-refreshes the user's skill dirs) -- only the venv
@@ -3837,14 +3823,14 @@ check_c52_graphify_ollama() {
     fi
 }
 
-# --- C53-vm-mode: the VM-proof route and whether its VM answers (HIMMEL-4583) ---
+# --- C53-vm-mode: the VM-proof route and whether its VM answers ---
 # vm.mode (scripts/lib/vm-mode.sh) says how a VM-proof hold is lifted: on the
 # local test VM, on vm.remote, or (none) by an operator ack plus a rollback
 # point. For local and remote the probe is a read-only TCP connect to the ssh
 # port; it never starts, stops or logs in to a VM. A down local VM is INFO (it
 # is started on demand); a down remote VM is WARN, and a remote one routed
-# through a ProxyJump/ProxyCommand is INFO (HIMMEL-4599), as is a down remote one
-# whose ssh -G lookup failed (HIMMEL-4631). HIMMEL_DOCTOR_VM_PROBE is a
+# through a ProxyJump/ProxyCommand is INFO, as is a down remote one
+# whose ssh -G lookup failed. HIMMEL_DOCTOR_VM_PROBE is a
 # test seam: a command run as `<probe> <host> <port>`; set but not executable =
 # the mode is reported without a probe.
 check_c53_vm_mode() {
@@ -3867,14 +3853,14 @@ check_c53_vm_mode() {
         timeout_bin="$(command -v "$t" 2>/dev/null)" && break
         timeout_bin=""
     done
-    # A remote target may be an ssh config alias (HIMMEL-4599): `ssh -G` prints
+    # A remote target may be an ssh config alias: `ssh -G` prints
     # the effective config offline, connecting to nothing, so the probe uses
     # its HostName and port; a ProxyJump/ProxyCommand route is one a raw TCP
     # connect cannot follow, so it is reported, not probed. -p mirrors the
     # drivers, which always pass it. Only under timeout: a Match exec in the ssh
     # config runs a command, which could stall the doctor. A failed or timed-out
     # lookup leaves the host as written, possibly an unresolved alias, so the
-    # result says so and a down probe is INFO, not WARN (HIMMEL-4631).
+    # result says so and a down probe is INFO, not WARN.
     if [ "$VM_MODE" = remote ] && [ -n "$timeout_bin" ] && command -v ssh >/dev/null 2>&1; then
         g="$("$timeout_bin" 5 ssh -G -p "$VM_MODE_PORT" "$VM_MODE_HOST" 2>/dev/null)" \
             || { g=""; unresolved="; ssh -G failed, probed the configured host as written"; }
@@ -3943,7 +3929,7 @@ check_c57_dotenv_allowlists() {
     done <<< "$rows"
 }
 
-# --- C59-codex-bank-cache: a codex bank cache older than its TTL (HIMMEL-5220) ---
+# --- C59-codex-bank-cache: a codex bank cache older than its TTL ---
 # bank-status reads this cache and reports codex=? once it is older than
 # CODEX_BANK_CACHE_TTL_SECONDS (6 h). bank-status refreshes it itself, so a
 # WARN here means the refresh did not run or failed (codex missing, logged out,
@@ -3977,7 +3963,7 @@ check_c59_codex_bank_cache() {
     fi
 }
 
-# --- C60-hermes-origin: an ssh origin breaks `hermes update` (HIMMEL-5382) ------
+# --- C60-hermes-origin: an ssh origin breaks `hermes update` ------
 # hermes's updater runs git with the global url.insteadOf ignored
 # (GIT_CONFIG_GLOBAL=/dev/null) and ssh forced to BatchMode, so an ssh origin
 # can fail without a usable key/agent. Read-only: read the stored origin url,
@@ -4002,7 +3988,7 @@ check_c60_hermes_origin() {
     esac
 }
 
-# --- C61-codex-cli: codex CLI older than the latest release (HIMMEL-5382) ------
+# --- C61-codex-cli: codex CLI older than the latest release ------
 # Latest comes from DOCTOR_CODEX_LATEST (tests) else `npm view` (10 s cap); an
 # unreachable registry is INFO, never a WARN. Read-only: it never upgrades.
 check_c61_codex_cli() {
@@ -4042,7 +4028,7 @@ check_c61_codex_cli() {
     fi
 }
 
-# --- C62-oxlint-runner: can the oxlint pre-commit gates run? (HIMMEL-5529) ------
+# --- C62-oxlint-runner: can the oxlint pre-commit gates run? ------
 # check-oxlint-complexity.sh / check-oxlint-hardening.sh run oxlint through
 # `bunx`, falling back to `bun x`; with neither they fail OPEN with only a
 # scrolled-past WARN, so every commit silently skips both gates. bun installed
@@ -4060,7 +4046,7 @@ check_c62_oxlint_runner() {
     fi
 }
 
-# --- C63-claude-cli: claude below the console-launch floor (HIMMEL-5501) ------
+# --- C63-claude-cli: claude below the console-launch floor ------
 # The floor is the one constant in scripts/lib/claude-version.sh, shared with the
 # launch preflight and himmel update. Read-only; /himmel-update does the upgrade.
 check_c63_claude_cli() {
@@ -4073,7 +4059,7 @@ check_c63_claude_cli() {
     esac
 }
 
-# --- C64-vm-runner (HIMMEL-5037) -----------------------------------------------
+# --- C64-vm-runner -----------------------------------------------
 # The VM CI runner's health: snapshot present, NAT loopback off, fork-approval
 # policy still all_external_contributors, no DEAD/STUCK units. The probes live in
 # vm-runner.sh doctor (TSV: SEV, id, msg); skipped there when no VM exists.
@@ -4330,7 +4316,7 @@ heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
 
-# HIMMEL-4363: a full run refreshes the statusline counts. There is no subset
+# a full run refreshes the statusline counts. There is no subset
 # flag but --only; it, a heavy check that timed out or died, and the two *_SKIP
 # seams skip checks, so a run with any of them set is a subset and never writes
 # (it would publish a falsely low count). A

@@ -61,7 +61,7 @@ EXPECTED_AUTH_SOURCES = {"127.0.0.1", "::1", "10.0.2.2"}  # leak-allow: private-
 KNOWN_GOOD_LISTEN_PORTS = {"22"}
 # A burst of failed logins at/above this count raises a brute-force WARN.
 FAILED_LOGIN_BURST = 5
-# HIMMEL-492 scoped NOPASSWD drop-in (the ONE expected NOPASSWD grant). The
+# The scoped NOPASSWD drop-in (the ONE expected NOPASSWD grant). The
 # user is substituted at check time. Source: scripts/machine-setup/
 # ubuntu-vm-setup.py (NOPASSWD_CMDS + install_nopasswd_sudoers).
 EXPECTED_NOPASSWD_TEMPLATE = (

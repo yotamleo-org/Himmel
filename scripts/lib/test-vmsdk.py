@@ -59,7 +59,7 @@ class TestConstruction(unittest.TestCase):
         self.assertEqual(vm.port, 2222)
         self.assertEqual(vm.host, "127.0.0.1")
         # ubuntu_new's registry entry carries a literal "user": "himmel"
-        # (HIMMEL-2623) — the real guest login, which now wins over
+        # — the real guest login, which now wins over
         # user_env's "osboxes" (see test_literal_user_wins_over_stale_env_var
         # below for the isolated, registry-independent proof of that
         # precedence rule).
@@ -120,7 +120,7 @@ class TestConstruction(unittest.TestCase):
         self.assertIn("ubuntu_new", str(cm.exception))
 
     def test_missing_env_names_key(self):
-        # ubuntu_new's literal "user": "himmel" (HIMMEL-2623) short-circuits
+        # ubuntu_new's literal "user": "himmel" short-circuits
         # the user_env lookup entirely, so with everything unset the FIRST
         # env key still required is pass_env (ubuntu_vm_pass), not
         # user_env (ubuntu_vm_user) — see the no-literal-user fixture in
@@ -377,7 +377,7 @@ class TestProvisionE2E(unittest.TestCase):
         argv = sr.call_args[0][0]
         self.assertIn("test-install-symmetry-vm.sh", " ".join(argv))
         # ubuntu_new's registry entry now carries a literal "user": "himmel"
-        # (HIMMEL-2623) — the real guest login, which wins over user_env's
+        # — the real guest login, which wins over user_env's
         # "osboxes" (see TestConstruction.test_literal_user_wins_over_stale_env_var).
         self.assertIn("himmel@localhost", argv)   # NOT bare "localhost"
         self.assertIn("2222", [str(a) for a in argv])
@@ -396,7 +396,7 @@ class TestProvisionE2E(unittest.TestCase):
             vm.run_e2e()
 
 
-# Real VBoxManage output captured on this station 2026-10-14 (HIMMEL-2471).
+# Real VBoxManage output captured on this station 2026-10-14.
 _SHOWVMINFO_SNAP = 'name="ubuntu_new"\nVMState="poweroff"\nCurrentSnapshotName="suite-ready-v4"\nCurrentSnapshotUUID="92a7e71a-6dbd-48a9-bda3-fc1ef1dadfc7"\n'
 _RUNNINGVMS_EMPTY = ""
 _RUNNINGVMS_UP = '"ubuntu_new" {1482f800-d810-43b9-80c9-29baa40b8c52}\n'
@@ -898,7 +898,7 @@ class TestSecretBoundary(unittest.TestCase):
                 vm.assert_guest_clean("~", "env")
         self.assertIn("REFUSING", str(cm.exception))
 
-    # HIMMEL-3228: a spaced guest root is quoted, not refused; everything that could
+    # a spaced guest root is quoted, not refused; everything that could
     # end the word or start a find option still is.
     _UNSAFE_ROOTS = ("", "a b;rm -rf x", "a b'c", "a b$x", "a b`x`", "a b\nc", "a\tb",
                      " lead", "-a b", "-quit", "~user a b", "a b|c", "a b&c", "a b(c")

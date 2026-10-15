@@ -1786,6 +1786,29 @@ assert_rc "310 mv x \$HOME/.claude/settings.json denies" 2 \
 assert_rc "311 rg -ln foo -- \$HOME/.claude (flag-cluster ln + dir) allows" 0 \
     "$(bash_rc_of "$PRIMARY" 'rg -ln foo -- $HOME/.claude' HOME="$FAKEHOME")"
 
+# cp|mv|install|rsync|dd|tee|truncate are verbs only as words of their own,
+# never as a hyphen/dot part of a filename.
+assert_rc "5784a cat of x-install-record.md under ~/.claude allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'cat ~/.claude/x-install-record.md' HOME="$FAKEHOME")"
+assert_rc "5784b cat of x-tee-y.md under ~/.claude allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'cat ~/.claude/x-tee-y.md' HOME="$FAKEHOME")"
+assert_rc "5784c cat of x-cp-y.md under ~/.claude allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'cat ~/.claude/x-cp-y.md' HOME="$FAKEHOME")"
+assert_rc "5784d cat of x.rsync.log under ~/.claude allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'cat ~/.claude/x.rsync.log' HOME="$FAKEHOME")"
+assert_rc "5784e cp a ~/.claude/settings.json still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'cp a ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5784f tee ~/.claude/settings.json still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'echo x | tee ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5784g install a ~/.claude/settings.json still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'install a ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5784h /bin/cp path-verb onto settings still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" '/bin/cp a ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5784i read of x-cp-y.md then cp onto settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'cat ~/.claude/x-cp-y.md; cp a ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5784j v=cp variable-glued verb onto settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'v=cp; $v a ~/.claude/settings.json' HOME="$FAKEHOME")"
+
 # HIMMEL-4119: a segment's command word the hook cannot read as a known program
 # (a glob, an expansion, a flag-shaped word, a path to an unknown program) is a
 # write verb when that segment names a `.claude` directory: fail closed.
@@ -3388,6 +3411,15 @@ if command -v node >/dev/null 2>&1; then
     done
     timed_rc "832 twelve nested evals deny at the depth cap" 2 "$(rep 12 'eval ')'echo x'"
     TIMING_BUDGET_MS=$ob
+    # 5744a-b: the operand scan resolved every word; a 4,500-word
+    # redirect line and a line of 1,500 `.claude/s*.json` glob words must each
+    # be decided in under 2 s.
+    ob=$TIMING_BUDGET_MS TIMING_BUDGET_MS=2000
+    timed_rc "5744a 4500-word redirect command" 0 \
+        "echo $(rep 4500 'word ')> /tmp/out.txt"
+    timed_rc "5744b 1500 .claude/s*.json glob words denies" 2 \
+        "echo $(rep 1500 '.claude/s*.json ')> /tmp/out.txt"
+    TIMING_BUDGET_MS=$ob
 else
     echo "SKIP 679-683 (node not installed)"
 fi
@@ -3422,6 +3454,37 @@ assert_rc "843 powershell array tee-object denies" 2 \
     "$(powershell_rc_of "$PRIMARY" "cat @(tee-object -FilePath .claude/settings.json -InputObject x)")"
 assert_rc "844 powershell tee.exe in a group denies" 2 \
     "$(powershell_rc_of "$PRIMARY" "cat (tee.exe .claude/settings.json)")"
+
+# 5744c-h: rg --pre / --pre-glob run a program over each file, so
+# a reader that names a live settings path is no read; plain rg and grep are.
+assert_rc "5744i newline word cannot forge a memo entry for a later live glob" 2 \
+    "$(bash_rc_of "$PRIMARY" $'echo x > "a\n.claude/s*.json|1|0\n" ; echo y > .claude/s*.json')"
+assert_rc "5744j rg --pre\$'' in a TOK=0 command denies" 2 \
+    "$(bash_rc_of "$PRIMARY" $'rg --pre$\'\' ./x.sh foo ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5744k rg \$'--pre' in a TOK=0 command denies" 2 \
+    "$(bash_rc_of "$PRIMARY" $'rg $\'--pre\' ./x.sh foo .claude/settings.json')"
+assert_rc "5744l rg --pr[e] glob in a TOK=0 command denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'rg --pr[e] ./x.sh foo @(a) .claude/settings.json')"
+assert_rc "5744m rg brace-built --pre in a TOK=0 command denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'rg --{pre=./x.sh,pretty} foo @(a) .claude/settings.json')"
+assert_rc "5744c rg --pre prog over live settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'rg --pre ./x.sh foo .claude/settings.json')"
+assert_rc "5744d rg --pre=prog over home settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'rg --pre=./x.sh foo ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5744e rg --pre-glob over live settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'rg --pre-glob "*.json" --pre ./x.sh foo .claude/settings.json')"
+assert_rc "5744f rg --pre in a TOK=0 command denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'rg --pre ./x.sh foo @(a) .claude/settings.json')"
+assert_rc "5744f2 rg tab --pre in a TOK=0 command denies" 2 \
+    "$(bash_rc_of "$PRIMARY" $'rg\t--pre ./x.sh foo @(a) .claude/settings.json')"
+assert_rc "5744f3 rg quoted --pre in a TOK=0 command denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "rg '--pre' ./x.sh foo @(a) .claude/settings.json")"
+assert_rc "5744f4 rg --pretty is no --pre in a TOK=0 command" 0 \
+    "$(bash_rc_of "$PRIMARY" 'rg --pretty foo @(a) .claude/settings.json')"
+assert_rc "5744g plain rg of live settings allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'rg foo .claude/settings.json')"
+assert_rc "5744h plain grep of home settings allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'grep foo ~/.claude/settings.json' HOME="$FAKEHOME")"
 
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).

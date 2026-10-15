@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-plan-graph.sh — HIMMEL-4050. Hermetic tests for the graph.json that
+# test-plan-graph.sh — hermetic tests for the graph.json that
 # plan-index.sh --refresh emits next to the qmd docs: schema + the four typed
 # edges (pure python, always run), a graphify explain/query fixture (SKIPs when the
 # graphify binary is absent), the egress hook allowing the no-backend run, a failed

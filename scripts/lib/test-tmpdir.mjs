@@ -1,4 +1,4 @@
-// scripts/lib/test-tmpdir.mjs — HIMMEL-2797. Shared temp-dir helper for
+// scripts/lib/test-tmpdir.mjs — Shared temp-dir helper for
 // .test.mjs suites: mkdtempSync + a self-registered process-exit cleanup, so
 // a suite that creates a temp dir never has to remember to remove it (and a
 // test that throws mid-way still gets cleaned up, since the exit handler

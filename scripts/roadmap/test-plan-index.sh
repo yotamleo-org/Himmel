@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-plan-index.sh — HIMMEL-4000. Hermetic tests for plan-index.sh: a lookup by
+# test-plan-index.sh — Hermetic tests for plan-index.sh: a lookup by
 # ticket key returns its version/theme/goal, no change = no rebuild, a change =
 # rebuild, the source plan dir is never written, a failing/missing qmd fails the
 # refresh and leaves the fingerprint unadvanced. Fixture plan dir + stub qmd +
@@ -148,7 +148,7 @@ r="$(run --check 2>&1)"; rc=$?
 r="$(run --refresh 2>&1)"; contains "missing docs: refresh rebuilds" "$r" "rebuilt"
 [ -f "$out/docs/HIMMEL-111.md" ] && pass "missing docs: restored" || fail "docs not restored"
 
-# one deleted generated doc with a kept key is stale, and a refresh restores it (HIMMEL-4055)
+# one deleted generated doc with a kept key is stale, and a refresh restores it
 rm -f "$out/docs/HIMMEL-222.md"
 r="$(run --check 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "one doc deleted: --check stale despite kept key" || fail "--check fresh with a doc deleted"
@@ -156,7 +156,7 @@ r="$(run --refresh 2>&1)"; contains "one doc deleted: refresh rebuilds" "$r" "re
 [ -f "$out/docs/HIMMEL-222.md" ] && pass "one doc deleted: restored" || fail "deleted doc not restored"
 r="$(run --check 2>&1)"; contains "after restore: fresh again" "$r" "fresh"
 
-# a changed generator makes the docs stale even when no input changed (HIMMEL-4055)
+# a changed generator makes the docs stale even when no input changed
 mkdir -p "$W/gen"; cp "$HERE/plan-index.sh" "$HERE/plan_docs.py" "$W/gen/"
 grun() { QMD_CALLS="$W/gen-calls" ROADMAP_QMD_BIN="$W/qmd" bash "$W/gen/plan-index.sh" "$@" --plan-dir "$plan" --out "$W/outg" --watch "$mir"; }
 grun --refresh >/dev/null 2>&1

@@ -21,7 +21,7 @@
 #   --no-prune           Skip the prune phase; just create.
 #   --no-install         Forwarded to _new-worktree.sh.
 #   --dry-run            Show what would happen, do nothing.
-#   --health             Read-only sweep monitor (HIMMEL-3405): print only alarm
+#   --health             Read-only sweep monitor: print only alarm
 #                        lines — LOST-COMMITS / SWEEP-ERROR (from unlanded-work.sh)
 #                        and STUCK (a worktree/branch prior sweeps skipped for N
 #                        sweeps or >24h) — empty output = healthy; exit 0/1.
@@ -30,19 +30,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Forge-dispatch seam (HIMMEL-326): the merged-PR + open-PR prune signals route
+# Forge-dispatch seam: the merged-PR + open-PR prune signals route
 # through forge_* so prune works on GitHub and Bitbucket Cloud alike.
 # shellcheck source=lib/forge.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/forge.sh"
-# HIMMEL-2227 — worktree_in_use / worktree_intact: a plain `git worktree
+# worktree_in_use / worktree_intact: a plain `git worktree
 # remove` is NOT atomic on Windows (see the lib's own header for the measured
 # repro), so the prune loop below probes before removing and classifies a
 # failed remove instead of trusting a bare non-zero rc.
 # shellcheck source=lib/worktree-inuse.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/worktree-inuse.sh"
-# HIMMEL-3297 (option B) — worktree_fresh_locked: is this worktree's leg
+# worktree_fresh_locked: is this worktree's leg
 # still holding a FRESH queue-lock.sh lock on its own handover doc? Checked
 # alongside worktree_in_use below, right before the remove.
 # shellcheck source=lib/worktree-fresh-lock.sh
@@ -162,7 +162,7 @@ log() {
 }
 
 # ---------------------------------------------------------------------------
-# HIMMEL-3405 — sweep health. A real sweep records every merged worktree/branch
+# sweep health. A real sweep records every merged worktree/branch
 # it had to SKIP (dirty, locked, in use, a failed or partial removal, a refused
 # stray husk) in a small state file under the git common dir; `--health` reads
 # it back and alarms on an entry skipped for >= SWEEP_STUCK_SWEEPS consecutive
@@ -319,17 +319,14 @@ ORIGIN_NWO="$FORGE_NWO"
 ORIGIN_PR_CACHE=""
 ORIGIN_PR_CACHE_OK=0
 
-# KNOWN LIMITATION: rows key on head.repo.full_name == nwo, so a PR opened
-# from a fork (head repo != base repo) is filtered out even though its base
-# is this repo. Local worktree/remote-tracking branches are pushed straight
-# to origin on this repo, so a fork PR would only coincidentally
-# share a branch name with one of them — rare enough here not to warrant the
-# extra base.repo.full_name plumbing + matching-rule complexity. Revisit if
-# this repo starts taking fork PRs.
+# Rows key on the PR's BASE repo (== nwo) plus head.ref, so a PR opened from a
+# fork still matches a local branch of the same name; the exact-tip check in
+# resolve_pr_state (head.sha == refs/pull/<n>/head) keeps a coincidental name
+# match from pruning anything.
 fetch_github_pr_cache() {
     local nwo="$1"
     forge_in_primary _gh api --paginate "repos/$nwo/pulls?state=all&per_page=100" \
-        --jq '.[] | [(.head.repo.full_name // ""), .head.ref, (if .state == "open" then "open" elif .merged_at != null then "merged" else "closed" end), .head.sha] | @tsv'
+        --jq '.[] | [.base.repo.full_name, .head.ref, (if .state == "open" then "open" elif .merged_at != null then "merged" else "closed" end), .head.sha] | @tsv'
 }
 
 github_nwo_from_remote() {
@@ -420,7 +417,7 @@ EOF
 
 # Return 0 only when the current branch tip exactly matches the recorded head
 # of a merged PR. A mere "this branch once had a merged PR" signal is unsafe:
-# commits may have been added after the squash merge (the HIMMEL-1410 loss mode).
+# commits may have been added after the squash merge.
 #
 # The cached-listing accounting above (ORIGIN_PR_CACHE) is GitHub-only. On a
 # non-github forge, fall back to the forge-agnostic per-branch signal the
@@ -428,7 +425,7 @@ EOF
 # rows still show pr-state=unknown there, but that is a display-only gap, not
 # a stuck-worktree regression.
 NON_GITHUB_PRUNE_DEGRADED_WARNED=0
-# HIMMEL-4334: 1 = the leg-scratch arms of is_ignorable_stray apply (the
+# 1 = the leg-scratch arms of is_ignorable_stray apply (the
 # branch's work is merged); 0 only while is_branch_mergeable_for_prune has
 # accepted a never-merged branch under --only-allow-unmerged.
 LEG_SCRATCH_OK=1
@@ -453,7 +450,7 @@ is_branch_mergeable_for_prune() {
     if [ "$PR_STATE" = "merged" ] && [ "$PR_HEAD_MATCH" -eq 1 ]; then
         return 0
     fi
-    # HIMMEL-3747: --only-allow-unmerged widens the merged-only gate above for
+    # --only-allow-unmerged widens the merged-only gate above for
     # a SINGLE --only target. Only "closed" (a real PR that never merged) or
     # "none" (no PR at all) are eligible here -- "open" (a parked leg keeps
     # its worktree) and "unknown" (resolve_pr_state's own gh/cache failure,
@@ -476,13 +473,12 @@ is_branch_mergeable_for_prune() {
     return 1
 }
 
-# Is an untracked path a known, discardable stray? (HIMMEL-431)
+# Is an untracked path a known, discardable stray?
 # Allowlist (survey-grounded): bun package-lock.json, codex AGENTS.md / .codex/,
 # tokensave .tokensave/. Scoped to "may be discarded when pruning a MERGED
-# worktree" — NOT a decision about repo tracking of codex files (that is
-# HIMMEL-417).
+# worktree" — NOT a decision about repo tracking of codex files.
 #
-# On tool-generated churn (HIMMEL-1692): every entry here is ALSO gitignored in
+# On tool-generated churn: every entry here is ALSO gitignored in
 # this repo, so `ls-files --others --exclude-standard` normally filters it long
 # before classify_worktree sees it. The allowlist is the belt to that braces —
 # it keeps the verdict correct in a clone/adopter checkout whose .gitignore
@@ -496,9 +492,9 @@ is_branch_mergeable_for_prune() {
 # first and independently in classify_worktree. A checkout whose .gitignore
 # lacks the entry isn't only an adopter clone: it's also every worktree PINNED
 # at a commit older than the .gitignore change, which is why adding the rule
-# to .gitignore alone cannot unstick worktrees that already exist (HIMMEL-2584
-# — __pycache__/*.pyc from any tracked .py script run in the worktree).
-# .vitest/ (HIMMEL-3754): vitest's own reporter output dir, minted by any
+# to .gitignore alone cannot unstick worktrees that already exist
+# (__pycache__/*.pyc from any tracked .py script run in the worktree).
+# .vitest/: vitest's own reporter output dir, minted by any
 # tracked `vitest run` invocation the same way __pycache__ is minted by a
 # tracked .py script.
 is_ignorable_stray() {
@@ -510,7 +506,7 @@ is_ignorable_stray() {
         __pycache__/*|*/__pycache__/*)         return 0 ;;
         *.pyc)                                 return 0 ;;
         .vitest/*|*/.vitest/*)                 return 0 ;;
-        # HIMMEL-4334: leg ship scratch at the worktree ROOT only (no */ forms:
+        # leg ship scratch at the worktree ROOT only (no */ forms:
         # the same name nested below the root is real work). Directory shapes
         # match as "<dir>/*" because --untracked-files=all lists their files.
         # git lists an untracked NESTED REPO as one collapsed entry ending in
@@ -532,7 +528,7 @@ is_ignorable_stray() {
     return 1
 }
 
-# HIMMEL-1738 — disposable-class allowlist for IGNORED content found inside a
+# disposable-class allowlist for IGNORED content found inside a
 # stray-husk sweep candidate. Deliberately a SEPARATE allowlist from
 # is_ignorable_stray above: that one classifies non-ignored untracked paths
 # and its verdict also drives the merged-worktree PRUNE decision
@@ -552,7 +548,7 @@ is_ignorable_ignored_stray() {
     return 1
 }
 
-# HIMMEL-1738 — a stray husk can classify "clean"/"strays" on its tracked and
+# a stray husk can classify "clean"/"strays" on its tracked and
 # non-ignored state alone while still hiding real user data that only
 # .gitignore protects (a worktree-local .env, local config): classify_worktree
 # above scans with `ls-files --others --exclude-standard`, which EXCLUDES
@@ -577,7 +573,7 @@ EOF
     echo "disposable"; return 0
 }
 
-# HIMMEL-3688 — a quarantined husk with no .git marker has no `git ls-files`
+# a quarantined husk with no .git marker has no `git ls-files`
 # to ask, so the reap pass below skipped content inspection for it entirely
 # (unlike a git-marker husk, which re-runs stray_ignored_verdict above before
 # reap). This walks the husk's own files directly and reuses the same
@@ -647,7 +643,7 @@ EOF
     echo "strays $strays"; return 0
 }
 
-# HIMMEL-1692 — snapshot a refused-prune worktree's uncommitted work to
+# snapshot a refused-prune worktree's uncommitted work to
 # refs/checkpoints/<slug>, so classify_worktree's refusal above (tracked or
 # forgotten verdict) doesn't just leave that work sitting unprotected in the
 # worktree against any OTHER deletion path. A temporary GIT_INDEX_FILE is used
@@ -724,7 +720,7 @@ checkpoint_worktree() {
     #   - staged X, then reverted on disk to HEAD -> the worktree tree collapses
     #     back to HEAD's, so an early-return placed above this would exit 0 and
     #     silently discard X, even though `status --porcelain` reported the
-    #     worktree dirty and sent us here. That was round 3's Critical.
+    #     worktree dirty and sent us here.
     # READ-ONLY: `write-tree` with no GIT_INDEX_FILE override reads the
     # worktree's REAL index and writes only tree objects — it never rewrites the
     # index file, so the mid-edit-worktree invariant this function is built
@@ -768,7 +764,7 @@ checkpoint_worktree() {
         return 1
     fi
 
-    # Compare-and-swap on BOTH paths (codex adversarial round 4). The update
+    # Compare-and-swap on BOTH paths. The update
     # path passes the observed old oid; the CREATE path passes the EMPTY STRING,
     # which is git's "this ref must not exist" expectation — without it, two
     # concurrent /clean runs that both saw no ref would both plain-write it and
@@ -790,7 +786,7 @@ checkpoint_worktree() {
 
     nfiles=$(git -C "$wt" diff-tree --no-commit-id --name-only -r "$head_tree" "$snap_tree" 2>/dev/null | wc -l | tr -d ' ')
     # Recover into a SEPARATE detached worktree, never `git restore --worktree
-    # -- .` (codex adversarial round 1). `restore` writes every captured path
+    # -- .`. `restore` writes every captured path
     # into whatever worktree the operator happens to be standing in — silently
     # overwriting THEIR uncommitted work, and not necessarily even the worktree
     # this snapshot came from. A data-loss guard must not advertise a
@@ -1041,9 +1037,9 @@ REMOTE_CLOSED_UNMERGED=0
 REMOTE_NO_PR=0
 REMOTE_UNKNOWN=0
 
-# HIMMEL-1970 — `refs/remotes/<remote>/*` is a LOCAL CACHE, and nothing here
+# `refs/remotes/<remote>/*` is a LOCAL CACHE, and nothing here
 # ever refreshed it. This repo has deleteBranchOnMerge=true, and merge-on-green
-# no longer passes `gh pr merge --delete-branch` (HIMMEL-1679) — that flag's
+# no longer passes `gh pr merge --delete-branch` — that flag's
 # `git push origin --delete` was what used to drop the local ref as a side
 # effect. So a squash-merged branch now vanishes server-side while its
 # remote-tracking ref lives on forever, and the classifier below re-reports it
@@ -1162,7 +1158,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
 
         # Normalize path comparison (Windows can return /c/ vs C:/ variants).
         wt_norm=$(cd "$wt" 2>/dev/null && pwd || echo "$wt")
-        # HIMMEL-3297 — --only narrows the sweep to ONE worktree (matched by
+        # --only narrows the sweep to ONE worktree (matched by
         # path or branch). Everything below is unchanged, so the target still
         # passes every prune gate; a sibling is never even considered.
         if [ -n "$ONLY_TARGET" ]; then
@@ -1193,7 +1189,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             continue
         fi
 
-        # Working-tree check (HIMMEL-431). Base the prune decision on TRACKED
+        # Working-tree check. Base the prune decision on TRACKED
         # changes only: a merged worktree's real work is already in main, so its
         # untracked files are strays. Known-regenerable strays (bun lockfile,
         # codex files) are discarded with the prune; tracked WIP or an unknown
@@ -1253,7 +1249,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             fi
         fi
 
-        # HIMMEL-3297 (option B) — a live leg's cwd can fall back to the
+        # a live leg's cwd can fall back to the
         # primary while it is still mid-wrap, so worktree_in_use's /proc scan
         # below can miss it; the leg's own queue-lock.sh lock on its handover
         # doc is the real "done with it" signal and is checked BEFORE the
@@ -1266,7 +1262,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             continue
         fi
 
-        # HIMMEL-2227 — in-use probe BEFORE the remove, plain or --force alike:
+        # in-use probe BEFORE the remove, plain or --force alike:
         # the remove is NOT atomic on Windows, and --force strips git's own
         # up-front refusal, so without this probe a forced remove on an
         # in-use tree is guaranteed to gut it (see worktree-inuse.sh's header
@@ -1294,7 +1290,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
                 log "  deleted cr-pending marker for $br"
             fi
         else
-            # HIMMEL-2227 — never report a removal outcome without LOOKING. A
+            # never report a removal outcome without LOOKING. A
             # refusal git makes up front leaves the tree whole; a failure
             # part-way through (only reachable via --force here, since a
             # plain remove already refuses up front on real dirt) leaves a
@@ -1313,7 +1309,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
     LEG_SCRATCH_OK=1
     echo "clean-garden: prune summary — $PRUNED pruned, $PARTIAL partial, $SKIPPED skipped, $FAILED failed"
 
-    # HIMMEL-3297 — --only is a one-worktree prune: report and exit here so the
+    # --only is a one-worktree prune: report and exit here so the
     # fleet-wide stray-husk sweep, marker sweep and checkpoint prune below never
     # run. Non-zero unless the one target was actually pruned (or, under
     # --dry-run, would be).
@@ -1366,7 +1362,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
 
             STRAY_FOUND=$((STRAY_FOUND+1))
 
-            # HIMMEL-1692 — this is the one unconditional `rm -rf` in the
+            # this is the one unconditional `rm -rf` in the
             # script, so classify before destroying. A husk here can be a
             # REAL worktree whose admin record died mid-`git worktree remove`
             # (see the ERR path above — "failed to remove worktree" — that
@@ -1375,7 +1371,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             # 24h later). Reuse classify_worktree/checkpoint_worktree rather
             # than re-deriving worktree state here.
             #
-            # HIMMEL-2267 — but classify_worktree only describes THIS directory
+            # but classify_worktree only describes THIS directory
             # when it IS one. On a plain leftover directory (no .git of its own)
             # `git -C` does not fail: it walks UP to the enclosing checkout and
             # answers about the PARENT's working tree, so the husk inherited the
@@ -1388,7 +1384,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             # under Git-Bash; `find -maxdepth 1 -name .git` is the reliable
             # presence check.
             #
-            # HIMMEL-2267 — this presence check must distinguish find FAILING
+            # this presence check must distinguish find FAILING
             # (permissions, a transient I/O error, an exotic path) from find
             # RUNNING and finding no .git: `2>/dev/null` on an emptiness test
             # alone makes both look like "no .git", which fails OPEN into the
@@ -1405,7 +1401,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             else
                 # find itself failed — we cannot prove this is NOT a worktree,
                 # so fail closed rather than delete something uninspectable.
-                # HIMMEL-2267 — distinct from "scanfail" below: this is the
+                # distinct from "scanfail" below: this is the
                 # presence PROBE failing, before we even know whether a .git
                 # exists, so it gets its own verdict and message rather than
                 # being blamed on classify_worktree/git.
@@ -1464,8 +1460,8 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             esac
             # verdict is "nonworktree", "clean", or "strays ..." — safe on
             # tracked/non-ignored state. A real worktree ($stray_git_marker
-            # non-empty) still needs the ignored-content check below
-            # (HIMMEL-1738 #1): classify_worktree never sees ignored paths.
+            # non-empty) still needs the ignored-content check below:
+            # classify_worktree never sees ignored paths.
             # A "nonworktree" leftover has no .git, so git has no gitignore
             # semantics to ask it about — nothing to check.
             if [ -n "$stray_git_marker" ]; then
@@ -1497,7 +1493,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
                 STRAY_RECLAIMED_KIB=$((STRAY_RECLAIMED_KIB+stray_kib))
                 continue
             fi
-            # HIMMEL-1738 #2 (TOCTOU) — a write landing between the
+            # a write landing between the
             # classification above and a destructive `rm -rf` here used to be
             # lost outright. `mv` is a single rename() on the same filesystem
             # (quarantine lives under COMMON_DIR, alongside sweep-health/,
@@ -1544,7 +1540,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
         fi
     fi
 
-    # HIMMEL-1738 #2 — reap quarantined husks on a LATER run. The quarantine
+    # reap quarantined husks on a LATER run. The quarantine
     # timestamp lives in a SIDECAR file next to the moved dir, not inside it
     # (a marker inside would show up to classify_worktree as untracked
     # content and block reap forever). A quarantine entry is deleted only if
@@ -1564,7 +1560,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             fi
             # Captured via $( ) rather than piped into `grep -q` (which can
             # SIGPIPE `find` under `set -o pipefail` and flip the verdict on
-            # a busy directory) — see HIMMEL-1430. A failed `find` here must
+            # a busy directory) —. A failed `find` here must
             # NOT read as "nothing found" (that would treat a scan failure as
             # permission to reap): check its own exit status and fail closed.
             if quar_age_out=$(find "$quar_sidecar" -mmin -1440 -print 2>/dev/null); then
@@ -1606,7 +1602,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             else
                 continue   # presence probe failed — fail closed, keep it
             fi
-            # HIMMEL-1738 (codex round-2 review) — re-check "nothing wrote here
+            # Re-check "nothing wrote here
             # since quarantining" AGAIN here, immediately before the delete,
             # rather than only before the classify above: classify_worktree
             # and stray_ignored_verdict run real `git` status/ls-files scans
@@ -1703,7 +1699,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
     report_kept_worktrees
     echo "clean-garden: full accounting — remote orphans"
     report_remote_orphans origin
-    # HIMMEL-1970: name the second population. These four counters come from
+    # name the second population. These four counters come from
     # report_remote_orphans (refs/remotes/*), NOT from the kept worktrees — a
     # bare "N MERGED-CLEAN" next to "N kept worktrees" was read as "N merged
     # worktrees were kept but not pruned", which the prune loop never said.
@@ -1713,7 +1709,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
         echo "ALERT clean-garden: attention required — $ACCOUNTING_UNKNOWN UNKNOWN, $REMOTE_TIP_DIFFERS TIP-DIFFERS, $REMOTE_NO_PR NO-PR (the last two count remote branches, not worktrees)"
     fi
 
-    # HIMMEL-2070 — report-only: which LOCAL BRANCHES (not just kept
+    # which LOCAL BRANCHES (not just kept
     # worktrees) are ahead of main with no PR at all. This is the gap the
     # prune loop above never covers: it only drops a branch whose PR already
     # MERGED, so a squash-merged branch under a DIFFERENT head (a squash
@@ -1728,8 +1724,8 @@ if [ "$NO_PRUNE" -eq 0 ]; then
         local script="$PRIMARY_WORKTREE/scripts/unlanded-work.sh"
         [ -f "$script" ] || return 0
         echo "clean-garden: full accounting — unlanded local work (never a PR)"
-        # Capture stderr separately and cd into PRIMARY_WORKTREE first
-        # (codex-3/codex-4, HIMMEL-2070 CR round 2): unlanded-work.sh always
+        # Capture stderr separately and cd into PRIMARY_WORKTREE first:
+        # unlanded-work.sh always
         # exits 0 by contract even on a scan failure (an unresolvable
         # --base), writing the diagnostic to stderr instead — a discarded
         # stderr made a failed scan print the same all-zero accounting as a
@@ -1753,10 +1749,10 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             echo "  LANDED-ELSEWHERE drop commands:"
             printf '%s\n' "$tsv" | awk -F'\t' '$1=="LANDED-ELSEWHERE"' | while IFS="$(printf '\t')" read -r _ branch _ _ _ _ wt; do
                 [ -n "$branch" ] || continue
-                # %q, not a double-quoted %s (codex-5, HIMMEL-2070 CR round 2):
+                # %q, not a double-quoted %s:
                 # a git ref name may legally contain "$(...)"/backticks/quotes,
                 # which a double-quoted printed command does not neutralize.
-                # No --force (codex-2, HIMMEL-2070 CR round 3) -- matches
+                # No --force -- matches
                 # this script's own documented policy above ("this command
                 # never uses `git worktree remove --force`"). Plain `git
                 # worktree remove` already refuses on any uncommitted or
@@ -1775,7 +1771,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-1596 — reap stale worker checkpoints.
+# reap stale worker checkpoints.
 #
 # The spawner snapshots a worker's uncommitted work to refs/checkpoints/<slug>
 # so a worker that dies mid-run does not take its work with it. Those refs live
@@ -1793,7 +1789,7 @@ fi
 # Deliberately NOT tied to whether the worktree or branch still exists — a
 # checkpoint outliving its worktree is precisely the case worth keeping.
 #
-# checkpoint_worktree (HIMMEL-1692) writes into this SAME refs/checkpoints/
+# checkpoint_worktree writes into this SAME refs/checkpoints/
 # namespace when the prune loop refuses a dirty worktree, so those autosave
 # refs age out under this same TTL sweep — no separate lifecycle needed.
 CHECKPOINT_TTL_DAYS="${CHECKPOINT_TTL_DAYS:-14}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# set-env-var.sh — idempotently set KEY=VALUE in a .env file (HIMMEL-758).
+# set-env-var.sh — idempotently set KEY=VALUE in a .env file.
 #
 # Generic sibling of set-handover-dir.sh's own create-or-update upsert logic
 # (that script stays HANDOVER_DIR-specific and untouched) — extracted as a

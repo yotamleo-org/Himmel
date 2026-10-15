@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # resolve-powershell.sh — locate the preferred PowerShell executable at
-# RUNTIME (HIMMEL-2126).
+# RUNTIME.
 #
 # WHY: Windows PowerShell 5.1 (powershell.exe) has a trap class pwsh
 # (PowerShell 7) does not: it reads a BOM-less UTF-8 script as cp1252,
@@ -14,7 +14,7 @@
 #   ps="$(resolve_powershell)" || { echo "no PowerShell"; exit 1; }
 # Prints the resolved executable on stdout + returns 0 on success. When pwsh
 # is unavailable and Windows PowerShell is used instead, ALSO prints ONE
-# warning line to stderr naming the trap class + HIMMEL-2126 — the fallback
+# warning line to stderr naming the trap class — the fallback
 # must never be silent. Returns 1 + empty stdout if no PowerShell interpreter
 # resolves at all. bash 3.2-safe.
 resolve_powershell() {

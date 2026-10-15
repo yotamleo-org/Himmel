@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-harness-run.sh — HIMMEL-4183. harness-run.py must leave NO descendant
+# test-harness-run.sh — harness-run.py must leave NO descendant
 # alive: not the direct child, not a grandchild in the child's process group,
 # and not a grandchild that escaped into its own session (setsid /
 # Popen(start_new_session=True) — the shape that left eight hook copies
@@ -203,7 +203,7 @@ eq "child killed by SIGKILL: rc 137" 137 "$?"
 hit=$(python3 "$W/inproc.py" "$SUT" orphan-stream "$W" "$W/child.sh" 2>/dev/null)
 case "$hit" in 1.*|2.*) pass "orphan stream: deadline hit at ${hit}s" ;; *) fail "orphan stream: deadline hit at '${hit}s' (want under 3s)" ;; esac
 
-# 12. HIMMEL-4542: a child that exits at once is reaped well under the 50 ms
+# 12. A child that exits at once is reaped well under the 50 ms
 #     poll interval. Budget is the median over 9 runs at loaded x2 (idle is a
 #     few ms; the old poll sat at ~50).
 ms=$(python3 "$W/inproc.py" "$SUT" exit-latency "$W" "$W/child.sh" 2>/dev/null)
@@ -213,7 +213,7 @@ case "$ms" in
     *) if [ "$ms" -lt 30 ]; then pass "exit latency: median ${ms}ms"; else fail "exit latency: median ${ms}ms (want under 30)"; fi ;;
 esac
 
-# 13. HIMMEL-4541: the REAL-process twin of row 11. A child that forks orphans
+# 13. The REAL-process twin of row 11. A child that forks orphans
 #     back to back (each reparents to the runner and exits at once, so waitpid
 #     returns one on nearly every poll) must still hit a 1 s deadline: rc 124,
 #     inside a 5 s budget (loaded x2 of the ~2 s the SIGTERM/KILL path needs).

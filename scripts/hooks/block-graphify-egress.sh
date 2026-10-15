@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Bash|PowerShell) - NARROW data-egress fence for `graphify`
-# (HIMMEL-621/622 Phase G-F). Fast-exits 0 for every command that is not a
+# Fast-exits 0 for every command that is not a
 # graphify invocation; for a graphify command it delegates the corpus x
 # provider x purpose decision to scripts/guardrails/graphify-fence.sh and
 # propagates its verdict (fence exit 2 = deny, surfaced to Claude via stderr).
@@ -49,27 +49,26 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null ||
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# COMMAND-POSITION `graphify` match (HIMMEL-1180), not "the word appears
+# COMMAND-POSITION `graphify` match, not "the word appears
 # anywhere". The old word-boundary check below matched a bare mention
 # ANYWHERE in the command text (`grep -rn graphify .` or a reference left
-# over after an unrelated `cd` both tripped it, HIMMEL-1168), which is a
+# over after an unrelated `cd` both tripped it), which is a
 # false-trip source, not a security property this hook actually needs -
 # the real decision is delegated to graphify-fence.sh below regardless.
 # Anchor to command position instead, sharing the SAME wrapper/assignment
-# grammar block-destructive-commands.sh uses (HIMMEL-851: sudo / env / cmd
+# grammar block-destructive-commands.sh uses (sudo / env / cmd
 # [/switches] /c / powershell|pwsh [-flags] -c), so a wrapped invocation
 # (`env FOO=1 graphify ...`, `sudo graphify ...`) still matches while an
-# unrelated mention does not. Residual (accepted,
-# HIMMEL-1180): a quoted-payload wrapper (`bash -c "graphify ..."`) is not
-# unwrapped HERE - same documented HIMMEL-851 gap, proportionate for a hook
+# unrelated mention does not. Residual (accepted): a quoted-payload wrapper (`bash -c "graphify ..."`) is not
+# unwrapped HERE - same documented gap, proportionate for a hook
 # guarding accidental agent egress rather than an adversary; graphify-fence.sh
-# does its own bash -c unwrap for anything that DOES reach it. CR round 2
-# (codex-2, suggestion): for the same "not a general parser" reason, this
+# does its own bash -c unwrap for anything that DOES reach it. For the same
+# "not a general parser" reason, this
 # regex is not quote-aware either - a literal `; graphify ...` inside a
 # quoted argument (e.g. `printf '; graphify x'`) can spuriously look like a
 # new command-position clause and route to the fence. Accepted: an
 # over-invocation of the fence on data that merely CONTAINS graphify-shaped
-# text is a false-trip in the OPPOSITE direction from HIMMEL-1180's actual
+# text is a false-trip in the OPPOSITE direction from the actual
 # problem (over-blocking noise on real graphify text vs. an unnecessary
 # fence call on a rare quoted string), and the fence itself still evaluates
 # correctly - it just runs slightly more often than the ideal.
@@ -80,17 +79,17 @@ if ! . "$SCRIPT_DIR/../guardrails/lib.sh" 2>/dev/null; then
     exit 2
 fi
 guard_cmdpos_grammar
-# CR round 1 (codex-1): the shared CMDPOS wrapper set (sudo/env/cmd/
+# The shared CMDPOS wrapper set (sudo/env/cmd/
 # powershell|pwsh) does not include `timeout` -- block-destructive-
 # commands.sh never wrapped it either (grep its own source: absent). Unlike
 # the accepted bash -c residual above, `timeout 10 graphify ...` is NOT a
 # quoted-payload case, and the OLD naive substring match DID catch it -- so
 # leaving it out here would be a real regression, not the same accepted gap.
-# CR round 2 (codex-1): same shape for the TRANSPARENT no-argument wrappers
+# Same shape for the TRANSPARENT no-argument wrappers
 # `command`/`exec`/`builtin`/`nohup`/`time`/`nice` -- graphify-fence.sh's own
-# classify_clause already treats these as pass-through (HIMMEL-621), the
+# classify_clause already treats these as pass-through, the
 # shared CMDPOS never did, and the old substring match caught them too.
-# HIMMEL-2094: those six were spliced in as BARE literals below (no
+# Those six were spliced in as BARE literals below (no
 # flag-consuming loop), so a flag-bearing form (`nice -n 5 graphify ...`,
 # `time -p graphify ...`, `nohup -- graphify ...`) fell through the wrapper
 # alternation at the flag token and never reached EXEPFX -- the same
@@ -102,7 +101,7 @@ guard_cmdpos_grammar
 # `echo` as -p's "value" and still reach graphify). nohup takes only an
 # optional `--` end-of-options marker, command/builtin take no-value flags
 # only (`-p`/`-v`/`-V` for command; builtin has none).
-# HIMMEL-2615: same shape as the `timeout`/`nohup` splices above -- `setsid`
+# Same shape as the `timeout`/`nohup` splices above -- `setsid`
 # is a transparent wrapper the shared CMDPOS grammar never had either
 # (block-destructive-commands.sh never wrapped it), and the old naive
 # substring match DID catch `setsid graphify ...` (it matched "graphify"
@@ -115,7 +114,7 @@ guard_cmdpos_grammar
 # function, since widening block-destructive-commands.sh's own grammar is a
 # bigger, separately-reviewed change against its own 1000+-case suite, not
 # something this ticket's diff should risk.
-# HIMMEL-2610: the nice/time alternatives below matched --adjustment/
+# The nice/time alternatives below matched --adjustment/
 # --output/--format as BARE LITERALS, so a GNU-unambiguous abbreviation
 # (`nice --adj 5 graphify ...`) fell through to the generic bare-flag
 # alternative (`-[^[:space:]]+`, no value consumed), leaving the flag's
@@ -123,7 +122,7 @@ guard_cmdpos_grammar
 # alternation fails to match and this PRE-FILTER routes nothing to the real
 # fence: a full, silent bypass of the entire egress guard for that shape
 # (confirmed empirically; see scripts/guardrails/test-graphify-fence.sh
-# HIMMEL-2610 block for the classify_clause-side twin of this same fix).
+# for the classify_clause-side twin of this same fix).
 # `--a[a-z-]*` / `--o[a-z-]*` / `--f[a-z-]*` cover every unambiguous
 # abbreviation of nice's only value-taking long option (--adjustment, the
 # only nice long option starting with 'a') and time's two (--output/
@@ -132,13 +131,13 @@ guard_cmdpos_grammar
 # only costs one extra fence call, never a false block; exec/command/nohup
 # have no long-option forms in bash's builtins, so those alternatives are
 # unchanged.
-# HIMMEL-4158: wrapper flag and value words use the shared CMDFLG / CMDVAL
+# Wrapper flag and value words use the shared CMDFLG / CMDVAL
 # atoms (guard_cmdpos_grammar), so a quoted value with a space
 # (`exec -a 'a b' graphify`) no longer hides graphify from the fence.
 CMDPOS='(^|[|;&(`]|[)][[:space:]]*[{])[[:space:]]*(('"$ASSIGN"'|'"$EXEPFX"'(sudo([[:space:]]+'"$CMDFLG"'('"$CMDVAL"')?)*|setsid([[:space:]]+'"$CMDFLG"')*|stdbuf([[:space:]]+'"$CMDFLG"'('"$CMDVAL"')?)*|env([[:space:]]+('"$CMDFLG"'('"$CMDVAL"')?|'"$ASSIGN"'))*|timeout([[:space:]]+('"$CMDFLG"'('"$CMDVAL"')?))*'"$CMDVAL"'|nice([[:space:]]+(-n'"$CMDVAL"'|--a[a-z-]*'"$CMDVAL"'|'"$CMDFLG"'))*|time([[:space:]]+(-[of]'"$CMDVAL"'|--o[a-z-]*'"$CMDVAL"'|--f[a-z-]*'"$CMDVAL"'|'"$CMDFLG"'))*|exec([[:space:]]+(-a'"$CMDVAL"'|'"$CMDFLG"'))*|command([[:space:]]+'"$CMDFLG"')*|nohup([[:space:]]+--)?|builtin|cmd(\.exe)?([[:space:]]+/[[:alnum:]]+(:[[:alnum:]]+)?)*[[:space:]]+/c|(powershell|pwsh)(\.exe)?([[:space:]]+-[^[:space:]]+)*[[:space:]]+-c[[:alnum:]]*))[[:space:]]+)*'"$EXEPFX"
 cmd_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr '\n\r' ';;')
 
-# HIMMEL-2615: the repo's own quiet runner (`scripts/quiet-run.sh <label> --
+# The repo's own quiet runner (`scripts/quiet-run.sh <label> --
 # <cmd...>`) cannot be expressed as a CMDPOS wrapper prefix above -- the
 # command-position token there is `bash` (or a bare/path-qualified script
 # invocation), and the runner's own tail is separated by a literal `--`, not
@@ -151,9 +150,9 @@ cmd_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr 
 # runner's `--` tail exactly and is a documented no-op for anything that
 # isn't really a command-position graphify invocation, so an over-inclusive
 # route here costs one extra fence call and never over-blocks. Same trade the
-# CR round 2 comment above already accepts for a quoted `; graphify ...`
+# quoted-payload comment above already accepts for a quoted `; graphify ...`
 # lookalike.
-# CR round 1 (codex-1): no separator class after `.sh` - a QUOTED script path
+# No separator class after `.sh` - a QUOTED script path
 # (`bash "scripts/quiet-run.sh" lbl -- graphify ...` or the single-quoted
 # form) has the closing quote character sitting immediately after `.sh`, not
 # whitespace, so a `[[:space:]]` there missed both quoted forms entirely and
@@ -161,7 +160,7 @@ cmd_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr 
 # and would have denied). Same over-inclusive-is-fine trade as the rest of
 # this condition.
 QUIETRUN_TAIL='quiet-run\.sh.*[^[:alnum:]_.-]graphify(\.exe)?([^[:alnum:]_.-]|$)'
-# HIMMEL-1430: this IS the routing condition of an egress fence, so a
+# This IS the routing condition of an egress fence, so a
 # fail-open here is a real vulnerability, not a cosmetic one -- under
 # `set -o pipefail` (line 14), `grep -q` exits the instant it matches, the
 # producer then takes SIGPIPE writing the rest, and the PIPELINE's status
@@ -174,7 +173,7 @@ QUIETRUN_TAIL='quiet-run\.sh.*[^[:alnum:]_.-]graphify(\.exe)?([^[:alnum:]_.-]|$)
 # so fix it here. CAPTURE instead of `-q` (reads all input, no early exit, no
 # SIGPIPE) -- not a here-string: `$cmd` is attacker/agent-controlled command
 # text with no size cap, and a here-string over ~64 KiB wedges Git Bash
-# (HIMMEL-2027), which would trade this fail-open for a different large-input
+# which would trade this fail-open for a different large-input
 # failure on the exact kind of pathological input this bug needs.
 cmdpos_hit=$(printf '%s' "$cmd_lc" | grep -E "${CMDPOS}graphify(\.exe)?([^[:alnum:]_.-]|\$)")
 quietrun_hit=$(printf '%s' "$cmd_lc" | grep -E "$QUIETRUN_TAIL")
@@ -182,7 +181,7 @@ if [ -z "$cmdpos_hit" ] && [ -z "$quietrun_hit" ]; then
     exit 0
 fi
 
-# Tool-call cwd (HIMMEL-779): the command's cwd (.tool_input.cwd) is where the
+# Tool-call cwd: the command's cwd (.tool_input.cwd) is where the
 # agent will actually run it; this hook process's own $PWD is the project root
 # and can differ. Thread it to the fence (GRAPHIFY_TOOL_CWD) so relative and
 # bare-word targets resolve against the REAL command cwd, not the hook's - a

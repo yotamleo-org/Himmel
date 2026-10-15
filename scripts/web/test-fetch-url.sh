@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/web/fetch-url.sh + fetch_url.py (HIMMEL-4908). Hermetic: NO
+# Tests for scripts/web/fetch-url.sh + fetch_url.py. Hermetic: NO
 # external network. X/IG parsing runs on fixtures/*.html (--from-html); the
 # plain-host path hits a throwaway 127.0.0.1 http.server; exit 3 runs with an
 # empty HOME and a python that cannot import scrapling.

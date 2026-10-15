@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/qmd-quality/qmd-quality.sh - qmd retrieval-quality eval
-# (HIMMEL-4184). Runs the golden set through lex-only, vec-only, hybrid and
+# Runs the golden set through lex-only, vec-only, hybrid and
 # hybrid+rerank and prints hit@1, hit@5 and MRR per mode and per collection.
 #
 # Usage:
@@ -23,7 +23,7 @@
 # uncached one is refused (exit 3) rather than downloaded. QMD_EMBED_MODEL /
 # QMD_RERANK_MODEL select candidate models, exactly as qmd itself reads them.
 #
-# Embed model (HIMMEL-4439): with QMD_EMBED_MODEL unset the eval adopts the
+# Embed model: with QMD_EMBED_MODEL unset the eval adopts the
 # index's single embed model; a set model that differs from the index's (or an
 # index mixing models) is refused with exit 2, naming both.
 #
@@ -96,7 +96,7 @@ model_file() {
 }
 
 # The SDK embeds queries with QMD_EMBED_MODEL (else the gemma default), and never
-# checks which model made the index's vectors (HIMMEL-4232), so a mismatch gives
+# checks which model made the index's vectors, so a mismatch gives
 # errors or garbage on every vec/hybrid query. Unset: adopt the index's own model,
 # as qmd-embed-model.sh and doctor C49 judge it; set but different: refuse, naming
 # both. Only modes that embed a query (anything but lex) are checked. An index
@@ -156,7 +156,7 @@ else
 fi
 
 # The SDK runs llama.cpp in-process; a bun blocked in native code ignores
-# SIGTERM (HIMMEL-3956), so each mode gets qmd_bounded's whole-group deadline.
+# SIGTERM, so each mode gets qmd_bounded's whole-group deadline.
 # One process per mode, each under its own deadline, so a stalled mode (seen
 # while a GPU clock tune was active) is named and stops the run promptly.
 # shellcheck source=scripts/lib/qmd-bounded.sh
@@ -175,8 +175,8 @@ bun "$HERE/latency.ts" --runs "$OUT/runs.jsonl" >"$OUT/latency.tsv" || exit 2
 cat "$OUT/scores.tsv"
 echo
 cat "$OUT/latency.tsv"
-# HIMMEL-4647: one eval-runs ledger row per run (scripts/eval/lib/eval_runs.py);
-# a ledger failure warns and never changes the eval's result. HIMMEL-4650:
+# One eval-runs ledger row per run (scripts/eval/lib/eval_runs.py);
+# a ledger failure warns and never changes the eval's result.
 # ledger-row.py adds the bootstrap CIs, per-query cases and the index identity.
 python3 "$HERE/ledger-row.py" "$OUT" --golden "$GOLDEN" --modes "$MODES" --scope "$SCOPE" \
   --candidate-limit "$CAND" --embed-model "${QMD_EMBED_MODEL:-}" --rerank-model "${QMD_RERANK_MODEL:-}" --index "$INDEX" \

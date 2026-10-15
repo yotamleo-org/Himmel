@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // mock-anthropic.mjs — scripted local Anthropic API for zero-cost Claude turn tests
-// (HIMMEL-4411, epic HIMMEL-4409 step 2). Loopback only, no dependencies.
+// Loopback only, no dependencies.
 //
 //   node mock-anthropic.mjs --fixture <file.json> --port-file <file> [--log <file>]
 //

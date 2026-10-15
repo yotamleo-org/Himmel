@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tracker-jira.sh — Jira backend for the tracker seam (HIMMEL-4759).
+# tracker-jira.sh — Jira backend for the tracker seam.
 # Sourced by tracker.sh; not run directly. Every op shells out to ${JIRA_CMD},
 # the general Jira test seam this file owns: default
 # `node <primary checkout>/scripts/jira/dist/index.js` (an untracked build

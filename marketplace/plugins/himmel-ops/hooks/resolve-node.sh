@@ -13,7 +13,7 @@
 # Prints the absolute path on stdout + returns 0 on success; returns 1 + empty
 # stdout if no node is found. bash 3.2-safe (no mapfile / associative arrays).
 # No `local`: run-node.sh sources this under whatever `sh` the hook shell has and
-# ksh93 rejects it (HIMMEL-3182), so function-scope variables carry a `_rn_`
+# ksh93 rejects it, so function-scope variables carry a `_rn_`
 # prefix instead — they leak into a same-shell caller, but cannot collide.
 #
 # Test seams (used only by scripts/lib/test-resolve-node.sh):
@@ -22,9 +22,7 @@
 #                            PATH (step 3) — NOT the nvm-windows candidates
 #                            (NVM_SYMLINK / /c/nvm4w/nodejs) checked before
 #                            PATH in step 1, which stay live under this seam
-#                            (codex CR round 2, HIMMEL-2077: this seam used to
-#                            also disable step 1 entirely, contradicting this
-#                            very contract). Step 1 is controlled by NVM_SYMLINK
+#                            Step 1 is controlled by NVM_SYMLINK
 #                            directly, plus RESOLVE_NODE_NVM4W_DIR below for its
 #                            hardcoded default.
 #   RESOLVE_NODE_NVM4W_DIR   override /c/nvm4w/nodejs, nvm-windows' own default
@@ -36,25 +34,25 @@
 resolve_node() {
     # 1) nvm-windows ONLY, ahead of PATH: NVM_SYMLINK (default C:\nvm4w\nodejs)
     #    is the operator's CHOSEN version, and /c/nvm4w/nodejs is that same
-    #    tool's own default install location — both HIMMEL-2013 nvm-windows
+    #    tool's own default install location — both nvm-windows
     #    conventions, not a foreign version manager's choice. PATH is checked
     #    AFTER this (below), not before it, so a stale winget/MSI node sitting
-    #    on PATH cannot beat nvm-windows (HIMMEL-2077: PATH used to run first,
-    #    silently re-breaking HIMMEL-2013 whenever the stale install also
+    #    on PATH cannot beat nvm-windows (PATH used to run first,
+    #    silently re-breaking that choice whenever the stale install also
     #    happened to be on PATH). Scoped to ONLY these two nvm-windows paths —
     #    NOT the rest of the well-known-locations list in step 3 — because
     #    those are generic cross-platform paths (/usr/bin, homebrew, a user's
     #    ~/.local/bin) that a DIFFERENT operator may have deliberately put
     #    behind a hand-picked PATH entry (a Unix version manager, asdf shims,
     #    etc); promoting that whole list ahead of PATH regressed that case
-    #    (codex CR round on HIMMEL-2077). Backslashes → slashes so the -x
+    #. Backslashes → slashes so the -x
     #    probe works under Git Bash, and a drive-letter prefix (C:/x) is
     #    rewritten to MSYS form (/c/x).
     _rn_nvm_symlink="${NVM_SYMLINK:-}"
     if [ -n "$_rn_nvm_symlink" ]; then
         # POSIX builtins only (no tr fork) — this runs even when no node/PATH
         # is found at all, the exact minimal-utils case this file exists to
-        # survive (HIMMEL-2741: a caught-by-the-widened-gate regression).
+        # survive (a caught-by-the-widened-gate regression).
         _rn_nvmw_rest="$_rn_nvm_symlink" _rn_nvmw_out=''
         while :; do
             case "$_rn_nvmw_rest" in
@@ -88,7 +86,7 @@ resolve_node() {
     fi
 
     # 3) Other well-known absolute locations (macOS homebrew, Linux, Windows),
-    #    a PATH fallback exactly as before HIMMEL-2077 — these are generic
+    #    a PATH fallback — these are generic
     #    system paths, not an operator's explicit version choice, so they stay
     #    behind PATH. The test seam replaces this list wholesale so cases stay
     #    hermetic; `_rn_dirs` is walked with IFS=:, so a bare colon in the path

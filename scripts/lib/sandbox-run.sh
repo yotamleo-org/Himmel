@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# HIMMEL-4912: containment for hook classification, never destructive exec mode.
+# containment for hook classification, never destructive exec mode.
 # Linux namespaces or Darwin sandbox-exec; missing confinement fails closed.
 # Usage: sandbox-run.sh [--canary ABSENT_PATH] [--read-only INPUT]... -- CMD [ARG...]
 #        sandbox-run.sh --write-mask-list FILE   (Linux: walk once, write a reusable list)
-# SANDBOX_RUN_MASK_LIST=FILE reuses that list when it validates (HIMMEL-5055).
+# SANDBOX_RUN_MASK_LIST=FILE reuses that list when it validates.
 # Linux binds runtime/worktree/socket-free inputs and bounds HOME/tmp in tmpfs.
 # Darwin confines writes to private scratch; outputs use stdout/stderr only.
 set -uo pipefail
@@ -129,7 +129,7 @@ walk_masks() {
         \( -type d \( ! -readable -o ! -executable \) -printf 'd\0%p\0' -prune \) \
         -o \( ! -type f ! -type d ! -type l -printf 'f\0%p\0' \) > "$1"
 }
-# HIMMEL-5055: the full walk dominates a corpus run. A list is reused only when
+# the full walk dominates a corpus run. A list is reused only when
 # it is ours (regular file, this uid, no group/other write), covers these roots,
 # is under the TTL, every listed path still exists, and the mtime/mode of every
 # directory within two levels of a root is unchanged since it was built. A node

@@ -83,7 +83,7 @@ $s8 = Join-Path $td 's8.json'; $fixture | Set-Content $s8 -Encoding utf8; $b8 = 
 Remove-PretooluseHooks -SettingsPath $s8 -DryRun | Out-Null
 Check 'dry-run no mutation' (Get-Content $s8 -Raw) $b8
 
-# 9. HIMMEL-3574: the new wired-command shape (missing-script guard) must
+# 9. The new wired-command shape (missing-script guard) must
 # still unwire -- an existing install may carry either the old bare
 # `bash "..."` or the new `if [ -f "..." ]; then bash "..."; else ...; fi`.
 $newShapeFixture = '{

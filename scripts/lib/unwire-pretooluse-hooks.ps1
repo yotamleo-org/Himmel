@@ -41,7 +41,7 @@ function Remove-PretooluseHooks {
     }
 
     # Captured native stdout is decoded via [Console]::OutputEncoding, the
-    # legacy OEM codepage here, not UTF-8 (HIMMEL-2256; dot-sourcing this
+    # legacy OEM codepage here, not UTF-8 (dot-sourcing this
     # library must not mutate the caller's console encoding at top level).
     # Save/restore around the capture so the caller's encoding is unchanged
     # on every exit path, including a thrown error.
@@ -50,7 +50,7 @@ function Remove-PretooluseHooks {
     # $OutputEncoding preference variable, not [Console]::OutputEncoding --
     # on Windows PowerShell 5.1 it defaults to ASCIIEncoding, silently
     # replacing every non-ASCII char with `?` before jq ever sees it
-    # (HIMMEL-2256 twin bug). Must be set at global scope: a bare
+    # Must be set at global scope: a bare
     # $OutputEncoding assignment inside a function is function-local and the
     # child process never sees it.
     #

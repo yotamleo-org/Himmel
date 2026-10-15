@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # classify-branches.sh - decide, per branch, whether its content is already in
 # main. REPORT ONLY: this script never deletes, never pushes, never writes to
-# the repo (HIMMEL-1600, first orchestration-MVP phase, Track 7.1).
+# the repo (first orchestration-MVP phase, Track 7.1).
 #
 # WHY THIS EXISTS
 # The estate is unknowable: 321 local branches against 486 open tickets, and the

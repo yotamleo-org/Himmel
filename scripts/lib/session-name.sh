@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # session-name.sh — resolve the running Claude Code session's `-n` name from
-# inside a hook or tool subprocess (HIMMEL-2788).
+# inside a hook or tool subprocess.
 #
 # PLATFORM GUARD: no .ps1 twin, by design, not oversight — this reads
 # /proc/<pid>/cmdline, a Linux-only seam (no /proc on macOS/Windows).
 #
 # There is no CLAUDE_SESSION_NAME env var in this codebase (checked: no hit
 # anywhere in scripts/ or docs/internals/). What DOES exist: claude exports
-# CLAUDE_PID into every tool subprocess it spawns (HIMMEL-2514, see
+# CLAUDE_PID into every tool subprocess it spawns (see
 # scripts/handover/headed-arm.sh), and the launched `claude` process's own
 # argv carries `-n <name>` when the session was named. /proc/<pid>/cmdline is
 # therefore the reliable seam — Linux only, matching the claudex lane, which
-# is konsole/Linux-only today (HIMMEL-2788 leg doc fact 7). Platforms without
+# is konsole/Linux-only today. Platforms without
 # /proc (macOS, Windows) get empty output here, never a wrong name — callers
 # must treat that as "unresolvable" and fail open, not as an error.
 #
@@ -49,7 +49,7 @@ current_session_name() {
         # glob metacharacters — resolve_console_doc's `find -name
         # "${name}.md"` treats these as wildcards, not literal characters,
         # so an unsanitized name can cross-match a DIFFERENT session's
-        # console doc (HIMMEL-2973 Finding 2).
+        # console doc.
         */*|*..*|*[[:space:]]*|*[*?[]*) return 1 ;;
     esac
 

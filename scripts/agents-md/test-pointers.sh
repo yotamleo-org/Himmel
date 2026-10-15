@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for pointers.sh and the repo-wide CLAUDE.md/AGENTS.md drift check
-# (HIMMEL-5384). Fixture rows use a throwaway git repo; the last rows check the
+# Tests for pointers.sh and the repo-wide CLAUDE.md/AGENTS.md drift check.
+# Fixture rows use a throwaway git repo; the last rows check the
 # REAL repo, so an unregenerated AGENTS.md anywhere fails CI. Bash 3.2-safe.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

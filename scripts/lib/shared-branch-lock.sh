@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # shared-branch-lock.sh -- serialize commits onto one caller-named shared
-# branch across parallel offload-lane dispatchers (HIMMEL-800).
+# branch across parallel offload-lane dispatchers.
 #
-# WHY: HIMMEL-800 lets an offload lane run in an opt-in "shared branch" mode
+# WHY: an offload lane may run in an opt-in "shared branch" mode
 # where multiple workers commit serially onto ONE existing branch instead of
 # each getting its own throwaway branch. That only stays safe if exactly one
 # worker writes at a time (the single-writer invariant, CLAUDE.md Subagent
 # policy). This file is the FROZEN serialization primitive both lane
 # implementations call before touching the shared branch -- it owns nothing
 # about git itself (no commit/push), only "am I allowed to write right now".
-# HIMMEL-1558 added the acquire-wait verb and the namespace knob. Both are
+# The acquire-wait verb and the namespace knob are
 # ADDITIVE: the frozen acquire/release/status behaviour the lane
 # implementations depend on is unchanged (they pass no namespace, so they keep
 # the default lock root, and `acquire` still never steals a lock).
@@ -34,7 +34,7 @@
 #                Windows, or a permission problem) -- the lock is NOT released,
 #                a loud error is printed to stderr
 #             2  usage error
-#   acquire-wait (HIMMEL-1558): same codes as acquire, except 11 means "still
+#   acquire-wait: same codes as acquire, except 11 means "still
 #             held after <wait-secs>" -- the holder info and a timeout line are
 #             printed to stderr. A lock whose recorded age exceeds <ttl-secs>
 #             is RECLAIMED (released, then re-acquired) with a loud stderr
@@ -52,7 +52,7 @@
 # path and the primary checkout path resolve to the SAME lock -- that is
 # what makes the lock effective across `git worktree add` clones.
 #
-# NAMESPACE (HIMMEL-1558): <namespace> is "himmel-shared-branch" unless
+# NAMESPACE: <namespace> is "himmel-shared-branch" unless
 # SHARED_BRANCH_LOCK_NS names a different single path segment. A second
 # concern that needs branch-scoped mutual exclusion (the CR marker lock, which
 # serializes clear-cr-marker.sh against the pre-push marker writer) reuses this
@@ -74,7 +74,7 @@
 # otherwise it preserves the historical diagnostic fallback of this shell's
 # pid. Stale locks are cleared by the reconciler or an explicit release.
 #
-# TTL RECLAMATION (acquire-wait only, HIMMEL-1558): reclamation is driven by
+# TTL RECLAMATION (acquire-wait only): reclamation is driven by
 # the acquired_epoch owner.json records at acquire time -- a timestamp WE
 # wrote -- never by pid liveness, for the reason the note above gives. An
 # unknown age (no owner.json, unparseable epoch, clock moved backwards) is
@@ -163,7 +163,7 @@ _sbl_lockdir() {
 # cannot be established (see TTL RECLAMATION above); an unknown age is never
 # stale.
 #
-# The record is passed in rather than re-read from disk (CR round 3, codex-1):
+# The record is passed in rather than re-read from disk:
 # the caller acts on BOTH the age ("is it stale") and the identity ("whose is
 # it"), so they must come from ONE read. Re-reading let the lock change hands
 # in between, after which the FRESH owner's record was handed to _sbl_reclaim
@@ -256,7 +256,7 @@ shared_branch_lock_acquire() {
 # from its holder, but ONLY if it is still the SAME holder. Returns 0 when the
 # stale lock is gone and the caller may try to acquire; 1 otherwise.
 #
-# NOT a plain rm (HIMMEL-1558 CR, codex-1): between the age check and the
+# NOT a plain rm: between the age check and the
 # removal the stale holder can release and ANOTHER writer acquire, and an
 # unconditional rm would then delete that live lock -- two writers on the
 # marker, the exact failure this lock exists to prevent. So the removal is a
@@ -266,7 +266,7 @@ shared_branch_lock_acquire() {
 # verified; a record that is NOT the one judged stale means the lock changed
 # hands, and it is put BACK untouched.
 #
-# RESIDUAL (documented, not hidden -- HIMMEL-1558 CR round 2, codex-1): the
+# RESIDUAL (documented, not hidden): the
 # owner can only be verified AFTER the rename, because verifying it requires
 # exclusive possession of the directory, and no filesystem primitive here
 # offers compare-and-swap. So for the instant between the rename and a failed
@@ -302,7 +302,7 @@ _sbl_reclaim() {
 }
 
 # shared_branch_lock_acquire_wait <dir> <branch> <lane> <wait-secs> <ttl-secs>
-# Bounded-wait acquire with TTL reclamation (HIMMEL-1558). Polls once a second
+# Bounded-wait acquire with TTL reclamation. Polls once a second
 # until <wait-secs> has elapsed. The holder block `acquire` prints is captured
 # per attempt and emitted ONCE (on the final failure) instead of every second.
 shared_branch_lock_acquire_wait() {
@@ -342,7 +342,7 @@ shared_branch_lock_acquire_wait() {
         fi
 
         # ONE read of the holder record; both the staleness verdict and the
-        # identity _sbl_reclaim verifies against come from it (CR round 3).
+        # identity _sbl_reclaim verifies against come from it.
         _sbl_w_owner="$(cat "$_sbl_w_lockdir/owner.json" 2>/dev/null)"
         if [ "$_sbl_w_ttl" -gt 0 ] && _sbl_w_age="$(_sbl_owner_age "$_sbl_w_owner")" &&
            [ "$_sbl_w_age" -gt "$_sbl_w_ttl" ]; then
@@ -375,7 +375,7 @@ shared_branch_lock_acquire_wait() {
 
 # shared_branch_lock_release_if_owner <dir> <branch> <expected-owner-json>
 # Release ONLY if the lock is still held by the owner the caller recorded when
-# it acquired (HIMMEL-1558 CR round 2, codex-3). Plain `release` is an
+# it acquired. Plain `release` is an
 # unconditional rm, so a holder that reads the owner record and then releases
 # has a check-then-act window: the lock can be reclaimed and re-acquired in
 # between, and the release then deletes the NEW holder's lock. This verb has
@@ -386,7 +386,7 @@ shared_branch_lock_acquire_wait() {
 #   2  usage error / underivable lock dir
 #
 # rc 0 is PROOF OF EXCLUSION, which is why an absent lock is rc 3 and not an
-# idempotent success (HIMMEL-1558 CR round 8, codex-1). A caller that still
+# idempotent success. A caller that still
 # held the lock would find the directory present -- it never released it. An
 # absent directory therefore means someone ELSE removed it: the lock was
 # TTL-reclaimed, and the reclaimer already finished and released. Reporting

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tracker-none.sh — "no tracker" backend for the tracker seam (HIMMEL-4759).
+# tracker-none.sh — "no tracker" backend for the tracker seam.
 # Sourced by tracker.sh; not run directly. No id is required, there is no
 # status lifecycle and no panel, so reads are rc 4 ("no such thing", callers
 # skip) and writes are no-ops. The one exception is id_new: a CR deferral still

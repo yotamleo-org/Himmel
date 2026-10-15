@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Hermetic test for wire-statusline.sh (HIMMEL-359 / HIMMEL-718). No network,
-# temp dir only. HIMMEL-718 Task 4.1 switched the command to the hud renderer
-# (node) + added the .env extra-cmd gate + the dropped hud config.
+# Hermetic test for wire-statusline.sh. No network,
+# temp dir only. The command is the hud renderer
+# (node) + the .env extra-cmd gate + the dropped hud config.
 #
-# HIMMEL-2892: the hud config now lands under ${CLAUDE_CONFIG_DIR:-~/.claude},
+# the hud config now lands under ${CLAUDE_CONFIG_DIR:-~/.claude},
 # never beside the settings file — so every case that can reach the drop pins
 # CLAUDE_CONFIG_DIR at a throwaway dir. Without that pin this suite would write
 # into the RUNNER'S real ~/.claude/claude-hud.json.
@@ -12,11 +12,11 @@ HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 HELPER="$HERE/wire-statusline.sh"
 REPO_ROOT="$(cd -- "$HERE/../.." && pwd)"
 TMP="$(mktemp -d)"
-# HIMMEL-3332: the wire writes provenance rows; keep them out of the real ~/.himmel.
+# the wire writes provenance rows; keep them out of the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$TMP/prov"
 trap 'rm -rf "$TMP"' EXIT
 fail() { echo "FAIL: $1" >&2; exit 1; }
-# HIMMEL-3332 (HIMMEL-3312): the statusLine command wire-statusline.sh writes —
+# the statusLine command wire-statusline.sh writes —
 # node on the hud renderer, guarded so a deleted clone renders nothing instead
 # of failing on every session start.
 guarded_cmd() {
@@ -106,7 +106,7 @@ CLAUDE_CONFIG_DIR="$cfgdir" bash "$HELPER" "$sdir/settings.json" "$REPO_ROOT" >/
 [ "$B" = "$(cat "$dropped")" ] || fail "config drop not idempotent"
 echo "ok 11 config drop idempotent"
 
-# 12. HIMMEL-2892 RED control: a PROJECT settings path must leave NOTHING under
+# 12. RED control: a PROJECT settings path must leave NOTHING under
 # the project dir — the hud config is per-user config and belongs in the config
 # dir even when the caller hands us a repo-local settings.json. This is the
 # 2026-09-09 dogfood incident: `himmelctl install --scope project` dropped an
@@ -133,7 +133,7 @@ env -u CLAUDE_CONFIG_DIR HOME="$home13" bash "$HELPER" "$proj13/.claude/settings
 [ ! -e "$proj13/.claude/plugins" ] || fail "hud config leaked into the project dir with CLAUDE_CONFIG_DIR unset"
 echo "ok 13 CLAUDE_CONFIG_DIR unset falls back to \$HOME/.claude"
 
-# 14. CR (CodeRabbit) round 1: CLAUDE_CONFIG_DIR is TRIMMED, matching the hud's
+# 14. CLAUDE_CONFIG_DIR is TRIMMED, matching the hud's
 # own getClaudeConfigDir (`process.env.CLAUDE_CONFIG_DIR?.trim()`). A PADDED
 # value must resolve to the same directory as the unpadded one — otherwise the
 # installer writes the config somewhere the hud never reads it.
@@ -156,10 +156,10 @@ CLAUDE_CONFIG_DIR="   " HOME="$home15" bash "$HELPER" "$proj15/.claude/settings.
 [ ! -e "$proj15/.claude/plugins" ] || fail "whitespace-only CLAUDE_CONFIG_DIR leaked the hud config into the project dir"
 echo "ok 15 whitespace-only CLAUDE_CONFIG_DIR falls back to \$HOME/.claude"
 
-# ── HIMMEL-3065: the hud's RUNTIME cache state is dropped when the wiring
+# ── The hud's RUNTIME cache state is dropped when the wiring
 # CHANGES, and only then. The dir under test is the hud's own plugin dir
-# (${CLAUDE_CONFIG_DIR}/plugins/claude-hud) — HIMMEL-3334 moved the config this
-# script owns to a sibling path (${CLAUDE_CONFIG_DIR}/claude-hud.json), never
+# (${CLAUDE_CONFIG_DIR}/plugins/claude-hud) — the config this
+# script owns lives at a sibling path (${CLAUDE_CONFIG_DIR}/claude-hud.json), never
 # inside this dir; everything still under it is per-session snapshot state that
 # must not survive a migration onto a different install.
 
@@ -242,7 +242,7 @@ CLAUDE_CONFIG_DIR="$cfg20" bash "$HELPER" "$s20" "$REPO_ROOT" >/dev/null
 [ ! -e "$hud20/transcript-cache" ] || fail "20: purge did not run for a first-time wire"
 echo "ok 20 purge stays inside the hud plugin dir"
 
-# 21. CR round 1 [codex-2]: the two halves have different SCOPES — the hud
+# 21. the two halves have different SCOPES — the hud
 # config is per-USER, but the settings file may be a PROJECT one. Wiring a
 # machine's SECOND project (same clone, same hud config, a project settings
 # file with no statusLine of its own) is not a migration, and must not purge
@@ -271,7 +271,7 @@ CLAUDE_CONFIG_DIR="$cfg22" bash "$HELPER" "$proj22/.claude/settings.json" "$REPO
   || fail "22: a config from an OLD clone did not trigger the purge on a fresh project settings file"
 echo "ok 22 an old clone's hud config still purges on a fresh project wire"
 
-# 23. CR round 2: a FAILED purge must abort the wire with nothing published, so
+# 23. a FAILED purge must abort the wire with nothing published, so
 # the retry still sees a changed wiring and tries again. Publishing first left a
 # failed purge unrepeatable — the next run saw wiring that already matched, took
 # the no-change path, and the stale state survived every run after that.
@@ -279,10 +279,10 @@ echo "ok 22 an old clone's hud config still purges on a fresh project wire"
 # The failure is injected with a PATH `rm` stub that refuses ONLY the seeded
 # cache entries and delegates everything else to the real rm (CodeRabbit, PR
 # #772). An earlier version made the hud dir read-only instead, which stopped
-# being a control the moment round 6 moved staging ahead of the purge: staging
+# being a control the moment staging moved ahead of the purge: staging
 # used to write .config.json.tmp INTO that dir, so the wire failed before the
 # purge was ever reached and the case passed without exercising the path it
-# names (HIMMEL-3334 moved the staged config out to the config dir root, but
+# names (the staged config now lives at the config dir root, but
 # the stub stays the more direct control either way). The stub also keeps the
 # case meaningful as root and on Git Bash, where directory permissions do not
 # bind the same way. The asserted precondition is that the staged config was
@@ -300,7 +300,7 @@ printf '{"display":{"showPromptCache":false}}\n' > "$cfg23/claude-hud.json"
 seed_hud_cache "$hud23"
 
 # The stub TOUCHES a marker before refusing, so the case can assert the purge
-# was actually reached rather than inferring it (CR round 11): a staging failure
+# was actually reached rather than inferring it: a staging failure
 # would satisfy every other assertion below just as well.
 rm_marker23="$TMP/rm23-was-called"
 cat > "$rm_bin23/rm" <<EOF
@@ -340,10 +340,10 @@ CLAUDE_CONFIG_DIR="$cfg23" bash "$HELPER" "$s23" "$REPO_ROOT" >/dev/null
 [ "$(jq -r .statusLine.command "$s23")" != "$old23" ] || fail "23: the retry did not wire"
 echo "ok 23 a failed purge aborts the wire and the retry still purges"
 
-# 24. CR round 3 [codex-2]: this library is SOURCED (himmel-update.sh does), so
+# 24. this library is SOURCED (himmel-update.sh does), so
 # the purge cannot rely on the caller's glob settings to skip the staged config.
-# With `shopt -s dotglob`, `"$hud_dir"/*` used to match .config.json.tmp before
-# HIMMEL-3334 moved staging to the config-dir root (a sibling of $hud_dir, never
+# With `shopt -s dotglob`, `"$hud_dir"/*` would match .config.json.tmp were staging there;
+# staging is at the config-dir root (a sibling of $hud_dir, never
 # inside it) — the purge-skip guard for config.json/.* stays as belt-and-braces
 # for a leftover pre-migration file, and this case still proves dotglob can't
 # make the purge eat live config, staged or not.
@@ -368,7 +368,7 @@ seed_hud_cache "$hud24"
 [ ! -e "$hud24/transcript-cache" ] || fail "24: the purge itself did not run under dotglob"
 echo "ok 24 the purge skips the staged config even with dotglob set"
 
-# 25. CR round 5: publish the config THIS call staged, never one a previous
+# 25. publish the config THIS call staged, never one a previous
 # call left behind. A run that staged the config and then failed on the settings
 # write used to leave .config.json.tmp in place, and the next source-absent call
 # (a synthetic himmel path, which promises to be a pure statusLine/env op)
@@ -384,7 +384,7 @@ CLAUDE_CONFIG_DIR="$cfg25" bash "$HELPER" "$proj25/.claude/settings.json" "/synt
   || fail "25: the source-absent wire should still do its statusLine/env half"
 echo "ok 25 a source-absent wire never publishes a leftover staged config"
 
-# 26. CR round 6: a settings file that PARSES but cannot take the transform —
+# 26. a settings file that PARSES but cannot take the transform —
 # `{"env":"invalid"}` is valid JSON, yet `.env.KEY = …` cannot be assigned into
 # a string — must abort before the purge, not after it. Staging the transform
 # first is what makes the whole "purge ran, publish failed" class impossible
@@ -405,7 +405,7 @@ CLAUDE_CONFIG_DIR="$cfg26" bash "$HELPER" "$s26" "$REPO_ROOT" >/dev/null 2>&1 ||
 [ ! -e "$cfg26/claude-hud.json.tmp" ] || fail "26: the staged config was left behind"
 echo "ok 26 an untransformable settings file aborts before the purge"
 
-# 27. CodeRabbit round 2: the two publishes are two renames, not one atomic
+# 27. the two publishes are two renames, not one atomic
 # operation. They are ordered config-then-settings so that a failed SECOND one
 # leaves the machine on its OLD statusLine command — the previous wiring, intact
 # — which the next run still sees as changed and re-wires AND re-purges. The
@@ -447,7 +447,7 @@ CLAUDE_CONFIG_DIR="$cfg27" bash "$HELPER" "$s27" "$REPO_ROOT" >/dev/null
 [ "$(jq -r .statusLine.command "$s27")" != "$old27" ] || fail "27: the retry did not wire"
 echo "ok 27 a failed settings publish leaves the OLD command wired and the retry completes"
 
-# 28. CR round 11: the purge pins its own glob options, because this library is
+# 28. the purge pins its own glob options, because this library is
 # sourced and the caller's shopt settings would otherwise decide what the loop
 # sees. `failglob` is the sharp one — a hud dir holding nothing but the staged
 # dotfile makes "$hud_dir"/* an expansion ERROR that aborts the wire.
@@ -469,7 +469,7 @@ mkdir -p "$hud28"
 [ "$(jq -r .statusLine.type "$s28")" = "command" ] || fail "28: the statusLine was not wired under failglob"
 echo "ok 28 the purge survives a caller's failglob on an otherwise-empty hud dir"
 
-# 29. HIMMEL-3157: an operator-set HIMMEL_STATUSLINE_ECON=<val> prefix on the
+# 29. An operator-set HIMMEL_STATUSLINE_ECON=<val> prefix on the
 # previous hud config's .display.customLineCommand must be carried forward
 # across a rewire — dropping it lets the suppressed HUD economics rows come
 # back on every run (the operator's own report).
@@ -523,7 +523,7 @@ CLAUDE_CONFIG_DIR="$cfg31b" bash "$HELPER" "$s31b" "$REPO_ROOT" >/dev/null
   || fail "31b: a malformed HIMMEL_STATUSLINE_ECON=\$(x) prefix must not be carried"
 echo "ok 31b a malformed HIMMEL_STATUSLINE_ECON value is not carried"
 
-# 32. HIMMEL-3070: a hud dir that is writable but NOT enumerable (mode 300) globs
+# 32. A hud dir that is writable but NOT enumerable (mode 300) globs
 # to zero entries, so the sweep used to see "nothing to drop" and report success
 # while the stale caches stayed on disk — and the wire published over them. It
 # must fail like a failed removal does. Staging still succeeds (mode 300 can
@@ -564,7 +564,7 @@ else
   echo "ok 32 an unenumerable hud dir fails the purge and the retry still purges"
 fi
 
-# 33-36. HIMMEL-3332 S4: the hud config drop records `file create|replace|noop`
+# 33-36. The hud config drop records `file create|replace|noop`
 # (row hud-config, scope user, class code, backup on replace) and the cache purge
 # records a `tree` row class state.
 hud_rows() { jq -c --arg p "$1" 'select(.kind == "file" and (.path | endswith($p)))' "$HIMMEL_PROVENANCE_DIR/provenance.jsonl"; }
@@ -629,7 +629,7 @@ CLAUDE_CONFIG_DIR="$cfg36" bash "$HELPER" "$proj36/.claude/settings.json" "$REPO
   || fail "36: a re-wire that purged nothing must not record another tree row"
 echo "ok 36 a cache purge records one tree row class state and a no-purge wire records none"
 
-# 37. HIMMEL-3363: when mktemp cannot allocate the purge listing, the purge must
+# 37. When mktemp cannot allocate the purge listing, the purge must
 # still run, but the skipped tree-row recording is announced like every other
 # best-effort recording failure in the file (it used to be silent).
 mk_bin37="$TMP/mktemp37-bin"; mkdir -p "$mk_bin37"
@@ -650,7 +650,7 @@ esac
   || fail "37: no purge tree row can be recorded without a listing file"
 echo "ok 37 a failed mktemp warns that the purge recording was skipped and still purges"
 
-# 38. HIMMEL-3332 (HIMMEL-3312): the wired command degrades silently when the
+# 38. The wired command degrades silently when the
 # clone is gone — rc 0, nothing on stdout or stderr — and still renders when
 # the renderer is there.
 h38="$TMP/h38"; s38="$TMP/s38.json"
@@ -671,7 +671,7 @@ rc38=0; out38="$(sh -c "$cmd38" </dev/null 2>&1)" || rc38=$?
 [ -z "$out38" ] || fail "38: a missing clone must render nothing (got: $out38)"
 echo "ok 38 guarded statusLine renders when present and is silent when the clone is gone"
 
-# 39. HIMMEL-3332: unwire recognises BOTH forms — an adopter wired before the
+# 39. Unwire recognises BOTH forms — an adopter wired before the
 # guard (bare node form) and one wired after it — and leaves a user's own
 # statusLine alone.
 # shellcheck source=unwire-statusline.sh
@@ -691,7 +691,7 @@ unwire_statusline "$s39u" >/dev/null || fail "39: unwire failed (user)"
 [ "$(jq -r .statusLine.command "$s39u")" = '[ -f ~/mine.js ] && exec node ~/mine.js || true' ] || fail "39: a user's own statusLine was touched"
 echo "ok 39 unwire removes the bare and guarded forms, keeps a user statusLine"
 
-# 40. HIMMEL-3334 codex-1 (suggestion): starting from ONLY a legacy-path hud
+# 40. Starting from ONLY a legacy-path hud
 # config (no new-path file at all — the pre-migration state), a rewire must
 # publish the new-path config carrying the previous config's
 # HIMMEL_STATUSLINE_ECON prefix forward, and remove the legacy file since its

@@ -457,6 +457,24 @@ out="$(HIMMEL_DOCTOR_C3_NOW=$(( $(date +%s) + 7200 )) c3_run "$t")"
 if grepq "$out" 'WARN C3-luna' && ! grepq "$out" 'git -C .* commit'; then pass "C3 -> WARN (stale dirty non-handover)"; else fail "C3 stale -> $(printf '%s' "$out" | grep C3)"; fi
 rm -rf "$t"
 
+echo "== C3: stale dirty path in a LOCAL-ONLY vault (no remote, no sync plugin) -> WARN says commit it =="
+t="$(mktemp -d)" || exit 1; c3_vault "$t"; echo dirty > "$v/note.md"
+out="$(HIMMEL_DOCTOR_C3_NOW=$(( $(date +%s) + 7200 )) c3_run "$t")"
+if grepq "$out" 'WARN C3-luna' && grepq "$out" -F 'commit it' && ! grepq "$out" -F 'do not hand-commit' && ! grepq "$out" -F 'sync is stuck'; then pass "C3 local-only -> commit it"; else fail "C3 local-only -> $(printf '%s' "$out" | grep -A2 C3)"; fi
+rm -rf "$t"
+
+echo "== C3: stale dirty path in a vault WITH a remote -> WARN keeps the sync-stuck advice =="
+t="$(mktemp -d)" || exit 1; c3_vault "$t"; git -C "$v" remote add origin https://example.invalid/luna.git; echo dirty > "$v/note.md"
+out="$(HIMMEL_DOCTOR_C3_NOW=$(( $(date +%s) + 7200 )) c3_run "$t")"
+if grepq "$out" 'WARN C3-luna' && grepq "$out" -F 'do not hand-commit' && ! grepq "$out" -F 'commit it'; then pass "C3 remote -> sync advice"; else fail "C3 remote -> $(printf '%s' "$out" | grep -A2 C3)"; fi
+rm -rf "$t"
+
+echo "== C3: stale dirty path in a vault with a sync plugin but no remote -> WARN keeps the sync-stuck advice =="
+t="$(mktemp -d)" || exit 1; c3_vault "$t"; mkdir -p "$v/.obsidian/plugins/obsidian-github-sync"; echo dirty > "$v/note.md"
+out="$(HIMMEL_DOCTOR_C3_NOW=$(( $(date +%s) + 7200 )) c3_run "$t")"
+if grepq "$out" 'WARN C3-luna' && grepq "$out" -F 'do not hand-commit' && ! grepq "$out" -F 'commit it'; then pass "C3 sync plugin -> sync advice"; else fail "C3 sync plugin -> $(printf '%s' "$out" | grep -A2 C3)"; fi
+rm -rf "$t"
+
 echo "== C3: fresh dirty non-handover path -> OK =="
 t="$(mktemp -d)" || exit 1; c3_vault "$t"; echo dirty > "$v/note.md"
 out="$(c3_run "$t")"

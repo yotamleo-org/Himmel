@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-graphify-ab.sh -- HIMMEL-5317. Truth rules, exact-match scorer, run matrix,
+# test-graphify-ab.sh -- Truth rules, exact-match scorer, run matrix,
 # ingest/report maths and the preflight stop of the graphify A/B harness. No model
 # call: run.sh is driven by a stub claude and a stub bank-preflight.
 #

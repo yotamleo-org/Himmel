@@ -15,7 +15,7 @@ pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures+1)); }
 
 # A realistic "node not on PATH" still needs coreutils — but on apt-node
-# systems node LIVES in the coreutils dir (/usr/bin, HIMMEL-966), so use
+# systems node LIVES in the coreutils dir (/usr/bin), so use
 # a curated symlink dir carrying only the tools these cases need.
 UTILS_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-run-node-utils.XXXXXX")"
 # codex (CodeRabbit, this round): the path-widen and empty-PATH fixtures below
@@ -38,7 +38,7 @@ done
 if ! PATH="$UTILS_DIR" bash -c 'sort </dev/null >/dev/null 2>&1 && command -v dirname >/dev/null' 2>/dev/null; then
     UTILS_DIR="$(dirname "$(command -v sort)")"
     # Self-diagnose the one bad combination (fallback dir DOES carry node —
-    # the HIMMEL-966 apt-node class): the PATH-cleared cases below will fail;
+    # the apt-node class): the PATH-cleared cases below will fail;
     # say why up front instead of leaving a puzzling red run.
     if [ -x "$UTILS_DIR/node" ] || [ -x "$UTILS_DIR/node.exe" ]; then
         echo "WARN: curated utils dir unusable AND fallback $UTILS_DIR carries node — PATH-cleared cases will fail (HIMMEL-966)" >&2
@@ -65,8 +65,8 @@ EOF
 # well-known-locations list, but step 1 (NVM_SYMLINK + its hardcoded
 # /c/nvm4w/nodejs default, via RESOLVE_NODE_NVM4W_DIR) is probed BEFORE both
 # PATH and step 3 and stays live under that seam — so on an nvm-windows host
-# the REAL node wins and the fake is never consulted (HIMMEL-2252; the seam was
-# narrowed to this contract in HIMMEL-2077 and these cases still assumed the
+# the REAL node wins and the fake is never consulted (the seam was
+# narrowed to this contract and these cases still assumed the
 # old one). RESOLVE_NODE_NVM4W_DIR must be set-but-EMPTY, not unset: the
 # resolver reads it with ${VAR-default}. Drop any of the four and the case
 # silently passes against the host's real node instead of the fake.
@@ -103,11 +103,11 @@ fi
 rm -rf "$tmp"
 
 echo "== run-node: the wired plugin-hook launcher chain fires with node off PATH (HIMMEL-2047) =="
-# HIMMEL-2015 gave run-node.sh to individual project hook scripts but left
+# run-node.sh covers individual project hook scripts but leaves
 # every marketplace/plugins/himmel-ops/hooks/hooks.json entry (and
 # .claude/settings.json's) invoking run-hook-with-bash.js via a bare `node` —
 # which the 2026-08-22 nvm-windows migration proved unresolvable mid-session,
-# silently dropping every SessionEnd guardrail. HIMMEL-2047 routes those
+# silently dropping every SessionEnd guardrail. The fix routes those
 # launchers through this same resolver (wire-plugin-hook-bash.mjs's
 # wiredCommand()); this reproduces one verbatim, with node off PATH, and
 # proves the target hook script still runs end to end.
@@ -142,7 +142,7 @@ rm -rf "$tmp"
 
 
 # ---------------------------------------------------------------------------
-# HIMMEL-2692: run-node.sh is SOURCED by hook commands, and Claude Code runs
+# run-node.sh is SOURCED by hook commands, and Claude Code runs
 # those through /bin/sh — dash on Debian/Ubuntu. A bash-only expansion there is
 # fatal (`${BASH_SOURCE[0]}` -> "Bad substitution" -> empty dir -> the `.` fails
 # -> rc=2 -> a PreToolUse DENY on EVERY tool call). Neither a bash-run smoke
@@ -153,9 +153,9 @@ rm -rf "$tmp"
 PLUGIN_HOOKS="$REPO_ROOT/marketplace/plugins/himmel-ops/hooks"
 # A bash array, not a whitespace-joined string: a checkout path containing a
 # space would otherwise word-split into nonexistent fragments and the checks
-# below would silently inspect nothing (codex-4 on the HIMMEL-2692 panel).
+# below would silently inspect nothing.
 COPIES=("$REPO_ROOT/scripts/lib/run-node.sh" "$PLUGIN_HOOKS/run-node.sh")
-# HIMMEL-2741: run-node.sh's own body is clean POSIX, but it SOURCES
+# run-node.sh's own body is clean POSIX, but it SOURCES
 # resolve-node.sh — a bash-only expansion there (${var//pat/repl}) aborted the
 # sourced file under dash exactly the way BASH_SOURCE aborted run-node.sh
 # itself, and neither check below saw it because both file lists covered only
@@ -192,7 +192,7 @@ done
 
 echo "== run-node: no bash-only expansions in any sourced file's CODE (HIMMEL-2692/2741) =="
 # BASH_SOURCE is the run-node.sh-class bashism; \${*//...} / \${*^^} / \${*,,}
-# are the resolve-node.sh-class one (HIMMEL-2741: \${var//\\//} aborted dash
+# are the resolve-node.sh-class one (\${var//\\//} aborted dash
 # with "Bad substitution" the same way BASH_SOURCE did). Grep is deliberately
 # generic (\$\{[A-Za-z_][A-Za-z0-9_]*\(\[[^]]*\]\)\?\(//\|\^\^\|,,\)) rather than
 # a literal-string list, so the NEXT bash-only parameter expansion in this
@@ -241,8 +241,8 @@ elif ! command -v node >/dev/null 2>&1; then
 else
     if ! command -v dash >/dev/null 2>&1; then
         # busybox ash IMPLEMENTS BOTH bashisms found so far — the parameter
-        # expansion \${var//pat/repl} (HIMMEL-2741) AND dot-with-operands
-        # (HIMMEL-2758: POSIX leaves `.` with operands beyond the filename
+        # expansion \${var//pat/repl} AND dot-with-operands
+        # (POSIX leaves `.` with operands beyond the filename
         # UNSPECIFIED; dash drops them, busybox ash does not) — so a
         # busybox/zsh/mksh/etc PASS below is NEVER evidence dash would also
         # pass. Say so loudly instead of a silent green tick.
@@ -259,9 +259,9 @@ EOF
     IFS='|'
     for sh_cmd in $posix_shells; do
         IFS="$_save_ifs"
-        # HIMMEL-2758: exercises the shape actually WIRED — `sh run-node.sh
+        # exercises the shape actually WIRED — `sh run-node.sh
         # <args>`, run as a child process, not `. run-node.sh <args>`
-        # (sourced) — which is exactly the dot shape HIMMEL-2758 removed from
+        # (sourced) — which is exactly the dot shape that was removed from
         # every wired hook command (dash drops a sourced `.`'s operands; a run
         # child process always gets its own argv).
         #
@@ -275,7 +275,7 @@ EOF
         # which copy this iteration targets) but is NOT evidence about the
         # env-root lanes; this leg only proves the launcher chain fires end to
         # end and HOOK_FIRED reaches stdout under each POSIX shell. The
-        # env-root lanes themselves are still exercised — by the HIMMEL-2702
+        # env-root lanes themselves are still exercised — by the
         # damaged-plugin-install leg below. That leg also runs run-node.sh via
         # `sh`, but its plugin root deliberately has NO sibling
         # resolve-node.sh, so the `$0` case finds nothing readable, leaves
@@ -297,13 +297,13 @@ EOF
             # (/bin/sh -> /usr/bin/bash). So `dash -c 'sh run-node.sh …'`
             # proves only that the outer shell can spawn the launcher; the
             # BODY of run-node.sh still executes under bash, and a
-            # dash-incompatible expansion inside it (the HIMMEL-2741 class)
+            # dash-incompatible expansion inside it
             # would sail straight through. Executing the copy with $sh_cmd
             # DIRECTLY is what puts run-node.sh's own body under dash. Keep
             # both: drop the `sh` launcher and you stop testing the wired
             # shape; drop the direct one and the dash leg is bash in a hat.
             for launcher in "command -p sh" "$sh_cmd"; do
-                # HIMMEL-3182: a candidate shell that cannot run THIS lane at all
+                # a candidate shell that cannot run THIS lane at all
                 # (macOS ksh93: `command -p sh` finds no sh, and it has no `local`,
                 # which resolve-node.sh uses) fails on the shell, not on run-node.sh.
                 # Probe the exact capability the lane needs; SKIP loudly when absent.
@@ -360,9 +360,9 @@ cat > "$ltmp/hostile/scripts/lib/resolve-node.sh" <<EOF
 : > "$ltmp/PWNED"
 resolve_node() { return 1; }
 EOF
-# HIMMEL-2758: run via `sh` (the WIRED shape, not sourced via `.`) — this is
+# run via `sh` (the WIRED shape, not sourced via `.`) — this is
 # the actual security control in production, so the leg exercises it, not the
-# dot shape HIMMEL-2758 removed. Under `sh` the `$0` case at run-node.sh:60
+# dot shape. Under `sh` the `$0` case at run-node.sh:60
 # fires first and probes $ltmp/plugin/hooks/resolve-node.sh — ABSENT by
 # construction above — so _script_dir stays empty and the CLAUDE_PLUGIN_ROOT
 # lane under test is still the one that decides. The `$0` case cannot mask
@@ -479,7 +479,7 @@ echo "== run-node: no LIVE hook command wires run-node.sh via dot-source (HIMMEL
 # string with (`\"…\"`), and the bare-`sh` pattern is anchored on the
 # preceding `then `/`": "` so it cannot match the `command -p sh` form, which
 # contains the token `sh` itself. This leg is RED against main before
-# HIMMEL-2758: `git show origin/main:.claude/settings.json` matches 14 times.
+# `git show origin/main:.claude/settings.json` matches 14 times.
 DOT_WIRE_RE='\. \\?"[^"]*run-node\.sh\\?"'
 BARE_SH_WIRE_RE='(then |": \\?")sh \\?"[^"]*run-node\.sh\\?"'
 for f in "$REPO_ROOT/.claude/settings.json" "$PLUGIN_HOOKS/hooks.json"; do
@@ -503,7 +503,7 @@ for f in "$REPO_ROOT/.claude/settings.json" "$PLUGIN_HOOKS/hooks.json"; do
 done
 
 echo "== run-node: a minimal hook-shell PATH (GUI-launch-shaped) is widened before exec, so a spawned hook child can still see gh (HIMMEL-3073) =="
-# HIMMEL-3073 (adopter #773): resolve_node() finds node fine even off a
+# resolve_node() finds node fine even off a
 # minimal PATH — it walks ABSOLUTE well-known locations, never PATH itself
 # (resolve-node.sh step 3). But run-node.sh used to `exec` that node with
 # PATH untouched, and run-hook-with-bash.js's spawnSync calls pass
@@ -575,7 +575,7 @@ EOF
 fi
 
 echo "== run-node: an EMPTY inherited PATH does not leave a trailing colon after the widen (HIMMEL-3073 codex-1) =="
-# codex-1 (critic panel, round 1): the widening line used to append
+# the widening line used to append
 # `:${PATH:-}` unconditionally, so when the inherited PATH was empty (exactly
 # what a POSIX-mode `command -p sh` hands a hook whose own launching shell had
 # none — the same starting condition the leg above already establishes is
@@ -587,7 +587,7 @@ echo "== run-node: an EMPTY inherited PATH does not leave a trailing colon after
 # `::` segment when the starting PATH was genuinely empty (unset, not merely
 # PATH-poor).
 #
-# codex-1 (critic panel, round 2): plain `env -u PATH bash --posix -c ...`
+# plain `env -u PATH bash --posix -c ...`
 # does NOT establish an empty PATH here — bash initializes its own
 # compiled-in default PATH whenever none is found in the inherited
 # environment (confirmed: `env -u PATH bash --posix -c 'echo "[$PATH]"'`
@@ -638,12 +638,12 @@ EOF
 fi
 
 echo "== run-node: fallback dirs are APPENDED after the inherited PATH, never prepended (HIMMEL-3096) =="
-# HIMMEL-3096 (codex-1 on PR #778): run-node.sh used to PREPEND the well-known
+# run-node.sh used to PREPEND the well-known
 # fallback dirs (/usr/local/bin, /usr/bin, ...) ahead of the inherited PATH, so
 # any binary in those dirs shadowed a wrapper or virtualenv the caller had put
-# EARLIER in PATH. 3073's bug was PATH absent/truncated, not misordered — the
-# fallbacks only need to be REACHABLE, so they go last. HIMMEL-3246 applies
-# the same rule to node's OWN dir: it too is appended (before the fallbacks),
+# EARLIER in PATH. The original bug was PATH absent/truncated, not misordered — the
+# fallbacks only need to be REACHABLE, so they go last. The same rule applies
+# to node's OWN dir: it too is appended (before the fallbacks),
 # never prepended — the launcher execs node by absolute path, so nothing needs
 # it first. The fixture uses a symlink-only node dir so "node's own dir" cannot
 # itself carry a stray gh; the shared-dir case below covers that.
@@ -690,7 +690,7 @@ EOF
 fi
 
 echo "== run-node: node in a SHARED dir (not on PATH) does not shadow a caller wrapper (HIMMEL-3246) =="
-# HIMMEL-3246 (follow-up of 3096): run-node.sh still PREPENDED the directory of
+# run-node.sh still PREPENDED the directory of
 # the node resolve_node() chose whenever that dir was not already on the
 # inherited PATH. When node lives in a SHARED dir (/usr/bin, /usr/local/bin) the
 # whole dir landed ahead of a wrapper or virtualenv the caller had put earlier

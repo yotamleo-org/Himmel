@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/skill-index/test-ensure-skill-index.sh — HIMMEL-4302
+# scripts/skill-index/test-ensure-skill-index.sh
 # ensure-skill-index.sh registers the 'skills' collection when absent, never
 # registers twice, and skips cleanly with no qmd or an empty/missing index dir.
 # Stub qmd on PATH (BUN_INSTALL pointed at nothing), as test-skill-find.sh does.

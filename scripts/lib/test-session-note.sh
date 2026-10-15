@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-session-note.sh — focused tests for render_session_note's Summary heuristic
-# (HIMMEL-590 F2). The mechanical Summary must drop LEADING preamble/meta lines
+#. The mechanical Summary must drop LEADING preamble/meta lines
 # (system-reminder reactions, bare acknowledgments) without dropping substantive
 # content once it begins. bash 3.2-safe. Run: bash scripts/lib/test-session-note.sh
 set -u

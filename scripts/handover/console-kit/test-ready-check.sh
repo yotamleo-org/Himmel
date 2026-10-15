@@ -729,6 +729,133 @@ contains "workflow renamed by the PR: check 10 passes" "$out" "[PASS] 10."
 wf_run ".github/workflows/brand-new.yml" "modified .github/workflows/brand-new.yml"
 check "workflow modified (not added) still needs a dispatch run: exit 1" "$rc" "1"
 
+# --- 11. a PR that ADDS a hook/script/skill/suite nothing reaches ---
+# Each scenario commits into the throwaway REPO on top of a base that carries the
+# real hook-wiring list; SHA is that commit, so the item reads its tree.
+UNW_REAL_SHA="$SHA"
+mkdir -p "$REPO/scripts/testing" "$REPO/scripts/hooks" "$REPO/.claude" "$REPO/.github/workflows"
+cp "$HERE/../../testing/check-unwired-hooks.sh" "$REPO/scripts/testing/"
+mkdir -p "$REPO/scripts/ci" && cp "$HERE/../../ci/run-shell-tests.sh" "$REPO/scripts/ci/"
+printf '{}\n' > "$REPO/.claude/settings.json"
+printf '# allowlist\n' > "$REPO/scripts/testing/unwired-hooks-allowlist.txt"
+git -C "$REPO" add -A && git -C "$REPO" commit -q -m "chore: base for check 11"
+UNW_BASE=$(git -C "$REPO" rev-parse HEAD)
+
+# unw_run <added path>... — files are created empty-ish, committed, judged as status A
+unw_run() {
+    git -C "$REPO" checkout -q --detach "$UNW_BASE" && git -C "$REPO" clean -fdq
+    local f st=""
+    for f in "$@"; do
+        mkdir -p "$REPO/${f%/*}"
+        [ -f "$REPO/$f" ] || printf '#!/usr/bin/env bash\n' > "$REPO/$f"
+        st="$st"$'added '"$f"$'\n'
+    done
+    mkdir -p "$REPO/.github/workflows" "$REPO/scripts/tools" "$REPO/scripts/lib"
+    [ -z "${UNW_EXTRA:-}" ] || eval "$UNW_EXTRA"
+    git -C "$REPO" add -A && git -C "$REPO" commit -q -m "feat: [HIMMEL-1] scenario"
+    SHA=$(git -C "$REPO" rev-parse HEAD)
+    seed_ledger_ok
+    reset_stubs
+    STUB_HEAD="$SHA"; STUB_FILES="$(printf '%s\n' "$@")"; STUB_FILE_STATUS="${st%$'\n'}"
+    rc=0; out="$(run)" || rc=$?
+    SHA="$UNW_REAL_SHA"
+}
+
+# RED: the hook is added and no wiring file names it
+UNW_EXTRA=''
+unw_run scripts/hooks/new-hook.sh
+check "unwired hook: exit 1" "$rc" "1"
+contains "unwired hook: check 11 fails" "$out" "[FAIL] 11."
+contains "unwired hook: names the file" "$out" "scripts/hooks/new-hook.sh"
+
+# the same hook, wired in a file of the WIRING list in the same diff
+UNW_EXTRA="printf '{\"hooks\":\"scripts/hooks/new-hook.sh\"}\n' > \"\$REPO/.claude/settings.json\""
+unw_run scripts/hooks/new-hook.sh
+check "wired hook: exit 0" "$rc" "0"
+contains "wired hook: check 11 passes" "$out" "[PASS] 11."
+
+# a hook-name in a prefixed basename is not a registration
+UNW_EXTRA="printf '{\"hooks\":\"scripts/hooks/not-new-hook.sh\"}\n' > \"\$REPO/.claude/settings.json\""
+unw_run scripts/hooks/new-hook.sh
+contains "hook wiring is whole-basename: check 11 fails" "$out" "[FAIL] 11."
+
+# an explicitly allowlisted hook
+UNW_EXTRA="printf 'new-hook.sh|ships unwired on purpose\n' >> \"\$REPO/scripts/testing/unwired-hooks-allowlist.txt\""
+unw_run scripts/hooks/new-hook.sh
+contains "allowlisted hook: check 11 passes" "$out" "[PASS] 11."
+
+# scripts: unreferenced fails; a CI job naming it passes; a library sourced by it passes
+UNW_EXTRA=''
+unw_run scripts/tools/lonely.sh
+contains "unreferenced script: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf 'run: bash scripts/tools/job.sh\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/tools/job.sh
+contains "script named by a CI job: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'run: bash scripts/tools/job.sh\n' > \"\$REPO/.github/workflows/ci.yml\"; printf 'source scripts/lib/helper-lib.sh\n' > \"\$REPO/scripts/tools/job.sh\""
+unw_run scripts/tools/job.sh scripts/lib/helper-lib.sh
+contains "library sourced by a wired script: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'source scripts/lib/helper-lib.sh\n' > \"\$REPO/scripts/tools/job.sh\""
+unw_run scripts/tools/job.sh scripts/lib/helper-lib.sh
+contains "library sourced by an unwired script: check 11 fails" "$out" "[FAIL] 11."
+contains "library sourced by an unwired script: names the library" "$out" "scripts/lib/helper-lib.sh"
+UNW_EXTRA=''
+unw_run scripts/tools/fixtures/sample.sh
+contains "fixture path is standalone by design: check 11 passes" "$out" "[PASS] 11."
+
+# skills and suites
+unw_run .claude/skills/demo/SKILL.md
+contains "skill under .claude/skills: check 11 passes" "$out" "[PASS] 11."
+unw_run docs/demo/SKILL.md
+contains "skill in an undiscovered directory: check 11 fails" "$out" "[FAIL] 11."
+unw_run tests/test-lonely.sh
+contains "suite outside the runner's scan roots: check 11 fails (run-shell-tests.sh never finds it)" "$out" "[FAIL] 11."
+unw_run scripts/tools/test-found.sh
+contains "suite under a scan root: check 11 passes" "$out" "[PASS] 11."
+
+# test helpers: reached by the suite that uses them, but a plain script a suite alone names is not
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/tests\"; printf 'node stub-jira.js\n' > \"\$REPO/scripts/cfg/tests/test-cfg.sh\""
+unw_run scripts/cfg/tests/stub-jira.js
+contains "tests/ stub named by its suite: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'source testlib-pass.sh\n' > \"\$REPO/scripts/tools/test-found.sh\""
+unw_run scripts/tools/testlib-pass.sh
+contains "testlib helper named by its suite: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/g\"; printf 'python3 g-cases/a.py\n' > \"\$REPO/scripts/g/test-g.sh\""
+unw_run scripts/g/g-cases/a.py
+contains "-cases/ helper named by its suite: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'bash lonely.sh\n' > \"\$REPO/scripts/tools/test-found.sh\""
+unw_run scripts/tools/lonely.sh
+contains "plain script named only by a suite: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/tests\""
+unw_run scripts/cfg/tests/stub-orphan.js
+contains "tests/ stub nothing names: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA=''
+unw_run scripts/cfg/tests/orphan.test.ts
+contains "node/bun test file nothing runs: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf 'run: bun test scripts/cfg --dots\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/cfg/tests/ran.test.ts
+contains "test file under a dir a CI job runs bun test on: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'run: node --test \"scripts/cfg/tests/**/*.test.mjs\"\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/cfg/tests/globbed.test.mjs
+contains "test file under a quoted-glob node --test job dir: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'run: bun test scripts/other --dots\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/cfg/x.test.ts
+contains "test file beside a dir a CI job runs bun test on: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf 'run: bun test scripts/cfg/tests/deep\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/cfg/y.test.ts
+contains "test file above the dir a CI job runs bun test on: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA=''
+
+# existing debt is never judged: the same unwired hook, status modified
+git -C "$REPO" checkout -q --detach "$UNW_BASE" && git -C "$REPO" clean -fdq
+mkdir -p "$REPO/scripts/hooks" && printf '#!/usr/bin/env bash\n' > "$REPO/scripts/hooks/old-hook.sh"
+git -C "$REPO" add -A && git -C "$REPO" commit -q -m "feat: [HIMMEL-1] touch old hook"
+SHA=$(git -C "$REPO" rev-parse HEAD); seed_ledger_ok; reset_stubs
+STUB_HEAD="$SHA"; STUB_FILES="scripts/hooks/old-hook.sh"; STUB_FILE_STATUS="modified scripts/hooks/old-hook.sh"
+rc=0; out="$(run)" || rc=$?
+SHA="$UNW_REAL_SHA"
+contains "modified (not added) unwired hook is not judged: check 11 passes" "$out" "[PASS] 11."
+reset_stubs
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
     echo "ALL PASS"

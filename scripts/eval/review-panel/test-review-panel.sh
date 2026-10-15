@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/review-panel/test-review-panel.sh - suite for the review-panel
-# recall eval (HIMMEL-4649): fixture/key integrity, the seed-leak lint, the
+# recall eval: fixture/key integrity, the seed-leak lint, the
 # finding parser + matcher on canned critic outputs, the eval-runs row, and
 # run.sh driven by a stub panel. No model call, no codex, no live ledger.
 set -u

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # test-queue-lock.sh -- regression test for scripts/handover/queue-lock.sh
-# (HIMMEL-856 phase 1).
 #
 # Usage: bash scripts/handover/test-queue-lock.sh
 # Exit:  0 = all pass, 1 = one or more failures.
@@ -18,10 +17,10 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
-# _tq_bare_token <release-token-line-value> -- HIMMEL-2910: acquire now
+# _tq_bare_token <release-token-line-value> -- acquire now
 # prints the token backticked ("release-token: `<token>`"); this recovers
 # the bare token from either that shape or the pre-2910 bare one, the way
 # every real consumer (console.sh, the console-kit) must.
@@ -47,7 +46,7 @@ pass() { echo "PASS: $1"; PASSED=$((PASSED + 1)); }
 fail() { echo "FAIL: $1"; FAILED=$((FAILED + 1)); }
 
 # _t_date_at <epoch> <fmt> -- format an epoch as UTC. GNU `date -d "@e"` first, BSD
-# `date -r e` fallback (macOS date has no -d; HIMMEL-3177).
+# `date -r e` fallback (macOS date has no -d).
 _t_date_at() { date -u -d "@$1" "$2" 2>/dev/null || date -u -r "$1" "$2"; }  # gnu-ok: GNU -d paired with the BSD -r fallback on this line
 # _t_touch_at <epoch> <path> -- backdate an mtime to an absolute epoch. GNU
 # `touch -d "@e"` first; BSD touch rejects "@e", so fall back to `touch -t` with the
@@ -57,7 +56,7 @@ _t_touch_at() { touch -d "@$1" "$2" 2>/dev/null || TZ=UTC touch -t "$(_t_date_at
 TMPDIR_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_ROOT"' EXIT
 
-# HIMMEL-4420: queue-lock.sh now loads .env HANDOVER_DIR when the env lacks it.
+# queue-lock.sh now loads .env HANDOVER_DIR when the env lacks it.
 # Pin an empty .env so the cases that unset HANDOVER_DIR stay hermetic against
 # the operator's real one.
 mkdir -p "$TMPDIR_ROOT/dotenv-cache"; : > "$TMPDIR_ROOT/dotenv-cache/.env"
@@ -67,7 +66,7 @@ HANDOVER_DIR="$TMPDIR_ROOT/handovers"
 mkdir -p "$HANDOVER_DIR"
 export HANDOVER_DIR
 
-# HIMMEL-2813: `acquire` persists the release token under XDG_RUNTIME_DIR,
+# `acquire` persists the release token under XDG_RUNTIME_DIR,
 # so this suite MUST point that at a temp dir too -- otherwise every acquire
 # in every test writes into the operator's real /run/user/<uid>/ runtime dir.
 # Same hermeticity rule as HANDOVER_DIR above: never the real thing.
@@ -75,7 +74,7 @@ XDG_RUNTIME_DIR="$TMPDIR_ROOT/xdg"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 export XDG_RUNTIME_DIR
-# HIMMEL-3290: the cross-root search and `status --sweep` read the handover
+# the cross-root search and `status --sweep` read the handover
 # registry, so the default $HOME registry (the operator's real vault) must
 # never be read by this suite either. A nonexistent file = no candidate roots;
 # tests that need a registry pass their own HANDOVER_REGISTRY per call.
@@ -114,7 +113,7 @@ else
     fail "T1: acquire output missing 'release-token: \`session-a\`' (got: $out)"
 fi
 
-# --- T1b-T1d (HIMMEL-2910): the backticked release-token line is a safe
+# --- T1b-T1d: the backticked release-token line is a safe
 # copy-paste shape, and every reader tolerates BOTH it and the pre-2910
 # bare form.
 if [ "$(_tq_bare_token "$(printf '%s\n' "$out" | sed -n 's/^release-token: //p')")" = "session-a" ]; then
@@ -136,10 +135,10 @@ else
 fi
 bash "$LIB" acquire "$HO1" "session-a" >/dev/null 2>&1
 
-# --- T1e (HIMMEL-2910 round-1 CR fix): a RECALLED token whose own value
+# --- T1e: a RECALLED token whose own value
 # legitimately starts/ends with a backtick is not mangled by the strip --
 # it applies to an ARGV-supplied token only, never to one recovered from the
-# per-session persistence file (HIMMEL-2813), which is already the exact
+# per-session persistence file, which is already the exact
 # raw value acquire stored in owner.json.
 HO1E="$HANDOVER_DIR/HIMMEL-856-test/next-session-1e.md"
 mkdir -p "$(dirname "$HO1E")"
@@ -216,7 +215,7 @@ else
 fi
 
 # --- T6: release of an absent lock (with a token) reports it, rc 3 ---------
-# CONTRACT CHANGE (HIMMEL-2861): this used to be a silent rc=0 "idempotent"
+# CONTRACT CHANGE: this used to be a silent rc=0 "idempotent"
 # release. Idempotency was indistinguishable from the failure it hid -- a
 # release that looked in the wrong handover root also found nothing and
 # also said 0, so six legs on 2026-09-09 reported a clean wrap over a lock
@@ -349,7 +348,7 @@ fi
 QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$HO3" >/dev/null 2>&1
 
 # --- T14: concurrent STALE-takeover race -- exactly one taker wins ----------
-# (HIMMEL-856 CR, codex-2: the takeover must be an atomic rename-then-acquire,
+# (the takeover must be an atomic rename-then-acquire,
 # never an in-place owner.json rewrite that lets both takers "win".)
 # The stale lock is hand-crafted with an ANCIENT heartbeat under the DEFAULT
 # TTL -- deliberately not QUEUE_LOCK_TTL_SECONDS=0, which would make the
@@ -389,7 +388,7 @@ elif [ ! -f "$LOCKDIR4/takeovers.log" ] && grep -q "\"session\":\"$winner\"" "$L
     # Rare legal interleaving: the rc-0 acquirer's INITIAL mkdir landed in
     # the claim-holder's rm->mkdir gap, so it acquired via the FRESH path
     # (no trail written -- there was no lock dir when it arrived). The
-    # exactly-one-winner property (the actual codex-2 contract) still held.
+    # exactly-one-winner property (the atomic-takeover contract) still held.
     pass "T14: fresh-path winner in the rm->mkdir gap (no trail required)"
 else
     fail "T14: takeovers.log missing/incomplete ($(cat "$LOCKDIR4/takeovers.log" 2>/dev/null || echo MISSING))"
@@ -411,12 +410,12 @@ else
 fi
 bash "$LIB" release "$HO4" "$winner" >/dev/null 2>&1
 
-# --- T15: mandatory session token on release/heartbeat (HIMMEL-856 CR C1) ---
+# --- T15: mandatory session token on release/heartbeat ---
 HO15="$HANDOVER_DIR/HIMMEL-856-test/next-session-15.md"
 : > "$HO15"
 LOCKDIR15="$HANDOVER_DIR/.locks/queue/HIMMEL-856-test__next-session-15.lock"
 bash "$LIB" acquire "$HO15" "session-t15" >/dev/null 2>&1
-# HIMMEL-2813: acquire now also PERSISTS the token, and a token-less
+# acquire now also PERSISTS the token, and a token-less
 # release legitimately recalls it. T15's contract is the one that did not
 # change -- with no token available ANYWHERE, release/heartbeat still
 # refuse rc=2 -- so drop the persisted copy first and assert exactly that.
@@ -456,7 +455,7 @@ else
     fail "T15: queue-level takeovers.log missing the forced-release record ($(cat "$HANDOVER_DIR/.locks/queue/takeovers.log" 2>/dev/null || echo MISSING))"
 fi
 
-# --- T16: failed owner.json write never reports acquired (HIMMEL-856 CR C3) -
+# --- T16: failed owner.json write never reports acquired -
 # Source the script (the sourcing guard skips main) and override the atomic
 # writer to fail; acquire must return non-zero and remove the lock dir.
 HO16="$HANDOVER_DIR/HIMMEL-856-test/next-session-16.md"
@@ -474,7 +473,7 @@ else
     fail "T16: failure output wrong (no loud error, or a token line leaked): $t16_out"
 fi
 
-# --- T17: status names a CORRUPT lock dir distinctly (HIMMEL-856 CR imp-c) --
+# --- T17: status names a CORRUPT lock dir distinctly --
 HO17="$HANDOVER_DIR/HIMMEL-856-test/next-session-17.md"
 : > "$HO17"
 LOCKDIR17="$HANDOVER_DIR/.locks/queue/HIMMEL-856-test__next-session-17.lock"
@@ -516,7 +515,7 @@ fi
 QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$HO18" >/dev/null 2>&1
 
 # --- T19: acquire CONSUMES (drops) THIS host's PENDING arms.jsonl ----------
-# record(s) for this handover (HIMMEL-882; retention shape, round-3), and
+# record(s) for this handover, and
 # touches nothing else: a sibling record for the SAME host but a DIFFERENT
 # handover, and a record for the SAME handover but a DIFFERENT host, must
 # both survive untouched -- this is the lifecycle fix for arm-resume.sh's
@@ -583,7 +582,7 @@ fi
 bash "$LIB" release "$HO20" "session-t20" >/dev/null 2>&1
 
 # --- T21: a registry WITHOUT a trailing newline never loses its final ------
-# record on rewrite (HIMMEL-882 CR round-2 Critical, live-reproduced):
+# record on rewrite:
 # `read` returns 1 at EOF-without-newline while still filling the variable,
 # so without the `|| [ -n "$line" ]` guard the final record was silently
 # DELETED. Two shapes: (a) final record is a NON-matching bystander -- must
@@ -618,7 +617,7 @@ fi
 bash "$LIB" release "$HO21" "session-t21b" >/dev/null 2>&1
 
 # --- T22: odd line shapes consume cleanly without corrupting bystanders ----
-# (round-2 hardening, reshaped for round-3 retention: consumed lines are
+# (consumed lines are
 # DROPPED whole, never edited, so trailing whitespace/CR after `}` and a
 # missing closing brace cannot produce invalid JSON -- the field match is
 # shape-insensitive). The bystander line must survive byte-identical.
@@ -643,7 +642,7 @@ else
 fi
 bash "$LIB" release "$HO22" "session-t22" >/dev/null 2>&1
 
-# --- T30: direct fired-GC coverage for the consume path (round-4 test-1) ---
+# --- T30: direct fired-GC coverage for the consume path ---
 # The legacy '"fired":"true"'-marked-line GC inside
 # _ql_arms_registry_retire_fired (the unconditional `*'"fired":"true"'*)
 # changed=1; continue` case, matched BEFORE the host/handover compare) had
@@ -674,7 +673,7 @@ fi
 bash "$LIB" release "$HO30" "session-t30" >/dev/null 2>&1
 rm -f "$ARMS_REGISTRY"
 
-# --- T23: escaped-vs-raw compare (round-2): the registry stores JSON- ------
+# --- T23: escaped-vs-raw compare: the registry stores JSON- ------
 # escaped values (backslashes doubled), so a raw Windows backslash handover
 # path must still match its own record and be consumed. acquire never stats
 # the handover path, so a fake backslash path exercises this on every
@@ -692,7 +691,7 @@ else
 fi
 QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$HO23" >/dev/null 2>&1
 
-# --- T31: new-format canonical key consumes the RIGHT record (HIMMEL-1344) --
+# --- T31: new-format canonical key consumes the RIGHT record --
 # The record's raw handover spelling deliberately differs from the acquire
 # argument. Matching must use handover-key, drop only this host's target row,
 # and leave the sibling key untouched. Fired records are retained by deletion
@@ -725,8 +724,8 @@ fi
 bash "$LIB" release "$HO31" "session-t31" >/dev/null 2>&1
 
 # --- T31b: legacy raw-only alternate spelling is still consumed -----------
-# Migration coverage for records written before HIMMEL-1344: no handover-key
-# exists, so acquire must canonicalize the stored raw spelling and retire it.
+# Migration coverage for records written before the handover-key identity
+# existed, so acquire must canonicalize the stored raw spelling and retire it.
 printf '{"host":"%s","handover":"%s","fire-at":"202601010000","task-name":"HIMMEL-Resume-t31b-legacy"}\n' \
     "$THIS_HOST" "$HO31_ALT" > "$ARMS_REGISTRY"
 err="$(bash "$LIB" acquire "$HO31" "session-t31b" 2>&1 1>/dev/null)"
@@ -738,7 +737,7 @@ else
 fi
 bash "$LIB" release "$HO31" "session-t31b" >/dev/null 2>&1
 
-# --- T24: the TAKEOVER acquire path also consumes (round-2 addendum) -------
+# --- T24: the TAKEOVER acquire path also consumes -------
 # T19 covered the fresh-mkdir path only; the stale-takeover branch has its
 # own retire call. Stale fixture per T9/T14: hand-crafted owner.json with
 # an ancient heartbeat under the DEFAULT TTL.
@@ -764,7 +763,7 @@ else
 fi
 bash "$LIB" release "$HO24" "session-t24" >/dev/null 2>&1
 
-# --- T24b (HIMMEL-2910): the TAKEOVER path also prints the backticked line -
+# --- T24b: the TAKEOVER path also prints the backticked line -
 # T24 only checked stderr; this checks stdout on the same stale-takeover
 # branch (queue_lock_acquire's second release-token print site).
 mkdir -p "$LOCKDIR24"
@@ -779,7 +778,7 @@ else
 fi
 bash "$LIB" release "$HO24" "session-t24b" >/dev/null 2>&1
 
-# --- T25: concurrent rewriters lose no record (round-2 High) ---------------
+# --- T25: concurrent rewriters lose no record ---------------
 # Two acquires on DIFFERENT handovers race the SAME arms.jsonl (one
 # registry per handover root); pre-mutex, both did read-filter-rewrite-mv
 # and the last mv won, losing the other's update. Modest hammer: 20 rounds,
@@ -813,7 +812,7 @@ else
     fail "T25: concurrent rewrite lost an update ($T25_BAD)"
 fi
 
-# --- T26: write-failure fail-open (round-2 addendum): tmp create fails -> --
+# --- T26: write-failure fail-open: tmp create fails -> --
 # WARN + acquire still succeeds + registry left untouched + mutex released.
 # Portable trigger: source the lib in one bash so $$ is knowable, and plant
 # a DIRECTORY at the exact "$reg.tmp.$$" path -- the `: >` redirection then
@@ -842,8 +841,8 @@ fi
 bash "$LIB" release "$HO26" "sess-t26" >/dev/null 2>&1
 rm -f "$ARMS_REGISTRY"
 
-# --- T27: owner-token mutex theft (HIMMEL-882 CR round-3 Critical, --------
-# live-measured): a holder whose rewrite outlives the mutex's 60s mtime
+# --- T27: owner-token mutex theft (live-measured) --------
+# a holder whose rewrite outlives the mutex's 60s mtime
 # self-expiry gets RECLAIMED by a contending writer; pre-token, the slow
 # holder's blind rmdir then released the THIEF's lock (third writer
 # interleaves = silent lost update). Two layers:
@@ -908,7 +907,7 @@ bash "$LIB" release "$HO27" "sess-t27b" >/dev/null 2>&1
 rm -f "$ARMS_REGISTRY"
 
 # --- T31: mutex staleness is RE-PROBED periodically, not just at tries==0 --
-# (round-4 sfh-1, live-reproduced): pre-fix, _ql_arms_mutex_acquire probed
+# Pre-fix, _ql_arms_mutex_acquire probed
 # the held lock's mtime staleness ONLY on the first contended iteration. A
 # lock that was already ~56s old when the contender started is not yet
 # stale at tries==0, so the pre-fix code never re-checked and burned its
@@ -946,7 +945,7 @@ fi
 rm -f "$ARMS_REGISTRY.lock/owner" 2>/dev/null; rmdir "$ARMS_REGISTRY.lock" 2>/dev/null
 rm -f "$ARMS_REGISTRY"
 
-# --- T28: rewrite perf smoke (round-3 Critical): a 300-line registry -------
+# --- T28: rewrite perf smoke: a 300-line registry -------
 # rewrite completes in <=5s. The pre-fix grep|head|sed pipelines cost
 # ~185-200ms/LINE on Windows/Git-Bash (8+ forks each), so 300 lines
 # exceeded the mutex's own 60s expiry; the pure-bash _hp_json_field
@@ -989,12 +988,11 @@ rm -f "$ARMS_REGISTRY"
 # mutex. Blowing the mutex lease is not a slow test, it is a discarded rewrite:
 # the arm stays pending-but-unregistered, or a fired record never clears.
 #
-# So this case is deliberately pinned to the LEASE, not to an ambition
-# (HIMMEL-1344 CR round). It ALWAYS prints the measurement, WARNs at the
+# So this case is deliberately pinned to the LEASE, not to an ambition. It ALWAYS prints the measurement, WARNs at the
 # halfway mark so a slow drift is visible before it bites, and FAILs only when
 # the rewrite approaches the lease itself -- the point at which the behaviour
 # under test genuinely breaks. That is why a wall-clock bound is legitimate
-# here and is not a second T28 (see HIMMEL-1661): crossing it IS the failure
+# here and is not a second T28: crossing it IS the failure
 # mode, and the budget is an order of magnitude above the noise.
 t28b_lease=$(sed -n 's/^_QL_ARMS_MUTEX_STALE_SECS=\([0-9][0-9]*\).*/\1/p' "$LIB" | head -1)
 if [ -z "$t28b_lease" ]; then
@@ -1034,8 +1032,8 @@ else
     rm -f "$ARMS_REGISTRY"
 fi
 
-# --- T29: escaped-quote + backslash values round-trip (round-3: the -------
-# parity-aware _hp_json_field replaces the round-2 extractor whose values
+# --- T29: escaped-quote + backslash values round-trip (the -------
+# parity-aware _hp_json_field replaces the earlier extractor whose values
 # mis-truncated at an escaped quote -- macOS/Linux paths may legally
 # contain double quotes). Unit round-trip via the shared lib, then the
 # real acquire flow consumes a record whose handover value carries \" and
@@ -1148,10 +1146,10 @@ else
 fi
 rm -rf "$LOCKDIR33" "${LOCKDIR33}.claim"
 
-# --- T34: consume path survives a pre-HIMMEL-1344 handover-path.sh ---------
+# --- T34: consume path survives a pre-identity handover-path.sh ---------
 # queue-lock.sh's fallbacks must let `acquire` survive a partially-deployed
 # library that still exports handover_root + JSON helpers but deliberately
-# lacks the HIMMEL-1344 identity + matcher. The test-owned fixture pins that
+# lacks the identity + matcher. The test-owned fixture pins that
 # property; deriving it from main would silently stop testing skew after merge.
 FAKE_QL="$TMPDIR_ROOT/fake-ql-pre1344"
 PRE_1344_LIB="$SCRIPT_DIR/fixtures/handover-path-pre-himmel-1344.sh"
@@ -1180,7 +1178,7 @@ rm -f "$ARMS_REGISTRY"
 
 
 # --- T35: close-evidence emit fires on a real release, NEVER on a force ----
-# HIMMEL-2294. `_ql_emit_close_evidence` declares THIS session closable so
+# `_ql_emit_close_evidence` declares THIS session closable so
 # flow-exporter.ts can drop it from session_dead_total. Two invariants, and
 # the NEGATIVE one is the load-bearing half: a force-release is a stranger
 # cleaning up someone else's stranded lock, so emitting there would key a
@@ -1188,7 +1186,7 @@ rm -f "$ARMS_REGISTRY"
 # from the gauge -- a false negative in the very alert this reconciler
 # fixes. Nothing else guards that, and it is a one-line "helpful" edit away
 # from regressing. `bun` is stubbed via a PATH shim script (NOT a shell
-# function -- CR fix codex-2 wraps the real call in `timeout` when present,
+# function -- the real call is wrapped in `timeout` when present,
 # and `timeout` execs its command directly, so a shell function defined in
 # the same process is invisible to it; a PATH-resolvable executable is not)
 # so the probe records the call without ever spawning the real writer or
@@ -1233,7 +1231,7 @@ fi
 rm -f "$T35_PROBE"
 rm -rf "$T35_BIN"
 
-# --- T36: idle-warn "possibly stuck on a prompt" (HIMMEL-2381) -------------
+# --- T36: idle-warn "possibly stuck on a prompt" -------------
 # A FRESH lock (age < ttl) whose heartbeat exceeds QUEUE_LOCK_IDLE_WARN_SECONDS
 # (default 2700s) warns distinctly from the half-TTL AGING warning (T18) --
 # the idle-warn threshold is meant to catch a hung interactive-permission
@@ -1267,7 +1265,7 @@ fi
 QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$HO36" >/dev/null 2>&1
 
 # --- T37: sweep with no locks at all -> rc=0, explicit "no held locks" ----
-# (HIMMEL-2369). A fresh handover root under its own mktemp dir, never
+# A fresh handover root under its own mktemp dir, never
 # touching the real ~/.himmel / ~/.claude state -- verify the resolved root
 # is actually this fixture before asserting on it (this suite has clobbered
 # real user state before by leaving an env var empty).
@@ -1315,7 +1313,7 @@ OLD_SLUG="HIMMEL-2369-test__old"
 OLD_LOCKDIR="$SWEEP_QDIR/$OLD_SLUG.lock"
 mkdir -p "$OLD_LOCKDIR"
 # Fixed ancient literal (same convention as T9/T14/T18/T24/T32/T33 -- NOT
-# `date -d`, which is GNU-only and breaks on BSD/macOS, codex-4). The sweep
+# `date -d`, which is GNU-only and breaks on BSD/macOS). The sweep
 # has no half-TTL AGING check to disambiguate from (unlike T36), so an
 # ancient fixed date is unambiguous: it is well past the idle-warn threshold
 # and needs no date arithmetic at all.
@@ -1370,8 +1368,7 @@ rm -rf "$FRESH_LOCKDIR" "$OLD_LOCKDIR"
 CORRUPT1_SLUG="HIMMEL-2369-test__corrupt-missing"
 CORRUPT1_LOCKDIR="$SWEEP_QDIR/$CORRUPT1_SLUG.lock"
 mkdir -p "$CORRUPT1_LOCKDIR"   # no owner.json at all
-# Backdate past _QL_SWEEP_CORRUPT_GRACE_SECS (HIMMEL-2369 CR round-2,
-# codex-2): a FRESHLY-created missing-owner dir is now INDETERMINATE, not
+# Backdate past _QL_SWEEP_CORRUPT_GRACE_SECS: a FRESHLY-created missing-owner dir is now INDETERMINATE, not
 # CORRUPT (see T44) -- this fixture needs to be a genuinely OLD miss to
 # still exercise the CORRUPT path T42 is about.
 t42_grace=$(sed -n 's/^_QL_SWEEP_CORRUPT_GRACE_SECS=\([0-9][0-9]*\).*/\1/p' "$LIB" | head -1)
@@ -1403,7 +1400,7 @@ fi
 rm -rf "$CORRUPT1_LOCKDIR" "$CORRUPT2_LOCKDIR" "$FRESH_LOCKDIR"
 
 # --- T43: a partially-parseable owner is NOT healthy just because one -----
-# field survived (HIMMEL-2369 CR round-1, codex-1): the CORRUPT check only
+# field survived: the CORRUPT check only
 # trips when session/host/heartbeat are ALL empty, so an owner.json missing
 # just its heartbeat -- or one where the heartbeat is present but garbage --
 # used to fall through to status=OK age=unknown, a clean-looking verdict for
@@ -1437,7 +1434,7 @@ rm -rf "$BADHB_LOCKDIR"
 
 # Negative control MUST still pass unchanged: a genuinely healthy old lock
 # (parseable heartbeat, just old) stays unflagged under a high threshold --
-# proving the codex-1 fix is "fail-closed on unassessable", not "flag
+# proving the fix is "fail-closed on unassessable", not "flag
 # everything".
 mkdir -p "$OLD_LOCKDIR"
 printf '{"session":"sweep-old","host":"h","handover":"old.md","started":"2020-01-01T00:00:00Z","heartbeat":"2020-01-01T00:00:00Z"}\n' \
@@ -1452,7 +1449,7 @@ fi
 rm -rf "$OLD_LOCKDIR"
 
 # --- T44: sweep race window -- missing owner.json is NOT always CORRUPT ----
-# (HIMMEL-2369 CR round-2, codex-2): acquire creates the lock DIR then
+# acquire creates the lock DIR then
 # writes owner.json a moment later; a sweep landing in that routine,
 # sub-second window must not cry wolf on a healthy in-flight acquire. The
 # discriminator is the lock dir's own mtime (py_armor_mtime) -- an empirical
@@ -1498,7 +1495,7 @@ else
     OLDMISS_LOCKDIR="$SWEEP_QDIR/$OLDMISS_SLUG.lock"
     mkdir -p "$OLDMISS_LOCKDIR"
     # touch -d "@<epoch>" (NOT `date -d` arithmetic on a heartbeat string --
-    # codex-4 last round; this is the SAME idiom T31 already uses to backdate
+    # this is the SAME idiom T31 already uses to backdate
     # a lock dir's mtime, proven to work on this box).
     t44_old_epoch=$(( $(date -u +%s) - T44_GRACE - 60 ))
     _t_touch_at "$t44_old_epoch" "$OLDMISS_LOCKDIR"
@@ -1512,7 +1509,7 @@ else
     rm -rf "$OLDMISS_LOCKDIR"
 fi
 
-# --- T45: sweep output escaping (HIMMEL-2369 CR round-2, codex-3) ----------
+# --- T45: sweep output escaping ----------
 # slug/session/host are filesystem- or owner-controlled; a raw space or a
 # literal embedded newline in a value must not forge or split the
 # documented one-record-per-line contract. Every line the sweep prints
@@ -1546,7 +1543,7 @@ else
 fi
 rm -rf "$SPACE_LOCKDIR" "$NL_LOCKDIR"
 
-# --- T46-T52: cross-root release/heartbeat (HIMMEL-2861) --------------------
+# --- T46-T52: cross-root release/heartbeat --------------------
 # Six legs on 2026-09-09 wrapped with `release <doc> <token>` reporting
 # nothing held (rc=0) while the lock they had acquired stayed HELD: the
 # acquire ran with HANDOVER_DIR exported, the release at wrap was issued
@@ -1606,7 +1603,7 @@ else
     fail "T46a: negative control -- expected non-zero + lock intact (rc=$rc, lock=$([ -f "$X_LOCKDIR/owner.json" ] && echo held || echo GONE): $out)"
 fi
 
-# --- T46b: the HIMMEL-2861 reproduction -- release from the worktree cwd ---
+# --- T46b: the cross-root reproduction -- release from the worktree cwd ---
 out="$(x_from_worktree "$X_REG" release "$x_tok")"
 rc=$?
 if [ "$rc" -eq 0 ]; then
@@ -1619,7 +1616,7 @@ if [ ! -d "$X_LOCKDIR" ]; then
 else
     fail "T46b: the lock under the acquire-time root is STILL HELD -- the release looked in the wrong root ($out)"
 fi
-# HIMMEL-3290: the key is a property of the DOC (the deepest known root that
+# the key is a property of the DOC (the deepest known root that
 # contains it), not of the cwd, so this release no longer has a cwd/recorded
 # root divergence to warn about. Pinned here: it finds the lock directly (no
 # WARN), and says what it released.
@@ -1699,7 +1696,7 @@ else
     fail "T51: acquire's last stdout line is not the release-token line (got: $out)"
 fi
 
-# --- T52: force-release from another cwd (HIMMEL-3290 changes the expectation)
+# --- T52: force-release from another cwd (the doc-keyed lock changes the expectation)
 # Was: cwd-root-only, so a force-release from the worktree cwd found nothing
 # and left the lock held. The key is now a property of the DOC (the deepest
 # known root containing it), so the same force-release resolves to the doc's
@@ -1726,7 +1723,7 @@ else
 fi
 
 # --- T53: a COMPACT single-line registry yields EVERY repo, not just the ---
-# last (HIMMEL-2861 CR round 1, codex-1). A line-anchored `sed -n s///p`
+# last. A line-anchored `sed -n s///p`
 # matches at most once per line and its leading `.*` is greedy, so compact
 # JSON -- valid, and what any programmatic rewriter emits -- dropped every
 # repo but the last out of the candidate list, leaving those roots' locks
@@ -1760,7 +1757,7 @@ else
     fail "T53: compact registry dropped the leading repo entry (rc=$rc: $out)"
 fi
 
-# --- T53b: registry paths decode JSON escapes (HIMMEL-2868) ---------------
+# --- T53b: registry paths decode JSON escapes ---------------
 x_escape_roots() (
     unset HANDOVER_DIR
     export HANDOVER_REGISTRY="$X_REG_COMPACT"
@@ -1812,7 +1809,7 @@ else
 fi
 
 # --- T54: a STRANGER's lock on the same slug in the cwd root does not -----
-# hide our own lock in another root (HIMMEL-2861 CR round 1, codex-2).
+# hide our own lock in another root.
 # Two roots can carry the same slug; the cross-root search must trigger on
 # "the lock here is not ours", not merely on "there is no lock here".
 x_tok="$(HANDOVER_DIR="$X_ROOT" bash "$LIB" acquire "$X_DOC" "mine-elsewhere" 2>/dev/null \
@@ -1861,7 +1858,7 @@ fi
 rm -f "$X_WT_LOCKDIR/owner.json"
 rmdir "$X_WT_LOCKDIR" 2>/dev/null || true
 
-# --- T56-T64: per-session token persistence (HIMMEL-2813) ------------------
+# --- T56-T64: per-session token persistence ------------------
 # Two certifier legs lost their release token to a mid-leg autocompact on
 # 2026-09-07/08 and had to force-release, putting a routine wrap into
 # takeovers.log -- a file that is supposed to be the audit trail for genuine
@@ -1936,7 +1933,7 @@ fi
 
 # --- T58: an explicit argv token WINS over the file -----------------------
 # The persisted token is valid and sitting right there; a WRONG argv token
-# must still be refused rc=2, exactly as before HIMMEL-2813. This is what
+# must still be refused rc=2, exactly as before token persistence. This is what
 # makes the file a fallback rather than a bypass.
 out="$(p_ql release "$P_DOC" "not-the-holder" 2>&1)"
 rc=$?
@@ -2054,7 +2051,7 @@ XDG_RUNTIME_DIR="$P_XDG_BAD" HANDOVER_DIR="$P_ROOT" QUEUE_LOCK_FORCE_RELEASE=1 \
     bash "$LIB" release "$P_DOC" >/dev/null 2>&1
 
 # --- T65: the token file is scoped to the SESSION, not the user -----------
-# CR round 1, codex-1 -- and a real regression, reproduced before it was
+# A real regression, reproduced before it was
 # fixed: keyed on the handover path alone, ANY process running as this user
 # could issue a token-less release and be handed the holder's token, which
 # is exactly the hole C1 exists to close. himmel runs many concurrent legs
@@ -2097,9 +2094,9 @@ else
 fi
 
 # --- T66: forget removes only OUR OWN acquisition's file, never another's -
-# CR round 1, codex-2: the forget runs AFTER the lock dir is removed, so a
+# The forget runs AFTER the lock dir is removed, so a
 # fresh acquire can land in between and persist its own token to the same
-# path. HIMMEL-2870 closed the read-then-rm gap this originally guarded by
+# path. Per-acquisition files closed the read-then-rm gap this originally guarded by
 # giving every acquisition its OWN file ("<h>.<token>") instead of one
 # shared "<h>" -- so the old stand-in here (tamper the CONTENT of the one
 # shared file to look like a different holder's) no longer models anything
@@ -2133,7 +2130,7 @@ else
 fi
 rm -rf "$T66_XDG"
 
-# --- T68: the residual race, end to end (HIMMEL-2870) ----------------------
+# --- T68: the residual race, end to end ----------------------
 # A acquires (token-A), its lock dir is force-cleared (a lost-lock cleanup,
 # never touching the token file -- exactly how a real "A's lock is already
 # gone" arises), then the SAME session scope re-acquires as B (token-B),
@@ -2204,9 +2201,9 @@ fi
 rm -rf "$T68_XDG" "$T68_ROOT"
 
 # --- T67: no resolvable session scope -> the feature turns ITSELF off -----
-# The safe degradation is the pre-HIMMEL-2813 argv-only behaviour, never a
-# user-wide file. Emptying both scope sources is now sufficient: CR round 2
-# removed the POSIX-session-id fallback (it is shared across one terminal,
+# The safe degradation is the pre-persistence argv-only behaviour, never a
+# user-wide file. Emptying both scope sources is now sufficient: the
+# removal of the POSIX-session-id fallback (it is shared across one terminal,
 # so it did not actually isolate sessions), which also removed the need for
 # a failing `ps` stub here.
 out="$(QUEUE_LOCK_SESSION_SCOPE="" CLAUDE_CODE_SESSION_ID="" \
@@ -2236,7 +2233,7 @@ QUEUE_LOCK_SESSION_SCOPE="" CLAUDE_CODE_SESSION_ID="" \
     XDG_RUNTIME_DIR="$S_XDG" HANDOVER_DIR="$S_ROOT" QUEUE_LOCK_FORCE_RELEASE=1 \
     bash "$LIB" release "$S_DOC" >/dev/null 2>&1
 
-# --- T70: `status` / `status --sweep` reject extra operands (HIMMEL-2409) ---
+# --- T70: `status` / `status --sweep` reject extra operands ---
 # An unquoted path containing a space arrives as TWO operands; the old parse
 # read only the first, so `status --sweep /tmp/my dir` swept `/tmp/my` and
 # printed a confident (wrong-root) result, rc 0. Both halves are asserted:
@@ -2331,7 +2328,7 @@ fi
 rm -rf "$X_ROOT"
 
 # --- T71-T78: one doc path yields ONE lock key; sweep/status cannot miss a --
-# --- held lock (HIMMEL-3290) ---------------------------------------------
+# --- held lock ---------------------------------------------
 # Two live legs held locks under the WRONG key on 2026-09-20 and `status`
 # answered `free` for both: N211b ran with HANDOVER_DIR naming the vault's
 # PARENT (root recorded = the vault, slug absorbed `handovers__`), N212 passed
@@ -2542,7 +2539,7 @@ else
     fail "T78: release of the N211b-shape lock failed (rc=$rc): $out"
 fi
 
-# --- T79: a stale legacy lock never hides a fresh one (pr-check codex-1) -----
+# --- T79: a stale legacy lock never hides a fresh one -----
 # Acquire and status used to look only at the FIRST lock the scan returned, so
 # a stale first match (or a stale lock at the canonical key, which skipped the
 # scan entirely) let a second writer take a doc another leg still held.
@@ -2633,7 +2630,7 @@ else
     fail "T80: a different doc's namesake lock changed this doc's status (rc=$rc): $out"
 fi
 
-# --- T81-T83: HIMMEL-988 generation fence -----------------------------------
+# --- T81-T83: generation fence -----------------------------------
 # A caller that verified ownership and then stalled must not act on the lock
 # generation a takeover minted in the meantime. Each test freezes one caller
 # at its verify->act boundary (the _ql_test_pause seam), lets a second session
@@ -2731,7 +2728,7 @@ if [ "$(id -u)" -ne 0 ]; then
     bash "$LIB" release "$F_DOC" fenceA84 >/dev/null 2>&1
 fi
 
-# --- T85 (HIMMEL-3614 F1): a pre-HIMMEL-988 takeover mints no gen file. A
+# --- T85: a pre-fence takeover mints no gen file. A
 # holder whose OWN lock also predates the gen fence (no gen/ at all) reads
 # gen "" both before AND after such a takeover -- the gen check alone can't
 # tell anything happened. The owner ARBITER file (`owner`, written O_EXCL by
@@ -2758,7 +2755,7 @@ else
     fail "T85: pre-988-style takeover not fenced: a_rc=$a_rc out=$(cat "$F_P.out") owner.json=$(cat "$F_LK/owner.json" 2>/dev/null)"
 fi
 
-# --- T86 (HIMMEL-3614 F2): an unreadable gen fails closed (T84, correct) but
+# --- T86: an unreadable gen fails closed (T84, correct) but
 # every takeover then refuses SILENTLY -- status and the takeover refusal
 # must say WHY (the gen file is unreadable, not a real takeover) and name
 # QUEUE_LOCK_FORCE_RELEASE as the recovery.
@@ -2781,7 +2778,7 @@ if [ "$(id -u)" -ne 0 ]; then
     bash "$LIB" release "$F_DOC" fenceA86 >/dev/null 2>&1
 fi
 
-# --- T87 (HIMMEL-3614 F1, codex-1 suggestion): same pre-988 takeover as T85,
+# --- T87: same pre-988 takeover as T85,
 # but against RELEASE rather than heartbeat -- the release path re-verifies
 # gen+arbiter independently (see _ql_read_arbiter's call site above release's
 # rm -rf) and must refuse just as heartbeat does.
@@ -2804,7 +2801,7 @@ else
     fail "T87: pre-988-style takeover not fenced on release: a_rc=$a_rc out=$(cat "$F_P.out") owner.json=$(cat "$F_LK/owner.json" 2>/dev/null)"
 fi
 
-# --- T88-T95 (HIMMEL-2318): a live leg must not silently outrun the TTL. The
+# --- T88-T95: a live leg must not silently outrun the TTL. The
 # AGING warning used to live in `status` alone, which a leg never calls between
 # acquire and release; the harness now self-heartbeats the session's own locks
 # (PostToolUse hook -> `self-heartbeat`), and a lock whose holder's transcript
@@ -2944,7 +2941,7 @@ else
     fail "T95: idle self-heartbeat (rc=$rc out=$out rc2=$rc2 out2=$out2)"
 fi
 
-# --- T96-T102 (HIMMEL-5541): a lock past its TTL whose owner is PROVABLY dead
+# --- T96-T102: a lock past its TTL whose owner is PROVABLY dead
 # reads STALE-DEAD and `status --sweep --reap-dead` releases only such locks.
 # Provably dead = owner host is this host, the session token is <host>-pid<N>
 # with no live pid N, and no live claude process names the lock's doc.

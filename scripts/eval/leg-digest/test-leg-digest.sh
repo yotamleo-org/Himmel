@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/leg-digest/test-leg-digest.sh - hermetic suite for the leg digest (HIMMEL-4670 P1).
+# scripts/eval/leg-digest/test-leg-digest.sh - hermetic suite for the leg digest.
 # Synthetic fixtures only; no model call, no bank, no ledger write.
 #  1. every class key of spec section 2.2 comes out of fixtures/classes.jsonl;
 #  2. the classifier sub-class: ledger first, else the journal's bracket against the fixed list;
@@ -52,7 +52,7 @@ check "per-tool calls sum to the session total and unknown lane never comes from
 check "per-tool failures exclude text reports and grep no-match" 'jq -e ".metrics.tool_failures_by_tool.Edit == 1 and .metrics.tool_failures_by_tool.mcp__qmd__query == 1" "$TMP/classes.json" >/dev/null'
 
 echo "2. classifier sub-class: ledger, then the journal bracket against the fixed list"
-# HIMMEL-4683: the fixture's ledger row and journal bracket for toolu_c1 share one category, so a broken ledger join
+# The fixture's ledger row and journal bracket for toolu_c1 share one category, so a broken ledger join
 # would still pass via the bracket fallback. Rewrite the bracket to another listed category; the ledger's must win.
 mkdir -p "$TMP/lw"  # the digest keys the ledger by the journal basename, so the copy keeps "$SID.jsonl"
 sed 's/Reason: \[Merge Without Review\]\./Reason: [Security Weaken]./' "$TMP/$SID.jsonl" >"$TMP/lw/$SID.jsonl"
@@ -85,7 +85,7 @@ check "the canary fixture carries the canary" '[ "$(grep -c CANARY4670zq "$FX/ca
 digest "$TMP/$SID.c.jsonl" >"$TMP/canary.json" 2>"$TMP/canary.err" || bad "the canary digest exits 0"
 check "the canary digest is non-empty" 'jq -e ".failures | length > 10" "$TMP/canary.json" >/dev/null'
 check "the canary appears nowhere in the digest or its stderr" 'absent CANARY4670zq "$TMP/canary.json" "$TMP/canary.err"'
-# HIMMEL-3724: input_head and the raw reason_tag never leave the host. The digest maps reason_tag onto the closed
+# input_head and the raw reason_tag never leave the host. The digest maps reason_tag onto the closed
 # category list (slugged); every row here also carries input_head, and the off-list tag is a canary.
 jq -c '. + {input_head: "IHEAD4670zq"} | if .reason_tag == "unknown" then .reason_tag = "RTAG4670zq" else . end' "$FX/classifier-denials.jsonl" >"$TMP/egress-ledger.jsonl"
 bun "$DIG" --transcript "$TMP/$SID.jsonl" --denials-ledger "$TMP/egress-ledger.jsonl" >"$TMP/egress.json" 2>"$TMP/egress.err" || bad "the egress digest exits 0"
@@ -93,7 +93,7 @@ check "the egress ledger carries input_head and the canary tag" '[ "$(grep -c IH
 check "the egress digest still keys the ledger category" '[ "$(jq -c "[.failures[] | select(.class == \"denied/classifier:merge-without-review\")] | length" "$TMP/egress.json")" = 1 ]'
 check "no input_head key or value reaches the digest or its stderr" 'absent -e input_head -e IHEAD4670zq "$TMP/egress.json" "$TMP/egress.err"'
 check "no raw reason_tag reaches the digest or its stderr, only the slugged category" 'absent -e RTAG4670zq -e "Merge Without Review" -e "Session Transcript Tampering" -e reason_tag "$TMP/egress.json" "$TMP/egress.err"'
-# HIMMEL-4694: an off-list tag falls back to the journal bracket, so the class alone cannot show the canary row joined.
+# An off-list tag falls back to the journal bracket, so the class alone cannot show the canary row joined.
 # The same row (ts, tool, session) with an on-list tag must key toolu_c2, else the absence check above is vacuous.
 jq -c 'if .reason_tag == "RTAG4670zq" then .reason_tag = "Merge Without Review" else . end' "$TMP/egress-ledger.jsonl" >"$TMP/probe-ledger.jsonl"
 bun "$DIG" --transcript "$TMP/$SID.jsonl" --denials-ledger "$TMP/probe-ledger.jsonl" >"$TMP/probe.json" 2>/dev/null || bad "the join-probe digest exits 0"

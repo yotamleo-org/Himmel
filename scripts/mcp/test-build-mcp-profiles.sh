@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-build-mcp-profiles.sh — HIMMEL-5002: the generated MCP profiles must not
+# test-build-mcp-profiles.sh — the generated MCP profiles must not
 # carry secret env values; they live in 0600 files the launcher shim reads.
 # Platforms tested: linux
 set -u

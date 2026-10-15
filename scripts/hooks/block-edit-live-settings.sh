@@ -1066,7 +1066,17 @@ is_readonly_allowlisted() {
     fi
     first=$(printf '%s' "$c" | awk '{print $1}')
     case "$first" in
-        cat|head|tail|grep|rg|diff|wc) return 0 ;;
+        rg)
+            # --pre / --pre-glob run a program over each file; quotes and
+            # backslashes are dropped first so '--pre' and --p\re still match
+            # A `$`, `*`, `?`, `[` or `{` could build the option name, so it
+            # is no read (the tokenized allowlist refuses the same words).
+            local _rg=${c//[\'\"\\]/}
+            case "$c" in *'$'*|*'*'*|*'?'*|*'['*|*'{'*) return 1 ;; esac
+            [[ $_rg =~ [[:space:]]--pre(-glob)?($|[[:space:]=]) ]] && return 1
+            return 0
+            ;;
+        cat|head|tail|grep|diff|wc) return 0 ;;
         ls) [ "$_RO_LS" = 1 ] && return 0; return 1 ;;
         less)
             # less -o/-O (case already folded by cmd_lc) or --log-file logs
@@ -1220,6 +1230,35 @@ _tok_ln_write() {
             hit=1
             [[ $w =~ ^-[a-z0-9]+$ ]] || return 0
             [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] && [ -z "${ST_RO[k]}" ] || return 0
+        fi
+        k=$((k + 1))
+    done
+    [ "$hit" = 1 ] || return 0
+    return 1
+}
+
+# _tok_part_write REGEX — 0 (a candidate write) unless every word matching the
+# verb REGEX holds the verb only inside a longer path component, as the
+# hyphen/dot part of a filename (`x-install-record.md`, `x.rsync.log`): a word
+# with no live `$`, no glob/brace, no redirect, no `=`, and no `/`-separated
+# component that IS a verb (`cp`, `/bin/cp`, `a/mv/b`). Any other match is the
+# verb, and a text match that no word accounts for (a comment) is a write too,
+# as is TOK=0.
+_tok_part_write() {
+    local re=$1 k w comp hit=0
+    local -a parts
+    [ "$TOK" = 1 ] || return 0
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        w=${ST_LW[k]}
+        if [[ $w =~ $re ]]; then
+            hit=1
+            [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] && [ -z "${ST_RO[k]}" ] || return 0
+            case "$w" in *=*) return 0 ;; esac
+            IFS=/ read -r -a parts <<< "$w"
+            for comp in "${parts[@]}"; do
+                case "$comp" in cp|mv|install|rsync|dd|tee|truncate) return 0 ;; esac
+            done
         fi
         k=$((k + 1))
     done
@@ -2908,8 +2947,15 @@ _unzip_verb_mode() {
 # cross-worktree `-C` reference, not this check.
 has_write_verb_or_target_flag() {
     local c="$1" n="$2" out seg
-    out=$(printf '%s' "$c" | grep -E '(^|[^a-z0-9_])(cp|mv|install|rsync|dd|tee|truncate)([^a-z0-9_]|$)') || true
-    [ -n "$out" ] && return 0
+    # These verbs are judged per word on Bash (_tok_part_write), so a verb that
+    # is only a hyphen/dot part of a filename (`x-install-record.md`) is not read
+    # as the verb.
+    local re_vb='(^|[^a-z0-9_])(cp|mv|install|rsync|dd|tee|truncate)([^a-z0-9_]|$)'
+    out=$(printf '%s' "$c" | grep -E "$re_vb") || true
+    if [ -n "$out" ]; then
+        [ "$tool_name" = Bash ] || return 0
+        _tok_part_write "$re_vb" && return 0
+    fi
 
     # ln is judged per word on Bash (_tok_ln_write, HIMMEL-3961), so another
     # program's `-ln` flag cluster is not read as the link verb.
@@ -4024,8 +4070,21 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         _check_one_operand "$1"
         case "/$1/" in */../*) _check_one_operand "$(lex_resolve "$cwd" "$1")" ;; esac
     }
+    # A hit latches variant_dest, so no later word can change the verdict, and
+    # a word judged once (same text, glob and read flags) judges the same
+    # again: a padded command costs one resolution per distinct word.
+    _CV_SEEN=$'\n'
     _check_variant() {
         local w="$1" glob="$2" rd="${3:-0}" dir leaf n sd
+        [ "$variant_dest" = 0 ] || return 0
+        # a word with a newline is never memoized: it could forge an entry
+        case "$w" in
+            *$'\n'*) ;;
+            *)
+                case "$_CV_SEEN" in *$'\n'"$w|$glob|$rd"$'\n'*) return 0 ;; esac
+                _CV_SEEN="$_CV_SEEN$w|$glob|$rd"$'\n'
+                ;;
+        esac
         case "$w" in
             */*) dir=${w%/*}; leaf=${w##*/}; [ -n "$dir" ] || dir=/ ;;
             *) dir=.; leaf=$w ;;

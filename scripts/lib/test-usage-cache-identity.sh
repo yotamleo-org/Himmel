@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-usage-cache-identity.sh -- tests for scripts/lib/usage-cache-identity.sh
-# (HIMMEL-1712): the shared account-identity helper stamped onto and compared
+#: the shared account-identity helper stamped onto and compared
 # against the statusline usage cache. Scratch HOME, nothing real is read.
 set -u
 

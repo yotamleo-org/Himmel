@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/lib/resolve-powershell.sh (HIMMEL-2126).
+# Smoke test for scripts/lib/resolve-powershell.sh.
 # Usage: bash scripts/lib/test-resolve-powershell.sh
 # Exit 0 if all cases pass, 1 otherwise.
 set -uo pipefail

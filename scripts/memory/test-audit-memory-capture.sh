@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/memory/audit-memory-capture.sh (HIMMEL-570 / HIMMEL-1090).
+# Tests for scripts/memory/audit-memory-capture.sh.
 #
 # Timestamps are generated at runtime — a hardcoded 2026-07-16/17 record falls
 # outside the trailing window within a week and the tripwire/window cases then
@@ -68,7 +68,7 @@ old_ts="$(jq -r '(now - 30*24*3600)|gmtime|strftime("%Y-%m-%dT%H:%M:%SZ")')"
 jq -nc --arg ts "$old_ts" '{ts:$ts,event:"deny",hash:"o",excerpt:"ancient un-landed fact"}' > "$SB/capture.jsonl"
 run; assert_rc "out-of-window deny aged out (clean)" 0 "$?"
 
-# 8 (CR round 2): MEMORY.md deleted while a topic file remains = nothing routes
+# 8: MEMORY.md deleted while a topic file remains = nothing routes
 # anything = every topic is an orphan. The check must NOT skip (false-clean) when
 # the index is absent.
 : > "$SB/capture.jsonl"
@@ -76,7 +76,7 @@ rm -f "$MEM/MEMORY.md"
 printf 'body\n' > "$MEM/orphan-when-no-index.md"
 run; assert_rc "missing index + topic file = orphan flagged" 1 "$?"
 
-# 9 (CR round 2, HIMMEL-2194): outside any git repo and MEMDIR unset, the
+# 9: outside any git repo and MEMDIR unset, the
 # script must fail loudly instead of deriving a "." slug and silently auditing
 # $HOME/.claude/projects/./memory. $SB (mktemp -d) is itself outside any git
 # work tree, so cd there + no MEMDIR reproduces the bug's precondition exactly.
@@ -91,7 +91,7 @@ else
     FAILED=1
 fi
 
-# 10 (HIMMEL-2194 r5): git < 2.31 lacks --path-format, so `git rev-parse
+# 10: git < 2.31 lacks --path-format, so `git rev-parse
 # --path-format=absolute --git-common-dir` returns nothing there; the script
 # must fall back to plain `--git-common-dir` and still derive MEMDIR. A stub
 # `git` on PATH that rejects --path-format (delegating everything else to the

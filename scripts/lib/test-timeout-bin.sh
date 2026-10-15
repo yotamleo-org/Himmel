@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/test-timeout-bin.sh — tests for scripts/lib/timeout-bin.sh
-# (HIMMEL-2589). Hermetic: every PATH is a stub dir; nothing touches the host's
+#. Hermetic: every PATH is a stub dir; nothing touches the host's
 # real timeout except T1, which needs a GNU one to prove the bound still bites.
 #
 #   T1  GNU timeout present -> resolved, and a sleeping child IS killed (rc 124)

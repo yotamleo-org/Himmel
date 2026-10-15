@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # judge-cache-row.sh — one prompt-cache ledger row per judge subagent
-# transcript (HIMMEL-5180). Read-only: reads the subagent JSONL and its
+# transcript. Read-only: reads the subagent JSONL and its
 # sibling .meta.json, prints one TSV row, appends it to --ledger if given.
 #
 # Usage:
@@ -8,7 +8,7 @@
 #
 # Columns: judge  agent  model  ttl  wall_s  turns  cc_5m  cc_1h  cache_read
 #          longest_gap_s  gaps_over_300s
-#   judge          the meta.json description (e.g. "Judge j2334b PR 2334")
+#   judge          the meta.json description (e.g. "Judge <qid> PR 2334")
 #   agent          agentType from meta.json (Explore | console-judge-ro | ...)
 #   ttl            "1h" if any 1h write was billed, "5m" if only 5m writes,
 #                  "unknown" when the run billed no cache write at all

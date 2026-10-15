@@ -28,7 +28,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $CodexProxyBaseUrl = if ($env:CODEX_PROXY_BASE_URL) { $env:CODEX_PROXY_BASE_URL } else { 'http://127.0.0.1:8317' }
@@ -45,7 +45,7 @@ $CodexSubagentModel = if ($env:CODEX_SUBAGENT_MODEL) { $env:CODEX_SUBAGENT_MODEL
 # input / 1.5x output for the whole request. Raise to CODEX_CONTEXT_WINDOW=353000
 # to use the full effective window at 2x cost past 272k.
 $CodexContextWindow = if ($env:CODEX_CONTEXT_WINDOW) { $env:CODEX_CONTEXT_WINDOW } else { '272000' }
-# CodeRabbit (HIMMEL-1027): validate the override — a non-positive-integer value
+# CodeRabbit: validate the override — a non-positive-integer value
 # falls back to the default; above the ~372k backend window WARNS, above the 272k
 # 2x-billing cliff NOTES the cost (both honored — warn-not-clamp, twin-parity).
 [long]$CodexCtxParsed = 0
@@ -53,7 +53,7 @@ if (-not [long]::TryParse($CodexContextWindow, [ref]$CodexCtxParsed) -or $CodexC
   [Console]::Error.WriteLine("claude-codex: WARNING - CODEX_CONTEXT_WINDOW='$CodexContextWindow' is not a positive integer; using 272000.")
   $CodexContextWindow = '272000'
 } else {
-  # Independent checks (CodeRabbit HIMMEL-1027): a value >372000 also exceeds the
+  # Independent checks: a value >372000 also exceeds the
   # 272k cliff, so emit BOTH the backend-window warning AND the billing note.
   if ($CodexCtxParsed -gt 372000) {
     [Console]::Error.WriteLine("claude-codex: WARNING - CODEX_CONTEXT_WINDOW=$CodexCtxParsed exceeds the ~372k gpt-5.6 backend window (95% effective ~353k); the backend may reject prompts past it. Proceeding as set.")
@@ -72,9 +72,9 @@ $ConfigDir = Join-Path $HomeDir '.claude-codex'
 # ~/.claude, so the mtime-based staleness checks below never fire and an
 # already-seeded machine would silently keep the old seeded content forever. A
 # mismatch forces exactly one re-seed.
-# v1 = initial version (HIMMEL-1927: the claudex model-identity stanza).
-# v3 = SanitizerJs also injects the destructive-category permissions.deny rules (HIMMEL-5270; v2 was bash-only, HIMMEL-4098).
-# v4 = the recursive-delete deny rules also cover option-separator and split-flag spellings (HIMMEL-5289).
+# v1 = initial version (the claudex model-identity stanza).
+# v3 = SanitizerJs also injects the destructive-category permissions.deny rules (v2 was bash-only).
+# v4 = the recursive-delete deny rules also cover option-separator and split-flag spellings.
 $SeedVersion = '4'
 
 # --- key resolution: process env first, else the launcher-repo .env ----------
@@ -101,7 +101,7 @@ function Get-DotenvKey {
   return $null
 }
 
-# HIMMEL-1482 (twin of bash _load_dotenv_primary_for in lib/load-dotenv.sh):
+# Twin of bash _load_dotenv_primary_for in lib/load-dotenv.sh):
 # resolve the .env-bearing root for a candidate dir. <dir>/.env present → <dir>.
 # Else if <dir> is a linked git worktree → the PRIMARY checkout (parent of
 # git-common-dir) when its .env exists, with ONE advisory to stderr (a launcher
@@ -114,7 +114,7 @@ function Resolve-DotenvPrimary {
     $common = & git -C $Dir rev-parse --git-common-dir 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $common) { return $Dir }
     $dirAbs = (Resolve-Path -LiteralPath $Dir -ErrorAction Stop).Path
-    # HIMMEL-1482 R2: restrict the fallback to GENUINE linked-worktree ROOTS.
+    # restrict the fallback to GENUINE linked-worktree ROOTS.
     # r1 gated only on `primary != candidate`, so a NESTED dir inside any
     # checkout (e.g. <worktree>/scripts) resolved common-dir to the real .git
     # and silently loaded the operator's .env — breaking the hermetic override.
@@ -154,14 +154,14 @@ if ([string]::IsNullOrEmpty($key)) {
 # --- flags lead, rest passes to claude verbatim ------------------------------
 $Reseed = $false
 $Force  = $false
-# HIMMEL-1037: --preflight-only mirrors the bash twin — a cheap auth/liveness
+# --preflight-only mirrors the bash twin — a cheap auth/liveness
 # probe (0=healthy, 2=unavailable) that exits without launching a worker.
 $PreflightOnly = $false
-# HIMMEL-2626: check-only entry for the unattended dispatcher's PHI/egress
+# check-only entry for the unattended dispatcher's PHI/egress
 # pre-check — see the Invoke-GuardWorkspace call site below for what this does
 # and why it exists.
 $GuardCheck = $false
-# HIMMEL-5273: route ONLY the Sonnet alias (the auto-mode classifier's default)
+# route ONLY the Sonnet alias (the auto-mode classifier's default)
 # to a gateway alias the proxy serves. Twin of the bash flag.
 $ClassifierModel = if ($env:CLAUDEX_CLASSIFIER_MODEL) { $env:CLAUDEX_CLASSIFIER_MODEL } else { '' }
 $ClaudeArgs = [System.Collections.Generic.List[string]]::new()
@@ -186,7 +186,7 @@ if ($ClassifierModel -notmatch '^[A-Za-z0-9._-]*$') {
   [Console]::Error.WriteLine("claude-codex: invalid classifier model alias '$ClassifierModel' (letters, digits, . _ - only).")
   exit 2
 }
-# HIMMEL-5164: default claude-sonnet-5 (warns + falls back when unserved); an
+# default claude-sonnet-5 (warns + falls back when unserved); an
 # explicit value wins and refuses when unserved; `gateway` opts out. Twin of bash.
 $ClassifierExplicit = $false
 if (-not $ClassifierModel) { $ClassifierModel = 'claude-sonnet-5' }
@@ -215,12 +215,12 @@ function Test-PathUnderAny {
     if ($null -eq $root) { continue }
     $r = $root.TrimEnd("`r")
     if ($r -eq '') { continue }
-    # MSYS drive-form translation (CR HIMMEL-979 R5): a root written from Git
+    # MSYS drive-form translation: a root written from Git
     # Bash as /c/Users/... must match the Windows provider path C:\Users\...
     $r = $r -replace '^[\\/]([A-Za-z])(?=[\\/])', '$1:'
     $r = ($r -replace '/', '\').TrimEnd('\')
     if ($r -eq '') { continue }
-    # Bidirectional overlap (CR HIMMEL-979 R5): target INSIDE a protected root
+    # Bidirectional overlap: target INSIDE a protected root
     # OR a protected root INSIDE the target (ancestor workspace grants the
     # protected subtree). Residual as in the bash twin: descendant .salus
     # markers without a phi-roots line need an unbounded scan — not done.
@@ -247,7 +247,7 @@ function Assert-GuardReadable {
   exit 3
 }
 
-# Guard-config UNION (CR HIMMEL-979 R2): this lane also honors the claude-glm
+# Guard-config UNION: this lane also honors the claude-glm
 # guard dir — an operator who provisioned phi-roots/egress-denylist for the GLM
 # lane must not launch a NEW cloud lane unguarded. Union is strictly more
 # restrictive; per-lane files stay authoritative for lane-specific additions.
@@ -265,7 +265,7 @@ function Test-GuardHitAny {
   return $false
 }
 
-# Invoke-GuardWorkspace (CR HIMMEL-979 R2/R3): the FULL screening for one
+# Invoke-GuardWorkspace: the FULL screening for one
 # directory — .salus ancestor walk + phi-roots union + egress-denylist union.
 # Applied to the launch cwd AND every --add-dir value (R3: --add-dir <vault>
 # must not bypass the no-override PHI invariant). Symlinked leaf resolved
@@ -277,7 +277,7 @@ function Invoke-GuardWorkspace {
     [Console]::Error.WriteLine("claude-codex: REFUSED - $Label ($Dir) is not an accessible directory.")
     exit 3
   }
-  # Canonicalize to an ABSOLUTE provider path (CR HIMMEL-979 R5): a relative
+  # Canonicalize to an ABSOLUTE provider path: a relative
   # --add-dir value would never prefix-match the absolute guard roots — the
   # bash twin gets this via `cd && pwd -P`.
   $gw = (Resolve-Path -LiteralPath $Dir).ProviderPath
@@ -291,7 +291,7 @@ function Invoke-GuardWorkspace {
   $salusHit = $false
   $d = $gw
   while ($true) {
-    # HIMMEL-2173: also accept .salus-profile (template machinery dropped by
+    # also accept .salus-profile (template machinery dropped by
     # the salus profile installer) — a defense for deployments that predate
     # the installer shipping the real .salus guard marker alongside it.
     if ((Test-Path -LiteralPath (Join-Path $d '.salus')) -or (Test-Path -LiteralPath (Join-Path $d '.salus-profile'))) { $salusHit = $true; break }
@@ -316,7 +316,7 @@ function Invoke-GuardWorkspace {
 $cwd = (Get-Location).ProviderPath
 Invoke-GuardWorkspace -Dir $cwd -Label 'this workspace'
 
-# HIMMEL-2626: --guard-check <dir> is the check-only entry the unattended
+# --guard-check <dir> is the check-only entry the unattended
 # spawn-claudex dispatcher calls PRE-CREATION — before it mints the worktree,
 # the branch, the session dir, meta.json, or spends a billable auth probe.
 # Without this, the only refusal for a PHI-marked dispatch arrives at launch
@@ -341,7 +341,7 @@ if ($GuardCheck) {
   exit 0
 }
 
-# Harness-integrity arg screen (CR HIMMEL-979 R3/R4): args pass to claude
+# Harness-integrity arg screen: args pass to claude
 # verbatim, so flags that disable hooks or inject settings would break the
 # lane's core premise (the FULL guarded harness always runs). --bare /
 # --safe-mode / --setting-sources are REFUSED; --settings payloads are
@@ -390,7 +390,7 @@ foreach ($a in $ClaudeArgs) {
   if ($a -like '--settings=*') { Test-SettingsArgOrRefuse -Value $a.Substring('--settings='.Length) }
 }
 
-# Project-settings backend-override refusal (CR HIMMEL-979 R2/R3): Claude Code
+# Project-settings backend-override refusal: Claude Code
 # merges $cwd/.claude/settings{,.local}.json env on top of the launcher's env,
 # so a project-level ANTHROPIC_* key or an alternate-provider selector
 # (CLAUDE_CODE_USE_BEDROCK/VERTEX/...) would silently reroute the session away
@@ -452,7 +452,7 @@ j.permissions.deny=dn;
 fs.writeFileSync(process.argv[2], JSON.stringify(j,null,2));
 '@
 
-# Get-CodexStanzaModel (HIMMEL-1927, twin of the bash codex_stanza_model): the
+# Get-CodexStanzaModel (twin of the bash codex_stanza_model): the
 # SANITIZED model value, shared by Copy-SeedConfig (what actually lands in the
 # CLAUDE.md stanza) and Test-ConfigSeedStale (what the .seeded stamp is
 # compared against) — so the staleness check always tracks what was WRITTEN,
@@ -463,9 +463,10 @@ function Get-CodexStanzaModel {
 
 Import-Module (Join-Path $PSScriptRoot 'lane-mirror-seed.psm1') -Force
 $stanzaModel = Get-CodexStanzaModel
+$identityHeading = '## Claudex lane model identity (HIMMEL-1927)'
 $identityStanza = @"
 
-## Claudex lane model identity (HIMMEL-1927)
+$identityHeading
 
 Your backend model is $stanzaModel (OpenAI, via the local CLIProxyAPI codex proxy). Claude Code does not recognize that slug, so it asserts 'You are powered by the model named Opus 4.8' in your system prompt — that is a slug-recognition artifact, not your identity. You are NOT an Anthropic model and NOT an orchestrator tier; do not reason about your own capabilities or delegation tier from that line.
 "@
@@ -487,17 +488,17 @@ if ((-not $PreflightOnly) -and (-not (Test-Path -LiteralPath $UserSettings -Path
   exit 4
 }
 
-# HIMMEL-1037: a --preflight-only probe never launches claude, so skip seeding.
+# a --preflight-only probe never launches claude, so skip seeding.
 if ((-not $PreflightOnly) -and ((-not (Test-Path -LiteralPath (Join-Path $ConfigDir '.seeded'))) -or $Reseed -or (Test-ConfigSeedStale))) {
   Invoke-SeedWithLock
 }
 
-# --- trust boundary (CR HIMMEL-979) -------------------------------------------
+# --- trust boundary -------------------------------------------
 # The proxy receives the auth key AND all session content, so the default
 # posture is loopback-only. A non-loopback CODEX_PROXY_BASE_URL needs the
 # explicit CLAUDE_CODEX_REMOTE_PROXY_OK=1 opt-in (prefer HTTPS for remote).
 $proxyHostPort = $CodexProxyBaseUrl -replace '^[a-zA-Z][a-zA-Z0-9+.-]*://', '' -replace '/.*$', ''
-# Userinfo refusal (CR HIMMEL-979 R3, parity with the bash twin): an authority
+# Userinfo refusal (parity with the bash twin): an authority
 # like 127.0.0.1:8317@evil.com carries the real host after the '@' — refuse
 # outright; a local proxy never needs URL userinfo.
 if ($proxyHostPort -like '*@*') {
@@ -513,7 +514,7 @@ if (-not $isLoopback) {
   [Console]::Error.WriteLine("claude-codex: WARNING - non-loopback proxy ($proxyHostPort) under CLAUDE_CODEX_REMOTE_PROXY_OK=1. Key + session content WILL leave this machine.")
 }
 
-# HIMMEL-1037 auth-gap probe (--preflight-only): detect the transient
+# Auth-gap probe (--preflight-only): detect the transient
 # 503 auth_unavailable OAuth-refresh gap by exercising the REAL upstream codex
 # provider. /v1/models is served from CLIProxyAPI's model REGISTRY and stays 200
 # during the gap (codex-adv CR), so probe a minimal 1-token /v1/messages call
@@ -522,7 +523,7 @@ if (-not $isLoopback) {
 # status (let the real run surface a genuine error). Mirrors the bash twin.
 if ($PreflightOnly) {
   try {
-    # HIMMEL-1380: max_tokens 16 / -TimeoutSec 10 (was 1 / 8) — the old 1-token,
+    # max_tokens 16 / -TimeoutSec 10 (was 1 / 8) — the old 1-token,
     # 8s budget was hostile to a reasoning model (it emits reasoning tokens
     # before any content, so it can miss an 8s window even on a fully healthy
     # lane).
@@ -532,7 +533,7 @@ if ($PreflightOnly) {
       -Body $body -Uri "$CodexProxyBaseUrl/v1/messages" | Out-Null
     exit 0   # any 2xx = upstream healthy (Invoke-WebRequest throws on non-2xx)
   } catch {
-    # Four DISTINCT outcomes (HIMMEL-1037/1380, codex-adv CR), mirroring the
+    # Four DISTINCT outcomes (codex-adv CR), mirroring the
     # bash twin: exit 0 = healthy, INCLUDING a 400 whose body proves the
     # request reached the model layer (not auth); exit 20 = TRANSIENT
     # (auth_unavailable gap, a 408 request-timeout — the probe itself didn't
@@ -543,7 +544,7 @@ if ($PreflightOnly) {
     # reads healthy (Invoke-WebRequest throws on non-2xx).
     $resp = $_.Exception.Response
     $code = $null; if ($resp) { try { $code = [int]$resp.StatusCode } catch { } }
-    # HIMMEL-1404 CR: the stringified ErrorRecord ("$_") is not the server body —
+    # the stringified ErrorRecord ("$_") is not the server body —
     # it is PowerShell's own exception-message text and never contains
     # `auth_unavailable` or the classifier tokens below, so those checks always
     # fell through. On PS7 (Core, per #Requires above) Invoke-WebRequest's
@@ -570,7 +571,7 @@ if ($PreflightOnly) {
 # --- proxy preflight ---------------------------------------------------------
 # The lane is dead without a running cli-proxy-api; a refused/timed-out proxy is fatal.
 try {
-  # -NoProxy (CR HIMMEL-979 R6): the preflight must not route the bearer token
+  # -NoProxy: the preflight must not route the bearer token
   # through an ambient/system transport proxy — it runs BEFORE the launch-time
   # proxy sweep.
   Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 -NoProxy -Headers @{Authorization="Bearer $key"} -Uri "$CodexProxyBaseUrl/v1/models" | Out-Null
@@ -581,7 +582,7 @@ try {
 # Probe healthy — the dispatcher may now spin the worker (this run does not).
 if ($PreflightOnly) { exit 0 }
 
-# HIMMEL-5273: an alias the proxy does not serve would silently fall back to the
+# an alias the proxy does not serve would silently fall back to the
 # codex model (the classifier then judges on the model this flag exists to
 # replace), so refuse instead. Twin of the bash /v1/models check.
 if ($ClassifierModel) {
@@ -589,13 +590,13 @@ if ($ClassifierModel) {
   try {
     $modelsBody = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 -NoProxy -Headers @{Authorization="Bearer $key"} -Uri "$CodexProxyBaseUrl/v1/models").Content
   } catch { $modelsBody = '' }
-  # HIMMEL-5296: the alias must also be served by cli-proxy's Claude OAuth provider
+  # the alias must also be served by cli-proxy's Claude OAuth provider
   # (owned_by "anthropic"); a missing or other owned_by fails closed. Entries are
-  # flat, so split on '}' and take ALL of the alias's entries (HIMMEL-5489: a
+  # flat, so split on '}' and take ALL of the alias's entries (a
   # duplicated id is a second provider, so every one must be owned_by anthropic).
   $entries = @(($modelsBody -split '}') | Where-Object { $_ -cmatch ('"id"\s*:\s*"' + [regex]::Escape($ClassifierModel) + '"') })
   $entry = $entries | Select-Object -First 1
-  # HIMMEL-5489: owned_by "anthropic" proves only a Claude-FORMAT provider (CLIProxyAPI
+  # owned_by "anthropic" proves only a Claude-FORMAT provider (CLIProxyAPI
   # v8.0.27 hardcodes it for a claude-api-key entry whatever its base-url, and uses the
   # provider NAME for an openai-compatibility entry), so cli-proxy's config and auth
   # files must also show the Claude OAuth login serving the alias with no claude-api-key,
@@ -665,7 +666,7 @@ if ($ClassifierModel) {
 # recipe: subagents stay on the codex lane, effort controls stay on, and
 # tool-search stays off for non-Claude models. They are intentionally not
 # env-overridable in v1.
-# Ambient provider-selector sweep (CR HIMMEL-979 R3/R4): clear EVERY
+# Ambient provider-selector sweep: clear EVERY
 # CLAUDE_CODE_USE_* from the environment — unknown future selectors included —
 # then keep the two known ones pinned empty as a belt.
 foreach ($ev in (Get-ChildItem Env: | Where-Object { $_.Name -like 'CLAUDE_CODE_USE_*' })) {
@@ -673,7 +674,7 @@ foreach ($ev in (Get-ChildItem Env: | Where-Object { $_.Name -like 'CLAUDE_CODE_
 }
 $env:CLAUDE_CODE_USE_BEDROCK        = ''
 $env:CLAUDE_CODE_USE_VERTEX        = ''
-# Transport-proxy sweep (CR HIMMEL-979 R5): HTTP(S)_PROXY/ALL_PROXY route even
+# Transport-proxy sweep: HTTP(S)_PROXY/ALL_PROXY route even
 # loopback connections through an external proxy host — clear them and pin
 # NO_PROXY so the lane's claude talks ONLY to the local proxy.
 foreach ($pn in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy')) {
@@ -681,7 +682,7 @@ foreach ($pn in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_pro
 }
 $env:NO_PROXY = '127.0.0.1,localhost,::1'
 $env:no_proxy = '127.0.0.1,localhost,::1'
-# Ambient ANTHROPIC_* sweep (CR HIMMEL-979 R8): a pre-set provider/base/key
+# Ambient ANTHROPIC_* sweep: a pre-set provider/base/key
 # variable not explicitly re-set below (e.g. ANTHROPIC_API_KEY) can steer
 # auth/transport around the validated proxy — clear them all first.
 foreach ($ev in (Get-ChildItem Env: | Where-Object { $_.Name -like 'ANTHROPIC_*' })) {
@@ -698,7 +699,7 @@ $env:ANTHROPIC_DEFAULT_OPUS_MODEL   = $CodexModel
 # https://code.claude.com/docs/en/llm-gateway-protocol#feature-pass-through
 $env:CLAUDE_CODE_AUTO_MODE_SERVER = '0'
 $env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = $CodexContextWindow
-# HIMMEL-1887: AUTO_COMPACT_WINDOW only sets the compaction THRESHOLD; this
+# AUTO_COMPACT_WINDOW only sets the compaction THRESHOLD; this
 # declares the model's window. Claude Code resolves the effective compact
 # window as min(modelWindow, configured), and for a model absent from its
 # catalog the modelWindow falls back to a hardcoded 200000 — so the configured
@@ -711,11 +712,11 @@ $env:CLAUDE_CODE_SUBAGENT_MODEL     = $CodexSubagentModel
 $env:CLAUDE_CODE_ALWAYS_ENABLE_EFFORT = '1'
 $env:CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY = '3'
 $env:ENABLE_TOOL_SEARCH             = 'false'
-# HIMMEL-1001 effort default (twin of the bash launcher's ${VAR:-medium}): pin the
-# per-dispatch effort to 'medium' when unset (HIMMEL-2772: was 'high' — Astra on
+# Effort default (twin of the bash launcher's ${VAR:-medium}): pin the
+# per-dispatch effort to 'medium' when unset (was 'high' — Astra on
 # low/medium beats the previous model on high; 'low' is the first lever for a
 # mechanical chunk) — theo's Codex ladder (medium/high default, xhigh rare, NEVER
-# ultra). HIMMEL-1002 verified the effort reaches the codex model verbatim and the
+# ultra). Verified: the effort reaches the codex model verbatim and the
 # unset default is xhigh. OVERRIDABLE: an explicit $env:CLAUDE_CODE_EFFORT_LEVEL
 # wins (-not is true for $null AND '', matching :-).
 # Avoid 'max' — reachable but undocumented codex juice.

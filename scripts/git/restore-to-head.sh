@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # restore-to-head.sh <path>... — the sanctioned shape for restoring one or
-# more tracked files to HEAD in a leg (HIMMEL-2934). `git checkout -- <path>`
+# more tracked files to HEAD in a leg. `git checkout -- <path>`
 # is a `deny` entry in .claude/settings.json and `git restore` falls through
 # unmatched to the classifier, resolving as a silent headless DENY. This
 # script does the same restore but saves the outgoing content first, so the
@@ -16,7 +16,7 @@
 # emit nonempty, non-applicable output, and a unified diff cannot carry an
 # index-only mode or type change at all. A plain copy has neither failure
 # mode: worktree recovery is `cp` back; staged recovery uses the saved mode
-# and blob ID with `git update-index --cacheinfo` (HIMMEL-2966).
+# and blob ID with `git update-index --cacheinfo`.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Pure git + POSIX shell; no .ps1 twin needed.
@@ -79,7 +79,7 @@ done
 # Containment compares two spellings of one directory: bash's logical $PWD
 # (macOS /var/.., Git Bash /tmp/..) against git's physical toplevel
 # (/private/var/.., C:/..). Canonicalise BOTH through the shared helper; the
-# prefix test itself stays a strict `<toplevel>/` boundary (HIMMEL-3182).
+# prefix test itself stays a strict `<toplevel>/` boundary.
 # shellcheck source=../lib/canon-path.sh
 . "$(dirname "$0")/../lib/canon-path.sh"
 TOPLEVEL_C=$(canon_path_native "$TOPLEVEL") || {

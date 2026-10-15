@@ -366,6 +366,51 @@ jobs:
             exit 1
           fi
           bash "$gate" --range "$BASE_SHA"
+      # The whole-tree pre-commit gates with no other CI copy, in ONE step (not a
+      # job per hook): a session without hooks, or a --no-verify commit, never ran
+      # them. Each runs from its BASE copy so a PR cannot weaken the gate that
+      # judges it (as do the himmelctl lib and hook launcher it imports); a missing
+      # base sha or base copy is a red job, never a silent pass.
+      - name: tree-only pre-commit gates (PR range)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -o pipefail
+          if [ -z "$BASE_SHA" ] || ! git cat-file -e "$BASE_SHA^{commit}"; then
+            echo "tree-only gates: PR base sha missing or unreachable, cannot evaluate" >&2
+            exit 1
+          fi
+          gates="$RUNNER_TEMP/base-gates"
+          for p in scripts/lint/check-mcp-sdk-v1.sh scripts/hooks/check-pip-hashes.sh scripts/install/bundle-registry-lint.mjs; do
+            mkdir -p "$gates/$(dirname "$p")"
+            if ! git show "$BASE_SHA:$p" > "$gates/$p" || [ ! -s "$gates/$p" ]; then
+              echo "tree-only gates: $p absent at base $BASE_SHA, cannot evaluate" >&2
+              exit 1
+            fi
+          done
+          # the bundle gate imports the himmelctl lib and the hook launcher: stage them from base too
+          if ! git archive "$BASE_SHA" scripts/himmelctl scripts/hooks/run-hook-with-bash.js scripts/hooks/hook-integrity.js -o "$gates/deps.tar" || ! tar -xf "$gates/deps.tar" -C "$gates"; then
+            echo "tree-only gates: himmelctl lib absent at base $BASE_SHA, cannot evaluate" >&2
+            exit 1
+          fi
+          # fail-open-lint cds to its repo root and runs the suite from there: judge the
+          # PR tree with the BASE suite, lint and its fixtures laid over a copy of it
+          # (the other guardrails files stay the PR's: the lint scans them)
+          fo="$(mktemp -d "$RUNNER_TEMP/fail-open-tree.XXXXXX")" || exit 1
+          # tracked files via tar, not git archive: a PR-added export-ignore attribute must not hide a file
+          # each stage writes a file rather than piping: no producer's failure can hide behind the last command
+          if ! git ls-files -z > "$fo.list" || ! tar --null --verbatim-files-from -T "$fo.list" -cf "$fo.pr.tar" || ! tar -xf "$fo.pr.tar" -C "$fo" \
+            || ! git archive "$BASE_SHA" scripts/guardrails/lint-fail-open.sh scripts/guardrails/test-lint-fail-open.sh scripts/guardrails/fixtures/fail-open scripts/hooks/check-fail-open-lint.sh -o "$fo.base.tar" || ! tar -xf "$fo.base.tar" -C "$fo"; then
+            echo "tree-only gates: fail-open suite absent at base $BASE_SHA, cannot evaluate" >&2
+            exit 1
+          fi
+          rc=0
+          bash "$gates/scripts/lint/check-mcp-sdk-v1.sh" "$PWD" || rc=1
+          (cd "$fo" && bash scripts/hooks/check-fail-open-lint.sh) || rc=1
+          node "$gates/scripts/install/bundle-registry-lint.mjs" --root "$PWD" || rc=1
+          git ls-files -z -- 'requirements*.txt' '*/requirements*.txt' | xargs -0 -r bash "$gates/scripts/hooks/check-pip-hashes.sh" || rc=1
+          exit "$rc"
       # HIMMEL-5526: the skill/command size cap (skill-lint) and the oxlint
       # complexity ratchet + bug-class hardening gates ran only on a committer's
       # machine, so a commit with hooks skipped landed unchecked. A PR runs them

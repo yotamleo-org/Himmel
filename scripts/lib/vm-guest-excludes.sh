@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # vm-guest-excludes.sh — the ONE definition of what must not cross the host->guest
-# boundary, and the assertion that a guest is clean (HIMMEL-2540).
+# boundary, and the assertion that a guest is clean.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+ (no mapfile/assoc arrays). The
 # only consumers are the VM-driving shell scripts and vmsdk.py, all gitbash-only
 # already; no .ps1 twin.
 #
-# Why: HIMMEL-2457's base builder rsynced a host checkout into the guest and
+# Why: the base builder once rsynced a host checkout into the guest and
 # excluded only .git/hooks; the gitignored-but-present .env (116 live keys) and
 # .claude/settings.local.json rode along into a durable snapshot. A hand-kept
 # denylist per copy site grows one incident at a time, so every tracked
@@ -16,7 +16,7 @@
 #
 # Secret set (basename globs, matched at ANY depth):
 #   .env   .env.*   *.local.json      (covers .claude/settings.local.json)
-# The ONE content exemption (HIMMEL-3252): himmelctl's own lane-profile persistence writes
+# The ONE content exemption: himmelctl's own lane-profile persistence writes
 # scripts/lanes/lanes.local.json during an install, so a guest that has ever been
 # through one would fail every `full` scan of the clone on the NAME alone. The full
 # scan therefore lets a REGULAR file at */scripts/lanes/lanes.local.json through only
@@ -66,16 +66,16 @@
 # /tmp/himmel-luna-upgrade-vm), and never crosses filesystems (find -xdev, so a
 # separate mount beneath a root is skipped). All of /tmp is not scanned: find exits
 # non-zero on root-owned 0700 dirs (systemd-private-*), refusing every clean guest.
-# Nested DIRECTORY symlinks are followed (HIMMEL-3236), one resolved target at a time
+# Nested DIRECTORY symlinks are followed, one resolved target at a time
 # and each with its own `find -xdev`, bounded: every resolved target is scanned at most
-# ONCE per scan (a whole-scan visited set, HIMMEL-3239 — a loop or a target shared by
+# ONCE per scan (a whole-scan visited set — a loop or a target shared by
 # many links is not rescanned, so layered sharing stays linear), and a target that
 # resolves into a system tree (/ /proc /sys /dev /run /usr /bin /sbin /lib* /etc /boot
 # /snap /var) is skipped — those never receive a host checkout and hold
 # root-owned 0700 dirs that would refuse every guest. A secret planted under a system
 # tree is therefore NOT covered. A directory target that stat's but cannot be entered
 # fails closed. A non-directory link's target is resolved by walking its path components
-# with `[ -e ]`/`[ -d ]`/`[ -x ]` (HIMMEL-3719): this does NOT trust a `find`'s exit status,
+# with `[ -e ]`/`[ -d ]`/`[ -x ]`: this does NOT trust a `find`'s exit status,
 # because BSD find can exit 0 on a permission-denied traversal where GNU find exits
 # non-zero. A component that does not exist at all ends the walk clean (dangling, not a
 # refusal); a symlink component whose target cannot be stat'ed (dangling, a loop, or behind
@@ -86,7 +86,7 @@
 # resolved path of 1024 bytes or more refuses on every platform (macOS PATH_MAX; a longer
 # string makes `[ -e ]` fail ENAMETOOLONG, which would read as "missing"). Such a link is
 # reported `scan-unscanned:` and the
-# scan REFUSES (HIMMEL-3238, HIMMEL-3719). Every
+# scan REFUSES. Every
 # other link left unscanned (file, dangling or system-tree target) is reported as a
 # read-only `scan-skipped:` line and counted by the consumers (never a refusal); an
 # already-visited target is NOT reported, it is being scanned. Consumers filter
@@ -99,7 +99,7 @@
 # real search probe (e.g. `cd` into the ancestor in a subshell) if a guest with
 # search-denying ACLs ever shows up.
 # The untracked base builder (/tmp/m2457-rebuild.sh) stages wherever it likes and is
-# NOT covered — it must call this CLI itself (operator item, HIMMEL-2540).
+# NOT covered — it must call this CLI itself (operator item).
 #
 # bash 3.2-safe (sourced by scripts that run on macOS): no mapfile, no assoc arrays.
 
@@ -139,7 +139,7 @@ vm_guest_rsync_excludes() {
   vm_guest_tar_excludes
 }
 
-# A root as ONE guest-shell word (HIMMEL-3228): a space is allowed and single-quoted
+# A root as ONE guest-shell word: a space is allowed and single-quoted
 # (a leading '~/' stays outside the quotes so the guest shell still expands it).
 # Nothing that could end a word or start an option gets through: no leading '-' (it
 # would become a find expression), no quote, ';', '$', newline, ...
@@ -161,11 +161,11 @@ vm_guest_quote_root() {
   esac
 }
 
-# The scan is one POSIX-sh function (HIMMEL-3236): find the secret set under a dir,
+# The scan is one POSIX-sh function: find the secret set under a dir,
 # then queue each nested DIRECTORY symlink's resolved target (a worklist, not
 # recursion). Bounds: a target already visited in this scan (loop or shared) or in a
 # system tree is skipped; every target is scanned by its own `find -xdev`; the root is
-# resolved with CDPATH cleared (HIMMEL-3239); any find/cd failure, or a link whose
+# resolved with CDPATH cleared; any find/cd failure, or a link whose
 # target cannot be stat'ed, exits non-zero (fail closed).
 # Byte-identical to _SCAN_FN_HEAD/_SCAN_FN_TAIL in vmsdk.py (parity-tested).
 # shellcheck disable=SC2016  # literal guest-shell text: nothing may expand HERE
@@ -190,7 +190,7 @@ vm_guest_scan_cmd() {
 
 # Split scan output into hits (stdout) and the read-only `scan-skipped:` notes the
 # command prints for a nested link it did not follow (stderr count: a skip is
-# visible, never a refusal — HIMMEL-3236). Find prints absolute paths, so a hit
+# visible, never a refusal). Find prints absolute paths, so a hit
 # cannot start with the note prefix.
 vm_guest_scan_hits() {
   local root="$1" out="$2" skipped

@@ -3,7 +3,7 @@
 #
 # All himmel entrypoints (/gemini slash, gemini-subagent Agent) funnel
 # through here so auth/model/flag resolution lives in one place. Story A of
-# the gemini-cli integration (HIMMEL-158).
+# the gemini-cli integration.
 #
 # Auth: defers ENTIRELY to gemini-cli. No pre-flight credential check.
 # gemini-cli resolves auth itself (precedence: force-flags GOOGLE_GENAI_USE_*
@@ -16,7 +16,7 @@
 # Prompt delivery: the resolved prompt is always piped to gemini via stdin
 # (printf '%s' "$prompt" | gemini ...). gemini-cli reads the prompt from
 # piped stdin, avoiding the Windows node-spawn argv-length limit that causes
-# "Argument list too long" for large diffs (HIMMEL-270).
+# "Argument list too long" for large diffs.
 #
 # Usage:
 #   invoke.sh "PONG"                  # positional prompt
@@ -114,14 +114,14 @@ fi
 
 # Run from --cwd when given. Subshell keeps the cd local.
 # Prompt travels via piped stdin (not -p argv) to dodge the Windows
-# argument-length limit for large diffs (HIMMEL-270).
+# argument-length limit for large diffs.
 run_gemini() {
     if [ -n "$cwd" ]; then
         ( cd "$cwd" || exit 1
-          # headless-gemini-ok: sanctioned gemini-cli chokepoint (HIMMEL-158); prompt piped on stdin to dodge the Windows argv limit (HIMMEL-270)
+          # headless-gemini-ok: sanctioned gemini-cli chokepoint; prompt piped on stdin to dodge the Windows argv limit
           printf '%s' "$prompt" | gemini "$@" )
     else
-        # headless-gemini-ok: sanctioned gemini-cli chokepoint (HIMMEL-158); prompt piped on stdin to dodge the Windows argv limit (HIMMEL-270)
+        # headless-gemini-ok: sanctioned gemini-cli chokepoint; prompt piped on stdin to dodge the Windows argv limit
         printf '%s' "$prompt" | gemini "$@"
     fi
 }

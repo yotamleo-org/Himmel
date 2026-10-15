@@ -69,6 +69,13 @@
 #      `gh workflow run` command. A changed workflow with no workflow_dispatch
 #      trigger FAILs unless listed in WF_DISPATCH_EXEMPT below. Non-workflow
 #      PRs are unaffected.
+#  11. Added-but-unwired: every file the PR ADDS (status A only, so existing debt
+#      never fails) that is a hook (scripts/hooks/*), a script (scripts/** with
+#      an exec bit or a .sh/.mjs/.js/.ts/.py name), a skill (SKILL.md) or a suite
+#      (test-*.sh, *.test.*) must be reached by some wiring at the PR head. What
+#      counts as wired per kind is documented in
+#      scripts/testing/check-added-unwired.sh, which this item calls. Fixture
+#      paths are standalone by design.
 #
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes nothing — no
@@ -562,6 +569,38 @@ EOF
     fi
 fi
 fi  # ONLY7 == 0: check 10
+
+if [ "$ONLY7" -eq 0 ]; then
+# ── 11. an ADDED hook/script/skill/suite that nothing reaches ──
+# Only status-A files are judged, so existing debt never fails a PR. The judgement
+# (what counts as wired per kind) lives in scripts/testing/check-added-unwired.sh and
+# reads the PR head's tree, so wiring added in the same diff counts. A PR adding
+# nothing never reaches git. A files/fetch failure FAILs.
+if [ -z "$files_json" ]; then
+    echo "[FAIL] 11. cannot read PR files — added-but-unwired files not checked"
+    mark_fail
+elif ! unw_added=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | select(.status == "added") | .filename' 2>/dev/null); then
+    echo "[FAIL] 11. cannot read which files the PR adds — added-but-unwired files not checked"
+    mark_fail
+elif [ -z "$unw_added" ]; then
+    echo "[PASS] 11. the PR adds no files — added-but-unwired not applicable"
+else
+    unw_out=""; unw_rc=0
+    # the helper reads the PR head's tree: fetch it the way check 9 does when it is not local
+    if ! git cat-file -e "$SHA^{commit}" 2>/dev/null; then
+        git fetch -q origin "refs/pull/$PR/head" 2>/dev/null || true
+    fi
+    # shellcheck disable=SC2086  # word-splitting the added paths IS the point (repo paths carry no whitespace)
+    unw_out=$(bash "$(cd "$(dirname "$0")/../../testing" && pwd)/check-added-unwired.sh" "$SHA" $unw_added 2>&1) || unw_rc=$?
+    if [ "$unw_rc" -eq 0 ]; then
+        echo "[PASS] 11. every added hook, script, skill or suite is reached by some wiring"
+    else
+        echo "[FAIL] 11. added but unwired (wire it, or allowlist it in the diff):"
+        printf '%s\n' "$unw_out" | sed 's/^/       /'
+        mark_fail
+    fi
+fi
+fi  # ONLY7 == 0: check 11
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi

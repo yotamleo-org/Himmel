@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Tests for handover/pr-merge.sh — squash-merge guard for handover branches.
 #
-# HIMMEL-224: pr-merge defaults to a plain `--squash` (no `--admin`) and only
+# pr-merge defaults to a plain `--squash` (no `--admin`) and only
 # escalates to `--admin` when the plain merge fails for a non-cosmetic reason
 # AND admin-merge is authorized via GH_ADMIN_MERGE_OK=1.
 set -uo pipefail
 
-# HIMMEL-1977 — this suite was missed by the HIMMEL-1495 sweep that gave
+# this suite was missed by the earlier sweep that gave
 # test-merge-on-green.sh and test-cr-merge-gate.sh their startup scrub. An
 # operator shell launched with a documented bypass exported (CLAUDE.md: "hook
 # bypass = a session env var set in the LAUNCHING shell") decides the result
@@ -14,13 +14,13 @@ set -uo pipefail
 # pr-merge.sh. Measured 2026-08-21 on the same tree that is 43/0 in a clean
 # shell: `CR_MERGE_GATE_OK=1` alone makes it 40/1 — cr_merge_gate short-circuits
 # to allow, so "CR-gate block exits 5 before check" gets exit 0. That is the
-# whole of HIMMEL-1977: no fixture drift, no gate bug.
+# whole point: no fixture drift, no gate bug.
 # Each name below is scrubbed because a real case's verdict turns on it:
 #   CR_MERGE_GATE_OK  -> CR-gate block (exit 5)      [measured above]
 #   CI_MERGE_GATE_OK  -> CI-gate block (exit 6)
 #   CR_PROFILE/CR_APP -> disarm cr_app_configured, so the CR gate never runs
-#   GH_ADMIN_MERGE_OK -> the HIMMEL-224 --admin escalation cases
-#   FORGE             -> HIMMEL-326 forge seam; a non-github forge bypasses the
+#   GH_ADMIN_MERGE_OK -> the --admin escalation cases
+#   FORGE             -> forge seam; a non-github forge bypasses the
 #                        stub `gh` every assert reads
 # (GH_CMD needs no scrub: run_case pins GH_CMD=gh explicitly.)
 unset CR_MERGE_GATE_OK CI_MERGE_GATE_OK CR_PROFILE CR_APP GH_ADMIN_MERGE_OK FORGE
@@ -43,7 +43,7 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1" >&2; }
 #   STUB_COSMETIC=1    : `gh pr merge` exits 1 with the cosmetic
 #                        "branch is already used by worktree" error.
 #   SETUP_MERGE_CONFLICT=1 : build a real add/add conflict between the branch
-#                        and main so the HIMMEL-1232 local merge-tree check
+#                        and main so the local merge-tree check
 #                        returns CONFLICTING.
 #   STUB_MERGE_UNKNOWN=1 : the base+head read reports a head SHA not present
 #                        locally, so the check cannot verify it -> UNKNOWN
@@ -82,10 +82,10 @@ case "$verb" in
         # Four distinct `gh pr view` shapes reach this stub — matched by the
         # requested --json fields (order matters; the first two also contain
         # headRefOid, so the mergeability check must be matched FIRST):
-        #   1. HIMMEL-1232 mergeability check: --json baseRefName,headRefOid --jq
-        #   2. HIMMEL-1058 head-SHA bind read: --json headRefOid --jq .headRefOid
-        #   3. HIMMEL-936 CR-gate metadata:    --json number,headRefOid,url (no --jq)
-        #   4. HIMMEL-374 jira-transition title read: --json title -q .title
+        #   1. mergeability check: --json baseRefName,headRefOid --jq
+        #   2. head-SHA bind read: --json headRefOid --jq .headRefOid
+        #   3. CR-gate metadata:    --json number,headRefOid,url (no --jq)
+        #   4. jira-transition title read: --json title -q .title
         title_match=$(printf ' %s ' "$@" | grep -E -- '--json[[:space:]]+title')
         if [ -n "$title_match" ]; then
             printf '%s' "${STUB_PR_TITLE:-}"
@@ -109,7 +109,7 @@ case "$verb" in
         if printf ' %s ' "$@" | grep -q 'headRefOid'; then
             # STUB_CR_BLOCK=1 arms the CR gate; STUB_CI_BLOCK=1 arms the CI gate
             # (both need parseable metadata to resolve the head SHA).
-            # HIMMEL-1058: pr-merge reads the head SHA to bind the merge to it,
+            # pr-merge reads the head SHA to bind the merge to it,
             # via `pr view <n> --json headRefOid --jq .headRefOid` — which on
             # real gh prints the BARE SHA, not the JSON object. The gate's
             # metadata call (--json number,headRefOid,url, no --jq) still gets
@@ -168,7 +168,7 @@ case "$verb" in
             fi
         elif printf ' %s ' "$@" | grep -q 'statuses'; then
             # CodeRabbit's real shape: a commit STATUS with creator identity
-            # (HIMMEL-1072). The CR gate requires it PRESENT + success on the
+            # identity. The CR gate requires it PRESENT + success on the
             # head; the CI gate excludes it and reads the rest.
             # Under STUB_CI_BLOCK the non-CodeRabbit `ci` status goes red too, so
             # the fixture describes ONE coherent world rather than a red check-run
@@ -188,7 +188,7 @@ esac
 STUB
     chmod +x "$tmp/bin/gh"
 
-    # STUB_JIRA_BUILD=1 (HIMMEL-374): fake a built Jira CLI + reconcile-config
+    # STUB_JIRA_BUILD=1: fake a built Jira CLI + reconcile-config
     # so jira_auto_transition_on_merge's node calls are reachable. A stub
     # `node` intercepts ONLY the dist/index.js CLI invocations (logging their
     # argv to $jiralog) and execs the REAL node for the function's own
@@ -236,12 +236,12 @@ STUBNODE
         git config user.email t@t.t
         git config user.name t
         git commit -q --allow-empty -m init
-        # HIMMEL-1232: the github mergeability check resolves the base as
+        # the github mergeability check resolves the base as
         # origin/main (absent — no fetch) then local `main`, so a `main` ref
         # must exist at the base for git merge-tree to run.
         git branch -M main
         git checkout -q -b "$branch" 2>/dev/null || git checkout -q "$branch"
-        # SETUP_CR_MARKER=1 (HIMMEL-1346): a pending CR marker for this branch,
+        # SETUP_CR_MARKER=1: a pending CR marker for this branch,
         # so the merge path's marker clear actually runs. Deliberately MALFORMED
         # (no certified sha in field 2) so the real chokepoint refuses on its
         # first gate — this case pins PR-MERGE's contract (it routes through
@@ -259,11 +259,11 @@ STUBNODE
             printf 'ours\n' > cf; git add cf; git commit -q -m ours
             git checkout -q "$branch"
         fi
-        # Forge seam (HIMMEL-326): pr-merge resolves the forge from origin. A
+        # Forge seam: pr-merge resolves the forge from origin. A
         # github origin selects the github backend, which reproduces the exact
         # `gh pr merge` shapes (incl. --admin fallback) these asserts expect.
         git remote add origin https://github.com/test/test.git
-        # HIMMEL-3381: the merge-block alert must never reach the real bridge — its
+        # the merge-block alert must never reach the real bridge — its
         # sender is a logging stub, its sentinels and operator id live in the sandbox.
         # shellcheck disable=SC2016  # literal stub body: $1/$2 expand when the stub runs, not here
         printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$1" "$2" >> "%s/alerts.log"\n' "$tmp" > "$tmp/bin/alert-sender"
@@ -302,7 +302,7 @@ STUBNODE
     return 0
 }
 
-# HIMMEL-3381: count of operator DMs the stub sender received in the LAST run_case.
+# count of operator DMs the stub sender received in the LAST run_case.
 assert_alerts() {
     local got; got=$(grep -c . "$LAST_ALERT_LOG" 2>/dev/null || true)
     if [ "${got:-0}" = "$1" ]; then pass; else fail "$2 (expected $1 DM(s), got ${got:-0})"; fi
@@ -338,7 +338,7 @@ echo "test-pr-merge.sh"
 run_case "feat/foo" 3 "refuses on feat/ branch"
 run_case "main" 3 "refuses on main"
 
-# --- default merge is plain --squash, NO --admin (HIMMEL-224) ---
+# --- default merge is plain --squash, NO --admin ---
 if run_case "handover/x-slug" 0 "plain squash succeeds"; then
     assert_log_has  "pr merge 42 --squash" "default uses --squash"
     assert_log_lacks "--admin"             "default does NOT use --admin"
@@ -360,7 +360,7 @@ assert_log_has "--admin" "authorized fallback used --admin"
 STUB_PLAIN_FAIL=1 \
     run_case "handover/x-slug" 4 "plain-fail + unauthorized exits 4"
 assert_log_lacks "--admin" "unauthorized never attempts --admin"
-# HIMMEL-3381: a refused GitHub merge sends exactly one operator DM.
+# a refused GitHub merge sends exactly one operator DM.
 assert_alerts 1 "refused merge: exactly one operator DM"
 if grep -q '^555|MERGE-BLOCKED test/test#42' "$LAST_ALERT_LOG"; then pass; else fail "refused merge: DM names owner/repo#pr (got: $(cat "$LAST_ALERT_LOG"))"; fi
 
@@ -379,13 +379,13 @@ STUB_PLAIN_FAIL=1 STUB_ADMIN_COSMETIC=1 GH_ADMIN_MERGE_OK=1 \
     run_case "handover/x-slug" 0 "admin fallback cosmetic-fail is exit 0"
 assert_log_has "--admin" "admin fallback ran on cosmetic path"
 
-# --- gh pr list failure must NOT report a clean no-op (HIMMEL-224 CR) ---
+# --- gh pr list failure must NOT report a clean no-op ---
 STUB_LIST_FAIL=1 \
     run_case "handover/x-slug" 4 "gh pr list failure exits 4 (not silent no-op)"
 assert_log_lacks "pr merge" "no merge attempted when PR state is unknown"
 
-# --- deterministic mergeability check (HIMMEL-1232, local git merge-tree) ---
-# The old bounded poll (HIMMEL-179) is gone: forge_pr_mergeable now computes the
+# --- deterministic mergeability check (local git merge-tree) ---
+# The old bounded poll is gone: forge_pr_mergeable now computes the
 # conflict locally in one shot. The check reads base+head via
 # `gh pr view <n> --json baseRefName,headRefOid` and runs git merge-tree.
 
@@ -414,14 +414,14 @@ if STUB_MERGE_VIEW_FAIL=1 \
     assert_log_has "pr merge 42 --squash" "view failure still attempts merge"
 fi
 
-# --- HIMMEL-936: CR merge gate blocks before the mergeability check (exit 5) ---
+# --- CR merge gate blocks before the mergeability check (exit 5) ---
 # STUB_CR_BLOCK=1 arms the gate's pr-view metadata arm + the graphql arm so
 # cr_merge_gate positively confirms an unresolved coderabbitai thread. The
 # gate runs BEFORE the mergeability check, so neither the check's pr view nor
 # `gh pr merge` is reached. Existing cases above stay green by design: their
 # stub returns non-JSON for the gate's pr-view (headRefOid branch, STUB_CR_BLOCK
 # unset), so cr_merge_gate degrades and fails open (plan-critic #4).
-# CR_APP=1 (HIMMEL-1125/1470): cr_merge_gate is now a no-op unless CodeRabbit's
+# CR_APP=1: cr_merge_gate is now a no-op unless CodeRabbit's
 # App is armed for the repo (git config himmel.coderabbit / CR_APP=1). This
 # fixture repo is never armed, so without this the gate would silently allow —
 # arm it here so the block this case exists to prove is actually exercised.
@@ -431,7 +431,7 @@ if STUB_CR_BLOCK=1 CR_APP=1 \
     assert_err_has    "CR gate" "CR-gate block reports CR gate on stderr"
 fi
 
-# --- HIMMEL-1043: CI-green gate blocks AFTER the CR gate (exit 6) ---
+# --- CI-green gate blocks AFTER the CR gate (exit 6) ---
 # STUB_CI_BLOCK=1: CR gate passes (resolved coderabbit threads + a completed
 # CodeRabbit check-run), but a non-CodeRabbit check-run ("tests") failed, so
 # ci_green_gate blocks. Runs AFTER the CR gate (exit 5) and BEFORE the
@@ -443,7 +443,7 @@ if STUB_CI_BLOCK=1 \
     assert_alerts 1 "CI-gate block: exactly one operator DM (HIMMEL-3381)"
 fi
 
-# --- HIMMEL-1058: the merge is BOUND to the vetted head SHA ---
+# --- the merge is BOUND to the vetted head SHA ---
 # STUB_ALL_GREEN=1: metadata resolves, threads are resolved, CodeRabbit's status
 # is success, CI is green — so both gates pass and the merge actually runs. The
 # TOCTOU fix is only real if `--match-head-commit <vetted sha>` reaches gh: a
@@ -460,7 +460,7 @@ if STUB_ALL_GREEN=1 \
         fail "merge call itself carries --match-head-commit abc123 (log: $(cat "$LAST_GH_LOG"))"
     fi
     # The head must be READ before the gates run, or the value bound is not the
-    # one the gates saw-or-newer (the whole HIMMEL-1058 ordering argument).
+    # one the gates saw-or-newer (the whole head-binding ordering argument).
     head_ln=$(grep -n -- '--jq .headRefOid' "$LAST_GH_LOG" | head -1 | cut -d: -f1)
     # The gate's FIRST call is its metadata read (`pr view --json
     # number,headRefOid,url`), not the graphql/api calls that follow — matching
@@ -486,7 +486,7 @@ if STUB_ALL_GREEN=1 STUB_HEAD_UNREADABLE=1 \
     assert_log_lacks "api repos"   "unreadable head runs no CI gate"
 fi
 
-# --- HIMMEL-1346: the merge path clears the branch's pending CR marker -------
+# --- the merge path clears the branch's pending CR marker -------
 # A marker outliving its merged branch blocks `gh pr create` on UNRELATED
 # branches (it lives in the shared git-common-dir; the pr-create guard resolves
 # the branch from the session cwd). pr-merge routes the clear through
@@ -506,7 +506,7 @@ if run_case "handover/x-slug" 0 "no marker: merge path unchanged"; then
     fi
 fi
 
-# --- HIMMEL-374: best-effort Jira auto-transition on merge -------------------
+# --- best-effort Jira auto-transition on merge -------------------
 # No ticket tag in the PR title => no Jira CLI calls, merge still succeeds.
 if STUB_JIRA_BUILD=1 STUB_PR_TITLE="chore: tidy things up" \
     run_case "handover/x-slug" 0 "jira: no ticket tag skips transition"; then
@@ -514,7 +514,7 @@ if STUB_JIRA_BUILD=1 STUB_PR_TITLE="chore: tidy things up" \
     assert_jira_log_lacks "transition" "no-tag case makes no jira transition call"
 fi
 
-# HIMMEL-3143: the transition is opt-in per merge. Default (no
+# the transition is opt-in per merge. Default (no
 # --jira-transition) => report what WOULD have happened; no comment, no
 # transition call at all.
 if STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
@@ -557,7 +557,7 @@ if STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Epic STUB_PR_TITLE="feat(jira): [HIMME
     assert_err_has "never auto-transitioning" "Epic case reports the never-touch skip on stderr"
 fi
 
-# A Story is transitioned like a Task on --jira-transition (HIMMEL-5540).
+# A Story is transitioned like a Task on --jira-transition.
 if STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Story STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_case "handover/HIMMEL-374-jira-transition" 0 "jira: Story ticket is transitioned on --jira-transition" -- --jira-transition; then
     assert_jira_log_has "comment" "Story case makes the jira comment call"
@@ -573,7 +573,7 @@ if STUB_JIRA_BUILD=1 STUB_JIRA_COMMENT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL
     assert_err_has "not auto-transitioning" "failed-comment case reports the skip on stderr"
 fi
 
-# --- HIMMEL-1977 hermeticity guard (the HIMMEL-1495 shape) -------------------
+# --- hermeticity guard (the startup-scrub shape) -------------------
 # Prove the startup scrub holds: re-run this suite in a subprocess EXPORTING the
 # bypasses a guarded operator shell carries. The reinvoked copy's startup unset
 # must neutralize them, so it stays green and exits 0. Delete the `unset` above

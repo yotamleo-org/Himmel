@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # check-plugin-drift.sh — proactive upstream-drift report for every
 # externally-sourced plugin himmel ships. One command answers "are all our
-# forks + pinned plugins current with upstream?" (HIMMEL-322).
+# forks + pinned plugins current with upstream?".
 #
 # Two plugin classes are checked, each against its TRUE upstream via `gh api`:
 #   1. Pinned remotes — any plugin in marketplace.json whose source is a git
 #      remote with a ref or sha: {github, repo, ref} or {url, url, ref|sha}
 #      (the explicit HTTPS url form claude-obsidian and plannotator-effective-html
-#      use after HIMMEL-549 / HIMMEL-2837). Two sub-cases:
+#      use after). Two sub-cases:
 #        a. Plain pin (no override): drift = the pinned `ref`/`sha` (a 40-hex SHA)
 #           != the marketplace repo's default-branch HEAD. (kepano/obsidian.)
 #        b. Fork-with-upstream override (scripts/plugin-upstreams.json): the
@@ -19,7 +19,7 @@
 #           version than the one our fork is merged to. (claude-obsidian -> AgriciDaniel.)
 #           This sub-case also makes tag-name refs (e.g. v1.9.2-himmel.1) work —
 #           we never compare a tag name to a SHA.
-#      Sidecar entries with standalone:true (HIMMEL-4019) also track reviewed
+#      Sidecar entries with standalone:true also track reviewed
 #      adoption targets for dormant external installs absent from our marketplace:
 #      ref vs HEAD for track:head, synced_base vs tags for track:release. These
 #      are target pins, not a claim that a station's installed cache was updated.
@@ -27,7 +27,7 @@
 #      generic fields `upstream_repo` / `upstream_path` / `upstream_sha256`. Drift
 #      = the recorded sha256 != the sha256 of that upstream file fetched now.
 #      (telegram-himmel, pr-review-toolkit-himmel.)
-#   3. Carried upstreams (HIMMEL-869) — the rest of the fleet that the two
+#   3. Carried upstreams — the rest of the fleet that the two
 #      classes above don't reach. A data-driven registry
 #      (scripts/upstreams.json, DRIFT_REGISTRY-overridable) enumerates each with a
 #      detection `kind`:
@@ -52,13 +52,13 @@
 #           "latest"; graphify's months-old v1.0.0 vs its current v0.9.x line).
 #           `tag_prefix` (with latest_source: release) strips a tag stream's prefix
 #           from the release tag before comparing — bun tags `bun-v1.4.3`, so the
-#           entry keeps a bare synced_base and a bare BEHIND version (HIMMEL-4258).
+#           entry keeps a bare synced_base and a bare BEHIND version.
 #      Installed marketplaces (obsidian-skills, openai-codex,
 #      claude-video, claude-plugins-official, …) are NOT listed in the registry:
 #      they are discovered dynamically from ~/.claude/plugins/known_marketplaces.json
 #      (DRIFT_KNOWN_MARKETPLACES-overridable) so the guard auto-covers any future
 #      marketplace install, each checked as commit_head/checkout vs its source repo.
-#      `tier` (A=proactive / B=reactive, from the HIMMEL-850 audit) is printed in
+#      `tier` (A=proactive / B=reactive, from the audit) is printed in
 #      the verdict so a reader can tell expected churn (Tier B usually reads BEHIND
 #      by design) from a genuinely stale pin. An absent checkout / uninstalled
 #      tool / unreachable upstream is UNCHECKED, never drift.
@@ -66,8 +66,8 @@
 # Fork-delta audit is split by storage shape. A registry entry carrying a
 # `fork` block is mechanically rebased + classified by
 # scripts/upstreams/resync-fork.sh on the nightly /fork-resync cadence — qmd
-# carries one again (HIMMEL-3956, launcher signal forwarding until
-# tobi/qmd#1030 lands; claude-obsidian retired at v2.2.0 HIMMEL-2925). An
+# carries one again (launcher signal forwarding until
+# tobi/qmd#1030 lands; claude-obsidian retired at v2.2.0). An
 # ADDITIVE result is expected for a well-behaved fork; a NON-ADDITIVE result is
 # a regression worth investigating unless the entry's own note says the delta
 # modifies upstream files (qmd's does), and the unattended cadence stops after
@@ -85,7 +85,7 @@
 #
 # Lean-invoke: run `bash scripts/check-plugin-drift.sh` on demand, or arm it on a
 # cadence. The full drift sweep above is NOT a pre-commit hook (a network
-# round-trip per commit is too costly) — but `--manifest-only` (HIMMEL-3464) IS
+# round-trip per commit is too costly) — but `--manifest-only` IS
 # pre-commit-wired: a purely local, no-network check that every
 # marketplace/plugins/<p>/.claude-plugin/plugin.json carries a non-empty
 # "version" field. The marketplace's local "directory" source has
@@ -100,11 +100,11 @@ MJSON="${DRIFT_MJSON:-$ROOT/marketplace/.claude-plugin/marketplace.json}"
 UPSTREAMS="${DRIFT_UPSTREAMS:-$ROOT/scripts/plugin-upstreams.json}"  # per-plugin true-upstream overrides (may be absent)
 PLUGINS_DIR="${DRIFT_PLUGINS_DIR:-$ROOT/marketplace/plugins}"
 # A pin-holds row with "release": "vm-proof" is lifted by VM proof, and the
-# route to that proof is the adopter's vm.mode, resolved once here (HIMMEL-4583).
+# route to that proof is the adopter's vm.mode, resolved once here.
 # shellcheck source=lib/vm-mode.sh
 . "$ROOT/scripts/lib/vm-mode.sh"
 # A resolver error (rc 2) is not a configured none: it offers only "fix the
-# config", never the operator-ack route (HIMMEL-4597, J1932 T1).
+# config", never the operator-ack route.
 vm_mode_load
 VM_PROOF_RELEASE="$(vm_proof_route)"
 case $? in
@@ -113,7 +113,7 @@ case $? in
   *) VM_PROOF_RELEASE="vm-proof: vm.mode config error (${VM_MODE_NOTE:-scripts/lib/vm-mode.sh did not load}), held until fixed; fix ~/.himmel/config.json (docs/setup/vm-mode.md)" ;;
 esac
 
-# check_manifest_versions — the --manifest-only check (HIMMEL-3464). Local
+# check_manifest_versions — the --manifest-only check. Local
 # only, no gh/network, so it can run on every commit. Fails closed: an
 # unreadable/unparsable manifest counts as bad, never a silent pass.
 check_manifest_versions() {
@@ -162,13 +162,13 @@ if [ "${1:-}" = "--manifest-only" ]; then
   exit $?
 fi
 
-# check_bump_required — the --bump-required check (HIMMEL-3551). A commit (or
+# check_bump_required — the --bump-required check. A commit (or
 # PR range) that changes any file under marketplace/plugins/<p>/ must also bump
 # that plugin's plugin.json "version", so `claude plugin update` actually picks
 # the change up (an unbumped local-directory source falls back to the
 # checkout's HEAD sha — see check_manifest_versions above — but only on a
 # COMMIT boundary; between commits `claude plugin update` compares versions and
-# reports "already at the latest" against stale cached content, HIMMEL-3551).
+# reports "already at the latest" against stale cached content).
 #
 # Two modes, both git-diff based (never DRIFT_PLUGINS_DIR — that override
 # exists for the network-free class above; this check is inherently
@@ -344,7 +344,7 @@ if os.path.exists(sys.argv[2]):
     ups = json.load(open(sys.argv[2]))   # malformed -> raises -> class UNCHECKED
 def repo_of(s):
     # github source carries owner/repo directly; the explicit-https url source
-    # (claude-obsidian after HIMMEL-549) encodes it in the url. repo is only used
+    # (claude-obsidian) encodes it in the url. repo is only used
     # for the plain-pin HEAD compare + message text — fork overrides ignore it.
     if s.get("source") == "github":
         return s.get("repo", "")
@@ -355,7 +355,7 @@ def repo_of(s):
     return ""
 for p in m.get("plugins", []):
     s = p.get("source")
-    # git-subdir (HIMMEL-4012): claude-plugins-official's own shape for a plugin
+    # git-subdir: claude-plugins-official's own shape for a plugin
     # living in a repo subdirectory; it carries the same url + ref|sha.
     if isinstance(s, dict) and s.get("source") in ("github", "url", "git-subdir") and (s.get("ref") or s.get("sha")):
         o = ups.get(p["name"]) or {}
@@ -363,7 +363,7 @@ for p in m.get("plugins", []):
         print("|".join([p["name"], repo_of(s), ref,
                         o.get("upstream_repo", ""), o.get("track", ""), o.get("synced_base", ""),
                         o.get("tag_prefix", "")]))
-# HIMMEL-4019: dormant installs live in other marketplaces, not ours. Track
+# Dormant installs live in other marketplaces, not ours. Track
 # their reviewed adoption targets without changing any install or live setting.
 market_names = {p["name"] for p in m.get("plugins", [])}
 for name, o in ups.items():
@@ -421,8 +421,8 @@ PY
         # under highest_version) be picked as "latest" and read as a phantom
         # BEHIND against a current base. A real new stable release still trips
         # the BEHIND path. highest_version, not `sort -V | tail -1`: BSD sort
-        # has no -V, and this was the last live GNU-only site (HIMMEL-1054).
-        # tag_prefix (HIMMEL-4012): a repo with several tag streams (impeccable:
+        # has no -V, and this was the last live GNU-only site.
+        # tag_prefix: a repo with several tag streams (impeccable:
         # skill-v* is the skill, engine-v* the CLI) names the one it pins; only
         # that stream is compared. The prefix is stripped for the semver sort and
         # restored on the winner so it compares equal to synced_base.
@@ -558,7 +558,7 @@ def expand(p):
     # Cross-platform env expansion ($VAR / ${VAR} / ${VAR:-default} / %VAR%) so
     # the same registry entry resolves on Git Bash python AND Windows python,
     # then forward-slash the result so `git -C <path>` is portable.
-    # ${VAR:-default} (HIMMEL-3537): a Windows-only var like LOCALAPPDATA is
+    # ${VAR:-default}: a Windows-only var like LOCALAPPDATA is
     # unset on Linux/macOS, so a bare ${LOCALAPPDATA} resolves to '' there
     # instead of the platform's real default (hermes-agent's checkout_path).
     # The default itself may reference another var ($HOME/.hermes); a bare
@@ -656,7 +656,7 @@ PY
               # Claude Code's own plugin manager installs some official
               # marketplaces (claude-plugins-official) as a GCS tarball
               # snapshot, not a git clone — no .git dir, but a .gcs-sha file
-              # recording the fetched commit (HIMMEL-3537). Read that instead
+              # recording the fetched commit. Read that instead
               # of failing UNCHECKED.
               if [ -f "$path/.gcs-sha" ]; then
                 local_ref="$(tr -d '[:space:]' < "$path/.gcs-sha")"
@@ -810,7 +810,7 @@ PY
             # BEHIND. Opt into the maintainer's own latest-non-prerelease
             # designation (the Releases API), which reflects real recency.
             latest="$(gh api "repos/$repo/releases/latest" --jq '.tag_name' 2>/dev/null)"; api_rc=$?
-            # tag_prefix (HIMMEL-4258): bun tags its releases `bun-v1.4.3`; strip the
+            # tag_prefix: bun tags its releases `bun-v1.4.3`; strip the
             # stream prefix so synced_base and the BEHIND line stay bare versions.
             [ -z "$tag_pfx" ] || latest="${latest#"$tag_pfx"}"
             if [ "$api_rc" -ne 0 ] || ! printf '%s' "$latest" | grep -qE '^v?[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
@@ -850,7 +850,7 @@ PY
             else
               # A reviewed hold (eco "upstream", key = registry name) in pin-holds.json
               # reads HELD while current and latest_reviewed both still match, as in
-              # pin-scan.py; a newer upstream release re-raises BEHIND (HIMMEL-3952).
+              # pin-scan.py; a newer upstream release re-raises BEHIND.
               hold_reason="$(python3 -c 'import json,os,sys
 p,k,c,l=sys.argv[1:5]
 hs=json.load(open(p)).get("holds",[]) if p and os.path.exists(p) else []
@@ -877,7 +877,7 @@ print("" if h is None else (h.get("reason") or "-")+("" if not r else "; release
   fi
 fi
 
-# Pinned tools and packages (HIMMEL-3807). Not a registry: scripts/upstreams/
+# Pinned tools and packages. Not a registry: scripts/upstreams/
 # pin-scan.py DISCOVERS every npm/bun dependency (at its lockfile version), every
 # pre-commit rev, every workflow `uses:`, the gitleaks `ver=` literal and the
 # OXLINT_VERSION= literal in scripts/hooks, so a new pin is watched from the day

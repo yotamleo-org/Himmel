@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/glm/ship-branch.sh (HIMMEL-750). Bash 3.2 safe.
+# Smoke test for scripts/glm/ship-branch.sh. Bash 3.2 safe.
 # Hermetic: every repo + bare "origin" lives under mktemp; never touches the
 # real $HOME or the real remote.
 set -uo pipefail

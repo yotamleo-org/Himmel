@@ -119,8 +119,8 @@ function Wait-ForSilence([int]$TimeoutSec = 120) {
         } elseif ($started) {
             break                                   # started and now finished
         } elseif (((Get-Date) - $begin).TotalSeconds -gt 20) {
-            # Never started within 20s. Returning here is NOT enough (CR round 7,
-            # [codex-1]): synthesis may still be in flight — a cold model load is
+            # Never started within 20s. Returning here is NOT enough:
+            # synthesis may still be in flight — a cold model load is
             # the normal way to exceed 20s — and it would then play into the mic
             # this function is about to reopen. That is precisely the self-capture
             # described above, arriving by the one path that skipped the guard.
@@ -176,7 +176,7 @@ function Write-Log([string]$Stage, [string]$Text) {
 }
 Write-Host "log: $logPath" -ForegroundColor DarkGray
 
-# VOICE-OWNED SESSION (CR round 6, [codex-adv-3]). `-Continue` used to pass
+# VOICE-OWNED SESSION. `-Continue` used to pass
 # claude's bare `--continue`, which resumes the most recent conversation IN THIS
 # DIRECTORY -- not necessarily a voice one. On the first voice turn, or any time
 # a typed session ran between turns, an unauthenticated speaker would resume the
@@ -231,7 +231,7 @@ do {
     Write-Log 'heard' "($([int]$sw.Elapsed.TotalSeconds)s) $said"
 
     # 2. ASK. Interactive form, stdin ignored so it cannot block waiting on input.
-    # Voice runs in `plan` permission mode (HIMMEL-1522) — same reasoning as
+    # Voice runs in `plan` permission mode — same reasoning as
     # jarvis.py: voice-policy.json's deny tier was documented but not enforced,
     # and full enforcement needs an action classifier (ticketed). `plan` makes
     # the harness itself refuse writes, so the deny tier holds now. Stricter
@@ -240,8 +240,8 @@ do {
     # [ValidateSet('plan')], so every other value is a parse error, not an
     # override (glm-3 — this comment used to promise an override the parameter
     # does not offer).
-    # --strict-mcp-config with NO --mcp-config = zero MCP servers (CR round 6,
-    # [codex-adv-1]). A bare `claude` inherits the user/project MCP fleet, and an
+    # --strict-mcp-config with NO --mcp-config = zero MCP servers.
+    # A bare `claude` inherits the user/project MCP fleet, and an
     # MCP tool is not Read/Bash/Grep -- so NO pattern in voice-permissions.json
     # can reach it. Probed: a voice spawn without this flag reported
     # `mcp__tokensave__tokensave_read` available, a file reader entirely outside
@@ -267,7 +267,7 @@ do {
         if ($voiceSessionStarted) { $claudeArgs += @('--resume', $voiceSessionId) }
         else                      { $claudeArgs += @('--session-id', $voiceSessionId) }
     }
-    # `--` terminates option parsing (CR round 6, [codex-1]). The transcript is
+    # `--` terminates option parsing. The transcript is
     # attacker-influenced text on the SAME argv that carries the permission
     # floor: without the terminator a transcript starting `--permission-mode` or
     # `--settings` is parsed as a flag rather than as the prompt. Whisper

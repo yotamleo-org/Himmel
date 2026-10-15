@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-wire-himmel-repo.sh -- hermetic tests for wire-himmel-repo.sh (HIMMEL-453).
+# test-wire-himmel-repo.sh -- hermetic tests for wire-himmel-repo.sh.
 # Verifies the settings.json .env.HIMMEL_REPO merge: create, preserve siblings,
 # forward-slash, refuse invalid JSON, idempotent.
 set -u
@@ -14,7 +14,7 @@ fails=0
 check(){ [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 
 td="$(mktemp -d)"
-# HIMMEL-3332: the wire writes provenance rows; keep them out of the real ~/.himmel.
+# the wire writes provenance rows; keep them out of the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$td/prov"
 
 # 1. missing file -> creates {"env":{"HIMMEL_REPO":"C:/himmel"}}.

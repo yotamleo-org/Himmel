@@ -1,4 +1,4 @@
-// scripts/lessons/validate-lesson.mjs — HIMMEL-767 deliverable 1: validate lesson
+// scripts/lessons/validate-lesson.mjs — validate lesson
 // provenance records against the schema in docs/internals/lesson-provenance.md.
 //
 // Input: a file path — .md (validates the `lesson:` block in YAML frontmatter,

@@ -1,5 +1,5 @@
 // scripts/eval/qmd-quality/latency.ts - median and p90 query latency per mode
-// from a runs.jsonl written by run-eval.ts (HIMMEL-4184).
+// from a runs.jsonl written by run-eval.ts.
 //   bun latency.ts --runs <runs.jsonl>
 import { readJsonl } from "./score.ts";
 

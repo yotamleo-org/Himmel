@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/red-control.sh -- the RED-control contract (HIMMEL-2518).
+# scripts/lib/red-control.sh -- the RED-control contract.
 #
 # A mutation control proves a test assertion is non-vacuous: build a scratch
 # copy of the script under test with one line changed, run the real fixture
@@ -11,7 +11,7 @@
 # nothing, and looks identical to one that genuinely exercised the mutation.
 # Confirmed twice on 2026-09-05 (T7 in scripts/cr/test-pr-check-context.sh,
 # fixed in PR #2135; case 18m, now in scripts/ci/test-run-shell-tests-
-# discovery.sh, which HIMMEL-2895 split out of test-run-shell-tests.sh).
+# discovery.sh, which was split out of test-run-shell-tests.sh).
 #
 # The contract a valid control must establish, all four points:
 #   (a) the mutant RAN         -- its exit status is captured and asserted
@@ -38,7 +38,7 @@
 #     --note "WITHOUT head-binding the stale-head capability IS silently accepted" \
 #     || fail=1
 #
-# HIMMEL-2503 discipline is the caller's: mutants live in mktemp scratch copies
+# The discipline is the caller's: mutants live in mktemp scratch copies
 # only. This library never repoints a path a destructive trap consumes -- it
 # creates exactly one file (the stderr capture) and never removes a directory.
 #
@@ -76,7 +76,7 @@ red_control_run() {
     local cwd="" errfile=""
     local envs=()
     # Invalidate any previously recorded run FIRST, before a single thing here
-    # can fail (CR round 1 [codex-1]). Every early return below is a setup
+    # can fail. Every early return below is a setup
     # failure, and a caller that does not check this function's own exit status
     # would otherwise go on to assert against the PREVIOUS run's stdout with
     # RED_CONTROL_RAN still 1 — a stale-evidence pass, which is precisely the
@@ -86,7 +86,7 @@ red_control_run() {
     RED_CONTROL_OUT=""
     RED_CONTROL_RC=""
     while [ $# -gt 0 ]; do
-        # Arity guard before the dispatch (CR round 1 [codex-2]): with the
+        # Arity guard before the dispatch: with the
         # value missing, `shift 2` on a single remaining argument FAILS and
         # leaves "$@" untouched, so the loop spins forever on the same token —
         # an unbounded hang in a test suite, not the `broken` return the
@@ -149,7 +149,7 @@ red_control_assert() {
     local expect_rc=0 have_observed=0 have_wrong=0 have_correct=0
 
     # Consume the recorded run FIRST — before option parsing, so that "every
-    # path" is literally every path (CR round 1 [codex-3]: the unknown-option
+    # path" is literally every path the unknown-option
     # arm used to return while the run was still consumable, leaving a caller
     # error able to hand its run to the NEXT assert). A second assert without
     # a fresh red_control_run is a broken control, not a re-reading of the old

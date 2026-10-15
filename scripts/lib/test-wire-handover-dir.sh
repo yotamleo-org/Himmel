@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-wire-handover-dir.sh -- hermetic tests for wire-handover-dir.sh (HIMMEL-839).
+# test-wire-handover-dir.sh -- hermetic tests for wire-handover-dir.sh.
 # Verifies the settings.json .env.HANDOVER_DIR merge: create, preserve
 # siblings, forward-slash, refuse invalid JSON, idempotent, last-adopt-wins
 # overwrite, plus the seam into handover_root() (scripts/lib/handover-path.sh)
@@ -12,7 +12,7 @@ fails=0
 check(){ [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 
 td="$(mktemp -d)"
-# HIMMEL-3332: the wire writes provenance rows; keep them out of the real ~/.himmel.
+# the wire writes provenance rows; keep them out of the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$td/prov"
 
 # 1. missing file -> creates {"env":{"HANDOVER_DIR":"C:/Documents/luna/handovers"}}.
@@ -63,7 +63,7 @@ printf '   \n' > "$s7"
 bash "$wire" "$s7" "C:/Documents/luna/handovers" >/dev/null
 check "whitespace file -> created" "$(jq -r '.env.HANDOVER_DIR' "$s7")" "C:/Documents/luna/handovers"
 
-# 8. SEAM (HIMMEL-839): what wire-handover-dir writes into settings.json .env is
+# 8. SEAM: what wire-handover-dir writes into settings.json .env is
 #    exactly what handover_root() (scripts/lib/handover-path.sh) reads straight
 #    from the process env — Claude Code applies a settings.json "env" block to
 #    the process env at session start. This test makes that hop explicit: wire

@@ -27,9 +27,9 @@ export function readEntry(indexDir: string, runId: string): IndexEntry | null {
     return null;
   }
   // I14: validate expected shape — all fields from RunResult + IndexEntry-only fields.
-  // HIMMEL-101 §5: tightened to type-check exitCode/summary/bytesToClient/startedAt/finishedAt.
+  // Tightened to type-check exitCode/summary/bytesToClient/startedAt/finishedAt.
   // errOffsetStart/errOffsetEnd are intentionally NOT validated — they were added later
-  // than the others and may be absent in legacy pre-HIMMEL-97 entries; tightening them
+  // than the others and may be absent in legacy entries; tightening them
   // would break reads of older caches.
   if (
     typeof parsed !== 'object' ||

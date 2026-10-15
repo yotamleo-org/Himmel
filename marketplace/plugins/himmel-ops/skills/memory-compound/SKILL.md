@@ -89,30 +89,10 @@ wc -c "$MEMDIR/MEMORY.md"
 ls -1 "$MEMDIR"/*.md | wc -l
 ```
 
-Also inventory, in the same pass:
-
-- **Stale backups** — `ls -1 "$MEMDIR"/*.bak 2>/dev/null`. A `MEMORY.md.bak`
-  left by a PRIOR completed pass is delete-eligible once the current index
-  loads cleanly. If a `.bak` diverges from everything mined (entries today's
-  index and topic files no longer carry), diff it and recover the missing
-  durable items through the same pipeline before deleting it.
-- **Orphaned sibling stores** — `ls -d ~/.claude/projects/*/memory/`. Stores
-  under project slugs whose root was renamed or deprecated (a renamed vault
-  dir, a deprecated state repo) never load in any session; their durable
-  facts are stranded. Mine them through this same pass (or fold the few live
-  facts into the current store), then delete the orphaned store.
-- **Remote stations** (D5, HIMMEL-570). Memory is per-host: a fact captured on
-  another machine never loads here. Read the station registry — the luna note
-  `[[himmel-remote-stations]]` — and **skip cleanly if it is absent** (adopters
-  have no remote stations; this is not an error). For each listed host, inventory
-  its store over ssh and record index bytes + topic-file count/names. An
-  **unreachable / timed-out / auth-failed host is a WARN that does NOT silently
-  pass** — a silently skipped host *is* the multi-host bug recurring. Fold any
-  remote durable item through the same propagation review + qmd gate below;
-  delete the remote topic file only after its landed line is qmd-findable. Keep
-  station specifics (hostnames, shells) in the registry note, not here — memory
-  and the vault do not propagate to other users, so the skill text stays
-  adopter-generic.
+Also inventory stale `*.bak` backups, orphaned sibling stores and remote
+stations in the same pass. **Read [references/inventory.md](references/inventory.md)**
+for the procedure (a remote host that is unreachable is a WARN, never a
+silent skip; skip cleanly when the station registry is absent).
 
 ## Runbook
 
@@ -143,62 +123,15 @@ note, **deduping against existing curated content** — extend or sharpen an
 existing line rather than appending a near-duplicate.
 
 **The propagation review is mandatory, per item, BEFORE writing.** Auto-memory
-and the luna vault never reach another himmel user; anything true for other
-users must land in the repo or it is lost to them. Defaulting everything to
-luna is the documented failure mode — the 2026-07-11 pass did exactly that and
-needed a follow-up PR (HIMMEL-900). Classify each durable item:
-
-- **Operator-specific / vault-shaped** (this operator's machines, lane
-  inventory, personal vaults, quota habits, personal workflow) → the luna
-  vault under `30-Resources/Tech/` (or the theme note already used by the
-  memory index's luna pointers — many entries already name a `[[luna note]]`).
-  Resolve the luna vault from `$LUNA_VAULT_PATH` (configured via
-  `/end-session-wiki-setup`), falling back to the operator's known luna path;
-  **confirm the directory exists before writing** and never hardcode a home
-  dir — a wrong/unset path would scatter the synthesized notes outside the
-  vault and silently fail the qmd gate.
-- **Adopter-generic** (true for anyone running himmel — OS/shell/tool traps,
-  git behaviours, Claude Code quirks, dev-workflow conventions worth
-  standardizing) → **himmel docs, via the normal worktree → PR flow** (himmel
-  is PR-gated; the vault is not). Route by content: environment/OS/tool traps
-  → `docs/internals/environment-gotchas.md`; operator working-habits →
-  `docs/operator-conventions.md`; other-harness compat →
-  `docs/internals/harness-compat.md`; hook/gate lore →
-  `docs/internals/enforcement.md`. Batch all of the pass's doc landings into
-  ONE docs PR at the end. A luna copy is optional; the himmel doc is the
-  system of record for these.
-  **When in doubt, land in himmel docs** (operator directive 2026-07-14):
-  luna is not shared, so an adopter-relevant item that lands only in luna is
-  silently dropped for every other user. Gotchas about himmel-SHIPPED tooling
-  (`/luna-upgrade`, `propagate-public.sh`, `/pr-check` profiles, dispatch
-  chokepoints, …) are adopter-relevant even when discovered on the operator's
-  own vault — land them in the repo (`docs/` or the owning plugin's README).
-- **Rule / restriction candidates.** An adopter-generic item that is
-  frame-shaping or safety-critical deserves more than a doc: run it through
-  the HIMMEL-177 layer test (default-hook / default-rule / lean-invoke /
-  defer) and FILE A TICKET for the promotion (CLAUDE.md line, PreToolUse
-  hook, pre-commit gate) — doc it now, ticket the escalation. (HIMMEL-195:
-  prose that already drifted escalates to structural, not to more prose.)
-
-Match each note's existing voice and structure. One writer, many readers.
-
-**Triage by SHAPE before landing (D9, HIMMEL-570).** Orthogonal to the
-propagation class above — decide *where recall happens*:
-
-- **Fact-shaped** — looked up on a symptom ("rtk masks gitleaks blocks"). →
-  evict to its theme topic file; the `MEMORY.md` line becomes a routing line
-  (step 5).
-- **Directive-shaped** — must fire *unprompted*; the model never queries for a
-  rule it does not know it is breaking ("NEVER merge with open CR comments"). →
-  **keep it resident** as a ≤200-char `MEMORY.md` line, **or** file a HIMMEL-195
-  escalation for a structural hook. A directive behind a qmd query is dead.
-- **Invocation-shaped** — fires only inside a named flow (a `/pr-check` gotcha, a
-  codex-dispatch trap, a jira-CLI quirk). → land it in the **existing skill /
-  command / script that owns that flow** (adopter-generic → the repo-tracked
-  skill body, gated by the propagation review above; operator-private → a
-  user-scope skill or a resident line). Do **not** mint a per-theme memory skill
-  (rejected — ~516B/skill of always-loaded catalog re-creates the index-bloat
-  problem in a worse surface).
+and the luna vault never reach another himmel user; defaulting everything to
+luna is the documented failure mode (HIMMEL-900). Classify each durable item:
+operator-specific → luna vault; adopter-generic → himmel docs via the normal
+worktree → PR flow (**when in doubt, himmel docs**); rule/restriction
+candidate → file a ticket for the promotion. Then triage by SHAPE (fact /
+directive / invocation) to decide where recall happens. **Read
+[references/propagation-review.md](references/propagation-review.md) before
+landing anything** — it carries the routing table, the luna-path rules and
+the shape triage.
 
 ### 4. qmd gate — THE GATE
 Re-index the vault and confirm findability **before** any deletion. Run from the
@@ -217,26 +150,13 @@ qmd MCP `query` tool, or `qmd_cmd query`. A learning that does not surface is
 **not** compounded — fix the note (or its frontmatter) and re-index before
 proceeding. No findability → no deletion.
 
-**Scope the gate to the curated collection (D8, HIMMEL-570).** The
-`luna-curated` collection is ~351 docs (the `30-Resources/Tech/**` scope that
-holds the ~17 theme notes the index routes to); an **unscoped** memory query
-instead searches the full `luna` collection's ~13,253 docs — a **~38:1**
-dilution (13,253 : 351) that sank the 2026-07-16 recall probes.
-Query `-c luna-curated` **first** (the `30-Resources/Tech/**` scope; keep it
-fresh with `qmd_cmd update -c luna-curated`), full `luna` only as a fallback on
-a miss. **⚠ The flag is `-c` / `--collection` (singular) — `--collections`
-(plural) is NOT a qmd flag and is SILENTLY IGNORED**, so a gate run with
-`--collections luna-curated` searches *everything* while looking scoped and
-"confirms" a false pass. Set `minScore: 0.5` and an `intent`.
-
-**Branch caveat (BOTH collections):** qmd indexes the PRIMARY checkouts, not
-worktrees — a doc landed on a himmel PR branch AND a vault note landed on a
-vault branch are not qmd-findable until their branches merge. For everything
-landed on a branch (which, per rail 1, is everything), the gate splits:
-verify the content sits in the pushed branch/PR now; run the re-index +
-findability spot-check AFTER the merges land in the primary checkouts, and
-only then delete the source topic files. Steps 5–6 of a fully-branched pass
-therefore run as a short POST-MERGE follow-up, not in the landing session.
+Query `-c luna-curated` first, full `luna` only on a miss. **The flag is
+`-c` / `--collection` (singular) — `--collections` is NOT a qmd flag and is
+silently ignored**, so a gate run with it searches everything and "confirms" a
+false pass. qmd indexes the PRIMARY checkouts, not worktrees: content landed
+on a branch is findable only after the merges, so steps 5–6 of a fully-branched
+pass run as a post-merge follow-up. **Read [references/qmd-gate.md](references/qmd-gate.md)**
+for the dilution numbers and the split gate.
 
 ### 5. Slim `MEMORY.md`
 Back it up first (a single `.bak`, removed in step 6 once the next session loads
@@ -335,28 +255,12 @@ budget, then it can be removed.
 
 ## Lesson provenance carry (HIMMEL-767)
 
-When a mined memory qualifies as a **lesson** (a feedback/reference gotcha,
-not pure status), carry its provenance forward instead of laundering it away
-— this is the piece that stops compounding from losing the evidence trail.
-Schema: [`docs/internals/lesson-provenance.md`](../../../../../docs/internals/lesson-provenance.md).
-
-- **Source topic files.** A topic file that records a lesson should include
-  the `lesson:` YAML frontmatter block (files without it remain valid memory
-  but are excluded from the self-evolving pipeline — the pipeline consumes
-  only schema-carrying records).
-- **Landing (step 3, above).** When you append the durable learning to its
-  theme note, give the landed line a trailing `^lesson:<id>` anchor (mint a
-  fresh `YYYY-MM-DD-<kebab-slug>` id if the source topic file carried none),
-  then write the full record (JSONL) to that vault's `lessons.jsonl` ledger
-  (one append-only file at the vault root) with `source.type: compound`,
-  `source.ref` = the list of source memory topic-file paths distilled from,
-  and `captured_by: memory-compound`.
-- **Validate before delete.** Before step 6 deletes any source topic file,
-  run `node scripts/lessons/validate-lesson.mjs --capture <vault>/lessons.jsonl`
-  (from the himmel repo root; `--capture` = capture-time mode — any `audit`
-  block fails, since the capture path never writes one) and confirm the new
-  record(s) PASS. This rides alongside the qmd gate (step 4), not instead of
-  it — no PASS, no deletion.
+A mined memory that qualifies as a **lesson** carries its provenance forward:
+a trailing `^lesson:<id>` anchor on the landed line, a record appended to the
+vault's `lessons.jsonl`, and a `validate-lesson.mjs --capture` PASS **before
+step 6 deletes any source topic file** (no PASS, no deletion). **Read
+[references/lesson-provenance.md](references/lesson-provenance.md)** for the
+exact fields and command.
 
 ## When you are BUILDING this skill vs RUNNING it
 

@@ -1,5 +1,5 @@
 // scripts/eval/qmd-quality/compare.ts - paired per-query comparison of two
-// runs.jsonl files scored against one golden set (HIMMEL-4650).
+// runs.jsonl files scored against one golden set.
 //
 //   bun compare.ts --golden <golden.jsonl> --a <runs.jsonl> --b <runs.jsonl> [--mode M]
 //

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/gemini/test-invoke.sh — smoke test for invoke.sh (HIMMEL-158, Story A).
+# scripts/gemini/test-invoke.sh — smoke test for invoke.sh.
 #
 # Skips cleanly (exit 0, prints SKIP) when the `gemini` binary is absent, per
 # the cross-story testing strategy (gated on `command -v gemini`). No CI; this

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-709 — smoke test for setup-hooks.sh --guardrail-mode.
+# Smoke test for setup-hooks.sh --guardrail-mode.
 # Hermetic: CLAUDE_USER_SETTINGS points at a temp file; never touches ~/.claude.
 set -u
 

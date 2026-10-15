@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests for generate.mjs — the CLAUDE.md -> AGENTS.md generator (HIMMEL-471).
+# Tests for generate.mjs — the CLAUDE.md -> AGENTS.md generator.
 # Bash 3.2-safe. Uses temp fixtures + env path overrides; never WRITES the
 # repo's real CLAUDE.md / AGENTS.md. One deliberate exception to fixture
 # hermeticity: section 9b READS the real CLAUDE.md as a rewrap-drift guard
-# (HIMMEL-559), so an unrelated CLAUDE.md edit can legitimately fail it.
+# so an unrelated CLAUDE.md edit can legitimately fail it.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GEN="$SCRIPT_DIR/generate.mjs"
@@ -107,7 +107,7 @@ cp "$TGT" "$TMP/first"
 run 0 "idempotency write #2" -- --write
 if cmp -s "$TMP/first" "$TGT"; then ok "two writes are byte-identical"; else bad "two writes are byte-identical"; fi
 
-# ---- 9. Fable debrand (HIMMEL-559) ----------------------------------------
+# ---- 9. Fable debrand ----------------------------------------
 # a) fixture: identity / quota / effort-calibration claims are neutralized.
 # The fixture reproduces the two wrap points that matter — the embedded
 # newlines in the 'Fable main loop' and 'Fable-5' entries are part of the
@@ -210,13 +210,12 @@ if sed 's/on Claude, Fable-5//g' "$broken_stripped" | grep -q 'Fable'; then
 else bad "leak check fires on a rewrap-broken entry (red path)"; fi
 SRC="$SAVED_SRC"; TGT="$SAVED_TGT"
 
-# ---- 10. debrand coverage enforcement (HIMMEL-480) ------------------------
+# ---- 10. debrand coverage enforcement ------------------------
 # Coverage is OPT-IN (AGENTS_MD_ENFORCE_COVERAGE=1) and enforced by the
 # dedicated gate scripts/hooks/check-debrand-coverage.sh. It must fire on ANY
 # source the gate hands it — including a staged temp copy, which is what
 # check-agents-md-fresh.sh generates from. Keying enforcement on "SOURCE looks
-# like the canonical CLAUDE.md" would leave it dead in exactly that path
-# (codex-adv finding, CR round 4).
+# like the canonical CLAUDE.md" would leave it dead in exactly that path.
 COVSRC="$TMP/staged-copy/CLAUDE.md"; mkdir -p "$TMP/staged-copy"
 # A source containing NONE of the live debrand phrases -> every live rule orphaned.
 printf '# Staged copy\n\nNo branded phrases here at all.\n' > "$COVSRC"
@@ -247,7 +246,7 @@ AGENTS_MD_SOURCE="$SCRIPT_DIR/../../CLAUDE.md" AGENTS_MD_TARGET="$TMP/AGENTS-liv
 livercv=$?
 if [ "$livercv" -eq 0 ]; then ok "live CLAUDE.md passes debrand coverage"
 else bad "live CLAUDE.md passes debrand coverage (rc=$livercv); stderr: $(cat "$TMP/err")"; fi
-# Malformed entries must be FATAL, not skipped (codex-adv + coderabbit, round 5).
+# Malformed entries must be FATAL, not skipped.
 # A skipped entry never reaches the orphan calculation, so a one-character schema
 # typo would silently disable a live rule while both gates stayed green. Each
 # case is checked WITHOUT the coverage opt-in, proving the guard is unconditional.
@@ -282,14 +281,14 @@ nonotercv=$?
 if [ "$nonotercv" -eq 2 ]; then ok "dormant rule without a note is rejected"
 else bad "dormant rule without a note is rejected (rc=$nonotercv)"; fi
 
-# ---- 11. Astra-facing preamble elements survive the render (HIMMEL-2585) ---
+# ---- 11. Astra-facing preamble elements survive the render ---
 # The RED control for the GPT-6 Astra prompting changes: these three elements
 # live ONLY in preamble.md (they are addressed to non-Claude harnesses, so
 # CLAUDE.md is deliberately not their source), and AGENTS.md is the file a
 # codex/hermes lane actually reads. Rendering the REAL preamble over the small
 # fixture source proves each element reaches the generated file rather than
 # being dropped by the ladder assembly, the rewrap, or a debrand rule. Every
-# assertion below fails on the pre-HIMMEL-2585 preamble — that is the point.
+# assertion below fails on a preamble lacking them — that is the point.
 run 0 "re-write before the Astra-element assertions" -- --write
 astra_has() {
   local desc="$1" pat="$2"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/guard-corpus/test-guard-corpus.sh - suite for gen + diff
-# (HIMMEL-4168). Proves:
+# Proves:
 #   1. gen is deterministic (same seed + seeds file => same bytes)
 #   2. diff flags a planted base-deny/head-allow row, using two tiny STUB hooks
 #      (never a real hook)
@@ -27,7 +27,7 @@ fail() { FAIL=$((FAIL + 1)); echo "FAIL $1"; }
 has() { case "$2" in *"$3"*) pass "$1";; *) fail "$1: '$3' not in output";; esac; }
 hasnt() { case "$2" in *"$3"*) fail "$1: unexpected '$3' in output";; *) pass "$1";; esac; }
 
-# HIMMEL-4912: every diff run launches a fresh sandbox, ~32s locally and ~6x that on
+# Every diff run launches a fresh sandbox, ~32s locally and ~6x that on
 # the CI runner (the full replay measured 1437s locally, so ~8600s there). PR CI runs
 # SUITE_TIER_MODE=fast and gets the subset below (regression, control, ledger, the host
 # canary and the real-hook replay, plus every single-row case). The shard jobs also set
@@ -94,7 +94,7 @@ has "regression-control: zero" "$OUT2" "(REGRESSION): 0"
 if [ "$RC2" = "0" ]; then pass "regression-control: exit 0"
 else fail "regression-control: expected exit 0, got $RC2"; fi
 
-# eval-runs ledger (HIMMEL-4647): each diff appends one valid row; a regression
+# eval-runs ledger: each diff appends one valid row; a regression
 # is a valid (ok) measurement.
 LROWS=$(python3 -c 'import json,sys
 for l in open(sys.argv[1]):
@@ -106,7 +106,7 @@ else fail "ledger: unexpected rows: $LROWS $(printf '%s\n' "$OUT" | grep 'ODD-RC
 if python3 "$HERE/../lib/eval_runs.py" validate "$HIMMEL_EVAL_RUNS_LEDGER" >/dev/null 2>&1; then pass "ledger: rows pass validate"
 else fail "ledger: rows fail validate"; fi
 
-# HIMMEL-4659: hook identity is repo-relative. Two hooks that share a basename in
+# Hook identity is repo-relative. Two hooks that share a basename in
 # one repo differ; the same repo-relative hook at two checkout roots is equal.
 LH="$TMP/hookid.jsonl"
 for r in rootA rootB; do
@@ -198,7 +198,7 @@ if [ ! -e "$SENTGD" ]; then pass "git-env: inherited GIT_DIR did not redirect sc
 else fail "git-env: scratch git honored inherited GIT_DIR ($SENTGD created)"; fi
 
 # --- 1c. inherited core.hooksPath must NOT fire on the scratch commit ---------
-# codex-1 (round 5): stripping GIT_DIR/WORK_TREE alone is not isolation --
+# Stripping GIT_DIR/WORK_TREE alone is not isolation --
 # GIT_CONFIG_GLOBAL/SYSTEM (and the GIT_CONFIG_COUNT/KEY/VALUE set) can carry
 # core.hooksPath, which git would honor on our scratch `git commit`, executing
 # a real hook outside the sandbox. diff now scrubs the whole GIT_CONFIG* family
@@ -227,7 +227,7 @@ if [ ! -e "$SENTHP" ]; then pass "hookspath: inherited core.hooksPath did not fi
 else fail "hookspath: scratch commit executed inherited core.hooksPath hook ($SENTHP created)"; fi
 
 # --- 1d. allowlist env: named escape seams never reach a launched subprocess -
-# codex (round 6): a blocklist is whack-a-mole. diff launches hooks and the
+# A blocklist is whack-a-mole. diff launches hooks and the
 # scratch git under a positive allowlist, so BASH_ENV/ENV (bash sources them at
 # startup), LD_PRELOAD and GIT_TEMPLATE_DIR cannot reach a child. A probe hook
 # checks its own environment; prove none of the four seams survive. Benign
@@ -254,7 +254,7 @@ if [ "$RC_AL" = 0 ]; then pass "allowlist: all four execution seams absent in ho
 else fail "allowlist: probe detected a leaked execution seam"; fi
 
 # --- 1e. inherited GIT_TEMPLATE_DIR must NOT seed the scratch repo's hooks ----
-# codex (round 6): `git init` copies GIT_TEMPLATE_DIR/hooks into the new .git,
+# `git init` copies GIT_TEMPLATE_DIR/hooks into the new .git,
 # which the seed commit then runs. The allowlist drops it; prove a planted
 # template hook never fires on the scratch commit.
 TMPL="$TMP/evil-template"
@@ -274,7 +274,7 @@ if [ ! -e "$SENTTD" ]; then pass "template-dir: inherited GIT_TEMPLATE_DIR did n
 else fail "template-dir: scratch init copied+ran a template hook ($SENTTD created)"; fi
 
 # --- 1f. inherited BASH_ENV must NOT be sourced when the hook's bash starts ---
-# codex (round 6): non-interactive bash sources $BASH_ENV before the script, so
+# Non-interactive bash sources $BASH_ENV before the script, so
 # an inherited one runs arbitrary code before the hook reads a fixture. The
 # allowlist drops it; prove the planted startup script never runs.
 SENTBE="$TMP/sentinel-bashenv"
@@ -334,7 +334,7 @@ if [ -e "$SENT" ]; then fail "no-exec: diff EXECUTED a generated command (sentin
 else pass "no-exec: no generated command was executed"; fi
 else defer "4 no-exec run"; fi
 
-# HIMMEL-4912: a buggy hook that EXECUTES a harmless tmp-only touch is fenced,
+# A buggy hook that EXECUTES a harmless tmp-only touch is fenced,
 # even though it still returns a real deny. The row itself is never executed.
 cat > "$TMP/buggy-hook.sh" <<HK
 #!/usr/bin/env bash
@@ -404,7 +404,7 @@ python3 "$GEN" --seed 1 --seeds-file "$TMP/miss-seeds.txt" -o "$TMP/miss-corpus.
 OUT6=$(python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
         --corpus "$TMP/miss-corpus.jsonl" --jobs 4 2>&1); RC6=$?
 has "deny-control: warning present" "$OUT6" "NO deny-side coverage"
-# HIMMEL-4219: neither side denied => VACUOUS, the distinct exit 4 (was 3).
+# Neither side denied => VACUOUS, the distinct exit 4.
 has "deny-control: VACUOUS line" "$OUT6" "VACUOUS: "
 if [ "$RC6" = "4" ]; then pass "deny-control: neither side denies => VACUOUS exit 4"
 else fail "deny-control: expected exit 4, got $RC6"; fi
@@ -416,7 +416,7 @@ else fail "deny-control: expected exit 3 for base-allow/head-deny, got $RC6B"; f
 else defer "6 deny-control"; fi
 
 if [ "$FULL" = 1 ]; then
-# --- 6b. HIMMEL-4219: data deps materialised per side, VACUOUS flagged --------
+# --- 6b. data deps materialised per side, VACUOUS flagged --------
 # (a) a planted hook that FAILS OPEN without its registry. Copied alone (the old
 # way: no scripts/ tree beside it) its registry is missing, it allows every row,
 # and the run must read VACUOUS, not clean.
@@ -492,7 +492,7 @@ python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
 if [ "$RC7B" = "2" ]; then pass "malformed-corpus: row missing command => exit 2"
 else fail "malformed-corpus: expected exit 2 for missing command, got $RC7B"; fi
 
-# CodeRabbit round 8 (codex-2): a setup failure (a missing hook file, a failed
+# A setup failure (a missing hook file, a failed
 # mkdir/copy) raises OSError, not RuntimeError. Caught only RuntimeError, it
 # escaped as Python exit 1 -- the confirmed-regression code -- on a corpus that
 # was never reviewed. A nonexistent plain --base path makes materialise_hook's
@@ -530,7 +530,7 @@ PY
 if [ "$EXEC_OK" = "ok" ]; then pass "exec_a: wraps simple seed, skips compound seed"
 else fail "exec_a: $EXEC_OK"; fi
 
-# CodeRabbit round 9 (codex-1): HIMMEL_REPO must NOT reach a hook from the real
+# HIMMEL_REPO must NOT reach a hook from the real
 # checkout -- a hook anchoring on it would resolve helpers/state off the primary.
 # diff pins it to the per-row scratch primary (cwd, path ending /primary). This
 # stub exits 0 only when HIMMEL_REPO ends in /primary, else a non-0/2 rc so diff
@@ -550,7 +550,7 @@ python3 "$DIFF" --base "$TMP/anchor-hook.sh" --head "$TMP/anchor-hook.sh" \
 if [ "$RC9" = "0" ]; then pass "sandbox-anchor: HIMMEL_REPO points at scratch primary => exit 0"
 else fail "sandbox-anchor: expected exit 0 (sandbox anchor), got $RC9"; fi
 
-# CodeRabbit round 10 (codex-1): a per-row sandbox copy or hook launch that
+# A per-row sandbox copy or hook launch that
 # raises (disk exhaustion, a missing bash) escapes the worker pool and, with no
 # except on the run loop, terminated Python with exit 1 -- the confirmed-
 # regression code -- for a harness failure. It must map to setup-error exit 2.
@@ -568,7 +568,7 @@ env PATH="$TMP/nobash-path" "$PY3" "$DIFF" --base "$TMP/base-hook.sh" \
 if [ "$RC10" = "2" ]; then pass "run-error: worker launch failure => exit 2 (not regression 1)"
 else fail "run-error: expected exit 2 for worker launch failure, got $RC10"; fi
 
-# --- 11. HIMMEL-4537: non-Bash rows pass through unchanged -------------------
+# --- 11. non-Bash rows pass through unchanged -------------------
 # A Write/Edit/NotebookEdit guard was untestable: diff hard-coded tool_name Bash
 # and required tool_input.command. A row now carries its own tool_name and
 # tool_input; @PRIMARY@ is substituted in every string of tool_input. The stub
@@ -599,7 +599,7 @@ if [ "$RC11C" = "2" ]; then pass "tool-passthrough: non-object tool_input => exi
 else fail "tool-passthrough: expected exit 2 for non-object tool_input, got $RC11C"; fi
 
 if [ "$FULL" = 1 ]; then
-# --- 12. HIMMEL-4537: the decision is read from JSON, not exit 2 alone --------
+# --- 12. the decision is read from JSON, not exit 2 alone --------
 # A hook may deny or ask through hookSpecificOutput.permissionDecision at exit
 # 0, and an approver hook allows that way. diff used to read exit 2 only, so a
 # JSON-only deny lost by the head, a deny downgraded to ask, and an approver
@@ -665,7 +665,7 @@ if [ "$RC12D" = "0" ]; then pass "approver-control: same approver both sides => 
 else fail "approver-control: expected exit 0, got $RC12D"; fi
 else defer "12 JSON decision and approver"; fi
 
-# --- 13. HIMMEL-4537: optional per-row cwd and session context ---------------
+# --- 13. optional per-row cwd and session context ---------------
 # Every row used to run in the scratch primary on main with no permission_mode,
 # so a guard whose verdict depends on running in a worktree could not be
 # exercised. A row may now ask for cwd "worktree" (a scratch worktree of the
@@ -695,7 +695,7 @@ python3 "$DIFF" --base "$TMP/ctx-hook.sh" --head "$TMP/ctx-hook.sh" \
 if [ "$RC13B" = "2" ]; then pass "row-context: unknown cwd value => exit 2"
 else fail "row-context: expected exit 2 for unknown cwd, got $RC13B"; fi
 
-# --- 14. HIMMEL-4537: over-denied read-only shapes are benign twins ----------
+# --- 14. over-denied read-only shapes are benign twins ----------
 # Three read-only shapes real guards denied during the 2026-10-06 hardening
 # pass ship as allow-expected twins, and diff counts allow-expected rows a side
 # denied, so a judge sees over-deny instead of nothing.
@@ -718,12 +718,12 @@ OUT14=$(python3 "$DIFF" --base "$TMP/deny-all-hook.sh" --head "$TMP/deny-all-hoo
         --corpus "$TMP/benign-corpus.jsonl" --jobs 4 2>&1); RC14=$?
 has "over-deny: allow-expected denials counted" "$OUT14" "OVER-DENY idx="
 hasnt "over-deny: count not zero" "$OUT14" "(denied by base 0;"
-# HIMMEL-4563: over-deny is friction, never an exit code (HIMMEL-4537).
+# Over-deny is friction, never an exit code.
 if [ "$RC14" = "0" ]; then pass "over-deny: exit status 0"
 else fail "over-deny: expected exit 0, got $RC14"; fi
 else defer "14 over-deny"; fi
 
-# --- 15. HIMMEL-4586: BOM-prefixed JSON stdout is inconclusive, never a pass ---
+# --- 15. BOM-prefixed JSON stdout is inconclusive, never a pass ---
 # Claude Code's docs say stdout is read as JSON when it starts with { and ends
 # with } "ignoring surrounding whitespace" and do not mention a UTF-8 BOM, so
 # whether a BOM-prefixed deny is honoured is undocumented: diff scores it ODD
@@ -751,7 +751,7 @@ for kind in deny allow; do
   has "bom-$kind: row named ODD-RC" "$OUT15" "ODD-RC idx="
 done
 
-# --- 16. HIMMEL-4587: the hook's own exit ends the row ------------------------
+# --- 16. the hook's own exit ends the row ------------------------
 # A hook that backgrounds a child holding stdout must not make the row wait for
 # the timeout; what the hook wrote before exiting is read, and a child still
 # running never turns a deny into a pass.

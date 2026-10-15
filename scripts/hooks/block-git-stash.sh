@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # PreToolUse hook for Bash/PowerShell.
 #
-# HIMMEL-1755: `git stash` is a CROSS-WORKTREE hazard. Every worktree of this
+# `git stash` is a CROSS-WORKTREE hazard. Every worktree of this
 # checkout (~50 of them) shares ONE `refs/stash`, so a stash created in one
 # session is popped/dropped by another. Measured twice in a single leg
-# (2026-08-12, HIMMEL-1734 P1 chain): a `git stash drop` from one worker
+# (2026-08-12): a `git stash drop` from one worker
 # destroyed a different session's entry, hand-recovered only because it had been
 # tagged (`recovered-leg15-graphify-stash`).
 #
@@ -43,21 +43,21 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
-# HIMMEL-2123: bash builtin `read` instead of `$(cat)` drops one spawn per
+# Bash builtin `read` instead of `$(cat)` drops one spawn per
 # call; the three separate `printf | jq` pipelines below (validate + extract
 # tool_name + extract command) collapse into ONE jq call via `<<<` (no printf
 # fork). The filter reproduces the old two-step semantics (see
-# block-destructive-commands.sh's identical shape, HIMMEL-2123, for the
+# block-destructive-commands.sh's identical shape, for the
 # null/false/malformed-vs-truthy-non-object case analysis this mirrors):
 # top-level null/false or unparsable JSON -> jq exits non-zero -> fail-closed;
 # anything else -> field access wrapped in `try/catch empty` so a non-object
 # top-level value yields empty tool/cmd exactly like the old per-field
 # `|| true` fallbacks did. Windows jq.exe writes CRLF, so the embedded "\n"
 # separator can arrive as "\r\n" -- strip the stray CR off $tool (same shape
-# as require-quiet-run.sh, HIMMEL-2060).
+# as require-quiet-run.sh).
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
-# HIMMEL-2123 RETASK R2123A: empty/whitespace-only stdin must fail CLOSED,
+# Empty/whitespace-only stdin must fail CLOSED,
 # same as the old `printf | jq -e .` did on it. `read -d ''` on EOF leaves
 # $input empty with no error to catch, and `jq <<<""` emits zero values
 # with zero errors, so the `if ! result=$(...)` guard below never fires ->
@@ -95,7 +95,7 @@ esac
 
 # Lower-case (git subcommands are case-sensitive, but the surrounding grammar is
 # matched lower-cased for parity with the sibling guards) and fold newlines to
-# ';' so the line-oriented anchors below see one line. HIMMEL-2123: one `tr`
+# ';' so the line-oriented anchors below see one line. One `tr`
 # call (a single SET1/SET2 mapping covers both the case fold and the
 # newline/CR fold) instead of two chained `tr` invocations. `printf`, not
 # `<<<`, feeds it: several patterns below anchor on `$` and a herestring's
@@ -103,7 +103,7 @@ esac
 cmd_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]\n\r' '[:lower:];;')
 
 # In-process ERE match, zero spawns per call -- see block-destructive-commands.sh
-# for why this is `[[ =~ ]]` and not `grep -Eq` (HIMMEL-1741). The pattern MUST
+# for why this is `[[ =~ ]]` and not `grep -Eq`. The pattern MUST
 # stay unquoted on the right of `=~`.
 contains() {
     local re="$1"
@@ -111,7 +111,7 @@ contains() {
 }
 
 # COMMAND-POSITION grammar, copied verbatim from block-destructive-commands.sh
-# (shared shape, HIMMEL-851). It is what keeps `grep -rn "git stash drop" src/`
+# (shared shape). It is what keeps `grep -rn "git stash drop" src/`
 # and a `# git stash` comment ALLOWED: `git` only counts when it is the invoked
 # program, i.e. at the start of the command or right after a separator, behind
 # an optional bounded prefix of env assignments / launcher wrappers / an
@@ -124,8 +124,8 @@ contains() {
 # exhaustive: `command`/`exec`/`nohup`/`time git stash drop` are misses here
 # exactly as `command rm -rf /` is a miss in the sibling — widening this copy
 # alone would fork a grammar whose whole value is being identical. Closing any
-# of these properly needs the HIMMEL-912 shared tokenizer, not a wider regex.
-# HIMMEL-5101: the path run stops at `(`, itself a CMDPOS anchor, so a `((((...`
+# of these properly needs a shared tokenizer, not a wider regex.
+# The path run stops at `(`, itself a CMDPOS anchor, so a `((((...`
 # run is not rescanned from every anchor (quadratic; a timed-out hook does not
 # deny). `/tmp/a(b)/git` still matches, from the anchor at its `(`.
 EXEPFX='["'\'']?([a-z]:)?([^[:space:]|;&(`"'\'']*[/\\])?'
@@ -148,8 +148,8 @@ CMDPOS='(^|[|;&(`])[[:space:]]*(('"$ASSIGN"'|'"$EXEPFX"'(sudo([[:space:]]+-[^[:s
 # already uses for env assignments; the unquoted branch still refuses a leading
 # `-` so it cannot swallow the NEXT option.
 #
-# SEP, not a bare `[[:space:]]+`, between every token of this rule (HIMMEL-851
-# U3 / codex-1 r1): a backslash LINE CONTINUATION is whitespace to the shell,
+# SEP, not a bare `[[:space:]]+`, between every token of this rule:
+# a backslash LINE CONTINUATION is whitespace to the shell,
 # and the newline fold above leaves it as a literal `\` in front of the folded
 # `;` -- so `git \<newline>stash drop` arrives here as `git \;stash drop` and a
 # plain-whitespace separator would miss a real, executable mutation. `;+`
@@ -161,7 +161,7 @@ GITOPTVAL='('\''[^'\'']*'\''|"[^"]*"|[^-[:space:]][^[:space:]]*)'
 GITOPTS='('"${SEP}"'-[^[:space:]]+('"${SEP}${GITOPTVAL}"')?)*'
 GITSTASH="${CMDPOS}"'git(\.exe)?'"${GITOPTS}${SEP}"'stash'
 
-# HIMMEL-2077: `refs/stash` is an ordinary ref, so it is also reachable through
+# `refs/stash` is an ordinary ref, so it is also reachable through
 # the low-level plumbing verbs, entirely bypassing the `stash` keyword grammar
 # above -- `git update-ref -d refs/stash` drops it (equivalent to `stash
 # clear`/`drop`) and `git update-ref refs/stash <sha>` overwrites it
@@ -177,7 +177,7 @@ GITREFVERB="${CMDPOS}"'git(\.exe)?'"${GITOPTS}${SEP}"'(update-ref|symbolic-ref)'
 # quote concatenation, ANSI-C, brace, variable indirection) are not chased.
 REFSTASH_LIT='refs/stash'
 REFSTASH_IN_CLAUSE='[^|;&`]*'"${REFSTASH_LIT}"'([^[:alnum:]_./-]|$)'
-# codex-1 (CR round on HIMMEL-2077): `git update-ref --stdin` reads its ref
+# `git update-ref --stdin` reads its ref
 # commands (`delete refs/stash`, `update refs/stash <sha> ...`) from STDIN
 # DATA, not from this argv string, so `printf 'delete refs/stash\n' | git
 # update-ref --stdin` puts `refs/stash` on the far side of the `|` --

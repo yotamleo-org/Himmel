@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/qmd-quality/backfill-ledger.sh - turn a stored qmd-quality --out
-# dir into an eval-runs baseline row (HIMMEL-4650). Pure over files: no qmd, no
+# dir into an eval-runs baseline row. Pure over files: no qmd, no
 # model, no bank. Writes ci.json and cases.json into the dir from its runs.jsonl,
 # then appends one row, marked meta.backfill, via ledger-row.py.
 #

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/review-panel/run.sh - one review-panel recall sweep (HIMMEL-4649).
+# scripts/eval/review-panel/run.sh - one review-panel recall sweep.
 # Lints the fixture set, feeds each frozen diff to critic-panel.sh on stdin from
 # an empty scratch dir outside any git checkout (the critic sees the diff and
 # nothing else: never the key, never this repo), then scores the outputs with

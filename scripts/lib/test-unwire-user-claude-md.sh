@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016,SC2059 # A && B || C is the sibling suites' check() idiom; the backticks in fixtures are literal fence text; a case's printf format IS its fixture
 # test-unwire-user-claude-md.sh -- hermetic fixture matrix for
-# unwire-user-claude-md.sh (HIMMEL-3333). Every case is a file under one
+# unwire-user-claude-md.sh. Every case is a file under one
 # mktemp dir, removed on exit; no $HOME, no install, no network. The verdicts
 # are BYTE verdicts (cmp against the expected bytes), never "the BEGIN line is
 # gone": exactness means the operator's text is identical before and after,
@@ -74,7 +74,7 @@ has   "was-empty: says it was empty before install" "empty again" "$out"
 # the operator's file was a lone newline: that newline is theirs and stays
 strip was-newline '\n\n%s\n' '\n'
 
-# ── --file-created override (HIMMEL-3332 S6) ────────────────────────────────
+# ── --file-created override ────────────────────────────────
 # yes: a file left empty is deleted even where the heuristic (a blank line
 # before BEGIN) would have kept it -- the ledger, not the guess, decides.
 f="$td/fc-yes.md"; printf '\n%s\n' "$BLOCK" > "$f"
@@ -140,7 +140,7 @@ run "$td/crlf-2.md"; check "crlf-2: rc 1" "$rc" 1; same "crlf-2: byte-identical"
 bash "$uw" --probe "$td/crlf-2.md" >/dev/null 2>&1; check "crlf-2: probe reports a marker present" "$?" 3
 
 # ── marker text inside a fenced code block: a file ABOUT himmel ─────────────
-# (the HIMMEL-3333 RED: today's code stripped the fence's contents, rc 0)
+# (the RED: today's code stripped the fence's contents, rc 0)
 printf '# notes\n\nthe installer appends:\n\n```markdown\n%s\n## Working principles\n- think first\n%s\n```\n\nthat is all.\n' "$B" "$E" > "$td/fenced.md"
 cp "$td/fenced.md" "$td/fenced.before"; run "$td/fenced.md"
 check "fenced-only: rc 0" "$rc" 0
@@ -165,7 +165,7 @@ same "fenced-plus-real: quoted copy intact, real block gone" "$td/fenced-plus-re
 bash "$uw" --probe "$td/fenced-plus-real.md" >/dev/null 2>&1; check "fenced-plus-real: probe reads the result as clean" "$?" 0
 # A complete, unfenced block ABOVE an unrelated fence that never closes: the
 # markers sit outside the open fence, so they are unambiguous and the block is
-# stripped; only markers UNDER the unclosed fence are refused (HIMMEL-3335).
+# stripped; only markers UNDER the unclosed fence are refused.
 printf 'mine\n\n%s\n\n```sh\nnever closed\n' "$BLOCK" > "$td/valid-block-then-open.md"
 cp "$td/valid-block-then-open.md" "$td/valid-block-then-open.before"
 printf 'mine\n\n```sh\nnever closed\n' > "$td/valid-block-then-open.expect"
@@ -196,7 +196,7 @@ else
   gone "unreadable: no backup" "$td/unreadable.md.himmel-uninstall-backup"
 fi
 chmod 644 "$td/unreadable.md"
-# HIMMEL-3342: a RELATIVE name shaped like an awk assignment (var=value) was
+# a RELATIVE name shaped like an awk assignment (var=value) was
 # parsed by awk as an assignment, so it read stdin and reported "no block": a
 # silent under-removal. Run from inside the dir on a bare relative name, stdin
 # closed so a regression reads nothing rather than hanging.
@@ -244,7 +244,7 @@ same  "backup-dir: file byte-identical" "$td/bk-dir.md" "$td/bk-dir.before"
 [ -d "$td/bk-dir.md.himmel-uninstall-backup" ] && ok "backup-dir: directory kept" || bad "backup-dir: directory gone"
 # a HARD-LINKED regular file at the backup path passes -f, but cp would write
 # through the shared inode and overwrite the link's twin: refused, both kept
-# (HIMMEL-3341). Control: the plain regular-file case below is still replaced.
+#. Control: the plain regular-file case below is still replaced.
 printf 'mine\n\n%s\n' "$BLOCK" > "$td/bk-hardlink.md"; cp "$td/bk-hardlink.md" "$td/bk-hardlink.before"
 printf 'twin sentinel\n' > "$td/bk-twin"; ln "$td/bk-twin" "$td/bk-hardlink.md.himmel-uninstall-backup"
 run "$td/bk-hardlink.md"
@@ -259,7 +259,7 @@ check "backup-hardlink: planted link still the twin" "$(cat "$td/bk-hardlink.md.
 bash "$uw" --probe "$td/bk-hardlink.md" >/dev/null 2>&1; check "backup-hardlink: probe 3 (still wired)" "$?" 3
 # if the link-count inspection itself fails (find exits non-zero with no
 # output), the helper must refuse, not read "no output" as "not a hard link":
-# a stub find ahead of PATH stands in for the failure (HIMMEL-3341, round 5).
+# a stub find ahead of PATH stands in for the failure.
 mkdir -p "$td/fakebin"; printf '#!/bin/sh\nexit 1\n' > "$td/fakebin/find"; chmod +x "$td/fakebin/find"
 printf 'mine\n\n%s\n' "$BLOCK" > "$td/bk-findfail.md"; cp "$td/bk-findfail.md" "$td/bk-findfail.before"
 printf 'older backup\n' > "$td/bk-findfail.md.himmel-uninstall-backup"
@@ -313,7 +313,7 @@ bash "$uw" --probe "$td/probe-none.md"; check "probe: no marker -> 0" "$?" 0
 bash "$uw" --probe >/dev/null 2>&1; check "probe: missing path -> usage 2" "$?" 2
 bash "$uw" >/dev/null 2>&1; check "no args -> usage 2" "$?" 2
 
-# ── --extract (HIMMEL-3787 S2d): print the marked block, read-only ──────────
+# ── --extract: print the marked block, read-only ──────────
 printf 'top\n\n%s\nbottom\n' "$BLOCK" > "$td/ext.md"; cp "$td/ext.md" "$td/ext.before"
 out="$(bash "$uw" --extract "$td/ext.md")"; rc=$?
 check "extract: intact block -> rc 0" "$rc" 0

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/cr-ledger/test-cr-ledger.sh - suite for the CR-ledger eval
-# (HIMMEL-4482): the amend fold, the cutoff, the critic join, re-raise and
+# covers the amend fold, the cutoff, the critic join, re-raise and
 # deferral-class counts, the seeded sample and the coded-sample check, all on
 # a fixture ledger. No model call, never the live ledger.
 set -u

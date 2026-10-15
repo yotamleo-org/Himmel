@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/usage/test-usage.sh -- fixture test for usage-compute.sh and
-# usage-read.sh (HIMMEL-3994). Synthetic transcripts and a synthetic CR ledger
+# usage-read.sh. Synthetic transcripts and a synthetic CR ledger
 # only: no real transcript, no network.
 # Platform guard (gitbash-only): pure bash 3.2-safe + jq, no .ps1 twin needed.
 set -euo pipefail
@@ -135,7 +135,7 @@ check "concurrent runs: lock released" "no" "$([ -d "$STORE2/.lock" ] && echo ye
 # 7. no message text anywhere in the output
 check "no transcript text leaks" "0" "$(grep -c 'SECRETSENTINEL' "$STORE/records.jsonl" || true)"
 
-# 8. PR/CI join (HIMMEL-4030): a stub gh, never the network. Fixtures are files
+# 8. PR/CI join: a stub gh, never the network. Fixtures are files
 # the stub prints; GHFAIL / GHWANT_REPO make it fail like auth or a wrong repo.
 STUB="$ROOT/stub"; mkdir -p "$STUB" "$ROOT/dir with space"
 cat > "$STUB/gh" <<'STUBEOF'

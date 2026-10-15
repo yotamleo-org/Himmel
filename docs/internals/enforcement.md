@@ -316,6 +316,22 @@ the codex adversarial CR lane, not by CI — the job was green on a tree it had
 never looked at. Verifying it by hand had the same blind spot: running the gates
 in a clean worktree returns rc=0 whether they checked anything or not.
 
+### Pre-commit gates and their CI copy (HIMMEL-5758)
+
+A contributor without hooks installed, or committing with `--no-verify`, skips
+every pre-commit gate. Ten gates had no CI copy; each is now either mirrored in
+CI or inherently local.
+
+| Gate | CI copy |
+|---|---|
+| `no-history-comments` | `lint` job, step "history-comment gate (PR range)": base copy of `check-history-comments.sh --range <base>` |
+| `bundle-registry-lint`, `no-mcp-sdk-v1`, `fail-open-lint`, `pip-hashes` | `lint` job, ONE step "tree-only pre-commit gates (PR range)": each runs from its BASE copy (a PR cannot weaken the gate that judges it; `bundle-registry-lint`'s `scripts/himmelctl` lib and hook launcher are staged from base too; `fail-open-lint` runs the BASE suite, lint and fixtures laid over a copy of the PR tree, since the gate cds to the tree it judges); a missing base sha or base copy is a red job. Pinned by `scripts/ci/test-ci-lint-tree-gates.sh` |
+| `trust-node-suites` | already mirrored: the ungated `lanes-and-trust-suites` job runs `node --test scripts/trust/tests/*.test.mjs` on every PR |
+| `worktree-isolation` | local by nature: it refuses a commit made on `main` from the primary checkout (an editing-station rule); a CI runner commits nothing |
+| `merged-branch-check` | local by nature: it warns that the committer's local branch is already merged into `main` (stale-branch edits); CI checks out a detached merge ref with no local branch to be stale |
+| `template-version-push` | local by nature: `--pre-push` reads the push range handed over by git on stdin, which does not exist on a runner |
+| `telegram-fork-drift` | local by nature: it compares the pinned fork with the upstream plugin cached under `~/.claude/plugins` and skips when that cache is absent (a runner); drift is not a property of a PR |
+
 ### Pre-push gate delivery — push from the branch's OWN worktree (HIMMEL-1574 / HIMMEL-1809)
 
 The working-tree caveat above is sharper at **pre-push** time, because the

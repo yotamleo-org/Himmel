@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vm-mode.sh — the one resolver for "VM proof first" (HIMMEL-4583).
+# vm-mode.sh — the one resolver for "VM proof first".
 #
 # Several holds and rules say a step needs VM proof before it reaches the
 # station. Whether that proof is possible, and by what route, is the adopter's
@@ -30,13 +30,13 @@
 # vm.remote.identity takes its default only when the key is absent or null;
 # any other non-string or empty value is an error, and so is a glob
 # metacharacter (* ? [) in it, which the drivers' unquoted SSH_OPTS (also
-# handed on as an rsync -e string) would expand (HIMMEL-4601), and so is a
+# handed on as an rsync -e string) would expand, and so is a
 # quote (' or ") in it: one rule for the direct ssh argv and rsync -e
-# (HIMMEL-4636). The ssh/identity character class is one explicit list, the
+#. The ssh/identity character class is one explicit list, the
 # same one scripts/himmelctl/lib/luna-config.js validateVm() uses; neither
 # value is trimmed, a leading or trailing space is an error.
 #
-# A resolver error is NOT a configured none (HIMMEL-4597, judge J1932 T1). Both
+# A resolver error is NOT a configured none (judge J1932 T1). Both
 # keep every VM-proof hold HELD, but only a configured `none` may offer the
 # operator-ack route; an error's only offer is "fix the config". So an error
 # sets VM_MODE_ERROR=1 and the entry points below return 2 for it, never the
@@ -62,7 +62,7 @@
 # or this; nothing here ever writes the config). Bash 3.2-safe.
 
 # HOME as the default identity and ~ expansion consume it: absolute, an existing
-# directory, no control byte (C0, DEL, or C1 as UTF-8 C2 80..9F) (HIMMEL-4636).
+# directory, no control byte (C0, DEL, or C1 as UTF-8 C2 80..9F).
 vm_mode_home_ok() {
     case "${HOME:-}" in /*) ;; *) return 1 ;; esac
     [ -d "$HOME" ] || return 1
@@ -90,7 +90,7 @@ vm_mode_load() {
     local out
     out="$(python3 -c '
 import json, os, re, sys
-# HIMMEL-4636: one explicit character class, byte-identical to luna-config.js
+# one explicit character class, byte-identical to luna-config.js
 # (neither isspace() nor JS \s: they disagree on \x1c-\x1f, \x85, U+FEFF).
 FORBID = re.compile(r"[\x00-\x20\x7f-\xa0\u1680\u2000-\u200f\u2028-\u202f\u205f-\u2064\u3000\ufeff]")
 FORBID_IDENT = re.compile(r"[\x00-\x20\x7f-\xa0\u1680\u2000-\u200f\u2028-\u202f\u205f-\u2064\u3000\ufeff*?\[\x22\x27]")

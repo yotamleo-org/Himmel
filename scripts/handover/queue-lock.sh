@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # queue-lock.sh -- structural one-writer-per-queue lock for armed/overnight
-# sessions (HIMMEL-856).
+# sessions.
 #
 # WHY: on 2026-07-10 two armed sessions (fleet-parallel-27 + vm-inflight-s28,
 # plus a 3rd sibling) double-fired on the SAME queue and coordinated by
 # PROSE (prove-before-start, a coordination markdown file, per-incident
 # division locks written mid-flight) -- which failed three ways in one
 # night (duplicate dispatch, duplicate shipping, coordination-by-append
-# races). Per the enforcement-strength convention (HIMMEL-195): a rule
+# races). Per the enforcement-strength convention: a rule
 # that drifts >=2 times escalates to STRUCTURAL. This is that escalation
-# for the queue-level collision -- see the design doc referenced from
-# HIMMEL-856 for the full mechanism and the phase-2/3 rollout this seeds.
+# for the queue-level collision -- see the design doc for the full
+# mechanism and the phase-2/3 rollout this seeds.
 #
 # USAGE (invoke as a script, one verb per call):
 #   bash queue-lock.sh acquire   <handover-path> [session-id]
@@ -20,10 +20,10 @@
 #   bash queue-lock.sh status --sweep [<handover-dir>]
 #   bash queue-lock.sh self-heartbeat        (hook verb; hook JSON on stdin)
 #
-# TOKEN CONTRACT (HIMMEL-856 CR, C1): `acquire` records a session token in
+# TOKEN CONTRACT: `acquire` records a session token in
 # owner.json (the given session-id, or a generated "<hostname>-pid<pid>")
 # and PRINTS it as the last stdout line: "release-token: `<token>`" (the
-# token itself backticked -- HIMMEL-2910: a bare, unquoted token copy-pasted
+# token itself backticked -- a bare, unquoted token copy-pasted
 # into a handover doc followed by sentence punctuation reads as part of the
 # "secret" to gitleaks' generic-api-key rule; the backticks delimit the
 # capture so the copy-paste shape is safe by construction). The
@@ -34,7 +34,7 @@
 # per-session id (a fresh pid would silently "prove" nothing), and a
 # token-less release could rm another session's LIVE lock -- the exact
 # incident class this script exists to prevent. `acquire` ALSO persists the
-# token to a per-user file (HIMMEL-2813; see PER-SESSION TOKEN PERSISTENCE
+# token to a per-user file (see PER-SESSION TOKEN PERSISTENCE
 # below), which a token-less heartbeat/release reads back and names on
 # stderr -- the token contract is unchanged, that file just stops a
 # mid-session autocompact from being the only thing standing between a leg
@@ -47,7 +47,7 @@
 # at:
 #   <handover-root>/.locks/queue/<queue-slug>.lock/
 # containing owner.json (current holder), `owner` (the mkdir-CAS arbiter),
-# `root` (the handover root this lock lives under -- HIMMEL-2861) and,
+# `root` (the handover root this lock lives under) and,
 # after any takeover, takeovers.log (append-only trail -- the "loud trail"
 # the design principles require instead of failing closed).
 # <handover-root> is resolved via scripts/lib/handover-path.sh's
@@ -65,7 +65,7 @@
 # get DIFFERENT slugs on purpose -- this lock catches the SAME-queue
 # double-fire, not all epic parallelism.
 #
-# ONE DOC, ONE KEY (HIMMEL-3290): the root and slug are properties of the DOC,
+# ONE DOC, ONE KEY: the root and slug are properties of the DOC,
 # not of how the caller spelled it or what HANDOVER_DIR / the cwd said. The
 # doc argument is canonicalized (a bare or relative name is found under the
 # known roots, an ambiguous one is refused) and keyed under the DEEPEST known
@@ -79,7 +79,7 @@
 #
 # TTL / STALE TAKEOVER: a lock whose heartbeat is older than
 # QUEUE_LOCK_TTL_SECONDS (default 21600 = 6 h -- sized to cover the 3-4 h
-# overnight-run budget with margin, HIMMEL-856 CR C2) is STALE. `acquire` against a stale lock SUPERSEDES automatically (armed
+# overnight-run budget with margin) is STALE. `acquire` against a stale lock SUPERSEDES automatically (armed
 # sessions die, machines sleep -- the design's "fail open with a loud
 # trail" principle). `acquire` against a FRESH foreign lock refuses (rc=2)
 # unless QUEUE_LOCK_TAKEOVER=1 forces the takeover anyway. Every takeover
@@ -88,14 +88,14 @@
 # `heartbeat` and `release` warn when a lock's heartbeat age exceeds half the
 # TTL (aging).
 #
-# SELF-HEARTBEAT + LIVENESS PROBE (HIMMEL-2318): a long leg acquires at step 0
+# SELF-HEARTBEAT + LIVENESS PROBE: a long leg acquires at step 0
 # and releases at wrap and never heartbeats in between, so after one TTL its
 # lock was silently STALE and takeable under a LIVE holder. Two closures, both
 # driven by the harness rather than by the leg remembering anything:
 #   - `self-heartbeat` runs as a PostToolUse hook (wired by
 #     scripts/observability/wire-session-telemetry-hooks.mjs). It finds the
-#     locks THIS session acquired (the .doc sidecars next to the HIMMEL-2813
-#     token files, scoped by the session digest), refreshes any whose heartbeat
+#     locks THIS session acquired (the .doc sidecars next to the
+#     per-session token files, scoped by the session digest), refreshes any whose heartbeat
 #     is older than QUEUE_LOCK_SELF_HEARTBEAT_SECONDS (default 300), and
 #     records the hook payload's transcript_path in <lock>/liveness. It is
 #     silent and always exits 0 -- a hook must never block a tool call.
@@ -104,7 +104,7 @@
 #     LIVE holder, not a stale one (status reports FRESH, acquire refuses).
 #     QUEUE_LOCK_TAKEOVER=1 still forces.
 #
-# ARMS REGISTRY LIFECYCLE (HIMMEL-882): arm-resume.sh (HIMMEL-856) records a
+# ARMS REGISTRY LIFECYCLE: arm-resume.sh records a
 # PENDING record in <handover-root>/.locks/arms.jsonl every time it arms a
 # relaunch, and refuses (rc=8) to re-arm a handover that already has a
 # PENDING record on another host. Nothing previously retired a record when
@@ -113,11 +113,11 @@
 # session finished. A successful `acquire` -- the session actually starting
 # on this handover's queue -- is proof this host's PENDING arm(s) for it
 # have fired, so `acquire` CONSUMES them (drops the record(s); see
-# _ql_arms_registry_retire_fired -- CR round-3 retention: fired records are
+# _ql_arms_registry_retire_fired -- retention: fired records are
 # inert, so the registry stays O(active arms) instead of growing forever).
 # This closes the gap on the reading side; arm-resume.sh separately prunes
-# its OWN host's stale records at re-schedule time (its own HIMMEL-882
-# comment) so a superseded arm that never fires doesn't linger either.
+# its OWN host's stale records at re-schedule time (see its
+# own comment) so a superseded arm that never fires doesn't linger either.
 # Registry rewrites here and in arm-resume.sh are serialized by a
 # short-lived OWNER-TOKENED mkdir-CAS mutex at <registry>.lock (rounds 2/3)
 # -- the read-filter-rewrite pair is a lost-update race between concurrent
@@ -148,24 +148,24 @@
 #              2  session token missing or does not match the current
 #                 holder -- refused (QUEUE_LOCK_FORCE_RELEASE=1 overrides)
 #              3  no lock for this queue in ANY known handover root --
-#                 nothing was released (HIMMEL-2861; this was a silent
+#                 nothing was released (this was a silent
 #                 rc=0 before, which callers read as "released cleanly").
 #                 QUEUE_LOCK_FORCE_RELEASE=1 keeps its old rc=0 here: it
 #                 is a cleaner, and its callers loop over locks that may
 #                 already be gone.
 #   status:    0  free
-#              1  usage error / environment failure (HIMMEL-2409: incl. more
+#              1  usage error / environment failure (incl. more
 #                 than one operand -- an unquoted path with a space)
 #              11 held, FRESH (owner.json printed to stdout; a CORRUPT
 #                 lock dir -- owner.json missing/unreadable -- also
 #                 reports 11, fail-closed, and SAYS it is corrupt)
 #              12 held, STALE -- eligible for takeover (owner.json printed);
-#                 `status: STALE-DEAD` (HIMMEL-5541) is the same rc 12 when
+#                 `status: STALE-DEAD` is the same rc 12 when
 #                 the owner is PROVABLY dead (see _ql_owner_provably_dead)
-#   self-heartbeat (HIMMEL-2318): ALWAYS 0, and silent on stdout and stderr --
+#   self-heartbeat: ALWAYS 0, and silent on stdout and stderr --
 #              it is a hook, so every failure (no scope, no registered lock,
 #              a refused heartbeat, garbage stdin) degrades to a no-op
-#   status --sweep (HIMMEL-2369): a SEPARATE code path/exit table, one line
+#   status --sweep: a SEPARATE code path/exit table, one line
 #              per held lock under <root>/.locks/queue/*.lock -- see the
 #              queue_lock_status_sweep header comment for the line shape.
 #              0  no held locks at all ("sweep: no held locks"), or locks
@@ -174,7 +174,7 @@
 #                 UNKNOWN (owner.json parsed but its heartbeat did not) -- a
 #                 tick script can check this rc alone and not miss a flag
 #                 even if it never scans stdout
-#              1  usage error (HIMMEL-2409: more than one operand); distinct
+#              1  usage error (more than one operand); distinct
 #                 from 0 / 20, nothing on stdout
 #
 # CONVENTIONS: bash 3.2-safe (no associative arrays, no ${var,,}, no
@@ -185,7 +185,7 @@
 set -uo pipefail
 
 _QL_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 # load_dotenv reads $HOME; a sourcer with no HOME (a scrubbed hook env) must not abort on nounset.
 set +u
@@ -194,11 +194,10 @@ set -u
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$_QL_SCRIPT_DIR/../lib/handover-path.sh"
-# _arm_registry_identity_path / _hp_arms_record_matches_path are NEW in
-# HIMMEL-1344 (see the registry-lifecycle comment above
+# _arm_registry_identity_path / _hp_arms_record_matches_path are NEW (see the registry-lifecycle comment above
 # _ql_arms_registry_retire_fired). The source above is NOT fail-open --
 # a missing/broken lib still aborts queue-lock.sh outright -- but a
-# partially-deployed lib (an OLDER pre-HIMMEL-1344 handover-path.sh that
+# partially-deployed lib (an OLDER handover-path.sh predating them that
 # still parses and exports handover_root + the JSON helpers, just not
 # these two identity helpers) sources cleanly and would otherwise let the
 # CONSUME path (_ql_arms_registry_retire_fired, called from every
@@ -298,9 +297,9 @@ print(int(d.timestamp()))' "$iso" 2>/dev/null; then
 }
 
 # _ql_idle_warn_threshold -- print the QUEUE_LOCK_IDLE_WARN_SECONDS value
-# (default 2700, HIMMEL-2381), digits-only-validated. Factored out so the
+# (default 2700), digits-only-validated. Factored out so the
 # single-queue `status` idle-warn line and `status --sweep`'s IDLE-HELD? flag
-# (HIMMEL-2369) read the SAME knob the SAME way -- one default, not two
+# read the SAME knob the SAME way -- one default, not two
 # copy-pasted 2700s that could drift apart.
 _ql_idle_warn_threshold() {
     local v="${QUEUE_LOCK_IDLE_WARN_SECONDS:-2700}"
@@ -317,7 +316,7 @@ _ql_hostname() {
 
 _ql_default_session() { printf '%s-pid%s' "$(_ql_hostname)" "$$"; }
 
-# _ql_strip_backticks <token> -- HIMMEL-2910: acquire prints the token
+# _ql_strip_backticks <token> -- acquire prints the token
 # backticked ("release-token: `<token>`") so a leg copy-pasting the line
 # into a markdown handover doc can't have gitleaks capture trailing
 # punctuation into the "secret". Strips ONLY when BOTH a leading and
@@ -341,14 +340,14 @@ _ql_strip_backticks() {
 # bare form, or a recalled token, or a caller-chosen id that happens to
 # itself start/end with a backtick) OR with one matched pair of backticks
 # stripped (the copy-paste shape acquire now prints). Tried in that order
-# and ONLY that order -- CR round 2 (codex-1): normalizing <candidate>
+# and ONLY that order: normalizing <candidate>
 # before this comparison, as an earlier revision did, collapses the 2-char
 # literal "``" to empty and made an explicitly wrong argv token
 # indistinguishable from "no token was given", which then fell through to
 # a token-file RECALL instead of being refused. Comparing both forms
 # against the SAME unmodified <candidate> here means a degenerate explicit
 # token still fails both comparisons and is correctly refused, while an
-# exact match (including one on a self-backticked id, CR round 1) is
+# exact match (including one on a self-backticked id) is
 # always tried FIRST and never overridden by the stripped form.
 _ql_token_matches() {
     local candidate="$1" owner="$2"
@@ -357,8 +356,7 @@ _ql_token_matches() {
 }
 
 # JSON escape/extract now delegate to the shared pure-bash helpers in
-# scripts/lib/handover-path.sh (_hp_json_escape / _hp_json_field, HIMMEL-882
-# CR round-3): zero forks per call site that uses them directly, and the
+# scripts/lib/handover-path.sh (_hp_json_escape / _hp_json_field): zero forks per call site that uses them directly, and the
 # extractor is escape-AWARE (scans to the first UNESCAPED closing quote by
 # trailing-backslash parity), so values containing \" and backslash runs --
 # legal in macOS/Linux paths -- extract correctly. These $()-style wrappers
@@ -394,7 +392,7 @@ _ql_json_field_str() {
 # with the same path using "/" at that spot -- theoretical only; the repo
 # handover naming convention never produces "__" in a path component.
 # _ql_slug_for_root <handover-path> <root> -- the slug the given root would
-# use for this handover. Split out of _ql_slug (HIMMEL-2861) because the
+# use for this handover. Split out of _ql_slug because the
 # cross-root search has to ask that question of a root that is NOT the one
 # handover_root resolves here: the slug is the path relativized against ITS
 # root, so the same document slugs differently under two different roots.
@@ -422,19 +420,19 @@ _ql_slug() {
     _ql_slug_for_root "$1" "$root"
 }
 
-# _ql_write_owner -- ATOMIC owner.json write (HIMMEL-856 CR, C3): write to
+# _ql_write_owner -- ATOMIC owner.json write: write to
 # a tmp file in the lock dir, then mv into place (same-dir file rename --
 # atomic; readers never see a torn owner.json), rc-checked at every step.
 # Returns 1 on any failure; callers MUST check and never report a
 # successful acquire/heartbeat over a failed write -- a torn/absent
 # owner.json parses as CORRUPT-held (fail-closed) forever otherwise.
 #
-# [expect-gen] (HIMMEL-988): when given, the generation the caller verified.
+# [expect-gen]: when given, the generation the caller verified.
 # It is re-read after the tmp write and right before the mv, and a mismatch
 # returns 3 (tmp removed, owner.json untouched): the lock was taken over and
 # this write would land in the NEW holder's generation.
 #
-# [expect-arbiter] (HIMMEL-3614 F1): when given (8th arg), the owner ARBITER
+# [expect-arbiter]: when given (8th arg), the owner ARBITER
 # the caller verified, re-checked the same way. A takeover by a copy of this
 # script that predates the generation fence mints no gen file, so gen alone
 # can read "" both before and after; the arbiter (written O_EXCL by every
@@ -466,7 +464,7 @@ _ql_write_owner() {
     return 0
 }
 
-# CROSS-ROOT LOCK RESOLUTION (HIMMEL-2861) ----------------------------------
+# CROSS-ROOT LOCK RESOLUTION ----------------------------------
 #
 # WHY: `acquire` runs with the queue's handover root in scope (in Mode B,
 # HANDOVER_DIR exported on the command line), but the matching `release` at
@@ -476,7 +474,7 @@ _ql_write_owner() {
 # is told nothing was held (silently, rc=0) while the real lock stays HELD.
 # Six legs orphaned their locks that way on 2026-09-09; the console had to
 # force-release all six. Per the enforcement-strength convention
-# (HIMMEL-195) the second drift escalates to STRUCTURAL: the script itself
+# the second drift escalates to STRUCTURAL: the script itself
 # now looks in the other roots this machine knows about instead of relying
 # on every caller to remember the env prefix.
 #
@@ -538,7 +536,7 @@ _ql_candidate_roots() {
 # <token>, or nothing (rc 1). Emits exactly ONE WARN naming both roots when
 # it finds one, so the mismatch is visible in the leg's wrap output instead
 # of being silently papered over. The recorded root comes from the lock's
-# own `root` marker when present; a lock dir written by the pre-HIMMEL-2861
+# own `root` marker when present; a lock dir written by the pre-root-marker
 # script has no marker, so the candidate root itself is named instead --
 # that is the whole backward-compat story for old lock dirs.
 _ql_search_roots() {
@@ -566,7 +564,7 @@ EOF
     return 1
 }
 
-# ONE DOC, ONE KEY (HIMMEL-3290) --------------------------------------------
+# ONE DOC, ONE KEY --------------------------------------------
 #
 # WHY: the key used to be a function of how the CALLER spelled things. Two live
 # legs held locks under the wrong key on 2026-09-20 and `status` answered
@@ -815,7 +813,7 @@ EOF
     printf '%s' "$pick"
 }
 
-# _ql_warn_aging <age> <ttl> [suffix] -- HIMMEL-2318: the AGING warning
+# _ql_warn_aging <age> <ttl> [suffix] -- the AGING warning
 # (heartbeat age >= half the TTL), hoisted out of `status` so `heartbeat` and
 # `release` -- the two verbs a long leg DOES call -- say it too. A leg that
 # acquires at step 0 and releases at wrap never calls `status`, so the warning
@@ -845,7 +843,7 @@ _ql_hb_age() {
     printf '%s' "$age"
 }
 
-# _ql_holder_live <lockdir> <ttl> -- HIMMEL-2318: rc 0 when the holder is
+# _ql_holder_live <lockdir> <ttl> -- rc 0 when the holder is
 # provably still working, whatever its heartbeat says: <lockdir>/liveness
 # (written by `self-heartbeat` from the hook payload) names THIS host and a
 # transcript file whose mtime is younger than <ttl> seconds. Any failure --
@@ -862,7 +860,7 @@ _ql_holder_live() {
     lv_host=$(sed -n 's/^host=//p' "$lk/liveness" 2>/dev/null | head -n 1)
     lv_tr=$(sed -n 's/^transcript=//p' "$lk/liveness" 2>/dev/null | head -n 1)
     [ -n "$lv_host" ] && [ "$lv_host" = "$(_ql_hostname)" ] || return 1
-    # HIMMEL-2318: a marker that does not describe the recorded holder proves nothing about it.
+    # a marker that does not describe the recorded holder proves nothing about it.
     [ "$lv_host" = "$(_ql_json_field "$lk/owner.json" host)" ] || return 1
     [ -n "$lv_tr" ] && [ -f "$lv_tr" ] || return 1
     m=$(py_armor_mtime "$lv_tr") || m=""
@@ -877,7 +875,7 @@ _ql_holder_live() {
 }
 
 # _ql_lock_is_fresh <lockdir> -- rc 0 when the lock's heartbeat is inside the
-# TTL, or (HIMMEL-2318) its holder is provably live (_ql_holder_live). An
+# TTL, or its holder is provably live (_ql_holder_live). An
 # unparsable heartbeat is FRESH (fail-closed), as in `status`.
 _ql_lock_is_fresh() {
     local ttl="${QUEUE_LOCK_TTL_SECONDS:-21600}" hb hb_epoch now_epoch
@@ -890,7 +888,7 @@ _ql_lock_is_fresh() {
     _ql_holder_live "$1" "$ttl"
 }
 
-# _ql_owner_provably_dead <lockdir> <ttl> -- HIMMEL-5541: rc 0 ONLY on positive
+# _ql_owner_provably_dead <lockdir> <ttl> -- rc 0 ONLY on positive
 # proof that the holder is gone, never on the absence of evidence. Every one of
 # these must hold: owner.json names THIS host; the session token is exactly
 # <host>-pid<N> with N digits; no live pid N (kill -0 then ps -p, so an EPERM
@@ -966,7 +964,7 @@ EOF
     printf '%s' "$first"
 }
 
-# PER-SESSION TOKEN PERSISTENCE (HIMMEL-2813) -------------------------------
+# PER-SESSION TOKEN PERSISTENCE -------------------------------
 #
 # WHY: the release token exists in exactly one place -- the line `acquire`
 # printed into the session transcript -- and a mid-leg autocompact
@@ -978,7 +976,7 @@ EOF
 # per-session file keyed by the handover path, and a token-less `release` /
 # `heartbeat` reads it back and SAYS on stderr that it did.
 #
-# THIS DOES NOT WEAKEN THE TOKEN CONTRACT (HIMMEL-856 C1). It is the same
+# THIS DOES NOT WEAKEN THE TOKEN CONTRACT. It is the same
 # token, stored where only this user can read it, and every refusal stays
 # exactly as it was: an argv token still WINS over the file, a WRONG argv
 # token is still refused rc=2 even when a valid file sits next to it, and a
@@ -1003,10 +1001,10 @@ EOF
 # under XDG_RUNTIME_DIR, whose 0700 parent is what makes the swap
 # impossible -- which is the reason that is the default and /tmp only the
 # fallback. The blast radius either way is one queue lock, and the worst
-# outcome is the pre-HIMMEL-2813 one: the token is unavailable and the
+# outcome is the pre-persistence one: the token is unavailable and the
 # caller force-releases.
 #
-# SCOPED TO THE SESSION, NOT JUST THE USER (CR round 1, codex-1). Keying the
+# SCOPED TO THE SESSION, NOT JUST THE USER. Keying the
 # file on the handover path alone made it readable by ANY process running as
 # this user: a sibling leg that never acquired could run a token-less release
 # and be handed the holder's token -- reopening the precise hole C1 exists to
@@ -1016,7 +1014,7 @@ EOF
 # different filename and simply finds nothing. When no scope can be
 # established the feature turns ITSELF OFF -- nothing is persisted and
 # nothing is recalled -- rather than falling back to a user-wide file: the
-# safe degradation is the pre-HIMMEL-2813 argv-only behaviour, never a
+# safe degradation is the pre-persistence argv-only behaviour, never a
 # weaker token contract.
 #
 # The digest is a filename key, not a security primitive -- only collision
@@ -1036,7 +1034,7 @@ _ql_token_dir() { printf '%s/himmel-queue-lock' "${XDG_RUNTIME_DIR:-/tmp}"; }
 #   CLAUDE_CODE_SESSION_ID    the per-session id under Claude Code, which is
 #                             where the autocompact this feature exists for
 #                             actually happens
-# There is deliberately NO fallback below those (CR round 2, codex-1). An
+# There is deliberately NO fallback below those. An
 # earlier revision fell back to the POSIX session id, which is shared by
 # every process in one terminal -- so two agents launched from the same
 # terminal would have shared a token file, and a sibling's token-less
@@ -1113,7 +1111,7 @@ _ql_token_digest() {
 # token file. Tokens are `[A-Za-z0-9_-]+` by construction; the digest
 # fallback exists only so a token that somehow fails that shape still gets
 # its own per-acquisition file instead of colliding on a bare, unsuffixed
-# path shared with every other acquisition (HIMMEL-2870 exists to get rid of
+# path shared with every other acquisition (the per-acquisition token file exists to get rid of
 # exactly that shared path).
 _ql_token_suffix() {
     case "$1" in
@@ -1141,7 +1139,7 @@ _ql_token_file() {
 # _ql_token_persist <handover-path> <token> [<lockdir>] -- best-effort ON
 # PURPOSE: a failure here costs the compaction safety net, never the acquire,
 # which by then holds a valid lock releasable with the printed token exactly as
-# before. HIMMEL-2318: with <lockdir> it also writes a `<file>.doc` sidecar
+# before. with <lockdir> it also writes a `<file>.doc` sidecar
 # (line 1 the canonical doc path, line 2 the lock dir) -- the registration
 # `self-heartbeat` enumerates to find the locks this session holds. Same
 # directory, same 0600, same session digest in the filename, so another
@@ -1172,7 +1170,7 @@ _ql_token_recall() {
     newest=""
     for f in "$dir/$h".*; do
         [ -f "$f" ] || continue
-        # HIMMEL-2318: a .doc sidecar is registration data, never a token.
+        # a .doc sidecar is registration data, never a token.
         case "$f" in *.doc) continue ;; esac
         if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then
             newest="$f"
@@ -1187,9 +1185,9 @@ _ql_token_recall() {
 
 # _ql_token_forget <handover-path> <token> -- drop OUR OWN acquisition's
 # token file once the lock it releases is gone. One file per acquisition
-# (HIMMEL-2870) means the file this removes is named for <token> itself, so
+# means the file this removes is named for <token> itself, so
 # there is nothing to read or compare first: a fresh acquire landing in the
-# same window (CR round 1, codex-2 -- this runs AFTER the lock dir is
+# same window (this runs AFTER the lock dir is
 # removed) persists to ITS OWN file under ITS OWN token, never this one.
 _ql_token_forget() {
     local f
@@ -1199,7 +1197,7 @@ _ql_token_forget() {
 }
 
 # _ql_owner_matches <lockdir> <token> -- rc 0 when this lock dir's
-# owner.json names <token> as the holder (HIMMEL-2910: via
+# owner.json names <token> as the holder (via
 # _ql_token_matches, so a backticked <token> matches its bare stored form
 # too). A missing dir, a missing or unreadable owner.json, and a different
 # holder all return non-zero, so callers can use one test for "this is not
@@ -1212,23 +1210,23 @@ _ql_owner_matches() {
 
 # _ql_write_root_marker <lockdir> <root> -- record the root this lock
 # actually lives under. Best-effort ON PURPOSE: the cross-root search keys
-# off the owner token, not this file, and every pre-HIMMEL-2861 lock dir
+# off the owner token, not this file, and every pre-root-marker lock dir
 # lacks it, so a write failure costs one diagnostic line in a WARN -- never
 # the acquire, which by then holds a valid, released-normally lock.
 _ql_write_root_marker() {
     printf '%s\n' "$2" > "$1/root" 2>/dev/null || true
 }
 
-# _ql_arms_registry_retire_fired <handover-path> [<root>] -- HIMMEL-882 registry
+# _ql_arms_registry_retire_fired <handover-path> [<root>] -- registry
 # lifecycle: on a SUCCESSFUL acquire, CONSUME (drop) every still-pending
 # <handover-root>/.locks/arms.jsonl record for THIS host + this handover.
-# arms.jsonl (scripts/handover/arm-resume.sh, HIMMEL-856) is append-only
+# arms.jsonl (scripts/handover/arm-resume.sh) is append-only
 # and nothing previously retired a record when its arm fired -- so a re-arm
 # of the SAME handover from ANOTHER host kept matching the stale record and
 # hard-refusing rc=8 forever (ARM_DUP_OK=1 required on every re-arm). An
 # armed session that reaches the point of acquiring its queue lock has, by
 # definition, fired, so this is the natural place to retire its record(s).
-# RETENTION SHAPE (CR round-3): a fired record is inert coordination state
+# RETENTION SHAPE: a fired record is inert coordination state
 # (the foreign-hits scan skips it; takeovers.log + session notes are the
 # audit trail), so instead of marking records "fired" and carrying them
 # forever -- which made the registry O(all arms ever) and a long rewrite a
@@ -1236,10 +1234,10 @@ _ql_write_root_marker() {
 # '"fired":"true"'-marked line (written by the earlier marking revision) is
 # garbage-collected in passing. Both rewriters GC this way, so the file
 # stays O(active arms). Matches by host+canonical handover identity only (not
-# task-name/fire-at), with raw-field fallback for pre-HIMMEL-1344 records, so
+# task-name/fire-at), with raw-field fallback for records without the canonical identity, so
 # it also clears earlier SAME-host records left by a re-arm/
 # --force replace that never itself fired (arm-resume.sh additionally
-# prunes those at re-schedule time -- see its own HIMMEL-882 comment).
+# prunes those at re-schedule time -- see its own comment).
 #
 # Best-effort and fail-open: a missing/unresolvable registry, a mutex
 # timeout, a mid-rewrite mutex theft, or a write failure just leaves the
@@ -1252,7 +1250,7 @@ _ql_write_root_marker() {
 # the whole read-filter-rewrite runs under the OWNER-TOKENED
 # _ql_arms_mutex_acquire mkdir-CAS mutex shared with arm-resume.sh's
 # _arm_registry_replace_and_append, and the mv happens only while the
-# owner token still names us (round-3: a holder that outlives the mutex's
+# owner token still names us (a holder that outlives the mutex's
 # 60s staleness expiry gets reclaimed; its snapshot is then stale and its
 # blind mv/rmdir would corrupt the reclaimer's generation).
 _ql_arms_registry_retire_fired() {
@@ -1263,7 +1261,7 @@ _ql_arms_registry_retire_fired() {
     # structurally can't-happen on this call path -- silent return is
     # intentional, not an oversight (unlike every other failure branch
     # below, which WARNs).
-    # HIMMEL-3290: acquire passes the root the lock was keyed under ($2) so the
+    # acquire passes the root the lock was keyed under ($2) so the
     # consume looks in the SAME root as the lock, not the cwd's.
     root="${2:-}"
     [ -n "$root" ] || root=$(handover_root 2>/dev/null) || return 0
@@ -1279,22 +1277,22 @@ _ql_arms_registry_retire_fired() {
     tok="$_QL_ARMS_MUTEX_TOKEN"
     # Host stays escaped-vs-escaped. Path identity delegates to the shared
     # dual-format matcher: canonical root-relative handover-key for new records,
-    # exact/canonicalized raw fallback for records already on disk (HIMMEL-1344).
+    # exact/canonicalized raw fallback for records already on disk.
     host=$(_ql_hostname)
     _hp_json_escape "$host"; host_esc="$_HP_ESC"
     tmp="$reg.tmp.$$"
-    # round-4 (sfh-2): capture stderr instead of discarding it, so a real
+    # capture stderr instead of discarding it, so a real
     # write failure (disk full / permission denied / RO-fs / AV lock) folds
     # its first line into the WARN below and reads differently from a
     # mutex timeout or theft -- 2>/dev/null made all of these look like the
     # same generic "could not rewrite" message.
     if wfail_err=$( { : > "$tmp"; } 2>&1 ); then
-        # `|| [ -n "$line" ]` (round-2 Critical): read returns 1 at
+        # `|| [ -n "$line" ]`: read returns 1 at
         # EOF-without-newline while still filling $line -- without the guard
         # the rewrite silently DELETES a final record lacking a trailing
         # newline. Blank lines are dropped on rewrite (aligned with
-        # _arm_registry_replace_and_append). ZERO forks per line (round-3
-        # Critical): _hp_json_field returns via $_HP_FIELD, no $().
+        # _arm_registry_replace_and_append). ZERO forks per line
+        # (_hp_json_field returns via $_HP_FIELD, no $().
         while IFS= read -r line || [ -n "$line" ]; do
             [ -z "$line" ] && continue
             case "$line" in
@@ -1315,7 +1313,7 @@ _ql_arms_registry_retire_fired() {
         failed=1
     fi
     if [ "$failed" -eq 0 ] && [ "$changed" -eq 1 ]; then
-        # OWNER-TOKEN verify (round-3): mv only while the mutex still names
+        # OWNER-TOKEN verify: mv only while the mutex still names
         # us. If it was reclaimed mid-rewrite our snapshot is stale -- skip
         # the mv (the release below WARNs about the theft). The cat->mv
         # window is microseconds vs the whole-rewrite window it replaces --
@@ -1342,14 +1340,14 @@ _ql_arms_registry_retire_fired() {
     return 0
 }
 
-# _ql_arms_mutex_acquire <registry-file> -- HIMMEL-882 CR round-2/3: acquire
+# _ql_arms_mutex_acquire <registry-file> -- acquire
 # the short-lived mkdir-CAS mutex (<registry>.lock, a DIRECTORY -- the same
 # atomic primitive as the queue lock and the takeover claim above) that
 # serializes every arms.jsonl read-filter-rewrite writer (this script's
 # consume + arm-resume.sh's prune-and-append; the path AND the owner-token
 # protocol must stay identical in both). On success the lock dir carries an
 # `owner` token file and $_QL_ARMS_MUTEX_TOKEN names it -- release/mv are
-# compare-then-act against that token (round-3: a holder reclaimed after
+# compare-then-act against that token (a holder reclaimed after
 # the 60s staleness expiry must not blind-rmdir the reclaimer's lock or mv
 # a stale snapshot over its rewrite). Bounded: nominal ~4s of 0.1s retries
 # (platform-dependent -- measured ~2x that, ~8.7s, on Windows/Git-Bash from
@@ -1357,7 +1355,7 @@ _ql_arms_registry_retire_fired() {
 # fail-open contract (WARN + skip the registry op, never fail the
 # acquire/arm). A mutex stranded by a crashed writer is cleared when its
 # dir mtime is >=60s old, re-probed every 10th iteration across the retry
-# budget (round-4: NOT every iteration -- py_armor_mtime forks python and
+# budget (NOT every iteration -- py_armor_mtime forks python and
 # Windows python startup is ~100-300ms; probing every 10th yields ~4 probes
 # across the ~40-iteration budget, bounding the extra forks while still
 # catching a lock that crosses the 60s threshold mid-wait -- a lock that
@@ -1365,7 +1363,7 @@ _ql_arms_registry_retire_fired() {
 # tries==0 but would previously never be re-checked, burning the whole
 # retry budget instead of reclaiming it; a failed probe never clears).
 # The staleness threshold is NAMED so the stress test can assert against the
-# real lease instead of duplicating a magic 60 (HIMMEL-1344 CR round). Keep the
+# real lease instead of duplicating a magic 60. Keep the
 # `_QL_ARMS_MUTEX_STALE_SECS=<n>` spelling on one line: test-queue-lock.sh reads
 # this value straight out of the source and fails loudly if it stops matching.
 _QL_ARMS_MUTEX_STALE_SECS=60
@@ -1383,7 +1381,7 @@ _ql_arms_mutex_acquire() {
             # some Windows/WSL apt boxes) resolves two CONCURRENT mkdir of the
             # same path to BOTH rc=0 -- a non-atomic check-then-create that
             # breaks the mkdir(2) EEXIST guarantee this lock relied on
-            # (HIMMEL-966; measured ~96% double-win on ext4, so two writers
+            # (measured ~96% double-win on ext4, so two writers
             # entered the arms-registry critical section at once and one
             # consume was lost). So the OWNER create, not the mkdir, is the
             # real arbiter: set -C (noclobber) makes it a single kernel
@@ -1416,7 +1414,7 @@ _ql_arms_mutex_acquire() {
 }
 
 # _ql_arms_mutex_release <registry-file> <token> -- compare-then-delete
-# (round-3): release the arms mutex ONLY if its owner token is still ours.
+# release the arms mutex ONLY if its owner token is still ours.
 # A mismatch means the lock was reclaimed from under us (we outlived the
 # 60s staleness expiry mid-rewrite) -- WARN loudly and leave the
 # reclaimer's lock alone (rc 1); the caller has already skipped its stale
@@ -1436,7 +1434,7 @@ _ql_arms_mutex_release() {
     return 0
 }
 
-# _ql_emit_close_evidence -- HIMMEL-2294: best-effort declare THIS session
+# _ql_emit_close_evidence -- best-effort declare THIS session
 # closable, at the moment a real release succeeds. session_dead_total
 # (flow-exporter.ts) false-pages when a terminal is closed: claude is
 # killed with no SessionEnd hook, so the session ages into "dead" with no
@@ -1456,7 +1454,7 @@ _ql_arms_mutex_release() {
 # Only the token-verified normal path below is, by construction, the lock's
 # own holder actually closing.
 #
-# CR fix (codex-2): bounded with `timeout` when available -- a hung bun
+# bounded with `timeout` when available -- a hung bun
 # runtime would otherwise block the release caller despite the `|| true`
 # below (rc is only checked after the call returns), stranding an unattended
 # overnight leg on its wrap path. Same graceful-degrade convention as
@@ -1474,7 +1472,7 @@ _ql_emit_close_evidence() {
     fi
 }
 
-# LOCK GENERATION FENCE (HIMMEL-988) ----------------------------------------
+# LOCK GENERATION FENCE ----------------------------------------
 #
 # WHY: every acquire -- fresh or takeover -- recreates the lock dir at the SAME
 # path, so a caller that verified ownership and then stalled (GC pause,
@@ -1514,9 +1512,9 @@ _ql_read_gen() {
 # written; the caller treats that like a failed owner.json write.
 _ql_brand_gen() { ( set -C; _ql_new_gen > "$1/gen" ) 2>/dev/null; }
 
-# _ql_read_arbiter <lockdir> -- the lock's owner ARBITER (HIMMEL-856): a
+# _ql_read_arbiter <lockdir> -- the lock's owner ARBITER: a
 # plain-text file written O_EXCL by every acquire, including copies that
-# predate the HIMMEL-988 generation fence (HIMMEL-3614 F1). "" when it has
+# predate the generation fence. "" when it has
 # none. Fails CLOSED the same way _ql_read_gen does: an existing-but-unreadable
 # arbiter yields a fresh sentinel on every read, so two failed reads never
 # compare equal.
@@ -1526,14 +1524,14 @@ _ql_read_arbiter() {
 }
 
 # _ql_gen_unreadable <lockdir> -- true when a gen file exists but cannot be
-# read right now (permissions). HIMMEL-3614 F2: this fails closed exactly
+# read right now (permissions). This fails closed exactly
 # like a real takeover (two failed reads never compare equal), but it is not
 # one -- callers use this to say so instead of reporting a silent takeover.
 _ql_gen_unreadable() {
     [ -e "$1/gen" ] && ! cat "$1/gen" >/dev/null 2>&1
 }
 
-# _ql_test_pause <point> -- TEST SEAM (HIMMEL-988). Inert unless BOTH
+# _ql_test_pause <point> -- TEST SEAM. Inert unless BOTH
 # QUEUE_LOCK_TEST_PAUSE_AT names this point and QUEUE_LOCK_TEST_PAUSE_FILE is
 # set: then it creates <file>.reached and waits (bounded, ~30s) while <file>
 # exists. It lets a test freeze one caller between its ownership check and
@@ -1567,7 +1565,7 @@ _ql_takeover_claim_release() {
 
 # _ql_arms_retire_both <canonical> <raw> <root> -- an arms.jsonl record may
 # carry the doc as the arm wrote it (raw, e.g. a backslash or odd path) or as
-# the canonical key (HIMMEL-1344), so consume under both spellings; the second
+# the canonical key, so consume under both spellings; the second
 # pass is a no-op when the first already dropped the record.
 _ql_arms_retire_both() {
     _ql_arms_registry_retire_fired "$1" "$3"
@@ -1581,7 +1579,7 @@ queue_lock_acquire() {
         return 1
     fi
     local lockdir
-    # HIMMEL-3290: the key is derived from the DOC (canonical path, deepest
+    # the key is derived from the DOC (canonical path, deepest
     # known root containing it), so `ho` from here on is the canonical path --
     # what owner.json records and what the token file is keyed on.
     local ho_raw="$ho"
@@ -1592,12 +1590,12 @@ queue_lock_acquire() {
     local host now lock_root
     host=$(_ql_hostname)
     now=$(_ql_now_iso)
-    # HIMMEL-2861: the root the lock is about to live under, recorded inside it.
+    # the root the lock is about to live under, recorded inside it.
     lock_root="$_QL_ROOT"
 
-    # HIMMEL-3290: ONE DOC, ONE LOCK. A lock for this doc under a legacy
+    # ONE DOC, ONE LOCK. A lock for this doc under a legacy
     # (mis-keyed) key is invisible to the mkdir below, so a second writer
-    # would take the doc while the first still holds it (the HIMMEL-856
+    # would take the doc while the first still holds it (a double-holder
     # class). Refuse while ANY such lock is fresh -- also when the canonical
     # key holds a stale lock about to be taken over; a stale one is no obstacle.
     local legacy_lk
@@ -1610,7 +1608,7 @@ queue_lock_acquire() {
 
     # Check the parent mkdir explicitly so a permission failure reports its
     # true cause instead of surfacing later as a misleading lock-mkdir
-    # failure (HIMMEL-856 CR suggestion).
+    # failure.
     if ! mkdir -p "$(dirname "$lockdir")" 2>/dev/null; then
         echo "queue-lock: cannot create the lock parent dir '$(dirname "$lockdir")' (permissions? a file in the way?)" >&2
         return 1
@@ -1688,7 +1686,7 @@ queue_lock_acquire() {
     else
         echo "WARN queue-lock: could not parse heartbeat '$o_heartbeat' -- treating as FRESH (fail-closed on unparsable timestamps)" >&2
     fi
-    # HIMMEL-2318: a heartbeat past the TTL is only STALE if the holder is not
+    # a heartbeat past the TTL is only STALE if the holder is not
     # provably still working -- a leg that never heartbeated but whose
     # transcript on this host is still being written is LIVE. The existing
     # "held (FRESH)" refusal below then applies; QUEUE_LOCK_TAKEOVER=1 forces.
@@ -1706,7 +1704,7 @@ queue_lock_acquire() {
         else
             reason="forced (QUEUE_LOCK_TAKEOVER=1, lock is still FRESH)"
         fi
-        # ATOMIC TAKEOVER (HIMMEL-856 CR, codex-2): never write into a lock
+        # ATOMIC TAKEOVER: never write into a lock
         # dir we did not just create via mkdir. An in-place owner.json
         # rewrite would let two concurrent stale-acquirers BOTH "win".
         # NOTE: an earlier revision claimed the old dir via `mv` to a
@@ -1771,7 +1769,7 @@ queue_lock_acquire() {
         v_raw=$(cat "$lockdir/owner.json" 2>/dev/null) || v_raw=""
         if [ "$v_raw" != "$o_raw" ] || [ "$(_ql_read_gen "$lockdir")" != "$o_gen" ]; then
             _ql_takeover_claim_release "$claim" "$claim_token" || true
-            # HIMMEL-3614 F2: an unreadable gen fails closed exactly like a
+            # an unreadable gen fails closed exactly like a
             # real takeover, but when the owner.json bytes are UNCHANGED it
             # is not one -- say so and name the recovery instead of a
             # generic (and here misleading) "changed hands".
@@ -1789,7 +1787,7 @@ queue_lock_acquire() {
             return 2
         fi
         _ql_test_pause takeover-verified
-        # HIMMEL-988 fence: a taker that stalled here past the 120s claim TTL
+        # generation fence: a taker that stalled here past the 120s claim TTL
         # may find the claim reclaimed and the lock re-acquired by another
         # taker. Re-verify the claim brand, the verified bytes and the
         # generation at the delete boundary; any change = hands off.
@@ -1799,7 +1797,7 @@ queue_lock_acquire() {
         if [ "$f_claim" != "$claim_token" ] || [ "$f_raw" != "$o_raw" ] \
             || [ "$(_ql_read_gen "$lockdir")" != "$o_gen" ]; then
             _ql_takeover_claim_release "$claim" "$claim_token" || true
-            # HIMMEL-3614 F2: see the identical check in the CAS re-verify
+            # see the identical check in the CAS re-verify
             # above -- an unreadable gen with an unchanged claim and
             # owner.json is not a real takeover.
             if [ "$f_claim" = "$claim_token" ] && [ "$f_raw" = "$o_raw" ] && _ql_gen_unreadable "$lockdir"; then
@@ -1889,10 +1887,10 @@ queue_lock_heartbeat() {
     _ql_enter "$ho" "queue-lock: could not resolve handover root" || return 1
     lockdir="$_QL_LOCKDIR"
     ho="$_QL_DOC"
-    # HIMMEL-2813: no token on argv -- try the per-session file before
+    # no token on argv -- try the per-session file before
     # refusing. An argv token always wins (this only runs when there is
     # none), and a recall that finds nothing falls through to the unchanged
-    # refusal below. HIMMEL-3290: the file may be keyed on the doc as a
+    # refusal below. the file may be keyed on the doc as a
     # pre-fix acquire spelled it, so the raw spelling is tried too.
     if [ -z "$session" ]; then
         session=$(_ql_token_recall "$ho") || session=$(_ql_token_recall "$ho_raw") || session=""
@@ -1912,7 +1910,7 @@ queue_lock_heartbeat() {
         } >&2
         return 2
     fi
-    # HIMMEL-2861: the cwd may resolve a different root than the acquire did
+    # the cwd may resolve a different root than the acquire did
     # (a leg heartbeating from its worktree). Search the other roots this
     # machine knows about whenever the lock HERE is not ours -- absent, yes,
     # but also present-and-held-by-someone-else: two roots can carry the same
@@ -1923,7 +1921,7 @@ queue_lock_heartbeat() {
         if hb_found=$(_ql_search_roots "$ho" "$session"); then
             lockdir="$hb_found"
         else
-            # HIMMEL-3290: a lock recorded under a legacy (mis-keyed) key --
+            # a lock recorded under a legacy (mis-keyed) key --
             # token AND doc must both match (see _ql_find_owned).
             hb_found=$(_ql_find_owned "$ho" "$session"); hb_rc=$?
             if [ "$hb_rc" -eq 0 ]; then
@@ -1939,16 +1937,16 @@ queue_lock_heartbeat() {
         # lives in any other root -- fall through to the holder check below
         # for the unchanged rc=2 "held by session=..." refusal.
     fi
-    # HIMMEL-988: the generation is read BEFORE the token check, so the write
-    # below can only land in the generation that check verified. HIMMEL-3614
-    # F1: the arbiter is read alongside it -- see _ql_write_owner's header.
+    # the generation is read BEFORE the token check, so the write
+    # below can only land in the generation that check verified. The arbiter is read alongside it --
+    # see _ql_write_owner's header.
     local o_session o_host o_started hb_gen hb_arbiter hb_rc
     hb_gen=$(_ql_read_gen "$lockdir")
     hb_arbiter=$(_ql_read_arbiter "$lockdir")
     o_session=$(_ql_json_field "$lockdir/owner.json" session)
     o_host=$(_ql_json_field "$lockdir/owner.json" host)
     o_started=$(_ql_json_field "$lockdir/owner.json" started)
-    # HIMMEL-2910: _ql_token_matches, not a bare `!=`, so a backticked argv
+    # _ql_token_matches, not a bare `!=`, so a backticked argv
     # token matches its bare owner.json form too (see the helper's comment
     # for why an EARLIER, now-removed revision that stripped $session before
     # this point was wrong). On a match, normalize to the owner's own
@@ -1958,7 +1956,7 @@ queue_lock_heartbeat() {
         return 2
     fi
     session="$o_session"
-    # HIMMEL-2318: the age of the PREVIOUS heartbeat, read before the rewrite
+    # the age of the PREVIOUS heartbeat, read before the rewrite
     # below replaces it -- a refresh that arrives past half the TTL means the
     # lock was AGING (possibly takeable) until this very call.
     local hb_prev_age hb_ttl="${QUEUE_LOCK_TTL_SECONDS:-21600}"
@@ -1979,7 +1977,7 @@ queue_lock_heartbeat() {
     return 0
 }
 
-# _ql_write_liveness <lockdir> <transcript> -- HIMMEL-2318: record this host
+# _ql_write_liveness <lockdir> <transcript> -- record this host
 # and the holder's transcript path as <lockdir>/liveness (the input of
 # _ql_holder_live). Best-effort and silent: atomic tmp+mv like owner.json, and
 # the file is only rewritten when its content differs so a hook firing on
@@ -1999,7 +1997,7 @@ _ql_write_liveness() {
     return 0
 }
 
-# _ql_acquire_liveness <lockdir> -- HIMMEL-2318: on acquire, record the
+# _ql_acquire_liveness <lockdir> -- on acquire, record the
 # acquiring session's own transcript as the liveness marker when it can be
 # found: the first ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/*/<session>.jsonl.
 # Cheap (one glob), silent, best-effort; the PostToolUse self-heartbeat hook
@@ -2018,7 +2016,7 @@ _ql_acquire_liveness() {
     return 0
 }
 
-# queue_lock_self_heartbeat -- HIMMEL-2318: the PostToolUse hook verb. Reads
+# queue_lock_self_heartbeat -- the PostToolUse hook verb. Reads
 # the hook payload from stdin and keeps THIS session's own queue locks alive
 # without the leg having to remember to `heartbeat`. CONTRACT: always rc 0 and
 # no output on stdout or stderr -- it runs on every tool call, so it must be
@@ -2109,7 +2107,7 @@ queue_lock_release() {
         # forcing session is a cleaner, not the holder wrapping up.
         return 0
     fi
-    # HIMMEL-2813: no token on argv -- try the per-session file before
+    # no token on argv -- try the per-session file before
     # refusing. This runs AFTER the force-release block above, so that path
     # is untouched, and only when argv carried nothing, so an explicit token
     # always wins. A recall that finds nothing falls through to the
@@ -2135,7 +2133,7 @@ queue_lock_release() {
         } >&2
         return 2
     fi
-    # HIMMEL-2861: same cross-root resolution as heartbeat, on the same
+    # same cross-root resolution as heartbeat, on the same
     # "the lock here is not ours" trigger. When nothing of ours is found
     # ANYWHERE this now exits 3 instead of the old silent 0 -- a lock the
     # caller believes it released but did not is exactly the failure that
@@ -2146,7 +2144,7 @@ queue_lock_release() {
         if rel_found=$(_ql_search_roots "$ho" "$session"); then
             lockdir="$rel_found"
         else
-            # HIMMEL-3290: a lock recorded under a legacy (mis-keyed) key --
+            # a lock recorded under a legacy (mis-keyed) key --
             # token AND doc must both match (see _ql_find_owned).
             rel_found=$(_ql_find_owned "$ho" "$session"); rel_rc=$?
             if [ "$rel_rc" -eq 0 ]; then
@@ -2154,7 +2152,7 @@ queue_lock_release() {
             elif [ "$rel_rc" -eq 2 ]; then
                 return 2
             elif [ ! -d "$lockdir" ]; then
-                # HIMMEL-3290: nothing of OURS anywhere, but a lock for this
+                # nothing of OURS anywhere, but a lock for this
                 # doc may be held by someone else under a legacy key. Say so
                 # (rc=2, the same refusal as a stranger at the canonical key)
                 # rather than "nothing held" -- and touch nothing.
@@ -2178,8 +2176,8 @@ queue_lock_release() {
         # (or, for a lock dir with no readable owner.json, the unchanged
         # corrupt-lock cleanup).
     fi
-    # HIMMEL-988: generation read BEFORE the token check -- see heartbeat.
-    # HIMMEL-3614 F1: the arbiter is read alongside it -- see
+    # generation read BEFORE the token check -- see heartbeat.
+    # the arbiter is read alongside it -- see
     # _ql_write_owner's header.
     local rel_gen rel_arbiter
     rel_gen=$(_ql_read_gen "$lockdir")
@@ -2187,7 +2185,7 @@ queue_lock_release() {
     if [ -f "$lockdir/owner.json" ]; then
         local o_session
         o_session=$(_ql_json_field "$lockdir/owner.json" session)
-        # HIMMEL-2910: _ql_token_matches, not a bare `!=` -- see the
+        # _ql_token_matches, not a bare `!=` -- see the
         # heartbeat function's identical comment. Normalize to the owner's
         # canonical value on a match so _ql_token_forget below compares the
         # PERSISTED file's exact content, not whatever form the caller
@@ -2203,7 +2201,7 @@ queue_lock_release() {
         echo "queue-lock: release refused -- the lock was taken over after this release verified it (ownership changed; now held by session=$(_ql_json_field "$lockdir/owner.json" session)); nothing was released" >&2
         return 2
     fi
-    # HIMMEL-2318: the age at release time, read before the dir goes away. A
+    # the age at release time, read before the dir goes away. A
     # leg that held its lock past half the TTL without a single heartbeat
     # outran its own safety margin unseen -- say so now, while it still can.
     local rel_age rel_ttl="${QUEUE_LOCK_TTL_SECONDS:-21600}"
@@ -2223,12 +2221,12 @@ queue_lock_release() {
 
 queue_lock_status() {
     local ho="${1:-}"
-    # --sweep (HIMMEL-2369) is a SEPARATE code path: $2, if given, is a
+    # --sweep is a SEPARATE code path: $2, if given, is a
     # handover ROOT (not a single handover path) -- see
     # queue_lock_status_sweep's own header comment. Dispatched here (rather
     # than a new top-level verb) since the CLI shape is `status --sweep`.
     #
-    # HIMMEL-2409: more than one operand is a usage error (rc=1, nothing on
+    # more than one operand is a usage error (rc=1, nothing on
     # stdout) for both shapes. An unquoted path containing a space arrives as
     # TWO operands; reading only the first swept the wrong root and printed a
     # confident "no held locks" (rc 0) -- the rc=1 is distinct from the
@@ -2262,7 +2260,7 @@ queue_lock_status() {
     lockdir="$_QL_LOCKDIR"
     ho="$_QL_DOC"
     if [ ! -d "$lockdir" ]; then
-        # HIMMEL-3290: `free` only when NO lock anywhere records this doc. A
+        # `free` only when NO lock anywhere records this doc. A
         # lock under a legacy (mis-keyed) key is HELD -- answering `free` for
         # it is what let a console read a live leg's lock as reclaimable.
         local legacy_lk
@@ -2301,7 +2299,7 @@ queue_lock_status() {
         return 11
     fi
     cat "$lockdir/owner.json"
-    # HIMMEL-3614 F2: an unreadable gen fails every future takeover closed
+    # an unreadable gen fails every future takeover closed
     # SILENTLY (two failed reads never compare equal) -- say why here, once,
     # rather than leaving every refusal to explain itself from scratch.
     if _ql_gen_unreadable "$lockdir"; then
@@ -2320,7 +2318,7 @@ queue_lock_status() {
     else
         echo "WARN queue-lock: could not parse heartbeat '$o_heartbeat' -- treating as FRESH (fail-closed on unparsable timestamps)" >&2
     fi
-    # HIMMEL-2318: a heartbeat past the TTL is STALE only if the holder is not
+    # a heartbeat past the TTL is STALE only if the holder is not
     # provably still working (transcript on this host written within the TTL).
     if [ "$stale" -eq 1 ] && _ql_holder_live "$lockdir" "$ttl"; then
         stale=0
@@ -2335,11 +2333,11 @@ queue_lock_status() {
         return 12
     fi
     # Aging warning (C2): a FRESH lock past half the TTL is drifting toward a
-    # stale takeover window -- surface it before it becomes one. HIMMEL-2318:
+    # stale takeover window -- surface it before it becomes one:
     # the PostToolUse self-heartbeat hook keeps a wired session's lock young;
     # heartbeat and release carry the same warning (_ql_warn_aging).
     _ql_warn_aging "$age" "$ttl"
-    # HIMMEL-2381: the TTL/aging thresholds above are sized for the overnight
+    # the TTL/aging thresholds above are sized for the overnight
     # BUDGET (hours) -- too coarse to catch a leg hung on an interactive
     # permission prompt (nobody unattended to answer it), which stalls its
     # heartbeat within minutes. A tighter idle-warn threshold (default 45m)
@@ -2357,12 +2355,12 @@ queue_lock_status() {
     return 11
 }
 
-# queue_lock_status_sweep [<handover-root>] -- HIMMEL-2369: `status` inspects
+# queue_lock_status_sweep [<handover-root>] -- `status` inspects
 # ONE queue at a time, but the console's periodic tick needs a cheap way to
 # ask "is ANY leg on this machine stuck?" without already knowing every
 # handover path in advance (a leg hung on an interactive prompt, or idle-
 # waiting on an operator action, stops heartbeating within minutes but holds
-# its lock for the full multi-hour TTL -- HIMMEL-2381's single-queue
+# its lock for the full multi-hour TTL -- the single-queue
 # idle-warn line can't help unless something already knows to ask about that
 # ONE queue). This enumerates every lock dir under <root>/.locks/queue/ and
 # reports each on its own line.
@@ -2375,14 +2373,14 @@ queue_lock_status() {
 # One line per lock dir to stdout (machine-greppable):
 #   slug=<slug> session=<s> host=<h> age=<n>s status=<TOKEN>
 # slug/session/host are filesystem- or owner-controlled, so they are run
-# through _ql_sweep_field before ever reaching an echo (HIMMEL-2369 CR
-# round-2, codex-3): whitespace and control bytes -- a literal newline most
+# through _ql_sweep_field before ever reaching an echo:
+# whitespace and control bytes -- a literal newline most
 # of all -- are folded to "_" and the value is length-capped, so a crafted
 # or merely odd value can never forge or split the one-line-per-lock
 # contract a caller parses this output against.
 # status is one of:
 #   OK            -- held, heartbeat age below the idle-warn threshold
-#   STALE-DEAD    -- (HIMMEL-5541) heartbeat age >= QUEUE_LOCK_TTL_SECONDS AND
+#   STALE-DEAD    -- heartbeat age >= QUEUE_LOCK_TTL_SECONDS AND
 #                    the owner is provably dead (_ql_owner_provably_dead).
 #                    Flagged (rc=20) until reaped; `--reap-dead` releases it
 #                    and prints reap=released (or reap=failed, still flagged).
@@ -2400,8 +2398,7 @@ queue_lock_status() {
 #                    parsed into an epoch, so this lock's freshness cannot
 #                    be assessed at all
 #   INDETERMINATE -- owner.json is missing but the lock DIRECTORY is younger
-#                    than _QL_SWEEP_CORRUPT_GRACE_SECS (HIMMEL-2369 CR
-#                    round-2, codex-2): `acquire` mkdirs the lock dir and
+#                    than _QL_SWEEP_CORRUPT_GRACE_SECS: `acquire` mkdirs the lock dir and
 #                    THEN writes owner.json a moment later (a takeover does
 #                    the same rm+re-mkdir dance; `release`'s rm -rf can also
 #                    unlink owner.json before the directory entry itself is
@@ -2415,7 +2412,7 @@ queue_lock_status() {
 #                    contribute to rc=20) -- but deliberately narrow, not a
 #                    way to silence real corruption (see below).
 # CORRUPT and UNKNOWN both count as FLAGGED (rc=20), the SAME fail-closed
-# posture as IDLE-HELD? (HIMMEL-2369 CR round-1, codex-1): a lock this sweep
+# posture as IDLE-HELD?: a lock this sweep
 # could not fully assess must never report a clean status=OK. This differs
 # from the single-queue `status` path on purpose -- there, an unparsable
 # heartbeat still returns rc=11 (held), never a clean verdict, so "treat as
@@ -2452,7 +2449,7 @@ queue_lock_status() {
 # stuck lock.
 _QL_SWEEP_CORRUPT_GRACE_SECS=5
 
-# _ql_sweep_field <value> -- HIMMEL-2369 CR round-2 (codex-3): ONE shared
+# _ql_sweep_field <value> -- ONE shared
 # sanitize path for every filesystem- or owner-controlled value the sweep
 # emits (slug, session, host) so a future field added to the line can't
 # slip through un-sanitized -- see the "slug/session/host are..." note in
@@ -2477,7 +2474,7 @@ _ql_sweep_path() {
     printf '%.300s' "$v"
 }
 
-# HIMMEL-3290: a sweep that reads ONE root misses a live lock held under
+# a sweep that reads ONE root misses a live lock held under
 # another (N211b's sat one level above the registered root, and `sweep: no
 # held locks` was the answer). With NO operand the sweep now enumerates the
 # resolved root plus every known root and each one's parent (_ql_lock_roots --
@@ -2538,7 +2535,7 @@ _ql_sweep_one_root() {
         slug=$(basename "$lockdir" .lock)
         slug=$(_ql_sweep_field "$slug")
         if [ ! -f "$lockdir/owner.json" ]; then
-            # codex-2 (HIMMEL-2369 CR round-2): a missing owner.json is NOT
+            # a missing owner.json is NOT
             # automatically CORRUPT -- `acquire` mkdirs this dir and writes
             # owner.json a moment later (release/takeover have the same
             # kind of gap in reverse); discriminate by the dir's own mtime
@@ -2579,7 +2576,6 @@ _ql_sweep_one_root() {
         # as "today at midnight" and returns a valid-looking epoch, which
         # would otherwise sneak an owner.json missing its heartbeat key
         # straight past the UNKNOWN check below with a bogus small age
-        # (HIMMEL-2369 CR round-1 follow-up, found while testing codex-1).
         # An empty heartbeat is unconditionally unassessable; skip the call.
         if [ -n "$o_heartbeat" ]; then
             hb_epoch=$(_ql_epoch_of_iso "$o_heartbeat")
@@ -2589,7 +2585,7 @@ _ql_sweep_one_root() {
             fi
         fi
         if [ "$age" -ge 0 ] && [ "$age" -ge "$ttl" ] && _ql_owner_provably_dead "$lockdir" "$ttl"; then
-            # HIMMEL-5541: past the TTL with a provably dead owner. Not a held
+            # past the TTL with a provably dead owner. Not a held
             # lock any more -- stop guard / tick skip it; --reap-dead releases it.
             if [ "${_QL_SW_REAP:-0}" -eq 1 ]; then
                 # Take the same mkdir takeover claim a stale taker holds, so a
@@ -2644,8 +2640,8 @@ _ql_sweep_one_root() {
         elif [ "$age" -ge 0 ]; then
             echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=OK$sfx"
         else
-            # Heartbeat missing or present-but-unparsable (codex-1, HIMMEL-2369
-            # CR round-1): fail-closed -- flagged, not a clean OK. See the
+            # Heartbeat missing or present-but-unparsable:
+            # fail-closed -- flagged, not a clean OK. See the
             # header comment above for why this can't mirror the single-queue
             # status path's "treat as FRESH".
             echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=unknown status=UNKNOWN$sfx"

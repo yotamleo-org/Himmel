@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixture-based tests for scripts/measurements/prose-audit.sh (HIMMEL-1939).
+# Fixture-based tests for scripts/measurements/prose-audit.sh.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -225,7 +225,7 @@ const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
 process.exit(Array.isArray(d.rows) && d.rows.length > 0 ? 0 : 1);
 ' <<< "$json_out"; then ok "rows are non-empty on a real fixture corpus (not a silent empty report)"; else bad "rows were empty against a non-empty fixture corpus"; fi
 
-# HIMMEL-1939 finding 2: a discovery `find` that fails partway through a tree
+# A discovery `find` that fails partway through a tree
 # must fail the whole reporter closed, not silently emit a partial-but-clean
 # report. A genuine unreadable-directory fixture isn't reliably reproducible
 # on Windows Git Bash (NTFS/Git-Bash chmod doesn't dependably deny `find`
@@ -258,7 +258,7 @@ else
   bad "discovery failure did not fail closed (rc=$fail_rc): $fail_out"
 fi
 
-# HIMMEL-1939 round 3 finding 1 [codex-adv-2]: the sort pipeline used to run
+# The sort pipeline used to run
 # inside process substitution, so its exit status was never observed — a
 # failing sort could leave `sorted` empty/partial while the script still
 # printed a clean summary and exited 0. Shadow `sort` via PATH with a stub
@@ -281,7 +281,7 @@ else
   bad "sort failure did not fail closed (rc=$sort_fail_rc): $sort_fail_out"
 fi
 
-# HIMMEL-1939 round 3 finding 2 [codex-adv-3]: an unchecked `mktemp -d`
+# An unchecked `mktemp -d`
 # failure would make FIXTURE fall back to `/repo`, and this suite runs
 # without errexit so nothing would stop the subsequent mkdir/cp/redirects
 # from writing there. Shadow `mktemp` via PATH with a stub that always fails
@@ -303,7 +303,7 @@ else
   bad "mktemp -d failure did not abort cleanly (rc=$mktemp_fail_rc): $mktemp_fail_out"
 fi
 
-# HIMMEL-1939 round 4 finding 1 [codex-adv-1]: the fence-ratio threshold `awk`
+# The fence-ratio threshold `awk`
 # call used a bash `if awk ...; then ... elif ...` shape that treats ANY
 # non-zero awk exit (a genuine "ratio <= limit", but also a broken/exhausted
 # awk) as the same false branch — a measurement failure was silently recorded

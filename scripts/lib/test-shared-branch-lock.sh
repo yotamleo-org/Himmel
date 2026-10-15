@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # test-shared-branch-lock.sh -- regression test for scripts/lib/shared-branch-lock.sh
-# (HIMMEL-800).
 #
 # Usage: bash scripts/lib/test-shared-branch-lock.sh
 # Exit:  0 = all pass, 1 = one or more failures.
@@ -22,7 +21,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -225,7 +224,7 @@ else
 fi
 
 # --- T12: reclamation never steals a lock that changed hands ---------------
-# HIMMEL-1558 CR (codex-1): between judging a lock stale and taking it away,
+# Between judging a lock stale and taking it away,
 # the holder can release and another writer acquire — an unconditional rm
 # would delete that LIVE lock and put two writers on the resource. This case
 # sources the library instead of driving the CLI, because the window is INSIDE
@@ -247,7 +246,7 @@ else
 fi
 
 # --- T13: release-if-owner is conditional AND has no check-then-act window --
-# HIMMEL-1558 CR round 2 (codex-3): a holder that reads the owner record and
+# A holder that reads the owner record and
 # then calls plain `release` can have the lock reclaimed in between and delete
 # the NEW holder's lock. release-if-owner compares the record while the
 # directory is exclusively its own, so a stranger's lock is refused (rc 3) and
@@ -274,7 +273,7 @@ if [ "$rc" -eq 0 ] && [ ! -d "$lockdir" ]; then
 else
     fail "T13: owner-matched release should free the lock (rc=$rc, dir=$([ -d "$lockdir" ] && echo present || echo gone))"
 fi
-# CR round 8 (codex-1): rc 0 is the caller's PROOF that its critical section
+# rc 0 is the caller's PROOF that its critical section
 # was mutually excluded, so an ABSENT lock must NOT report success. A run that
 # still held the lock would find the directory present; absence means it was
 # TTL-reclaimed and the reclaimer already released, i.e. the caller's work was

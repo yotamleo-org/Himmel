@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # marketplace/plugins/obsidian-triage/tools/ensure-deps.sh — dependency
-# preflight for this tools/ directory (HIMMEL-1135).
+# preflight for this tools/ directory.
 #
 # WHY: tools/.gitignore ignores node_modules/ ("Source files only ship in
 # git"), so any git-derived copy of this directory NEVER carries deps —
@@ -11,7 +11,7 @@
 # fxtwitter-enrich.mjs, ig-embed-enrich.mjs, playwright-crawl-youtube.mjs).
 # Without this preflight, a runbook that shells out to one of them from the
 # cache path throws `Cannot find package 'js-yaml'`, the tool reverts its
-# write — and (a SEPARATE bug, HIMMEL-1136, NOT fixed here) still exits 0,
+# write — and (a SEPARATE bug, NOT fixed here) still exits 0,
 # so the failure is silent.
 #
 # Fast path (deps already present — the overwhelmingly common case): one

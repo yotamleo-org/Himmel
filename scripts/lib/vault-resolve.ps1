@@ -1,5 +1,5 @@
 ﻿# Pure vault-root resolver for the end-session-wiki hook — PowerShell twin of
-# scripts/lib/vault-resolve.sh (HIMMEL-403). Dot-source it, then call
+# scripts/lib/vault-resolve.sh. Dot-source it, then call
 # Resolve-VaultRoot. Returns the resolved vault root (a leading "~/" or "~\" is
 # left LITERAL for the caller to expand once) OR an empty string => the caller
 # must skip (log, no write).
@@ -12,11 +12,11 @@
 #   4. default: registry["luna"] -> else the <USERPROFILE>\Documents\luna
 #      convention, but ONLY if it's a real vault (.obsidian marker) or dry-run.
 #      No configured and no real luna vault => '' (skip) — the hook never
-#      materializes a phantom vault for an adopter (HIMMEL-590 F7).
+#      materializes a phantom vault for an adopter.
 
 function Remove-Bom {
     # Strip a leading UTF-8 BOM (U+FEFF) so ConvertFrom-Json doesn't treat the
-    # file as invalid JSON and make the hook silently stop capturing (HIMMEL-408).
+    # file as invalid JSON and make the hook silently stop capturing.
     # No-op when Get-Content already stripped it; also normalizes $null -> ''.
     param([string]$Text)
     if ($Text.Length -gt 0 -and [int]$Text[0] -eq 0xFEFF) { return $Text.Substring(1) }
@@ -103,7 +103,7 @@ function Resolve-VaultRoot {
     #    like vault_path) else the Documents\luna convention, but ONLY if it's a
     #    REAL vault (.obsidian marker) or in dry-run. An adopter who never
     #    configured luna has no such directory -> '' (skip), so the session-end
-    #    hook never writes into / creates a phantom vault (HIMMEL-590 F7).
+    #    hook never writes into / creates a phantom vault.
     $def = Get-RegistryVault -RegistryPath $RegistryPath -Key 'luna'
     if ($def) { return $def }
     $conv = Join-Path (Join-Path $userHome 'Documents') 'luna'

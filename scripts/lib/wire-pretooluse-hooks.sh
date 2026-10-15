@@ -18,18 +18,18 @@
 # (`\U`->`U`), so the hook silently never fires.
 #
 # The command is a SHELL string, so the path is also SHELL-ESCAPED for the
-# double-quoted context it lands in -- see WIRE_HOOK_CMD_JQ below (HIMMEL-2905).
+# double-quoted context it lands in -- see WIRE_HOOK_CMD_JQ below.
 #
 # Dedup is by hook BASENAME with REPLACE semantics: re-running overwrites a
 # previously-wired (incl. broken backslash, or moved-clone) himmel hook rather
 # than appending a duplicate -- so a re-run repairs a bad install and never
 # double-wires, even when the clone path changed (SC8).
 #
-# The PreToolUse block MERGES; it is never regenerated (HIMMEL-2892). himmel
+# The PreToolUse block MERGES; it is never regenerated. himmel
 # owns exactly ONE field of an entry it installed -- that entry's `command`
 # string, which is what makes the moved-clone/backslash repair above possible.
 # A hook registered under two DISTINCT matchers keeps BOTH registrations (dedup
-# is per matcher, not per hook -- CR round 1, [codex-1]); only a repeat under a
+# is per matcher, not per hook); only a repeat under a
 # matcher that already carries it is dropped as a double-wire.
 # Everything else belongs to the adopter and survives byte-for-byte: the
 # stanza's `matcher` (never collapsed to the canonical string), the stanza's
@@ -49,7 +49,7 @@ set -euo pipefail
 # (wire-pretooluse-hooks.ps1) -- BOTH the PreToolUse specs and the SessionStart
 # hook object are built through it, so the two composers can never drift.
 #
-# HIMMEL-2892 round 6 / HIMMEL-2905: the JSON layer is escaped by jq, but the
+# The JSON layer is escaped by jq, but the
 # `command` it carries is a SHELL string that Claude Code hands to a shell. It
 # lands inside DOUBLE quotes, where exactly four characters keep their meaning
 # -- `\`, `"`, `$` and a backtick -- so shesc() backslash-escapes those four
@@ -81,7 +81,7 @@ WIRE_HOOK_CMD_JQ='
        | split("\"") | join("\\\"")
        | split("$")  | join("\\$")
        | split("`")  | join("\\`");
-  # HIMMEL-3574: a wired hook whose script no longer exists (a deleted clone
+  # a wired hook whose script no longer exists (a deleted clone
   # or install prefix) must not exit 127 -- that surfaces as an invisible
   # hook ERROR (design SS4.3 rules it out). Guard the invocation with
   # `[ -f ]`: script present -> unchanged behaviour and exit code (a deny
@@ -103,8 +103,8 @@ WIRE_HOOK_CMD_JQ='
 # untouched). If no entry matched at all, the spec's canonical stanza is
 # appended.
 #
-# Dedup is per (spec, MATCHER), not per spec (HIMMEL-2892 CR round 1,
-# [codex-1]). A hook registered under two DISTINCT matchers -- e.g.
+# Dedup is per (spec, MATCHER), not per spec.
+# A hook registered under two DISTINCT matchers -- e.g.
 # block-edit-on-main under a bare `Edit` stanza AND a bare `Write` one -- is two
 # genuinely different registrations, and keeping only the first silently drops
 # the second's tool coverage (the pre-merge code never had this failure mode: it
@@ -133,14 +133,14 @@ WIRE_PRETOOLUSE_MERGE_JQ='
   | .hooks.PreToolUse = (reduce $specs[] as $spec ((.hooks.PreToolUse // []); wire($spec)))
 '
 
-# HIMMEL-3332: record each wired hook element in the install-provenance ledger
+# record each wired hook element in the install-provenance ledger
 # (docs/internals/install-provenance.md). Called after the mv with the PRE-write
 # settings JSON; recording is best-effort -- a failed record warns and never
 # fails the wire. ponytail: the pre-state of an element is the FIRST pre-existing
 # counterpart (same matcher for the trio; same command basename for SessionStart),
 # so a duplicate the merge strips is not backed up. The container_created field
 # covers only the PreToolUse / SessionStart array itself; the `hooks` parent
-# object is recorded as its own `/hooks` json-key row (HIMMEL-3389, below).
+# object is recorded as its own `/hooks` json-key row (below).
 # shellcheck source=scripts/lib/provenance.sh
 . "$(dirname "${BASH_SOURCE[0]}")/provenance.sh"
 # shellcheck source=scripts/lib/claude-config-dir.sh
@@ -181,11 +181,11 @@ _wire_hooks_record() {
   done <<< "$rows"
 }
 
-# _wire_hooks_record_container <settings> <pre-write JSON> (HIMMEL-3389): a wire
+# _wire_hooks_record_container <settings> <pre-write JSON>: a wire
 # that had to create `.hooks` also records `/hooks`, as wire-statusline.sh does
 # for `/env`, so uninstall can drop the empty object it leaves behind. `.hooks`
 # absent -> create; an explicit `"hooks": null` -> replace with the null kept as
-# the pre-state (HIMMEL-3352); an existing object -> no row.
+# the pre-state; an existing object -> no row.
 _wire_hooks_record_container() {
   local settings="$1" base="$2" scope hooks_pre
   hooks_pre="$(printf '%s' "$base" | jq -c 'select(type == "object" and has("hooks")) | .hooks')"
@@ -213,7 +213,7 @@ wire_pretooluse_hooks() {
   # the target carries no such entry at all.
   #
   # Built with `jq -n --arg pfx`, never by interpolating $pfx into JSON TEXT
-  # (CodeRabbit round 1): a POSIX path may legally contain a `"`, which makes
+  #: a POSIX path may legally contain a `"`, which makes
   # hand-written JSON malformed, and `jq --argjson specs` then rejects the
   # argument outright — the settings file goes unwired. Passing the prefix as a
   # jq --arg lets jq do the escaping, for quotes, backslashes and newlines
@@ -283,7 +283,7 @@ wire_sessionstart_hook() {
   local pfx="${prefix//'\'//}"
   # The command is composed by jq (hookcmd), not by bash string interpolation,
   # so the SessionStart hook carries exactly the same shell escaping as the
-  # PreToolUse trio and the PowerShell twin (HIMMEL-2905). The dedup test is
+  # PreToolUse trio and the PowerShell twin. The dedup test is
   # built from the SAME escaped string, inside the same jq program, so the two
   # can never disagree — see the filter below.
   if [[ "$dry_run" -eq 1 ]]; then
@@ -299,14 +299,14 @@ wire_sessionstart_hook() {
   fi
   [ -z "$(printf '%s' "$base" | tr -d '[:space:]')" ] && base="{}"
   # Dedup is a LITERAL substring test on the ESCAPED basename, not a regex on
-  # the raw one (CR round 3, [codex-1]). Escaping the basename in the command
+  # the raw one. Escaping the basename in the command
   # (the CodeRabbit fix above) left the old `test("scripts/hooks/<raw>[.]sh")`
   # pattern unable to match its own output, so a re-run APPENDED a duplicate
   # instead of replacing — measured: 2 hook objects after two wires. Deriving
   # the needle from the same shesc() the command uses makes disagreement
   # impossible, and `contains` needs no regex-escaping at all, which the old
   # `${basename//./[.]}` only ever did for `.` anyway.
-  # HIMMEL-2913: an entry wired by a PREVIOUS release (pre-2905) carries the
+  # an entry wired by a PREVIOUS release (pre-2905) carries the
   # RAW, unescaped basename, which $needle alone cannot match, so $legacy
   # widens the dedup to also catch and replace that older text.
   # shellcheck disable=SC2016  # a jq program: $pfx/$hook/$cmd are jq bindings

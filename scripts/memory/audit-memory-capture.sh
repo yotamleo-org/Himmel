@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Decoupled audit of the auto-memory capture discipline (HIMMEL-570 / HIMMEL-1090).
+# Decoupled audit of the auto-memory capture discipline.
 #
 # Runs OFF the compound cadence on purpose: compound now runs weeks-to-months
 # apart, so a detector riding it would grow its own latency in proportion to
@@ -33,7 +33,7 @@
 set -uo pipefail
 
 # Claude Code's project-dir slug: the PRIMARY checkout's repo-root absolute
-# path with each `:`/`/`/`\` mapped to `-` (HIMMEL-2194 — derive instead of
+# path with each `:`/`/`/`\` mapped to `-` (derive instead of
 # hardcoding the operator's own path). `--show-toplevel` returns the
 # WORKTREE's own root when run from one (wrong slug — memory lives under the
 # PRIMARY checkout's slug); `--git-common-dir` is the shared .git dir every
@@ -205,7 +205,7 @@ fi
 #    failure or MEMORY_AUDIT_SKIP_QMD=1 (tests set the latter for hermeticity).
 #    Staleness (updated-age parsing) is a future refinement — only absence here.
 if [ "$QMD_SKIP" != "1" ] && command -v qmd >/dev/null 2>&1; then
-    # Group-bounded (HIMMEL-3956): a plain `qmd status` can wedge, and
+    # Group-bounded: a plain `qmd status` can wedge, and
     # timeout(1) would orphan qmd's bun child.
     # shellcheck source=../lib/qmd-bounded.sh
     . "$(dirname "${BASH_SOURCE[0]}")/../lib/qmd-bounded.sh"

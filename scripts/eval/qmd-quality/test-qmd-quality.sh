@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/qmd-quality/test-qmd-quality.sh - suite for the qmd retrieval
-# quality eval (HIMMEL-4184). Scoring runs on a synthetic fixture (no qmd, no
+# quality eval. Scoring runs on a synthetic fixture (no qmd, no
 # models); the wrapper cases check its refusals, which fire before qmd loads.
 set -u
 
@@ -105,7 +105,7 @@ has "wrapper: the refusal names QMD_QUALITY_GOLDEN" "$out" "QMD_QUALITY_GOLDEN"
 out=$(QMD_QUALITY_GOLDEN="$FIX/golden.jsonl" XDG_CACHE_HOME="$TMP/xdg" bash "$HERE/qmd-quality.sh" --index "$TMP/idx.sqlite" --out "$TMP/o9" 2>&1); rc=$?
 eq "wrapper: QMD_QUALITY_GOLDEN names the golden set (reaches the model check)" "$rc" "3"
 
-# --- HIMMEL-4439: the eval uses the index's embed model, or names the mismatch -
+# --- the eval uses the index's embed model, or names the mismatch -
 QWEN='hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf'
 GEMMA='hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf'
 if command -v sqlite3 >/dev/null 2>&1; then
@@ -128,7 +128,7 @@ else
   echo "SKIP model: sqlite3 not on PATH"
 fi
 
-# --- eval-runs ledger (HIMMEL-4647): a finished run appends one valid row ------
+# --- eval-runs ledger: a finished run appends one valid row ------
 # A stub bun stands in for run-eval/score/latency, so no qmd and no model loads.
 mkdir -p "$TMP/stub"
 cat >"$TMP/stub/bun" <<'STUB'
@@ -152,7 +152,7 @@ eq "ledger: row carries the run's metrics" \
 python3 "$HERE/../lib/eval_runs.py" validate "$LEDGER" >/dev/null 2>&1; rc=$?
 eq "ledger: row passes validate" "$rc" "0"
 
-# --- HIMMEL-4650: bootstrap CIs, paired compare, config-stamped ledger row -----
+# --- bootstrap CIs, paired compare, config-stamped ledger row -----
 # Fixture: 8 queries; run A misses all; run B hits all at rank 1; run C hits 4 of 8.
 : >"$TMP/g8.jsonl"; : >"$TMP/ra.jsonl"; : >"$TMP/rb.jsonl"; : >"$TMP/rc.jsonl"
 for i in 1 2 3 4 5 6 7 8; do

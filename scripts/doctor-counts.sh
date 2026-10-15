@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# doctor-counts.sh — the one writer of the statusline's doctor counts file
-# (HIMMEL-4363). Sourced by himmel-doctor.sh (full runs only) and
+# doctor-counts.sh — the one writer of the statusline's doctor counts file.
+# Sourced by himmel-doctor.sh (full runs only) and
 # doctor-cadence.sh. The HUD segment (scripts/statusline/hud-custom-lines.sh)
 # reads `<state dir>/counts` and shows its mtime age once it is over 24 h.
 #
@@ -23,7 +23,7 @@ doctor_counts_write() {
     return 1
 }
 
-# doctor_state_publish <state-dir> <keys-file> <fail> <warn>   (HIMMEL-4382)
+# doctor_state_publish <state-dir> <keys-file> <fail> <warn>
 # One run's published state: last.tsv ("<SEV> <id>" per FAIL/WARN, sorted
 # unique, atomic) and the counts file, written together so they always come
 # from the same run. Callers: a full himmel-doctor run on the primary

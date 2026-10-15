@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-qmd-quality-cadence.sh - qmd-quality-cadence.sh (HIMMEL-4184): the weekly
+# test-qmd-quality-cadence.sh - qmd-quality-cadence.sh: the weekly
 # qmd-quality run, its metrics log, the MRR-drop alert and the cron arm/disarm.
 # Hermetic: every state/alert/crontab/runner seam points into a mktemp dir, the
 # eval is a stub, the Telegram sender is a stub. Never arms anything on the

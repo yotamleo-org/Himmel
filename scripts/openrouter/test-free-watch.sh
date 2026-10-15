@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic suite for scripts/openrouter/free-watch.sh (HIMMEL-846).
+# Hermetic suite for scripts/openrouter/free-watch.sh.
 # No network: catalog + endpoints come from fixtures; state dir is a temp dir.
 # The suite is the spec: free-only filter, snapshot diff, pin flags, suggestions.
 set -euo pipefail
@@ -138,7 +138,7 @@ refute T85-notall  "$TMP/out" "FLAG deranked-pin: qwen/qwen3-coder:free (all"
 
 # T9 OpenRouter fallback on a NON-openrouter row (legacy singular
 # fallback_model) is still watched - critic-panel fallback-semantics parity
-# (HIMMEL-729 exhaustion path); the alibaba primary (no /) is NOT policy-flagged.
+# (exhaustion path); the alibaba primary (no /) is NOT policy-flagged.
 cat > "$TMP/registry.json" <<'EOF'
 {"panel":[{"slug":"qwen3coder","model":"qwen3-coder-plus","provider":"alibaba-coding-plan","tier":"free",
   "fallback_model":"qwen/qwen3-next-80b-a3b-instruct:free"}]}

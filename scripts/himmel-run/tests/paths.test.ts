@@ -16,7 +16,7 @@ describe('paths', () => {
       // env-paths appends \Cache to the app dir on Windows; paths.ts strips it
       // via dirname() so the root ends in \himmel-cli, NOT \himmel-cli\Cache.
       // Positively pin the stripped layout — guards against an env-paths layout
-      // change (the regression surface of the v3->v4 bump, HIMMEL-547).
+      // change (the regression surface of the v3->v4 bump).
       expect(root).toMatch(/[\\/]himmel-cli$/);
     }
   });

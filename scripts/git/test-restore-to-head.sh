@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Hermetic tests for restore-to-head.sh (HIMMEL-2934).
+# Hermetic tests for restore-to-head.sh.
 #
 # WHY THIS EXISTS: `git checkout -- <path>` is a settings.json `deny` entry
 # (.claude/settings.json:108) and `git restore` falls through unmatched to
-# the classifier, resolving as a silent headless DENY (HIMMEL-203). Neither
+# the classifier, resolving as a silent headless DENY. Neither
 # is a sanctioned way for a leg to run the RED half of a TDD control (restore
 # a tracked file to HEAD, run the suite, expect the predicted failure).
 # restore-to-head.sh is the sanctioned shape: it does the same restore but
-# saves the outgoing content first (a plain copy, not a diff — round 5,
-# codex-1/codex-4), so the discard is recoverable, and it refuses everything
+# saves the outgoing content first (a plain copy, not a diff), so the discard is
+# recoverable, and it refuses everything
 # bare checkout would silently accept (globs, untracked paths, paths outside
 # the current worktree).
 #
@@ -27,7 +27,7 @@ if [ -z "$TMP" ] || [ ! -d "$TMP" ]; then
     exit 2
 fi
 trap 'rm -rf "$TMP" 2>/dev/null || true' EXIT
-# HIMMEL-3182: restore-to-head.sh checks containment by comparing "$PWD/<arg>"
+# restore-to-head.sh checks containment by comparing "$PWD/<arg>"
 # with `git rev-parse --show-toplevel`, which git reports canonicalised. On
 # macOS mktemp hands back /var/... (a symlink to /private/var/...), so a
 # logical fixture path never matches and every case exits 2; resolve it once,
@@ -76,7 +76,7 @@ else
     fail "(h) $SUT does not exist yet"
 fi
 
-# HIMMEL-3182: the rest of the suite drives restore-to-head.sh from inside $WT,
+# The rest of the suite drives restore-to-head.sh from inside $WT,
 # and its containment check needs `git rev-parse --show-toplevel` to spell that
 # directory the way `cd`/$PWD does. Git Bash reports C:/Users/... where $PWD is
 # /tmp/... (/c/Users/...), so every path is refused as "resolves outside this
@@ -584,7 +584,7 @@ else
 fi
 reset_wt
 
-# --- (aa..ad) containment across SPELLINGS of one directory (HIMMEL-3182 slice 3).
+# --- (aa..ad) containment across SPELLINGS of one directory.
 # The fixture root above is canonicalised on purpose, so it never exercises the
 # macOS /var -> /private/var class: bash keeps the LOGICAL $PWD after a `cd`
 # through a symlink while git reports the physical toplevel. LINK is that
