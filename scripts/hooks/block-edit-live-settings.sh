@@ -1067,8 +1067,10 @@ is_readonly_allowlisted() {
     first=$(printf '%s' "$c" | awk '{print $1}')
     case "$first" in
         rg)
-            # --pre / --pre-glob run a program over each file
-            [[ $c =~ [[:space:]]--pre ]] && return 1
+            # --pre / --pre-glob run a program over each file; quotes and
+            # backslashes are dropped first so '--pre' and --p\re still match
+            local _rg=${c//[\'\"\\]/}
+            [[ $_rg =~ [[:space:]]--pre(-glob)?($|[[:space:]=]) ]] && return 1
             return 0
             ;;
         cat|head|tail|grep|diff|wc) return 0 ;;

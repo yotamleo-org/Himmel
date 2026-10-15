@@ -3444,6 +3444,10 @@ assert_rc "5744f rg --pre in a TOK=0 command denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'rg --pre ./x.sh foo @(a) .claude/settings.json')"
 assert_rc "5744f2 rg tab --pre in a TOK=0 command denies" 2 \
     "$(bash_rc_of "$PRIMARY" $'rg\t--pre ./x.sh foo @(a) .claude/settings.json')"
+assert_rc "5744f3 rg quoted --pre in a TOK=0 command denies" 2 \
+    "$(bash_rc_of "$PRIMARY" "rg '--pre' ./x.sh foo @(a) .claude/settings.json")"
+assert_rc "5744f4 rg --pretty is no --pre in a TOK=0 command" 0 \
+    "$(bash_rc_of "$PRIMARY" 'rg --pretty foo @(a) .claude/settings.json')"
 assert_rc "5744g plain rg of live settings allows" 0 \
     "$(bash_rc_of "$PRIMARY" 'rg foo .claude/settings.json')"
 assert_rc "5744h plain grep of home settings allows" 0 \
