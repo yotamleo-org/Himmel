@@ -190,6 +190,19 @@ python3 "$SUT" "$WORK/tier-blank.json" --base 4ccb59d --console BZ --bucket "$WO
 [ "$rc" = 1 ] && grep -q 'tier.reason' "$WORK/tier-blank.err" && pass "a blank tier reason is refused" || fail "blank tier reason rc=$rc"
 lacks "a sonnet leg's brief has no Tier line" "$b1" "**Tier:**"
 
+# A lane worker (lane other than native) cannot read the state repo, so a leg whose
+# text points at a path under the handover root is refused and nothing is written; a native leg may.
+SPEC="$WORK/handovers/yotamleo/himmel/specs/plan/2026-08-10-plan.md"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-spec.json" "$SPEC"
+python3 "$SUT" "$WORK/lane-spec.json" --base 4ccb59d --console BZ --bucket "$WORK/b15" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-spec.err"; rc=$?
+[ "$rc" = 1 ] && grep -q 'handover root' "$WORK/lane-spec.err" && [ ! -e "$WORK/b15/launch-N901.sh" ] && ! ls "$WORK/b15"/*.md >/dev/null 2>&1 && pass "a lane-worker leg pointing at a handover-root path is refused and nothing is written" || fail "lane worker spec path rc=$rc"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["why"]="Read this first - it is the spec: "+sys.argv[3]; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/native-spec.json" "$SPEC"
+python3 "$SUT" "$WORK/native-spec.json" --base 4ccb59d --console BZ --bucket "$WORK/b16" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/native-spec.err"; rc=$?
+[ "$rc" = 0 ] && pass "a native leg may point at a handover-root path (rc 0)" || fail "native spec path rc=$rc: $(cat "$WORK/native-spec.err")"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-ok.json"
+python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/b17" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-ok.err"; rc=$?
+[ "$rc" = 0 ] && pass "a lane-worker leg with no handover-root path generates (rc 0)" || fail "lane worker clean rc=$rc: $(cat "$WORK/lane-ok.err")"
+
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
 

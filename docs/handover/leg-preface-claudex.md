@@ -21,6 +21,10 @@ coin no other marker (`SHIPPED`, `MERGED`): between GREEN and `READY` you are
 or a question of your own goes to the console through that document FIRST —
 never `AskUserQuestion`, never a question to your user.
 
+**An unreadable path in your brief is a BLOCKED, never a shortcut.** If the brief tells
+you to read a file (a spec, a plan) and the read is denied, post `BLOCKED unreadable
+brief path: <path>` and stop; never proceed on the brief's excerpt of it.
+
 Rulings from the console reach you as `additionalContext` after a tool call
 (the file inbox, `scripts/hooks/claudex-inbox-hook.sh`) and are mirrored under
 `## Console Rulings` in your document. A ruling carrying your RETASK token is
