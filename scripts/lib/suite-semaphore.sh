@@ -7,7 +7,7 @@
 #
 # Model: N slot directories, slot-1..slot-N, under
 #   ${HIMMEL_SUITE_SEMAPHORE_DIR:-${TMPDIR:-/tmp}/himmel-suite-semaphore.d}
-# ponytail: the TMPDIR-keyed default shards the "machine-wide" budget across
+# ponytail: (HIMMEL-1838) the TMPDIR-keyed default shards the "machine-wide" budget across
 # any two processes with different TMPDIR values (e.g. two login sessions) --
 # each gets its own N-slot budget instead of sharing one. Upgrade path tracked
 # as the round-3 TMPDIR sharding axis.

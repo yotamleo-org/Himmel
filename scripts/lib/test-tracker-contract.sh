@@ -32,8 +32,8 @@ has() { # has <label> <needle> <haystack>
 [ -f "$LIB" ] || { bad "tracker.sh does not exist at $LIB"; echo "tracker contract: $PASS passed, $FAIL failed"; exit 1; }
 
 # The JIRA_CMD stub: logs argv, replays the recorded read fixtures. A ticket's
-# status lives in $STUB_STATE/status.<KEY> (default "To Do") is the
-# epic child does not exist.
+# status lives in $STUB_STATE/status.<KEY> (default "To Do"); the get-child fixture
+# key is the epic child, the 404 key does not exist.
 STUB="$T/jira-stub.sh"
 cat > "$STUB" <<'STUB_EOF'
 #!/usr/bin/env bash
