@@ -31,8 +31,8 @@
 # (a variable exported in the launching shell wins over an env block), the
 # effective value of a seam is: environ if set there, else the highest level
 # that sets it. The overlay reads ONLY levels block-edit-live-settings.sh
-# guards against the session's own Write/Edit and Bash writes (console ruling
-# on ): <cwd>/.claude/settings.local.json and settings.json when the
+# guards against the session's own Write/Edit and Bash writes (console ruling):
+# <cwd>/.claude/settings.local.json and settings.json when the
 # session's cwd IS the anchor (Claude Code reads project files from its primary
 # working directory), then $HOME/.claude/settings.json. EXCLUDED: managed
 # settings (not under the hook), the `--settings` file (a session-writable

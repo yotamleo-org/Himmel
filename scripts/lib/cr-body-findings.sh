@@ -173,7 +173,7 @@ def norm:
 
 # The review SELECTOR, shared by the count program and the per-finding
 # extractor so both read the SAME review by construction.
-# derive at-head counts from the LATEST SUBSTANTIVE head review,
+# Derive at-head counts from the LATEST SUBSTANTIVE head review,
 # not a sum over every head review. $sub = head reviews whose body has any
 # non-whitespace; $chosen = the latest such body (greatest submitted_at, ties
 # by greatest id), or "" when none is substantive. See header for the why.

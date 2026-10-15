@@ -231,7 +231,7 @@ HEALTHY_CACHE="{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\
 # bypass every ordinary refusal case below, unless a case's own "$@"
 # happens to override it. Default it to unset here, BEFORE "$@" is
 # applied, so only a case that explicitly asks for the bypass gets it.
-# these cases simulate an actual ARM attempt, so
+# These cases simulate an actual ARM attempt, so
 # CADENCE_BANK_LAUNCH defaults on via the FLEET_VERDICT_LAUNCH shell
 # variable (bash's prefix-assignment-to-function scoping - visible inside
 # fleet_verdict, restored after) rather than an env "$@" override, since
@@ -247,7 +247,7 @@ fleet_verdict() {
   # repeatedly; a shared/real slot dir would carry a reservation from one
   # call into the next call's "duplicate" refusal, and would pollute this
   # machine's real fleet slots besides.
-  # an unchecked mktemp failure here
+  # An unchecked mktemp failure here
   # left HIMMEL_FLEET_SLOTS empty, and bank-preflight.sh's own
   # `${HIMMEL_FLEET_SLOTS:-default}` treats a set-but-empty var the same as
   # unset — silently falling BACK to this machine's real fleet slot dir,
@@ -299,7 +299,7 @@ check "3 legs, cap=2 (HIMMEL_FLEET_CAP override) -> SKIPPED-FLEET" SKIPPED-FLEET
   "$(fleet_verdict "$p3" HIMMEL_FLEET_CAP=2)"
 
 # FLEET n/CAP is printed on EVERY call, including a PROCEED (below cap).
-# the line now names the lane breakdown too - p3's fixture has
+# The line now names the lane breakdown too - p3's fixture has
 # no environ files (mk_ps_stub only writes comm), so every candidate falls
 # back to "native" (the safe default for an unreadable/missing environ).
 fleet_verdict "$p3" HIMMEL_FLEET_CAP=4 >/dev/null
@@ -527,7 +527,7 @@ check "native lane (no CADENCE_BANK_LANE): still governed by the Claude bank che
 # a CADENCE_BANK_STATUS_CMD override whose
 # path contains a space must not be word-split (same bug class as
 # FLEET_PS_CMD's own quoting fix, applied here to the codex-bank command).
-# spent distinguishes a successful call from the unknown-state
+# Spent distinguishes a successful call from the unknown-state
 # PROCEED fallback that a word-split invocation would silently reach.
 SPACE_DIR="$W/dir with space"
 mkdir -p "$SPACE_DIR"

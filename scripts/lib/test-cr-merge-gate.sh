@@ -112,7 +112,7 @@ case "$1 $2" in
       cr-failure) echo '[{"context":"CodeRabbit","state":"failure","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
       # the rate-limit decline — same skipped-state projection as
       # cr-skipped. It was the ONE wording a clean critic panel could carry
-      # until gave this gate check-ci.sh's every-skip-wording parity.
+      # until this gate got check-ci.sh's every-skip-wording parity.
       cr-ratelimited) echo '[{"context":"CodeRabbit","state":"success","description":"Review rate limited","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
       # a THIRD skip wording, matching neither the rate-limit nor
       # the automatic-reviews-disabled label arm ("review disabled" is its own

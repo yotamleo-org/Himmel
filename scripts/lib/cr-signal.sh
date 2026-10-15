@@ -109,7 +109,7 @@ cr_signal_context() { printf '%s\n' "${CR_STATUS_CONTEXT:-CodeRabbit}"; }
 # words rather than requiring the success words.
 #
 # Every alternative here must be UNAMBIGUOUS, because the two error directions
-# are not symmetric. A false NEGATIVE degrades to the pre-
+# are not symmetric. A false NEGATIVE degrades to the prior
 # behaviour — a missed skip reads as success, no worse than yesterday. A false
 # POSITIVE blocks a genuinely clean review and cannot be cleared by re-running,
 # which is the rot-to-RED outage this design exists to avoid. So loose substrings
@@ -134,8 +134,8 @@ _CRS_SKIP_RE="${CR_SKIP_DESC_RE:-skipped|reviews? (are|is) disabled|review disab
 # that — by its own cr-body-findings line, one line earlier — had NO CodeRabbit
 # review at all. A missed skip is therefore not "no worse than yesterday": it
 # CERTIFIES UNREVIEWED CODE AS MERGE-READY, which is the exact failure this
-# file exists to prevent. That is the second drift of this class
-# (the first), and repo doctrine escalates to structural on the second.
+# file exists to prevent. That is the second drift of this class,
+# and repo doctrine escalates to structural on the second.
 #
 # The corrected asymmetry, which is the whole argument for inverting:
 #   false negative (unknown skip wording reads as success) -> merges unreviewed
@@ -159,7 +159,7 @@ _CRS_SKIP_RE="${CR_SKIP_DESC_RE:-skipped|reviews? (are|is) disabled|review disab
 # "No review changes requested" is a GENUINE completed review with different
 # wording — it is the `cr-nearmiss` fixture, and test 34d exists precisely to
 # assert it does not block. An allow-list of "review completed" alone regresses
-# it to RED. That fixture caught this while writing which is the
+# it to RED. That fixture is the
 # concrete demonstration of the header's false-positive hazard: the allow-list
 # MUST enumerate every genuine success wording, and the escape hatch below is
 # what makes that enumeration survivable when CodeRabbit adds one.
@@ -300,7 +300,7 @@ cr_signal_probe() {
               # affirmatively matches the allow-list. The deny-list is kept as a
               # force-skip override (CR_SKIP_DESC_RE), so a wording can still be
               # condemned explicitly even if it would pass the allow-list.
-              # a MISSING / null / EMPTY description is held to the
+              # A MISSING / null / EMPTY description is held to the
               # same allow-list as any other wording, so it reads as skipped
               # (fail closed). The form scoped the allow-list to a
               # non-empty description and left this shape green. CodeRabbit has

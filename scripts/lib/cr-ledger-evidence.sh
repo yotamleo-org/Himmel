@@ -19,7 +19,7 @@
 # blocking definition (crit|imp whose verdict is neither `disproved` nor a
 # TRACKED `deferred`). clear-cr-marker is the reference; this is the same
 # evaluation factored for the two MERGE gates. A future unification would move
-# clear-cr-marker onto this reader too — left out of to keep that
+# clear-cr-marker onto this reader too — left out to keep that
 # change off the most-sensitive surface (clear-cr-marker is untouched here).
 #
 # Evidence-gated, fail-closed, NEVER a free pass: this only ANSWERS the question

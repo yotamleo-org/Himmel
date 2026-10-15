@@ -262,7 +262,7 @@ EOF
   # count but (per finding 1) blind to a process forked between the
   # snapshot and its parent being signalled. Sweeping trades "1" for
   # "bounded by KILL_TREE_SWEEPS" to NARROW that gap (see the row pair
-  # below — it does not close the gap; that's ), while still
+  # below — it does not close the gap), while still
   # being nowhere near "once per node".
   CHAIN=""
   i=0

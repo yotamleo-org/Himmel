@@ -107,7 +107,7 @@
 # What callers must NOT do with it: narrate `not-configured`. "An adopter must
 # not notice it exists" is a tested invariant (case 15 here, and
 # scripts/test-check-ci.sh case 57 greps a whole clean adopter run for the word
-# "CodeRabbit"). asked for an unconditional "CodeRabbit: not
+# "CodeRabbit"). The operator asked for an unconditional "CodeRabbit: not
 # configured" line; console ruling 88 narrowed it to the states where a review
 # was actually EXPECTED — a pass is only vacuous when something was missing.
 #

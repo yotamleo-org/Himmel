@@ -556,7 +556,7 @@ cadence_runner_platform_ext() {
 # cadence_runner_stamp <bat_dir>
 # Echo the MINIMUM format version stamped across the CURRENT platform's
 # runners under <bat_dir> (an unstamped runner reads as 0 — i.e. armed
-# before ). Minimum, not first-found: a multi-runner re-arm
+# before stamping). Minimum, not first-found: a multi-runner re-arm
 # interrupted between writes leaves a mixed set, and one current runner must
 # not mask a stale sibling (codex-adv finding). Reads only
 # cadence_runner_platform_ext's extension — a dormant twin copied over from
@@ -584,7 +584,7 @@ cadence_runner_stamp() {
 }
 
 # cadence_prov_record <task-marker>
-# S8, S18: record a `job register` provenance row for
+# Record a `job register` provenance row for
 # the cron entry an arm just installed, so a ledger-mode uninstall can remove
 # exactly that line (matched by its trailing ` # <marker>`) and nothing else.
 # Call it only AFTER the arm's cron_install succeeded. S18 reads the live

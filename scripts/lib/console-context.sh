@@ -154,7 +154,7 @@ console_context_source_label() {
 
 # console_context_write_record <session> <mode> <source> <autocompact>
 #
-# The durable launch-context row for a console arm (shipped it in
+# The durable launch-context row for a console arm (it used to live in
 # headed-arm.sh; moved it here so arm-resume.sh, the Windows
 # station's arming path, writes the SAME row rather than a second shape). It is
 # a row in the launch record dir (${HIMMELCTL_CACHE_DIR:-
@@ -191,7 +191,7 @@ console_context_write_record() {
 # shell keeps every one of these live for its whole session, so a later
 # `console.sh next --arm` run from inside that shell inherits them unless the
 # caller strips this exact set first -- do_arm() in console.sh
-# is that caller. headed-arm-leg.sh is read-only (is queued on it
+# is that caller. headed-arm-leg.sh is read-only (its own handling is queued
 # separately); test-console.sh asserts this list still names every
 # `leg_propagate_env NAME` call site there, so a name added to that file
 # without a matching line here fails the sync test instead of leaking silently.

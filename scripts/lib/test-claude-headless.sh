@@ -873,7 +873,7 @@ else
   SKIP=$((SKIP+1)); echo "skip - 42 (needs linux + python3 for a subreaper)"
 fi
 
-# 43: an expired row with no worker pid was released on
+# An expired row with no worker pid was released on
 # TTL alone while its wrapper was still alive: the slot opened beside a live
 # dispatch (one over the cap). The live wrapper (start time confirmed) is signalled
 # and the slot opens only once it is gone; one that ignores TERM, or whose start

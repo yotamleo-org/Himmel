@@ -132,22 +132,22 @@ is_int "$FLEET_CAP" || FLEET_CAP=4
 #     a session launched with no other argument (`claude -n HIMMEL-x
 #     ...`) was never counted — an undercount that lets the fleet exceed
 #     the cap silently.
-# an argv-text match alone also matches a WRAPPER
+# An argv-text match alone also matches a WRAPPER
 #     process (e.g. konsole, whose own argv literally embeds the full
 #     `claude ... -n NAME ...` command it launched as text — the exact
 #     shape headed-arm.sh uses) — double-counting one real leg as two and
 #     refusing launches prematurely.
-# an up-front "does the procfs ROOT exist" check
+# An up-front "does the procfs ROOT exist" check
 #     still silently drops EVERY candidate on a host where the directory
 #     exists but INDIVIDUAL comm files are not (a partial/unsupported
 #     procfs, e.g. some Git Bash configurations) — the exact same
 #     silent-zero mistake it was meant to fix, just triggered a different
 #     way.
-# the FLEET_CAP_OK bypass check is fixed
+# The FLEET_CAP_OK bypass check is fixed
 #     separately, below.
-# decide PER CANDIDATE, not once for the whole host —
+# Decide PER CANDIDATE, not once for the whole host —
 #     see the per-candidate fallback in the loop below.
-# a FAILED process-enumeration command (ps missing,
+# A FAILED process-enumeration command (ps missing,
 #     an unsupported FLEET_PS_CMD) is indistinguishable from "genuinely
 #     zero matching processes" unless the exit code is captured
 #     explicitly — both otherwise produce empty output, so a broken
@@ -408,7 +408,7 @@ _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_st
     # The displaced victim stays inside our fence and goes with the gate when
     # it drops; `.admit.stale.*` victims left by older copies are
     # swept by the debris pass in the prune below.
-    # a plain `[ -e ] || mv` here is
+    # A plain `[ -e ] || mv` here is
     # itself a check-then-act race — a FOURTH party's `mkdir "$admit"` can
     # land in the instant between the `[ -e ]` test and the `mv`, and `mv`
     # onto an existing directory would then silently NEST the fourth party's
@@ -432,8 +432,7 @@ _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_st
   fi
   rm -rf "$victim" 2>/dev/null
   if mkdir "$admit" 2>/dev/null; then
-    # same bug class as 's
-    # fix in _fleet_claim_admit below — an unchecked stamp write here can
+    # same bug class as the fix in _fleet_claim_admit below — an unchecked stamp write here can
     # fail (disk full, permissions) and still `return 0`, handing the caller
     # an unstamped claim that can never age out. Fail the reclaim and give
     # up the empty dir instead of proceeding on an unprotected slot.
@@ -446,7 +445,7 @@ _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_st
       # `rmdir`, on the fallback below — redirection into "$admit/acquired"
       # creates that file before `date` runs, so a `date` failure can leave
       # a non-empty (if zero-byte) directory that a bare `rmdir` cannot remove,
-      # wedging this reclaim attempt's own cleanup. the pid write
+      # wedging this reclaim attempt's own cleanup. The pid write
       # fails CLOSED too — every release is now pid-verified, so a pid-less
       # claim could never be released by its owner and would wedge admission
       # until it aged out.
@@ -482,7 +481,7 @@ _fleet_claim_admit() { # _fleet_claim_admit <admit-dir>
       # pause) -- not the launcher's pid, which is what the RESERVATION's
       # own pid file (below) tracks for a different purpose (whether the
       # launcher that created it is still around to own a release).
-      # fails CLOSED like the stamp below — releases are
+      # Fails CLOSED like the stamp below — releases are
       # pid-verified now, so a claim whose pid write failed could never be
       # released by its owner and would wedge admission until it aged out.
       if printf '%s\n' "$$" > "$admit/pid" 2>/dev/null; then
@@ -597,7 +596,7 @@ _fleet_census() {
     # a live session with this name CONSUMES its reservation
     # (below) — same match shape as the FLEET_CANDIDATES filter itself, so a
     # session counted here is recognized consistently there.
-    # the name is the EXACT argv element after `-n` where procfs
+    # The name is the EXACT argv element after `-n` where procfs
     # gives it (a name with spaces stays whole, so it can be tied to one live
     # session by identity); only when cmdline is unreadable does it fall back to
     # the FIRST whitespace token of the ps line. A name with a control character
@@ -812,7 +811,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       fi
       # A live session with this name already counted in fleet_n above
       # CONSUMES the reservation — do not double-count the same slot.
-      # consuming must DELETE the reservation, not just
+      # Consuming must DELETE the reservation, not just
       # skip it in the count — left on disk, it keeps refusing a same-name
       # relaunch as a duplicate (line ~356) for up to the full TTL after the
       # session that consumed it has already exited, with no live session left
@@ -825,7 +824,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       # double-counted until its TTL.
       # INVARIANT: the census may OVER-count (a launch is refused for at most
       # the TTL — safe) but must never UNDER-count (admits past the cap).
-      # a live name is the FULL `-n` argv element (read from
+      # A live name is the FULL `-n` argv element (read from
       # /proc/<pid>/cmdline), so consumption is identity on the whole name — a
       # name with whitespace is consumed only by the session with that exact
       # name, and a live `-n "NAME anything"` no longer consumes a NAME
@@ -965,7 +964,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
          printf '%s\n' "$LANE" > "$dir/lane" 2>/dev/null; then
         # the raw leg name, for the consume check in the prune
         # pass — the directory name is a hash whenever $LEG cannot be one
-        # directory component. one line, guaranteed by the
+        # directory component. One line, guaranteed by the
         # control-character refusal at the call below. Best-effort by design: it
         # only WIDENS what consumes the reservation, so a failed write falls
         # back to today's dir-name match rather than refusing the launch.
@@ -1058,7 +1057,7 @@ fi
 # arm-resume.sh's own _arm_fleet_release_pending already uses for its
 # reservation release, applied here to the admission lock itself: a mismatch
 # means someone else now legitimately owns .admit, and this process has
-# nothing left to release. that check now lives in
+# nothing left to release. That check now lives in
 # _fleet_release_admit (gated, so it cannot land between a reclaimer's
 # verification and its rename) and EVERY release site — the early-exit
 # refusals above as well as this final one — goes through it.

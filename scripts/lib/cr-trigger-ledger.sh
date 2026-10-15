@@ -258,8 +258,7 @@ cr_trigger_rate_limited() {
         *) return 1 ;;
     esac
 
-    # The status on
-    # prior_sha is frozen the instant CodeRabbit posts it — nothing here ever
+    # The status on prior_sha is frozen the instant CodeRabbit posts it — nothing here ever
     # asks CodeRabbit to re-review that exact old SHA, so trusting this
     # signal forever would skip every later head permanently the first time
     # a repo hits the limit, never actually retrying "once the window

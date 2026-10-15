@@ -139,7 +139,7 @@ if [ -z "$PROMPT_FILE" ]; then
   # `cat` — which can block waiting on stdin — would leave this temp file
   # (potentially holding a partial/sensitive prompt) behind uncleaned.
   # A minimal early trap closes that window; the real trap below replaces it.
-  # an INT/TERM trap that only removes the file and
+  # An INT/TERM trap that only removes the file and
   # does not exit lets bash fall through and CONTINUE the script past the
   # interrupted `cat` — dispatching with a deleted/partial prompt instead of
   # aborting. Exit with the same conventional codes finalize_on_exit uses.
@@ -199,7 +199,7 @@ proc_zombie() {
 }
 
 # True when the row's heartbeat is older than the TTL. A row with no heartbeat
-# (written before ) is unknown, never stale.
+# (written by an older version) is unknown, never stale.
 row_heartbeat_stale() {
   local hb ttl
   hb="$(jq -r '.heartbeat // empty' "$1" 2>/dev/null)"
@@ -496,7 +496,7 @@ lock_release() {
 # detection for a HUNG-but-still-running worker is the heartbeat TTL (below);
 # this only covers THIS process's own death, which needs no heartbeat. A SIGKILL
 # skips this trap, so the row also records pid + pid_start and the next
-# admission reaps it (count_active). the row's
+# admission reaps it (count_active). The row's
 # heartbeat is stamped at lifecycle writes only (create, launching, worker pid);
 # a worker alive past HIMMEL_DISPATCH_ROW_TTL_SECS is reaped and killed.
 # ponytail: the TTL is a wall-clock bound, not a progress probe (the worker's
@@ -543,7 +543,7 @@ finalize_on_exit() {
     # launching session; this closes the residual leak, not a regression.
     # `jobs -p` (this shell's own background job table) is the fallback,
     # not `ps` + a `$$`-children scan: it can never return the ambient
-    # CLAUDE_PID, which is the whole bug is about, so it
+    # CLAUDE_PID (the inherited pid this guards against), so it
     # cannot reintroduce an inherited-pid surface. On every genuine
     # pre-launch refusal path (bank-preflight, concurrency cap,
     # registry-row failure, bypassPermissions) no background job has ever
@@ -601,13 +601,13 @@ BANK_VERDICT="$(CADENCE_BANK_LEG="${CADENCE_BANK_LEG:-claude-headless:$ROLE}" ba
 # whole-second mtimes (`%s`) miss a pre-existing artifact
 # rewritten within the SAME second — a real case for a fast dispatch. `%s.%N`
 # (GNU date, which Git Bash ships) gives nanosecond resolution instead.
-# for a pre-existing DIRECTORY, a file's own mtime is what
+# For a pre-existing DIRECTORY, a file's own mtime is what
 # advances when its content changes — the directory's own mtime does NOT
 # (on NTFS and most filesystems, a directory's mtime only tracks entries
 # being added/removed/renamed, not content changes to files already inside
 # it). So compare the newest mtime among the files INSIDE the directory,
 # not the directory entry itself.
-# a directory containing only subdirectories (no regular
+# A directory containing only subdirectories (no regular
 # files anywhere in its tree) yields no `find -type f` output at all, so the
 # scan above returned empty — read by artifact_present() as "no baseline",
 # which skips the freshness check entirely and lets an untouched pre-existing
@@ -723,7 +723,7 @@ STDOUT_FILE="$(mktemp "${TMPDIR:-${TEMP:-/tmp}}/claude-headless-stdout.XXXXXX")"
 # claude session (the most likely time to be interrupted) never reached
 # finalize_on_exit, leaving the dispatch row permanently "dispatched". A
 # background job + `wait "$pid"` IS promptly interruptible.
-# dedupe PATH before the nested `claude -p` launch — Claude
+# Dedupe PATH before the nested `claude -p` launch — Claude
 # Code prepends each enabled plugin's bin/ dir at startup without checking
 # for an existing copy, so handing it an already-duplicated inherited PATH
 # lets that compound across every headless dispatch in a long session.
