@@ -161,12 +161,14 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
       console.warn(`agui: a timestamp in ${s.path} goes backwards; its lines are released in file order`);
     });
   };
-  const map = (lines: Line[]) => lines.sort(byTime).flatMap((l) => {
-    if (l.text.includes('"agent-name"')) { // the session's bus name is its latest agent-name record
+  // the session's bus name is the latest agent-name record of its own journal (a subagent's is not the session's)
+  const sniff = (lines: Line[]) => {
+    for (const l of lines) {
+      if (!l.text.includes('"agent-name"')) continue;
       try { const n = JSON.parse(l.text); if (n?.type === "agent-name" && typeof n.agentName === "string") session = n.agentName; } catch { /* torn line */ }
     }
-    return mapper.pushLine(l.text);
-  });
+  };
+  const map = (lines: Line[]) => lines.sort(byTime).flatMap((l) => mapper.pushLine(l.text));
   // The bus events newer than the last poll that belong to this session: a send by or to it, and the
   // delivered/acked/expired follow-ups of those. A follow-up may land in a later poll than its send, hence `mine`.
   type BusDelta = AguiEvent & { timestamp: number; delta: { path: string; value?: { f?: string; r?: string } }[] };
@@ -199,6 +201,7 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
           for (const p of await subagentFiles(path, known)) { known.add(p); subs.push(src(p)); }
           const fromMain = await read(main);
           if (fromMain === null) return end(c); // truncated or replaced: nothing left to follow
+          sniff(fromMain);
           held.push(...fromMain);
           // A subagent file that shrank, vanished or turned unreadable just stops being followed; the journal goes on.
           for (const s of subs) {
