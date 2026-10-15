@@ -340,7 +340,7 @@ do_arm() {
 # naming each one. The console's own console-wait.sh waiter (and what it forked)
 # is the one exemption: it is stopped here, and only after nothing else blocks.
 wrap_subtree_gate() {
-    local sub src=0 plan kills blocks pid subs sp cmd
+    local sub src=0 plan kills blocks pid subs sp cmd now
     sub=$(bash "${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}" 2>&1) || src=$?
     [ "$src" -ne 0 ] || return 0
     if [ "$src" -ne 1 ]; then
@@ -381,9 +381,15 @@ wrap_subtree_gate() {
             # no descendant outlives it as an orphan the re-check below can no
             # longer see
             while read -r _ sp cmd; do
-                # a descendant that exited since the snapshot may have had its pid
-                # reused: signal only a pid whose argv still matches its snapshot row
-                case "$(ps -o args= -p "$sp" 2>/dev/null)" in "$cmd"*) ;; *) continue ;; esac
+                # a gone pid is skipped; a live one whose argv no longer matches its
+                # snapshot row (reused pid, or an exec) is never signalled, and the
+                # wrap is refused with the waiter left running
+                now=$(ps -o args= -p "$sp" 2>/dev/null) || now=""
+                [ -n "$now" ] || continue
+                case "$now" in "$cmd"*) ;; *)
+                    err "wrap refused: descendant $sp of the console-wait waiter changed since the check (now: $now) - waiter left running, re-run"
+                    exit 5 ;;
+                esac
                 kill -TERM "$sp" 2>/dev/null || true
                 for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$sp" 2>/dev/null || break; sleep 0.2; done
                 if kill -0 "$sp" 2>/dev/null; then
