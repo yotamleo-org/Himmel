@@ -2750,6 +2750,26 @@ if [ -z "$WORKTREE_BRANCH" ]; then
     unset _fm_wt
 fi
 
+# A himmel CODE arm defaults to worktree isolation. Applies only
+# when nothing chose a cwd (no --worktree/resume_worktree:/--cwd), the handover
+# names a HIMMEL-<n> ticket in its file name, and its resume_cwd: IS this
+# checkout's primary tree (not a worktree, not the luna vault or another repo,
+# so vault arms stay single-tree). 'resume_isolation: primary' opts back out.
+if [ -z "$WORKTREE_BRANCH" ] && [ -z "$RESUME_CWD_OVERRIDE" ]; then
+    _iso_fm=$(awk '/^---[[:space:]]*$/{c++; next} c==1' "$HANDOVER_PATH")
+    _iso_mode=$(printf '%s\n' "$_iso_fm" | sed -n 's/^resume_isolation:[[:space:]]*//p' | head -1 | tr -d "\r\"' ")
+    _iso_cwd=$(printf '%s\n' "$_iso_fm" | sed -n 's/^resume_cwd:[[:space:]]*//p' | head -1 | tr -d "\r\"'")
+    _iso_tkt=$(basename "$HANDOVER_PATH" | grep -oE 'HIMMEL-[0-9]+' | head -1 || true)
+    _iso_root=$(cd "${ARM_ISOLATION_ROOT:-$SCRIPT_DIR/../..}" && pwd)   # ARM_ISOLATION_ROOT: test seam
+    if [ "$_iso_mode" != "primary" ] && [ -n "$_iso_tkt" ] && [ -n "$_iso_cwd" ] \
+        && [ -d "$_iso_root/.git" ] && [ -d "$_iso_cwd" ] \
+        && [ "$(_arm_realpath "$_iso_cwd")" = "$(_arm_realpath "$_iso_root")" ]; then
+        WORKTREE_BRANCH="fix/$(printf '%s' "$_iso_tkt" | tr '[:upper:]' '[:lower:]')-arm"
+        echo "arm-resume: himmel code arm ($_iso_tkt) -> default worktree isolation '$WORKTREE_BRANCH' (HIMMEL-1332; set 'resume_isolation: primary' to opt out)" >&2
+    fi
+    unset _iso_fm _iso_mode _iso_cwd _iso_tkt _iso_root
+fi
+
 if [ -n "$WORKTREE_BRANCH" ]; then
     if [ -n "$RESUME_CWD_OVERRIDE" ]; then
         echo "ERR arm-resume: --cwd and --worktree are mutually exclusive (the worktree IS the cwd)" >&2
