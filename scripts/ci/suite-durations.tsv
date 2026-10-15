@@ -629,9 +629,6 @@ scripts/overnight/test-self-heal.sh	3
 scripts/overnight/test-stop-marker.sh	1
 scripts/parity/test-guard-conformance.sh	0
 scripts/parity/test-launcher-context-env-parity.sh	0
-scripts/parity/test-launcher-twin-parity.sh	0
-scripts/parity/test-ps-twin-oem-encoding-projection.sh	11
-scripts/parity/test-ps-twin-oem-encoding.sh	4
 scripts/parity/test-t12-no-bloat-lib.sh	0
 scripts/parity/test-t13b-daemon-prose.sh	7
 scripts/parity/test-t13b-relocation.sh	1

@@ -140,11 +140,6 @@ SHELL:scripts/hooks/lib-test-write-fence-matrix.sh
 SHELL:scripts/hooks/lib-test-write-fence.sh
 # Python / PowerShell, file level (extensions newly scanned). PowerShell is windows-parked, epic HIMMEL-4102.
 FILE:scripts/handover/console-kit/gen-briefs.py
-FILE:scripts/hooks/check-agents-md-fresh.ps1
-FILE:scripts/hooks/check-commit-msg.ps1
-FILE:scripts/hooks/check-doc-guard.ps1
-FILE:scripts/hooks/check-hookspath.ps1
-FILE:scripts/hooks/end-session-wiki.ps1
 # JS: wrapper helpers whose spawn env is not the full set (claude-floor.mjs git(), verify-return.mjs exec,
 # hook-integrity.js spawnSync adds only GIT_NO_REPLACE_OBJECTS; the hook file is hook-integrity guarded).
 JS:scripts/cr/claude-floor.mjs:8770942d7fbd
