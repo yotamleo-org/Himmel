@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-succession-docs.sh — HIMMEL-3082 / HIMMEL-3254 / HIMMEL-3291. Pins the
+# test-succession-docs.sh — Pins the
 # console succession rule where a leg and a console actually read it, and (§7)
 # that the preface lock instruction never asks a leg to type its own root.
 #
@@ -162,7 +162,7 @@ contains 'console-template.md: step 9 asks the predecessor to name the successor
 contains 'console-template.md: handing over says the relay names the successor' "$handing" 'naming the successor'
 
 RETASK_TEXT="$(cat "$RETASK")"
-# A relay MAY keep the leg's token (HIMMEL-3082, round 7): an unrotated relay is
+# A relay MAY keep the leg's token: an unrotated relay is
 # valid and terminal, the fresh token adds no authentication, and only the chain
 # still needs both tokens. Prose the leg reasons from, so pin each claim.
 contains 'preface: a relay with no fresh token is complete and valid' "$succ" 'complete and valid'
@@ -186,18 +186,18 @@ if [ -z "$stale" ]; then pass 'no succession doc still names nonces=STRANDED'; e
 contains 'console-template Live state: names the RELAYED and UNCONFIRMED reads' "$live" 'nonces=RELAYED'
 contains 'running-a-console: an unrotated relay that the leg accepted reads RELAYED, not an incident' "$running" 'RELAYED'
 contains 'retask-channel.md: the tick reads the leg own bullet, never asserts strandedness' "$retask" 'never asserts'
-# HIMMEL-3280: the template states whether prose is allowed on the legs: line and
+# the template states whether prose is allowed on the legs: line and
 # what a malformed entry reads as, so the doc and tick.sh's parser agree.
 contains 'console-template Live state: prose on the legs: line is permitted and read as prose' "$live" "Prose is permitted on the \`legs:\` line"
 contains 'console-template Live state: a malformed entry reads livestate=MALFORMED, never dropped' "$live" 'livestate=MALFORMED:<label>'
-# HIMMEL-3281: the template states that the legs: block may wrap and where it
+# the template states that the legs: block may wrap and where it
 # ends, in the words tick.sh's awk enforces (first blank line or next field: line).
 contains 'console-template Live state: the legs: block may wrap' "$live" "The \`legs:\` block may wrap"
 contains 'console-template Live state: the block ends at the first blank line or the next field: line' "$live" "up to the first blank line or the next \`field:\` line"
 contains 'console-template Live state: a list-marker line also ends the block' "$live" 'or the first list-marker'
 contains 'console-template Live state: the blank line before the detail is load-bearing' "$live" 'the blank line before the per-leg detail is load-bearing'
 
-# --- 6. HIMMEL-3266: the console-side text agrees with the preface ------------
+# --- 6. the console-side text agrees with the preface ------------
 # console.sh next copies console-template.md into the successor stub and
 # console-handoff-template.md into the HANDOFF, so wording that still told the
 # successor to mint and rotate a fresh nonce per leg (the pre-#967 rule) was
@@ -239,7 +239,7 @@ absent 'handoff "How starts" does not tell the successor to rotate nonces' "$sta
 contains 'handoff "How starts": a relay MAY keep the leg token' "$(flat "$starts")" 'MAY keep'
 contains 'handoff "How starts": a leg is the successor only once it has quoted back' "$(flat "$starts")" 'only once it has quoted back'
 
-# --- 7. HIMMEL-3291: the preface lock instruction is not a fill-in-the-blank --
+# --- 7. the preface lock instruction is not a fill-in-the-blank --
 # The prefaces once told every leg to run
 # `HANDOVER_DIR=<root> bash <repo>/scripts/handover/queue-lock.sh acquire <doc>`.
 # Two of four legs filled `<root>` or `<doc>` wrongly and their locks landed
@@ -270,14 +270,14 @@ for f in "$PREFACE" "$JUDGE" "$CONSOLE"; do
     absent "$(basename "$f") has no queue-lock.sh line with an unfilled <root>" "$(grep -F 'queue-lock.sh' "$f")" '<root>'
 done
 
-# --- 8. HIMMEL-3355: the Telegram inbox monitor is in ACTION ZERO + Monitors --
+# --- 8. the Telegram inbox monitor is in ACTION ZERO + Monitors --
 # A monitor that is not armed at the 30-min Monitor cap, or not re-armed, goes
 # dark exactly like an unattended tick; and a `tail -F` without -n0 replays old
 # lines on every re-arm. Pin both, plus the authority limit the operator ruled.
 step11="$(awk '/^11\. \*\*/ { f = 1 } /^## Live state/ { f = 0 } f' "$CONSOLE")"
 mons="$(section "$CONSOLE" '^## Monitors')"
 contains 'ACTION ZERO step 11 creates the inbox before the bridge will write' "$(flat "$step11")" 'consoles/{{SESSION_NAME}}.md'
-# HIMMEL-3509: the inbox is read by the step-10 event waiter, not a 30-min
+# the inbox is read by the step-10 event waiter, not a 30-min
 # Monitor re-arm loop (every expiry cost a full-context turn).
 absent 'ACTION ZERO step 11 no longer re-arms a Monitor on expiry (HIMMEL-3509)' "$(flat "$step11")" 're-armed on every expiry notice'
 contains 'ACTION ZERO step 11 reads the inbox through the step-10 waiter (HIMMEL-3509)' "$(flat "$step11")" 'The waiter reads it through'

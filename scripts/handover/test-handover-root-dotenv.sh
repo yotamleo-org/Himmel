@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4420: every handover_root caller must feed it the .env HANDOVER_DIR
+# every handover_root caller must feed it the .env HANDOVER_DIR
 # first. handover_root reads only the live env, so a caller that skips
 # load_dotenv resolves the <repo>/handovers stub (or fails closed) when .env is
 # the only source. Each probe runs the script from a non-git cwd with
@@ -88,9 +88,9 @@ has "statusline-segment: breadcrumb marker found via the .env root" "$out" "📋
 # Callers whose root use is not observable from outside (the fence and the gate
 # swallow the resolver; the smoke is opt-in and spends bank): assert the loader
 # runs before the first handover_root call.
-# HIMMEL-4449 adds the hooks and the tick (block-unresolved-cr-merge.sh and
-# merge-on-green.sh resolve their root through go_resolve_root, which loads the
-# anchor's .env itself, so they never call a bare handover_root).
+# block-unresolved-cr-merge.sh and merge-on-green.sh are not listed: they resolve
+# their root through go_resolve_root, which loads the anchor's .env itself, so
+# they never call a bare handover_root.
 for f in hermes/egress-gate.sh guardrails/graphify-fence.sh handover/console-kit/smoke-consult-sandbox.sh \
          hooks/auto-arm-on-cap.sh hooks/auto-arm-on-subagent-cap.sh hooks/console-compact-reinject.sh \
          hooks/console-precompact-snapshot.sh hooks/guard-relay-writes.sh hooks/stop-console-idle-guard.sh \
@@ -100,7 +100,7 @@ for f in hermes/egress-gate.sh guardrails/graphify-fence.sh handover/console-kit
     check "$f: load_dotenv precedes handover_root" "$([ -n "$ld" ] && [ -n "$hr" ] && [ "$ld" -lt "$hr" ] && echo yes || echo "no (ld=$ld hr=$hr)")" "yes"
 done
 
-# hook-integrity (HIMMEL-4575) walks every file a hook sources and DENIES every
+# hook-integrity walks every file a hook sources and DENIES every
 # tool call when a source statement does not resolve (PR 2202 locked the fleet
 # out that way). Run each changed hook through the guard's own resolver and
 # fail on any unresolved statement.

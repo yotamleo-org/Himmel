@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# set-handover-dir.sh — idempotently set HANDOVER_DIR in the repo .env (HIMMEL-335).
+# set-handover-dir.sh — idempotently set HANDOVER_DIR in the repo .env.
 #
 # Writes (create-or-update) the `HANDOVER_DIR=<path>` line in the primary
 # checkout's .env so the handover shell tooling (via scripts/lib/load-dotenv.sh)

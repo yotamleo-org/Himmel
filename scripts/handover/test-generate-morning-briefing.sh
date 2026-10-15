@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Smoke test for scripts/handover/generate-morning-briefing.sh
-# (HIMMEL-135 core + HIMMEL-574 morning-report schema).
 #
 # Assertions match ASCII substrings only — both the 🌅/✅/🔴/🧹/📋 emoji and
 # the em-dash separator are multibyte; MINGW `grep -qF` can SIGABRT on those,
@@ -14,7 +13,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,7 +48,7 @@ assert_contains() {
 
 TMP_ROOT=$(mktemp -d)
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
-# Hermetic: the operator's real failure-review digests must not leak in (HIMMEL-4713).
+# Hermetic: the operator's real failure-review digests must not leak in.
 export HIMMEL_FAILURE_REVIEW_DIR="$TMP_ROOT/failure-review"
 
 # Fake gh + jira + claude CLIs -----------------------------------------
@@ -157,7 +156,7 @@ git init -q --initial-branch=main "$REPO" 2>/dev/null || {
     git -c user.email=t@test.com -c user.name=test commit -q --allow-empty -m "fix(scope): HIMMEL-902 bug B"
     git -c user.email=t@test.com -c user.name=test commit -q --allow-empty -m "chore: nothing"
 )
-# Forge seam (HIMMEL-326): the merged-PR section is gated to a github origin.
+# Forge seam: the merged-PR section is gated to a github origin.
 git -C "$REPO" remote add origin https://github.com/test/test.git
 MARKER=$(cat "$TMP_ROOT/MARKER")
 
@@ -230,7 +229,7 @@ out=$(FAKE_GH_PR_JSON='[]' run_script --since "$MARKER" --out "$OUT4")
 file=$(cat "$OUT4")
 assert_contains "empty PR fallback" "No merged PRs found" "$file"
 
-# Test 5b: gh search qualifier is inclusive of today (HIMMEL-3016) ----
+# Test 5b: gh search qualifier is inclusive of today ----
 # The FAKE_GH stub (above) does not itself filter by the qualifier's value —
 # it only branches on whether --search is present — so this test captures
 # the exact argv sent to gh and asserts the qualifier string, independent
@@ -407,7 +406,7 @@ assert_contains "partial: llm tldr taken"    "ONLY TLDR FROM LLM"               
 assert_contains "partial: order fell back"   "Advance 1 In-Progress ticket(s)." "$file"
 assert_contains "partial: backlog fell back" "HIMMEL-801"                       "$file"
 
-# Test 16b: --llm under Codex never forks claude (HIMMEL-603) ----------
+# Test 16b: --llm under Codex never forks claude ----------
 
 echo "TEST: --llm under Codex (CODEX_THREAD_ID) never calls claude, falls back"
 CODEX_STUB_HIT="$TMP_ROOT/codex-stub-hit"
@@ -438,16 +437,16 @@ file=$(cat "$OUT_GHF")
 assert_contains "gh-down banner"          "gh PR state unavailable"      "$file"
 assert_contains "gh-down stale message"   "stale detection unavailable"  "$file"
 
-# HIMMEL-3719: BSD awk (macOS) rejects a newline inside `-v`; the catch-all
+# BSD awk (macOS) rejects a newline inside `-v`; the catch-all
 # must not hand awk the raw newline-joined branch list.
 echo "TEST: no awk -v carries the raw multi-line annotated_branches"
 # ponytail: a source grep, because Linux gawk accepts the newline BSD awk
-# rejects; the macOS shard's "wip catchall pr" case is the behavioural proof, HIMMEL-3719.
+# rejects; the macOS shard's "wip catchall pr" case is the behavioural proof,
 # shellcheck disable=SC2016  # the pattern is a literal, not an expansion
 raw_v=$(grep -nE 'awk .*-v [A-Za-z_]+="\$annotated_branches"' "$SCRIPT" || true)
 if [ -z "$raw_v" ]; then pass "annotated_branches not passed raw via awk -v"; else fail "raw multi-line awk -v" "$raw_v"; fi
 
-# HIMMEL-4713: the daily failure-review digest nests under its own section.
+# the daily failure-review digest nests under its own section.
 echo "TEST: failure review section embeds today's digest, else says none"
 OUT_FR0="$TMP_ROOT/fr0.md"
 run_script --since "$MARKER" --out "$OUT_FR0" >/dev/null

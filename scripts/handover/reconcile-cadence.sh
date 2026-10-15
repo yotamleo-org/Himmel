@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# reconcile-cadence.sh -- periodic seat-liveness runner (HIMMEL-1880).
+# reconcile-cadence.sh -- periodic seat-liveness runner.
 #
 # reconcile-workers.sh used to run only when a dispatch or an arm triggered it,
 # so an idle fleet never noticed a dead seat. This puts it on a fixed cadence:

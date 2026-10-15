@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/handover/artifact-sync.sh (HIMMEL-2201).
+# Tests for scripts/handover/artifact-sync.sh.
 #
 # Hermetic: pins HANDOVER_DIR to a temp root, never touches real handover
 # state or a live artifact URL — the registry and local files are all

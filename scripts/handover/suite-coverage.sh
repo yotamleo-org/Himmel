@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/suite-coverage.sh — HIMMEL-4112. Read-only: says, per suite,
+# scripts/handover/suite-coverage.sh — Read-only: says, per suite,
 # whether CI actually runs it, DERIVED from scripts/ci/run-shell-tests.sh's own
 # tables (never hand-copied, so it cannot drift from them).
 #

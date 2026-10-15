@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# HIMMEL-2369 — every emitted next-session / mission doc must carry the
-# operator-gated wrap clause. HIMMEL-2788 added a second canonical clause,
-# Console Rulings, on the same "one source, tested presence" mechanism.
+# Every emitted next-session / mission doc must carry the
+# operator-gated wrap clause. A second canonical clause,
+# Console Rulings, rides on the same "one source, tested presence" mechanism.
 #
-# Why a test and not just prose: HIMMEL-1719 showed that the same paragraph
+# Why a test and not just prose: an earlier incident showed that the same paragraph
 # copied into N templates silently drifts — the launch preamble lost its copy
 # in essentially every autonomously emitted session for ~2 months before
 # anyone noticed. The lesson banked there was "one source, tested presence",
@@ -49,7 +49,7 @@ operator instead of assuming you are gone.
 CLAUSE_EOF
 )
 
-# Second canonical clause (HIMMEL-2788): the claudex inbox-hook preface,
+# Second canonical clause: the claudex inbox-hook preface,
 # byte-identical in every *-next-session.md template alongside CLAUSE above.
 CLAUSE2=$(cat <<'CLAUSE2_EOF'
 ## Console Rulings

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hop.sh — invocable mid-session jump to a fresh claude session (HIMMEL-130).
+# hop.sh — invocable mid-session jump to a fresh claude session.
 #
 # Sibling of scripts/handover/arm-resume.sh. arm-resume is *cron-armed*
 # (schtasks ONCE at a future time, operator chooses the time, dedup-
@@ -67,12 +67,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
 
-# HIMMEL-335: pull HANDOVER_DIR / USER_SLUG from <repo>/.env when the
+# pull HANDOVER_DIR / USER_SLUG from <repo>/.env when the
 # launching shell didn't export them (a live env value still wins). Makes
 # .env a real config source for the handover root instead of a hardcode.
-# HIMMEL-3533: pin to this script's OWN checkout, never the caller's CWD repo
+# pin to this script's OWN checkout, never the caller's CWD repo
 # (load_dotenv with no --root resolves via the process CWD's git repo — see
-# HIMMEL-3532 / bank-preflight.sh for the failure mode).
+# bank-preflight.sh for the failure mode).
 load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" HANDOVER_DIR USER_SLUG
 
 MESSAGE=""
@@ -164,8 +164,8 @@ if ! command -v claude >/dev/null 2>&1; then
     exit 2
 fi
 
-# HIMMEL-4013: the hopped-to session runs under the profile of the role that is
-# hopping, not the operator's full plugin set. Precedence (HIMMEL-4033):
+# the hopped-to session runs under the profile of the role that is
+# hopping, not the operator's full plugin set. Precedence:
 # HOP_PROFILE; else the role read from the hopping session's handover doc (--doc,
 # or HIMMEL_CONSOLE_DOC when it is a file) via role-profile.sh, so a design or
 # reviewer leg keeps its profile; else role env: a console session
@@ -255,7 +255,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
-# HIMMEL-143: best-effort flush pass before snapshot so cap-resume
+# best-effort flush pass before snapshot so cap-resume
 # hand-off cannot leave un-pushed handover state. Failures inside
 # flush.sh are absorbed (`|| true`) — hop must never fail because of
 # a flush-layer issue. The snapshot write below is the load-bearing
@@ -286,7 +286,7 @@ case "$MODE" in
         arm_args=(--time "$hop_time" --handover "$SNAPSHOT" --cwd "$ORIGIN_REPO" --profile "$hop_profile")
         [ "$FORCE" -eq 1 ] && arm_args+=(--force)
         # `if ! cmd; then rc=$?` would capture the negation's status (0), hiding
-        # a refusal (HIMMEL-4054) — take the real status first.
+        # a refusal — take the real status first.
         rc=0
         bash "$ORIGIN_REPO/scripts/handover/arm-resume.sh" "${arm_args[@]}" || rc=$?
         if [ "$rc" -ne 0 ]; then

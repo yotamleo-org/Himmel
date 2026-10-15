@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-leg-handoff-threshold-docs.sh — HIMMEL-4089 ask 2. Pins the leg context
+# test-leg-handoff-threshold-docs.sh — Pins the leg context
 # hand-off threshold where a leg and a console read it.
 #
 # Every leg launch carries an autocompact ceiling (headed-arm-leg.sh refuses
@@ -7,9 +7,9 @@
 # 399 leg sessions (2026-09-27..10-03): 349 compacted, 309 of those still
 # reached WRAPPED after their last compaction, and every observed compaction
 # fired between 157k and 176k of the 200k window. 75 % (150k) sits below all
-# of them. The old 60 % hand-off was the churn, not the safety. HIMMEL-4569
-# moved the leg preface to the hook's rule, a share of the --autocompact
-# ceiling; HIMMEL-4710 set it to 75 % (150k) and made the guard OFF by default
+# of them. The old 60 % hand-off was the churn, not the safety. The leg preface
+# follows the hook's rule, a share of the --autocompact
+# ceiling, set to 75 % (150k), with the guard OFF by default
 # (on only by `headed-arm-leg.sh --context-guard compact|handoff`), with
 # docs/internals/leg-context-guard.md the one reference.
 #
@@ -72,7 +72,7 @@ lacks "calibration drops the 75 % leg rule"  "$CALIB"   'Leg handover is at 75% 
 has   "preface names close-wrapped-leg.sh as the session end (HIMMEL-2414)" "$PREFACE" "the console's \`close-wrapped-leg.sh\` ends the session"
 lacks "preface does not tell a leg to exit its own session (HIMMEL-2414)" "$PREFACE" 'closable-window banner, and \*\*exit\*\*'
 lacks "calibration drops the 45 % leg rule"  "$CALIB"   'Leg handover is whichever limit arrives first: 45%'
-# The one reference (HIMMEL-4710 REDIRECT item 3): every fact a leg or a console
+# The one reference: every fact a leg or a console
 # needs, in one place.
 has   "guard doc: off by default"            "$GUARD"   'off by default'
 has   "guard doc: how to turn it on"         "$GUARD"   '--context-guard compact'

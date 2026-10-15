@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/handover/append-cr-findings.sh — append one CR-panel finding into a
-# handover item's reviewer-notes.md, deduped per (head,id) (HIMMEL-416 F2 / C2).
-# Exit: 0 = appended, 9 = already present (deduped), 2 = error (HIMMEL-2430).
+# handover item's reviewer-notes.md, deduped per (head,id).
+# Exit: 0 = appended, 9 = already present (deduped), 2 = error.
 set -uo pipefail
 
 notes="" head="" date="" pr="" id="" severity="" file="" line="" title="" verdict=""

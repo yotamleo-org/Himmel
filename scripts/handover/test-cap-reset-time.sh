@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/handover/cap-reset-time.sh (HIMMEL-126).
+# Smoke test for scripts/handover/cap-reset-time.sh.
 #
 # Exercises:
 # - missing cache → rc=2
@@ -38,7 +38,7 @@ assert_match() {
 
 FAILED=0
 
-# HIMMEL-1712: hermetic identity so every fixture below can stamp the SAME
+# hermetic identity so every fixture below can stamp the SAME
 # matching account hash — this suite is about resets_at parsing, not
 # identity, and a dedicated account-mismatch case is added separately below.
 export HOME="$TMP/home"; mkdir -p "$HOME"
@@ -116,7 +116,7 @@ assert_rc "T11 --help rc=0" 0 "$?"
 bash "$CAP" --cache "$FIXTURE" --max-age 0 --window five_hour >/dev/null 2>&1
 assert_rc "T12 underscore window form rc=0" 0 "$?"
 
-# T14-T18: schema drift (HIMMEL-732) — resets_at as a RAW EPOCH STRING.
+# T14-T18: schema drift — resets_at as a RAW EPOCH STRING.
 # Newer statusline builds write "1783760400" instead of ISO 8601, for both
 # windows. Default HH:MM, --epoch, and --raw must all resolve it; the ISO
 # cases above (T1-T4) stay green for backward compat with older builds.
@@ -151,7 +151,7 @@ out=$(bash "$CAP" --cache "$EPOCH_FIXTURE" --max-age 0 --window seven-day --epoc
 assert_rc "T18 epoch seven-day --epoch rc=0" 0 "$?"
 assert_match "T18 epoch seven-day --epoch value" '^1783760400$' "$out"
 
-# T13: wedged python3 stub (HIMMEL-249) — epoch conversion must fail
+# T13: wedged python3 stub — epoch conversion must fail
 #      BOUNDED with the script's own ERR + rc=3, never hang.
 if timeout --version 2>/dev/null | grep -qi coreutils; then
     mkdir -p "$TMP/wedged-bin"
@@ -175,7 +175,7 @@ EOF
         FAILED=$((FAILED + 1))
     fi
 
-    # T19: epoch-form (HIMMEL-732) must NOT call python3 at all — the epoch
+    # T19: epoch-form must NOT call python3 at all — the epoch
     #      is used directly, so a wedged Store stub cannot block it. This is
     #      the exact wedge class that broke ISO parsing and tore the
     #      auto-arm safety net; epoch input + --epoch + --max-age 0 takes
@@ -197,7 +197,7 @@ else
     echo "SKIP T13 (no GNU coreutils timeout on this runner)"
 fi
 
-# T20: HIMMEL-1712 — a cache stamped for a DIFFERENT account is UNKNOWN,
+# T20: a cache stamped for a DIFFERENT account is UNKNOWN,
 # same exit 3 / stderr shape as a missing resets_at (T9).
 MISMATCH_FIXTURE="$TMP/cache-mismatch.json"
 cat > "$MISMATCH_FIXTURE" <<'EOF'

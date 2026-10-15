@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-headed-arm.sh
-# scripts/handover/test-konsole-macos.sh - suite for konsole-macos.sh (HIMMEL-2534).
+# scripts/handover/test-konsole-macos.sh - suite for konsole-macos.sh.
 #
 # konsole-macos.sh is the shim that gives headed-arm.sh a TTY on macOS, where
 # konsole does not exist. It accepts the EXACT konsole argv headed-arm.sh
@@ -37,7 +37,7 @@ fails=0
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 check()        { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains()     { grepq "$2" -F -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
-# HIMMEL-3484: only grep's rc 1 means "absent"; rc >1 is an execution error,
+# only grep's rc 1 means "absent"; rc >1 is an execution error,
 # which would otherwise pass every negative assertion vacuously.
 not_contains() {
     local _rc=0
@@ -69,7 +69,7 @@ case "$mode" in
     # late: the body is already open (fd 3) when the shim's scratch dir is
     # removed - the timeout-cleanup race - and only then runs (N357 r2 codex-1).
     late)   for a in "\$@"; do case "\$a" in *.command) ( exec 3<"\$a"; rm -rf "\$(dirname "\$a")"; env -i sh /dev/fd/3 ) >/dev/null 2>&1 & ;; esac; done; exit 0 ;;
-    # orphan (HIMMEL-3484): the body only starts once the shim has already
+    # orphan: the body only starts once the shim has already
     # given up and exited, yet finds its scratch dir present (a cleanup that
     # lost the race with the body's own pid write). The pid write succeeds,
     # so only the startup handshake can stop the command from running.
@@ -115,7 +115,7 @@ b2="$tmp/b2"; mk_open_stub "$b2" "$tmp/open2.log"
 # against the normalised form, not the raw concatenation.
 wd="$tmp/work"; mkdir -p "$wd"; wd="$(cd "$wd" && pwd)"
 marker="$tmp/ran.txt"; rm -f "$marker"
-# HIMMEL-2534 CR fix (N346): case 2c asserts the no-ARM_TERMINAL_APP default
+# Case 2c asserts the no-ARM_TERMINAL_APP default
 # resolves to iTerm, but that default reads $TERM_PROGRAM - green only by
 # accident, on a Mac running this suite inside iTerm. Pin it.
 out="$(TERM_PROGRAM=iTerm.app run_shim "$b2" -- --separate --workdir "$wd" -p "tabtitle=probe" \
@@ -204,7 +204,7 @@ out="$(PATH="$b8:$PATH" ARM_APP_DIRS="$appdirs" KONSOLE_MACOS_STARTUP_TICKS=3 \
 check "6b session never reports a pid: exit 4" "$rc" "4"
 contains "6b no-pid: names the startup budget" "$out" "never reported a pid"
 
-# HIMMEL-2534 CR fix (N346): a malformed KONSOLE_MACOS_STARTUP_TICKS must fail
+# A malformed KONSOLE_MACOS_STARTUP_TICKS must fail
 # bounded, not spin `[ -ge ]` forever on a non-numeric comparison.
 b9="$tmp/b9"; mk_open_stub "$b9" "$tmp/open9.log" silent
 out="$(PATH="$b9:$PATH" ARM_APP_DIRS="$appdirs" KONSOLE_MACOS_STARTUP_TICKS=abc \
@@ -224,7 +224,7 @@ PATH="$b10:$PATH" ARM_APP_DIRS="$appdirs" KONSOLE_MACOS_STARTUP_TICKS=3 \
 sleep 1
 check "6d unrecordable pid: the command never runs" "$([ -e "$tmp/late-ran" ] && echo ran)" ""
 
-# HIMMEL-3484: the body that DID record its pid, but only after the shim
+# the body that DID record its pid, but only after the shim
 # reported failure (exit 4), must not run either: it waits for the shim's
 # go/ack, and exits once the shim that would send it is gone.
 b11="$tmp/b11"; mk_open_stub "$b11" "$tmp/open11.log" orphan
@@ -235,7 +235,7 @@ n=0; while [ ! -s "$tmp/open11.log.done" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$
 check "6e orphaned body: the body ran and exited 1 on the missing ack" "$(cat "$tmp/open11.log.done" 2>/dev/null)" "1"
 check "6e orphaned body: the command never runs without the shim's ack" "$([ -e "$tmp/orphan-ran" ] && echo ran)" ""
 
-# --- 7. HIMMEL-3484: the fan-out caps reach a Mac leg ------------------------
+# --- 7. the fan-out caps reach a Mac leg ------------------------
 # `open -a` starts the body from a fresh environment, so the subagent caps an
 # operator set in the launching shell were silently dropped - a Mac leg ran
 # uncapped. They are forwarded explicitly, like PATH; nothing else is.
@@ -250,7 +250,7 @@ contains "7a CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH reaches the session" "$envout"
 contains "7a FLEET_CAP reaches the session" "$envout" "FLEET_CAP=7"
 not_contains "7b an unrelated launching-shell var still does not" "$envout" "KONSOLE_MACOS_UNRELATED"
 
-# --- 8. HIMMEL-3484: not_contains must not read a grep EXECUTION error (rc 2)
+# --- 8. not_contains must not read a grep EXECUTION error (rc 2)
 # as "absent" - that would pass every negative assertion above vacuously.
 # shellcheck disable=SC2317,SC2329  # grep() is invoked indirectly, through grepq
 nc8=$( grep() { return 2; }; not_contains "8 probe" "x" "y" )

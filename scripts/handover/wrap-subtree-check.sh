@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# wrap-subtree-check.sh — the structural wrap/halt gate (HIMMEL-2761).
+# wrap-subtree-check.sh — the structural wrap/halt gate.
 #
 # A leg (or judge) that declares itself closable must first prove its own
 # process subtree is empty. TaskStop on an agent does NOT reap the background
@@ -24,13 +24,13 @@
 # `…qmd[.ext] mcp` invocation, or the session's `caffeinate` keep-awake —
 # a descendant of a name-matched process inherits the ignore by walking up
 # to that match, the same rule that already carries an MCP launcher's ignore
-# down to its children (HIMMEL-3265)), or a
+# down to its children), or a
 # DIRECT child of the session that is not a shell-tool wrapper and forked
 # within WRAP_SUBTREE_START_WINDOW seconds
 # (default 10; 0 turns the rule off) of the session itself — the servers a
 # session starts with it (`uv tool uvx … mcp-obsidian`, `graphify-mcp`,
 # `uv run … server.py`) share no name but all fork ~1s after `claude`
-# (HIMMEL-3265) — plus anything beneath one. Each ignored child is listed as an
+# — plus anything beneath one. Each ignored child is listed as an
 # `ignored pid=…` row with why=, never hidden. A shell-tool wrapper
 # (`<shell> -c source …/shell-snapshots/snapshot-…`) is never harness, whatever
 # its command text says or however early it started: every command a leg runs
@@ -64,7 +64,7 @@
 # ponytail: the default harness match is a heuristic over argv, so a leaked
 # process literally named like an MCP server (`node …/mcp-server-x/y.js`) would
 # be exempt; the leak class this gate exists for is a tool-call shell, which
-# is never exempt. `caffeinate` (HIMMEL-3712) is anchored more tightly than
+# is never exempt. `caffeinate` is anchored more tightly than
 # mcp-server/qmd: it only matches as the PROGRAM itself (optionally
 # path-prefixed) followed by nothing but flags, never a job argument — so
 # `caffeinate ./long-job.sh` and `sleep 999 caffeinate` withhold (a regression
@@ -76,8 +76,8 @@
 # GH #1337 also reported a `claude-hud` statusline tree false WITHHELD. A loose
 # by-path exemption (`^([^ ]*/)?(node|bun) [^ ]*/claude-hud/[^ ]*`) was rejected
 # on that PR's re-judge: it exempted ANY node/bun script under any directory
-# merely named claude-hud. HIMMEL-4139 fixed it with a tight anchor on the real
-# statusLine launch shape; HIMMEL-4161 widened that to the whole per-render chain
+# merely named claude-hud. It was fixed with a tight anchor on the real
+# statusLine launch shape, widened to the whole per-render chain
 # (see chain_re below).
 #
 # READ-ONLY: this script never signals a process. Bash 3.2-compatible.
@@ -109,7 +109,7 @@ case "$window" in
 esac
 harness_re="${WRAP_SUBTREE_HARNESS_RE:-(^|[ /])(mcp-server[^ ]*|[^ ]*qmd([.][a-z]+)? mcp)( |\$)|^([^ ]*/)?caffeinate( -[a-z]+( [0-9]+)?)*\$}"
 
-# HIMMEL-4139 / HIMMEL-4161: the per-render statusline chain. claude-hud's real
+# the per-render statusline chain. claude-hud's real
 # launch is `sh -c [ -f P ] && exec node P || true`, so argv is exactly `node
 # <abs>/marketplace/plugins/claude-hud/dist/index.js`; it runs `bash <abs>/scripts/
 # statusline/hud-custom-lines.sh`, which runs `[timeout N] bash <abs>/scripts/
@@ -120,8 +120,8 @@ harness_re="${WRAP_SUBTREE_HARNESS_RE:-(^|[ /])(mcp-server[^ ]*|[^ ]*qmd([.][a-z
 # these four anchored shapes (awk ischain), so a non-chain child, or a chain
 # member beneath a non-chain parent, still withholds. A directory merely named
 # claude-hud, or a script merely named statusline-segment.sh elsewhere, is NOT
-# exempt (HIMMEL-3723), and a `/..` anywhere in the argv disqualifies.
-# HIMMEL-4592: every DESCENDANT of a chain-shaped direct child of the session is
+# exempt, and a `/..` anywhere in the argv disqualifies.
+# every DESCENDANT of a chain-shaped direct child of the session is
 # exempt too (via= names that top), so claude-hud's own `git status --porcelain`
 # child does not withhold; a leg-owned git hangs under a tool-call wrapper or the
 # session, never under a chain top, and still withholds.
@@ -210,7 +210,7 @@ END {
         if (h >= maxh) under = 1
         if (!under || skip) continue
         if (!harness && allchain) { harness = 1; why = "statusline-chain"; via = pid }
-        # HIMMEL-4592: a descendant of a chain node that is itself the session'"'"'s direct
+        # a descendant of a chain node that is itself the session'"'"'s direct
         # child (claude-hud'"'"'s `git status --porcelain`) inherits the ignore by its
         # parent chain; a leg-owned process hangs under a tool-call wrapper or the
         # session, never under a chain top, so it is not reached.

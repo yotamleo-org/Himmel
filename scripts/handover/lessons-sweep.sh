@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # scripts/handover/lessons-sweep.sh — proposal-only lessons sweep
-# (HIMMEL-416 F2 / C6). Read-only: collects resolved/wontfix bug symptoms and
+# Read-only: collects resolved/wontfix bug symptoms and
 # CR-finding titles across every handover item, flags text recurring across
 # >=2 items as lesson CANDIDATES, then prints a digest. Writes nothing — the
 # operator promotes what's worth keeping (no auto-write to vault / CLAUDE.md).
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=/dev/null

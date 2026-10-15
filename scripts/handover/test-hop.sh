@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/handover/hop.sh (HIMMEL-130).
+# Smoke test for scripts/handover/hop.sh.
 #
 # Covers the snapshot-writing path + dry-run output shape. Does NOT
 # exercise the live arm-resume call (--schedule) — that's covered by
@@ -9,7 +9,7 @@ set -uo pipefail
 HOP="$(cd "$(dirname "$0")" && pwd)/hop.sh"
 [ -x "$HOP" ] || chmod +x "$HOP"
 
-# HIMMEL-4013: hop infers its profile from the caller's role env; a test run
+# hop infers its profile from the caller's role env; a test run
 # inside a console/leg must not inherit it.
 unset HOP_PROFILE HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_LEG
 TMP=$(mktemp -d)
@@ -44,7 +44,7 @@ assert_not_contains() {
 }
 
 FAILED=0
-# HIMMEL-4013: redirect profile settings to scratch BEFORE the first hop, so no
+# redirect profile settings to scratch BEFORE the first hop, so no
 # case can overwrite the operator's persistent profile files.
 export HIMMEL_PROFILE_SETTINGS_DIR="$TMP/profiles"
 
@@ -55,7 +55,7 @@ assert_rc "T1 print dry-run rc=0" 0 "$rc"
 assert_contains "T1 mentions snapshot path" "$TMP/handovers/$SLUG/context-hop-" "$out"
 assert_contains "T1 prints operator command" "\"load" "$out"
 assert_contains "T1 embeds message in snapshot body" "test message" "$out"
-# HIMMEL-4013: the printed command carries the role-matched profile settings.
+# the printed command carries the role-matched profile settings.
 assert_contains "T1 operator command applies --settings" "claude --settings '" "$out"
 assert_contains "T1 default role profile is user" "/user.json'" "$out"
 out=$(env HIMMEL_CONSOLE_DOC=/x/doc.md bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
@@ -70,7 +70,7 @@ assert_rc "T1 unknown profile fails closed" 2 "$rc"
 out=$(env HIMMEL_CONSOLE_DOC=/x/doc.md bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --dry-run 2>&1)
 assert_contains "T2 schedule hop hands arm-resume the profile" "--profile console" "$out"
 
-# HIMMEL-4033: the profile is derived from the hopping session's handover doc
+# the profile is derived from the hopping session's handover doc
 # (role-profile.sh, as arm-resume does) when HOP_PROFILE is unset; env wins.
 printf '# leg\n> profile: design\nRETASK token T-x\n' > "$TMP/design-leg.md"
 printf '# leg\nRETASK token T-x\n' > "$TMP/plain-leg.md"
@@ -143,26 +143,26 @@ bash "$HOP" --help >/dev/null 2>&1
 rc=$?
 assert_rc "T10 --help rc=0" 0 "$rc"
 
-# T11 (HIMMEL-130 fix): schedule dry-run passes --cwd <origin> to arm-resume
+# T11: schedule dry-run passes --cwd <origin> to arm-resume
 out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message "cwd-test" --dry-run 2>&1)
 arm_line=$(printf '%s\n' "$out" | grep -E '^DRY hop: would invoke' | head -1)
 assert_contains "T11 dry-run passes --cwd to arm-resume" "--cwd '" "$arm_line"
 
-# T12 (HIMMEL-130 fix): snapshot body records the origin repo line
+# T12: snapshot body records the origin repo line
 out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message "origin-test" --dry-run 2>&1)
 assert_contains "T12 snapshot has 'Origin repo (relaunch cwd)' line" "Origin repo (relaunch cwd)" "$out"
 
-# T13 (HIMMEL-130 fix): dry-run WITHOUT --force does NOT include --force in arm-resume preview
+# T13: dry-run WITHOUT --force does NOT include --force in arm-resume preview
 out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message "no-force-test" --dry-run 2>&1)
 arm_line=$(printf '%s\n' "$out" | grep -E '^DRY hop: would invoke' | head -1)
 assert_not_contains "T13 dry-run without --force omits --force flag" " --force" "$arm_line"
 
-# T14 (HIMMEL-130 fix): dry-run WITH --force DOES include --force in arm-resume preview
+# T14: dry-run WITH --force DOES include --force in arm-resume preview
 out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message "force-test" --force --dry-run 2>&1)
 arm_line=$(printf '%s\n' "$out" | grep -E '^DRY hop: would invoke' | head -1)
 assert_contains "T14 dry-run with --force includes --force flag" " --force" "$arm_line"
 
-# --- HIMMEL-335: de-hardcoded HANDOVER_DIR + USER_SLUG resolution ---
+# --- de-hardcoded HANDOVER_DIR + USER_SLUG resolution ---
 
 # T15: HANDOVER_DIR (Mode B) joined to USER_SLUG → <dir>/<slug>/ snapshot.
 mkdir -p "$TMP/state/tester"
@@ -184,7 +184,7 @@ rc=$?
 assert_rc "T17 missing HANDOVER_DIR fail-closed rc=2" 2 "$rc"
 assert_contains "T17 diagnostic" "cannot resolve handover root" "$out"
 
-# --- HIMMEL-3533: .env read must come from hop.sh's OWN checkout, never the
+# --- .env read must come from hop.sh's OWN checkout, never the
 # caller's CWD repo. Fixture mirrors test-bank-preflight-dotenv-root.sh: a
 # scratch "own checkout" (scripts/lib + scripts/handover copied verbatim, plus
 # a fixture .env carrying HANDOVER_DIR/USER_SLUG) is run with CWD inside a
@@ -206,7 +206,7 @@ rc=$?
 assert_rc "T18 own-checkout .env resolves rc=0" 0 "$rc"
 assert_contains "T18 snapshot under own-checkout's HANDOVER_DIR, not the foreign CWD repo" "$own/state-fixture/ownslug/context-hop-" "$out"
 
-# --- HIMMEL-4054: hop must propagate arm-resume's real exit status. The origin
+# --- hop must propagate arm-resume's real exit status. The origin
 # repo is a scratch `git init` whose arm-resume.sh stub exits with a chosen rc.
 stubrepo="$TMP/stub-origin"
 mkdir -p "$stubrepo/scripts/handover" "$TMP/handovers/stub"

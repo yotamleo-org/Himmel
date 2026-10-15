@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/append-cr-bugs.sh — CR->bug-tracker bridge (HIMMEL-446).
+# scripts/handover/append-cr-bugs.sh — CR->bug-tracker bridge.
 #
 # Bridges /pr-check panel findings into the active item's bugs.md so the CR
 # fix-loop has an open->resolved lifecycle (the F1 ledger is machine telemetry;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/test-merge-forward-check.sh — HIMMEL-4114. Fixture-driven
+# scripts/handover/test-merge-forward-check.sh — Fixture-driven
 # coverage of merge-forward-check.sh: ALLOW only a red inherited from the
 # merge-base, failing the same cases, and fixed on latest main; a red the PR
 # introduced never passes.
@@ -38,7 +38,7 @@ set3() {
   awk -F'\t' '$2=="failure"||$2=="timed_out"||$2=="startup_failure" {print $1"\tc1"}' "$tmp/base" > "$tmp/base-cases"
 }
 
-# the defect (HIMMEL-4114): green at base, red on the PR, green on latest = the PR's own red
+# the defect: green at base, red on the PR, green on latest = the PR's own red
 set3 'shell-tests\tfailure\nlint\tsuccess\n' 'shell-tests\tsuccess\nlint\tsuccess\n' 'shell-tests\tsuccess\nlint\tsuccess\n'
 run "green at base + red on PR + green on latest: REFUSE (the PR's own red)" 1 'REFUSE.*shell-tests.*not inherited'
 
@@ -63,7 +63,7 @@ run "red on latest main too: REFUSE" 1 'REFUSE.*a.*not proven fixed'
 set3 'a\tsuccess\nb\tskipped\n' 'a\tsuccess\n' 'a\tsuccess\n'
 run "nothing red: no merge-forward needed" 3 'nothing red'
 
-# HIMMEL-4113: awk skips a directory with rc 0, which would read as "nothing red"
+# awk skips a directory with rc 0, which would read as "nothing red"
 set3 'a\tfailure\n' 'a\tfailure\n' 'a\tsuccess\n'
 rm -f "$tmp/pr"; mkdir "$tmp/pr"
 run "PR job file is a directory (unparseable): usage, never 'nothing red'" 2 'usage'
@@ -85,7 +85,7 @@ run "--pr-sha is not HEAD: REFUSE (an older PR run)" 1 'REFUSE.*--pr run is for 
 runraw "--pr-sha omitted: usage, never ALLOW" 2 'usage' --base-sha abc123 --main-base-sha abc123 --latest-sha "$TIP"
 runraw "--pr-sha empty: usage, never ALLOW" 2 'usage' --base-sha abc123 --main-base-sha abc123 --latest-sha "$TIP" --pr-sha ''
 
-# F3 (HIMMEL-5124): the latest run must be ON origin/main and at or after the verdict run;
+# F3: the latest run must be ON origin/main and at or after the verdict run;
 # main CI is a cron, so it is usually behind the tip
 runraw "--latest-sha omitted: usage, never ALLOW" 2 'usage' --base-sha abc123 --main-base-sha abc123
 runraw "--latest-sha empty: usage, never ALLOW" 2 'usage' --base-sha abc123 --main-base-sha abc123 --latest-sha ''
@@ -149,7 +149,7 @@ printf '01\tfailure\n' > "$tmp/pr"; printf '1\tfailure\n' > "$tmp/base"; printf 
 printf '01\tc1\n' > "$tmp/pr-cases"; printf '1\tc1\n' > "$tmp/base-cases"
 run "PR job 01 vs base job 1: REFUSE (string compare)" 1 'REFUSE.*01'
 
-# HIMMEL-4260: the merge-base run was cancelled (a newer merge replaced the pending
+# the merge-base run was cancelled (a newer merge replaced the pending
 # sweep), so the verdict comes from the next completed sweep covering it. History
 # P -- S -- C -- T on main: P the previous completed sweep, S the merge-base
 # (cancelled run), C the covering sweep, T the tip; HEAD is a leg branch off S.
@@ -185,7 +185,7 @@ runcov "cancelled merge-base run + red covering sweep + red latest: REFUSE" 1 'R
   --base-cover "$tmp/cover" --base-cover-conclusion failure --base-cover-sha "$CC" --base-cover-from "$CP"
 printf 'a\tsuccess\n' > "$tmp/latest"
 runcov "cancelled merge-base run, no covering sweep given: REFUSE" 1 'REFUSE.*no completed main run.*no completed run covering.*next cron or dispatch'
-# HIMMEL-5124: main CI is a cron, so the latest completed run is behind the tip and the covering run may be it
+# main CI is a cron, so the latest completed run is behind the tip and the covering run may be it
 runcov "latest run is the covering run, behind the tip: ALLOW" 0 "ALLOW.*covering main run at $CC" \
   --base-cover "$tmp/cover" --base-cover-conclusion failure --base-cover-sha "$CC" --base-cover-from "$CP" --latest-sha "$CC"
 runcov "latest run resolves and descends from the base but is OFF origin/main (the leg's own commit): REFUSE" 1 'REFUSE.*not on origin/main' \
@@ -237,7 +237,7 @@ runcov "merge-base run completed: its own verdict stands, a cover is a usage err
   --base-cover "$tmp/cover" --base-cover-conclusion failure --base-cover-sha "$CC" --base-cover-from "$CP"
 runcov "merge-base run completed red, no cover: ALLOW as before" 0 'ALLOW.*a'
 
-# HIMMEL-5137: only success|failure are completed verdicts; none must come with an empty file
+# only success|failure are completed verdicts; none must come with an empty file
 runcov "base conclusion none with NON-empty rows, no cover: REFUSE (rows contradict none)" 1 'REFUSE.*none' --main-base-conclusion none
 runcov "base conclusion none with NON-empty rows + cover: REFUSE" 1 'REFUSE.*none' --main-base-conclusion none \
   --base-cover "$tmp/cover" --base-cover-conclusion failure --base-cover-sha "$CC" --base-cover-from "$CP"
@@ -255,7 +255,7 @@ for c in timed_out neutral stale skipped startup_failure action_required; do
 done
 printf 'a\tfailure\n' > "$tmp/base"
 
-# HIMMEL-5124 real-environment rows. The merge-base de9b2a8e8 (main after PR 2277) has NO CI run:
+# Real-environment rows. The merge-base de9b2a8e8 (main after PR 2277) has NO CI run:
 #   gh run list --commit de9b2a8e82ecdc393fa7b5619525ff80107f5b61 --json databaseId,event,conclusion  ->  []
 # so --main-base is an empty file. Cover = job rows of run 38014176513 (main push 34d7d3d31, CI,
 # real `gh run view --json jobs --jq '.jobs[]|[.name,.conclusion]|@tsv'` output) with a real
@@ -339,8 +339,8 @@ printf 'lint\tfailure\n' > "$tmp/pr"; printf 'lint\tc1\n' > "$tmp/pr-cases"
 runcov "real rows: PR red job was cancelled/green on the covering run: REFUSE (the PR's own red)" 1 'REFUSE.*lint.*not inherited' \
   --base-cover "$tmp/cover" --base-cover-conclusion failure --base-cover-sha "$CC" --base-cover-from "$CP" --latest-sha "$CC"
 
-# HIMMEL-5461: the covering run already holds the fix, so its rows read green and every inherited red looked
-# like the PR's own. Real rows: run 38329960360 (workflow_dispatch, main 915c81d1, HIMMEL-5449 / #2495,
+# the covering run already holds the fix, so its rows read green and every inherited red looked
+# like the PR's own. Real rows: run 38329960360 (workflow_dispatch, main 915c81d1, #2495,
 # `gh run view --json jobs --jq '.jobs[]|[.name,.conclusion]|@tsv'`), git-env-scrub success in it; the
 # previous completed run 38289276849 sat at 65506b96. PRs 2486 2488 2491 2493 2496 2498 were refused
 # "git-env-scrub (base: success - not inherited)". --base-cases-local lists the cases reproduced failing at

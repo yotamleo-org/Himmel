@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # handover/generate-morning-briefing — daily 🌅 Morning Report generator.
 #
-# HIMMEL-135 (core) + HIMMEL-574 (morning-report schema). Templates live
+# Core generator and morning-report schema. Templates live
 # git/gh/jira/worktree state into the curated "🌅 Morning Report" schema and
 # writes a dated report to the handover root (`$HANDOVER_DIR`, Mode B) or
 # `<repo>/handovers/` (Mode A) — at ~zero Claude tokens by default. Sections:
@@ -11,7 +11,7 @@
 #   ## 🔴 In-flight WIP   — jira In Progress correlated to worktrees/open-PRs
 #   ## 🧹 Stale worktrees — worktrees on MERGED-PR branches
 #   ## 📋 Backlog         — flat To-Do list (--llm clusters by theme)
-#   ## 📄 Docs drift     — mapped sources changed without their docs (HIMMEL-587)
+#   ## 📄 Docs drift     — mapped sources changed without their docs
 #   ## Suggested order    — heuristic ordering (--llm enriches)
 #
 # Default run costs ~no Claude tokens. `--llm` enriches TL;DR + Suggested
@@ -20,7 +20,7 @@
 # forms; stays on Max quota, passes the no-headless gate), failing open
 # per-block to the deterministic heuristic.
 #
-# Output path via the HIMMEL-118 single-root resolver:
+# Output path via the single-root resolver:
 #   - Mode B (HANDOVER_DIR set) → $HANDOVER_DIR/morning-report-$(date +%F).md
 #   - Mode A (inline) → $repo/handovers/morning-report-$(date +%F).md
 #
@@ -34,9 +34,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
-# forge_detect (HIMMEL-326): the date-ranged merged-PR query below is a
+# forge_detect: the date-ranged merged-PR query below is a
 # GitHub-specific `gh pr list --search` (no forge-seam verb covers a date range),
-# so it's gated to a github origin — as are the HIMMEL-574 PR-correlation calls.
+# so it's gated to a github origin — as are the PR-correlation calls.
 # shellcheck source=../lib/forge.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/forge.sh"
@@ -125,7 +125,7 @@ if [ -z "$SINCE_SHA" ]; then
     fi
 fi
 
-# LOCAL day, computed ONCE (HIMMEL-574; was date -u). Reused for the
+# LOCAL day, computed ONCE. Reused for the
 # --since-date default, the output filename, and the header so a run spanning
 # local midnight can't put one date in the filename and another in the header.
 today=$(date +%F)
@@ -156,7 +156,7 @@ fi
 
 briefing_forge=$(forge_detect 2>/dev/null || true)
 
-# Docs drift (HIMMEL-587) — advisory; gated by HIMMEL_DOC_FRESHNESS morning leg.
+# Docs drift — advisory; gated by HIMMEL_DOC_FRESHNESS morning leg.
 # Source the clone's .env so the morning leg activates when himmel turned it on
 # there (mirrors inject-where-are-we.sh; the cadence/skill may not export it).
 if [ -f "$repo_root/.env" ]; then
@@ -319,7 +319,7 @@ extract_block() {
     printf '%s\n' "$1" | sed -n "/<<<$2_BEGIN>>>/,/<<<$2_END>>>/p" | sed '1d;$d'
 }
 
-# HIMMEL-603: under Codex a claude fork is a nested harness; keep the heuristic
+# under Codex a claude fork is a nested harness; keep the heuristic
 # report. CODEX_THREAD_ID is set only inside a real codex runtime.
 if [ "$LLM" -eq 1 ] && [ -n "${CODEX_THREAD_ID:-}" ]; then
     echo "NOTE: skipping --llm under Codex (no nested claude fork); using deterministic heuristics" >&2
@@ -347,7 +347,7 @@ Backlog tickets:
 ${backlog_rows}
 In-Progress:
 ${inprogress_raw}"
-    # HIMMEL-4013: a text-in/text-out summary needs no plugins beyond the floor.
+    # a text-in/text-out summary needs no plugins beyond the floor.
     if ! llm_settings=$(bash "$(dirname "${BASH_SOURCE[0]}")/../lanes/profile-settings.sh" bare); then
         echo "WARNING: --llm plugin profile 'bare' did not resolve; using heuristic" >&2
     elif llm_out=$($CLAUDE_CMD --settings "$llm_settings" --model "$LLM_MODEL" "$llm_prompt" </dev/null 2>/dev/null); then
@@ -430,7 +430,7 @@ EOF_WIP
     else
         printf '_No In-Progress tickets._\n'
     fi
-    # HIMMEL-3719: BSD awk (macOS) rejects a newline inside -v, so hand the
+    # BSD awk (macOS) rejects a newline inside -v, so hand the
     # branch list over tab-separated (a branch name cannot contain a tab).
     catchall=$(printf '%s\n' "$pr_map" | awk -F'\t' -v seen="$(printf '%s' "$annotated_branches" | tr '\n' '\t')" '
         BEGIN{ n=split(seen,s,"\t"); for(i in s) skip[tolower(s[i])]=1 }
@@ -466,7 +466,7 @@ EOF_WIP
         printf '_No To-Do tickets (or jira unavailable)._\n'
     fi
 
-    # Docs drift (HIMMEL-587) -------------------------------------------------
+    # Docs drift -------------------------------------------------
     printf '\n## 📄 Docs drift\n\n'
     if ! df_leg_active morning; then
         # shellcheck disable=SC2016  # backticks here are markdown literal, not subshell
@@ -477,7 +477,7 @@ EOF_WIP
         printf '_No mapped-source-vs-doc drift since %s._\n' "$SINCE_SHA"
     fi
 
-    # Failure review (HIMMEL-4713) --------------------------------------------
+    # Failure review --------------------------------------------
     # The digest the daily failure-review cadence wrote today; its headings drop
     # one level so it nests under this section.
     printf '\n## 🧯 Failure review\n\n'

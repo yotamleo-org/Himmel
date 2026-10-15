@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4456: arm-resume.sh and breadcrumb.sh must resolve the Jira CLI dist
+# arm-resume.sh and breadcrumb.sh must resolve the Jira CLI dist
 # from the PRIMARY checkout (git common dir), not script-relative.
 # scripts/jira/dist/ is an untracked build artifact: a worktree lacks it (the
 # call silently no-ops), or carries branch bytes if it happens to have one.

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 # scripts/handover/bug.sh — per-item bug tracker over one bugs.md
-# (HIMMEL-416 F2 / C3). Subcommands: add | fix | status | list | find.
+# Subcommands: add | fix | status | list | find.
 # Bug ids are per-item sequential (BUG-1, BUG-2, …), stable within the item.
-# `--finding-id` (HIMMEL-446) tags a bug with the CR finding-id that raised it,
+# `--finding-id` tags a bug with the CR finding-id that raised it,
 # so the CR->bug bridge can dedup/reopen/resolve by that id (`find` queries it).
 set -uo pipefail
 

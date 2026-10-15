@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # resume-armed.sh — one-command fast-resume. Shells to the bun armed-session-track
 # resolver and prints a "you stopped here / agreed continuation" summary.
-# Read-only; never launches. HIMMEL-208.
+# Read-only; never launches.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(git -C "$HERE" rev-parse --show-toplevel)"
 j=$(bun "$REPO/scripts/telegram/armed-session-track.ts" resolve)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # handover/pr-open — open or update the PR for the current handover branch.
 #
-# HIMMEL-141 (HIMMEL-59 v2 child). Pairs with auto-commit.sh:
+# Pairs with auto-commit.sh:
 # - auto-commit.sh creates the handover/<TICKET>-<slug> branch + pushes.
 # - pr-open.sh opens a PR with a structured body (## Summary, ## Files
 #   changed, ## Ticket), idempotent across re-runs. Subsequent pushes
@@ -31,7 +31,7 @@
 #   3  not in a handover branch (refuses; misuse)
 #
 # Environment overrides:
-#   FORGE / GH_CMD / BITBUCKET_CMD   Forge-seam overrides (HIMMEL-326). The PR
+#   FORGE / GH_CMD / BITBUCKET_CMD   Forge-seam overrides. The PR
 #                ops route through scripts/lib/forge.sh, so this works on GitHub
 #                and Bitbucket Cloud alike. The github backend still honors the
 #                GH_CMD test seam (tests set GH_CMD=<stub> to capture calls).
@@ -41,7 +41,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Forge-dispatch seam: forge_pr_find_open / forge_pr_create / forge_pr_set_body
-# route to the github or bitbucket backend per the repo's origin (HIMMEL-326).
+# route to the github or bitbucket backend per the repo's origin.
 # shellcheck source=../lib/forge.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/forge.sh"

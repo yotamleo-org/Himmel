@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/handover/flush.sh (HIMMEL-143).
+# Smoke test for scripts/handover/flush.sh.
 #
 # Covers:
 #   1. 3 unpushed handover branches → flush pushes all 3, opens 3 PRs.
@@ -17,7 +17,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -103,7 +103,7 @@ run_flush() {
         # shellcheck disable=SC2030
         export FAKE_GH_LOG="$TMP_ROOT/gh.log"
         : > "$FAKE_GH_LOG"
-        # FORGE=github pins the forge seam to the github backend (HIMMEL-326);
+        # FORGE=github pins the forge seam to the github backend;
         # the handover repo's real origin is a local bare repo, used only for
         # git push/clone mechanics, so forge_detect can't read it from the URL.
         FORGE=github GH_CMD="$FAKE_GH" bash "$FLUSH" "$@" 2>&1
@@ -162,7 +162,7 @@ echo "TEST: squash-merged branch reported as merged"
     cd "$HANDOVER"
     git checkout -q main
     git pull -q origin main 2>/dev/null || true
-    # Squash-merge handover/HIMMEL-901-one into main.
+    # Squash-merge handover/PROJ-901-one into main.
     git merge --squash handover/HIMMEL-901-one
     git -c user.email=t@test.com -c user.name=test commit -q -m "squash merge of #901"
     git push -q origin main

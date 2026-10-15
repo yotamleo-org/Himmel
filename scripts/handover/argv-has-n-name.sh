@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# argv-has-n-name.sh — sourced, never executed. HIMMEL-5201: the exact-argv
+# argv-has-n-name.sh — sourced, never executed. the exact-argv
 # session-name check, factored out of headed-arm.sh so arm-resume's bus rebind
 # helper uses the SAME decision rather than a looser copy of it.
 #

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cap-reset-time.sh — print the next claude-statusline cap-reset
 # time as HH:MM 24h local. Used by arm-resume.sh's --time auto sentinel
-# (HIMMEL-126) so the operator never has to guess.
+# so the operator never has to guess.
 #
 # Source: yotamleo/claude-statusline writes a usage cache to
 # /tmp/claude/statusline-usage-cache.json (60s TTL). The cache holds:
@@ -35,7 +35,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# python3 hang armor (HIMMEL-249): the Windows Store python3 stub can wedge
+# python3 hang armor: the Windows Store python3 stub can wedge
 # (ignores SIGTERM, orphan child holds the $() pipe). arm-resume --time auto
 # calls this script, so every python call goes through the shared armor.
 # shellcheck source=../lib/py-armor.sh
@@ -114,7 +114,7 @@ if [ "$MAX_AGE_SEC" -gt 0 ]; then
     fi
 fi
 
-# HIMMEL-1712: a cache stamped by a different account is a stale number
+# a cache stamped by a different account is a stale number
 # under this identity — treat it the same as the existing "can't trust
 # this window" contract (missing/null resets_at) rather than inventing a
 # new exit path. A missing/unreadable helper degrades to "can't tell" —
@@ -142,12 +142,12 @@ if [ -z "$resets_at_iso" ] || [ "$resets_at_iso" = "null" ]; then
 fi
 
 # resets_at is ISO 8601 UTC like "2026-05-25T11:40:01.173252+00:00".
-# Schema drift (HIMMEL-732, observed 2026-07-06): newer statusline builds
+# Schema drift: newer statusline builds
 # write resets_at as a RAW EPOCH STRING like "1783760400" for both the
 # five_hour and seven_day windows. Detect that form first and use it
 # directly; otherwise convert ISO -> epoch via armored python3 (portable
 # across gitbash/linux/macos without GNU date -d, which BSD date lacks;
-# capture goes through a file, not $(), per the HIMMEL-249 armor).
+# capture goes through a file, not $(), per the python3 hang armor).
 if [[ "$resets_at_iso" =~ ^[0-9]+$ ]]; then
     resets_at_epoch="$resets_at_iso"
 else

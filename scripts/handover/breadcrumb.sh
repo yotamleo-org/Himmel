@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # scripts/handover/breadcrumb.sh — durable resume breadcrumb writer + resolver
-# (HIMMEL-477, C3).
 #
 # WHY ----------------------------------------------------------------------
 # Twice, an armed overnight resume found "no captured stop-point" and grounded
@@ -49,7 +48,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../lib/handover-path.sh
@@ -62,7 +61,7 @@ usage() {
     awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
 }
 
-# Extract a TICKET-like token (e.g. HIMMEL-477) from a branch name, upper-cased.
+# Extract a TICKET-like token from a branch name, upper-cased.
 _ticket_from_branch() {
     printf '%s' "$1" | grep -Eio '[a-z]+-[0-9]+' | head -n1 | tr '[:lower:]' '[:upper:]'
 }
@@ -201,7 +200,7 @@ cmd_resolve() {
         if [ "$have_bc" -eq 1 ]; then
             # Split on SOH by parameter expansion, not `IFS=$'\001'; set -- $parsed`:
             # bash 3.2 (macOS /bin/bash) never splits on \001 -- CTLESC is its
-            # internal quote byte -- so every field landed in $1 (HIMMEL-3177).
+            # internal quote byte -- so every field landed in $1.
             # Expansion also never globs, so a field (e.g. next_step) containing
             # * or ? cannot be expanded against the cwd.
             local _bc_sep=$'\001' _bc_rest="$parsed"
@@ -250,8 +249,7 @@ cmd_resolve() {
         jira_line="(skipped — --no-jira)"
     else
         if [ "$jira_set" -ne 1 ]; then
-            # Primary checkout's dist via the git common dir (HIMMEL-4456, same
-            # idiom as console-kit/leg-jira-status.sh); script-relative outside git.
+            # Primary checkout's dist via the git common dir (same idiom as console-kit/leg-jira-status.sh); script-relative outside git.
             local jira_js common
             if common="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
                 jira_js="$(dirname "$common")/scripts/jira/dist/index.js"

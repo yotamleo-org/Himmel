@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # scripts/handover/bugs-dashboard.sh — cross-item aggregate bug dashboard
-# (HIMMEL-416 F2 / C4). Read-only: walks every item's bugs.md under the
+# Read-only: walks every item's bugs.md under the
 # handover root and renders a markdown table + totals. Reuses bug.sh as the
 # single bugs.md parser (list --porcelain). Rows sorted by item path (groups
 # epics/ before standalones/); per-item bugs stay in id order.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=/dev/null

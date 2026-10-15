@@ -43,7 +43,7 @@ out_c="$(bash "$R" --item "$cronly")"
 check "cr-only: CR header"           "$(printf '%s' "$out_c" | grep -c 'Latest CR findings')" "1"
 check "cr-only: no open-bugs header" "$(printf '%s' "$out_c" | grep -c 'Open bugs')" "0"
 
-# HIMMEL-1553: pending-CR-marker audit panel. A KEY-N item whose ticket has a
+# pending-CR-marker audit panel. A KEY-N item whose ticket has a
 # stale marker in the repo the panel runs from -> the machine classification
 # surfaces next to the inherited prose. Hermetic: its own temp git repo is the
 # cwd, so the real repo's markers never leak in.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/handover/breadcrumb.sh (HIMMEL-477, C3).
+# Tests for scripts/handover/breadcrumb.sh.
 #
 # Hermetic: every test pins HANDOVER_DIR to a temp root and operates on a temp
 # git repo — never touches real handover state or the live repo (standing rule).
@@ -31,7 +31,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,7 +76,7 @@ printf 'work\n' > "$REPO/b.txt"; git -C "$REPO" add b.txt
 git -C "$REPO" commit -qm "feat: [HIMMEL-477] resume resolver wip"
 HEAD1=$(git -C "$REPO" rev-parse HEAD)
 
-# Jira stub: prints a canned line for `get HIMMEL-477`.
+# Jira stub: prints a canned line for `get`.
 JSTUB="$TMP_ROOT/jira-stub.sh"
 cat > "$JSTUB" <<'STUB'
 #!/usr/bin/env bash

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-reconcile-cadence.sh -- HIMMEL-1880 regression suite for the periodic
+# test-reconcile-cadence.sh -- regression suite for the periodic
 # seat-liveness runner: reconcile-workers.sh --report classifies every running
 # seat as DIED / NEVER-STARTED / STILL-RUNNING, and reconcile-cadence.sh arms
 # it on cron idempotently.
