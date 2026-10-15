@@ -319,17 +319,14 @@ ORIGIN_NWO="$FORGE_NWO"
 ORIGIN_PR_CACHE=""
 ORIGIN_PR_CACHE_OK=0
 
-# KNOWN LIMITATION: rows key on head.repo.full_name == nwo, so a PR opened
-# from a fork (head repo != base repo) is filtered out even though its base
-# is this repo. Local worktree/remote-tracking branches are pushed straight
-# to origin on this repo, so a fork PR would only coincidentally
-# share a branch name with one of them — rare enough here not to warrant the
-# extra base.repo.full_name plumbing + matching-rule complexity. Revisit if
-# this repo starts taking fork PRs.
+# Rows key on the PR's BASE repo (== nwo) plus head.ref, so a PR opened from a
+# fork still matches a local branch of the same name; the exact-tip check in
+# resolve_pr_state (head.sha == refs/pull/<n>/head) keeps a coincidental name
+# match from pruning anything.
 fetch_github_pr_cache() {
     local nwo="$1"
     forge_in_primary _gh api --paginate "repos/$nwo/pulls?state=all&per_page=100" \
-        --jq '.[] | [(.head.repo.full_name // ""), .head.ref, (if .state == "open" then "open" elif .merged_at != null then "merged" else "closed" end), .head.sha] | @tsv'
+        --jq '.[] | [.base.repo.full_name, .head.ref, (if .state == "open" then "open" elif .merged_at != null then "merged" else "closed" end), .head.sha] | @tsv'
 }
 
 github_nwo_from_remote() {

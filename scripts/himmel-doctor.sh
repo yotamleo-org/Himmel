@@ -255,7 +255,16 @@ check_c3() {
         fi
     done < <(git -C "$v" status --porcelain=v2 -z -uall 2>/dev/null)
     if [ -n "$stale" ]; then
-        emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault's sync plugin owns its commits, so a stall here means the sync is stuck" "check the vault sync (github-sync / scripts/luna/vault-stall-cadence.sh status); do not hand-commit"
+        # Only a vault with a remote or a sync plugin has something that commits
+        # for it; a local-only vault never auto-commits, so the fix is to commit.
+        local has_sync=0 d
+        [ -n "$(git -C "$v" remote 2>/dev/null)" ] && has_sync=1
+        for d in "$v"/.obsidian/plugins/*sync*; do [ -d "$d" ] && has_sync=1; done
+        if [ "$has_sync" = 1 ]; then
+            emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault's sync plugin owns its commits, so a stall here means the sync is stuck" "check the vault sync (github-sync / scripts/luna/vault-stall-cadence.sh status); do not hand-commit"
+        else
+            emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault has no git remote and no sync plugin, so nothing commits it" "commit it (git add -A && git commit in the vault), or add a remote / sync plugin"
+        fi
     elif [ "$fresh" = 1 ]; then
         emit OK C3-luna "luna vault has only fresh (under ${dirty_min} min) non-handover changes — sync tick pending"
     else
