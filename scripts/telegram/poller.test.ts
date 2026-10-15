@@ -3433,8 +3433,10 @@ test("a record interrupted before it is durable is re-delivered on the next pass
   await seedInbound(r, [inbound("one", 1), inbound("two", 2), inbound("three", 3)]);
   // pass 1: record 2 never settles (process killed mid-triage), so the cursor never moves past it
   const seen1: string[] = [];
-  void ingestBatch(r, async (rec) => { seen1.push(rec.text); if (rec.text === "two") await new Promise<void>(() => {}); });
-  await Bun.sleep(100);
+  let reachedTwo!: () => void;
+  const atTwo = new Promise<void>((res) => { reachedTwo = res; });
+  void ingestBatch(r, async (rec) => { seen1.push(rec.text); if (rec.text === "two") { reachedTwo(); await new Promise<void>(() => {}); } });
+  await atTwo;
   expect(seen1).toEqual(["one", "two"]);
   // pass 2 (restart): record 1 was acked, 2 and 3 come back
   const seen2: string[] = [];
