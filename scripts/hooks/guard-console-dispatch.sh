@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# guard-console-dispatch.sh — PreToolUse hook (matcher "Agent"): [HIMMEL-2323]
+# guard-console-dispatch.sh — PreToolUse hook (matcher "Agent"):
 # structural fence for operator ruling 20 — PR/ticket-shaped work dispatched
 # FROM A CONSOLE session must go to an armed DETACHED session with a mission
 # doc (bash scripts/handover/arm-resume.sh), never an in-process Agent-tool
@@ -27,25 +27,23 @@
 # "Explore" (the read-only search agent) — a real, STRUCTURAL read-only
 # lane, not a claim made in prompt text.
 #
-# THERE IS DELIBERATELY NO PROMPT-TEXT READ-ONLY CARVE-OUT. Three CR rounds
-# each shipped one and each round it leaked, in three different ways:
-#   round 1: a partial-scope MODE alternative (`do not edit <X>`) matched a
-#            genuine writer brief with a "do not edit the docs" aside.
-#   round 2: closing that to a MODE-vs-OUTPUT principle (`analysis only` /
-#            `plan only` kept, `return … recommendation` / `produce … plan`
-#            dropped) still left OUTPUT-shaped forms that a writer brief can
-#            end with ("create a worktree, open the PR, then return
-#            recommendations").
-#   round 3: even the surviving MODE-only forms leaked, because the phrase
-#            can govern a subordinate CLAUSE rather than the whole dispatch
-#            ("perform read-only analysis first, THEN <full ship flow>").
+# THERE IS DELIBERATELY NO PROMPT-TEXT READ-ONLY CARVE-OUT. Every such
+# carve-out leaks, in three different ways:
+#   - a partial-scope MODE alternative (`do not edit <X>`) matches a
+#     genuine writer brief with a "do not edit the docs" aside.
+#   - a MODE-vs-OUTPUT principle (`analysis only` / `plan only` kept,
+#     `return … recommendation` / `produce … plan` dropped) still leaves
+#     OUTPUT-shaped forms that a writer brief can end with ("create a
+#     worktree, open the PR, then return recommendations").
+#   - even MODE-only forms leak, because the phrase can govern a
+#     subordinate CLAUSE rather than the whole dispatch ("perform read-only
+#     analysis first, THEN <full ship flow>").
 # Distinguishing "discusses the ship flow" from "orders the ship flow, with
-# a read-only-sounding clause up front" is intent detection — three rounds
-# of evidence say a regex over prompt text cannot do it here. So: not
-# patched a fourth time, removed. The two carve-outs below are the only
+# a read-only-sounding clause up front" is intent detection — a regex over
+# prompt text cannot do it here. So there is none. The two carve-outs below are the only
 # ones left, and both are load-bearing (structural / audited), never
 # spoofable by the dispatch's own prompt text:
-#   * subagent_type: Explore, or console-judge-ro (HIMMEL-5180: a repo agent
+#   * subagent_type: Explore, or console-judge-ro (a repo agent
 #     whose frontmatter pins tools Read, Grep, Glob, Bash only — the same
 #     structural read-only lane)
 #   * CONSOLE_DISPATCH_OK=1 (see "Escape hatches" below)
@@ -67,7 +65,7 @@
 #      the launch prompt loads exactly one doc, and it is the first path
 #      named; a LATER mention, e.g. a mission doc naming the console leg's
 #      own doc further down the same turn, is not evidence of loading and
-#      does not count, CR round 4 [codex-1]) — console-shaped only if THAT
+#      does not count) — console-shaped only if THAT
 #      first path's basename matches *-console.md. Scoping to the first
 #      user turn (not the raw file head) matters: a system prompt, a tool
 #      result, or an assistant turn merely MENTIONING such a path must not
@@ -98,7 +96,7 @@ warn() { echo "guard-console-dispatch: $*" >&2; }
 
 # grepq <text> [grep-args...] — never `printf | grep -q` under pipefail; see
 # guard-implementor-dispatch.sh's identical helper for the SIGPIPE rationale
-# (HIMMEL-1430).
+#.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 input=$(cat 2>/dev/null || true)
@@ -188,7 +186,7 @@ else
                 # Stop HERE unconditionally — this is the turn to judge,
                 # whether or not it produced any text. Continuing past an
                 # empty/non-text first user turn to a LATER one would judge
-                # the wrong turn (CR round 2 [codex-3]); empty text simply
+                # the wrong turn; empty text simply
                 # fails the match below, which is NOT console (fail-open).
                 first_user_text=$(printf '%s' "$line" | jq -r '
                     (.message.content) as $c
@@ -211,16 +209,16 @@ else
         # cannot satisfy this: the character class excludes spaces and JSON
         # escape backslashes, so "handover-doc path whose basename matches
         # *-console.md" never bridges the gap. The separator class accepts
-        # BOTH "/" and "\" (CR round 2 [codex-2]) — this repo runs on
+        # BOTH "/" and "\" — this repo runs on
         # Windows/Git-Bash, jq has already decoded any JSON-escaped
         # backslash by the time this matches, and a native Windows handover
         # path (…\handovers\…\X-console.md) must still be recognised.
-        # CR round 3 [codex-1] confirmed this already works (POSIX bracket
+        # This already works as-is (POSIX bracket
         # expressions treat "\" as a literal, not an escape); `\\` below is
         # cosmetic hardening only, spelling the class unambiguously so it
         # does not depend on that POSIX-vs-other-regex-flavor nuance.
         #
-        # CR round 4 [codex-1]: a MATCH anywhere in the turn is not proof of
+        # A MATCH anywhere in the turn is not proof of
         # LOADING. A mission doc routinely names the console leg and ITS
         # doc further down the same turn ("load W1-mission.md ... report to
         # the console leg, doc 31P-console.md") — that is a false deny of an

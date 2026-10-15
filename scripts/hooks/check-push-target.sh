@@ -2,14 +2,14 @@
 # Pre-push hook: block direct push to main.
 # Input from git: "local_ref local_sha remote_ref remote_sha" per line on stdin.
 #
-# HIMMEL-2371 root cause: this hook is wired as a pre-commit-configured
+# Root cause note: this hook is wired as a pre-commit-configured
 # `stages: [pre-push]` entry (.pre-commit-config.yaml, id: no-push-to-main).
 # pre-commit's own hook-impl reads ALL of git's pre-push stdin itself, before
 # invoking any configured hook (hook_impl.py: `sys.stdin.buffer.read()` —
-# see check-cr-before-push.sh's HIMMEL-1540 section for the fuller writeup),
+# see check-cr-before-push.sh for the fuller writeup),
 # and exposes the pushed ref to configured hooks only via PRE_COMMIT_* env
-# vars. The old `while read` loop here always saw an already-drained (EOF)
-# stdin in that shape, ran zero iterations, and fell through to `exit 0` —
+# vars. A `while read` loop here would always see an already-drained (EOF)
+# stdin in that shape, run zero iterations, and fall through to `exit 0` —
 # passing EVERY push, including a direct push to main, under the exact
 # invocation shape pre-commit actually uses (confirmed against the installed
 # pre-commit 4.6.0 source; not Windows-specific). No bypass env var or
@@ -31,7 +31,7 @@ block_main() {
     exit 1
 }
 
-# HIMMEL-5308: a NEW branch must be type/slug (feat|fix|chore|docs|refactor|
+# a NEW branch must be type/slug (feat|fix|chore|docs|refactor|
 # test), handover/<TICKET>-<slug> or claude/*. Checked only when a branch is
 # being created on the remote — never retroactively, never on a delete or a
 # tag. Single-run bypass: BRANCH_NAME_OK=1 git push.
@@ -109,7 +109,7 @@ if [ "${PRE_COMMIT:-}" = "1" ]; then
         # pre-commit hides the remote sha and a local remote-tracking ref can
         # be missing or stale, so an invalid name is confirmed against the
         # remote itself: only "no such ref" (ls-remote rc 2) counts as new; an
-        # unreachable remote fails open (HIMMEL-5308).
+        # unreachable remote fails open.
         case "$PRE_COMMIT_REMOTE_BRANCH" in
             refs/heads/*)
                 _short="${PRE_COMMIT_REMOTE_BRANCH#refs/heads/}"
@@ -117,7 +117,7 @@ if [ "${PRE_COMMIT:-}" = "1" ]; then
                     _lsrc=0
                     # Ask the address the push goes to: a remote's pushurl can
                     # differ from its fetch url, and a bare `ls-remote <name>`
-                    # queries the fetch one (HIMMEL-5360). git hands pre-commit
+                    # queries the fetch one. git hands pre-commit
                     # the destination it is pushing to (PRE_COMMIT_REMOTE_URL),
                     # which also covers several pushurls; without it `get-url
                     # --push` gives the first pushurl, or the fetch url itself;
@@ -145,7 +145,7 @@ if [ "${PRE_COMMIT:-}" = "1" ]; then
         exit 0
     fi
     # PRE_COMMIT=1 but no PRE_COMMIT_REMOTE_BRANCH: pre-commit's documented
-    # pre-push env contract (HIMMEL-1540) did not hold as expected. Fail
+    # pre-push env contract did not hold as expected. Fail
     # CLOSED rather than assume a benign push — a silent exit 0 here is
     # exactly the bug this ticket exists to close.
     echo "ERROR: check-push-target: pre-commit reports a pre-push hook run (PRE_COMMIT=1) but never set PRE_COMMIT_REMOTE_BRANCH — refusing the push (cannot determine the pushed ref)." >&2

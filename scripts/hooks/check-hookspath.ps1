@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # --- Capability check ---
@@ -58,7 +58,7 @@ $toplevel = $toplevel.Trim()
 # worktree dir but --git-common-dir returns the primary repo's `.git` —
 # that's where the canonical pre-commit hooks live. Accept core.hooksPath
 # pointing inside EITHER as valid (mirrors the bash sibling).
-# HIMMEL-2640: --git-common-dir is relative to CWD, not to toplevel — joining
+# --git-common-dir is relative to CWD, not to toplevel — joining
 # it against toplevel (as this used to do) is only correct when cwd IS
 # toplevel. --path-format=absolute (git 2.31+) resolves correctly from any
 # cwd; this repo's declared minimum is git 2.30, and an unrecognized

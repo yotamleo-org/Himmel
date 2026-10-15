@@ -3,7 +3,7 @@
 # (marketplace/.claude-plugin/marketplace.json entries with a local "./…"
 # string source) MUST CONFORM in docs/setup/settings-template.json: either
 # "<name>@himmel": true in enabledPlugins (the ALWAYS tier), OR listed as a
-# key of onDemandPlugins (HIMMEL-2733's ON-DEMAND tier — installed, left
+# key of onDemandPlugins (the ON-DEMAND tier — installed, left
 # disabled). That template is the SINGLE list install-plugins.sh (and
 # adopt.sh, at every scope and for both core/all profiles) installs from.
 # A plugin added to the marketplace but neither enabled nor on-demand is
@@ -13,7 +13,7 @@
 # drift. Externally-sourced plugins (object "source", e.g. claude-obsidian
 # served from its own marketplace) are curated separately and exempt.
 #
-# Second guard (HIMMEL-2733): every onDemandPlugins key MUST also appear in
+# Second guard: every onDemandPlugins key MUST also appear in
 # enabledPlugins with value exactly `false`. reconcile-enabled-plugins.sh
 # writes enabledPlugins verbatim and install-plugins.sh's presence-verify
 # reads that key, so an on-demand spec missing from enabledPlugins, or set to
@@ -21,7 +21,7 @@
 # inconsistently (installed-and-silently-dropped, or installed-and-enabled
 # against the tier's own intent).
 #
-# Third guard (HIMMEL-2691): every marketplace SUFFIX named by an
+# Third guard: every marketplace SUFFIX named by an
 # enabledPlugins OR onDemandPlugins key ("<plugin>@<marketplace>") must have a
 # matching extraKnownMarketplaces entry. install-plugins.sh registers
 # marketplaces ONLY from extraKnownMarketplaces, then installs every
@@ -87,7 +87,7 @@ if [ -n "$missing" ]; then
   fail=1
 fi
 
-# HIMMEL-2733: every onDemandPlugins key must also be enabledPlugins[key]==false.
+# every onDemandPlugins key must also be enabledPlugins[key]==false.
 # An on-demand spec absent from enabledPlugins, or set to true there, is a
 # contradiction the installers would resolve inconsistently.
 on_demand_specs="$(jq -r '.onDemandPlugins // {} | keys[]' "$TEMPLATE_JSON" | tr -d '\r')"

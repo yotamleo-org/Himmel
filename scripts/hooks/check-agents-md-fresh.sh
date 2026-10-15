@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Drift guard: block a commit where AGENTS.md is stale vs CLAUDE.md (HIMMEL-471).
+# Drift guard: block a commit where AGENTS.md is stale vs CLAUDE.md.
 # AGENTS.md is generated from CLAUDE.md (scripts/agents-md/generate.mjs); this
 # keeps the two from drifting. himmel-dev-only (gated by .himmel-dev, mirrors
 # doc-guard) — no-op in adopter clones. Fires only when CLAUDE.md / AGENTS.md /
@@ -20,7 +20,7 @@ if [ "${AGENTS_MD_OK:-0}" = "1" ]; then
 fi
 
 # Trigger only when an input that affects AGENTS.md is staged.
-# NOT `grep -q` (HIMMEL-1305): under `set -o pipefail`, -q exits on the FIRST
+# NOT `grep -q`: under `set -o pipefail`, -q exits on the FIRST
 # match and closes the pipe, so printf dies of SIGPIPE (141) and the PIPELINE
 # reports 141 even though grep matched. `if !` then reads that as "no match"
 # and the gate exits 0 — a silent fail-open, and only when the staged list is

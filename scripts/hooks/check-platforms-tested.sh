@@ -35,11 +35,11 @@
 #   1 — block (sensitive files changed + no attestation + no bypass)
 #   2 — block (cannot evaluate — fail-closed: can't source guardrails/lib.sh,
 #       can't read the current branch, or no diff base resolves on the online
-#       path; HIMMEL-323)
+#       path)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# default_branch() resolves the protected default (main OR master, HIMMEL-297)
+# default_branch() resolves the protected default (main OR master)
 # used as the diff base below. Fail-closed: a missing guardrail substrate means
 # we cannot compute the right base, so refuse the push.
 # shellcheck source=../guardrails/lib.sh
@@ -49,7 +49,7 @@ if ! { [ -r "$SCRIPT_DIR/../guardrails/lib.sh" ] && . "$SCRIPT_DIR/../guardrails
     exit 2
 fi
 
-# Resolve THIS worktree's branch via lib.sh::_branch (HIMMEL-323). `git branch
+# Resolve THIS worktree's branch via lib.sh::_branch. `git branch
 # --show-current` is worktree-correct under a normal pre-push (git points GIT_DIR
 # at the worktree's own gitdir) but reads the PRIMARY worktree's HEAD if GIT_DIR
 # is aimed at the shared .git; routing through _branch keeps the pre-push gates'
@@ -73,14 +73,14 @@ if [ "${PLATFORMS_TESTED_OK:-0}" = "1" ]; then
     exit 0
 fi
 
-# Resolve diff base. HIMMEL-113: prefer origin/<default>, NOT local <default>.
+# Resolve diff base: prefer origin/<default>, NOT local <default>.
 # Rationale: linked git worktrees cannot fast-forward their local default-branch
 # ref while the primary worktree owns that checkout. That made
 # `git diff <default>...HEAD` re-flag every shell/script file that was
 # already on origin/<default> but not yet in the linked worktree's local
-# copy - producing the friction we hit on HIMMEL-104, -110, -108 etc.
+# copy - producing the friction we hit, -110, -108 etc.
 # origin/<default> is the actual push target; comparing against it is what
-# the gate is conceptually about. <default> = main OR master (HIMMEL-297).
+# the gate is conceptually about. <default> = main OR master.
 #
 # Refresh origin/<default> first (silent, single ref, ~1s) so offline / very
 # stale clones still get a fair comparison. Failure (no network, no
@@ -102,20 +102,20 @@ elif [ "${PLATFORMS_TESTED_NO_FETCH:-0}" = "1" ]; then
     # No resolvable base AND the operator opted into offline mode (NO_FETCH):
     # a shallow/offline clone legitimately may not carry the default ref. We
     # cannot evaluate the gate, but blocking here would break the documented
-    # offline workflow — skip with a LOUD warning (HIMMEL-323).
+    # offline workflow — skip with a LOUD warning.
     echo "→ platforms-check: no 'origin/$db' or local '$db' ref and PLATFORMS_TESTED_NO_FETCH=1 — cannot compute diff; SKIPPING the gate (WARNING: cross-platform surface NOT checked — verify manually before merge)" >&2
     exit 0
 else
     # Online path: we attempted `git fetch origin $db` and STILL cannot resolve
     # any base. That is a genuinely broken state (default renamed and origin/HEAD
     # not pointing at it, corrupt refs) — not a normal clone, which always has
-    # origin/<default>. Fail CLOSED (HIMMEL-323): refusing the push beats silently
+    # origin/<default>. Fail CLOSED: refusing the push beats silently
     # skipping the gate on an unattested change.
     echo "→ platforms-check: no 'origin/$db' or local '$db' ref after fetch — refusing the push (rc=2 = cannot evaluate the gate). Set PLATFORMS_TESTED_NO_FETCH=1 for a known-offline/shallow clone, or bypass with PLATFORMS_TESTED_OK=1 / git push --no-verify." >&2
     exit 2
 fi
 
-# Fail CLOSED if the diff itself can't be computed (HIMMEL-323). The 3-dot
+# Fail CLOSED if the diff itself can't be computed. The 3-dot
 # range needs a merge base; an orphan/unrelated-history branch makes `git diff`
 # exit non-zero. The old `|| true` swallowed that to an empty list, which the
 # `[ -z ]` line below then treated as "no changes" → a silent PASS on a branch
@@ -128,7 +128,7 @@ fi
 [ -z "$changed" ] && exit 0
 
 # Filter sensitive paths. Docs-only Markdown/text is never a script, even under
-# scripts/ (HIMMEL-5490; same pre-filter as ready-check.sh item 5, HIMMEL-5431).
+# scripts/
 sensitive=$(printf '%s\n' "$changed" | grep -Ev '\.(md|txt)$' | grep -E '(\.(sh|bash|zsh|ps1|psm1|psd1|cmd|bat)$|^scripts/|(^|/)bin/[^/]+$)' || true)
 if [ -z "$sensitive" ]; then
     exit 0
@@ -143,9 +143,9 @@ commit_msgs=$(git log --format='%B' "${diff_base}..HEAD" 2>/dev/null || true)
 # unrecognised values (`Platforms tested: yes`) do NOT count, otherwise
 # operators game the gate by typing the prefix without naming a target.
 PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'
-# HIMMEL-1975 — POSIX ERE, token FIRST. The previous form was
+# POSIX ERE, token FIRST. The previous form was
 #   ^[[:space:]]*Platforms tested:.*\b${PLATFORM_RE}\b
-# which carried both defects HIMMEL-1372 fixed in check-cr-marker-on-pr-create.sh:
+# which carried both defects fixed in check-cr-marker-on-pr-create.sh:
 #   1. `\b` is a GNU extension. BSD grep (macOS — a platform this repo targets,
 #      scripts/hooks/CLAUDE.md) reads it as a LITERAL `b`, so the predicate
 #      became `.*b(linux|…)b` and `Platforms tested: windows` did NOT match:
@@ -161,7 +161,7 @@ PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix
 # not count while `windows-gitbash` / `gitbash (msys2)` / `linux, windows` do.
 ATTEST_RE="^[[:space:]]*Platforms tested:[[:space:]]*${PLATFORM_RE}([^[:alnum:]]|$)"
 
-# HIMMEL-1115: match with a here-string, NOT `printf ... | grep -q`.
+# match with a here-string, NOT `printf ... | grep -q`.
 #
 # Under this script's `set -euo pipefail`, the piped form is actively broken
 # once "$commit_msgs" exceeds the OS pipe buffer (~64KB): printf BLOCKS
@@ -201,7 +201,7 @@ pr_body=""
 if command -v gh >/dev/null 2>&1; then
     pr_body=$(gh pr view "$branch" --json body --jq '.body' 2>/dev/null || true)
 fi
-# Same here-string form as the commit-message matches above (HIMMEL-1115). A
+# Same here-string form as the commit-message matches above. A
 # PR body rarely approaches 64KB, but the hazard is identical in shape and
 # there is no reason to leave one instance of it standing.
 if [ -n "$pr_body" ] && grep -qiE "$ATTEST_RE" <<<"$pr_body"; then

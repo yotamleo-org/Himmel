@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # guard-implementor-dispatch.sh — PreToolUse hook (matcher "Agent"): compose
-# lane routing (HIMMEL-1513) with the bank-aware cost guard (HIMMEL-920).
+# lane routing with the bank-aware cost guard.
 #
 # The policies answer independent questions:
 #   1. If an external implementation lane is registry-available, runnable,
-#      READY (HIMMEL-1626), AND bank-funded, refuse an implementation-shaped
+#      READY, AND bank-funded, refuse an implementation-shaped
 #      in-process Agent dispatch and name that lane. A lane failing any leg
-#      falls through to the other lane (or the HIMMEL-920 bank guard) rather
+#      falls through to the other lane (or the bank guard) rather
 #      than refusing toward it. Readiness is MEASURED, not asserted: a lane
 #      under a readiness gate (lanes.json readiness.passesRequired) must show
 #      that many trailing consecutive verify-return PASSes in the flow-runs
-#      ledger (HIMMEL-1621) — so a ruled-down lane is skipped like a spent
+#      ledger — so a ruled-down lane is skipped like a spent
 #      bank instead of stranding the sanctioned in-process Claude-tier path.
 #   2. If no lane is available but the live 5-hour bank is near exhaustion,
-#      retain HIMMEL-920's HARD refusal / WARN advisory policy.
+#      retain the bank guard's HARD refusal / WARN advisory policy.
 #
 # Lane routing never refuses toward a lane whose required bank windows are
 # unknown: missing/unreadable evidence is loud and skips that lane. A parent-bank
@@ -23,7 +23,7 @@
 #
 # Haiku always allows: it is already the cheap bulk-mechanical tier. Known
 # read-only helpers and external-lane wrappers also allow. Plan remains exempt
-# from lane routing, but retains HIMMEL-920's bank eligibility.
+# from lane routing, but retains the bank guard's eligibility.
 #
 # Escape hatches (set in the shell that LAUNCHED Claude Code; session-sticky):
 #   IMPL_GUARD_OK=1       deliberate one-session carve-out
@@ -43,20 +43,20 @@
 # The four threshold overrides above are validated as positive numbers; a
 # non-numeric, zero, or negative override is warned and replaced with its
 # documented default rather than reaching the awk ratio math below as a
-# divide-by-zero (HIMMEL-2653).
+# divide-by-zero.
 #   IMPL_GUARD_BANK_STATUS_CMD     override the funded-bank probe command (tests stub it; default `bun scripts/lanes/bank-status.ts`)
 #   IMPL_GUARD_BANK_BUDGET_SECS    funded-bank probe wall-clock budget (default 4)
 #   IMPL_GUARD_READINESS_CMD       override the lane-readiness probe command (tests stub it; default `node scripts/lanes/lane-readiness.mjs`)
 #   IMPL_GUARD_READINESS_BUDGET_SECS  lane-readiness probe wall-clock budget (default 4)
 #   IMPL_GUARD_ROUND_BUDGET_SECS   round-guard probe wall-clock budget (default 4)
 #
-# HIMMEL-1568: this hook is also the Agent-dispatch chokepoint for the
-# HIMMEL-1553 reviewed-round guard (scripts/telegram/round-guard.ts) — the
+# this hook is also the Agent-dispatch chokepoint for the
+# reviewed-round guard (scripts/telegram/round-guard.ts) — the
 # same predicate spawn-glm.ts/spawn-claudex.ts already apply, now covering the
 # in-process Agent-tool dispatch path those two scripts never see. Unlike
 # every other probe above, a payload cwd that IS given but whose round-guard
 # probe cannot be evaluated (bun missing, script missing, probe crash/timeout)
-# fails CLOSED, not open — see the HIMMEL-1568 comment at its call site.
+# fails CLOSED, not open — see the comment at its call site.
 #
 # Exit codes: 0 allow; 2 refuse. Bash 3.2-compatible.
 set -uo pipefail
@@ -65,7 +65,7 @@ warn() { echo "guard-implementor-dispatch: $*" >&2; }
 
 # grepq <text> [grep-args...] — never use printf|grep -q under pipefail. grep -q
 # can exit on an early match, SIGPIPE the producer, and turn a true match into a
-# nondeterministic pipeline failure on large input (HIMMEL-1430).
+# nondeterministic pipeline failure on large input.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 # valid_threshold <value> <default> <env-var-name> — echoes <value> if it is a
@@ -142,7 +142,7 @@ case "$model_lc" in
 esac
 
 # Known read-only helpers and external-lane wrappers are not in-process
-# implementation workers. Plan is lane-exempt, but HIMMEL-920 still applies if
+# implementation workers. Plan is lane-exempt, but the bank guard still applies if
 # a Plan prompt is genuinely implementation-shaped.
 lane_exempt=0
 case "$subagent_type" in
@@ -165,20 +165,20 @@ imperative_verb=0
 # Direct action words and commit/trailer instructions are strong signals. Strip
 # two kinds of non-imperative framing BEFORE the bare-verb check, so a noun or
 # past-tense use of "fix" cannot alone set implementation=1 and veto every
-# read-only override (HIMMEL-1617):
-#   1. "how to <verb>" research framing (HIMMEL-1513).
+# read-only override:
+#   1. "how to <verb>" research framing.
 #   2. A descriptive/past-tense "fix" — "a/the fix", "this/that/its/prior/
 #      previous/earlier/existing fix", "committed a fix that", "fixed" — which
 #      refers to prior work, not an imperative to act. Imperatives survive:
 #      "fix the X" keeps "fix" as the head word, and action-verb+fix phrases
 #      ("apply/commit/push/land/merge/ship the fix") are masked then restored
-#      so the bare-verb clause below still matches them (CR round 1: the
+#      so the bare-verb clause below still matches them (the
 #      apply-only mask let "commit the fix" slip through the article strip).
 #      The catch-all "fixed" strip is word-boundary anchored (^|[^[:alnum:]_]
 #      ... [^[:alnum:]_]|$) so it cannot eat the "fixed" inside "prefixed",
 #      "affixed", or "unfixed" — an unbounded s/fixed/ /g garbles those words
-#      and removes signal (HIMMEL-1624).
-# HIMMEL-1608: quoted material is not an instruction. Drop closed fenced blocks
+#      and removes signal.
+# quoted material is not an instruction. Drop closed fenced blocks
 # (CommonMark: at most 3 leading spaces, the closing fence is the same character,
 # at least as long as the opener, with nothing after it) and single-backtick
 # inline-code spans first, so a "fix:" quoted in a code block cannot read as an
@@ -189,7 +189,7 @@ imperative_verb=0
 # "land in main": a modal strip cannot enumerate every integration target.
 # ponytail: an implementation instruction written ONLY inside a fence or code
 # span is allowed through, and "land in <theme>" prose over-refuses (the refusal
-# names the Plan route); a future allowlist design, not a strip (HIMMEL-3922).
+# names the Plan route); a future allowlist design, not a strip.
 # shellcheck disable=SC2016 # the backticks are literal regex, not expansions
 data_stripped_text=$(printf '%s\n' "$text" | tr '[:upper:]' '[:lower:]' | awk '
     {
@@ -220,11 +220,11 @@ if grepq "$implementation_text" -Eq '(^|[^[:alnum:]_])(implement|fix|land)([^[:a
     implementation=1
 fi
 
-# CR rounds 2+3 (HIMMEL-1617): a standalone imperative is genuine
+# CR rounds 2+3: a standalone imperative is genuine
 # implementation intent and must veto the read-only/plan override below. Two
 # shapes count: a bare verb heading its own clause — text start or right after
 # a sentence boundary, tolerating an adverb run ("Please fix", "Now implement";
-# round 3: a single leading word defeated the bare clause-head anchor) — or a
+# a single leading word must not defeat the bare clause-head anchor) — or a
 # verb taking a determiner object ("fix the bug"), which no noun or past-tense
 # survivor of the strip can form. Infinitives are stripped first so a plan or
 # judgment brief describing WHAT the plan is for ("plan to fix the flaky
@@ -234,7 +234,7 @@ fi
 # The "to" of the infinitive is left-boundary anchored (^|[^[:alnum:]_]) so the
 # strip hits only the standalone word "to": without it, the "to " inside "auto
 # fix" or "into fix" is eaten, destroying a genuine imperative and pushing the
-# verdict toward ALLOW (HIMMEL-1624: "Auto fix the parser" must still refuse).
+# verdict toward ALLOW ("Auto fix the parser" must still refuse).
 imperative_text=$(printf '%s' "$implementation_text" | sed -E 's/(^|[^[:alnum:]_])to[[:space:]]+(implement|fix|land|apply)/\1 /g')
 if grepq "$imperative_text" -Eq '(^|[.!?;][[:space:]]*)((please|now|just|kindly|first|then)[[:space:]]+)*(implement|fix|land|apply)([^[:alnum:]_]|$)|(^|[^[:alnum:]_])(implement|fix|land|apply)[[:space:]]+(the|a|an|this|that|it|its)([^[:alnum:]_]|$)'; then
     imperative_verb=1
@@ -245,106 +245,63 @@ fi
 if grepq "$text" -Eqi '(^|[^[:alnum:]_])(research|explore|investigate|analy[sz]e|review|audit|plan|design|locate|trace|explain|read-only)([^[:alnum:]_]|$)'; then
     research=1
 fi
-# J1398A (Opus judge, PR #1398, Finding 3, Critical): the "commit history"/
-# "edit distance" exclusion this comment used to describe (rounds 1, 3, 4, 5)
-# accepted a bare space -- and ":"/";" -- as closing the excluded phrase, so
-# it also fired on a genuine verb+object continuation in the SAME sentence,
-# e.g. "then edit distance thresholds in config/match.yaml to 0.8" or "then
-# commit history files to the repo" -- both real actions, not a research
-# noun, losing their "then"/"and" action trigger. A tightened allowlist
-# (sentence-final punctuation only, dropping the bare-space/":"/";" cases)
-# still passes adversarial whitespace shapes such as a literal tab standing
-# in for the space after the sentence-final mark. Per the judge's own
-# fallback ("if that is not simple and obviously correct, delete the strip
-# entirely instead"), the exclusion is dropped rather than re-patched a
-# sixth time: "then review the commit history" and "then analyze edit
-# distance heuristics" are GOVERNED again, matching main, and this whole
-# gate_text detour is gone -- gate_action is computed straight off $text,
+# The "commit history"/"edit distance" exclusion is deliberately absent: any
+# allowlist for it also fires on a genuine verb+object continuation in the
+# SAME sentence, e.g. "then edit distance thresholds in config/match.yaml to
+# 0.8" or "then commit history files to the repo" -- both real actions --
+# and adversarial whitespace shapes (a literal tab after the sentence-final
+# mark) defeat a tightened one. So "then review the commit history" and
+# "then analyze edit distance heuristics" are governed, and gate_action is
+# computed straight off $text.
 # same as main.
 if grepq "$text" -Eqi '(^|[^[:alnum:]_])(then|and)([[:space:][:punct:]]+)(implement|fix|land|apply|edit|modify|commit)([^[:alnum:]_]|$)'; then
     gate_action=1
 fi
 
-# CodeRabbit (HIMMEL-1534 PR #1388): a bare "write" is ambiguous between
-# prose output (a summary/report/findings/notes/answer/overview/write-up)
+# A bare "write" is ambiguous between prose output
+# (a summary/report/findings/notes/answer/overview/write-up)
 # and a code/file write. Only the latter is an implementation action.
 # A report-type object is safe ONLY when nothing path-like follows it in
 # the same clause -- a slash, a file extension, or "to <path>"/"into
 # <file>" all mean a file write, not a written summary.
 #
-# codex (PR #1388 round 2): a single first-match extraction missed a SECOND
-# then/and-write occurrence later in the same text ("write a report and
-# write code"), and its clause-boundary cut at a literal "." hid a file
-# extension right after the noun ("write a report.md").
-#
-# codex (PR #1388 round 3): the round-2 fix-up's remedy -- a fixed-width
-# 60-char window per occurrence, and a 1-5 char cap on the extension match --
-# was itself bounded, so a long-enough intervening phrase ("write a report
-# about <60+ chars> to notes.txt") or a long extension ("report.markdown",
-# 8 chars) could push the path-like signal outside what either bound could
-# see. Fixed by dropping both bounds: take the UNBOUNDED remainder of the
-# text starting right after the first then/and-write occurrence. A second
+# The check takes the UNBOUNDED remainder of the text starting right after
+# the first then/and-write occurrence: a fixed-width window or a 1-5 char
+# extension cap would let a long intervening phrase ("write a report about
+# <60+ chars> to notes.txt") or a long extension ("report.markdown") push the
+# path-like signal out of sight, and cutting the clause at a literal "." would
+# hide a file extension right after the noun ("write a report.md"). A second
 # write/edit/etc. transition anywhere in that remainder is already covered
 # by the existing danger alternation (it includes "write"), so no separate
-# occurrence loop is needed -- one unbounded tail check subsumes it.
-# HIMMEL-3784: the round-3 exemption only recognized a report noun
-# immediately after "write"/"write a"/"write the", so "write an OVERVIEW"
-# still fell through to gate_action -- newly governing genuinely read-only
-# report briefs. Widened (round-4/round-2-panel-codex-1) to accept a
-# determiner+noun phrase. A one-word adjective slot between the determiner
-# and the noun was tried in that round ("write a SHORT summary") and dropped
-# again by J1398A below -- see the comment on the exemption's grepq call.
-# "write a short summary" is GOVERNED again; that loss is an accepted trade,
-# not a regression.
+# occurrence loop is needed.
 #
-# J1398B ruling (console J, HIMMEL-3784, responding to J1398A Finding 2): a
-# round-4 "write up" idiom exemption used to live here too, so "write up
-# your findings" and bare "write up" were exempt. Cut entirely, not
-# right-anchored: main has no "up" idiom support at all, which is exactly
-# why main governs "then write up your summary module" and "then write up my
-# notes file" (J1398A's own Finding 2 examples) -- head only escaped them
-# because of this "up" exemption. Adding a right anchor instead would be
-# another exemption shape to get right, and the last two rounds already
-# spent their budget failing to make one safe. "write up your findings"
-# and bare "write up" are GOVERNED again, matching main; that loss is an
-# accepted trade, not a regression.
+# The report-noun exemption accepts a determiner+noun phrase ("write an
+# OVERVIEW"). Not exempt, so governed: a one-word adjective slot ("write a
+# SHORT summary") and the "write up" idiom ("write up your findings") --
+# neither has a safe right anchor, and "then write up your summary module" /
+# "then write up my notes file" are real file writes.
 #
-# codex (PR #1388 round 4): the extension pattern originally matched an
-# ordinary version number ("version 1.0"); the match now requires a letter
-# first, so a bare digit run ("1.0") does not satisfy it. This tightening
-# stays (J1398A "Suggested direction": "the letter-first extension
-# tightening can stay").
+# The extension pattern requires a letter first, so an ordinary version
+# number ("version 1.0") does not count as a file extension.
 #
-# J1398A (Opus judge, PR #1398, Finding 1, Critical): round 4 also scoped the
-# path/extension veto to path_scope -- the tail truncated at the first
-# sentence boundary -- so a code- or file-write TARGET named in a LATER
-# sentence of the same brief escaped the veto entirely, e.g. "Research the
+# The path/extension/to-into veto reads the WHOLE unbounded $write_tail, not
+# a tail truncated at the first sentence boundary: a code- or file-write
+# TARGET named in a later sentence of the same brief ("Research the
 # tokenizer, then write a summary. Afterwards create src/tok.ts with the new
-# class." never saw "src/tok.ts" because path_scope cut the tail at the
-# first ". ". That is a regression against main, which never existed before
-# this PR (main has no path_scope at all): main checks the path/extension/
-# to-into veto against the WHOLE, unbounded write_tail. Reverted to that:
-# path_scope/protected_tail are gone, and the veto below reads $write_tail
-# directly. This re-accepts the round-4 codex-1 over-breadth (a path named
-# in a genuinely unrelated later sentence, e.g. "write a summary. Also check
-# scripts/router.sh for reference", is GOVERNED again even though it isn't a
-# write target) as a known, ticketed trade -- correctness on the write-target
-# direction matters more than that one over-governed shape.
+# class.") must not escape the veto. The cost is that a path named in a
+# genuinely unrelated later sentence is governed too -- correctness on the
+# write-target direction matters more than that over-governed shape.
 if grepq "$text" -Eqi '(^|[^[:alnum:]_])(then|and)([[:space:][:punct:]]+)write([^[:alnum:]_]|$)'; then
     lower_text=$(printf '%s' "$text" | tr '[:upper:]' '[:lower:]')
     write_trigger=$(printf '%s' "$lower_text" | grep -Eo '(^|[^[:alnum:]_])(then|and)[[:space:][:punct:]]+write' | head -1)
     write_tail=${lower_text#*"$write_trigger"}
-    # J1398A (Finding 2, Critical): the one-word adjective/possessive slot
-    # between the determiner and the report noun ("(a|an|the|your|my)
-    # [a-z]+ (summary|report|...)") had no right anchor past the noun, so it
-    # admitted a code artifact disguised as an adjective+noun pair, e.g.
-    # "then write a new report module" matched "a"+"new"+"report" and never
-    # inspected "module". Dropped entirely, with no right-anchored
-    # replacement (per the judge's ruling, "no right-anchor variant" this
-    # round).
-    # J1398B (console J ruling): the "up" idiom exemption that used to sit in
-    # this alternation is also gone -- see the comment above this if-block.
-    # Only the bare determiner+noun branch remains.
+    # The one-word adjective/possessive slot between the determiner and the
+    # report noun ("(a|an|the|your|my) [a-z]+ (summary|report|...)") is
+    # deliberately absent: with no right anchor past the noun it admitted a
+    # code artifact disguised as an adjective+noun pair, e.g. "then write a
+    # new report module". "write a short summary" is therefore governed.
+    # There is likewise no "up" idiom exemption ("write up your findings").
+    # Only the bare determiner+noun branch is allowed.
     if [ -n "$write_trigger" ] \
         && grepq "$write_tail" -Eq '^[[:space:]]+((a|an|the)[[:space:]]+)?(summary|report|findings|notes|answer|overview|write-up)([^[:alnum:]_]|$)' \
         && ! grepq "$write_tail" -Eq '/|\.[a-zA-Z][a-zA-Z0-9]*([^[:alnum:]]|$)|[[:space:]](to|into)[[:space:]]|(then|and)[[:space:][:punct:]]+(implement|fix|land|apply|edit|modify|commit|write)'; then
@@ -354,14 +311,13 @@ if grepq "$text" -Eqi '(^|[^[:alnum:]_])(then|and)([[:space:][:punct:]]+)write([
     fi
 fi
 
-# J1388A (Opus judge, PR #1388): the write-clause exemption above must only
-# ever narrow the NEW first-gate widening (gate_action), never main's own
-# followed_by_action -- which still vetoes the older read-only-declared and
-# research allow exits below (:296, :306 -- HIMMEL-1617/HIMMEL-1608). Before
-# this split, the exemption cleared followed_by_action itself, so a dispatch
-# with a read-only declaration, an implementation signal, and an exempted
-# "then write a summary" cleared the veto and was ALLOWed on head where main
-# GOVERNED it. followed_by_action is recomputed here exactly as it is on
+# The write-clause exemption above must only ever narrow the first-gate
+# widening (gate_action), never followed_by_action -- which still vetoes the
+# read-only-declared and research allow exits below. If the exemption cleared
+# followed_by_action itself, a dispatch with a read-only declaration, an
+# implementation signal, and an exempted "then write a summary" would clear
+# the veto and be ALLOWed. followed_by_action is recomputed here with bare
+# "write" included, independent of the exemption above.
 # main -- bare "write" included -- independent of the exemption above.
 if grepq "$text" -Eqi '(^|[^[:alnum:]_])(then|and)([[:space:][:punct:]]+)(implement|fix|land|apply|write|edit|modify|commit)([^[:alnum:]_]|$)'; then
     followed_by_action=1
@@ -372,35 +328,35 @@ fi
 
 # An explicit read-only / analysis-only / plan-only declaration outranks an
 # incidental bare "fix" noun: a judgment or plan brief that merely describes
-# prior work must still reach its lane (HIMMEL-1617). The declaration never
+# prior work must still reach its lane. The declaration never
 # rescues a prompt that then transitions to action or carries worktree/commit/
 # trailer instructions — followed_by_action and operational_context stay vetoes
 # at the allow gate below. "read-only" must be a DECLARATION — standalone
 # ("Read-only.") or naming the dispatch (read-only analysis/task/...) — not an
 # adjective on a noun ("fix the readonly field" is imperative implementation;
-# CR round 1: the loose read[-[:space:]]*only matched "readonly" anywhere).
+# the loose read[-[:space:]]*only would match "readonly" anywhere).
 if grepq "$text" -Eqi 'do[[:space:]]+not[[:space:]]+edit|analysis[[:space:]]+only|read[-[:space:]]+only[[:space:]]*([.,;:!]|$)|read[-[:space:]]+only[[:space:]]+(task|review|analysis|audit|brief|mode|dispatch|pass)|plan[[:space:]]+only|return[[:space:]]+[^.!?;]*((as[[:space:]]+text)|recommendation)|produce[[:space:]]+[^.!?;]*(plan|recommendation)'; then
     read_only_declared=1
 fi
 
-# HIMMEL-1534: an action-transition signal must be consulted here too -- a
+# an action-transition signal must be consulted here too -- a
 # "research X, then edit Y" dispatch has research=1, implementation=0
 # (bare-verb regex doesn't cover edit/modify/write/commit), operational_context=0,
 # but gate_action=1 (the "then edit" action transition), and the old
 # two-disjunct gate exited 0 before that signal was ever read, bypassing lane
-# routing and the HIMMEL-920 bank guard. gate_action feeds only THIS gate --
-# see J1388A above for why it is split from followed_by_action.
+# routing and the bank guard. gate_action feeds only THIS gate --
+# see the followed_by_action recomputation above for why it is split.
 [ "$implementation" = "1" ] || [ "$operational_context" = "1" ] || [ "$gate_action" = "1" ] || exit 0
 if [ "$research" = "1" ] && [ "$implementation" = "0" ] && [ "$followed_by_action" = "0" ] && [ "$operational_context" = "0" ]; then
     exit 0
 fi
 
-# HIMMEL-1617: a declared read-only / analysis-only / plan-only brief is
+# a declared read-only / analysis-only / plan-only brief is
 # categorically not implementation, even when an incidental "fix" noun tripped
 # implementation. A standalone imperative (imperative_verb), an action
 # transition (then/and <verb>), or worktree/commit/trailer context still vetoes
-# — those reveal genuine implementation intent (CR round 2: the declaration
-# alone rescued "Read-only. ... Fix the bug in X").
+# — those reveal genuine implementation intent (the declaration
+# alone must not rescue "Read-only. ... Fix the bug in X").
 if [ "$read_only_declared" = "1" ] && [ "$imperative_verb" = "0" ] && [ "$followed_by_action" = "0" ] && [ "$operational_context" = "0" ]; then
     exit 0
 fi
@@ -409,7 +365,7 @@ hook_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$repo_root" ] || repo_root=$(cd "$hook_dir/../.." && pwd)
 
-# --- HIMMEL-1513: refuse only when a concrete external lane is
+# --- refuse only when a concrete external lane is
 # registry-available AND actually runnable AND bank-funded. The registry marks
 # a lane available by API-key presence alone — it never checks that bun is
 # installed, that the lane's dispatcher script exists on disk, or that the
@@ -419,7 +375,7 @@ repo_root="${CLAUDE_PROJECT_DIR:-}"
 # Verify runnability AND funding before refusing; a preferred lane that fails
 # either falls through to the other lane (preference order claudex-before-glm
 # stays intact) rather than straight to a refusal. If neither lane qualifies,
-# no refusal is emitted and control falls through to the HIMMEL-920 bank guard.
+# no refusal is emitted and control falls through to the bank guard.
 lane_runnable() {
     local id="$1" script="$2"
     if ! command -v bun >/dev/null 2>&1; then
@@ -501,7 +457,7 @@ lane_funded() {
         return 1
     fi
     # Parse `<lane-id> <state>` for this lane. A here-string (no pipeline) keeps
-    # this pipefail-safe (HIMMEL-1430); the third variable absorbs status detail.
+    # this pipefail-safe; the third variable absorbs status detail.
     state=""
     while IFS=' ' read -r lid lstate _detail; do
         [ -n "$lid" ] || continue
@@ -533,15 +489,15 @@ lane_funded() {
     esac
 }
 
-# lane_ready <lane-id> — return 0 iff the lane is READY (HIMMEL-1626). A lane
+# lane_ready <lane-id> — return 0 iff the lane is READY. A lane
 # under a readiness gate (lanes.json readiness.passesRequired) is ready only
-# when the verify-return flow-runs ledger (HIMMEL-1621) shows that many
+# when the verify-return flow-runs ledger shows that many
 # trailing consecutive PASS rows for the lane's branches — readiness is
 # measured, not asserted. FAIL-OPEN at the probe level, mirroring
 # lane_funded(): missing node/helper, a timeout, a non-zero exit, garbage
 # output, or a missing lane line ALL resolve to READY with one warning
 # (pre-1626 behaviour). ONLY a clean `down` verdict skips the lane — toward
-# the other lane or the HIMMEL-920 fall-through, never a refusal toward the
+# the other lane or the bank-guard fall-through, never a refusal toward the
 # caller ("skipping it, not refusing toward it"). The probe honours
 # LANES_REGISTRY, so gated fixtures and the live registry read the same way.
 lane_ready() {
@@ -597,11 +553,11 @@ lane_ready() {
     esac
 }
 
-# --- HIMMEL-1568: the reviewed-round guard (HIMMEL-1553) runs at THIS
+# --- the reviewed-round guard runs at THIS
 # chokepoint too, not only in scripts/telegram/spawn-glm.ts / spawn-claudex.ts.
 # Those two lanes are dispatched by an operator/console over a separate
 # subprocess; a real implementor round is just as often an in-process Agent
-# tool call, which reaches neither script (HIMMEL-1568). Control has already
+# tool call, which reaches neither script. Control has already
 # reached here past every read-only/research/Haiku/lane-exempt-Explore
 # classification gate above without exiting, so this dispatch is exactly the
 # same "implementation-shaped, not read-only, not research" scope those two
@@ -708,7 +664,7 @@ if [ -n "$replacement" ]; then
     exit 2
 fi
 
-# --- HIMMEL-920: independently protect a nearly exhausted parent bank. ---
+# --- independently protect a nearly exhausted parent bank. ---
 subagent_in_set=0
 case "$subagent_type" in
     general-purpose|claude|Plan) subagent_in_set=1 ;;
@@ -727,7 +683,7 @@ HARD="${IMPL_GUARD_HARD:-80}"
 HARD=$(valid_threshold "$HARD" 80 IMPL_GUARD_HARD)
 WARN_T="${IMPL_GUARD_WARN:-65}"
 WARN_T=$(valid_threshold "$WARN_T" 65 IMPL_GUARD_WARN)
-# HIMMEL-2653: the fleet burned 73% of its weekly (seven_day) bank in ~1.5
+# the fleet burned 73% of its weekly (seven_day) bank in ~1.5
 # days while this guard watched only five_hour, which sat at a quiet 45% the
 # whole time — the live dispatch gate was silent all day at the exact moment
 # the binding window was the slow-refilling one. The seven-day thresholds are
@@ -769,7 +725,7 @@ if [ "$age" -gt "$MAX_AGE" ]; then
     exit 0
 fi
 
-# HIMMEL-2653: the two bank windows (five_hour, seven_day) are read and
+# the two bank windows (five_hour, seven_day) are read and
 # validated IDENTICALLY and INDEPENDENTLY — an unusable/expired five_hour must
 # never suppress a usable seven_day verdict, and vice versa (the live gate's
 # whole failure mode was one window's silence masking the other's signal).
@@ -784,7 +740,7 @@ fi
 # contribute" on every ordinary call would be new noise on every existing
 # cache, not a fix.
 #
-# HIMMEL-4894: reuse the admission gate's account/mode/window validator.
+# reuse the admission gate's account/mode/window validator.
 # Window lifts spend only seven_day to 100; standing lifts also spend five_hour
 # to 100 unless CADENCE_BANK_MAX_PCT is explicit. Hook-specific overrides win.
 _lift_lib="$hook_dir/../lib/bank-lift.sh"
@@ -795,10 +751,10 @@ if { [ -r "$_lift_lib" ] && . "$_lift_lib"; } 2>/dev/null; then
         if [ -z "${IMPL_GUARD_WEEKLY_HARD:-}" ]; then WEEKLY_HARD=100; fi
         if [ "${BANK_LIFT_STANDING:-false}" = true ] && [ -z "${IMPL_GUARD_HARD:-}" ]; then
             HARD=$(valid_threshold "${CADENCE_BANK_MAX_PCT:-100}" 80 CADENCE_BANK_MAX_PCT)
-            # HIMMEL-4920: a ceiling above 100 could never trip — clamp to 100.
+            # a ceiling above 100 could never trip — clamp to 100.
             if awk -v v="$HARD" 'BEGIN{ exit !(v+0 > 100) }'; then HARD=100; fi
         fi
-    # HIMMEL-4920: default the lib-set reason — a bare read under `set -u` aborts
+    # default the lib-set reason — a bare read under `set -u` aborts
     # the hook with exit 1, which Claude Code treats as non-blocking (fail OPEN).
     # With the default, a missing validator (rc 127 in the `if`) lands here and
     # the default HARD thresholds stay in force: the deny direction is kept.
@@ -851,14 +807,14 @@ else
         FIVE_IS_HARD=$(awk -v v="$five_util" -v t="$HARD" 'BEGIN{print (v>=t)?1:0}')
         FIVE_IS_WARN=$(awk -v v="$five_util" -v t="$WARN_T" 'BEGIN{print (v>=t)?1:0}')
         FIVE_DISP=$(awk -v v="$five_util" 'BEGIN{printf "%.0f", v}')
-        # CR round 3 (HIMMEL-2653): explicit HARD->WARN downgrade, restored from
-        # the pre-2653 single-window guard verbatim (same eligible_deny / live-
-        # reset conditions). An eligible-but-not-live-reset HARD reading cannot
-        # actually refuse, so it must still surface as a WARN. Relying on
-        # FIVE_IS_WARN alone is NOT equivalent whenever WARN_T > HARD (an
-        # operator config the four thresholds are never validated against each
-        # other for) -- a util between HARD and WARN_T would then trip HARD but
-        # not WARN, and without this downgrade the guard would silently allow.
+        # Explicit HARD->WARN downgrade (same eligible_deny / live-reset
+        # conditions as the single-window guard). An eligible-but-not-live-reset
+        # HARD reading cannot actually refuse, so it must still surface as a
+        # WARN. Relying on FIVE_IS_WARN alone is NOT equivalent whenever
+        # WARN_T > HARD (an operator config the four thresholds are never
+        # validated against each other for) -- a util between HARD and WARN_T
+        # would then trip HARD but not WARN, and without this downgrade the
+        # guard would silently allow.
         if [ "$FIVE_IS_HARD" = "1" ] && [ "$eligible_deny" = "1" ] && [ "$FIVE_RESETS_LIVE" != "1" ]; then
             FIVE_IS_WARN=1
         fi
@@ -907,8 +863,8 @@ else
         SEVEN_IS_HARD=$(awk -v v="$seven_util" -v t="$WEEKLY_HARD" 'BEGIN{print (v>=t)?1:0}')
         SEVEN_IS_WARN=$(awk -v v="$seven_util" -v t="$WEEKLY_WARN" 'BEGIN{print (v>=t)?1:0}')
         SEVEN_DISP=$(awk -v v="$seven_util" 'BEGIN{printf "%.0f", v}')
-        # CR round 3 (HIMMEL-2653): same explicit HARD->WARN downgrade as the
-        # five_hour window above, applied to seven_day.
+        # Same explicit HARD->WARN downgrade as the five_hour window above,
+        # applied to seven_day.
         if [ "$SEVEN_IS_HARD" = "1" ] && [ "$eligible_deny" = "1" ] && [ "$SEVEN_RESETS_LIVE" != "1" ]; then
             SEVEN_IS_WARN=1
         fi

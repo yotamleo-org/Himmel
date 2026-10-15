@@ -181,7 +181,7 @@ case "$out" in
     *) echo "FAIL T18 stderr did not name file:line"; FAILED=$((FAILED + 1)) ;;
 esac
 
-# T19-T24 (HIMMEL-4124): argv-array spawns of gemini, parity with the claude gate → BLOCK
+# T19-T24: argv-array spawns of gemini, parity with the claude gate → BLOCK
 printf "%s\n" 'const r = spawnSync("gemini", ["-p", prompt]);' > "$TMP/sp_one.mjs"
 rc=$(run_hook "sp_one.mjs")
 assert_rc "T19 one-line spawnSync(\"gemini\", …) unmarked" 1 "$rc"
@@ -220,7 +220,7 @@ printf "%s\n" 'spawnSync("git", ["gemini", "-p"]);' 'spawnSync("mygemini", ["-p"
 rc=$(run_hook "sp_arg.mjs")
 assert_rc "T27 gemini as argument / mygemini not flagged" 0 "$rc"
 
-# T28 (HIMMEL-4123, shared join): a comment holding an unbalanced bracket must not break the join → BLOCK
+# T28: a comment holding an unbalanced bracket must not break the join → BLOCK
 printf "%s\n" 'subprocess.run(' '    # note )' '    ["gemini", *a])' > "$TMP/sp_cmt.py"
 rc=$(run_hook "sp_cmt.py")
 assert_rc "T28 # comment with ) between ( and [\"gemini\" unmarked" 1 "$rc"
@@ -231,33 +231,33 @@ cp "$HOOK" "$TMP/nolib/check-no-headless-gemini.sh"
 rc=$(cd "$TMP" && bash "$TMP/nolib/check-no-headless-gemini.sh" "interactive.sh" >/dev/null 2>&1; echo "$?")
 assert_rc "T29 missing lib/headless-spawn-join.sh fails closed" 1 "$rc"
 
-# T30 (HIMMEL-4124 CR): the join itself failing (awk missing or erroring) → fail closed, even on a clean file → BLOCK
+# T30: the join itself failing (awk missing or erroring) → fail closed, even on a clean file → BLOCK
 mkdir -p "$TMP/badawk"
 printf '%s\n' '#!/bin/sh' 'exit 2' > "$TMP/badawk/awk"
 chmod +x "$TMP/badawk/awk"
 rc=$(cd "$TMP" && PATH="$TMP/badawk:$PATH" bash "$HOOK" "interactive.sh" >/dev/null 2>&1; echo "$?")
 assert_rc "T30 a failing join (awk rc!=0) fails closed" 1 "$rc"
 
-# T31 (HIMMEL-4132): a name=value staged filename must not read as an awk
+# T31: a name=value staged filename must not read as an awk
 # assignment (awk would read stdin and the multi-line join would pass) → BLOCK
 printf "%s\n" 'const r = spawnSync(' '  "gemini",' '  args)' > "$TMP/gemini_x=1.js"
 rc=$(run_hook "gemini_x=1.js" </dev/null)
 assert_rc "T31 multi-line spawn in a name=value filename unmarked" 1 "$rc"
 
-# T32 (HIMMEL-4132): a file named '-' must not read as stdin → BLOCK
+# T32: a file named '-' must not read as stdin → BLOCK
 printf "%s\n" 'gemini -p "summarize"' > "$TMP/-"
 rc=$(run_hook "-" </dev/null)
 assert_rc "T32 headless call in a file named - unmarked" 1 "$rc"
 rm -f "$TMP/-"
 
-# T33 (HIMMEL-4137): a correctly MARKED file named -lead.js must read as ALLOW,
+# T33: a correctly MARKED file named -lead.js must read as ALLOW,
 # not as an option (pins the leading-dash false-positive fix) → CLEAN
 printf "%s\n" 'spawnSync("gemini", ["-p", prompt]); // headless-gemini-ok: batch job' > "$TMP/-lead.js"
 rc=$(run_hook "-lead.js" </dev/null)
 assert_rc "T33 marked headless call in a file named -lead.js" 0 "$rc"
 rm -f "$TMP/-lead.js"
 
-# T34 (HIMMEL-5463): the deny message must not name the retired
+# T34: the deny message must not name the retired
 # no-headless-claude gate as a live sibling → message free of it
 printf "%s\n" 'gemini -p "summarize"' > "$TMP/deny.sh"
 msg=$(cd "$TMP" && bash "$HOOK" "deny.sh" 2>&1 >/dev/null </dev/null)

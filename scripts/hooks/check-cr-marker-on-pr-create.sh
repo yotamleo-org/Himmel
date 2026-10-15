@@ -27,7 +27,7 @@ set -euo pipefail
 # ─── helpers ────────────────────────────────────────────────────────────────
 warn() { echo "check-cr-marker-on-pr-create: $*" >&2; }
 
-# Read stdin once (small payload — safe to buffer). HIMMEL-2123: a bash
+# Read stdin once (small payload — safe to buffer). A bash
 # builtin `read` instead of `$(cat)` avoids one external-process spawn per
 # call (this hook fires on every Bash tool call). `read -d ''` reads to EOF
 # and always returns non-zero there (no NUL delimiter in JSON), so it cannot
@@ -55,7 +55,7 @@ IFS= read -r -d '' payload 2>/dev/null || true
 # whitespace arrangement can slip past. The cost is that a few unrelated
 # commands (`docker create`, `gh release create`) reach the anchored regex
 # below, which correctly rejects them. Same reasoning, same shape as the
-# PostToolUse sibling trigger-cr-on-pr-create.sh (HIMMEL-1362).
+# PostToolUse sibling trigger-cr-on-pr-create.sh.
 #
 # (Preferred fix per task brief: narrow the PreToolUse matcher in
 # .claude/settings.json with `"if": "Bash(gh pr create*)"` so the harness
@@ -86,7 +86,7 @@ extract_command() {
 
 cmd=$(extract_command "$payload" || true)
 
-# Strip carriage returns at the CAPTURE boundary (HIMMEL-2234). CRLF command
+# Strip carriage returns at the CAPTURE boundary. CRLF command
 # text otherwise leaves a stray CR glued to the LAST token of every line, and
 # every position-sensitive check below then silently stops matching: a
 # $-anchored regex, an exact string comparison, a word-split token used as a
@@ -104,7 +104,7 @@ if [ -z "$cmd" ]; then
     exit 0
 fi
 
-# HIMMEL-1373 — quote-blind matcher fix. The anchored regex below reads `;` `&`
+# quote-blind matcher fix. The anchored regex below reads `;` `&`
 # `|` backtick and `$(` as command separators, so `echo "; gh pr create"` put
 # `gh pr create` at a command position though nothing ran it. Blank out quoted
 # spans first (this block is BYTE-IDENTICAL in the PreToolUse/PostToolUse twin):
@@ -192,7 +192,7 @@ strip_quoted_spans() {
 #   `gh pr create -t foo`               (legacy backtick substitution)
 # (S-1 fix, task #22; backtick+$( coverage added per review on #46.)
 #
-# POSIX bracket classes, NOT `\s`/`\b` (HIMMEL-1372): those are GNU
+# POSIX bracket classes, NOT `\s`/`\b`: those are GNU
 # extensions. On BSD grep (macOS) `\s` matches a literal `s` and `\b` a
 # literal `b`, so this ENTIRE matcher would never fire — a blocking gate that
 # looks installed and does nothing on a whole platform. `\b` is replaced by an
@@ -205,11 +205,11 @@ strip_quoted_spans() {
 # different word. The whitespace quantifier sits OUTSIDE the
 # alternation so an INDENTED continuation line (`git add . && \` / newline /
 # `    gh pr create -t foo`) still matches. Kept BYTE-IDENTICAL to the
-# PostToolUse sibling trigger-cr-on-pr-create.sh (HIMMEL-1362): the two are
+# PostToolUse sibling trigger-cr-on-pr-create.sh: the two are
 # maintained as a pair and diverged once already — the sibling was still on the
-# whitespace-only end-of-token class until HIMMEL-1975 re-converged them.
+# whitespace-only end-of-token class; keep both in lockstep.
 #
-# HIMMEL-1975 — the command position also admits `{` and `!` (single characters
+# the command position also admits `{` and `!` (single characters
 # that can only PRECEDE a command) and ONE leading reserved word or wrapper
 # command. That closes the five measured bypasses:
 #   { gh pr create -t x; }      if gh pr create -t x; then      ! gh pr create
@@ -223,7 +223,7 @@ strip_quoted_spans() {
 #      and `gh`. Bounded to `[^|;&]*` precisely so it can never cross into the
 #      NEXT command — a run that could cross a separator would be
 #      "match anywhere", which is what the narrow class exists to avoid.
-# Deliberately NOT a tokenizer (that is HIMMEL-912's territory) and deliberately
+# Deliberately NOT a tokenizer and deliberately
 # NOT "match anywhere": every pinned negative below stays negative, because none
 # of echo/grep/git is a wrapper and neither `"` nor `#` is a command separator.
 # Accepted residual: `<wrapper> … "gh pr create"` inside quotes after one of the
@@ -242,7 +242,7 @@ if ! command -v git >/dev/null 2>&1; then
     exit 0
 fi
 
-# Resolve the repo whose marker this call is about (HIMMEL-2035).
+# Resolve the repo whose marker this call is about.
 #
 # The marker lives in the .git of the repo `gh pr create` actually runs in, and
 # that is not necessarily the himmel checkout: an operator opens PRs from an
@@ -254,7 +254,7 @@ fi
 # behaviour) - the first two mirror block-graphify-egress.sh:63,
 # block-terminal-write-fence.sh:203 and cadence-approve-engines.sh:502.
 #
-# Measured on this harness (HIMMEL-2035 step 0, 2026-08-23): the Bash tool
+# Measured on this harness (2026-08-23): the Bash tool
 # takes no `cwd` input, so `.tool_input.cwd` is ABSENT and `.cwd` is the
 # SESSION cwd. That cwd does follow a `cd` issued by an earlier Bash call, so
 # `cd <repo>` ... then ... `gh pr create` resolves correctly; a single compound
@@ -269,15 +269,15 @@ is_work_tree() {
 
 # Candidates, newline-separated, in precedence order. EVERY candidate is
 # validated on its own and the first one that RESOLVES wins — not the first one
-# that merely exists (CR round 1 codex-3): a `.tool_input.cwd` that is present
+# that merely exists: a `.tool_input.cwd` that is present
 # but is not a work tree must never shadow a perfectly good `.cwd`.
 #
-# jq-less box (CR round 1 codex-2): without a fallback the hook silently
+# jq-less box: without a fallback the hook silently
 # reverted to CLAUDE_PROJECT_DIR and reproduced exactly the cross-repo bug this
 # change closes. The extraction below is the same best-effort shape as
 # extract_command's fallback above, minus `grep -P` (GNU-only): plain `grep -o`
 # is supported by both GNU and BSD grep. It emits EVERY `"cwd"` in the payload,
-# not just the first (CR round 2 codex-1) — key order in a JSON object is not
+# not just the first — key order in a JSON object is not
 # guaranteed, so keeping only the first would let an invalid `.tool_input.cwd`
 # swallow a valid `.cwd` and drop back to CLAUDE_PROJECT_DIR. What the jq-less
 # path loses is the ORDER of the two, never a candidate. Safety does not rest on
@@ -293,7 +293,7 @@ if command -v jq >/dev/null 2>&1; then
     # only the trailing newline and a TRAILING CR happened to be tolerated).
     cwd_candidates=$(jq -r '[.tool_input.cwd, .cwd] | map(select(type == "string" and . != "")) | .[]' <<<"$payload" 2>/dev/null | tr -d '\r' || true)
 else
-    # Order is enforced without parsing nested JSON (CR round 3 codex-1): the
+    # Order is enforced without parsing nested JSON: the
     # payload after the LAST `"tool_input"` can only reach a `"cwd"` that is
     # inside that object — unless the object has none, in which case the value
     # found is the top-level one and putting it first changes nothing, because
@@ -301,7 +301,7 @@ else
     # one exists, and the full ordered list follows it. A duplicate costs one
     # extra `[ -d ]` probe and nothing else.
     #
-    # Accepted limit, deliberately NOT fixed here (CR round 3 codex-2): `[^"]*`
+    # Accepted limit, deliberately NOT fixed here: `[^"]*`
     # stops at an ESCAPED quote and the unescaping handles `\\` only, so a cwd
     # containing `\"` or a `\uXXXX` escape is not recovered. Writing a JSON
     # string unescaper in shell to chase a directory name with a quote in it is
@@ -336,7 +336,7 @@ fi
 # be the main checkout (typically on `main`) - it is whenever the resolution
 # above fell through to CLAUDE_PROJECT_DIR.
 # Looking up the repo_dir branch would then check cr-pending/main (empty) and
-# miss the marker entirely (HIMMEL-213). The `--head <branch>` flag on the
+# miss the marker entirely. The `--head <branch>` flag on the
 # extracted command names the PR's source branch explicitly and is
 # worktree-independent, so prefer it. Handle both `--head feat/x` and
 # `--head=feat/x`. Fall back to the repo_dir branch when --head is absent
@@ -364,7 +364,7 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 
-# FR1a (HIMMEL-2035): `--repo <owner>/<name>` names the PR's TARGET repo, which
+# FR1a: `--repo <owner>/<name>` names the PR's TARGET repo, which
 # for the ordinary fork/upstream flow (`origin` = your fork, `--repo` = upstream)
 # is deliberately not the local one. The marker, though, always belongs to the
 # repo the branch lives in — the one resolved above — so a divergence is
@@ -378,7 +378,7 @@ done
 # entirely. So: warn, then fall through to the ordinary marker check. Blocking
 # stays recoverable the usual way (`/pr-check`, or `SKIP_CR=1 git push`).
 if [ -n "$repo_nwo" ]; then
-    # Reuse the SHARED canonicalizer (scripts/lib/nwo.sh, HIMMEL-2034) instead of
+    # Reuse the SHARED canonicalizer (scripts/lib/nwo.sh) instead of
     # re-deriving origin-URL parsing here — it already handles the host segment,
     # ssh userinfo, an explicit port, and GitHub's case-insensitivity, each closed
     # by its own CR round. Sourced HERE, inside the `gh pr create` branch, so the
@@ -438,7 +438,7 @@ if [ ! -f "$marker" ]; then
 fi
 
 # When the branch was resolved from `--head`, it may differ from the
-# repo_dir branch (the worktree-vs-main pattern HIMMEL-213 fixes). In that
+# repo_dir branch (the worktree-vs-main pattern). In that
 # case `git -C $repo_dir rev-parse HEAD` is main's HEAD, NOT the head
 # branch's HEAD, so the SHA-match refinement below would compare the wrong
 # tips. Simplest correct behaviour: the presence of a marker for the head
@@ -457,7 +457,7 @@ if [ -z "$current_head" ]; then
 fi
 
 # Marker format (set by check-cr-before-push.sh): "<iso-date> | <sha>[ | <lane>]"
-# (HIMMEL-303 appends an optional 3rd lane field; we read only field 2 here.)
+# (An optional 3rd lane field may follow; we read only field 2 here.)
 # FS is a literal " | " — use a bracket class [|] not \| (gawk warns on \| and
 # treats it as alternation, splitting on every space → field 2 becomes "|").
 marker_sha=$(awk -F' [|] ' '{print $2; exit}' "$marker" 2>/dev/null || true)

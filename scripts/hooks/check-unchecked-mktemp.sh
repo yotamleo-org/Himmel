@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/hooks/check-unchecked-mktemp.sh -- unchecked-mktemp pre-commit gate
-# (HIMMEL-2709).
+#.
 #
 # Fail-closed. A missing or unreadable predicate library, an unresolvable
 # repo root, a failing `git diff`, a failed added-lines scan, a changed staged
@@ -127,7 +127,7 @@ fi
 . "$UNCHECKED_MKTEMP_LIB"
 
 # Scan mode. Default = staged (pre-commit). `--range [--merge-ref] <base>` =
-# the CI range gate (HIMMEL-4301): the same added-lines scan over the PR's net
+# the CI range gate: the same added-lines scan over the PR's net
 # diff, so a capture that reached the branch past a skipped/bypassed pre-commit
 # is still caught. Range = merge-base(<base>, HEAD)..HEAD; with --merge-ref and
 # a merge HEAD (CI's refs/pull/N/merge) it is HEAD^1..HEAD, the PR's own net
@@ -267,7 +267,7 @@ hunk_linenos() {
 }
 
 # Narrow $2 (a file of added line numbers vs the first parent) to the lines the
-# merge itself introduced (HIMMEL-4301): a line a merge inherits from another
+# merge itself introduced: a line a merge inherits from another
 # parent is that parent's, already judged on its own PR -- only a line added
 # relative to EVERY parent (the conflict resolution) is the merge's own, i.e.
 # combined-diff (`git diff --cc`) semantics. Each other parent's added lines

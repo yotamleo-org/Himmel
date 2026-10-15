@@ -18,7 +18,7 @@ fi
 # < 11 carries a key that EXPIRED 2025-01-29. On Debian/Ubuntu's apt npm (9.2.0)
 # `npm audit signatures` therefore fails EVERY package with EEXPIREDSIGNATUREKEY
 # — which reads like a supply-chain alarm when it is really a stale verifier,
-# and it refuses every push on an otherwise-healthy box (HIMMEL-2440). Check the
+# and it refuses every push on an otherwise-healthy box. Check the
 # tool before believing its verdict. This does NOT weaken the check: an npm too
 # old to verify is refused, never waved through.
 NPM_MIN_MAJOR=11
@@ -73,7 +73,7 @@ for pkg in "${pkgs[@]}"; do
     # installs NO production packages for has no registry-signed tarballs to
     # verify — `npm audit signatures --omit=dev` on it is a no-op, and
     # `npm ci --omit=dev` legitimately materializes no node_modules — so skip
-    # rather than block on the empty dir (HIMMEL-502: lets a zero-prod-dep
+    # rather than block on the empty dir (lets a zero-prod-dep
     # scripts/ package, e.g. a pure vitest/tsc suite, use the npm CI matrix
     # without tripping this gate). Count EVERY field npm installs under
     # --omit=dev — dependencies + optional + peer (npm 7+) + bundled — not just

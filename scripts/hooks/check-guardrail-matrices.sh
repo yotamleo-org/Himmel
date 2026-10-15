@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the guardrail matrix invariant suites (HIMMEL-1522).
+# Run the guardrail matrix invariant suites.
 #
 # Both suites existed as standalone scripts that only ran when somebody
 # remembered to type them. The egress matrix decides whether a corpus may leave

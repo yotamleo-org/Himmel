@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-pr-lane-isolation.sh (HIMMEL-214).
+# Smoke test for scripts/hooks/check-pr-lane-isolation.sh.
 #
 # Usage: bash scripts/hooks/test-check-pr-lane-isolation.sh
 #

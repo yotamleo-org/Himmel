@@ -14,7 +14,7 @@ fail=0
 unhashed=0   # the regenerate hint only helps when a file was read and lacked hashes
 for file in "$@"; do
     # pre-commit never passes a deleted file, so a missing path is a dangling
-    # reference (HIMMEL-4144): fail closed rather than skip it.
+    # reference: fail closed rather than skip it.
     [ -f "$file" ] || { echo "ERROR: $file does not exist (or is not a regular file)" >&2; fail=1; continue; }
     [ -r "$file" ] || { echo "ERROR: $file is unreadable" >&2; fail=1; continue; }
 
@@ -25,7 +25,7 @@ for file in "$@"; do
         function check(joined,   l) {
             l = joined
             # A `#` at line start or after whitespace opens a comment; a hash
-            # inside one must not satisfy the check (HIMMEL-4144).
+            # inside one must not satisfy the check.
             sub(/(^|[[:space:]])#.*$/, "", l)
             if (l ~ /^[[:space:]]*$/) return        # blank
             if (l ~ /^[[:space:]]*-/) return        # pip directive (-r, -c, --index-url, ...)
@@ -35,7 +35,7 @@ for file in "$@"; do
             # Same order as pip join_lines: a continuation is decided on the
             # RAW line, so a line whose backslash is followed by a comment does
             # not continue; a full-line comment ends the logical line; comments
-            # are stripped from the JOINED line (HIMMEL-4144).
+            # are stripped from the JOINED line.
             if ($0 ~ /^[[:space:]]*#/) { if (buf != "") check(buf); buf = ""; next }
             buf = buf $0
             if ($0 ~ /\\$/) { sub(/\\[[:space:]]*$/, " ", buf); next }

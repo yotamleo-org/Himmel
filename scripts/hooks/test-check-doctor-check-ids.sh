@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-doctor-check-ids.sh (HIMMEL-2664).
+# Smoke test for scripts/hooks/check-doctor-check-ids.sh.
 #
 # Builds throwaway git repos with a fixture scripts/himmel-doctor.sh staged,
 # exercises each rc case, asserts exact rc. Modeled on test-doc-guard.sh:
@@ -133,7 +133,7 @@ fix_c1_guardrail() { check_c1_guardrail; }
 check_c2() { return 0; }
 ${RUN_TAIL}
 check_c2
-# note: check_c2 covers the case from HIMMEL-0000
+# note: check_c2 covers the case
 "
 run_case "A3d comment mentioning a called check -> not a false duplicate" "$COMMENT_MENTION" 0
 

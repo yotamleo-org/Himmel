@@ -14,10 +14,10 @@ $SuppliedCommitMsgFile = $CommitMsgFile
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# HIMMEL-2461: mirror the .sh twin's fail-closed resolution. $args[0] is this
+# mirror the .sh twin's fail-closed resolution. $args[0] is this
 # hook's equivalent of the bash script's $1; when that is empty, fall back to
 # .git/COMMIT_EDITMSG before giving up.
 if (-not $CommitMsgFile) { $CommitMsgFile = $args[0] }
@@ -49,7 +49,7 @@ COMMIT REJECTED: could not read the commit-message file '$CommitMsgFile'.
     exit 1
 }
 
-# HIMMEL-2462: a value line may carry a trailing comment
+# a value line may carry a trailing comment
 # (`JIRA_PROJECT_KEY=HIMMEL # default project`); without stripping it the
 # ticket pattern built below becomes the impossible
 # `HIMMEL # default project-\d+`. Mirrors strip_comment() in
@@ -60,7 +60,7 @@ COMMIT REJECTED: could not read the commit-message file '$CommitMsgFile'.
 # after it can still start a comment. Unquoted, a `#` truncates the value
 # only when it is preceded by whitespace (so `URL=http://x/#frag` keeps its
 # fragment). An unterminated quote returns the whole remainder rather than
-# guessing. Surrounding quotes are still NOT stripped (HIMMEL-1493).
+# guessing. Surrounding quotes are still NOT stripped.
 function Remove-TrailingComment {
     param([string]$Value)
     $quote = ''
@@ -115,7 +115,7 @@ function Import-TicketConfig {
 
 Import-TicketConfig
 
-# HIMMEL-2183: WARN-only negative-existence claim linter. Never blocks (exit
+# WARN-only negative-existence claim linter. Never blocks (exit
 # code is untouched) and fails open on any error inside it — a broken regex
 # or a garbled line must degrade to silence, not to a crash or a false deny.
 function Test-NegativeExistenceClaims {
@@ -141,10 +141,10 @@ function Test-NegativeExistenceClaims {
 }
 Test-NegativeExistenceClaims $msg
 
-# HIMMEL-3022 (HIMMEL-2982 Ask 3): WARN-only, at commit time, when an
+# WARN-only, at commit time, when an
 # attestation trailer is present but will not satisfy its pre-push gate —
 # `Security reviewed:` with a token that is not one of the four accepted
-# (check-security-reviewed.sh TOKEN_RE, HIMMEL-1681), or `Platforms tested:`
+# (check-security-reviewed.sh TOKEN_RE), or `Platforms tested:`
 # with an empty value (check-platforms-tested.sh). Never blocks and fails
 # open on any error, same contract as Test-NegativeExistenceClaims above.
 #
@@ -236,7 +236,7 @@ if (-not $skipConventional -and $firstLine -notmatch $pattern) {
     exit 1
 }
 
-# HIMMEL-2442: default ON. An adopter with no .env at all is gated; the
+# default ON. An adopter with no .env at all is gated; the
 # explicit opt-out is TICKET_ID_REQUIRED=0.
 $requiredValue = if ($env:TICKET_ID_REQUIRED) { $env:TICKET_ID_REQUIRED } else { '1' }
 switch -Regex ($requiredValue) {

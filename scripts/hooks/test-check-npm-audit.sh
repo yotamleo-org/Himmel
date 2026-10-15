@@ -2,7 +2,7 @@
 # selector: tree-scan
 # Smoke test for scripts/hooks/check-npm-audit.sh.
 #
-# Scope: the package-DISCOVERY logic, which is the thing the HIMMEL-179
+# Scope: the package-DISCOVERY logic, which is the thing the
 # follow-up changed (find scripts -maxdepth 3 → git ls-files all committed
 # packages). The twin of test-check-npm-licenses.sh. We do NOT run `npm audit`
 # here — that needs network + npm installs and tests the vuln verdict, not the
@@ -15,7 +15,7 @@
 #   3. the node_modules exclude keeps tracked-but-nested deps out (defensive), and
 #   4. the git-failure path fails closed (exit 1).
 #
-# It ALSO covers the self-install node_modules fallback (HIMMEL-232, twin
+# It ALSO covers the self-install node_modules fallback (twin
 # parity with check-npm-licenses.sh): with a stubbed `npm` on PATH (hermetic,
 # no network) we assert the install runs before `npm audit` and that an install
 # failure blocks the gate fail-closed (skips audit).
@@ -29,7 +29,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -161,7 +161,7 @@ audit_rc=0
 rm -rf "$nongit"
 assert_eq "git-failure path fails closed (exit 1)" "1" "$audit_rc"
 
-# --- self-install fallback (HIMMEL-232) -------------------------------------
+# --- self-install fallback -------------------------------------
 # These cases exercise the NEW self-install block end-to-end. They run the real
 # script against a one-package repo with NO node_modules, but with a stubbed
 # `npm` first on PATH so the test is hermetic (no network, no real installs).
@@ -249,7 +249,7 @@ rm -rf "$repo_fail"; rm -f "$log_fail"
 
 rm -rf "$NPM_STUB"
 
-# --- registry/transport-error classification (HIMMEL-2972) -----------------
+# --- registry/transport-error classification -----------------
 # A registry/transport error (audit endpoint returned an error, Bad Request,
 # ENOAUDIT, ENOTFOUND, etc.) must never be reported as "vulnerabilities
 # found" — it gets ONE bounded retry, and only a real findings payload (or an
@@ -289,7 +289,7 @@ STUB
 
 # Stub npm whose `audit`: TRANSPORT error on the first call (retried), then a
 # REAL FINDINGS payload on the retry — covers the registry recovering but
-# reporting genuine vulnerabilities (CR round 1, codex-1): the retry failure
+# reporting genuine vulnerabilities: the retry failure
 # must NOT be blanket-classified as transport/INDETERMINATE.
 make_transport_then_findings_stub() {
     local dir
@@ -462,7 +462,7 @@ rm -rf "$repo16" "$STUB16"
 
 # Case 17: transport error on the FIRST attempt, but the retry surfaces REAL
 # findings (registry recovered) — must land on the original vulnerabilities
-# path, not INDETERMINATE (CR round 1, codex-1).
+# path, not INDETERMINATE.
 STUB17=$(make_transport_then_findings_stub) || exit 1
 repo17=$(make_install_repo lock) || exit 1
 count17=$(mktemp -u "${TMPDIR:-/tmp}/npm-audit-count17.XXXXXX")
@@ -485,7 +485,7 @@ else
 fi
 rm -rf "$repo17" "$STUB17"; rm -f "$count17"
 
-# --- bun-package skip (HIMMEL-296) ------------------------------------------
+# --- bun-package skip ------------------------------------------
 # Build a one-package repo where the package is a bun package. Two variants:
 # (a) bun.lock present (runtime bun.lock signal); (b) no bun.lock but
 # package.json scripts use `bun install` (fresh-checkout signal).

@@ -1,11 +1,11 @@
-# Smoke test for scripts/hooks/check-commit-msg.ps1 (HIMMEL-1483).
+# Smoke test for scripts/hooks/check-commit-msg.ps1.
 # PowerShell twin of test-check-commit-msg.sh.
 $ErrorActionPreference = 'Stop'
 
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $SCRIPT = Join-Path $PSScriptRoot 'check-commit-msg.ps1'
 $R = Join-Path ([System.IO.Path]::GetTempPath()) ('cm-' + [guid]::NewGuid().ToString('N'))
@@ -48,7 +48,7 @@ function Expect-Rc {
     else { Write-Host "  FAIL  $Name (rc=$rc, want $Want)"; $script:failures++ }
 }
 
-# HIMMEL-2183: WARN-only negative-existence claim linter. Never blocks — rc
+# WARN-only negative-existence claim linter. Never blocks — rc
 # must match what the case would get without the linter.
 function Invoke-GateCaptured {
     param([string]$Message, [hashtable]$Env = @{})
@@ -84,7 +84,7 @@ function Expect-Warn {
 }
 
 try {
-    # HIMMEL-2442: the gate is ON by default, and with no ticket system
+    # the gate is ON by default, and with no ticket system
     # configured the pattern is himmel's own `#N` enumeration.
     Expect-Rc 'default ON rejects a ticketless message (adopter defaults)' 1 'chore: no ticket id here'
     Expect-Rc 'default ON accepts #N' 0 'chore: [#12] wire the thing'
@@ -136,7 +136,7 @@ try {
     Expect-Rc 'custom regex supports no-Jira #N tickets' 0 'fix: close #73' @{
         TICKET_ID_REQUIRED = '1'; TICKET_ID_PATTERN = '#[0-9]+'
     }
-    # HIMMEL-2442: no configured pattern is no longer a configuration error — it
+    # no configured pattern is no longer a configuration error — it
     # is the `#N` posture, so a ticketless message still fails and an #N one passes.
     Expect-Rc 'no configured pattern falls back to #N and rejects' 1 'feat: add feature' @{
         TICKET_ID_REQUIRED = '1'
@@ -153,7 +153,7 @@ try {
     Expect-Rc 'bare revert subject is not exempt' 1 'Revert "feat: add feature"' @{
         TICKET_ID_REQUIRED = '1'; JIRA_PROJECT_KEY = 'ACME'
     }
-    # HIMMEL-1483 CR1: revert exemption now requires the reverted hash to resolve
+    # The revert exemption requires the reverted hash to resolve
     # to a real commit. Seed one and use its SHA for the positive case; a
     # fabricated hash must fall through and be rejected in strict mode.
     & git -C $R commit -q --allow-empty -m 'feat: add feature'
@@ -207,7 +207,7 @@ try {
     }
     Remove-Item -LiteralPath (Join-Path $R '.env') -ErrorAction SilentlyContinue
 
-    # HIMMEL-2462: a trailing comment on JIRA_PROJECT_KEY must be stripped, not
+    # a trailing comment on JIRA_PROJECT_KEY must be stripped, not
     # folded into the ticket pattern (the impossible `HIMMEL # default-\d+`).
     "TICKET_ID_REQUIRED=1`nJIRA_PROJECT_KEY=HIMMEL # default project`n" | Set-Content -LiteralPath (Join-Path $R '.env') -NoNewline
     Expect-Rc '.env value with trailing comment still accepts HIMMEL-N' 0 'docs: HIMMEL-123 update docs'
@@ -215,18 +215,18 @@ try {
     Remove-Item -LiteralPath (Join-Path $R '.env') -ErrorAction SilentlyContinue
 
     # TICKET_ID_REQUIRED=0 keeps these focused on the linter: the ticket gate is
-    # ON by default (HIMMEL-2442) and would otherwise decide rc for these messages.
+    # ON by default and would otherwise decide rc for these messages.
     Expect-Warn 'bare negative claim warns, rc unchanged' 0 $true "feat: add feature`n`nWe don't have this handled yet." @{ TICKET_ID_REQUIRED = '0' }
     Expect-Warn 'claim with adjacent path evidence is silent' 0 $false "feat: add feature`n`nWe don't have this handled yet.`nSee scripts/hooks/check-commit-msg.ps1 for details." @{ TICKET_ID_REQUIRED = '0' }
     Expect-Warn 'no claim is silent' 0 $false "feat: add feature`n`nEverything here works as expected." @{ TICKET_ID_REQUIRED = '0' }
 
-    # HIMMEL-3022 (HIMMEL-2982 Ask 3): commit-msg-time WARNING when a `Security
+    # commit-msg-time WARNING when a `Security
     # reviewed:` trailer is present but its token does not conform to
-    # check-security-reviewed.sh's TOKEN_RE (HIMMEL-1681), and when a
+    # check-security-reviewed.sh's TOKEN_RE, and when a
     # `Platforms tested:` trailer is present with an empty value — so the author
     # sees the problem before the pre-push gate refuses the push. Never blocks
     # (rc unchanged); TICKET_ID_REQUIRED=0 keeps the ticket gate out of the way,
-    # same as the HIMMEL-2183 cases above.
+    # same as the cases above.
     Expect-Warn 'non-conforming Security reviewed token warns' 0 $true "chore: add feature`n`nSecurity reviewed: yes" @{ TICKET_ID_REQUIRED = '0' }
     $nonconformingResult = Invoke-GateCaptured -Message "chore: add feature`n`nSecurity reviewed: yes" -Env @{ TICKET_ID_REQUIRED = '0' }
     if ($nonconformingResult.Output -match '(?i)manual' -and $nonconformingResult.Output -match '(?i)claude-code-security-review' -and $nonconformingResult.Output -match '(?i)pr-review-toolkit' -and $nonconformingResult.Output -match '(?i)ad-hoc' -and $nonconformingResult.Output -match '(?i)pre-push gate') {
@@ -269,10 +269,10 @@ try {
     $stdout = $proc.StandardOutput.ReadToEnd()
     $stderr = $proc.StandardError.ReadToEnd()
     $proc.WaitForExit()
-    # HIMMEL-2461: a missing commit-msg file must fail CLOSED with a named
+    # a missing commit-msg file must fail CLOSED with a named
     # rejection (the .sh twin's assertion flipped the same way) — the old
     # fail-open assertion here matched the vacuous guard that let a stray
-    # commit slip through on every real invocation. The HIMMEL-2183 linter
+    # commit slip through on every real invocation. The attestation linter
     # stays silent (no WARN) since it never got a message to scan.
     $malformedOutput = "$stdout$stderr"
     if ($proc.ExitCode -ne 0 -and ($malformedOutput -match 'COMMIT REJECTED') -and -not ($malformedOutput -match 'WARN')) {
@@ -282,7 +282,7 @@ try {
         $script:failures++
     }
 
-    # codex-1 (CR round 2): Test-Path with no -PathType Leaf is true for a
+    # codex-1: Test-Path with no -PathType Leaf is true for a
     # DIRECTORY, so a $1 that resolves to one used to sail past the guard into
     # Get-Content, which errored non-terminating and left $msg empty — the
     # empty-message path then exits 0, recreating the vacuous gate. $R itself

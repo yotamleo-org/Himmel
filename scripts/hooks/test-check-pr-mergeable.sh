@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-pr-mergeable.sh (HIMMEL-136).
+# Smoke test for scripts/hooks/check-pr-mergeable.sh.
 #
 # Covers:
 #   1. main branch -> exit 0 (no gate).
@@ -10,7 +10,7 @@
 #   6. SKIP_PR_MERGEABLE=1 short-circuits even on CONFLICTING.
 #   7. Stdin drained (pipe with multi-line input does not deadlock).
 #   8. CONFLICTING but provably STALE (base merged into local head, clean tree)
-#      -> exit 0 (HIMMEL-1074 carve-out).
+#      -> exit 0 (carve-out).
 #   9. CONFLICTING + base NOT an ancestor of local head -> exit 1, message
 #      names the sanctioned recovery.
 #  10. CONFLICTING + base IS an ancestor BUT pushed tree carries conflict
@@ -18,7 +18,7 @@
 #  11. CONFLICTING + base IS an ancestor, tree has NO markers, but the
 #      conflict-marker `git diff` itself FAILS -> exit 1 (a failed diff is
 #      inconclusive evidence, not a clean tree — must not silently allow).
-#  13-14. HIMMEL-5650 warn-only re-push check: recent CI start + unfinished
+#  13-14. Warn-only re-push check: recent CI start + unfinished
 #      checks warns (rc=0); finished checks, or an old start, stay silent.
 #  12. CONFLICTING + base WOULD be an ancestor but refreshing `origin/<base>`
 #      (the pre-ancestor-check `git fetch`) FAILS -> exit 1 (a stale cached
@@ -31,7 +31,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,7 +60,7 @@ TMP_ROOT=$(mktemp -d); if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cy
 
 # Fake gh: behavior driven by FAKE_GH_* env.
 #
-# HIMMEL-1232: forge_pr_mergeable (github) now reads only base+head refs from gh
+# forge_pr_mergeable (github) now reads only base+head refs from gh
 # and computes the conflict LOCALLY via `git merge-tree`. So the fake emits
 # "<base> <headoid>" (a synchronous field read), and the test drives a clean vs
 # conflicting verdict by pointing FAKE_GH_HEAD at a real clean / conflicting
@@ -81,7 +81,7 @@ case "$1 $2" in
         # Emit per the --json fields the caller asked for:
         #  - forge_pr_mergeable: `gh pr view <branch> --json
         #    baseRefName,headRefOid --jq ...` -> "<base> <headoid>".
-        #  - check-pr-mergeable's staleness carve-out (HIMMEL-1074):
+        #  - check-pr-mergeable's staleness carve-out:
         #    `gh pr view <branch> --json baseRefName --jq ...` -> "<base>".
         for _f in "$@"; do
             case "$_f" in
@@ -123,15 +123,15 @@ git init -q --initial-branch=main "$REPO" 2>/dev/null || git init -q "$REPO"
     # feat/test is the branch under test (the hook reads its NAME); its own
     # content is irrelevant — the fake injects the head commit to check.
     git checkout -q -b feat/test main
-    # Forge seam (HIMMEL-326): the hook resolves the forge from origin; a github
+    # Forge seam: the hook resolves the forge from origin; a github
     # origin selects the github backend (gh pr view via the GH_CMD stub).
     git remote add origin https://github.com/test/test.git
 )
 CLEAN_OID=$(git -C "$REPO" rev-parse feat/clean)
 CONFLICT_OID=$(git -C "$REPO" rev-parse feat/conflict)
 
-# Fake `git`: shadows PATH so the hook's `git fetch origin <base>` (HIMMEL-1074
-# CR round — refreshes the cached origin/<base> ref before trusting it) never
+# Fake `git`: shadows PATH so the hook's `git fetch origin <base>` (it
+# refreshes the cached origin/<base> ref before trusting it) never
 # makes a real network call against the fake `origin` URL. Default behavior is
 # a no-op success — the hermetic fixtures below pre-populate
 # refs/remotes/origin/<base> directly via `git update-ref`, so no actual fetch
@@ -163,7 +163,7 @@ if command -v cygpath >/dev/null 2>&1; then FAKE_GIT_BIN_POSIX=$(cygpath -u "$FA
 
 # The forge github backend invokes "${GH_CMD}" by its absolute path (no PATH
 # lookup, no word-split), so GH_CMD must be a single executable — point it at
-# the +x fake directly (HIMMEL-326; was `bash $FAKE_GH` before the seam).
+# the +x fake directly
 # shellcheck disable=SC2120
 run() {
     (
@@ -185,7 +185,7 @@ out=$( cd "$REPO" || exit 99; printf '' | bash "$HOOK" 2>&1 ) || rc=$?
 assert_rc "main rc=0" "0" "$rc"
 ( cd "$REPO" || exit 99; git checkout -q feat/test )
 
-# Test 1b: master branch -> exit 0 (HIMMEL-297) -----------------------
+# Test 1b: master branch -> exit 0 -----------------------
 echo "TEST: master branch exits 0 (HIMMEL-297 — master is a protected default too)"
 ( cd "$REPO" || exit 99; git checkout -q -b master )
 rc=0
@@ -248,7 +248,7 @@ out=$(
 ) || rc=$?
 assert_rc "multi-line stdin rc=0" "0" "$rc"
 
-# Test 8: stale CONFLICTING -> ALLOWED (HIMMEL-1074) -------------------
+# Test 8: stale CONFLICTING -> ALLOWED -------------------
 echo "TEST: stale CONFLICTING (base merged into local head, clean tree) -> exit 0"
 # Build the resolved scenario: feat/test gains a clean commit on top of main,
 # and a remote-tracking origin/main is materialized (no network) so the carve-out's
@@ -266,7 +266,7 @@ rc=0
 out=$(export FAKE_GH_HEAD="$CONFLICT_OID"; run 2>&1) || rc=$?
 assert_rc "stale-conflicting rc=0" "0" "$rc"
 assert_contains "stderr explains stale allow" "provably stale" "$out"
-# HIMMEL-2371: the deny message no longer carries the ticket ID inline (moved
+# the deny message no longer carries the ticket ID inline (moved
 # to the code comment above check-pr-mergeable.sh's own echo line) — assert
 # the substance of the allow message instead of the now-stripped ticket ref.
 assert_contains "stderr allows the push" "Allowing the push" "$out"
@@ -311,7 +311,7 @@ assert_rc "markers-present rc=1" "1" "$rc"
 assert_contains "stderr names sanctioned recovery" "Sanctioned recovery" "$out"
 
 # Test 11: CONFLICTING + ancestor merged + clean tree BUT the conflict-marker
-# `git diff` itself fails -> REFUSED (HIMMEL-1074 CR round: a failed diff must
+# `git diff` itself fails -> REFUSED (a failed diff must
 # not read as "no markers found" and silently allow) -------------------------
 echo "TEST: stale-looking CONFLICTING but the conflict-marker git diff fails -> exit 1"
 # Build on RESOLVED_OID (ancestor merged, no markers — would be ALLOWED if the
@@ -328,7 +328,7 @@ assert_rc "diff-fails rc=1" "1" "$rc"
 assert_contains "stderr names sanctioned recovery" "Sanctioned recovery" "$out"
 
 # Test 12: CONFLICTING + ancestor WOULD be merged but the pre-check `git
-# fetch origin <base>` fails -> REFUSED (HIMMEL-1074 CR round: a stale cached
+# fetch origin <base>` fails -> REFUSED (a stale cached
 # origin/<base> is inconclusive evidence — a local ref that hasn't been
 # refreshed could satisfy the ancestor check while the CURRENT remote base
 # still genuinely conflicts) -------------------------------------------------
@@ -346,7 +346,7 @@ assert_contains "stderr names sanctioned recovery" "Sanctioned recovery" "$out"
     git checkout -q feat/test
 )
 
-# Tests 13-14 (HIMMEL-5650): warn-only re-push check -----------------------
+# Tests 13-14: warn-only re-push check -----------------------
 ts() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 NOW=$(date +%s)
 T_RECENT=$(ts $((NOW - 300)))

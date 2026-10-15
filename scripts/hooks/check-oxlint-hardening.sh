@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Zero-violation oxlint bug-class hardening gate (HIMMEL-2163/2802).
+# Zero-violation oxlint bug-class hardening gate
 #
 # Runs a pinned oxlint with a fixed set of bug-class rules (correctness rules
 # that are OFF by default across oxc/eslint/promise, plus selected unicorn
@@ -8,13 +8,13 @@
 # dist/, node_modules/, and test fixtures are excluded.
 #
 # Zero tolerance applies to findings AND tool integrity: only a missing runner
-# (neither bunx nor `bun x`, HIMMEL-5529) is fail-open. A runner error, missing findings JSON, or inconsistent root blocks
+# (neither bunx nor `bun x`) is fail-open. A runner error, missing findings JSON, or inconsistent root blocks
 # the commit loudly rather than turning an unevaluated gate into a pass.
 set -uo pipefail
 
 OXLINT_VERSION=1.88.0
 
-# ---- changed-files mode (HIMMEL-5526) ---------------------------------
+# ---- changed-files mode ---------------------------------
 # `--files PATH...` lints only those repo-relative paths, narrowed to this
 # gate's surface and to JS/TS extensions (dist/, node_modules/ and fixtures
 # stay excluded), and exits 0 when none is left. No `--files` = the full
@@ -38,7 +38,7 @@ elif [ $# -gt 0 ]; then
     exit 2
 fi
 
-# ---- rule set (HIMMEL-2163 audit) --------------------------------------
+# ---- rule set --------------------------------------
 # oxc/bad-bitwise-operator and eslint/no-throw-literal each had exactly one
 # hit in-scope, both VERIFIED FALSE POSITIVES (annotated with an
 # oxlint-disable, not "fixed") — see scripts/hooks/guardrail-block.mjs:880
@@ -97,7 +97,7 @@ if [ "$files_mode" = 1 ]; then
 fi
 
 # bunx is bun's alias for `bun x`; some installs (e.g. ~/.bun/bin) ship only
-# `bun`, so fall back to it before failing open (HIMMEL-5529).
+# `bun`, so fall back to it before failing open.
 if command -v bunx >/dev/null 2>&1; then
     runner=(bunx)
 elif command -v bun >/dev/null 2>&1; then

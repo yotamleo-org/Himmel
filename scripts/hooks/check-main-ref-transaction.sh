@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # reference-transaction hook logic: refuse a NEW local commit landing on
 # refs/heads/main whenever origin/main does not already contain it
-# (HIMMEL-2095).
+#.
 #
 # WHY: d05ef8ca (and 913073df, 378c21f9, 310646da before it) landed directly
 # on private main via `git commit --no-verify` followed by `git push
@@ -34,10 +34,10 @@
 # "committed"/"aborted" notification phases too, not just "prepared"). This
 # script acts ONLY on phase "prepared" -- there is nothing left to prevent
 # once "committed"/"aborted" fires -- but it must still DRAIN every line git
-# writes for those phases before returning (panel round 8, codex-1: the
-# install-main-ref-transaction.sh shim's own fail-open branch was fixed for
-# exactly this in round 5 and this script's early exit was the other half
-# of the same contract, left un-fixed). Exiting without draining leaves git
+# writes for those phases before returning (the
+# install-main-ref-transaction.sh shim's own fail-open branch drains for
+# exactly this reason, and this script's early exit is the other half of
+# the same contract). Exiting without draining leaves git
 # writing into a pipe nobody is reading; once the kernel buffer fills, git
 # sees a broken pipe -- possible AFTER refs have already moved for a
 # "committed" notification, which is a worse failure than a slow hook.
@@ -61,11 +61,11 @@
 # NOT yet true on Windows: (1) install-main-ref-transaction.sh (this
 # script's own installer) is never called from `setup-hooks.ps1`, so a
 # Windows station currently ships this file with no guard actually wired up
-# to run it at all -- tracked as HIMMEL-2638, a real, open gap, not a
+# to run it at all -- a real, open gap, not a
 # hypothetical one; (2) the git behaviour this script depends on -- that
 # `reference-transaction` delivers its full ref-line stream on stdin the
 # same way across platforms, including through Git Bash's own process
-# model -- is UNVERIFIED on Windows, tracked as HIMMEL-2643. If a `.ps1`
+# model -- is UNVERIFIED on Windows. If a `.ps1`
 # twin is ever written, it needs to independently confirm both of those
 # before this note can shrink to "resolved".
 #
@@ -78,8 +78,8 @@
 # AMBIENT `git rev-parse` (no `-C`, no deriving a path from this script's own
 # location) -- empirically, git invokes a reference-transaction hook with cwd
 # already set to the toplevel of the repo/worktree whose transaction is
-# firing (confirmed for both a primary checkout and a linked worktree,
-# HIMMEL-2095 investigation), and `--git-common-dir` correctly resolves to
+# firing (confirmed for both a primary checkout and a linked worktree),
+# and `--git-common-dir` correctly resolves to
 # the SHARED primary .git even when cwd is a linked worktree. Anchoring to
 # this script's own installed path would instead resolve whatever repo the
 # TRACKED COPY happens to live in (wrong whenever the hook is exercised
@@ -87,7 +87,7 @@
 # suite's throwaway sandboxes) -- ambient resolution is correct in both
 # production and test.
 #
-# Escape hatch (HIMMEL-2095 retask): removing the operator's `--no-verify`
+# Escape hatch: removing the operator's `--no-verify`
 # door without leaving a sanctioned one just pushes them to a worse one (a
 # raw `core.hooksPath` override, or editing this file). MAIN_REF_TRANSACTION_OK=1
 # is that sanctioned door. Named after THIS hook (not reused from
@@ -142,7 +142,7 @@ origin_main_resolved=1
 git rev-parse --verify -q refs/remotes/origin/main >/dev/null 2>&1 || origin_main_resolved=0
 
 # git-common-dir for the override log -- shared by every linked worktree.
-# HIMMEL-2640: --git-common-dir is relative to CWD, not to repo_root -- the
+# --git-common-dir is relative to CWD, not to repo_root -- the
 # manual join this used to do (matching install-cr-pre-push-legacy.sh's old
 # bug) was wrong from a subdirectory. --path-format=absolute resolves
 # correctly from any cwd; git < 2.31 echoes an unrecognised --path-format
