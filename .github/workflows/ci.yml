@@ -394,10 +394,10 @@ jobs:
             exit 1
           fi
           # fail-open-lint cds to its repo root and runs the suite from there: judge the
-          # PR tree with the BASE suite, lint and fixtures laid over a copy of it
-          fo="$RUNNER_TEMP/fail-open-tree"
-          mkdir -p "$fo"
-          if ! git archive HEAD | tar -x -C "$fo" || ! git archive "$BASE_SHA" scripts/guardrails scripts/hooks/check-fail-open-lint.sh | tar -x -C "$fo"; then
+          # PR tree with the BASE suite, lint and its fixtures laid over a copy of it
+          # (the other guardrails files stay the PR's: the lint scans them)
+          fo="$(mktemp -d "$RUNNER_TEMP/fail-open-tree.XXXXXX")" || exit 1
+          if ! git archive HEAD | tar -x -C "$fo" || ! git archive "$BASE_SHA" scripts/guardrails/lint-fail-open.sh scripts/guardrails/test-lint-fail-open.sh scripts/guardrails/fixtures/fail-open scripts/hooks/check-fail-open-lint.sh | tar -x -C "$fo"; then
             echo "tree-only gates: fail-open suite absent at base $BASE_SHA, cannot evaluate" >&2
             exit 1
           fi

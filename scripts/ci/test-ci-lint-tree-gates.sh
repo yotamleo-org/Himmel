@@ -95,6 +95,10 @@ branch violation; violation; commit violation
 run_step "$BASE"
 if [ "$RC" -ne 0 ] && has "zz-fail-open.sh"; then pass "PR adding a fail-open violation fails"; else fail "violation -> rc=$RC: $OUT"; fi
 
+branch guardsurface; cp "$S/scripts/guardrails/fixtures/fail-open/instance1-unreadable-denylist.sh.fxt" "$S/scripts/guardrails/check-git-env-scrub.sh"; commit guardsurface
+run_step "$BASE"
+if [ "$RC" -ne 0 ] && has "check-git-env-scrub.sh"; then pass "PR edit to an existing guardrails file is still scanned"; else fail "guardsurface -> rc=$RC: $OUT"; fi
+
 branch lintneuter; violation; printf '#!/usr/bin/env bash\nexit 0\n' > "$S/scripts/guardrails/lint-fail-open.sh"; commit lintneuter
 run_step "$BASE"
 if [ "$RC" -ne 0 ] && has "zz-fail-open.sh"; then pass "PR neutering lint-fail-open.sh is still judged by the base lint"; else fail "lintneuter -> rc=$RC: $OUT"; fi
