@@ -13,6 +13,14 @@
 //
 // A provider in PINNED additionally accepts only its pinned model per role.
 //
+// Names are not enough: a collection is also refused when its path overlaps a
+// PHI root (equal, inside, or containing one), so a collection called
+// "himmel" that points at the salus vault cannot ride an allowed name. PHI
+// roots are the graphify fence lists (phi-roots, egress-denylist under
+// CLAUDE_GLM_CONFIG_DIR, default ~/.config/claude-glm), a `.salus` marker at
+// the path or any ancestor, and the path of every salus collection in the
+// sibling index configs next to the checked one.
+//
 // Usage: node qmd-jina-gate.mjs <index.yml> [<index.sqlite>]
 // Exit 0 allowed (also when no role is remote), 3 refused, 2 usage/unreadable.
 // qmd reads the config first and these environment variables only when the
@@ -21,8 +29,9 @@
 // role is remote when EITHER the config or the environment names a remote model.
 // The base URL is resolved config-first, as qmd does.
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -50,6 +59,38 @@ try {
 
 // index.yml is two levels of plain mappings; read only the keys the gate needs.
 const unquote = (s) => s.replace(/\s+#.*$/, "").trim().replace(/^(['"])(.*)\1$/, "$2");
+// collection name -> its configured path, read from a config text (two levels).
+function collectionPaths(txt) {
+  const out = {};
+  let inCols = false, indent0 = 0, cur = "";
+  for (const line of txt.split("\n")) {
+    if (/^\s*(#.*)?$/.test(line)) continue;
+    if (/^\S/.test(line)) { inCols = /^collections:\s*(#.*)?$/.test(line); indent0 = 0; cur = ""; continue; }
+    if (!inCols) continue;
+    const ind = line.length - line.trimStart().length;
+    if (!indent0) indent0 = ind;
+    const t = line.trim();
+    if (ind === indent0) {
+      const m = t.match(/^("[^"]+"|'[^']+'|[^\s:#]+):\s*(#.*)?$/);
+      cur = m ? unquote(m[1]) : "";
+    } else if (cur && !(cur in out)) {
+      const pm = t.match(/^path:\s*(.+)$/);
+      if (pm) out[cur] = unquote(pm[1]);
+    }
+  }
+  return out;
+}
+const expand = (p) => (p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : p);
+const lc = (p) => p.toLowerCase();
+const forms = (p) => {
+  const abs = resolve(expand(p));
+  const out = [lc(abs)];
+  try { out.push(lc(realpathSync(abs))); } catch { /* not on disk: the lexical form is all there is */ }
+  return out;
+};
+const under = (a, b) => a === b || a.startsWith(b.endsWith(sep) ? b : b + sep);
+const overlaps = (a, b) => under(a, b) || under(b, a);
+
 const collections = [];
 const models = {};
 const unsupported = [];
@@ -62,14 +103,14 @@ for (const line of text.split("\n")) {
   if (inline) {
     unsupported.push(`"${inline[1]}:" uses a flow/inline value`);
     // an inline models value can name a remote role the line reader never sees, even through a YAML escape
-    if (inline[1] === "models") modelsUnreadable.push(`inline models value: ${line.trim()}`);
+    if (inline[1] === "models") modelsUnreadable.push("inline models value (text withheld)");
     section = "";
     continue;
   }
   const top = line.match(/^([A-Za-z_][\w-]*):\s*(#.*)?$/);
   if (top) { section = top[1]; childIndent = 0; continue; }
   if (/^\S/.test(line)) {
-    if (/^["']\s*(collections|models)\s*["']\s*:/.test(line)) modelsUnreadable.push(`quoted top-level key: ${line.trim()}`);
+    if (/^["']\s*(collections|models)\s*["']\s*:/.test(line)) modelsUnreadable.push("quoted top-level key (text withheld)");
     section = "";
     continue;
   }
@@ -84,7 +125,7 @@ for (const line of text.split("\n")) {
   } else {
     const m = line.trim().match(/^(["']?)([A-Za-z_]+)\1:\s*(.+)$/);
     if (m) models[m[2]] = unquote(m[3]);
-    else modelsUnreadable.push(`unparsed models entry: ${line.trim()}`);
+    else modelsUnreadable.push("unparsed models entry (text withheld)");
   }
 }
 
@@ -93,6 +134,7 @@ for (const line of text.split("\n")) {
 // the database would be sent to the remote model. A database that cannot be
 // read fails closed; a database that does not exist yet holds nothing, since
 // its collections can only come from the config checked above.
+const cfgCollections = collections.slice();
 const dbPath = process.argv[3];
 const dbProblems = [];
 if (dbPath && existsSync(dbPath)) {
@@ -134,6 +176,10 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
     refusals.push(`${role} endpoint ${baseUrl} is not https and not loopback`);
     continue;
   }
+  if (provider === "openai-unconfigured" || provider === "openai-unparseable") {
+    refusals.push(`${role} has a remote model but the base URL is ${provider === "openai-unconfigured" ? "not set" : "not a valid URL"} (models.openai_base_url or QMD_OPENAI_BASE_URL)`);
+    continue;
+  }
   if (provider.endsWith("-unrecognised")) {
     refusals.push(`${role} endpoint ${baseUrl} is not a recognised provider (jina, openrouter)`);
     continue;
@@ -163,6 +209,47 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
     }
   }
 }
+
+// A collection whose path overlaps a PHI root is PHI whatever it is called.
+const pathRefusals = [];
+if (remoteRoles > 0) {
+  const roots = [];
+  const cfgDir = process.env.CLAUDE_GLM_CONFIG_DIR || join(homedir(), ".config", "claude-glm");
+  for (const name of ["phi-roots", "egress-denylist"]) {
+    const f = join(cfgDir, name);
+    if (!existsSync(f)) continue;
+    try {
+      accessSync(f, constants.R_OK);
+      for (let l of readFileSync(f, "utf8").split("\n")) {
+        l = l.replace(/\r$/, "").trim();
+        if (l && !l.startsWith("#")) roots.push(l.replace(/[\\/]+$/, "") || sep);
+      }
+    } catch { pathRefusals.push(`cannot read the PHI root list ${f}`); }
+  }
+  const sibDir = process.env.QMD_CONFIG_DIR || join(homedir(), ".config", "qmd");
+  try {
+    for (const f of readdirSync(sibDir).filter((x) => x.endsWith(".yml"))) {
+      const full = join(sibDir, f);
+      if (resolve(full) === resolve(cfgPath)) continue;
+      try {
+        for (const [name, p] of Object.entries(collectionPaths(readFileSync(full, "utf8"))))
+          if ((map[name] ?? []).includes("salus")) roots.push(p);
+      } catch { pathRefusals.push(`cannot read the sibling index config ${full}`); }
+    }
+  } catch { /* no sibling directory: nothing to learn from it */ }
+  const rootForms = roots.flatMap(forms);
+  const own = collectionPaths(text);
+  for (const col of cfgCollections) {
+    const p = own[col];
+    if (!p) { pathRefusals.push(`collection "${col}" has no path to check against the PHI roots`); continue; }
+    let d = resolve(expand(p));
+    let marked = false;
+    for (let prev = ""; d !== prev; prev = d, d = dirname(d)) if (existsSync(join(d, ".salus"))) { marked = true; break; }
+    if (marked) pathRefusals.push(`collection "${col}" path ${p} is inside a .salus vault`);
+    else if (forms(p).some((a) => rootForms.some((b) => overlaps(a, b)))) pathRefusals.push(`collection "${col}" path ${p} overlaps a PHI root (salus)`);
+  }
+}
+refusals.push(...pathRefusals);
 
 // Fail closed on a layout this reader does not understand: an `openai:` URI it
 // did not attribute to a role, an unreadable collections/models block, or a

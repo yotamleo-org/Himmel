@@ -321,7 +321,11 @@ Granting it is an operator call. Defense in depth around it:
   models (`openai:qwen/qwen3-embedding-8b` embed, `openai:cohere/rerank-4-fast`
   rerank; the matrix is per provider, so the consumer pins the model), refuses
   a `generate` role, an unrecognised host and `models.openai_api_key` in the
-  yaml. The key lives only in the daemon environment (`QMD_OPENAI_API_KEY`).
+  yaml; a missing or unparseable base URL is refused like an unrecognised one.
+  The gate also refuses by path: a collection whose path overlaps a PHI root
+  (graphify fence lists, a sibling salus config's paths, a `.salus` vault) is
+  PHI whatever it is called. The key lives only in the daemon environment
+  (`QMD_OPENAI_API_KEY`).
 - **qmd enforcement (HIMMEL-5683).** qmd's model config is per index, not per
   collection, so salus lives in its own index (`qmd --index salus`, own
   `salus.yml`/db/daemon port, local models). `scripts/qmd/qmd-jina-gate.mjs`

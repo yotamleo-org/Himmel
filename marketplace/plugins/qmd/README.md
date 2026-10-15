@@ -112,7 +112,12 @@ The fork pin carries the `openai:` provider (yotamleo/qmd @ cecc32a9). The gate
 maps `https://openrouter.ai/...` to provider `openrouter` and accepts only the
 pinned models, `openai:qwen/qwen3-embedding-8b` (embed) and
 `openai:cohere/rerank-4-fast` (rerank); any other model, a `generate` role, an
-unrecognised host or a `models.openai_api_key` line is refused.
+unrecognised host, a missing or unparseable base URL, or a `models.openai_api_key`
+line is refused (the refusal never prints the key). A collection is also refused
+by its path, not only its name: a path equal to, inside or containing a PHI root
+(`phi-roots` / `egress-denylist` under `~/.config/claude-glm`, the path of a salus
+collection in a sibling index config, or a `.salus` vault) cannot go remote, and a
+collection with no `path:` cannot be checked.
 
 ```yaml
 models:

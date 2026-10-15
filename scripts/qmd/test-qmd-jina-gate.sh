@@ -194,7 +194,7 @@ cfg "$work/or8.yml" "$OR_EMBED" "$OR_RERANK" https://openrouter.ai.evil.example/
 run_gate "$work/or8.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(27) lookalike OpenRouter host: expected rc 3, got $rc"
 
-# (28) the generate role is inference, which no corpus allows on openrouter for qmd.
+# (28) the generate role has no pinned OpenRouter model, so the pin check refuses it.
 cfg "$work/or9.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
 printf '  generate: openai:qwen/qwen3-embedding-8b\n' >> "$work/or9.yml"
 run_gate "$work/or9.yml"; rc=$?
@@ -214,6 +214,63 @@ run_gate "$work/or11.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(30) api key in index.yml: expected rc 3, got $rc"
 grep -q 'api_key' "$work/err" || fail "(30) the refusal must name the key: $(cat "$work/err")"
 if grep -q 'not-a-real-key' "$work/err"; then fail "(30) the refusal must not echo the key"; fi
+# (30b) the same key in the flow form and with a space before the colon: refused, value never printed.
+printf 'collections:\n  himmel:\n    path: /nonexistent/himmel\nmodels: {embed: %s, openai_base_url: %s, openai_api_key: sk-flow-secret-1}\n' "$OR_EMBED" "$OR_BASE" > "$work/or12.yml"
+run_gate "$work/or12.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(30b) flow-form api key: expected rc 3, got $rc"
+if grep -q 'sk-flow-secret-1' "$work/err"; then fail "(30b) the refusal echoed the flow-form key"; fi
+cfg "$work/or13.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
+printf '  "openai_api_key" : sk-spaced-secret-2\n' >> "$work/or13.yml"
+run_gate "$work/or13.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(30c) spaced-colon api key: expected rc 3, got $rc"
+if grep -q 'sk-spaced-secret-2' "$work/err"; then fail "(30c) the refusal echoed the spaced-colon key"; fi
+
+# (31) a collection is PHI by PATH, not only by name: fixtures only, never the live salus index.
+mkdir -p "$work/vault/salus/sub" "$work/vault/other" "$work/marked/sub" "$work/glm" "$work/qc" "$work/vault2/s"
+printf '%s\n' "$work/vault/salus" > "$work/glm/phi-roots"
+: > "$work/marked/.salus"
+pcfg() { # <file> <collection> <path>
+  printf 'collections:\n  %s:\n    path: %s\n    pattern: "**/*.md"\nmodels:\n  embed: %s\n  rerank: %s\n  openai_base_url: %s\n' "$2" "$3" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" > "$1"
+}
+run_path() { env -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL -u QMD_OPENAI_BASE_URL CLAUDE_GLM_CONFIG_DIR="$work/glm" QMD_CONFIG_DIR="$work/qc" node "$gate" "$@" 2>"$work/err"; }
+pcfg "$work/p1.yml" himmel "$work/vault/salus"
+run_path "$work/p1.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(31a) himmel pointing at the salus root: expected rc 3, got $rc"
+grep -q 'PHI root' "$work/err" || fail "(31a) the refusal must name the PHI root: $(cat "$work/err")"
+pcfg "$work/p2.yml" luna "$work/vault"
+run_path "$work/p2.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(31b) luna pointing at a directory that contains the salus root: expected rc 3, got $rc"
+pcfg "$work/p3.yml" himmel "$work/vault/salus/sub"
+run_path "$work/p3.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(31c) himmel pointing inside the salus root: expected rc 3, got $rc"
+pcfg "$work/p4.yml" himmel "$work/vault/other"
+run_path "$work/p4.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(31d) himmel on a path clear of every PHI root: expected rc 0, got $rc: $(cat "$work/err")"
+pcfg "$work/p5.yml" himmel "$work/marked/sub"
+run_path "$work/p5.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(31e) himmel inside a .salus vault: expected rc 3, got $rc"
+printf 'collections:\n  salus:\n    path: %s\n' "$work/vault2/s" > "$work/qc/salus.yml"
+pcfg "$work/p6.yml" himmel "$work/vault2/s"
+env CLAUDE_GLM_CONFIG_DIR="$work/none" QMD_CONFIG_DIR="$work/qc" node "$gate" "$work/p6.yml" 2>"$work/err"; rc=$?
+[ "$rc" -eq 3 ] || fail "(31f) himmel on the path the sibling salus config declares: expected rc 3, got $rc"
+rm -f "$work/qc/salus.yml"
+if [ "$(id -u)" -ne 0 ]; then
+  chmod 000 "$work/glm/phi-roots"
+  run_path "$work/p4.yml"; rc=$?
+  chmod 600 "$work/glm/phi-roots"
+  [ "$rc" -eq 3 ] || fail "(31g) an unreadable PHI root list must fail closed: expected rc 3, got $rc"
+fi
+printf 'collections:\n  himmel:\n    pattern: "**/*.md"\nmodels:\n  embed: %s\n  openai_base_url: %s\n' "$OR_EMBED" "$OR_BASE" > "$work/p7.yml"
+run_path "$work/p7.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(31h) a collection with no path cannot be checked: expected rc 3, got $rc"
+
+# (32) a remote model with no base URL, or an unparseable one, cannot be proven pinned: refused.
+cfg "$work/u1.yml" "openai:unpinned-model" "$LOCAL_EMBED" - himmel
+run_gate "$work/u1.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(32a) remote model with no base URL: expected rc 3, got $rc"
+cfg "$work/u2.yml" "openai:unpinned-model" "$LOCAL_EMBED" "not a url" himmel
+run_gate "$work/u2.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(32b) remote model with an unparseable base URL: expected rc 3, got $rc"
 
 # ---- the daemon launcher -------------------------------------------------
 mkdir -p "$work/bun/bin" "$work/home" "$work/cfg" "$work/cache"
