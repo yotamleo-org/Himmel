@@ -71,9 +71,9 @@ fi
 # `rtk gh`/`rtk ssh` with git in their text, which the screen refuses the same
 # way. A false positive only loses token savings — plain git on the session's
 # own worktree is never refused.
-# ponytail: `.claude/worktrees/` is the only worktree root recognised — a
-# worktree elsewhere (`git worktree add ../x`) keeps the rewrite, so a pinned
-# session there can still be refused. The backslash arm below
+# ponytail: (HIMMEL-3125) `.claude/worktrees/` is the only worktree root
+# recognised — a worktree elsewhere (`git worktree add ../x`) keeps the rewrite,
+# so a pinned session there can still be refused. The backslash arm below
 # is exercised only by Linux-simulated payloads (a literal backslash cwd
 # string) — reproduction on an actual Windows harness is still unconfirmed
 # (Windows is alpha).
