@@ -4222,8 +4222,8 @@ check_c65_git_gates() {
     if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
         emit OK C65-branch-protection "a ruleset on $nwo main requires status checks"
     else
-        emit FAIL C65-branch-protection "no branch protection and no ruleset requires status checks on $nwo main — a direct push or an unreviewed merge is not stopped server-side" \
-            "restore the protect-main ruleset / branch protection (Settings → Branches)"
+        emit FAIL C65-branch-protection "neither branch protection nor a ruleset on $nwo main requires status checks (protection may exist without them) — a red PR can merge" \
+            "require the CI checks in the protect-main ruleset / branch protection (Settings → Branches)"
     fi
 }
 
