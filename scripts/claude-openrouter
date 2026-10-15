@@ -202,8 +202,7 @@ const PROVIDER="openrouter";
 // This launcher performs INFERENCE (it runs Claude Code). A matrix rule
 // authorizes the lane only when its purpose is "*" (any) or exactly the
 // launcher purpose — a cell the operator scoped to a different purpose
-// (embedding, extraction, ...) must NOT silently authorize an inference lane
-// (CR round 2, HIMMEL-1774).
+// (embedding, extraction, ...) must NOT silently authorize an inference lane.
 const PURPOSE="inference";
 // 1. The provider itself must be DECLARED. A wildcard provider:"*" allow does
 //    not authorize a new third-party routing layer in front of model vendors.
@@ -218,7 +217,7 @@ const cwd=process.env.CLAUDE_OPENROUTER_CWD || process.cwd();
 // under(): equality counts (launching FROM the himmel checkout root itself is
 // himmel-code, not "unknown" — a root-equal cwd must classify, not fall through).
 const under=(root)=>{ try { const c=path.resolve(cwd).toLowerCase(), r=path.resolve(root).toLowerCase(); return !!root && (c===r || c.startsWith(r+path.sep)); } catch(_) { return false; } };
-// HIMMEL-5099: himmel-code also needs the cwd to share the launcher checkout git common dir, so a
+// himmel-code also needs the cwd to share the launcher checkout git common dir, so a
 // worktree passes and a foreign repo nested inside the checkout does not. A cwd that is no git repo
 // at all (a plain subdir) resolves to the enclosing repo, i.e. the launcher checkout itself.
 const sameGitRepo=(a,b)=>{ try {
@@ -248,7 +247,6 @@ else corpus="unknown";
 //    wildcard-corpus allow silently override an explicit vault deny, and the
 //    matrix relies on row ORDER (the salus openrouter row is deliberately placed
 //    above the wildcard hard deny so the ruling stays legible).
-//    CR round 4, HIMMEL-1774.
 let match=null;
 for (const r of (M.rules||[])) {
   if (r.provider!==PROVIDER) continue;
@@ -258,7 +256,7 @@ for (const r of (M.rules||[])) {
 }
 // A "conditional" cell is permitted ONLY while its condition holds. This
 // launcher cannot evaluate matrix conditions, so it fails closed rather than
-// launching as if the cell were unconditional (CR round 4, codex-3).
+// launching as if the cell were unconditional.
 const allowed = !!match && (match.verdict==="allow" || match.verdict==="allow+log");
 if (!allowed) {
   console.error("claude-openrouter: REFUSED - no egress-matrix cell permits \""+PROVIDER+"\" for corpus \""+corpus+"\" with purpose \""+PURPOSE+"\" ("+matrixPath+")"+(match?" - the first matching cell has verdict \""+match.verdict+"\"":"")+". Add a rule { corpus: \""+corpus+"\" (or \"*\"), provider: \""+PROVIDER+"\", purpose: \""+PURPOSE+"\" (or \"*\"), verdict: \"allow\" } ABOVE any row that denies it. Vault corpora (luna/salus) should stay DENY; himmel-code is the recommended first cell.");
