@@ -44,7 +44,9 @@ printf 'v1.0.1\tfalse\t\nv1.0.2\tfalse\t\nv1.0.0\ttrue\t2026-01-01\n' > "$WORK/j
 cat > "$WORK/gh" <<'EOF'
 #!/usr/bin/env bash
 [ -f "$GH_FAIL" ] && exit 1
-if [ "$2" = list ]; then echo 4242; else echo scripts/lib/pr-held.sh; fi
+if [ "$2" = list ]; then
+    case "$*" in *headRefName*) cat "$PRS_TSV" ;; *) echo 4242 ;; esac
+else echo scripts/lib/pr-held.sh; fi
 EOF
 cat > "$WORK/classify" <<'EOF'
 #!/usr/bin/env bash
@@ -59,6 +61,8 @@ done
 EOF
 chmod +x "$WORK/gh" "$WORK/classify"
 export GH_FAIL="$WORK/gh.fail"
+export PRS_TSV="$WORK/prs.tsv"
+printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
 
 LEG="$WORK/HIMMEL-99-N1-live.md"
 # shellcheck disable=SC2016  # the backticks are literal doc text, not a command substitution
@@ -161,6 +165,47 @@ printf 'package.json\nplugins/foo\n' > "$WORK/held4.txt"
 rh="$(NEXT_DISPATCH_MIRROR="$M4" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --held "$WORK/held4.txt" 2>/dev/null)"
 lacks "a held root file excludes a ticket naming it" "$rh" "HIMMEL-40	"
 lacks "a held plugins/ path excludes a ticket naming it" "$rh" "HIMMEL-41	"
+
+# In Progress / In Review tickets nobody is working re-enter dispatch as RESUME, ranked first
+M5="$WORK/m5/HIMMEL"; mkdir -p "$M5"
+M_SAVE="$M"; M="$M5"
+mk HIMMEL-50 "In Progress" Medium '[]' '[]' '[]' "orphan in progress" "Edit scripts/lib/r1.sh.
+
+## Comments
+
+### Op - 2026-10-15
+
+Slice 2 merged.
+Ticket stays open: slice 3 still owed.
+Unrelated closing remark."
+mk HIMMEL-51 "In Review" Low '[]' '[]' '[]' "orphan in review" "Edit scripts/lib/r2.sh."
+mk HIMMEL-52 "In Progress" High '[]' '[]' '[]' "has an open PR" "Edit scripts/lib/r3.sh."
+mk HIMMEL-53 "In Progress" High '[]' '[]' '[]' "has a live leg" "Edit scripts/lib/r4.sh."
+mk HIMMEL-54 "In Progress" High '[]' '[]' '[]' "an epic" "Edit scripts/lib/r5.sh."
+sed -i 's/^type: "Task"/type: "Epic"/' "$M5/HIMMEL-54.md"
+mk HIMMEL-55 "In Progress" High '["parked"]' '[]' '[]' "parked" "Edit scripts/lib/r6.sh."
+mk HIMMEL-56 "To Do" Highest '[]' '[]' '[]' "plain to do" "Edit scripts/lib/r7.sh."
+mk HIMMEL-57 "In Progress" High '["blocked"]' '[]' '[]' "blocked label" "Edit scripts/lib/r8.sh."
+M="$M_SAVE"
+LEG5="$WORK/HIMMEL-53-N9-live.md"; printf '# live\n' > "$LEG5"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N9"}]}\n' "$LEG5" > "$WORK/fleet5.json"
+rs="$(NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --legs-from "$WORK/fleet5.json" 2>/dev/null)"
+has "an In Progress ticket with no leg and no PR is listed as RESUME" "$rs" "RESUME	HIMMEL-50"
+has "an In Review orphan is listed as RESUME" "$rs" "RESUME	HIMMEL-51"
+has "a RESUME row carries the last stays-open comment line" "$rs" "last=Ticket stays open: slice 3 still owed."
+lacks "an In Progress ticket with an open PR is not listed" "$rs" "HIMMEL-52	"
+lacks "an In Progress ticket with a live leg is not listed" "$rs" "HIMMEL-53	"
+lacks "an Epic is never a RESUME row" "$rs" "HIMMEL-54	"
+lacks "a parked ticket is not listed" "$rs" "HIMMEL-55	"
+lacks "a blocked-label In Progress ticket is not listed" "$rs" "HIMMEL-57	"
+order5="$(printf '%s\n' "$rs" | grep -v '^#' | cut -f2 | paste -sd, -)"
+[ "$order5" = "HIMMEL-50,HIMMEL-51,HIMMEL-56" ] && pass "RESUME rows rank before To Do" || fail "order5 is '$order5'"
+
+# --resume-only lists only the orphans (the tick's cheap read); --owners names tickets held outside the manifest
+ro="$(NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --owners "HIMMEL-51" 2>/dev/null)"
+has "--resume-only lists a RESUME row" "$ro" "RESUME	HIMMEL-50"
+lacks "--resume-only drops a ticket named by --owners" "$ro" "HIMMEL-51	"
+lacks "--resume-only lists no To Do row" "$ro" "HIMMEL-56	"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -1109,6 +1109,27 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -f "${console_doc%/*}/clo
     case "$cloud_summary" in ok|skip|STALL:*) ;; *) cloud_summary=skip ;; esac
 fi
 
+# orphans-wip=<n[:KEY,...]|?|skip>: In Progress / In Review tickets with no
+# leg, cloud session or open PR holding them. next-dispatchable.sh --resume-only owns the
+# derivation from the Jira mirror (one `gh pr list`, no per-PR diff). Keys are named for
+# n <= 5. A failed PR read is `?` (not an all-clear); no mirror or helper reads skip.
+orphans_wip=skip
+nd_mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
+    if nd_out="$(timeout -k 5 60 bash "$HERE/next-dispatchable.sh" --resume-only --top 200 --owners "$owner_keys" 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only
+        case "$nd_out" in
+            *'open PRs unknown'*) orphans_wip='?' ;;
+            *)
+                nd_keys="$(printf '%s\n' "$nd_out" | awk -F'\t' '$1 == "RESUME" { print $2 }' | paste -sd, -)"
+                nd_n="$(printf '%s\n' "$nd_out" | awk -F'\t' '$1 == "RESUME"' | wc -l | tr -d ' ')"
+                if [ "$nd_n" -eq 0 ]; then orphans_wip=0
+                elif [ "$nd_n" -le 5 ]; then orphans_wip="$nd_n:$nd_keys"
+                else orphans_wip="$nd_n"; fi
+                ;;
+        esac
+    fi
+fi
+
 # the luna vault's commit health. vault-status.sh owns the derivation
 # (and is fail-soft); a missing or failing helper reads unknown, never a failed tick.
 vault_summary="$(HANDOVER_DIR="${HANDOVER_DIR:-$root}" bash "$HERE/vault-status.sh" 2>/dev/null)" || vault_summary=unknown
@@ -1628,6 +1649,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
+    printf 'orphans-wip: %s\n' "$orphans_wip"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
     # `tick=` is always appended; `burn=` stays APPENDED only
@@ -1641,11 +1663,11 @@ else
     # follow, and `fails=` closes the line, before the optional `spare=`.
     # `vault=` sits between `tracker=` and `denials=`; `cloud=` follows `vault=`.
     if [ "$burn" -eq 1 ]; then
-        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$spare_tail"
+        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$spare_tail"
     else
-        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$spare_tail"
+        printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$spare_tail"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

@@ -606,6 +606,20 @@ wait_exit "$WPID"
 check "(w3) a tick line with no tracker= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# --- (w4) orphans-wip= wakes on any change of its value, and a tick
+# line without it stays a valid sample (the (w3) case covers the absent field) ----
+orph_line() { sed "s/ denials=none/ orphans-wip=$1 denials=none/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
+reset_stub
+orph_line 0
+I="$(new_inbox w4)"
+start "$I" "$WORK/w4.out" --legs "N1.md"
+wait_hb "$I" || fail "(w4) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+orph_line 1:HIMMEL-9
+wait_exit "$WPID"
+check "(w4) an orphans-wip change ends the wait" "0" "$rc"
+check "(w4) the wake names orphans-wip" "WAKE tick changed=orphans-wip bank=PROCEED" "$(head -n1 "$WORK/w4.out")"
+
 # --- (x) vault= wakes on a class change TO STALL or PUSH-LAG, never on
 # age/count alone, never on a move back to ok/skip/unknown, and its absence
 # (an older tick.sh) is still a valid sample. The wake names the reproduce

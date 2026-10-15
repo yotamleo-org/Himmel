@@ -41,20 +41,22 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 
 top=8; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
-legs_from="${LEGS_FROM:-}"; held=""; classify=1
+legs_from="${LEGS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --resume-only) resume_only=1; classify=0; shift ;;
+        --owners) owners="${2:-}"; shift 2 || exit 2 ;;
         --top) top="${2:-}"; shift 2 || exit 2 ;;
         --mirror) mirror="${2:-}"; shift 2 || exit 2 ;;
         --legs-from) legs_from="${2:-}"; shift 2 || exit 2 ;;
         --held) held="${2:-}"; shift 2 || exit 2 ;;
         --no-classify) classify=0; shift ;;
-        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify]" >&2; exit 2 ;;
+        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--resume-only] [--owners \"KEY ...\"]" >&2; exit 2 ;;
     esac
 done
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
 
-export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO"
+export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners"
 exec python3 -I - <<'PY'
 import json, os, re, subprocess, sys
 
@@ -84,6 +86,17 @@ def fm_val(fm, name):
 def unq(v):
     return v.strip().strip('"')
 
+OWED_RE = re.compile(r'stays open|still open|owed|must-fix|remaining slice|next slice', re.I)
+
+def last_owed(body):
+    # the last comment line that says work remains; '' when there is none
+    i = body.find('\n## Comments')
+    hit = ''
+    for line in (body[i:].splitlines() if i >= 0 else []):
+        if OWED_RE.search(line):
+            hit = line.strip()
+    return hit[:160]
+
 issues = {}
 try:
     names = sorted(n for n in os.listdir(mirror) if re.match(r'^[A-Z]+-\d+\.md$', n))
@@ -103,6 +116,7 @@ for n in names:
         'ver': re.findall(r'"([^"]+)"', fm_val(fm, 'fixVersions')),
         'blocked_by': re.findall(r'[A-Z]+-\d+', re.search(r'blocked_by: (.*)', fm).group(1)) if re.search(r'blocked_by: (.*)', fm) else [],
         'title': t.group(1).strip() if t else '', 'files': files_in(body),
+        'last': last_owed(body),
     }
 
 # unreleased versions in natural order
@@ -137,12 +151,15 @@ cands.sort(key=rank)
 held = []
 legs_from = os.environ.get('ND_LEGS_FROM', '')
 legs_unknown = False
+leg_keys = set(os.environ.get('ND_OWNERS', '').split())
+resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
 if legs_from and not os.path.isfile(legs_from):
     legs_unknown = True
 if legs_from and os.path.isfile(legs_from):
     try:
         for leg in json.load(open(legs_from)).get('legs', []):
             doc = leg.get('doc', '')
+            leg_keys.update(re.findall(r'[A-Z]+-\d+', os.path.basename(doc)))
             try:
                 for line in open(doc, encoding='utf-8', errors='replace'):
                     if line.startswith('> **Scope / do not:**') or 'writes confined to' in line:
@@ -155,15 +172,34 @@ hf = os.environ.get('ND_HELD', '')
 if hf and os.path.isfile(hf):
     held += [(l.strip(), 'held list') for l in open(hf) if l.strip()]
 pr_unknown = False
+pr_keys = set()
 gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
 try:
     nums = subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
                           capture_output=True, text=True, timeout=60, check=True).stdout.split()
-    for num in nums:
-        d = subprocess.run([gh, 'pr', 'diff', num, '--repo', 'yotamleo/Himmel', '--name-only'], capture_output=True, text=True, timeout=60, check=True).stdout.split()
+    for num in ([] if resume_only else nums):
+        d =subprocess.run([gh, 'pr', 'diff', num, '--repo', 'yotamleo/Himmel', '--name-only'], capture_output=True, text=True, timeout=60, check=True).stdout.split()
         held += [(f, 'open PR %s' % num) for f in d]
+    # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
+    for line in subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo/Himmel', '--state', 'open', '--limit', '200', '--json', 'title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
+                               capture_output=True, text=True, timeout=60, check=True).stdout.splitlines():
+        pr_keys.update(k.upper() for k in re.findall(r'[A-Za-z]+-\d+', line))
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
+
+# In-work tickets nobody holds: no leg, no open PR, not parked or blocked.
+resume = []
+for i in issues.values():
+    if i['status'] not in ('In Progress', 'In Review') or i['type'] in ('Epic', 'Story', 'Sub-task'):
+        continue
+    if i['labels'] & excl or any('parked' in l for l in i['labels']):
+        continue
+    if i['key'] in leg_keys or i['key'] in pr_keys:
+        continue
+    if any(collides(f, h) for f in i['files'] for h, _ in held):
+        continue
+    resume.append(i)
+resume.sort(key=rank)
 
 free = []
 for i in cands:
@@ -194,13 +230,23 @@ def classify(batch):
         os.unlink(hfile)
     return cls
 
-print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', live legs unknown (manifest or leg doc unreadable)' if legs_unknown else ''))
+print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable)' if legs_unknown else ''))
 n = 0
 picked = []
+for i in resume:
+    if n >= top:
+        break
+    if not resume_only and any(collides(f, h) for f in i['files'] for h in picked):
+        continue
+    picked += i['files']
+    print('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
+    n += 1
+if resume_only:
+    sys.exit(0)
 classified = os.environ.get('ND_CLASSIFY') == '1'
 # Walk the collision-free list in chunks so BLOCKED rows in an early chunk do not
 # leave the list short while later candidates are dispatchable.
-for start in range(0, len(free), top * 3):
+for start in range(0, len(free) if n < top else 0, top * 3):
     batch = free[start:start + top * 3]
     cls = classify(batch) if classified else {}
     for i in batch:

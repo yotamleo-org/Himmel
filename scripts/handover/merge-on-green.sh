@@ -1829,6 +1829,13 @@ jira_auto_transition_on_merge() {
     # so the console can act on it instead of the ticket silently closing.
     if ! _truthy "$JIRA_TRANSITION_OPT_IN"; then
         JIRA_AUTO_TRANSITION_RESULT="would-transition key=$key status=$target_status"
+        # A bare merge leaves the ticket open: say so, so a sliced ticket's next
+        # slice is dispatched instead of sitting orphaned.
+        local partial="PARTIAL $key: next slice not dispatched"
+        echo "merge-on-green: $partial" >&2
+        if [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && [ -x "$_csg_dir/console-kit/append-results.sh" ]; then
+            bash "$_csg_dir/console-kit/append-results.sh" "$HIMMEL_CONSOLE_DOC" "$partial" >/dev/null 2>&1 || true
+        fi
         return 0
     fi
 

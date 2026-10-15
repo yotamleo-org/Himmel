@@ -189,6 +189,7 @@ export REPO="$W/repo"
 export TICK_TMPDIR="$W"
 export PS_FIXTURE="$W/ps-none.txt"
 export TICK_BANK_CACHE_FILE="$W/bank.json"
+export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
 # ciq= keeps the last tick's jobs_in_progress under here; never the real ~/.himmel.
 export TICK_STATE_DIR="$W/state"
 # fails= reads these three ledgers; never the real ~/.himmel ones.
@@ -211,7 +212,7 @@ mkdir -p "$W/console-work/chain"
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
-expected='TICK 12:34 hb=ok legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 ceiling=ok atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none ext-prs=none bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY inbox=N61:10/4,N65:8/8 tick=UNKNOWN fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' orphans=none nonces=skip legset=skip board=skip tracker=skip vault=skip cloud=skip denials=none ciq=unknown plan-index=skip or=skip fails=skip vmrun=off'
+expected='TICK 12:34 hb=ok legs=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 ceiling=ok atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none ext-prs=none bank=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY inbox=N61:10/4,N65:8/8 tick=UNKNOWN fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' orphans=none nonces=skip legset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip denials=none ciq=unknown plan-index=skip or=skip fails=skip vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
     pass 'default run emits exactly the expected one batched line'
@@ -2183,6 +2184,38 @@ case "$pk_out" in *' vmrun='*' parked=HIMMEL-333-legN70:12m') pass 'parked= foll
 contains 'verbose labels the parked leg (HIMMEL-2563)' "$(bash "$SUT" --legs 'HIMMEL-333-legN70' --verbose 2>/dev/null)" 'parked on prompt: HIMMEL-333-legN70:12m'
 printf '{"ts":"%s","kind":"outcome","session_id":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" "$pk_sid" >> "$HIMMEL_TRUST_LEDGER_DIR/ledger.jsonl"
 same 'parked= is absent once the prompt is answered (HIMMEL-2563)' "$(parked_of)" ''
+
+# --- orphans-wip=: In Progress / In Review tickets with no leg and no open PR.
+OW="$W/ow-mirror/HIMMEL"; mkdir -p "$OW"
+mk_ow() { # <num> <status> <type>
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "%s"\nstatus: "%s"\nstatusCategory: "x"\npriority: "Medium"\nlabels: []\nfixVersions: []\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-%s: t%s\n\n## Description\n\nbody\n' \
+        "$1" "$3" "$2" "$1" "$1" > "$OW/HIMMEL-$1.md"
+}
+cat > "$W/ow-gh" <<'STUB'
+#!/usr/bin/env bash
+[ -z "${OW_GH_FAIL:-}" ] || exit 1
+[ "$2" = list ] && case "$*" in *headRefName*) printf '%b' "${OW_PR_ROWS:-}" ;; esac
+exit 0
+STUB
+chmod +x "$W/ow-gh"
+ow_tick() { NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" bash "$SUT" 2>/dev/null; }
+ow_of() { printf '%s\n' "$1" | tr ' ' '\n' | sed -n 's/^orphans-wip=//p'; }
+mk_ow 901 "In Progress" Task
+mk_ow 902 "In Review" Task
+mk_ow 903 "In Progress" Epic
+mk_ow 904 "To Do" Task
+owa="$(ow_of "$(ow_tick)")"
+[ "$owa" = "2:HIMMEL-901,HIMMEL-902" ] && pass 'orphans-wip= counts the orphans and names them (Epic and To Do excluded)' || fail "orphans-wip= is '$owa'"
+owb="$(ow_of "$(OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' ow_tick)")"
+[ "$owb" = "1:HIMMEL-902" ] && pass 'orphans-wip= drops a ticket an open PR cites' || fail "orphans-wip= with a PR is '$owb'"
+owc="$(ow_of "$(OW_GH_FAIL=1 ow_tick)")"
+[ "$owc" = "?" ] && pass 'orphans-wip= is ? when the PR read fails, not an all-clear' || fail "orphans-wip= on gh failure is '$owc'"
+owd="$(ow_of "$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" bash "$SUT" 2>/dev/null)")"
+[ "$owd" = "skip" ] && pass 'orphans-wip= is skip without a Jira mirror' || fail "orphans-wip= without a mirror is '$owd'"
+for n in 905 906 907 908; do mk_ow "$n" "In Progress" Task; done
+owe="$(ow_of "$(ow_tick)")"
+[ "$owe" = "6" ] && pass 'orphans-wip= names no keys above five' || fail "orphans-wip= with six is '$owe'"
+contains '--verbose labels orphans-wip' "$(NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" bash "$SUT" --verbose 2>/dev/null)" 'orphans-wip: 6'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
