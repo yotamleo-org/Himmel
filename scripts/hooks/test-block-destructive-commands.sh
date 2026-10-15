@@ -295,16 +295,13 @@ assert_rc "R2+ rm --r build (min abbrev)"   2 "$(run_case "$(j_bash 'rm --r buil
 assert_rc "R2- rm --verbose x (unrelated)"  0 "$(run_case "$(j_bash 'rm --verbose x')")"
 assert_rc "R2- rm --v x (unrelated abbrev)" 0 "$(run_case "$(j_bash 'rm --v x')")"
 assert_rc "R2- grep --rec pattern src/"     0 "$(run_case "$(j_bash 'grep --rec pattern src/')")"
-# HIMMEL-2610 J1267O F3 (REVERTED by J1267S S1): F3 added a comment/quote/
-# substitution/`--`-terminator-aware scan so these three stayed ALLOW. That
-# scan's own quote-pairing could be fooled by a substitution whose OUTPUT
-# text contained a quote character, hiding a live `--recursive` (S1) - three
-# rounds of shape-specific patches to the same distinction is what the fix
-# below stops doing, at the cost of these three false DENYs. deferred HIMMEL-3636.
-assert_rc "R2+ rm -f x.log # --really (comment, not a flag - false DENY, deferred HIMMEL-3636)" 2 "$(run_case "$(j_bash 'rm -f x.log # --really')")"
+# A long `--r...` word denies only when the shared tokenizer places it among rm's own
+# arguments, before any `--` terminator. A comment, a substitution body, a word
+# after `--` or another command's flag is not rm's flag, so these stay ALLOW.
+assert_rc "R2+ rm -f x.log # --really (comment, not a flag)" 0 "$(run_case "$(j_bash 'rm -f x.log # --really')")"
 # shellcheck disable=SC2016 # the $(...) must stay literal -- it is the payload text under test, not a real substitution
-assert_rc "R2+ rm -f x \$(ls --reverse) (subshell arg, not rm's flag - false DENY, deferred HIMMEL-3636)" 2 "$(run_case "$(j_bash 'rm -f x $(ls --reverse)')")"
-assert_rc "R2+ rm -- --rfile (operand after --, not a flag - false DENY, deferred HIMMEL-3636)" 2 "$(run_case "$(j_bash 'rm -- --rfile')")"
+assert_rc "R2+ rm -f x \$(ls --reverse) (subshell arg, not rm's flag)" 0 "$(run_case "$(j_bash 'rm -f x $(ls --reverse)')")"
+assert_rc "R2+ rm -- --rfile (operand after --, not a flag)" 0 "$(run_case "$(j_bash 'rm -- --rfile')")"
 # HIMMEL-2610 J1267O round-4 codex-1: a genuine `--recursive` BEFORE the `--`
 # terminator must still deny even though a later `--r...`-shaped OPERAND
 # follows the terminator too -- the greedy scan used to bind to that later
@@ -327,7 +324,7 @@ assert_rc "R2+ rm 'a#b' --recursive dir (quoted # before flag)" 2 "$(run_case "$
 assert_rc "R2+ rm \"a(b\" --recursive dir (quoted ( before flag)" 2 "$(run_case "$(j_bash 'rm "a(b" --recursive dir')")"
 assert_rc "R2+ rm 'a;b' --recursive dir (quoted ; before flag)" 2 "$(run_case "$(j_bash "rm 'a;b' --recursive dir")")"
 assert_rc "R2+ rm 'a#b' \"--recursive\" d (quoted operand + quoted flag)" 2 "$(run_case "$(j_bash "rm 'a#b' \"--recursive\" d")")"
-assert_rc "R2+ rm -f 'a#b' # --really (quoted # then a real comment - false DENY, deferred HIMMEL-3636)" 2 "$(run_case "$(j_bash "rm -f 'a#b' # --really")")"
+assert_rc "R2+ rm -f 'a#b' # --really (quoted # then a real comment)" 0 "$(run_case "$(j_bash "rm -f 'a#b' # --really")")"
 # HIMMEL-2610 J1267O round-7 codex-1 (+ sweep of the same gap-stopper class): `#`
 # only starts a comment at a WORD start, and unquoted paren groups other than
 # `$(...)` (process substitution, arithmetic) must not stop the gap either.
@@ -337,7 +334,7 @@ assert_rc "R2+ rm <(true) --rec d (process substitution before flag)" 2 "$(run_c
 # shellcheck disable=SC2016 # payload text under test
 assert_rc "R2+ rm \$((1+2)) --rec d (arithmetic before flag)" 2 "$(run_case "$(j_bash 'rm $((1+2)) --rec d')")"
 assert_rc "R2+ rm 'a(' --rec 'b)' d (quoted parens must not swallow the flag)" 2 "$(run_case "$(j_bash "rm 'a(' --rec 'b)' d")")"
-assert_rc "R2+ rm -f x #b --really (word-initial # IS a comment - false DENY, deferred HIMMEL-3636)" 2 "$(run_case "$(j_bash 'rm -f x #b --really')")"
+assert_rc "R2+ rm -f x #b --really (word-initial # IS a comment)" 0 "$(run_case "$(j_bash 'rm -f x #b --really')")"
 # Single-quoted `$(` is literal text: it must not collapse a live flag away.
 # shellcheck disable=SC2016 # payload text under test
 assert_rc "R2+ rm '\$(' --rec ')' d (single-quoted \$( is literal)" 2 "$(run_case "$(j_bash "rm '\$(' --rec ')' d")")"
@@ -1642,6 +1639,46 @@ for c in \
     'curl -sSL http://x | python3 -u -m json.tool'; do
     assert_rc "5279 allow: $c" 0 "$(run_case "$(j_bash "$c")")"
 done
+
+# --- rm long flag is scoped to rm's own argv ---
+assert_rc "R5743- rm a; grep --recursive x (other command's flag)" 0 "$(run_case "$(j_bash 'rm a; grep --recursive x')")"
+assert_rc "R5743- rm a && ls --reverse"  0 "$(run_case "$(j_bash 'rm a && ls --reverse')")"
+assert_rc "R5743- rm a | sort --reverse" 0 "$(run_case "$(j_bash 'rm a | sort --reverse')")"
+assert_rc "R5743+ rm a; rm --recursive d" 2 "$(run_case "$(j_bash 'rm a; rm --recursive d')")"
+
+# --- shared-.git verbs, literal spellings ---
+assert_rc "R5278+ git tag -d v1"              2 "$(run_case "$(j_bash 'git tag -d v1')")"
+assert_rc "R5278+ git tag --delete v1"        2 "$(run_case "$(j_bash 'git tag --delete v1')")"
+assert_rc "R5278+ git branch -D feat"         2 "$(run_case "$(j_bash 'git branch -D feat')")"
+assert_rc "R5278+ git update-ref -d"          2 "$(run_case "$(j_bash 'git update-ref -d refs/heads/x')")"
+assert_rc "R5278+ git reflog expire"          2 "$(run_case "$(j_bash 'git reflog expire --expire=now --all')")"
+assert_rc "R5278+ git gc --prune=now"         2 "$(run_case "$(j_bash 'git gc --prune=now')")"
+assert_rc "R5278+ git filter-repo"            2 "$(run_case "$(j_bash 'git filter-repo --path x')")"
+assert_rc "R5278- git tag (list)"             0 "$(run_case "$(j_bash 'git tag')")"
+assert_rc "R5278- git tag v1 (create)"        0 "$(run_case "$(j_bash 'git tag v1')")"
+assert_rc "R5278- git branch (list)"          0 "$(run_case "$(j_bash 'git branch')")"
+assert_rc "R5278- git branch -d merged-x"     0 "$(run_case "$(j_bash 'git branch -d merged-x')")"
+assert_rc "R5278- git branch --list"          0 "$(run_case "$(j_bash 'git branch --list')")"
+assert_rc "R5278- git reflog show"            0 "$(run_case "$(j_bash 'git reflog show')")"
+assert_rc "R5278- git gc"                     0 "$(run_case "$(j_bash 'git gc')")"
+assert_rc "R5278- rm one file"                0 "$(run_case "$(j_bash 'rm /tmp/one-file')")"
+
+# --- hook-defeat shapes ---
+assert_rc "R5283+ git commit --no-verify"     2 "$(run_case "$(j_bash 'git commit --no-verify -m x')")"
+assert_rc "R5283+ git -c core.hooksPath="     2 "$(run_case "$(j_bash 'git -c core.hooksPath=/dev/null commit -m x')")"
+assert_rc "R5283+ chmod -x .git/hooks"        2 "$(run_case "$(j_bash 'chmod -x .git/hooks/pre-commit')")"
+assert_rc "R5283+ pre-commit uninstall"       2 "$(run_case "$(j_bash 'pre-commit uninstall')")"
+assert_rc "R5283+ export DESTRUCTIVE_OK=1"    2 "$(run_case "$(j_bash 'export DESTRUCTIVE_OK=1')")"
+assert_rc "R5283- git commit -m x"            0 "$(run_case "$(j_bash 'git commit -m x')")"
+assert_rc "R5283- pre-commit run"             0 "$(run_case "$(j_bash 'pre-commit run --all-files')")"
+assert_rc "R5283- chmod +x script"            0 "$(run_case "$(j_bash 'chmod +x scripts/foo.sh')")"
+
+# The deny names the single-run bypass (hooks/CLAUDE.md: every deny names its bypass).
+_msg=$(printf '%s' "$(j_bash 'git tag -d v1')" | bash "$HOOK" 2>&1 >/dev/null)
+case "$_msg" in
+    *"DESTRUCTIVE_OK=1"*) echo "PASS deny message names the bypass" ;;
+    *) echo "FAIL deny message names the bypass - got: $_msg"; FAILED=$((FAILED + 1)) ;;
+esac
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

@@ -205,7 +205,7 @@ _c_strip_quotes() { local LC_ALL=C; REPLY=${1//[\"\'\\]/}; }
 _c_keep_char() { local LC_ALL=C; REPLY=${1//[^$2]/}; }
 
 deny() {
-    echo "block-destructive-commands: destructive command refused ($1)" >&2
+    echo "block-destructive-commands: destructive command refused ($1); bypass: DESTRUCTIVE_OK=1 in the launching shell (per run)" >&2
     exit 2
 }
 [ "$_noexp_over" = 0 ] || deny "more than 256 expansions at command position"
@@ -669,33 +669,15 @@ fi
 # verbose/help/version all start elsewhere), so getopt_long accepts any
 # unambiguous prefix from `--r` up - `--rec`, `--recu`, etc. all spell
 # --recursive and must trip this the same as the full word.
-# HIMMEL-2610 J1267S S1: this used to run a two-pronged scan - a gap
-# excluding `( ` `` ` `` and `#` (F3), plus a "neutralised copy" that tried to
-# tell a live `--r...` flag apart from one hidden inside a comment, quote,
-# substitution or `--` operand terminator. Three rounds of shape-specific
-# patches to that distinction (F3, then J1267R's R1 backslash fix, then this)
-# each closed one bypass while the underlying approach kept producing another:
-# F3's own quote-pairing pass could be fooled by a substitution whose OUTPUT
-# text contained a quote character (`rm "$(echo "'")" --recursive ... d`),
-# hiding a live `--recursive` from both the raw and the neutralised scan.
-# There is no bounded set of shapes to enumerate here, so stop trying to
-# decide whether a `--r...` token is reachable and fail closed instead: deny
-# on the token alone, wherever it sits after `rm`, matched against the raw
-# text with no exclusions and no quote/comment/substitution/`--`-terminator
-# carve-out. The gap is unbounded (not `[^|;&]*`) on purpose - excluding `;`/
-# `&`/`|` from the gap was itself a shape-specific assumption (a QUOTED `;`,
-# as in `rm 'a;b' --recursive dir`, is not a real command separator, but the
-# exclusion could not tell the difference and would have let this hide the
-# flag again). An unbounded gap also denies a genuinely later, unrelated
-# command that happens to carry a `--r...`-shaped token after an `rm` earlier
-# in the same line - broader than base, deliberately, and strictly more
-# conservative. This reopens F3's three false DENYs (`rm -f x.log # --really`,
-# `rm -f x $(ls --reverse)` and `rm -- --rfile` all deny again) plus a few of
-# its later false-DENY-avoidance rounds (comment-vs-mid-word-# among them) -
-# the false-DENY relief is deferred to HIMMEL-3636, not re-fixed here.
 RM_RECURSIVE_PAT="${RMPOS}"'rm(\.exe)?([^[:alnum:]_.-]|$).*--r[a-z-]*([^[:alnum:]_-]|$)'
+# Trigger only: a long `--r...` word anywhere after `rm`. The unbounded gap
+# may span a quoted `;`, a substitution or a later command, so on its own it
+# is not a verdict. The verdict is the argv walk (_rm_inv, after the git walk):
+# the word must be an option of an rm invocation, before `--`. Text the
+# tokenizer cannot read keeps the deny.
+_rm_long_hit=0
 if [[ $rm_scrub =~ $RM_RECURSIVE_PAT ]]; then
-    deny "recursive rm"
+    _rm_long_hit=1
 fi
 # HIMMEL-3650: the literal `-r`/`--r` scans above never see a flag the shell
 # only assembles at parse time (`rm -"r" d`, `rm -f"r" d`, `rm "--"recursive d`,
@@ -749,9 +731,10 @@ _cmd_n=8
 while (( _cmd_n-- > 0 )) && [[ $rm_norm =~ $_cmd_pat ]]; do
     rm_norm="${rm_norm/"${BASH_REMATCH[0]}"/rm}"
 done
-if [[ $rm_norm =~ $RM_R_PAT ]] || [[ $rm_norm =~ $RM_RECURSIVE_PAT ]] || [[ $rm_norm =~ $RM_OPT_DOLLAR_PAT ]]; then
+if [[ $rm_norm =~ $RM_R_PAT ]] || [[ $rm_norm =~ $RM_OPT_DOLLAR_PAT ]]; then
     deny "recursive rm (quote/escape-normalised)"
 fi
+if [[ $rm_norm =~ $RM_RECURSIVE_PAT ]]; then _rm_long_hit=1; fi
 # HIMMEL-4158: rm_norm splits a quoted wrapper value (`nice -n '1 0' find`)
 # into two words, so also read the text with its quotes kept.
 if _find_delete "$rm_norm" || _find_delete "$_rm_src"; then
@@ -765,22 +748,6 @@ fi
 # CMDPOS is slow on long `((` runs, HIMMEL-4321.
 if [[ $rm_norm == *xargs*rm* ]] && { [[ $rm_norm =~ $XARGS_RM_PAT ]] || [[ $_rm_src =~ $XARGS_RM_PAT ]]; }; then
     deny "mass delete (xargs rm)"
-fi
-done
-# HIMMEL-2610 J1267R R1: the quote/comment/`--`-terminator scan above has no
-# model of backslash escaping, so an escaped char can fake any of its
-# boundaries - an escaped space can pose as the real space around a `--`
-# terminator or before a `#` comment, and an escaped backtick/paren/quote can
-# pose as (or falsely pair up to collapse) a substitution or quote span. Each
-# of those hides a live `--recursive`/`--rec...` that follows. Rather than
-# extend the scan to model every escape shape (whack-a-mole across the rounds
-# above), fail closed: a backslash anywhere between `rm` and a `--r...` flag
-# in the same command segment is denied outright.
-RM_RECURSIVE_ESC_PAT="${RMPOS}"'rm(\.exe)?([^[:alnum:]_.-]|$)[^|;&]*\\[^|;&]*--r[a-z-]*([^[:alnum:]_-]|$)'
-# Like every rm scan, this runs on both the folded and the joined text (HIMMEL-3991).
-for _rm_src in "${_rm_srcs[@]}"; do
-if [[ $_rm_src =~ $RM_RECURSIVE_ESC_PAT ]]; then
-    deny "recursive rm (escaped)"
 fi
 done
 # Backslash-newline continuation: newlines are already folded to ';' above, so
@@ -1327,6 +1294,20 @@ _gh_inv() {
     return 0
 }
 
+# _rm_inv J — one rm invocation whose first argument is word J: a `--r…` option
+# word before the `--` terminator is rm's own recursive flag.
+_rm_inv() {
+    local j=$1
+    while [ "$j" -lt "${#_gc_w[@]}" ]; do
+        case "${_gc_k[j]}:${_gc_w[j]}" in
+            W:--) return 0 ;;
+            ?:--r*) _rm_flag=1; return 0 ;;
+        esac
+        j=$((j + 1))
+    done
+    return 0
+}
+
 # _gp_cmd ENTRIES — one logical command: ST_W indices, P for a substitution.
 # Word kinds: A assignment, X live $, G glob, P substitution, W plain.
 _gp_cmd() {
@@ -1349,6 +1330,7 @@ _gp_cmd() {
     i=0
     while [ "$i" -lt "$n" ]; do
         w=${_gc_w[i]}
+        case "$w" in *[[:space:]]*rm*|*rm*[[:space:]]*) _rm_blind=1 ;; esac
         if [ "${_gc_k[i]}" = A ]; then sa=1; i=$((i + 1)); continue; fi
         if [ "$cp" -lt 0 ]; then
             cp=$i
@@ -1361,6 +1343,7 @@ _gp_cmd() {
                 -) _gp_inv $((i + 1)) "$sa" 1 ;;
                 git|git.exe) _gp_inv $((i + 1)) "$sa" 0 ;;
                 gh|gh.exe) _gh_inv $((i + 1)) ;;
+                rm|rm.exe) _rm_inv $((i + 1)) ;;
             esac
             if [ -n "$b" ]; then i=$((i + 1)); continue; fi
         fi
@@ -1369,6 +1352,7 @@ _gp_cmd() {
             case "$b" in
                 git|git.exe) _gp_inv $((i + 1)) "$sa" 0 ;;
                 gh|gh.exe) _gh_inv $((i + 1)) ;;
+                rm|rm.exe) _rm_inv $((i + 1)) ;;
             esac
         fi
         i=$((i + 1))
@@ -1490,7 +1474,11 @@ _gp_body() {
 _gp_scan() {
     local t=$1
     case "$t" in *'<<'*) _gp_body "$t" ;; esac
-    if st_tokenize "$t"; then _gp_pass "$2" "$t"; return 0; fi
+    if st_tokenize "$t"; then
+        if [ "$ST_HEREDOC" = 1 ] || [ "$ST_ANSIC" = 1 ]; then _rm_blind=1; fi
+        _gp_pass "$2" "$t"; return 0
+    fi
+    _rm_blind=1
     _gu_flatten_params "$t"
     if [ "$GU_FLAT" != "$t" ] && st_tokenize "$GU_FLAT"; then _gp_pass "$2" "$t"; return 0; fi
     _gu_strip_heredocs "$GU_FLAT"
@@ -1503,8 +1491,9 @@ _gp_scan() {
 # Only text that names git or one of its destructive subcommands pays for the
 # walk. A `cd` anywhere still turns the lease carve-out off (HIMMEL-2054): the
 # default branch is read from the hook's cwd, not the one the push runs in.
-case "$cmd_lc" in
-    *git*|*gh*|*reset*|*clean*|*push*|*filter-branch*)
+_rm_flag=0 _rm_blind=0
+case "$_rm_long_hit:$cmd_lc" in
+    1:*|*git*|*gh*|*reset*|*clean*|*push*|*filter-branch*)
         _gp_cd=0
         if contains '(^|[^[:alnum:]_.-])cd([^[:alnum:]_.-]|$)'; then _gp_cd=1; fi
         _gp_lc=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]' '[:lower:]')
@@ -1513,6 +1502,48 @@ case "$cmd_lc" in
         _gp_scan "$_gp_lc" 0
         ;;
 esac
+# A long `--r…` word is rm's recursive flag only when it is one of rm's own
+# arguments; the tokenizer's walk decides that, a blind walk fails closed.
+if [ "$_rm_long_hit" = 1 ] && { [ "$_rm_flag" = 1 ] || [ "$_rm_blind" = 1 ]; }; then
+    deny "recursive rm"
+fi
+# Shared-.git history verbs and hook-defeat shapes, literal spellings only:
+# `git <verb>` as typed, no evasion chasing.
+_gg='git(\.exe)?[[:space:]]+([^;&|]*[[:space:]])?'
+if contains "${CMDPOS}${_gg}"'tag[[:space:]]+([^;&|]*[[:space:]])?(-[a-z]*d[a-z]*|--delete)([^[:alnum:]_.-]|$)'; then
+    deny "git tag -d"
+fi
+if contains "${CMDPOS}${_gg}"'branch[[:space:]]+([^;&|]*[[:space:]])?-[a-z]*d' \
+   && [[ $cmd =~ [[:space:]]-[A-Za-z]*D ]]; then
+    deny "git branch -D"
+fi
+if contains "${CMDPOS}${_gg}"'update-ref[[:space:]]+([^;&|]*[[:space:]])?-d([^[:alnum:]_.-]|$)'; then
+    deny "git update-ref -d"
+fi
+if contains "${CMDPOS}${_gg}"'reflog[[:space:]]+expire([^[:alnum:]_.-]|$)'; then
+    deny "git reflog expire"
+fi
+if contains "${CMDPOS}${_gg}"'gc[[:space:]]+([^;&|]*[[:space:]])?--prune=now'; then
+    deny "git gc --prune=now"
+fi
+if contains "${CMDPOS}${_gg}"'filter-repo([^[:alnum:]_.-]|$)'; then
+    deny "git filter-repo"
+fi
+if contains "${CMDPOS}${_gg}"'[^;&|]*--no-verify([^[:alnum:]_.-]|$)'; then
+    deny "git --no-verify"
+fi
+if contains "${CMDPOS}${_gg}"'-c[[:space:]]*core\.hookspath='; then
+    deny "git core.hooksPath override"
+fi
+if contains "${CMDPOS}"'chmod[[:space:]]+([^;&|]*[[:space:]])?[augo]*-x[^;&|]*\.git/hooks'; then
+    deny "chmod -x on .git/hooks"
+fi
+if contains "${CMDPOS}"'pre-commit[[:space:]]+uninstall([^[:alnum:]_.-]|$)'; then
+    deny "pre-commit uninstall"
+fi
+if contains "${CMDPOS}"'export[[:space:]]+destructive_ok='; then
+    deny "export DESTRUCTIVE_OK"
+fi
 # Remote exec (HIMMEL-5279): a download piped, substituted or saved-then-run
 # into an interpreter. The bare interpreters (python, node, perl, ...) are a
 # sink only when they read the script from stdin (no arg, or a lone `-`), so
