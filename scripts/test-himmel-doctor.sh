@@ -6513,7 +6513,7 @@ c65_hook() { printf '#!/bin/sh\nexit 0\n' > "$c65_t/r/.git/hooks/$1"; chmod +x "
 # gh stub: the protection endpoint prints $C65_PROT (or fails with $C65_PROT_ERR), the rules endpoint prints $C65_RULES.
 printf '%s\n' '#!/bin/sh' 'case "$*" in' \
   '  *branches/main/protection*) [ -n "$C65_PROT_ERR" ] && { echo "$C65_PROT_ERR" >&2; exit 1; }; echo "${C65_PROT:-}"; exit 0 ;;' \
-  '  *rules/branches/main*) echo "${C65_RULES:-}"; exit 0 ;;' 'esac' 'exit 1' > "$c65_t/gh"
+  '  *rules/branches/main*) echo "${C65_RULES:-0}"; exit 0 ;;' 'esac' 'exit 1' > "$c65_t/gh"
 chmod +x "$c65_t/gh"
 c65_run() { env -u CI CLAUDE_DIR="$c65_t/home/claude" HOME="$c65_t/home" HIMMEL_DOCTOR_GH="$c65_t/gh" "$@" bash "$DOC" --no-color --root "$c65_t/r" --only C65 2>&1; }
 
@@ -6564,6 +6564,10 @@ if grepq "$out" -F 'INFO C65-branch-protection' && ! grepq "$out" -F 'FAIL C65-b
 echo "== C65: gh unreadable (auth/network) -> WARN unverified, never a false OK =="
 out="$(c65_run C65_PROT_ERR='gh: HTTP 401 Bad credentials')"
 if grepq "$out" -F 'WARN C65-branch-protection' && ! grepq "$out" -F 'OK   C65-branch'; then pass "C65 unreadable -> WARN"; else fail "C65 unreadable -> $(printf '%s' "$out" | grep C65-branch)"; fi
+echo "== C65: ruleset answer is not a number -> WARN unverified, never FAIL =="
+out="$(c65_run C65_PROT_ERR='gh: Branch not protected (HTTP 404)' C65_RULES=garbage)"
+if grepq "$out" -F 'WARN C65-branch-protection' && ! grepq "$out" -F 'FAIL C65-branch'; then pass "C65 garbage ruleset -> WARN"; else fail "C65 garbage ruleset -> $(printf '%s' "$out" | grep C65-branch)"; fi
+
 echo "== C65: jq missing -> WARN naming the gates that then exit 0 =="
 out="$(c65_run C65_PROT=1 HIMMEL_DOCTOR_JQ="$c65_t/no-jq")"
 if grepq "$out" -F 'WARN C65-gate-deps' && grepq "$out" -F 'template-version'; then pass "C65 no jq -> WARN"; else fail "C65 no jq -> $(printf '%s' "$out" | grep C65-gate)"; fi

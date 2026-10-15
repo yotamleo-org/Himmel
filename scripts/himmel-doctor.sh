@@ -4203,7 +4203,7 @@ check_c65_git_gates() {
         return
     fi
     out="$("$gh_bin" api "repos/$nwo/branches/main/protection" \
-        --jq '[(.required_status_checks.contexts // [] | length), (.required_status_checks.checks // [] | length)] | add' 2>&1)"; rc=$?
+        --jq '[(.required_status_checks.contexts // [] | length), (.required_status_checks.checks // [] | length)] | max' 2>&1)"; rc=$?
     if [ "$rc" -eq 0 ] && [ "${out:-0}" -gt 0 ] 2>/dev/null; then
         emit OK C65-branch-protection "branch protection on $nwo main requires $out status check(s)"
         return
@@ -4215,11 +4215,15 @@ check_c65_git_gates() {
             *) emit WARN C65-branch-protection "could not read branch protection on $nwo main (UNVERIFIED): $(printf '%s' "$out" | head -1 | cut -c1-120)" "gh auth status"; return ;;
         esac
     fi
-    n="$("$gh_bin" api "repos/$nwo/rules/branches/main" --jq '[.[] | select(.type == "required_status_checks")] | length' 2>&1)" || {
+    n="$("$gh_bin" api "repos/$nwo/rules/branches/main" --jq '[.[] | select(.type == "required_status_checks") | (.parameters.required_status_checks // [] | length)] | add // 0' 2>&1)" || {
         emit WARN C65-branch-protection "could not read rulesets on $nwo main (UNVERIFIED): $(printf '%s' "$n" | head -1 | cut -c1-120)" "gh auth status"
         return
     }
-    if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
+    case "$n" in ''|*[!0-9]*)
+        emit WARN C65-branch-protection "unexpected ruleset answer on $nwo main (UNVERIFIED): $(printf '%s' "$n" | head -1 | cut -c1-120)" "gh auth status"
+        return ;;
+    esac
+    if [ "$n" -gt 0 ]; then
         emit OK C65-branch-protection "a ruleset on $nwo main requires status checks"
     else
         emit FAIL C65-branch-protection "neither branch protection nor a ruleset on $nwo main requires status checks (protection may exist without them) — a red PR can merge" \
