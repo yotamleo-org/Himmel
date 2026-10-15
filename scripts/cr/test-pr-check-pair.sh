@@ -1065,7 +1065,10 @@ done
 # Prose defects in the reference files: each row pins the corrected text (or
 # the absence of the wrong text) in the file that carries it.
 ref_has() { grep -qF -- "$2" "$CLAUDE_REF_DIR/$1"; }
-ref_lacks() { ! grep -qF -- "$2" "$CLAUDE_REF_DIR/$1"; }
+ref_lacks() {
+    [ -r "$CLAUDE_REF_DIR/$1" ] || return 1
+    ! grep -qF -- "$2" "$CLAUDE_REF_DIR/$1"
+}
 
 if ref_lacks 31-step3-adjudicate.md 'heredoc into scripts/cr/write-verdicts.sh' \
     && ref_lacks 31-step3-adjudicate.md 'empty heredoc body'; then
