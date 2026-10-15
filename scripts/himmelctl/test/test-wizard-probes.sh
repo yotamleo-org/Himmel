@@ -6954,6 +6954,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 dl_elapsed=$(( $(date +%s) - dl_t0 ))
 echo "$outDLclamp" | jq -e '.actual == "degraded"' >/dev/null \
   || fail "HIMMEL-2309: a probe still running at the whole-run deadline must read degraded (got: $outDLclamp)"
+[ -e "$dl_marker" ] || fail "HIMMEL-2309: the clamped probe must actually have spawned the resolver (an early degraded would pass the assertions above vacuously)"
 [ "$dl_elapsed" -lt 5 ] || fail "HIMMEL-2309: the spawn budget must be clamped to the time left before the deadline, not the full per-probe budget (took ${dl_elapsed}s against a resolver that sleeps 6s)"
 echo "ok: HIMMEL-2309 — a probe running when the deadline passes is clamped to the remaining budget"
 
