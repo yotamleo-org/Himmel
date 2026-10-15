@@ -83,7 +83,7 @@ set -uo pipefail
 # any argument parsing, cheapest possible refusal, no API calls. This is what
 # backstops the fact that no allow-rule for this script (or a public
 # `gh pr merge`) is ever added: an agent reaching this script (no allow rule
-# matches it removed the `Bash(bash scripts/*)` prefix)
+# matches it since the `Bash(bash scripts/*)` prefix was removed)
 # self-refuses right here, whatever the auto-mode classifier decides.
 # NOTE (defense-in-depth, not the boundary): `env -u CLAUDECODE bash …` or
 # `CLAUDECODE= bash …` clears the marker and sails past this check — but that

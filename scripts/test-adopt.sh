@@ -1619,9 +1619,10 @@ mkdir -p "$crtarget14" "$crbin14"
 HOME="$pchome" git -C "$crtarget14" init -q
 mkdir -p "$crtarget14/.git/hooks"
 sentinel14='echo "SENTINEL cr2771r5-symlink-marker: outside file must not be truncated"'
+markerline14='# HIMMEL-2771: native invariant gate; lint hooks require pre-commit.'
 cat > "$croutside14" <<OUTSIDEHOOK
 #!/usr/bin/env bash
-# native invariant gate; lint hooks require pre-commit.
+$markerline14
 $sentinel14
 OUTSIDEHOOK
 chmod +x "$croutside14"

@@ -6,7 +6,7 @@
 # compression stack must be provably OFF ("one optimizer per boundary"). NOTE:
 # the cavemanConfig/cavemanOutputMode keys below are OmniRoute's OWN schema
 # names for its bundled engines; they are unrelated to the response-compression
-# plugin himmel removed in, and must stay asserted here.
+# plugin himmel removed earlier, and must stay asserted here.
 # This lint is a POSITIVE
 # assertion over the authoritative engine-key set from the WS2 Task-1 source-read
 # (OmniRoute pin b729a8f / v3.8.43): every expected key must be PRESENT and
