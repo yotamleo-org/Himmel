@@ -39,7 +39,7 @@ try {
  });
  test('mog EXIT removes read-only subdirectories on an early failure',()=>{
   const source=fs.readFileSync(path.join(repo,'scripts/handover/test-merge-on-green.sh'),'utf8');
-  const end=source.indexOf('# HIMMEL-3543:');assert(end!==-1,'suite initialization boundary not found');
+  const end=source.indexOf('MOG_HOME=$(mktemp -d');assert(end!==-1,'suite initialization boundary not found');
   const script=path.join(root,'mog-exit.sh'), scratch=path.join(root,'exit');
   fs.writeFileSync(script,source.slice(0,end)+`
 mkdir -p "$TMPDIR/mog-run.readonly/locked"
