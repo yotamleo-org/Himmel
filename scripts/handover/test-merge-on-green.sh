@@ -669,7 +669,11 @@ case "\$1" in
     */dist/index.js)
         echo "\$*" >> "\$JIRA_LOG"
         if [ "\$2" = "get" ]; then
-            printf '{"fields":{"issuetype":{"name":"%s"}}}\n' "\${STUB_JIRA_ISSUE_TYPE:-Task}"
+            printf '{"fields":{"issuetype":{"name":"%s"},"fixVersions":[%s]}}\n' "\${STUB_JIRA_ISSUE_TYPE:-Task}" "\${STUB_JIRA_FIXVERSIONS:-}"
+            exit 0
+        fi
+        if [ "\$2" = "versions" ]; then
+            printf '%b' "\${STUB_JIRA_VERSIONS:-v1.1.2\\ttrue\\t2026-10-11\\nv1.1.4\\tfalse\\t\\nv1.1.3\\tfalse\\t2026-10-22\\n}"
             exit 0
         fi
         if [ "\${STUB_JIRA_TRANSITION_FAIL:-0}" = "1" ] && [ "\$2" = "transition" ]; then
@@ -3452,6 +3456,25 @@ STUB_JIRA_BUILD=1 STUB_JIRA_COMMENT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-37
     run_mog 0 "jira: opted-in failed comment skips the transition" -- --jira-transition
 assert_audit_has "jira: failed-comment case records the skip" "jira-transition=skip=comment-failed key=HIMMEL-374"
 assert_jira_log_lacks "jira: failed-comment case makes no jira transition call" "transition"
+
+# A closed ticket sitting in a later unreleased version moves to
+# the current one (earliest unreleased by release date); anything else is left.
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: closed ticket in a later unreleased version is folded to the current one" -- --jira-transition
+assert_jira_log_has "jira: fold sets fixVersion to the current unreleased version" "edit HIMMEL-374 --fix-version v1.1.3"
+assert_audit_has "jira: fold is recorded on the audit line" "jira-transition=ok key=HIMMEL-374 status=Done fixversion=v1.1.3"
+
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.3"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: closed ticket already in the current version is not edited" -- --jira-transition
+assert_jira_log_lacks "jira: no fixVersion edit when already current" "edit "
+
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.2"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: closed ticket in a released version is not edited" -- --jira-transition
+assert_jira_log_lacks "jira: no fixVersion edit for a released version" "edit "
+
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: bare merge (no --jira-transition) never edits fixVersion"
+assert_jira_log_lacks "jira: bare merge makes no fixVersion edit" "edit "
 
 # --- GitHub-blocked -> exit 18, one alert, never retried -------
 alert_lines() { grep -c . "$LAST_ALERT_LOG" 2>/dev/null || true; }
