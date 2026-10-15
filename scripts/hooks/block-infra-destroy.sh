@@ -25,7 +25,8 @@
 #   * a command word held in a variable (`$T destroy`) is unreadable, so it is
 #     tried against every rule's arguments (`T=ls; $T delete` over-denies);
 #   * the flat scan (PowerShell, or input the tokenizer cannot read) denies a
-#     command with more than 500 table-bin words rather than crawl it.
+#     table-bin word followed by more than 256 words rather than crawl them
+#     or leave a verb past the window unread (a long command over-denies).
 #
 # A pattern in the verbs table that does not compile refuses the call (exit 2).
 #
@@ -242,15 +243,15 @@ else
     # positions exist, so every word is tried as the command word. A form this
     # guard cannot read counts as a denied one if a verb rule fires.
     # Linear: only a word whose lowercased basename is a table bin or runner
-    # (or holds a `$`) is tried as a command word, over at most FLAT_SPAN words
-    # after it; past FLAT_CAP such words the call denies.
+    # (or holds a `$`) is tried as a command word, and one with more than
+    # FLAT_SPAN words after it denies (a verb past the window would go unread).
     _flat=${cmd//[;&|()\"\'\`]/ }
     _flat=${_flat//$'\n'/ }
     read -r -a _all <<<"$_flat"
     _flat=${lc_cmd//[;&|()\"\'\`]/ }
     _flat=${_flat//$'\n'/ }
     read -r -a _lc <<<"$_flat"
-    FLAT_SPAN=256 FLAT_CAP=500 _tried=0
+    FLAT_SPAN=256
     _k=0
     while [ "$_k" -lt "${#_all[@]}" ]; do
         _b=${_lc[_k]##*[/\\]}
@@ -260,12 +261,11 @@ else
             *'$'*) _b='*' ;;
             *) case " $allbins " in *" $_b "*) ;; *) _k=$((_k + 1)); continue ;; esac ;;
         esac
-        _tried=$((_tried + 1))
-        if [ "$_tried" -gt "$FLAT_CAP" ]; then
-            deny "more than $FLAT_CAP command words to scan in one command" flat-scan-cap
+        if [ $((${#_all[@]} - _k)) -gt "$FLAT_SPAN" ]; then
+            deny "more than $FLAT_SPAN words follow a command word in a command this guard cannot tokenize" flat-scan-span
         fi
         SCAN_BIN=$_b
-        scan_words "${_all[@]:_k:FLAT_SPAN}"
+        scan_words "${_all[@]:_k}"
         SCAN_BIN=
         _k=$((_k + 1))
     done
