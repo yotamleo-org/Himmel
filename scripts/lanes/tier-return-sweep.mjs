@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// scripts/lanes/tier-return-sweep.mjs - RETIRED (HIMMEL-3269; was the P0.3
-// Tier-return counter, HIMMEL-2977 G10).
+// scripts/lanes/tier-return-sweep.mjs - RETIRED (was the P0.3
+// Tier-return counter).
 //
 // It counted subagent transcripts ending in a `> **Tier-return:** <reason>`
 // marker and printed `<model> <returned>/<dispatched>`. Nothing ever instructed
@@ -11,7 +11,7 @@
 // nothing is worse than no counter, so it is retired rather than left printing.
 //
 // The replacement signal is observed, not declared: a Sonnet subagent whose task
-// was re-dispatched to a higher tier. That is a HIMMEL-2976 gate concern; see
+// was re-dispatched to a higher tier. That is a gate concern; see
 // docs/internals/lane-calibration.md, "Tier-return marker (retired)".
 //
 // Platform guard: no .ps1 twin, by design. Node 18+, same on every platform.

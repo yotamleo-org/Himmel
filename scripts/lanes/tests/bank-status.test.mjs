@@ -19,7 +19,7 @@ const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const BANK_STATUS = join(TEST_DIR, '..', 'bank-status.ts');
 const RESOLVER = join(TEST_DIR, '..', 'resolve.mjs');
 
-// HIMMEL-1737: the public CI job `lanes-and-trust-suites` runs this suite with
+// The public CI job `lanes-and-trust-suites` runs this suite with
 // plain `node --test`, no bun on PATH. The CLI tests below spawn bun directly
 // (or, for the resolve.mjs test, transitively via runBankStatus), so on a
 // bun-less box they'd either ENOENT or fall through to resolve.mjs's own
@@ -43,7 +43,7 @@ function fixtureRegistry(dir) {
   return path;
 }
 
-// A codex-bank cache fixture as the probe would write it (HIMMEL-1678). The
+// A codex-bank cache fixture as the probe would write it. The
 // resetsAt is FIXED (2100-01-01T00:00:00Z) so expected detail strings are
 // deterministic; it stays in the future for ~74 years.
 const CODEX_RESETS_AT_SEC = 4102444800;
@@ -72,7 +72,7 @@ test('bank detail formatting makes measured and unmeasurable states explicit', (
 });
 
 test('bank annotation keeps "free" attached to its window across MULTI-reading details', () => {
-  // HIMMEL-1678 CR (glm-2). The free= capture used to be a bare (\S+), which
+  // The free= capture was once a bare (\S+), which
   // swallowed the ';' separator and orphaned the word "free" past the comma:
   //   "weekly 14% used / 86%, free daily 5% used / 95% free"
   // Only multi-reading details expose it (a single reading has nothing after
@@ -144,7 +144,7 @@ function glmLedgerLine({ usedPct, resetAt }) {
 }
 
 test('bank-status CLI reports an exhausted GLM lane as spent, not funded', { skip: BUN_SKIP }, () => {
-  // Regression (HIMMEL-1678): when the GLM read was deleted, an exhausted GLM
+  // Regression: when the GLM read was deleted, an exhausted GLM
   // A LIVE required-window reading at/over the threshold must be spent.
   const dir = makeTmpDir('lane-bank-glm-spent-');
   const registry = fixtureRegistry(dir);
@@ -168,7 +168,7 @@ test('bank-status CLI reports an expired GLM resets_at window as flat-rate, not 
   // The resets_at live-window validation still drops a row whose window reset
   // (its used_pct no longer describes the current cycle — a high-but-expired
   // reading must NOT report spent). But with no live window the lane is NOT
-  // "unmeasurable" either (HIMMEL-1678): the z.ai plan is flat-rate, so the
+  // "unmeasurable" either: the z.ai plan is flat-rate, so the
   // honest state is not-applicable — `unknown` read like a defect while the
   // lane is always-available.
   const dir = makeTmpDir('lane-bank-glm-expired-');
@@ -245,11 +245,11 @@ test('bank probe surfaces an overlay-only quota bank instead of "no status retur
   );
 });
 
-// ─── HIMMEL-1768 round 3: evidence-derived guard verdicts ────────────────────
+// ─── Evidence-derived guard verdicts ────────────────────
 // The verdict must come from per-window EVIDENCE about the RESOLVED active
 // access path — never from list lengths, array counts, or positional index
-// assumptions. These tests cover every numbered failure class from the two
-// prior defect rounds plus both sides of the empty-window distinction.
+// assumptions. These tests cover every numbered failure class below
+// plus both sides of the empty-window distinction.
 
 test('resolveActiveAccessPath: an explicit bad index is a registry error, never a paths[0] fallback', () => {
   const two = { accessPaths: [{ kind: 'subscription', windows: ['weekly'] }, { kind: 'metered-api-key', windows: [] }] };
@@ -285,7 +285,7 @@ test('guardState: funded/spent derive from per-window evidence — every declare
   const dup = { kind: 'measured', readings: [{ window: '5h', usedPct: 10 }, { window: '5h', usedPct: 10 }] };
   assert.equal(guardState(dup, sub, 99), 'unknown');
 
-  // Failure 4 / round 1: a reader/registry window-label mismatch leaves a
+  // Failure 4: a reader/registry window-label mismatch leaves a
   // declared window unmeasured — unknown, never a permissive default.
   const one = { kind: 'measured', readings: [{ window: '5h', usedPct: 10 }] };
   assert.equal(guardState(one, sub, 99), 'unknown');
@@ -409,7 +409,7 @@ test('bank-status CLI: an active metered-api-key path stays funded even when the
       CODEX_BANK_CACHE: join(dir, 'missing.json'),
     },
   });
-  // The glm bank read with a dead ledger is flat-rate (HIMMEL-1678); the
+  // The glm bank read with a dead ledger is flat-rate; the
   // metered path stays funded by construction either way.
   assert.match(out, /^payg funded flat-rate$/m);
 });
@@ -448,9 +448,9 @@ test('bank-status CLI: a lane with no accessPaths at all is unknown, whatever th
 });
 
 test('the SHIPPED lanes.json stays guardable end-to-end against the reader contract (round-1 lesson)', { skip: BUN_SKIP }, () => {
-  // Round 1 shipped glm windows ["5h","weekly"] while readGlmBank emits
-  // exactly one reading — glm went permanently unknown and this suite stayed
-  // green because every test read a hand-written fixture that ALSO declared
+  // A registry declaring glm windows ["5h","weekly"] while readGlmBank emits
+  // exactly one reading leaves glm permanently unknown, and the suite stays
+  // green if every test reads a hand-written fixture that ALSO declares
   // ["5h"]. This test reads the SHIPPED registry and feeds each bank a
   // fixture its reader really emits; any declared window no reader emits, or
   // an out-of-range activeAccessPath, flips a lane to unknown and fails here.
@@ -488,8 +488,8 @@ test('the SHIPPED lanes.json stays guardable end-to-end against the reader contr
   assert.doesNotMatch(out, /^(haiku|sonnet|opus|fable|glm|claudex|codex-exec|codex-wsl) (unknown|spent) /m);
 });
 
-// HIMMEL-1712 item 3: a cache the producer stamped with account/derived_at/
-// produced_by (HIMMEL-1712 items 1-2, PR #1325) surfaces that provenance on
+// A cache the producer stamped with account/derived_at/
+// produced_by surfaces that provenance on
 // the claude bank's line — a legacy cache with none of those fields (every
 // fixture above) must stay silent, which is why those exact-match assertions
 // don't need updating.
@@ -537,7 +537,7 @@ test('bank-status CLI: a claude cache stamped by a DIFFERENT account surfaces MI
   assert.match(out, /^sonnet funded measured 5h used=12% free=88% provenance=account=MISMATCH age=\d+s producer=9999$/m);
 });
 
-// HIMMEL-5220: a stale or missing codex cache triggers ONE bounded probe
+// A stale or missing codex cache triggers ONE bounded probe
 // refresh instead of reporting codex=? for days. The probe is always the stub
 // (CODEX_BANK_PROBE_CMD) — a test never spawns the real codex.
 const APPSERVER_STUB = join(TEST_DIR, 'fixtures', 'codex-appserver-stub.mjs');

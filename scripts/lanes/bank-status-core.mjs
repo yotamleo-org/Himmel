@@ -1,6 +1,6 @@
 // Pure formatting/parsing helpers for scripts/lanes/bank-status.ts and /lanes.
 
-// The remedy every fail-closed codex reason names (HIMMEL-1678): the ONLY way
+// The remedy every fail-closed codex reason names: the ONLY way
 // to refresh the codex bank reading is to run the bounded probe — bank-status
 // itself never spawns it.
 export const CODEX_BANK_PROBE_REMEDY = 'run: bun scripts/lanes/codex-bank-probe.ts';
@@ -29,14 +29,14 @@ function parseCacheTimestampMs(v) {
 }
 
 // readCodexBankCache(text, nowMs, ttlSeconds) -> bank-status DisplayResult
-// (HIMMEL-1678). FAIL-CLOSED interpretation of the probe's cache file: a
+// FAIL-CLOSED interpretation of the probe's cache file: a
 // fresh cache with live limit windows resolves to measured; anything else —
 // unparseable, malformed, stale past the TTL, or with no limit window whose
 // resetsAt is still in the future — resolves to unmeasurable with a reason
 // that names the remedy. Never a fabricated number, never a silent fail-open.
-// The per-limit live-window gate is the payoff the old sqlite scan could not
-// buy (its HIMMEL-1689 hole #1: a reading with no window attribution is
-// incomparable, not merely stale).
+// The per-limit live-window gate is what the old sqlite scan could not
+// provide: a reading with no window attribution is incomparable, not merely
+// stale.
 /**
  * @typedef {{ window: string, usedPct: number, resetsAt: number }} CodexBankReading
  * @typedef {{ kind: 'measured', readings: CodexBankReading[] }
@@ -72,8 +72,8 @@ export function readCodexBankCache(text, nowMs, ttlSeconds) {
   // GOVERNING one — the highest used% — wins, carrying its OWN resetsAt. A
   // first-wins rule would be fail-open: a fresh 0% sibling limit arriving
   // first would mask an exhausted one and read as funded. Each surviving
-  // reading keeps its own reset instant; no global reset is synthesized
-  // (HIMMEL-1725), and every raw per-limit reset stays in the cache file.
+  // reading keeps its own reset instant; no global reset is synthesized,
+  // and every raw per-limit reset stays in the cache file.
   /** @type {Map<string, CodexBankReading>} */
   const byWindow = new Map();
   for (const limit of parsed.limits) {
@@ -101,7 +101,7 @@ export function formatMeasured(readings) {
   return `measured ${readings.map(({ window, usedPct, resetsAt }) => {
     const used = pct(usedPct);
     const free = pct(100 - usedPct);
-    // resets= is per READING (HIMMEL-1725): each limit window resets at its
+    // resets= is per READING: each limit window resets at its
     // own instant and must never be collapsed into one global value. Only the
     // codex cache reader populates it today; claude/glm render unchanged.
     const resets = Number.isFinite(resetsAt) ? ` resets=${new Date(resetsAt).toISOString()}` : '';
@@ -126,7 +126,7 @@ export function formatBankAnnotation(status) {
   if (!status) return '[bank: unmeasurable — no status returned]';
   if (status.detail === 'flat-rate') return '[bank: flat-rate / n/a]';
   if (status.detail.startsWith('measured ')) {
-    // The free= capture must exclude ';' (HIMMEL-1678 CR, glm-2). A bare (\S+)
+    // The free= capture must exclude ';'. A bare (\S+)
     // swallowed the reading separator, so a MULTI-reading detail rendered as
     // "weekly 14% used / 86%, free daily 5% used / 95% free" — the word "free"
     // orphaned past the comma. Single-reading details hid it (nothing follows
@@ -146,10 +146,10 @@ export function formatBankAnnotation(status) {
 }
 
 // guardState(result, active, maxPct) -> 'funded' | 'spent' | 'unknown'
-// (HIMMEL-1768 round 3). The verdict is derived from per-window EVIDENCE about
+// The verdict is derived from per-window EVIDENCE about
 // the RESOLVED active access path — never from list lengths, array counts, or
-// positional index assumptions (the property both earlier defect rounds
-// violated). `active` is resolveActiveAccessPath(quota) from resolve.mjs
+// positional index assumptions. `active` is resolveActiveAccessPath(quota)
+// from resolve.mjs
 // (kept a param so this pure module need not import its own importer);
 // `result` is the bank read ('unmeasurable' or measured readings).
 //
@@ -171,11 +171,11 @@ export function guardState(result, active, maxPct) {
   if (windows.length === 0) {
     return active.path.kind === 'metered-api-key' ? 'funded' : 'unknown';
   }
-  // HIMMEL-1678: flat-rate is a POSITIVE not-applicable determination by the
+  // flat-rate is a POSITIVE not-applicable determination by the
   // bank reader (the z.ai GLM plan is flat-rate — see readGlmDisplay in
   // bank-status.ts), not missing evidence, so `unknown` would be the wrong
   // word: it reads as a bug while the lane is in fact always-available. This
-  // is NOT the round-2 fail-open reborn — that one flipped a measured,
+  // is NOT a fail-open: that would flip a measured,
   // EXHAUSTED bank to funded; here no metered reading exists to ignore.
   if (result.kind === 'flat-rate') return 'funded';
   if (result.kind === 'unmeasurable') return 'unknown';

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/merged-count.sh - merged-PR count for a
-# [--since, --until) window (HIMMEL-3021).
+# [--since, --until) window.
 #
 # The public yotamleo/Himmel repo carries no work PRs merged before the
 # 2026-09-09 private->public cutover (only dependabot + chore(propagate)
@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$SINCE" ] || { usage; exit 2; }
 
-# HIMMEL-3021: private->public repo cutover. SCORECARD_CUTOVER overrides it
+# Private->public repo cutover. SCORECARD_CUTOVER overrides it
 # for hermetic tests; production callers use the default.
 CUTOVER="${SCORECARD_CUTOVER:-2026-09-09T09:30:00Z}"
 BUNDLE="${BUNDLE_ARG:-${HIMMEL_PRIVATE_BUNDLE:-$HOME/.himmel/private-archive.bundle}}"
@@ -67,7 +67,7 @@ fetch_public() {
     if [ "${pr_total:-0}" -ge 1000 ]; then
         echo "merged-count: WARNING: gh pr list returned $pr_total merged PRs (== --limit 1000); older history may be truncated" >&2
     fi
-    # HIMMEL-3269: stdout is the bare count (callers capture it), so the coverage
+    # stdout is the bare count (callers capture it), so the coverage
     # of the PR list behind it goes to stderr.
     pr_win=$(jq --argjson s "$1" --argjson u "$2" '
       [.[] | select((.mergedAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) >= $s and (.mergedAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) < $u)] | length' "$RUN/public.json") || return 1

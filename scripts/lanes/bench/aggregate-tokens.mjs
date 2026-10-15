@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/lanes/bench/aggregate-tokens.mjs — HIMMEL-1723 P2.5
+// scripts/lanes/bench/aggregate-tokens.mjs
 // Walks each run's Claude Code transcript, sums usage.{input_tokens,
 // output_tokens,cache_creation_input_tokens,cache_read_input_tokens}, joins
 // to run-ids, and computes $ at spec §0.1 list-price rates.
@@ -29,11 +29,11 @@ import { listRunManifests } from './run-manifest.mjs';
 // spec §0.1, retrieved 2026-08-11 — $/M tokens (first-party list price).
 export const RATES = {
   'claude-haiku-4-5': { inputPerM: 1.00, outputPerM: 5.00 },
-  // HIMMEL-4881: list price for a prompt up to 100K; above 100K it is $0.50 / $2.50.
+  // List price for a prompt up to 100K; above 100K it is $0.50 / $2.50.
   // ponytail: flat ≤100K rate, because costUsd prices a transcript's SUMMED usage and the
   // per-request prompt size is not in it; revisit (per-message usage) when a bench run feeds >100K prompts.
   'claude-haiku-5-5': { inputPerM: 0.10, outputPerM: 0.50 },
-  // gpt-5.6-luna: pre-HIMMEL-3500 pin, kept so a manifest recorded before the
+  // gpt-5.6-luna: legacy pin, kept so a manifest recorded before the
   // repin (a9edf228) still resolves a real cost instead of null.
   'gpt-5.6-luna': { inputPerM: 0.20, outputPerM: 1.20 },
   'gpt-6-luna': { inputPerM: 0.20, outputPerM: 1.20 },

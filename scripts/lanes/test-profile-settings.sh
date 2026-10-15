@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-profile-settings.sh -- HIMMEL-4033: profile-settings.sh names the generated
+# test-profile-settings.sh -- profile-settings.sh names the generated
 # settings file by a hash of the resolved JSON, so two checkouts whose
 # plugin-profiles.json differ cannot rewrite a file an armed relaunch already
 # points at. Scratch HOME/dir only; never touches ~/.himmel/launch-profiles.
@@ -42,7 +42,7 @@ cmp -s "$A1" "$B"; cmp_rc=$?
 bash "$PS" no-such-profile >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && ok "T5 unknown profile fails closed (rc=2)" || bad "T5 rc=$rc"
 
-# HIMMEL-5310: --mcp-config resolves the profile's mcpServers allowlist to a
+# --mcp-config resolves the profile's mcpServers allowlist to a
 # content-addressed --mcp-config file; a profile with no allowlist prints nothing.
 M=$(bash "$PS" console --mcp-config); rc=$?
 [ "$rc" = 0 ] && ok "T6 console --mcp-config rc=0" || bad "T6 rc=$rc"

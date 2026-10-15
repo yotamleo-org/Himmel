@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# scripts/lanes/tests/test-leg-burn.sh - suite for scripts/lanes/leg-burn.sh
-# (HIMMEL-2830). Drives the real script against the checked-in 20-line
+# scripts/lanes/tests/test-leg-burn.sh - suite for scripts/lanes/leg-burn.sh.
+# Drives the real script against the checked-in 20-line
 # transcript fixture, whose expected numbers are hand-computable from the file
 # itself - see fixtures/leg-burn-sample.jsonl:
 #   msg_A  text row + tool_use row, usage 3 + 1000 + 200 = 1203 ctx, 50 out
@@ -12,7 +12,7 @@
 #      SECOND row under the same message id, which is exactly the trap this
 #      suite exists to pin).
 #
-#   HIMMEL-2987 price-weighted fields (weights: cache-read 0.1, cache-create
+#   price-weighted fields (weights: cache-read 0.1, cache-create
 #   1.25, input 1, output 5):
 #     cache-read sum  = 1000+2000+500+100 = 3600 -> "3.6k"
 #     cache-create sum = 200+0+50+0       =  250 -> "250"
@@ -50,7 +50,7 @@ eq "fixture exits 0" "$rc" "0"
 eq "one line, every field, hand-computed" "$out" \
    "leg-burn leg-burn-sample.jsonl: calls=4 avg-ctx=963 first-turn=1.2k out=185 compactions=2 text-only=2 cache-read=3.6k cache-create=250 input=4 cache-health=99.9% cost-eq=1.6k floor-share=133.7% compaction-rewarm=650"
 
-# --- HIMMEL-2987: price-weighted fields --------------------------------------
+# --- price-weighted fields ---------------------------------------------------
 has "cache-read sum" "$out" "cache-read=3.6k"
 has "cache-create sum" "$out" "cache-create=250"
 has "input sum" "$out" "input=4"
@@ -65,7 +65,7 @@ has "compaction-rewarm" "$out" "compaction-rewarm=650"
 out_override=$(LEG_BURN_W_CACHE_READ=1 bash "$BURN" "$FIXTURE")
 has "cache-read weight override changes cost-eq" "$out_override" "cost-eq=4.8k"
 
-# --- HIMMEL-2996: --raw prints exact integers, default line untouched -------
+# --- --raw prints exact integers, default line untouched ---------------------
 # Only cache-read is >=1000 in this fixture (3600), so it's the one field
 # where --raw visibly differs from the default (3.6k -> 3600); out/cache-create/
 # input are already <1000 and print the same integer either way.
@@ -78,7 +78,7 @@ eq "default output matches --raw except the four k-rounded counters" "$out" \
 out_raw_env=$(LEG_BURN_RAW=1 bash "$BURN" "$FIXTURE")
 eq "LEG_BURN_RAW=1 env is equivalent to --raw" "$out_raw_env" "$out_raw"
 
-# --- HIMMEL-4094: profile is optional, validated, and always the last field ---
+# --- profile is optional, validated, and always the last field ---------------
 profile_out=$(HIMMEL_LEG_PROFILE=leg-impl bash "$BURN" "$FIXTURE")
 eq "env profile appends only the last field" "$profile_out" "$out profile=leg-impl"
 profile_out=$(HIMMEL_LEG_PROFILE=leg-impl bash "$BURN" --profile design,design-motion "$FIXTURE")

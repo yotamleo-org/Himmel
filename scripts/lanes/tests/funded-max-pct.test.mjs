@@ -1,8 +1,8 @@
 // scripts/lanes/tests/funded-max-pct.test.mjs
-// HIMMEL-1624 — the LANE_FUNDED_MAX_PCT clamp. Number.isFinite alone accepts
+// The LANE_FUNDED_MAX_PCT clamp. Number.isFinite alone accepts
 // negatives, which made every live bank read "spent". The parser must require a
 // sane 0..100 value and fall back to the default otherwise.
-// HIMMEL-1700 — the default is 90, the SAME refuse point spawn-claudex uses, so
+// The default is 90, the SAME refuse point spawn-claudex uses, so
 // bank-status and the dispatcher can no longer disagree in the 90-98 % band.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

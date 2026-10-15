@@ -1,4 +1,4 @@
-// HIMMEL-4021: profile ceilings must reach the launchers; malformed input refuses.
+// profile ceilings must reach the launchers; malformed input refuses.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -18,7 +18,7 @@ const registry = () => ({
     design: { enable: [], contextBudget: 50000, contextMode: '1m', autocompact: 400000 },
   },
 });
-// HIMMEL-4619: the arming gate lints every brief (description + Prior art line).
+// the arming gate lints every brief (description + Prior art line).
 const BRIEF_HEAD = '---\ndescription: hermetic fixture\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n';
 function fixture(t, reg = registry()) {
   const dir = mkdtempSync(join(tmpdir(), 'profile-ceiling-'));

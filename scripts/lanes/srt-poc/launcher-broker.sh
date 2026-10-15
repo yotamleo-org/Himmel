@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launcher-broker.sh — HIMMEL-5287 POC. Runs OUTSIDE the sandbox, beside the
+# launcher-broker.sh — POC. Runs OUTSIDE the sandbox, beside the
 # launcher. Serves the two request kinds a sandboxed leg can make by dropping a
 # file in <scratch>/req/:
 #   <id>.push    one git-push argument per line -> push-wrapper.sh (leg branch fixed here)

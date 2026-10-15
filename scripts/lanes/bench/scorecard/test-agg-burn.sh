@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/test-agg-burn.sh - RED/GREEN suite for
-# agg-burn.sh (HIMMEL-2977 P0 script shipped in #689 with no paired test;
-# HIMMEL-2981). House check/contains style, per scripts/test-context-fill.sh.
+# agg-burn.sh. House check/contains style, per scripts/test-context-fill.sh.
 #
 # agg-burn.sh flags/branches covered:
 #   --since (required, exit 2 if missing/bad)
@@ -13,14 +12,14 @@
 #   role_of(): console / relay / leg / other, with relay taking precedence
 #     over a title that also matches *legN* (role-relay fixture)
 #   role_of() derives a leg from leg-identity.sh (a leg named ...-console-...
-#     is a leg) and an untitled session is `unattributed` (HIMMEL-3286)
+#     is a leg) and an untitled session is `unattributed`
 #   subagent parent-role lookup via ${f%/subagents/*}.jsonl
 #   leg-burn.sh failure -> FAILS + WARNING on stderr, run still exits 0
 #   unreadable transcript subtree/file -> exit 1 + stderr, no partial TOTAL
-#     (HIMMEL-2977: find errors were swallowed by `2>/dev/null | while`)
+#     (find errors must not be swallowed by `2>/dev/null | while`)
 #   TOTAL cost-eq line: price-weighted sum across every row/session
 #   TOTAL cost-eq line: mixed sub-1000 (exact) and >=1000 (leg-burn.sh
-#     0.1k-rounded) per-session magnitudes (HIMMEL-2991)
+#     0.1k-rounded) per-session magnitudes
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+; it runs under
 # git bash unchanged.
@@ -125,7 +124,7 @@ check "malformed: TOTAL line is all-zero with no surviving rows" \
     "$(printf '%s\n' "$MALFORMED_OUT" | grep '^TOTAL cache-read=')" \
     "TOTAL cache-read=0.0k cache-create=0.0k input=0.0k output=0.0k cost-eq=0.0k"
 
-# --- (i) HIMMEL-2987: TOTAL cost-eq line aggregates across sessions.
+# --- (i) TOTAL cost-eq line aggregates across sessions.
 # session-a: 2 calls x (input=1000,cache_read=3000,cache_creation=500,output=200)
 # session-b: 3 calls x (input=500,cache_read=1000,cache_creation=0,output=100)
 # -> input=3.5k cache-read=9.0k cache-create=1.0k output=0.7k
@@ -137,11 +136,10 @@ check "totals: cross-session TOTAL cost-eq line" \
     "$(printf '%s\n' "$TOTALS_OUT" | grep '^TOTAL cache-read=')" \
     "TOTAL cache-read=9.0k cache-create=1.0k input=3.5k output=0.7k cost-eq=9.2k"
 
-# --- (j) HIMMEL-2996: TOTAL sums mix sub-1000 (exact) and >=1000 per-session
+# --- (j) TOTAL sums mix sub-1000 (exact) and >=1000 per-session
 # magnitudes and must sum the EXACT raw counts (leg-burn.sh --raw), not
-# per-session 0.1k-rounded values - this is the RED HIMMEL-2991 could not
-# construct (its brute force over rounding boundaries found 0 mismatches;
-# this fixture is a targeted counter-example).
+# per-session 0.1k-rounded values - this fixture is a targeted counter-example
+# (a brute force over rounding boundaries found 0 mismatches).
 # session-small (1 call, all <1000, exact):        input=234  cache_read=567  cache_creation=89   output=345
 # session-large-exact (2 calls x 800/900/700/600):  input=1600 cache_read=1800 cache_creation=1400 output=1200
 # session-large-rounded (1 call, all >=1000):        input=2345 cache_read=3456 cache_creation=1234 output=4567
@@ -164,10 +162,10 @@ check "totals-mixed: TOTAL line sums exact raw counts, not per-session rounded" 
     "$(printf '%s\n' "$MIXED_OUT" | grep '^TOTAL cache-read=')" \
     "TOTAL cache-read=5.8k cache-create=2.7k input=4.2k output=6.1k cost-eq=38.7k"
 
-# --- (k) HIMMEL-2977: an unreadable subtree / transcript must FAIL LOUDLY, not
-# yield a successful-looking partial total. Before this fix `find ... 2>/dev/null
-# | while` swallowed find's permission errors AND its exit status, so a readable
-# sibling alone produced exit 0 and a TOTAL that silently omitted the rest (the
+# --- (k) an unreadable subtree / transcript must FAIL LOUDLY, not
+# yield a successful-looking partial total. A plain `find ... 2>/dev/null
+# | while` swallows find's permission errors AND its exit status, so a readable
+# sibling alone produces exit 0 and a TOTAL that silently omitted the rest (the
 # same shape as a coverage gap: a number that looks complete and is not).
 # The fixture makes ONE specific subtree/file unreadable (not the whole root), and
 # each case asserts its own precondition first: a blanket failure (read-only
@@ -214,7 +212,7 @@ unr_case "unreadable-subtree" "$UNR_ROOT/other" "other"
 # (k2) an unreadable transcript FILE: find lists it, grep on it fails silently.
 unr_case "unreadable-file" "$UNR_ROOT/other/session-b.jsonl" "session-b.jsonl"
 
-# --- (l) HIMMEL-3269 F1: the DEFAULT scope must union the worktree project dirs.
+# --- (l) the DEFAULT scope must union the worktree project dirs.
 # Legs run in worktrees, each with its own `<primary>--claude-worktrees-<slug>`
 # project dir, so a primary-only default silently drops the very session class
 # the program measures (253 dirs / 21-29 % of ctx x calls on 2026-09-20).
@@ -244,7 +242,7 @@ SKIP_OUT=$("$AGG_BURN" --since 2026-09-05T00:00:00Z 2>/dev/null)
 check_contains "coverage: an out-of-window transcript is counted as skipped with its reason" \
     "$(printf '%s\n' "$SKIP_OUT" | grep '^coverage:')" "out-of-window="
 
-# --- (h) HIMMEL-3286: role_of derives a leg from leg-identity.sh, and an untitled
+# --- (h) role_of derives a leg from leg-identity.sh, and an untitled
 # session is its own `unattributed` row, not folded into `other`. Reuses
 # test-scorecard.sh's role-console-slug fixture (a real leg name whose slug
 # contains `console`, a genuine console, an untitled and a titled non-participant).

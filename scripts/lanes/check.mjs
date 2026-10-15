@@ -1,4 +1,4 @@
-// scripts/lanes/check.mjs — HIMMEL-689 drift guard: keep the lane INVENTORY out of CLAUDE.md prose.
+// scripts/lanes/check.mjs — drift guard: keep the lane INVENTORY out of CLAUDE.md prose.
 // Config-only lanes are guarded (glm/gemini/codex/hermes); a bare "Opus" mention is invariant policy, allowed.
 const NEEDLES = ['spawn-glm', 'gemini-subagent', 'CR_PROFILE=paid', 'qwen3coder'];
 // The sanctioned pointer line is exempt. Match the backtick-quoted `/lanes` COMMAND token

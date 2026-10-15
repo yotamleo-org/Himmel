@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// HIMMEL-4013: scan scripts/ for every place that execs (or emits a command line
+// Scan scripts/ for every place that execs (or emits a command line
 // that execs) `claude`, and report the ones that apply no plugin profile.
 // A site is covered when, within WINDOW lines around it, there is a profile-
 // derived `--settings` (the literal flag, LEG_PROFILE_SETTINGS, or the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/bank-snapshot.sh — HIMMEL-1723 P2.6
+# scripts/lanes/bench/bank-snapshot.sh
 # Thin wrapper: runs `bun scripts/lanes/bank-status.ts` and pipes its output
 # into bank-snapshot-core.mjs, which does all the parsing/threshold logic
 # (kept there, not here, so it is unit-testable without a real bank read).

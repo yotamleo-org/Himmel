@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for await-glm-worker.sh (HIMMEL-883). Fixture sessions in a
+# Hermetic tests for await-glm-worker.sh. Fixture sessions in a
 # temp BRIDGE_ROOT; never touches the real glm-sessions root.
 set -u
 
@@ -95,22 +95,21 @@ check "slug-flip-to-done rc" 0 "$rc"
 bash "$SUT" --bogus x --max-mins 0 >/dev/null 2>&1
 check "unknown-arg rc" 2 $?
 
-# 10. value-taking flag with no value -> rc 2, not an infinite loop (HIMMEL-883
-# codex-adv). timeout-guard so a regression to `shift 2` hangs the check, not CI.
+# 10. value-taking flag with no value -> rc 2, not an infinite loop
+# timeout-guard so a regression to `shift 2` hangs the check, not CI.
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 5} bash "$SUT" --slug >/dev/null 2>&1
 check "missing-value rc" 2 $?
 
 # 11. unrecognized / partial status -> NOT terminal (rc 3). Guards against false
 # completion on a torn/corrupt meta write; only a known terminal status ends it
-# (HIMMEL-883 codex-adv round 4).
 d=$(mk_session "glm-t11-1000000000001" "partial-write-xyz")
 bash "$SUT" --session-dir "$d" --max-mins 0 >/dev/null 2>&1
 check "unknown-status-not-terminal rc" 3 $?
 
-# 12. HIMMEL-1347: --slug must NOT resolve to a prefix-SIBLING slug. A prior
+# 12. --slug must NOT resolve to a prefix-SIBLING slug. A prior
 # failed dispatch under a longer slug (glm-t12-signal-<epoch>) sorts AFTER the
 # live run lexically ('s' > '1' in the C locale) even though its epoch is
-# OLDER, so the pre-fix `-name "glm-<slug>-*" | sort | tail -1` returned the
+# OLDER, so `-name "glm-<slug>-*" | sort | tail -1` would return the
 # sibling's stale terminal status for a worker that is still running. Asserted
 # rc 3 (still-running), not rc 0: rc 0 here IS the bug.
 mk_session "glm-t12-signal-1000000000001" "timeout" >/dev/null
@@ -122,13 +121,13 @@ case "$out" in
     *) echo "ok   prefix-sibling-not-resolved output" ;;
 esac
 
-# 13. HIMMEL-1347: with only the sibling present, --slug must find NOTHING
+# 13. with only the sibling present, --slug must find NOTHING
 # rather than falling back to it (rc 2 = no session resolved, not rc 3).
 mk_session "glm-t13-signal-1000000000001" "done" >/dev/null
 bash "$SUT" --slug t13 --max-mins 0 >/dev/null 2>&1
 check "sibling-only-resolves-nothing rc" 2 $?
 
-# 14. HIMMEL-1347: ordering among genuine same-slug runs is NUMERIC on the
+# 14. ordering among genuine same-slug runs is NUMERIC on the
 # epoch, so a shorter (older) stamp never beats a longer (newer) one the way
 # lexical sort would. 999999999999 (12 digits) < 1000000000003 (13 digits).
 mk_session "glm-t14-999999999999" "done" >/dev/null
@@ -140,14 +139,14 @@ case "$out" in
     *) echo "ok   numeric-epoch-ordering output" ;;
 esac
 
-# 15. HIMMEL-1693: stop-worker.sh's annotate_halt writes status=stopped-by-parent
+# 15. stop-worker.sh's annotate_halt writes status=stopped-by-parent
 # and zeros pid when it actually signalled a worker. Must read as terminal
 # (rc 0), not fall through to the pid=0 liveness path and eventually STALL/timeout.
 d=$(mk_session "glm-t15-1000000000001" "stopped-by-parent")
 bash "$SUT" --session-dir "$d" --max-mins 0 >/dev/null 2>&1
 check "stopped-by-parent-terminal rc" 0 $?
 
-# 16. HIMMEL-1693: annotate_halt writes status=already-exited when the leader
+# 16. annotate_halt writes status=already-exited when the leader
 # was confirmed gone before any signal was sent. Also terminal (rc 0).
 d=$(mk_session "glm-t16-1000000000001" "already-exited")
 bash "$SUT" --session-dir "$d" --max-mins 0 >/dev/null 2>&1

@@ -1,4 +1,4 @@
-// scripts/lanes/tests/bench-run-batch.test.mjs — HIMMEL-1723 P2.9
+// scripts/lanes/tests/bench-run-batch.test.mjs
 // Exercises the batch driver's hard behaviors hermetically, via
 // BENCH_CLAUDE_CODEX_BIN pointed at fixtures/bench-fake-launcher.sh (no real
 // codex dispatch): a dispatch failing --retry-cap times lands
@@ -24,7 +24,7 @@ function makeTask(tasksDir, id, promptText) {
   writeFileSync(join(dir, 'prompt.md'), promptText);
 }
 
-// A codex-bank cache fixture as the probe would write it (HIMMEL-1678);
+// A codex-bank cache fixture as the probe would write it;
 // bank-status reads only this file for the codex bank.
 function codexBankCacheFile(bankDir, usedPct) {
   const path = join(bankDir, `codex-bank-${usedPct}.json`);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/run-batch.sh — HIMMEL-1723 P2.9
+# scripts/lanes/bench/run-batch.sh
 # The batch driver: P2.1-P2.8 build single-shot primitives (materialize one
 # fixture, dispatch one luna run, write one manifest, ...); nothing walks the
 # task x cell x rep matrix. This does.

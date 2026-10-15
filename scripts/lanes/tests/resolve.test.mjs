@@ -42,7 +42,7 @@ test('hermes-critics lane keys off the resolved install', () => {
   assert.ok(resolveLanes(REG, ctx({ installed: { hermes: true } })).some((l) => l.id === 'hermes-critics'));
   assert.ok(!resolveLanes(REG, ctx()).some((l) => l.id === 'hermes-critics'));
 });
-// HIMMEL-780 — these four rows used probe kind "installed" with tools buildCtx
+// These four rows used probe kind "installed" with tools buildCtx
 // never populates, so they could NEVER resolve; they key off PATH now.
 test('free-bank CLI lanes (copilot/agy/ollama) resolve via PATH (HIMMEL-780)', () => {
   const onPath = resolveLanes(REG, ctx({ paths: ['copilot', 'agy', 'ollama'] })).map((l) => l.id);
@@ -178,7 +178,7 @@ test('profile allowlist scope leaves lanes outside the wizard-owned subset on th
   );
 });
 
-// HIMMEL-1448: the persisted profileAllowlistScope is a FIXED install-time
+// The persisted profileAllowlistScope is a FIXED install-time
 // snapshot; a wizard-managed lane added or renamed in the registry afterwards
 // is outside it. The registry's own `profileManaged` marker keeps such a lane
 // constrained on a `lanes: none` install (empty allowlist).
@@ -245,7 +245,7 @@ test('HIMMEL-1448: a lanes.local.json patch cannot clear the registry profileMan
   assert.equal(merged.lanes[0].profileManaged, true);
   assert.deepEqual(resolveLanes(merged, ctx()).map((l) => l.id), []);
 });
-// HIMMEL-3927: the claude-tier exemption must not run before the marker check.
+// The claude-tier exemption must not run before the marker check.
 // A local patch may set `class` (only `profileManaged` is stripped), so a marked
 // lane patched to claude-tier would otherwise escape the allowlist.
 const markedRegistryLane = () => {
@@ -304,7 +304,7 @@ test('/lanes text distinguishes suppressed-by-profile while --json stays effecti
   assert.deepEqual(json.map((lane) => lane.id), ['core']);
 });
 
-// HIMMEL-1967 — a registry-declared dormant lane must show as dormant in the
+// A registry-declared dormant lane must show as dormant in the
 // /lanes text (not silently listed as if it were routable).
 test('/lanes text flags a dormant lane with its reason and opt-in env', () => {
   const dir = makeTmpDir('lanes-dormant-');
@@ -323,7 +323,7 @@ test('/lanes text flags a dormant lane with its reason and opt-in env', () => {
   assert.match(text, /\[DORMANT: test dormancy reason — opt in: SLEEPER_LANE_OK=1\]/);
 });
 
-// HIMMEL-1967 — every registry-declared dormant impl lane must actually render.
+// Every registry-declared dormant impl lane must actually render.
 test('every real registry dormant impl lane shows DORMANT in /lanes text', () => {
   // The resolver drops a lane whose probe fails BEFORE rendering, so a dormant lane
   // keyed on a machine-state probe is absent on a bare machine and this assertion
@@ -337,7 +337,7 @@ test('every real registry dormant impl lane shows DORMANT in /lanes text', () =>
   const skippedPathProbes = [];
   // Resolve the REAL CLI location via the OS (where/which) - no synthetic stubs
   // that would drift from how the probe and the dispatcher actually resolve
-  // binaries on this platform. Shared below by the HIMMEL-2573 re-check, so both
+  // binaries on this platform. Shared below by the re-check, so both
   // agree on what "on PATH" means instead of the assertion inventing a second
   // mechanism.
   const resolveCliDir = (cli) => {
@@ -388,7 +388,7 @@ test('every real registry dormant impl lane shows DORMANT in /lanes text', () =>
   }
   const text = execFileSync(process.execPath, [RESOLVER], { encoding: 'utf8', env: { ...process.env, ...forcedEnv } });
   assert.ok(dormantLanes.length > 0, 'expected at least one dormant impl lane in the real registry');
-  // HIMMEL-2573: a path-probed lane's CLI (codex-wsl's `wsl`; codex-exec's
+  // A path-probed lane's CLI (codex-wsl's `wsl`; codex-exec's
   // `codex`) can be genuinely absent here - wsl is Windows-only tooling and can
   // never resolve on Linux/macOS, and a CLI like codex may simply not be
   // installed on a given box or CI runner either. Neither is hardcoded to one
@@ -404,7 +404,7 @@ test('every real registry dormant impl lane shows DORMANT in /lanes text', () =>
       `lane '${l.id}': loud-skip flag (${flaggedAbsent}) disagrees with a fresh probe of '${l.probe.cli}' (absent=${reallyAbsent})`);
   }
   // A skipped lane is a real coverage gap, and it has to stay visible on a GREEN
-  // run: the pre-HIMMEL-2573 assertion made it loud only by FAILING, and the
+  // run: the earlier assertion made it loud only by FAILING, and the
   // reconciliation above only speaks when the flag and a fresh probe disagree.
   // CI runs this suite as a bare `node --test` (.github/workflows/ci.yml), and
   // node's default reporter passes a test file's stderr through (spec on node
@@ -422,7 +422,7 @@ test('every real registry dormant impl lane shows DORMANT in /lanes text', () =>
   }
 });
 
-// HIMMEL-747 — codex startup-health annotation for /lanes.
+// Codex startup-health annotation for /lanes.
 test('formatCodexHealth: healthy (rc 0) / no-codex (rc 2) / spawn-fail (rc -1) render nothing', () => {
   assert.equal(formatCodexHealth(0, ''), '');
   assert.equal(formatCodexHealth(2, ''), '');
@@ -442,7 +442,7 @@ test('formatCodexHealth: rc 1 but no WARN lines (defensive) → nothing', () => 
   assert.equal(formatCodexHealth(1, 'unexpected noise\n'), '');
 });
 
-// HIMMEL-1029 P1 — contextWindow formatting for the /lanes line.
+// contextWindow formatting for the /lanes line.
 test('fmtCtx: compacts M / k, drops non-positive + non-numeric', () => {
   assert.equal(fmtCtx(1000000), '1M');
   assert.equal(fmtCtx(272000), '272k');
@@ -471,7 +471,7 @@ test('every structured context in the registry is valid and carries no legacy de
       `${l.id} context.overflow must be explicit`);
   }
   assert.equal(REG.lanes.find((l) => l.id === 'glm').context.windowTokens, 1000000);
-  // HIMMEL-4881: Haiku 5.5 has a 1M window (Haiku 4.5 was 200k).
+  // Haiku 5.5 has a 1M window (Haiku 4.5 was 200k).
   assert.deepEqual(REG.lanes.find((l) => l.id === 'haiku').context, { windowTokens: 1000000, overflow: 'hard-limit' });
   for (const id of ['claudex', 'codex', 'codex-exec', 'codex-wsl', 'hermes-oneshot']) {
     assert.deepEqual(REG.lanes.find((l) => l.id === id).context, { windowTokens: 900000, overflow: 'compact-continue' });
@@ -509,7 +509,7 @@ test('every quota access path has an explicit type and window structure', () => 
   }
 });
 
-// HIMMEL-1913 — unknown per-lane overlay keys must not fail silently.
+// Unknown per-lane overlay keys must not fail silently.
 test('unknownOverlayKeys: reports drop as unknown', () => {
   const base = { lanes: [{ id: 'glm', probe: { kind: 'env', name: 'ZAI_API_KEY' } }] };
   const local = { lanes: [{ id: 'glm', drop: true }] };
@@ -536,7 +536,7 @@ test('unknownOverlayKeys: derives known keys from base lane data', () => {
   const local = { lanes: [{ id: 'custom', novelField: 'local value' }] };
   assert.deepEqual(unknownOverlayKeys(base, local), []);
 });
-// HIMMEL-758 — mergeLocalOverlay(): the true per-lane lanes.local.json overlay
+// mergeLocalOverlay(): the true per-lane lanes.local.json overlay
 // `himmelctl config` writes through set-lane-override.mjs.
 test('mergeLocalOverlay: no local overrides -> base returned unchanged (same lane objects)', () => {
   const base = { lanes: [{ id: 'a', label: 'A', probe: { kind: 'always' } }] };
@@ -591,7 +591,7 @@ test('mergeLocalOverlay: unknown top-level local keys cannot shadow the base reg
   assert.ok(!Object.prototype.hasOwnProperty.call(merged, 'typoedPolicy'));
 });
 
-// HIMMEL-3059 S3 — loadRegistry() must find lanes.local.json under the
+// loadRegistry() must find lanes.local.json under the
 // himmelctl cache dir when a read-only install prefix couldn't take the
 // in-tree overlay write. No in-tree scripts/lanes/lanes.local.json exists in
 // this checkout, so a bare, un-pinned LANES_REGISTRY run against the real
@@ -661,8 +661,7 @@ test('applyLaneOverride: force-on extends the scoped profile allowlist before re
 });
 test('applyLaneOverride: force-on extends a LEGACY scope-less allowlist too', () => {
   // No profileAllowlistScope: legacy global semantics — the allowlist
-  // constrains every lane, so the force-on consent must extend it as well
-  // (CR round 4 [codex-1]).
+  // constrains every lane, so the force-on consent must extend it as well.
   const base = {
     lanes: [
       { id: 'selected', class: 'impl', probe: { kind: 'always' } },

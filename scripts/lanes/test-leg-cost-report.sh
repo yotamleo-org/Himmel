@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/test-leg-cost-report.sh - suite for leg-cost-report.sh (HIMMEL-4217).
+# scripts/lanes/test-leg-cost-report.sh - suite for leg-cost-report.sh.
 # Hermetic: a fixture ledger in a scratch dir (LEG_COST_LEDGER), never the live
 # handover root.
 set -uo pipefail

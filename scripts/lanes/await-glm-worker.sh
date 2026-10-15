@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# await-glm-worker.sh - canonical bounded await for a GLM lane worker (HIMMEL-883).
+# await-glm-worker.sh - canonical bounded await for a GLM lane worker.
 #
 # WHY: dispatchers repeatedly ended their turn promising "a background monitor
 # will re-invoke me when the worker finishes"; that monitor can die silently
@@ -17,21 +17,21 @@
 #                  (BRIDGE_ROOT or ~/.claude/handover/bridge, + /glm-sessions)
 #   --max-mins     how long THIS invocation polls before giving up (default 8;
 #                  keep <= 8 so a Bash-tool call stays under its 10-min cap)
-#   --stall-mins   HIMMEL-1378: no-output threshold before declaring a
+#   --stall-mins   no-output threshold before declaring a
 #                  "running" session STALLED (default 6; see exit code 4)
 #
 # Exit codes:
 #   0  worker reached a terminal status (meta.json + outbox tail printed)
 #   2  no session dir / meta.json found
 #   3  worker still running when the window closed (caller loops: re-invoke)
-#   4  STALLED (HIMMEL-1378): status is "running", the recorded pid CANNOT be
+#   4  STALLED: status is "running", the recorded pid CANNOT be
 #      probed (absent, 0, or the probe cannot answer), and no liveness signal
 #      has moved for >= --stall-mins. A pid CONFIRMED alive never reads
-#      STALLED (HIMMEL-1573) — see the fourth-signal comment in the loop.
+#      STALLED — see the fourth-signal comment in the loop.
 #      Exits the poll loop EARLY (before --max-mins) instead of burning the
 #      full window blind — the caller decides whether to keep waiting
 #      (re-invoke) or escalate/retry. Never kills the worker.
-#   5  PHANTOM (HIMMEL-1378): status is "running" but the recorded pid is
+#   5  PHANTOM: status is "running" but the recorded pid is
 #      confirmed DEAD — the process exited/crashed without spawn-glm.ts ever
 #      writing a terminal meta.json. Distinct from 4: this one is not
 #      recoverable by waiting.
@@ -92,7 +92,7 @@ pid_alive() {
             # same nonzero rc. Only ESRCH is confirmed death; EPERM must read
             # as unknown (rc 2), or an active-but-unprobeable worker gets
             # declared PHANTOM. Same message-parse as proc-tree.sh's
-            # proc_tree_process_alive (CR round 1, PR #1603).
+            # proc_tree_process_alive.
             err=$(LC_ALL=C kill -0 "$pid" 2>&1 >/dev/null)
             case "$err" in
                 *"No such process"*) return 1 ;;
@@ -120,7 +120,7 @@ iso_to_epoch() {
 
 # Newest regular-file mtime under $1 as whole epoch seconds, .git excluded.
 #
-# HIMMEL-1614: `find -printf` is a GNU findutils extension. On BSD/macOS find
+# `find -printf` is a GNU findutils extension. On BSD/macOS find
 # it is an unknown primary, so the leg used to error into 2>/dev/null, return
 # nothing, and the watchdog SILENTLY degraded to two liveness signals with no
 # indication. newest_mtime runs whichever path matches MTIME_TOOL (detected
@@ -157,7 +157,7 @@ fi
 resolve_session_dir() {
     # newest glm-<slug>-<epoch> dir, where <epoch> is a millisecond stamp.
     #
-    # HIMMEL-1347: the `*` in the find -name pattern also matches any LONGER
+    # the `*` in the find -name pattern also matches any LONGER
     # slug sharing this one as a prefix, so `--slug foo` matched
     # `glm-foo-signal-<epoch>` (a different dispatch) as well as `glm-foo-<epoch>`.
     # In the C locale 's' > '1', so the prefix-sibling sorted LAST and won the
@@ -187,7 +187,7 @@ GLM_SESSIONS_ROOT="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/glm-sessions"
 
 deadline=$(( $(date +%s) + max_mins * 60 ))
 
-# HIMMEL-1614: detect the mtime-leg toolchain ONCE (not per-poll). `find
+# detect the mtime-leg toolchain ONCE (not per-poll). `find
 # -printf` is a GNU findutils extension; on BSD/macOS find it is an unknown
 # primary, so the leg used to error into 2>/dev/null and silently degrade the
 # watchdog to two liveness signals. Probe the REAL capability (not
@@ -217,12 +217,12 @@ while :; do
         # exact strand (premature terminal) the watchdog exists to prevent.
         # Whitespace-tolerant because a producer reformat must not silently
         # break detection (producer currently emits JSON.stringify(...,null,2)).
-        # HIMMEL-1641: done_escalated (F1, a finished worker hitting the
+        # done_escalated (F1, a finished worker hitting the
         # lane's structural git-push block) and killed-by-caller (F2, a
         # dispatcher-side SIGTERM finalize) are both terminal — without them
         # here a healthy/correctly-finalized worker reads as still-running and
         # burns the rest of this poll's window instead of completing at once.
-        # HIMMEL-1693: stop-worker.sh's annotate_halt writes stopped-by-parent
+        # stop-worker.sh's annotate_halt writes stopped-by-parent
         # (signalled) / already-exited (confirmed gone before any signal) and
         # always zeros pid alongside them — without both listed here, a halted
         # worker's pid=0 falls through to the liveness check below (unprobeable)
@@ -239,7 +239,7 @@ while :; do
             exit 0
         fi
         # not terminal yet (still "running", or an unrecognized/torn status).
-        # HIMMEL-1378 process-liveness check: gated on "started_at" being
+        # process-liveness check: gated on "started_at" being
         # present so a bare/minimal fixture meta.json (no started_at) is
         # untouched by this block and falls straight to the pre-existing
         # deadline check below, unchanged.
@@ -259,7 +259,7 @@ while :; do
                 fi
                 elapsed=$(( $(date +%s) - last_epoch ))
                 stall_secs=$(( stall_mins * 60 ))
-                # HIMMEL-1596 Task 1.2: last_output_at ALONE lies in one
+                # last_output_at ALONE lies in one
                 # direction. A worker that commits early and leaves a clean
                 # tree emits nothing further, so the better-behaved it is, the
                 # more it reads STALLED -- the same false-positive class this
@@ -283,7 +283,7 @@ while :; do
                 # files still reads alive. A max cannot distinguish "busy" from
                 # "progressing"; the hard deadline (rc 3) is the backstop.
                 #
-                # HIMMEL-1573: process liveness is the FOURTH signal, and it
+                # process liveness is the FOURTH signal, and it
                 # short-circuits. The three signals above/below are all
                 # WRITE-side (recorded output, worktree mtime, HEAD commit),
                 # so none can see a worker in its READ/PLAN phase — measured
@@ -295,13 +295,13 @@ while :; do
                 # is reserved for a pid that cannot be probed (absent, 0, or
                 # probe failure) with every write-side signal stale.
                 if [ "$palive" -ne 0 ] && [ "$elapsed" -ge "$stall_secs" ]; then
-                    # HIMMEL-1616: prefer the worker's own minted worktree.
+                    # prefer the worker's own minted worktree.
                     # The legacy `worktree` key records the DISPATCH CWD, so
                     # walking it sweeps every sibling worktree in the checkout
                     # and a SIBLING worker's writes read as THIS worker's
                     # liveness — a false ALIVE, the dangerous direction. The
                     # fallback keeps a meta.json written by an older spawner
-                    # working (same optional-fields contract as HIMMEL-1596).
+                    # working (same optional-fields contract as the fields above).
                     wt=$(extract_json_str "$d/meta.json" worker_worktree)
                     [ -n "$wt" ] || wt=$(extract_json_str "$d/meta.json" worktree)
                     br=$(extract_json_str "$d/meta.json" branch)
@@ -310,7 +310,7 @@ while :; do
                         # that are not worker progress, and the commit signal
                         # below covers real git activity precisely.
                         #
-                        # HIMMEL-1614: newest_mtime runs the portable path for
+                        # newest_mtime runs the portable path for
                         # this host (MTIME_TOOL, detected once at startup). When
                         # the leg has NO usable toolchain it emits ONE stderr
                         # note (mt_warned) and contributes nothing, rather than

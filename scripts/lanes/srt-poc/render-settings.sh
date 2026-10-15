@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# render-settings.sh — HIMMEL-5287 POC. Print one-line srt settings JSON for a
-# leg. Profiles (operator rulings, HIMMEL-5286 decisions 1-2 + extensions):
+# render-settings.sh — POC. Print one-line srt settings JSON for a
+# leg. Profiles (operator rulings):
 #   impl      base allow list only (github, npm, PyPI, model gateway)
 #   research  base list + a curated docs/reference list; writes still confined to the same roots
 # Writable roots are always the leg worktree, its scratchpad and the handover
@@ -34,7 +34,7 @@ done
 printf '{"network":{"allowedDomains":[%s],"deniedDomains":[]},' "$domains"
 printf '"filesystem":{"denyRead":["%s/.ssh","%s/.config/gh","%s/.git-credentials","%s/.netrc"],' "$home" "$home" "$home" "$home"
 printf '"allowWrite":["%s","%s","%s"' "$worktree" "$scratch" "$handover"
-# srt takes no globs in allowWrite on Linux (HIMMEL-5400): a launcher that needs
+# srt takes no globs in allowWrite on Linux: a launcher that needs
 # a writable HOME passes one scratch dir here, the only root beyond the three
 [ -z "$scratch_home" ] || printf ',"%s"' "$scratch_home"
 printf '],"denyWrite":[]}}\n'

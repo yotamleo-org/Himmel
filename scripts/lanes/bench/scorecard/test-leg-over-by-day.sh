@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/test-leg-over-by-day.sh - RED/GREEN suite for
-# leg-over-by-day.sh (HIMMEL-2977 P0 script shipped in #689 with no paired
-# test; HIMMEL-2981). House check/contains style, per
+# leg-over-by-day.sh (a P0 script shipped with no paired
+# test). House check/contains style, per
 # scripts/test-context-fill.sh.
 #
 # leg-over-by-day.sh flags/branches covered:
@@ -100,7 +100,7 @@ check "threshold-k custom: coverage triple sits beside the table (HIMMEL-3269)" 
 # --- (h) exclusion: console/relay/other-titled and subagent transcripts are
 # never bucketed; the two leg-titled transcripts survive - one in the old
 # `...legN<k>...` scheme, one in the current `<TICKET>-N<k>-<slug>` scheme
-# (HIMMEL-3269: the legN pattern alone matched 0 of the current legs)
+# (the legN pattern alone matched 0 of the current legs)
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/leg-over-by-day/exclusion"
 EXCLUSION_OUT=$("$OVER_BY_DAY" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "exclusion: exits 0" "$?" "0"
@@ -112,7 +112,7 @@ check "exclusion: coverage names what was skipped and why" \
     "$(printf '%s\n' "$EXCLUSION_OUT" | grep '^coverage:')" \
     "coverage: roots=1 discovered=6 parsed=2 skipped=4 (not-leg=3 subagent=1)"
 
-# --- (h2) HIMMEL-3286: a leg whose slug contains `console` is bucketed as a leg,
+# --- (h2) a leg whose slug contains `console` is bucketed as a leg,
 # and an untitled session is named `unattributed`, not folded into `not-leg`.
 # Reuses test-scorecard.sh's role-console-slug fixture: the N186 leg is the one
 # parsed session; the genuine console and the titled non-participant are not-leg.
@@ -147,7 +147,7 @@ check_exit "malformed: a skipped transcript still exits 0" "$MALFORMED_EXIT" "0"
 
 # --- (l) unreadable: a listed-but-unreadable transcript is named `unreadable` in
 # the coverage line, not misfiled as an intentional `not-leg` exclusion
-# (HIMMEL-3269 CR round 1: title_of suppresses read errors, so an empty title
+# (title_of suppresses read errors, so an empty title
 # looked like a non-leg session). Skipped when chmod cannot make a file
 # unreadable (running as root).
 UNR_DIR=$(mktemp -d "${TMPDIR:-/tmp}/lod-unreadable.XXXXXX") || { echo "FAIL - unreadable: mktemp -d"; exit 1; }

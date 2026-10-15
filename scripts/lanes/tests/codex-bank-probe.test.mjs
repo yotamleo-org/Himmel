@@ -1,4 +1,4 @@
-// scripts/lanes/tests/codex-bank-probe.test.mjs — HIMMEL-1678
+// scripts/lanes/tests/codex-bank-probe.test.mjs
 // Fixture-driven tests for the codex bank probe + TTL'd cache read. No test
 // spawns the real `codex` binary: the probe e2e tests drive it against
 // fixtures/codex-appserver-stub.mjs via CODEX_BANK_PROBE_CMD, and everything
@@ -19,7 +19,7 @@ const PROBE = join(TEST_DIR, '..', 'codex-bank-probe.ts');
 const BANK_STATUS = join(TEST_DIR, '..', 'bank-status.ts');
 const STUB = join(TEST_DIR, 'fixtures', 'codex-appserver-stub.mjs');
 
-// Same guard as bank-status.test.mjs (HIMMEL-1737): public CI runs plain
+// Same guard as bank-status.test.mjs: public CI runs plain
 // `node --test` with no bun on PATH. The CLI/probe tests below spawn bun, so
 // probe once and skip just those, named; the pure-function tests keep running.
 const BUN_SKIP = (() => {
@@ -32,7 +32,7 @@ const BUN_SKIP = (() => {
 })();
 
 // The two-limit cache the probe would have written: a weekly primary and a
-// 5h secondary with DIFFERENT reset instants (HIMMEL-1725).
+// 5h secondary with DIFFERENT reset instants.
 function twoLimitPayload(nowMs) {
   return {
     limits: [
@@ -289,7 +289,7 @@ test('probe: bounded handshake against a STUB app-server writes the cache AND ki
   });
   assert.equal(run.status, 0, `probe failed: ${run.stderr}`);
   assert.match(run.stdout, /plan=prolite/);
-  // HIMMEL-1956 / PR #1751: reaping fires from the finally, the signal
+  // Reaping fires from the finally, the signal
   // handlers AND the process-'exit' backstop, so it used to run twice on
   // every clean run -- the second pass landing on an already-empty group.
   // A successful probe must say nothing about failing to reap anything.
@@ -301,7 +301,7 @@ test('probe: bounded handshake against a STUB app-server writes the cache AND ki
     { limitId: 'codex/primary', usedPercent: 20, windowDurationMins: 10080 },
     { limitId: 'codex_bengalfox/primary', usedPercent: 0, windowDurationMins: 10080 },
   ]);
-  // Both limits are persisted with their OWN reset instant (HIMMEL-1725).
+  // Both limits are persisted with their OWN reset instant.
   assert.notEqual(payload.limits[0].resetsAt, payload.limits[1].resetsAt);
   assert.ok(Number.isFinite(Date.parse(payload.capturedAt)), 'capturedAt must be a parseable instant');
   // GUARANTEED KILL, success path: the stub never exits on its own, so it can

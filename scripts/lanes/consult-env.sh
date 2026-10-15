@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# scripts/lanes/consult-env.sh - sourced, never run (HIMMEL-4152). The runtime
+# scripts/lanes/consult-env.sh - sourced, never run. The runtime
 # a --consult launch runs on: a pinned PATH, an absolute bash, and the list of
 # bash startup variables to strip, so nothing the caller exported picks the
 # interpreter, the claude binary or code that runs before either.
@@ -43,7 +43,7 @@ consult_pin_bash() {
 
 # consult_scrub_args: set CONSULT_SCRUB to the `env -u` arguments that drop
 # every bash startup input (the startup files, the option imports, the xtrace
-# prompt), the loader and node preload inputs (HIMMEL-4159: LD_PRELOAD,
+# prompt), the loader and node preload inputs (LD_PRELOAD,
 # LD_LIBRARY_PATH, LD_AUDIT, NODE_OPTIONS) and every exported function from the
 # environment. Read from the raw environment, not `declare -Fx`, so it also
 # catches a function a `bash -p` did not import. A value line that merely looks

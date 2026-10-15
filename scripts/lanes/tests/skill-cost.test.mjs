@@ -1,5 +1,5 @@
 // scripts/lanes/tests/skill-cost.test.mjs
-// HIMMEL-1461 phase 0 — hermetic coverage for the UNCAPPED skill-listing
+// hermetic coverage for the UNCAPPED skill-listing
 // measurement, especially Windows junctions (the common user-skill shape).
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -407,7 +407,7 @@ test('vendoredRoot does not search above the repo root (CR finding, PR #777)', (
   rmSync(join(CWD, 'stray'), { recursive: true });
 });
 
-// HIMMEL-3064 CR round 1 (PR #777): the plugin-root VENDORED.md exempted every
+// The plugin-root VENDORED.md exempted every
 // file under it, including the himmel-authored skills the SAME file declares as
 // `local=`. Live shape: lean-skills/VENDORED.md says `local=skills/context7-mcp`
 // and that skill's 265-char description sailed past the 120-char cap.
@@ -472,11 +472,11 @@ test('lintPositionalArgs refuses a bare $<digit> in ANY command\'s fenced code, 
     'Talking about $3 in prose, outside any fence, is fine.',
   ].join('\n'));
 
-  // HIMMEL-2051 CR round 1 (codex-1): a command with NO argument-hint/$ARGUMENTS
+  // A command with NO argument-hint/$ARGUMENTS
   // is exactly as vulnerable as one that declares them — pr-check.md itself is
   // the proof, and the panel additionally found a live case in a vendored
   // plugin (marketplace/plugins/claude-hud/commands/setup.md, excluded from
-  // the real gates because it's byte-pinned, HIMMEL-718). The lint no longer
+  // the real gates because it's byte-pinned). The lint no longer
   // gates on argument-hint at all, so this file is refused just like the one
   // above, and callers exclude what they must not touch.
   const noArgHint = join(dir, 'no-arg-hint.md');
@@ -490,7 +490,7 @@ test('lintPositionalArgs refuses a bare $<digit> in ANY command\'s fenced code, 
     '```',
   ].join('\n'));
 
-  // ~~~ fences (codex-2 round 1): the fence detector must not be backtick-only.
+  // ~~~ fences: the fence detector must not be backtick-only.
   const tildeFence = join(dir, 'tilde-fence.md');
   write(tildeFence, [
     '---',
@@ -502,7 +502,7 @@ test('lintPositionalArgs refuses a bare $<digit> in ANY command\'s fenced code, 
     '~~~',
   ].join('\n'));
 
-  // Nested fence lengths (codex-2 round 2): a ``` example nested inside an
+  // Nested fence lengths: a ``` example nested inside an
   // outer ```` fence must not falsely close the outer fence, and the
   // genuinely-closing final ```` must end it — the $4 inside stays reachable.
   const nestedFence = join(dir, 'nested-fence.md');
@@ -519,7 +519,7 @@ test('lintPositionalArgs refuses a bare $<digit> in ANY command\'s fenced code, 
     '````',
   ].join('\n'));
 
-  // \$N backslash-escaping (codex-1 round 2): Claude Code's own substitution
+  // \$N backslash-escaping: Claude Code's own substitution
   // regex skips it, but it is not valid awk syntax inside a single-quoted
   // program either way, so the lint refuses it exactly like the bare form.
   const escapedDigit = join(dir, 'escaped-digit.md');
@@ -533,7 +533,7 @@ test('lintPositionalArgs refuses a bare $<digit> in ANY command\'s fenced code, 
     '```',
   ].join('\n'));
 
-  // Closing fence with trailing content (codex-1 round 3): a same-length,
+  // Closing fence with trailing content: a same-length,
   // same-char marker line followed by other text (a literal "```output"
   // shown as an example) must NOT close the real fence — only a marker
   // line followed by nothing but whitespace may close it.
@@ -549,10 +549,10 @@ test('lintPositionalArgs refuses a bare $<digit> in ANY command\'s fenced code, 
     '```',
   ].join('\n'));
 
-  // Over-indented close (codex-1 round 4): a fence-looking line indented
+  // Over-indented close: a fence-looking line indented
   // MORE than the opener is CommonMark content, not a close — treating it as
   // a close would end tracking early and let the real $8 after it evade the
-  // lint (the false negative round 4 named).
+  // lint (a false negative).
   const overIndentedClose = join(dir, 'over-indented-close.md');
   write(overIndentedClose, [
     '---',
@@ -566,7 +566,7 @@ test('lintPositionalArgs refuses a bare $<digit> in ANY command\'s fenced code, 
   ].join('\n'));
 
   // Deeply-indented open+close PAIR at the SAME indent (positive control,
-  // round 4 rebuttal): this corpus's real numbered-list fences look exactly
+  // positive control): this corpus's real numbered-list fences look exactly
   // like this and must still be recognized end to end.
   const deepIndentPair = join(dir, 'deep-indent-pair.md');
   write(deepIndentPair, [

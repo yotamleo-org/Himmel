@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# scripts/lanes/leg-pr-open.sh - HIMMEL-3031 (ruling H2, HIMMEL-3026).
+# scripts/lanes/leg-pr-open.sh
 #
 # WHY. A leg's inline `gh pr create --title … --body "<markdown>"` was
-# intermittently denied with `Stage 2 classifier error` (HIMMEL-3020), and an
+# intermittently denied with `Stage 2 classifier error`, and an
 # immediate retry escalated to `[Out-of-Place Publication]`. The operator's
 # read: the classifier reacts to the PR body TEXT carried inline in the Bash
 # command a leg types (multi-paragraph markdown, `diff --stat` blocks,
@@ -35,7 +35,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Forge-dispatch seam: forge_pr_find_open / forge_pr_create / forge_pr_set_body
 # / forge_detect / forge_repo_nwo route to the github or bitbucket backend per
-# the repo's origin (HIMMEL-326) — never call gh/bb directly from here.
+# the repo's origin — never call gh/bb directly from here.
 # shellcheck source=../lib/forge.sh
 # shellcheck disable=SC1091
 . "$HERE/../lib/forge.sh"
@@ -76,7 +76,7 @@ if [ -z "$body" ]; then
     exit 1
 fi
 
-# HIMMEL-3616: the squash merge makes this TITLE main's commit subject, so
+# The squash merge makes this TITLE main's commit subject, so
 # refuse a type-less one here rather than let it reach `gh pr create`/`pr
 # edit` at all — check-pr-title.sh runs the SAME regex check-commit-msg.sh
 # enforces on commits.
@@ -84,7 +84,7 @@ if ! "$HERE/../lib/check-pr-title.sh" "$title"; then
     exit 1
 fi
 
-# HIMMEL-3572: compute the leg-burn line HERE, inside the script, never as a
+# Compute the leg-burn line HERE, inside the script, never as a
 # leg-typed ad-hoc `leg-burn.sh ...` command — that shape was classifier-denied
 # [Session Transcript Tampering]. A failure to resolve or run it is a WARN
 # plus a `leg-burn: unavailable (<reason>)` line; it never fails the PR open.
@@ -126,9 +126,9 @@ compute_leg_burn_line() {
     local raw
     if ! raw=$("$HERE/leg-burn.sh" --profile "$profile" "${transcript:-$session}" 2>&1); then
         echo "WARN leg-pr-open: leg-burn.sh failed for '${transcript:-$session}': $raw" >&2
-        # HIMMEL-3572 (CodeRabbit): never publish the local transcript path
+        # Never publish the local transcript path
         # into the PR body — it carries the operator's home dir, username and
-        # session ID (the HIMMEL-1352 leak class). The full path stays in the
+        # session ID. The full path stays in the
         # WARN line above (stderr only); the PR body gets a generic reason.
         if [ -n "$session" ]; then
             echo "leg-burn: unavailable (leg-burn.sh failed for session '$session')"
@@ -154,7 +154,7 @@ compute_leg_burn_line() {
 }
 
 burn_line=$(compute_leg_burn_line)
-# pipefail-ok: no -q here on purpose (HIMMEL-3572 known-findings
+# pipefail-ok: no -q here on purpose (known-findings
 # [grep-q-pipe-under-pipefail]) — grep reads the whole (small) body instead of
 # exiting early, so the printf producer never takes a SIGPIPE.
 existing_burn_line=$(printf '%s\n' "$body" | grep '^leg-burn:' || true)
@@ -171,7 +171,7 @@ if [ "$branch" = "main" ]; then
     exit 1
 fi
 
-# HIMMEL-4462: the ticket this title cites must be the ticket this branch is
+# The ticket this title cites must be the ticket this branch is
 # for — a stale cwd must never publish (or overwrite) another ticket's PR.
 ticket_key_re='\[([A-Za-z][A-Za-z0-9]*-[0-9]+)\]'
 title_key=""
@@ -179,7 +179,7 @@ if [[ $title =~ $ticket_key_re ]]; then title_key="${BASH_REMATCH[1]}"; fi
 if [ -n "$title_key" ]; then
     branch_lc=$(printf '%s' "$branch" | tr '[:upper:]' '[:lower:]')
     key_lc=$(printf '%s' "$title_key" | tr '[:upper:]' '[:lower:]')
-    # Token boundaries: himmel-1 must not match himmel-10 or xhimmel-1.
+    # Token boundaries: proj-1 must not match proj-10 or xproj-1.
     if ! [[ $branch_lc =~ (^|[^a-z0-9])"$key_lc"([^0-9]|$) ]]; then
         echo "ERR leg-pr-open: title cites $title_key but branch '$branch' does not carry it — wrong cwd?" >&2
         exit 1
@@ -215,7 +215,7 @@ existing_pr=$(printf '%s\n' "$existing_pr" | head -n 1)
 
 if [ -z "$existing_pr" ]; then
     # Capture stdout (the PR URL) and stderr (diagnostics, plus the
-    # HIMMEL-1924 CodeRabbit-trigger confirmation) into SEPARATE streams —
+    # CodeRabbit-trigger confirmation) into SEPARATE streams —
     # merging them with `2>&1` let a stderr line race the URL for "first
     # line" on some hosts/gh versions. On failure, diagnostics come from the
     # captured stderr file; on success it is discarded.
@@ -258,7 +258,7 @@ else
     esac
 fi
 
-# HIMMEL-4419: an open PR moves the ticket in the title's first [KEY] to In
+# An open PR moves the ticket in the title's first [KEY] to In
 # Review. Best-effort: leg-jira-status.sh warns and exits 0 on any Jira
 # failure; LEG_JIRA_STATUS=0 opts out. Its stdout is kept off this script's
 # one-line `PR ...` contract.

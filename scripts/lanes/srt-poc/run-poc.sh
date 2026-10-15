@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016
-# run-poc.sh — HIMMEL-5287 POC driver. Run on a throwaway test VM guest, never
+# run-poc.sh — POC driver. Run on a throwaway test VM guest, never
 # the station. Builds a scratch repo, a VM-local bare origin outside every
 # writable root and a dummy credential file, then runs leg-battery.sh under
 # `srt claude` (a stub `claude` execs the battery, no model, no gateway).

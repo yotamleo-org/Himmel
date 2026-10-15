@@ -1,5 +1,5 @@
 // scripts/lanes/profile-context-probe.mjs
-// HIMMEL-2189 — measured half of the profile context-budget architecture
+// Measured half of the profile context-budget architecture
 // tests. Spawns REAL `claude` calls (billed, subject to the 5h/weekly bank —
 // see scripts/lib/bank-preflight.sh), so this file is NEVER part of the CI
 // node --test glob. It exists to (a) prove plugin injection actually landed
@@ -13,7 +13,7 @@
 //
 // Exit codes: 0 all profiles pass, 1 any profile fails, 3 bank-preflight skip.
 //
-// Ledger default (HIMMEL-2189 corrective, 2026-08-28): a casual/dev invocation
+// Ledger default: a casual/dev invocation
 // of this script must NEVER write to the live flow-runs ledger — a FAILED row
 // there pages the operator (HimmelFlowRunError), and a red row from local
 // iteration/debugging is not an incident. So the DEFAULT is no ledger write at
@@ -44,7 +44,7 @@ export { runtimeNamesOf };
 
 // The SAME interpreter resolution the wired hooks get. On Windows an unresolved
 // shell can be the WSL launcher or a 0-byte WindowsApps alias, so we need the
-// resolved one to reliably run bank-preflight.sh (HIMMEL-2257).
+// resolved one to reliably run bank-preflight.sh.
 const { resolveBash } = createRequire(import.meta.url)('../hooks/run-hook-with-bash.js');
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -71,7 +71,7 @@ export function findResultEvent(events) {
   return events.find((e) => e?.type === 'result') ?? null;
 }
 
-// First-turn context tokens per the measured schema (HIMMEL-2189 discovery):
+// First-turn context tokens per the measured schema:
 // input + cache_creation + cache_read. Returns null when the result event or
 // its usage block is missing (spawn failure / timeout / unexpected shape).
 export function firstTurnTokens(resultEvent) {
@@ -84,20 +84,20 @@ export function firstTurnTokens(resultEvent) {
 
 // The plugin@marketplace id -> bare plugin `name` (the namespace prefix a
 // skill/slash_command/`plugin:<name>:` MCP server is keyed by — see the
-// init-event schema note in the HIMMEL-2189 discovery probe). Not unique
+// init-event schema note in the discovery probe). Not unique
 // across marketplaces (two catalog entries can share a name), which is fine
 // here: this is a membership check, not an identity check.
-// HIMMEL-4068: `names` (runtimeNamesOf) maps an id to its plugin.json name, which
+// `names` (runtimeNamesOf) maps an id to its plugin.json name, which
 // is the real namespace under strict:true; absent = the entry name.
 function pluginName(id, names) {
   return names?.get(id) ?? id.split('@')[0];
 }
 
-// HIMMEL-4072: builtin and account-synced plugins come from Claude Code and the
+// Builtin and account-synced plugins come from Claude Code and the
 // claude.ai account; a --settings profile cannot disable them, so they are
 // environment (reported, never failed), not bloat. anthropic-skills arrives
 // synced but has no plugins[] entry to derive from.
-// HIMMEL-4018: a skills-dir plugin (~/.claude/skills) is NOT environment: it is
+// A skills-dir plugin (~/.claude/skills) is NOT environment: it is
 // ours to remove, and until it is a plugin no profile can control it, so
 // userScopeProblems fails it. Its namespace stays allowed so it is reported once.
 const ENVIRONMENT_SOURCE = /@(builtin|synced)$/;
@@ -111,7 +111,7 @@ export function environmentSources(initEvent, enabledIds) {
   return environmentPlugins(initEvent, enabledIds).map((p) => p.source).sort();
 }
 
-// HIMMEL-4018: skill dirs under <configDir>/skills load in every session, bare
+// Skill dirs under <configDir>/skills load in every session, bare
 // included, whatever enabledPlugins says. Dotdirs (.trash), files and `synced`
 // (Claude Code's own claude.ai account-sync cache, environment) are not ours.
 // A symlink to a skill dir (a manual link) loads too, so it is followed with
@@ -186,7 +186,7 @@ export function namespaceExtras(initEvent, enabledIds, runtimeNames) {
   return extras;
 }
 
-// HIMMEL-4012: an enabled plugin that fails to load still shows in the
+// An enabled plugin that fails to load still shows in the
 // resolved set, so "enabled" proves nothing. Each role-required plugin must
 // expose at least one skill, slash command or agent namespaced `<name>:` in the
 // init event. Returns one problem string per plugin that exposes nothing.
@@ -196,7 +196,7 @@ export function roleCoverageProblems(initEvent, requiredIds, runtimeNames) {
     const m = /^([^:]+):/.exec(typeof entry === 'string' ? entry : entry?.name ?? '');
     if (m) exposed.add(m[1]);
   }
-  // HIMMEL-4067: an MCP-only plugin (shadcn-mcp, context7) exposes a
+  // An MCP-only plugin (shadcn-mcp, context7) exposes a
   // `plugin:<name>:<server>` server; any status (needs-auth included) proves it loaded.
   for (const srv of initEvent?.mcp_servers ?? []) {
     const m = /^plugin:([^:]+):/.exec(srv?.name ?? '');
@@ -205,7 +205,7 @@ export function roleCoverageProblems(initEvent, requiredIds, runtimeNames) {
   return requiredIds.filter((id) => !exposed.has(pluginName(id, runtimeNames))).map((id) => `role-required plugin ${id} exposes no skill, command, agent or MCP server (enabled but not loaded)`);
 }
 
-// HIMMEL-4036: `claude -p /context` replies with an assistant event carrying
+// `claude -p /context` replies with an assistant event carrying
 // context_usage, whose skills[] is the POST-cap listing (what the model is sent).
 export function findContextUsage(events) {
   const e = events.find((x) => x?.type === 'assistant' && (x.context_usage || x.message?.context_usage));
@@ -235,7 +235,7 @@ export function listingReport(contextUsage, requiredIds, runtimeNames) {
 // name-only: current listing tokens plus the uncapped cost of each name-only
 // required skill's description, over raw_max_tokens. costEntries come from
 // skill-cost.mjs's scan, matched by skill name under a `/<plugin>/` path (the
-// plugin cache); chars/4 is the estimate. Feeds HIMMEL-4038's skillOverrides +
+// plugin cache); chars/4 is the estimate. Feeds skillOverrides +
 // skillListingBudgetFraction. null when the window size is unknown.
 export function requiredBudget(contextUsage, requiredIds, costEntries, runtimeNames) {
   const rawMax = contextUsage?.raw_max_tokens;
@@ -258,7 +258,7 @@ export function requiredBudget(contextUsage, requiredIds, costEntries, runtimeNa
   return { listingTokens, extraTokens, unmatched, fraction: Math.ceil(((listingTokens + extraTokens) / rawMax) * 1000) / 1000 };
 }
 
-// EVERY skill of a required plugin must reach the model DESCRIBED (HIMMEL-4038).
+// EVERY skill of a required plugin must reach the model DESCRIBED.
 // skillPlugins (names of plugins that expose skills in the init event) lets an
 // agent-only plugin skip the check; omitted = every required plugin has skills.
 // The versions Claude loads for a plugin come from
@@ -274,7 +274,7 @@ export function installedVersionsOf(configDir, cwd) {
       const versions = (Array.isArray(installs) ? installs : [])
         .filter((i) => installApplies(i, cwd))
         .map((i) => String(i?.version ?? '')).filter(Boolean)
-        // HIMMEL-4064: an install whose cache dir is gone is not what the session loads (falls back to latest)
+        // an install whose cache dir is gone is not what the session loads (falls back to latest)
         .filter((v) => key.includes('@') && existsSync(join(configDir, 'plugins', 'cache', key.split('@')[1], key.split('@')[0], v)));
       if (versions.length) out.set(key, new Set(versions));
     }
@@ -288,7 +288,7 @@ export function installedVersionsOf(configDir, cwd) {
 // skill under the version(s) Claude loads (installedVersions), else the plugin's
 // LATEST cached version (an older cached version can carry skills the current one
 // dropped). Matches the plugin-cache directory components (marketplace + plugin),
-// not a path substring (HIMMEL-4060).
+// not a path substring.
 export function expectedSkillNames(costEntries, requiredIds, installedVersions, runtimeNames) {
   const names = new Set();
   for (const id of requiredIds) {
@@ -308,7 +308,7 @@ export function expectedSkillNames(costEntries, requiredIds, installedVersions, 
 }
 
 // expectedSkills (a Set of `<plugin>:<name>` from expectedSkillNames) additionally
-// flags a required skill that never reached the listing at all (HIMMEL-4060).
+// flags a required skill that never reached the listing at all.
 export function listingProblems(contextUsage, requiredIds, { skillPlugins, expectedSkills, names: runtimeNames } = {}) {
   if (!requiredIds.length) return [];
   if (!contextUsage) return ['no context_usage in /context output (cannot verify the post-cap skill listing)'];
@@ -443,7 +443,6 @@ function spawnClaude(extraArgs, prompt) {
   const args = ['-p', '--model', 'haiku', '--max-turns', '1', '--permission-mode', 'dontAsk',
     '--output-format', 'stream-json', '--verbose', ...extraArgs, prompt];
   // launch-profile-ok: the probe passes the profile under test via extraArgs (--settings per run)
-  // HIMMEL-2189 measured profile probe
   return spawnSync('claude', args, {
     cwd: REPO_ROOT,
     encoding: 'utf8',
@@ -458,13 +457,12 @@ function spawnClaude(extraArgs, prompt) {
 // a probe run failing to produce events IS a result (evaluateProfile turns
 // the null initEvent into a FAILED verdict), not a crash.
 //
-// ONE retry on ETIMEDOUT (HIMMEL-2189 debugging finding, 2026-08-28): a
-// sequential multi-profile run occasionally hit a single ETIMEDOUT spawn
-// (reproduced twice, always position 3, while the account's own 7-day bank
-// utilization sat near 84% — the API's own near-cap latency, not this
-// profile's content: the SAME profile re-run standalone, seconds later,
-// measured cleanly). Retrying once turns that ordinary API-latency noise
-// into a real regression signal instead of a coin-flip FAILED row.
+// ONE retry on ETIMEDOUT: a sequential multi-profile run occasionally hit a
+// single ETIMEDOUT spawn while the account's own 7-day bank utilization sat
+// near cap — the API's own near-cap latency, not this profile's content: the
+// SAME profile re-run standalone, seconds later, measured cleanly. Retrying
+// once turns that ordinary API-latency noise into a real regression signal
+// instead of a coin-flip FAILED row.
 function runClaude(extraArgs, prompt = BASELINE_PROMPT, retriesLeft = 1) {
   const r = spawnClaude(extraArgs, prompt);
   if (r.error?.code === 'ETIMEDOUT' && retriesLeft > 0) {
@@ -562,7 +560,7 @@ function main() {
       try {
         run = runClaude(['--settings', settingsPath]);
         // /context is answered locally by Claude Code (no model turn) and reports
-        // the post-cap skill listing the model actually receives (HIMMEL-4036).
+        // the post-cap skill listing the model actually receives.
         ctxRun = runClaude(['--settings', settingsPath], '/context');
       } finally {
         try { unlinkSync(settingsPath); } catch { /* best-effort cleanup */ }

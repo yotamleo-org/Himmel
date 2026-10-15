@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
-// scripts/lanes/codex-bank-probe.ts — HIMMEL-1678
+// scripts/lanes/codex-bank-probe.ts
 // BOUNDED one-shot probe of the codex account rate limits. Spawns
 //   codex app-server
-// (HIMMEL-2782: codex-cli v0.153.4 dropped `-s read-only -a untrusted` at the
+// (codex-cli v0.153.4 dropped `-s read-only -a untrusted` at the
 // `app-server` subcommand level — passing them made the station's real codex
 // binary exit before answering, code=2 signal=null; app-server never needed
 // them since it takes sandbox/approval policy over JSON-RPC, not argv)
@@ -47,7 +47,7 @@ function positiveInt(v: string | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// HIMMEL-1835/1956: this was a private third copy of the tree-stop helper,
+// This was a private third copy of the tree-stop helper,
 // carrying the same three holes -- POSIX signalled only the direct child
 // (orphaning the app-server's MCP fleet), it returned early once the child had
 // exited (the case where reaping descendants matters MOST), and it discarded
@@ -74,7 +74,7 @@ function reapProbeTree(child: ChildProcess): void {
 }
 
 async function main(): Promise<void> {
-  // SPAWN_OWN_GROUP (HIMMEL-1956): `codex app-server` supervises an MCP fleet,
+  // SPAWN_OWN_GROUP: `codex app-server` supervises an MCP fleet,
   // and the group has to exist at spawn time for the reap below to reach it.
   const child = spawn(cmd, args, { ...SPAWN_OWN_GROUP, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
   // stdin EPIPE (child died first) must not crash the probe — the exit

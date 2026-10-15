@@ -1,5 +1,5 @@
 // scripts/lanes/tests/profile-lists.test.mjs
-// HIMMEL-4014 — composable --profile lists: `a,b` resolves to the union of the members.
+// composable --profile lists: `a,b` resolves to the union of the members.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

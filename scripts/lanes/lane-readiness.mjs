@@ -1,5 +1,5 @@
 // scripts/lanes/lane-readiness.mjs
-// HIMMEL-1626 — lane READINESS probe, the third leg of the guard's lane
+// Lane READINESS probe, the third leg of the guard's lane
 // qualification (scripts/hooks/guard-implementor-dispatch.sh):
 //   lane_runnable() proves a lane is INVOCABLE (bun + dispatcher on disk);
 //   lane_funded()  (bank-status.ts) proves its BANK has quota;
@@ -7,13 +7,13 @@
 //
 // Funding and readiness answer different questions: a lane can be fully funded
 // while an operator ruling holds it DOWN (the GLM worker lane after the
-// HIMMEL-1575 startup-hang class). Before this probe the guard fail-opened
+// startup-hang class). Before this probe the guard fail-opened
 // funding's `unknown` to "funded" and forced dispatches onto a ruled-down lane,
 // stranding the sanctioned in-process Claude-tier path (the FIRST_WAVE block).
 //
 // Readiness is MEASURED, never asserted: a lane under a readiness gate
 // (`readiness.passesRequired` in scripts/lanes/lanes.json) is ready only when
-// the flow-runs ledger that verify-return.mjs (HIMMEL-1621) feeds shows that
+// the flow-runs ledger that verify-return.mjs feeds shows that
 // many TRAILING consecutive PASS rows for the lane's branches. A FAILED row
 // resets the streak. Lanes without a gate are always ready.
 //
@@ -24,7 +24,7 @@
 //          ledger is below its gate. A missing/unreadable ledger is "no
 //          evidence of graduation" — gated lanes stay down. This direction is
 //          safe by construction: the guard treats `down` as SKIP (toward the
-//          other lane or the HIMMEL-920 fall-through), never as a refusal
+//          other lane or the fall-through), never as a refusal
 //          toward the caller.
 //   ready  otherwise.
 //
@@ -83,7 +83,7 @@ export function laneStates(lanesJson, ledgerText) {
     });
 }
 
-// Remedy hints (HIMMEL-2782): a lane-id -> one-line fix, printed to STDERR
+// Remedy hints: a lane-id -> one-line fix, printed to STDERR
 // only. Never stdout: the guard (guard-implementor-dispatch.sh's lane_ready)
 // parses stdout with `while IFS=' ' read -r lid lstate` and then matches
 // `case "$state" in down)` verbatim - appending text to that line would

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# push-wrapper.sh — HIMMEL-5287 POC. The only path by which a sandboxed leg's
+# push-wrapper.sh — POC. The only path by which a sandboxed leg's
 # commits reach a remote. It runs OUTSIDE the sandbox (it is the holder of the
 # push credential) and pushes ONE branch, the leg's own, as a plain
 # fast-forward push.
@@ -13,7 +13,7 @@
 # a URL or path as the remote (only a configured remote name).
 #
 # ponytail: argument-shape policy only; it does not see the remote's own
-# protections, and HIMMEL-5287's build phase routes it through the trust-path
+# protections, and the build phase routes it through the trust-path
 # judge and installs it at the primary-checkout anchor path.
 set -u
 # the full repository-redirecting set, as scripts/lib/git-clean.sh git_env_scrub
@@ -93,5 +93,5 @@ done
 # Hooks are disabled because this runs OUTSIDE the sandbox in a leg-writable
 # worktree. Config-injected commands (core.sshCommand, credential helpers,
 # includeIf) in the leg's .git/config are NOT closed here: the production
-# broker (HIMMEL-5398) must push from a launcher-owned clone instead.
+# broker must push from a launcher-owned clone instead.
 exec git -c core.hooksPath=/dev/null push $flags "$remote" $refspecs

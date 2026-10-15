@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/lanes/set-lane-override.mjs — idempotent machine-local overlay
-// writer for scripts/lanes/lanes.local.json (HIMMEL-758 / HIMMEL-1428).
+// writer for scripts/lanes/lanes.local.json.
 //
 // Writes/merges ONE lane's `probe` override by id into the gitignored
 // machine-local overlay file that resolve.mjs's loadRegistry() reads on top
@@ -36,7 +36,7 @@ const SHARED_REGISTRY = join(SCRIPT_DIR, 'lanes.json');
 // { id, probe } entry when laneId isn't already present in `local.lanes`.
 // Force-on also extends an active adopter profile when the lane is in its
 // wizard-owned scope; every other lane entry remains unchanged.
-// `managed` (HIMMEL-1448): the registry marks the lane profileManaged, so it is
+// `managed` the registry marks the lane profileManaged, so it is
 // constrained even when absent from the persisted scope snapshot.
 export function applyLaneOverride(local, laneId, probeKind, managed = false) {
   const lanes = (local && Array.isArray(local.lanes)) ? local.lanes : [];
@@ -55,8 +55,8 @@ export function applyLaneOverride(local, laneId, probeKind, managed = false) {
   // scope condition mirrors resolveLaneInventory's suppression rule exactly:
   // a LEGACY allowlist without profileAllowlistScope constrains EVERY lane
   // (global semantics), so the extension must fire there too — scoping the
-  // consent to scope-carrying files only left the legacy shape with the same
-  // false-success this fix removes (CR round 4 [codex-1]).
+  // consent to scope-carrying files only would leave the legacy shape with the same
+  // false-success.
   if (probeKind === 'always'
       && Array.isArray(next.profileAllowlist)
       && (!Array.isArray(next.profileAllowlistScope)

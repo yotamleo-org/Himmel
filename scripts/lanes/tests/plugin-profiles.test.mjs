@@ -1,5 +1,5 @@
 // scripts/lanes/tests/plugin-profiles.test.mjs
-// HIMMEL-1040 — resolver invariants for the named plugin-profile registry.
+// Resolver invariants for the named plugin-profile registry.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync, realpathSync, existsSync, cpSync, readdirSync } from 'node:fs';
@@ -26,12 +26,12 @@ const MINI = {
   },
 };
 
-// HIMMEL-2959: removing an opt-in/rule loses a deterministic gate permission;
+// Removing an opt-in/rule loses a deterministic gate permission;
 // widening a rule must fail registry load before any settings reach a child.
 const LEG_PROFILES = ['lane-impl', 'leg-impl', 'leg-bus', 'lane-review', 'lane-content', 'console-relay'];
 const GATE_RULES = [
   'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)',
-  // HIMMEL-3698: step 0's own invocation of pr-check-context.sh, the
+  // Step 0's own invocation of pr-check-context.sh, the
   // trusted-anchor entry point itself — no relative <himmel_dir> form exists
   // yet, so like the merge gate it is an exact-string $HIMMEL_REPO literal,
   // no ':*' tail (the script takes no arguments).
@@ -41,25 +41,25 @@ const GATE_RULES = [
   'Bash(bash scripts/cr/write-verdicts.sh:*)',
   'Bash(bash scripts/cr/clear-cr-marker.sh:*)',
   'Bash(bash scripts/cr/panel-first-pass.sh:*)',
-  // HIMMEL-3338 (operator ruling 2026-09-21: legs may send review diffs to
-  // Codex): the /pr-check external-critic steps. Exact literals except
+  // Operator ruling 2026-09-21: legs may send review diffs to Codex; these are
+  // the /pr-check external-critic steps. Exact literals except
   // docs-audit-panel, which takes --head/--branch like panel-first-pass.
   'Bash(bash scripts/cr/docs-audit-panel.sh:*)',
   'Bash(bash scripts/cr/doc-freshness-advisory.sh)',
   'Bash(bash scripts/cr/known-findings.sh --diff)',
-  // HIMMEL-3359: the himmel-lane step-0 entry. Exact literal — the script
+  // The himmel-lane step-0 entry. Exact literal — the script
   // resolves HIMMEL_REPO and hands off to the anchor's copy itself.
   'Bash(bash scripts/cr/pr-check-context.sh)',
-  // HIMMEL-3375: the one fixed var-set the runbook spells (steps 2.5 / 3.5).
+  // The one fixed var-set the runbook spells (steps 2.5 / 3.5).
   // Exact literal — the script hands a non-anchor copy off to the anchor's.
   'Bash(bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS)',
   'Bash(bash scripts/cr/ledger-append.sh:*)',
-  // HIMMEL-3462: dynamic-arg /pr-check gates, each granted after a full-file
+  // dynamic-arg /pr-check gates, each granted after a full-file
   // safety read (range/branch/head arguments cannot be exact literals).
   'Bash(bash scripts/cr/impacted-suites.sh:*)',
   'Bash(bash scripts/cr/orphan-check.sh:*)',
   'Bash(bash scripts/cr/review-round.sh:*)',
-  // HIMMEL-3698: previously-absent scripts, documented only via a
+  // previously-absent scripts, documented only via a
   // resolved-path placeholder (never $HIMMEL_REPO directly), so they take
   // the pre-existing relative gate-rule shapes.
   'Bash(bash scripts/cr/cr-scores.sh:*)',
@@ -90,7 +90,7 @@ for (const tail of SUITE_TAILS) {
   });
 }
 
-// HIMMEL-4830: the one leg profile that opts in to himmel-bus also allows its tools, both name forms.
+// The one leg profile that opts in to himmel-bus also allows its tools, both name forms.
 const BUS_TOOL_ALLOW = ['mcp__himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-bus__send', 'mcp__himmel-bus__read', 'mcp__plugin_himmel-bus_himmel-bus__read'];
 const expectedAllow = (name) => (name === 'leg-bus' ? [...REG.gateAllow, ...BUS_TOOL_ALLOW] : REG.gateAllow);
 
@@ -116,15 +116,15 @@ for (const name of ['operator', 'user', 'bare']) {
     // Baseline captured before implementation: user = four base ids + three
     // authoring ids; bare = three floor ids; catalog order stays unchanged.
     const on = name === 'bare' ? ['handover@himmel', 'himmel-ops@himmel', 'qmd@himmel'] : [
-      // HIMMEL-3064: superpowers/mattpocock-skills dropped from catalog (replaced
+      // superpowers/mattpocock-skills dropped from catalog (replaced
       // by lean-skills@himmel, now in base — every non-bare profile gets it);
       // plannotator-effective-html@himmel moved out of the user always-tier into
       // the design profile.
       'handover@himmel', 'himmel-ops@himmel', 'qmd@himmel', 'pr-review-toolkit-himmel@himmel',
       'lean-skills@himmel',
-      // HIMMEL-5239: i-have-adhd@himmel rides base beside lean-skills.
+      // i-have-adhd@himmel rides base beside lean-skills.
       'i-have-adhd@himmel',
-      // HIMMEL-4018: the operator's interactive profile works the vault.
+      // The operator's interactive profile works the vault.
       'obsidian-second-brain@himmel',
     ];
     const expected = name === 'operator' ? null : {
@@ -170,15 +170,15 @@ const BAD_GATE_RULES = [
   ['test push wildcard absorbs hook-skipping options', 'Bash(git push -u origin test/*)'],
   ['leg-written GO', 'Bash(bash scripts/handover/console-kit/go.sh:*)'],
   ['unlisted script', 'Bash(bash scripts/uninstall.sh:*)'],
-  // HIMMEL-3548: the relative merge-on-green rule was retired — only the
+  // The relative merge-on-green rule was retired — only the
   // anchored literal is admitted now.
   ['retired relative merge-on-green rule', 'Bash(bash scripts/handover/merge-on-green.sh:*)'],
-  // HIMMEL-3491: the anchor literal is an EXACT-STRING exception, not a
+  // The anchor literal is an EXACT-STRING exception, not a
   // general $VAR admission — a different var or a different path under the
   // anchor still falls through to the '$' ban.
   ['anchor literal with a different var', 'Bash(bash "$FOO/scripts/handover/merge-on-green.sh":*)'],
   ['anchor literal with a different path under the anchor', 'Bash(bash "$HIMMEL_REPO/scripts/handover/queue-lock.sh":*)'],
-  // HIMMEL-3698: the pr-check-context anchor literal is its own EXACT-STRING
+  // The pr-check-context anchor literal is its own EXACT-STRING
   // exception too — a different var, a different script under the SAME
   // anchor, a wildcard tail, or an appended command must all still fall
   // through to the '$' ban.
@@ -186,38 +186,38 @@ const BAD_GATE_RULES = [
   ['pr-check-context anchor literal with a different script under the anchor', 'Bash(bash "$HIMMEL_REPO/scripts/cr/write-verdicts.sh")'],
   ['pr-check-context anchor literal gains a wildcard tail', 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh":*)'],
   ['pr-check-context anchor literal with an appended command', 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh"; rm -rf /)'],
-  // HIMMEL-3698: resolve-active-item.sh is admitted exact-literal only — no
+  // resolve-active-item.sh is admitted exact-literal only — no
   // documented call site ever passes it an argument.
   ['resolve-active-item gains a wildcard', 'Bash(bash scripts/handover/resolve-active-item.sh:*)'],
   ['resolve-active-item gains an argument', 'Bash(bash scripts/handover/resolve-active-item.sh --foo)'],
-  // HIMMEL-3338: the exact-literal external-critic rules must not gain a `:*`
+  // The exact-literal external-critic rules must not gain a `:*`
   // tail, and the scripts the operator ruling left out stay out.
   ['exact-literal advisory gains a wildcard', 'Bash(bash scripts/cr/doc-freshness-advisory.sh:*)'],
   ['exact-literal doc-freshness gains a wildcard', 'Bash(bash scripts/cr/doc-freshness-advisory.sh:*)'],
   ['known-findings without --diff', 'Bash(bash scripts/cr/known-findings.sh)'],
   ['known-findings gains a wildcard', 'Bash(bash scripts/cr/known-findings.sh --diff:*)'],
   ['known-findings blanket prefix', 'Bash(bash scripts/cr/known-findings.sh:*)'],
-  // HIMMEL-3375: pr-check-env is admitted as ONE exact var-set literal only.
+  // pr-check-env is admitted as ONE exact var-set literal only.
   ['pr-check-env gains a wildcard', 'Bash(bash scripts/cr/pr-check-env.sh:*)'],
   ['pr-check-env no-arg (the full default set)', 'Bash(bash scripts/cr/pr-check-env.sh)'],
   ['pr-check-env widened var set', 'Bash(bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS CR_PROFILE)'],
   ['pr-check-env wildcard var tail', 'Bash(bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS:*)'],
   ['pr-check-env other var', 'Bash(bash scripts/cr/pr-check-env.sh CR_PROFILE)'],
-  // HIMMEL-3107 (restated by the HIMMEL-3469/3470 audit): spawns a fresh
+  // Spawns a fresh
   // BILLED headless claude session (claude-floor-review.sh:194) — never a
   // blanket auto-approval, see CLAUDE.md's Claude-invocation-billing rule.
   ['claude-floor-review stays out', 'Bash(bash scripts/cr/claude-floor-review.sh:*)'],
-  // HIMMEL-3469: --notes/--bugs are caller-supplied destination PATHS with no
+  // --notes/--bugs are caller-supplied destination PATHS with no
   // containment check (handover-bridge.sh:36; scripts/handover/append-cr-findings.sh:17-21
   // only checks the parent dir exists, never that it's under a handover
   // root) — a wildcard tail would be an arbitrary-file-write primitive.
   ['handover-bridge stays out', 'Bash(bash scripts/cr/handover-bridge.sh:*)'],
-  // HIMMEL-3469: --input reads an arbitrary caller-named file and files
+  // --input reads an arbitrary caller-named file and files
   // matching lines as a live GitHub issue title+body
   // (file-deferred-issues.sh:133-145,371-397) — an externally-visible,
   // hard-to-reverse side effect on attacker-influenceable content.
   ['file-deferred-issues stays out', 'Bash(bash scripts/cr/file-deferred-issues.sh:*)'],
-  // HIMMEL-3359: the step-0 entry is admitted as an exact literal only.
+  // The step-0 entry is admitted as an exact literal only.
   ['pr-check-context gains a wildcard', 'Bash(bash scripts/cr/pr-check-context.sh:*)'],
   ['pr-check-context gains an argument', 'Bash(bash scripts/cr/pr-check-context.sh --head)'],
   ['absolute-path critic rule', 'Bash(bash /home/x/scripts/cr/doc-freshness-advisory.sh)'],
@@ -311,7 +311,7 @@ test('resolved map is COMPLETE — every catalog id is present', () => {
 test('lane-impl keeps its base surface (now including lean-skills) and disables operator always-tier extras', () => {
   const { enabledPlugins: p } = resolveProfile(REG, 'lane-impl');
   assert.equal(p['pr-review-toolkit-himmel@himmel'], true);
-  // HIMMEL-3064: lean-skills@himmel is in `base`, so every non-bare profile
+  // lean-skills@himmel is in `base`, so every non-bare profile
   // (including a lane worker) gets it — it is not an "operator always-tier
   // extra" the way superpowers/mattpocock-skills used to be.
   assert.equal(p['lean-skills@himmel'], true);
@@ -554,7 +554,7 @@ test('validateRegistry collects errors (never throws) on malformed shapes', () =
 test('user profile matches the installer always tier and leaves on-demand plugins disabled', () => {
   const { enabledPlugins: p } = resolveProfile(REG, 'user');
   for (const id of [
-    // HIMMEL-3064: lean-skills@himmel replaces superpowers + mattpocock-skills
+    // lean-skills@himmel replaces superpowers + mattpocock-skills
     // in the always tier (vendored subset, same win at a fraction of the cost).
     'lean-skills@himmel',
     'handover@himmel',
@@ -571,7 +571,7 @@ test('user profile matches the installer always tier and leaves on-demand plugin
     'obsidian-triage@himmel',
     'telegram-himmel@himmel',
     'codex@openai-codex',
-    // HIMMEL-3064: moved out of the always tier into the design profile — the
+    // Moved out of the always tier into the design profile — the
     // design/UI kit opts in per-dispatch instead of every session paying for it.
     'plannotator-effective-html@himmel',
   ]) assert.equal(p[id], false, `${id} must stay on demand`);
@@ -598,7 +598,7 @@ test('design profile enables the full design pack (HIMMEL-4012)', () => {
   }
 });
 
-// HIMMEL-4018: obsidian-second-brain was a user-scope skill that loaded in every
+// obsidian-second-brain was a user-scope skill that loaded in every
 // session. As a plugin it is catalogued (so every other profile resolves it
 // false) and enabled only where the vault is worked: the operator's interactive
 // `user` profile, vault-writing `lane-content` legs and the `telegram` bridge
@@ -617,7 +617,7 @@ test('obsidian-second-brain@himmel is enabled exactly in the vault profiles (HIM
   }
 });
 
-// HIMMEL-4012 PR2b: the design core plus the add-on kit profiles. The core is
+// The design core plus the add-on kit profiles. The core is
 // the always-with-design set; every add-on stacks on base only (never on the
 // core), so an unproven manifest-less shape in an add-on cannot break
 // `--profile design`.
@@ -668,7 +668,7 @@ test('every design kit himmel id is in the catalog, enabledPlugins:false and onD
   }
 });
 
-// HIMMEL-4067: upstream ships a plugin.json for these, so strict:false + a marketplace
+// Upstream ships a plugin.json for these, so strict:false + a marketplace
 // skills list is a manifest conflict (the plugin loads nothing), and the upstream default
 // skills/ dir loads in full anyway, so a subset split never restricted anything.
 test('ui-ux-pro-max and taste-skill-core are strict:true with no skills list; the taste split entries are gone (HIMMEL-4067)', () => {
@@ -683,7 +683,7 @@ test('ui-ux-pro-max and taste-skill-core are strict:true with no skills list; th
   assert.ok(!JSON.stringify(REG).includes('taste-skill-imagegen') && !JSON.stringify(REG).includes('taste-skill-styles'), 'no profile references a dropped taste entry');
 });
 
-// HIMMEL-4068: the old form of this test demanded an explicit skills list on every strict:false entry.
+// The old form of this test demanded an explicit skills list on every strict:false entry.
 // That belief was wrong: Claude Code always loads a plugin's upstream default skills/ dir in full, so a
 // marketplace subset list restricts nothing (no-op when upstream has no plugin.json, a 'conflicting
 // manifests' load failure when it has one). The only list that does work is ['./'], which designates a
@@ -709,9 +709,9 @@ test('marketplace kit entries are pinned; a skills list is only the root-skill f
   }
 });
 
-// HIMMEL-4012 role-coverage table: what each profile's ROLE requires, so a
+// Role-coverage table: what each profile's ROLE requires, so a
 // profile that ships without its role's tools fails here instead of passing a
-// test that merely pins whatever the profile happens to contain (the HIMMEL-3064
+// test that merely pins whatever the profile happens to contain (the
 // design profile shipped with one plugin and its test pinned exactly that one).
 // The table lives in role-requires.mjs; profile-context-probe.mjs checks the same
 // ids against a live init event.
@@ -753,7 +753,7 @@ test('catalog carries no url-sourced official id that has no install path (HIMME
 
 test('settings-template enabledPlugins mirrors the registry `user` profile (HIMMEL-1044 wiring)', () => {
   // The adopter-facing docs/setup/settings-template.json is the human-readable
-  // mirror of the registry's `user` profile (HIMMEL-1040/1044). They are
+  // mirror of the registry's `user` profile. They are
   // hand-maintained and MUST NOT silently drift: the template's true entries
   // are the always tier, while installed on-demand plugins stay false. This
   // locks both tiers together so an adopter and the resolver get the same set.
@@ -774,7 +774,7 @@ test('settings-template enabledPlugins mirrors the registry `user` profile (HIMM
   }
 });
 
-// ── Schema (HIMMEL-1461 T2.1b): base / drop / disallowedTools / mcpCatalog / bare ──
+// ── Schema: base / drop / disallowedTools / mcpCatalog / bare ──
 // A synthetic registry, independent of the shipped data, so these tests pin the
 // ORDER of operations rather than any particular catalog content.
 const SCHEMA_REG = {
@@ -874,7 +874,7 @@ test('validateRegistry: mcpCatalog shape + $VAR-reference rule (a literal is a c
   assert.deepEqual(validateRegistry({ ...SCHEMA_REG, mcpCatalog: { x: { env: { TOKEN: '$TOKEN' }, headers: { Authorization: '$AUTH_HEADER' } } } }), []);
 });
 
-// ── mcpServers (HIMMEL-2935 / HIMMEL-2928 lever 1 second half) ──────────────
+// ── mcpServers ──────────────
 // A per-leg MCP-server allowlist, orthogonal to mcpCatalog (T3.1, still
 // schema-only): mcpServers names servers to COPY from an external source
 // (readEnabledPluginIds's caller resolves those files), never definitions
@@ -896,7 +896,7 @@ test('mcpServersForProfile: absent field or operator -> undefined; present field
   assert.throws(() => mcpServersForProfile(SCHEMA_REG, 'no-such-profile'), /unknown profile/);
 });
 
-// HIMMEL-4401: composing profiles must never widen the MCP allowlist. Different
+// Composing profiles must never widen the MCP allowlist. Different
 // lists refuse; identical lists and no lists still compose; exactly one declared
 // list is kept (the member without one never widens it to "load everything").
 const MCP_COMPOSE_REG = { ...SCHEMA_REG, profiles: { ...SCHEMA_REG.profiles,
@@ -1024,7 +1024,7 @@ test('CLI: --mcp-config resolves leg-impl\'s qmd definition from the marketplace
   const home = makeTmpDir('pp-cli-mcp-home-');
   const run = spawnSync(process.execPath, [cli, 'leg-impl', '--mcp-config'], { encoding: 'utf8', cwd, env: { ...process.env, HOME: home, USERPROFILE: home } });
   assert.equal(run.status, 0, run.stderr);
-  // HIMMEL-5002: headersHelper is expanded to the plugin dir (a standalone --mcp-config has no ${CLAUDE_PLUGIN_ROOT}).
+  // headersHelper is expanded to the plugin dir (a standalone --mcp-config has no ${CLAUDE_PLUGIN_ROOT}).
   const qmd = JSON.parse(run.stdout).mcpServers.qmd;
   assert.deepEqual({ ...qmd, headersHelper: undefined }, { type: 'http', url: 'http://localhost:8181/mcp', headersHelper: undefined });
   assert.equal(qmd.headersHelper, `bash "${join(cwd, 'marketplace', 'plugins', 'qmd')}/scripts/qmd-auth-headers.sh"`);
@@ -1052,7 +1052,7 @@ test('CLI: --mcp-config alone (no trailing argv) still succeeds', () => {
 });
 
 test('CLI: --mcp-config resolves the repo placeholder from a non-git copy with HIMMEL_REPO unset', () => {
-  // HIMMEL-4830: a scratch checkout (no .git, e.g. test-console.sh's fixture) must resolve to its own
+  // A scratch checkout (no .git, e.g. test-console.sh's fixture) must resolve to its own
   // absolute path, never refuse; the primary-checkout lookup only wins when git can find one.
   const here = dirname(fileURLToPath(import.meta.url));
   const copy = makeTmpDir('pp-cli-nongit-copy-');
@@ -1196,7 +1196,7 @@ test('validateRegistry: "bare", when present, must not declare a non-empty enabl
   assert.ok(validateRegistry({ ...REG, profiles: { ...REG.profiles, bare: { enable: [], disallowedTools: ['Write'] } } }).some((e) => /"bare" must not declare disallowedTools/.test(e)));
 });
 
-// ── Golden baseline (HIMMEL-1461 T2.1a) ─────────────────────────────────────
+// ── Golden baseline ─────────────────────────────────────
 // Pins what the CURRENT resolver produces for every shipped profile, so a
 // later registry-schema change is provably resolution-preserving. REGISTRY_PATH
 // is passed POSITIONALLY, not via PLUGIN_PROFILES_REGISTRY: that env var is
@@ -1218,7 +1218,7 @@ test('golden baseline — resolveProfile output for shipped profiles is pinned (
   for (const name of GOLDEN_PROFILES) {
     actual[name] = resolveProfile(registry, name, { installed: [] });
     if (LEG_PROFILES.includes(name)) {
-      // HIMMEL-2959 deliberately adds this field. Pin its exact rule set
+      // The leg profiles deliberately add this field. Pin its exact rule set
       // separately, keeping the historical plugin/output fixture unchanged.
       assert.deepEqual(actual[name].permissions, { allow: actual[name].permissions.allow });
       assert.deepEqual([...actual[name].permissions.allow].sort(), [...GATE_RULES, ...SUITE_RULES].sort());
@@ -1237,7 +1237,7 @@ test('golden baseline — resolveProfile output for shipped profiles is pinned (
   assert.deepEqual(actual, expected);
 });
 
-// ── console-relay (HIMMEL-2975) ─────────────────────────────────────────────
+// ── console-relay ─────────────────────────────────────────────
 // Plugin-less profile for the Sonnet relay half of a split console. Not in
 // GOLDEN_PROFILES above (same reasoning as leg-impl, its sibling omission):
 // resolveProfileByName/mcpServersForProfile coverage lives here instead.
@@ -1250,7 +1250,7 @@ test('console-relay resolves via resolveProfileByName/resolveProfile to the floo
   assert.deepEqual(mcpServersForProfile(REG, 'console-relay'), []);
 });
 
-// ── console-judge (HIMMEL-3133) ─────────────────────────────────────────────
+// ── console-judge ─────────────────────────────────────────────
 // Plugin-less profile for a judge session ("the judge is a leg", design
 // §3.2), launched via headed-arm-leg.sh --judge. Not in LEG_PROFILES: unlike
 // console-relay it carries no gateAllow — a judge's gate-shaped calls take
@@ -1270,7 +1270,7 @@ test('validateRegistry: the shipped registry (console-relay included) validates 
   assert.deepEqual(validateRegistry(REG), []);
 });
 
-// ── /pr-check external-critic call shape (HIMMEL-3338) ──────────────────────
+// ── /pr-check external-critic call shape ──────────────────────
 // permissions.allow matches the LITERAL command text. The runbook spells every
 // himmel script as `bash "<himmel_dir>/scripts/cr/<x>.sh"`, and step 0 prints
 // himmel_dir as an ABSOLUTE worktree path — so a leg's real command never
@@ -1312,7 +1312,7 @@ function runbookCodeLines(text) {
   return out;
 }
 
-// HIMMEL-5509: the Claude runbook is a driver (.claude/commands/pr-check.md)
+// The Claude runbook is a driver (.claude/commands/pr-check.md)
 // plus per-stage reference files in scripts/cr/pr-check-ref/. Its text is the
 // driver followed by the reference files in name order.
 const REF_DIR = join(REPO_ROOT, 'scripts', 'cr', 'pr-check-ref');
@@ -1363,8 +1363,8 @@ for (const file of ['.claude/commands/pr-check.md', '.agents/skills/pr-check/SKI
   });
 }
 
-// HIMMEL-3567: a leg's merge is typed with the primary checkout's ABSOLUTE path
-// (merge-on-green.sh runs from the anchor, HIMMEL-3491), and the permission
+// A leg's merge is typed with the primary checkout's ABSOLUTE path
+// (merge-on-green.sh runs from the anchor), and the permission
 // matcher compares literal text, so the leg settings must carry that exact
 // absolute literal. It must name the PRIMARY checkout — never a leg worktree,
 // whose bytes the leg controls — and it adds nothing beyond merge-on-green.sh:
@@ -1372,7 +1372,7 @@ for (const file of ['.claude/commands/pr-check.md', '.agents/skills/pr-check/SKI
 const ANCHOR = '/home/u/himmel';
 const ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/handover/merge-on-green.sh:*)';
 
-// HIMMEL-3572: clear-cr-marker.sh's own denial (guard-pr-check-literal.sh)
+// clear-cr-marker.sh's own denial (guard-pr-check-literal.sh)
 // teaches a leg the identical absolute-anchor spelling once the relative
 // entry can't self-verify, and plugin-profiles.json's gateAllow comment
 // confirms that spelling matched no existing rule — so a leg running it fell
@@ -1380,7 +1380,7 @@ const ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/handover/merge-on-green.sh
 // merge literal exactly: same anchor, same mechanism.
 const MARKER_ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/cr/clear-cr-marker.sh:*)';
 
-// HIMMEL-3783: N651 (leg-pr-open.sh) and N649 (panel-first-pass.sh) each fell
+// N651 (leg-pr-open.sh) and N649 (panel-first-pass.sh) each fell
 // to the classifier the same way merge-on-green/clear-cr-marker used to —
 // every OTHER wildcard-tail (GATE_SCRIPT_RE) ship-step allow needs the same
 // anchor-absolute twin, plus leg-pr-open.sh (its own relative allow lives in
@@ -1390,7 +1390,7 @@ const MARKER_ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/cr/clear-cr-marker.
 // way. Deliberately excludes GATE_EXACT_RE's no-argument literals
 // (doc-freshness-advisory.sh, pr-check-context.sh, pr-check-env.sh
 // CR_CLAUDE_AGENTS, known-findings.sh --diff, resolve-active-item.sh): those
-// hand off to the anchor's own copy internally (HIMMEL-3698) rather than
+// hand off to the anchor's own copy internally rather than
 // being typed by a leg as an absolute Bash command.
 const SHIP_STEP_ANCHOR_RULES = [
   'Bash(bash /home/u/himmel/scripts/handover/queue-lock.sh:*)',
@@ -1514,7 +1514,7 @@ test('HIMMEL-3567: CLI run from a leg worktree emits the PRIMARY absolute merge 
   for (const rule of REG.gateAllow) assert.ok(allow.includes(rule), `lost ${rule}`);
 });
 
-// HIMMEL-1033: Jira is CLI-first (block-backend-tier), so no shipped profile may
+// Jira is CLI-first (block-backend-tier), so no shipped profile may
 // enable the atlassian plugin. It stays a catalog member so deny-by-default
 // writes it `false`; a floor/base/enable entry would flip that to `true`.
 const ATLASSIAN = 'atlassian@claude-plugins-official';
@@ -1532,7 +1532,7 @@ test('HIMMEL-1033: the atlassian guard detects a profile that enables it (contro
   assert.deepEqual(noProfileEnablesAtlassian(bad), ['__probe']);
 });
 
-// HIMMEL-4024: the opt-in code kit. `code` (LSPs + code-simplifier, 0-150 listing tokens) and
+// The opt-in code kit. `code` (LSPs + code-simplifier, 0-150 listing tokens) and
 // `code-ui` (playwright MCP, the one meaningful delta) each stack on base only, so they compose
 // per task: `--profile leg-impl,code`. No profile enables them by default.
 const CODE_KIT = {
@@ -1577,7 +1577,7 @@ test('HIMMEL-4024: code kit CLIs (ast-grep, shfmt, bats) have drift rows, a cata
   assert.ok(existsSync(join(root, 'scripts', 'machine-setup', 'install-code-kit-clis.sh')), 'install step');
 });
 
-// HIMMEL-4400: a headed e2e leg needs the Playwright MCP under --strict-mcp-config. The
+// A headed e2e leg needs the Playwright MCP under --strict-mcp-config. The
 // plugin's own .mcp.json is flat-form and lives in the plugin cache, so the server def is
 // resolved from the registry mcpCatalog, the tier after home / repo / marketplace manifest.
 test('leg-e2e carries the Playwright MCP in its composed --mcp-config (HIMMEL-4400)', () => {
@@ -1600,7 +1600,7 @@ test('leg-e2e matches leg-impl plugins and leaves the Playwright plugin OFF so o
   assert.deepEqual(validateRegistry(REG), []);
 });
 
-// HIMMEL-5223: no profile listed himmel-bus and nothing could define it, so no leg ever registered.
+// No profile listed himmel-bus and nothing could define it, so no leg ever registered.
 test('leg-bus is leg-impl plus a himmel-bus stdio def that starts through the plugin start script, no placeholder left (HIMMEL-5223)', () => {
   assert.deepEqual(mcpServersForProfile(REG, 'leg-bus'), ['qmd', 'himmel-bus']);
   assert.ok(!mcpServersForProfile(REG, 'leg-impl').includes('himmel-bus'), 'leg-impl is unchanged');
@@ -1615,7 +1615,7 @@ test('leg-bus is leg-impl plus a himmel-bus stdio def that starts through the pl
   assert.deepEqual(validateRegistry(REG), []);
 });
 
-// HIMMEL-5241: console.sh registers a console only when `plugin-profiles.mjs console --mcp-servers`
+// console.sh registers a console only when `plugin-profiles.mjs console --mcp-servers`
 // lists himmel-bus; the console profile had no mcpServers, so no console was ever on the bus and a
 // leg's send was refused with "no edge". Reads the real registry, the same one console.sh resolves.
 test('console profile opts in to himmel-bus so console.sh registers the console on launch (HIMMEL-5241)', () => {
@@ -1632,7 +1632,7 @@ test('collectMcpServerDefs: the mcpCatalog tier loses to home/repo/manifest and 
   assert.throws(() => collectMcpServerDefs(['z'], opts), /not defined/);
 });
 
-// HIMMEL-4830: himmel-bus T7. A catalog def may carry a ${HIMMEL_REPO} placeholder that the real
+// himmel-bus T7. A catalog def may carry a ${HIMMEL_REPO} placeholder that the real
 // collector resolves to the primary checkout's absolute path; permissions.allow carries both
 // tool-name forms for a profile that opts in, and nothing for one that does not.
 const BUS_REG = {

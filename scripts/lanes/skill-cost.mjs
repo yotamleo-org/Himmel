@@ -1,5 +1,5 @@
 // scripts/lanes/skill-cost.mjs
-// HIMMEL-1461 phase 0 — measure the UNCAPPED skill-routing listing. Claude
+// measure the UNCAPPED skill-routing listing. Claude
 // Code applies its context-dependent cap later; `/context` remains the only
 // authority for the post-cap figure.
 // Exit codes: 0 = complete scan, 2 = usage/runtime error, 3 = scan completed
@@ -22,7 +22,7 @@ import {
   resolve,
   sep,
 } from 'node:path';
-// HIMMEL-4038: inline (not ../lib/is-main.mjs) — plugin-profiles.mjs imports this
+// inline (not ../lib/is-main.mjs) — plugin-profiles.mjs imports this
 // module from sandboxes that copy scripts/lanes/ alone (arm-resume suites).
 function isMain(importMetaUrl) {
   try {
@@ -237,7 +237,7 @@ function findPluginSkillDirectories(root, skipped) {
   return skillDirectories;
 }
 
-// HIMMEL-4060: the plugin-cache DIRECTORY COMPONENT of a scanned path —
+// the plugin-cache DIRECTORY COMPONENT of a scanned path —
 // `<configDir>/plugins/cache/<marketplace>/<plugin>/<version>/...` — as
 // { marketplace, plugin, version }, or null for a path outside that layout. Matching this
 // component (not a `/<plugin>/` substring) keeps a skill directory that merely
@@ -250,14 +250,14 @@ export function pluginCacheOf(path) {
   return null;
 }
 
-// HIMMEL-4070: an installed_plugins.json install applies to a session in `cwd` when it is
+// an installed_plugins.json install applies to a session in `cwd` when it is
 // user scope, or a project install whose projectPath is cwd. Shared by installedVersionsOf
 // (profile-context-probe) and runtimeNamesOf so the two cannot disagree.
 export function installApplies(install, cwd) {
   return install?.scope === 'user' || Boolean(cwd && install?.projectPath === cwd);
 }
 
-// HIMMEL-4068: under strict:true Claude Code namespaces a plugin's skills by the
+// under strict:true Claude Code namespaces a plugin's skills by the
 // upstream plugin.json `name`, not the marketplace entry name. Map `<entry>@<mkt>`
 // -> that manifest name, for installs whose installPath ships one (read from
 // <configDir>/plugins/installed_plugins.json); an id absent from the map falls
@@ -280,7 +280,7 @@ export function runtimeNamesOf(configDir, cwd) {
   return out;
 }
 
-// HIMMEL-4060: listing entries of skills-dir command trees
+// listing entries of skills-dir command trees
 // (`<configDir>/skills/<tree>/commands/*.md`, surfaced as `<tree>:<command>`),
 // which scanSkillCosts does not see. Returns null when <configDir>/skills is
 // unreadable, so the caller can fall back to a constant. Paths the scan could not
@@ -324,14 +324,14 @@ export function scanSkillCosts(options = {}) {
   };
 }
 
-// HIMMEL-3093 — a VENDORED.md-marked directory is upstream prose this repo
+// a VENDORED.md-marked directory is upstream prose this repo
 // mirrors verbatim, not himmel's own surface; walked up from the file's own
 // directory (no hardcoded plugin list) so any vendored tree is covered. The
 // search stops at the repo root — an ancestor OUTSIDE the checkout is never
 // consulted, so a stray VENDORED.md above the repo can't launder an
 // over-limit himmel-owned file as vendored.
 //
-// HIMMEL-3064 (CR round 1, PR #777) — the marker is a directory boundary, but a
+// The marker is a directory boundary, but a
 // VENDORED.md also declares that tree's own himmel-authored exceptions as
 // `local=<path>` lines relative to itself (lean-skills' context7-mcp is one).
 // Those are shipped-by-writing-it, not upstream prose, so the nearest marker
@@ -360,7 +360,7 @@ function vendoredRoot(filePath, repoRoot = resolve(process.cwd())) {
   }
 }
 
-// HIMMEL-2037 — the listing pays for every description byte on every session
+// the listing pays for every description byte on every session
 // start, so a cap needs a gate. Takes explicit paths (pre-commit passes staged
 // filenames; CI passes the tracked globs) rather than re-scanning a whole tree.
 export function lintDescriptions(files, maxDesc) {
@@ -377,7 +377,7 @@ export function lintDescriptions(files, maxDesc) {
     });
 }
 
-// HIMMEL-2051 — Claude Code substitutes $ARGUMENTS/$<digit> for the caller's
+// Claude Code substitutes $ARGUMENTS/$<digit> for the caller's
 // Skill-tool args throughout a command's ENTIRE body (fenced code included).
 // Evidence (no local Claude Code source tree; extracted via `grep -a` over
 // the installed claude.exe binary's string constants): the substitution
@@ -385,34 +385,33 @@ export function lintDescriptions(files, maxDesc) {
 // `(\d+)(?!\w)` fragments — i.e. it matches a bare `$1`/`$2`/... not preceded
 // by a backslash. A bare positional/field ref inside a fenced awk/shell
 // snippet gets clobbered into the literal argument text and stops being
-// runnable (HIMMEL-2039). `${1}` (bash) and `$(1)` (awk) are semantically
+// runnable. `${1}` (bash) and `$(1)` (awk) are semantically
 // identical but don't match that regex (no digit immediately after `$`), so
 // they are the prescribed fix.
 //
 // This lint deliberately does NOT mirror the `(?<!\\)` half of Claude Code's
-// own regex (CR round 2, codex-1): a `\$1` here is skipped by the harness's
+// own regex: a `\$1` here is skipped by the harness's
 // substitution, but nothing shows the backslash itself is stripped from the
 // rendered text afterward — and inside a SINGLE-QUOTED awk program (the
 // common case this lint guards) a literal backslash before `$1` is not valid
 // awk syntax either way, so an "escaped" ref can still land broken. The lint
 // refuses every bare-or-escaped `$<digit>` and only accepts `${N}`/`$(N)`.
 const BARE_POSITIONAL_RE = /\$[0-9]+(?!\w)/;
-// CommonMark fence matching (CR round 2, codex-2; trailing-content half of
-// CR round 3, codex-1; closing-indentation half of CR round 4, codex-1): a
+// CommonMark fence matching: a
 // fence-looking line only OPENS/CLOSES the current fence when its marker
 // char matches, its run length is >= the opening run length, nothing but
 // whitespace follows the marker, AND its own indentation does not EXCEED the
 // opening marker's indentation — an over-indented fence-looking line is
 // CONTENT under CommonMark (e.g. an example shown "    ```" deep inside an
 // already-open, less-indented fence), and treating it as a close would end
-// tracking early and let real content after it evade the lint (the false
-// negative round 4 named). Anything that fails any of those checks (a
+// tracking early and let real content after it evade the lint (a false
+// negative). Anything that fails any of those checks (a
 // different char, a shorter run of the same char, trailing content, or
 // over-indentation) is literal content of the still-open fence, e.g. a ```
 // example nested inside an outer ```` fence.
 //
 // Deliberately NOT capping OPENING indentation at CommonMark's <=3-space
-// top-level rule (round 3): this corpus's own numbered-list fences are
+// top-level rule: this corpus's own numbered-list fences are
 // legitimately indented 5-6 spaces (list-relative, not absolute-column, per
 // CommonMark's container rules — e.g. .claude/commands/pr-check.md:1461,
 // .claude/commands/overnight-shift.md:73, both open AND close at that same
@@ -421,7 +420,7 @@ const BARE_POSITIONAL_RE = /\$[0-9]+(?!\w)/;
 // ever over-scan. Closing is the opposite risk (ending protection too
 // early), which is why it alone is bounded against the opener's own indent.
 //
-// Declined (CR round 4, codex-2, Suggestion): recognizing a fence prefixed
+// Deliberately not handled: recognizing a fence prefixed
 // by a blockquote marker (`> \`\`\`bash`). No command file in this repo uses
 // one today, and blockquote-nested fences add another layer of CommonMark
 // container tracking for a markdown shape this corpus has never had a
@@ -429,7 +428,7 @@ const BARE_POSITIONAL_RE = /\$[0-9]+(?!\w)/;
 // has no natural stopping point. Revisit if a real command ever needs one.
 const FENCE_RE = /^(\s*)(`{3,}|~{3,})(.*)$/;
 
-// HIMMEL-2051 CR round 1 (codex-1): pr-check.md itself proved that the Skill
+// pr-check.md itself proved that the Skill
 // tool substitutes args into a command regardless of whether it declares
 // `argument-hint`/`$ARGUMENTS` — so gating this lint on that declaration left
 // the identical hazard undetected in any other command (confirmed: a bare
@@ -437,7 +436,7 @@ const FENCE_RE = /^(\s*)(`{3,}|~{3,})(.*)$/;
 // marketplace/plugins/claude-hud/commands/setup.md, which declares neither).
 // Every scanned command file is checked unconditionally; callers exclude
 // files this lint must not touch (e.g. claude-hud's byte-pinned vendor tree,
-// HIMMEL-718) via their own file selection, same as the other doc gates do.
+// byte-pinned) via their own file selection, same as the other doc gates do.
 export function lintPositionalArgs(files) {
   const offenders = [];
   for (const file of files) {

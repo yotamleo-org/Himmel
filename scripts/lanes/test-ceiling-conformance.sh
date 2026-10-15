@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# scripts/lanes/test-ceiling-conformance.sh - HIMMEL-2974. Hermetic tests for
+# scripts/lanes/test-ceiling-conformance.sh - Hermetic tests for
 # the live --autocompact-ceiling scan: PATH-stubbed pgrep, no real process
 # table read.
 #
-# HIMMEL-2999: the primary-path scenarios below drive claude_sessions() via a
+# The primary-path scenarios below drive claude_sessions() via a
 # fake /proc root (CLAUDE_SESSIONS_PROC) with real NUL-separated
 # <pid>/cmdline files, not a flattened `pgrep -af` line -- this is what makes
 # scenario (h) below a real regression test for the argv-boundary spoof
@@ -93,8 +93,8 @@ out_e="$(run_primary)"
 contains 'the console row alone is ok' "$out_e" 'ceiling=ok'
 
 # (f) pgrep itself fails (rc>1, a scan failure, not "no processes") -> ceiling=?
-# (HIMMEL-2974, codex-1 round 1: a scan failure must not read as ceiling=ok).
-# HIMMEL-3002: pgrep's own real fatal-error rc is ALSO 3 (e.g. OOM), same
+# (a scan failure must not read as ceiling=ok).
+# pgrep's own real fatal-error rc is ALSO 3 (e.g. OOM), same
 # value claude_sessions() now returns for "scan completed but degraded" --
 # this deliberately exercises that exact collision: an early pgrep failure
 # prints NOTHING before returning, so ceiling-conformance.sh must still
@@ -118,7 +118,7 @@ chmod +x "$W/bin/pgrep"
 out_g="$(run_primary)"
 contains 'pgrep rc=1 (no processes matched) still reports ceiling=ok' "$out_g" 'ceiling=ok'
 
-# (h) HIMMEL-2999: a real --autocompact auto leg whose -p free text contains
+# (h) a real --autocompact auto leg whose -p free text contains
 # the literal substring "--autocompact 200000" must still report auto/DRIFT
 # -- the spoof text is one argv element, never the literal flag token.
 mkcmdline 108 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-555-legN70-2026-09-13 \
@@ -153,7 +153,7 @@ out_i="$(CLAUDE_SESSIONS_PROC="$W/no-such-proc" PATH="$W/bin:$PATH" bash "$SUT")
 contains 'the /proc-absent fallback still reports ceiling=ok' "$out_i" 'ceiling=ok'
 contains 'the /proc-absent fallback still prints a pinned leg line' "$out_i" 'HIMMEL-111-legN61-2026-09-13 200000'
 
-# (j) HIMMEL-2999: claude_sessions() unit row -- a fake proc root with two
+# (j) claude_sessions() unit row -- a fake proc root with two
 # processes prints exactly two TAB lines with the right fields (cmdline
 # files for pids 107/108 are still on disk from scenarios (e)/(h) above).
 pgrep_x_stub 107 108
@@ -166,7 +166,7 @@ if [ "$sess_lines" -eq 2 ]; then pass 'claude_sessions prints exactly two rows';
 contains 'claude_sessions row for the pinned leg' "$sess_out" $'108\tHIMMEL-555-legN70-2026-09-13\tclaude-sonnet-5\tauto'
 contains 'claude_sessions row for the console' "$sess_out" $'HIMMEL-nextleg-2026-09-13B-console\tclaude-fable-5-1\tauto'
 
-# (k) HIMMEL-2999 CR round 1 (codex-1, Critical): a -p value containing a
+# (k) a -p value containing a
 # LITERAL embedded newline byte must not split into fake argv tokens -- the
 # real --autocompact (auto) must survive, not be overwritten by the "200000"
 # that a tr '\0' '\n' conversion would expose as a fake trailing token.
@@ -177,10 +177,10 @@ out_k="$(run_primary)"
 contains 'an embedded newline in a -p value does not overwrite the real autocompact value' "$out_k" 'HIMMEL-666-legN80-2026-09-13 auto'
 contains 'the embedded-newline leg still reports its real DRIFT' "$out_k" 'ceiling=DRIFT:HIMMEL-666-legN80-2026-09-13'
 
-# (l) HIMMEL-2999 CR round 1 (codex-2, Important): a value-bearing flag
+# (l) a value-bearing flag
 # (--append-system-prompt) whose value happens to equal the literal string
 # "-n" must not poison the NEXT argv element into being read as -n's value --
-# the real -n (HIMMEL-999-legN90-2026-09-13), consumed earlier, must survive.
+# the real -n, consumed earlier, must survive.
 mkcmdline 110 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-999-legN90-2026-09-13 \
     --append-system-prompt -n work
 pgrep_x_stub 110
@@ -188,7 +188,7 @@ out_l="$(run_primary)"
 contains 'a flag value that looks like -n does not hijack the following token as the real name' "$out_l" 'HIMMEL-999-legN90-2026-09-13 auto'
 contains 'the hijack-attempt leg still reports its real DRIFT' "$out_l" 'ceiling=DRIFT:HIMMEL-999-legN90-2026-09-13'
 
-# (m) HIMMEL-2999 CR round 2 (codex-1, Important): `-p`/`--print` is a bare
+# (m) `-p`/`--print` is a bare
 # boolean flag (see scripts/probes/claude-p/*.sh -- it never itself takes a
 # value) -- treating it as value-bearing swallowed the NEXT real flag's
 # value. A real `-n` immediately after a bare `-p` must survive.
@@ -200,7 +200,7 @@ sess_out_m="$(CLAUDE_SESSIONS_PROC="$W/proc" PATH="$W/bin:$PATH" bash -c '
 ')"
 contains 'a bare -p boolean flag does not swallow the following --model value' "$sess_out_m" $'111\tHIMMEL-100-legN95-2026-09-13\tclaude-sonnet-5\t200000'
 
-# (n) HIMMEL-2999 CR round 2 (codex-2, Suggestion): a field value carrying a
+# (n) a field value carrying a
 # literal embedded TAB must not widen the emitted TSV row -- the row must
 # always print exactly 4 tab-separated fields.
 mkcmdline 112 claude --model claude-sonnet-5 --autocompact 200000 -n $'HIMMEL-300-legN97\t2026-09-13'
@@ -212,11 +212,11 @@ sess_out_n="$(CLAUDE_SESSIONS_PROC="$W/proc" PATH="$W/bin:$PATH" bash -c '
 nf_n="$(printf '%s' "$sess_out_n" | awk -F'\t' '{print NF; exit}')"
 if [ "$nf_n" -eq 4 ]; then pass 'an embedded TAB in a name value does not widen the TSV row'; else fail "an embedded TAB in a name value does not widen the TSV row (NF=$nf_n)"; fi
 
-# (o) HIMMEL-2999 CR round 3 (codex-2, Suggestion): `--system-prompt` (the
+# (o) `--system-prompt` (the
 # non-append variant) is a value-bearing free-text flag just like
 # `--append-system-prompt` -- a value that happens to equal the literal
 # string "-n" must not poison the NEXT argv element into being read as -n's
-# value. The real -n (HIMMEL-200-legN99-2026-09-13), consumed earlier, must
+# value. The real -n, consumed earlier, must
 # survive.
 mkcmdline 113 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-200-legN99-2026-09-13 \
     --system-prompt -n work
@@ -225,7 +225,7 @@ out_o="$(run_primary)"
 contains 'a --system-prompt value that looks like -n does not hijack the following token as the real name' "$out_o" 'HIMMEL-200-legN99-2026-09-13 auto'
 contains 'the --system-prompt hijack-attempt leg still reports its real DRIFT' "$out_o" 'ceiling=DRIFT:HIMMEL-200-legN99-2026-09-13'
 
-# (p) HIMMEL-3002: pgrep returns a pid that has already vanished from /proc
+# (p) pgrep returns a pid that has already vanished from /proc
 # by the time we read it (a race, or a stale table) -- no /proc/<pid> dir at
 # all. Must print no row for it and must NOT count as scan-degraded -- this
 # pins today's behaviour for a genuinely gone process.
@@ -241,7 +241,7 @@ case "$out_p" in
     *) pass 'a vanished pid is not reported as scan-degraded' ;;
 esac
 
-# (q) HIMMEL-3002: an alive pid whose /proc/<pid> dir exists but whose
+# (q) an alive pid whose /proc/<pid> dir exists but whose
 # cmdline is unreadable (a permission boundary, e.g. hidepid) must not be
 # silently treated as vanished -- the scan is reported as degraded, naming
 # the pid, and the summary falls back to "cannot tell" (ceiling=?) rather
@@ -266,7 +266,7 @@ else
     fi
 fi
 
-# (r) HIMMEL-3008: `-r` passes but the actual read fails -- readability can
+# (r) `-r` passes but the actual read fails -- readability can
 # change between the upfront check and the read loop's own `< "$cmdline"`
 # redirection. Simplest deterministic stand-in: a directory named `cmdline`
 # in a fake /proc/<pid> -- `-r` succeeds on a directory, but reading from it
@@ -292,7 +292,7 @@ out_r="$(run_primary)"
 contains 'ceiling-conformance.sh surfaces the read-fails pid as scan-degraded' "$out_r" 'scan-degraded:115'
 contains 'ceiling-conformance.sh reports ceiling=? over a read-fails pid' "$out_r" 'ceiling=?'
 
-# (s) HIMMEL-3008 design: a live pid whose cmdline is empty is not the same
+# (s) a live pid whose cmdline is empty is not the same
 # fact as a permission race -- a zombie (already exited, not yet reaped)
 # reads back a genuinely empty (0-byte) cmdline with no error at all. It must
 # not be printed as a phantom empty-fields row, but it is not a readability
@@ -315,7 +315,7 @@ case "$out_s" in
     *) pass 'a zero-token empty cmdline on a live pid is not reported as scan-degraded' ;;
 esac
 
-# (t) HIMMEL-3009: a read that errors AFTER consuming at least one token must
+# (t) a read that errors AFTER consuming at least one token must
 # not fall through to the normal row path with a truncated argv -- it is the
 # same fact as case (r)'s immediate read failure (a live pid we cannot fully
 # trust), not a phantom-but-partial row. A real mid-stream read error is not

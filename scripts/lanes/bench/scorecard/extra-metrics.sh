@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/scorecard/extra-metrics.sh - P0.1 scorecard recipe (HIMMEL-2977).
+# scripts/lanes/bench/scorecard/extra-metrics.sh - P0.1 scorecard recipe.
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq and gh,
 # both available under git bash unchanged; the transcripts it reads are the
 # same JSONL on every platform.
 #
-# Adapted from the HIMMEL-2977 baseline Appendix B (extra-metrics.sh, leg
+# Adapted from the baseline Appendix B (extra-metrics.sh, leg
 # N207, 2026-09-12):
 #  (g) fix-forward/revert within 48h: merged PR B whose title ticket-id(s)
 #      intersect an earlier merged PR A's, merged within 48h after A, or
@@ -19,7 +19,7 @@
 #
 # Usage: extra-metrics.sh --since <ISO8601> [--until <ISO8601>] [--repo <owner/repo>]
 #
-# Each metric is followed by a `coverage:` line (HIMMEL-3269): `coverage: prs
+# Each metric is followed by a `coverage:` line: `coverage: prs
 # ...` for the PR list, `coverage: roots=R discovered=D parsed=P skipped=K
 # (reason=n ...)` for the transcripts. SCORECARD_PROJECTS_DIR is an explicit
 # one-root scope; the default is the primary dir plus its worktree siblings
@@ -102,7 +102,7 @@ OP_COUNTS="$RUN/op-counts.txt"
 FILES="$RUN/files.txt"
 DISC_ERR="$RUN/disc-err.txt"
 
-# A discovery error must not vanish (the agg-burn.sh HIMMEL-2977 rule): the old
+# A discovery error must not vanish (the agg-burn.sh rule): the old
 # `find 2>/dev/null | while` lost find's errors and status, so a partial input
 # set printed as a complete one.
 if ! sc_discover "$FILES" "$DISC_ERR"; then

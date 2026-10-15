@@ -1,4 +1,4 @@
-// scripts/lanes/tests/bench-no-ledger-write.test.mjs — HIMMEL-1723 P2.8
+// scripts/lanes/tests/bench-no-ledger-write.test.mjs
 // Hard constraint (spec §6.4): the kit must NEVER write
 // ~/.himmel/flow-runs.jsonl. That is the live lane-readiness ledger;
 // synthetic bench rows would corrupt lane-readiness.mjs's trailing-PASS

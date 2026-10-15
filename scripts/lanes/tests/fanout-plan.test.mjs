@@ -1,4 +1,4 @@
-// scripts/lanes/tests/fanout-plan.test.mjs — HIMMEL-1829
+// scripts/lanes/tests/fanout-plan.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFanoutPlan } from '../fanout-plan.mjs';
@@ -13,7 +13,7 @@ const LIVE = [
   { id: 'hermes-critics', label: 'hermes critics', class: 'critic' },
   // A hypothetical ACTIVE (non-dormant) impl lane — none exist on the real
   // registry today, but the class check must refuse this independently of
-  // dormancy (codex CR, HIMMEL-1829 bundle round): an impl-class lane id is
+  // dormancy: an impl-class lane id is
   // not a value the Agent tool's model param accepts, so /fanout must never
   // route implementation work there regardless of availability.
   { id: 'hypothetical-impl', label: 'hypothetical impl lane', class: 'impl' },
@@ -30,7 +30,7 @@ test('happy path — one item per type resolves to the invariant tier with an ex
   const { plan, errors } = buildFanoutPlan(items, LIVE);
   assert.deepEqual(errors, []);
   // implementation defaults to Sonnet — impl routes to native Claude
-  // subagents only (operator ruling 2026-08-19, HIMMEL-1967); the class:"impl"
+  // subagents only; the class:"impl"
   // lanes on this machine are all dormant.
   assert.deepEqual(plan.map((p) => p.lane), ['fable', 'opus', 'sonnet', 'haiku', 'sonnet']);
   for (const p of plan) {

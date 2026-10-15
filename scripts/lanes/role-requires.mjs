@@ -1,5 +1,5 @@
 // scripts/lanes/role-requires.mjs
-// HIMMEL-4012 — the plugins each shipped profile MUST have loaded for its role.
+// The plugins each shipped profile MUST have loaded for its role.
 // One table, two consumers: plugin-profiles.test.mjs (the resolver enables
 // them) and profile-context-probe.mjs (the live init event actually exposes
 // their skills/commands/agents). A profile with no row here is untested.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-1596 Task 1.2 — liveness must not lie in either direction.
+# Liveness must not lie in either direction.
 #
 # The bug: last_output_at ALONE reads 0 for a worker that commits early and
 # leaves a clean tree, so the better-behaved the worker, the more it reads
@@ -96,11 +96,11 @@ check "legacy meta without worktree still STALLS" 4 "$(run "$d")"
 
 # The suite's own live pid, in the namespace pid_alive probes: on Git Bash
 # that is the WINDOWS pid (tasklist), read from /proc/$$/winpid; POSIX kill -0
-# takes $$ directly. This is what lets the HIMMEL-1573 cases below record a
+# takes $$ directly. This is what lets the live-pid cases below record a
 # pid that is GENUINELY alive for the duration of the run.
 if [ -r "/proc/$$/winpid" ]; then LIVE_PID=$(cat "/proc/$$/winpid"); else LIVE_PID=$$; fi
 
-# --- 6. LIVE PID -> live (HIMMEL-1573). Every write-side signal ancient, but
+# --- 6. LIVE PID -> live. Every write-side signal ancient, but
 #        the recorded pid is CONFIRMED alive. A worker in its READ/PLAN phase
 #        writes nothing, so process liveness is the only signal that can see
 #        it — measured 2026-08-07: a verifiably-alive worker was declared
@@ -118,7 +118,7 @@ printf '{\n "status": "running",\n "pid": 999999999,\n "started_at": "%s",\n "la
     "$STALE_ISO" "$STALE_ISO" "$wt" > "$d/meta.json"
 check "dead pid still reads PHANTOM" 5 "$(run "$d")"
 
-# --- 8. SIBLING CHURN IS NOT LIVENESS (HIMMEL-1616). worker_worktree (the
+# --- 8. SIBLING CHURN IS NOT LIVENESS. worker_worktree (the
 #        minted worktree) is ancient; the legacy `worktree` key (the dispatch
 #        CWD) has a FRESH write, simulating a sibling worker's churn in the
 #        shared checkout. The mtime leg must walk worker_worktree, so this
@@ -135,15 +135,15 @@ check "sibling churn in dispatch CWD no longer reads ALIVE" 4 "$(run "$d")"
 d=$(mk workerwt); wt="$TMP/wt-workerwt"
 mkdir -p "$TMP/stale-dispatch-cwd"
 # POSIX touch -t, not GNU-only -d, and no failure suppression: a fixture that
-# silently stays fresh would not establish the stated condition (CR round 1).
+# silently stays fresh would not establish the stated condition.
 touch -t 200001010000 "$TMP/stale-dispatch-cwd"
 echo "work in progress" > "$wt/scratch.txt"
 printf '{\n "status": "running",\n "started_at": "%s",\n "last_output_at": "%s",\n "worker_worktree": "%s",\n "worktree": "%s",\n "branch": "work"\n}\n' \
     "$STALE_ISO" "$STALE_ISO" "$wt" "$TMP/stale-dispatch-cwd" > "$d/meta.json"
 check "fresh write in worker_worktree reads LIVE" 3 "$(run "$d")"
 
-# --- 10. EPERM pid (exists but unprobeable) -> NOT PHANTOM (CR round 1, PR
-#         #1603). POSIX only: pid 1 exists but a non-root kill -0 gets EPERM,
+# --- 10. EPERM pid (exists but unprobeable) -> NOT PHANTOM.
+#         POSIX only: pid 1 exists but a non-root kill -0 gets EPERM,
 #         which must read UNKNOWN (rc 2), fall through to the staleness check,
 #         and STALL (rc 4) — never rc 5. Skipped on Git Bash (the tasklist
 #         probe path — no pid 1 there) and under root (kill -0 1 succeeds,
@@ -157,7 +157,7 @@ else
     echo "skip EPERM-pid case (Windows tasklist path, or running as root)"
 fi
 
-# --- Portability coverage (HIMMEL-1614).
+# --- Portability coverage.
 # await-glm-worker.sh can only be driven as a subprocess, so the BSD/macOS
 # `stat -f %m` path -- which does not exist in the GNU-only original -- is
 # exercised by faking a non-GNU toolchain: a `find` that rejects -printf (so
@@ -224,7 +224,7 @@ EOF
 #        forces detection off gnu onto bsd; a fresh file (mtime-only signal)
 #        must still read LIVE. Against the original, the fake find breaks
 #        -printf, the leg returns nothing, and this reads STALLED -- the silent
-#        capability loss HIMMEL-1614 names.
+#        capability loss the portability fix addresses.
 FAKE_BSD="$TMP/fakebin-bsd"
 make_fake_bin "$FAKE_BSD" bsd
 d=$(mk portfb)

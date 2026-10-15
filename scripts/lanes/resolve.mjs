@@ -1,5 +1,5 @@
 // scripts/lanes/resolve.mjs
-// HIMMEL-689 — resolve the machine-available delegation lanes from lanes.json.
+// Resolve the machine-available delegation lanes from lanes.json.
 // Pure resolveLanes (tested) + buildCtx (real machine, untested by design) + CLI.
 import { accessSync, constants, existsSync, readFileSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -13,9 +13,9 @@ import { formatBankAnnotation, parseBankStatusOutput } from './bank-status-core.
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT  = join(SCRIPT_DIR, '..', '..');           // scripts/lanes -> repo (or worktree) root
 const REGISTRY   = process.env.LANES_REGISTRY || join(SCRIPT_DIR, 'lanes.json');
-// HIMMEL-758: the machine-local, gitignored overlay `himmelctl config` writes
+// The machine-local, gitignored overlay `himmelctl config` writes
 // to (via set-lane-override.mjs) — never scripts/lanes/lanes.json itself.
-// HIMMEL-3059 S3: a read-only install prefix can't take the in-tree overlay
+// A read-only install prefix can't take the in-tree overlay
 // write, so set-lane-override.mjs may have landed it under the himmelctl
 // cache dir instead — checked first here, mirroring adopter-profile.js's
 // readLaneRegistries(). A writable clone's in-tree overlay is unaffected.
@@ -31,10 +31,10 @@ const die = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code
 // allowlist is reported as suppressed-by-profile rather than as absent. When a
 // profileAllowlistScope is present, only that wizard-owned subset is constrained;
 // registry lanes outside it stay on their real probes. Absence of the allowlist
-// preserves the pre-HIMMEL-1428 behaviour for existing installs, while absence
+// preserves the legacy behaviour for existing installs, while absence
 // of the scope preserves the original global-allowlist semantics for old files.
 //
-// HIMMEL-1448: the persisted scope is a FIXED install-time snapshot, so a
+// The persisted scope is a FIXED install-time snapshot, so a
 // wizard-managed lane added or renamed in the registry afterwards falls outside
 // it. The registry itself therefore marks those lanes (`profileManaged`), and a
 // marked lane is constrained regardless of the snapshot: absent from the
@@ -55,7 +55,7 @@ export function resolveLaneInventory(registry, ctx) {
     .map((lane) => ({
       lane,
       suppressedByProfile: Boolean(allowlist)
-        // HIMMEL-3927: the marker is checked BEFORE the claude-tier exemption. A
+        // The marker is checked BEFORE the claude-tier exemption. A
         // local patch may set `class`, but never `profileManaged`, so a marked lane
         // cannot escape the allowlist by claiming class claude-tier.
         && (lane.class !== 'claude-tier' || isProfileManaged(lane))
@@ -70,7 +70,7 @@ export function resolveLanes(registry, ctx) {
     .map((row) => row.lane);
 }
 
-// unknownOverlayKeys(base, local) -> [{ id, keys }] (HIMMEL-1913). Known
+// unknownOverlayKeys(base, local) -> [{ id, keys }]. Known
 // per-lane keys come from the shared registry itself, so adding a field there
 // automatically permits the same field in local deltas and overlay-only lanes.
 // Pure — no I/O, no process.env reads.
@@ -91,7 +91,7 @@ export function unknownOverlayKeys(base, local) {
   return unknown;
 }
 
-// mergeLocalOverlay(base, local) -> merged registry object (HIMMEL-758). A
+// mergeLocalOverlay(base, local) -> merged registry object. A
 // TRUE per-lane overlay, not a wholesale replace: each entry in
 // `local.lanes` is merged onto the base lane sharing its `id` (local fields
 // win). The structured dispatch object and its flag maps are deep-merged;
@@ -107,7 +107,7 @@ export function mergeLocalOverlay(base, local) {
   const byId = new Map(baseLanes.map((l) => [l.id, l]));
   for (const rawPatch of localLanes) {
     if (!rawPatch || !rawPatch.id) continue;
-    // HIMMEL-1448: `profileManaged` is registry-owned; a local patch must never
+    // `profileManaged` is registry-owned; a local patch must never
     // set or clear it (a local `false` would un-constrain a wizard lane).
     const { profileManaged: _ignored, ...patch } = rawPatch;
     const existing = byId.get(patch.id);
@@ -138,7 +138,7 @@ export function mergeLocalOverlay(base, local) {
   return out;
 }
 
-// resolveBankTargets(base, local, bankIds) -> { withBank, without } (HIMMEL-1690).
+// resolveBankTargets(base, local, bankIds) -> { withBank, without }.
 // The bank probe (bank-status.ts) and /lanes must resolve quota-bank lanes
 // through the SAME overlay-aware merge the rest of the lane system uses, so a
 // lane that exists ONLY in lanes.local.json (an overlay-only quota bank)
@@ -267,7 +267,7 @@ function loadRegistry() {
     die(2, `lanes: cannot evaluate — registry ${REGISTRY} defaultImplLane must be a lane id`);
   }
   // LANES_REGISTRY (explicit full-override — tests/CI) replaces wholesale,
-  // exactly as before HIMMEL-758: no local overlay applied on top of an
+  // exactly as before the local overlay existed: no overlay applied on top of an
   // explicit override. Only the DEFAULT registry path layers lanes.local.json.
   if (process.env.LANES_REGISTRY || !existsSync(LOCAL_REGISTRY)) return base;
   let local;
@@ -299,7 +299,7 @@ function loadRegistry() {
   return mergeLocalOverlay(base, local);
 }
 
-// HIMMEL-1029/HIMMEL-1768: context prose is derived only from structured
+// Context prose is derived only from structured
 // context fields, so a stale hand-maintained descriptor cannot contradict them.
 export function fmtCtx(n) {
   if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '';
@@ -317,7 +317,7 @@ export function formatContextAnnotation(context) {
 }
 
 // resolveActiveAccessPath(quota) -> { ok: true, path, index } | { ok: false, reason }
-// (HIMMEL-1768 round 3). Resolve the lane's ACTIVE access path from explicit
+// Resolve the lane's ACTIVE access path from explicit
 // selection, never by positional fallback. An ABSENT activeAccessPath selects
 // the first path — the registry's documented default shape, not an error. An
 // EXPLICIT index that fails to select a path (out of range, fractional,
@@ -358,9 +358,9 @@ export function formatQuotaAnnotation(quota, status) {
   }
   const limits = windows.length > 0 ? windows.join('+') : 'none';
   // Alternatives are every declared path EXCEPT the resolved active one.
-  // paths.slice(1) listed the ACTIVE path itself as an "alternative" whenever
-  // activeAccessPath !== 0 — the display half of the positional-index
-  // assumption HIMMEL-1768 removes.
+  // slicing off the first path would list the ACTIVE path itself as an
+  // "alternative" whenever activeAccessPath !== 0 (a positional-index
+  // assumption).
   const alternatives = paths
     .filter((_, i) => i !== resolved.index)
     .map((path) => path.kind === 'metered-api-key'
@@ -390,7 +390,7 @@ function renderText(lanes, suppressed, bankStatuses = new Map()) {
     'Note: [ctx: ...] is derived from structured context.windowTokens + context.overflow; absent = unverified/varies.\n';
 }
 
-// HIMMEL-747 — turn the codex startup-health detector's exit code + WARN lines
+// Turn the codex startup-health detector's exit code + WARN lines
 // into a /lanes annotation. PURE (unit-tested): only rc=1 (findings) annotates;
 // rc=0 (healthy), rc=2 (no codex), or a spawn failure (rc<0) render nothing, so
 // a degraded codex delegation lane stops looking healthy without ever breaking

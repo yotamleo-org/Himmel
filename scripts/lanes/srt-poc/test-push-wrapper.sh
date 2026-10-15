@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# Hermetic tests for push-wrapper.sh (HIMMEL-5287 POC): a local bare origin in a
+# Hermetic tests for push-wrapper.sh (POC): a local bare origin in a
 # temp dir, no network, no credentials. Rows: one allowed push, then every
 # refusal class the operator ruling names (force, +refspec, main, other
 # branches) plus the delete / URL-remote shapes.

@@ -1,4 +1,4 @@
-// scripts/lanes/tests/bench-dispatch-luna.test.mjs — HIMMEL-1723 P2.3
+// scripts/lanes/tests/bench-dispatch-luna.test.mjs
 // --dry-run must print the EXACT argv + env dispatch-luna.sh would use
 // without launching anything real. The structural "no telegram spawner in
 // this kit's own sources" guard lives in bench-no-telegram-spawner-grep.test.mjs

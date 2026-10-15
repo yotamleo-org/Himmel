@@ -1,6 +1,6 @@
-// scripts/lanes/effort-route.mjs — HIMMEL-3997
+// scripts/lanes/effort-route.mjs
 // Turns an effort-assess record into an ADVISORY LEG_EFFORT recommendation
-// (research HIMMEL-3992 section c). It never names a tier or model: raise
+// It never names a tier or model: raise
 // effort before tier, and Opus/Fable still pass headed-arm-leg.sh's Tier gate.
 //
 //   node effort-route.mjs record.json [--config effort-routing.json]

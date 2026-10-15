@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/scorecard/ledger-metrics.sh - P0.1 scorecard recipe (HIMMEL-2977).
+# scripts/lanes/bench/scorecard/ledger-metrics.sh - P0.1 scorecard recipe.
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq and gh,
 # both available under git bash unchanged; the ledger it reads is a plain
 # JSONL file.
 #
-# Adapted from the HIMMEL-2977 baseline Appendix B (ledger-metrics.sh, leg
+# Adapted from the baseline Appendix B (ledger-metrics.sh, leg
 # N207, 2026-09-12): per merged branch in the window, crit/imp/sug findings
 # and rounds (distinct heads with any finding/attempt row) off the primary
 # ledger. Read-only. The baseline read a pre-fetched "$S/merged.json"; this
@@ -76,7 +76,7 @@ END {
 }' "$RUN/merged-branches.txt" "$RUN/ledger-rows.tsv" | sort > "$RUN/ledger-per-branch.tsv"
 
 echo "merged_branches=$(wc -l < "$RUN/merged-branches.txt" | tr -d ' ') with_ledger_rows=$(wc -l < "$RUN/ledger-per-branch.tsv" | tr -d ' ')"
-# HIMMEL-3269 coverage: the two inputs behind the stats below. PRs: every fetched
+# coverage: the two inputs behind the stats below. PRs: every fetched
 # PR is in the window or out of it (a bad mergedAt fails the jq above); the
 # --limit cut is the one silent way that input is incomplete. Branches: a merged
 # branch with no ledger rows contributes nothing to crit/imp/sug/rounds, so the
@@ -97,7 +97,7 @@ printf 'sug:  '; stat 4
 printf 'rounds: '; stat 5
 awk -F'\t' '{print $2+$3}' "$RUN/ledger-per-branch.tsv" | sort -n | awk '{a[NR]=$1; s+=$1} END{if(NR==0){print "crit+imp: n=0"; exit} med=(NR%2)?a[(NR+1)/2]:(a[NR/2]+a[NR/2+1])/2; printf "crit+imp: n=%d mean=%.2f median=%.1f\n", NR, s/NR, med}'
 
-# HIMMEL-3021: the plain public gh pr list count above undercounts any window
+# The plain public gh pr list count above undercounts any window
 # straddling the 2026-09-09 private->public cutover (pre-cutover work PRs live
 # only in the private archive bundle); merged-count.sh unions the two. The
 # per-branch ledger stats above stay on the public-only merged.json join —

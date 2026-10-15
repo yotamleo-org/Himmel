@@ -1,4 +1,4 @@
-// scripts/lanes/tests/bench-report.test.mjs — HIMMEL-1723 P2.7
+// scripts/lanes/tests/bench-report.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -174,7 +174,7 @@ test('CLI: a genuinely unexpected (unmarked) manifest still fails the whole repo
 });
 
 test('classifyRuns: a run_id that disagrees with the task/cell/rep tuple is invalid, never canonical', () => {
-  // HIMMEL-1723 CR2: the tuple alone must not vouch for a manifest — its
+  // The tuple alone must not vouch for a manifest — its
   // run_id has to AGREE with it. One manifest misnames the slot it claims;
   // the other has no run_id at all, so its identity cannot be established.
   const result = classifyRuns([
@@ -265,7 +265,7 @@ test('buildResultsTable: an absent out_of_scope_paths surfaces as "-", never a s
 });
 
 // ---------------------------------------------------------------------------
-// THE ROUND-4 GUARD (HIMMEL-1723). The property all three CR rounds violated,
+// THE ROUND-4 GUARD. The property all three CR rounds violated,
 // enforced per category, driven by the registry itself:
 //
 //   a run surfaced as incomplete contributes NOTHING beyond its resolved

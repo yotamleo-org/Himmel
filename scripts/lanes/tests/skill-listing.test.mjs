@@ -1,5 +1,5 @@
 // scripts/lanes/tests/skill-listing.test.mjs
-// HIMMEL-4038 — per-profile skillOverrides (non-plugin skills name-only) and a
+// Per-profile skillOverrides (non-plugin skills name-only) and a
 // computed skillListingBudgetFraction. Pure functions + the resolver hook; no
 // live claude spawn (the measured half lives in profile-context-probe.mjs).
 import { test, after } from 'node:test';
@@ -56,14 +56,14 @@ test('fraction above the 0.05 sanity cap is refused, not emitted', () => {
   assert.throws(() => skillListingSettings({ entries, enabledIds: ['p1@himmel'], requiredIds: ['p1@himmel'], window: 200000 / 2 }), /exceeds the 0\.05 sanity cap/);
 });
 
-// HIMMEL-4060 item 1: the plugin match is the plugin-cache DIRECTORY COMPONENT.
+// The plugin match is the plugin-cache DIRECTORY COMPONENT.
 test('fraction: a skill DIRECTORY named like an enabled plugin does not count toward that plugin', () => {
   const decoy = { ...plugin('p1', 40000, 'other'), path: '/h/.claude/plugins/cache/himmel/other/1.0/skills/p1/SKILL.md' };
   const s = skillListingSettings({ entries: [plugin('a', 10, 'p1'), decoy], enabledIds: ['p1@himmel'], requiredIds: ['p1@himmel'] });
   assert.ok(s.skillListingBudgetFraction < 0.02, String(s.skillListingBudgetFraction));
 });
 
-// HIMMEL-4060 item 5: the unscanned reserve is a scan of skills-dir command trees.
+// The unscanned reserve is a scan of skills-dir command trees.
 const tmpDirs = [];
 after(() => { for (const d of tmpDirs) rmSync(d, { recursive: true, force: true }); });
 const mkConfigDir = (trees) => {
@@ -94,7 +94,7 @@ test('reserve: an unscannable configDir falls back to the fixed constant', () =>
   assert.deepEqual(skillListingSettings({ ...base, configDir: '/nonexistent/claude-config-4060' }), skillListingSettings(base));
 });
 
-// HIMMEL-4065: symlinkSync throws EPERM on Windows without Developer Mode. Skip the two ELOOP
+// symlinkSync throws EPERM on Windows without Developer Mode. Skip the two ELOOP
 // tests explicitly (never a silent pass) instead of erroring the suite. FORCE_EPERM simulates it.
 const selfLoop = (t, dir) => {
   try {
@@ -108,7 +108,7 @@ const selfLoop = (t, dir) => {
   }
 };
 
-// HIMMEL-4064 item 2: a command tree path the scan could not read is reported, as scanSkillCosts does.
+// A command tree path the scan could not read is reported, as scanSkillCosts does.
 test('scanCommandTrees: a skipped (ELOOP) command path lands in the caller\'s skipped array, entries still returned', (t) => {
   const dir = mkConfigDir({ t: { 'ok.md': '---\ndescription: d\n---\nbody\n' } });
   if (!selfLoop(t, dir)) return;
@@ -155,7 +155,7 @@ test('resolveProfile: a profile with no required plugins (bare) gets no override
   assert.deepEqual(Object.keys(r), ['enabledPlugins']);
 });
 
-// HIMMEL-4060: omitting cwd at either forwarding seam loses project runtime names.
+// Omitting cwd at either forwarding seam loses project runtime names.
 const scopedListingFixture = () => {
   const configDir = mkConfigDir({});
   const cwd = join(configDir, 'checkout');
@@ -194,7 +194,7 @@ test('resolveProfile: forwards cwd to the project-scoped listing calculation', (
   assert.ok(current > userOnly, `${current} vs ${userOnly}`);
 });
 
-// HIMMEL-4068: the listing line is `<manifest name>:<skill> ...`, and the manifest
+// The listing line is `<manifest name>:<skill> ...`, and the manifest
 // name (strict:true) can differ from the marketplace entry name the cache dir carries.
 test('fraction: a plugin listed under a longer manifest name costs more than under its entry name', () => {
   const entries = Array.from({ length: 4 }, (_, i) => plugin(`s${i}`, 1000, 'p1'));
@@ -204,7 +204,7 @@ test('fraction: a plugin listed under a longer manifest name costs more than und
   assert.ok(longer > same, `${longer} vs ${same}`);
 });
 
-// HIMMEL-4116: the window is the profile's own (contextMode 1m = 1_000_000), not a fixed 200k.
+// The window is the profile's own (contextMode 1m = 1_000_000), not a fixed 200k.
 const bigEntries = Array.from({ length: 20 }, (_, i) => plugin(`s${i}`, 2500, 'lean-skills'));
 const regWindow = (contextMode) => ({ ...registry, profiles: { ...registry.profiles, user: { enable: ['lean-skills@himmel'], contextMode, ...(contextMode === '1m' ? { autocompact: 1000000 } : {}) } } });
 

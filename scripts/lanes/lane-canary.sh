@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/lane-canary.sh - HIMMEL-5230 lane canary.
+# scripts/lanes/lane-canary.sh - lane canary.
 #
 # Launches ONE tiny no-op leg per lane through headed-arm-leg.sh (the real
 # launch path: profile, proxy, permission config) and reports PASS / FAIL /

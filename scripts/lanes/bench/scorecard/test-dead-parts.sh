@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/test-dead-parts.sh - RED/GREEN suite for
-# dead-parts.sh (HIMMEL-3513 EXPANSION 2). House check_contains/PASS-FAIL
+# dead-parts.sh. House check_contains/PASS-FAIL
 # style, per test-extra-metrics.sh.
 #
 # Hermetic: never git-greps the live himmel repo. A throwaway fixture git
@@ -111,7 +111,7 @@ check_contains "basic: precedence - a script referenced by BOTH a test file and 
 check_contains "basic: a script referenced only from a .spec.* file lands TEST-ONLY (codex-3 .spec.* naming fix)" \
     "$OUT" $'script\tspec-testonly\tscripts/spec-testonly.sh\tTEST-ONLY'
 dead_section=$(printf '%s\n' "$OUT" | sed -n '/^--- DEAD /,/^--- DOC-ONLY /p')
-# codex-2 (round 12): a `grep -q` miss on an EMPTY $dead_section (e.g. the
+# A `grep -q` miss on an EMPTY $dead_section (e.g. the
 # `--- DEAD ` header text drifted, breaking the sed range extraction) is
 # indistinguishable from a genuine absence - guard that the section was
 # actually extracted before trusting the negative assertion below.
@@ -236,7 +236,7 @@ check_contains "ts-wiring: a .ts entry referenced only via its .js import specif
 # --- TS extensionless wiring: a .ts entry imported only via an extensionless
 # specifier (`from "./foo"`, common with bundler-resolved TS) must also
 # classify WIRED, not DEAD - the .js-suffixed union above (PR #1170) covers
-# the compiled-extension form but not this one (HIMMEL-3550) -----------------
+# the compiled-extension form but not this one --------------------------------
 TSREPO2=$(mktemp -d "${TMPDIR:-/tmp}/test-dead-parts-tsext.XXXXXX") || { echo "FAIL - mktemp ts-ext repo"; exit 1; }
 mkdir -p "$TSREPO2/scripts"
 printf 'export function extlessFn() {}\n' > "$TSREPO2/scripts/extless-src.ts"
@@ -261,7 +261,7 @@ check_contains "ts-extensionless: a .ts entry referenced only via an extensionle
 # sorted-last (tail) extracted timestamp matches the extraction charset but
 # fails to parse must not skip the WHOLE file - fall back to the nearest
 # timestamp that does parse instead, so an in-window Bash call elsewhere in
-# the same file still counts as USED (HIMMEL-3547) --------------------------
+# the same file still counts as USED ----------------------------------------
 MALREPO=$(mktemp -d "${TMPDIR:-/tmp}/test-dead-parts-mal.XXXXXX") || { echo "FAIL - mktemp mal repo"; exit 1; }
 mkdir -p "$MALREPO/scripts"
 printf '#!/usr/bin/env bash\necho head\n' > "$MALREPO/scripts/malformed-head.sh"
@@ -291,8 +291,7 @@ check_contains "malformed-edge: the WARNING names the fallback, not a silent ski
 # must not lose the valid record - jq's per-record fromdateiso8601 throws on
 # the malformed one, which aborted the whole `jq` invocation (nonzero exit)
 # and discarded every record it had already emitted via the JQ_FAILS/continue
-# branch, even though the valid Bash call was already in jq's stdout
-# (HIMMEL-3547 CR round 1) ----------------------------------------------
+# branch, even though the valid Bash call was already in jq's stdout ------
 JQORDERREPO=$(mktemp -d "${TMPDIR:-/tmp}/test-dead-parts-jqorder.XXXXXX") || { echo "FAIL - mktemp jqorder repo"; exit 1; }
 mkdir -p "$JQORDERREPO/scripts"
 printf '#!/usr/bin/env bash\necho jqorder\n' > "$JQORDERREPO/scripts/malformed-jq-order.sh"
@@ -307,7 +306,7 @@ check_contains "malformed-jq-order: a valid in-window Bash record emitted before
 
 # --- malformed BOTH edges: when the sorted-first AND sorted-last timestamp
 # are both malformed, the fallback runs twice for the SAME transcript - the
-# WARNING count must still name it once, not twice (HIMMEL-3547 CR round 1) -
+# WARNING count must still name it once, not twice ---------------------------
 BOTHEDGESREPO=$(mktemp -d "${TMPDIR:-/tmp}/test-dead-parts-bothedges.XXXXXX") || { echo "FAIL - mktemp bothedges repo"; exit 1; }
 mkdir -p "$BOTHEDGESREPO/scripts"
 printf '#!/usr/bin/env bash\necho bothedges\n' > "$BOTHEDGESREPO/scripts/malformed-both-edges.sh"

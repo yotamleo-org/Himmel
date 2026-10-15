@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/dispatch-luna.sh — HIMMEL-1723 P2.3
+# scripts/lanes/bench/dispatch-luna.sh
 # Dispatches ONE luna-cell bench run by invoking scripts/claude-codex
 # DIRECTLY (spec §2.2) — cwd set to the materialized fixture dir, stdin
 # closed, effort pinned and recorded.
@@ -84,7 +84,7 @@ prompt_text="$(cat "$prompt_file")"
 
 fixture_path="$("$MATERIALIZE" "$task_dir" "$run_id")" || { echo "dispatch-luna.sh: materialize failed" >&2; exit 3; }
 
-# HIMMEL-2977 P0.4: dontAsk refuses anything not pre-allowed; pre-allow the
+# dontAsk refuses anything not pre-allowed; pre-allow the
 # bench's tools. --allowedTools was tried first but the launcher's CLI parses
 # it as a variadic list that swallows the trailing prompt argument (verified:
 # "Error: Input must be provided either through stdin or as a prompt argument
@@ -159,8 +159,8 @@ duration_ms=$((ended_ms - started_ms))
 # every call), so the session's project slug names AT MOST one dispatch's
 # worth of transcripts. Slug algorithm mirrors scripts/luna/backfill-sessions.sh
 # :_path_to_slug: convert to Windows drive-letter form first (cygpath -w — a
-# no-op off Windows), then map every non-[a-zA-Z0-9] char to '-'. HIMMEL-2979:
-# a leading '/' on a POSIX path encodes to a leading '-' in the real
+# no-op off Windows), then map every non-[a-zA-Z0-9] char to '-'.
+# A leading '/' on a POSIX path encodes to a leading '-' in the real
 # ~/.claude-codex/projects directory name (verified empirically against a live
 # run) — an earlier version of this stripped that leading '-', which never
 # matched the real directory and left transcript_path unresolved.

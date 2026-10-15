@@ -1,4 +1,4 @@
-// scripts/lanes/tests/effort-route.test.mjs — HIMMEL-3997
+// scripts/lanes/tests/effort-route.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';

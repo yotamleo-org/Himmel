@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/tool-usage.sh - tool/skill usage, error rates
-# and guardrail friction over a transcript window (HIMMEL-3513).
+# and guardrail friction over a transcript window.
 #
 # Platform guard: no .ps1 twin, by design, same as every sibling in this dir.
 # POSIX bash 3.2+ plus jq and node; the transcripts and skill/command trees it

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# HIMMEL-4013: every script that execs `claude` applies a profile-derived
+# Every script that execs `claude` applies a profile-derived
 # --settings or carries a `launch-profile-ok: <reason>` marker.
 # Platform: POSIX bash 3.2+, node.
 set -u

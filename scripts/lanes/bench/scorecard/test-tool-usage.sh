@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/test-tool-usage.sh - RED/GREEN suite for
-# tool-usage.sh (HIMMEL-3513). House check_contains/PASS-FAIL style, per
+# tool-usage.sh. House check_contains/PASS-FAIL style, per
 # test-extra-metrics.sh in this same directory.
 #
 # Platform guard: no .ps1 twin, by design, same as every sibling in this dir.
@@ -83,7 +83,7 @@ check_contains "basic: an installed-but-untyped command is listed never-used" \
     "$OUT" "never-used: scope=user-commands name=never-used-cmd"
 
 # --- since-edge: a session entirely before --since must be excluded, and
-# counted as skipped rather than silently dropped (HIMMEL-3269 coverage rule).
+# counted as skipped rather than silently dropped (coverage rule).
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/tool-usage/since-edge"
 OUT=$("$SCRIPT" --since 2026-01-10T00:00:00Z --until 2026-01-20T00:00:00Z \
     --skill-cwd "$HERE/fixtures/tool-usage/skills" \
@@ -103,7 +103,7 @@ check_contains "since-edge: the excluded session is counted as skipped, not lost
 # --- non-chronological: a transcript whose physically first/last lines are
 # BOTH before --since must not have its whole file skipped when a
 # chronologically in-window line sits between them out of physical order
-# (codex-1, round 10: ts_of() picked head -1/tail -1 by PHYSICAL line, not by
+# (ts_of() picked head -1/tail -1 by PHYSICAL line, not by
 # timestamp value - the same defect class as dead-parts.sh's fixed
 # non-chronological-transcripts fixture).
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/tool-usage/non-chronological"

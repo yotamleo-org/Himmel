@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/role-profile.sh - the role-to-profile rule (HIMMEL-4013).
+# scripts/lanes/role-profile.sh - the role-to-profile rule.
 # Prints the plugin profile a session resumed from a handover doc should run
 # under. Precedence:
 #   1. an explicit `profile: <name>` line in the doc's first 60 lines (a leg

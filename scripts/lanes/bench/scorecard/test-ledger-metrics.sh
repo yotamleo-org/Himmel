@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/test-ledger-metrics.sh - RED/GREEN suite for
-# ledger-metrics.sh (HIMMEL-2977 P0 script shipped in #689 with no paired
-# test; HIMMEL-2981). House check/contains style, per
+# ledger-metrics.sh (a P0 script shipped with no paired
+# test). House check/contains style, per
 # scripts/test-context-fill.sh.
 #
 # ledger-metrics.sh flags/branches covered:
@@ -32,11 +32,11 @@ SCRIPT="$HERE/ledger-metrics.sh"
 FIXTURES="$HERE/fixtures/ledger-metrics"
 fails=0
 
-# HIMMEL-3021: every fixture window below predates the real 2026-09-09
+# Every fixture window below predates the real 2026-09-09
 # cutover, which would make ALL of them "straddling" (requiring a private
 # bundle) under merged-count.sh's default. None of these cases are testing
 # the straddling/bundle path (that's test-merged-count.sh) — they're testing
-# ledger-metrics.sh's own behaviour, unchanged since HIMMEL-2977. Pin the
+# ledger-metrics.sh's own behaviour. Pin the
 # cutover to the epoch so every fixture window here stays non-straddling.
 export SCORECARD_CUTOVER="1970-01-01T00:00:00Z"
 
@@ -68,7 +68,7 @@ use_stub() {
 }
 PATH_BASE="$PATH"
 
-# Hermeticity tripwire (HIMMEL-2994): a PATH-shadowing gh that records every
+# Hermeticity tripwire: a PATH-shadowing gh that records every
 # invocation to a file. Folded into PATH_BASE (below any per-case use_stub,
 # which always prepends in front of PATH_BASE) so it is the last resort gh
 # resolves to if a case reaches it before installing its own stub. If a
@@ -87,7 +87,7 @@ chmod +x "$TRIPWIRE_DIR/gh"
 PATH_BASE="$TRIPWIRE_DIR:$PATH_BASE"
 export PATH="$PATH_BASE"
 
-# Install the default gh stub before the FIRST script invocation (HIMMEL-2994):
+# Install the default gh stub before the FIRST script invocation:
 # cases (a)-(d) below run before case (e)'s first use_stub, so without this
 # their hermeticity depended entirely on ledger-metrics.sh validating before
 # reaching gh. Every later use_stub call (cases (e)+) overrides this with its
@@ -170,7 +170,7 @@ EXIT=$?
 check_exit "main: exits 0" "$EXIT" "0"
 check_contains "main: two merged branches, both with ledger rows" \
     "$OUT" "merged_branches=2 with_ledger_rows=2"
-# HIMMEL-3269: the stats say what they were computed over
+# The stats say what they were computed over
 check_contains "main: branch coverage beside the stats (both branches joined a ledger row)" \
     "$OUT" "coverage: merged-branches discovered=2 parsed=2 skipped=0 (no-ledger-rows=0)"
 check_contains "main: PR coverage names the PRs the window filter dropped" \

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Coverage for scripts/lanes/stop-worker.sh (HIMMEL-1693) -- the sanctioned STOP
+# Coverage for scripts/lanes/stop-worker.sh -- the sanctioned STOP
 # chokepoint for in-flight lane workers.
 #
 # The suite is hermetic: it builds its own BRIDGE_ROOT session registry and its
@@ -20,7 +20,7 @@ TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/himmel-stop-worker.XXXXXX")
 cleanup() { [ -n "${TMP_ROOT:-}" ] && [ -d "$TMP_ROOT" ] && rm -rf "$TMP_ROOT" 2>/dev/null; }
 trap cleanup EXIT
 
-# HIMMEL-1693 CR (codex-1): stop-worker.sh no longer honors a plain BRIDGE_ROOT
+# stop-worker.sh no longer honors a plain BRIDGE_ROOT
 # env (a forged registry there would be an arbitrary-process-kill primitive
 # through the sanctioned STOP chokepoint). The hermetic fixture registry must
 # use the explicit test seam instead -- its name makes clear this is NOT the
@@ -69,10 +69,10 @@ meta_status() {
     node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).status))}catch(_){}' "$1"
 }
 
-# HIMMEL-1929 push-quarantine helpers. set_pushurl seeds the worktree-scoped
+# Push-quarantine helpers. set_pushurl seeds the worktree-scoped
 # remote.origin.pushurl the way the retired lane quarantine used to
 # (repo-level extensions.worktreeConfig=true, then a --worktree scoped value)
-# -- the producer is gone as of HIMMEL-1961, so this fixture now stands in for
+# -- the producer is gone, so this fixture now stands in for
 # residue left by a pre-removal dispatch; pushurl_of prints the current value,
 # or nothing when the key is absent.
 POISON="DISABLED-glm-quarantine"
@@ -161,7 +161,7 @@ if [ -n "$(git -C "$WT_B" status --porcelain)" ]; then
 else
     fail "B5: the worker's worktree was mutated by checkpointing" "$out"
 fi
-# B5b (HIMMEL-1929): --dry-run signals nothing, so the worker is still live and
+# B5b: --dry-run signals nothing, so the worker is still live and
 # its push tripwire must stay in place. Clearing the quarantine is part of
 # concluding a halt, never part of reporting what one WOULD do.
 if [ "$(pushurl_of "$WT_B")" = "$POISON" ]; then
@@ -194,7 +194,7 @@ else
     fail "B6c: a refused live worker was signalled" "$out"
 fi
 
-# B7 (HIMMEL-1751): the recorded pid is ALREADY GONE and the worktree cannot be
+# B7: the recorded pid is ALREADY GONE and the worktree cannot be
 # checkpointed. Refusing protects nothing (there is no signal to send) and left
 # the dead session reading "running"; it must be annotated terminal, with an rc
 # that tells the checkpoint failure apart from a clean already-exited.
@@ -235,7 +235,7 @@ echo "RUN C: end-to-end stop of a live process"
 WT_C="$TMP_ROOT/wt-live"
 mk_repo "$WT_C"
 printf 'live work in progress\n' > "$WT_C/file.txt"
-# HIMMEL-1929: a real dispatch leaves this sentinel on the worker's worktree
+# A real dispatch leaves this sentinel on the worker's worktree
 # for the life of the run; the spawner's restore is a `finally`, which a hard
 # kill never reaches. C5 below asserts this halt cleans it up.
 set_pushurl "$WT_C" "$POISON"
@@ -244,7 +244,7 @@ sleep 300 &
 LIVE_PID=$!
 set +m
 # started_at must correlate with the fixture's OWN start time -- stop-worker
-# now cross-checks the two (HIMMEL-1693 CR: spawn-time identity correlation)
+# now cross-checks the two (spawn-time identity correlation)
 # and refuses to signal a pid whose start time doesn't line up.
 LIVE_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 mk_session glm glm-live-1 running "$LIVE_PID" glm/live "$WT_C" "$(printf '{"started_at":"%s"}' "$LIVE_STARTED_AT")" >/dev/null
@@ -287,7 +287,7 @@ else
     fail "C4: meta status is '$st', expected stopped-by-parent" "$out"
 fi
 
-# C5 (HIMMEL-1929): the halt must not strand the push quarantine. The spawner
+# C5: the halt must not strand the push quarantine. The spawner
 # restores the pushurl in a `finally` that a hard kill never reaches, and with
 # the GLM lane dropped nothing else self-heals it -- so the chokepoint that
 # did the killing clears it.
@@ -342,7 +342,7 @@ echo "RUN D: spawn-time identity correlation (recycled-pid refusal)"
 
 # A REAL live process, but its registry started_at is nowhere near when it
 # actually started -- simulates a registry that thinks a stale/recycled pid
-# is still its worker. Before the CR fix, stop-worker.sh sampled this
+# is still its worker. Previously stop-worker.sh sampled this
 # process's identity fresh and verified it against ITSELF (a tautology) --
 # it would have happily signalled this process. The fix must refuse.
 WT_D="$TMP_ROOT/wt-mismatch"
@@ -388,7 +388,7 @@ echo "RUN E: leader confirmed-gone-before-any-signal records a truthful status"
 # targets. The process is never actually signalled; it is killed by the test
 # afterward as ordinary fixture cleanup.
 #
-# HIMMEL-1693 CR round 2: proc_tree_process_alive only consults
+# proc_tree_process_alive only consults
 # _PROC_TREE_PROC_ROOT on the Windows/MSYS branch (proc_tree_is_windows); on
 # POSIX it calls `kill -0` directly and ignores this seam entirely. Off
 # Windows/MSYS the override above would do nothing -- the real live fixture
@@ -460,7 +460,7 @@ if [ "$st" = "already-exited" ]; then
 else
     fail "F3: meta status is '$st', expected already-exited" "$out"
 fi
-# F4 (HIMMEL-1929): the earlier of the two concluded-gone paths must clean up
+# F4: the earlier of the two concluded-gone paths must clean up
 # too -- a worker that died on its own before the halt reached it strands the
 # quarantine exactly the same way.
 if [ -z "$(pushurl_of "$WT_F")" ]; then
@@ -469,7 +469,7 @@ else
     fail "F4: remote.origin.pushurl is still '$(pushurl_of "$WT_F")' on the already-gone path" "$out"
 fi
 
-# F5-F6 (HIMMEL-1929): ONLY the quarantine sentinel is cleared. An operator's
+# F5-F6: ONLY the quarantine sentinel is cleared. An operator's
 # real per-worktree pushurl is not this chokepoint's to unset -- a halt that
 # silently deleted push configuration would be a worse bug than the leak.
 WT_F2="$TMP_ROOT/wt-realpushurl"
@@ -486,7 +486,7 @@ else
     fail "F6: the halt clobbered a real pushurl (now '$(pushurl_of "$WT_F2")')" "$out"
 fi
 
-# F7-F9 (HIMMEL-1929 panel round 4): proc_tree_process_alive answers 0 alive /
+# F7-F9: proc_tree_process_alive answers 0 alive /
 # 1 CONFIRMED absent / 2 probe-could-not-answer, and its contract forbids
 # reading 2 as absence. stop-worker tested it with a bare `if`, so an
 # unanswerable probe took the already-gone branch -- annotating a possibly-live

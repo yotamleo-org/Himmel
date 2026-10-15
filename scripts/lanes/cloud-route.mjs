@@ -1,5 +1,5 @@
 // scripts/lanes/cloud-route.mjs
-// HIMMEL-4262 — classify tickets for the cloud credit lane, write the brief,
+// classify tickets for the cloud credit lane, write the brief,
 // print the operator launch line.
 //
 // A sibling of fanout-plan.mjs, not an extension of it: /fanout routes an
@@ -17,15 +17,15 @@
 //                cloud lacks by design (luna, a vault, handover state, the state repo
 //                or its specs: private data never leaves the station), more than 3 asks, or no file
 //                named to scope a brief on. graphify and BM25 qmd over the repo
-//                are not such a need: the cloud setup installs both (HIMMEL-4726).
+//                are not such a need: the cloud setup installs both.
 //                qmd query, vector search and embeds are: it has no qmd models.
 //                So is a semantic graphify run (/graphify, --backend): it would
-//                send content to a model backend. Station-bound work is too
-//                (HIMMEL-4969): ~/.himmel or ~/.cache state, a test VM
+//                send content to a model backend. Station-bound work is too:
+//                ~/.himmel or ~/.cache state, a test VM
 //                (himmel-ops:vm, vmsdk, VBoxManage), a LIVE ledger, arming a
-//                cadence (at/systemd); VM-only, "on a VM" and VM snapshot wording
-//                (HIMMEL-5218), and a named file the tree at the base cannot place
-//   VERIFY-LOCAL (HIMMEL-5163) a merged PR cites the ticket key, or touches a
+//                cadence (at/systemd); VM-only, "on a VM" and VM snapshot wording,
+//                and a named file the tree at the base cannot place
+//   VERIFY-LOCAL a merged PR cites the ticket key, or touches a
 //                file it names, after the ticket was created: it may already be
 //                fixed on main, so a local leg verifies it first (a cloud session
 //                cannot tell, and spends credit on a no-op)
@@ -57,11 +57,11 @@ export function parseJiraGet(raw) {
   return { key, type, status, title: title.join('\t'), description: nl < 0 ? '' : text.slice(nl + 1).trim(), raw: text };
 }
 
-// HIMMEL-4266: a slashed path (ending in an extension or a trailing slash) that FILE_RE does
+// a slashed path (ending in an extension or a trailing slash) that FILE_RE does
 // not recognise is silently dropped from the file list, so it cannot be checked against held
 // files. A URL or a slashed word (and/or, owner/repo) is not one. ponytail: an extensionless
-// path outside the known roots (src/lib/foo) is still invisible, upgrade path HIMMEL-4266
-// follow-up (resolve against the tree).
+// path outside the known roots (src/lib/foo) is still invisible, upgrade path: resolve
+// against the tree.
 const PATH_RE = /(?<![\w./:@-])((?:[\w.+@-]+\/)+(?:[\w.+@-]*\.[A-Za-z][A-Za-z0-9]{0,11})?)(?![\w+@-]|\.\w)/g;
 const KNOWN_ROOT = new RegExp(`^${FILE_RE.source}`);
 export function unrecognisedPaths(text) {
@@ -82,7 +82,7 @@ export function extractFiles(text) {
   return out;
 }
 
-// HIMMEL-5218: a ticket may name a hook or script by its bare name (guard-pr-check-literal,
+// a ticket may name a hook or script by its bare name (guard-pr-check-literal,
 // not scripts/hooks/guard-pr-check-literal.sh), so the hook, trust and held checks never saw
 // it. A hyphenated token that is the stem of a script under scripts/ at the base resolves to
 // every such path. ponytail: a hyphenated English word that is also a script stem resolves
@@ -113,7 +113,7 @@ export function unresolved(files, tree) {
 }
 
 // Ask lines: the numbered or bulleted lines under an "Asks:" header, else any
-// numbered line, else any bulleted line (HIMMEL-4266); a ticket with none is one ask.
+// numbered line, else any bulleted line; a ticket with none is one ask.
 export function askLines(description) {
   const lines = description.split('\n');
   const pick = (ls, re) => ls.filter((l) => re.test(l)).map((l) => l.trim());
@@ -128,16 +128,16 @@ const overlaps = (a, b) => a === b || (b.endsWith('/') && a.startsWith(b)) || (a
 
 const STALE_DAYS = 14;
 
-// HIMMEL-5499: a CLOUD-OK ticket's files stay reserved across invocations through the bucket's
+// a CLOUD-OK ticket's files stay reserved across invocations through the bucket's
 // cloud-route.jsonl. A reservation ends at RESERVATION_HOURS, or when a merged PR cites the
 // ticket; an open PR needs no release rule, its files are already held. ponytail: a ticket
 // outside this run that left To Do without a merged PR (closed, abandoned) keeps its files
-// until the cap, because its status would cost a Jira read per record, upgrade path HIMMEL-5499
-// follow-up (read the status of reserved keys once per run).
+// until the cap, because its status would cost a Jira read per record, upgrade path: read
+// the status of reserved keys once per run.
 export const RESERVATION_HOURS = 48;
 
 // reservedFiles(jsonlText, {now, merged}) -> [{file, why}]. Skips what it cannot read: a corrupt
-// line, a record without files (written before HIMMEL-5499), without a parseable time, or not
+// line, a record without files (written before reservations carried files), without a parseable time, or not
 // CLOUD-OK. A record in the future is kept, so a clock step cannot free a file early.
 export function reservedFiles(text, ctx = {}) {
   const now = ctx.now ?? Date.now();
@@ -161,7 +161,7 @@ export function reservedFiles(text, ctx = {}) {
 }
 
 // fixedBy(ticket, files, ctx) -> [{number, why, mergedAt}]: merged PRs that cite the key
-// (not a longer one: HIMMEL-46860) or touch a named file, merged after the ticket was
+// (not a longer key sharing its prefix) or touch a named file, merged after the ticket was
 // created. Jira's `get` carries no creation date, so without ticket.created (console spec)
 // the cutoff is the last STALE_DAYS days. ponytail: a PR that merely lists the key as a
 // deferral also matches, which only costs a local verify; narrow when it becomes noise.

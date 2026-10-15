@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # scripts/lanes/leg-cost-report.sh - leg cost per group, from the ledger only
-# (HIMMEL-4217).
 #
 # Usage: leg-cost-report.sh [--since YYYY-MM-DD] [--by class|model|ticket]
 #

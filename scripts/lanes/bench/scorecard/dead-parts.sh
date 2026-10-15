@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/scorecard/dead-parts.sh - HIMMEL-3513 EXPANSION 2: static
+# scripts/lanes/bench/scorecard/dead-parts.sh - static
 # entry-point audit. Classifies every himmel entry point (tracked scripts/**,
 # slash commands, skills, agents - hooks fold into scripts/** via the WIRED
 # git-grep pass, see below) into USED / WIRED / TEST-ONLY / DOC-ONLY / DEAD.
 # Report only - it never deletes or suggests deleting anything.
 #
 # USED: a direct transcript tool_use/typed-command call in the --since/--until
-# window - its own minimal scan (independent of tool-usage.sh, per the
-# HIMMEL-3513 EXPANSION 2 brief: "do your own scan, don't share code").
+# window - its own minimal scan (independent of tool-usage.sh, by design:
+# no shared code).
 # WIRED / TEST-ONLY / DOC-ONLY / DEAD: static, via `git grep` at --repo-root,
 # window-independent - a change on disk changes these, not the passage of time.
 #
@@ -22,7 +22,7 @@
 # via a transcript tool_use).
 #
 # ponytail: a hook's WIRED row never gets a denial-count annotation - the
-# HIMMEL-3513 EXPANSION 2 brief allows skipping this "if not cheap", and
+# brief allows skipping this "if not cheap", and
 # joining this script's static pass against the hook-denial log the way
 # tool-usage.sh does is exactly the shared code this script is told not to
 # have. WIRED count=0 is reported instead; the real denial counts belong to
@@ -34,19 +34,16 @@
 # runs in CI/pre-commit. Accepted given "report only, no deletions" - a human
 # reviews every DEAD row before acting.
 #
-# HIMMEL-3513 follow-up (PR #1170's caveat): `.ts` was missing from the
-# discovery extension filter entirely, so a `.ts` source file was never even
-# added as an entry point - it silently never appeared in the report at all,
-# neither WIRED nor DEAD. Fixed: `.ts` is now discovered like `.sh`/`.js`.
-# Separately, a TS-ESM import specifier names the compiled `.js` extension
+# `.ts` source files are discovered like `.sh`/`.js`.
+# A TS-ESM import specifier names the compiled `.js` extension
 # (`from "../foo.js"`) while the tracked source is `foo.ts`, so a plain
-# basename-literal grep on the `.ts` name still misses real references. Fixed:
+# basename-literal grep on the `.ts` name misses real references. So
 # a `.ts` entry's reference search also unions a basename search on its
 # `.js`-suffixed name (see the classification loop below).
 #
-# HIMMEL-3550 follow-up: a `.ts` entry can ALSO be imported via an
+# A `.ts` entry can ALSO be imported via an
 # extensionless specifier (`from "./foo"`), which the `.js`-suffixed union
-# above still misses. The reference search also unions a quote-terminated
+# above misses. The reference search also unions a quote-terminated
 # `/<basename>"` / `/<basename>'` search for `.ts` entries only, over-matching
 # a same-named directory or unrelated string ending the same way, kept narrow
 # on purpose (see the classification loop).
@@ -126,12 +123,10 @@ while IFS= read -r p; do
     [ -n "$p" ] || continue
     case "$p" in
         */fixtures/*) continue ;;
-        # codex-1 (round 11): scripts/ also carries data and doc files
+        # scripts/ also carries data and doc files
         # (backends.json, README.md, ...) - without an extension filter every
-        # tracked file under it was misclassified as a script entry point.
-        # HIMMEL-3513 follow-up: .ts was missing from this filter entirely, so
-        # a TS source file was never even added as an entry point - it could
-        # not be reported DEAD OR WIRED, it just silently never appeared.
+        # tracked file under it would be misclassified as a script entry point.
+        # .ts is included so a TS source file can be reported DEAD or WIRED.
         *.sh|*.mjs|*.js|*.py|*.ts) ;;
         *) continue ;;
     esac
@@ -182,21 +177,21 @@ fi
 # per-record `inwin` filter below still does the real per-record selection;
 # this is only the cheap whole-file skip.
 #
-# HIMMEL-3513 follow-up: the min/max used to come from a per-line bash loop
-# calling `to_epoch` (a `date -d` fork) once per extracted timestamp - fine
-# for a handful of records, but a real transcript file can carry thousands of
+# The min/max come from the sorted first/last line, not from
+# a per-line bash loop calling `to_epoch` (a `date -d` fork) per extracted
+# timestamp: a real transcript file can carry thousands of
 # tool_use timestamps, and a real run scans every *.jsonl under every
 # transcript root (hundreds of worktree roots as legs accumulate). That is
 # tens or hundreds of thousands of serial `date` forks before the FIRST byte
 # of the report prints (the report is built and emitted only after this whole
-# scan finishes), which is indistinguishable from a silent hang to anyone who
-# doesn't wait it out. `to_epoch` is now called at most twice per file - the
+# scan finishes), which is indistinguishable from a silent hang.
+# `to_epoch` is called at most twice per file - the
 # extracted timestamps are ISO8601 UTC strings of uniform width, which sort
 # lexically in chronological order, so the sorted first/last line IS the
 # min/max without visiting every line in a subshell.
 ts_of() { grep -o '"timestamp":"[0-9TZ:.-]*"' "$1" 2>/dev/null | cut -d'"' -f4 | sort; }
 
-# HIMMEL-3547: a malformed timestamp (matches the extraction charset but
+# A malformed timestamp (matches the extraction charset but
 # fails `date -d`/`date -j`, e.g. an out-of-range month/day) can still sort
 # to the lexically-first or -last line, so the sorted head/tail line's
 # to_epoch can fail even though every other timestamp in the file parses
@@ -356,12 +351,12 @@ while IFS=$'\t' read -r kind name path; do
         bn_hits=$(printf '%s\n' "$bn_hits" | grep -vE '(^|/)fixtures/')
         hits=$(printf '%s\n%s\n' "$hits" "$bn_hits" | grep -v '^$' | sort -u)
     fi
-    # HIMMEL-3513 follow-up (PR #1170's caveat): a TS-ESM import specifier
+    # A TS-ESM import specifier
     # names the compiled `.js` extension (`from "../src/foo.js"`) while the
     # tracked source is `foo.ts`, so neither the full-path nor the
     # basename-literal search above ever matches a real import. Union in one
     # more basename search on the .js-suffixed name for .ts entries only.
-    # HIMMEL-3550: a `.ts` entry can also be imported via an EXTENSIONLESS
+    # A `.ts` entry can also be imported via an EXTENSIONLESS
     # specifier (`from "./foo"`, resolver-dependent, common with bundlers),
     # which neither the full-path nor either basename-literal search above
     # ever matches. Union in a search for the basename immediately preceded
@@ -370,7 +365,7 @@ while IFS=$'\t' read -r kind name path; do
     # still over-matches a same-named directory or an unrelated string that
     # happens to end in `/<basename>"` or `/<basename>'`. The basename is
     # ERE-escaped before interpolation, so a literal basename is always what
-    # gets matched (CR round 1, codex-1).
+    # gets matched.
     case "$path" in
         *.ts)
             js_bn="$(basename "$path" .ts).js"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/leg-claude-launcher.sh - the `claude` stand-in that applies a
-# leg's plugin profile (HIMMEL-2830, HIMMEL-2928 lever 1).
+# leg's plugin profile.
 #
 # WHY THIS EXISTS AT ALL. headed-arm.sh builds ONE fixed argv:
 #
@@ -28,18 +28,18 @@
 #     `exec claude "$@"` - byte-identical argv to today.
 #  4. It never widens anything. `--settings` here can only DISABLE plugins
 #     (the resolver emits a complete enabledPlugins map, deny-by-default), and
-#     `--mcp-config`/`--strict-mcp-config` (HIMMEL-2935) can only NARROW the
+#     `--mcp-config`/`--strict-mcp-config` can only NARROW the
 #     MCP servers available to the leg (the config file is a copy of real
 #     definitions the resolver read elsewhere, never a hand-written one) -
 #     neither ever adds a tool, permission or MCP server beyond what the
 #     leg's own plugin set already carries.
 #
 # Env (set by headed-arm-leg.sh --profile, exported so it survives konsole's
-# `-e env -u ...` line, which only unsets the three HIMMEL-2545 vars):
+# `-e env -u ...` line, which only unsets three vars):
 #   LEG_PROFILE_SETTINGS   path to the resolved settings JSON  -> --settings
 #   LEG_PROFILE_PREFACE    path to docs/handover/leg-preface.md
 #                                                   -> --append-system-prompt-file
-#   LEG_PROFILE_MCP_CONFIG (HIMMEL-2935) path to the resolved MCP-server
+#   LEG_PROFILE_MCP_CONFIG path to the resolved MCP-server
 #                           allowlist JSON, set only when the profile declares
 #                           one -> --mcp-config <file> --strict-mcp-config.
 #                           --strict-mcp-config makes that file the ONLY
@@ -48,7 +48,7 @@
 #                           ~/.claude.json user-level ones this exists to cut,
 #                           which is exactly why the file is never hand-typed
 #                           (see plugin-profiles.mjs's collectMcpServerDefs).
-#   LEG_PROFILE_NO_SETTING_SOURCES (HIMMEL-4069) exactly 1 -> --setting-sources ""
+#   LEG_PROFILE_NO_SETTING_SOURCES exactly 1 -> --setting-sources ""
 #                           (an empty list: no user, project or local settings
 #                           scope loads, only --settings and managed policy).
 #                           Set only by headed-arm-leg.sh --consult, whose
@@ -56,7 +56,7 @@
 #                           only ever loads LESS (clause 4).
 # Seam: LEG_CLAUDE_BIN overrides the `claude` binary this execs (default:
 # `claude` from PATH). headed-arm-leg.sh sets it to scripts/claude-codex on
-# the claudex lane so all profile flags reach that backend (HIMMEL-2962);
+# the claudex lane so all profile flags reach that backend;
 # suites can point it at a recording stub.
 #
 # Platform: POSIX bash 3.2+ (macOS ships 3.2) - hence the
@@ -68,7 +68,7 @@ set -u
 
 CLAUDE_BIN="${LEG_CLAUDE_BIN:-claude}"
 
-# (HIMMEL-4152) Under a consult the caller's PATH must not pick the binary: a
+# Under a consult the caller's PATH must not pick the binary: a
 # foreign `claude` first on PATH could ignore `--setting-sources ""`. Resolve it
 # once from the pinned PATH in consult-env.sh (its home part comes from the
 # passwd entry, not the caller-set $HOME). A consult reaches here through
@@ -130,12 +130,12 @@ if [ -n "${LEG_PROFILE_MCP_CONFIG:-}" ]; then
     PRE+=(--mcp-config "$LEG_PROFILE_MCP_CONFIG" --strict-mcp-config)
 fi
 
-# HIMMEL-4786: headed-arm-leg.sh minted this id and already recorded it in the
+# headed-arm-leg.sh minted this id and already recorded it in the
 # leg doc's front matter, so the digest step finds the session by id.
 [ -z "${LEG_SESSION_ID:-}" ] || PRE+=(--session-id "$LEG_SESSION_ID")
 if [ "${LEG_PROFILE_NO_SETTING_SOURCES:-}" = 1 ]; then
     PRE+=(--setting-sources "")
-    # (HIMMEL-4118 F1) The consult is confined only if the FINAL argv carries
+    # The consult is confined only if the FINAL argv carries
     # `--setting-sources ""` and nothing after it names the flag again (the
     # last occurrence wins, so a caller-built `--setting-sources user,project`
     # would load the scopes this exists to cut). Refuse rather than launch.

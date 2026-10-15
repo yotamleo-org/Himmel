@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/scorecard/agg-burn.sh - P0.1 scorecard recipe (HIMMEL-2977).
+# scripts/lanes/bench/scorecard/agg-burn.sh - P0.1 scorecard recipe.
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq-free grep/
 # sed over a Claude Code transcript (same JSONL on every platform); it runs
 # under git bash unchanged.
 #
-# Copied from the HIMMEL-2977 baseline Appendix B (burn-sweep.sh + agg-burn.sh,
+# Copied from the baseline Appendix B (burn-sweep.sh + agg-burn.sh,
 # leg N207, 2026-09-12) and folded into one self-contained script: walks
 # Claude Code transcripts, tags each session by role (console/leg/relay/other,
 # or `unattributed` for an untitled session: its own row, never folded into
-# other; HIMMEL-3286) + parent role for subagents + dominant model, runs leg-burn.sh over it, and
+# other) + parent role for subagents + dominant model, runs leg-burn.sh over it, and
 # aggregates by role x model. The baseline hardcoded a 7-day mtime window over
 # one project's transcripts; this reads --since/--until against each
 # session's own timestamp span instead (a session with any activity inside
@@ -20,7 +20,7 @@
 # SCORECARD_PROJECTS_DIR is an explicit scope: exactly that one transcript root
 # (tests point it at a fixture tree). The default is the primary himmel project
 # dir UNION its `--claude-worktrees-*` siblings - see lib/scorecard-lib.sh
-# (HIMMEL-3269 F1: a primary-only default dropped the worktree legs).
+# (a primary-only default would drop the worktree legs).
 #
 # The last stdout line is `coverage: roots=R discovered=D parsed=P skipped=K
 # (reason=n ...)` - how much of the discovered input the numbers above cover.
@@ -72,7 +72,7 @@ DISC_ERR=$(mktemp "${TMPDIR:-/tmp}/agg-burn-discerr.XXXXXX") || { echo "agg-burn
 UNREADABLE=$(mktemp "${TMPDIR:-/tmp}/agg-burn-unreadable.XXXXXX") || { echo "agg-burn: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
 
-# HIMMEL-2977: discovery errors must not vanish. `find ... 2>/dev/null | while`
+# Discovery errors must not vanish. `find ... 2>/dev/null | while`
 # lost both find's permission errors and its exit status, so an unreadable
 # subtree gave exit 0 and a TOTAL that silently omitted it - a number that
 # looks complete and is not. Capture find's stderr + status and fail loudly
@@ -135,11 +135,11 @@ END{
   for(k in n) printf "%s\t%d\t%d\t%.1f\t%.1f\t%.1f\t%d\t%d\t%.3f\t%.1f\n", k, n[k], c[k], (c[k]?ctx[k]/c[k]:0), pk[k], fsum[k]/n[k], cp[k], tx[k], (c[k]?tx[k]/c[k]:0), ctx[k]/1000
 }' "$ROWS" | sort
 
-# HIMMEL-2987: price-weighted TOTAL, over every row regardless of role/model.
-# HIMMEL-2996: columns 9-12 are now the exact integer counters leg-burn.sh
+# Price-weighted TOTAL, over every row regardless of role/model.
+# Columns 9-12 are the exact integer counters leg-burn.sh
 # --raw prints (no per-session 0.1k rounding to compound); this awk sums the
-# raw counts and divides by 1000 ONCE for display, replacing the HIMMEL-2991
-# per-session-kn()-then-sum path.
+# raw counts and divides by 1000 ONCE for display, rather than summing
+# per-session kn() roundings.
 awk -F'\t' -v wi="$LEG_BURN_W_INPUT" -v wcr="$LEG_BURN_W_CACHE_READ" -v wcc="$LEG_BURN_W_CACHE_CREATE" -v wo="$LEG_BURN_W_OUTPUT" '
 { out+=$9; cr+=$10; cc+=$11; inp+=$12 }
 END{

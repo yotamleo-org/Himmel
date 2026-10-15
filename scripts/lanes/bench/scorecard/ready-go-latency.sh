@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/ready-go-latency.sh - READY->GO latency and
-# missed-READY measurement (HIMMEL-2975 Task 29, spec S3.5 item 5).
+# missed-READY measurement (spec S3.5 item 5).
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ / BSD-or-GNU date;
 # it runs under git bash unchanged.
@@ -24,7 +24,7 @@
 #
 # Usage: ready-go-latency.sh --doc <console-or-relay-doc> --since <ISO8601> [--until <ISO8601>]
 # Prints: events=<n> median_min=<m> missed=<k>, then one
-#         `MISSED <pr> <sha7> <HH:MM>` line per miss, then (HIMMEL-3269) a
+#         `MISSED <pr> <sha7> <HH:MM>` line per miss, then a
 #         `coverage: discovered=<READY events> parsed=<paired+missed> skipped=<k>
 #         (reason=n ...)` line: the READYs the metric did not count (out of
 #         window, resolved by a HOLD, still inside their 60 min) are named.
@@ -48,7 +48,7 @@ done
 [ -f "$DOC" ] || { echo "ready-go-latency: doc not found: $DOC" >&2; exit 2; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../../../lib/handover-path.sh

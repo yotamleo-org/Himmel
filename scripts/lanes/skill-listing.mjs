@@ -1,8 +1,8 @@
 // scripts/lanes/skill-listing.mjs
-// HIMMEL-4038 — keep a profile's REQUIRED skills described in the skill listing.
+// Keep a profile's REQUIRED skills described in the skill listing.
 // Claude Code caps the listing at skillListingBudgetFraction (default 0.01) of
 // the context window and, over it, drops descriptions least-invoked first. Two
-// levers, both measured live (HIMMEL-4038 feasibility, 2 haiku /context calls):
+// levers, both measured live (2 haiku /context calls):
 //   skillOverrides {"<bare skill name>": "name-only"}  shrinks NON-plugin skills
 //     (user, project, bundled). It is INERT for plugin skills under both the bare
 //     and the `plugin:skill` key (the settings docs say so too).
@@ -60,7 +60,7 @@ const describedTokens = (e, plugin) => Math.ceil((plugin.length + 1 + e.name.len
 // plugin (nothing to protect), else { skillOverrides, skillListingBudgetFraction }.
 // runtimeNames (skill-cost's runtimeNamesOf, read from configDir when omitted): the
 // plugin.json name Claude lists a strict:true plugin's skills under, which sets
-// each listing line's length (HIMMEL-4068); the cache DIRECTORY (entry name)
+// each listing line's length; the cache DIRECTORY (entry name)
 // still selects the entries.
 export function skillListingSettings({ entries, enabledIds, requiredIds, window = WINDOW, configDir, cwd, runtimeNames = configDir === undefined ? undefined : runtimeNamesOf(configDir, cwd) }) {
   if (!requiredIds.length) return {};

@@ -1,5 +1,5 @@
 // scripts/lanes/probe.mjs
-// HIMMEL-689 — pure probe evaluator. NO I/O: all machine state arrives via ctx.
+// Pure probe evaluator. NO I/O: all machine state arrives via ctx.
 export function evalProbe(probe, ctx) {
   if (!probe || typeof probe !== 'object') return false;
   switch (probe.kind) {
@@ -11,7 +11,7 @@ export function evalProbe(probe, ctx) {
       return raw.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean).includes(probe.token);
     }
     case 'installed': return ctx.installed?.[probe.tool] === true;
-    // HIMMEL-758: the forced-off half of `himmelctl config`'s lanes.local.json
+    // The forced-off half of `himmelctl config`'s lanes.local.json
     // overlay (set-lane-override.mjs writes 'always'/'never' only) — an
     // operator override that should suppress a lane regardless of what its
     // base probe would otherwise evaluate to.

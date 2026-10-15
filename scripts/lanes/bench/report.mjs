@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/lanes/bench/report.mjs — HIMMEL-1723 P2.7
+// scripts/lanes/bench/report.mjs
 // Emits spec §8's bench tables from a runs/ directory: a results table (one
 // row per run-id), a summary split by profile with T1 reported in its own
 // row (spec §4.4), a nondeterminism count, a harness-error count, and the
@@ -11,7 +11,7 @@
 // prose — a mismatch fails report generation loudly (nonzero exit) rather
 // than silently rendering a comparison between two different prompts.
 //
-// Incomplete DATA, by contrast, is surfaced, never fatal (HIMMEL-1723 CR1):
+// Incomplete DATA, by contrast, is surfaced, never fatal:
 // missing canonical runs, pending verdicts, probe manifests, self-inconsistent
 // manifests (run_id != the manifest's own task/cell/rep), and runs whose
 // transcript usage cannot be resolved render as a "Data completeness"
@@ -21,7 +21,7 @@
 // the canonical matrix, not marked `probe`, and internally consistent
 // (usually a wrong --runs-dir — failing there is the point of the gate).
 //
-// INVARIANT (HIMMEL-1723 CR1–CR3 round guard): this module has exactly ONE
+// INVARIANT: this module has exactly ONE
 // classification of runs — INCOMPLETE_DATA_CATEGORIES + classifyRuns — and
 // every table, stat and gate derives its input from that classification's
 // output sets. The Data-completeness section, and the CLI's stderr note,
@@ -87,8 +87,8 @@ function taskProfile(task) {
 }
 
 // isSelfConsistentRun — a manifest's identity is established by AGREEMENT
-// between its own fields, never by one field taken on faith (HIMMEL-1723
-// CR2). The canonical run-id format is exactly `${task}-${cell}-${rep}`, so
+// between its own fields, never by one field taken on faith.
+// The canonical run-id format is exactly `${task}-${cell}-${rep}`, so
 // a manifest whose run_id names one run while its task/cell/rep tuple names
 // another is self-inconsistent: nothing in it can be attributed, and
 // counting its numbers under either name would corrupt the stats. Probe
@@ -262,8 +262,8 @@ export function buildSummary(runs) {
     // Tripwire (round-guard invariant): an undecided verdict must never be
     // scored. Through renderReport this cannot happen — buildSummary only
     // receives classifyRuns().scored — so this throw exists for future
-    // direct callers, keeping CR round 3 (a PENDING run scored as a fail,
-    // dragging the cell's pass rate) structurally unreachable.
+    // direct callers, keeping a PENDING run from being scored as a fail
+    // (dragging the cell's pass rate) structurally unreachable.
     if (isVerdictUndecided(r)) {
       throw new Error(`buildSummary: undecided verdict for ${r.run_id} reached the summary — score only classifyRuns().scored (HIMMEL-1723)`);
     }

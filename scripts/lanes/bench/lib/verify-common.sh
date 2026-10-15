@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/lib/verify-common.sh — HIMMEL-1723 P2.1
+# scripts/lanes/bench/lib/verify-common.sh
 # Shared assertion helpers every fixture's verify.sh sources. bash 3.2-safe
 # (no [[ ]], no associative arrays, no ${var,,}).
 #

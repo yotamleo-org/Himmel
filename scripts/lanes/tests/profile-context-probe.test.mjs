@@ -1,5 +1,5 @@
 // scripts/lanes/tests/profile-context-probe.test.mjs
-// HIMMEL-2189 — CI-safe companion to profile-context-probe.mjs. Exercises only
+// CI-safe companion to profile-context-probe.mjs. Exercises only
 // the PURE functions it exports (parse/extract/evaluate/format) against a
 // checked-in fixture derived from a real `claude --output-format stream-json`
 // run (session ids/paths sanitized). NO live spawns here — the probe itself
@@ -142,7 +142,7 @@ test('formatNote: missing measured/baseline renders n/a rather than throwing', (
   assert.equal(formatNote('bare', { pass: false, measured: null, budget: 40000, baseline: null }), 'FAILED bare measured=n/a budget=40000 baseline=n/a delta=n/a');
 });
 
-// ── HIMMEL-2189 corrective (2026-08-28): ledger safe-default + --profile ───
+// ── Ledger safe-default + --profile ───────────────────────────────────────
 
 test('parseProbeArgs: no flags -> all defaults', () => {
   assert.deepEqual(parseProbeArgs([]), { profile: null, ledgerFlag: undefined, noLedger: false });
@@ -191,7 +191,7 @@ test('buildLedgerRow: run_id includes the profile name, so two profiles measured
   assert.match(rowB.run_id, /^profile-context-lane-full-\d{8}T\d{4}-123$/);
 });
 
-// HIMMEL-4012: an enabled plugin that fails to load must FAIL the probe.
+// An enabled plugin that fails to load must FAIL the probe.
 const LOADED = {
   type: 'system', subtype: 'init',
   plugins: [{ source: 'impeccable@himmel' }, { source: 'frontend-design@claude-plugins-official' }],
@@ -240,7 +240,7 @@ test('countLoadedSkills counts skills plus slash_commands', () => {
   assert.equal(countLoadedSkills(null), 0);
 });
 
-// HIMMEL-4036: the post-cap skill listing. Claude Code keeps every skill NAME but
+// The post-cap skill listing. Claude Code keeps every skill NAME but
 // drops descriptions past the 1% listing budget, so "loaded" can mean "a bare name".
 const CTX = (skills) => ({ skills });
 const NAME_ONLY = { name: 'impeccable:impeccable', source: 'plugin', plugin_name: 'impeccable', tokens: 6 };
@@ -263,7 +263,7 @@ test('listingProblems: a required plugin whose skills are name-only FAILS (descr
   assert.match(p[0], /impeccable@himmel.*name-only/);
 });
 
-// HIMMEL-4038: EVERY required skill must be described, not just one per plugin.
+// EVERY required skill must be described, not just one per plugin.
 test('listingProblems: all described skills pass', () => {
   assert.deepEqual(listingProblems(CTX([FULL, { ...FULL, name: 'impeccable:other' }]), ['impeccable@himmel']), []);
 });
@@ -284,7 +284,7 @@ test('listingProblems: a required plugin absent from the listing fails, unless i
   assert.deepEqual(listingProblems(CTX([]), ['impeccable@himmel'], { skillPlugins: new Set() }), []);
 });
 
-// HIMMEL-4060 item 2: the listing is compared against the expected inventory.
+// The listing is compared against the expected inventory.
 const scanned = (plugin, name, version = '1.0') => ({ scope: 'plugin-skills', name, chars: 100, path: `/h/.claude/plugins/cache/himmel/${plugin}/${version}/skills/${name}/SKILL.md` });
 
 test('expectedSkillNames: skills of the required plugin only, latest cached version only, by cache component', () => {
@@ -296,7 +296,7 @@ test('expectedSkillNames: skills of the required plugin only, latest cached vers
 test('expectedSkillNames: the installed version wins over a newer cached one, even when it has zero skills; no installed set falls back to latest', () => {
   const entries = [scanned('impeccable', 'old-only', '0.9'), scanned('impeccable', 'new-only', '2.0')];
   assert.deepEqual([...expectedSkillNames(entries, ['impeccable@himmel'], new Map([['impeccable@himmel', new Set(['0.9'])]]))], ['impeccable:old-only']);
-  // HIMMEL-4064: installed 9.9 has no SKILL.md, the session loads none; do not borrow another version's
+  // installed 9.9 has no SKILL.md, the session loads none; do not borrow another version's
   assert.deepEqual([...expectedSkillNames(entries, ['impeccable@himmel'], new Map([['impeccable@himmel', new Set(['9.9'])]]))], []);
   assert.deepEqual([...expectedSkillNames(entries, ['impeccable@himmel'], new Map())], ['impeccable:new-only']);
 });
@@ -319,7 +319,7 @@ test('installedVersionsOf: reads installed_plugins.json, null when unreadable', 
     for (const v of ['1.0', '0.9', '0.5']) mkdirSync(join(dir, 'plugins', 'cache', 'himmel', 'impeccable', v), { recursive: true });
     assert.deepEqual([...installedVersionsOf(dir, '/work/here').get('impeccable@himmel')].sort(), ['0.9', '1.0']);
     assert.deepEqual([...installedVersionsOf(dir, '/work/other').get('impeccable@himmel')], ['1.0']);
-    // HIMMEL-4064: a version whose cache dir is ABSENT is not installed for our purposes (falls back)
+    // a version whose cache dir is ABSENT is not installed for our purposes (falls back)
     rmSync(join(dir, 'plugins', 'cache', 'himmel', 'impeccable', '0.9'), { recursive: true });
     assert.deepEqual([...installedVersionsOf(dir, '/work/here').get('impeccable@himmel')], ['1.0']);
     rmSync(join(dir, 'plugins', 'cache', 'himmel', 'impeccable', '1.0'), { recursive: true });
@@ -347,7 +347,7 @@ test('listingReport: per-plugin measured tokens and name-only count', () => {
     [{ plugin: 'impeccable', skills: 2, nameOnly: 1, tokens: 80 }]);
 });
 
-// HIMMEL-4038 feed: the listing budget that would let the required set keep
+// Feed: the listing budget that would let the required set keep
 // descriptions (all other skills name-only), estimated from the uncapped scan.
 test('requiredBudget: adds the uncapped description cost of name-only required skills to the current listing', () => {
   const ctx = { raw_max_tokens: 10000, skills: [NAME_ONLY, { name: 'other:x', plugin_name: 'other', tokens: 94 }] };
@@ -373,7 +373,7 @@ test('requiredBudget: null when the window size is unknown; already-described sk
   assert.equal(requiredBudget({ raw_max_tokens: 1000, skills: [FULL] }, ['impeccable@himmel'], []).extraTokens, 0);
 });
 
-// HIMMEL-4068: under strict:true Claude Code namespaces by the upstream plugin.json
+// Under strict:true Claude Code namespaces by the upstream plugin.json
 // `name`, not the marketplace entry name (taste-skill-core -> taste-skill).
 test('runtimeNamesOf: resolves the namespace from the installed plugin.json name, not the entry name', () => {
   const dir = mkdtempSync(join(tmpdir(), 'rtnames-'));
@@ -393,7 +393,7 @@ test('runtimeNamesOf: resolves the namespace from the installed plugin.json name
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// HIMMEL-4070: runtimeNamesOf applies the same scope/projectPath filter as installedVersionsOf.
+// runtimeNamesOf applies the same scope/projectPath filter as installedVersionsOf.
 test('runtimeNamesOf: ignores a foreign-project install whose manifest name differs', () => {
   const dir = mkdtempSync(join(tmpdir(), 'rtnames-scope-'));
   try {
@@ -434,7 +434,7 @@ test('manifest name != entry name: coverage, namespace extras and listing use th
   assert.deepEqual(listingProblems(ctx, ['taste-skill-core@himmel'], { names }), []);
 });
 
-// HIMMEL-4072: builtin / account-synced / skills-dir plugins are environment —
+// Builtin / account-synced / skills-dir plugins are environment —
 // a --settings profile cannot disable them — so they are reported, never failed.
 const baseInit = findInitEvent(parseStreamJsonLines(SAMPLE));
 const ENV_PLUGINS = [
@@ -472,7 +472,7 @@ test('evaluateProfile: a namespace from a non-environment, non-enabled plugin st
   assert.ok(problems.some((p) => p.includes('skill:rogue:thing')));
 });
 
-// HIMMEL-4018: a user-scope skill (~/.claude/skills) ignores enabledPlugins and
+// A user-scope skill (~/.claude/skills) ignores enabledPlugins and
 // loads in every session, so a profile cannot control it: the probe FAILS on one.
 test('evaluateProfile: a @skills-dir plugin (user-scope skill) fails the profile', () => {
   const init = withEnv();

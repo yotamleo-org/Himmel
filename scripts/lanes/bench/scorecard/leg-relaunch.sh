@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/scorecard/leg-relaunch.sh - P0.1 scorecard recipe (HIMMEL-2977).
+# scripts/lanes/bench/scorecard/leg-relaunch.sh - P0.1 scorecard recipe.
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ over plain handover
 # markdown files; it runs under git bash unchanged.
 #
-# Adapted from the HIMMEL-2977 baseline Appendix B (leg-relaunch.sh, leg
+# Adapted from the baseline Appendix B (leg-relaunch.sh, leg
 # N207, 2026-09-12): per leg handover doc,
 #   runs      = highest N among "> **RUN N NOTE" preface blocks (1 if none); relaunches = runs-1
 #   blocked   = Results bullets whose status word is BLOCKED
@@ -66,11 +66,11 @@ if [ -n "$UNTIL" ]; then
     UNTIL_EPOCH=$(to_epoch "$(printf '%s' "$UNTIL" | cut -c1-10)") || { echo "leg-relaunch: bad --until: $UNTIL" >&2; exit 2; }
 fi
 
-# HIMMEL-3269 coverage: "discovered" is every dated doc in the handover dir, not
+# Coverage: "discovered" is every dated doc in the handover dir, not
 # just the ones the metric reads - so a doc that is not a leg doc (a console
 # mission, a status note) is counted as skipped with its reason instead of being
 # silently absent from the discovered set.
-# HIMMEL-3278: which docs ARE leg docs is scripts/lib/leg-identity.sh's call (the
+# Which docs ARE leg docs is scripts/lib/leg-identity.sh's call (the
 # one derivation, shared with tick.sh), not a local regex: a doc whose leg_label
 # is not N<k> fell back to its whole stem and is skipped as no-leg-token. A
 # successor (legN38b) is the SAME leg relaunched: the metric groups by leg_base,

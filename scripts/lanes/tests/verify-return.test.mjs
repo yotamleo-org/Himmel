@@ -1,4 +1,4 @@
-// Tests for scripts/lanes/verify-return.mjs (HIMMEL-1621, Phase 1a).
+// Tests for scripts/lanes/verify-return.mjs.
 // Hermetic: git/gh are injected via the exec seam — nothing touches the real
 // repo, network, or ledger. Run: node --test "scripts/lanes/tests/**/*.test.mjs"
 import { test } from 'node:test';
@@ -63,7 +63,7 @@ test('a Tests: trailer also satisfies the receipt check', () => {
   assert.equal(r.verdict, 'PASS');
 });
 
-// HIMMEL-1641: a no-upstream failure whose branch has local commits ahead of
+// A no-upstream failure whose branch has local commits ahead of
 // origin/main gets a push-block hint — the GLM lane cannot push by design, so
 // this is often "the parent hasn't pushed yet", not "the work is missing".
 

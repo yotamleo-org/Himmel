@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/stop-worker.sh -- the sanctioned STOP chokepoint for in-flight
-# lane workers (HIMMEL-1693). Symmetric with the spawn chokepoints
+# lane workers. Symmetric with the spawn chokepoints
 # (scripts/telegram/spawn-glm.ts, spawn-claudex.ts): those mint a worker and
 # publish its liveness metadata; this one resolves that metadata back to a
 # process and stops it.
@@ -24,7 +24,7 @@
 #
 # NO DATA LOSS ON HALT: the worker's dirty worktree is checkpointed to
 # refs/checkpoints/<slug> BEFORE any signal, so stopping a worker is never the
-# thing that destroys its work (HIMMEL-1691). A checkpoint failure ABORTS the
+# thing that destroys its work. A checkpoint failure ABORTS the
 # stop -- we would rather leave a worker running than kill it with unsaved work.
 #
 # IDENTITY BEFORE SIGNAL: termination goes through scripts/lib/proc-tree.sh,
@@ -33,7 +33,7 @@
 # Its rc 2 (identity unconfirmable) and rc 3 (leader already exited) are
 # distinct outcomes handled separately below -- neither is reported as a kill.
 #
-# THE HALT OWNS THE POISON IT STRANDS (HIMMEL-1929): the spawn chokepoints set
+# THE HALT OWNS THE POISON IT STRANDS: the spawn chokepoints set
 # a worktree-scoped remote.origin.pushurl sentinel for the life of a dispatch
 # and restore it in a `finally`. A hard kill is not catchable, so that finally
 # never runs and the sentinel is STRANDED on the worker's worktree -- and with
@@ -43,9 +43,9 @@
 #
 # CONVENTIONS: bash 3.2-safe (no associative arrays, no mapfile). ASCII only.
 set -uo pipefail
-# HIMMEL-3914: refuse a chokepoint seam that differs from the session's launch env.
+# Refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
-# what is sourced before the seam guard (HIMMEL-3914).
+# what is sourced before the seam guard.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
 _csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
@@ -67,7 +67,7 @@ DRY_RUN=0
 LIST=0
 TARGET=""
 GRACE="${STOP_WORKER_GRACE_SECS:-5}"
-# CR (HIMMEL-1693 round 2): a non-numeric GRACE reaches `sleep` inside
+# A non-numeric GRACE reaches `sleep` inside
 # proc_tree_terminate and fails at once, silently collapsing the TERM grace
 # window -- the worker then gets KILL with no chance to finalize. Reject
 # anything that is not a whole number of seconds before it gets that far.
@@ -117,7 +117,7 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-# CR (HIMMEL-1693 panel, codex-1): this is the sanctioned KILL chokepoint, so
+# This is the sanctioned KILL chokepoint, so
 # its registry root must not be caller-controlled the way BRIDGE_ROOT is
 # elsewhere in this repo (bus.ts / spawn-glm.ts / await-glm-worker.sh all
 # honor a plain BRIDGE_ROOT env -- fine for them, since none of them signal a
@@ -277,7 +277,7 @@ try {
 }
 
 # clear_push_poison <worker-worktree> -- clear a STRANDED push-quarantine
-# sentinel (HIMMEL-1929). Called from every path that concludes the worker is
+# sentinel. Called from every path that concludes the worker is
 # gone, alongside annotate_halt, and never from --dry-run (which exits above)
 # nor from a path that leaves the worker running: clearing the sentinel out
 # from under a live worker would drop its push tripwire.
@@ -286,7 +286,7 @@ try {
 # must never be unset by a halt, so a value that is anything else -- or absent
 # -- is left exactly as it is.
 #
-# HISTORICAL RESIDUE ONLY (HIMMEL-1961): nothing produces this sentinel any
+# HISTORICAL RESIDUE ONLY: nothing produces this sentinel any
 # more. The spawner lanes no longer touch push config at all, so what is left
 # on disk comes from dispatches that ran BEFORE that removal, and with the
 # producer gone nothing else will ever clear it. This chokepoint keeps doing so
@@ -302,7 +302,7 @@ try {
 # so a failure to clean up must be LOUD but must not turn a completed halt
 # into a reported failure.
 # The literal the retired lane quarantine used to write. It is defined here
-# now because the spawner-side constant is gone (HIMMEL-1961) -- this is the
+# now because the spawner-side constant is gone -- this is the
 # only remaining reader, matching a value no writer can change.
 POISON_SENTINEL="DISABLED-glm-quarantine"
 clear_push_poison() {
@@ -316,13 +316,13 @@ clear_push_poison() {
         # The recovery command is single-quoted so a worktree path with spaces
         # or shell metacharacters stays copy-pasteable (panel codex-2), with
         # any embedded single quote closed-escaped-reopened the standard '\''
-        # way so the quoting survives that too (panel round 2).
+        # way so the quoting survives that too.
         wtq=${wt//"'"/"'\\''"}
         echo "WARN stop-worker: could not clear remote.origin.pushurl=$POISON_SENTINEL on $wt -- that worktree cannot push until you run: git -C '$wtq' config --worktree --unset remote.origin.pushurl" >&2
     fi
 }
 
-# --- checkpoint BEFORE signalling (HIMMEL-1691) -----------------------------
+# --- checkpoint BEFORE signalling -----------------------------
 # A halt must not become a data-loss event. Plumbing only (write-tree /
 # commit-tree / update-ref run no hooks), a private index so the worker's own
 # index and working tree are untouched mid-edit, and the tree is seeded from
@@ -377,7 +377,7 @@ CKPT_SLUG="$SESSION_ID-halt"
 CKPT_RESULT="$(checkpoint_worker_worktree "$WORKER_WT" "$CKPT_SLUG")"
 CKPT_RC=$?
 if [ "$CKPT_RC" -ne 0 ]; then
-    # HIMMEL-1751: refusing protects nothing when the worker is already gone --
+    # Refusing protects nothing when the worker is already gone --
     # there is no signal to send, and the refusal left a dead session reading
     # "running" to every census. Only a CONFIRMED-absent pid (no identity AND
     # the liveness probe answering "absent", rc 1) takes this path; alive or
@@ -419,7 +419,7 @@ if [ -z "$IDENTITY" ]; then
     # MUST treat 2 as unknown, never as confirmed absence". Testing it with a
     # bare `if` collapsed 1 and 2 into the same branch, so an unanswerable
     # probe was reported as "already gone" and written into meta.json as
-    # already-exited (HIMMEL-1929 panel round 4: with the quarantine cleanup
+    # already-exited (with the quarantine cleanup
     # below riding on the same conclusion, it would also strip a still-live
     # worker's push tripwire). Read the rc and fail CLOSED on 2.
     ALIVE_RC=0
@@ -478,10 +478,10 @@ identity_started_epoch() {
             # (24 chars), immediately followed by a space and the command.
             lstart="${lstart:0:24}"
             # proc_tree_process_identity (proc-tree.sh) pins TZ=UTC on the ps
-            # probe that produced this lstart (HIMMEL-3791 judge J1396A), so it
+            # probe that produced this lstart, so it
             # must be parsed back as UTC too -- neither `date -d` nor `date -j`
             # infers a timezone from the text itself, and without this pin both
-            # silently read it as local time (HIMMEL-3791 judge J1396B: on a
+            # silently read it as local time (on a
             # non-UTC station this drifted stop-worker's correlation window by
             # the UTC offset, refusing to stop every live worker).
             TZ=UTC date -d "$lstart" +%s 2>/dev/null \
@@ -491,7 +491,7 @@ identity_started_epoch() {
     esac
 }
 
-# SPAWN-TIME CORRELATION (CR round, HIMMEL-1693): the registry does not (yet)
+# SPAWN-TIME CORRELATION: the registry does not (yet)
 # store an immutable spawn-time identity -- that needs a spawner-side change
 # (spawn-glm.ts / spawn-claudex.ts write meta.json's `pid` but never an
 # identity snapshot), which is out of scope for this chokepoint alone and is

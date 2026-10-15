@@ -1,4 +1,4 @@
-// HIMMEL-1677 — lane workers route through provider env overrides and must not
+// Lane workers route through provider env overrides and must not
 // start the redundant openai-codex plugin's unreaped app-server stack.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

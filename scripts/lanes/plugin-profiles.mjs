@@ -1,5 +1,5 @@
 // scripts/lanes/plugin-profiles.mjs
-// HIMMEL-1040 — resolve a named plugin profile into an enabledPlugins settings
+// Resolve a named plugin profile into an enabledPlugins settings
 // object, injected per-dispatch via `claude --settings` (lever-b) so lane
 // workers run lean while the operator's own ~/.claude stays full. Zero-dep ESM,
 // mirroring resolve.mjs — the CI lanes-suite runs node --test over this dir.
@@ -10,7 +10,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
-// HIMMEL-4038: skill-listing.mjs / skill-cost.mjs are imported lazily, only by a
+// skill-listing.mjs / skill-cost.mjs are imported lazily, only by a
 // caller that opts in via opts.skillEntries. The telegram poller's cachebust loader
 // copies THIS file alone into a tmp dir (scripts/telegram/poller.ts), so a static
 // local import would break every poller load.
@@ -30,43 +30,38 @@ const REGISTRY = process.env.PLUGIN_PROFILES_REGISTRY || join(SCRIPT_DIR, 'plugi
 // plugin id (see catalog) matches this.
 const ID_RE = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/;
 
-// HIMMEL-2959: positive rule shapes, not a generic Bash allowlist. In a
+// Positive rule shapes, not a generic Bash allowlist. In a
 // quiet-run rule the label AND directory are literal; a wildcard before the
 // suite basename can absorb a different executed program plus a fake tail.
-// HIMMEL-3698: cr-scores.sh (relative form, args vary per call site — see
+// cr-scores.sh (relative form, args vary per call site — see
 // docs/configuration.md, minerva SKILL.md) joins the wildcard-tail group.
 const GATE_SCRIPT_RE = /^Bash\(bash scripts\/(?:handover\/queue-lock|handover\/console-kit\/inbox-send|cr\/(?:write-verdicts|clear-cr-marker|panel-first-pass|docs-audit-panel|ledger-append|impacted-suites|orphan-check|review-round|cr-scores)|check-ci)\.sh:\*\)$/;
-// HIMMEL-3338: the /pr-check external-critic steps that take no arguments (or
+// The /pr-check external-critic steps that take no arguments (or
 // exactly `--diff`) are exact literals — no `:*` tail, so nothing can be
-// appended to them. HIMMEL-3359 adds step 0's himmel-lane entry
-// (pr-check-context), which hands a non-anchor copy off to the anchor itself.
-// HIMMEL-3375 adds the one var-set the runbook spells for pr-check-env
-// (CR_CLAUDE_AGENTS, steps 2.5 / 3.5), which hands off the same way.
-// HIMMEL-3698: resolve-active-item.sh is a scripts/handover/ script (not
+// appended to them. Step 0's himmel-lane entry (pr-check-context) hands a
+// non-anchor copy off to the anchor itself. The one var-set the runbook
+// spells for pr-check-env (CR_CLAUDE_AGENTS, steps 2.5 / 3.5) hands off the
+// same way. resolve-active-item.sh is a scripts/handover/ script (not
 // scripts/cr/), always invoked bare with no documented argument form
 // (bug-ops.md), so it joins this exact-literal group rather than
 // GATE_SCRIPT_RE's ':*' tail group.
 const GATE_EXACT_RE = /^Bash\(bash scripts\/(?:cr\/(?:(?:doc-freshness-advisory|pr-check-context)\.sh|known-findings\.sh --diff|pr-check-env\.sh CR_CLAUDE_AGENTS)|handover\/resolve-active-item\.sh)\)$/;
 const GATE_SUITE_RE = /^Bash\((?:SUITE_LOCK_WAIT=60 )?bash scripts\/quiet-run\.sh suite -- bash (?:scripts\/(?:handover\/console-kit\/|(?:handover|cr|git|hooks|guardrails|lib|luna|ci)\/)?|templates\/luna-second-brain\/scripts\/)test-\*\.sh\)$/;
-// HIMMEL-3491: the merge-gate ENTRY invocation runs from the $HIMMEL_REPO
+// The merge-gate ENTRY invocation runs from the $HIMMEL_REPO
 // anchor, not branch-controlled bytes, so it must carry a literal `$` the
 // generic ban below rejects. This is an EXACT-STRING exception for this one
 // rule only — never a general $VAR admission — so every other rule containing
 // `$` (including a different var or a different path under the anchor) still
 // falls through to the ban.
-// HIMMEL-3548: the pre-existing relative rule
-// (`Bash(bash scripts/handover/merge-on-green.sh:*)`) was retired because
-// legs type the ABSOLUTE spelling (HIMMEL-3491's anchor discipline), which
-// this anchor literal matches — the relative form is dead weight, not a
+// The relative rule (`Bash(bash scripts/handover/merge-on-green.sh:*)`) is
+// retired because legs type the ABSOLUTE spelling (the anchor discipline),
+// which this anchor literal matches — the relative form is dead weight, not a
 // spelling any leg still needs. This is the only admitted form.
-// ponytail: whether the harness's own permission matcher accepts this
-// quoted "$HIMMEL_REPO/..." literal against literal typed command text is
-// unmeasured outside one manual auto-mode check (HIMMEL-3491's PR #1201
-// body); no automated regression coverage exists yet. Upgrade path:
-// HIMMEL-3549 (give this fact regression coverage beyond one leg manual
-// check).
+// ponytail: unmeasured outside one manual auto-mode check, upgrade path HIMMEL-3549 —
+// whether the harness's own permission matcher accepts this quoted
+// "$HIMMEL_REPO/..." literal against literal typed command text.
 const GATE_ANCHOR_LITERAL = 'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)';
-// HIMMEL-3698 (console ruling on N584): pr-check-context.sh IS /pr-check step
+// pr-check-context.sh IS /pr-check step
 // 0's own invocation of the trusted-anchor entry point — a leg cannot spell it
 // relative to a resolved <himmel_dir> (that value does not exist until this
 // script prints it) nor via validatedAnchorPath's resolved-absolute-path
@@ -110,7 +105,7 @@ function validateGateAllow(errors, rules) {
 // scan (spec'd for T3.1), so a weak heuristic here buys little and costs a
 // false rejection of ordinary paths. Returns a problem string, or null if clean.
 const SECRET_SHAPE_RE = /sk-[A-Za-z0-9]{10,}|gh[pousr]_[A-Za-z0-9]{10,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{12,}|Bearer\s+\S+/;
-// HIMMEL-4830: the one placeholder collectMcpServerDefs resolves; any other ${...} stays malformed.
+// The one placeholder collectMcpServerDefs resolves; any other ${...} stays malformed.
 const REPO_TOKEN = '${HIMMEL_REPO}';
 function credentialLiteralIssue(value) {
   for (const token of value.replaceAll(REPO_TOKEN, '').match(/\$\w*/g) ?? []) {
@@ -155,7 +150,7 @@ export function readEnabledPluginIds(home, cwd, configDir) {
     // Walk cwd -> filesystem root (CR): Claude Code resolves project settings by
     // WALKING UP from cwd, so every ancestor's .claude/settings{,.local}.json is
     // active — exactly the model claude-codex's project-settings screen already
-    // uses (HIMMEL-979 R5, "a nested launch must not miss an ancestor settings
+    // uses ("a nested launch must not miss an ancestor settings
     // file"). This matters concretely here: himmel worktrees live INSIDE the main
     // checkout (<repo>/.claude/worktrees/<name>), so the MAIN checkout's
     // .claude/settings.local.json is an ANCESTOR of the worker's cwd. Reading only
@@ -183,7 +178,7 @@ export function readEnabledPluginIds(home, cwd, configDir) {
   return [...ids];
 }
 
-// Shared field-spec helpers (HIMMEL-2154): floor/catalog/base/profile.enable/
+// Shared field-spec helpers: floor/catalog/base/profile.enable/
 // profile.drop all validate the same two facts about an id list — each id
 // matches ID_RE, and each id is a catalog member — plus an optional
 // no-duplicates check. Pulling that out here is what collapses validateRegistry's
@@ -251,7 +246,7 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     const toolsOk = Array.isArray(spec.disallowedTools) && spec.disallowedTools.every((t) => typeof t === 'string' && t.length > 0);
     if (!toolsOk) errors.push(`profile "${name}" disallowedTools must be an array of non-empty strings`);
   }
-  // mcpServers (HIMMEL-2935 / HIMMEL-2928 lever 1, second half) — a per-leg MCP
+  // mcpServers — a per-leg MCP
   // server ALLOWLIST, orthogonal to mcpCatalog (T3.1, still schema-only): this
   // field names servers to COPY from an external source (~/.claude.json, a repo
   // .mcp.json, a plugin manifest — see collectMcpServerDefs), never a definition
@@ -260,7 +255,7 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     const mcpOk = Array.isArray(spec.mcpServers) && spec.mcpServers.every((s) => typeof s === 'string' && s.length > 0);
     if (!mcpOk) errors.push(`profile "${name}" mcpServers must be an array of non-empty strings`);
   }
-  // HIMMEL-4021: legacy registries default to standard / 200000. A higher
+  // Legacy registries default to standard / 200000. A higher
   // ceiling requires an explicit 1m profile; lower ceilings await Q8 evidence.
   if (spec.contextMode !== undefined && !['standard', '1m'].includes(spec.contextMode)) {
     errors.push(`profile "${name}" contextMode must be standard or 1m`);
@@ -270,7 +265,7 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     || (spec.contextMode !== '1m' && spec.autocompact !== 200000))) {
     errors.push(`profile "${name}" autocompact must be an integer from 200000 to 1000000; only contextMode 1m may exceed 200000`);
   }
-  // contextBudget (HIMMEL-2189) — the first-turn token ceiling the measured
+  // contextBudget — the first-turn token ceiling the measured
   // probe asserts against, so it is REQUIRED on every non-operator profile
   // (a missing budget would let a lane's context footprint grow unnoticed).
   if (!Number.isInteger(spec.contextBudget) || spec.contextBudget <= 0) {
@@ -481,7 +476,7 @@ export function resolveProfile(registry, name, opts = {}) {
   for (const id of (Array.isArray(spec?.enable) ? spec.enable : [])) enabledPlugins[id] = true; // 3. profile.enable on
   for (const id of addPlugins) enabledPlugins[id] = true;                 // 4. per-dispatch overlay on
   for (const id of (registry.floor ?? [])) enabledPlugins[id] = true;     // 5. floor forced on, LAST (inviolable)
-  // HIMMEL-4830: a profile that lists a server with an mcpAllow entry gets both tool-name forms
+  // A profile that lists a server with an mcpAllow entry gets both tool-name forms
   // (standalone --mcp-config and plugin-prefixed) allowed; an opted-out profile gets none.
   const mcpAllow = [];
   for (const server of (Array.isArray(spec?.mcpServers) ? spec.mcpServers : [])) {
@@ -500,7 +495,7 @@ export function resolveProfile(registry, name, opts = {}) {
   return { enabledPlugins, ...(mcpAllow.length ? { permissions: { allow: mcpAllow } } : {}), ...listingSettings(registry, [name], enabledPlugins, opts) };
 }
 
-// HIMMEL-4021: sibling output, never extra Claude settings keys. Resolve the
+// Sibling output, never extra Claude settings keys. Resolve the
 // names through the same composition gate, then take the largest declared cap.
 export function contextForProfile(registry, name) {
   const errors = validateRegistry(registry);
@@ -513,12 +508,12 @@ export function contextForProfile(registry, name) {
   };
 }
 
-// HIMMEL-4014: profiles that cannot be members of a `--profile a,b` list: operator
+// Profiles that cannot be members of a `--profile a,b` list: operator
 // injects nothing, bare skips base, and the role profiles carry guard semantics, so
 // none of them is additive. Shared with the launcher's --consult refusal.
 export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'console', 'console-relay', 'console-judge'];
 
-// HIMMEL-4014: a comma list resolves to the UNION of its members. enabledPlugins is
+// A comma list resolves to the UNION of its members. enabledPlugins is
 // an OR (a member's drop never switches off another member's enable), the floor
 // stays on (every member forces it), permissions.allow is the de-duplicated union,
 // and the skill listing runs ONCE over the union with the union of required ids.
@@ -540,11 +535,11 @@ function composeProfiles(registry, list, opts) {
   return { enabledPlugins, ...(allow.length ? { permissions: { allow } } : {}), ...listingSettings(registry, members, enabledPlugins, opts) };
 }
 
-// HIMMEL-4038: opts.skillEntries (a scanSkillCosts().entries scan) opts a caller
-// in to skillOverrides + skillListingBudgetFraction (opts.configDir, HIMMEL-4060:
-// also scan that config dir's skills-dir command trees for the reserve); absent = unchanged output,
+// opts.skillEntries (a scanSkillCosts().entries scan) opts a caller
+// in to skillOverrides + skillListingBudgetFraction (opts.configDir: also scan
+// that config dir's skills-dir command trees for the reserve); absent = unchanged output,
 // so the pure registry goldens stay byte-identical.
-// HIMMEL-4116: the budget fraction is sized against the profile's own window (a 1m
+// The budget fraction is sized against the profile's own window (a 1m
 // contextMode is 1_000_000), not the skill-listing default of 200k.
 function listingSettings(registry, names, enabledPlugins, opts) {
   if (!opts.skillEntries) return {};
@@ -554,11 +549,11 @@ function listingSettings(registry, names, enabledPlugins, opts) {
   return listingLib.skillListingSettings({ entries: opts.skillEntries, window, configDir: opts.configDir, cwd: opts.cwd, enabledIds, requiredIds: [...new Set(names.flatMap((n) => listingLib.requiredIdsFor(n)))] });
 }
 
-// HIMMEL-3567/HIMMEL-3572: the permission matcher compares literal command
+// The permission matcher compares literal command
 // text, so a gate script typed with the anchor's ABSOLUTE path (the
-// HIMMEL-3491 run-from-the-anchor spelling — merge-on-green.sh per
-// HIMMEL-3491, clear-cr-marker.sh per guard-pr-check-literal.sh's own printed
-// remedy, HIMMEL-3383/3495) matches neither the relative rule nor the
+// run-from-the-anchor spelling — merge-on-green.sh, clear-cr-marker.sh per
+// guard-pr-check-literal.sh's own printed remedy)
+// matches neither the relative rule nor the
 // `$HIMMEL_REPO` one and falls to the auto-mode classifier. This validates the
 // anchor and returns the absolute path, or null when a matcher-unsafe
 // character (space, `*`, `)`, `$`, …) means no literal can be emitted safely.
@@ -575,9 +570,9 @@ function validatedAnchorPath(anchor, purpose) {
   return /^[A-Za-z0-9._/+-]+$/.test(path) ? path : null;
 }
 
-// HIMMEL-3783: two ship-step scripts a leg calls carry no relative
+// Two ship-step scripts a leg calls carry no relative
 // GATE_SCRIPT_RE entry of their own — merge-on-green.sh's relative rule was
-// retired (HIMMEL-3548, only its $HIMMEL_REPO literal remains in
+// retired (only its $HIMMEL_REPO literal remains in
 // registry.gateAllow) and leg-pr-open.sh's relative allow lives in
 // .claude/settings.json, not here — so anchorShipStepRules below carries
 // their relative spelling explicitly, the same text either rule would have
@@ -605,7 +600,7 @@ function anchorRuleFromRelative(rule, anchor) {
 // above. Deliberately excludes GATE_EXACT_RE's no-argument literals
 // (doc-freshness-advisory, pr-check-context, pr-check-env, …) and GATE_SUITE_RE's
 // test-suite rules: those either hand off to the anchor's own copy
-// internally (pr-check-context/pr-check-env, HIMMEL-3698) or must run
+// internally (pr-check-context/pr-check-env) or must run
 // against the WORKTREE's bytes, never the anchor's (test suites exercise the
 // branch under review, not the primary checkout). It widens nothing beyond
 // each relative rule already in registry.gateAllow or .claude/settings.json:
@@ -668,7 +663,7 @@ export function mcpServersForProfile(registry, name) {
       throw new Error(`plugin-profiles: profile "${bad}" cannot be composed in a profile list (${NON_ADDITIVE_PROFILES.join(', ')} are not additive)`);
     }
     const lists = members.map((m) => mcpServersForProfile(registry, m));
-    // HIMMEL-4401: a composed leg must never load more MCP servers than a member
+    // A composed leg must never load more MCP servers than a member
     // allows. Members declaring different allowlists refuse (operator ruling
     // 2026-10-05); identical lists keep that list; a member declaring none is
     // ignored, so exactly one declared list is kept rather than widened to
@@ -714,7 +709,7 @@ function refuseIfPluginRootRef(name, def) {
   }
 }
 
-// HIMMEL-4830: a catalog def may name the primary checkout as ${HIMMEL_REPO}; a standalone
+// A catalog def may name the primary checkout as ${HIMMEL_REPO}; a standalone
 // --mcp-config gets no expansion, so it is replaced here with the absolute path. No repo root
 // is a refusal (a literal placeholder would start nothing), never a silent relative fallback.
 function resolveRepoToken(name, def, repoRoot) {
@@ -749,7 +744,7 @@ export function collectMcpServerDefs(names, { homeConfigPath, repoMcpPath, marke
     else {
       const manifestPath = join(marketplaceDir, name, '.mcp.json');
       const manifest = readDefs(manifestPath);
-      // HIMMEL-4400: last tier, the registry mcpCatalog — for a server whose upstream
+      // Last tier, the registry mcpCatalog — for a server whose upstream
       // plugin ships a flat-form .mcp.json that only exists in the plugin cache.
       if (!Object.hasOwn(manifest, name) && Object.hasOwn(mcpCatalog, name)) {
         def = resolveRepoToken(name, mcpCatalog[name], repoRoot);
@@ -758,7 +753,7 @@ export function collectMcpServerDefs(names, { homeConfigPath, repoMcpPath, marke
       }
       else {
         def = manifest[name];
-        // HIMMEL-5002: headersHelper runs a script shipped in the plugin; a standalone
+        // headersHelper runs a script shipped in the plugin; a standalone
         // --mcp-config gets no ${CLAUDE_PLUGIN_ROOT} expansion, so point it at the plugin dir.
         if (hasToken(def.headersHelper)) def = { ...def, headersHelper: def.headersHelper.replaceAll(PLUGIN_ROOT_TOKEN, join(marketplaceDir, name)) };
       }
@@ -844,10 +839,10 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileU
     // the same leak class, just via a different layer. undefined falls back
     // to <home>/.claude, the existing behaviour.
     const installed = readEnabledPluginIds(homedir(), process.cwd(), process.env.CLAUDE_CONFIG_DIR);
-    // HIMMEL-3567: the anchor a leg types its merge from — the primary checkout
+    // The anchor a leg types its merge from — the primary checkout
     // behind $HIMMEL_REPO (or behind this script), never a worktree.
     const anchor = primaryCheckout(process.env.HIMMEL_REPO || SCRIPT_DIR);
-    // HIMMEL-4038: the skill scan feeds skillOverrides + the listing budget fraction.
+    // The skill scan feeds skillOverrides + the listing budget fraction.
     await loadListingLib();
     const { scanSkillCosts } = await import('./skill-cost.mjs');
     const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');

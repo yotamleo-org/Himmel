@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/profile-settings.sh - resolve a named plugin profile to a stable
-# settings file and print its absolute path (HIMMEL-4013).
+# settings file and print its absolute path.
 #
 # For launch paths that are NOT headed-arm-leg.sh (console arm, arm-resume,
 # hop, schedule-resume, the CR critic, the morning-briefing --llm call): they
@@ -9,14 +9,14 @@
 # outlives the arming process (an `at`/cron relaunch fires hours later), so it
 # is NOT under /tmp.
 #
-# The file is content-addressed (HIMMEL-4033): <dir>/<sha256-12 of the resolved
+# The file is content-addressed: <dir>/<sha256-12 of the resolved
 # JSON>/<profile>.json. Two checkouts whose plugin-profiles.json differ resolve
 # to different paths, so neither can rewrite the settings an armed relaunch
 # already points at; identical content reuses one path. Old files are left alone.
 #
 # Usage: profile-settings.sh <profile> [--mcp-config]
 #   stdout: absolute path of <hash>/<profile>.json; rc 0
-#   --mcp-config (HIMMEL-5310): the path of mcp-<hash>/<profile>.mcp.json holding
+#   --mcp-config: the path of mcp-<hash>/<profile>.mcp.json holding
 #           the profile's mcpServers, for `--mcp-config <file> --strict-mcp-config`;
 #           empty output (rc 0) when the profile declares no mcpServers.
 #   rc 2:   FAIL CLOSED - unknown profile / resolver failure / unwritable dir.
@@ -57,7 +57,7 @@ DIR="$DIR/$HASH"
 mkdir -p "$DIR" 2>/dev/null || { echo "profile-settings: cannot create $DIR" >&2; exit 2; }
 OUT="$DIR/$PROFILE.json"
 if [ "$MODE" = mcp-config ]; then
-    # HIMMEL-5310: the profile's mcpServers allowlist as a --mcp-config file, for
+    # The profile's mcpServers allowlist as a --mcp-config file, for
     # a launch that passes it with --strict-mcp-config. Empty output, rc 0: the
     # profile declares no allowlist, so the launch adds nothing.
     if ! NAMES="$(cd "$CWD" && node "$HERE/plugin-profiles.mjs" "$PROFILE" --mcp-servers 2>&1)"; then

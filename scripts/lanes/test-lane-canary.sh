@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# HIMMEL-5230: lane-canary.sh reports PASS / FAIL / SKIP per lane, never leaves
+# lane-canary.sh reports PASS / FAIL / SKIP per lane, never leaves
 # a window or lock behind, and its brief template passes brief-lint.
 # Platform: POSIX bash 3.2+. Launcher, closer, lock and append are fixtures; the
-# real launch is the live POC recorded on HIMMEL-5230.
+# real launch is the live POC is covered by the live POC.
 # shellcheck disable=SC2016,SC2015,SC2012  # fixture scripts are literal; A && ok || bad is the suite's idiom
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

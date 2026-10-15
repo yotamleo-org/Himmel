@@ -1,5 +1,5 @@
 // scripts/lanes/tests/profile-manifest.test.mjs
-// HIMMEL-2189 — static (hermetic, no spawning) half of the profile
+// Static (hermetic, no spawning) half of the profile
 // context-budget architecture tests. Pins, per non-operator profile, the
 // EXACT enabled-plugin-id set and the contextBudget the registry declares,
 // so any registry edit that grows a profile's surface (bloat) or drops one

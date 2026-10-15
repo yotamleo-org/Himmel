@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/lib/burn-weights.sh - shared token-price weights for
-# leg-burn.sh and agg-burn.sh (HIMMEL-2987). Cache reads are the cheapest
+# leg-burn.sh and agg-burn.sh. Cache reads are the cheapest
 # token on the bill (~0.1x a fresh input token); cache writes are the
 # priciest (~1.25x); these are the coefficients cost-eq is computed with.
 # Override any of them via env for a later price change; sourced, not run.

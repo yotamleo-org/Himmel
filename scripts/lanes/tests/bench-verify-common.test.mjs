@@ -1,4 +1,4 @@
-// scripts/lanes/tests/bench-verify-common.test.mjs — HIMMEL-1723 P2.1
+// scripts/lanes/tests/bench-verify-common.test.mjs
 // verify-common.sh is bash, sourced by every fixture's verify.sh. It is
 // exercised here by writing a tiny driver script that sources it and calls
 // one function, then checking the driver's exit code / stderr — the same

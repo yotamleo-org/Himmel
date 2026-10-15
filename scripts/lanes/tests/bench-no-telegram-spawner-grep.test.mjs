@@ -1,4 +1,4 @@
-// scripts/lanes/tests/bench-no-telegram-spawner-grep.test.mjs — HIMMEL-1723 P2.3
+// scripts/lanes/tests/bench-no-telegram-spawner-grep.test.mjs
 // Structural guard (mirrors bench-no-ledger-write.test.mjs's P2.8 guard):
 // the Telegram worker spawner for the claudex lane (scripts/telegram/
 // spawn-claudex.ts) composes a worker-identity preamble into the prompt,
@@ -31,7 +31,7 @@ function walk(dir) {
   return out;
 }
 
-// LINT, not a behavioural proof (HIMMEL-2726 test audit): this can only catch
+// LINT, not a behavioural proof: this can only catch
 // a literal (case/separator-insensitive) mention of the spawner name, never a
 // composed/aliased reference (e.g. string concatenation, an indirect require
 // path, or a differently-named wrapper around spawn-claudex.ts) — those stay

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# leg-battery.sh — HIMMEL-5287 POC. Runs INSIDE the sandbox as the leg's
+# leg-battery.sh — POC. Runs INSIDE the sandbox as the leg's
 # commands (the stub `claude` execs it). Prints `ROW <id> PASS|FAIL <detail>`;
 # a blocked action is a PASS. Reaches the outside only through $POC_SCRATCH/req.
 #

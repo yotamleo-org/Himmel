@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/materialize.sh — HIMMEL-1723 P2.2
+# scripts/lanes/bench/materialize.sh
 # Copies a fixture's input/ tree to a FRESH scratch dir OUTSIDE the himmel
 # working tree (hard constraint: no dispatch may ever touch/commit inside
 # this repo — spec §3.1) and prints the materialized path on stdout.

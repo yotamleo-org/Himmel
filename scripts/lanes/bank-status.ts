@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 // scripts/lanes/bank-status.ts
-// HIMMEL-1513/HIMMEL-1678 — report both the routing guard verdict and the
+// Reports both the routing guard verdict and the
 // evidence behind it. Output remains guard-compatible in its first two fields:
 //   <lane-id> <funded|spent|unknown> <measured ...|unmeasurable ...|flat-rate>
 //
-// PER-BANK READER CONTRACT (HIMMEL-1678 CR, codex-1). Three explicit bank
+// PER-BANK READER CONTRACT. Three explicit bank
 // states exist — measured, unmeasurable (with the reason), and
 // flat-rate/not-applicable — and each bank uses the right one:
 //
@@ -12,43 +12,43 @@
 //            readings => unmeasurable; never a fabricated number.
 //   glm    — readGlmBank, live-window gated. A live row => measured (the 5h
 //            utilization is real data z.ai reports). NO live row => flat-rate,
-//            NOT unmeasurable: the z.ai plan is FLAT-RATE (operator ruling,
-//            HIMMEL-1678; confirmed by the scripts/claude-glm launcher header
+//            NOT unmeasurable: the z.ai plan is FLAT-RATE (operator ruling;
+//            confirmed by the scripts/claude-glm launcher header
 //            — "Z.ai GLM flat-rate lane"), so an absent window is "not
 //            applicable", not a measurement failure. `unknown` there was
 //            bug-shaped: it read like a defect while the lane is in fact
 //            always-available.
-//   codex  — readCodexDisplay, a TTL-gated CACHE read (HIMMEL-1678). The
+//   codex  — readCodexDisplay, a TTL-gated CACHE read. The
 //            source of truth is `codex app-server`
 //            (JSON-RPC account/rateLimits/read), captured by the BOUNDED
 //            probe scripts/lanes/codex-bank-probe.ts into
 //            ${CODEX_BANK_CACHE:-~/.himmel/cache/codex-bank.json}. bank-status
 //            runs the probe at most once per stale/missing read, locked,
-//            time-boxed and backed off (HIMMEL-5220, refreshCodexCache): the
+//            time-boxed and backed off: the
 //            probe reaps its own app-server tree, so the bounded run does not
 //            leak a process the way an unbounded spawn per call would.
 //            Missing/stale/unusable cache after that => unmeasurable naming
 //            the remedy (run the probe) — never a fabricated number, never a
 //            silent fail-open. resetsAt arrives per limit and stays per limit in
-//            both the cache and the detail line (HIMMEL-1725).
+//            both the cache and the detail line.
 //
 // The deleted sqlite scan, kept as history so nobody resurrects it: every
 // prior attempt read `~/.codex/logs_2.sqlite` for a used_percent — that file
 // is a LOG database and never contained a quota field, so its eternal
-// `unmeasurable` was the right answer to the wrong question. Its HIMMEL-1689
-// hole #1 (a reading with no window attribution is incomparable across a
-// weekly reset) is now closed structurally: the probe captures resetsAt per
+// `unmeasurable` was the right answer to the wrong question. Its hole #1
+// (a reading with no window attribution is incomparable across a weekly
+// reset) is now closed structurally: the probe captures resetsAt per
 // limit, and readCodexBankCache drops any limit whose window already reset.
 // spawn-claudex's dispatch preflight read the same file the same way and was
 // therefore refusing EVERY claudex dispatch; it now reads this cache too.
 // readCodexBank (sessions rollouts, quota-sources.ts) and scripts/lanes/bench/*
 // are DIFFERENT consumers of ~/.codex and are intentionally untouched here.
-// Do NOT read "mis-route" as "and then it falls through" (HIMMEL-1700, still
+// Do NOT read "mis-route" as "and then it falls through" (still
 // true of the funded verdict): the guard's documented fall-through —
 // guard-implementor-dispatch.sh lane_funded() "skipping it, not refusing
 // toward it" — fires only on `spent`. A `funded` verdict does the OPPOSITE:
-// it refuses the in-process Agent dispatch and names that lane. HIMMEL-1700:
-// the codex funded threshold and spawn-claudex's refuse point are now ONE
+// it refuses the in-process Agent dispatch and names that lane.
+// The codex funded threshold and spawn-claudex's refuse point are now ONE
 // value (funded-max-pct.mjs, default 90), so no 90-98% disagreement band
 // remains for codex; other banks keep their 99 default.
 import { spawnSync } from "node:child_process";
@@ -80,11 +80,11 @@ import { resolveActiveAccessPath, resolveBankTargets } from "./resolve.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const LANES_PATH = process.env.LANES_REGISTRY || join(SCRIPT_DIR, "lanes.json");
-// HIMMEL-1690: the machine-local overlay resolve.mjs loadRegistry() layers on
+// the machine-local overlay resolve.mjs loadRegistry() layers on
 // top of the base registry. The bank probe must read the SAME overlay so an
 // overlay-only quota bank gets a real status instead of "no status returned".
 const LOCAL_LANES_PATH = join(SCRIPT_DIR, "lanes.local.json");
-// HIMMEL-1678: codex bank read comes from the probe's TTL'd cache (default
+// codex bank read comes from the probe's TTL'd cache (default
 // TTL 6h). See the header for why bank-status only ever READS this file.
 const CODEX_BANK_TTL_DEFAULT_SECONDS = 6 * 60 * 60;
 const nowMs = Date.now();
@@ -100,7 +100,7 @@ function positiveEnvNumber(v: string | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// HIMMEL-1712 item 3: mirrors scripts/lib/usage-cache-identity.sh's
+// mirrors scripts/lib/usage-cache-identity.sh's
 // current_account_hash — same source (.oauthAccount.accountUuid), same
 // 16-hex sha256 prefix — so a bash-produced cache and this TS reader agree.
 function currentAccountHash(env: NodeJS.ProcessEnv): string | null {
@@ -133,7 +133,7 @@ type DisplayResult =
   | { kind: "unmeasurable"; reason: string }
   | { kind: "flat-rate" };
 
-// HIMMEL-5220: a stale or missing codex cache is refreshed by ONE bounded probe
+// a stale or missing codex cache is refreshed by ONE bounded probe
 // run, so the console's bank line stops reading codex=? for days. Guards:
 //   - one refresher at a time (mkdir lock beside the cache); a concurrent
 //     caller waits inside the same box, then re-reads the cache;
@@ -145,7 +145,7 @@ type DisplayResult =
 //     seam and never spawns the real codex.
 // ponytail: refresh is triggered by the bank-status read (no daemon, no LLM
 // cadence), so a station nobody reads stays stale until the next read; add an
-// LLM-free cron only if HIMMEL-5220's doctor WARN keeps firing.
+// LLM-free cron only if the doctor WARN keeps firing.
 const REFRESH_BOX_MS = positiveEnvNumber(env.CODEX_BANK_REFRESH_BOX_MS) ?? 30_000;
 const REFRESH_BACKOFF_MS = positiveEnvNumber(env.CODEX_BANK_REFRESH_BACKOFF_MS) ?? 300_000;
 const REFRESH_LOCK_STALE_MS = REFRESH_BOX_MS + 30_000;
@@ -248,7 +248,7 @@ function detail(result: DisplayResult): string {
   return formatMeasured(result.readings);
 }
 
-// HIMMEL-1690: load the base registry and, when no explicit LANES_REGISTRY
+// load the base registry and, when no explicit LANES_REGISTRY
 // override is set, the lanes.local.json overlay — the same gating resolve.mjs
 // loadRegistry() uses (LANES_REGISTRY replaces wholesale; no overlay on top).
 // resolveBankTargets merges the two so an overlay-only quota bank is probed.
@@ -278,7 +278,7 @@ for (const { lane, bank, quota } of targets.withBank) {
     }
     bankCache.set(bank, result);
   }
-  // HIMMEL-1768 round 3: resolve the ACTIVE access path explicitly. A failed
+  // resolve the ACTIVE access path explicitly. A failed
   // selection (missing paths, out-of-range index) is a registry ERROR, not a
   // paths[0] fallback — the verdict goes unknown and the diagnostic lands on
   // stderr, keeping stdout the machine surface (<lane> <state> <detail>).

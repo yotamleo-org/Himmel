@@ -1,5 +1,5 @@
-// Coverage for scripts/lib/kill-tree.mjs (HIMMEL-1956, consolidating
-// HIMMEL-1835): the shared process-TREE stop for the JS/TS side.
+// Coverage for scripts/lib/kill-tree.mjs: the shared process-TREE stop
+// for the JS/TS side.
 //
 // THE POINT OF THIS SUITE: the defect it pins shipped because the only test
 // that existed asserted the DIRECT child died. It did, on every platform --
@@ -35,8 +35,8 @@ function alive(pid) {
 // shell then hangs around (the timeout case) or exits immediately (the
 // already-exited case).
 //
-// A fixture that fails AFTER spawning must not leak what it spawned (panel
-// round 2, codex-1): the caller's cleanup only ever sees a fixture that was
+// A fixture that fails AFTER spawning must not leak what it spawned: the
+// caller's cleanup only ever sees a fixture that was
 // returned, so the throw path cleans up here before it rethrows.
 async function spawnFixture({ ownGroup = true, parentTail = "sleep 300" } = {}) {
   const child = spawn("sh", ["-c", `sleep 300 & echo $!; ${parentTail}`], {

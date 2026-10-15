@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
-// HIMMEL-3269: the Tier-return counter is retired. Nothing instructs a child to
+// The Tier-return counter is retired. Nothing instructs a child to
 // emit the marker (leg-preface.md is read by headed top-level legs; the sweep
 // only counts subagent transcripts), so `sonnet 0/N` was the arithmetic of an
 // unemitted marker, not evidence of no escalation. The script now refuses

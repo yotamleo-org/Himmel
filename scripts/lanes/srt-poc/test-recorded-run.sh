@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-recorded-run.sh — HIMMEL-5287 POC. The fixtures in recorded/ are the
+# test-recorded-run.sh — POC. The fixtures in recorded/ are the
 # real transcripts of run-poc.sh on a test VM guest (Ubuntu 24.04, srt 0.0.79);
 # this asserts the POC verdict still matches them: every battery row PASSes,
 # origin main never moved, and srt refuses an invalid or missing settings file.

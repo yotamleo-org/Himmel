@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/lib/leg-cost-row.sh - one leg's cost ledger row (HIMMEL-4217).
+# scripts/lanes/lib/leg-cost-row.sh - one leg's cost ledger row.
 #
 # Source this file; it defines functions and runs nothing. close-wrapped-leg.sh
 # appends the row at wrap; the ledger lives at
@@ -50,10 +50,10 @@ EOF
 # leg_cost_ledger_path [doc | stem] - the ledger lives under the handover root
 # that holds the leg doc, so a console run from another repo (or with
 # HANDOVER_DIR unset) never writes into that repo's handovers/ stub
-# (HIMMEL-4231). No doc, or one no known root holds: handover_root.
+# handovers/ stub. No doc, or one no known root holds: handover_root.
 leg_cost_ledger_path() {
     if [ -n "${LEG_COST_LEDGER:-}" ]; then printf '%s\n' "$LEG_COST_LEDGER"; return 0; fi
-    # HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+    # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
     # shellcheck disable=SC1091
     if . "$_LCR_HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
     # shellcheck source=scripts/lib/handover-path.sh

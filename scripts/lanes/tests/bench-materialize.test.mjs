@@ -1,4 +1,4 @@
-// scripts/lanes/tests/bench-materialize.test.mjs — HIMMEL-1723 P2.2
+// scripts/lanes/tests/bench-materialize.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';

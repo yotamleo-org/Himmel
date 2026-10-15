@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4076: read-only account balance and account-wide spend since a launch.
+# read-only account balance and account-wide spend since a launch.
 # No inference, configuration seed or subscription probe. --since reads the
 # launcher's credit line, not its key-cap line (a cap may reset independently).
 # PLATFORM GUARD: Bash helper for the Linux console tick; no PowerShell twin.
@@ -43,7 +43,7 @@ balance="$credit"; source=credit
 if [ "$key" != none ] && awk -v k="$key" -v c="$credit" 'BEGIN{exit !(k<c)}'; then
   balance="$key"; source='key-limit_remaining'
 fi
-# HIMMEL-4081: the gate must not round 2.999 up to a three-dollar floor.
+# the gate must not push 2.999 up to a three-dollar floor.
 # Default display output stays byte-identical for tick and existing consumers.
 if [ "$raw" -eq 0 ]; then
   balance="$(awk -v n="$balance" 'BEGIN{printf "%.2f",n}')"

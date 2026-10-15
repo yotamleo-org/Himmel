@@ -1,4 +1,4 @@
-// scripts/lanes/tests/cloud-route.test.mjs — HIMMEL-4262
+// scripts/lanes/tests/cloud-route.test.mjs
 // Fixture tickets + stubbed Jira/gh: no live calls, no real bucket.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,7 +47,7 @@ test('LOCAL-NATIVE: run-time need (luna / vault / handover state / qmd query, ve
   }
 });
 
-// HIMMEL-4969: fixture text of the real tickets (no live Jira).
+// fixture text of the real tickets (no live Jira).
 const T4660 = {
   key: 'HIMMEL-4660', type: 'Task', status: 'To Do', title: 'qmd-quality: backfill baselines into live ledger and arm cadence on a test VM',
   description: 'Follow-up to HIMMEL-4650 (its Ask items 3 live part and 4).\n1. Run scripts/eval/qmd-quality/backfill-ledger.sh on the stored gemma and qwen outputs under ~/.himmel/eval/qmd-index/out/ (and the wiring-proof run) against the LIVE eval-runs ledger. HIMMEL-4650 rehearsed it on scratch copies and a scratch ledger only, so no live ledger row was written.\n2. Arm the qmd-quality cadence on a test VM first (himmel-ops:vm); the station arm stays an operator step.\nBoth need an operator go (live ledger / VM arming), so they were out of the HIMMEL-4650 PR.',
@@ -142,7 +142,6 @@ test('bulleted asks under an Asks: header count toward the 3-ask limit', () => {
   assert.equal(classifyTicket(tk({ description: d }), ctx()).class, 'LOCAL-NATIVE');
 });
 
-// HIMMEL-4266
 test('LOCAL-NATIVE: a path outside the known roots cannot be checked against held files', () => {
   for (const d of ['Edit scripts/a.sh and src/lib/widget.ts.', 'Edit scripts/a.sh and vendor/foo/bar.json.', 'Edit scripts/a.sh and the lib/foo/ directory.', 'Edit scripts/a.sh and ./config/app.yaml.', 'Edit scripts/a.sh and ./scripts/b.sh.', 'Edit scripts/a.sh and config/settings.properties.', 'Edit scripts/a.sh and src/schema.graphql.']) {
     const v = classifyTicket(tk({ description: d }), ctx());
@@ -330,7 +329,7 @@ test('CLI: --held file blocks without gh, and --classify-only writes nothing', (
   assert.ok(!existsSync(join(bucket, 'cloud-route.jsonl')));
 });
 
-// HIMMEL-4996: fixture text of the real tickets (no live Jira).
+// fixture text of the real tickets (no live Jira).
 const STATE_SPEC = 'Spec, threat model, token budget and plan: state repo handovers/yotamleo/himmel/specs/HIMMEL-4818/.';
 const T4827 = { key: 'HIMMEL-4827', type: 'Task', status: 'To Do', title: 'himmel-bus T4: MCP server', description: `Add the server in scripts/bus/server.mjs.\n${STATE_SPEC}` };
 const T4836 = { key: 'HIMMEL-4836', type: 'Task', status: 'To Do', title: 'himmel-bus T13: docs', description: `Document it in docs/internals/bus.md.\n${STATE_SPEC}` };
@@ -363,9 +362,9 @@ test('brief makes every Jira step conditional on the Atlassian tools, with a PR-
   assert.match(b, /a `## Jira steps not done` section listing each Jira step you skipped/);
 });
 
-// HIMMEL-5163: a ticket already fixed on main routes to a local verify, never to the cloud.
+// a ticket already fixed on main routes to a local verify, never to the cloud.
 // Fixture: real merged PR 1982 (trimmed to its title, merge time, file list and the body line
-// that cites HIMMEL-4686), whose files are the ones HIMMEL-4686's HLS allowlist work sits in.
+// that cites a given key), whose files are the ones that key's HLS allowlist work sits in.
 const PR1982 = {
   number: 1982, title: 'fix(pipeline): [HIMMEL-4677] Scrapling-first for YouTube and X media, cookies demoted to fallback',
   body: 'Deferred as v1.0.2c hardening/polish (the Playwright/gallery-dl fallback still covers each miss):\n- HLS segment-host allowlist → HIMMEL-4686\n- removed video without `videoDetails` → HIMMEL-4688',
@@ -430,7 +429,7 @@ exit 1`);
   assert.ok(!existsSync(join(bucket, 'cloud-brief-HIMMEL-9001.md')));
 });
 
-// HIMMEL-5218: fixture text of the real tickets (no live Jira). 4503 and 4517 name the
+// fixture text of the real tickets (no live Jira). 4503 and 4517 name the
 // hook only as guard-pr-check-literal; 4653 says VM-only / On a VM snapshot.
 const TREE = ['scripts/hooks/guard-pr-check-literal.sh', 'scripts/hooks/block-destructive-commands.sh', 'scripts/cr/pr-check-context.sh', 'scripts/lanes/example.sh', 'scripts/test-check-ci.sh', 'docs/x.md'];
 const T4503 = {
@@ -494,7 +493,7 @@ test('HIMMEL-5218: an unavailable file tree is BLOCKED, never CLOUD-OK', () => {
   assert.match(v.reason, /file tree unavailable/);
 });
 
-// HIMMEL-5499: a CLOUD-OK ticket's files stay reserved across invocations through the bucket's
+// a CLOUD-OK ticket's files stay reserved across invocations through the bucket's
 // cloud-route.jsonl, until an age cap, or until a merged PR cites the ticket.
 function reserveStubs() {
   const s = setup();

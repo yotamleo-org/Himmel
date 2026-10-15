@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/test-leg-relaunch.sh - RED/GREEN suite for
-# leg-relaunch.sh (HIMMEL-2977 P0 script shipped in #689 with no paired test;
-# HIMMEL-2981). House check/contains style, per scripts/test-context-fill.sh.
+# leg-relaunch.sh. House check/contains style, per scripts/test-context-fill.sh.
 #
 # leg-relaunch.sh flags/branches covered:
 #   --since (required, exit 2 if missing)
@@ -17,7 +16,7 @@
 #   since/until are day-truncated; since is inclusive, until is exclusive
 #   TOTAL row aggregates n/relaunches(+mean)/blocked(+mean)/wrapped
 #   the handover-doc glob ignores undated filenames; a dated doc leg-identity.sh
-#     does not call a leg is skipped as no-leg-token (HIMMEL-3278)
+#     does not call a leg is skipped as no-leg-token
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+; it runs under
 # git bash unchanged.
@@ -115,12 +114,12 @@ IGNORE_OUT=$("$RELAUNCH" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "ignore-nonmatching: exits 0" "$?" "0"
 check "ignore-nonmatching: an undated filename is not picked up, and both leg spellings are" \
     "$(printf '%s\n' "$IGNORE_OUT" | grep -c '^legN')" "2"
-# HIMMEL-3278: the current `<TICKET>-N<k>-` naming is a leg doc, counted parsed;
+# The current `<TICKET>-N<k>-` naming is a leg doc, counted parsed;
 # only the undated file stays outside the discovered set
 check "ignore-nonmatching: the coverage triple counts the current-scheme doc as parsed" \
     "$(printf '%s\n' "$IGNORE_OUT" | grep '^coverage:')" "coverage: discovered=2 parsed=2 skipped=0"
 
-# --- (p) HIMMEL-3278: every spelling of a leg doc the harness produces is parsed
+# --- (p) every spelling of a leg doc the harness produces is parsed
 # via scripts/lib/leg-identity.sh, and a doc that is not a leg doc stays skipped
 # with a named reason. canonical <TICKET>-N<k>-, no-N -leg<k>-, legacy -legN<k>-.
 export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/leg-spellings"
@@ -154,8 +153,8 @@ SORT_V_COUNT=$(grep -c 'sort -V' "$RELAUNCH")
 check "portability: leg-relaunch.sh does not use GNU-only sort -V" "$SORT_V_COUNT" "0"
 
 # --- (o) unreadable: a listed-but-unreadable doc is named `unreadable` in the
-# coverage line, not counted as parsed with a default run count (HIMMEL-3269 CR
-# round 1). Skipped when chmod cannot make a file unreadable (running as root).
+# coverage line, not counted as parsed with a default run count.
+# Skipped when chmod cannot make a file unreadable (running as root).
 UNR_DIR=$(mktemp -d "${TMPDIR:-/tmp}/relaunch-unreadable.XXXXXX") || { echo "FAIL - unreadable: mktemp -d"; exit 1; }
 cp "$HERE"/fixtures/leg-relaunch/main/* "$UNR_DIR"/ || { echo "FAIL - unreadable: cp fixture"; exit 1; }
 UNR_FILE=$(find "$UNR_DIR" -type f | sort | head -1)

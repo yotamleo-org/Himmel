@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/scorecard/agg-postpin.sh - P0.1 scorecard recipe (HIMMEL-2977).
+# scripts/lanes/bench/scorecard/agg-postpin.sh - P0.1 scorecard recipe.
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ plus jq-free grep/
 # sed over a Claude Code transcript (same JSONL on every platform); it runs
 # under git bash unchanged.
 #
-# Copied from the HIMMEL-2977 baseline Appendix B (agg-postpin.sh, leg N207,
+# Copied from the baseline Appendix B (agg-postpin.sh, leg N207,
 # 2026-09-12): the headline leg/console rollup (spec §0/§2.1's legs +
 # Fable-console rows). Folded into one self-contained script on the same
 # walk as agg-burn.sh, restricted to role in {leg, console}. The baseline
@@ -17,7 +17,7 @@
 #
 # --role <leg|console>       restrict to one role (default: both)
 # --cohort <name>            restrict to sessions launched under
-#                             --profile <name> (HIMMEL-2977 Task 3: the only
+#                             --profile <name> (the only
 #                             defined cohort today is "leg-impl"). Matched
 #                             against SCORECARD_LAUNCH_LOG_DIR (default:
 #                             ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs),
@@ -26,11 +26,11 @@
 #                             launch time (a session UUID it cannot) -
 #                             <name>.log, holding one appended
 #                             "headed-arm-leg: profile=<name> ... session=<name>"
-#                             line per launch attempt (HIMMEL-3270 writer:
+#                             line per launch attempt (writer:
 #                             scripts/handover/console-kit/headed-arm-leg.sh).
 #                             A session with no launch-log entry is excluded
 #                             under --cohort (no profile on record).
-#                             MULTI-LINE RULE (HIMMEL-3269): the log is append-only
+#                             MULTI-LINE RULE: the log is append-only
 #                             with no attempt id, so a refused duplicate of a live
 #                             session's name can add a line beside the original.
 #                             Lines that agree on profile= are one record; lines
@@ -42,7 +42,7 @@
 # (reason=n ...)` - how much of the discovered input the table above covers.
 # --context <1m|standard|unknown>
 #                             restrict to sessions by the launch context they
-#                             RECEIVED (HIMMEL-3279), read from the durable
+#                             RECEIVED, read from the durable
 #                             console launch record headed-arm.sh writes into
 #                             the same launch-logs dir. `unknown` selects the
 #                             sessions with no usable record (gone, absent,
@@ -152,7 +152,7 @@ FILES=$(mktemp "${TMPDIR:-/tmp}/agg-postpin-files.XXXXXX") || { echo "agg-postpi
 DISC_ERR=$(mktemp "${TMPDIR:-/tmp}/agg-postpin-discerr.XXXXXX") || { echo "agg-postpin: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
 
-# A discovery error must not vanish (the agg-burn.sh HIMMEL-2977 rule): `find
+# A discovery error must not vanish (the agg-burn.sh rule): `find
 # 2>/dev/null | while` lost both find's errors and its status, so the coverage
 # line's `discovered=` would have counted a silently truncated file list.
 if ! sc_discover "$FILES" "$DISC_ERR"; then

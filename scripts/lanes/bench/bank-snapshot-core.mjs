@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/lanes/bench/bank-snapshot-core.mjs — HIMMEL-1723 P2.6
+// scripts/lanes/bench/bank-snapshot-core.mjs
 // Pure parsing/threshold helpers for bank-snapshot.sh, plus the CLI that
 // script shells out to. Reuses scripts/lanes/bank-status-core.mjs's
 // parseBankStatusOutput (the same per-lane `<id> <funded|spent|unknown>
@@ -66,7 +66,7 @@ export function evaluatePreflight({ codexWeeklyPct, claudeSevenDayPct }) {
 // evaluateDelta — spec §6.2's stale-source rule: a post-reading <= its
 // pre-reading is reported UNMEASURED (stale source), NEVER as a zero or
 // negative draw — codex's log source has a known unfixed stale-LOW defect
-// (HIMMEL-1689) that can mask real exhaustion across a weekly reset.
+// that can mask real exhaustion across a weekly reset.
 export function evaluateDelta(pre, post) {
   if (pre === null || pre === undefined || post === null || post === undefined) {
     return { status: 'UNMEASURED', reason: 'missing reading' };

@@ -1,5 +1,5 @@
 // scripts/lanes/fanout-plan.mjs
-// HIMMEL-1829 — deterministic work-type -> lane routing for /fanout.
+// Deterministic work-type -> lane routing for /fanout.
 //
 // Fan-out has been a per-dispatch HABIT, not a primitive: /overnight-shift
 // dispatches with no model named at all, and a destructive worktree cleanup
@@ -13,13 +13,13 @@
 // (judgement/destructive -> Fable; multi-step reasoning -> Opus; scoped
 // read-only research -> Sonnet; bulk mechanical -> Haiku, never spawns
 // further; well-specified implementation -> Sonnet by default — impl routes
-// to native Claude subagents only, operator ruling 2026-08-19, HIMMEL-1967).
+// to native Claude subagents only, operator ruling 2026-08-19).
 // It is fixed on purpose — the whole point is that tier selection stops being
 // improvised per dispatch.
 //
 // A caller MAY still name an explicit `lane` for implementation work, but it
 // must be a claude-tier lane — impl-class lanes are never a valid /fanout
-// destination (HIMMEL-1967: impl routes to native Claude subagents only), so
+// destination (impl routes to native Claude subagents only), so
 // there's no need to special-case dormancy for them; a claude-tier lane the
 // live roster (resolve.mjs --json) marks `dormant` is refused outright too —
 // dormant is a policy closure, not merely "unavailable".
@@ -52,7 +52,7 @@ export function buildFanoutPlan(items, liveLanes) {
       errors.push(`${id}: unknown or missing type ${JSON.stringify(type)} (must be one of ${[...TYPES].join(', ')})`);
       continue;
     }
-    // The specific defect HIMMEL-1829 fixes: destructive/irreversible work
+    // The specific defect this guards: destructive/irreversible work
     // routed anywhere but the judgement tier is an ERROR, not a downgrade.
     if (destructive && type !== 'judgement') {
       errors.push(`${id}: destructive/irreversible item routed to '${type}' — REFUSED. Destructive or irreversible work must be type 'judgement' (routes to Fable).`);
@@ -63,7 +63,7 @@ export function buildFanoutPlan(items, liveLanes) {
       continue;
     }
 
-    // HIMMEL-3997: an effort record, when supplied, may refuse an implementation
+    // An effort record, when supplied, may refuse an implementation
     // leg (sigma too wide) and adds advisory fields; no record = no change.
     let rec = null;
     if (item?.estimate) {
@@ -80,7 +80,7 @@ export function buildFanoutPlan(items, liveLanes) {
       errors.push(`${id}: lane '${laneId}' is not in the LIVE roster on this machine (run /lanes) — refusing to route to an unavailable lane.`);
       continue;
     }
-    // Dormant is a POLICY closure (HIMMEL-1967: impl routes to native Claude
+    // Dormant is a POLICY closure (impl routes to native Claude
     // subagents only), not merely "unavailable" — refuse regardless of type,
     // never route around it just because the lane's own probe still passes.
     if (lane.dormant) {
@@ -88,7 +88,7 @@ export function buildFanoutPlan(items, liveLanes) {
       continue;
     }
     // impl-class lanes are NEVER a valid /fanout destination, dormant or not
-    // (HIMMEL-1967: impl routes to native Claude subagents only) — every
+    // (impl routes to native Claude subagents only) — every
     // plan entry, including an explicit override, must land on a
     // claude-tier lane, whose id IS the Agent tool's dispatchable model.
     if (lane.class !== 'claude-tier') {
@@ -100,8 +100,7 @@ export function buildFanoutPlan(items, liveLanes) {
     // "inherit". `model` is DISPATCHABLE (claude-tier lane ids ARE the Agent
     // tool's model enum: sonnet/opus/haiku/fable), not the human-readable
     // `lane.label` — a prior draft emitted the label here, which the Agent
-    // tool's model param would reject verbatim (codex CR, HIMMEL-1829 bundle
-    // round).
+    // tool's model param would reject verbatim.
     const entry = { id, type, destructive, lane: laneId, model: laneId, label: lane.label, effort: item?.effort || 'medium', why: item?.why || '' };
     if (rec) Object.assign(entry, { recommended_effort: rec.effort, review: rec.review, advisory: describe(rec) });
     plan.push(entry);

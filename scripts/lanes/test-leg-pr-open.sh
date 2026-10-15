@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/test-leg-pr-open.sh - HIMMEL-3031. Hermetic tests for
+# scripts/lanes/test-leg-pr-open.sh - Hermetic tests for
 # leg-pr-open.sh: a GH_CMD stub records every argv line to a file, so the
 # assertion that matters (the PR body text appears ONLY as the --body value
 # the forge seam passes to gh, never in the Bash command a leg types) is a
@@ -53,7 +53,7 @@ echo change > "$REPO/f"; git -C "$REPO" add f; git -C "$REPO" commit -qm change
 git -C "$REPO" push -q -u origin feat/himmel-3031-x
 HEAD_SHA=$(git -C "$REPO" rev-parse HEAD)
 
-# HIMMEL-4419: the SUT moves the title's ticket to In Review; a stub Jira CLI
+# The SUT moves the title's ticket to In Review; a stub Jira CLI
 # keeps every run here off the real tracker and records the transitions.
 JIRA_LOG="$TMP_ROOT/jira.log"
 JIRA_STUB="$TMP_ROOT/jira-stub.sh"
@@ -100,7 +100,7 @@ case "$* " in
         fi
         echo "https://github.com/owner/repo/pull/9"
         # real `gh pr create` on a repo with CodeRabbit armed is followed by
-        # the seam's own CR-trigger confirmation line on stdout (HIMMEL-1924)
+        # the seam's own CR-trigger confirmation line on stdout
         # — reproduce that here, not just the bare URL.
         echo "posted @coderabbitai review on PR #9 (owner/repo) for head $HEAD_SHA_STUB"
         ;;
@@ -115,7 +115,7 @@ chmod +x "$GH_STUB"
 run_sut() {  # args passed straight through to the SUT
     (
         cd "$REPO" || exit 99
-        # HIMMEL-3616: JIRA_PROJECT_KEY drives check-commit-msg.sh's ticket
+        # JIRA_PROJECT_KEY drives check-commit-msg.sh's ticket
         # pattern (HIMMEL-N) via the new title gate — the fixture title below
         # carries a HIMMEL-style ticket, so this must be set for every run,
         # not just the title-gate-specific cases.
@@ -203,7 +203,7 @@ if [ "$rc_g" -ne 0 ]; then pass "refuses when HEAD unpushed (rc!=0)"; else fail 
 contains "refusal names push" "$err_g" "push"
 git -C "$REPO" push -q origin feat/himmel-3031-x
 
-# ── (h) find-open lookup survives a stderr warning on a CLEAN success (codex-1 round 2) ──
+# ── (h) find-open lookup survives a stderr warning on a CLEAN success ──
 echo "TEST: find-open lookup survives a stderr warning on success (no open PR)"
 : > "$ARGV_LOG"
 unset STUB_OPEN_PR 2>/dev/null || true
@@ -220,7 +220,7 @@ argv_h=$(cat "$ARGV_LOG")
 contains "find-open-stderr path still creates (stderr warning did not fake an existing PR)" "$argv_h" "pr create"
 not_contains "find-open-stderr path never edits" "$argv_h" "pr edit"
 
-# ── (i) HIMMEL-3572: leg-pr-open computes leg-burn itself, body gets the line
+# ── (i) leg-pr-open computes leg-burn itself, body gets the line
 # even when the caller supplied none. A leg typing `leg-burn.sh` by hand was
 # denied [Session Transcript Tampering] — the line must come from inside this
 # script (a script, not a leg-typed ad-hoc command), never a separate step.
@@ -240,7 +240,7 @@ assert_eq "leg-burn-insertion path exits 0" "0" "$rc_i"
 argv_i=$(cat "$ARGV_LOG")
 contains "gh receives a leg-burn: line though the body file had none" "$argv_i" "leg-burn:"
 
-# ── (j) HIMMEL-3572: an unresolvable session never fails the PR open — WARN
+# ── (j) an unresolvable session never fails the PR open — WARN
 # plus a `leg-burn: unavailable (<reason>)` line takes its place.
 echo "TEST: an unresolvable leg-burn session falls back to 'unavailable', never fails the open"
 : > "$ARGV_LOG"
@@ -256,9 +256,9 @@ assert_eq "unavailable-fallback path still exits 0" "0" "$rc_j"
 argv_j=$(cat "$ARGV_LOG")
 contains "gh receives the unavailable-fallback leg-burn line" "$argv_j" "leg-burn: unavailable ("
 
-# ── (k) HIMMEL-3572 (CodeRabbit): when a transcript RESOLVES but leg-burn.sh
+# ── (k) when a transcript RESOLVES but leg-burn.sh
 # itself fails on it, the PR body's fallback line must never carry the local
-# transcript path (home dir + username + session ID, the HIMMEL-1352 leak
+# transcript path (home dir + username + session ID, a leak
 # class) — only a generic reason. The full path stays in the WARN on stderr.
 echo "TEST: a resolvable-but-broken transcript falls back to a generic reason, never the local path"
 : > "$ARGV_LOG"
@@ -281,7 +281,7 @@ contains "gh receives a generic unavailable reason" "$argv_k" "leg-burn: unavail
 not_contains "gh never receives the fake claude home path" "$argv_k" "$FAKE_CLAUDE_HOME"
 not_contains "gh never receives the session ID as a path fragment" "$argv_k" "$FAKE_SID.jsonl"
 
-# ── (l) HIMMEL-3616: refuses a type-less title before ever calling gh ──────
+# ── (l) refuses a type-less title before ever calling gh ──────
 echo "TEST: refuses a title with no conventional-commit type prefix"
 : > "$ARGV_LOG"
 unset STUB_OPEN_PR 2>/dev/null || true
@@ -293,7 +293,7 @@ contains "refusal names the expected shape" "$err_l" "type(scope)"
 argv_l=$(cat "$ARGV_LOG")
 assert_eq "gh is never invoked when the title gate refuses" "" "$argv_l"
 
-# ── (m) HIMMEL-3616: a conventional title with a ticket still opens the PR ──
+# ── (m) a conventional title with a ticket still opens the PR ──
 echo "TEST: a conventional title with a ticket still opens the PR"
 : > "$ARGV_LOG"
 unset STUB_OPEN_PR 2>/dev/null || true
@@ -304,7 +304,7 @@ assert_eq "conventional title still opens the PR (rc=0)" "0" "$rc_m" || echo "  
 argv_m=$(cat "$ARGV_LOG")
 contains "gh receives the conventional title" "$argv_m" "--title fix(x): [HIMMEL-3031] foo"
 
-# HIMMEL-4094: exercise the real burn computation against a known transcript.
+# Exercise the real burn computation against a known transcript.
 cp "$HERE/tests/fixtures/leg-burn-sample.jsonl" "$FAKE_CLAUDE_HOME/projects/-fake-project/$FAKE_SID.jsonl"
 for supplied_profile in leg-impl design,design-motion '' 'bad profile' 'bad/profile'; do
     : > "$ARGV_LOG"
@@ -328,7 +328,7 @@ for supplied_profile in leg-impl design,design-motion '' 'bad profile' 'bad/prof
 done
 not_contains "unavailable fallback remains profile-less" "$argv_k" "profile="
 
-# ── HIMMEL-4462: the ticket in the title must match the branch (and the PR it edits)
+# ── the ticket in the title must match the branch (and the PR it edits)
 echo "TEST: refuses a title whose ticket is not in the branch name"
 : > "$ARGV_LOG"
 unset STUB_OPEN_PR 2>/dev/null || true
@@ -342,7 +342,7 @@ contains "refusal is an ERR leg-pr-open line" "$err_p" "ERR leg-pr-open:"
 contains "refusal names the title key" "$err_p" "HIMMEL-1"
 contains "refusal names the branch" "$err_p" "fix/himmel-2-other"
 assert_eq "gh is never invoked on a branch mismatch" "" "$(cat "$ARGV_LOG")"
-# same prefix, different ticket: HIMMEL-1 must not match himmel-10
+# same prefix, different ticket: key 1 must not match himmel-10
 git -C "$REPO" checkout -q -b fix/himmel-10-other
 git -C "$REPO" push -q -u origin fix/himmel-10-other
 run_sut "$MISMATCH_TITLE" "$BODY_FILE" >/dev/null 2>&1; rc_p2=$?
@@ -357,7 +357,7 @@ contains "refusal names the PR number" "$err_q" "42"
 contains "refusal names the PR's key" "$err_q" "HIMMEL-7"
 not_contains "the PR is never edited" "$(cat "$ARGV_LOG")" "pr edit"
 
-# ── HIMMEL-4419: opening the PR moves the ticket to In Review ───────────────
+# ── opening the PR moves the ticket to In Review ───────────────
 unset STUB_OPEN_PR 2>/dev/null || true
 : > "$JIRA_LOG"
 out_n=$(run_sut "$TITLE_FILE" "$BODY_FILE"); rc_n=$?

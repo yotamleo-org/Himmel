@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/test-merged-count.sh - RED/GREEN suite for
-# merged-count.sh (HIMMEL-3021): the merged-PR denominator unions the
+# merged-count.sh: the merged-PR denominator unions the
 # private-archive bundle with the public repo for windows straddling the
 # 2026-09-09 cutover.
 #
 # Builds a throwaway git repo + `git bundle create` fixture at test time (3
 # first-parent "(#N)" commits inside the pre-cutover part, plus one
-# non-"(#N)" commit that must NOT count), per the HIMMEL-3021 brief. Uses a
+# non-"(#N)" commit that must NOT count), per the brief. Uses a
 # gh stub returning 2 post-cutover PRs + 1 chore(propagate) PR.
 #
 # Platform guard: no .ps1 twin, by design, same convention as
@@ -97,7 +97,7 @@ EXIT=$?
 check_exit "straddling: exits 0" "$EXIT" "0"
 check_eq "straddling: bundle(3) + public-excl-propagate(2) = 5" "$OUT" "5"
 
-# --- (a2) HIMMEL-3269: both inputs behind the 5 report their coverage on
+# --- (a2) both inputs behind the 5 report their coverage on
 # stderr (stdout stays the bare number). The bundle holds 4 first-parent
 # commits, 3 with a "(#N)" suffix; the public list holds 3 PRs, all in the
 # window, 1 of them excluded as chore(propagate).

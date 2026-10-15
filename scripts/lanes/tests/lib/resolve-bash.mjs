@@ -1,4 +1,4 @@
-// scripts/lanes/tests/lib/resolve-bash.mjs — HIMMEL-1723 test helper
+// scripts/lanes/tests/lib/resolve-bash.mjs — test helper
 // On this machine (and generally on Windows), a bare `bash` on PATH can
 // resolve to the WSL launcher (C:\Windows\System32\bash.exe) instead of Git
 // Bash — confirmed empirically: WSL bash cannot read a `C:/Users/...`

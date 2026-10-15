@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/leg-burn.sh - what one leg actually cost (HIMMEL-2830 /
-# HIMMEL-2928 lever 1).
+# scripts/lanes/leg-burn.sh - what one leg actually cost.
 #
 # WHY. "The leg floor is ~75k" was folklore until it was measured, and every
 # lever this ticket adds (a plugin profile, quiet SessionStart hooks, a preface
@@ -10,7 +9,7 @@
 #
 # Usage:
 #   scripts/lanes/leg-burn.sh <transcript.jsonl>      # an explicit file
-#   scripts/lanes/leg-burn.sh <session-name>          # e.g. HIMMEL-2890-...-legN158-...
+#   scripts/lanes/leg-burn.sh <session-name>          # e.g. PROJ-2890-...-legN158-...
 #   scripts/lanes/leg-burn.sh --raw <transcript.jsonl|session-name>
 #                                                      # out=/cache-read=/
 #                                                      # cache-create=/input=
@@ -40,7 +39,7 @@
 #                tool calls pays a full context re-read for prose nobody reads;
 #                this is the token-discipline counter.
 #
-# HIMMEL-2987 price-weighted fields - avg-ctx x calls overstates cost ~10x
+# Price-weighted fields - avg-ctx x calls overstates cost ~10x
 # because most context tokens are prompt-cache READS, priced far below a
 # fresh input token. Weights live in lib/burn-weights.sh (overridable by env)
 # so agg-burn.sh can reuse the same numbers.
@@ -62,7 +61,7 @@
 #   profile          optional final field from --profile <name> or
 #                    HIMMEL_LEG_PROFILE; omitted when neither is set.
 #
-# HIMMEL-2996 --raw / LEG_BURN_RAW=1: out=, cache-read=, cache-create= and
+# --raw / LEG_BURN_RAW=1: out=, cache-read=, cache-create= and
 # input= print as plain integers instead of the %.1fk-rounded default, so a
 # caller that sums across sessions (agg-burn.sh) can sum exact tokens instead
 # of compounding per-session 0.1k rounding. Default stdout is unchanged.
@@ -202,7 +201,7 @@ AVG=$((CTX / CALLS))
 
 k() { awk -v n="$1" 'BEGIN { printf (n >= 1000 ? "%.1fk" : "%d"), (n >= 1000 ? n / 1000 : n) }'; }
 kf() { awk -v n="$1" 'BEGIN { printf (n >= 1000 ? "%.1fk" : "%.0f"), (n >= 1000 ? n / 1000 : n) }'; }
-# HIMMEL-2996: the four cost-eq inputs go through kr() instead of k()/kf()
+# The four cost-eq inputs go through kr() instead of k()/kf()
 # directly, so --raw/LEG_BURN_RAW=1 can swap in the exact integer while the
 # default path (RAW=0) delegates to the same formatter as before.
 kr() { if [ "$RAW" -eq 1 ]; then awk -v n="$1" 'BEGIN { printf "%.0f", n }'; else "$2" "$1"; fi; }

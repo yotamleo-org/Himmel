@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // vendored-skill-dupes.mjs — detect a lean-skills@himmel / upstream-plugin overlap
-// (HIMMEL-3064).
+// .
 //
 // WHY: lean-skills@himmel vendors 11 of superpowers' 14 skill directories and
 // grilling from mattpocock/skills, so a session lists 13 skills instead of 25.
@@ -66,7 +66,7 @@ function settingsLayers(home, cwd, configDir) {
   // Nearest layer wins, so apply from the filesystem root inward: reverse the
   // cwd walk (which runs inward -> outward) and keep home settings outermost.
   // Reverse the DIRECTORY order ONLY. Within one directory settings.local.json
-  // must still be applied AFTER settings.json (CR round 1, PR #777): the
+  // must still be applied AFTER settings.json: the
   // previous flat `files.slice(1).reverse()` flipped that pair too, so a
   // shared settings.json overwrote the sibling settings.local.json for the
   // same enabledPlugins key -- backwards from this repo's own precedence rule.
@@ -126,7 +126,7 @@ if (isMain(import.meta.url)) {
   // mean "skip this layer" (a test's deliberate no-cwd-walk hermetic seam),
   // not "unset, fall back to the real value" — `||` treated them the same and
   // silently walked the operator's REAL cwd/home ancestry into a fixture-only
-  // run, picking up their live ~/.claude overrides (HIMMEL-3064 Defect B).
+  // run, picking up their live ~/.claude overrides.
   const home = process.env.VENDORED_DUPES_HOME !== undefined ? process.env.VENDORED_DUPES_HOME : homedir();
   const cwd = process.env.VENDORED_DUPES_CWD !== undefined ? process.env.VENDORED_DUPES_CWD : process.cwd();
   const configDir = process.env.VENDORED_DUPES_CONFIG_DIR !== undefined ? process.env.VENDORED_DUPES_CONFIG_DIR

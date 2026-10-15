@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/test-scorecard.sh - RED/GREEN suite for
-# agg-postpin.sh's --exclude-straddle, --cohort and counted_shifts column
-# (HIMMEL-2977 Task 3 Step 2). House check/contains style, per
+# agg-postpin.sh's --exclude-straddle, --cohort and counted_shifts column. House check/contains style, per
 # scripts/test-context-fill.sh.
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+; it runs under
@@ -65,8 +64,8 @@ check "cohort: --cohort leg-impl counts 1 of 3 (excludes no-log and leg-impl-oth
 
 # --- (b2) cohort-substring: a launch-log line whose field is a DIFFERENT
 # key that merely contains "profile=leg-impl" as a substring
-# (other-profile=leg-impl) must NOT match --cohort leg-impl (HIMMEL-2977
-# /pr-check codex-8 fix: exact-field match via awk, not substring grep).
+# (other-profile=leg-impl) must NOT match --cohort leg-impl: the match is
+# exact-field via awk, not substring grep.
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/cohort-substring"
 export SCORECARD_LAUNCH_LOG_DIR="$HERE/fixtures/cohort-substring/launch-logs"
 
@@ -74,9 +73,9 @@ SUBSTRING_COHORT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role leg --cohort l
 check "cohort-substring: other-profile=leg-impl does not false-positive match --cohort leg-impl" \
     "$(session_count "$SUBSTRING_COHORT" leg)" "0"
 
-# --- (b3) cohort-nscheme (HIMMEL-3269 items 1-4): the REAL leg titles
+# --- (b3) cohort-nscheme: the REAL leg titles
 # (<TICKET>-N<k>-<slug>), UUID-named transcripts, and launch logs in the real
-# HIMMEL-3270 line format under the himmelctl cache dir. Five sessions:
+# line format under the himmelctl cache dir. Five sessions:
 #   single    one profile=leg-impl line                    -> in the cohort
 #   agree     two lines, both profile=leg-impl             -> in the cohort
 #   ambiguous two lines, profile=leg-impl then profile=none -> excluded
@@ -110,7 +109,7 @@ check "cohort-nscheme: a missing launch-log dir excludes everything (no profile 
     "coverage: roots=1 discovered=5 parsed=0 skipped=5 (no-launch-record=5)"
 unset HIMMELCTL_CACHE_DIR
 
-# --- (b4) context-record (HIMMEL-3279): a console's launch context comes from
+# --- (b4) context-record: a console's launch context comes from
 # the DURABLE launch record, never a proxy. Four console sessions:
 #   9201  record: context=standard                          -> standard
 #   9202  record: context=1m                                -> 1m
@@ -177,10 +176,9 @@ COUNTED_UNDER=$(printf '%s\n' "$SHIFT_UNDER_OUT" | awk -F'\t' '$1=="console" && 
 check "shift: <100 console-role calls -> counted_shifts=0" "$COUNTED_UNDER" "0"
 
 # --- (e0) role-relay: a title matching both *legN* and *-relay* must be
-# classified as relay, not leg (HIMMEL-2977 /pr-check round-3 codex-6 fix:
-# role_of() here lacked the *-relay* branch agg-burn.sh's role_of() has, so
-# this file - restricted to role in {leg, console} - would have counted a
-# relay session into the leg cohort).
+# classified as relay, not leg: role_of() here must carry the *-relay* branch
+# agg-burn.sh's role_of() has, else this file - restricted to role in {leg,
+# console} - would count a relay session into the leg cohort.
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-relay"
 unset SCORECARD_LAUNCH_LOG_DIR
 
@@ -188,13 +186,13 @@ ROLE_RELAY_OUT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role leg 2>/dev/null)
 check "role-relay: a legN+relay title is not counted into the leg cohort" \
     "$(session_count "$ROLE_RELAY_OUT" leg)" "0"
 
-# --- (e1) role-console-slug (HIMMEL-3286): role attribution derives from
+# --- (e1) role-console-slug: role attribution derives from
 # scripts/lib/leg-identity.sh, not a substring race. Four sessions:
-#   1111  HIMMEL-3266-N186-console-stub-nonce-text  a REAL leg name from the
+#   1111  <TICKET>-3266-N186-console-stub-nonce-text  a REAL leg name from the
 #         2026-09-20 corpus whose slug contains `console`  -> leg (was console)
 #   2222  HIMMEL-nextleg-2026-09-20K-console        a genuine console -> console
 #   3333  no customTitle                             -> unattributed, counted by name
-#   4444  HIMMEL-3299-scratch-notes                  titled non-participant -> other-role
+#   4444  <TICKET>-3299-scratch-notes                  titled non-participant -> other-role
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-console-slug"
 unset SCORECARD_LAUNCH_LOG_DIR
 
@@ -209,12 +207,12 @@ check "role-console-slug: coverage names the untitled session as unattributed, a
     "coverage: roots=1 discovered=4 parsed=1 skipped=3 (other-role=1 role-filter=1 unattributed=1)"
 
 # --- (e) exit-contract: a successful run (zero leg-burn failures) must exit 0
-# (HIMMEL-2977 /pr-check round-3 codex-1/codex-4 fix: `[ cond ] && echo` as the
-# last statement made a clean run's own exit code depend on the warning firing).
+# (a trailing `[ cond ] && echo` would make a clean run's own exit code
+# depend on the warning firing).
 "$POSTPIN" --since 2026-01-01T00:00:00Z --role console >/dev/null 2>&1
 check_exit "exit-contract: a run with zero leg-burn failures exits 0" "$?" "0"
 
-# --- (f) HIMMEL-2987: agg-burn.sh's TOTAL line carries the price-weighted
+# --- (f) agg-burn.sh's TOTAL line carries the price-weighted
 # cost-eq split. Reuses the existing shift/ fixture (110 assistant calls, all
 # input=100/cache_read=0/cache_creation=0/output=5, per leg-burn.sh directly):
 #   input=11.0k output=0.55k->0.6k cache-read=0.0k cache-create=0.0k
@@ -233,7 +231,7 @@ BURN_TOTAL_OVERRIDE=$(LEG_BURN_W_OUTPUT=1 "$AGG_BURN" --since 2026-01-01T00:00:0
 check "agg-burn TOTAL: output weight override changes cost-eq" \
     "$BURN_TOTAL_OVERRIDE" "cost-eq=11.6k"
 
-# --- (g) HIMMEL-2975 Task 29: ready-go-latency.sh. Fixtures are built at run
+# --- (g) ready-go-latency.sh. Fixtures are built at run
 # time; GO-file mtimes are set with `touch -t` (BSD-portable, unlike
 # `touch -d`) under TZ=UTC. The handover root (and so .locks/go) is pinned
 # with HANDOVER_DIR, never the live one.
@@ -315,7 +313,7 @@ check "rgl g4: no READY bullets -> events=0, and the coverage line says nothing 
 HANDOVER_DIR="$RGL_TMP/g4" "$RGL" --since 2026-10-01T00:00:00Z >/dev/null 2>&1
 check_exit "rgl g4: missing --doc exits 2" "$?" "2"
 
-# g5: (HIMMEL-2975 review round 1) a `*` bullet is not a READY bullet
+# g5: a `*` bullet is not a READY bullet
 mkdir -p "$RGL_TMP/g5"
 printf '%s\n' '* 09:00 READY 95 abcdef1' > "$RGL_TMP/g5/console-2026-10-01.md"
 mkgo "$RGL_TMP/g5" 95 abcdef1 202610010915

@@ -1,12 +1,12 @@
 // scripts/lanes/tests/settings-allow.test.mjs
-// HIMMEL-3402 — the project permissions.allow list must not auto-approve a
+// The project permissions.allow list must not auto-approve a
 // trust-root script (scripts/cr/, scripts/guardrails/, scripts/hooks/) by
 // prefix. A prefix or glob rule approves every spelling the shell accepts —
 // `//`, `./`, brace lists, `..` traversal out of an allowed directory, a
 // quiet-run wrapper around a second command — without the classifier or the
 // operator ever seeing it. Only per-script literal rules are safe, plus the
 // two exact /pr-check step-0 literals and quiet-run's enumerated `suite` rules
-// (quiet-run.sh refuses a `..` argv component itself, HIMMEL-2967).
+// (quiet-run.sh refuses a `..` argv component itself).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -25,10 +25,10 @@ const STEP0 = [
   'bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS',
 ];
 
-// HIMMEL-3462: exact (no wildcard-tail) per-script literals beyond STEP0 —
+// Exact (no wildcard-tail) per-script literals beyond STEP0 —
 // each is a genuinely fixed invocation (no leg-supplied variable argument),
 // so the LITERAL_FILE wildcard-tail shape below does not apply to them.
-// HIMMEL-3698: scripts/cr/cr-scores.sh is deliberately NOT here — its
+// scripts/cr/cr-scores.sh is deliberately NOT here — its
 // gateAllow grant is a `:*`-tail rule (args vary by call site), modeled the
 // same as the pre-existing ledger-append.sh/clear-cr-marker.sh `:*` grants,
 // so it is excluded from the RIDERS check below for the same reason (see
@@ -38,7 +38,7 @@ const EXACT_LITERALS = [
   'bash scripts/cr/known-findings.sh --diff',
 ];
 
-// HIMMEL-3548: the PROJECT and leg-profile relative merge-on-green rules
+// The PROJECT and leg-profile relative merge-on-green rules
 // were retired — only the anchored spelling (ANCHOR_LITERALS below) is
 // pre-approved by those registries now. A user-scope settings rule (outside
 // this repo, per-station) may still admit the relative spelling; this test
@@ -48,7 +48,7 @@ const RETIRED_LITERALS = [
   'bash scripts/handover/merge-on-green.sh --jira-transition',
 ];
 
-// HIMMEL-3491: the merge-gate ENTRY runs from the $HIMMEL_REPO anchor, not
+// The merge-gate ENTRY runs from the $HIMMEL_REPO anchor, not
 // branch-controlled bytes. This is a `:*`-tail rule (unlike the two exact
 // literals above), so it covers both the bare and --jira-transition spellings.
 const ANCHOR_LITERALS = [
@@ -93,8 +93,8 @@ test('the matcher model itself: prefix, glob and exact forms', () => {
 // RED rows: every one of these reaches a trust-root script (or runs an
 // arbitrary second command) and must match NO rule a session auto-allows.
 const TRUST_SPELLINGS = [
-  // HIMMEL-3462 grants scripts/cr/impacted-suites.sh:*, orphan-check.sh:* and
-  // review-round.sh:* via plugin-profiles.json's gateAllow (safety rationale
+  // scripts/cr/impacted-suites.sh:*, orphan-check.sh:* and
+  // review-round.sh:* are granted via plugin-profiles.json's gateAllow (safety rationale
   // in the PR body), never in .claude/settings.json itself (TRUST_DIR forbids
   // a wildcard-tail trust-root rule there) — so a bare/space-tailed
   // invocation of any of the three is sanctioned for a LEG session only, see
@@ -135,24 +135,24 @@ for (const command of TRUST_SPELLINGS.filter((c) => !/^bash scripts\/cr\/(clear-
   });
 }
 
-// HIMMEL-3495: an exact scripts/cr literal with a second command riding
+// An exact scripts/cr literal with a second command riding
 // behind it must match no rule either - the literal grants that one command,
 // never a compound. (The `:*` gateAllow rules, including ledger-append.sh,
-// clear-cr-marker.sh and (HIMMEL-3698) cr-scores.sh, are left out: this text
+// clear-cr-marker.sh and cr-scores.sh, are left out: this text
 // model lets a `:*` tail absorb anything after a space, including a
 // `; rider`, while the harness matches each subcommand. All three scripts
-// are TARGETS of guard-pr-check-literal.sh (HIMMEL-3383/3495/3698), which
+// are TARGETS of guard-pr-check-literal.sh, which
 // denies any command naming them that is not one simple command - no
 // `;`/`&`/`|`/backtick/`()`/redirect/embedded newline - BEFORE gateAllow is
 // ever consulted, IN A HIMMEL-PROJECT SESSION (the hook is registered only
 // in this repo's own hook chain, not at user scope - a leg launched against
-// a non-himmel target repo does not load it, tracked in HIMMEL-3558) - so
+// a non-himmel target repo does not load it) - so
 // within a himmel-project session a rider can never actually reach these
 // scripts' wildcard tail. This is a MODEL claim, not proof:
 // gate-allow-hook-survival.test.mjs spawns the real hook binary with real
 // rider payloads and asserts its actual exit code. The full audit is in
-// plugin-profiles.json's _comment_gateAllow, HIMMEL-3469/70,
-// including the gate-evidence-forgery caveat (HIMMEL-3557) this rider-only
+// plugin-profiles.json's _comment_gateAllow,
+// including the gate-evidence-forgery caveat this rider-only
 // check does not cover.)
 const RIDERS = ['; evil', ' && evil', ' || evil', ' | sh', ' $(evil)', ' `evil`', '\nevil', ' & evil'];
 for (const literal of [...STEP0, ...EXACT_LITERALS].filter((c) => c.startsWith('bash scripts/cr/'))) {
@@ -204,9 +204,9 @@ const LEG_SANCTIONED = [
   'bash scripts/cr/docs-audit-panel.sh --head abc1234 --branch fix/x',
   'bash scripts/cr/panel-first-pass.sh --head abc1234 --branch fix/x',
   'bash scripts/cr/write-verdicts.sh prior-blocking --branch fix/x',
-  // HIMMEL-3462: newly granted this PR (impacted-suites.sh full-file read,
-  // orphan-check.sh read-only basis, review-round.sh full-file read — all in
-  // the PR body).
+  // Granted via gateAllow: impacted-suites.sh full-file read,
+  // orphan-check.sh read-only basis, review-round.sh full-file read (safety
+  // rationale in the PR body).
   'bash scripts/cr/impacted-suites.sh abc1234..def5678',
   'bash scripts/cr/orphan-check.sh --head abc1234',
   'bash scripts/cr/review-round.sh start --branch fix/x',
@@ -224,13 +224,13 @@ const TRUST_DIR = /(^|\s)(\S*\/)?scripts\/(cr|guardrails|hooks)\//;
 const QUIET_SUITE = /^(SUITE_LOCK_WAIT=60 )?bash scripts\/quiet-run\.sh suite -- bash (scripts|templates\/luna-second-brain\/scripts)(\/[a-z-]+)*\/test-\*\.sh$/;
 const LITERAL_FILE = /^(bash|bun|nohup bun) [A-Za-z0-9_./-]+\.(sh|ts|mjs|js):\*$/;
 
-// HIMMEL-3698: the pre-existing PROJECT-level rule in .claude/settings.json,
+// The pre-existing PROJECT-level rule in .claude/settings.json,
 // `Bash(bash scripts/cr/cr-scores.sh)` — a genuine exact literal (no `:*`
 // tail), distinct from the wider gateAllow `:*`-tail grant for the same
 // script (deliberately left out of EXACT_LITERALS above; see the RIDERS
 // comment). This list is ONLY for the structural check below, which scans
 // project-level ALLOW, not the leg-profile gateAllow the RIDERS check scans.
-// HIMMEL-5037: the vm-runner console control, five exact literals (no `:*`).
+// The vm-runner console control, five exact literals (no `:*`).
 const PROJECT_EXACT_LITERALS = [
   'bash scripts/cr/cr-scores.sh',
   'bash scripts/handover/console-kit/vm-runner.sh on',

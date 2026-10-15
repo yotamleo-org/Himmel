@@ -1,4 +1,4 @@
-// scripts/lanes/tests/bench-aggregate-tokens.test.mjs — HIMMEL-1723 P2.5
+// scripts/lanes/tests/bench-aggregate-tokens.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -28,7 +28,7 @@ test('windowsDriveFormPath converts a Git-Bash POSIX mount path and passes throu
 
 test('cwdToProjectSlug matches the empirically-verified real ~/.claude/projects encoding', () => {
   // Verified against a real directory on this machine (username neutralized,
-  // HIMMEL-1730 — the transform is username-agnostic, only the literal changed):
+  // the transform is username-agnostic, only the literal changed):
   // C:\Users\ada\AppData\Local\Temp -> C--Users-ada-AppData-Local-Temp  // leak-allow: home-path fixture username, not a real path
   assert.equal(cwdToProjectSlug('/c/Users/ada/AppData/Local/Temp', 'win32'), 'C--Users-ada-AppData-Local-Temp');  // leak-allow: home-path fixture username, not a real path
   assert.equal(cwdToProjectSlug('C:\\Users\\ada\\AppData\\Local\\Temp', 'win32'), 'C--Users-ada-AppData-Local-Temp');  // leak-allow: home-path fixture username, not a real path
@@ -57,7 +57,7 @@ test('costUsd applies the spec §0.1 list-price rates', () => {
   const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
   assert.equal(costUsd('claude-haiku-4-5', usage), RATES['claude-haiku-4-5'].inputPerM + RATES['claude-haiku-4-5'].outputPerM);
   assert.equal(costUsd('gpt-6-luna', usage), RATES['gpt-6-luna'].inputPerM + RATES['gpt-6-luna'].outputPerM);
-  // HIMMEL-4881: Haiku 5.5 list price (prompt up to 100K), 10x below Haiku 4.5.
+  // Haiku 5.5 list price (prompt up to 100K), 10x below Haiku 4.5.
   assert.equal(costUsd('claude-haiku-5-5', usage), 0.10 + 0.50);
   assert.equal(costUsd('unknown-model', usage), null);
 });

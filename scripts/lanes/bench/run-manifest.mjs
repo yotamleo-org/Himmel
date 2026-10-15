@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/lanes/bench/run-manifest.mjs — HIMMEL-1723 P2.4
+// scripts/lanes/bench/run-manifest.mjs
 // The run manifest schema (spec §2.7) plus a writer/reader every other bench
 // component uses, so the shape lives in exactly one place. One
 // runs/<run-id>.json per dispatch: {run_id, task, cell, rep, model, effort,

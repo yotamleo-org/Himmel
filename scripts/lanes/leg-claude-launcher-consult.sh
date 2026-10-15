@@ -1,6 +1,6 @@
 #!/bin/bash -p
 # scripts/lanes/leg-claude-launcher-consult.sh - the launcher a --consult hands
-# headed-arm.sh instead of leg-claude-launcher.sh (HIMMEL-4152).
+# headed-arm.sh instead of leg-claude-launcher.sh.
 #
 # headed-arm.sh execs its launcher through `env ... "$LAUNCHER"`, so the
 # shim's own `#!/usr/bin/env bash` would let PATH pick the interpreter, and a

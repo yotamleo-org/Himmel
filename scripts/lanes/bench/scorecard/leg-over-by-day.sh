@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# scripts/lanes/bench/scorecard/leg-over-by-day.sh - P0.1 scorecard recipe (HIMMEL-2977).
+# scripts/lanes/bench/scorecard/leg-over-by-day.sh - P0.1 scorecard recipe.
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ over a Claude Code
 # transcript (same JSONL on every platform); it runs under git bash unchanged.
 #
-# Adapted from the HIMMEL-2977 baseline Appendix B (leg-over-by-day.sh, leg
+# Adapted from the baseline Appendix B (leg-over-by-day.sh, leg
 # N207, 2026-09-12): legs classified over/under a 200k avg-ctx threshold,
 # bucketed by day. The baseline read a hand-curated "$S/leg-over.txt"
 # (class + filename pairs) that no Appendix B script produces; this walks
@@ -66,7 +66,7 @@ DISC_ERR=$(mktemp "${TMPDIR:-/tmp}/leg-over-by-day-discerr.XXXXXX") || { echo "l
 DAYS=$(mktemp "${TMPDIR:-/tmp}/leg-over-by-day-days.XXXXXX") || { echo "leg-over-by-day: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
 
-# A discovery error must not vanish (the agg-burn.sh HIMMEL-2977 rule).
+# A discovery error must not vanish (the agg-burn.sh rule).
 if ! sc_discover "$FILES" "$DISC_ERR"; then
     echo "leg-over-by-day: transcript discovery failed under the transcript root(s) - refusing to print a partial table:" >&2
     cat "$DISC_ERR" >&2

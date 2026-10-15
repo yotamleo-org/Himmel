@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lanes/lib/claude-sessions.sh - HIMMEL-2999: read every live claude
+# scripts/lanes/lib/claude-sessions.sh - read every live claude
 # session's real argv boundaries instead of the flattened `pgrep -af` line
 # tick.sh and ceiling-conformance.sh used to scan. Free-text argv (a
 # -p/--append-system-prompt value containing the literal substring "-n X" or
@@ -29,7 +29,7 @@
 # exact, no -a/-f: argv is read separately per pid, so it is never flattened
 # in the first place). Returns 0 on a successful, complete scan (0 or more
 # sessions); returns 3 if the scan completed but one or more matched pids had
-# an unreadable (not missing) /proc/<pid>/cmdline -- HIMMEL-3002: a hidepid
+# an unreadable (not missing) /proc/<pid>/cmdline -- a hidepid
 # mount or a permission boundary must not read the same as "the process
 # already exited," which is the ONLY case that stays silent (no row, rc 0).
 # A degraded scan still prints every readable row, plus one `# unreadable
@@ -51,38 +51,38 @@
 
 _claude_sessions_from_cmdline() { # _claude_sessions_from_cmdline <proc-root> <pid>
     # Reads NUL-delimited argv elements directly (`read -d ''`) rather than
-    # via `tr '\0' '\n'` + newline-`read` -- HIMMEL-2999 CR round 1 (codex-1,
-    # Critical): the tr conversion is itself lossy when an argv element (an
+    # via `tr '\0' '\n'` + newline-`read` --
+    # the tr conversion is itself lossy when an argv element (an
     # --append-system-prompt value) contains a literal embedded newline
     # byte -- that byte becomes indistinguishable from a real argv-element
     # boundary once translated, letting one prompt element split into fake
     # tokens. Reading the NUL delimiter directly has no such collision.
     #
     # `expect` tracks "the NEXT token is this flag's value" and is cleared
-    # the instant that one token is consumed -- HIMMEL-2999 CR round 1
-    # (codex-2, Important): the old code classified every token by whether
+    # the instant that one token is consumed:
+    # classifying every token by whether
     # the PREVIOUS token's literal text was "-n"/"--model"/"--autocompact",
     # with no notion of "that previous token was itself already consumed as
-    # another flag's value." A value-bearing flag whose value happens to be
+    # another flag's value" is wrong: a value-bearing flag whose value happens to be
     # exactly "-n" (or "--model"/"--autocompact") then poisoned the very
     # next argv element -- a positional prompt, or another flag -- into
     # being misread as that flag's value. `expect=skip` consumes and
     # discards the value of every OTHER known value-bearing flag so its
     # value token is never re-examined; `--` ends flag parsing entirely
     # (everything after belongs to the trailing prompt). `-p`/`--print` is
-    # deliberately NOT in that list -- CR round 2 (codex-1, Important): it
+    # deliberately NOT in that list: it
     # is a bare boolean flag in this repo's real invocations (see
     # scripts/probes/claude-p/*.sh -- `-p` always sits right after the
     # binary name with no value of its own), and treating it as
-    # value-bearing swallowed the very next real flag's value. CR round 3
-    # (codex-2, Suggestion): `--system-prompt`/`--system-prompt-file` (the
-    # non-append variant of the same free-text flag) was missing from this
+    # value-bearing swallowed the very next real flag's value.
+    # `--system-prompt`/`--system-prompt-file` (the
+    # non-append variant of the same free-text flag) IS in this
     # list -- its value is exactly as attacker/prompt-controlled as
     # `--append-system-prompt`'s, so a value equal to the literal "-n" (or
-    # "--model"/"--autocompact") hijacked the next token the same way.
+    # "--model"/"--autocompact") would hijack the next token the same way.
     local proc="$1" pid="$2" cmdline
     cmdline="$proc/$pid/cmdline"
-    # HIMMEL-3002: a missing /proc/<pid> dir means the process has already
+    # A missing /proc/<pid> dir means the process has already
     # exited (the ordinary pgrep-then-read race) -- silently skip it, rc 0,
     # today's behaviour. A PRESENT dir whose cmdline we cannot read (hidepid,
     # a permission boundary) is a different fact -- the session is alive but
@@ -92,7 +92,7 @@ _claude_sessions_from_cmdline() { # _claude_sessions_from_cmdline <proc-root> <p
         printf '# unreadable %s\n' "$pid"
         return 3
     fi
-    # HIMMEL-3008: `-r` above is a precheck, not a guarantee -- readability
+    # `-r` above is a precheck, not a guarantee -- readability
     # can change before the loop's own `< "$cmdline"` redirection opens/reads
     # the file (a hidepid mount, or any race), and an open/read that fails at
     # that point (e.g. EISDIR from a path replaced by a directory) leaves the
@@ -104,15 +104,15 @@ _claude_sessions_from_cmdline() { # _claude_sessions_from_cmdline <proc-root> <p
     local name="" model="" autocompact="" expect="" tok got_tok=0 tok_count=0
     local errfile="" read_err=0 mktemp_failed=0
     errfile="$(mktemp "${TMPDIR:-/tmp}/claude-sessions-cmdline-err.XXXXXX" 2>/dev/null)" || errfile=""
-    # HIMMEL-3008 CR round 1 (codex-2, Important): a failed mktemp leaves
+    # A failed mktemp leaves
     # errfile empty, so the loop's stderr below falls through to /dev/null and
     # read_err can never become 1 -- an unreadable live pid would silently
     # collapse into the same "clean empty read" case this whole scratch-file
     # scheme exists to distinguish. Track the failure so it forces the same
     # unreadable/rc-3 outcome as a genuine read error, never a silent return 0.
     [ -z "$errfile" ] && mktemp_failed=1
-    # HIMMEL-3008 CR round 1 (codex-1, Important): redirections apply left to
-    # right, so `< "$cmdline" 2>errfile` (the prior order) let an open-time
+    # Redirections apply left to
+    # right, so `< "$cmdline" 2>errfile` (the wrong order) let an open-time
     # failure on the `<` side (e.g. EACCES/ENOENT from a race right after the
     # `-r` precheck) print its diagnostic to the REAL stderr, before errfile
     # was even attached -- read_err stayed 0 and the pid silently vanished
@@ -124,7 +124,7 @@ _claude_sessions_from_cmdline() { # _claude_sessions_from_cmdline <proc-root> <p
     while IFS= read -r -d '' tok; do
         got_tok=1
         tok_count=$((tok_count + 1))
-        # HIMMEL-3009 test seam: a real mid-read error (EIO after N tokens)
+        # Test seam: a real mid-read error (EIO after N tokens)
         # needs a block/char-special device to reproduce hermetically -- a
         # plain file's read either fully succeeds or fails at open time.
         # CLAUDE_SESSIONS_READ_FAULT_AFTER, honoured only when set, lets the
@@ -167,7 +167,7 @@ _claude_sessions_from_cmdline() { # _claude_sessions_from_cmdline <proc-root> <p
         # keeps today's silent/rc-0 vanished behaviour even if the read
         # happened to log an error on the way out. Only a live pid whose
         # read actually errored (or whose error we could not even capture --
-        # mktemp_failed) is the HIMMEL-3008 race -- report it exactly like
+        # mktemp_failed) is the race -- report it exactly like
         # the upfront `-r` failure above.
         if [ -d "$proc/$pid" ] && { [ "$read_err" -eq 1 ] || [ "$mktemp_failed" -eq 1 ]; }; then
             printf '# unreadable %s\n' "$pid"
@@ -175,7 +175,7 @@ _claude_sessions_from_cmdline() { # _claude_sessions_from_cmdline <proc-root> <p
         fi
         return 0
     fi
-    # HIMMEL-3009: at least one token was read, but the loop also errored (or
+    # At least one token was read, but the loop also errored (or
     # never got the chance to detect an error at all -- mktemp_failed) before
     # reaching a clean EOF. Falling through to the row print below would emit
     # a row built from a TRUNCATED argv -- a partial read masquerading as a
@@ -192,7 +192,7 @@ _claude_sessions_from_cmdline() { # _claude_sessions_from_cmdline <proc-root> <p
     printf '%s\t%s\t%s\t%s\n' "$pid" "$(_tsv_field "$name")" "$(_tsv_field "$model")" "$(_tsv_field "$autocompact")"
 }
 
-_tsv_field() { # _tsv_field <value> - CR round 2 (codex-2, Suggestion): a
+_tsv_field() { # _tsv_field <value>: a
                # field value carrying a literal TAB or newline would widen
                # or split the emitted row for every downstream awk -F'\t'
                # reader; a leg/model/ceiling value never legitimately needs
@@ -213,7 +213,7 @@ _claude_sessions_lossy() { # _claude_sessions_lossy <pgrep-bin> - #1335:
                             # "include ancestors" instead and never prints
                             # args, so the fallback always found zero rows on
                             # macOS regardless of how many sessions were live.
-                            # NOT in scope for HIMMEL-3002: this path can't
+                            # NOT in scope: this path can't
                             # tell a permission-denied process from a vanished
                             # one either (a pid ps can't read just isn't in
                             # its output), the same blind spot the /proc

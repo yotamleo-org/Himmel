@@ -1,4 +1,4 @@
-// Tests for scripts/lanes/lane-readiness.mjs (HIMMEL-1626).
+// Tests for scripts/lanes/lane-readiness.mjs.
 // Hermetic: registry and ledger content are in-memory values — nothing touches
 // the real registry, ledger, or repo. Run: node --test "scripts/lanes/tests/**/*.test.mjs"
 import { test } from 'node:test';
@@ -105,7 +105,7 @@ test('a registry without a lanes array yields no states', () => {
   assert.deepEqual(laneStates(null, ''), []);
 });
 
-// --- remedy hints (HIMMEL-2782) --------------------------------------------
+// --- remedy hints --------------------------------------------
 
 test('remedyFor names the claudex-on-Linux fix verbatim', () => {
   assert.equal(remedyFor('claudex'), 'bash scripts/setup/cli-proxy-lane.sh --status');

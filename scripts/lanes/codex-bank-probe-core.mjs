@@ -1,4 +1,4 @@
-// Pure helpers for scripts/lanes/codex-bank-probe.ts (HIMMEL-1678). Kept in a
+// Pure helpers for scripts/lanes/codex-bank-probe.ts. Kept in a
 // plain .mjs — importable by node --test — so the framing parser and the
 // rateLimits normalizer are unit-testable without ever spawning `codex`.
 
@@ -73,7 +73,7 @@ const WINDOW_SLOTS = ['primary', 'secondary'];
 // rateLimitsByLimitId is preferred because it is the only container that
 // carries every limit — the observed account has two (`codex` and
 // `codex_bengalfox`) whose resetsAt are DAYS apart, so they stay separate rows
-// and no single global reset is ever synthesized (HIMMEL-1725).
+// and no single global reset is ever synthesized.
 //
 // planType lives INSIDE a bucket, never at the top level. Reading it from the
 // top was the whole `plan=unknown` defect.
