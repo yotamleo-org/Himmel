@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage-cache-producer.sh — HIMMEL-718 Phase 2 Task 2.1
+# usage-cache-producer.sh
 #
 # Single-writer producer for Claude usage state. Invoked ONCE per statusline
 # render (no daemon, no loop, no detached spawn). Reads the Claude Code
@@ -30,7 +30,7 @@
 #   USAGE_OAUTH_TTL (3540s) — the OAuth query is skipped when the cache's
 #                             extra_usage (oauth_checked_at) is fresher.
 #
-# HIMMEL-1712 item 4 — force-refresh lever: USAGE_FORCE_REFRESH=1 bypasses
+# Force-refresh lever: USAGE_FORCE_REFRESH=1 bypasses
 # BOTH throttles above for this one invocation, re-deriving now and stamping
 # a fresh derived_at. Idempotent (a second forced run just re-derives again)
 # and safe to run concurrently with a live statusline — it is the SAME
@@ -51,7 +51,7 @@ OAUTH_TTL="${USAGE_OAUTH_TTL:-3540}"
 
 command -v jq >/dev/null 2>&1 || { echo "WARN usage-cache-producer: jq not found" >&2; exit 0; }
 
-# HIMMEL-1712: shared account-identity helper (current_account_hash). A
+# shared account-identity helper (current_account_hash). A
 # missing/unreadable lib degrades to an empty hash — the same UNKNOWN that a
 # consumer sees for any other undeterminable identity, never a script exit.
 IDLIB="$(cd "$(dirname "$0")" && pwd)/../lib/usage-cache-identity.sh"
@@ -115,7 +115,7 @@ build_hud() {
   ' 2>/dev/null
 }
 
-# HIMMEL-1712: the account a WRITE stamps must describe whose numbers they
+# the account a WRITE stamps must describe whose numbers they
 # are, not whatever ~/.claude.json says right now — an old session, still
 # authenticated as A, must keep stamping A even after the operator switches
 # the disk identity to B mid-session (a live re-read on every write would
@@ -132,27 +132,26 @@ account_for_session() {
     current_account_hash
     return
   fi
-  # HIMMEL-1712 CR (panel round 1, codex-2): the read-modify-write below races
+  # the read-modify-write below races
   # across concurrent sessions writing this shared sidecar — one session's
   # snapshot can be lost, forcing a later re-snapshot to adopt whatever
   # identity is on disk THEN instead of what it was at first render. Hold a
   # session_id-independent lock across the whole read-modify-write (same
   # fail-open convention as scripts/lib/claudex-inbox.sh's inbox_with_lock:
   # missing flock keeps this unlocked rather than erroring).
-  # ponytail: a still-missing flock leaves this race open (panel round 3,
-  # codex-1) — the same accepted fail-open ceiling as inbox_with_lock, not a
+  # ponytail: a still-missing flock leaves this race open — the same accepted fail-open ceiling as inbox_with_lock, not a
   # new gap. Upgrade path: a lock-file-free CAS write (mv-based) if a future
   # ticket needs the race closed even without flock.
   # ponytail: the session map keeps every session_id it has ever seen, so it
-  # grows unbounded (panel round 3, codex-2). Ceiling: one small hash per key,
-  # and item 5 (overwrite/cache policy) is out of HIMMEL-1712's scope. Upgrade
+  # grows unbounded. Ceiling: one small hash per key,
+  # and the overwrite/cache policy is out of scope here. Upgrade
   # path: prune entries whose session hasn't rendered in N days, if a future
   # ticket needs the growth bounded.
   lockfile="${SESSION_MAP_FILE}.lock"
   if command -v flock >/dev/null 2>&1; then
     exec 9>"$lockfile" 2>/dev/null && flock -x 9 2>/dev/null
   fi
-  # HIMMEL-1712 CR (panel round 4, codex-1): a first render that finds NO
+  # a first render that finds NO
   # identity (hash empty) used to skip the snapshot entirely, so a later
   # render by the SAME session fell through to a live current_account_hash()
   # call and could adopt whatever identity is on disk BY THEN — exactly the
@@ -178,7 +177,7 @@ account_for_session() {
   printf '%s' "$hash"
 }
 account_hash=$(account_for_session "$session_id")
-# HIMMEL-3846: produced_by is "<caller>:<pid>", not the bare pid -- a pid that has
+# produced_by is "<caller>:<pid>", not the bare pid -- a pid that has
 # already exited attributed nothing when a session-less writer stamped the shared
 # cache with a fixture identity. A caller names itself via USAGE_PRODUCER_CALLER;
 # the value is scrubbed to a filename-safe alphabet and capped, since it lands in
@@ -216,7 +215,7 @@ if [ -n "$stdin_five" ] || [ -n "$stdin_seven" ]; then
     fi
   fi
 
-  # HIMMEL-1712 item 5: overwrite policy is newest-write-wins (operator
+  # overwrite policy is newest-write-wins (operator
   # ruling) -- consumers already treat an account mismatch as UNKNOWN, so an
   # unconditional overwrite is safe; this WARN is visibility only.
   prev_account=$(printf '%s' "$prev" | jq -r '.account // empty' 2>/dev/null)
@@ -229,7 +228,7 @@ if [ -n "$stdin_five" ] || [ -n "$stdin_seven" ]; then
     --arg sh "$stdin_seven" --arg shr "$stdin_seven_reset" \
     --arg acct "$account_hash" --arg pby "$produced_by" '
     ($prev // {}) as $p |
-    # HIMMEL-1712 CR (panel round 1, codex-1; panel round 2, codex-1): a
+    # a
     # carried-forward window must not inherit the NEW account stamp unless
     # the previous cache already carried that SAME known identity -- that
     # covers both a confirmed mismatch between two known identities and a
@@ -254,7 +253,7 @@ if [ -n "$stdin_five" ] || [ -n "$stdin_seven" ]; then
       derived_at: $ts,
       produced_by: $pby
     }
-    # HIMMEL-3364: same provenance rule as Branch B — stamp only when BOTH
+    # same provenance rule as Branch B — stamp only when BOTH
     # stdin windows carry a numeric utilization; a one-window payload carries
     # the prior stamp so the carried-forward window keeps aging honestly.
     + (if ($fhn != null and $shn != null) then {primaries_refreshed_at: $ts}
@@ -287,7 +286,7 @@ if [ "${USAGE_FORCE_REFRESH:-}" != "1" ] && printf '%s' "$oauth_at" | grep -Eq '
   fi
 fi
 
-# HIMMEL-1712 CR (panel round 8, codex-1): the fetch below reads LIVE
+# the fetch below reads LIVE
 # credentials (env or ~/.claude/.credentials.json), not this session's pinned
 # $account_hash snapshot. If the disk identity flipped since first render, a
 # fetch here would pull the NEW account's numbers but stamp them under the
@@ -296,7 +295,7 @@ fi
 # re-check of the identity disagrees with the pinned one.
 if [ -n "$account_hash" ]; then
   live_account_hash=$(current_account_hash)
-  # HIMMEL-1712 CR (panel round 9, codex-2): an unreadable live identity is
+  # an unreadable live identity is
   # just as unattributable as a changed one -- skip either way rather than
   # only when the live identity is known AND different.
   if [ "$live_account_hash" != "$account_hash" ]; then
@@ -336,7 +335,7 @@ if [ -z "$fetched" ] || ! printf '%s' "$fetched" | jq -e 'type=="object"' >/dev/
   exit 0
 fi
 
-# HIMMEL-3729 (panel round 10, codex-1 on HIMMEL-1712): the pre-fetch guard
+# The pre-fetch guard
 # above leaves a window -- the identity can flip DURING the fetch. Re-check
 # with the same rule (changed or unreadable both skip) right before the write
 # and discard the fetched numbers rather than stamp them under $account_hash.
@@ -348,7 +347,7 @@ if [ -n "$account_hash" ]; then
   fi
 fi
 
-# HIMMEL-1712 item 5: same newest-write-wins policy as the rates path
+# same newest-write-wins policy as the rates path
 # (operator ruling) -- visibility-only WARN, no behavior change.
 prev_account=$(printf '%s' "$prev" | jq -r '.account // empty' 2>/dev/null)
 if [ -n "$prev_account" ] && [ -n "$account_hash" ] && [ "$prev_account" != "$account_hash" ]; then
@@ -358,7 +357,7 @@ fi
 new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$now_epoch" \
   --arg acct "$account_hash" --arg pby "$produced_by" '
   ($prev // {}) as $p |
-  # HIMMEL-1712 CR (panel round 1 + round 2, codex-1): same account-gated
+  # same account-gated
   # carry-forward as Branch A -- a partial fetch must not silently reuse a
   # value under the new account stamp unless the previous cache already
   # carried that SAME known identity (covers both a confirmed mismatch and
@@ -366,7 +365,7 @@ new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$n
   (($p.account // "") != $acct and $acct != "") as $mismatch |
   (if $mismatch then {} else $p end) as $carry |
   ($f // {}) as $ff |
-  # HIMMEL-1841: fetched primaries WIN; $carry is the fallback only when the
+  # fetched primaries WIN; $carry is the fallback only when the
   # fetch lacks a window. The old order ($p first) discarded live numbers
   # on every poll, which is why the cache read week-old under a fresh mtime.
   (if (($ff.five_hour.utilization // null) != null) then $ff.five_hour else null end) as $fh |

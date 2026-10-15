@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/statusline/check-hud-drift.sh (HIMMEL-718 Task 1.2).
+# Smoke test for scripts/statusline/check-hud-drift.sh.
 #
 # Builds throwaway git repos with a fixture vendored tree, exercises each rc
 # case, asserts exact rc (and offending-path output where the contract says so).
@@ -25,7 +25,7 @@ SCRIPT="$STATUSLINE/check-hud-drift.sh"
 . "$STATUSLINE/../lib/fixture-tempdir.sh"
 
 # Every fixture dir is recorded in FIXTURE_LIST (a file, so a record made inside a
-# subshell survives) and removed by the one EXIT trap (HIMMEL-4434).
+# subshell survives) and removed by the one EXIT trap.
 FIXTURE_LIST=$(mktemp "${TMPDIR:-/tmp}/himmel-fixture-list.XXXXXX") || exit 1
 _d=''
 trap 'while IFS= read -r _d; do [ -n "$_d" ] && rm -rf "$_d"; done <"$FIXTURE_LIST"; rm -f "$FIXTURE_LIST"' EXIT

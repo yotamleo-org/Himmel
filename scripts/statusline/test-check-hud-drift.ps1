@@ -1,4 +1,4 @@
-# Smoke test for scripts/statusline/check-hud-drift.ps1 (HIMMEL-718 Task 1.2).
+# Smoke test for scripts/statusline/check-hud-drift.ps1.
 #
 # Builds throwaway git repos with a fixture vendored tree, exercises each rc
 # case, asserts exact rc. Mirrors test-check-hud-drift.sh (the bash suite is
@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $SCRIPT = Join-Path $PSScriptRoot 'check-hud-drift.ps1'
 $HUD_REL = 'marketplace/plugins/claude-hud'

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/statusline/hud-custom-lines.sh — the SPAWN-FREE composer for himmel's
-# custom statusline lines under claude-hud (HIMMEL-718 Task 3.2).
+# custom statusline lines under claude-hud.
 #
 # This is the command claude-hud's forked `display.customLineCommand` runs each
 # render (see marketplace/plugins/claude-hud/src/custom-line-cmd.ts): hud pipes
@@ -14,13 +14,13 @@
 # (§Decisions render-native-map — CUSTOM set):
 #   1. where-are-we  : ⎇ <KEY>[ 📋][ <ledger-status>][ · <EPIC> <done>/<total>]
 #   2. session econ  : session  r:<r>  w:<w>  hit:<h>%
-#                      (HIMMEL-797: renders `session~ r:? w:? hit:?%`
+#                      (renders `session~ r:? w:? hit:?%`
 #                      when the transcript is missing or its per-render parse
 #                      couldn't complete — see read_session_cache_stats. A
 #                      silent zero there is indistinguishable from a session
 #                      that genuinely has no usage yet.)
 #   3. all-sessions  : <all[~]|week|month>  r:<r>  w:<w>  hit:<h>%
-#                      (the `~` is the HIMMEL-1300 healing marker — see §3.5)
+#                      (the `~` is the healing marker)
 #   4. token volume  : total  used:<in+read+creation+out>
 # hud renders natively (so we do NOT emit): model/ctx/git/duration/effort,
 # 5h/7d usage, credits (balance_label), prompt-cache countdown, session cost.
@@ -40,7 +40,7 @@
 #   HIMMEL_STATUSLINE_ECON          off (0|false|off|no) → suppress lines 2-4 (the
 #                                 session/all/total economics rows) as a GROUP.
 #                                 Skips the WORK, not just the printing: gates
-#                                 the read_session_cache_stats call (HIMMEL-797's
+#                                 the read_session_cache_stats call (the
 #                                 expensive whole-transcript parse), not just the
 #                                 emit.
 #   HIMMEL_STATUSLINE_PERIOD      all|week|month → the all-sessions line window.
@@ -56,11 +56,11 @@ input=""
 if [ ! -t 0 ]; then input="$(cat 2>/dev/null || true)"; fi
 
 # --- Parse the native session fields from stdin (same paths as the legacy bar)
-# HIMMEL-2265: `.model.id` is no longer read here — its only consumer was the
+# `.model.id` is no longer read here — its only consumer was the
 # per-model price table behind the removed cache-savings figure.
 transcript_path="" cwd=""
 if [ -n "$input" ]; then
-    # US (\037) via join, NOT @tsv (HIMMEL-2265): tab is IFS *whitespace*,
+    # US (\037) via join, NOT @tsv: tab is IFS *whitespace*,
     # so a leading EMPTY field collapses and shifts every later field left.
     # .transcript_path is legitimately empty (a session with no transcript yet),
     # which silently handed the where-are-we segment an empty --cwd. Same US
@@ -80,7 +80,7 @@ fi
 # ── Economics helpers ───────────────────────────────────────────────────────
 # format_tokens is duplicated (a pure function) from scripts/statusline/bin/
 # statusline.sh so the composer's token figures are byte-identical to the legacy
-# bar. HIMMEL-2265 removed the cache-savings pricing helpers from this composer
+# bar. The cache-savings pricing helpers are not part of this composer
 # (the legacy bar keeps its own copy until it is decommissioned — plan Task 5.4),
 # so the two no longer share a money path.
 format_tokens() {
@@ -92,7 +92,7 @@ format_tokens() {
     else printf "%s" "$n"
     fi
 }
-# ── Dual-logging dedup, shared jq prelude (HIMMEL-1300) ─────────────────────
+# ── Dual-logging dedup, shared jq prelude ─────────────────────
 # Claude Code writes the same API response into the transcript 2-3 times, so a
 # naive per-row sum over-counts 1.9x-3.3x. Mirrors claude-hud transcript.ts
 # (457-490): primary key message.id (non-empty string <= 128 chars) against a
@@ -167,7 +167,7 @@ read_session_cache_stats() {
         return
     fi
     local stats US=$'\037' rc
-    # BOUNDED (HIMMEL-797): unlike the all-sessions index, this jq -rs slurps
+    # BOUNDED: unlike the all-sessions index, this jq -rs slurps
     # the WHOLE transcript fresh on EVERY render — there is no per-session
     # cache. On a large/long-running transcript (tens of MB) that alone
     # measured 6-30s+ on this machine, which blows past hud's OWN 3s render
@@ -207,8 +207,8 @@ EOF
     [ -n "$sess_outputs" ] || sess_outputs=0
 }
 # Formats one economics row (plain text). Args: $1=label $2=reads $3=writes
-# $4=inputs. HIMMEL-2265 removed the trailing `net <±>$<n>` cache-savings
-# estimate (and with it the hand-maintained per-model price table): the figure
+# $4=inputs. There is no trailing `net <±>$<n>` cache-savings
+# estimate (and no hand-maintained per-model price table): the figure
 # was derived from transcript deltas against rates that drift from live pricing,
 # so it read as a fact while being a guess. The token counts stay — they are
 # measured, not priced.
@@ -223,13 +223,13 @@ format_econ_line() {
     # all-sessions rows align, matching the legacy bar's 9-col label gutter.
     printf '%-7s  r:%s  w:%s  hit:%s%%' "$label" "$r_fmt" "$w_fmt" "$hit"
 }
-# HIMMEL-797: explicit-unknown counterpart to format_econ_line, for when a
+# explicit-unknown counterpart to format_econ_line, for when a
 # row's own figures could not be determined (see read_session_cache_stats'
 # sess_unknown). Renders "?" placeholders rather than silently-zero numbers,
 # which are visually indistinguishable from a row that genuinely computed to
 # zero. Reuses the same 7-col label gutter; the caller passes a `~`-suffixed
 # label, the same "not fully known" marker the all-sessions row already uses
-# for its own pending state (§HIMMEL-1300 3.5).
+# for its own pending state.
 format_econ_unknown_line() {
     local label="$1"
     printf '%-7s  r:?  w:?  hit:?%%' "$label"
@@ -237,7 +237,7 @@ format_econ_unknown_line() {
 # Formats the token-volume row (plain text) for the ACTIVE all-sessions window.
 # Args: $1=reads $2=writes $3=inputs $4=outputs.
 #   total used = input + cache_read + cache_creation + output
-# (HIMMEL-1300 §3.6, operator-requested.) HIMMEL-2265 dropped the companion
+# There is no companion
 # `cache:<read+creation>` field. It lands on its OWN row rather than extending
 # the session / all rows: both of those are pinned as regression nets —
 # test-hud-composer-parity.sh case 3 is END-ANCHORED on the all row, and
@@ -259,7 +259,7 @@ lines=""
 append() { [ -n "$1" ] && { [ -n "$lines" ] && lines="$lines
 $1" || lines="$1"; }; }
 
-# ── Drive the single-writer usage producer (HIMMEL-718 Task 2.3) ─────────────
+# ── Drive the single-writer usage producer ─────────────
 # The producer (usage-cache-producer.sh) mirrors THIS render's rate_limits into
 # the cap-guard consumer cache ($CLAUDE_USAGE_CACHE) + the hud snapshot, and
 # throttled-queries OAuth credits. It is the SINGLE writer of both (hud only
@@ -299,7 +299,7 @@ if [ -f "$producer" ] && [ -n "$input" ]; then
     fi
     if [ "$prod_stale" -eq 1 ]; then
         # shellcheck disable=SC2086  # prod_to is the intentional "timeout N" seam word-split
-        # HIMMEL-3846: name this caller in the cache's produced_by stamp.
+        # name this caller in the cache's produced_by stamp.
         printf '%s' "$input" | USAGE_PRODUCER_CALLER=statusline $prod_to bash "$producer" >/dev/null 2>&1 || true
     fi
 fi
@@ -315,7 +315,7 @@ _waw_enabled() {
         *) return 0 ;;
     esac
 }
-# HIMMEL-2319: group off-switch for lines 2-4 (the economics rows). Same
+# group off-switch for lines 2-4 (the economics rows). Same
 # normalisation + accepted-values contract as _waw_enabled above.
 _econ_enabled() {
     case "$(printf '%s' "${HIMMEL_STATUSLINE_ECON:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
@@ -336,9 +336,9 @@ if _waw_enabled && [ -f "$seg" ]; then
 fi
 
 # ── Lines 2-4: session + all-sessions + token-volume economics, gated as a ────
-# GROUP behind HIMMEL_STATUSLINE_ECON (HIMMEL-2319). Early-gated the same way
+# GROUP behind HIMMEL_STATUSLINE_ECON. Early-gated the same way
 # as _waw_enabled above: this skips the read_session_cache_stats CALL, not
-# just its emit — that call is the expensive one (HIMMEL-797, whole-transcript
+# just its emit — that call is the expensive one (whole-transcript
 # parse on every render), so gating only the append() would still pay the cost
 # and discard the result, which is exactly what this knob exists to avoid.
 if _econ_enabled; then
@@ -365,7 +365,7 @@ if command -v resolve_window >/dev/null 2>&1; then
     case "$period" in week) all_label="week" ;; month) all_label="month" ;; *) all_label="all" ;; esac
     all_cache="${CLAUDE_ALL_SESSIONS_CACHE_DIR:-/tmp/claude}/cache-${window_id}.json"
     if [ -f "$all_cache" ]; then
-        # `.outputs` and `.pending` are NEW reads (HIMMEL-1300) — the pre-1300 jq
+        # `.outputs` and `.pending` are NEW reads — the pre-1300 jq
         # selected reads/writes/inputs only. `outputs` feeds the total-used
         # figure on the totals row; `pending` drives the `all~` healing marker.
         # Both are `// 0`, so a cache written by an older producer still parses.
@@ -398,7 +398,7 @@ case "$all_inputs"  in ''|*[!0-9]*) all_inputs=0  ;; esac
 case "$all_outputs" in ''|*[!0-9]*) all_outputs=0 ;; esac
 case "$all_pending" in ''|*[!0-9]*) all_pending=0 ;; esac
 
-# HIMMEL-1300 §3.5: while the index still owes work — transcripts it has never
+# while the index still owes work — transcripts it has never
 # indexed, plus carried entries at a stale schema, EXCLUDING the permanently
 # parked v:-1 failures — the `all` row is still MOVING, so it renders as `all~`.
 # The tilde vanishes permanently at pending == 0. `all~` is 4 cols and still
@@ -412,13 +412,12 @@ if [ "$all_label" = "all" ] && [ "$all_pending" -gt 0 ]; then
 fi
 append "$(format_econ_line "$all_row_label" "$all_reads" "$all_writes" "$all_inputs")"
 
-# ── Line 4: token volume — total used (HIMMEL-1300 §3.6; HIMMEL-2265 dropped ──
-# the `cache:` companion field) ────────────────────────────────────────────
+# ── Line 4: token volume — total used ──────────────────────────────────────────────────────────
 append "$(format_totals_line "$all_reads" "$all_writes" "$all_inputs" "$all_outputs")"
 
 fi # _econ_enabled
 
-# ── Doctor segment (HIMMEL-4251): FAIL/WARN counts from the daily doctor-cadence
+# ── Doctor segment: FAIL/WARN counts from the daily doctor-cadence
 # state file. Read-only and one small file: no doctor run here. Silent when the
 # file is absent, malformed or clean (0 FAIL 0 WARN).
 doc_counts="$(cat "${HIMMEL_DOCTOR_STATE_DIR:-${HOME:-}/.himmel/state/doctor-cadence}/counts" 2>/dev/null || true)"
@@ -429,7 +428,7 @@ case "$doc_counts" in
         case "$doc_fail$doc_warn" in
             *[!0-9]*) ;;
             *) if [ "$((10#$doc_fail + 10#$doc_warn))" -gt 0 ]; then
-                   # HIMMEL-4363: the file's mtime is the run time; over 24 h old shows its age.
+                   # the file's mtime is the run time; over 24 h old shows its age.
                    doc_f="${HIMMEL_DOCTOR_STATE_DIR:-${HOME:-}/.himmel/state/doctor-cadence}/counts"
                    doc_m="$(stat -c %Y "$doc_f" 2>/dev/null || stat -f %m "$doc_f" 2>/dev/null || true)"
                    doc_age=""

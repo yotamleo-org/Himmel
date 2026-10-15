@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-usage-fetch-scheduled.sh — HIMMEL-1841 GATE: prove the OAuth usage
+# test-usage-fetch-scheduled.sh — GATE: prove the OAuth usage
 # fetch reaches the network and finds a credential from the UNATTENDED
 # scheduler context, not merely an operator shell (spec A5).
 # NETWORK + CREDENTIAL required -> SKIP_LIST on bare CI.

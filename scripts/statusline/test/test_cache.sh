@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATUSLINE="$SCRIPT_DIR/../bin/statusline.sh"
 
-# ── HIMMEL-1300 R3-8: save/restore the LIVE all-sessions caches ───────────
+# ── save/restore the LIVE all-sessions caches ───────────
 # This suite repeatedly overwrites/removes /tmp/claude/cache-all-stats.json
 # (and its -index.json sibling) as fixtures throughout the file below —
 # read_all_sessions_cache_stats (bin/statusline.sh) hardcodes /tmp/claude, so
@@ -111,12 +111,12 @@ assert_eq "format 1000000" "$(format_tokens 1000000)" "1.0M"
 assert_eq "format 1234567" "$(format_tokens 1234567)" "1.2M"
 assert_eq "format empty"   "$(format_tokens '')"      "0"
 assert_eq "format bad"     "$(format_tokens abc)"     "0"
-# B (billions) tier (HIMMEL-704) + the just-under-1B boundary staying M.
+# B (billions) tier + the just-under-1B boundary staying M.
 assert_eq "format 999999999"  "$(format_tokens 999999999)"  "1000.0M"
 assert_eq "format 1000000000" "$(format_tokens 1000000000)" "1.0B"
 assert_eq "format 2500000000" "$(format_tokens 2500000000)" "2.5B"
 
-# ── format_usd tests (HIMMEL-704) ──────────────────────────
+# ── format_usd tests ──────────────────────────
 # Below $1000 keeps the raw %.4f (so the byte-exact golden fixture and small
 # net/cost displays are unchanged); >= $1000 scales to K/M/B.
 assert_eq "usd 0"       "$(format_usd 0)"        "0.0000"
@@ -334,7 +334,7 @@ assert_eq "deleted index has 2 files" "$(jq -r 'length' "$RB_INDEX" 2>/dev/null)
 
 rm -rf "$TMPDIR_RB"
 
-# ── rebuild_all_sessions_index: backfill history predating the index (HIMMEL-698) ─
+# ── rebuild_all_sessions_index: backfill history predating the index ─
 # Regression: recompute candidates were ONLY files `-newer` than the index, so a
 # transcript that predates the index's first write and was never the active
 # (freshly-written) transcript was never recomputed and never entered the
@@ -559,7 +559,7 @@ assert_eq "per-field guard: valid five_hour cached despite bad seven_day" \
 assert_eq "per-field guard: bad seven_day stored as null, not aborted" \
     "$(jq -r '.seven_day.utilization' "$USAGE_CACHE" 2>/dev/null)" "null"
 
-# ── resolve_window: week/month/all + invalid (HIMMEL-617) ─────
+# ── resolve_window: week/month/all + invalid ─────
 # `now` is pinned via HIMMEL_STATUSLINE_NOW so boundaries are deterministic.
 # Expected epochs are computed via `date` (not hardcoded) → tz-independent.
 mkdate() { date -d "$1" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M:%S" "$1" +%s; }
@@ -603,7 +603,7 @@ WED_SAME=$(mkdate "2026-06-24 09:00:00")
 HIMMEL_STATUSLINE_NOW="$WED_SAME" resolve_window week; WID_SAME="$window_id"
 assert_eq "same-week now keeps one window_id (cache reused)" "$WID_SAME" "$WID_MON"
 
-# ── Windowed aggregation: per-message timestamp re-sum (HIMMEL-617) ──
+# ── Windowed aggregation: per-message timestamp re-sum ──
 # A file with messages spanning two months; the window must count only the
 # messages whose .timestamp falls in [start,end), not the whole-file sums the
 # `all` immutable index would carry.
@@ -631,7 +631,7 @@ assert_eq "windowed reads = May message only"  "$(jq -r '.reads'  "$W_CACHE5" 2>
 assert_eq "windowed inputs = May message only" "$(jq -r '.inputs' "$W_CACHE5" 2>/dev/null)" "1"
 rm -rf "$TMPDIR_WIN"
 
-# ── mtime prefilter: bound the scan without dropping in-window files (HIMMEL-617) ─
+# ── mtime prefilter: bound the scan without dropping in-window files ─
 # Regression guard for the "week/month row renders 0" bug: the windowed prefilter
 # used a bash stat-per-file loop (one process per transcript). On a large history
 # (1000+ files) that overran the render timeout, so the backgrounded rebuild never
@@ -658,7 +658,7 @@ rebuild_all_sessions_index "$PF" "$PF_C" "$PF_I" "$window_start" "$window_end" |
 assert_eq "prefilter: windowed reads = in-window file only"  "$(jq -r '.reads'  "$PF_C" 2>/dev/null)" "900"
 assert_eq "prefilter: windowed writes = in-window file only" "$(jq -r '.writes' "$PF_C" 2>/dev/null)" "300"
 assert_eq "prefilter: windowed inputs = in-window file only" "$(jq -r '.inputs' "$PF_C" 2>/dev/null)" "7"
-# HIMMEL-1349, same shape as the checkpoint block below: the rebuild above is
+# Same shape as the checkpoint block below: the rebuild above is
 # `|| true`, so $PF_C may legitimately not exist — and jq exits 2 on a missing
 # file, which under `set -e` aborts here before the `${PF_READS:-0}` default can
 # apply. Guard the substitution, not just its output.
@@ -706,7 +706,7 @@ else
     echo "FAIL: golden fixture $GOLDEN missing"; FAIL=$(( FAIL + 1 ))
 fi
 
-# ── HIMMEL-1316: unknown-model net carries `?`; recognised does not ─────
+# ── unknown-model net carries `?`; recognised does not ─────
 # PAIRED on purpose: "mark every net" would pass the unknown half but FAIL
 # the known half — that is the whole point of pairing them. Both calls share
 # the SAME fixture, so the only difference is the marker (an unknown model is
@@ -724,7 +724,7 @@ fi
 #   - clobbering a genuine cache file. A hard-killed run destroyed the operator's
 #     live totals this same night, so "it is only a test file" is not a safe
 #     assumption in this directory.
-#   - colliding with the HIMMEL-617 case below, which legitimately owns
+#   - colliding with the windowed-label case below, which legitimately owns
 #     cache-month-202606.json. Sharing one fixed path across two cases makes
 #     their ORDER load-bearing, and the unconditional `rm -f` at the end of this
 #     block would delete a file that case still needs.
@@ -779,7 +779,7 @@ echo "$kn_sess" | grep -qE 'net [+-]\$[0-9.]+[?]' \
 # via the guarded cleanup, which disarms itself so the EXIT-trap call no-ops.
 uk_restore_win
 
-# ── Label reflects the active period (HIMMEL-617) ────────────────
+# ── Label reflects the active period ────────────────
 # End-to-end through build_cache_lines: period=month renders a "month" label and
 # reads the per-window cache file (cache-month-202606.json — unique to this test,
 # so no race with the shared all-stats cache).
@@ -805,7 +805,7 @@ echo "$plain_lbl" | grep -q "r:6k" \
 rm -f /tmp/claude/cache-month-202606.json
 rm -rf "$TMPDIR_LBL"
 
-# ── HIMMEL-1300: dedup by message.id (duplicate collapsed, distinct summed) ──
+# ── dedup by message.id (duplicate collapsed, distinct summed) ──
 # Claude Code dual/triple-logs the same API response into the transcript; a
 # naive per-row sum over-counts 1.9x-3.3x (spec §1.1). rebuild_all_sessions_index
 # must count each message.id once, but still sum genuinely distinct messages.
@@ -825,7 +825,7 @@ assert_eq "dedup by message.id: inputs (m1 once + m2)"          "$(jq -r '.input
 assert_eq "dedup by message.id: outputs (m1 once + m2)"         "$(jq -r '.outputs' "$DEDUP_CACHE" 2>/dev/null)" "13"
 rm -rf "$TMPDIR_DEDUP"
 
-# ── HIMMEL-1300: id-less consecutive-fingerprint fallback + reset ────────────
+# ── id-less consecutive-fingerprint fallback + reset ────────────
 # No fixture here carries message.id, so dedup falls back to comparing usage
 # fingerprints against the IMMEDIATELY PREVIOUS row: identical-consecutive is
 # skipped, a change counts, and the key RESETS on every non-assistant row (so
@@ -851,7 +851,7 @@ assert_eq "id-less fallback: inputs"                                            
 assert_eq "id-less fallback: outputs"                                                 "$(jq -r '.outputs' "$FP_CACHE" 2>/dev/null)" "8"
 rm -rf "$TMPDIR_FP"
 
-# ── HIMMEL-1300: normalization (non-number / null / negative / fractional) ──
+# ── normalization (non-number / null / negative / fractional) ──
 # normcount: non-number -> 0; null -> 0; negative -> clamped to 0; fractional
 # -> floor.
 TMPDIR_NORM=$(mktemp -d)
@@ -867,7 +867,7 @@ assert_eq "normalization: non-number \"abc\" inputs -> 0"     "$(jq -r '.inputs'
 assert_eq "normalization: null outputs -> 0"                  "$(jq -r '.outputs' "$NORM_CACHE" 2>/dev/null)" "0"
 rm -rf "$TMPDIR_NORM"
 
-# ── HIMMEL-1300 R3-2/§3.3: v2 entry carried forward untouched; a stale/v-less
+# ── v2 entry carried forward untouched; a stale/v-less
 # entry re-enters the recompute set ──────────────────────────────────────────
 # fileA (v=2, known) and fileB (v stripped, simulating a pre-dedup/stale
 # entry) both get their CONTENT changed on disk while their mtime is reset to
@@ -918,7 +918,7 @@ assert_eq "re-entered entry stamped current v=2 on success" \
     "$(jq -r 'to_entries[] | select(.key|endswith("fileB.jsonl")) | .value.v' "$V2_INDEX" 2>/dev/null)" "2"
 rm -rf "$TMPDIR_V2"
 
-# ── HIMMEL-1300 R3-3: jq failure -> sentinel (never a zero), attempts count,
+# ── jq failure -> sentinel (never a zero), attempts count,
 # reset-on-success, and v:-1 parking after 3 consecutive failures ───────────
 TMPDIR_FAIL=$(mktemp -d)
 FAIL_PROJ="$TMPDIR_FAIL/.claude/projects"; mkdir -p "$FAIL_PROJ/p"
@@ -981,7 +981,7 @@ assert_eq "reset-on-success: sums reflect the NEW post-recovery content (40, not
     "$(jq -r '.reads' "$RESET_CACHE" 2>/dev/null)" "40"
 rm -rf "$TMPDIR_RESET"
 
-# ── HIMMEL-1300 R3-5: checkpointing — a pass killed mid-run still persists
+# ── checkpointing — a pass killed mid-run still persists
 # completed entries (the §1.6 fix: before checkpointing, a killed pass wrote
 # NOTHING, so a history whose scan never finishes inside the hook timeout made
 # ZERO progress forever). A "slow jq" (a PATH-shadowed jq wrapper that adds a
@@ -1038,7 +1038,7 @@ else
 HIMMEL_STATUSLINE_CHECKPOINT_EVERY=1 PATH="$SLOWJQ_DIR:$PATH" \
     "$CKPT_TIMEOUT_BIN" --kill-after=3 -s TERM 7 bash -c '. "$1"; rebuild_all_sessions_index "$2" "$3" "$4"' _ \
     "$CACHE_FUNCS_FILE" "$CKPT_PROJ" "$CKPT_CACHE" "$CKPT_INDEX" >/dev/null 2>&1 || true
-# HIMMEL-1349: the `|| VAR=0` guards the SUBSTITUTION; the `[ -n … ]` guards its
+# the `|| VAR=0` guards the SUBSTITUTION; the `[ -n … ]` guards its
 # OUTPUT. They cover different failures and both are needed.
 #   jq exits *2* on a nonexistent file — not 1, not 0-with-empty-output — and
 #   under this file's `set -e` a failing `VAR=$(…)` aborts the script THERE, so
@@ -1087,7 +1087,7 @@ assert_eq "checkpoint heal: pending reaches 0" \
     "$(jq -r '.pending' "$CKPT_CACHE" 2>/dev/null)" "0"
 rm -rf "$TMPDIR_CKPT" "$SLOWJQ_DIR"
 
-# ── HIMMEL-1300 R3-1 (CRITICAL) — mtime pinning ──────────────────────────────
+# ── mtime pinning ──────────────────────────────
 # The next pass's recompute set is `find -newer "$index_file"`, keyed on the
 # index's mtime. Without pinning, a checkpoint's `mv` would advance that mtime
 # mid-pass, so a file that is (a) already known/v-current, (b) modified DURING
@@ -1144,7 +1144,7 @@ assert_eq "mtime pin: NEXT pass re-scans fileA and picks up the NEW content (999
 rm -f "$PIN_REF" "$tmp_old" "$tmp_all" "$tmp_rc" "$CACHE_FUNCS_FILE"
 rm -rf "$TMPDIR_PIN"
 
-# ── HIMMEL-1300 §3.4: cold start recomputes a BOUNDED slice, not all paths ──
+# ── cold start recomputes a BOUNDED slice, not all paths ──
 # Cold start (no index_file yet) used to scan every path unbounded (§1.4's
 # "live hole" — a wiped /tmp/claude then meant every pass tried all files, was
 # killed, wrote nothing, so the next pass was cold too: permanent 0). The fix
@@ -1177,7 +1177,7 @@ assert_eq "cold start pass 3: pending reaches 0" \
     "$(jq -r '.pending' "$COLD_CACHE" 2>/dev/null)" "0"
 rm -rf "$TMPDIR_COLD"
 
-# ── HIMMEL-1300: CRLF — the known-set pipeline classifies an already-known
+# ── CRLF — the known-set pipeline classifies an already-known
 # path as NOT missing ────────────────────────────────────────────────────────
 # The backfill's known-set query pipes jq output through `sort -u` / `comm
 # -23`; a native-Windows jq emits CRLF line endings, and without `tr -d '\r'`

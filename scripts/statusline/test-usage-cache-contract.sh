@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Contract test: usage-cache-producer.sh -> all FOUR shipped cap-guard
-# consumers (HIMMEL-718 Phase 2 Task 2.2; HIMMEL-1841).
+# consumers.
 #
 # The producer writes the consumer cache; the consumers must read it
 # UNCHANGED. If any consumer chokes here, the fix goes in the PRODUCER
@@ -11,7 +11,7 @@
 #      reads .<window>.resets_at (jq, line 119), emits HH:MM local.
 #   2. scripts/hooks/auto-arm-on-cap.sh     via AUTO_ARM_CACHE=<c>
 #      python evaluator requires a non-null, in-range numeric
-#      .five_hour/.seven_day.utilization (HIMMEL-279 guard: null ->
+#      .five_hour/.seven_day.utilization (guard: null ->
 #      "utilization is null" stderr; all-unusable -> rc=4 MALFUNCTION).
 #   3. scripts/handover/resume-slot.sh      --cache <c> --max-age 0
 #      shape guard (~line 154): at least one of five_hour/seven_day must
@@ -45,13 +45,13 @@ unset AUTO_ARM_STALE_ESCALATE_AGE AUTO_ARM_STALE_MIN_CHECKS AUTO_ARM_BIN
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 # mk_empty_fleet_stub <dir> — hermetic FLEET_PS_CMD/FLEET_PROC fixture with
 # ZERO candidate legs, so the bank-preflight.sh fleet-cap census below reads
 # a deterministic empty fleet instead of the real ambient process table
-# (HIMMEL-2789 RETASK item 3: these cases test the BANK threshold, not the
+# (these cases test the BANK threshold, not the
 # fleet cap, and must not depend on how many legs happen to be running on
 # the station at test time).
 mk_empty_fleet_stub() {
@@ -120,7 +120,7 @@ produce_cache_oauth() { # <workdir> <five> <seven>
 }
 
 # produce_cache_via_composer <workdir> <five_util> <seven_util>
-# HIMMEL-718 Task 2.3: drive the cache through the REAL render-time driver
+# drive the cache through the REAL render-time driver
 # (hud-custom-lines.sh), not the producer in isolation. Same rates-path stdin
 # fixture, wrapped in a render JSON. WAW off (skip the segment subprocess) and an
 # isolated all-sessions cache dir keep it hermetic + fast; the composer's
@@ -171,7 +171,7 @@ run_test "(2a) auto-arm-on-cap.sh below threshold: utilization read is non-null,
   S="$W/state"; mkdir -p "$S"; H="$W/handovers"; mkdir -p "$H";
   run_arm_hook "$S" "$W/cache.json" "$W/arm.log" "$H" "$W/stderr.log";
   rc=$?; [ "$rc" -eq 0 ] || exit 1;
-  # HIMMEL-279 guard: a null/unusable utilization would warn on stderr
+  # guard: a null/unusable utilization would warn on stderr
   grep -q "utilization is null" "$W/stderr.log" && exit 1;
   grep -q "MALFUNCTION" "$W/stderr.log" && exit 1;
   # real check ran (throttle marker), and below-threshold did not arm
@@ -254,7 +254,7 @@ run_test "(4c) HIMMEL-1866: partial fetch cannot make stale seven_day fresh" '
   grep -q "FLEET native=0 claudex=0 openrouter=0 reserved=0 total=0/4" "$W/pf.err" || exit 1;
 '
 
-# --- HIMMEL-1712: account-mismatched cache -> every DECISION consumer treats it as UNKNOWN, preserving its own existing missing/unusable-cache contract exactly ---
+# --- account-mismatched cache -> every DECISION consumer treats it as UNKNOWN, preserving its own existing missing/unusable-cache contract exactly ---
 
 run_test "(7a) HIMMEL-1712: cap-reset-time.sh treats an account-mismatched cache as UNKNOWN (same exit 3 as a missing resets_at)" '
   W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-contract-7a.XXXXXX"); export HOME="$W/home-a"; mkdir -p "$HOME";
@@ -306,7 +306,7 @@ run_test "(7d) HIMMEL-1712: bank-preflight.sh treats an account-mismatched cache
   grep -q "account" "$W/pf.err" || exit 1;
 '
 
-# --- HIMMEL-718 Task 2.3: same contract, via the REAL composer driver ---------
+# --- same contract, via the REAL composer driver ---------
 run_test "(5) composer-DRIVEN cache satisfies the full cap-guard contract (real 2.3 driver)" '
   W=$(mktemp -d); export HOME="$W/home"; mkdir -p "$HOME";
   printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-contract-test\"}}" > "$HOME/.claude.json";

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test for scripts/statusline/lib/all-sessions-index.sh (HIMMEL-718 Task 3.2).
+# Test for scripts/statusline/lib/all-sessions-index.sh.
 # The lib is an EXTRACTED-VERBATIM copy of resolve_window +
 # rebuild_all_sessions_index from the legacy bar (scripts/statusline/bin/
 # statusline.sh); until the legacy bar is decommissioned (plan Task 5.4) both
@@ -50,7 +50,7 @@ else
     diff -u "$leg_rb" "$lib_rb" | head -40
 fi
 
-# ── Cases 3-4: the rebuild's HELPERS byte-identical (glm-2, HIMMEL-1300) ─────
+# ── Cases 3-4: the rebuild's HELPERS byte-identical ─────
 # _hud_write_index_checkpoint and _hud_rb_rmtemps are duplicated into the
 # legacy bar under the SAME "do NOT diverge" invariant as the two functions
 # above, but nothing enforced it — and they are not incidental: the checkpoint
@@ -71,7 +71,7 @@ for _fn in _hud_write_index_checkpoint _hud_rb_rmtemps; do
 done
 
 # ── Cases 5-6: _HUD_DEDUP_JQ byte-identical across ALL THREE copies ──────────
-# The dedup jq program is the actual accounting rule (HIMMEL-1300): if the
+# The dedup jq program is the actual accounting rule: if the
 # composer's copy drifts from the rebuild's, the `session` row and the `all` row
 # start counting the SAME transcripts differently and the discrepancy is
 # invisible — both rows still render, just with numbers that no longer agree.

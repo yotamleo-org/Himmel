@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test for scripts/statusline/usage-cache-producer.sh (HIMMEL-718 Phase 2 Task 2.1).
+# Test for scripts/statusline/usage-cache-producer.sh.
 #
 # The producer runs once per statusline render. It reads the Claude Code
 # statusline stdin JSON and maintains TWO single-writer files:
@@ -81,7 +81,7 @@ run_test "(3) no rate_limits + stubbed OAuth -> fetched primary wins, missing pr
   printf "%s\n" "#!/usr/bin/env bash" "[ -n \"\${OAUTH_MARKER:-}\" ] \&\& : > \"\$OAUTH_MARKER\"" "cat <<JSON" "{\"five_hour\":{\"utilization\":99},\"extra_usage\":{\"is_enabled\":true,\"used_credits\":350,\"monthly_limit\":5000,\"utilization\":7}}" "JSON" > "$stub";
   export OAUTH_MARKER="$W/marker"; chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
   printf "%s" "{\"model\":{\"display_name\":\"Claude\"}}" | bash "$PRODUCER";
-  # HIMMEL-1841: fetched primaries now WIN (the old order discarded them)
+  # fetched primaries now WIN (the old order discarded them)
   [ "$(jq -r ".five_hour.utilization" "$CLAUDE_USAGE_CACHE")" = "99" ] || exit 1;
   # seven_day absent from the fetch -> prev survives via the // $p fallback
   [ "$(jq -r ".seven_day.utilization" "$CLAUDE_USAGE_CACHE")" = "8" ] || exit 1;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test for scripts/statusline/hud-custom-lines.sh — the spawn-free hud composer
-# (HIMMEL-718 Task 3.2). Hermetic: seeded transcript + seeded economics caches +
+# Hermetic: seeded transcript + seeded economics caches +
 # seeded rollup/handover; no git/jira/network beyond the local worktree branch.
 # Exit: 0 = all pass, 1 = at least one failed.
 set -uo pipefail
@@ -11,7 +11,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -25,7 +25,7 @@ fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-# HIMMEL-4363: the doctor segment reads the operator's real counts file (now
+# the doctor segment reads the operator's real counts file (now
 # fresh after every doctor run), so pin an empty state dir for hermeticity.
 export HIMMEL_DOCTOR_STATE_DIR="$TMP/doctor-state"
 
@@ -117,8 +117,8 @@ run_composer() {
 }
 
 # ── Case 2: session economics line (exact computed values) ──────────────────
-# hit = 2e6*100/2.05e6 = 97. The row is END-ANCHORED: HIMMEL-2265 removed the
-# trailing `net <±>$<n>` cache-savings figure, and an unanchored match would
+# hit = 2e6*100/2.05e6 = 97. The row is END-ANCHORED: the
+# composer emits no trailing `net <±>$<n>` cache-savings figure, and an unanchored match would
 # still pass if it came back.
 out="$(run_composer)"
 if grepq "$out" -E '^session  r:2\.0M  w:100k  hit:97%$'; then
@@ -127,11 +127,11 @@ else
     fail "session economics -> got: $(printf '%s\n' "$out" | grep -F 'session' || echo '(no session line)')"
 fi
 
-# ── Case 2b: REMOVED by HIMMEL-2265 ─────────────────────────────────────────
-# This case asserted the HIMMEL-1316 `?` guess-marker on the session row's
+# ── Case 2b: REMOVED ─────────────────────────────────────────
+# This case asserted a `?` guess-marker on the session row's
 # `net` — the marker that flagged a model priced by the per-model price
-# table's `*)` Sonnet-rate fallback. HIMMEL-2265 removed the whole
-# cache-savings figure (and the price table with it) from the composer, so
+# table's `*)` Sonnet-rate fallback. The composer has no
+# cache-savings figure (and no price table), so
 # there is no net to mark and no rate to guess: the enforcement is deliberately
 # deleted WITH the feature it enforced, not weakened. Cases 2 and 3 are now
 # END-ANCHORED, which is what keeps the figure from silently returning.
@@ -146,7 +146,7 @@ else
     fail "all-sessions economics -> got: $(printf '%s\n' "$out" | grep -E '^all ' || echo '(no all line)')"
 fi
 
-# ── Case 3b: token-volume row — `used:` only, no `cache:` (HIMMEL-2265) ──────
+# ── Case 3b: token-volume row — `used:` only, no `cache:` ──────
 # total used = inputs + reads + writes + outputs = 3e6 + 45e6 + 12e6 + 0 = 60.0M
 # (the seeded all-stats cache carries no `.outputs`, so it reads as 0).
 # END-ANCHORED, and paired with the whole-render negative below: together they
@@ -159,7 +159,7 @@ else
 fi
 
 # ── Case 3c: whole-render negative — no money figure, no `cache:` field ──────
-# The composer no longer prices anything: HIMMEL-2265 deleted the hand-
+# The composer no longer prices anything: there is no hand-
 # maintained per-model rate card whose figures drifted from live pricing. The
 # end-anchored cases above pin the three rows they each name; this pins the
 # ABSENCE across the WHOLE render, so a savings figure or a `cache:` field
@@ -203,7 +203,7 @@ else
     pass "WAW parity -> SKIPPED (branch '$branch' yields no ticket key)"
 fi
 
-# ── Case 4b: EMPTY transcript_path must not shift cwd (HIMMEL-2265) ──────────
+# ── Case 4b: EMPTY transcript_path must not shift cwd ──────────
 # The stdin fields are read through ONE `read` with a single-char IFS. Tab is
 # IFS *whitespace*, so a leading EMPTY field collapses and every later field
 # shifts left — and `.transcript_path` is legitimately empty on a session with
@@ -269,7 +269,7 @@ else
 fi
 
 # ── Case 7: fail-open — missing transcript + missing caches → still exits 0 ──
-# HIMMEL-797: a missing transcript means the session's cache stats are
+# a missing transcript means the session's cache stats are
 # UNKNOWN, not zero — a bare "r:0 w:0" is indistinguishable from a session
 # that genuinely computed to zero usage. The composer now renders the
 # explicit "session~ r:? w:? hit:?%" marker for this case (see
@@ -291,7 +291,7 @@ else
     fail "fail-open -> rc=$rc out='$out_empty'"
 fi
 
-# ── Case 8: HIMMEL-797 regression — a slow/hung transcript parse must not ────
+# ── Case 8: regression — a slow/hung transcript parse must not ────
 # blank the WHOLE render. Reproduced live: read_session_cache_stats' jq -rs
 # re-parses the FULL transcript, uncached, on every render; on a large
 # real transcript (tens of MB) that alone measured 6-30s+, well past hud's
@@ -311,7 +311,7 @@ STUBEOF
 chmod +x "$STUBDIR/jq"
 # Stock macOS ships neither `timeout` nor `gtimeout`, so the composer's bound
 # seam would degrade to unbounded and this row could never pass. Provide a
-# minimal GNU-shaped `timeout` stub there (HIMMEL-3719); a real one is used as-is.
+# minimal GNU-shaped `timeout` stub there; a real one is used as-is.
 # ponytail: the stub models TERM only and ignores -k, so a TERM-ignoring child would hang; upgrade path is coreutils timeout on the macOS runner.
 if ! { command -v timeout >/dev/null 2>&1 && timeout --version >/dev/null 2>&1; } \
    && ! command -v gtimeout >/dev/null 2>&1; then

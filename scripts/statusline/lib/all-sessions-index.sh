@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/statusline/lib/all-sessions-index.sh — the all-sessions economics
-# index rebuild, extracted into a sourceable lib (HIMMEL-718 Task 3.2).
+# index rebuild, extracted into a sourceable lib.
 #
 # WHY this file exists: the spawn-free hud composer (scripts/statusline/
 # hud-custom-lines.sh) reads the all-sessions economics cache but must NOT
@@ -19,7 +19,7 @@
 [ -n "${_ALL_SESSIONS_INDEX_SH:-}" ] && return 0
 _ALL_SESSIONS_INDEX_SH=1
 
-# ── Dual-logging dedup, shared jq prelude (HIMMEL-1300) ─────────────────────
+# ── Dual-logging dedup, shared jq prelude ─────────────────────
 # Claude Code writes the same API response into the transcript 2-3 times, so a
 # naive per-row sum over-counts 1.9x-3.3x. Mirrors claude-hud transcript.ts
 # (457-490): primary key message.id (non-empty string <= 128 chars) against a
@@ -131,8 +131,8 @@ resolve_window() {
 
 # Removes every temp file the current rebuild pass registered in
 # $_HUD_RB_TMPFILES (newline-separated; empty entries skipped) and clears the
-# register. Called on every exit path of rebuild_all_sessions_index — and, per
-# HIMMEL-1300 R3-4, ALSO from the periodic hook's kill-path trap, because a hook
+# register. Called on every exit path of rebuild_all_sessions_index — and
+# ALSO from the periodic hook's kill-path trap, because a hook
 # timeout-kill never reaches the rebuild's own cleanup and would otherwise leave
 # three mktemps per killed pass behind (kills are the NORMAL termination mode
 # while the index heals).
@@ -153,7 +153,7 @@ EOF
 # and must never cross an argv boundary).
 # Args: $1=cache_file  $2=index_file  $3=ref_file ("" when none).
 #
-# HIMMEL-1300 R3-5: hoisted out of rebuild_all_sessions_index's tail so it can
+# hoisted out of rebuild_all_sessions_index's tail so it can
 # run every N files as a CHECKPOINT, not only once at the end. A pass killed by
 # the hook timeout previously wrote NOTHING, so on a history whose full scan
 # cannot finish inside the timeout, progress was zero forever. It publishes BOTH
@@ -161,7 +161,7 @@ EOF
 # `pending`) frozen exactly while the index churns. Mid-pass totals are as valid
 # as terminal ones — the reduce carries $oldidx forward for unprocessed files.
 #
-# HIMMEL-1300 R3-1: after each publish the index mtime is pinned BACK to the
+# after each publish the index mtime is pinned BACK to the
 # pass-start reference. The next pass's recompute set is `find -newer
 # "$index_file"`, so an advancing mtime would make a file that is (a) already
 # v-current, (b) modified during this pass and (c) not yet reached when the pass
@@ -175,7 +175,7 @@ _hud_write_index_checkpoint() {
     local out tmp
     printf '%s' "$recomputed" > "$tmp_rc"
 
-    # Entry schema v2 (HIMMEL-1300): { reads, writes, inputs, outputs, v }
+    # Entry schema v2: { reads, writes, inputs, outputs, v }
     # (+ `attempts` while a file is failing). `outputs` rides THIS bump on
     # purpose — adding it later would force a v3 and a second full re-migration.
     # `pending` (R3-5 / §3.5) counts the work still owed: paths with no entry at
@@ -288,7 +288,7 @@ rebuild_all_sessions_index() {
     old_index=$(cat "$index_file" 2>/dev/null)
     echo "$old_index" | jq -e 'type == "object"' >/dev/null 2>&1 || old_index='{}'
 
-    # HIMMEL-1300 R3-1: the pass-start mtime reference, touched into existence
+    # the pass-start mtime reference, touched into existence
     # BEFORE the first `find` below. _hud_write_index_checkpoint pins
     # $index_file back to it after every publish — see that function's header
     # for why an advancing index mtime silently freezes files modified mid-pass.
@@ -342,7 +342,7 @@ rebuild_all_sessions_index() {
     # active session and any new files), or everything on a cold first run.
     #
     # PLUS a bounded backfill of transcripts ABSENT from the carried-forward
-    # index (HIMMEL-698). A file that predates the index's first write and was
+    # index. A file that predates the index's first write and was
     # never itself the freshly-written active transcript is never `-newer`, so
     # without this it is never recomputed and — because it never entered
     # $oldidx either — is permanently dropped from the aggregate: the reduce
@@ -354,13 +354,13 @@ rebuild_all_sessions_index() {
     # HIMMEL_STATUSLINE_BACKFILL_MAX); the index grows monotonically (a
     # backfilled file's mtime predates the new index write, so it is carried
     # forward, not re-scanned), so the aggregate heals over successive passes.
-    # HIMMEL-1300 §3.4 retunes the default 400 -> 50: at a measured 71ms/file
+    # The default is 50, not 400: at a measured 71ms/file
     # that is ~3.5s, ~35% of a 10s hook, where 400 was 28.4s (2.8x over) and
     # therefore never completed. With checkpointing this is a latency knob, not
     # a correctness one.
     #
-    # HIMMEL-1300 §3.4 also bounds COLD START: the recompute set starts EMPTY
-    # (it used to be `$all_paths`, unbounded), and the backfill below is hoisted
+    # COLD START is bounded too: the recompute set starts EMPTY
+    # (not `$all_paths`, unbounded), and the backfill below is hoisted
     # OUT of the `-f "$index_file"` guard so it runs unconditionally. The old
     # cold scan could not finish inside the hook timeout, was killed, wrote
     # nothing, and so left the next pass cold too — a permanent 0. Cold start is
@@ -382,7 +382,7 @@ rebuild_all_sessions_index() {
 $tmp_known"
         if [ -n "$tmp_known" ]; then
             # Known = paths already in the index AT THE CURRENT SCHEMA.
-            # HIMMEL-1300 stamps `v` INSIDE each entry value (so `keys[]` is
+            # `v` is stamped INSIDE each entry value (so `keys[]` is
             # never polluted): v=2 = deduped accounting, v=-1 = a file that
             # failed to parse N times running (permanently parked). Anything
             # else — a pre-dedup v=1 entry, or a failure sentinel with no v —
@@ -436,7 +436,7 @@ $tmp_rc"
     # 2-field failure sentinel path<TAB>FAIL. Cheap in steady state (usually
     # just the active transcript).
     #
-    # CHECKPOINT every $ckpt_every files (HIMMEL-1300 R3-5, override
+    # CHECKPOINT every $ckpt_every files (override
     # HIMMEL_STATUSLINE_CHECKPOINT_EVERY): the pass is normally terminated by
     # the hook's timeout kill, and a single terminal `mv` meant such a pass
     # persisted NOTHING. Checkpointing makes progress monotonic regardless of
@@ -449,7 +449,7 @@ $tmp_rc"
         processed=0
         while IFS= read -r fpath; do
             [ -z "$fpath" ] && continue
-            # LIVENESS HEARTBEAT (HIMMEL-1300). A caller holding a lock over
+            # LIVENESS HEARTBEAT. A caller holding a lock over
             # this rebuild — scripts/hooks/refresh-statusline-caches-periodic.sh
             # — defines _hud_rb_heartbeat to re-stamp its lock. Without it a pass
             # that legitimately runs past that reaper's age threshold looks

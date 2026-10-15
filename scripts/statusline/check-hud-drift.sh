@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # hud-drift: fail when the vendored claude-hud tree diverges from its recorded
-# pin (HIMMEL-718 Task 1.2). himmel-contributor-only (gated by .himmel-dev).
+# pin. himmel-contributor-only (gated by .himmel-dev).
 #
 # Default: verify — recompute the upstream-derived-subtree hash and compare to
 # `vendored_tree_hash` in VENDORED.md; on mismatch print offending paths + the
