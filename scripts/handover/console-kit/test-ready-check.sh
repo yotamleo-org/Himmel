@@ -902,6 +902,12 @@ contains "generic index.ts imported as some other ./index: check 11 fails" "$out
 UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/src\"; printf \"import x from './src/index'\\n\" > \"\$REPO/scripts/cfg/other.ts\""
 unw_run scripts/cfg/src/index.ts
 contains "generic index.ts imported through its own directory: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf \"import x from './index'\\n\" > \"\$REPO/scripts/cfg/src/consumer.ts\""
+unw_run scripts/cfg/src/index.ts
+contains "generic index.ts imported as ./index by a sibling: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/a.b\"; printf \"import x from './aXb/index'\\n\" > \"\$REPO/scripts/cfg/other.ts\""
+unw_run scripts/cfg/a.b/index.ts
+contains "directory dot is literal: aXb/index does not wire a.b/index.ts" "$out" "[FAIL] 11."
 
 # cd X && node build.js is not a test runner in a CI job
 UNW_EXTRA="printf 'run: cd scripts/cfg && node build.js\n' > \"\$REPO/.github/workflows/ci.yml\""

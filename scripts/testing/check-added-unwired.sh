@@ -137,7 +137,7 @@ runner="$tmp/run-shell-tests.sh"
 show scripts/ci/run-shell-tests.sh > "$runner"
 
 judge() {  # <path> <kind> -> prints a reason when unwired
-  local p="$1" k="$2" b="${1##*/}" d plug imp
+  local p="$1" k="$2" b="${1##*/}" d plug imp generic_pat
   case "$k" in
     hook)
       printf '%s\n' "$wiring_text" | grep -qE -- "$(bn_re "$b")" && return 0
@@ -202,15 +202,18 @@ judge() {  # <path> <kind> -> prints a reason when unwired
         esac
       fi ;;
     script)
-      pat="$(bn_re "$b")"
+      pat="$(bn_re "$b")"; generic_pat=""
       case "$b" in  # TS/JS import without the extension: from './sector.js', require('./sector')
         *.ts|*.tsx|*.js|*.mjs)
           # a generic stem (index, utils) also needs its directory: any './index' would wire it
           case "${b%.*}" in
-            index|utils|util|helpers|types|main|config|constants|common) imp="${p%/*}"; imp="${imp##*/}/${b%.*}" ;;
-            *) imp="${b%.*}" ;;
-          esac
-          pat="$pat|/${imp}(\\.[jt]sx?|\\.mjs)?['\"]" ;;
+            index|utils|util|helpers|types|main|config|constants|common)
+              imp="${p%/*}"; imp="${imp##*/}/${b%.*}"; imp="${imp//./\\.}"
+              pat="$pat|/${imp}(\\.[jt]sx?|\\.mjs)?['\"]"
+              # a sibling's ./index is this file; any other ./index is not
+              generic_pat="\\./${b%.*}(\\.[jt]sx?|\\.mjs)?['\"]" ;;
+            *) imp="${b%.*}"; imp="${imp//./\\.}"; pat="$pat|/${imp}(\\.[jt]sx?|\\.mjs)?['\"]" ;;
+          esac ;;
       esac
       if printf '%s\n' "$p" | grep -qE "$TEST_HELPER_RE"; then
         # a test helper is reached by the suite that uses it
@@ -218,6 +221,10 @@ judge() {  # <path> <kind> -> prints a reason when unwired
       else
         git grep -lIE -e "$pat" "$ref" -- . ':(exclude)handovers' ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*' 2>/dev/null
       fi | sed "s#^$ref:##" | grep -vxF "$p" > "$tmp/refs" || true
+      if [ -n "$generic_pat" ]; then  # ponytail: a parent's ../index import is not matched, add a resolver if one appears
+        git grep -lIE -e "$generic_pat" "$ref" -- "${p%/*}" ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*' 2>/dev/null \
+          | sed "s#^$ref:##" | while IFS= read -r r; do [ "${r%/*}" = "${p%/*}" ] && [ "$r" != "$p" ] && printf '%s\n' "$r"; done >> "$tmp/refs"
+      fi
       # an added referencer still unwired itself does not count
       while IFS= read -r r; do
         [ -n "$r" ] || continue
