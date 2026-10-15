@@ -189,6 +189,14 @@ export function mintRetaskNonce(): string {
   return randomBytes(16).toString("hex");
 }
 
+// Collision-proof id stamp for the default slug and the session dir:
+// `<ms>-<4 random bytes hex>`, so two dispatches in the same millisecond
+// still mint distinct ids. Charset [0-9a-f-] survives the
+// slug sanitiser unchanged. spawn-claudex imports this.
+export function mintSpawnStamp(): string {
+  return `${Date.now()}-${randomBytes(4).toString("hex")}`;
+}
+
 // The RETASK block embedded in every dispatch brief (design §3, semantics
 // preserved verbatim; wording tightened one CR round after two independent
 // critics [codex-1, coderabbit] both read the original phrasing as
@@ -575,7 +583,7 @@ export function planSpawn(
   const warnings = conflicts.filter((c) => c.kind === "model");
   const refusals = conflicts.filter((c) => c.kind !== "model");
   if (refusals.length) return { ok: false, reason: `spawn-glm: settings conflicts (remove these keys first): ${refusals.map(formatConflict).join("; ")}` };
-  const slug = (name?.trim() || `t${Date.now()}`).replace(/[^a-zA-Z0-9-]/g, "-");
+  const slug = (name?.trim() || `t${mintSpawnStamp()}`).replace(/[^a-zA-Z0-9-]/g, "-");
   return { ok: true, slug, worktree: join(cwd, ".claude", "worktrees", `glm+${slug}`), branch: `glm/${slug}`, warnings };
 }
 
@@ -1631,7 +1639,7 @@ async function main(): Promise<void> {
   // it to mint the outbox/context paths; the same sessionDir feeds both the brief
   // composition and the later mkdir. Window derives from the same context
   // resolution main() already applied (context ?? "big"), via glmContextPreset.
-  const sessionDir = join(glmSessionRoot(), `glm-${slug}-${Date.now()}`);
+  const sessionDir = join(glmSessionRoot(), `glm-${slug}-${mintSpawnStamp()}`);
   const briefText = composeWorkerPrompt(task, sessionDir, branch, { shared: sharedMode });
   const { window: windowTokens } = glmContextPreset(context ?? "big");
   const overheadChars = measureOverheadChars(absCwd, homedir());
