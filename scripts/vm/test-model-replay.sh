@@ -22,6 +22,7 @@ FAILED=0
 pass() { echo "PASS $1"; }
 fail_case() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 
+export HIMMEL_REPLAY_MODE=auto
 CACHE="$WORK/cache"
 CALLS="$WORK/calls"
 ART="$WORK/out/artifact.txt"
@@ -86,6 +87,16 @@ if [ "$?" = 2 ]; then pass "T9 missing key input refuses (rc 2)"; else fail_case
 replay_valid "$CACHE" "$KEY2" || fail_case "T10 a fresh recording reads invalid"
 printf 'TAMPERED\n' > "$CACHE/$KEY2/artifact"
 if replay_valid "$CACHE" "$KEY2"; then fail_case "T10 a tampered recording reads valid"; else pass "T10 replay_valid rejects a tampered recording"; fi
+
+# --- T11: an unknown mode refuses and spends nothing -----------------------
+before="$(calls)"
+HIMMEL_REPLAY_MODE=replay_only replay_run "$CACHE" "$KEY4" "$ART" -- fake_model
+rc=$?
+if [ "$rc" = 2 ] && [ "$(calls)" = "$before" ]; then pass "T11 unknown mode refuses (rc 2), no call"; else fail_case "T11 rc=$rc"; fi
+
+# --- T12: a directory as key input refuses ----------------------------------
+replay_key haiku "$WORK" >/dev/null 2>&1
+if [ "$?" = 2 ]; then pass "T12 unhashable key input refuses (rc 2)"; else fail_case "T12 directory accepted as input"; fi
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "test-model-replay: ALL PASS"; exit 0; fi

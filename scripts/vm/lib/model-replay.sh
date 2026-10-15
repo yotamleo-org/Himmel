@@ -13,7 +13,7 @@
 #   replay_run <cache-dir> <key> <artifact> -- <record-cmd> [args...]
 #       Sets REPLAY_MODE_USED=replay|record and REPLAY_MODEL_CALLS=0|1.
 #       rc 0 ok; the record command's rc when it fails; 4 replay-only with no
-#       valid recording; 5 the record command wrote no artifact.
+#       valid recording; 2 an unknown HIMMEL_REPLAY_MODE; 5 the record command wrote no artifact.
 #
 # HIMMEL_REPLAY_MODE: auto (default: replay if recorded, else record) |
 #   record (always call the model and overwrite) | replay-only (never call it).
@@ -34,10 +34,13 @@ replay_key() {
   for f in "$@"; do
     [ -r "$f" ] || { echo "model-replay: key input not readable: $f" >&2; return 2; }
   done
-  {
-    printf 'model=%s\n' "$model"
-    for f in "$@"; do printf 'sha=%s\n' "$(replay_sha256 < "$f")"; done
-  } | replay_sha256
+  local parts="model=$model" h
+  for f in "$@"; do
+    h="$(replay_sha256 < "$f")" && [ -n "$h" ] || { echo "model-replay: cannot hash key input: $f" >&2; return 2; }
+    parts="$parts
+sha=$h"
+  done
+  printf '%s\n' "$parts" | replay_sha256
 }
 
 # replay_valid <cache-dir> <key>: rc 0 when the slot holds a recording whose bytes match its checksum.
@@ -54,6 +57,10 @@ replay_run() {
   slot="$cache/$key"
   mode="${HIMMEL_REPLAY_MODE:-auto}"
   REPLAY_MODE_USED="" REPLAY_MODEL_CALLS=0
+  case "$mode" in
+    auto|record|replay-only) ;;
+    *) echo "model-replay: HIMMEL_REPLAY_MODE='$mode' is not auto|record|replay-only; nothing spent" >&2; return 2 ;;
+  esac
 
   if [ "$mode" != record ] && replay_valid "$cache" "$key"; then
     mkdir -p "$(dirname "$art")" && cp "$slot/artifact" "$art" || return 1
@@ -74,9 +81,10 @@ replay_run() {
   mkdir -p "$slot" || return 1
   # The checksum lands last: a recording interrupted before it reads as invalid.
   rm -f "$slot/artifact.sha256"
-  cp "$art" "$slot/artifact.tmp" && mv "$slot/artifact.tmp" "$slot/artifact" \
-    && replay_sha256 < "$art" > "$slot/artifact.sha256.tmp" \
-    && mv "$slot/artifact.sha256.tmp" "$slot/artifact.sha256" || return 1
+  # Per-process staging names: two runs recording the same key never share a temp file.
+  cp "$art" "$slot/artifact.$$.tmp" && mv "$slot/artifact.$$.tmp" "$slot/artifact" \
+    && replay_sha256 < "$slot/artifact" > "$slot/artifact.sha256.$$.tmp" \
+    && mv "$slot/artifact.sha256.$$.tmp" "$slot/artifact.sha256" || return 1
   REPLAY_MODE_USED=record
   return 0
 }
