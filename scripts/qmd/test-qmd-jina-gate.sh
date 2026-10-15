@@ -207,7 +207,7 @@ run_gate "$work/or10.yml" "$work/db3.sqlite"; rc=$?
 [ "$rc" -eq 3 ] || fail "(29) active salus doc under an OpenRouter index: expected rc 3, got $rc"
 grep -q 'salus' "$work/err" || fail "(29) the refusal must name salus"
 
-# (30) a provider key in index.yml is refused: the key lives only in the daemon environment.
+# (30) a provider key in index.yml is refused: the key lives only in the launching shell's environment.
 cfg "$work/or11.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
 printf '  openai_api_key: sk-or-not-a-real-key\n' >> "$work/or11.yml"
 run_gate "$work/or11.yml"; rc=$?

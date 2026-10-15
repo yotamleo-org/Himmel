@@ -73,8 +73,9 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # 932839a, the tip of fix/launcher-forward-signals, plus the HTTP bearer-token
 # commit of fork PR #14), not fork main. The pin was the merge
 # commit of fork PR #15 (b1858ca on himmel/pin-http-auth; it brings c5cc17b, the
-# HTTP daemon start honouring the embed-swap lock, onto 791fdf8). The pin is now
-# cecc32a9, which adds the openai: provider (b1858ca is its ancestor).
+# HTTP daemon start honouring the embed-swap lock, onto 791fdf8).
+# The pin is now cecc32a9, which adds the openai: provider (b1858ca is its
+# ancestor).
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
 _qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-cecc32a9ec5cf5a8a518c71d151e2795a027ebe0}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }

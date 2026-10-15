@@ -170,7 +170,7 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
 const fileRemote = (text.replace(/#.*$/gm, "").match(/openai:/g) ?? []).length;
 const fileRoleRemote = Object.keys(PURPOSE).filter((r) => !isLocalModel(models[r] ?? "")).length;
 if (fileRemote > fileRoleRemote) refusals.push(`${fileRemote - fileRoleRemote} "openai:" model URI(s) in the config are not under models.embed/rerank/generate in a supported layout`);
-if (remoteRoles > 0 && models.openai_api_key) refusals.push("models.openai_api_key is set in the config: the provider key belongs only in the daemon environment (QMD_OPENAI_API_KEY)");
+if (remoteRoles > 0 && models.openai_api_key) refusals.push("models.openai_api_key is set in the config: the provider key belongs only in the launching shell's environment (QMD_OPENAI_API_KEY)");
 if (remoteRoles > 0) for (const p of dbProblems) refusals.push(p);
 for (const u of modelsUnreadable) refusals.push(`unsupported config layout: ${u}`);
 if (remoteRoles > 0) {
