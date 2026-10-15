@@ -132,6 +132,14 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - ledger does not record degraded state"
 fi
 
+# A non-numeric primary must not reach the ledger row raw (a quote or brace in
+# the cache JSON would make the line invalid JSONL for every ledger reader).
+rm -f "$W/ledger.jsonl"
+bad_out=$(verdict "{\"five_hour\":{\"utilization\":55},\"seven_day\":{\"utilization\":\"5\\\"}x\"},\"primaries_refreshed_at\":$NOW}")
+check "non-numeric seven_day -> verdict unchanged (PROCEED)" PROCEED "$bad_out"
+check "non-numeric seven_day -> ledger row is valid JSON" true "$(tail -1 "$W/ledger.jsonl" | jq -e . >/dev/null 2>&1 && echo true || echo false)"
+check "non-numeric seven_day -> numeric five_hour kept" 55 "$(tail -1 "$W/ledger.jsonl" | jq -r '.five_hour' 2>/dev/null)"
+
 future=$(( $(date +%s) + 86400 ))
 printf '%s' "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":20},\"primaries_refreshed_at\":$future,\"account\":\"$ACCT\"}" > "$W/c.json"
 future_out=$(CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
