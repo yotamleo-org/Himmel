@@ -52,7 +52,7 @@ test('--for KEY md uses the dash fallback when the item has no status', () => {
   assert.ok(out.includes('next: do thing'));
 });
 
-// HIMMEL-530 Task 3: CLI error hygiene — UsageError for expected user-input errors
+// CLI error hygiene — UsageError for expected user-input errors
 test('run([]) throws a UsageError with the --ledger-required message', () => {
   let thrown = null;
   try { run([]); } catch (e) { thrown = e; }

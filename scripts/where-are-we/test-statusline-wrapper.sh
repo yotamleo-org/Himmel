@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test for scripts/where-are-we/statusline.sh (HIMMEL-538 composition wrapper).
+# Test for scripts/where-are-we/statusline.sh (composition wrapper).
 # Hermetic: stub base + stub segment via env seams — never runs the live vendored
 # base (which reads live rate-limits) or a real node spawn.
 # Exit: 0 = all pass, 1 = at least one failed.
@@ -43,7 +43,7 @@ printf '%s\n' '#!/usr/bin/env bash' "cat >/dev/null 2>&1 || true" "printf 'BASE_
 INPUT='{"cwd":"/tmp","model":{"display_name":"x"}}'
 
 # --- Case 1: explicit opt-out → wrapper output == base, ZERO bytes added -----
-# (HIMMEL-556: default is now ON, so suppression requires an explicit falsy value.)
+# (Default is ON, so suppression requires an explicit falsy value.)
 want="$(printf '%s' "$INPUT" | bash "$BASE")"
 for off in 0 false off no FALSE Off " no "; do
     got="$(HIMMEL_WHERE_ARE_WE="$off" HIMMEL_STATUSLINE_BASE="$BASE" HIMMEL_STATUSLINE_SEGMENT="$SEG_OK" \
@@ -130,8 +130,8 @@ else
 fi
 
 # --- Case 8: hanging BASE bounded by BASE_TIMEOUT -> cut off, segment still ---
-# renders, wrapper does NOT hang forever (HIMMEL-717: the base was previously
-# unbounded, orphaning the wrapper on a hung network read). Correctness assertion
+# renders, wrapper does NOT hang forever (an unbounded base would orphan the
+# wrapper on a hung network read). Correctness assertion
 # (LATE_BASE never appears) is load-independent; the timing bound is generous so
 # the test is not flaky on a loaded MSYS host.
 BASE_HANG="$TMP/base-hang.sh"

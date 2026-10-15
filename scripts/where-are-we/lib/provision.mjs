@@ -1,4 +1,4 @@
-// scripts/where-are-we/lib/provision.mjs — L3 orchestrator seam (HIMMEL-517).
+// scripts/where-are-we/lib/provision.mjs — L3 orchestrator seam.
 // PURE (no I/O). Two directions of the same push-side seam over the L1 contract:
 //   renderSlice  — READ: the relevant slice for a ticket KEY, to embed in a
 //                  spawned subagent's prompt (the PUSH complement to L2's pull-

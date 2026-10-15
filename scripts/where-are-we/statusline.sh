@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# scripts/where-are-we/statusline.sh — himmel statusLine.command (HIMMEL-538).
+# scripts/where-are-we/statusline.sh — himmel statusLine.command.
 # Composes the VENDORED base bar (scripts/statusline/bin/statusline.sh — left
 # byte-for-byte UNTOUCHED, so no re-vendor obligation against the upstream fork)
 # with ONE where-are-we line (statusline-segment.sh), gated by HIMMEL_WHERE_ARE_WE.
 #
 # Not a parallel status line: it runs the exact vendored script for the base bar
-# and only appends a line. Gate default ON (HIMMEL-556, opt-out): an explicit
+# and only appends a line. Gate default ON (opt-out): an explicit
 # falsy HIMMEL_WHERE_ARE_WE (0|false|off|no) suppresses the segment → adds ZERO
 # bytes beyond the base; unset/empty → segment renders.
 #
 # Fail-open: a missing/erroring base or segment never errors the bar. BOTH the
-# base and the segment are `timeout`-bounded (HIMMEL-717) so a hung child (e.g. a
+# base and the segment are `timeout`-bounded so a hung child (e.g. a
 # stalled network read in the base) degrades to nothing-extra rather than
 # freezing the render or orphaning this wrapper.
 #
@@ -33,7 +33,7 @@ if command -v timeout >/dev/null 2>&1; then _to="timeout"
 elif command -v gtimeout >/dev/null 2>&1; then _to="gtimeout"; fi
 
 # Base bar verbatim. Its exit code is IGNORED by design (fail-open). Bounded by
-# `timeout` (HIMMEL-717): the base reads live rate-limits over the network, and a
+# `timeout`: the base reads live rate-limits over the network, and a
 # hung read would otherwise block this command-substitution forever, orphaning
 # the wrapper on every render (a measured git-bash leak on Windows). Command
 # substitution already strips trailing newlines; the `%$'\n'` is belt-and-braces
@@ -41,7 +41,7 @@ elif command -v gtimeout >/dev/null 2>&1; then _to="gtimeout"; fi
 if [ -n "$_to" ]; then
     # -k 2: if the base (or a node child it spawned) ignores TERM, escalate to
     # KILL 2s later — otherwise a surviving grandchild keeps this command-
-    # substitution pipe open and the wrapper still hangs (HIMMEL-717, Windows).
+    # substitution pipe open and the wrapper still hangs (Windows).
     base="$(printf '%s' "$input" | "$_to" -k 2 "${HIMMEL_STATUSLINE_BASE_TIMEOUT:-10}" bash "$BASE" 2>/dev/null || true)"
 else
     base="$(printf '%s' "$input" | bash "$BASE" 2>/dev/null || true)"
@@ -49,7 +49,7 @@ fi
 base="${base%$'\n'}"
 printf '%s' "$base"
 
-# Default ON (HIMMEL-556): enabled unless HIMMEL_WHERE_ARE_WE is an explicit
+# Default ON: enabled unless HIMMEL_WHERE_ARE_WE is an explicit
 # opt-out (0|false|off|no). Unset / empty / any other value → enabled.
 _enabled() {
     case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in

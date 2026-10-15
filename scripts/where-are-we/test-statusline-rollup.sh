@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test for scripts/where-are-we/statusline-rollup.sh (HIMMEL-538).
+# Test for scripts/where-are-we/statusline-rollup.sh.
 # Hermetic: the jira CLI is a STUB via --jira-cmd; an isolated temp --out dir;
 # no real jira/gh/git network.
 # Exit: 0 = all pass, 1 = at least one failed.
@@ -11,7 +11,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -26,7 +26,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 # A stub jira CLI: dispatches on the verb. Emits real shapes:
-#   get <KEY> --json  → {"fields":{"parent":{"key":"HIMMEL-514"}}}
+#   get <KEY> --json  → {"fields":{"parent":{"key":"EPIC-514"}}}
 #   list ...          → TSV rows (no header), incl. a junk non-key line
 # STUB_NOPARENT=1 → get returns object with no parent.
 make_stub() {

@@ -3,7 +3,7 @@ import { inFlight } from './fold.mjs';
 
 // Natural-numeric comparator: split each key into maximal runs of digits /
 // non-digits and compare run-by-run — digit runs numerically, others by
-// codepoint — so 'HIMMEL-2' < 'HIMMEL-9' < 'HIMMEL-10' (not lexical, where
+// codepoint — so 'KEY-2' < 'KEY-9' < 'KEY-10' (not lexical, where
 // '10' would sort before '2'). Deterministic + a total order (string tie-break
 // on equal numeric value), which the byte-identical render contract requires.
 function naturalCompare(a, b) {

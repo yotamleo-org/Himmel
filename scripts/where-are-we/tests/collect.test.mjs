@@ -158,7 +158,7 @@ test('gitRecords: locked main branch emits nothing (no key)', () => {
   const recs = gitRecords(GIT_PORCELAIN, NOW);
   // main does not yield a key from branchToKey, so should not appear
   assert.ok(!recs.some((r) => r.key === null || r.key === undefined));
-  // There should be exactly 2 records (HIMMEL-9, HIMMEL-42) — not 3 or 4
+  // There should be exactly 2 records — not 3 or 4
   assert.equal(recs.length, 2);
 });
 

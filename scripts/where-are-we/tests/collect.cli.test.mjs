@@ -120,7 +120,7 @@ test('main: throws clear error when --ledger is missing', () => {
   );
 });
 
-// HIMMEL-530 Task 3: collect-path error hygiene mirrors the index path
+// collect-path error hygiene mirrors the index path
 test('main([]) throws a UsageError for the missing-ledger case', () => {
   let thrown = null;
   try { main(['--now', NOW], { readers: fixtureReaders }); } catch (e) { thrown = e; }
@@ -170,7 +170,7 @@ test('main: dropped > 0 branch — invalid record is counted and absent from led
   assert.match(summary, /dropped=1/, 'summary should report dropped=1');
   assert.match(summary, /appended=1/, 'summary should report appended=1');
 
-  // The ledger should contain only the valid record (HIMMEL-1), not the empty-key one
+  // The ledger should contain only the valid record, not the empty-key one
   const stored = readRecords(ledger);
   assert.equal(stored.length, 1, 'ledger should hold exactly 1 valid record');
   assert.equal(stored[0].key, 'HIMMEL-1', 'only the valid record should be in the ledger');

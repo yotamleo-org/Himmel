@@ -56,7 +56,7 @@ test('status-less item (handover only, no status) appears in none of the four se
   assert.ok(!md.includes('HIMMEL-99'), 'status-less item must not appear in any rendered section');
 });
 
-// HIMMEL-530 Task 1: natural-numeric key sort (HIMMEL-10 after HIMMEL-9, not before)
+// natural-numeric key sort (10 after 9, not before)
 test('keys sort in natural-numeric order, not lexical', () => {
   const s = fold([
     { ts: '1', source: 'jira', key: 'HIMMEL-2', kind: 'ticket', status: 'in-progress' },
@@ -89,7 +89,7 @@ test('natural-sort render is byte-identical on re-render (idempotent)', () => {
   assert.equal(render(s), render(s));
 });
 
-// HIMMEL-530 Task 2: "Other in-flight" catch-all for non-terminal, non-(in-progress/blocked) statuses
+// "Other in-flight" catch-all for non-terminal, non-(in-progress/blocked) statuses
 test('non-terminal "other" statuses render in Other in-flight, not In flight/Blocked', () => {
   const s = fold([
     { ts: '1', source: 'jira', key: 'HIMMEL-1', kind: 'ticket', status: 'in-progress' },
@@ -103,7 +103,7 @@ test('non-terminal "other" statuses render in Other in-flight, not In flight/Blo
   assert.ok(reviewLine.includes('(in-review)'), 'in-review status must show on the line');
   const otherStart = md.indexOf('## Other in-flight');
   const blockedStart = md.indexOf('## Blocked');
-  // HIMMEL-2 (to-do) and HIMMEL-3 (in-review) live in the Other in-flight block
+  // The to-do and in-review keys live in the Other in-flight block
   for (const k of ['HIMMEL-2', 'HIMMEL-3']) {
     const at = md.indexOf(`**${k}**`);
     assert.ok(at > otherStart && at < blockedStart, `${k} must be under Other in-flight`);
@@ -138,7 +138,7 @@ test('header order: In flight < Other in-flight < Blocked', () => {
   assert.ok(md.indexOf('## Other in-flight') < md.indexOf('## Blocked'));
 });
 
-// HIMMEL-530 Task 1: comparator total-order tie-breaks (leading-zero + segment-length
+// comparator total-order tie-breaks (leading-zero + segment-length
 // branches) must give a deterministic order so the byte-identical contract holds even
 // on near-collision keys, regardless of fold's input order.
 test('natural sort is deterministic on leading-zero and segment-length tie-break keys', () => {

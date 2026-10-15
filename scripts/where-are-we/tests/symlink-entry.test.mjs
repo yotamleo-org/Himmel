@@ -1,4 +1,4 @@
-// scripts/where-are-we/tests/symlink-entry.test.mjs — HIMMEL-3871. Each CLI must
+// scripts/where-are-we/tests/symlink-entry.test.mjs — each CLI must
 // run main() when invoked through a symlinked directory (macOS /var → /private/var,
 // any symlinked dir on Linux). A raw `import.meta.url === pathToFileURL(argv[1])`
 // guard is false there, so main() never runs: empty output, rc 0. Every case

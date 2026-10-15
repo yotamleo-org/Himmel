@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/where-are-we/statusline-rollup.sh — detached epic-rollup refresh for the
-# status line (HIMMEL-538, epic 514). NETWORK-TOUCHING; never run on the status
+# status line. NETWORK-TOUCHING; never run on the status
 # line render path — the segment spawns this DETACHED + lock-gated.
 #
 # Resolves the ticket's parent epic (jira get --json → fields.parent.key) and

@@ -1,14 +1,12 @@
 // scripts/where-are-we/tests/collect.jira-limit.test.mjs
-// HIMMEL-567: the collector queried `jira list --status 'To Do,In Progress,Done'`
-// with no --limit. The CLI defaults to --limit 25, and with Done in the filter
-// (hundreds of historical tickets) the 25-row page filled with To-Do rows — live
-// In-Progress tickets never entered the ledger ("In flight: none" while work was
-// in progress). These tests pin the fix: an In-Progress project-wide read with an
+// A single `jira list --status 'To Do,In Progress,Done'` with no --limit fills the
+// CLI's default 25-row page with historical rows, so live In-Progress tickets
+// never enter the ledger. These tests pin: an In-Progress project-wide read with an
 // explicit high limit, plus an all-status by-key read scoped to the active
 // in-flight keys (for self-clear + footprint-bearing To-Do surfacing).
 //
-// HIMMEL-679: the blanket `--status 'To Do'` read was DROPPED — it folded the
-// whole backlog into "Other in-flight". A To-Do ticket now surfaces only via the
+// There is no blanket `--status 'To Do'` read — it would fold the whole backlog
+// into "Other in-flight". A To-Do ticket surfaces only via the
 // by-key read (an open PR / a ledger breadcrumb seeds it into activeKeys).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -79,14 +77,14 @@ test('main: derives active in-flight ticket keys from the ledger and scopes the 
 test('main: a footprint-bearing To-Do ticket surfaces as a to-do record via the by-key read (end-to-end, no blanket To-Do read)', () => {
   const dir = makeTmpDir('waw-jira-todo-');
   const ledger = join(dir, 'ledger.jsonl');
-  // Prior-pass breadcrumb: HIMMEL-9 was in-progress, so it is a non-terminal
+  // Prior-pass breadcrumb: the key was in-progress, so it is a non-terminal
   // ledger key and activeTicketKeys seeds it into the by-key read.
   writeFileSync(ledger,
     JSON.stringify({ ts: '2026-01-01T00:00:00Z', source: 'jira', key: 'HIMMEL-9', kind: 'ticket', status: 'in-progress' }) + '\n');
 
   const readers = {
-    // The by-key read now reports HIMMEL-9 as To Do (it moved back to the
-    // backlog). Without the blanket To-Do read, the footprint key is the ONLY
+    // The by-key read reports the key as To Do (it moved back to the
+    // backlog). With no blanket To-Do read, the footprint key is the ONLY
     // path that carries it — assert it still lands in the ledger as to-do.
     readJira: (activeKeys) =>
       activeKeys.includes('HIMMEL-9') ? [{ key: 'HIMMEL-9', status: 'To Do' }] : [],

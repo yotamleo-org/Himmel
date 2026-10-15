@@ -1,5 +1,5 @@
 // scripts/where-are-we/tests/collect.cross-project.test.mjs
-// HIMMEL-573: where-are-we must track cross-project LUNA *harness* tickets (a
+// where-are-we must track cross-project LUNA *harness* tickets (a
 // LUNA-keyed ticket whose code ships in the himmel harness, e.g. the
 // obsidian-triage plugin) the same way it tracks HIMMEL tickets — but NOT LUNA
 // vault/content tickets (the second-brain wiki).

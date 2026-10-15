@@ -1,4 +1,4 @@
-// scripts/where-are-we/provision.mjs — L3 orchestrator-seam CLI (HIMMEL-517).
+// scripts/where-are-we/provision.mjs — L3 orchestrator-seam CLI.
 // Two verbs, the two directions of the push-side seam:
 //   slice --ledger <p> --for <KEY>            READ  → prints the KEY's slice
 //                                                    (empty on miss/contentless)

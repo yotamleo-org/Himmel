@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test for scripts/where-are-we/statusline-segment.sh (HIMMEL-538).
+# Test for scripts/where-are-we/statusline-segment.sh.
 # Hermetic: real provision.mjs (tracked, in-tree) against a FIXTURE ledger;
 # HANDOVER_DIR / rollup-cache-dir / rollup-cmd are temp seams. No git/jira network.
 # Exit: 0 = all pass, 1 = at least one failed.
@@ -11,7 +11,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -27,7 +27,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 # Stock macOS ships neither `timeout` nor `gtimeout`, and the segment skips its
 # ledger node spawn entirely without one (C1), so every ledger-status row would
-# render no status. Put a minimal GNU-shaped stub on PATH there (HIMMEL-3719).
+# render no status. Put a minimal GNU-shaped stub on PATH there.
 # ponytail: the stub models TERM only and ignores -k, so a TERM-ignoring child would hang; upgrade path is coreutils timeout on the macOS runner.
 if ! command -v timeout >/dev/null 2>&1 && ! command -v gtimeout >/dev/null 2>&1; then
     mkdir -p "$TMP/stubbin"
@@ -70,7 +70,7 @@ run() { HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_D
         bash "$SUT" "$@" </dev/null 2>/dev/null; }
 
 # --- Case 1: explicit opt-out → empty ---------------------------------------
-# (HIMMEL-556: default is now ON, so only an explicit falsy value suppresses.)
+# (Default is ON, so only an explicit falsy value suppresses.)
 for off in 0 false off no FALSE Off " no "; do
     o="$(HIMMEL_WHERE_ARE_WE="$off" HANDOVER_DIR="$HROOT" bash "$SUT" --branch feat/HIMMEL-538-x </dev/null 2>/dev/null)"
     if [ -z "$o" ]; then pass "opt-out '$off' -> empty"; else fail "opt-out '$off' -> '$o'"; fi
@@ -236,7 +236,7 @@ else
     pass "hanging node bound -> SKIPPED (no timeout/gtimeout on this host)"
 fi
 
-# --- Case 16: default path is CACHE-ONLY — NO refresh spawn (HIMMEL-718 3.2) --
+# --- Case 16: default path is CACHE-ONLY — NO refresh spawn --
 # The detached in-render refresh (the orphaned-bash leak class) is GONE: the
 # render path never refreshes. The periodic hook
 # (scripts/hooks/refresh-statusline-caches-periodic.sh) owns the refresh now.

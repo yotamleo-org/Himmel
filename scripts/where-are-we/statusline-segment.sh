@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/where-are-we/statusline-segment.sh — the where-are-we status-line
-# segment (HIMMEL-538, epic 514). Reads OFFLINE on the render path and emits ONE
+# segment. Reads OFFLINE on the render path and emits ONE
 # line: the active-handover marker + ticket (+ its 514-ledger status) + the epic
 # rollup. Composed onto the base bar by scripts/where-are-we/statusline.sh.
 #
@@ -9,13 +9,13 @@
 # Sources (all offline; at most ONE node spawn — the ledger slice):
 #   - ticket KEY  : bash regex on the branch (no node).
 #   - 📋 marker   : presence of <handover_root>/breadcrumbs/<KEY>.json (the
-#                   HIMMEL-477 resume breadcrumb; layout-agnostic, no node).
+#                   resume breadcrumb; layout-agnostic, no node).
 #   - ledger stat : provision.mjs slice (the one node spawn; "—"/empty → omit).
 #   - epic rollup : a CACHED read of the rollup file (no network); a stale/cold
 #                   cache fires a DETACHED, lock-gated refresh (statusline-rollup.sh).
 #
 # FAIL-OPEN everywhere: any error omits only its own part; never errors/hangs.
-# Gated by HIMMEL_WHERE_ARE_WE (default ON, HIMMEL-556 — opt-out on an explicit
+# Gated by HIMMEL_WHERE_ARE_WE (default ON — opt-out on an explicit
 # 0|false|off|no) — defense-in-depth (the wrapper also gates) so the segment is
 # testable in isolation.
 #
@@ -41,7 +41,7 @@ input=""
 if [ ! -t 0 ]; then input="$(cat 2>/dev/null || true)"; fi
 
 # --- Gate -------------------------------------------------------------------
-# Default ON (HIMMEL-556): enabled unless HIMMEL_WHERE_ARE_WE is an explicit
+# Default ON: enabled unless HIMMEL_WHERE_ARE_WE is an explicit
 # opt-out (0|false|off|no). Unset / empty / any other value → enabled.
 _enabled() {
     case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
@@ -86,7 +86,7 @@ now="$(date +%s)"
 # --- Active-handover marker (breadcrumb presence; offline, no node) ---------
 marker=""
 if [ -f "$ROOT/scripts/lib/handover-path.sh" ]; then
-    # HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+    # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
     # shellcheck disable=SC1091
     if . "$ROOT/scripts/lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
     # shellcheck source=/dev/null
@@ -148,10 +148,9 @@ if [ -f "$cache" ]; then
 fi
 
 # Stale/cold → the epic-rollup refresh is OWNED by the periodic hook
-# (scripts/hooks/refresh-statusline-caches-periodic.sh), NOT the render path
-# (HIMMEL-718 Task 3.2). The old detached `( … & )` refresh here was part of the
-# orphaned-bash leak class this migration eliminates, so it is GONE: the render
-# path is now cache-only. The hook keeps the rollup warm (SessionStart +
+# (scripts/hooks/refresh-statusline-caches-periodic.sh), NOT the render path.
+# A detached `( … & )` refresh here would be an orphaned-bash leak, so the render
+# path is cache-only. The hook keeps the rollup warm (SessionStart +
 # periodic) for BOTH the still-live bash bar and the hud composer; a stale cache
 # fails open (last-known epic d/t, or omitted). The synchronous seam below stays
 # ONLY for explicit callers/tests (HIMMEL_WHERE_ARE_WE_REFRESH_SYNC) — it never
