@@ -1068,7 +1068,7 @@ is_readonly_allowlisted() {
     case "$first" in
         rg)
             # --pre / --pre-glob run a program over each file
-            case "$c" in *' --pre'*) return 1 ;; esac
+            [[ $c =~ [[:space:]]--pre ]] && return 1
             return 0
             ;;
         cat|head|tail|grep|diff|wc) return 0 ;;
