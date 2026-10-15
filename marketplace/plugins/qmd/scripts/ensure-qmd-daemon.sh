@@ -294,7 +294,7 @@ qmd_cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/$QMD_INDEX_NAM
 remote_models=0
 # The provider key is the DAEMON's, never a session's: drop whatever the launching session carries, and
 # take the key only from the daemon env file (mode 0600), handed to the daemon start below and nowhere else.
-unset QMD_OPENAI_API_KEY
+unset QMD_OPENAI_API_KEY JINA_API_KEY JINA_API
 daemon_key=""
 # Case-insensitive: OpenAI: / OPENAI: model strings must reach the gate too.
 env_models="$(printf '%s' "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" | tr '[:upper:]' '[:lower:]')"

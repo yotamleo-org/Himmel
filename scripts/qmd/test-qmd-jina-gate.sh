@@ -539,4 +539,12 @@ launch_key; rc=$?
 [ ! -e "$work/started" ] || fail "(44) launcher STARTED qmd on a mixed-case remote salus config"
 rm -f "$work/daemon.env"
 
+# (45) a Jina key in the SESSION env (JINA_API_KEY / JINA_API) is not the daemon's key either.
+cfg "$work/cfg/index.yml" "$JINA_EMBED" "$JINA_RERANK" https://api.jina.ai/v1 himmel
+for jv in JINA_API_KEY JINA_API; do
+  launch_key "$jv=jina-session-secret-10"; rc=$?
+  [ "$rc" -eq 1 ] || fail "(45) $jv only in the session env: expected rc 1, got $rc: $(cat "$work/err")"
+  [ ! -e "$work/started" ] || fail "(45) launcher started a Jina daemon on a session-env $jv"
+done
+
 echo "PASS: test-qmd-jina-gate.sh"
