@@ -14,7 +14,6 @@ WARN C7-shipped: worktree /home/user/Documents/github/himmel/.claude/worktrees/t
 OK   C8-cadence: pipeline-cadence runners current (format v20)
 OK   C8-cadence: qmd-cadence runners current (format v20)
 OK   C9-scheduler: auto-arm scheduler backend present (linux)
-OK   C10-propagation: skipped (no private mirror tooling)
 OK   C11-glm-seed: skipped (no ~/.claude-glm -- glm-launcher lane not in use)
 OK   C12-codex: codex startup healthy (himmel plugins registered; no skill-truncation / hook-failure / oversized where-are-we in the last session)
 OK   C13-plugin-hooks: himmel-ops plugin hooks resolve in this checkout

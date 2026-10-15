@@ -3869,7 +3869,7 @@ answers — two worker sessions parked on this call in 2026-09-10, one for 77 mi
 Second drift on prose → structural. Denies with a message naming SendMessage
 to the supervisor session as the replacement. Workflow nudge, not a security fence: fails
 open on missing `jq`, malformed, or empty stdin so it never locks an operator
-session out of the tool. Inert until HIMMEL-2919's launcher export lands.
+session out of the tool. Live: the launcher exports the marker into every console-spawned leg (HIMMEL-2919).
 A `--judge` worker session (HIMMEL-3133, design §3.2 "the judge is a leg") is denied
 identically — same `HIMMEL_CONSOLE_LEG=1` (its separate `HIMMEL_CONSOLE_JUDGE=1`
 marker feeds only `guard-judge-writes.sh`, below) — and
