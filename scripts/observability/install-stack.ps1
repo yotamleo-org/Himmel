@@ -11,7 +11,7 @@
   # each task and waits for it to exit before swapping the definition --
   # Register-ScheduledTask -Force alone only replaces the definition, it does
   # not touch an already-running process. (Interim to the cross-platform
-  # supervisor, HIMMEL-1425.)
+  # supervisor.)
   [switch]$Hidden
 )
 
@@ -144,7 +144,7 @@ function Resolve-RequiredCommand {
 # before this run has no saved definition and needs none: a failed fresh
 # registration just reports and exits non-zero, nothing to roll back.
 #
-# One more edge (round 12): "nothing to restore for a task this run never
+# One more edge: "nothing to restore for a task this run never
 # actually touched" (StoppedTaskNames' confirmation requirement, above)
 # assumed an UNconfirmed stop timeout means the task is genuinely still
 # running. It might not -- the stop can genuinely succeed while the
@@ -251,7 +251,7 @@ function Wait-TaskStopped {
 # tries to use something) can enter Running and exit again within a couple
 # of seconds. After the first Running observation, re-sample once more
 # after a short stability window before trusting it. Uses Resolve-
-# ExistingTask (round 12), not a bare Get-ScheduledTask -ErrorAction
+# ExistingTask, not a bare Get-ScheduledTask -ErrorAction
 # SilentlyContinue: a transient lookup failure during startup must not be
 # read as "not running" -- that would trigger a spurious (if fail-safe)
 # rollback on nothing more than an RPC hiccup. A caught lookup failure here
@@ -343,7 +343,7 @@ function Restore-TaskDefinition {
 }
 
 # Counterpart to Restore-TaskDefinition for a task that did NOT exist before
-# this run (round 10): there is no saved XML to fall back to, so "roll it
+# this run: there is no saved XML to fall back to, so "roll it
 # back" means removing it entirely, not restoring anything. Without this, a
 # fresh task that registered (and maybe even started) successfully before a
 # LATER sibling's failure aborted the batch would simply survive -- staying
@@ -377,7 +377,7 @@ function Remove-FreshTaskRegistration {
   }
 }
 
-# Repairs the ambiguous case round 12 identified: Register-LogonTask
+# Repairs the ambiguous case: Register-LogonTask
 # requested a stop (Stop-ScheduledTask did not throw) but could never
 # CONFIRM it -- Wait-TaskStopped's confirming lookups themselves kept
 # failing for the whole 30s window, not because the task was genuinely
@@ -449,7 +449,7 @@ function Confirm-TaskStillRunning {
   # run asked for before trusting Running at all -- the cheap, correct half
   # of closing that cross-confirm read. True cross-process serialization (a
   # run-level named mutex so two installs can't interleave at all) is
-  # deferred to the supervisor, HIMMEL-1425 -- this only stops a mismatched
+  # deferred to the supervisor -- this only stops a mismatched
   # run from mis-reporting success, it doesn't stop the interleaving itself.
   $isS4U = $task.Principal.LogonType -eq 'S4U'
   if ($isS4U -ne $ExpectedHidden) {
@@ -511,14 +511,14 @@ function Register-LogonTask {
     # lookups themselves keep failing for the whole poll window (not
     # because the task is genuinely still running), Wait-TaskStopped times
     # out and this throws below -- with the task in NO rollback set at all
-    # under the round-7 ordering fix, even though the stop may well have
-    # genuinely succeeded. $script:StopAttemptedTaskNames (round 12) is
+    # even though the stop may well have
+    # genuinely succeeded. $script:StopAttemptedTaskNames is
     # what lets the finally block's ambiguous-stop repair pass (see
     # Repair-AmbiguousStop below) find and recover it.
     $script:StopAttemptedTaskNames.Add($TaskName) | Out-Null
     if (-not (Wait-TaskStopped -TaskName $TaskName)) {
       # Reporting-only (feeds the throw message text below, gates no
-      # decision) -- still uses Resolve-ExistingTask (round 17), not a bare
+      # decision) -- still uses Resolve-ExistingTask, not a bare
       # lookup, so a failed re-query renders as an honest "lookup failed"
       # instead of silently showing as an empty/blank state.
       try {
@@ -576,7 +576,7 @@ function Register-LogonTask {
     # This task's LIVE definition was actually replaced this run (the call
     # above succeeded) -- it is now rollback-eligible regardless of whether
     # it was previously Running. This is the correct restore-eligibility
-    # signal (round 6): keying eligibility on $script:StoppedTaskNames alone
+    # signal: keying eligibility on $script:StoppedTaskNames alone
     # missed a pre-existing task that was NOT running before -- its saved
     # XML sat unused while its live definition was overwritten out from
     # under it.
@@ -589,13 +589,12 @@ function Register-LogonTask {
     # registered (and maybe even started) successfully before a LATER
     # sibling's failure aborted the batch would simply survive, sitting
     # registered -- possibly under -Hidden/S4U -- while its pre-existing
-    # siblings roll back to their prior (e.g. Interactive) definitions
-    # (round 10).
+    # siblings roll back to their prior (e.g. Interactive) definitions.
     $script:FreshTaskNames.Add($TaskName) | Out-Null
   }
 }
 
-# Register-IntervalTask (HIMMEL-1199): unlike the long-running exporters above
+# Register-IntervalTask: unlike the long-running exporters above
 # (one AtLogOn trigger, process stays up), luna-sync-alert.ts is a short-lived
 # one-shot check meant to run on a cadence — an -Once trigger with a
 # RepetitionInterval, starting at the next logon and repeating indefinitely
@@ -608,7 +607,7 @@ function Register-IntervalTask {
     [string]$WorkingDirectory,
     [int]$IntervalMinutes
   )
-  # HIMMEL-2081: unlike Register-LogonTask above, this function never
+  # Unlike Register-LogonTask above, this function never
   # consulted $Hidden at all -- every interval task (today: luna-sync-alert,
   # a bare bun.exe run with no cmd/pwsh wrapper) always registered
   # InteractiveToken, popping a visible console on EVERY fire regardless of
@@ -640,10 +639,10 @@ function Register-IntervalTask {
 }
 
 # ---------------------------------------------------------------------------
-# HIMMEL-2209: seed GRAFANA_TELEGRAM_BOT_TOKEN / GRAFANA_TELEGRAM_CHAT_ID at
+# Seed GRAFANA_TELEGRAM_BOT_TOKEN / GRAFANA_TELEGRAM_CHAT_ID at
 # User scope from himmel's OWN repo-root .env only -- see the call site below
 # for why (this supersedes a cross-source fallback to the Telegram bridge's
-# .env/access.json, HIMMEL-924 F3, which silently mis-routed ops alerts to
+# .env/access.json, which silently mis-routed ops alerts to
 # the shared luna bot / the operator's personal DM). Split into small pieces
 # so test-install-stack.ps1 can dot-source and unit-test them without a real
 # [Environment] User-scope round trip:
@@ -698,7 +697,7 @@ function Set-UserEnvVar {
 
 function Set-GrafanaTelegramEnvVar {
   param([string]$VarName, [string]$EnvText)
-  # [pr-check panel round 2, codex-1]: the replaced implementation wrapped its
+  # The replaced implementation wrapped its
   # equivalent [Environment] read+write in try/catch so a registry failure
   # warned instead of aborting the installer (this step is documented
   # NON-FATAL). Restore that guarantee here around both the "already set?"
@@ -829,14 +828,14 @@ $bunExe = Resolve-RequiredCommand -DisplayName 'Bun' -Names @('bun.exe', 'bun')
 
 $prometheusConfig = Join-Path $stateRoot 'prometheus.yml'
 Copy-Item -LiteralPath (Join-Path $scriptDir 'prometheus.yml') -Destination $prometheusConfig -Force
-# HIMMEL-1633: prometheus.yml's rule_files entry is RELATIVE to the config's
+# prometheus.yml's rule_files entry is RELATIVE to the config's
 # location, so the rule file must travel with it — without this copy the
 # installed Prometheus references a missing alerts.rules.yml and refuses its
-# config (the HIMMEL-924 rules were inert after install).
+# config (the rules would be inert after install).
 Copy-Item -LiteralPath (Join-Path $scriptDir 'alerts.rules.yml') -Destination (Join-Path $stateRoot 'alerts.rules.yml') -Force
 
 $grafanaIni = Join-Path $stateRoot 'grafana.ini'
-# HIMMEL-924: grafana-provisioning holds a machine-local COPY of
+# grafana-provisioning holds a machine-local COPY of
 # scripts/observability/provisioning/ (copied below, same pattern as
 # prometheus.yml) -- Grafana reads its provisioning tree from [paths]
 # provisioning, so alert rules/contact points/the Prometheus datasource all
@@ -866,7 +865,7 @@ provisioning = $($grafanaProvisioning.Replace('\', '/'))
 New-Item -ItemType Directory -Path $grafanaProvisioning -Force | Out-Null
 Copy-Item -Path (Join-Path $scriptDir 'provisioning\*') -Destination $grafanaProvisioning -Recurse -Force
 
-# HIMMEL-2209 (supersedes HIMMEL-924 F3's bridge-reuse design): seed the two
+# Seed the two
 # env vars contact-points.yaml interpolates ($GRAFANA_TELEGRAM_BOT_TOKEN /
 # $GRAFANA_TELEGRAM_CHAT_ID), persisted at User scope so the logon-triggered
 # Grafana task inherits them. Seeded ONLY from himmel's OWN repo-root .env --
@@ -912,13 +911,13 @@ $flowExporter = Join-Path $RepoRoot 'scripts\observability\flow-exporter.ts'
 # $script:ReplacedTaskNames is the (possibly larger, possibly disjoint-ish)
 # set whose LIVE definition this run actually overwrote -- see the comment
 # above Wait-TaskStopped for why restore-eligibility is their union, and why
-# neither one alone is correct. $script:FreshTaskNames (round 10) is the
+# neither one alone is correct. $script:FreshTaskNames is the
 # complementary set: tasks that did NOT exist before this run, so they have
 # no saved XML and are not restore-eligible the same way -- Remove-
 # FreshTaskRegistration above unregisters them instead, on an aborted batch,
 # so rollback symmetry holds: pre-existing -> restored to saved XML; fresh ->
 # unregistered, not left behind under whatever this run's own definition was.
-# $script:StopAttemptedTaskNames (round 12) is a superset of StoppedTaskNames:
+# $script:StopAttemptedTaskNames is a superset of StoppedTaskNames:
 # every task whose stop was REQUESTED, whether or not it was ever CONFIRMED --
 # see Repair-AmbiguousStop above for the gap this closes (a stop that
 # genuinely succeeded while the confirming lookups themselves kept failing
@@ -949,7 +948,7 @@ try {
     -WorkingDirectory $grafanaHome `
     -StartupDelay 'PT3M'
 
-  # HIMMEL-1161: disable the 'service' collector — it leaks kernel handles (paged pool) every scrape.
+  # Disable the 'service' collector — it leaks kernel handles (paged pool) every scrape.
   Register-LogonTask `
     -TaskName 'himmel-observability-windows-exporter' `
     -Execute $windowsExporterExe `
@@ -993,10 +992,10 @@ try {
   # slower-manifesting S4U resource failure. Re-check every exporter this
   # run believes it started, once more, before deciding the run's outcome.
   # Endpoint-level verification (curling each /metrics URL) stays deferred
-  # to HIMMEL-1425 (supervisor territory) -- this is still just a Task
+  # to the supervisor -- this is still just a Task
   # Scheduler state check, not a health probe of what the process is doing.
   # Confirm-TaskStillRunning (above) is Resolve-ExistingTask-based, not a
-  # bare Get-ScheduledTask -ErrorAction SilentlyContinue -- round 15: a
+  # bare Get-ScheduledTask -ErrorAction SilentlyContinue: a
   # FAILED lookup counts as 'indeterminate', never silently "not Running".
   foreach ($taskName in $exporterTaskNames) {
     if ($taskStartStatus[$taskName] -eq $true) {
@@ -1007,7 +1006,7 @@ try {
     }
   }
 
-  # Round 12: Wait-TaskStarted returning $false for one exporter is an
+  # Wait-TaskStarted returning $false for one exporter is an
   # honest, individually-reported failure -- it does NOT throw, so
   # $scriptFailed alone would stay $false and the finally block's rollback
   # would (per its narrower per-task check) touch only THAT one task,
@@ -1019,13 +1018,13 @@ try {
   # rollback machinery (restore every touched pre-existing task, remove
   # every fresh one) applies uniformly below.
   #
-  # Round 17: deliberately scoped to $false only, NOT "-ne $true" -- an
-  # 'indeterminate' sweep result (round 15: the final lookup itself failed,
+  # Deliberately scoped to $false only, NOT "-ne $true" -- an
+  # 'indeterminate' sweep result (the final lookup itself failed,
   # not evidence the task is unhealthy) must NOT fold into this flag. Doing
   # so would drag every OTHER, perfectly healthy sibling and fresh
   # registration into a full rollback/removal on nothing more than a
   # transient RPC hiccup at the very last check of the run -- exactly what
-  # round 15 introduced 'indeterminate' to avoid. It still counts toward the
+  # 'indeterminate' exists to avoid. It still counts toward the
   # non-zero exit on its own, via $notFlippedTasks below; it just doesn't
   # drag the rest of the stack down with it.
   if (@($exporterTaskNames | Where-Object { $taskStartStatus[$_] -eq $false }).Count -gt 0) {
@@ -1072,8 +1071,8 @@ finally {
     # pre-existing task back to what it had before this run), not a
     # per-task one.
     #
-    # Round 17: an 'indeterminate' task (the final sweep's own lookup
-    # failed -- round 15) is left alone entirely here, never restored. The
+    # An 'indeterminate' task (the final sweep's own lookup
+    # failed) is left alone entirely here, never restored. The
     # whole point of 'indeterminate' is "we genuinely don't know its
     # state" -- attempting a restore on it would mean taking a corrective
     # action (stopping a possibly-live replacement, swapping in the saved
@@ -1099,8 +1098,8 @@ finally {
       $taskStartStatus[$taskName] = if ($restored) { 'restored' } else { $false }
     }
   }
-  # A task with no prior existence has no saved definition to fall back to
-  # (round 10). On a clean run that just means an individual failure reports
+  # A task with no prior existence has no saved definition to
+  # fall back to. On a clean run that just means an individual failure reports
   # $false, same as always -- no special handling needed. On an ABORTED run,
   # the same batch-uniformity argument above applies: a fresh task that
   # registered (and maybe even started) successfully before a LATER
@@ -1113,7 +1112,7 @@ finally {
       $taskStartStatus[$taskName] = if ($removed) { 'removed' } else { $false }
     }
   }
-  # Round 12: a task whose stop was ATTEMPTED (Stop-ScheduledTask didn't
+  # A task whose stop was ATTEMPTED (Stop-ScheduledTask didn't
   # throw) but never CONFIRMED (Wait-TaskStopped's own poll timed out) is
   # in neither StoppedTaskNames nor ReplacedTaskNames -- it fell through
   # $rollbackCandidates above entirely. Its definition is guaranteed
@@ -1136,15 +1135,15 @@ finally {
 # task and still exit 0. Anything other than the literal boolean $true --
 # $false (never got running), 'restored' (running, but on the OLD definition
 # because the requested flip failed and was rolled back), 'removed'
-# (unregistered because it was created by this run and the batch aborted --
-# round 10), 'recovered' (an unconfirmed stop turned out fine on retry, or
-# was restarted under its own untouched definition -- round 12),
+# (unregistered because it was created by this run and the batch aborted),
+# 'recovered' (an unconfirmed stop turned out fine on retry, or
+# was restarted under its own untouched definition),
 # 'indeterminate' (a stop was requested and its outcome could not be
-# confirmed even on retry -- round 12), or simply absent (this run never
+# confirmed even on retry), or simply absent (this run never
 # reached the task, always paired with $scriptFailed) -- means the requested
 # change did not verifiably land.
 $notFlippedTasks = @($exporterTaskNames | Where-Object { $taskStartStatus[$_] -ne $true })
-# String-literal-on-the-left throughout below (round 17): $taskStartStatus
+# String-literal-on-the-left throughout below: $taskStartStatus
 # values can be the literal boolean $true, and PowerShell's -eq coerces a
 # non-empty STRING right-hand operand to boolean when the left operand is
 # boolean -- so "$taskStartStatus[$_] -eq 'restored'" would silently also
@@ -1159,7 +1158,7 @@ $notRunningTasks = @($exporterTaskNames | Where-Object { $taskStartStatus.Contai
 
 # Endpoint-level verification (actually probing each /metrics URL) and
 # persisted per-task stdout/stderr logs are supervisor territory, not this
-# installer's -- deferred to HIMMEL-1425.
+# installer's -- deferred to the supervisor.
 Write-Output ''
 Write-Output 'Verification:'
 Write-Output '  Prometheus:       http://127.0.0.1:9090'
@@ -1182,7 +1181,7 @@ foreach ($taskName in $exporterTaskNames) {
     # first) -- report its actual live state rather than assuming failure;
     # an untouched, already-running task from before this run is healthy.
     # Reporting-only (renders a listing line, gates no decision) -- still
-    # uses Resolve-ExistingTask (round 17), not a bare lookup, so a failed
+    # uses Resolve-ExistingTask, not a bare lookup, so a failed
     # query renders as an honest "lookup failed" instead of silently
     # reading as "not registered".
     try {

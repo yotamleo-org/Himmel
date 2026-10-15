@@ -1,4 +1,4 @@
-// HIMMEL-1635 — the suite is the spec for the session-telemetry wiring
+// The suite is the spec for the session-telemetry wiring
 // script. Mirrors scripts/trust/tests/wire-trust-hooks.test.mjs's approach:
 // the properties that matter, in order:
 //   1. it is REVERSIBLE byte-for-byte;
@@ -63,7 +63,7 @@ function fixture(name, obj = BASE, { withWriter = true } = {}) {
   if (withWriter) {
     fs.mkdirSync(path.join(root, 'scripts', 'observability'), { recursive: true });
     fs.copyFileSync(REAL_WRITER, path.join(root, 'scripts', 'observability', 'session-run-hook.ts'));
-    // HIMMEL-2318: the fifth entry's script must exist too, or install refuses.
+    // The fifth entry's script must exist too, or install refuses.
     fs.mkdirSync(path.join(root, 'scripts', 'handover'), { recursive: true });
     fs.copyFileSync(REAL_QUEUE_LOCK, path.join(root, 'scripts', 'handover', 'queue-lock.sh'));
   }

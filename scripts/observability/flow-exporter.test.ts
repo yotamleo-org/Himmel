@@ -18,21 +18,21 @@ beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), "flow-exporter-"));
   previousFetchHealthState = process.env.HIMMEL_FETCH_HEALTH_STATE;
   process.env.HIMMEL_FETCH_HEALTH_STATE = join(tmp, "missing-fetch-health.json");
-  // HIMMEL-1462: same isolation for the tool-call census — no scrape under
+  // Same isolation for the tool-call census — no scrape under
   // test may read the developer's REAL ~/.himmel/tool-call-census.jsonl.
   previousToolCensus = process.env.HIMMEL_TOOL_CENSUS;
   process.env.HIMMEL_TOOL_CENSUS = join(tmp, "missing-tool-census.jsonl");
-  // HIMMEL-1052: point the session ledger at a missing tmp path for every test
+  // Point the session ledger at a missing tmp path for every test
   // that does not exercise it, so a scrape under test never reads (or depends
   // on) the developer's REAL ~/.himmel/session-runs.jsonl.
   previousSessionLedger = process.env.HIMMEL_SESSION_RUNS_LEDGER;
   process.env.HIMMEL_SESSION_RUNS_LEDGER = join(tmp, "missing-session-runs.jsonl");
-  // HIMMEL-2478/2480: same isolation for the hook-chain skip log — no scrape
+  // Same isolation for the hook-chain skip log — no scrape
   // under test may read the developer's REAL
   // <checkout>/.claude/logs/hook-chain-skips.jsonl.
   previousHookChainSkipLog = process.env.RUN_HOOK_CHAIN_SKIP_LOG;
   process.env.RUN_HOOK_CHAIN_SKIP_LOG = join(tmp, "missing-hook-chain-skips.jsonl");
-  // HIMMEL-4652: same isolation for the eval-runs ledger.
+  // Same isolation for the eval-runs ledger.
   previousEvalRuns = process.env.HIMMEL_EVAL_RUNS_LEDGER;
   process.env.HIMMEL_EVAL_RUNS_LEDGER = join(tmp, "missing-eval-runs.jsonl");
 });
@@ -139,7 +139,7 @@ test("golden scrape folds active and rotated flow ledgers", async () => {
     quotaLedgerPath: join(tmp, "missing-quota.jsonl"),
     lanesPath: join(tmp, "empty-lanes.json"),
     platform: "linux",
-    // HIMMEL-3219: an empty /proc, never the developer's live one.
+    // An empty /proc, never the developer's live one.
     procRoot: mkdtempSync(join(tmp, "empty-proc-")),
   }));
 
@@ -251,7 +251,7 @@ raise SystemExit(module.main(["--state", sys.argv[2]]))
   let probe = spawnSync(process.env.PYTHON ?? "python3", ["-c", fixture, producer, state], { encoding: "utf8" });
   if (probe.error && !process.env.PYTHON) {
     // Windows hosts often expose only `python` (no `python3` on PATH); fall back
-    // so the suite does not go red for an environment reason (HIMMEL-1470).
+    // so the suite does not go red for an environment reason.
     probe = spawnSync("python", ["-c", fixture, producer, state], { encoding: "utf8" });
   }
   expect(probe.error).toBeUndefined();
@@ -392,10 +392,10 @@ test("hook-chain budget events count skip/deny rows in the trailing 10m window, 
     // Unparseable JSON: schema drift, must bump the partial comment.
     "{not-json",
     // Missing/unparseable ts: schema drift too, not a normal out-of-window
-    // row — must also bump the partial comment (HIMMEL-2480 CR finding 3).
+    // row — must also bump the partial comment.
     JSON.stringify({ ts: "not-a-date", action: "skip", member: "badts.sh", budget: 3000, elapsed: 3050, reason: "ETIMEDOUT" }),
     // Unknown action: also schema drift now — must bump the partial comment
-    // rather than silently reading as a healthy 0 (HIMMEL-2480 CR finding 3).
+    // rather than silently reading as a healthy 0.
     JSON.stringify({ ts: "2026-07-13T11:57:00.000Z", action: "warn", member: "weird.sh", budget: 3000, elapsed: 3050, reason: "ETIMEDOUT" }),
   ]);
 
@@ -413,7 +413,7 @@ test("hook-chain budget events count skip/deny rows in the trailing 10m window, 
   expect(body).toContain('hook_chain_budget_events_recent{action="deny"} 1');
   expect(body).toContain('hook_chain_budget_events_recent{action="skip"} 2');
   expect(body).toContain("# hook_chain_budget_events_recent partial: 3 malformed or unrecognised skip-log row(s) skipped");
-  // HIMMEL-2478/2480 CR follow-up: the skip log itself was fully readable
+  // The skip log itself was fully readable
   // (only individual rows were malformed) so the health gauge stays 0.
   expect(body).toContain("hook_chain_skip_log_unreadable 0");
 });
@@ -435,7 +435,7 @@ test("hook-chain budget events emit both actions at 0 plus the absent-log commen
   expect(body).toContain("# hook_chain_budget_events_recent: skip log absent, reporting 0");
   expect(body).toContain('hook_chain_budget_events_recent{action="deny"} 0');
   expect(body).toContain('hook_chain_budget_events_recent{action="skip"} 0');
-  // HIMMEL-2478/2480 CR follow-up: absence is not a read failure — the
+  // Absence is not a read failure — the
   // health gauge stays 0 too.
   expect(body).toContain("hook_chain_skip_log_unreadable 0");
 });
@@ -462,7 +462,7 @@ test("hook-chain budget events omit the whole family (no series, only the omitte
 
   expect(body).toMatch(/# hook_chain_budget_events_recent omitted: /);
   expect(body).not.toMatch(/^hook_chain_budget_events_recent\{/m);
-  // HIMMEL-2478/2480 CR follow-up: the family got omitted, but the health
+  // The family got omitted, but the health
   // gauge is what makes that visible to an alert instead of only a comment.
   expect(body).toContain("hook_chain_skip_log_unreadable 1");
 });
@@ -547,7 +547,7 @@ test("hook-chain budget events keep the other logs' counts when one log in the f
   expect(lines).toContain('hook_chain_budget_events_recent{action="skip"} 1');
   expect(lines).toContain('hook_chain_budget_events_recent{action="deny"} 1');
   expect(comments.some((c) => c.includes("1 skip log(s) unreadable"))).toBe(true);
-  // HIMMEL-2478/2480 CR follow-up: unreadableCount is what feeds the new
+  // unreadableCount is what feeds the new
   // hook_chain_skip_log_unreadable health gauge.
   expect(unreadableCount).toBe(1);
 });
@@ -643,7 +643,7 @@ test("HIMMEL-2149: the stall alert TTL is measured from when a run BECAME stalle
   expect(body).toContain('flow_run_outcome_total{flow="slow-flow",outcome="stalled"} 1');
 });
 
-// HIMMEL-2211: liveness split. hermes-invoke-1787956038-3242214 (pid 3242214,
+// Liveness split. hermes-invoke-1787956038-3242214 (pid 3242214,
 // dead) sent 53 Telegram pages in one night because the pre-2211 fold could
 // not tell a real stall from an abandoned run. These tests pin both
 // directions: a confirmed-dead pid must go silent (abandoned), and a
@@ -653,7 +653,7 @@ test("HIMMEL-2149: the stall alert TTL is measured from when a run BECAME stalle
 test("HIMMEL-2211: a ghost row (confirmed-dead pid, same host) becomes abandoned, not stalled", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
   // Default 6h stall deadline. Fired 7h before NOW: expired, same as the
-  // HIMMEL-2149 tests above.
+  // stall tests above.
   writeLines(ledger, [
     serializeFlowRunStart({ ...flowStart("hermes-invoke", "ghost", "2026-07-13T05:00:00Z"), pid: 3242214 }),
   ]);
@@ -748,7 +748,7 @@ test("HIMMEL-2211: an in-flight start is never probed for liveness", async () =>
   expect(probed).toEqual([]);
 });
 
-// HIMMEL-2211: only ESRCH is confirmed death. An unprobeable pid (any error
+// Only ESRCH is confirmed death. An unprobeable pid (any error
 // other than ESRCH/EPERM) must fail safe to alive, same as EPERM — treating
 // it as dead would silently downgrade a real stall to `abandoned` and mute
 // a page-severity alert.
@@ -922,7 +922,7 @@ test("luna backlog counts inbox stages and monthly graduations, read-only", asyn
   writeFileSync(join(clippings, "c.md"), "---\ntitle: raw\n---\nbody\n");
   writeFileSync(join(done, "old.md"), "graduated\n");
 
-  // platform/gitRunner pinned (HIMMEL-1199): this test only cares about the
+  // platform/gitRunner pinned: this test only cares about the
   // synchronous luna backlog walk — without these, vault_path being set also
   // triggers a REAL host-detector powershell spawn and a REAL git spawn,
   // which is slow/environment-dependent and unrelated to what's asserted here.
@@ -999,7 +999,7 @@ test("luna git divergence is omitted with no vault_path configured, without invo
   expect(body).not.toContain("luna_git_");
 });
 
-// Shipped-graph age (HIMMEL-1129, option 3). config.graphify_repos is opt-in
+// Shipped-graph age. config.graphify_repos is opt-in
 // (undefined/empty -> family fully omitted, no obligation on single-station
 // adopters); graphAgeRunner is injected so the render-level wiring is
 // exercised without a real git spawn.
@@ -1077,8 +1077,8 @@ test("shipped-graph age passes each entry's default_branch through to the runner
   expect(seenRefs["C:/luna"]).toBe("main");
 });
 
-// CR round 2 (codex-2/codex-adv-3): the shipped-graph cache used to be keyed
-// by repo_path ALONE, so two config entries watching different branches of
+// The shipped-graph cache must not be keyed
+// by repo_path ALONE, or two config entries watching different branches of
 // the SAME repo aliased onto one cache slot -- the second entry silently
 // inherited the first's result. The composite key (repo_path + ref) fixes
 // this; these two tests exercise it directly.
@@ -1130,7 +1130,7 @@ test("shipped-graph age cache: a repeat scrape with the SAME repo_path+ref reuse
   expect(calls).toBe(2); // one per (repo_path, ref) pair, not one per scrape
 });
 
-// CR round 2 (codex-adv-4): sequential per-repo awaits meant N degraded repos
+// Sequential per-repo awaits would mean N degraded repos
 // = up to N * GIT_QUERY_TIMEOUT_MS before the family (and the WHOLE /metrics
 // response) returned. Concurrency + a shared budget bound the family's total
 // wall time near a single budget window regardless of N, with slow repos
@@ -1149,7 +1149,7 @@ test("shipped-graph age runs per-repo queries CONCURRENTLY: total wall time stay
     ],
   }));
 
-  // platform/gitRunner pinned (same reason as HIMMEL-1199's luna-git tests):
+  // platform/gitRunner pinned:
   // without these, this timing-sensitive test also triggers a REAL
   // host-detector powershell spawn + a real git spawn, polluting elapsedMs.
   const start = performance.now();
@@ -1204,7 +1204,7 @@ test("shipped-graph age: a query exceeding the total budget is omitted with a bu
   expect(body).toContain("# graphify_shipped_graph_age_seconds omitted (corpus=hung): exceeded the 40ms shipped-graph query budget");
 });
 
-// Malformed graphify_repos config (CR round 1, codex-adv-5): this is
+// Malformed graphify_repos config: this is
 // operator-edited JSON, never trusted at the JSON.parse boundary — a bad
 // shape must degrade to an omit comment, never a thrown exception (a crash
 // here would 500 the WHOLE /metrics scrape, not just this one family).
@@ -1370,7 +1370,7 @@ test("readShippedGraphCommitTime: passes the given ref explicitly (CR round 1, c
   expect(seenArgs.indexOf("release/9.9")).toBeLessThan(seenArgs.indexOf("--"));
 });
 
-// runGitDivergence branch discrimination (HIMMEL-1199 CR fix). A genuine
+// runGitDivergence branch discrimination. A genuine
 // "no upstream configured" omits ONLY the unpushed sample (unpushed: null);
 // ANY other rev-list failure — timeout, spawn error, non-"no upstream" nonzero
 // exit, non-numeric output — must PROPAGATE so the caller omits the WHOLE
@@ -1601,7 +1601,7 @@ test("host detector scrape uses TTL cache and drops cache on refresh failure", a
   expect(third).not.toContain("agent_tree_rss_bytes");
 });
 
-// HIMMEL-3219: quiet-run orphan family. Linux-only (/proc), and an unreadable
+// Quiet-run orphan family. Linux-only (/proc), and an unreadable
 // /proc says so with a comment instead of exporting a 0 it never measured.
 test("quiet-run orphan gauge is linux-only, reads the injected proc root, and fails soft", async () => {
   const ledger = join(tmp, "flow-runs.jsonl");
@@ -1631,7 +1631,7 @@ test("quiet-run orphan gauge is linux-only, reads the injected proc root, and fa
 });
 
 // ---------------------------------------------------------------------------
-// HIMMEL-1052 — session + subagent families
+// Session + subagent families
 // ---------------------------------------------------------------------------
 
 function sessionStart(sessionId: string, startedAt: string, transcriptPath: string | null, host = "test-host"): SessionRunRow {
@@ -1650,7 +1650,6 @@ function subagentEndRow(subagentId: string, parent: string, endedAt: string, out
   return { v: 1, kind: "subagent", ev: "end", subagent_id: subagentId, parent_session_id: parent, ended_at: endedAt, outcome };
 }
 
-// HIMMEL-2294
 function sessionCloseRow(sessionId: string, closedAt: string, evidence: SessionCloseEvidence = "queue_lock_release"): SessionRunRow {
   return { v: 1, kind: "session", ev: "close", session_id: sessionId, closed_at: closedAt, evidence };
 }
@@ -1775,7 +1774,7 @@ test("HIMMEL-2294: a close-evidence row suppresses a stale unpaired session from
   const ledger = join(tmp, "session-runs.jsonl");
   const config = join(tmp, "observability.json");
   writeFileSync(config, "{}");
-  // CR fix (codex-1) round 2: this needs a REAL transcript so
+  // This needs a REAL transcript so
   // last_activity_seconds is non-null — declaredClosed now fails closed on a
   // null (missing/unreadable transcript), so a fixture with no transcript
   // could never legitimately test suppression. Last write at 09:03, 2
@@ -2035,7 +2034,7 @@ test("renderSessionsJson serves per-session detail Prometheus labels cannot carr
   expect(dead1.end_reason).toBeNull();
 });
 
-// HIMMEL-4652: eval-runs ledger -> himmel_eval_* series.
+// Eval-runs ledger -> himmel_eval_* series.
 function evalRow(over: Record<string, unknown>): string {
   return JSON.stringify({
     v: 1, ts: "2026-07-10T00:00:00Z", host: "h", source: "s", kind: "eval-run", run_id: "r", eval: "lane-quality",
@@ -2170,7 +2169,7 @@ test("eval-runs scrape survives a thresholds file that is valid JSON but not an 
   expect(body).toContain("# himmel_eval_metric_regression omitted: eval-compare.json unreadable");
 });
 
-// HIMMEL-4662: a malformed band must leave the metric ungated with a diagnostic,
+// A malformed band must leave the metric ungated with a diagnostic,
 // never read as a NaN width that silently reports "no regression".
 test("eval-runs regression gauge skips a metric whose eval-compare.json band is not a finite non-negative number", async () => {
   const thresholds = join(tmp, "bad-band-thresholds.json");

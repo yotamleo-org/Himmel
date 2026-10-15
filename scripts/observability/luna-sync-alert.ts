@@ -1,5 +1,5 @@
 // scripts/observability/luna-sync-alert.ts
-// HIMMEL-1199 — a SEPARATE scheduled checker (NOT part of flow-exporter.ts,
+// A SEPARATE scheduled checker (NOT part of flow-exporter.ts,
 // which must stay a pure Prometheus reader). Root cause: the luna vault's
 // auto-sync PUSH was silently blocked by a gitleaks false positive, so
 // auto-committed commits piled up unpushed (9 deep) with zero visible signal.
@@ -233,7 +233,7 @@ export async function checkLunaSync(opts: {
         // this checker. NOT a genuinely-clean tree, so PRESERVE any
         // in-progress alert state unconditionally — resetting here would wipe
         // the cooldown/rising-edge on a reading that says nothing about
-        // whether changes are piling up (HIMMEL-1199 — only a genuinely-clean
+        // whether changes are piling up (only a genuinely-clean
         // tree resets; LUNA-131 Task 8 step 4 — this holds regardless of
         // sweeper level).
         earlyOutcome = "clean";
@@ -241,7 +241,7 @@ export async function checkLunaSync(opts: {
         // A null unpushed (no upstream) contributes nothing to the count but
         // must NOT mask uncommitted files — either dimension diverging is the
         // blocked-git-op silent failure this checker exists to surface
-        // (HIMMEL-1199 CR: the alert and metric both cover uncommitted files,
+        // (the alert and metric both cover uncommitted files,
         // so the trigger must too).
         unpushedCount = unpushed ?? 0;
         if (unpushedCount <= 0 && uncommitted <= 0) {
@@ -273,8 +273,7 @@ export async function checkLunaSync(opts: {
   // delivered. sendAlert resolves false when there is no chat_id or Telegram
   // dropped the message; persisting lastAlertedAt then would suppress retries
   // for the whole cooldown window with no operator ever notified — recreating
-  // the exact silent failure this checker fights (HIMMEL-1199 CR: codex-adv +
-  // coderabbit).
+  // the exact silent failure this checker fights.
   const delivered = await opts.sendAlert(buildAlertText(unpushedCount, uncommitted, opts.vaultPath, sweeperReason, sweeperYellow));
   if (!delivered) {
     log("luna-sync-alert: alert not delivered (no chat_id or Telegram send failed) — state unchanged, will retry next poll");

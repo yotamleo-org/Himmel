@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# scripts/observability/suite-flake-summary.sh — HIMMEL-5131: read the suite-flake
-# ledger scripts/ci/run-shell-tests.sh appends to (HIMMEL-5116) and summarise this
+# scripts/observability/suite-flake-summary.sh — read the suite-flake
+# ledger scripts/ci/run-shell-tests.sh appends to and summarise this
 # repo's FLAKE rows. Used by console-kit tick.sh (flakes=) and board.mjs.
 #
 #   suite-flake-summary.sh [--since <epoch> | --days <n>] [--now <epoch>]
@@ -19,7 +19,7 @@
 # malformed lines are skipped. Never fails: read problems print ?.
 #
 # The id functions come from scripts/lib/flake-repo-id.sh, the same file the
-# runner sources (HIMMEL-5147).
+# runner sources.
 set -uo pipefail
 
 format=tick since="" days=7 now=""
@@ -53,7 +53,7 @@ fi
 repo_id="${SUITE_FLAKE_REPO_ID:-}"
 if [ -z "$repo_id" ]; then
   here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-  # The id functions are the runner's own (HIMMEL-5147): one lib, never a copy.
+  # The id functions are the runner's own: one lib, never a copy.
   # shellcheck source=scripts/lib/flake-repo-id.sh
   . "$here/scripts/lib/flake-repo-id.sh" 2>/dev/null || unreadable
   repo_id=$(_flake_repo_id "$here")

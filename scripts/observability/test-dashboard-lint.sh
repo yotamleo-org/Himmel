@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-dashboard-lint.sh — HIMMEL-4292: static lint for the provisioned
+# test-dashboard-lint.sh — static lint for the provisioned
 # himmel health dashboard (dashboards/himmel-health.json).
 #
 # Checks, each with a positive control (a broken copy the lint must reject):
@@ -12,8 +12,8 @@
 #      provisioning/datasources/prometheus.yaml — no ${DS_*} variable, no
 #      hard-coded uid that drifts from provisioning;
 #   5. the dashboard provider ships INERT: provisioning/dashboards/ carries
-#      himmel-dashboards.yaml.tmpl (rendered by the Linux installer,
-#      HIMMEL-4289) and NO active *.yaml/*.yml. restart-stack.sh syncs
+#      himmel-dashboards.yaml.tmpl (rendered by the Linux installer)
+#      and NO active *.yaml/*.yml. restart-stack.sh syncs
 #      provisioning/ wholesale onto the station, and a provider whose path is
 #      missing there breaks Grafana provisioning (console ruling 2026-10-04).
 # Reads repo files only; writes broken copies into its own mktemp -d dir.

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# test-promtool-validation.sh — REAL-BINARY positive control for HIMMEL-2239.
+# test-promtool-validation.sh — REAL-BINARY positive control for promtool validation.
 #
 # WHY a second suite: test-restart-stack.sh proves the PLUMBING (resolution
 # order, fail-closed refusal, sync mechanics) against a stub promtool that
 # always exits 0 or 1 on command. None of that proves promtool actually
 # REJECTS a broken rules/config file — a validation step that cannot be shown
-# to reject anything is exactly the vacuous-verdict class HIMMEL-2239 exists
+# to reject anything is exactly the vacuous-verdict class this suite exists
 # to close. This suite runs the REAL promtool binary against a known-good
 # copy of each repo file (negative control: must pass) and a deliberately
 # broken one (positive control: must fail) for both `check rules` and
-# `check config`, plus the `test rules` unit-test fixture HIMMEL-2239 asked
+# `check config`, plus the `test rules` unit-test fixture:
 # whether ANY automated path runs at all — before this suite, none did, so
 # alerts.rules.test.yml was decorative.
 #
@@ -76,11 +76,10 @@ extract_field() {
     ' "$file"
 }
 
-# Case 0 (HIMMEL-2365 rules parity) runs FIRST, ahead of the promtool
+# Case 0 (rules parity) runs FIRST, ahead of the promtool
 # resolution/skip gate below — it needs no binary, and a station with no
-# promtool must not silently skip a genuine parity drift (codex-1, CR round 1:
-# an earlier version placed this after the skip gate, so it never ran at all
-# on a promtool-less machine despite a comment there claiming it already had).
+# promtool must not silently skip a genuine parity drift: placing it after the skip gate would
+# mean it never runs at all on a promtool-less machine.
 echo "=== 0. RULES PARITY (HIMMEL-2365): for: values match between the Grafana and Prometheus twins ==="
 for pair in \
     "himmel_session_dead|- uid: himmel_session_dead|HimmelSessionDead|- alert: HimmelSessionDead" \
@@ -96,7 +95,7 @@ do
     IFS='|' read -r label grafana_marker _name prom_marker <<<"$pair"
     grafana_for="$(extract_for "$SCRIPT_DIR/provisioning/alerting/rules.yaml" "$grafana_marker")"
     prom_for="$(extract_for "$SCRIPT_DIR/alerts.rules.yml" "$prom_marker")"
-    # codex-2, CR round 1: two empty extractions compare equal, which would
+    # Two empty extractions compare equal, which would
     # silently pass a rule block missing or unparseable in BOTH files. Fail
     # loudly on a missing marker instead of trusting the equality alone.
     if [ -z "$grafana_for" ] || [ -z "$prom_for" ]; then
@@ -107,7 +106,7 @@ do
     fi
 done
 
-# Case 0.5 (HIMMEL-2478/2480 noDataState policy): every rule in rules.yaml
+# Case 0.5 (noDataState policy): every rule in rules.yaml
 # must carry the noDataState this table expects, matching rules.yaml's own
 # header comment (NoData only when refId A is a bare metric selector; OK
 # when A embeds a comparison, since empty then means healthy; KeepLast on
@@ -150,7 +149,7 @@ nodatastate_table() {
 }
 
 # Every uid actually in the file, in file order.
-# HIMMEL-2599: Grafana rule uids may contain a hyphen (the public leak scrub
+# Grafana rule uids may contain a hyphen (the public leak scrub
 # renames example-ws_inbox_backlog_rising to example-ws_inbox_backlog_rising) # leak-allow: hostname doc comment naming the rule uid this scrub renames
 # — a class missing the hyphen truncates at it, so the real uid reads as
 # "example" (an unknown uid below) AND the table entry for the full name
@@ -160,7 +159,6 @@ ACTUAL_UIDS="$(grep -oE '^[[:space:]]*- uid: [A-Za-z0-9_-]+' "$RULES_FILE" | awk
 # A duplicate `- uid:` in rules.yaml is invalid for Grafana on its own, and
 # left unchecked it also makes the per-uid loop below silently run the same
 # uid's lookup twice — catch it here, by name, before that loop even starts
-# (HIMMEL-2478/2480 CR finding 3).
 DUP_UIDS="$(printf '%s\n' "$ACTUAL_UIDS" | sort | uniq -d)"
 while IFS= read -r dup; do
     [ -z "$dup" ] && continue
@@ -205,10 +203,9 @@ done < <(nodatastate_table)
 # Resolves the same way restart-stack.sh's own resolve_promtool does — the
 # himmel-observability-prometheus scheduled task's registered Execute path,
 # then PATH — so there is one resolution story in this directory, not two
-# (HIMMEL-2239 CR round-3, codex-1: this suite previously resolved via a
-# LOCALAPPDATA glob instead; not a privilege boundary here the way it was in
-# restart-stack.sh's own sanctioned carve-out, but keeping two resolvers in
-# sync is pure upkeep for no benefit, and this one is strictly less code).
+# (a LOCALAPPDATA glob is not used here: it is not a privilege boundary the
+# way it is in restart-stack.sh's own sanctioned carve-out, and keeping two
+# resolvers in sync is pure upkeep for no benefit).
 # $SCHTASKS_BIN missing (non-Windows, or an unusual station) just falls
 # through to PATH and then the loud-skip below — never a hard failure.
 # Loud-skip (exit 0, never a silent pass) when nothing resolves.

@@ -1,4 +1,4 @@
-// HIMMEL-4289: Grafana webhook contact point -> scripts/luna/cadence-alert.sh.
+// Grafana webhook contact point -> scripts/luna/cadence-alert.sh.
 //
 // WHY: the Linux Grafana tier must alert through the ONE existing sink
 // (cadence-alert.sh: console-readable log + a deduped Telegram DM), not a second

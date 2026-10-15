@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # install-grafana.sh — run Prometheus + Grafana as systemd USER units on Linux,
-# provisioned with the himmel-health dashboard (HIMMEL-4289).
+# provisioned with the himmel-health dashboard.
 #
 # WHY: the dashboard engine is Grafana + Prometheus (operator ruling 2026-10-05).
 # install-stack.sh runs only the flow exporter; this is the opt-in tier above it
-# (HIMMEL-4280 spec §3). Nothing here needs root and nothing is a distro package:
+# (see the observability spec). Nothing here needs root and nothing is a distro package:
 # both servers are the UPSTREAM release tarballs, pinned by version and sha256,
 # unpacked under one machine-local directory.
 #
@@ -25,7 +25,7 @@
 # which calls scripts/luna/cadence-alert.sh — one dedupe path, one log. The
 # Windows Telegram contact point (GRAFANA_TELEGRAM_*) is not used here.
 #
-# macOS is not supported yet (launchd packaging): HIMMEL-4406.
+# macOS is not supported yet (launchd packaging).
 #
 # ponytail: the pins below are bumped by hand, upgrade path: a pin-bump check in
 # himmel-doctor once a second pinned upstream binary exists.
@@ -77,7 +77,7 @@ resolve_root() {
 . "$SCRIPT_DIR/../lib/resolve-bun.sh"
 find_bun() { resolve_bun; }
 
-# systemd expands % specifiers in unit values, even inside quotes (HIMMEL-4342)
+# systemd expands % specifiers in unit values, even inside quotes
 unit_escape() { printf '%s' "$1" | sed -e 's/%/%%/g'; }
 
 case "$(uname -m 2>/dev/null)" in
@@ -137,7 +137,7 @@ render_config() {
     # This file embeds the token, so it is 0600 too.
     (umask 077; cat > "$prov/alerting/contact-points.yaml" <<EOF
 
-# Rendered by install-grafana.sh (HIMMEL-4289): alerts go to cadence-alert.sh through
+# Rendered by install-grafana.sh: alerts go to cadence-alert.sh through
 # grafana-cadence-hook.ts, never to Telegram directly.
 apiVersion: 1
 

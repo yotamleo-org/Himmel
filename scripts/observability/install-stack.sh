@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# install-stack.sh — run the HIMMEL-922 flow exporter as a user service on
-# Linux (systemd --user) and macOS (launchd agent) (HIMMEL-4288).
+# install-stack.sh — run the flow exporter as a user service on
+# Linux (systemd --user) and macOS (launchd agent).
 #
 # WHY: the flow exporter (scripts/observability/flow-exporter.ts) only helps if
 # it is up when the operator looks; a hand-started `bun run` dies with the
@@ -10,7 +10,7 @@
 #   install-stack.sh [install|status|uninstall]     (default: install)
 #
 # Scope: the EXPORTER ONLY. Prometheus + Grafana are a separate opt-in tier
-# (HIMMEL-4280 spec §3, HIMMEL-2333 option (a)) and are not installed here.
+# and are not installed here.
 # Windows uses install-stack.ps1.
 #
 # The unit/plist points at the PRIMARY checkout (via git-common-dir, as
@@ -59,7 +59,7 @@ find_bun() { resolve_bun; }
 # sed, not ${s//x/&y}: bash 5.2 patsub_replacement treats a bare & in the replacement as the match
 xml_escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
-# systemd expands % specifiers in unit values, even inside quotes (HIMMEL-4342)
+# systemd expands % specifiers in unit values, even inside quotes
 unit_escape() { printf '%s' "$1" | sed -e 's/%/%%/g'; }
 
 # probe: one pass over /healthz, then /metrics if /healthz is a 404.

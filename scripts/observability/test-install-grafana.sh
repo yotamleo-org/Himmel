@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite for scripts/observability/install-grafana.sh (HIMMEL-4289): the Linux
+# Suite for scripts/observability/install-grafana.sh: the Linux
 # Prometheus + Grafana user-unit installer. Every external tool it drives —
 # uname, systemctl, curl, sha256sum, bun, sleep — is a PATH stub, tar is real
 # (a fixture tarball), and HOME/XDG point at a throwaway tree, so no case

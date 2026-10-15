@@ -252,7 +252,7 @@ test("utcIso emits the same second-resolution UTC shape the other ledgers use", 
 
 
 // ---------------------------------------------------------------------------
-// HIMMEL-2022: the outage, the enrichment pass, and the failure log.
+// The outage, the enrichment pass, and the failure log.
 // ---------------------------------------------------------------------------
 
 const TRANSCRIPT_LINES = [
@@ -391,7 +391,7 @@ test("the entrypoint stays fail-open on garbage stdin — exit 0, no row, one er
   expect(readFileSync(join(tmp, "garbage", "session-runs.errors.log"), "utf8")).toContain("session-start");
 });
 
-// HIMMEL-2294: session-close is invoked directly (not from a piped hook
+// Session-close is invoked directly (not from a piped hook
 // payload), so its entrypoint test spawns with NO stdin at all and passes
 // the session id via env instead.
 async function runSessionClose(env: Record<string, string | undefined>, argv: string[], ledger: string): Promise<number> {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Per-session tool-call / error / denial census from Claude Code transcripts
-# (HIMMEL-1462, the MVP slice of the Jarvis tool-call observability epic).
+# (the MVP slice of the Jarvis tool-call observability epic).
 #
 # Pure reader over `~/.claude/projects/<slug>/<session-id>.jsonl`. It never
 # writes a transcript, never starts a probe, never talks to a network: the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite for scripts/observability/install-stack.sh (HIMMEL-4288): the
+# Suite for scripts/observability/install-stack.sh: the
 # Linux/macOS flow-exporter user service. Every external tool the installer
 # drives — uname, systemctl, launchctl, curl, bun, crontab, sleep — is a
 # PATH stub (test-restart-stack.sh convention), and HOME points at a

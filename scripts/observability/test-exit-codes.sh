@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# scripts/observability/test-exit-codes.sh - lint for the exit-code registry (HIMMEL-4853).
+# scripts/observability/test-exit-codes.sh - lint for the exit-code registry.
 # A script marked "table": true documents its rcs as '#   <n> - <meaning>' header rows; the lint fails when such
 # a row names an rc the registry lacks. Prose-documented scripts are seeded by hand and not linted (ponytail:
-# prose is not machine-readable, a table convention for them is HIMMEL-4853 ask 3's follow-up).
+# prose is not machine-readable, a table convention for them is a follow-up).
 # check() evals its condition, so the single quotes are deliberate.
 # shellcheck disable=SC2016
 set -u

@@ -1,4 +1,4 @@
-# HIMMEL-923 host-level observability detectors.
+# Host-level observability detectors.
 # Report-only: emits JSON for the flow exporter and never controls processes.
 [CmdletBinding()]
 param(

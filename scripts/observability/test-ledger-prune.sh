@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/observability/ledger-prune.sh (HIMMEL-2149).
+# Smoke test for scripts/observability/ledger-prune.sh.
 # NEVER touches the live ~/.himmel/flow-runs.jsonl — every case runs against
 # a scratch --ledger fixture under a mktemp dir.
 set -uo pipefail
@@ -85,7 +85,7 @@ grep -q 'nothing to prune' "$tmp/out5.txt" || { echo "FAIL: T5 missing nothing-t
 bash "$SCRIPT" --cutoff-hours >"$tmp/out6.txt" 2>&1
 check "$?" "2" "T6 rc"
 
-# 7. CR round 1 (codex-3): "0", ".", and "1.2.3" are not meaningful positive
+# 7. "0", ".", and "1.2.3" are not meaningful positive
 # cutoffs and must be refused rc=2, not silently accepted (a "0" cutoff would
 # have pruned every unpaired start regardless of age).
 for bad in 0 . 1.2.3; do
@@ -93,7 +93,7 @@ for bad in 0 . 1.2.3; do
   check "$?" "2" "T7 rc (--cutoff-hours '$bad')"
 done
 
-# 8. CR round 1 (codex-1): the DEFAULT cutoff (30h) must not prune a row that
+# 8. the DEFAULT cutoff (30h) must not prune a row that
 # is still inside the exporter's own alerting window for the DEFAULT 6h
 # stall deadline (deadline + FLOW_STALLED_ALERT_TTL_SECONDS = 6h + 24h =
 # 30h) — a 25h-old unpaired start is well past the 6h deadline (so it IS

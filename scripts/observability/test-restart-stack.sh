@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Suite for scripts/observability/restart-stack.sh (HIMMEL-2133). Stubs
+# Suite for scripts/observability/restart-stack.sh. Stubs
 # schtasks, curl AND sleep via a PATH-stub bin dir (scripts/handover/test-
 # merge-on-green.sh convention) and points LOCALAPPDATA at a throwaway tree
 # so the grafana provisioning re-sync case never touches real machine state.
-# The script itself has NO env-selected executables (HIMMEL-2133 CR round-2,
-# codex-1) — the port-free probe is a plain `curl` connect-check, so the same
+# The script itself has NO env-selected executables
+# — the port-free probe is a plain `curl` connect-check, so the same
 # PATH-stub `curl` that answers health checks also answers it (a URL ending
 # in "/" is the port-probe shape; anything else is a health check), and the
 # stub `sleep` makes the script's ~30s/~60s bounded polls cost nothing here.
 #
 # Each case runs a COPY of the script (+ its provisioning/ sibling) in a
 # non-git tmp dir, never the real in-repo path — restart-stack.sh's own
-# branch guard (HIMMEL-2133 CR round-1, codex-1) refuses to run from
+# branch guard refuses to run from
 # anything but a main/master checkout, and this worktree is on a feature
 # branch. A tmp dir with no .git makes `git -C ... rev-parse` fail, which the
 # guard treats as empty/inconclusive-but-allowed — the same convention
@@ -72,14 +72,14 @@ run_captured() {
     OUT="$(cat "$out")"
 }
 
-# patch_schtasks_stub <script-file> — strict pin, sed-in-copy (HIMMEL-2133 CR
-# round-3, codex-1): restart-stack.sh pins SCHTASKS_BIN to schtasks.exe's
+# patch_schtasks_stub <script-file> — strict pin, sed-in-copy:
+# restart-stack.sh pins SCHTASKS_BIN to schtasks.exe's
 # absolute Windows path with NO PATH fallback in production. Assert the pin
 # line exists FIRST so a future rename of the constant fails this suite
 # loudly instead of silently testing against the real Windows schtasks.exe,
 # then rewrite it in the given throwaway copy to point at THIS case's
-# PATH-stub. Applied to EVERY script copy the suite runs (HIMMEL-2133 CR
-# round-5, codex-1) — including the ad-hoc branch-guard copies below, which
+# PATH-stub. Applied to EVERY script copy the suite runs
+# — including the ad-hoc branch-guard copies below, which
 # previously skipped this and could reach the real pinned binary if the
 # branch guard ever unexpectedly let them through.
 patch_schtasks_stub() {
@@ -117,7 +117,7 @@ setup_case() {
     chmod +x "$script_copy_dir/restart-stack.sh"
     SCRIPT="$script_copy_dir/restart-stack.sh"
 
-    # Task-derived promtool resolution (HIMMEL-2239 CR round-1, codex-1):
+    # Task-derived promtool resolution:
     # resolve_promtool now reads the himmel-observability-prometheus task's
     # own "Task To Run:" line via //Query instead of globbing LOCALAPPDATA,
     # so the schtasks stub below must answer that query realistically. This
@@ -143,7 +143,7 @@ setup_case() {
     # both resolve_promtool's pre-restart query and the post-restart
     # health-failure query have what they each grep for from the one stub.
     # //Run optionally appends SEED_GRAFANA_LOG_LINE to SEED_GRAFANA_LOG_FILE
-    # (HIMMEL-2133 CR round-6, codex-2) — simulates Grafana itself writing a
+    # — simulates Grafana itself writing a
     # provisioning-error line to its log at startup, AFTER
     # snapshot_grafana_log_watermark already ran (right before //End), so it
     # lands as a genuinely NEW line for verify_grafana_provisioning_loaded to
@@ -166,7 +166,7 @@ STUB
     chmod +x "$BIN/schtasks"
 
     # One stub serves BOTH calls restart-stack.sh makes through `curl`
-    # (HIMMEL-2133 CR round-2, codex-1 — no env-selected probe program, so
+    # (no env-selected probe program, so
     # the port-free check is itself a `curl` connect attempt against
     # "http://127.0.0.1:<port>/"): a URL ending in "/" is the port-probe
     # shape (PORT_PROBE_HOLD_CALLS "held" responses — exit 0, something
@@ -207,9 +207,9 @@ exit 0
 STUB
     chmod +x "$BIN/sleep"
 
-    # promtool PATH stub (HIMMEL-2149) — kept so a case that removes the
+    # promtool PATH stub — kept so a case that removes the
     # task-derived stub below still exercises the PATH-fallback half of
-    # resolve_promtool (HIMMEL-2239 CR round-1, codex-1: task-derived is now
+    # resolve_promtool (task-derived is now
     # the primary resolution, PATH is the degrade-path). Writes to
     # PATH_PROMTOOL_MARKER (default /dev/null) so a case can prove this one
     # was NOT the one invoked when the task-derived stub is present.
@@ -223,7 +223,7 @@ exit "${PROMTOOL_RC:-0}"
 STUB
     chmod +x "$BIN/promtool"
 
-    # promtool task-derived stub (HIMMEL-2239 CR round-1, codex-1) — planted
+    # promtool task-derived stub — planted
     # beside the fake prometheus.exe in $TASK_EXE_DIR, the exact directory
     # resolve_promtool now derives from the schtasks "Task To Run:" line
     # (never from LOCALAPPDATA directly — that was the reviewed defect).
@@ -354,7 +354,7 @@ case "$OUT" in
     *"Last Result"*) pass "failure output surfaces Last Result via //Query" ;;
     *) fail "failure output surfaces Last Result via //Query" "got: $OUT" ;;
 esac
-# 3, not 1 (HIMMEL-2239 CR round-1, codex-1): resolve_promtool now issues its
+# 3, not 1: resolve_promtool now issues its
 # own //Query //TN himmel-observability-prometheus //V //FO LIST BEFORE the
 # restart even starts (task-derived promtool resolution) — once for
 # sync_prometheus_alert_rules, once more for sync_prometheus_config (each
@@ -390,7 +390,7 @@ patch_schtasks_stub "$BRANCH_DIR/scripts/observability/restart-stack.sh"
 chmod +x "$BRANCH_DIR/scripts/observability/restart-stack.sh"
 git init -q "$BRANCH_DIR" >/dev/null 2>&1
 git -C "$BRANCH_DIR" checkout -q -b feat/some-worktree-copy >/dev/null 2>&1
-# A commit is REQUIRED (HIMMEL-2133 CR round-5, codex-1) to test the
+# A commit is REQUIRED to test the
 # INTENDED refusal path robustly. Empirically verified by hand: on a truly
 # unborn HEAD (no commit), `git rev-parse --abbrev-ref HEAD` fails but still
 # prints the literal word "HEAD" to STDOUT (the diagnostic goes to stderr) —
@@ -428,7 +428,7 @@ chmod +x "$NOGIT_DIR/scripts/observability/restart-stack.sh"
 # NOT the branch guard's verdict (it is ALLOWED, by the script's own design)
 # — it is proving that even so, with patch_schtasks_stub applied, only the
 # PATH-stub schtasks is ever reachable, never the real pinned binary
-# (HIMMEL-2133 CR round-5, codex-1). This is also exactly what setup_case's
+# This is also exactly what setup_case's
 # OWN $SCRIPT copy already is, so every other case in this suite already
 # relies on this same "no .git -> empty -> allowed" behavior implicitly.
 run_captured env PATH="$BIN:$PATH" \
@@ -561,8 +561,7 @@ rm -f "$BIN/promtool" "$TASK_EXE_DIR/promtool.exe"
 RULES_DEST14b="$LOCALAPPDATA_DIR/himmel/observability/alerts.rules.yml"
 mkdir -p "$(dirname "$RULES_DEST14b")"
 echo "pre-existing rules that must survive an unresolvable promtool" > "$RULES_DEST14b"
-# PATH is $BIN + /usr/bin ONLY here (no ":$PATH" fallback, HIMMEL-2149 CR
-# round-3, codex-2): the ordinary "$BIN:$PATH" shape lets a real promtool
+# PATH is $BIN + /usr/bin ONLY here (no ":$PATH" fallback): the ordinary "$BIN:$PATH" shape lets a real promtool
 # elsewhere on the OPERATOR's ambient PATH leak in and mask the absent-tool
 # branch under test. /usr/bin is MSYS's own coreutils (cp/mv/rm/mkdir/date/
 # cmp/cygpath — everything restart-stack.sh itself calls); schtasks/curl/
@@ -576,7 +575,7 @@ assert_eq "prometheus restart exits 1 when promtool is unresolvable" "1" "$RC"
 assert_eq "the pre-existing alert-rules file is left untouched" \
     "pre-existing rules that must survive an unresolvable promtool" "$(cat "$RULES_DEST14b" 2>/dev/null)"
 # schtasks IS invoked now (resolve_promtool's own //Query, task-derived
-# resolution, HIMMEL-2239 CR round-1) even though it comes back empty-handed
+# resolution) even though it comes back empty-handed
 # here — the MUTATING calls (//End, //Run) are what must never fire.
 assert_eq "schtasks //End is never issued when promtool is unresolvable" "0" "$(grep -c '//End' "$SCHTASKS_LOG")"
 assert_eq "schtasks //Run is never issued when promtool is unresolvable" "0" "$(grep -c '//Run' "$SCHTASKS_LOG")"
@@ -691,7 +690,7 @@ mkdir -p "$(dirname "$RULES_DEST15")"
 echo "existing rules that must survive a failed promtool check" > "$RULES_DEST15"
 # PROMTOOL_FAIL_KIND=rules (not the blunter PROMTOOL_RC=1) isolates the
 # rules-check failure specifically, now that the same promtool also runs a
-# config check (HIMMEL-2242) — this proves the rules failure alone is what
+# config check — this proves the rules failure alone is what
 # refuses the sync, not merely "promtool exits nonzero for anything".
 run_captured env PATH="$BIN:$PATH" LOCALAPPDATA="$LOCALAPPDATA_DIR" \
     SCHTASKS_LOG="$SCHTASKS_LOG" CURL_LOG="$CURL_LOG" PROMTOOL_FAIL_KIND=rules \
@@ -700,8 +699,7 @@ run_captured env PATH="$BIN:$PATH" LOCALAPPDATA="$LOCALAPPDATA_DIR" \
 assert_eq "a failed promtool check exits non-zero" "1" "$RC"
 assert_eq "the pre-existing alert-rules file is untouched" \
     "existing rules that must survive a failed promtool check" "$(cat "$RULES_DEST15" 2>/dev/null)"
-# resolve_promtool's own //Query (task-derived resolution, HIMMEL-2239 CR
-# round-1) DOES reach schtasks and succeeds — it is the subsequent `promtool
+# resolve_promtool's own //Query (task-derived resolution) DOES reach schtasks and succeeds — it is the subsequent `promtool
 # check rules` that fails. Only the MUTATING calls must never fire.
 assert_eq "schtasks //End is never issued when promtool check rules fails" "0" "$(grep -c '//End' "$SCHTASKS_LOG")"
 assert_eq "schtasks //Run is never issued when promtool check rules fails" "0" "$(grep -c '//Run' "$SCHTASKS_LOG")"

@@ -1,4 +1,4 @@
-# agent-runtime-census.ps1 (HIMMEL-1988) - REPORT-ONLY Windows agent-runtime
+# agent-runtime-census.ps1 - REPORT-ONLY Windows agent-runtime
 # evidence collector for the RAM + MCP lifecycle program (P0-1).
 #
 # WHY: the Windows kernel pool grows under agent/tool churn (File / Toke / FMfn
@@ -89,7 +89,7 @@ $script:McpExeNames = @(
 # --- redaction ---------------------------------------------------------------
 
 # Anchored credential shapes, mirroring the ledger-append.sh --detail scrub
-# (HIMMEL-1176) so both surfaces redact the same things. Lightweight, not a
+# so both surfaces redact the same things. Lightweight, not a
 # full gitleaks pass.
 function Get-ScrubbedToken {
   param([string]$Text)
@@ -99,7 +99,7 @@ function Get-ScrubbedToken {
   $t = $t -replace '(?i)bearer\s+[A-Za-z0-9._-]{16,}', 'bearer [REDACTED]'
   # `_-` inside the body: modern keys are hyphenated (`sk-proj-…`, `sk-ant-…`),
   # which the bare alphanumeric class this was copied from does not match
-  # (codex panel; ledger-append.sh's copy was aligned by HIMMEL-1996 - keep the
+  # (ledger-append.sh's copy is aligned - keep the
   # two surfaces in lockstep).
   $t = $t -replace 'sk-[A-Za-z0-9][A-Za-z0-9_-]{15,}', '[REDACTED]'
   $t = $t -replace 'AKIA[0-9A-Z]{16}', '[REDACTED]'
@@ -140,10 +140,10 @@ $script:KnownBooleanFlags = @('-y', '--yes', '-q', '--quiet', '--no-install', '-
 # The ONLY command-line-derived field that reaches the JSON: ONE argument -
 # the first token that identifies what is running. `uvx --with <pin> pkg` must
 # identify as `pkg`, not as `--with` (which would collapse every uvx server
-# into one duplicate group - the failure HIMMEL-1328 fixed in
+# into one duplicate group - the failure avoided in
 # reap-mcp-fleet.ps1), so leading flags are stepped over.
 #
-# A flag is assumed to take a value BY DEFAULT (codex panel, HIMMEL-1988).
+# A flag is assumed to take a value BY DEFAULT.
 # Enumerating the value-taking ones cannot be safe: the token after an UNKNOWN
 # flag - `--prompt <text>`, `-c <code>`, `--from <src>` - is exactly where a
 # prompt, a program or a credential sits, and one unlisted flag is one leak.
@@ -182,7 +182,7 @@ function Get-FirstArg {
     $a = ([string]$tokens[1] -split '=')[0]
     # A SHORT flag can carry its value glued (`-psecret`): no `=`/`:` to cut at
     # and no following token to step over, so the value would ride the fallback
-    # into the row (HIMMEL-1997). Keep the flag letter only. `--long` forms are
+    # into the row. Keep the flag letter only. `--long` forms are
     # untouched - their value is always delimited or a separate token.
     if (-not $a.StartsWith('--') -and $a.Length -gt 2) { $a = $a.Substring(0, 2) }
   }
@@ -213,7 +213,7 @@ function Test-CensusMcpRoot {
   # (`cmd /c npx <pkg>`) is deliberately NOT a fleet root here. Under the
   # exe + first-argument redaction rule its identity would be `cmd.exe /c`,
   # which groups unrelated servers into one bucket and manufactures false
-  # duplicates - the exact failure HIMMEL-1328 fixed in reap-mcp-fleet.ps1's
+  # duplicates - the exact failure avoided in reap-mcp-fleet.ps1's
   # Get-ServerIdentity. Such processes still land in the family counts.
 }
 

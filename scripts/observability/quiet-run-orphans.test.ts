@@ -1,4 +1,4 @@
-// HIMMEL-3219: hermetic tests for the /proc quiet-run orphan scan. The "proc
+// Hermetic tests for the /proc quiet-run orphan scan. The "proc
 // root" is a temp tree of real files and symlinks, so the scan exercises real
 // readdir/readlink/readFile semantics without touching the live /proc.
 import { afterEach, beforeEach, expect, test } from "bun:test";
@@ -109,7 +109,7 @@ test("a follower of a deleted log has no writer", () => {
   expect(scanQuietRunOrphans(root).tail).toBe(1);
 });
 
-// HIMMEL-3235: the follower's argv names the pathname, but its fd is what pins
+// The follower's argv names the pathname, but its fd is what pins
 // the inode. A writer of a NEW file at the same pathname must not shield it.
 test("a follower on a deleted log stays orphaned when a writer recreated the same pathname", () => {
   addProc(1, { comm: "systemd", ppid: 0, args: ["/sbin/init"] });

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite for scripts/observability/agent-runtime-census.{ps1,sh} (HIMMEL-1988).
+# Suite for scripts/observability/agent-runtime-census.{ps1,sh}.
 #
 # Canned fixtures only. Every case below pins OUR contract - the supervisor /
 # fleet-root / duplicate classification, the exe+first-arg redaction, the
@@ -216,7 +216,7 @@ assert_eq "a /flag:value switch keeps only the flag name" "0" "$(grep -c 'hunter
 assert_eq "the /flag:value identity" "qmd.exe token" \
     "$(jread "$OUT" 0 'o.supervisors[1].mcp_roots.find(r=>r.pid===205).identity')"
 assert_eq "an escaped quote inside a flag value leaks no fragment" "0" "$(grep -c 'hunter6secret' "$OUT")"
-# HIMMEL-1997: a short flag whose value is GLUED (`-psecret`) and is the ONLY
+# A short flag whose value is GLUED (`-psecret`) and is the ONLY
 # argument reaches the first-flag fallback with nothing to cut at and no next
 # token to step over - the flag letter is all that may be kept. `python.exe -c`
 # above pins the other half: a 2-char short flag is left alone.

@@ -125,7 +125,7 @@ function Invoke-FocusPollLoop {
     if ($null -ne $info) {
       if (Test-FocusChanged -PreviousKey $previousKey -CurrentKey $info.Key) {
         $line = Format-FocusRecord -ProcessId $info.Pid -Exe $info.Exe -Title $info.Title -Timestamp (Get-Date)
-        # utf8NoBOM, not utf8 (HIMMEL-1432): under Windows PowerShell 5.1 the
+        # utf8NoBOM, not utf8: under Windows PowerShell 5.1 the
         # `utf8` encoding writes a BOM. focus.jsonl is consumed by Node
         # (focus-tick-correlate.mjs), whose readFileSync(...,'utf8') does NOT
         # strip a BOM -- JSON.parse would then throw on the first record and the

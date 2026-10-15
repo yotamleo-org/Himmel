@@ -1,4 +1,4 @@
-// HIMMEL-4289: hermetic tests for the Grafana webhook -> cadence-alert.sh bridge.
+// Hermetic tests for the Grafana webhook -> cadence-alert.sh bridge.
 // The runner is injected, so no case spawns a real script or sends a real DM.
 import { expect, test } from "bun:test";
 import { LISTEN_HOST, MAX_BODY_BYTES, alertCalls, createHandler, startServer } from "./grafana-cadence-hook";

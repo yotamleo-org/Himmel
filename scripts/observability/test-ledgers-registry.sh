@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# Lint for scripts/observability/ledgers.json — the ledger registry (HIMMEL-4290).
+# Lint for scripts/observability/ledgers.json — the ledger registry.
 #
 # Keeps the registry current, structurally rather than by prose:
 #   1. ledgers.json parses and every row carries every required field.

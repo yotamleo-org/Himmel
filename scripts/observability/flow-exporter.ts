@@ -1,4 +1,4 @@
-// HIMMEL-922 passive Prometheus exporter over local flow/quota ledgers.
+// Passive Prometheus exporter over local flow/quota ledgers.
 // Pure reader: no ledger writes, no process control, no enforcement.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -21,14 +21,14 @@ import { defaultClaudeCachePath, readClaudeBank, readCodexBank, readGlmBank, rea
 
 const LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
 const DEFAULT_STALL_DEADLINE_SECONDS = 6 * 60 * 60;
-// HIMMEL-1052: transcript inactivity that flips an unpaired session_start from
+// Transcript inactivity that flips an unpaired session_start from
 // `running` to `dead`. Deliberately generous — an interactive session waiting
 // on the operator (mid-thought, on a permission prompt, at lunch) writes
 // nothing to its transcript either, and calling that dead would be worse than
 // a late crash detection. Operator-tunable via
 // `observability.json` -> `sessions.stale_after_seconds`.
 const DEFAULT_SESSION_STALE_AFTER_SECONDS = 15 * 60;
-// HIMMEL-2075: HimmelSessionDead is a level check (`session_dead_total > 0`,
+// HimmelSessionDead is a level check (`session_dead_total > 0`,
 // `for: 0m`) with no separate windowing of its own — once a start row crosses
 // DEFAULT_SESSION_STALE_AFTER_SECONDS it stays `dead` on every render until it
 // ages out of the 14-day LOOKBACK_MS ledger window, so the alert pages
@@ -43,14 +43,14 @@ const DEFAULT_SESSION_STALE_AFTER_SECONDS = 15 * 60;
 // 24h: long enough to page once for a session that died overnight, short
 // enough that a multi-day backlog stops re-paging on every evaluation.
 const SESSION_DEAD_ALERT_TTL_SECONDS = 24 * 60 * 60;
-// HIMMEL-2149: same shape as SESSION_DEAD_ALERT_TTL_SECONDS above, for
+// Same shape as SESSION_DEAD_ALERT_TTL_SECONDS above, for
 // flow_run_outcome_total{outcome="stalled"} — the OTHER alerting gauge with
 // no TTL of its own. HimmelFlowRunStalled is a level check (`> 0`, `for:
 // 0m`), so once an unpaired start row crosses its stall deadline
 // (deadlineSeconds()) it counted as stalled on EVERY render until it aged out
 // of the 14d LOOKBACK_MS window — a single killed worker paged on the 12h
-// HimmelFlowRunStalled interval for up to 14 days (HIMMEL-2149 evidence:
-// hermes-invoke x10 + pipeline-harvest x1, ghost rows from 08-11 to 08-25).
+// HimmelFlowRunStalled interval for up to 14 days (observed: ghost rows
+// from hermes-invoke and pipeline-harvest lingering for two weeks).
 // Measured from when the row BECAME stalled (ageS - deadlineSeconds), not
 // from raw age, for the same reason as SESSION_DEAD_ALERT_TTL_SECONDS: raw
 // age would shorten the window by deadlineSeconds and, for any flow whose
@@ -71,7 +71,7 @@ type FlowConfig = {
 export type ObservabilityConfig = {
   flows?: FlowConfig[];
   expected_tasks?: string[];
-  // HIMMEL-2075: tasks in expected_tasks the operator has allowlisted as
+  // Tasks in expected_tasks the operator has allowlisted as
   // intentionally disabled right now — exempts them from
   // HimmelScheduledTaskDisabled without removing them from expected_tasks
   // (so they still get scheduled_task_exists/enabled coverage for anything
@@ -84,7 +84,7 @@ export type ObservabilityConfig = {
     codex_sessions_dir?: string;
     glm_ledger_path?: string;
   };
-  // HIMMEL-1129: repos whose tracked graphify-out/graph.json (HIMMEL-1123)
+  // Repos whose tracked graphify-out/graph.json
   // should be watched for shipped-graph staleness. Absent/empty = the family
   // is omitted entirely (opt-in, no obligation on single-station adopters).
   // default_branch (default "main") is the LOCAL ref read — see
@@ -93,7 +93,7 @@ export type ObservabilityConfig = {
   // consumers runtime-validate it (validateGraphifyRepos) rather than trusting
   // this static type at the JSON.parse boundary.
   graphify_repos?: Array<{ corpus: string; repo_path: string; default_branch?: string }>;
-  // HIMMEL-1052: session/subagent liveness tuning. Same shape discipline as
+  // Session/subagent liveness tuning. Same shape discipline as
   // flows[].stall_deadline_seconds — one number, operator-edited, validated at
   // read time rather than trusted from this static type.
   sessions?: { stale_after_seconds?: number };
@@ -126,7 +126,7 @@ type HostDetectorResult = {
 
 type HostDetectorRunner = () => unknown | Promise<unknown>;
 
-// luna_git_* (HIMMEL-1199): local-refs-only divergence read for the luna vault
+// luna_git_*: local-refs-only divergence read for the luna vault
 // clone. `unpushed` is null when the branch has no upstream configured (@{u}
 // fails) — omitted, never fabricated as 0. NO fetch anywhere in this path: a
 // true "behind" count needs a fetch, which would violate the exporter's
@@ -134,7 +134,7 @@ type HostDetectorRunner = () => unknown | Promise<unknown>;
 export type GitDivergenceResult = { unpushed: number | null; uncommittedFiles: number };
 export type GitRunner = (vaultPath: string) => GitDivergenceResult | Promise<GitDivergenceResult>;
 
-// HIMMEL-2211: liveness is what separates a real stall from a ghost row. An
+// Liveness is what separates a real stall from a ghost row. An
 // unpaired start past its deadline is only a STALL if the process behind it
 // is still alive. A start row whose pid is gone is an ABANDONED run — the
 // process died without writing its end row (killed worker, reboot). Real
@@ -151,7 +151,7 @@ export type GitRunner = (vaultPath: string) => GitDivergenceResult | Promise<Git
 export type PidLivenessRunner = (pids: number[]) => Set<number>;
 
 // One snapshot of every running pid, not one probe per row: the spawn cost is
-// what would push the render past the scrape budget (HIMMEL-2211 — the render
+// what would push the render past the scrape budget (the render
 // is already ~6.6s against a 10s Prometheus scrape_timeout).
 export function defaultPidLiveness(pids: number[], platform: NodeJS.Platform = process.platform): Set<number> {
   if (pids.length === 0) return new Set<number>();
@@ -168,7 +168,7 @@ export function defaultPidLiveness(pids: number[], platform: NodeJS.Platform = p
         const m = /^"[^"]*","(\d+)"/.exec(line.trim());
         if (m) running.add(Number(m[1]));
       }
-      // HIMMEL-2211: a self-pid sentinel, not an empty-parse check — this
+      // A self-pid sentinel, not an empty-parse check — this
       // process is definitionally alive, so a complete tasklist snapshot
       // MUST contain process.pid. Its absence proves the snapshot is
       // incomplete (truncated, filtered, or in an unexpected format), which
@@ -226,7 +226,7 @@ export type RenderMetricsOptions = {
   configPath?: string;
   flowLedgerPath?: string;
   quotaLedgerPath?: string;
-  // HIMMEL-4652: eval-runs ledger and the eval-compare noise-band table.
+  // Eval-runs ledger and the eval-compare noise-band table.
   evalRunsLedgerPath?: string;
   evalThresholdsPath?: string;
   sessionLedgerPath?: string;
@@ -237,17 +237,17 @@ export type RenderMetricsOptions = {
   platform?: NodeJS.Platform;
   schedulerRunner?: SchedulerRunner;
   hostDetectorRunner?: HostDetectorRunner;
-  // HIMMEL-3219: test seam for the quiet-run orphan scan's /proc root.
+  // Test seam for the quiet-run orphan scan's /proc root.
   procRoot?: string;
   gitRunner?: GitRunner;
-  // HIMMEL-2211: test seam for the flow-stall liveness probe (defaultPidLiveness).
+  // Test seam for the flow-stall liveness probe (defaultPidLiveness).
   pidLivenessRunner?: PidLivenessRunner;
-  // HIMMEL-2211: test seam for the local hostname the liveness probe is only
+  // Test seam for the local hostname the liveness probe is only
   // ever allowed to run against (see foldFlowLedger's sameHost check).
   localHost?: string;
   graphAgeRunner?: ShippedGraphAgeRunner;
   // Total wall-clock budget for the WHOLE shipped-graph-age family across all
-  // configured repos (CR round 2, codex-adv-4). Defaults to
+  // configured repos. Defaults to
   // DEFAULT_SHIPPED_GRAPH_AGE_BUDGET_MS; tests override with a small value so
   // a budget-exceeded path is exercisable without a real multi-second wait.
   graphAgeBudgetMs?: number;
@@ -266,7 +266,7 @@ type FlowStats = {
   inFlight: number;
 };
 
-// Exported (HIMMEL-1199) so luna-sync-alert.ts resolves the same vault_path
+// Exported so luna-sync-alert.ts resolves the same vault_path
 // the exporter does, instead of re-deriving its own config path/parse rules.
 export function configPath(env: Record<string, string | undefined>): string {
   const override = env.HIMMEL_OBSERVABILITY_CONFIG;
@@ -401,7 +401,7 @@ function foldFlowLedger(
     const ageS = (nowMs - firedMs) / 1000;
     const deadline = deadlineSeconds(start.flow, config);
     if (ageS <= deadline) { s.inFlight++; continue; }
-    // HIMMEL-2149: only the ALERTING buckets are TTL-capped — a row past
+    // Only the ALERTING buckets are TTL-capped — a row past
     // FLOW_STALLED_ALERT_TTL_SECONDS since becoming stalled simply stops being
     // counted anywhere (not reclassified as in-flight, which it plainly is not).
     if (ageS - deadline > FLOW_STALLED_ALERT_TTL_SECONDS) continue;
@@ -470,7 +470,7 @@ function buildFlowMetrics(
   addFamily(lines, "flow_run_in_flight", "Unpaired start rows still within the flow stall deadline.", "gauge",
     stats.map((s) => sample("flow_run_in_flight", { flow: s.flow }, s.inFlight)));
 
-  // HIMMEL-924: the declared cadence_seconds, verbatim from observability.json,
+  // The declared cadence_seconds, verbatim from observability.json,
   // for the last-success-age alert rule's "2x cadence period (per-flow from
   // config)" threshold (design §5). Omitted for flows with no declared
   // cadence_seconds — an alert rule joining on this series never fires for
@@ -486,7 +486,7 @@ function buildFlowMetrics(
 }
 
 // ===========================================================================
-// HIMMEL-1052 — live session + subagent tracking
+// Live session + subagent tracking
 // ===========================================================================
 // Sibling of the flow fold above, NOT a replacement: flows are the five
 // pipeline-cadence legs, this is the operator's interactive/foreground Claude
@@ -561,10 +561,10 @@ function sessionRowTimestampMs(row: SessionRunRow): number {
 function isSessionRunRow(raw: unknown): raw is SessionRunRow {
   if (!raw || typeof raw !== "object") return false;
   const r = raw as Record<string, unknown>;
-  // v1 and v2 rows coexist in the ledger: v2 (HIMMEL-2022) only ADDS fields.
+  // v1 and v2 rows coexist in the ledger: v2 only ADDS fields.
   if (r.v !== 1 && r.v !== 2) return false;
   if (r.kind !== "session" && r.kind !== "subagent") return false;
-  // HIMMEL-2294: `close` is a session-only ev — a subagent row never emits
+  // `close` is a session-only ev — a subagent row never emits
   // one — so it is validated inside the kind==="session" branch, not in the
   // shared start/end check below.
   if (r.kind === "session") {
@@ -624,9 +624,9 @@ type SessionFold = {
   subagentStarts: SubagentStartRow[];
   subagentEndIds: Set<string>;
   subagentEnds: SubagentEndRow[];
-  // HIMMEL-2294: session_id -> closed_at (ms) for every close-evidence row
+  // Session_id -> closed_at (ms) for every close-evidence row
   // with a parseable timestamp (see session-run-ledger.ts's SessionCloseRow).
-  // CR fix (codex-1): carries the timestamp, not just membership — a close
+  // Carries the timestamp, not just membership — a close
   // row is only valid evidence up to a point, so buildSessionMetrics needs
   // WHEN it closed, not just THAT it closed, to invalidate a close row a
   // session kept working past. Consumed to gate the session_dead_total
@@ -721,7 +721,7 @@ function buildSessionMetrics(path: string, config: ObservabilityConfig, nowMs: n
   const fold = foldSessionLedger(rows, nowMs, staleAfterSeconds);
   const lines: string[] = [];
 
-  // HIMMEL-2294: per-parent set of session_ids that stranded at least one
+  // Per-parent set of session_ids that stranded at least one
   // subagent — a start row with no matching end row, REGARDLESS of the
   // parent's status (a subagent whose parent already looks "dead" is the
   // exact case that matters here). Derived from fold's existing
@@ -738,11 +738,11 @@ function buildSessionMetrics(path: string, config: ObservabilityConfig, nowMs: n
   for (const view of fold.sessions) {
     const bucket = byHost.get(view.host) ?? { active: 0, dead: 0 };
     if (view.status === "running") bucket.active++;
-    // HIMMEL-2075: session_dead_total is the ALERTING gauge, so a start row
+    // Session_dead_total is the ALERTING gauge, so a start row
     // that has been dead longer than SESSION_DEAD_ALERT_TTL_SECONDS drops out
     // of it — it stays `dead` on the dashboard-facing SessionView (view.status
     // above is untouched) for the full 14d ledger window, just not counted
-    // here. CR fix (codex-1): measured from when the session BECAME dead
+    // here. Measured from when the session BECAME dead
     // (activitySeconds - staleAfterSeconds), not from raw activity/age —
     // comparing raw activitySeconds against the TTL directly shortens the
     // alerting window by staleAfterSeconds and, for any operator-configured
@@ -751,7 +751,7 @@ function buildSessionMetrics(path: string, config: ObservabilityConfig, nowMs: n
     if (view.status === "dead") {
       const activitySeconds = view.last_activity_seconds ?? view.age_seconds;
       if (activitySeconds - staleAfterSeconds <= SESSION_DEAD_ALERT_TTL_SECONDS) {
-        // HIMMEL-2294: a session that declared its own closability (a close
+        // A session that declared its own closability (a close
         // row — it ran its close protocol WHILE STILL ALIVE, e.g. a queue
         // lock release at wrap; see session-run-ledger.ts's SessionCloseRow)
         // is excluded from this ALERTING gauge — that is the whole point of
@@ -762,7 +762,7 @@ function buildSessionMetrics(path: string, config: ObservabilityConfig, nowMs: n
         // a real loss, not hygiene noise. Same minimal-blast-radius scoping
         // as the TTL gate above: only this gauge changes, never view.status.
         //
-        // CR fix (codex-1): temporal invalidation. A plain "any close row
+        // Temporal invalidation. A plain "any close row
         // exists" membership check let ONE lock release early in a long
         // session permanently suppress alerting for it, even if it kept
         // working for hours afterward and later died unexpectedly — a false
@@ -775,7 +775,7 @@ function buildSessionMetrics(path: string, config: ObservabilityConfig, nowMs: n
         // full staleness window later means it plainly did not close: the
         // declaration is stale and the session counts as dead again.
         //
-        // CR fix (codex-1) round 2: this comparison needs REAL activity
+        // This comparison needs REAL activity
         // evidence, so it deliberately does NOT reuse the activitySeconds
         // computed above for the TTL gate — that one falls back to
         // age_seconds, and age is time since the session STARTED, not
@@ -933,7 +933,7 @@ function fetchHealthMetrics(path: string): { lines: string[]; comments: string[]
   }
 }
 
-// HIMMEL-1462: per-session tool-call census written by
+// Per-session tool-call census written by
 // scripts/observability/tool-call-census.sh. Same passive contract as the
 // fetch-health state above — the exporter never runs the extractor, it only
 // reads whatever the extractor last wrote.
@@ -1039,8 +1039,8 @@ function toolCensusMetrics(path: string, nowMs: number): { lines: string[]; comm
   return { lines, comments };
 }
 
-// HIMMEL-2480: hook-chain budget pressure. scripts/hooks/run-hook-with-bash.js
-// ALREADY writes one row per starved chain member (HIMMEL-2060) with `action`
+// Hook-chain budget pressure. scripts/hooks/run-hook-with-bash.js
+// ALREADY writes one row per starved chain member with `action`
 // (`skip` = the guard silently did not evaluate this tool call; `deny` = the
 // tool call was refused fail-closed), `elapsed` and `budget`. Nothing read it.
 // The 2026-09-03 spawn-storm hang is visible in that log ~30-135 min before
@@ -1059,7 +1059,7 @@ const HOOK_CHAIN_ACTIONS = ["deny", "skip"] as const;
 // is set it means exactly that one file — the shared escape hatch that
 // points both the writer and the reader at one log when they run from
 // different roots. Otherwise this folds the primary checkout's log with
-// every worktree's own log (HIMMEL-2478 CR finding 1): a worktree session's
+// every worktree's own log: a worktree session's
 // hook-with-bash.js writes to ITS OWN .claude/logs, invisible to the primary
 // checkout's log otherwise. Single-level glob of the worktrees directory, not
 // a recursive walk. The exporter is a service with an arbitrary cwd, so it
@@ -1068,8 +1068,7 @@ const HOOK_CHAIN_ACTIONS = ["deny", "skip"] as const;
 // repoRoot defaults to the real checkout root; tests inject a tmp root so the
 // glob is exercised without ever touching this machine's real .claude/worktrees.
 //
-// Returns worktreesDirUnreadable alongside paths (HIMMEL-2478/2480 CR
-// follow-up): a bare try/catch around readdirSync used to make "no worktrees
+// Returns worktreesDirUnreadable alongside paths: a bare try/catch around readdirSync used to make "no worktrees
 // directory at all" (normal — an adopter with none) indistinguishable from
 // "the directory exists but couldn't be enumerated" (a real fault). The
 // existsSync() check below splits the two: absence contributes nothing here,
@@ -1194,7 +1193,7 @@ export function hookChainMetrics(paths: string[], nowMs: number): { lines: strin
   return { lines, comments, unreadableCount: unreadableLogs.length };
 }
 
-// HIMMEL-2478/2480 CR follow-up: a `#` scrape comment is not alertable —
+// A `#` scrape comment is not alertable —
 // hookChainMetrics's own read failures and defaultHookChainSkipLogPaths'
 // worktrees-enumeration failure used to surface only as prose nobody
 // scrapes. This gauge is always emitted, 0 when everything is fine, so both
@@ -1293,7 +1292,7 @@ async function scheduledTaskMetrics(
     return { lines: [], comments: ["# scheduled_task_* omitted: platform has no Windows Scheduled Tasks API"] };
   }
 
-  // HIMMEL-2075: the disabled-allowlist is config, not a live query result,
+  // The disabled-allowlist is config, not a live query result,
   // so it is read fresh every call rather than threaded through the
   // scheduler cache above. Runtime-validated (CR-flagged): observability.json
   // is operator-edited JSON, not trusted from the static ObservabilityConfig
@@ -1332,7 +1331,7 @@ function buildScheduledTaskLines(samples: ScheduledTaskSample[], comments: strin
     ordered.map((s) => sample("scheduled_task_enabled", { task: s.task }, s.enabled ?? 0)));
   addFamily(lines, "scheduled_task_next_run_timestamp", "Next run time as epoch seconds from a Date object, never a locale-rendered string.", "gauge",
     ordered.flatMap((s) => s.exists && typeof s.next_run_timestamp === "number" ? [sample("scheduled_task_next_run_timestamp", { task: s.task }, s.next_run_timestamp)] : []));
-  // HIMMEL-2075: tasks the operator has allowlisted as intentionally
+  // Tasks the operator has allowlisted as intentionally
   // disabled right now — HimmelScheduledTaskDisabled excludes any task with
   // a `1` here via an `unless on (task)` join. Deduped/sorted like the other
   // task families; a task not in the allowlist is simply omitted (never
@@ -1451,7 +1450,7 @@ function buildHostDetectorLines(result: HostDetectorResult): { lines: string[]; 
   return { lines, comments: [] };
 }
 
-// HIMMEL-3219: HimmelOrphanProcesses' source (orphan_process_count) is
+// HimmelOrphanProcesses' source (orphan_process_count) is
 // win32-only, so this is the Linux-side orphan signal for quiet-run suites and
 // their writer-less `tail -f` followers. A separate family (not more classes on
 // orphan_process_count) keeps the win32 detector's contract untouched. An
@@ -1559,7 +1558,7 @@ async function runGitCommand(args: string[], cwd: string, timeoutMs: number): Pr
   }
 }
 
-// Local-refs-only divergence read (HIMMEL-1199) — the exact signal for the
+// Local-refs-only divergence read — the exact signal for the
 // incident this ticket detects (an auto-sync push silently blocked, commits
 // piling up unpushed). NO `git fetch` anywhere here: that is the passivity
 // invariant this exporter is built on. `git status --porcelain` proves the
@@ -1633,7 +1632,7 @@ async function lunaGitMetrics(
   }
 }
 
-// HIMMEL-1129 (option 3): shipped-graph age observability. HIMMEL-1123
+// Shipped-graph age observability. The repo
 // tracks graphify-out/graph.json + GRAPH_REPORT.md so stations that can't
 // afford a re-extract (win2) pull the graph instead — but a pulled checkout's
 // FILE MTIME is checkout time, not content age, so check-graph-freshness.sh's
@@ -1641,12 +1640,11 @@ async function lunaGitMetrics(
 // The real age of what was SHIPPED is the git commit time of the last commit
 // that touched graphify-out/graph.json — that's what these two series expose.
 //
-// Deliberately NOT named graphify_graph_age_seconds{corpus} (the name
-// HIMMEL-1124 proposes for a LOCAL graph's mtime-based age, still unimplemented
-// at time of writing — verified: HIMMEL-1124 is "To Do", no commits exist
-// under that key anywhere in history). Reusing that exact name here would
+// Deliberately NOT named graphify_graph_age_seconds{corpus} (a name
+// that would suggest a LOCAL graph's mtime-based age, which is not implemented).
+// Reusing that exact name here would
 // collide two different measurements (git-commit-time vs. mtime) under one
-// series; graphify_shipped_graph_age_seconds keeps 1124's naming convention
+// series; graphify_shipped_graph_age_seconds keeps that naming convention
 // and PromQL shape (per-corpus gauge, HELP/TYPE lines) while staying
 // unambiguous about what it measures.
 export type ShippedGraphAgeResult = { epochSeconds: number } | null;
@@ -1659,9 +1657,9 @@ const DEFAULT_SHIPPED_GRAPH_REF = "main";
 // null = the path has no commit history in this repo (never tracked there);
 // a thrown error = ambiguous (timeout, spawn error, non-numeric output) and
 // must PROPAGATE so the caller omits the whole family rather than reading it
-// as "no history" (same discipline as HIMMEL-1199's runGitDivergence).
+// as "no history" (same discipline as runGitDivergence).
 //
-// `ref` MUST be explicit (CR round 1, codex-adv-1): `git log -1 -- <path>`
+// `ref` MUST be explicit: `git log -1 -- <path>`
 // with no starting ref reads whatever branch is CURRENTLY CHECKED OUT in
 // repoPath, not the protected default. A checkout sitting on a feature or
 // publish branch would then report a fresh unmerged graph while `main`
@@ -1692,7 +1690,7 @@ function shippedGraphAgeOmitComment(corpus: string, reason: string): string {
 
 type GraphifyRepoEntry = { corpus: string; repo_path: string; default_branch?: string };
 
-// CR round 1 (codex-adv-5): config.graphify_repos is OPERATOR-EDITED JSON, not
+// config.graphify_repos is OPERATOR-EDITED JSON, not
 // a value this module produces itself — a malformed entry (wrong shape, an
 // object instead of an array, a non-string corpus) must never crash the whole
 // /metrics scrape (Prometheus would see a hard 500 across EVERY family, not
@@ -1745,7 +1743,7 @@ function validateGraphifyRepos(raw: unknown): { valid: GraphifyRepoEntry[]; comm
   return { valid, comments };
 }
 
-// CR round 2 default (codex-adv-4): with N repos queried SEQUENTIALLY, each up
+// With N repos queried SEQUENTIALLY, each up
 // to GIT_QUERY_TIMEOUT_MS (10s) on a hung/degraded git spawn, the worst case
 // was N*10s -- large enough on its own to blow past a typical Prometheus
 // scrape_timeout and lose EVERY family in the response, not just this one.
@@ -1796,7 +1794,7 @@ async function shippedGraphAgeMetrics(
   const perRepo = await Promise.all(repos.map(async (entry) => {
     const { corpus, repo_path, default_branch } = entry;
     const ref = default_branch ?? DEFAULT_SHIPPED_GRAPH_REF;
-    // Composite key (CR round 2, codex-2/codex-adv-3): repo_path ALONE
+    // Composite key: repo_path ALONE
     // aliased two config entries watching different branches of the SAME
     // repo onto one cache slot -- the second entry silently inherited the
     // first's ref/result, and a default_branch EDIT in config was masked
@@ -1849,7 +1847,7 @@ async function shippedGraphAgeMetrics(
   return { lines, comments };
 }
 
-// HIMMEL-1000: real per-lane bank gauges. Each lanes.json lane that declares
+// Real per-lane bank gauges. Each lanes.json lane that declares
 // quota.bank fans out one series per live window of that bank; lanes without
 // a machine-readable source (or whose bank has no live reading) emit an
 // explicit omit comment: absent = dark, never fabricated.
@@ -1897,7 +1895,7 @@ function defaultLanesPath(): string {
   return join(import.meta.dir, "..", "lanes", "lanes.json");
 }
 
-// ---- HIMMEL-4652: eval-runs ledger -> himmel_eval_* ---------------------------
+// ---- eval-runs ledger -> himmel_eval_* ---------------------------
 // Passive reader of ~/.himmel/eval-runs.jsonl (writer: scripts/eval/lib/eval_runs.py,
 // schema there). Per eval the latest "ok" row is the candidate; its baseline is
 // the newest earlier "ok" row with the same confighash, the same pick
@@ -1975,7 +1973,7 @@ function evalSpecFor(table: Record<string, EvalSpec>, metric: string): EvalSpec 
 
 // Port of eval-compare's verdict(): true when the candidate is WORSE than the
 // baseline beyond the noise band. null = not gated (no direction, or a side is missing);
-// a string = not gated, the band in eval-compare.json is invalid (HIMMEL-4662).
+// a string = not gated, the band in eval-compare.json is invalid.
 function evalRegressed(spec: EvalSpec | null, base: number | null, cand: number | null, bci?: EvalBound, cci?: EvalBound): boolean | null | string {
   const EPS = 1e-9;
   if (base === null || cand === null || !spec || typeof spec.higher_is_better !== "boolean") return null;
@@ -2059,7 +2057,7 @@ function evalRunsMetrics(path: string, thresholdsPath: string, nowMs: number): {
         lower.push(sample("himmel_eval_metric_ci_lower", labels, bound.lo));
         upper.push(sample("himmel_eval_metric_ci_upper", labels, bound.hi));
       }
-      // an observational series (HIMMEL-4670 spec 3.1) has values, never a baseline verdict
+      // an observational series has values, never a baseline verdict
       if (cand.observational || base?.observational) continue;
       const bv = base ? base.metrics[m] ?? null : null;
       if (bv === null) continue;
@@ -2193,7 +2191,7 @@ export function startFlowExporter(options: RenderMetricsOptions = {}): { stop: (
         return new Response("not found\n", { status: 404 });
       }
       try {
-        // HIMMEL-1052: the per-session table panel's data path. Same passive
+        // The per-session table panel's data path. Same passive
         // read, same fold, just a shape Prometheus labels cannot carry
         // (session_id is unbounded cardinality). Still no writes anywhere.
         if (url.pathname === "/sessions.json") {

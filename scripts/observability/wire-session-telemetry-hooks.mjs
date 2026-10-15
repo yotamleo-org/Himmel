@@ -1,18 +1,18 @@
 #!/usr/bin/env node
-// wire-session-telemetry-hooks.mjs — HIMMEL-1635: install/remove the
-// HIMMEL-1052 session-telemetry writer's four hook entries in
-// `.claude/settings.json` -- plus (HIMMEL-2318) a fifth, the queue lock's
+// wire-session-telemetry-hooks.mjs — install/remove the
+// session-telemetry writer's four hook entries in
+// `.claude/settings.json` -- plus a fifth, the queue lock's
 // self-heartbeat.
 //
 // WHY THIS EXISTS
 // session-run-hook.ts shipped with its wiring documented in README.md's
 // "Wiring the writer" section as four JSON blocks to paste by hand. The
-// trust ledger (HIMMEL-1551) shipped the same way first and paid for it:
+// trust ledger shipped the same way first and paid for it:
 // three chain legs measured zero rows because nothing ever pasted the
 // blocks in. A capability that ships behind a manual paste is a capability
 // that does not ship. This makes the wiring reviewable in a PR, versioned,
 // idempotent, and reversible — modeled directly on
-// scripts/trust/wire-trust-hooks.mjs (HIMMEL-1551).
+// scripts/trust/wire-trust-hooks.mjs.
 //
 // WHY A SCRIPT IS ALLOWED TO WRITE A DENY-LISTED FILE
 // `Edit(**/.claude/settings.json)` is deny-listed so nothing edits it ad hoc.
@@ -20,7 +20,7 @@
 // an agent's free-form Edit is not. That distinction only holds while the
 // assertions below hold, so they are unconditional.
 //
-// WHY A FIFTH ENTRY (HIMMEL-2318)
+// WHY A FIFTH ENTRY
 // scripts/handover/queue-lock.sh's `self-heartbeat` verb keeps a long leg's
 // queue lock alive (and records its transcript as a liveness marker) from a
 // PostToolUse hook, so a leg that acquires at step 0 and releases at wrap no
@@ -34,13 +34,13 @@
 // tool call -- the throttle lives in queue-lock.sh, not here.
 //
 // COEXISTENCE WITH OTHER SANCTIONED WRITERS
-// wire-hook-bash.mjs (HIMMEL-1516/1552) owns PreToolUse/PostToolUse/
+// wire-hook-bash.mjs owns PreToolUse/PostToolUse/
 // SessionStart, but only commands matching its own `scripts/hooks/*.sh`
 // routing pattern — a `bun .../session-run-hook.ts` command (and the
 // `bash .../scripts/handover/queue-lock.sh` one, which is not under
 // scripts/hooks/ either) never matches that pattern, so there is no ownership
 // collision and both stay invisible to wire-hook-bash's owned-inventory count
-// (own-only validation, HIMMEL-1552 style) and the two writers never
+// and the two writers never
 // disagree about it. wire-trust-hooks.mjs owns its own `shadow-ledger.mjs`
 // commands the same way. All three hold the SAME shared lock
 // (scripts/lib/settings-lock.mjs) across their read -> transform -> write,
@@ -87,10 +87,10 @@ const DEFAULT_RUNNER = 'bun';
 const DEFAULT_SCRIPT = 'scripts/observability/session-run-hook.ts';
 
 // The first four entries, exactly as documented in README.md's "Wiring the
-// writer" (HIMMEL-1052). `matcher: null` means no matcher key is emitted —
+// writer". `matcher: null` means no matcher key is emitted —
 // SessionStart/SessionEnd fire on every session lifecycle event regardless
 // of which tool (if any) is involved, so narrowing with a matcher would open
-// a gap. The fifth (HIMMEL-2318) is the queue lock's self-heartbeat: a
+// a gap. The fifth is the queue lock's self-heartbeat: a
 // matcher-less PostToolUse hook, because the lock must be refreshed whatever
 // tool the leg is busy with.
 export const ENTRIES = [
@@ -424,7 +424,7 @@ function defaultSettingsPath() {
 
 // The hooks resolve `$CLAUDE_PROJECT_DIR/<script>` AT RUNTIME against
 // whatever project the session is rooted in -- session-run-hook.ts for the
-// four telemetry entries, scripts/handover/queue-lock.sh for the HIMMEL-2318
+// four telemetry entries, scripts/handover/queue-lock.sh for the
 // self-heartbeat. Existence of EVERY distinct script is a precondition on
 // install (never on --off/--check — removing dead wiring, or reporting on it,
 // must still work against a project that never had the writer).

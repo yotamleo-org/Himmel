@@ -1,5 +1,5 @@
 # Hermetic fixture tests for install-stack.ps1's task stop/register/start/
-# restore logic (HIMMEL-1217 CR round 3). Mirrors the mocking approach
+# restore logic. Mirrors the mocking approach
 # test-host-detectors.ps1 uses for host-detectors.ps1: instead of testing a
 # script full of real network downloads and elevated Task Scheduler calls
 # directly, this mocks the ScheduledTasks cmdlets with an in-memory fake
@@ -79,7 +79,7 @@ function Get-ScheduledTask {
   }
   if (-not $Global:FakeTasks.ContainsKey($TaskName)) {
     if ($ErrorAction -eq 'SilentlyContinue') { return $null }
-    # Round 17 [glm-r16-5]: the REAL Get-ScheduledTask cmdlet raises a
+    # The REAL Get-ScheduledTask cmdlet raises a
     # non-terminating error (which -ErrorAction Stop, what Resolve-
     # ExistingTask always passes, turns into a catchable terminating one)
     # categorized ObjectNotFound for a missing named task -- it does NOT
@@ -256,7 +256,7 @@ function Write-Step {
   Write-Host "[observability] $Message"
 }
 
-# HIMMEL-2209: override the real Get-UserEnvVar/Set-UserEnvVar (defined in
+# Override the real Get-UserEnvVar/Set-UserEnvVar (defined in
 # install-stack.ps1, dot-sourced above) with an in-memory fake so
 # Set-GrafanaTelegramEnvVar can be exercised without a real
 # [Environment]::...('User') round trip touching this machine's actual
@@ -321,7 +321,7 @@ function Invoke-InstallSequence {
     # Final revalidation sweep -- mirrors install-stack.ps1's own sweep
     # exactly (round-6 fix): a task confirmed started above can still have
     # gone down by the time every other exporter has finished starting.
-    # Round 15: calls the REAL dot-sourced Confirm-TaskStillRunning (not a
+    # Calls the REAL dot-sourced Confirm-TaskStillRunning (not a
     # reimplementation) -- a FAILED lookup (no retry loop to fall back into,
     # unlike the polls) is 'indeterminate', never silently "not Running".
     foreach ($taskName in $TaskOrder) {
@@ -339,7 +339,7 @@ function Invoke-InstallSequence {
     # fresh registration standing. A CONFIRMED not-Running exporter means
     # the batch did not fully succeed; treat it the same as an aborted run.
     # Round-17 fix: scoped to $false only, NOT "-ne $true" -- an
-    # 'indeterminate' sweep result (round 15: the lookup itself failed, not
+    # 'indeterminate' sweep result (the lookup itself failed, not
     # evidence the task is unhealthy) must not fold into this flag and drag
     # every healthy sibling into a full rollback on an RPC blip.
     if (@($TaskOrder | Where-Object { $taskStartStatus[$_] -eq $false }).Count -gt 0) {
@@ -409,7 +409,7 @@ function Invoke-InstallSequence {
   # successfully-restored task must still fail here even though the stack is
   # up, because the requested flip did not apply.
   $notFlippedTasks = @($TaskOrder | Where-Object { $taskStartStatus[$_] -ne $true })
-  # String-on-the-left (round 17): see install-stack.ps1's matching comment
+  # String-on-the-left: see install-stack.ps1's matching comment
   # -- $taskStartStatus[$_] -eq 'restored' would silently also match every
   # $true task via boolean/string coercion.
   $restoredTasks = @($TaskOrder | Where-Object { 'restored' -eq $taskStartStatus[$_] })
@@ -464,9 +464,9 @@ Write-Host "Test 2 [pins codex-r4-1]: restored-instead-of-flipped is non-zero ev
 # winexp: the requested (new) definition registers fine and Start-
 # ScheduledTask doesn't throw, but it never actually reaches Running (async
 # S4U-style failure) -- finally restores the OLD, working definition and
-# confirms it running. Round 4 found this exiting 0: the stack stayed alive,
+# confirms it running. This once exited 0: the stack stayed alive,
 # but the requested -Hidden flip silently did not apply. It must be non-zero.
-# Round 12 broadened ScriptFailed's meaning: nothing here literally throws,
+# ScriptFailed also covers async failure: nothing here literally throws,
 # but any exporter not reaching Running now marks the batch failed too (see
 # Test 23), so ScriptFailed is $true here even though Register/Start both
 # "succeeded" in the sense of not throwing.
@@ -518,7 +518,7 @@ Write-Host "Test 6 [pins codex-adv-r4-1 regression]: fresh install, ALL exporter
 # task's NEW definition is broken (registers fine, never reaches Running).
 # Before this fix, the exit-code predicate was scoped to StoppedTaskNames
 # only, so this scenario reported every task NOT STARTED yet still exited 0.
-# Round 12: since ScriptFailed now becomes true whenever any exporter isn't
+# Since ScriptFailed now becomes true whenever any exporter isn't
 # verifiably Running (even without an exception), and these 4 tasks are all
 # FRESH, the uniform-abort FreshTaskNames removal loop now also fires for
 # all of them -- they end up 'removed', not a bare $false.
@@ -550,7 +550,7 @@ Write-Host "Test 8 [pins codex-r6-1 + codex-adv-r12-2]: a stop TIMEOUT never tou
 # def, so grafana lands in neither StoppedTaskNames nor ReplacedTaskNames --
 # finally's rollback loop must never call Restore-TaskDefinition on it: the
 # DEFINITION stays exactly what it was before this run touched anything.
-# Round 12: Stop-ScheduledTask itself didn't throw here (only the
+# Stop-ScheduledTask itself didn't throw here (only the
 # CONFIRMATION timed out), so grafana IS in StopAttemptedTaskNames --
 # Repair-AmbiguousStop now runs for it, re-queries, finds it genuinely still
 # Running (this mock's 'timeout' behavior never actually flips state), and
@@ -638,7 +638,7 @@ Write-Host "Test 13 [pins codex-adv-r6-2]: Wait-TaskStarted's own stability rech
 # Fresh install; the new definition registers fine and Start-ScheduledTask
 # reports Running on the very first read, but DiesAfterReadsConfig makes it
 # flip to Ready by the stability recheck's read -- must NOT be confirmed
-# started. Round 12: since flowexp is FRESH and ScriptFailed now becomes
+# started. Since flowexp is FRESH and ScriptFailed now becomes
 # true whenever any exporter isn't verifiably Running, the uniform-abort
 # FreshTaskNames removal loop now also fires for it -- it ends up 'removed',
 # not a bare $false.
@@ -867,8 +867,8 @@ Write-Host "Test 23 [pins codex-adv-r12-1 regression]: multi-task async failure 
 # Before this fix, ScriptFailed stayed $false (nothing threw), so finally's
 # narrower per-task check would restore ONLY grafana, leaving prometheus on
 # its new/requested definition and winexp registered and running -- a mixed
-# stack after a single non-throwing async failure. Round 12 forces the
-# batch-uniformity rule to apply here too.
+# stack after a single non-throwing async failure. The
+# batch-uniformity rule applies here too.
 $Global:FakeTasks = @{
   'prometheus' = @{ State = 'Running'; Def = 'OLD:prometheus' }
   'grafana'    = @{ State = 'Running'; Def = 'OLD:grafana' }
@@ -1097,7 +1097,7 @@ Check "Running but principal does NOT match (this run requested S4U, task shows 
 $Global:FakeTasks = @{ 'crosstask2' = @{ State = 'Running'; Def = 'NEW-DEF:crosstask2'; LogonType = 'S4U' } }
 Check "reverse direction: this run requested Interactive (ExpectedHidden `$false) but task shows S4U -> `$false too" ((Confirm-TaskStillRunning -TaskName 'crosstask2' -ExpectedHidden:$false) -eq $false)
 
-# HIMMEL-2209: re-assert the fake User-env override here, defensively --
+# Re-assert the fake User-env override here, defensively --
 # Test 29 above re-dot-sources install-stack.ps1's raw functions (to pin a
 # Write-Step regression) which also re-defines the REAL Get-UserEnvVar/
 # Set-UserEnvVar over this file's fakes; without this, the tests below would
@@ -1117,7 +1117,7 @@ Check 'unquoted value parsed as-is' ((Get-HimmelEnvValue -EnvText $envText33 -Ke
 Check 'quoted value strips the matching quote pair' ((Get-HimmelEnvValue -EnvText $envText33 -KeyName 'GRAFANA_TELEGRAM_CHAT_ID') -eq '-100555')
 Check 'missing key returns $null' ((Get-HimmelEnvValue -EnvText $envText33 -KeyName 'NOT_PRESENT') -eq $null)
 
-# [codex-1, /pr-check panel round 1]: .NET's \s matches \n, so a naive \s*
+# .NET's \s matches \n, so a naive \s*
 # right before the capture group could consume a bare "KEY=" line's own
 # newline and let the value capture land on the FOLLOWING line's content
 # instead of reporting empty -- e.g. seeding the bot token to the literal

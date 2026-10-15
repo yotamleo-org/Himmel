@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/observability/restart-stack.sh — sanctioned restart helper for the
-# himmel-observability-* scheduled tasks (HIMMEL-2133).
+# himmel-observability-* scheduled tasks.
 #
 # WHY: schtasks /end and /run are (correctly) denied by block-destructive-
 # commands.sh when they appear in the AGENT's own Bash tool call — every
@@ -23,8 +23,8 @@
 # refuses everything outside its own hard-coded task family (below), so it
 # can never become a generic schtasks wrapper.
 #
-# ABSOLUTE-PATH RULE ONLY — deliberate divergence from HIMMEL-2131 (CR
-# round-1, codex-1, Critical): a standing allow-rule is bound to a literal
+# ABSOLUTE-PATH RULE ONLY — deliberate divergence from the relative-path
+# recommendation elsewhere: a standing allow-rule is bound to a literal
 # COMMAND-TEXT prefix and authorizes whatever script FILE actually sits at
 # that path at invocation time, not a specific vetted script's content. A
 # RELATIVE-path rule (`Bash(bash scripts/observability/restart-stack.sh:*)`)
@@ -36,7 +36,7 @@
 # mutations. The operator's follow-up is therefore the ABSOLUTE-path rule to
 # the PRIMARY checkout ONLY — `Bash(bash
 # <repo-root>/scripts/observability/restart-stack.sh:*)`
-# — never the relative twin HIMMEL-2131 otherwise recommends adding
+# — never the relative twin that is otherwise recommended
 # alongside it. The primary checkout is what block-edit-on-main protects and
 # what PR + CR review gates every change to. The branch guard right after
 # SCRIPT_DIR below is the redundant, in-script half of this same boundary.
@@ -52,7 +52,7 @@
 #      is fully repo-derived (install-stack.ps1 populates it from the repo
 #      alone), so a file DELETED from the repo tree must not linger in the
 #      machine copy and stay active. Staged as copy-verify-swap, not an
-#      in-place delete-then-recreate (HIMMEL-2133 CR round-2, codex-2): build
+#      in-place delete-then-recreate: build
 #      the fresh tree next to the target, verify it, THEN swap it in — so a
 #      failure at any point before the swap leaves the live copy untouched.
 #   2. schtasks //End the task, then WAIT (bounded ~30s poll) for its port to
@@ -62,8 +62,7 @@
 #      (bounded ~60s) rather than trusting a zero schtasks exit code. On
 #      failure, print the task's Last Result via schtasks //Query and exit
 #      non-zero.
-#   4. grafana only: health-alive is NOT config-loaded (HIMMEL-2133 CR
-#      round-6, codex-2 — this is the ticket's FOUNDING failure mode: Grafana
+#   4. grafana only: health-alive is NOT config-loaded (this is the FOUNDING failure mode: Grafana
 #      can answer /api/health 200 while its provisioning was silently
 #      REJECTED at startup). After a healthy /api/health, scan the newest
 #      file in %LOCALAPPDATA%/himmel/observability/grafana-logs/ for a
@@ -83,7 +82,7 @@
 # hook-evasion shape (see SANCTIONED CARVE-OUT above), it is required for the
 # command to work at all here.
 #
-# ABSOLUTE SCHTASKS PATH (HIMMEL-2133 CR round-3, codex-1): every call below
+# ABSOLUTE SCHTASKS PATH: every call below
 # uses $SCHTASKS_BIN — resolved ONCE near the top to schtasks.exe's absolute
 # path, never bare `schtasks` off PATH. Closes the caller-PATH-wrapper class
 # outright: a caller that puts a malicious "schtasks" earlier on PATH before
@@ -97,16 +96,16 @@
 #
 # Usage: restart-stack.sh <flow-exporter|grafana|prometheus|windows-exporter|all>
 #
-# NO ENV-SELECTED EXECUTABLES (HIMMEL-2133 CR round-2, codex-1, Critical): this
+# NO ENV-SELECTED EXECUTABLES: this
 # script calls only bare `schtasks`, `curl`, `sleep`, `git`, `cp`, `mv`, `rm`,
-# `mkdir`, `promtool`, `cmp`, `date` (HIMMEL-2149 added the last three) —
+# `mkdir`, `promtool`, `cmp`, `date` (the last three were added with the rules re-sync) —
 # resolved off PATH, never an environment variable naming a program to run.
 # `promtool` is not a plain PATH lookup like the others, though: its PRIMARY
 # resolution is the himmel-observability-prometheus scheduled task's own
 # registered Execute path, read via the already-pinned $SCHTASKS_BIN (machine
 # state, same posture as that constant itself) — bare PATH is only its
 # degrade-path fallback. See resolve_promtool below for the full mechanism,
-# and its own header comment for HIMMEL-2239 CR round-1, codex-1: an earlier
+# and its own header comment: an earlier
 # version of this resolution instead globbed LOCALAPPDATA, which turned out
 # to be exactly the env-selected-executable hole this rule exists to close.
 # promtool is NOT an exception to this rule any more — it is fully covered by
@@ -128,14 +127,14 @@
 # log shows a provisioning error since this restart — config was likely
 # REJECTED, not loaded (see verify_grafana_provisioning_loaded); 1 any other
 # target failure (provisioning sync, prometheus alert-rules sync, prometheus
-# config sync, promtool unresolvable (HIMMEL-2239 fail-closed refusal), port-
+# config sync, promtool unresolvable (fail-closed refusal), port-
 # free wait, schtasks //Run, or health verify).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROVISIONING_SRC="$SCRIPT_DIR/provisioning"
 
-# Defense in depth (HIMMEL-2133 CR round-1, codex-1, Critical): see the
+# Defense in depth: see the
 # ABSOLUTE-PATH RULE ONLY header comment above — a standing allow-rule
 # authorizes whatever file sits at its literal command-text path, and a
 # feature-branch worktree copy of THIS script is agent-writable. Refuse to
@@ -152,7 +151,7 @@ case "$current_branch" in
         ;;
 esac
 
-# Absolute path, resolved ONCE (HIMMEL-2133 CR round-3, codex-1) — see the
+# Absolute path, resolved ONCE — see the
 # ABSOLUTE SCHTASKS PATH header comment above. Strict: no PATH fallback in
 # production. The hermetic suite sed-replaces THIS line in its own script
 # copy to point at its PATH-stub schtasks.
@@ -162,7 +161,7 @@ if [ ! -x "$SCHTASKS_BIN" ]; then
     exit 2
 fi
 
-# Provisioning stage-swap lock (HIMMEL-2133 CR round-3, codex-2): a second
+# Provisioning stage-swap lock: a second
 # restart-stack.sh grafana invocation racing this one could stage its OWN
 # "$dest.new-$$" tree (different $$, no collision there) but then both would
 # try to move $dest aside and swap in at the same time — the loser's `mv`
@@ -225,7 +224,7 @@ resolve_task() {
 # sync_grafana_provisioning — WHOLESALE replace of the machine-local
 # grafana-provisioning copy from scripts/observability/provisioning/ (same
 # source/destination install-stack.ps1 uses), staged as copy-verify-swap
-# (HIMMEL-2133 CR round-2, codex-2): build the fresh tree at a scratch path
+# build the fresh tree at a scratch path
 # next to the target, verify a known key file landed in it, THEN move the
 # live copy aside and the fresh one into place. A failure at any point
 # before the swap (missing source, a failed cp, a failed verify) leaves the
@@ -235,7 +234,7 @@ resolve_task() {
 # sitting right next to $dest under a deterministic name, never a
 # half-written $dest. Guarded by the mkdir-based PROVISIONING_LOCK (HIMMEL-
 # 2133 CR round-3, codex-2) so two concurrent invocations can't race the
-# swap; a rollback-move failure (codex-3) is reported LOUD, distinct from
+# swap; a rollback-move failure is reported LOUD, distinct from
 # every other failure in here (return 3, not 1) — see below.
 #
 # Return codes: 0 success; 1 pre-swap failure (live copy untouched); 2 the
@@ -258,7 +257,7 @@ sync_grafana_provisioning() {
     else
         dest="${dest_win//\\//}"
     fi
-    # Guard (HIMMEL-2133 CR round-1, codex-2): the swap below must never fire
+    # Guard: the swap below must never fire
     # against anything but exactly this LOCALAPPDATA-rooted tree, even if a
     # future edit to the resolution above gets it wrong — LOCALAPPDATA is
     # environment-derived, so this is a real trust boundary, not paranoia.
@@ -282,7 +281,7 @@ sync_grafana_provisioning() {
     # as "lock held".
     mkdir -p "$(dirname "$dest")" || { echo "restart-stack: could not create $(dirname "$dest")" >&2; return 1; }
 
-    # Lock (HIMMEL-2133 CR round-3, codex-2): mkdir is atomic across
+    # Lock: mkdir is atomic across
     # processes on the same filesystem, so a second concurrent invocation
     # sees it already exist and refuses rather than racing the swap below.
     # Released by the script-level EXIT trap (release_provisioning_lock).
@@ -339,7 +338,7 @@ sync_grafana_provisioning() {
 
 # _state_root — %LOCALAPPDATA%/himmel/observability as a POSIX path (empty +
 # rc 1 when LOCALAPPDATA is unset). Same cygpath/backslash-swap resolution the
-# three older helpers each inline; used by the HIMMEL-2239/2242 additions
+# three older helpers each inline; used by the promtool/config-sync additions
 # below. Those older copies are deliberately left alone — each carries its own
 # tested destination-shape guard, and rewriting them here would churn covered
 # code for no behaviour change.
@@ -353,17 +352,17 @@ _state_root() {
     fi
 }
 
-# resolve_promtool — HIMMEL-2239: the rules validation below had NEVER run on
+# resolve_promtool — the rules validation below had NEVER run on
 # this station. It probed `command -v promtool`, but promtool is not on PATH —
 # it ships INSIDE the Prometheus release install-stack.ps1 downloads and
 # unpacks, right next to the prometheus.exe this very script //Runs. So the
 # gate printed a skip and synced alert rules UNVALIDATED at rc=0: a validation
 # step reporting success having validated nothing. Reproduced live twice on
-# 2026-08-29, once during HIMMEL-2211's own deployment; alerts.rules.test.yml's
+# 2026-08-29, once during a deployment; alerts.rules.test.yml's
 # header records three earlier legs reaching the same wrong "promtool is
 # absent" conclusion from the same bare probe.
 #
-# HIMMEL-2239 CR round-1, codex-1, Critical: the first fix resolved
+# The first fix resolved
 # PROMTOOL_BIN by globbing %LOCALAPPDATA%/himmel/observability/prometheus-*/ —
 # fully env-derived. An attacker who sets LOCALAPPDATA=/evil just creates
 # /evil/himmel/observability/prometheus-9/promtool.exe and the shape guard
@@ -393,12 +392,12 @@ _state_root() {
 # "himmel-observability-prometheus" is already hard-allowlisted in
 # resolve_task.
 #
-# HIMMEL-2239 CR round-2, codex-1, Important: the first cut of this parsed by
+# The first cut of this parsed by
 # LABEL — `grep '^Task To Run:'` — which only matches English Windows. On a
 # German station the field is `Auszuführende Aufgabe:`, the label-grep misses,
 # resolution fell back to PATH, and if promtool wasn't there too the whole
 # sync refused on a station with a perfectly good installed stack. That is
-# the SAME mistake HIMMEL-2239 itself was filed over: concluding "the tool is
+# the SAME mistake that motivated this function: concluding "the tool is
 # absent" from a probe that was looking the wrong way (alerts.rules.test.yml's
 # header already records three legs making it). Fixed by parsing the VALUE
 # SHAPE instead of the localized LABEL: scan the whole `//V //FO LIST` output
@@ -474,12 +473,12 @@ _prometheus_state_path() {
 }
 
 # _sync_repo_file_to_state <src> <dest> <label> <promtool-check-kind> —
-# validate, back up, stage, rename. Shared by the alert-rules (HIMMEL-2149)
-# and prometheus.yml (HIMMEL-2242) syncs: they differ only in WHICH file and
+# validate, back up, stage, rename. Shared by the alert-rules
+# and prometheus.yml syncs: they differ only in WHICH file and
 # WHICH promtool subcommand, and a second hand-rolled copy of this dance is a
 # second place for it to drift out of step.
 #
-# Validation is FAIL-CLOSED on an unresolvable promtool (HIMMEL-2239). The
+# Validation is FAIL-CLOSED on an unresolvable promtool. The
 # previous best-effort skip is exactly what let an unvalidated sync run
 # unnoticed; and now that promtool is resolved from the stack's own install
 # dir, "unresolvable" means there is no installed Prometheus on this station —
@@ -509,10 +508,10 @@ _sync_repo_file_to_state() {
             return 0
         fi
         local bak
-        # -$$ (pid) suffix (HIMMEL-2149 CR round-1, codex-1): the date-only
+        # -$$ (pid) suffix: the date-only
         # timestamp has 1s resolution, so two syncs within the same second
         # would collide and the second overwrite the first .bak.
-        # ponytail: these .bak-* files are never pruned (CR round-2, codex-2)
+        # ponytail: these .bak-* files are never pruned
         # — accepted: a manual restart helper, invoked rarely, backing up a
         # tiny YAML file; unbounded here means "a handful of KB over years".
         # If this ever needs bounding, prune to the newest N on each sync.
@@ -545,9 +544,9 @@ _sync_repo_file_to_state() {
     return 0
 }
 
-# sync_prometheus_alert_rules — HIMMEL-2149: restart-stack.sh only //End+
+# sync_prometheus_alert_rules — restart-stack.sh only //End+
 # //Run the scheduled task, it never re-synced alerts.rules.yml — a merged
-# rules change (that ticket's own SessionDead page->warn) never reached the
+# rules change never reached the
 # running Prometheus until a full install-stack.ps1 re-run, proven live.
 # Validated with `promtool check rules` against the repo's OWN copy before
 # anything live is touched; see _sync_repo_file_to_state for the shared
@@ -562,15 +561,15 @@ sync_prometheus_alert_rules() {
     _sync_repo_file_to_state "$src" "$dest" "prometheus alert rules" rules
 }
 
-# sync_prometheus_config — HIMMEL-2242: the rules got a re-sync path
-# (HIMMEL-2149); prometheus.yml itself never did, so the SCRAPE config was
+# sync_prometheus_config — the rules got a re-sync path
+# prometheus.yml itself never did, so the SCRAPE config was
 # install-time state only. Any change to scrape_timeout / scrape_interval /
 # targets / job definitions merged to main and silently never reached the
 # running Prometheus, which kept serving the copy install-stack.ps1 wrote at
-# INSTALL time. Proven live 2026-08-29: HIMMEL-2211's `scrape_timeout: 30s`
-# was merged on main and /api/v1/status/config still reported the 10s default
+# INSTALL time. Proven live 2026-08-29: a `scrape_timeout: 30s`
+# change was merged on main and /api/v1/status/config still reported the 10s default
 # after a full rc=0 "healthy" restart, so the flow-exporter target kept going
-# down ~51x/day. This is the HIMMEL-2133 class (repo file -> install-time copy
+# down ~51x/day. This is the class (repo file -> install-time copy
 # -> live process, with a re-sync path for only some of the copies), one file
 # short.
 #
@@ -588,13 +587,13 @@ sync_prometheus_config() {
 }
 
 # port_is_free <port> — 0 (free) / 1 (still held). A bare `curl` connect
-# check (HIMMEL-2133 CR round-2, codex-1): no env-selected probe, and the
+# check: no env-selected probe, and the
 # same tool the health check already uses, so the hermetic suite stubs both
 # through one PATH-stub `curl`. A connection REFUSAL (curl exit 7) means
 # nothing is listening; any other outcome — a real response, a protocol
 # error, a timeout — means something answered or the read was inconclusive,
 # so it counts as still held (never mistake "couldn't tell" for "free").
-# HIMMEL-2149: on this Windows host, curl against a CLOSED localhost port
+# On this Windows host, curl against a CLOSED localhost port
 # measures >1s before the connection-refused error (rc 7) surfaces — at
 # --max-time 1 a genuinely free port instead exits 28 (timeout), which the
 # check above then reads as still held, so wait_port_free NEVER saw free.
@@ -609,7 +608,7 @@ port_is_free() {
 
 # wait_port_free <port> — bounded ~120s poll (30 x (up to 3s curl + 1s
 # sleep)), up from ~60s now that each try's curl can itself take up to 3s
-# (HIMMEL-2149). Left at 30 tries rather than tightened: this only restarts
+# Left at 30 tries rather than tightened: this only restarts
 # a background stack, a slower worst-case wait is cheap, and fail-closed
 # semantics matter more here than shaving seconds off a timeout path.
 wait_port_free() {
@@ -680,8 +679,7 @@ snapshot_grafana_log_watermark() {
     GRAFANA_LOG_WATERMARK_LINES="$(wc -l < "$GRAFANA_LOG_WATERMARK_FILE" 2>/dev/null || echo 0)"
 }
 
-# verify_grafana_provisioning_loaded — HIMMEL-2133 CR round-6, codex-2: this
-# ticket's FOUNDING failure was Grafana answering /api/health 200 while its
+# verify_grafana_provisioning_loaded — the FOUNDING failure was Grafana answering /api/health 200 while its
 # provisioning was silently rejected at startup, needing a second manual
 # restart to notice. A healthy port is not a healthy config. Scans only the
 # lines APPENDED to the newest grafana log file since
@@ -733,7 +731,7 @@ restart_one() {
 
     if [ "$short" = "grafana" ]; then
         # Propagate sync_grafana_provisioning's own exit code, not a
-        # collapsed 1 (HIMMEL-2133 CR round-3): 2 (lock held) and 3 (rollback
+        # collapsed 1: 2 (lock held) and 3 (rollback
         # also failed) are distinct signals a caller/operator needs intact.
         local sync_rc=0
         sync_grafana_provisioning || sync_rc=$?
@@ -741,10 +739,10 @@ restart_one() {
         snapshot_grafana_log_watermark
     fi
 
-    # Rules first, then the config that references them (HIMMEL-2242): a
+    # Rules first, then the config that references them: a
     # single `promtool check config` on the repo source already validated
     # both, so either order is safe, and this one keeps the existing
-    # HIMMEL-2149 call site first.
+    # rules call site first.
     if [ "$short" = "prometheus" ]; then
         sync_prometheus_alert_rules || return 1
         sync_prometheus_config || return 1
@@ -787,7 +785,7 @@ case "$target" in
         # Propagate the WORST per-target rc, not a flattened 1 — rc=3
         # (rollback failed, live provisioning ABSENT) is the documented
         # emergency signal and must survive the `all` path for programmatic
-        # callers (panel round-4 codex-2, HIMMEL-2133).
+        # callers.
         overall=0
         for t in flow-exporter grafana prometheus windows-exporter; do
             rc=0; restart_one "$t" || rc=$?

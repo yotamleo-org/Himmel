@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/observability/ledger-prune.sh — sanctioned prune helper for
-# ~/.himmel/flow-runs.jsonl (HIMMEL-2149 item 2).
+# ~/.himmel/flow-runs.jsonl.
 #
 # WHY: the operator's own park-protocol prune (backup + filter unpaired start
 # rows older than a cutoff) is the precedented recovery for ghost start rows
@@ -16,8 +16,7 @@
 # paired start row, and every row this script cannot parse or judge the age
 # of is kept untouched.
 #
-# Why 30h, not FLOW_STALLED_ALERT_TTL_SECONDS's 24h directly (CR round 1,
-# codex-1): the exporter counts a row as ALERTING only until
+# Why 30h, not FLOW_STALLED_ALERT_TTL_SECONDS's 24h directly: the exporter counts a row as ALERTING only until
 # `age > deadlineSeconds(flow) + FLOW_STALLED_ALERT_TTL_SECONDS` — for the
 # DEFAULT 6h stall deadline that's 6h + 24h = 30h from fired_at, not 24h. A
 # flat 24h-from-fired_at cutoff would prune (and so silently resolve) a row
@@ -59,7 +58,7 @@ while [ $# -gt 0 ]; do case "$1" in
   *) echo "ledger-prune.sh: unknown arg $1" >&2; exit 2 ;;
 esac; done
 
-# CR round 1 (codex-3): a bare digit-and-dot char class also accepted "0",
+# A bare digit-and-dot char class also accepted "0",
 # ".", and "1.2.3" — all pass a naive check but are not a meaningful positive
 # cutoff ("0" pruned every unpaired start regardless of age). Require a
 # strict decimal (digits, optionally one dot with trailing digits) that is
@@ -87,7 +86,7 @@ command -v python3 >/dev/null 2>&1 || { echo "ledger-prune.sh: python3 not found
 tmp="${ledger}.tmp.$$"
 
 if [ "$dry_run" -eq 0 ]; then
-  # CR round 3 (codex-2, Suggestion): a bare second-resolution timestamp
+  # A bare second-resolution timestamp
   # collides on two prunes started within the same second, and `cp` has no
   # -n — the second run's backup would silently overwrite the first run's
   # true pre-prune backup with an already-once-pruned copy. Append this
@@ -166,8 +165,8 @@ if dry_run:
     dropped = len(lines) - len(kept)
     print(f"ledger-prune.sh: would drop {dropped} of {len(lines)} row(s) (unpaired starts older than {cutoff_hours}h)")
 else:
-    # CR round 3 (codex-1, Critical): the single-pass read narrows the
-    # inconsistent-pairing race (round 2) but read-then-replace with no
+    # The single-pass read narrows the
+    # inconsistent-pairing race but read-then-replace with no
     # writer lock still has a window where a row appended between the read
     # and the swap is silently dropped. Turn silent loss into a loud,
     # retryable refusal instead of eliminating the window outright (a real
@@ -185,10 +184,9 @@ else:
     if os.stat(src).st_mtime != mtime_at_read:
         print(f"ledger-prune.sh: {src} changed during the prune (concurrent write) — aborting without writing, re-run", file=sys.stderr)
         sys.exit(1)
-    # CR round 2 (codex-2), hardened round 4 (codex-2 re-raised at Important:
-    # a confidentiality concern, not cosmetic — silently replacing a private
+    # Confidentiality, not cosmetic: silently replacing a private
     # ledger with an umask-default, potentially wider-readable file is worse
-    # than refusing). Preserve the source's mode bits (e.g. 0600) rather than
+    # than refusing. Preserve the source's mode bits (e.g. 0600) rather than
     # letting the new tmp file take the process umask default (typically
     # 0644). Getting the source's CURRENT mode still fails open (an already-
     # missing file is the earlier existence check's problem, not this one's

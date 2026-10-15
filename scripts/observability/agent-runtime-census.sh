@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-runtime-census.sh (HIMMEL-1988) - thin launcher for the report-only
+# agent-runtime-census.sh - thin launcher for the report-only
 # Windows agent-runtime census (agent-runtime-census.ps1).
 #
 # The census reads Win32_Process, the Windows memory performance counters and

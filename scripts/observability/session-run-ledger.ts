@@ -1,8 +1,8 @@
 // scripts/observability/session-run-ledger.ts
-// HIMMEL-1052 session/subagent lifecycle ledger — the substrate the war-room
+// Session/subagent lifecycle ledger — the substrate the war-room
 // folds for "what is running right now, as a session".
 //
-// SIBLING, NOT REPLACEMENT. `flow-runs.jsonl` (HIMMEL-919/921) tracks the five
+// SIBLING, NOT REPLACEMENT. `flow-runs.jsonl` tracks the five
 // pipeline-cadence legs; `spawn-glm.ts`/`spawn-claudex.ts` already keep a
 // per-session `meta.json` for DISPATCHED lane workers. Neither covers the
 // operator's own interactive/foreground Claude Code sessions and the Task-tool
@@ -28,14 +28,14 @@ import { homedir } from "node:os";
 
 export const SESSION_RUN_ROTATE_BYTES = 10 * 1024 * 1024;
 
-// Schema version stamped on every row. v2 (HIMMEL-2022) only ADDS fields to
+// Schema version stamped on every row. v2 only ADDS fields to
 // the session rows, so a v1 row stays readable and the exporter accepts both.
 export const SESSION_RUN_SCHEMA_VERSION = 2;
 export type SessionRunSchemaVersion = 1 | 2;
 
 // The failure log the fail-open contract used to lack. session-run-hook.ts
 // swallowed every error and exited 0, which is how a five-day ledger outage
-// (HIMMEL-2022) produced no evidence anywhere. One bounded line per failure,
+// produced no evidence anywhere. One bounded line per failure,
 // still exit 0 — the hook must never block a session start or teardown.
 export const SESSION_RUN_ERROR_LOG_MAX_BYTES = 256 * 1024;
 
@@ -46,7 +46,7 @@ export const SESSION_RUN_ERROR_LOG_MAX_BYTES = 256 * 1024;
 export const SESSION_END_REASONS = ["clear", "logout", "prompt_input_exit", "other"] as const;
 export type SessionEndReason = typeof SESSION_END_REASONS[number];
 
-// HIMMEL-2294: a `close` row's `.evidence` is normalized into this closed
+// A `close` row's `.evidence` is normalized into this closed
 // enum before it is written, same discipline as SESSION_END_REASONS above
 // (it becomes downstream label-ish data too). "queue_lock_release" is the
 // operator-preferred writer call site (scripts/handover/queue-lock.sh's
@@ -133,7 +133,7 @@ export type SessionEndRow = {
   context_tokens?: number | null;
 };
 
-// HIMMEL-2294: a session that ran its close protocol WHILE STILL ALIVE
+// A session that ran its close protocol WHILE STILL ALIVE
 // declares its own closability by appending this row — the "close-evidence
 // reconciler" for session_dead_total false positives (closing a terminal
 // kills the process before SessionEnd ever fires, so no `end` row ever

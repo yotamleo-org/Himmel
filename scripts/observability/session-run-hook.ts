@@ -1,5 +1,5 @@
 // scripts/observability/session-run-hook.ts
-// HIMMEL-1052 writer side: the thin hook entrypoint that turns a Claude Code
+// Writer side: the thin hook entrypoint that turns a Claude Code
 // hook payload into one `session-runs.jsonl` row.
 //
 //   bun scripts/observability/session-run-hook.ts session-start   < SessionStart payload
@@ -7,7 +7,7 @@
 //   bun scripts/observability/session-run-hook.ts subagent-start  < PreToolUse  (matcher "Agent")
 //   bun scripts/observability/session-run-hook.ts subagent-end    < PostToolUse (matcher "Agent")
 //   bun scripts/observability/session-run-hook.ts session-close --evidence <token>
-//     HIMMEL-2294: NOT a hook payload verb. Called directly from a close-protocol
+//     NOT a hook payload verb. Called directly from a close-protocol
 //     call site (e.g. scripts/handover/queue-lock.sh's release path) WHILE THE
 //     SESSION IS STILL ALIVE, so it takes no stdin — the session id comes from
 //     $CLAUDE_CODE_SESSION_ID and the evidence token from argv.
@@ -278,7 +278,7 @@ function main(): void {
   const event = process.argv[2];
   if (!isHookEvent(event)) return;
 
-  // HIMMEL-2294: session-close is not a hook payload verb and takes no
+  // Session-close is not a hook payload verb and takes no
   // stdin (the session that calls it is still alive, mid close-protocol —
   // there is no payload to read). Handled entirely separately from the
   // stdin-driven hook path below.
@@ -295,7 +295,7 @@ function main(): void {
 
   let payload: Record<string, unknown>;
   try {
-    // SYNCHRONOUS ON PURPOSE (HIMMEL-2022). This used to be
+    // SYNCHRONOUS ON PURPOSE. This used to be
     // `await Bun.stdin.text()` inside a floating `main().catch().finally()`.
     // Under Bun 1.4.0 a pending stdin read does not ref the event loop, so Bun
     // drained the loop and exited 0 BEFORE stdin was ever consumed: every hook

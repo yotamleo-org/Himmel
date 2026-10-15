@@ -1,5 +1,5 @@
-// HIMMEL-3219: Linux /proc scan for the two quiet-run orphan shapes that
-// HimmelOrphanProcesses (codex-fleet / codex-exec-registry only) never saw on
+// Linux /proc scan for the two quiet-run orphan shapes that
+// HimmelOrphanProcesses never saw on
 // 2026-08-29. Pure reader: no process control, same passivity contract as the
 // rest of the exporter.
 //

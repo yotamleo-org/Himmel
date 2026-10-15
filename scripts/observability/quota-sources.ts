@@ -1,7 +1,7 @@
-// HIMMEL-1000 - real per-bank quota readers for the flow exporter.
+// Real per-bank quota readers for the flow exporter.
 // Pure readers over local files (exporter charter: no writes, no network).
 // Every reading is gated on a provably-LIVE window: resets_at parseable AND
-// in the future (HIMMEL-920 guard precedent) - an expired window means the
+// in the future - an expired window means the
 // bank has reset since the value was written, so emitting it would fabricate.
 import { existsSync, readFileSync, readdirSync, openSync, readSync, closeSync, fstatSync } from "node:fs";
 import { join } from "node:path";
@@ -20,7 +20,7 @@ export function windowLabel(minutes: number): string {
   return `${minutes}m`;
 }
 
-// resets_at appears as epoch-seconds NUMBER (codex rollout), epoch-seconds
+// resets_at appears as epoch-seconds NUMBER, epoch-seconds
 // STRING (claude statusline cache), or ISO (glm ledger rows). Null = cannot
 // be tied to a window, so the caller must treat the value as unusable.
 export function parseResetsAtMs(v: unknown): number | null {
@@ -39,7 +39,7 @@ function validPct(v: unknown): v is number {
 }
 
 // Must resolve the SAME file the statusline producer writes and the
-// HIMMEL-920 guard reads: ${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}.
+// statusline guard reads: ${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}.
 // POSIX keeps the literal /tmp (os.tmpdir() is /var/folders/... on macOS and
 // honors $TMPDIR on Linux - a different file than the bash producer's target);
 // Windows MSYS /tmp == os.tmpdir() (cygpath-verified), where a literal /tmp
@@ -76,7 +76,7 @@ export function readClaudeBank(cachePath: string, nowMs: number): BankResult {
 
 export type ClaudeCacheProvenance = { account: string | null; derivedAtMs: number; producedBy: string | null };
 
-// HIMMEL-1712 item 3: null for any cache the producer hasn't stamped yet
+// Null for any cache the producer hasn't stamped yet
 // (no derived_at) - callers must stay silent on those, not fabricate a value.
 export function readClaudeCacheProvenance(cachePath: string): ClaudeCacheProvenance | null {
   if (!existsSync(cachePath)) return null;
@@ -161,7 +161,7 @@ function codexReadingsFromLine(line: string, nowMs: number): BankReading[] | nul
     const window = windowLabel(window_minutes);
     if (seen.has(window)) continue;
     seen.add(window);
-    // used_percent counts USED — live-verified (HIMMEL-1000): within one
+    // used_percent counts USED — live-verified: within one
     // dispatch session it rose 15.0 -> 19.0 while the session consumed
     // ~185k tokens, and 15 used matches the operator's "85% remaining"
     // reading at that session's start. (The older "counts REMAINING" ops

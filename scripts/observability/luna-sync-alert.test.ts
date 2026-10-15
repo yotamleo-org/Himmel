@@ -1,5 +1,5 @@
 // scripts/observability/luna-sync-alert.test.ts
-// HIMMEL-1199. Hermetic: no real git spawn, no real Telegram send, no real
+// Hermetic: no real git spawn, no real Telegram send, no real
 // state file — checkLunaSync's git read and alert send are injected; readState/
 // writeState are exercised against a tmp file only.
 import { afterEach, beforeEach, expect, test } from "bun:test";
@@ -72,7 +72,7 @@ test("clean tree does not alert and resets any prior alert state", async () => {
 });
 
 test("no upstream (null unpushed) is out of scope, does not alert, and PRESERVES prior alert state (does not reset the cooldown)", async () => {
-  // HIMMEL-1199 CR fix: null means "no upstream configured" (not a genuinely-
+  // Null means "no upstream configured" (not a genuinely-
   // clean 0-unpushed tree), so an in-progress alert window must survive — only
   // a real clean reading resets it. Reproduces the silent-failure mode where a
   // transient/ambiguous git read would wipe the rising-edge state.

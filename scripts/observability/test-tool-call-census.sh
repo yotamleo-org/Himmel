@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite for scripts/observability/tool-call-census.sh (HIMMEL-1462).
+# Suite for scripts/observability/tool-call-census.sh.
 #
 # Synthetic transcripts only — never a copy of a real one. Every fixture below
 # is hand-written to the shape the extractor documents, so the suite pins OUR

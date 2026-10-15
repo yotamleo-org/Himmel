@@ -1,4 +1,4 @@
-# Hermetic fixture tests for host-detectors.ps1 (HIMMEL-923).
+# Hermetic fixture tests for host-detectors.ps1.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 

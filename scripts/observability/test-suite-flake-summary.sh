@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # fixture suite bodies are single-quoted on purpose: their $vars must stay literal
-# scripts/observability/test-suite-flake-summary.sh —HIMMEL-5131: the reader
+# scripts/observability/test-suite-flake-summary.sh — the reader
 # that surfaces suite-flake ledger rows (written by scripts/ci/run-shell-tests.sh).
 #
 #   R1  tick format counts this repo's flake rows since the cutoff, with the
