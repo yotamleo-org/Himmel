@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-win-vm.sh — hermetic coverage for scripts/vm/win-vm.sh (HIMMEL-2860).
+# test-win-vm.sh — hermetic coverage for scripts/vm/win-vm.sh.
 # No real VM: a fake VBoxManage on VBOXMANAGE_PATH keeps a state file and a
 # call log, and a throwaway lock dir stands in for /tmp.
 #

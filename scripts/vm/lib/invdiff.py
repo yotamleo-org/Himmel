@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""invdiff.py A B — diff two /tmp/inv-<label> dirs (home.meta + home.sha + others). HIMMEL-3324."""
+"""invdiff.py A B — diff two /tmp/inv-<label> dirs (home.meta + home.sha + others)."""
 import sys, os, re, collections
 
 # INVDIFF_BASE: the dir holding inv-<label>/ (S9a seam; unset = <script dir>/inv, the 3324 layout).

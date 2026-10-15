@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# upgrade-path-guest.sh -- GUEST side of the VM e2e upgrade-path stage (HIMMEL-5267).
+# upgrade-path-guest.sh -- GUEST side of the VM e2e upgrade-path stage.
 #
 # Runs ON the VM against a staged himmel tree (scripts/vm/upgrade-path-e2e.sh stages
 # it and calls this). It proves an upgrade works end to end before a station roll:

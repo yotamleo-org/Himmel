@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ci-runner.sh — the host side of the himmel-vm self-hosted Actions runner
-# (HIMMEL-5037). Run it on the station; the runner itself only ever runs inside
+# Run it on the station; the runner itself only ever runs inside
 # the himmel-ci-1 test VM, a linked clone of ubuntu_new@suite-ready-v4.
 #
 #   bash scripts/vm/ci-runner.sh build         bake the ci-runner-v1 snapshot (unregistered)
@@ -156,7 +156,7 @@ one_job() {
     vm_boot
     # Per boot, not per image: a guest whose egress filter did not load would
     # reach the station LAN.
-    # Every private-range reject must be loaded, not just the LAN one (HIMMEL-5070).
+    # Every private-range reject must be loaded, not just the LAN one.
     local r chk="sudo nft list table inet himmel_egress | grep -q 'hook output'"
     for r in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10; do  # leak-allow: private-lan-ip egress filter ranges
         # Anchored on the set delimiters so a range cannot match a longer one it is a suffix of.
@@ -188,7 +188,7 @@ one_job() {
                 RUNNER_ID=""
                 off=1
                 # An idle, now-deregistered runner has nothing to wait for; do
-                # not hold the loop until JOB_MAX (HIMMEL-5070).
+                # not hold the loop until JOB_MAX.
                 kill "$JOB_PID" 2>/dev/null
                 break
             fi

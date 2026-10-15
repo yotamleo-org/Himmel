@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# upgrade-path-e2e.sh -- host-driven upgrade-path stage of the VM e2e (HIMMEL-5267).
+# upgrade-path-e2e.sh -- host-driven upgrade-path stage of the VM e2e.
 #
 # Stages THIS worktree onto a VM and runs scripts/vm/upgrade-path-guest.sh there:
 # baseline pins -> station targets -> himmel-doctor / graphify / qmd / cli-proxy /

@@ -1,8 +1,8 @@
-# win-smoke-guest.ps1 -- guest half of the win11 adopt/uninstall smoke cell (HIMMEL-2860).
+# win-smoke-guest.ps1 -- guest half of the win11 adopt/uninstall smoke cell.
 #
 # Runs INSIDE the win11 guest under Windows PowerShell 5.1 (the stock shell an
 # adopter has). ASCII only on purpose: 5.1 reads a BOM-less file as ANSI
-# (HIMMEL-2269). Driven by scripts/vm/win-smoke-cell.sh; prints the evidence
+# Driven by scripts/vm/win-smoke-cell.sh; prints the evidence
 # contract of the Linux matrix: per step `CELL | CMD | LAST | rc`, then
 # `CHECK <PASS|FAIL> <name>` lines and one `VERDICT`.
 #
@@ -17,7 +17,7 @@ param(
     [string]$Work = (Join-Path $env:USERPROFILE 'cell')
 )
 $ErrorActionPreference = 'Continue'
-# Native output is OEM-decoded by default (HIMMEL-2256); guarded because a
+# Native output is OEM-decoded by default; guarded because a
 # guestcontrol run has no console handle on some images.
 try {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -77,7 +77,7 @@ Step 'uninstall' ('node "' + $ctl + '" uninstall --yes') $proj
 Check 'uninstall-rc0' ($rc -eq 0) "rc=$rc"
 $left = $false
 if (Test-Path $projSettings) { $left = [bool](Select-String -Path $projSettings -Pattern 'HIMMEL_REPO' -Quiet) }
-# Known Windows gap HIMMEL-5427: uninstall.ps1 never unwires project settings (Linux does).
+# Known Windows gap uninstall.ps1 never unwires project settings (Linux does).
 # Reported as XFAIL, not hidden; it turns into CHECK PASS once the twin lands, and the
 # marker below must then be removed.
 if ($left) { Write-Output 'CHECK XFAIL uninstall-project-settings-unwired -- HIMMEL_REPO still in the project settings (known gap HIMMEL-5427)' }

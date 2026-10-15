@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# port-alloc.sh — loopback port allocator for the HIMMEL-2623 after-report VM
+# port-alloc.sh — loopback port allocator for the after-report VM
 # clones (himmel-ar-1 .. himmel-ar-$HIMMEL_VM_AR_MAX).
 #
 # Platform guard (linux-only): shells out to `VBoxManage list`/`showvminfo`
@@ -14,7 +14,7 @@
 # no python dependency.
 #
 # WHY skip-the-claimed-set instead of counting up from a hardcoded base
-# (HIMMEL-2623): a fixed base collides with whatever else is already
+# a fixed base collides with whatever else is already
 # registered on this station — today the `himmel-parity-audit` clone holds
 # 2224, right above `ubuntu_new` (2222) and `win11_base_himmel` (2223), and
 # nothing stops a FUTURE audit clone from landing on tomorrow's hardcoded
@@ -27,13 +27,13 @@ set -uo pipefail
 
 # vm_ar_claimed_ports — print, one per line, every host port a REGISTERED
 # VBoxManage VM already NAT-forwards. Read-only (`list vms` + `showvminfo
-# --machinereadable`). CR finding codex-5: an unreadable/broken REGISTRY
+# --machinereadable`). an unreadable/broken REGISTRY
 # (VBoxManage missing, or `list vms` itself failing) must NOT read the same
 # as "confirmed zero VMs claim anything" — the caller's whole allocation
 # scheme depends on this enumeration being trustworthy when it succeeds, so
 # a failure to enumerate returns NONZERO (fail closed) rather than empty
 # output, which would otherwise hand out a port that IS in use somewhere
-# this call just couldn't see. CR finding codex-3: a per-VM `showvminfo`
+# this call just couldn't see. a per-VM `showvminfo`
 # failure for one already-listed name fails closed too, for the same
 # reason — an inaccessible-but-still-registered VM is not proof it claims
 # no ports, just proof this call couldn't see them.
@@ -57,7 +57,7 @@ vm_ar_claimed_ports() {
         vm="${line#\"}"
         vm="${vm%%\"*}"
         [ -n "$vm" ] || continue
-        # CR finding codex-3: `showvminfo` was piped straight into
+        # `showvminfo` was piped straight into
         # grep/sed/awk, so its own exit status was invisible — the pipeline's
         # status was awk's, which is 0 regardless. A registered-but-currently
         # -inaccessible VM (e.g. mid-teardown, or the host lost track of its
@@ -93,7 +93,7 @@ vm_ar_next_ports() {
     fi
     local port=$HIMMEL_VM_AR_BASE_PORT found=0
     while [ "$found" -lt "$count" ]; do
-        # here-string, not a pipe (HIMMEL-1430): under pipefail, `grep -q`
+        # here-string, not a pipe: under pipefail, `grep -q`
         # exits on its first match while $claimed may still be arriving,
         # SIGPIPEing the producer and inverting this negated guard on a
         # successful match. $claimed is small and already fully materialized
@@ -116,7 +116,7 @@ vm_ar_vm_exists() {
     local name="${1:?vm_ar_vm_exists: name required}"
     local vbm="${VBOXMANAGE_PATH:-VBoxManage}"
     command -v "$vbm" >/dev/null 2>&1 || return 1
-    # Capture, don't pipe into `grep -q` (HIMMEL-1430): `list vms` is an
+    # Capture, don't pipe into `grep -q`: `list vms` is an
     # EXTERNAL binary, and `grep -qF` can exit on the first match while it is
     # still writing a long registry, SIGPIPEing it and inverting this check
     # under pipefail on a genuine match. Capturing the full match set first

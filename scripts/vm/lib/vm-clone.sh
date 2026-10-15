@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # vm-clone.sh — SOURCED library: the VirtualBox linked-clone / restore / ssh
-# primitives, extracted from scripts/vm/after-report.sh (HIMMEL-3332 slice S9a)
+# primitives, extracted from scripts/vm/after-report.sh
 # so a second consumer (the S9b install-provenance harness) shares ONE copy of
 # the incident-hardened code instead of forking it. Behaviour is unchanged:
 # after-report.sh and its tests are the proof (see scripts/vm/test-after-report.sh).
@@ -50,7 +50,7 @@ _vm_fail() {
     exit 1
 }
 
-# --- HIMMEL-2623 incident hardening: an unset VBOXMANAGE_PATH must NEVER
+# --- incident hardening: an unset VBOXMANAGE_PATH must NEVER
 # fall through to a real binary without a deliberate opt-in. The incident
 # that prompted this was exactly that: a debug invocation simply forgot to
 # set VBOXMANAGE_PATH, and nothing STRUCTURAL stood between it and the
@@ -71,7 +71,7 @@ vm_env_init() {
     fi
     VBOXMANAGE="${VBOXMANAGE_PATH:-$HIMMEL_VM_AR_VBOXMANAGE_DEFAULT}"
     # A relative path (`./stub`) must resolve here: the VBoxManage calls run
-    # under `cd "$HOME"` (HIMMEL-4334), where it would no longer exist.
+    # under `cd "$HOME"`, where it would no longer exist.
     case "$VBOXMANAGE" in
         /*|[A-Za-z]:*) ;;
         */*) VBOXMANAGE="$PWD/$VBOXMANAGE" ;;
@@ -87,8 +87,7 @@ vm_env_init() {
 
 # vbox_py <python-code> [argv...] — run a vbox.py-scoped snippet through the
 # venv python; `import vbox` has already been done, so callers just reference
-# `vbox.<fn>(...)`. CR finding codex-15 (same shape, swept here from
-# dry-run-restore.sh): <python-code> is a FIXED, trusted literal, never
+# `vbox.<fn>(...)`. Same shape as dry-run-restore.sh: <python-code> is a FIXED, trusted literal, never
 # containing a shell variable — every piece of DATA (CLONE_NAME, SNAPSHOT,
 # PORT) is passed as a trailing argv element and read via sys.argv[N], never
 # interpolated into the python SOURCE text. CLONE_NAME/PORT are
@@ -99,8 +98,8 @@ vm_env_init() {
 # than left as a trap for the next person to trip.
 vbox_py() {
     local code="$1"; shift
-    # $REPO_ROOT is passed through argv too (residual of codex-15 the first
-    # pass missed): it was still interpolated straight into the python
+    # $REPO_ROOT is passed through argv too (the first
+    # pass missed it): it was still interpolated straight into the python
     # SOURCE text below, and a worktree path derives from a branch name —
     # `.claude/worktrees/feat+...` — which may legally contain an
     # apostrophe, breaking the string literal (verified: "unterminated
@@ -206,7 +205,7 @@ vm_clone_ensure() {
         vm_lock_release "himmel-vm-registry"
         _vm_fail "port allocation failed"
     fi
-    # (cd "$HOME" ...) on both VBoxManage calls (HIMMEL-4334): VBoxManage may
+    # (cd "$HOME" ...) on both VBoxManage calls: VBoxManage may
     # spawn the long-lived VBoxSVC, which inherits cwd and would pin a worktree.
     if ! (cd "$HOME" && "$VBOXMANAGE" clonevm "$SOURCE_VM" --snapshot "$snapshot" --options link \
             --name "$CLONE_NAME" --register); then
@@ -227,9 +226,9 @@ vm_clone_ensure() {
 # vm_restore <snapshot> — restore $CLONE_NAME to the clean baseline and read the
 # clone's loopback ssh port into $PORT.
 # Verify the SNAPSHOT NAME actually exists on this clone before touching
-# anything (HIMMEL-2623): a stale-default/missing baseline — this script's
+# anything: a stale-default/missing baseline — this script's
 # default has already moved once in substance (suite-ready -> suite-ready-v3
-# -> suite-ready-v4, the last via the HIMMEL-2747 delete-and-re-clone above,
+# -> suite-ready-v4, the last via the delete-and-re-clone above,
 # not a rename) and will move again for a future migration — must fail with
 # a clear, specific message here, not an opaque VBoxManage error three calls
 # later.
@@ -242,13 +241,13 @@ sys.exit(1) if sys.argv[2] not in names else None
     vbox_py 'vbox.restore_snapshot(sys.argv[1], sys.argv[2])' "$CLONE_NAME" "$snapshot" \
         || _vm_fail "restore_snapshot($CLONE_NAME, $snapshot) failed"
 
-    # CR finding codex-3 (round 3): read PORT AFTER restore_snapshot, not
+    # read PORT AFTER restore_snapshot, not
     # before, and for BOTH the freshly-created and the reused-clone case alike
     # — `snapshot restore` reverts MACHINE CONFIG, not just disk, so any
     # pre-restore read (including this clone's OWN forward, if an operator
     # ever hand-edited it since the baseline was taken) can go stale the
     # moment restore reinstates whatever the snapshot itself recorded.
-    # CR finding codex-14: select the LOOPBACK ssh (guest port 22) rule
+    # select the LOOPBACK ssh (guest port 22) rule
     # explicitly — the previous "first tcp forward, whichever it is" picked
     # an unrelated rule the moment a clone ever carried more than one (an
     # operator-added forward, or a future second port), silently ssh-ing to
@@ -263,7 +262,7 @@ sys.exit(1) if not ssh_fwds else print(ssh_fwds[0][3])
 # vm_boot — start $CLONE_NAME and wait until it answers ssh on 127.0.0.1:$PORT.
 vm_boot() {
     local free_mb ssh_wait
-    # CR finding codex-2: SKILL.md documents "a RAM budget (4 GB each, capped
+    # SKILL.md documents "a RAM budget (4 GB each, capped
     # via env against free host RAM)" for after-report clones — a claim with no
     # enforcement was worse than no claim at all. Checked right before boot
     # (the point RAM actually gets committed), against Linux's own
@@ -315,7 +314,7 @@ vm_scp() {
 # <remote_dir> on a guest, then assert the guest carries no host secret. Both
 # copy paths (rsync when both sides have it, else a tar pipe) apply the shared
 # secret excludes (.env, .env.*, *.local.json) — the host checkout's
-# gitignored-but-present secrets must never reach the guest (HIMMEL-2540).
+# gitignored-but-present secrets must never reach the guest.
 #   <runner>      function taking ONE shell-command string and running it on the
 #                 guest with stdin passed through (e.g. ssh_vm / vm_ssh)
 #   <rsync_e>     the transport for `rsync -e`, e.g. "ssh -p 2222 -i key ..."
@@ -332,7 +331,7 @@ vm_stage_tree() {
     while IFS= read -r _x; do tar_excl+=("$_x"); done < <(vm_guest_tar_excludes)
     # The exclude list must be in force BEFORE any copy: with no errexit a failed load
     # would leave the arrays empty and the secrets already in the guest when the
-    # post-copy assert fires (HIMMEL-2540).
+    # post-copy assert fires.
     if [ "${#rsync_excl[@]}" -eq 0 ] || [ "${#tar_excl[@]}" -eq 0 ]; then
         echo "==> REFUSING: the secret-exclusion list is empty; nothing was copied" >&2; return 1
     fi
@@ -361,6 +360,6 @@ vm_stage_tree() {
             || { echo "==> STAGE FAILED (tar): the copy to the guest did not complete" >&2; return 1; }
     fi
     # Assert the guest is clean before anything runs there; a secret on the guest is
-    # a hard stop, not a warning (HIMMEL-2540).
+    # a hard stop, not a warning.
     vm_guest_assert_clean "$runner" "$remote_dir" full || return 1
 }

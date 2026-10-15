@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # vm-lock.sh — a FIFO, per-name advisory lock for VirtualBox lifecycle calls
-# (HIMMEL-2623 PR-B, post-incident hardening).
 #
 # Platform guard (linux-only): the lock itself is pure POSIX filesystem
 # primitives (mkdir, set -C) with no VBoxManage dependency of its own — the
@@ -18,8 +17,8 @@
 # runs only while holding a lock named for the VM it is about to touch.
 #
 # THIS IS A DELIBERATE, DOCUMENTED MIRROR of the FIFO suite lock that landed
-# in scripts/ci/run-shell-tests.sh at HIMMEL-2623 PR-A (the `_suite_lock_*` /
-# `suite_lock_*` block, eight CR rounds of hardening) — NOT a refactor to
+# in scripts/ci/run-shell-tests.sh (the `_suite_lock_*` /
+# `suite_lock_*` block) — NOT a refactor to
 # share code with it. That file is deliberately self-contained and bash
 # 3.2-safe, and its lock just landed; extracting a shared library now risks
 # regressing eight rounds of fixes for a net-new, lower-concurrency use case.
@@ -28,7 +27,7 @@
 # specific gap the original hit or accepting a specific tradeoff:
 #
 #   - SECONDS, not nanoseconds, for `started`/`seen`. The suite lock moved to
-#     nanoseconds (round 4) because many suite runners can plausibly start in
+#     nanoseconds because many suite runners can plausibly start in
 #     the same wall-clock second on one busy host. A VM lock's contenders are
 #     at most HIMMEL_VM_AR_MAX after-report.sh processes (small, operator-set)
 #     plus this file's own test suite — same-second collisions are the rare
@@ -45,7 +44,7 @@
 #     the owner-file `set -C` create is the real arbiter, not the `mkdir`.
 #   - Messaging is shorter. The original's refusal text is long because it
 #     had to teach an operator to tell "live holder" from "provably dead"
-#     from "unverifiable" apart (HIMMEL-1805 shipped after a wrong "wait for
+#     from "unverifiable" apart (shipped after a wrong "wait for
 #     it" verdict at a corpse) — the CLASSIFICATION logic that came out of
 #     that is kept verbatim in spirit here (pid_present / confirmed-dead /
 #     unverifiable are three different code paths below, never collapsed
@@ -63,21 +62,20 @@
 #     branded by its owner, read verbatim by every prune/turn check — never
 #     recomputed from the READER's own interval, which is what let a
 #     fast-polling reader prune a healthy slow-polling waiter in the
-#     original, round 8).
+#     original).
 #   - The staleness ceiling for a ticket's own `stale_after` is an ABSOLUTE
 #     constant (HIMMEL_VM_QUEUE_STALE_AFTER_CEILING), never
 #     reader-relative — a reader-relative cap prunes a healthy waiter with a
-#     legitimately longer lease (the original's round 9 fix).
+#     legitimately longer lease.
 #   - Short-circuits ("lock disabled", re-entrancy) are checked BEFORE the
 #     queue-turn check, in BOTH the immediate-acquire and the waiting entry
-#     points — the original's round 2 finding: putting the turn-check first
+#     points — putting the turn-check first
 #     means a nested call whose own parent already holds the lock blocks on
 #     its own parent forever, because the turn-check gate means the
 #     short-circuited acquire underneath is never even reached.
 #   - A no-wait caller YIELDS to any live queued waiter rather than jumping
-#     it, even when the lock itself is free at that instant (the original's
-#     round 4: an ad-hoc no-wait run can otherwise starve the FIFO queue
-#     forever no matter how many callers upgrade to it).
+#     it, even when the lock itself is free at that instant: an ad-hoc no-wait run can otherwise starve the FIFO queue
+#     forever no matter how many callers upgrade to it.
 #
 # Usage (source, then call):
 #   vm_lock_acquire_waiting <name>   # 0 acquired; 2 refused (instant/permanent
@@ -104,8 +102,7 @@ set -uo pipefail
 
 # _vm_lock_num <name> <value> <default> [min] — validate <value> is an
 # integer >= [min] (default 0), falling back to <default> with a WARN
-# otherwise. `10#$val` forces decimal interpretation (HIMMEL-2623 CR
-# finding): every numeric knob below reaches this unvalidated from whatever
+# otherwise. `10#$val` forces decimal interpretation: every numeric knob below reaches this unvalidated from whatever
 # the environment sets — after-report.sh and dry-run-restore.sh forward
 # HIMMEL_VM_LOCK_WAIT/HIMMEL_VM_LOCK_WAIT_INTERVAL straight through with no
 # case-statement guard of their own — so an operator-set "010" would
@@ -155,7 +152,7 @@ HIMMEL_VM_LOCK_PERMANENT=0
 # in vm_lock_acquire_waiting is always loud.
 HIMMEL_VM_LOCK_QUIET=0
 
-# --- per-lock-name ownership (CR finding codex-1) --------------------------
+# --- per-lock-name ownership --------------------------
 # This is the SAME SHAPE PR-A's suite lock spent multiple CR rounds closing:
 # a value that belongs to a SPECIFIC LOCK was being kept somewhere that
 # belongs to the PROCESS. A single scalar HIMMEL_VM_LOCK_HELD="$dir" cannot
@@ -183,7 +180,7 @@ HIMMEL_VM_LOCK_QUIET=0
 #   that actually performed the acquire may release, exactly mirroring the
 #   original suite_lock_owned scalar gate — generalised per name here since
 #   more than one name can be genuinely owned by this process at once).
-#   Consumed by vm_lock_release's CAS-protected drop (codex-8, see that
+#   Consumed by vm_lock_release's CAS-protected drop (see that
 #   function). Accessors: _vm_lock_gen_set / _get / _unset.
 _VM_LOCK_GEN_DIRS=()
 _VM_LOCK_GEN_VALS=()
@@ -312,8 +309,8 @@ _vm_lock_dir_empty() {
 _vm_lock_owner_raw() { cat "$1/owner" 2>/dev/null || printf ''; }
 
 _vm_lock_owner_field() {
-    # $1 file, $2 key -> value (empty when absent). CR finding codex-5
-    # (round 4): the explicit `-f` guard avoids bash's own "No such file"
+    # $1 file, $2 key -> value (empty when absent).
+    # The explicit `-f` guard avoids bash's own "No such file"
     # diagnostic for a failed `<` redirection leaking to stderr ahead of
     # the trailing `2>/dev/null` on the SAME command — redirections are
     # set up left-to-right, so the failed read redirect is reported
@@ -332,7 +329,7 @@ _vm_lock_owner_field() {
 
 # _vm_lock_wait_brand <dir> — a brief grace window for a just-`mkdir`'d
 # directory to get its `owner` file COMPLETELY branded, not merely
-# present. CR finding codex-5 (round 4): waiting for mere EXISTENCE let a
+# present. waiting for mere EXISTENCE let a
 # contender observe `owner` in the empty/partial window `_vm_lock_claim`
 # used to leave open between creating the file and finishing the write,
 # and misjudge a live, just-won acquisition as an unbranded stranded
@@ -358,7 +355,7 @@ _vm_lock_wait_brand() {
     esac
 }
 
-# _vm_lock_claim_contended <claim> — HIMMEL-2674: after losing a takeover
+# _vm_lock_claim_contended <claim> — after losing a takeover
 # race on <claim>, is someone else holding it? 0 = contention: the rival's
 # owner is completely branded, OR present but still in flight when the
 # grace expired (the "appeared but never finished" outcome
@@ -371,7 +368,7 @@ _vm_lock_claim_contended() {
 
 # _vm_lock_claim <dir> <extra-fields...> — mkdir, then brand the owner
 # file (set -C is the real arbiter, not the mkdir — see the header
-# divergence note on uutils). CR finding codex-5 (round 4): "atomically
+# divergence note on uutils). "atomically
 # brand" overstated what this used to do — the write ran FOUR separate
 # printfs inside a `{ ... }` GROUP redirected as a whole, so `owner` was
 # created EMPTY the instant the group's redirection opened, with
@@ -426,7 +423,7 @@ _vm_lock_reclaim() {
                 return 1
             fi
         elif [ -f "$claim/owner" ]; then
-            # CR finding codex-5 (round 4): _vm_lock_wait_brand's grace
+            # _vm_lock_wait_brand's grace
             # window expired but `owner` DOES exist — an in-flight brand
             # (or, worst case, a partial-write corruption), never a
             # confirmed-crashed claimant. c_age would read -1 here exactly
@@ -832,8 +829,8 @@ vm_lock_acquire_waiting() {
     return 5
 }
 
-# _vm_lock_release_cas <dir> <expected-raw> — CAS-protected drop (CR finding
-# codex-8). Re-reading pid/host and then dropping in two unprotected steps
+# _vm_lock_release_cas <dir> <expected-raw> — CAS-protected drop.
+# Re-reading pid/host and then dropping in two unprotected steps
 # has a live window: a TTL reclaim can land BETWEEN the check and the
 # `_vm_lock_drop`, so the drop that follows deletes the SUCCESSOR's fresh
 # lock, not the generation we just confirmed was ours — the exact failure
@@ -853,7 +850,7 @@ vm_lock_acquire_waiting() {
 # waiting for `$claim/owner`, `c_age` is left at -1, the `[ "$c_age" -ge 0 ]`
 # guard fails, and the reclaimer treats OUR release-claim as stranded —
 # dropping it and taking over, right in the window this CAS exists to close.
-# So brand immediately (CR finding codex-4), with the SAME `set -C` write
+# So brand immediately, with the SAME `set -C` write
 # shape `_vm_lock_reclaim` uses. If branding itself fails, back off without
 # dropping anything: we cannot prove the claim is still ours to delete, and
 # leaving it for the TTL reclaim to eventually clear is the fail-safe

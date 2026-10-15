@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-provenance-roundtrip-dry.sh — hermetic coverage for
-# scripts/vm/provenance-roundtrip.sh (HIMMEL-3332 S9b). NEVER touches a real
+# scripts/vm/provenance-roundtrip.sh. NEVER touches a real
 # VM: a fake `VBoxManage`, a fake venv python (HIMMEL_VM_PYTHON, standing in
 # for every scripts/lib/vbox.py call) and a fake `ssh` on PATH log every call.
 # The fake ssh answers the guest command shapes the harness sends and, for the
@@ -8,9 +8,9 @@
 # host-side verdict logic (the two-direction RED) is exercised without a guest.
 #
 # Covers: the guest step order, the printed `env -i` environment equalling the
-# one passed (HIMMEL-3321), --expect-red needing BOTH directions, the normal
+# one passed, --expect-red needing BOTH directions, the normal
 # verdict, the uninstall step's flags, the himmelctl `--yes` / `--purge-state`
-# pass-through the uninstall step relies on, the HIMMEL-2623 VBoxManage guard,
+# pass-through the uninstall step relies on, the VBoxManage guard,
 # cleanup (power off, snapshot restore, lock release) on success and on a
 # failed guest step, a bad ref, seed-provenance.sh's refusals, the profile the
 # seed step carries and the crontab capture (the guest-side helpers' own
@@ -264,7 +264,7 @@ else
     fail_case "D5 normal verdict: all-pass=$r_pass fail=$r_fail red-on-green=$r_red_green"; dump
 fi
 
-# D5b — HIMMEL-3787 S2c: the install-only ledger-snap-* checks ride the same
+# D5b — the install-only ledger-snap-* checks ride the same
 # verdict. A lone ledger-direction FAIL (a missing .ours snapshot) fails a
 # normal run and is counted as ledger, never as a RED direction; a SKIP (no
 # class=code rows) is not a failure.
@@ -292,7 +292,7 @@ if [ "$RC" -eq 2 ]; then pass "D6 zero CHECK lines exits 2"; else fail_case "D6 
 # =====================================================================
 # D7 — the uninstall step: himmelctl --yes (+ --purge-state), and this
 # default (no --keep-backups) invocation never sends HIMMEL_UNINSTALL_REAL_HOME
-# (HIMMEL-3787 S2a: --keep-backups' own direct-uninstall.sh path DOES send it,
+# (--keep-backups' own direct-uninstall.sh path DOES send it,
 # scoped to that flag alone — pinned by D7f below)
 # =====================================================================
 run_rt "$BOTH" f73a62f1 --expect-red --purge-state
@@ -305,7 +305,7 @@ else
 fi
 
 # D7f — HIMMEL_UNINSTALL_REAL_HOME is pinned to the --keep-backups guest
-# command ONLY (J1408A F6): it rides on the direct uninstall.sh line and on
+# command ONLY: it rides on the direct uninstall.sh line and on
 # no other SSH line of that run.
 run_rt "$BOTH" f73a62f1 --expect-red --purge-state --keep-backups
 pin=HIMMEL_UNINSTALL_REAL_HOME   # name held in a variable: the real-home caller scan matches the literal assignment text
@@ -392,7 +392,7 @@ else
 fi
 
 # =====================================================================
-# D9 — HIMMEL-2623 guard: no VBOXMANAGE_PATH and no HIMMEL_VM_AR_LIVE=1
+# D9 — guard: no VBOXMANAGE_PATH and no HIMMEL_VM_AR_LIVE=1
 # refuses before a single VBoxManage call
 # =====================================================================
 LOG="$WORK/log-d9"; : >"$LOG"
@@ -514,7 +514,7 @@ if [ "$RC" -eq 2 ] && grep -qF 'uninstall halted at [3/8]; the pre/post-halt own
 else
     fail_case "D14f early halt rc=$RC"; dump
 fi
-# D14e/g — HIMMEL-3351: the guest is provisioned by the seed step, so `all` no
+# D14e/g — the guest is provisioned by the seed step, so `all` no
 # longer tolerates a failed install nor prints an UNOBSERVABLE witness
 run_rt "$BOTH" f73a62f1 --expect-red --profile all
 if ! grep -q 'UNOBSERVABLE' <<<"$OUT" && ! grep -q '^install-exit ' <<<"$OUT"; then
@@ -536,7 +536,7 @@ else
     fail_case "D14h core install failure rc=$RC"; dump
 fi
 
-# D15 — HIMMEL-3351: the seed step carries the profile (the `all` seed puts the
+# D15 — the seed step carries the profile (the `all` seed puts the
 # qmd/graphify stubs on the guest); inventory B also captures the crontab the
 # armed-at-B precondition reads
 for prof in core all; do
@@ -557,7 +557,7 @@ fi
 # =====================================================================
 # D16 — --clone-gone: the clone is rm -rf'd after inventory B, then uninstall
 # runs through the PATH launcher (~/.local/bin/himmelctl), never `node
-# <clone>/.../bin.js` — the clone is gone (HIMMEL-3312 S15)
+# <clone>/.../bin.js` — the clone is gone
 # =====================================================================
 run_rt "$ALL_PASS" f73a62f1 --clone-gone
 want='stage seed invA install-project install-user invB clone-gone-rm statusline-probe uninstall invC assert '
@@ -570,7 +570,7 @@ else
     fail_case "D16 clone-gone step order/launcher: got='$got' un='$un'"; dump
 fi
 
-# D16f — HIMMEL-3332 contract (b): the statusline-probe step runs ONLY under
+# D16f — the statusline-probe step runs ONLY under
 # --clone-gone, between clone-gone-rm and uninstall (checked by D16's want=
 # above), reads settings.json's LIVE statusLine.command and writes the probe
 # result to $WORKDIR/statusline-probe.txt for assert-provenance.sh to judge.
@@ -587,7 +587,7 @@ else
     fail_case "D16g statusline-probe ran without --clone-gone"; dump
 fi
 
-# D16h — HIMMEL-3332 contract (c): --with-qmd prepends bun's guest directory
+# D16h — --with-qmd prepends bun's guest directory
 # to the printed/passed install PATH (so `command -v bun` succeeds and
 # scripts/lib/qmd-bin.sh's real qmd wiring runs) and threads RT_QMD=1 into
 # both the seed and assert guest invocations.
@@ -632,7 +632,7 @@ else
     fail_case "D16d marketplace-remove printed without --clone-gone"; dump
 fi
 
-# D16e — --clone-gone: uninstall must still run from $GHOME/proj (HIMMEL-3540).
+# D16e — --clone-gone: uninstall must still run from $GHOME/proj.
 # $SRC (the staged clone, rm -rf'd above) is not the adopter's project; the
 # launcher may change (PATH vs node <clone>/bin.js) but the cwd must not.
 run_rt "$ALL_PASS" f73a62f1 --clone-gone
@@ -648,7 +648,7 @@ fi
 # ~/.himmel/config.json (never the whole directory — config.json is the
 # user's own file, untouched by design); the check runs AFTER invdiff/assert
 # so a legitimate failure still preserves their output (console ruling,
-# HIMMEL-3528, 2026-09-23)
+# 2026-09-23)
 # =====================================================================
 FAKE_HIMMEL_CONTENTS=config run_rt "$ALL_PASS" f73a62f1 --clone-gone --purge-state
 if [ "$RC" -eq 0 ] && grep -qxF '[clone-gone-purge] ~/.himmel contents: /home/testuser/.himmel/config.json' <<<"$OUT" \
@@ -687,7 +687,7 @@ fi
 
 # D17d — the clone-gone-purge listing follows a symlinked ~/.himmel (plain
 # `find` does not descend into a symlink start-point, so a leftover symlink
-# would list empty and pass silently; codex-1, HIMMEL-3528 panel round 1)
+# would list empty and pass silently)
 FAKE_HIMMEL_CONTENTS=config run_rt "$ALL_PASS" f73a62f1 --clone-gone --purge-state
 if grep -q '^SSH .*find -L .*\.himmel -mindepth 1' "$LOG"; then
     pass "D17d clone-gone-purge listing uses find -L (traverses a symlinked ~/.himmel)"
@@ -696,7 +696,7 @@ else
 fi
 
 # =====================================================================
-# D18 — HIMMEL-3059 S6: --install-from clone|tarball|aur
+# D18 — --install-from clone|tarball|aur
 # =====================================================================
 # D18 — a bad --install-from value is a usage error, rc 2, before VBoxManage
 run_rt "$BOTH" f73a62f1 --install-from bogus
@@ -763,14 +763,14 @@ fi
 
 # =====================================================================
 # D19 — --install-from aur: the full round trip, hermetically, through a
-# fake docker (HIMMEL-3059 S6b). AUR_REF is f8ef4333 (post-S5), the first
+# fake docker. AUR_REF is f8ef4333 (post-S5), the first
 # commit on main carrying packaging/aur/{PKGBUILD,himmel.install} — f73a62f1
 # predates S5 and has neither file, so it cannot exercise this mode.
 # =====================================================================
 AUR_REF=f8ef4333e3f0e03bc540da932a09a3eb84696d67
 HIMMEL_RT_TARBALL_NO_BUILD=1 run_rt "$ALL_PASS" "$AUR_REF" --install-from aur
 got=$(container_order "$LOG")
-# pacman-remove runs BEFORE invC/assert (HIMMEL-3059 S6b follow-up): the
+# pacman-remove runs BEFORE invC/assert: the
 # assert's himmelctl-gone check does a full-PATH `command -v himmelctl`,
 # which reaches pacman's own /usr/bin/himmelctl too, so the aur package must
 # already be removed by the time the assert observes state -- the real

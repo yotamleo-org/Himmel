@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mutate-provenance.sh — HIMMEL-3787 S2a wet-run helper. Overwrites the
+# mutate-provenance.sh — wet-run helper. Overwrites the
 # project's himmel-installed adopter-scripts unit (proj/scripts/worktree.sh)
 # with a third value, the way an operator would by hand after install: the
 # real-install mirror of test-uninstall-provenance.sh's RED58/RED59. Runs ON

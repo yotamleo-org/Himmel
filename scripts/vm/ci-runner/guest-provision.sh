@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # guest-provision.sh — runs ONCE, as root, INSIDE the himmel-ci-1 test VM
-# (HIMMEL-5037), while scripts/vm/ci-runner.sh build bakes the ci-runner-v1
+# while scripts/vm/ci-runner.sh build bakes the ci-runner-v1
 # snapshot. Never run it on a station host: it refuses anything
 # systemd-detect-virt does not call a VM.
 #
@@ -120,7 +120,7 @@ chmod 0755 /usr/local/sbin/himmel-ci-run-job
 
 cat > /etc/nftables.conf <<'EOF'
 #!/usr/sbin/nft -f
-# HIMMEL-5037: the CI runner guest reaches the internet and the NAT DNS only.
+# the CI runner guest reaches the internet and the NAT DNS only.
 flush ruleset
 table inet himmel_egress {
     chain output {

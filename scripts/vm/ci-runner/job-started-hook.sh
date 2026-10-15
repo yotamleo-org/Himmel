@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # job-started-hook.sh — the runner-side fork guard for the himmel-vm
-# self-hosted runner (HIMMEL-5037). Installed in the guest image and wired as
+# self-hosted runner. Installed in the guest image and wired as
 # ACTIONS_RUNNER_HOOK_JOB_STARTED, so the runner runs it before the first step
 # of EVERY job; a non-zero exit fails the job before any workflow code runs.
 #
@@ -21,7 +21,7 @@
 # collaborator's PR is same-repo, so repo membership alone is not trusted. A
 # pull_request additionally needs the PR's author (pull_request.user.login) and
 # the event's sender to be operator accounts: an owner re-running a Dependabot or
-# third-party same-repo PR must not run its code here (HIMMEL-5070).
+# third-party same-repo PR must not run its code here.
 # GITHUB_REPOSITORY must equal HIMMEL_CI_RUNNER_REPO (baked into the image).
 set -u
 

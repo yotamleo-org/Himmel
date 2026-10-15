@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # provenance-roundtrip.sh — the install-provenance VM acceptance harness
-# (HIMMEL-3332 S9b). Installs a himmel ref into a freshly restored guest over a
+# Installs a himmel ref into a freshly restored guest over a
 # pre-seeded user environment, uninstalls it, and checks that uninstall took
 # away exactly what install brought: nothing of the user's (too much) and
 # nothing of himmel's (too little).
@@ -22,7 +22,7 @@
 #                  stages the two assets, then installs on the guest via the
 #                  README recipe (sha256 verify, extract into the versioned
 #                  dir + `current`), before running the same install/uninstall/
-#                  assert chain (HIMMEL-3059 S6). `aur` (HIMMEL-3059 S6b, console
+#                  assert chain. `aur` (console
 #                  ruling 2026-09-24) builds the same release tarball, then packages
 #                  and installs it via the REAL PKGBUILD in an archlinux:base-devel
 #                  container (docker or podman — no VM, pacman is Arch-only and
@@ -37,12 +37,12 @@
 #                  user-owned qmd/graphify stubs on the guest PATH (the arms
 #                  need an executable) and the run asserts install armed a
 #                  crontab line, so the cadence-crontab-removed direction is
-#                  observable (HIMMEL-3351)
+#                  observable
 #   --purge-state  uninstall with --purge-state (the spec's second variant)
 #   --clone-gone   after install, `rm -rf` the staged clone on the guest, then
 #                  run `himmelctl uninstall` through the PATH launcher
 #                  (~/.local/bin/himmelctl) instead of `node <clone>/…/bin.js`
-#                  (HIMMEL-3312 S15). Verifies the standalone bundle/launcher
+#                 . Verifies the standalone bundle/launcher
 #                  fallback and what `claude plugin marketplace remove` does
 #                  for a directory marketplace whose directory is gone; that
 #                  step's observed output is printed on a `[marketplace-remove]`
@@ -50,18 +50,18 @@
 #                  no `~/.himmel` is left.
 #   --keep-backups pass --keep-backups to the uninstall (only meaningful with
 #                  --purge-state or --s2a-case, which implies --purge-state).
-#   --s2a-case     HIMMEL-3787 S2a retention wet-run (clone/core only, no
+#   --s2a-case     retention wet-run (clone/core only, no
 #                  --clone-gone): after install, mutate the project's
 #                  himmel-installed adopter-scripts unit (proj/scripts/
 #                  worktree.sh) to a third value the operator would have typed
 #                  by hand — same scenario as test-uninstall-provenance.sh's
 #                  RED58/RED59, this time through a real install. `a` expects
 #                  `--purge-state` (no --keep-backups) to REFUSE ([8/8] halt)
-#                  with the backup still held (J1390A Finding 4). `b` forces
+#                  with the backup still held. `b` forces
 #                  --keep-backups on the first purge, expects it to succeed
 #                  with a new `retained-*` directory, then reinstalls and
 #                  purges a second time, expecting success with the earlier
-#                  `retained-*` left untouched (J1393A Minor 1 / HIMMEL-3792).
+#                  `retained-*` left untouched.
 #                  Bypasses the generic assert-provenance.sh CHECK verdict
 #                  (the mutation is deliberately not what a plain/purge run
 #                  expects) and reports its own PASS/FAIL.
@@ -217,9 +217,9 @@ case "$INSTALL_FROM" in
     aur)     RUN_BIN="/usr/bin/himmelctl"; INSTALLED_ROOT="/opt/himmel" ;;
 esac
 
-# The exact environment every install and the uninstall run under (HIMMEL-3321:
-# printed, then passed — the printed line IS the argv). --with-qmd (HIMMEL-3332
-# contract (c)) prepends bun's guest directory so `command -v bun` succeeds and
+# The exact environment every install and the uninstall run under (printed,
+# then passed — the printed line IS the argv). --with-qmd (the
+# harness's contract (c)) prepends bun's guest directory so `command -v bun` succeeds and
 # scripts/lib/qmd-bin.sh's real qmd wiring runs instead of skipping; bun itself
 # is only on the guest's login-shell PATH (marketplace/plugins/himmel-ops/
 # skills/vm/SKILL.md), never this restricted install PATH otherwise.
@@ -346,7 +346,7 @@ if [ "$INSTALL_FROM" = tarball ] || [ "$INSTALL_FROM" = aur ]; then
         # ponytail: no running cron/systemd session in the container, so
         # --profile all's cadence-crontab-removed direction is observed via
         # crontab(1) spool state only, never a live fire; upgrade path is a
-        # real Arch VM guest, HIMMEL-3059 follow-up.
+        # real Arch VM guest, follow-up.
         cp "$HOST_TMP/packaging/aur/PKGBUILD" "$HOST_TMP/packaging/aur/himmel.install" "$TARBALL_OUT/" \
             || fail "step aur-stage failed: packaging/aur/{PKGBUILD,himmel.install} missing at $SHA"
         SUM=$(awk '{print $1}' "$TARBALL_OUT/$ASSET.sha256")
@@ -436,17 +436,17 @@ done
 # 5. Inventory B + the ledger and the crontab as they stood after install.
 step inventory-B "bash $WORKDIR/inventory.sh B && { L=\${HIMMEL_PROVENANCE_DIR:-$GHOME/.himmel}/provenance.jsonl; [ ! -f \$L ] || cp \$L $WORKDIR/ledger-B.jsonl; } && { crontab -l >$WORKDIR/crontab-B.txt 2>/dev/null; true; }"
 
-# 5a. HIMMEL-3787 S2a: mutate the project's himmel-installed adopter-scripts
+# 5a. mutate the project's himmel-installed adopter-scripts
 # unit (proj/scripts/worktree.sh) to a third value, the way an operator would
 # by hand after install -- the real-install mirror of RED58/RED59.
 [ -z "$S2A_CASE" ] || step s2a-mutate "HIMMEL_RT_GUEST=1 bash $WORKDIR/mutate-provenance.sh"
 
 # 5b. --clone-gone: delete the staged clone on the guest so the uninstall
-# below has no source tree to fall back on (HIMMEL-3312 S15).
+# below has no source tree to fall back on.
 [ "$CLONE_GONE" = 0 ] || step clone-gone-rm "rm -rf $SRC"
 
 # 5c. --clone-gone: probe the guest's LIVE statusLine command now that the
-# clone (and the guarded JS it exec's) is gone — HIMMEL-3332 contract (b): it
+# clone (and the guarded JS it exec's) is gone — it
 # must stay silent (rc 0, no output), never a Node stack trace. Written to a
 # file assert-provenance.sh reads at inventory C; never fails this step
 # itself (the interesting case is the probe's content, not its guest rc).
@@ -499,7 +499,7 @@ HALT_AT=none
 [ -z "$HALT_N" ] || HALT_AT="[$HALT_N/8]"
 echo "uninstall-exit rc=$UN_RC halted-at=$HALT_AT"
 
-# 5d. HIMMEL-3787 S2a: cases (a) and (b) bypass the generic assert-
+# 5d. cases (a) and (b) bypass the generic assert-
 # provenance.sh CHECK verdict below (the deliberate post-install mutation is
 # not what a plain/purge run expects) and report their own PASS/FAIL here.
 # --expect-red runs the SAME scenario against a pre-fix ref, where the fixed
@@ -522,7 +522,7 @@ if [ -n "$S2A_CASE" ]; then
         [ "$UN_RC" -ne 0 ] || fail "s2a case a: expected --purge-state to refuse (nonzero rc), got rc=0"
         [ "$HALT_N" = 8 ] || fail "s2a case a: expected halt at [8/8], got halted-at=$HALT_AT"
         [ "$BACKUP_COUNT_1" -gt 0 ] || fail "s2a case a: expected the held backup to survive the refused purge, found none"
-        # HIMMEL-3787 S3: the refused purge still ends with the reconcile report,
+        # the refused purge still ends with the reconcile report,
         # naming the held backup (it is why the purge refused).
         printf '%s\n' "$UN_OUT" | grep -q -E '^\[uninstall-log\] Reconcile report - ledger ' \
             || fail "s2a case a: the uninstall log carries no Reconcile report"
@@ -537,7 +537,7 @@ if [ -n "$S2A_CASE" ]; then
     fi
     # case b: --purge-state --keep-backups must succeed and retain into a
     # retained-* dir; a reinstall + second purge must succeed too, leaving
-    # the earlier retained-* dir untouched (J1393A Minor 1 / HIMMEL-3792).
+    # the earlier retained-* dir untouched.
     if [ "$EXPECT_RED" = 1 ]; then
         RETAINED_COUNT_1=$(vm_ssh "find $GHOME/.himmel -maxdepth 1 -type d -name 'retained-*' 2>/dev/null | wc -l" | tr -d '[:space:]')
         echo "[s2a] case=b RED control: retained-after-first-purge=$RETAINED_COUNT_1"
@@ -560,7 +560,7 @@ if [ -n "$S2A_CASE" ]; then
     [ "$RETAINED_COUNT_2" -ge 2 ] || fail "s2a case b: expected >=2 retained-* dirs (earlier one kept + a new one), found $RETAINED_COUNT_2"
     STILL_THERE=$(vm_ssh "[ -d '$RETAINED_DIR_1' ] && echo yes || echo no")
     [ "$STILL_THERE" = yes ] || fail "s2a case b: the earlier retained-* dir ($RETAINED_DIR_1) was disturbed by the second purge"
-    # HIMMEL-3787 S3 (Q7): the second run's report lists the earlier retained-*
+    # The second run's report lists the earlier retained-*
     # dir with its delete command.
     printf '%s\n' "$UN2_OUT" | grep -q -F "retained from an earlier purge: $RETAINED_DIR_1  (rm -rf $RETAINED_DIR_1 when done)" \
         || fail "s2a case b: the second run's Reconcile report does not list the earlier retained dir with its delete command"
@@ -613,7 +613,7 @@ printf '%s\n' "$ASSERT_OUT"
 # uninstall/ bundle are the purge's own last statement) and nothing beyond
 # what baseline A seeded there — ~/.himmel/config.json (seed-provenance.sh),
 # never the whole directory: config.json is the user's own file and
-# uninstall.sh deliberately never removes it (console ruling, HIMMEL-3528,
+# uninstall.sh deliberately never removes it (console ruling,
 # 2026-09-23). Runs AFTER invdiff/assert so a legitimate failure here still
 # preserves their diagnostic output in the captured run log.
 if [ "$CLONE_GONE" = 1 ] && [ "$PURGE" = 1 ]; then

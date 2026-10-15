@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-dry-run-restore.sh — hermetic coverage for scripts/vm/dry-run-restore.sh
-# (HIMMEL-2623 PR-B). Never touches a real VM: the same stateful fake
+# Never touches a real VM: the same stateful fake
 # VBoxManage pattern as test-after-report.sh, plus a real (throwaway) TCP
 # listener standing in for the guest's sshd banner.
 #
@@ -35,7 +35,7 @@ fail_case() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 
 PYTHON_BIN=$(command -v python3)
 if [ -z "$PYTHON_BIN" ]; then
-    # CR finding codex-12: every case in this file needs python3 (vbox.py) —
+    # every case in this file needs python3 (vbox.py) —
     # printing "ALL PASS" and exiting 0 here would be a run that verified
     # ZERO cases reading identically to one where every case genuinely
     # passed, to any caller checking only the exit code (this suite's own
@@ -56,7 +56,7 @@ mkdir -p "$STATE"
 reg_file="$STATE/registered.list"
 touch "$reg_file"
 # Per-VM state files are keyed by a HASH of the name, not the raw name
-# (codex-15's own test coverage needs to inject "/" and other path-hostile
+# (the test coverage of that interpolation needs to inject "/" and other path-hostile
 # characters into a VM name without that breaking the FIXTURE's filename
 # scheme — a limitation of this stand-in, not of real VBoxManage, which
 # would refuse such a name outright; the fixture must not constrain what
@@ -114,7 +114,7 @@ case "${1:-}" in
     ;;
   startvm)
     vm="$2"; is_registered "$vm" || exit 1
-    # HIMMEL-2675: the state change and the reported exit status are two
+    # the state change and the reported exit status are two
     # INDEPENDENT things here on purpose — real VBoxManage can start a VM
     # (the side effect) and still report failure on the CLI call itself
     # (a timeout, a late warning). FAKE_VBOX_STARTVM_FAIL simulates that:
@@ -133,13 +133,13 @@ exit 0
 VBOXEOF
 chmod +x "$FAKE_VBOXMANAGE"
 
-# HIMMEL-3182: scripts/lib/vbox.py runs VBoxManage through python's
+# scripts/lib/vbox.py runs VBoxManage through python's
 # subprocess. A native-Windows CPython (Git Bash on a runner) cannot exec the
 # fake's `#!` script (WinError 193 "not a valid Win32 application"), so every
 # case that reaches VBoxManage fails on the fixture, not on dry-run-restore.sh.
 # Probe the exact call vbox.py makes; SKIP the suite loudly when it cannot run.
-# (macOS: the vm-lock.sh `declare -A` that broke T1-T8 there was removed by
-# HIMMEL-3176 -- no probe is needed for it, and adding one would SKIP a suite
+# (macOS: the vm-lock.sh `declare -A` that broke T1-T8 there was removed,
+# so no probe is needed for it, and adding one would SKIP a suite
 # that now runs.)
 if ! env FAKE_VBOX_STATE="$WORK/probe-state" "$PYTHON_BIN" -c \
     'import subprocess, sys; subprocess.run([sys.argv[1], "list", "vms"], capture_output=True, check=True)' \
@@ -209,7 +209,7 @@ fi
 # CALLER's shell does not have pipefail on (the realistic case — an
 # operator's plain shell piped into `tee`, not this test's own shell).
 #
-# CR finding codex-13: this test's OWN shell has `set -o pipefail` (see the
+# this test's OWN shell has `set -o pipefail` (see the
 # top of this file), so a bare `... | cat` HERE does NOT actually lose the
 # exit status — pipefail makes the pipeline report dry-run-restore.sh's own
 # nonzero rc regardless of cat's 0, so the previous version of this test
@@ -278,7 +278,7 @@ else
 fi
 
 # =====================================================================
-# T4/T5 (CR finding codex-15): a VM/snapshot name is interpolated straight
+# T4/T5: a VM/snapshot name is interpolated straight
 # into argv now, never into python SOURCE text — an apostrophe must not
 # break execution, and a crafted value must not EXECUTE. Both names are
 # registered in the fake VBoxManage state (a real VirtualBox would refuse
@@ -335,7 +335,7 @@ else
 fi
 
 # =====================================================================
-# T6 (CR follow-up on codex-15, coordinator-verified residual): vbox_py()
+# T6: vbox_py()
 # still interpolated $REPO_ROOT straight into the python SOURCE text even
 # after argv-ifying VM/snapshot names. A worktree path derives from a
 # branch name (.claude/worktrees/feat+...), which may legally carry an
@@ -379,7 +379,7 @@ else
 fi
 
 # =====================================================================
-# T7 (CR finding codex-5, round 2): a preflight refusal must touch NOTHING.
+# T7 : a preflight refusal must touch NOTHING.
 # `trap cleanup EXIT` used to be installed before the snapshot-existence
 # check, and cleanup() unconditionally powered off the VM — so a refusal
 # on a bad snapshot name against an ALREADY-RUNNING VM (the realistic
@@ -407,7 +407,7 @@ else
 fi
 
 # =====================================================================
-# T8 (HIMMEL-2675): a boot that STARTS the VM but then still reports
+# T8: a boot that STARTS the VM but then still reports
 # failure must still get powered off by cleanup(). Before this fix,
 # BOOTED was armed only once ensure_running CONFIRMED success — so a
 # startvm that changed the VM's state to running and THEN reported

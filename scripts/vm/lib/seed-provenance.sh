@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # seed-provenance.sh — pre-seed a guest HOME with a user's own Claude/himmel-
-# adjacent state before a himmel install (HIMMEL-3332 S9b, spec §11 step 2).
+# adjacent state before a himmel install.
 # Runs ON the guest, from scripts/vm/provenance-roundtrip.sh. Every file is
 # written directly (never through the claude CLI: the guest is not signed in,
 # and the CLI creates state of its own on first run).
@@ -25,7 +25,7 @@
 # ponytail: a stub is not a real qmd or graphify. It proves the arm and the
 # disarm of the cadence crontab lines, never that a cadence RUN works: no
 # cadence fires in the guest, and installing the real tools (the qmd fork build
-# and 2.1 GB of models, HIMMEL-2531) is not reproducible from this repo.
+# and 2.1 GB of models) is not reproducible from this repo.
 #
 # Refuses (rc 2, writing nothing) unless HIMMEL_RT_GUEST=1, when any target
 # already exists (~/.bashrc excepted: the seed lines are PREPENDED to the
@@ -52,7 +52,7 @@ TARGETS=(
     .claude/handover/bridge .claude/handover/bridge/state.json
 )
 [ "$PROFILE" != all ] || TARGETS+=(.local/bin/qmd .local/bin/graphify)
-# RT_QMD=1 (the harness's --with-qmd, HIMMEL-3332 contract (c)): a pre-existing
+# RT_QMD=1 (the harness's --with-qmd, contract (c)): a pre-existing
 # qmd data file the USER put there themselves, unrelated to himmel's qmd-fork
 # install -- must survive byte-identical (seeded.list) whether or not install
 # ever touches qmd, and regardless of --purge-state.
@@ -217,7 +217,7 @@ echo seed >"$H/.cache/node-gyp/seed"
 echo seed >"$H/.bun/install/cache/seed"
 rec .config/claude-glm/phi-roots .himmel/config.json .npm/_cacache/seed .cache/node-gyp/seed .bun/install/cache/seed
 
-# RT_QMD=1 (--with-qmd, HIMMEL-3332 contract (c)): the user's OWN pre-existing
+# RT_QMD=1 (--with-qmd, contract (c)): the user's OWN pre-existing
 # qmd data, unrelated to any himmel-installed qmd-fork -- must survive
 # byte-identical regardless of --purge-state (assert-provenance.sh's generic
 # seeded.list loop judges it; no himmel writer ever touches this path).

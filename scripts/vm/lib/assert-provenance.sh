@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # assert-provenance.sh — the named checks of the install-provenance round trip
-# (HIMMEL-3332 S9b, spec §11 steps 5 and 7). Runs ON the guest after inventory
+# Runs ON the guest after inventory
 # C, from scripts/vm/provenance-roundtrip.sh, and only reports: every check is
 # one line
 #     CHECK <group> <direction> <PASS|FAIL|SKIP> <name> — <detail>
@@ -64,7 +64,7 @@ led_units() {
     jq -rs --arg k "$1" '[.[] | select(.kind == $k and .op == "register" and (.unit // "") != "")]
         | group_by(.unit) | .[] | "\(.[0].unit)\t\(.[0].preexisted)"' "$L" 2>/dev/null
 }
-# HIMMEL-3541 class 1: the marketplaces the operator had ALREADY registered
+# the marketplaces the operator had ALREADY registered
 # (the ledger says preexisted, and the clone dir is in inventory A). The
 # Claude Code CLI re-fetches such a clone when install-plugins.sh's
 # "Registering marketplaces" step runs `claude plugin marketplace add` for it,
@@ -107,7 +107,7 @@ CLI_KEYS='["firstStartTime","firstStartVersion","hasResetAutoModeOptInForDefault
 while IFS= read -r p; do
     [ -n "$p" ] || continue
     if [ "$p" = "$H/.claude.json" ]; then
-        # HIMMEL-3541 class 4: uninstall removes the trust entry install added
+        # uninstall removes the trust entry install added
         # for ~/proj (a ledger row, parent included when install created it),
         # so ~/.claude.json must equal A again -- outside CLI_KEYS, which the
         # Claude Code CLI itself writes whenever the install or uninstall runs it.
@@ -162,7 +162,7 @@ ok semantic too-much context7-enabled 'enabledPlugins["context7@claude-plugins-o
 ok semantic too-much my-tool-enabled 'enabledPlugins["my-tool@my-market"] is not true' \
     jq -e '.enabledPlugins["my-tool@my-market"] == true' "$S"
 ok semantic too-much user-statusline "statusLine is $(jq -c '.statusLine // "absent"' "$S" 2>/dev/null)" jeq '.statusLine'
-# HIMMEL-3332 contract (b): with the clone gone, the guarded statusLine
+# with the clone gone, the guarded statusLine
 # command must have stayed silent (rc 0, no output) rather than throwing a
 # Node stack trace. provenance-roundtrip.sh's statusline-probe step (only
 # under --clone-gone) writes this file BEFORE uninstall runs; its absence
@@ -243,7 +243,7 @@ done
 if ! command -v systemd-analyze >/dev/null 2>&1; then
     check parse too-much SKIP unit:mine.service "no systemd-analyze"
 elif ! systemctl --user show-environment >/dev/null 2>&1; then
-    # HIMMEL-3059 S6b: a container with no live systemd --user session (the
+    # a container with no live systemd --user session (the
     # aur mode's build container, unlike a real VM guest) fails `verify` on
     # "Failed to initialize manager", not a real unit defect -- gate on the
     # manager being reachable at all, same posture as the binary-missing case.
@@ -332,14 +332,14 @@ fi
 # The 3330 allowlist: caches install may fill and uninstall may keep. The
 # ledger, the standalone uninstall bundle (S13) and provenance-backups/ are
 # allowed too, except after --purge-state, which is the step that removes all
-# three (HIMMEL-3541: a plain run must not flag them as leftover residue).
+# three.
 #
-# HIMMEL-3541 sizing (N444, 2026-09-24) added three more, each with a named
+# sizing (N444, 2026-09-24) added three more, each with a named
 # writer and a citation -- no path is allowlisted without both:
 #   - $H/.npm/_update-notifier-last-checked: npm's own update-notifier module
 #     writes this on any `npm` invocation himmel's install runs; covered by
 #     the `third-party-caches` manifest row (uninstall-manifest.tsv:56,
-#     HIMMEL-3330: "caches other tools wrote while himmel ran ... theirs,
+#     "caches other tools wrote while himmel ran ... theirs,
 #     never himmel-provenanced, so not removed").
 #   - $H/proj/scripts/(guardrails|lib): himmel's own file copies into the
 #     adopter's scripts/ tree; uninstall removes the recorded FILES (see the
@@ -354,7 +354,7 @@ fi
 #     itself is grouped with ~/.claude, ~/.ssh, ~/.gitconfig, ~/.config,
 #     ~/.local as an operator-owned dir uninstall.sh deliberately never
 #     deletes wholesale (uninstall.sh:43,615,1486,1492,1496).
-#   - $H/.local/share/himmel: HIMMEL-3059 S6 (--install-from tarball). The
+#   - $H/.local/share/himmel: (--install-from tarball). The
 #     versioned tree + `current` symlink the tarball recipe extracts. For a
 #     tarball tree, bin.js's himmelRoot() resolves to this `current` path and
 #     uninstall.sh:116 derives its own REPO_ROOT the same way (dirname of the
@@ -364,7 +364,7 @@ fi
 #     from a git clone to a tarball-installed root, not a new exemption.
 allow="^($H/\\.npm/_cacache|$H/\\.npm/_logs|$H/\\.npm/_update-notifier-last-checked|$H/\\.cache/node-gyp|$H/\\.bun/install/cache|$H/\\.claude/plugins/cache|$H/\\.cache/qmd|$H/proj/scripts/guardrails|$H/proj/scripts/lib|$H/\\.codex|$H/\\.local/share/himmel"
 [ "$PURGE" = 1 ] || allow="$allow|$H/\\.himmel/provenance(\\.jsonl)?|$H/\\.himmel/uninstall|$H/\\.himmel/provenance-backups"
-# RT_QMD=1 (--with-qmd, HIMMEL-3332 contract (c)): a himmel-installed qmd-fork
+# RT_QMD=1 (--with-qmd, contract (c)): a himmel-installed qmd-fork
 # (scripts/lib/qmd-bin.sh: clone+build under ~/.himmel/qmd-fork, symlinked at
 # ~/.bun/install/global/node_modules/@tobilu/qmd) is KEPT by a plain uninstall
 # (allowed here) and removed only under --purge-state when the ledger says
@@ -374,18 +374,18 @@ allow="^($H/\\.npm/_cacache|$H/\\.npm/_logs|$H/\\.npm/_update-notifier-last-chec
 # the existing "left behind (not at A)" residue scan below catches it as a
 # genuine FAIL, no separate CHECK needed.
 [ "$QMD" != 1 ] || [ "$PURGE" = 1 ] || allow="$allow|$H/\\.himmel/qmd-fork|$H/\\.bun/install/global/node_modules/@tobilu/qmd"
-# HIMMEL-3559: --profile all seeds a real vault at $H/luna (the adopter-<scope>
+# --profile all seeds a real vault at $H/luna (the adopter-<scope>
 # profile overlay's .vault.path — see provenance-roundtrip.sh's OVERLAY) so the
 # adopter has second-brain content from the first run. It is the operator's
 # data, never himmel's: uninstall must never touch it, so it is a residue
 # allowance here, not a manifest removal row.
 [ "$PROFILE" = all ] && allow="$allow|$H/luna"
-# HIMMEL-3541 class 1: the clone of a marketplace registered at A (MKT_PRE_A
+# the clone of a marketplace registered at A (MKT_PRE_A
 # above) -- the CLI's refresh of the operator's own marketplace, which the
 # uninstall rightly keeps ("kept (was already yours)"). Only those dirs.
 for m in $MKT_PRE_A; do allow="$allow|$MK/${m//./\\.}"; done
 allow="$allow)(/|\$)"
-# HIMMEL-3541 class 1: files the Claude Code CLI writes for itself whenever
+# files the Claude Code CLI writes for itself whenever
 # install-plugins.sh or uninstall.sh runs it -- exact paths, nothing beneath:
 # its ~/.claude.json lock and timestamped backups, its in-use sweep stamp, and
 # its own marketplace/plugin registries (cli-registries-clean below checks
@@ -450,7 +450,7 @@ if [ -f "$L" ]; then
       led_units marketplace | while IFS=$'\t' read -r m _; do
           case "$m" in ''|*[!A-Za-z0-9._-]*) ;; *) printf '%s\n' "$MK/$m" ;; esac
       done; } | sort -u >"$D/ledger-trees.txt"
-    # HIMMEL-3787 S2c: install-only -- the ledger's LAST class=code file row per
+    # install-only -- the ledger's LAST class=code file row per
     # path of these two rows names an .ours snapshot that exists at B and holds
     # the very bytes install left in place. Judged at B because a resolved
     # unit's snapshot is pruned by the uninstall (spec §5.3).
@@ -471,7 +471,7 @@ if [ -f "$L" ]; then
     }
     snap_check adopter-scripts
     snap_check hud-config
-    # HIMMEL-3787 S2d: the same for the marked block (kind block, no file bytes to
+    # the same for the marked block (kind block, no file bytes to
     # compare against -- the snapshot holds exactly the BEGIN..END text, whose sha
     # the row records as post.sha).
     block_snap_check() {  # <row>
@@ -498,7 +498,7 @@ else
 fi
 # No unrecorded write: every path new or changed at B (outside the allowlist)
 # is a ledger row's path, lies under a `tree` row's path, or is a directory
-# above a ledger row's path (HIMMEL-3541 class 5: its writer's mkdir -p).
+# above a ledger row's path.
 unrec=$( { paths A B new; paths A B changed; } | grep -vE "$allow" | awk -v h="$H/" 'FILENAME == ARGV[1] { if ($0 != "") { p[$0] = 1; x = $0; while (sub(/\/[^\/]*$/, "", x) && x != "" && x "/" != h) a[x] = 1 } next }
     FILENAME == ARGV[2] { if ($0 != "") t[$0] = 1; next }
     { hit = ($0 in p) || ($0 in a) || ($0 in t); x = $0; while (!hit) { sub(/\/[^\/]*$/, "", x); if (x == "" || x "/" == h) break; if (x in t) hit = 1 } if (!hit) print }' "$D/ledger-paths.txt" "$D/ledger-trees.txt" - )

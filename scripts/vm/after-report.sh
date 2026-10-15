@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # after-report.sh — run the shell-unit after-report (the local twin of the
 # public shell-unit CI job) inside a VirtualBox linked-clone VM instead of on
-# this host (HIMMEL-2623 PR-B).
+# this host.
 #
 # Platform guard (linux-only): drives VirtualBox linked clones via
 # VBoxManage and ssh/scp on the Linux station; NOT ported to native
@@ -12,7 +12,7 @@
 #
 # WHY A VM: scripts/ci/run-shell-tests.sh --changed-since origin/main --pr <N>
 # takes ~35-45 min per PR here, and every run serialises on ONE machine-wide
-# advisory lock (/tmp/himmel-shell-suite-scripts.lock, HIMMEL-1338/2215) —
+# advisory lock —
 # with 5-6 legs live the queue becomes the shift's bottleneck. A VM is a
 # SEPARATE host, so a run there never contends for that lock at all; this
 # script is what makes that separation actually happen.
@@ -36,7 +36,7 @@
 #
 # WHY THE BASELINE SNAPSHOT IS "suite-ready-v4", NOT AN OLDER SNAPSHOT
 # (three image-level design facts, not incident colour — introduced at v2/v3
-# and carried forward unchanged into v4; the HIMMEL-2747 re-clone below
+# and carried forward unchanged into v4; the re-clone below
 # reconfirmed them empirically rather than merely inheriting the assumption):
 #   1. `VBoxManage clonevm` regenerates the guest's MACs, but the original
 #      "suite-ready" (v1) base image's netplan pinned `match: macaddress:` to
@@ -69,7 +69,7 @@
 #      `/etc/machine-id`, remove the ssh host keys and re-create
 #      `/etc/himmel-regen-identity` before snapshotting, or the new golden
 #      image ships personalised. This is not an assumption carried forward
-#      untested: the HIMMEL-2747 re-clone of himmel-ar-1 from
+#      untested: the re-clone of himmel-ar-1 from
 #      `ubuntu_new@suite-ready-v4` (source snapshot
 #      92a7e71a-6dbd-48a9-bda3-fc1ef1dadfc7, new VM UUID
 #      f657ac00-5a92-4069-a93e-233975b39d3e) proved it empirically on
@@ -88,19 +88,19 @@
 # still exist on ubuntu_new for the same reason: superseded, never deleted,
 # and not the default.
 #
-# THE DEFAULT IS "suite-ready-v4" (HIMMEL-2738/2681/2747). v4 adds, over v3:
+# THE DEFAULT IS "suite-ready-v4". v4 adds, over v3:
 # VirtualBox Guest Additions userspace (`virtualbox-guest-utils`, installed
 # from the guest side because the host has no VBoxGuestAdditions.iso to
 # attach); bidirectional clipboard AND drag-and-drop set as MACHINE CONFIG
 # (draganddrop moved disabled -> bidirectional; clipboard was already
 # bidirectional); a tty1 auto-login drop-in so an operator has a console to
 # reach the guest at all; and node 24.20.0 + npm 11.19.0 + bun 1.4.2 + unzip
-# + Claude Code 2.1.263, which closes HIMMEL-2681's runtime-skew precondition
+# + Claude Code 2.1.263, which closes the runtime-skew precondition
 # (v3 shipped node 18.19.1 against this repo's `.nvmrc` pin of 24, and no bun
-# at all — the skew HIMMEL-2681 measured as the cause of several reds in the
+# at all — the skew measured as the cause of several reds in the
 # first VM suite run).
 #
-# HOW THE MOVE WAS ACTUALLY MADE (HIMMEL-2747, 2026-09-07): NOT by pointing
+# HOW THE MOVE WAS ACTUALLY MADE: NOT by pointing
 # this script's default at a newer snapshot name against the SAME clone —
 # himmel-ar-1 cannot be REBASED onto a newer source snapshot; a linked
 # clone's disk chain is bound to the source snapshot it was cut from, and no
@@ -129,7 +129,7 @@
 # before touching the default for the NEXT migration, v4 -> v5): a snapshot
 # merely NAMED suite-ready-vN on a clone that still carries the PREVIOUS
 # image's guest content reports green while silently measuring the suites on
-# stale software — the exact trap HIMMEL-2681 exists to stop, and the reason
+# stale software — the exact trap exists to stop, and the reason
 # "just rename the snapshot" is never an acceptable migration here.
 # Hand-upgrading the guest INSIDE a clone's own writable differencing disk
 # (boot it, apt-install the new packages, snapshot that as its own baseline)
@@ -163,7 +163,7 @@
 # branch (and a refresh of origin/main) into that warm checkout instead of a
 # fresh clone.
 #
-# THE GUEST USER, ONE LINE TO CHANGE (HIMMEL-2623): the guest SSH login for
+# THE GUEST USER, ONE LINE TO CHANGE: the guest SSH login for
 # $HIMMEL_VM_AR_SOURCE_VM is read from scripts/lib/vms.json's
 # "<source-vm>".user field (a literal, resolved the same way
 # scripts/lib/vmsdk.py's VM class now resolves it — literal `user` wins over
@@ -197,7 +197,7 @@
 #   VBOXMANAGE_PATH           VBoxManage binary. UNSET requires
 #                             HIMMEL_VM_AR_LIVE=1 (see below) — an unset
 #                             VBOXMANAGE_PATH can never silently resolve to a
-#                             real binary (HIMMEL-2623 incident hardening).
+#                             real binary.
 #                             When set (a real path, or a test stub) it is
 #                             used as-is regardless of HIMMEL_VM_AR_LIVE.
 #   HIMMEL_VM_AR_LIVE         must be exactly "1" to let an UNSET
@@ -224,7 +224,7 @@
 # FALLBACK: if the VM runner is unavailable for ANY reason (VBoxManage
 # missing, the venv python missing, no free clone slot, the guest
 # unreachable, the guest checkout carrying host secrets it must never carry
-# — see HIMMEL-2540 below), this script FAILS LOUDLY (never a silent green)
+# — see below), this script FAILS LOUDLY (never a silent green)
 # and names the host invocation to run instead:
 #   bash scripts/ci/run-shell-tests.sh --changed-since origin/main --pr <N>
 set -uo pipefail
@@ -263,7 +263,7 @@ HOST_FALLBACK="bash scripts/ci/run-shell-tests.sh --changed-since origin/main --
 # fail <reason> — the ONE exit path for "the VM runner did not deliver an
 # after-report," whether that is unavailability (VBoxManage/python/slot/ssh
 # missing) or a genuine run-time refusal (secrets in the guest checkout). It
-# never lets the run be silently reported as clean — HIMMEL-2623 requirement
+# never lets the run be silently reported as clean — requirement
 # 7: the host path is the fallback, always named, never assumed.
 fail() {
     echo "ERROR: VM after-report runner did not complete: $1" >&2
@@ -272,7 +272,7 @@ fail() {
     exit 1
 }
 
-# --- HIMMEL-2623 incident hardening: an unset VBOXMANAGE_PATH must NEVER fall
+# --- incident hardening: an unset VBOXMANAGE_PATH must NEVER fall
 # through to a real binary without a deliberate opt-in (the incident cloned and
 # snapshotted a real VM). The guard, the VBoxManage lookup and the venv-python
 # check live in vm_env_init (scripts/vm/lib/vm-clone.sh); it runs before any
@@ -294,13 +294,13 @@ SOURCE_VM="${HIMMEL_VM_AR_SOURCE_VM:-ubuntu_new}"
 SNAPSHOT="${HIMMEL_VM_AR_SNAPSHOT:-suite-ready-v4}"
 VMS_JSON="$REPO_ROOT/scripts/lib/vms.json"
 
-# --- guest user (HIMMEL-2623: ONE place — see the file header) -----------
+# --- guest user -----------
 if [ -n "${HIMMEL_VM_AR_GUEST_USER:-}" ]; then
     GUEST_USER="$HIMMEL_VM_AR_GUEST_USER"
 else
-    # CR finding codex-2: $VMS_JSON/$SOURCE_VM used to be interpolated
+    # $VMS_JSON/$SOURCE_VM used to be interpolated
     # straight into the python SOURCE text — same class as the vbox_py fix
-    # above (codex-15), just missed here. An apostrophe in either value
+    # above, just missed here. An apostrophe in either value
     # breaks the string literal, and a crafted value injects python
     # statements. Both now travel through sys.argv instead.
     # shellcheck disable=SC2034  # read by vm_ssh/vm_scp in the sourced lib
@@ -317,7 +317,7 @@ vm_slot_acquire
 
 # --- vm-lock: held around EVERY real VBoxManage-touching span for this
 # clone, without exception — clone/snapshot/restore/start/stop, the whole
-# way from here to the cleanup trap's power_off (HIMMEL-2623 incident
+# way from here to the cleanup trap's power_off (incident
 # hardening; see scripts/vm/vm-lock.sh's own header for the design this
 # mirrors — the FIFO suite lock — and every deliberate divergence from it).
 # Acquired BEFORE the very first VBoxManage-touching call (the existence
@@ -332,7 +332,7 @@ case "$_vm_lock_rc" in
     *) fail "could not acquire the vm-lock on '$CLONE_NAME' — see the REFUSED line above" ;;
 esac
 
-# HIMMEL-2688: GUEST_TMP/cleanup_guest_token are declared HERE — before
+# GUEST_TMP/cleanup_guest_token are declared HERE — before
 # `cleanup()` and its EXIT trap even exist — not down at the guest-checkout
 # section where the token actually gets used. cleanup() runs under `set -u`
 # and can fire before GUEST_TMP is ever assigned a real value (any early
@@ -355,12 +355,12 @@ cleanup_guest_token() {
 # shellcheck disable=SC2317,SC2329 # invoked indirectly via `trap cleanup EXIT` below
 cleanup() {
     # Capture the PENDING exit status FIRST, before anything else in this
-    # trap can touch $? (HIMMEL-2623 belt and braces: every step below
+    # trap can touch $? (belt and braces: every step below
     # already returns explicitly, but an explicit final `exit "$rc"` states
     # the final status as a fact rather than an inference from "nothing in
     # here happened to clobber it").
     local rc=$?
-    # HIMMEL-2688 (CodeRabbit, PR #2206 review): a TERM/INT landing between
+    # A TERM/INT landing between
     # the token reaching the guest and the fetch chain completing used to
     # route through this trap WITHOUT ever cleaning it up — cleanup_guest_token
     # was called only from the three guest-checkout call sites below, none
@@ -370,13 +370,13 @@ cleanup() {
     # a silent no-op, which is the one outcome here that looks fixed and
     # is not.
     cleanup_guest_token
-    # Best-effort power-off — at end of run, not deferred (HIMMEL-2623): this
+    # Best-effort power-off — at end of run, not deferred: this
     # trap fires on every exit path (success, failure, or an early `fail`
     # after boot), so the clone is never left running past this process.
     # Still holding the vm-lock at this point by construction — power_off is
     # itself a real VBoxManage call, so it must run before the lock below is
     # released, never after.
-    # CR finding codex-7: the power-off failure used to be caught inside
+    # the power-off failure used to be caught inside
     # python, printed as a WARN, and `|| true`'d — so a failed power-off
     # still let $rc report SUCCESS, while the vm-lock and this slot's fd
     # were released right below regardless, making the slot reusable for a
@@ -396,7 +396,7 @@ except Exception as e:
         rc=1
     fi
     vm_lock_release "$CLONE_NAME"
-    # CR finding codex-2 (round 2): a TERM/INT during first-time clone
+    # a TERM/INT during first-time clone
     # creation exits through this trap while "himmel-vm-registry" (acquired
     # above, before port allocation) is still held, and the earlier version
     # of this trap released only $CLONE_NAME — leaking the registry lock
@@ -411,7 +411,7 @@ except Exception as e:
     exit "$rc"
 }
 trap cleanup EXIT
-# CR finding codex-6: an EXIT-only trap relies on bash's default signal
+# an EXIT-only trap relies on bash's default signal
 # disposition for TERM/INT still routing through it in every environment
 # this ever runs in — true in ad-hoc testing here, but not something worth
 # betting a real VM's power-off and lock release on implicitly. Explicit
@@ -427,7 +427,7 @@ vm_clone_ensure "$SNAPSHOT"
 # --- restore to the clean baseline (also reads PORT AFTER the restore) -----
 vm_restore "$SNAPSHOT"
 
-# CR finding codex-2: SKILL.md documents "a RAM budget (4 GB each, capped
+# SKILL.md documents "a RAM budget (4 GB each, capped
 # via env against free host RAM)" for after-report clones — a claim with no
 # enforcement was worse than no claim at all. Checked right before boot
 # (the point RAM actually gets committed), against Linux's own
@@ -449,7 +449,7 @@ guest_ssh() { vm_ssh "$@"; }
 # snapshot bakes in) — but that guarantee said nothing about argv, which was
 # the actual gap.
 #
-# HIMMEL-2678 (CodeRabbit, Major/Security): the PAT used to be embedded
+# The PAT used to be embedded
 # directly in the fetch URL (`https://x-access-token:$TOKEN@github.com/...`).
 # `.git/config` was never touched, but the WHOLE URL, token included, was an
 # argv element to `ssh` on THIS host (visible in that process's own
@@ -461,7 +461,7 @@ guest_ssh() { vm_ssh "$@"; }
 # URL. cleanup_guest_token (declared up near cleanup(), before this section
 # even runs) removes both the token file and the helper on EVERY exit path
 # — the three explicit call sites below, AND the EXIT trap itself
-# (HIMMEL-2688: a TERM/INT landing in this window used to route through
+# (a TERM/INT landing in this window used to route through
 # that trap without ever calling it, leaving the PAT on the guest's disk) —
 # not relied on via the snapshot restore that bounds it anyway.
 # -----------------------------------------------------------------------
@@ -479,7 +479,7 @@ GUEST_TMP=$(guest_ssh "umask 077 && mktemp -d") \
 GUEST_TOKEN_FILE="$GUEST_TMP/token"
 GUEST_ASKPASS="$GUEST_TMP/askpass"
 
-# cleanup_guest_token (defined up near cleanup(), see HIMMEL-2688) removes
+# cleanup_guest_token removes
 # the whole ephemeral tmp dir — askpass helper + token file together,
 # whichever of them made it that far. Called explicitly at each `fail`
 # between here and the fetch chain completing below, AND unconditionally
@@ -516,7 +516,7 @@ if ! printf '%s' "$himmel_github_token_vm" | guest_ssh "umask 077 && cat > '$GUE
     fail "could not deliver the fetch token to the guest"
 fi
 
-# HIMMEL-2677: the first measured VM run hit two defects here, and fixing
+# the first measured VM run hit two defects here, and fixing
 # only the first was not enough. (a) neither refspec forced the ref
 # update, so refreshing origin/main from a depth-1 fetch was rejected
 # outright as a non-fast-forward against the baseline snapshot's own
@@ -552,14 +552,14 @@ FETCH_RC=$?
 cleanup_guest_token
 [ "$FETCH_RC" -eq 0 ] || fail "guest checkout of branch '$BRANCH' failed (fetch or checkout)"
 
-# --- HIMMEL-2540: never let host secrets/settings reach a guest checkout —
+# --- never let host secrets/settings reach a guest checkout —
 # assert their ABSENCE and refuse to run the suite if any is present. This
 # is defense-in-depth (the fetch above never carries them — they are
 # gitignored, and the token above was never persisted to .git/config
 # either) rather than a one-time bake-time check: it runs on every clone,
 # every run. -----------------------------------------------------------
 for p in .env .claude/settings.local.json .himmel-dev; do
-    # CR finding codex-4: every NONZERO ssh exit used to read as "the file is
+    # every NONZERO ssh exit used to read as "the file is
     # absent" — including 255, ssh's own convention for a TRANSPORT failure
     # (couldn't connect, connection dropped mid-check), which proves nothing
     # about the file at all. "The check could not run" and "the secret is
@@ -596,7 +596,7 @@ SUITE_TIMEOUT="${HIMMEL_VM_AR_SUITE_TIMEOUT:-3600}"
 # credentials and must not get any — the after-report comment is posted
 # from the HOST below, mirroring run-shell-tests.sh's own --pr code path. --
 #
-# HIMMEL-2768: $HOME/.bun/bin is prepended to PATH for the suite command.
+# $HOME/.bun/bin is prepended to PATH for the suite command.
 # suite-ready-v4 ships bun 1.4.2, but the image only puts it on the PATH via
 # ~/.bashrc — and guest_ssh() runs `ssh user@host "cmd"`, a NON-INTERACTIVE,
 # non-login shell, where bash's own early return for non-interactive shells
@@ -607,7 +607,7 @@ SUITE_TIMEOUT="${HIMMEL_VM_AR_SUITE_TIMEOUT:-3600}"
 # scripts/himmelctl/test/test-wizard-luna-sections.sh passes `bun` to
 # build_path, which fails closed at scripts/lib/hermetic-path.sh:121
 # ("required test tool not found before PATH scrub"). That red is one of the
-# nine in HIMMEL-2681's VM baseline and was attributed there to "bun is
+# nine in the VM baseline and was attributed there to "bun is
 # absent entirely", so it was expected to CLEAR on v4 and did not.
 #
 # Why a PATH prefix on this one command and not `bash -lc`: a login shell
@@ -624,7 +624,7 @@ SUITE_TIMEOUT="${HIMMEL_VM_AR_SUITE_TIMEOUT:-3600}"
 # sessions) so every non-interactive consumer sees it without a caller opting
 # in — is the correct resting state and is deliberately NOT done here: it
 # needs a new golden image, and a linked clone cannot be rebased onto one
-# (HIMMEL-2747 had to delete and re-clone for exactly that reason). Fold it
+# Fold it
 # into whatever cuts suite-ready-v5, then drop this prefix.
 guest_ssh "cd $GUEST_DEST && rm -f $REMOTE_LOG && PATH=\"\$HOME/.bun/bin:\$PATH\" timeout $SUITE_TIMEOUT bash scripts/ci/run-shell-tests.sh --changed-since origin/main >$REMOTE_LOG 2>&1; echo EXITCODE=\$? >>$REMOTE_LOG"
 guest_run_rc=$?
@@ -641,7 +641,7 @@ SUITE_RC=$(grep -oE '^EXITCODE=[0-9]+' "$LOCAL_LOG" | tail -n1 | cut -d= -f2)
 # comment` call) from the copied-back log, and post it from THIS (host)
 # process — mirroring that code path exactly rather than letting the guest
 # post (it has no gh credentials and must not get any). ------------------
-# CR finding codex-3: a guest run that dies mid-suite (SUITE_TIMEOUT killed
+# a guest run that dies mid-suite (SUITE_TIMEOUT killed
 # it, a crash, anything short of reaching its own summary print) still has
 # an EXITCODE marker (the trailing `echo EXITCODE=$?` above always runs,
 # unconditionally, via `;`) but no PASS/SKIP/FAIL to report. Defaulting
@@ -649,7 +649,7 @@ SUITE_RC=$(grep -oE '^EXITCODE=[0-9]+' "$LOCAL_LOG" | tail -n1 | cut -d= -f2)
 # genuinely clean, empty run, which is worse than posting nothing at all.
 # The presence of the run's OWN "== Summary ==" line is what actually
 # proves it reached a verdict; gate the whole PASS/SKIP/FAIL shape on it.
-# The tree the guest run says it scanned (HIMMEL-5104), the same line the
+# The tree the guest run says it scanned, the same line the
 # runner puts in its own SUMMARY; a log without one (older guest runner, or a
 # run killed before the plan header) says so rather than omitting the line.
 scanning_line=$(grep -m1 '^scanning: ' "$LOCAL_LOG" 2>/dev/null || true)
@@ -684,7 +684,7 @@ $(printf ' RAN-IN: VM clone %s (HIMMEL-2623 — a separate host, not this machin
 else
     summary_block=$(printf 'DIED-BEFORE-SUMMARY: the guest run exited (rc=%s) before printing its own "== Summary ==" — no PASS/SKIP/FAIL verdict exists for this run.\n head: %s\n %s\n scope: %s\n RAN-IN: VM clone %s (HIMMEL-2623)' \
         "$SUITE_RC" "$REPORT_HEAD" "$scanning_line" "scripts" "$CLONE_NAME")
-    # HIMMEL-2689: no verdict is a failure of the run, whatever EXITCODE the
+    # no verdict is a failure of the run, whatever EXITCODE the
     # guest captured — "could not determine a verdict" must never share an
     # exit code with "the verdict was pass". Folded into SUITE_RC so the one
     # `exit "$SUITE_RC"` below (and the cleanup trap's rc capture) carries it.

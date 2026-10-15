@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-inventory.sh — hermetic coverage for scripts/vm/lib/inventory.sh and
-# scripts/vm/lib/invdiff.py (HIMMEL-3332 slice S9a; copied from HIMMEL-3324's
+# scripts/vm/lib/invdiff.py (copied from the earlier
 # round-trip harness). Runs the guest-side inventory against a FIXTURE $HOME
 # on this host: one changed byte in one file must move exactly one line of
 # home.sha, and invdiff.py must name that path. No VM, no network; `sudo` is a
@@ -90,7 +90,7 @@ else fail_case "T5 default base rc=$rc: $out"; fi
 
 # --- T6: a label outside [A-Za-z0-9._-] is refused (rc 2, stderr) BEFORE any path is built or
 # removed. /tmp/inv-$LA exists, so "$LA/../<canary>" resolves to a directory OUTSIDE the inv-*
-# namespace; a canary file in it must survive (an unvalidated label reached `rm -rf`, HIMMEL-3348).
+# namespace; a canary file in it must survive.
 CAN=$(mktemp -d /tmp/test-inv-canary.XXXXXX) || exit 1; printf 'keep\n' > "$CAN/keep"
 out=$(HOME="$FIXHOME" PATH="$WORK/bin:$PATH" bash "$INV" "$LA/../$(basename "$CAN")" 2>&1 >/dev/null); rc=$?
 if [ "$rc" -eq 2 ] && [ -f "$CAN/keep" ] && grep -q 'invalid label' <<< "$out"; then

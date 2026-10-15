@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test-vm-lock.sh — hermetic coverage for scripts/vm/vm-lock.sh (HIMMEL-2623
-# PR-B, post-incident hardening). Pure filesystem locking, no VBoxManage, no
+# test-vm-lock.sh — hermetic coverage for scripts/vm/vm-lock.sh.
+# Pure filesystem locking, no VBoxManage, no
 # VM, no network — every case runs against a throwaway HIMMEL_VM_LOCK_DIR.
 #
 # Covers the properties the operator named as non-negotiable: pid-named
@@ -158,7 +158,7 @@ fi
 # --- T9: FIFO — of two waiters queued behind one holder, the EARLIER
 # arrival acquires first (its own ticket's `started` wins the turn-check).
 #
-# CR finding codex-9: the marker write must be GATED on the acquisition
+# the marker write must be GATED on the acquisition
 # actually succeeding, and each child's exit status must actually be
 # checked — a version of this test that writes "first"/"second" and
 # discards `wait`'s status regardless of whether vm_lock_acquire_waiting
@@ -205,7 +205,7 @@ else
     fail_case "T9 — order='$order' (want 'first,second,') holder_rc=$holder_rc first_rc=$first_rc second_rc=$second_rc"
 fi
 
-# --- T10: nested locks (CR findings codex-1/codex-8) — the SAME shape
+# --- T10: nested locks — the SAME shape
 # PR-A's suite lock spent multiple CR rounds closing: a value belonging to
 # ONE lock (ownership) was kept in something that belongs to the PROCESS (a
 # single scalar), so acquiring a SECOND, differently-named lock while
@@ -239,7 +239,7 @@ else
     fail_case "T10 — $(printf '%s' "$t10_out" | tr '\n' ' ')"
 fi
 
-# --- T11 (CR finding codex-5, round 4): a takeover `.claim` whose owner
+# --- T11 : a takeover `.claim` whose owner
 # file is PRESENT but INCOMPLETE (mkdir won, but `started=` never landed —
 # a live brand still in flight, or a crashed writer) must never be
 # misjudged as a confirmed-stranded claim and dropped out from under it.
@@ -266,7 +266,7 @@ else
     printf '%s\n' "$t11_out" | sed 's/^/    /'
 fi
 
-# --- T12/T13 (HIMMEL-2674): the SECOND-mkdir race in _vm_lock_reclaim.
+# --- T12/T13: the SECOND-mkdir race in _vm_lock_reclaim.
 # Seeds the lock dir and its `.claim` sibling both EMPTY (a stranded claim:
 # no owner after the grace, so the contender drops it), then wraps
 # _vm_lock_drop so that dropping the claim is immediately followed by a

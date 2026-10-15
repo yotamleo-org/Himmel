@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-ci-runner.sh — hermetic suite for the HIMMEL-5037 self-hosted runner
+# test-ci-runner.sh — hermetic suite for the self-hosted runner
 # tooling: the guest job-started fork guard, the host loop's preflight, kill
 # switch and JIT-config handling, and the guest provisioner's bare-metal
 # refusal. No VirtualBox, no network: gh, ssh and the VM lib are stubs.

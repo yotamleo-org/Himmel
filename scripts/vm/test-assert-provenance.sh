@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-assert-provenance.sh — hermetic coverage for the guest-side helpers of
-# the install-provenance round trip (HIMMEL-3332 S9b, HIMMEL-3351):
+# the install-provenance round trip:
 # scripts/vm/lib/assert-provenance.sh and seed-provenance.sh. NEVER touches a
 # VM or the host: both run against a scratch HOME, fabricated inventories
 # (INV_BASE) and a fake crontab / systemctl / systemd-analyze on PATH.
@@ -44,7 +44,7 @@ case "${1:-}" in
 esac
 EOF
 # `--user show-environment` is the mine.service reachability gate
-# (HIMMEL-3059 S6b) -- everything else keeps the old unconditional exit 1
+# -- everything else keeps the old unconditional exit 1
 # (e.g. `--user is-enabled`). FAKE_SYSTEMD_MANAGER_RC/FAKE_SYSTEMD_ANALYZE_RC
 # default to "no manager" so the suite's default world matches a bare
 # container with no systemd --user session, same as before this env gate
@@ -200,7 +200,7 @@ mkdir -p "$UD"; echo unit >"$UD/kept.service"; echo new >"$UD/himmel-qmd.service
 run_assert core 0
 has "a unit new since A is left behind" 'CHECK removal too-little FAIL user-units-removed .*himmel-qmd.service'
 
-# ---- 6b. HIMMEL-3541: the standalone uninstall bundle and provenance-backups/
+# ---- 6b. the standalone uninstall bundle and provenance-backups/
 # are himmel's own, but --purge-state-only removals (uninstall.sh keeps both by
 # design on a plain uninstall) -- a plain run must not flag them as residue.
 UB="$H/.himmel/uninstall" PB="$H/.himmel/provenance-backups"
@@ -211,7 +211,7 @@ run_assert core 0
 hasnt "plain: the uninstall bundle is not residue" 'CHECK residue [a-z-]+ FAIL [a-z]+:~/\.himmel/uninstall'
 hasnt "plain: provenance-backups is not residue" 'CHECK residue [a-z-]+ FAIL [a-z]+:~/\.himmel/provenance-backups'
 
-# ---- 6c. HIMMEL-3541 sizing: three more named/cited residue exemptions --
+# ---- 6c. sizing: three more named/cited residue exemptions --
 # npm's own update-notifier file, the emptied project scripts/{guardrails,lib}
 # dirs (manifest class NEVER for the containing tree), and the ~/.codex
 # directory itself (himmel only ever owns the AGENTS.md file inside it).
@@ -226,7 +226,7 @@ hasnt "plain: emptied proj/scripts/guardrails is not residue" 'CHECK residue [a-
 hasnt "plain: emptied proj/scripts/lib is not residue" 'CHECK residue [a-z-]+ FAIL [a-z]+:~/proj/scripts/lib'
 hasnt "plain: the ~/.codex directory itself is not residue" 'CHECK residue [a-z-]+ FAIL [a-z]+:~/\.codex —'
 
-# ---- 6d2. HIMMEL-3059 S6: a tarball-installed himmel's own versioned tree
+# ---- 6d2. a tarball-installed himmel's own versioned tree
 # ($H/.local/share/himmel, the `current` symlink's target root) is not
 # residue -- the same `himmel-clone` keep the manifest already grants a git
 # checkout, generalized to the tarball identity.
@@ -236,7 +236,7 @@ inv C d "$LSH"
 run_assert core 0
 hasnt "plain: the tarball-installed himmel tree is not residue" 'CHECK residue [a-z-]+ FAIL [a-z]+:~/\.local/share/himmel'
 
-# ---- 6d. HIMMEL-3559: --profile all seeds a real vault at $H/luna (the
+# ---- 6d. --profile all seeds a real vault at $H/luna (the
 # adopter-<scope> profile overlay's .vault.path) -- the operator's own data,
 # never himmel's to remove. It survives uninstall and must not be residue
 # under `all`, but the exemption is scoped to `all` only: under `core` the
@@ -252,7 +252,7 @@ inv C d "$VLT"; inv C f "$VLT/index.md" seed
 run_assert core 0
 has "core: the same leftover at ~/luna is not exempted" 'CHECK residue [a-z-]+ FAIL [a-z]+:~/luna'
 
-# ---- 6e. HIMMEL-3541 class 1: what the Claude Code CLI itself writes while
+# ---- 6e. what the Claude Code CLI itself writes while
 # himmel's install drives it. Exact paths only (the lock, the ~/.claude.json
 # backups, the CLI's plugin registries), the clone of a marketplace himmel
 # registered, and the clone the CLI refreshed over a marketplace the operator
@@ -324,7 +324,7 @@ echo '{"version":2,"plugins":{"context7@claude-plugins-official":[{"scope":"user
 run_assert core 0
 has "cli: another project's install of a plugin himmel added is not ours" 'CHECK semantic too-little PASS cli-registries-clean '
 
-# ---- 6f. HIMMEL-3541 class 4: ~/.claude.json at C equals A outside the keys
+# ---- 6f. ~/.claude.json at C equals A outside the keys
 # the Claude Code CLI writes on its own start (uninstall runs the CLI).
 cj_world() {  # <jq edit applied to the seed for the live file>
     fresh
@@ -353,7 +353,7 @@ cj_world 'del(.numStartups)'
 run_assert core 0
 has "claude.json neg: a dropped key that was NOT at its CLI default fails" 'CHECK identity identity FAIL claude-json-restored — .* at: numStartups=3->null$'
 
-# ---- 6h. HIMMEL-3541 class 4: `claude plugin marketplace add --scope user`
+# ---- 6h. `claude plugin marketplace add --scope user`
 # rewrites ~/.claude/settings.json in the CLI's own key order; the same values
 # in another order are restored, a changed value is not.
 set_world() {  # <jq program turning A into the live file>
@@ -370,7 +370,7 @@ set_world '{env: {A: "2"}, mcpServers: .mcpServers}'
 run_assert core 0
 has "settings neg: a changed value still fails, naming it" 'CHECK identity identity FAIL seeded:~/\.claude/settings\.json — .* at: env\.A="1"->"2"$'
 
-# ---- 6g. HIMMEL-3541 class 5: a directory new at B is recorded when a ledger
+# ---- 6g. a directory new at B is recorded when a ledger
 # row's path lies under it (its writer's mkdir -p); one with none is not.
 fresh
 printf '{"op":"create","kind":"file","path":"%s"}\n' "$H/.claude/himmel/install-profile.json" >"$LB/ledger-B.jsonl"
@@ -396,7 +396,7 @@ has "all: every cadence armed at B passes the precondition" 'CHECK precondition 
 run_assert core 0
 hasnt "plain profile: no armed-at-B check" 'cadence-crontab-armed-at-B'
 
-# ---- 7b. statusline-silent-after-clone-gone (HIMMEL-3332 contract (b)):
+# ---- 7b. statusline-silent-after-clone-gone (contract (b)):
 # provenance-roundtrip.sh's --clone-gone-only probe writes statusline-probe.txt
 # (first line "RC=<n>", the rest the guest command's captured output) BEFORE
 # this script ever runs it; the file's absence (a plain-variant run) is a
@@ -426,7 +426,7 @@ printf 'RC=0\nsome unexpected output\n' >"$LB/statusline-probe.txt"
 run_assert core 0
 has "rc=0 but non-empty output: still FAILs (not silent)" 'CHECK semantic too-much FAIL statusline-silent-after-clone-gone — rc=0 output=some unexpected output'
 
-# ---- 7c. --with-qmd (RT_QMD=1), HIMMEL-3332 contract (c) second half: a
+# ---- 7c. --with-qmd (RT_QMD=1), a
 # himmel-installed qmd-fork is kept by a plain uninstall and removed only
 # under --purge-state; this is gated by the new PURGE-conditional allow-list
 # line, judged by the EXISTING generic residue scan (section 7), never a new
@@ -536,7 +536,7 @@ fresh; rm -rf "$H"; mkdir -p "$H/.local/bin"; echo mine >"$H/.local/bin/qmd"
 seed core
 if [ "$RC" -eq 0 ]; then pass "seed (core) leaves an existing qmd alone"; else fail_case "seed (core) leaves an existing qmd alone (rc=$RC)"; fi
 
-# ---- 9. HIMMEL-3059 S6b: unit:mine.service only runs systemd-analyze --user
+# ---- 9. unit:mine.service only runs systemd-analyze --user
 # verify when a user systemd manager is actually reachable (a container with
 # no live session, e.g. the aur mode's archlinux:base-devel build, means
 # `systemd-analyze --user verify` fails on "Failed to initialize manager",
@@ -553,7 +553,7 @@ fresh
 FAKE_SYSTEMD_MANAGER_RC=0 FAKE_SYSTEMD_ANALYZE_RC=0 run_assert core 0
 has "manager reachable + a passing verify: unit:mine.service PASSes" 'CHECK parse too-much PASS unit:mine\.service —'
 
-# ---- 10. HIMMEL-3787 S2c: install-only -- every class=code file row of
+# ---- 10. install-only -- every class=code file row of
 # adopter-scripts and hud-config names an .ours snapshot that exists at B and
 # equals the installed bytes. The row's LAST record per path is the one judged.
 snap_world() {  # <ok|null|missing|differs|norows>
@@ -592,7 +592,7 @@ snap_world norows; run_assert core 0
 has "no class=code rows: SKIP, never a vacuous PASS" 'CHECK precondition precondition SKIP ledger-snap-adopter-scripts '
 hasnt "no class=code rows: nothing passes" 'CHECK ledger ledger PASS ledger-snap-'
 
-# ---- 11. HIMMEL-3787 S2d: install-only -- the marked-block rows of user-claude-md
+# ---- 11. install-only -- the marked-block rows of user-claude-md
 # and user-agents-md name an .ours snapshot at B whose sha is the row's post.sha.
 block_world() {  # <ok|null|missing|differs>
     fresh

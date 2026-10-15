@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-vm-clone-lib.sh — hermetic coverage for scripts/vm/lib/vm-clone.sh
-# (HIMMEL-3332 slice S9a). No real VM, no network: a fake VBoxManage / ssh /
+# No real VM, no network: a fake VBoxManage / ssh /
 # scp / rsync on PATH, a throwaway lock dir, and a fixture repo. The clone /
 # restore / boot bodies are proven by scripts/vm/test-after-report.sh and
 # test-dry-run-restore.sh, which run UNCHANGED against the extracted lib.
@@ -87,7 +87,7 @@ if [ "$rc" -eq 1 ] && grep -q 'must be a positive integer' <<< "$out"; then
     pass "T1d a non-positive HIMMEL_VM_AR_MAX is refused"
 else fail_case "T1d MAX=0 rc=$rc: $out"; fi
 
-# --- T2: the HIMMEL-2623 guard. Unset VBOXMANAGE_PATH without the LIVE opt-in
+# --- T2: the guard. Unset VBOXMANAGE_PATH without the LIVE opt-in
 # must refuse and never reach the (counting) default binary.
 calls="$WORK/vbox-calls"; : > "$calls"
 out=$(env -u VBOXMANAGE_PATH -u HIMMEL_VM_AR_LIVE PATH="$BIN:$PATH" FAKE_VBOX_CALLS="$calls" HIMMEL_VM_AR_VBOXMANAGE_DEFAULT="$BIN/VBoxManage" \
@@ -170,7 +170,7 @@ else fail_case "T4e rc=$rc: $out"; fi
 
 # The tar branch and the rsync branch agree on .env.example: rsync passes it as a source and
 # fails the stage when it cannot be read; the tar branch's copy used to end in `|| true`, so a
-# missing template or a failed guest-side write staged silently without it (HIMMEL-3348).
+# missing template or a failed guest-side write staged silently without it.
 FIX2="$WORK/repo-noenv"; mkdir -p "$FIX2/scripts/lib"; echo ok > "$FIX2/scripts/a.sh"
 cp "$REPO_ROOT/scripts/lib/vm-guest-excludes.sh" "$FIX2/scripts/lib/"
 G5="$WORK/guest-noenv"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# inventory.sh <label> — checksummed machine inventory (HIMMEL-3324). Runs ON the guest.
+# inventory.sh <label> — checksummed machine inventory. Runs ON the guest.
 # Writes /tmp/inv-<label>/{home.meta,home.sha,etc.sha,sys.meta,tmp.meta,pkgs.txt,sizes.txt,procs.txt}.
 # Content hashes, not mtimes: the diff is over what a file IS, not when it was touched.
 #
@@ -17,7 +17,7 @@ set -u
 export LC_ALL=C
 label=${1-}
 # The label becomes a path component that is removed recursively: refuse an empty label or
-# anything that could leave /tmp/inv-* BEFORE the path is built (HIMMEL-3348).
+# anything that could leave /tmp/inv-* BEFORE the path is built.
 case $label in
     ''|*[!A-Za-z0-9._-]*) echo "inventory.sh: invalid label '$label' (allowed: [A-Za-z0-9._-])" >&2; exit 2 ;;
 esac

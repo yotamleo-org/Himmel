@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-after-report.sh — hermetic coverage for scripts/vm/after-report.sh and
-# scripts/vm/port-alloc.sh (HIMMEL-2623 PR-B). NEVER touches a real
+# scripts/vm/port-alloc.sh. NEVER touches a real
 # VirtualBox VM: a fake, stateful `VBoxManage` on PATH stands in for the
 # whole VM lifecycle (list/showvminfo/clonevm/snapshot/startvm/controlvm/
 # modifyvm), fake `ssh`/`scp` scripts pattern-match the exact guest command
@@ -15,7 +15,7 @@
 # Covers: port allocation skipping claimed ports, HIMMEL_VM_AR_MAX being
 # honoured, the copied-back log landing at the quiet-run-ar-<ticket>-<ts>.log
 # path shape with both the `== Summary ==` and `GAVE UP` markers intact, the
-# HIMMEL-2540 absence-assertions refusing to proceed when a guest checkout
+# absence-assertions refusing to proceed when a guest checkout
 # carries .env/.claude/settings.local.json/.himmel-dev, and the fallback
 # message naming the host invocation when VBoxManage is missing or the guest
 # never answers ssh.
@@ -41,8 +41,8 @@ pass() { echo "PASS $1"; }
 fail_case() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 
 # Resolved early (not just before T3) so EVERY case that invokes
-# after-report.sh — including T2 — can pin HIMMEL_VM_PYTHON to it (CR
-# finding codex-11): without an explicit pin, after-report.sh falls back to
+# after-report.sh — including T2 — can pin HIMMEL_VM_PYTHON to it:
+# without an explicit pin, after-report.sh falls back to
 # ~/.himmel/vm-venv/bin/python, which happens to exist on this station —
 # making the suite pass by relying on the OPERATOR'S real venv rather than
 # being hermetic.
@@ -172,7 +172,7 @@ case "${1:-}" in
     is_registered "$vm" || { echo "controlvm: $vm not registered" >&2; exit 1; }
     case "$op" in
       acpipowerbutton|poweroff)
-        # HIMMEL-2688: logged into the SAME log the fake ssh writes to
+        # logged into the SAME log the fake ssh writes to
         # (when asked), so a case can assert cross-process ORDERING
         # between an ssh call (e.g. cleanup_guest_token's cleanup) and
         # this power-off call — both happen strictly serially within
@@ -246,7 +246,7 @@ else
     fail_case "T1 port allocator — got '$t1_out', want '2225,2226,'"
 fi
 
-# --- T1b (CR finding codex-5): an enumeration failure (VBoxManage broken)
+# --- T1b: an enumeration failure (VBoxManage broken)
 # must FAIL CLOSED — refuse to allocate — never read as "confirmed zero
 # claimed ports" and hand out one that might already be in use. -----------
 BROKEN_VBOXMANAGE="$WORK/bin/broken-VBoxManage"
@@ -278,7 +278,7 @@ fi
 # subshell just keeps going into `sleep 15` anyway — this case would then
 # report ok while having simulated nothing (no lock was ever actually
 # held). Skip it with an explicit reason instead, same shape as the
-# python3 guard above (HIMMEL-2676).
+# python3 guard above.
 if [ -n "$PYTHON_BIN" ] && command -v flock >/dev/null 2>&1; then
     LOCK_DIR_T2="$WORK/locks-t2"
     mkdir -p "$LOCK_DIR_T2"
@@ -338,7 +338,7 @@ LOGEOF
 
 # A guest run killed mid-suite (e.g. SUITE_TIMEOUT) before it ever reached
 # its OWN "== Summary ==" print — only the EXITCODE marker after-report.sh's
-# own `; echo EXITCODE=$?` always appends exists. CR finding codex-3.
+# own `; echo EXITCODE=$?` always appends exists..
 DIED_MID_SUITE_FIXTURE="$WORK/guest-suite-died.log"
 cat >"$DIED_MID_SUITE_FIXTURE" <<'LOGEOF'
 [PASS] scripts/test-example-one.sh (rc=0, 4s)
@@ -352,7 +352,7 @@ cat >"$FAKE_SSH" <<'SSHEOF'
 # sends (there are exactly nine) and answers from test-controlled env/files.
 # Never touches a network or a real guest filesystem.
 cmd="${*: -1}"
-# HIMMEL-2678: logs every command string this fake ever receives, when
+# logs every command string this fake ever receives, when
 # asked, so a test can assert something about the WHOLE sequence (e.g. "no
 # call ever carried a credentialed URL") rather than just one call's rc.
 if [ -n "${FAKE_SSH_CALLS_LOG:-}" ]; then
@@ -366,7 +366,7 @@ case "$cmd" in
     ;;
   *"test -e"*".env"*)
     # A transport failure (ssh convention: 255) is distinct from "the file
-    # is absent" (1) — codex-4's whole point is that these must not be the
+    # is absent" (1) — these must not be the
     # same code path.
     [ "${FAKE_SSH_ENV_TRANSPORT_FAIL:-0}" = 1 ] && exit 255
     [ "${FAKE_SSH_ENV_PRESENT:-0}" = 1 ] && exit 0 || exit 1
@@ -378,13 +378,13 @@ case "$cmd" in
     [ "${FAKE_SSH_HIMMELDEV_PRESENT:-0}" = 1 ] && exit 0 || exit 1
     ;;
   *"test -f"*".git/shallow"*)
-    # HIMMEL-2677: after-report.sh probes this before deciding whether the
+    # after-report.sh probes this before deciding whether the
     # fetch below needs --unshallow. Defaults to "not shallow" (1), same
     # convention as the other presence checks above.
     [ "${FAKE_SSH_GUEST_SHALLOW:-0}" = 1 ] && exit 0 || exit 1
     ;;
   *"mktemp -d"*)
-    # HIMMEL-2678: stands in for the guest tmp dir the askpass helper and
+    # stands in for the guest tmp dir the askpass helper and
     # token file live under. Never a real path — nothing downstream ever
     # reads it back off a real filesystem, only re-embeds the string in
     # later command text this same fake pattern-matches on.
@@ -392,13 +392,13 @@ case "$cmd" in
     exit 0
     ;;
   *"INNER_EOF"*)
-    # HIMMEL-2678: writes the guest askpass helper. Content is paths and a
+    # writes the guest askpass helper. Content is paths and a
     # literal username only, never the real token, so a fixed success is
     # all this needs to fake.
     exit 0
     ;;
   *"cat > '"*"/token'"*)
-    # HIMMEL-2678: the ONE call that carries the real secret, and it
+    # the ONE call that carries the real secret, and it
     # arrives over STDIN, never as an argv element of $cmd above. Saved to
     # a test-controlled path (if asked) so a case can assert it arrived
     # intact via stdin, without it ever needing to appear in a logged
@@ -408,7 +408,7 @@ case "$cmd" in
     else
         cat > /dev/null
     fi
-    # HIMMEL-2688: touched only AFTER the token has actually landed, so a
+    # touched only AFTER the token has actually landed, so a
     # case can poll for this instead of a fixed sleep to know precisely
     # when to interrupt the parent after-report.sh process — the exact
     # window (token delivered, fetch chain not yet run) this fix closes.
@@ -425,7 +425,7 @@ case "$cmd" in
     exit 0
     ;;
   *"rm -rf '"*)
-    # HIMMEL-2678: cleanup_guest_token's own call — removes the ephemeral
+    # cleanup_guest_token's own call — removes the ephemeral
     # askpass/token tmp dir. Logged like every other call above; a case
     # asserts this fires on both the success and failure fetch paths.
     exit 0
@@ -512,7 +512,7 @@ while True:
 }
 
 # assert_bun_path_prefix <command-line> — true iff the given guest command
-# line carries the HIMMEL-2768 bun PATH prefix somewhere ahead of the
+# line carries the bun PATH prefix somewhere ahead of the
 # run-shell-tests.sh invocation. Shared by T3g (the real captured command)
 # and T3h (its RED control) so both exercise the identical check. The
 # expected substrings are single-quoted so the literal `$HOME`/`$PATH` text
@@ -529,7 +529,7 @@ assert_bun_path_prefix() {
 # T3 — happy path: log lands at the quiet-run-ar-<ticket>-<ts>.log shape,
 # both `== Summary ==` and `GAVE UP` markers survive the copy verbatim.
 #
-# HIMMEL-2676: this case never pinned HIMMEL_VM_AR_RAM_MB, so it inherited
+# this case never pinned HIMMEL_VM_AR_RAM_MB, so it inherited
 # the production 4096 MB default and checked it against the REAL
 # /proc/meminfo despite driving a fake VBoxManage and booting nothing —
 # inside a 4 GB after-report guest (the exact environment this feature
@@ -584,7 +584,7 @@ if [ -n "$PYTHON_BIN" ]; then
         fail_case "T3b gh pr comment not called as expected: $(cat "$FAKE_GH_CALLS" 2>/dev/null)"
     fi
 
-    # --- T3d (HIMMEL-2678): the fake ssh logs every command string it
+    # --- T3d: the fake ssh logs every command string it
     # receives. This fixture cannot prove a REAL ssh never sees the token
     # in argv (it never runs one) — what it CAN prove is that none of the
     # constructed command strings after-report.sh actually sent carry the
@@ -602,7 +602,7 @@ if [ -n "$PYTHON_BIN" ]; then
         pass "T3d (HIMMEL-2678) no logged ssh command carries the credentialed URL, the token arrived intact over stdin, and cleanup fired"
     fi
 
-    # --- T3g (HIMMEL-2768): the guest suite invocation must carry the bun
+    # --- T3g: the guest suite invocation must carry the bun
     # PATH prefix ahead of run-shell-tests.sh. suite-ready-v4 ships bun but
     # only puts it on PATH via ~/.bashrc, which guest_ssh's non-interactive
     # shell never sources — so if a future edit to this ONE command line
@@ -620,7 +620,7 @@ if [ -n "$PYTHON_BIN" ]; then
         echo "    ${runshell_line:-<none>}"
     fi
 
-    # --- T3h (RED control, HIMMEL-2768): strip the prefix from a COPY of
+    # --- T3h: strip the prefix from a COPY of
     # the ACTUAL captured command line and re-run the SAME check — same
     # idiom as T10b (mutate a copy, prove the comparison still catches it),
     # applied here to the runtime-captured command instead of a doc file.
@@ -637,7 +637,7 @@ else
 fi
 
 # =====================================================================
-# T3e (HIMMEL-2678): cleanup_guest_token must fire on the FAILURE path
+# T3e: cleanup_guest_token must fire on the FAILURE path
 # too, not just success — the whole point of calling it unconditionally
 # before checking the fetch chain's own exit status. Forces the
 # fetch+checkout chain itself to fail and asserts the same `rm -rf` still
@@ -681,7 +681,7 @@ else
 fi
 
 # =====================================================================
-# T3f (HIMMEL-2688, RED control): cleanup_guest_token must ALSO fire via
+# T3f: cleanup_guest_token must ALSO fire via
 # the EXIT trap when a signal interrupts the run BETWEEN the token landing
 # on the guest and the fetch chain completing — the exact gap the
 # original PAT fix left open (cleanup_guest_token was called only from
@@ -700,7 +700,7 @@ fi
 # cleanup_guest_token's cleanup call fired; and it fired BEFORE the
 # power-off VBoxManage call — both logged into the SAME shared log file
 # (the fake VBoxManage's own controlvm case appends to it too, see
-# HIMMEL-2688 there), so relative order in that file reflects true
+# there), so relative order in that file reflects true
 # execution order for this single-threaded script. A cleanup call logged
 # AFTER power-off would be worthless: the guest is no longer running to
 # act on it.
@@ -771,7 +771,7 @@ else
 fi
 
 # =====================================================================
-# T4 — HIMMEL-2540 absence-assertion refuses when the guest checkout
+# T4 — absence-assertion refuses when the guest checkout
 # carries .env / .claude/settings.local.json / .himmel-dev.
 # =====================================================================
 if [ -n "$PYTHON_BIN" ]; then
@@ -818,7 +818,7 @@ else
 fi
 
 # =====================================================================
-# T4b (RED control, CR finding codex-4): an ssh TRANSPORT failure while
+# T4b (RED control): an ssh TRANSPORT failure while
 # checking for a guest secret must REFUSE, not be read as "the secret is
 # absent" — today (pre-fix) `if guest_ssh "test -e ..."; then fail; fi`
 # treats EVERY nonzero ssh exit (255 = transport failure, exactly like 1 =
@@ -865,12 +865,12 @@ else
 fi
 
 # =====================================================================
-# T3c (RED control, CR finding codex-3): a guest run that dies mid-suite
+# T3c (RED control): a guest run that dies mid-suite
 # (killed by SUITE_TIMEOUT, say) before ever printing its own "== Summary
 # ==" must NOT post a "PASS: 0 / FAIL: 0"-shaped comment — that is
 # indistinguishable from a genuinely clean, empty run. The posted comment
 # must contain NO PASS line at all and must say plainly that no verdict
-# exists. HIMMEL-2689: the fixture carries EXITCODE=0 on purpose — "no
+# exists. the fixture carries EXITCODE=0 on purpose — "no
 # verdict" must still exit non-zero, never share an exit code with a pass.
 # =====================================================================
 if [ -n "$PYTHON_BIN" ]; then
@@ -969,7 +969,7 @@ else
 fi
 
 # =====================================================================
-# T6/T7/T8 — HIMMEL-2623 incident hardening: the opt-in guard on an unset
+# T6/T7/T8 — incident hardening: the opt-in guard on an unset
 # VBOXMANAGE_PATH, and the vm-lock gating every real VBoxManage call.
 #
 # A COUNTING wrapper stands in for "the real binary": it appends one line
@@ -1077,7 +1077,7 @@ else
 fi
 
 # =====================================================================
-# T9 (HIMMEL-2676): deliberate coverage of the RAM guard in BOTH
+# T9: deliberate coverage of the RAM guard in BOTH
 # directions — every other case above pins HIMMEL_VM_AR_RAM_MB small so
 # its own verdict does not depend on ambient host memory, which only
 # proves the guard stays out of their way; it never exercises the guard
@@ -1091,10 +1091,10 @@ fi
 if [ -n "$PYTHON_BIN" ]; then
     # --- T9a: an unsatisfiable budget refuses, naming the budget -------
     # PLATFORM GUARD: the RAM guard reads Linux's /proc/meminfo and deliberately
-    # fails open where it does not exist (after-report.sh, HIMMEL-2676), so on
+    # fails open where it does not exist, so on
     # macOS the refusal can never fire and the run would sit out the full ssh
     # wait (180s). ponytail: T9a is Linux-only, upgrade path is a macOS RAM
-    # probe in after-report.sh (HIMMEL-3699); T9b below still runs everywhere.
+    # probe in after-report.sh; T9b below still runs everywhere.
     if [ ! -r /proc/meminfo ]; then
         echo "SKIP T9a: no /proc/meminfo (the RAM guard fails open off-Linux)"
     else
@@ -1147,15 +1147,15 @@ else
 fi
 
 # =====================================================================
-# T10 (HIMMEL-2738): after-report.sh, dry-run-restore.sh and the vm
+# T10: after-report.sh, dry-run-restore.sh and the vm
 # SKILL.md each independently name the default baseline snapshot — and
 # nothing structurally stops those three names drifting apart. This has
 # already happened twice in substance (suite-ready -> suite-ready-v3, then
-# suite-ready-v3 -> suite-ready-v4 as of HIMMEL-2747), each time raising
+# suite-ready-v3 -> suite-ready-v4), each time raising
 # exactly the same risk: a doc naming a different image than the code
 # restores is how an operator ends up running the wrong baseline. T10
-# asserts the three names agree ON THE CURRENT DEFAULT — "suite-ready-v4"
-# as of HIMMEL-2747. GENERAL WARNING for whoever touches this next: T10
+# asserts the three names agree ON THE CURRENT DEFAULT — "suite-ready-v4".
+# GENERAL WARNING for whoever touches this next: T10
 # only proves the three names agree with EACH OTHER, never that they agree
 # with what the clone actually is. A future migration (v4 -> v5, say) must
 # never be "fixed" by editing only these three doc/code strings to point at
@@ -1229,14 +1229,14 @@ else
 fi
 
 echo
-# CR finding codex-5 (round 3): with no python3 on PATH, most cases above
+# with no python3 on PATH, most cases above
 # are SKIPPED (see the SKIP lines), yet this used to still print "ALL
 # PASS" and exit 0 whenever the few python-free cases passed — a
 # vacuously green suite reporting the STRONGEST verdict while having
 # verified almost nothing. Every leg of this review is gated on grepping
 # "ALL PASS" out of exactly this kind of log, so this suite must never say
 # it without having actually run. Matches test-dry-run-restore.sh's own
-# codex-12 fix: a missing prerequisite is UNVERIFIED, not a pass, and gets
+# fix: a missing prerequisite is UNVERIFIED, not a pass, and gets
 # a distinct nonzero exit rather than folding into "ALL PASS".
 if [ "$FAILED" -ne 0 ]; then
     echo "$FAILED FAILED"

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # win-smoke-cell.sh — one adopt/uninstall smoke cell on the win11 test VM
-# (HIMMEL-2860).
 #
 # Platform guard (linux-only): station-side orchestration over win-vm.sh and
 # VBoxManage; the guest half is win-smoke-guest.ps1.

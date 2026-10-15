@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-upgrade-path-stage.sh -- hermetic coverage for the VM e2e upgrade-path stage
-# (HIMMEL-5267): scripts/vm/upgrade-path-guest.sh (doctor comparison, input refusal),
+# scripts/vm/upgrade-path-guest.sh (doctor comparison, input refusal),
 # scripts/vm/upgrade-path-e2e.sh (host driver, --expect-red control) and the opt-in
 # hook in scripts/test-install-symmetry-vm.sh. No real VM: ssh/rsync are fakes on PATH.
 #

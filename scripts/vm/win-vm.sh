@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# win-vm.sh — lifecycle + guest control for the Windows 11 test VM (HIMMEL-2860).
+# win-vm.sh — lifecycle + guest control for the Windows 11 test VM.
 #
 # Platform guard (linux-only): drives the station's VirtualBox with
 # `VBoxManage guestcontrol` (Guest Additions), so no sshd or key setup is
@@ -19,7 +19,7 @@
 #
 # Env:
 #   VBOXMANAGE_PATH   the VBoxManage to use (test seam). Unset needs
-#                     WIN_VM_LIVE=1, or the call refuses (HIMMEL-2623 rail:
+#                     WIN_VM_LIVE=1, or the call refuses (rail:
 #                     never fall through to the station's real VBoxManage
 #                     by accident).
 #   WIN_VM_NAME       VM name (default win11)
