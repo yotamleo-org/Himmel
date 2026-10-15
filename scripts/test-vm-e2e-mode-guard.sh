@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-vm-e2e-mode-guard.sh — the host-driven VM e2e drivers read vm.mode
-# (scripts/lib/vm-mode.sh, HIMMEL-4583) instead of hardcoding localhost:2222:
+#  (scripts/lib/vm-mode.sh) instead of hardcoding localhost:2222:
 # under vm.mode=none they SKIP (rc 3) before any ssh, and under vm.mode=remote
 # they target vm.remote. Hermetic: a temp HOME carries the config and a stub ssh
 # records its argv and refuses, so no VM is ever reached, started or provisioned.

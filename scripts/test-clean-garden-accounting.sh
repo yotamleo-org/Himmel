@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic coverage for clean-garden full accounting (HIMMEL-1410): every kept
+# Hermetic coverage for clean-garden full accounting: every kept
 # worktree gets a what+why row, squash-merged tips are compared to the recorded
 # PR head, and remote-only branches are classified from one cached PR listing.
 set -uo pipefail
@@ -10,7 +10,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,7 +32,7 @@ pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FAIL=$((FAIL+1)); }
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/himmel-clean-accounting.XXXXXX")
-# HIMMEL-3179: `git worktree list` reports the physical path, so the fixture root
+# `git worktree list` reports the physical path, so the fixture root
 # must be the physical spelling before any worktree path is built from it (macOS
 # TMPDIR sits behind the /var -> /private/var link).
 # shellcheck source=scripts/lib/canon-path.sh
@@ -52,7 +52,7 @@ git init -q --initial-branch=main "$REPO" 2>/dev/null || {
 }
 git -C "$REPO" config user.email t@test.com
 git -C "$REPO" config user.name t
-# HIMMEL-3187: every `git commit` here spawns a DETACHED `git maintenance run
+# every `git commit` here spawns a DETACHED `git maintenance run
 # --auto`, whose worktree-prune task deletes any .git/worktrees/<n> that has no
 # `gitdir` file yet — exactly the state mk_husk leaves between its `mkdir` and
 # its `gitdir` write. Under load the detached child lands inside that window
@@ -210,7 +210,7 @@ else
     fail "expected one origin PR API call, got $origin_calls" "$out"
 fi
 
-# --- HIMMEL-1596 checkpoint reap (F1/F2) --------------------------------------
+# --- checkpoint reap (F1/F2) --------------------------------------
 # prune_checkpoint_refs reads %(committerdate:unix), so a checkpoint's age is
 # its COMMIT date; stamp that via env on commit-tree (no host clock-warping).
 # days_old>0 = past (stale under a small TTL), 0 = now (fresh).
@@ -392,7 +392,7 @@ echo "RUN E: HIMMEL-1692 dirty merged worktree is never pruned + is checkpointed
 #
 # (a) feat/staged-wip: STAGED (git add, uncommitted) + UNSTAGED (tracked,
 #     modified) work in a worktree whose branch tip nonetheless has a merged
-#     PR — the exact 3,089-line staged-but-uncommitted loss shape HIMMEL-1692
+#     PR — the exact 3,089-line staged-but-uncommitted loss shape
 #     documents. Only the dirty guard stands between this and deletion.
 WT_STAGED=$(mk_wt_commit wt-staged feat/staged-wip)
 STAGED_TIP=$(git -C "$WT_STAGED" rev-parse HEAD)
@@ -524,7 +524,7 @@ clear_checkpoints
 # --- E12: a STAGED version superseded on disk is not lost --------------------
 # `add -A` records only the WORKING-TREE content, so a file staged with one
 # content and then edited again keeps just the on-disk version — the staged
-# snapshot in between would vanish (codex CR round 1). One tree cannot hold
+# snapshot in between would vanish. One tree cannot hold
 # both, so the index is captured as its own commit and hung off the checkpoint
 # as an extra parent. Assert BOTH survive: the checkpoint tree carries the
 # worktree version (what `git restore --source` should yield), and some parent
@@ -567,7 +567,7 @@ clear_checkpoints
 # worktree dirty (a staged modification), so the prune refuses and calls
 # checkpoint_worktree — but the WORKTREE tree now collapses back to HEAD's own
 # tree. A nothing-to-save early-return placed before the index capture exits 0
-# there and silently discards X (codex CR round 3, Critical). The staged
+# there and silently discards X. The staged
 # snapshot is the only work that exists, so it must become the checkpoint's own
 # tree, not a parent nobody restores.
 WT_SONLY=$(mk_wt_commit wt-sonly feat/staged-only)
@@ -643,7 +643,7 @@ mkdir -p "$STRAY_HOME_F"
 # mk_broken_husk below for what happens once the ENTIRE admin dir (not just
 # this one file) is gone.
 #
-# .tokensave note (measured, not guessed — HIMMEL-1692 RUN F post-mortem):
+# .tokensave note (measured, not guessed):
 # this machine chains a tokensave.exe watcher off the GLOBAL git hookspath
 # (core.hookspath) — post-checkout fires `tokensave.exe init &` whenever the
 # old-SHA arg is all-zeros (i.e. on any real `git worktree add` or `git
@@ -655,7 +655,7 @@ mkdir -p "$STRAY_HOME_F"
 # resource busy" while tokensave's own process still held the db file open.
 # That race made RUN F's assertions pass/fail for the WRONG reason: the
 # stray-sweep's freshness gate (`find -mmin -1440`) saw the husk as
-# touched-in-the-last-24h and skipped it before the HIMMEL-1692 guard this
+# touched-in-the-last-24h and skipped it before the guard this
 # suite exists to test ever ran. Building the admin record BY HAND never
 # fires post-checkout at all (no `git worktree add` ⇒ no "old SHA is
 # all-zeros" event) — measured across a hand-built create + a real
@@ -865,9 +865,9 @@ fi
 
 clear_checkpoints
 
-# --- RUN G: HIMMEL-1970 stale remote-tracking refs are not phantom orphans ---
+# --- RUN G: stale remote-tracking refs are not phantom orphans ---
 # refs/remotes/origin/* is a local CACHE. With deleteBranchOnMerge=true (and
-# merge-on-green no longer running `gh pr merge --delete-branch`, HIMMEL-1679)
+# merge-on-green no longer running `gh pr merge --delete-branch`)
 # a merged branch disappears server-side without touching that cache, so the
 # ref lingered and was re-reported MERGED-CLEAN forever — the "19 MERGED-CLEAN,
 # 0 pruned" report that read as a broken pruner. Needs a REACHABLE origin, so
@@ -999,7 +999,7 @@ h_branch_gone() { ! git -C "$REPO" rev-parse --quiet --verify "refs/heads/$1" >/
 
 # H2 — NEGATIVE CONTROL: a merged worktree with uncommitted (staged) work is
 # still refused and left INTACT — not merely `[ -d ]` (a GUTTED tree also
-# satisfies that, the exact blind spot HIMMEL-2227 closes), but with its
+# satisfies that, the exact blind spot an earlier change closes), but with its
 # .git, its `git worktree list` admin row, and its tracked file's content all
 # surviving.
 WT_H2=$(mk_wt_commit wt-h2-dirty feat/h2-dirty)
@@ -1112,7 +1112,7 @@ clear_checkpoints
 # /proc/*/cwd for a live process anchored inside the tree and, if that
 # holder is not in the calling process's OWN ancestry, reports it as an
 # in-use-confirmed foreign holder -- that scan only exists on Linux, so
-# before HIMMEL-2602 a held cwd here was invisible to worktree_in_use (the
+# before a held cwd here was invisible to worktree_in_use (the
 # rename probe is a no-op on POSIX, exactly like H3's *) arm above), and
 # clean-garden's last guard before `git worktree remove` would have pruned
 # a live session's own worktree out from under it.
@@ -1133,7 +1133,7 @@ case "$(uname -s)" in
         # than a fixed sleep: a fixed sleep races run_clean's own duration --
         # on a loaded box a slow run_clean can outlive it, worktree_in_use
         # would then correctly find no holder, and this row would go red for
-        # a reason that is not a real regression (HIMMEL-2602 follow-up).
+        # a reason that is not a real regression.
         # Self-bounded at 60s (300 * 0.2s) so a failing case can never strand
         # this process on the box. Readiness for run_clean is still confirmed
         # by polling the holder's cwd via /proc, bounded, exactly as

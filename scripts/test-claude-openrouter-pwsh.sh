@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # test-claude-openrouter-pwsh.sh — run the PowerShell smoke suite for
-# claude-openrouter.ps1 from the bash suite runner (HIMMEL-1792).
+# claude-openrouter.ps1 from the bash suite runner.
 #
 # The .ps1 twin was invisible to every automated check before this ticket: the
 # bash suite never executes it, so a PowerShell-only regression shipped green
-# (HIMMEL-1774 CR round 3). This wrapper makes the .ps1 suite reachable from
+# This wrapper makes the .ps1 suite reachable from
 # scripts/ci/run-shell-tests.sh while degrading cleanly on hosts without
 # PowerShell.
 #
 # pwsh is a RUNTIME capability this suite needs the way the launcher suites
 # need node. Where it is absent the wrapper SKIPs — loudly and attributed
-# (HIMMEL-1788: an unattended run must never exit-0 silently), never as a
+#  (an unattended run must never exit-0 silently), never as a
 # quiet pass: the skip line is the wrapper's entire output. In the runner it
-# is registered in SUITE_REQUIRE_TOOL (capability-conditional, HIMMEL-1792):
+# is registered in SUITE_REQUIRE_TOOL:
 # it RUNS wherever pwsh is on PATH and the runner's own [SKIP] line — the one
 # place a skip is visible in a green full-suite run — covers it where pwsh is
 # absent. This guard is the SECOND layer (belt and braces): it covers direct
@@ -24,7 +24,7 @@
 # itself, not the pwsh suite's exit code; the pwsh suite's own exit code
 # otherwise, propagated unchanged once it actually runs.
 #
-# HIMMEL-2599: the .ps1 suite's own mock `claude` is a Windows batch file
+# the .ps1 suite's own mock `claude` is a Windows batch file
 # (claude.cmd). pwsh's native-command PATH lookup on non-Windows hosts is a
 # literal filename match — no PATHEXT-style extension resolution — so
 # claude.cmd is invisible to the launcher's bare `claude` lookup there, and
@@ -80,7 +80,7 @@ trap cleanup EXIT
 # Abort loudly instead, same shape as the mktemp guard above.
 if ! cat > "$SHIM_DIR/claude" <<'SHIM'
 #!/usr/bin/env bash
-# Hermetic claude shim (HIMMEL-2599) — see the wrapper's own header comment.
+# Hermetic claude shim — see the wrapper's own header comment.
 # Stands in unconditionally, ahead of any real claude on PATH, so the .ps1
 # suite's launch cases never depend on (or silently fall through to) a real
 # CLI install. Records argv + dumps the full child env where the suite

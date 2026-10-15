@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # test-himmel-update-check.sh — hermetic cases for the --check (read-only) and
-# --plugins-check / --only paths of scripts/himmel-update.sh (HIMMEL-426),
-# split out of test-himmel-update.sh by HIMMEL-3450 so this file can run in CI
+# --plugins-check / --only paths of scripts/himmel-update.sh,
+# split out of test-himmel-update.sh by so this file can run in CI
 # (scripts/ci/run-shell-tests.sh SKIP_LIST'd the monolith wholesale, and a real
-# bug — HIMMEL-3449 — shipped straight through that gap).
+# bug — — shipped straight through that gap).
 #
 # Every case here is hermetic under the CI runner: local bare-git-repo
 # fixtures under its own $TMP, PATH-independent (no real network, no station
@@ -36,14 +36,14 @@ fi
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/himmel-update-check.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
-# HIMMEL-2902: scope the profile lookup to this suite's own tmp dir and clear
+# scope the profile lookup to this suite's own tmp dir and clear
 # any inherited channel so a station's real install profile (e.g. channel:
 # stable) cannot steer these plain --check scenarios.
 export HIMMELCTL_CACHE_DIR="$TMP/himmelctl-cache"
 mkdir -p "$HIMMELCTL_CACHE_DIR"
 unset HIMMEL_UPDATE_CHANNEL
 
-# HIMMEL-3101: suite-level hermeticity. Several cases invoke the bare default
+# suite-level hermeticity. Several cases invoke the bare default
 # chain (no --only/--check), which on a guard fall-through reaches the
 # unconditional post-chain advisory block (rewire_statusline, update_hermes,
 # ...) — that block writes into $HOME/.claude (or $CLAUDE_CONFIG_DIR if set)
@@ -156,7 +156,7 @@ out=$(bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --check 2>&1) || true
 assert_contains "behind=0: behind count is 0" "behind:   0" "$out"
 assert_contains "behind=0: up to date message" "up to date" "$out"
 
-# ─── Test 3: --plugins-check gap report (HIMMEL-434) ─────────────────────────
+# ─── Test 3: --plugins-check gap report ─────────────────────────
 # Fixtures: marketplace declares a/b/c. installed has a@himmel (ok),
 # b@ext-market (shadowed), c absent (missing). Drive the detection via the
 # env-overridable input paths so no real ~/.claude state is touched.
@@ -218,7 +218,7 @@ assert_eq "rewire old bash bar: hud env gate" "1" "$(jq -r '.env.CLAUDE_HUD_ALLO
 assert_eq "rewire old bash bar: preserves env sibling" "1" "$(jq -r '.env.KEEP' "$TMP/sl-old.json")"
 assert_eq "rewire old bash bar: preserves theme" "dark" "$(jq -r '.theme' "$TMP/sl-old.json")"
 
-# Case a2: the OLD VENDORED path (pre-HIMMEL-538 installs) also migrates.
+# Case a2: the OLD VENDORED path also migrates.
 printf '%s' '{"statusLine":{"type":"command","command":"bash \"C:/old/himmel/scripts/statusline/bin/statusline.sh\""}}' > "$TMP/sl-vendored.json"
 if run_rewire_statusline "$TMP/sl-vendored.json" >/dev/null 2>&1; then
     assert_pass "rewire old vendored bar: rc 0"
@@ -294,7 +294,7 @@ else
     assert_fail "rewire idempotent second run: changed unexpectedly"
 fi
 
-# ─── update_codex (HIMMEL-742/605) ───────────────────────────────────────────
+# ─── update_codex ───────────────────────────────────────────
 echo "Test 6: update_codex → skips when codex absent/unprovisioned, re-sanitizes when provisioned"
 
 run_update_codex() {   # <mode>; caller sets CODEX_BIN / CODEX_HOME in the env
@@ -357,7 +357,7 @@ else
     assert_fail "update_codex check: MUTATED cache in read-only mode"
 fi
 
-# ─── Test 7: dirty-tree autostash opt-in reads repo-root .env (HIMMEL-1205) ───
+# ─── Test 7: dirty-tree autostash opt-in reads repo-root .env ───
 # HIMMEL_UPDATE_AUTOSTASH set in the checkout's .env must flip the dirty-tree
 # guard from "refusing" to "autostashing" — the same .env source the Jira CLI
 # reads. A live shell var still wins (load_dotenv fills only UNSET keys), so the
@@ -533,7 +533,7 @@ out=$(HIMMELCTL_CACHE_DIR="$PROFILE_DIR" HIMMEL_UPDATE_CHANNEL=stable bash "$CHE
 assert_contains "env overrides profile: channel=stable wins" "channel:  stable" "$out"
 
 # ─── Test 16: --check never mutates ──────────────────────────────────────────
-# HIMMEL-2827 (codex-3, PR #2273 round 3): the tag must land on a LATER
+# the tag must land on a LATER
 # commit than the reset target, or HEAD ends up ON the tag (up-to-date)
 # instead of behind it, and the "even when behind" scenario this test
 # claims to cover never actually runs — same INIT_SHA-then-tag-then-reset
@@ -552,7 +552,7 @@ HIMMEL_UPDATE_CHANNEL=stable bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --che
 assert_eq "channel --check: HEAD unchanged after two runs" "$BEHIND_SHA" "$(git -C "$CHECKOUT_DIR" rev-parse HEAD)"
 assert_eq "channel --check: still attached (not detached)" "$CHECKOUT_ORIG_BRANCH" "$(git -C "$CHECKOUT_DIR" rev-parse --abbrev-ref HEAD)"
 
-# ─── Test 17 (HIMMEL-2705 codex-1): malformed profile channel fails loud ────
+# ─── Test 17: malformed profile channel fails loud ────
 # jq's `// empty` coalesces both `null` and `false` to "absent" — a bare
 # `channel: false` must be rejected the same way a bad string is, not
 # silently treated as unset, and invalid JSON must not be swallowed either.
@@ -576,7 +576,7 @@ rc=0
 out=$(HIMMELCTL_CACHE_DIR="$PROFILE_DIR" bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --check 2>&1) || rc=$?
 assert_eq "profile channel:null: rc 0 (treated as unset)" "0" "$rc"
 
-# ─── Test 18 (HIMMEL-2705 codex-1/codex-2, round 3): jq-missing and ─────────
+# ─── Test 18: jq-missing and ─────────
 # non-object profile roots fail loud too. A profile FILE existing is the
 # signal that a channel *might* be set — without jq we cannot tell, so a
 # missing jq must not silently fall through to "unset" the way a missing
@@ -617,7 +617,7 @@ out=$(HIMMELCTL_CACHE_DIR="$PROFILE_DIR" bash "$CHECKOUT_DIR/scripts/himmel-upda
 assert_eq "profile is a JSON array, not object: rc 2" "2" "$rc"
 assert_contains "profile is a JSON array: not a valid JSON object message" "not a valid JSON object" "$out"
 
-# ─── Test 19 (HIMMEL-2705 codex-1, round 4): channel resolved lazily, not ────
+# ─── Test 19: channel resolved lazily, not ────
 # up front — a malformed channel must abort ONLY a mode that actually needs
 # the pull configuration; --plugins-check and unrelated --only items must
 # still succeed unconditionally, matching their own documented contract.
@@ -629,16 +629,16 @@ printf '{"channel":false}\n' > "$PROFILE_DIR/install-profile.json"
 rc=0
 out=$(HIMMELCTL_CACHE_DIR="$PROFILE_DIR" bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --plugins-check 2>&1) || rc=$?
 assert_eq "malformed channel: --plugins-check still exits 0" "0" "$rc"
-# The `--only marketplace` sub-case of this scenario (HIMMEL-2705 codex-1)
+# The `--only marketplace` sub-case of this scenario
 # needs the real station HOME/marketplace registration to pass, so it is not
-# hermetic under CI (HIMMEL-3450) and lives in test-himmel-update.sh
+# hermetic under CI and lives in test-himmel-update.sh
 # (SKIP_LIST) instead of here.
 rc=0
 out=$(HIMMELCTL_CACHE_DIR="$PROFILE_DIR" bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only pull 2>&1) || rc=$?
 assert_eq "malformed channel: --only pull (the item that DOES need it) still fails" "1" "$rc"
 assert_contains "malformed channel: --only pull failure names the channel problem" "invalid channel" "$out"
 
-# ─── Test 20 (HIMMEL-2705 codex-1, round 5): a stray LOCAL-only tag never ────
+# ─── Test 20: a stray LOCAL-only tag never ────
 # outranks or substitutes for an origin-advertised one — channel resolution
 # must be sourced from origin, not a plain `git tag --list` scan of every
 # local tag (which would also pick up a tag from some other remote, or one a
@@ -663,7 +663,7 @@ landed=$(git -C "$CHECKOUT_DIR" rev-parse HEAD)
 expected=$(git -C "$CHECKOUT_DIR" rev-parse "refs/tags/v0.1.0^{commit}")
 assert_eq "stray local tag: HEAD lands on the origin tag's commit, not v9.9.9" "$expected" "$landed"
 
-# ─── Test 21 (HIMMEL-2705 codex-2, round 6): an ANNOTATED release tag ────────
+# ─── Test 21: an ANNOTATED release tag ────────
 # resolves to its target COMMIT, not its own tag-object id — the narrowed
 # `git ls-remote --tags origin "$want"` query never returns the peeled
 # `^{}` entry on its own, so the unpeeled tag-object id never string-equals
@@ -687,7 +687,7 @@ assert_eq "annotated tag: HEAD lands on the peeled commit" "$expected" "$landed"
 out=$(HIMMEL_UPDATE_CHANNEL=stable bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --check 2>&1)
 assert_contains "annotated tag: second check reports up to date, not 'ahead'" "up to date — at stable v0.1.0" "$out"
 
-# ─── Test 22 (HIMMEL-2705 codex-1, round 6): an origin `ls-remote` failure ───
+# ─── Test 22: an origin `ls-remote` failure ───
 # AFTER `git fetch --tags origin` already succeeded fails loud, instead of
 # being silently swallowed by a process-substitution loop into an empty
 # candidate list indistinguishable from "no release on this channel yet".
@@ -717,7 +717,7 @@ case "$out" in
     *) pass=$((pass + 1)); echo "  PASS: ls-remote failure: must not be misreported as 'no stable release yet'" ;;
 esac
 
-# ─── Test 23 (HIMMEL-3101): an uninspectable repo must NOT be pulled ────────
+# ─── Test 23: an uninspectable repo must NOT be pulled ────────
 # is_dirty_tracked() returning "clean" on a `git status` it could not even run
 # would let the pull gate below wave a repo it never actually inspected
 # through to `git pull --ff-only` — the exact silent-mix-in failure the dirty
@@ -761,7 +761,7 @@ assert_contains "git-status-fails: warns on stderr naming the dir" "is_dirty_tra
 assert_contains "git-status-fails: refuses to pull into a dirty tree" "refusing to pull into a dirty tree" "$out"
 head_after=$(git -C "$CHECKOUT_DIR" rev-parse HEAD)
 assert_eq "git-status-fails: HEAD unchanged — never pulled" "$head_before" "$head_after"
-# ─── Non-git install (HIMMEL-3247, P1 of HIMMEL-3059) ────────────────────────
+# ─── Non-git install ────────────────────────
 # A tarball / native-package install has no .git, so `git pull` has nothing to
 # pull. himmel-update.sh must either update it or REFUSE with an accurate message
 # naming the packaged route — never a silent no-op, and never a `git pull` aimed

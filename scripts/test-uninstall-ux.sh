@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# HIMMEL-3058: uninstall UX contract — path manifest the uninstaller reads,
+# uninstall UX contract — path manifest the uninstaller reads,
 # `himmelctl uninstall --dry-run` that touches nothing (byte-identical tree),
 # the code-vs-state split (--purge-state), printed changes, and a positive
 # read-back of hook removal. Every case runs against a throwaway HOME under
-# $TMP — never the operator's (HIMMEL-2502/2505). scripts/test-uninstall.sh
+# $TMP — never the operator's. scripts/test-uninstall.sh
 # stays the executor's regression suite; this one owns the UX contract.
 set -uo pipefail
 
@@ -15,7 +15,7 @@ MANIFEST="$SCRIPTS/install/uninstall-manifest.tsv"
 
 # The uninstaller reads path overrides from the environment; an operator's own
 # (e.g. TELEGRAM_CHANNEL_DIR pointing at the live channel) must never steer a
-# fixture run at a real directory (HIMMEL-2502 class). Cases that want an
+# fixture run at a real directory. Cases that want an
 # override set it per command.
 unset TELEGRAM_CHANNEL_DIR BRIDGE_ROOT HIMMEL_USER_SETTINGS HIMMELCTL_CACHE_DIR \
       HIMMEL_UNINSTALL_MANIFEST HIMMEL_UNINSTALL_REPO_ROOT HIMMEL_UNINSTALL_REAL_HOME
@@ -93,7 +93,7 @@ fixture() {
     printf '{"allowFrom":["42"]}\n' > "$FX_HOME/.claude/channels/telegram/access.json"
     printf 'x\n' > "$FX_HOME/.claude/handover/bridge/sessions/S1/inbox.jsonl"
     printf '{"scope":"user"}\n' > "$FX_HOME/.claude/himmel/install-profile.json"
-    # HIMMEL-3559: the runner scripts a cadence arm writes into its BAT_DIR,
+    # the runner scripts a cadence arm writes into its BAT_DIR,
     # and the observability registry graphmap-cadence.sh registers into —
     # neither had a manifest row, so uninstall left them behind.
     printf '#!/usr/bin/env bash\nexit 0\n' > "$FX_HOME/.claude/pipeline-cadence/run.sh"
@@ -130,7 +130,7 @@ if [ ! -f "$MANIFEST" ]; then
 else
     m1_ok=1
     m1_ids=""
-    # HIMMEL-3332 S11: the shipped file has 9 columns; the 9th (record) names the
+    # S11: the shipped file has 9 columns; the 9th (record) names the
     # provenance-ledger kinds install writes for the row, drawn from provenance.sh's
     # own vocabulary, or 'none'. (The reader still accepts the 8-column form — M2/L1.)
     m1_kinds=$(sed -n 's/^_PROV_KINDS="\(.*\)"$/\1/p' "$SCRIPTS/lib/provenance.sh")
@@ -290,7 +290,7 @@ assert_not_has "D1 never lists a foreign hook as removed" "$HOOK_FOREIGN" "$out"
 assert_has "D1 says it is a dry run" "dry-run" "$out"
 
 # ── S1 — DEFAULT uninstall removes himmel's code, keeps operator state ─────
-# HIMMEL-3559: no --skip-tasks here (unlike the other scenarios) — the cadence
+# no --skip-tasks here (unlike the other scenarios) — the cadence
 # runner dirs are gated on it the same as cadence-jobs (removing a runner dir
 # while its scheduled entry survives would leave a broken job), so exercising
 # their removal needs the flag OFF. Safe to omit: crontab/atq/schtasks are
@@ -310,7 +310,7 @@ assert_has "S1 positive read-back of the user settings" "verified: no himmel wir
 assert_has "S1 positive read-back of the project settings" "verified: no himmel wiring left in $FX_PROJ/.claude/settings.json" "$out"
 assert_has "S1 footprint marks state as kept" "KEEP" "$out"
 assert_has "S1 footprint names the purge flag" "--purge-state" "$out"
-# HIMMEL-3559: himmel's own cadence runner dirs + observability registry are
+# himmel's own cadence runner dirs + observability registry are
 # code, not operator state — removed by DEFAULT, same as himmelctl-cache.
 assert_absent "S1 pipeline-cadence dir removed (himmel's own code)" "$FX_HOME/.claude/pipeline-cadence"
 assert_absent "S1 qmd-cadence dir removed (himmel's own code)" "$FX_HOME/.claude/qmd-cadence"
@@ -442,7 +442,7 @@ for l1_case in "dup:duplicate manifest id 'himmelctl-cache'" "kind:has kind 'bog
 done
 assert_exists "L1 nothing removed on refusal" "$FX_HOME/.claude/himmel/install-profile.json"
 
-# ── L2 — the reader takes an 8- OR 9-column row (HIMMEL-3332 S11), never a 10th ─
+# ── L2 — the reader takes an 8- OR 9-column row, never a 10th ─
 # 8 = the pre-record layout (older fixtures), 9 = the shipped layout with `record`.
 fixture l2
 awk -F'\t' -v OFS='\t' '/^#/||NF==0{print;next}{NF=8;print}' "$MANIFEST" > "$FX/cols8-manifest.tsv"
@@ -530,7 +530,7 @@ else fail "P1 uninstall.ps1 does not derive RemoveState from -PurgeState"; fi
 if grep -Fq 'if (-not $RemoveState) {' "$SCRIPTS/uninstall.ps1"; then pass "P1 uninstall.ps1 step 2 is gated on RemoveState"
 else fail "P1 uninstall.ps1 step 2 is not gated on RemoveState"; fi
 
-# ── P2 — CodeRabbit round: a skipped purge is an INCOMPLETE step (ps1) ─────
+# ── P2 — a skipped purge is an INCOMPLETE step (ps1) ─────
 # Source-level (no pwsh here): the -PurgeState + bridge-maybe-running branch
 # must record an incomplete step, or the run ends "Uninstall complete." with
 # the bot token still on disk. The suite's own cache redirect is asserted too.
@@ -585,7 +585,7 @@ assert_exists "L2 nothing removed on refusal" "$FX_HOME/.claude/himmel/install-p
 # ── R2 — read-back covers statusLine and env, not only hooks ───────────────
 # Every unwire helper is a no-op (rc=0). The settings hold a himmel statusLine
 # and the three himmel env keys but no hook: the read-back must still refuse
-# (HIMMEL-3332 S6: via the always-checked env.HIMMEL_REPO/LUNA_VAULT_PATH
+# (via the always-checked env.HIMMEL_REPO/LUNA_VAULT_PATH
 # rows -- statusLine and env.HANDOVER_DIR are two of the six overwrite-prone
 # rows and, with no ledger here, are KEPT rather than attempted).
 fixture r2
@@ -601,7 +601,7 @@ printf '{}\n' > "$FX_PROJ/.claude/settings.json"
 out=$(cd "$FX_PROJ" && HOME="$FX_HOME" PATH="$STUB:$HBIN" HIMMEL_UNINSTALL_REPO_ROOT="$R2REPO" \
     bash "$CLI" --yes --skip-tasks --skip-plugins --skip-hooks </dev/null 2>&1); rc=$?
 assert_rc "R2 no-op unwire leaving statusLine + env fails the uninstall" 2 "$rc"
-# HIMMEL-3332 S6: with no ledger for this $HOME, statusLine and
+# S6: with no ledger for this $HOME, statusLine and
 # env.HANDOVER_DIR are two of the six overwrite-prone rows -- they are KEPT
 # on purpose (masked out of the read-back) rather than attempted and then
 # caught still-wired; the no-op helper still leaves env.HIMMEL_REPO
@@ -677,7 +677,7 @@ else fail "DOC install.md does not document --purge-state"; fi
 if grep -Eq 'uninstall --dry-run' "$ROOT/README.md"; then pass "DOC README links the dry-run uninstall"
 else fail "DOC README does not mention uninstall --dry-run"; fi
 
-# HIMMEL-3415: an unset or empty $HOME is refused (rc=3) before anything else,
+# an unset or empty $HOME is refused (rc=3) before anything else,
 # dry-run included — every {HOME} target would otherwise be root-relative.
 # Kept here, not in test-uninstall-real-home-runtime.sh: this suite never lifts
 # the wet-run fence, and a file that drops HOME may not (the static caller guard).

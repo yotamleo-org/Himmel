@@ -30,7 +30,7 @@ FAILED=0
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# HIMMEL-4420: handover-link.sh now loads .env HANDOVER_DIR when the env lacks
+# handover-link.sh now loads .env HANDOVER_DIR when the env lacks
 # it; pin an empty .env so the unset-HANDOVER_DIR cases ignore the operator's.
 mkdir -p "$TMP/dotenv-cache"; : > "$TMP/dotenv-cache/.env"
 export HIMMELCTL_CACHE_DIR="$TMP/dotenv-cache"

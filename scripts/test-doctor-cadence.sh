@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-doctor-cadence.sh — scripts/doctor-cadence.sh (HIMMEL-4251): the daily
+# test-doctor-cadence.sh — scripts/doctor-cadence.sh: the daily
 # himmel-doctor run, its Telegram alert on a FAIL or a NEW WARN, and the
 # statusline segment that reads its state file. Hermetic: sandboxed HOME, a
 # stubbed doctor, a stubbed Telegram sender, a stubbed crontab. Never touches
@@ -115,7 +115,7 @@ check "counts file reflects the last run" "fail=1 warn=0" "$(cat "$STATE/counts"
 [ -s "$STATE/alerted.tsv" ] && pass "alert baseline kept" || fail "alert baseline kept"
 check "last.tsv and counts come from the same run" "FAIL C16-hooks" "$(cat "$STATE/last.tsv" 2>/dev/null)"
 
-# 5b. HIMMEL-4382: an ad-hoc doctor run that introduces a new finding must not
+# 5b. an ad-hoc doctor run that introduces a new finding must not
 # swallow the cadence alert (the baseline is the cadence's own, not last.tsv).
 : > "$SENT"; doctor_out "C16-hooks" ""; run_cad
 n0="$(sent_n)"
@@ -150,7 +150,7 @@ run_cad
 check "crashed doctor sends one alert" 1 "$(sent_n)"
 check "crashed doctor leaves the counts file alone" "$before" "$(cat "$STATE/counts")"
 
-# 8b. HIMMEL-5382: a WARN seen in 2 consecutive runs files ONE deduplicated
+# 8b. a WARN seen in 2 consecutive runs files ONE deduplicated
 # Jira ticket (a stubbed jira CLI records every call; nothing leaves the box).
 cat > "$W/jira" <<'SH'
 #!/usr/bin/env bash
@@ -254,7 +254,7 @@ check "segment prints nothing when the doctor is clean" "" "$(seg)"
 echo "garbage" > "$SEG_STATE/counts"
 check "segment prints nothing on a malformed state file" "" "$(seg)"
 
-# 9b. HIMMEL-4363: a counts file older than 24 h shows its age; a fresh one does not.
+# 9b. a counts file older than 24 h shows its age; a fresh one does not.
 echo "fail=1 warn=12" > "$SEG_STATE/counts"
 check "fresh counts show no age" "himmel-doctor  1 FAIL  12 WARN" "$(seg)"
 age_file() { perl -e 'utime $ARGV[0], $ARGV[0], $ARGV[1]' "$(($(date +%s) - $1))" "$2"; }
@@ -317,7 +317,7 @@ st="$(PATH="$W/bsd-bin:$PATH" TZ=UTC bash "$P/scripts/doctor-cadence.sh" status 
 case "$st" in *'(1970-01-03 00:00)'*) pass "BSD status renders counts mtime" ;; *) fail "BSD status renders counts mtime ($st)" ;; esac
 check "BSD stat keeps the HUD counts age" "himmel-doctor  1 FAIL  12 WARN (30h old)" "$(PATH="$W/bsd-bin:$PATH" seg)"
 
-# 11. hardening (CR round 1): a dangling --time fails fast instead of looping;
+# 11. hardening: a dangling --time fails fast instead of looping;
 # a runner dir with a space is quoted in the crontab line; an unreadable
 # crontab is never mistaken for an empty one.
 if [ -n "$_TIMEOUT_BIN" ]; then

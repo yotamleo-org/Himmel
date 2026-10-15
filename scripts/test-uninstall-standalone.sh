@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# HIMMEL-3312 S12: uninstall.sh running from a standalone BUNDLE (REPO_ROOT
+# S12: uninstall.sh running from a standalone BUNDLE (REPO_ROOT
 # with no clone behind it, no scripts/telegram) instead of a clone. The
 # sibling test-uninstall*.sh suites all run the real repo's uninstall.sh in
 # place, where REPO_ROOT == the clone and scripts/telegram always exists —
 # none of them exercise the bundle branches this suite targets.
 #
 # The bundle is built by copying the 16-file POSIX closure (design doc
-# HIMMEL-3312-standalone-undo.md §3.2) from THIS checkout into a scratch dir,
+# standalone-undo.md §3.2) from THIS checkout into a scratch dir,
 # mirroring the real relative layout, so the bundle's own uninstall.sh can
 # source its own scripts/lib/*.sh exactly as it does in the real clone.
 #
@@ -43,7 +43,7 @@ assert_not_has() {
 SRC_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 SRC_ROOT="$(cd "$SRC_SCRIPTS/.." && pwd)"
 
-# HIMMEL-3903: an empty /tmp/.git kept appearing on this host. Record which of these
+# an empty /tmp/.git kept appearing on this host. Record which of these
 # already exist so the end-of-suite guard fails if THIS suite creates one.
 GIT_LEAK_PRE=""; for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do [ -e "$_p" ] && GIT_LEAK_PRE="$GIT_LEAK_PRE $_p"; done
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/uninstall-standalone.XXXXXX") || { echo "FAIL could not create temp dir"; exit 1; }
@@ -203,7 +203,7 @@ assert_has "(e) reports it as kept, not himmel's" "kept: not himmel's" "$out"
 # it with the real marker before relying on $BUNDLE again below.
 build_bundle
 
-# --- IDENTITY (HIMMEL-3535): [6/8] project-settings identity resolution ----
+# --- IDENTITY: [6/8] project-settings identity resolution ----
 # --- under a git-less standalone bundle. project_is_himmel_checkout's own
 # --- source_root (this bundle's scripts/uninstall.sh) has no .git, so before
 # --- the fix ANY project that itself had a .git (almost every real, adopted
@@ -272,7 +272,7 @@ rc=$?
 assert_rc "(h) git-less source with no bundle marker halts" 2 "$rc"
 assert_has "(h) checkout identity unresolved" "checkout identity unresolved" "$out"
 
-# --- VERSIONED TARBALL LAYOUT (HIMMEL-3059 S6): [6/8] project-settings -----
+# --- VERSIONED TARBALL LAYOUT: [6/8] project-settings -----
 # --- identity resolution when himmel's OWN checkout is a tarball/versioned
 # --- install (no .git, no bundle.json — <base>/<version>/ plus a <base>/
 # --- current symlink, the layout S4 shipped). Before the fix,
@@ -376,7 +376,7 @@ rc=$?
 assert_rc "(l) missing VERSION marker halts" 2 "$rc"
 assert_has "(l) checkout identity unresolved" "checkout identity unresolved" "$out"
 
-# --- AUR FLAT LAYOUT (HIMMEL-3059 S6b): [6/8] project-settings identity ----
+# --- AUR FLAT LAYOUT: [6/8] project-settings identity ----
 # --- resolution when himmel's OWN checkout is the AUR package's flat
 # --- /opt/himmel prefix -- no .git, no bundle.json, and no `current` symlink
 # --- (packaging/aur/PKGBUILD: "a FLAT tree with no `current` link"), so
@@ -447,7 +447,7 @@ rc=$?
 assert_rc "(p) missing VERSION marker halts" 2 "$rc"
 assert_has "(p) checkout identity unresolved" "checkout identity unresolved" "$out"
 
-# HIMMEL-3903: this suite must not leave a .git in /tmp or $TMPDIR.
+# this suite must not leave a .git in /tmp or $TMPDIR.
 for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do
     case " $GIT_LEAK_PRE " in *" $_p "*) continue ;; esac
     [ -e "$_p" ] && { echo "FAIL suite created $_p"; FAILED=$((FAILED + 1)); }

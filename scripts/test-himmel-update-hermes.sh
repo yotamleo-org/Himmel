@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for update_hermes() in himmel-update.sh (HIMMEL-426). Sources the
+# Smoke test for update_hermes() in himmel-update.sh. Sources the
 # script via its HIMMEL_UPDATE_LIB seam so the function runs in isolation with
 # HERMES_HOME fixtures — no network, no repo mutation.
 set -uo pipefail
@@ -10,7 +10,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,11 +34,11 @@ check() {  # <description> <expected-substring> <actual-output>
 # bounded by `timeout` when it's on PATH. Cases 3/4 below point at the REAL
 # NousResearch/hermes-agent remote, so their `git ls-remote` genuinely hits
 # github.com with no bound otherwise — making a normally-local/hermetic
-# suite network-dependent, and able to hang (HIMMEL-2151). `timeout` can't
+# suite network-dependent, and able to hang. `timeout` can't
 # run a shell function directly, so it's exported and invoked via `bash -c`;
 # falls back to an unbounded direct call when `timeout` isn't available
 # (same graceful-degrade convention as check-plugin-drift.sh).
-# Budget (HIMMEL-4114, re-measured 2026-10-03 on a loaded fleet): the WHOLE
+# Budget (re-measured 2026-10-03 on a loaded fleet): the WHOLE
 # suite took 5s and 60s alone, 53s and 60s as concurrent runs, and one run hit
 # the old 60s per-call cap (exit 124, killed at 68s), and a later run beside
 # three other suites took 116s. The four bounded calls share the suite's time,
@@ -46,7 +46,7 @@ check() {  # <description> <expected-substring> <actual-output>
 # rounded up to 240.
 # ponytail: cases 3/4 make real calls to github.com, so 240s covers network
 # variance as well as fleet load, not load alone; upgrade path is pointing
-# those cases at a local bare remote (HIMMEL-4117).
+# those cases at a local bare remote.
 run_hermes_check_bounded() {
   if [ -n "$_TIMEOUT_BIN" ]; then
     export -f update_hermes
@@ -62,13 +62,13 @@ run_hermes_check_bounded() {
 # with the given fixture unit lines FILTERED against the PATTERN arguments
 # the caller actually passed (each fixture unit is matched with shell `case`
 # glob semantics against every pattern, same fnmatch-style rules real
-# systemctl uses — HIMMEL-3052: this is what makes a glob-only
+# systemctl uses: this is what makes a glob-only
 # `hermes-gateway-*` list call miss a bare `hermes-gateway.service` fixture,
 # same as the real multiplexer unit), and answers `--user restart <unit>`
 # with rc=1 when <unit> equals $SYSTEMCTL_STUB_FAIL_UNIT (read at RUNTIME,
 # by the generated stub — not expanded here), else rc=0. Never the real
 # systemd bus, so safe to run against this station's live hermes-gateway
-# units (HIMMEL-2822 do-not).
+# units.
 mk_systemctl_stub() {
   local dir="$1"; shift
   mkdir -p "$dir"
@@ -112,7 +112,7 @@ EOF
 # `--user list-units` branch prints a diagnostic to stderr and exits 1
 # (a broken --user D-Bus session), logging every invocation's argv like
 # mk_systemctl_stub. `restart` is never expected to be reached from this
-# stub (HIMMEL-2950: list-units failure must not read as "no units").
+# stub (list-units failure must not read as "no units").
 mk_systemctl_liststub_fail() {
   local dir="$1"
   mkdir -p "$dir"
@@ -128,13 +128,13 @@ EOF
   chmod +x "$dir/systemctl"
 }
 
-# ── suite-level systemctl stub (HIMMEL-3158) ────────────────────────────────
+# ── suite-level systemctl stub ────────────────────────────────
 # restart_hermes_gateways() fires whenever `update_hermes apply` genuinely
 # moves the checkout head — not only from the dedicated gateway-restart cases
 # further down. Cases 8/9 below drive `apply` against REAL local git remotes
 # and genuinely move the head, so without a stub in place before they run,
 # `systemctl` resolves to the real binary and restarts this station's REAL
-# hermes-gateway unit (HIMMEL-3158: it did, 2026-09-18 15:12:49). Put a
+# hermes-gateway unit (it did, 2026-09-18 15:12:49). Put a
 # recording stub first on PATH before ANY case runs. Cases that assert
 # restart behaviour (Case 13 on) push their own stub further ahead on PATH
 # and are unaffected — their systemctl.log stays separate from this one.
@@ -184,7 +184,7 @@ out=$(run_hermes_check_bounded "$tmp/direct")
 check "direct checkout tolerated" "could not reach origin|hermes is current|update available" "$out"
 
 # ── fail-vs-skip (CR: genuine hermes failures must not be hidden as skipped)─
-# HIMMEL-893 CR fix: update_hermes used to `git pull --ff-only` in one shot
+# update_hermes used to `git pull --ff-only` in one shot
 # and swallow BOTH a real non-ff failure AND an unreachable origin as the
 # same non-aborting "warn" — hiding a genuinely broken hermes update behind
 # "skipped". These cases build REAL local git remotes (bare repos / local
@@ -241,11 +241,11 @@ if [ "$rc" -eq 0 ]; then echo "ok: absent hermes -> exit 0 (run_hermes_step, cha
 # shellcheck disable=SC2154  # STATUS_hermes is set by the sourced himmel-update.sh (HIMMEL_UPDATE_LIB=1 seam above)
 if [ "$STATUS_hermes" = "skipped" ]; then echo "ok: run_hermes_step sets STATUS_hermes=skipped when absent"; else echo "FAIL: STATUS_hermes was '$STATUS_hermes', expected 'skipped'"; fail=1; fi
 
-# Case 7 (HIMMEL-2151): a LOCAL remote path that does not exist forces a
+# Case 7: a LOCAL remote path that does not exist forces a
 # deterministic, instant, network-free fetch failure — but git's own message
 # for it ("does not appear to be a git repository" / "Could not read from
 # remote repository") is NOT an offline/DNS-reachability phrase. Before
-# HIMMEL-2151 EVERY fetch error was masqueraded as a clean skip; now only a
+# EVERY fetch error was masqueraded as a clean skip; now only a
 # genuine network-unreachable error gets that treatment, so an invalid/broken
 # remote correctly surfaces as a real FAILURE instead. Case 7b below covers
 # the genuine-offline classification (skip) via a fake git shim.
@@ -256,7 +256,7 @@ out=$(HERMES_HOME="$tmp/offline" update_hermes apply 2>&1) || rc=$?
 check "invalid remote path (apply): FAILED, not masqueraded as offline" "FAILED: hermes git fetch failed" "$out"
 if [ "$rc" -ne 0 ]; then echo "ok: invalid remote path (apply) -> non-zero exit (real failure)"; else echo "FAIL: invalid remote path (apply) -> exit was 0"; fail=1; fi
 
-# Case 7b (HIMMEL-2151): a genuine offline/DNS-resolution-style git error
+# Case 7b: a genuine offline/DNS-resolution-style git error
 # (matched case-insensitively, e.g. "Could not resolve host") must still be
 # a clean SKIP. Real DNS failures aren't reproducible hermetically, so a fake
 # `git` shim simulates the exact message; every other git subcommand passes
@@ -320,7 +320,7 @@ if [ "$rc" -eq 0 ]; then echo "ok: configured upstream (apply) -> exit 0"; else 
 if [ "$got8" = "$want8" ]; then echo "ok: apply fetches configured non-origin/differently-named upstream"; else echo "FAIL: apply HEAD was '$got8', expected '$want8'"; printf '%s\n' "$out"; fail=1; fi
 
 # ── --check must not mutate the checkout (CR: was fetch-based) ─────────────
-# HIMMEL-893 CR fix: `update_hermes check` used to run a real `git fetch`,
+# `update_hermes check` used to run a real `git fetch`,
 # which writes FETCH_HEAD and updates remote-tracking refs in the EXTERNAL
 # hermes checkout — mutating state under a read-only `--check` contract. Now
 # it compares via `git ls-remote` (queries the remote directly, writes
@@ -364,7 +364,7 @@ after2_refs=$(refs_snapshot "$tmp/checkmode/hermes-agent")
 if [ "$before_fetch_head" = "$after2_fetch_head" ]; then echo "ok: --check (update-available case) still leaves FETCH_HEAD unchanged"; else echo "FAIL: --check (update-available case) mutated FETCH_HEAD"; fail=1; fi
 if [ "$before_refs" = "$after2_refs" ]; then echo "ok: --check (update-available case) still leaves refs unchanged"; else echo "FAIL: --check (update-available case) mutated refs"; fail=1; fi
 
-# ── force-pushed upstream must RESYNC, not wedge (HIMMEL-2139) ──────────────
+# ── force-pushed upstream must RESYNC, not wedge ──────────────
 # NousResearch force-pushes hermes-agent's main, so our HEAD stops being an
 # ancestor of upstream and the ff-only merge fails FOREVER — which used to
 # abort the whole update chain until a human hand-reset the checkout. Now a
@@ -412,7 +412,7 @@ if [ "$gotF" = "$wantF" ]; then echo "ok: force-pushed upstream -> checkout move
 rescuedF=$(git -C "$tmp/forcepush/hermes-agent" rev-parse himmel-pre-resync 2>/dev/null || echo missing)
 if [ "$rescuedF" = "$oldF" ]; then echo "ok: previous HEAD preserved at tag himmel-pre-resync"; else echo "FAIL: rescue tag was '$rescuedF', expected '$oldF'"; fail=1; fi
 
-# HIMMEL-3158: Case 8 and Case 9 above are real head-changing `apply` calls
+# Case 8 and Case 9 above are real head-changing `apply` calls
 # with no case-local systemctl stub — exactly the shape that hit the
 # operator's real hermes-gateway.service on 2026-09-18. Assert the SUITE
 # stub (not the real bus) is what intercepted both restarts.
@@ -427,7 +427,7 @@ else
 fi
 
 # Case 10: same force-push shape but the checkout holds a commit by its OWN
-# identity → the HIMMEL-893 contract wins, still a genuine FAILURE. This is
+# identity → the contract wins, still a genuine FAILURE. This is
 # what proves the discriminator is a CONJUNCTION and not just "tree is clean"
 # (the tree here is perfectly clean — the work is committed).
 rc=0
@@ -437,7 +437,7 @@ if [ "$rc" -ne 0 ]; then echo "ok: force-push + our own commit -> non-zero exit"
 oursHead=$(git -C "$tmp/forcepush-ours/hermes-agent" rev-parse HEAD)
 if [ "$oursHead" != "$wantF" ]; then echo "ok: force-push + our own commit -> checkout NOT reset (work preserved)"; else echo "FAIL: our commit was discarded by the resync"; fail=1; fi
 
-# Case 11 (HIMMEL-2139 CR): the commit is ours but the configured identity now
+# Case 11: the commit is ours but the configured identity now
 # differs only in CASE. git preserves the case an identity was committed with,
 # so a case-sensitive match would read our own commit as upstream churn and
 # reset --hard over it. Must still FAIL.
@@ -458,7 +458,7 @@ if [ "$rc" -ne 0 ]; then echo "ok: case-variant identity -> non-zero exit"; else
 caseNow=$(git -C "$tmp/forcepush-case/hermes-agent" rev-parse HEAD)
 if [ "$caseNow" = "$caseHead" ]; then echo "ok: case-variant identity -> checkout NOT reset (work preserved)"; else echo "FAIL: case-variant identity -> our commit was discarded"; fail=1; fi
 
-# Case 12 (HIMMEL-2437): no HERMES_HOME override and no LOCALAPPDATA (the
+# Case 12: no HERMES_HOME override and no LOCALAPPDATA (the
 # Linux/macOS station shape) must resolve the default root to $HOME/.hermes —
 # NEVER $HOME/AppData/Local/hermes (a Windows %LOCALAPPDATA% layout rendered
 # under a POSIX $HOME, the ticket's own repro). Both vars are unset in a
@@ -479,10 +479,10 @@ else
   echo "ok: default root resolution never falls back to \$HOME/AppData/Local on Linux/macOS"
 fi
 
-# ── restart_hermes_gateways() — HIMMEL-2822 / HIMMEL-3052 ───────────────────
+# ── restart_hermes_gateways() ───────────────────
 # himmel-update fast-forwards the hermes-agent checkout but a running
 # hermes-gateway unit — per-profile (hermes-gateway-<profile>.service) or the
-# multiplexer (bare hermes-gateway.service, HIMMEL-3052) — keeps old modules
+# multiplexer — keeps old modules
 # in memory until restarted (09-08 ImportError incident). These cases drive
 # update_hermes via a systemctl STUB on PATH — never the real systemd bus
 # (do-not: this station has live units of both shapes).
@@ -593,7 +593,7 @@ if [ "$rc" -eq 0 ]; then echo "ok: one restart failing -> exit 0 (chain not abor
 check "failed restart names the by-hand command for $GW1" "systemctl --user restart $GW1" "$out"
 check "other unit still restarted" "restarted $GW2" "$out"
 
-# Case 18 (HIMMEL-2950): apply path, checkout moves, list-units ITSELF fails
+# Case 18: apply path, checkout moves, list-units ITSELF fails
 # (broken --user bus) → must not read as "no units running": a loud warn:
 # line names the failure + the by-hand fallback, restart is never attempted,
 # and the update chain is NOT aborted (rc 0).
@@ -618,7 +618,7 @@ restarts18=$(grep -c -- '--user restart' "$stub18/systemctl.log" 2>/dev/null) ||
 restarts18=${restarts18:-0}
 if [ "$restarts18" -eq 0 ]; then echo "ok: list-units failure -> zero restart calls"; else echo "FAIL: expected 0 restart calls, stub log shows $restarts18"; cat "$stub18/systemctl.log" 2>/dev/null; fail=1; fi
 
-# Case 19 (control, HIMMEL-2950): list-units SUCCEEDS with EMPTY output (no
+# Case 19: list-units SUCCEEDS with EMPTY output (no
 # gateways currently running) → no warn: line, zero restart calls — today's
 # silent no-op behaviour is preserved for the genuinely-empty case.
 bare19="$tmp/bare19/NousResearch/hermes-agent.git"
@@ -643,7 +643,7 @@ restarts19=$(grep -c -- '--user restart' "$stub19/systemctl.log" 2>/dev/null) ||
 restarts19=${restarts19:-0}
 if [ "$restarts19" -eq 0 ]; then echo "ok: empty list-units output -> zero restart calls"; else echo "FAIL: expected 0 restart calls, stub log shows $restarts19"; cat "$stub19/systemctl.log" 2>/dev/null; fail=1; fi
 
-# Case 20 (HIMMEL-3052): apply path, checkout moves, ONLY the multiplexer
+# Case 20: apply path, checkout moves, ONLY the multiplexer
 # unit ($GW3, bare hermes-gateway.service — no per-profile units running) →
 # it still gets restarted. A `list-units 'hermes-gateway-*'`-only call (the
 # pre-fix glob) never matches this fixture, so this case is RED against the
@@ -670,7 +670,7 @@ restarts20=$(grep -c -- '--user restart' "$stub20/systemctl.log" 2>/dev/null) ||
 restarts20=${restarts20:-0}
 if [ "$restarts20" -eq 1 ]; then echo "ok: multiplexer-only -> exactly one restart call"; else echo "FAIL: expected 1 restart call, stub log shows $restarts20"; cat "$stub20/systemctl.log" 2>/dev/null; fail=1; fi
 
-# Case 21 (HIMMEL-3052): apply path, checkout moves, multiplexer unit ($GW3)
+# Case 21: apply path, checkout moves, multiplexer unit ($GW3)
 # running ALONGSIDE a per-profile unit ($GW1) — the mixed-shape window
 # during/after a `hermes gateway migrate --standalone` rollback — BOTH get
 # restarted.
@@ -694,9 +694,9 @@ restarts21=$(grep -c -- '--user restart' "$stub21/systemctl.log" 2>/dev/null) ||
 restarts21=${restarts21:-0}
 if [ "$restarts21" -eq 2 ]; then echo "ok: mixed shapes -> exactly two restart calls"; else echo "FAIL: expected 2 restart calls, stub log shows $restarts21"; cat "$stub21/systemctl.log" 2>/dev/null; fail=1; fi
 
-# ── report_cadence_stale() — stale cadence runner nudge (HIMMEL-588/969) ─────
+# ── report_cadence_stale() — stale cadence runner nudge ─────
 # Same lib seams; *_BAT_DIR point at fixture runner dirs.
-# HIMMEL-2965: cadence_runner_stamp now reads only the CURRENT platform's
+# cadence_runner_stamp now reads only the CURRENT platform's
 # runner extension (.sh on Linux/macOS, .bat on Windows).
 # CADENCE_RUNNER_PLATFORM_OS is the test seam that forces which platform
 # "current" means, mirroring scheduler_backend_os's SCHEDULER_BACKEND_OS
@@ -717,7 +717,7 @@ printf 'rem himmel-cadence-runner-format: %s\r\n' "$CADENCE_RUNNER_FORMAT_VERSIO
 ver=$(CADENCE_RUNNER_PLATFORM_OS=windows cadence_runner_stamp "$tmp/cad-codex-current")
 if [ "$ver" = "$CADENCE_RUNNER_FORMAT_VERSION" ]; then echo "ok: codex-sweep stamp probed (forced-Windows)"; else echo "FAIL: codex-sweep stamp probe got '$ver'"; fail=1; fi
 
-# Case 6b (HIMMEL-2965): the SAME .bat-only fixture, read as Linux → the
+# Case 6b: the SAME .bat-only fixture, read as Linux → the
 # dormant Windows twin is invisible to the Linux reader (reads as "not
 # armed" there) instead of pinning a false-stale floor.
 if ver=$(CADENCE_RUNNER_PLATFORM_OS=linux cadence_runner_stamp "$tmp/cad-codex-current" 2>&1); then
@@ -726,7 +726,7 @@ else
   echo "ok: Linux-platform probe ignores the dormant .bat twin (not armed)"
 fi
 
-# Case 7: pipeline runner with no format stamp (armed before HIMMEL-588) →
+# Case 7: pipeline runner with no format stamp →
 # STALE nudge with pipeline re-arm hint.
 mkdir -p "$tmp/cad-stale"
 printf '#!/bin/sh\necho old\n' > "$tmp/cad-stale/pipeline-harvest.sh"
@@ -735,7 +735,7 @@ out=$(PIPELINE_BAT_DIR="$tmp/cad-stale" SWEEP_BAT_DIR="$tmp/sweep-empty" \
 check "stale pipeline cadence nudged (message)" "pipeline-cadence runners are STALE" "$out"
 check "stale pipeline cadence nudged (rearm hint)" "bash scripts/luna/pipeline-cadence.sh arm --force" "$out"
 
-# Case 8 (HIMMEL-2965 ask 2): codex-sweep is Windows-only by design — a
+# Case 8: codex-sweep is Windows-only by design — a
 # dormant stale .bat twin on a non-Windows platform must never surface the
 # arm --force recipe (arm always refuses there); an explicit n/a note fires
 # instead.
@@ -798,7 +798,7 @@ out=$(PIPELINE_BAT_DIR="$tmp/cad-mixed" SWEEP_BAT_DIR="$tmp/sweep-empty" \
   GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 check "mixed-version cadence nudged" "pipeline-cadence runners are STALE" "$out"
 
-# Case 12b (HIMMEL-2965 ask 1): a dormant STALE .bat twin alongside a
+# Case 12b: a dormant STALE .bat twin alongside a
 # CURRENT .sh runner for the SAME basename must not pin the Linux minimum —
 # only the current platform's extension is read, so the dormant cross-
 # platform twin never masks (or is masked by) the live one.
@@ -822,7 +822,7 @@ if [ "$ver" = "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" ]; then echo "ok: Windows
 uh=$(USERPROFILE='' HOME="$tmp/fake-home" cadence_user_home)
 if [ "$uh" = "$tmp/fake-home" ]; then echo "ok: cadence_user_home falls back to HOME"; else echo "FAIL: cadence_user_home got '$uh'"; fail=1; fi
 
-# HIMMEL-4307: a PM-managed install (.hermes/bin/hermes) owns its dependency
+# a PM-managed install (.hermes/bin/hermes) owns its dependency
 # generations — apply must NOT pip-install into its interpreter. A legacy venv
 # install keeps the editable refresh. Both cases pull nothing (heads equal), so
 # they add no gateway restart to the suite-stub count asserted above.

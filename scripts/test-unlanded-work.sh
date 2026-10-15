@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/unlanded-work.sh (HIMMEL-2070) — hermetic: builds a
+# Smoke test for scripts/unlanded-work.sh — hermetic: builds a
 # throwaway git repo per case, stubs gh via GH_CMD so no test hits the network.
 # Usage: bash scripts/test-unlanded-work.sh
 set -uo pipefail
@@ -51,7 +51,7 @@ make_repo() {
 # literally the same commit. `rev-list --count BASE..branch` is then 0, the
 # `[ "$ahead" -gt 0 ] || continue` guard in unlanded-work.sh skips the branch
 # entirely, and the fixture's row goes MISSING (not misclassified) — the
-# HIMMEL-2508 "reverse-applies"/"human report" flake. Give the second commit
+# "reverse-applies"/"human report" flake. Give the second commit
 # a distinct message to force a distinct object.
 commit_dated() {
     local d="$1" hours_ago="$2" f="$3" content="$4" msg="${5:-work: $3}" ts
@@ -66,10 +66,10 @@ commit_dated() {
 # headRefName,number,state,headRefOid,baseRefName` with a fixed JSON array
 # built from the given rows (state is OPEN|MERGED|CLOSED). sha is optional
 # (defaults to empty, i.e. never matches a real tip) — a MERGED row only
-# counts when its sha equals the branch's CURRENT tip (codex-1, HIMMEL-2070
-# CR round 1). base is optional (defaults to "main", matching every existing
+# counts when its sha equals the branch's CURRENT tip.
+# The base is optional (defaults to "main", matching every existing
 # test's --base main) — a MERGED row only counts when its base equals the
-# script's configured base (codex-4, CR round 4).
+# script's configured base.
 make_gh_stub() {
     local d="$1"; shift
     mkdir -p "$d"
@@ -233,7 +233,7 @@ else
 fi
 rm -rf "$t"
 
-# codex-1 (HIMMEL-2070 CR round 1): a MERGED PR recorded against a branch
+# a MERGED PR recorded against a branch
 # name whose CURRENT tip has since moved (reused/rewound branch name) must
 # NOT be trusted as forge evidence — it falls through to the git-based rules
 # instead of asserting LANDED-ELSEWHERE off a stale tip.
@@ -252,7 +252,7 @@ else
 fi
 rm -rf "$t"
 
-# codex-4 (HIMMEL-2070 CR round 4): a MERGED PR recorded against a DIFFERENT
+# a MERGED PR recorded against a DIFFERENT
 # base branch (never necessarily landed on the configured --base at all)
 # must not be trusted as forge evidence either -- same fall-through as a
 # stale tip.
@@ -359,7 +359,7 @@ else
 fi
 rm -rf "$t"
 
-# codex-5 (HIMMEL-2070 CR round 2): the printed drop command must be
+# the printed drop command must be
 # shell-safe-quoted (bash's own %q), not merely wrapped in "..." — a
 # double-quoted ref name does NOT neutralize "$(...)"/backticks, and git ref
 # names may legally contain either. Exercise a path with a literal space (the
@@ -392,7 +392,7 @@ fi
 git -C "$t/repo" worktree remove --force "$t/with space/wt-quoted" >/dev/null 2>&1 || true
 rm -rf "$t"
 
-# ── HIMMEL-3405: pr<N> review refs classified by tip; readable SWEEP-ERROR;
+# ── pr<N> review refs classified by tip; readable SWEEP-ERROR;
 # --health alarms (LOST-COMMITS / SWEEP-ERROR). ────────────────────────────
 
 echo "== pr<N> review ref at or behind a MERGED PR's head -> LANDED-ELSEWHERE (matched by tip, not name) =="

@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ScriptDir = $PSScriptRoot
 $Launcher  = Join-Path $ScriptDir 'claude-routed.ps1'
@@ -174,7 +174,7 @@ try {
   if (FileHas (Join-Path $FAKEHOME '.claude-routed\CLAUDE.md') 'updated') { Pass 'reseed refreshed CLAUDE.md' } else { Fail 'reseed did not refresh' }
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed\history.jsonl')) { Fail 'denied file seeded' } else { Pass 'denied file not seeded' }
 
-  # --- T7b: stale seed auto-refreshes on plain launch (HIMMEL-819) — source
+  # --- T7b: stale seed auto-refreshes on plain launch — source
   # settings.json newer than the sentinel triggers a reseed without -Reseed. ---
   (Get-Item -Force -LiteralPath (Join-Path $FAKEHOME '.claude-routed\.seeded')).LastWriteTimeUtc = [datetime]'2020-01-01'
   '{"env":{"HIMMEL_INITIATIVE":"1"},"marker":"lean-profile-v2"}' | Set-Content -LiteralPath (Join-Path $FAKEHOME '.claude\settings.json') -NoNewline
@@ -182,7 +182,7 @@ try {
   if (FileHas (Join-Path $FAKEHOME '.claude-routed\settings.json') 'lean-profile-v2') { Pass 'stale seed refreshed on plain launch' } else { Fail 'stale seed not refreshed on plain launch' }
 
   # --- T7c: fresh sentinel -> plain launch does NOT reseed (no churn) ---
-  # (HIMMEL-828 Part B: the subtree sources are set old here too, so the widened
+  # (the subtree sources are set old here too, so the widened
   # staleness check keeps its no-churn guarantee when nothing has drifted.)
   '{"local":"tamper-survives"}' | Set-Content -LiteralPath (Join-Path $FAKEHOME '.claude-routed\settings.json') -NoNewline
   foreach ($srcRel in @('.claude\settings.json', '.claude\plugins\installed_plugins.json', '.claude\plugins\known_marketplaces.json',
@@ -227,7 +227,7 @@ try {
   Remove-Item Env:CLAUDE_LANE_AUTO_RESEED
   if (FileHas (Join-Path $FAKEHOME '.claude-routed\settings.json') 'tamper2') { Fail '-Reseed under opt-out did not reseed' } else { Pass '-Reseed wins over opt-out' }
 
-  # --- T7h (HIMMEL-3334 F2): the un-swept claude-hud.json path (new, alongside
+  # --- T7h: the un-swept claude-hud.json path (new, alongside
   # the legacy plugins\claude-hud\config.json) is seeded and staleness-tracked
   # too — a lane must not lose the HUD after an operator's box has migrated off
   # the legacy path.
@@ -251,8 +251,8 @@ try {
   Assert-Exit (Invoke-Launcher) 3 'salus refuses'
   Assert-Exit (Invoke-Launcher -LArgs @('-Force')) 3 'salus refuses despite -Force'
 
-  # --- T8b: .salus-profile marker ALONE (no .salus) -> refuse exit 3 (HIMMEL-2173
-  # part 2 — a defense for salus deployments that predate part 1 shipping .salus). ---
+  # --- T8b: .salus-profile marker ALONE (no .salus) -> refuse exit 3
+  # (part 2 — a defense for salus deployments that predate part 1 shipping .salus). ---
   New-Sandbox; $script:KEY = 'omni-test-123'  # gitleaks:allow
   New-Item -ItemType File -Force -Path (Join-Path $WORK '.salus-profile') | Out-Null
   Assert-Exit (Invoke-Launcher) 3 'salus-profile-only refuses'
@@ -356,8 +356,7 @@ try {
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed\.seeded')) { Fail 'sentinel written despite seed Copy-Item failure' } else { Pass 'no sentinel on seed Copy-Item failure' }
   if (FileHas $OutTxt 'FAILED to seed config dir') { Pass 'copy failure emits the failed-seed message' } else { Fail 'copy failure did not emit the failed-seed message' }
 
-  # --- T17c (HIMMEL-827, parity with glm T17c from HIMMEL-820 CR: codex-adv [high]
-  # + silent-failure-hunter): a stale .seeded that cannot be removed on reseed exits
+  # --- T17c (parity with glm T17c): a stale .seeded that cannot be removed on reseed exits
   # 4 with the clear-sentinel message BEFORE any copy work, and the sentinel is left
   # intact (never silently swallowed) — so the seeder never proceeds leaving the old
   # sentinel next to a half-seeded tree. Fixture: seed once, then exclusively lock
@@ -386,7 +385,7 @@ try {
   if (Test-Path -LiteralPath $ChildEnv) { Fail 'claude launched despite unreadable phi-roots' } else { Pass 'claude not launched on unreadable phi-roots' }
   if (FileHas $OutTxt 'failing closed') { Pass 'phi-roots dir emits the failing-closed message' } else { Fail 'no failing-closed message on phi-roots dir' }
 
-  # --- T19 (HIMMEL-828 Part A): the up-front sentinel removal is race-free like bash
+  # --- T19: the up-front sentinel removal is race-free like bash
   # `rm -f` — a reseed whose sentinel is ABSENT at removal time (a concurrent reseed
   # sharing the config dir removed it in the window the old Test-Path-then-Remove left
   # open) must NOT spuriously exit 4. Deterministic stand-in for that race: seed once,
@@ -401,7 +400,7 @@ try {
   Assert-Exit (Invoke-Launcher -LArgs @('-Reseed')) 0 'reseed with an absent sentinel does not spuriously exit 4'
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed\.seeded')) { Pass 'sentinel rewritten after absent-sentinel reseed' } else { Fail 'sentinel not rewritten after absent-sentinel reseed' }
 
-  # --- T20 (HIMMEL-828 Part B): a half-seeded tree self-heals on a plain launch — the
+  # --- T20: a half-seeded tree self-heals on a plain launch — the
   # sentinel is present but a copied subtree is missing (an interrupted reseed or an
   # external removal), which the pre-828 settings+manifest staleness check missed.
   # Fixture: seed a sandbox with a commands subtree, delete the DEST subtree while
@@ -421,7 +420,7 @@ try {
   Assert-Exit (Invoke-Launcher) 0 'half-seeded tree triggers reseed on plain launch'
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed\commands\keep.md')) { Pass 'missing subtree restored by self-heal reseed' } else { Fail 'missing subtree NOT restored (half-seed not detected)' }
 
-  # --- T21 (HIMMEL-828 Part B): a top-level add inside a source subtree (source dir
+  # --- T21: a top-level add inside a source subtree (source dir
   # mtime newer than the sentinel) auto-reseeds without -Reseed — pre-828 this drift
   # needed an explicit -Reseed. Fixture: seed, set a fresh-ish sentinel + OLD settings/
   # manifests (so only the subtree can be the trigger), add a new command to the source
@@ -440,7 +439,7 @@ try {
   Assert-Exit (Invoke-Launcher) 0 'source subtree drift auto-reseeds on plain launch'
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed\commands\two.md')) { Pass 'new source command mirrored by subtree-drift reseed' } else { Fail 'new source command NOT mirrored (subtree drift not detected)' }
 
-  # --- T22 (HIMMEL-828, codex-adv [high]): reseed CLEAN re-mirrors seeded subtrees —
+  # --- T22: reseed CLEAN re-mirrors seeded subtrees —
   # a file left stale in the dest (deleted from the source) is DROPPED, no nested copy
   # appears, kept files survive. Twin of glm T21; covers the routed clean-remirror fix
   # (routed previously merged into the existing dest and left source-deleted files
@@ -462,7 +461,7 @@ try {
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed\plugins\marketplaces\marketplaces')) { Fail 'nested marketplaces dir after reseed' } else { Pass 'no nested marketplaces dir after reseed' }
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed\plugins\marketplaces\keep.json')) { Pass 'kept marketplaces file survived reseed' } else { Fail 'kept marketplaces file lost after reseed' }
 
-  # --- T23 (HIMMEL-828/819, codex-adv [high]): DELETION MIRRORING — a deleted SOURCE
+  # --- T23: DELETION MIRRORING — a deleted SOURCE
   # subtree is removed from the lane on a plain launch (a removed command/hook must not
   # linger steering the routed lane), symmetric with settings/manifest deletion mirroring,
   # AND it does NOT churn forever. Twin of glm T25. Fixture: seed with a commands subtree,
@@ -480,7 +479,7 @@ try {
   Assert-Exit (Invoke-Launcher) 0 'no further churn after deletion mirrored'
   if (FileHas (Join-Path $FAKEHOME '.claude-routed\settings.json') 'tamper-stable') { Pass 'stable after mirror (no churn)' } else { Fail 'churns after deletion mirrored' }
 
-  # --- T24 (HIMMEL-828/819, codex-adv [high]): LEAF-FILE deletion mirroring — a deleted
+  # --- T24: LEAF-FILE deletion mirroring — a deleted
   # source CLAUDE.md (which literally steers the lane) is removed from the lane on a plain
   # launch, not just subtrees/manifests. Twin of glm T26. ---
   New-Sandbox; $script:KEY = 'omni-test-123'  # gitleaks:allow
@@ -491,7 +490,7 @@ try {
   Assert-Exit (Invoke-Launcher) 0 'deleted source CLAUDE.md triggers a mirror reseed'
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed\CLAUDE.md')) { Fail 'stale CLAUDE.md survived source deletion' } else { Pass 'stale CLAUDE.md removed (leaf deletion mirrored)' }
 
-  # --- T25 (HIMMEL-830): a FRESH held seed lock makes a launch that needs seeding
+  # --- T25: a FRESH held seed lock makes a launch that needs seeding
   # time out with exit 4, a message naming the lock path, and the held lock LEFT
   # intact (we must not delete a fresh holder's lock on timeout). Lock is a SIBLING
   # of the config dir. TIMEOUT=1 keeps the deterministic wait ~1s. ---
@@ -503,7 +502,7 @@ try {
   if (FileHas $OutTxt '.claude-routed.seed-lock') { Pass 'timeout message names the lock path' } else { Fail 'timeout message does not name the lock path' }
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed.seed-lock')) { Pass 'fresh held lock left intact on timeout' } else { Fail 'fresh held lock removed on timeout' }
 
-  # --- T26 (HIMMEL-830): a STALE held lock (mtime far in the past) is stolen, the
+  # --- T26: a STALE held lock (mtime far in the past) is stolen, the
   # seed proceeds, the launch exits 0, and the lock is released (no residue). ---
   New-Sandbox; $script:KEY = 'omni-test-123'  # gitleaks:allow
   $lockDir = Join-Path $FAKEHOME '.claude-routed.seed-lock'
@@ -513,7 +512,7 @@ try {
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed\.seeded')) { Pass 'seed completed after stealing stale lock' } else { Fail 'seed did not complete after stealing stale lock' }
   if (Test-Path -LiteralPath $lockDir) { Fail 'stale lock not released after seed' } else { Pass 'stale lock released after seed' }
 
-  # --- T27 (HIMMEL-830, best-effort concurrency smoke): two simultaneous first-launch
+  # --- T27: two simultaneous first-launch
   # seeders of the same lane both exit 0, leave a consistent config (sentinel present),
   # and leave no lock residue. The lock serializes them; the loser's recheck skips. This
   # also exercises the double-checked recheck path (the second acquirer finds a fresh
@@ -527,7 +526,7 @@ try {
   $env:MOCK_ARGV_OUT             = $ArgvOut
   Remove-Item Env:OMNIROUTE_PORT -ErrorAction SilentlyContinue
   $env:PATH = $BIN + [IO.Path]::PathSeparator + $OrigEnv['PATH']
-  # HIMMEL-1426: resolve pwsh by absolute path so Start-Process doesn't fall
+  # resolve pwsh by absolute path so Start-Process doesn't fall
   # back to ShellExecute bare-name resolution (the "how do you want to open
   # this file?" picker). Same idiom as the $PwshDir line at the top of the file.
   $pwshPath = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
@@ -538,7 +537,7 @@ try {
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed\.seeded')) { Pass 'concurrent seed left a sentinel' } else { Fail 'concurrent seed left no sentinel' }
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-routed.seed-lock')) { Fail 'concurrent launch left lock residue' } else { Pass 'no lock residue after concurrent launches' }
 
-  # DEVIATION (HIMMEL-830 CR r1): the bash suites' release-failure test (intruder file
+  # DEVIATION: the bash suites' release-failure test (intruder file
   # planted inside the held lock -> non-fatal WARNING, lock left intact) is bash-only.
   # The honest construction needs a slow-but-SUCCEEDING node shim, and a node.cmd batch
   # shim cannot receive the launcher's multi-line `-e <script>` argument (cmd mangles

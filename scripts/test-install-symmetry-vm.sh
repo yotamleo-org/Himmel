@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-install-symmetry-vm.sh -- host-driven VM validation for the install/
-# uninstall symmetry initiative (R8, HIMMEL-460). Copies THIS worktree to an
+# uninstall symmetry initiative. Copies THIS worktree to an
 # Ubuntu VM over ssh and runs the hermetic bash suites + the real out-of-repo
 # auto-approve check (SC2) on real Linux.
 #
@@ -21,11 +21,11 @@
 set -uo pipefail
 
 # The default target is vm.mode's VM, not a hardcoded local one; vm.mode=none
-# SKIPs (HIMMEL-4583).
+# SKIPs.
 # shellcheck source=lib/vm-mode.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/lib/vm-mode.sh"
 # rc 1 = a configured none: SKIP (exit 3); rc 2 = a resolver error: a loud
-# config error (exit 2), never a SKIP (HIMMEL-4597, J1932 T2).
+# config error (exit 2), never a SKIP.
 vm_mode_e2e_guard "$(basename -- "$0")" || { vm_guard_rc=$?; [ "$vm_guard_rc" = 1 ] && exit 3; exit "$vm_guard_rc"; }
 HOSTSPEC="${1:-$VM_MODE_HOST}"
 PORT="${2:-$VM_MODE_PORT}"
@@ -52,25 +52,25 @@ fi
 
 # 1. stage the branch (rsync when both sides have it, else a tar pipe). Both apply
 #    the shared secret excludes (.env, .env.*, *.local.json) -- the host checkout's
-#    gitignored-but-present secrets must never reach the guest (HIMMEL-2540).
+#    gitignored-but-present secrets must never reach the guest.
 # shellcheck source=lib/vm-guest-excludes.sh
 . "$REPO/scripts/lib/vm-guest-excludes.sh" \
   || { echo "==> REFUSING: cannot load scripts/lib/vm-guest-excludes.sh; nothing was copied" >&2; exit 1; }
 # The exclude list must be in force BEFORE any copy: with no errexit a failed load
 # would leave it empty and the secrets already in the guest when the post-copy
-# assert fires (HIMMEL-2540). vm_stage_tree re-checks it; this early stop also keeps
+# assert fires. vm_stage_tree re-checks it; this early stop also keeps
 # the stage lib (which a caller with a broken helper tree may lack) from loading first.
 if [ -z "$(vm_guest_rsync_excludes)" ] || [ -z "$(vm_guest_tar_excludes)" ]; then
   echo "==> REFUSING: the secret-exclusion list is empty; nothing was copied" >&2; exit 1
 fi
 
 # The ONE list of repo-relative paths staged onto the guest; BOTH copy paths below
-# consume it, so they cannot drift apart (HIMMEL-3261: each spelled its own sources,
+# consume it, so they cannot drift apart (each spelled its own sources,
 # and neither carried the three non-scripts/ inputs scripts/test-uninstall.sh reads
 # relative to the repo root -- SC6 then failed 80 assertions on a clean guest).
 # Extend it when a suite run below reads another repo-root path; the drift guard in
 # scripts/lib/test-vm-guest-excludes.sh (T7n/T7o) pins test-uninstall.sh's reads to it.
-# Every entry still passes through the secret excludes above (HIMMEL-2540).
+# Every entry still passes through the secret excludes above.
 STAGE_PATHS=(scripts
   docs/setup/settings-template.json
   docs/setup/user-scope-claude-md-template.md
@@ -108,7 +108,7 @@ run_suite() {
 echo "---- VM: $(uname -srm) ----"
 
 # Bootstrap the TEST-HARNESS deps (bash/git/jq) -- separate from the user runtime
-# set (HIMMEL-469). Best-effort: on a NOPASSWD test VM / CI runner this installs
+# set. Best-effort: on a NOPASSWD test VM / CI runner this installs
 # git+jq; on a password-sudo box it fails loud and the git-dependent suites are
 # reported as GAPs below (the non-git suites still run).
 if [ -f "$DIR/scripts/machine-setup/test-bootstrap.sh" ]; then
@@ -193,7 +193,7 @@ else
   echo "==> VM validation FAILED (rc=$rc)" >&2
 fi
 
-# 3. opt-in upgrade-path stage (HIMMEL-5267): HIMMEL_VM_E2E_UPGRADE=1 runs
+# 3. opt-in upgrade-path stage: HIMMEL_VM_E2E_UPGRADE=1 runs
 #    scripts/vm/upgrade-path-e2e.sh after a green symmetry pass. It installs tools
 #    into the guest HOME, so use a disposable clone and restore it afterwards. The
 #    station targets are stage inputs (UPGRADE_AST_GREP_VERSION,

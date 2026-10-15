@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/plugin-test.sh — self-bootstrapping test entry point for a
-# marketplace plugin that declares its own deps (HIMMEL-366).
+# marketplace plugin that declares its own deps.
 #
 # A fresh worktree only gets scripts/jira/ deps installed (by
 # _new-worktree.sh), so a raw `bun test` in marketplace/plugins/<plugin>/

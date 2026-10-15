@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/uninstall.sh (HIMMEL-227 offboard).
+# Smoke test for scripts/uninstall.sh.
 # State-touching invocations point TELEGRAM_CHANNEL_DIR + BRIDGE_ROOT at temp
 # dirs and pass --skip-tasks --skip-plugins --skip-hooks where destructive, so
 # the operator's real bridge, scheduled tasks, plugins, and git hooks are
@@ -25,7 +25,7 @@ assert_rc() {
         echo "PASS $label (rc=$actual)"
     else
         echo "FAIL $label — expected rc=$expected, got rc=$actual"
-        # HIMMEL-3699: name why the run stopped, so a red on a platform we
+        # name why the run stopped, so a red on a platform we
         # cannot attach to is diagnosable from the log alone.
         printf '%s\n' "${out:-}" | grep -E 'ERROR|Halted at|WARN' | head -n 8 | sed 's/^/    | /'
         FAILED=$((FAILED + 1))
@@ -55,19 +55,19 @@ assert_not_has() {
 }
 
 FAILED=0
-# HIMMEL-3699: physical path (macOS $TMPDIR is /var -> /private/var); uninstall.sh compares $HOME/.himmel lexically against the resolved ledger dir.
+# physical path (macOS $TMPDIR is /var -> /private/var); uninstall.sh compares $HOME/.himmel lexically against the resolved ledger dir.
 TMPDIR=$(cd -P -- "${TMPDIR:-/tmp}" && pwd) || exit 1; export TMPDIR
-# HIMMEL-3903: an empty /tmp/.git kept appearing on this host. Record which of these
+# an empty /tmp/.git kept appearing on this host. Record which of these
 # already exist so the end-of-suite guard fails if THIS suite creates one.
 GIT_LEAK_PRE=""; for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do [ -e "$_p" ] && GIT_LEAK_PRE="$GIT_LEAK_PRE $_p"; done
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/uninstall-suite.XXXXXX") || { echo "FAIL could not create temp dir"; exit 1; }
-# HIMMEL-3903: git discovery for every non-git fixture (SC6K/SC6M/SC6R) stops at $TMP,
+# git discovery for every non-git fixture (SC6K/SC6M/SC6R) stops at $TMP,
 # so an ambient .git above it (an empty /tmp/.git) cannot change the verdict.
 export GIT_CEILING_DIRECTORIES="$TMP"
 [ -n "$TMP" ] && [ -d "$TMP" ] || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
-# HIMMEL-2505 (the 2026-09-03 real-HOME wipe): no case in this suite may fall
+# (the 2026-09-03 real-HOME wipe): no case in this suite may fall
 # through to the operator's REAL $HOME. Capture it for the assertion below,
 # then override HOME for the WHOLE suite with an empty fixture that carries
 # none of uninstall.sh's wet-run fence markers — a case that forgets its own
@@ -77,7 +77,7 @@ unset HIMMEL_UNINSTALL_REAL_HOME
 SUITE_HOME="$TMP/suitehome"
 mkdir -p "$SUITE_HOME"
 export HOME="$SUITE_HOME"
-# HIMMEL-3415: run from a scratch cwd too. uninstall.sh refuses a wet run whose
+# run from a scratch cwd too. uninstall.sh refuses a wet run whose
 # repo-rooted targets ({PWD}, the hooks dir) resolve into the real home, which
 # a checkout under it (a worktree, CI's /home/runner/work) always does.
 mkdir -p "$TMP/cwd"
@@ -96,7 +96,7 @@ else
     echo "PASS the suite HOME fixture carries no live-operator marker"
 fi
 
-# HIMMEL-2502: the two checks above are this suite's OWN protection,
+# the two checks above are this suite's OWN protection,
 # independent of uninstall.sh's guard — a soft FAIL here must not fall
 # through to the wet rows below. Abort now, before any uninstall.sh
 # invocation, rather than merely counting the failure.
@@ -105,7 +105,7 @@ if [ "$FAILED" -gt 0 ]; then
     exit 1
 fi
 
-# HIMMEL-2505/HIMMEL-874: build a hermetic PATH ONCE, before the first case,
+# Build a hermetic PATH ONCE, before the first case,
 # and thread it through EVERY invocation below (moved up from its old home
 # near the SC7 section, which now just adds FAKE_HOME/EMPTY_HOME on top of
 # it). A suite that reaches a real claude/pre-commit/bun/crontab/schtasks/
@@ -130,7 +130,7 @@ for _excluded in claude pre-commit bun crontab schtasks systemctl; do
     fi
 done
 
-# HIMMEL-3182: every case below runs `PATH=...:$HBIN bash "$CLI"`, and $HBIN's
+# every case below runs `PATH=...:$HBIN bash "$CLI"`, and $HBIN's
 # bash is a COPY where `ln -s` is refused (MSYS without the symlink privilege);
 # a copied bash.exe cannot load msys-2.0.dll from $HBIN, so each of those runs
 # is rc 127 and every case fails for that reason, not for the one it names.
@@ -143,12 +143,12 @@ if ! host_isolated_bash_boots; then
 fi
 
 # Redirect the [6/8] settings-unwire target away from the operator's REAL
-# ~/.claude/settings.json for the whole suite (HIMMEL-460). The dedicated SC6
+# ~/.claude/settings.json for the whole suite. The dedicated SC6
 # cases re-seed this file per-test; the others simply never touch the real one.
 export HIMMEL_USER_SETTINGS="$TMP/user-settings.json"
 printf '{}\n' > "$HIMMEL_USER_SETTINGS"
 
-# HIMMEL-3332 S6: seeds a completed provenance ledger session at a fixture's
+# S6: seeds a completed provenance ledger session at a fixture's
 # OWN $HOME, recording plugin/marketplace units as himmel-installed
 # (preexisted=false -> ours=true), via the same prov_record primitive
 # install-plugins.sh's real writer uses (pattern shared with RED3 in
@@ -156,7 +156,7 @@ printf '{}\n' > "$HIMMEL_USER_SETTINGS"
 # active ledger-owned removal branch back on for a fixture that needs to
 # exercise real plugin/marketplace removal, instead of the no-ledger "kept"
 # default this suite otherwise exercises everywhere else.
-# HIMMEL-3378: an item may carry `:<cli_scope>` (default user) -- the ledger's
+# an item may carry `:<cli_scope>` (default user) -- the ledger's
 # own recorded scope, which ledger-mode removal now honours.
 # shellcheck source=lib/provenance.sh
 . "$(dirname "$CLI")/lib/provenance.sh"
@@ -229,7 +229,7 @@ else
 fi
 assert_has "dry-run reports bridge not running" "bridge not running" "$out"
 
-# 3b. RED 9 (HIMMEL-2754): plugin confirmation names user-scope reach.
+# 3b. RED 9: plugin confirmation names user-scope reach.
 mk_state
 out=$(TELEGRAM_CHANNEL_DIR="$CHANNEL" BRIDGE_ROOT="$BRIDGE" PATH="$HBIN" \
     bash "$CLI" --purge-state --dry-run --skip-tasks --skip-hooks </dev/null 2>&1); rc=$?
@@ -263,7 +263,7 @@ else
     echo "FAIL telegram state removed despite --keep-telegram-state"; FAILED=$((FAILED + 1))
 fi
 
-# 6. suspicious-path guard: refuses HOME even when asked. HIMMEL-2505: a
+# 6. suspicious-path guard: refuses HOME even when asked.: a
 #    refused removal now HALTS the run (a partial teardown is safer left in
 #    place than guessed past), so this exits 2/INCOMPLETE, not 0 — the
 #    corollary of making the halt behavior real.
@@ -286,7 +286,7 @@ else
 fi
 
 # Tests 7-12 run the CLI under a controlled PATH (stub dir first, the
-# hermetic $HBIN second: "$STUB_WIN/$STUB_NIX/$STUB_BUN:$HBIN" — HIMMEL-2505,
+# hermetic $HBIN second: "$STUB_WIN/$STUB_NIX/$STUB_BUN:$HBIN" —,
 # $HBIN never carries claude/pre-commit/bun/crontab/schtasks/systemctl) so
 # command -v resolves to the stubs (and, for the unix-branch tests, so the
 # real Windows schtasks is invisible). All discovery tests use --dry-run:
@@ -533,7 +533,7 @@ else
 fi
 
 # 12. bun missing with a live pidfile also gates state removal.
-#     HIMMEL-2505: $HBIN is built (hermetic-path.sh) to NEVER carry bun, so
+#     $HBIN is built (hermetic-path.sh) to NEVER carry bun, so
 #     the bun-missing branch is deterministically reachable under it — no
 #     "SKIP if a real bun leaked in" guard needed (the old guard checked
 #     /usr/bin:/bin directly; that raw system PATH is never used by this
@@ -551,7 +551,7 @@ else
     echo "FAIL state removed though bridge could not be stopped"; FAILED=$((FAILED + 1))
 fi
 
-# ── SC6 (HIMMEL-460): [6/8] settings unwire ─────────────────────────────────
+# ── SC6: [6/8] settings unwire ─────────────────────────────────
 # Seed a settings.json carrying everything setup/adopt wire PLUS non-himmel keys
 # that MUST survive (rtk guard, a custom statusLine sibling, an MCP allow).
 seed_settings() {
@@ -585,7 +585,7 @@ out=$(TELEGRAM_CHANNEL_DIR="$TMP/none1" BRIDGE_ROOT="$TMP/none1b" PATH="$HBIN" \
     bash "$CLI" --purge-state --yes --skip-tasks --skip-plugins --skip-hooks </dev/null 2>&1); rc=$?
 assert_rc "[6/8] run exits 0" 0 "$rc"
 assert_has "[6/8] banner present" "[6/8] Unwiring" "$out"
-# HIMMEL-3332 S6: with no ledger for this $HOME, statusLine and
+# S6: with no ledger for this $HOME, statusLine and
 # env.HANDOVER_DIR are two of the six overwrite-prone rows -- kept (not
 # removed) with a hand command, since a pre-existing value can't be told
 # apart from himmel's own without a ledger.
@@ -618,11 +618,11 @@ before=$(cat "$HIMMEL_USER_SETTINGS")
 out=$(TELEGRAM_CHANNEL_DIR="$TMP/none3" BRIDGE_ROOT="$TMP/none3b" PATH="$HBIN" \
     bash "$CLI" --purge-state --dry-run --skip-tasks --skip-plugins --skip-hooks </dev/null 2>&1); rc=$?
 assert_rc "dry-run [6/8] exits 0" 0 "$rc"
-# HIMMEL-3332 S6: no ledger -- statusLine is previewed as kept, not unwired.
+# S6: no ledger -- statusLine is previewed as kept, not unwired.
 assert_has "dry-run prints [6/8] DRY" "DRY: would keep (no ledger) statusLine" "$out"
 assert_rc "dry-run leaves settings unchanged" "$before" "$(cat "$HIMMEL_USER_SETTINGS")"
 
-# SC6P (HIMMEL-2776): project scope resolves from the install invocation's CWD,
+# SC6P: project scope resolves from the install invocation's CWD,
 # not the himmel clone containing uninstall.sh. Omitting the project pass must
 # fail these residue/output assertions independently of the plugin-scope rows.
 PROJECT="$TMP/adopted project"
@@ -631,7 +631,7 @@ seed_settings
 cp "$HIMMEL_USER_SETTINGS" "$TMP/user-before.json"
 # Surviving user keys, derived from the seeded fixture itself by deleting
 # exactly what [6/8] removes with no ledger (statusLine and env.HANDOVER_DIR
-# are two of the six overwrite-prone rows -- HIMMEL-3332 S6 -- and stay put),
+# are two of the six overwrite-prone rows -- -- and stay put),
 # so the expected file's key order matches the real jq-processed output.
 jq 'del(.hooks.PreToolUse[0].hooks[0]) | del(.hooks.SessionStart[0].hooks[1]) |
     del(.env.HIMMEL_REPO) | del(.env.LUNA_VAULT_PATH)' \
@@ -657,7 +657,7 @@ out=$(project_uninstall --yes); rc=$?
 assert_rc "SC6P project unwire exits 0" 0 "$rc"
 assert_has "SC6P project outcome" "project settings: unwired $PROJECT/.claude/settings.json" "$out"
 assert_rc "SC6P project residue is zero" 0 "$(jq '[.env.HIMMEL_REPO, .env.LUNA_VAULT_PATH, .hooks.PreToolUse[].hooks[]] | map(select(. != null)) | length' "$PROJECT/.claude/settings.json")"
-# HIMMEL-3332 S6: statusLine and env.HANDOVER_DIR are two of the six
+# S6: statusLine and env.HANDOVER_DIR are two of the six
 # overwrite-prone rows -- kept with no ledger, not swept into the residue check.
 assert_rc "SC6P project statusLine kept (no ledger)" "command" "$(jq -r '.statusLine.type // "null"' "$PROJECT/.claude/settings.json")"
 assert_rc "SC6P project HANDOVER_DIR kept (no ledger)" "C:/v/handovers" "$(jq -r '.env.HANDOVER_DIR // "null"' "$PROJECT/.claude/settings.json")"
@@ -687,7 +687,7 @@ SOURCE_FIXTURE="$TMP/source-checkout"
 mkdir -p "$SOURCE_FIXTURE/scripts" "$SOURCE_FIXTURE/.claude" "$TMP/project-bin"
 cp "$CLI" "$SOURCE_FIXTURE/scripts/uninstall.sh"
 ln -s "$(dirname "$REAL_CLI")/lib" "$SOURCE_FIXTURE/scripts/lib"
-# HIMMEL-3058: the uninstaller READS scripts/install/uninstall-manifest.tsv next
+# the uninstaller READS scripts/install/uninstall-manifest.tsv next
 # to itself and refuses to run without it — a fixture copy needs it too.
 ln -s "$(dirname "$REAL_CLI")/install" "$SOURCE_FIXTURE/scripts/install"
 link_hermetic_tool git "$TMP/project-bin"
@@ -730,7 +730,7 @@ assert_rc "SC6P symlink destination unchanged" 0 "$rc"
 # Restore the existing user fixture for the subsequent suites.
 seed_settings
 
-# ── SC6H (HIMMEL-2849): [5/8] native-gate hook detection/removal must key off
+# ── SC6H: [5/8] native-gate hook detection/removal must key off
 # the invocation directory — same target [6/8]'s project-settings unwire
 # above already uses ($PWD) — never $REPO_ROOT, which for a project-scope
 # adopt into a repo SEPARATE from the himmel checkout resolves to the
@@ -738,7 +738,7 @@ seed_settings
 # scanned the CHECKOUT's .git/hooks (never populated here) and reported "no
 # native gates found" while the adopter project's real native-gate hooks
 # (what adopt.sh actually placed at $PWD) survived untouched — success
-# claimed, HIMMEL-2839's guarantee not held. A fixture checkout (own copy of
+# claimed, an earlier change's guarantee not held. A fixture checkout (own copy of
 # uninstall.sh, no HIMMEL_UNINSTALL_REPO_ROOT override) keeps this hermetic:
 # the real checkout running this suite is never touched either way.
 H_BIN="$TMP/h-bin"
@@ -747,8 +747,8 @@ link_hermetic_tool git "$H_BIN"
 H_CHECKOUT="$TMP/h-checkout"
 mkdir -p "$H_CHECKOUT/scripts"
 cp "$CLI" "$H_CHECKOUT/scripts/uninstall.sh"
-# HIMMEL-3058: the uninstaller reads its manifest from scripts/install/ next to
-# itself, and (HIMMEL-3332 S6) unconditionally sources scripts/lib/provenance-read.sh
+# the uninstaller reads its manifest from scripts/install/ next to
+# itself, and unconditionally sources scripts/lib/provenance-read.sh
 # for the ledger load before any step runs -- a fixture copy needs both siblings.
 ln -s "$(dirname "$CLI")/install" "$H_CHECKOUT/scripts/install"
 ln -s "$(dirname "$CLI")/lib" "$H_CHECKOUT/scripts/lib"
@@ -764,7 +764,7 @@ for hook in commit-msg pre-commit pre-push; do
     if [ ! -x "$H_PROJECT/.git/hooks/$hook" ]; then echo "FAIL SC6H $hook seeded"; FAILED=$((FAILED + 1)); fi
 done
 mkdir -p "$TMP/h-home"
-# HIMMEL-2843: adopt.sh (HIMMEL-2814) reliably populates
+# adopt.sh reliably populates
 # <hooks_dir>/himmel-payload — the shared fallback copy of scripts/hooks the
 # native gate dispatchers use — alongside the marker-bearing hook files
 # themselves. Seed it here so the same [5/8] run proves it is removed too.
@@ -786,7 +786,7 @@ assert_has "SC6H removed native payload reported" "removed native payload: $H_PR
 if [ ! -e "$H_PROJECT/.git/hooks/himmel-payload" ]; then echo "PASS SC6H payload dir removed"
 else echo "FAIL SC6H payload dir survived"; FAILED=$((FAILED + 1)); fi
 
-# ── SC6I (HIMMEL-2843): no payload dir present → no payload line, no error ──
+# ── SC6I: no payload dir present → no payload line, no error ──
 H_PROJECT2="$TMP/h-project2"
 mkdir -p "$H_PROJECT2"
 git init -q "$H_PROJECT2"
@@ -798,7 +798,7 @@ out=$(cd "$H_PROJECT2" && HOME="$TMP/h-home" PATH="$H_BIN:$HBIN" \
 assert_rc "SC6I absent-payload run exits 0" 0 "$rc"
 assert_not_has "SC6I no payload line when absent" "native payload" "$out"
 
-# ── SC6I dry-run (HIMMEL-2843): payload present, --dry-run previews only ───
+# ── SC6I dry-run: payload present, --dry-run previews only ───
 H_PROJECT3="$TMP/h-project3"
 mkdir -p "$H_PROJECT3"
 git init -q "$H_PROJECT3"
@@ -814,7 +814,7 @@ assert_has "SC6I dry-run previews payload removal" "DRY: would remove native pay
 if [ -e "$H_PROJECT3/.git/hooks/himmel-payload" ]; then echo "PASS SC6I dry-run payload dir preserved"
 else echo "FAIL SC6I dry-run payload dir removed"; FAILED=$((FAILED + 1)); fi
 
-# ── SC6J (HIMMEL-2843 CR #2288): configured core.hooksPath → an unrelated
+# ── SC6J: configured core.hooksPath → an unrelated
 # himmel-payload under it must survive. adopt.sh's install_native_hooks only
 # ever writes <hooks_dir>/himmel-payload when core.hooksPath is UNSET
 # (hooks_path_configured==0); when it IS configured, adopt.sh sets
@@ -842,7 +842,7 @@ git -C "$H_PROJECT4" config core.hooksPath "$H_EXTHOOKS"
 # unrelated to this fixture's actual concern, but it means [5/8] needs a
 # resolvable `pre-commit` on PATH here (unlike SC6H/SC6I above) or it takes
 # the report_unresolved/fail_step branch instead of exercising the
-# native-gate + payload-dir logic this case targets. HIMMEL-2862: the public
+# native-gate + payload-dir logic this case targets.: the public
 # runner has no real pre-commit installed (only the station does), so
 # link_hermetic_tool's `command -v pre-commit` fails there before the PATH
 # scrub — ship a private shim instead of linking the real binary. The
@@ -868,15 +868,15 @@ assert_not_has "SC6J no payload removal line under configured hooksPath" "native
 if [ -e "$H_EXTHOOKS/himmel-payload/unrelated-file.txt" ]; then echo "PASS SC6J unrelated himmel-payload survived"
 else echo "FAIL SC6J unrelated himmel-payload was removed"; FAILED=$((FAILED + 1)); fi
 
-# ── SC6K (HIMMEL-2854): [5/8] from a non-git HOOKS_REPO_ROOT (e.g. a --scope
+# ── SC6K: [5/8] from a non-git HOOKS_REPO_ROOT (e.g. a --scope
 # user offboard run from a plain $HOME) must skip the repo-hook teardown
 # cleanly instead of fail_step-ing three times out of `pre-commit uninstall`
-# run inside a non-repo cwd — which also HALTS every later step (HIMMEL-2754
-# halt semantics), so [6/8]+ never ran either. pre-commit and git both
+# run inside a non-repo cwd — which also HALTS every later step
+# (halt semantics), so [6/8]+ never ran either. pre-commit and git both
 # resolvable here (unlike the plain SC7 "tool absent" cases below) is the
 # point: this is a real repo carrying no git metadata at all, not a missing
 # toolchain.
-# HIMMEL-2862: as with SC6J's H_BIN4, ship a private exit-0 pre-commit shim
+# as with SC6J's H_BIN4, ship a private exit-0 pre-commit shim
 # instead of link_hermetic_tool (the runner has no real pre-commit on PATH to
 # link) — SC6K-SC6R below only need pre-commit to be RESOLVABLE, never to
 # behave like the real tool.
@@ -887,7 +887,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$H_BIN5/pre-commit"
 chmod 755 "$H_BIN5/pre-commit"
 H_NONGIT="$TMP/h-nongit"
 mkdir -p "$H_NONGIT"
-# HIMMEL-3903: uninstall.sh's own ancestor walk (not git) treats ANY `.git` above the
+# uninstall.sh's own ancestor walk (not git) treats ANY `.git` above the
 # fixture, even an empty stray /tmp/.git, as "cannot rule out a repo", and
 # GIT_CEILING_DIRECTORIES does not reach that walk. Name that cause once instead of
 # failing five rows with cryptic output.
@@ -911,7 +911,7 @@ assert_has "SC6K step 6 still ran" "kept (--skip-settings)." "$out"
 assert_has "SC6K completion reported" "Uninstall complete." "$out"
 fi
 
-# ── SC6L (HIMMEL-2854, HIMMEL-2862): a git repo `rev-parse --is-inside-work-tree`
+# ── SC6L: a git repo `rev-parse --is-inside-work-tree`
 # refuses for a reason OTHER than "no repo here" must NOT take the SC6K clean
 # skip — that repo may still carry installed hooks. It must fail_step (and
 # HALT later steps), distinguishing "confirmed no repo" from "inspection
@@ -930,7 +930,7 @@ out=$(HOME="$TMP/h-home" PATH="$H_BIN5:$HBIN" \
 assert_rc "SC6L dubious-ownership HOOKS_REPO_ROOT exits 2" 2 "$rc"
 assert_has "SC6L error names the hooks-repo git status as unresolved" \
     "could not confirm whether $H_DUBIOUS is a git work tree" "$out"
-# HIMMEL-4009: git 2.56 reworded this refusal ("gitfile does not point to a valid
+# git 2.56 reworded this refusal ("gitfile does not point to a valid
 # repository"), so pin git's own `fatal:` line, not its wording.
 assert_has "SC6L surfaces git's own unresolved-repo message" \
     "fatal:" "$out"
@@ -939,7 +939,7 @@ assert_not_has "SC6L does not take the non-git clean-skip line" \
 assert_has "SC6L later step 6 halted as a consequence" \
     "[6/8] settings unwire: skipped — halted after an earlier failure" "$out"
 
-# ── SC6M (HIMMEL-2854, codex-1 round 3): a `.git` dir that IS present but
+# ── SC6M: a `.git` dir that IS present but
 # corrupted (missing HEAD) makes `rev-parse --is-inside-work-tree` fail with
 # the SAME "not a git repository" wording git uses for a genuinely absent
 # repo — that text alone cannot tell "no repo here" apart from "repo here,
@@ -960,7 +960,7 @@ assert_not_has "SC6M does not take the non-git clean-skip line" \
 assert_has "SC6M later step 6 halted as a consequence" \
     "[6/8] settings unwire: skipped — halted after an earlier failure" "$out"
 
-# ── SC6N (HIMMEL-2854, codex-1 round 4, HIMMEL-2862): HOOKS_REPO_ROOT can
+# ── SC6N: HOOKS_REPO_ROOT can
 # itself be a SUBDIRECTORY of the real repo root — a refusing rev-parse
 # rejects from a subdirectory exactly like it does from the root, but `.git`
 # lives only at the ancestor, so a single non-recursive check at
@@ -982,7 +982,7 @@ assert_not_has "SC6N does not take the non-git clean-skip line" \
 assert_has "SC6N later step 6 halted as a consequence" \
     "[6/8] settings unwire: skipped — halted after an earlier failure" "$out"
 
-# ── SC6O (HIMMEL-2859, codex-1 round 6): a RELATIVE HIMMEL_UNINSTALL_REPO_ROOT
+# ── SC6O: a RELATIVE HIMMEL_UNINSTALL_REPO_ROOT
 # reaches dirname's textual fixed point (".") without ever resolving to the
 # real absolute ancestor chain. $PWD sits one level below the real repo root
 # ($H_RELROOT/mid), and HOOKS_REPO_ROOT ("leaf", relative) is one level below
@@ -996,7 +996,7 @@ out=$(cd "$H_RELROOT/mid" && HOME="$TMP/h-home" PATH="$H_BIN5:$HBIN" \
     TELEGRAM_CHANNEL_DIR="$TMP/h-none-channel9" BRIDGE_ROOT="$TMP/h-none-bridge9" \
     HIMMELCTL_CACHE_DIR="$TMP/h-cache9" HIMMEL_UNINSTALL_REPO_ROOT="leaf" \
     bash "$CLI" --purge-state --yes --skip-tasks --skip-plugins --skip-settings </dev/null 2>&1); rc=$?
-# HIMMEL-3415: a relative env-derived target is now refused up front by the
+# a relative env-derived target is now refused up front by the
 # real-home spelling rule (check c, rc=3), before step [2/8] ever walks it.
 assert_rc "SC6O relative HOOKS_REPO_ROOT refused up front" 3 "$rc"
 assert_has "SC6O refusal names the relative target" \
@@ -1004,7 +1004,7 @@ assert_has "SC6O refusal names the relative target" \
 assert_not_has "SC6O does not take the non-git clean-skip line (textual fixed point missed the real ancestor)" \
     "is not a git work tree — no repo-local hooks to remove" "$out"
 
-# ── SC6Q (HIMMEL-2857 i): a DANGLING `.git` symlink (target absent) is
+# ── SC6Q: a DANGLING `.git` symlink (target absent) is
 # indistinguishable from confirmed absence under `[ -e ]` alone — the walk
 # must classify it as found-but-unresolvable, not confirmed-absent.
 H_DANGLING="$TMP/h-dangling"
@@ -1014,7 +1014,7 @@ out=$(HOME="$TMP/h-home" PATH="$H_BIN5:$HBIN" \
     TELEGRAM_CHANNEL_DIR="$TMP/h-none-channel11" BRIDGE_ROOT="$TMP/h-none-bridge11" \
     HIMMELCTL_CACHE_DIR="$TMP/h-cache11" HIMMEL_UNINSTALL_REPO_ROOT="$H_DANGLING" \
     bash "$CLI" --purge-state --yes --skip-tasks --skip-plugins --skip-settings </dev/null 2>&1); rc=$?
-# HIMMEL-3415: the hooks dir resolves through that dangling link, so the
+# the hooks dir resolves through that dangling link, so the
 # real-home check now fails closed up front (check c, rc=3) — before step
 # [5/8]'s walk ever classifies it; nothing is removed either way.
 assert_rc "SC6Q dangling .git symlink refused up front" 3 "$rc"
@@ -1026,7 +1026,7 @@ assert_not_has "SC6Q does not take the non-git clean-skip line" \
     "is not a git work tree — no repo-local hooks to remove" "$out"
 assert_not_has "SC6Q no step ran" "[2/8]" "$out"
 
-# ── SC6R (HIMMEL-2857 ii): an ancestor directory whose metadata this process
+# ── SC6R: an ancestor directory whose metadata this process
 # cannot fully inspect (read permission removed; search/execute kept so the
 # starting HOOKS_REPO_ROOT stays reachable — an ancestor with search denied
 # too would make HOOKS_REPO_ROOT itself unreachable via any path, collapsing
@@ -1054,7 +1054,7 @@ else
         "[6/8] settings unwire: skipped — halted after an earlier failure" "$out"
 fi
 
-# ── SC7 (HIMMEL-2458): steps 4+5 must never SILENTLY skip ───────────────────
+# ── SC7: steps 4+5 must never SILENTLY skip ───────────────────
 # A stock Ubuntu account has two PATH layers — ~/.profile owns ~/.local/bin
 # (login shells only) and ~/.bashrc owns ~/.bun/bin while early-returning for
 # non-interactive shells — so an uninstall driven from a context that never
@@ -1072,7 +1072,7 @@ for _t in claude pre-commit; do
     chmod +x "$FAKE_HOME/.local/bin/$_t"
 done
 printf '#!/usr/bin/env bash\necho "[]"\n' > "$FAKE_HOME/.local/bin/claude"
-# HIMMEL-3332 S6: [4/8]'s "using: $_claude_bin" resolution line (test 16,
+# S6: [4/8]'s "using: $_claude_bin" resolution line (test 16,
 # below) only prints on the ledger-owned branch; a bare ledger session (no
 # plugin/marketplace units) is enough to turn it on without changing which
 # plugins get targeted (there are none to target here).
@@ -1084,8 +1084,8 @@ mkdir -p "$EMPTY_HOME"
 # fallback search is what finds them (16) or fails to (17/18). `/usr/bin:/bin`
 # is not that on a distro that packages pre-commit itself (Arch/CachyOS ship
 # /usr/bin/pre-commit): the system binary shadowed the fake-HOME stub and 16/17
-# went red on an otherwise green box. $HBIN (built at the top of this file,
-# HIMMEL-2505) links only the tools uninstall.sh runs and never claude/
+# went red on an otherwise green box. $HBIN (built at the top of this file)
+# links only the tools uninstall.sh runs and never claude/
 # pre-commit, so these three cases run against it alone.
 #
 # 16. POSITIVE control: both tools are OFF the PATH but present exactly where
@@ -1125,7 +1125,7 @@ out=$(HOME="$EMPTY_HOME" PATH="$HBIN" \
 assert_rc "explicit --skip-plugins/--skip-hooks exits 0" 0 "$rc"
 assert_has "explicit skip still completes" "Uninstall complete." "$out"
 
-# 18b (HIMMEL-2458): step 4 runs, but every `claude plugin uninstall` /
+# 18b: step 4 runs, but every `claude plugin uninstall` /
 #     `marketplace remove` call fails — uninstall-plugins.sh exits 1. A WARN
 #     alone left plugins installed while the run still claimed completion at
 #     rc=0. Own fake HOME (failhome) so case 16's stub `claude` (which always
@@ -1136,7 +1136,7 @@ FAILHOME="$TMP/failhome"
 mkdir -p "$FAILHOME/.local/bin"
 printf '#!/usr/bin/env bash\necho "STUB claude (failing) $*"\nexit 1\n' > "$FAILHOME/.local/bin/claude"
 chmod +x "$FAILHOME/.local/bin/claude"
-# HIMMEL-3332 S6: this test's premise is the ACTIVE removal branch actually
+# S6: this test's premise is the ACTIVE removal branch actually
 # attempting a plugin removal and failing -- with no ledger, [4/8] would take
 # the no-ledger "kept" no-op instead and this whole test would fail vacuously.
 SEED_HOME="$FAILHOME" seed_plugin_ledger "test-plugin@himmel" ""
@@ -1150,7 +1150,7 @@ assert_has "incomplete verdict named (failing plugins)" "Uninstall INCOMPLETE" "
 assert_has "step 4 named incomplete" "[4/8] Claude plugins" "$out"
 assert_has "uninstall-plugins.sh WARN still present" "uninstall-plugins.sh reported failures" "$out"
 
-# 18c (HIMMEL-2458): step 5 runs, but `pre-commit uninstall` fails for every
+# 18c: step 5 runs, but `pre-commit uninstall` fails for every
 #     hook type — same shape, own fake HOME (failhome2) so the other stubs
 #     are untouched. --skip-plugins keeps step 4 inert this time.
 FAILHOME2="$TMP/failhome2"
@@ -1167,7 +1167,7 @@ assert_has "incomplete verdict named (failing hooks)" "Uninstall INCOMPLETE" "$o
 assert_has "step 5 named incomplete" "[5/8] git hooks" "$out"
 assert_has "pre-commit uninstall WARN still present" "pre-commit uninstall pre-commit (default) failed" "$out"
 
-# ── SC8 (HIMMEL-2459): the himmelctl cache + state dir is removed ───────────
+# ── SC8: the himmelctl cache + state dir is removed ───────────
 # ~/.claude/himmel (install-profile.json + state.json) survived a COMPLETE
 # uninstall, so a re-install started against the previous install's profile
 # and state ledger. HIMMELCTL_CACHE_DIR is the same override himmelctl reads.
@@ -1206,10 +1206,10 @@ else
     echo "PASS himmelctl cache removed"
 fi
 
-# 20b. HIMMEL-3260: the session-start update check keeps its stamps + release
+# 20b. the session-start update check keeps its stamps + release
 #      cache in this same dir (so they survive a reboot). A dry-run must NAME them
 #      — the operator sees what an uninstall will take — and a wet run removes
-#      them with the dir: leaving one behind is the HIMMEL-3251 residue bug. The
+#      them with the dir: leaving one behind is the residue bug. The
 #      files are written by the REAL hook (not hand-made), pointed at the cache
 #      the same way uninstall reads it, so the two cannot drift onto two paths.
 mk_cache
@@ -1246,13 +1246,13 @@ else
     echo "PASS update-check state removed with the cache"
 fi
 
-# 20c. HIMMEL-3270: headed-arm-leg.sh appends one launch record per leg launch
+# 20c. headed-arm-leg.sh appends one launch record per leg launch
 #      to launch-logs/<session>.log in this same dir (the cost cohort's source).
 #      Like 20b: the file is written by the REAL launcher (a stubbed target, no
 #      konsole), pointed at the cache the same way uninstall reads it, so the
 #      two cannot drift onto two paths. A dry-run must NAME the location, and a
-#      wet run must remove it with the dir - a survivor is HIMMEL-3251 residue.
-#      HIMMEL-5401: the launcher is a seam-guarded chokepoint, and its guard
+#      wet run must remove it with the dir - a survivor is residue.
+#      the launcher is a seam-guarded chokepoint, and its guard
 #      denies a seam that differs from the claude session's launch env on the
 #      ANCHOR (primary) copy only. So the suite runs a fixture copy of the
 #      launcher and of the guard lib, every other script symlinked from the
@@ -1275,7 +1275,7 @@ done
 LEG_SH="$LLD/scripts/handover/console-kit/headed-arm-leg.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$LLD/target.sh"; printf '#!/usr/bin/env bash\necho PROCEED\n' > "$LLD/preflight.sh"
 chmod +x "$LLD/target.sh" "$LLD/preflight.sh"
-# HIMMEL-4619: the arming gate lints every brief (description + Prior art line).
+# the arming gate lints every brief (description + Prior art line).
 printf '%s\n' '---' 'description: fixture brief' '---' '> **Prior art:** none found (qmd -c jira-himmel "fixture")' > "$LLD/doc.md"
 HIMMEL_FLEET_SLOTS="$LLD/slots" HEADED_ARM_LEG_TARGET="$LLD/target.sh" HEADED_ARM_LEG_PREFLIGHT="$LLD/preflight.sh" \
     HIMMELCTL_CACHE_DIR="$CACHE" bash "$LEG_SH" --no-profile HIMMEL-3270-u1 "$LLD/doc.md" "$LLD/sig" 99999999999 "$LLD/log" claude-sonnet-5 >/dev/null 2>&1 || true
@@ -1323,7 +1323,7 @@ fi
 out=$(HOME="$FAKE_HOME" TELEGRAM_CHANNEL_DIR="$TMP/none14" BRIDGE_ROOT="$TMP/none14b" \
     HIMMELCTL_CACHE_DIR="$FAKE_HOME/." PATH="$HBIN" \
     bash "$CLI" --purge-state --yes --skip-tasks --skip-plugins --skip-hooks </dev/null 2>&1); rc=$?
-# HIMMEL-3415: the real-home spelling rule now refuses a `.` segment up front
+# the real-home spelling rule now refuses a `.` segment up front
 # (check c, rc=3), before the suspicious-path guard is reached.
 assert_has "\$HOME/. alias refused" "is spelled with a . or .. segment" "$out"
 if [ -x "$FAKE_HOME/.local/bin/claude" ]; then
@@ -1423,7 +1423,7 @@ out=$(TELEGRAM_CHANNEL_DIR="$TMP/none16" BRIDGE_ROOT="$TMP/none16b" \
     bash "$CLI" --purge-state --yes --skip-tasks --skip-plugins --skip-hooks </dev/null 2>&1); rc=$?
 assert_rc "dangling symlink cache path exits 0" 0 "$rc"
 assert_not_has "a dangling symlink is not reported absent" "absent, skipping: $CACHE_DANGLING" "$out"
-# HIMMEL-2505 gap A.3: a symlink target (dangling or not) is now unlinked via
+# gap A.3: a symlink target (dangling or not) is now unlinked via
 # the dedicated -L branch, reported as "removed symlink (link only)" rather
 # than the generic rm -rf "removed:" — never followed/recursed into.
 assert_has "dangling symlink cache removal reported" "removed symlink (link only): $CACHE_DANGLING" "$out"
@@ -1433,10 +1433,10 @@ else
     echo "PASS dangling symlink at the cache path is removed"
 fi
 
-# ── SC9 (HIMMEL-2505): the wet-run fence refuses a live-looking $HOME ───────
+# ── SC9: the wet-run fence refuses a live-looking $HOME ───────
 # mk_fence seeds a fixture HOME carrying the credentials marker, PLUS
 # populated telegram/bridge/cache state as SIBLINGS under $TMP (not nested
-# under $FENCE_HOME): since HIMMEL-2505 gap 2, an override target inside a
+# under $FENCE_HOME): gap 2, an override target inside a
 # protected location like $HOME is refused unless it names one of the three
 # documented removal targets, so a channel/bridge/cache override actually
 # meant to exercise the wet-run fence (not protected_path) has to live
@@ -1511,7 +1511,7 @@ assert_rc "an ssh private key alone fences a wet run" 3 "$rc"
 assert_has "fence names the ssh key marker" "id_ed25519" "$out"
 
 # 23e. a Codex-only profile (~/.codex present, no other marker) also fences a
-#      wet run — the header (HIMMEL-2505) names ~/.codex among what the
+#      wet run — the header names ~/.codex among what the
 #      2026-09-03 incident swept, so the fence must catch it too.
 FENCE_CODEX_HOME="$TMP/fencehome-codex"
 mkdir -p "$FENCE_CODEX_HOME/.codex"
@@ -1522,7 +1522,7 @@ out=$(HOME="$FENCE_CODEX_HOME" PATH="$HBIN" \
 assert_rc "a Codex-only profile (~/.codex alone) fences a wet run" 3 "$rc"
 assert_has "fence names the .codex marker" "refusing a wet uninstall — found $FENCE_CODEX_HOME/.codex" "$out"
 
-# ── SC10 (HIMMEL-2505): protected_path — a fixed hard-refuse allowlist ──────
+# ── SC10: protected_path — a fixed hard-refuse allowlist ──────
 # Exercised end-to-end through the CLI via HIMMELCTL_CACHE_DIR (the isolated
 # predicate itself is proven in test-uninstall-guard.sh).
 PHOME="$TMP/protectedhome"
@@ -1537,7 +1537,7 @@ for _ptarget in "$PHOME" "$PHOME/.claude" "/" "$PHOME/.ssh"; do
         HIMMELCTL_CACHE_DIR="$_ptarget" \
         bash "$CLI" --purge-state --yes --skip-tasks --skip-plugins --skip-hooks --skip-settings </dev/null 2>&1); rc=$?
     if [ "$_ptarget" = "/" ]; then
-        # HIMMEL-3415: `/` contains the real home, so the runtime real-home
+        # `/` contains the real home, so the runtime real-home
         # check refuses it before any removal step runs.
         assert_rc "protected ancestor '$_ptarget' exits 3" 3 "$rc"
         assert_has "protected ancestor '$_ptarget' refused" "real-home check (c)" "$out"
@@ -1566,7 +1566,7 @@ else
     echo "PASS allowed cache target under \$HOME/.claude removed"
 fi
 
-# ── SC10b (HIMMEL-2505 gap 2): an override inside a protected location, that
+# ── SC10b: an override inside a protected location, that
 # is NOT one of the three documented removal targets, is refused too — a
 # strict DESCENDANT of protected $HOME/.ssh, not an ancestor/equal of it.
 FAKE_HOME="$PHOME"
@@ -1585,19 +1585,19 @@ else
     echo "FAIL descendant of protected \$HOME/.ssh was removed (!)"; FAILED=$((FAILED + 1))
 fi
 
-# ── SC11 (HIMMEL-2505): a failed removal HALTS every later step ────────────
+# ── SC11: a failed removal HALTS every later step ────────────
 # Step [2/8]'s channel-dir removal is made to FAIL (not merely refused): the
 # channel dir's PARENT is chmod'd 0555 so rm can empty the dir but cannot
 # unlink the directory entry itself. chmod back to 0755 right after the run
 # so the suite's own $TMP cleanup can remove it. BRIDGE_ROOT — the SECOND dir
 # in step [2/8]'s loop — is a populated, perfectly removable dir: the only
 # reason it must survive is that step [2/8] halts after the FIRST dir fails
-# and skips the rest of the loop (HIMMEL-2505 gap 1), not because removing it
+# and skips the rest of the loop, not because removing it
 # would itself fail. --skip-tasks is deliberately NOT passed (and the
 # hermetic $HBIN never resolves schtasks/crontab/atq) so step [3/8] is
 # exercised too: it must halt-skip rather than run past the failure.
 #
-# HIMMEL-2505 gap B (suggestion): this whole row depends on chmod 0555
+# gap B (suggestion): this whole row depends on chmod 0555
 # denying `rm` permission to unlink the directory entry — root ignores unix
 # permission bits, so as root the removal would SUCCEED instead of failing
 # and every assertion below would go red for a reason unrelated to the
@@ -1645,7 +1645,7 @@ else
     assert_has "step 3 skips once halted" "[3/8] scheduled jobs: skipped — halted after an earlier failure" "$out"
 fi
 
-# ── SC12 (HIMMEL-2505 revised): allowed targets matched by LITERAL path, not
+# ── SC12: allowed targets matched by LITERAL path, not
 # their leaf-resolved (symlink-followed) identity — a LEAF-symlinked
 # documented target ($HOME/.claude/himmel itself a symlink) now REFUSES
 # outright (same hardening as the ancestor-symlink cases in SC13/SC14),
@@ -1705,7 +1705,7 @@ else
     echo "FAIL link target or its contents were removed (trailing slash case)"; FAILED=$((FAILED + 1))
 fi
 
-# ── SC13 (HIMMEL-2505 revised): the allowed-target exemption's SYMLINKED-
+# ── SC13: the allowed-target exemption's SYMLINKED-
 # COMPONENT half, exercised end-to-end. $FAKE_HOME/.claude/channels is a
 # symlink to $FAKE_HOME/Documents (populated with telegram/x, real user
 # data); TELEGRAM_CHANNEL_DIR names the documented default path itself
@@ -1729,7 +1729,7 @@ else
     echo "FAIL Documents/telegram/x was removed through the symlinked parent (!)"; FAILED=$((FAILED + 1))
 fi
 
-# ── SC14 (HIMMEL-2505 revised): same symlinked-ANCESTOR shape as SC13, but
+# ── SC14: same symlinked-ANCESTOR shape as SC13, but
 # the link target is OUTSIDE $HOME entirely ($TMP/sc14-elsewhere, not a
 # protected destination) — unlike SC13's link into $HOME/Documents, this one
 # would pass the resolved-path protected-set checks if the outright refusal
@@ -1751,7 +1751,7 @@ else
     echo "FAIL sc14-elsewhere/telegram/x was removed through the symlinked parent (!)"; FAILED=$((FAILED + 1))
 fi
 
-# ── SC15 (HIMMEL-2694): step 4 forwards the RECORDED install scope ──────────
+# ── SC15: step 4 forwards the RECORDED install scope ──────────
 # uninstall-plugins.sh grew a --scope flag, and uninstall.sh must hand it the
 # scope the INSTALL recorded (install-profile.json's own `scope` field) — a
 # project-scope install is refused by `claude plugin uninstall` at any other
@@ -1784,7 +1784,7 @@ scope_case() {
     if [ -n "$2" ]; then
         printf '%s\n' "$2" > "$SC15_CACHE/install-profile.json"
     fi
-    # HIMMEL-3332 S6: a ledger-owned plugin unit is what turns [4/8]'s active
+    # S6: a ledger-owned plugin unit is what turns [4/8]'s active
     # removal branch (the one that forwards --scope) back on; the stub's
     # `plugin list --json` prints nothing, so the fallback-by-ledger-template
     # loop is what actually calls `claude plugin uninstall <id> --scope ...`.
@@ -1840,7 +1840,7 @@ assert_has "SC15c garbage scope -> falls back to --scope user" \
 assert_not_has "SC15c garbage scope -> the bad value never reaches the CLI" \
     "not-a-scope" "$sc15_log"
 
-# 15d (HIMMEL-2700): a permanent regression for the stub's log-path quoting —
+# 15d: a permanent regression for the stub's log-path quoting —
 # the fixture dir carries a space unconditionally, so the defect reproduces on
 # every run regardless of the suite's own TMPDIR.
 SC15_SPACE_DIR="$TMP/sc15 space dir"
@@ -1859,7 +1859,7 @@ assert_has "SC15d spaced path -> --scope project forwarded" \
 assert_not_has "SC15d spaced path -> no call falls back to user scope" \
     "--scope user" "$sc15_log"
 
-# ── SC16 (HIMMEL-2754): every failed step halts all later teardown ─────────
+# ── SC16: every failed step halts all later teardown ─────────
 # The fixture repo contains only the helpers under test and fake hook files.
 # No git binary is on HBIN; hook detection exercises its documented fallback.
 U_REPO="$TMP/u-repo"
@@ -1869,7 +1869,7 @@ for helper in unwire-statusline unwire-himmel-repo unwire-luna-vault unwire-hand
     cp "$(dirname "$CLI")/lib/$helper.sh" "$U_REPO/scripts/lib/"
 done
 cp "$(dirname "$CLI")/../docs/setup/settings-template.json" "$U_REPO/docs/setup/"
-# HIMMEL-3787 S2d: the unrecorded-block fallback compares against this template,
+# S2d: the unrecorded-block fallback compares against this template,
 # which uninstall.sh reads from $REPO_ROOT (the override), so the fixture ships it.
 cp "$(dirname "$CLI")/../docs/setup/user-scope-claude-md-template.md" "$U_REPO/docs/setup/"
 printf '# pre-commit sample only\n' > "$U_REPO/.git/hooks/pre-commit.sample"
@@ -1930,7 +1930,7 @@ u_fixture() {
     printf '[{"id":"handover@himmel","scope":"user"}]\n' > "$STUB_PLUGINS_JSON"
     printf '[{"name":"himmel"},{"name":"obsidian-skills"},{"name":"claude-plugins-official"}]\n' > "$STUB_MARKETPLACES_JSON"
     STUB_FAIL_IDS=""
-    # HIMMEL-3332 S6: without a ledger row for handover@himmel/himmel, [4/8]
+    # S6: without a ledger row for handover@himmel/himmel, [4/8]
     # and [7/8] now take the no-ledger "kept" no-op instead of ever calling
     # `claude plugin uninstall`/`marketplace remove` -- seed exactly the
     # plugin/marketplace this fixture's stub already carries as himmel's own.
@@ -1942,7 +1942,7 @@ u_run() {
         bash "$CLI" --purge-state --yes --skip-tasks "$@" </dev/null 2>&1); rc=$?
     calls=$(cat "$CLAUDE_CALL_LOG")
 }
-# HIMMEL-3253: the pre-commit framework's own identity set (is_our_script() in
+# the pre-commit framework's own identity set (is_our_script() in
 # pre_commit/commands/install_uninstall.py): CURRENT_HASH first, then the five
 # PRIOR_HASHES. A hook the framework installed carries exactly one of these.
 FRAMEWORK_HASHES=(138fd403232d2ddd5efb44317e38bf03 4d9958c90bc262f47553e2c073f14cfe
@@ -2003,7 +2003,7 @@ cmp -s "$HIMMEL_USER_SETTINGS" "$TMP/u-settings-before"; same=$?
 assert_rc 'U4 settings byte-identical' 0 "$same"
 assert_not_has 'U4 no marketplace removals' 'plugin marketplace remove' "$calls"
 
-# U4b — RED HIMMEL-2754: a worktree's .git file must resolve shared hooks.
+# U4b — RED: a worktree's.git file must resolve shared hooks.
 u_fixture u4b
 U_CHECKOUT="$U_REPO"
 U_REPO="$TMP/u-worktree"
@@ -2025,7 +2025,7 @@ case "$3 $4 $5" in
         printf '../u-gitdir/hooks\n'
         ;;
     'rev-parse --is-inside-work-tree'*)
-        # HIMMEL-2854: [5/8]'s new non-git-cwd check probes this before the
+        # [5/8]'s new non-git-cwd check probes this before the
         # hooks resolution above — a real worktree (this fixture's .git FILE
         # points at a real gitdir) genuinely is inside a work tree.
         printf 'true\n'
@@ -2041,8 +2041,8 @@ assert_not_has 'U4b no marketplace removals' 'plugin marketplace remove' "$calls
 rm "$U_BIN/git"
 U_REPO="$U_CHECKOUT"
 
-# U4c — HIMMEL-2839 native-gate removal + HIMMEL-2841 RED control: a
-# native-only repo (three HIMMEL-2771 marker hooks, one foreign hook, plus
+# U4c — native-gate removal + RED control: a
+# native-only repo (three marker hooks, one foreign hook, plus
 # the pre-existing .sample) with pre-commit absent from PATH completes all 8
 # steps and removes only the marker-bearing files. Under the pre-fix code
 # (no native-gate removal at all, and repo_has_framework_hooks matching the
@@ -2073,8 +2073,8 @@ else echo 'FAIL U4c foreign hook removed'; FAILED=$((FAILED + 1)); fi
 if [ -f "$U_REPO/.git/hooks/pre-commit.sample" ]; then echo 'PASS U4c sample intact'
 else echo 'FAIL U4c sample removed'; FAILED=$((FAILED + 1)); fi
 
-# U4d — HIMMEL-2839 --dry-run: lists the native gates it would remove and
-# removes nothing (byte-identical hooks dir before/after). HIMMEL-2841: does
+# U4d — --dry-run: lists the native gates it would remove and
+# removes nothing (byte-identical hooks dir before/after).: does
 # not misreport them as framework hooks and halt either, even though the
 # marker text on disk still contains the substring "pre-commit" (dry-run
 # never deletes, so the old detection bug is live here regardless of the
@@ -2098,7 +2098,7 @@ U4D_AFTER="$TMP/u4d-hooks-after.txt"
 cmp -s "$U4D_BEFORE" "$U4D_AFTER"; same=$?
 assert_rc 'U4d hooks byte-identical across dry-run' 0 "$same"
 
-# U4e — HIMMEL-2839 fail-closed: an undeletable native gate hook fails the
+# U4e — fail-closed: an undeletable native gate hook fails the
 # step (rc != 0) and halts every later step — the step's own read-back is
 # the evidence, never `rm`'s return code alone.
 u_fixture u4e
@@ -2125,9 +2125,9 @@ else
     rm -f "$U_REPO/.git/hooks/commit-msg"
 fi
 
-# U4f..U4l — HIMMEL-3248/3249/3250: the adopter's own hook that install displaced
+# U4f..U4l: the adopter's own hook that install displaced
 # to <hook>.himmel-backup. Foreign hook text deliberately names `pre-commit` (the
-# round-A shape from the HIMMEL-2457 VM round trip): under the old code the
+# shape from a VM round trip): under the old code the
 # backup file tripped repo_has_framework_hooks, [5/8] halted rc=2 with steps 6-8
 # skipped, and a re-run halted identically.
 ADOPTER_HOOK_TEXT=$'#!/bin/sh\n# my own gate; runs pre-commit run --all-files when it is installed\nexit 0\n'
@@ -2276,7 +2276,7 @@ assert_has 'U4m advice keeps --keep-telegram-state' '--keep-telegram-state' "$u4
 assert_not_has 'U4m keep-telegram-state advice is not a dry run' '--dry-run' "$u4m_kcmd"
 rm -f "$U_REPO/.git/hooks/commit-msg"
 
-# U4l — RED HIMMEL-3253: an adopter hook that merely MENTIONS pre-commit but
+# U4l — RED: an adopter hook that merely MENTIONS pre-commit but
 # carries none of the framework's six hashes is not a framework hook — `pre-commit
 # uninstall` could never remove it — so with pre-commit absent it must NOT halt
 # [5/8]. Pre-fix this halted rc=2 with steps 6-8 skipped (the bare-substring test).
@@ -2327,7 +2327,7 @@ assert_rc 'U4n-miss truncated hash is not a framework hook' 0 "$rc"
 assert_not_has 'U4n-miss no halted steps' 'skipped — halted' "$out"
 u_hooks_reset
 
-# WHY (HIMMEL-2754): settings and marketplace failures must preserve the
+# WHY: settings and marketplace failures must preserve the
 # retry profile too — the same halt rule applies past the plugin/hook steps.
 u_fixture u5
 printf 'invalid JSON\n' > "$HIMMEL_USER_SETTINGS"
@@ -2350,7 +2350,7 @@ assert_has 'U6 first failure is marketplaces' 'Halted at: [7/8]' "$out"
 if [ -f "$U_CACHE/install-profile.json" ]; then echo 'PASS U6 retry profile survives'
 else echo 'FAIL U6 retry profile removed'; FAILED=$((FAILED + 1)); fi
 
-# WHY (HIMMEL-2754): both dry-run children retain installed plugins physically.
+# WHY: both dry-run children retain installed plugins physically.
 u_fixture u7
 out=$(HOME="$U_HOME" PATH="$U_BIN:$HBIN" HIMMEL_UNINSTALL_REPO_ROOT="$U_REPO" \
     TELEGRAM_CHANNEL_DIR="$CHANNEL" BRIDGE_ROOT="$BRIDGE" HIMMELCTL_CACHE_DIR="$U_CACHE" \
@@ -2362,14 +2362,14 @@ else
     echo 'FAIL - U7: healthy dry-run reported a failed marketplace step'; FAILED=$((FAILED + 1))
 fi
 
-# WHY (HIMMEL-2754): installed scope must survive the split child processes.
+# WHY: installed scope must survive the split child processes.
 u_fixture u8 project
 jq -n --arg here "$PWD" '[{id:"handover@himmel",scope:"project",projectPath:$here}]' > "$STUB_PLUGINS_JSON"
 out=$(HOME="$U_HOME" PATH="$U_BIN:$HBIN" HIMMEL_UNINSTALL_REPO_ROOT="$U_REPO" \
     TELEGRAM_CHANNEL_DIR="$CHANNEL" BRIDGE_ROOT="$BRIDGE" HIMMELCTL_CACHE_DIR="$U_CACHE" \
     bash "$CLI" --purge-state --yes --skip-tasks --skip-hooks </dev/null 2>&1); rc=$?
 calls=$(cat "$CLAUDE_CALL_LOG")
-# WHY (HIMMEL-3378): the ledger records the marketplace at project scope, so
+# WHY: the ledger records the marketplace at project scope, so
 # only that registration is removed; the install-profile scope (user) is not
 # tried in ledger mode — a same-named user-scope registration is not himmel's.
 if [ "$rc" -eq 0 ] && grep -qxF 'plugin marketplace remove himmel --scope project' <<< "$calls" &&
@@ -2398,7 +2398,7 @@ rm "$U_REPO/.git/hooks/commit-msg"
 u_run
 assert_rc 'U9 retry completes teardown' 0 "$rc"
 assert_has 'U9 retry removes marketplace at preserved project scope' 'plugin marketplace remove himmel --scope project' "$calls"
-# WHY (HIMMEL-3378): ledger mode never adds the install-profile scope (user).
+# WHY: ledger mode never adds the install-profile scope (user).
 assert_not_has 'U9 retry never tries install-profile user scope for himmel' 'plugin marketplace remove himmel --scope user' "$calls"
 if [ ! -e "$U_CACHE" ]; then
     echo 'PASS U9 successful retry removes cache and handoff'
@@ -2431,7 +2431,7 @@ JSON
 jq -n --arg here "$PWD" '[{id:"a@m1",scope:"project",projectPath:$here}]' > "$STUB_PLUGINS_JSON"
 printf '[{"name":"m1"},{"name":"m2"}]\n' > "$STUB_MARKETPLACES_JSON"
 framework_hook_text > "$U_REPO/.git/hooks/commit-msg"
-# HIMMEL-3332 S6: u_fixture's default seed only records handover@himmel/himmel
+# S6: u_fixture's default seed only records handover@himmel/himmel
 # as ledger-owned -- this test exercises a@m1/b@m2/m1/m2 instead, so those
 # need their own ledger-owned rows or [4/8]/[7/8] treat them as untracked
 # (kept, never call `claude plugin uninstall`/`marketplace remove` on them).
@@ -2446,7 +2446,7 @@ rm "$U_REPO/.git/hooks/commit-msg"
 u_run
 assert_rc 'U11 retry completes teardown' 0 "$rc"
 assert_has 'U11 retry removes m1 marketplace at project scope' 'plugin marketplace remove m1 --scope project' "$calls"
-# WHY (HIMMEL-3378): ledger mode never adds the install-profile scope (user)
+# WHY: ledger mode never adds the install-profile scope (user)
 # for m1; the ledger recorded it at project only.
 assert_not_has 'U11 retry never tries m1 at install-profile user scope' 'plugin marketplace remove m1 --scope user' "$calls"
 assert_has 'U11 retry removes m2 marketplace at user scope' 'plugin marketplace remove m2 --scope user' "$calls"
@@ -2501,7 +2501,7 @@ fi
 rm "$U_REPO/.git"
 mv "$TMP/u13-hooks-dir" "$U_REPO/.git"
 
-# U14 — WHY (HIMMEL-2754): a regular cache file is removable residue.
+# U14 — WHY: a regular cache file is removable residue.
 u_fixture u14
 printf '[{"id":"a@m1","scope":"user"}]\n' > "$STUB_PLUGINS_JSON"
 printf '[{"name":"m1"}]\n' > "$STUB_MARKETPLACES_JSON"
@@ -2531,7 +2531,7 @@ JSON
 jq -n --arg here "$PWD" '[{id:"a@m1",scope:"project",projectPath:$here}]' > "$STUB_PLUGINS_JSON"
 printf '[{"name":"m1"},{"name":"m2"}]\n' > "$STUB_MARKETPLACES_JSON"
 framework_hook_text > "$U_REPO/.git/hooks/commit-msg"
-# HIMMEL-3332 S6: same reseed as U11 -- this test exercises a@m1/b@m2/m1/m2,
+# S6: same reseed as U11 -- this test exercises a@m1/b@m2/m1/m2,
 # not u_fixture's default handover@himmel/himmel, so they need their own
 # ledger-owned rows or [4/8]/[7/8] treat them as untracked (kept).
 SEED_HOME="$U_HOME" seed_plugin_ledger "a@m1:project,b@m2" "m1:project,m2"
@@ -2546,7 +2546,7 @@ rm "$U_REPO/.git/hooks/commit-msg"
 u_run --dry-run
 assert_rc 'U15 dry retry completes preview' 0 "$rc"
 assert_has 'U15 dry retry previews m1 marketplace at project scope' 'DRY: claude plugin marketplace remove m1 --scope project' "$out"
-# WHY (HIMMEL-3378): ledger mode never previews the install-profile scope (user)
+# WHY: ledger mode never previews the install-profile scope (user)
 # for m1; the ledger recorded it at project only.
 assert_not_has 'U15 dry retry never previews m1 at install-profile user scope' 'DRY: claude plugin marketplace remove m1 --scope user' "$out"
 if [ -f "$U_CACHE/uninstall-scope-map" ] && cmp -s "$TMP/u15-scope-map-before" "$U_CACHE/uninstall-scope-map"; then
@@ -2555,11 +2555,11 @@ else
     echo 'FAIL U15 persisted scope map missing or changed'; FAILED=$((FAILED + 1))
 fi
 
-# U16 — RED 12 (HIMMEL-2754): a failed map read must warn about fallback scopes.
+# U16 — RED 12: a failed map read must warn about fallback scopes.
 u_fixture u16
 printf '[]\n' > "$STUB_PLUGINS_JSON"
 printf '[{"name":"m1"}]\n' > "$STUB_MARKETPLACES_JSON"
-# HIMMEL-3332 S6: u_fixture's default seed only records the himmel marketplace
+# S6: u_fixture's default seed only records the himmel marketplace
 # as ledger-owned -- this test exercises m1, so it needs its own ledger-owned
 # row or [7/8] treats it as untracked (kept, never previews its removal).
 SEED_HOME="$U_HOME" seed_plugin_ledger "" "m1"
@@ -2590,7 +2590,7 @@ assert_not_has 'RED 12: partial read never previews recorded scope' \
     'DRY: claude plugin marketplace remove m1 --scope project' "$out"
 
 
-# ── U17+ (HIMMEL-3251): install-written residue is manifested, classified, shown
+# ── U17+: install-written residue is manifested, classified, shown
 # in --dry-run and removed (code) or named as kept (keep). The fixtures are made
 # by the REAL installers (wire_user_claude_md + the hud config template), so the
 # tests remove what install actually writes.
@@ -2622,7 +2622,7 @@ u_absent() {   # <label> <path>
 }
 
 # The fixtures put ~/.claude.json and ~/.codex under the fixture $HOME, which the
-# wet-run fence (HIMMEL-2505) reads as a live operator profile. The $HOME is a
+# wet-run fence reads as a live operator profile. The $HOME is a
 # temp dir, so lift the fence the way case 23b does — for these calls only.
 u_run_fx() { export HIMMEL_UNINSTALL_REAL_HOME=1; u_run "$@"; unset HIMMEL_UNINSTALL_REAL_HOME; }
 
@@ -2641,13 +2641,13 @@ assert_has 'U17 footprint lists the trust entry' "$U_HOME/.claude.json — " "$o
 assert_has 'U17 footprint names the adopter scripts/ as NEVER' "scripts — himmel scripts copied into" "$out"
 assert_has 'U17 dry-run previews the CLAUDE.md strip' "DRY: would strip himmel working-principles block from $U_HOME/.claude/CLAUDE.md" "$out"
 assert_has 'U17 dry-run previews the AGENTS.md strip' "DRY: would strip himmel working-principles block from $U_HOME/.codex/AGENTS.md" "$out"
-# HIMMEL-3332 S6 R2-codex4: u_fixture's ledger only records the plugin/
+# U_fixture's ledger only records the plugin/
 # marketplace units (seed_plugin_ledger) -- it never records a `file` unit for
 # this hud-config path, so a loaded-but-silent ledger keeps it with a hand
 # command, the same as the no-ledger branch, instead of the round-1
 # pattern-matched strip this case used to hit.
 assert_has 'U17 dry-run shows the hud config kept (not in ledger)' "kept (not in ledger): $U_HOME/.claude/claude-hud.json — remove by hand: bash $U17_SCRIPTS/lib/unwire-hud-config.sh $U_HOME/.claude/claude-hud.json" "$out"
-# HIMMEL-3332 S6 slice2: workspace-trust is ledger-decided too now; u_fixture's
+# S6 slice2: workspace-trust is ledger-decided too now; u_fixture's
 # ledger never records a unit for it, so it lands in the same "not in ledger"
 # fallback as the hud config above.
 assert_has 'U17 dry-run shows the trust entry kept (not in ledger)' "kept (not in ledger): $U_HOME/.claude.json — revoke it in Claude Code if you want it gone" "$out"
@@ -2658,8 +2658,8 @@ u_same 'U17 dry-run left the trust entry alone' "$U_HOME/.claude.json" "$TMP/u-u
 
 # U18 — wet run: the block goes and the operator's own text is byte-identical;
 # an install-created file that held only the block is removed; the hud config,
-# lacking a ledger unit, is kept with a hand command (HIMMEL-3332 S6
-# R2-codex4); the keep rows stay and the footer names them.
+# lacking a ledger unit, is kept with a hand command;
+# the keep rows stay and the footer names them.
 u_residue_fixture u18
 cp "$U_HOME/.claude/claude-hud.json" "$TMP/u-u18-hud-before"
 u_run_fx
@@ -2709,7 +2709,7 @@ u_run_fx
 assert_rc 'U20b file with no block completes' 0 "$rc"
 u_same 'U20b no-block file untouched' "$U_HOME/.claude/CLAUDE.md" "$TMP/u20b-prose"
 
-# U21 — HIMMEL-3332 S6 R2-codex4: the hud config is kept, with a hand command,
+# U21 — the hud config is kept, with a hand command,
 # whenever the ledger has no unit for it -- content pattern-matching alone
 # (an operator's own vs. himmel's own customLineCommand) is no longer trusted
 # to authorise a strip without ledger evidence, so all three variants below
@@ -2738,7 +2738,7 @@ u_run_fx
 assert_rc 'U21c wet run completes' 0 "$rc"
 u_same 'U21c ECON-prefixed himmel hud config kept (not in ledger), byte-identical' "$U_HOME/.claude/claude-hud.json" "$TMP/u21c-hud"
 
-# U21d (HIMMEL-3334; round 2, judge J1269A I1/JD) — a leftover config at the
+# U21d — a leftover config at the
 # OLD, swept plugin-manager path with NO ledger unit recorded for it is kept,
 # not removed: the same customLineCommand shape check that used to authorise
 # an unconditional rm can't tell "himmel wrote this" from "an operator's own
@@ -2762,7 +2762,7 @@ u_run_fx
 assert_rc 'U21e wet run completes' 0 "$rc"
 u_same 'U21e operator legacy hud config left alone' "$U_HOME/.claude/plugins/claude-hud/config.json" "$TMP/u21e-legacy"
 
-# U21f (HIMMEL-3334 codex-1) — a box upgraded but not yet re-wired: the
+# U21f — a box upgraded but not yet re-wired: the
 # statusLine is still wired to the hud renderer, the ledger has no unit for it
 # (so unwire_settings keeps it, "no ledger"), and the legacy-path hud config is
 # what that still-live statusLine actually reads. Deleting the legacy config
@@ -2777,7 +2777,7 @@ assert_rc 'U21f wet run completes' 0 "$rc"
 u_same 'U21f legacy hud config kept (statusLine still wired), byte-identical' "$U_HOME/.claude/plugins/claude-hud/config.json" "$TMP/u21f-legacy"
 assert_has 'U21f output names the kept legacy hud config' "kept (statusLine still wired): $U_HOME/.claude/plugins/claude-hud/config.json — remove by hand: bash $U17_SCRIPTS/lib/unwire-hud-config.sh $U_HOME/.claude/plugins/claude-hud/config.json" "$out"
 
-# U21g (HIMMEL-3334 codex-1 round 2; round 2 codex J1269A I1/JD) — the ledger
+# U21g — the ledger
 # OWNS /statusLine (a real "remove" verdict, same registration shape as RED18
 # in test-uninstall-provenance.sh: noop json-key, no preexisted field ->
 # defaults false -> removed), and a legacy-path hud config is still present,
@@ -2886,7 +2886,7 @@ rc=0; PATH="$TMP/u25-bin:$PATH" bash "$U17_SCRIPTS/lib/unwire-user-claude-md.sh"
 assert_rc 'U25 failed head halts the strip' 1 "$rc"
 u_same 'U25 target left byte-identical when head fails' "$TMP/u25-rules" "$TMP/u25-before"
 
-# U27 (HIMMEL-3333) — a CLAUDE.md that merely QUOTES the block inside a code
+# U27 — a CLAUDE.md that merely QUOTES the block inside a code
 # fence is a file about himmel, not a wired one: the strip leaves it
 # byte-identical and the read-back (the helper's own --probe) agrees, so the run
 # completes instead of halting on a false STILL WIRED.
@@ -2900,7 +2900,7 @@ u_same 'U27 quoted-block file left byte-identical' "$U_HOME/.claude/CLAUDE.md" "
 assert_not_has 'U27 no false STILL WIRED on a quoted block' 'STILL WIRED' "$out"
 u_absent 'U27 the wired AGENTS.md after it is still stripped' "$U_HOME/.codex/AGENTS.md"
 
-# U28 (HIMMEL-3333) — CRLF markers (an editor converted the file) are refused,
+# U28 — CRLF markers (an editor converted the file) are refused,
 # not read as "no block": the file is kept byte-identical and reported
 # (block-malformed, with the scanner's CRLF reason), the run exits 0, and the
 # next file is still processed.
@@ -2920,7 +2920,7 @@ u_same 'U28 CRLF file left byte-identical' "$U_HOME/.claude/CLAUDE.md" "$TMP/u28
 assert_has 'U28 refusal says CRLF' 'CRLF' "$out"
 u_absent 'U28 AGENTS.md after it is still stripped' "$U_HOME/.codex/AGENTS.md"
 
-# U29 (HIMMEL-3333) — the edit path keeps a copy of the file as found beside it;
+# U29 — the edit path keeps a copy of the file as found beside it;
 # the install-created AGENTS.md (nothing of the operator's) leaves no backup.
 u_residue_fixture u29
 u_run_fx
@@ -2929,7 +2929,7 @@ u_same 'U29 backup of CLAUDE.md is the file as found' "$U_HOME/.claude/CLAUDE.md
 u_absent 'U29 no backup for the install-created AGENTS.md' "$U_HOME/.codex/AGENTS.md.himmel-uninstall-backup"
 assert_has 'U29 output names the backup' "$U_HOME/.claude/CLAUDE.md.himmel-uninstall-backup" "$out"
 
-# HIMMEL-3903: this suite must not leave a .git in /tmp or $TMPDIR.
+# this suite must not leave a .git in /tmp or $TMPDIR.
 for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do
     case " $GIT_LEAK_PRE " in *" $_p "*) continue ;; esac
     [ -e "$_p" ] && fail "suite created $_p"

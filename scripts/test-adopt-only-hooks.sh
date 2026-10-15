@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-adopt-only-hooks.sh — adopt.sh --only-hooks (HIMMEL-4267).
+# test-adopt-only-hooks.sh — adopt.sh --only-hooks.
 #
 # `himmelctl ensure --items pre-commit-hooks` used to run the whole adopt
 # (settings wiring, plugins, marketplaces, CLAUDE.md, statusline). --only-hooks

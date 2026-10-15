@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4856: real run-mode entrypoint against a gh shim; no live GitHub.
+# real run-mode entrypoint against a gh shim; no live GitHub.
 # Catches false green on pending/unknown jobs, swallowed reads, unbounded waits,
 # per-waiter fetches, wrong job selection, and spending the wrong rate bucket.
 set -uo pipefail
@@ -193,7 +193,7 @@ expect_rc 7 'deadline during pending reread retains distinct deadline exit'
 expect_text DEADLINE-PENDING 'pending reread timeout names the deadline'
 export CHECK_CI_WATCH_SLEEP_CMD=fake_sleep
 
-# HIMMEL-4857: selected skipped work is not evidence that the job passed.
+# selected skipped work is not evidence that the job passed.
 new_case
 fixture completed failure completed skipped > "$CASE/response"
 run --run 123 --job unit --max-wait 10

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for merge-public-on-green.sh — the HIMMEL-1213 Telegram-authorized PUBLIC
+# Tests for merge-public-on-green.sh — the Telegram-authorized PUBLIC
 # merge chokepoint. Mirrors scripts/handover/test-merge-on-green.sh's pattern: the
 # wrapper has NO env seams for `gh`/`check-ci` (gate integrity), so each case runs
 # a COPY of the script tree ($tmp/scripts/merge-public-on-green.sh) with a stub
@@ -15,7 +15,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -291,7 +291,7 @@ STUB_SHA="feedface9999" STUB_THREADS_RC=3 run_mpog 16 "review blocked after the 
 assert_gh_lacks "review-race: no merge attempted" "pr merge"
 assert_audit_has "review-race audits the reason" "reason=review-blocked-premerge"
 
-# 15. Base retargeted during the CI wait (HIMMEL-1080 lesson, ported): base OK
+# 15. Base retargeted during the CI wait: base OK
 # at the initial gate but changed by the pre-merge re-verify → refuse (exit 14).
 STUB_BASE="main" STUB_DEFAULT_BRANCH="main" STUB_BASE_PREMERGE="some/other-branch" \
     run_mpog 14 "base retargeted after the gate → exit 14"

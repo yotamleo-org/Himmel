@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# Tests for scripts/quiet-run.sh's argv path guard (HIMMEL-2967): refuses
+# Tests for scripts/quiet-run.sh's argv path guard: refuses
 # ".." path components in any argv element, and (label "suite" only) requires
-# a git-tracked test-*.sh, or (HIMMEL-4782) an untracked regular test-*.sh that
+# a git-tracked test-*.sh, or an untracked regular test-*.sh that
 # lies inside the current worktree, when argv is `bash <path> ...`.
 #
 # Usage: bash scripts/test-quiet-run.sh
@@ -57,9 +57,9 @@ assert_contains() {
 
 # 1. RED control: the traversal shape against a SELF-CONTAINED pre-fix
 # fixture (no argv path validation at all, matching the guard's absence
-# before HIMMEL-2967) executes - proves the control can actually fail
+# before) executes - proves the control can actually fail
 # before asserting the fixed script blocks it. Self-contained rather than
-# extracted from a historical commit (codex-1, round 4): a `git show
+# extracted from a historical commit: a `git show
 # <sha>:path` extraction depends on that object being reachable, which a
 # shallow clone or squash-merged checkout may not have.
 PRE_FIX="$SCRATCH/quiet-run-prefix.sh"
@@ -113,7 +113,7 @@ RC=$?
 assert_rc "'a..b' filename-shaped element accepted" 0 "$RC"
 
 # 5. label "suite" with an untracked test-*.sh INSIDE the worktree runs
-# (HIMMEL-4782: a RED-first run of a new suite before its first commit).
+#  (a RED-first run of a new suite before its first commit).
 UNTRACKED_REL="scripts/hooks/test-untracked-quiet-run-2967-$$.sh"
 UNTRACKED_ABS="$REPO_ROOT/$UNTRACKED_REL"
 printf '#!/usr/bin/env bash\necho hi\n' > "$UNTRACKED_ABS"
@@ -155,7 +155,7 @@ OUT=$(cd "$REPO_ROOT" && bash "$QUIET_RUN" suite -- bash scripts/hooks/test-requ
 RC=$?
 assert_rc "suite with tracked test-*.sh" 0 "$RC"
 
-# 6b. RED/GREEN: git ls-files pathspec-glob bypass (codex-1 finding, round 2).
+# 6b. RED/GREEN: git ls-files pathspec-glob bypass.
 # A literal argv path containing pathspec-glob metacharacters (e.g. a filename
 # that is literally "test-*.sh") can satisfy a bare
 # `git ls-files --error-unmatch -- "$SUITE_PATH"` by glob-matching some OTHER
@@ -165,7 +165,7 @@ assert_rc "suite with tracked test-*.sh" 0 "$RC"
 # reproduces the pre-this-fix tracked-file check (same logic, minus
 # --literal-pathspecs) to prove the bypass is real; GREEN proves the fixed
 # script refuses it. Self-contained rather than extracted from a historical
-# commit (codex-1, round 4): a `git show <sha>:path` extraction depends on
+# commit: a `git show <sha>:path` extraction depends on
 # that object being reachable, which a shallow clone or squash-merged
 # checkout may not have.
 GLOB_VULN="$SCRATCH/quiet-run-globvuln.sh"
@@ -209,7 +209,7 @@ else
     RC=$?
     assert_rc "RED: glob-pathspec bypass executes against pre-fix guard" 0 "$RC"
 
-    # HIMMEL-4782: with the literal file present it is an untracked in-worktree
+    # with the literal file present it is an untracked in-worktree
     # regular file and runs; the bypass is a glob matching ANOTHER tracked file,
     # so GREEN removes the literal and the glob must resolve to nothing.
     rm -f "$GLOB_UNTRACKED_ABS"
@@ -229,14 +229,14 @@ assert_rc "suite with node --test <tracked file> unaffected" 0 "$RC"
 
 # 8. Outside a git repo, the tracked-file check is skipped (does not break
 # non-repo callers) but the '..' guard still applies. GIT_CEILING_DIRECTORIES
-# pins discovery to SCRATCH itself (codex-2, round 4): without it, a TMPDIR
+# pins discovery to SCRATCH itself: without it, a TMPDIR
 # that happens to live inside a checkout lets git discover that ANCESTOR
 # repo instead of finding none, so this case would fail despite quiet-run.sh
 # behaving correctly.
 NOTREPO="$SCRATCH/notrepo"
 mkdir -p "$NOTREPO/scripts" "$NOTREPO/lib"
 cp "$QUIET_RUN" "$NOTREPO/quiet-run.sh"
-# label `suite` sources its semaphore lib beside it (HIMMEL-1818).
+# label `suite` sources its semaphore lib beside it.
 cp "$(dirname "$QUIET_RUN")/lib/suite-semaphore.sh" "$(dirname "$QUIET_RUN")/lib/proc-tree.sh" "$(dirname "$QUIET_RUN")/lib/chokepoint-seam-guard.sh" "$NOTREPO/lib/"
 printf '#!/usr/bin/env bash\necho hi\n' > "$NOTREPO/scripts/test-x.sh"
 OUT=$(cd "$NOTREPO" && GIT_CEILING_DIRECTORIES="$SCRATCH" bash quiet-run.sh suite -- bash scripts/test-x.sh 2>&1)
@@ -247,7 +247,7 @@ OUT=$(cd "$NOTREPO" && GIT_CEILING_DIRECTORIES="$SCRATCH" bash quiet-run.sh suit
 RC=$?
 assert_rc "outside git repo: '..' still refused" 2 "$RC"
 
-# 9. A broken/invalid git repository pointer (codex-1, round 6) must fail
+# 9. A broken/invalid git repository pointer must fail
 # closed, not be treated as "no repo, skip the check" - git's diagnostic for
 # an invalid gitdir also contains the substring "not a git repository", but
 # with a different, more specific shape ("not a git repository: <path>")
@@ -257,7 +257,7 @@ assert_rc "outside git repo: '..' still refused" 2 "$RC"
 BROKENGIT="$SCRATCH/brokengit"
 mkdir -p "$BROKENGIT/scripts" "$BROKENGIT/lib"
 cp "$QUIET_RUN" "$BROKENGIT/quiet-run.sh"
-# HIMMEL-3914: every chokepoint fails closed without its seam-guard lib.
+# every chokepoint fails closed without its seam-guard lib.
 cp "$(dirname "$QUIET_RUN")/lib/chokepoint-seam-guard.sh" "$BROKENGIT/lib/"
 printf '#!/usr/bin/env bash\necho hi\n' > "$BROKENGIT/scripts/test-x.sh"
 OUT=$(cd "$BROKENGIT" && GIT_DIR="$SCRATCH/does-not-exist" bash quiet-run.sh suite -- bash scripts/test-x.sh 2>&1)
@@ -265,7 +265,7 @@ RC=$?
 assert_rc "broken GIT_DIR: fails closed, not skipped" 2 "$RC"
 assert_contains "broken GIT_DIR: unexpected-failure message" "failed unexpectedly" "$OUT"
 
-# 10. Directory-pathspec bypass (codex-1, round 7): `git ls-files -- <path>`
+# 10. Directory-pathspec bypass: `git ls-files -- <path>`
 # matches a pathspec against index entries by directory-prefix too, not just
 # exact file paths. If the tracked history once held a directory literally
 # named like a test-*.sh file (e.g. "test-x.sh/inner.sh" tracked), an
@@ -287,10 +287,10 @@ rm -rf "${DIRBYPASS:?}/test-x.sh"
 printf '#!/usr/bin/env bash\necho pwned\n' > "$DIRBYPASS/test-x.sh"
 chmod +x "$DIRBYPASS/test-x.sh"
 cp "$QUIET_RUN" "$DIRBYPASS/quiet-run.sh"
-# HIMMEL-3914: every chokepoint fails closed without its seam-guard lib.
+# every chokepoint fails closed without its seam-guard lib.
 mkdir -p "$DIRBYPASS/lib"
 cp "$(dirname "$QUIET_RUN")/lib/chokepoint-seam-guard.sh" "$DIRBYPASS/lib/"
-# HIMMEL-4782: the replacement plain file is untracked but inside the worktree
+# the replacement plain file is untracked but inside the worktree
 # and regular, so it now runs on its own merits; what must stay refused is the
 # directory itself standing where the file would be.
 rm -f "$DIRBYPASS/test-x.sh"
@@ -304,7 +304,7 @@ assert_contains "directory refusal message" "requires a tracked test-*.sh" "$OUT
 # still pass - the same file that passes as a bare repo-relative path
 # (case 6) is illegitimately refused today because the tracked-file check
 # requires `git ls-files` output to equal SUITE_PATH byte-for-byte, and
-# ls-files normalizes away a leading "./" (HIMMEL-2970).
+# ls-files normalizes away a leading "./".
 OUT=$(cd "$REPO_ROOT" && bash "$QUIET_RUN" suite -- bash ./scripts/hooks/test-require-quiet-run.sh 2>&1)
 RC=$?
 assert_rc "suite with tracked test-*.sh via ./-prefixed path" 0 "$RC"
@@ -312,7 +312,7 @@ assert_rc "suite with tracked test-*.sh via ./-prefixed path" 0 "$RC"
 # 12. label "suite" with an absolute path (resolving under the repo root) to
 # the same tracked test-*.sh must also pass - ls-files output is always
 # repo-relative, so an absolute SUITE_PATH can never equal it under the
-# current exact-match check (HIMMEL-2970).
+# current exact-match check.
 ABS_TRACKED="$REPO_ROOT/scripts/hooks/test-require-quiet-run.sh"
 OUT=$(cd "$REPO_ROOT" && bash "$QUIET_RUN" suite -- bash "$ABS_TRACKED" 2>&1)
 RC=$?
@@ -322,7 +322,7 @@ assert_rc "suite with tracked test-*.sh via absolute path" 0 "$RC"
 # cwd, must also pass - stripping REPO_TOPLEVEL leaves a root-relative
 # pathspec, and `git ls-files` resolves a pathspec relative to the current
 # directory, not the repo root, so the lookup must be pinned to
-# REPO_TOPLEVEL for this case (HIMMEL-2989).
+# REPO_TOPLEVEL for this case.
 OUT=$(cd "$REPO_ROOT/scripts/lanes" && bash "$QUIET_RUN" suite -- bash "$ABS_TRACKED" 2>&1)
 RC=$?
 assert_rc "suite with tracked test-*.sh via absolute path from a subdirectory cwd" 0 "$RC"
@@ -330,7 +330,7 @@ assert_rc "suite with tracked test-*.sh via absolute path from a subdirectory cw
 # 14. Git-Bash on Windows: `git rev-parse --show-toplevel` prints the MIXED
 # form (D:/a/repo) while a caller's absolute path is POSIX (/a/repo). The
 # guard must also strip the `cygpath -u` form of the toplevel, or a tracked
-# suite is refused rc=2 (HIMMEL-3181). Emulated with a git stub that prefixes
+# suite is refused rc=2. Emulated with a git stub that prefixes
 # `D:` (and strips it back from `-C`) plus a cygpath stub; skipped on a real
 # Windows host, where the native cases above already exercise the real forms.
 case "$(uname -s 2>/dev/null)" in
@@ -378,7 +378,7 @@ esac
 
 # 15. Killing quiet-run.sh must reap the command it wraps, grandchildren
 # included - a TERM/INT/HUP to the wrapper used to leave the whole suite
-# running with no owning session (HIMMEL-2221). The wrapped command spawns a
+# running with no owning session. The wrapped command spawns a
 # long sleep and records its pid; after the signal that pid must be gone.
 for SIG in TERM INT HUP; do
     PIDFILE="$SCRATCH/reap-$SIG.pid"

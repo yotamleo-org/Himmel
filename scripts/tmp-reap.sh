@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/tmp-reap.sh - preserve-then-reap for the /tmp tmpfs (HIMMEL-4224).
+# scripts/tmp-reap.sh - preserve-then-reap for the /tmp tmpfs.
 #
 #   tmp-reap.sh            dry-run (default): print the KEEP / REAP list with sizes
 #   tmp-reap.sh --apply    archive what is worth keeping, then reap
@@ -24,7 +24,7 @@
 # to the census (an unreadable same-uid /proc entry refuses --apply unless its ppid chain
 # reads to pid 1 without crossing a live session, i.e. a detached non-dumpable desktop
 # daemon, which only warns; other-uid ones only warn); add a privileged census if a root-held dir is ever reaped. The
-# whitelist is name-based; widen if a kind goes missing (HIMMEL-4224 follow-ups).
+# whitelist is name-based; widen if a kind goes missing.
 # Fixture names with whitespace are not handled (the families are mktemp names);
 # session/judge dirs still cost a du and stat each.
 # shellcheck disable=SC2086  # word-splitting a /proc line and a jq row into positionals is the point
@@ -45,7 +45,7 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
-# Scoped (HIMMEL-4235): only the judged PR's judge dirs (j<N>, j<N>[a-z]) and the one
+# Scoped: only the judged PR's judge dirs (j<N>, j<N>[a-z]) and the one
 # session dir; no fixtures, no cache-break copy, the same 6 h floor on judge dirs as the unscoped sweep, none on the session
 # (liveness and the census still apply). Never a fleet-wide sweep. A judge dir's .holder
 # (judge_holder, below) overrides the floor: a live holder is always kept, a dead one reaped at once.
@@ -100,7 +100,7 @@ if [ -d "$SESSIONS" ]; then
             LIVE_IDS="$LIVE_IDS
 $1"; LIVE_PIDS="$LIVE_PIDS $2"; continue
         fi
-        # a dead session with a dir on disk: keep the oldest start (HIMMEL-4437, see detached())
+        # a dead session with a dir on disk: keep the oldest start (see detached())
         case "$3" in ''|*[!0-9]*) continue ;; esac
         set -- "$1" "$2" "$3" "$CLAUDE_ROOT"/-*/"$1"
         [ -d "$4" ] && { [ -z "$DEAD_START_MIN" ] || [ "$3" -lt "$DEAD_START_MIN" ]; } && DEAD_START_MIN="$3"
@@ -118,7 +118,7 @@ CENSUS_WARNED=0
 # A non-dumpable same-uid process (desktop daemons with file caps or setgid) always has an unreadable
 # cwd. It is detached when its ppid chain reads cleanly to pid 1 and crosses no live session pid: it
 # cannot then be a descendant of a session, so it holds no session's scratch. Unknown = not detached.
-# HIMMEL-4437: a child a DEAD session spawned also reaches pid 1 yet can hold that session's scratch, so a
+# a child a DEAD session spawned also reaches pid 1 yet can hold that session's scratch, so a
 # process that started at or after the oldest dead session dir's procStart (same clock ticks) is not detached;
 # an unknown start time is not detached either.
 # ponytail: a dead session dir with no sessions json has no known start and cannot bound this check; the boot
@@ -206,7 +206,7 @@ EOF
     return 1
 }
 
-# Judge holder (HIMMEL-4325): scripts/judge-dir.sh writes <dir>/.holder = "<pid> <starttime>"
+# Judge holder: scripts/judge-dir.sh writes <dir>/.holder = "<pid> <starttime>"
 # (starttime = /proc/<pid>/stat field 22; the pid is the judge's nearest claude-session ancestor).
 # live = pid alive with the SAME start time; dead = pid gone or a different start time (pid reuse);
 # unknown = no/garbled holder, no starttime recorded ("-", a platform without /proc), or an unreadable
@@ -304,7 +304,7 @@ if [ -d "$CLAUDE_ROOT" ]; then
     for d in "$@"; do
         jlive=0; jage="$JUDGE_AGE"
         case "$(judge_holder "$d")" in live) jlive=1 ;; dead) jage=0 ;; esac
-        # HIMMEL-5165: a verdict written from this dir (write-verdict.sh drops .verdict-written) means
+        # a verdict written from this dir (write-verdict.sh drops .verdict-written) means
         # the judge is finished with it, so a live holder (an in-process judge shares its console's
         # long-lived pid) no longer keeps it. A regular file only; the in_use and preserve checks still apply.
         if [ -f "$d/.verdict-written" ] && [ ! -L "$d/.verdict-written" ]; then jlive=0; jage=0; fi
@@ -353,7 +353,7 @@ set +f
 SORTED="$(printf '%s\n' "$CANDS" | grep -v '^$' | sort -k1,1n -k2,2nr)"
 # classification took minutes on a big /tmp: re-take the cwd/fd view once before deleting.
 # ponytail: a full /proc walk costs ~10 s, so it is once per run, not per dir; a dir that
-# goes live within the archive loop itself is not re-checked (HIMMEL-4224 follow-up).
+# goes live within the archive loop itself is not re-checked.
 [ "$APPLY" = 1 ] && census
 total=$fix_total; reaped=$fix_reaped; failed=$fix_failed
 while read -r tier kb kind id path; do

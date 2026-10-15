@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # A && B || C is the check() idiom; the printf fixtures are literal shell text
-# test-uninstall-real-home-callers.sh -- HIMMEL-3336: nothing under scripts/ may
+# test-uninstall-real-home-callers.sh --: nothing under scripts/ may
 # lift uninstall.sh's wet-run fence (the REAL_HOME opt-in variable, set to 1;
 # spelled out in full only in $V below, so this text never matches the scan)
 # unless it is either pointed at a scratch HOME or is a named operator-path caller.
@@ -37,8 +37,8 @@ ALLOW_WHY=(
   "matches only remedy TEXT (the re-run hint printed for a refused wet run); it never sets the variable itself"
   "sets the variable only inside a command string dispatched via guest_ssh (line 474) to the disposable VM or AUR container guest, whose HOME is /home/\$GUEST_USER (line 209), never the operator's real HOME; the VM guest only -- the clone-side fence-lift path is not here"
 )
-# HIMMEL-3394: both halves are ALLOW-LISTS. Enumerating dangerous spellings lost six
-# review rounds to shapes nobody had listed (HIMMEL-3345), so the rule is inverted: a
+# both halves are ALLOW-LISTS. Enumerating dangerous spellings lost
+# repeatedly to shapes nobody had listed, so the rule is inverted: a
 # write of the var counts as a lift unless it is provably not 1 (and a text matcher can
 # prove nothing -- see scan_callers), and HOME counts as scratch only in the few shapes
 # below. Anything else flags. A real caller that trips it is rewritten (a second mktemp,
@@ -66,7 +66,7 @@ join_continued() { sed -e ':a' -e '/\\$/N' -e 's/\\\n//' -e 'ta' "$1"; }
 # lift to the HOME on its own command (`HOME="$td" true; VAR=1 bash uninstall.sh` passes,
 # the lift inheriting the real HOME). It reads text, so an assignment-shaped comment or
 # printf fixture counts: a non-scratch one is a false flag, and a file whose only scratch
-# HOME is text passes (HIMMEL-3345). Separating those needs a parser.
+# HOME is text passes. Separating those needs a parser.
 home_is_scratch() {
   local file="$1" line rest name s i j ok changed homes=0
   local assign_re='(^|[^A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*)(\[[^]]*\])?([-+:*/%&|^]?)=(.*)'
@@ -201,41 +201,41 @@ printf '#!/usr/bin/env bash\ntd=$(mktemp -d /tmp/x.XXXXXX)\nFAKE_HOME="$td"\n%s=
 printf '#!/usr/bin/env bash\nHOME="$HOME"\n%s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-not-scratch.sh"
 # scratch HOME in the same file.
 printf '#!/usr/bin/env bash\ntd=$(mktemp -d /tmp/x.XXXXXX) || exit 1\nHOME="$td/home" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch.sh"
-# HIMMEL-3344: an unrelated mktemp does not make HOME a scratch dir.
+# an unrelated mktemp does not make HOME a scratch dir.
 printf '#!/usr/bin/env bash\ntmp="$(mktemp -d /tmp/x.XXXXXX)"\nHOME="$HOME"\n%s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-unrelated-mktemp.sh"
-# HIMMEL-3344: HOME assigned from a variable that is NOT mktemp-derived.
+# HOME assigned from a variable that is NOT mktemp-derived.
 printf '#!/usr/bin/env bash\ntmp="$(mktemp -d /tmp/x.XXXXXX)"\nother=/somewhere/real\nHOME="$other"\n%s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-home-from-other.sh"
-# HIMMEL-3344: HOME derived from a mktemp variable through a second variable
+# HOME derived from a mktemp variable through a second variable
 # (the shape of test-e2e-symmetry-isolation.sh) passes.
 printf '#!/usr/bin/env bash\ntd="$(mktemp -d /tmp/x.XXXXXX)" || exit 1\nctl="$td/ctlhome"\nHOME="$ctl" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-transitive.sh"
-# HIMMEL-3344: a literal mktemp on the HOME assignment passes.
+# a literal mktemp on the HOME assignment passes.
 printf '#!/usr/bin/env bash\nHOME="$(mktemp -d /tmp/x.XXXXXX)" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-literal.sh"
-# HIMMEL-3344: an expansion operator can swap the scratch value for the real one.
+# an expansion operator can swap the scratch value for the real one.
 printf '#!/usr/bin/env bash\ntd="$(mktemp -d /tmp/x.XXXXXX)"\nHOME="${td:+$HOME}" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-operator.sh"
 # ... but an operator INSIDE the mktemp command substitution is fine (test-uninstall.sh's shape).
 printf '#!/usr/bin/env bash\ntd=$(mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX") || { echo no tmp; exit 1; }\nHOME="$td/home" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-tmpdir.sh"
 printf '#!/usr/bin/env bash\ntd="$(mktemp -d /tmp/x.XXXXXX)"\nother=/somewhere/real\nHOME="${other:-$td}" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-inside-operator.sh"
-# HIMMEL-3344: the word mktemp inside a path is not a mktemp call.
+# the word mktemp inside a path is not a mktemp call.
 printf '#!/usr/bin/env bash\nHOME=/opt/mktemp-user %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-mktemp-in-path.sh"
-# HIMMEL-3344: fence lifted through a quoted JS key + numeric value, an unquoted
+# fence lifted through a quoted JS key + numeric value, an unquoted
 # key + numeric value, and a PowerShell $env: assignment -- all uncovered pre-fix.
 printf "runSpawn(cmd, { env: { '%s': 1 } });\n" "$V" > "$fx/scripts/quoted-key.js"
 printf 'runSpawn(cmd, { env: { %s: 1 } });\n' "$V" > "$fx/scripts/numeric-value.mjs"
 printf '$env:%s = 1\n& uninstall.ps1 -Yes\n' "$V" > "$fx/scripts/ps-env.ps1"
-# HIMMEL-3343 read these as not-lifts (uninstall.sh lifts only for exactly 1); HIMMEL-3394 flags
+# read these as not-lifts (uninstall.sh lifts only for exactly 1); the scanner flags
 # them: under declare -i / let / (( )) `1-extra` is 1, so no value is provably not 1 (false flags).
 printf '#!/usr/bin/env bash\n%s=10 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-value-10.sh"
 printf '#!/usr/bin/env bash\n%s=1x bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-value-1x.sh"
 printf '#!/usr/bin/env bash\n%s=1.5 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-value-1dot5.sh"
 printf '#!/usr/bin/env bash\n%s=1-extra bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-value-1dash.sh"
-# HIMMEL-3345: shapes that MUST stay flagged, pinned after the matcher was tried with
+# shapes that MUST stay flagged, pinned after the matcher was tried with
 # looser rules (a quoted 1 read as a concatenation, a dirname of a scratch dir read as
 # scratch) and each loosening opened a real false pass. Each of these lifts the fence for
 # real (the shell sets the value to 1, or HOME resolves to the real HOME) and is flagged
 # by the strict matcher. Cited: an independent false-pass review of the loosened matcher
 # (2 Critical) plus the panel's own five rounds. @V@ stands for the variable name.
 # The shapes #1069 left unpinned (false passes at its base) are pinned below under
-# HIMMEL-3394, which inverted the matcher to allow-lists. Never pin a lift as "passes":
+# the allow-list rewrite, which inverted the matcher to allow-lists. Never pin a lift as "passes":
 # that assertion would enshrine the hole.
 pinned=()
 RH=/ho"me"/someone   # @H@ in a fixture: a literal real home dir, spelled apart so the leak gate skips this source
@@ -313,7 +313,7 @@ pin h-td-reassigned.sh 'td=$(mktemp -d)' 'td=@H@' 'HOME="$(dirname "$td")/overlo
 pin h-td-real.sh 'td=$HOME' 'HOME="$td"' '@V@=1 bash uninstall.sh --yes'
 pin h-td-tilde.sh 'td=~' 'HOME="$td"' '@V@=1 bash uninstall.sh --yes'
 pin h-tmpdir.sh 'td=$(TMPDIR=@H@ mktemp -d)' 'HOME="$(dirname "$td")"' '@V@=1 bash uninstall.sh --yes'
-# HIMMEL-3394: the eleven false passes of the enumerating matcher (the console's review of #1069).
+# the eleven false passes of the enumerating matcher (the console's review of #1069).
 # shellcheck disable=SC1003  # the backslash is the fixture
 pin v-backslash.sh '@V@=\1 bash uninstall.sh --yes'
 pin v-ansi-c.sh "@V@=\$'1' bash uninstall.sh --yes"
@@ -326,7 +326,7 @@ pin h-dirname-under-real.sh 'td=$(mktemp -d @H@/x.XXXXXX) || exit 1' 'HOME=$(dir
 pin h-dotdot.sh 'td=$(mktemp -d "$HOME/x.XXXXXX") || exit 1' 'HOME="$td/.." @V@=1 bash uninstall.sh --yes'
 pin h-cd-home-bare.sh 'td=$(mktemp -d) || exit 1' 'HOME=$(cd "$td"; cd; pwd) @V@=1 bash uninstall.sh --yes'
 pin h-printenv-bare.sh 'td=$(mktemp -d) || exit 1' 'HOME=$(printenv HOME; : "$td") @V@=1 bash uninstall.sh --yes'
-# HIMMEL-3394: classes the allow-list closes beyond the eleven.
+# classes the allow-list closes beyond the eleven.
 QV="HIMMEL_UNINSTALL_''REAL_HOME"   # the name split by an empty quote; bash still reads the full name
 pin w-split-name.sh "export $QV=1" 'bash uninstall.sh --yes'
 pin w-continued-name.sh "export @V@\\" '=1' 'bash uninstall.sh --yes'
@@ -343,7 +343,7 @@ pin h-second-home.sh 'td=$(mktemp -d) || exit 1' 'HOME="$td" true' 'HOME=~ @V@=1
 pin h-unset-home.sh 'td=$(mktemp -d) || exit 1' 'HOME="$td" true' 'unset HOME' '@V@=1 bash uninstall.sh --yes'
 pin h-env-i.sh 'td=$(mktemp -d) || exit 1' 'HOME="$td" true' 'env -i PATH=/usr/bin @V@=1 bash uninstall.sh --yes'
 pin h-env-u.sh 'td=$(mktemp -d) || exit 1' 'HOME="$td" true' 'env -u HOME @V@=1 bash uninstall.sh --yes'
-# HIMMEL-3415: the same drops, quoted or spelled another way.
+# the same drops, quoted or spelled another way.
 pin h-unset-quoted.sh 'td=$(mktemp -d) || exit 1' 'HOME="$td" true' 'unset "HOME"' '@V@=1 bash uninstall.sh --yes'
 pin h-export-n.sh 'td=$(mktemp -d) || exit 1' 'HOME="$td" true' 'export -n HOME' '@V@=1 bash uninstall.sh --yes'
 pin h-env-i-quoted.sh 'td=$(mktemp -d) || exit 1' 'HOME="$td" true' 'env "-i" PATH=/usr/bin @V@=1 bash uninstall.sh --yes'
@@ -360,7 +360,7 @@ pin h-conditional-guard.sh 'td=$(mktemp -d /nonexistent/x.XXXXXX) || { false && 
 pin h-redirect-and-guard.sh 'td=$(mktemp -d /nonexistent/x.XXXXXX) || { echo no >&2 && exit 1; }' 'HOME="$td@H@" @V@=1 bash uninstall.sh --yes'
 pin h-guard-exit-hyphen.sh 'td=$(mktemp -d /nonexistent/x.XXXXXX) || exit-later' 'HOME="$td@H@" @V@=1 bash uninstall.sh --yes'
 pin h-guard-exit-later.sh 'td=$(mktemp -d /nonexistent/x.XXXXXX) || { exit_later=1; }' 'HOME="$td@H@" @V@=1 bash uninstall.sh --yes'
-# HIMMEL-3344 (CodeRabbit): a longer identifier ending in the name is not the name.
+# (CodeRabbit): a longer identifier ending in the name is not the name.
 printf '#!/usr/bin/env bash\nNOT_%s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-prefixed-name.sh"
 # a JS operator-path caller, on the allowlist below.
 printf "runSpawn(cmd, { env: { ...process.env, %s: '1' } });\n" "$V" > "$fx/scripts/wizard.js"

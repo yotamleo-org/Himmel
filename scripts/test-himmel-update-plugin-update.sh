@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-himmel-update-plugin-update.sh — hermetic tests for update_installed_plugins
-# (HIMMEL-3551): a plugin update may never leave a floor-`false` plugin
+# a plugin update may never leave a floor-`false` plugin
 # enabled, so `claude plugin update <spec>` for every installed non-@himmel
 # plugin must run, and must run BEFORE the lean-floor reconcile.
 #
@@ -21,7 +21,7 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 # GNU touch takes `-d @<epoch>` directly; BSD/macOS touch has no epoch form,
 # so fall back through BSD `date -r <epoch>` into touch's -t timestamp (same
 # shape as backdate() in test-context-fill.sh) — a plain `touch -d '30 hours
-# ago'` is not portable to macOS (codex-1, HIMMEL-1846 round 2).
+# ago'` is not portable to macOS.
 backdate() {
     local file="$1" epoch="$2" ts
     touch -d "@$epoch" "$file" 2>/dev/null && return 0
@@ -152,7 +152,7 @@ assert_not_contains "never updates the @himmel plugin" "plugin update qmd@himmel
 
 # Ordering: the catch-up section must print before the reconcile section —
 # this is what pins "reconcile runs AFTER every marketplace refresh and
-# plugin update step" (HIMMEL-3551 Work step 5b).
+# plugin update step".
 catchup_pos="${out%%installed plugin version catch-up*}"
 reconcile_pos="${out%%lean plugin-set reconcile*}"
 if [ "${#catchup_pos}" -lt "${#reconcile_pos}" ] && [ "${#catchup_pos}" -lt "${#out}" ] && [ "${#reconcile_pos}" -lt "${#out}" ]; then
@@ -248,7 +248,7 @@ cache_sweep="$fake_home_sweep/.claude/plugins/cache"
 mkdir -p "$cache_sweep/temp_git_old" "$cache_sweep/temp_git_new" "$cache_sweep/temp_git_boundary"
 touch -t 202001010000 "$cache_sweep/temp_git_old"
 # 30h old: past the 24h cutoff but short of the ~48h a day-truncated -mtime
-# +1 would actually require — pins the boundary -mtime +1 missed (HIMMEL-178).
+# +1 would actually require — pins the boundary -mtime +1 missed.
 backdate "$cache_sweep/temp_git_boundary" "$(($(date +%s) - 30 * 3600))"
 log_sweep="$TMP/claude-invocations-sweep.log"
 : > "$log_sweep"

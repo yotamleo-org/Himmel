@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test for the luna template's graphify-out ignore block + RETASK-nonce
-# gitleaks allowlist (HIMMEL-3003).
+# gitleaks allowlist.
 #
 # Asserts:
 #   1. `git check-ignore` matches graphify-out/graph.json under the template
@@ -18,7 +18,7 @@
 #      (not the whole report) is checked for the nonce prefix, so an
 #      unrelated rule matching only the suffix does not count as proof the
 #      allowlist anchor still holds.
-#   5-7. (HIMMEL-3168) The same baseline / allowlisted / anchor-control shape
+#   5-7. The same baseline / allowlisted / anchor-control shape
 #      for the 16-hex nonce (`B-N44-<16 hex>`): allowlisted, while a 17-hex
 #      tail and a credential-suffixed 16-hex nonce still leak.
 #
@@ -56,7 +56,7 @@ git init -q "$WORK/repo"
 # Disable the user's own global core.excludesFile for this repo so the
 # assertion can only pass because of the copied .gitignore, never because
 # graphify-out/ happens to be ignored globally on the machine running the
-# test (codex-adv round 4 finding).
+# test.
 git -C "$WORK/repo" config core.excludesFile /dev/null
 cp "$TMPL/.gitignore" "$WORK/repo/.gitignore"
 if git -C "$WORK/repo" check-ignore -q graphify-out/graph.json; then
@@ -66,7 +66,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 1b. .gitignore: judge/leg scratch dirs (HIMMEL-3598) are ignored, verdicts
+# 1b. .gitignore: judge/leg scratch dirs are ignored, verdicts
 # themselves are not.
 # ---------------------------------------------------------------------------
 if git -C "$WORK/repo" check-ignore -q handovers/u/b/verdicts/J1/scratch/x.sh; then
@@ -96,7 +96,7 @@ else
     # GitHub push protection and gitleaks (8.30.1 decodes base64 segments in a
     # tree scan) flag committed blobs for exactly that shape, so a key literal
     # here gets the push or the security-scan rejected even though it is only
-    # a test fixture (HIMMEL-3003 follow-up, HIMMEL-3807). gitleaks scans by
+    # a test fixture. gitleaks scans by
     # LINE, so each part stays too short to match the stripe rule alone.
     fx_a='Y-N204-a68d71-sk_'
     fx_b='live_'
@@ -109,7 +109,7 @@ else
     # useDefault + every OTHER allowlist entry — isolating just the one
     # line this ticket adds.
     # Match on 'N[0-9]+' alone (not the full '...N[0-9]+-[0-9a-f]' shape):
-    # HIMMEL-3471 inserted an optional '[a-z]?' between the leg digits and
+    # inserted an optional '[a-z]?' between the leg digits and
     # the trailing hyphen, so the longer literal stopped matching that line
     # and silently left it in the "baseline", making the RED control below
     # vacuous. 'N[0-9]+' is still unique to this one regex line.
@@ -128,7 +128,7 @@ else
 
     # Exit 1 alone does not prove a LEAK was found — gitleaks can also exit 1
     # on some scanner/config errors, so a broken baseline config could satisfy
-    # this branch without ever matching the nonce (codex-adv round 6 finding).
+    # this branch without ever matching the nonce.
     # Require a JSON finding whose Secret is the nonce and whose RuleID is
     # generic-api-key (confirmed the rule this fixture trips under the
     # template's ruleset).
@@ -160,7 +160,7 @@ else
     # appears SOMEWHERE in the report (e.g. a Match/context field) — an
     # unrelated rule could match the appended credential alone even if the
     # allowlist regex lost its `$` anchor and over-suppressed the nonce
-    # prefix (codex-adv round 2/3 findings). Check the .Secret field itself.
+    # prefix. Check the .Secret field itself.
     SUFFIX_REPORT="$WORK/report-suffixed.json"
     run_gitleaks "$FIX/nonce-suffixed.txt" "$TMPL/.gitleaks.toml" "$SUFFIX_REPORT"
     case "$GITLEAKS_RC" in
@@ -178,7 +178,7 @@ else
     esac
 
     # -----------------------------------------------------------------------
-    # 5-7. HIMMEL-3168: the RETASK nonce grew to 16 hex (`B-N44-<16 hex>`), so
+    # 5-7.: the RETASK nonce grew to 16 hex (`B-N44-<16 hex>`), so
     # the allowlist's hex run is bounded {4,16}, not {4,8}. Same three-part
     # shape as rows 2-4: RED baseline, allowlisted GREEN, anchor controls.
     # None of these literals is Stripe-shaped, so they can sit inline here

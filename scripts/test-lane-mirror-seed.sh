@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4091 / HIMMEL-4096: shared mirror contract and real launchers.
+# test-lane-mirror-seed.sh: shared mirror contract and real launchers.
 # Breaks caught: omitted copies/deletions, source changes during seeding,
 # nested content stranded by mtimes, live-lock theft, and dead-owner/PID reuse.
 set -eu

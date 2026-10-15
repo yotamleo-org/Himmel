@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # retitle.sh — compute the himmel-canonical session name for Claude Code's
-# built-in /rename, inferred from the current git branch (HIMMEL-432).
+# built-in /rename, inferred from the current git branch.
 #
 # WHY a "print for paste" helper and not an auto-setter: the agent cannot set
 # the session name from inside a running session. It is set only by the user-
@@ -30,7 +30,7 @@ set -uo pipefail
 
 # _validate_key <raw> — echo the canonical uppercased key, or empty. Fully
 # anchored so malformed multi-dash / trailing junk is rejected (mirrors
-# arm-resume.sh, HIMMEL-540). errexit-safe: the `if` is the last command and
+# arm-resume.sh). errexit-safe: the `if` is the last command and
 # returns rc 0 whether or not it matched.
 _validate_key() {
     local k
@@ -135,7 +135,7 @@ echo
 echo "Copy the line above and run it — Claude Code's built-in /rename sets the"
 echo "session display name shown in the /resume picker and on the prompt bar."
 echo "To also set your terminal tab title, relaunch with the name baked in:"
-# launch-profile-ok: printed hint for the operator to run themselves, not a launch from this script (HIMMEL-4013)
+# launch-profile-ok: printed hint for the operator to run themselves, not a launch from this script
 echo "  claude -n \"$final\""
 
 # Degraded: a name half only (no ticket part) → WARN + rc 3.

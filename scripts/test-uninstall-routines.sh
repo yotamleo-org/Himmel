@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-uninstall-routines.sh -- HIMMEL-3332 S8 RED tests: with a provenance
+# test-uninstall-routines.sh -- RED tests: with a provenance
 # ledger present, scripts/uninstall.sh removes the routines himmel brought
 # (cron/at `job register` rows at [3/8], the telegram-bridge systemd unit +
 # linger at [1/8], recorded project settings targets other than $PWD at [6/8])
@@ -32,7 +32,7 @@ real_ledger_state() {
 REAL_LEDGER_BEFORE=$(real_ledger_state)
 
 TMPDIR="$(cd -P -- "${TMPDIR:-/tmp}" && pwd)" || exit 1; export TMPDIR
-# HIMMEL-3903: an empty /tmp/.git kept appearing on this host. Record which of these
+# an empty /tmp/.git kept appearing on this host. Record which of these
 # already exist so the end-of-suite guard fails if THIS suite creates one.
 GIT_LEAK_PRE=""; for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do [ -e "$_p" ] && GIT_LEAK_PRE="$GIT_LEAK_PRE $_p"; done
 SUITE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/uninstall-routines.XXXXXX")" || { echo "FAIL: mktemp" >&2; exit 1; }
@@ -428,7 +428,7 @@ has "E third-party-caches named, not a bare dash" "(third-party-caches)" "$kept_
 # ---- tripwire ---------------------------------------------------------------
 check "real ledger untouched" "$(real_ledger_state)" "$REAL_LEDGER_BEFORE"
 
-# HIMMEL-3903: this suite must not leave a .git in /tmp or $TMPDIR.
+# this suite must not leave a .git in /tmp or $TMPDIR.
 for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do
   case " $GIT_LEAK_PRE " in *" $_p "*) continue ;; esac
   [ -e "$_p" ] && check "suite created $_p" present absent

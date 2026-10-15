@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4019: catalog availability vs an independent station observation.
+# catalog availability vs an independent station observation.
 # Contract: fail on absence, undocumented installs, stale prose, malformed input;
 # no existing suite compares this boundary. JSON/cache arguments serve real
 # station checks too; no test-only production seam or live operator state.

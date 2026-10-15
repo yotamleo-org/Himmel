@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# probe-check-ci-forks.sh -- HIMMEL-2169 gh-fork profiling probe for
+# probe-check-ci-forks.sh -- gh-fork profiling probe for
 # scripts/test-check-ci.sh.
-# Renamed off the test-*.sh pattern (HIMMEL-3580): it is a measurement tool
+# Renamed off the test-*.sh pattern: it is a measurement tool
 # that always exits 0, not an assertion suite, so it must not be collected by
 # run-shell-tests.sh's `find ... -name 'test-*.sh'` discovery.
 #

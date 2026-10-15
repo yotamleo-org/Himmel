@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-himmel-update-drift.sh — himmel-update's installer-drift pass (HIMMEL-4246).
+# test-himmel-update-drift.sh — himmel-update's installer-drift pass.
 # `himmel-update.sh --only drift` runs `himmelctl status --json`, converges the
 # allow-listed items (pre-commit-hooks) via `himmelctl ensure --items <id> --yes`,
 # and prints everything it cannot converge (credentials, leaked url.*.insteadOf,

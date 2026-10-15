@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Platform guard: bash suite for the shell uninstaller and its stateful CLI
 # stub; no .ps1 twin because this tests the bash implementation directly.
-# WHY (HIMMEL-2694/2754): installed scopes, safe marketplace removal, and
+# WHY: installed scopes, safe marketplace removal, and
 # repair must be measured against a stateful CLI, never the operator's CLI.
 set -uo pipefail
 
@@ -74,7 +74,7 @@ case "$*" in
     'plugin marketplace remove '* )
         [ "$#" -eq 6 ] && [ "$5" = '--scope' ] || exit 2
         if grep -qxF -- "$4" <<< "${STUB_FAIL_IDS:-}"; then exit 1; fi
-        # WHY (HIMMEL-3378): a row may carry a scope; only that scope's row is
+        # WHY: a row may carry a scope; only that scope's row is
         # removed. Rows without a scope keep the older remove-by-name behaviour.
         jq --arg name "$4" --arg scope "$6" '[.[] | select(.name != $name or (.scope // $scope) != $scope)]' \
             "$STUB_MARKETPLACES_JSON" > "$STUB_MARKETPLACES_JSON.next"
@@ -117,7 +117,7 @@ run_case() {
     calls=$(cat "$CLAUDE_CALL_LOG")
 }
 
-# P1 — RED HIMMEL-2694: template-at-user ignored the installed scope.
+# P1 — RED: template-at-user ignored the installed scope.
 reset_case
 jq -n --arg p "$PWD" '["handover@himmel", "notes@obsidian-skills", "review@claude-plugins-official"]
     | map({id:., scope:"project", projectPath:$p})' > "$STUB_PLUGINS_JSON"
@@ -129,7 +129,7 @@ for spec in handover@himmel notes@obsidian-skills review@claude-plugins-official
 done
 assert_has "P1 marketplace also tries install-profile scope (HIMMEL-2796)" 'plugin marketplace remove himmel --scope user' "$calls"
 
-# WHY (HIMMEL-2694): local installs belong to their physical project too.
+# WHY: local installs belong to their physical project too.
 reset_case
 mkdir -p "$TMP/local-other"
 jq -n --arg here "$PWD" --arg other "$TMP/local-other" '[
@@ -144,7 +144,7 @@ else
     echo 'FAIL - P1b: local selection crossed projects or missed current project'; FAILED=$((FAILED + 1))
 fi
 
-# P2 — RED HIMMEL-2694: never-installed template entries are notes, not calls.
+# P2 — RED: never-installed template entries are notes, not calls.
 reset_case
 printf '[{"id":"handover@himmel","scope":"user"},{"id":"ops@himmel","scope":"user"}]\n' > "$STUB_PLUGINS_JSON"
 run_case
@@ -153,7 +153,7 @@ assert_rc "P2 exactly two uninstalls" 2 "$(grep -c '^plugin uninstall ' "$CLAUDE
 assert_rc "P2 four absent-template notes" 4 "$(printf '%s\n' "$out" | grep -c 'note: .* — not installed, nothing to remove')"
 assert_has "P2 roll-up" '2 installed plugin(s) targeted; 4 template entry(ies) not installed' "$out"
 
-# P3 — RED HIMMEL-2754: a failed plugin must retain its marketplace.
+# P3 — RED: a failed plugin must retain its marketplace.
 reset_case
 printf '[{"id":"handover@himmel","scope":"user"},{"id":"ops@himmel","scope":"user"}]\n' > "$STUB_PLUGINS_JSON"
 STUB_FAIL_IDS='ops@himmel'
@@ -163,7 +163,7 @@ assert_has "P3 dependent marketplace blocked" 'SKIP: marketplace himmel' "$out"
 assert_not_has "P3 marketplace not stranded" 'plugin marketplace remove himmel' "$calls"
 assert_has "P3 independent marketplace removed" 'plugin marketplace remove obsidian-skills' "$calls"
 
-# P4 — RED HIMMEL-2754: re-add before uninstall; remove the transient on EXIT.
+# P4 — RED: re-add before uninstall; remove the transient on EXIT.
 reset_case
 printf '[{"id":"handover@himmel","scope":"user"}]\n' > "$STUB_PLUGINS_JSON"
 printf '[]\n' > "$STUB_MARKETPLACES_JSON"
@@ -179,7 +179,7 @@ fi
 assert_has "P4 transient removed" 'plugin marketplace remove himmel --scope user' "$calls"
 assert_has "P4 cleanup reported" 'repair: removed transient marketplace himmel' "$out"
 
-# WHY (HIMMEL-2754): cleanup residue must propagate to the caller.
+# WHY: cleanup residue must propagate to the caller.
 reset_case
 printf '[{"id":"handover@himmel","scope":"user"}]\n' > "$STUB_PLUGINS_JSON"
 printf '[]\n' > "$STUB_MARKETPLACES_JSON"
@@ -191,7 +191,7 @@ else
     echo 'FAIL - P4b: transient cleanup failure did not exit nonzero and warn'; FAILED=$((FAILED + 1))
 fi
 
-# P5 — RED HIMMEL-2754: degraded enumeration blocks even when all uninstalls succeed.
+# P5 — RED: degraded enumeration blocks even when all uninstalls succeed.
 reset_case
 printf 'DEGRADED\n' > "$STUB_PLUGINS_JSON"
 run_case
@@ -204,7 +204,7 @@ done
 assert_not_has "P5 no marketplace removals" 'plugin marketplace remove' "$calls"
 assert_has "P5 skip names enumeration failure" 'SKIP: marketplace himmel — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins (HIMMEL-2754)' "$out"
 
-# P5b — RED HIMMEL-2754: degraded enumeration plus a failed plugin never strands.
+# P5b — RED: degraded enumeration plus a failed plugin never strands.
 reset_case
 printf 'DEGRADED\n' > "$STUB_PLUGINS_JSON"
 STUB_FAIL_IDS='handover@himmel'
@@ -213,7 +213,7 @@ assert_rc "P5b failed degraded run exits 1" 1 "$rc"
 assert_not_has "P5b no marketplace removals" 'plugin marketplace remove' "$calls"
 assert_has "P5b skip names the cause" 'SKIP: marketplace himmel — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins (HIMMEL-2754)' "$out"
 
-# WHY (HIMMEL-2754): a separate process has no successful plugin phase evidence.
+# WHY: a separate process has no successful plugin phase evidence.
 reset_case
 printf 'DEGRADED\n' > "$STUB_PLUGINS_JSON"
 run_case --marketplaces-only
@@ -225,7 +225,7 @@ else
     echo 'FAIL - P5c: degraded marketplaces-only removed without plugin-phase evidence'; FAILED=$((FAILED + 1))
 fi
 
-# P6 — RED HIMMEL-2754: phases can be split around settings/hooks teardown.
+# P6 — RED: phases can be split around settings/hooks teardown.
 reset_case
 printf '[{"id":"handover@himmel","scope":"user"}]\n' > "$STUB_PLUGINS_JSON"
 run_case --plugins-only
@@ -248,7 +248,7 @@ assert_has "P7 dry-run prints commands" 'DRY:' "$out"
 assert_not_has "P7 no uninstall mutation" 'plugin uninstall' "$calls"
 assert_not_has "P7 no marketplace mutation" 'plugin marketplace remove' "$calls"
 
-# WHY (HIMMEL-2754): previews discount selected plugins, including split phases.
+# WHY: previews discount selected plugins, including split phases.
 for preview_case in P7b P7c; do
     reset_case
     printf '[{"id":"handover@himmel","scope":"user"}]\n' > "$STUB_PLUGINS_JSON"
@@ -296,7 +296,7 @@ assert_has "P7e installed dependency blocks preview" 'SKIP: marketplace himmel �
 assert_not_has "P7e dependent marketplace removal not previewed" 'DRY: claude plugin marketplace remove' "$out"
 assert_not_has "P7e preview makes no marketplace removals" 'plugin marketplace remove' "$calls"
 
-# WHY (HIMMEL-2694): canonical project filtering and de-duplication must not
+# WHY: canonical project filtering and de-duplication must not
 # remove another project's copy or an unrelated marketplace's plugin.
 reset_case
 mkdir -p "$TMP/other-project"
@@ -317,7 +317,7 @@ assert_not_has "other project untouched" 'plugin uninstall ops@himmel' "$calls"
 assert_not_has "missing project untouched" 'plugin uninstall extra@himmel' "$calls"
 assert_not_has "unowned plugin untouched" 'plugin uninstall foreign@unowned' "$calls"
 
-# WHY (HIMMEL-2754): failed plugins still require transient cleanup even in
+# WHY: failed plugins still require transient cleanup even in
 # --plugins-only; EXIT must retain the original failure code.
 reset_case
 jq -n --arg p "$(pwd -P)" '[{id:"handover@himmel",scope:"project",projectPath:$p}]' > "$STUB_PLUGINS_JSON"
@@ -368,7 +368,7 @@ assert_has "P9 foreign plugin noted" "  note: personal@claude-plugins-official �
 # P10 — retaining the user's marketplace is successful teardown, not a block.
 reset_case
 printf '[{"id":"personal@claude-plugins-official","scope":"user"}]\n' > "$STUB_PLUGINS_JSON"
-# WHY (HIMMEL-2754): even an erroneous uninstall must leave the foreign row
+# WHY: even an erroneous uninstall must leave the foreign row
 # present so this independently exposes the old marketplace-blocking branch.
 STUB_FAIL_IDS='personal@claude-plugins-official'
 run_case
@@ -406,7 +406,7 @@ assert_rc "P12 both scopes exit 0" 0 "$rc"
 assert_rc "P12 marketplace removed once at project scope" 1 "$(grep -xcF 'plugin marketplace remove m1 --scope project' "$CLAUDE_CALL_LOG")"
 assert_rc "P12 marketplace removed once at user scope" 1 "$(grep -xcF 'plugin marketplace remove m1 --scope user' "$CLAUDE_CALL_LOG")"
 
-# L — HIMMEL-3332 S6: --ledger-owned FILE replaces template-derived ownership
+# L: --ledger-owned FILE replaces template-derived ownership
 # with the provenance ledger's own rows.
 TEMPLATE="$TMP/template.json"
 run_case_ledger() {
@@ -471,7 +471,7 @@ run_case
 assert_rc "L6 no-flag behaviour unchanged (rc)" 0 "$rc"
 assert_has "L6 no-flag behaviour unchanged (uninstalls)" 'plugin uninstall handover@himmel --scope user' "$calls"
 
-# L7 — RED HIMMEL-3378: a project-scope ledger row must not authorise removing
+# L7 — RED: a project-scope ledger row must not authorise removing
 # the operator's pre-existing user-scope copy of the same plugin id.
 LEDGER7="$TMP/ledger7.tsv"
 printf 'plugin\thimmel-ops@himmel\tproject\nmarketplace\thimmel\tproject\n' > "$LEDGER7"
@@ -501,7 +501,7 @@ run_case_ledger "$LEDGER7" --plugins-only
 assert_has "L9 degraded list falls back to the recorded scope" 'plugin uninstall himmel-ops@himmel --scope project' "$calls"
 assert_not_has "L9 degraded list never uses the fallback scope" 'plugin uninstall himmel-ops@himmel --scope user' "$calls"
 
-# L10 — RED HIMMEL-3378: a marketplace recorded at project scope is removed
+# L10 — RED: a marketplace recorded at project scope is removed
 # there only; the operator's pre-existing user-scope registration survives.
 LEDGER10="$TMP/ledger10.tsv"
 printf 'marketplace\thimmel\tproject\n' > "$LEDGER10"

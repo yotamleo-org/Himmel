@@ -102,7 +102,7 @@ t "seed on first launch" 0
 [ -f "$FAKEHOME/.claude-routed/plugins/installed_plugins.json" ] || { echo "FAIL: plugin registry not seeded"; FAILS=$((FAILS+1)); }
 [ ! -f "$FAKEHOME/.claude-routed/.credentials.json" ] || { echo "FAIL: credentials copied"; FAILS=$((FAILS+1)); }
 
-# --- T4b (HIMMEL-3334 F2): the un-swept claude-hud.json path (new, alongside
+# --- T4b: the un-swept claude-hud.json path (new, alongside
 # the legacy plugins/claude-hud/config.json) is seeded, staleness-tracked and
 # mirror-deleted too — a lane must not lose the HUD after an operator's box
 # has migrated off the legacy path.
@@ -137,7 +137,7 @@ t "reseed" 0 --reseed
 grep -q updated "$FAKEHOME/.claude-routed/CLAUDE.md" || { echo "FAIL: reseed did not refresh"; FAILS=$((FAILS+1)); }
 [ ! -f "$FAKEHOME/.claude-routed/history.jsonl" ] || { echo "FAIL: denied file seeded"; FAILS=$((FAILS+1)); }
 
-# --- T7b: stale seed auto-refreshes on plain launch (HIMMEL-819) — source
+# --- T7b: stale seed auto-refreshes on plain launch — source
 # settings.json newer than the sentinel triggers a reseed without --reseed.
 touch -t 202001010000 "$FAKEHOME/.claude-routed/.seeded"
 printf '{"env":{"HIMMEL_INITIATIVE":"1"},"marker":"lean-profile-v2"}' > "$FAKEHOME/.claude/settings.json"
@@ -145,7 +145,7 @@ t "stale seed auto-refreshes" 0
 grep -q "lean-profile-v2" "$FAKEHOME/.claude-routed/settings.json" || { echo "FAIL: stale seed not refreshed on plain launch"; FAILS=$((FAILS+1)); }
 
 # --- T7c: fresh sentinel -> plain launch does NOT reseed (no churn) — sources
-# older than the sentinel leave the config dir untouched. (HIMMEL-828 Part B: the
+# older than the sentinel leave the config dir untouched. (the
 # subtree sources are aged too, so the widened check keeps its no-churn guarantee.)
 printf '{"local":"tamper-survives"}' > "$FAKEHOME/.claude-routed/settings.json"
 touch -t 202001010000 "$FAKEHOME/.claude/settings.json" "$FAKEHOME/.claude/plugins/installed_plugins.json" \
@@ -198,8 +198,8 @@ setup; KEY="omni-test-123"; touch "$WORK/.salus"
 t "salus refuses" 3
 t "salus refuses despite --force" 3 --force
 
-# --- T8b: .salus-profile marker ALONE (no .salus) -> refuse exit 3 (HIMMEL-2173
-# part 2 — a defense for salus deployments that predate part 1 shipping .salus).
+# --- T8b: .salus-profile marker ALONE (no .salus) -> refuse exit 3
+# (part 2 — a defense for salus deployments that predate part 1 shipping .salus).
 setup; KEY="omni-test-123"; touch "$WORK/.salus-profile"
 t "salus-profile-only refuses" 3
 t "salus-profile-only refuses despite --force" 3 --force
@@ -310,7 +310,7 @@ mkdir -p "$FAKEHOME/.config/claude-glm"
 printf '/some/unrelated/root\r\n\r\n' > "$FAKEHOME/.config/claude-glm/egress-denylist"
 t "blank CRLF guard line does not over-refuse clean cwd" 0
 
-# --- T21 (HIMMEL-828 Part B): a half-seeded tree self-heals on a plain launch — the
+# --- T21: a half-seeded tree self-heals on a plain launch — the
 # sentinel is present but a copied subtree is missing (interrupted reseed / external
 # removal), which the pre-828 settings+manifest check missed. Fixture: seed with a
 # commands subtree, delete the DEST subtree while leaving a FRESH sentinel + old
@@ -326,7 +326,7 @@ touch "$FAKEHOME/.claude-routed/.seeded"     # fresh sentinel
 t "half-seeded tree triggers reseed on plain launch" 0
 [ -f "$FAKEHOME/.claude-routed/commands/keep.md" ] || { echo "FAIL: missing subtree NOT restored (half-seed not detected)"; FAILS=$((FAILS+1)); }
 
-# --- T22 (HIMMEL-828 Part B): a top-level add inside a source subtree (source dir
+# --- T22: a top-level add inside a source subtree (source dir
 # mtime newer than the sentinel) auto-reseeds without --reseed — pre-828 this drift
 # needed an explicit --reseed. Fixture: seed, age settings so only the subtree can be
 # the trigger, set a fresh-ish sentinel, add a new command (bumping the source commands
@@ -341,7 +341,7 @@ printf 'b' > "$FAKEHOME/.claude/commands/two.md"   # new source command bumps th
 t "source subtree drift auto-reseeds on plain launch" 0
 [ -f "$FAKEHOME/.claude-routed/commands/two.md" ] || { echo "FAIL: new source command NOT mirrored (subtree drift not detected)"; FAILS=$((FAILS+1)); }
 
-# --- T23 (HIMMEL-828, codex-adv [high]): --reseed CLEAN re-mirrors seeded subtrees —
+# --- T23: --reseed CLEAN re-mirrors seeded subtrees —
 # a file left stale in the dest (deleted from the source) is DROPPED, and cp -R does
 # not nest a second copy (commands/commands on BSD cp). Twin of glm T22; covers the
 # routed clean-remirror fix (routed previously left source-deleted files active).
@@ -356,7 +356,7 @@ t "reseed re-mirrors subtree" 0 --reseed
 [ ! -d "$FAKEHOME/.claude-routed/commands/commands" ] || { echo "FAIL: nested commands/commands after reseed"; FAILS=$((FAILS+1)); }
 [ -f "$FAKEHOME/.claude-routed/commands/keep.md" ] || { echo "FAIL: kept file lost after reseed"; FAILS=$((FAILS+1)); }
 
-# --- T24 (HIMMEL-828, codex-adv [high]): --reseed CLEAN re-mirrors plugins/marketplaces
+# --- T24: --reseed CLEAN re-mirrors plugins/marketplaces
 # too — a SEPARATE statement from the commands/skills/hooks/agents loop, so T23 does not
 # cover it. Twin of glm T23.
 setup; KEY="omni-test-123"
@@ -370,7 +370,7 @@ t "reseed re-mirrors marketplaces" 0 --reseed
 [ ! -d "$FAKEHOME/.claude-routed/plugins/marketplaces/marketplaces" ] || { echo "FAIL: nested marketplaces/marketplaces after reseed"; FAILS=$((FAILS+1)); }
 [ -f "$FAKEHOME/.claude-routed/plugins/marketplaces/keep.json" ] || { echo "FAIL: kept marketplaces file lost after reseed"; FAILS=$((FAILS+1)); }
 
-# --- T25 (HIMMEL-828/819, codex-adv [high]): DELETION MIRRORING — a deleted SOURCE
+# --- T25: DELETION MIRRORING — a deleted SOURCE
 # subtree is removed from the lane on a plain launch (a removed command/hook must not
 # linger steering the routed lane), symmetric with settings/manifest deletion mirroring,
 # AND it does NOT churn forever. Twin of glm T26. Fixture: seed with a commands subtree,
@@ -388,7 +388,7 @@ touch "$FAKEHOME/.claude-routed/.seeded"
 t "no further churn after deletion mirrored" 0
 grep -q "tamper-stable" "$FAKEHOME/.claude-routed/settings.json" || { echo "FAIL: churns after deletion mirrored (tamper lost)"; FAILS=$((FAILS+1)); }
 
-# --- T26 (HIMMEL-828/819, codex-adv [high]): LEAF-FILE deletion mirroring — a deleted
+# --- T26: LEAF-FILE deletion mirroring — a deleted
 # source CLAUDE.md (which literally steers the lane) is removed from the lane on a plain
 # launch, not just subtrees/manifests. Twin of glm T27.
 setup; KEY="omni-test-123"
@@ -399,7 +399,7 @@ rm -f "$FAKEHOME/.claude/CLAUDE.md"   # SOURCE deleted
 t "deleted source CLAUDE.md triggers a mirror reseed" 0
 [ ! -f "$FAKEHOME/.claude-routed/CLAUDE.md" ] || { echo "FAIL: stale CLAUDE.md survived source deletion"; FAILS=$((FAILS+1)); }
 
-# --- T27 (HIMMEL-830): a FRESH held seed lock makes a launch that needs seeding
+# --- T27: a FRESH held seed lock makes a launch that needs seeding
 # time out with exit 4, a message naming the lock path, and the held lock LEFT
 # intact (we must not delete a fresh holder's lock on timeout). Lock is a SIBLING
 # of the config dir. TIMEOUT=1 keeps the deterministic wait ~1s.
@@ -411,7 +411,7 @@ unset CLAUDE_LANE_SEED_LOCK_TIMEOUT
 grep -qF ".claude-routed.seed-lock" "$WORK/out.txt" || { echo "FAIL: timeout message does not name the lock path"; FAILS=$((FAILS+1)); }
 [ -d "$FAKEHOME/.claude-routed.seed-lock" ] || { echo "FAIL: fresh held lock removed on timeout"; FAILS=$((FAILS+1)); }
 
-# --- T28 (HIMMEL-830): a STALE held lock (mtime far in the past) is stolen, the
+# --- T28: a STALE held lock (mtime far in the past) is stolen, the
 # seed proceeds, the launch exits 0, and the lock is released (no residue).
 setup; KEY="omni-test-123"
 mkdir -p "$FAKEHOME/.claude-routed.seed-lock"
@@ -420,7 +420,7 @@ t "stale seed lock is stolen and seed proceeds" 0
 [ -f "$FAKEHOME/.claude-routed/.seeded" ] || { echo "FAIL: seed did not complete after stealing stale lock"; FAILS=$((FAILS+1)); }
 [ ! -d "$FAKEHOME/.claude-routed.seed-lock" ] || { echo "FAIL: stale lock not released after seed"; FAILS=$((FAILS+1)); }
 
-# --- T29 (HIMMEL-830): the double-checked recheck UNDER the lock skips a redundant
+# --- T29: the double-checked recheck UNDER the lock skips a redundant
 # reseed when a concurrent winner already seeded while we waited. Deterministic by
 # construction (no timing reliance): a background holder writes the sentinel THEN
 # releases the lock, so by the moment our launcher can acquire, the recheck condition
@@ -440,7 +440,7 @@ wait "$winpid" 2>/dev/null
 [ -f "$FAKEHOME/.claude-routed/commands/canary.md" ] || { echo "FAIL: recheck did not skip -- canary dropped by a redundant reseed"; FAILS=$((FAILS+1)); }
 [ ! -d "$FAKEHOME/.claude-routed.seed-lock" ] || { echo "FAIL: lock residue after recheck-skip launch"; FAILS=$((FAILS+1)); }
 
-# --- T30 (HIMMEL-830, best-effort concurrency smoke): two simultaneous first-launch
+# --- T30: two simultaneous first-launch
 # seeders of the same lane both exit 0, leave a consistent config (sentinel present),
 # and leave no lock residue. The lock serializes them; the loser's recheck skips.
 setup; KEY="omni-test-123"
@@ -458,7 +458,7 @@ wait "$cpid"; arc=$?
 [ -f "$FAKEHOME/.claude-routed/.seeded" ] || { echo "FAIL: concurrent seed left no sentinel"; FAILS=$((FAILS+1)); }
 [ ! -d "$FAKEHOME/.claude-routed.seed-lock" ] || { echo "FAIL: concurrent launch left lock residue"; FAILS=$((FAILS+1)); }
 
-# --- T31 (HIMMEL-830 CR r1): a lock that cannot be released (a file appeared inside
+# --- T31: a lock that cannot be released (a file appeared inside
 # it while the seeder held it) is NON-FATAL -- the launch still exits 0 and a WARNING
 # names the lock; the non-empty lock is LEFT for the stale steal to self-heal (its
 # contents are evidence, never vaporized). Honest construction: a slow node shim (the

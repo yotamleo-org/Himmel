@@ -33,7 +33,7 @@ $ErrorActionPreference = "Stop"
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ScriptDir = $PSScriptRoot
 $Preflight = Join-Path $ScriptDir "preflight-adopter.ps1"
@@ -206,7 +206,7 @@ try {
   if ($out7 -match "0 warnings") { Pass "-Strict clean env reports 0 warnings" } else { Fail "-Strict clean env missing '0 warnings' (got: $out7)" }
 
   # ── 8. structural: adopt.ps1's Require-Tools reuses the shared lib ─────────
-  # (no duplicated logic, per the HIMMEL-842 spec) instead of re-implementing
+  #  (no duplicated logic, per the spec) instead of re-implementing
   # the check/warn-text logic inline.
   $adoptSrc = Get-Content -Raw -LiteralPath $AdoptPs1
   if ($adoptSrc -notmatch [regex]::Escape('lib/preflight-adopter.ps1') -and $adoptSrc -notmatch [regex]::Escape('lib\preflight-adopter.ps1')) {

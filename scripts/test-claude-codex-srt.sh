@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# Hermetic tests for the claude-codex srt wrap (HIMMEL-5397). A fake `srt` stands
+# Hermetic tests for the claude-codex srt wrap. A fake `srt` stands
 # in for sandbox-runtime 0.0.79: it refuses an empty or missing --settings file
 # like the real one, runs the command it is handed as ONE shell string, and sets
 # the in-box environment srt sets (SANDBOX_RUNTIME, TMPDIR, the proxy variables
@@ -175,7 +175,7 @@ if run 3 'HANDOVER_DIR' CLAUDE_CODEX_SRT_PROFILE=impl CLAUDE_CODEX_SRT_SCRATCH="
 # 8. the scratchpad is writable by the box, so nothing the launcher trusts lives there as a plain path
 VICTIM="$TMP/victim"; mkdir -p "$VICTIM"
 # a planted scratchpad link is never the HOME: the HOME srt mounts is not under the scratchpad at all
-# (check-then-use race, j2583b): not under any writable root, and the settings' fourth writable root is it
+# not under any writable root, and the settings' fourth writable root is it
 ln -s "$VICTIM" "$SCRATCH/srt-home"
 if run 0 - "${SRT_ENV[@]}" -- && h_path="$(sed -n 6p "$TMP/argv")" && [ -n "$h_path" ] \
     && case "$h_path" in "$SCRATCH"/*|"$WT"/*|"$HANDOVER"/*) false ;; *) true ;; esac \

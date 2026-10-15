@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4084: marker classification must beat an ancestor handover root and
+# marker classification must beat an ancestor handover root and
 # caller CWD overrides. Execute both launchers and their actual PS egress JS.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)" || exit 2

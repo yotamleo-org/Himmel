@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# preflight-adopter.sh — standalone check-only adopter preflight (HIMMEL-842
-# fix-batch). An adopter can run this BEFORE committing to adopt.sh to surface
+# preflight-adopter.sh — standalone check-only adopter preflight
+# An adopter can run this BEFORE committing to adopt.sh to surface
 # the common fresh-machine gaps (uv/pipx, npm-less distro node, unbuilt
 # scripts/jira/dist) in one pass, instead of discovering them one `set -e`
 # abort at a time across three downstream scripts.
@@ -18,7 +18,7 @@
 # Usage:
 #   bash scripts/preflight-adopter.sh [--strict] [--no-vault]
 #
-#   --no-vault   skip the uv/pipx check (HIMMEL-4435): it exists for the luna
+#   --no-vault skip the uv/pipx check: it exists for the luna
 #                vault's pre-commit install, so a vault=none profile has no use
 #                for it.
 set -euo pipefail

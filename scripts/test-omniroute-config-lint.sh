@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Hermetic tests for scripts/omniroute-config-lint.sh (HIMMEL-654 WS2, child
-# HIMMEL-666). bash 3.2-safe. Fixtures are generated from one compliant BASE by
+# Hermetic tests for scripts/omniroute-config-lint.sh.
+# bash 3.2-safe. Fixtures are generated from one compliant BASE by
 # applying a tiny JS patch via node (node is the lint's own runtime dependency —
 # same precedent as scripts/test-claude-glm.sh). Every case writes its config to
 # a mktemp sandbox; nothing outside the sandbox is touched.
@@ -221,7 +221,7 @@ BASE="$BASE_JSON" node -e 'const fs=require("fs"); const d=process.env.BASE.repl
 t "duplicate-key config rejected (exit 1, both twins)" 1 "$DUP_JSON"
 have 'FAIL: duplicate JSON key "autoRoutingEnabled"'
 
-# --- T22 (CR F6, #836 — CR round 2): NESTED duplicate key. The engine keys this
+# --- T22: NESTED duplicate key. The engine keys this
 # lint exists to catch live in nested objects (rtkConfig.enabled etc.), and the
 # scanner's per-object stack is what distinguishes a real nested dup from the
 # many legitimate same-name "enabled" keys across DIFFERENT objects (which T1's
@@ -235,7 +235,7 @@ BASE="$BASE_JSON" node -e 'const fs=require("fs"); const d=process.env.BASE.repl
 t "nested duplicate-key config rejected (exit 1, both twins)" 1 "$NESTED_DUP_JSON"
 have 'FAIL: duplicate JSON key "enabled"'
 
-# --- T23 (CR F6, #836 — CR round 2): CASE-VARIANT sibling keys — a DOCUMENTED
+# --- T23: CASE-VARIANT sibling keys — a DOCUMENTED
 # ENGINE DIVERGENCE, deliberately pinned per twin (not parity). JSON keys are
 # case-sensitive: node's JSON.parse accepts {"enabled":…,"Enabled":…} as two
 # distinct keys → the scan (case-sensitive) sees no dup → this twin PASSes exit 0.

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# HIMMEL-3702: the luna template's shellcheck pre-commit hook must exclude
+# the luna template's shellcheck pre-commit hook must exclude
 # handovers/**/verdicts/ (a console judge's probe/cases scripts, evidence its
 # verdict rests on — not shipped code) the same way it already excludes
 # handovers/**/specs/(console-kit-*|reports/*-artifacts)/, while a normal
-# scripts/*.sh path is still linted. HIMMEL-3851 adds handovers/**/logs/.
+# scripts/*.sh path is still linted. An earlier change adds handovers/**/logs/.
 #
 # Extracts the shellcheck hook's `exclude` regex FROM the template's own
 # .pre-commit-config.yaml (never hand-copied) and runs it through
@@ -69,10 +69,10 @@ else:
     print(f"FAIL - {VERDICT_PATH} is NOT excluded from shellcheck (kept={kept})")
     fails += 1
 
-# HIMMEL-3851: legs and consoles write scratch sheets and launch artefacts under
+# legs and consoles write scratch sheets and launch artefacts under
 # handovers/**/logs/; one failing scratch .sh there stalled every vault commit.
 LOGS_PATH = "handovers/x/logs/scratch.sh"
-# HIMMEL-4471 widened the exclude to all of handovers/; the boundary is now the
+# widened the exclude to all of handovers/; the boundary is now the
 # leading path segment, so a handovers/ dir nested elsewhere is still linted.
 NOT_LOGS_PATH = "notes/handovers/scratch.sh"
 

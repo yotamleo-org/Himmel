@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4076: real read-only helper, hermetic account/key endpoints.
+# real read-only helper, hermetic account/key endpoints.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 W="$(mktemp -d "${TMPDIR:-/tmp}/test-openrouter-cost.XXXXXX")" || exit 1

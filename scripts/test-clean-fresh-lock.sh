@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic test for HIMMEL-3297 option B: clean-garden.sh's fleet-wide prune
+# Hermetic test for option B: clean-garden.sh's fleet-wide prune
 # skips a merged worktree whose leg still holds a FRESH
 # scripts/handover/queue-lock.sh lock on its own handover doc (resume_cwd:
 # frontmatter naming that worktree). Temp git repo + real worktrees + a fake
@@ -72,7 +72,7 @@ cat > "$STUB_DIR/gh" <<'STUB'
 #!/usr/bin/env bash
 # pipefail-ok: this stub has its own shebang and never sets pipefail itself,
 # so each `if echo … | grep -q …` below checks only grep's exit status (the
-# pipeline's last command) — HIMMEL-1430 does not reach a shell that never
+# pipeline's last command) — an earlier change does not reach a shell that never
 # opted into pipefail.
 args="$*"
 if grep -q "auth status" <<<"$args"; then exit 0; fi

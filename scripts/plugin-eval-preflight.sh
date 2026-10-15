@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Preflight for `/plugin-eval` (HIMMEL-2931): bank check + version floor.
+# Preflight for `/plugin-eval`: bank check + version floor.
 # Never invokes `claude plugin eval` itself — the command gates that
 # invocation on this script's exit code. Exit 0 prints PROCEED on stdout;
 # exit 1 prints the refusal reason on stderr.

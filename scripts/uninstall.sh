@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uninstall.sh — offboard the himmel operator surface (HIMMEL-227).
+# uninstall.sh — offboard the himmel operator surface.
 # Symmetric teardown of what setup.sh + install-plugins.sh onboard:
 #
 #   [1/8] stop the telegram bun bridge      (bun supervisor.ts --kill)
@@ -9,16 +9,16 @@
 #         logon task on Windows)
 #   [4/8] uninstall installed Claude plugins at their own scope
 #         (machine-setup/uninstall-plugins.sh --plugins-only; the install
-#         profile supplies only the fallback scope — HIMMEL-2694)
+#         profile supplies only the fallback scope)
 #   [5/8] uninstall git hooks (pre-commit/pre-push/commit-msg)
 #   [6/8] unwire user + current-project settings.json (statusLine, env.HIMMEL_REPO,
 #         env.LUNA_VAULT_PATH, env.HANDOVER_DIR, the UNIVERSAL hooks — what
 #         setup.sh/adopt wired; himmel's own project settings are kept)
 #   [7/8] remove Claude marketplaces (only when no installed plugins remain)
 #   [8/8] remove the himmelctl cache + state dir ~/.claude/himmel
-#         (install-profile.json, state.json — HIMMEL-2459)
+#          (install-profile.json, state.json)
 #
-# Two removal choices, never conflated (HIMMEL-3058):
+# Two removal choices, never conflated:
 #   default          himmel's OWN code — plugins, git hooks, settings.json
 #                    wiring, scheduled jobs, marketplaces, the himmelctl cache.
 #                    Operator STATE (telegram pairing + bridge state) is KEPT.
@@ -27,7 +27,7 @@
 # scripts/install/uninstall-manifest.tsv, which THIS script reads (targets,
 # code-vs-state class, printed footprint) — see HIMMEL_UNINSTALL_MANIFEST.
 #
-# Removes ONLY (HIMMEL-2505 — the fixed target set, no discovery/globbing):
+# Removes ONLY (the fixed target set, no discovery/globbing):
 #   $HOME/.claude/channels/telegram (or $TELEGRAM_CHANNEL_DIR)   [state]
 #   $HOME/.claude/handover/bridge   (or $BRIDGE_ROOT)            [state]
 #   $HOME/.claude/himmel            (or $HIMMELCTL_CACHE_DIR)
@@ -38,7 +38,7 @@
 # non-interactive run aborts (rc=2). --dry-run prints every action without
 # executing anything. A WET run (no --dry-run) additionally refuses to run
 # at all against what looks like a live operator $HOME unless
-# HIMMEL_UNINSTALL_REAL_HOME=1 is set (rc=3) — see Env below (HIMMEL-2505,
+# HIMMEL_UNINSTALL_REAL_HOME=1 is set (rc=3) — see Env below (
 # after the 2026-09-03 incident where a mutation-test run swept the
 # operator's real ~/.claude, ~/.ssh, ~/.gitconfig, ~/.codex, ~/.local).
 #
@@ -47,7 +47,7 @@
 #        [--purge-state] [--keep-backups] [--skip-plugins] [--skip-tasks]
 #        [--skip-hooks] [--skip-settings]
 #
-# Provenance ledger (HIMMEL-3332 S6): when scripts/lib/provenance.sh recorded
+# Provenance ledger: when scripts/lib/provenance.sh recorded
 # what install/adopt actually wrote (docs/internals/install-provenance.md),
 # [4/8], [6/8] and [7/8] use it to tell a pre-existing plugin/marketplace/
 # statusLine/env.HANDOVER_DIR/hud-config/adopter-script from one himmel itself
@@ -77,7 +77,7 @@
 #   --skip-hooks           Keep the repo's pre-commit git hooks.
 #   --skip-settings        Keep user- and current-project settings.json wiring
 #                          (statusLine, HIMMEL_REPO, LUNA_VAULT_PATH, hooks).
-#   --source-only          Test seam (HIMMEL-2503): define the functions, then
+#   --source-only          Test seam: define the functions, then
 #                          stop before any action — `. uninstall.sh --source-only`.
 #
 # Env overrides (tests):
@@ -89,51 +89,51 @@
 #   HIMMEL_USER_SETTINGS — default $HOME/.claude/settings.json (the [6/8] target)
 #   HIMMELCTL_CACHE_DIR  — default $HOME/.claude/himmel (the [8/8] target;
 #                          same var himmelctl itself honors)
-#   HIMMEL_UNINSTALL_REPO_ROOT — fixture repo for scripts (HIMMEL-2754;
+#   HIMMEL_UNINSTALL_REPO_ROOT — fixture repo for scripts (
 #                          default is this script's repo), and also for
 #                          HOOKS_REPO_ROOT below (the [5/8] git-hooks target)
 #                          when set — same fixture-repo seam. When unset,
 #                          HOOKS_REPO_ROOT instead defaults to $PWD
-#                          (HIMMEL-2849) — a REAL project-scope run never
+#                          — a REAL project-scope run never
 #                          sets this var, so [5/8] targets $PWD — the
 #                          repo adopt.sh actually installed hooks into, not
 #                          necessarily the checkout providing this script.
 #   HIMMEL_UNINSTALL_REAL_HOME — must be "1" for a WET (non-dry-run) run to
 #                          proceed when $HOME carries a live-operator marker
-#                          (HIMMEL-2505); set by the operator's own shell, or
+#                          set by the operator's own shell, or
 #                          by the wizard's confirmed teardown spawn
 #                          (scripts/himmelctl/bin.js), or by the VM harness.
 #
 # Exit codes: 0 = done (absent items are notes); 2 = aborted
 # (no confirmation), bad flag, or INCOMPLETE — a step that had to run could
-# not, e.g. its tool was unresolvable (HIMMEL-2458), or a removal was refused/
-# failed; ANY failed step halts later steps (HIMMEL-2754); 3 = a wet run was refused
-# because $HOME looks like a live operator profile (HIMMEL-2505).
+# not, e.g. its tool was unresolvable, or a removal was refused/
+# failed; ANY failed step halts later steps; 3 = a wet run was refused
+# because $HOME looks like a live operator profile.
 # "Uninstall complete." is printed only on 0.
 set -uo pipefail
 
-# WHY (HIMMEL-2754): a fixture can test hook detection without inspecting or
+# WHY: a fixture can test hook detection without inspecting or
 # changing the checkout's real hooks, like the settings/cache overrides below.
 REPO_ROOT="${HIMMEL_UNINSTALL_REPO_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-# HIMMEL-2849: [5/8]'s git-hooks target must be the repo adopt.sh actually
+# [5/8]'s git-hooks target must be the repo adopt.sh actually
 # wrote hooks into — the invocation CWD, same target [6/8]'s project-settings
 # unwire already keys off ($PWD, project_is_himmel_checkout below) — never
 # REPO_ROOT, which points at the checkout providing THIS script's own sibling
 # scripts and is only the same repo by coincidence (a dev self-hosted
 # uninstall, or --scope user run from inside the checkout). himmelctl/bin.js
 # never sets HIMMEL_UNINSTALL_REPO_ROOT for a real run, so this defaults to
-# $PWD there; an explicit override (the HIMMEL-2754 fixture seam) still wins,
+# $PWD there; an explicit override still wins,
 # unchanged, for every existing hook-detection test.
 HOOKS_REPO_ROOT="${HIMMEL_UNINSTALL_REPO_ROOT:-$PWD}"
 
-# HIMMEL-3312 S12: CLONE_ROOT started as a REPORTING-ONLY value -- what the
+# S12: CLONE_ROOT started as a REPORTING-ONLY value -- what the
 # himmel-clone tsv row's {REPO_ROOT} token expands to. It equals REPO_ROOT
 # here and stays that way for every script-location use (SCRIPT_DIR, REPO_ROOT
 # itself); it is refined below, once the ledger has loaded, only when
 # REPO_ROOT turns out to be a standalone bundle standing in for a clone that
 # may no longer exist.
-# HIMMEL-3535: under that same bundle condition, CLONE_ROOT (and the
+# under that same bundle condition, CLONE_ROOT (and the
 # IS_STANDALONE_BUNDLE flag set alongside it below) also feeds
 # project_is_himmel_checkout's identity decision -- no new trust boundary,
 # since CLONE_ROOT is itself the ledger's/bundle.json's own record of where
@@ -152,7 +152,7 @@ SKIP_TASKS=0
 SKIP_HOOKS=0
 SKIP_SETTINGS=0
 SOURCE_ONLY=0
-# HIMMEL-3332 S6: the ledger-load block below needs the argv this script was
+# S6: the ledger-load block below needs the argv this script was
 # actually invoked with (prov_read_session_begin records it for audit) — the
 # flag-parsing loop consumes "$@", so it must be snapshotted before that loop.
 _ORIG_ARGV=("$@")
@@ -180,14 +180,14 @@ if [ "$PURGE_STATE" -eq 1 ] && [ "$KEEP_TELEGRAM_STATE" -eq 1 ]; then
   echo "ERROR: --purge-state and --keep-telegram-state contradict each other — pick one." >&2
   exit 2
 fi
-# HIMMEL-3415: an unset or empty $HOME is refused outright, dry-run included —
+# an unset or empty $HOME is refused outright, dry-run included —
 # every {HOME} target would otherwise print (or remove) as a root-relative path.
 if [ -z "${HOME:-}" ]; then
   echo "ERROR: refusing to run — real-home check (HOME-unset): \$HOME is unset or empty" >&2
   exit 3
 fi
 
-# strip_trailing_slash <path> — HIMMEL-2505 gap A.3: a trailing slash makes
+# strip_trailing_slash <path>.3: a trailing slash makes
 # `cd`/`rm -rf` follow a symlinked directory instead of the removal sites
 # treating it as the link itself — strip it right after each removal-target
 # var is assigned, below. Never reduces "/" itself.
@@ -208,7 +208,7 @@ squash_leading_slashes() {
   printf '%s\n' "$_v"
 }
 
-# --- Path manifest (HIMMEL-3058) ---------------------------------------------
+# --- Path manifest ---------------------------------------------
 # scripts/install/uninstall-manifest.tsv is the ONE list of every surface this
 # script acts on. It is READ here — removal targets, the code-vs-state class
 # behind --purge-state, the printed footprint and the post-run read-back all
@@ -297,7 +297,7 @@ m_path() {
   local _i="$1" _var="${M_ENV[$1]}" _p _t
   if [ "$_var" != "-" ] && [ -n "${!_var:-}" ]; then
     _p="${!_var}"
-    # HIMMEL-3312 S12: HIMMEL_PROVENANCE_DIR overrides the LEDGER's directory
+    # S12: HIMMEL_PROVENANCE_DIR overrides the LEDGER's directory
     # (shared with the provenance-ledger row); this row's target is the
     # "uninstall" bundle dir underneath it, so the override needs the same
     # join the default {HOME}/.himmel/uninstall template gets below.
@@ -309,7 +309,7 @@ m_path() {
   if [ "$_p" = "-" ]; then printf '%s\n' "-"; return 0; fi
   _t='{HOME}';            _p="${_p//"$_t"/$HOME}"
   _t='{PWD}';             _p="${_p//"$_t"/$PWD}"
-  # HIMMEL-3312 S12: {REPO_ROOT} (himmel-clone row only) reports the CLONE the
+  # S12: {REPO_ROOT} (himmel-clone row only) reports the CLONE the
   # running script stands in for, not REPO_ROOT (this script's own location,
   # which is a bundle dir once S13 lands) -- see CLONE_ROOT's definition.
   _t='{REPO_ROOT}';       _p="${_p//"$_t"/$CLONE_ROOT}"
@@ -349,7 +349,7 @@ USER_SETTINGS="$(m_path "$_ix_settings")"
 # temp dir must point the other there too, or uninstall would delete the real
 # cache during a test.
 HIMMEL_CACHE_DIR="$(strip_trailing_slash "$(m_path "$_ix_cache")")"
-# HIMMEL-3559: the 3 cadence runner dirs an arm writes into (never removed by
+# the 3 cadence runner dirs an arm writes into (never removed by
 # any cadence script's own disarm, which only clears files inside them) and
 # the observability registry any cadence arm's register call writes.
 CADENCE_PIPELINE_DIR="$(strip_trailing_slash "$(m_path "$_ix_cadence_pipeline")")"
@@ -384,7 +384,7 @@ step_skipped() {
   esac
 }
 
-# WHY (HIMMEL-2694): `claude plugin list --json` is the primary source for
+# WHY: `claude plugin list --json` is the primary source for
 # each installed plugin's scope. The profile supplies only the child's
 # fallback --scope when enumeration is unavailable, and the marketplace-only
 # phase's scope. Missing/unreadable profiles or jq fall back to "user".
@@ -398,16 +398,16 @@ if [ -f "$_profile_file" ] && command -v jq >/dev/null 2>&1; then
 fi
 
 # Steps that HAD to run and could not. Non-empty ⇒ rc=2 and no completion
-# claim (HIMMEL-2458).
+# claim.
 STEPS_INCOMPLETE=()
 
-# WHY (HIMMEL-2754): ANY failed step halts every later destructive step.
+# WHY: ANY failed step halts every later destructive step.
 # Keep the first cause distinct from the later steps skipped because of it.
 HALTED=0
 HALTED_AT=""
 
 # fail_step <label> — record a step that HAD to run and could not, and HALT the
-# rest of the sequence (HIMMEL-2754). Every destructive step below checks
+# rest of the sequence. Every destructive step below checks
 # $HALTED first. The FIRST failure is what $HALTED_AT names; later entries are
 # consequences of it.
 fail_step() {
@@ -428,7 +428,7 @@ run() {
 }
 
 # canonicalize_target <path> — echo a canonical absolute path for comparison
-# purposes only (HIMMEL-2505's protected_path). Bash 3.2-safe (no `realpath`).
+# purposes only. Bash 3.2-safe (no `realpath`).
 # An EXISTING path resolves the same way suspicious_rm_path always has: `cd …
 # && pwd -P` on a dir, or the same on its parent with the basename re-appended
 # for a file/symlink (so a dangling symlink, where `-e` is false, is still
@@ -464,7 +464,7 @@ canonicalize_target() {
   fi
 }
 
-# normalize_lexical <path> — HIMMEL-2505 (revised): pure STRING
+# normalize_lexical <path> — (revised): pure STRING
 # normalization, NO filesystem access at all: collapse repeated "/", drop
 # "/./" segments, resolve ".." segments lexically by popping the previous
 # segment (never touches disk to confirm what it popped), and strip a
@@ -507,7 +507,7 @@ normalize_lexical() {
   fi
 }
 
-# target_has_symlinked_component_below_home <as-spelled path> — HIMMEL-2505
+# target_has_symlinked_component_below_home <as-spelled path>
 # (revised a third time, gap A's gap's gap): the filesystem half of the
 # allowed-target exemption, paired with normalize_lexical above. The caller
 # passes the ORIGINAL, un-collapsed target — NOT normalize_lexical's output
@@ -576,7 +576,7 @@ target_has_symlinked_component_below_home() {
   return 1
 }
 
-# protected_path <target> — HIMMEL-2505 (revised again after gap A's own
+# protected_path <target> — (revised again after gap A's own
 # gap): a FIXED allowlist-independent hard refusal, distinct from (and
 # checked before) suspicious_rm_path's root/$HOME-alias checks below. A
 # target is exempted from the protected-set checks below only when its
@@ -584,7 +584,7 @@ target_has_symlinked_component_below_home() {
 # EXACTLY $HOME/<suffix> for one of the three documented removal targets AND
 # no path component between $HOME and the leaf (leaf included) is, on disk,
 # a symlink (target_has_symlinked_component_below_home) — so neither a
-# symlinked ancestor (HIMMEL-2505 gap A: e.g. $HOME/.claude/channels ->
+# symlinked ancestor (e.g. $HOME/.claude/channels ->
 # $HOME/Documents routing the documented telegram target into real user
 # data) nor a symlinked leaf can ever satisfy the exemption; anything else
 # falls through to the equality/ancestor/descendant checks below. Those
@@ -597,7 +597,7 @@ target_has_symlinked_component_below_home() {
 # symlink OUT of $HOME, resolves to somewhere that matches no protected
 # path at all even though, AS SPELLED, it is a strict descendant of
 # protected $HOME/.claude and the real removal follows the link —
-# HIMMEL-2505 gap 2's own gap). Either form hitting is a refusal. An
+# gap 2's own gap). Either form hitting is a refusal. An
 # unresolvable target is refused, not assumed safe.
 # The symlink walk is handed the ORIGINAL $_target, NOT $_t_lexical: the
 # lexical identity check above may use the collapsed form to decide
@@ -605,7 +605,7 @@ target_has_symlinked_component_below_home() {
 # spellings as-is or a "link/.." segment can collapse into an allowed
 # suffix lexically while the real `rm -rf` — which the kernel resolves
 # left-to-right on the ORIGINAL spelling — follows the live symlink FIRST
-# and applies ".." relative to wherever it points (HIMMEL-2505 gap A's own
+# and applies ".." relative to wherever it points (an earlier change's own
 # gap, caught post-merge).
 protected_path() {
   local _target="$1" _t_resolved _t_lexical _p _p_resolved _prefix _p_prefix
@@ -632,8 +632,8 @@ protected_path() {
   # $HOME/.claude) by design and must stay allowed no matter what the
   # descendant check below would otherwise do to them — but only when BOTH
   # conditions in the header comment hold (lexical identity AND no symlinked
-  # component). Neither check alone is enough (HIMMEL-2505 gap A).
-  # ponytail (HIMMEL-3332 S6): ".himmel" is provenance.sh's own documented
+  # component). Neither check alone is enough.
+  # ponytail: ".himmel" is provenance.sh's own documented
   # default (`${HIMMEL_PROVENANCE_DIR:-$HOME/.himmel}/provenance.jsonl`) —
   # this exemption covers only that bare default location. An operator who
   # points HIMMEL_PROVENANCE_DIR somewhere else still hits the "$HOME is
@@ -715,7 +715,7 @@ protected_path() {
 # only remove paths that exist.
 suspicious_rm_path() {
   local _resolved _home_resolved
-  # HIMMEL-2505: protected_path is the hard-refuse allowlist check; every
+  # protected_path is the hard-refuse allowlist check; every
   # caller of suspicious_rm_path inherits it by running it first here.
   protected_path "$1" && return 0
   case "$1" in
@@ -766,8 +766,8 @@ suspicious_rm_path() {
 # to a login shell, ~/.bashrc owns ~/.bun/bin and early-returns for
 # non-interactive shells — so `command -v` alone is blind under
 # `ssh host 'cmd'`, cron, CI, or an agent, and steps 4+5 then skipped silently
-# while the run still claimed success (HIMMEL-2458; same class as
-# HIMMEL-2439's resolve_bun in check-lockfile-integrity.sh).
+# while the run still claimed success (same class as
+# an earlier change's resolve_bun in check-lockfile-integrity.sh).
 #
 # tool_candidates <name> — echo every place we look, one per line, in order.
 # Also printed verbatim when the tool is NOT found, so "where did it look?" is
@@ -809,7 +809,7 @@ EOF
 }
 
 # rerun_command [skip-flag] — the exact command that re-runs this uninstall,
-# runnable as printed (HIMMEL-3250). It bypasses himmelctl on purpose:
+# runnable as printed. It bypasses himmelctl on purpose:
 # `himmelctl uninstall` forwards only --dry-run/--yes/--purge-state, so a
 # --skip-* remedy is not reachable through it. HIMMEL_UNINSTALL_REAL_HOME=1 is
 # what himmelctl's own spawn sets past the wet-run fence below; the absolute
@@ -847,7 +847,7 @@ report_unresolved() {
   fail_step "$step: \`$tool\` not found"
 }
 
-# HIMMEL-3253: pre_commit/commands/install_uninstall.py's is_our_script() —
+# pre_commit/commands/install_uninstall.py's is_our_script() —
 # CURRENT_HASH then PRIOR_HASHES. `pre-commit install` writes exactly one of
 # these into every hook it owns, and `pre-commit uninstall` removes a hook only
 # when the file carries one; match all six, since an adopter on an older
@@ -855,12 +855,12 @@ report_unresolved() {
 FRAMEWORK_HOOK_HASHES='138fd403232d2ddd5efb44317e38bf03 4d9958c90bc262f47553e2c073f14cfe d8ee923c46731b42cd95cc869add4062 49fd668cb42069aa1b6048464be5d395 79f09a650522a87b0da915d0d983b2de e358c9dae00eac5d06b38dfdb1e33a8c'
 
 # repo_has_framework_hooks — rc 0 iff this repo actually carries hooks that
-# `pre-commit uninstall` would have to remove (HIMMEL-2754): a set
+# `pre-commit uninstall` would have to remove: a set
 # core.hooksPath, or a non-.sample file in the resolved hooks directory that
-# carries one of the framework's own identity hashes (HIMMEL-3253, below) —
+# carries one of the framework's own identity hashes —
 # the framework's is_our_script() test, so an adopter's own hook that merely
 # mentions pre-commit is not one (`pre-commit uninstall` could never remove it).
-# HIMMEL-2841: a file carrying $NATIVE_GATE_MARKER is a HIMMEL-2771
+# a file carrying $NATIVE_GATE_MARKER is a
 # native gate, never a framework hook — checked and skipped before the hash
 # test. rc 1 = definitely none, including a missing directory resolved
 # by git; rc 2 = missing directory whose location could not be resolved
@@ -868,7 +868,7 @@ FRAMEWORK_HOOK_HASHES='138fd403232d2ddd5efb44317e38bf03 4d9958c90bc262f47553e2c0
 # could not be read (including a grep error), or a hooks directory that exists but cannot be read or searched.
 # When it returns 1 and pre-commit is absent, [5/8] has nothing to
 # do — a note, not a halt (a plain adopter install without uv/pipx never
-# places framework hooks at all; see HIMMEL-2771).
+# places framework hooks at all;).
 repo_has_framework_hooks() {
   local hooks_path f grep_rc hooks_dir="" resolved_hooks_dir hooks_resolved=0 hooks_unreadable=0 h
   local -a hash_args=()
@@ -879,7 +879,7 @@ repo_has_framework_hooks() {
     if resolved_hooks_dir="$(git -C "$HOOKS_REPO_ROOT" rev-parse --git-path hooks 2>/dev/null)"; then
       hooks_resolved=1
       hooks_dir="$resolved_hooks_dir"
-      # WHY (HIMMEL-2754): Git for Windows returns drive-letter absolute paths.
+      # WHY: Git for Windows returns drive-letter absolute paths.
       # Prefixing one produces a nonexistent directory that the resolved-path
       # branch below would misreport as "definitely none".
       case "$hooks_dir" in
@@ -893,21 +893,21 @@ repo_has_framework_hooks() {
     if [ "$hooks_resolved" -eq 1 ]; then return 1; fi
     return 2
   fi
-  # WHY (HIMMEL-2754): a directory we cannot enumerate is unresolved, not empty —
+  # WHY: a directory we cannot enumerate is unresolved, not empty —
   # the glob below would silently expand to nothing and report "definitely none".
   if [ ! -r "$hooks_dir" ] || [ ! -x "$hooks_dir" ]; then
     return 2
   fi
   for f in "$hooks_dir"/*; do
     case "$f" in *.sample) continue ;; esac
-    # HIMMEL-3248: `<hook>.himmel-backup` is the ADOPTER's own hook, displaced by
+    # `<hook>.himmel-backup` is the ADOPTER's own hook, displaced by
     # adopt.sh's install_native_hooks — never one the framework installed, and
     # marker-free, so its text (often naming pre-commit) must not read as one.
     # [5/8] restores it (restore_hook_backups); it is not this scan's business.
     case "$f" in *.himmel-backup) continue ;; esac
     if [ ! -f "$f" ]; then continue; fi
     if [ ! -r "$f" ]; then hooks_unreadable=1; continue; fi
-    # HIMMEL-2841: a native gate (HIMMEL-2771) is never a framework hook —
+    # a native gate is never a framework hook —
     # check for it FIRST so it can never be misidentified as one.
     grep -qF "$NATIVE_GATE_MARKER" "$f" 2>/dev/null && continue
     grep_rc=0
@@ -922,7 +922,7 @@ repo_has_framework_hooks() {
   return 1
 }
 
-# HIMMEL-2839: adopt.sh's install_native_hooks (HIMMEL-2771) places these
+# adopt.sh's install_native_hooks places these
 # hooks directly, outside the pre-commit framework, when pre-commit cannot be
 # bootstrapped — `pre-commit uninstall` never recognizes them. This marker is
 # the exact literal adopt.sh writes as the first line of each such hook; it
@@ -957,16 +957,16 @@ resolve_native_hooks_dir() {
 # of which carry the marker) is never touched. Prints "removed native gate:
 # <path>" per file removed ("DRY: would remove native gate: <path>" under
 # --dry-run, nothing removed), or "no native gates found" when none match.
-# The step's own read-back (HIMMEL-2839: a report of success with the hooks
+# The step's own read-back (a report of success with the hooks
 # still present is exactly the bug this closes) re-scans after removal and
 # fails if any marker-bearing file survives — never trusts `rm`'s rc alone.
 # rc 0 = clean (including "none found" and --dry-run); rc 1 = a matched file
 # could not be removed, one still carries the marker after the pass, or a
 # hook file / the hooks directory itself could not be read or scanned to
-# check (HIMMEL-2839 CR round 1/2: a grep read-error is not a nonmatch —
+# check (a grep read-error is not a nonmatch —
 # treating it as one let an unreadable, or otherwise unscannable, marker-
 # bearing hook survive both the removal loop and the verification re-scan
-# while the function still reported rc 0. Round 2: the `-r` precheck alone
+# while the function still reported rc 0. The `-r` precheck alone
 # does not cover a grep call that itself errors — e.g. a TOCTOU race after
 # the precheck — so both scans also discriminate grep's own exit status
 # (0 = matched, 1 = no match, anything else = a scan error) the same way
@@ -1008,7 +1008,7 @@ remove_native_gate_hooks() {
           rc=1
         fi
       done
-      # HIMMEL-2843: adopt.sh's install_native_hooks also drops a shared
+      # adopt.sh's install_native_hooks also drops a shared
       # fallback copy of scripts/hooks at <hooks_dir>/himmel-payload for the
       # dispatchers above to source — but ONLY when core.hooksPath is unset
       # (adopt.sh's own hooks_path_configured gate: when core.hooksPath IS
@@ -1071,7 +1071,7 @@ remove_native_gate_hooks() {
 }
 
 # restore_hook_backups — give the adopter back the hook adopt.sh's
-# install_native_hooks displaced to <hook>.himmel-backup (HIMMEL-3249). Only the
+# install_native_hooks displaced to <hook>.himmel-backup. Only the
 # three names adopt.sh ever backs up are considered, and a backup is only ever
 # MOVED to its own name, never deleted or copied over anything: when <hook>
 # exists and is not a himmel gate (no $NATIVE_GATE_MARKER, or a symlink) the
@@ -1122,7 +1122,7 @@ restore_hook_backups() {
   return "$rc"
 }
 
-# --- Runtime real-home refusal (HIMMEL-3415) ---------------------------------
+# --- Runtime real-home refusal ---------------------------------
 # The wet-run fence below is lifted by HIMMEL_UNINSTALL_REAL_HOME=1, and the
 # static caller guard (scripts/test-uninstall-real-home-callers.sh) only reads
 # how callers SPELL $HOME. A $HOME that claims to be scratch but RESOLVES into
@@ -1481,7 +1481,7 @@ $_roots"
   return 0
 }
 
-# HIMMEL-2503: `. scripts/uninstall.sh --source-only` loads everything above —
+# `. scripts/uninstall.sh --source-only` loads everything above —
 # the suspicious_rm_path guard in particular — and stops HERE, before the
 # banner, the prompt and every step. It exists so a suite can assert the
 # guard's return codes in isolation (scripts/test-uninstall-guard.sh) instead
@@ -1493,7 +1493,7 @@ if [ "$SOURCE_ONLY" -eq 1 ]; then
   return 0 2>/dev/null || exit 0
 fi
 
-# --- Wet-run fence (HIMMEL-2505) ---------------------------------------------
+# --- Wet-run fence ---------------------------------------------
 # 2026-09-03: a mutation-test run executed this script (no --dry-run) against
 # the operator's REAL $HOME and swept ~/.claude, ~/.ssh, ~/.gitconfig,
 # ~/.codex, ~/.local. --dry-run is never fenced — nothing is removed under it.
@@ -1532,14 +1532,14 @@ if [ "$DRY_RUN" -eq 0 ] && [ "${HIMMEL_UNINSTALL_REAL_HOME:-0}" != "1" ]; then
   fi
 fi
 
-# HIMMEL-3415: the runtime real-home refusal (functions above the
+# the runtime real-home refusal (functions above the
 # --source-only stop), for every wet run — fence lifted or not.
 if [ "$DRY_RUN" -eq 0 ] && ! real_home_check; then
   exit 3
 fi
 
-# --- Provenance ledger load (HIMMEL-3332 S6) ---------------------------------
-# HIMMEL-3058: source THIS script's own lib dir, never $REPO_ROOT (a
+# --- Provenance ledger load ---------------------------------
+# source THIS script's own lib dir, never $REPO_ROOT (a
 # HIMMEL_UNINSTALL_REPO_ROOT fixture can point at a different checkout).
 # Read-only, safe under --dry-run and before the confirm prompt; runs before
 # the plan printout below so the preview reflects what the ledger decided.
@@ -1555,14 +1555,14 @@ if command -v jq >/dev/null 2>&1; then
   # shellcheck source=lib/provenance-read.sh
   . "$SCRIPT_DIR/lib/provenance-read.sh"
   prov_read_load
-  # HIMMEL-3332 S6 fix: this trap must NOT rm -f "$_scope_map" -- $_scope_map
+  # S6 fix: this trap must NOT rm -f "$_scope_map" -- $_scope_map
   # is not yet assigned here (it is set well below) and, on a real (non-dry)
   # run, it is later pointed at the PERSISTENT $HIMMEL_CACHE_DIR/uninstall-scope-map
-  # file, which HIMMEL-2754 deliberately leaves in place across a halt so a
+  # file, which an earlier change deliberately leaves in place across a halt so a
   # retry can recover the original removal scopes. An EXIT trap that always
   # rm -f's whatever "$_scope_map" currently holds would delete that
   # persistent handoff on every exit (including a halt), silently breaking
-  # HIMMEL-2754's retry contract. Only the later, ephemeral-only scope-map
+  # an earlier change's retry contract. Only the later, ephemeral-only scope-map
   # branches (mktemp'd for --dry-run or an unusable cache dir) re-install a
   # trap that also cleans up "$_scope_map" -- correctly, since by then it
   # really is a throwaway tempfile.
@@ -1593,11 +1593,11 @@ else
   echo "  (jq is not installed; the ledger cannot be read)"
 fi
 
-# HIMMEL-3312 S12: REPO_ROOT is a bundle, not a clone, when $REPO_ROOT/bundle.json
+# S12: REPO_ROOT is a bundle, not a clone, when $REPO_ROOT/bundle.json
 # carries BUNDLE_MARKER -- CLONE_ROOT then becomes the clone the bundle stands
 # in for (last ledger install-begin, else bundle.json's own record), so the
 # himmel-clone row reports where the clone actually is (or was).
-# HIMMEL_UNINSTALL_REPO_ROOT (the HIMMEL-2754 fixture seam) names REPO_ROOT
+# HIMMEL_UNINSTALL_REPO_ROOT names REPO_ROOT
 # outright, so it wins for CLONE_ROOT too -- unchanged, no bundle lookup.
 if command -v jq >/dev/null 2>&1 && [ -z "${HIMMEL_UNINSTALL_REPO_ROOT:-}" ] \
     && [ -f "$REPO_ROOT/bundle.json" ] \
@@ -1613,7 +1613,7 @@ if command -v jq >/dev/null 2>&1 && [ -z "${HIMMEL_UNINSTALL_REPO_ROOT:-}" ] \
   [ -n "$_clone_root" ] && CLONE_ROOT="$_clone_root"
 fi
 
-# HIMMEL-3312 S12: rows a hand-edited/older ledger still references but the
+# S12: rows a hand-edited/older ledger still references but the
 # CURRENT tsv no longer lists -- reported so an operator on a stale ledger
 # knows the report may be incomplete, never treated as an error.
 _ledger_unknown_rows=0
@@ -1773,7 +1773,7 @@ for _mi in "${!M_ID[@]}"; do
   esac
   _mp=$(m_path "$_mi")
   [ "$_mp" = "-" ] && _mp="(${M_ID[$_mi]})"
-  # HIMMEL-3312 S12: himmel-clone reports CLONE_ROOT, which in bundle mode is
+  # S12: himmel-clone reports CLONE_ROOT, which in bundle mode is
   # not this script's own directory and may no longer exist at all.
   [ "${M_ID[$_mi]}" = "himmel-clone" ] && [ ! -e "$_mp" ] && _mp="$_mp (not present)"
   echo "  $_disp  $_mp — ${M_WHAT[$_mi]}"
@@ -1783,7 +1783,7 @@ if ! state_removed; then
 fi
 echo ""
 
-# HIMMEL-3787 S2b: ledger_apply_unit runs inside `while ... done <<EOF` loops,
+# S2b: ledger_apply_unit runs inside `while ... done <<EOF` loops,
 # where fd 0 is the heredoc, so its `[ -t 0 ]` was never true and the TTY
 # [k]eep/[r]estore|[d]elete offers were unreachable. Keep the real terminal on
 # fd 8 (only when both ends are a TTY) and let the offers test/read that.
@@ -1808,10 +1808,10 @@ elif [ "$YES" -ne 1 ]; then
 fi
 echo ""
 
-# HIMMEL-3332 S6: begin the uninstall session AFTER a declined run has
+# S6: begin the uninstall session AFTER a declined run has
 # already exited above (a decline writes nothing). No-op when the ledger
 # did not load (prov_read_session_begin checks PROV_READ_STATE itself).
-# HIMMEL-3312 S12: threaded into the written row as ledger_unknown_rows.
+# S12: threaded into the written row as ledger_unknown_rows.
 # shellcheck disable=SC2034  # read by prov_read_session_begin in provenance-read.sh
 PROV_READ_UNKNOWN_ROWS="$_ledger_unknown_rows"
 if [ "$LEDGER_OK" -eq 1 ]; then
@@ -1829,10 +1829,10 @@ fi
 # this register kind whose verdict is NOT `remove`, print "kept (<reason>)"
 # and write its outcome row; also prints one count line for `ours-unverified`
 # removals (a legacy row with no recorded identity, removed unverified).
-# Shared by [4/8] and [7/8] (HIMMEL-3332 S6; verdict-based since HIMMEL-3525
+# Shared by [4/8] and [7/8] (verdict-based
 # S17 — replaces ledger_report_preexisted_units, which only reported
 # ours=false rows and missed a kept-for-identity registration entirely).
-# job has its own reporter, ledger_job_report_kept (HIMMEL-3525 S18): the
+# job has its own reporter, ledger_job_report_kept: the
 # plan's required wording ("kept cron line <marker> (<reason>)") differs from
 # this helper's generic "kept (<label>): <unit>" phrasing.
 ledger_report_kept_units() {
@@ -1863,7 +1863,7 @@ EOF
 }
 
 # ledger_apply_unit <unit-json> [step-label] — the ledger-driven per-unit action shared by
-# [6/8]'s settings/adopter-scripts/hud-config passes (HIMMEL-3332 S6; S8 also
+# [6/8]'s settings/adopter-scripts/hud-config passes (S8 also
 # calls it from [1/8] for the bridge unit file, passing its own step label):
 # computes prov_read_verdict, then removes/restores/keeps and writes the
 # outcome row. rc 1 means the unit is PROTECTED (kept or restored — the
@@ -1915,7 +1915,7 @@ $unit"
       else
         echo "  kept $unit ($reason)"
         if [ "$(printf '%s' "$u" | jq -r '.kind')" = "block" ]; then
-          # HIMMEL-3787 S2d: no [r]estore/[d]elete offer for a block -- there is no
+          # S2d: no [r]estore/[d]elete offer for a block -- there is no
           # pre-state to restore, and a delete would take the operator's edits
           # with it. Say what to do by hand instead.
           case "$reason" in
@@ -1935,7 +1935,7 @@ $unit"
             read -r _ans <&8
             case "$_ans" in
               [rR]*)
-                # HIMMEL-3787 S2b (design §5.5): the restore overwrites the
+                # S2b (design §5.5): the restore overwrites the
                 # operator's live bytes, so save them to a sidecar first and
                 # fail closed (no restore, backup kept) if the save cannot be
                 # made. An existing sidecar (an earlier save) or a symlink at
@@ -1967,7 +1967,7 @@ $unit"
             read -r _ans <&8
             case "$_ans" in
               [dD]*)
-                # HIMMEL-3787 S2b: the delete destroys the operator's live
+                # S2b: the delete destroys the operator's live
                 # bytes too, so it takes the same sidecar save as [r]estore
                 # and fails closed (file kept, failed row) if it cannot.
                 _live=$(printf '%s' "$u" | jq -r '.path // empty')
@@ -2002,7 +2002,7 @@ $unit"
   esac
 }
 
-# ledger_job_markers <cron|at> — HIMMEL-3332 S8, HIMMEL-3525 S18: the markers
+# ledger_job_markers <cron|at> —: the markers
 # of `job register` rows himmel brought (ours=true) for this scheduler whose
 # verdict is `remove`, one per line — a marker whose live line has changed
 # since it was recorded (verdict `keep user-modified`/`identity-unreadable`)
@@ -2023,7 +2023,7 @@ ledger_job_markers() {
     | grep -E '^HIMMEL-[A-Za-z0-9._-]+$' || true
 }
 
-# ledger_job_report_kept — HIMMEL-3525 S18: for every `job register` fold
+# ledger_job_report_kept: for every `job register` fold
 # unit whose verdict is NOT `remove`, print the plan's required line and
 # write its outcome row. Job units get their own reporter (rather than
 # sharing ledger_report_kept_units) because the plan's wording ("kept cron
@@ -2086,7 +2086,7 @@ ledger_job_outcome() {
   return 0
 }
 
-# ledger_teardown_bridge_unit — HIMMEL-3332 S8 [1/8]: the telegram-bridge
+# ledger_teardown_bridge_unit: the telegram-bridge
 # systemd user unit bridge-persistence.js installed. Runs BEFORE the supervisor
 # kill so systemd cannot restart a bridge we just stopped. Ownership comes from
 # the recorded `file` row at the unit path (the `register unit` row carries no
@@ -2162,7 +2162,7 @@ ledger_teardown_bridge_unit() {
   fi
 }
 
-# stop_bridge_supervisor_directly — HIMMEL-3312 S12: when $REPO_ROOT has no
+# stop_bridge_supervisor_directly: when $REPO_ROOT has no
 # scripts/telegram (running from the standalone bundle, not the clone), stop
 # the bun supervisor without shelling to bun at all: read its own recorded
 # pid, verify it is really the supervisor (never signal a recycled pid), TERM
@@ -2187,7 +2187,7 @@ stop_bridge_supervisor_directly() {
   else
     _cmdline="$(ps -p "$_pid" -o args= 2>/dev/null)"
   fi
-  # HIMMEL-3312 S12 codex round 2: a bare substring match on "supervisor.ts"
+  # A bare substring match on "supervisor.ts"
   # also fires on an unrelated recycled pid whose cmdline merely mentions the
   # string (e.g. a "supervisor.ts.bak" argument) -- require it as its own
   # whitespace-delimited token instead.
@@ -2219,17 +2219,17 @@ stop_bridge_supervisor_directly() {
 # Uses the documented cross-platform lever (supervisor.pid under the bridge
 # root; see docs/internals/telegram-bridge.md). BRIDGE_ROOT is passed through
 # so a non-default root kills the matching bridge, not another one.
-# WHY (HIMMEL-2754): halt if the bridge may still be live — removing state
+# WHY: halt if the bridge may still be live — removing state
 # would recreate it (and on Windows, locked files make removal fail partway).
 echo "[1/8] Stopping telegram bridge..."
-# HIMMEL-3332 S8: the systemd unit goes first — see ledger_teardown_bridge_unit.
+# S8: the systemd unit goes first — see ledger_teardown_bridge_unit.
 if [ "$LEDGER_OK" -eq 1 ] && class_removes "$_ix_bproc"; then
   ledger_teardown_bridge_unit
 fi
 if ! class_removes "$_ix_bproc"; then
   echo "  kept (manifest class ${M_CLASS[$_ix_bproc]}): bridge left running."
   # A bridge that stays running must not have its state deleted under it: the
-  # supervisor would recreate it (HIMMEL-2754) — refuse rather than half-remove.
+  # supervisor would recreate it — refuse rather than half-remove.
   if [ -f "$BRIDGE_ROOT/supervisor.pid" ] \
       && { class_removes "$_ix_channel" || class_removes "$_ix_bridge"; }; then
     echo "  ERROR: the bridge is kept running (manifest class ${M_CLASS[$_ix_bproc]}) but its state would be removed:" >&2
@@ -2265,7 +2265,7 @@ elif [ -f "$REPO_ROOT/scripts/telegram/supervisor.ts" ]; then
     fi
   fi
 else
-  # HIMMEL-3312 S12: no clone/bundle telegram dir (running from a bundle) —
+  # S12: no clone/bundle telegram dir (running from a bundle) —
   # stop the supervisor directly instead of shelling to bun.
   stop_bridge_supervisor_directly
   _rc=$?
@@ -2306,7 +2306,7 @@ else
       continue
     fi
     if [ -L "$_dir" ]; then
-      # HIMMEL-2505 gap A.3: the target is a symlink — unlink the link
+      # gap A.3: the target is a symlink — unlink the link
       # itself, never `rm -rf` through it into whatever it points at.
       if guarded run rm -f -- "$_dir"; then
         if [ "$DRY_RUN" -eq 0 ]; then
@@ -2346,7 +2346,7 @@ elif [ "$SKIP_TASKS" -eq 1 ]; then
 elif ! class_removes "$_ix_jobs"; then
   echo "  kept (manifest class ${M_CLASS[$_ix_jobs]})."
 elif command -v schtasks >/dev/null 2>&1; then
-  # MSYS_NO_PATHCONV=1 per call (HIMMEL-125): gitbash otherwise mangles
+  # MSYS_NO_PATHCONV=1 per call: gitbash otherwise mangles
   # /query-style flags into Windows paths before schtasks sees them.
   # Capture the /query rc separately (setup.sh qmd-list precedent): piping
   # straight through grep would mask an enumeration failure as "no tasks".
@@ -2384,7 +2384,7 @@ EOF
 else
   _found=0
   _query_failed=0
-  # HIMMEL-3332 S8: the routines a cadence arm recorded, plus the report of the
+  # S8: the routines a cadence arm recorded, plus the report of the
   # job rows that were already the operator's (kept, never removed).
   _rec_cron=$(ledger_job_markers cron)
   _rec_at=$(ledger_job_markers at)
@@ -2448,7 +2448,7 @@ EOF
     _cron_out=$(LC_ALL=C crontab -l 2>"$_cron_err")
     _cron_rc=$?
     if [ "$_cron_rc" -eq 0 ]; then
-      # HIMMEL-3332 S8: also drop the lines the ledger says a cadence arm added.
+      # S8: also drop the lines the ledger says a cadence arm added.
       # Only the recorded markers, matched EXACTLY as the trailing ` # <marker>`.
       _cron_hit=""
       while IFS= read -r _m; do
@@ -2510,7 +2510,7 @@ EOF
   fi
   [ "$_found" -eq 0 ] && [ "$_query_failed" -eq 0 ] && echo "  no matching scheduled jobs found."
 fi
-# HIMMEL-3559: cadence-jobs above only strips the crontab/schtasks entry — the
+# cadence-jobs above only strips the crontab/schtasks entry — the
 # runner scripts + settings fragment an arm writes into these dirs are never
 # touched by that, and each cadence script's own disarm only clears files
 # inside its BAT_DIR, never the directory itself.
@@ -2558,11 +2558,11 @@ for _ix_cad in "$_ix_cadence_pipeline" "$_ix_cadence_qmd" "$_ix_cadence_graphmap
 done
 echo ""
 
-# WHY (HIMMEL-2754): wet-run removal scopes deliberately outlive a halted
+# WHY: wet-run removal scopes deliberately outlive a halted
 # teardown so a retry can remove marketplaces at their original scopes.
 # Successful teardown removes the handoff with the cache in the last step.
 _scope_map=""
-# HIMMEL-3332 S6: --ledger-owned handoff for uninstall-plugins.sh — a TSV of
+# S6: --ledger-owned handoff for uninstall-plugins.sh — a TSV of
 # the plugin/marketplace register units the fold says himmel itself installed
 # (prov_read_owned). Only built when the ledger loaded; [4/8]/[7/8] pass it
 # through so a pre-existing plugin/marketplace is told apart from himmel's own.
@@ -2589,7 +2589,7 @@ if [ "$HALTED" -eq 0 ] && [ "$SKIP_PLUGINS" -eq 0 ] && { class_removes "$_ix_plu
          [ -f "$HIMMEL_CACHE_DIR/uninstall-scope-map" ] &&
          [ ! -L "$HIMMEL_CACHE_DIR/uninstall-scope-map" ] &&
          [ -r "$HIMMEL_CACHE_DIR/uninstall-scope-map" ]; then
-        # WHY (HIMMEL-2754): a failed read empties the handoff; make the fallback preview explicit.
+        # WHY: a failed read empties the handoff; make the fallback preview explicit.
         cat "$HIMMEL_CACHE_DIR/uninstall-scope-map" > "$_scope_map" 2>/dev/null || {
           : > "$_scope_map"
           echo "WARN: could not read $HIMMEL_CACHE_DIR/uninstall-scope-map; preview will show marketplace removals at the fallback scope rather than the recorded scopes." >&2
@@ -2621,7 +2621,7 @@ fi
 
 # ledger_owned_hand_command <kind: plugins|marketplaces> — the single hand
 # command both [4/8] and [7/8] point at when there is no ledger to decide
-# ownership (HIMMEL-3332 S6, spec §4/§8 case 3).
+# ownership (S6, spec §4/§8 case 3).
 ledger_owned_hand_command() {
   printf '    remove by hand: bash %q --scope %q\n' \
     "$REPO_ROOT/scripts/machine-setup/uninstall-plugins.sh" "$PLUGIN_SCOPE"
@@ -2639,7 +2639,7 @@ elif ! class_removes "$_ix_plug"; then
 elif ! _claude_bin=$(resolve_tool claude); then
   report_unresolved "[4/8] Claude plugins" claude --skip-plugins
 elif [ "$LEDGER_OK" -ne 1 ]; then
-  # ponytail (HIMMEL-3332 S6, spec §4): with no ledger to tell a pre-existing
+  # ponytail: with no ledger to tell a pre-existing
   # plugin apart from himmel's own template plugins, this run keeps ALL of
   # them rather than risk removing one the operator installed themselves.
   echo "  kept (no ledger): himmel's template plugins"
@@ -2706,7 +2706,7 @@ elif [ "$SKIP_HOOKS" -eq 1 ]; then
 elif ! class_removes "$_ix_ghooks"; then
   echo "  kept (manifest class ${M_CLASS[$_ix_ghooks]})."
 elif command -v git >/dev/null 2>&1 && ! _hooks_git_probe=$(LC_ALL=C git -C "$HOOKS_REPO_ROOT" rev-parse --is-inside-work-tree 2>&1); then
-  # HIMMEL-2854: a `--scope user` offboard run from a plain (non-git) $PWD has
+  # a `--scope user` offboard run from a plain (non-git) $PWD has
   # no repo-local hooks to remove — the native-gate scan and every
   # `pre-commit uninstall` call below assume a git work tree and otherwise
   # fail_step (and HALT every later step) for a directory that was never a
@@ -2715,26 +2715,26 @@ elif command -v git >/dev/null 2>&1 && ! _hooks_git_probe=$(LC_ALL=C git -C "$HO
   # metadata it could not read — those ARE git work trees that may still
   # carry installed hooks. git's "not a git repository" wording is identical
   # whether `.git` is genuinely absent or present-but-broken (e.g. a missing
-  # HEAD), so string-matching that text cannot tell them apart (codex-1,
-  # round 3) — check for a `.git` entry instead. A single check at
-  # HOOKS_REPO_ROOT is not enough either (codex-1, round 4): HOOKS_REPO_ROOT
+  # HEAD), so string-matching that text cannot tell them apart
+  # — check for a `.git` entry instead. A single check at
+  # HOOKS_REPO_ROOT is not enough either: HOOKS_REPO_ROOT
   # can itself be a SUBDIRECTORY of the real repo root (dubious-ownership
   # rejects rev-parse the same way from a subdirectory), where `.git` lives
   # only at the ancestor. Walk up, mirroring git's own repo-discovery search,
   # so only a confirmed absence of `.git` anywhere in the ancestor chain
   # takes the clean skip.
   #
-  # HIMMEL-2859 (codex-1 round 6): a relative HOOKS_REPO_ROOT reaches
+  # a relative HOOKS_REPO_ROOT reaches
   # dirname's textual fixed point (".") without ever visiting the real
   # absolute ancestors above $PWD — resolve to an absolute physical path
   # first; an unresolvable start (dir missing, or inaccessible) is never a
   # clean skip.
-  # codex-1 (panel round 1): a relative HOOKS_REPO_ROOT is subject to CDPATH
+  # A relative HOOKS_REPO_ROOT is subject to CDPATH
   # lookup, which can make `cd` print its resolved destination to stdout and
   # contaminate the captured path — clear it for this cd only (not a special
   # builtin, so the assignment does not persist past the command).
   if _hooks_probe_dir="$(CDPATH='' cd -- "$HOOKS_REPO_ROOT" 2>/dev/null && pwd -P)" && [ -n "$_hooks_probe_dir" ]; then
-    # HIMMEL-2857 (codex-1 round 5): `[ -e ]` can't tell "confirmed absent"
+    # `[ -e ]` can't tell "confirmed absent"
     # apart from "inspection failed" — a permission-denied ancestor (stat
     # fails) or a dangling `.git` symlink (target absent) both read as
     # absence and could walk past a real repo. Classify each level: (a)
@@ -2776,7 +2776,7 @@ elif command -v git >/dev/null 2>&1 && ! _hooks_git_probe=$(LC_ALL=C git -C "$HO
     fail_step "[5/8] git hooks: hooks-repo git status unresolved"
   fi
 else
-  # HIMMEL-2839: native gates (HIMMEL-2771) live outside the pre-commit
+  # native gates live outside the pre-commit
   # framework — remove them independent of whether pre-commit resolves below.
   if ! remove_native_gate_hooks; then
     fail_step "[5/8] git hooks: native gate hook(s) survived removal"
@@ -2811,7 +2811,7 @@ else
       fi
     done
   fi
-  # HIMMEL-3249: hand the adopter's displaced hooks back. Runs LAST and only when
+  # hand the adopter's displaced hooks back. Runs LAST and only when
   # nothing above failed — a restored hook is marker-free, so restoring before
   # the framework check above would let it trip that check within this same run.
   if [ "$HALTED" -eq 0 ]; then
@@ -2824,17 +2824,17 @@ else
 fi
 echo ""
 
-# --- [6/8] unwire user/project settings.json (HIMMEL-460, HIMMEL-2776) -------
+# --- [6/8] unwire user/project settings.json -------
 # Symmetric inverse of setup.sh [9/10] + adopt: remove the
 # statusLine, env.HIMMEL_REPO, env.LUNA_VAULT_PATH, env.HANDOVER_DIR
-# (HIMMEL-839), and the UNIVERSAL hooks that himmel wired into
+# and the UNIVERSAL hooks that himmel wired into
 # ~/.claude/settings.json. Each helper removes ONLY its own key/stanza
 # (refuses invalid JSON, preserves every non-himmel key: rtk guard, the
 # operator's own hooks, MCP config). --dry-run flows through to each.
 echo "[6/8] Unwiring ~/.claude/settings.json (statusLine, HIMMEL_REPO, LUNA_VAULT_PATH, HANDOVER_DIR, hooks)..."
 # One sanctioned unwire sequence for both scopes; retain the user-scope order.
 #
-# HIMMEL-3058: the patterns the read-back matches are read from THIS script's
+# the patterns the read-back matches are read from THIS script's
 # own sibling libs (never from $REPO_ROOT, which a fixture or a stub can
 # replace), each in a subshell — those libs set `set -euo pipefail` when
 # sourced. The read-back re-reads the settings file with jq; it never trusts a
@@ -2851,13 +2851,13 @@ HIMMEL_SL_PAT="$( . "$SCRIPT_DIR/lib/unwire-statusline.sh" >/dev/null 2>&1; prin
 # never removes it; only the ledger's /env/CLAUDE_HUD_ALLOW_EXTRA_CMD unit does,
 # so with no ledger it stays beside the kept statusLine). Not suppressing: a jq failure is a
 # non-zero rc, so the read-back cannot mistake "could not read" for "clean".
-# The five mask_* flags (HIMMEL-3332 S6, all default 0 = unmasked when
+# The five mask_* flags (all default 0 = unmasked when
 # omitted) exclude a category the ledger explicitly kept or restored — a
 # PROTECTED unit must never read back as "STILL WIRED", it is wired on
 # purpose.
 himmel_wiring_lines() {
   local settings="$1" mask_hooks="${2:-0}" mask_sl="${3:-0}" mask_repo="${4:-0}" mask_vault="${5:-0}" mask_hd="${6:-0}"
-  # HIMMEL-3332 S6 fix: jq's --argjson hands these in as JSON NUMBERS (0/1),
+  # S6 fix: jq's --argjson hands these in as JSON NUMBERS (0/1),
   # and jq truthiness treats 0 as truthy (only `false`/`null` are falsy) — so
   # a `($mX|not)` test was always false regardless of the mask value, which
   # silently excluded EVERY hook/statusLine/env row from both the dry-run
@@ -2891,7 +2891,7 @@ unwire_settings() {
     return 0
   fi
   if [ "$LEDGER_OK" -eq 1 ]; then
-    # Ledger-driven per-unit pass (HIMMEL-3332 S6): every json-key/json-elem
+    # Ledger-driven per-unit pass: every json-key/json-elem
     # fold unit recorded at THIS settings path gets its own verdict —
     # removed, restored from its recorded backup, or kept (already-absent,
     # preexisted, user-modified since install, or no backup to restore
@@ -2909,8 +2909,8 @@ $(prov_read_units --path "$settings" --kind json-elem)"
       # user-modified here — skip it with no print/outcome row;
       # prov_read_drop_env_if_ours (below, after the helper loop) drops the
       # now-empty container once its /env/<KEY> units are handled. The /hooks
-      # container (HIMMEL-3389) goes stale the same way and is dropped the same way,
-      # as do install-plugins.sh's enabledPlugins / extraKnownMarketplaces (HIMMEL-3541).
+      # container goes stale the same way and is dropped the same way,
+      # as do install-plugins.sh's enabledPlugins / extraKnownMarketplaces.
       case "$(printf '%s' "$_u" | jq -r '.unit // ""')" in
         /env|/hooks|/enabledPlugins|/extraKnownMarketplaces) continue ;;
         # R2-codex4: track whether the ledger recorded a unit AT ALL for
@@ -2924,7 +2924,7 @@ $(prov_read_units --path "$settings" --kind json-elem)"
     done <<EOF
 $_units
 EOF
-    # HIMMEL-3398: whole-entry membership. The list is newline-led; the
+    # whole-entry membership. The list is newline-led; the
     # trailing newline added here closes the last entry, so a protected
     # /statusLineX never reads as /statusLine. `/hooks/` alone is a deliberate
     # prefix class (any protected /hooks/<Event> unit masks the hooks helper),
@@ -2935,7 +2935,7 @@ EOF
     case "$_prot" in *$'\n''/env/LUNA_VAULT_PATH'$'\n'*) _mask_vault=1 ;; esac
     case "$_prot" in *$'\n''/env/HANDOVER_DIR'$'\n'*)    _mask_hd=1 ;; esac
     case "$_prot" in *$'\n''/hooks/'*)                   _mask_hooks=1 ;; esac
-    # HIMMEL-3332 S6 fix: no early return here for DRY_RUN. ledger_apply_unit
+    # S6 fix: no early return here for DRY_RUN. ledger_apply_unit
     # above already printed its own per-unit DRY line for anything the
     # ledger DID track, but a key/unit the ledger never recorded (predates
     # per-key recording) is untouched by it -- the shared preview block
@@ -2947,7 +2947,7 @@ EOF
     # LUNA_VAULT_PATH / hook removals the wet run still performs (caught by
     # U22: 5 rows expected, only the hooks line was printed).
   fi
-  # ponytail (HIMMEL-3332 S6, spec §4 six rows): a pre-existing statusLine or
+  # ponytail (S6, spec §4 six rows): a pre-existing statusLine or
   # env.HANDOVER_DIR cannot be told from himmel's own without a ledger unit
   # recording it — both are kept and reported with a hand command instead of
   # letting today's unwire-*.sh helpers remove them blindly. R2-codex4: a
@@ -2965,7 +2965,7 @@ EOF
       _mask_sl=1
     fi
   fi
-  # HIMMEL-3334 codex-1: exported so unwire_user_files can tell whether the
+  # exported so unwire_user_files can tell whether the
   # statusLine THIS CALL just governed will actually survive, without
   # re-reading $settings -- which under DRY_RUN is never mutated and would
   # otherwise always read as "still wired" regardless of what a wet run
@@ -2981,21 +2981,21 @@ EOF
       _mask_hd=1
     fi
   fi
-  # HIMMEL-3332 S6 R2-codex5: a halt mid per-unit ledger loop must stop HERE
+  # A halt mid per-unit ledger loop must stop HERE
   # -- neither the DRY preview nor the unconditional legacy-helper loop below
   # may run afterward (they would strip a unit the halted pass never got to
   # verdict, or re-strip one it already restored).
   [ "$HALTED" -eq 0 ] || return 0
   # Print exactly what is about to change (dry-run: what WOULD change) or, on
   # a wet run, narrate it -- masking out anything either branch above already
-  # protected. HIMMEL-3332 S6 fix: shared by the ledger and no-ledger paths,
+  # protected. fix: shared by the ledger and no-ledger paths,
   # since a key/unit neither branch masked still needs this preview whether
   # the ledger stayed silent on it (predates per-key recording) or there is
   # no ledger at all -- mirroring the WET helper loop below, which already
   # unconditionally re-runs every non-masked helper regardless of LEDGER_OK.
   # Preview only: an unreadable file is reported by the helpers / the read-back.
   if [ -n "$HIMMEL_HOOK_PAT" ] && [ -n "$HIMMEL_SL_PAT" ]; then
-    # HIMMEL-3332 S6 R2-codex8: pass every COMPUTED mask (not a literal 0 for
+    # Pass every COMPUTED mask (not a literal 0 for
     # mask_hooks/mask_repo/mask_vault) -- the DRY preview must never announce
     # removal of a unit the ledger pass above already kept/restored.
     { himmel_wiring_lines "$settings" "$_mask_hooks" "$_mask_sl" "$_mask_repo" "$_mask_vault" "$_mask_hd" 2>/dev/null || true; } | while IFS= read -r _line; do
@@ -3006,7 +3006,7 @@ EOF
   if [ "$DRY_RUN" -eq 1 ]; then
     # One row per still-unmasked helper (the hooks helper prints its own
     # DRY row), so a preview never shows fewer removals than the real run.
-    # HIMMEL-3332 S6 fix: statusLine/HANDOVER_DIR need this same unconditional
+    # S6 fix: statusLine/HANDOVER_DIR need this same unconditional
     # row too -- the pre-S6 baseline always printed all four (regardless of
     # whether the key was actually present, since the helpers are idempotent
     # no-ops), and the no-ledger branch's "kept (no ledger)" checks above only
@@ -3071,7 +3071,7 @@ EOF
 # clone providing the helpers. Match checkUninstallCompleteness's identity
 # guard: direct inode equality, then git-common-dir for linked worktrees.
 # rc 2 means identity is unresolved, never permission to edit repo source.
-# HIMMEL-3535: under the S13 standalone bundle, source_root (this script's own
+# under the S13 standalone bundle, source_root (this script's own
 # location) has no .git, so the git-common-dir compare below can never
 # resolve -- every project used to come back rc 2 and halt step [6/8]. Only
 # when IS_STANDALONE_BUNDLE was actually set (the bundle-marker check at
@@ -3091,7 +3091,7 @@ project_is_himmel_checkout() {
   elif [ -f "$source_root/VERSION" ] \
       && [ -L "$(dirname -- "$source_root")/current" ] \
       && [ "$(dirname -- "$source_root")/current" -ef "$source_root" ]; then
-    # HIMMEL-3059 S6: a tarball/versioned install (no .git; <base>/current is
+    # S6: a tarball/versioned install (no .git; <base>/current is
     # a symlink resolving to this very dir; the same test himmelctl's JS
     # versionedLayout() uses) is a valid himmel identity root too. The VERSION
     # file requirement keeps this from matching an arbitrary directory that
@@ -3099,7 +3099,7 @@ project_is_himmel_checkout() {
     identity_root="$source_root"
   elif [ -f "$source_root/VERSION" ] \
       && [ "$(cat -- "$source_root/.himmel-install-kind" 2>/dev/null)" = aur ]; then
-    # HIMMEL-3059 S6b: the AUR package's flat /opt/himmel prefix -- no .git,
+    # S6b: the AUR package's flat /opt/himmel prefix -- no .git,
     # no `current` symlink (packaging/aur/PKGBUILD: "a FLAT tree with no
     # `current` link"), so neither case above ever matches it. VERSION is
     # already there (git-archived into the tarball PKGBUILD packages), so it
@@ -3120,7 +3120,7 @@ project_is_himmel_checkout() {
   [ "$project_common" -ef "$identity_common" ]
 }
 
-# unwire_recorded_projects — HIMMEL-3332 S8 [6/8]: every OTHER project the
+# unwire_recorded_projects: every OTHER project the
 # ledger recorded himmel wiring into (a project-scope settings row whose path
 # is not $PWD's), unwired through the same unwire_settings pass and behind the
 # same guards as the $PWD block: himmel's own checkout is kept, an unresolved
@@ -3172,15 +3172,15 @@ EOF
 }
 
 # unwire_user_files — the user-scope files install writes beside settings.json
-# (HIMMEL-3251): the working-principles block in ~/.claude/CLAUDE.md and
+# the working-principles block in ~/.claude/CLAUDE.md and
 # ~/.codex/AGENTS.md, and the claude-hud config. One helper call per manifest
 # row, each row's class deciding whether it acts; the helpers come from THIS
-# script's own lib dir (see the HIMMEL-3058 note above) and the read-back
+# script's own lib dir and the read-back
 # re-reads the files rather than trusting a helper's rc. --dry-run flows through.
-# The rule-file read-back is the helper's own `--probe` (HIMMEL-3333): it must
+# The rule-file read-back is the helper's own `--probe`: it must
 # agree with the strip about what a marker IS -- a whole line outside a fenced
 # code block -- or a file that merely quotes the block would read as still wired.
-# HIMMEL-3332 S6 R2-codex4: HIMMEL_HUD_PAT (the pattern used to verify a
+# HIMMEL_HUD_PAT (the pattern used to verify a
 # post-strip hud config was really himmel's) is no longer read anywhere --
 # the pattern-matched strip below it used to guard is gone, replaced by the
 # ledger-or-kept fallback -- so the computation is dropped as an orphan of
@@ -3198,8 +3198,8 @@ unwire_user_files() {
       continue
     fi
     if [ "$_ix" = "$_ix_hud" ]; then
-      # HIMMEL-3334: $_p is the NEW un-swept path; a box upgraded but not yet
-      # re-wired since this fix may still have a pre-HIMMEL-3334 config at the
+      # $_p is the NEW un-swept path; a box upgraded but not yet
+      # re-wired since this fix may still have a earlier config at the
       # OLD swept plugins/ path, with no ledger entry under $_p to key on (the
       # ledger only ever recorded whichever path was live at write time). Run
       # this FIRST, before either ledger branch below can `continue` past it.
@@ -3208,10 +3208,10 @@ unwire_user_files() {
       # unconditionally, same as wire-statusline.sh's own migration cleanup —
       # EXCEPT when unwire_settings just KEPT (no-ledger) a statusLine still
       # wired to the hud renderer (codex-1): on a box not yet re-wired since
-      # HIMMEL-3334, the legacy path IS the config that still-active statusLine
+      # then, the legacy path IS the config that still-active statusLine
       # reads, so deleting it here would break a HUD uninstall just reported
       # as left working. Kept, same as the new-path config's own no-ledger row.
-      # codex-1 round 2: prefer unwire_settings's own verdict for THIS run
+      # Prefer unwire_settings's own verdict for THIS run
       # (_UNWIRE_SETTINGS_SL_MASKED, set right after it decides the
       # statusLine's fate) over re-reading $USER_SETTINGS -- under DRY_RUN the
       # file is never mutated, so a raw re-read would always say "still
@@ -3231,7 +3231,7 @@ unwire_user_files() {
       if [ "$_hud_sl_still_wired" -eq 1 ] && [ "$_hud_legacy" != "$_p" ] && [ -e "$_hud_legacy" ]; then
         echo "  kept (statusLine still wired): $_hud_legacy — remove by hand: bash $SCRIPT_DIR/lib/unwire-hud-config.sh $_hud_legacy"
       elif [ "$_hud_legacy" != "$_p" ] && [ -e "$_hud_legacy" ] && command -v jq >/dev/null 2>&1; then
-        # HIMMEL-3334 C1/I1 (judge J1269A verdict): a pre-himmel config may
+        # C1/I1: a pre-himmel config may
         # once have lived at $_hud_legacy and been REPLACED by himmel's own
         # install, recording a ledger `replace` unit with a backup of the
         # operator's original bytes -- the live file now matches himmel's own
@@ -3246,7 +3246,7 @@ unwire_user_files() {
           _hud_legacy_unit="$(prov_read_units --path "$_hud_legacy" --kind file | head -n1)"
         fi
         if [ -n "$_hud_legacy_unit" ]; then
-          # HIMMEL-3334 N1/N2/N3 (judge J1269B verdict): route through the
+          # N1/N2/N3: route through the
           # same verdict-then-apply wrapper every other manifest branch uses
           # (ledger_apply_unit) instead of a raw restore/rm -- its drift check
           # (prov_read_verdict) is what tells an operator's post-install edit
@@ -3254,7 +3254,7 @@ unwire_user_files() {
           # from a clean replace/create unit.
           ledger_apply_unit "$_hud_legacy_unit"
         elif [ "$LEDGER_OK" -eq 1 ]; then
-          # HIMMEL-3334 I1 (judge J1269A verdict): a ledger exists but holds
+          # I1: a ledger exists but holds
           # no unit at all for this path -- no ledger evidence himmel ever
           # wrote or replaced this file, so it cannot be told from an
           # operator's own pre-himmel config that merely happens to match the
@@ -3265,15 +3265,15 @@ unwire_user_files() {
           # No ledger to consult at all, or a unit exists with no backup
           # (himmel wrote this file fresh, nothing of the operator's to lose)
           # -- best-effort pattern-gated rm, same as before this fix.
-          # HIMMEL-3334: unwire-hud-config.sh sets `set -euo pipefail` when
+          # unwire-hud-config.sh sets `set -euo pipefail` when
           # sourced, so it is sourced in a subshell (same pattern as the
-          # HIMMEL-3058 comment below) to avoid leaking strict-mode into this
+          # comment below) to avoid leaking strict-mode into this
           # script's own shell.
           # shellcheck source=lib/unwire-hud-config.sh
           ( . "$SCRIPT_DIR/lib/unwire-hud-config.sh"; unwire_hud_config "$_hud_legacy" "$_dry" "$REPO_ROOT" ) || true
         fi
       elif [ "$_hud_legacy" != "$_p" ] && [ ! -e "$_hud_legacy" ] && [ "$LEDGER_OK" -eq 1 ] && command -v jq >/dev/null 2>&1; then
-        # HIMMEL-3334 F1 (judge J1269O verdict): a re-wire on THIS box already
+        # F1: a re-wire on THIS box already
         # migrated the legacy path away (wire-statusline.sh's own migration
         # `rm -f`s it once the new path is live, with no provenance record of
         # its own) -- so the file is gone before this branch ever runs, and
@@ -3288,7 +3288,7 @@ unwire_user_files() {
         _hud_legacy_backup=""
         [ -n "$_hud_legacy_unit" ] && _hud_legacy_backup="$(printf '%s' "$_hud_legacy_unit" | jq -r '.eff_pre.backup // empty')"
         if [ -n "$_hud_legacy_unit" ]; then
-          # HIMMEL-3334 I1 (judge J1269C): a missing/unreadable backup here
+          # I1: a missing/unreadable backup here
           # (the clean-end prune already deleted it, or the plugin-dir sweep
           # took it) is not a halt -- mirror prov_read_verdict's own
           # "keep no-backup" policy instead of calling prov_read_apply
@@ -3315,7 +3315,7 @@ unwire_user_files() {
         fi
       fi
       if [ "$LEDGER_OK" -ne 1 ]; then
-        # ponytail (HIMMEL-3332 S6, spec §4 six rows): no ledger to tell a
+        # ponytail (S6, spec §4 six rows): no ledger to tell a
         # pre-existing claude-hud config from himmel's own — kept, with a
         # hand command, instead of the unconditional strip below.
         echo "  kept (no ledger): $_p — remove by hand: bash $SCRIPT_DIR/lib/unwire-hud-config.sh $_p"
@@ -3334,14 +3334,14 @@ EOF
       # (predates per-file recording) -- treat it exactly like the no-ledger
       # branch above (kept with a hand command), not an unconditional strip;
       # "kept (no ledger)" would be misleading with a real ledger present.
-      # HIMMEL-3334 m1 (judge J1269B verdict): only print it when $_p exists
+      # m1: only print it when $_p exists
       # -- the message is truthful only about a file that's actually there.
       elif [ -e "$_p" ]; then
         echo "  kept (not in ledger): $_p — remove by hand: bash $SCRIPT_DIR/lib/unwire-hud-config.sh $_p"
       fi
     elif [ "$_ix" = "$_ix_trust" ]; then
       if [ "$LEDGER_OK" -ne 1 ]; then
-        # HIMMEL-3332 S6 slice2: no ledger to tell a pre-existing trust entry
+        # S6 slice2: no ledger to tell a pre-existing trust entry
         # from himmel's own -- kept exactly as before this fix, by hand.
         echo "  kept (no ledger): $_p — revoke it in Claude Code if you want it gone"
         continue
@@ -3365,7 +3365,7 @@ EOF
         [ -n "$_block_unit" ] && [ "$(printf '%s' "$_block_unit" | jq -r '.governed')" = "true" ] || _block_unit=""
       fi
       if [ -n "$_block_unit" ]; then
-        # HIMMEL-3787 S2d: install recorded this block, so the ledger decides.
+        # S2d: install recorded this block, so the ledger decides.
         # An unchanged block is stripped (file_created decides whether an
         # emptied file goes too); an edited or torn one is KEPT and reported
         # with exit 0 -- a unit left for the operator is not a failure.
@@ -3387,7 +3387,7 @@ EOF
         continue
       fi
       # No install record for this block (an install from before S2d, a
-      # Windows install, a ledger-less box): HIMMEL-3787 Q5 -- strip it ONLY when
+      # Windows install, a ledger-less box): Q5 -- strip it ONLY when
       # its text is byte-identical to the block the current himmel would write;
       # anything else may hold the operator's own edits, so it is kept and
       # reported. A block the scanner refuses (torn, duplicated ...) is kept and
@@ -3398,7 +3398,7 @@ EOF
         if [ "$_ext_rc" -ne 0 ] && [ "$_ext_rc" -ne 3 ]; then
           # The scanner's own reason (CRLF markers, open fence, marker counts ...).
           # --extract is silent, so ask the strip path: run in dry mode it refuses
-          # these same states with a reason and writes nothing (HIMMEL-3787 S3, S2d
+          # these same states with a reason and writes nothing (S2d
           # Minor a: this line used to print empty).
           _ext_why="$(bash "$SCRIPT_DIR/lib/unwire-user-claude-md.sh" "$_p" 1 2>&1 >/dev/null | sed 's/^unwire-user-claude-md: //')"
           _kept_lbl="  kept"; [ "$_dry" -eq 1 ] && _kept_lbl="DRY: would keep"
@@ -3423,7 +3423,7 @@ EOF
         fail_step "[6/8] user rule file: could not strip himmel's block from $_p"
       elif [ "$_dry" -eq 0 ] && [ -f "$_p" ]; then
         # 0 = clean; 3 = a marker is still there; anything else = the probe
-        # itself failed, which is NOT a verified-clean file (HIMMEL-3333).
+        # itself failed, which is NOT a verified-clean file.
         _probe_rc=0
         bash "$SCRIPT_DIR/lib/unwire-user-claude-md.sh" --probe "$_p" >/dev/null 2>&1 || _probe_rc=$?
         if [ "$_probe_rc" -eq 3 ]; then
@@ -3440,7 +3440,7 @@ EOF
 
 _user_settings="$USER_SETTINGS"
 _project_settings="$(m_path "$_ix_pset")"
-# HIMMEL-3334 codex-1: reset before every call site that MAY skip
+# reset before every call site that MAY skip
 # unwire_settings ($_user_settings) below (--skip-settings, a kept manifest
 # class, a missing file) -- unwire_user_files falls back to reading
 # $USER_SETTINGS directly in those cases, which is accurate precisely
@@ -3488,12 +3488,12 @@ else
       fi
     fi
   fi
-  # HIMMEL-3332 S8: the other projects the ledger recorded, same guards.
+  # S8: the other projects the ledger recorded, same guards.
   if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] && class_removes "$_ix_pset"; then
     unwire_recorded_projects
   fi
 fi
-# adopter-scripts (HIMMEL-3332 S6): a project-scope script install replaced,
+# adopter-scripts: a project-scope script install replaced,
 # ledger-restorable — new with S6 (the manifest's `adopter-scripts` row was
 # class=keep/step='-' before, listed for completeness only, never acted on).
 # Runs independently of --skip-settings: a different surface ({PWD}/scripts
@@ -3514,13 +3514,13 @@ if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ]; then
     case "$_adopter_path" in
       "$_adopter_proj_root"/*) ;;
       *)
-        # HIMMEL-3637: a unit outside this cwd's project root is left alone
+        # a unit outside this cwd's project root is left alone
         # (codex-2 fix above), but if it genuinely needs restoring, silently
         # skipping it would let this run finish at rc=0 having restored
         # nothing — and a later --purge-state would then delete its only
         # backup. Halt instead: the caller re-runs from the recorded project.
         # "keep already-absent" (the project dir itself, not just the file,
-        # is gone -- J1274O w1's "clone deleted" shape) is just as unsafe as
+        # is gone -- the "clone deleted" shape) is just as unsafe as
         # a live "restore" verdict: prov_read_verdict can't tell a genuinely
         # gone project from this bug's wrong-cwd trap, so both halt.
         _adopter_verdict="$(prov_read_verdict "$_au")" || _adopter_verdict=""
@@ -3537,7 +3537,7 @@ if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ]; then
 $_adopter_units
 EOF
 fi
-# ponytail (HIMMEL-3332 S6, spec §4 six rows): with no ledger, a replaced
+# ponytail (S6, spec §4 six rows): with no ledger, a replaced
 # adopter script cannot be told apart from the operator's own edit — nothing
 # under {PWD}/scripts is touched, and no candidate files can even be
 # enumerated without the ledger, so this prints no per-run line; the
@@ -3557,7 +3557,7 @@ elif ! class_removes "$_ix_mkt"; then
 elif ! _claude_bin=$(resolve_tool claude); then
   report_unresolved "[7/8] Claude marketplaces" claude --skip-plugins
 elif [ "$LEDGER_OK" -ne 1 ]; then
-  # ponytail (HIMMEL-3332 S6, spec §4/§8 case 3): same no-ledger fallback as
+  # ponytail (S6, spec §4/§8 case 3): same no-ledger fallback as
   # [4/8]; the hand command there removes marketplaces too, so it is only
   # printed once, at step 4, rather than repeated here.
   echo "  kept (no ledger): himmel's template marketplaces"
@@ -3611,7 +3611,7 @@ $_mkt_ours_units
 EOF
   fi
 fi
-# HIMMEL-3541: the marketplace removals above run after step 6's container
+# the marketplace removals above run after step 6's container
 # drop, so an extraKnownMarketplaces object install created can only be empty
 # now -- drop it here too (only where the ledger shows it was absent).
 if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ]; then
@@ -3629,10 +3629,10 @@ EOF
 fi
 echo ""
 
-# --- [8/8] remove the himmelctl cache + state (HIMMEL-2459) ------------------
+# --- [8/8] remove the himmelctl cache + state ------------------
 # install-profile.json + state.json survived a COMPLETE uninstall, so a
 # re-install started against the PREVIOUS install's profile and state ledger.
-# WHY (HIMMEL-2754): keep the cache LAST — install-profile.json records the
+# WHY: keep the cache LAST — install-profile.json records the
 # install and must outlive every step that may need a retry.
 # Honours HIMMELCTL_CACHE_DIR, the same override himmelctl itself reads.
 echo "[8/8] Removing himmelctl cache + state ($HIMMEL_CACHE_DIR)..."
@@ -3655,7 +3655,7 @@ elif suspicious_rm_path "$HIMMEL_CACHE_DIR"; then
 elif [ ! -e "$HIMMEL_CACHE_DIR" ] && [ ! -L "$HIMMEL_CACHE_DIR" ]; then
   echo "  absent, skipping: $HIMMEL_CACHE_DIR"
 elif [ -L "$HIMMEL_CACHE_DIR" ]; then
-  # HIMMEL-2505 gap A.3: the target is a symlink — unlink the link itself,
+  # gap A.3: the target is a symlink — unlink the link itself,
   # never `rm -rf` through it into whatever it points at.
   if guarded run rm -f -- "$HIMMEL_CACHE_DIR"; then
     [ "$DRY_RUN" -eq 0 ] && echo "  removed symlink (link only): $HIMMEL_CACHE_DIR"
@@ -3665,14 +3665,14 @@ elif [ -L "$HIMMEL_CACHE_DIR" ]; then
   fi
 else
   # Name the known state files before removing, so --dry-run is auditable. The
-  # last four are the session-start update check's (check-update-available.sh,
-  # HIMMEL-3260): it keeps its throttle stamp, first-attempt stamp and release
+  # last four are the session-start update check's (check-update-available.sh):
+  # it keeps its throttle stamp, first-attempt stamp and release
   # cache in this same dir so they survive a reboot — and go with it here.
   for _cache_file in install-profile.json state.json \
     himmel-update-check-last himmel-update-check-first himmel-latest-release himmel-latest-release.fail; do
     [ -f "$HIMMEL_CACHE_DIR/$_cache_file" ] && echo "  contains: $HIMMEL_CACHE_DIR/$_cache_file"
   done
-  # HIMMEL-3270: headed-arm-leg.sh appends one launch record per leg launch to
+  # headed-arm-leg.sh appends one launch record per leg launch to
   # launch-logs/<session>.log here (the cost cohort's source). One line naming
   # the dir + a count, not one line per leg: a long-lived machine has hundreds.
   if [ -d "$HIMMEL_CACHE_DIR/launch-logs" ]; then
@@ -3686,12 +3686,12 @@ else
     [ "$DRY_RUN" -eq 0 ] && echo "  removed: $HIMMEL_CACHE_DIR"
   else
     # A failed removal is residue that survives the uninstall — the exact
-    # thing HIMMEL-2458 says must not end in "Uninstall complete." at rc=0.
+    # thing an earlier change says must not end in "Uninstall complete." at rc=0.
     echo "  ERROR: failed to remove $HIMMEL_CACHE_DIR — residue remains; remove it manually." >&2
     fail_step "[8/8] himmelctl cache: $HIMMEL_CACHE_DIR could not be removed"
   fi
 fi
-# HIMMEL-3559: the cadence observability registry — any cadence arm's
+# the cadence observability registry — any cadence arm's
 # register call writes it (graphmap-cadence.sh today), but nothing ever
 # deleted it; only its JSON content was ever mutated, by unregister.
 if [ "$HALTED" -eq 1 ]; then
@@ -3713,7 +3713,7 @@ else
 fi
 echo ""
 
-# HIMMEL-3332 S8: `tool register` rows are docs-only — himmel records the tool
+# S8: `tool register` rows are docs-only — himmel records the tool
 # it installed but uninstall never removes one. One line each in the final
 # "NOT touched" report, one kept outcome each in the ledger session.
 _kept_tools=""
@@ -3728,7 +3728,7 @@ $_tool_units
 EOF
 fi
 
-# HIMMEL-3332 slice 3 (U24, HIMMEL-3311): row "qmd-fork" folds up to 4
+# slice 3: row "qmd-fork" folds up to 4
 # himmel-owned units — the fork checkout (kind file, the .himmel-build-ok
 # build stamp, op create), the bun-global symlink (kind symlink), the index
 # collection registration (kind collection, a register kind), and the
@@ -3739,8 +3739,8 @@ fi
 # removed only for units this install created. The stub is the one
 # exception: reverting it restores a broken vendor stub, so it is NEVER
 # removed and its kept line prints unconditionally below, in both modes,
-# ledger or not (console ruling on HIMMEL-3332, 2026-09-23).
-# HIMMEL-3534: git-ignored top-level paths the fork's own build creates --
+# ledger or not (console ruling on , 2026-09-23).
+# git-ignored top-level paths the fork's own build creates --
 # `node_modules/` (bun install, scripts/lib/qmd-bin.sh:546) and `dist/` (bun
 # run build -> node scripts/build.mjs, scripts/lib/qmd-bin.sh:546; TS outDir
 # is "dist" per the fork's tsconfig.build.json). Anything else git-ignored in
@@ -3773,7 +3773,7 @@ qmd_unwire_fork_checkout() {
     prov_read_outcome failed "$u" "suspicious-path"
     return 0
   fi
-  # HIMMEL-3524: the ledger only proves himmel created the checkout, not that
+  # the ledger only proves himmel created the checkout, not that
   # nothing has touched it since — a dirty tree or an unpushed commit is user
   # work the ledger has no way to see, so check the live git state before rm.
   # A failing `git status` (not a repo, corrupt .git, unreadable) is itself an
@@ -3783,7 +3783,7 @@ qmd_unwire_fork_checkout() {
     prov_read_outcome kept "$u" "user-modified"
     return 0
   fi
-  # HIMMEL-3534 (regression from HIMMEL-3524/#1175): the fork's own build
+  # the fork's own build
   # stamp is untracked by design (_qmd_build_stamp, scripts/lib/qmd-bin.sh:82),
   # so every successfully built fork showed as dirty here and was kept
   # forever under --purge-state. Drop exactly that one root-anchored line —
@@ -3794,7 +3794,7 @@ qmd_unwire_fork_checkout() {
     prov_read_outcome kept "$u" "user-modified"
     return 0
   fi
-  # HIMMEL-3534: `status --porcelain` never lists git-ignored paths, so a
+  # `status --porcelain` never lists git-ignored paths, so a
   # user file placed inside one (next to node_modules/ or dist/) read as
   # clean and was silently rm -rf'd. Any ignored path outside the build's own
   # output is user work and keeps the checkout too; the build's own output
@@ -3887,7 +3887,7 @@ qmd_unwire_global_symlink() {
 }
 
 # qmd_unwire_collection <unit_json> — "collection" is a register kind, so
-# prov_read_verdict checks the LIVE registration (HIMMEL-3525 S16): it reads
+# prov_read_verdict checks the LIVE registration: it reads
 # `qmd collection show <name>` through prov_identity_live and removes only
 # when the live identity is one himmel recorded (a legacy row falls back to
 # its recorded path); a re-pointed collection is kept. Only the apply step is
@@ -3939,8 +3939,8 @@ if [ "$LEDGER_OK" -eq 1 ]; then
   # Collection removal goes through qmd_cmd (scripts/lib/qmd-bin.sh), which
   # resolves either through the fork checkout's dist/cli/qmd.js (via the
   # bun-global symlink) or a `qmd` already on PATH — so it must run BEFORE
-  # the fork checkout or the global symlink are unwired, not after (critic
-  # panel codex-1, HIMMEL-3332 slice3). Two passes over the same ledger read:
+  # the fork checkout or the global symlink are unwired, not after.
+  # Two passes over the same ledger read:
   # collection first, then symlink/file in ledger order.
   while IFS= read -r _u; do
     [ -n "$_u" ] || continue
@@ -3970,14 +3970,14 @@ fi
 qmd_print_stub_kept_line "$_qmd_stub_unit"
 echo ""
 
-# HIMMEL-3787 S3: the reconcile report -- what was reverted, what was skipped,
+# S3: the reconcile report -- what was reverted, what was skipped,
 # and every unit left for the operator with its backup and hand commands. It
 # prints while the ledger session is still open (a purge below deletes the
 # ledger) and before the INCOMPLETE summary, so a failed run still says what
 # it kept.
 [ "$LEDGER_OK" -eq 1 ] && { prov_read_reconcile_report; echo ""; }
 
-# HIMMEL-3332 S6: close the ledger session. On a halt, keep everything —
+# S6: close the ledger session. On a halt, keep everything —
 # backups and (with --purge-state) the ledger itself — so a retry has the
 # recorded pre-state to work from; only a clean end may purge.
 if [ "$LEDGER_OK" -eq 1 ]; then
@@ -3987,14 +3987,14 @@ if [ "$LEDGER_OK" -eq 1 ]; then
     _prov_session_iid="$_PROV_READ_IID"
     prov_read_session_end ok
     if [ "$PURGE_STATE" -eq 1 ]; then
-      # HIMMEL-3637: fail closed — a backup is the only copy of whatever it
+      # fail closed — a backup is the only copy of whatever it
       # holds, so purging it out from under a unit that still verdicts
       # "restore" (unrestored, live state still himmel's) would destroy it
       # for good. This is a defense-in-depth scan across every recorded
       # backup, independent of row/kind and of any earlier step's own
       # cwd-scoping, so a gap like it never turns into silent data loss.
       # A unit this run explicitly decided to keep (e.g. the qmd plugin
-      # stub, HIMMEL-3332's "never gates a removal" ruling) already has a
+      # stub, an earlier change's "never gates a removal" ruling) already has a
       # kept/restored/removed outcome row for this session's iid — that's
       # a policy decision, not the bug; only a unit with NO outcome row at
       # all (silently skipped) is what must refuse the purge.
@@ -4002,24 +4002,24 @@ if [ "$LEDGER_OK" -eq 1 ]; then
       _prov_scan_ledger="${_prov_scan_dir:+$_prov_scan_dir/provenance.jsonl}"
       _prov_handled_keys=""
       if [ -n "$_prov_session_iid" ] && [ -n "$_prov_scan_ledger" ] && [ -f "$_prov_scan_ledger" ]; then
-        # HIMMEL-3637 R3-codex2: key by path+unit, not path alone -- two
+        # Key by path+unit, not path alone -- two
         # different fold units (e.g. distinct hooks nested at the same file
         # path) each get their own outcome row, so an outcome for one must
         # never mask a different, still-unrestored unit at the same path.
-        # HIMMEL-3637 R4-codex1: the key is a jq-encoded [path,unit] JSON
+        # The key is a jq-encoded [path,unit] JSON
         # array, not a NUL-joined string -- bash's handling of an embedded
         # NUL inside a variable is undocumented and version-dependent (this
         # project must stay bash-3.2-safe), so a NUL separator is not a safe
         # foundation for a substring-match key on every supported shell.
-        # HIMMEL-3787: a "kept" op with reason `user-modified` or bare
+        # a "kept" op with reason `user-modified` or bare
         # `already-absent` is deliberately excluded here -- those two are
         # still HELD (§5.1), and folding them into "handled" let them skip
         # the unrestored scan below entirely and lose their only backup
-        # (J1390A Finding 4). Every OTHER "kept" reason (`class-keep`,
+        # Every OTHER "kept" reason (`class-keep`,
         # `preexisted`, `no-backup`, `no-systemctl`, `linger-preexisted`,
         # etc.) is a policy exemption the ledger recorded deliberately and
         # was never meant to hold a backup for (e.g. the qmd plugin-cache
-        # stub, HIMMEL-3332's "never gates a removal" console ruling) --
+        # stub, an earlier change's "never gates a removal" console ruling) --
         # excluding those too would refuse --purge-state on backups nothing
         # is actually waiting to resolve. `user-modified`/`already-absent`
         # units are re-checked by prov_read_unit_resolved instead, which is
@@ -4032,14 +4032,14 @@ if [ "$LEDGER_OK" -eq 1 ]; then
 $_prov_handled_keys
 "
       _prov_unrestored=""
-      # HIMMEL-3787: backups held by a resolvable-but-not-yet-resolved unit
+      # backups held by a resolvable-but-not-yet-resolved unit
       # (chiefly `keep user-modified`, §5.1) are tracked separately from
       # `_prov_unrestored` -- a bad row or orphan backup always refuses, but
       # a held backup is exactly what `--keep-backups` is for (§5.4): it
       # retains instead of refusing.
       _prov_held_backups=""
       if ! _prov_units_raw="$(prov_read_units)"; then
-        # HIMMEL-3637 R3-codex2: prov_read_units itself failing (a malformed
+        # prov_read_units itself failing (a malformed
         # provenance fold file, not just one bad row) must not look like "no
         # units to check" -- an empty `$()` here fed the loop nothing and let
         # --purge-state through with zero checks. Fail the whole scan closed
@@ -4049,12 +4049,12 @@ $_prov_handled_keys
       else
         while IFS= read -r _pu; do
           [ -n "$_pu" ] || continue
-          # HIMMEL-3637 R5-codex1: a genuinely unparsable row must not look
+          # A genuinely unparsable row must not look
           # like "row has no path"/"row has no backup" -- both silently fell
           # into the same `|| continue` as a legitimate skip. Validate JSON
           # parseability up front so that failure is unresolvable, not safe.
           if ! printf '%s' "$_pu" | jq -e '.
-# HIMMEL-3637-pu-json' >/dev/null 2>&1; then
+# pu-json' >/dev/null 2>&1; then
             _prov_unrestored="${_prov_unrestored}(unparsable provenance row)"$'\n'
             continue
           fi
@@ -4072,7 +4072,7 @@ $_prov_handled_keys
           case "$_prov_handled_keys" in *"
 $_pu_key
 "*) continue ;; esac
-          # HIMMEL-3637 R3-codex1: a verdict this can't even COMPUTE (rc!=0 --
+          # A verdict this can't even COMPUTE (rc!=0 --
           # malformed row, missing field) is unresolvable, not safe -- fail
           # closed on it exactly like an explicit "restore" verdict, rather
           # than silently letting `|| continue` skip past it and purge.
@@ -4080,12 +4080,12 @@ $_pu_key
             _prov_unrestored="${_prov_unrestored}${_pu_path}"$'\n'
             continue
           fi
-          # HIMMEL-3787: resolved status now comes from prov_read_unit_resolved
+          # resolved status now comes from prov_read_unit_resolved
           # (spec §5.1) -- `keep already-base` and `surgical *` release their
           # backup exactly like restore/remove already did, while `keep
           # user-modified` is caught here for the first time. It used to fall
           # into a `*) continue` default and its backup was purged out from
-          # under it (J1390A Finding 4). "keep already-absent" still counts as
+          # under it. "keep already-absent" still counts as
           # held here (§5.1 excludes bare already-absent from "resolved" even
           # though §3.2's own, more permissive test does not).
           if prov_read_unit_resolved "$_pu" ""; then
@@ -4096,7 +4096,7 @@ $_pu_key
 $_prov_units_raw
 EOF
       fi
-      # HIMMEL-3787: a torn/unparsable ledger row is dropped silently at LOAD
+      # a torn/unparsable ledger row is dropped silently at LOAD
       # (prov_read_load counts it in PROV_READ_BAD_ROWS but drops it before it
       # ever reaches prov_read_units), so the per-unit scan above never sees
       # it and has nothing to refuse on. Two independent, backup-preserving
@@ -4143,7 +4143,7 @@ EOF
         done
         fail_step "[8/8] provenance ledger: refused to purge — unrestored backup(s) would be lost"
       fi
-      # HIMMEL-3787 (design §5.4, J1393A Minor 1): a held backup (chiefly
+      # (design §5.4, Minor 1): a held backup (chiefly
       # `keep user-modified`) is not the same kind of problem as a bad row or
       # orphan above -- nothing is lost by keeping it around, so
       # --keep-backups is a real escape hatch here, not a refusal.
@@ -4164,7 +4164,7 @@ EOF
           _prov_backups_dir="$_prov_base_dir/provenance-backups"
           _prov_ledger_file="$_prov_base_dir/provenance.jsonl"
           if [ "$KEEP_BACKUPS" -eq 1 ]; then
-            # HIMMEL-3787 (design §5.4, J1393A Minor 1): --keep-backups under
+            # (design §5.4, Minor 1): --keep-backups under
             # --purge-state used to leave the ledger deleted and
             # provenance-backups/ behind as a permanent orphan -- the next
             # purge's own orphan scan (above) would then refuse forever,
@@ -4177,14 +4177,14 @@ EOF
             if [ "$DRY_RUN" -eq 1 ]; then
               echo "DRY: would retain provenance ledger + backups into $_prov_retained_dir"
             else
-              # HIMMEL-3787 (codex-2, panel round 1): the stamp is
+              # the stamp is
               # second-precision, so two --purge-state --keep-backups purges
               # within the same second used to reuse the same
               # retained-<stamp>/ dir -- `mkdir -p` succeeded silently on it,
               # so the second mv could land inside the first purge's already-
               # retained set instead of a fresh one. mkdir without -p fails on
               # an existing dir; retry with an incrementing suffix until a
-              # fresh directory is actually created. J1408A F2: retry ONLY on
+              # fresh directory is actually created. Retry ONLY on
               # a collision (the dir now exists); any other mkdir failure
               # (EACCES, read-only fs) fails at once with the real error.
               _prov_retained_suffix=0
@@ -4208,7 +4208,7 @@ EOF
                 if [ -d "$_prov_backups_dir" ] || [ -L "$_prov_backups_dir" ]; then
                   guarded run mv -- "$_prov_backups_dir" "$_prov_retained_dir/provenance-backups" || _prov_retain_ok=0
                 fi
-                # J1408A F1: the ledger only follows its backups -- moving it
+                # F1: the ledger only follows its backups -- moving it
                 # after a failed backups mv would leave live backups no ledger
                 # accounts for (the next purge's orphan scan refuses forever).
                 if [ "$_prov_retain_ok" -eq 1 ] && [ -f "$_prov_ledger_file" ]; then
@@ -4223,7 +4223,7 @@ EOF
               fi
             fi
           else
-            # HIMMEL-2505 gap A.3: a symlinked backups dir is unlinked, never
+            # gap A.3: a symlinked backups dir is unlinked, never
             # `rm -rf`'d through into whatever it points at.
             if [ -L "$_prov_backups_dir" ]; then
               guarded run rm -f -- "$_prov_backups_dir"
@@ -4247,7 +4247,7 @@ EOF
 fi
 
 # A step that HAD to run and could not is not a completed uninstall. Saying so
-# — and exiting non-zero — is the whole point of HIMMEL-2458: a caller reading
+# — and exiting non-zero — is the whole point: a caller reading
 # the rc, or a human reading the last line, was previously told a full teardown
 # happened when the two most consequential steps never ran.
 if [ "${#STEPS_INCOMPLETE[@]}" -gt 0 ]; then
@@ -4280,7 +4280,7 @@ if [ "${#STEPS_INCOMPLETE[@]}" -gt 0 ]; then
 fi
 
 if [ "$DRY_RUN" -eq 0 ]; then
-  # Footprint read-back (HIMMEL-3058): every manifest directory this run was
+  # Footprint read-back: every manifest directory this run was
   # meant to remove is checked absent on disk — the file system, not the rc.
   for _mi in "${!M_ID[@]}"; do
     [ "${M_KIND[$_mi]}" = "dir" ] || continue
@@ -4316,7 +4316,7 @@ for _mi in "${!M_ID[@]}"; do
 done
 if [ -n "$_kept_tools" ]; then printf '%s' "$_kept_tools"; fi
 
-# --- Standalone bundle purge (HIMMEL-3312 S12) --------------------------------
+# --- Standalone bundle purge --------------------------------
 # The last thing this script may ever do: the bundle himmelctl copies beside
 # the ledger (S13) is uninstall.sh's own to remove, and only as the true final
 # statement -- once the group below starts, NOTHING may run after it, since it

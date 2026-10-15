@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-new-worktree-branch-tracking.sh — HIMMEL-3462: a leg's first `git push`
+# test-new-worktree-branch-tracking.sh: a leg's first `git push`
 # (no -u, no branch arg) must succeed on a brand-new worktree branch. Builds a
 # real origin (second bare repo, not the throwaway no-remote fixture the
 # uniqueness suite uses) and a scratch HOME, so `git worktree add -b <branch>
@@ -40,7 +40,7 @@ unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
     GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 # _new-worktree.sh exports FORGE and GH_CMD into its uniqueness guard, so an
-# inherited FORGE=github would make forge_detect reach gh (HIMMEL-3496). Unset
+# inherited FORGE=github would make forge_detect reach gh. Unset
 # FORGE, and point GH_CMD at a tripwire that records any call it still gets.
 unset FORGE GH_CMD
 GH_CALLS="$TMPBASE/gh-calls.log"

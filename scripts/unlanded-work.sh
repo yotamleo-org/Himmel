@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # unlanded-work.sh — find local branches ahead of main that never became a PR
-# (HIMMEL-2070).
 #
 # /clean only prunes a worktree whose branch already has a MERGED PR — a
 # branch that was squash-merged under a DIFFERENT head (a squash rewrites the
@@ -26,7 +25,7 @@
 # alone is not sufficient, so a ticket with an earlier PARTIAL PR still
 # surfaces its unlanded remainder as UNLANDED-LIVE (annotated "partial: ...").
 #
-# --health (HIMMEL-3405) prints ONLY alarm lines — empty output = healthy:
+# --health prints ONLY alarm lines — empty output = healthy:
 #   LOST-COMMITS <branch> pr#<n> ahead=<k>   a local or remote branch whose PR is
 #       MERGED but whose tip carries <k> commits that are in neither the merged
 #       head nor main (a post-merge push that never landed)
@@ -174,8 +173,8 @@ fi
 
 # BASE_BARE: the bare branch name gh's baseRefName field reports (never a
 # remote prefix) — strip exactly one leading "<remote>/" segment from BASE
-# (codex-4, HIMMEL-2070 CR round 4), but ONLY when BASE is actually a
-# remote-tracking ref (codex-3, CR round 5): a bare LOCAL --base can itself
+# but ONLY when BASE is actually a
+# remote-tracking ref: a bare LOCAL --base can itself
 # be a nested branch name containing a slash (e.g. --base release/2.0), and
 # blindly stripping up to the first slash would mangle that into "2.0",
 # never matching a real merged PR's baseRefName. Confirming refs/remotes/
@@ -186,7 +185,7 @@ if git rev-parse --verify -q "refs/remotes/${BASE}" >/dev/null 2>&1; then
     case "$BASE" in */*) BASE_BARE="${BASE#*/}" ;; esac
 fi
 
-# MERGED_HEADS (HIMMEL-3405): "<headRefOid> <number>" for every MERGED PR into
+# MERGED_HEADS: "<headRefOid> <number>" for every MERGED PR into
 # BASE whose head commit exists in THIS repo -- the evidence for the tip rule in
 # forge_tip_lookup. Built once; a head that was never fetched cannot be compared
 # and is left out (the fail-LOUD direction: no evidence, no LANDED).
@@ -206,7 +205,7 @@ fi
 # EQUALS or is an ANCESTOR of a MERGED PR's final head has no commit of its own
 # that the PR did not carry into BASE -- whatever the ref is called. This is what
 # classifies a review snapshot (pr<N>, pr<N>tmp, ...) the name-keyed rule below
-# can never match (HIMMEL-3405). A tip AHEAD of the head is not an ancestor and
+# can never match. A tip AHEAD of the head is not an ancestor and
 # falls through to the git rules.
 forge_tip_lookup() {
     local oid n
@@ -250,7 +249,7 @@ forge_lookup() {
 }
 
 # diff_failure_cause <branch> <rc> -- a readable cause for a failed delta, never
-# a bare rc (HIMMEL-3405). No merge base is the one known systematic case: a
+# a bare rc. No merge base is the one known systematic case: a
 # branch whose root commit comes from another repo's history (e.g. the archived
 # private himmel) has nothing to diff against.
 diff_failure_cause() {
@@ -292,7 +291,7 @@ while IFS= read -r branch; do
         # (CLAUDE.md) is every landing commit carries "[TICKET-ID]" in its
         # subject. A bare `--grep="$key"` also matches a commit that merely
         # DISCUSSES the ticket in its body (e.g. a triage/CR commit noting
-        # "deferred to HIMMEL-1895") without that ticket's work ever landing —
+        # "deferred to PROJ-123") without that ticket's work ever landing —
         # a false LANDED-ELSEWHERE, i.e. exactly the quieter-than-true
         # misclassification the FAIL-LOUD invariant forbids. Tightening to the
         # bracket form only ever REDUCES matches relative to the bare form, so
@@ -304,8 +303,7 @@ while IFS= read -r branch; do
 
     forge_row="$(forge_lookup "$branch" "$tip")"
     case "$forge_row" in
-        # KNOWN LIMITATION (HIMMEL-2088, deferred from CR round 5, panel
-        # finding codex-1): ACTIVE is deliberately tip-agnostic per the
+        # KNOWN LIMITATION (deferred): ACTIVE is deliberately tip-agnostic per the
         # ticket's own explicit rule 1 ("forge says an OPEN PR exists for
         # this branch head -> ACTIVE") — it does not check whether local
         # commits made AFTER the PR's last push are reflected in it. Low
@@ -318,14 +316,14 @@ while IFS= read -r branch; do
     esac
 
     if [ -z "$class" ]; then
-        # Capture the exit code (codex-2, HIMMEL-2070 CR round 4): a FAILED
+        # Capture the exit code: a FAILED
         # `git diff` also yields empty stdout, which the FAIL-LOUD invariant
         # forbids treating the same as a genuinely empty (already-landed)
         # delta -- that would silently misclassify a branch whose delta
         # simply could not be computed as safe-to-drop. A failure routes to
         # the loudest class instead.
         delta_rc=0
-        # --binary (codex-2, HIMMEL-2070 CR round 5): a plain `git diff` on a
+        # --binary: a plain `git diff` on a
         # binary file emits only a "Binary files ... differ" placeholder, not
         # the actual patch data, so `git apply --check` on it fails both
         # probes even for a branch that genuinely, uniquely changed that
@@ -349,8 +347,7 @@ while IFS= read -r branch; do
             [ "$age_hours" -gt "$AGE_THRESHOLD" ] && aged=1
         else
             if [ -n "$key_sha" ]; then
-                # KNOWN LIMITATION (HIMMEL-2088, deferred from HIMMEL-2070 CR
-                # round 1, panel finding codex-2): this trusts ANY commit
+                # KNOWN LIMITATION (deferred): this trusts ANY commit
                 # carrying "[$key]" on main as proof the branch's work landed,
                 # even when that commit is only a PARTIAL or unrelated slice
                 # of the ticket. Deliberately not tightened here — it is this
@@ -514,14 +511,14 @@ if [ -z "$CLASS_FILTER" ] || [ "$CLASS_FILTER" = "LANDED-ELSEWHERE" ]; then
         echo "  Drop commands:"
         while IFS=$'\t' read -r c b ahead age aged ev wt; do
             [ "$c" = "LANDED-ELSEWHERE" ] || continue
-            # printf '%q' (codex-5, HIMMEL-2070 CR round 2), not a double-quoted
+            # printf '%q', not a double-quoted
             # %s: a git ref name may legally contain "$(...)", backticks, or a
             # literal single/double quote (check-ref-format does not forbid any
             # of them) — a double-quoted value still expands command
             # substitution inside a shell, so a printed command copy-pasted
             # from a maliciously or accidentally named ref could execute
             # injected shell syntax. %q is bash's own shell-safe quoting.
-            # No --force (codex-2, HIMMEL-2070 CR round 3): plain `git
+            # No --force: plain `git
             # worktree remove` already refuses when the worktree carries any
             # uncommitted or untracked change, so it is the operator's own
             # natural pause point before anything is discarded. --force

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/luna-upgrade-all.sh (HIMMEL-462).
+# Tests for scripts/luna-upgrade-all.sh.
 # Multi-vault luna template upgrade sweep.
 # Each case builds throwaway fixtures under a temp dir and runs the engine
 # with explicit --template-dir and --roots so nothing touches a real vault.
@@ -11,7 +11,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -147,7 +147,7 @@ git_init_dirty() {
 }
 
 # git_init_dirty_owned <dir>: git_init_dirty plus an uncommitted edit to a
-# template-owned file (HIMMEL-4719: only owned paths block an apply).
+# template-owned file (only owned paths block an apply).
 git_init_dirty_owned() {
     local d="$1"
     git_init_dirty "$d"
@@ -198,7 +198,7 @@ esac
 
 # T-no-template: no template resolvable exits 2 with message.
 #
-# The engine is COPIED outside any himmel tree first (HIMMEL-2460). Since the
+# The engine is COPIED outside any himmel tree first. Since the
 # script now resolves its own checkout's template ahead of the $HOME scan, an
 # in-tree invocation can no longer fail to find one no matter what $HOME says
 # — that is the fix working, not a hole in this case. Reaching the genuinely
@@ -338,7 +338,7 @@ make_luna_vault "$SW_DIRTY" "0.9.0" "$T_SW"
 printf 'STALE HOOK\n' > "$SW_DIRTY/scripts/hooks/check-commit-msg.sh"
 git_init_dirty_owned "$SW_DIRTY"
 
-# 5b. behind vault dirty ONLY under handovers/ (HIMMEL-4719): not dirty
+# 5b. behind vault dirty ONLY under handovers/: not dirty
 SW_HDIRTY="$SW_ROOTS/handovers-dirty-vault"
 mkdir -p "$SW_HDIRTY"
 make_luna_vault "$SW_HDIRTY" "0.9.0" "$T_SW"
@@ -423,7 +423,7 @@ esac
 dirty_col=$(printf '%s\n' "$dirty_line" | cut -f4)
 assert_eq "T-sw dirty vault dirty=true" "true" "$dirty_col"
 
-# handovers-only dirty: dirty=false (HIMMEL-4719)
+# handovers-only dirty: dirty=false
 hdirty_line=$(printf '%s\n' "$sw_out" | grep "$SW_HDIRTY" | head -1)
 assert_eq "T-sw handovers-only dirty vault dirty=false" "false" "$(printf '%s\n' "$hdirty_line" | cut -f4)"
 
@@ -508,7 +508,7 @@ esac
 # Task 5 tests — backup_vault helper
 # ===========================================================================
 
-# Capture real HOME at suite start for the safety assertion (I1 fix: HIMMEL-462).
+# Capture real HOME at suite start for the safety assertion.
 # Snapshot which subdirs ALREADY EXIST before we run anything; we'll compare
 # at suite end so we don't rely on a hardcoded slug allowlist that can drift.
 REAL_HOME_BACKUP_DIR="$HOME/.claude/luna-upgrade-backups"
@@ -766,7 +766,7 @@ else
     pass "T6-c: no backup created for dirty vault"
 fi
 
-# T6-c2: dirty only under non-owned paths (handovers/, a stray file) -> applies (HIMMEL-4719)
+# T6-c2: dirty only under non-owned paths (handovers/, a stray file) -> applies
 T6C2_TMPL="$TMP/t6c2-tmpl"; make_template "$T6C2_TMPL" "1.0.0"
 T6C2_VAULT="$TMP/t6c2-vault"
 make_luna_vault "$T6C2_VAULT" "0.9.0" "$T6C2_TMPL"
@@ -802,7 +802,7 @@ else
     fail "T6-c3: owned type-change emits SKIPPED-DIRTY" "got: $t6c3_out"
 fi
 
-# T6-c4: an owned path whose NAME contains " (" still blocks (HIMMEL-4727): only the
+# T6-c4: an owned path whose NAME contains " (" still blocks: only the
 # plan's trailing annotation is stripped, not everything from the first " (".
 T6C4_TMPL="$TMP/t6c4-tmpl"; make_template "$T6C4_TMPL" "1.0.0"
 printf 'paren v1\n' > "$T6C4_TMPL/docs/Note (1).md"
@@ -838,7 +838,7 @@ else
 fi
 
 # T6-c6: an UNannotated WRITE-NEW row whose path itself ends in an annotation
-# lookalike still blocks (HIMMEL-4796): the engine's machine-readable path column
+# lookalike still blocks: the engine's machine-readable path column
 # is read, nothing is stripped off the human text.
 T6C6_TMPL="$TMP/t6c6-tmpl"; make_template "$T6C6_TMPL" "1.0.0"
 printf 'paren v1\n' > "$T6C6_TMPL/docs/Note (vault has local edits)"
@@ -1472,7 +1472,7 @@ case "$i3_corrupt_line" in
 esac
 
 # ===========================================================================
-# T-RESOLVE (HIMMEL-2460): the template comes from the INVOKING checkout
+# T-RESOLVE: the template comes from the INVOKING checkout
 # ---------------------------------------------------------------------------
 # resolve_template used to fall straight from $HIMMEL_DIR to a hardcoded
 # $HOME-relative candidate list. On the acceptance-matrix guest the install ran
@@ -1583,7 +1583,7 @@ assert_eq "T-RESOLVE: template-less checkout apply exits 0" 0 "$tr_d_rc"
 assert_eq "T-RESOLVE: HIMMEL_REPO beats the \$HOME scan" A "$tr_d_marker"
 
 # ===========================================================================
-# T30 (HIMMEL-2886): sweep must NOT classify a vault clean-upgrade when it has
+# T30: sweep must NOT classify a vault clean-upgrade when it has
 # a committed local edit to a template-owned "overwrite"-class file since its
 # last stamped upgrade — matching the real incident (luna-upgrade-all apply
 # on ~/Documents/luna, 2026-09-09): git status was CLEAN (the edit was
@@ -1617,7 +1617,7 @@ case "$t30_line" in
     *) fail "T30 sweep classifies local-config-edits, not clean-upgrade" "got: $t30_line" ;;
 esac
 
-# T31 (HIMMEL-3037): apply on a vault whose ONLY non-success is a withheld
+# T31: apply on a vault whose ONLY non-success is a withheld
 # local edit (committed, git status clean) surfaces upgrade.sh's rc 3 as its own
 # NEEDS-RECONCILE signal + exit 3 — not PARTIAL, not a bare passed-through rc —
 # and leaves the stamp behind.

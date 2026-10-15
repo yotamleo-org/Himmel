@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/judge-dir.sh <PR> [suffix] (HIMMEL-4325) - create a judge scratch dir
+# scripts/judge-dir.sh <PR> [suffix] - create a judge scratch dir
 # /tmp/claude-<uid>/j<PR>[a-z] and write its holder file, so tmp-reap.sh can tell a
 # live judge from a dead one. Prints the dir on stdout; on ANY failure prints
 # nothing on stdout, a reason on stderr, and exits non-zero.
@@ -63,7 +63,7 @@ if [ -s "$DIR/.holder" ]; then
         [ "$op" != "$holder" ] && [ "$os" != "-" ] && [ "$(pstart "$op")" = "$os" ] \
             && die "$DIR is held by live pid $op; use another suffix"
     ;; esac
-    # HIMMEL-5173: the SAME live holder asking again (two in-process judges under one console
+    # the SAME live holder asking again (two in-process judges under one console
     # share its pid) must not share a dir that already has contents: the first verdict's
     # release marker would delete the second judge's evidence. An empty dir is still reusable.
     if [ "$op" = "$holder" ] && [ "$os" != "-" ] && [ "$os" = "$start" ]; then
@@ -74,7 +74,7 @@ if [ -s "$DIR/.holder" ]; then
         done
     fi
 fi
-# HIMMEL-5165: a dir whose verdict is written is released to tmp-reap.sh and may be deleted at any
+# a dir whose verdict is written is released to tmp-reap.sh and may be deleted at any
 # moment; reusing it would race the reaper, so the caller picks another suffix instead
 [ -f "$DIR/.verdict-written" ] && [ ! -L "$DIR/.verdict-written" ] \
     && die "$DIR already released by a written verdict; use another suffix"

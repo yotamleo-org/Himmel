@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # test-tarball-install-vm.sh -- host-driven fresh-guest acceptance for the
-# checksummed release tarball (HIMMEL-3059 slice 1, prerequisite P4). Builds the
+# checksummed release tarball. Builds the
 # tarball + a git bundle of THIS worktree's HEAD, ships them to a guest, and runs
 # scripts/release/tarball-vs-clone.sh there: install via the README's tarball
 # steps AND via a clone of the same commit, then assert the two END STATES
 # CONVERGE (ADR Q3) -- not merely that both installs exited 0.
 #
-# STATUS: RUN ON A GUEST, GREEN (HIMMEL-3262). At 0aacaa42 on a guest restored from
+# STATUS: RUN ON A GUEST, GREEN. At 0aacaa42 on a guest restored from
 # suite-ready-v4 this exits 0 -- "clone and tarball installs CONVERGED" (314 snapshot
 # lines identical after path normalization); the vm_guest_assert_clean false positive
-# that used to gate it (HIMMEL-3252) is fixed. Its hermetic halves are tested
+# that used to gate it is fixed. Its hermetic halves are tested
 # (scripts/release/test-tarball-vs-clone.sh: the convergence assertion against a
 # stub himmelctl, with a divergent RED control; this driver's fail-soft path).
 # ponytail: both installs go into a fake HOME under /tmp, and there is no uninstall
@@ -29,11 +29,11 @@
 set -uo pipefail
 
 # The default target is vm.mode's VM, not a hardcoded local one; vm.mode=none
-# SKIPs (HIMMEL-4583).
+# SKIPs.
 # shellcheck source=lib/vm-mode.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/lib/vm-mode.sh"
 # rc 1 = a configured none: SKIP (exit 3); rc 2 = a resolver error: a loud
-# config error (exit 2), never a SKIP (HIMMEL-4597, J1932 T2).
+# config error (exit 2), never a SKIP.
 vm_mode_e2e_guard "$(basename -- "$0")" || { vm_guard_rc=$?; [ "$vm_guard_rc" = 1 ] && exit 3; exit "$vm_guard_rc"; }
 HOSTSPEC="${1:-$VM_MODE_HOST}"
 PORT="${2:-$VM_MODE_PORT}"
@@ -68,7 +68,7 @@ cp "$REPO/scripts/release/converge-check.sh" "$REPO/scripts/release/tarball-vs-c
 rm -f "$stage/build.log"
 
 # 2. ship, then assert the guest holds no secrets before anything runs there
-#    (HIMMEL-2540). Only git-tracked content + the built tarball travel.
+#    Only git-tracked content + the built tarball travel.
 # shellcheck source=lib/vm-guest-excludes.sh
 . "$REPO/scripts/lib/vm-guest-excludes.sh" \
   || { echo "==> REFUSING: cannot load scripts/lib/vm-guest-excludes.sh; nothing was copied" >&2; exit 1; }

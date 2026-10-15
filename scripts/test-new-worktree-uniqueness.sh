@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-new-worktree-uniqueness.sh — tests for the merged-PR uniqueness guard
-# in _new-worktree.sh (HIMMEL-512, Task 4).
+# in _new-worktree.sh.
 #
 # Self-contained: builds a throwaway temp git repo, stubs GH_CMD, and runs
 # _new-worktree.sh with --no-install. No live remote or gh binary required.
@@ -15,7 +15,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

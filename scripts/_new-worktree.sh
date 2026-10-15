@@ -17,7 +17,7 @@
 #
 # Side effects:
 #   1. git fetch origin <default> (refresh refs only — does not modify local
-#      default branch; <default> = main OR master, resolved per HIMMEL-297)
+#      default branch; <default> = main OR master, resolved)
 #   2. git worktree add <path> -b <branch> origin/<default>
 #   3. Unless --no-install: npm install --omit=dev in scripts/jira/ so the
 #      pre-push license-check hook can validate without per-push setup.
@@ -25,19 +25,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # default_branch() resolves the repo's default integration branch (main OR
-# master) so new worktrees branch off the real default (HIMMEL-297).
+# master) so new worktrees branch off the real default.
 # shellcheck source=guardrails/lib.sh
 # shellcheck disable=SC1091
 if ! . "$SCRIPT_DIR/guardrails/lib.sh" 2>/dev/null; then
     echo "ERR new-worktree: cannot source guardrails/lib.sh" >&2
     exit 1
 fi
-# forge_detect (HIMMEL-326): the gh-auth-setup-git fetch self-heal below is
+# forge_detect: the gh-auth-setup-git fetch self-heal below is
 # GitHub-specific, so it only fires for a github origin.
 # shellcheck source=lib/forge.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/forge.sh"
-# branch_has_merged_pr (HIMMEL-512): refuse creating a worktree for a branch
+# branch_has_merged_pr: refuse creating a worktree for a branch
 # that was already shipped via a merged PR.
 # shellcheck source=lib/branch-shipped.sh
 # shellcheck disable=SC1091
@@ -83,7 +83,7 @@ COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null) || { echo "ERR new-work
 # resolve to absolute via `cd`-and-`pwd` so PRIMARY_WORKTREE is reliable.
 PRIMARY_WORKTREE=$(cd "$(dirname "$COMMON_DIR")" && pwd)
 
-# Resolve the repo's default integration branch (main OR master, HIMMEL-297)
+# Resolve the repo's default integration branch
 # so the fetch + worktree-add below target the real default.
 DEFAULT_BRANCH=$(default_branch "$PRIMARY_WORKTREE")
 
@@ -109,7 +109,7 @@ if git -C "$PRIMARY_WORKTREE" show-ref --verify --quiet "refs/heads/$BRANCH"; th
     exit 1
 fi
 
-# HIMMEL-512: refuse creating a worktree for a branch that maps to a merged PR.
+# refuse creating a worktree for a branch that maps to a merged PR.
 # Run BEFORE the network fetch so the refusal is cheap and early.
 # FORGE / GH_CMD must be exported to propagate into branch_has_merged_pr's
 # timeout subprocess (they are test seams and may be set by the caller).
@@ -147,7 +147,7 @@ if ! run git -C "$PRIMARY_WORKTREE" fetch origin "$DEFAULT_BRANCH" --quiet; then
     # if it stays broken. Self-healing so an unattended worktree-create doesn't
     # hard-fail on a recoverable auth gap. GitHub-only: `gh auth setup-git` wires
     # github credentials, so a bitbucket origin falls straight through to the
-    # plain error (HIMMEL-326).
+    # plain error.
     forge_kind=$( ( cd "$PRIMARY_WORKTREE" && forge_detect 2>/dev/null ) || true )
     if [ "$forge_kind" = "github" ] && command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
         echo "WARN new-worktree: git fetch failed; gh is authenticated — running 'gh auth setup-git' and retrying" >&2
@@ -166,7 +166,7 @@ if ! run git -C "$PRIMARY_WORKTREE" worktree add "$WORKTREE_RELATIVE" -b "$BRANC
     exit 1
 fi
 
-# HIMMEL-3462: `-b <branch> origin/<default>` leaves the new branch tracking
+# `-b <branch> origin/<default>` leaves the new branch tracking
 # origin/<default> (branch.autoSetupMerge), not a same-named remote branch
 # that doesn't exist yet — so a bare `git push` errors under push.default=simple
 # and a leg's first push needs an explicit `-u origin <branch>`. Point the

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Isolated predicate harness for suspicious_rm_path in scripts/uninstall.sh
-# (HIMMEL-2503, the rule Ruling 135 wrote down after the 2026-09-03 wipe).
+#  (the rule Ruling 135 wrote down after the 2026-09-03 wipe).
 #
 # The guard is asserted DIRECTLY: `. uninstall.sh --source-only` defines the
 # functions and stops before the banner, so every row below is a return code.
@@ -8,7 +8,7 @@
 # do here is print FAIL. This is where the guard is mutation-proven (drop an
 # arm in a scratch copy, the matching rows go red). NEVER prove it by
 # reverting the guard in-tree and running scripts/test-uninstall.sh: its wet
-# rows rely on this guard as their only protection (HIMMEL-2502).
+# rows rely on this guard as their only protection.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -43,7 +43,7 @@ allowed() {
     fi
 }
 
-# HIMMEL-2505: protected_path is a SEPARATE predicate from suspicious_rm_path
+# protected_path is a SEPARATE predicate from suspicious_rm_path
 # (which now calls it first) — exercise it directly so a regression in the
 # fixed allowlist shows up here, not only through the combined guard above.
 refused_protected() {
@@ -102,7 +102,7 @@ allowed "$HOME/.claude/himmel"
 allowed 'C:/Users/somebody/.claude/himmel'   # a drive SUBPATH, not a root  # leak-allow: home-path fixture username, not a real path
 allowed "$TMP/does-not-exist"               # absent target: nothing to refuse
 
-# ── protected_path (HIMMEL-2505): the fixed hard-refuse allowlist ───────────
+# ── protected_path: the fixed hard-refuse allowlist ───────────
 # Every entry in the fixed set must refuse, independent of suspicious_rm_path.
 for p in '/' "$HOME" "$HOME/.claude" "$HOME/.claude.json" "$HOME/.claude/.credentials.json" \
          "$HOME/.claude/settings.json" "$HOME/.claude/plugins" "$HOME/.claude/projects" \
@@ -122,7 +122,7 @@ allowed_protected "$HOME/.claude/channels/telegram"
 allowed_protected "$HOME/.claude/handover/bridge"
 # A non-existent target under $HOME/.claude that is NOT one of the three
 # documented removal targets is a descendant of protected $HOME/.claude and
-# is refused (HIMMEL-2505 gap 2, below) — the tail-reappension property this
+# is refused — the tail-reappension property this
 # row used to exercise (canonicalize a nearest EXISTING ancestor and
 # re-append the missing tail, rather than collapsing to the ancestor alone)
 # is still covered by the two non-existent ALLOWED targets above
@@ -132,7 +132,7 @@ refused_protected "$HOME/.claude/himmel-not-created-yet"
 # to the protected set — a fixture path under /tmp stays allowed.
 allowed_protected "/tmp/uninstall-guard-protected-fixture-$$"
 
-# ── HIMMEL-2505 gap 2: a DESCENDANT of a protected path is refused too,
+# ── a DESCENDANT of a protected path is refused too,
 # unless it names exactly one of the three documented removal targets ────
 mkdir -p "$HOME/.ssh/keys"
 refused_protected "$HOME/.ssh/keys"
@@ -149,7 +149,7 @@ allowed_protected "$HOME/.claude/handover/bridge"
 # allowed by the gap-2 descendant check too.
 allowed_protected "$TMP/anything"
 
-# ── HIMMEL-2505 gap A (revised): the allowed-target exemption is now TWO
+# ── gap A (revised): the allowed-target exemption is now TWO
 # conditions, both required — (1) LEXICAL identity (normalize_lexical, pure
 # string, no filesystem access) against one of the three documented
 # suffixes, AND (2) no path component between $HOME (exclusive) and the
@@ -234,7 +234,7 @@ export HOME
 # (d) a fixture under $TMP, outside $HOME entirely, stays allowed.
 allowed_protected "$TMP/uninstall-guard-lexical-fixture-$$"
 
-# (e) HIMMEL-2505 gap A's own gap: normalize_lexical pops ".." PURELY as a
+# (e) an earlier change's own gap: normalize_lexical pops ".." PURELY as a
 # string, so a target spelled with a "link/.." segment can lexically
 # collapse to one of the three allowed suffixes while the REAL `rm -rf`
 # follows the ORIGINAL spelling — the kernel resolves "link" to wherever it
@@ -262,7 +262,7 @@ allowed_protected "$HOME/.claude/handover/../handover/bridge"
 HOME="$_sym_saved_home"
 export HOME
 
-# (f) HIMMEL-2505 gap A's gap's gap: the walk returned 1 ("no symlink" =
+# (f) an earlier change's gap's gap: the walk returned 1 ("no symlink" =
 # not blocked) whenever the AS-SPELLED target didn't literally start with
 # "$HOME/" at all — but protected_path only calls the walk once the LEXICAL
 # form already matched an allowed suffix, so "can't even tell if this
@@ -290,7 +290,7 @@ allowed_protected "$HOME/.claude/../.claude/himmel"
 HOME="$_sym_saved_home"
 export HOME
 
-# (g) HIMMEL-2505 gap 2's gap: the equality/ancestor/descendant loop over
+# (g) an earlier change's gap: the equality/ancestor/descendant loop over
 # _protected_paths compared only the RESOLVED target — so a non-exempt
 # override like "$HOME/.claude/link/data", with "$HOME/.claude/link" a
 # symlink to somewhere OUTSIDE $HOME, resolves to that somewhere-else and
@@ -320,10 +320,10 @@ allowed_protected "$HOME/.claude/handover/bridge"
 HOME="$_sym_saved_home"
 export HOME
 
-# WHY (HIMMEL-2754): unresolved worktree hooks differ from definitely absent
+# WHY: unresolved worktree hooks differ from definitely absent
 # hooks. No git command is needed: all rows use a PATH with only grep.
-# HIMMEL-2851: repo_has_framework_hooks/resolve_native_hooks_dir read
-# HOOKS_REPO_ROOT, not REPO_ROOT (HIMMEL-2849) — every row below must set
+# repo_has_framework_hooks/resolve_native_hooks_dir read
+# HOOKS_REPO_ROOT, not REPO_ROOT — every row below must set
 # both so the fixture actually reaches the function under test.
 _hooks_saved_repo="$REPO_ROOT"
 _hooks_saved_hooks_repo="$HOOKS_REPO_ROOT"
@@ -340,7 +340,7 @@ for hooks_case in G-hooks-1 G-hooks-2 G-hooks-3 G-hooks-3b; do
             REPO_ROOT="$TMP/hooks-repo"; HOOKS_REPO_ROOT="$TMP/hooks-repo"; hooks_expected=0
             ;;
         G-hooks-3b)
-            # HIMMEL-3253: mentions pre-commit but carries none of the framework's
+            # mentions pre-commit but carries none of the framework's
             # hashes — the adopter's own hook, not a framework hook (rc=1).
             printf '#!/bin/sh\n# my own gate; runs pre-commit run --all-files when it is installed\n' > "$TMP/hooks-repo/.git/hooks/pre-commit"
             REPO_ROOT="$TMP/hooks-repo"; HOOKS_REPO_ROOT="$TMP/hooks-repo"; hooks_expected=1
@@ -357,7 +357,7 @@ for hooks_case in G-hooks-1 G-hooks-2 G-hooks-3 G-hooks-3b; do
     fi
 done
 
-# G-hooks-4 — WHY (HIMMEL-2754): a resolved missing directory means no hooks.
+# G-hooks-4 — WHY: a resolved missing directory means no hooks.
 # Seed a minimal repository without invoking version-control setup commands.
 mkdir -p "$TMP/hooks-resolved/.git/objects" "$TMP/hooks-resolved/.git/refs" "$TMP/hooks-resolved/.git/hooks"
 printf 'ref: refs/heads/main\n' > "$TMP/hooks-resolved/.git/HEAD"
@@ -374,8 +374,8 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# G-hooks-5 — WHY (HIMMEL-2754): an unreadable hook is unresolved, not absent.
-# HIMMEL-2805: probe chmod's effect; root and ACL passthrough may still read.
+# G-hooks-5 — WHY: an unreadable hook is unresolved, not absent.
+# probe chmod's effect; root and ACL passthrough may still read.
 mkdir -p "$TMP/hooks-unreadable/.git/objects" "$TMP/hooks-unreadable/.git/refs" "$TMP/hooks-unreadable/.git/hooks"
 printf 'ref: refs/heads/main\n' > "$TMP/hooks-unreadable/.git/HEAD"
 printf '# File generated by pre-commit: https://pre-commit.com\n# ID: 138fd403232d2ddd5efb44317e38bf03\n' > "$TMP/hooks-unreadable/.git/hooks/commit-msg"
@@ -399,7 +399,7 @@ fi
 chmod 600 "$TMP/hooks-unreadable/.git/hooks/commit-msg"
 rm -rf "$TMP/hooks-unreadable"
 
-# G-hooks-6 — WHY (HIMMEL-2754): an unenumerable hooks directory is unresolved.
+# G-hooks-6 — WHY: an unenumerable hooks directory is unresolved.
 mkdir -p "$TMP/hooks-unsearchable/.git/objects" "$TMP/hooks-unsearchable/.git/refs" "$TMP/hooks-unsearchable/.git/hooks"
 printf 'ref: refs/heads/main\n' > "$TMP/hooks-unsearchable/.git/HEAD"
 printf '# File generated by pre-commit: https://pre-commit.com\n# ID: 138fd403232d2ddd5efb44317e38bf03\n' > "$TMP/hooks-unsearchable/.git/hooks/commit-msg"
@@ -423,7 +423,7 @@ fi
 chmod 700 "$TMP/hooks-unsearchable/.git/hooks"
 rm -rf "$TMP/hooks-unsearchable"
 
-# G-hooks-7 — RED 8 (HIMMEL-2754): a grep read error is unresolved.
+# G-hooks-7 — RED 8: a grep read error is unresolved.
 mkdir -p "$TMP/hooks-grep-error/.git/hooks"
 printf '# readable hook\n' > "$TMP/hooks-grep-error/.git/hooks/commit-msg"
 rm "$TMP/hooks-bin/grep"
@@ -445,7 +445,7 @@ else
     echo "FAIL RED 8: G-hooks-7 grep error — expected rc=2, got rc=$hooks_rc"
     FAILED=$((FAILED + 1))
 fi
-# G-hooks-8 — RED (HIMMEL-2754): preserve drive-letter absolute hooks paths.
+# G-hooks-8 — RED: preserve drive-letter absolute hooks paths.
 # On POSIX, literal drive spellings live under a scratch cwd, separate from
 # REPO_ROOT: prepending the repo must miss these real, populated directories.
 mkdir -p "$TMP/hooks-drive" "$TMP/hooks-drive-repo"

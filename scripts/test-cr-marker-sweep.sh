@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic test for the cr-pending marker sweep in clean-garden.sh (HIMMEL-295).
+# Hermetic test for the cr-pending marker sweep in clean-garden.sh.
 #
 # Tests only the sweep classification rules, not the full prune-worktree flow.
 # Uses a temp git repo with fake markers and a stub `gh` binary so no network
@@ -48,7 +48,7 @@ git init -q --initial-branch=main "$REPO" 2>/dev/null || {
 }
 git -C "$REPO" -c user.email=t@test.com -c user.name=t commit -q --allow-empty -m "init"
 git -C "$REPO" branch -m main 2>/dev/null || true
-# Forge seam (HIMMEL-326): clean-garden resolves the forge from origin; a github
+# Forge seam: clean-garden resolves the forge from origin; a github
 # origin selects the github backend (bare `gh` via the stub on PATH).
 git -C "$REPO" remote add origin https://github.com/owner/repo.git
 

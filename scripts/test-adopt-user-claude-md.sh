@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test for scripts/lib/user-claude-md.sh's wire_user_claude_md
-# (HIMMEL-2038 -- the user-scope "working principles" CLAUDE.md installer
+# (the user-scope "working principles" CLAUDE.md installer
 # wired into adopt.sh's/adopt.ps1's do_core(), user-scope branch only).
 #
 # Every case runs against its own TEMP HOME fixture (mktemp -d) and an
@@ -16,7 +16,7 @@ set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline, so a match under `set -o pipefail` can't be reported as a
-# pipeline failure (HIMMEL-1430; same helper as test-check-no-secrets.sh).
+# pipeline failure (same helper as test-check-no-secrets.sh).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -160,7 +160,7 @@ else
 fi
 rm -rf "$home5"
 
-# ── Case 6: two-target install (HIMMEL-2038 CR fix) -- adopt.sh/adopt.ps1 call
+# ── Case 6: two-target install -- adopt.sh/adopt.ps1 call
 #            wire_user_claude_md once per user-scope rule file (Claude Code's
 #            ~/.claude/CLAUDE.md AND Codex's ~/.codex/AGENTS.md) so a Codex
 #            adopter isn't left with the principles nowhere. Fresh HOME -> both
@@ -209,7 +209,7 @@ fi
 rm -f "$before6a" "$before6b"
 rm -rf "$home6"
 
-# ── Case 7 (HIMMEL-3787 S2d): a real install records a provenance block row ──
+# ── Case 7: a real install records a provenance block row ──
 # Only a write that happened is recorded: not a dry run, not an idempotent
 # re-run. Runs in a subshell so the sourced provenance lib does not leak.
 echo "== Case 7: provenance block row =="
