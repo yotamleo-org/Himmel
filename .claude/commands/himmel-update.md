@@ -55,6 +55,13 @@ an enabled+keyed skill whose docs still mark its toolkit disabled
 daemon-restart notice** when the qmd step installed new code under a live
 daemon.
 
+**Gap-audit offer (HIMMEL-5836).** The run ends with a print-only offer: the
+read-only checks that came back non-green (qmd pin / embed backlog / collections
+unscanned for over 3 days, AST graph age and the semantic manifest's age,
+in-work tickets with no session or PR, `ponytail:` markers whose upgrade ticket
+is Done), each with its remedy, via `scripts/lib/gap-audit.sh`. Nothing runs
+until you say yes; the full audit is `bash scripts/himmel-doctor.sh`.
+
 **Machine-local catch-up (HIMMEL-2134).** Three advisory steps close the gap
 where a merged pin bump reached this checkout's *repo* but never reached the
 *machine*. That staleness is invisible to `scripts/check-plugin-drift.sh`: for

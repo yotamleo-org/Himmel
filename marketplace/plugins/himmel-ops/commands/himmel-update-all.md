@@ -56,3 +56,5 @@ If the `Skill` tool refuses the invocation ("skill not found" or similar): repor
 Prefix whichever report you give with the diagnosis (disabled-by-policy vs unknown/unconfigured) so the operator gets the honest remedy either way. Do NOT inline the skill's runbook logic beyond this mechanical fallback.
 
 After both steps: harness hooks are live immediately; **restart any running Claude session** to pick up plugin / slash-command / skill changes.
+
+The harness step ends with the **gap-audit offer** (HIMMEL-5836): a print-only list of non-green qmd / graphify / in-work-ticket / ponytail checks. Relay it to the operator and run the full audit (`bash "$REPO/scripts/himmel-doctor.sh"`) only on their yes.
