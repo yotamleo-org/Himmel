@@ -824,7 +824,7 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
-    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gal=0
+    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcfg=0 gsub=0 gskip=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -841,16 +841,28 @@ g4_scan() {
         # for the NEXT word.
         xskip=$dsc
         if [ "$msgv" = 1 ]; then msgv=0; xskip=1; fi
-        # Only after a message-taking git subcommand, and never once an alias
-        # definition appeared (an alias runs the message flag's value as code).
+        # git's message flag is data only for the positional subcommand (the
+        # first non-option word, past the values of -C/--git-dir/--work-tree/
+        # --namespace) and only when no config override could define an alias
+        # that runs the flag's value as code (-c, --config-env, GIT_CONFIG_*).
+        if [ "$cmd" = "git" ]; then
+            if [ "$gskip" = 1 ]; then gskip=0
+            else
+                case "$d" in
+                    -c|-c*|--config-env*) gcfg=1 ;;
+                    -C|--git-dir|--work-tree|--namespace) gskip=1 ;;
+                    -*) ;;
+                    *) if [ "$gsub" = 0 ]; then
+                           gsub=1
+                           case "$d" in commit|tag|merge|notes|revert) gmsg=1 ;; esac
+                       fi ;;
+                esac
+            fi
+        fi
         case "$cmd:$d" in
-            git:*alias.*) gal=1 ;;
-            git:commit|git:tag|git:merge|git:notes|git:revert) gmsg=1 ;;
-        esac
-        case "$cmd:$d" in
-            git:-m|git:-am|git:--message) if [ "$gmsg" = 1 ] && [ "$gal" = 0 ]; then msgv=1; fi ;;
+            git:-m|git:-am|git:--message) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then msgv=1; fi ;;
             gh:-b|gh:--body|gh:-t|gh:--title) msgv=1 ;;
-            git:--message=*) if [ "$gmsg" = 1 ] && [ "$gal" = 0 ]; then xskip=1; fi ;;
+            git:--message=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
             gh:--body=*|gh:--title=*) xskip=1 ;;
         esac
         if [ "$xskip" = 0 ]; then
@@ -876,6 +888,7 @@ g4_scan() {
                 # HIMMEL-5484: an inherited trace switch (SHELLOPTS=xtrace,
                 # BASH_XTRACEFD) makes the next shell print its environment.
                 SHELLOPTS=*xtrace*|BASH_XTRACEFD=*) xt=1; continue ;;
+                GIT_CONFIG_*=*) gcfg=1; continue ;;
                 [A-Za-z_]*=*) continue ;;
                 -*)
                     if [ -n "$wrap" ] && wrapper_flag_takes_value "$wrap" "$d"; then wrap_val=1; fi

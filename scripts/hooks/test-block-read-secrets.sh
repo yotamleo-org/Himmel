@@ -1204,6 +1204,11 @@ assert_rc "5659 bash -c positional carrying the word"      2 "$(run_case "$(j_ba
 assert_rc "5659 bash -s with the script as a positional"   2 "$(run_case "$(j_bash "printf x | bash -s scripts/handover/queue-lock.sh xtrace")")"
 assert_rc "5659 git alias run with -m carrying the word"   2 "$(run_case "$(j_bash "git -c 'alias.x=!set -o \"\$2\"; :' x -m xtrace")")"
 assert_rc "5659 git alias named commit with -m word"       2 "$(run_case "$(j_bash "git -c 'alias.commit=!set -o \"\$2\"; :' commit -m xtrace")")"
+assert_rc "5659 git -c mixed-case Alias key then commit -m" 2 "$(run_case "$(j_bash "git -c 'Alias.x=!set -o \"\$3\"; :' x commit -m xtrace")")"
+assert_rc "5659 GIT_CONFIG_* alias then commit -m word"    2 "$(run_case "$(j_bash "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.x GIT_CONFIG_VALUE_0='!set -o \"\$1\"' git x commit -m xtrace")")"
+assert_rc "5659 git subcommand must be positional"         2 "$(run_case "$(j_bash "git x commit -m xtrace")")"
+assert_rc "5659 git --config-env then commit -m word"      2 "$(run_case "$(j_bash "git --config-env=alias.x=AL x commit -m xtrace")")"
+assert_rc "5659 git -C dir commit -m word still allows"    0 "$(run_case "$(j_bash "git -C /tmp/some-dir commit -m xtrace")")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then
