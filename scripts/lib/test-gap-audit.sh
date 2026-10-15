@@ -97,7 +97,8 @@ lacks "Jira not configured: orphan check skipped" "$out" "HIMMEL-4242"
 has "Jira not configured: reported as not checked" "$out" "not checked: in-work tickets"
 lacks "skipped check is not a bare all clear" "$out" "all clear"
 out="$(run GAP_AUDIT_RESUME_CMD="bash $TMP/nonexistent.sh" JIRA_PROJECT_KEY=HIMMEL)"
-has "detector absent: skipped cleanly" "$out" "all clear"
+has "detector failing: reported as not checked" "$out" "not checked: in-work tickets (detector failed)"
+lacks "detector failing is not a bare all clear" "$out" "all clear"
 
 # --- ponytail markers whose named ticket is already Done --------------------
 printf '# ponytail: first pass only, upgrade: HIMMEL-7001 adds the rest\n' > "$TMP/repo/b.sh"

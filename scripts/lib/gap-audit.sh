@@ -94,10 +94,10 @@ _ga_check_resume() {
     if [ "${GAP_AUDIT_RESUME_CMD+set}" = set ] && [ -z "$GAP_AUDIT_RESUME_CMD" ]; then return 0; fi
     [ -n "${JIRA_PROJECT_KEY:-}" ] || { _ga_skip "in-work tickets (Jira not configured)"; return 0; }
     if [ "${GAP_AUDIT_RESUME_CMD+set}" = set ]; then
-        out="$($GAP_AUDIT_RESUME_CMD 2>/dev/null)"
+        out="$($GAP_AUDIT_RESUME_CMD 2>/dev/null)" || { _ga_skip "in-work tickets (detector failed)"; return 0; }
     else
         grep -q -- '--resume-only' "$nd" 2>/dev/null || { _ga_skip "in-work tickets (detector not present)"; return 0; }
-        out="$(bash "$nd" --resume-only 2>/dev/null)"
+        out="$(bash "$nd" --resume-only 2>/dev/null)" || { _ga_skip "in-work tickets (detector failed)"; return 0; }
     fi
     rows="$(printf '%s\n' "$out" | awk -F'\t' '$1 == "RESUME" { printf "%s (%s, %s); ", $2, $5, $7 }')"
     [ -n "$rows" ] && _ga_add tickets "in-work with no session or open PR: $rows" "bash scripts/handover/console-kit/next-dispatchable.sh --resume-only"
