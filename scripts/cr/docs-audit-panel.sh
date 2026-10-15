@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/docs-audit-panel.sh - the /pr-check docs-audit lane's cross-model
-# critic path (HIMMEL-2226), extracted verbatim out of the step-2.5 fence in
+# critic path, extracted verbatim out of the step-2.5 fence in
 # .claude/commands/pr-check.md.
 #
 # WHY THIS IS A SCRIPT AND NOT AN INLINE FENCE: the interactive /pr-check
@@ -18,11 +18,11 @@
 # the same streams, same exit codes) with two unavoidable differences, both
 # required because a script cannot inherit shell state the way an inline
 # fence in the same session can:
-#   1. The fence consumed step-1's captured $head/$branch (HIMMEL-1175: this
+#   1. The fence consumed step-1's captured $head/$branch (this
 #      lane must review the SHA the ledger will certify, never live HEAD).
 #      A script cannot inherit those, so they arrive as REQUIRED --head/
 #      --branch flags instead of being re-derived (re-deriving them would be
-#      exactly the drift HIMMEL-1175 closed).
+#      exactly that drift).
 #   2. The fence left docs_audit_panel_avail_lines / docs_audit_panel_findings
 #      as session-local shell variables for later runbook steps to read. A
 #      script cannot leak variables into its caller's shell, so findings go to
@@ -33,7 +33,7 @@
 # Usage: docs-audit-panel.sh --head <sha> --branch <name>
 #
 # Arguments (both REQUIRED; missing either is a usage error, exit 2):
-#   --head <sha>      the SHA step 1 of /pr-check captured (HIMMEL-1175/1984).
+#   --head <sha>      the SHA step 1 of /pr-check captured.
 #   --branch <name>   the branch name step 1 captured.
 #
 # Env (same as the fence):
@@ -58,15 +58,15 @@
 #   0 - lane completed (including the CR_PROFILE=none / empty-diff / disabled
 #       / fail-open-degrade cases - none of those are aborts).
 #   2 - usage error: --head or --branch missing.
-#   7 - ABORT, never a degrade. Two causes: HIMMEL-2542 - the --head given
+#   7 - ABORT, never a degrade. Two causes: the --head given
 #       here names no commit in this repo (checked before any git command
 #       consumes it); or critic-panel.sh's --head/--branch/--base-sha pin
-#       mismatch (HIMMEL-1175, HIMMEL-1984), on the first attempt OR the rtk
+#       mismatch, on the first attempt OR the rtk
 #       retry.
 #
 # bash 3.2-safe (Git Bash on Windows and Linux).
 set -uo pipefail
-# HIMMEL-3395: a relative-entry copy that is not the anchor's hands off to it.
+# a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
 
@@ -115,7 +115,7 @@ esac
 # $head and $branch are the values STEP 1 captured - this fence runs
 # independently (see step 3.0's identical note): substitute those literals
 # here, never re-derive them in this fence.
-# HIMMEL-2542 - validate the INPUT PIN first. `git rev-parse` WITHOUT
+# Validate the INPUT PIN first. `git rev-parse` WITHOUT
 # --verify happily echoes a well-formed 40-hex string back that names no
 # object, so the bare call below cannot tell a real pin from a hand-expanded
 # short hash; the bad value then reaches `git diff`, which fails rc=128, and
@@ -181,8 +181,8 @@ PINABORTRETRY
             fi
             if [ "$panel_rc" -ne 0 ]; then
                 if [ "$panel_rc" -eq 6 ]; then
-                    # HIMMEL-5110: exit 6 is the panel's deliberate certify
-                    # refusal (HIMMEL-1932), recorded on the ledger; not a
+                    # exit 6 is the panel's deliberate certify
+                    # refusal, recorded on the ledger; not a
                     # failed panel.
                     echo "docs-audit critic panel REFUSED to certify this run (exit 6: the citation-guard digest could not be computed - fix sha256sum/shasum); the CR marker stays held at this SHA until the panel is re-run on a new HEAD" >&2
                 else

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/test-critic-first-pass.sh — TDD tests for critic-first-pass.sh (HIMMEL-415).
+# scripts/cr/test-critic-first-pass.sh — TDD tests for critic-first-pass.sh.
 # Deterministic: HERMES_PY is set to a bash shim that ignores its args and
 # prints canned output — no live hermes, no network.
 #
@@ -16,18 +16,18 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CFP="$HERE/critic-first-pass.sh"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-# HIMMEL-2130: critic-first-pass.sh really invokes hermes/invoke.sh, which
+# critic-first-pass.sh really invokes hermes/invoke.sh, which
 # really appends flow-run rows — route those at a scratch file so this suite
 # never pollutes ~/.himmel/flow-runs.jsonl (killed/timeout cases were paging
 # HimmelFlowRunStalled off pure test noise).
 export HIMMEL_FLOW_RUNS_LEDGER="$tmp/flow-runs.jsonl"
-# HIMMEL-3104: a completed run now writes a raw artifact + a `score` row beside
+# a completed run now writes a raw artifact + a `score` row beside
 # the ledger. Default every un-overridden case at a scratch ledger so this suite
 # never writes into the real repo's .git/cr-critic-scores.jsonl.
 export CR_LEDGER="$tmp/default-ledger.jsonl"
@@ -94,7 +94,7 @@ print("## Suggestions (0 found)")
 PY
 out3="$(printf '%s' "$DIFF" | HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/y --slug s 2>/dev/null)"
 rc3=$?
-# HIMMEL-1915 x HIMMEL-1871 (merge of #1730 into #1728): the sole bullet was
+# The sole bullet was
 # dropped -> the run must FAIL with the DISTINCT all-dropped code 4 (never
 # render the "(0 found)" false-clean shape that gated a real review once) —
 # AND must still emit the rejected evidence under ## Dropped Citations so the
@@ -104,7 +104,7 @@ check "all-dropped diff-mode stdout has no (0 found)" "$(printf '%s' "$out3" | g
 check "all-dropped output carries a Dropped Citations section" "$(printf '%s' "$out3" | grep -c '^## Dropped Citations (1 dropped)')" "1"
 check "all-dropped output preserves the rejected finding text" "$(printf '%s' "$out3" | grep -cF 'bogus [nope.sh:999]')" "1"
 
-# --- HIMMEL-1871 round 4: Dropped Citations is unconditional ---------------
+# --- Dropped Citations is unconditional ---------------
 # Emission is a function of the dropped bullets themselves, never of what else
 # survived: EVERY rejected bullet stays readable, tagged with its original
 # section, and the severity/blocking decision belongs to the panel. A valid
@@ -140,10 +140,10 @@ check "invalid Suggestion plus valid Critical still emits Dropped Citations" "$(
 check "dropped Suggestion line carries its Suggestions section tag" "$(printf '%s' "$inverse_out" | grep -cF -e '- s / Suggestions: - [CRITIC-2]: bogus cleanup [nope.sh:999]')" "1"
 check "valid Critical survives inverse mixed-severity validation" "$(printf '%s' "$inverse_out" | grep -c '^## Critical Issues (1 found)')" "1"
 
-# Seam 1 (round 4): a valid Critical surviving must NOT make a dropped
-# Important vanish. Before round 4 the section only fired when every blocking
-# finding dropped, so B disappeared from both stdout and (via the panel) the
-# ledger whenever A survived — and disproving A then cleared the gate with B
+# Seam 1: a valid Critical surviving must NOT make a dropped
+# Important vanish. If the section fired only when every blocking
+# finding dropped, B would disappear from both stdout and (via the panel) the
+# ledger whenever A survived — and disproving A would then clear the gate with B
 # never adjudicated.
 cat > "$tmp/stub.py" <<'PY'
 print("## Critical Issues (1 found)")
@@ -156,7 +156,7 @@ seam1_out="$(printf '%s' "$DIFF" | HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/
 check "surviving Critical does not hide a dropped Important" "$(printf '%s' "$seam1_out" | grep -c '^## Dropped Citations (1 dropped)')" "1"
 check "dropped Important keeps its blocking section tag" "$(printf '%s' "$seam1_out" | grep -cF -e '- s / Important Issues: - [CRITIC-2]: dropped important [nope.sh:999]')" "1"
 
-# --- HIMMEL-1714: [file#symbol] citations in DIFF mode --------------------
+# --- [file#symbol] citations in DIFF mode --------------------
 # The observed incident (2026-08-10, LUNA-101): a critic cited
 # [ha/cloudbridge/ggs_config_control.py#_publish_live_state] — a legitimate,
 # line-drift-proof shape — the guard accepted only [file:line] in diff mode, so
@@ -236,7 +236,7 @@ print("## Suggestions (0 found)")
 PY
 check "empty symbol after # is dropped" "$sym_rc" "4"
 
-# CR round 1 (codex-1): the collector must not record the "+++ b/<path>" file
+# The collector must not record the "+++ b/<path>" file
 # header as body text — a header-derived match would certify a citation with
 # something no hunk contains. The "+++" rule ends in `next`, so the header never
 # reaches the collector; this pins that, since deleting one `next` would silently
@@ -264,14 +264,14 @@ check "mixed symbol cites: report carries the drop COUNT" "$(printf '%s' "$sym_o
 check "mixed symbol cites: rejected text stays readable" "$(printf '%s' "$sym_out" | grep -cF -e '- s / Important Issues: - [CRITIC-2]: invented [ggs_config_control.py#_never_written]')" "1"
 check "mixed symbol cites exit 0 (a blocker survived)" "$sym_rc" "0"
 
-# --- HIMMEL-737/HIMMEL-3109: provider-failure body surfaces on stderr (raw tail) ---
+# --- provider-failure body surfaces on stderr (raw tail) ---
 # A quota 403 arrives as the "review" BODY (rc 0, non-empty, malformed). The
 # fail path must exit 1 AND print a bounded raw excerpt to stderr - the panel's
 # quota-exhaustion fallback matches its signature against THIS stderr; a
 # path-only line kept the fallback chain permanently dark in production.
-# HIMMEL-3109 switched the bound from a HEAD cut to a TAIL cut: a gateway
-# banner prepended ahead of the real signature line was pushing it past a
-# fixed-length head bound, so the classifier only ever saw this file's own
+# The bound is a TAIL cut, not a HEAD cut: a gateway
+# banner prepended ahead of the real signature line would push it past a
+# fixed-length head bound, so the classifier would only see this file's own
 # "malformed output" text instead of the real cause.
 cat > "$tmp/stub.py" <<'PY'
 print("HTTP 403: The free quota has been exhausted")
@@ -282,7 +282,7 @@ check "quota-shaped garbage exits 1" "$?" "1"
 check "raw tail on stderr carries the quota text" \
     "$(grep -c 'critic-first-pass.sh: raw tail: HTTP 403: The free quota has been exhausted' "$err403")" "1"
 
-# --- HIMMEL-3105: a decisive provider line OUTSIDE the raw-tail bound still reaches stderr ---
+# --- a decisive provider line OUTSIDE the raw-tail bound still reaches stderr ---
 # A long body whose HTTP 429 line is first: the 2000-byte tail cut drops it, and
 # the panel's classifier then sees only cfp's own "malformed output" text. The
 # fail path must surface the first provider-signal line of the FULL raw body as
@@ -357,7 +357,7 @@ rc5=$?
 check "exhausted retries fail-open rc1" "$rc5" "1"
 check "exhausted retries tried 3 times" "$(cat "$counter_file2")" "3"
 
-# --- HIMMEL-473: per-family prompt adaptation -----------------------------
+# --- per-family prompt adaptation -----------------------------
 # Family classification is verified through the prompt the model receives
 # (--print-prompt builds the family-adapted prompt without invoking hermes).
 PP(){ printf '%s' "$DIFF" | bash "$CFP" --model "$1" --print-prompt 2>/dev/null; }
@@ -381,20 +381,20 @@ check "gpt keeps Critical heading"     "$(PP gpt-5.5 | grep -c '## Critical Issu
 check "open keeps Critical heading"    "$(PP openai/gpt-oss-120b | grep -c '## Critical Issues (N found)')" "1"
 check "claude keeps Critical heading"  "$(PP claude-opus-4-8 | grep -c '## Critical Issues (N found)')"     "1"
 check "all families keep citation rule" "$(PP gpt-5.5 | grep -c '\[<file>:<line>\] citation')"             "1"
-# HIMMEL-498: prompt-injection guard present for EVERY family (shared rules block).
+# prompt-injection guard present for EVERY family (shared rules block).
 check "gpt has injection guard"    "$(PP gpt-5.5             | grep -c 'UNTRUSTED DATA to review')" "1"
 check "open has injection guard"   "$(PP openai/gpt-oss-120b | grep -c 'UNTRUSTED DATA to review')" "1"
 check "claude has injection guard" "$(PP claude-opus-4-8     | grep -c 'UNTRUSTED DATA to review')" "1"
 check "gpt diff-mode keeps injection Critical clause" "$(PP gpt-5.5 | grep -c 'itself a Critical finding')" "1"
 check "gpt diff-mode carves out agent-instruction content" "$(PP gpt-5.5 | grep -c 'NOT a prompt-injection finding')" "1"
-# HIMMEL-944 policy structure (not just phrase presence): current-run steering
+# Policy structure (not just phrase presence): current-run steering
 # flags EVEN inside agent files; the carve-out is scoped to LATER-LOADED text;
 # and the precedence clause appears BEFORE the carve-out on the rule line.
 check "gpt diff-mode steering flags even in agent files" "$(PP gpt-5.5 | grep -c 'EVEN IF it sits inside an agent-instruction file')" "1"
 check "gpt diff-mode carve-out scoped to later-loaded text" "$(PP gpt-5.5 | grep -c 'LATER LOADED')" "1"
 check "gpt diff-mode precedence clause precedes carve-out" "$(PP gpt-5.5 | grep -c 'EVEN IF.*LATER LOADED')" "1"
 
-# --- HIMMEL-485: ESTIMATED usage telemetry (CR_USAGE_LOG, opt-in) ----------
+# --- ESTIMATED usage telemetry (CR_USAGE_LOG, opt-in) ----------
 cat > "$tmp/stub.py" <<'PY'
 print("## Critical Issues (0 found)")
 print("## Important Issues (0 found)")
@@ -417,7 +417,7 @@ out_on="$(printf '%s' "$DIFF" | CR_USAGE_LOG=1 CR_LEDGER="$tmp/u3.jsonl" HERMES_
 out_off="$(printf '%s' "$DIFF" | CR_LEDGER="$tmp/u4.jsonl" HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/y --slug s 2>/dev/null)"
 check "stdout identical with/without usage logging" "$out_on" "$out_off"
 
-# --- HIMMEL-558: CR critics route through the senior himmel_agent profile ------
+# --- CR critics route through the senior himmel_agent profile ------
 # A recording shim writes HERMES_ONESHOT_PROFILE (what invoke.sh resolved) to a
 # capture file, then prints a contract-shaped review so the pass succeeds.
 prof_cap="$tmp/prof_capture"
@@ -470,7 +470,7 @@ check "explicit CR_CRITIC_PROFILE overrides family gate" "$(cat "$prof_cap" 2>/d
 printf '%s' "$DIFF" | CR_CRITIC_PROFILE="himmel_agent --toolsets terminal" HERMES_HOME="$tmp/hh" HERMES_PY="$tmp/py_prof.sh" bash "$CFP" --model gpt-5.5 --slug codex >/dev/null 2>&1
 check "injecting profile value cannot leak --toolsets to invoke" "$(cat "$tool_cap" 2>/dev/null)" "todo"
 
-# ── WS4 (HIMMEL-414): artifact mode + charter seam ──────────────────────────
+# ── WS4: artifact mode + charter seam ──────────────────────────
 ART="$tmp/spec.md"
 cat > "$ART" <<'MD'
 # Design Alpha
@@ -510,7 +510,7 @@ check "d: real-heading finding kept" "$(printf '%s\n' "$art_out" | grep -cF '[sp
 check "c: bad-heading dropped -> Critical (1 found)" "$(printf '%s\n' "$art_out" | grep -c '^## Critical Issues (1 found)')" "1"
 # (d2) line-style [file:42] citation dropped in artifact mode -> Important (0 found)
 check "d2: line-style cite dropped -> Important (0 found)" "$(printf '%s\n' "$art_out" | grep -c '^## Important Issues (0 found)')" "1"
-# (d3, round 4) partial drops are emitted too: the two rejected bullets stay
+# (d3) partial drops are emitted too: the two rejected bullets stay
 # readable even though a valid Critical survived.
 check "d3: partial citation drop emits Dropped Citations" "$(printf '%s\n' "$art_out" | grep -c '^## Dropped Citations (2 dropped)')" "1"
 
@@ -548,7 +548,7 @@ chmod +x "$tmp/py_hash.sh"
 hash_out="$(HERMES_PY="$tmp/py_hash.sh" bash "$CFP" --artifact-mode --charter-file "$CHARTER" --model x/y --slug s < "$ART2" 2>/dev/null)"
 check "heading containing '#' kept (first-# split)" "$(printf '%s\n' "$hash_out" | grep -c '^## Critical Issues (1 found)')" "1"
 
-# --- HIMMEL-1915 C1: entry gate — zero extractable headings refuses pre-model ---
+# --- C1: entry gate — zero extractable headings refuses pre-model ---
 # (A5, first) the positive-path probe that exposed the original bug: a planted
 # finding citing a REAL heading must be PRESENT on stdout, not silently dropped.
 check "A5: planted real-heading finding present on stdout" "$(printf '%s\n' "$art_out" | grep -cF 'unclear scope [spec.md#Goals]')" "1"
@@ -606,7 +606,7 @@ ad_out="$(HERMES_PY="$tmp/py_alldrop.sh" bash "$CFP" --artifact-mode --charter-f
 check "A6: artifact-mode all-dropped exits 4 (distinct all-dropped code)" "$?" "4"
 check "A6: artifact-mode all-dropped stdout has no (0 found)" "$(printf '%s' "$ad_out" | grep -c '(0 found)')" "0"
 
-# (A8) CR round 4: the gate must be severity-aware. One Critical whose citation
+# (A8) the gate must be severity-aware. One Critical whose citation
 # fails validation + one Suggestion whose citation is valid used to render as a
 # clean "Critical Issues (0 found)" report with a surviving nit — the original
 # false clean through a narrower door. Must exit nonzero, no report on stdout.
@@ -625,15 +625,15 @@ chmod +x "$tmp/py_mixdrop.sh"
 md_out="$(HERMES_PY="$tmp/py_mixdrop.sh" bash "$CFP" --artifact-mode --charter-file "$CHARTER" --model x/y --slug s < "$ART" 2>/dev/null)"
 check "A8: all-blocking-dropped + surviving suggestion exits 4" "$?" "4"
 check "A8: no clean report emitted on stdout" "$(printf '%s' "$md_out" | grep -c '(0 found)')" "0"
-# HIMMEL-1915 x HIMMEL-1871: the surviving suggestion now STAYS on stdout —
+# the surviving suggestion now STAYS on stdout —
 # the panel needs it (its member parse keeps validated survivors) — while the
 # not-clean signal moved to the DISTINCT rc 4 plus the absence of "(0 found)"
 # and the explicit Dropped Citations section. No consumer reads cfp stdout
-# rc-blind; the HIMMEL-1915 incident was a clean-LOOKING report at rc 0.
+# rc-blind; the failure mode is a clean-LOOKING report at rc 0.
 check "A8: surviving suggestion stays on stdout for the panel" "$(printf '%s' "$md_out" | grep -c '^## Suggestions (1 found)')" "1"
 check "A8: rejected blocker stays recoverable under Dropped Citations" "$(printf '%s' "$md_out" | grep -c '^## Dropped Citations (1 dropped)')" "1"
 
-# (A9) CR round 5: a finding-shaped bullet emitted BEFORE any recognized
+# (A9) a finding-shaped bullet emitted BEFORE any recognized
 # section used to be silently discarded (sec==0), so a real blocker followed by
 # three "(0 found)" headings rendered as a clean report at rc=0 with EMPTY
 # stderr. Must exit nonzero, no clean report, and stderr must say why.
@@ -693,7 +693,7 @@ fi
 
 printf '%s' "$DIFF" | bash "$CFP" --model x/y --slug s --perspective-file "$PERSPECTIVE" --charter-file "$CHARTER" --print-prompt >/dev/null 2>&1
 check "perspective plus charter is usage error rc2" "$?" "2"
-# --- HIMMEL-2034: --provider defaults from the critics registry -------------
+# --- --provider defaults from the critics registry -------------
 # A bare `--model <name>` used to fall through to hermes' default provider
 # (openai-api) and die on "No usable credentials" — the panel always passes
 # --provider, a hand-run upstream-diff review does not. --print-prompt exits
@@ -730,7 +730,7 @@ check "a model absent from the registry defaults nothing" "$(grepq "$unk_err" -F
 drop_err="$(printf '%s' "$DIFF" | CRITICS_BASE_JSON="$REG" bash "$CFP" --model ghost/x --print-prompt 2>&1 >/dev/null)"
 check "a drop:true row is never a routing target" "$(grepq "$drop_err" -F 'defaulted to' && echo yes || echo no)" "no"
 
-# ── HIMMEL-2058: known-findings block rides along in diff mode ────────────────
+# ── known-findings block rides along in diff mode ────────────────
 # A fixture JSON with one prompt:true class (sentinel) and one prompt:false class
 # (must NOT appear); KNOWN_FINDINGS_FILE is honoured by known-findings.sh --prompt.
 KF_FIX="$tmp/kf.json"
@@ -756,7 +756,7 @@ check "CRITIC_KNOWN_FINDINGS=0 suppresses the block" "$(grepq "$pp_kf_off" -F 'K
 pp_kf_art="$(KNOWN_FINDINGS_FILE="$KF_FIX" bash "$CFP" --artifact-mode --charter-file "$CHARTER" --model x/y --slug s --print-prompt < "$ART" 2>/dev/null)"
 check "artifact mode (charter) carries no known-findings block" "$(grepq "$pp_kf_art" -F 'KF_SENTINEL_CANON' && echo yes || echo no)" "no"
 # A diff that edits the catalogue (or its renderer) must not pre-load its own
-# rebuttal text into the review (panel r1 codex-1 on HIMMEL-2058).
+# rebuttal text into the review.
 KF_SELF_DIFF='diff --git a/scripts/cr/known-findings.json b/scripts/cr/known-findings.json
 index 0000000..1111111 100644
 --- a/scripts/cr/known-findings.json
@@ -792,7 +792,7 @@ pp_kf_missing="$(printf '%s' "$DIFF" | KNOWN_FINDINGS_FILE="$tmp/absent.json" ba
 check "missing known-findings JSON is silently empty, prompt still builds" "$kf_missing_rc" "0"
 check "missing known-findings JSON: prompt still has the rules block" "$(grepq "$pp_kf_missing" -F 'Do NOT call any tools.' && echo yes || echo no)" "yes"
 
-# --- HIMMEL-3104: a completed run keeps its raw response + writes a `score` row ---
+# --- a completed run keeps its raw response + writes a `score` row ---
 # A clean 0/0/0 verdict used to keep no raw output and write no ledger row — the
 # one verdict that can carry the merge gate alone had no evidence behind it.
 S_HEAD="1111111111111111111111111111111111111111"
@@ -877,7 +877,7 @@ S_HEAD="7777777777777777777777777777777777777777"
 s_out_bad="$(printf '%s' "$DIFF" | CR_LEDGER="/proc/no-such-dir/ledger.jsonl" CR_TARGET_HEAD="$S_HEAD" HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/y --slug codex 2>/dev/null)"; s_rc_bad2=$?
 check "unwritable ledger dir: rc 0 and stdout intact" "$s_rc_bad2:$(grepq "$s_out_bad" -F '## Suggestions (0 found)' && echo y || echo n)" "0:y"
 
-# HIMMEL-2399: three non-review responses must land in three DIFFERENT reason
+# three non-review responses must land in three DIFFERENT reason
 # classes end to end (cfp stderr -> failure-classify.sh), not all in
 # malformed-output. A single fixture would pass against the old behaviour.
 . "$HERE/failure-classify.sh"
@@ -903,7 +903,7 @@ check "genuine review lacking headings -> malformed-output" "$(printf '%s' "$cls
 check "the three fixtures land in three different classes" "$(printf '%s\n' "$cls_up" "$cls_empty" "$cls_mal" | cut -d'|' -f2 | sort -u | wc -l | tr -d '[:space:]')" "3"
 cls_kw="$(cls_run 'Add a test for rate limiting and the throttle path before merging.')"
 check "short headingless review that merely mentions rate limiting/quota/429 -> malformed-output" "$(printf '%s' "$cls_kw" | cut -d'|' -f1,2)" "1|malformed-output"
-# HIMMEL-5103: prose that QUOTES an error keyword has no vendor-error shape
+# prose that QUOTES an error keyword has no vendor-error shape
 # (no API/Error/HTTP prefix, no JSON error envelope) -> malformed-output.
 cls_prose="$(cls_run 'Handle service unavailable responses before retrying.')"
 check "prose quoting an error keyword (no vendor-error shape) -> malformed-output" "$(printf '%s' "$cls_prose" | cut -d'|' -f1,2)" "1|malformed-output"

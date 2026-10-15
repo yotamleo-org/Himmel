@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/test-artifact-critic.sh — TDD for artifact-critic.sh (HIMMEL-414 WS4).
+# scripts/cr/test-artifact-critic.sh — TDD for artifact-critic.sh.
 set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
@@ -8,19 +8,19 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"; AC="$HERE/artifact-critic.sh"
 tmp="$(mktemp -d -t artifact-critic-test.XXXXXX)"; trap 'rm -rf "$tmp"' EXIT
 fails=0
 
-# HIMMEL-2241: artifact-critic.sh runs the REAL critic-first-pass.sh, which
+# artifact-critic.sh runs the REAL critic-first-pass.sh, which
 # spawns the REAL scripts/hermes/invoke.sh -- HERMES_PY stubs the model, not
 # the wrapper, so its flow-run rows went to the PRODUCTION ledger. Redirect
 # into this test's own scratch dir.
 export HIMMEL_FLOW_RUNS_LEDGER="$tmp/flow-runs.jsonl"
-# HIMMEL-3104: the real critic-first-pass.sh now writes a `score` row and a
+# the real critic-first-pass.sh now writes a `score` row and a
 # raw response beside the CR ledger on every completed run; without an
 # explicit CR_LEDGER that is the PRODUCTION ledger (git common dir).
 export CR_LEDGER="$tmp/cr-ledger.jsonl"
@@ -85,7 +85,7 @@ check "f: artifact piped on stdin (first line)" "$(cat "$tmp/stdin1")" "# Dashbo
 CRITIC_FIRST_PASS="$STUB" bash "$AC" --artifact "$tmp/nope.md" --charter "$CH" --model x/y >/dev/null 2>&1
 check "missing artifact -> exit 2" "$?" "2"
 
-# HIMMEL-1871: the plan-artifact path shares critic-first-pass's citation guard.
+# the plan-artifact path shares critic-first-pass's citation guard.
 # When every plan finding cites a missing heading, preserve the content on stdout
 # instead of returning the same 0/0/0 shape as a genuinely clean plan.
 PLAN="$tmp/plan.md"; printf '# Plan\n## Implementation\nsteps\n' > "$PLAN"
@@ -104,14 +104,14 @@ PY
 chmod +x "$PLAN_PY"
 plan_rc=0
 plan_out="$(CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" HERMES_PY="$PLAN_PY" bash "$AC" --artifact "$PLAN" --charter "$CH" --model x/y --slug plancritic 2>/dev/null)" || plan_rc=$?
-# HIMMEL-1915 x HIMMEL-1871: all-dropped now exits the DISTINCT code 4 (not
+# all-dropped now exits the DISTINCT code 4 (not
 # clean), while the evidence stays on stdout for guard-aware callers.
 check "HIMMEL-1871: all-dropped plan review exits 4 with evidence on stdout" "$plan_rc" "4"
 check_contains "HIMMEL-1871: plan review surfaces Dropped Citations" "$plan_out" "## Dropped Citations (1 dropped)"
 check_contains "HIMMEL-1871: plan review preserves rejected finding" "$plan_out" "migration ordering can lose state"
 
-# --- HIMMEL-1646 / HIMMEL-1648: artifact-critic loads the glm lane's .env creds ---
-# HIMMEL-1648: the load is pinned to SCRIPT-ROOT resolution
+# --- artifact-critic loads the glm lane's .env creds ---
+# the load is pinned to SCRIPT-ROOT resolution
 # (load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")"), so a
 # script invoked from an UNRELATED git repo reads himmel's .env, not THAT repo's.
 # The fixture copies the script + load-dotenv.sh into a fake himmel root (so
@@ -120,7 +120,7 @@ check_contains "HIMMEL-1871: plan review preserves rejected finding" "$plan_out"
 # artifact row must surface the himmel-root key to the exec'd critic-first-pass
 # (here stubbed), never the cwd decoy — the pre-fix CWD-anchored resolution read
 # the decoy. A non-glm row must NOT load (gate), and a LIVE process value still
-# wins (only-when-unset, HIMMEL-1646).
+# wins (only-when-unset).
 hroot="$tmp/hroot1648"; mkdir -p "$hroot/scripts/cr" "$hroot/scripts/lib"
 cp "$AC" "$hroot/scripts/cr/artifact-critic.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$hroot/scripts/lib/load-dotenv.sh"
@@ -145,7 +145,7 @@ check "HIMMEL-1648: glm lane loads the himmel-root .env key (not the cwd repo's 
 ( cd "$cwx" && unset GLM_API_KEY ZAI_API_KEY Z_AI_API_KEY && CRITIC_FIRST_PASS="$STUB" bash "$hroot/scripts/cr/artifact-critic.sh" --artifact "$ART" --charter "$CH" --model gpt-5.5 --slug codex >/dev/null 2>&1 )
 check "non-glm lane does NOT load the .env key" "$(cat "$glm_key" 2>/dev/null)" ""
 # glm lane with a LIVE process value: load_dotenv sets only-when-unset, so the
-# .env value must NOT overwrite it (HIMMEL-1646 precedence — pins the half of the
+# .env value must NOT overwrite it (precedence — pins the half of the
 # contract the cwd-discriminator case above cannot detect).
 : > "$glm_key"
 ( cd "$cwx" && GLM_API_KEY=process-key CRITIC_FIRST_PASS="$STUB" bash "$hroot/scripts/cr/artifact-critic.sh" --artifact "$ART" --charter "$CH" --model glm-5.2 --slug glm >/dev/null 2>&1 )

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/critic-panel.sh — run the free-cloud critic panel over a diff (HIMMEL-415).
+# scripts/cr/critic-panel.sh — run the free-cloud critic panel over a diff.
 # Reads a unified diff on stdin, or computes main...HEAD itself with
 # --worktree <path>, then runs each registry critic in the CRITIC_PANEL_TIERS set
 # (default free) via critic-first-pass.sh and merges findings (global renumber,
@@ -10,14 +10,14 @@
 # 3 = invalid --worktree; 4 = --worktree diff is empty; 5 = git/ledger failure;
 # 6 = citation-guard id not computable (SHA-256 unavailable/failed) — run
 #     REFUSED, fail-closed: no review emitted, no ledger rows appended.
-# (exit 4 also covers stdin mode: an empty piped/null diff, HIMMEL-2107.)
-# 7 = --head / --base-sha pin mismatch (HIMMEL-1175, HIMMEL-1984): the checkout
+# (exit 4 also covers stdin mode: an empty piped/null diff.)
+# 7 = --head / --base-sha pin mismatch: the checkout
 #     or the base branch moved since the caller captured its review inputs — run
 #     REFUSED, no review emitted, no ledger rows appended, so a stamp can never
 #     certify a SHA nobody reviewed, nor a diff nobody computed.
 # Bash 3.2-safe.
 # Env: CR_PROFILE — the operator's opt-in critic profile (from repo-root .env,
-#      exported by /pr-check). AUTHORITATIVE when set (HIMMEL-558): the panel
+#      exported by /pr-check). AUTHORITATIVE when set: the panel
 #      derives its tier filter from it directly, so an agent running /pr-check
 #      can no longer scope the panel to free-only by hand-setting a tier. Mapping:
 #      `thorough`→`free,thorough`; any other value (`paid`, `free,paid`, `free`)
@@ -28,19 +28,19 @@
 #      The low-level override, honored ONLY when CR_PROFILE is unset (direct/
 #      advanced use + tests). CR_PROFILE wins when both are set.
 #      CRITIC_TIMEOUT_SECS — per-member wall-clock timeout in seconds (default 240;
-#          HIMMEL-558: raised from 150 after both the paid codex critic AND the free
+#          raised from 150 after both the paid codex critic AND the free
 #          qwenor anchor were observed timing out at exactly 150s and contributing
 #          nothing — 150 clipped their occasional slow reasoning. 240 gives headroom
 #          while still bounding a genuinely hung provider. Lower it for a faster gate.
 #          Requires GNU coreutils 'timeout'; gracefully degrades without it.
-#          A registry row's OPTIONAL "timeout_secs" (HIMMEL-1245) overrides this
+#          A registry row's OPTIONAL "timeout_secs" overrides this
 #          shared default for that ONE member only — e.g. the glm row needs more
 #          headroom than codex on a large diff. Invalid/absent -> this default.
 #      CRITIC_PARALLEL — set to 1 to run critics concurrently (default 0 = sequential).
 #          Output is byte-identical to sequential: results merged in registry order.
 set -uo pipefail
 
-# LIVENESS BEACON (HIMMEL-1280) — the FIRST thing this script does, before any
+# LIVENESS BEACON — the FIRST thing this script does, before any
 # sourcing, subshell, mktemp, cygpath or dotenv read, and before LC_ALL export.
 # Nothing above this line can block.
 #
@@ -117,11 +117,11 @@ USAGE
 }
 
 # Shape check shared by the two SHA pins (--head, --base-sha). Hex-only, 7..64
-# chars (HIMMEL-1175, codex-3): a permissive alphanumeric class also accepts
+# chars: a permissive alphanumeric class also accepts
 # `HEAD` or a branch name, which git resolves DYNAMICALLY — a "pin" that follows
 # the checkout is not a pin. Only an immutable object name is accepted. Upper
 # bound 64, not 40: a SHA-256 git repository names commits with 64 hex chars
-# (panel r5). $1 = flag name (for the diagnostic), $2 = the supplied value.
+# $1 = flag name (for the diagnostic), $2 = the supplied value.
 _require_sha_pin() {
     case "$2" in
         *[!0-9a-fA-F]*)
@@ -135,8 +135,8 @@ _require_sha_pin() {
     fi
 }
 
-# failure-classify.sh (HIMMEL-1176): sole owner of the quota-exhaustion
-# signature table (is_quota_exhaustion, ex-HIMMEL-729 _is_quota_exhaustion)
+# failure-classify.sh: sole owner of the quota-exhaustion
+# signature table (is_quota_exhaustion)
 # and of classify_failure, used below to append a reason= to every
 # panel-availability unavailable line. Sourcing only defines functions (no
 # side effect; failure-classify.sh runs without `-e`, so it does not leak
@@ -153,18 +153,18 @@ else
     classify_failure() { echo "generic-rc-${1:-1}"; }
 fi
 
-# Registry resolution (HIMMEL-727 split + HIMMEL-1221 merge). CRITICS_JSON env
+# Registry resolution. CRITICS_JSON env
 # (tests/CI) wins outright. Otherwise critics.json is the BASE and
 # critics.local.json (gitignored per-operator overlay — ACCOUNT state like
 # exhausted free quotas / upgraded models) is MERGED per-slug ON TOP: a local row
 # OVERRIDES or APPENDS by slug, and a local row with "drop":true REMOVES the base
 # row of that slug. Merge (not the pre-1221 wholesale replace) so a stale overlay
-# can no longer silently mask a shipped critic — the glm row HIMMEL-1096 added
-# lived only in critics.json and an overlay predating it dropped it. Test hooks:
+# can no longer silently mask a shipped critic that exists only in critics.json.
+# Test hooks:
 # CRITICS_BASE_JSON / CRITICS_LOCAL_JSON override the two merge inputs.
 _MERGED_REG=""
 _REG_BASE="${CRITICS_BASE_JSON:-$SCRIPT_DIR/critics.json}"
-# HIMMEL-3059 S3: an unset CRITICS_LOCAL_JSON checks the himmelctl cache dir
+# an unset CRITICS_LOCAL_JSON checks the himmelctl cache dir
 # first — a read-only install tree can never carry an in-tree overlay — and
 # falls back to the in-tree default so an existing writable clone's
 # hand-authored overlay still resolves exactly as before.
@@ -219,8 +219,8 @@ else
     REG="$_REG_BASE"
 fi
 
-# HIMMEL-1221: load the Z.ai critic credential from the primary checkout's .env so
-# the paid glm panel row (provider zai / route_provider glm, HIMMEL-1096)
+# load the Z.ai critic credential from the primary checkout's .env so
+# the paid glm panel row (provider zai / route_provider glm)
 # authenticates with NO manual env export — but ONLY when the resolved registry
 # actually contains a Z.ai critic (a "zai"/"glm" provider, route_provider, or
 # slug). load_dotenv forks a subshell per .env line (≈1.5s on Git Bash over a
@@ -228,10 +228,10 @@ fi
 # panel run (the common path). load_dotenv sets a key ONLY when currently UNSET
 # (a live env value wins) and never sources/logs the .env — it extracts only the
 # requested KEY= lines (block-read-secrets safe). Scoped to the CR panel per the
-# HIMMEL-1096 Z.ai-key compliance note; deliberately NOT loaded at the hermes
-# chokepoint (invoke.sh stays auth-agnostic, HIMMEL-278). load_dotenv exports each
+# Z.ai-key compliance note; deliberately NOT loaded at the hermes
+# chokepoint (invoke.sh stays auth-agnostic). load_dotenv exports each
 # key it sets, so the child critic-first-pass.sh -> invoke.sh processes inherit it.
-# HIMMEL-1065: CLIPROXY_API_KEY is the codex critic's auth credential. The codex
+# CLIPROXY_API_KEY is the codex critic's auth credential. The codex
 # member runs via critic-first-pass.sh -> hermes/invoke.sh, whose openai-codex
 # provider defers auth to the INHERITED env (invoke.sh loads no dotenv itself),
 # so it must be exported here. Without this load a worktree run (no .env of its
@@ -254,7 +254,7 @@ if [ -n "$_CRED_KEYS" ]; then
     # shellcheck disable=SC1091
     . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null || true
     if command -v load_dotenv >/dev/null 2>&1; then
-        # HIMMEL-1648: pin to SCRIPT-ROOT resolution so a panel run from an
+        # pin to SCRIPT-ROOT resolution so a panel run from an
         # unrelated git repo still reads himmel's .env, not THAT repo's.
         # Unquoted on purpose — $_CRED_KEYS is a word-split list of KEY names.
         # shellcheck disable=SC2086
@@ -262,7 +262,7 @@ if [ -n "$_CRED_KEYS" ]; then
     fi
 fi
 
-# Effective tier resolution (HIMMEL-558). CR_PROFILE is AUTHORITATIVE when set —
+# Effective tier resolution. CR_PROFILE is AUTHORITATIVE when set —
 # it is the operator's opt-in profile (loaded from .env, exported by /pr-check).
 # This closes the drift where an agent hand-executing the /pr-check runbook
 # scoped the panel to free-only (dropping the paid codex critic) by hardcoding
@@ -301,7 +301,7 @@ else
     CRITIC_TIMEOUT_SECS="240"
 fi
 
-# SIGKILL grace handed to every `timeout -k` below (HIMMEL-1291, public-PR CR).
+# SIGKILL grace handed to every `timeout -k` below.
 # A member that ignores SIGTERM lives this many seconds PAST its nominal
 # timeout, so the nominal timeout is not the member's real wall-clock cost —
 # nominal + grace is. Named once here because the clamp below has to subtract
@@ -309,7 +309,7 @@ fi
 # re-opens the overrun this constant closes.
 CRITIC_KILL_GRACE_SECS=5
 
-# TOTAL-panel wall clock (HIMMEL-1280). CRITIC_TIMEOUT_SECS bounds ONE member;
+# TOTAL-panel wall clock. CRITIC_TIMEOUT_SECS bounds ONE member;
 # nothing bounded the panel as a whole, so N members each clipping their own
 # budget could still hold a caller for N*CRITIC_TIMEOUT_SECS with no ceiling
 # the caller can reason about. Default 900s = comfortably above a healthy
@@ -356,7 +356,7 @@ _panel_deadline_passed() {
     [ "$_left" -le 0 ]
 }
 
-# _clamp_to_panel_budget <member_timeout> (HIMMEL-1280 CR)
+# _clamp_to_panel_budget <member_timeout>
 # Echo the member timeout capped by whatever is LEFT of the total budget.
 # Without this the total cap only stops NEW members starting: one member with a
 # 240s budget begun at T-1 second still runs to T+239, so the "total" bound is
@@ -364,7 +364,7 @@ _panel_deadline_passed() {
 # about the ceiling they actually get. Never returns <1 (the deadline check
 # above has already broken the loop by then).
 #
-# The cap RESERVES the `timeout -k` grace (HIMMEL-1291, public-PR CR): the
+# The cap RESERVES the `timeout -k` grace: the
 # runners spend nominal + CRITIC_KILL_GRACE_SECS on a member that ignores
 # SIGTERM, so clamping to the bare remainder still let the panel finish
 # CRITIC_KILL_GRACE_SECS past the total deadline. Clamping to
@@ -388,7 +388,7 @@ _clamp_to_panel_budget() {
     if [ "$_left" -lt "$_member" ]; then printf '%s\n' "$_left"; else printf '%s\n' "$_member"; fi
 }
 
-# _resolve_member_timeout <slug> <raw_timeout_secs> (HIMMEL-1245)
+# _resolve_member_timeout <slug> <raw_timeout_secs>
 # Echoes the effective per-member timeout: the row's OPT-IN timeout_secs when
 # it is a positive integer (Bash 3.2 safe via expr, same check as
 # CRITIC_TIMEOUT_SECS above), else the shared CRITIC_TIMEOUT_SECS default —
@@ -440,7 +440,7 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         --base)
-            # The caller's captured base REF NAME (HIMMEL-1984 panel r5). Without
+            # The caller's captured base REF NAME. Without
             # it --base-sha was verified against a base this script resolved on
             # its OWN — CR_BASE_BRANCH is read here but NOT by /pr-check's
             # default_branch capture, so an operator with that env var set would
@@ -461,7 +461,7 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         --base-sha)
-            # Diff-BASE half of the pin (HIMMEL-1984). --head froze the tip; the
+            # Diff-BASE half of the pin. --head froze the tip; the
             # base was still resolved LIVE at review time, so the OTHER end of
             # the reviewed range could differ from the one the caller computed
             # while the head pin kept passing. A plain fast-forward of the base
@@ -479,7 +479,7 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         --branch)
-            # Branch-identity half of the pin (HIMMEL-1175 r2). A SHA pin alone
+            # Branch-identity half of the pin. A SHA pin alone
             # passes a switch to a DIFFERENT branch sitting at the same commit —
             # the exact stale-input case the ticket names — and the panel would
             # then stamp its ledger rows with that other branch's name while the
@@ -581,7 +581,7 @@ CHECKROWSEOF
     exit 0
 fi
 
-# HIMMEL-1175 — --head input pinning. /pr-check captures branch+HEAD up front
+# --head input pinning. /pr-check captures branch+HEAD up front
 # and stamps the ledger with that SHA, but this panel resolved its own head (and,
 # in --worktree mode, its own diff) from LIVE state. A checkout that moved between
 # capture and review — the same-SHA branch switch clear-cr-marker.sh's exit 13/16
@@ -620,7 +620,7 @@ _verify_head_pin() {
 }
 
 # Resolve the operator-visible base name, then hand ref precedence to the one
-# shared resolver used by panel-first-pass.sh (HIMMEL-2787). Explicit --base
+# shared resolver used by panel-first-pass.sh. Explicit --base
 # still wins over CR_BASE_BRANCH; origin/HEAD remains the direct-call default;
 # only the LOCAL-vs-REMOTE choice changed: origin/<name> now always wins when it
 # exists, with a local fallback only for repositories without that tracking ref.
@@ -636,7 +636,7 @@ _resolve_base_ref() {
     cr_resolve_base_ref "$1" "$_rb"
 }
 
-# HIMMEL-1984 — --base-sha input pinning, the other end of the reviewed range.
+# --base-sha input pinning, the other end of the reviewed range.
 # --head froze the tip, but the BASE was still resolved live here: the caller
 # captured one base commit and this run could review against another. The check
 # is on the base REF resolving to the captured commit, not on the diff bytes —
@@ -679,7 +679,7 @@ if [ -n "$WORKTREE" ]; then
         exit 3
     fi
     _base="$(_resolve_base_ref "$REVIEW_ROOT")"
-    # Capture the reviewed head ONCE (HIMMEL-1494 r4) and reuse it for BOTH the
+    # Capture the reviewed head ONCE and reuse it for BOTH the
     # diff and the ledger stamp: a separate `git rev-parse HEAD` at stamp time
     # could resolve a different commit if a concurrent commit lands between the
     # two invocations, certifying a head that does not match the reviewed diff.
@@ -688,7 +688,7 @@ if [ -n "$WORKTREE" ]; then
     _head="$(git -C "$REVIEW_ROOT" rev-parse HEAD 2>/dev/null)" || _head=""
     _verify_head_pin "$REVIEW_ROOT" "$_head"
     _verify_base_pin "$REVIEW_ROOT"
-    # A verified pin is the base the diff uses (HIMMEL-1984), for the same
+    # A verified pin is the base the diff uses, for the same
     # capture-once reason $_head is a snapshot: re-reading the ref here would
     # reopen the window _verify_base_pin just closed. Diagnostics keep naming
     # $_base — the operator-visible intent.
@@ -706,7 +706,7 @@ else
     diff_in="$(cat)"
     if [ -z "$diff_in" ]; then
         # A null/tty stdin with nothing piped in is always caller error
-        # (HIMMEL-2107): forwarding it to members produced 11 false
+        # — forwarding it to members produced 11 false
         # "codex unavailable reason=http-4xx" reports (rc=2 usage text
         # misread as a transport failure downstream). Refuse the same way
         # the --worktree path refuses an empty diff.
@@ -714,7 +714,7 @@ else
         exit 4
     fi
     REVIEW_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || REVIEW_ROOT=""
-    # Capture the head once for stamping coherence (HIMMEL-1494 r4): the stdin
+    # Capture the head once for stamping coherence: the stdin
     # diff is not HEAD-derived, but REVIEW_HEAD must still name the exact commit
     # under review, snapshotted here rather than re-resolved at stamp time.
     _head=""
@@ -723,16 +723,16 @@ else
     fi
     # The stdin diff is the CALLER's; the pin still guards the stamp — and, for
     # /pr-check, the fact that the caller computed that diff against this same
-    # SHA (HIMMEL-1175). A pin with no worktree to verify against refuses.
+    # SHA. A pin with no worktree to verify against refuses.
     _verify_head_pin "$REVIEW_ROOT" "$_head"
     # The stdin diff is already frozen, so a moved base cannot change what THIS
     # lane reviews — but it means the caller's captured base is stale, and the
     # sibling lanes of the same /pr-check run (CodeRabbit, the rtk retry) would
     # review a different range. Refuse here too, at the first lane, rather than
-    # letting the run reach a later one (HIMMEL-1984).
+    # letting the run reach a later one.
     _verify_base_pin "$REVIEW_ROOT"
     if [ -z "$REVIEW_ROOT" ]; then
-        # Back-compat (HIMMEL-1494): the stdin path used to work anywhere; it
+        # Back-compat: the stdin path used to work anywhere; it
         # only needs a worktree to STAMP ledger rows. Run the review anyway,
         # skip the self-append, and warn loudly. Review output and the exit code
         # behave exactly as pre-change. _SKIP_LEDGER gates every ledger step
@@ -745,14 +745,14 @@ else
 fi
 
 # Ledger stamping needs a worktree; the stdin-outside-worktree path skips all
-# of it (HIMMEL-1494). REVIEW_HEAD/REVIEW_BRANCH/PANEL_LEDGER stay unset and the
+# of it. REVIEW_HEAD/REVIEW_BRANCH/PANEL_LEDGER stay unset and the
 # final _append_panel_ledger call is gated on the same flag below.
 if [ "${_SKIP_LEDGER:-0}" != "1" ]; then
     REVIEW_HEAD="$_head"
     # A pinned run stamps the PINNED branch, not a fresh resolution (panel r4,
     # codex-2): _verify_head_pin proved the two were equal, and re-resolving
     # here would reopen the window between that check and this line — the same
-    # capture-once reasoning that made $_head a snapshot in HIMMEL-1494 r4.
+    # capture-once reasoning that made $_head a snapshot.
     if [ -n "$BRANCH_PIN" ]; then
         REVIEW_BRANCH="$BRANCH_PIN"
     else
@@ -779,13 +779,13 @@ if [ "${_SKIP_LEDGER:-0}" != "1" ]; then
         echo "critic-panel.sh: ledger append helper is not readable: $LEDGER_APPEND" >&2
         exit 5
     fi
-    # HIMMEL-3104: each member's critic-first-pass.sh keeps its raw response and
+    # each member's critic-first-pass.sh keeps its raw response and
     # writes a `score` row keyed on the head the panel reviewed. Hand it the
     # panel's own head/branch/ledger — this cwd need not be the review root.
     export CR_TARGET_HEAD="$REVIEW_HEAD" CR_TARGET_BRANCH="$REVIEW_BRANCH" CR_LEDGER="$PANEL_LEDGER"
 fi
 
-# Triviality gate (HIMMEL-737): a diff classified 'trivial' skips the PAID tier
+# Triviality gate: a diff classified 'trivial' skips the PAID tier
 # to save codex spend. Only fires when 'paid' is in the effective tier filter
 # (the common free-only path never sources the gate). --check mode exits above,
 # so it never reaches here. The gate honors CR_TRIVIALITY_OVERRIDE itself
@@ -809,7 +809,7 @@ case ",$TIER_FILTER," in
                 _tg_reason="${_tg_result#*$'\t'}"
             else
                 # Fail-safe: a broken gate must never narrow the panel silently
-                # - keep the requested tiers and say so (CR round).
+                # - keep the requested tiers and say so.
                 echo "critic-panel.sh: triviality gate failed (rc=$_tg_rc) - paid tier kept" >&2
             fi
         else
@@ -830,7 +830,7 @@ case ",$TIER_FILTER," in
                 # silently substitute the registry default 'free' - honor the
                 # operator's profile.
                 #
-                # HIMMEL-1950: degrading to claude-only here DEADLOCKS a trivial
+                # degrading to claude-only here DEADLOCKS a trivial
                 # diff when CR_REQUIRE_CROSS_MODEL=1, because clear-cr-marker
                 # gate 3b then refuses the claude-only floor (exit 14). Two
                 # individually-correct mechanisms, jointly unsatisfiable - and
@@ -840,8 +840,8 @@ case ",$TIER_FILTER," in
                 # MORE for a one-liner than for a normal diff.
                 #
                 # So when the cross-model floor is REQUIRED, keep exactly ONE
-                # external critic rather than zero (HIMMEL-1785's constraint:
-                # keep the cheapest external critic, do not weaken the floor).
+                # external critic rather than zero (keep the cheapest external critic,
+                # do not weaken the floor).
                 # A gate that saves a call by making the branch unshippable
                 # saves nothing.
                 _tg_xm="${CR_REQUIRE_CROSS_MODEL:-}"
@@ -905,16 +905,16 @@ rows="$(REG="$REG" TIER_FILTER="$TIER_FILTER" node -e '
     const p = usable.filter(r => tiers.includes(r.tier));
     // Distinct exits so the caller can tell "registry broken" (7) from
     // "registry fine, but no row matches the requested tier" (8) — collapsing
-    // both into one "missing/invalid/empty" message sent a HIMMEL-1093 run
+    // both into one "missing/invalid/empty" message sent a run
     // hunting a registry that was present and valid all along.
     if (!p.length) process.exit(usable.length ? 8 : 7);
     // "-" placeholder for empty middle fields: tab is IFS WHITESPACE in the
     // bash readers, so consecutive tabs collapse and a non-empty 4th field
-    // would shift LEFT into the perspective slot (HIMMEL-729 field-shift bug).
-    // Field 4 = the fallback CHAIN (HIMMEL-737): the ordered "fallback_models"
+    // would shift LEFT into the perspective slot (the field-shift bug).
+    // Field 4 = the fallback CHAIN: the ordered "fallback_models"
     // array, comma-joined; a legacy "fallback_model" string is a 1-element chain
     // for back-compat; "-" when empty. Model names never contain a comma or tab.
-    // Field 5 = ROUTE_PROVIDER (HIMMEL-727): OPT-IN per row. When set, threaded
+    // Field 5 = ROUTE_PROVIDER: OPT-IN per row. When set, threaded
     // to hermes as an explicit --provider so a model id newer than the hermes
     // internal catalog cannot fall to its default provider. Deliberately a
     // SEPARATE key from the descriptive "provider" metadata: blanket-threading
@@ -922,13 +922,13 @@ rows="$(REG="$REG" TIER_FILTER="$TIER_FILTER" node -e '
     // alias base_url -> 401 on the alibaba lane). Primary dispatch only —
     // fallback-chain members stay name-routed (hermes aliases, possibly
     // cross-provider).
-    // Field 6 = FALLBACK_TRIGGER (HIMMEL-953): OPT-IN per row. "any" widens
+    // Field 6 = FALLBACK_TRIGGER: OPT-IN per row. "any" widens
     // the process_member retry condition to ANY non-zero rc/timeout instead
     // of requiring a quota-exhaustion signature match — for a same-tier
     // candidate chain (e.g. all OpenRouter free models) any failure on one
     // candidate is reason enough to try the next. "-" (unset) keeps the
-    // HIMMEL-729 exhaustion-only default for every other row.
-    // Field 8 = TIMEOUT_SECS (HIMMEL-1245): OPT-IN per row. Overrides the
+    // exhaustion-only default for every other row.
+    // Field 8 = TIMEOUT_SECS: OPT-IN per row. Overrides the
     // shared CRITIC_TIMEOUT_SECS wall-clock budget for THIS member only
     // (e.g. glm needs more headroom than codex on a large diff). "-" (unset)
     // -> the shared default; bash validates positivity (see
@@ -945,7 +945,7 @@ rows="$(REG="$REG" TIER_FILTER="$TIER_FILTER" node -e '
   }
 ' 2>/dev/null)" || rows_rc=$?
 
-# HIMMEL-2129 (HIMMEL-2128 follow-up): capture every USABLE non-Claude
+# Capture every USABLE non-Claude
 # registry row this run's tier filter EXCLUDED (present in critics.json /
 # critics.local.json, tier valid, just not in $TIER_FILTER) -- but only on
 # the path where at least one OTHER row DID match ($rows non-empty here).
@@ -953,8 +953,7 @@ rows="$(REG="$REG" TIER_FILTER="$TIER_FILTER" node -e '
 # the paid anchor instead, a different and already-logged scenario; with
 # today's single-critic registry that is the ONLY case that can occur, so
 # this stays inert until a second non-Claude row exists to be excluded while
-# others run. Fail-open on a read/parse error: no exclusion list, same as
-# before this ticket existed.
+# others run. Fail-open on a read/parse error: no exclusion list.
 _tier_excluded_raw=""
 if [ -n "${rows:-}" ]; then
     _tier_excluded_raw="$(REG="$REG" TIER_FILTER="$TIER_FILTER" node -e '
@@ -974,11 +973,11 @@ if [ -n "${rows:-}" ]; then
 fi
 
 if [ -z "${rows:-}" ]; then
-    # rc=8 (HIMMEL-1101): registry present and VALID, but zero rows match the
+    # rc=8: registry present and VALID, but zero rows match the
     # requested tier — the anchor fallback below then escalates to a PAID
     # critic. Say so: this path is how an unset CR_PROFILE (tier filter
     # "free", zero free rows registered) silently spends the OpenAI bank, and
-    # it also bypasses HIMMEL-737's triviality gate, which only fires when
+    # it also bypasses the triviality gate, which only fires when
     # "paid" is IN the tier filter.
     # Each rc gets its OWN diagnostic: an `else` that swallows 7 together with
     # every unexpected rc (a node crash, an empty-stdout-at-rc-0) would report
@@ -998,7 +997,7 @@ if [ -z "${rows:-}" ]; then
     rows="${ANCHOR_SLUG}	${ANCHOR_MODEL}	-	-	${ANCHOR_PROVIDER}	-	-	-"
 fi
 
-# HIMMEL-1950: "keep exactly ONE external critic" is enforced HERE, on the
+# "keep exactly ONE external critic" is enforced HERE, on the
 # resolved rows, not by editing the tier filter above -- the filter selects a
 # TIER and a tier may hold several members, which on a trivial diff would spend
 # more than the gate was trying to save. First row wins: the registry is an
@@ -1010,7 +1009,7 @@ if [ "${_tg_keep_one:-0}" = "1" ]; then
     _tg_dropped=$(( $(printf '%s\n' "$_tg_all_rows" | grep -c .) - 1 ))
     if [ "${_tg_dropped:-0}" -gt 0 ]; then
         echo "critic-panel.sh: trivial-diff cheap path - panel capped to 1 critic (${_tg_dropped} other paid member(s) skipped)" >&2
-        # HIMMEL-2129: the skipped member(s) are configured AND available --
+        # the skipped member(s) are configured AND available --
         # just not consulted, to save cost on a trivial diff -- so they must
         # not look like silence to clear-cr-marker's CR_FLOOR_FALLBACK=claude-
         # only exhaustion check (see the tier-exclusion capture above).
@@ -1023,7 +1022,7 @@ tmp="$(mktemp -t critic-panel.XXXXXX)"
 _seq_out=""
 _seq_err=""
 outdir=""
-# Ledger evidence spool (HIMMEL-1494 r3; per-member r4): subshell-safe
+# Ledger evidence spool (per-member): subshell-safe
 # replacement for the old parent-scope STRING accumulators. The parallel path
 # runs each member's critic in a background subshell; if process_member is ever
 # moved into that subshell, parent-scope string accumulation would be silently
@@ -1036,7 +1035,7 @@ outdir=""
 # Each member writes only its own file (a member is processed once, so its own
 # file is never written concurrently); _append_panel_ledger globs them all, and
 # bash sorts pathname expansion so the read order is deterministic.
-# HIMMEL-3492: an empty spool dir would send avail./finding. rows to /. The
+# an empty spool dir would send avail./finding. rows to /. The
 # EXIT trap below is not installed yet, so drop $tmp here before exiting.
 PANEL_SPOOL_DIR="$(mktemp -d -t critic-panel-spool.XXXXXX)" || {
     rm -f "$tmp"
@@ -1059,7 +1058,7 @@ agg_sug=""
 agg_reraise=""
 agg_drop=""
 agg_drop_blocking=""
-# member_parsed record separator (HIMMEL-1871 round 6): \034, matching the
+# member_parsed record separator: \034, matching the
 # spool files above. NOT tab — tab is IFS *whitespace*, so `read` collapses
 # consecutive tabs and an EMPTY interior field (file/line of a citation-less
 # finding) would swallow its neighbours. \034 is non-whitespace: empty fields
@@ -1069,21 +1068,21 @@ agg_drop_blocking=""
 _PFS=$'\034'
 
 # Ledger accumulators live in per-member spool files under PANEL_SPOOL_DIR
-# (created above with $tmp — subshell-safe file spools, HIMMEL-1494 r3; one file
-# per member r4). Keep availability and findings structured rather than reparsing
+# (created above with $tmp — subshell-safe file spools; one file
+# per member). Keep availability and findings structured rather than reparsing
 # stderr/stdout: availability has intermediate fallback-failed diagnostics that
 # are NOT terminal member outcomes, while findings must preserve the exact
 # reviewed head even if the orchestrator later commits a fix before judging them.
 
 _queue_avail() {
-    # Subshell-safe + per-member (HIMMEL-1494 r3/r4): append the row to THIS
+    # Subshell-safe + per-member: append the row to THIS
     # member's own avail spool file, not a parent-scope string or a shared file.
     # A file append persists across a background-subshell member boundary (a
     # string mutation would not); per-member files mean no shared-file concurrent
     # append. $1 is the member slug — the registry accepts ANY non-empty value
     # (overlay slugs like "openai/gpt"), so the BUCKET filename sanitizes "/"
-    # (HIMMEL-1871 round 6: an un-sanitized slash made the append target a
-    # nonexistent subdir and silently lost the row under set +e). The row
+    # (an un-sanitized slash would make the append target a
+    # nonexistent subdir and silently lose the row under set +e). The row
     # CONTENT keeps the exact slug; buckets are only accumulation files that
     # _append_panel_ledger globs wholesale, so a name collision (a/b vs a_b)
     # merges buckets without corrupting rows.
@@ -1091,9 +1090,9 @@ _queue_avail() {
         >> "$PANEL_SPOOL_DIR/avail.${1//\//_}"
 }
 
-# HIMMEL-2129 (HIMMEL-2128 follow-up): emit a non-exhaustion avail row for
+# Emit a non-exhaustion avail row for
 # every configured non-Claude critic THIS RUN deselected -- tier filter
-# exclusion or the HIMMEL-1950 trivial-diff keep-one cap -- captured above as
+# exclusion or the trivial-diff keep-one cap -- captured above as
 # $_tier_excluded_raw / $_keepone_dropped_raw. clear-cr-marker.sh's
 # CR_FLOOR_FALLBACK=claude-only check only accepts the claude-only floor when
 # EVERY non-Claude lane that RECORDED an avail row is verified quota/rate-
@@ -1122,10 +1121,10 @@ if [ -n "${_keepone_dropped_raw:-}" ]; then
 fi
 
 _queue_finding() {
-    # Subshell-safe + per-member + symmetric set -u safety (HIMMEL-1494 r3/r4):
+    # Subshell-safe + per-member + symmetric set -u safety:
     # see _queue_avail. The ${n:-} defaults mirror _queue_avail so a bare
     # positional under set -u can never abort the append.
-    # $6 (HIMMEL-2078, optional): the panel's own rendered bullet line for
+    # $6 (optional): the panel's own rendered bullet line for
     # this finding, LAST so it may contain any byte including \034 — mirrors
     # the finding-batch record separator contract below (bullet payload rides
     # last as a byte-exact remainder, never scanned for a delimiter).
@@ -1134,10 +1133,10 @@ _queue_finding() {
 }
 
 # _queue_attempt <slug> <responding_model> <attempt_num> <outcome> <duration_secs> [<detail>]
-# HIMMEL-1500: one row per invocation ATTEMPT (the primary try + every
-# fallback candidate), so a retried member (e.g. glm's self-retry chain,
-# HIMMEL-1569) leaves its FULL timing history on the ledger instead of only
-# the final avail verdict — the signal HIMMEL-1500 needs to correlate GLM
+# one row per invocation ATTEMPT (the primary try + every
+# fallback candidate), so a retried member (e.g. glm's self-retry chain)
+# leaves its FULL timing history on the ledger instead of only
+# the final avail verdict — the signal needed to correlate GLM
 # one-shot timeouts against the suspected z.ai peak-usage window. Appended to
 # a PER-MEMBER spool file (same subshell-safety rationale as _queue_avail):
 # unlike avail.$1 (one authoritative row), attempt.$1 can and does grow past
@@ -1149,7 +1148,7 @@ _queue_attempt() {
 
 _append_panel_ledger() {
     _apl_failed=0
-    # Glob the per-member spool files (HIMMEL-1494 r4): bash sorts pathname
+    # Glob the per-member spool files: bash sorts pathname
     # expansion, so the read order is deterministic. [ -f ] guards the no-match
     # case (a finding.* glob with no findings would otherwise be a literal
     # pattern). set -- inside the loop reassigns positionals; the for-loop
@@ -1167,7 +1166,7 @@ _append_panel_ledger() {
         done < "$_apl_spool"
     done
 
-    # HIMMEL-1500: attempt.* rows are NEVER deduped by ledger-append.sh (each
+    # attempt.* rows are NEVER deduped by ledger-append.sh (each
     # try — primary + every fallback candidate — gets its own line), unlike
     # avail.* above (one authoritative row per member).
     for _apl_spool in "$PANEL_SPOOL_DIR"/attempt.*; do
@@ -1184,7 +1183,7 @@ _append_panel_ledger() {
         done < "$_apl_spool"
     done
 
-    # HIMMEL-2052: one ledger-append.sh --batch-file call for ALL finding rows
+    # one ledger-append.sh --batch-file call for ALL finding rows
     # instead of one `bash ledger-append.sh finding` invocation per row. Each
     # invocation used to re-read + re-parse the whole ledger and re-resolve
     # every legacy head from scratch; a 14-finding panel run could blow a 120s
@@ -1223,7 +1222,7 @@ _append_panel_ledger() {
             for (const line of lines) {
               const parts=line.split(String.fromCharCode(28));
               const [model,id,severity,file,ln]=parts;
-              // text (HIMMEL-2078): the panel bullet is field 6, LAST, so it
+              // text: the panel bullet is field 6, LAST, so it
               // may contain a literal \x1c byte — rejoin any split remainder
               // rather than reading parts[5] alone (mirrors the bullet
               // being a byte-exact remainder throughout this file).
@@ -1248,7 +1247,7 @@ _append_panel_ledger() {
     [ "$_apl_failed" -eq 0 ]
 }
 
-# HIMMEL-1065: emit the per-critic unavailability list for the zero-responder
+# emit the per-critic unavailability list for the zero-responder
 # fail-closed block. Reads the SAME per-member avail spool _append_panel_ledger
 # globs (one terminal record per member: slug, status, responding-model, reason,
 # detail), so the stdout block and the ledger rows agree. Bash 3.2 safe (no
@@ -1269,13 +1268,13 @@ _emit_unavailable_critics() {
 }
 
 # ---------------------------------------------------------------------------
-# _is_quota_exhaustion <out_file> <err_file> (HIMMEL-729)
+# _is_quota_exhaustion <out_file> <err_file>
 # Return 0 (true) if the member's captured stdout OR stderr matches a
 # quota-exhaustion signature. Used to decide whether to fall a failed member
 # back to its OpenRouter fallback_model. A plain timeout (rc 124/137) never
 # reaches here: process_member short-circuits timeouts BEFORE this check, so a
 # timeout is never mistaken for exhaustion.
-# Thin wrapper (HIMMEL-1176): the signature table itself now lives in
+# Thin wrapper: the signature table itself now lives in
 # scripts/cr/failure-classify.sh's is_quota_exhaustion, the SOLE owner, so
 # critic-panel.sh's fallback trigger and classify_failure's quota-5h bucket
 # never drift against two copies of the same table.
@@ -1285,17 +1284,17 @@ _is_quota_exhaustion() {
 }
 
 # ---------------------------------------------------------------------------
-# _run_cfp_member <model> <slug> <perspective> <out_file> <err_file> (HIMMEL-729)
+# _run_cfp_member <model> <slug> <perspective> <out_file> <err_file>
 # Re-run a member through the SAME invocation path the primary run uses
 # (critic-first-pass.sh, optional timeout wrap, optional --perspective-file),
 # with the model swapped to the fallback. Writes stdout -> out_file, stderr ->
 # err_file, and sets the global _rm_rc to the member exit code. Called from
 # process_member's quota-exhaustion fallback branch, once PER CHAIN MEMBER
-# (HIMMEL-737: the chain is iterated in order, each model attempted at most once).
+# (the chain is iterated in order, each model attempted at most once).
 # ---------------------------------------------------------------------------
 _run_cfp_member() {
     _rm_model="$1"; _rm_slug="$2"; _rm_persp="${3:-}"; _rm_out="$4"; _rm_err="${5:-/dev/null}"; _rm_provider="${6:-}"
-    # Per-attempt timeout override (HIMMEL-953 seat budget): the fallback loop
+    # Per-attempt timeout override (seat budget): the fallback loop
     # passes the REMAINING seat budget so a chain of hung candidates cannot
     # stack N full member timeouts. Unset -> the normal per-member timeout.
     _rm_to="${_RM_TIMEOUT_SECS:-$CRITIC_TIMEOUT_SECS}"
@@ -1335,52 +1334,52 @@ _run_cfp_member() {
 # $2 = path to member stdout file
 # $3 = rc value (integer string)
 # $4 = path to member stderr file (optional; pass "" to skip)
-# $5 = fallback CHAIN for this slug (HIMMEL-737): comma-separated, ordered models
+# $5 = fallback CHAIN for this slug: comma-separated, ordered models
 #      ("" = no quota-exhaustion fallback). Iterated in order, each at most once.
 # $6 = perspective for this slug (optional; "" = no --perspective-file), threaded
 #      into the fallback re-run so it uses the SAME invocation path as the primary
 # $7 = primary model for this slug (used only for availability metadata)
-# $8 = fallback PROVIDER for this slug's chain (HIMMEL-953, opt-in): explicit
+# $8 = fallback PROVIDER for this slug's chain (opt-in): explicit
 #      --provider for every fallback attempt ("" = chain members stay
-#      name-routed — hermes aliases, possibly cross-provider — per HIMMEL-729).
-# $9 = fallback trigger mode for this slug (HIMMEL-953): "any" widens the
+#      name-routed — hermes aliases, possibly cross-provider).
+# $9 = fallback trigger mode for this slug: "any" widens the
 #      retry condition below to ANY non-zero rc (incl. timeout) instead of
 #      requiring a quota-exhaustion signature match. Opt-in per row so the
-#      HIMMEL-729 "don't mask a dead primary lane" contract stays the DEFAULT
+#      "don't mask a dead primary lane" contract stays the DEFAULT
 #      for rows that don't set it ("" = exhaustion-signature-only, unchanged).
-# $10 = the RESOLVED per-member timeout in seconds for this slug (HIMMEL-1245):
+# $10 = the RESOLVED per-member timeout in seconds for this slug:
 #      the row's timeout_secs when valid, else the shared CRITIC_TIMEOUT_SECS
 #      default — already resolved by _resolve_member_timeout at the call site,
 #      so this is used here only for accurate "unavailable (timeout Ns)"
 #      reporting and the fallback-chain seat budget. Unset -> CRITIC_TIMEOUT_SECS.
 # $11 = the MEASURED wall-clock duration (seconds) of the PRIMARY attempt
-#      (HIMMEL-1500), timed by the caller around the invocation it already
+#      timed by the caller around the invocation it already
 #      makes. "" -> no attempt record is queued for the primary (keeps every
 #      pre-existing caller, incl. every test stub, working unmodified).
 # ---------------------------------------------------------------------------
 # rc 4 from critic-first-pass.sh = COMPLETED response whose blocking findings
-# were ALL dropped by citation validation (HIMMEL-1915 x HIMMEL-1871): valid,
+# were ALL dropped by citation validation: valid,
 # evidence-bearing output — never an error. ONE definition, shared by the
-# primary path and the fallback chain: round 9's [high] was exactly a second,
-# divergent copy of this decision (the chain accepted only rc 0, recorded 4 as
-# an error, deleted the Dropped Citations evidence, and kept consulting
-# candidates — a later clean response then cleared the panel with the guard
-# never fired). Any future rc site MUST route through this helper.
+# primary path and the fallback chain: a second, divergent copy of this
+# decision (accepting only rc 0, recording 4 as an error, deleting the Dropped
+# Citations evidence and consulting further candidates) would let a later clean
+# response clear the panel with the guard never fired. Any future rc site MUST
+# route through this helper.
 _rc_completed() { [ "$1" -eq 0 ] || [ "$1" -eq 4 ]; }
 
-# _pm_redact_detail <text> (HIMMEL-3109): shared control-char strip + secret
+# _pm_redact_detail <text>: shared control-char strip + secret
 # redaction + bound for any lane stderr text this file puts into the CR
 # ledger's --detail field (avail rows below, and the attempt rows a fallback
 # chain queues). ledger-append.sh applies its OWN scrub_secrets() + 200-char
-# cap downstream (HIMMEL-1176) — this is belt-and-suspenders so the stderr
+# cap downstream — this is belt-and-suspenders so the stderr
 # line this file echoes to the console, and the argv it hands to
 # ledger-append.sh, are already safe and short, never multi-KB of raw
 # provider text. 160 chars leaves room for a "reason=...: " prefix a caller
 # prepends before ledger-append.sh's own cap lands.
-# _pm_err_line <err_file> (HIMMEL-3105): the ONE stderr line a ledger detail
+# _pm_err_line <err_file>: the ONE stderr line a ledger detail
 # should show — the FIRST line carrying a provider-failure signature
 # (failure-classify.sh's first_signal_line), else the LAST line (the
-# HIMMEL-3109 behaviour, for a failure with no recognizable signature). The
+# default, for a failure with no recognizable signature). The
 # last line alone recorded a body's trailing prose ("Contact support if this
 # persists.") over the provider's own "HTTP 429: ..." line above it.
 _pm_err_line() {
@@ -1410,14 +1409,14 @@ process_member() {
     _pm_fallback="${5:-}"
     _pm_perspective="${6:-}"
     _pm_model="${7:-}"
-    # $8 = fallback_provider (HIMMEL-953, OPT-IN): explicit provider for the
+    # $8 = fallback_provider (OPT-IN): explicit provider for the
     # fallback CHAIN. Unset -> chain members stay name-routed (hermes aliases,
-    # possibly cross-provider) per the HIMMEL-729 registry contract.
+    # possibly cross-provider) per the registry contract.
     _pm_fb_provider="${8:-}"
     _pm_trigger="${9:-}"
     _pm_timeout="${10:-$CRITIC_TIMEOUT_SECS}"
     _pm_duration="${11:-}"
-    # HIMMEL-1915 x HIMMEL-1871 (merge of #1730 into #1728): cfp exit 4 =
+    # cfp exit 4 =
     # structurally VALID review whose blocking findings were ALL dropped by
     # citation validation. That is a RESPONSE, not unavailability — the
     # member's stdout carries the surviving non-blocking sections plus the
@@ -1446,7 +1445,7 @@ process_member() {
         _pm_is_timeout=1
     fi
 
-    # HIMMEL-1500: record the PRIMARY attempt's timing unconditionally (ok,
+    # record the PRIMARY attempt's timing unconditionally (ok,
     # timeout, or error) — the instrumentation this ticket exists for. Only
     # skipped when the caller passed no duration (older/hermetic callers that
     # don't measure it), so every existing test stub stays byte-for-byte
@@ -1455,11 +1454,11 @@ process_member() {
         _pm_attempt_outcome="error"
         [ "$_pm_rc" -eq 0 ] && _pm_attempt_outcome="ok"
         [ "$_pm_is_timeout" -eq 1 ] && _pm_attempt_outcome="timeout"
-        # HIMMEL-3109: "rc=$_pm_rc" alone lost the member's real error text —
+        # "rc=$_pm_rc" alone lost the member's real error text —
         # the ledger's ONLY per-attempt record then read "rc=1" with no clue
         # whether that was auth, quota, or a transport blip. TAIL the captured
         # stderr (not head): critic-first-pass.sh's own diagnostics precede
-        # its HIMMEL-3109 raw-tail excerpt in this file, so the provider's own
+        # its raw-tail excerpt in this file, so the provider's own
         # decisive line is what ends up last.
         _pm_attempt_detail="rc=$_pm_rc"
         if [ "$_pm_rc" -ne 0 ] && [ -n "$_pm_err_file" ] && [ -s "$_pm_err_file" ]; then
@@ -1472,8 +1471,8 @@ process_member() {
     # Decide up front whether this rc should attempt the fallback chain.
     # Default (unset trigger): only a quota-exhaustion signature on a
     # non-timeout failure retries — a bare timeout or a generic failure never
-    # did (HIMMEL-729/737, still the contract for any OTHER row). trigger=any
-    # (HIMMEL-953) widens this to ANY non-zero rc, timeout included — for a
+    # did (still the contract for any OTHER row). trigger=any
+    # widens this to ANY non-zero rc, timeout included — for a
     # row whose whole chain is same-tier candidates (e.g. all OpenRouter free
     # models), a plain rate-limit/outage on one candidate is exactly the
     # signal to try the next, not evidence the lane itself is broken.
@@ -1492,7 +1491,7 @@ process_member() {
     fi
 
     if [ "$_pm_is_timeout" -eq 1 ] && [ "$_pm_do_fallback" -eq 0 ]; then
-        # HIMMEL-1500 auto-carry: the MEASURED duration (not just the
+        # The MEASURED duration (not just the
         # configured budget) rides on the avail detail, so a reader — incl.
         # the "unavailable critics" note now surfaced in the merged review
         # output below even on a PARTIAL degrade, not only the zero-responder
@@ -1506,7 +1505,7 @@ process_member() {
     fi
     if [ "$_pm_rc" -ne 0 ]; then
         # Quota-exhaustion (or, with trigger=any, ANY-failure) fallback CHAIN
-        # (HIMMEL-729/737/953): re-run the member through the same
+        # re-run the member through the same
         # critic-first-pass path with each fallback model IN ORDER, each
         # attempted AT MOST ONCE. First success wins; a failed attempt logs
         # fallback-failed and advances; all exhausted -> member unavailable.
@@ -1516,21 +1515,20 @@ process_member() {
             # for-header; the body uses only quoted expansions, so ',' is harmless
             # there. Restored after the loop.
             _fb_old_ifs="$IFS"; IFS=','
-            # Seat budget (HIMMEL-953, codex-adv): the WHOLE chain shares one
+            # Seat budget: the WHOLE chain shares one
             # extra member-timeout of wall-clock — N hung candidates must not
             # stack N full timeouts (observed 240s hangs on free tiers would
             # otherwise block a seat ~4x240s in sequential mode). Each attempt
             # gets the REMAINING budget via the _run_cfp_member override.
             _fb_deadline=$((SECONDS + _pm_timeout))
-            # HIMMEL-1500: attempt 1 is the primary (already queued above);
+            # attempt 1 is the primary (already queued above);
             # each fallback candidate below is attempt 2, 3, ...
             _fb_attempt_num=1
             _fb_last_duration=""
             for _fb_model in $_pm_fallback; do
                 [ -n "$_fb_model" ] || continue
                 _fb_attempt_num=$((_fb_attempt_num + 1))
-                # The TOTAL-panel budget outranks the chain's own seat budget
-                # (HIMMEL-1289, public-PR CR). The HIMMEL-1280 clamp bounded the
+                # The TOTAL-panel budget outranks the chain's own seat budget. The total-panel clamp bounded the
                 # PRIMARY attempt only; a trigger=any primary that times out
                 # then entered this chain with a FRESH deadline built from the
                 # full per-member timeout, so a run could exceed the total the
@@ -1553,12 +1551,12 @@ process_member() {
                 _run_cfp_member "$_fb_model" "$_pm_slug" "$_pm_perspective" "$_fb_out" "$_fb_err" "$_pm_fb_provider"
                 _fb_rc=$_rm_rc
                 _fb_last_duration="$(( $(date +%s) - _fb_start ))"
-                # HIMMEL-1500: this fallback candidate's own timing, same
+                # this fallback candidate's own timing, same
                 # outcome classification as the primary attempt above.
                 _fb_attempt_outcome="error"
                 _rc_completed "$_fb_rc" && _fb_attempt_outcome="ok"
                 { [ "$_fb_rc" -eq 124 ] || [ "$_fb_rc" -eq 137 ]; } && _fb_attempt_outcome="timeout"
-                # HIMMEL-3109: same real-detail fix as the primary attempt row
+                # same real-detail fix as the primary attempt row
                 # above, applied to each fallback candidate.
                 _fb_attempt_detail="rc=$_fb_rc"
                 if ! _rc_completed "$_fb_rc" && [ -s "$_fb_err" ]; then
@@ -1566,7 +1564,7 @@ process_member() {
                     [ -n "$_fb_attempt_snip" ] && _fb_attempt_detail="rc=$_fb_rc: $_fb_attempt_snip"
                 fi
                 _queue_attempt "$_pm_slug" "$_fb_model" "$_fb_attempt_num" "$_fb_attempt_outcome" "$_fb_last_duration" "$_fb_attempt_detail"
-                # _rc_completed, not -eq 0 (round 9): a fallback returning the
+                # _rc_completed, not -eq 0: a fallback returning the
                 # documented rc 4 has ANSWERED — an all-dropped review whose
                 # stdout carries the Dropped Citations evidence the citation
                 # guard blocks on. Accept it, keep its output, STOP the chain
@@ -1586,8 +1584,8 @@ process_member() {
                     break
                 fi
                 # Surface a bounded excerpt of the failed attempt's stderr
-                # before deleting it (CR round: a bare rc collapses rate-limit
-                # vs auth vs outage into the same line). HIMMEL-3109: tail, not
+                # before deleting it (a bare rc collapses rate-limit
+                # vs auth vs outage into the same line). Tail, not
                 # head — same reasoning as _pm_detail above.
                 _fb_snip="$(_pm_redact_detail "$(_pm_err_line "$_fb_err")")"
                 echo "panel-availability: $_pm_slug fallback-failed($_fb_model) (rc=$_fb_rc)${_fb_snip:+: $_fb_snip}" >&2
@@ -1596,14 +1594,14 @@ process_member() {
             IFS="$_fb_old_ifs"
             unset _RM_TIMEOUT_SECS
             if [ "$_fb_success" -ne 1 ]; then
-                # Reason capture (HIMMEL-1176): classify off the PRIMARY
+                # Reason capture: classify off the PRIMARY
                 # attempt's captured files — $_pm_out_file/$_pm_err_file are
                 # still the primary's (they are reassigned only on fallback
                 # SUCCESS, above), so an exhausted chain keeps the primary's
                 # reason, not the last fallback candidate's.
                 _pm_reason="$(classify_failure "$_pm_rc" "$_pm_out_file" "$_pm_err_file" 2>/dev/null)"
                 [ -n "$_pm_reason" ] || _pm_reason="generic-rc-$_pm_rc"
-                # HIMMEL-1500: fold the last candidate's MEASURED duration into
+                # fold the last candidate's MEASURED duration into
                 # the exhausted-chain detail so the ledger row (and the
                 # unavailable-critics note surfaced below on a partial degrade)
                 # carries actual elapsed time, not just the configured budget.
@@ -1620,16 +1618,16 @@ process_member() {
         else
             _pm_reason="$(classify_failure "$_pm_rc" "$_pm_out_file" "$_pm_err_file" 2>/dev/null)"
             [ -n "$_pm_reason" ] || _pm_reason="generic-rc-$_pm_rc"
-            # HIMMEL-2107: one line of the member's own stderr, turned into
+            # one line of the member's own stderr, turned into
             # ground truth ("reason=<class>" stops being a guess — the NOW-19
             # phantom http-4xx hunt would have ended on sight of this).
-            # HIMMEL-3109: TAIL, not head — critic-first-pass.sh writes its own
+            # TAIL, not head — critic-first-pass.sh writes its own
             # diagnostic preamble first and its raw-tail excerpt (the actual
             # provider text classify_failure matched against, above) last, so
             # the LAST line is the informative one; a head-n-1 here used to
             # print CFP's own preamble instead of the reason. Redaction +
             # bound now shared via _pm_redact_detail (same anchored secret
-            # patterns ledger-append.sh's --detail scrub uses, HIMMEL-1176 —
+            # patterns ledger-append.sh's --detail scrub uses —
             # this line reaches the stderr console BEFORE that scrub would
             # ever see it).
             _pm_detail="$(_pm_redact_detail "$(_pm_err_line "$_pm_err_file")")"
@@ -1660,7 +1658,7 @@ process_member() {
     #   sections 1-3: "S\034id\034file\034line\034bullet"
     #   section 4:    "4\034blk\034rendered-drop-line"  (blk: 1=blocking)
     _pm_member_out="$(cat "$_pm_out_file")"
-    # Fallback re-run temp files (HIMMEL-729): content now captured -> free them.
+    # Fallback re-run temp files: content now captured -> free them.
     # _fb_out/_fb_err stay "" on the primary-success path (no fallback ran).
     [ -n "$_fb_out" ] && rm -f "$_fb_out" "$_fb_err"
     member_parsed="$(printf '%s\n' "$_pm_member_out" | awk -v base="$global_id" -v slug="$_pm_slug" '
@@ -1670,15 +1668,14 @@ process_member() {
         /^## Suggestions \([0-9]+ found\)/ { sec = 3; next }
         /^## Dropped Citations \([0-9]+ dropped\)/ { sec = 4; next }
         /^- / {
-            # HIMMEL-1871 rounds 5-6: bullets are RAW critic-model bytes, so
+            # Bullets are RAW critic-model bytes, so
             # the records are POSITION-structural: every head field is
             # machine-derived and separator-free, and the bullet payload rides
             # LAST as an unencoded byte-exact remainder. No payload byte is
             # ever scanned for a delimiter, so nothing a model emits can
             # shift, truncate, or merge fields — and no normalization touches
-            # the evidence (round 5 normalized tab->space, which collapsed
-            # tab-vs-space-distinct evidence to one guard digest: the same
-            # inheritance failure, narrower).
+            # the evidence (normalizing tab->space would collapse
+            # tab-vs-space-distinct evidence to one guard digest).
             if (sec >= 1 && sec <= 3) {
                 max_id++
                 b = $0
@@ -1696,7 +1693,7 @@ process_member() {
                 # output bullet contract). When none is present the last bracket
                 # is the ID "[slug-K]" (no colon, and the bullet does not end
                 # with "]"), so loc carries finding text, not a path:line token.
-                # Emit empty file/line then (HIMMEL-1494): the ledger absent-
+                # Emit empty file/line then: the ledger absent-
                 # value convention (file:""/line:""), not the malformed values
                 # the old unguarded parse produced from the ID bracket.
                 file = ""
@@ -1720,7 +1717,7 @@ process_member() {
                 # Rejected-citation evidence is recoverable review content, not a
                 # validated model finding. Keep it out of global IDs and the
                 # accuracy ledger; the panel adds its own blocking guard.
-                # HIMMEL-1871 round 6: classify blocking-ness HERE, once, using
+                # Classify blocking-ness HERE, once, using
                 # the KNOWN slug as a literal index() prefix match — never by
                 # re-parsing the rendered "- slug / Section: " text downstream,
                 # where a slug containing "/" (the registry accepts any
@@ -1749,7 +1746,7 @@ process_member() {
     fi
 
     # _pf_bullet is LAST so bash read hands it the remainder (a bullet may
-    # contain any byte). HIMMEL-2078: now also queued as the finding's `text`
+    # contain any byte). Also queued as the finding's `text`
     # — the ledger row's one-line prose claim, so an unadjudicated finding is
     # still legible once the panel transcript is gone. Sec-4 records put blk
     # where _pf_id sits; the case below discards them. $_PFS is non-
@@ -1771,8 +1768,8 @@ PARSEDFINDINGSEOF
     # Accumulate by section. The payload is recovered as the BYTE-EXACT
     # remainder after the fixed head fields — substr by head length, never a
     # field reference: model bytes may contain the separator, and a
-    # field-based read would truncate at the first one (HIMMEL-1871 rounds
-    # 5-6). Offsets: sections 1-3 skip 4 head fields + 4 separators; section
+    # field-based read would truncate at the first one.
+    # Offsets: sections 1-3 skip 4 head fields + 4 separators; section
     # 4 skips 2 + 2. awk field-splitting on the head is safe because head
     # fields are separator-free by construction (see the encode comment).
     crit_bullets="$(printf '%s\n' "$member_parsed" | awk -F "$_PFS" '$1=="1"{print substr($0, length($1)+length($2)+length($3)+length($4)+5)}')"
@@ -1824,13 +1821,13 @@ PARSEDFINDINGSEOF
 if [ "$CRITIC_PARALLEL" = "0" ]; then
     # Use a temp file per member so process_member can read from a path.
     # _seq_err captures each member's stderr so the quota-exhaustion signature
-    # (HIMMEL-729) can be detected in sequential mode too (previously discarded).
+    # can be detected in sequential mode too (previously discarded).
     _seq_out="$(mktemp -t critic-panel-seq.XXXXXX)"
     _seq_err="$(mktemp -t critic-panel-seq-err.XXXXXX)"
 
     while IFS="	" read -r slug model perspective fallback_chain row_provider fallback_trigger fb_provider row_timeout; do
         [ -n "$slug" ] || continue
-        # TOTAL-PANEL DEADLINE (HIMMEL-1280). CRITIC_TIMEOUT_SECS bounds ONE
+        # TOTAL-PANEL DEADLINE. CRITIC_TIMEOUT_SECS bounds ONE
         # member; nothing bounded the panel as a whole, so N members each
         # clipping their own budget could still hold a caller for N*240s.
         # Checked BETWEEN members — no signals, no self-kill: a watchdog that
@@ -1859,16 +1856,16 @@ if [ "$CRITIC_PARALLEL" = "0" ]; then
         [ "$row_timeout" = "-" ] && row_timeout=""
         total=$((total + 1))
 
-        # Per-member timeout override (HIMMEL-1245): the row's timeout_secs
+        # Per-member timeout override: the row's timeout_secs
         # when valid, else the shared CRITIC_TIMEOUT_SECS default.
         member_timeout="$(_resolve_member_timeout "$slug" "$row_timeout")"
-        # Cap by what is LEFT of the total budget (HIMMEL-1280 CR): otherwise the
+        # Cap by what is LEFT of the total budget: otherwise the
         # total bound is really total + one member.
         member_timeout="$(_clamp_to_panel_budget "$member_timeout")"
 
         # Run this member (with per-member timeout if available). --provider ""
         # is a no-op in critic-first-pass.sh, so it is passed unconditionally.
-        # HIMMEL-1500: wall-clock the invocation so process_member can queue
+        # wall-clock the invocation so process_member can queue
         # an `attempt` timing record — this is the instrumentation the ticket
         # asks for, measured here (the ONE place that actually invokes the
         # member) rather than trusted from the configured timeout.
@@ -1908,7 +1905,7 @@ else
     i=0
     while IFS="	" read -r slug model perspective fallback_chain row_provider fallback_trigger fb_provider row_timeout; do
         [ -n "$slug" ] || continue
-        # TOTAL-PANEL DEADLINE, launch side (HIMMEL-1280 CR codex-1). The
+        # TOTAL-PANEL DEADLINE, launch side. The
         # sequential path had this; the parallel path did not, so with
         # CRITIC_PARALLEL=1 a member could still be LAUNCHED after the deadline
         # — the clamp alone only shortens it, it does not stop it starting.
@@ -1935,24 +1932,24 @@ else
         [ "$fb_provider" = "-" ] && fb_provider=""
         [ "$row_timeout" = "-" ] && row_timeout=""
         total=$((total + 1))
-        # Per-member timeout override (HIMMEL-1245): the row's timeout_secs
+        # Per-member timeout override: the row's timeout_secs
         # when valid, else the shared CRITIC_TIMEOUT_SECS default.
         member_timeout="$(_resolve_member_timeout "$slug" "$row_timeout")"
-        # Cap by what is LEFT of the total budget (HIMMEL-1280 CR): otherwise the
+        # Cap by what is LEFT of the total budget: otherwise the
         # total bound is really total + one member.
         member_timeout="$(_clamp_to_panel_budget "$member_timeout")"
         # Write slug and model so the result loop can recover them
         printf '%s' "$slug"  > "$outdir/$i.slug"
         printf '%s' "$model" > "$outdir/$i.model"
-        # Per-row perspective + fallback chain (+ trigger mode, HIMMEL-953) so
-        # the result loop can replay them into process_member (HIMMEL-729/737
-        # quota-exhaustion fallback chain).
+        # Per-row perspective + fallback chain (+ trigger mode) so
+        # the result loop can replay them into process_member (quota-exhaustion
+        # fallback chain).
         printf '%s' "$perspective"     > "$outdir/$i.persp"
         printf '%s' "$fallback_chain"  > "$outdir/$i.fb"
         printf '%s' "$fallback_trigger" > "$outdir/$i.trigger"
         printf '%s' "$fb_provider"      > "$outdir/$i.fbprov"
         printf '%s' "$member_timeout"   > "$outdir/$i.timeout"
-        # HIMMEL-1500: start/end epoch written across the subshell boundary
+        # start/end epoch written across the subshell boundary
         # (same file-handoff pattern as .rc above) so the post-`wait` result
         # loop can compute this member's MEASURED duration for the `attempt`
         # ledger record. start is written in the PARENT (launches are
@@ -2010,7 +2007,7 @@ ROWSEOF
         # process_member sees zero findings and counts the member as responded.
         model_val=""
         read -r model_val < "$outdir/$i.model" 2>/dev/null || true
-        # HIMMEL-1500: MEASURED duration from the .start/.end epoch pair
+        # MEASURED duration from the .start/.end epoch pair
         # written around the launch above. Either file can be absent on the
         # same signal-during-run edge case noted for .rc — "" -> process_member
         # simply skips the attempt record for this member (safe, matches the
@@ -2072,7 +2069,7 @@ nc=0; ni=0; ns=0; nr=0; nd=0
 # rejected bullets as model-accuracy findings. The rejected content is emitted
 # separately.
 #
-# HIMMEL-1871 round 4 — both the trigger and the identity of the guard derive
+# Both the trigger and the identity of the guard derive
 # from the rejected evidence itself, never from the surrounding review's state:
 #
 #   Trigger: any rejected BLOCKING bullet (its original section, carried in the
@@ -2100,7 +2097,7 @@ nc=0; ni=0; ns=0; nr=0; nd=0
 # never validated), while the guard itself blocks gate 4. The empty verdict is
 # what makes it blocking — `crit` with a verdict that is neither `disproved`
 # nor a tracked deferral is the gate's blocking definition.
-# HIMMEL-1871 round 6: blocking classification was decided at DECODE time in
+# Blocking classification is decided at DECODE time in
 # process_member — the blk flag carried as data on the member_parsed channel —
 # never by re-parsing the rendered "- slug / Section: " prefix here. The old
 # regex reparse broke for any slug containing "/" (legal registry value): the
@@ -2115,9 +2112,9 @@ ndb=0
 citation_guard_id=""
 if [ "$ndb" -gt 0 ]; then
     nc=$((nc + 1))
-    # SHA-256 (HIMMEL-1871 rounds 5-7): this id is the ledger dedup key for
+    # SHA-256: this id is the ledger dedup key for
     # (head, finding_id), so any digest weakness adjudicates NEW evidence by
-    # inheriting an old row's verdict. Round 7: the digest must be validated
+    # inheriting an old row's verdict. The digest must be validated
     # by SHAPE, not by tool presence — a present-but-FAILING sha256sum left
     # the digest empty and printf %.16s minted the CONSTANT id
     # "citation-guard-", the exact round-4 bug back. Shape-validate after each
@@ -2136,7 +2133,7 @@ if [ "$ndb" -gt 0 ]; then
     fi
     if ! printf '%s' "$_guard_digest" | grep -qE '^[0-9a-f]{64}$'; then
         echo "critic-panel.sh: FATAL cannot compute the citation-guard SHA-256 id (sha256sum/shasum missing or failing) — refusing to certify this run (exit 6). Blocking findings were rejected by the citation validator; fix the digest tooling and re-run." >&2
-        # HIMMEL-1932: leave the refusal on the ledger so clear-cr-marker.sh
+        # leave the refusal on the ledger so clear-cr-marker.sh
         # can hold the gate closed at this head. It is an avail row, never a
         # finding or a score: nothing can inherit or dedup against it, so the
         # no-rows guarantee above still holds for every finding. Best-effort:
@@ -2146,7 +2143,7 @@ if [ "$ndb" -gt 0 ]; then
                 --model critic-panel --status unavailable --reason certify-refused \
                 --detail "citation-guard digest unavailable (sha256sum/shasum); run refused, exit 6" >/dev/null \
                 || echo "critic-panel.sh: could not record certify-refused on the CR ledger" >&2
-            # HIMMEL-5110: clear-cr-marker.sh reads only the FIXED
+            # clear-cr-marker.sh reads only the FIXED
             # <git-common-dir> ledger. When CR_LEDGER pointed this run
             # elsewhere the row above never reaches the gate, so record the
             # refusal on the fixed ledger too. A refusal row only ever tightens.
@@ -2167,7 +2164,7 @@ if [ "$ndb" -gt 0 ]; then
         exit 6
     fi
     citation_guard_id="citation-guard-$(printf '%.16s' "$_guard_digest")"
-    # HIMMEL-2554: carry the dropped evidence as the row's text so the ledger
+    # carry the dropped evidence as the row's text so the ledger
     # (and handover-bridge.sh's mirror of it) records WHAT was dropped, not
     # just THAT something was. The same drop_blocking the id is digested from;
     # the digest above already ran on the byte-exact multi-line value, so this
@@ -2186,7 +2183,7 @@ fi
 printf '# Critic Panel Review (%d/%d critics responded)\n' "$responded" "$total"
 printf '\n'
 if [ "$responded" -ge 1 ]; then
-    # HIMMEL-1500 auto-carry: a PARTIAL degrade (some, not all, critics
+    # A PARTIAL degrade (some, not all, critics
     # unavailable) used to be invisible in this branch's own output — only the
     # "(N/M critics responded)" header hinted at it, and only stderr's
     # panel-availability lines said WHO or WHY. A caller reading just the
@@ -2227,7 +2224,7 @@ if [ "$responded" -ge 1 ]; then
         printf '%s\n' "$agg_drop"
     fi
 else
-    # HIMMEL-1065: fail CLOSED on zero responders. The three "(0 found)"
+    # fail CLOSED on zero responders. The three "(0 found)"
     # sections are byte-identical to a genuinely clean review, so a
     # stdout-capturing caller (or a human reading a log) could conclude the PR
     # passed. Emit NO findings section; print an unmistakable unavailability
@@ -2247,7 +2244,7 @@ else
     printf 'Resolve the unavailability above and re-run the review.\n'
 fi
 
-# The stdin-outside-worktree path skips certification (HIMMEL-1494): the review
+# The stdin-outside-worktree path skips certification: the review
 # was emitted, but with no worktree there is nothing to stamp, so a failed (or
 # skipped) append never overrides the review's own exit code.
 if [ "${_SKIP_LEDGER:-0}" != "1" ]; then

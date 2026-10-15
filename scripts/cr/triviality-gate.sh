@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# triviality-gate - deterministic CR triviality classifier (HIMMEL-737).
+# triviality-gate - deterministic CR triviality classifier.
 # Reads ONE unified diff on stdin, prints exactly one verdict line to stdout
 # ('trivial' or 'nontrivial'), one short reason line to stderr, and exits 0 on
 # any verdict (exit 2 only on usage error). WIRED into critic-panel.sh (a
@@ -19,7 +19,7 @@ set -euo pipefail
 path_is_safety() {
   case "$1" in
     scripts/hooks/*|scripts/guardrails/*|.claude/*|.github/*) return 0 ;;
-    # HIMMEL-737 CR: the gate must not be able to blind the pipeline that
+    # the gate must not be able to blind the pipeline that
     # runs it - the CR scripts, the hermes invocation path the panel rides
     # (invoke.sh / dispatch-trusted.sh / parity assets), the lane registry,
     # and the backend router registry are safety surface too (a one-line
@@ -92,7 +92,7 @@ classify_triviality() {
         if ! path_is_doc "$path"; then all_docs=0; fi
         ;;
       [-+]*)
-        # HIMMEL-737: skip ONLY the exact file-header forms git emits
+        # skip ONLY the exact file-header forms git emits
         # ('--- a/<path>', '+++ b/<path>', '--- /dev/null', '+++ /dev/null' -
         # note the space). The prior '+++*|---*' also swallowed real body
         # changes whose content began with '--'/'++' (a removed '--flag' arrives
@@ -104,7 +104,7 @@ classify_triviality() {
         esac
         ;;
     esac
-  # HIMMEL-2420: process substitution, NOT `printf ... | while`. A pipe would
+  # process substitution, NOT `printf ... | while`. A pipe would
   # run this loop in a subshell, silently discarding nfiles/nlines/any_safety/
   # all_docs; a here-string can deadlock MSYS bash on diffs near 64 KiB.
   done < <(printf '%s\n' "$diff_text")

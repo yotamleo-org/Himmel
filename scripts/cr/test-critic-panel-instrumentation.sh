@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/test-critic-panel-instrumentation.sh -- HIMMEL-1500 instrumentation
+# scripts/cr/test-critic-panel-instrumentation.sh -- instrumentation
 # + auto-carry.
 #
 # Two things this ticket adds on top of the existing panel/ledger mechanism
@@ -11,7 +11,7 @@
 #      (ok|timeout|error), attempt number, MEASURED duration_secs. Unlike
 #      `avail` (one authoritative row per head+model), attempt rows are never
 #      deduped, so a retried member's full timing history survives for
-#      peak-window correlation (the HIMMEL-1500 ask), not just the final
+#      peak-window correlation, not just the final
 #      verdict.
 #   2. AUTO-CARRY: a critic that times out with no retry configured must not
 #      silently vanish from the merged review. The panel already proceeds on
