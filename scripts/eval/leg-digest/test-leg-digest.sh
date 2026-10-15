@@ -198,6 +198,11 @@ check "git commit-tree is not a commit cut" '[ "$(cutwith ex5 "git commit-tree a
 check "a git commit after && and with a global option still cuts" '[ "$(cutwith ex6 "cd x \&\& git -C y commit -m x")" = commit ]'
 check "a git commit behind an env assignment still cuts" '[ "$(cutwith ex7 "GIT_AUTHOR_DATE=2026-01-01 git commit -m x")" = commit ]'
 check "a git commit behind command still cuts" '[ "$(cutwith ex8 "command git commit -m x")" = commit ]'
+check "a git commit behind sudo still cuts" '[ "$(cutwith ex9 "sudo git commit -m x")" = commit ]'
+check "a git commit behind env VAR=x still cuts" '[ "$(cutwith ex10 "env GIT_AUTHOR_DATE=2026-01-01 git commit -m x")" = commit ]'
+check "a git commit in an if/then head still cuts" '[ "$(cutwith ex11 "if true; then git commit -m x; fi")" = commit ]'
+check "a git commit in a do head still cuts" '[ "$(cutwith ex12 "for f in a; do git commit -m x; done")" = commit ]'
+check "echoed sudo git commit is not a commit cut" '[ "$(cutwith ex13 "echo sudo git commit done")" = none ]'
 grep -v '"name": "Edit"' "$TMP/$S11.jsonl" | grep -v 'toolu_x4' | grep -v 'msg_x4' >"$TMP/ex3.jsonl"
 mkdir -p "$TMP/ex3" && mv "$TMP/ex3.jsonl" "$TMP/ex3/$S11.jsonl"
 digest "$TMP/ex3/$S11.jsonl" >"$TMP/ex3.json" 2>/dev/null || bad "the no-cut digest exits 0"
