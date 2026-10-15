@@ -187,6 +187,15 @@ sed -e '/toolu_x3/d' -e 's/"name": "Read", "input": {"file_path": "\/b"}/"name":
 mkdir -p "$TMP/ex2" && mv "$TMP/$S11.c.jsonl" "$TMP/ex2/$S11.jsonl"
 digest "$TMP/ex2/$S11.jsonl" >"$TMP/ex2.json" 2>/dev/null || bad "the commit-cut digest exits 0"
 check "a git commit tool call is the cut when no edit came first" 'jq -e ".exploration | .cut == \"commit\" and .tokens == 4450 + 100000" "$TMP/ex2.json" >/dev/null'
+# Only a real git commit command cuts. Same commit-cut fixture, other Bash commands in the cut slot.
+cutwith() { # <dir> <json-escaped command>: digest the commit-cut fixture with that Bash command in the cut slot
+  sed -e '/toolu_x3/d' -e "s/\"name\": \"Read\", \"input\": {\"file_path\": \"\\/b\"}/\"name\": \"Bash\", \"input\": {\"command\": \"$2\"}/" "$TMP/$S11.jsonl" >"$TMP/$1.jsonl"
+  mkdir -p "$TMP/$1" && mv "$TMP/$1.jsonl" "$TMP/$1/$S11.jsonl"
+  digest "$TMP/$1/$S11.jsonl" 2>/dev/null | jq -r .exploration.cut
+}
+check "echoed text that mentions git commit is not a commit cut" '[ "$(cutwith ex4 "echo git commit done")" = none ]'
+check "git commit-tree is not a commit cut" '[ "$(cutwith ex5 "git commit-tree abc123 -m x")" = none ]'
+check "a git commit after && and with a global option still cuts" '[ "$(cutwith ex6 "cd x \&\& git -C y commit -m x")" = commit ]'
 grep -v '"name": "Edit"' "$TMP/$S11.jsonl" | grep -v 'toolu_x4' | grep -v 'msg_x4' >"$TMP/ex3.jsonl"
 mkdir -p "$TMP/ex3" && mv "$TMP/ex3.jsonl" "$TMP/ex3/$S11.jsonl"
 digest "$TMP/ex3/$S11.jsonl" >"$TMP/ex3.json" 2>/dev/null || bad "the no-cut digest exits 0"

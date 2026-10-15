@@ -210,7 +210,7 @@ const agentOf = (a: AgentInfo | undefined): Agent => ({
 // summed apart (sub_tokens), never into tokens. A compacted session is read whole: sessionFiles merges every segment
 // in order, so the window is the first edit of the session, not of the last segment. cut "none": no edit, no commit.
 const EDIT_TOOLS = new Set(["Edit", "Write", "NotebookEdit"]);
-const GIT_COMMIT = /(?:^|[\s;&|(])git\s+(?:-\S+\s+(?:\S+\s+)?)*commit\b/;
+const GIT_COMMIT = /(?:^|[;&|(\n])\s*git\s+(?:-\S+\s+(?:\S+\s+)?)*commit(?![\w-])/;
 const isSearch = (n: string) => n === "Grep" || n === "Glob" || n === "WebSearch" || n === "WebFetch" || n.startsWith("mcp__qmd__");
 // A leg has no Grep/Glob tool and reads through Bash, so a Bash call whose first word is one of these counts too.
 // ponytail: first word only, `cd x && grep y` reads as neither; revisit if the baseline undershoots.
