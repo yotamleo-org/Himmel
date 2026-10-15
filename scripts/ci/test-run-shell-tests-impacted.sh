@@ -247,78 +247,56 @@ else
   fail "24o: rc=$rc ran='$ran' output: $out"
 fi
 
-# 24p: a comment-only edit of a changed script selects no suite and is named;
-# a comment edit next to a code edit in the same range still selects.
+# 24p: a comment-only edit still selects its driving suite: a suite may read
+# comment lines, so no SKIP is made.
 git -C "$SB" checkout -q "$P0"
 git -C "$SB" checkout -q -b cmt
 printf '# just a comment\n\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
 git -C "$SB" commit -q -am "docs: comment"
-CMT_RANGE="$P0..$(git -C "$SB" rev-parse HEAD)"
-: > "$IMP_LOG"
-out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$CMT_RANGE" 2>&1); rc=$?
-ran=$(cat "$IMP_LOG")
-if [ "$rc" -eq 0 ] && [ -z "$ran" ] && grepq "$out" 'SKIP comment-only scripts/machine-setup/uninstall-plugins\.sh'; then
-  pass "24p: a comment-only edit runs no suite and is named 'SKIP comment-only'"
-else
-  fail "24p: rc=$rc ran='$ran' output: $out"
-fi
-printf 'echo code\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
-git -C "$SB" commit -q -am "fix: code"
-MIX_RANGE="$P0..$(git -C "$SB" rev-parse HEAD)"
-: > "$IMP_LOG"
-out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$MIX_RANGE" 2>&1); rc=$?
-ran=$(cat "$IMP_LOG")
-if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
-  pass "24p: a range with a real code edit still runs the driving suite"
-else
-  fail "24p: rc=$rc ran='$ran' output: $out"
-fi
-
-# 24q: a `#` line inside a heredoc is data, and a mode-only change is not a
-# comment: neither may hide the driving suite.
-git -C "$SB" checkout -q "$P0"
-git -C "$SB" checkout -q -b hd
-printf 'cat <<EOF\ndata\nEOF\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
-git -C "$SB" commit -q -am "feat: heredoc"
-HD0=$(git -C "$SB" rev-parse HEAD)
-printf '# inside\n' > "$SB/hd.tmp"
-sed '2i # inside' "$SB/scripts/machine-setup/uninstall-plugins.sh" > "$SB/hd.tmp"
-cp "$SB/hd.tmp" "$SB/scripts/machine-setup/uninstall-plugins.sh"
-rm -f "$SB/hd.tmp"
-git -C "$SB" commit -q -am "docs: heredoc-adjacent comment"
-: > "$IMP_LOG"
-out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$HD0..$(git -C "$SB" rev-parse HEAD)" 2>&1); rc=$?
-ran=$(cat "$IMP_LOG")
-if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
-  pass "24q: a comment edit in a file with a heredoc still selects the suite"
-else
-  fail "24q: rc=$rc ran='$ran' output: $out"
-fi
-MD0=$(git -C "$SB" rev-parse HEAD)
-git -C "$SB" update-index --chmod=+x scripts/machine-setup/uninstall-plugins.sh
-git -C "$SB" commit -q -m "chore: mode"
-: > "$IMP_LOG"
-out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$MD0..$(git -C "$SB" rev-parse HEAD)" 2>&1); rc=$?
-ran=$(cat "$IMP_LOG")
-if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
-  pass "24q: a mode-only change still selects the suite"
-else
-  fail "24q: rc=$rc ran='$ran' output: $out"
-fi
-
-# 24r: a comment edit PLUS a mode change is not comment-only.
-git -C "$SB" checkout -q "$P0"
-git -C "$SB" checkout -q -b cm
-printf '# only a comment\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
-git -C "$SB" update-index --chmod=+x scripts/machine-setup/uninstall-plugins.sh
-git -C "$SB" commit -q -am "chore: comment and mode"
 : > "$IMP_LOG"
 out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$P0..$(git -C "$SB" rev-parse HEAD)" 2>&1); rc=$?
 ran=$(cat "$IMP_LOG")
-if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
-  pass "24r: a comment edit with a mode change still selects the suite"
+if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ] && ! grepq "$out" 'SKIP comment-only'; then
+  pass "24p: a comment-only edit still runs the driving suite"
+else
+  fail "24p: rc=$rc ran='$ran' output: $out"
+fi
+
+# 24q: a base that is on main is not rewritten, even with a merge in the range:
+# the whole range (the PR's suite and main's) runs.
+git -C "$SB" checkout -q -f pr
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$BASE..$(git -C "$SB" rev-parse pr)" 2>&1); rc=$?
+ran=$(sort "$IMP_LOG" | tr '\n' ' ')
+if [ "$rc" -eq 0 ] && [ "$ran" = "mainthing uninstall " ] && ! grepq "$out" 'holds a merge-forward'; then
+  pass "24q: a base on main with a merge in the range is not rewritten"
+else
+  fail "24q: rc=$rc ran='$ran' output: $out"
+fi
+
+# 24r: with no origin/main the range is left as passed (not clamped).
+MAIN_TIP=$(git -C "$SB" rev-parse refs/remotes/origin/main)
+git -C "$SB" update-ref -d refs/remotes/origin/main
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$FWD_RANGE" 2>&1); rc=$?
+ran=$(sort "$IMP_LOG" | tr '\n' ' ')
+if [ "$rc" -eq 0 ] && [ "$ran" = "mainthing " ] && ! grepq "$out" 'holds a merge-forward'; then
+  pass "24r: no origin/main leaves the range wide"
 else
   fail "24r: rc=$rc ran='$ran' output: $out"
 fi
+
+# 24s: with no merge-base against main the range is left as passed.
+ORPHAN=$(git -C "$SB" commit-tree "$(git -C "$SB" hash-object -t tree -w /dev/null)" -m orphan)
+git -C "$SB" update-ref refs/remotes/origin/main "$ORPHAN"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$FWD_RANGE" 2>&1); rc=$?
+ran=$(sort "$IMP_LOG" | tr '\n' ' ')
+if [ "$rc" -eq 0 ] && [ "$ran" = "mainthing " ] && ! grepq "$out" 'holds a merge-forward'; then
+  pass "24s: no merge-base with main leaves the range wide"
+else
+  fail "24s: rc=$rc ran='$ran' output: $out"
+fi
+git -C "$SB" update-ref refs/remotes/origin/main "$MAIN_TIP"
 
 rst_tally
