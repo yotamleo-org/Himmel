@@ -49,6 +49,9 @@
 # vmrun= (class only, wakes ONLY on a move to DEAD or STUCK -- never
 # on the busy count, nor a move back to ok/off; absent from an older tick line,
 # never a failure),
+# parked= (the legs sitting on an unanswered permission prompt, names only so the
+# growing age never re-wakes; absent from the tick line when none is parked, never
+# a failure; a leg joining or leaving the set wakes),
 # denials= (a new leg, a higher count or a higher class
 # (SHIP-STEP > PAUSE-RISK > REPEAT) is exactly the alert this exists to
 # surface; the same denial ageing out of tick.sh's 30-min window, moving it to
@@ -235,18 +238,21 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails legset board tracker vault cloud vmrun denials; do
+    for f in legs livestate prs tails legset board tracker vault cloud vmrun parked denials; do
         v="$(field "$f" "$tick_line")"
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = vmrun ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = vmrun ] || [ "$f" = parked ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
         case "$f" in board|tracker|vault|cloud|vmrun) v="${v%%:*}" ;; esac
         # vmrun= keeps its class only (off|ok|DEAD|STUCK), not the counts.
         [ "$f" = vmrun ] && v="${v%%,*}"
+        # parked= keeps the leg names only: the age grows every tick and must not re-wake.
+        # The names are sorted: the doc order must not decide the key.
+        [ "$f" = parked ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
         key="$key$f=$v|"
     done
     key="${key}bank=$bank"
@@ -254,9 +260,16 @@ sample() {
 
 changed_fields() { # <old key> <new key>
     printf '%s\n' "$1" | tr '|' '\n' > "$hb_file.old"
-    printf '%s\n' "$2" | tr '|' '\n' | while IFS= read -r kv; do
-        grep -qxF -- "$kv" "$hb_file.old" || printf '%s\n' "${kv%%=*}"
-    done | paste -sd, -
+    {
+        printf '%s\n' "$2" | tr '|' '\n' | while IFS= read -r kv; do
+            grep -qxF -- "$kv" "$hb_file.old" || printf '%s\n' "${kv%%=*}"
+        done
+        # parked= is absent when no leg is parked, so a set that empties is a
+        # field missing from the new key, not one that differs.
+        if grep -q '^parked=' "$hb_file.old" && ! printf '%s\n' "$2" | tr '|' '\n' | grep -q '^parked='; then
+            printf 'parked\n'
+        fi
+    } | paste -sd, -
     rm -f "$hb_file.old"
 }
 

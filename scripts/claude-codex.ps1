@@ -357,12 +357,12 @@ function Test-SettingsArgOrRefuse {
     if ($j -and $j.env) {
       foreach ($p in $j.env.PSObject.Properties) {
         $u = $p.Name.ToUpperInvariant()
-        if ($u.StartsWith('ANTHROPIC_') -or $u.StartsWith('CLAUDE_CODE_USE_')) { $bad = $true; break }
+        if ($u.StartsWith('ANTHROPIC_') -or $u.StartsWith('CLAUDE_CODE_USE_') -or $u -eq 'CLAUDE_CODE_AUTO_MODE_SERVER') { $bad = $true; break }
       }
     }
   } catch { $bad = $true }
   if ($bad) {
-    [Console]::Error.WriteLine('claude-codex: REFUSED - --settings payload sets env.ANTHROPIC_* / CLAUDE_CODE_USE_* (or is unparseable); it would defeat the proxy trust boundary.')
+    [Console]::Error.WriteLine('claude-codex: REFUSED - --settings payload sets env.ANTHROPIC_* / CLAUDE_CODE_USE_* / CLAUDE_CODE_AUTO_MODE_SERVER (or is unparseable); it would defeat the proxy trust boundary.')
     exit 3
   }
 }
@@ -416,12 +416,12 @@ foreach ($sf in $settingsFiles) {
     if ($j -and $j.env) {
       foreach ($p in $j.env.PSObject.Properties) {
         $u = $p.Name.ToUpperInvariant()
-        if ($u.StartsWith('ANTHROPIC_') -or $u.StartsWith('CLAUDE_CODE_USE_')) { $sfBad = $true; break }
+        if ($u.StartsWith('ANTHROPIC_') -or $u.StartsWith('CLAUDE_CODE_USE_') -or $u -eq 'CLAUDE_CODE_AUTO_MODE_SERVER') { $sfBad = $true; break }
       }
     }
   } catch { $sfBad = $true }
   if ($sfBad) {
-    [Console]::Error.WriteLine("claude-codex: REFUSED - $sf sets env.ANTHROPIC_* / CLAUDE_CODE_USE_* (or is unparseable); a project-level backend override defeats the proxy trust boundary. Remove those env keys to launch this lane here.")
+    [Console]::Error.WriteLine("claude-codex: REFUSED - $sf sets env.ANTHROPIC_* / CLAUDE_CODE_USE_* / CLAUDE_CODE_AUTO_MODE_SERVER (or is unparseable); a project-level backend override defeats the proxy trust boundary. Remove those env keys to launch this lane here.")
     exit 3
   }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-push floor for .single-writer repos (HIMMEL-5284, audit gap G11).
+# Pre-push floor for .single-writer repos
 #
 # WHY: luna and the handover state repos are private on the GitHub Free plan,
 # so server-side branch protection is unavailable ("Upgrade to GitHub Pro").

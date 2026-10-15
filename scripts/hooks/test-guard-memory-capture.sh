@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/guard-memory-capture.sh (HIMMEL-1088 / HIMMEL-570.3).
+# Smoke test for scripts/hooks/guard-memory-capture.sh.
 # Usage: bash scripts/hooks/test-guard-memory-capture.sh
 # Exit: 0 all passed, 1 at least one failure.
 #
@@ -42,7 +42,7 @@ ok="- rtk masks gitleaks blocks -> luna [[himmel-harness-gotchas]]"
 big="$(repeat_char y 900)"
 # 199 CHARACTERS with 20 em-dashes mixed in (each is 3 bytes, so the line is
 # 239 BYTES): must be counted as chars, not bytes, or this trips the 200-char
-# rule early (HIMMEL-2011). Kept well under the 400B growth cap so only the
+# rule early. Kept well under the 400B growth cap so only the
 # line-length rule is in play.
 emdash_199="- $(repeat_char '—' 20)$(repeat_char x 177)"
 # 201 ASCII chars (== 201 bytes either way): must still be denied.
@@ -57,12 +57,12 @@ assert_rc "over-length line denied" 2 "$?"
 payload Write "$MEM/MEMORY.md" "$ok" | bash "$HOOK" >/dev/null 2>&1
 assert_rc "compliant line allowed" 0 "$?"
 
-# 2b (HIMMEL-2011): a 199-CHAR line with multibyte em-dashes (>200 bytes) is
+# 2b: a 199-CHAR line with multibyte em-dashes (>200 bytes) is
 # ALLOWED — the rule is char-based, and this env has no LANG/LC_ALL by default.
 payload Write "$MEM/MEMORY.md" "$emdash_199" | bash "$HOOK" >/dev/null 2>&1
 assert_rc "199-char em-dash line allowed (chars, not bytes)" 0 "$?"
 
-# 2c (HIMMEL-2011): a 201-char ASCII line is still DENIED.
+# 2c: a 201-char ASCII line is still DENIED.
 payload Write "$MEM/MEMORY.md" "$ascii_201" | bash "$HOOK" >/dev/null 2>&1
 assert_rc "201-char ASCII line still denied" 2 "$?"
 
@@ -79,7 +79,7 @@ assert_rc "topic-file Edit allowed" 0 "$?"
 payload Write "$MEM/MEMORY.md.bak" "$long" | bash "$HOOK" >/dev/null 2>&1
 assert_rc "bak exempt" 0 "$?"
 
-# 6 (HIMMEL-2011): Edit to MEMORY.md is DECIDABLE — simulated against the
+# 6: Edit to MEMORY.md is DECIDABLE — simulated against the
 # on-disk file and validated with the same checks as Write.
 printf -- '- alpha route -> luna [[a]]\n' > "$MEM/MEMORY.md"
 jq -nc --arg f "$MEM/MEMORY.md" '{tool_name:"Edit",hook_event_name:"PreToolUse",tool_input:{file_path:$f,old_string:"alpha",new_string:"beta"}}' \
@@ -113,7 +113,7 @@ jq -nc --arg f "$MEM/MEMORY.md" '{tool_name:"Edit",hook_event_name:"PreToolUse",
   | bash "$HOOK" >/dev/null 2>&1
 assert_rc "Edit old_string not found is allowed" 0 "$?"
 
-# 6e (HIMMEL-2011, CR codex-2): the simulation must splice new_string LITERALLY.
+# 6e: the simulation must splice new_string LITERALLY.
 #     `String.replace(str, str)` would expand the `$&` below into the 30-char
 #     match, pushing the line from 184 to 214 chars -> a phantom line-too-long
 #     deny on an edit that is actually compliant.
@@ -124,7 +124,7 @@ jq -nc --arg f "$MEM/MEMORY.md" --arg o "$tok30" --arg n "$(repeat_char x 180)\$
   | bash "$HOOK" >/dev/null 2>&1
 assert_rc "Edit new_string with \$& is spliced literally (no pattern expansion)" 0 "$?"
 
-# 6f (HIMMEL-2011, CR codex-1): trailing newlines must survive the simulation.
+# 6f: trailing newlines must survive the simulation.
 #     `$( )` strips them, so without the EOT sentinel this +500B edit measures
 #     as -1B and slips past the 400B growth cap.
 printf -- '- a\n' > "$MEM/MEMORY.md"
@@ -133,7 +133,7 @@ jq -nc --arg f "$MEM/MEMORY.md" \
   | bash "$HOOK" >/dev/null 2>&1
 assert_rc "Edit appending 500 trailing newlines hits the growth cap" 2 "$?"
 
-# 6g (HIMMEL-2011, CR codex-2): a NON-ENOENT read error is undecidable, not an
+# 6g: a NON-ENOENT read error is undecidable, not an
 #     empty new file — fail closed. A directory at the index path gives EISDIR.
 rm -f "$MEM/MEMORY.md"; mkdir -p "$MEM/MEMORY.md"
 jq -nc --arg f "$MEM/MEMORY.md" '{tool_name:"Edit",hook_event_name:"PreToolUse",tool_input:{file_path:$f,old_string:"a",new_string:"b"}}' \
@@ -171,7 +171,7 @@ assert_rc "bypass allows a would-be deny" 0 "$?"
 grep -q '"event":"deny"' "$MEMORY_CAPTURE_LOG" && grep -q '"hash"' "$MEMORY_CAPTURE_LOG"
 assert_rc "deny logged with hash" 0 "$?"
 
-# 12 (HIMMEL-2011: Edit is decidable now, so this regression case moved to
+# 12 (Edit is decidable now, so this regression case moved to
 #     NotebookEdit — the one tool_name still forced through the undecidable-
 #     payload deny): a deny logs the .new_string excerpt (spike-confirmed
 #     INDEX_APPEND_TOOL=Edit shape). Without the .new_string fallback every
@@ -200,7 +200,7 @@ winfp="$(printf '%s' "$MEM/MEMORY.md" | tr '/' '\134')"
 payload Write "$winfp" "$long" | bash "$HOOK" >/dev/null 2>&1
 assert_rc "backslash path still gated (not a silent no-op)" 2 "$?"
 
-# --- HIMMEL-2074: line-too-long must be DIFF-SCOPED (added/changed lines
+# --- line-too-long must be DIFF-SCOPED (added/changed lines
 # --- only), not a whole-file re-scan of every PRE-EXISTING line. A legacy
 # --- over-length line already committed to MEMORY.md (grandfathered before
 # --- this rule existed, or before the cap was lowered) used to freeze the
@@ -209,7 +209,7 @@ assert_rc "backslash path still gated (not a silent no-op)" 2 "$?"
 
 legacy_bad="- $(repeat_char x 250) -> luna [[legacy]]"
 # An em-dash-heavy legacy line genuinely over 200 CHARS (not just bytes) —
-# the real shape reported in HIMMEL-2074 (a 227-char routing line with
+# the real shape reported (a 227-char routing line with
 # several em dashes already committed to the live MEMORY.md).
 legacy_emdash="- $(repeat_char '—' 30)$(repeat_char x 190) -> luna [[legacy-emdash]]"
 
@@ -243,7 +243,7 @@ jq -nc --arg f "$MEM/MEMORY.md" --arg ns "$(repeat_char y 250)" \
   | bash "$HOOK" >/dev/null 2>&1
 assert_rc "editing the legacy line itself into another over-length line is still denied" 2 "$?"
 
-# 15f (CR round 1, codex-1): a NEW occurrence of text that happens to be
+# 15f: a NEW occurrence of text that happens to be
 #     BYTE-IDENTICAL to an already-grandfathered over-length line must still
 #     be checked (and denied) — a plain set-difference ("does this new line's
 #     text appear anywhere in old?") would wrongly treat the second, genuinely
@@ -256,7 +256,7 @@ $legacy_bad"
 payload Write "$MEM/MEMORY.md" "$dup_content" | bash "$HOOK" >/dev/null 2>&1
 assert_rc "a duplicated copy of a grandfathered over-length line is still denied" 2 "$?"
 
-# 15g (CR round 2, codex-1): an on-disk MEMORY.md with CRLF line endings must
+# 15g: an on-disk MEMORY.md with CRLF line endings must
 #     not make every untouched line look "added" (a trailing \r on the OLD
 #     line vs an LF-only new payload) and resurrect the pre-existing-line
 #     re-validation bug this whole fix exists to close.
@@ -267,7 +267,7 @@ payload Write "$MEM/MEMORY.md" "$newcontent_crlf" | bash "$HOOK" >/dev/null 2>&1
 assert_rc "a CRLF-terminated pre-existing over-length line does not block a new compliant append" 0 "$?"
 
 # 15e: same as 15, but the legacy over-length line is an EM-DASH-HEAVY line
-#      (the exact repro shape from HIMMEL-2074's live MEMORY.md) — a new
+#      (the exact repro shape from a live MEMORY.md) — a new
 #      compliant append still lands.
 printf -- '%s\n' "$legacy_emdash" > "$MEM/MEMORY.md"
 newcontent_emdash="$legacy_emdash
@@ -276,7 +276,7 @@ payload Write "$MEM/MEMORY.md" "$newcontent_emdash" | bash "$HOOK" >/dev/null 2>
 assert_rc "an em-dash-heavy pre-existing over-length line does not block a new compliant append" 0 "$?"
 
 # ---------------------------------------------------------------------------
-# HIMMEL-3314: the ceiling / line-length rules as a STATE check.
+# the ceiling / line-length rules as a STATE check.
 #
 # The PreToolUse guard above only ever sees a Write/Edit payload. MEMORY.md grew
 # 74 -> 134 pointer lines against a ceiling of 60 because the default way of
@@ -426,7 +426,7 @@ chmod 644 "$MEM/MEMORY.md"
 out="$(MEMDIR="$MEM" MEMORY_LINE_CEIL=abc bash "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
 assert_silent "F4 fail-open: non-numeric MEMORY_LINE_CEIL"
 
-# F4b (CR, HIMMEL-3314): a NUMERIC but oversized ceiling passes the digit check
+# F4b (CR): a NUMERIC but oversized ceiling passes the digit check
 #     and then reaches `[ "$n" -gt "$LINE_CEIL" ]`, where bash prints "integer
 #     expected" to stderr. rc stays 0 (fail-open) but the healthy path is no
 #     longer silent. 70 pointers vs an effectively infinite ceiling = healthy.
@@ -482,7 +482,7 @@ if command -v node >/dev/null 2>&1; then
     mk_index 60
     out="$(MEMDIR="$MEM" node "$RUNNER" --chain --lifecycle "$STATE_HOOK" </dev/null 2>&1)"; rc=$?
     assert_silent "W2 a healthy index is silent through the chain runner"
-    # W3 (measured, CR HIMMEL-3314): does the runner forward a member's stderr?
+    # W3: does the runner forward a member's stderr?
     #    Establishes whether a stray stderr line from the advisory is visible at
     #    all, so the "silent when healthy" claim is stated as measured.
     printf '#!/bin/sh\necho stderr-marker-from-member >&2\nexit 0\n' > "$SB/stderr-member.sh"; chmod +x "$SB/stderr-member.sh"

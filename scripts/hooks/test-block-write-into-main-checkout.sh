@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit test for scripts/hooks/block-write-into-main-checkout.sh (HIMMEL-2526)
+# Unit test for scripts/hooks/block-write-into-main-checkout.sh
 # — the DESTINATION-based Bash/PowerShell write fence. Platform guard: Git
 # Bash on Windows / any POSIX bash 3.2+ (see the guard's own header; no .ps1
 # twin — both entry modes are already invoked BY a resolved bash).
@@ -20,7 +20,7 @@
 # every DENY row rooted under mktemp -d would silently pass as ALLOW for the
 # wrong reason. Row 28 below is the FLIP CONTROL that proves this rule is
 # load-bearing, not decorative.
-# HIMMEL-4164: the fixture + harness setup (set, fixture repos, ok/bad/_run/
+# the fixture + harness setup (set, fixture repos, ok/bad/_run/
 # check_*) moved to lib-test-write-fence.sh so this suite can be split into
 # sibling shards (-heredoc, -matrix, -cd, -forms) under the CI per-suite cap.
 # shellcheck disable=SC2154  # pass/fail are defined by the sourced lib
@@ -62,30 +62,30 @@ check_both "7 mv primary/scripts/x.sh wt/ (source inside primary denies)" block 
 check_both "8 rm primary/scripts/x.sh" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"rm $FIX/primary/scripts/x.sh\",\"cwd\":\"$FIX/primary\"}}"
 
-# 9 (HIMMEL-2946): touch creating the repo-root .single-writer opt-out itself
+# 9: touch creating the repo-root .single-writer opt-out itself
 # must ALLOW — this is the exact catch-22 the hook's own deny text (line
 # 842/1054) recommends as the remedy, then refused (not yet present in
 # primary — .single-writer is only in the exclude file, not touched on disk).
 check_both "9 touch primary/.single-writer (creating the opt-out itself) allows (HIMMEL-2946)" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer\",\"cwd\":\"$FIX/primary\"}}"
 
-# 10 (HIMMEL-2946): redirect onto the same exact name — same exemption.
+# 10: redirect onto the same exact name — same exemption.
 check_both "10 echo > primary/.single-writer (creating the opt-out itself) allows (HIMMEL-2946)" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo x > $FIX/primary/.single-writer\",\"cwd\":\"$FIX/primary\"}}"
 
-# 10b (HIMMEL-2946): the exemption is EXACT-BASENAME-AT-ROOT only — a
+# 10b: the exemption is EXACT-BASENAME-AT-ROOT only — a
 # subdirectory entry of the same basename must still deny.
 check_both "10b touch primary/scripts/.single-writer (not the repo root) still denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/scripts/.single-writer\",\"cwd\":\"$FIX/primary\"}}"
 
-# 10c (HIMMEL-2946): near-miss basenames at the root must still deny — the
+# 10c: near-miss basenames at the root must still deny — the
 # exemption is the exact string ".single-writer", not a prefix/suffix match.
 check_both "10c touch primary/.single-writer.bak (near-miss basename) still denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"touch $FIX/primary/.single-writer.bak\",\"cwd\":\"$FIX/primary\"}}"
 check_both "10d echo > primary/.single-writerx (near-miss basename) still denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo x > $FIX/primary/.single-writerx\",\"cwd\":\"$FIX/primary\"}}"
 
-# 10e (HIMMEL-2946): the exemption is by DESTINATION, not cwd — an absolute
+# 10e: the exemption is by DESTINATION, not cwd — an absolute
 # path into the primary's root marker from a DIFFERENT cwd (the worktree)
 # must allow exactly like row 9.
 check_both "10e touch \$FIX/primary/.single-writer from cwd=wt (destination-based, not cwd-based) allows" allow \
@@ -100,7 +100,7 @@ check_both "11 git commit cwd=primary (main) — both wirings agree" block \
 # NEW denial. DELIBERATE PER-LANE DIVERGENCE (RETASK, no codex-lane
 # behaviour change): direct-exec uses main_checkout_verdict (the tighter
 # main+primary-feature rule) and DENIES; the sourced/codex lane keeps
-# HIMMEL-745's is_on_main (fail-open on any feature branch) and ALLOWS. This
+# the old is_on_main (fail-open on any feature branch) and ALLOWS. This
 # is the documented split, not a bug — see block-write-into-main-checkout.sh's
 # CODEX-LANE PARITY header note.
 check_one "12a git commit cwd=featprimary (primary-feature) — direct-exec DENIES (new rule)" \
@@ -148,7 +148,7 @@ check_both "20 sed -i onto /tmp/f (is_temp_or_devnull exemption)" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"sed -i 's/a/b/' /tmp/f\",\"cwd\":\"$FIX/primary\"}}"
 
 # 21. Dynamic target (unexpanded $T) fails OPEN on that candidate.
-# HIMMEL-2592: the escape here was `\\\$T`, which emits `\$` into the JSON —
+# the escape here was `\\\$T`, which emits `\$` into the JSON —
 # NOT a valid JSON escape, so jq returned empty, the hook saw an EMPTY
 # command and allowed. The row passed VACUOUSLY. A literal `$` inside a
 # shell double-quoted string is `\$`, with no extra backslash.
@@ -173,7 +173,7 @@ check_both "22b whitespace-only quoted-span candidate does not false-deny an ord
 check_both "23 git commit cwd=wt (linked worktree)" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git commit -m wip\",\"cwd\":\"$FIX/wt\"}}"
 
-# 23b. HIMMEL-2884: `git -C`/`--git-dir`/`--work-tree` must resolve the
+# 23b. `git -C`/`--git-dir`/`--work-tree` must resolve the
 # EFFECTIVE commit target instead of always checking the session cwd
 # (CLAUDE.md prescribes `git -C <repo> commit` from a himmel-primary cwd, and
 # the unfixed arm refused that shape even when the addressed repo allows).
@@ -189,7 +189,7 @@ check_both "23b-ii git -C wt commit (cwd=primary, -C target is the worktree) all
 
 # 23b-iii: the INVERSE of 23b-ii — cwd is the worktree, -C points BACK at the
 # primary (main, no .single-writer). Must deny, and the deny text must name
-# the RESOLVED -C target, not the cwd (today this false-ALLOWs: HIMMEL-2884).
+# the RESOLVED -C target, not the cwd (today this false-ALLOWs:).
 check_both_reason "23b-iii git -C primary commit (cwd=wt, -C target is primary main) denies, names the -C target" \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $FIX/primary commit -m x\",\"cwd\":\"$FIX/wt\"}}" \
     "$FIX/primary"
@@ -218,7 +218,7 @@ check_both_reason "23b-vii git -C \"\$(pwd)\" commit (unresolvable -C value) fai
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C \\\"\$(pwd)\\\" commit -m x\",\"cwd\":\"$FIX/primary\"}}" \
     "could not be resolved"
 
-# 23b-viii: codex CR round 1 (HIMMEL-2884) — when BOTH --git-dir and
+# 23b-viii: when BOTH --git-dir and
 # --work-tree are given, --git-dir determines the repository the commit
 # actually updates (git's own semantics: --work-tree only supplies file
 # content; HEAD moves in --git-dir's repo), so it must win over --work-tree
@@ -227,14 +227,14 @@ check_both_reason "23b-viii git --work-tree=wt --git-dir=primary/.git commit (bo
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git --work-tree=$FIX/wt --git-dir=$FIX/primary/.git commit -m x\",\"cwd\":\"$FIX/wt\"}}" \
     "$FIX/primary"
 
-# 23b-ix: codex CR round 1 (HIMMEL-2884) — a relative --git-dir/--work-tree
+# 23b-ix: a relative --git-dir/--work-tree
 # value resolves against the FINAL cumulative -C directory, exactly like real
 # git (`git --git-dir=a.git -C c status` == `git --git-dir=c/a.git status` per
 # git(1)), regardless of whether -C appears before or after it on the line.
 check_both "23b-ix git --git-dir=primary/.git -C \$FIX commit (relative --git-dir precedes -C) resolves against the FINAL -C dir, denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git --git-dir=primary/.git -C $FIX commit -m x\",\"cwd\":\"$FIX/swrepo\"}}"
 
-# 23b-x: codex CR round 2 (HIMMEL-2884) — a STANDALONE --work-tree (no
+# 23b-x: a STANDALONE --work-tree (no
 # --git-dir, no -C) does not change repository discovery at all: git still
 # discovers .git by searching from the session's cwd, so HEAD moves in the
 # cwd's repo while only the working-tree file content comes from the
@@ -247,7 +247,7 @@ check_both "23b-ix git --git-dir=primary/.git -C \$FIX commit (relative --git-di
 check_both "23b-x git --work-tree=wt commit (cwd=primary, standalone --work-tree, no --git-dir/-C) still denies — HEAD moves in cwd's repo" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git --work-tree=$FIX/wt commit -m x\",\"cwd\":\"$FIX/primary\"}}"
 
-# 23b-xi: codex CR round 3 (HIMMEL-2884) — an UNRESOLVABLE -C value must fail
+# 23b-xi: an UNRESOLVABLE -C value must fail
 # CLOSED outright, not fall back to checking the command's cwd. 23b-vii's cwd
 # is already primary, so its "falls back to cwd" outcome (deny) is identical
 # whether the fallback denies-via-cwd or denies-outright, masking the gap:
@@ -258,7 +258,7 @@ check_both_reason "23b-xi git -C \"\$(pwd)\" commit (unresolvable -C, cwd=wt) fa
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C \\\"\$(pwd)\\\" commit -m x\",\"cwd\":\"$FIX/wt\"}}" \
     "could not be resolved"
 
-# 23b-xii: codex CR round 4 (HIMMEL-2884) — the --git-dir scan loop has no
+# 23b-xii: the --git-dir scan loop has no
 # concept of `-C` at all, so when `-C`'s OWN VALUE happens to be the literal
 # string "commit", the loop's break check fires on that value one token too
 # early and never reaches a later --git-dir, silently dropping it. Real git
@@ -269,7 +269,7 @@ check_both_reason "23b-xi git -C \"\$(pwd)\" commit (unresolvable -C, cwd=wt) fa
 check_both "23b-xii git -C commit --git-dir=primary/.git commit (-C value is literally \"commit\", masks --git-dir from the scan) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C commit --git-dir=$FIX/primary/.git commit -m x\",\"cwd\":\"$FIX/wt\"}}"
 
-# 23b-xiii (HIMMEL-2949): same shape as 23b-xii but for --work-tree's OWN
+# 23b-xiii: same shape as 23b-xii but for --work-tree's OWN
 # operand instead of -C's — neither scan loop skips it, so when that operand
 # is literally the string "commit", the "stop at commit" break check fires
 # one token early and the LATER -C (which real git honours) is never seen.
@@ -279,21 +279,21 @@ check_both_reason "23b-xiii git --work-tree commit -C primary commit (--work-tre
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git --work-tree commit -C $FIX/primary commit -q -m x\",\"cwd\":\"$FIX/wt\"}}" \
     "$FIX/primary"
 
-# 23b-xiv (HIMMEL-2949): the `--work-tree=<p>` compound-token form does not
+# 23b-xiv: the `--work-tree=<p>` compound-token form does not
 # have a separate operand to mask anything, but pins that a LITERAL value of
 # "commit" inside the compound token does not itself confuse the scan, and a
 # later --git-dir is still honoured.
 check_both "23b-xiv git --work-tree=commit --git-dir=primary/.git commit (compound --work-tree= form, --git-dir still resolves) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git --work-tree=commit --git-dir=$FIX/primary/.git commit -q -m x\",\"cwd\":\"$FIX/wt\"}}"
 
-# 23b-xv (HIMMEL-2949 control): a legitimate standalone `--work-tree <p>` (no
+# 23b-xv (control): a legitimate standalone `--work-tree <p>` (no
 # --git-dir, no -C) stays a no-op for target resolution per the :970 design
 # note — HEAD still moves in whatever repo cwd resolves to, so this must keep
 # ALLOWing exactly like row 23.
 check_both "23b-xv git --work-tree \$FIX/wt commit (cwd=wt, standalone --work-tree) still allows (control)" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git --work-tree $FIX/wt commit -q -m x\",\"cwd\":\"$FIX/wt\"}}"
 
-# 23b-xvi (HIMMEL-2949 control): --work-tree's operand "commit" must not be
+# 23b-xvi (control): --work-tree's operand "commit" must not be
 # mistaken for the subcommand even when a -C ALSO appears earlier and already
 # resolves harmlessly to cwd — the fix must not overreact and start denying
 # a genuinely allowed shape.
@@ -408,7 +408,7 @@ check_both "35 echo x 2>&1 (fd-dup) still allows after the attached-> fix (codex
 # was joined onto the worktree-local resolved path unresolved.
 check_both "36a echo hi > wt/link-to-primary.txt (symlink into primary) denies (codex-3)" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo hi > $FIX/wt/link-to-primary.txt\",\"cwd\":\"$FIX/wt\"}}"
-# 36b (HIMMEL-2592 round 4, DENY REMOVAL): codex-3's actual finding was that
+# 36b (DENY REMOVAL): the actual finding was that
 # guard_canon_path's ancestor walk only followed a symlink that resolved to a
 # DIRECTORY — a symlink to a REGULAR FILE fell out of the walk unresolved.
 # Row 36a proves that fix still holds. This row's separate assumption — that
@@ -541,7 +541,7 @@ echo "== HIMMEL-2592: operand/opener/splitter token classes + operation-chosen r
 # closed or handing it on. Every row below is one instance, and every DENY
 # row asserts the REASON.
 
-# 41 (HIMMEL-2591, instance 1): a QUOTED or COMMENTED `<<EOF` is not a
+# 41: a QUOTED or COMMENTED `<<EOF` is not a
 # heredoc opener. It used to start body blanking, which ERASES the real
 # write on the following line — a fail-OPEN produced by ordinary text.
 for _q in "single:echo '<<EOF'" "double:echo \"<<EOF\"" "comment:# <<EOF"; do
@@ -561,7 +561,7 @@ HD5_CMD=$(printf "cat <<EOF\nit's not a write > %s/inbody3.txt\nEOF" "$FIX/prima
 HD5_JSON="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":$(printf '%s' "$HD5_CMD" | jq -Rs .),\"cwd\":\"$FIX/wt\"}}"
 check_both "41d control: a genuine heredoc still blanks its body (quote state frozen inside it)" allow "$HD5_JSON"
 
-# 42 (HIMMEL-2592, instance 2 — the fourth Mode-1 hoist, with the invariant
+# 42 (instance 2 — the fourth Mode-1 hoist, with the invariant
 # stated): the `mv` SOURCE check must not sit inside the DESTINATION's
 # resolution guard. A dynamic `$DEST` used to suppress a fully-static
 # primary-checkout source. INVARIANT: every operand this extractor can
@@ -651,7 +651,7 @@ check_both_reason "45g mv |wt|/filelink |primary|/x denies on the DESTINATION (t
 check_both_reason "45d control: a redirect THROUGH that same link still denies (FOLLOW)" \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo hi > $FIX/wt/link-to-primary.txt\",\"cwd\":\"$FIX/wt\"}}" \
     "its repo is on main/master"
-# 45e (HIMMEL-2592 round 4, DENY REMOVAL, mirrors 36b): the same ground truth
+# 45e (DENY REMOVAL, mirrors 36b): the same ground truth
 # as 36b — GNU sed -i's default form replaces the worktree's own ENTRY and
 # leaves the referent untouched, so it never reaches the primary and must
 # ALLOW. See 36e/36f above for the measured ground truth this rests on.
@@ -733,7 +733,7 @@ echo "== HIMMEL-2592 CR round 1 (codex-1, codex-2) — both fail-OPENs in code T
 # 50 (codex-1): inside a DOUBLE-quoted span a backslash escapes the next
 # character, so `\"` does not close the span. Reading it as a close made the
 # `<<EOF` that follows look UNQUOTED, activated blanking, and ERASED the real
-# write on the next line — HIMMEL-2591's fail-open reached through a
+# write on the next line — the earlier fail-open reached through a
 # different door. 50b/50c are the DISCRIMINATING controls: quoted-opener
 # handling in general is fine (the shipped 2591 fix) and an escaped quote
 # with no opener is fine, which is what localises the defect to the escape.
@@ -1175,13 +1175,13 @@ check_both_reason "61h cp -t</dev/null |primary|/somedir |wt|/z.txt denies (inpu
 check_both_reason "61i cp -t 3</dev/null |primary|/somedir |wt|/z.txt denies (input redirect, fd-numbered)" \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp -t 3</dev/null $FIX/primary/somedir $FIX/wt/z.txt\",\"cwd\":\"$FIX/wt\"}}" \
     "$FIX/primary/somedir"
-# 61j: the interaction with round 5's prefix matching — an ABBREVIATION of
+# 61j: the interaction with prefix matching — an ABBREVIATION of
 # --target-directory must resolve past a redirect exactly like the full
 # spelling.
 check_both_reason "61j cp --targ > /dev/null |primary|/somedir |wt|/z.txt denies (abbreviation + redirect together)" \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp --targ > /dev/null $FIX/primary/somedir $FIX/wt/z.txt\",\"cwd\":\"$FIX/wt\"}}" \
     "$FIX/primary/somedir"
-# 61k: the interaction with round 5's `--` handling — a redirect resolving
+# 61k: the interaction with `--` handling — a redirect resolving
 # the TDIR value, with `--` still ending option parsing for what follows.
 check_both_reason "61k cp -t > /dev/null |primary|/somedir -- |wt|/z.txt denies (redirect-skip AND -- together)" \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp -t > /dev/null $FIX/primary/somedir -- $FIX/wt/z.txt\",\"cwd\":\"$FIX/wt\"}}" \
@@ -1189,7 +1189,7 @@ check_both_reason "61k cp -t > /dev/null |primary|/somedir -- |wt|/z.txt denies 
 
 echo "== HIMMEL-2592 round 8 panel, codex-1/codex-2 (RETASK R-N1-SED-4b91d7) — round 6 fixed one hole and opened two =="
 
-# 62 — round 6's OWN fix (adding `<` to the redirect predicate, and skipping
+# 62 — an earlier fix (adding `<` to the redirect predicate, and skipping
 # a bare digit before a redirect) introduced a FALSE POSITIVE and a NARROWER
 # FAIL-OPEN. Both measured end-to-end through the fence, `want` derived from
 # a real snapshot diff ($HOME/.himmel-2592-r7probe.sh) before this
@@ -1221,7 +1221,7 @@ check_both_reason "62e REGRESSION GUARD: echo x > |primary|/f still DENIES — a
 # redirect) has "2" as cp's actual -t value. The two are textually
 # identical AFTER tokenizing unless the split itself is tagged
 # (_BWIMC_FDSYN, set only when _bwimc_space_before_redirects synthesised
-# the split) — round 6 treated every bare digit before a redirect as
+# the split) — the earlier fix treated every bare digit before a redirect as
 # discardable, which fails OPEN when "2" is a symlink into the primary (the
 # fixture at $FIX/wt/2, added for this round).
 check_both_reason "62f cp -t 2 > /dev/null |wt|/z.txt denies — '2' is a REAL value (space-separated), not an fd artifact" \
@@ -1292,7 +1292,7 @@ echo "== HIMMEL-2592 round 10 (RETASK R-N1-SED-4b91d7) — round 9 panel: our <>
 # no `<` handling at all in _bwimc_redirect_op_of, so splitting `<>/p/f`
 # into `<` + `>/p/f` there leaves the `>/p/f` remainder independently
 # recognised and checked — main blocks by accident. THIS branch taught `<`
-# to be a recognised, SKIPPED-as-a-read redirect (round 6/8), so the split
+# to be a recognised, SKIPPED-as-a-read redirect, so the split
 # `<` token now greedily claims the very next token as ITS OWN read
 # target and never checks it — the real write half swallowed by the read
 # half. `cat <>@P@/new.txt` really CREATES the file (ground-truthed) and
@@ -1345,7 +1345,7 @@ check_both_reason "65f CONTROL: sed -i s/xxx/yyy/ |primary|/existing.txt still D
 
 echo "== HIMMEL-2592 round 10 codex-1 (RETASK R-N1-SED-4b91d7) — the <> glue must respect escape/quote state, not the raw previous character =="
 
-# 66 — round 9's own `<>` glue looked at the raw PREVIOUS CHARACTER, so an
+# 66 — the earlier `<>` glue looked at the raw PREVIOUS CHARACTER, so an
 # ESCAPED `<` (bash puts a literal `<` in the word) directly before a REAL,
 # unescaped `>` got welded into one bogus `\<>...` token that
 # _bwimc_redirect_op_of then ignored entirely — the write vanished. Main has
@@ -1387,8 +1387,8 @@ check_both "66g CONTROL: echo x <\\\\>|primary|/escgt.txt ALLOWS — a real < th
 
 echo "== HIMMEL-2592 round 11 codex-1 — the REPEATED-operator glue must respect escape/quote state too =="
 
-# 67 — the sibling of 66, in the same helper, found by the round-11 gate
-# panel. Round 10 fixed the `<>` arm to ask `prevact`; the arm right below
+# 67 — the sibling of 66, in the same helper, found by review.
+# The `<>` arm asks `prevact`; the arm right below
 # it — the one that keeps a REPEATED operator (`>>`, `<<`) glued as ONE
 # operator — was still asking raw `prev`. So an ESCAPED `>` (bash puts a
 # literal `>` in the word) directly before a REAL, unescaped `>` matched the

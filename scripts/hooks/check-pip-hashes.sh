@@ -14,7 +14,7 @@ fail=0
 unhashed=0   # the regenerate hint only helps when a file was read and lacked hashes
 for file in "$@"; do
     # pre-commit never passes a deleted file, so a missing path is a dangling
-    # reference (HIMMEL-4144): fail closed rather than skip it.
+    # reference: fail closed rather than skip it.
     [ -f "$file" ] || { echo "ERROR: $file does not exist (or is not a regular file)" >&2; fail=1; continue; }
     [ -r "$file" ] || { echo "ERROR: $file is unreadable" >&2; fail=1; continue; }
 

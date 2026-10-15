@@ -1799,6 +1799,73 @@ grepq "$out" 'lane profile: allowlisted' \
   && fail "caseAB: overlay must NOT be written into the unwritable in-tree lanes dir"
 echo "ok: caseAB unwritable in-tree lane overlay dir falls back to the himmelctl cache dir instead of aborting"
 
+# ── Case AB2: the lane allowlist write is TRANSACTIONAL with the core install ──
+# The overlay is staged BEFORE adopt.sh mutates anything; a write failure aborts
+# with nothing installed, and a failed install restores the prior overlay bytes.
+failRenameAB2="$work/ab2-fail-overlay-rename.js"
+cat > "$failRenameAB2" <<'JS'
+const fs = require('fs');
+const path = require('path');
+const realRenameSync = fs.renameSync;
+fs.renameSync = function (from, to) {
+  if (process.env.FAIL_LANE_OVERLAY_RENAME === '1' && path.basename(String(to)) === 'lanes.local.json') {
+    const err = new Error('simulated overlay write failure');
+    err.code = 'ENOSPC';
+    throw err;
+  }
+  return realRenameSync.call(fs, from, to);
+};
+require('module').syncBuiltinESMExports();
+JS
+ab2_run() { # name, prior-overlay(yes|no), adopt-rc, fail-rename(0|1)
+  local n="$1" prior="$2" arc="$3" frn="$4"
+  local s="$work/ab2-$n" h="$work/ab2-$n-home" f="$work/ab2-$n-fix"
+  mkdir -p "$s" "$h"; make_fixture "$f"
+  ab2_marker="$work/ab2-$n-ran"; ab2_overlay="$f/scripts/lanes/lanes.local.json"
+  rm -f "$ab2_marker"
+  printf '#!/usr/bin/env bash\nprintf ran > "%s"\nexit %s\n' "$ab2_marker" "$arc" > "$f/scripts/adopt.sh"
+  chmod +x "$f/scripts/adopt.sh"
+  ab2_prior='{"lanes":[],"profileAllowlist":["hermes-oneshot"],"profileAllowlistScope":["codex-exec","hermes-oneshot"]}'
+  if [ "$prior" = yes ]; then printf '%s\n' "$ab2_prior" > "$ab2_overlay"; else rm -f "$ab2_overlay"; fi
+  local prof="$work/ab2-$n-profile.json"
+  printf '{\n  "role": "adopter",\n  "tier": "standard",\n  "scope": "project",\n  "vault": { "mode": "none", "path": "" },\n  "handover": { "mode": "inline", "path": "" },\n  "pluginSet": "lean",\n  "lanes": ["codex"],\n  "lanesMeaningful": true,\n  "alwaysOn": false\n}\n' > "$prof"
+  local p; p=$(build_path "$s" bash jq python3 npm -- "${LANE_TOOLS[@]}")
+  make_git_stub "$s" "https://github.com/someone/other-repo.git"
+  set +e
+  ab2_out=$(PATH="$p" HOME="$h" USERPROFILE="$(winpath "$h")" HIMMELCTL_CACHE_DIR="$(winpath "$h.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$h.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=0 \
+        HIMMELCTL_REPO_ROOT="$(winpath "$f")" FAIL_LANE_OVERLAY_RENAME="$frn" \
+        NODE_OPTIONS="--require=$(winpath "$failRenameAB2")" \
+        "$node_bin" "$wizard" install --from-profile "$(winpath "$prof")" </dev/null 2>&1); ab2_rc=$?
+  set -e
+}
+# AB2a: overlay write fails (after preflight passed) with a PRIOR allowlist ->
+# nothing installed, prior bytes intact.
+ab2_run a yes 0 1
+[ "$ab2_rc" -ne 0 ] || fail "caseAB2a: a failed overlay write must exit nonzero: $ab2_out"
+[ -f "$ab2_marker" ] && fail "caseAB2a: overlay write failure must abort BEFORE adopt.sh mutates the machine"
+[ "$(cat "$ab2_overlay")" = "$ab2_prior" ] || fail "caseAB2a: prior overlay bytes must be intact: $(cat "$ab2_overlay")"
+# AB2b: same with NO prior overlay -> nothing installed, no overlay left behind.
+ab2_run b no 0 1
+[ "$ab2_rc" -ne 0 ] || fail "caseAB2b: a failed overlay write must exit nonzero: $ab2_out"
+[ -f "$ab2_marker" ] && fail "caseAB2b: overlay write failure must abort BEFORE adopt.sh mutates the machine"
+[ -e "$ab2_overlay" ] && fail "caseAB2b: no overlay may be left behind by a failed write"
+# AB2c: the write succeeds, the core install then fails -> prior bytes restored.
+ab2_run c yes 3 0
+[ "$ab2_rc" -ne 0 ] || fail "caseAB2c: a failed core install must exit nonzero: $ab2_out"
+[ -f "$ab2_marker" ] || fail "caseAB2c: adopt.sh must have run, else the restore is untested: $ab2_out"
+[ "$(cat "$ab2_overlay")" = "$ab2_prior" ] || fail "caseAB2c: failed install must restore the prior overlay bytes: $(cat "$ab2_overlay")"
+# AB2d: same with NO prior overlay -> the staged overlay is removed.
+ab2_run d no 3 0
+[ "$ab2_rc" -ne 0 ] || fail "caseAB2d: a failed core install must exit nonzero: $ab2_out"
+[ -f "$ab2_marker" ] || fail "caseAB2d: adopt.sh must have run, else the removal is untested: $ab2_out"
+[ -e "$ab2_overlay" ] && fail "caseAB2d: failed install must remove the overlay it staged"
+# AB2e: control — success path still persists the allowlist.
+ab2_run e no 0 0
+[ "$ab2_rc" -eq 0 ] || fail "caseAB2e: successful install should exit 0 (rc=$ab2_rc): $ab2_out"
+grepq "$ab2_out" 'lane profile: allowlisted codex-exec' || fail "caseAB2e: success must report the allowlist: $ab2_out"
+grep -q '"codex-exec"' "$ab2_overlay" || fail "caseAB2e: allowlist must be persisted on success"
+echo "ok: caseAB2 lane allowlist is staged before the core install and restored if the install fails"
+
 # ── Case AC: resolveActiveFeatures — the ONE selection ->
 # feature mapping shared by the secrets walk (bin.js's runSecretsWalk) and
 # status-report.js's n/a downgrades. Pure unit test against the function
@@ -2250,4 +2317,4 @@ if (/your permissions\.allow/.test(ft)) fail(`the trust row must not claim the i
   || fail "caseAU: the summary does not state that an empty permissions.allow is intended"
 echo "ok: caseAU an adopter install states that permissions.allow is intentionally empty (applied + --dry-run), never on profile=luna"
 
-echo "PASS: test-wizard-adopter-profile.sh (36 cases)"
+echo "PASS: test-wizard-adopter-profile.sh (37 cases)"

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# scripts/hooks/check-doctor-check-ids.sh -- Guard A (HIMMEL-2664).
+# scripts/hooks/check-doctor-check-ids.sh -- Guard A.
 #
 # Pins the check_cNN() namespace in scripts/himmel-doctor.sh. Two branches
 # that each add a check_cNN() with a different next-free-ID guess still
 # collide when one rebases onto the other -- C32 collided twice in one
-# afternoon (2026-09-06): PR #2195 and HIMMEL-2653 both independently picked
+# afternoon (2026-09-06): two PRs both independently picked
 # check_c32(), and renumbering to C33 would have collided again with an
 # unmerged branch that had already taken it.
 #

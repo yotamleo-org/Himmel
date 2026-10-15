@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # guard-leg-wakeup.sh — PreToolUse hook (matcher "ScheduleWakeup"): denies
-# ScheduleWakeup for a console-spawned leg (HIMMEL-3034). A leg launched headed
+# ScheduleWakeup for a console-spawned leg. A leg launched headed
 # by a console (scripts/handover/console-kit/headed-arm-leg.sh exports
 # HIMMEL_CONSOLE_LEG=1 in the launching shell) has no reason to self-schedule a
 # polling wakeup: every wake re-reads the leg's whole context just to find "not
-# yet" (cost program HIMMEL-2763), and a leg waits with ONE foreground blocking
+# yet" (cost program), and a leg waits with ONE foreground blocking
 # command anyway (docs/handover/leg-preface.md). Same shape as
-# block-leg-askuserquestion.sh (HIMMEL-2923), which is the template for this file.
+# block-leg-askuserquestion.sh, which is the template for this file.
 #
 # Zero context cost when not a leg: the marker check is the first statement and
 # an allow prints NOTHING (no stdout, no stderr) — an operator or console session

@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# Advisory-then-ratchet cyclomatic-complexity gate (HIMMEL-2154).
+# Advisory-then-ratchet cyclomatic-complexity gate.
 #
-# Runs `bunx "oxlint@$OXLINT_VERSION"` (pinned, HIMMEL-3044) with
+# Runs `bunx "oxlint@$OXLINT_VERSION"` (pinned) with
 # `-A all -W complexity` (oxlint's eslint(complexity) rule)
-# over the surface audited for HIMMEL-2154: scripts/lanes scripts/jira/src
+# over the surface audited: scripts/lanes scripts/jira/src
 # scripts/telegram scripts/luna-vitals scripts/himmel-run, plus the *.mjs/*.js
 # files directly under scripts/hooks and scripts/observability. dist/,
 # node_modules/ and test fixtures are excluded — they are generated or
 # deliberately-shaped inputs, not code this gate is meant to hold a line on.
 #
 # Ratchet rule: OXLINT_COMPLEXITY_MAX below is 58 — the audited
-# MAXIMUM function complexity across that surface as of HIMMEL-2154, so
+# MAXIMUM function complexity across that surface as last audited, so
 # everything that exists today passes. This only fires on a NEW function
 # regressing ABOVE that ceiling; it does not ask anyone to fix what's
-# already there. As HIMMEL-2154 simplification work lands and lowers real
+# already there. As simplification work lands and lowers real
 # complexity, LOWER this number to match the new maximum — never raise it.
 # Raising it papers over a regression instead of fixing it; if a change
 # genuinely needs a higher ceiling, that is an operator call, not a
 # self-service edit.
 #
-# Runs through `bun x` when only bun is installed (HIMMEL-5529).
-# `--files PATH...` lints only those changed paths (HIMMEL-5526, CI); with
+# Runs through `bun x` when only bun is installed.
+# `--files PATH...` lints only those changed paths; with
 # OXLINT_FAIL_CLOSED=1 (CI) the two fail-open cases below exit 1 instead.
 # Fails OPEN (exit 0, loud WARN) when bunx/bun/oxlint is unavailable or errors
 # out for a reason unrelated to a lint finding (e.g. no bun installed, no
@@ -30,13 +30,13 @@ set -uo pipefail
 
 # ---- config -----------------------------------------------------------
 OXLINT_COMPLEXITY_MAX="${OXLINT_COMPLEXITY_MAX:-58}"
-# Same literal as check-oxlint-hardening.sh's OXLINT_VERSION (HIMMEL-2802) —
+# Same literal as check-oxlint-hardening.sh's OXLINT_VERSION —
 # keep the two pins in lockstep; test-check-oxlint-complexity.sh asserts
 # parity so a future bump of one without the other goes red.
 OXLINT_VERSION=1.88.0
 # -------------------------------------------------------------------------
 
-# ---- changed-files mode (HIMMEL-5526) ---------------------------------
+# ---- changed-files mode ---------------------------------
 # `--files PATH...` lints only those repo-relative paths, narrowed to this
 # gate's surface and to JS/TS extensions (dist/, node_modules/ and fixtures
 # stay excluded), and exits 0 when none is left. No `--files` = the full
@@ -72,7 +72,7 @@ if [ "$files_mode" = 1 ]; then
 fi
 
 # bunx is bun's alias for `bun x`; some installs (e.g. ~/.bun/bin) ship only
-# `bun`, so fall back to it before failing open (HIMMEL-5529).
+# `bun`, so fall back to it before failing open.
 if command -v bunx >/dev/null 2>&1; then
     runner=(bunx)
 elif command -v bun >/dev/null 2>&1; then

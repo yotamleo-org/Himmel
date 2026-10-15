@@ -53,7 +53,8 @@ CONFIG_DIR="${HOME}/.claude-codex"
 # v2 = sanitize_settings also strips env.CLAUDE_CODE_AUTO_MODE_SERVER (HIMMEL-4098).
 # v3 = sanitize_settings also injects the destructive-category permissions.deny rules (HIMMEL-5270).
 # v4 = the recursive-delete deny rules also cover option-separator and split-flag spellings (HIMMEL-5289).
-SEED_VERSION="4"
+# v5 = a malformed permissions / permissions.deny refuses fail-closed instead of seeding no deny rules (HIMMEL-5792).
+SEED_VERSION="5"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # HIMMEL-5397: CLAUDE_CODEX_SRT_PROFILE=<impl|research> runs this whole launcher

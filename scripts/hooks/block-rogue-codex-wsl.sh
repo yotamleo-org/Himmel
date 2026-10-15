@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# PreToolUse hook - blocks RAW `wsl ... codex exec` dispatches (HIMMEL-999).
+# PreToolUse hook - blocks RAW `wsl ... codex exec` dispatches.
 #
 # WHY: scripts/codex/dispatch-codex-wsl.sh is the WSL lane's mandatory
 # chokepoint (containment, mutex, pins, quota preflight, ledger). A raw
 # in-distro codex exec bypasses all of it; this hook makes the chokepoint
-# structural (HIMMEL-195 second-drift escalation, block-backend-tier family).
+# structural (second-drift escalation, block-backend-tier family).
 #
 # Fail posture (sized for a Bash|PowerShell-wide matcher - a missing dep
 # must never brick every shell call):
@@ -16,7 +16,7 @@
 #      messages, grep patterns) do NOT block.
 #   3. Tokens present + jq missing/parse failure -> fail CLOSED (exit 2).
 #
-# SCOPE (HIMMEL-1016): a TEXTUAL command-position heuristic. It catches every
+# SCOPE: a TEXTUAL command-position heuristic. It catches every
 # NATURAL raw shape - unquoted/cased wsl, quoted command names ('wsl'/"wsl"),
 # path-qualified basenames, subshell / command-subst / backtick openers - and
 # does NOT false-block benign args (echo wsl codex exec). It does NOT close
@@ -25,7 +25,7 @@
 # obfuscation): the ENFORCED boundary is the chokepoint (a raw dispatch that
 # never reaches it gets no containment/mutex/quota/ledger) and CODEX_WSL_RAW_OK
 # is the documented bypass. Shell-aware tokenization (the complete fix) is
-# tracked in HIMMEL-1016.
+# a known follow-up, not done here.
 #
 # Bypass: CODEX_WSL_RAW_OK=1 (set in the LAUNCHING shell).
 set -uo pipefail
@@ -37,7 +37,7 @@ INPUT="$(cat 2>/dev/null || true)"
 [ "${CODEX_WSL_RAW_OK:-0}" = "1" ] && exit 0
 # Case-INSENSITIVE token match: Windows executable names are case-insensitive
 # (WSL.exe == wsl.exe == Wsl), so an uppercased raw dispatch must not slip the
-# prefilter (codex-adv HIMMEL-999). tr is a coreutil (present wherever this
+# prefilter. tr is a coreutil (present wherever this
 # hook's sed/grep are); the original INPUT is preserved for the jq parse below.
 INPUT_LC="$(printf '%s' "$INPUT" | tr '[:upper:]' '[:lower:]')"
 case "$INPUT_LC" in
@@ -78,7 +78,7 @@ CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"
 # Strip quoted string DATA so tokens inside commit messages / grep patterns
 # never put wsl in command position (s55 false-positive class). This also
 # erases a quoted command NAME ('wsl' ...), so the quoted-name checks below
-# run on the ORIGINAL text to catch that (panel HIMMEL-999).
+# run on the ORIGINAL text to catch that.
 STRIPPED="$(printf '%s' "$CMD" | sed -e 's/"[^"]*"//g' -e "s/'[^']*'//g")"
 
 # Command-position detection composed from shared fragments (case-INSENSITIVE,
@@ -86,7 +86,7 @@ STRIPPED="$(printf '%s' "$CMD" | sed -e 's/"[^"]*"//g' -e "s/'[^']*'//g")"
 #   _SEP      opener: line start (+ leading whitespace), or a separator
 #             (| ; & && ||) / group / command-subst opener ( or backtick, each
 #             optionally followed by whitespace. NOT bare whitespace - that
-#             blocked benign `echo wsl codex exec` (panel codex-2 HIMMEL-999).
+#             blocked benign `echo wsl codex exec`.
 #   _WSL_BASE the wsl basename, path-qualified via an optional leading run
 #             ending in / or \ (/path/wsl.exe, C:\...\wsl.exe).
 #   _END      token end (whitespace or end of line).
@@ -95,7 +95,7 @@ STRIPPED="$(printf '%s' "$CMD" | sed -e 's/"[^"]*"//g' -e "s/'[^']*'//g")"
 # QUOTED command name 'wsl'/"wsl" on the ORIGINAL text - a quoted string whose
 # ENTIRE content is (path-)wsl(.exe), which a quoted DATA string
 # ("...wsl codex...") never matches (its close quote does not fall right after
-# the basename) - panel HIMMEL-999. Values expand literally, so the backtick/$
+# the basename). Values expand literally, so the backtick/$
 # inside them never re-interpret; the double-quoted composition is safe.
 # shellcheck disable=SC2016 # regex fragment: the ` and $ are ERE metachars, not shell expansion.
 _SEP='(^[[:space:]]*|[|;&(`][[:space:]]*)'

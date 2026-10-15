@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-pip-hashes.sh (HIMMEL-4137).
+# Smoke test for scripts/hooks/check-pip-hashes.sh.
 set -uo pipefail
 
 HOOK="$(cd "$(dirname "$0")" && pwd)/check-pip-hashes.sh"
@@ -90,7 +90,7 @@ else
 fi
 chmod 644 "$TMP/unreadable.txt"
 
-# T11: dangling symlink → BLOCK, naming the file (HIMMEL-4144)
+# T11: dangling symlink → BLOCK, naming the file
 ln -s "$TMP/nowhere" "$TMP/dangling.txt"
 assert_rc "T11 dangling symlink blocks" 1 "$(run_hook dangling.txt)"
 assert_out "T11 names the file" yes 'dangling.txt does not exist'
@@ -103,7 +103,7 @@ assert_out "T16 prints no regenerate hint" no 'Regenerate the file with hashes'
 assert_rc "T16 missing + hashed still blocks" 1 "$(run_hook hashed.txt missing.txt)"
 assert_rc "T16 hashed alone (deleted sibling not passed) passes" 0 "$(run_hook hashed.txt)"
 
-# T17: a hash only inside a comment does not count (HIMMEL-4144)
+# T17: a hash only inside a comment does not count
 printf 'requests==2.0 # %s\n' "$H" > "$TMP/trail-comment.txt"
 assert_rc "T17 trailing-comment hash blocks" 1 "$(run_hook trail-comment.txt)"
 printf 'requests==2.0 \\\n    # %s\n' "$H" > "$TMP/cont-comment.txt"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/guard-agent-model.sh (HIMMEL-3847): an Agent
+# Smoke suite for scripts/hooks/guard-agent-model.sh: an Agent
 # dispatch that overrides model to Fable without an `ESCALATION: <reason>` prompt
 # line is denied, and so is a console-judge model override off its frontmatter
-# tier (opus) without the marker (HIMMEL-3630: Opus-high judge default).
+# tier (opus) without the marker.
 # Covers: fable / claude-fable-5-1 -> deny; same WITH marker -> allow; empty marker
 # -> deny; opus/sonnet/haiku and no model -> allow; console-judge sonnet -> deny,
 # opus -> allow, no model -> allow, marked sonnet -> allow; other tool -> allow;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for guard-judge-writes.sh (HIMMEL-4564): a judge session
+# Tests for guard-judge-writes.sh: a judge session
 # (HIMMEL_CONSOLE_JUDGE=1, exported by headed-arm-leg.sh --judge) is denied
 # every outward or mutating transition — push, PR create/comment/review/merge,
 # the merge and GO scripts, Jira writes, inbox sends, a foreign MCP tool, and an
@@ -29,7 +29,7 @@ ROOT="$TMP/handovers"
 REPO="$TMP/repo"
 mkdir -p "$FAKE_HOME/.cache/himmel/verdicts/J1/scratch" "$ROOT/u/himmel/verdicts/J1" "$ROOT/u/himmel/verdicts/J2" "$ROOT/u/himmel/verdicts/J10" "$ROOT/inbox" "$ROOT/u/himmel/inbox" "$REPO/scripts"
 ln -s "$REPO/scripts" "$ROOT/u/himmel/verdicts/J1/escape"
-# A dangling symlink whose target's parent does not exist (HIMMEL-4614 T4).
+# A dangling symlink whose target's parent does not exist.
 ln -s "$TMP/no-such-dir/x.md" "$ROOT/u/himmel/verdicts/J1/dangling"
 # The launched judge's binding (headed-arm-leg.sh --judge exports both).
 OWN_DOC="$ROOT/u/himmel/HIMMEL-1-judge-J1-2026-10-06.md"
@@ -119,7 +119,7 @@ row "Write into a nested inbox" 2 "$(file_payload Write "$ROOT/u/himmel/inbox/x-
 row "Write through a symlink out of verdicts" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/escape/x.sh")"
 row "Write with a .. segment" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/../../x.md")"
 row "malformed payload" 2 'not json'
-# --- binding: only the launched judge's own doc and qid (HIMMEL-4608) ---
+# --- binding: only the launched judge's own doc and qid ---
 row "another judge's doc" 2 "$(file_payload Write "$ROOT/u/himmel/HIMMEL-2-judge-J2-2026-10-06.md")"
 row "another qid's verdict file" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J2/HIMMEL-2-judge-J2.md")"
 row "a qid that only prefixes the own one" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J10/x.md")"
@@ -127,7 +127,7 @@ row_bound "missing doc binding denies the own doc" 2 "$(file_payload Write "$OWN
 row_bound "missing qid binding denies the own verdict" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/v.md")" "$OWN_DOC" ""
 row_bound "a qid with a slash denies" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/v.md")" "$OWN_DOC" "J1/.."
 row_bound "a relative doc binding denies" 2 "$(file_payload Write "$OWN_DOC")" "HIMMEL-1-judge-J1-2026-10-06.md" "$OWN_QID"
-# --- dangling symlink (HIMMEL-4614 T4) ---
+# --- dangling symlink ---
 row "Write to a dangling symlink" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/dangling")"
 # --- what a judge must still be able to do ---
 row "verdict file write" 0 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/HIMMEL-1-judge-J1.md")"

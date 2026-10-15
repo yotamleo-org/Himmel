@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# PreToolUse Bash guard for /pr-check's bare scripts/cr literals (HIMMEL-3383).
+# PreToolUse Bash guard for /pr-check's bare scripts/cr literals.
 #
-# HIMMEL-3359 (#1052) and HIMMEL-3375 (#1057) allow-listed the exact literals
+# The settings allow-list holds the exact literals
 #
 #     bash scripts/cr/pr-check-context.sh
 #     bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS
 #
 # for every leg profile (`gateAllow` in scripts/lanes/plugin-profiles.json).
-# HIMMEL-3402 later narrowed away .claude/settings.json's `Bash(bash scripts/*)`
+# .claude/settings.json carries no `Bash(bash scripts/*)`
 # prefix rule; scripts/cr/, scripts/guardrails/ and scripts/hooks/ get no
 # prefix allow at all now, only the exact literals below - but an exact
 # literal still matches TEXT, so it auto-runs whatever bytes currently sit at
@@ -44,7 +44,7 @@
 # same chain already does. There is no bypass variable: the canonical fence is
 # always available and is the remedy.
 #
-# HIMMEL-3495 widens the targets to EVERY gate-allowed scripts/cr script (the
+# The targets are EVERY gate-allowed scripts/cr script (the
 # `Bash(bash scripts/cr/...` rows of .claude/settings.json and the leg
 # profiles' gateAllow). The other thirteen are held to the same three
 # conditions over a narrower set: the entry file itself and
@@ -70,13 +70,13 @@ pr-check-env.sh review-round.sh write-verdicts.sh'
 FULL_GUARDED='scripts/cr scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh'
 GUARDED=$FULL_GUARDED
 
-# HIMMEL-3437: the two scripts/handover/ gate-writer entries a leg profile
+# the two scripts/handover/ gate-writer entries a leg profile
 # also pre-approves as RELATIVE literals (merge-on-green.sh, console-kit/go.sh)
 # - outside scripts/cr/, so TARGETS above (and the derived/declared check in
 # the test suite, which is scoped to scripts/cr/ allow rows only) does not
 # reach them. Held to the same narrower condition as every TARGETS entry but
 # pr-check-context.sh/env.sh: the entry script and scripts/cr/anchor-handoff.sh
-# (HIMMEL-3437's hand-off, shared with the scripts/cr/ family) byte- and
+# (the hand-off shared with the scripts/cr/ family) byte- and
 # mode-equal the anchor's. Full relative paths, not bare basenames: "go.sh" is
 # too common a stem to key on alone, and matching the full path is exact
 # rather than relying on a directory-marker substring.
@@ -145,13 +145,13 @@ deny() {
     exit 2
 }
 
-# HIMMEL-3798 round 3: the inline quoted-heredoc and `< <file>` redirect
+# The inline quoted-heredoc and `< <file>` redirect
 # shapes this hook used to accept for the two STDIN-only /pr-check writers
 # (write-verdicts.sh, impacted-suites.sh --check) are CUT, not patched a
 # third time - a regex matching a line as bash grammar is only ever an
 # approximation, and each round's fix (widening an excluded-character class)
-# just narrowed the gap the next round found: round 2's separator gap, then
-# round 3's unquoted `#` swallowing the heredoc/redirect operator into a real
+# just narrowed the gap the next found: a separator gap, then
+# an unquoted `#` swallowing the heredoc/redirect operator into a real
 # bash comment while the guard's regex still matched the line as a valid
 # heredoc header, so a "body" line the guard treated as inert stdin data
 # actually ran as a separate shell command. The sanctioned shape now is
@@ -194,7 +194,7 @@ case "$tool" in Bash|"") ;; *) exit 0 ;; esac
 # what they spell.
 # A backslash-newline is a line continuation: the shell joins it away first.
 #
-# HIMMEL-4729: under a UTF-8 locale a ${x//pat/rep} re-decodes the whole text
+# under a UTF-8 locale a ${x//pat/rep} re-decodes the whole text
 # for each match (45 KB of prose: 0.3 s per call). Every character these
 # strip is ASCII and a UTF-8 sequence never contains an ASCII byte, so the
 # same expansion under a function-local LC_ALL=C is byte-identical and
@@ -594,7 +594,7 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 }
 # <<< END shell-tokenize <<<
 
-# Quoted text that is provably inert is data, not a command (HIMMEL-3546):
+# Quoted text that is provably inert is data, not a command:
 # once the quote-strip above has run, a `|`, `;` or backtick inside a quoted
 # argument reads exactly like a real one, and `echo 'bash scripts/cr/x.sh'`
 # or `--reason "a; b"` denied as "not one simple command". When the command
@@ -693,7 +693,7 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     # bare stem substring also matched inside an unrelated file name that
     # happens to contain it (a test suite's own name, e.g. test-cr-scores.sh
     # contains "cr-scores"), which then made every $VAR token elsewhere in
-    # the same command look unresolvable (HIMMEL-3517) - so a target only
+    # the same command look unresolvable - so a target only
     # counts here when its stem is immediately preceded by "cr/", never as a
     # substring anywhere else.
     local t rc=1 pc=$1
@@ -708,18 +708,17 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
         # ponytail: this is a PREFIX-stem match (cr/<stem>*), so a filename
         # that merely STARTS WITH a guarded stem after "cr/" (e.g. a target
         # named "foo.sh" also matches "cr/foo-other.sh") counts as a mention
-        # even though it names a different file (codex-2 panel finding,
-        # round 5, HIMMEL-3517, deferred by console ruling on
-        # K-N431-7980c9b9). Over-matching here only makes `mentions` MORE
+        # even though it names a different file.
+        # Over-matching here only makes `mentions` MORE
         # likely to be 1, which routes the command into the slower,
         # stricter classification path below rather than the early
         # fast-exit - the safe direction (a false-deny residual, not a
-        # hole). HIMMEL-3546's tokenizer only drops provably inert quoted
+        # hole). The tokenizer only drops provably inert quoted
         # words from $flat; it does not change this match. Upgrade path:
         # match the tokenized path word exactly, if the residual recurs.
         case "$1" in *[cC][rR]/"${t%.sh}"*) rc=0 ;; esac
     done
-    # HIMMEL-3437: same prefix-stem match, keyed on each HTARGET's own
+    # same prefix-stem match, keyed on each HTARGET's own
     # immediate parent directory (handover/ for merge-on-green.sh,
     # console-kit/ for go.sh) rather than a fixed "cr/" marker.
     case "$1" in *[hH]andover/merge-on-green*) rc=0 ;; esac
@@ -729,7 +728,7 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
 }
 mentions=0
 names_target "$flat" && mentions=1
-# HIMMEL-1813: GNU env -S expands ${VAR}, an unset one to nothing, so a name
+# GNU env -S expands ${VAR}, an unset one to nothing, so a name
 # split apart by one is still a mention when an env split option is present.
 drop_braced_vars() { # drop_braced_vars <text> - print it with every ${...} removed
     local t="$1" re='^(.*)\$\{[^}]*\}(.*)$'
@@ -740,15 +739,15 @@ if [ "$mentions" -eq 0 ] && [[ $cmd == *env*\$\{* ]] && [[ $cmd =~ -[a-zA-Z]*S|-
     _c_unquote "$cmd"
     names_target "$(drop_braced_vars "$REPLY")" && mentions=1
 fi
-# HIMMEL-3913: a parse-independent raw-text backstop, the twin of HIMMEL-1813's
+# a parse-independent raw-text backstop, the twin of the one
 # in block-chokepoint-env-prefix.sh. The tokenizer reads quoted here-string text
 # as inert and the reader exemption below trusts a reader's name, so a reader
 # can write a guarded script's text to a FILE that a later segment runs
 # (`tee F <<< '...'; bash F`), or a shell function can shadow the reader's name.
-# HIMMEL-3917: the rule denies the WRITE CHANNEL, never an executor. Guarded
+# the rule denies the WRITE CHANNEL, never an executor. Guarded
 # text escapes the run analysis below only through its two exemptions - the
-# HIMMEL-3546 inert drop (a single-segment reader's quoted words) and the
-# HIMMEL-1813 here-string reader exemption - and once exempted it can leave
+# tokenizer's inert drop (a single-segment reader's quoted words) and the
+# here-string reader exemption - and once exempted it can leave
 # only by being written to a file (a redirect, or tee's file operands) or fed
 # in as a here-string. Whatever runs that file cannot be enumerated: a shell,
 # `command -p source`, `$(cat F)`, xargs, awk's system(), `chmod +x F; F`, or a
@@ -792,7 +791,7 @@ if prlit_backstop "$cmd"; then
     shown=${shown:0:200}
     deny "the command names a guarded script and can write text to a file or feed it as input (a '>' redirect that is not an fd dup or /dev/null, a <<< here-string, or tee), or shadows a reader (cat, tee, ...) with a function or alias - whatever later runs that file cannot be enumerated, so it cannot be proven safe (HIMMEL-3917, HIMMEL-3913). If the text contains '>' (an arrow in a message, a Results bullet), write it with the Write tool and pass the file (-F, --body-file, --comment-file), or use '→' / 'to' instead. Run each script as its own literal command."
 fi
-# HIMMEL-4367 item 5: a heredoc body is stdin, not a command line. When the
+# A heredoc body is stdin, not a command line. When the
 # tokenizer proves the command has no live substitution, no runner word
 # outside the bodies (an interpreter, a wrapper, find -exec, ssh), no write to
 # a file (a `>`/`>>`/`>|`/`&>`/`<>` redirect that is not an fd dup or
@@ -841,7 +840,7 @@ heredoc_data_only() { # true when only heredoc bodies could make $flat look runn
     done
     return 0
 }
-# HIMMEL-4574: a pipeline or list in which every segment's command word is a
+# a pipeline or list in which every segment's command word is a
 # reader that never runs an argument runs nothing, so a target its words name
 # (`grep -n 'write-verdicts.sh' .claude/commands/pr-check.md | head`, `cat
 # scripts/cr/*.sh | wc -l`) is a mention. The proof is heredoc_data_only's
@@ -849,7 +848,7 @@ heredoc_data_only() { # true when only heredoc bodies could make $flat look runn
 # redirect but an fd dup or /dev/null, and each command word plain (no VAR=
 # prefix, quote, `$` or glob). sed counts only when st_sed_args proves every
 # script inert and there is no -i; git's grep/log/show/diff and non-exec
-# pathspec operations add/restore/rm --cached qualify (HIMMEL-4916), without
+# pathspec operations add/restore/rm --cached qualify, without
 # execution/config options, -O/--open-files-in-pager, --output or --ext-diff.
 # rg (--pre), sort (--compress-program), awk, find and
 # xargs run programs, so none of them is a reader. Nor are printf (-v writes
@@ -857,7 +856,7 @@ heredoc_data_only() { # true when only heredoc bodies could make $flat look runn
 # ${x@P}) or cd (it plants a $(…) in PWD).
 PR_READERS=' grep egrep fgrep cat head tail wc ls cut tr uniq nl jq '
 PR_GIT_UNSAFE=0 PR_TOKFAIL=0 PR_GIT_EXEC=0
-# HIMMEL-5095: true when short-option cluster <word> carries a capital O as a
+# true when short-option cluster <word> carries a capital O as a
 # FLAG letter, i.e. before any value-taking letter (git's parse-options: the
 # rest of the cluster after -e/-m/-b/... is that option's value, so the O in
 # `-eOverflow` or `-mOops` is text). -O itself takes the rest as the pager.
@@ -885,7 +884,7 @@ git_mentions_only() { # git_mentions_only <command-word index>
         w=${ST_W[j]}
         if [ -n "${ST_RO[j]}" ]; then j=$((j + 1)); continue; fi
         if [ "${ST_X[j]}${ST_G[j]}" != 00 ]; then
-            # HIMMEL-4950: an expanded word that can begin with `-` may become
+            # an expanded word that can begin with `-` may become
             # an exec-capable option (`-O{bash,x}`, `{-O,x}bash`, `--ext-d?ff`).
             # After --, words are pathspec operands, not options.
             # A `$` anywhere in the word word-splits (`echo$IFS-Obash`), so it
@@ -894,15 +893,15 @@ git_mentions_only() { # git_mentions_only <command-word index>
                 case "$w" in -* | '{'* | '$'* | '*'* | '?'* | '['* | '~'* | *'$'*) PR_GIT_UNSAFE=1 ;; esac
             fi
             # Keep scanning: a later word may be an exec option (`docs/{a,b} -O{x,y}`).
-            # HIMMEL-5095: an expanded word before the subcommand is a global
+            # an expanded word before the subcommand is a global
             # option's value or the subcommand itself (`$S`, `g?ep`): either way
             # the subcommand is unknowable, so only a positively identified
             # literal one may take the relaxed reading.
             if [ -z "$sub" ]; then sub='*'; dir=0; fi
-            # HIMMEL-5102 (j2328c): a glob/brace word in the subcommand slot
+            # a glob/brace word in the subcommand slot
             # (`re[b]ase`, `rebase{,}`) may BE rebase or bisect: fail closed.
             if [ "$sub" = '*' ] && [ "$nsub" = 0 ] && [ "$paths" != 1 ]; then PR_GIT_UNSAFE=1; PR_GIT_EXEC=1; fi
-            # HIMMEL-5102: a glob in the bisect verb slot (`r[u]n`) or an
+            # a glob in the bisect verb slot (`r[u]n`) or an
             # expanded word after rebase may be the run verb or an exec flag.
             case "$bsub" in
                 bisect) [ "$bnext" = 0 ] || { bnext=0; PR_GIT_EXEC=1; PR_GIT_UNSAFE=1; } ;;
@@ -916,7 +915,7 @@ git_mentions_only() { # git_mentions_only <command-word index>
         fi
         # After --, option-shaped words are literal pathspec operands.
         if [ "$paths" = 1 ]; then j=$((j + 1)); continue; fi
-        # HIMMEL-5095: while no subcommand is identified yet (and none is a known
+        # while no subcommand is identified yet (and none is a known
         # non-grep builtin) the grammar is unknown: strict any-O reading.
         es=$sub
         if [ -z "$sub" ] && [ "$nsub" = 0 ]; then es='*'; fi
@@ -929,7 +928,7 @@ git_mentions_only() { # git_mentions_only <command-word index>
                 --o* | --ext*) PR_GIT_UNSAFE=1; bad=1 ;;
             *) if short_cluster_has_O "$w" "$es"; then PR_GIT_UNSAFE=1; bad=1; fi ;;
         esac
-        # HIMMEL-4958: an exec/write option is denied whatever the pathspec; a
+        # an exec/write option is denied whatever the pathspec; a
         # directory or empty pathspec matches guarded scripts without naming them.
         case "$w" in
             # Benign long options that share a prefix with an exec option.
@@ -966,7 +965,7 @@ git_mentions_only() { # git_mentions_only <command-word index>
                     case "$sub" in diff | log | show) ;; *) PR_GIT_EXEC=1 ;; esac
                 fi ;;
         esac
-        # HIMMEL-5102: `git bisect run <prog>` and `git rebase -x|--exec <cmd>`
+        # `git bisect run <prog>` and `git rebase -x|--exec <cmd>`
         # run an arbitrary program, so a guarded script they name is never a
         # pathspec mention. bsub is set only for a positively identified builtin.
         case "$bsub" in
@@ -1000,7 +999,7 @@ git_mentions_only() { # git_mentions_only <command-word index>
         # after sub='*' (`-P --namespace bisect rebase -x`) is not skipped, so
         # its value can be mistaken for the subcommand; the real one re-arms.
         if [ "$sub" = '*' ]; then
-            # HIMMEL-5102 (j2328d): any other non-option word may be an alias
+            # any other non-option word may be an alias
             # for rebase or bisect (`git -P rb -x CMD`): arm both, fail closed.
             case "$w" in
                 bisect) bsub=bisect; bnext=1 ;;
@@ -1014,7 +1013,7 @@ git_mentions_only() { # git_mentions_only <command-word index>
             [ "${ST_Q[j]}" = 0 ] || sub='*'
         elif [ -z "$sub" ]; then
             [ "${ST_Q[j]}" = 0 ] || bad=1
-            # HIMMEL-5095: a global option's separate value is not the subcommand
+            # a global option's separate value is not the subcommand
             # (`--namespace add grep`); an unrecognised option makes the
             # subcommand unknowable, so sub='*' keeps the strict any-O reading.
             case "$w" in
@@ -1038,7 +1037,7 @@ git_mentions_only() { # git_mentions_only <command-word index>
                     shortlog | stash | status | tag | worktree)
                     bad=1; nsub=1
                     case "$w" in bisect) bsub=bisect; bnext=1 ;; rebase) rsub=1 ;; esac ;;
-                # HIMMEL-5102 (j2328d): the unknown word may be an alias for
+                # the unknown word may be an alias for
                 # rebase or bisect (`git rb -x CMD`): arm both, fail closed.
                 *) bad=1
                     if [ "$nsub" = 0 ]; then rsub=1; bsub=bisect; bnext=1; fi
@@ -1066,14 +1065,14 @@ git_mentions_only() { # git_mentions_only <command-word index>
 }
 readers_only() { # true when every command the command line runs is a reader
     local k sg=-1 cw=-1 w
-    # HIMMEL-4950: a `${…}` the tokenizer cannot parse (zsh `${=IFS}`) on a git
+    # a `${…}` the tokenizer cannot parse (zsh `${=IFS}`) on a git
     # command line may word-split into an exec option; flag it unsafe.
     # shellcheck disable=SC2016 # a literal ${ is matched, never expanded
-    # HIMMEL-4953: any tokenizer bail on a line with a git word fails closed:
+    # any tokenizer bail on a line with a git word fails closed:
     # no word is known, so no option can be proven a pathspec mention.
     st_tokenize "$cmd" || {
         PR_TOKFAIL=1
-        # HIMMEL-5102 (j2328c): the command word itself may be unparseable
+        # the command word itself may be unparseable
         # (`g\it`, `g''it`, `g\<newline>it`), so no text match can prove there
         # is no git word: a tokenizer failure is unsafe whatever it is.
         PR_GIT_UNSAFE=1
@@ -1103,7 +1102,7 @@ readers_only() { # true when every command the command line runs is a reader
     done
     return 0
 }
-# HIMMEL-5170 (judge j2353d, 4th shell-parsing NO-GO): a value git, or the
+# a value git, or the
 # shell git spawns, will EXECUTE is denied when it carries an sh expansion
 # metacharacter, whether or not a guarded script is named - a second shell can
 # build the writer path ('scripts/c?/x', 'scripts/c[r]/x', 'scripts/c${X}r/x').
@@ -1126,7 +1125,7 @@ meta_value() { # meta_value <text> - 0 when it carries an sh metacharacter
 seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metacharacter
     local i=$1 e=$2 w v opt c=-1 g=-1 gx='' sub='' key='' nv=0 exempt=0 rd=0 endsub=0
     local asg='^(GIT_[A-Za-z0-9_]*|EDITOR|VISUAL|PAGER)\+?=(.*)$'
-    # HIMMEL-5170 (j2353e): a $(, backtick, <( or >( ends the segment and what
+    # a $(, backtick, <( or >( ends the segment and what
     # it opens is a segment of its own, so a value slot that is this segment's
     # last word has a shell-built value nobody read: it counts as a metachar.
     # shellcheck disable=SC2016 # literal $( and backtick are matched, never expanded
@@ -1143,7 +1142,7 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
                 case "$w" in *=*) ;; *) c=$i ;; esac
             fi
             if [ "$g" -lt 0 ] && [ "$c" -ge 0 ]; then
-                # HIMMEL-5170 (j2353h F3): git, or a git-<sub> binary by path.
+                # git, or a git-<sub> binary by path.
                 case "${w##*/}" in
                     git) g=$i ;;
                     git-?*) g=$i; gx=${w##*/}; gx=${gx#git-} ;;
@@ -1233,7 +1232,7 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
             -O) opt=-O; v=${ST_W[i + 1]:-} ;;
             -O?*) opt=-O; v=${w#-O} ;;
             --?*) [ "$rd" = 1 ] || { opt=$w; v=${ST_W[i + 1]:-}; } ;;
-            # HIMMEL-5170 (j2353h F2): short options after a non-reader
+            # short options after a non-reader
             # subcommand are value checks too (git clone -u <cmd>, -c k=v).
             # Whether -X takes a value is not knowable per subcommand, so
             # fail closed: attached text and the next word both count. A
@@ -1259,7 +1258,7 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
     done
     return 1
 }
-# HIMMEL-5170 (judge j2353e, 3rd shell-parsing NO-GO): line-level rules that
+# line-level rules that
 # need no guarded name and no token. They fire on any line that has a git word
 # or an assignment to GIT_*/EDITOR/VISUAL/PAGER; flat is already unquoted and
 # continuation-joined, so `g\it` and `GIT_""EDITOR` read as plain text here.
@@ -1307,7 +1306,7 @@ if [ "$PR_TOKENIZED" = 1 ]; then
     done
 fi
 readers_only && exit 0
-# HIMMEL-4953: readers_only returns at the first non-reader, comment, $'…'
+# readers_only returns at the first non-reader, comment, $'…'
 # word, substitution or unknown git global option, before it reaches a later
 # git segment. The option check must not depend on that walk, so scan every
 # git word here; only the PR_GIT_UNSAFE side effect is used. Fails closed.
@@ -1321,7 +1320,7 @@ if [ "$PR_TOKFAIL" = 0 ]; then
     while [ "$k" -lt "$ST_N" ]; do
         if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; cw=-1; fi
         if [ -z "${ST_RO[k]}" ]; then
-            # HIMMEL-4953: an expanded command word may be git (`G=git; $G`).
+            # an expanded command word may be git (`G=git; $G`).
             if [ "$cw" -lt 0 ]; then
                 [ "${ST_X[k]}${ST_G[k]}" = 00 ] || [ "${ST_W[k]}" = '{' ] || PR_GIT_UNSAFE=1
                 cw=$k
@@ -1359,11 +1358,11 @@ if [ "$envs_deferred" = 0 ] && [ "$PR_GIT_UNSAFE" = 1 ] && { [ "$mentions" = 1 ]
     deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command (HIMMEL-4916)."
 fi
 
-# HIMMEL-5170 (j2328a follow-up): git runs an editor or an alias program this
+# git runs an editor or an alias program this
 # hook never reads - an env prefix (GIT_SEQUENCE_EDITOR=, GIT_EDITOR=, EDITOR=,
 # VISUAL=; the VAR= prefix only sets `wrapped` below) or a config write
 # (`git config sequence.editor|core.editor|alias.<x> <value>`, a later call).
-# NAME-INDEPENDENT (judge j2353b, three NO-GOs on a key-name list): git has too
+# NAME-INDEPENDENT: git has too
 # many program-running keys to enumerate, so the check is on WHERE the writer's
 # text sits, per command segment. A segment whose words name a guarded script
 # is denied when the text is (a) an assignment value (VAR=, VAR+=, export,
@@ -1374,7 +1373,7 @@ fi
 # (GIT_EDITOR=vim git commit, git config user.name x) is not caught here.
 # Over-matching only denies more (the safe direction).
 edword_names() { # edword_names <word> - a guarded script spelled as a path
-    # EXACTLY flat's normalisation (judge j2353d): _c_join_continuations, then
+    # EXACTLY flat's normalisation: _c_join_continuations, then
     # _c_unquote. A word that keeps quotes, backslashes or a backslash-newline
     # from inside single quotes (scripts/c\<nl>r/x.sh) must match the way the
     # shell git spawns will spell it, never the raw tokenized text.
@@ -1566,14 +1565,14 @@ while IFS= read -r line; do
         bash|sh|zsh|dash|ksh|mksh|busybox|toybox|source|.|eval) runs=1; bare_runs=1 ;;
         cd|pushd|popd) chdir=1 ;;
     esac
-    # /dev/null is only ever reached as a redirect target (HIMMEL-3433).
+    # /dev/null is only ever reached as a redirect target.
     case "$cw" in /dev/null) ;; */*|pr-check*) runs=1 ;; esac
     is_target "${cw##*/}" && runs=1
     is_htarget "${cw##*/}" && runs=1
 done <<<"$simple"
 # The leading-word walk above misses a runner behind an operand it does not
 # know (`2>&1 bash ...`, `find . -exec env X=1 bash ...`), so these are
-# PRESENCE tests over every word, not a position walk (HIMMEL-3433): an
+# PRESENCE tests over every word, not a position walk: an
 # interpreter, a find -exec, a wrapper or an upper-case VAR= anywhere counts.
 # bare_runs: something present could run a bare * or find's {} - but not a
 # lone `.` or `source` away from the command word (`find . ...` is everywhere,
@@ -1595,7 +1594,7 @@ done
 # it; that word only makes a guarded run unverifiable when it could itself
 # run something (an interpreter, a wrapper, or a target's own name) -
 # otherwise (find ... -execdir grep foo {} \;) it never resolves a path
-# itself, so the {} carve-out below still applies (HIMMEL-3517).
+# itself, so the {} carve-out below still applies.
 while IFS= read -r line; do
     read -r -a lw <<<"$line"
     j=0
@@ -1611,19 +1610,19 @@ while IFS= read -r line; do
                         # an arbitrary file whose behavior this hook cannot
                         # see, and it runs from find's CHANGED cwd - treat it
                         # the same as an unverifiable runner (codex-2 panel
-                        # finding, HIMMEL-3517). A bare word (no /) resolves
+                        # finding). A bare word (no /) resolves
                         # via PATH to whatever is installed there, which this
                         # hook cannot see either - only a SMALL, explicit,
                         # fixed-behavior read-only allowlist gets the relaxed
                         # (non-chdir-gating) treatment; every other bare word
                         # is an unverifiable runner too (codex-1 round-4
-                        # panel finding, HIMMEL-3517: an unknown PATH
+                        # panel finding: an unknown PATH
                         # executable was previously treated as safe). sed and
                         # awk are deliberately NOT on this allowlist even
                         # without -i/--in-place: sed's `e` command and awk's
                         # `system()` can execute a guarded relative script
                         # from find's changed cwd with no in-place flag at all
-                        # (codex-1 round-5 panel finding, HIMMEL-3517) - they
+                        # - they
                         # are not fixed-behavior read-only tools, so they stay
                         # chdir-gated like every other bare word.
                         case "$nextw" in
@@ -1647,22 +1646,22 @@ done <<<"$simple"
 [[ "$flat" =~ -(exec|execdir|ok|okdir)[[:space:]]+[^[:space:]]*\{\} ]] && bare_runs=1
 [ "$runs" -eq 1 ] || { [ "${edhook_pending:-0}" = 1 ] && edhook_deny; exit 0; }
 
-# HIMMEL-3437 console NO-GO rounds 2-3: a "$HIMMEL_REPO/..." word is the
+# A "$HIMMEL_REPO/..." word is the
 # anchor spelling ONLY when the whole command is genuinely one simple
 # command (no separator, so nothing later in it can re-point the variable
 # or hide a second command behind it), carries no wrapper or VAR=
 # assignment anywhere ($wrapped, already computed above - a re-point
 # earlier in the SAME command, `HIMMEL_REPO=.; bash "$HIMMEL_REPO/..."`,
-# must still deny), and HIMMEL_REPO is referenced exactly once. Round 3
-# (F1): the RAW command must carry no quote or backslash ANYWHERE - not
-# only right next to the reference (round 2's check) - since $flat has
+# must still deny), and HIMMEL_REPO is referenced exactly once. The
+# RAW command must carry no quote or backslash ANYWHERE - not
+# only right next to the reference - since $flat has
 # already stripped every quote by the time any later check runs, and a
 # stray one elsewhere still changes how a real shell groups tokens; a
 # quoted or backslash-escaped reference never expands in a real shell
 # either, so denying on ANY quote/backslash present is never a false
 # negative on legitimate use, which needs neither (only a bare or plain
-# double-quoted prefix is ever a real allow rule's spelling). Round 3
-# (F2): what follows the prefix must resolve as a plain path too - no
+# double-quoted prefix is ever a real allow rule's spelling). What
+# follows the prefix must resolve as a plain path too - no
 # `..` and no further `$` (`$HIMMEL_REPO/../../etc$PWD/...` denies).
 himmel_anchor_prefix=0
 case "$flat" in
@@ -1737,7 +1736,7 @@ case "$flat" in
         ;;
 esac
 
-# HIMMEL-3798 codex-1: the anchor-prefix exemption above trusts the COMMAND
+# The anchor-prefix exemption above trusts the COMMAND
 # TEXT's "$HIMMEL_REPO/..." shape unconditionally, without checking that this
 # hook's own actual HIMMEL_REPO environment value is one a real shell would
 # resolve to himmel's checkout. On Git Bash an unset/empty HIMMEL_REPO makes
@@ -1758,7 +1757,7 @@ if [ "$himmel_anchor_prefix" -eq 1 ]; then
 fi
 
 # glob_is_literal_elsewhere <raw-token> <normalised> - a glob operand that
-# cannot name a target (HIMMEL-3433): its directory part is literal (no glob,
+# cannot name a target: its directory part is literal (no glob,
 # brace, $, ~, .., // or /./) and is not scripts/cr, or it is a bare * (or
 # find's {}) with nothing present that would run it. A cd anywhere makes no
 # glob safe.
@@ -1791,7 +1790,7 @@ glob_is_literal_elsewhere() {
 # resolves against) is unresolvable and denies. Absolute paths are left to the
 # permission layer: no allow rule matches them, and the runbook's
 # <himmel_dir> spelling is one. A literal `$HIMMEL_REPO/` or `${HIMMEL_REPO}/`
-# prefix (HIMMEL-3437 console finding 1, HIMMEL-3491's documented anchored
+# prefix (the documented anchored
 # merge-on-green.sh spelling) is exempted the same way: this hook only sees
 # the raw command TEXT, never evaluates the variable, so the word is exactly
 # as trusted as any other absolute path once the shell resolves it - the
@@ -1837,7 +1836,7 @@ for tok in $REPLY; do
     raw=$tok
     # A brace list reads as a glob that matches every word it could expand to,
     # innermost group first; a pair it cannot reduce is unresolvable.
-    # HIMMEL-4367: a non-empty group with no comma and no `..` ({url}) is
+    # a non-empty group with no comma and no `..` ({url}) is
     # literal text to bash, not a list - kept as a name (braces marked %),
     # which no target carries. An empty {} stays a glob: find and xargs -I
     # substitute it.
@@ -1866,7 +1865,7 @@ for tok in $REPLY; do
             *) unresolved=$tok ;;
         esac
     elif is_htarget "${rel##*/}" && ! glob_is_literal_elsewhere "$raw" "$rel"; then
-        # HIMMEL-3437: the two scripts/handover/ writers, held to the entry
+        # the two scripts/handover/ writers, held to the entry
         # itself + scripts/cr/anchor-handoff.sh - full-path match, not a
         # TARGETS-style basename lookup, since HTARGETS entries are full
         # relative paths (a basename alone, "go.sh", is too common a stem).
@@ -1878,7 +1877,7 @@ for tok in $REPLY; do
         esac
     fi
 done
-# HIMMEL-1813: GNU env -S re-splits its operand with its own grammar (\c
+# GNU env -S re-splits its operand with its own grammar (\c
 # ignores the rest, \t and friends, '#' comments, ${VAR} expansion), which
 # $flat's quote/backslash strip does not model - `merge-on-green.sh\c` reads
 # as `merge-on-green.shc` above and never hits. When an env-wrapped command
@@ -1911,20 +1910,20 @@ env_split_option() { # env_split_option <raw command> - false only when
     # env's options run up to its first program word (git log --stat is
     # git's), -u/-C/-a take the next word. A glob, a live '$', a $'...'
     # word or an untokenizable command may hide one, so they return true.
-    # HIMMEL-4491: a nested shell body (`bash -c <body>`, `eval <words>`) is
+    # a nested shell body (`bash -c <body>`, `eval <words>`) is
     # one quoted word here, so an env inside it is no word of this scan: each
     # segment's words after an `eval`, or after a -c option cluster behind a
     # shell word, are joined and run through this same test, recursively.
     # ponytail: only shells and eval are re-read - su -c, script -c, watch,
     # a body held in a variable or read from stdin are not; upgrade path:
     # add the re-reader to the case below if one is seen carrying env -S.
-    # HIMMEL-4516: each nested body is re-tokenized by the slow bash
+    # each nested body is re-tokenized by the slow bash
     # tokenizer, so a 350-deep chain burned the whole hook budget (fail
     # closed with a bare timeout). Past ENV_SPLIT_NEST_CAP nested bodies the
     # re-read stops and the caller denies with a message naming the cap.
     # ponytail: 32 is a guess far above any real command, far below the
     # budget (350 deep = 11 s), upgrade path: a cheaper per-level re-scan.
-    # HIMMEL-5356: a segment piped (`|`, `|&`) into a shell is that shell's
+    # a segment piped (`|`, `|&`) into a shell is that shell's
     # script, so its words are a body like an `eval`'s: `echo "env -S
     # '<target>\c'" | bash` carries its env inside one quoted data word that
     # no word scan sees. A reader piped into grep/wc stays data.
@@ -1943,7 +1942,7 @@ env_split_option() { # env_split_option <raw command> - false only when
     fi
     st_tokenize "$1" || return 0
     [ "$ST_ANSIC" = 0 ] || return 0
-    # Pre-pass (HIMMEL-5356): fc[sg] is segment sg's command word (leading
+    # Pre-pass: fc[sg] is segment sg's command word (leading
     # assignments and compound keywords skipped), wr[sg] marks a wrapper before
     # it; fl[sg]=1 when sg is not a known reader; pp[sg]=1 when sg's output
     # flows through a `|`/`|&` chain into such a segment, so
@@ -1983,7 +1982,7 @@ env_split_option() { # env_split_option <raw command> - false only when
                 '|' | '|&') pp[sg - 1]=1; fl[sg - 1]=1 ;;
                 '(') fl[sg - 1]=1 ;;
                 ';' | '&' | '&&' | '||' | nl)
-                    # HIMMEL-5356: a shell behind a list separator may read a
+                    # a shell behind a list separator may read a
                     # pipe through any group or compound (`| { { true; }; bash; }`,
                     # `| if true; then true | true; bash; fi`). Compound structure
                     # is not modelled: flag the writer of every pipe before this
@@ -2152,7 +2151,7 @@ for e in $hentries; do
         *) GUARDED="$GUARDED scripts/cr/anchor-handoff.sh" ;;
     esac
     GUARDED="$GUARDED $e"
-    # HIMMEL-3437 console finding 2: go.sh sources these two siblings via its
+    # go.sh sources these two siblings via its
     # own $HERE. Once entry + the hand-off it shares with scripts/cr/ byte-
     # match the anchor's, the hand-off's own `exec` fully replaces the
     # process before $HERE (or either sibling) is ever read, landing $HERE
@@ -2174,7 +2173,7 @@ shown=${shown:0:200}
     || deny "'$unresolved' does not resolve to this root's scripts/cr/ or scripts/handover/ writer by its text alone (a glob, a variable, or a path outside the root), so the bytes it runs cannot be checked."
 [ "$chdir" -eq 0 ] \
     || deny "the command changes directory, so the relative path does not resolve against the cwd the conditions are checked in."
-# HIMMEL-3798 round 3 disposition 2: --from-file's value must be a single
+# --from-file's value must be a single
 # literal token - no shell metacharacter, quote or glob, no whitespace - so
 # what the writer actually opens can never diverge from what this text scan
 # saw. Checked against the RAW $cmd (not $flat, which has already dropped
@@ -2267,7 +2266,7 @@ manifest() { # manifest <root> - "<mode> <blob-id> <path>" per regular file, sor
     # shellcheck disable=SC2086 # $GUARDED is a fixed, space-free word list
     # scripts/ and scripts/cr/ themselves must be real directories: a per-file
     # GUARDED list would otherwise read straight through a symlinked one.
-    # HIMMEL-3437: scripts/handover/ and scripts/handover/console-kit/ join the
+    # scripts/handover/ and scripts/handover/console-kit/ join the
     # same check, but only when $GUARDED actually reaches under them - the
     # fixtures a scripts/cr/-only run checks never create scripts/handover/,
     # and an unconditional check here would deny those runs on a missing path.

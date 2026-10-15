@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-graph-artifact-branch.sh (HIMMEL-2167).
+# Smoke test for scripts/hooks/check-graph-artifact-branch.sh.
 # The hook reads the current branch + `git diff --cached` of the cwd, so each
 # case stages fixtures in a throwaway git repo and runs the hook there,
 # asserting the exit code.

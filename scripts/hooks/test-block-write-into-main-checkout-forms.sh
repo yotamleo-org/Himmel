@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Shard of test-block-write-into-main-checkout.sh (HIMMEL-4164 split, so each
+# Shard of test-block-write-into-main-checkout.sh (split, so each
 # suite stays under its CI per-suite cap): the shell-form rows (zsh/ANSI-C,
 # assignment prefixes, nested heredocs, arithmetic/array values, prefix words,
-# ~/ redirects; HIMMEL-4138..4253) and the non-command payloads.
+# ~/ redirects) and the non-command payloads.
 # Same fixtures + harness as the parent suite via lib-test-write-fence.sh;
 # the FIXTURE RULE lives in test-block-write-into-main-checkout.sh.
 # shellcheck disable=SC2154  # pass/fail are defined by the sourced lib
 # shellcheck source=lib-test-write-fence.sh
 . "$(dirname "$0")/lib-test-write-fence.sh"
 
-# HIMMEL-4138: four gaps J1661 execution-verified on #1661, plus a fifth found
+# four gaps J1661 execution-verified on #1661, plus a fifth found
 # alongside (an ANSI-C NUL ends the name early). Every DENY row writes into the
 # primary under real bash or zsh (zsh is Claude Code's own Bash-tool shell).
 # Where the shells disagree the hook denies when EITHER reading writes, so a
@@ -37,7 +37,7 @@ _r4138 "78b comment with a quote inside a dq-quoted \$(…)"             block '
 _r4138 "78c comment with a quote inside backticks"                     block 'x=`echo hi # it'"'"'s\n`; touch @P@/f'
 _r4138 "78d top-level comments pairing a quote around a write"         block ': # '"'"'\necho x > @P@/f\n: # '"'"''
 # 78e (a comment in $(…) in a multi-line bash -c body) sits with the
-# HIMMEL-4143 rows below. 78p: the body newline now reaches the body scan as a
+# rows below. 78p: the body newline now reaches the body scan as a
 # real newline, which splits the body there.
 _r4138 "78p bash -c body with a newline before a write (HIMMEL-4143)"  block 'bash -c "echo hi\ntouch @P@/f"'
 # The strip copies a heredoc body through verbatim (speed); a shift is no opener.
@@ -112,7 +112,7 @@ _r4138 "81h \\377 stays a byte, worktree write (ALLOW)"                 allow "e
 echo "== HIMMEL-4153/4145/4143 assignment prefix, nested heredoc bodies, quoted newlines =="
 # shellcheck disable=SC2016  # row templates are literal shell text
 {
-# HIMMEL-4153: leading NAME=value / NAME[…]=value words are skipped before the
+# leading NAME=value / NAME[…]=value words are skipped before the
 # verb arms read the command word, and a plain `$((…))` no longer splits.
 _r4138 "82a x=1 touch primary"                                         block 'x=1 touch @P@/x'
 _r4138 "82b x=\$((1<<2)) touch primary"                                block 'x=$((1<<2)) touch @P@/x'
@@ -145,7 +145,7 @@ _r4138 "85f x=\${a:- b} touch primary (\${ nests)"                     block 'x=
 _r4138 "85g x=\$(echo }) touch primary"                                block 'x=$(echo }) touch @P@/x'
 _r4138 "85i x=[ touch worktree (ALLOW)"                                allow 'x=[ touch @W@/x'
 _r4138 "85j x=\${a:- b} git -C worktree commit (ALLOW)"                allow 'x=${a:- b} git -C @W@ commit --allow-empty -m m'
-# HIMMEL-4145: a heredoc body inside a dq-quoted `$(…)` is blanked in an
+# a heredoc body inside a dq-quoted `$(…)` is blanked in an
 # extra reading, so a body apostrophe cannot swallow a later write.
 _r4138 "83a dq \$(cat <<E it's E); touch primary"                      block 'x="$(cat <<E\nit'"'"'s\nE\n)"; touch @P@/f'
 _r4138 "83b dq \$(cat <<E # it's E); touch primary"                    block 'x="$(cat <<E\n# it'"'"'s\nE\n)"; touch @P@/f'
@@ -159,7 +159,7 @@ _r4138 "83j \\\$( in dq is text, a body never opens"                   block 'x=
 _r4138 "83k commit idiom with it's (ALLOW)"                            allow 'git -C @W@ commit --allow-empty -m "$(cat <<'"'"'EOF'"'"'\nfix: it'"'"'s done\nEOF\n)"'
 _r4138 "83l dq it's, then touch worktree (ALLOW)"                      allow 'x="$(cat <<E\nit'"'"'s\nE\n)"; touch @W@/f'
 _r4138 "83m redirect text in the body stays denied (flat reading, pin)" block 'x="$(cat <<E\na > @P@/f\nE\n)"'
-# HIMMEL-4143: a newline inside a quoted span travels as \006, so a clause is
+# a newline inside a quoted span travels as \006, so a clause is
 # never split mid-word (and the raw byte is a marker, denied).
 _r4138 "84a echo 'a NL' > primary"                                     block 'echo '"'"'a\n'"'"' > @P@/f'
 _r4138 "84b echo \"a NL b\" > primary"                                 block 'echo "a\nb" > @P@/f'
@@ -177,7 +177,7 @@ _r4138 "84j git commit -m multi-line message (ALLOW)"                  allow 'gi
 echo "== HIMMEL-4198/4174/4177 non-plain \$((…)), array values, continuations, case/esac tokens =="
 # shellcheck disable=SC2016  # row templates are literal shell text
 {
-# HIMMEL-4198: a `$((…))` value holding `|`, `&`, `&&`, `$(…)` or a backtick,
+# a `$((…))` value holding `|`, `&`, `&&`, `$(…)` or a backtick,
 # and a backslash-newline in a value, no longer hide the write verb after it.
 _r4138 "86a x=\$((1|2)) touch primary"                                 block 'x=$((1|2)) touch @P@/f'
 _r4138 "86b x=\$(( \$(echo 1) )) touch primary"                        block 'x=$(( $(echo 1) )) touch @P@/f'
@@ -207,14 +207,14 @@ _r4138 "86w echo x >\\ NL primary/f"                                  block 'ech
 _r4138 "86x sed -i \\ NL s/a/b/ primary/README.md"                    block 'sed -i \\ns/a/b/ @P@/README.md'
 _r4138 "86y touch \\ NL worktree/f (ALLOW)"                           allow 'touch \\n@W@/f'
 _r4138 "86z echo '\\ NL' touch primary stays text (ALLOW)"            allow 'echo '"'"'a\\n'"'"'touch @P@/f'
-# HIMMEL-4174: an array value `(…)` is one word, not a subshell break.
+# an array value `(…)` is one word, not a subshell break.
 _r4138 "87a x=(a b) touch primary"                                     block 'x=(a b) touch @P@/x'
 _r4138 "87b x+=(a b) touch primary"                                    block 'x+=(a b) touch @P@/x'
 _r4138 "87c x=(a) y=\$((1|2)) touch primary"                           block 'x=(a) y=$((1|2)) touch @P@/x'
 _subst_row "87d x=(a b) touch primary, cwd /tmp"                       block "x=(a b) touch $_PR/x" /tmp
 _subst_row "87e x=(a b) touch ./x, cwd the primary"                    block 'x=(a b) touch ./x' "$_PR"
 _r4138 "87f x=(a b) touch worktree (ALLOW)"                            allow 'x=(a b) touch @W@/x'
-# HIMMEL-4177: only a case/esac TOKEN makes the nested reading fall back,
+# only a case/esac TOKEN makes the nested reading fall back,
 # so `showcase` no longer lets a body apostrophe hide a later write.
 _r4138 "88a dq \$(echo showcase; cat <<E it's E); touch primary"       block 'x="$(echo showcase; cat <<E\nit'"'"'s\nE\n)"; touch @P@/f'
 _r4138 "88b dq \$(echo lowercase-esacs; cat <<E it's E); touch primary" block 'x="$(echo lowercase esacs; cat <<E\nit'"'"'s\nE\n)"; touch @P@/f'
@@ -231,7 +231,7 @@ _r4213() { # label verdict template
     _subst_row "$1, cwd /tmp" "$2" "$c" /tmp
     _subst_row "$1, cwd the primary" "$2" "$c" "$_PR"
 }
-# HIMMEL-4213: a leading `{`, `!`, reserved word, `time [-p]` or wrapper
+# a leading `{`, `!`, reserved word, `time [-p]` or wrapper
 # command is skipped before the verb arms read the command word.
 _r4213 "93a { touch primary; }"                                        block '{ touch @P@/f; }'
 _r4213 "93b ! touch primary"                                           block '! touch @P@/f'
@@ -262,7 +262,7 @@ _r4213 "93z if grep -q x primary; then echo y; fi (ALLOW)"             allow 'if
 # the wrapper check after the chain still reads the unstripped clause
 _r4213 "93za exec -a sh -c 'touch primary' stays denied"              block "exec -a sh -c 'touch @P@/f'"
 _r4213 "93zb sudo -u \$'\\x62ash' -c 'touch primary' stays denied"     block "sudo -u \$'\\x62ash' -c 'touch @P@/f'"
-# HIMMEL-4228: a `${…}` or `$[…]` value holding a separator no longer hides
+# a `${…}` or `$[…]` value holding a separator no longer hides
 # the write verb after it.
 _r4213 "94a x=\${y:-a|b} touch primary"                                block 'x=${y:-a|b} touch @P@/f'
 _r4213 "94b x=\${y:-a;b} touch primary"                                block 'x=${y:-a;b} touch @P@/f'
@@ -315,7 +315,7 @@ _subst_row "96o sudo -i touch f (login shell: dir unknown), cwd /tmp"    block "
 _subst_row "96p sudo --login touch f (dir unknown), cwd /tmp"           block "sudo --login touch f" /tmp
 _subst_row "96q env -Z -C primary touch f (unknown option), cwd /tmp"   block "env -Z -C $_PR touch f" /tmp
 _subst_row "96r env -C /tmp touch f (ALLOW), cwd /tmp"                  allow "env -C /tmp touch f" /tmp
-# HIMMEL-4213 CR round 2: every wrapper end-of-options `--` (bash `time [-p] [--]`)
+# every wrapper end-of-options `--` (bash `time [-p] [--]`)
 _r4213 "97a time -p -- touch primary"                                   block 'time -p -- touch @P@/f'
 _r4213 "97b time -p -- nice -- env -- sudo -- touch primary"            block 'time -p -- nice -- env -- sudo -- touch @P@/f'
 _r4213 "97c nice -- nohup -- timeout -- 5 time -p -- touch primary"     block 'nice -- nohup -- timeout -- 5 time -p -- touch @P@/f'
@@ -324,7 +324,7 @@ _r4213 "97e exec -cl -a x -- touch primary"                             block 'e
 _r4213 "97f sudo -EH -u root -- touch primary"                          block 'sudo -EH -u root -- touch @P@/f'
 _r4213 "97g command -- exec -- stdbuf -oL -- touch primary"             block 'command -- exec -- stdbuf -oL -- touch @P@/f'
 _r4213 "97h time -p -- cat primary (ALLOW)"                             allow 'time -p -- cat @P@/f'
-# HIMMEL-4213 latency: the flattened reading masks plain commands to `:`
+# latency: the flattened reading masks plain commands to `:`
 # (_bwimc_flat_mask); a write beside a flattened span must still deny
 _r4213 "98a x=\${y:-a|b} echo; touch primary (masked)"                  block 'x=${y:-a|b} echo; touch @P@/f'
 _r4213 "98b x=\${y:-a|b} touch primary; echo ok"                        block 'x=${y:-a|b} touch @P@/f; echo ok'
@@ -337,7 +337,7 @@ _r4213 "98h x=\${y:-a;b} git -C primary log; touch primary"             block 'x
 _r4213 "98i x=\${y:-a|b} true; nice touch primary"                      block 'x=${y:-a|b} true; nice touch @P@/f'
 _r4213 "98j x=\${y:-a|b} true; git -C primary log | head (ALLOW)"       allow 'x=${y:-a|b} true; git -C @P@ log --oneline -1 | head -n 1'
 _r4213 "98k x=\${y:-a|b} true; echo ok (ALLOW)"                         allow 'x=${y:-a|b} true; echo ok'
-# HIMMEL-4213 round 3: a quoted wrapper operand holding a blank is one word
+# a quoted wrapper operand holding a blank is one word
 # (_bwimc_sp_word honours '..', "..", $'..' and backslash); chrt, taskset and
 # ionice read from the first verb word; an unclosed quote fails closed
 _r4213 "99a exec -a dq-two-words touch primary"                            block 'exec -a "two words" touch @P@/f'
@@ -366,7 +366,7 @@ _r4213 "99w exec -a unclosed-quote touch primary"                          block
 _r4213 "99x exec -a dq-two-words cat primary (ALLOW)"                      allow 'exec -a "two words" cat @P@/f'
 _r4213 "99y env dq-assignment ls primary (ALLOW)"                          allow 'env "A=b c" ls @P@'
 _r4213 "99z env -C dq-tmp touch tmp (ALLOW)"                               allow 'env -C "/tmp" touch /tmp/f'
-# HIMMEL-4228 (J1790i): a `${` opened inside "…" whose span holds a quote is
+# a `${` opened inside "…" whose span holds a quote is
 # not flattened (_bwimc_brace_end scans from the unquoted state), so the
 # `$((` flattening cannot erase the real write after it
 _r4228q() { # label verdict template — cwd the primary only (a relative target)
@@ -438,7 +438,7 @@ _r4213 "100z dq-span with quote, ls primary (ALLOW)"           allow $'echo "${y
 }
 
 echo "== HIMMEL-4253 (a ~/ redirect target is cwd-independent; the cd guard must not read it as relative) =="
-# `echo done` is an accepted HIMMEL-3685 taint, so the cd below leaves the
+# `echo done` is an accepted taint, so the cd below leaves the
 # modelled cwd UNRESOLVED. A `~/…` target names the same file whatever the cwd,
 # so the unresolved-cd guard must not deny it; the target is still checked
 # against the primary after ~ expansion. HOME=$FIX for this block, so
@@ -547,7 +547,7 @@ _r4476 "4476t grep '--filter=…' eval touch primary"              block "grep '
 _r4476 "4476u grep \\-\\-save-config eval touch primary"         block "grep \\-\\-save-config eval 'touch @P@/.github/f'"
 }
 
-# HIMMEL-4598: the `git archive | tar -x -C /tmp/<dir>` relief must not cover a
+# the `git archive | tar -x -C /tmp/<dir>` relief must not cover a
 # destination at or under the resolved primary when the primary itself lives
 # under /tmp ($TMPFIX/primary, main). From the primary cwd the relief used to
 # allow a write the cwd rule denies; from a /tmp cwd the ratified
@@ -566,7 +566,7 @@ _subst_row "4598g tar -x -C primary-under-tmp, cwd /tmp (row-28 parity ALLOW)" a
 _subst_row "4598h cat > primary-under-tmp/f, cwd /tmp (row-28 parity ALLOW)"   allow "cat > $_TP/f" /tmp
 _subst_row "4598e tar -x -C outside under /tmp (ALLOW), cwd /tmp"    allow "git archive HEAD | tar -x -C $TMPFIX/outside" /tmp
 
-# HIMMEL-4591: the scan is linear in the payload. A ~15 KB single command
+# the scan is linear in the payload. A ~15 KB single command
 # (quoted text, a dq span with a substitution, a heredoc) took ~27 s before
 # the quoted-run fast-forward; it now takes ~1 s. The bound is generous
 # (loaded-CI x2 rule) but far under the old figure. Verdict must stay ALLOW.
@@ -613,7 +613,11 @@ _c20=""; _i=0; while [ ${#_c20} -lt 20000 ]; do _c20="${_c20}echo line$_i > $_WR
 _k20=""; while [ ${#_k20} -lt 20000 ]; do _k20="$_k20$_unit"; done
 _t_row "5747 20 KB of redirect clauses (leg worktree) allows" allow "$_c20" 22
 _el_c20=$_T_EL
-_t_row "5747 20 KB plain echo control allows" allow "echo $_k20" 12
+# the control is bound against a 5 KB echo timed in the same run: a linear scan
+# costs ~4x it, a quadratic one ~16x, and runner load scales both alike
+_t_row "5747 5 KB plain echo baseline allows" allow "echo $_blob" 60
+_el_b5=$_T_EL
+_t_row "5747 20 KB plain echo control allows" allow "echo $_k20" $(( (_el_b5 > 0 ? _el_b5 : 1) * 6 + 3 ))
 _el_k20=$_T_EL
 # the 2 s slack absorbs whole-second timer granularity
 if [ "$_el_c20" -le $((_el_k20 * 3 + 2)) ]; then ok "5747 20 KB clauses ${_el_c20}s within 3x + 2s of the same-length control ${_el_k20}s"
@@ -634,7 +638,7 @@ check_both "4921 A quote-free \${x:-d} redirect into primary still denies" block
     "$(_j4921 "echo \"\${x:-d}\" > $FIX/primary/f4921" "$FIX/wt")"
 # A (perf): a quote-free ${...} adds NO extra reading (scanned once); a quoted
 # body does. Timing: the flatten pass is skipped, halving the scan of dense
-# benign one-liners that merely use ${var} (judge j2209a, 15 s must-run window).
+# benign one-liners that merely use ${var} (15 s must-run window).
 _PE_FN="$(sed -n '/^_bwimc_flatten_pe() {/,/^}/p' "$DIRECT" 2>/dev/null)"
 # shellcheck disable=SC2016  # the eval'd snippets carry literal `${…}` text
 if [ -n "$_PE_FN" ]; then
@@ -694,7 +698,7 @@ check_both "5747 E mirror: export H\`\`OME=primary; ls > /tmp file allows" allow
     "$(_j4921 "export H\`\`OME=$FIX/primary; ls > $TMPFIX/f5747" "$FIX/wt")"
 
 echo "== non-command / non-Bash payloads (direct-exec only — sourced covered by test-block-terminal-write-fence.sh) =="
-# HIMMEL-3401 (S6): a Bash payload with no command fails CLOSED.
+# (S6): a Bash payload with no command fails CLOSED.
 check_one "no command -> block" "$DIRECT" block '{"tool_name":"Bash","tool_input":{}}'
 check_one "numeric command -> block" "$DIRECT" block '{"tool_name":"Bash","tool_input":{"command":5}}'
 check_one "non-terminal tool -> allow" "$DIRECT" allow '{"tool_name":"Read","tool_input":{"file_path":"/x/README.md"}}'

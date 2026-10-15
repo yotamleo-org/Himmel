@@ -42,7 +42,9 @@
 # / a malformed --date value; 3
 # the work dir (default or CONSOLE_WORK_DIR) exists but is a symlink, is not
 # owned by this user, is group/other-writable, or could not be created; 4 `wrap` refused: this session has a live in-process
-# subagent, or live-subagents.sh could not prove it has none.
+# subagent, or live-subagents.sh could not prove it has none; 5 `wrap` refused:
+# this session has a live non-harness process (wrap-subtree-check.sh WITHHELD),
+# other than its own console-wait.sh waiter, or that check could not run.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+; --arm launches through
 # konsole (Linux/KDE, via headed-arm.sh), so no .ps1 twin — the Windows
@@ -332,13 +334,69 @@ do_arm() {
 # release by hand; close-wrapped-leg.sh's exit 7 is the backstop that refuses to
 # TERM it then, so the child is never killed. Gate append-results.sh itself if
 # that path is seen in use.
+#
+# Same for a non-harness process (a CI watcher, a suite run, a Monitor): the
+# session's own wrap-subtree-check.sh must find none, or wrap refuses with exit 5
+# naming each one. The console's own console-wait.sh waiter (and what it forked)
+# is the one exemption: it is stopped here, and only after nothing else blocks.
+wrap_subtree_gate() {
+    local sub src=0 plan kills blocks pid
+    sub=$(bash "${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}" 2>&1) || src=$?
+    [ "$src" -ne 0 ] || return 0
+    if [ "$src" -ne 1 ]; then
+        printf '%s\n' "$sub" >&2
+        err "wrap refused: cannot prove this session has no live processes (above) - run it from the console's own session"
+        exit 5
+    fi
+    plan=$(printf '%s\n' "$sub" | awk '
+        /^  pid=/ { n++; for (i = 1; i <= NF; i++) { split($i, kv, "="); if (kv[1] == "pid") p = kv[2]; if (kv[1] == "ppid") q = kv[2] }
+                    pid[n] = p; par[n] = q; row[n] = $0 }
+        function wrapper(r) { return r ~ /cmd=[^ ]*(bash|zsh|sh) -c (source|\.) [^ ]*shell-snapshots\/snapshot-/ }
+        END {
+            for (a = 1; a <= n; a++) if (row[a] ~ /cmd=([^ ]*\/)?(bash|sh|zsh) ([^ ]*\/)?console-wait\.sh( |$)/) { ex[pid[a]] = 1; w[pid[a]] = 1 }
+            for (pass = 0; pass < 8; pass++) for (a = 1; a <= n; a++) {
+                if (par[a] in ex) ex[pid[a]] = 1
+                if (wrapper(row[a])) {
+                    kids = 0; bad = 0
+                    for (b = 1; b <= n; b++) if (par[b] == pid[a]) { kids++; if (!(pid[b] in ex)) bad++ }
+                    if (kids > 0 && !bad) ex[pid[a]] = 1
+                }
+            }
+            for (a = 1; a <= n; a++) { if (pid[a] in w) print "KILL " pid[a]; else if (!(pid[a] in ex)) print "BLOCK " row[a] }
+        }')
+    blocks=$(printf '%s\n' "$plan" | sed -n 's/^BLOCK //p')
+    kills=$(printf '%s\n' "$plan" | sed -n 's/^KILL //p')
+    if [ -n "$blocks" ] || [ -z "$kills" ]; then
+        printf '%s\n' "$sub" >&2
+        err "wrap refused: this session has live non-harness processes (above) - stop them or let them finish, then re-run"
+        exit 5
+    fi
+    for pid in $kills; do
+        # a recycled pid must not be TERMed: only a live console-wait.sh process is
+        if ps -o args= -p "$pid" 2>/dev/null | grep -Eq '^([^ ]*/)?(bash|sh|zsh) ([^ ]*/)?console-wait\.sh( |$)'; then
+            # its direct children first, so none outlives it as an orphan the
+            # re-check below can no longer see
+            pkill -TERM -P "$pid" 2>/dev/null || true
+            kill -TERM "$pid" 2>/dev/null || true
+        fi
+    done
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        src=0; sub=$(bash "${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}" 2>&1) || src=$?
+        [ "$src" -ne 0 ] || return 0
+        sleep 0.5
+    done
+    printf '%s\n' "$sub" >&2
+    err "wrap refused: processes are still alive after stopping the console-wait waiter (above) - re-run once they exit"
+    exit 5
+}
+
 cmd_wrap() {
     if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
         echo "usage: console.sh wrap <console-doc> <release-token> [<text>]" >&2
         exit 1
     fi
     local doc="$1" token="$2" text="${3:-handed over}" out rc=0
-    out=$(bash "$HERE/../console-kit/live-subagents.sh" 2>&1) || rc=$?
+    out=$(bash "${LIVE_SUBAGENTS_BIN:-$HERE/../console-kit/live-subagents.sh}" 2>&1) || rc=$?
     if [ "$rc" -ne 0 ]; then
         printf '%s\n' "$out" >&2
         if [ "$rc" -eq 1 ]; then
@@ -349,8 +407,10 @@ cmd_wrap() {
         exit 4
     fi
     # prove the token first (heartbeat refuses a wrong one and changes nothing),
-    # so neither a wrong token nor a failed append leaves a half-done wrap
+    # so neither a wrong token nor a failed append leaves a half-done wrap, and
+    # the gate below never stops the waiter for a wrap that will be refused
     bash "$HERE/../queue-lock.sh" heartbeat "$doc" "$token" >/dev/null || exit 1
+    wrap_subtree_gate
     bash "$HERE/../console-kit/append-results.sh" "$doc" "WRAPPED — $text" || exit 1
     bash "$HERE/../queue-lock.sh" release "$doc" "$token" || exit 1
 }

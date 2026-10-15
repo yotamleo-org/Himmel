@@ -85,7 +85,7 @@ d=$(make_repo "README.md" "docs: readme") || exit 1
 assert_rc "docs only"                                 0 "$(run_in "$d")"
 rm -rf "$d"
 
-# HIMMEL-5490: docs-only Markdown/text under scripts/ is not a script.
+# docs-only Markdown/text under scripts/ is not a script.
 d=$(make_repo "scripts/telegram/README.md" "docs: telegram readme") || exit 1
 assert_rc "scripts/ README.md only needs no attestation"  0 "$(run_in "$d")"
 rm -rf "$d"
@@ -119,9 +119,9 @@ d=$(make_repo "scripts/foo.sh" "$(printf 'feat: foo\n\nPlatforms tested: yes\n')
 assert_rc "sensitive + unrecognised value = block"    1 "$(run_in "$d")"
 rm -rf "$d"
 
-# --- HIMMEL-1975: ATTEST_RE is POSIX ERE, token FIRST ---------------------
+# --- ATTEST_RE is POSIX ERE, token FIRST ---------------------
 # The predicate was `^[[:space:]]*Platforms tested:.*\b<token>\b`, carrying the
-# two defects HIMMEL-1372 fixed in check-cr-marker-on-pr-create.sh.
+# two defects fixed in check-cr-marker-on-pr-create.sh.
 #
 # (a) `.*` let the token sit ANYWHERE on the line, so a line that names a
 #     platform only to say it was NOT tested satisfied the gate. This case is
@@ -168,7 +168,7 @@ d=$(make_repo "scripts/foo.sh" "$(printf 'feat: foo\n\n[skip platforms-check]\n'
 assert_rc "sensitive + skip marker"                   0 "$(run_in "$d")"
 rm -rf "$d"
 
-# INDENTED skip marker (CodeRabbit on the HIMMEL-1115 PR). The predicate's
+# INDENTED skip marker. The predicate's
 # `^[[:space:]]*` is meant to tolerate leading whitespace; it used the GNU-only
 # `\s`, which BSD grep (macOS) reads as a LITERAL 's' — degrading `^\s*` to
 # `^s*`, which still matched an UNINDENTED marker (zero 's') and so looked
@@ -185,7 +185,7 @@ d=$(make_repo "scripts/foo.sh" "feat: foo") || exit 1
 assert_rc "sensitive + env bypass"                    0 "$(run_in "$d" "PLATFORMS_TESTED_OK=1")"
 rm -rf "$d"
 
-# --- HIMMEL-1115: a >64KB commit-message range must not SIGPIPE the gate ---
+# --- a >64KB commit-message range must not SIGPIPE the gate ---
 #
 # Regression. The gate used to test the attestation with
 #   grep -qiE "$ATTEST_RE" <<<"$commit_msgs"
@@ -220,8 +220,7 @@ d=$(fixture_mktemp_dir) || exit 1
     # Windows' ~32KB command-line limit, and the resulting E2BIG silently
     # collapses the fixture to a single small commit that no longer
     # reproduces anything (found the hard way while writing this test).
-    # Bulk generated with awk, NOT `yes ... | head -n N` (codex round 1 on
-    # HIMMEL-1115): `yes | head` is itself a SIGPIPE-on-early-exit pipeline,
+    # Bulk generated with awk, NOT `yes ... | head -n N`: `yes | head` is itself a SIGPIPE-on-early-exit pipeline,
     # which is a poor thing to lean on inside a `pipefail` script whose whole
     # subject is that exact hazard. It happens to be harmless today (this
     # suite sets `-uo pipefail`, NOT `-e`, so a 141 pipeline status aborts
@@ -270,13 +269,13 @@ else
 fi
 rm -rf "$d"
 
-# --- HIMMEL-113: linked-worktree scenarios (local main behind origin/main) ---
+# --- linked-worktree scenarios (local main behind origin/main) ---
 #
 # Build a bare "origin", clone it, advance origin/main by one commit that
 # touches a sensitive file, then create a feature branch off the OLD local
-# main that touches only non-sensitive files. Pre-HIMMEL-113 (when the hook
-# diffed against local main) this re-flagged the origin-only sensitive file
-# as belonging to the push. Post-HIMMEL-113 (diff against origin/main)
+# main that touches only non-sensitive files. Before the hook diffed
+# against origin/main (it used local main) this re-flagged the origin-only sensitive file
+# as belonging to the push. Now (diff against origin/main)
 # the gate ignores it correctly.
 d=$(fixture_mktemp_dir) || exit 1
 origin=$(fixture_mktemp_dir) || exit 1
@@ -373,7 +372,7 @@ d=$(fixture_mktemp_dir) || exit 1
 assert_rc "on main branch — skip"                     0 "$(run_in "$d")"
 rm -rf "$d"
 
-# --- HIMMEL-297: master-default repo ---
+# --- master-default repo ---
 # A repo whose default branch is master (no main ref at all). Pre-fix the hook
 # found neither origin/main nor local main and SKIPPED (false pass). Post-fix
 # default_branch resolves master, so a sensitive file with no attestation still
@@ -420,7 +419,7 @@ d=$(fixture_mktemp_dir) || exit 1
 assert_rc "on master branch — skip"                   0 "$(run_in "$d")"
 rm -rf "$d"
 
-# --- HIMMEL-323 item 1: fail-CLOSED on an unresolvable diff base ---
+# --- fail-CLOSED on an unresolvable diff base ---
 # A repo with NO main/master ref and NO remote: default_branch falls back to
 # "main", which doesn't exist, so no diff base resolves. ONLINE (no *_NO_FETCH)
 # this is a genuinely-broken state -> fail CLOSED (exit 2). With NO_FETCH the
@@ -447,7 +446,7 @@ assert_rc "unresolvable base, online -> fail CLOSED (exit 2)"         2 "$(run_i
 assert_rc "unresolvable base, NO_FETCH -> skip + warn (exit 0)"       0 "$(run_in "$d" "PLATFORMS_TESTED_NO_FETCH=1")"
 rm -rf "$d"
 
-# --- HIMMEL-323 item 2: branch resolved via lib.sh::_branch (worktree-correct) ---
+# --- branch resolved via lib.sh::_branch (worktree-correct) ---
 # Non-git dir: _branch returns rc=2 -> hook fails CLOSED (exit 2) with a clear
 # diagnostic, rather than letting `set -e` abort on git's opaque exit 128.
 ngd=$(fixture_mktemp_dir) || exit 1
@@ -480,7 +479,7 @@ assert_rc "linked worktree (primary on main): reads worktree branch + blocks" 1 
 git -C "$base" worktree remove --force "${base}-wt" >/dev/null 2>&1 || true
 rm -rf "$origin" "$base" "${base}-wt"
 
-# --- HIMMEL-323 item 1 (CR follow-up): fail-CLOSED when the diff itself errors ---
+# --- fail-CLOSED when the diff itself errors ---
 # An orphan/unrelated-history branch has no merge base, so `git diff base...HEAD`
 # exits non-zero. The old `|| true` swallowed that to an empty changed-set -> a
 # silent PASS on a branch never inspected. Now it fails CLOSED (exit 2).

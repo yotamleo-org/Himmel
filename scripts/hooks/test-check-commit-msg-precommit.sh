@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Integration test for the commit-msg gate THROUGH the real pre-commit
-# commit-msg shim (HIMMEL-2461, HIMMEL-2462).
+# commit-msg shim.
 #
 # The cases in test-check-commit-msg.sh invoke check-commit-msg.sh directly with
 # a message file, which BYPASSES the pre-commit framework entirely. They were
@@ -9,7 +9,7 @@
 # false`, so pre-commit never handed it the message path, `$1` was empty, `cat
 # ""` failed, and the script exited 0 under a "Passed" line. Three must-fail
 # arms — including `zzzz totally invalid message`, which is not even a
-# conventional commit — all committed rc=0 on the HIMMEL-2457 Linux matrix.
+# conventional commit — all committed rc=0 on the Linux matrix.
 #
 # This test therefore drives `git commit` through a REAL
 # `pre-commit install --hook-type commit-msg`, using the conventional-commit-msg
@@ -17,7 +17,7 @@
 # `pass_filenames: false` to that file turns this suite red rather than
 # silently restoring the vacuous gate.
 #
-# It also pins the coupling with HIMMEL-2462. Two separate `.env` sources cover
+# It also pins the coupling with the loader's comment-stripping. Two separate `.env` sources cover
 # two separate claims: `example` copies the repo's CURRENTLY SHIPPED
 # .env.example verbatim, proving that file works end to end through the real
 # hook today; `legacy-example` writes the PRE-FIX .env.example line as a
@@ -33,7 +33,7 @@
 # pass to any caller reading only rc — read the `== Summary ==` block instead.
 # `pre-commit` can also be present but off the NON-LOGIN PATH (measured on
 # ubuntu_new: lives at /home/osboxes/.local/bin/pre-commit, rc=127 under a
-# bare ssh exec, fine under `bash -lc`) — the same shape as HIMMEL-2458. Drive
+# bare ssh exec, fine under `bash -lc`) — the same shape. Drive
 # this suite through a LOGIN shell on a remote guest or you bank a non-result.
 #
 # Platform guard (gitbash-only): test fixture for the commit-msg gate; runs
@@ -104,7 +104,7 @@ fi
 # the repo's CURRENTLY SHIPPED .env.example, the adopter shape), `legacy-example`
 # (a pinned literal of the PRE-FIX .env.example JIRA_PROJECT_KEY line — carries
 # an inline comment no matter what .env.example ships today; this is what
-# exercises HIMMEL-2462's comment-stripping), or `plain` (a minimal .env).
+# exercises the loader's comment-stripping), or `plain` (a minimal .env).
 # Sets global REPO.
 build_repo() {
     local env_source="$1"
@@ -126,7 +126,7 @@ build_repo() {
     } > "$REPO/.pre-commit-config.yaml"
     case "$env_source" in
         example)        cp "$ENV_EXAMPLE" "$REPO/.env" ;;
-        # The exact historical .env.example:64 content (HIMMEL-2462) — pinned
+        # The exact historical .env.example:64 content — pinned
         # here as a literal so this arm keeps exercising comment-stripping
         # regardless of what .env.example ships today. Wide gutter is deliberate.
         legacy-example) printf 'JIRA_PROJECT_KEY=HIMMEL                            # default project for jira ops\n' > "$REPO/.env" ;;
@@ -203,7 +203,7 @@ build_repo example
 # carry as an inline comment is not this arm's concern (see legacy-example below).
 expect_committed "seed commit passes the installed gate" "chore: [HIMMEL-2461] seed"
 
-# The decisive negative control from the HIMMEL-2457 matrix: not even a
+# The decisive negative control: not even a
 # conventional commit. This committed rc=0 before the wiring fix.
 expect_rejected "a non-conventional message is REJECTED through the real hook" \
     "zzzz totally invalid message" "COMMIT REJECTED"
@@ -217,7 +217,7 @@ echo "== real pre-commit commit-msg path, legacy comment-bearing .env (2461+2462
 # the way moving the inline comment off JIRA_PROJECT_KEY did here.
 build_repo legacy-example
 expect_committed "seed commit passes with a comment-bearing .env" "chore: [HIMMEL-2461] seed"
-# HIMMEL-2462 coupling: this .env carries JIRA_PROJECT_KEY with a trailing
+# Loader coupling: this .env carries JIRA_PROJECT_KEY with a trailing
 # inline comment. With the loader fix reverted the pattern in force becomes
 # `HIMMEL   # default project for jira ops-[0-9]+` and this REJECTS with that
 # garbage pattern printed verbatim — which is why 2461 and 2462 ship together.
@@ -257,7 +257,7 @@ else
     fail "a \$1 naming a missing file fails open (rc=$missing_rc)"
 fi
 
-# codex-1 (CR round 2): `-r` is true for a readable DIRECTORY, so a `$1` that
+# codex-1: `-r` is true for a readable DIRECTORY, so a `$1` that
 # resolves to one used to sail past the old guard into `cat`, which fails to
 # stderr and leaves COMMIT_MSG empty — the empty-message path then exits 0,
 # recreating the vacuous gate. The guard must require a REGULAR FILE.

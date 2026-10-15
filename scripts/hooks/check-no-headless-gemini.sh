@@ -4,7 +4,7 @@
 # Refuses commits that introduce `gemini -p` / `gemini --prompt` / `gemini
 # --bg` (headless gemini-cli) invocations into executable code paths. The
 # same billing/quota risk that once motivated a sibling headless-claude gate
-# (HIMMEL-128, since retired) applies to gemini-cli: headless one-shot runs
+# applies to gemini-cli: headless one-shot runs
 # eat quota silently. Interactive `gemini "$prompt"` invocations (no `-p`, no
 # `--prompt`, no `--bg`) are the preferred form.
 #
@@ -30,7 +30,7 @@ set -uo pipefail
 # only: `\bgemini\b` followed by space-then-flag.
 PATTERN='(^|[^A-Za-z0-9_-])gemini[[:space:]]+(-p|--prompt|--bg)($|[^A-Za-z0-9_-])'
 
-# HIMMEL-4124: argv-array spawns keep the flags in a separate array
+# argv-array spawns keep the flags in a separate array
 # (`spawnSync('gemini', args)`), so PATTERN cannot see `-p`. Parity with the
 # claude twin: the spawn pattern and its multi-line join are shared from
 # lib/headless-spawn-join.sh. `gemini.exe` and the npm shim `gemini.cmd`
@@ -67,7 +67,7 @@ fi
 #   - root CHANGELOG.md (generated from immutable commit subjects by
 #     scripts/gen-changelog.sh — it records that a headless call was once
 #     discussed/shipped, it can never introduce one, and the opt-in marker
-#     can't survive regeneration, HIMMEL-2250)
+# can't survive regeneration)
 is_exempt() {
     case "$1" in
         scripts/hooks/check-no-headless-gemini.sh) return 0 ;;

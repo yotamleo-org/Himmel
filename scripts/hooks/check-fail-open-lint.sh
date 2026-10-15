@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the fail-open lint suite (HIMMEL-1776 round 2, codex-adv-1).
+# Run the fail-open lint suite
 #
 # The suite existed as a standalone script that only ran when somebody
 # remembered to type it (or via the public-mirror CI). Private Actions are
@@ -11,7 +11,7 @@
 # are clean (instance six of "unknown treated as benign" cannot merge
 # quietly) — plus the trigger-coverage check that THIS hook stays wired.
 #
-# Known gap (panel round 6, codex-1): this scans the WORKING TREE, not the
+# Known gap: this scans the WORKING TREE, not the
 # staged index — same as every other pass_filenames:false hook in this repo
 # (worktree-isolation, guardrail-matrices, etc). A partially-staged commit
 # (staged content still vulnerable, an unstaged edit on the same file

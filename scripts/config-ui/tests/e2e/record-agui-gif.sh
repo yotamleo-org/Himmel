@@ -4,7 +4,7 @@
 # stream over the real SSE path), then encodes the frames with the station ffmpeg.
 # the recorder writes lossless screenshot frames (8 fps, from the first event on) instead of a
 # video: unchanged pixels stay unchanged, so the GIF stays small. One palette for the whole run, no dither.
-# Needs: bun, ffmpeg, Playwright's Chromium (build 1243), agui-web/dist built. Run it from your own terminal.
+# Needs: bun, ffmpeg, Playwright's Chromium (the build the pinned @playwright/test wants), agui-web/dist built. Run it from your own terminal.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,7 +21,7 @@ command -v ffmpeg >/dev/null || { echo "ffmpeg not found" >&2; exit 1; }
 
 cd "$here"
 [ -d node_modules ] || bun install
-AGUI_FRAMES="$tmp/frames" bunx playwright test -c playwright.record.config.ts record-agui
+AGUI_FRAMES="$tmp/frames" bun x playwright test -c playwright.record.config.ts record-agui
 
 mkdir -p "$(dirname "$out")"
 frames=(-framerate 8 -i "$tmp/frames/%05d.png")  # 8 = 1000 / FRAME_MS in record-agui.rec.ts

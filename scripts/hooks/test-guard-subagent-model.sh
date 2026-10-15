@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for guard-subagent-model.sh (HIMMEL-2653, HIMMEL-5421): a missing model
+# Tests for guard-subagent-model.sh: a missing model
 # is a DENY for every subagent_type except fork, the SUBAGENT_MODEL_OK=1 escape
 # hatch, and fail-open on malformed input.
 #
@@ -14,7 +14,7 @@ set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline; see test-guard-implementor-dispatch.sh's identical helper for the
-# SIGPIPE-under-pipefail rationale (HIMMEL-1430).
+# SIGPIPE-under-pipefail rationale.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,7 +26,7 @@ HOOK="$SCRIPT_DIR/guard-subagent-model.sh"
 # otherwise be resolved through the NARROWED PATH it is about to test with,
 # which can make bash itself unfindable (127) rather than exercising the
 # hook's own jq-missing fail-open path. Same lesson as
-# test-guard-implementor-dispatch.sh's BASH_ABS (HIMMEL-1567).
+# test-guard-implementor-dispatch.sh's BASH_ABS.
 BASH_ABS=$(command -v bash)
 [ -n "$BASH_ABS" ] || { echo "FATAL: cannot resolve bash on PATH" >&2; exit 1; }
 
@@ -89,7 +89,7 @@ payload_no_subagent_field() {
 
 run_hook() {
     local name="$1" json="$2"; shift 2
-    # HIMMEL-2653: env without -i inherits the operator's ambient environment.
+    # env without -i inherits the operator's ambient environment.
     # Pin the knob the hook reads to its off baseline BEFORE "$@" so an
     # operator's exported SUBAGENT_MODEL_OK=1 can never leak into a case that doesn't ask for it -- env applies
     # repeated assignments in order, so a call-site override in "$@" still wins.
@@ -130,7 +130,7 @@ assert_rc "typed agent (console-judge-ro) with no model is DENIED (rc=2)" 2 "$RC
 RC1G=$(run_hook plugin-agent-no-model "$(payload_no_model_field pr-review-toolkit-himmel:code-reviewer)")
 assert_rc "plugin-namespaced agent with no model is DENIED (rc=2)" 2 "$RC1G"
 
-# HIMMEL-2680: an explicit JSON null model is the same as an omitted one.
+# an explicit JSON null model is the same as an omitted one.
 NULL_MODEL=$(jq -nc '{tool_name:"Agent",session_id:"s",tool_input:{subagent_type:"Explore",model:null}}')
 RC1H=$(run_hook null-model "$NULL_MODEL")
 assert_rc "explicit null model is DENIED like an omitted one (rc=2)" 2 "$RC1H"

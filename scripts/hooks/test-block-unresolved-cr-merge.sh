@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Tests for scripts/hooks/block-unresolved-cr-merge.sh (HIMMEL-936). Hermetic.
+# Tests for scripts/hooks/block-unresolved-cr-merge.sh. Hermetic.
 set -uo pipefail
 
-# HIMMEL-1495 — an --automerge-armed launching shell carries ARMAUTOMERGE=1 +
+# an --automerge-armed launching shell carries ARMAUTOMERGE=1 +
 # CR_MERGE_GATE_OK=1 by design; an ambient value in the operator's shell must
 # not decide the result (the 34e/34f precedent in test-check-ci.sh,
 # generalized). This hook sources cr_merge_gate, which short-circuits to allow
 # on CR_MERGE_GATE_OK=1 (cr-merge-gate.sh:166), so without this scrub every CR
 # block-case below inherits the bypass and reads rc 0 (the CI-gate-only cases
-# still block — the CI gate is independent of CR_MERGE_GATE_OK, HIMMEL-1043).
+# still block — the CI gate is independent of CR_MERGE_GATE_OK).
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
 
-# HIMMEL-3142 — a console-spawned leg's own launching shell carries
+# a console-spawned leg's own launching shell carries
 # HIMMEL_CONSOLE_LEG=1, which arms the new gate-3 console-GO check below. An
 # ambient value here (this suite is itself frequently run FROM such a leg)
 # would refuse every allow-case below with "no console GO" before gate 3 is
@@ -19,7 +19,7 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK
 # own dedicated cases further down, each setting HIMMEL_CONSOLE_LEG itself.
 unset HIMMEL_CONSOLE_LEG
 
-# HIMMEL-3903: an empty /tmp/.git kept appearing on this host. Record which of
+# an empty /tmp/.git kept appearing on this host. Record which of
 # these already exist so the end-of-suite guard fails if THIS suite creates one.
 GIT_LEAK_PRE=""; for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do [ -e "$_p" ] && GIT_LEAK_PRE="$GIT_LEAK_PRE $_p"; done
 
@@ -29,7 +29,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"; mkdir -p "$HOME"
 
-# The repo the hook runs IN (HIMMEL-1125). CodeRabbit availability is now a
+# The repo the hook runs IN. CodeRabbit availability is now a
 # repo-scoped, non-versioned git config, and cr_merge_gate only answers for the
 # repo it stands in. The fixtures all resolve to PR o/r#42, so the cwd must BE
 # o/r and must be armed — otherwise the gate short-circuits to "allow" and every
@@ -50,20 +50,20 @@ echo "$*" >> "${GH_STUB_LOG:?}"
 case "${GH_STUB_MODE:?}" in
   error) exit 1 ;;
 esac
-# CodeRabbit's review-FRESHNESS query (HIMMEL-1181) — a SEPARATE GraphQL
+# CodeRabbit's review-FRESHNESS query — a SEPARATE GraphQL
 # query from the reviewThreads one below (both are `gh api graphql`), so this
 # is intercepted on QUERY TEXT first. Default 'fresh' (anchored to abc123, the
 # fixed head every case here resolves to) so every UNRELATED case is
 # unaffected.
 #
 # Every BOT node carries a non-empty `body` and a non-zero `comments.totalCount`
-# on purpose: HIMMEL-1824 taught the reader to DROP empty review shells
+# on purpose: the reader DROPs empty review shells
 # (`chat.auto_reply` and incremental passes mint COMMENTED objects with neither),
 # so a bodyless fixture classifies as `none` no matter which oid it names — which
 # silently disarmed BOTH arms here (the default `fresh` turned every allow-case
-# into a HIMMEL-1374 zero-reviews-ever BLOCK, and `stale` stopped reaching the
+# into a zero-reviews-ever BLOCK, and `stale` stopped reaching the
 # stale-anchor arm at all). Same repair as test-cr-merge-gate.sh in #1763
-# (HIMMEL-1974, found 2026-08-20).
+# (found 2026-08-20).
 case "$*" in
   *"reviews(last:"*)
     case "${GH_STUB_FRESHNESS:-fresh}" in
@@ -78,7 +78,7 @@ case "$1 $2" in
     # deadbeef simulates a mis-extracted selector (a value-taking flag's
     # argument) that resolves to no PR - drives the rc=3 re-anchor path.
     [ "${3:-}" = "deadbeef" ] && exit 1
-    # HIMMEL-3915: lookup-only faults (the CR/CI reads stay healthy).
+    # lookup-only faults (the CR/CI reads stay healthy).
     case "${GH_STUB_PRVIEW:-}" in
       fail) exit 1 ;;
       hang) sleep 30; exit 1 ;;
@@ -93,7 +93,7 @@ case "$1 $2" in
       other-author) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"someuser"}}]}}]}}}}}' ;;
       *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":true,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
     esac ;;
-  # CodeRabbit posts NO check-run (HIMMEL-1072) — these carry only the
+  # CodeRabbit posts NO check-run — these carry only the
   # tests/lint/build signal the CI gate reads.
   "api repos/o/r/commits/abc123/check-runs"*)
     case "$GH_STUB_MODE" in
@@ -115,11 +115,11 @@ case "$1 $2" in
       ci-green)   echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}},{"context":"ci","state":"success","created_at":"2026-07-16T19:10:05Z","creator":{"id":1,"login":"ci","type":"Bot"}}]' ;;
       *)          echo '[{"context":"CodeRabbit","state":"success","description":"Review completed","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
     esac ;;
-  # HIMMEL-3578: the hook resolves this repo's nwo to bind the GO mac.
+  # the hook resolves this repo's nwo to bind the GO mac.
   # GH_STUB_NWO overrides the default (o/r, matching the fixture repo's
   # origin); repo-view-timeout/repo-view-fail simulate an unresolvable repo
   # so the timeout-bound refusal path can be exercised.
-  # HIMMEL-3910: the trust-path gate (gate 4) reads the trust list from the
+  # the trust-path gate (gate 4) reads the trust list from the
   # default branch, the PR's head + changed-file count, and its file listing.
   # Default: a one-pattern list and a PR touching only README.md (no hit), so
   # every unrelated case passes gate 4. GH_STUB_TRUST_FILE names the one
@@ -147,9 +147,9 @@ case "$1 $2" in
     case "$*" in
       *defaultBranchRef*) printf '%s' "${GH_STUB_DEFAULT_BRANCH-main}"; exit "${GH_STUB_RC_BRANCH:-0}" ;;
     esac
-    # HIMMEL-2141: a directory carrying .stub-nwo is a DIFFERENT repo's checkout.
+    # a directory carrying .stub-nwo is a DIFFERENT repo's checkout.
     [ -f "$PWD/.stub-nwo" ] && { cat "$PWD/.stub-nwo"; exit 0; }
-    # HIMMEL-2141: --json url answers the repo URL (the hook compares hosts too).
+    # --json url answers the repo URL (the hook compares hosts too).
     case "$*" in *"json url"*) printf 'https://%s/%s' "${GH_STUB_HOST:-github.com}" "${GH_STUB_NWO:-o/r}"; exit 0 ;; esac
     printf '%s' "${GH_STUB_NWO:-o/r}"; exit "${GH_STUB_RC_NWO:-0}" ;;
   *) echo '{}' ;;
@@ -166,7 +166,7 @@ payload() { # payload <tool_name> <command>
   printf '{"tool_name":"%s","tool_input":{"command":"%s"},"cwd":"%s"}' "$1" "$2" "${PAYLOAD_CWD:-$TMP}"
 }
 
-# HIMMEL-3929: cr-merge-gate.sh now fails closed on a missing nested helper, so a
+# cr-merge-gate.sh now fails closed on a missing nested helper, so a
 # fixture lib dir that holds a copy of it must hold its helpers too (and the hook's
 # own timeout-bin.sh, which it now also refuses to run without).
 cp_crgate_deps() { # cp_crgate_deps <dest-lib-dir>
@@ -185,7 +185,7 @@ t() { # t <name> <expected-rc> <tool> <command>
   else fail=$((fail+1)); echo "FAIL $name (rc=$rc want=$want)"; sed 's/^/  err: /' "$TMP/err-$name"; fi
 }
 
-# HIMMEL-1495 hermeticity probe — when this suite re-execs itself under the
+# hermeticity probe — when this suite re-execs itself under the
 # armed bypass env (see the guard at the end), short-circuit here: the startup
 # unset has already scrubbed ARMAUTOMERGE/CR_MERGE_GATE_OK, so a CR block
 # fixture must STILL block. Exit 0 = scrub held (hook rc EXACTLY 2, the block
@@ -201,7 +201,7 @@ if [ "${HIMMEL_1495_SELF:-0}" = "1" ]; then
     exit 0
 fi
 
-# ── HIMMEL-2141: the PR number binds to ITS repo. PR 42 exists in both o/r (the
+# ── the PR number binds to ITS repo. PR 42 exists in both o/r (the
 # project repo) and x/y; a merge whose effective repo (-R, else the payload cwd's
 # repo) is not the project repo must never be evaluated against o/r's PR 42.
 mkdir -p "$TMP/other"; printf 'x/y' > "$TMP/other/.stub-nwo"
@@ -229,9 +229,9 @@ if grep -q "project repo" "$TMP/err-xrepo-bypass-skips-refusal"; then fail=$((fa
 
 GH_STUB_MODE=unresolved t merge-with-unresolved-blocks   2 Bash "gh pr merge 42 --squash"
 GH_STUB_MODE=clean      t merge-clean-allows             0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
-# HIMMEL-3915: the contract is split. The PR LOOKUP fails closed on a real merge
+# the contract is split. The PR LOOKUP fails closed on a real merge
 # (every gh call erroring = lookup unresolved = DENY; was fail-open, rc 0). The
-# CR/CI gates' own API-read errors stay fail-open (HIMMEL-936) once the lookup
+# CR/CI gates' own API-read errors stay fail-open once the lookup
 # resolved.
 GH_STUB_MODE=error      t api-error-lookup-fails-closed  2 Bash "gh pr merge 42 --squash"
 GH_STUB_MODE=cr-ci-api-error t cr-ci-api-error-fails-open 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
@@ -248,7 +248,7 @@ GH_STUB_MODE=clean GH_STUB_PRVIEW=hang t lookup-timeout-denies 2 Bash "gh pr mer
 grep -q "cannot resolve the PR" "$TMP/err-lookup-timeout-denies" || { echo "FAIL lookup-timeout deny names no lookup reason"; fail=$((fail+1)); }
 # Non-merges stay untouched even with a broken lookup.
 GH_STUB_MODE=clean GH_STUB_PRVIEW=fail t lookup-fail-pr-view-passthrough 0 Bash "gh pr view 42"
-# HIMMEL-3915 judge NO-GO: there is NO --help/-h carve-out. Every spelling of it
+# judge NO-GO: there is NO --help/-h carve-out. Every spelling of it
 # was a new bypass, so a help-flagged merge is gated / fail-closed like any other
 # merge; the deny text points at `gh help pr merge`, which is not a merge.
 GH_STUB_MODE=clean GH_STUB_PRVIEW=fail t merge-help-fails-closed 2 Bash "gh pr merge 42 --help"
@@ -267,7 +267,7 @@ GH_STUB_MODE=clean GH_STUB_PRVIEW=fail t merge-bg-h-still-gated 2 Bash "gh pr me
 GH_STUB_MODE=clean GH_STUB_PRVIEW=fail t merge-redirect-help-still-gated 2 Bash "gh pr merge 42 > --help"
 GH_STUB_MODE=clean GH_STUB_PRVIEW=fail t merge-help-then-real-merge-gated 2 Bash "gh pr merge --help; gh pr merge 42 --squash"
 PIN="--match-head-commit abc123"
-# ── HIMMEL-3929: the detector over-fires (deny-leaning). A `merge` word after a
+# ── the detector over-fires (deny-leaning). A `merge` word after a
 # `gh` word in the normalized text fires it; the command must then be exactly
 # `gh [-R v|--repo v|--repo=v]* pr [same]* merge <closed tokens>` or it DENIES.
 # (a) a persistent flag BEFORE the verb is parsed, not skipped: the gates run.
@@ -334,7 +334,7 @@ GH_STUB_MODE=unresolved t allow-computed-prog     0 Bash "\\\"\$PY\\\" x.py"
 GH_STUB_MODE=unresolved t allow-computed-prog-path 0 Bash "\\\"\$HOME/bin/tool\\\" run"
 # merge-on-green's own argv shape is the plain direct form and must stay allowed.
 GH_STUB_MODE=clean      t allow-mog-argv          0 Bash "gh pr merge 42 --repo o/r --squash $PIN"
-# ── HIMMEL-3918: six residual gaps. Every row below is RED on 4822509f. Each
+# ── six residual gaps. Each
 # uses GH_STUB_MODE=clean plus a valid pin, so the ONLY thing that can produce
 # rc 2 is the rule under test (a vacuous deny from another gate cannot pass).
 PIN="--match-head-commit abc123"
@@ -344,7 +344,7 @@ grep -q "must pin --match-head-commit abc123" "$TMP/err-pin-missing-denies" || {
 GH_STUB_MODE=clean t pin-mismatch-denies 2 Bash "gh pr merge 42 --squash --match-head-commit deadbeef"
 grep -q "does not equal the head abc123" "$TMP/err-pin-mismatch-denies" || { echo "FAIL pin-mismatch deny text"; fail=$((fail+1)); }
 GH_STUB_MODE=clean t pin-eq-form-allows 0 Bash "gh pr merge 42 --squash --match-head-commit=abc123"
-# HIMMEL-3918 (RETASK simplify): ONE structural rule. A command naming `gh pr merge`
+# (RETASK simplify): ONE structural rule. A command naming `gh pr merge`
 # outside quotes must be a single plain command - no ; & | < > backtick $( or
 # newline, first word literally `gh`. Every redirect / prefix / chain / cd shape
 # from the /pr-check rounds 1-5 is a DENY row under that one rule (rc 2, the one
@@ -502,7 +502,7 @@ for _lib in cr-merge-gate ci-green-gate; do
         fail=$((fail+1)); echo "FAIL lib-unparseable-$_lib-denies (rc=$_rc want 2) err=$(cat "$TMP/err-badlib-$_lib")"
     fi
 done
-# HIMMEL-3929: the NESTED sources (cr-merge-gate's five helpers) and the hook's
+# the NESTED sources (cr-merge-gate's five helpers) and the hook's
 # own timeout-bin.sh fail closed too; each row names the lib that is missing.
 for _row in "cr-signal|cr-merge-gate" "cr-body-findings|cr-merge-gate" "cr-available|cr-merge-gate" \
             "cr-ledger-evidence|cr-merge-gate" "nwo|cr-merge-gate" "timeout-bin|timeout-bin"; do
@@ -521,26 +521,26 @@ for _row in "cr-signal|cr-merge-gate" "cr-body-findings|cr-merge-gate" "cr-avail
         fail=$((fail+1)); echo "FAIL nested-lib-missing-$_lib-denies (rc=$_rc want 2) err=$(cat "$TMP/err-nolib-nested-$_lib")"
     fi
 done
-# HIMMEL-3360 (operator ruling 2026-09-21): CodeRabbit's commit-status state is
-# advisory only. The removed `zombie*`/`young` cases here drove the HIMMEL-980
+# (operator ruling 2026-09-21): CodeRabbit's commit-status state is
+# advisory only. The removed `zombie*`/`young` cases here drove the
 # override off a CodeRabbit CHECK-RUN that production never emits; the
-# HIMMEL-1072 `pending`/`absent`/identity-mismatch BLOCK cases they replaced
+# `pending`/`absent`/identity-mismatch BLOCK cases they replaced
 # are themselves demoted below — only the thread + body-findings gates still
 # block a merge.
 GH_STUB_MODE=inflight   t inflight-review-allows         0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 # An unreviewed head no longer blocks a merge on its own — the #1243
-# regression fixture, but HIMMEL-3360 supersedes HIMMEL-1072's stance.
+# regression fixture, but the later policy supersedes the earlier stance.
 GH_STUB_MODE=cr-absent  t absent-review-allows           0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
-# Identity over display name (HIMMEL-1058): still resolves to `absent`, still
+# Identity over display name: still resolves to `absent`, still
 # advisory only.
 GH_STUB_MODE=cr-spoofed t spoofed-creator-id-allows      0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 GH_STUB_MODE=other-author t other-author-thread-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
-# HIMMEL-3360: the review-FRESHNESS mechanism (HIMMEL-1181) is removed from
+# the review-FRESHNESS mechanism is removed from
 # cr-merge-gate.sh entirely — a stale-anchored review object no longer blocks.
 # Regression pin: allow, and the freshness endpoint is never even queried.
 GH_STUB_MODE=clean GH_STUB_FRESHNESS=stale t freshness-stale-no-longer-blocks 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 grep -qi "reviews(last:" "$TMP/calls-freshness-stale-no-longer-blocks.log" && { echo "FAIL freshness-stale-no-longer-blocks still queries the removed freshness endpoint"; fail=$((fail+1)); }
-# ── HIMMEL-1043: CI-green gate runs SECOND (after the CR gate) ──
+# ── CI-green gate runs SECOND (after the CR gate) ──
 # ci-red: CR gate passes (resolved CodeRabbit thread + a success CodeRabbit
 # STATUS), but a non-CodeRabbit check-run ("tests") failed -> CI gate
 # blocks. ci-green: every check-run green -> merge allowed.
@@ -563,7 +563,7 @@ GH_STUB_MODE=unresolved t quoted-selector-blocks         2 Bash "gh pr merge \\\
 # codex-1/coderabbit: a value-taking flag's argument is consumed, the real
 # selector still gates
 GH_STUB_MODE=unresolved t flag-value-selector-reanchors  2 Bash "gh pr merge --match-head-commit deadbeef 42 --squash"
-# HIMMEL-3918 B1: text naming a merge inside quotes is DENIED (no quoting allowed)
+# text naming a merge inside quotes is DENIED (no quoting allowed)
 GH_STUB_MODE=unresolved t quoted-merge-text-denies       2 Bash "git commit -m \\\"done; gh pr merge 42\\\""
 # coderabbit app round: quoted --repo value must not eat the selector (token
 # positions preserved by the Q placeholder; bogus repo re-anchors repo-less)
@@ -573,17 +573,17 @@ unset CR_MERGE_GATE_OK
 GH_STUB_MODE=unresolved CR_PROFILE=none t profile-none-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 unset CR_PROFILE
 
-# ── HIMMEL-3142 gate 3: console-GO merge gate — runs only when
+# ── gate 3: console-GO merge gate — runs only when
 # HIMMEL_CONSOLE_LEG is truthy, after the CR/CI gates above already pass
 # (GH_STUB_MODE=clean). Shares scripts/lib/go-gate.sh with
-# merge-on-green.sh's own HIMMEL-2919 gate, so the fixture shape (pr=42,
+# merge-on-green.sh's own gate, so the fixture shape (pr=42,
 # head=abc123, GO file at <go_root>/.locks/go/<pr>.<head>) mirrors that
 # suite's 2919-* cases.
 GOROOT="$TMP/handover_root"
 mkdir -p "$GOROOT/.locks/go"
-# HIMMEL-3543: go_gate verifies an HMAC mac= line, so a valid GO needs a key
+# go_gate verifies an HMAC mac= line, so a valid GO needs a key
 # (scratch HOME, above) and the mac go.sh would write. go_mac_42 signs the
-# fixture's pr=42/head=abc123/nwo=o/r (HIMMEL-3578: the mac binds the repo,
+# fixture's pr=42/head=abc123/nwo=o/r (the mac binds the repo,
 # and the fixture repo's origin resolves to o/r) with that scratch key.
 mkdir -p "$HOME/.config/himmel"
 ( umask 077; printf '%064d\n' 3543 > "$HOME/.config/himmel/go-hmac.key" )
@@ -598,7 +598,7 @@ HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-no-go-block
 printf 'pr=42\nhead=abc123\nby=test\nat=now\nmac=%s\n' "$GO_MAC_42" > "$GOROOT/.locks/go/42.abc123"
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-valid-go-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 
-# HIMMEL-3142 CR round: a confirmed GO is bound to $go_sha, but that's only
+# CR round: a confirmed GO is bound to $go_sha, but that's only
 # THIS hook's own `gh pr view` read -- the merge command that follows is a
 # separate invocation and can land a different commit unless it pins one
 # itself. Three more cases against the SAME valid-GO fixture above:
@@ -612,8 +612,8 @@ HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-valid-go-wr
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-valid-go-pin-eq-form-allows 0 Bash "gh pr merge 42 --squash --match-head-commit=abc123"
 rm -f "$GOROOT/.locks/go/42.abc123"
 
-# HIMMEL-3543 RED control: leg + a GO for the exact head, pinned, but with NO
-# mac (a leg-planted file, or one written before HIMMEL-3543) -> refused
+# RED control: leg + a GO for the exact head, pinned, but with NO
+# mac (a leg-planted file, or one written before) -> refused
 printf 'pr=42\nhead=abc123\nby=leg\nat=now\n' > "$GOROOT/.locks/go/42.abc123"
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-go-without-mac-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 rm -f "$GOROOT/.locks/go/42.abc123"
@@ -649,19 +649,19 @@ grep -qi "no console GO" "$TMP/err-leg-stale-go-blocks" || { echo "FAIL leg-stal
 grep -qi "must pin" "$TMP/err-leg-valid-go-no-pin-blocks" || { echo "FAIL leg-valid-go-no-pin reason missing"; fail=$((fail+1)); }
 grep -qi "does not match" "$TMP/err-leg-valid-go-wrong-pin-blocks" || { echo "FAIL leg-valid-go-wrong-pin reason missing"; fail=$((fail+1)); }
 
-# ── HIMMEL-3578 (3): the mac now binds the repo. A GO minted for THIS repo
+# ── the mac now binds the repo. A GO minted for THIS repo
 # (o/r, the fixture's mac) must be refused when the merge command itself
 # names a DIFFERENT repo via --repo/-R — the console's own redirect on this
 # ticket named this exact shape (GO(repo A) meets `gh pr merge -R B`) as a
 # required case, since a leg could otherwise point --repo at a repo it
 # controls and reuse a GO minted for the console's real repo.
 printf 'pr=42\nhead=abc123\nby=test\nat=now\nmac=%s\n' "$GO_MAC_42" > "$GOROOT/.locks/go/42.abc123"
-# HIMMEL-2141: a cross-repo merge is refused up front unless CR_MERGE_GATE_OK=1; this row is about the GO mac.
+# a cross-repo merge is refused up front unless CR_MERGE_GATE_OK=1; this row is about the GO mac.
 CR_MERGE_GATE_OK=1 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_PR_NWO=other/repo t leg-cross-repo-go-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123 --repo other/repo"
 grep -qi "mac" "$TMP/err-leg-cross-repo-go-blocks" || { echo "FAIL leg-cross-repo-go-blocks reason missing"; fail=$((fail+1)); }
 
-# ── HIMMEL-3578 (3): a v1-tagged mac (himmel-go-v1|<pr>|<sha>, no nwo bound
-# — how go.sh signed a GO before this ticket) must be refused now that
+# ── a v1-tagged mac (himmel-go-v1|<pr>|<sha>, no nwo bound
+# — how go.sh signed a GO before nwo binding) must be refused now that
 # go_mac signs the v2 domain string (himmel-go-v2|<nwo>|<pr>|<sha>). This is
 # the fail-closed side of the domain-tag bump: every outstanding v1 GO is
 # auto-invalidated, never silently accepted as still valid.
@@ -671,7 +671,7 @@ HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-v1-mac-bloc
 grep -qi "mac" "$TMP/err-leg-v1-mac-blocks" || { echo "FAIL leg-v1-mac-blocks reason missing"; fail=$((fail+1)); }
 rm -f "$GOROOT/.locks/go/42.abc123"
 
-# ── HIMMEL-3578: this hook's `gh repo view` call (when no --repo is on the
+# ── this hook's `gh repo view` call (when no --repo is on the
 # merge command) must be time-bounded — the console's redirect requires a
 # hang to read as a refusal, never as an allow, since this hook runs on a
 # budget. GH_STUB_MODE=repo-view-timeout sleeps 30s in the stub; the hook's
@@ -686,7 +686,7 @@ fi
 grep -qi "cannot resolve this repo" "$TMP/err-leg-nwo-timeout-blocks" || { echo "FAIL leg-nwo-timeout-blocks reason missing"; fail=$((fail+1)); }
 rm -f "$GOROOT/.locks/go/42.abc123"
 
-# ── HIMMEL-3585: the case above still has a REAL `timeout`/`gtimeout` on
+# ── the case above still has a REAL `timeout`/`gtimeout` on
 # PATH. Strip both (shadow them with a stub whose `--version` fails, so
 # timeout-bin.sh's resolver finds neither and leaves `_TIMEOUT_BIN` empty —
 # the exact host shape the ticket is about) and prove the hook still bounds
@@ -701,11 +701,11 @@ done
 # earlier on $PATH) and every other tool the hook needs stay reachable.
 NOTB_PATH="$NOTB_BIN:$PATH"
 # Bash-native cap for the RED measurement: stock macOS has no timeout/gtimeout
-# (HIMMEL-3699), so the runner's own bound cannot depend on one. Usage:
+# so the runner's own bound cannot depend on one. Usage:
 # bounded_run <secs> <stdin-file> <cmd...>; rc 124 when it had to kill the
 # command, else the command's own rc. The command is backgrounded, so stdin is
 # passed as a file (an async list would otherwise read /dev/null).
-# HIMMEL-3903/3909: the kill takes the whole process GROUP. A bash parked in a
+# the kill takes the whole process GROUP. A bash parked in a
 # foreground child defers a plain TERM until that child ends, so killing only $_pid
 # left the hook and its `sleep 30` gh stub alive after the EXIT trap removed $TMP; a
 # pgrep -P walk misses anything forked after the snapshot or re-parented to init.
@@ -769,7 +769,7 @@ if [ "$red_notb_rc" -eq 124 ]; then
 else
     fail=$((fail+1)); echo "FAIL red-control-no-timeout-bin-hangs rc=$red_notb_rc (want 124 -- expected the pre-HIMMEL-3585 hook to hang unbounded)"
 fi
-# HIMMEL-3903: bounded_run must reap the hook AND its gh-stub descendants. A hook
+# bounded_run must reap the hook AND its gh-stub descendants. A hook
 # left running past this suite's EXIT trap keeps a deleted cwd under /tmp and
 # runs its git calls from there (the orphan seen alive at the moment an empty
 # /tmp/.git reappeared).
@@ -780,7 +780,7 @@ elif pgrep -f "$RED_NOTB_ROOT/scripts/hooks/block-unresolved-cr-merge.sh" >/dev/
 else
     pass=$((pass+1)); echo "ok   red-control-no-timeout-bin-hook-reaped"
 fi
-# HIMMEL-3909: a descendant that double-forked (`( cmd & )`) is re-parented to init
+# a descendant that double-forked (`( cmd & )`) is re-parented to init
 # and is invisible to a pgrep -P walk from the bounded pid, so the reap has to take
 # the process GROUP. The marker rides in the orphan's argv[0] via `exec -a`.
 DF_MARK="bounded-run-double-fork-$$"
@@ -835,7 +835,7 @@ PATH="$NOTB_PATH" HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean
     t leg-no-timeout-bin-clean-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 rm -f "$GOROOT/.locks/go/42.abc123"
 
-# ── HIMMEL-3573 (2): declare -F go_mac must be required directly, not only
+# ── declare -F go_mac must be required directly, not only
 # go_gate — a go-gate.sh that defines console_leg + a STUB go_gate (always
 # allows) but never defines go_mac would otherwise pass the old
 # `declare -F go_gate` check and let the stub's rc=0 through untouched.
@@ -865,8 +865,8 @@ else
     fail=$((fail+1)); echo "FAIL go-gate-stub-without-go-mac-refuses rc=$nogomac_rc (want 2, 'go_gate is not defined' on stderr) err=$(cat "$NOGOMAC_ERR")"
 fi
 
-# ── HIMMEL-3573 (1): RED control — the pre-fix hook (base 20162e84, before
-# this ticket) resolved go_root with a plain `handover_root` call, which
+# ── RED control — the pre-fix hook (before
+# the fix) resolved go_root with a plain `handover_root` call, which
 # reads only the live HANDOVER_DIR shell var — never the anchor's own .env.
 # A leg whose launching shell carries no HANDOVER_DIR (the common shape:
 # the console configured it via .env, not export) falls back to the Mode A
@@ -918,10 +918,10 @@ else
 fi
 rm -f "$TRUE_ROOT/.locks/go/42.abc123"
 
-# ── HIMMEL-3142 contract item 6: RED control — the pre-fix hook (base
-# 6ac483e4, before this ticket) never consulted .locks/go/ at all, so a
+# ── RED control — the pre-fix hook (base
+# 6ac483e4, before the fix) never consulted .locks/go/ at all, so a
 # console-spawned leg with no GO file could run `gh pr merge` straight
-# through (the PR #798 shape this ticket exists to close). Prove it: extract
+# through (the shape this gate exists to close). Prove it: extract
 # that exact script into a scratch mutant, run the SAME leg-no-go fixture
 # leg-no-go-blocks used above against it, and confirm it was allowed (rc=0)
 # where the shipped hook (proven by leg-no-go-blocks, above) refuses (rc=2).
@@ -930,7 +930,7 @@ export RED_CONTROL_TMPDIR="$TMP"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/red-control.sh"
 
-# HIMMEL-3154: extracted via `git show <sha>:<path>` until this ticket. A
+# extracted via `git show <sha>:<path>` until this ticket. A
 # historical PR-branch commit is only reachable while its PR stays open; once
 # squash-merged the branch commit is unreachable from a fresh clone forever,
 # so the extraction silently produced an empty file in CI while a developer's
@@ -981,7 +981,7 @@ else
     fi
 fi
 
-# ── HIMMEL-3142 CR round: SECOND RED control — the previously-shipped hook
+# ── SECOND RED control — the previously-shipped hook
 # (head ef6f995a, before the --match-head-commit pin check existed) resolved
 # go_num/go_sha and confirmed a GO was bound to that head, but never checked
 # the merge command's OWN --match-head-commit value, so a leg with a valid
@@ -992,7 +992,7 @@ fi
 # against PRE_FIX_SHA above: that blob predates go-gate.sh entirely, so it
 # would fail this fixture for the unrelated reason of having no GO concept
 # at all, proving nothing about the pin specifically.
-# HIMMEL-3154: this commit's PR branch was deleted on squash-merge, so
+# this commit's PR branch was deleted on squash-merge, so
 # `git show <sha>:<path>` is unreachable from a fresh clone of origin — see
 # the note on the PRE_FIX_SHA extraction above. Replaced with a committed
 # fixture snapshot.
@@ -1038,7 +1038,7 @@ else
 fi
 rm -f "$GOROOT/.locks/go/42.abc123"
 
-# ── HIMMEL-3142 CR round 3: THIRD RED control — both callers tested
+# ── THIRD RED control — both callers tested
 # `[ "$go_rc" = "2" ]`, enumerating go_gate's one documented refusal code
 # instead of enforcing "nonzero = failure". A go-gate.sh that sources cleanly
 # (rc=0) but never DEFINES go_gate (truncated) makes the later call fail with
@@ -1061,7 +1061,7 @@ else
     RC127_PAYLOAD="$TMP/red-control-rc127-payload.json"
     payload Bash "gh pr merge 42 --squash --match-head-commit abc123" > "$RC127_PAYLOAD"
 
-    # HIMMEL-3154: this commit's PR branch was deleted on squash-merge, so
+    # this commit's PR branch was deleted on squash-merge, so
     # `git show <sha>:<path>` is unreachable from a fresh clone of origin —
     # see the note on the PRE_FIX_SHA extraction above. Replaced with a
     # committed fixture snapshot.
@@ -1125,9 +1125,9 @@ RUNEOF
     fi
 fi
 
-# ── HIMMEL-3149 follow-up: a non-leg session must stay untouched by a
-# COMPLETELY BROKEN go-gate.sh, not just a missing symbol. Self-review before
-# /pr-check found that centralizing console_leg had widened gate 3's blast
+# ── a non-leg session must stay untouched by a
+# COMPLETELY BROKEN go-gate.sh, not just a missing symbol. Centralizing
+# console_leg had widened gate 3's blast
 # radius: sourcing go-gate.sh and failing closed on load failure used to live
 # INSIDE the HIMMEL_CONSOLE_LEG-truthy branch (a non-leg session never
 # attempted it), but the first cut of this commit moved that unconditionally
@@ -1159,7 +1159,7 @@ GH_STUB_MODE=clean GH_STUB_LOG="$TMP/calls-broken-gogate-nonleg.log" \
     bash "$BROKEN_GOGATE_ROOT/scripts/hooks/block-unresolved-cr-merge.sh" \
     < "$BROKEN_GOGATE_PAYLOAD" > "$BROKEN_GOGATE_NONLEG_OUT" 2>"$BROKEN_GOGATE_NONLEG_ERR"
 broken_gogate_nonleg_rc=$?
-# HIMMEL-3910 supersedes the non-leg half: gate 3 still never touches a non-leg
+# supersedes the non-leg half: gate 3 still never touches a non-leg
 # session (no console-leg marker refusal), but gate 4 — the CI trust-path gate —
 # binds every session, as merge-on-green.sh does, and cannot ask its question
 # without go-gate.sh, so it refuses.
@@ -1182,8 +1182,8 @@ else
     fail=$((fail+1)); echo "FAIL broken-go-gate-leg-still-fails-closed rc=$broken_gogate_leg_rc (want 2, 'cannot load' on stderr) err=$(cat "$BROKEN_GOGATE_LEG_ERR")"
 fi
 
-# ── HIMMEL-3142 CR round 4: FOURTH and FIFTH RED controls — `command -v
-# go_gate` (round 3's fix) answers "is the name go_gate callable", not "did
+# ── FOURTH and FIFTH RED controls — `command -v
+# go_gate` answers "is the name go_gate callable", not "did
 # sourcing go-gate.sh define the function". Two distinct ways that diverges,
 # each needing its own control, against the SAME truncated go-gate.sh
 # ($TRUNC_GOGATE, built above — does not define go_gate):
@@ -1197,8 +1197,8 @@ fi
 #       from "this was already in scope before we sourced". Only
 #       `unset -f go_gate` BEFORE the source (so a stale/inherited
 #       definition cannot survive it) closes this half.
-# The pre-fix blob for both is head 6fe4ad20 (round 3's shipped hook, the
-# `command -v` version) — control (B) also proves round 3's own fix does not
+# The pre-fix blob for both is head 6fe4ad20 (the earlier hook, the
+# `command -v` version) — control (B) also proves the earlier fix does not
 # close this second door, motivating the unset-then-declare-F combination.
 PRE_RC4_SHA=6fe4ad205612f59c71c8354ff9f5981c5d23bb5f
 RC4_PAYLOAD="$TMP/red-control-rc4-payload.json"
@@ -1206,7 +1206,7 @@ payload Bash "gh pr merge 42 --squash --match-head-commit abc123" > "$RC4_PAYLOA
 
 rc4_extract_hook() {
     # $1 = dest root
-    # HIMMEL-3154: this commit's PR branch was deleted on squash-merge, so
+    # this commit's PR branch was deleted on squash-merge, so
     # `git show <sha>:<path>` is unreachable from a fresh clone of origin —
     # see the note on the PRE_FIX_SHA extraction above. Replaced with a
     # committed fixture snapshot.
@@ -1340,9 +1340,9 @@ RUNEOF
     unset -f go_gate
 fi
 
-# ── HIMMEL-3910: the CI trust-path gate (gate 4). A PR touching a CI trust
+# ── the CI trust-path gate (gate 4). A PR touching a CI trust
 # path needs a trust-reviewed GO pinned to its head — for a leg and the
-# operator alike, merge-on-green.sh's rule since HIMMEL-3895, asked through the
+# operator alike, merge-on-green.sh's rule, asked through the
 # same trust_path_check. A hit consults the anchor's origin, so the hit rows
 # run a copy of the hook in a scratch anchor that is a git repo containing its
 # origin's HEAD (a local bare clone) — hermetic, never the network.
@@ -1458,7 +1458,7 @@ HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
 grep -q "single plain command" "$TMP/err-trust-path-quoted-host-repo-blocks" \
     || { fail=$((fail+1)); echo "FAIL trust-path-quoted-host-repo-blocks: a quoted repo is not refused by the plain-command rule (HIMMEL-3918 B1)"; }
 # Control: a PR genuinely on another repo (no list there, the anchor's origin
-# is o/r) is still not-adopted and passes with no GO (HIMMEL-2141: past the
+# is o/r) is still not-adopted and passes with no GO (past the
 # cross-repo refusal, via CR_MERGE_GATE_OK=1).
 CR_MERGE_GATE_OK=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_PR_NWO=other/repo GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t trust-other-repo-not-adopted-allows 0 Bash "gh pr merge 42 --squash --repo other/repo --match-head-commit abc123"
@@ -1479,16 +1479,16 @@ for pt in non-merge-passthrough string-literal-passthrough quoted-merge-text-pas
 done
 # block reason surfaces on stderr (hook contract: stderr shown to model+user)
 grep -qi "unresolved" "$TMP/err-merge-with-unresolved-blocks" || { echo "FAIL stderr reason missing"; fail=$((fail+1)); }
-# HIMMEL-1043: the CI gate's block surfaces with its own prefix on stderr
+# the CI gate's block surfaces with its own prefix on stderr
 grep -q "block-red-ci-merge" "$TMP/err-merge-over-red-ci-blocks" || { echo "FAIL ci-block stderr reason missing"; fail=$((fail+1)); }
-# HIMMEL-3360: an absent or stale-anchored CodeRabbit review no longer blocks
+# an absent or stale-anchored CodeRabbit review no longer blocks
 # a merge at all — the old block wording must not appear (a degrade note from
 # this stub's unstubbed body-findings/check-runs queries is expected and fine,
 # same as every other allow-case above; only the removed BLOCK reasons matter).
 grep -qi "has not reviewed" "$TMP/err-absent-review-allows" && { echo "FAIL absent-review-allows still blocks with the removed absent-review wording"; fail=$((fail+1)); }
 grep -qi "shaOLD\|never re-reviewed" "$TMP/err-freshness-stale-no-longer-blocks" && { echo "FAIL freshness-stale-no-longer-blocks still blocks with the removed stale-anchor wording"; fail=$((fail+1)); }
 
-# HIMMEL-1495 hermeticity guard — prove the startup scrub holds. Re-run this
+# hermeticity guard — prove the startup scrub holds. Re-run this
 # suite in a subprocess EXPORTING the exact armed bypass env an
 # --automerge-armed shell carries; the reinvoked copy's startup unset must
 # neutralize it, so its probe block-case still blocks and it exits 0. Remove
@@ -1503,7 +1503,7 @@ if [ "${HIMMEL_1495_SELF:-0}" != "1" ]; then
     fi
 fi
 
-# HIMMEL-3154: guard against reintroducing extraction of a historical
+# guard against reintroducing extraction of a historical
 # commit's blob via `git show <sha>:<path>` — the class of fragility this
 # ticket fixed. Once a PR's branch is squash-merged, that commit is
 # permanently unreachable from a fresh clone; a RED-control mutant must come
@@ -1516,7 +1516,7 @@ else
     pass=$((pass+1)); echo "ok   lint-no-historical-git-show-extraction"
 fi
 
-# HIMMEL-3903: this suite must not leave a .git in /tmp or $TMPDIR.
+# this suite must not leave a .git in /tmp or $TMPDIR.
 for _p in /tmp/.git "${TMPDIR:-/tmp}/.git"; do
     case " $GIT_LEAK_PRE " in *" $_p "*) continue ;; esac
     if [ -e "$_p" ]; then fail=$((fail+1)); echo "FAIL suite created $_p"; fi

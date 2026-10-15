@@ -354,8 +354,27 @@ async function preflightProfileLaneAllowlist(repoRoot) {
 async function persistProfileLaneAllowlist(selected, repoRoot) {
   const { writer, file, scope } = await preflightProfileLaneAllowlist(repoRoot);
   const ids = registryIdsForSelection(selected);
+  // prior bytes (null = no overlay yet) so a failed install can put them back.
+  let prior = null;
+  try {
+    prior = fs.readFileSync(file);
+  } catch (e) {
+    if (!e || e.code !== 'ENOENT') throw e;
+  }
   const preservedLegacyGlobal = writer.writeProfileAllowlist(file, ids, PROFILE_LANE_REGISTRY_IDS);
-  return { ids, preservedLegacyGlobal, file, scope };
+  return { ids, preservedLegacyGlobal, file, scope, prior };
+}
+
+// Undo persistProfileLaneAllowlist: put the prior overlay bytes back atomically
+// (tmp + rename), or remove the overlay when there was none.
+function restoreProfileLaneAllowlist(file, prior) {
+  if (prior === null) {
+    fs.rmSync(file, { force: true });
+    return;
+  }
+  const tmp = `${file}.restore.${process.pid}`;
+  fs.writeFileSync(tmp, prior);
+  fs.renameSync(tmp, file);
 }
 
 // ── probing ─────────────────────────────────────────────────────────────────
@@ -1759,6 +1778,7 @@ module.exports = {
   registryIdsForSelection,
   preflightProfileLaneAllowlist,
   persistProfileLaneAllowlist,
+  restoreProfileLaneAllowlist,
   resolveLaneAllowlistFile,
   readLaneRegistries,
   probeLane,

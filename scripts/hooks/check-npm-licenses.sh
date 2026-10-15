@@ -9,10 +9,10 @@ set -euo pipefail
 
 # Python-2.0 (the PSF License) is permissive + GPL-compatible; added when the
 # broadened enumeration surfaced argparse@2.0.1 (transitive via js-yaml) in
-# marketplace/plugins/obsidian-triage/tools (HIMMEL-179).
+# marketplace/plugins/obsidian-triage/tools.
 ALLOWED="MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;CC0-1.0;Unlicense;0BSD;Python-2.0"
 
-# Bench FIXTURES excluded (HIMMEL-1723) — fixture packages are benchmark
+# Bench FIXTURES excluded — fixture packages are benchmark
 # inputs, not shipped dependencies; see check-npm-audit.sh for the rationale.
 if ! pkgs_raw=$(git ls-files '*package.json' ':(exclude)*/node_modules/*' ':(exclude)scripts/lanes/bench/fixtures/*'); then
     echo "ERROR: 'git ls-files' failed — cannot enumerate packages to license-check." >&2
@@ -32,7 +32,7 @@ fi
 fail=0
 for pkg in "${pkgs[@]}"; do
     dir=$(dirname "$pkg")
-    # HIMMEL-523: skip bun-managed packages. A package with a bun lockfile
+    # skip bun-managed packages. A package with a bun lockfile
     # (bun.lock / bun.lockb) and NO package-lock.json is bun-managed (e.g.
     # scripts/luna-vitals — only a @types/bun devDep). For such a package
     # `npm install --omit=dev` installs nothing and `license-checker --production`

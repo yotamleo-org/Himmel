@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test suite for scripts/hooks/check-main-ref-transaction.sh and
-# scripts/hooks/install-main-ref-transaction.sh (HIMMEL-2095).
+# scripts/hooks/install-main-ref-transaction.sh.
 #
 # Every case runs against a THROWAWAY sandbox repo this suite creates itself
 # (a local `git init --bare` "origin" + a clone) -- never the real himmel
@@ -19,18 +19,18 @@
 # station to run it on), so any Git-Bash-specific process behaviour --
 # most concretely, whether `reference-transaction` delivers its full
 # stdin ref-line stream identically under Git Bash's process model, the
-# open question tracked as HIMMEL-2643 -- is unverified by this suite
+# open question -- is unverified by this suite
 # today, not merely untested by it. A future Windows run (or `.ps1` twin)
 # is what closes that gap; until then, a green run of this suite is
 # evidence for Linux/macOS only.
 set -uo pipefail
 
-# HERMETICITY (panel rounds 3, 5, 6, and the panel's own round-6 follow-up):
+# HERMETICITY:
 # three blacklist patches landed in a row, each closing exactly ONE
 # config-ingress vector and leaving the next one open -- GIT_CONFIG_GLOBAL/
-# GIT_CONFIG_SYSTEM (config FILES) in round 3, GIT_CONFIG_COUNT/KEY_n/
-# VALUE_n (command-scope config) in round 5, GIT_CONFIG_PARAMETERS (git's
-# own -c-propagation channel) named in round 6. A first draft of THIS fix
+# GIT_CONFIG_SYSTEM (config FILES), GIT_CONFIG_COUNT/KEY_n/
+# VALUE_n (command-scope config), GIT_CONFIG_PARAMETERS (git's
+# own -c-propagation channel). A first draft of THIS fix
 # tried to end the pattern by unsetting every GIT_* variable except a short
 # allowed list -- but that would have been a FOURTH blacklist wearing an
 # allowlist's clothes: HOME and XDG_CONFIG_HOME are not GIT_*-prefixed, yet
@@ -123,7 +123,7 @@ if bash -n "$INSTALL"; then ok "install script syntax (bash -n)"; else bad "inst
 # shellcheck disable=SC1091
 . "$ROOT/scripts/lib/canon-path.sh"
 BASE_RAW="$(mktemp -d "${TMPDIR:-/tmp}/himmel-mainref-test.XXXXXX")" || { echo "FAIL - mktemp -d base"; exit 1; }
-# HIMMEL-3179: the installer bakes its own `cd && pwd` spelling into git config
+# the installer bakes its own `cd && pwd` spelling into git config
 # and git reports worktrees physically; macOS TMPDIR ("/var/folders/../T/", a
 # symlink, trailing slash) makes the raw mktemp spelling differ from both. Every
 # case builds its paths from the one physical spelling.
@@ -166,8 +166,8 @@ install_hook() {
 }
 
 # ---------------------------------------------------------------------------
-# HERMETICITY PROOF (panel round 3, codex-2; retained as regression
-# evidence for this specific vector after the round-6 env -i redesign --
+# HERMETICITY PROOF (retained as regression
+# evidence for this specific vector after the env -i redesign --
 # see the ALLOWLIST MECHANISM PROOF further down for the general case).
 # The GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM=/dev/null isolation this file
 # carries is not "safety" until shown working against a genuinely hostile
@@ -211,8 +211,8 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# HERMETICITY PROOF, extended (panel round 5, codex-1; retained as
-# regression evidence for this specific vector after the round-6 env -i
+# HERMETICITY PROOF, extended (retained as
+# regression evidence for this specific vector after the env -i
 # redesign -- see the ALLOWLIST MECHANISM PROOF further down for the
 # general case). GIT_CONFIG_GLOBAL/SYSTEM=/dev/null suppress the config
 # FILES, but git ALSO reads COMMAND-SCOPE config from GIT_CONFIG_COUNT/
@@ -262,12 +262,12 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# ALLOWLIST MECHANISM PROOF (panel round 6 follow-up): the two pairs above
+# ALLOWLIST MECHANISM PROOF: the two pairs above
 # each prove ONE specific vector stays closed -- but naming vectors is
 # exactly the game this suite kept losing (three rounds, three different
 # vectors). This case proves the GENERAL mechanism instead: with a hostile
 # GIT_* variable (GIT_CONFIG_PARAMETERS -- git's own -c-propagation
-# channel, the vector round 6 named, deliberately NOT one of the two
+# channel, deliberately NOT one of the two
 # vectors already covered above) AND a hostile HOME/XDG_CONFIG_HOME BOTH
 # set in the ambient environment of the run, does `git config --show-origin
 # --list` inside the sandbox show any origin outside the sandbox?
@@ -381,15 +381,15 @@ fi
 # A here-string, not a `producer | grep -q` pipe: under `set -o pipefail`,
 # grep -q exits the instant it matches, the producer can take SIGPIPE writing
 # the remainder, and the PIPELINE status goes non-zero -- inverting a
-# genuine match into a reported failure (HIMMEL-1430). $green_out is a
+# genuine match into a reported failure. $green_out is a
 # captured string well under the ~64 KiB Git Bash here-string limit
-# (HIMMEL-2027), so a here-string sidesteps the pipe entirely.
+#, so a here-string sidesteps the pipe entirely.
 if grep -q -- '--no-verify' <<< "$green_out"; then
     ok "GREEN: refusal message names --no-verify explicitly"
 else
     bad "GREEN: refusal message missing --no-verify mention: $green_out"
 fi
-# codex-3 (panel round 4): the refusal message's substantive claim -- the
+# codex-3: the refusal message's substantive claim -- the
 # new commit must already be PUBLISHED in origin/main -- was previously
 # untested. Confirmed RED before adding this: with the message body
 # replaced by placeholder text, every other assertion in this suite still
@@ -525,7 +525,7 @@ noorigin_rc=0
 noorigin_out=$(git -C "$noorigin" commit -q --no-verify -m "first commit, no origin" 2>&1) || noorigin_rc=$?
 # Same here-string reasoning as the GREEN case above -- $noorigin_out is a
 # small captured string, so this sidesteps the `producer | grep -q` pipefail
-# trap (HIMMEL-1430) instead of risking an inverted result.
+# trap instead of risking an inverted result.
 if [ "$noorigin_rc" -eq 0 ] && grep -q "refs/remotes/origin/main not found" <<< "$noorigin_out"; then
     ok "refs/remotes/origin/main absent -> allowed with a warning"
 else
@@ -634,7 +634,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-2640: the override-log path is resolved via `git rev-parse
+# the override-log path is resolved via `git rev-parse
 # --git-common-dir`, same relative-to-cwd caveat as install-cr-pre-push-legacy.sh
 # and check-hookspath.sh. A thin `git` stub that makes the BARE
 # `--git-common-dir` call return a garbage relative value -- while every
@@ -725,7 +725,7 @@ fi
 # exercised for real, HERMETICALLY: install normally (so the shim is the
 # REAL installer's own static output, not a hand-duplicated copy that could
 # drift from it), then retarget by overwriting ONLY this sandbox's OWN
-# `git config --local himmel-main-ref.target` (round 5: the shim is now
+# `git config --local himmel-main-ref.target` (the shim is now
 # 100% static and reads the target from git config at run time -- nothing
 # in the FILE needs editing at all any more). Nothing outside $BASE is
 # touched -- in particular this suite's OWN tracked check-main-ref-
@@ -757,7 +757,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# panel round 9: a READABLE DIRECTORY at the configured target must ALSO
+# A READABLE DIRECTORY at the configured target must ALSO
 # fail OPEN, not fail-CLOSED. `[ -r DIR ]` is true for a readable directory,
 # so a bare readability check (this shim's shape before this round) let a
 # directory reach `exec bash "$target"` -- bash fails to exec a directory,
@@ -795,7 +795,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# panel round 10: git < 2.31 does NOT fail on an unsupported --path-format
+# git < 2.31 does NOT fail on an unsupported --path-format
 # -- it ECHOES the option as output and still exits 0, returning a
 # garbled/relative value (proven directly on this station, git 2.55: `git
 # rev-parse --totally-unknown-option --git-path hooks` echoes the unknown
@@ -850,7 +850,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# codex-1 (panel round 1): core.hooksPath, when set, is the ONLY place git
+# codex-1: core.hooksPath, when set, is the ONLY place git
 # looks -- .git/hooks/ (and the common dir) are never consulted. Installing
 # there unconditionally would report success while git never invokes the
 # guard: the exact "shipped but not protecting" failure C32 exists to
@@ -901,13 +901,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# codex-3 (panel round 1) + codex-1 (panel round 3): a checkout path used to
+# A checkout path used to
 # be interpolated into the generated shim -- first as a `%q`-escaped shell
-# assignment (round 1: broken by `$`/backtick/`"`), then, when that
+# assignment, then, when that
 # assignment was replaced with a literal comment line for check_c32 to read
-# (round 2's own eval fix), the comment form broke a THIRD way: an embedded
+#, the comment form broke a THIRD way: an embedded
 # NEWLINE byte terminates a comment line early and injects a new line of
-# shell into the file (round 3, codex-1). Round 3's fix removes the
+# shell into the file. The fix removes the
 # question rather than patching it a third time: the path is no longer
 # interpolated into the shim file's TEXT at all -- it lives in `git config
 # --local himmel-main-ref.target`, which round-trips arbitrary bytes
@@ -948,7 +948,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# codex-1 (panel round 3), the specific finding: a checkout path containing
+# codex-1, the specific finding: a checkout path containing
 # a literal EMBEDDED NEWLINE byte (legal on POSIX filesystems -- only NUL
 # and `/` are forbidden in a filename). This is the exact case that broke
 # the round-2 comment-line format. Same technique as the hostile-path case
@@ -992,7 +992,7 @@ fi
 fi
 
 # ---------------------------------------------------------------------------
-# codex-4 (panel round 2): `git rev-parse --git-common-dir`'s own output is
+# codex-4: `git rev-parse --git-common-dir`'s own output is
 # relative to the INVOKING DIRECTORY, not the worktree top -- the installer
 # used to join it against repo_root regardless, which computed the WRONG
 # path (one level too far up, outside the repo) whenever run from a
@@ -1027,7 +1027,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# codex-3 (panel round 2): a RELATIVE core.hooksPath resolves against EACH
+# codex-3: a RELATIVE core.hooksPath resolves against EACH
 # worktree's OWN top-level (git's own semantics, confirmed empirically --
 # see the installer's header) -- so a naive single-location install would
 # leave every OTHER linked worktree unprotected, silently breaking the
@@ -1075,7 +1075,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# codex-1 (panel round 4): `extensions.worktreeConfig` lets a SIBLING
+# codex-1: `extensions.worktreeConfig` lets a SIBLING
 # worktree override core.hooksPath independently of what the INVOKING
 # checkout's own value reads as -- "usually shared" is not "always shared".
 # This is the exact scenario the pre-round-4 installer missed: it only
@@ -1106,7 +1106,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# codex-2 (panel round 4): `git worktree list --porcelain`'s plain
+# codex-2: `git worktree list --porcelain`'s plain
 # newline-delimited output treats a worktree PATH containing a literal
 # embedded newline byte (legal on POSIX filesystems) as ending at that
 # newline -- silently truncating the entry, which then fails to resolve as
@@ -1136,13 +1136,13 @@ fi
 fi
 
 # ---------------------------------------------------------------------------
-# codex-2 (panel round 8): when worktree ENUMERATION itself fails (`git
+# codex-2: when worktree ENUMERATION itself fails (`git
 # worktree list --porcelain -z` produces no output at all), the installer
 # falls back to installing into just the CURRENT worktree -- but it used to
 # report exit 0 whenever that single install succeeded, even though it has
 # NO IDEA whether other worktrees exist and are therefore left uncovered.
 # That is the exact "partial coverage indistinguishable from full coverage"
-# property the codex-2 fix above (panel round 6) exists to prevent, on the
+# property the codex-2 fix above exists to prevent, on the
 # one path that fix did not reach. Reproduced with a REAL, non-simulated
 # enumeration failure: a `git` shim placed first on PATH that intercepts
 # ONLY `worktree list ...` (exiting 1, no output) and execs the real git
@@ -1179,7 +1179,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# codex-2 (panel round 6): a PARTIAL install failure (some worktree
+# codex-2: a PARTIAL install failure (some worktree
 # locations get the guard, one does not) used to still `exit 0` -- a caller
 # scripting against this installer's exit code could not tell "every
 # location is protected" apart from "some are, some are not". Proven with
@@ -1189,7 +1189,7 @@ fi
 # "$(dirname "$hook_path")"` genuinely fails (not simulated: a real
 # ENOTDIR/File-exists error from the filesystem). A regular file occupying
 # a needed directory component is a DETERMINISTIC failure -- unlike a
-# permission bit (panel round 8, codex-3: `chmod 555` does not block
+# permission bit (`chmod 555` does not block
 # writes for root, nor on a filesystem without POSIX permission
 # enforcement), no privilege level or filesystem mode makes `mkdir` turn
 # an existing file into a directory of the same name, so this reproduces
@@ -1228,7 +1228,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-2644 (1): a reinstall used to `cat > hook_path` directly -- a plain
+# a reinstall used to `cat > hook_path` directly -- a plain
 # redirect opens the target O_TRUNC before a byte of the new content is
 # written, so a concurrent git process racing the reinstall (reference-
 # transaction fires on EVERY ref update) could observe an empty or
@@ -1287,7 +1287,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-2644 (2): process substitution discarded `git worktree list
+# process substitution discarded `git worktree list
 # --porcelain -z`'s own exit status, so an enumeration that emits SOME
 # entries and then fails partway used to be indistinguishable from one that
 # completed -- the entries already seen install fine, so ok_count/fail_count
