@@ -2242,4 +2242,92 @@ check "79 failed register: console still arms" "$(printf '%s\n' "$out79d" | grep
 check "79 failed register: warned" "$(printf '%s\n' "$out79d" | grep -c 'WARN bus register failed')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79fail/DEMO-nextleg-${today}A-bus79-console.md" "$(token_of "$out79d")" >/dev/null 2>&1
 
+# --- 80. wrap refuses while a non-harness process is alive -------------------
+# wrap-subtree-check.sh and live-subagents.sh are stubbed through their seams;
+# the stub subtree check reports WITHHELD rows from $w80/rows until the file is
+# emptied, and the console-wait waiter case uses a REAL process so the TERM is
+# observed, not logged.
+w80="$tmp/wrap80"; mkdir -p "$w80"
+printf '#!/usr/bin/env bash\necho live-subagents=0\n' > "$w80/lsa.sh"
+cat > "$w80/subtree.sh" <<'STUB'
+#!/usr/bin/env bash
+rows="$W80/rows"
+if [ -n "${W80_RC2:-}" ]; then echo "WITHHELD: cannot read the process table"; exit 2; fi
+n=0; out=""
+while read -r l; do
+    [ -n "$l" ] || continue
+    pid="${l#pid=}"; pid="${pid%% *}"
+    kill -0 "$pid" 2>/dev/null || continue
+    # an orphan reparented to init is no longer under the session
+    pp="${l#*ppid=}"; pp="${pp%% *}"
+    [ "$pp" = 1 ] || kill -0 "$pp" 2>/dev/null || continue
+    n=$((n+1)); out="$out  $l
+"
+done < "$rows" 2>/dev/null
+if [ "$n" -eq 0 ]; then echo "CLOSABLE: no non-harness process under claude pid 1"; exit 0; fi
+printf 'WITHHELD: %s process(es) still alive under claude pid 1\n%s' "$n" "$out"
+exit 1
+STUB
+chmod +x "$w80/lsa.sh" "$w80/subtree.sh"
+wrap80() { # wrap80 <doc> <token>
+    ( cd "$fixture_repo" && W80="$w80" HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+        CONSOLE_WORK_DIR="$tmp/defaultwork" LIVE_SUBAGENTS_BIN="$w80/lsa.sh" WRAP_SUBTREE_CHECK_BIN="$w80/subtree.sh" \
+        W80_RC2="${W80_RC2:-}" bash "$C" wrap "$1" "$2" ) 2>&1
+}
+mk80() { # mk80 <name> -> sets doc80 and tok80 (a live console doc with the lock held)
+    doc80="$w80/$1.md"
+    printf '%s\n' '# console' '## Results' '- 10:00 LIVE — up' > "$doc80"
+    tok80="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$doc80" 2>&1)")"
+}
+lock80() { HANDOVER_DIR="$root" bash "$QL" status "$doc80" >/dev/null 2>&1 && echo free || echo held; }
+
+mk80 sleeper
+sleep 300 & sleeper80=$!
+printf 'pid=%s ppid=1 etime=00:05 cmd=sleep 300\n' "$sleeper80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 live sleep child: wrap refused (rc 5)" "$rc" "5"
+check "80 live sleep child: refusal names the process" "$(printf '%s\n' "$out" | grep -c "pid=$sleeper80 .*cmd=sleep 300")" "1"
+check "80 live sleep child: names the reason" "$(printf '%s\n' "$out" | grep -c 'wrap refused: .*non-harness process')" "1"
+check "80 live sleep child: WRAPPED not written" "$(grep -c WRAPPED "$doc80")" "0"
+check "80 live sleep child: lock still held" "$(lock80)" "held"
+check "80 live sleep child: the process is untouched" "$(kill -0 "$sleeper80" 2>/dev/null && echo alive || echo dead)" "alive"
+kill "$sleeper80" 2>/dev/null; wait "$sleeper80" 2>/dev/null
+
+rc=0; out="$(W80_RC2=1 wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 unprovable subtree: wrap refused (rc 5)" "$rc" "5"
+check "80 unprovable subtree: WRAPPED not written" "$(grep -c WRAPPED "$doc80")" "0"
+
+: > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 idle session: wrap succeeds" "$rc" "0"
+check "80 idle session: WRAPPED written" "$(grep -c '^- .*WRAPPED' "$doc80")" "1"
+check "80 idle session: lock released" "$(lock80)" "free"
+
+# the console's own waiter (a real console-wait.sh process and its sleep child) is
+# exempt, and the wrap stops it
+mk80 waiter
+printf '#!/usr/bin/env bash\nsleep 300\n' > "$w80/console-wait.sh"
+bash "$w80/console-wait.sh" & waiter80=$!
+sleep 0.3
+child80="$(pgrep -P "$waiter80" | head -n 1)"
+printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=%s etime=00:05 cmd=sleep 300\n' "$waiter80" "$w80" "$child80" "$waiter80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 console-wait waiter: wrap succeeds" "$rc" "0"
+check "80 console-wait waiter: WRAPPED written" "$(grep -c '^- .*WRAPPED' "$doc80")" "1"
+check "80 console-wait waiter: stopped by the wrap" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "dead"
+kill "$waiter80" "$child80" 2>/dev/null; wait "$waiter80" 2>/dev/null
+
+# the waiter does NOT hide a second, foreign process, and is left running on a refusal
+mk80 mixed
+bash "$w80/console-wait.sh" & waiter80=$!
+sleep 300 & foreign80=$!
+sleep 0.3
+printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=1 etime=00:05 cmd=sleep 300\n' "$waiter80" "$w80" "$foreign80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 waiter plus foreign process: wrap refused (rc 5)" "$rc" "5"
+check "80 waiter plus foreign process: waiter left running" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "alive"
+check "80 waiter plus foreign process: WRAPPED not written" "$(grep -c WRAPPED "$doc80")" "0"
+kill "$waiter80" "$foreign80" 2>/dev/null; wait 2>/dev/null
+HANDOVER_DIR="$root" bash "$QL" release "$doc80" "$tok80" >/dev/null 2>&1
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

@@ -480,6 +480,43 @@ check "no-transcript-match: rc 0 (still closes)" "$rc" "0"
 contains "no-transcript-match: says it cannot resolve unambiguously" "$out" "cannot resolve unambiguously"
 exact_count "no-transcript-match: kill still called exactly once" "$(cat "$CALLS")" "kill -TERM 210" "1"
 
+# --- 16b: --check signals nothing and writes nothing -----------------------
+# Same fixture as case 15 (a transcript that WOULD yield a session note): an
+# idle WRAPPED session gets SAFE-TO-CLOSE, rc 0, no kill, no note, no clean.sh.
+mkdoc "- 10:00 WRAPPED - done"
+reset_calls
+rm -rf "$ESW_SB/vault/sessions"
+rc=0
+out=$(HOME="$ESW_SB/home" LUNA_VAULT_PATH="$ESW_SB/vault" OBSIDIAN_API_KEY="" \
+    CLAUDE_PROJECT_DIR="$ESW_SB/proj" OSTYPE="linux-gnu" OS="" \
+    CWL_ESW_BIN="$REAL_ESW" CWL_PROJECTS_DIR="$PROJDIR" \
+    run --check "$DOC" 2>&1) || rc=$?
+check "check-idle: rc 0" "$rc" "0"
+contains "check-idle: prints SAFE-TO-CLOSE" "$out" "SAFE-TO-CLOSE"
+not_contains "check-idle: kill never called" "$(cat "$CALLS")" "kill"
+not_contains "check-idle: clean.sh never called" "$(cat "$CALLS")" "clean.sh"
+check "check-idle: no session note written" "$(find "$ESW_SB/vault/sessions" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+check "check-idle: no tmp-reap" "$(cat "$CALLS.reap")" ""
+reset_calls
+rc=0; out=$(run --check --console "$DOC" 2>&1) || rc=$?
+check "check-console-idle: rc 0" "$rc" "0"
+contains "check-console-idle: prints SAFE-TO-CLOSE" "$out" "SAFE-TO-CLOSE"
+not_contains "check-console-idle: kill never called" "$(cat "$CALLS")" "kill"
+
+# a live non-harness child (the subtree check says WITHHELD) -> rc 6 like a real close
+reset_calls
+rc=0; out=$(CWL_SUBTREE_MODE="withheld" run --check "$DOC" 2>&1) || rc=$?
+check "check-withheld: rc 6 (identical to a real close)" "$rc" "6"
+contains "check-withheld: names what is still running" "$out" "WITHHELD: 1 process(es) still alive"
+not_contains "check-withheld: never says SAFE-TO-CLOSE" "$out" "SAFE-TO-CLOSE"
+not_contains "check-withheld: kill never called" "$(cat "$CALLS")" "kill"
+
+# the pre-close refusals keep their codes under --check
+mkdoc "- 10:00 LIVE - still going"
+rc=0; run --check "$DOC" >/dev/null 2>&1 || rc=$?
+check "check-not-wrapped: rc 4" "$rc" "4"
+mkdoc "- 10:00 WRAPPED - done"
+
 # --- 17: a colon-suffixed `WRAPPED:` marker bullet (tick.sh's
 # leg_tail_status already accepts this shape; close-wrapped-leg's own
 # marker-bullet check must accept it too, via the shared parser).
@@ -1124,6 +1161,17 @@ reset_calls
 rc=0; out=$(lsa_run "$DOC" 2>&1) || rc=$?
 check "subagents: leg with a live child -> rc 7" "$rc" "7"
 not_contains "subagents: leg refusal -> nothing signalled" "$(cat "$CALLS")" "kill"
+
+mkdoc "- 10:00 WRAPPED - done"
+reset_calls
+rc=0; out=$(lsa_run --check "$DOC" 2>&1) || rc=$?
+check "check-subagents: leg with a live child -> rc 7" "$rc" "7"
+contains "check-subagents: names the child" "$out" "LIVE-SUBAGENT aj1 console-judge Judge j2212a"
+not_contains "check-subagents: never says SAFE-TO-CLOSE" "$out" "SAFE-TO-CLOSE"
+not_contains "check-subagents: nothing signalled" "$(cat "$CALLS")" "kill"
+reset_calls
+rc=0; out=$(lsa_run --check --console "$CDOC" 2>&1) || rc=$?
+check "check-subagents: console with a live child -> rc 7" "$rc" "7"
 
 rm -f "$W/sessions/230.json"
 reset_calls
