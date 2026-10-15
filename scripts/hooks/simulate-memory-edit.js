@@ -2,7 +2,7 @@
 // simulate-memory-edit.js — apply an Edit/MultiEdit payload to the on-disk
 // MEMORY.md so guard-memory-capture.sh can run its Write-path checks (line
 // length, line-count ceiling, growth) on the RESULT instead of denying the
-// tool outright (HIMMEL-2011). MultiEdit's `edits[]` apply sequentially.
+// tool outright. MultiEdit's `edits[]` apply sequentially.
 //
 // Usage: printf '%s' "$payload" | node simulate-memory-edit.js
 //   stdout = simulated file content + a trailing \004 sentinel, exit 0. The

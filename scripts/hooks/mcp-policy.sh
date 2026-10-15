@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse hook on mcp__.* — MCP call tracking plus a gating seam
-# (HIMMEL-4676).
+#.
 #
 # Every MCP call is classified against scripts/guardrails/mcp-policy.json and
 # audited as one JSONL line (ts, session, server, tool, class, egress, mode,

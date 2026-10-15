@@ -342,6 +342,27 @@ assert_rc "swap aborts when the config cannot be staged for the gate" 5 "$rc"
 assert_contains "the abort names the staging failure" "could not stage the config" "$out"
 assert_contains "the live index still holds gemma after the abort" "$GEMMA" "$(sqlite3 "$(IDX)" 'select distinct model from content_vectors')"
 
+# swap_lock_stale is duplicated in the qmd plugin's ensure-qmd-daemon.sh (a
+# plugin copy cannot source this repo); both copies must classify a lock dir alike.
+PLUGIN_DAEMON="${QMD_DAEMON_SCRIPT:-$SCRIPT_DIR/../../marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh}"
+stale_verdicts() { # <script>: stale/live verdict per lock-dir shape
+    bash -c '
+        eval "$(sed -n "/^swap_lock_stale() {/,/^}/p" "$1")"
+        d=$(mktemp -d) || exit 1; trap "rm -rf \"\$d\"" EXIT
+        mkdir "$d/dead" "$d/live" "$d/nopid-fresh" "$d/nopid-old" "$d/junk"
+        echo 2147483646 >"$d/dead/pid"; echo "$$" >"$d/live/pid"; echo abc >"$d/junk/pid"
+        touch -t 200001010000 "$d/nopid-old" "$d/junk"
+        for n in dead live nopid-fresh nopid-old junk; do
+            if swap_lock_stale "$d/$n"; then echo "$n stale"; else echo "$n live"; fi
+        done' _ "$1"
+}
+want=$'dead stale\nlive live\nnopid-fresh live\nnopid-old stale\njunk stale'
+for copy in "$SCRIPT" "$PLUGIN_DAEMON"; do
+    got="$(stale_verdicts "$copy")"
+    if [ "$got" = "$want" ]; then pass "swap_lock_stale in $(basename "$copy") classifies lock dirs"
+    else fail "swap_lock_stale in $(basename "$copy") classifies lock dirs" "got: $got"; fi
+done
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

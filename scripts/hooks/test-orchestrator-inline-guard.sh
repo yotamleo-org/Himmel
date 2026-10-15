@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Smoke tests for scripts/hooks/orchestrator-inline-guard.sh (HIMMEL-1384
-# phase 1 advisory; HIMMEL-1791 phase 2 per-PR inline-exemption budget gate).
+# Smoke tests for scripts/hooks/orchestrator-inline-guard.sh (phase 1 advisory;
+# phase 2 per-PR inline-exemption budget gate).
 #
 # Isolates the fire-log via ORCH_GUARD_LOG (never touches the operator's real
 # ~/.claude/orchestrator-inline-guard/fires.jsonl) and feeds a synthetic
 # transcript fixture so model detection is deterministic and hermetic. The
-# HIMMEL-1791 budget cases run against real throwaway git repos (payload cwd)
+# Budget cases run against real throwaway git repos (payload cwd)
 # with the state-dir seam UNSET, so the default <git-common-dir>/inline-impl-
 # spent/ derivation is exercised for real; every other case gets a per-case
 # scratch state dir via run_hook so no case can touch a real budget.
@@ -16,7 +16,7 @@ set -uo pipefail
 
 HOOK="$(cd "$(dirname "$0")" && pwd)/orchestrator-inline-guard.sh"
 
-# HIMMEL-3092: a console leg's shell exports guard overrides (INLINE_IMPL_OK,
+# A console leg's shell exports guard overrides (INLINE_IMPL_OK,
 # HIMMEL_CONSOLE_LEG, HIMMEL_HOOK_INTEGRITY_BYPASS_OK, ...) that reach the hook
 # under test and flip every "override UNSET" case. Clear them before any case
 # runs; a case that needs one still sets it explicitly on its own invocation.
@@ -118,7 +118,7 @@ run_hook() {  # $1 = payload JSON, $2 = log path — ORCH_GUARD_STATE_DIR is set
 run_hook_realstate() {  # $1 = payload JSON, $2 = log path — NO state-dir seam:
                         # exercises the default <git-common-dir>/inline-impl-
                         # spent/ derivation against the payload cwd's temp
-                        # git repo (HIMMEL-1791 cases only).
+                        # git repo (budget cases only).
     ORCH_GUARD_LOG="$2" bash "$HOOK" <<< "$1"
 }
 
@@ -134,7 +134,7 @@ assert_contains "fires: emits additionalContext nudge" "$OUT1" "dispatching pare
 assert_contains "fires: log records the model" "$(cat "$LOG1" 2>/dev/null || true)" "claude-opus-4-8"
 assert_contains "fires: log records the path" "$(cat "$LOG1" 2>/dev/null || true)" "scripts/hooks/foo.sh"
 
-# --- Case 1b: worker exemption (HIMMEL-1417) — `agent_id` present (the
+# --- Case 1b: worker exemption — `agent_id` present (the
 # documented signal a PreToolUse hook fires inside a subagent call, per
 # code.claude.com/docs/en/hooks) silences the advisory even though the
 # payload would otherwise fire (same top-tier-model transcript, same
@@ -147,7 +147,7 @@ assert_rc "worker exemption: still allow" 0 "$RC1B"
 assert_rc "worker exemption: no additionalContext" 0 "$([ -z "$OUT1B" ] && echo 0 || echo 1)"
 assert_file_missing "worker exemption: no fire-log written" "$LOG1B"
 
-# --- Case 1c: parent ground truth (HIMMEL-1417 retask) — a REJECTED earlier
+# --- Case 1c: parent ground truth — a REJECTED earlier
 # fix keyed the exemption on CLAUDE_CODE_CHILD_SESSION=1, which is ALSO set
 # on a genuine top-level orchestrator session launched via the standard
 # armed/scheduled path (a Task/Agent dispatch shares the parent's session
@@ -168,7 +168,7 @@ assert_rc "docs path: still allow" 0 "$RC2"
 assert_rc "docs path: no additionalContext" 0 "$([ -z "$OUT2" ] && echo 0 || echo 1)"
 assert_file_missing "docs path: no fire-log written" "$LOG2"
 
-# --- Case 2b: CLAUDE.md inside an implementation dir is still docs (HIMMEL-1341 carve-out) ---
+# --- Case 2b: CLAUDE.md inside an implementation dir is still docs (carve-out) ---
 LOG2B="$TMP/fires2b.jsonl"
 PAYLOAD2B=$(jq -nc --arg tp "$OPUS_TRANSCRIPT" '{tool_name:"Edit",session_id:"sess-2b",transcript_path:$tp,tool_input:{file_path:"scripts/hooks/CLAUDE.md"}}')
 run_hook "$PAYLOAD2B" "$LOG2B" >/dev/null
@@ -223,7 +223,7 @@ assert_rc "disable bypass: allow" 0 "$RC5"
 assert_rc "disable bypass: no additionalContext" 0 "$([ -z "$OUT5" ] && echo 0 || echo 1)"
 assert_file_missing "disable bypass: no fire-log written" "$LOG5"
 
-# --- HIMMEL-1791: per-PR inline-exemption budget (deny gate) ---
+# --- per-PR inline-exemption budget (deny gate) ---
 echo ""
 echo "=== HIMMEL-1791: per-branch inline-exemption budget ==="
 
@@ -267,9 +267,9 @@ OUT6B=$(run_hook_realstate "$P6B" "$LOG6B" 2>"$TMP/err6b"); RC6B=$?
 assert_rc "budget: second qualifying edit DENIES" 2 "$RC6B"
 assert_contains "budget: deny is a structured permissionDecision" "$OUT6B" '"permissionDecision":"deny"'
 ERR6B=$(cat "$TMP/err6b")
-# HIMMEL-2210: the prescribed recovery is the Agent tool with an explicit
+# The prescribed recovery is the Agent tool with an explicit
 # model, NOT scripts/telegram/dispatch-lane.sh — for impl work that path
-# exits 2 (HIMMEL-1967, no defaultImplLane), so a guard that named it left
+# exits 2 (no defaultImplLane), so a guard that named it left
 # an agent following the denial text verbatim on a guaranteed second failure.
 assert_contains "budget: deny names the Agent tool as the recovery" "$ERR6B" "Agent tool with an explicit model tier"
 assert_contains "budget: deny cites HIMMEL-1967 (why not dispatch-lane.sh)" "$ERR6B" "HIMMEL-1967"
@@ -283,9 +283,8 @@ assert_contains "budget: deny names the audited override" "$ERR6B" "INLINE_IMPL_
 assert_contains "budget: deny logged" "$(cat "$LOG6B" 2>/dev/null || true)" '"decision":"deny"'
 
 # Case 6C: a branch name containing a shell metacharacter (single quote is a
-# legal git ref char) is safe to display as-is now (HIMMEL-2210 removed the
-# copy-pasteable dispatch-lane.sh command the branch used to be shell-quoted
-# for, HIMMEL-2077) — the branch appears only in descriptive prose, never in
+# legal git ref char) is safe to display as-is (the deny text has no
+# copy-pasteable shell command to quote it for) — the branch appears only in descriptive prose, never in
 # a suggested shell command, so no quoting/escaping is needed or expected.
 QUOTE_REPO="$TMP/quote-repo"
 EVIL_BRANCH="feat/h2077'evil"
@@ -523,7 +522,7 @@ ERR19=$(cat "$TMP/err19")
 assert_contains "crafted state: hostile ts sanitized to 'earlier'" "$ERR19" "recorded earlier"
 assert_not_contains "crafted state: injected text cannot reach the deny reason" "$ERR19" "IGNORE-ALL-PREVIOUS"
 
-# --- HIMMEL-1976: the budget is keyed on the EDITED FILE's worktree branch ---
+# --- the budget is keyed on the EDITED FILE's worktree branch ---
 echo ""
 echo "=== HIMMEL-1976: budget keyed on the edited file's worktree, not the cwd ==="
 
@@ -585,7 +584,7 @@ assert_contains "default branch: logged allow-default-branch" "$(cat "$LOG22" 2>
 assert_file_missing "default branch: still no spent record for main" "$(spent_state "$H76_BASE/.git" main)"
 
 # Case 23: a file OUTSIDE any work tree falls back to the cwd's branch (and
-# says so), which is the pre-HIMMEL-1976 behaviour for that case.
+# says so), which is the legacy behaviour for that case.
 H76_FB="$TMP/h1976-fallback"
 mk_repo "$H76_FB" feat/h1976-fallback
 mkdir -p "$TMP/h1976-outside/scripts"

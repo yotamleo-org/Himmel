@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # guard-bus-store.sh — PreToolUse hook (matchers "Bash" and
-# "Edit|Write|MultiEdit|NotebookEdit"): [HIMMEL-4829] himmel-bus T6, the store
+# "Edit|Write|MultiEdit|NotebookEdit"): himmel-bus T6, the store
 # guard. A SPEED BUMP, not a fence.
 #
 # WHY: phase 1 of himmel-bus runs every session, the server and the store as one
-# uid (HIMMEL-4818 threat model T1, T3, T5, T6). The bus API cannot forge a
+# uid (threat model T1, T3, T5, T6). The bus API cannot forge a
 # sender or reach a peer's log, but a session's own Bash could `cat` another
 # session's log, rewrite `peers/*.json`, or bind itself as its console by hand.
 # This hook makes those tool-driven routes cost a denial and a named bypass
@@ -52,7 +52,7 @@
 # stdin to xargs, the verb or the store path held in a shell variable
 # (`v=register; bus $v x`, `$S/bus`: a bare expansion carries no literal
 # character to match), and a symlinked payload cwd or a relative file path
-# against it (all tracked under HIMMEL-5206).
+# against it (all tracked).
 # Deliberately over-denied (the safe direction): a verb word anywhere after a
 # bus-able word in one segment (`bus send ... --summary "rebind done"`, `git
 # commit -m "fix(bus): register retry"`), a glob or expansion under `himmel/`
@@ -227,7 +227,7 @@ busish() {
 # verbish <word>: could this word be register|bind|rebind once expanded? The
 # whole word is glob-matched, and at least one literal character has to
 # survive, so a bare `$x` or `*` is not a verb (a verb held in a variable is the
-# documented residual, HIMMEL-5206). A leftover substitution opener is verbish.
+# documented residual). A leftover substitution opener is verbish.
 verbish() {
     local lit v
     if [[ ! "$1" =~ $PLAIN_RE ]]; then
@@ -331,7 +331,7 @@ BUS_ENV_NAMES='HIMMEL_BUS_NAME'
 # normalised name part (before the first `=`, trailing `+` dropped, at least one
 # literal char surviving) can be a HIMMEL_BUS_* variable: `HIMMEL_BUS_${x}=1`,
 # `HIM${y}EL_BUS_NAME=x`, `$'HIMMEL_BUS_NAME=x'`. A bare `"$k=$v"` has no
-# literal char and is the documented residual (HIMMEL-5206). Plain words are
+# literal char and is the documented residual. Plain words are
 # the raw/quote-stripped ENV_RE's job.
 env_assign_word() {
     local seg word words name lit v
@@ -384,7 +384,7 @@ case "$tool" in
         # The pair is removed, not replaced: bash joins `reg\<nl>ister` into one word.
         bsnl=$'\\\n'
         # Guarded: a pattern substitution on a large multibyte string is
-        # superlinear (HIMMEL-4729), so it only runs when there is a pair.
+        # superlinear, so it only runs when there is a pair.
         if [[ "$cmd" == *"$bsnl"* ]]; then cmd=${cmd//"$bsnl"/}; fi
         cmd_n=$(norm "$cmd")
         xdg_state=""

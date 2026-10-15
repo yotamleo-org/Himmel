@@ -235,12 +235,14 @@ commands:
   deps upgrade            bump present declared toolchain deps toward latest;
                           qmd's model pull (~2.1 GB) is gated behind a prompt
                           or --with-models
-  report [--items <id,..>] --json
+  report [--items <id,..>] [--deep] --json
                           read-only config feed (himmel-config-feed/1): every
                           item, doctor check, cadence, plugin, lane, initiative
                           leg, bypass flag and secret as one row grammar, for
                           the config UI. --items re-probes only those row ids.
-                          Secrets show presence, never values.
+                          Secrets show presence, never values. --deep adds the
+                          wiring layers: pre-commit ids, Claude hooks, git
+                          hooks and CI workflows (fires reads unverified).
   ui [--port N]           read-only config UI on 127.0.0.1 (needs bun): serves the
                           report feed as one page and prints a URL carrying a
                           per-launch token. The OPERATOR runs this from a
@@ -328,7 +330,7 @@ const ALLOWED_OPTIONS = {
   status: ['items', 'json'],
   // the config UI's feed (himmel-config-feed/1). Its own verb,
   // never a `status` mode — status --json is a golden-tested contract.
-  report: ['items', 'json'],
+  report: ['items', 'json', 'deep'],
   // the read-only config UI server.
   ui: ['port', 'allowAgentSession', 'agui'],
   ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork'],
@@ -612,6 +614,9 @@ function parseArgs(argv) {
       }
       case '--json':
         args.json = true;
+        break;
+      case '--deep':
+        args.deep = true;
         break;
       case '--allow-agent-session':
         args.allowAgentSession = true;
@@ -4238,8 +4243,7 @@ async function preflightLaneProfileStep(answers) {
 }
 
 // persist an APPLIED install's selected optional lanes as the
-// resolver's narrowing profile allowlist. This runs only after the core
-// install succeeds; dry-run never writes it. Failure is fatal because
+// resolver's narrowing profile allowlist. Dry-run never writes it. Failure is fatal because
 // silently leaving every detected backend routable would violate the consent
 // boundary the profile selection now represents. universal now
 // lanes is asked to every profile. EXCEPT when
@@ -4247,10 +4251,15 @@ async function preflightLaneProfileStep(answers) {
 // question nobody was asked would silently suppress every optional lane
 // (the consent-fabrication class exists to prevent), so skip
 // with an honest message instead of writing anything.
+//
+// transactional with the install: this runs BEFORE the core installer, so a
+// write failure aborts with nothing installed (null), and a later failed step
+// calls the returned undo to put the prior overlay bytes back.
 async function applyLaneProfileStep(answers) {
+  const noUndo = () => {};
   if (lanesAnswerNeverAsked(answers)) {
     console.log('lane profile: lanes never answered on this legacy profile — no allowlist written; re-run the installer to select lanes');
-    return true;
+    return noUndo;
   }
   try {
     // the write may land under the himmelctl cache dir instead
@@ -4259,14 +4268,21 @@ async function applyLaneProfileStep(answers) {
     // `himmelctl uninstall` reverses the wrong path.
     const { file: laneAllowlistFile, scope: laneAllowlistScope } = adopterProfileLib.resolveLaneAllowlistFile(repoRoot());
     const recorded = provBefore(laneAllowlistFile, { scope: laneAllowlistScope, cls: 'keep' });
-    const { ids, preservedLegacyGlobal } = await adopterProfileLib.persistProfileLaneAllowlist(answers.lanes || [], repoRoot());
+    const { ids, preservedLegacyGlobal, file, prior } = await adopterProfileLib.persistProfileLaneAllowlist(answers.lanes || [], repoRoot());
     recorded();
     console.log(`lane profile: allowlisted ${ids.length > 0 ? ids.join(', ') : '(none)'}; unselected adopter-profile lanes are suppressed-by-profile`);
     if (preservedLegacyGlobal) console.log('lane profile: preserved legacy global allowlist semantics');
-    return true;
+    return () => {
+      try {
+        adopterProfileLib.restoreProfileLaneAllowlist(file, prior);
+        console.error('himmelctl: install did not complete — restored the previous lane profile allowlist');
+      } catch (e) {
+        console.error(`himmelctl: could not restore the previous lane profile allowlist at ${file}: ${e && e.message ? e.message : e}`);
+      }
+    };
   } catch (e) {
     console.error(`himmelctl: could not persist the lane profile allowlist: ${e && e.message ? e.message : e}`);
-    return false;
+    return null;
   }
 }
 
@@ -4473,6 +4489,10 @@ async function runPlan(answers, args) {
 
   // T4: execute the derived command VERBATIM; propagate its rc (skip the
   // post-install enable step if the core install itself failed).
+  provStep = 'lane-profile';
+  const undoLaneProfile = await applyLaneProfileStep(answers);
+  if (!undoLaneProfile) return 1;
+
   provStep = 'adopt';
   const rc = runSpawn(cmd);
   // write the PATH shim BEFORE checking adopt.sh's rc — a failed
@@ -4483,6 +4503,7 @@ async function runPlan(answers, args) {
   const shimOk = applyHimmelctlPathShim(args);
   ensureBusStateDirs();
   if (rc !== 0) {
+    undoLaneProfile();
     if (shimOk) console.error('himmelctl: install failed (see above), but the himmelctl launcher is on PATH — resolve the error, then run `himmelctl ensure` to resume.');
     return rc;
   }
@@ -4491,20 +4512,18 @@ async function runPlan(answers, args) {
   if (existingVaultPlan) {
     provStep = 'wire';
     const wireRc = runSpawn(existingVaultPlan.wire);
-    if (wireRc !== 0) return wireRc;
+    if (wireRc !== 0) { undoLaneProfile(); return wireRc; }
     provStep = 'apply';
     const applyRc = runSpawn(existingVaultPlan.apply);
-    if (applyRc !== 0) return applyRc;
+    if (applyRc !== 0) { undoLaneProfile(); return applyRc; }
   }
   // the dev overlay's setup.sh/setup.ps1 runs AFTER adopt.sh
   // succeeds, as an additional idempotent mutation step — never instead of it.
   if (overlayCmd) {
     provStep = 'overlay';
     const overlayRc = runSpawn(overlayCmd);
-    if (overlayRc !== 0) return overlayRc;
+    if (overlayRc !== 0) { undoLaneProfile(); return overlayRc; }
   }
-  provStep = 'lane-profile';
-  if (!await applyLaneProfileStep(answers)) return 1;
 
   // T4.5: pluginSet=full → the documented per-plugin enable step. lean → no-op
   // (adopt.sh's/setup.sh's settings-template default).
@@ -5421,7 +5440,7 @@ function cmdReport(args) {
   const answers = fs.existsSync(profilePath) ? loadProfile(profilePath) : null;
   const scope = answers ? answers.scope : 'user';
   const targetPath = scope === 'user' ? repoRoot() : path.resolve(process.cwd());
-  const feed = configFeed.buildFeed({ manifest, scope, targetPath, answers, items: args.items });
+  const feed = configFeed.buildFeed({ manifest, scope, targetPath, answers, items: args.items, deep: args.deep === true });
   process.stdout.write(JSON.stringify(feed) + '\n');
   return 0;
 }

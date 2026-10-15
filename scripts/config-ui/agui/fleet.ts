@@ -18,6 +18,9 @@
 // backend model, a cost row (a claudex leg priced from the codex weekly bank delta, never at Claude weights) and an
 // eval row (the per-lane quality measure); the fleet carries the one codex bank reading they were priced against.
 //
+// the himmel-bus traffic comes from the one collector (busEvents, metadata only): Fleet.edges counts the messages
+// per from→to pair and a row's bus counts what is waiting on it (busOf). Read-only: no store is created.
+//
 // ponytail: each request re-folds every journal that grew since the last one (cached on the files' sizes), so a
 // fleet of very long journals costs a full read per poll (measured 2026-10-07 on 9 live sessions: 278 ms cold,
 // 202 ms warm); upgrade path: a per-file incremental fold (the SSE tail's offsets) once a fleet poll is slow.
@@ -29,7 +32,9 @@ import { cloudRoutes, consoleOf, GH_WAIT_MS, readCloudPrs, type CloudPhase, type
 import { createJournalMapper } from "./journal-mapper.ts";
 import { mergeJournalFiles, sessionFiles } from "./journal-merge.ts";
 import { backendModelOf, codexStartOf, costRowOf, evalRowOf, laneOf, readCodexBank, W, type CodexBank, type CostRow, type EvalRow, type Lane, type LaneFrom } from "./lane.ts";
-import { resolveJournal } from "./sse.ts";
+import { busRootOf, resolveJournal } from "./sse.ts";
+import { busEvents } from "../../../marketplace/plugins/himmel-bus/lib/agui.mjs";
+import { loadPeers } from "../../../marketplace/plugins/himmel-bus/lib/identity.mjs";
 
 export const RECENT_MS = 60 * 60 * 1000;
 const SCRIPT_TIMEOUT_MS = 30_000;
@@ -48,14 +53,19 @@ export type FleetRow = {
   lane: Lane; laneFrom: LaneFrom | null; backendModel: string | null; cost: CostRow | null; eval: EvalRow | null;
   // the doc's last Results marker (leg_tail_status), the doc's last write, and the PR's URL.
   marker: string | null; lastSeenAt: number | null; prUrl: string | null;
+  bus: BusCounts;
 };
+// unacked: rulings (c=1) sent to the row that it has not answered; undelivered: messages it has not yet seen;
+// unbound: registered with the bus but never bound to a process.
+export type BusCounts = { unacked: number; undelivered: number; unbound: boolean };
+export type BusEdge = { from: string; to: string; n: number; unacked: number; lastAt: number; kinds: Record<string, number> };
 export type ProcessOrphan = { pid: number; owner: string; ageMin: number };
 export type Usage = {
   calls: number; input: number; output: number; cacheRead: number; cacheCreate: number; costEq: number | null;
   resident: number | null; ceiling: number; ceilingFrom: "autocompact" | "window"; fill: number | null;
 };
 // processOrphans: tick's stale shell-tool wrappers; null when the inventory could not be read.
-export type Fleet = { census: "ok" | "degraded" | "unavailable"; generatedAt: number; sessions: FleetRow[]; processOrphans: ProcessOrphan[] | null; banks: { codex: CodexBank | null } };
+export type Fleet = { census: "ok" | "degraded" | "unavailable"; generatedAt: number; sessions: FleetRow[]; edges: BusEdge[]; processOrphans: ProcessOrphan[] | null; banks: { codex: CodexBank | null } };
 type CensusRow = { pid: string; name: string; model: string; doc: string; status: string; autocompact?: string; startedAt?: number | null };
 type Census = { census: Fleet["census"]; sessions: CensusRow[]; cloudRoutes?: string[]; manifests?: string[]; consoleDocs?: string[] };
 
@@ -179,9 +189,43 @@ async function cloudRows(logs: string[], env: Record<string, string | undefined>
       parent: await consoleOf(r), predecessor: null, agents: [], usage: null, cloud: { url: p.url, phase: p.phase },
       runtime: p.phase === "merged" || p.phase === "closed" ? null : { startedAt: r.at, endedAt: null, elapsedMs: Math.max(0, now - r.at) },
       console: await consoleOf(r), live: p.phase !== "merged" && p.phase !== "closed", lock: "unknown", lane: "cloud", laneFrom: null, backendModel: null, cost: null, eval: null,
-      marker: null, lastSeenAt: null, prUrl: null,
+      marker: null, lastSeenAt: null, prUrl: null, bus: NO_BUS,
     };
   }));
+}
+
+const NO_BUS: BusCounts = { unacked: 0, undelivered: 0, unbound: false };
+const BUS_KINDS = new Set(["ruling", "report", "proposal", "data"]);
+
+// The bus's edges and each session's counts, from busEvents' metadata; an unreadable or absent store is no traffic.
+async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: string) => BusCounts }> {
+  type Msg = { f?: string | null; r?: string | null; t?: number; c?: number; kind?: string; delivered?: boolean; acked?: boolean; expired?: boolean };
+  const msgs = new Map<string, Msg>();
+  try {
+    for await (const e of busEvents(root)) {
+      const d = e.delta[0], m = /^\/bus\/msgs\/([^/]+)(?:\/(delivered|acked|expired))?$/.exec(d.path);
+      if (!m) continue;
+      const msg = msgs.get(m[1]) ?? {};
+      msgs.set(m[1], msg);
+      if (m[2]) msg[m[2] as "delivered" | "acked" | "expired"] = true;
+      else Object.assign(msg, { f: plain(d.value.f), r: plain(d.value.r), t: d.value.t, c: d.value.c, kind: d.value.kind });
+    }
+  } catch { return { edges: [], of: () => NO_BUS }; }
+  let peers: Record<string, { pid?: number }> = {};
+  try { peers = await loadPeers(root); } catch { /* no registry: nothing is unbound */ }
+  const edges = new Map<string, BusEdge>(), rows = new Map<string, BusCounts>();
+  for (const msg of msgs.values()) {
+    if (!msg.f || !msg.r || msg.t === undefined) continue; // a follow-up whose send is gone
+    const ruling = msg.c === 1 && !msg.acked && !msg.expired;
+    const edge = edges.get(`${msg.f}\0${msg.r}`) ?? { from: msg.f, to: msg.r, n: 0, unacked: 0, lastAt: 0, kinds: {} };
+    edges.set(`${msg.f}\0${msg.r}`, edge);
+    const kind = BUS_KINDS.has(msg.kind ?? "") ? msg.kind! : "data";
+    edge.n++; edge.unacked += ruling ? 1 : 0; edge.lastAt = Math.max(edge.lastAt, msg.t); edge.kinds[kind] = (edge.kinds[kind] ?? 0) + 1;
+    const row = rows.get(msg.r) ?? { ...NO_BUS };
+    rows.set(msg.r, row);
+    row.undelivered += msg.delivered || msg.acked || msg.expired ? 0 : 1; row.unacked += ruling ? 1 : 0;
+  }
+  return { edges: [...edges.values()], of: (name) => ({ ...(rows.get(name) ?? NO_BUS), unbound: !!peers[name] && peers[name].pid === undefined }) };
 }
 
 const roleOf = (name: string, doc: string): FleetRow["role"] =>
@@ -259,7 +303,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     codex = readCodexBank(await readFile(opts.env.CODEX_BANK_CACHE || join(opts.home, ".himmel", "cache", "codex-bank.json"), "utf8"), opts.now, ttl > 0 ? ttl : undefined);
   } catch { /* no probe cache: unmeasured */ }
   const banks = { codex };
-  if (census.census === "unavailable") return { census: "unavailable", generatedAt: opts.now, sessions: [], processOrphans: await processOrphansOf(opts), banks };
+  if (census.census === "unavailable") return { census: "unavailable", generatedAt: opts.now, sessions: [], edges: [], processOrphans: await processOrphansOf(opts), banks };
   const lockOf = (file: string, doc: string, wrapped: boolean): Promise<FleetRow["lock"]> => {
     if (wrapped) return Promise.resolve("released");
     if (!/^- .*\b(?:lock|release-token)\b.*`[^`]+`/m.test(doc)) return Promise.resolve("unknown");
@@ -335,7 +379,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       subagents: { total: subs.length, running: view ? subs.filter((id) => agentState(view!, id) === "running").length : 0 },
       failures: view?.failures.length ?? 0,
       ...graph, parent, console: role === "console" ? name : parent, live: c.status !== "WRAPPED", lock: role === "console" ? await lockOf(c.doc, doc, c.status === "WRAPPED") : "unknown",
-      lane, laneFrom, backendModel, marker: c.status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null,
+      lane, laneFrom, backendModel, marker: c.status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS,
       agents: subs.map((id) => ({ name: opts.redact(view!.agents[id]?.name ?? id).slice(0, 80), role: view!.agents[id]?.role ?? "subagent", state: agentState(view!, id) })),
       usage: finish(tally, { autocompact: c.autocompact ?? "", model: c.model, window: launch.CLAUDE_CODE_MAX_CONTEXT_TOKENS, priced: lane === "native" }), cloud: null,
       cost: tally ? costRowOf({ ...ids, lane, tally, codexStart: codexStartOf(launch), codexNow: lane === "claudex" && c.status !== "WRAPPED" ? codex : null }) : null,
@@ -357,7 +401,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
         subagents: { total: 0, running: 0 }, failures: 0, ...graphOf("console", doc),
         agents: [], usage: null, cloud: null, runtime: null, console: name, live: false,
         lock: await lockOf(file, doc, wrapped), lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
-        marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null,
+        marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS,
       });
     } catch { /* archived console moved or unreadable */ }
   }
@@ -371,6 +415,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   for (const journal of folds.keys()) if (!seen.has(journal)) folds.delete(journal);
   const sessions = [...rows.filter((r): r is FleetRow => r !== null), ...cloud];
   const slug = await repoSlugOf(join(dirname(opts.script), "../.."), opts.env);
-  for (const r of sessions) r.prUrl = prUrlOf(slug, r.pr);
-  return { census: census.census, generatedAt: opts.now, sessions, processOrphans: await processOrphansOf(opts), banks };
+  const bus = await busOf(busRootOf(opts.env, opts.home));
+  for (const r of sessions) { r.prUrl = prUrlOf(slug, r.pr); r.bus = bus.of(r.name); }
+  return { census: census.census, generatedAt: opts.now, sessions, edges: bus.edges, processOrphans: await processOrphansOf(opts), banks };
 }

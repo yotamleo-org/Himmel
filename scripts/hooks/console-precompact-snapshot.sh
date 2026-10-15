@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # console-precompact-snapshot.sh — PreCompact hook: snapshot a CONSOLE's
-# authority-bearing state to disk at the moment of compaction (HIMMEL-2973 S3),
+# authority-bearing state to disk at the moment of compaction,
 # so scripts/handover/console-kit/compacted-check.sh (G11) can prove the
 # console's post-compaction COMPACTED bullet matches what it held before.
 #
@@ -41,7 +41,7 @@
 #
 # The snap holds RETASK nonces and lock tokens, so the workdir is created 0700,
 # must be owned by the caller and must not be a symlink (same posture as
-# console.sh's HIMMEL-2881 work-dir checks).
+# console.sh's work-dir checks).
 #
 # ponytail: `## Live state` is read with a plain ``` fence toggle and single-line
 # `key: value` lines; it does not replicate console-compact-reinject.sh's
@@ -102,7 +102,7 @@ main() {
     # repo's handovers/), because a console is often launched with no exported
     # HANDOVER_DIR.
     local lock="" root="" lockroot="" gofile="" primary="" candidates="" slug="" owner="" r
-    # HIMMEL-4449: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+    # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
     # shellcheck disable=SC1091
     if . "$REPO/scripts/lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
     # shellcheck source=scripts/lib/handover-path.sh
@@ -132,7 +132,7 @@ EOF
         local newest pr sha f
         # shellcheck disable=SC2012  # GO filenames are <pr>.<sha>, always [0-9a-f.]
         # Only ordinary <pr>.<40-hex sha> files: a fix-main-red.<pr>.<sha>.<run>
-        # FIX-GO (go.sh --fix-main-red, HIMMEL-5134) shares the directory.
+        # FIX-GO (go.sh --fix-main-red) shares the directory.
         newest=""
         while IFS= read -r f; do
             if printf '%s\n' "$f" | grep -qE '^[0-9]+\.[0-9a-f]{40}$'; then newest="$f"; break; fi

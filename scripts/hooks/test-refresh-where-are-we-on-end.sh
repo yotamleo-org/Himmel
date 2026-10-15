@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/refresh-where-are-we-on-end.sh (HIMMEL-572).
+# Smoke test for scripts/hooks/refresh-where-are-we-on-end.sh.
 #
 # Usage: bash scripts/hooks/test-refresh-where-are-we-on-end.sh
 # Hermetic: HIMMEL_REPO points at a throwaway root carrying only a COPY of
-# scripts/where-are-we and deliberately NO .env (see HERMETIC_ROOT below —
-# HIMMEL-2519). resolve-node.sh is sourced relative to the HOOK's own path,
+# scripts/where-are-we and deliberately NO .env (see HERMETIC_ROOT below).
+# resolve-node.sh is sourced relative to the HOOK's own path,
 # not $HIMMEL_REPO, so it needs nothing from this root at all; the copy
 # exists only so a case that ever invokes the real collect.mjs (none
 # currently do — every ON case here stubs HIMMEL_WHERE_ARE_WE_COLLECT_CMD)
@@ -30,8 +30,8 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 # --- Hermetic HIMMEL_REPO: scripts/ only, deliberately NO .env --------------
-# WHY (HIMMEL-2519): the hook sources scripts/lib/load-dotenv.sh, which treats
-# a KEY as "absent" when it is unset OR EMPTY (HIMMEL-1922, deliberate) and
+# WHY: the hook sources scripts/lib/load-dotenv.sh, which treats
+# a KEY as "absent" when it is unset OR EMPTY (deliberate) and
 # fills any absent key from $HIMMEL_REPO/.env. Pointing HIMMEL_REPO at the REAL
 # repo root — as this suite used to — means an operator .env that sets
 # HIMMEL_WHERE_ARE_WE clobbers every case below that passes an EMPTY value for
@@ -58,7 +58,7 @@ HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state1" \
     HIMMEL_WHERE_ARE_WE="" \
     HIMMEL_WHERE_ARE_WE_COLLECT_CMD="touch '$sentinel1'" \
     bash "$HOOK" </dev/null >/dev/null 2>&1; rc1=$?
-# Gate now runs in the detached child (HIMMEL-636) — give it time to (not) fire
+# Gate now runs in the detached child — give it time to (not) fire
 # before asserting the refresh stayed off; a regressed gate would touch by now.
 sleep 0.5
 if [ "$rc1" = 0 ] && [ ! -e "$sentinel1" ]; then
@@ -70,7 +70,7 @@ fi
 
 # --- Case 2: ON → refresh runs DETACHED + marker stamped on success ----------
 # The hook returns immediately (non-blocking); the detached child runs the
-# refresh then stamps the marker. Poll for both (HIMMEL-576 detach conversion).
+# refresh then stamps the marker. Poll for both.
 state2="$TMP/s2"; mkdir -p "$state2"
 sentinel2="$TMP/sentinel2"
 HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state2" \
@@ -125,10 +125,10 @@ else
     fail "broken root -> expected exit 0, got rc=$rc4"
 fi
 
-# --- Case 5: full-body detach keeps the PARENT fast (HIMMEL-636) -------------
+# --- Case 5: full-body detach keeps the PARENT fast -------------
 # The discriminating test: inject latency into the PREAMBLE (HIMMEL_WHERE_ARE_WE_TEST_DELAY
 # sleeps at the start of the child body) — NOT into the collect, which was already
-# detached pre-HIMMEL-636 (so a slow COLLECT_CMD would pass on the OLD code too).
+# detached before (so a slow COLLECT_CMD would pass on the OLD code too).
 # With the full-body detach the preamble runs in the detached child, so the parent
 # returns immediately; a regression that un-detached the body would run this 12s
 # delay in the FOREGROUND and blow the <10s assertion. Then confirm the child still

@@ -72,7 +72,7 @@ has "T2c main/master framing" "$out" "on main/master"
 # T3: gate ON, primary checkout on master → nudge emitted.
 has "T3 master emits nudge" "$(run 1 "$SANDBOX/masterrepo")" "<system-reminder>"
 
-# T4: gate ON, feature branch in the PRIMARY checkout → nudge emitted (HIMMEL-507).
+# T4: gate ON, feature branch in the PRIMARY checkout → nudge emitted.
 out=$(run 1 "$SANDBOX/featrepo")
 has "T4 primary feature emits nudge" "$out" "<system-reminder>"
 has "T4b primary feature framing" "$out" "PRIMARY checkout"

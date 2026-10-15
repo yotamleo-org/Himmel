@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # inject-where-are-we.sh — SessionStart hook: inject the RELEVANT slice of the
-# where-are-we ledger (HIMMEL-516, L2 of epic HIMMEL-514).
+# where-are-we ledger.
 #
 # A generative SessionStart SYNC, not a guard. It RENDERS synchronously from the
 # existing ledger (no network → fast, within the hook timeout) and, when the
@@ -38,7 +38,7 @@ trap 'exit 0' ERR
 _wa_payload=""
 if [ -t 0 ]; then :; else _wa_payload="$(cat 2>/dev/null || true)"; fi
 
-# HIMMEL-2830 / HIMMEL-2928: a leg launched by headed-arm-leg.sh --profile
+# A leg launched by headed-arm-leg.sh --profile
 # carries HIMMEL_LEAN_LEG=1. SessionStart output is not paid once - it sits in
 # the fixed context floor that is re-read on EVERY API call of that session
 # (measured: 0.8k chars of a 74.3k first-turn floor on leg N158), and a leg never
@@ -86,7 +86,7 @@ _wa_marker="$_wa_dir/.refreshed-at"
 _wa_flag="$_wa_dir/.stale-flag"
 mkdir -p "$_wa_dir" 2>/dev/null || exit 0
 
-# HIMMEL-1030: the branch is the SESSION's, not the canonical checkout's.
+# The branch is the SESSION's, not the canonical checkout's.
 # $_wa_root (HIMMEL_REPO) stays on main under the worktree workflow and is kept
 # only for shared scripts and state; the session dir is CLAUDE_PROJECT_DIR, else
 # the payload's cwd, else (neither set) $_wa_root as before.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke tests for the WS9/HIMMEL-654 Task 3 Claude in-hook quota-gauge writer
+# Smoke tests for the Claude in-hook quota-gauge writer
 # grafted into scripts/hooks/auto-arm-on-cap.sh.
 #
 # The writer is a best-effort, FAIL-OPEN observation: at a fresh-cache
@@ -27,7 +27,7 @@ PROJ_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# HIMMEL-1712: the watchdog now treats a cache with no (or mismatched) account
+# the watchdog now treats a cache with no (or mismatched) account
 # stamp as unusable — synthesize a fake identity so every fixture below can
 # stamp a matching account and keep exercising the threshold/ledger logic.
 export HOME="$TMP/home"; mkdir -p "$HOME"

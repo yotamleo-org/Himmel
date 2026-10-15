@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-read-clamp.sh — house-style test harness for read-clamp.sh (HIMMEL-2993).
+# test-read-clamp.sh — house-style test harness for read-clamp.sh.
 # Platform guard: bash-only, no .ps1 twin -- exercises the bash-only hook above.
 set -uo pipefail
 
@@ -108,7 +108,7 @@ assert_rc "bash cat over limit denies" 2 "$rc"
 assert_stderr_contains "bash cat deny names line count" "10 lines"
 
 # 7b. Bash cat of a big file with a double-quoted path -> deny (quotes must
-# not defeat the clamp; HIMMEL-2993 CR).
+# not defeat the clamp).
 rc=$(run_case "$(j_bash "cat \"$BIG_FILE\"" sess-bash-cat-quoted)" "HIMMEL_CONSOLE_LEG=1")
 assert_rc "bash cat of a quoted path over limit denies" 2 "$rc"
 
@@ -118,14 +118,14 @@ assert_rc "unrecognised bash shape allows" 0 "$rc"
 
 # 9. uncreatable runtime dir -> allow (fail-open on state). A path nested
 # under a plain FILE guarantees mkdir fails regardless of privilege --
-# unlike a path under /, which root can create (HIMMEL-2993 CR).
+# unlike a path under /, which root can create.
 BLOCKER_FILE="$WORK/blocker"
 : > "$BLOCKER_FILE"
 rc=$(run_case "$(j_read "$BIG_FILE" sess-noruntime)" "HIMMEL_CONSOLE_LEG=1" "$BLOCKER_FILE/nested")
 assert_rc "uncreatable runtime dir allows" 0 "$rc"
 
 # 9b. Read of a nonexistent file -> allow, and not recorded, so a retry after
-# the file is created is not falsely denied as "already read" (HIMMEL-2993 CR).
+# the file is created is not falsely denied as "already read".
 MISSING_FILE="$WORK/not-yet-created.txt"
 rc=$(run_case "$(j_read "$MISSING_FILE" sess-missing)" "HIMMEL_CONSOLE_LEG=1")
 assert_rc "read of nonexistent file allows" 0 "$rc"
@@ -134,7 +134,7 @@ rc=$(run_case "$(j_read "$MISSING_FILE" sess-missing)" "HIMMEL_CONSOLE_LEG=1")
 assert_rc "retry after file is created still allows" 0 "$rc"
 
 # 9c. unreadable (permission-denied) file -> allow (fail-open on state), not
-# recorded, so a retry after chmod is fixed is not falsely denied (HIMMEL-2993 CR).
+# recorded, so a retry after chmod is fixed is not falsely denied.
 if [ "$(id -u)" -ne 0 ]; then
     UNREADABLE_FILE="$WORK/unreadable.txt"
     seq 1 10 > "$UNREADABLE_FILE"
@@ -147,7 +147,7 @@ else
 fi
 
 # 9d. a FIFO whole-file read -> allow, and must not block on wc reading it
-# (HIMMEL-2993 CR: file_line_count restricted to regular files).
+# (file_line_count is restricted to regular files).
 FIFO_PATH="$WORK/fifo"
 mkfifo "$FIFO_PATH"
 # stock macOS ships neither timeout nor gtimeout: run unbounded there (the bound

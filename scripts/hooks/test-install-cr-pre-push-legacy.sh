@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Contract test for scripts/hooks/install-cr-pre-push-legacy.sh (HIMMEL-1574,
-# HIMMEL-2371).
+# Contract test for scripts/hooks/install-cr-pre-push-legacy.sh.
 #
 # core.hooksPath points every worktree at the PRIMARY checkout's .git/hooks, so
 # all worktrees execute the same pre-push.legacy file. That shim used to resolve
@@ -16,7 +15,7 @@
 # refuse (exit 2) rather than fall back to a worktree copy when the primary has
 # no gate at all.
 #
-# HIMMEL-2371: the shim also runs scripts/hooks/check-push-target.sh — with the
+# The shim also runs scripts/hooks/check-push-target.sh — with the
 # SAME captured ref stream — ahead of the CR gate, so the direct-push-to-main
 # block sees git's complete, undrained ref stream (the pre-commit-configured
 # shape alone only ever sees the FIRST pushed ref). A push-target fixture that

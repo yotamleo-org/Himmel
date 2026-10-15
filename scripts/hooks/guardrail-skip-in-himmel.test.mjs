@@ -1,4 +1,4 @@
-// Tests for guardrail-skip-in-himmel.js (HIMMEL-709). Dependency-free:
+// Tests for guardrail-skip-in-himmel.js. Dependency-free:
 //   node --test scripts/hooks/guardrail-skip-in-himmel.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

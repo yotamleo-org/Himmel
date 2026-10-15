@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# telegram-notification.sh — Claude Code Notification hook (HIMMEL-1250 Increment 1).
+# telegram-notification.sh — Claude Code Notification hook.
 #
 # Fires when Claude Code needs the operator's attention while unattended
 # (a permission prompt, an idle-wait timeout, an AskUserQuestion / elicitation
@@ -68,8 +68,8 @@ MESSAGE="$(printf '%s' "$PAYLOAD" | jq -r '.message // empty')"
 ENV_ROOT="$( cd "$SESSION_CWD" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd )"
 [ -n "$ENV_ROOT" ] || ENV_ROOT="$SESSION_CWD"
 
-# --- Explicit-empty = deliberate suppression (HIMMEL-1926) -------------------
-# load_dotenv treats set-but-EMPTY as absent (HIMMEL-1922) and would fill the
+# --- Explicit-empty = deliberate suppression -------------------
+# load_dotenv treats set-but-EMPTY as absent and would fill the
 # chat id from .env. For an egress path that is the wrong fail-safe direction:
 # an explicitly EMPTY TELEGRAM_GROUP_CHAT_ID in the environment means OFF, and
 # must never fall back to .env. Capture setness BEFORE the loader runs; the

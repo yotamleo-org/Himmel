@@ -20,7 +20,7 @@ set -uo pipefail
 HOOK="$(cd "$(dirname "$0")" && pwd)/end-session-wiki.sh"
 [ -r "$HOOK" ] || { echo "FAIL: hook not found at $HOOK"; exit 1; }
 
-# Crystallizer test seam (HIMMEL-576): point the backgrounded crystallizer at the
+# Crystallizer test seam: point the backgrounded crystallizer at the
 # claude STUB (no-op by default) so these tests NEVER spawn a real `claude` /
 # bill the Max plan. Exported -> inherited by every `env ... bash "$HOOK"` run.
 STUB="$(cd "$(dirname "$0")" && pwd)/testdata/bin/claude-stub.sh"
@@ -31,7 +31,7 @@ CRYSTALLIZE_PID_DIR="$(mktemp -d)"
 export CRYSTALLIZE_PID_DIR
 
 # Stock macOS has no setsid(1); the signal/timeout cases below launch the hook
-# under it (HIMMEL-3699). Where it is absent, put a stand-in first on PATH that
+# under it. Where it is absent, put a stand-in first on PATH that
 # calls setsid(2) then execs in place, so the pid stays the new process-group
 # leader exactly as with the real tool. Where the real setsid exists nothing is
 # shimmed and PATH is untouched. ponytail: needs perl (stock on macOS), a
@@ -51,7 +51,7 @@ FAILED=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILED=1; }
 
-# Log/marker relocated per-machine, OUTSIDE any repo (HIMMEL-1215): mirrors the
+# Log/marker relocated per-machine, OUTSIDE any repo: mirrors the
 # hook's own PROJECT_SLUG derivation exactly (path separators/colon -> "-") so
 # tests can compute the expected log/marker path for a given (HOME, proj) pair.
 esw_slug() { printf '%s' "$1" | sed 's/[\/\\:]/-/g'; }
@@ -77,7 +77,7 @@ run_hook() {
     # (which makes this script a deliberate no-op on Windows, where the .ps1
     # twin runs) doesn't short-circuit the logic we're exercising. On a
     # Linux/macOS CI this is a no-op; on Windows Git Bash it lets the test run.
-    # HOME is sandboxed so the relocated per-machine log (HIMMEL-1215) never
+    # HOME is sandboxed so the relocated per-machine log never
     # touches the real ~/.claude/logs/end-session-wiki on the dev machine.
     printf '%s' "$payload" | \
         env OSTYPE="linux-gnu" OS="" HOME="$sb/home" \
@@ -109,7 +109,7 @@ if grep -q 'Documents/luna/luna' "$HOOK"; then
 else
     pass "default vault root no longer uses Documents/luna/luna"
 fi
-# Behavioural (HIMMEL-590 F7): the bare ~/Documents/luna default now requires a
+# Behavioural: the bare ~/Documents/luna default now requires a
 # REAL vault (.obsidian marker). With NO such vault the hook must SKIP and not
 # materialize a phantom vault; with the marker present it resolves + writes.
 # F7a — no marker -> skip, no phantom vault dir created.
@@ -231,7 +231,7 @@ fi
 rm -rf "$SB"
 
 # --- Case 4: per-repo `vault` NAME routes via the ~/Documents/<name> convention
-# (HIMMEL-403). A real vault needs an .obsidian/ marker; FS fallback then writes.
+# A real vault needs an .obsidian/ marker; FS fallback then writes.
 SB="$(make_sandbox)"
 mkdir -p "$SB/proj/.claude" "$SB/home/Documents/medic/.obsidian"
 printf '%s\n' '{"vault":"medic"}' > "$SB/proj/.claude/end-session-wiki.json"
@@ -270,7 +270,7 @@ else
 fi
 rm -rf "$SB"
 
-# --- Case 6: husk-skip — a contentless transcript writes NO note (HIMMEL-576) -
+# --- Case 6: husk-skip — a contentless transcript writes NO note -
 SB="$(make_sandbox)"
 printf '%s\n' '{"timestamp":"2026-06-17T00:00:00Z","type":"user","message":{"role":"user","content":"hi"}}' > "$SB/transcript.jsonl"
 RC="$(run_hook "$SB")"
@@ -302,7 +302,7 @@ else
 fi
 rm -rf "$SB"
 
-# --- Case 8: hook spawns the crystallizer for a non-husk note (HIMMEL-576) ----
+# --- Case 8: hook spawns the crystallizer for a non-husk note ----
 SB="$(make_sandbox)"
 MARK="$SB/marker.txt"
 payload=$(printf '{"transcript_path":"%s","cwd":"%s","session_id":"t","reason":"other"}' "$SB/transcript.jsonl" "$SB/proj")
@@ -331,11 +331,11 @@ rm -rf "$SB"
 # `17514160003N`. Under `set +e` the failed `$((END_MS - START_MS))` leaves
 # ELAPSED UNSET; the success-path log line `wrote ... (${ELAPSED}ms)` then
 # referenced it under `set -u` -> "unbound variable" -> the hook aborted BEFORE
-# its success log + crystallizer spawn (HIMMEL-576). Note delivered by the PUT,
+# its success log + crystallizer spawn. Note delivered by the PUT,
 # but crystallization silently never fired on macOS. On a GNU box `%3N` works,
 # so reaching this needs a `date` shim emitting the BSD-shaped value for `%3N`
 # (real date otherwise) — the GNU-host technique from test-compute-duration.sh
-# (HIMMEL-653/GH#192) — plus a `curl` shim forcing HTTP 200 so the REST-success
+# — plus a `curl` shim forcing HTTP 200 so the REST-success
 # branch (the only ELAPSED reader) is actually exercised.
 SB="$(make_sandbox)"
 SHIMDIR="$SB/bin"; mkdir -p "$SHIMDIR"
@@ -379,7 +379,7 @@ else
 fi
 rm -rf "$SB"
 
-# --- Case 11: unreadable crystallize_rules logs a warning (HIMMEL-663) --------
+# --- Case 11: unreadable crystallize_rules logs a warning --------
 # Fail-open but not invisible: the spawn still happens, but the hook logs the
 # expanded path so the operator can see the misconfiguration.
 SB="$(make_sandbox)"
@@ -430,7 +430,7 @@ else
 fi
 rm -rf "$SB"
 
-# --- Case 13: crystallize_model precedence (HIMMEL-672) ------------------------
+# --- Case 13: crystallize_model precedence ------------------------
 # Config supplies the DEFAULT model; a CRYSTALLIZE_MODEL already set in the
 # launching shell must WIN over the config (per-session operator switch).
 # 13a — config only (env unset) -> the config model reaches claude's argv.
@@ -474,7 +474,7 @@ fi
 rm -rf "$SB"
 
 # --- Case 14: a 401 from the target key retries with a sibling vault's key -----
-# (HIMMEL-711) Multi-vault: when a DIFFERENT vault owns port 27124, the target
+# Multi-vault: when a DIFFERENT vault owns port 27124, the target
 # key gets 401. The hook must discover the operator's other vault keys and retry;
 # the sibling whose server is bound accepts its own key. `curl` is PATH-shimmed to
 # emit 200 ONLY for the OK key (else 401) — no real network, no real Obsidian.
@@ -553,7 +553,7 @@ if grep -q 'local fs fallback' "$LOG14B" 2>/dev/null && [ -n "$NOTE" ]; then
 else
     fail "401-retry: all-keys-401 did not fall back to disk"
 fi
-# The loud degradation flag (HIMMEL-711): a persisted marker must be written so a
+# The loud degradation flag: a persisted marker must be written so a
 # SessionStart / where-are-we surface can pick up the silent-disk fallback.
 MARKER14B="$(marker_path_for "$SB/home" "$SB/proj")"
 if [ -f "$MARKER14B" ] && grep -q 'DEGRADED' "$MARKER14B" 2>/dev/null; then
@@ -570,7 +570,7 @@ fi
 rm -rf "$SB"
 
 # --- Case 15: a high-entropy operand is elided; surrounding text survives ----
-# (HIMMEL-1345) The exact real-world shape that wedged the vault autosync: a
+# The exact real-world shape that wedged the vault autosync: a
 # GitHub GraphQL global node ID copied verbatim into a session note tripped
 # gitleaks' generic-api-key rule. Command/subcommand/flags/paths must remain
 # readable; only the opaque threadId value is replaced.
@@ -726,7 +726,7 @@ fi
 rm -rf "$SB"
 
 # --- Case 19: a MIXED-CASE opaque prefix before a non-padding "=" is elided
-# whole (CodeRabbit finding, HIMMEL-1345 second round). Case 18's charset-only
+# whole. Case 18's charset-only
 # keypart gate is not enough on its own: it accepts ANY alphanumeric prefix,
 # so a standalone opaque token whose "=" sits partway through on a
 # non-padding boundary — e.g. "AbCdEfGhIjKlMnOpQrStUvWxYz=tail" — is misread
@@ -758,7 +758,7 @@ fi
 rm -rf "$SB"
 
 # --- Case 20: SIGTERM mid-run logs "cancelled by signal", not the generic
-# unhandled-FAILED line (HIMMEL-3629 direction 3). A PATH-stubbed curl blocks
+# unhandled-FAILED line. A PATH-stubbed curl blocks
 # so the hook is guaranteed to still be inside the REST PUT when the signal
 # arrives; the stub writes a marker file the instant it starts so the test
 # waits for real mid-run state instead of guessing a sleep duration. setsid is
@@ -807,7 +807,7 @@ fi
 rm -rf "$SB" "$CURL_STUB_DIR"
 
 # --- Case 21b: a silent endpoint (accepts the TCP connection, never answers —
-# the HIMMEL-3646 production symptom: Obsidian's REST port open but wedged)
+# the production symptom: Obsidian's REST port open but wedged)
 # must not hang SessionEnd. A real listener (not a PATH-stubbed curl, so the
 # real curl binary's --connect-timeout/--max-time are what's on trial) accepts
 # one connection and then never writes a response. Poll for the hook's own
@@ -874,7 +874,7 @@ fi
 rm -rf "$SB"
 
 # --- Case 21: dedup guard — two hook runs for the SAME session_id write
-# exactly one note (HIMMEL-3629 direction 2's "must not double-write" clause:
+# exactly one note (the "must not double-write" clause:
 # a pre-signal capture from close-wrapped-leg.sh and the hook's own normal
 # SessionEnd run can both fire for the same session). Without the guard the
 # second run's ABS_PATH collision handling (-2, -3, ...) means it takes a
@@ -891,7 +891,7 @@ else
 fi
 rm -rf "$SB"
 
-# --- Case 22: claim_capture is atomic under real concurrency (HIMMEL-3633) ----
+# --- Case 22: claim_capture is atomic under real concurrency ----
 # The old already_captured()/mark_captured() pair was check-then-mark: two
 # concurrent hook runs for the same session_id could both pass the check
 # before either marked, and both write. Extract the ACTUAL functions verbatim
@@ -923,7 +923,7 @@ fi
 rm -rf "$RACE_DIR"
 
 # --- Case 23: a claim that produced NO note does not block a legitimate retry
-# (HIMMEL-3633's release_capture: claim_capture now runs up front, before any
+# (release_capture: claim_capture now runs up front, before any
 # skip check, so an early-exit path that leaves the claim in place would wrongly
 # stick "captured" on a session that was never written). First run is a husk
 # (no content, no files touched) -> claims, then must skip AND release. Second
@@ -948,8 +948,8 @@ fi
 rm -rf "$SB"
 
 # --- Case 24: SIGTERM mid-run releases the claim, so a retry for the SAME
-# session_id still writes a note (HIMMEL-3638/F1). A claim taken up front
-# (HIMMEL-3633) that is then cancelled before any note is written must not
+# session_id still writes a note. A claim taken up front
+# that is then cancelled before any note is written must not
 # wedge that session_id forever. Blocks curl the same way case 20 does so the
 # hook is guaranteed to be inside the REST PUT (claimed, not yet written) when
 # TERM arrives, then reruns the SAME session_id (a plain fs-fallback retry,
@@ -998,7 +998,7 @@ else
 fi
 rm -rf "$SB" "$CURL_STUB_DIR"
 
-# --- Case 25: an uncreatable log dir must not block capture (HIMMEL-3638/F2) --
+# --- Case 25: an uncreatable log dir must not block capture --
 # claim_capture must treat only an EXISTING claim as already-captured. When
 # CAPTURED_DIR itself cannot be created (here: a plain file squats
 # ~/.claude/logs, so mkdir -p fails with ENOTDIR), the run must still proceed
@@ -1063,7 +1063,7 @@ else
 fi
 rm -rf "$SB"
 
-# --- Case 28: codex-1 (round 4) -- an explicit early-exit release must reset
+# --- Case 28: codex-1 -- an explicit early-exit release must reset
 # CLAIMED so the __on_exit/__on_signal trap guard does not redundantly
 # release a second time. Reproduce the exact trap guard
 # (`[ "$CLAIMED" -eq 1 ] && [ "$WROTE" -eq 0 ] && release_capture`) after an

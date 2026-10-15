@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse Bash auto-approve gateway (HIMMEL-203).
+# PreToolUse Bash auto-approve gateway.
 #
 # WHY: Claude Code's static permission matcher REFUSES to consult the
 # `allow` list whenever a Bash command contains shell variable expansion
@@ -24,7 +24,7 @@
 #     existing. It therefore FAILS OPEN: missing jq, unparseable input,
 #     anything-not-provably-safe → silent `exit 0`, no decision emitted.
 #   * It only ever EMITS "allow" — with exactly ONE documented DENY
-#     carve-out (HIMMEL-2121): a root-anchored `find` with no `-maxdepth`
+#     carve-out: a root-anchored `find` with no `-maxdepth`
 #     anywhere in its segment (e.g. `find / -iname x`, `find C:\ -name x`,
 #     `find $HOME -name x`). WHY a deny and not silence: this hook exists
 #     because the fall-through prompt is unattended in headless/cadence
@@ -52,24 +52,24 @@
 #      `git <read-subcommand>`, `gh <read-subcommand>`, or the dogfooded
 #      Jira CLI (`node …/scripts/jira/dist/index.js …`, operator
 #      allow-listed in .claude/settings.json). The jira CLI alone may also
-#      carry a bare literal `JIRA_PROJECT_KEY=<KEY>` prefix (HIMMEL-4780).
-#   The ONE non-read exception (HIMMEL-3131): a lone `queue-lock.sh` lock verb
+#      carry a bare literal `JIRA_PROJECT_KEY=<KEY>` prefix.
+#   The ONE non-read exception: a lone `queue-lock.sh` lock verb
 #   (`[HANDOVER_DIR=<root>] bash scripts/handover/queue-lock.sh <verb> …`,
 #   literal args) is approved ONLY as the whole command — see
 #   segment_is_queue_lock. It is never one segment of a compound.
-#   The second (HIMMEL-3486): /pr-check step 3.6's `impacted-suites.sh`
+#   The second: /pr-check step 3.6's `impacted-suites.sh`
 #   literal, whole command only and only on the anchor's bytes — see
 #   cmd_is_impacted_suites.
 #   Variable expansion in ARGUMENTS (`cat $f`, `… get $t`) is fine — the
 #   binary (argv[0]) is still a literal so we know what runs. If the binary
 #   ITSELF is a variable (`$cmd …`) it is not in the safe set → falls
 #   through. That is the simple_expansion case we deliberately approve:
-#   the risk is the binary, not the loop variable. EXCEPTION (HIMMEL-3660):
+#   the risk is the binary, not the loop variable. EXCEPTION:
 #   for the six write-guarded verbs (find, sort, xxd, tree, base64, file),
 #   an unquoted brace/parameter expansion OR an unquoted glob (`*`, `?`,
 #   `[`) anywhere in the segment falls through instead — any of those could
 #   hide the write/delete/exec flag the guard is checking argv words for.
-#   HIMMEL-3886: a brace expansion (unquoted `{a,b}` / `{a..b}`) in ANY word
+#   a brace expansion (unquoted `{a,b}` / `{a..b}`) in ANY word
 #   of ANY segment falls through for every binary — one central refusal
 #   before all allow arms (see word_has_brace_expansion).
 #
@@ -80,7 +80,7 @@
 #     wrong approval.
 #
 # No bypass env var for the ALLOW side — there is nothing to bypass (grants
-# only). The one DENY carve-out (HIMMEL-2121, above) has its own bypass:
+# only). The one DENY carve-out (above) has its own bypass:
 # FIND_ROOTWALK_OK=1 in the launching shell.
 # To DISABLE the hook entirely, comment it out in .claude/settings.json.
 #
@@ -100,7 +100,7 @@ set -uo pipefail
 # command. A `cd <dir> && <safe>` is no more powerful than <safe> run from
 # elsewhere (each later segment is still vetted independently); `cd $(…)` is
 # already refused by the global command-substitution tripwire. Including them
-# closes the HIMMEL-205 gap where a `cd`-prefixed jira write (or any safe
+# closes the gap where a `cd`-prefixed jira write (or any safe
 # command) fell through to the auto-mode classifier and was denied.
 is_safe_bin() {
     case "$1" in
@@ -118,7 +118,7 @@ is_safe_bin() {
     return 1
 }
 
-# HIMMEL-3894: cook every argv word of a git/gh command into CW (index-aligned
+# cook every argv word of a git/gh command into CW (index-aligned
 # with the raw words) so flag checks see the argv text, not a quoted or escaped
 # spelling (`"--output=x"`, `\-f`). Fails — the caller falls through — when a
 # word cannot be cooked (an unquoted `$VAR`, a brace span), or when a word
@@ -162,14 +162,14 @@ git_subcmd_is_read() {
             # injection, and `--exec-path` (relocates git's subcommand dir).
             # NEVER auto-approve these; fall through to a prompt.
             -c|--config-env|--config-env=*|--exec-path|--exec-path=*) return 1 ;;
-            # HIMMEL-3894: a quoted/escaped global flag would be skipped by the
+            # a quoted/escaped global flag would be skipped by the
             # raw walk below with the wrong arity; fall through.
             -*) [ "$t" = "${CW[$j]}" ] || return 1 ;;
         esac
         case "$t" in
             --git-dir=*|--work-tree=*|--namespace=*) j=$((j + 1)); continue ;;  # =form: no separate arg
             -C|--git-dir|--work-tree|--namespace) j=$((j + 2)); continue ;;     # space form: skip arg
-            # HIMMEL-3907: only known VALUE-LESS globals are skipped; any other
+            # only known VALUE-LESS globals are skipped; any other
             # dash word may take a value that shifts the subcommand → fall through.
             -p|--paginate|-P|--no-pager|--bare|--no-replace-objects|--no-lazy-fetch|--no-optional-locks|--no-advice|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs) j=$((j + 1)); continue ;;
             -*) return 1 ;;
@@ -209,7 +209,7 @@ git_subcmd_is_read() {
     #   --output[=F] (diff/log/show write to a file)   --ext-diff (runs diff.external)
     #   -O[cmd] / --open-files-in-pager[=cmd] (git grep execs a pager command)
     #   --textconv / --filters (run gitattributes-configured filter commands)
-    # HIMMEL-3894: matched on the cooked words. git accepts a unique prefix of
+    # matched on the cooked words. git accepts a unique prefix of
     # a long option (`--outp=F`) and packs short flags (`-iO<cmd>`), so a long
     # word is matched as an abbreviation and any single-dash word holding an
     # `O` falls through. `--text` is its own option, not a `--textconv` prefix.
@@ -230,7 +230,7 @@ git_subcmd_is_read() {
     return 0
 }
 
-# git push --force-with-lease on a NON-main branch → auto-approve (HIMMEL-212).
+# git push --force-with-lease on a NON-main branch → auto-approve.
 # The blanket deny `Bash(git push --force*)` previously blocked even the SAFE
 # lease form, so a clean rebase push prompted/hung in auto. This grant narrows
 # that: it mirrors the protected-ref stance in scripts/guardrails/lib.sh
@@ -241,7 +241,7 @@ git_subcmd_is_read() {
 #     stale-tip check, so it stays deny-listed);
 #   * NO token names main OR master as the push target (`main`, `origin/main`,
 #     `refs/heads/main`, `…:main`, `main:…`, and the `master` equivalents —
-#     HIMMEL-297, both are protected defaults);
+#     both are protected defaults);
 #   * current HEAD resolves to a branch that is NOT main/master (detached HEAD,
 #     empty, or non-repo → NOT granted; fail safe).
 # Not granted → falls through to the normal prompt; the pre-push hook still
@@ -264,7 +264,7 @@ git_push_force_with_lease_is_safe() {
         case "$t" in
             --git-dir=*|--work-tree=*|--namespace=*) j=$((j + 1)); continue ;;
             -C|--git-dir|--work-tree|--namespace) j=$((j + 2)); continue ;;
-            # HIMMEL-3907: same value-less allowlist as git_subcmd_is_read.
+            # same value-less allowlist as git_subcmd_is_read.
             -p|--paginate|-P|--no-pager|--bare|--no-replace-objects|--no-lazy-fetch|--no-optional-locks|--no-advice|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs) j=$((j + 1)); continue ;;
             -*) return 1 ;;
             *) break ;;
@@ -283,14 +283,14 @@ git_push_force_with_lease_is_safe() {
         m=$((m + 1))
         case "$k" in
             --force-with-lease|--force-with-lease=*) ;;
-            # HIMMEL-3894: a bare force spelled as a unique prefix (`--forc`)
+            # a bare force spelled as a unique prefix (`--forc`)
             # or packed into a short cluster (`-uf`).
             --*) guard_is_long_abbrev "force" "$k" && has_bare_force=1 ;;
             -*)  case "${k#-}" in *f*) has_bare_force=1 ;; esac ;;
         esac
         case "$k" in
             # Any refspec that writes remote main OR master (both protected
-            # defaults, HIMMEL-297) — incl. the `+`-force prefix (`+main` ≡
+            # defaults) — incl. the `+`-force prefix (`+main` ≡
             # `+main:main`) and explicit `src:main` colon forms.
             main|+main|origin/main|+origin/main|refs/heads/main|+refs/heads/main|\
             *:main|*:refs/heads/main|main:*|\
@@ -303,7 +303,7 @@ git_push_force_with_lease_is_safe() {
     [ "$targets_main" -eq 1 ]   && return 1
     local br
     br=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || return 1
-    # main AND master are both protected defaults (HIMMEL-297) — never
+    # main AND master are both protected defaults — never
     # auto-approve a lease push made while sitting on either.
     case "$br" in
         ''|HEAD|main|master) return 1 ;;
@@ -316,7 +316,7 @@ gh_subcmd_is_read() {
     local -a g=("$@")            # g[0] == gh
     local n=${#g[@]} j=1 k
     cook_argv_words "$@" || return 1
-    # `--web`/`-w` launches a browser → not read. HIMMEL-3894: matched on the
+    # `--web`/`-w` launches a browser → not read. Matched on the
     # cooked words, as a long-option prefix and inside a short cluster (`-wR`).
     for k in "${CW[@]}"; do
         case "$k" in
@@ -324,7 +324,7 @@ gh_subcmd_is_read() {
             -*)  case "${k#-}" in *w*) return 1 ;; esac ;;
         esac
     done
-    # HIMMEL-3907: a dash word before the group or between group and verb may
+    # a dash word before the group or between group and verb may
     # take a value that shifts which word gh reads as the verb → fall through.
     # Flags AFTER the verb are unaffected.
     local grp="${g[$j]:-}"
@@ -346,7 +346,7 @@ gh_subcmd_is_read() {
 }
 
 # split_bytes <text> <length> -- fill the CALLER's local array SC with <text>,
-# one byte per element (HIMMEL-4678). The walkers below step through a command
+# one byte per element. The walkers below step through a command
 # one character at a time, and bash resolves ${s:i:1} by scanning s from its
 # start (decoding it, in a UTF-8 locale), so indexing the string made every
 # walk O(n^2): a 12 KB heredoc of prose took seconds, outran this guard's 15 s
@@ -400,17 +400,16 @@ tokenize_seg_words() {
                 # delimits the next word instead of being consumed here.
                 case "$nx" in " "|$'\t'|$'\n'|$'\r') word+="$c"; have=1; i=$((i + 1)); continue ;; esac
                 word+="$c$nx"; have=1; i=$((i + 2)); continue ;;
-            # HIMMEL-5034: split on bash's IFS word separators (space, tab,
+            # split on bash's IFS word separators (space, tab,
             # newline); FF, VT and U+2028 are word bytes to bash, so a root
             # walk needs a real separator.
             # ponytail: splits on CR where bash does not, so a CR-separated
-            # `find / <CR>-maxdepth 1` read as a bounded find (HIMMEL-5088:
-            # the old "safe direction" claim was false for -maxdepth, whose
+            # `find / <CR>-maxdepth 1` read as a bounded find (the old "safe direction" claim was false for -maxdepth, whose
             # presence is a SAFE signal). The root-walk checks tokenize with
             # TOK_CR_WORD=1 (CR is a word byte, as in bash); every other
             # reader keeps the CR split so CRLF inputs keep their verdict.
             # Revisit when a flag check that gates ALLOW reads a word's END
-            # or suffix (HIMMEL-3886).
+            # or suffix.
             $'\r')
                 if [ "${TOK_CR_WORD:-0}" = 1 ]; then
                     word+="$c"; have=1
@@ -471,7 +470,7 @@ shell_word_value() {
                     '$'|'`'|'"'|"\\") SW_VALUE+="$nx"; i=$((i + 2)); continue ;;
                 esac ;;
         esac
-        # HIMMEL-3660: brace expansion (`{a,b}`, `{1..5}`) explodes ONE raw
+        # brace expansion (`{a,b}`, `{1..5}`) explodes ONE raw
         # word into several argv words before the command runs, so a token
         # containing an unquoted `{...,...}` or `{...\.\..}` can hide a
         # dangerous flag from every literal-word guard below it. Track only
@@ -488,7 +487,7 @@ shell_word_value() {
                     fi ;;
                 ',') [ "$bd" -gt 0 ] && bf=1 ;;
                 '.') [ "$bd" -gt 0 ] && [ "${SC[i + 1]-}" = '.' ] && bf=1 ;;
-                # HIMMEL-3660: an unquoted glob metacharacter can expand this
+                # an unquoted glob metacharacter can expand this
                 # word into several argv words, one of which may be a
                 # `-`-leading name that reads as a flag (`sort -* f` with a
                 # file named `-oPWNED` writes it). Record it; callers that
@@ -503,7 +502,7 @@ shell_word_value() {
         if [ "$c" = '$' ]; then
             nx="${SC[i + 1]-}"
             # `$(...)` command substitution is a distinct expansion kind, out
-            # of this ticket's scope; HIMMEL-2121's rootwalk-find scan already
+            # of scope here; the rootwalk-find scan already
             # tolerates it as opaque literal text, so keep that behavior and
             # only fail closed on PARAMETER expansion (`${…}`, bare `$VAR`)
             # below.
@@ -534,7 +533,7 @@ shell_word_value() {
                         i=$((i + 5)); continue ;;
                 esac
             fi
-            # HIMMEL-3660: every OTHER unquoted (or double-quoted) `$`
+            # every OTHER unquoted (or double-quoted) `$`
             # expansion — bare `$VAR`, `${VAR}`, `${VAR:-default}`, `$1`,
             # `$?`, … — substitutes a runtime value this hook cannot see
             # statically. Fail closed rather than cook it as literal text.
@@ -545,7 +544,7 @@ shell_word_value() {
     [ "$st" = 0 ]
 }
 
-# HIMMEL-3886: does this raw shell word carry a brace expansion — an unquoted
+# does this raw shell word carry a brace expansion — an unquoted
 # `{...}` span holding an unquoted `,` or `..`? The shell turns such a word into
 # several argv words, so a flag can hide in it from every literal-word match
 # (`git log {--output=/tmp/PWN,-1}` runs `git log --output=/tmp/PWN -1`).
@@ -595,7 +594,7 @@ word_has_brace_expansion() {
 
 # Tokenizes a segment and resolves the binary it actually executes: skips
 # shell keywords, group tokens, redirects and leading assignments, same rules
-# segment_is_safe has always used. Factored out so the HIMMEL-2121
+# segment_is_safe has always used. Factored out so the
 # root-anchored-find deny check (segment_is_rootwalk_find, below) resolves
 # "what runs" identically instead of re-deriving its own copy that could
 # silently drift from the safety scan.
@@ -639,7 +638,7 @@ resolve_seg_binary() {
                 case "$t" in
                     LANG=*|LANGUAGE=*|LC_[A-Z]*=*|TZ=*) i=$((i + 1)); continue ;;
                 esac
-                # HIMMEL-4780: a bare literal JIRA_PROJECT_KEY=<KEY> only picks
+                # a bare literal JIRA_PROJECT_KEY=<KEY> only picks
                 # the Jira project (as --project already may). Skipped here, but
                 # segment_is_safe refuses it unless the binary is node, whose
                 # branch approves the jira CLI alone.
@@ -659,7 +658,7 @@ resolve_seg_binary() {
     RB_STATUS=bin; RB_BIN="$bin"; RB_IDX="$i"
 }
 
-# HIMMEL-2121: does this segment run `find` with a root-anchored PATH OPERAND
+# does this segment run `find` with a root-anchored PATH OPERAND
 # and no `-maxdepth N` anywhere? That shape walks the WHOLE disk; see header
 # CONTRACT for why it is denied rather than left to an unattended prompt.
 is_root_anchor() {
@@ -668,8 +667,8 @@ is_root_anchor() {
     u="$SW_VALUE"; expands_home="$SW_EXPANDS_HOME"; expands_tilde="$SW_EXPANDS_TILDE"
     # Canonicalize root-equivalent forms before matching: collapse every run
     # of consecutive `/` into one, drop a trailing `/.` (optionally followed
-    # by `/`) (round 4, codex-1), and collapse runs of consecutive `\` into
-    # one (round 5, codex-1) — so `///`, `/.`, `/./`, `//c/`, and a
+    # by `/`), and collapse runs of consecutive `\` into
+    # one — so `///`, `/.`, `/./`, `//c/`, and a
     # double-backslash `C:\\` (common when an agent types `"C:\\"` inside
     # double quotes) all normalize to the string a plain `/`, `/c/`, or
     # `C:\` would, and can't dodge the case match below by spelling root a
@@ -720,8 +719,8 @@ path_textually_resolves_to_root() {
     [ "${#stack[@]}" -eq 0 ]
 }
 
-# HIMMEL-3734 (J1300A finding 7): a bare brace-list word (`{/,.}`) is
-# uncookable to shell_word_value (HIMMEL-3660 fails closed on the internal
+# a bare brace-list word (`{/,.}`) is
+# uncookable to shell_word_value (it fails closed on the internal
 # comma) and so is normally treated as OPAQUE by the path-operand loop below
 # — but `find {/,.} -name x` expands to `find / . -name x`, a real root walk.
 # Scoped narrowly to stay obviously-correct: only a word that is ENTIRELY one
@@ -733,20 +732,19 @@ brace_word_is_rootwalk() {
     case "$w" in '{'*'}') ;; *) return 1 ;; esac
     inner="${w#\{}"; inner="${inner%\}}"
     case "$inner" in *'{'*|*'}'*) return 1 ;; esac
-    # ponytail: nested brace words (e.g. {{/,a},b}) stay opaque here — a
-    # one-level comma split, not a recursive brace-expansion parser.
-    # HIMMEL-3753 tracks whether that's worth building.
+    # ponytail: (HIMMEL-3753) nested brace words (e.g. {{/,a},b}) stay opaque
+    # here — a one-level comma split, not a recursive brace-expansion parser.
     local IFS=',' norm
     for part in $inner; do
-        # codex-1 (round 1): // is POSIX root too (is_root_anchor:503).
-        # codex-2 (round 3): any run of slashes only (///, ////, ...) is the
+        # // is POSIX root too (is_root_anchor).
+        # Any run of slashes only (///, ////, ...) is the
         # same root — is_root_anchor gets this for free by collapsing runs of
         # `/` before its case match (line 499); this loop has no such
         # normalization pass, so match the whole class directly instead.
         case "$part" in
             '') ;;
             *[!/]*)
-                # codex-1 (round 8): `/.` (and `/./`, `//.`, ...) is root too
+                # `/.` (and `/./`, `//.`, ...) is root too
                 # — is_root_anchor's own normalization (line 499) already
                 # strips a trailing `/.` before matching, so apply the same
                 # sed here rather than duplicate its case logic; a part with
@@ -772,8 +770,8 @@ segment_is_rootwalk_find() {
     local total=${#a[@]} j tok val cooked has_root=0 has_maxdepth=0
 
     # -maxdepth N: a real -maxdepth is an OPTION immediately followed by a
-    # nonempty all-digits VALUE — count it only in that shape (round 2,
-    # codex-2/codex-4). A token that merely READS "-maxdepth" as some OTHER
+    # nonempty all-digits VALUE — count it only in that shape.
+    # A token that merely READS "-maxdepth" as some OTHER
     # primary's value (e.g. `find / -name -maxdepth`, nothing digit-shaped
     # after it) is not counted. Quotes are stripped first so `"-maxdepth" 2`
     # is recognized too. This scans every remaining token — -maxdepth is a
@@ -783,16 +781,16 @@ segment_is_rootwalk_find() {
     # a terminator (`;` / `\;` / `+`), so a `-maxdepth N` sitting in there,
     # e.g. `find / -exec echo -maxdepth 2 \;`, is echo's argument, not find's
     # option, and must not count. Once the terminator is seen, RESUME
-    # scanning find's OWN remaining flags (round 4, codex-4: a genuinely
+    # scanning find's OWN remaining flags (a genuinely
     # bounded `-exec ... \; -maxdepth N` must not be denied). `-delete` takes
     # NO payload — it is a plain flag, so it is deliberately NOT in this set;
     # a `-maxdepth` after it is real.
-    # HIMMEL-3660: a word `shell_word_value` cannot cook (an unquoted `$VAR`,
+    # a word `shell_word_value` cannot cook (an unquoted `$VAR`,
     # `{a,b}`, …) is treated as OPAQUE here, never as a reason to abort the
     # whole scan — an uncookable word can't literally BE `-maxdepth`, `-exec`
     # or a terminator (all fixed ASCII), so skipping it costs nothing, and
     # bailing out used to report "not a rootwalk" even when a literal root
-    # path elsewhere in the same segment made it one (the HIMMEL-2121 DENY
+    # path elsewhere in the same segment made it one (the root-walk DENY
     # this segment exists to enforce).
     j=$((RB_IDX + 1))
     while [ "$j" -lt "$total" ]; do
@@ -827,9 +825,8 @@ segment_is_rootwalk_find() {
     done
 
     # Path operands: `find [-H|-L|-P] [-D dbgopts] [-Olevel] [--] [path...]
-    # [expr]` — first skip find's own leading OPTIONS (round 2, codex-1: they
-    # used to hide a root path behind them, e.g. `find -L / ...`; round 4,
-    # codex-3: a bare `--` option terminator is skipped here too, not treated
+    # [expr]` — first skip find's own leading OPTIONS (they
+    # would hide a root path behind them, e.g. `find -L / ...`; a bare `--` option terminator is skipped here too, not treated
     # as the break that stops path-operand collection, e.g. `find -- / ...`),
     # THEN collect path operands until the first expression token (a
     # `-flag`, `(`, or `!`). A root-anchor string in an EXPRESSION arg
@@ -838,7 +835,7 @@ segment_is_rootwalk_find() {
     # `.` → never a rootwalk.
     j=$((RB_IDX + 1))
     while [ "$j" -lt "$total" ]; do
-        # HIMMEL-3660: an uncookable word can't literally be `-H`/`-D`/`-O*`/`--`
+        # an uncookable word can't literally be `-H`/`-D`/`-O*`/`--`
         # (all fixed ASCII) — stop skipping leading options and let the path-
         # operand loop below scan it, rather than bailing "not a rootwalk".
         if ! shell_word_value "${a[$j]}"; then
@@ -854,7 +851,7 @@ segment_is_rootwalk_find() {
         esac
     done
     for tok in "${a[@]:$j}"; do
-        # HIMMEL-3660: an opaque operand is skipped, not treated as ending
+        # an opaque operand is skipped, not treated as ending
         # path-operand collection — a literal root anchor later in the same
         # segment must still be found.
         if ! shell_word_value "$tok"; then
@@ -872,7 +869,7 @@ segment_is_rootwalk_find() {
     [ "$has_root" -eq 1 ] && [ "$has_maxdepth" -eq 0 ]
 }
 
-# HIMMEL-3668: a word is a redirect only when it has no quoting (raw == cooked)
+# a word is a redirect only when it has no quoting (raw == cooked)
 # and the text before its first < or > is empty, all digits, or `&`. A glob
 # like `[0-9]*>` would also match `9x<in`, where bash passes `9x` as an operand
 # (an output file for uniq/xxd), so it must still count as a positional.
@@ -883,10 +880,10 @@ is_redirect_word() {
     [[ "$pre" =~ ^([0-9]*|&)$ ]]
 }
 
-# HIMMEL-5088: du / ls -R / grep -r / rg / tree on the filesystem root walk the
+# du / ls -R / grep -r / rg / tree on the filesystem root walk the
 # whole disk just like `find /`. Verdict: PASS (never ALLOW), not DENY -- a
 # bounded walk (`tree -L 1 /`, PASS too) and an attended prompt are legitimate, and only
-# find carries the unattended-orphan history behind HIMMEL-2121's deny.
+# find carries the unattended-orphan history behind the root-walk deny.
 #
 # Default is "walks" (PASS). A segment is "not a walk" only when EVERY option
 # is an exact, modelled spelling for that binary (value-taking ones included),
@@ -898,9 +895,9 @@ is_redirect_word() {
 # ponytail: the shared tokenizer splits on CR where bash does not, so a reader
 # that gates ALLOW on a CR-glued operand sees it as an option; only the
 # root-walk checks read CR as a word byte, upgrade: make CR a word byte in
-# every ALLOW-gating reader once test-crlf-boundary.sh tolerates it (HIMMEL-3886).
+# every ALLOW-gating reader once test-crlf-boundary.sh tolerates it.
 SW_REC=0 SW_UNK=0
-# HIMMEL-5187: 1 when the working directory is root or cannot be proven
+# 1 when the working directory is root or cannot be proven
 # non-root (payload cwd is `/`, or an earlier `cd` in this command went to a
 # root / `..` / unresolvable / symlinked-to-root target). A recursing reader
 # with no operand, or a relative one, then walks that directory, so it never
@@ -1140,7 +1137,7 @@ segment_walks_root() {
 segment_is_safe() {
     resolve_seg_binary "$1"
     case "$RB_STATUS:$RB_BIN" in bin:cd) ;; *) SW_SEEN_NONCD=1 ;; esac   # HIMMEL-5187: leading-cd rule
-    # HIMMEL-4780: the JIRA_PROJECT_KEY= prefix is approvable on node only.
+    # the JIRA_PROJECT_KEY= prefix is approvable on node only.
     if [ "$RB_JIRA_KEY" = 1 ] && { [ "$RB_STATUS" != bin ] || [ "$RB_BIN" != node ]; }; then
         return 1
     fi
@@ -1151,10 +1148,10 @@ segment_is_safe() {
     local -a a=("${RB_TOKENS[@]}")
     local n=${#a[@]} i="$RB_IDX" bin="$RB_BIN"
 
-    # HIMMEL-5088: a whole-filesystem walker never ALLOWs (it falls to a prompt).
+    # a whole-filesystem walker never ALLOWs (it falls to a prompt).
     if segment_walks_root "$1"; then return 1; fi
 
-    # HIMMEL-5187: `-files0-from` / `--files0-from` read the operand list from a
+    # `-files0-from` / `--files0-from` read the operand list from a
     # file or stdin, so what is walked or read cannot be seen here: never ALLOW.
     # Every word is cooked first (`-files0'-from'` and `-files0\-from` are the
     # same option), for every binary; a word the cooker cannot decode that still
@@ -1176,11 +1173,11 @@ segment_is_safe() {
         cd)
             # CR is a word byte to bash but whitespace to this tokenizer, so a
             # `cd` operand holding one names a different directory than the one
-            # resolved here: the cwd is unknown (HIMMEL-5187).
+            # resolved here: the cwd is unknown.
             case "$1" in *[[:cntrl:]]*) SW_CD_UNPROVEN=1 ;; *) sw_note_cd "${a[@]:$((i + 1))}" ;; esac ;;
         pushd|popd) SW_CD_UNPROVEN=1 ;;
         xxd|uniq)
-            # HIMMEL-5187: CR is a word byte to bash, so `xxd in <CR>-u` /
+            # CR is a word byte to bash, so `xxd in <CR>-u` /
             # `uniq a <CR>-f` name an OUTPUT file `<CR>-u`, not a flag. Re-read
             # the segment with CR as a word byte: any word holding a CR, a
             # trailing one included (bash makes `xxd in <CR>` write a file
@@ -1215,7 +1212,7 @@ segment_is_safe() {
                 for k in "${a[@]}"; do
                     shell_word_value "$k" || return 1
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
-                    # HIMMEL-3655: bash ends a word at an unquoted `<`/`>`, this tokenizer
+                    # bash ends a word at an unquoted `<`/`>`, this tokenizer
                     # does not, so a glued redirect (`-T</dev/null`) hides that the option
                     # consumed the next word; a heredoc/herestring (`<<-`, `<<<`) makes
                     # the next word a delimiter, not an argument. Neither is modelled: PASS.
@@ -1264,7 +1261,7 @@ segment_is_safe() {
                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -r/-revert or a 2nd positional
                     case "$SW_VALUE" in
                         # reverse = write binary. xxd takes any `-r…` word as
-                        # -r (HIMMEL-3894), so any flag word holding an r falls through.
+                        # -r, so any flag word holding an r falls through.
                         -*r*) return 1 ;;
                         -*) ;;                           # other flags take no file
                         *) is_redirect_word "$k" "$SW_VALUE" || xops=$((xops + 1)) ;;  # redirect token, not a positional
@@ -1315,7 +1312,7 @@ segment_is_safe() {
                             guard_is_long_abbrev "search-zip" "$SW_VALUE" && return 1
                             guard_is_long_abbrev "pager" "$SW_VALUE" && return 1 ;;
                         -[!-]*)
-                            # HIMMEL-3985: the first value-taking letter ends the
+                            # the first value-taking letter ends the
                             # cluster; the rest of the word is its value (-ezebra).
                             zi=1
                             while [ "$zi" -lt "${#SW_VALUE}" ]; do
@@ -1360,7 +1357,7 @@ segment_is_safe() {
         git)
             git_subcmd_is_read "${a[@]:$i}" && return 0
             # Not a read subcommand — allow ONLY a safe force-with-lease push
-            # on a non-main branch (HIMMEL-212); everything else falls through.
+            # on a non-main branch; everything else falls through.
             git_push_force_with_lease_is_safe "${a[@]:$i}"; return $? ;;
         gh)  gh_subcmd_is_read "${a[@]:$i}"; return $? ;;
         node)
@@ -1369,7 +1366,7 @@ segment_is_safe() {
             # args. Reject inline-code flags outright. (Without this a marker
             # riding along as a later arg, e.g. `node -e <code> …/index.js`,
             # would grant arbitrary code execution.)
-            # HIMMEL-3886: only an ALLOWLIST of inert flags may precede the
+            # only an ALLOWLIST of inert flags may precede the
             # script. Skipping every `-*` word let an `=`-form code loader ride
             # along (`--require=./x.js`, `--import=`, `--env-file=` feeding
             # NODE_OPTIONS, `--openssl-config=` loading an engine) — an
@@ -1391,7 +1388,7 @@ segment_is_safe() {
     return 1
 }
 
-# Quote-aware structural scan of a Bash command (HIMMEL-209). Walks char by
+# Quote-aware structural scan of a Bash command. Walks char by
 # char tracking single/double-quote state so command separators (; | || &&
 # newline, bare &) and output redirects appearing INSIDE quotes are treated as
 # the literal text they are — not as shell structure. The previous sed split
@@ -1409,7 +1406,7 @@ segment_is_safe() {
 #               redirect detector sees only UNQUOTED '>'.
 # bash 3.2-safe: only ${s:i:1}, ${#s}, arithmetic.
 #
-# HIMMEL-3762 (J1370A finding 2): this walk had its OWN naive backslash-newline
+# this walk had its OWN naive backslash-newline
 # collapse, independent of (and downstream from) fold_backslash_newline() —
 # fixing only the top-level fold left this one still folding a comment's
 # trailing backslash-newline as a continuation, hiding the real command that
@@ -1427,7 +1424,7 @@ scan_cmd() {
     split_bytes "$s" "$n"
     while [ "$i" -lt "$n" ]; do
         c="${SC[i]-}"
-        # HIMMEL-3777: was s[i-1] itself the escaped byte of a `\x` pair (so it
+        # was s[i-1] itself the escaped byte of a `\x` pair (so it
         # is data, not a live operator char)? Captured before this iteration's
         # own escape branch (if any) resets pesc for the NEXT iteration.
         ppe="$pesc"; pesc=0
@@ -1479,7 +1476,7 @@ scan_cmd() {
                 if [ "$nx" = "$NL" ]; then          # line continuation: remove both bytes
                     SCAN_MASK+="  "; i=$((i + 2)); continue
                 fi
-                # HIMMEL-3793 (J1397A finding 4): keep the backslash itself
+                # keep the backslash itself
                 # LITERAL in SCAN_MASK (blank only the escaped byte it
                 # protects). Blanking both to spaces made an escaped CR (or a
                 # trailing backslash) right after an fd-dup digit look like a
@@ -1512,7 +1509,7 @@ scan_cmd() {
                     seg+="$c"; SCAN_MASK+="&"; aws=0; i=$((i + 1)); continue
                 fi
                 p=""; [ "$i" -gt 0 ] && p="${SC[i - 1]-}"
-                # HIMMEL-3777: a raw '>'/'<'/'&' immediately before is only a
+                # a raw '>'/'<'/'&' immediately before is only a
                 # live fd-dup neighbor when it was NOT itself the escaped
                 # payload of a preceding `\x` — otherwise `\&&` reads its
                 # escaped first & as a false fd-dup partner for the second,
@@ -1537,7 +1534,7 @@ scan_cmd() {
     return 0
 }
 
-# HIMMEL-3131: is this segment EXACTLY one `queue-lock.sh` lock verb?
+# is this segment EXACTLY one `queue-lock.sh` lock verb?
 #   [HANDOVER_DIR=<root>] bash [<repo>/]scripts/handover/queue-lock.sh
 #       acquire <doc> | release|heartbeat <doc> [<token>] | status <doc>
 #       | status --sweep [<dir>]
@@ -1552,11 +1549,11 @@ scan_cmd() {
 # QUEUE_LOCK_FORCE_RELEASE=1 (a console action) can never ride along.
 # Every value must be a literal: no expansion, no glob, no `..`, doc absolute
 # and `.md`, doc under HANDOVER_DIR when one is given. "Absolute" is `/x`, `/c/x`
-# or a Git-Bash drive path `C:/x` (ql_abs_path, HIMMEL-3192) — in the
+# or a Git-Bash drive path `C:/x` (ql_abs_path) — in the
 # HANDOVER_DIR, doc and sweep positions only, which name a lock dir and are
 # never executed.
 # The script is the relative `scripts/handover/queue-lock.sh` or a `/`-rooted
-# path (HIMMEL-3494: no drive letter, `\` or `'`); either way the checkout it
+# path (no drive letter, `\` or `'`); either way the checkout it
 # resolves into must be a real one of this repo (ql_root_is_own_checkout) — for
 # the relative form that is the payload `cwd`, which must be absolute (never the
 # hook's own $PWD), since bash resolves it there.
@@ -1565,7 +1562,7 @@ scan_cmd() {
 # relative form only accepts a cwd that IS a checkout root: from a sub-directory
 # (where the relative path would not resolve anyway) it falls through to a prompt.
 # On Windows Git Bash a drive-letter payload cwd or script path also falls
-# through to a prompt (as cmd_is_impacted_suites does, HIMMEL-3486).
+# through to a prompt (as cmd_is_impacted_suites does).
 ql_word_literal() {   # $1 raw word → QW (cooked); fails on any expansion/glob/`..`
     case "$1" in *'$'*) return 1 ;; esac
     shell_word_value "$1" || return 1
@@ -1577,7 +1574,7 @@ ql_word_literal() {   # $1 raw word → QW (cooked); fails on any expansion/glob
     [ -n "$QW" ]
 }
 
-# HIMMEL-3192: the ONE absolute-path helper for every path position (the
+# the ONE absolute-path helper for every path position (the
 # HANDOVER_DIR value, the script, the `status --sweep` dir, the doc). $1 is a
 # cooked word; fails unless it is absolute and `..`-free. Accepts a slash-prefixed
 # POSIX/MSYS path (`/x`, `/c/x`) or a Git-Bash drive-letter path (`C:/x`, `c:\x`).
@@ -1587,7 +1584,7 @@ ql_word_literal() {   # $1 raw word → QW (cooked); fails on any expansion/glob
 # A backslash is a separator only in a drive path; a `/`-prefixed path carrying
 # one is refused, since MSYS reads it as a separator that would hide a `..`.
 # ponytail: on a POSIX host `C:/x` is really a cwd-relative name, which is why
-# segment_is_queue_lock refuses it in the executed script position (HIMMEL-3494)
+# segment_is_queue_lock refuses it in the executed script position
 # and only lets it name a lock dir; the drive-relative `C:x`, UNC `//host/x` and an upper-case `/C/x` are
 # not accepted (they fall through to a prompt).
 ql_abs_path() {
@@ -1611,7 +1608,7 @@ ql_abs_path() {
 # one of its `git worktree list` siblings (the primary checkout included) — that
 # actually holds queue-lock.sh? A lookalike `/tmp/x/scripts/handover/queue-lock.sh`
 # (even one that exists) is not, so it falls through. Both sides of every
-# comparison go through ql_abs_path (HIMMEL-3192), so the drive letter's case or
+# comparison go through ql_abs_path, so the drive letter's case or
 # a `C:/x` vs `/c/x` spelling can neither dodge nor defeat it.
 ql_root_is_own_checkout() {
     local real here wt wts
@@ -1642,7 +1639,7 @@ segment_is_queue_lock() {
         HANDOVER_DIR=*)
             ql_word_literal "${a[0]#HANDOVER_DIR=}" || return 1
             ql_abs_path "$QW" || return 1
-            # HIMMEL-3198: a root (`/`, empty once stripped) reads below as "no
+            # a root (`/`, empty once stripped) reads below as "no
             # handover dir given", and a bare drive root (`C:/` → `/c`) contains a
             # whole drive — neither may stand in for a handover dir.
             hr="$QN"; while [ "${hr%/}" != "$hr" ]; do hr="${hr%/}"; done
@@ -1652,7 +1649,7 @@ segment_is_queue_lock() {
             i=1 ;;
     esac
     [ "${a[$i]:-}" = "bash" ] || return 1
-    # HIMMEL-3494: no `\` or `'` in the script word, and no drive letter — on
+    # no `\` or `'` in the script word, and no drive letter — on
     # POSIX `C:\x\…` or `C:/x/…` is checked as one path but run as a
     # cwd-relative file bash finds by its literal name.
     case "${a[$((i + 1))]:-}" in *\\*|*\'*) return 1 ;; esac
@@ -1700,7 +1697,7 @@ segment_is_queue_lock() {
     esac
 }
 
-# HIMMEL-3486: is the WHOLE command one of /pr-check step 3.6's literals?
+# is the WHOLE command one of /pr-check step 3.6's literals?
 #   bash <P> <40hex>..<40hex>
 #   bash <P> --check <40hex>..<40hex>
 #   bash <P> --check <40hex>..<40hex> <<'IMPACTED_EOF'
@@ -1718,7 +1715,7 @@ segment_is_queue_lock() {
 # opener and the one closing `IMPACTED_EOF`, so no body line can close the
 # heredoc early and nothing runs after it.
 # The script is branch-editable and a gate, so the bytes that run must be the
-# anchor's (HIMMEL-3383 precedent, guard-pr-check-literal.sh): <root> is a
+# anchor's (as in guard-pr-check-literal.sh): <root> is a
 # worktree root whose git-common-dir is $HIMMEL_REPO/.git, and its
 # impacted-suites.sh (a regular file, not a symlink) hashes, unfiltered, to the
 # same blob as both the anchor's working-tree copy and refs/heads/main's, with
@@ -1792,7 +1789,7 @@ impacted_suites_is_anchored() {   # $1 root — subshell: the unsets stay local
 
 emit_allow() {
     local reason
-    # HIMMEL-2123: `jq -n --arg r "<text>" '$r'` JSON-encodes the exact string
+    # `jq -n --arg r "<text>" '$r'` JSON-encodes the exact string
     # in ONE jq call with no piped input at all — no `printf` fork feeding it
     # (a herestring/pipe here would also risk a spurious trailing-newline
     # byte inside the encoded string, which `-Rs` slurp mode would have kept
@@ -1802,7 +1799,7 @@ emit_allow() {
     exit 0
 }
 
-# HIMMEL-2121: the one DENY carve-out — see header CONTRACT.
+# the one DENY carve-out — see header CONTRACT.
 emit_deny() {
     local reason
     reason=$(jq -n --arg r "auto-approve-safe-bash: $1" '$r' 2>/dev/null) || reason='"denied: root-anchored find with no -maxdepth"'
@@ -1812,10 +1809,10 @@ emit_deny() {
 
 # --- Fail open on anything we cannot evaluate ---
 command -v jq >/dev/null 2>&1 || exit 0
-# HIMMEL-2610 F2 (J1267O): is_safe_bin's write-flag checks (sort/tree/base64
+# is_safe_bin's write-flag checks (sort/tree/base64
 # --output, file --compile) call guard_is_long_abbrev/guard_long_opt_name to
 # recognize an abbreviated OR full long option the same way GNU getopt_long
-# does. The HIMMEL-2121 root-walk `find` DENY below does NOT need lib.sh, so
+# does. The root-walk `find` DENY below does NOT need lib.sh, so
 # an `|| exit 0` on a missing lib.sh used to withdraw that DENY too, not just
 # abbreviation recognition. Define local fallbacks first — sourcing lib.sh,
 # when it succeeds, simply overwrites them with its own (identical) copies —
@@ -1838,7 +1835,7 @@ guard_is_long_abbrev() {
         *) return 1 ;;
     esac
 }
-# HIMMEL-3750 judge J1370A (NO-GO, round 3->4): the naive `${cmd//$'\\\n'/}`
+# The naive `${cmd//$'\\\n'/}`
 # fold treated every backslash-newline pair as a continuation, even when the
 # backslash itself was already escaped by a PRECEDING backslash (`\\<NL>`: the
 # shell consumes the first two backslashes as one literal `\`, so the newline
@@ -1852,7 +1849,7 @@ guard_is_long_abbrev() {
 # unquoted-separator/newline handling see it. Single quotes give backslash no
 # special meaning at all, so no fold happens inside them either.
 #
-# HIMMEL-3750 round 6 (codex-1): a `'` is only a single-quote DELIMITER when
+# A `'` is only a single-quote DELIMITER when
 # not already inside double quotes — real shells nest quoting that way, so
 # `"'$\<NL>(touch PWN)"` has a literal apostrophe, not a quote open, and the
 # backslash-newline after it still folds (double quotes fold it same as
@@ -1861,7 +1858,7 @@ guard_is_long_abbrev() {
 # suppressed the fold for the rest of the string (no closing `'` ever came),
 # leaving the raw-text `$(` tripwire unable to see the reconstituted `$(`.
 # Track double-quote state too so a `'` inside `"..."` stays inert.
-# HIMMEL-3750 round 7 (codex-1): a `"` (or `'`) immediately after an ODD
+# A `"` (or `'`) immediately after an ODD
 # backslash run is an ESCAPED quote character in real shell parsing — it
 # stays a literal byte and never opens/closes a quoted region (`\"` inside
 # double quotes writes a literal `"` without closing the string; `\'`
@@ -1877,7 +1874,7 @@ guard_is_long_abbrev() {
 # reconstituted `$(` from the raw-text tripwire. Detect an escaped quote
 # right where the backslash run is measured and copy it through untouched.
 #
-# HIMMEL-3762 (J1370A finding 2): a real `#` comment ends at the very next
+# a real `#` comment ends at the very next
 # newline UNCONDITIONALLY — the shell never honors a trailing backslash as a
 # continuation of comment text, no matter how many backslashes precede the
 # newline. The old walk had no comment state at all, so `# note \<NL>rm -rf x`
@@ -1886,8 +1883,8 @@ guard_is_long_abbrev() {
 # start of the string and right after whitespace or a structural operator —
 # `;|&()<>` or newline) and open a real comment only when an unquoted `#`
 # lands there — exactly bash's own "a word beginning with # is a comment"
-# rule. That rule alone disambiguates the three shapes HIMMEL-3762 called
-# out without any special-casing: `$#` and `${#x}` fail the word-start test
+# rule. That rule alone disambiguates the three shapes
+# without any special-casing: `$#` and `${#x}` fail the word-start test
 # on the `$`/`{` immediately before the `#`, and a mid-word `#` (`foo#bar`)
 # fails it on the preceding letter — all three fall through as plain
 # characters, same as real bash. Once inside a comment, every byte (including
@@ -1953,7 +1950,7 @@ fold_backslash_newline() {
                 # already-resolved backslash byte indistinguishable from a
                 # fresh, still-escaping one, so it swallowed the next real
                 # character (e.g. a `;` separator) as if it were escaped
-                # when it was not (HIMMEL-3750 round 5, codex-1). Left raw,
+                # when it was not. Left raw,
                 # scan_cmd re-derives the same even pairing bash does on its
                 # own and correctly leaves the following character
                 # unescaped.
@@ -2001,20 +1998,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../guardrails/lib.sh
 # shellcheck disable=SC1091
 [ -r "$SCRIPT_DIR/../guardrails/lib.sh" ] && . "$SCRIPT_DIR/../guardrails/lib.sh" 2>/dev/null
-# HIMMEL-2123: bash builtin `read` instead of `$(cat)` drops one spawn.
+# bash builtin `read` instead of `$(cat)` drops one spawn.
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
 [ -n "$input" ] || exit 0
 # tool_name + command in ONE jq call (via `<<<`, no printf fork) instead of
 # two separate `printf | jq` pipelines — same shape already proven in
-# require-quiet-run.sh (HIMMEL-2060) and block-tail-pipe-on-gates.sh
-# (HIMMEL-2123). Windows jq.exe writes CRLF, so strip the stray CR off $tool.
+# require-quiet-run.sh and block-tail-pipe-on-gates.sh
+#. Windows jq.exe writes CRLF, so strip the stray CR off $tool.
 # `// ""` (empty STRING), not `// empty` (a zero-output jq GENERATOR): in a
 # `+`-concatenation, one operand collapsing to `empty` zeroes out the WHOLE
 # expression (cross-product-of-generators semantics), not just that field.
 result=$(jq -r '(.tool_name // "") + "\n" + (.tool_input.command // "")' <<<"$input" 2>/dev/null) || exit 0
 tool="${result%%$'\n'*}"
-# HIMMEL-3773/HIMMEL-3776 (judge J1387A): `tool` is jq's own first output
+# `tool` is jq's own first output
 # line and never legitimately contains a CR — a trailing CR on it means jq
 # itself is rendering every LF in `result` as CRLF (Windows jq.exe), so the
 # SAME rendering also doubled every embedded newline in `cmd` below. Detect
@@ -2025,7 +2022,7 @@ case "$tool" in
 esac
 tool="${tool%$'\r'}"
 cmd="${result#*$'\n'}"
-# J1397A finding 1: on the CRLF-jq (Windows) rendering, jq.exe's OWN final
+# On the CRLF-jq (Windows) rendering, jq.exe's OWN final
 # newline also comes out as CRLF, but the `<<<`/`$()` substitution above
 # strips only the trailing LF, leaving a stray, unpaired CR on the end of
 # every command (nothing to fold: no CRLF pair remains to match). That is
@@ -2033,11 +2030,10 @@ cmd="${result#*$'\n'}"
 # one trailing CR here -- before the boundary checks further down that would
 # otherwise treat it as a hostile CR right after a redirect target (e.g.
 # `cmd 2>&1` arriving as `cmd 2>&1<CR>`) and refuse the whole command. A
-# CRAFTED trailing CR (HIMMEL-3782) arrives DOUBLED under this same
+# CRAFTED trailing CR arrives DOUBLED under this same
 # rendering, so one copy survives this strip and is still caught below.
 [ "$win_crlf" = 1 ] && cmd="${cmd%$'\r'}"
-# Only touch cmd when it actually contains a CR (HIMMEL-3773/J1387A finding
-# 3: skip the fold entirely on CR-free input — no-op on the common case,
+# Only touch cmd when it actually contains a CR (skip the fold entirely on CR-free input — no-op on the common case,
 # avoiding the added cost on large CR-free heredocs).
 case "$cmd" in
     *$'\r'*)
@@ -2055,34 +2051,34 @@ case "$cmd" in
         # Native jq: `cmd` already carries the exact bytes bash will see.
         # Real bash gives CR no special meaning and only LF ends a
         # statement/continuation, so folding anything here would be the
-        # HIMMEL-3773 bug (turning a backslash-preceded CR+LF into a
-        # continuation that hides the command after the CR) — never fold.
+        # bug of turning a backslash-preceded CR+LF into a
+        # continuation that hides the command after the CR — never fold.
         ;;
 esac
-# HIMMEL-3886 (judge, PR 1468): the tokenizers below split on [[:space:]],
+# the tokenizers below split on [[:space:]],
 # but bash splits words only on space, tab and newline, so a raw FF or VT
 # makes them see different words than the shell runs. No allow for those
 # bytes. CR is left to tokenize_seg_words' ponytail note (CRLF inputs must
 # keep their verdict, test-crlf-boundary.sh; the root-walk checks read CR as a
-# word byte, HIMMEL-5088).
-# HIMMEL-4967: abstain AFTER the root-walk DENY below, never before it -- an
+# word byte).
+# abstain AFTER the root-walk DENY below, never before it -- an
 # early exit would downgrade that deny to no opinion.
 abstain=0
 case "$cmd" in
     *[$'\f\v']*) abstain=1 ;;
 esac
-# HIMMEL-4752 (judge j2011): U+2028 (LINE SEPARATOR, bytes e2 80 a8) is a word
+# U+2028 (LINE SEPARATOR, bytes e2 80 a8) is a word
 # character to bash but a space to some tokenizers; abstain rather than guess.
 case "$cmd" in
     *$'\xe2\x80\xa8'*) abstain=1 ;;
 esac
-# HIMMEL-3750 round 3 (codex-1): a backslash-newline continuation is folded
+# A backslash-newline continuation is folded
 # away by the shell before parsing even INSIDE double quotes, so a quoted
 # `"$\<NL>=x"` reaches the shell as `"$=x"` — the raw-text tripwires below
 # must see the same joined text the shell will actually execute, not the
 # literal backslash-newline bytes (which never match `*'$='*` etc). Fold it
 # here, before scan_cmd, so both the structural scan and the tripwires agree.
-# Judge J1370A (round 4): a NAIVE fold of every `\`+newline pair is wrong when
+# A NAIVE fold of every `\`+newline pair is wrong when
 # the backslash is itself escaped by a preceding one — see
 # fold_backslash_newline()'s header comment above for why only an odd
 # backslash run is a genuine continuation.
@@ -2090,7 +2086,7 @@ cmd="$(fold_backslash_newline "$cmd")"
 [ "$tool" = "Bash" ] || exit 0   # PowerShell keeps its own native rules
 [ -n "$cmd" ] || exit 0
 
-# HIMMEL-3486: /pr-check step 3.6's impacted-suites.sh literals, read off the
+# /pr-check step 3.6's impacted-suites.sh literals, read off the
 # raw command before scan_cmd (see cmd_is_impacted_suites) — the jq text as it
 # came, before the CRLF→LF fold above, so any CR at all refuses it.
 case "$cmd" in
@@ -2098,7 +2094,7 @@ case "$cmd" in
         [ "$abstain" = 0 ] && cmd_is_impacted_suites "${result#*$'\n'}" && emit_allow "pr-check impacted-suites literal (HIMMEL-3486): ${cmd%%$'\n'*}" ;;
 esac
 
-# Quote-aware structural scan (HIMMEL-209): produces SCAN_SEGS (split only at
+# Quote-aware structural scan: produces SCAN_SEGS (split only at
 # UNQUOTED separators) + SCAN_MASK (quoted spans blanked). Fail closed if the
 # quotes are unbalanced — better to fall through to a prompt than mis-parse.
 scan_cmd "$cmd" || exit 0
@@ -2108,9 +2104,9 @@ scan_cmd "$cmd" || exit 0
 # Fail open before both classification paths; an over-match only prompts.
 case "$cmd" in *'$"'*|*"$'"*) exit 0 ;; esac
 
-# --- HIMMEL-2121: deny a root-anchored `find` with no -maxdepth ---
+# --- deny a root-anchored `find` with no -maxdepth ---
 # Fires on EVERY segment, deliberately BEFORE the global tripwires below
-# (round 2, codex-3): a command carrying $(...)/`` /<()/>() used to fall
+# a command carrying $(...)/`` /<()/>() used to fall
 # through those tripwires first and never reach this deny, so
 # `find / -iname $(hostname)` was silently let through to a prompt instead
 # of denied. The deny never APPROVES anything, so running it ahead of the
@@ -2136,7 +2132,7 @@ EOF
         ;;
 esac
 
-# HIMMEL-4967: the deny scan is done; the FF/VT/U+2028 abstain applies now.
+# the deny scan is done; the FF/VT/U+2028 abstain applies now.
 [ "$abstain" = 1 ] && exit 0
 
 # --- Global tripwires: never auto-approve dynamic execution / file writes ---
@@ -2146,7 +2142,7 @@ case "$cmd" in
     *'system('*|*'popen('*|*'exec('*)  exit 0 ;;  # interpreter shell-out
 esac
 
-# HIMMEL-3750 (J1366A finding 1): zsh parameter-flag expansions reach code
+# zsh parameter-flag expansions reach code
 # execution or defeat quoting even inside double quotes, so SCAN_MASK's
 # quoted-span blanking never sees them — this must check the RAW $cmd text,
 # not the mask. Refuse unconditionally, quoted or not:
@@ -2168,11 +2164,11 @@ case "$cmd" in
     *'${('*|*'$='*|*'${='*)  exit 0 ;;
 esac
 
-# HIMMEL-3732 / HIMMEL-3733 (J1300A findings 6,7): an unquoted `(` in ANY word
+# an unquoted `(` in ANY word
 # is zsh glob-qualifier (`f(e:'cmd':)` — arbitrary code under zsh defaults) or
 # grouping-glob (`(-)oPWNED` — a real write) syntax, independent of which
 # binary carries it — so this refuses GLOBALLY, not only in the six
-# write-guarded arms (HIMMEL-3660). SCAN_MASK already blanks quoted spans and
+# write-guarded arms. SCAN_MASK already blanks quoted spans and
 # backslash-escaped chars to spaces, so any '(' surviving in it is a genuinely
 # unquoted, unescaped one. Strip the constructs the tripwire above and
 # elsewhere already own — $((...)), $(...), <(...), >(...) — before checking,
@@ -2190,7 +2186,7 @@ case "$paren_mask" in *'('*) exit 0 ;; esac
 # Anchor /dev/null to a token boundary so `>/dev/null.bak` (a real file) is
 # NOT mistaken for the sink and stripped. Run on SCAN_MASK so a '>' inside a
 # quoted argument (e.g. a comment body) is not mistaken for a real redirect.
-#      HIMMEL-3782 (J1387B): the fd-dup strip below requires a real word
+#      the fd-dup strip below requires a real word
 #      boundary right after the target digit — space/tab/newline or one of
 #      the separators scan_cmd itself treats as live (`;|&`), or end of
 #      string. A CR is deliberately EXCLUDED from that boundary class: to
@@ -2206,18 +2202,18 @@ rd=$(printf '%s' "$SCAN_MASK" | sed -E \
     -e 's@[0-9]*>&[0-9]([[:blank:];|&]|$)@ @g')
 case "$rd" in *'>'*) exit 0 ;; esac
 
-# HIMMEL-3793 (J1397A finding 4): an unquoted backslash-escaped `&` is a
+# an unquoted backslash-escaped `&` is a
 # literal operand byte, which real tools may treat as an output file
 # (`uniq -c f \&` creates `&`, `uniq -c f a\&\&b` creates `a&&b`). Uniform
 # fall-through here (after the deny scans, so a DENY still wins) — no
 # per-binary logic, an earlier uniq-specific guard kept yielding bypasses.
 [ "$SCAN_ESC_AMP" = 1 ] && exit 0
 
-# HIMMEL-3886: a brace expansion in ANY word of ANY segment never reaches an
+# a brace expansion in ANY word of ANY segment never reaches an
 # allow — one central refusal ahead of every arm below (queue-lock, git, gh,
 # node, the safe-bin set), not a per-arm patch. Each arm matches flags on
 # literal words, and a brace word explodes into argv words none of them saw.
-# The HIMMEL-2121 deny scan above runs first, so a braced root walk still
+# The root-walk deny scan above runs first, so a braced root walk still
 # DENIES. The whole segment is scanned, not tokenize_seg_words' tokens: that
 # tokenizer splits at a backslash-space (the `find C:\ ` drive-root spelling),
 # while the shell keeps `{--output=a\ b,-1}` one word and expands it.
@@ -2235,7 +2231,7 @@ EOF
 # (`2>&1`, `>&2`, `&>file`) are kept intact, and separators inside quotes are
 # left as literal text. Segment text retains its quotes so the per-binary
 # guards (find -delete, sort -o, …) still see real flag values.
-# HIMMEL-3131: a queue-lock.sh lock verb is approved ONLY as the whole command
+# a queue-lock.sh lock verb is approved ONLY as the whole command
 # (exactly one segment) — see segment_is_queue_lock. "Exactly one non-empty
 # segment" is not enough: scan_cmd emits an EMPTY segment after a trailing (or
 # before a leading) separator and the count below skips it, so `… status <doc> &`
@@ -2256,7 +2252,7 @@ if [ "$ql_unquoted_sep" -eq 0 ] && [ "$ql_segs" -eq 1 ] && segment_is_queue_lock
     emit_allow "queue-lock.sh lock verb (HIMMEL-3131): $cmd"
 fi
 
-# HIMMEL-5187: a payload cwd of `/` makes every relative walk a root walk.
+# a payload cwd of `/` makes every relative walk a root walk.
 sw_cwd=$(jq -r '.cwd // ""' <<<"$input" 2>/dev/null) || sw_cwd=""
 # no usable payload cwd: the directory the hook itself runs in is the best
 # evidence of where the command executes

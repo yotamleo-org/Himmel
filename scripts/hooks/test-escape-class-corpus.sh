@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-escape-class-corpus.sh — differential escape-class test across every
-# PreToolUse Bash guard (HIMMEL-5327).
+# PreToolUse Bash guard.
 #
 # For each guard below, the PLAIN payload (its protected action) is the control
 # and must be denied. Then every shape in escape-class-corpus.shapes wraps that

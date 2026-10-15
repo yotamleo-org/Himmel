@@ -41,7 +41,7 @@ if ! run_guard "$tmp/does-not-exist.json" >/dev/null 2>&1; then
 fi
 echo "ok: missing input skips"
 
-# Case 4 (HIMMEL-2691): an enabledPlugins marketplace suffix with no matching
+# Case 4: an enabledPlugins marketplace suffix with no matching
 # extraKnownMarketplaces entry → expect FAIL. Mirrors the real bug: three
 # marketplaces enabled (himmel, obsidian-skills, claude-plugins-official) but
 # only two declared.
@@ -103,7 +103,7 @@ else
   echo "ok: unreadable template fails closed"
 fi
 
-# Case 7 (HIMMEL-2733): a locally-vendored plugin absent from enabledPlugins
+# Case 7: a locally-vendored plugin absent from enabledPlugins
 # as true but present as a key of onDemandPlugins (mirrored false in
 # enabledPlugins) → expect PASS (ON-DEMAND tier is a conforming exemption).
 printf '{
@@ -116,7 +116,7 @@ if ! run_guard "$tmp/tmpl.json" >/dev/null 2>&1; then
 fi
 echo "ok: on-demand tier entry conforms"
 
-# Case 8 (HIMMEL-2733): onDemandPlugins key missing entirely from
+# Case 8: onDemandPlugins key missing entirely from
 # enabledPlugins → expect FAIL (contradiction the installers can't resolve).
 printf '{
   "enabledPlugins": {"handover@himmel": true, "obsidian-triage@himmel": false},
@@ -128,7 +128,7 @@ if run_guard "$tmp/tmpl.json" >/dev/null 2>&1; then
 fi
 echo "ok: onDemandPlugins key missing from enabledPlugins detected"
 
-# Case 9 (HIMMEL-2733): onDemandPlugins key present in enabledPlugins as
+# Case 9: onDemandPlugins key present in enabledPlugins as
 # `true` (not `false`) → expect FAIL (same contradiction, other direction).
 printf '{
   "enabledPlugins": {"handover@himmel": true, "obsidian-triage@himmel": true},
@@ -140,7 +140,7 @@ if run_guard "$tmp/tmpl.json" >/dev/null 2>&1; then
 fi
 echo "ok: onDemandPlugins key contradicting enabledPlugins=true detected"
 
-# Case 10 (HIMMEL-2733): JSON string "false" is not the boolean false and
+# Case 10: JSON string "false" is not the boolean false and
 # must fail the exact-boolean mirror guard. This is the negative control for
 # case 7's real boolean false.
 printf '{
@@ -153,7 +153,7 @@ if run_guard "$tmp/tmpl.json" >/dev/null 2>&1; then
 fi
 echo "ok: string false rejected by exact-boolean guard"
 
-# Case 11 (HIMMEL-2733 extends HIMMEL-2691, fixed for HIMMEL-2725/HIMMEL-3580):
+# Case 11:
 # an onDemandPlugins key whose marketplace has no extraKnownMarketplaces entry
 # → expect FAIL with THIS guard's own diagnostic. Both @himmel vendored
 # plugins are present here so the first guard (missing-vendored-plugin) can

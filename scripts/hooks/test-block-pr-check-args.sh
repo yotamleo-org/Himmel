@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/block-pr-check-args.sh (HIMMEL-2306).
+# Smoke test for scripts/hooks/block-pr-check-args.sh.
 #
 # Usage: bash scripts/hooks/test-block-pr-check-args.sh
 #
@@ -20,7 +20,7 @@ set -uo pipefail
 # Every case invokes the hook as `bash "$HOOK"`, so the executable bit is
 # irrelevant here. The sibling suites carry a `chmod +x` at this point; copying
 # it would MUTATE the worktree on every Unix run, because the hook is committed
-# mode 100644 (panel round 3, codex-2). A test must not dirty the tree it tests.
+# mode 100644. A test must not dirty the tree it tests.
 HOOK="$(cd "$(dirname "$0")" && pwd)/block-pr-check-args.sh"
 
 FAILED=0
@@ -110,7 +110,7 @@ assert_rc "(xi) real field wins over doc decoys" 2 "$(run_case "$doc_shaped")"
 doc_only='{"hook_event_name":"UserPromptExpansion","expansion_type":"slash_command","command_name":"pr-check","command_args":"","command_input":"/doc/field/path","expanded_prompt":"/pr-check /doc/field/path"}'
 assert_rc "(xii) doc-only fields are not an argument" 0 "$(run_case "$doc_only")"
 
-# --- SCHEMA-DRIFT cases (panel round 2, codex-1) -----------------------------
+# --- SCHEMA-DRIFT cases -----------------------------
 # The guard must decide scope on POSITIVE evidence of being OUT of scope, never
 # on a field it merely failed to read. An earlier revision skipped unless
 # expansion_type was exactly "slash_command", so any payload missing or renaming
@@ -134,7 +134,7 @@ assert_rc "(xix) missing command_name still BLOCKS"     2 "$(run_case "$drift_no
 # command_args would have read as "a bare invocation" and a null command_name as
 # "some other command". Both are schema drift. The guard types these fields
 # (the 2.1.251 schema declares them plain strings), so anything non-string
-# denies (panel round 4).
+# denies.
 null_args='{"hook_event_name":"UserPromptExpansion","expansion_type":"slash_command","command_name":"pr-check","command_args":null}'
 assert_rc "(xxii) null command_args BLOCKS"             2 "$(run_case "$null_args")"
 null_name='{"hook_event_name":"UserPromptExpansion","expansion_type":"slash_command","command_name":null,"command_args":"/some/path"}'
@@ -159,8 +159,8 @@ msg="$(printf '%s' "$(j_exp pr-check "/tmp/$secret")" | bash "$HOOK" 2>&1 >/dev/
 # pipefail`, where `grep -q` exits on its first match, the producer takes
 # SIGPIPE writing the rest, and the PIPELINE status goes non-zero — so a
 # SUCCESSFUL match can read as a failure and a negated guard inverts
-# (HIMMEL-1430). `$msg` is a few hundred bytes, far under the ~64 KiB where a
-# Git Bash here-string wedges (HIMMEL-2027), so the here-string is the right
+# `$msg` is a few hundred bytes, far under the ~64 KiB where a
+# Git Bash here-string wedges, so the here-string is the right
 # shape here rather than capturing into a variable.
 if grep -qF -- "$secret" <<< "$msg"; then
     echo "FAIL (xiii) refusal message echoes the argument back ($secret found in stderr)"

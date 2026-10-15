@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/redirect-webfetch-walled-hosts.sh (HIMMEL-4908):
+# Smoke suite for scripts/hooks/redirect-webfetch-walled-hosts.sh:
 # WebFetch on a walled host (x.com / instagram.com ...) is denied with a
 # paste-ready scripts/web/fetch-url.sh command; any other host is allowed;
 # malformed input fails open.

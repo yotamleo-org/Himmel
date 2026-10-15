@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/guard-leg-context-handoff.sh (HIMMEL-4569): a
+# Smoke suite for scripts/hooks/guard-leg-context-handoff.sh: a
 # console-spawned leg past its context threshold is denied ordinary tool calls
 # until its RESUME doc exists or its last marker is WRAPPED/BLOCKED, while the
 # hand-off calls themselves always pass. Every case runs against a synthetic
@@ -13,7 +13,7 @@ set -uo pipefail
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HOOKS/guard-leg-context-handoff.sh"
 
-# HIMMEL-3092: a console leg's own exports (HIMMEL_CONSOLE_LEG, ...) must not
+# a console leg's own exports (HIMMEL_CONSOLE_LEG, ...) must not
 # reach the hook under test; each case sets what it needs on its own call.
 # shellcheck source=../lib/override-env.sh
 # shellcheck disable=SC1091
@@ -37,11 +37,11 @@ DIR="$T/handovers/u/himmel"
 mkdir -p "$CFG/projects/p" "$CFG/plugins/claude-hud/context-cache" "$DIR"
 DOC="$DIR/HIMMEL-9-N77-thing-2026-10-06.md"
 TR="$CFG/projects/p/sess.jsonl"
-# The guard is OFF unless the launch sets a mode (HIMMEL-4710): an empty
+# The guard is OFF unless the launch sets a mode: an empty
 # LEG_MODE is a leg launched without --context-guard. The RESUME-doc cases
 # below run in handoff mode; compact has its own section (LEG_MODE=compact).
 # run_leg builds the env per call, quoted, so a TMPDIR with spaces survives
-# (HIMMEL-4692); the paths are never word-split.
+#; the paths are never word-split.
 LEG_MODE=handoff
 run_leg() {
     env HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-console CLAUDE_CONFIG_DIR="$CFG" \
@@ -191,7 +191,7 @@ check "append-results.sh || more -> block" block \
 check "append-results.sh with \$( -> block" block \
     "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC \"\$(ls)\"")"
 check "echo naming append-results.sh -> block" block "$(bash_call 'echo scripts/handover/console-kit/append-results.sh')"
-# HIMMEL-4692: the allowed script is matched as a parsed word, so quoting it or
+# the allowed script is matched as a parsed word, so quoting it or
 # a checkout path with spaces still passes; nothing else widens.
 check "double-quoted append-results.sh -> allow" allow \
     "$(bash_call "bash \"scripts/handover/console-kit/append-results.sh\" $DOC \"WRAPPED — done\"")"
@@ -225,7 +225,7 @@ check "fresh RESUME then BLOCKED, PreCompact auto -> allow" allow "$(pc_call)"
 doc "- 10:01 LIVE — working"
 touch -t 202001010000 "$RESUME"
 check "RESUME doc older than this session -> block" block "$LS"
-# HIMMEL-4692: the session start is the wall clock, so a RESUME doc written a
+# the session start is the wall clock, so a RESUME doc written a
 # day ago (after any fixed date baked into the suite) is still older than it.
 ago=$(( $(date +%s) - 86400 ))
 stamp=$(date -d "@$ago" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$ago" +%Y%m%d%H%M.%S) # gnu-ok: paired with the BSD date -r
@@ -244,7 +244,7 @@ check "a longer id sharing the prefix (N770) -> block" block "$LS"
 doc "- 10:01 WRAPPED — merged"
 check "last marker WRAPPED -> allow" allow "$LS"
 doc "- 10:01 BLOCKED — waiting on console"
-# HIMMEL-4710 (B): BLOCKED is a hand-off, not an unlock - it frees reads and
+# BLOCKED is a hand-off, not an unlock - it frees reads and
 # the hand-off calls, never ordinary work (N1383 wrote BLOCKED, then kept editing).
 check "last marker BLOCKED + Edit -> block" block "$(write_call Edit "$T/notes.md")"
 check "last marker BLOCKED + Write -> block" block "$(write_call Write "$T/notes.md")"
@@ -272,7 +272,7 @@ esac
 printf 'next\n' > "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
 check "resumed leg + fresh N77c RESUME doc -> allow" allow "$LS"
 rm -f "$DOC2" "$DIR/HIMMEL-9-N77c-thing-2026-10-06-RESUME.md"
-# HIMMEL-4692: a leg id ending in z has no one-letter successor; the message
+# a leg id ending in z has no one-letter successor; the message
 # must not name the leg's own doc as the thing to write.
 DOCZ="$DIR/HIMMEL-9-N77z-thing-2026-10-06-RESUME.md"
 printf -- '# resumed\n\n## Results\n\n- 10:01 LIVE — resumed\n' > "$DOCZ"
@@ -312,13 +312,13 @@ check "git status -> allow (the checkpoint reads it)" allow "$(bash_call 'git st
 check "git rev-parse HEAD -> allow (the CHECKPOINT sha)" allow "$(bash_call 'git rev-parse HEAD')"
 check "git log -> block (not a hand-off)" block "$(bash_call 'git log -1')"
 check "git commitx -> block" block "$(bash_call 'git commitx')"
-# HIMMEL-4710 item 2: a leg whose cwd drifted must be able to cd back.
+# A leg whose cwd drifted must be able to cd back.
 check "bare cd <dir> -> allow" allow "$(bash_call 'cd /work/tree')"
 check "bare cd -> allow" allow "$(bash_call 'cd')"
 check "cd <dir>; more -> block" block "$(bash_call "cd $REPO; rm -rf x")"
 check "cd <dir> | more -> block" block "$(bash_call "cd $REPO | ls")"
 check "cd a b -> block" block "$(bash_call 'cd a b')"
-# HIMMEL-4725: a quoted literal path is still one bare cd; a variable or a
+# a quoted literal path is still one bare cd; a variable or a
 # compound after it stays refused.
 check "cd \"<dir with space>\" -> allow" allow "$(bash_call 'cd "/tmp/a b/c"')"
 check "cd '<dir with space>' -> allow" allow "$(bash_call "cd '/tmp/a b/c'")"
@@ -424,7 +424,7 @@ check_c "compact, append-results.sh stays allowed" allow \
     "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC \"LIVE — CHECKPOINT $HEAD2 pushed\"")"
 
 echo "== compact mode: a clean tree with nothing unpushed checkpoints without a push =="
-# HIMMEL-4710 expansion: a leg that has only read has nothing to commit, and the
+# A leg that has only read has nothing to commit, and the
 # pre-push CR gate refuses an empty push - N1386 could never checkpoint.
 doc "- 10:01 LIVE — CHECKPOINT $HEAD2 clean"
 check_c "CHECKPOINT <HEAD> clean, clean tree, HEAD = upstream -> allow" allow "$LS"

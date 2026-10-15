@@ -3,8 +3,8 @@
 # dispatch whose `model` matches a blocked pattern (today: Fable), and a
 # `console-judge` dispatch that overrides `model` off its frontmatter tier
 # (opus), unless the dispatch prompt carries a line `ESCALATION: <reason>` with a
-# real reason (HIMMEL-3847). HIMMEL-3630 retired Fable as the judge default: Opus
-# 5.5 high measured ~2.7x cheaper per verdict ($8.23 vs $21.94, HIMMEL-3595) at
+# real reason. Fable is no longer the judge default: Opus
+# 5.5 high measured ~2.7x cheaper per verdict ($8.23 vs $21.94) at
 # comparable wall time and no missed finding, yet an in-process Agent call passing
 # `model: fable` silently overrides .claude/agents/console-judge.md's
 # `model: opus` (console O did it three times on 2026-09-29). Fable stays
@@ -93,7 +93,7 @@ case "$kind" in
 esac
 
 if [ "$status" = "ok" ]; then
-    printf 'agent-model-escalation: %s allowed by ESCALATION reason: %s (HIMMEL-3847)\n' "$what" "$reason" >&2
+    printf 'agent-model-escalation: %s allowed by ESCALATION reason: %s\n' "$what" "$reason" >&2
     exit 0
 fi
 

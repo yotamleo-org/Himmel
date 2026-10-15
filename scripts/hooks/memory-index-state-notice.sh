@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # memory-index-state-notice.sh — SessionStart hook: report when the auto-memory
-# index MEMORY.md violates the form rules guard-memory-capture.sh enforces
-# (HIMMEL-3314).
+# index MEMORY.md violates the form rules guard-memory-capture.sh enforces.
 #
 # WHY A STATE CHECK. guard-memory-capture.sh is a PreToolUse guard on
 # Edit|Write|MultiEdit|NotebookEdit: it inspects a proposed Write/Edit PAYLOAD.

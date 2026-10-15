@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# test-crlf-boundary.sh — the CRLF-at-boundary audit, made durable (HIMMEL-2234).
+# test-crlf-boundary.sh — the CRLF-at-boundary audit, made durable.
 #
 # THE CLASS. A carriage return in CRLF-encoded command text silently changes the
 # verdict of a position-sensitive text scanner. Proven three times now:
-#   * HIMMEL-2177 — a captured variable carried a trailing CR into an
+#   * A captured variable carried a trailing CR into an
 #     arithmetic context.
 #   * PR #2005 r2 — the pin-dir fence checked a record's LAST character for the
 #     line-continuation backslash. Under CRLF the last character is the CR, so
@@ -146,7 +146,7 @@ check guard-relay-writes          Bash 2 "$D_RELAY"  "deny env-override under th
     HIMMEL_CONSOLE_RELAY=1
 check guard-relay-writes          Bash 0 "$D_RELAY"  "marker unset allows the same text" \
     -u HIMMEL_CONSOLE_RELAY
-# HIMMEL-3383: a CR must not turn the literal into a non-match (fail-open);
+# a CR must not turn the literal into a non-match (fail-open);
 # with no cwd in the payload no lane is provable, so the literal is denied.
 check guard-pr-check-literal      Bash 2 "$D_PRCHECK" "deny the step-0 literal with no provable lane"
 check guard-pr-check-literal      Bash 2 "$D_PRCHECK_ENV" "deny the pr-check-env literal with no provable lane"
@@ -186,7 +186,7 @@ do
     check "$_h" Bash 0 "$(printf 'echo hello\n%s' "$A_OK")" "allow a benign two-line command"
 done
 
-# ── block-read-secrets.sh — CR-carrying TOKEN bypass (HIMMEL-2525) ──────────
+# ── block-read-secrets.sh — CR-carrying TOKEN bypass ──────────
 # A DIFFERENT class than the CRLF-per-record class above: not a line ending,
 # but a CR glued onto (or inside) the shell TOKEN the matcher compares
 # against a reader name / secret-name glob. Bash's default $IFS (space/tab/
@@ -298,7 +298,7 @@ fi
 
 _rc_bounded() {
     local hook="$1" tool="$2" cmd="$3"; shift 3
-    # HIMMEL-1525: block-edit-live-settings's Bash/PowerShell arm is
+    # block-edit-live-settings's Bash/PowerShell arm is
     # cwd-anchored (v2), unlike every other hook here — so a caller that
     # needs to exercise a specific invoking cwd passes a trailing
     # `_BOUNDED_CWD=<path>` marker, extracted here into tool_input.cwd and
@@ -389,9 +389,9 @@ _decide_auto_approve() {  # <cmd> [env...] -> ALLOW|PASS
     # A here-string, not a pipeline: under this file's pipefail, `grep -q`
     # exiting on its first match SIGPIPEs `printf` and the PIPELINE's own
     # status goes non-zero on a MATCH — `&&`/`||` off that would echo PASS
-    # for an actual allow (HIMMEL-1430; same grepq idiom test-shell-lint.sh
+    # for an actual allow (same grepq idiom test-shell-lint.sh
     # documents). $out is a short JSON decision, well under the 64 KiB
-    # here-string limit (HIMMEL-2027).
+    # here-string limit.
     if grep -q '"permissionDecision":"allow"' <<< "$out"; then echo ALLOW; else echo PASS; fi
 }
 _decide_cadence() {  # <cmd> [env...] -> ALLOW|PASS
@@ -518,7 +518,7 @@ check_bounded block-terminal-write-fence Bash 0 "gi""t commi""t -m x" \
 cd "$_TWF_OLDPWD" || true
 
 # ── block-write-into-main-checkout.sh ───────────────────────────────────────
-# Destination-based fence (HIMMEL-2526): the target is resolved from the
+# Destination-based fence: the target is resolved from the
 # command text itself, and here it's an absolute path, so the hook's cwd
 # (which check_bounded's JSON never sets) is irrelevant to resolution — unlike
 # block-terminal-write-fence.sh's class (b) above. check_bounded proves the
@@ -557,7 +557,7 @@ case "$*" in
   *"reviews(last:"*)
     echo '{"data":{"repository":{"pullRequest":{"reviews":{"totalCount":1,"nodes":[{"author":{"login":"coderabbitai","__typename":"Bot"},"commit":{"oid":"abc123"},"state":"COMMENTED","body":"looks fine","comments":{"totalCount":1}}]}}}}}'
     exit 0 ;;
-  # HIMMEL-3910: gate 4 (trust path) resolves the nwo + default branch, then
+  # gate 4 (trust path) resolves the nwo + default branch, then
   # reads the trust list and the PR's file listing: README.md only, no hit.
   *"repo view"*defaultBranchRef*) printf main; exit 0 ;;
   *"repo view"*) printf o/r; exit 0 ;;
@@ -585,7 +585,7 @@ cd "$UCM_REPO" || true
 check_bounded block-unresolved-cr-merge Bash 2 "gh pr mer""ge 42 --squash" \
     "unresolved CodeRabbit threads block a merge" \
     -u ARMAUTOMERGE -u CR_MERGE_GATE_OK -u HIMMEL_CONSOLE_LEG GH_STUB_MODE=unresolved PATH="$UCM_BIN:$PATH"
-# HIMMEL-3142 -- HIMMEL_CONSOLE_LEG arms gate 3 (console-GO), which this
+# HIMMEL_CONSOLE_LEG arms gate 3 (console-GO), which this
 # fixture never sets up a GO file for; an ambient truthy value here (the
 # suite's own launching shell may carry one) would refuse this allow-case
 # with "no console GO" before the CR gate under test even decides anything.
@@ -642,7 +642,7 @@ check_verdict _decide_graphify_reach block-graphify-egress SKIP \
 # gateway this hook consults, so it is silently allowed — vacuous for a
 # BLOCK row. The `$(...)`-interpolated shape is the one the gateway refuses
 # to sanction, so it is what actually reaches the bounce path (the incident
-# shape, HIMMEL-1077).
+# shape).
 JIRA_CLI="/c/Users/x/himmel/scripts/jira/dist/index.js"
 # shellcheck disable=SC2016 # single-quoted $(...) is a literal unevaluated payload, not code to run here
 D_JIRA_WRITE='no''de '"$JIRA_CLI"' create --type Task --title x --desc "$(cat /tmp/a.md)"'
@@ -660,7 +660,7 @@ check_bounded block-jira-compound-write Bash 2 "$(printf 'echo hello\n%s' "$D_JI
 # field at all) — every other path targets file_path, not command text. Every
 # target here is an ABSOLUTE path, so no `.cwd` plumbing is needed either.
 # The allow control MUST be a real linked worktree (`git worktree add`), not a
-# second independent repo on a feature branch — HIMMEL-507 blocks THAT too
+# second independent repo on a feature branch — the worktree-isolation gate blocks THAT too
 # (a feature branch checked out in a primary `.git`-is-a-directory checkout).
 EOM_MAIN="$TMP/eom-main"
 EOM_FEAT="$TMP/eom-feat"
@@ -673,7 +673,7 @@ check_bounded block-edit-on-main apply_patch 2 "$(_patch_add "$EOM_MAIN/src/foo.
 check_bounded block-edit-on-main apply_patch 0 "$(_patch_add "$EOM_FEAT/src/foo.js")" \
     "the same patch targeting a feature branch allows"
 
-# ── block-edit-live-settings.sh (Bash `>`/`>>` redirect arm; HIMMEL-2360) ────
+# ── block-edit-live-settings.sh (Bash `>`/`>>` redirect arm) ────
 # Only the Bash arm reads tool_input.command; the Edit/Write/MultiEdit/
 # NotebookEdit arm reads tool_input.file_path/notebook_path/path instead, no
 # command text involved. Every target here is an ABSOLUTE path (matches the
@@ -771,7 +771,7 @@ check_verdict _decide_posted_push trigger-cr-on-push 1 "$CONT_PUSH" \
 check_verdict _decide_posted_push trigger-cr-on-push 0 "gi""t status" \
     "an unrelated command posts nothing"
 
-# ── read-clamp.sh — whole-file cat clamp (HIMMEL-2993) ──────────────────────
+# ── read-clamp.sh — whole-file cat clamp ──────────────────────
 # Bash-matcher branch only (the Read-matcher branch has its own coverage in
 # test-read-clamp.sh). The hook's `trimmed` construction strips leading AND
 # TRAILING [[:space:]] — which POSIX/GNU sed treats as including CR — before
@@ -790,7 +790,7 @@ check read-clamp Bash 0 "ca""t $RC_SMALL" "allow a file at/under the limit" \
 check read-clamp Bash 0 "ca""t $RC_BIG" "gate off (HIMMEL_CONSOLE_LEG unset) allows" \
     -u HIMMEL_CONSOLE_LEG HIMMEL_READ_CLAMP_LINES=1
 
-# ── memory-bash-line-check.sh — MEMORY.md line rule after Bash (HIMMEL-4891) ─
+# ── memory-bash-line-check.sh — MEMORY.md line rule after Bash ─
 # The path token is cut at [[:space:]], which includes CR, so a terminal CR on
 # the command must not leak into the path and make the file read as missing.
 MB_HOME="$TMP/mbl-home"
@@ -802,7 +802,7 @@ check memory-bash-line-check Bash 2 "cat >> $MB_IDX" "over-long index line flagg
 check memory-bash-line-check Bash 0 "echo hi" "command not naming MEMORY.md ignored" \
     HOME="$MB_HOME"
 
-# ── guard-judge-writes.sh — judge-session fence (HIMMEL-4564) ───────────────
+# ── guard-judge-writes.sh — judge-session fence ───────────────
 # The verb match splits the command into words; a terminal CR must not glue
 # itself to the last word and turn "push" into an unknown "push\r".
 check guard-judge-writes Bash 2 "gi""t push" "deny push in a judge session" \
@@ -812,7 +812,7 @@ check guard-judge-writes Bash 0 "gi""t status" "allow a read in a judge session"
 
 # guard-leg-context-handoff reads the fill through the transcript, so its rows
 # run against a leg fixture at 90 % with the guard on (it is off by default,
-# HIMMEL-4710): a hand-off command must stay allowed and an ordinary one denied
+# enabled here): a hand-off command must stay allowed and an ordinary one denied
 # whatever the line endings.
 LCX="$TMP/legctx"
 mkdir -p "$LCX/cfg/projects/p" "$LCX/cfg/plugins/claude-hud/context-cache" "$LCX/handovers/u/b"

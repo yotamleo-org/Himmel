@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bus-deliver-hook.sh — PostToolUse + SessionStart hook (HIMMEL-4828, himmel-bus T5).
+# bus-deliver-hook.sh — PostToolUse + SessionStart hook (himmel-bus).
 #
 # WHY: the himmel-bus MCP server can send and read, but nothing puts a waiting
 # message in front of a session. This hook delivers this session's bus log

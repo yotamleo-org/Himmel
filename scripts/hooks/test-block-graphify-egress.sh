@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for block-graphify-egress.sh's COMMAND-POSITION gate (HIMMEL-1180).
+# Smoke test for block-graphify-egress.sh's COMMAND-POSITION gate.
 # Coverage for the corpus x provider policy decision itself lives in
 # scripts/guardrails/test-graphify-fence.sh (invokes graphify-fence.sh
 # directly); this file only pins the HOOK's own match/no-match boundary.
@@ -75,7 +75,7 @@ else
     bad "sudo-wrapped invocation: rc=$rc out=$out"
 fi
 
-# CR round 1 regression pin (codex-1): `timeout` is not one of CMDPOS's
+# Regression pin: `timeout` is not one of CMDPOS's
 # shared wrappers (block-destructive-commands.sh never covered it either),
 # so this hook rebuilds CMDPOS locally with a timeout alternative -- see its
 # own comment. The OLD naive substring match caught this case; losing it
@@ -94,7 +94,7 @@ else
     bad "timeout+flags+sudo wrapped invocation: rc=$rc out=$out"
 fi
 
-# CR round 2 regression pin (codex-1): `command`/`exec` are transparent
+# Regression pin: `command`/`exec` are transparent
 # no-argument wrappers the OLD substring match also caught.
 out="$(run_hook "command graphify update $T/luna/journal.md --backend claude" 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ] && grep -q FENCE_INVOKED <<<"$out"; then
@@ -110,26 +110,26 @@ else
     bad "exec-wrapped invocation: rc=$rc out=$out"
 fi
 
-# HIMMEL-2615 regression pin: `setsid` and the repo's own quiet runner
+# Regression pin: `setsid` and the repo's own quiet runner
 # (scripts/quiet-run.sh <label> -- <cmd...>) previously carried a graphify
 # invocation straight past this gate at rc=0 -- CMDPOS never listed `setsid`,
 # and nothing here understood a runner's `--` tail, so `exec bash "$FENCE"`
 # was never reached and the corpus x provider decision below (deny/allow) was
 # never even asked. This suite only pins the fence-reached/not-reached
 # boundary (see file header); the real deny verdict for these exact shapes is
-# covered against the LIVE fence in test-graphify-fence.sh's own HIMMEL-2615
-# block. These cases are the same "reaches the fence" idiom as the sudo/env/
+# covered against the LIVE fence in test-graphify-fence.sh's own
+# setsid/quiet-runner block. These cases are the same "reaches the fence" idiom as the sudo/env/
 # timeout/command/exec cases above -- a graphify command wrapped this way
 # must reach the fence just like those, so the real fence gets the chance to
 # deny it.
-# HIMMEL-1430: every FENCE_INVOKED check in this block (and its negations)
+# Every FENCE_INVOKED check in this block (and its negations)
 # uses a here-string (`grep -q ... <<< "$out"`), not `producer | grep -q`.
 # This file carries `set -uo pipefail`; under pipefail, `grep -q` exits on
 # its first match, the producer takes SIGPIPE writing the rest, and the
 # PIPELINE's status becomes the SIGPIPE failure rather than grep's match --
 # `! producer | grep -q X` can then invert on a large `$out`. `$out` here is
 # only a few lines of captured hook output, far below the here-string size
-# cap that wedges Git Bash (HIMMEL-2027), so the here-string is the right
+# cap that wedges Git Bash, so the here-string is the right
 # remedy - same reasoning test-graphify-fence.sh's own grepq() helper exists
 # for.
 out="$(run_hook "setsid graphify update $T/luna/journal.md --backend claude" 2>&1)"; rc=$?
@@ -155,9 +155,9 @@ else
     bad "setsid+nohup+quiet-run.sh incident shape: rc=$rc out=$out"
 fi
 
-# Negative controls: the HIMMEL-2615 widening above must not route a
+# Negative controls: the setsid/quiet-runner widening above must not route a
 # non-graphify command through either new path, and must not regress
-# HIMMEL-1180's bare-mention exemption.
+# the bare-mention exemption.
 out="$(run_hook "setsid ls -la $T" 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ] && ! grep -q FENCE_INVOKED <<< "$out"; then
     ok "a setsid-wrapped non-graphify command does not reach the fence"
@@ -199,7 +199,7 @@ else
     bad "single-quoted quiet-run.sh script path: rc=$rc out=$out"
 fi
 
-# CR round 2 [codex-1]: this hook's own QUIETRUN_TAIL prefilter does not
+# This hook's own QUIETRUN_TAIL prefilter does not
 # examine quote balance at all - it only asks whether a `quiet-run.sh` token
 # is followed (anywhere later) by a graphify-shaped token, so the
 # adjacent-quoted-segments label that broke the FENCE's per-quote-type parity
@@ -236,7 +236,7 @@ else
     bad "bare mention (echo): rc=$rc out=$out"
 fi
 
-# Documented, accepted residual (HIMMEL-1180): a quoted-payload wrapper is
+# Documented, accepted residual: a quoted-payload wrapper is
 # NOT unwrapped by this fast gate -- pinned here so the residual stays a
 # known, intentional gap rather than an undocumented drift.
 out="$(run_hook "bash -c 'graphify update $T/luna/journal.md --backend claude'" 2>&1)"; rc=$?
@@ -253,7 +253,7 @@ else
     bad "unrelated command: rc=$rc out=$out"
 fi
 
-# HIMMEL-2094 regression pin: the six transparent wrappers above (command/
+# Regression pin: the six transparent wrappers above (command/
 # exec/builtin/nohup/time/nice) were spliced into CMDPOS as BARE literals --
 # a flag-bearing form of any of them stopped the wrapper walk at the flag
 # token and never reached EXEPFX, so the hook let it through unfenced.
@@ -299,7 +299,7 @@ else
     bad "exec -a name-wrapped invocation: rc=$rc out=$out"
 fi
 
-# HIMMEL-4158: a wrapper value quoted with a space (or built from quoted and
+# A wrapper value quoted with a space (or built from quoted and
 # bare segments) must not hide graphify from command position.
 for w in "exec -a 'a b'" "sudo -u 'a b'" "env -C 'x y'" "nice -n '1 0'" \
          "timeout -s 'K L' 5" "time -o 'a b'" "stdbuf -o 'a b'" "sudo -u 'a b'c" \
@@ -318,7 +318,7 @@ else
     bad "quoted-value wrapper around ls: rc=$rc out=$out"
 fi
 
-# HIMMEL-2610 (G1): nice/time's long-option alternatives used to be bare
+# nice/time's long-option alternatives used to be bare
 # literals (--adjustment/--output/--format), so a GNU-unambiguous abbreviation
 # fell through to the generic bare-flag alternative and left the flag's VALUE
 # token where the grammar next expects the wrapped command -- a silent
@@ -344,7 +344,7 @@ else
     bad "time --for-wrapped invocation: rc=$rc out=$out"
 fi
 
-# HIMMEL-2610 (G1): stdbuf was missing from the wrapper set entirely -- a
+# stdbuf was missing from the wrapper set entirely -- a
 # routing bypass, not an abbreviation-matching gap.
 out="$(run_hook "stdbuf -oL graphify update $T/luna/journal.md --backend claude" 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ] && grep -q FENCE_INVOKED <<< "$out"; then
@@ -383,7 +383,7 @@ else
     bad "time -p echo graphify: rc=$rc out=$out"
 fi
 
-# HIMMEL-4321: the shared EXEPFX stops at a `)` before `{`, a stop justified by
+# The shared EXEPFX stops at a `)` before `{`, a stop justified by
 # the `){` anchor in guard_cmdpos_grammar's own CMDPOS. This hook rebuilds CMDPOS
 # locally, so without that anchor a program path with `){` in its directory part
 # no longer reached the fence (main reached it: rc 0 + FENCE_INVOKED).

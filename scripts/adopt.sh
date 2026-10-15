@@ -35,19 +35,18 @@
 #                       from .env.example if absent). Enter to skip a var.
 #   --with-graphify     Opt in to installing the graphify knowledge-graph CLI
 #                       (himmel fork) during a `core`/`all` adopt. Off by
-#                       default — the adoption verdict stays open (HIMMEL-621);
+#                       default — the adoption verdict stays open;
 #                       this flag only installs the CLI (never over an
 #                       existing foreign install — see scripts/lib/graphify-bin.sh).
 #   --skip-hooks        Opt out of placing the git gate hooks (pre-commit,
 #                       commit-msg, pre-push) in --target. On by default
-#                       (HIMMEL-2441) so a fresh adopt is gated from its first
+#                       so a fresh adopt is gated from its first
 #                       commit; mirrors uninstall.sh's own --skip-hooks. A
 #                       target with its own .pre-commit-config.yaml gets the
 #                       pre-commit framework hooks (config untouched); one
 #                       without gets himmel's native gates directly, since the
-#                       framework's hooks would skip without a config
-#                       (HIMMEL-3306).
-#   --only-hooks        Place the git gate hooks and nothing else (HIMMEL-4267):
+#                       framework's hooks would skip without a config.
+#   --only-hooks        Place the git gate hooks and nothing else:
 #                       no settings wiring, plugins, marketplaces, CLAUDE.md,
 #                       statusline or bundle. What `himmelctl ensure --items
 #                       pre-commit-hooks` runs, so a hooks repair never
@@ -55,7 +54,7 @@
 #                       not combinable with --skip-hooks.
 #   --handover-mode <inline|external>
 #                       Gate for wire_handover_dir_luna's env.HANDOVER_DIR
-#                       write (HIMMEL-2466). external (the default, today's
+#                       write. external (the default, today's
 #                       behaviour) wires it when a vault is scaffolded; inline
 #                       leaves settings.json untouched — handover state stays
 #                       the repo-local handovers/ stub. The wizard passes this
@@ -74,22 +73,22 @@ HIMMEL_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/wire-pretooluse-hooks.sh"
 
-# qmd resolver + install/register helpers (HIMMEL-752 qmd wiring). Provides
+# qmd resolver + install/register helpers. Provides
 # has_qmd / qmd_cmd / qmd_install / qmd_fork_served / qmd_register_collection,
 # consumed by wire_qmd_core() and do_luna().
 # shellcheck source=scripts/lib/qmd-bin.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/qmd-bin.sh"
 
-# graphify resolver (HIMMEL-891). Provides has_graphify / graphify_install /
+# graphify resolver. Provides has_graphify / graphify_install /
 # graphify_source / graphify_install_hint, consumed by wire_graphify_core()
 # (opt-in via --with-graphify — unlike qmd, graphify is NOT wired by default;
-# the adoption verdict stays open, HIMMEL-621).
+# the adoption verdict stays open).
 # shellcheck source=scripts/lib/graphify-bin.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/graphify-bin.sh"
 
-# Adopter preflight checks (HIMMEL-842). Provides the shared WARN-not-fail
+# Adopter preflight checks. Provides the shared WARN-not-fail
 # checks (uv/pipx, npm-less-node, jira-dist) consumed by require_tools() below.
 # The standalone scripts/preflight-adopter.sh runner sources the same lib, so the
 # two entry points report identically and can't drift (operator answer Q4).
@@ -97,7 +96,7 @@ HIMMEL_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/preflight-adopter.sh"
 
-# wire_user_claude_md (HIMMEL-2038): appends the "working principles" block
+# wire_user_claude_md: appends the "working principles" block
 # from docs/setup/user-scope-claude-md-template.md into the user-scope rule
 # files (~/.claude/CLAUDE.md + ~/.codex/AGENTS.md). Consumed by do_core() in
 # BOTH scopes — the principles live at user scope whichever way core installs.
@@ -105,7 +104,7 @@ HIMMEL_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/user-claude-md.sh"
 
-# Install-provenance ledger (HIMMEL-3332): copy_portable and the user-scope gate
+# Install-provenance ledger: copy_portable and the user-scope gate
 # copy record what they overwrite via prov_record. Recording is best-effort — a
 # failed record warns and never fails the install.
 # shellcheck source=scripts/lib/provenance.sh
@@ -195,7 +194,7 @@ require_tools() {
     echo "  see $HIMMEL_ROOT/docs/setup/new-machine.md (Required environment)" >&2
     exit 1
   fi
-  # `claude` is SOFT (HIMMEL-600): the portable core + git gates are
+  # `claude` is SOFT: the portable core + git gates are
   # harness-agnostic, and only the Claude plugin-install step needs the CLI. A
   # Codex-only (or any non-Claude) adopter still gets the core — don't reject it.
   if ! command -v claude >/dev/null 2>&1; then
@@ -203,7 +202,7 @@ require_tools() {
     echo "WARN: 'claude' not found — installing the harness-agnostic core only;" >&2
     echo "      skipping the Claude plugin-install step (Codex-only adopter is fine)." >&2
   fi
-  # `bun` is SOFT (HIMMEL-752 G2): qmd search is the only do_core step that
+  # `bun` is SOFT: qmd search is the only do_core step that
   # needs it, and the harness-agnostic core + git gates run without it. Warn with the
   # install hint; wire_qmd_core consults BUN_AVAILABLE and skips qmd cleanly.
   if ! command -v bun >/dev/null 2>&1; then
@@ -213,14 +212,14 @@ require_tools() {
   fi
   # `node` is SOFT (same posture as claude/bun above): the harness-agnostic
   # core + git gates run without it, and build_jira_cli already tolerates a
-  # bun-only machine. Only the standalone uninstall bundle (HIMMEL-3303 item
-  # 4) needs a real node to require() standalone-bundle.js.
+  # bun-only machine. Only the standalone uninstall bundle
+  # needs a real node to require() standalone-bundle.js.
   if ! command -v node >/dev/null 2>&1; then
     NODE_AVAILABLE=0
     echo "WARN: 'node' not found — skipping the standalone uninstall bundle;" >&2
     echo "      $HIMMEL_ROOT/scripts/uninstall.sh still works; only the delete-the-clone fallback needs node." >&2
   fi
-  # HIMMEL-842 adopter preflight: the shared advisory checks (uv/pipx,
+  # the shared advisory checks (uv/pipx,
   # npm-less-node, jira-dist) live in scripts/lib/preflight-adopter.sh and are
   # also run by the standalone scripts/preflight-adopter.sh runner. Each returns
   # 1 (after WARNing) when its gap is present; the `||` capture keeps a non-zero
@@ -230,7 +229,7 @@ require_tools() {
   # proceed without one. When bun is present it covers every himmel JS build, so
   # the shared WARN stays advisory and adopt proceeds.
   local npm_gap=0
-  # HIMMEL-4435: uv/pipx only matters when pre-commit will be installed -- the
+  # uv/pipx only matters when pre-commit will be installed -- the
   # luna vault, or a core target that brings its own .pre-commit-config.yaml.
   # A core target without one gets the native gates, so the warning is noise.
   if [[ "$PROFILE" != "core" || -f "$TARGET/.pre-commit-config.yaml" ]]; then
@@ -247,7 +246,7 @@ require_tools() {
 }
 
 # copy_recorded <path relative to both roots> [exec]
-# HIMMEL-3332: copy $HIMMEL_ROOT/<path> over $TARGET/<path> — unconditionally, as
+# copy $HIMMEL_ROOT/<path> over $TARGET/<path> — unconditionally, as
 # copy_portable always did — and record one `file` row for it: `create` when
 # there was nothing there, `noop` when the bytes and mode did not change, else
 # `replace` with the prior bytes backed up (mode preserved) so uninstall can put
@@ -285,7 +284,7 @@ copy_recorded() {
 }
 
 copy_portable() {
-  # HIMMEL-2435: an adopter cloning himmel itself and running `adopt.sh
+  # an adopter cloning himmel itself and running `adopt.sh
   # --scope project` (or the wizard deriving scope=project) from inside that
   # clone has TARGET == HIMMEL_ROOT — the portable core is already in place,
   # so `cp src dest` on the same file aborts with "are the same file". Compare
@@ -325,7 +324,7 @@ install_plugins() {
   fi
 }
 
-# statusLine — part of the core harness (HIMMEL-359). Wired into the
+# statusLine — part of the core harness. Wired into the
 # scope-appropriate settings.json. Both scopes reference THIS himmel clone's
 # vendored statusline (it is never copied per-repo), so a project-scope
 # settings.json carries this machine's clone path by design.
@@ -343,7 +342,7 @@ wire_statusline_core() {
   bash "$HIMMEL_ROOT/scripts/lib/wire-statusline.sh" "$settings" "$HIMMEL_ROOT"
 }
 
-# env.HIMMEL_REPO — default-by-install (HIMMEL-453). Sibling of
+# env.HIMMEL_REPO — default-by-install. Sibling of
 # wire_statusline_core: write THIS himmel clone's path into the scope-appropriate
 # settings.json so the leg resolver + minerva anchor get it without a manual set.
 wire_himmel_repo_core() {
@@ -360,7 +359,7 @@ wire_himmel_repo_core() {
   bash "$HIMMEL_ROOT/scripts/lib/wire-himmel-repo.sh" "$settings" "$HIMMEL_ROOT"
 }
 
-# env.LUNA_VAULT_PATH — persist the scaffolded vault path (HIMMEL-458) so the
+# env.LUNA_VAULT_PATH — persist the scaffolded vault path so the
 # end-session-wiki resolver (vault-resolve.sh step 3) finds the vault the
 # operator scaffolded without a manual export. Sibling of wire_himmel_repo_core;
 # written to the scope-appropriate settings.json. $1 = the scaffolded vault dir.
@@ -378,8 +377,8 @@ wire_luna_vault_path() {
   bash "$HIMMEL_ROOT/scripts/lib/wire-luna-vault.sh" "$settings" "$dest"
 }
 
-# env.HANDOVER_DIR — seed the handover state root at the scaffolded luna vault
-# (HIMMEL-839). Without this, a fresh adopter's handover state silently
+# env.HANDOVER_DIR — seed the handover state root at the scaffolded luna vault.
+# Without this, a fresh adopter's handover state silently
 # defaults to the inline <repo-root>/handovers/ stub and the operator has to
 # discover + set HANDOVER_DIR by hand (observed on a fresh ubuntu_new install
 # with no prior state). Creates <dest>/handovers/ so Mode B resolves cleanly
@@ -388,7 +387,7 @@ wire_luna_vault_path() {
 # the scaffolded vault dir.
 wire_handover_dir_luna() {
   local dest="$1" hdir settings envfile existing
-  # HIMMEL-2466: handover.mode=inline is a no-op here — handover state stays
+  # handover.mode=inline is a no-op here — handover state stays
   # the repo-local handovers/ stub, same as the T4.5 JS-side gate
   # (applyHandoverStep) already treats it. Only external (the default,
   # preserved for a direct adopt.sh invocation) seeds env.HANDOVER_DIR.
@@ -402,7 +401,7 @@ wire_handover_dir_luna() {
   else
     settings="$HOME/.claude/settings.json"
   fi
-  # PRESERVE an operator-selected HANDOVER_DIR (HIMMEL-839 CR round-2): a
+  # PRESERVE an operator-selected HANDOVER_DIR: a
   # routine re-adopt must reproduce state, never silently reset it.
   # /handover-setup is documented as "the only place the state-root location
   # is chosen interactively" (handover-setup.md) — adopt.sh must not become a
@@ -418,7 +417,7 @@ wire_handover_dir_luna() {
     existing="$(jq -r '.env.HANDOVER_DIR // empty' "$settings" 2>/dev/null || true)"
     if [[ -n "$existing" ]]; then
       echo "  env.HANDOVER_DIR already set in $settings ($existing) — leaving it (re-adopt reproduces, never resets; HIMMEL-839)"
-      # HIMMEL-3332: remember that this key was already here, so uninstall never
+      # remember that this key was already here, so uninstall never
       # claims (and removes) an operator-chosen value. Best-effort, like every record.
       prov_record noop json-key "$settings" --unit /env/HANDOVER_DIR --scope "$SCOPE" --class code \
         --row "$SCOPE-settings" --writer adopt.sh --field preexisted=true \
@@ -438,7 +437,7 @@ wire_handover_dir_luna() {
     return
   fi
   mkdir -p "$hdir"
-  # Canonicalize to an absolute path (HIMMEL-839 CR round-2): a relative
+  # Canonicalize to an absolute path: a relative
   # --luna-target would otherwise persist a CWD-dependent relative path into
   # settings.json, resolving against whatever CWD a later session happens to
   # launch from. Same idiom scripts/handover/set-handover-dir.sh already uses.
@@ -447,7 +446,7 @@ wire_handover_dir_luna() {
   bash "$HIMMEL_ROOT/scripts/lib/wire-handover-dir.sh" "$settings" "$hdir"
 }
 
-# --fill-env (HIMMEL-453): fill the himmel clone's .env. We target
+# --fill-env: fill the himmel clone's .env. We target
 # $HIMMEL_ROOT/.env (NOT $TARGET/.env) for BOTH scopes because adopt copies only
 # portable hooks — never the Jira CLI — so an adopted repo always invokes
 # `node $HIMMEL_ROOT/scripts/jira/...`, whose repoRoot() reads $HIMMEL_ROOT/.env.
@@ -462,10 +461,10 @@ fill_env_core() {
   fi
 }
 
-# wire_qmd_core — wire the qmd search stack end-to-end (HIMMEL-752 G1/G3/G4):
+# wire_qmd_core — wire the qmd search stack end-to-end:
 # fix the broken plugin-cache stub, install the qmd CLI if missing (qmd_install
 # clones the himmel qmd fork, builds it with bun, and junctions/symlinks it
-# onto the bun-global @tobilu/qmd path -- HIMMEL-877), pull the embedding/rerank
+# onto the bun-global @tobilu/qmd path), pull the embedding/rerank
 # models, and register the himmel clone as a collection.
 # Best-effort throughout: every failure WARNs and returns 0 so a missing or
 # broken qmd never aborts an adopt. Called from do_core() after install_plugins
@@ -479,7 +478,7 @@ wire_qmd_core() {
   fi
   echo "──── Wiring qmd search ────"
   # G1: neutralize the broken qmd plugin-cache stub so plain `qmd` works inside
-  # Claude's Bash tool too (HIMMEL-163). WARN-not-fail.
+  # Claude's Bash tool too. WARN-not-fail.
   if [[ $DRY_RUN -eq 1 ]]; then
     echo "DRY: bash $HIMMEL_ROOT/scripts/lib/fix-qmd-stub.sh"
   else
@@ -487,7 +486,7 @@ wire_qmd_core() {
       || echo "  WARNING: fix-qmd-stub failed — continuing." >&2
   fi
   # Install the qmd CLI unless the FORK is already the served install
-  # (clone the fork + build + link -- HIMMEL-877). The gate is
+  # (clone the fork + build + link). The gate is
   # qmd_fork_served, NOT has_qmd: a machine carrying the old upstream
   # bun-global install is qmd-present but must still MIGRATE to the fork
   # (CR codex-adv-1); qmd_install itself re-checks as the second line of
@@ -516,8 +515,8 @@ wire_qmd_core() {
   fi
 }
 
-# wire_graphify_core — opt-in install of the graphify knowledge-graph CLI
-# (HIMMEL-891). Unlike wire_qmd_core, this is NOT called unconditionally —
+# wire_graphify_core — opt-in install of the graphify knowledge-graph CLI.
+# Unlike wire_qmd_core, this is NOT called unconditionally —
 # do_core() below only calls it when --with-graphify was passed. Detects +
 # adopts a foreign or already-himmel-fork install (graphify_install's own
 # contract); never installs over an existing install. WARN-not-fail: a
@@ -533,7 +532,7 @@ wire_graphify_core() {
   # Install the CLI first; a failed install returns before we try to register
   # the MCP server (there'd be no graphify-mcp entrypoint to register). MCP
   # registration is the shared graphify-bin.sh impl — adopt's SCOPE (project|
-  # user) is a valid `claude mcp add -s` scope (HIMMEL-1047).
+  # user) is a valid `claude mcp add -s` scope.
   graphify_install || { echo "  WARNING: graphify install failed — continuing without graphify." >&2; return 0; }
   if [[ "$SCOPE" == "project" ]]; then
     # project scope writes the committed .mcp.json relative to CWD (mirrors
@@ -542,12 +541,12 @@ wire_graphify_core() {
   else
     graphify_register_mcp "$SCOPE"
   fi
-  # HIMMEL-2480: price the hooks in the ADOPTED repo, not himmel's own — adopt
+  # price the hooks in the ADOPTED repo, not himmel's own — adopt
   # targets $TARGET, so the root must be passed explicitly.
   graphify_price_hooks "$TARGET"
 }
 
-# build_jira_cli — build scripts/jira/dist/index.js (HIMMEL-842 gap 3). dist/ is
+# build_jira_cli — build scripts/jira/dist/index.js. dist/ is
 # a gitignored build artifact, so a fresh clone bootstrapped via adopt.sh hits
 # MODULE_NOT_FOUND without this (CLAUDE.md's "worktrees lack dist/" warning is
 # scoped too narrowly — a fresh PRIMARY clone via adopt.sh hits the identical
@@ -616,7 +615,7 @@ build_jira_cli() {
 #
 # Prior versions each hand-emulated one piece of this and left a different
 # piece unemulated -- that pattern is why this is a full rewrite rather than
-# a fourth patch (HIMMEL-2771 CR):
+# a fourth patch:
 #   - round-2: resolved only the deepest existing ancestor, via LOGICAL
 #     cd+pwd. A core.hooksPath symlink INSIDE the target pointing OUTSIDE it
 #     preserved the symlink instead of resolving it, passing containment.
@@ -672,8 +671,8 @@ _native_hooks_canon() {
         fi
         # Resolve $acc to its physical form the MOMENT it exists as a
         # directory (or a symlink to one) -- this is what catches a symlink
-        # that only becomes reachable after an earlier ".." fold (HIMMEL-2771
-        # CR round-4): there is no separate walk-up pass that could run
+        # that only becomes reachable after an earlier ".." fold
+        # there is no separate walk-up pass that could run
         # before this component exists and so never look at it. A component
         # that does not exist yet cannot be a symlink, so leaving it as the
         # literal string and continuing is exact, not an approximation.
@@ -698,7 +697,7 @@ _native_hooks_canon() {
   printf '%s\n' "$acc"
 }
 
-# HIMMEL-3541: one ledger row for a native-hook write (the hook, the adopter's
+# one ledger row for a native-hook write (the hook, the adopter's
 # displaced hook, the shared-dir payload). Audit rows: uninstall [5/8] still
 # removes and restores these from the manifest's git-hooks rows. Best-effort,
 # like copy_recorded: the hook is in place whether or not the row lands.
@@ -711,7 +710,7 @@ _native_hook_rec() {
 }
 
 install_native_hooks() {
-  # HIMMEL-2771: resolve Git's effective hook directory (including worktrees
+  # resolve Git's effective hook directory (including worktrees
   # and core.hooksPath), but keep hook payloads independent of this clone.
   local hooks_dir hook script hooks_dir_canon target_canon backup marker
   local common_dir common_dir_canon payload_dir payload_file hooks_path_configured
@@ -739,7 +738,7 @@ install_native_hooks() {
   # so "/target-evil" cannot pass as inside "/target" via a naive prefix match.
   hooks_dir_canon="$(_native_hooks_canon "$hooks_dir")"
   target_canon="$(_native_hooks_canon "$TARGET")"
-  # HIMMEL-2771 CR round-5 (codex-1, confirmed): the boundary check above
+  # The boundary check above
   # applies uniformly, but an ORDINARY linked worktree has no configured
   # core.hooksPath at all -- its default hooks dir is Git's own per-repository
   # `<common-git-dir>/hooks`, which lives in the PRIMARY checkout's .git, not
@@ -788,7 +787,7 @@ install_native_hooks() {
     echo "  git gate hooks — FAILED (native: cannot create hooks directory $hooks_dir)" >&2
     return 1
   fi
-  # HIMMEL-2771 CR round-6 (codex-1, confirmed): round-5's fix above teaches
+  # The fix above teaches
   # adopt to ACCEPT the shared common-dir hooks layout, but the payload
   # (scripts/hooks/*.sh + guardrails/lib.sh) was copied only into $TARGET (the
   # linked worktree). Git's hooks are per-repository, not per-worktree, so
@@ -806,7 +805,7 @@ install_native_hooks() {
   # like a hook) -- and teach the dispatcher (below) to fall back to it when
   # $root/scripts/hooks/<script> is missing.
   #
-  # HIMMEL-2814: the decision was originally keyed on containment
+  # the decision was originally keyed on containment
   # ($hooks_dir_canon inside $target_canon => "no fallback needed"), which
   # answers the wrong question -- it is true not only for a per-checkout
   # core.hooksPath (genuinely NOT shared: each worktree has its own copy of
@@ -871,7 +870,7 @@ install_native_hooks() {
     # generated hook, which would overwrite the adopter's REAL backup with a
     # copy of our own output on a second run.
     #
-    # HIMMEL-2771 CR round-5 (codex-2, confirmed): the directory-level
+    # The directory-level
     # containment check above cannot see a per-file SYMLINK escape --
     # $hooks_dir itself is legitimately inside the target; it is this one
     # directory ENTRY that escapes. A DANGLING symlink is not `-e`, so it
@@ -944,7 +943,7 @@ install_native_hooks() {
       # cannot be re-read). Running the gate then the backup straight would
       # leave the backup reading an already-drained, EOF stdin -- it would
       # see zero ref lines and fall through to exit 0 no matter what it was
-      # meant to refuse (the exact "silently ungated" class HIMMEL-2771
+      # meant to refuse (the exact "silently ungated" class this gate
       # exists to close). Snapshot stdin ONCE into a temp file via `cat`
       # (byte-for-byte, no command-substitution newline stripping) and feed
       # BOTH the gate and the backup that same file. A terminal stdin (a
@@ -1028,14 +1027,14 @@ HOOK
 }
 
 install_precommit_hooks() {
-  # HIMMEL-2441: place the git gate hooks by default so an adopter's FIRST
+  # place the git gate hooks by default so an adopter's FIRST
   # commit is actually gated -- mirrors setup.sh's own [1/9]/[2/9] steps
   # (install pre-commit if missing, then wire all three hook types), against
   # $TARGET. --allow-missing-config keeps the wired hooks from hard-failing
   # every commit if the adopter's own config is deleted later (measured: a
   # bare `pre-commit install` + commit with zero config exits 1;
   # --allow-missing-config exits 0). It no longer covers a target that never
-  # had a config: that case takes the native gates (HIMMEL-3306, below).
+  # had a config: that case takes the native gates (below).
   if [[ $SKIP_HOOKS -eq 1 ]]; then
     echo "  git hooks: skipped (--skip-hooks)"
     return 0
@@ -1044,7 +1043,7 @@ install_precommit_hooks() {
     echo "  git hooks: skipping ($TARGET is not a git repo)"
     return 0
   fi
-  # HIMMEL-3306: the pre-commit framework gates only what a
+  # the pre-commit framework gates only what a
   # .pre-commit-config.yaml wires, and adopt ships none -- so without the
   # adopter's own config the stubs above skipped on every commit and push
   # (--allow-missing-config exits 0), while the native gates that DO work sat
@@ -1061,7 +1060,7 @@ install_precommit_hooks() {
   fi
   local precommit_bin="pre-commit"
   if ! command -v pre-commit >/dev/null 2>&1; then
-    # HIMMEL-2771: installer failure must fall back to native gates, never
+    # installer failure must fall back to native gates, never
     # report a successful adoption with no gates. Try each available installer.
     local installer install_output candidate
     precommit_bin=""
@@ -1128,14 +1127,14 @@ install_precommit_hooks() {
   fi
 }
 
-# HIMMEL-3303 item (b): named BEFORE any install step runs. --scope project
-# keeps this repo's own settings.json project-local (HIMMEL-3309), but a
+# named BEFORE any install step runs. --scope project
+# keeps this repo's own settings.json project-local, but a
 # handful of things are genuinely machine-level shared tooling and land under
 # $HOME regardless of scope by design -- qmd's models, bun, the claude-hud
 # config wire-statusline.sh writes, the ~/.claude.json workspace-trust entry
 # applyWorkspaceTrust sets (bin.js), and the plugin content cache/ledger a
 # `claude plugin install` writes even for a --scope project install (verified
-# HIMMEL-3303: the install itself is already project-scoped -- only the
+# the install itself is already project-scoped -- only the
 # downloaded plugin files and its tracking ledger are shared, same as any
 # other package manager cache). This just names them; none of these paths are
 # touched by this function.
@@ -1157,7 +1156,7 @@ print_machine_footprint() {
   echo "  these are shared machine tooling, same as any package manager cache -- --scope project only keeps THIS repo's own settings.json project-local."
 }
 
-# HIMMEL-3303 item (4): scripts/himmelctl/bin.js's PATH-shim step already
+# scripts/himmelctl/bin.js's PATH-shim step already
 # writes the same standalone uninstall bundle (bin.js:4847) so the uninstaller
 # survives deleting the clone -- but that step only runs inside the himmelctl
 # wizard flow, never from a bare `adopt.sh`. Reuse standalone-bundle.js's own
@@ -1210,10 +1209,10 @@ do_core() {
     wire_sessionstart_hook "$HOME/.claude/settings.json" "$HIMMEL_ROOT" "inject-initiative.sh" "$DRY_RUN"
     echo "  worktree commands run from the himmel clone: bash $HIMMEL_ROOT/scripts/worktree.sh feat/slug"
   fi
-  # HIMMEL-2038: the "working principles" defaults were demoted out of himmel's
+  # the "working principles" defaults were demoted out of himmel's
   # always-on project CLAUDE.md (general engineering defaults, not himmel
   # invariants) -- adopters get them via this user-scope append instead.
-  # HIMMEL-3309: user-scope ONLY -- a project-scope install must not touch
+  # user-scope ONLY -- a project-scope install must not touch
   # anything under $HOME (the flag's name is the contract). The principles
   # still land at user scope whichever way core itself was installed; a
   # project-scope adopter who also wants them runs `adopt.sh --scope user`
@@ -1252,11 +1251,11 @@ do_luna() {
     run cp -r "$HIMMEL_ROOT/templates/luna-second-brain" "$dest"
   fi
   # Persist the vault path UNCONDITIONALLY — a re-run over an existing scaffold
-  # (skipped copy above) must still wire a previously-unwired install (HIMMEL-458).
+  # (skipped copy above) must still wire a previously-unwired install.
   wire_luna_vault_path "$dest"
-  # Seed HANDOVER_DIR the same way, same reasoning (HIMMEL-839).
+  # Seed HANDOVER_DIR the same way, same reasoning.
   wire_handover_dir_luna "$dest"
-  # G5 (HIMMEL-752): register the scaffolded vault as a qmd collection so it is
+  # G5: register the scaffolded vault as a qmd collection so it is
   # queryable immediately. Skip + note when qmd/bun unavailable; WARN-not-fail.
   # For --profile all, do_core (→ wire_qmd_core) has already installed qmd; for
   # --profile luna alone it may be absent, in which case has_qmd skips cleanly.
@@ -1282,8 +1281,8 @@ fi
 case "$PROFILE" in
   core) do_core ;;
   # `luna` historically used --target; also honor an explicit --luna-target so
-  # the intuitive `--profile luna --luna-target` is no longer a silent no-op
-  # (HIMMEL-458 critic #3). --target still wins when --luna-target is absent.
+  # the intuitive `--profile luna --luna-target` is no longer a silent no-op.
+  # --target still wins when --luna-target is absent.
   luna) if [[ $LUNA_TARGET_SET -eq 1 ]]; then do_luna "$LUNA_TARGET"; else do_luna "$TARGET"; fi ;;
   all)  do_core; do_luna "$LUNA_TARGET" ;;
 esac

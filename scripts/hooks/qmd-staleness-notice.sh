@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # qmd-staleness-notice.sh — SessionStart hook: warn when this station's qmd
-# index cannot be trusted (HIMMEL-1286).
+# index cannot be trusted.
 #
 # WHY A HOOK AND NOT A SLASH COMMAND: the failure this closes is a session
 # answering confidently off a stale index, and a session that would remember to
 # run a staleness check is not the session that gets burned. The lean-invoke
-# default (HIMMEL-177) is the right call for most capabilities precisely
+# default is the right call for most capabilities precisely
 # because the operator knows when a rule applies and Claude does not — but here
 # nobody knows, which is the entire problem. `qmd status` is a local sqlite
 # read, so the always-on cost is one cheap subprocess per session.
@@ -37,7 +37,7 @@
 # (scripts/luna/ship-index.sh), never a local rebuild.
 set -uo pipefail
 
-# HIMMEL-2830 / HIMMEL-2928: a leg launched by headed-arm-leg.sh --profile
+# a leg launched by headed-arm-leg.sh --profile
 # carries HIMMEL_LEAN_LEG=1. SessionStart output is not paid once - it sits in
 # the fixed context floor that is re-read on EVERY API call of that session
 # (measured: 5.4k chars of a 74.3k first-turn floor on leg N158), and a leg never
@@ -53,7 +53,7 @@ fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ─── TTL cache: the probe runs OUT OF BAND (HIMMEL-1844) ────────────────────
+# ─── TTL cache: the probe runs OUT OF BAND ────────────────────
 # `qmd status` is a cold sqlite read, and cold is the normal case at session
 # start: 11.5s measured on the operator's station against ~1.4s warm. This hook
 # ran it inline on EVERY startup, compact and resume, which is a large slice of
@@ -77,7 +77,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The cache is keyed by nothing but the hook: a change to
 # QMD_STALENESS_MAX_AGE_HOURS / QMD_STALENESS_REQUIRE_COLLECTIONS is honoured by
 # the next refresh, not the next session. QMD_STALENESS_CACHE_TTL=0 disables the
-# cache entirely and probes inline (the pre-HIMMEL-1844 behaviour, block and
+# cache entirely and probes inline (the uncached behaviour, block and
 # all) — which is also how test-qmd-staleness-notice.sh exercises the routing
 # table without a cache file standing in front of every case.
 # A PRIVATE SUBDIR of the state dir, not the state dir itself. /tmp/claude is
@@ -315,7 +315,7 @@ elif [ "$TTL" -gt 0 ] && _qmd_dir_ok; then
     fi
     # No detach helper — detach.sh is a sibling in this same repo, so this is a
     # broken checkout, not a configuration. Fall through and probe INLINE: the
-    # pre-HIMMEL-1844 behaviour. Slow, but this hook must never fail silent.
+    # uncached behaviour. Slow, but this hook must never fail silent.
 fi
 # TTL=0 (cache disabled), a cache dir this user does not own, and the
 # broken-checkout fallback all land here and probe INLINE, printing to stdout

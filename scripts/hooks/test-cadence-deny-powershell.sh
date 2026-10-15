@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/cadence-deny-powershell.sh (HIMMEL-1973).
+# Smoke test for scripts/hooks/cadence-deny-powershell.sh.
 #
 # Usage: bash scripts/hooks/test-cadence-deny-powershell.sh
 #

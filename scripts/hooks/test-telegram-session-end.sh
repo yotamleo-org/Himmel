@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic smoke test for scripts/hooks/telegram-session-end.sh (HIMMEL-1250).
+# Hermetic smoke test for scripts/hooks/telegram-session-end.sh.
 #
 # Builds a throwaway git repo + transcript, drives the hook in CHILD MODE
 # (`__himmel_detached <payload-file>`, same seam test-jira-nudge-on-end.sh
@@ -79,7 +79,7 @@ run_hook() {
     pf="$(mktemp "$ROOT_TMP/payload.XXXXXX")"
     printf '%s' "$CASE_PAYLOAD" > "$pf"
     if [ "$chat_id" = "__EMPTY__" ]; then
-        # exported-but-EMPTY (HIMMEL-1926): distinct from unset — must suppress.
+        # exported-but-EMPTY: distinct from unset — must suppress.
         env PATH="$STUB_DIR:$PATH" TELEGRAM_GROUP_CHAT_ID="" \
             bash "$HOOK" __himmel_detached "$pf" >/dev/null 2>&1
     elif [ -n "$chat_id" ]; then
@@ -99,7 +99,7 @@ run_hook "" 2
 if [ ! -f "$BUN_LOG" ]; then pass "unset chat id: bun never invoked (silent no-op)"; else fail "unset chat id: bun never invoked (silent no-op)"; fi
 
 # 1b. Exported EMPTY TELEGRAM_GROUP_CHAT_ID while the repo .env HOLDS a chat id
-#     (HIMMEL-1926): an explicit empty override is deliberate suppression — the
+# : an explicit empty override is deliberate suppression — the
 #     hook must exit before load_dotenv can fill the id from .env. The unset
 #     twin on the same fixture proves .env is live (bun IS invoked), so the
 #     suppression assertion is not vacuous.

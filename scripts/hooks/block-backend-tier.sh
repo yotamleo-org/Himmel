@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse hook — service-agnostic backend-routing guard (HIMMEL-400).
+# PreToolUse hook — service-agnostic backend-routing guard.
 #
 # Generalises block-mcp-when-plugin-exists.sh: instead of hard-coding Jira,
 # routing is driven by a registry (scripts/backends.json or BACKENDS_REGISTRY
@@ -155,7 +155,7 @@ fi
 # ---------------------------------------------------------------------------
 # Resolve the PRIMARY checkout (used for RELATIVE CLI paths only).
 #
-# HIMMEL-2237: every backend CLI in the registry lives under an untracked
+# Every backend CLI in the registry lives under an untracked
 # dist/ build artifact that exists ONLY in the primary checkout — root
 # CLAUDE.md already says so, as the reason the Jira CLI must be invoked by
 # absolute path from the primary. Resolving the CLI-existence probe against
@@ -168,7 +168,7 @@ fi
 # dirname is the fallback for setups where the porcelain is unavailable.
 # It MUST be --git-common-dir, NOT --git-dir: in a linked worktree --git-dir
 # resolves to <primary>/.git/worktrees/<name>, whose dirname is not the
-# primary (HIMMEL-2035, scripts/cr/install-cr-gate.sh).
+# primary (scripts/cr/install-cr-gate.sh).
 #
 # The REGISTRY is deliberately still read from $repo_root: backends.json is
 # tracked, so the invoking checkout's copy is the routing config actually
@@ -176,11 +176,11 @@ fi
 # ---------------------------------------------------------------------------
 # A here-string, not `producer | sed -n '...;1q'`: sed's early quit on line 1
 # has no live writer process to SIGPIPE once the producer's output is already
-# captured (same class as HIMMEL-1115/check-platforms-tested.sh) — with many
+# captured (same class as check-platforms-tested.sh) — with many
 # worktrees registered, git's porcelain output can exceed the pipe buffer,
 # and `set -euo pipefail` above then promotes git's SIGPIPE exit (141) into
 # the script's own exit code, killing this hook before it ever evaluates a
-# call (HIMMEL-3555).
+# call.
 worktree_porcelain=$(git -C "$hook_dir" worktree list --porcelain 2>/dev/null) || worktree_porcelain=""
 primary_root=$(sed -n 's/^worktree //p;1q' <<<"$worktree_porcelain")
 if [ -z "$primary_root" ] || [ ! -d "$primary_root" ]; then
@@ -355,7 +355,7 @@ EOF
     cli_bin="$matched_cli"
     case "$cli_bin" in
         /*) : ;;  # absolute — keep as-is
-        # Relative → the PRIMARY checkout, never the invoking one (HIMMEL-2237).
+        # Relative → the PRIMARY checkout, never the invoking one.
         *)  cli_bin="$primary_root/$cli_bin" ;;
     esac
     # Test seams: JIRA_CLI / CONFLUENCE_CLI override the resolved CLI path.
@@ -370,8 +370,7 @@ EOF
         # fail-open-ok: the genuine carve-out — a checkout that has never built
         # the CLI has no plugin equivalent to route to. Say so on stderr: an
         # inert guard that reports nothing is indistinguishable from a working
-        # one, which is how this class went unnoticed three times
-        # (HIMMEL-1773, HIMMEL-2085, HIMMEL-2237).
+        # one, which is how this class went unnoticed three times.
         printf 'block-backend-tier: %s CLI not found at %s — falling OPEN for "%s" (build the CLI to arm this guard)\n' \
             "$matched_service" "$cli_bin" "$tool_name" >&2
         return 0

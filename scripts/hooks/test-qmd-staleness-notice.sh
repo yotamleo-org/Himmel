@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/qmd-staleness-notice.sh (HIMMEL-1286).
+# Smoke test for scripts/hooks/qmd-staleness-notice.sh.
 #
 # The hook is a pure ROUTER: it runs scripts/luna/qmd-staleness.sh and decides,
 # per exit code, whether the session hears anything. That decision is the whole
@@ -17,7 +17,7 @@
 set -uo pipefail
 
 # The suite owns every case's env; an ambient leg shell (HIMMEL_LEAN_LEG=1
-# under --profile leg-impl, HIMMEL-2940) must not silently turn every
+# under --profile leg-impl) must not silently turn every
 # unmarked case into a lean-leg case. Only the two explicit lean cases below
 # set it themselves.
 unset LEG_LANE LEG_CONTEXT LEG_REPO LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG LEG_PROFILE LEG_PROFILE_SETTINGS LEG_PROFILE_PREFACE LEG_PROFILE_MCP_CONFIG 2>/dev/null || true
@@ -108,7 +108,7 @@ ARGV_FILE="$SANDBOX/argv.txt"
 # printing SAY (pass '' for a silent guard). Stderr is dropped: the hook's whole
 # product is what it puts on STDOUT for the session to read.
 #
-# QMD_STALENESS_CACHE_TTL=0 disables the HIMMEL-1844 TTL cache for every case in
+# QMD_STALENESS_CACHE_TTL=0 disables the TTL cache for every case in
 # this suite, so each one drives the ROUTER directly instead of reading whatever
 # a previous case left in the cache file. It is set BEFORE "$@" so a case that
 # wants the cache can still override it — which the cache section at the end
@@ -432,8 +432,8 @@ runc() {
 # wait_for_cache PATTERN [CEILING] — bounded poll for the detached refresh to
 # publish. The ONE place this suite waits on the out-of-band leg. It returns
 # the instant the file matches, so a passing case pays nothing extra; only a
-# real failure now costs the full ceiling. CEILING defaults to 60s (HIMMEL-2920
-# — a loaded CI shard needed more than the old 20s fixed wait for the detached
+# real failure now costs the full ceiling. CEILING defaults to 60s
+# (a loaded CI shard needed more than a 20s fixed wait for the detached
 # child to land, which read as "no cache after the refresh"). Every call site
 # here asserts the refresh DID publish, never that it didn't, so a longer
 # default costs nothing on the passing path.
@@ -535,7 +535,7 @@ esac
 # The world-writable cache above is not "ok", so the hook's normal fallthrough
 # spawns a detached refresh exactly as it would for a stale cache (L275-294) —
 # but unlike cases 2-4 this case never calls wait_for_cache, so that child is
-# left running loose (HIMMEL-2920 follow-up: this raced #632 CI red — case 8a
+# left running loose (case 8a
 # saw no banner because this straggler either stole its lock or published its
 # own empty rc-0 output over it). Polling for the shared lock to clear cannot
 # fix this: an absent lock does not prove the straggler hasn't forked yet and
@@ -552,7 +552,7 @@ CACHE="$CACHE_DIR/qmd-staleness-notice.out"
 #    such a machine on the slow inline probe in every session forever — the exact
 #    outcome this ticket exists to remove.
 #
-# 8a. DETERMINISTIC proof first (HIMMEL-2920): drive the refresh child directly,
+# 8a. DETERMINISTIC proof first: drive the refresh child directly,
 #     with the same env the hook's own detach_run would give it, instead of
 #     waiting on a background spawn. This is the property case 8 exists to pin
 #     — a cold host initializes the cache — made independent of scheduling.

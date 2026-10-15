@@ -32,7 +32,7 @@ $GlmBaseUrl = 'https://api.z.ai/api/anthropic'
 $GlmModel         = if ($env:GLM_MODEL) { $env:GLM_MODEL } else { 'glm-5.2[1m]' }
 $GlmHaiku         = 'glm-4.7'
 $GlmContextWindow = if ($env:GLM_CONTEXT_WINDOW) { $env:GLM_CONTEXT_WINDOW } else { '1000000' }
-# CodeRabbit (HIMMEL-1027): validate the override — a non-positive-integer value
+# CodeRabbit: validate the override — a non-positive-integer value
 # falls back to the default; above the Z.ai [1m] ceiling WARNS but is honored
 # (warn-not-clamp, twin-parity with the bash launcher + claude-codex).
 [long]$GlmCtxParsed = 0
@@ -103,7 +103,7 @@ foreach ($a in $args) {
   $ClaudeArgs.Add($a)
 }
 
-# Harness-integrity arg screen (HIMMEL-1040): $ClaudeArgs pass to claude verbatim
+# Harness-integrity arg screen: $ClaudeArgs pass to claude verbatim
 # via `& claude @ClaudeArgs` below, so a --settings payload that injected
 # env.ANTHROPIC_* / CLAUDE_CODE_USE_* could redirect this lane away from the z.ai
 # endpoint. Screen it (fail-closed on unparseable) — the twin of claude-codex.ps1's
@@ -207,7 +207,7 @@ function Assert-GuardReadable {
 
 $cwd = (Get-Location).ProviderPath
 Assert-GuardReadable (Join-Path $Cfg 'phi-roots')
-# HIMMEL-2173: also accept .salus-profile (template machinery dropped by the
+# also accept .salus-profile (template machinery dropped by the
 # salus profile installer) — a defense for deployments that predate the
 # installer shipping the real .salus guard marker alongside it.
 if ((Test-Path -LiteralPath (Join-Path $cwd '.salus')) -or (Test-Path -LiteralPath (Join-Path $cwd '.salus-profile')) -or (Test-PathUnderAny -Target $cwd -ListFile (Join-Path $Cfg 'phi-roots'))) {
@@ -251,12 +251,12 @@ function Copy-SeedConfig {
   # sentinel, and the next plain launch would proceed with the half-populated tree.
   $src = Join-Path $HomeDir '.claude'
   # The up-front delete is part of that exit-4 contract, so a REAL removal failure
-  # must NOT be swallowed (HIMMEL-820 CR: codex-adv [high] + silent-failure-hunter
+  # must NOT be swallowed (codex-adv [high] + silent-failure-hunter
   # convergence). A blanket -ErrorAction SilentlyContinue hid a locked/ACL-denied
   # .seeded: the reseed then threw later and exited 4, but the OLD sentinel survived
   # next to a half-seeded tree, and a plain relaunch read it as "seeded" and launched
   # on the corrupt tree.
-  # HIMMEL-828 Part A — race-free, mirroring bash `rm -f`: do NOT Test-Path-then-Remove
+  # race-free, mirroring bash `rm -f`: do NOT Test-Path-then-Remove
   # (a concurrent reseed sharing this config dir can delete the sentinel in that window,
   # so Remove-Item throws ItemNotFound even though sentinel-ABSENT is the desired end
   # state → a spurious exit 4). Attempt the removal unconditionally and treat a
@@ -290,7 +290,7 @@ function Copy-SeedConfig {
       exit 4
     }
   }
-  # Function-level seed wrap (HIMMEL-820, parity with routed's CR-F9 #830): the
+  # Function-level seed wrap (parity with routed's CR-F9 #830): the
   # remaining seed body — settings-absent mirror, CLAUDE.md/RTK.md copy, the
   # commands/skills/hooks/agents + marketplaces re-mirror, plugin-manifest
   # copy/delete, and the claude-hud config — all run under
@@ -302,12 +302,12 @@ function Copy-SeedConfig {
   # no sentinel and the next launch re-seeds.
   try {
     if (-not (Test-Path -LiteralPath $settings)) {
-      # True mirror (HIMMEL-819): a deleted source must not leave a stale copy
+      # True mirror: a deleted source must not leave a stale copy
       # steering the lane — same rationale as the subtree re-mirror below.
       $dst = Join-Path $ConfigDir 'settings.json'
       if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Force }
     }
-    # Leaf files mirror deletion too (HIMMEL-828/819): CLAUDE.md literally steers the
+    # Leaf files mirror deletion too: CLAUDE.md literally steers the
     # lane, so a deleted source must not leave a stale copy behind — same as settings.
     foreach ($f in 'CLAUDE.md', 'RTK.md') {
       $p = Join-Path $src $f
@@ -315,7 +315,7 @@ function Copy-SeedConfig {
       if (Test-Path -LiteralPath $p) { Copy-Item -LiteralPath $p -Destination $dp -Force }
       elseif (Test-Path -LiteralPath $dp) { Remove-Item -LiteralPath $dp -Force }
     }
-    # Clean re-mirror + deletion mirror (HIMMEL-828/819): remove the destination subtree
+    # Clean re-mirror + deletion mirror: remove the destination subtree
     # FIRST — this both drops files deleted from the source AND mirrors a whole-subtree
     # deletion (a removed command/hook/skill must not linger steering the cloud lane:
     # "a deleted source must not leave a stale copy steering the lane") — then copy only
@@ -340,7 +340,7 @@ function Copy-SeedConfig {
     if (Test-Path -LiteralPath $mp -PathType Container) { Copy-Item -LiteralPath $mp -Destination (Join-Path $ConfigDir 'plugins') -Recurse -Force }
     # claude-hud DISPLAY config — seed the single config.json only; the cache dirs
     # under plugins/claude-hud/ are runtime state, never seeded. Source-absent → mirror
-    # the deletion (HIMMEL-828/819).
+    # the deletion.
     $hudCfg = Join-Path $src (Join-Path 'plugins' (Join-Path 'claude-hud' 'config.json'))
     $hudDst = Join-Path $ConfigDir (Join-Path 'plugins' (Join-Path 'claude-hud' 'config.json'))
     if (Test-Path -LiteralPath $hudCfg) {
@@ -349,7 +349,7 @@ function Copy-SeedConfig {
     } elseif (Test-Path -LiteralPath $hudDst) {
       Remove-Item -LiteralPath $hudDst -Force
     }
-    # HIMMEL-3334: the un-swept claude-hud config path, alongside the legacy one above.
+    # the un-swept claude-hud config path, alongside the legacy one above.
     $hudNewSrc = Join-Path $src 'claude-hud.json'
     $hudNewDst = Join-Path $ConfigDir 'claude-hud.json'
     if (Test-Path -LiteralPath $hudNewSrc) {
@@ -366,13 +366,13 @@ function Copy-SeedConfig {
   }
 }
 
-# Staleness-aware reseed (HIMMEL-819): a once-only seed strands lane workers on
+# Staleness-aware reseed: a once-only seed strands lane workers on
 # whatever plugin/settings profile existed at first launch — the operator's lean
 # enabledPlugins profile never reaches the lane, so every worker pays duplicated
 # plugin context + duplicate MCP invocations. Track every allowlisted leaf source
 # (settings, CLAUDE.md, RTK.md, the two plugin manifests, claude-hud config — newer
 # than the sentinel OR deleted while a lane copy remains) AND the copied subtrees
-# (HIMMEL-828 Part B — a half-seeded/externally-removed subtree, a command/skill
+# (a half-seeded/externally-removed subtree, a command/skill
 # added/removed at the top level, or a deleted source, self-heals on plain launch); a
 # deep in-file edit inside a subtree still needs -Reseed (directory mtime granularity).
 # Opt-out: CLAUDE_LANE_AUTO_RESEED=0 restores the once-only seed (first seed +
@@ -409,7 +409,7 @@ function Test-ConfigSeedStale {
         return $true  # source deleted but lane copy remains — reseed mirrors the removal
       }
     }
-    # HIMMEL-828 Part B — also track the copied subtrees, fully symmetric with the
+    # also track the copied subtrees, fully symmetric with the
     # settings/manifest loop above, so a half-seeded OR a source-deleted subtree
     # self-heals on a plain launch. Per subtree: SOURCE present but DEST missing = a
     # half-seed → reseed; SOURCE newer than the sentinel = top-level drift → reseed;
@@ -431,7 +431,7 @@ function Test-ConfigSeedStale {
   }
 }
 
-# --- config-dir seed concurrency lock (HIMMEL-830) ---------------------------
+# --- config-dir seed concurrency lock ---------------------------
 # Serialize concurrent same-lane reseeds so two launches of THIS lane cannot
 # interleave Copy-SeedConfig's remove/copy sequence into a torn config dir (the
 # .seeded sentinel guards FAILED seeds, not CONCURRENT ones). The lock is a

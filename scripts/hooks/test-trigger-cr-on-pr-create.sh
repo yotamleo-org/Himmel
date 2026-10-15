@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/trigger-cr-on-pr-create.sh (HIMMEL-1362).
+# Smoke test for scripts/hooks/trigger-cr-on-pr-create.sh.
 #
-# HIMMEL-1362: a PostToolUse hook guarantees that a successful `gh pr create`
+# A PostToolUse hook guarantees that a successful `gh pr create`
 # is always followed by an `@coderabbitai review` comment, because CodeRabbit's
 # auto_review is OFF on this repo and triggering had been left to agent
 # discretion. This test exercises the hook with a STUBBED `gh` on PATH (no
@@ -21,7 +21,7 @@
 #   9. jq absent -> no post + a manual-trigger warning (never guess a PR URL
 #      from tool_input).
 #
-# HIMMEL-1975 (matcher re-converged with the PreToolUse twin) adds:
+# Matcher re-converged with the PreToolUse twin; adds:
 #  14. `{ … ; }`, `if`, `!`, a leading reserved word, and the wrapper commands
 #      (`sudo`/`env`/`timeout`/`xargs`) all trigger -> POSTS.
 #  15. the widening is not "match anywhere": a grep search, a commit message, a
@@ -37,7 +37,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -82,13 +82,12 @@ TMP_ROOT=$(mktemp -d)
 #   gh api repos/<o>/<r>/issues/<n>/comments   -> dump $FAKE_GH_COMMENTS_FILE
 #   gh api repos/<o>/<r>/commits/<sha>/statuses -> dump $FAKE_GH_STATUSES_FILE
 #                                                  (cr-signal.sh's reader, used
-#                                                  by cr_trigger_rate_limited —
-#                                                  HIMMEL-3319)
+#                                                  by cr_trigger_rate_limited)
 #   gh pr view <n> --repo <o>/<r> --json headRefOid --jq .headRefOid
 #                                               -> $FAKE_GH_HEAD_SHA (exit 1 if unset,
 #                                                  simulating an unresolvable head —
 #                                                  the hook then falls back to the
-#                                                  pre-HIMMEL-1906 per-PR scan)
+#                                                  legacy per-PR scan)
 #   gh pr comment <n> --repo <o>/<r> --body X  -> append X to $FAKE_GH_COMMENT_LOG
 #                                                  (exit 1 if FAKE_GH_COMMENT_FAIL=1)
 GHSTUB_DIR="$TMP_ROOT/ghbin"
@@ -137,13 +136,13 @@ export FAKE_GH_COMMENT_LOG="$COMMENT_LOG"
 export FAKE_GH_COMMENTS_FILE="$COMMENTS_FILE"
 export FAKE_GH_STATUSES_FILE="$STATUSES_FILE"
 
-# Per-head-SHA ledger (HIMMEL-1906): point cr-trigger-ledger.sh at a throwaway
+# Per-head-SHA ledger: point cr-trigger-ledger.sh at a throwaway
 # file instead of this repo's real .git/ — see cr_trigger_ledger_path's
 # CR_TRIGGER_LEDGER_PATH override.
 LEDGER_PATH="$TMP_ROOT/cr-triggered-heads"
 export CR_TRIGGER_LEDGER_PATH="$LEDGER_PATH"
 
-# Foreign-repo guard (HIMMEL-2034): the hook now posts only on a repo whose
+# Foreign-repo guard: the hook now posts only on a repo whose
 # CodeRabbit gate is ours — the cwd's armed origin, or a repo named in
 # CR_TRIGGER_REPOS. Every fixture below is a PR on acme/widget, which is
 # nobody's origin, so allowlist it once here; the foreign-repo test overrides
@@ -152,7 +151,7 @@ export CR_TRIGGER_REPOS="acme/widget"
 
 # Fixture git repos below (test F3/F4) exercise the ARMED-ORIGIN path, which
 # reads real `git config` — pin git's perf settings the same way every other
-# fixture-building suite does (HIMMEL-1589).
+# fixture-building suite does.
 # shellcheck source=../lib/git-test-env.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/git-test-env.sh"
@@ -160,7 +159,7 @@ git_test_env_pin_perf
 
 # Per-test reset: empty the posted-comment log, clear existing comments, clear
 # the fail flag, clear the ledger, clear the fake head SHA (tests default to
-# the pre-HIMMEL-1906 fallback path unless a test sets FAKE_GH_HEAD_SHA).
+# the legacy fallback path unless a test sets FAKE_GH_HEAD_SHA).
 reset_state() {
     : > "$COMMENT_LOG"
     : > "$COMMENTS_FILE"
@@ -251,7 +250,7 @@ else
     fail "expected rc=0 and 0 posts, got rc=$rc posted=$(posted_count)" "out: $out"
 fi
 
-# Test 4c: a scan_existing match must NOT record the head (HIMMEL-1906 r4) ----
+# Test 4c: a scan_existing match must NOT record the head ----
 # The comment scan is repo-wide and cannot tell which head an old trigger
 # targeted. If it RECORDED the head, a reused/reopened PR number carrying a
 # stale trigger would mark this head permanently done and the ledger would
@@ -271,7 +270,7 @@ else
         "out: $out; ledger: $(cat "$LEDGER_PATH" 2>/dev/null)"
 fi
 
-# Test 4d: CR_TRIGGER_SUPPRESS=1 -> no post, head NOT recorded (HIMMEL-3141) --
+# Test 4d: CR_TRIGGER_SUPPRESS=1 -> no post, head NOT recorded --
 # The seam lives in cr_trigger_post_review (scripts/lib/cr-trigger-ledger.sh),
 # shared with the push twin. Deliberately not recorded in the ledger: the
 # review is DEFERRED, not satisfied, so a later un-suppressed call for the
@@ -290,7 +289,7 @@ fi
 unset FAKE_GH_HEAD_SHA
 
 # Test 4e: CR_TRIGGER_SUPPRESS unset (default) -> trigger still fires --------
-# The seam MUST be opt-out, never opt-in (HIMMEL-1362's whole argument): this
+# The seam MUST be opt-out, never opt-in: this
 # is the direction that catches a default silently flipped to off.
 echo "TEST: CR_TRIGGER_SUPPRESS unset -> the trigger still fires (default ON)"
 reset_state
@@ -303,13 +302,13 @@ else
 fi
 
 # Test 4f: a rate-limited PRIOR head for this repo -> no post for the NEW head,
-# logged why (HIMMEL-3319). The account-wide limit is invisible on a brand new
+# logged why. The account-wide limit is invisible on a brand new
 # PR's own head (it has no CodeRabbit status yet), so the signal is the LAST
 # head we asked CodeRabbit to review for this repo: seed the ledger with that
 # prior (repo, PR, sha) directly — exactly what a real prior trigger would have
 # written — and stub ITS commit status as CodeRabbit's own rate-limit wording
 # (state=success description="Review rate limited", the SAME vocabulary
-# cr-signal.sh already parses for the HIMMEL-3360 rate-limited=NOTE gate — no
+# cr-signal.sh already parses for the rate-limited=NOTE gate — no
 # new parser here, just the existing reader pointed at the prior head).
 echo "TEST: a rate-limited PRIOR head for this repo -> no post for the NEW head, logged why"
 reset_state
@@ -346,7 +345,7 @@ fi
 unset FAKE_GH_HEAD_SHA
 
 # Test 4h: a rate-limited PRIOR head whose status is OLDER than the TTL -> the
-# new head posts anyway (HIMMEL-3319 follow-up, codex-1). Without a staleness
+# new head posts anyway. Without a staleness
 # bound, this status would never change (nothing ever asks CodeRabbit to
 # re-review that old, orphaned SHA), so an unbounded read would skip every
 # later head for this repo forever — the "retry once the window clears"
@@ -378,7 +377,7 @@ else
     fail "expected rc=0 and 0 posts, got rc=$rc posted=$(posted_count)" "out: $out"
 fi
 
-# Test 5q: quoted separators are not command positions (HIMMEL-1373) ---------
+# Test 5q: quoted separators are not command positions ---------
 # shellcheck disable=SC2016  # literal $( in the command under test
 for q in 'echo "; gh pr create docs"' "echo '; gh pr create docs'" "echo '\$(gh pr create docs)'" 'echo "x | gh pr create"' 'echo "a && gh pr create"' "gh'x' pr create" 'gh pr create"x"'; do
     echo "TEST: quoted separator ($q) -> no post"
@@ -480,7 +479,7 @@ echo "TEST: multi-line command with an INDENTED gh pr create line -> POSTS"
 reset_state
 # Ordinary harness shape: a `&& \` continuation with the gh line indented.
 # grep anchors `^` per line, so an unindented second line already matched; the
-# indented form is the silent false negative glm-3 (round 2) flagged.
+# indented form is the silent false negative.
 run_hook 'git add . && \
   gh pr create --title x' "https://github.com/acme/widget/pull/12"
 if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ]; then
@@ -501,7 +500,7 @@ mkdir -p "$NOJQ_BIN"
 REAL_BASH=$(command -v bash)
 # Minimal PATH that hides jq but keeps what the hook (and the gh stub, should
 # a regression let the hook reach it) needs. `dirname` is needed for the
-# SCRIPT_DIR computation that locates cr-trigger-ledger.sh (HIMMEL-1906),
+# SCRIPT_DIR computation that locates cr-trigger-ledger.sh,
 # reached before the jq check. Wrapper scripts, not symlinks — Git Bash
 # "symlinks" are file copies, and a copied bash.exe loses its DLLs.
 for tool in bash cat grep head tail sed dirname; do
@@ -577,9 +576,9 @@ else
 fi
 
 # Test 14: ordinary command positions the old anchor missed -> POSTS ---------
-# HIMMEL-1975, the same set the PreToolUse twin's suite pins. Here a miss is
+# The same set the PreToolUse twin's suite pins. Here a miss is
 # not a bypassed block but a PR that never gets a CodeRabbit review at its
-# head — the exact failure HIMMEL-1362 exists to close, and one the merge gate
+# head — the exact failure this trigger exists to close, and one the merge gate
 # then refuses green on with nothing able to re-trigger it.
 echo "TEST: brace/reserved-word/wrapper command positions -> POSTS"
 pos_pr=300
@@ -627,8 +626,8 @@ do
 done
 
 # Test 16: argument-less invocation ending on a metacharacter -> POSTS -------
-# The end-of-token class was `[[:space:]]` in THIS twin until HIMMEL-1975 (the
-# sibling widened it on HIMMEL-1372 and the pair drifted), so `gh pr create;`
+# The end-of-token class used to be `[[:space:]]` in THIS twin (the
+# sibling widened it and the pair drifted), so `gh pr create;`
 # and `$(gh pr create)` were silently skipped here while the PreToolUse gate
 # blocked them.
 echo "TEST: metacharacter end-of-token invocations -> POSTS"
@@ -647,7 +646,7 @@ done
 
 
 # Test F: a PR on a FOREIGN repo -> NO post, advisory on stderr --------------
-# HIMMEL-2034: `gh pr create` from this machine opened an UPSTREAM PR
+# `gh pr create` from this machine once opened an UPSTREAM PR
 # (JuliusBrussee/caveman#896) and this hook commented `@coderabbitai review` on
 # it — someone else's repo, someone else's reviewer bot. The hook parses
 # owner/repo out of whatever URL gh printed, so the guard has to be on the
@@ -668,7 +667,7 @@ else
 fi
 
 # Test F3/F4: the ARMED-ORIGIN path (a), with NO allowlist ------------------
-# codex-1 (CR round 1): every other fixture reaches the post through
+# Every other fixture reaches the post through
 # CR_TRIGGER_REPOS, so path (a) — `git config --local himmel.coderabbit true`
 # AND the PR repo equalling this clone's origin — was untested, and it is the
 # path a real himmel checkout actually takes. These two run the hook with cwd

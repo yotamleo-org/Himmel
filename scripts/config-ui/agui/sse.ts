@@ -16,10 +16,14 @@
 // cutting a quiet stream. The wire format is hand-encoded and identical to
 // @ag-ui/encoder's EventEncoder (`data: <json>\n\n`); config-ui takes no
 // dependency for it.
+//
+// With a busRoot the stream also carries the himmel-bus messages the run's own session (its journal's
+// agent-name) sent or received, read through the one collector (busEvents), never another session's.
 
 import { constants, existsSync } from "node:fs";
 import { open, readdir, realpath, stat, type FileHandle } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { isAbsolute, join, sep } from "node:path";
+import { busEvents } from "../../../marketplace/plugins/himmel-bus/lib/agui.mjs";
 import { createJournalMapper } from "./journal-mapper.ts";
 import { laneOfJournal } from "./lane.ts";
 import { byTime, stampLines, subagentFiles, type Line } from "./journal-merge.ts";
@@ -53,8 +57,12 @@ export async function resolveJournal(home: string, run: string): Promise<Resolve
   return { path: found[0] };
 }
 
+// The bus store's root, the way himmel-bus's busRoot resolves it, without creating anything.
+export const busRootOf = (env: Record<string, string | undefined>, home: string) =>
+  join(env.XDG_STATE_HOME && isAbsolute(env.XDG_STATE_HOME) ? env.XDG_STATE_HOME : join(home, ".local", "state"), "himmel", "bus");
+
 export type StreamOpts = {
-  threadId: string; pollMs: number; idleMs: number; maxMs: number;
+  threadId: string; pollMs: number; idleMs: number; maxMs: number; busRoot?: string;
   redact: (value: unknown) => unknown; onClose: () => void;
 };
 
@@ -105,6 +113,9 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
   const subs: Source[] = [];
   const known = new Set<string>([path]);
   let held: Line[] = []; // lines read but not yet safe to map (see the merge in pull)
+  let session: string | undefined;
+  const mine = new Set<string>(); // ids of the bus messages this session sent or received
+  const sent = new Set<string>(); // keys of the bus events already emitted: the store is re-read whole each poll, so a late append with an older timestamp is not skipped
   let order = 0, grewAt = started, beatAt = started, runOpen = false, closed = false;
   let timer: ReturnType<typeof setTimeout> | undefined, deadline: ReturnType<typeof setTimeout> | undefined, wake: (() => void) | undefined;
   const cleanup = () => {
@@ -151,7 +162,34 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
       console.warn(`agui: a timestamp in ${s.path} goes backwards; its lines are released in file order`);
     });
   };
+  // the session's bus name is the latest agent-name record of its own journal (a subagent's is not the session's)
+  const sniff = (lines: Line[]) => {
+    for (const l of lines) {
+      if (!l.text.includes('"agent-name"')) continue;
+      try { const n = JSON.parse(l.text); if (n?.type === "agent-name" && typeof n.agentName === "string") {
+        if (session !== n.agentName) { mine.clear(); sent.clear(); } // a new name is a new bus identity: collect its history afresh
+        session = n.agentName;
+      } } catch { /* torn line */ }
+    }
+  };
   const map = (lines: Line[]) => lines.sort(byTime).flatMap((l) => mapper.pushLine(l.text));
+  // The bus events not yet emitted that belong to this session: a send by or to it, and the
+  // delivered/acked/expired follow-ups of those. A follow-up may land in a later poll than its send, hence `mine`.
+  type BusDelta = AguiEvent & { timestamp: number; delta: { path: string; value?: { f?: string; r?: string } }[] };
+  const busFor = async (): Promise<AguiEvent[]> => {
+    if (!o.busRoot || !session) return [];
+    const batch: BusDelta[] = [];
+    try { for await (const e of busEvents(o.busRoot, { since: 0 })) batch.push(e as BusDelta); } catch { return []; } // no store yet: nothing to merge
+    const idOf = (e: BusDelta) => /^\/bus\/msgs\/([^/]+)/.exec(e.delta[0].path)?.[1] ?? "";
+    for (const e of batch) {
+      const d = e.delta[0];
+      if (/^\/bus\/msgs\/[^/]+$/.test(d.path) && (d.value?.f === session || d.value?.r === session)) mine.add(idOf(e));
+    }
+    const fresh = batch.filter((e) => mine.has(idOf(e)) && !sent.has(`${e.delta[0].path}@${e.timestamp}`));
+    for (const e of fresh) sent.add(`${e.delta[0].path}@${e.timestamp}`);
+    if (fresh.length) grewAt = Date.now(); // bus traffic is activity: the idle timer must not close a stream that is receiving it
+    return fresh;
+  };
   return new ReadableStream<Uint8Array>({
     // pull() is not called while a stalled client leaves the queue full, so the
     // max duration also runs on its own timer to release the fd and the server.
@@ -169,6 +207,7 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
           for (const p of await subagentFiles(path, known)) { known.add(p); subs.push(src(p)); }
           const fromMain = await read(main);
           if (fromMain === null) return end(c); // truncated or replaced: nothing left to follow
+          sniff(fromMain);
           held.push(...fromMain);
           // A subagent file that shrank, vanished or turned unreadable just stops being followed; the journal goes on.
           for (const s of subs) {
@@ -188,7 +227,7 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
           const cut = pending.length ? Math.min(...pending.map((s) => s.last.ts)) : Infinity;
           const ready = held.filter((l) => l.ts <= cut);
           held = held.filter((l) => l.ts > cut);
-          const events = map(ready);
+          const events = [...map(ready), ...(await busFor())];
           if (events.length) { c.enqueue(frame(events)); return; }
           if (ready.length || behind.length) continue;
           if (!runOpen && Date.now() - grewAt >= o.idleMs) {

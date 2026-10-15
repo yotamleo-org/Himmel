@@ -37,7 +37,7 @@ test('bash fixture uses an executable suffix only on Windows', () => {
   // `expected` with the same `platform === 'win32' ? 'bash.exe' : 'bash'`
   // ternary makeBashStub uses would be tautological — both sides evaluate the
   // identical expression, so the assertion could never fail and would give the
-  // HIMMEL-1686 fix no regression cover at all. Comparing to a literal DOES
+  // fix no regression cover at all. Comparing to a literal DOES
   // fail if the suffix is ever dropped, which is the whole point.
   const base = basename(BASH);
   if (process.platform === 'win32') {
@@ -76,7 +76,7 @@ function run(args, ctx, opts = {}) {
   });
 }
 
-// HIMMEL-1422: every other helper in this file pins HIMMEL_REPO to ctx.repo
+// every other helper in this file pins HIMMEL_REPO to ctx.repo
 // (the fixture's own scratch checkout), so the anchor is always
 // deterministic in those tests. This variant deliberately DROPS it (even
 // if the outer test-runner process happens to have HIMMEL_REPO set) to
@@ -195,7 +195,7 @@ function commitHookCopies(ctx) {
   commitHookTree(ctx.repo, contentsByName);
 }
 
-// Linked-worktree fixture (HIMMEL-1427 r4, codex-adv-3): objects/refs live in
+// Linked-worktree fixture: objects/refs live in
 // a COMMON dir; the worktree's own <repo>/.git is a gitdir-pointer FILE to a
 // per-worktree gitdir that carries HEAD + a commondir pointer back to the
 // common dir. Mirrors `git worktree add`'s on-disk layout, built BY HAND so
@@ -405,7 +405,7 @@ test('global and project aliases install and remove for setup-hooks', () => {
   assert.equal(run(['detect'], ctx), 'project\n');
 });
 
-// ── status --json (HIMMEL-1418) ─────────────────────────────────────────────
+// ── status --json ─────────────────────────────────────────────
 
 test('status --json after a full install reports complete=true with all three hooks present and resolving', () => {
   const ctx = work();
@@ -434,7 +434,7 @@ test('status --json after a full install reports complete=true with all three ho
   });
 });
 
-// ── matcher + bash completeness (CR fix, codex-adv-1/2 on 68c0b82c) ────────
+// ── matcher + bash completeness ────────
 
 test('status --json reports the ACTUAL configured matcher, not the expected one, and complete=false on a matcher mismatch', () => {
   const ctx = work();
@@ -509,8 +509,7 @@ test('status --json with a dead baked bash path reports bashResolves=false on ev
   }
 });
 
-// ── usability + duplicate-entry completeness (CR fix, codex-adv-3/4, round 3
-// on 9112bfe9) ───────────────────────────────────────────────────────────
+// ── usability + duplicate-entry completeness ────────────────
 
 test('status --json with a DIRECTORY at the wrapper path reports wrapperResolves=false, not merely "exists" (complete=false)', () => {
   const ctx = work();
@@ -618,7 +617,7 @@ test('status --json with a valid entry PLUS a dead-node duplicate for the same h
   }
 });
 
-// ── decoy / identity ownership (CR fix, codex-adv-5, round 4 on 9d1b24a5) ──
+// ── decoy / identity ownership ──
 
 test('status --json: real script arg is a decoy (claude-stub.sh) with each guardrail basename ONLY in a trailing comment — none are counted as owned (present=false, entryCount=0), complete=false', () => {
   const ctx = work();
@@ -668,8 +667,7 @@ test('status --json: real script arg is a decoy (claude-stub.sh) with each guard
   }
 });
 
-// ── non-canonical (same-identity, non-generated-shape) duplicates
-// (CR fix, codex-adv-7, round 5 on 07a7ae10) ────────────────────────────────
+// ── non-canonical (same-identity, non-generated-shape) duplicates ────────────────────────────
 
 test('status --json: canonical entry PLUS a same-identity duplicate with a TRAILING EXTRA ARGUMENT — reports nonCanonicalCount=1, forces complete=false (round-3 blind spot reopened via a different shape)', () => {
   const ctx = work();
@@ -804,7 +802,7 @@ test('plain status output is unchanged by the --json addition (himmel-update.sh 
   assert.equal(run(['status'], ctx), 'guardrail-mode=global node-resolves=yes\n');
 });
 
-// ── trust anchor (HIMMEL-1422) ──────────────────────────────────────────────
+// ── trust anchor ──────────────────────────────────────────────
 // Companion finding to codex-adv-5/7: ownsGuardrail() is deliberately
 // basename-only (a settings.json referencing a same-named file passes
 // ownership regardless of WHERE that file lives), so a stale/moved checkout
@@ -927,7 +925,7 @@ test('status --json: a WHITESPACE-ONLY (near-empty) wrapper file at the correct 
   }
 });
 
-// -- attestation v2: audit anchor + content integrity (HIMMEL-1427) -----------
+// -- attestation v2: audit anchor + content integrity -----------
 
 function withDeclaredRepo(repo, fn) {
   const old = process.env.HIMMEL_REPO;
@@ -940,7 +938,7 @@ function withDeclaredRepo(repo, fn) {
   }
 }
 
-// HIMMEL-1427 (CR round 2, finding 2): poisons process.env.GIT_DIR for the
+// poisons process.env.GIT_DIR for the
 // duration of fn so the in-process statusDetail()'s `git -C <repo> show`
 // spawn would — WITHOUT the sanitizedGitEnv() fix — resolve the decoy repo
 // instead of the explicit -C target. Restored unconditionally in finally.
@@ -1015,7 +1013,7 @@ function buildPackedRepo(repo) {
   gitCmd(repo, ['prune-packed']);
 }
 
-// HIMMEL-1472: git must support objectFormat=sha256 (git 2.29+ compiled with
+// git must support objectFormat=sha256 (git 2.29+ compiled with
 // sha256) for the sha256 fallback tests. Probes by initting a throwaway sha256
 // repo; the suite skips if git or sha256 is unavailable.
 function sha256GitAvailable() {
@@ -1031,7 +1029,7 @@ function sha256GitAvailable() {
   }
 }
 
-// HIMMEL-1472: builds a REAL sha256 repo (git init --object-format=sha256) whose
+// builds a REAL sha256 repo (git init --object-format=sha256) whose
 // HEAD tree is scripts/hooks/<files> (the on-disk copies writeRealHookCopies
 // wrote), then optionally repacks so the blobs live ONLY in objects/pack —
 // exercising the fallback's sha256 pack-idx reader (findPackOffset with 32-byte
@@ -1145,7 +1143,7 @@ test('status --json: syntactically-valid no-op wrapper at the correct anchor pat
   }
 });
 
-// -- git env sanitization (HIMMEL-1427 CR round 2, finding 2) ----------------
+// -- git env sanitization ----------------
 
 test('status --json: content integrity ignores a poisoned GIT_DIR pointing at a different repo (CR round 2, finding 2)', {
   skip: gitAvailable() ? false : 'poisoned GIT_DIR only redirects when the git spawn actually runs; git is not on PATH (the manual loose-object fallback is GIT_DIR-independent and would mask the bug)',
@@ -1187,7 +1185,7 @@ test('status --json: content integrity ignores a poisoned GIT_DIR pointing at a 
   }
 });
 
-// -- git env sanitization is CASE-INSENSITIVE (HIMMEL-1427 r4, codex-adv-2) ----
+// -- git env sanitization is CASE-INSENSITIVE ----
 // Windows env-var names are case-insensitive for the spawned git child while
 // JS preserves spelling, so a case-sensitive startsWith('GIT_') filter let
 // mixed-case `git_dir` / `Git_Dir` through — and git honored them, redirecting
@@ -1229,7 +1227,7 @@ test('sanitizedGitEnv removes GIT_* overrides in every spelling and preserves GI
   assert.equal(sanitized.PATH, '/usr/bin');
 });
 
-// -- linked-worktree + packed-object fallback (HIMMEL-1427 r4, codex-adv-3) ----
+// -- linked-worktree + packed-object fallback ----
 // readHeadBlob()'s manual fallback resolved refs/objects from readGitDir()'s
 // gitdir — but for a LINKED WORKTREE that is the per-worktree gitdir, which
 // carries none of them (they live in the COMMON dir), and it only read LOOSE
@@ -1280,7 +1278,7 @@ test('status --json: a packed-object fixture (no loose objects) resolves via the
   }
 });
 
-// -- malformed pack idx is skipped, never thrown (HIMMEL-1427 r7, codex-adv-2) ----
+// -- malformed pack idx is skipped, never thrown ----
 // findPackOffset trusted the v2 fanout/total and passed derived ranges to
 // Buffer.compare/readUint32BE unchecked; a truncated or crafted idx threw
 // ERR_OUT_OF_RANGE OUTSIDE any catch, crashing status --json instead of
@@ -1332,7 +1330,7 @@ test('findPackOffset: a non-monotonic fanout window (hi > total) returns null wi
 });
 
 // -- REF_DELTA cycle degrades at once, without per-level pack re-reads --------
-// (HIMMEL-1427 r7, codex-adv-2) A REF_DELTA can name a base that resolves back
+// A REF_DELTA can name a base that resolves back
 // to itself; the depth cap stopped the recursion at MAX_DELTA_DEPTH but only
 // after re-readFileSync'ing the whole pack once per level (earlier frames still
 // held their buffers). readObject now tracks visited OIDs per lookup and rejects
@@ -1395,7 +1393,7 @@ test('readObject: a REF_DELTA self-cycle degrades after a single pack read, not 
   assert.equal(packReads, 1, 'the pack must be read once for the whole lookup, not re-read per delta level (pre-fix: ~MAX_DELTA_DEPTH reads)');
 });
 
-// -- applyDelta offset/varint hardening (HIMMEL-1427 r8) ----------------------
+// -- applyDelta offset/varint hardening ----------------------
 // Two panel-sug findings on the delta op-stream reader, tested directly:
 //   (1) the copy offset's 4th byte was shifted with `<< 24`, which yields a
 //       SIGNED Int32 — a byte >= 0x80 made cpOff negative, corrupting copy
@@ -1473,7 +1471,7 @@ test('applyDelta: an insert payload running past the delta end degrades instead 
   assert.equal(applyDelta(base, delta), null);
 });
 
-// -- applyDelta copy-range / declared-base-size validation (HIMMEL-1427 r9) ----
+// -- applyDelta copy-range / declared-base-size validation ----
 // A codex-adv finding (premise verified): applyDelta accepted OUT-OF-RANGE copy
 // commands because Buffer.subarray CLAMPS an overrun instead of throwing, and
 // only the resulting TOTAL length was checked. A copy past the base end could
@@ -1526,7 +1524,7 @@ test('applyDelta: a copy whose range exactly reaches the base end still applies 
   assert.deepEqual(applyDelta(base, delta), Buffer.from([0x43, 0x44])); // "CD"
 });
 
-// -- applyDelta size-varint overflow + readObject OID recompute (HIMMEL-1427 r10) -
+// -- applyDelta size-varint overflow + readObject OID recompute -
 // Two panel findings (premises verified):
 //   (1) applyDelta's header size varints accumulated with JS bitwise shifts, which
 //       coerce to a SIGNED 32-bit Int32 — a 5-byte size varint like
@@ -1564,7 +1562,7 @@ test('applyDelta: a target-size varint that overflows 32 bits degrades instead o
   assert.equal(applyDelta(base, delta), null);
 });
 
-// readObject recomputes the object id (HIMMEL-1427 r10). The fixture builds a pack
+// readObject recomputes the object id. The fixture builds a pack
 // of two real blobs; with `swapOffsets` the idx maps oidA → blobB's offset (and
 // vice-versa). The bytes at the swapped offset ARE a valid git object — just a
 // different one — so only the post-read OID check catches it (inflate and range
@@ -1639,7 +1637,7 @@ test('readObject: a correct pack/idx pair still resolves (no false-degrade from 
   assert.deepEqual(readObject(commonDir, oidB), { type: 'blob', body: Buffer.from('BBBBB') });
 });
 
-// HIMMEL-1468: the manual ref/HEAD fallback parser (used when the git subprocess
+// the manual ref/HEAD fallback parser (used when the git subprocess
 // is unavailable) used to accept only 40-hex sha1 OIDs, degrading a sha256 repo
 // even though readObject supports sha256. readHeadOid must now accept 40- OR
 // 64-hex detached OIDs, and a ref: pointing at a loose ref or a packed-ref.
@@ -1692,8 +1690,8 @@ test('readHeadOid: follows ref: to a 64-hex sha256 loose ref and to packed-refs 
   assert.equal(readHeadOid(packed.gitDir, packed.gitDir), HEAD_SHA256, 'packed-ref carrying a sha256 oid resolves');
 });
 
-// -- sha256 (objectFormat=sha256) full traversal (HIMMEL-1472) ------------------
-// HIMMEL-1468 aligned the ref/HEAD parser to accept 64-hex oids, but the
+// -- sha256 (objectFormat=sha256) full traversal ------------------
+// The ref/HEAD parser already accepts 64-hex oids, but the
 // traversal dead-ended one layer deeper: readLooseObject, findPackOffset (20-
 // byte idx entries), commitTreeOid ({40}-only) and findTreeEntry (nul+21 walk)
 // stayed sha1-only, so a sha256 repo with git unavailable degraded to
@@ -1746,7 +1744,7 @@ test('status --json: a sha256 PACKED fixture (no loose objects) VERIFIES via the
   }
 });
 
-// -- sha256 REF_DELTA base-oid width (HIMMEL-1472) ----------------------------
+// -- sha256 REF_DELTA base-oid width ----------------------------
 // The packed sha256 tests above exercise the 32-byte idx search, but the default
 // `git repack -ad` emits OFS_DELTA exclusively — so readPackEntry's REF_DELTA arm
 // (which read its base oid as a FIXED 20 bytes) was never hit for sha256. In an
@@ -1818,7 +1816,7 @@ test('readObject: a sha256 REF_DELTA target resolves via the 32-byte base oid wh
   assert.ok(refDeltas.length > 0, 'fixture must emit ≥1 REF_DELTA (repack.useDeltaBaseOffset=false) for this test to exercise the sha256 base-oid read');
 
   // Known blob bodies keyed by their sha256 oid, so the resolved body can be
-  // checked exactly. readObject re-hashes (HIMMEL-1427 r10), so a non-null result
+  // checked exactly. readObject re-hashes, so a non-null result
   // already implies a body that matches the oid; this additionally asserts the
   // authored bytes when the delta target is one of our blobs.
   const base = 'line\n'.repeat(200);
@@ -1844,7 +1842,7 @@ test('readObject: a sha256 REF_DELTA target resolves via the 32-byte base oid wh
   });
 });
 
-// -- mixed-format object DB rejection (HIMMEL-1472 R3) ------------------------
+// -- mixed-format object DB rejection ------------------------
 // Adversarial review of the sha256 traversal found a real design gap: the hash
 // width was derived PER-OID (oidByteWidth on whatever oid was being read), so a
 // crafted/corrupt object DB — a 40-hex sha1 commit whose tree line names a
@@ -1986,7 +1984,7 @@ test('readHeadBlob: a consistent single-format (sha1) repo still resolves — no
   assert.deepEqual(out.body, blobBody);
 });
 
-// -- config-anchored width rejection (HIMMEL-1472 R4) -------------------------
+// -- config-anchored width rejection -------------------------
 // Adversarial review of R3 found the remaining real gap: the HEAD oid's OWN
 // length was the width source, so a crafted/corrupt DB in a DEFAULT (sha1) repo
 // whose HEAD ref carries a 64-hex oid with a FULLY self-consistent sha256
@@ -2062,7 +2060,7 @@ test('readHeadBlob: a self-consistent sha1 chain in a CONFIGURED sha256 repo deg
   assert.equal(out.reason, 'reference-unavailable', 'a 40-hex HEAD in a sha256-configured repo must degrade — config width 32 ≠ HEAD width 20');
 });
 
-// -- repository-format validation (HIMMEL-1472 R5) ---------------------------
+// -- repository-format validation ---------------------------
 // Adversarial review of R4: configuredObjectByteWidth read objectFormat and
 // returned a width but skipped the rules git uses to ACCEPT that config — so a
 // config git REJECTS still yielded a width and a healthy attestation. R5 mirrors
@@ -2169,7 +2167,7 @@ test('readHeadBlob: a configured sha256 repo (repositoryformatversion 1 + only k
   assert.deepEqual(out.body, Buffer.from('hello body\n'));
 });
 
-// -- repository-format validation, value + bare-key gaps (HIMMEL-1472 R6) -------
+// -- repository-format validation, value + bare-key gaps -------
 // Adversarial review of R5: the key-set check closed the "unknown extension"
 // hole, but two narrower gaps versus real git remained. (1) BARE extension keys
 // (no `=`) were DROPPED — git parses `[extensions]\nfrobnicate` as frobnicate=true
@@ -2296,7 +2294,7 @@ test('readHeadBlob: refStorage=Files (wrong case) degrades — git matches the v
   assert.equal(out.reason, 'reference-unavailable', 'refStorage=Files must degrade — git matches the refStorage value case-sensitively');
 });
 
-// -- repository-format validation, header + key grammar (HIMMEL-1472 R8) ------
+// -- repository-format validation, header + key grammar ------
 // Adversarial review of R6/R7: the malformed-line guard and the key-capture
 // regexes were looser than git's config grammar, leaving two fail-OPEN gaps. (1) A
 // header shaped like one but matching NEITHER accepted form — e.g. `[bad section]`
@@ -2392,7 +2390,7 @@ test('readHeadBlob: keys git rejects (.key, key.sub) under a subsectioned scope 
   }
 });
 
-// -- repository-format validation, strict-value collapse (HIMMEL-1472 R9) ------
+// -- repository-format validation, strict-value collapse ------
 // Adversarial review of R5-R8: each round found one more way configuredObjectByteWidth()
 // was LOOSER than git's config parser (version rules, extension values, line shapes,
 // headers, keys, now bare version + value quoting). Enumerating what git REJECTS is a
@@ -2501,7 +2499,7 @@ test('readHeadBlob: a plain default-shape config resolves unchanged at sha1/20 (
   assert.deepEqual(out.body, Buffer.from('hello body\n'));
 });
 
-// -- repository-format validation, subsectioned extensions degrade (HIMMEL-1472 R10) -
+// -- repository-format validation, subsectioned extensions degrade -
 // Adversarial review (codex) of R8's subsection handling: a subsectioned header
 // `[extensions "x"]` was scoped out (section = null), so keys under it were only
 // shape-checked and never reached the extensions capture. But git surfaces those keys
@@ -2560,7 +2558,7 @@ test('readHeadBlob: a subsection [remote "origin"] with a key still resolves —
   assert.deepEqual(out.body, Buffer.from('hello body\n'));
 });
 
-// -- repository-format validation, dotted [extensions.x] headers degrade (HIMMEL-1472 R11) ----
+// -- repository-format validation, dotted [extensions.x] headers degrade ----
 // Adversarial review (codex) of the bare-header grammar: `[A-Za-z0-9.-]+` admits dots, so
 // git's legacy dotted subsection syntax `[extensions.x]` matched the bare-header branch and
 // set section = "extensions.x" (neither core nor extensions). Its keys were then shape-checked

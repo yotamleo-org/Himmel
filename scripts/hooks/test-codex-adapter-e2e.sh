@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Through-adapter e2e for the codex-direct lane (HIMMEL-745 acceptance). Drives
+# Through-adapter e2e for the codex-direct lane. Drives
 # .codex/codex-hook-adapter.sh END-TO-END: stdin = a codex-shaped PreToolUse
 # JSON, CLAUDE_PROJECT_DIR pointed at THIS checkout so the adapter runs the REAL
 # guardrails under scripts/hooks/. Asserts the exit-2 block is translated into

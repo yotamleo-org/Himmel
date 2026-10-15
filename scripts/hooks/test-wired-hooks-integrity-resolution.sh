@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-5039: every hook wired in .claude/settings.json and .codex/hooks.json
+# Every hook wired in .claude/settings.json and .codex/hooks.json
 # must pass hook-integrity's source resolution, transitively.
 #
 # Why: #2202 added `. "$(dirname "$lib")/load-dotenv.sh"` to 7 hooks.
@@ -126,7 +126,7 @@ if good_out="$(check_closure "$FX" "$FX/scripts/hooks/good.sh" 2>&1)" && [ -z "$
 printf 'scripts/lib/x.sh\nscripts/newdir/x.sh\n' > "$FX/paths"
 if [ "$(uncovered "$ROOT" "$FX/paths")" = "scripts/newdir/x.sh" ]; then ok "an uncovered closure directory is reported, a covered one is not"; else bad "closure-coverage check cannot fail"; fi
 
-# HIMMEL-5085: a plugin hooks.json command (${CLAUDE_PLUGIN_ROOT}/...) must be enumerated
+# A plugin hooks.json command (${CLAUDE_PLUGIN_ROOT}/...) must be enumerated
 # and held to the same resolution + coverage as a repo hook.
 PX="$FX/plug"; mkdir -p "$PX/.claude" "$PX/.codex" "$PX/marketplace/plugins/p/hooks"
 printf '{"hooks":{}}\n' > "$PX/.claude/settings.json"; printf '{"hooks":{}}\n' > "$PX/.codex/hooks.json"

@@ -215,9 +215,48 @@ try {
   if ($script:LastLaunchOut -match 'settings\.json is missing') { Pass 'missing-settings refusal names the settings file' } else { Fail 'missing-settings refusal message does not name the settings file' }
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-codex\.seeded')) { Fail 'missing-settings refusal still seeded the config dir' } else { Pass 'missing-settings refusal seeded nothing' }
 
+  # A user settings file that is not a plain JSON object refuses (exit 4), never seeds a config with no deny rules.
+  foreach ($bad in '[]', 'null', '7') {
+    New-Sandbox
+    $env:CODEX_MODEL = 'gpt-5.6-sol'
+    Set-Content -LiteralPath (Join-Path $FAKEHOME '.claude\settings.json') -Value $bad -NoNewline
+    Invoke-Launcher
+    if ($script:LastLaunchExit -eq 4) { Pass "non-object user settings ($bad) refuses (exit 4)" } else { Fail "non-object user settings ($bad) did not refuse (exit $script:LastLaunchExit)" }
+    if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-codex\.seeded')) { Fail "non-object user settings ($bad) still seeded the config dir" } else { Pass "non-object user settings ($bad) seeded nothing" }
+  }
+
+  # A malformed permissions (non-object) or permissions.deny (non-array) also refuses (exit 4): it would otherwise seed with no deny rules.
+  foreach ($bad in '{"permissions":[]}', '{"permissions":"x"}', '{"permissions":{"deny":"x"}}') {
+    New-Sandbox
+    $env:CODEX_MODEL = 'gpt-5.6-sol'
+    Set-Content -LiteralPath (Join-Path $FAKEHOME '.claude\settings.json') -Value $bad -NoNewline
+    Invoke-Launcher
+    if ($script:LastLaunchExit -eq 4) { Pass "malformed permissions ($bad) refuses (exit 4)" } else { Fail "malformed permissions ($bad) did not refuse (exit $script:LastLaunchExit)" }
+    if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-codex\.seeded')) { Fail "malformed permissions ($bad) still seeded the config dir" } else { Pass "malformed permissions ($bad) seeded nothing" }
+  }
+
+  # permissions.deny: null refuses with the specific sanitizer message, so deleting the Array.isArray check cannot go unnoticed.
+  New-Sandbox
+  $env:CODEX_MODEL = 'gpt-5.6-sol'
+  Set-Content -LiteralPath (Join-Path $FAKEHOME '.claude\settings.json') -Value '{"permissions":{"deny":null}}' -NoNewline
+  Invoke-Launcher
+  if ($script:LastLaunchExit -eq 4) { Pass 'permissions.deny null refuses (exit 4)' } else { Fail "permissions.deny null did not refuse (exit $script:LastLaunchExit)" }
+  if ($script:LastLaunchOut -match 'permissions\.deny is not an array') { Pass 'permissions.deny null names the array refusal' } else { Fail 'permissions.deny null refusal text missing' }
+  if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-codex\.seeded')) { Fail 'permissions.deny null still seeded the config dir' } else { Pass 'permissions.deny null seeded nothing' }
+
+  # CLAUDE_CODE_AUTO_MODE_SERVER in --settings or project settings is refused (exit 3), matching the bash twin.
+  New-Sandbox
+  $env:CODEX_MODEL = 'gpt-5.6-sol'
+  Invoke-Launcher -LArgs @('--settings', '{"env":{"CLAUDE_CODE_AUTO_MODE_SERVER":"1"}}')
+  if ($script:LastLaunchExit -eq 3 -and $script:LastLaunchOut -match 'REFUSED') { Pass 'auto-mode override via --settings refused' } else { Fail "auto-mode override via --settings not refused (exit $script:LastLaunchExit)" }
+  New-Item -ItemType Directory -Force -Path (Join-Path $WORK '.claude') | Out-Null
+  Set-Content -LiteralPath (Join-Path $WORK '.claude\settings.local.json') -Value '{"env":{"claude_code_auto_mode_server":"1"}}' -NoNewline
+  Invoke-Launcher
+  if ($script:LastLaunchExit -eq 3 -and $script:LastLaunchOut -match 'REFUSED') { Pass 'auto-mode override via project settings refused' } else { Fail "auto-mode override via project settings not refused (exit $script:LastLaunchExit)" }
+
   # --- --guard-check <dir> — the check-only entry the unattended
   # spawn-claudex dispatcher calls PRE-CREATION, before it mints a worktree.
-  # Only exit codes are asserted (Invoke-Launcher discards output), same as
+  # Only exit codes are asserted (Invoke-Launcher captures output in $script:LastLaunchOut), same as
   # the .salus tests above.
 
   # clean directory -> exit 0, no config seeded.

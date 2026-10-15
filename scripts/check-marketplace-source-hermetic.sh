@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Hermetic marketplace-source guard (HIMMEL-2837): every plugin id that
-# install-plugins.sh actually INSTALLS on a fresh machine (HIMMEL-2863) —
+# Hermetic marketplace-source guard: every plugin id that
+# install-plugins.sh actually INSTALLS on a fresh machine —
 # enabledPlugins entries with value === true (the ALWAYS tier) UNION every
 # onDemandPlugins key (the ON-DEMAND tier: installed but left disabled, e.g.
 # codex@openai-codex) — except the claude-plugins-official marketplace
@@ -9,10 +9,10 @@
 # (explicit HTTPS git clone) or "directory" (a local vendored path — e.g.
 # himmel's own marketplace) — never "github" (owner/repo shorthand, which
 # clones over SSH and fails host-key verification on a fresh guest with no
-# github.com in ~/.ssh/known_hosts and no SSH key: HIMMEL-549, HIMMEL-2836).
-# This is exactly the class of regression HIMMEL-2733 introduced by adding
+# github.com in ~/.ssh/known_hosts and no SSH key).
+# This is exactly the class of regression introduced by adding
 # plannotator-effective-html@effective-html — a github-shorthand marketplace
-# source — to the ALWAYS-installed tier. HIMMEL-2837 fixed that instance by
+# source — to the ALWAYS-installed tier. The fix was
 # vendoring the plugin as plannotator-effective-html@himmel, a url-sourced
 # per-plugin pin inside the himmel marketplace; this guard stops the class
 # from recurring for any future plugin.
@@ -23,8 +23,7 @@
 # github/ssh/anything-else fail) is applied to every plugin entry there,
 # transitively — a plugin entry that is itself a "directory" source recurses
 # into ITS marketplace.json up to DEPTH_CAP levels, with a per-branch
-# ancestor set so a self-referential directory fails loud instead of looping
-# (HIMMEL-2846).
+# ancestor set so a self-referential directory fails loud instead of looping.
 #
 # Fail-closed on detected drift; skips (exit 0) only when jq is unavailable
 # or the template is MISSING (fresh clone / CI without it — a legitimate
@@ -82,7 +81,7 @@ resolve_dir_path() {
   case "$p" in
     # A leading POSIX / is absolute everywhere; a drive-letter prefix
     # (C:/... or C:\...) is absolute on the explicitly supported Git Bash
-    # platform (HIMMEL-2846 panel round 2) — without this branch it would
+    # platform — without this branch it would
     # be treated as relative and wrongly prefixed with $base.
     /*|[A-Za-z]:[/\\]*) : ;;
     *) p="$base/$p" ;;
@@ -130,13 +129,12 @@ check_marketplace_dir() {
 
   # NUL-delimited (never @tsv): @tsv backslash-escapes ("\" -> "\\") and a
   # plain `read -r` does not un-escape it, so a nested Windows path using
-  # backslash separators would reach resolve_dir_path doubled (HIMMEL-2855).
+  # backslash separators would reach resolve_dir_path doubled.
   # Extracted to a temp file first (not straight into process substitution)
   # so jq's own exit status is checked: a `while read < <(cmd)` loop never
   # sees cmd's exit code, so a jq error mid-stream (e.g. a non-object
   # plugins[] entry, or an entry whose .source is neither an object nor a
-  # string) used to leave $bad untouched and PASS a malformed marketplace
-  # (HIMMEL-2858).
+  # string) would leave $bad untouched and PASS a malformed marketplace.
   mp_extract="$(mktemp)" || { bad="$bad  $label (mktemp failed while extracting marketplace.json plugins)
 "; return; }
   mp_err="$(mktemp)" || { rm -f "$mp_extract"; bad="$bad  $label (mktemp failed while extracting marketplace.json plugins)
@@ -176,7 +174,7 @@ check_marketplace_dir() {
         # Absolute/traversal checks run against a backslash-normalized copy
         # so a mixed-separator path (e.g. "plugins/..\../outside") can't slip
         # through by matching neither the all-slash nor all-backslash pattern
-        # alternatives (HIMMEL-2858, panel round 1).
+        # alternatives.
         pdetail_norm=${pdetail//\\//}
         case "$pdetail" in
           *://*)
@@ -223,7 +221,7 @@ check_marketplace_dir() {
   rm -f "$mp_extract"
 }
 
-# The install set (install-plugins.sh:261-270, HIMMEL-2733) is
+# The install set (install-plugins.sh:261-270) is
 # enabledPlugins-true (the ALWAYS tier) UNION onDemandPlugins' keys (the
 # ON-DEMAND tier — installed by install-plugins.sh but left disabled, e.g.
 # codex@openai-codex, so it still needs a hermetic marketplace source). A

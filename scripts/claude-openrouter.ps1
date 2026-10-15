@@ -29,7 +29,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # --- backend block (DIFFERS from claude-routed; this is the whole variant) ------
@@ -39,7 +39,7 @@ $ErrorActionPreference = 'Stop'
 # needed. OPENROUTER_ANTHROPIC_BASE_URL stays an env-overridable seam for a
 # different Anthropic-Messages-compatible endpoint.
 $OpenRouterAnthropicBaseUrl = if ($env:OPENROUTER_ANTHROPIC_BASE_URL) { $env:OPENROUTER_ANTHROPIC_BASE_URL } else { 'https://openrouter.ai/api' }
-# Model pin (HIMMEL-1774 §5, verified 2026-08-15 against
+# Model pin (verified 2026-08-15 against
 # https://openrouter.ai/api/v1/models — 20 Anthropic models report
 # context_length: 1000000): the 1M Claude tiers are NATIVELY 1M on OpenRouter;
 # do NOT append ':extended' (no such variant exists). Default is the judge tier.
@@ -50,7 +50,7 @@ $OpenRouterAnthropicBaseUrl = if ($env:OPENROUTER_ANTHROPIC_BASE_URL) { $env:OPE
 #   anthropic/claude-sonnet-5
 # ':batch' variants are asynchronous and unsupported by interactive tier overrides.
 $OpenRouterModel         = if ($env:OPENROUTER_MODEL) { $env:OPENROUTER_MODEL } else { 'anthropic/claude-opus-5.5' }
-# Independent subagent tiers (HIMMEL-4083), catalog verified 2026-10-02.
+# Independent subagent tiers, catalog verified 2026-10-02.
 $OpenRouterHaiku         = if ($env:OPENROUTER_HAIKU) { $env:OPENROUTER_HAIKU } else { 'anthropic/claude-haiku-5.5' }
 $OpenRouterSonnet        = if ($env:OPENROUTER_SONNET) { $env:OPENROUTER_SONNET } else { 'anthropic/claude-sonnet-5.5' }
 $OpenRouterOpus          = if ($env:OPENROUTER_OPUS) { $env:OPENROUTER_OPUS } else { 'anthropic/claude-opus-5.5' }
@@ -105,7 +105,7 @@ function Get-DotenvKey {
   return $null
 }
 
-# HIMMEL-1482 (twin of bash _load_dotenv_primary_for): resolve the .env-bearing
+# Twin of bash _load_dotenv_primary_for): resolve the .env-bearing
 # root for a candidate dir. <dir>/.env present -> <dir>. Else if <dir> is a
 # linked git worktree -> the PRIMARY checkout when its .env exists, with ONE
 # advisory to stderr. Otherwise -> <dir> unchanged.
@@ -145,7 +145,7 @@ if ([string]::IsNullOrEmpty($key)) {
 }
 
 # node is REQUIRED to consult the egress matrix and to sanitize settings during
-# seeding. Fail CLOSED if it is absent (HIMMEL-1771: cannot verify egress policy).
+# seeding. Fail CLOSED if it is absent (cannot verify egress policy).
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   [Console]::Error.WriteLine('claude-openrouter: node is required to consult the egress matrix and seed the config dir — refusing to launch without it.')
   exit 3
@@ -166,7 +166,7 @@ foreach ($a in $args) {
 # --- tiered egress guard (PHI) -------------------------------------------------
 # Guard config dir is SHARED with claude-glm (~/.config/claude-glm), matching
 # claude-routed: one guard source of truth governs every variant.
-# HIMMEL-1773 caveat: matches sibling STRUCTURE, NOT proven-correct on the real
+# matches sibling STRUCTURE, NOT proven-correct on the real
 # corpus — keys on a `.salus` marker the live vault lacks (it has .salus-profile)
 # and the phi-roots fallback list is absent. Inherited defect; the egress
 # matrix's salus hard-deny (consulted below) is the authoritative PHI backstop.
@@ -217,7 +217,7 @@ if (Test-PathUnderAny -Target $cwd -ListFile (Join-Path $Cfg 'egress-denylist'))
 # --- egress-matrix consultation (HARD GATE, no override) ----------------------
 # The authorizing gate: REFUSES fail-closed unless an explicit `openrouter`
 # provider is declared AND a non-wildcard openrouter rule permits the launch
-# corpus. No --force bypass (HIMMEL-1774). CLAUDE_OPENROUTER_EGRESS_MATRIX (test
+# corpus. No --force bypass. CLAUDE_OPENROUTER_EGRESS_MATRIX (test
 # hook) points at a hermetic matrix. Delegates to the SAME node JS as the bash
 # twin (no PS re-impl of the matrix semantics).
 $EgressJs = @'
@@ -230,8 +230,7 @@ const PROVIDER="openrouter";
 // This launcher performs INFERENCE (it runs Claude Code). A matrix rule
 // authorizes the lane only when its purpose is "*" (any) or exactly the
 // launcher purpose — a cell the operator scoped to a different purpose
-// (embedding, extraction, ...) must NOT silently authorize an inference lane
-// (CR round 2, HIMMEL-1774).
+// (embedding, extraction, ...) must NOT silently authorize an inference lane.
 const PURPOSE="inference";
 // 1. The provider itself must be DECLARED. A wildcard provider:"*" allow does
 //    not authorize a new third-party routing layer in front of model vendors.
@@ -246,7 +245,7 @@ const cwd=process.env.CLAUDE_OPENROUTER_CWD || process.cwd();
 // under(): equality counts (launching FROM the himmel checkout root itself is
 // himmel-code, not "unknown" — a root-equal cwd must classify, not fall through).
 const under=(root)=>{ try { const c=path.resolve(cwd).toLowerCase(), r=path.resolve(root).toLowerCase(); return !!root && (c===r || c.startsWith(r+path.sep)); } catch(_) { return false; } };
-// HIMMEL-5099: himmel-code also needs the cwd to share the launcher checkout git common dir, so a
+// himmel-code also needs the cwd to share the launcher checkout git common dir, so a
 // worktree passes and a foreign repo nested inside the checkout does not. A cwd that is no git repo
 // at all (a plain subdir) resolves to the enclosing repo, i.e. the launcher checkout itself.
 const sameGitRepo=(a,b)=>{ try {
@@ -276,7 +275,6 @@ else corpus="unknown";
 //    wildcard-corpus allow silently override an explicit vault deny, and the
 //    matrix relies on row ORDER (the salus openrouter row is deliberately placed
 //    above the wildcard hard deny so the ruling stays legible).
-//    CR round 4, HIMMEL-1774.
 let match=null;
 for (const r of (M.rules||[])) {
   if (r.provider!==PROVIDER) continue;
@@ -286,7 +284,7 @@ for (const r of (M.rules||[])) {
 }
 // A "conditional" cell is permitted ONLY while its condition holds. This
 // launcher cannot evaluate matrix conditions, so it fails closed rather than
-// launching as if the cell were unconditional (CR round 4, codex-3).
+// launching as if the cell were unconditional.
 const allowed = !!match && (match.verdict==="allow" || match.verdict==="allow+log");
 if (!allowed) {
   console.error("claude-openrouter: REFUSED - no egress-matrix cell permits \""+PROVIDER+"\" for corpus \""+corpus+"\" with purpose \""+PURPOSE+"\" ("+matrixPath+")"+(match?" - the first matching cell has verdict \""+match.verdict+"\"":"")+". Add a rule { corpus: \""+corpus+"\" (or \"*\"), provider: \""+PROVIDER+"\", purpose: \""+PURPOSE+"\" (or \"*\"), verdict: \"allow\" } ABOVE any row that denies it. Vault corpora (luna/salus) should stay DENY; himmel-code is the recommended first cell.");
@@ -316,7 +314,7 @@ $LaneSeed = @{
 }
 function Test-ConfigSeedStale { Test-LaneConfigSeedStale $LaneSeed }
 
-# --- config-dir seed concurrency lock (HIMMEL-830) ---------------------------
+# --- config-dir seed concurrency lock ---------------------------
 $Lock            = "$ConfigDir.seed-lock"
 $SeedLockTimeout = if ($env:CLAUDE_LANE_SEED_LOCK_TIMEOUT) { [int]$env:CLAUDE_LANE_SEED_LOCK_TIMEOUT } else { 60 }
 $SeedLockStale   = if ($env:CLAUDE_LANE_SEED_LOCK_STALE) { [int]$env:CLAUDE_LANE_SEED_LOCK_STALE } else { 120 }
@@ -373,7 +371,7 @@ if (($env:LEG_LANE -eq 'openrouter') -or (-not (Test-Path -LiteralPath (Join-Pat
   Invoke-SeedWithLock
 }
 
-# --- remaining-credit GATE (HIMMEL-1774 §4, hardened by HIMMEL-4076) ----------
+# --- remaining-credit GATE ----------
 # Twin of the bash launcher: a balance below OPENROUTER_MIN_CREDIT_USD (default 3;
 # non-numeric falls back to 3) or an UNKNOWN balance refuses with exit 5 BEFORE
 # claude starts. Runs only AFTER the egress gate authorized the lane; the credits
@@ -475,11 +473,11 @@ $env:ANTHROPIC_DEFAULT_OPUS_MODEL_NAME   = if ($OpenRouterOpus -ceq $OpenRouterM
 # remove this temporary switch when safeguards/safeguard_results pass through.
 $env:CLAUDE_CODE_AUTO_MODE_SERVER = '0'
 # The client classifier's side query carries no reasoning, and the gateway 400s
-# ("Reasoning is mandatory") on mandatory-reasoning slugs (HIMMEL-5248). EXTRA_BODY
+# ("Reasoning is mandatory") on mandatory-reasoning slugs. EXTRA_BODY
 # merges this into every request; the `thinking` shape works, `reasoning.effort` does not.
 # ponytail: the budget also applies to the main loop, so every turn pays up to
 # 2048 thinking tokens, revisit when the classifier side query can carry its own
-# reasoning setting (HIMMEL-5248 upstream issue).
+# reasoning setting.
 if (-not $env:CLAUDE_CODE_EXTRA_BODY) { $env:CLAUDE_CODE_EXTRA_BODY = '{"thinking":{"type":"enabled","budget_tokens":2048}}' }
 if ($env:LEG_LANE -eq 'openrouter') {
   [Console]::Error.WriteLine("claude-openrouter: lane=openrouter slug=$OpenRouterModel alias=$($env:ANTHROPIC_MODEL) labels=$orLabel")

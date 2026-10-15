@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PostToolUse (Bash matcher) hook (HIMMEL-2526). Companion to
+# PostToolUse (Bash matcher) hook. Companion to
 # record-primary-baseline.sh: reports, promptly, when the PRIMARY checkout's
 # tracked working tree goes dirty in a way block-edit-on-main.sh never sees —
 # a Bash-mediated write (`cat >`, `sed -i`, a python heredoc) bypasses the
@@ -105,7 +105,7 @@ baseline_out="$(cat "$baseline_file" 2>/dev/null)"
 # status-code-only change on the same path (" M" -> "MM") is a different
 # line and is caught (baseline-aware, per the header comment above).
 #
-# codex-8 (HIMMEL-2526): `comm` itself must run under LC_ALL=C too — both
+# codex-8: `comm` itself must run under LC_ALL=C too — both
 # inputs are pre-sorted with LC_ALL=C, but `comm` inherits the SESSION
 # locale by default and can disagree with that collation order (e.g. a
 # case-mixed filename sorts differently under en_US.utf8 than under C),
@@ -118,7 +118,7 @@ new_lines="$(LC_ALL=C comm -13 \
 
 # Rewrite the baseline to the CURRENT output whenever it differs from the
 # stored baseline in EITHER direction — not only when there's something new
-# to REPORT. HIMMEL-2590: the old code rewrote the baseline only on a
+# to REPORT. The old code rewrote the baseline only on a
 # reporting run (gated behind the now-removed `[ -n "$new_lines" ] || exit 0`
 # above), so a dirty -> clean -> re-dirty sequence for the same path left a
 # stale baseline that still listed the FIRST dirtying; comm -13 then saw the
@@ -130,8 +130,8 @@ new_lines="$(LC_ALL=C comm -13 \
 #
 # Temp file + mv so a concurrent reader never sees a partial file.
 #
-# codex-6 (HIMMEL-2526 CR round 3): the temp file must be created INSIDE
-# out_dir, not ${TMPDIR:-/tmp} — identical to the codex-9 fix in this file's
+# The temp file must be created INSIDE
+# out_dir, not ${TMPDIR:-/tmp} — identical to the fix in this file's
 # sibling record-primary-baseline.sh. `mv` is only atomic WITHIN one
 # filesystem, and ${TMPDIR:-/tmp} vs $out_dir (under $HOME by default) can be,
 # and often are, different filesystems (tmpfs vs btrfs on this station), in

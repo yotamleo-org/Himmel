@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Unit test for the fixture-setup checks in lib-test-write-fence.sh
-# (HIMMEL-4391). That lib builds the fixture repos every block-write-into-
+# Unit test for the fixture-setup checks in lib-test-write-fence.sh.
+# That lib builds the fixture repos every block-write-into-
 # main-checkout shard's rows run against. If git init / commit / worktree add
 # fails there and nobody notices, the rows test a MISSING fixture instead of
 # the checkout topology they claim, and can still pass. So the lib must abort

@@ -1786,6 +1786,29 @@ assert_rc "310 mv x \$HOME/.claude/settings.json denies" 2 \
 assert_rc "311 rg -ln foo -- \$HOME/.claude (flag-cluster ln + dir) allows" 0 \
     "$(bash_rc_of "$PRIMARY" 'rg -ln foo -- $HOME/.claude' HOME="$FAKEHOME")"
 
+# cp|mv|install|rsync|dd|tee|truncate are verbs only as words of their own,
+# never as a hyphen/dot part of a filename.
+assert_rc "5784a cat of x-install-record.md under ~/.claude allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'cat ~/.claude/x-install-record.md' HOME="$FAKEHOME")"
+assert_rc "5784b cat of x-tee-y.md under ~/.claude allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'cat ~/.claude/x-tee-y.md' HOME="$FAKEHOME")"
+assert_rc "5784c cat of x-cp-y.md under ~/.claude allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'cat ~/.claude/x-cp-y.md' HOME="$FAKEHOME")"
+assert_rc "5784d cat of x.rsync.log under ~/.claude allows" 0 \
+    "$(bash_rc_of "$PRIMARY" 'cat ~/.claude/x.rsync.log' HOME="$FAKEHOME")"
+assert_rc "5784e cp a ~/.claude/settings.json still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'cp a ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5784f tee ~/.claude/settings.json still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'echo x | tee ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5784g install a ~/.claude/settings.json still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'install a ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5784h /bin/cp path-verb onto settings still denies" 2 \
+    "$(bash_rc_of "$PRIMARY" '/bin/cp a ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5784i read of x-cp-y.md then cp onto settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'cat ~/.claude/x-cp-y.md; cp a ~/.claude/settings.json' HOME="$FAKEHOME")"
+assert_rc "5784j v=cp variable-glued verb onto settings denies" 2 \
+    "$(bash_rc_of "$PRIMARY" 'v=cp; $v a ~/.claude/settings.json' HOME="$FAKEHOME")"
+
 # HIMMEL-4119: a segment's command word the hook cannot read as a known program
 # (a glob, an expansion, a flag-shaped word, a path to an unknown program) is a
 # write verb when that segment names a `.claude` directory: fail closed.

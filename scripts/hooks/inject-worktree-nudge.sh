@@ -17,7 +17,7 @@
 #   - a feature branch NOT in the primary checkout   → silent
 #   - not inside a git repo / branch unreadable      → silent
 # Only when block-edit-on-main WOULD refuse the first edit (primary checkout on
-# main/master, or a feature branch in the primary tree — HIMMEL-507) does it emit
+# main/master, or a feature branch in the primary tree) does it emit
 # one <system-reminder> pointing at /worktree | /clean_garden.
 #
 # ADVISORY injected context, not a permission change — it cannot widen what the
@@ -86,7 +86,7 @@ if [ "$_wn_rc" -eq 0 ]; then
 elif [ "$_wn_rc" -eq 1 ]; then
     # Feature branch. A linked worktree (its `.git` is a FILE) is where feature
     # work belongs (the guard allows it) so stay silent. Only a feature branch
-    # in the PRIMARY checkout (its `.git` is a DIRECTORY) is blocked (HIMMEL-507).
+    # in the PRIMARY checkout (its `.git` is a DIRECTORY) is blocked.
     [ -d "$_wn_root/.git" ] || exit 0
     _wn_frame="on a feature branch in the PRIMARY checkout"
 else

@@ -2,18 +2,18 @@
 # orchestrator-inline-guard.sh — PreToolUse hook (matcher "Edit|Write|NotebookEdit"):
 # per-PR budget gate when a top-tier parent session (Fable/Opus) edits an
 # implementation-surface file directly instead of dispatching to a worker lane
-# (HIMMEL-1384 phase 1 advisory; HIMMEL-1791 phase 2 DENY — CLAUDE.md "Subagent
+# (phase 1 advisory; phase 2 DENY — CLAUDE.md "Subagent
 # policy": inline implementation on a top-tier parent is the anti-pattern, sole
-# exception is one trivial CR-fix per PR). Escalates HIMMEL-166/688 per the
+# exception is one trivial CR-fix per PR). Escalates per the
 # repo's own "second drift -> structural" doctrine (operator, 2026-07-29: "i
 # always find myself re-enforcing this"): the phase-1 advisory fired EIGHT
 # times in one leg (2026-08-15) and was overridden every time — "hook
 # additionalContext ≠ compliance".
 #
-# DENY SEMANTICS (HIMMEL-1791):
+# DENY SEMANTICS:
 #   - The one-per-PR exemption is tracked STRUCTURALLY, per BRANCH (a branch
 #     is a PR here) — the branch of the worktree that HOLDS THE EDITED FILE,
-#     not the session's cwd (HIMMEL-1976; the cwd keying charged a primary-
+#     not the session's cwd (the cwd keying charged a primary-
 #     checkout parent's every worktree edit to "main"), and never the repo's
 #     default branch — under <git-common-dir>/inline-impl-spent/ — same shared
 #     git-common-dir convention as cr-pending/<branch> and cr-prior-blocking/
@@ -36,12 +36,12 @@
 #     failure of the first Edit must not cost the legitimate retry).
 #     DENY (structured permissionDecision:"deny" on
 #     stdout, which overrides the exit code, PLUS exit 2 + stderr — the
-#     belt-and-braces idiom; see test-block-glm-external-writes.sh round 4).
+#     belt-and-braces idiom; see test-block-glm-external-writes.sh).
 #   - The deny message carries the sanctioned recovery: dispatch via the Agent
-#     tool with an explicit model tier (CLAUDE.md subagent policy; HIMMEL-1967
-#     — impl routes to native Claude subagents only, NOT
+#     tool with an explicit model tier (CLAUDE.md subagent policy;
+#     impl routes to native Claude subagents only, NOT
 #     scripts/telegram/dispatch-lane.sh, whose unqualified impl dispatch
-#     exits 2 for exactly this class of work, HIMMEL-2210) so the sanctioned
+#     exits 2 for exactly this class of work) so the sanctioned
 #     path is easier than the blocked one, AND names the ESCALATION path
 #     (a higher-tier model, or the Fable tier): a parent reading a blocked or
 #     struggling worker as licence to implement inline is the specific hole
@@ -59,7 +59,7 @@
 #
 # Escape hatches (set in the shell that LAUNCHED Claude Code; session-sticky —
 # a per-call prefix does NOT reach a hook process):
-#   INLINE_IMPL_OK=1       HIMMEL-1791 deliberate override — LOUD: warns on
+#   INLINE_IMPL_OK=1       deliberate override — LOUD: warns on
 #                          stderr and appends a decision:"override" row to the
 #                          fire log, so an override is auditable, never silent
 #   ORCH_GUARD_DISABLE=1   silent emergency kill switch (phase-1 behaviour)
@@ -93,7 +93,7 @@
 # the in-memory conversation by a turn). Phase 1 justified it with "a wrong
 # read only ever costs a missed or spurious nudge, never a block"; phase 2's
 # deny changes that arithmetic, so the blast radius of a wrong read is now
-# bounded by four structural hatches: (1) the HIMMEL-1417 worker exemption
+# bounded by four structural hatches: (1) the worker exemption
 # (`agent_id`) is a first-class field checked BEFORE any gating; (2) an
 # unreadable/unparseable transcript defaults toward NOT firing (not top-tier
 # => silent allow); (3) the FIRST qualifying edit on a branch is always
@@ -115,14 +115,14 @@
 # On trigger: appends one jsonl row ({ts, session, model, tool, path,
 # decision}) to ~/.claude/orchestrator-inline-guard/fires.jsonl (decision =
 # exempt-allow | exempt-allow-unrecorded | retry-allow | deny | override |
-# allow-no-branch | allow-default-branch — the counter-metric
-# HIMMEL-1384 seeded) and then allows-with-advisory (first spend), denies
+# allow-no-branch | allow-default-branch),
+# then allows-with-advisory (first spend), denies
 # (budget spent), or allows (override / unresolvable branch). Log failures
 # never fail the hook (append-only, best-effort, `|| true`).
 #
 # Env knobs (all optional):
 #   ORCH_GUARD_DISABLE=1        silent kill switch (launching-shell convention)
-#   INLINE_IMPL_OK=1            loud audited override (HIMMEL-1791)
+#   INLINE_IMPL_OK=1            loud audited override
 #   ORCH_GUARD_LOG               fire-log path override (test seam; default
 #                                ~/.claude/orchestrator-inline-guard/fires.jsonl)
 #   ORCH_GUARD_STATE_DIR         budget-state base dir override (test seam;
@@ -131,7 +131,7 @@
 #                                sniffing the model (test seam; default 60)
 #
 # ============================================================================
-# WORKER EXEMPTION (HIMMEL-1417)
+# WORKER EXEMPTION
 # ============================================================================
 # This guard targets a TOP-TIER PARENT implementing inline — never a
 # dispatched Agent-tool worker executing its own assigned brief (the exact
@@ -179,7 +179,7 @@ command -v jq >/dev/null 2>&1 || { warn "jq not on PATH — allowing (fail-open,
 input=$(cat 2>/dev/null || true)
 [ -n "$input" ] || exit 0
 
-# Worker exemption (HIMMEL-1417) — see header. `agent_id` is present ONLY
+# Worker exemption — see header. `agent_id` is present ONLY
 # when this hook fires inside a subagent (Agent-tool dispatched) call; a
 # dispatched worker's own edits are the desired pattern, not the anti-pattern
 # this guard exists to catch.
@@ -217,7 +217,7 @@ case "$path" in
 esac
 
 # ---- Inclusion (implementation surface) — must match at least one ----
-# Test files are deliberately NOT carved out (HIMMEL-1791): scripts/** test
+# Test files are deliberately NOT carved out: scripts/** test
 # suites are implementation.
 included=0
 case "$path" in
@@ -261,7 +261,7 @@ fire_log() {  # fire_log <decision> — one jsonl row, best-effort
         '{ts:$ts,session:$s,model:$m,tool:$t,path:$p,decision:$d}' >> "$LOG" 2>/dev/null || true
 }
 
-# ---- Escape hatch (HIMMEL-1791): loud, audited override. Checked only once
+# ---- Escape hatch: loud, audited override. Checked only once
 # the edit is a qualifying gate candidate, so the audit row records exactly
 # the edits the gate would have acted on. An override does NOT spend the
 # budget: the exemption stays for a genuine trivial CR-fix; overrides are a
@@ -272,9 +272,9 @@ if [ "${INLINE_IMPL_OK:-0}" = "1" ]; then
     exit 0
 fi
 
-# ---- Repo context for the per-branch budget (HIMMEL-1791/1976) ----
+# ---- Repo context for the per-branch budget ----
 # The budget is per PR, and the PR is the branch of the worktree that HOLDS
-# the edited file — NOT the session's cwd (HIMMEL-1976). A parent works from
+# the edited file — NOT the session's cwd. A parent works from
 # the primary checkout (on main, by design for the lane workflow) and edits
 # files inside worktrees; keying on cwd charged every such edit to "main",
 # whose one spend on 2026-08-16 was never un-spent, making the one-trivial-
@@ -364,7 +364,7 @@ case "$branch" in
         ;;
 esac
 
-# ---- Merge/rebase carve-out (HIMMEL-1791): conflict resolution is genuinely
+# ---- Merge/rebase carve-out: conflict resolution is genuinely
 # parent work — allow and do NOT consume the budget. MERGE_HEAD / REBASE_HEAD
 # (and the rebase-merge / rebase-apply dirs) live in the CURRENT worktree's
 # git dir; `rev-parse --git-path` resolves each against it and is made
@@ -397,7 +397,7 @@ in_merge_or_rebase=0
 [ -n "$rebase_apply" ] && [ -d "$rebase_apply" ] && in_merge_or_rebase=1
 [ "$in_merge_or_rebase" = "1" ] && exit 0
 
-# ---- Per-branch budget state (HIMMEL-1791) ----
+# ---- Per-branch budget state ----
 # Convention: cr-pending/<branch> + cr-prior-blocking/<branch> — branch-scoped
 # state under the SHARED git-common-dir, so the budget is visible from every
 # worktree in the checkout and keyed per PR (branch), never per round. The
@@ -458,7 +458,7 @@ if [ ! -f "$state_path" ]; then
     # permissionDecision:"allow" is the phase-1 idiom this hook shipped with
     # (052711a0: auto-approve-safe-bash.sh / guard-memory-capture.sh
     # precedent) — verified against the pre-branch advisory version before
-    # keeping it (CR r1 glm-5): NOT a permission widened by HIMMEL-1791.
+    # keeping it: NOT a permission widened by the deny gate.
     jq -nc --arg ctx "$first_ctx" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",additionalContext:$ctx}}'
     exit 0
 fi
@@ -486,10 +486,10 @@ if [ "$spent_session" = "$session_id" ] && [ "$spent_path" = "$path" ]; then
     exit 0
 fi
 
-# ---- Budget spent: DENY (HIMMEL-1791). The message must leave the parent
+# ---- Budget spent: DENY. The message must leave the parent
 # with a sanctioned path that is EASIER than inline: the ready-to-run lane
 # dispatcher, plus the ESCALATION answer for the round-guard hole (a
-# HIMMEL-1553 refusal of the selected lane is NOT licence to implement inline
+# refusal of the selected lane is NOT licence to implement inline
 # — choose a higher-tier lane via --lane or the Fable tier instead), plus the
 # audited override.
 spent_ts=$(jq -r '.ts // "earlier"' "$state_path" 2>/dev/null || true)

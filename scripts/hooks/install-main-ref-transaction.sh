@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the HIMMEL-2095 main-branch reference-transaction guard.
+# Install the main-branch reference-transaction guard.
 #
 # `pre-commit install --hook-type` does NOT support "reference-transaction"
 # (its own --help lists only commit-msg, post-checkout, post-commit,
@@ -19,97 +19,56 @@
 # station's setup run installs every OTHER hook and silently skips this one,
 # leaving main completely unguarded with no error, no warning, nothing in
 # `himmel-doctor` to catch it until C32 happens to be checked from a git
-# context that can see it. That gap is HIMMEL-2638, tracked deliberately
+# context that can see it. That gap is tracked deliberately
 # rather than closed here (this session cannot test PowerShell). A future
 # `.ps1` twin -- or a call to this same script added to `setup-hooks.ps1` --
 # is what resolves it; this note exists so nobody mistakes "no twin" for
 # "no gap".
 #
-# THE STANDING LESSON on this guard, five review rounds deep now: writing a
-# file that LOOKS like protection is not protection, and re-deriving either
-# "where does git look" or "how do I safely embed one string in another"
-# keeps re-opening the gap in new ways.
-#   Round 1: a shim that fails on its own broken target must fail OPEN, not
-#     brick the repo (reference-transaction fires on EVERY ref update, not
-#     just main -- see the shim's own comment, below).
-#   Round 2: three instances of "we wrote the file" != "git runs it" --
-#     core.hooksPath, when set, is the ONLY place git looks (ignoring
-#     .git/hooks/ entirely); a lost +x bit is silently ignored by git on
-#     Unix; and the target path was interpolated unescaped into the shim,
-#     breakable by a checkout path containing `$`/backtick/`"`.
-#   Round 3: TWO more, both in HOW this installer answers "where does git
-#     look" -- a RELATIVE core.hooksPath resolves PER WORKTREE (breaking
-#     the shared-common-dir guarantee this installer otherwise relies on),
-#     and `git rev-parse --git-common-dir`'s own output is relative to the
-#     INVOKING DIRECTORY, not the worktree top, so joining it against
-#     repo_root computed the WRONG path when run from a subdirectory. Both
-#     closed the same way: stop re-deriving the answer and ask git for it
-#     directly. `git rev-parse --path-format=absolute --git-path hooks` is
-#     git's OWN resolution of "where does a hook file belong" -- already
-#     correct for core.hooksPath unset/relative/absolute, already correct
-#     from any invoking cwd, already correct per-worktree. This repo's own
-#     scripts/cr/install-cr-gate.sh and pr-check-context.sh already rely on
-#     `--path-format=absolute` unconditionally; matched here rather than
-#     hand-rolling a fourth variant of the same arithmetic.
-#   Round 4: `himmel-doctor`'s check_c32 used to `eval` a `target=...` line
-#     extracted from the installed hook file to learn the target path,
-#     gated on a marker comment that authenticates NOTHING (it's a comment,
-#     copyable by anyone) -- a hook carrying the marker plus a hostile
-#     `target=$(...)` executed arbitrary commands during a supposedly
-#     read-only doctor run. "Fixed" by carrying the target in a SECOND,
-#     literal comment form instead, read verbatim and never parsed as code.
-#   Round 5: that literal comment form was ITSELF a third hand-rolled
-#     representation of "embed this string, then read it back safely" -- and
-#     it broke the same way its predecessors did: an embedded NEWLINE byte
-#     in the checkout path (legal on POSIX filesystems) terminates the
-#     comment line early and injects a new line of shell into the file.
-#     Two rounds of "make this specific embedding safe" is the signature of
-#     patching a SHAPE rather than removing the shape's reason to exist.
-#     There IS a representation of one string with no escaping question at
-#     all here: `git config`. Git's own config subsystem already solves
-#     "store an arbitrary byte string associated with this repo, retrieve
-#     it exactly" -- newlines, quotes, `$`, backticks, none of it needs any
-#     escaping WE write, because `git config --local <key> <value>` and
-#     `git config --local --get <key>` round-trip the value exactly via
-#     git's own tested reader/writer, shared automatically across every
-#     linked worktree (proven empirically: set from one worktree, read back
-#     byte-identical from another, including a value containing a literal
-#     embedded newline). So: the check-script path now lives in EXACTLY ONE
-#     place, `git config --local himmel-main-ref.target <path>`, set once by
-#     this installer. The generated shim is now fully STATIC -- the same
-#     bytes for every install, everywhere, with NO per-checkout
-#     interpolation of the path at all -- and reads the value back the same
-#     way at hook-run time. `himmel-doctor`'s check_c32 reads it the exact
-#     same way. Nothing is ever parsed out of the hook FILE's content beyond
-#     the marker-presence check; there is no third format left to get wrong.
-#   Round 6: TWO more, both about the worktree-coverage loop this installer
-#     added in round 3. First, that loop only ran when THIS invocation's own
-#     core.hooksPath read as relative -- but `extensions.worktreeConfig`
-#     lets any ONE worktree override core.hooksPath independently, so
-#     "usually shared" was never the same fact as "always shared"; fixed by
-#     dropping the classification and always enumerating every worktree,
-#     resolving each one's own hooks directory independently. Second: the
-#     enumeration itself parsed `git worktree list --porcelain`'s
-#     newline-delimited output line-by-line -- the SAME "an embedded newline
-#     in a path breaks plain-text parsing" lesson round 5 had JUST designed
-#     out of the target path, reappearing one line later on the worktree
-#     PATH itself. Fixed with `--porcelain -z` (NUL-terminated fields) read
-#     via `read -r -d ''`, fed by process substitution rather than captured
-#     into a variable first (a captured `$(cmd -z)` truncates at the first
-#     NUL byte -- bash cannot store one in a variable).
-#   Round 7: TWO more, both "partial coverage reported as exit 0". First
-#     (panel round 6): the per-worktree loop above could fail SOME locations
-#     and still `exit 0` if at least one succeeded -- a caller checking only
-#     the exit code could not tell full coverage from partial. Fixed:
-#     `fail_count > 0` now exits non-zero (successful installs are still
-#     KEPT, there is no rollback). Second (panel round 8): the SEPARATE
-#     fallback below -- when enumeration itself fails and this script can
-#     install only into the current worktree -- had the exact same property
-#     and the round-6 fix did not reach it: a successful single-worktree
-#     install still reported exit 0 even though this script has no idea
-#     whether OTHER worktrees exist and are left uncovered. Fixed the same
-#     way: that path now forces a non-zero exit (`enumeration_failed`)
-#     regardless of whether its own single install succeeded.
+# DESIGN RULE: writing a file that LOOKS like protection is not protection, and
+# re-deriving either "where does git look" or "how do I safely embed one string
+# in another" keeps re-opening the gap. So:
+#   - The shim fails OPEN on its own broken target: reference-transaction fires
+#     on EVERY ref update, not just main, so a broken shim must not brick the
+#     repo (see the shim's own comment, below).
+#   - "We wrote the file" != "git runs it": core.hooksPath, when set, is the
+#     ONLY place git looks (.git/hooks/ is ignored entirely), and git silently
+#     ignores a hook that lost its +x bit.
+#   - Ask git where a hook belongs instead of computing it:
+#     `git rev-parse --path-format=absolute --git-path hooks` is git's OWN
+#     resolution, correct for core.hooksPath unset/relative/absolute, from any
+#     invoking cwd, per worktree. (A RELATIVE core.hooksPath resolves PER
+#     WORKTREE, and `--git-common-dir` is relative to the INVOKING DIRECTORY,
+#     so joining it against repo_root gives the WRONG path from a subdirectory.)
+#     scripts/cr/install-cr-gate.sh and pr-check-context.sh rely on
+#     `--path-format=absolute` the same way.
+#   - himmel-doctor's check_c32 never `eval`s anything extracted from the hook
+#     file: a marker comment authenticates NOTHING (anyone can copy it), so a
+#     hostile `target=$(...)` line would run during a read-only doctor run.
+#   - The check-script path is never embedded in the hook file at all (any
+#     embedding is a hand-rolled escaping scheme; an embedded NEWLINE byte,
+#     legal in a POSIX path, terminates a comment line and injects shell). It
+#     lives in EXACTLY ONE place, `git config --local himmel-main-ref.target
+#     <path>`, set once by this installer and shared by every linked worktree.
+#     git's own reader/writer round-trips any byte string exactly, newlines,
+#     quotes, `$` and backticks included. The generated shim is fully STATIC
+#     (the same bytes for every install, NO per-checkout interpolation) and
+#     reads the value back the same way at hook-run time, as does check_c32.
+#     Nothing is parsed out of the hook FILE beyond the marker-presence check.
+#   - Worktree coverage: `extensions.worktreeConfig` lets any ONE worktree
+#     override core.hooksPath independently, so "usually shared" is not "always
+#     shared"; the installer always enumerates every worktree and resolves each
+#     one's own hooks directory. The enumeration uses `--porcelain -z`
+#     (NUL-terminated, since a worktree PATH may contain a newline) read via
+#     `read -r -d ''` fed by process substitution, not captured into a variable
+#     first (a captured `$(cmd -z)` truncates at the first NUL byte; bash cannot
+#     store one in a variable).
+#   - Partial coverage never reports exit 0: `fail_count > 0` exits non-zero
+#     (successful installs are still KEPT, there is no rollback), and the
+#     fallback below -- when enumeration itself fails and only the current
+#     worktree can be installed -- forces a non-zero exit (`enumeration_failed`)
+#     even if its own single install succeeded, because other worktrees may
+#     exist and be left uncovered.
 #
 # GIT VERSION: every `--path-format=absolute` call below (there are three:
 # the per-worktree loop, and the single-worktree fallback) needs git >=
@@ -169,7 +128,7 @@ git rev-parse --show-toplevel >/dev/null 2>&1 || {
     exit 2
 }
 
-# THE single authoritative value (round 5 above): stored ONCE via git
+# THE single authoritative value (see DESIGN RULE above): stored ONCE via git
 # config, shared automatically by every linked worktree of this repo
 # (`--local` writes the shared repo config, not a per-worktree override --
 # proven empirically; `extensions.worktreeConfig` does not change this
@@ -182,7 +141,7 @@ if ! git config --local himmel-main-ref.target "$check_script"; then
 fi
 
 # install_one_hook HOOK_PATH -- idempotent single-location installer for the
-# STATIC shim (see round 5 above: no per-checkout data is interpolated into
+# STATIC shim (see DESIGN RULE above: no per-checkout data is interpolated into
 # it at all, so the same bytes are written everywhere). Prints its own
 # diagnostics; returns 0 on success, nonzero on failure (a foreign hook
 # already there, or a write/chmod failure).
@@ -299,7 +258,7 @@ HOOK
 
 # ALWAYS enumerate and resolve EVERY EXISTING linked worktree individually
 # -- never assume core.hooksPath is shared just because THIS invocation's
-# own value is unset or absolute (panel round 4, codex-1): `extensions.
+# own value is unset or absolute: `extensions.
 # worktreeConfig` lets any ONE worktree override core.hooksPath
 # independently of the others, so "usually shared" is not the same fact as
 # "always shared" -- this is a security guard, and an earlier version's
@@ -325,12 +284,12 @@ ok_count=0
 fail_count=0
 enumeration_failed=0
 
-# `-z` (panel round 4, codex-2): plain `git worktree list --porcelain`
+# `-z`: plain `git worktree list --porcelain`
 # newline-delimited output treats a worktree path that itself contains a
 # literal newline byte (legal on POSIX filesystems) as if it ended at that
 # newline -- the SAME "parse structured git output as plain text and get
-# bitten by an embedded newline" lesson this ticket already designed OUT of
-# the target path (round 5), now reappearing on the enumeration side. `-z`
+# bitten by an embedded newline" lesson the DESIGN RULE above designs OUT of
+# the target path, reappearing on the enumeration side. `-z`
 # NUL-terminates each field instead, so `read -r -d ''` below reads a
 # worktree path's embedded newline as ordinary path content rather than a
 # field boundary. Fed via process substitution, NOT captured into a
@@ -391,7 +350,7 @@ if [ "$ok_count" -eq 0 ] && [ "$fail_count" -eq 0 ]; then
     # support, or some other failure) -- fall back to installing only into
     # this worktree, so a genuine enumeration failure still leaves SOME
     # protection rather than none. This is ITSELF the partial-coverage case
-    # (panel round 8, codex-2): enumeration failing means this script has
+    # Enumeration failing means this script has
     # NO IDEA whether other worktrees exist, so even a successful install
     # here can only ever mean "this one location is covered" -- never
     # "every location is covered". Recorded via enumeration_failed, not
@@ -423,7 +382,7 @@ if [ "$ok_count" -eq 0 ]; then
     exit 2
 fi
 if [ "$fail_count" -gt 0 ]; then
-    # Partial failure (panel round 6, codex-2): some location(s) DID get the
+    # Partial failure: some location(s) DID get the
     # guard installed -- those are kept, there is no rollback -- but a
     # caller that only checks this script's exit code must be able to tell
     # "every location is protected" apart from "some are, some are not".

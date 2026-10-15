@@ -1,13 +1,13 @@
 ﻿# claude-stub.ps1 — Windows twin of claude-stub.sh: a deterministic `claude`
-# stand-in for crystallize-note.ps1 tests (HIMMEL-576). Pointed at via
+# stand-in for crystallize-note.ps1 tests. Pointed at via
 # CRYSTALLIZE_CLAUDE_BIN so the suite stays hermetic (no model call / network).
 #
 # STUB_MODE (default success): success edits the note ($CRYSTALLIZE_NOTE) —
 # rewrites the Summary body, preserving all frontmatter; the crystallized flag is
-# owned by crystallize-note.ps1 (set from the body diff, HIMMEL-590 T1d), NOT
+# owned by crystallize-note.ps1 (set from the body diff), NOT
 # here. fail exits 7 without writing; noop exits 0 without writing; slow sleeps 1s
 # THEN behaves as success (detach timing); corrupt overwrites the note with a
-# truncated fragment (half-applied edit, refresh loss-proofing, HIMMEL-663).
+# truncated fragment (half-applied edit, refresh loss-proofing).
 # Touches $CRYSTALLIZE_MARKER on
 # invocation (after the slow sleep) and dumps the recursion-guard env vars to
 # $CRYSTALLIZE_ENV_DUMP. When $CRYSTALLIZE_ARGV_DUMP is set, records cwd + every

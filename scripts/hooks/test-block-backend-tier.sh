@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/block-backend-tier.sh (HIMMEL-400).
+# Smoke test for scripts/hooks/block-backend-tier.sh.
 #
 # Covers:
 #   - All original Jira test cases (1:1 migration from test-block-mcp-when-plugin-exists.sh)
@@ -81,7 +81,7 @@ STUB_EMPTY="$TMPDIR_TEST/cli-empty.js"
 STUB_TRANS_ONLY="$TMPDIR_TEST/cli-transitions-only.js"
 make_stub "$STUB_TRANS_ONLY" get transitions
 
-# Confluence CLI stub (HIMMEL-437). Page verbs are MULTI-WORD ("page get") and
+# Confluence CLI stub. Page verbs are MULTI-WORD ("page get") and
 # MUST be passed quoted so make_stub emits them as single lines — this is what
 # exercises the introspection strip fix (CR/LF/TAB stripped, internal space kept).
 STUB_CONF="$TMPDIR_TEST/cli-confluence.js"
@@ -417,7 +417,7 @@ case "$out_no_api" in
 esac
 
 # ============================================================================
-# 3. CONFLUENCE ROUTING (HIMMEL-437) — two services share the Atlassian prefix
+# 3. CONFLUENCE ROUTING — two services share the Atlassian prefix
 # ============================================================================
 
 echo ""
@@ -437,7 +437,7 @@ run_case_conf() {
 }
 
 # Registry FILE that includes BOTH atlassian services (mirrors the real
-# scripts/backends.json after HIMMEL-437). Exercises the registry-file path —
+# scripts/backends.json). Exercises the registry-file path —
 # the one that actually runs in production — not just the code-defaults path.
 REG_ATLASSIAN_BOTH="$TMPDIR_TEST/reg-atlassian-both.json"
 write_registry "$REG_ATLASSIAN_BOTH" "{
@@ -503,7 +503,7 @@ rc=$(printf '%s' '{"tool_name":"mcp__plugin_atlassian_atlassian__getJiraIssue","
 assert_rc "registry-file path: block getJiraIssue (jira not shadowed by confluence)" 2 "$rc"
 
 # ============================================================================
-# 4. VERDICT EQUALITY ACROSS CHECKOUTS (HIMMEL-2237)
+# 4. VERDICT EQUALITY ACROSS CHECKOUTS
 # ============================================================================
 #
 # The property that was missing: for the SAME payload, this hook must return

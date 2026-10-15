@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/hooks/refresh-statusline-caches-periodic.sh — keep the statusline
-# caches warm OFF the render path (HIMMEL-718 Task 3.2).
+# caches warm OFF the render path.
 #
 # WHY: the spawn-free hud composer (scripts/statusline/hud-custom-lines.sh) and
 # the now cache-only where-are-we segment READ pre-computed caches but never
@@ -143,7 +143,7 @@ if command -v rebuild_all_sessions_index >/dev/null 2>&1 \
         # Narrowly scoped — "$lock" is always "$index_file.lock" under $econ_dir.
         rmdir "$lock" 2>/dev/null || rm -rf "$lock" 2>/dev/null || true
     }
-    # Spawn-free lock heartbeat (HIMMEL-1300). Passed to the rebuild via the
+    # Spawn-free lock heartbeat. Passed to the rebuild via the
     # `command -v _hud_rb_heartbeat` seam in all-sessions-index.sh, which calls
     # it once per transcript. `printf` + redirect are builtins — no touch(1)
     # fork in the per-file hot path. It stamps a SEPARATE file rather than
@@ -158,7 +158,7 @@ if command -v rebuild_all_sessions_index >/dev/null 2>&1 \
     # behind — the rebuild's mktemps (registered by the lib in
     # $_HUD_RB_TMPFILES) plus the two `.$$.tmp` staging files the atomic
     # publish uses. The lib is SOURCED, so `$$` is this process and the staging
-    # names match (HIMMEL-1300 R3-4).
+    # names match.
     _econ_cleanup() {
         rm -f "${index_file}.$$.tmp" "${cache_file}.$$.tmp" 2>/dev/null || true
         command -v _hud_rb_rmtemps >/dev/null 2>&1 && _hud_rb_rmtemps
@@ -186,7 +186,7 @@ if command -v rebuild_all_sessions_index >/dev/null 2>&1 \
         exit 0
     }
   if ! _cache_fresh "$cache_file" "${HIMMEL_STATUSLINE_REFRESH_TTL:-30}"; then
-    # Reap a leaked lock. HIMMEL-1300 R3-4: a hook timeout-kill never reaches
+    # Reap a leaked lock. A hook timeout-kill never reaches
     # the release below, and while the index heals a kill is the NORMAL
     # termination mode — so with only the 300s age threshold EVERY overrun
     # leaked the lock and any session started within the next 5 minutes skipped
@@ -222,7 +222,7 @@ if command -v rebuild_all_sessions_index >/dev/null 2>&1 \
             [ "$(( $(date +%s) - lock_mtime ))" -gt 300 ] && lock_stale=1
         fi
         if [ "$lock_stale" -eq 1 ]; then
-            # Own-or-lose reap (HIMMEL-1327). The old `[ stale ] && _econ_release_lock`
+            # Own-or-lose reap. The old `[ stale ] && _econ_release_lock`
             # raced a concurrent refresher: two hooks that both classified the same
             # lock stale would both release it; A then mkdir'd a FRESH lock, but B
             # (still holding its stale verdict) ran its own release and deleted A's

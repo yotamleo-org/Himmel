@@ -168,6 +168,8 @@ slash alias exists).
 | luna-vitals-extract (obsidian-triage) | Backfill salus health series for one vault time-bucket — extracts (date, metric, value) tuples via the luna-vitals CLI + an LLM prose pass, writing one per-bucket review artifact. Single-writer; never writes 50-Vitals/ directly. |
 | /grow-feed-log (obsidian-triage) | Extract a grow-tent feed/watering (free-form text, e.g. "added 5L + 2 caps to the mint") or a bare nutrient-label photo from a Telegram-shaped message and append it to the vault's `20-Areas/Grow/Grow-Feeding-Log.md` — a feed row to `## Log`, a new product to `## Products`. LLM-first (no rigid command grammar); idempotent per message-id; append-only. Telegram routing is LUNA-127 (separate, out of scope). Slash alias + dispatchable skill (LUNA-130). |
 
+The long skills above (`vm`, `memory-compound`, `luna-ingest`) keep a short core `SKILL.md` and load their detail on demand from a `references/` directory next to it (`obsidian-triage/references/luna-ingest/` for `luna-ingest`).
+
 ## Utility
 
 | Command | Description | Notes |

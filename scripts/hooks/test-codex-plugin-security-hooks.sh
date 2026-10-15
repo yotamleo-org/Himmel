@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test (HIMMEL-589): the two plugin-delivered SECURITY guards
+# Regression test: the two plugin-delivered SECURITY guards
 # (block-docker-privesc.sh, block-merged-pr-commit.sh) must FIRE under Codex.
 #
 # Background. Both guards ship via the himmel-ops plugin hooks.json with a

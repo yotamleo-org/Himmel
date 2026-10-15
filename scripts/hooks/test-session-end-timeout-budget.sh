@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-session-end-timeout-budget.sh — SessionEnd fits the codex 3 s clamp (HIMMEL-2492).
+# test-session-end-timeout-budget.sh — SessionEnd fits the codex 3 s clamp.
 #
 # WHY: codex-cli 0.153 hard-clamps SessionEnd hook timeouts to 3 s and prints
 #   ⚠ clamping SessionEnd hook timeout to 3s in <cache>/himmel-ops/<ver>/hooks/hooks.json
@@ -8,7 +8,7 @@
 # codex session. The noise is the visible half; the load-bearing half is that a
 # SessionEnd hook needing more than 3 s is KILLED mid-flight under the codex
 # lane — on Windows the launch chain alone (bash -l -> node -> script) measures
-# 0.6-3 s under load (HIMMEL-2480), the same silent-no-run class as HIMMEL-2148.
+# 0.6-3 s under load, the same silent-no-run class.
 #
 # So the declaration and the behaviour both have to hold, and each is vacuous
 # without the other — a 3 s declaration over a 10 s command still gets killed,
@@ -22,7 +22,7 @@
 #      the REAL hook scripts with a real SessionEnd payload, returns in under
 #      3 s while a 10 s delay is injected into the detached child body. The
 #      delay is the negative control: it is invisible to the parent ONLY
-#      because the hook full-body detaches (HIMMEL-636/661), so a regression
+#      because the hook full-body detaches, so a regression
 #      that un-detaches one runs those 10 s in the foreground and fails here.
 #   4. BEHAVIOUR (structure) — every SessionEnd hook script carries the
 #      full-body `__himmel_detached` re-exec guard. Case 3 can only inject its
@@ -37,7 +37,7 @@
 # Both config files are core himmel files that live beside this suite: a
 # missing one FAILs, it is never SKIPped, and cases 3/4 additionally FAIL if
 # they enumerate zero SessionEnd commands/scripts — an emptied, truncated or
-# malformed config must never read as a vacuous green (CR round 1, HIMMEL-2492).
+# malformed config must never read as a vacuous green.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+, incl. Git Bash on Windows. No
 # .ps1 twin — project convention for a test harness (see T15 in
@@ -76,10 +76,10 @@ fail() { FAILED=$((FAILED + 1)); printf '  FAIL %s\n' "$1" >&2; }
 
 # --- Cases 1 + 2: declared SessionEnd timeouts are within the clamp ----------
 # A missing timeout is NOT accepted: bench-hook-stack.test.mjs requires an
-# explicit timeout on every command hook (HIMMEL-1985), so "omit it" would trade
+# explicit timeout on every command hook, so "omit it" would trade
 # this red for that one.
 #
-# codex-1 (CR round 5): valid means a POSITIVE INTEGER no greater than the
+# codex-1: valid means a POSITIVE INTEGER no greater than the
 # clamp, not merely "<= clamp" — the prior predicate only rejected non-numbers
 # and values above the clamp, so 0 / -1 / 2.5 all read as fine. This is a
 # RANGE check, deliberately not the closed tier set bench-hook-stack.test.mjs
@@ -106,7 +106,7 @@ assert_declared_within_clamp() {
     # `if` treats that as failure), falling through past the "found $n" fail
     # and into the offenders jq below — which fails the same way, so
     # `[ -z "$offenders" ]` is true and a MALFORMED config reports `pass`
-    # (CR round 2, HIMMEL-2492). Catch the parse failure explicitly, distinct
+    # . Catch the parse failure explicitly, distinct
     # from the well-formed-but-empty case.
     if [ "$n_rc" -ne 0 ] || ! grep -qE '^[0-9]+$' <<<"$n"; then
         fail "$label: $config did not parse as valid JSON (jq exit $n_rc)"
@@ -120,7 +120,7 @@ assert_declared_within_clamp() {
     # the clamp. `or` short-circuits in jq, so a non-number never reaches the
     # `floor`/`<`/`>` comparisons that assume a number.
     #
-    # codex-3 (CR round 5): render the timeout's ACTUAL value for a
+    # codex-3: render the timeout's ACTUAL value for a
     # present-but-invalid entry — `.timeout // "unset"` treated `false` as
     # empty and reported it as "unset", hiding the real invalid value even
     # though the entry was still correctly rejected. Reserve "unset" for a
@@ -150,7 +150,7 @@ if [ -z "$_TIMEOUT_BIN" ]; then
     echo "SKIP session-end-command-budget (no GNU coreutils timeout on this runner)"
 else
     # Pin the shape of $T before arming any trap or touching the filesystem
-    # with it (HIMMEL-2518): this script runs under `set -uo pipefail` without
+    # with it: this script runs under `set -uo pipefail` without
     # `set -e`, so an mktemp failure alone would NOT abort — T would go on to
     # be used empty, turning "mkdir -p $T/repo" into "mkdir -p /repo" and the
     # EXIT trap into `rm -rf /`. Check the result and the shape FIRST; only a
@@ -165,8 +165,8 @@ else
         fail "session-end-command-budget: mktemp -d did not return a usable absolute scratch directory (got '${T:-<empty>}')"
     else
         trap 'rm -rf "$T"' EXIT
-        # codex-2 (CR round 5): this file deliberately runs without `set -e`
-        # (round 1's rationale for $T applies here too), so an unchecked
+        # codex-2: this file deliberately runs without `set -e`
+        # (same rationale as for $T), so an unchecked
         # fixture write lets the loop below proceed against missing/partial
         # inputs — the hooks then short-circuit on absent inputs and STILL
         # measure fast, so case 3 passes on a fixture that never existed.
@@ -281,7 +281,7 @@ fi
 # --- Case 4: every SessionEnd hook script full-body detaches -----------------
 # The structural counterpart to case 3, and the one that covers a script with no
 # delay seam to inject. `__himmel_detached` is the repo-wide marker for the
-# re-exec guard (HIMMEL-636/661).
+# re-exec guard.
 #
 # codex-3: match the GUARD SHAPE, not the bare token — all three scripts also
 # name `__himmel_detached` in header comments, so a bare `grep -q
@@ -290,7 +290,7 @@ fi
 # backstop. This pattern is anchored on the actual re-exec-guard comparison
 # every script carries: `if [ "${1:-}" != "__himmel_detached" ]; then`.
 #
-# codex-2 (CR round 3): anchor on the `if` keyword too, not just the
+# codex-2: anchor on the `if` keyword too, not just the
 # comparison shape — a line commented out as
 # `# if [ "${1:-}" != "__himmel_detached" ]; then` still matched the prior
 # pattern (verified directly: `grep -c` on a comment-only fixture returned 1),
@@ -300,7 +300,7 @@ fi
 GUARD_SHAPE_PATTERN='^[[:space:]]*if[[:space:]].*"\$\{1:-\}"[[:space:]]*!=[[:space:]]*"__himmel_detached"'
 
 tested_scripts=0
-# codex-1 (CR round 3): the basenames case 4 actually checked above, so the
+# codex-1: the basenames case 4 actually checked above, so the
 # coverage assertion below can tell a codex-only script apart from one this
 # loop already vouched for. Padded with a leading/trailing newline so the
 # `case` membership test below can match on a whole-name boundary.
@@ -327,7 +327,7 @@ else
     pass "session-end-detach-guard: checked $tested_scripts SessionEnd hook script(s), not zero"
 fi
 
-# --- codex-1 (CR round 3): the codex twin is wired, not just declared --------
+# --- codex-1: the codex twin is wired, not just declared --------
 # Case 2 checks .codex/hooks.json's declared *timeout*; nothing above checked
 # that the scripts it wires are actually covered by the detach-guard loop just
 # above. A codex-only SessionEnd hook could declare `timeout: 3` and pass
@@ -342,7 +342,7 @@ fi
 # naming the gap, rather than letting it pass in silence — so a future
 # codex-only SessionEnd hook cannot slip past this suite unnoticed.
 if [ -f "$CODEX_HOOKS" ]; then
-    # codex-4 (CR round 4): the extraction below can legitimately yield zero
+    # codex-4: the extraction below can legitimately yield zero
     # lines only if $CODEX_HOOKS declares zero SessionEnd command hooks — it
     # genuinely declares at least one today, so "extracted zero names" must
     # never read as `pass`. Derive the same declared-count jq case 2's
@@ -357,7 +357,7 @@ if [ -f "$CODEX_HOOKS" ]; then
     elif [ "$codex_declared_count" -lt 1 ]; then
         fail "codex session-end coverage: expected at least one SessionEnd command hook in $CODEX_HOOKS, found $codex_declared_count"
     else
-        # codex-2 (CR round 6): validate PER ENTRY, not globally. A single
+        # codex-2: validate PER ENTRY, not globally. A single
         # well-formed --lifecycle entry used to satisfy this whole check for
         # the file, so an ADDITIONAL SessionEnd command whose --lifecycle
         # operand is missing or differently shaped contributed zero names and

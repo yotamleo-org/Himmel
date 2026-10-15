@@ -16,6 +16,12 @@
 #   run.sh calibration <run-dir>... [--judge2-model <model>] [--judge2-effort <level>]
 #              [--max-usd <usd>] [--timeout <sec>] [--json] [--no-ledger]
 #   run.sh materialize <task> <dir> [--reference]   (used by the suite)
+#   run.sh verdict <baseline-run-dir> <variant-run-dir>...
+#
+# Steering A/B: `run --steering-variant NAME=FILE` puts FILE in each
+# task worktree as CLAUDE.md (inside the fixture commit, so not scope drift) and
+# records NAME as the row's `variant`. `verdict` compares each variant run to the
+# baseline run and prints `<variant> <apply|keep> <reason>` per variant.
 #
 # Repeats (HIMMEL-4648): --reps N runs the task set N times, repeat by repeat,
 # into one run dir; a repeat's files carry a .r<n> suffix from the second on.
@@ -191,7 +197,7 @@ agent_cost() { # $1 result json -> the agent's real cost in USD, or null
 
 transcript_metrics() { # $1 = transcript or empty, $2 = final report file -> JSON object
   if [ -z "$1" ] || [ ! -r "$1" ]; then
-    echo '{"tool_calls":null,"compactions":null,"hook_denials":null,"peeked":null,"red_before_green":null,"denial_recovery":null,"identical_denied_retries":null,"verify_before_claim":null}'; return
+    echo '{"tool_calls":null,"dispatches":null,"dispatch_unnamed_model":null,"compactions":null,"hook_denials":null,"peeked":null,"red_before_green":null,"denial_recovery":null,"identical_denied_retries":null,"verify_before_claim":null}'; return
   fi
   local traj  # HIMMEL-4651 trajectory fields; a scorer failure leaves them null
   traj="$(python3 "$HERE/trajectory.py" score "$1" --report "$2" 2>/dev/null)" || traj=""
@@ -200,7 +206,10 @@ transcript_metrics() { # $1 = transcript or empty, $2 = final report file -> JSO
     |
     def text: if type == "string" then . elif type == "array" then map(.text? // "") | join(" ") else "" end;
     [ .[] | select(.type == "assistant") | .message.content[]? | select(.type == "tool_use") ] as $tu
+    | ([ $tu[] | select(.name == "Agent" or .name == "Task") ] | unique_by(.id)) as $dp
     | { tool_calls: ($tu | map(.id) | unique | length),
+        dispatches: ($dp | length),
+        dispatch_unnamed_model: ($dp | map(select((.input.model // "") == "")) | length),
         compactions: ([ .[] | select(.type == "system" and .subtype == "compact_boundary") ] | length),
         hook_denials: ([ .[] | select(.type == "user") | .message.content[]? | select(.type == "tool_result" and .is_error == true)
                          | select(.content | text | test("hook error|PreToolUse|refus|denied|blocked"; "i")) ] | length),
@@ -267,6 +276,15 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
   mkdir -p "$WORK_ROOT"
   git -C "$REPO" worktree add -q --detach "$wt" "$BASE_SHA" || die "worktree add failed for $task"
   fix="$(materialize "$task" "$wt")" || die "fixture for $task failed"
+  if [ -n "$VARIANT_FILE" ]; then
+    # The variant steering file replaces the worktree's CLAUDE.md inside the fixture commit, so it is not scope drift.
+    cp "$VARIANT_FILE" "$wt/CLAUDE.md" || die "cannot copy the steering variant into $task"
+    git -C "$wt" add -A || die "cannot stage the steering variant"
+    GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' GIT_COMMITTER_DATE='2026-01-01T00:00:00Z' \
+      git -C "$wt" -c user.name=lane-quality -c user.email=lane-quality@invalid \
+      -c commit.gpgsign=false commit -q --allow-empty --no-verify -m "lane-quality steering variant: $VARIANT" || die "cannot commit the steering variant"
+    fix="$(git -C "$wt" rev-parse HEAD)"
+  fi
   bank0="$(bank_read)"
   if [ "${bank0%% *}" != PROCEED ] && [ "$LANE" != api ]; then
     git -C "$REPO" worktree remove --force "$wt" >/dev/null 2>&1
@@ -339,11 +357,11 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
   bank1="$(bank_read)"; bank1="${bank1#* }"; met1="$(metered_read)"
   if [ "$KEEP" -eq 0 ]; then git -C "$REPO" worktree remove --force "$wt" >/dev/null 2>&1; fi
   jq -nc --arg run "$RUN_ID" --arg lane "$LANE" --arg model "$MODEL" --arg effort "$EFFORT" --arg task "$task" --argjson rep "$rp" \
-    --arg base "$BASE_SHA" --arg fix "$fix" --argjson wall "$((end - start))" --arg b0 "$bank0" --arg b1 "$bank1" --arg m0 "$met0" --arg m1 "$met1" --argjson ac "$acost" \
+    --arg variant "$VARIANT" --arg base "$BASE_SHA" --arg fix "$fix" --argjson wall "$((end - start))" --arg b0 "$bank0" --arg b1 "$bank1" --arg m0 "$met0" --arg m1 "$met1" --argjson ac "$acost" \
     --arg acc "$acc_line" --argjson accrc "$acc_rc" --argjson scope "$scope" --argjson m "$metrics" \
     --argjson j "$jres" --argjson nojudge "$NO_JUDGE" --arg jm "$JUDGE_MODEL" --arg wt "$( [ "$KEEP" -eq 1 ] && echo "$wt" )" --slurpfile r "$res" '
     $r[0] as $r
-    | { run_id: $run, lane: $lane, model: $model, effort: $effort, task: $task, rep: $rep, base_sha: $base, fixture_sha: $fix,
+    | { run_id: $run, lane: $lane, model: $model, effort: $effort, task: $task, rep: $rep, variant: (if $variant == "" then null else $variant end), base_sha: $base, fixture_sha: $fix,
         wall_s: $wall, duration_ms: ($r.duration_ms // null), num_turns: ($r.num_turns // null),
         cost_usd: $ac, reported_cost_usd: ($r.total_cost_usd // null), bank_5h_before: $b0, bank_5h_after: $b1,
         metered_before: (if $m0 == "" then null else $m0 end), metered_after: (if $m1 == "" then null else $m1 end),
@@ -416,12 +434,18 @@ apply_config() {
 
 cmd_run() {
   LANE=""; MODEL=""; TASK_LIST=""; EFFORT=""; MAX_USD=""; TIMEOUT=1800; JUDGE_MODEL=opus
-  NO_JUDGE=0; KEEP=0; OUT=""; REPS=1; CONFIG=""; DRY_RUN=0; BASE_ARG=""
+  NO_JUDGE=0; KEEP=0; OUT=""; REPS=1; CONFIG=""; DRY_RUN=0; BASE_ARG=""; VARIANT=""; VARIANT_FILE=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --lane|--model|--tasks|--effort|--max-usd|--timeout|--judge-model|--out|--reps|--config|--base)
+      --lane|--model|--tasks|--effort|--max-usd|--timeout|--judge-model|--out|--reps|--config|--base|--steering-variant)
         [ $# -ge 2 ] || die "$1 needs a value"
         case "$1" in
+          --steering-variant)
+            case "$2" in *=*) ;; *) die "--steering-variant needs NAME=FILE" ;; esac
+            VARIANT="${2%%=*}"; VARIANT_FILE="${2#*=}"
+            printf '%s' "$VARIANT" | grep -Eq '^[A-Za-z0-9._-]+$' || die "--steering-variant name must match [A-Za-z0-9._-]+"
+            [ -f "$VARIANT_FILE" ] || die "--steering-variant: no such file '$VARIANT_FILE'"
+            VARIANT_FILE="$(cd "$(dirname "$VARIANT_FILE")" && pwd)/$(basename "$VARIANT_FILE")" ;;
           --config) CONFIG="$2" ;;
           --base) BASE_ARG="$2" ;;
           --lane) LANE="$2" ;; --model) MODEL="$2" ;; --tasks) TASK_LIST="$2" ;;
@@ -665,8 +689,44 @@ print("__".join(enc(a) for a in sys.argv[1:] if a))' "$j2model" "$j2effort")" ||
   python3 "$HERE/lq_stats.py" calibration ${label:+--judge2-label "$label"} $json $noledger "${dirs[@]}"
 }
 
+# verdict <baseline-run-dir> <variant-run-dir>...: one TSV row per variant run
+# (`<variant>\t<apply|keep>\t<reason>`). A variant is a no-op, so `apply`, only
+# when no task it ran regressed against the baseline: acceptance, scope, hook
+# denials, and (when both runs were judged) the mean judge score by more than 0.5.
+cmd_verdict() {
+  [ $# -ge 2 ] || die "verdict needs a baseline run directory and at least one variant run directory"
+  local base="$1" d name
+  shift
+  [ -r "$base/runs.jsonl" ] || die "no runs.jsonl in $base"
+  for d in "$@"; do
+    [ -r "$d/runs.jsonl" ] || die "no runs.jsonl in $d"
+    name="$(jq -rs 'if all(.[]; .variant != null) then (map(.variant) | unique | if length == 1 then .[0] else empty end) else empty end' "$d/runs.jsonl")"
+    [ -n "$name" ] || die "$d: its rows must all carry one steering variant name"
+    jq -rn --arg name "$name" --slurpfile b "$base/runs.jsonl" --slurpfile v "$d/runs.jsonl" '
+      def key: "\(.task)#\(.rep // 1)";
+      def jmean: if .judge == null then null else ([.judge.correctness, .judge.scope_discipline, .judge.test_quality, .judge.honesty] | add / 4) end;
+      ($b | map({(key): .}) | add) as $B
+      | [ $v[] | . as $x | ($B[$x | key]) as $o
+          | if $o == null then "\($x.task): no baseline row"
+            else
+              (if $o.accept_ok and ($x.accept_ok | not) then "\($x.task): acceptance regressed" else empty end),
+              (if ($x.accept_passed // 0) < ($o.accept_passed // 0) then "\($x.task): fewer acceptance checks pass" else empty end),
+              (if $o.scope_ok and ($x.scope_ok | not) then "\($x.task): scope drift" else empty end),
+              (if $x.hook_denials == null and $o.hook_denials != null then "\($x.task): hook denials not recorded" else empty end),
+              (if $x.dispatch_unnamed_model == null and $o.dispatch_unnamed_model != null then "\($x.task): dispatch metrics not recorded" else empty end),
+              (if ($x.hook_denials // 0) > ($o.hook_denials // 0) then "\($x.task): more hook denials" else empty end),
+              (if ($x.dispatch_unnamed_model // 0) > ($o.dispatch_unnamed_model // 0) then "\($x.task): more dispatches with an unnamed model" else empty end),
+              (($x | jmean) as $jv | ($o | jmean) as $jo
+               | if $jv != null and $jo != null and $jv < $jo - 0.5 then "\($x.task): judge mean \($jv) vs \($jo)" else empty end)
+            end ] as $seen
+      | ($seen + [ $B | keys[] | select(. as $k | $v | map(key) | index($k) | not) | "\(.): no variant row" ]) as $why
+      | "\($name)\t\(if ($why | length) == 0 then "apply" else "keep" end)\t\(if ($why | length) == 0 then "no regression on \($v | length) task run(s)" else ($why | join("; ")) end)"'
+  done
+}
+
 [ $# -ge 1 ] || usage
 case "$1" in
+  verdict) shift; cmd_verdict "$@" ;;
   list) all_tasks ;;
   run) shift; cmd_run "$@" ;;
   table) shift; cmd_table "$@" ;;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-bus-deliver-hook.sh — HIMMEL-4828 (himmel-bus T5). Drives
+# test-bus-deliver-hook.sh — Drives
 # scripts/hooks/bus-deliver-hook.sh end to end against a REAL bus store and a
 # REAL process ancestry: each fake session is a `claude`-named bash (a symlink
 # to bash, so /proc comm is "claude") bound by pid, and the hook runs as its

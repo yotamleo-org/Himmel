@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# HIMMEL-3396: HIMMEL_HOOK_INTEGRITY_BYPASS_OK is honoured by the two
-# command-text fences of block-glm-external-writes.sh (the HIMMEL-2085 pin-dir
-# fence and the HIMMEL-2528 anchor fence) only where HIMMEL-3384 honours it for
-# the launcher: session cwd inside CLAUDE_PROJECT_DIR, the session's RECORDED repo
+# HIMMEL_HOOK_INTEGRITY_BYPASS_OK is honoured by the two
+# command-text fences of block-glm-external-writes.sh (the pin-dir fence and the
+# anchor fence) only where the launcher honours it: session cwd inside
+# CLAUDE_PROJECT_DIR, the session's RECORDED repo
 # lists that directory as a LINKED worktree, the hook script resolves inside it,
 # and the use is audited. Everything else keeps both fences ON.
 #
@@ -18,7 +18,7 @@ HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK_SRC="$HOOKS_DIR/block-glm-external-writes.sh"
 
 # A console leg's shell exports guard overrides; clear them so a case that means
-# "override UNSET" is not flipped (HIMMEL-3092). Cases set what they need.
+# "override UNSET" is not flipped. Cases set what they need.
 # shellcheck source=../lib/override-env.sh
 # shellcheck disable=SC1091
 . "$HOOKS_DIR/../lib/override-env.sh"
@@ -46,9 +46,7 @@ git_t() { git -c user.email=t@t -c user.name=t "$@"; }
 # is right. Stock macOS ships no `timeout`, so on such a host every honoured-bypass
 # row would see a refusal. Give the suite a bounded stand-in on PATH there; the
 # "timeout missing from PATH" row below still builds its own scratch PATH without it.
-# ponytail: the stand-in supports only `timeout <secs> cmd...` and exits 143 (not 124)
-# on expiry, which is all the hook reads; swap for coreutils gtimeout once the macOS
-# runners install it (HIMMEL-3699).
+# ponytail: stand-in handles only `timeout <secs> cmd...`, exits 143 (not 124) on expiry; HIMMEL-3699 swaps in coreutils gtimeout once macOS runners install it.
 if ! command -v timeout >/dev/null 2>&1; then
   TSHIM="$T/tshim"
   mkdir -p "$TSHIM"

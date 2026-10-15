@@ -161,7 +161,7 @@ async function loadVm() {
     if (gen !== vmLoadGen) return;
     state.vm = r.ok ? { data: j, error: null, draft: vmDraft(j) } : { data: null, error: j.error || `vm setting failed (${r.status})` };
   } catch (_) { if (gen !== vmLoadGen) return; state.vm = { data: null, error: "vm setting: server unreachable" }; }
-  if (currentPage.id === "config") paint();
+  if (currentPage.id === "config" && feed) paint();
 }
 let vmSaving = false; // one save at a time: an older reply landing last must not overwrite a newer setting
 async function saveVm() {

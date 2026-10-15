@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/block-rogue-claude-schedule.sh (HIMMEL-647).
+# Smoke test for scripts/hooks/block-rogue-claude-schedule.sh.
 #
 # Usage: bash scripts/hooks/test-block-rogue-claude-schedule.sh
 #
@@ -37,7 +37,7 @@ assert_rc() {
 j_bash()  { printf '{"tool_name":"Bash","tool_input":{"command":%s}}'  "$(printf '%s' "$1" | jq -Rs .)"; }
 j_pwsh()  { printf '{"tool_name":"PowerShell","tool_input":{"command":%s}}' "$(printf '%s' "$1" | jq -Rs .)"; }
 
-# The actual HIMMEL-647 incident: a single PowerShell call that wrote a claude
+# The actual incident: a single PowerShell call that wrote a claude
 # launcher .bat AND registered it with schtasks /create — no cd, fires from
 # System32. (Literal PowerShell text — the $claude is intentionally unexpanded.)
 # shellcheck disable=SC2016
@@ -74,7 +74,7 @@ assert_rc "schtasks /create backup of .claude"    0 "$(run_case "$(j_bash 'schta
 assert_rc "sanctioned schedule-resume.sh"         0 "$(run_case "$(j_bash 'bash scripts/handover/schedule-resume.sh --time 04:30 --handover /c/h.md')")"
 assert_rc "non-Bash/PS tool ignored"              0 "$(run_case '{"tool_name":"Read","tool_input":{"file_path":"x"}}')"
 
-# --- HIMMEL-1741 per-check equivalence corpus ---
+# --- per-check equivalence corpus ---
 # The `printf | grep -qE` fork pairs in the allow short-circuit,
 # is_scheduler_create() and launches_claude() moved to the bash builtin
 # `[[ =~ ]]` / `[[ == *glob* ]]`. Both engines are POSIX ERE, but they are

@@ -19,7 +19,7 @@ function setup_commits {
     return $r
 }
 
-# backfilled_tag_commits -- Finding-2 repro (HIMMEL-2250 CR): a backfilled
+# backfilled_tag_commits -- Finding-2 repro: a backfilled
 # ANNOTATED tag on an OLDER commit gets a newer creatordate than a
 # lightweight tag on a NEWER commit; `--sort=-creatordate` would order it
 # first and compute the `<prev>..<tag>` ranges against the wrong predecessor.
@@ -51,7 +51,7 @@ function run_test {
     }
 }
 
-# tag_commits — HIMMEL-2250 version-tag-grouping fixture: chore/feat before
+# tag_commits — version-tag-grouping fixture: chore/feat before
 # v0.1.0, a fix after it, a non-version tag that must not become a section,
 # then a newest feat. Mirrors the fixture in the ticket brief.
 function tag_commits {
@@ -117,7 +117,7 @@ run_test "output is end-of-file-fixer clean (LF, single trailing newline)" {
 
 # ---------------------------------------------------------------------------
 # Test 5: tagless repo -> single Unreleased section (no churn on the pre-
-# HIMMEL-2250 shape)
+# tag-grouping shape)
 # ---------------------------------------------------------------------------
 run_test "tagless repo produces a single Unreleased section" {
     $r = setup_commits
@@ -200,7 +200,7 @@ run_test "--check exits 1 when CHANGELOG.md is stale" {
 }
 
 # ---------------------------------------------------------------------------
-# Test 11-13: CR-round regression cases (HIMMEL-2250 findings 1, 2, 4)
+# Test 11-13: regression cases
 # ---------------------------------------------------------------------------
 run_test "--check reports the true entry count when a new commit opens a new section" {
     $r = setup_commits
@@ -274,8 +274,8 @@ run_test "pre-release tag (v0.1.0-rc.1) DOES get a changelog section" {
 }
 
 # ---------------------------------------------------------------------------
-# Test 19-20: CR round 3 -- misleading-zero drift message + same-commit tag
-# tie-break (HIMMEL-2250 findings 1, 2)
+# Test 19-20: misleading-zero drift message + same-commit tag
+# tie-break
 # ---------------------------------------------------------------------------
 run_test "tag-only drift (no new commits) reports true staleness, not a misleading zero count" {
     $r = setup_commits
@@ -346,7 +346,7 @@ run_test "--check byte comparison: non-ASCII is CURRENT when byte-identical, STA
 
 # ---------------------------------------------------------------------------
 # Test 18: git-log subprocess capture must decode non-ASCII as UTF-8, not the
-# console's legacy OEM codepage (HIMMEL-2250 CR round 2: this is the actual
+# console's legacy OEM codepage (this is the actual
 # root cause behind a 437-vs-1 --check count divergence found on a real repo
 # -- PowerShell was mis-decoding every commit subject with an em dash/arrow
 # on capture, corrupting both the written CHANGELOG.md content and the

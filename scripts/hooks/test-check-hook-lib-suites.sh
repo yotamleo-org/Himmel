@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-hook-lib-suites.sh (HIMMEL-1578).
+# Smoke test for scripts/hooks/check-hook-lib-suites.sh.
 #
 # Builds throwaway git repos carrying fixture node:test suites, exercises each
 # rc case, asserts exact rc. Usage: bash scripts/hooks/test-check-hook-lib-suites.sh
 #
 # Exit 0 if all cases pass, 1 otherwise.
 #
-# WHY THIS EXISTS, and why it is NOT circular. HIMMEL-1578 is a ticket about
+# WHY THIS EXISTS, and why it is NOT circular. The motivating problem is
 # guards that nobody runs. check-hook-lib-suites.sh is itself a guard, and it
 # would have shipped with zero automated coverage. This suite is discovered
 # automatically by scripts/ci/run-shell-tests.sh (`**/test-*.sh`), which the
@@ -62,7 +62,7 @@ setup_repo() {
   # exiting aborts THAT case (run_test records a FAIL) without killing the run.
   # A broken fixture must fail its case, never proceed — with `set -uo pipefail`
   # and no `-e`, an empty $R would turn the mkdir below into `/scripts/hooks`,
-  # i.e. a write at filesystem root (CodeRabbit, round 2).
+  # i.e. a write at filesystem root.
   R=$(mktemp -d "$TMPROOT/repo.XXXXXX") || { echo "setup_repo: mktemp failed" >&2; exit 1; }
   git -C "$R" init -q || { echo "setup_repo: git init failed in $R" >&2; exit 1; }
   git -C "$R" config user.email t@t; git -C "$R" config user.name t

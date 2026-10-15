@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration coverage for plugin-delivered hook commands (HIMMEL-1526).
+# Integration coverage for plugin-delivered hook commands.
 # Executes the live hooks.json command strings with a real PreToolUse payload,
 # then proves a wired security guard still refuses a dangerous command.
 set -uo pipefail
@@ -10,18 +10,18 @@ PLUGIN_ROOT="$REPO_ROOT/marketplace/plugins/himmel-ops"
 HOOKS_JSON="$PLUGIN_ROOT/hooks/hooks.json"
 CANONICAL_LAUNCHER="$HOOKS_DIR/run-hook-with-bash.js"
 PLUGIN_LAUNCHER="$PLUGIN_ROOT/hooks/run-hook-with-bash.js"
-# HIMMEL-2047: the node-resolving launcher is VENDORED into the plugin
+# The node-resolving launcher is VENDORED into the plugin
 # (same pattern as run-hook-with-bash.js above) rather than sourced from
 # $CLAUDE_PROJECT_DIR — that path is attacker-controlled for whatever
-# project the plugin happens to be active in, and CR round 2's critic-panel
-# finding [codex-1] is right that sourcing an arbitrary project file there,
+# project the plugin happens to be active in, so sourcing an arbitrary
+# project file there,
 # unconditionally, would let an untrusted opened repo execute code on every
 # hook event. Two more byte-identical pairs to track.
 CANONICAL_RUN_NODE="$REPO_ROOT/scripts/lib/run-node.sh"
 PLUGIN_RUN_NODE="$PLUGIN_ROOT/hooks/run-node.sh"
 CANONICAL_RESOLVE_NODE="$REPO_ROOT/scripts/lib/resolve-node.sh"
 PLUGIN_RESOLVE_NODE="$PLUGIN_ROOT/hooks/resolve-node.sh"
-# HIMMEL-2528: the launcher's hook-integrity verification moved into a sibling
+# The launcher's hook-integrity verification moved into a sibling
 # module it requires by a directory-relative path, so the plugin needs its own
 # vendored copy for the same reason the launcher does. A fourth byte-identical
 # pair to track.
@@ -71,7 +71,7 @@ else
     bad "plugin hook-integrity.js drifted from scripts/hooks/hook-integrity.js"
 fi
 
-# HIMMEL-4564: the judge write guard ships in the plugin (a judge's cwd is
+# The judge write guard ships in the plugin (a judge's cwd is
 # outside any checkout) but is authored and tested in scripts/hooks.
 if cmp -s "$HOOKS_DIR/guard-judge-writes.sh" "$PLUGIN_ROOT/hooks/guard-judge-writes.sh"; then
     ok "plugin guard-judge-writes.sh is byte-identical to scripts/hooks/guard-judge-writes.sh"
@@ -79,7 +79,7 @@ else
     bad "plugin guard-judge-writes.sh drifted from scripts/hooks/guard-judge-writes.sh"
 fi
 
-# HIMMEL-1952: no hardcoded inventory count here — wire-plugin-hook-bash.mjs's
+# No hardcoded inventory count here — wire-plugin-hook-bash.mjs's
 # own EXPECTED_HOOKS/EXPECTED_COUNTS (exercised by
 # wire-plugin-hook-bash.test.mjs, which already hardcodes "20" as an
 # independent restatement of THIS SAME hooks.json) is the wall that already
@@ -111,7 +111,7 @@ chmod +x "$T/fixture-hook.sh"
 
 jq -r '.hooks | to_entries[] | .value[] | .hooks[] | select(.type == "command") | .command' "$HOOKS_JSON" > "$COMMANDS"
 
-# HIMMEL-1952: no hardcoded script list either — derive which scripts to
+# No hardcoded script list either — derive which scripts to
 # fixture-stub straight from the inventory's own command strings, so a new
 # hook (this branch's record-primary-baseline.sh; the 21st someone adds next)
 # gets stubbed automatically without anyone naming it here. Each command

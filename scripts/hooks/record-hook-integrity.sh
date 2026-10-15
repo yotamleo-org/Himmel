@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SessionStart hook (HIMMEL-1666, schema v2 HIMMEL-2528). Pins every
+# SessionStart hook. Pins every
 # $CLAUDE_PROJECT_DIR-relative guard script (scripts/hooks/*.sh,
 # scripts/guardrails/*.sh) to its git-committed blob hash at HEAD, keyed by
 # this session's session_id, in a location outside every worker's
@@ -12,7 +12,7 @@
 # call in the session, which SessionStart guarantees; it does not need to be
 # fast relative to a PreToolUse hook, and it never blocks anything itself.
 #
-# SCHEMA v2 (HIMMEL-2528): on top of the v1 {session_id, recorded_at, pins}
+# SCHEMA v2: on top of the v1 {session_id, recorded_at, pins}
 # shape, a resolvable record also carries:
 #   anchor_ref — e.g. "refs/remotes/origin/main", the default branch's
 #     remote-tracking ref, resolved ONCE via resolve_default_branch() below
@@ -25,7 +25,7 @@
 #     decoy repo, and a pruned worktree still verifies.
 # A record missing anchor_ref is LEGACY (the exact v1 shape) — kept as a
 # single clean predicate for the launcher, and it is exactly what this hook
-# always wrote before HIMMEL-2528. See "ALL-OR-NOTHING v2" and "IDEMPOTENT
+# always wrote before the record lock existed. See "ALL-OR-NOTHING v2" and "IDEMPOTENT
 # MERGE" below for when each shape is written.
 #
 # One further OPTIONAL key, on either shape:
@@ -36,7 +36,7 @@
 #     read-merge-publish, and it is sticky once set. A healthy record does not
 #     carry the key at all.
 #
-# HONEST RESIDUAL (HIMMEL-2085): the pin directory is an ordinary user-
+# HONEST RESIDUAL: the pin directory is an ordinary user-
 # writable path, and a dispatched worker whose envelope grants unrestricted
 # Bash (Bash(node *)/Bash(bash *), WORKER_BASH_ALLOW) runs as the SAME OS user
 # this hook does — nothing at the filesystem level stops
@@ -56,8 +56,8 @@
 # is `exit 0` with no pin file written (or left as-is, once a record already
 # exists). run-hook-with-bash.js reads a missing pin file as "cannot verify"
 # and fails OPEN — see its header for why that direction is the safe rollout
-# default — but only for an exit BEFORE the HIMMEL-2588 marker below, or one that
-# did not end in a verified publish (HIMMEL-5171: marker `failed`/`started`);
+# default — but only for an exit BEFORE the done marker below, or one that
+# did not end in a verified publish (marker `failed`/`started`);
 # once this hook has marked itself `done`, a missing record denies. The lock (below) shares that posture: if it cannot
 # be acquired, this hook exits 0 without touching the record — the JS
 # launcher's own write path is the one side of this protocol that DENIES on a
@@ -99,12 +99,12 @@ git -C "$CLAUDE_PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1 || exit 0
 out_dir="${HIMMEL_HOOK_INTEGRITY_DIR:-$HOME/.claude/himmel/hook-integrity}"
 mkdir -p "$out_dir" 2>/dev/null || exit 0
 
-# HIMMEL-2588: say that a recorder ran, BEFORE anything below can fail, and
+# Say that a recorder ran, BEFORE anything below can fail, and
 # how it ended, on every exit it controls. hook-integrity.js fails open on a
 # missing record while this marker is absent (no recorder ran), `started` (still
 # running, or killed before it could say), or `failed` (it ran and published
 # nothing); only `done` makes a missing, empty or unparseable record DENY.
-# HIMMEL-5171: `done` is therefore written ONLY when the record at $dest is
+# `done` is therefore written ONLY when the record at $dest is
 # re-read here and carries pins — a verified publish. Any other exit (a failed
 # jq, mktemp, write, validate, mv or lock-lib source) writes `failed`, so a
 # recorder that could not vouch for the session never bricks it. A SIGKILL or
@@ -126,12 +126,12 @@ mark_done() {
 trap mark_done EXIT
 
 # ---- pins (unchanged pin SOURCE: git-tree blobs at HEAD) ------------------
-# HIMMEL-4575: scripts/lib and scripts/handover too — hooks source libs from
+# scripts/lib and scripts/handover too — hooks source libs from
 # both, and the launcher now verifies every file a hook sources, denying one no
 # pin vouches for. Keep this list equal to PIN_DIRS in hook-integrity.js. One jq
 # pass over the listing (it used to be two jq per file, which at ~670 files
 # would have cost SessionStart seconds).
-# HIMMEL-4828: plus the himmel-bus delivery worker's lib (.mjs), which
+# Plus the himmel-bus delivery worker's lib (.mjs), which
 # scripts/hooks/bus-deliver-run.js checks against these pins before importing.
 # Comments stay OUT of the $( ) below: bash 3.2 (macOS /bin/bash) reads an
 # apostrophe in a comment there as an open quote and the recorder dies.
@@ -291,8 +291,8 @@ fi
 # ---- REFUSING TO SOURCE MUST NOT MEAN REFUSING TO RECORD -------------------
 # The two are separate decisions and conflating them inverts this hook's whole
 # purpose. run-hook-with-bash.js failed OPEN on a missing record before
-# HIMMEL-2588 (it now denies one once the marker above reads `done`, which
-# HIMMEL-5171 reserves for a verified publish, so this degraded path
+# the marker existed (it now denies one once the marker above reads `done`, which
+# is reserved for a verified publish, so this degraded path
 # still records). So a recorder that exits without writing when
 # it cannot vouch for its lock lib hands an attacker a one-step OFF SWITCH for
 # the entire integrity system: make the lib's bytes differ from the anchor blob
@@ -307,7 +307,7 @@ fi
 # ADVANCE, which the launcher re-derives and re-publishes under its own lock;
 # losing the record costs the whole session's verification. That is not a close
 # call — and a lock-free publish here is not even a new risk, it is exactly what
-# this hook did unconditionally before HIMMEL-2528 added the lock.
+# this hook did unconditionally before the lock was added.
 #
 # DO NOT "fix" the degraded path by inlining a bare `mkdir "$dest.lock"` in
 # place of the lib: a lock dir with no owner file is refused by
@@ -346,7 +346,7 @@ if [ "$lock_verified" -eq 1 ]; then
     # is NOT the off-switch above: the record still gets written, by them.
     # Leave the marker `started` (no mark_done): the holder may be another
     # recorder still publishing, and `done` would make the launcher deny on a
-    # record not yet written (HIMMEL-2588). It goes stale after 60 s.
+    # record not yet written. It goes stale after 60 s.
     hil_lock_acquire "$dest" || { trap - EXIT; exit 0; }
     lock_held=1
 fi
@@ -378,7 +378,7 @@ recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 if [ "$lock_verified" -eq 1 ]; then lock_unverified_json=false; else lock_unverified_json=true; fi
 
 if [ "$existing_shape" = "v2" ]; then
-    # IDEMPOTENT MERGE, never lower anything (HIMMEL-2528 §6). anchor_ref and
+    # IDEMPOTENT MERGE, never lower anything. anchor_ref and
     # git_dir are fixed at the FIRST v2 write and never re-derived on a
     # later merge — only .anchor may advance, and only to a strict
     # descendant of what is already stored.
@@ -412,7 +412,7 @@ else
     # No existing record, an unreadable/malformed one, or a LEGACY one: this
     # REPLACES wholesale rather than merging. A merge here would trap a
     # pre-v2-deploy session in legacy-deny forever (there is nothing yet to
-    # preserve); this is the bootstrap path (HIMMEL-2528 §4/§6).
+    # preserve); this is the bootstrap path.
     if [ "$v2_ok" -eq 1 ]; then
         record="$(jq -nc \
             --arg sid "$session_id" \

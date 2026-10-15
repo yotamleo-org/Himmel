@@ -17,7 +17,7 @@
 #   - Error isol.:  entire body wrapped in try/catch; on any failure the hook
 #                   logs the exception + stack and EXITS 0.
 #   - Log:          ~/.claude/logs/end-session-wiki/<project-slug>.log
-#                   (per-machine, OUTSIDE any repo — HIMMEL-1215). Rotates to
+#                   (per-machine, OUTSIDE any repo). Rotates to
 #                   .log.old at 1 MB.
 #
 # Failure policy (#27): hook MUST NEVER exit non-zero. See epic success
@@ -41,7 +41,7 @@ if ($PSVersionTable.PSEdition -eq 'Core' -and -not $IsWindows) {
 # equivalent of the .sh twin's `chmod 700` (dir) / `chmod 600` (file). The
 # relocated per-machine log + degraded marker can carry raw transcript text (the
 # dry_run render + the degraded-fallback note), so no other local user may read
-# them (HIMMEL-1215 CR). Best-effort / fail-open: an ACL failure MUST NEVER make
+# them. Best-effort / fail-open: an ACL failure MUST NEVER make
 # the hook throw or exit non-zero (mirrors the .sh's `2>/dev/null` on every chmod).
 function Protect-OwnerOnly {
     param([string]$Path, [switch]$IsDirectory)
@@ -57,7 +57,7 @@ function Protect-OwnerOnly {
 
 $projectDir = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
 $configPath = Join-Path $projectDir '.claude\end-session-wiki.json'
-# Per-machine log location (HIMMEL-1215): this hook is registered GLOBALLY, so
+# Per-machine log location: this hook is registered GLOBALLY, so
 # it fires in every repo the session runs in — a repo-local log dir caused
 # merge-conflict junk in shared/synced repos, and dry_run mode dumps raw
 # transcript text (secrets) into a file arbitrary repos might track. Relocate
@@ -72,7 +72,7 @@ if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Forc
 Protect-OwnerOnly -Path $logDir -IsDirectory
 $logPath    = Join-Path $logDir "$projectSlug.log"
 $logOldPath = Join-Path $logDir "$projectSlug.log.old"
-# Persisted degradation marker (HIMMEL-711): present <=> the LAST REST-attempted
+# Persisted degradation marker: present <=> the LAST REST-attempted
 # session note failed to reach the live vault and went to disk only. A
 # SessionStart / where-are-we surface can pick this up; cleared on a healthy PUT.
 $degradedMarkerPath = Join-Path $logDir "$projectSlug.degraded"
@@ -101,7 +101,7 @@ function Write-HookLog {
 
 # Set-DegradedFallbackFlag <http_code> <rel_path> <target> <outcome> — LOUD signal
 # that the REST PUT failed (Obsidian unreachable, or every candidate key rejected
-# on a 401). Silent degradation is exactly what hid HIMMEL-711, so beyond the log
+# on a 401). Silent degradation is exactly what hid a real outage, so beyond the log
 # line we (1) persist a one-line marker at a known path a SessionStart /
 # where-are-we surface can pick up and (2) print a stderr banner. -Outcome is
 # 'disk' (the note DID reach local disk — degraded but recoverable) or 'lost' (the
@@ -109,7 +109,7 @@ function Write-HookLog {
 # distinguish them so the loudest surface never understates total data loss. No
 # apiKey value is ever included. NOTE: backfill — re-pushing the disk-written note
 # through the REST API on the next healthy connect — is a deliberate follow-up,
-# NOT implemented here (tracked on HIMMEL-711).
+# NOT implemented here.
 function Set-DegradedFallbackFlag {
     param([string]$Code, [string]$RelPath, [string]$Target, [string]$Outcome = 'disk')
     $stamp = ([DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))
@@ -124,7 +124,7 @@ function Set-DegradedFallbackFlag {
         if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null; Protect-OwnerOnly -Path $logDir -IsDirectory }
         # UTF-8 (no BOM), matching Write-NoteToFile: Set-Content writes ANSI on
         # PS 5.1 and UTF-8 no-BOM on PS7, so the marker encoding would otherwise
-        # drift between shells (HIMMEL-1215 CR).
+        # drift between shells.
         [System.IO.File]::WriteAllText($degradedMarkerPath, $line + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
         Protect-OwnerOnly -Path $degradedMarkerPath
     } catch { }
@@ -151,7 +151,7 @@ function Write-NoteToFile {
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 try {
@@ -265,7 +265,7 @@ try {
     $lastAssistantText = ''
     $bashCommands = New-Object System.Collections.Generic.List[string]
     $transcriptReadable = $true
-    # HAS_CONTENT (HIMMEL-576): any salvageable signal — a non-empty string-content
+    # HAS_CONTENT: any salvageable signal — a non-empty string-content
     # assistant turn, a text/thinking block, or ANY tool_use block. Drives the
     # husk-skip gate so content-free sessions never write a "Transcript unavailable"
     # husk note.
@@ -353,7 +353,7 @@ try {
         exit 0
     }
 
-    # Husk-skip gate (HIMMEL-576): no salvageable transcript content AND no files
+    # Husk-skip gate: no salvageable transcript content AND no files
     # touched would render a content-free "Transcript unavailable" husk note. Skip
     # it — writing husks floods the vault (same-minute collision pileup).
     if (-not $hasContent -and $filesCount -eq 0) {
@@ -368,7 +368,7 @@ try {
     # Get-ShannonEntropy / Test-OpaqueToken / Get-ScrubbedWord / Get-ScrubbedCommand
     # — replace long, high-entropy, opaque operands (GitHub GraphQL node IDs,
     # API keys, base64-ish blobs) with `<elided>` before a command is copied
-    # into a vault note (HIMMEL-1345). Byte-for-byte the same heuristic as the
+    # into a vault note. Byte-for-byte the same heuristic as the
     # .sh twin's scrub_opaque_tokens — see its comment for the full rationale
     # and the threshold tuning notes (real wedging case ~4.1 bits/char vs.
     # this repo's own SHAs/branch names/flags/env vars, all comfortably
@@ -409,15 +409,15 @@ try {
             # base64 token (e.g. "AbCdEf...xyz+/==") is misread as
             # key="AbCdEf...xyz+/" value="==" -- the tested suffix collapses
             # to just padding, never clears the length gate, and the whole
-            # secret leaks verbatim (HIMMEL-1345).
+            # secret leaks verbatim.
             #
             # The charset check alone is NOT enough: a charset-only gate
             # accepts ANY alphanumeric prefix, so a standalone opaque token
             # with a non-padding "=" partway through (e.g.
             # "AbCdEfGhIjKlMnOpQrStUvWxYz=tail") is misread the same way --
             # key="AbCdEfGhIjKlMnOpQrStUvWxYz" value="tail", and the short
-            # suffix again never clears the length gate (CodeRabbit finding
-            # on HIMMEL-1345, second round). A real key/flag/field name (even
+            # suffix again never clears the length gate. A real
+            # key/flag/field name (even
             # a camelCase one like the GraphQL "threadId" field) is always
             # too SHORT to independently clear the Test-OpaqueToken length
             # gate, so reuse Test-OpaqueToken on the keypart itself: only
@@ -464,7 +464,7 @@ try {
             # split/rejoin above is not whitespace-preserving (collapses runs
             # of spaces/tabs, drops leading/trailing whitespace) — fine for a
             # line that changed anyway, but it must not rewrite a line that
-            # had nothing to scrub (HIMMEL-1345 CR).
+            # had nothing to scrub.
             if ($script:WordChanged) { $rebuilt } else { $line }
         }
         return ($outLines -join "`n")
@@ -495,7 +495,7 @@ try {
     $year    = $nowUtc.ToString('yyyy')
     $month   = $nowUtc.ToString('MM')
 
-    # Vault root: resolved by scripts/lib/vault-resolve.ps1 (HIMMEL-403), the
+    # Vault root: resolved by scripts/lib/vault-resolve.ps1, the
     # PowerShell twin of vault-resolve.sh. Precedence: config.vault_path >
     # validated config.vault NAME (operator registry ~/.claude/luna-vaults.json
     # -> <USERPROFILE>\Documents\<name> w/ .obsidian marker) > LUNA_VAULT_PATH >
@@ -543,7 +543,7 @@ try {
     # Summary: distil the last assistant turn into its first 4 substantive lines.
     # Opening lines are often throwaway preamble — a reaction to an injected
     # system reminder ("I'll ignore the TaskCreate reminder…") or a bare
-    # acknowledgment ("Sure.") — not a distillation (HIMMEL-590 F2). Drop those
+    # acknowledgment ("Sure.") — not a distillation. Drop those
     # LEADING meta lines, then take the first few substantive lines. The reminder
     # match requires `reminder` to CO-OCCUR with the injected `TaskCreate` marker
     # (or the literal `system-reminder` tag), so a reaction line drops but a
@@ -564,7 +564,7 @@ try {
     }
     if ($summaryLines.Count -eq 0) {
         # A thinking/tool-only session still did real work — surface the command
-        # activity instead of claiming the transcript was unavailable (HIMMEL-576).
+        # activity instead of claiming the transcript was unavailable.
         if ($keptCommands.Count -gt 0) {
             $summary = "_Tool-only session: $($keptCommands.Count) command(s) run, no prose turn captured._"
         } else {
@@ -677,7 +677,7 @@ $rawSection
         exit 0
     }
 
-    # Invoke-Crystallizer — best-effort DETACHED LLM crystallization (HIMMEL-576)
+    # Invoke-Crystallizer — best-effort DETACHED LLM crystallization
     # of the just-written note. Start-Process spawns an independent pwsh that
     # outlives this hook (the Windows analogue of setsid). Ensures the note is on
     # disk first (a REST PUT flushes asynchronously). Fire-and-forget.
@@ -687,7 +687,7 @@ $rawSection
         $crys = Join-Path $PSScriptRoot '..\luna\crystallize-note.ps1'
         if (-not (Test-Path $crys)) { return }
         # Config supplies the DEFAULT model; CRYSTALLIZE_MODEL already set in the
-        # launching shell wins (per-session operator switch, HIMMEL-672).
+        # launching shell wins (per-session operator switch).
         if ($cfgCrystallizeModel -and -not $env:CRYSTALLIZE_MODEL) { $env:CRYSTALLIZE_MODEL = $cfgCrystallizeModel }
         if ($cfgCrystallizeRules) {
             $rulesExpanded = $cfgCrystallizeRules
@@ -832,7 +832,7 @@ $rawSection
     $startTime = Get-Date
     $putStatus = Invoke-VaultPut -Uri $endpoint -Key $apiKey -Body $markdown
 
-    # Multi-vault auth recovery (HIMMEL-711): a 401 means the target key is
+    # Multi-vault auth recovery: a 401 means the target key is
     # rejected because a DIFFERENT vault currently owns the Local REST API port
     # (only one Obsidian binds 27124 at a time). Retry with the operator's OTHER
     # vault keys; the vault whose server is bound accepts its own key. First

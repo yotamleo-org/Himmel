@@ -134,9 +134,9 @@ test("header without feed.himmel reads version unknown, never blank", async ({ p
   await expect(page.locator("header.top")).toContainText("version unknown (feed has no himmel identity)");
 });
 
-test("rail page links are [Config, Health, Fleet]; Config is current and the hash is #/config", async ({ page }) => {
+test("rail page links are [Config, Health, Tool health, Fleet, Roadmap, Kanban]; Config is current and the hash is #/config", async ({ page }) => {
   await open(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Config", "Health", "Fleet"]);
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Config");
   expect(await page.evaluate(() => location.hash)).toBe("#/config");
 });
@@ -158,15 +158,15 @@ const SECTIONS = ["Is himmel healthy?", "What is broken, and what do I do", "Sch
 
 async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
   await open(page, v, o);
-  await page.locator("nav.pages a", { hasText: "Health" }).click();
+  await page.getByRole("link", { name: "Health", exact: true }).click();
   await page.locator("#verdict .word").waitFor();
 }
 const verdictWord = (page: Page) => page.locator("#verdict .word");
 
 test("health: Config to Health to browser back; aria-current follows; one header on both", async ({ page }) => {
   await open(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Config", "Health", "Fleet"]);
-  await page.locator("nav.pages a", { hasText: "Health" }).click();
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Config", "Health", "Tool health", "Fleet", "Roadmap", "Kanban"]);
+  await page.getByRole("link", { name: "Health", exact: true }).click();
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
   expect(await page.evaluate(() => location.hash)).toBe("#/health");
   await expect(page.locator("header.top")).toHaveCount(1);

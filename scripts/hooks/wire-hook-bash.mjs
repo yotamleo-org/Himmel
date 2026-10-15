@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// hooks/wire-hook-bash.mjs — sanctioned settings wiring chokepoint (HIMMEL-1516).
+// hooks/wire-hook-bash.mjs — sanctioned settings wiring chokepoint.
 //
 // `.claude/settings.json` is deliberately deny-listed for direct agent edits.
 // This script performs one narrow transformation: route the hook commands it
@@ -11,7 +11,7 @@
 // the owned inventory — because that is a command this tool would otherwise
 // route and execute. It proves the parsed permissions.allow/deny/ask values are
 // unchanged and that no parsed field except its OWN owned hook commands changed
-// (HIMMEL-1552: own-only validation, so the two settings.json writers coexist).
+// (own-only validation, so the two settings.json writers coexist).
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -30,10 +30,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // Per-event COUNTS are deliberately not frozen: a second writer (the trust
 // ledger) adds entries inside these events, so the count depends on whether it
 // is on. The frozen, own-only invariant is the script LIST + its order below
-// (HIMMEL-1552). Bumping a count would rebuild the same wall for the next
+// . Bumping a count would rebuild the same wall for the next
 // capability that adds a hook.
 //
-// HIMMEL-2002: one entry may now be a CHAIN (`run-hook-with-bash.js --chain a.sh
+// One entry may now be a CHAIN (`run-hook-with-bash.js --chain a.sh
 // b.sh ...`), so the list below is the FLATTENED document order — a guardrail
 // wired for several disjoint matchers appears once per matcher. That is the
 // point of the dispatcher: making the matchers disjoint is what buys one launch
@@ -49,46 +49,46 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'block-jira-compound-write.sh',
   'block-tail-pipe-on-gates.sh',
   'block-read-secrets.sh',
-  // HIMMEL-2993: token-saving nudge, deliberately after the secrets fence
+  // token-saving nudge, deliberately after the secrets fence
   // (so a denied secret read never gets clamp-recorded) and before the
   // destructive-command fence.
   'read-clamp.sh',
   'block-destructive-commands.sh',
   'block-git-stash.sh',
-  // HIMMEL-3956: a bare `qmd query|search|vsearch` orphans a GPU-bound bun
+  // A bare `qmd query|search|vsearch` orphans a GPU-bound bun
   // child when killed; routes agents to scripts/lib/qmd-bounded.sh.
   'block-bare-qmd-query.sh',
   'block-rogue-claude-schedule.sh',
   'block-chokepoint-env-prefix.sh',
   'require-quiet-run.sh',
-  // Also in the Bash chain (HIMMEL-2360): the deny rules this hook replaces
+  // Also in the Bash chain: the deny rules this hook replaces
   // covered Bash REDIRECT targets too ("Bash redirect targets are checked
   // against Edit rules"), so guarding only the edit tools would have silently
   // reopened `echo x > <primary>/.claude/settings.json`. Listed once per chain
-  // it appears in, per HIMMEL-2002.
+  // it appears in.
   'block-edit-live-settings.sh',
-  // LAST in the Bash chain (HIMMEL-2526): block-edit-on-main.sh is wired only
+  // LAST in the Bash chain: block-edit-on-main.sh is wired only
   // on the Edit|Write|MultiEdit|NotebookEdit matcher, so a Bash-mediated
   // write (`cat >`, `sed -i`, `tee`, a python heredoc) bypassed it entirely —
   // this destination-based twin closes that gap for the Bash chain.
   'block-write-into-main-checkout.sh',
-  // HIMMEL-4445: denies every Bash write to the operator-only bank lift
+  // Denies every Bash write to the operator-only bank lift
   // (~/.himmel/state/bank-lift.json) and `bank-lift.sh set` — see the sibling
   // entry on the Edit|Write|MultiEdit|NotebookEdit chain below.
   'block-bank-lift-writes.sh',
-  // HIMMEL-4696 / HIMMEL-5290: speed bump over ~/.himmel/config.json, which
+  // Speed bump over ~/.himmel/config.json, which
   // carries the graphify salus x ollama-cloud opt-in — see the sibling entry on
   // the Edit|Write|MultiEdit|NotebookEdit chain below.
   'block-himmel-config-writes.sh',
-  // HIMMEL-2975 Guard D: denies a console relay every write channel into
+  // Guard D: denies a console relay every write channel into
   // console state via Bash — see the sibling entry on the
   // Edit|Write|MultiEdit|NotebookEdit chain below.
   'guard-relay-writes.sh',
-  // HIMMEL-4829 (himmel-bus T6): speed bump over the bus store — denies a Bash
+  // Speed bump over the bus store — denies a Bash
   // command that names the bus root, calls `bus register|bind|rebind`, or
   // assigns HIMMEL_BUS_*. Sibling entry on the Edit|Write chain below.
   'guard-bus-store.sh',
-  // HIMMEL-3383: re-checks /pr-check step 0's three bare-literal conditions
+  // re-checks /pr-check step 0's three bare-literal conditions
   // (himmel lane, worktree root, no scripts/cr/ or lib.sh diff) when the
   // allow-listed `bash scripts/cr/pr-check-context.sh` is typed; no-op on any
   // other command.
@@ -99,51 +99,51 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'block-git-stash.sh',
   'block-rogue-claude-schedule.sh',
   'block-chokepoint-env-prefix.sh',
-  // HIMMEL-1525: the PowerShell matcher never carried this guard at all, so
+  // The PowerShell matcher never carried this guard at all, so
   // `Set-Content`/`Out-File`/`>` against a LIVE settings.json bypassed the
   // fence the Bash and Edit/Write chains already enforce. Listed once per
-  // chain it appears in, per HIMMEL-2002.
+  // chain it appears in.
   'block-edit-live-settings.sh',
   // PreToolUse `Read|Grep`.
   'block-read-secrets.sh',
   'read-clamp.sh',
   // PreToolUse `Edit|Write|MultiEdit|NotebookEdit` chain.
   'block-edit-on-main.sh',
-  // HIMMEL-2360: denies writes to a LIVE settings.json/settings.local.json
+  // Denies writes to a LIVE settings.json/settings.local.json
   // (user-scope $HOME/.claude, or the PRIMARY checkout's) while ALLOWING the
   // worktree copy, so hook wiring rides the owning leg's own PR. Replaces the
   // two `Edit(**/.claude/settings*.json)` deny rules, which could not tell a
   // primary checkout from a linked worktree.
   'block-edit-live-settings.sh',
   'guard-memory-capture.sh',
-  // HIMMEL-4445: the file-tool twin — Write/Edit/MultiEdit/NotebookEdit on
+  // The file-tool twin — Write/Edit/MultiEdit/NotebookEdit on
   // the bank lift path (any spelling, symlinks resolved).
   'block-bank-lift-writes.sh',
-  // HIMMEL-4696 / HIMMEL-5290: the file-tool twin of the Bash entry above.
+  // The file-tool twin of the Bash entry above.
   'block-himmel-config-writes.sh',
-  // HIMMEL-2975 Guard D: denies a console relay direct writes to the inbox,
+  // Guard D: denies a console relay direct writes to the inbox,
   // leg handover docs, and the console rundir (marker-gated no-op otherwise).
   'guard-relay-writes.sh',
-  // HIMMEL-4829: the file-tool twin of the Bash entry above (bus store guard).
+  // The file-tool twin of the Bash entry above (bus store guard).
   'guard-bus-store.sh',
   // PreToolUse `Edit|Write|NotebookEdit` — its own entry, NOT folded into the
   // chain above: it does not guard MultiEdit, and widening a guard's matcher is
   // not something a launch-count refactor gets to do.
   'orchestrator-inline-guard.sh',
-  // PreToolUse `AskUserQuestion` — its own matcher (HIMMEL-2923): denies a
-  // console-spawned leg (HIMMEL_CONSOLE_LEG=1, HIMMEL-2919's launcher export)
+  // PreToolUse `AskUserQuestion` — its own matcher: denies a
+  // console-spawned leg (HIMMEL_CONSOLE_LEG=1, the launcher export)
   // from calling AskUserQuestion — nobody answers in that window.
   'block-leg-askuserquestion.sh',
-  // PreToolUse `ScheduleWakeup` — its own matcher (HIMMEL-3034): denies a
+  // PreToolUse `ScheduleWakeup` — its own matcher: denies a
   // console-spawned leg (HIMMEL_CONSOLE_LEG=1) from self-scheduling a polling
   // wakeup — each wake re-reads the leg's whole context to find "not yet".
   'guard-leg-wakeup.sh',
-  // PreToolUse `Agent` — its own matcher (HIMMEL-3847): denies model: fable (and
+  // PreToolUse `Agent` — its own matcher: denies model: fable (and
   // a console-judge override off its opus tier) unless the prompt carries an
-  // `ESCALATION: <reason>` line — HIMMEL-3630's Opus judge default, made
+  // `ESCALATION: <reason>` line — the Opus judge default, made
   // structural. Sits beside the Agent-matcher observability hook, un-chained.
   'guard-agent-model.sh',
-  // PreToolUse `WebFetch` — its own matcher (HIMMEL-4908): denies WebFetch on a
+  // PreToolUse `WebFetch` — its own matcher: denies WebFetch on a
   // login-walled host (x.com / instagram.com, scripts/web/walled-hosts.conf)
   // and names `bash scripts/web/fetch-url.sh '<url>'`. Fails open.
   'redirect-webfetch-walled-hosts.sh',
@@ -151,12 +151,12 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'block-backend-tier.sh',
   'mcp-policy.sh',
   'auto-arm-on-cap.sh',
-  // PreToolUse `*` — its own entry (HIMMEL-4569): when the launch turned the
-  // guard on (off by default, HIMMEL-4710), denies a console-spawned leg's
+  // PreToolUse `*` — its own entry: when the launch turned the
+  // guard on (off by default), denies a console-spawned leg's
   // non-hand-off calls past 75 % of its autocompact ceiling until it
   // checkpoints or hands off, or its last marker is WRAPPED. Fails open.
   'guard-leg-context-handoff.sh',
-  // PreToolUse `Bash|Monitor` — its own matcher (HIMMEL-2140): denies a
+  // PreToolUse `Bash|Monitor` — its own matcher: denies a
   // subagent (agent_id present) from backgrounding a Bash call or reaching
   // for Monitor — the parking pathology. Parents (no agent_id) are
   // unaffected. See block-subagent-park.sh's header for the full derivation.
@@ -167,12 +167,12 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'auto-arm-on-subagent-cap.sh',
   'trigger-cr-on-pr-create.sh',
   'trigger-cr-on-push.sh',
-  // PostToolUse `Bash` — third sibling (HIMMEL-2526): reports, promptly, when
+  // PostToolUse `Bash` — third sibling: reports, promptly, when
   // a Bash-mediated write left the PRIMARY checkout's tracked working tree
   // dirty via a route block-edit-on-main.sh never sees. Companion to
   // record-primary-baseline.sh below.
   'detect-dirty-primary.sh',
-  // PostToolUse `Bash` — fourth sibling (HIMMEL-4891): re-checks the auto-memory
+  // PostToolUse `Bash` — fourth sibling: re-checks the auto-memory
   // MEMORY.md routing-line length after a Bash write that guard-memory-capture.sh
   // (Write/Edit only) never sees.
   'memory-bash-line-check.sh',
@@ -180,39 +180,39 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // parse guard, appended after the trust ledger's own (foreign) entry in that
   // block, so the flattened OWNED order below still matches document order.
   'check-hook-file-parse.sh',
-  // PostToolUse `*` (HIMMEL-5412): pages the operator when a GitHub token
+  // PostToolUse `*`: pages the operator when a GitHub token
   // shows up in any tool call or result. Detection twin of
   // block-read-secrets.sh; bash-regex fast path, fails open.
   'detect-token-in-output.sh',
-  // PostToolUse `*` — LAST PostToolUse group (HIMMEL-2788): delivers any new
+  // PostToolUse `*` — LAST PostToolUse group: delivers any new
   // claudex console-inbox bullet as additionalContext. Fires on every tool
   // call in every session; see the script's own header for the fail-open
   // cost model.
   'claudex-inbox-hook.sh',
-  // PostToolUse `*`, right after the inbox hook (HIMMEL-4828): delivers this
+  // PostToolUse `*`, right after the inbox hook: delivers this
   // session's himmel-bus log. Dark unless HIMMEL_BUS_NAME is set; cheap bash
   // fast path, fails open.
   'bus-deliver-hook.sh',
-  // SessionStart chain (HIMMEL-2003).
+  // SessionStart chain.
   'check-update-available.sh',
   'inject-initiative.sh',
   'qmd-staleness-notice.sh',
   'graphify-freshness-advisory.sh',
-  // HIMMEL-3314: reads MEMORY.md's real state (pointer-line ceiling, 200-char
+  // Reads MEMORY.md's real state (pointer-line ceiling, 200-char
   // lines) so the memory form rules hold whichever tool wrote the file — the
   // PreToolUse guard above only sees Write/Edit. Advisory, fails open.
   'memory-index-state-notice.sh',
-  // LAST SessionStart chain member (HIMMEL-2788): the resume-time mirror of
+  // LAST SessionStart chain member: the resume-time mirror of
   // claudex-inbox-hook.sh above — same cursor file, so a bullet delivered by
   // one is never re-delivered by the other.
   'claudex-inbox-sessionstart.sh',
-  // SessionStart mirror of bus-deliver-hook.sh above (HIMMEL-4828). A separate
+  // SessionStart mirror of bus-deliver-hook.sh above. A separate
   // file, not a second listing of the same name: the installer anchors a script
   // by its first position, which would be the PostToolUse one.
   'bus-deliver-sessionstart.sh',
-  // SessionStart, own matcher "compact" (HIMMEL-2973 S1): re-injects a
+  // SessionStart, own matcher "compact": re-injects a
   // console's `## Live state` after an autocompact, the console-side twin of
-  // the per-leg contract cat headed-arm-leg.sh already wires (HIMMEL-2990).
+  // the per-leg contract cat headed-arm-leg.sh already wires.
   // Its own group, not the --chain above, because it fires only on
   // "compact", not on every SessionStart source.
   'console-compact-reinject.sh',
@@ -280,7 +280,7 @@ function hookEntries(settings) {
 //                                     this tool routes through run-hook-with-
 //                                     bash (wired) or would route (unwired).
 //                                     `scripts` holds one name, or several for
-//                                     a `--chain` entry (HIMMEL-2002).
+//                                     a `--chain` entry.
 //   { kind: 'impostor', script }      a scripts/hooks/*.sh invocation naming a
 //                                     script NOT in KNOWN_HOOK_SCRIPTS. Refused
 //                                     by hookEntries under an owned event.
@@ -289,21 +289,20 @@ function hookEntries(settings) {
 //                                     event's own .sh hook, a malformed entry.
 //                                     This tool owns neither its routing nor its
 //                                     text; it is left byte-identical.
-// HIMMEL-2047: a bare `node "<path>"` launcher is unresolvable if node itself
+// A bare `node "<path>"` launcher is unresolvable if node itself
 // is off PATH (the nvm-windows migration window that dropped SessionEnd hooks
 // silently) — the very failure scripts/lib/run-node.sh exists to survive.
-// LEGACY_LAUNCHER is the pre-HIMMEL-2047 bare-node form, recognised so an
+// LEGACY_LAUNCHER is the legacy bare-node form, recognised so an
 // already-wired-the-old-way command still migrates.
 const RUN_NODE = '$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh';
 const LEGACY_LAUNCHER = 'node "$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js"';
 
 // The wired form: RUN run-node.sh with `sh` when it EXISTS, so it resolves
 // node at runtime (scripts/lib/resolve-node.sh's resolve_node() — the same
-// helper HIMMEL-2015 gave individual project hook scripts) and execs it;
-// fall back to the pre-HIMMEL-2047 bare `node` launcher when run-node.sh is
+// helper individual project hook scripts use) and execs it;
+// fall back to the legacy bare `node` launcher when run-node.sh is
 // ABSENT (an old checkout predating this fix), so that case degrades to
-// exactly today's behaviour rather than a NEW hard failure at the launcher
-// (critic-panel finding [codex-1], HIMMEL-2047 CR round 1).
+// exactly today's behaviour rather than a NEW hard failure at the launcher.
 //
 // WHY not `.` (dot-source): POSIX leaves `.` with operands beyond the
 // filename UNSPECIFIED, and dash — /bin/sh on Debian/Ubuntu — DROPS them:
@@ -314,11 +313,11 @@ const LEGACY_LAUNCHER = 'node "$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-b
 // argument under dash: run-node.sh's `exec "$_node" "$@"` then ran a BARE
 // node with an empty "$@", which reads empty stdin and exits 0 — every
 // PreToolUse/PostToolUse guardrail was SILENTLY OFF on any Debian/Ubuntu box
-// (HIMMEL-2758). Running run-node.sh as a child process instead of sourcing
+// . Running run-node.sh as a child process instead of sourcing
 // it fixes this: a child process always receives its own argv regardless of
 // which shell launches it.
 //
-// WHY `sh` and not `bash`: HIMMEL-1516 banned the bare `bash` token from this
+// WHY `sh` and not `bash`: the bare `bash` token is banned from this
 // inventory because of Windows PATH roulette (the WSL stub, the 0-byte Store
 // alias, the "Select an app to open 'bash'" modal). `sh` is not that: Claude
 // Code already runs the whole hook command through `sh -c`, so `sh` is
@@ -343,8 +342,7 @@ const LEGACY_LAUNCHER = 'node "$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-b
 // catch it (that branch is reached only when run-node.sh is MISSING, and a
 // bare `node` is equally unresolvable there anyway). `command -p` is the
 // POSIX-specified "search the standard utilities PATH" form, so the launcher
-// resolves from the system default regardless of the inherited PATH
-// (critic-panel [codex-1], HIMMEL-2758 CR round 4).
+// resolves from the system default regardless of the inherited PATH.
 //
 // `argsSuffix` is everything that followed `run-hook-with-bash.js` in the
 // legacy form — INCLUDING its leading space — so it drops in unchanged on
@@ -360,7 +358,7 @@ function wrapWithFallback(argsSuffix) {
 }
 
 // The suffix after a recognised launcher prefix: either one script, or a
-// `--chain` (optionally `--lifecycle`, HIMMEL-2003) member list. Returns the
+// `--chain` (optionally `--lifecycle`) member list. Returns the
 // owned scripts, or null if the suffix matches neither shape.
 function launcherSuffixScripts(rest) {
   let m = rest.match(/^"\$CLAUDE_PROJECT_DIR\/scripts\/hooks\/([A-Za-z0-9._-]+\.sh)"$/);
@@ -383,13 +381,12 @@ const WIRED_RE = new RegExp(
 // LEGACY_WIRED_RE — the two SUPERSEDED launcher tokens, identical to WIRED_RE
 // except for the token itself. Both are recognised as `owned, wired: false` so
 // an already-wired-the-old-way entry MIGRATES on the next run, mirroring how
-// LEGACY_LAUNCHER (the pre-HIMMEL-2047 bare-node form) migrates:
+// LEGACY_LAUNCHER (the legacy bare-node form) migrates:
 //
-//   `.`             pre-HIMMEL-2758. POSIX leaves `.` with operands beyond the
+//   `.`             the original shape. POSIX leaves `.` with operands beyond the
 //                   filename UNSPECIFIED and dash silently drops them (see
 //                   wrapWithFallback's header) — a silent no-op under dash.
-//   `sh`            the first HIMMEL-2758 shape, superseded WITHIN the same
-//                   ticket by `command -p sh` (critic-panel [codex-1] round 4).
+//   `sh`            the second shape, superseded by `command -p sh`.
 //                   A bare `sh` is a PATH lookup the `.` builtin never needed,
 //                   so a hook shell whose PATH excludes the shell's directory
 //                   died at rc=127 before the chain started — measured on this
@@ -452,10 +449,9 @@ function bareCommand(script) {
   return `bash "$CLAUDE_PROJECT_DIR/scripts/hooks/${script}"`;
 }
 
-// EXPECTED_SCRIPT_ORDER scripts with zero present entries (HIMMEL-1643:
-// install-when-missing). Order-preserving so installMissingEntries() can
+// EXPECTED_SCRIPT_ORDER scripts with zero present entries (install-when-missing). Order-preserving so installMissingEntries() can
 // process them in EXPECTED_SCRIPT_ORDER order and chain anchors correctly.
-// Scripts whose install target is not SessionStart (HIMMEL-4828). A script not
+// Scripts whose install target is not SessionStart. A script not
 // named here installs under SessionStart.
 const INSTALL_EVENT = Object.freeze({ 'bus-deliver-hook.sh': 'PostToolUse' });
 
@@ -515,7 +511,7 @@ function matchingBracket(text, openIdx) {
   return -1;
 }
 
-// Install-when-missing (HIMMEL-1643). Inserts exactly one BARE (unwired) hook
+// Install-when-missing. Inserts exactly one BARE (unwired) hook
 // object per script in `missing` --
 //   {"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/<script>.sh\"","timeout":30}
 // -- under hooks.SessionStart, immediately after that script's nearest
@@ -528,7 +524,7 @@ function matchingBracket(text, openIdx) {
 //
 // SessionStart by default (own-only invariant, minimally extended): this tool
 // has no general "which event does script X belong to" table, only the small
-// INSTALL_EVENT override below (HIMMEL-4828); any other script installs into
+// INSTALL_EVENT override below; any other script installs into
 // the event its inventory tail lives in. A
 // missing script with NO preceding present SessionStart entry to anchor on
 // (e.g. a PostToolUse/PreToolUse script that vanished) is refused rather than
@@ -615,7 +611,7 @@ function scrubHookCommands(settings) {
 // must run BEFORE scrubHookCommands, whose sentinel overwrite would erase the
 // script name this needs to match on. Any OTHER structural change (an extra
 // entry not in `insertedScripts`, a removed field, ...) survives pruning and
-// is caught by the scrubbed-comparison below, exactly as before HIMMEL-1643 —
+// is caught by the scrubbed-comparison below —
 // this only widens the gate for the SPECIFIC entries this tool itself just
 // installed, nothing else.
 function pruneInsertedEntries(settings, insertedScripts) {
@@ -636,12 +632,11 @@ function pruneInsertedEntries(settings, insertedScripts) {
   return copy;
 }
 
-// insertedScripts (HIMMEL-1643): the scripts installMissingEntries() legally
+// insertedScripts: the scripts installMissingEntries legally
 // added this run. When non-empty, `after` is pruned of exactly those entries
 // BEFORE the scrub-and-compare — the ONLY tolerance this security gate grants
 // beyond command-value changes. An unauthorized structural change (anything
-// NOT in insertedScripts) still fails the comparison and refuses, unchanged
-// from the pre-HIMMEL-1643 behaviour.
+// NOT in insertedScripts) still fails the comparison and refuses, unchanged.
 export function assertOnlyHookCommandsChanged(before, after, insertedScripts = []) {
   const comparableAfter = insertedScripts.length > 0 ? pruneInsertedEntries(after, insertedScripts) : after;
   const scrubbedBefore = scrubHookCommands(before);
@@ -657,7 +652,7 @@ export function rewriteSettingsText(text) {
 
   // The owned scripts, in the document order they appear, must reconcile
   // EXACTLY to this tool's inventory: every FOUND entry plus every MISSING
-  // one (HIMMEL-1643: install-when-missing) must together equal
+  // one (install-when-missing) must together equal
   // EXPECTED_SCRIPT_ORDER's frozen count. A mismatch beyond that — an extra
   // entry, a duplicate — is still refused; a shortfall that is fully
   // explained by known-missing scripts is not.
@@ -687,7 +682,7 @@ export function rewriteSettingsText(text) {
   // alone. classifyCommand() is EVENT-BLIND: a KNOWN script under a FOREIGN
   // event key reads as `owned` to it, yet hookEntries() (event-aware) never
   // collects that entry, so the two walks disagreed and the tool refused a
-  // legitimate file (HIMMEL-1577). The fix: enumerate every object whose
+  // legitimate file. The fix: enumerate every object whose
   // `command` property is a string in document order — the precise set+order
   // the regex matches in the text — and tag each with the owned entry whose
   // hook object it IS (object identity; both walks derive from the one parse).
@@ -732,7 +727,7 @@ export function rewriteSettingsText(text) {
       // assertOnlyHookCommandsChanged.
       return whole;
     }
-    // ALIGNMENT — the loud safety net, kept deliberately (HIMMEL-1577). With
+    // ALIGNMENT — the loud safety net, kept deliberately. With
     // ownership now derived from the parsed structure, the textual command at
     // this document position is the very same string as the parsed entry's
     // command by construction — but this still refuses rather than writing a
@@ -747,7 +742,7 @@ export function rewriteSettingsText(text) {
     // Three prior (unwired) shapes reach here: a fully bare `bash .../<script>.sh`
     // (single script only — a chain has no bare form) migrates via
     // wiredCommand(); an already-launcher-wired-the-OLD-way command
-    // (HIMMEL-2047: bare `node`, single or `--chain`) migrates by wrapping its
+    // (bare `node`, single or `--chain`) migrates by wrapping its
     // existing script argument(s) — a chain's members included, verbatim — in
     // the if/then/else fallback wrapWithFallback() builds; a superseded
     // run-node.sh launcher (LEGACY_WIRED_RE: `.` or a bare `sh`) migrates the
@@ -803,7 +798,7 @@ async function main() {
   try {
     const args = parseArgs(process.argv.slice(2));
     const settingsPath = resolve(args.settingsPath || defaultSettingsPath());
-    // HIMMEL-1552: hold the shared settings lock across the whole read ->
+    // Hold the shared settings lock across the whole read ->
     // transform -> write, so the two sanctioned writers serialise rather than
     // race (a concurrent writer's change would otherwise be silently reverted).
     await withSettingsLock(settingsPath, () => {

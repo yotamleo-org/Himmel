@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# HIMMEL-5168: an integrity failure on a hook event whose exit 2 means "keep
+# An integrity failure on a hook event whose exit 2 means "keep
 # going" (Stop, SubagentStop, ...) must not trap the session. The missing-record
-# deny (HIMMEL-2588) is permanent for the session, so exit 2 on Stop made the
+# deny is permanent for the session, so exit 2 on Stop made the
 # model loop on every stop attempt. The unverified hook must still NEVER run.
 # Gating events (PreToolUse and friends) keep exit 2.
 set -uo pipefail
@@ -47,7 +47,7 @@ git -C "$PROJECT" -c user.email=t@t -c user.name=t commit -q -m init
 payload() { printf '{"session_id":"%s","hook_event_name":"%s"}' "$SID" "$1"; }
 
 # Pin the session, then make the record vanish with the recorder marker `done`:
-# the HIMMEL-2588 missing-record deny, permanent for the session.
+# the missing-record deny, permanent for the session.
 payload SessionStart | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR="$OUT_DIR" bash "$RECORDER" >/dev/null
 rm -f "$OUT_DIR/$SID.json"
 if [ "$(cat "$OUT_DIR/$SID.recorder" 2>/dev/null)" != "done" ]; then
@@ -102,7 +102,7 @@ else
   bad "Stop with an intact record did not run the hook"
 fi
 
-# HIMMEL-5172: one member that fails integrity is skipped ALONE. The intact
+# One member that fails integrity is skipped ALONE. The intact
 # members around it still run and what they emitted is kept, a Stop block
 # included. A verifiable record exists here; member M1 is rewritten after it.
 P2="$T/project2"
@@ -134,7 +134,7 @@ run2() {   # <event> <member>...  -> sets RC, OUT, ERR
 }
 
 run2 Stop "$M1" "$BLK"
-# HIMMEL-5198: the block holds on exit 2, and Claude Code reads stderr there, so
+# The block holds on exit 2, and Claude Code reads stderr there, so
 # the blocking member's own reason must be on stderr, not just the skip notice.
 if [ "$RC" -eq 2 ] && grep -q '"decision":"block"' <<<"$OUT" && grep -q 'keep-going' <<<"$ERR" \
   && grep -q '^blk$' "$CANARY" 2>/dev/null && ! grep -q '^m1$' "$CANARY" 2>/dev/null; then

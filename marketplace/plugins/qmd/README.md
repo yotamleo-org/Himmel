@@ -106,6 +106,38 @@ Local-only configs skip the gate. The shipped `.mcp.json` keeps its single
 `qmd` entry; a second `qmd-salus` entry (port 8182) is added by the runbook, not
 shipped always-on. Design: `docs/internals/egress-matrix.md`.
 
+### OpenRouter for the non-salus index (HIMMEL-5756)
+
+The fork pin carries the `openai:` provider (yotamleo/qmd @ cecc32a9). The gate
+maps `https://openrouter.ai/...` to provider `openrouter` and accepts only the
+pinned models, `openai:qwen/qwen3-embedding-8b` (embed) and
+`openai:cohere/rerank-4-fast` (rerank); any other model, a `generate` role, an
+unrecognised host, a missing or unparseable base URL, or a `models.openai_api_key`
+line is refused (the refusal never prints the key). A collection is also refused
+by its path, not only its name: a path equal to, inside or containing a PHI root
+(`phi-roots` / `egress-denylist` under `~/.config/claude-glm`, the path of a salus
+collection in a sibling index config, or a `.salus` vault) cannot go remote, and a
+collection with no `path:` cannot be checked.
+
+```yaml
+models:
+  embed: openai:qwen/qwen3-embedding-8b
+  rerank: openai:cohere/rerank-4-fast
+  openai_base_url: https://openrouter.ai/api/v1
+```
+
+The provider key goes ONLY in the daemon's environment
+(`QMD_OPENAI_API_KEY`, set in the shell that launches the daemon), never in
+`index.yml`, a committed file or a leg's environment. Salus keeps its own
+local-only index (`QMD_INDEX_NAME=salus`, `salus.yml`, port 8182).
+
+Switching an existing index is copy-and-swap, never in place: the index must
+never mix local and remote vectors (qmd checks no vector's model at query time).
+`scripts/luna/qmd-embed-model.sh reembed|swap` builds the copy, holds the swap
+lock across the rename and flips the config, but it only knows the `gemma` and
+`qwen` local aliases today; remote support in it and the VM proof of the swap
+are tracked on HIMMEL-5756.
+
 ## Turning the daemon off on purpose (HIMMEL-4494)
 
 The SessionStart hook relaunches the daemon in every new session, so killing it

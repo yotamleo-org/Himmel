@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cadence-scoped PreToolUse DENY hook for the PowerShell tool (HIMMEL-1973).
+# Cadence-scoped PreToolUse DENY hook for the PowerShell tool.
 #
 # WHY: the whole cadence guardrail stack is wired `"matcher": "Bash"` and each
 # hook self-checks `tool_name == "Bash"` — cadence-deny-background.sh,
@@ -7,7 +7,7 @@
 # tool is therefore an UNGUARDED second shell in a cadence session: no
 # background deny, no enumerated-engine grant, no safe-command auto-approve.
 #
-# Decisive evidence (HIMMEL-1973): the HIMMEL-Pipeline-Health leg emitted the
+# Decisive evidence: the HIMMEL-Pipeline-Health leg emitted the
 # vault-lint engine call through the PowerShell tool on 2026-08-20 04:00 —
 #   python "C:\...\vault-lint\vault_lint.py" "C:\Users\<user>\Documents\luna"
 # — a command cadence-approve-engines.sh grants byte-for-byte when it arrives as
@@ -36,8 +36,8 @@
 #     independent evidence that the tool IS PowerShell. Failing open here would
 #     re-open exactly the unattended approval stall this control exists to
 #     prevent. Denying costs nothing: no cadence leg needs the tool.
-#   * NEVER allows. exit 2 is the deny form whose precedence is guaranteed
-#     (HIMMEL-203), so nothing downstream can re-grant a PowerShell call.
+#   * NEVER allows. exit 2 is the deny form whose precedence is guaranteed,
+# so nothing downstream can re-grant a PowerShell call.
 #   * CADENCE_POWERSHELL_OK=1 -> exit 0, no decision (see BYPASS below).
 #   * Wired ONLY in cadence-settings.json (--settings for cadence runs), so
 #     interactive sessions keep the PowerShell tool. On POSIX hosts the tool

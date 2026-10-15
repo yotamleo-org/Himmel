@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite for scripts/hooks/install-single-writer-floor.sh (HIMMEL-5284).
+# Suite for scripts/hooks/install-single-writer-floor.sh.
 #
 # Fixture: a bare file:// remote plus a `.single-writer` clone (the shape of
 # luna and the handover state repos). Proves, with the refusal output

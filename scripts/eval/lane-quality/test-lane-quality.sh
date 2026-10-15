@@ -30,13 +30,14 @@ nogrep() { grep "$@"; [ $? -eq 1 ]; }
 # cache-probe.sh, so it is copied in byte for byte.
 mkdir -p "$TMP/repo/scripts/eval"
 cp "$REAL_REPO/scripts/eval/cache-probe.sh" "$TMP/repo/scripts/eval/"
+printf 'stand-in steering\n' >"$TMP/repo/CLAUDE.md"
 git -C "$TMP/repo" init -q
 git -C "$TMP/repo" -c user.name=t -c user.email=t@t add -A
 git -C "$TMP/repo" -c user.name=t -c user.email=t@t commit -qm base
 BASE="$(git -C "$TMP/repo" rev-parse HEAD)"
 
 echo "1. acceptance tests discriminate (fixture RED, reference GREEN)"
-for task in shell-red-green doc-plus-code hook-refusal finding-verify cr-fix class-sweep guard-cmd; do
+for task in shell-red-green doc-plus-code hook-refusal finding-verify cr-fix class-sweep guard-cmd dispatch-chores; do
   wt="$TMP/acc-$task"
   git -C "$TMP/repo" worktree add -q --detach "$wt" "$BASE"
   fix="$(bash "$RUN" materialize "$task" "$wt")"
@@ -71,7 +72,9 @@ case "$prompt" in
   *block-curl-pipe*) t=hook-refusal ;; *cleanup-old*) t=cr-fix ;;
   *sweep/a.sh*) t=class-sweep ;; *CHANGELOG*) t=guard-cmd ;; *) t=finding-verify ;;
 esac
-bash "$LQ_FAKE_RUN" materialize "$t" "$PWD" --reference >/dev/null
+# Record the steering file the agent started with; a BREAK variant makes the agent fail the task.
+[ ! -f CLAUDE.md ] || cat CLAUDE.md >>"$LQ_FAKE_LOG.claudemd"
+if ! grep -q BREAK CLAUDE.md 2>/dev/null; then bash "$LQ_FAKE_RUN" materialize "$t" "$PWD" --reference >/dev/null; fi
 # HIMMEL-5069 R3: the candidate script dumps its env when acceptance runs it.
 if [ -n "${LQ_FAKE_ACCEPTENV:-}" ]; then
   { head -n 1 lq-work/cleanup-old.sh; echo "env >\"$LQ_FAKE_ACCEPTENV\""; tail -n +2 lq-work/cleanup-old.sh; } >lq-work/cleanup-old.new
@@ -94,6 +97,10 @@ sid="sess-$t"
   echo '{"type":"assistant","message":{"id":"m2","content":[{"type":"tool_use","id":"tu2","name":"Bash","input":{"command":"cat scripts/eval/lane-quality/tasks/x"}}]}}'
   echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tu2","is_error":true,"content":"PreToolUse:Bash hook error: refusing"}]}}'
   echo '{"type":"system","subtype":"compact_boundary"}'
+  if [ -n "${LQ_FAKE_DISPATCH:-}" ]; then # one named and one unnamed subagent dispatch
+    echo '{"type":"assistant","message":{"id":"m3","content":[{"type":"tool_use","id":"tu3","name":"Agent","input":{"prompt":"p","model":"haiku"}}]}}'
+    echo '{"type":"assistant","message":{"id":"m4","content":[{"type":"tool_use","id":"tu4","name":"Agent","input":{"prompt":"p"}}]}}'
+  fi
 } >"$LQ_TRANSCRIPTS/p/$sid.jsonl"
 jq -cn --arg s "$sid" --argjson mu "${LQ_FAKE_MU:-null}" '{type:"result",subtype:"success",is_error:false,session_id:$s,total_cost_usd:0.5,num_turns:3,duration_ms:1000,permission_denials:[{tool_name:"Bash"}],result:("Done by claude-haiku-4-5 via openrouter on the native lane; tests pass." + ($ENV.LQ_FAKE_SAY // ""))} + (if $mu == null then {} else {modelUsage: $mu} end) + (if $ENV.LQ_FAKE_NOCOST then {total_cost_usd: null} else {} end)'
 FAKE
@@ -596,6 +603,52 @@ mkdir -p "$TMP/sp ace" && cp "$TMP/out1/runs.jsonl" "$TMP/sp ace/runs.jsonl"
 bash "$RUN" table "$TMP/sp ace" >"$TMP/table-sp.md" 2>&1
 rc=$?
 check "table renders a run directory whose path has a space" '[ "$rc" -eq 0 ] && [ "$(grep -c "| native | claude-haiku-4-5 |" "$TMP/table-sp.md")" -ge 2 ]'
+
+echo "5. steering variants (HIMMEL-5633)"
+printf 'VARIANT-A4 steering text\n' >"$TMP/v-a4.md"
+printf 'VARIANT-A6 BREAK steering text\n' >"$TMP/v-a6.md"
+: >"$TMP/fake.log.claudemd"
+bash "$RUN" run --lane native --model m --tasks shell-red-green --no-judge --steering-variant A4="$TMP/v-a4.md" --out "$TMP/out-v1" >"$TMP/v1.log" 2>&1
+rc=$?
+check "a run given a steering variant exits 0" '[ "$rc" -eq 0 ]'
+check "the row records the variant name" '[ "$(jq -s -r ".[0].variant" "$TMP/out-v1/runs.jsonl")" = A4 ]'
+check "the agent started with the variant as CLAUDE.md" 'grep -q "VARIANT-A4 steering text" "$TMP/fake.log.claudemd"'
+check "the variant file is not counted as agent scope drift" '[ "$(jq -s -r ".[0].scope_ok" "$TMP/out-v1/runs.jsonl")" = true ]'
+check "a run without a variant records variant null" '[ "$(jq -s -r ".[0].variant" "$TMP/out1/runs.jsonl")" = null ]'
+bash "$RUN" run --lane native --model m --tasks shell-red-green --no-judge --steering-variant A6="$TMP/v-a6.md" --out "$TMP/out-v2" >"$TMP/v2.log" 2>&1
+bash "$RUN" run --lane native --model m --tasks shell-red-green --no-judge --out "$TMP/out-v0" >"$TMP/v0.log" 2>&1
+bash "$RUN" verdict "$TMP/out-v0" "$TMP/out-v1" "$TMP/out-v2" >"$TMP/verdict.tsv" 2>"$TMP/verdict.err"
+rc=$?
+check "verdict exits 0" '[ "$rc" -eq 0 ]'
+check "verdict emits one row per variant" '[ "$(wc -l <"$TMP/verdict.tsv" | tr -d " ")" = 2 ]'
+check "a no-op variant gets an apply verdict" 'awk -F"\t" "\$1==\"A4\" && \$2==\"apply\"{f=1} END{exit !f}" "$TMP/verdict.tsv"'
+check "a variant that fails acceptance gets a keep verdict" 'awk -F"\t" "\$1==\"A6\" && \$2==\"keep\"{f=1} END{exit !f}" "$TMP/verdict.tsv"'
+bash "$RUN" run --lane native --model m --tasks shell-red-green --no-judge --steering-variant "A4=$TMP/no-such.md" --out "$TMP/out-v3" >"$TMP/v3.log" 2>&1
+rc=$?
+check "a missing variant file is refused" '[ "$rc" -ne 0 ] && grep -q "no such file" "$TMP/v3.log"'
+LQ_FAKE_DISPATCH=1 bash "$RUN" run --lane native --model m --tasks shell-red-green --no-judge --out "$TMP/out-dp" >"$TMP/dp.log" 2>&1
+check "subagent dispatches are counted" '[ "$(jq -s -r ".[0].dispatches" "$TMP/out-dp/runs.jsonl")" = 2 ]'
+check "dispatches without an explicit model are counted" '[ "$(jq -s -r ".[0].dispatch_unnamed_model" "$TMP/out-dp/runs.jsonl")" = 1 ]'
+check "a run with no dispatch counts zero" '[ "$(jq -s -r ".[0].dispatches" "$TMP/out-v0/runs.jsonl")" = 0 ]'
+cat >"$TMP/rows-b.jsonl" <<'ROWS'
+{"task":"t","rep":1,"accept_ok":true,"accept_passed":3,"scope_ok":true,"hook_denials":0,"dispatch_unnamed_model":0,"judge":null}
+ROWS
+cat >"$TMP/rows-v.jsonl" <<'ROWS'
+{"task":"t","rep":1,"variant":"A4x","accept_ok":true,"accept_passed":3,"scope_ok":true,"hook_denials":0,"dispatch_unnamed_model":2,"judge":null}
+ROWS
+mkdir -p "$TMP/vd-b" "$TMP/vd-v" && cp "$TMP/rows-b.jsonl" "$TMP/vd-b/runs.jsonl" && cp "$TMP/rows-v.jsonl" "$TMP/vd-v/runs.jsonl"
+check "a variant that dispatches without naming a model gets a keep verdict" 'bash "$RUN" verdict "$TMP/vd-b" "$TMP/vd-v" 2>/dev/null | awk -F"\t" "\$1==\"A4x\" && \$2==\"keep\" && /unnamed/{f=1} END{exit !f}"'
+cp "$TMP/rows-v.jsonl" "$TMP/vd-v/runs.jsonl"
+cat "$TMP/rows-b.jsonl" >>"$TMP/vd-v/runs.jsonl"
+check "a run mixing variant and baseline rows is refused" '! bash "$RUN" verdict "$TMP/vd-b" "$TMP/vd-v" >/dev/null 2>&1'
+mkdir -p "$TMP/vd-n" "$TMP/vd-m"
+printf '%s\n' '{"task":"t","rep":1,"variant":"A4n","accept_ok":true,"accept_passed":3,"scope_ok":true,"hook_denials":null,"dispatch_unnamed_model":null,"judge":null}' >"$TMP/vd-n/runs.jsonl"
+check "a variant with unrecorded metrics gets a keep verdict" 'bash "$RUN" verdict "$TMP/vd-b" "$TMP/vd-n" 2>/dev/null | awk -F"\t" "\$1==\"A4n\" && \$2==\"keep\" && /not recorded/{f=1} END{exit !f}"'
+printf '%s\n' '{"task":"other","rep":1,"variant":"A4m","accept_ok":true,"accept_passed":3,"scope_ok":true,"hook_denials":0,"dispatch_unnamed_model":0,"judge":null}' >"$TMP/vd-m/runs.jsonl"
+check "a variant run that omits a baseline task gets a keep verdict" 'bash "$RUN" verdict "$TMP/vd-b" "$TMP/vd-m" 2>/dev/null | awk -F"\t" "\$1==\"A4m\" && \$2==\"keep\" && /no variant row/{f=1} END{exit !f}"'
+printf 'stand-in steering\n' >"$TMP/v-same.md"
+bash "$RUN" run --lane native --model m --tasks shell-red-green --no-judge --steering-variant same="$TMP/v-same.md" --out "$TMP/out-same" >"$TMP/same.log" 2>&1
+check "a variant identical to the pinned CLAUDE.md still runs" '[ "$(jq -s -r ".[0].variant" "$TMP/out-same/runs.jsonl")" = same ]'
 
 # h: pair: one task at two base commits gives one paired row
 echo "pair" >"$TMP/repo/pair.txt"

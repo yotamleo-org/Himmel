@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/block-chokepoint-env-prefix.sh (HIMMEL-1746:
-# deny env-prefixed invocations of the REGISTERED sanctioned chokepoints).
+# Smoke test for scripts/hooks/block-chokepoint-env-prefix.sh:
+# deny env-prefixed invocations of the REGISTERED sanctioned chokepoints.
 #
 # The SHIPPED registry (scripts/chokepoints.json) drives the fixtures: every
 # (chokepoint, seam var) pair the registry carries is exercised, so a new
@@ -23,8 +23,8 @@ set -uo pipefail
 
 # Invoked via `bash` below, never chmod'd: making the hook executable from
 # the suite would hide a missing exec-bit/wiring problem and leave file-mode
-# changes behind on POSIX checkouts with core.filemode=true (HIMMEL-1761
-# class; HIMMEL-1803). git status must be clean after a run.
+# changes behind on POSIX checkouts with core.filemode=true).
+# git status must be clean after a run.
 HOOK="$(cd "$(dirname "$0")" && pwd)/block-chokepoint-env-prefix.sh"
 REPO_ROOT=$(cd "$(dirname "$HOOK")/../.." && pwd -P)
 REGISTRY="$REPO_ROOT/scripts/chokepoints.json"
@@ -123,7 +123,7 @@ ${SW_VAR}=9 bash $STOP_WORKER --list")"
 assert_deny "\$CLAUDE_PROJECT_DIR-qualified path"       "$(j "${MOG_VAR}=1 bash \"\$CLAUDE_PROJECT_DIR/$MERGE_ON_GREEN\"")"
 assert_deny "PowerShell tool carrying the same shape"   "$(jp "${MOG_VAR}=1 bash $MERGE_ON_GREEN")"
 
-# HIMMEL-4815: the deny names its literal retry (the bare chokepoint), built
+# The deny names its literal retry (the bare chokepoint), built
 # from registry fields only.
 run "$(j "${MOG_VAR}=1 bash $MERGE_ON_GREEN")"
 CASES=$((CASES + 1))
@@ -134,13 +134,13 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# --- HIMMEL-2927: `env -u`/`--unset` and an in-shell `unset`/`export -n`
+# --- `env -u`/`--unset` and an in-shell `unset`/`export -n`
 # clear a registered seam with no assignment word, so the assignment
 # predicate above never fires -- same defect class as VAR=x, inside the
 # registered set. HIMMEL_CONSOLE_LEG is a registered seam of
 # merge-on-green.sh (chokepoints.json) and, since #630, is what makes
 # merge-on-green.sh require the console's GO file -- clearing it unguarded
-# silently disarms the HIMMEL-2919 gate. `unset`/`export -n` are cross-segment
+# silently disarms that gate. `unset`/`export -n` are cross-segment
 # by design (the shell effect crosses segments too), so the chokepoint's
 # segment can come later in the same payload. ---
 assert_deny "env -u clears a registered seam"                    "$(j "env -u HIMMEL_CONSOLE_LEG bash $MERGE_ON_GREEN 1")"
@@ -149,7 +149,7 @@ assert_deny "env --unset NAME (separate operand) clears a seam"  "$(j "env --uns
 assert_deny "in-shell unset; then the chokepoint"                 "$(j "unset HIMMEL_CONSOLE_LEG; bash $MERGE_ON_GREEN 1")"
 assert_deny "in-shell unset && then the chokepoint"               "$(j "unset HIMMEL_CONSOLE_LEG && bash $MERGE_ON_GREEN 1")"
 assert_deny "export -n; then the chokepoint"                      "$(j "export -n HIMMEL_CONSOLE_LEG; bash $MERGE_ON_GREEN 1")"
-# codex-1 (pr-check round 1): export's flags (-f/-n/-p) combine and
+# export's flags (-f/-n/-p) combine and
 # reorder freely -- `-np`/`-pn` genuinely strip the export attribute in
 # real bash (verified), same as a bare `-n`, so a combined cluster must
 # be recognized too, not just the exact word "-n".
@@ -162,15 +162,15 @@ assert_deny "env -u UNREGISTERED name beside a chokepoint (3921 r3 over-deny: an
 assert_allow "unset with no chokepoint in the payload"            "$(j "unset HIMMEL_CONSOLE_LEG; echo hi")"
 assert_allow "env -u registered name, non-chokepoint program"     "$(j "env -u HIMMEL_CONSOLE_LEG bash scripts/some/unregistered-script.sh")"
 
-# --- HIMMEL-2933: the third way to clear a registered seam from an earlier
+# --- The third way to clear a registered seam from an earlier
 # segment -- a plain or exported ASSIGNMENT, with no `unset`/`export -n`/
 # `env -u` in sight. `SEAM=0;`/`SEAM=;` is a segment consumed ENTIRELY as
 # leading assignment words with no command word ever reached -- bash runs
 # that in the current shell and it persists to every LATER segment, the
-# same cross-segment effect HIMMEL-2927 folds `unset`/`export -n` into.
+# same cross-segment effect folded in for `unset`/`export -n`.
 # `export SEAM=`/`export SEAM=0 &&` sets it AND exports it; `export SEAM`
 # alone (no `=`) re-exports an already-set value unchanged, but is recorded
-# anyway -- fail-closed, no value inspection, same posture as HIMMEL-2927. ---
+# anyway -- fail-closed, no value inspection, same posture as `unset`/`export -n`. ---
 assert_deny "bare assignment; then the chokepoint (SEAM=0;)"      "$(j "HIMMEL_CONSOLE_LEG=0; bash $MERGE_ON_GREEN 1")"
 assert_deny "bare assignment to empty; then the chokepoint"       "$(j "HIMMEL_CONSOLE_LEG=; bash $MERGE_ON_GREEN 1")"
 assert_deny "two assignment words in the earlier segment"         "$(j "HIMMEL_CONSOLE_LEG=0 OTHER=1; bash $MERGE_ON_GREEN 1")"
@@ -182,10 +182,10 @@ assert_deny "export bare NAME (already-set, no =): recorded fail-closed" "$(j "e
 assert_allow "unrelated bare assignment; then the chokepoint"     "$(j "OTHER_VAR=0; bash $MERGE_ON_GREEN 1")"
 assert_deny "1813 backstop over-deny (console X ruling 07:05): chokepoint FIRST; bare assignment in a LATER segment" "$(j "bash $MERGE_ON_GREEN 1; HIMMEL_CONSOLE_LEG=0")"
 
-# HIMMEL-2927 ruling (pr-check round 5): unset/export option-VALIDITY
+# Ruling: unset/export option-VALIDITY
 # modelling is GONE. Three CR rounds each found the next edge a validity
 # model missed (-fn, the -f leading/trailing boundary, `--`, `-x`), and
-# round 5 surfaced a genuine BYPASS in the validity model itself
+# a genuine BYPASS surfaced in the validity model itself
 # (`export -n -- NAME` -- real bash treats `--` as ending option parsing
 # and still strips NAME's export attribute, but a validity-charset model
 # read the bare `--` as an invalid option and skipped recording the
@@ -215,11 +215,11 @@ assert_deny "unset NAME -f (both readings still clear the seam)"    "$(j "unset 
 assert_deny "unset -x NAME (documented over-deny -- bash refuses, touches nothing)" "$(j "unset -x HIMMEL_CONSOLE_LEG; bash $MERGE_ON_GREEN 1")"
 assert_deny "export -n -x NAME (documented over-deny -- bash refuses, touches nothing)" "$(j "export -n -x HIMMEL_CONSOLE_LEG; bash $MERGE_ON_GREEN 1")"
 
-# --- HIMMEL-2939 (the fourth clearing shape): six MORE ways an earlier
+# --- The fourth clearing shape: six MORE ways an earlier
 # segment clears a registered seam with no `unset`/`export -n`/`env -u`/plain
 # assignment in sight -- `let`/`declare`/`typeset`/`printf -v`/`read` all
 # assign in the CURRENT shell, and the legacy `$[NAME=0]` arithmetic
-# construct assigns too. Same fail-closed posture as HIMMEL-2927/2933: no
+# construct assigns too. Same fail-closed posture as `unset` and plain assignment: no
 # option-validity model, every non-option word (after any `-v` for `printf`)
 # is a candidate name, folded into UNSET_NAMES for later segments. The
 # `$((SEAM=0))` control (already denied via the existing `$(` carve-out,
@@ -236,7 +236,7 @@ assert_deny "\$((NAME=0)) control (pre-existing, via the \$( carve-out)" "$(j "\
 # Over-match control: unaffected.
 assert_allow "let x=1 (no seam) stays allowed"                   "$(j "let x=1; bash $MERGE_ON_GREEN 1")"
 
-# --- HIMMEL-2939 CR round (codex-1): compound arithmetic-assignment
+# --- Compound arithmetic-assignment
 # operators glued onto the name (`let NAME*=0`) escaped both the `%%=*`
 # suffix-strip (left `NAME*` as the folded name, which never matches the
 # registered `NAME`) and the `$[...]` bracket regex's bare `NAME=` match
@@ -245,9 +245,9 @@ assert_allow "let x=1 (no seam) stays allowed"                   "$(j "let x=1; 
 assert_deny "let NAME*=0 (compound arithmetic op) assigns the seam"        "$(j "let HIMMEL_CONSOLE_LEG*=0; bash $MERGE_ON_GREEN 1")"
 assert_deny "legacy \$[NAME*=0] (compound arithmetic op) assigns the seam" "$(j "echo \$[HIMMEL_CONSOLE_LEG*=0]; bash $MERGE_ON_GREEN 1")"
 
-# --- HIMMEL-2939 CR round 2 (codex-1): a single `let` operand can comma-join
+# --- A single `let` operand can comma-join
 # multiple arithmetic assignments -- everything after the first comma was
-# invisible to the leading-identifier-only match (codex-1). (codex-2):
+# invisible to the leading-identifier-only match.
 # `++`/`--` prefix or postfix WRITES the operand without ever producing a
 # bare `=`, so the `=`-anchored `let`/`declare` leading match and the
 # `$[...]` bracket-fold both missed it. Fixed by adding comma-joined and
@@ -258,10 +258,10 @@ assert_deny "let postfix NAME-- assigns the seam"                   "$(j "let 'H
 assert_deny "legacy \$[--NAME] (prefix decrement) assigns the seam" "$(j "echo \$[--HIMMEL_CONSOLE_LEG]; bash $MERGE_ON_GREEN 1")"
 assert_deny "legacy \$[NAME++] (postfix increment) assigns the seam" "$(j "echo \$[HIMMEL_CONSOLE_LEG++]; bash $MERGE_ON_GREEN 1")"
 
-# --- HIMMEL-2939 CR round 4 (collapse, console ruling): three straight
+# --- Three straight
 # rounds each found the next `let` arithmetic-operator shape (bare `=`,
 # compound `*=`, comma-join, prefix `++`, now postfix AFTER a comma) a
-# validity model missed -- codex-1 this round: `let 'x=0,NAME--'` still
+# validity model missed -- e.g. `let 'x=0,NAME--'` still
 # escaped because the comma-joined scan only matched `=` or prefix
 # `++`/`--`, not postfix after a comma. Ruling: stop parsing `let`
 # grammar entirely -- any registered seam name occurring anywhere in a
@@ -275,8 +275,7 @@ assert_deny "let comma-joined THEN postfix (NAME-- after comma) assigns the seam
 assert_deny "let x=NAME+1 (reads, does not clear -- documented over-deny)" "$(j "let 'x=HIMMEL_CONSOLE_LEG+1'; bash $MERGE_ON_GREEN 1")"
 assert_allow "let NAME_LONGER=0 (word boundary -- shares the registered name's PREFIX, not equal)" "$(j "let HIMMEL_CONSOLE_LEGACY=0; bash $MERGE_ON_GREEN 1")"
 
-# --- HIMMEL-2939 (collapse, round 4 continued -- console ruling named
-# `printf -v` and `read` for the SAME treatment as `let`/`declare`/`$[...]`):
+# --- `printf -v` and `read` get the SAME treatment as `let`/`declare`/`$[...]`:
 # both builtins also accept an ARRAY-ELEMENT operand (`NAME[0]`), which bash
 # assigns into NAME exactly like a bare `NAME` operand -- but the pre-collapse
 # code captured the whole word (`${W[$k]%%=*}`) as the candidate, so
@@ -288,9 +287,8 @@ assert_deny "read NAME[0] (array-element assignment) assigns the seam"        "$
 assert_deny "printf -v NAME[0] (array-element assignment) writes the seam"    "$(j "printf -v HIMMEL_CONSOLE_LEG[0] 0; bash $MERGE_ON_GREEN 1")"
 assert_allow "read NAME_LONGER (word boundary -- shares the PREFIX, not equal)" "$(j "read HIMMEL_CONSOLE_LEGACY <<< 0; bash $MERGE_ON_GREEN 1")"
 
-# --- HIMMEL-2939 CR round 5 (console ruling): the round-4 collapse still
-# skipped every dash-prefixed word (`-*) ;;`) in the let/declare/typeset/
-# readonly and read arms before scanning, reasoning it was an option/flag.
+# --- A dash-prefixed word (`-*) ;;`) was once skipped in the let/declare/typeset/
+# readonly and read arms before scanning, on the theory it was an option/flag.
 # That skip is itself an unwanted grammar model: bash's `let` treats a
 # LEADING `--` on an operand, after the `--` option-terminator word, as the
 # prefix-decrement operator, not a flag -- `let -- '--HIMMEL_CONSOLE_LEG'`
@@ -299,12 +297,11 @@ assert_allow "read NAME_LONGER (word boundary -- shares the PREFIX, not equal)" 
 assert_deny "let -- '--NAME' (arithmetic prefix-decrement operand; dash-skip hid it)" "$(j "let -- '--HIMMEL_CONSOLE_LEG'; bash $MERGE_ON_GREEN 1")"
 assert_allow "let -- x=1 (control -- no seam name present)" "$(j "let -- x=1; bash $MERGE_ON_GREEN 1")"
 
-# --- HIMMEL-2943 (residual deferred off HIMMEL-2939 round 5, codex-1):
-# `mapfile`/`readarray` were left unmodelled on the theory that they "target
+# --- `mapfile`/`readarray` were left unmodelled on the theory that they "target
 # arrays, never a scalar seam" -- but `mapfile -t NAME <<< 0` converts a
 # scalar seam into an array bash does not export to children, clearing it
 # from a later chokepoint's view exactly like `unset` does. Same word-bounded
-# scan as the `let`/`read` arms, no option-shape modelling (round 5's STOP
+# scan as the `let`/`read` arms, no option-shape modelling (the STOP
 # ruling applies here too): every remaining word after `mapfile`/`readarray`
 # goes through the scan unconditionally, so a value-taking option's operand
 # (`-C callback`, `-c quantum`) is scanned too, documented over-deny. ---
@@ -317,7 +314,7 @@ assert_allow "mapfile -t lines <<< x (non-seam name) stays allowed"      "$(j "m
 assert_allow "mapfile -t (no name -> default MAPFILE, not a seam)"      "$(j "mapfile -t; bash $MERGE_ON_GREEN 1")"
 assert_allow "echo mapfile NAME (word, not the command) stays allowed"  "$(j "echo mapfile HIMMEL_CONSOLE_LEG; bash $MERGE_ON_GREEN 1")"
 
-# --- CR ROUND 1 (HIMMEL-1746): the env-prefix must bind to the chokepoint's
+# --- The env-prefix must bind to the chokepoint's
 # OWN command segment. The pre-fix predicate tested "path found anywhere"
 # AND "assignment found anywhere" over the whole compound, which false-denied
 # (assignment in a different segment -- finding 1) and evaded (separator
@@ -338,7 +335,7 @@ echo ok")"
 assert_deny "env-prefixed chokepoint alone still denied"  "$(j "${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 assert_deny "quoted separator inside a value never splits" "$(j "${MOG_VAR}='a;b' bash $MERGE_ON_GREEN")"
 
-# --- CR ROUND 2 (HIMMEL-1746): same class, third instance forbidden. The
+# --- Same class, third instance forbidden. The
 # INVARIANT (stated at the hook's scanner): a chokepoint is recognized only
 # when its path is the invoked-program TOKEN of a segment -- decided by
 # tokenizing into shell words, never by substring search -- and a seam
@@ -369,7 +366,7 @@ assert_deny  "bash -c string carrying the invocation" "$(j "${MOG_VAR}=1 bash -c
 assert_deny "1813 backstop over-deny (console X ruling 07:05): bash -c: path in \$0 position is not invoked" "$(j "${MOG_VAR}=1 bash -c 'echo hi' $MERGE_ON_GREEN")"
 assert_deny "1813 backstop over-deny (console X ruling 07:05): double-quoted literal text is not an invocation" "$(j "echo \"${MOG_VAR}=1 bash $MERGE_ON_GREEN\"")"
 
-# --- HIMMEL-1803: the env -S split-string seam. `env -S 'VAR=x cmd'`
+# --- The env -S split-string seam. `env -S 'VAR=x cmd'`
 # re-tokenizes the operand into the whole command line (GNU env's documented
 # -S / --split-string), so the operand is an eval/-c-shaped string the guard
 # re-parses under its depth cap, with names inherited from the outer env
@@ -385,7 +382,7 @@ assert_deny "1813 backstop over-deny (console X ruling 07:05): env -S string WIT
 assert_deny "1813 backstop over-deny (console X ruling 07:05): env -S: words after the string are appended args" "$(j "env -S 'echo hi' bash $MERGE_ON_GREEN")"
 assert_deny "1813 backstop over-deny (console X ruling 07:05): env -S: path at \$0 inside the string"   "$(j "env -S '${MOG_VAR}=x bash -c \"echo hi\" $MERGE_ON_GREEN'")"
 
-# --- HIMMEL-1803 round 2: the CLUSTERED short-option spelling. Flags
+# --- The CLUSTERED short-option spelling. Flags
 # clustered ahead of S ("-vS", "-iS", "-ivS") are ONE option word, and env
 # still re-tokenizes the operand -- the NEXT word when S ends the cluster,
 # the REST of the word when it does not ("-vSstr"). The same getopt rule
@@ -405,7 +402,7 @@ assert_deny "1813 backstop over-deny (console X ruling 07:05): env -vS: words af
 assert_deny "1813 backstop over-deny (console X ruling 07:05): env -iS: path at \$0 inside the string"  "$(j "env -iS '${MOG_VAR}=x bash -c \"echo hi\" $MERGE_ON_GREEN'")"
 assert_deny "1813 backstop over-deny (console X ruling 07:05): env -vSu: mid-cluster S consumes u; rest are appended args" "$(j "env -vSu '${MOG_VAR}=x bash $MERGE_ON_GREEN'")"
 
-# --- HIMMEL-1803 round 3: the OPTION-TABLE class closure. Three CR
+# --- The OPTION-TABLE class closure. Three CR
 # rounds each found a spelling the hand-written option list missed; the
 # hook's env arm now DERIVES operand consumption from a grammar table
 # (ENV_LONG_OPTS). Proven RED by hand against the round-2 hook (the
@@ -444,8 +441,8 @@ assert_deny "1813 backstop over-deny (console X ruling 07:05): optarg long (--ig
 assert_deny  "nested env carries the seam through its own -S"              "$(j "env ${MOG_VAR}=x env -S 'bash $MERGE_ON_GREEN'")"
 assert_deny  "env after --: inner env option parsing restarts"             "$(j "env -- ${MOG_VAR}=x env -S 'bash $MERGE_ON_GREEN'")"
 
-# --- HIMMEL-1803 round 4: the conservative default for SHORT clusters and
-# the -S OPTION-state re-entry. Round 3 documented "an option the scanner
+# --- The conservative default for SHORT clusters and
+# the -S OPTION-state re-entry. The earlier model documented "an option the scanner
 # does not recognise must fall to a conservative default that assumes it
 # MAY consume an operand" but implemented it for LONG options only:
 # env_short_cluster returned "unknown" (a bare word-skip) and had no -a
@@ -477,15 +474,15 @@ assert_deny  "env -S option-only string; command rides the outer words" "$(j "en
 assert_deny  "env -S: \_ is the argument separator"        "$(j "env -S '${MOG_VAR}=x bash\\_$MERGE_ON_GREEN'")"
 assert_deny "1813 backstop over-deny (console X ruling 07:05): env -S option state, no seam var"            "$(j "env -S '-u X bash $MERGE_ON_GREEN'")"
 # (The former "; inside the string is a word character" ALLOW moved to the
-# HIMMEL-1813 block below, now a deny: see the note there.)
+# deny-on-unresolvable block below, now a deny: see the note there.)
 
-# --- HIMMEL-1803 round 7: an unquoted # at argument start discards the
+# --- An unquoted # at argument start discards the
 # rest of an env -S string; an escaped \# remains literal word content. ---
 assert_deny  "env -S: leading # comment discards the string" "$(j "env -S '# ignored' ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 assert_deny  "env -S: mid-string # comment discards the rest" "$(j "env -S '-u X # ignored' ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 assert_deny  "env -S: escaped \# stays literal before a later comment" "$(j "env -S '-u \\# # ignored' ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 
-# --- HIMMEL-1813: deny-on-unresolvable. Round 7 (GNU's \c "ignore the rest")
+# --- Deny-on-unresolvable. GNU's \c ("ignore the rest")
 # tripped the judgment pass's convergence tripwire, so the -S grammar is no
 # longer simulated spelling by spelling: a split string carrying anything
 # outside a small resolvable set (a backslash escape other than \_ \\ \" \'
@@ -519,7 +516,7 @@ assert_deny_unres "1813: \\c on the stop-worker chokepoint"  "$(j "env -S '${SW_
 assert_deny_unres "1813: other escape (\\t)"                 "$(j "env -S 'bash $MERGE_ON_GREEN\\t'")"
 assert_deny_unres "1813: backslash inside single quotes"     "$(j "env -S \"bash '$MERGE_ON_GREEN\\\\c'\"")"
 assert_deny_unres "1813: \\_ inside double quotes"           "$(j "env -S '\"${MOG_VAR}=1\\_\" bash $MERGE_ON_GREEN'")"
-# HIMMEL-4157: a mid-word # in a path is a zsh extendedglob operator (go.sh#
+# A mid-word # in a path is a zsh extendedglob operator (go.sh#
 # = go.s + zero or more h), so the text layer now denies it first.
 assert_deny "1813: mid-word #"                               "$(j "env -S 'bash $MERGE_ON_GREEN#'")"
 assert_deny_unres "1813: \${VARNAME} expansion"              "$(j "env -S '\${HM_1813_X} bash $MERGE_ON_GREEN'")"
@@ -550,7 +547,7 @@ assert_deny "1813: unquoted TAB, direct chokepoint path"       "$(j "env -S ${MO
 assert_deny "1813: \${VAR} splits the chokepoint name"   "$(j "env -S '${SW_VAR}=1 bash ${STOP_WORKER%stop-worker.sh}stop-\${Z}worker.sh'")"
 assert_deny_unres "1813: herestring feeds an env -S \\c to bash" "$(j "bash <<< \"env -S '${MOG_VAR}=1 bash $MERGE_ON_GREEN\\c'\"")"
 assert_deny_unres "1813: the LAST of two herestrings is scanned" "$(j "bash <<< 'echo ok' <<< \"env -S '${MOG_VAR}=1 bash $MERGE_ON_GREEN\\c'\"")"
-# Judge round 3: a redirect word of ANY shape between env and its command
+# A redirect word of ANY shape between env and its command
 # makes env's options unresolvable, and a here-string naming a chokepoint
 # denies unless a non-executing reader consumes it.
 assert_deny "1813: >| redirect before -S"                     "$(j "env >|/dev/null -S '${SW_VAR}=1 bash $STOP_WORKER\\c'")"
@@ -575,7 +572,7 @@ assert_deny "1813 backstop over-deny (console X ruling 07:05): 1813 pinned: bash
 assert_allow "1813 pinned: an UNREGISTERED variable"         "$(j "HM_1813_UNREGISTERED=1 bash $MERGE_ON_GREEN")"
 assert_allow "1813 pinned: a bare invocation"                "$(j "bash $MERGE_ON_GREEN")"
 
-# --- HIMMEL-1803 round 6: ZERO-LENGTH WORDS keep their argv slot. The
+# --- ZERO-LENGTH WORDS keep their argv slot. The
 # invariant the whole r1-r6 family violated piecemeal: the scan is a
 # positional simulation of the argv each interpreter really receives, so
 # every hand-off must preserve word COUNT, ORDER, and CONTENT --
@@ -588,7 +585,7 @@ assert_allow "1813 pinned: a bare invocation"                "$(j "bash $MERGE_O
 # '' and runs the chokepoint with the seam) AND mis-denied (SEAM=x ''
 # bash <chokepoint>: the empty word IS the command, exec fails, nothing
 # runs). All eight non-redirect shapes below were driven RED by hand
-# against the round-5 hook. The kin pins: --split-string= and -S ''
+# against the earlier hook. The kin pins: --split-string= and -S ''
 # (verified: GNU env runs the appended CLI words after an EMPTY split
 # string) exercise the empty-OPERAND half -- $(...) strips an empty
 # second protocol line, which pre-fix parked the verdict word itself in
@@ -646,27 +643,27 @@ probe_env "-u '' (empty unset name; GNU rejects)"             env -u '' HM_1803_
 probe_env "-a '' (empty argv0; env without -a rejects)"       env -a '' HM_1803_PROBE=1 true
 probe_env "'' as the command word (exec fails)"               env '' HM_1803_PROBE=1 true
 
-# --- HIMMEL-2929: a seam cleared INSIDE a `( ... )` subshell cannot reach
+# --- A seam cleared INSIDE a `( ... )` subshell cannot reach
 # the parent shell -- scope the clear to its own subshell span instead of
 # folding it forward past the closing paren. Fail-closed: the chokepoint
 # invoked in the SAME subshell as the clear, an outer clear reaching INTO a
 # later subshell, an unbalanced paren, and every unresolved form ($( ),
 # `{ }` groups, `bash -c` strings) all stay denied. ---
-# HIMMEL-3921: the raw-text layer cannot model subshell scope, so an unset /
+# The raw-text layer cannot model subshell scope, so an unset /
 # export -n of a seam or HIMMEL_CONSOLE_LEG beside a chokepoint word now denies
 # even when the closing paren would drop it (documented over-deny, deny-leaning).
 assert_deny "subshell-scoped unset (dropped at the closing paren)"        "$(j "(unset HIMMEL_CONSOLE_LEG); bash $MERGE_ON_GREEN 1")"
 assert_deny "subshell-scoped export -n (dropped at the closing paren)"    "$(j "(export -n HIMMEL_CONSOLE_LEG); bash $MERGE_ON_GREEN 1")"
 assert_deny "1813 backstop over-deny (console X ruling 07:05): subshell-scoped bare assignment (dropped at the closing paren)" "$(j "(HIMMEL_CONSOLE_LEG=0); bash $MERGE_ON_GREEN 1")"
 assert_deny "subshell-scoped unset then && chokepoint"                    "$(j "(unset HIMMEL_CONSOLE_LEG) && bash $MERGE_ON_GREEN 1")"
-# codex-1 rounds 1-2 each found a false ALLOW in a kind-tracking model that
-# tried to tell `((`/`$(` apart from a real subshell paren-by-paren (round 1:
-# an adjacent `((` run misread as two real subshells; round 2: a grouping
-# paren nested inside `((...))` misread as a fresh real subshell). Superseded
+# A kind-tracking model that tried to tell `((`/`$(` apart from a real
+# subshell paren-by-paren gave false ALLOWs (an adjacent `((` run misread as
+# two real subshells; a grouping paren nested inside `((...))` misread as a
+# fresh real subshell). Superseded
 # by the positive/whitelist rule (below): `((` is opaque because its first
 # paren fails the command-position test's adjacent-`(` disqualifier, and
 # anything nested inside an opaque paren is forced opaque too (stack-top
-# check) -- round 2's bug structurally, not via a blanket collapse.
+# check) -- the nested-paren bug structurally, not via a blanket collapse.
 assert_deny "\`((VAR=0))\` -- adjacent-paren disqualifier keeps it opaque"    "$(j "((HIMMEL_CONSOLE_LEG=0)); bash $MERGE_ON_GREEN 1")"
 assert_deny "adjacent \`((\` -- both parens opaque, not two real subshells"    "$(j "((unset HIMMEL_CONSOLE_LEG)); bash $MERGE_ON_GREEN 1")"
 assert_deny "a paren nested inside \`((...))\` inherits opaque from the stack" "$(j "(( (HIMMEL_CONSOLE_LEG=0) )); bash $MERGE_ON_GREEN 1")"
@@ -694,7 +691,7 @@ assert_deny "a { } group is not a subshell -- stays denied"               "$(j "
 assert_deny "bash -c string recursion: paren-scoped clear+chokepoint inside the string stays denied" "$(j "bash -c '(unset HIMMEL_CONSOLE_LEG); bash $MERGE_ON_GREEN 1'")"
 assert_deny "eval string recursion: paren-scoped clear+chokepoint inside the string stays denied"     "$(j "eval '(unset HIMMEL_CONSOLE_LEG); bash $MERGE_ON_GREEN 1'")"
 
-# --- HIMMEL-2929 round N (leg N190, positive/whitelist rewrite): the
+# --- Positive/whitelist rewrite: the
 # blacklist ("any (( / $( / backtick anywhere disables scoping for the whole
 # call") gave way to a POSITIVE command-position rule -- a `(` opens a real
 # subshell (scopes) only when it is the first token of a command: at segment
@@ -711,7 +708,7 @@ assert_deny "genuine subshell after && following an unrelated command"    "$(j "
 assert_deny "\$( ) as an argument to a preceding command word stays denied" "$(j "echo \$(unset HIMMEL_CONSOLE_LEG); bash $MERGE_ON_GREEN 1")"
 assert_deny "bare backtick command substitution stays denied"              "$(j "\`unset HIMMEL_CONSOLE_LEG\`; bash $MERGE_ON_GREEN 1")"
 assert_deny "legacy \$[(...)] arithmetic paren is not a subshell"           "$(j "echo \$[(HIMMEL_CONSOLE_LEG=0)]; bash $MERGE_ON_GREEN 1")"
-# --- HIMMEL-2929 (leg N45): a `$[ ... ]` legacy-arithmetic span carrying an
+# --- A `$[ ... ]` legacy-arithmetic span carrying an
 # unquoted `;`/`&`/`|`/NEWLINE was split into segments by segment_cmd before
 # scan_segment's `$[` guard could see it -- and a `(` on the far side of that
 # split read as a real subshell, scoping the seam assignment out of the deny
@@ -733,7 +730,7 @@ assert_deny "process substitution <(...) is not a subshell"                "$(j 
 assert_deny "case pattern paren ( in (x)) is not a subshell"                "$(j "case x in (x) unset HIMMEL_CONSOLE_LEG;; esac; bash $MERGE_ON_GREEN 1")"
 assert_deny "function-body paren (f() (...)) is not command-position"      "$(j "f() ( unset HIMMEL_CONSOLE_LEG ); f; bash $MERGE_ON_GREEN 1")"
 
-# --- HIMMEL-3185: an arithmetic COMMAND `(( ... ))` / EXPANSION `$(( ... ))`
+# --- An arithmetic COMMAND `(( ... ))` / EXPANSION `$(( ... ))`
 # whose body ASSIGNS a registered seam is a current-shell clear, exactly like
 # `let` -- but ONLY the spaced spellings escaped: `((NAME=0))` reads as an
 # assignment WORD once `(`/`)` split it into its own segment, while
@@ -779,7 +776,7 @@ diff_row() {  # diff_row <leak|noleak> <label> <payload with @P@ = the chokepoin
         fi
         assert_deny "$label [oracle: leaks]" "$(j "$payload")"
     elif [ "$kind" = "overdeny" ]; then
-        # HIMMEL-1813: real bash leaves the seam alone, but the raw backstop
+        # Real bash leaves the seam alone, but the raw backstop
         # denies the literal `SEAM=` text anyway (fail-closed over-deny).
         if [ "$line" != "$ORACLE_EXPECT" ]; then
             CASES=$((CASES + 1)); FAILED=$((FAILED + 1))
@@ -845,7 +842,7 @@ diff_row noleak "longer name sharing the seam as a prefix"          '(( HIMMEL_C
 # shellcheck disable=SC2016 # literal $(( )) payload, must not expand
 diff_row noleak "\$(( )) read of the seam"                          'echo $(( HIMMEL_CONSOLE_LEG + 1 )); @P@'
 diff_row noleak "seam assigned inside a real closed subshell"       '( (( HIMMEL_CONSOLE_LEG = 0 )) ); @P@'
-# --- HIMMEL-3185 CodeRabbit round 1 (PR #853): the arithmetic body sits in the
+# --- The arithmetic body sits in the
 # SAME segment as the chokepoint call (bash expands `$(( ))` in a word BEFORE it
 # execs the command, so the seam is already cleared when the child starts), and
 # a NESTED subscript. Every earlier `$(( ))` row put the chokepoint in a LATER
@@ -891,13 +888,13 @@ diff_row noleak "\$(( )) read of the seam as the chokepoint argument" '@P@ $(( H
 diff_row noleak "\$(( )) == comparison as the chokepoint argument"   '@P@ $(( HIMMEL_CONSOLE_LEG == 1 ))'
 # shellcheck disable=SC2016 # literal $(( )) payload, must not expand
 diff_row noleak "non-seam \$(( )) assignment as the chokepoint argument" '@P@ $(( x = 0 ))'
-# --- HIMMEL-3195 DOCUMENTED RESIDUAL (operator ruling 2026-09-19: accept as a
+# --- DOCUMENTED RESIDUAL (operator ruling 2026-09-19: accept as a
 # gap, no structural fix). A bare variable in `(( ))` has its VALUE evaluated as
 # arithmetic, so `x=SEAM=0; (( x ))` assigns the seam through a value the static
 # fold cannot follow (the value could equally come from a file, `read` or the
 # env). Real bash clears the seam; the guard ALLOWS. Same class as the header's
 # string-reconstruction residual. If a future change closes this, flip the row
-# to `leak` deliberately. HIMMEL-1813 did: the raw backstop denies the literal
+# to `leak` deliberately. The raw backstop now denies the literal
 # `SEAM=` text (1813 backstop over-deny (console X ruling 07:05)). ---
 diff_row leak "indirect: x=SEAM=0; (( x )) assigns via the VALUE (HIMMEL-3195)" 'x=HIMMEL_CONSOLE_LEG=0; (( x )); @P@'
 rm -rf "$ORACLE_DIR"
@@ -911,7 +908,7 @@ assert_deny "HIMMEL_SUITE_SLOTS= prefix on run-shell-tests"     "$(j "HIMMEL_SUI
 assert_allow "SUITE_LOCK_WAIT= prefix on quiet-run suite"      "$(j "SUITE_LOCK_WAIT=60 bash $QR suite -- bash scripts/test-quiet-run.sh")"
 assert_allow "run-shell-tests.sh (the CI chokepoint)"          "$(j "bash scripts/ci/run-shell-tests.sh --shard 1/8 .")"
 
-# --- HIMMEL-1813 raw-string backstop (console X ruling at b8ae2143): before
+# --- Raw-string backstop (console X ruling at b8ae2143): before
 # any parsing, a raw command naming a registered chokepoint AND, anywhere in
 # the same raw string, that chokepoint's seam var or an env -S /
 # --split-string denies. Comments, quotes, functions and depth do not matter.
@@ -945,7 +942,7 @@ assert_deny  "1813 append-assignment SEAM+= prefix"                   "$(j "STOP
 assert_deny  "1813 append-assignment SEAM+= prefix through env"       "$(j "HIMMEL_CONSOLE_LEG+=1 env bash $MERGE_ON_GREEN 1")"
 assert_allow "1813 backstop control: bare chokepoint, no seam, no -S"  "$(j "bash $STOP_WORKER")"
 
-# --- HIMMEL-3904: process wrappers (nice/timeout/stdbuf/ionice/chrt) re-enter
+# --- Process wrappers (nice/timeout/stdbuf/ionice/chrt) re-enter
 # command position; `<wrapper> env SEAM=x bash <chokepoint>` must be examined,
 # not stopped at the wrapper's name. ---
 assert_deny  "3904 nice env seam chokepoint"               "$(j "nice env -u ${MOG_VAR} bash $MERGE_ON_GREEN")"
@@ -1017,7 +1014,7 @@ assert_allow "empty stdin"                  ''
 # the hook (review lanes cannot always edit settings.json) -- a hard gate
 # here would turn that sequencing into a false red. The hookspath-misconfig
 # pre-commit hook validates settings.json hook references independently.
-# --- HIMMEL-3914: the basename backstops (raw_mention, split_mention) match a
+# --- The basename backstops (raw_mention, split_mention) match a
 # WHOLE path component, so a longer file name that merely ends in a
 # registered basename (cargo.sh vs go.sh) no longer over-denies. The quote-
 # stripped `$x"go.sh"` (x empty runs go.sh) still denies: a `$`+identifier
@@ -1028,7 +1025,7 @@ assert_deny "3914 word boundary control: seam prefix + ./go.sh" "$(j "HIMMEL_REP
 assert_deny "3914 word boundary control: seam prefix + \$x\"go.sh\" (x empty)" "$(j "HIMMEL_REPO=/x bash \$x\"go.sh\"")"
 assert_deny "3914 word boundary control: env -S naming go.sh" "$(j "env -S 'bash scripts/handover/console-kit/go.sh'")"
 
-# --- HIMMEL-3921: the text layer for detached / non-Linux launches. A seam
+# --- The text layer for detached / non-Linux launches. A seam
 # write (VAR=, export, env, read, printf -v) beside a program word under a
 # chokepoint directory that carries a glob/brace metachar, an ANSI-C $' or a
 # $var piece is denied even when setsid -f / at / a double-fork hides the
@@ -1086,7 +1083,7 @@ assert_allow "3921 C1 printf with an ANSI-C tab/newline"      "$(j 'printf $'"'"
 assert_allow "3921 C1 IFS=ANSI-C tab in a read loop"         "$(j 'while IFS=$'"'"'\t'"'"' read -r a b; do echo $a; done < f')"
 assert_allow "3921 C1 cut -d ANSI-C tab then export"          "$(j 'cut -d$'"'"'\t'"'"' -f1 f; export LC_ALL=C')"
 # r11 (console ruling): the prefix compare is gone, so a scripts/ glob beside a
-# write verb now denies even when unrelated to a chokepoint (over-deny, HIMMEL-3955).
+# write verb now denies even when unrelated to a chokepoint (over-deny).
 assert_deny "3921 r11 (was C1 allow) printf over a scripts glob"  "$(j "printf '%s\\n' scripts/hooks/*.sh")"
 assert_allow "3921 r11 (was C1 allow) grep env over a scripts glob" "$(j "grep -ln env scripts/hooks/*.sh")"
 assert_deny "3921 r11 (was C1 allow) git log glob then read"       "$(j "git log -- scripts/hooks/*.sh; read -r x")"
@@ -1134,11 +1131,11 @@ assert_deny "3921 r11 \$v piece before a glob"            "$(j "HIMMEL_CONSOLE_L
 assert_allow "3921 r11 ls of a scripts glob, no write token"   "$(j "ls scripts/*.sh")"
 assert_allow "3921 r11 grep over a scripts glob, no write token" "$(j "grep x scripts/cr/*")"
 assert_allow "3921 I1 control: plain chokepoint call" "$(j "bash $MERGE_ON_GREEN --jira-transition")"
-# HIMMEL-3955: the standalone -u*/-i*/--u*/--i*/bare - token counts only in env
+# The standalone -u*/-i*/--u*/--i*/bare - token counts only in env
 # position (after an env-like word), so these ordinary commands stop over-denying.
-# HIMMEL-4095: this was denied only because --id read as --i*; it is not env-clearing.
+# This was denied only because --id read as --i*; it is not env-clearing.
 assert_allow "4095 no relief (glob/quote): ledger-append amend: --id, --set k=v, ? in the reason" "$(j "bash scripts/cr/ledger-append.sh amend --id 4 --set verdict=deferred --set deferred_to=HIMMEL-3929 --reason \"see scripts/hooks/x? why?\"")"
-# HIMMEL-4779: these were the 3955 "no relief, main verdict" pins; the
+# These were the 3955 "no relief, main verdict" pins; the
 # pobf_relief stages now place each -i/-u in a read-only stage or among sed's
 # own options, so none of them clears an environment.
 assert_allow "4779 grep -i over a scripts glob"      "$(j "grep -i foo scripts/hooks/*.sh")"
@@ -1167,7 +1164,7 @@ assert_deny "4779 an assignment prefix voids the git relief" "$(j "PAGER='env -i
 assert_deny "4779 an exec-capable interpreter keeps its -i counted" "$(j "python3 -c 'import os; os.execvp(\"x\", [])' -i $MERGE_ON_GREEN")"
 # shellcheck disable=SC2016 # the $( is probe text, not an expansion
 assert_deny "4779 -i in a substitution's output stage" "$(j 'cat $(grep -il x f) scripts/hooks/*.sh; $(echo env) -i bash scripts/hooks/g*.sh')"
-# HIMMEL-4572: a verb joined into a name on BOTH sides (- or / left, - . or /
+# A verb joined into a name on BOTH sides (- or / left, - . or /
 # right: block-chokepoint-env-prefix, scripts/eval/, block-read-secrets,
 # pr-check-env.sh) is a filename, not the verb; a verb at /usr/bin/env still
 # counts, and one joined side is not enough (judge on PR 2032): -printf and
@@ -1184,7 +1181,7 @@ assert_allow "4572 a bare .env beside a scripts glob" "$(j "cat .env scripts/hoo
 assert_allow "4572 .env.example (data in a read-only stage; HIMMEL-4933)" "$(j "cat .env.example scripts/hooks/g*.sh")"
 assert_deny "4572 /usr/bin/env still counts as the env verb" "$(j "/usr/bin/env FOO=1 bash scripts/hooks/g*.sh")"
 assert_deny "4572 eval after a separator still counts" "$(j "true;eval bash scripts/hooks/g*.sh")"
-# HIMMEL-4933: a glob-only scripts/ word whose only seam trigger is a verb word
+# A glob-only scripts/ word whose only seam trigger is a verb word
 # in ARGUMENT position of read-only stages is data, not a seam write. A verb
 # heading a stage, a real NAME= assignment, an env-clearing token or a hard
 # word ($var, //, /., ANSI-C, paren) keeps the deny (fail-closed on any parse
@@ -1206,7 +1203,7 @@ assert_deny "4933 control: a hard \$var path word keeps the deny" "$(j 'grep env
 assert_deny "4933 control: a // path word keeps the deny" "$(j "grep env scripts//hooks/x.sh")"
 assert_deny "4933 control: a grouped path word keeps the deny" "$(j "grep env scripts/(a|b)/x.sh")"
 assert_deny "4933 control: env -u clear beside a glob keeps the deny" "$(j "grep x scripts/hooks/*.sh; env -u BASH_ENV true")"
-# HIMMEL-4954: vcmd must see a verb that heads a stage after a newline or a
+# vcmd must see a verb that heads a stage after a newline or a
 # keyword/precommand head ({ then do else command builtin time \verb). With a
 # decoy glob-read clause each of these was allowed at the #2133 head: the verb
 # was classed as data and the glob-only relief cleared the call.
@@ -1274,7 +1271,7 @@ BSNL=$'\\\n'
 assert_deny "3955 globbed env, backslash-newline, then -i"   "$(j "/usr/bin/en? ${BSNL}-i bash scripts/handover/console-kit/g*.sh")"
 assert_deny "3955 globbed env, backslash-newline, -i beside a chokepoint word" "$(j "/usr/bin/en? ${BSNL}-i bash $MERGE_ON_GREEN")"
 assert_deny "3955 env short option operand then -u"    "$(j "/usr/bin/en? -C /tmp -u HIMMEL_CONSOLE_LEG bash scripts/handover/console-kit/g*.sh")"
-# Judge round (HIMMEL-4031): a redirection, a $(..)/backtick word, a zsh glob
+# A redirection, a $(..)/backtick word, a zsh glob
 # group or a split word between the env word and -i must not end env position.
 assert_deny "3955 env, 2>/dev/null, -i"   "$(j '/usr/bin/en? 2>/dev/null -i bash scripts/handover/console-kit/go.sh')"
 assert_deny "3955 env, 2>&1, -i"          "$(j '/usr/bin/en? 2>&1 -i bash scripts/handover/console-kit/go.sh')"
@@ -1298,7 +1295,7 @@ assert_deny "3955 systemd-run --unset-environment" "$(j 'systemd-run --user --un
 assert_deny "3955 nix develop -i -c"        "$(j 'nix develop -i -c bash scripts/handover/console-kit/go.sh')"
 assert_deny "3955 sudo -i"                  "$(j 'sudo -i bash scripts/handover/console-kit/go.sh')"
 assert_deny "3955 su - root -c"             "$(j 'su - root -c scripts/handover/console-kit/go.sh')"
-# HIMMEL-4049: setpriv --reset-env and nix-shell --pure clear the environment
+# setpriv --reset-env and nix-shell --pure clear the environment
 # (verified live for setpriv); timeout -k / --kill-after does not, so it stays ALLOW.
 assert_deny "4049 setpriv --reset-env"                  "$(j 'setpriv --reset-env bash scripts/handover/console-kit/go.sh')"
 assert_deny "4049 setpriv --reset-env after --reuid"    "$(j 'setpriv --reuid 1000 --reset-env bash scripts/handover/console-kit/go.sh')"
@@ -1331,7 +1328,7 @@ assert_deny "3955 env, \$(true; true), -i" "$(j '/usr/bin/en? $(true; true) -i b
 # shellcheck disable=SC2016 # the $( is probe text, not an expansion
 assert_deny "3955 seam in \$( ) after long option" "$(j 'echo --flag $(ARMAUTOMERGE=1 bash scripts/h*/m*.sh)')"
 
-# HIMMEL-4095: a long option merely STARTING with i or u is not env-clearing.
+# A long option merely STARTING with i or u is not env-clearing.
 # The leg N997 shape (unchanged environment) was denied as --impacted = --i*.
 assert_allow "4095 quiet-run suite -- run-shell-tests.sh --impacted" "$(j "bash $QR suite -- bash scripts/ci/run-shell-tests.sh --impacted 5b0decc27..HEAD")"
 assert_allow "4095 run-shell-tests.sh --impacted (bare)"            "$(j "bash scripts/ci/run-shell-tests.sh --impacted origin/main..HEAD")"
@@ -1356,7 +1353,7 @@ assert_deny "4095 --i* glob beside quiet-run"                     "$(j "/usr/bin
 assert_deny "4095 --unsetenv beside quiet-run"                    "$(j "bwrap --unsetenv HIMMEL_SUITE_SLOTS --dev-bind / / bash $QR suite -- bash scripts/x.sh")"
 assert_deny "4095 --impacted does not mask a later env -i"        "$(j "bash scripts/ci/run-shell-tests.sh --impacted a..b; /usr/bin/en? -i bash $QR suite -- bash scripts/x.sh")"
 
-# HIMMEL-4130: the worktree dot directory /.claude/worktrees/ is not a
+# The worktree dot directory /.claude/worktrees/ is not a
 # traversal, so a plain absolute worktree path is not obfuscated.
 WT=/home/u/himmel/.claude/worktrees/fix+x
 assert_allow "4130 worktree ledger-append amend, exec in a quoted reason" "$(j "bash $WT/scripts/cr/ledger-append.sh amend --id 3 --set verdict=fixed --reason 'the exec line moved'")"
@@ -1367,7 +1364,7 @@ assert_deny "4130 a .x dot dir is not relieved"                  "$(j "printf x;
 assert_deny "4130 a .a.b dot dir is not relieved"                "$(j "printf x; bash /r/.a.b/scripts/y.sh")"
 assert_deny "4130 /.claude/ without worktrees/ is not relieved"  "$(j "printf x; bash /r/.claude/scripts/y.sh")"
 # zsh grouping, alternation and glob qualifiers carry no extglob opener, but
-# tr splits the word at `(` so it looked plain (judge J1663b NO-GO): any `(`
+# tr splits the word at `(` so it looked plain: any `(`
 # in the text turns the relief off.
 WT2=/home/u/r/.claude/worktrees/fix+a
 assert_deny "4130 zsh grouping g(o).sh + env -u, worktree path"       "$(j "env -u HIMMEL_CONSOLE_LEG $WT2/scripts/handover/console-kit/g(o).sh")"
@@ -1419,10 +1416,10 @@ assert_deny "4130 dquote basename + split seam name, worktree path"    "$(j 'n=A
 # shellcheck disable=SC2016
 assert_deny "4130 squote basename + split seam name, worktree path"    "$(j "n=ARMAUTO; export \"\${n}MERGE=1\"; bash $WP/merge-on-g'r'een.sh")"
 
-# HIMMEL-4148: zsh (this station's Bash) globs a grouping / alternation /
+# Zsh (this station's Bash) globs a grouping / alternation /
 # glob-flag basename -- g(o).sh runs go.sh -- but tr split the word at `(`,
 # so on a PLAIN path neither the glob scan nor the basename backstop saw it
-# (judge J1663b). A `(` after scripts/ in a word now counts as obfuscation.
+# A `(` after scripts/ in a word now counts as obfuscation.
 PP=/r/w/scripts
 assert_deny "4148 zsh grouping g(o).sh + env -u, plain path"          "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/console-kit/g(o).sh")"
 assert_deny "4148 zsh grouping (go).sh + env -u, plain path"          "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/console-kit/(go).sh")"
@@ -1442,7 +1439,7 @@ assert_allow "4148 grep alternation under scripts/ with no write"     "$(j "grep
 # shellcheck disable=SC2016 # $(pwd) is probe text, not an expansion
 assert_allow "4148 \$(pwd) before scripts/ beside printf"             "$(j 'printf x; bash "$(pwd)/scripts/x.sh"')"
 
-# HIMMEL-4157 (judge J1677): a glob or grouping can hide the scripts/ anchor
+# A glob or grouping can hide the scripts/ anchor
 # itself, and zsh extendedglob has non-paren operators (# ## ^ ~). Each was
 # execution-verified under zsh -c to run go.sh with HIMMEL_CONSOLE_LEG dropped.
 # A metachar in ANY segment of a path word now counts, scripts/ or not.
@@ -1481,19 +1478,19 @@ assert_deny "4157 J1685: --norc before a bank-preflight glob" "$(j "cd scripts/l
 assert_deny "4157 J1685: --rcfile X before a quiet-run glob" "$(j "cd scripts; ${QR_VAR}=99 bash --rcfile /dev/null qu?et-run.sh")"
 assert_allow "4157 -c with a glob command string is not a script operand" "$(j "cd scripts/$CK; $UL sh -c 'g?.sh'")"
 assert_allow "4157 --norc on a plain basename" "$(j "export FOO=1; bash --norc go.sh")"
-# A quoted option value is still one value (codex-1, round 4).
+# A quoted option value is still one value.
 for F in "bash -o \"errexit\" g?.sh" "bash -o 'errexit' g?.sh" "bash +o \"errexit\" g?.sh" \
          "bash -O \"extglob\" g?.sh" "bash --rcfile '/dev/null x' g?.sh" "bash --init-file \"a b\" g?.sh"; do
     assert_deny "4157 cd then quoted option value, slash-less glob: $F" "$(j "cd scripts/$CK; $UL $F")"
 done
 assert_allow "4157 quoted -o value on a plain basename" "$(j "export FOO=1; bash -o \"errexit\" go.sh")"
-# Each o/O in a short cluster takes its own value (codex-1, round 5).
+# Each o/O in a short cluster takes its own value.
 for F in "bash -eo errexit g?.sh" "bash +eo errexit g?.sh" "bash -Oe extglob g?.sh" "bash -eO extglob g?.sh" \
          "bash -oo errexit nounset g?.sh" "bash -oO errexit extglob g?.sh" "bash -xo 'errexit' g?.sh"; do
     assert_deny "4157 cd then clustered -o value, slash-less glob: $F" "$(j "cd scripts/$CK; $UL $F")"
 done
 assert_allow "4157 clustered -o value on a plain basename" "$(j "export FOO=1; bash -eo errexit go.sh")"
-# CR round 10: an interpreter stage inside $( ) or backticks prints a word the
+# An interpreter stage inside $( ) or backticks prints a word the
 # shell then globs and runs, so its tokens are scanned (class 1 -> 0).
 GP="/r/w/scrip?s/$CK/g?.sh"
 for pre in "unset HIMMEL_CONSOLE_LEG;" "$UL"; do
@@ -1505,7 +1502,7 @@ for pre in "unset HIMMEL_CONSOLE_LEG;" "$UL"; do
     assert_deny "4157 CR10 node -e console.log in \$( ) [$pre]"    "$(j "$pre \$(node -e 'console.log(\"$GP\")')")"
     }
 done
-# CR round 11: ANY stage inside $( ) or backticks can print the glob, so every
+# ANY stage inside $( ) or backticks can print the glob, so every
 # stage there is scanned, not only interpreters (find -printf, awk, git config).
 for pre in "unset HIMMEL_CONSOLE_LEG;" "$UL"; do
     # shellcheck disable=SC2016 # the $( ) is probe text, not an expansion
@@ -1522,10 +1519,10 @@ done
 assert_allow "4157 CR11 plain git rev-parse in \$( ) beside the seam name" "$(j 'unset HIMMEL_CONSOLE_LEG; x=$(git rev-parse HEAD); echo $x')"
 # shellcheck disable=SC2016 # the $( ) is probe text, not an expansion
 assert_allow "4157 CR10 interpreter in \$( ), no glob word, beside the seam name" "$(j 'unset HIMMEL_CONSOLE_LEG; x=$(python3 -c '"'"'print(1)'"'"'); echo $x')"
-# J1685d: a glob word that cannot run (an inert reader's argument, a quoted
+# A glob word that cannot run (an inert reader's argument, a quoted
 # rg script) beside a seam name is everyday text, not a hidden anchor. A sed
 # or awk script gets no relief (it can run a program; a parse that tells the
-# inert ones apart is HIMMEL-3930), so these still deny as on main.
+# inert ones apart is a known gap), so these still deny as on main.
 assert_deny "4157 queue-lock sweep piped to a sed regex (HIMMEL-3930)" "$(j "HANDOVER_DIR=/home/u/handovers bash /home/u/himmel/scripts/handover/queue-lock.sh status --sweep /home/u/handovers | sed 's/.*session=//'")"
 assert_allow "4157 export seam then ls glob" "$(j 'export HANDOVER_DIR=/tmp/h; ls docs/*.md')"
 # shellcheck disable=SC2016 # $HIMMEL_CONSOLE_LEG is probe text, not an expansion
@@ -1569,7 +1566,7 @@ EOF" "python3 -c 'import os; os.system(\"/r/w/scrip?s/$CK/g?.sh\")'" \
          "find /r/w -path '/r/w/scrip?s/$CK/g?.sh' -exec sh {} \\;" "/usr/bin/env /r/w/scrip?s/$CK/g?.sh"; do
     assert_deny "4157 inert-reader exemption does not reach: $F" "$(j "$UL true; $F")"
 done
-# CR round 8 on 730941fe: a file written by a relieved stage and then run
+# A file written by a relieved stage and then run
 # with no shell word (the redirect scan ran only beside one). A file write
 # beside a path command word or an unrelieved one now voids every relief.
 assert_deny "4157 written file run directly (CR round 8 verbatim)" "$(j "unset HIMMEL_CONSOLE_LEG; echo /r/w/scrip?s/$CK/g?.sh > /t/run; /t/run")"
@@ -1631,7 +1628,7 @@ assert_allow "4157 hidden anchor with no seam write"           "$(j "bash /r/w/s
 assert_allow "4157 HEAD^ beside export"                        "$(j "export FOO=1; git show HEAD^")"
 assert_allow "4157 ~/ home path beside export"                 "$(j "export FOO=1; ls ~/notes")"
 assert_allow "4157 a # comment beside export"                  "$(j "export FOO=1 # set foo")"
-# HIMMEL-4442 (CR round 13 on #1685): a function shadowing a relief name kept
+# A function shadowing a relief name kept
 # relief when spelled `ls ()`, `ls ( )`, with a subshell or compound body, or
 # with a newline before the brace; only `ls() {` was caught.
 for pre in "unset HIMMEL_CONSOLE_LEG;" "HIMMEL_CONSOLE_LEG=;"; do
@@ -1646,7 +1643,7 @@ for pre in "unset HIMMEL_CONSOLE_LEG;" "HIMMEL_CONSOLE_LEG=;"; do
              "ls foo() { bash \"\$@\"; }" "foo ls () { bash \"\$@\"; }"; do
         assert_deny "4442 J1871 multi-name definition: $D [$pre]" "$(j "$D; $pre ls $GP")"
     done
-    # Judge J1871b: zsh defines a function or alias with no parens through its
+    # Zsh defines a function or alias with no parens through its
     # special parameters (`functions[ls]=...` shadows ls); bash has BASH_ALIASES.
     for N in functions dis_functions aliases dis_aliases galiases saliases BASH_ALIASES; do
         for D in "${N}[ls]='bash \"\$@\"; '" "$N=(ls 'bash \"\$@\"')"; do
@@ -1656,7 +1653,7 @@ for pre in "unset HIMMEL_CONSOLE_LEG;" "HIMMEL_CONSOLE_LEG=;"; do
     assert_deny "4442 J1871b += definition [$pre]" "$(j "functions[ls]+='bash \"\$@\"; '; $pre ls $GP")"
     assert_deny "4442 J1871b judge input [$pre]" \
         "$(j "functions[ls]='bash \"\$@\"; '; $pre ls /r/w/scrip?s/handover/console-kit/g?.sh")"
-    # Judge J1871c: any word naming a shadow table, enable/autoload, or set -A/+A
+    # Any word naming a shadow table, enable/autoload, or set -A/+A
     # gets no relief, whatever the syntax around it.
     for D in "set -A functions ls 'bash \"\$@\"; '" "set -A dis_functions ls x; enable -f ls" \
              "commands+=( ls /usr/bin/bash )" "set -A commands ls /usr/bin/bash" \
@@ -1676,7 +1673,7 @@ for pre in "unset HIMMEL_CONSOLE_LEG;" "HIMMEL_CONSOLE_LEG=;"; do
     assert_allow "4442 control: relieved ls, no function [$pre]" "$(j "$pre ls /r/w/docs/*.md")"
 done
 
-# HIMMEL-4454 (judge J1871 on #1871): a definition built at run time (eval, or
+# A definition built at run time (eval, or
 # a here-string / here-doc / process substitution fed to `.` or source) is
 # invisible to the text scan above, so it shadowed a relief name and kept relief.
 for pre in "unset HIMMEL_CONSOLE_LEG;" "HIMMEL_CONSOLE_LEG=;"; do
@@ -1700,7 +1697,7 @@ $pre ls $GP")"
     assert_allow "4454 control: evaluate/medieval are other words [$pre]" "$(j "evaluate=1; medieval=1; $pre ls /r/w/docs/*.md")"
 done
 
-# HIMMEL-4454 (judge j2236a NO-GO): the run-time definers must be refused in ANY
+# The run-time definers must be refused in ANY
 # command position (after if/while/until/case arms, assignment and redirect
 # prefixes, precommand options), however the command word is spelled (quoted,
 # escaped, expanded), and through the other run-time hooks (trap DEBUG/ERR/
@@ -1792,7 +1789,7 @@ FORMS
     assert_allow "4454b control: two quoted substitutions as arguments [$pre]" "$(j "echo \"\$(date)\" \"\$(pwd)\"; $pre ls /r/w/docs/*.md")"
     assert_allow "4454b control: trap on EXIT is not a run-time definer [$pre]" "$(j "trap 'echo bye' EXIT; $pre ls /r/w/docs/*.md")"
     assert_allow "4454b control: mapfile without -C [$pre]" "$(j "mapfile -t a </dev/null; $pre ls /r/w/docs/*.md")"
-    # Judge j2236f: the whole ALLOW set of the j2236c forms (81 distinct forms), pinned so
+    # The whole ALLOW set of the run-time-definer forms (81 distinct forms), pinned so
     # it is reviewable in the diff. env, nice and nohup execvp() their operand, and eval,
     # source, ., trap, mapfile, readarray and emulate are shell builtins with no executable
     # on PATH, so none of these runs the quoted text and the shadow is never defined.
@@ -1884,7 +1881,7 @@ y=al; nohup ev${y} '@@'
 FORMS
 done
 
-# HIMMEL-4157 (judge J1685 NO-GO): the relief pass was super-linear -- per
+# The relief pass was super-linear -- per
 # redirect it walked every stage, forking per token expansion. 200 redirects
 # took 13 s against a 15 s hook budget; a 10 KB line of quoted stages 5 s.
 # A hook timeout fails CLOSED inside the hook chain, so a slow allow shows up
@@ -1922,7 +1919,7 @@ if [ -n "${EPOCHREALTIME:-}" ]; then
         echo "FAIL 4157 J1685: 10 KB of quoted stages beside a seam name -- expected rc=0 with relief under 2500 ms, got rc=$RC, relief $(((T2 - T1 - (T1 - T0)) / 1000)) ms (total $(((T2 - T1) / 1000)) ms)"
         FAILED=$((FAILED + 1))
     fi
-    # HIMMEL-4447: an all-digit redirect target ('1') made pobf_exp walk every
+    # An all-digit redirect target ('1') made pobf_exp walk every
     # token index per redirect -- redirects x tokens. ~19.5 KB of them: base
     # grows quadratically and head close to linearly, so at this size the two
     # stay apart on a CI-speed runner too (12 KB did not).
@@ -1940,7 +1937,7 @@ if [ -n "${EPOCHREALTIME:-}" ]; then
         echo "FAIL 4447: 19.5 KB of digit-token redirects beside a seam name -- expected rc=0 with relief under 8500 ms, got rc=$RC, relief $(((T2 - T1 - (T1 - T0)) / 1000)) ms (total $(((T2 - T1) / 1000)) ms)"
         FAILED=$((FAILED + 1))
     fi
-    # HIMMEL-4192: quote-heavy 1.3 KB and 4 KB heredocs timed out the guard
+    # Quote-heavy 1.3 KB and 4 KB heredocs timed out the guard
     # chain in practice. Alone this hook takes 0.5 s (1.3 KB) and 1.4 s (4 KB)
     # on the worst shape ($(...) and quotes), so a 6 s bound is the 4 KB figure
     # x4 for fleet load, still far under the 15 s hook budget.
@@ -1982,7 +1979,7 @@ else
     echo "WARN 4157 trailing-backslash row skipped: no timeout(1)"
 fi
 
-# HIMMEL-4130 (HIMMEL-3986 sweep): a PRESENT non-string .command must not
+# A PRESENT non-string .command must not
 # fall through to .cmd -- `//` treats false like null, so the hook judged
 # the benign .cmd text. A non-string .command now fails closed; a null or
 # absent one still falls back to .cmd.
@@ -2004,7 +2001,7 @@ assert_allow "4130 CRLF jq: string command still allowed (shim control)" "$(jc '
 assert_deny  "4130 CRLF jq: command:false still fails closed"            "$(jc false 'echo ok')" "PATH=$CRLF_JQ_DIR:$PATH"
 rm -rf "$CRLF_JQ_DIR"
 
-# --- HIMMEL-4399: assignment-only segments made UNSET_NAMES append itself
+# --- Assignment-only segments made UNSET_NAMES append itself
 # (scan_segment's names already carried the inherited UNSET_NAMES), so it
 # doubled per segment and `a=;` x 30 pinned a CPU for hours. The list is now
 # deduped and capped at 256 distinct names; past the cap the hook DENIES.
@@ -2058,7 +2055,7 @@ else
     echo "WARN 4399 timing row skipped: no EPOCHREALTIME (bash < 5)"
 fi
 
-# --- HIMMEL-4529 / HIMMEL-4414: linear time. arith_body rescanned to EOF per
+# --- Linear time. arith_body rescanned to EOF per
 # unclosed `((` (1500 openers = 40 s, past the chain window, so a big command
 # timed out the guard) and unset_add re-split the whole list on every add.
 # Timing rows: allow + rc=0 under a stated bound; the deny rows pin that the
@@ -2105,7 +2102,7 @@ assert_deny  "4529 unclosed ((, then a closed \$(( )) seam assignment, still den
 assert_allow "4529 balanced (( )) comparison stays allowed after unclosed openers" "$(j "echo (( x; (( HIMMEL_CONSOLE_LEG == 0 )); echo ok")"
 HOOK_WRAP=''
 
-# --- HIMMEL-4729 (judge j2299a): a Unicode space is a word separator once IFS
+# --- A Unicode space is a word separator once IFS
 # is set to it, so `export<U+3000>-n<U+3000>NAME` really un-exports NAME. The
 # class regexes must run in the CALLER's UTF-8 locale ([[:space:]] matches
 # U+3000 there, not under C); only raw_mention's ASCII strip steps run under C.
@@ -2127,7 +2124,7 @@ else
     echo "SKIP 4729 U+3000 IFS rows: no UTF-8 locale installed (tried C.UTF-8, C.utf8, en_US.UTF-8, en_US.utf8)"
 fi
 
-# --- HIMMEL-5152 (judge j2299b): bash splits on ANY IFS character, not only
+# --- Bash splits on ANY IFS character, not only
 # iswspace ones, so an IFS of U+00A0 / U+0085 / U+200B / U+FEFF or the ANSI-C
 # tab form un-exports a seam the text layer cannot see. Any IFS assignment
 # beside a chokepoint word denies. Run under C so no locale helps the match.
@@ -2141,7 +2138,7 @@ assert_deny "5152 IFS+= append beside a chokepoint word"                        
 assert_deny "5152 IFS= built from quoted fragments beside a chokepoint word"             "$(j "I'F'S=x; bash $MERGE_ON_GREEN 1")"
 assert_allow "5152 IFS assignment with no chokepoint word stays allowed"                  "$(j "IFS=: read -r a b <<< 'x:y'; echo \$a")"
 
-# --- HIMMEL-5153: matching must not depend on the ambient locale. Under C/POSIX
+# --- Matching must not depend on the ambient locale. Under C/POSIX
 # [[:space:]] misses U+3000 and the other Unicode spaces (16 of 36 rows passed).
 # Unicode spaces map to ASCII before matching, so C and UTF-8 agree.
 for hex in '\0343\0200\0200:U+3000' '\0302\0240:U+00A0' '\0342\0200\0203:U+2003' '\0341\0232\0200:U+1680' '\0342\0200\0250:U+2028' '\0302\0205:U+0085'; do
@@ -2152,8 +2149,8 @@ for hex in '\0343\0200\0200:U+3000' '\0302\0240:U+00A0' '\0342\0200\0203:U+2003'
 done
 unset LC_ALL
 
-# --- HIMMEL-5181: strip_brace_exp joins a `$` chunk and a following `{` into a
-# fresh opener (HIMMEL-5154). `$` + a popped `${x}` + `{y}` deletes to nothing,
+# --- strip_brace_exp joins a `$` chunk and a following `{` into a
+# fresh opener. `$` + a popped `${x}` + `{y}` deletes to nothing,
 # so a seam name split by it must still read as the registered name. A mutant
 # that drops the isd join leaves `$` and `{y}` in place and this row passes the
 # guard instead of denying.
@@ -2161,7 +2158,7 @@ MOG_HEAD=${MOG_VAR:0:3}
 MOG_TAIL=${MOG_VAR:3}
 assert_deny "5181 seam name split by \$ + popped \${x} + {y}" "$(j "${MOG_HEAD}\$\${x}{y}${MOG_TAIL}=1 bash $MERGE_ON_GREEN")"
 
-# --- HIMMEL-4402 (1685 round 9): two shapes kept read-only relief beside an
+# --- Two shapes kept read-only relief beside an
 # obfuscated chokepoint path. (1) A substitution's continuation stage
 # inherited its parent's class without the executable-option check; (2) the
 # interpreter executing-builtin list lacked readpipe. The sweep rows are the
@@ -2226,7 +2223,7 @@ assert_allow "4402 control: sort --check keeps relief" "$(j "unset HIMMEL_CONSOL
 assert_allow "4402 control: git grep with listed options keeps relief" "$(j "unset HIMMEL_CONSOLE_LEG; git grep -n --count needle -- '$OBF'")"
 assert_allow "4402 control: continuation with no option keeps relief"  "$(j "unset HIMMEL_CONSOLE_LEG; git grep \"\$(printf needle)\" -- '$OBF'")"
 
-# --- HIMMEL-5197 (follow-ups of 2346): (1) -x/-X/-O void relief only where the
+# --- (1) -x/-X/-O void relief only where the
 # short option runs a program (git -O, find -exec/-ok/-fprint/-fls), not for
 # readers where -x/-X are line-regexp / exclude-from; an unlisted command still
 # fails closed. (2) the option screen splits with globbing off, so a file in the
@@ -2285,7 +2282,7 @@ if [ "$R" = "1 off" ]; then echo "PASS 5197 pobf_xopt leaves a caller's set -f i
 else echo "FAIL 5197 pobf_xopt caller set -f: got '$R', want '1 off'"; FAILED=$((FAILED + 1)); fi
 rm -rf "$GLOBDIR" "$XOPT_SRC"
 
-# --- HIMMEL-5210 (follow-ups of 5197, judge j2363a): (1) ripgrep 15.2.0 has two
+# --- (1) ripgrep 15.2.0 has two
 # options whose value is a COMMAND, --pre and --hostname-bin (`rg --help`;
 # ripgrep does not abbreviate long options), so both void relief in every
 # spelling. (2) a command word under /bin or /usr/bin is stripped to its base
@@ -2313,7 +2310,7 @@ for F in "rg -x needle -- '$OBF'" \
     assert_allow "5210 control keeps relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
 done
 
-# 5210 round 2 (judge j2366a): an option word BUILT by brace or glob expansion
+# An option word BUILT by brace or glob expansion
 # is invisible to the word screen, so a relieved stage carrying an unquoted
 # word that can expand into one voids relief. The glob rows run in a temp cwd
 # holding a file named --hostname-bin, the setup that makes them real.
@@ -2339,7 +2336,7 @@ for F in "rg --glob '*.md' needle -- '$OBF'" \
          "rg --hyperlink-format default needle -- '$OBF'"; do
     assert_allow "5210 control keeps relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
 done
-# 5210 round 3 (judge j2366b, class shell-parsing): an rg word BUILT without a
+# An rg word BUILT without a
 # literal -- (backslash, ANSI-C, unset variable plus quote, variable word,
 # tilde) keeps no relief. Words wholly inside single quotes stay literal.
 for F in "rg \\-\\-pre '$OBF' x ." \
@@ -2358,7 +2355,7 @@ for F in "rg \"-n\" needle -- '$OBF'" \
          "rg --glob '*.md' needle -- '$OBF'"; do
     assert_allow "5210 rg shape control keeps relief: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
 done
-# 5210 round 5 (judge j2366c): a command substitution or backtick body is its
+# A command substitution or backtick body is its
 # own stage, so the rg words after it must void relief as a continuation.
 for F in "rg \`printf %s --pre\` '$OBF' x ." \
          "rg \"\$(printf %s --pre)\" '$OBF' x ." \
@@ -2416,10 +2413,10 @@ mut_row() {  # mut_row <label> <sed expr> <command only this layer denies>
         FAILED=$((FAILED + 1))
     fi
 }
-# The rg classifier regex has no mutant row: since the shape screen (round 3)
+# The rg classifier regex has no mutant row: since the shape screen
 # a backslash or brace spelled --hostname-bin is denied by pobf_rgshape and
 # pobf_xopt as well, so no command is owned by the classifier alone.
-# The xopt row is a non-rg reader: since round 5 every rg spelling is also
+# The xopt row is a non-rg reader: every rg spelling is also
 # owned by the classifier, the shape screen or the continuation void.
 # shellcheck disable=SC2016 # the sed expressions are literal; $x and ${ST[j]} are hook text
 mut_row "5210 mutant: xopt --hostname-bin case dropped" \

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claudex-inbox-hook.sh — PostToolUse hook, matcher `*` (HIMMEL-2788).
+# claudex-inbox-hook.sh — PostToolUse hook, matcher `*`.
 #
 # PLATFORM GUARD: no .ps1 twin, by design, not oversight. The claudex lane
 # this hook serves (scripts/claude-codex, /proc/$CLAUDE_PID/cmdline session-
@@ -15,7 +15,7 @@
 # hookSpecificOutput.additionalContext, so the next tool result already
 # carries any ruling the console wrote — no paste, no lost rulings.
 #
-# Cost model (HIMMEL-2767): fires on EVERY tool call in EVERY session,
+# Cost model: fires on EVERY tool call in EVERY session,
 # native ones included. The real work is scripts/lib/claudex-inbox.sh's
 # inbox_with_lock, which serializes cursor checks when an inbox exists — see
 # its header. This script adds only cheap guards on top and never starts jq

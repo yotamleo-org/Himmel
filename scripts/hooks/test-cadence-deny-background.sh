@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/cadence-deny-background.sh (HIMMEL-1682 S2b).
+# Smoke test for scripts/hooks/cadence-deny-background.sh.
 #
 # Usage: bash scripts/hooks/test-cadence-deny-background.sh
 #

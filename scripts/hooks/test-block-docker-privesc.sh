@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/block-docker-privesc.sh (HIMMEL-441).
+# Smoke test for scripts/hooks/block-docker-privesc.sh.
 #
 # Usage: bash scripts/hooks/test-block-docker-privesc.sh
 #
@@ -90,7 +90,7 @@ assert_rc "non-docker command (git status)"    0 "$(run_case "$(j_bash 'git stat
 assert_rc "Unknown tool passthrough"           0 "$(run_case '{"tool_name":"Read","tool_input":{"file_path":"/etc/x"}}')"
 assert_rc "Empty input passthrough"            0 "$(run_case '{}')"
 
-# --- HIMMEL-441 CR-hardening: wrapper-with-flags, glob metachars, form variants ---
+# --- hardening: wrapper-with-flags, glob metachars, form variants ---
 # Wrapper FLAGS before docker must not defeat the guard (skip-until-docker).
 assert_rc "sudo -E docker run -v /etc:/h:rw"   2 "$(run_case "$(j_bash 'sudo -E docker run -v /etc:/host-etc:rw ubuntu /usr/bin/install x y')")"
 assert_rc "sudo -u root docker --privileged"   2 "$(run_case "$(j_bash 'sudo -u root docker run --privileged img sh')")"

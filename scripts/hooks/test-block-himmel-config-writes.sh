@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/block-himmel-config-writes.sh (HIMMEL-4696): the
+# Smoke suite for scripts/hooks/block-himmel-config-writes.sh: the
 # speed bump over ~/.himmel/config.json, the file carrying the persisted
 # graphify.salus_ollama_cloud_ok opt-in. Covers direct file-tool writes,
 # redirect / in-place / cp / ln writes through Bash, a symlinked file-tool
@@ -63,11 +63,11 @@ patch_case "apply_patch benign file mentioning the config in its body -> block (
 patch_case "apply_patch no parseable header naming the config -> block (fail closed)" block "bogus patch for $CFG"
 patch_case "apply_patch no header, unrelated text -> allow" allow "bogus patch for $T/notes.txt"
 run "apply_patch command as an array naming the config -> block" block "$(jq -nc --arg p "$CFG" '{tool_name:"apply_patch",tool_input:{command:["apply_patch", ("*** Begin Patch\n*** Add File: " + $p + "\n+{}\n*** End Patch")]}}')"
-# j2409e: codex trims every header line; so must the hook.
+# codex trims every header line; so must the hook.
 patch_case "apply_patch trailing-space header on the config -> block" block "*** Begin Patch${NL}*** Add File: $CFG   ${NL}+{}${NL}*** End Patch"
 patch_case "apply_patch leading-space header after a benign one -> block" block "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+hi${NL}   *** Add File: $CFG${NL}+{}${NL}*** End Patch"
 patch_case "apply_patch tab-led and tab-trailed header -> block" block "$(printf '*** Begin Patch\n\t*** Update File: %s\t\n@@\n*** End Patch' "$CFG")"
-# j2409f: codex trims Unicode White_Space (str::trim), bash [[:space:]] does not.
+# codex trims Unicode White_Space (str::trim), bash [[:space:]] does not.
 patch_case "apply_patch NBSP-trailing header on the config -> block" block "$(printf '*** Begin Patch\n*** Add File: %s\xc2\xa0\n+{}\n*** End Patch' "$CFG")"
 patch_case "apply_patch U+2003-leading header after a benign one -> block" block "$(printf '*** Begin Patch\n*** Add File: %s/notes.txt\n+hi\n\xe2\x80\x83*** Add File: %s\n+{}\n*** End Patch' "$T" "$CFG")"
 patch_case "apply_patch U+3000 inside the patch near the config header -> block" block "$(printf '*** Begin Patch\n\xe3\x80\x80*** Update File: %s\xe3\x80\x80\n@@\n*** End Patch' "$CFG")"
@@ -109,7 +109,7 @@ bash_case "rg ANSI-C quoted --pre -> block" block "rg \$'--pre=/tmp/writer' salu
 # shellcheck disable=SC2016 # the literal ${x:-...} spelling is the point
 bash_case "rg default-value expanded --pre -> block" block "rg \${x:---pre=/tmp/writer} salus $CFG"
 bash_case "rg brace-expanded --pre -> block" block "rg --{pre,x}=/tmp/writer salus $CFG"
-# HIMMEL-5290: the quote-aware clause split must not open a hole.
+# The quote-aware clause split must not open a hole.
 bash_case "read plus redirect to a real file -> block" block "cat $CFG 2>/dev/null > $T/x"
 bash_case "redirect to a path under /dev/null -> block" block "cat $CFG >/dev/null/x"
 bash_case "append redirect after /dev/null -> block" block "cat $CFG >/dev/null>$T/x"

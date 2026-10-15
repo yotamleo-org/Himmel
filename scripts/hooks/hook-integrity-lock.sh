@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/hooks/hook-integrity-lock.sh -- HIMMEL-2528 per-session record lock.
+# scripts/hooks/hook-integrity-lock.sh -- per-session record lock.
 #
 # It lives in scripts/hooks/, not scripts/lib/, because scripts/hooks/ is one
 # of the two directories record-hook-integrity.sh pins: the recorder VERIFIES
@@ -65,7 +65,7 @@
 # name.
 # COVERAGE: scripts/hooks/test-record-hook-integrity.sh.
 
-# Overridable for tests; defaults are the HIMMEL-2528 spec values. Total
+# Overridable for tests; defaults are the spec values. Total
 # retry budget is bounded at 200ms so a jammed lock never turns an advisory
 # SessionStart hook into a slow one.
 #

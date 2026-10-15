@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test for the CI `doc-invariants` job (HIMMEL-1305).
+# Regression test for the CI `doc-invariants` job.
 #
 # The job mirrors three himmel-dev pre-commit gates into CI so the committed
 # tree is validated by committed tooling. Those gates are pre-commit hooks:

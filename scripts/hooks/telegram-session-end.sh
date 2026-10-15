@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# telegram-session-end.sh — Claude Code SessionEnd hook (HIMMEL-1250 Increment 1).
+# telegram-session-end.sh — Claude Code SessionEnd hook.
 #
 # Fires once per session (SessionEnd, NOT per-turn Stop — Stop fires on every
 # assistant turn and can block session flow via exit code 2; SessionEnd is
@@ -29,7 +29,7 @@
 # as jira-nudge-on-end.sh: it does no OS-specific path work, so Git Bash on
 # Windows runs this file directly).
 #
-# Full-body detach pattern: HIMMEL-661 (extends HIMMEL-636/623). Even the
+# Full-body detach pattern. Even the
 # gate-off fast path costs real process-spawn time on Windows Git Bash, which
 # loses the race against Claude Code's SessionEnd teardown — so the ENTIRE
 # body (payload parse, dotenv load, transcript scan, relay) runs in a detached
@@ -49,7 +49,7 @@ if [ "${1:-}" != "__himmel_detached" ]; then
     if [ -r "$_dlib" ]; then
         # shellcheck source=/dev/null
         . "$_dlib"
-        # HIMMEL-2004: bounded Stop queue (see detach_queued); the session-status
+        # Bounded Stop queue (see detach_queued); the session-status
         # relay further down stays on detach_run so TELEGRAM_GROUP_CHAT_ID never
         # reaches a queue entry — the worker runs it inline instead.
         detach_queued telegram-session-end --cleanup "$_tmp" bash "${BASH_SOURCE[0]}" __himmel_detached "$_tmp"
@@ -87,8 +87,8 @@ REASON="$(printf '%s' "$PAYLOAD" | jq -r '.reason // "other"')"
 ENV_ROOT="$( cd "$SESSION_CWD" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd )"
 [ -n "$ENV_ROOT" ] || ENV_ROOT="$SESSION_CWD"
 
-# --- Explicit-empty = deliberate suppression (HIMMEL-1926) -------------------
-# load_dotenv treats set-but-EMPTY as absent (HIMMEL-1922) and would fill the
+# --- Explicit-empty = deliberate suppression -------------------
+# load_dotenv treats set-but-EMPTY as absent and would fill the
 # chat id from .env. For an egress path that is the wrong fail-safe direction:
 # an explicitly EMPTY TELEGRAM_GROUP_CHAT_ID in the environment means OFF, and
 # must never fall back to .env. Capture setness BEFORE the loader runs; the
@@ -126,8 +126,8 @@ esac
 LAST_ASSISTANT=""
 MERGEPUB_LINE=""
 if [ "$IS_SALUS" = "0" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
-    # Single lightweight jq scan for the LAST assistant text turn (HIMMEL-636
-    # style single-pass extraction — deliberately NOT the full 4-scan
+    # Single lightweight jq scan for the LAST assistant text turn
+    # (single-pass extraction — deliberately NOT the full 4-scan
     # session-transcript.sh lib; a concise status doesn't need it).
     LAST_ASSISTANT="$(jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' "$TRANSCRIPT_PATH" 2>/dev/null | tail -1)"
     # Best-effort /mergepub line, if the operator issued one this session.

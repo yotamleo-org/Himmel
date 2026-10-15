@@ -27,16 +27,16 @@
 #                     .env.example if absent). Needs Git Bash. Enter to skip a var.
 #   -WithGraphify     Opt in to installing the graphify knowledge-graph CLI
 #                     (himmel fork) during a `core`/`all` adopt. Off by
-#                     default -- the adoption verdict stays open (HIMMEL-621);
+#                     default -- the adoption verdict stays open;
 #                     this switch only installs the CLI (never over an
 #                     existing foreign install -- see scripts/lib/graphify-bin.sh).
 #   -SkipHooks        Opt out of placing the git gate hooks (pre-commit,
 #                     commit-msg, pre-push) in -Target. On by default
-#                     (HIMMEL-2441) so a fresh adopt is gated from its first
+#  so a fresh adopt is gated from its first
 #                     commit; mirrors uninstall.ps1's own -SkipHooks.
 #   -HandoverMode <inline|external>
 #                     Gate for Wire-HandoverDirLuna's env.HANDOVER_DIR write
-#                     (HIMMEL-2466). external (the default, today's behaviour)
+#                     external (the default, today's behaviour)
 #                     wires it when a vault is scaffolded; inline leaves
 #                     settings.json untouched. Windows twin of adopt.sh's
 #                     --handover-mode.
@@ -64,23 +64,23 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Capture whether -LunaTarget was passed explicitly BEFORE the default fills it,
-# so `-Profile luna -LunaTarget` can honor it (HIMMEL-458 critic #3).
+# so `-Profile luna -LunaTarget` can honor it.
 $LunaTargetSet = $PSBoundParameters.ContainsKey('LunaTarget')
 
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $HimmelRoot  = (Resolve-Path (Join-Path $ScriptDir '..')).Path
 
-# Default-to-available, mirroring adopt.sh's `${CLAUDE_AVAILABLE:-1}` (HIMMEL-600).
+# Default-to-available, mirroring adopt.sh's `${CLAUDE_AVAILABLE:-1}`.
 # Require-Tools flips this to $false when `claude` is absent; initializing it here
 # keeps the flag an explicit boolean (never $null) so Install-Plugins' read is
 # unambiguous and strict-mode-safe.
 $script:ClaudeAvailable = $true
 
-# Same pattern for `bun` (HIMMEL-752 G2): Require-Tools flips this to $false when
+# Same pattern for `bun`: Require-Tools flips this to $false when
 # `bun` is absent; Wire-QmdCore consults it to skip qmd cleanly.
 $script:BunAvailable = $true
 
@@ -88,7 +88,7 @@ $script:BunAvailable = $true
 # adopt.ps1 and setup.ps1 (HIMMEL install/uninstall symmetry).
 . (Join-Path $ScriptDir 'lib/wire-pretooluse-hooks.ps1')
 
-# Adopter preflight checks (HIMMEL-842). Provides the shared WARN-not-fail
+# Adopter preflight checks. Provides the shared WARN-not-fail
 # checks (uv/pipx, npm-less-node, jira-dist) consumed by Require-Tools below.
 # The standalone scripts/preflight-adopter.ps1 runner dot-sources the same lib,
 # so the two entry points report identically and can't drift (operator answer Q4).
@@ -131,20 +131,20 @@ function Require-Tools {
     if ($missing.Count -gt 0) {
         Write-Error "missing required tools: $($missing -join ', ') (see $HimmelRoot\docs\setup\new-machine.md)"
     }
-    # `claude` is SOFT (HIMMEL-600): only the plugin-install step needs the CLI;
+    # `claude` is SOFT: only the plugin-install step needs the CLI;
     # a Codex-only (or any non-Claude) adopter still gets the harness-agnostic core.
     if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
         $script:ClaudeAvailable = $false
         Write-Warning "'claude' not found — installing the harness-agnostic core only; skipping the Claude plugin-install step (Codex-only adopter is fine)."
     }
-    # `bun` is SOFT (HIMMEL-752 G2): only the qmd wiring needs it; the
+    # `bun` is SOFT: only the qmd wiring needs it; the
     # harness-agnostic core + git gates run without it. Warn with the install
     # hint; Wire-QmdCore consults $script:BunAvailable and skips qmd cleanly.
     if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
         $script:BunAvailable = $false
         Write-Warning "'bun' not found — qmd search will be skipped; install: https://bun.sh (runs handover armed-resume, qmd search, the Telegram bridge, obsidian-triage tools)"
     }
-    # HIMMEL-842 adopter preflight: the shared advisory checks (uv/pipx,
+    # the shared advisory checks (uv/pipx,
     # npm-less-node, jira-dist) live in scripts/lib/preflight-adopter.ps1 and are
     # also run by the standalone scripts/preflight-adopter.ps1 runner. Each
     # returns $false (after Write-Warning) when its gap is present. The
@@ -197,7 +197,7 @@ function Install-Plugins {
     if ($pluginRc -ne 0) { throw "install-plugins failed (exit $pluginRc)" }
 }
 
-# statusLine — part of the core harness (HIMMEL-359). Wired into the
+# statusLine — part of the core harness. Wired into the
 # scope-appropriate settings.json via the shared helper. Both scopes reference
 # THIS himmel clone's vendored statusline (never copied per-repo).
 function Wire-StatuslineCore {
@@ -216,7 +216,7 @@ function Wire-StatuslineCore {
     if ($LASTEXITCODE -ne 0) { throw "wire-statusline failed (exit $LASTEXITCODE)" }
 }
 
-# Wire-UserClaudeMd (HIMMEL-2038): append himmel's "working principles" block
+# Wire-UserClaudeMd: append himmel's "working principles" block
 # to a user-scope rule file. Those four defaults (think before coding /
 # simplicity first / surgical changes / goal-driven execution) used to live in
 # himmel's always-on project CLAUDE.md; they are general engineering defaults,
@@ -315,7 +315,7 @@ function Wire-UserClaudeMdInner {
     Write-Host "  user CLAUDE.md: created $TargetPath with working-principles block"
 }
 
-# env.HIMMEL_REPO — default-by-install (HIMMEL-453). Sibling of
+# env.HIMMEL_REPO — default-by-install. Sibling of
 # Wire-StatuslineCore: write THIS himmel clone's path into the scope-appropriate
 # settings.json so the leg resolver + minerva anchor get it without a manual set.
 function Wire-HimmelRepoCore {
@@ -333,7 +333,7 @@ function Wire-HimmelRepoCore {
     if ($LASTEXITCODE -ne 0) { throw "wire-himmel-repo failed (exit $LASTEXITCODE)" }
 }
 
-# env.LUNA_VAULT_PATH — persist the scaffolded vault path (HIMMEL-458) so the
+# env.LUNA_VAULT_PATH — persist the scaffolded vault path so the
 # end-session-wiki resolver finds it without a manual export. Sibling of
 # Wire-HimmelRepoCore; written to the scope-appropriate settings.json.
 function Wire-LunaVaultPath([string]$Dest) {
@@ -351,13 +351,13 @@ function Wire-LunaVaultPath([string]$Dest) {
     if ($LASTEXITCODE -ne 0) { throw "wire-luna-vault failed (exit $LASTEXITCODE)" }
 }
 
-# env.HANDOVER_DIR — seed the handover state root at the scaffolded luna vault
-# (HIMMEL-839). Without this, a fresh adopter's handover state silently
+# env.HANDOVER_DIR — seed the handover state root at the scaffolded luna vault.
+# Without this, a fresh adopter's handover state silently
 # defaults to the inline <repo-root>/handovers/ stub. Creates <Dest>/handovers
 # so Mode B resolves cleanly out of the box. Sibling of Wire-LunaVaultPath;
 # $Dest = the scaffolded vault dir.
 function Wire-HandoverDirLuna([string]$Dest) {
-    # HIMMEL-2466: handover.mode=inline is a no-op here, mirroring adopt.sh's
+    # handover.mode=inline is a no-op here, mirroring adopt.sh's
     # own gate — handover state stays the repo-local handovers/ stub.
     if ($HandoverMode -eq 'inline') {
         Write-Host "  handover.mode=inline — leaving env.HANDOVER_DIR unset (HIMMEL-2466)"
@@ -370,7 +370,7 @@ function Wire-HandoverDirLuna([string]$Dest) {
         Join-Path $HOME '.claude\settings.json'
     }
 
-    # PRESERVE an operator-selected HANDOVER_DIR (HIMMEL-839 CR round-2): a
+    # PRESERVE an operator-selected HANDOVER_DIR: a
     # routine re-adopt must reproduce state, never silently reset it.
     # /handover-setup is documented as "the only place the state-root location
     # is chosen interactively" -- adopt.ps1 must not become a second, silent
@@ -406,7 +406,7 @@ function Wire-HandoverDirLuna([string]$Dest) {
         return
     }
     New-Item -ItemType Directory -Force -Path $hdir | Out-Null
-    # Canonicalize to an absolute path (HIMMEL-839 CR round-2): a relative
+    # Canonicalize to an absolute path: a relative
     # -LunaTarget would otherwise persist a CWD-dependent relative path.
     $hdir = (Resolve-Path $hdir).Path
     $whd = Join-Path $HimmelRoot 'scripts\lib\wire-handover-dir.ps1'
@@ -414,7 +414,7 @@ function Wire-HandoverDirLuna([string]$Dest) {
     if ($LASTEXITCODE -ne 0) { throw "wire-handover-dir failed (exit $LASTEXITCODE)" }
 }
 
-# -FillEnv (HIMMEL-453): fill the himmel clone's .env via the bash fill-env.sh.
+# -FillEnv: fill the himmel clone's .env via the bash fill-env.sh.
 # Targets $HimmelRoot\.env for BOTH scopes (adopt copies hooks, never the Jira
 # CLI, so an adopted repo always uses the clone's CLI reading $HimmelRoot\.env).
 # Resolve GIT Bash explicitly -- a bare `bash` often resolves to the System32 WSL
@@ -445,20 +445,20 @@ function FillEnv-Core {
     }
 }
 
-# --- qmd resolver + helpers (HIMMEL-752; mirror of scripts/lib/qmd-bin.sh) ---
+# --- qmd resolver + helpers (mirror of scripts/lib/qmd-bin.sh) ---
 # pwsh cannot source bash, so the RESOLVER (Invoke-Qmd/Test-Qmd) + REGISTER
 # logic is duplicated inline (parity with setup.ps1's qmd block) -- UPDATE
 # qmd-bin.sh + setup.ps1 + adopt.ps1 together; scripts/lib/test-qmd-bin.sh is
 # the canonical behavior spec. The INSTALL step (Install-Qmd below) is NOT
-# duplicated: it delegates to `bash scripts/lib/qmd-bin.sh install` (HIMMEL-877)
+# duplicated: it delegates to `bash scripts/lib/qmd-bin.sh install`
 # so the clone/build/junction recipe has exactly one implementation. Honors
 # $env:BUN_INSTALL for relocated bun roots.
 $QmdBunRoot = if ($env:BUN_INSTALL) { $env:BUN_INSTALL } else { Join-Path $HOME '.bun' }
 $QmdBunJs = Join-Path $QmdBunRoot 'install\global\node_modules\@tobilu\qmd\dist\cli\qmd.js'
-# HIMMEL-877: qmd installs from a local clone of the carried fork
-# yotamleo/qmd (HIMMEL-3956: launcher signal forwarding, until tobi/qmd#1030
-# merges -- HIMMEL-3982 pins back to upstream tobi/qmd), pinned to an immutable commit SHA rather than a mutable
-# branch (HIMMEL-911 — via scripts/lib/qmd-bin.sh), never `bun add -g
+# qmd installs from a local clone of the carried fork
+# yotamleo/qmd (launcher signal forwarding, until tobi/qmd#1030
+# merges, then it pins back to upstream tobi/qmd), pinned to an immutable commit SHA rather than a mutable
+# branch (via scripts/lib/qmd-bin.sh), never `bun add -g
 # @tobilu/qmd` directly -- that command EPERM-wedges on this project's
 # machines and bun blocks its postinstall script.
 $QmdInstallHint = "bash `"$HimmelRoot/scripts/lib/qmd-bin.sh`" install"
@@ -494,7 +494,7 @@ function Resolve-QmdGitBash {
     return $null
 }
 
-# Delegates to the ONE clone/build/junction implementation (HIMMEL-877):
+# Delegates to the ONE clone/build/junction implementation:
 # `bash scripts/lib/qmd-bin.sh install` (git-clone the pinned qmd commit,
 # `bun install && bun run build`, then junction/symlink it onto the bun-global
 # @tobilu/qmd path -- idempotent, WARN-not-fail). Returns an honest int rc.
@@ -510,8 +510,8 @@ function Install-Qmd {
     return $LASTEXITCODE
 }
 
-# Mirror of qmd_fork_served() via the shared bash CLI verb (HIMMEL-877 CR
-# codex-adv-1; function name unchanged by HIMMEL-3045): the install gate is
+# Mirror of qmd_fork_served() via the shared bash CLI verb
+# the install gate is
 # "the pinned clone already serves the global path", NOT presence (Test-Qmd)
 # -- a machine carrying the old upstream bun-global install is qmd-present but
 # must still MIGRATE to the clone. Returns $false when no usable Git Bash
@@ -559,7 +559,7 @@ function Wire-QmdCore {
         return
     }
     Write-Host "---- Wiring qmd search ----"
-    # WARN-not-fail structural guarantee (CR fix): on PS configs where
+    # WARN-not-fail structural guarantee: on PS configs where
     # $PSNativeCommandUseErrorActionPreference=$true (documented 7.4+ default),
     # a nonzero native exit under EAP='Stop' throws BEFORE the $LASTEXITCODE
     # warn-checks below can run - a broken qmd/bun would then abort adopt.
@@ -582,7 +582,7 @@ function Wire-QmdCoreInner {
         Write-Host "DRY: bash $HimmelRoot/scripts/lib/fix-qmd-stub.sh"
     } else {
         # Resolve-QmdGitBash, never a bare `bash`: on Windows that is the
-        # System32 WSL stub, which exits 127 on this C:/ path (HIMMEL-1992).
+        # System32 WSL stub, which exits 127 on this C:/ path.
         $gitBash = Resolve-QmdGitBash
         $savedEAP = $ErrorActionPreference
         try {
@@ -597,8 +597,8 @@ function Wire-QmdCoreInner {
             $ErrorActionPreference = $savedEAP
         }
     }
-    # Install the qmd CLI unless the FORK is already the served install
-    # (HIMMEL-877 CR codex-adv-1): gate on Test-QmdForkServed, NOT presence
+    # Install the qmd CLI unless the FORK is already the served install:
+    # gate on Test-QmdForkServed, NOT presence
     # (Test-Qmd) - a machine carrying the old upstream bun-global install is
     # qmd-present but must still MIGRATE to the fork. Install-Qmd re-checks
     # internally as the second line of defense.
@@ -636,7 +636,7 @@ function Wire-QmdCoreInner {
     }
 }
 
-# Delegates to the ONE detect/install implementation (HIMMEL-891):
+# Delegates to the ONE detect/install implementation:
 # `bash scripts/lib/graphify-bin.sh install` (uv-tool-installs graphify from
 # the himmel fork, UNLESS an existing install -- himmel-fork or foreign -- is
 # already present, in which case it is adopted as-is). Reuses
@@ -660,8 +660,8 @@ function Install-Graphify {
     return $LASTEXITCODE
 }
 
-# Wire-GraphifyCore -- opt-in install of the graphify knowledge-graph CLI
-# (HIMMEL-891). Unlike Wire-QmdCore, this is NOT called unconditionally --
+# Wire-GraphifyCore -- opt-in install of the graphify knowledge-graph CLI.
+# Unlike Wire-QmdCore, this is NOT called unconditionally --
 # Do-Core below only calls it when -WithGraphify was passed. WARN-not-fail:
 # a missing Git Bash/uv or a network hiccup must not abort adopt. Honors
 # -DryRun.
@@ -694,7 +694,7 @@ function Wire-GraphifyCore {
             # posture keeps a nonzero `claude mcp get` (not-registered probe) from
             # terminating the adopt.
             Register-GraphifyMcp
-            # HIMMEL-2480: price the hook-guard entries in the ADOPTED repo
+            # price the hook-guard entries in the ADOPTED repo
             # ($Target, not this himmel clone) -- same delegation pattern as
             # Install-Graphify above.
             $gitBashPrice = Resolve-QmdGitBash
@@ -735,7 +735,7 @@ function Register-GraphifyMcp {
     }
 }
 
-# Build-JiraCli -- build scripts/jira/dist/index.js (HIMMEL-842 gap 3). dist/ is
+# Build-JiraCli -- build scripts/jira/dist/index.js. dist/ is
 # a gitignored build artifact, so a fresh clone bootstrapped via adopt.ps1 hits
 # MODULE_NOT_FOUND without this (CLAUDE.md's "worktrees lack dist/" warning is
 # scoped too narrowly -- a fresh PRIMARY clone via adopt.ps1 hits the identical
@@ -803,7 +803,7 @@ function Build-JiraCli {
 }
 
 function Install-PrecommitHooks {
-    # HIMMEL-2441: place the git gate hooks by default so an adopter's FIRST
+    # place the git gate hooks by default so an adopter's FIRST
     # commit is actually gated -- mirrors setup.ps1's own [1/9]/[2/9] steps
     # (install pre-commit if missing, then wire all three hook types) against
     # $Target, via `python -m pre_commit` (matching setup.ps1/uninstall.ps1's
@@ -823,7 +823,7 @@ function Install-PrecommitHooks {
         Write-Host "  git hooks: skipping ($Target is not a git repo)"
         return
     }
-    # HIMMEL-2441/2483 [round-3 panel]: -DryRun must describe the planned
+    # -DryRun must describe the planned
     # install regardless of host state -- checked BEFORE the python
     # Get-Command probe below, same as the .sh twin, so a dry-run's output
     # doesn't depend on whether python happens to be installed.
@@ -882,10 +882,10 @@ function Do-Core {
         Set-SessionStartHook -SettingsPath $userSettings -Prefix $HimmelRoot -HookBasename 'inject-initiative.sh' -DryRun:$DryRun
         Write-Host "  worktree commands run from the himmel clone: bash $HimmelRoot/scripts/worktree.sh feat/slug"
     }
-    # HIMMEL-2038: the "working principles" defaults were demoted out of himmel's
+    # the "working principles" defaults were demoted out of himmel's
     # always-on project CLAUDE.md (general engineering defaults, not himmel
     # invariants) -- adopters get them via this user-scope append instead.
-    # HIMMEL-3309: user-scope ONLY -- a project-scope install must not touch
+    # user-scope ONLY -- a project-scope install must not touch
     # anything under $HOME (the flag's name is the contract). The principles
     # still land at user scope whichever way core itself was installed; a
     # project-scope adopter who also wants them runs `adopt.ps1 -Scope user`
@@ -925,11 +925,11 @@ function Do-Luna([string]$Dest) {
         Write-Host "DRY: copy templates\luna-second-brain → $Dest"
     }
     # Persist the vault path UNCONDITIONALLY — a re-run over an existing scaffold
-    # must still wire a previously-unwired install (HIMMEL-458).
+    # must still wire a previously-unwired install.
     Wire-LunaVaultPath $Dest
-    # Seed HANDOVER_DIR the same way, same reasoning (HIMMEL-839).
+    # Seed HANDOVER_DIR the same way, same reasoning.
     Wire-HandoverDirLuna $Dest
-    # G5 (HIMMEL-752): register the scaffolded vault as a qmd collection so it
+    # G5: register the scaffolded vault as a qmd collection so it
     # is queryable immediately. Skip + note when qmd/bun unavailable; WARN-not-fail.
     # For -Profile all, Do-Core (-> Wire-QmdCore) has already installed qmd; for
     # -Profile luna alone it may be absent, in which case Test-Qmd skips cleanly.
@@ -938,7 +938,7 @@ function Do-Luna([string]$Dest) {
     } elseif ($DryRun) {
         Write-Host "DRY: Register-QmdCollection $Dest luna"
     } elseif (Test-Qmd) {
-        # Same native-EAP decoupling as Wire-QmdCore (WARN-not-fail, CR fix).
+        # Same native-EAP decoupling as Wire-QmdCore (WARN-not-fail).
         $savedNativeEAP = $null
         if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
             $savedNativeEAP = $PSNativeCommandUseErrorActionPreference
@@ -960,8 +960,8 @@ Write-Host "==> himmel adopt — profile=$Profile scope=$Scope$dryNote"
 switch ($Profile) {
     'core' { Do-Core }
     # `luna` historically used -Target; also honor an explicit -LunaTarget so the
-    # intuitive `-Profile luna -LunaTarget` is no longer a silent no-op
-    # (HIMMEL-458 critic #3). -Target still wins when -LunaTarget is absent.
+    # intuitive `-Profile luna -LunaTarget` is no longer a silent no-op.
+    # -Target still wins when -LunaTarget is absent.
     'luna' { if ($LunaTargetSet) { Do-Luna $LunaTarget } else { Do-Luna $Target } }
     'all'  { Do-Core; Do-Luna $LunaTarget }
 }

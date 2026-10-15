@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/stop-console-idle-guard.sh (HIMMEL-3144): a
+# Smoke suite for scripts/hooks/stop-console-idle-guard.sh: a
 # Stop hook that blocks a CONSOLE session's stop, once per turn, when it
 # still holds the queue-lock on its own *-console.md document (D1: no wake
 # path existed, so a console that ended its turn there just stayed dead).
@@ -49,7 +49,7 @@ skip() { printf '  SKIP %s\n' "$1"; }
 . "$HOOKS/../lib/canon-path.sh"
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/stop-console-idle-guard-test.XXXXXX")" || { echo "setup: mktemp -d failed" >&2; exit 1; }
-# HIMMEL-3179: queue-lock.sh derives the lock slug from the handover doc's path
+# queue-lock.sh derives the lock slug from the handover doc's path
 # under the CANONICAL handover root, so the fixture root must be canonical too
 # (macOS TMPDIR = /var/folders/../T/ - trailing "/" and the /var -> /private/var link).
 TMP="$(canon_path "$TMP")" || { echo "setup: canon_path failed for the fixture root" >&2; exit 1; }
@@ -57,7 +57,7 @@ HANDOVER_DIR="$TMP/handover"
 XDG_RUNTIME_DIR="$TMP/xdg"
 mkdir -p "$HANDOVER_DIR" "$XDG_RUNTIME_DIR"
 export HANDOVER_DIR XDG_RUNTIME_DIR
-# HIMMEL-4567: the console's waiter heartbeat lives next to its Telegram inbox,
+# the console's waiter heartbeat lives next to its Telegram inbox,
 # <bridge>/consoles/<console doc name>.wait (console.sh's own inbox path).
 BRIDGE_ROOT="$TMP/bridge"
 WAIT_HB="$BRIDGE_ROOT/consoles/FIXTURE-nextleg-console.md.wait"
@@ -186,7 +186,7 @@ if is_block "$out"; then bad "(d-ii) bank-preflight.sh exit!=0 -> expected allow
 out="$(run_guard "$CONSOLE_PAYLOAD")"
 if is_block "$out"; then ok "(d-ii) control: the real bank-preflight.sh still blocks (stub was exercised, not bypassed)"; else bad "(d-ii) control: the real bank-preflight.sh no longer blocks — got: $out"; fi
 
-# --- HIMMEL-3148: a held leg lock IS the wake path -------------------------
+# --- a held leg lock IS the wake path -------------------------
 # The base this ticket cut from blocked UNCONDITIONALLY whenever a console
 # session held its lock, regardless of the fleet/leg state it had just
 # gathered (bank PROCEED, leg locks fresh, fleet at cap all made no
@@ -196,11 +196,11 @@ if is_block "$out"; then ok "(d-ii) control: the real bank-preflight.sh still bl
 # structural wake path, so the stop is allowed.
 #
 # PREDICATE_BASE_SHA names the commit this ticket cut from (the shipped,
-# always-blocks hook) for provenance only -- HIMMEL-3018: the pre-fix hook
+# always-blocks hook) for provenance only -- the pre-fix hook
 # itself comes from a committed fixtures/red-control/ snapshot, not a live
 # `git show` of that historical ref, which fails FATAL on a shallow clone or
 # a source archive even though the commit is a reachable main ancestor
-# (HIMMEL-3154's class, same fix pattern as #810).
+# (same fix pattern as #810).
 PREDICATE_BASE_SHA="5e58a2f3fa30ee6b44d5df2ebee19a2cba418e34"
 PREFIX_ROOT="$TMP/prefix-repo-himmel-3148"
 PREFIX_HOOK=""
@@ -234,7 +234,7 @@ LEG_RELEASE_TOKEN="$(printf '%s\n' "$leg_lock_out" | sed -n 's/^release-token: `
 [ -n "$LEG_RELEASE_TOKEN" ] || { echo "setup: leg acquire printed no release token" >&2; exit 1; }
 
 # (e)-(h) isolate the leg count, so a live waiter is armed throughout
-# (HIMMEL-4567: without one the stop blocks whatever the leg count).
+# (without one the stop blocks whatever the leg count).
 write_hb 0 "$$" waiting
 
 # --- (e) RED control: the PRE-FIX hook still blocks with a leg held -------
@@ -256,7 +256,7 @@ fi
 out="$(run_guard "$CONSOLE_PAYLOAD")"
 if is_block "$out"; then bad "(f) console + leg held -> expected allow, got: $out"; else ok "(f) console + leg held -> allow"; fi
 
-# --- (g) trap: a STALE/IDLE-HELD? leg lock must still allow (HIMMEL-3148 --
+# --- (g) trap: a STALE/IDLE-HELD? leg lock must still allow (
 # console ruling: IDLE-HELD? is heartbeat age, not death; a leg parked on an
 # external event makes no tool calls and must still count as held) --------
 # Fixed literal, not `date -d @<epoch>` arithmetic: `-d` is GNU-only and has
@@ -289,7 +289,7 @@ fi
 out="$(run_guard "$CONSOLE_PAYLOAD")"
 if is_block "$out"; then ok "(h) paired control: leg lock removed -> block again (same fixture, leg count is the only variable)"; else bad "(h) paired control: expected block once the leg lock is gone, got: $out"; fi
 
-# --- HIMMEL-5541: a leg lock past its TTL whose owner is PROVABLY dead is not a
+# --- a leg lock past its TTL whose owner is PROVABLY dead is not a
 # held leg -- nothing will message this console from it -- so the stop blocks.
 # RED control (pre-fix hook): this fixture allowed. Paired: the same lock with
 # an owner pid that is ALIVE (this test shell) still allows, whatever its age.
@@ -310,7 +310,7 @@ out="$(run_guard "$CONSOLE_PAYLOAD")"
 if is_block "$out"; then bad "(ALIVE) past-TTL leg lock with a live owner pid -> expected allow, got: $out"; else ok "(ALIVE) past-TTL leg lock with a live owner pid is still held -> allow"; fi
 QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$LEG_DOC" >/dev/null 2>&1
 
-# --- HIMMEL-4567: no live console-wait.sh waiter blocks, whatever the legs --
+# --- no live console-wait.sh waiter blocks, whatever the legs --
 # console-wait.sh is the console's one wake source and exits after each WAKE,
 # so a console that ends its turn without re-arming it stays deaf even with
 # legs held. A leg lock is held for every case below, so the pre-fix hook
@@ -377,7 +377,7 @@ check_waiter "(n) fresh heartbeat, dead pid, leg held"            block 0 "$DEAD
 check_waiter "(q) heartbeat epoch with an embedded colon"         block raw "hb=1:2 pid=$$ key=- tick=ok state=waiting"
 check_waiter "(r) heartbeat epoch with a leading zero (09)"       block raw "hb=09 pid=$$ key=- tick=ok state=waiting"
 check_waiter "(s) heartbeat epoch an hour in the future"          block -3600 "$$" waiting
-# HIMMEL-4617: an epoch past 12 digits (or 0) must be refused before the arithmetic.
+# an epoch past 12 digits (or 0) must be refused before the arithmetic.
 check_waiter "(t) heartbeat epoch of 20 digits (overflows 64-bit)" block raw "hb=99999999999999999999 pid=$$ key=- tick=ok state=waiting"
 check_waiter "(u) heartbeat epoch of 13 digits"                   block raw "hb=1234567890123 pid=$$ key=- tick=ok state=waiting"
 check_waiter "(v) heartbeat epoch of 0"                           block raw "hb=0 pid=$$ key=- tick=ok state=waiting"

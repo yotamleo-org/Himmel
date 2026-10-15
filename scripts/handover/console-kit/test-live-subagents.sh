@@ -116,6 +116,11 @@ acq=$(HANDOVER_DIR="$ROOT" bash "$QL" acquire "$DOC" lsa-test-console 2>&1)
 TOKEN=$(printf '%s\n' "$acq" | sed -n "s/^release-token: \`\(.*\)\`\$/\\1/p")
 check "wrap fixture: lock acquired" "$([ -n "$TOKEN" ] && echo yes)" "yes"
 
+# this suite covers the subagent gate only; the subtree gate has its own cases in
+# test-console.sh, and a real subtree check would see the runner's own processes
+printf '#!/usr/bin/env bash\nexit 0\n' > "$W/subtree-ok.sh"
+export WRAP_SUBTREE_CHECK_BIN="$W/subtree-ok.sh"
+
 reset_session
 launch j1 toolu_J1 background 2026-10-09T01:00:00.000Z
 wrap() {

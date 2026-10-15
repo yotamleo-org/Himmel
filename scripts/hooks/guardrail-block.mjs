@@ -17,7 +17,7 @@ export const GUARDRAILS = [
   { basename: 'block-read-secrets.sh', matcher: 'Bash|PowerShell|Read|Grep' },
 ];
 
-// HIMMEL-1422: single source of truth for the guardrail-block "trust
+// Single source of truth for the guardrail-block "trust
 // anchor" — the himmel checkout whose scripts/hooks/ copies of the wrapper
 // + guardrail scripts are treated as authoritative. HIMMEL_REPO (env), when
 // set, names it explicitly (multi-checkout installs, e.g. a global install
@@ -217,7 +217,7 @@ function nodeResolves(data) {
 
 // commandFor() bakes EXACTLY `GUARDRAIL_BASH="<bash>" "<node>" "<wrapper>"
 // "<script>"` — four double-quoted segments, nothing before or after. This
-// is the inverse, but STRICT (CR fix, codex-adv-5): the `$` anchor requires
+// is the inverse, but STRICT: the `$` anchor requires
 // the match to consume the WHOLE command string, so a trailing shell
 // comment or any extra token after the 4th quoted segment fails the match
 // entirely (returns null) rather than being silently ignored. Contrast with
@@ -237,10 +237,10 @@ function parseGeneratedCommand(hook) {
   return { bashPath, nodePath, wrapperPath, scriptPath };
 }
 
-// CR fix (codex-adv-5): ownership is IDENTITY, not mention. The pre-fix
-// isOwnedHook() substring-searched the WHOLE command string for `basename`
-// — matching a guardrail's name anywhere, including inside an inert
-// trailing comment, while the actual (4th quoted) script argument pointed
+// Ownership is IDENTITY, not mention. A substring search of
+// the WHOLE command string for `basename` would match
+// a guardrail's name anywhere, including inside an inert
+// trailing comment, while the actual (4th quoted) script argument points
 // somewhere else entirely. This checks the PARSED wrapper/script paths'
 // basenames against the expected constants exactly (path.basename(), never
 // String#includes()) — a decoy command whose real script arg doesn't match
@@ -258,9 +258,8 @@ function ownsGuardrail(parsed, guardrail) {
 // above (used by installData()/removeData() for CLEANUP, where a loose
 // substring match is the correct, DELIBERATE behavior: catching any
 // hand-edited/stale hook that merely mentions the wrapper is a feature
-// there, not a bug) — and unlike an earlier round's singular
-// findOwnedHookInfo(), which returned only the FIRST match (CR fix,
-// codex-adv-4: installData()'s own dedup step — "remove EVERY existing
+// there, not a bug) — and it returns EVERY match, not just the FIRST:
+// installData()'s own dedup step — "remove EVERY existing
 // owned hook for this guardrail" — exists precisely because duplicate owned
 // entries for the same basename are a real drift state; a second,
 // dead-pathed duplicate is invisible to a probe that only ever looks at the
@@ -280,7 +279,7 @@ function findGuardrailEntries(data, guardrail) {
   return found;
 }
 
-// CR fix (codex-adv-7, round 5): round 4's ANCHORED GENERATED_COMMAND_RE
+// The ANCHORED GENERATED_COMMAND_RE
 // correctly rejects a TRUE decoy (wrong script identity, real basename only
 // in an inert trailing comment) — but it also makes an entry with the SAME
 // wrapper/script identity plus a trailing extra token/comment invisible
@@ -291,7 +290,7 @@ function findGuardrailEntries(data, guardrail) {
 // wired in this shape with a dead node/bash path would fail closed on
 // matching tool calls while sitting completely outside this contract's
 // enumeration (entryCount would stay 1, complete:true), reopening exactly
-// the blind spot round 3's duplicate detection was built to close, just
+// the blind spot duplicate detection exists to close, just
 // through a different command shape.
 //
 // This is the BOUNDED structural test for "references our identity without
@@ -300,10 +299,10 @@ function findGuardrailEntries(data, guardrail) {
 // check whether ANY of them, taken as a whole quoted VALUE and reduced with
 // path.basename(), equals WRAPPER, and ANY (possibly a different one)
 // equals guardrail.basename. This is deliberately NOT the old whole-string
-// substring search (String#includes over the entire command) that codex-
-// adv-5 fixed: a basename sitting in an unquoted trailing `# comment` is
+// substring search (String#includes over the entire command): a
+// basename sitting in an unquoted trailing `# comment` is
 // never captured by the quote-extraction regex at all, so it still reads as
-// a decoy/not-owned, exactly preserving round 4's fix. Only an ACTUAL
+// a decoy/not-owned, exactly as the anchored regex does. Only an ACTUAL
 // quoted path argument whose basename matches counts.
 function referencesGuardrailIdentity(hook, guardrail) {
   if (!hook || hook.type !== 'command' || typeof hook.command !== 'string') return false;
@@ -332,7 +331,7 @@ function findNonCanonicalEntries(data, guardrail) {
   return found;
 }
 
-// CR fix (codex-adv-3): fs.existsSync() alone accepts a DIRECTORY, an
+// fs.existsSync() alone accepts a DIRECTORY, an
 // unreadable file, or (for node/bash) a non-executable file as "resolves" —
 // reproduced complete:true with a baked path pointing at a plain directory.
 // isFile() is the load-bearing, fully portable check (a directory always
@@ -369,7 +368,7 @@ function isRunnableExecutable(p) {
   return true;
 }
 
-// HIMMEL-1422: cheap content-sanity floor for the wrapper/script files —
+// Cheap content-sanity floor for the wrapper/script files —
 // isReadableFile() alone accepts a truncated-to-zero-bytes (or
 // whitespace-only) file sitting at an otherwise-correct path, which is
 // exactly the "no-op guardrail" shape from the ticket's motivating scenario
@@ -409,7 +408,7 @@ function readGitDir(repo) {
   }
 }
 
-// HIMMEL-1427 (r4, codex-adv-3): for a linked worktree, the gitdir that
+// For a linked worktree, the gitdir that
 // readGitDir() resolves (.git/worktrees/<name>) carries refs/HEAD but NOT the
 // objects/, packed-refs, or branch refs — those live in the shared COMMON dir.
 // A worktree's per-worktree gitdir points at it via a `commondir` file (a path
@@ -424,7 +423,7 @@ function resolveCommonDir(gitDir) {
   }
 }
 
-// HIMMEL-1472 (R4): the authoritative object-format width is the repository's
+// The authoritative object-format width is the repository's
 // CONFIGURED format, NOT the HEAD/ref oid's own length. A crafted/corrupt DB in
 // a DEFAULT (sha1) repo whose HEAD ref carries a 64-hex oid with a fully
 // self-consistent sha256 commit→tree→blob chain passes every r3 width+rehash
@@ -437,7 +436,7 @@ function resolveCommonDir(gitDir) {
 // A MISSING config file is the healthy default (no objectFormat override → sha1),
 // matching git; any OTHER read error (permissions/I/O on a present file) degrades.
 //
-// HIMMEL-1472 (R5): apply git's FULL repository-format validation, not just the
+// Apply git's FULL repository-format validation, not just the
 // objectFormat value. R4 read objectFormat and derived a width but skipped the
 // rules git uses to ACCEPT that config, so configs git REFUSES still yielded a
 // width and a healthy attestation: objectFormat=sha256 with
@@ -460,7 +459,7 @@ const KNOWN_GIT_EXTENSIONS = new Set([
   'compatobjectformat',
 ]);
 
-// HIMMEL-1472 (R6): a known KEY is necessary but not sufficient — git also
+// A known KEY is necessary but not sufficient — git also
 // validates each extension's VALUE and refuses the repo on a bad one ("invalid
 // value for 'extensions.<name>'"). R5 only checked the key set, so e.g.
 // refStorage=bogus attested healthy against a config git rejects. Mirror git's
@@ -492,7 +491,7 @@ function validExtensionValue(key, raw) {
   if (spec === 'nonempty') return v.length > 0;
   return spec.includes(v); // case-sensitive canonical token
 }
-// HIMMEL-1472 (R9): a STRICT value whitelist for the kv grammar. git's config
+// A STRICT value whitelist for the kv grammar. git's config
 // value grammar is broad (escapes, line continuations, mid-value comment
 // starts, ...) and chasing it exactly is a bottomless source of "looser than
 // git" findings. The invariant needs only one direction — never attest against
@@ -524,7 +523,7 @@ function configuredObjectByteWidth(commonDir) {
   let versionMalformed = false;
   let malformed = false; // a [core]/[extensions] line git's parser would reject
   const extensions = new Map(); // [extensions] keys (lowercased) → raw value
-  // HIMMEL-1472 (R9) — CLOSURE RULE for the config-grammar class. This parser
+  // CLOSURE RULE for the config-grammar class. This parser
   // accepts ONLY the strict subset below (headers, key grammar, and the value
   // whitelist in valueIsWellFormed); every shape outside it degrades. The
   // invariant is one-directional: NEVER attest a width against a config git
@@ -539,7 +538,7 @@ function configuredObjectByteWidth(commonDir) {
     if (!line || line.startsWith('#') || line.startsWith(';')) continue;
     const sec = line.match(/^\[([^\]]*)\]$/);
     if (sec) {
-      // HIMMEL-1472 (R8): mirror git's config header grammar (Documentation/config.txt).
+      // Mirror git's config header grammar (Documentation/config.txt).
       // Git accepts exactly two header forms — a bare `[name]` (name = alnum, `-`,
       // `.`) or a subsection `[name "sub"]` (whitespace then a DOUBLE-QUOTED
       // subsection, escapes \\ and \"). A header that looks like one but matches
@@ -549,7 +548,7 @@ function configuredObjectByteWidth(commonDir) {
       const bareHeader = sec[1].match(/^([A-Za-z0-9.-]+)$/);
       const subHeader = sec[1].match(/^([A-Za-z0-9.-]+)[ \t]+"((?:[^"\\\n]|\\.)*)"$/);
       if (bareHeader) {
-        // HIMMEL-1472 (R11): the bare-header grammar admits dots, so git's legacy
+        // The bare-header grammar admits dots, so git's legacy
         // dotted subsection syntax `[name.sub]` lands here too. Git reads those keys
         // as `<name>.<sub>.*`; for `[extensions.x]` that is `extensions.x.*`, which
         // git refuses as an unknown extension at repositoryformatversion >= 1 — a
@@ -563,7 +562,7 @@ function configuredObjectByteWidth(commonDir) {
         if (name.startsWith('extensions.')) malformed = true;
         else section = name;
       } else if (subHeader) {
-        // HIMMEL-1472 (R10): git reads `[extensions "x"]` keys as `extensions.x.*` and
+        // Git reads `[extensions "x"]` keys as `extensions.x.*` and
         // refuses them as unknown extensions at repositoryformatversion >= 1; at v0 any
         // extension present is already a degrade. No real repo carries subsectioned
         // extensions — degrade, never attest. `[core "x"]` and other subsections stay
@@ -580,7 +579,7 @@ function configuredObjectByteWidth(commonDir) {
     // ANY section ("bad config line N in file .git/config") — so shape-validate
     // every line; only the SEMANTIC capture below is scoped to the bare
     // [core]/[extensions] sections.
-    // HIMMEL-1472 (R8): a git variable name starts with a letter and allows only
+    // A git variable name starts with a letter and allows only
     // alnum + `-` (no leading digit/dot, no embedded dot). The key patterns below
     // use that grammar so a key git rejects (9key, .key, key.sub) degrades instead
     // of attesting against a config git refuses.
@@ -662,7 +661,7 @@ function configuredObjectByteWidth(commonDir) {
 }
 
 // The ref/HEAD OID predicates accept 40-hex (sha1) OR 64-hex (sha256), matching
-// readObject via hashAlgoForOid (HIMMEL-1468): the fallback ref/HEAD parser
+// readObject via hashAlgoForOid: the fallback ref/HEAD parser
 // hardcoded-tested only {40}, so a sha256 repo (objectFormat=sha256) degraded to
 // reference-unavailable whenever the git subprocess was unavailable — an
 // internal inconsistency with r10's sha256 object support. This repo is sha1,
@@ -704,7 +703,7 @@ export function readHeadOid(gitDir, commonDir) {
 }
 
 function readLooseObject(commonDir, oid) {
-  // HIMMEL-1472: accept sha1 (40-hex) OR sha256 (64-hex) oids, keyed by
+  // Accept sha1 (40-hex) OR sha256 (64-hex) oids, keyed by
   // hashAlgoForOid (matching readObject's rehash chokepoint) — a sha256 repo's
   // loose objects live at objects/<2>/<62>, which the prior {40}-only guard
   // rejected, dead-ending the fallback one layer below readHeadOid's fix.
@@ -723,7 +722,7 @@ function readLooseObject(commonDir, oid) {
   return { type, body: inflated.subarray(nul + 1) };
 }
 
-// ── packed-object support (HIMMEL-1427 r4, codex-adv-3) ────────────────────
+// ── packed-object support ────────────────────
 // After a `git gc` / `git repack -d`, loose objects are deleted and live only
 // in objects/pack/*.pack, indexed by the matching *.idx — so a loose-only
 // reader returned reference-unavailable and a healthy install read degraded
@@ -748,7 +747,7 @@ const PACK_TYPE_NAMES = { 1: 'commit', 2: 'tree', 3: 'blob', 4: 'tag' };
 // Returns the oid's byte offset into its .pack, or null if the oid is absent.
 // A v2 idx is header(8) + fanout(256*4) + oid(total*<width>) + crc(total*4) +
 // offset(total*4) [+ large-offset] tables — <width> is 20 (sha1) or 32 (sha256),
-// keyed by the requested oid's format (HIMMEL-1472). A truncated/crafted idx can
+// keyed by the requested oid's format. A truncated/crafted idx can
 // advertise a fanout total or large-offset index that points past idx.length,
 // and the Buffer.compare/readUint32BE calls below then THROW ERR_OUT_OF_RANGE —
 // uncaught, that crashes status --json instead of returning
@@ -759,7 +758,7 @@ export function findPackOffset(idx, oidHex) {
   if (idx.length < 1032) return null; // header(8) + fanout(256*4) minimum
   if (idx[0] !== PACK_IDX_MAGIC[0] || idx[1] !== PACK_IDX_MAGIC[1] || idx[2] !== PACK_IDX_MAGIC[2] || idx[3] !== PACK_IDX_MAGIC[3]) return null;
   if (readUint32BE(idx, 4) !== 2) return null; // v2 idx only
-  // HIMMEL-1472: per-entry oid width is keyed by the repo object format — a sha1
+  // Per-entry oid width is keyed by the repo object format — a sha1
   // idx stores 20-byte oids, a sha256 (objectFormat=sha256) idx stores 32. The
   // requested oid's hex length names it (oidByteWidth, matching hashAlgoForOid),
   // so the request and the idx must agree; any other length is no match.
@@ -804,14 +803,14 @@ export function findPackOffset(idx, oidHex) {
   return null;
 }
 
-// Maximum object size the delta reader will reconstruct (HIMMEL-1427 r10). git's
+// Maximum object size the delta reader will reconstruct. git's
 // practical single-object cap is well under 4 GiB; a size varint encoding more is
 // a crafted stream. Capping the non-wrapping decode below bounds the math AND
 // rejects a delta whose declared sizes would otherwise overflow past 32 bits.
 const MAX_OBJECT_SIZE = 0xffffffff; // 4 GiB - 1
 
 // Decodes a LEB128 base-128 size varint from `buf` starting at index `p`, using
-// NON-WRAPPING Number math (HIMMEL-1427 r10). The prior `val |= (b & 0x7f) << shift`
+// NON-WRAPPING Number math. The prior `val |= (b & 0x7f) << shift`
 // accumulation used JS bitwise ops, which coerce to a SIGNED 32-bit Int32 — so a
 // 5-byte size varint like [0x81,0x80,0x80,0x80,0x10] (== 4_294_967_297, i.e.
 // 2^32 + 1) WRAPPED to 1, silently bypassing the declared-base-size check
@@ -843,7 +842,7 @@ function decodeSizeVarint(buf, p) {
 // r8 regressions can exercise the offset/varint math directly on small buffers.
 export function applyDelta(base, delta) {
   let p = 0;
-  // Base-size varint (HIMMEL-1427 r9/r10): CAPTURED via NON-WRAPPING math and
+  // Base-size varint: CAPTURED via NON-WRAPPING math and
   // validated against the actual base length — a mismatch means the delta belongs
   // to a different base object, so degrade instead of applying it against the
   // wrong base. (r8 added the in-bounds termination check; r10 replaced the
@@ -855,7 +854,7 @@ export function applyDelta(base, delta) {
   const baseSize = baseHdr.value;
   p = baseHdr.next;
   if (baseSize !== base.length) return null; // declared base size must match the actual base
-  // Target-size varint (HIMMEL-1427 r10): same non-wrapping decode. A wrapped
+  // Target-size varint: same non-wrapping decode. A wrapped
   // target size could falsely match the reconstructed length on a 32-bit boundary
   // and accept a malformed delta; decodeSizeVarint rejects the oversized value.
   const targetHdr = decodeSizeVarint(delta, p);
@@ -866,7 +865,7 @@ export function applyDelta(base, delta) {
   while (p < delta.length) {
     const op = delta[p++];
     if (op & 0x80) {
-      // Copy offset uses UNSIGNED assembly (HIMMEL-1427 r8): `<< 24` yields a
+      // Copy offset uses UNSIGNED assembly: `<< 24` yields a
       // signed Int32, so a 4th offset byte >= 0x80 made cpOff negative and
       // corrupted copies on >2GB base objects. Multiply by 0x1000000 (matching
       // readUint32BE) and accumulate with `+` so cpOff stays a plain Number
@@ -886,7 +885,7 @@ export function applyDelta(base, delta) {
       /* oxlint-enable oxc/bad-bitwise-operator */
       if (p > delta.length) return null; // truncated copy command
       if (cpSize === 0) cpSize = 0x10000;
-      // Validate the copy range against the actual base buffer (HIMMEL-1427 r9):
+      // Validate the copy range against the actual base buffer:
       // Buffer.subarray CLAMPS an overrun instead of throwing, so a copy past the
       // base end was silently truncated and could still match targetSize → a
       // false healthy verdict on malformed pack data. Reject non-finite/negative
@@ -929,7 +928,7 @@ function readPackEntry(commonDir, pack, idx, off, depth = 0, lookup, oidWidth) {
   if (type === 6) { // OFS_DELTA: base is at (off - negOff) in the same pack
     b = pack[dataStart];
     p = dataStart + 1;
-    // negOff varint (HIMMEL-1427 r10): git's OFS_DELTA offset encoding, decoded
+    // negOff varint: git's OFS_DELTA offset encoding, decoded
     // with NON-WRAPPING math. The prior `(negOff + 1) << 7` accumulator coerced to
     // a signed Int32 and wrapped past 2^31, so a crafted varint could decode to a
     // small positive value that passed the `> off` range check while naming the
@@ -953,7 +952,7 @@ function readPackEntry(commonDir, pack, idx, off, depth = 0, lookup, oidWidth) {
     return body ? { type: base.type, body } : null;
   }
   if (type === 7) { // REF_DELTA: base named by the following oid (20 bytes sha1, 32 sha256)
-    // HIMMEL-1472: the base-oid slice must be sized by the repo hash width, not a
+    // The base-oid slice must be sized by the repo hash width, not a
     // fixed 20. An objectFormat=sha256 pack carries a 32-byte base oid — a fixed
     // 20 truncated it AND started the inflate 12 bytes inside the oid, so a
     // sha256 REF_DELTA never resolved. `oidWidth` is derived from the requested
@@ -963,7 +962,7 @@ function readPackEntry(commonDir, pack, idx, off, depth = 0, lookup, oidWidth) {
     const baseOid = pack.subarray(dataStart, dataStart + oidWidth).toString('hex');
     let delta;
     try { delta = zlib.inflateSync(pack.subarray(dataStart + oidWidth)); } catch (_e) { return null; }
-    // HIMMEL-1472 (R3): thread the pinned width so a foreign-format REF_DELTA
+    // Thread the pinned width so a foreign-format REF_DELTA
     // base (a mixed-format pack) is rejected at the readObject chokepoint rather
     // than traversed into a false integrity attestation.
     const base = readObject(commonDir, baseOid, depth + 1, lookup, oidWidth); // cycle-checked via lookup.visited
@@ -1013,7 +1012,7 @@ function readPackedObject(commonDir, oid, depth = 0, lookup, oidWidth) {
     try {
       const off = findPackOffset(idx, oid);
       if (off === null) continue;
-      // HIMMEL-1472: findPackOffset matched this oid against the idx, so its
+      // findPackOffset matched this oid against the idx, so its
       // oidByteWidth (20 sha1 / 32 sha256) is the repo's hash width — thread it
       // into readPackEntry so the REF_DELTA base oid is sized correctly (the same
       // width source findPackOffset uses for the idx entries). R3: prefer the
@@ -1029,7 +1028,7 @@ function readPackedObject(commonDir, oid, depth = 0, lookup, oidWidth) {
   return null;
 }
 
-// Picks the git object-id hash algorithm by oid length (HIMMEL-1427 r10): sha1
+// Picks the git object-id hash algorithm by oid length: sha1
 // oids are 40 hex chars, sha256 (git's objectFormat=sha256) are 64. Any other
 // length is not a git oid → degrade rather than guess.
 function hashAlgoForOid(oid) {
@@ -1038,7 +1037,7 @@ function hashAlgoForOid(oid) {
   return null;
 }
 
-// Byte width of a git object id by its hex length (HIMMEL-1472): the companion
+// Byte width of a git object id by its hex length: the companion
 // to hashAlgoForOid for the raw-byte readers below (pack-idx entries, tree
 // entries) that index oid BYTES rather than pick a hash algorithm — sha1 = 20,
 // sha256 = 32, else not a git oid. Function-declaration hoisting lets the
@@ -1049,7 +1048,7 @@ function oidByteWidth(oid) {
   return null;
 }
 
-// Recomputes a git object id from its { type, body } (HIMMEL-1427 r10): git's oid
+// Recomputes a git object id from its { type, body }: git's oid
 // is the hash of "<type> <size>\0<body>". Hashed in two update() steps so the
 // (possibly large, binary) body is fed as raw bytes — never round-tripped through
 // a JS string. `algo` must already be validated by hashAlgoForOid.
@@ -1069,7 +1068,7 @@ function computeGitOid(type, body, algo) {
 // pack file is read at most once per lookup (CodeRabbit on #1527).
 export function readObject(commonDir, oid, depth = 0, lookup, oidWidth) {
   if (!lookup) lookup = { visited: new Set(), packCache: new Map() };
-  // HIMMEL-1472 (R3): when the caller pins a repo object-format width (threaded
+  // When the caller pins a repo object-format width (threaded
   // from readHeadBlob's HEAD/ref oid), reject any oid whose own width disagrees.
   // Git forbids intermixing hash formats in one repository (hash-transition
   // spec): a crafted/corrupt DB with a 40-hex sha1 commit naming a 64-hex sha256
@@ -1082,7 +1081,7 @@ export function readObject(commonDir, oid, depth = 0, lookup, oidWidth) {
   lookup.visited.add(oid);
   const loose = readLooseObject(commonDir, oid);
   const obj = loose || readPackedObject(commonDir, oid, depth, lookup, oidWidth);
-  // Recompute the object id and compare to the request (HIMMEL-1427 r10): a
+  // Recompute the object id and compare to the request: a
   // crafted/corrupt idx can map oid→offset at the WRONG object, and a tampered
   // loose file can sit at an oid-derived path whose content hashes elsewhere —
   // either serves a blob that does NOT correspond to the requested oid, and the
@@ -1101,12 +1100,12 @@ export function readObject(commonDir, oid, depth = 0, lookup, oidWidth) {
 function commitTreeOid(body, oidWidth) {
   const lineEnd = body.indexOf(10);
   const firstLine = body.subarray(0, lineEnd < 0 ? body.length : lineEnd).toString('utf8');
-  // HIMMEL-1472: accept sha1 (40-hex) OR sha256 (64-hex) tree oids, keyed
+  // Accept sha1 (40-hex) OR sha256 (64-hex) tree oids, keyed
   // consistently with hashAlgoForOid — a sha256 repo's commit carries a 64-hex
   // tree line that the prior {40}-only regex silently dropped.
   const match = firstLine.match(/^tree ([0-9a-f]{40}|[0-9a-f]{64})$/);
   if (!match) return null;
-  // HIMMEL-1472 (R3): reject a tree oid whose width disagrees with the repo's
+  // Reject a tree oid whose width disagrees with the repo's
   // pinned object format (threaded from readHeadBlob's HEAD/ref oid). Git
   // forbids a sha1 commit naming a sha256 tree (and the mirror); without this a
   // crafted/corrupt DB traversed into a false integrity attestation on the
@@ -1115,14 +1114,14 @@ function commitTreeOid(body, oidWidth) {
   return match[1];
 }
 
-// HIMMEL-1472: a tree entry is "<mode> <name>\0<oid>" where the oid is 20 bytes
+// A tree entry is "<mode> <name>\0<oid>" where the oid is 20 bytes
 // (sha1) or 32 (sha256). The nul+<width> advance and oid slice are keyed by
 // `oidWidth` — the tree's own oid width, passed by readHeadBlob's caller (a
 // tree object's entries carry oids of the repo's object format). The prior
 // hardcoded nul+21 walk silently truncated sha256 entry oids to their first 20
 // bytes and advanced past only 21, desynchronizing every subsequent entry.
 function findTreeEntry(treeBody, name, oidWidth) {
-  // HIMMEL-1472 (R3, panel glm-1): an undefined oidWidth made nul+1+oidWidth
+  // An undefined oidWidth made nul+1+oidWidth
   // NaN, the oid subarray coerce to empty, and the loop index go NaN — silently
   // wrong instead of null. The pinned width is threaded from readHeadBlob, but
   // keep an explicit fail-closed guard matching the REF_DELTA arm regardless.
@@ -1142,7 +1141,7 @@ function findTreeEntry(treeBody, name, oidWidth) {
   return null;
 }
 
-// HIMMEL-1427 (CR round 2, codex-adv finding 2): the integrity reference
+// The integrity reference
 // lookup below spawns `git -C <resolved repo root> show HEAD:<path>`. Inherited
 // GIT_* repository/object/index/config override variables (GIT_DIR,
 // GIT_WORK_TREE, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY, GIT_COMMON_DIR,
@@ -1155,7 +1154,7 @@ function findTreeEntry(treeBody, name, oidWidth) {
 // process.env with every /^GIT_/ key removed EXCEPT GIT_TERMINAL_PROMPT (a
 // benign UI hint an operator may set deliberately). The explicit -C repo
 // root it already passes then wins. Safe simple rule, per the round-2 brief.
-// Exported so the round-4 regression (HIMMEL-1427, codex-adv-2) can unit-test
+// Exported so the round-4 regression can unit-test
 // the case-insensitive rule directly, isolated from the git subprocess.
 export function sanitizedGitEnv() {
   const env = { ...process.env };
@@ -1195,7 +1194,7 @@ export function readHeadBlob(repo, relativePath) {
   if (fromGit) return fromGit;
   const gitDir = readGitDir(repo);
   if (!gitDir) return { ok: false, reason: 'reference-unavailable' };
-  // HIMMEL-1427 (r4, codex-adv-3): for a linked worktree, readGitDir() returns
+  // For a linked worktree, readGitDir() returns
   // the per-worktree gitdir (.git/worktrees/<name>), but refs, packed-refs, and
   // objects/ live in the COMMON dir. resolveCommonDir() follows the commondir
   // pointer back to it (a no-op for a primary checkout, which has no such file
@@ -1205,7 +1204,7 @@ export function readHeadBlob(repo, relativePath) {
   const commonDir = resolveCommonDir(gitDir);
   const headOid = readHeadOid(gitDir, commonDir);
   if (!headOid) return { ok: false, reason: 'reference-unavailable' };
-  // HIMMEL-1472 (R4): pin the repo's object-format width from the CONFIGURED
+  // Pin the repo's object-format width from the CONFIGURED
   // format (extensions.objectFormat in the common dir's config), NOT the HEAD/ref
   // oid's own length — the HEAD oid is corrupt/attacker-controllable, the config
   // is git's declared repo format. A crafted/corrupt default (sha1) repo whose
@@ -1269,7 +1268,7 @@ function missingIntegrity(relativePath) {
   return { verdict: 'degraded', reason: 'missing-path', sha256: null, reference: `git:HEAD:${relativePath}`, referenceSha256: null };
 }
 
-// HIMMEL-1422: realpath-compare a configured (parsed) path against the
+// Realpath-compare a configured (parsed) path against the
 // trust anchor's expected copy. realpathSync resolves symlinks AND
 // normalizes OS-reported case, so two paths naming the SAME file compare
 // equal even if written with different separators/casing; a path that
@@ -1298,7 +1297,7 @@ function pathsMatchAnchor(configuredPath, anchorPath) {
 // basename/present/entryCount, which the caller already knows). Shared by
 // the "primary" (first-found) entry and every entry in `duplicates`, so
 // both are checked identically. `anchor` is statusDetail()'s single
-// resolveAnchor() result (HIMMEL-1422), threaded through rather than
+// resolveAnchor() result, threaded through rather than
 // re-resolved per entry.
 function resolveOwnedEntry(info, guardrail, anchor, auditAnchor) {
   const wrapperRelativePath = `scripts/hooks/${WRAPPER}`;
@@ -1331,15 +1330,14 @@ function resolveOwnedEntry(info, guardrail, anchor, auditAnchor) {
   };
 }
 
-// `status --json` contract (HIMMEL-1418, extended by CR fixes codex-adv-1/2,
-// then codex-adv-3/4, then codex-adv-5): a STABLE, machine-readable
+// `status --json` contract: a STABLE, machine-readable
 // enumeration of every EXPECTED guardrail hook (GUARDRAILS, in that fixed
 // order), each with its own presence + matcher + usability detail — unlike
 // the plain `status` verb below (kept byte-for-byte unchanged: himmel-
 // update.sh's report_guardrail_block parses it), which only ever proves "at
 // least one owned hook exists and ITS node path resolves" (detectMode()'s
-// `.some()`, nodeResolves()'s first-match return). SCOPE (fixed as of
-// codex-adv-3/4/5, round 4): this contract attests the FULL GENERATED
+// `.some()`, nodeResolves()'s first-match return). SCOPE:
+// this contract attests the FULL GENERATED
 // COMMAND IDENTITY — presence, resolution, matcher, uniqueness, and shape —
 // of the configured hook wiring. It does NOT execute the hook chain, check
 // node/bash versions, reason about ACLs beyond isFile()+access(), or judge
@@ -1347,8 +1345,8 @@ function resolveOwnedEntry(info, guardrail, anchor, auditAnchor) {
 // that is explicitly out of scope for this ticket (a deeper runtime-proof
 // contract, if ever wanted, is a follow-up ticket, not an extension here).
 //
-// Ownership semantics (CR fix, codex-adv-5, refined by codex-adv-7 — round
-// 5): "owned by guardrail X" (canonical, drives entryCount/present/paths)
+// Ownership semantics:
+// "owned by guardrail X" (canonical, drives entryCount/present/paths)
 // means the ENTIRE command string parses as EXACTLY the generated shape
 // (GENERATED_COMMAND_RE — 4 quoted segments, nothing trailing) AND the
 // parsed script arg's basename === X's basename. A command that merely
@@ -1367,12 +1365,12 @@ function resolveOwnedEntry(info, guardrail, anchor, auditAnchor) {
 // AFTER the 4th quoted segment) is NOT a decoy: guardrail-skip-in-himmel.js
 // reads only process.argv[2] (the script path) and ignores anything after
 // it, so Claude Code still executes this entry identically to a canonical
-// one. Silently treating it as "missing" (round 4's blanket answer) would
+// one. Silently treating it as "missing" (a blanket answer) would
 // hide a genuinely runtime-relevant duplicate — reopening exactly the
-// round-3 blind spot this ticket already closed once, just via a different
+// duplicate-detection blind spot already closed, just via a different
 // command shape. `nonCanonicalCount`/`nonCanonical` (below) surface this as
 // its own tracked anomaly, distinct from both a decoy (not referenced at
-// all) and a canonical duplicate (entryCount, round 3): it FORCES
+// all) and a canonical duplicate (entryCount): it FORCES
 // complete:false for the affected guardrail even when the canonical entry
 // alone would otherwise be perfectly valid, because an ignored-but-still-
 // wired duplicate with a dead node/bash path can still fail closed on a
@@ -1385,8 +1383,8 @@ function resolveOwnedEntry(info, guardrail, anchor, auditAnchor) {
 // the probe's detail still correctly says "<basename>: missing" — never a
 // false "present".
 //
-// HIMMEL-1422 (trust anchor + content-sanity floor, companion finding to
-// codex-adv-5/7): basename-only ownership means a settings.json referencing
+// Trust anchor + content-sanity floor:
+// basename-only ownership means a settings.json referencing
 // a same-named file in a WRONG directory (a stale/moved checkout, or an
 // unrelated no-op stub) passed every prior check — "present" attested
 // wiring, not that the wired file IS the real himmel copy. Two additive
@@ -1447,8 +1445,7 @@ function resolveOwnedEntry(info, guardrail, anchor, auditAnchor) {
 //                                    // one by hand).
 //         "present": boolean,        // >= 1 owned hook entry exists for this basename
 //         "entryCount": number,      // TOTAL owned entries found for this
-//                                    // basename (CR fix, codex-adv-4:
-//                                    // installData()'s own dedup step
+//                                    // basename (installData()'s own dedup step
 //                                    // proves duplicate owned entries are a
 //                                    // real drift state — a dead-pathed
 //                                    // duplicate is still independently
@@ -1461,25 +1458,24 @@ function resolveOwnedEntry(info, guardrail, anchor, auditAnchor) {
 //         "nodeResolves": boolean,   // this block minus basename/present/
 //         "wrapperPath": string|null,// entryCount/duplicates itself.
 //         "wrapperResolves": boolean,
-//         "anchorWrapperPath": string, // HIMMEL-1422: the anchor's own
+//         "anchorWrapperPath": string, // the anchor's own
 //                                    // scripts/hooks/<WRAPPER> path — shown
 //                                    // even when the hook is absent, so a
 //                                    // consumer always knows where the
 //                                    // anchor's copy WOULD be.
-//         "wrapperMatchesAnchor": boolean, // HIMMEL-1422: realpath-compare
+//         "wrapperMatchesAnchor": boolean, // realpath-compare
 //                                    // (pathsMatchAnchor()) wrapperPath
 //                                    // against anchorWrapperPath. false for
 //                                    // an absent hook (no wrapperPath to
 //                                    // compare).
 //         "scriptPath": string|null,
-//         "scriptResolves": boolean, // *Resolves fields (CR fix, codex-adv-3,
-//                                    // extended HIMMEL-1422): "usable", not
+//         "scriptResolves": boolean, // *Resolves fields: "usable", not
 //                                    // merely fs.existsSync().
 //                                    // wrapper/script (passed as ARGUMENTS to
 //                                    // node/bash, never exec'd directly) need
 //                                    // to be a regular, READABLE file WITH
 //                                    // non-trivial content (isSaneContentFile()
-//                                    // — HIMMEL-1422: a zero-byte or
+//                                    // — a zero-byte or
 //                                    // whitespace-only file at an otherwise-
 //                                    // correct path is a no-op guardrail and
 //                                    // must not read resolves:true).
@@ -1497,16 +1493,16 @@ function resolveOwnedEntry(info, guardrail, anchor, auditAnchor) {
 //                                    // — so a non-executable-but-readable file
 //                                    // baked as the node/bash path will NOT
 //                                    // be caught on Windows, only on POSIX.
-//         "anchorScriptPath": string, // HIMMEL-1422: the anchor's own
+//         "anchorScriptPath": string, // the anchor's own
 //                                    // scripts/hooks/<basename> path —
 //                                    // same shown-even-when-absent rule as
 //                                    // anchorWrapperPath.
-//         "scriptMatchesAnchor": boolean, // HIMMEL-1422: same as
+//         "scriptMatchesAnchor": boolean, // same as
 //                                    // wrapperMatchesAnchor, for scriptPath.
 //         "duplicates": [ /* same per-entry shape as above, one per
 //                            ADDITIONAL owned entry beyond the first-found;
 //                            [] when entryCount <= 1 */ ],
-//         "nonCanonicalCount": number, // CR fix, codex-adv-7 (round 5):
+//         "nonCanonicalCount": number,
 //                                    // commands that reference THIS
 //                                    // guardrail's wrapper+script identity
 //                                    // as actual quoted arguments (not a

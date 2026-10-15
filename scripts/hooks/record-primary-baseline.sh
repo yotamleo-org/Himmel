@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SessionStart hook (HIMMEL-2526). Records the PRIMARY checkout's tracked
+# SessionStart hook. Records the PRIMARY checkout's tracked
 # `git status --porcelain` output at session start, keyed by this session's
 # session_id, so detect-dirty-primary.sh (its PostToolUse companion) can
 # later notice a write that landed there through a route
@@ -14,7 +14,7 @@
 # (see scripts/parity/test-ws5-invariants.sh T15): nothing here touches a
 # Windows-only API.
 #
-# Modelled closely on record-hook-integrity.sh (HIMMEL-1666) — same
+# Modelled closely on record-hook-integrity.sh — same
 # conventions: `set -uo pipefail`, best-effort/advisory (every early exit is
 # `exit 0` writing nothing), `CLAUDE_PROJECT_DIR` required, `jq`/`git`
 # capability checks, `payload="$(cat)"`, session_id pulled from `.session_id`
@@ -28,7 +28,7 @@
 # two files also live in SEPARATE directories on purpose
 # (HIMMEL_PRIMARY_BASELINE_DIR vs HIMMEL_HOOK_INTEGRITY_DIR) — this hook must
 # never write into the integrity pin directory, which a separate ticket
-# (HIMMEL-2528) owns exclusively.
+#  owns exclusively.
 set -uo pipefail
 
 CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-}"
@@ -68,7 +68,7 @@ rc=$?
 out_dir="${HIMMEL_PRIMARY_BASELINE_DIR:-$HOME/.claude/himmel/primary-baseline}"
 mkdir -p "$out_dir" 2>/dev/null || exit 0
 
-# codex-9 (HIMMEL-2526): the temp file must be created INSIDE out_dir (not
+# codex-9: the temp file must be created INSIDE out_dir (not
 # ${TMPDIR:-/tmp}) — `mv` is only atomic WITHIN one filesystem, and
 # ${TMPDIR:-/tmp} vs $out_dir (under $HOME by default) can be, and often are,
 # different filesystems, in which case `mv` silently falls back to

@@ -206,6 +206,15 @@ python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="cl
 python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/b17" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-ok.err"; rc=$?
 [ "$rc" = 0 ] && pass "a lane-worker leg with no handover-root path generates (rc 0)" || fail "lane worker clean rc=$rc: $(cat "$WORK/lane-ok.err")"
 
+# Every leg and console pays these two files on every turn: keep the always-on core small
+# (rarely-read rules live in docs/handover/leg-sections/ and console-sections/).
+HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
+for budget in "leg-preface.md:12288" "console-template.md:16384"; do
+    f="${budget%%:*}"; max="${budget##*:}"
+    size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
+    [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
+done
+
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
 

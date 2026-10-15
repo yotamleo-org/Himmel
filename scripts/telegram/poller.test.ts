@@ -1,9 +1,9 @@
 import { beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
-import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, RESTART_WATCHDOG_MS, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, type FetchImageFn } from "./poller";
+import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, RESTART_WATCHDOG_MS, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, type FetchImageFn } from "./poller";
 import { readFile, writeFile, mkdir, utimes } from "node:fs/promises";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, vaultForChat } from "./gate";
 import { describeEnabledOps, KNOWN_OPS } from "./auto-action";
@@ -674,7 +674,7 @@ test("tent-group message without @mention from the OPERATOR is dropped before tr
   expect(triaged).toEqual([]);
   expect(ran).toEqual([]);
   expect(await readMeta(r, "group_-50")).toBeNull();
-  expect(logs.some((l) => l.includes("require-mention drop for group_-50"))).toBe(true);
+  expect(logs.some((l) => l.includes("require-mention drop for group_***"))).toBe(true);
 });
 
 test("the same tent-group message WITH @mention reaches triage (LUNA-158)", async () => {
@@ -746,11 +746,9 @@ test("an unresolvable bot username fails OPEN to triage, never drops (LUNA-158)"
   expect(ran).toEqual([{ session: "group_-50", modelOverride: undefined }]);
 });
 
-// The batch is already marked consumed by readNewLines before any of it is
-// handled, so a record that throws used to kill the poller and take every LATER
-// record with it — permanently. That is how an operator message could be lost
-// without ever reaching the floor above. (The remaining crash window between the
-// cursor commit and the inbox append is not closed here.)
+// A record that throws used to kill the poller and take every LATER record
+// with it. That is how an operator message could be lost without ever reaching
+// the floor above.
 const inbound = (text: string, update_id: number, from = 5) =>
   ({ from, chat_id: -50, text, ts: 0, update_id, forwarded: false, caption: false });
 
@@ -3421,4 +3419,179 @@ test("dispatcher: a DIFFERENT error restarts the count instead of alerting", asy
   const d = makeDispatcher(runFn, 4, (_s, err) => { alerts.push(err); }, 3);
   for (let i = 0; i < 6; i++) { await d("S"); for (let j = 0; j < 10; j++) await Promise.resolve(); }
   expect(alerts).toHaveLength(0);
+});
+
+// The inbound cursor advances per record, only after the record is durably
+// handled (enqueued or intentionally discarded).
+const seedInbound = async (r: string, recs: ReturnType<typeof inbound>[]) => {
+  for (const rec of recs) await appendLine(join(r, "inbound.jsonl"), JSON.stringify(rec));
+};
+const ackRoot = () => mkdtempSync(join(tmpdir(), "tg-ack-"));
+
+test("a record interrupted before it is durable is re-delivered on the next pass (HIMMEL-1302)", async () => {
+  const r = ackRoot();
+  await seedInbound(r, [inbound("one", 1), inbound("two", 2), inbound("three", 3)]);
+  // pass 1: record 2 never settles (process killed mid-triage), so the cursor never moves past it
+  const seen1: string[] = [];
+  let reachedTwo!: () => void;
+  const atTwo = new Promise<void>((res) => { reachedTwo = res; });
+  void ingestBatch(r, async (rec) => { seen1.push(rec.text); if (rec.text === "two") { reachedTwo(); await new Promise<void>(() => {}); } });
+  await atTwo;
+  expect(seen1).toEqual(["one", "two"]);
+  // pass 2 (restart): record 1 was acked, 2 and 3 come back
+  const seen2: string[] = [];
+  await ingestBatch(r, async (rec) => { seen2.push(rec.text); });
+  expect(seen2).toEqual(["two", "three"]);
+  const seen3: string[] = [];
+  await ingestBatch(r, async (rec) => { seen3.push(rec.text); });
+  expect(seen3).toEqual([]);
+});
+
+test("a throw on record N does not strand N+1..M and the batch is fully acked (HIMMEL-1302)", async () => {
+  const r = ackRoot();
+  await seedInbound(r, [inbound("one", 1), inbound("poison", 2), inbound("three", 3)]);
+  const seen: string[] = [];
+  await ingestBatch(r, async (rec) => { if (rec.text === "poison") throw new Error("EPERM"); seen.push(rec.text); });
+  expect(seen).toEqual(["one", "three"]);
+  const again: string[] = [];
+  await ingestBatch(r, async (rec) => { again.push(rec.text); });
+  expect(again).toEqual([]);
+});
+
+test("a replayed update_id after enqueue-before-commit neither enqueues nor spawns twice (HIMMEL-1302)", async () => {
+  const r = ackRoot();
+  const ran: string[] = [];
+  const msg = { from: 1, chat_id: 7, text: "hello", update_id: 77 };
+  await handleInbound(r, msg, async (s: string) => { ran.push(s); });
+  await handleInbound(r, msg, async (s: string) => { ran.push(s); });
+  const inboxes = readdirSync(join(r, "sessions")).map((d) => readFileSync(join(r, "sessions", d, "inbox.jsonl"), "utf8"));
+  expect(inboxes.join("").trim().split("\n")).toHaveLength(1);
+  expect(ran).toHaveLength(1);
+});
+
+test("a replayed update_id after the inbox was consumed and truncated neither enqueues nor spawns twice (HIMMEL-5795)", async () => {
+  const r = ackRoot();
+  const ran: string[] = [];
+  const msg = { from: 1, chat_id: 7, text: "hello", update_id: 88 };
+  await handleInbound(r, msg, async (s: string) => { ran.push(s); });
+  const [session] = readdirSync(join(r, "sessions"));
+  const inbox = join(r, "sessions", session, "inbox.jsonl");
+  writeFileSync(inbox, "");                       // a run consumed and truncated it
+  await handleInbound(r, msg, async (s: string) => { ran.push(s); });
+  expect(readFileSync(inbox, "utf8")).toBe("");
+  expect(ran).toHaveLength(1);
+});
+
+test("the handled high-water mark skips any id at or below it and lets a higher id through (HIMMEL-5795)", async () => {
+  const r = ackRoot();
+  const ran: string[] = [];
+  const run = async (s: string) => { ran.push(s); };
+  await handleInbound(r, { from: 1, chat_id: 7, text: "b", update_id: 20 }, run);
+  await handleInbound(r, { from: 1, chat_id: 7, text: "a", update_id: 10 }, run);   // below the mark
+  const [session] = readdirSync(join(r, "sessions"));
+  const inbox = join(r, "sessions", session, "inbox.jsonl");
+  expect(readFileSync(inbox, "utf8").trim().split("\n")).toHaveLength(1);
+  writeFileSync(inbox, "");
+  await handleInbound(r, { from: 1, chat_id: 7, text: "c", update_id: 21 }, run);
+  expect(readFileSync(inbox, "utf8").trim().split("\n")).toHaveLength(1);
+});
+
+test("a corrupt or missing high-water marker fails open to the inbox check (HIMMEL-5795)", async () => {
+  const r = ackRoot();
+  const ran: string[] = [];
+  const run = async (s: string) => { ran.push(s); };
+  const msg = { from: 1, chat_id: 7, text: "hello", update_id: 55 };
+  await handleInbound(r, msg, run);
+  const [session] = readdirSync(join(r, "sessions"));
+  const inbox = join(r, "sessions", session, "inbox.jsonl");
+  writeFileSync(join(r, "handled-update.hw"), "not-a-number");
+  await handleInbound(r, msg, run);               // still in the inbox: inbox check catches it
+  expect(readFileSync(inbox, "utf8").trim().split("\n")).toHaveLength(1);
+  writeFileSync(inbox, "");
+  await handleInbound(r, { ...msg, update_id: 56, text: "next" }, run);   // fail open: enqueues, and rewrites the marker
+  expect(readFileSync(inbox, "utf8").trim().split("\n")).toHaveLength(1);
+  expect(readFileSync(join(r, "handled-update.hw"), "utf8")).toMatch(/^56 \d+$/);
+});
+
+test("a failed marker write drops the stale marker so the replay still hits the inbox check (HIMMEL-5795)", async () => {
+  const r = ackRoot();
+  const run = async (_s: string) => {};
+  await handleInbound(r, { from: 1, chat_id: 7, text: "a", update_id: 20 }, run);
+  mkdirSync(join(r, "handled-update.hw.tmp"));    // the next atomic write cannot create its temp file
+  const msg = { from: 1, chat_id: 7, text: "b", update_id: 21 };
+  await handleInbound(r, msg, run);
+  await handleInbound(r, msg, run);               // replay: marker still at 20 would let it through
+  const [session] = readdirSync(join(r, "sessions"));
+  expect(readFileSync(join(r, "sessions", session, "inbox.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
+});
+
+test("an unmarked enqueue (crash before the marker write) is still caught by the inbox tail (HIMMEL-5795)", async () => {
+  const r = ackRoot();
+  const run = async (_s: string) => {};
+  await handleInbound(r, { from: 1, chat_id: 7, text: "a", update_id: 20 }, run);
+  const msg = { from: 1, chat_id: 7, text: "b", update_id: 21 };
+  await handleInbound(r, msg, run);
+  writeFileSync(join(r, "handled-update.hw"), "20 " + Date.now());   // the marker write for 21 never happened
+  await handleInbound(r, msg, run);
+  const [session] = readdirSync(join(r, "sessions"));
+  expect(readFileSync(join(r, "sessions", session, "inbox.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
+});
+
+test("a marker older than a day is ignored so a reset Telegram update_id is not dropped (HIMMEL-5795)", async () => {
+  const r = ackRoot();
+  const run = async (_s: string) => {};
+  await handleInbound(r, { from: 1, chat_id: 7, text: "a", update_id: 9000 }, run);
+  writeFileSync(join(r, "handled-update.hw"), "9000 " + (Date.now() - 2 * 24 * 3600 * 1000));
+  await handleInbound(r, { from: 1, chat_id: 7, text: "b", update_id: 5 }, run);
+  const [session] = readdirSync(join(r, "sessions"));
+  expect(readFileSync(join(r, "sessions", session, "inbox.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
+});
+
+// --- chat-id redaction boundary ---
+// Poller logs get captured into vault notes, so a raw chat id (or the
+// group_<chat_id> session name) must never reach one; telegram-api.ts already
+// redacts via redactChatId.
+const RAW_GROUP = -1001234567890;
+
+test("handleBatch drop log redacts the chat id (HIMMEL-1308)", async () => {
+  const logs: string[] = [];
+  const origError = console.error;
+  console.error = (...args: unknown[]) => { logs.push(args.join(" ")); };
+  try {
+    await handleBatch([{ ...inbound("poison", 1), chat_id: RAW_GROUP }], async () => { throw new Error("boom"); });
+  } finally { console.error = origError; }
+  const line = logs.find((l) => l.includes("handleInbound failed for update 1")) ?? "";
+  expect(line).not.toBe("");
+  expect(line).not.toContain("1001234567890");
+  expect(line).toContain("chat ***90");
+});
+
+test("require-mention drop log redacts the group_<chat_id> session name (HIMMEL-1308)", async () => {
+  const r = root(); const logs: string[] = [];
+  const origError = console.error;
+  console.error = (...args: unknown[]) => { logs.push(args.join(" ")); };
+  try {
+    await handleInbound(r, { from:5, chat_id:RAW_GROUP, text:"/grow status?" },
+      async () => {}, undefined, async (): Promise<TriageVerdict> => "spawn-high",
+      (fromId) => fromId === 5, undefined, mentionOn, BOT);
+  } finally { console.error = origError; }
+  const line = logs.find((l) => l.includes("require-mention drop")) ?? "";
+  expect(line).not.toBe("");
+  expect(line).not.toContain("1001234567890");
+  expect(line).toContain("group_***90");
+});
+
+// Structural guard: every poller log line that names a chat id or a session
+// goes through redactChatId / logRedacted. The one deliberate raw site is the
+// gated-out discovery line, whose whole point is to show the id to add to
+// access.json.
+test("poller.ts logs no raw chat id or session name (HIMMEL-1308)", () => {
+  const src = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("\n");
+  const offenders = src.map((l, i) => ({ l, n: i + 1 }))
+    .filter(({ l }) => /console\.error\(|logRedacted\(/.test(l))
+    .filter(({ l }) => /\$\{(?:rec|msg|i)\.chat_id\}|\$\{chatId\}/.test(l)
+      || (/console\.error\(/.test(l) && /\$\{session\}|"\s*\+\s*session\b|"\s*\+\s*s\b/.test(l)))
+    .filter(({ l }) => !l.includes("gated out chat"))
+    .map(({ n, l }) => `${n}: ${l.trim().slice(0, 100)}`);
+  expect(offenders).toEqual([]);
 });

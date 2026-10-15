@@ -1237,6 +1237,35 @@ _tok_ln_write() {
     return 1
 }
 
+# _tok_part_write REGEX — 0 (a candidate write) unless every word matching the
+# verb REGEX holds the verb only inside a longer path component, as the
+# hyphen/dot part of a filename (`x-install-record.md`, `x.rsync.log`): a word
+# with no live `$`, no glob/brace, no redirect, no `=`, and no `/`-separated
+# component that IS a verb (`cp`, `/bin/cp`, `a/mv/b`). Any other match is the
+# verb, and a text match that no word accounts for (a comment) is a write too,
+# as is TOK=0.
+_tok_part_write() {
+    local re=$1 k w comp hit=0
+    local -a parts
+    [ "$TOK" = 1 ] || return 0
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        w=${ST_LW[k]}
+        if [[ $w =~ $re ]]; then
+            hit=1
+            [ "${ST_X[k]}" = 0 ] && [ "${ST_G[k]}" = 0 ] && [ -z "${ST_RO[k]}" ] || return 0
+            case "$w" in *=*) return 0 ;; esac
+            IFS=/ read -r -a parts <<< "$w"
+            for comp in "${parts[@]}"; do
+                case "$comp" in cp|mv|install|rsync|dd|tee|truncate) return 0 ;; esac
+            done
+        fi
+        k=$((k + 1))
+    done
+    [ "$hit" = 1 ] || return 0
+    return 1
+}
+
 # _unjudged_cmd_word WORD HAS_EXPANSION HAS_GLOB — 0 when a segment's command
 # word cannot be read as a program this hook judges (HIMMEL-4119): a glob or
 # brace (`/bin/l?`, `/bin/l{n,}`), a live expansion (`$v`), a flag-shaped word
@@ -2918,8 +2947,15 @@ _unzip_verb_mode() {
 # cross-worktree `-C` reference, not this check.
 has_write_verb_or_target_flag() {
     local c="$1" n="$2" out seg
-    out=$(printf '%s' "$c" | grep -E '(^|[^a-z0-9_])(cp|mv|install|rsync|dd|tee|truncate)([^a-z0-9_]|$)') || true
-    [ -n "$out" ] && return 0
+    # These verbs are judged per word on Bash (_tok_part_write), so a verb that
+    # is only a hyphen/dot part of a filename (`x-install-record.md`) is not read
+    # as the verb.
+    local re_vb='(^|[^a-z0-9_])(cp|mv|install|rsync|dd|tee|truncate)([^a-z0-9_]|$)'
+    out=$(printf '%s' "$c" | grep -E "$re_vb") || true
+    if [ -n "$out" ]; then
+        [ "$tool_name" = Bash ] || return 0
+        _tok_part_write "$re_vb" && return 0
+    fi
 
     # ln is judged per word on Bash (_tok_ln_write, HIMMEL-3961), so another
     # program's `-ln` flag cluster is not read as the link verb.

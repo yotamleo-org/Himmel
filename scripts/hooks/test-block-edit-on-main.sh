@@ -67,7 +67,7 @@ rc_of() {
     echo "$?"
 }
 
-# patch_rc_of PATCH_TEXT [EXTRA_ENV...] — HIMMEL-2170: run the hook with a
+# patch_rc_of PATCH_TEXT [EXTRA_ENV...] — run the hook with a
 # tool_name=apply_patch payload (Codex's create/edit envelope — no file_path
 # field, the target(s) live inside the patch text itself) and echo the exit
 # code. jq builds the JSON so newlines in PATCH_TEXT are escaped correctly.
@@ -78,7 +78,7 @@ patch_rc_of() {
     echo "$?"
 }
 
-# patch_rc_of_cwd PATCH_TEXT CWD [EXTRA_ENV...] — HIMMEL-2170 CR round 2: same
+# patch_rc_of_cwd PATCH_TEXT CWD [EXTRA_ENV...] — same
 # as patch_rc_of but also sets tool_input.cwd, for RELATIVE apply_patch
 # targets that must be joined against the tool's own cwd (not the hook
 # process's $PWD) before canon().
@@ -125,7 +125,7 @@ rm -f "$SANDBOX/brokenrepo/.git/HEAD"
 assert_rc "T1 main-repo edit blocks" 2 "$(rc_of "$SANDBOX/mainrepo/src/foo.js")"
 
 # T2: feature branch in the PRIMARY checkout (its `.git` is a directory) → BLOCK
-# (HIMMEL-507: feature work belongs in a worktree, not a branch checked out in
+# (feature work belongs in a worktree, not a branch checked out in
 # the primary tree). T2b asserts the message names the feature-branch case,
 # distinct from the on-main message.
 assert_rc "T2 feature branch in primary checkout blocks (HIMMEL-507)" 2 "$(rc_of "$SANDBOX/featrepo/foo.js")"
@@ -143,7 +143,7 @@ assert_rc "T3 nested-on-main under outer-feature blocks (Himmel#45)" 2 \
     "$(rc_of "$SANDBOX/outer/sc/nested/src/foo.js" CLAUDE_PROJECT_DIR="$SANDBOX/outer")"
 
 # T3b (inverse): nested repo on a FEATURE branch (a PRIMARY checkout) inside an
-# outer repo on MAIN. Post-HIMMEL-507 BOTH branches block, so the rc alone no
+# outer repo on MAIN. BOTH branches block, so the rc alone no
 # longer proves anchoring — assert the MESSAGE is the primary-feature one. If
 # the hook wrongly re-anchored to the outer (main) repo it would print the
 # on-main message instead, so this still guards the Himmel#45 anchoring.
@@ -170,7 +170,7 @@ else
 fi
 
 # T5: file inside a real git worktree (feature branch) → ALLOW. The worktree's
-# own `.git` is a FILE (not a directory), so the HIMMEL-507 primary-checkout
+# own `.git` is a FILE (not a directory), so the primary-checkout
 # block does not apply — a linked worktree is exactly where feature work belongs.
 # This is the case T2 (feature branch in the PRIMARY checkout) contrasts with.
 assert_rc "T5 worktree (feature branch) edit allows" 0 \
@@ -183,7 +183,7 @@ assert_rc "T6 handover doc on main allows" 0 "$(rc_of "$SANDBOX/mainrepo/handove
 # (the `.git` walk skips the missing dirs and finds the repo root).
 assert_rc "T7 new file in new subdir on main blocks" 2 "$(rc_of "$SANDBOX/mainrepo/new/deep/foo.js")"
 
-# T7b: same shape but in a FEATURE repo (primary checkout) → BLOCK post-HIMMEL-507
+# T7b: same shape but in a FEATURE repo (primary checkout) → BLOCK
 # (the walk stops at the feature repo's own `.git` directory → primary-feature block;
 # it does not over-shoot to a parent). T7c: the SAME new-subdir shape inside a linked
 # worktree → ALLOW (worktree `.git` is a file), confirming the walk + the file/dir
@@ -243,7 +243,7 @@ fi
 
 # --- Cross-canonicaliser coverage: force the python3 canon branch end-to-end
 # (main → block; worktree → allow). The allow path uses the worktree (not a
-# feature-branch primary checkout, which now blocks per HIMMEL-507) so python
+# feature-branch primary checkout, which now blocks) so python
 # canon still exercises a real ALLOW. Skip if python3 not on the runner.
 if command -v python3 >/dev/null 2>&1; then
     assert_rc "T15 python3 canon — main blocks" 2 \
@@ -259,7 +259,7 @@ fi
 assert_rc "T16 unknown CANON_MODE — fail closed" 2 \
     "$(rc_of "$SANDBOX/mainrepo/src/foo.js" CANON_FORCE=does-not-exist)"
 
-# --- Wedged-stub coverage (HIMMEL-249). A python3 that wedges (ignores TERM)
+# --- Wedged-stub coverage. A python3 that wedges (ignores TERM)
 # must read as a fail-CLOSED block (rc=2 via empty canon output), bounded by the
 # armor — never a hung hook.
 if timeout --version 2>/dev/null | grep -qi coreutils; then
@@ -287,7 +287,7 @@ else
     echo "SKIP T17 (no GNU coreutils timeout on this runner)"
 fi
 
-# --- Missing py-armor lib (HIMMEL-249). An unguarded source under set -e exits
+# --- Missing py-armor lib. An unguarded source under set -e exits
 # rc=1, which PreToolUse does NOT block on — fail OPEN. The guard must fail
 # CLOSED (rc=2 + recognisable message).
 LIBLESS=$(mktemp -d)
@@ -315,7 +315,7 @@ case "$err" in
 esac
 rm -rf "$GUARDRAILLESS" 2>/dev/null || true
 
-# --- HIMMEL-404: .single-writer opt-in cases ---
+# --- .single-writer opt-in cases ---
 
 # A nested repo for the "parent has marker but nested lacks it" case.
 mkrepo "$SANDBOX/swparent" main
@@ -357,7 +357,7 @@ assert_rc "T24 dir-shaped marker on main blocks (fail-closed)" 2 \
     "$(rc_of "$SANDBOX/swdir/src/foo.md")"
 
 # T25: .single-writer present + FEATURE branch in the PRIMARY checkout → ALLOW
-# via the marker opt-out. Post-HIMMEL-507 this case would otherwise BLOCK (a
+# via the marker opt-out. This case would otherwise BLOCK (a
 # feature branch in the primary tree), so this proves the .single-writer opt-out
 # covers the new primary-feature block path too, not just on-main. Paired with
 # T21 (no marker, would-block → block) and T20 (marker, main → allow).
@@ -373,14 +373,14 @@ assert_rc "T25 marker present on feature-branch primary allows (opt-out covers H
 assert_rc "T26 EDIT_ON_MAIN_OK=1 + marker present allows (env bypass wins)" 0 \
     "$(rc_of "$SANDBOX/swrepo/src/foo.md" EDIT_ON_MAIN_OK=1)"
 
-# T27 (HIMMEL-507): EDIT_ON_MAIN_OK=1 bypasses the feature-branch-in-primary
+# T27: EDIT_ON_MAIN_OK=1 bypasses the feature-branch-in-primary
 # block too (no marker present) — confirms the env bypass covers the new block
 # path, mirroring T23 (bypass on main with no marker). featrepo is a primary
 # checkout on a feature branch with no .single-writer.
 assert_rc "T27 EDIT_ON_MAIN_OK=1 allows feature branch in primary (HIMMEL-507)" 0 \
     "$(rc_of "$SANDBOX/featrepo/foo.js" EDIT_ON_MAIN_OK=1)"
 
-# --- HIMMEL-876: untracked+gitignored exemption cases ---
+# --- untracked+gitignored exemption cases ---
 
 # T28: TRACKED file on main -> BLOCK, even when it also matches a .gitignore
 # pattern (force-added). Proves `ls-files --error-unmatch` (tracked) wins over
@@ -394,7 +394,7 @@ assert_rc "T28 tracked file (even if gitignore-matching) on main blocks" 2 \
     "$(rc_of "$SANDBOX/trackedrepo/tracked.local.json")"
 
 # T29: UNTRACKED + gitignored file on main -> ALLOW (the false-positive fix —
-# mirrors the real HIMMEL-876 case, scripts/cr/critics.local.json).
+# mirrors the real case, scripts/cr/critics.local.json).
 mkrepo "$SANDBOX/ignoredrepo" main
 printf '*.local.json\n' > "$SANDBOX/ignoredrepo/.gitignore"
 git -C "$SANDBOX/ignoredrepo" add .gitignore
@@ -440,7 +440,7 @@ assert_rc "T32 git failure during untracked/ignore check fails closed (HIMMEL-87
     "$(rc_of "$SANDBOX/ignoredrepo/critics.local.json" PATH="$GITSTUB_BIN:$PATH")"
 rm -rf "$GITSTUB_BIN" 2>/dev/null || true
 
-# T33/T34: secret-class carve-out (HIMMEL-876 CR). An untracked+gitignored
+# T33/T34: secret-class carve-out. An untracked+gitignored
 # file whose basename is in the block-read-secrets.sh secret set (.env,
 # id_ed25519, ...) NEVER takes the exemption — it stays BLOCKED on main,
 # preserving the incidental protection of the real .env in the primary
@@ -503,7 +503,7 @@ assert_rc "T37b untracked ID_RSA on main blocks (case-insensitive carve-out)" 2 
     "$(rc_of "$SANDBOX/casesecretrepo/ID_RSA")"
 
 # T37c/T37d: trailing-space / trailing-dot secret basenames (".env ", ".env.")
-# on main -> BLOCKED (HIMMEL-879 Windows normalization: Win32 CreateFile /
+# on main -> BLOCKED (Windows normalization: Win32 CreateFile /
 # Node fs strip trailing spaces/dots, so ".env " opens the same file as .env).
 # Layer-agnostic like T37: which layer denies depends on the host filesystem
 # (a case/normalization-insensitive check-ignore may fold the name onto the
@@ -517,7 +517,7 @@ assert_rc "T37c untracked '.env ' (trailing space) on main blocks (HIMMEL-879)" 
 assert_rc "T37d untracked '.env.' (trailing dot) on main blocks (HIMMEL-879)" 2 \
     "$(rc_of "$SANDBOX/casesecretrepo/.env.")"
 
-# --- HIMMEL-2170: apply_patch (Codex create/edit envelope) coverage ---
+# --- apply_patch (Codex create/edit envelope) coverage ---
 # Codex ships every create/edit as tool_name=apply_patch with the patch text
 # in tool_input.command and NO tool_input.file_path — the targets live inside
 # "*** Add/Update/Delete File:" lines in that text instead. See
@@ -561,7 +561,7 @@ multi_patch_ok=$(printf '*** Begin Patch\n*** Add File: %s\n+ok\n*** Add File: %
     "$SANDBOX/wtrepo/.claude/worktrees/feat+x/src/ok.js" "$SANDBOX/wtrepo/.claude/worktrees/feat+x/src/ok2.js")
 assert_rc "T44 apply_patch multi-target all in worktree allows" 0 "$(patch_rc_of "$multi_patch_ok")"
 
-# T45/T46 (HIMMEL-2170 CR round 1): "*** Move to: " is an OPTIONAL line
+# T45/T46: "*** Move to: " is an OPTIONAL line
 # immediately following "*** Update File: " (verified against codex-rs/
 # apply-patch/src/parser.rs, openai/codex@18b9e7fd9e3f6670cc4f300338e44050b2c301e4
 # - MOVE_TO_MARKER + the update_hunk/change_move grammar). An Update whose
@@ -575,7 +575,7 @@ patch_move_ok=$(printf '*** Begin Patch\n*** Update File: %s\n*** Move to: %s\n@
     "$SANDBOX/wtrepo/.claude/worktrees/feat+x/src/old.js" "$SANDBOX/wtrepo/.claude/worktrees/feat+x/src/moved.js")
 assert_rc "T46 apply_patch Update allowed-source + Move to allowed (worktree) destination allows" 0 "$(patch_rc_of "$patch_move_ok")"
 
-# T47/T48 (HIMMEL-2170 CR round 2): a RELATIVE apply_patch target must be
+# T47/T48: a RELATIVE apply_patch target must be
 # joined against tool_input.cwd (the TOOL's cwd), not the hook PROCESS's
 # $PWD — canon() has no cwd parameter of its own. Same relative target
 # ("src/rel.js"), different tool_input.cwd: pointing into the primary
@@ -585,7 +585,7 @@ assert_rc "T47 apply_patch relative target + cwd=main-repo blocks" 2 \
 assert_rc "T48 apply_patch relative target + cwd=worktree allows" 0 \
     "$(patch_rc_of_cwd "$(patch_add "src/rel.js")" "$SANDBOX/wtrepo/.claude/worktrees/feat+x")"
 
-# T49 (CodeRabbit round, HIMMEL-2170): a standalone Move-to (no preceding
+# T49: a standalone Move-to (no preceding
 # Update File line) contributes NO target under this hook's fail-open
 # posture (see block-edit-on-main.sh's comment on the Move-to case arm) -
 # zero extracted targets -> ALLOW, same as any other malformed apply_patch
@@ -594,11 +594,11 @@ patch_standalone_move=$(printf '*** Begin Patch\n*** Move to: %s/src/foo.js\n***
 assert_rc "T49 apply_patch standalone Move-to allows (fail-open, no target extracted)" 0 \
     "$(patch_rc_of "$patch_standalone_move")"
 
-# T50 (HIMMEL-2526): a Write whose target IS `.single-writer` itself, on a
+# T50: a Write whose target IS `.single-writer` itself, on a
 # main-branch repo, where `.single-writer` is untracked AND gitignored (via
-# .git/info/exclude, not a tracked .gitignore) -> BLOCK. Before this ticket
-# the untracked+gitignored exemption (HIMMEL-876, T29 above) had no basename
-# carve-out for `.single-writer`, so a Bash-mediated `cat > .single-writer`
+# .git/info/exclude, not a tracked .gitignore) -> BLOCK. Without a basename
+# carve-out in the untracked+gitignored exemption (T29 above) for
+# `.single-writer`, a Bash-mediated `cat > .single-writer`
 # could silently create the marker and disable this whole fence from inside
 # the checkout it protects. Mirrors T33/T34's secret-basename carve-out shape.
 mkrepo "$SANDBOX/swwrite" main

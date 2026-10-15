@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test for scripts/hooks/refresh-statusline-caches-periodic.sh (HIMMEL-718 3.2).
+# Test for scripts/hooks/refresh-statusline-caches-periodic.sh.
 # Hermetic: seeded projects dir + rollup stub; no network. Asserts the hook
 # rebuilds the all-sessions economics cache and invokes the rollup for the
 # branch key — synchronously, exit 0, no orphan.
@@ -152,7 +152,7 @@ else
     fail "main branch -> rc=$rc rollup_called=$([ -f "$rollup_marker" ] && echo yes || echo no)"
 fi
 
-# ── Cases 3.1-3.3: economics lock reaping (HIMMEL-1300) ─────────────────────
+# ── Cases 3.1-3.3: economics lock reaping ─────────────────────
 # All three drive the reaper through the SAME discriminator: if the lock is
 # reaped, the hook acquires it and writes cache-all-stats.json; if it is not,
 # the hook skips the refresh entirely and no cache appears. TTL=0 forces past
@@ -294,7 +294,7 @@ else
     fi
 fi
 
-# ── Case 3.5: own-or-lose reap (HIMMEL-1327) ────────────────────────────────
+# ── Case 3.5: own-or-lose reap ────────────────────────────────
 # The stale-lock reap must be OWN-OR-LOSE: only the refresher whose rename wins
 # removes anything, and it removes its OWN private `.dead.$$` copy — never
 # another owner's live lock. Before this the reap shared its target (`rm -rf

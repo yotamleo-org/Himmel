@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# stop-console-idle-guard.sh — Stop hook (HIMMEL-3144).
+# stop-console-idle-guard.sh — Stop hook.
 #
 # WHY: console F ended its turn with an empty fleet, a 9-item held queue and
 # `PROCEED` from the bank, and stayed dead for 58 minutes — Stop was
@@ -12,7 +12,7 @@
 # its shift RELEASES its queue-lock (wrap) or hands off via `/console next`
 # before ending its turn; holding the lock at Stop time, on a turn that is
 # not the guard's own re-entry, IS the D1 failure mode — but ONLY when the
-# fleet is empty (HIMMEL-3148). With one or more leg locks held, the legs
+# fleet is empty. With one or more leg locks held, the legs
 # ARE the wake path: a leg's own SendMessage back to the console starts a
 # new turn, structurally, with nothing to probe for. So this hook blocks
 # exactly the zero-leg case and no other — not because it verified a wake
@@ -24,7 +24,7 @@
 # gated on lock freshness/age: `IDLE-HELD?` is heartbeat age, not death, and
 # a leg parked on an external event (a CR slot, an operator ack) makes no
 # tool calls while it waits, which is exactly the state this hook must
-# still count as "alive." HIMMEL-4567 adds one signal that IS observable: the
+# still count as "alive." One more signal that IS observable: the
 # console-wait.sh waiter's heartbeat file. With no live waiter the stop
 # blocks whatever the leg count (see the waiter block below).
 # This hook does not inspect the held Jira/dispatch
@@ -32,7 +32,7 @@
 # console does with its queue").
 #
 # ROUTING — sibling entry, NOT enqueued through stop-queue.mjs. stop-queue
-# exists to make detached, end-of-session work non-blocking (HIMMEL-2004):
+# exists to make detached, end-of-session work non-blocking:
 # every job it runs is deliberately async, and the hook that enqueues it
 # returns in milliseconds having already decided ALLOW (see its own header
 # comment: "EXIT CODE IS THE FALLBACK SIGNAL... never 2"). This hook's whole
@@ -41,7 +41,7 @@
 # is wired as its own Stop entry next to (not through) stop-queue.mjs.
 #
 # CONSOLE DETECTION — best-effort, via queue-lock.sh's persisted-token
-# mechanism (HIMMEL-2813): the console's queue-lock is acquired by
+# mechanism: the console's queue-lock is acquired by
 # console.sh, a launcher script that exits before the actual `claude`
 # process starts, so the lock's owner.json never carries this session's id
 # and there is no other artifact tying "this session" to "that lock" a Stop
@@ -74,7 +74,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 # resolution, bank-preflight.sh, queue-lock.sh status --sweep), not a
 # per-call allowance -- three sequential 6s-per-call timeouts could sum past
 # the harness's own 10s Stop timeout, killing the hook before it ever
-# printed a decision (CodeRabbit round 1, PR #803). Left with ~2s margin
+# printed a decision. Left with ~2s margin
 # under that 10s ceiling for the cheap work (payload parse, JSON build) on
 # either side of the bounded calls.
 GUARD_TIMEOUT_SECS="${HIMMEL_STOP_GUARD_TIMEOUT:-8}"
@@ -105,7 +105,7 @@ _bounded() {
     fi
 }
 
-# HIMMEL-4449: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../lib/handover-path.sh
@@ -180,8 +180,8 @@ done
 
 # --- confirmed: console session, first stop this turn, lock still held ----
 # Gather the state a useful reason names. Any failure here allows the stop
-# outright rather than blocking with an empty/generic reason (HIMMEL-3144:
-# "a reason that only says do not idle is not acceptable").
+# outright rather than blocking with an empty/generic reason:
+# "a reason that only says do not idle is not acceptable".
 bank_err_file="$(mktemp "${TMPDIR:-/tmp}/stop-console-idle-guard-bank.XXXXXX" 2>/dev/null)" || exit 0
 bank_token="$(_bounded env CADENCE_BANK_LEG=stop-console-idle-guard bash "$BANK_PREFLIGHT_SH" 2>"$bank_err_file")"
 bank_rc=$?
@@ -206,7 +206,7 @@ leg_names=""
 while IFS= read -r line; do
     case "$line" in
         slug=*-console\ *) continue ;;   # the console's own lock, not a leg
-        # HIMMEL-5541: past the TTL with a provably dead owner -- a lock nobody holds,
+        # past the TTL with a provably dead owner -- a lock nobody holds,
         # not a leg that could wake this console. (IDLE-HELD? stays counted, below.)
         slug=*status=STALE-DEAD*) continue ;;
         slug=*)
@@ -223,7 +223,7 @@ SWEEP
 
 console_doc_name="${console_doc##*/}"
 
-# HIMMEL-4567: is a console-wait.sh waiter armed? It is the console's one
+# is a console-wait.sh waiter armed? It is the console's one
 # wake source for Telegram lines and tick changes, and it exits after every
 # WAKE, so a console that ends its turn without re-arming it stays deaf
 # whatever its leg count. Its heartbeat sits next to the console's inbox,
@@ -255,7 +255,7 @@ if [ -n "$bridge_root" ]; then
     # value must never reach arithmetic, where it aborts with no note.
     hb_ok=1
     case "$hb_epoch" in ''|*[!0-9]*) hb_ok=0 ;; esac
-    # HIMMEL-4617: past 12 digits (or zero) is no sane epoch and can overflow the age sum.
+    # past 12 digits (or zero) is no sane epoch and can overflow the age sum.
     if [ "$hb_ok" -eq 1 ] && { [ "${#hb_epoch}" -gt 12 ] || [ "$((10#$hb_epoch))" -eq 0 ]; }; then hb_ok=0; fi
     case "$hb_pid" in ''|*[!0-9]*) hb_ok=0 ;; esac
     case "$hb_ok" in
@@ -282,14 +282,14 @@ if [ -n "$bridge_root" ]; then
     esac
 fi
 
-# HIMMEL-3148: one or more held leg locks IS the wake path -- a leg's own
+# one or more held leg locks IS the wake path -- a leg's own
 # SendMessage back to this console starts a new turn, structurally, so the
 # stop is not terminal. Only the zero-leg case (D1 verbatim: console F sat
 # 58 minutes dead with an empty fleet) has nothing to wake it, and blocks.
-# Deliberately not gated on status/age (console ruling, HIMMEL-3148):
+# Deliberately not gated on status/age (console ruling):
 # IDLE-HELD? is heartbeat age, not death -- a leg parked on an external
 # event is correctly silent, not correctly forgotten. A missing waiter
-# (HIMMEL-4567) blocks whatever the leg count.
+# blocks whatever the leg count.
 [ "$leg_count" -eq 0 ] || [ "$waiter_live" -eq 0 ] || exit 0
 
 waiter_clause=""

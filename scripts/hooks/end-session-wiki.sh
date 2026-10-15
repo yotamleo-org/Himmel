@@ -17,7 +17,7 @@
 #   - Min duration: sessions shorter than min_duration_seconds are skipped.
 #   - Error isol.:  set +e + EXIT trap; any failure logs + EXITS 0.
 #   - Log:          ~/.claude/logs/end-session-wiki/<project-slug>.log
-#                   (per-machine, OUTSIDE any repo — HIMMEL-1215). Rotates to
+#                   (per-machine, OUTSIDE any repo). Rotates to
 #                   .log.old at 1 MB.
 #
 # Failure policy (#27): hook MUST NEVER exit non-zero. See epic success
@@ -39,14 +39,14 @@ set -u 2>/dev/null || true
 
 # Owner-only permissions for everything this hook creates (log/marker/notes can
 # carry raw transcript text — dry_run mode and the degraded-fallback note are
-# secret-bearing, HIMMEL-1215 CR). Applies for the rest of the process; doesn't
+# secret-bearing). Applies for the rest of the process; doesn't
 # retroactively tighten a pre-existing file/dir from before this change.
 umask 077
 
 # Bootstrap log path early so the trap can use it even if anything below blows up.
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 CONFIG_PATH="${PROJECT_DIR}/.claude/end-session-wiki.json"
-# Per-machine log location (HIMMEL-1215): this hook is registered GLOBALLY, so
+# Per-machine log location: this hook is registered GLOBALLY, so
 # it fires in every repo the session runs in — a repo-local log dir caused
 # merge-conflict junk in shared/synced repos, and dry_run mode dumps raw
 # transcript text (secrets) into a file arbitrary repos might track. Relocate
@@ -57,18 +57,18 @@ CONFIG_PATH="${PROJECT_DIR}/.claude/end-session-wiki.json"
 # byte-for-byte identically so both land at the same path on the same machine.
 PROJECT_SLUG="$(printf '%s' "$PROJECT_DIR" | sed 's/[\/\\:]/-/g')"
 LOG_DIR="${HOME}/.claude/logs/end-session-wiki"
-# HIMMEL-1215 (CR): dry-run logs can carry raw transcript text (secrets), so
+# dry-run logs can carry raw transcript text (secrets), so
 # restrict the per-machine log dir to the owner — a 0700 dir blocks other local
 # users from reading the logs on shared POSIX hosts; log/marker files are 0600.
 (umask 077; mkdir -p "$LOG_DIR") 2>/dev/null
 chmod 700 "$LOG_DIR" 2>/dev/null
 LOG_PATH="${LOG_DIR}/${PROJECT_SLUG}.log"
 LOG_OLD_PATH="${LOG_DIR}/${PROJECT_SLUG}.log.old"
-# Persisted degradation marker (HIMMEL-711): present ⟺ the LAST REST-attempted
+# Persisted degradation marker: present ⟺ the LAST REST-attempted
 # session note failed to reach the live vault and went to disk only. A
 # SessionStart / where-are-we surface can pick this up; cleared on a healthy PUT.
 DEGRADED_MARKER_PATH="${LOG_DIR}/${PROJECT_SLUG}.degraded"
-# Per-session dedup marker (HIMMEL-3629): present ⟺ this session_id's note was
+# Per-session dedup marker: present ⟺ this session_id's note was
 # already captured (REST PUT or fs fallback) by SOME run of this hook. Guards
 # against a double write when close-wrapped-leg.sh's pre-signal capture and
 # this hook's own normal SessionEnd invocation both fire for the same session.
@@ -97,7 +97,7 @@ log_msg() {
 
 # flag_degraded_fallback <http_code> <rel_path> <target> <outcome> — LOUD signal
 # that the REST PUT failed (Obsidian unreachable, or every candidate key rejected
-# on a 401). Silent degradation is exactly what hid HIMMEL-711, so beyond the log
+# on a 401). Silent degradation is exactly what once hid this failure, so beyond the log
 # line we (1) persist a one-line marker at a known path a SessionStart /
 # where-are-we surface can pick up and (2) print a stderr banner. <outcome> is
 # `disk` (the note DID reach local disk — degraded but recoverable) or `lost` (the
@@ -105,7 +105,7 @@ log_msg() {
 # distinguish them so the loudest surface never understates total data loss. No
 # apiKey value is ever included. NOTE: backfill — re-pushing the disk-written note
 # through the REST API on the next healthy connect — is a deliberate follow-up,
-# NOT implemented here (tracked on HIMMEL-711).
+# NOT implemented here.
 flag_degraded_fallback() {
     local code="$1" rel="$2" target="$3" outcome="${4:-disk}" stamp line b2
     stamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo '?')"
@@ -155,8 +155,7 @@ _esw_sid_slug() {
 # takes ownership of the slot) only for the FIRST caller for this session_id.
 # A prior run of this hook (this invocation or a pre-signal capture from
 # close-wrapped-leg.sh) racing the same session_id must never both write the
-# note (HIMMEL-3633: the old check-then-mark `already_captured`/`mark_captured`
-# pair left a TOCTOU window between the two). `mkdir` is the atomic primitive:
+# note (a check-then-mark pair would leave a TOCTOU window between the two). `mkdir` is the atomic primitive:
 # exactly one concurrent caller sees it succeed. The claim IS the marker — no
 # separate mark step on the success path.
 claim_capture() {
@@ -169,7 +168,7 @@ claim_capture() {
     # code, OR a plain FILE marker from main (pre-upgrade). Either way `-e`
     # catches it; anything else (e.g. CAPTURED_DIR itself could not be
     # created) must fall through and let the note write proceed uncaptured,
-    # best-effort, as main did (HIMMEL-3638/F2, codex-2).
+    # best-effort, as main did.
     [ -e "$slot" ] && return 1
     return 0
 }
@@ -194,7 +193,7 @@ _esw_release_early() {
     CLAIMED=0
 }
 
-# spawn_crystallizer — best-effort detached LLM crystallization (HIMMEL-576) of
+# spawn_crystallizer — best-effort detached LLM crystallization of
 # the just-written note. Called before each successful-write exit. Ensures the
 # note is on disk first (a REST PUT flushes to disk asynchronously, so the
 # backgrounded crystallizer could otherwise read a not-yet-present file), then
@@ -208,7 +207,7 @@ spawn_crystallizer() {
     crys="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../luna/crystallize-note.sh"
     [ -r "$crys" ] || return 0
     # Config supplies the DEFAULT model; CRYSTALLIZE_MODEL already set in the
-    # launching shell wins (per-session operator switch, HIMMEL-672).
+    # launching shell wins (per-session operator switch).
     if [ -z "${CRYSTALLIZE_MODEL:-}" ] && [ -n "${CFG_CRYSTALLIZE_MODEL:-}" ]; then
         export CRYSTALLIZE_MODEL="$CFG_CRYSTALLIZE_MODEL"
     fi
@@ -223,7 +222,7 @@ spawn_crystallizer() {
         export CRYSTALLIZE_RULES_FILE="$rules_expanded"
     fi
     # Fully detach so the child survives this hook's process-group teardown
-    # (shared helper, also used by refresh-where-are-we-on-end.sh / HIMMEL-572).
+    # (shared helper, also used by refresh-where-are-we-on-end.sh).
     local detach_lib
     detach_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/detach.sh"
     # shellcheck source=/dev/null
@@ -242,7 +241,7 @@ HOOK_OK=0
 # WROTE is set to 1 immediately after a successful note write (local fs or
 # REST PUT). Any exit before that point — including a claimed-but-cancelled
 # run — must release its claim so a retry for the same session_id is not
-# wedged forever (HIMMEL-3629/F1). CLAIMED is set to 1 only by THIS process's
+# wedged forever. CLAIMED is set to 1 only by THIS process's
 # own successful claim_capture call, so a duplicate caller that never won the
 # claim (claim_capture returned failure) cannot release the winner's active
 # claim out from under it on its own exit (codex-1).
@@ -263,7 +262,7 @@ __on_exit() {
 }
 trap '__on_exit' EXIT
 
-# Signal traps (HIMMEL-3629): an untrapped TERM/INT/HUP still fires the EXIT
+# Signal traps: an untrapped TERM/INT/HUP still fires the EXIT
 # trap above (bash re-delivers on termination), which then logs the generic
 # "FAILED with exit N (unhandled - see prior log lines)" line with nothing
 # above it to explain — the hook was simply cancelled by its parent (e.g.
@@ -367,7 +366,7 @@ SESSION_ID="$(echo "$PAYLOAD"      | jq -r '.session_id // empty')"
 # shellcheck disable=SC2034
 REASON="$(echo "$PAYLOAD"          | jq -r '.reason // "other"')"
 
-# ---------- Dedup guard (HIMMEL-3629) ----------------------------------------
+# ---------- Dedup guard ----------------------------------------
 # A pre-signal capture (close-wrapped-leg.sh) and this hook's own normal
 # SessionEnd run can both fire for the same session_id; skip the second one
 # rather than writing or PUTting the note twice.
@@ -433,7 +432,7 @@ if [ -n "$FIRST_TS" ] && [ "$DURATION_SECONDS" -lt "$CFG_MIN_DUR" ] 2>/dev/null;
     exit 0
 fi
 
-# Husk-skip gate (HIMMEL-576): a session with NO salvageable transcript content
+# Husk-skip gate: a session with NO salvageable transcript content
 # AND no files touched would render a content-free "Transcript unavailable" husk
 # note. Writing it floods the vault (same-minute collision pileup when first_ts is
 # also empty). Skip the write entirely — there is nothing to capture.
@@ -448,12 +447,12 @@ filter_commands "$COMMANDS"
 
 # scrub_opaque_tokens <text> — replace long, high-entropy, opaque operands
 # (GitHub GraphQL node IDs, API keys, base64-ish blobs) with `<elided>` before
-# a command is copied into a vault note (HIMMEL-1345). The commands captured
+# a command is copied into a vault note. The commands captured
 # here are transcript-derived and copied VERBATIM — a public but high-entropy
 # operand (e.g. a GraphQL global node ID, not a secret) still trips gitleaks'
 # generic-api-key rule in the vault repo and silently wedges the autosync.
 # Scrubbing at the source closes the whole class instead of allowlisting one
-# shape (HIMMEL-1340 already allowlisted the exact reported shape in luna's
+# shape (the exact reported shape is already allowlisted in luna's
 # .gitleaks.toml; this is the durable half — the next opaque token shouldn't
 # need its own allowlist entry).
 #
@@ -523,15 +522,15 @@ scrub_opaque_tokens() {
             # base64 token (e.g. "AbCdEf...xyz+/==") is misread as
             # key="AbCdEf...xyz+/" value="==" — the tested suffix collapses
             # to just padding, never clears the length gate, and the whole
-            # secret leaks verbatim (HIMMEL-1345).
+            # secret leaks verbatim.
             #
             # The charset check alone is NOT enough: a charset-only gate
             # accepts ANY alphanumeric prefix, so a standalone opaque token
             # with a non-padding "=" partway through (e.g.
             # "AbCdEfGhIjKlMnOpQrStUvWxYz=tail") is misread the same way —
             # key="AbCdEfGhIjKlMnOpQrStUvWxYz" value="tail", and the short
-            # suffix again never clears the length gate (CodeRabbit finding
-            # on HIMMEL-1345, second round). A real key/flag/field name (even
+            # suffix again never clears the length gate.
+            # A real key/flag/field name (even
             # a camelCase one like the GraphQL "threadId" field) is always
             # too SHORT to independently clear the is_opaque() length gate,
             # so reuse is_opaque() on the keypart itself: only treat it as a
@@ -582,8 +581,7 @@ scrub_opaque_tokens() {
         # ACTUALLY elided; otherwise print the line verbatim. The split/rejoin
         # above is not whitespace-preserving (collapses runs of spaces/tabs,
         # drops leading/trailing whitespace) — fine for a line that changed
-        # anyway, but it must not rewrite a line that had nothing to scrub
-        # (HIMMEL-1345 CR).
+        # anyway, but it must not rewrite a line that had nothing to scrub.
         if (CHANGED) {
             print out
         } else {
@@ -619,7 +617,7 @@ HHMM="$(date -u +%H%M)"
 YEAR="$(date -u +%Y)"
 MONTH="$(date -u +%m)"
 
-# Vault root: resolved by scripts/lib/vault-resolve.sh (HIMMEL-403).
+# Vault root: resolved by scripts/lib/vault-resolve.sh.
 # Precedence: config.vault_path > validated config.vault NAME (operator registry
 # ~/.claude/luna-vaults.json -> ~/Documents/<name> w/ .obsidian marker) >
 # LUNA_VAULT_PATH > default luna. An empty result means a vault was declared but
@@ -820,7 +818,7 @@ for seg in "${SEGMENTS[@]}"; do
 done
 ENDPOINT="${BASE_URL}/vault/${ENCODED_REL}"
 
-# HIMMEL-3646: bound every REST call so an endpoint that accepts the TCP
+# bound every REST call so an endpoint that accepts the TCP
 # connection but never answers cannot hang SessionEnd indefinitely.
 CURL_TIMEOUT_OPTS=(--connect-timeout 5 --max-time 30)
 
@@ -840,7 +838,7 @@ _esw_put_note() {
 START_MS="$(date +%s%3N 2>/dev/null || echo 0)"
 HTTP_CODE="$(_esw_put_note "$API_KEY")"
 
-# Multi-vault auth recovery (HIMMEL-711): a 401 means the target key is rejected
+# Multi-vault auth recovery: a 401 means the target key is rejected
 # because a DIFFERENT vault currently owns the Local REST API port (only one
 # Obsidian binds 27124 at a time). Retry with the operator's OTHER vault keys;
 # the vault whose server is bound accepts its own key. First non-401 success wins.

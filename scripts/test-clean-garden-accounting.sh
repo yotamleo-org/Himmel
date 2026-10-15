@@ -84,6 +84,8 @@ WT_POST=$(mk_wt_commit wt-post feat/post-merge)
 POST_MERGED_SHA=$(git -C "$WT_POST" rev-parse HEAD)
 printf 'after merge\n' >> "$WT_POST/wt-post.txt"
 git -C "$WT_POST" commit -q -am "post merge work"
+WT_FORK=$(mk_wt_commit wt-fork feat/forked)
+FORK_SHA=$(git -C "$WT_FORK" rev-parse HEAD)
 WT_PARKED=$(mk_wt_commit wt-parked feat/parked)
 PARKED_SHA=$(git -C "$WT_PARKED" rev-parse HEAD)
 printf 'untracked work\n' > "$WT_PARKED/notes.txt"
@@ -112,6 +114,12 @@ git -C "$REPO" update-ref refs/remotes/origin/chore/open "$REMOTE_OPEN"
 
 GH_ROWS_ORIGIN="$TMP_ROOT_UNIX/origin.tsv"
 GH_CALLS="$TMP_ROOT_UNIX/gh-calls"
+# A merged PR opened from a fork: base repo is owner/repo, head repo is not.
+# Fed through the REAL --jq filter (the stub runs it), unlike the TSV rows above.
+GH_PULLS_JSON="$TMP_ROOT_UNIX/pulls.json"
+cat > "$GH_PULLS_JSON" <<JSON
+[{"state":"closed","merged_at":"2026-01-01T00:00:00Z","base":{"repo":{"full_name":"owner/repo"}},"head":{"ref":"feat/forked","sha":"$FORK_SHA","repo":{"full_name":"fork-user/repo"}}}]
+JSON
 {
     printf 'owner/repo\tfeat/open\topen\t%s\n' "$OPEN_SHA"
     printf 'owner/repo\tfeat/merged-clean\tmerged\t%s\n' "$MERGED_SHA"
@@ -134,6 +142,10 @@ if grep -q "repo view" <<<"$args"; then echo "owner/repo"; exit 0; fi
 if grep -q "api --paginate repos/owner/repo/pulls" <<<"$args"; then
     printf 'origin\n' >> "$GH_CALLS"
     cat "$GH_ROWS_ORIGIN"
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "--jq" ]; then jq -r "$2" "$GH_PULLS_JSON"; fi
+        shift
+    done
     exit 0
 fi
 if grep -q -- <<<"$args" "--state open"; then exit 0; fi
@@ -148,7 +160,7 @@ run_clean() {
         # runs at INFO, where SC2030/SC2031 flag exactly this deliberate idiom.
         # shellcheck disable=SC2030,SC2031
         export PATH="${STUB_DIR}:${PATH}"
-        export GH_ROWS_ORIGIN GH_CALLS
+        export GH_ROWS_ORIGIN GH_CALLS GH_PULLS_JSON
         cd "$REPO" || exit 1
         bash "$CLEAN_GARDEN" --prune-only "$@" 2>&1
     )
@@ -170,6 +182,11 @@ if [ ! -d "$WT_MERGED" ]; then
     pass "exact merged PR head is pruned"
 else
     fail "exact merged PR head was kept" "$out"
+fi
+if [ ! -d "$WT_FORK" ]; then
+    pass "merged fork-headed PR (base repo == origin) is pruned"
+else
+    fail "worktree of a merged fork-headed PR was kept" "$out"
 fi
 if [ -d "$WT_POST" ]; then
     pass "post-merge branch tip is kept"

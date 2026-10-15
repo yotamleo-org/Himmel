@@ -6,7 +6,7 @@
 # contract: bare `find …` / `git …` / `ls …` / `sort …` commands are
 # rewritten to `rtk <cmd>` with permissionDecision allow; compound shell
 # commands (pipes etc.) get NO output. The stub parses + emits via jq
-# (HIMMEL-264 — the old }}-anchored sed silently emitted nothing when a
+# (the old }}-anchored sed silently emitted nothing when a
 # trailing field followed tool_input.command, false-passing the suite).
 # The rejected-predicate set the guard screens for was verified against
 # the real rtk 0.40.0:
@@ -25,7 +25,7 @@
 #   6.  rtk crashes → empty, exit 0 (fail-open).
 #   7.  Empty stdin → empty, exit 0.
 #   8.  permissionDecisionReason containing "-not" must NOT suppress a
-#       safe rewrite (HIMMEL-264 — guard scans only the command value).
+#       safe rewrite (guard scans only the command value).
 #   9.  jq broken → grep+sed fallback still suppresses compound finds
 #       and forwards simple ones (no-jq fail-open contract).
 #   10. Payload with a trailing field after command → stub still parses,
@@ -37,7 +37,7 @@
 #   12. No jq + drifted output whose FIRST "command" pair is the
 #       ORIGINAL command → the anchored fallback still finds the
 #       rtk-find rewrite and suppresses its compound predicate.
-#   3e/3f/3g (HIMMEL-3362). A Windows payload cwd is backslash-separated,
+#   3e/3f/3g. A Windows payload cwd is backslash-separated,
 #       so the slash-only `.claude/worktrees/` match above misses it and
 #       forwards a git rewrite the worktree-isolation screen then refuses.
 #       3e: a backslash worktree cwd drops the rewrite on BOTH extraction
@@ -59,7 +59,7 @@ unset CLAUDE_CONFIG_DIR
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 # The stub (and the guard's primary extraction path) needs jq.
@@ -168,7 +168,7 @@ for cmd in 'git status' 'sort -o out.txt in.txt' 'ls -a /tmp'; do
     fi
 done
 
-# HIMMEL-2953: a git rewrite hides the executable from the claudex
+# A git rewrite hides the executable from the claudex
 # classifier. Suppression must not grant permission or affect native savings.
 echo "Test 3b: claudex git stays in the original permission flow"
 for config in '/tmp/.claude-codex' '/tmp/.claude-codex/' '/tmp/.claude-codex//'; do
@@ -194,7 +194,7 @@ else
     assert_fail "expected claudex non-git rewrite, got: $out"
 fi
 
-# HIMMEL-3283: the harness's worktree-isolation screen refuses a command that
+# The harness's worktree-isolation screen refuses a command that
 # runs `rtk` with git among its operands (it cannot read what rtk runs), and
 # the rtk rewrite hands it exactly that. No hook-visible signal says a session
 # is worktree-pinned, so the guard keys on the payload cwd sitting inside a
@@ -267,7 +267,7 @@ else
 fi
 rm -rf "$gitwt_dir"
 
-# ---------- 3e. Windows backslash worktree cwd (HIMMEL-3362) ----------
+# ---------- 3e. Windows backslash worktree cwd ----------
 # The `.claude/worktrees/` match above is slash-only, so a Windows payload
 # cwd (backslash-separated) fails to match and the git rewrite is forwarded
 # even inside a worktree. Cover both extraction forms: jq decodes JSON
@@ -316,7 +316,7 @@ for cwd in \
     fi
 done
 
-# ---------- 3g. Mixed forward/backslash worktree cwd (HIMMEL-3362) ----------
+# ---------- 3g. Mixed forward/backslash worktree cwd ----------
 # Decision (PR body): the backslash arm matches the literal
 # \.claude\worktrees\ segment regardless of what precedes it, mirroring the
 # forward-slash arm's own "don't care what precedes /.claude/worktrees/"
@@ -389,7 +389,7 @@ else
 fi
 
 # ---------- 8. reason text containing "-not" must not suppress ----------
-# HIMMEL-264: the guard scans only the rewritten command VALUE. A
+# The guard scans only the rewritten command VALUE. A
 # permissionDecisionReason mentioning a rejected token (output-shape
 # drift) must not cost the safe rewrite.
 echo "Test 8: '-not' in permissionDecisionReason does not suppress a safe rewrite"
@@ -464,7 +464,7 @@ else
 fi
 
 # ---------- 11. Output-shape drift: command field renamed ----------
-# Extraction-failure contract (HIMMEL-264 CR): when neither jq nor the
+# Extraction-failure contract: when neither jq nor the
 # grep fallback can extract the command (field renamed/absent), output
 # that still contains an `rtk find ` rewrite must be SUPPRESSED — the
 # guard could not scan it, and forwarding an unscanned rewrite is the
@@ -506,7 +506,7 @@ fi
 rm -rf "$drift_dir"
 
 # ---------- 12. No jq + original command as FIRST "command" pair ----------
-# HIMMEL-264 CR: an unanchored first-match fallback would extract the
+# An unanchored first-match fallback would extract the
 # ORIGINAL command from a drifted shape that echoes tool_input before
 # the rewrite — the compound rtk-find rewrite would then be forwarded
 # unscanned. The fallback anchors on `"command":"rtk find ` so it finds
@@ -534,7 +534,7 @@ else
     assert_fail "expected empty rc=0 (anchored fallback), got rc=$rc: $out"
 fi
 
-# ---------- 13. Live installed rtk (HIMMEL-1117) ----------
+# ---------- 13. Live installed rtk ----------
 # The rejected/accepted token set in the header comment above was verified
 # against rtk 0.40.0; every test above runs the STUB, so a station whose
 # real rtk changed behaviour would never surface it. This row re-checks the

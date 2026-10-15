@@ -24,6 +24,7 @@ const redactLib = require('./redact.js');
 const { himmelIdentity } = require('./helpers.js');
 const adopterProfileLib = require('./adopter-profile.js');
 const bundlesLib = require('./feed-bundles.js');
+const wiringLib = require('./wiring-rows.js');
 const { resolveBash } = require('../../hooks/run-hook-with-bash.js');
 
 const SCHEMA = 'himmel-config-feed/1';
@@ -527,7 +528,7 @@ function foldDoctorRows(rows, probedAt) {
   return out;
 }
 
-function composeFeed({ manifest, scope, targetPath, answers, items, served }) {
+function composeFeed({ manifest, scope, targetPath, answers, items, served, deep }) {
   const probedAt = new Date().toISOString();
   const itemIds = items && items.length > 0 ? items : null;
   const foldedIds = new Set(CADENCES.map((c) => `${c.name}-cadence`));
@@ -543,6 +544,7 @@ function composeFeed({ manifest, scope, targetPath, answers, items, served }) {
   if (wants('initiative:')) rows = rows.concat(initiativeRows(ctx));
   if (wants('flag:')) rows = rows.concat(flagRows(ctx));
   if (wants('secret:')) rows = rows.concat(secretRows(ctx));
+  if (deep) rows = rows.concat(wiringLib.wiringRows({ root: repoRoot(), probedAt }).map(mkRow));
   rows = foldDoctorRows(rows, probedAt);
   // doctor:run reports a dead or timed-out doctor; an --items filter must not hide it.
   // Ids are shown redacted, so --items matches on the redacted form of both sides.

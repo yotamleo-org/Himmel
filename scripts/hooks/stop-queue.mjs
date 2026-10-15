@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // stop-queue.mjs — a durable keyed queue plus ONE bounded worker for the
 // end-of-session side-effect work Stop/SessionEnd hooks used to fire off
-// themselves (HIMMEL-2004, P2 item 8 of the RAM program).
+// themselves (P2 item 8 of the RAM program).
 //
 // WHY. Every end-side hook in this repo already returns instantly: each one
 // spawns its real body DETACHED (scripts/lib/detach.sh) so it cannot trip the
 // harness teardown budget. That fixed latency and created the opposite problem
 // — the detached work is UNBOUNDED. A fleet of N children ending at once fans
 // out N independent trees (bun, git, curl, node), each doing file-handle churn,
-// and HIMMEL-1993 measured this box's kernel pool leaking in proportion to
+// and this box's kernel pool was measured leaking in proportion to
 // exactly that churn. Nothing throttles them, nothing dedups a repeated
 // session, and a session that dies mid-flight loses its work silently.
 //
@@ -210,7 +210,7 @@ const ENV_PREFIXES = /^(HIMMEL_|CLAUDE_|VOICE_|WHERE_ARE_WE_|JIRA_NUDGE_|DETACH_
 // find one it definitely has. None of them is a credential.
 const ENV_ALWAYS = ['PATH', 'Path', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP'];
 
-// The SYSTEM half of the base (HIMMEL-2030). Everything a job inherits from the
+// The SYSTEM half of the base. Everything a job inherits from the
 // worker must be named here or by snapshotOwns(); nothing else crosses. These
 // are machine constants — which interpreter runs, where it finds its own
 // config, how the OS resolves a path — never per-session state and never a
@@ -295,7 +295,7 @@ function extraNames(env) {
 // silent in the worst direction: a name the env fence strips would still be
 // printed verbatim into the durable log.
 // ponytail: still shape-based, and still unable to be exhaustive — but since
-// HIMMEL-2030 it is the SECOND fence, not the control. Completeness now belongs
+// the allowlist took over, it is the SECOND fence, not the control. Completeness now belongs
 // to the allowlist above, whose own ceiling is the opposite one: it can be too
 // NARROW on a platform this enumeration never saw. That failure is visible (a
 // job fails) rather than silent, and ENV_EXTRA_VAR is its upgrade path.
@@ -312,7 +312,7 @@ const NAMED_SECRET_ASSIGNMENT = new RegExp(
 // not be. Keep this list short and only for names verified non-secret.
 const ENV_NOT_SECRET = new Set(['JIRA_PROJECT_KEY', 'TICKET_ID_PATTERN']);
 
-// The SECOND fence, not the base (HIMMEL-2030 inverted the base to the
+// The SECOND fence, not the base (the base is the
 // allowlist above). It runs over the job's finished environment, which catches
 // what an allowlist alone cannot: an entry file written by an older version, or
 // edited on disk, whose snapshot carries a secret-shaped name. Anything
@@ -331,7 +331,7 @@ export function scrubSecrets(env = process.env) {
 // Names the SNAPSHOT owns. Everything matching this comes from the enqueuing
 // session or not at all — see jobEnv.
 //
-// ENV_SYSTEM is here too since HIMMEL-2030 (CR r4). Calling those names
+// ENV_SYSTEM is here too. Calling those names
 // "machine constants" was only half true: TZ, LANG, the LC_* set, XDG_* (where
 // a tool looks for its config — a credential STORE, on Linux) and the
 // version-manager roots are all per-SESSION, so inheriting them from the worker
@@ -390,7 +390,7 @@ export function jobEnv(entryEnv = {}, workerEnv = process.env) {
 }
 
 export function snapshotEnv(env = process.env) {
-  // The hatch widens the SNAPSHOT, not the base (HIMMEL-2030, CR r3). Widening
+  // The hatch widens the SNAPSHOT, not the base. Widening
   // the base would have taken the NAME from the enqueuing session and the VALUE
   // from whichever session started the worker — so a job would get another
   // session's value for a name its own session chose, the same cross-session
@@ -592,7 +592,7 @@ export function workerIsLive(dir) {
 // the single way to become entitled to remove or replace that object is to win
 // `rename(own.<id> -> dead.<id>)`. rename fails ENOENT once the source is gone,
 // so the KERNEL decides who won, exactly once, and the loser learns it is
-// looking at an instance that is no longer the one it judged. (HIMMEL-3275)
+// looking at an instance that is no longer the one it judged.
 const OWN_PREFIX = 'own.';
 
 // The pid lives in the NAME, `own.<pid>.<uuid>`, and not in the marker's body.
@@ -602,7 +602,7 @@ const OWN_PREFIX = 'own.';
 // worker dead and evicts it. Putting the pid in the name makes the single step
 // that installs ownership the same single step that publishes liveness, and it
 // removes the follow-up write a loser could otherwise use to resurrect a marker
-// it had already been claimed out of. (HIMMEL-3275)
+// it had already been claimed out of.
 function ownId() {
   return `${process.pid}.${randomUUID()}`;
 }
@@ -626,7 +626,7 @@ function claimOwner(objDir, id) {
 }
 
 // Creation stays `mkdir` — NOT a rename of a pre-populated directory. Renaming
-// over an empty directory REPLACES it, and a pre-HIMMEL-3275 worker's live gate
+// over an empty directory REPLACES it, and an older worker's live gate
 // is a bare mkdir that is permanently empty, so a rename-create would evict a
 // live gate belonging to an older worker with no age check and no CAS at all.
 // mkdir refuses any existing directory, empty or not.
@@ -670,10 +670,10 @@ export function acquireLock(dir, hooks = {}) {
     // lost the CPU removes whatever sits at that path when it wakes — the
     // live lock the faster worker just created — and both proceed, which is
     // two workers draining at once, the one thing the lock exists to prevent
-    // (HIMMEL-3273). So takeovers are serialised behind a reclaim gate, and
+    // So takeovers are serialised behind a reclaim gate, and
     // staleness is decided again INSIDE it; and the removal itself is keyed on
     // the lock's own marker, so a holder that releases while we are in the gate
-    // cannot hand our rmSync somebody else's lock (HIMMEL-3275).
+    // cannot hand our rmSync somebody else's lock.
     const gate = takeReclaimGate(p, hooks);
     if (!gate) return false;   // another worker is mid-takeover; the lock is its to take
     try {
@@ -934,7 +934,7 @@ export function isExpired(entry, now = Date.now()) {
 }
 
 // ONE job, run to completion or to its deadline, and stopped as a TREE when it
-// misses that deadline (HIMMEL-2028).
+// misses that deadline.
 //
 // spawnSync's timeout was the obvious way to write this and the wrong one: it
 // signals the DIRECT child only, and every real job here is a tree — node
@@ -970,7 +970,7 @@ function runJob(entry, jobTimeoutMs) {
         // /T already walks the tree — see that file for the measured matrix.
         ...SPAWN_OWN_GROUP,
         // The worker runs detached with no console of its own, so a job spawned
-        // without this flashes a conhost window on every drain (HIMMEL-2042).
+        // without this flashes a conhost window on every drain.
         windowsHide: true,
       });
     } catch (e) {
@@ -1443,12 +1443,12 @@ export function main(argv, selfPath) {
       process.stderr.write(`stop-queue: ${e.message}\n`);
       return 1;
     }
-    // HIMMEL-713: an `attempt` breadcrumb FIRST, before any of the slower work
+    // an `attempt` breadcrumb FIRST, before any of the slower work
     // below (stdin read, the atomic entry write) — so a hook the harness
     // cancels mid-enqueue (the "Hook cancelled" class on a short session) still
     // leaves a trace. Without this, a cancelled enqueue is indistinguishable
     // from a session that never fired the hook at all: the same masking class
-    // HIMMEL-2022 found had cost the session-runs ledger five silent days. A
+    // that once cost the session-runs ledger five silent days. A
     // later `status`/audit sees an `attempt` row with no matching
     // `enqueued`/`enqueue-failed` as the trace of a cancelled hook.
     // `attemptId` is a per-invocation correlation id, NOT the entry key —

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2181,SC2016 # compact status assertions; SC2016: raw-shape command strings are intentionally single-quoted literals.
-# Tests for block-rogue-codex-wsl.sh (HIMMEL-999 B3).
+# Tests for block-rogue-codex-wsl.sh (B3).
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/block-rogue-codex-wsl.sh"
@@ -54,7 +54,7 @@ run_hook PowerShell 'wsl -d Ubuntu -- bash -lc "codex exec do it"'
 run_hook Bash 'WSL.exe -d Ubuntu -- bash -lc "codex exec do it"'
 [ "$RC" -eq 2 ] && pass "uppercase WSL.exe raw shape blocked" || fail "uppercase WSL bypassed the guard (rc=$RC)"
 
-# codex-adv command-position bypasses (HIMMEL-999): subshell / command-subst /
+# codex-adv command-position bypasses: subshell / command-subst /
 # backtick / path-qualified basename must all still land in command position.
 run_hook Bash '(wsl -d Ubuntu -- bash -lc "codex exec do it")'
 [ "$RC" -eq 2 ] && pass "subshell-grouped raw shape blocked" || fail "subshell (wsl bypassed (rc=$RC)"
@@ -68,7 +68,7 @@ run_hook Bash 'echo `wsl -d Ubuntu -- bash -lc "codex exec do it"`'
 run_hook Bash '/mnt/c/Windows/System32/wsl.exe -d Ubuntu -- bash -lc "codex exec do it"'
 [ "$RC" -eq 2 ] && pass "path-qualified wsl.exe raw shape blocked" || fail "absolute-path wsl.exe bypassed (rc=$RC)"
 
-# Quoted COMMAND NAME (panel HIMMEL-999): the quote-strip erases 'wsl'/"wsl",
+# Quoted COMMAND NAME: the quote-strip erases 'wsl'/"wsl",
 # but the shell still runs it. The quoted-name checks must catch these while
 # the quoted-DATA false-positive tests above (commit msg / grep pattern) stay
 # allowed.

@@ -6,7 +6,7 @@
 # git worktrees. Never commit directly to main."). Two block cases:
 #   - the repo is on main/master (the original case), OR
 #   - the repo is on a feature branch but is the PRIMARY checkout, NOT a linked
-#     worktree (HIMMEL-507 — closes the gap where feature work happened on a
+#     worktree (closes the gap where feature work happened on a
 #     branch checked out in the primary tree instead of an isolated worktree).
 # A linked worktree carries its own `.git` FILE (vs the primary checkout's
 # `.git` DIRECTORY); edits inside one are always allowed — that is the intended
@@ -30,16 +30,16 @@
 #
 # Exemption: a file that is BOTH untracked AND gitignored is allowed,
 # regardless of branch — it cannot land in an on-main commit, so the block
-# would be a false positive (HIMMEL-876, e.g. the operator-local
+# would be a false positive (e.g. the operator-local
 # scripts/cr/critics.local.json overlay). EXCEPT the secret-file class
 # (.env, keys, credentials — mirrored from block-read-secrets.sh): those
 # are gitignored BECAUSE they are sensitive, and stay denied. Also EXCEPT the
-# `.single-writer` basename itself (HIMMEL-2526): that marker is gitignored
+# `.single-writer` basename itself: that marker is gitignored
 # too, but writing it is exactly the "disable this fence" action, so it never
 # takes this exemption either.
 #
 # The resolution/branch/exemption/bypass decision itself is the shared
-# `main_checkout_verdict` predicate in scripts/guardrails/lib.sh (HIMMEL-2526)
+# `main_checkout_verdict` predicate in scripts/guardrails/lib.sh
 # — this hook and any Bash-mediated write fence call the SAME function so a
 # `cat >`/`sed -i`/python-heredoc write is judged identically to an Edit/Write
 # tool call, instead of drifting a second copy of this logic.
@@ -58,7 +58,7 @@ if ! { [ -r "$SCRIPT_DIR/../guardrails/lib.sh" ] && . "$SCRIPT_DIR/../guardrails
     echo "block-edit-on-main: cannot source guardrails/lib.sh — refusing to evaluate" >&2
     exit 2
 fi
-# python3 hang armor (HIMMEL-249): the Windows Store python3 stub can wedge
+# python3 hang armor (py_armor_capture): the Windows Store python3 stub can wedge
 # (ignores SIGTERM, orphan child holds the $() pipe) — and a hung PreToolUse
 # hook hangs the whole session. canon()'s python fallbacks go through this.
 # Sourced GUARDED: under set -e an unguarded failed source exits rc=1, and
@@ -78,7 +78,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 # git drives the branch read (is_on_main → lib.sh). Missing git would otherwise
 # surface only as a confusing rc=2 deep in the branch check — fail CLOSED here
-# with a clear message instead (matches the jq check; HIMMEL-401 CR).
+# with a clear message instead (matches the jq check).
 if ! command -v git >/dev/null 2>&1; then
     echo "block-edit-on-main: git not on PATH — refusing to evaluate; install git or comment the hook in .claude/settings.json" >&2
     exit 2
@@ -118,7 +118,7 @@ canon() {
     # on empty output. Python branch uses pathlib.resolve(strict=False) so
     # non-existent paths still canonicalise, and as_posix() forces forward
     # slashes for cross-branch consistency with realpath -m. Python calls
-    # are armored (py_armor_capture, HIMMEL-249): a wedged Store stub reads
+    # are armored (py_armor_capture): a wedged Store stub reads
     # as a nonzero rc -> empty output -> the caller's fail-closed exit 2,
     # never a hung hook. The WindowsApps stub ships python.exe too, so the
     # plain-python branch is armored via PY_ARMOR_BIN.
@@ -145,7 +145,7 @@ input=$(cat)
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
 
 # Extract target path(s). NotebookEdit uses notebook_path; tolerate both.
-# Codex's apply_patch (create/edit envelope, HIMMEL-2170) carries no
+# Codex's apply_patch (create/edit envelope) carries no
 # file_path/notebook_path field at all -- every target lives inside
 # "*** Add/Update/Delete File:" lines in tool_input.command instead (see
 # docs/internals/harness-compat.md's empirical event/tool-name matrix, and
@@ -160,7 +160,7 @@ tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || tr
 targets=""
 if [ "$tool_name" = "apply_patch" ]; then
     cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
-    # HIMMEL-2170 CR round 2: read the TOOL's cwd the same way lesson-write-
+    # Read the TOOL's cwd the same way lesson-write-
     # fence.sh's twin branch does (`.tool_input.cwd // .cwd`, fallback $PWD).
     # canon() below has no cwd parameter of its own - it resolves a relative
     # path against the HOOK PROCESS's $PWD, which can differ from the tool
@@ -183,14 +183,14 @@ if [ "$tool_name" = "apply_patch" ]; then
             '*** Add File: '*)    _target="${_line#'*** Add File: '}"; _ap_prev="" ;;
             '*** Update File: '*) _target="${_line#'*** Update File: '}"; _ap_prev="update" ;;
             '*** Delete File: '*) _target="${_line#'*** Delete File: '}"; _ap_prev="" ;;
-            # HIMMEL-2170 CR round 1: a rename/move destination (optional
+            # A rename/move destination (optional
             # line immediately following an `*** Update File:` line - see
             # lesson-write-fence.sh's twin arm for the grammar citation).
             # Without this, an Update on an ALLOWED-branch source could move
             # it onto a path inside the PRIMARY checkout without that
             # destination ever being checked.
             #
-            # CodeRabbit round (HIMMEL-2170): valid only immediately after an
+            # Valid only immediately after an
             # Update File line (see the fence's twin comment for the grammar
             # citation). Unlike the fence, this hook does NOT deny on a
             # misplaced Move-to — its established posture is fail-OPEN on an
@@ -237,7 +237,7 @@ if [ -z "$file_real" ]; then
 fi
 
 # Resolve the EDITED FILE's write verdict via the shared main_checkout_verdict
-# predicate (scripts/guardrails/lib.sh, HIMMEL-2526) — the walk-up-for-`.git`,
+# predicate (scripts/guardrails/lib.sh) — the walk-up-for-`.git`,
 # branch check, handovers/untracked-ignored/secret-class/single-writer-basename
 # exemptions, and the EDIT_ON_MAIN_OK / .single-writer bypasses all live there
 # now, shared with any other Bash-mediated write fence, instead of a second
@@ -245,7 +245,7 @@ fi
 # (not a bare call): under set -e a bare call returning nonzero (the common
 # case — most edits get judged, not merely resolved) aborts the script with NO
 # stderr, surfacing as Claude Code's "hook error: No stderr output"
-# (HIMMEL-392, the same reason the old inline `is_on_main` call needed it).
+# (the same reason the old inline `is_on_main` call needed it).
 repo_real=""
 verdict_rc=0
 repo_real=$(main_checkout_verdict "$file_real") || verdict_rc=$?

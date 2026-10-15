@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/hooks/lib/shell-tokenize.sh (HIMMEL-3546) and the drift
+# Tests for scripts/hooks/lib/shell-tokenize.sh and the drift
 # check that keeps its two inlined copies honest.
 #
 # The lib is NOT sourced by the hooks at runtime: its BEGIN…END block is

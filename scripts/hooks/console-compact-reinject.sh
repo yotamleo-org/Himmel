@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # console-compact-reinject.sh — SessionStart:compact hook: give CONSOLE
 # sessions the same post-compaction restore that legs already have
-# (HIMMEL-2973 S1).
 #
 # THE PROBLEM: a console's `## Live state` (per-leg RETASK nonces, lock
 # release tokens, the held queue, the last GO) lives in its context window
 # and nowhere else once compaction runs — the console can no longer
 # authentically re-task its own children or resume a held queue. Every LEG
 # already survives this (`headed-arm-leg.sh --profile` wires a
-# `SessionStart`/`"matcher": "compact"` hook that `cat`s its contract back,
-# HIMMEL-2990); consoles had no equivalent. This is that equivalent.
+# `SessionStart`/`"matcher": "compact"` hook that `cat`s its contract back);
+# Consoles had no equivalent. This is that equivalent.
 #
 # PLATFORM GUARD: no .ps1 twin, by design, not oversight — session
 # resolution here is via scripts/lib/session-name.sh, which itself reads
@@ -17,7 +16,7 @@
 # resolves to empty, this hook then finds no console doc, and — same as the
 # "not a console session" case below — prints nothing. Safe no-op, never a
 # wrong re-injection. This now also means a genuine macOS/Windows console
-# gets no reinject either (HIMMEL-3599): its own identity cannot be proven
+# gets no reinject either: its own identity cannot be proven
 # without /proc, so it fails closed like everything else unresolvable —
 # a missed convenience, never a leak.
 #
@@ -37,7 +36,7 @@
 # prevent, not a feature. Detection: THE SESSION'S OWN `-n` NAME must be a
 # `*-console` name first — never a parent process, never inherited env — and
 # only then is `HIMMEL_CONSOLE_DOC` trusted, and only when it names exactly
-# `<own name>.md` (HIMMEL-3599: `HIMMEL_CONSOLE_DOC`/`HIMMEL_CONSOLE_WORKDIR`
+# `<own name>.md` (`HIMMEL_CONSOLE_DOC`/`HIMMEL_CONSOLE_WORKDIR`
 # are ambient env — a console's own launch sets them on ITS process, but a
 # leg or judge headed-arm-leg.sh then launches from a Bash subprocess of that
 # same console process inherits them same as any other env var unless a
@@ -61,7 +60,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 # a -console session name resolves but no doc is found under ANY searched
 # root. resolve_console_doc is called directly below, never inside a $()
 # capture -- a command substitution runs the function in a SUBSHELL, and a
-# global it sets there never reaches the parent shell (HIMMEL-3160).
+# global it sets there never reaches the parent shell.
 _RESOLVED_DOC=""
 _REINJECT_WARN=""
 
@@ -80,7 +79,7 @@ _find_doc_under_root() {
 resolve_console_doc() {
     _RESOLVED_DOC=""
 
-    # HIMMEL-3599: the session's OWN `-n` name is the only identity this hook
+    # The session's OWN `-n` name is the only identity this hook
     # ever trusts — resolved BEFORE looking at HIMMEL_CONSOLE_DOC, never
     # skipped by it. A leg or judge launched from a console's own Bash
     # subprocess can inherit that console's HIMMEL_CONSOLE_DOC/WORKDIR as
@@ -105,7 +104,7 @@ resolve_console_doc() {
         # a doc named after THIS session.
     fi
 
-    # HIMMEL-4449: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+    # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
     # shellcheck disable=SC1091
     if . "$REPO/scripts/lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
     # shellcheck source=scripts/lib/handover-path.sh
@@ -117,13 +116,13 @@ resolve_console_doc() {
         return 0
     fi
 
-    # HIMMEL-3160: handover_root missed -- with HANDOVER_DIR unset (the
+    # handover_root missed -- with HANDOVER_DIR unset (the
     # common case: a console is usually launched by a pasted line with no
     # exported env) it resolves to THIS repo's own inline handovers/ stub,
     # not the registered state repo most consoles actually write their doc
     # to. Fall back to the exact registry candidates queue-lock.sh already
     # searches on a cross-root release/heartbeat
-    # (_ql_candidate_roots, HIMMEL-2861: HANDOVER_DIR, then every
+    # (_ql_candidate_roots: HANDOVER_DIR, then every
     # ~/.claude/handover/registry.json repo's inline handovers/ dir) instead
     # of re-parsing the registry a second way.
     # shellcheck source=scripts/handover/queue-lock.sh
@@ -159,7 +158,7 @@ extract_section() {
     #
     # Fence-aware: a ```-delimited block can itself contain a line that looks
     # like a heading (an example command, a quoted doc snippet). Toggling on
-    # ``` lines (indentation allowed, HIMMEL-3137) and suppressing the
+    # ``` lines (indentation allowed) and suppressing the
     # terminator check while inside one keeps that from truncating the
     # section and silently dropping real content (lock tokens, nonces) that
     # follows the fence.

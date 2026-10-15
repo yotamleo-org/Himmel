@@ -183,6 +183,8 @@ export DOC="$W/handover/console.md"
 export TOKEN=test-token
 export LEGS='HIMMEL-111-legN61 HIMMEL-222-legN65'
 export HANDOVER_DIR="$W/handover"
+# parked= reads the trust shadow ledger; never the real ~/.claude/himmel one.
+export HIMMEL_TRUST_LEDGER_DIR="$W/trust-ledger"
 export REPO="$W/repo"
 export TICK_TMPDIR="$W"
 export PS_FIXTURE="$W/ps-none.txt"
@@ -2165,6 +2167,22 @@ printf '%s\n' '#!/bin/sh' "node '$c5163/full.js'" > "$c5163/gh-full"
 chmod +x "$c5163/gh-full"
 printf '%s\t%s\t%s\t%s\n' '2026-10-10T15:56:20' HIMMEL-5077 session_012yMgxSaSskpLb4qrfXBhk1 'claude --teleport session_012yMgxSaSskpLb4qrfXBhk1' > "$c5163/cloud-sessions.tsv"
 contains 'a full gh page newer than the session launch reads cloud=skip (HIMMEL-5163)' "$(GHSTUB5163=gh-full t5163 | cloud_of)" 'skip'
+
+# --- parked=<leg>:<age>m: a leg on an unanswered permission prompt -----
+# Absent unless a leg's newest trust-ledger row is a permission prompt older than
+# TICK_PARKED_MIN; the rule itself is pinned by test-parked-on-prompt.sh.
+pk_sid=33333333-3333-4333-8333-333333333333
+printf -- '---\nsession_ids: %s\n---\n# leg\n- LIVE — working\n' "$pk_sid" > "$W/handover/HIMMEL-333-legN70.md"
+parked_of() { bash "$SUT" --legs 'HIMMEL-333-legN70' 2>/dev/null | sed -n -E 's/.* parked=([^ ]*).*/\1/p'; }
+mkdir -p "$HIMMEL_TRUST_LEDGER_DIR"
+pk_ts="$(date -u -d '-12 minutes' +%Y-%m-%dT%H:%M:%S.000Z)"
+printf '{"ts":"%s","kind":"permission_request","session_id":"%s"}\n' "$pk_ts" "$pk_sid" > "$HIMMEL_TRUST_LEDGER_DIR/ledger.jsonl"
+same 'parked= names a leg on an unanswered permission prompt (HIMMEL-2563)' "$(parked_of)" 'HIMMEL-333-legN70:12m'
+pk_out="$(bash "$SUT" --legs 'HIMMEL-333-legN70' 2>/dev/null)"
+case "$pk_out" in *' vmrun='*' parked=HIMMEL-333-legN70:12m') pass 'parked= follows vmrun= and is the last field without flakes=/spare= (HIMMEL-2563)' ;; *) fail "parked= position (out='$pk_out')" ;; esac
+contains 'verbose labels the parked leg (HIMMEL-2563)' "$(bash "$SUT" --legs 'HIMMEL-333-legN70' --verbose 2>/dev/null)" 'parked on prompt: HIMMEL-333-legN70:12m'
+printf '{"ts":"%s","kind":"outcome","session_id":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" "$pk_sid" >> "$HIMMEL_TRUST_LEDGER_DIR/ledger.jsonl"
+same 'parked= is absent once the prompt is answered (HIMMEL-2563)' "$(parked_of)" ''
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'

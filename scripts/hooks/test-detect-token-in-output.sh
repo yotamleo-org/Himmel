@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite for scripts/hooks/detect-token-in-output.sh (HIMMEL-5412).
+# Suite for scripts/hooks/detect-token-in-output.sh.
 #
 # Usage: bash scripts/hooks/test-detect-token-in-output.sh
 #

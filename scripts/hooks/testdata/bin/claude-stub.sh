@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # claude-stub.sh — a deterministic `claude` stand-in for crystallize-note tests
-# (HIMMEL-576). Pointed at via CRYSTALLIZE_CLAUDE_BIN so the crystallizer tests
+#. Pointed at via CRYSTALLIZE_CLAUDE_BIN so the crystallizer tests
 # stay hermetic (no real model call, no network, no billing).
 #
 # Behaviour via STUB_MODE (default: success):
 #   success — edit the note at $CRYSTALLIZE_NOTE: rewrite the Summary body,
 #             preserving all frontmatter. The `crystallized` flag is owned by
-#             crystallize-note.sh (set from the body diff, HIMMEL-590 T1d) — NOT
+#             crystallize-note.sh (set from the body diff) — NOT
 #             here. This stub stands in for the LLM, which only touches body
 #             sections, never the frontmatter.
 #   fail    — exit 7 without writing (simulates a failed/non-zero claude run).
@@ -14,13 +14,13 @@
 #   slow    — sleep 1s, THEN behave as success (detach-survival timing contract).
 #   corrupt — overwrite the note with a truncated fragment (frontmatter + most
 #             sections gone), simulating a half-applied edit from a killed run
-#             (refresh loss-proofing contract, HIMMEL-663).
+#             (refresh loss-proofing contract).
 #
 # Always touches $CRYSTALLIZE_MARKER (if set) on invocation so a test can observe
 # whether the spawn happened. Asserts CLAUDE_END_SESSION_WIKI=0 is exported by
 # writing it to $CRYSTALLIZE_ENV_DUMP (if set). When $CRYSTALLIZE_ARGV_DUMP is
 # set, records the spawn's cwd + every argv entry there so a test can assert the
-# workspace shape (HIMMEL-590 T1c: note-dir cwd, --add-dir transcript, --settings).
+# workspace shape (note-dir cwd, --add-dir transcript, --settings).
 set -uo pipefail
 
 MODE="${STUB_MODE:-success}"

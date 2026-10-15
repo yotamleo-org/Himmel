@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke tests for scripts/hooks/auto-arm-on-subagent-cap.sh (HIMMEL-276).
+# Smoke tests for scripts/hooks/auto-arm-on-subagent-cap.sh.
 #
 # Stubs arm-resume.sh via AUTO_ARM_BIN; never touches the real scheduler.
 # Each test feeds a PostToolUse JSON payload on stdin.

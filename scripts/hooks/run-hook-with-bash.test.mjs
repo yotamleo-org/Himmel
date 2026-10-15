@@ -27,7 +27,7 @@ const LAUNCHER = join(HERE, 'run-hook-with-bash.js');
 
 const norm = (value) => String(value).replace(/\\/g, '/');
 
-// HIMMEL-4935: a ~15 KB heredoc command timed out the chokepoint text guard's
+// A ~15 KB heredoc command timed out the chokepoint text guard's
 // 15 s window (257 logged denies, nothing ran). The window scales with payload.
 test('member window grows with payload size, is capped, and a pin disables scaling (HIMMEL-4935)', () => {
   const saved = process.env.RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS;
@@ -126,7 +126,7 @@ test('--optional exits zero before Bash resolution when the hook is absent', () 
   assert.equal(result.status, 0, result.stderr);
 });
 
-// HIMMEL-1649 [codex-adv-1]: a DELETED guard must not silently pass in a
+// A DELETED guard must not silently pass in a
 // DISPATCHED WORKER. `--optional` alone exits 0 on a missing script, so a worker
 // holding Edit(<worktree>/**) + Bash(node *) could remove the guard in one
 // command and disable it for every later tool call. A worker cannot strip the
@@ -177,7 +177,7 @@ test('--fail-closed-when preserves the lesson-loop missing-hook refusal', () => 
   );
 });
 
-// HIMMEL-1992 — the CALL-SITE half of this resolver's contract. A bare `bash`
+// The CALL-SITE half of this resolver's contract. A bare `bash`
 // spawned from Node/Bun/pwsh resolves through the SPAWNING process's PATH,
 // which on Windows finds C:\Windows\System32\bash.exe (the WSL launcher)
 // before Git Bash: a 600s hang or a silent wrong-shell run. The resolver above
@@ -197,7 +197,7 @@ const BASH_LINT_TREES = [
 ];
 // Every JS/TS module extension in one rule, per tree: a per-tree extension list
 // let a .ts under scripts/lanes (or any .cjs) introduce a bare-bash spawn the
-// scan never opened (CR round 2, codex-1).
+// scan never opened.
 const BASH_LINT_EXT = /\.(?:[cm]?js|[cm]?ts)$/;
 // The pwsh half: the two operator installers this rule covers. scripts/codex/
 // is deliberately absent — it owns the cmd-side resolver and its own tests
@@ -205,17 +205,17 @@ const BASH_LINT_EXT = /\.(?:[cm]?js|[cm]?ts)$/;
 const BASH_LINT_PS1 = ['scripts/setup.ps1', 'scripts/adopt.ps1'];
 // The trailing boundary is quote-OR-space so a command-STRING call -- one that
 // passes the whole command line as a single quoted argument to exec/execSync --
-// is caught too, not just the argv form (CR round 1, codex-4). "bashful" still
+// is caught too, not just the argv form. "bashful" still
 // does not match. NB the scan is textual, so a covered file that merely spells
 // that shape out in PROSE trips it: reword the comment, do not exempt the file.
-// HIMMEL-2289: the name is matched with a trailing `[A-Za-z]*` so a local
+// The name is matched with a trailing `[A-Za-z]*` so a local
 // WRAPPER around the spawn is caught too, not just the node built-ins. That
 // hole let scripts/himmelctl/lib/probes.js hand the bare name to its own
 // spawn wrapper at 13 call sites and still lint clean here — the literal was
 // right there, the function name simply was not one of the built-ins.
 const SPAWN_BARE_BASH = /(?:spawn|exec)[A-Za-z]*\s*\(\s*\[?\s*["'`]bash(?:["'`]|\s)/;
 // The optional quotes catch `& "bash"` / `& 'bash'`, which resolve through PATH
-// exactly like the bare word (CR round 2, codex-2).
+// exactly like the bare word.
 const PS_BARE_BASH = /(?:^|[;&|(\s])&\s*(["']?)bash\1(?:\s|$)/;
 
 test('no covered call site spawns a bare "bash" instead of the resolved one', () => {
@@ -249,7 +249,7 @@ test('no covered call site spawns a bare "bash" instead of the resolved one', ()
   );
 });
 
-// ------------------------------------------------------------ chain mode (HIMMEL-2002)
+// ------------------------------------------------------------ chain mode
 //
 // The dispatcher contract: one node launch runs N guardrails in order, the
 // first deny short-circuits, and our stdout stays ONE JSON object or empty.
@@ -276,23 +276,23 @@ const MEMBERS = {
   'hang2.sh': `sleep 3`,
   // Same shape as hang.sh, named like a real must-run security guard so the
   // MUST_RUN_CHAIN_MEMBERS lookup (keyed by basename) actually fires in the
-  // fixture dir (HIMMEL-2060).
+  // fixture dir.
   'block-read-secrets.sh': `sleep 3`,
-  // HIMMEL-3383: the /pr-check literal guard is must-run too.
+  // The /pr-check literal guard is must-run too.
   'guard-pr-check-literal.sh': `sleep 3`,
-  // HIMMEL-3669: the relay write-deny fence (Guard D) is must-run too.
+  // The relay write-deny fence (Guard D) is must-run too.
   'guard-relay-writes.sh': `sleep 3`,
-  // HIMMEL-3669: the worktree-isolation fence is must-run too.
+  // The worktree-isolation fence is must-run too.
   'block-edit-on-main.sh': `sleep 3`,
-  // HIMMEL-3669: the memory-index form guard is must-run too.
+  // The memory-index form guard is must-run too.
   'guard-memory-capture.sh': `sleep 3`,
-  // HIMMEL-3956: the bare-qmd-query fence is must-run too.
+  // The bare-qmd-query fence is must-run too.
   'block-bare-qmd-query.sh': `sleep 3`,
-  // HIMMEL-3601: a must-run member that CRASHES (not a timeout) — named like
+  // A must-run member that CRASHES (not a timeout) — named like
   // a real must-run guard so MUST_RUN_CHAIN_MEMBERS fires, exits 1 the way a
   // `set -u` abort or a failed `.` source would.
   'block-jira-compound-write.sh': `printf 'boom\\n' >&2; exit 1`,
-  // HIMMEL-3601: a must-run member killed by a signal (null status), not via
+  // A must-run member killed by a signal (null status), not via
   // our own timeout path.
   'block-git-stash.sh': `kill -9 "$$"`,
   // The LEGACY PreToolUse block spelling — valid output, and not a shape the
@@ -300,7 +300,7 @@ const MEMBERS = {
   'deny-legacy.sh': `printf '{"decision":"block","reason":"legacy block"}'`,
   // Past the 16 MiB member buffer, so spawnSync returns ENOBUFS.
   'flood.sh': `head -c 17000000 /dev/zero | tr '\\0' 'x'`,
-  // Advisory bodies for the --lifecycle chain (HIMMEL-2003).
+  // Advisory bodies for the --lifecycle chain.
   'adv1.sh': `printf 'ADV-ONE\\n'`,
   'adv2.sh': `printf 'ADV-TWO\\n'`,
   'adv3.sh': `printf 'ADV-THREE\\n'`,
@@ -335,7 +335,7 @@ const ran = (dir, name) => existsSync(join(dir, `ran-${name}`));
 // even when SIGKILL lands mid-write, truncating its JSON stdout — the same
 // starved-tail symptom the adjoining `ran()` assert already names, not a
 // different failure. Route the parse through that assertion (same message)
-// so retryFlaky (HIMMEL-2063) treats it identically, instead of a raw
+// so retryFlaky treats it identically, instead of a raw
 // JSON.parse SyntaxError it correctly refuses to retry as unrelated.
 function parsedDecision(result, message) {
   let parsed = null;
@@ -357,7 +357,7 @@ function withChain(fn) {
   }
 }
 
-// HIMMEL-2063: two chain-timeout tests race a trivial member's spawn against
+// Two chain-timeout tests race a trivial member's spawn against
 // MIN_MEMBER_TIMEOUT_MS (the 500ms floor a spent budget clamps to). That floor
 // is sized to the ~210ms per-member p95 the launcher's own comment documents —
 // "usually still finishes", not a guarantee — so a loaded box (this suite's own
@@ -366,7 +366,7 @@ function withChain(fn) {
 // attempt re-checks the SAME assertions (nothing here is loosened); it only
 // absorbs transient scheduling noise the floor was never meant to survive.
 //
-// Residual risk (CR round 2, codex-1): a GENUINE intermittent launcher
+// Residual risk: a GENUINE intermittent launcher
 // regression that occasionally starves the tail would raise this exact same
 // assertion, so no message-based filter can tell it apart from spawn-latency
 // noise — that is inherent to any retry-tolerant flake fix, not something
@@ -374,8 +374,7 @@ function withChain(fn) {
 // out-of-band: a controlled A/B toggle of windowsHide (the commit under
 // bisection) reproduced the identical failure with the flag OFF, and every
 // failing run's stderr showed the launcher's kill/skip/clamp bounds reported
-// correctly — only the wall-clock "did it finish in time" race varied. See
-// the HIMMEL-2063 PR body for the full evidence trail.
+// correctly — only the wall-clock "did it finish in time" race varied.
 function retryFlaky(fn, expectedMessages, attempts = 8) {
   const messages = Array.isArray(expectedMessages) ? expectedMessages : [expectedMessages];
   for (let i = 1; i <= attempts; i++) {
@@ -383,7 +382,7 @@ function retryFlaky(fn, expectedMessages, attempts = 8) {
       fn();
       return;
     } catch (err) {
-      // Only retry the KNOWN timing-sensitive assertions (HIMMEL-2063 CR: a
+      // Only retry the KNOWN timing-sensitive assertions: a
       // blanket catch-and-retry would also mask a real intermittent launcher
       // regression surfacing as a DIFFERENT assertion — a wrong kill/skip
       // message, the decision, or any non-assertion error. Those must fail
@@ -440,7 +439,7 @@ test('chain drops an unmergeable key with a warning instead of mis-merging it', 
   });
 });
 
-// HIMMEL-2002: the entry's `timeout` bounds the WHOLE chain now, so a member
+// The entry's `timeout` bounds the WHOLE chain now, so a member
 // that hangs must not be allowed to spend the budget the later security guards
 // need — Claude Code would kill the entry and, because a PreToolUse timeout
 // fails OPEN, skip them silently. Each member carries its own bound instead.
@@ -458,7 +457,7 @@ test('a hung chain member is killed and the chain continues past it', () => {
     // Not a deny: a hook that outran its bound is skipped, exactly as it was
     // when Claude Code killed it as its own settings entry.
     assert.notEqual(result.status, 2);
-    // HIMMEL-2060: the verbose per-skip line collapsed to one compact line.
+    // The verbose per-skip line collapsed to one compact line.
     assert.match(result.stderr, /^run-hook-with-bash: SKIP hang\.sh \(budget=2000ms elapsed=\d+ms\) — guard did not evaluate this call\.$/m);
     // The load-bearing half: the member AFTER the hang still ran.
     assert.equal(ran(dir, 'allow.sh'), true, 'a hung member must not starve later guards');
@@ -501,10 +500,10 @@ test('a spent chain budget clamps later members instead of overrunning the entry
     // 4000ms bound — proof the budget clamp binds at all. Real overhead
     // between capturing the deadline and spawning member 1 can shave a few ms
     // off under load (observed 1199ms), so match a narrow window rather than
-    // the exact literal — CR round 3: 10ms covers the observed jitter with
+    // the exact literal — 10ms covers the observed jitter with
     // margin without loosening enough to hide a materially early clamp (a
     // wider window would mask a real regression that fires the clamp early).
-    // CR round 4: this is itself a timing-sensitive assertion, so it carries
+    // This is itself a timing-sensitive assertion, so it carries
     // a message and is retried too (below) — a heavier-loaded host shaving
     // more than 10ms is the same spawn-latency story as the other two.
     assert.match(
@@ -539,7 +538,7 @@ test('a member that overflows the output buffer is skipped, not turned into a de
   });
 });
 
-// -------------------------------------------------- HIMMEL-2557: EPIPE-with-status is not a launcher failure
+// -------------------------------------------------- EPIPE-with-status is not a launcher failure
 //
 // spawnSync surfaces EPIPE on the parent's stdin WRITE when the child exits
 // before draining it (a guard that returns on its first line, or the write
@@ -597,7 +596,7 @@ test('isRecoverableEpipe only accepts EPIPE paired with a numeric status', () =>
   assert.equal(isRecoverableEpipe({ error: { code: 'EPIPE' }, status: 2 }), true);
 });
 
-// -------------------------------------------------- must-run vs skippable (HIMMEL-2060)
+// -------------------------------------------------- must-run vs skippable
 //
 // A shared chain budget can starve a LATE member down to the floor. Before
 // this, every starved member was skipped-and-continued, including the deny-
@@ -613,8 +612,8 @@ test('isRecoverableEpipe only accepts EPIPE paired with a numeric status', () =>
 // here, never an incidental one. Keep it in sync with MUST_RUN_CHAIN_MEMBERS in
 // run-hook-with-bash.js.
 //
-// block-write-into-main-checkout.sh is HIMMEL-2526's destination-write fence,
-// landing in a sibling PR (HIMMEL-2528 added the entry ahead of it). The set is
+// block-write-into-main-checkout.sh is the destination-write fence; its entry
+// may precede the hook being wired. The set is
 // BASENAME-keyed and is consulted only when a member with that basename has
 // been starved of budget, so naming a file that does not exist yet is inert:
 // nothing looks the entry up until that hook is actually wired into a chain.
@@ -673,7 +672,7 @@ test('a must-run member over its budget DENIES the chain instead of being skippe
   });
 });
 
-// HIMMEL-3080: a must-run member starved by the SHARED chain budget (an
+// A must-run member starved by the SHARED chain budget (an
 // upstream non-must-run member ate it) must get its own dedicated evaluation
 // window rather than being denied unevaluated at whatever floor was left. The
 // guard here needs 900ms to decide — more than the MIN_MEMBER_TIMEOUT_MS
@@ -720,7 +719,7 @@ test('a must-run member starved by the shared chain budget gets its own window a
   }
 });
 
-// HIMMEL-3080: the denial message for a genuinely starved-and-still-timed-out
+// The denial message for a genuinely starved-and-still-timed-out
 // must-run member must NAME the upstream member that ate the shared budget,
 // not merely the starved tail — the ticket's DONE WHEN instrumentation ask.
 // hog.sh's bound is clamped to the MIN_MEMBER_TIMEOUT_MS floor (500ms,
@@ -766,7 +765,7 @@ test('a starved-then-still-timed-out must-run member names the upstream budget c
   }
 });
 
-// HIMMEL-3080 (J1259O F1): a must-run member's own window must ALSO be capped
+// A must-run member's own window must ALSO be capped
 // by an entry-safe deadline — left uncapped, several must-run members (or one
 // that hangs, here) can collectively outrun the settings.json entry `timeout`
 // (60s on every real chain that carries a must-run member). Claude Code then
@@ -822,7 +821,7 @@ test('a chain whose advisory members hang and eat the budget, then a hung must-r
   }
 });
 
-// HIMMEL-3080 (J1259O F1): the same regression without any single member ever
+// The same regression without any single member ever
 // hanging — several must-run members that each decide SLOWLY but always
 // within their own full window can still, uncapped, collectively outrun the
 // entry timeout. The fix must cap every window so the chain denies (here, via
@@ -883,7 +882,7 @@ test('a chain of many slow-but-deciding must-run members DENIES strictly before 
   }
 });
 
-// HIMMEL-3080 (J1259O F2): the denial's "budget consumer" note must name the
+// The denial's "budget consumer" note must name the
 // member that actually spent the SHARED chain budget, not merely whichever
 // prior member has the largest raw elapsed time. block-destructive-commands.sh
 // here runs LONGER (1.2s) than hog.sh's own budget spend (1.0s) but does so
@@ -932,7 +931,7 @@ test('a starved denial names the member that actually spent the shared budget, n
   }
 });
 
-// HIMMEL-3620 (N1, J1259R residual): mustRunWindow used to be
+// mustRunWindow used to be
 // `Math.min(memberTimeoutMs(), entryDeadline - Date.now())` with no floor, so
 // a RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS override below MIN_MEMBER_TIMEOUT_MS
 // (500ms) always landed under the floor regardless of how much of the real
@@ -970,7 +969,7 @@ test('a must-run member with a sub-floor RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS still 
   }
 });
 
-// HIMMEL-3620 (N2, J1259R residual, latent): an advisory member's bound used
+// An advisory member's bound used
 // to be floored at MIN_MEMBER_TIMEOUT_MS (500ms) against the SHARED chain
 // budget only, never capped by the entry-safe deadline — several advisory
 // members after a slow must-run member could each add a floored 500ms slice
@@ -1017,9 +1016,9 @@ test('advisory members are bounded by the entry deadline, not just the shared ch
     // The real entry deadline is entryTimeoutMs - entrySafetyMarginMs = 1000 - 200 = 800ms from
     // chain start; HARNESS_MS is only a generous outer kill-switch, not a tight check that the
     // chain actually decided near that deadline rather than lingering toward the kill-switch
-    // itself (codex-1, HIMMEL-3620 /pr-check round 1).
+    // itself.
     assert.ok(wall < 1500, `chain took ${wall}ms, must decide near the real ~800ms entry deadline, not merely avoid the ${HARNESS_MS}ms kill-switch`);
-    // codex-1, HIMMEL-3620 /pr-check round 3: typeof-number alone lets an early
+    // typeof-number alone lets an early
     // error (e.g. a crash) satisfy this test. All six members here are
     // advisory (none in MUST_RUN_CHAIN_MEMBERS) and each hangs well past its
     // bound, so every one is spawned and skipped (advisory members are never
@@ -1043,7 +1042,7 @@ test('advisory members are bounded by the entry deadline, not just the shared ch
   }
 });
 
-// HIMMEL-3383: a starved guard-pr-check-literal.sh must deny, never let the
+// A starved guard-pr-check-literal.sh must deny, never let the
 // bare scripts/cr literal fall through to the allow rule unchecked.
 test('a starved guard-pr-check-literal.sh DENIES the chain instead of being skipped', () => {
   withChain((dir) => {
@@ -1062,7 +1061,7 @@ test('a starved guard-pr-check-literal.sh DENIES the chain instead of being skip
   });
 });
 
-// HIMMEL-3669: guard-relay-writes.sh (Guard D, HIMMEL-2975) is deny-capable
+// guard-relay-writes.sh (Guard D) is deny-capable
 // and fails closed by its own header, but was missing from
 // MUST_RUN_CHAIN_MEMBERS — a starved run let its DENY be skipped instead of
 // failing the chain closed.
@@ -1083,7 +1082,7 @@ test('a starved guard-relay-writes.sh DENIES the chain instead of being skipped'
   });
 });
 
-// HIMMEL-3669: block-edit-on-main.sh self-describes as a "security hook"
+// block-edit-on-main.sh self-describes as a "security hook"
 // that "fails CLOSED" (worktree-isolation fence), but was missing from
 // MUST_RUN_CHAIN_MEMBERS.
 test('a starved block-edit-on-main.sh DENIES the chain instead of being skipped', () => {
@@ -1103,7 +1102,7 @@ test('a starved block-edit-on-main.sh DENIES the chain instead of being skipped'
   });
 });
 
-// HIMMEL-3669: guard-memory-capture.sh denies (exit 2) a malformed auto-memory
+// guard-memory-capture.sh denies (exit 2) a malformed auto-memory
 // write, but was missing from MUST_RUN_CHAIN_MEMBERS.
 test('a starved guard-memory-capture.sh DENIES the chain instead of being skipped', () => {
   withChain((dir) => {
@@ -1122,7 +1121,7 @@ test('a starved guard-memory-capture.sh DENIES the chain instead of being skippe
   });
 });
 
-// HIMMEL-3956: block-bare-qmd-query.sh denies (exit 2) a bare qmd search verb;
+// block-bare-qmd-query.sh denies (exit 2) a bare qmd search verb;
 // a starved run must deny too, or the orphaning call goes through.
 test('a starved block-bare-qmd-query.sh DENIES the chain instead of being skipped', () => {
   withChain((dir) => {
@@ -1141,7 +1140,7 @@ test('a starved block-bare-qmd-query.sh DENIES the chain instead of being skippe
   });
 });
 
-// HIMMEL-3601: a must-run member that crashes (exits with anything other
+// A must-run member that crashes (exits with anything other
 // than 0 or 2) must deny the chain the same as one that times out, not fall
 // to the generic non-blocking error path.
 test('a must-run member that crashes DENIES the chain instead of falling open', () => {
@@ -1153,7 +1152,7 @@ test('a must-run member that crashes DENIES the chain instead of falling open', 
   });
 });
 
-// HIMMEL-3601: same, for a must-run member killed by a signal (null status).
+// Same, for a must-run member killed by a signal (null status).
 test('a must-run member killed by a signal DENIES the chain and names the signal', () => {
   withChain((dir) => {
     const result = runChain(dir, ['block-git-stash.sh', 'allow.sh']);
@@ -1200,7 +1199,7 @@ test('a skippable member over budget produces exactly one stderr line and one JS
   });
 });
 
-// HIMMEL-2060 CR round 1 (codex-1): a starved guard's own command text can BE
+// A starved guard's own command text can BE
 // a secret read (block-read-secrets.sh is itself must-run-able), so the JSONL
 // row must never carry it verbatim.
 test('a secret-shaped token in the starved command is redacted in the JSONL row', () => {
@@ -1229,7 +1228,7 @@ test('a secret-shaped token in the starved command is redacted in the JSONL row'
   });
 });
 
-// HIMMEL-2060 CR round 2 (codex-1): the credential in an "Authorization:
+// The credential in an "Authorization:
 // Bearer <token>" header sits in a SEPARATE word after the scheme, which the
 // name=value redaction alone does not reach.
 test('a Bearer-scheme credential is redacted even when short', () => {
@@ -1263,7 +1262,7 @@ test('a Bearer-scheme credential is redacted even when short', () => {
   });
 });
 
-// HIMMEL-2060 CR round 4 (codex-1): curl's `-u user:pass` shorthand and URL
+// curl's `-u user:pass` shorthand and URL
 // userinfo (`https://user:pass@host`) carry a credential outside every other
 // pattern's shape.
 test('curl -u/--user and URL userinfo credentials are redacted', () => {
@@ -1384,7 +1383,7 @@ test('mergeHookOutputs keeps continue:false and stopReason from any member', () 
   assert.deepEqual(dropped, ['decision@b.sh']);
 });
 
-// ------------------------------------------------------ lifecycle mode (HIMMEL-2003)
+// ------------------------------------------------------ lifecycle mode
 //
 // The advisory contract: SessionStart hooks have no permission gate, so every
 // member's stdout is CONCATENATED to ours, a member's failure never stops the
@@ -1399,7 +1398,7 @@ test('lifecycle concatenates every member body in chain order', () => {
   });
 });
 
-// HIMMEL-3134: a member that never reads stdin (every advisory body here is a
+// A member that never reads stdin (every advisory body here is a
 // bare `printf`) can exit before OUR write of the shared `input` payload
 // finishes landing in its pipe. That write then gets EPIPE even though the
 // member ran to completion and its stdout was fully captured — the same
@@ -1468,10 +1467,10 @@ test('lifecycle passes a JSON-emitting member through as plain text', () => {
   });
 });
 
-// ------------------------------------------------- settings wiring shape (HIMMEL-2002)
+// ------------------------------------------------- settings wiring shape
 
 const SETTINGS = join(HERE, '..', '..', '.claude', 'settings.json');
-// HIMMEL-2047/2758: the wired command is now `if [ -f run-node.sh ]; then sh …
+// The wired command is now `if [ -f run-node.sh ]; then sh …
 // run-hook-with-bash.js" --chain <members>; else node …
 // run-hook-with-bash.js" --chain <members>; fi` — the SAME member list
 // verbatim on both branches. Stop the capture at the first `;` (a chain
@@ -1493,7 +1492,7 @@ function preToolUseGroups() {
   return groupsOf('PreToolUse');
 }
 
-// Both chained events (HIMMEL-2003 added SessionStart to HIMMEL-2002's PreToolUse).
+// Both chained events.
 const CHAINED_EVENTS = ['PreToolUse', 'SessionStart'];
 
 test('every chained hook member exists and appears at most once in its chain', () => {
@@ -1516,7 +1515,7 @@ test('every chained hook member exists and appears at most once in its chain', (
 // The launcher's own budget only bounds a chain if the ENTRY outlives it: a
 // `timeout` below budget + members x floor lets Claude Code SIGKILL the launcher
 // while it still believes it has time, before it reports the members it skipped.
-// HIMMEL-2003 shipped the SessionStart chain at 30 s against a 50 s budget by
+// The SessionStart chain once shipped at 30 s against a 50 s budget by
 // inheriting the largest of the four per-hook timeouts it replaced; this asserts
 // the worst case the clamp comment already documents, so the next chain cannot
 // drift the same way.
@@ -1586,7 +1585,7 @@ test('chain-carrying PreToolUse matchers are pairwise disjoint', () => {
   assert.deepEqual(overlaps, []);
 });
 
-// ---------------------------------------------------- HIMMEL-1666 integrity
+// ---------------------------------------------------- integrity
 
 function withEnv(overrides, fn) {
   const saved = {};
@@ -1656,7 +1655,7 @@ test('verifyProjectHookIntegrity denies a pinned script whose on-disk content dr
   }
 });
 
-// HIMMEL-3390: `..` segments and symlinks are resolved BEFORE the project-local
+// `..` segments and symlinks are resolved BEFORE the project-local
 // and pin decisions. Fixture: a pinned guard under <dir>/scripts/hooks, a
 // tampered copy of it, and a sibling directory outside the project.
 function dotdotFixture() {
@@ -1813,7 +1812,7 @@ test('HIMMEL-3390: a foreign path with no `..` stays allowed, and a missing proj
   }
 });
 
-// HIMMEL-3397: the claimed identities come from a kernel-order walk, so every
+// The claimed identities come from a kernel-order walk, so every
 // directory link a path passes through is checked under its own pin.
 test('HIMMEL-3397: a pinned hooks directory replaced by a link is still checked when reached through an alias', () => {
   const fx = dotdotFixture();
@@ -2001,7 +2000,7 @@ test('HIMMEL-3397: a symlink loop fails closed; an unpinned, unrelated path stay
   }
 });
 
-// HIMMEL-3448. HIMMEL-3397's non-UTF-8 round-trip check denied ANY path that
+// The earlier non-UTF-8 round-trip check denied ANY path that
 // crossed a non-UTF-8 symlink target, even one strictly ABOVE the project —
 // where no alias it could produce ever claims an in-project pin key (the
 // `keys` loop below only accepts a candidate rooted at resolvedProject or
@@ -2210,7 +2209,7 @@ test(
   },
 );
 
-// HIMMEL-3384: the bypass is worktree-only and audited. The old "always
+// The bypass is worktree-only and audited. The old "always
 // allows" contract is gone — a bypass with no linked worktree around it is no
 // bypass at all, and every use that DOES override a deny leaves one audit line.
 function withCwd(dir, fn) {
@@ -2365,7 +2364,7 @@ test('bypass is refused when the audit line cannot be written (fail closed)', ()
   }
 });
 
-// HIMMEL-3384 (adversarial round): the worktree, the audit sink and "linked" come
+// The worktree, the audit sink and "linked" come
 // from the SESSION's own project dir and its RECORDED repo — never from `git
 // rev-parse` in cwd, which follows a `.git` pointer FILE a worker can rewrite.
 const realp = (p) => require('node:fs').realpathSync(p);
@@ -2542,7 +2541,7 @@ test('bypass audit line carries the session name resolved from CLAUDE_PID (null 
   }
 });
 
-// HIMMEL-3678 (J1310O F4): MUST_RUN_CHAIN_MEMBERS is a hardcoded basename set
+// MUST_RUN_CHAIN_MEMBERS is a hardcoded basename set
 // with nothing cross-checking it against the chains actually wired, so a new
 // or renamed deny-capable hook could silently join a chain as advisory. These
 // tests enumerate every hook wired into a --chain in .claude/settings.json and

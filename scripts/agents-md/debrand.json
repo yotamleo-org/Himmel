@@ -55,7 +55,8 @@
   {
     "from": "Fable = judgment and taste, the\nescalation target",
     "to": "the top model = judgment and taste, the\nescalation target",
-    "note": "HIMMEL-480: the condensed tier-semantics sentence that replaced the lane table in CLAUDE.md — same neutralization the table row (now dormant) provided. LIVE. Embedded newline matches CLAUDE.md's hard wrap; re-check this rule if that paragraph is rewrapped."
+    "dormant": true,
+    "note": "HIMMEL-480: the condensed tier-semantics sentence that replaced the lane table in CLAUDE.md. HIMMEL-5633 moved it out of CLAUDE.md to docs/internals/lane-calibration.md, so the rule matches nothing now. Restore it if the sentence returns."
   },
   {
     "from": "Fable-as-parent",

@@ -47,6 +47,20 @@ done
 
 ledger="${CR_LEDGER:-$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-scores.jsonl}"
 
+# The default ledger lives in .git/ — untracked, machine-local, lost
+# on a re-clone and absent on other stations — so a scorecard read from it is
+# THIS checkout's history only, never a durable evidence base. Say so up front
+# (zeros can mean "history gone", not "first run").
+if [ -f "$ledger" ] && [ -s "$ledger" ]; then
+  # `score` rows are ignored by every scorecard reader, so they stay out of the count too.
+  _rows="$(grep -vc '"kind":"score"' "$ledger" | tr -d ' ')"
+  _since="$(grep -v '"kind":"score"' "$ledger" | grep -m1 -o '"ts":"[0-9-]*' | cut -c7-)"
+  echo "NOTE: machine-local ledger, not backed up; other stations/clones and any pre-reclone history are NOT included."
+  echo "      ledger: $ledger — ${_rows} row(s) since ${_since:-unknown}. Treat keep/drop calls from a short history as provisional."
+else
+  echo "NOTE: machine-local ledger, not backed up; an empty scorecard may mean the history was lost, not that no review ran."
+fi
+
 if [ ! -f "$ledger" ] || [ ! -s "$ledger" ]; then
   echo "no critic scores recorded yet (ledger: $ledger)"
   exit 0

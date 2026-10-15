@@ -308,9 +308,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "3ba24d2a1ad702b9b042f797bd172f9bb312f7e3"
+        "sha": "7f46d0cb402359c04086ca6eb6cea61cbad77d44"
       },
-      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 3ba24d2a1ad7 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
+      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 7f46d0cb4023 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
       "strict": false,
       "skills": [
         "./"
@@ -466,9 +466,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/eugeniughelbur/obsidian-second-brain.git",
-        "sha": "87fe5437c44fffafb5188566d458891651536d4e"
+        "sha": "d0581201a468622c71ef4dedb20650c733e1d328"
       },
-      "description": "[eugeniughelbur/obsidian-second-brain, MIT, vendor + attribution only, no carried delta] Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv, no key). Replaces the user-scope ~/.claude/skills/obsidian-second-brain copy, which ignored enabledPlugins and loaded ~2.2k tok of listing into every session including bare (HIMMEL-4018). Explicit HTTPS git url (HIMMEL-549), pinned to upstream commit 87fe5437c44fffafb5188566d458891651536d4e (release tag v0.17.0) per himmel supply-chain policy (HIMMEL-3069). strict:true: upstream plugin.json declares the commands dir and the MCP server. Enabled by the vault profiles only (user, lane-content, telegram) plus the operator profile; lean legs and the console resolve it off.",
+      "description": "[eugeniughelbur/obsidian-second-brain, MIT, vendor + attribution only, no carried delta] Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv, no key). Replaces the user-scope ~/.claude/skills/obsidian-second-brain copy, which ignored enabledPlugins and loaded ~2.2k tok of listing into every session including bare (HIMMEL-4018). Explicit HTTPS git url (HIMMEL-549), pinned to upstream commit d0581201a468622c71ef4dedb20650c733e1d328 (upstream main, 9 commits past release tag v0.17.0, carries upstream #338 -fps_mode for ffmpeg 9; no newer tag) per himmel supply-chain policy (HIMMEL-3069). strict:true: upstream plugin.json declares the commands dir and the MCP server. Enabled by the vault profiles only (user, lane-content, telegram) plus the operator profile; lean legs and the console resolve it off.",
       "strict": true,
       "author": {
         "name": "Eugeniu Ghelbur",

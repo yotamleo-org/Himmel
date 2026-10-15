@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/log-classifier-denial.sh (HIMMEL-3724 §4c).
+# Smoke test for scripts/hooks/log-classifier-denial.sh.
 #
 # Usage: bash scripts/hooks/test-log-classifier-denial.sh
 #
@@ -57,7 +57,7 @@ else
     fail "reason_tag parsed from bracketed reason (got $(printf '%s' "$row" | jq -r .reason_tag))"
 fi
 
-# --- 2b. HIMMEL-4681: the real PermissionDenied payload shape (hooks reference:
+# --- 2b. the real PermissionDenied payload shape (hooks reference:
 # the denial text is in `reason`, beside transcript_path / permission_mode /
 # hook_event_name / tool_use_id) yields the bracketed category, not unknown. ---
 LOG2R="$WORKDIR/c2r.jsonl"
@@ -115,8 +115,8 @@ fi
 
 # --- 3c. RED-shaped redaction control on the BRACKETED-reason path: a
 # secret embedded INSIDE the brackets must also be redacted, not just an
-# unbracketed fallback -- round 2 of the critic panel found the bracket
-# extraction itself still ran on raw text. ---
+# unbracketed fallback; the bracket extraction itself must not see raw
+# text. ---
 SECRET3="ghp_DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
 LOG2C="$WORKDIR/c2c.jsonl"
 run_hook "$(payload s2c /tmp/repo Bash 'ls' "[LEAK $SECRET3]")" "$LOG2C" >/dev/null
@@ -131,10 +131,10 @@ else
     fail "redaction marker present in bracketed reason_tag"
 fi
 
-# --- 3d. RED-shaped redaction control on a MULTI-LINE PEM body: round 1's
-# single-line PEM sed rule only matched a BEGIN...END pair on the SAME
+# --- 3d. RED-shaped redaction control on a MULTI-LINE PEM body: a
+# single-line PEM sed rule only matches a BEGIN...END pair on the SAME
 # line, so a real multi-line key body (BEGIN, body lines, END on separate
-# lines) still leaked in full -- round 3 of the critic panel. ---
+# lines) would still leak in full. ---
 LOG2D="$WORKDIR/c2d.jsonl"
 PEMBODY='MIIEowIBAAKCAQEAsecretsecretsecretsecretsecretsecretsecretsecret'
 # The BEGIN/END markers are assembled at runtime so no literal PEM header sits in
@@ -180,8 +180,7 @@ else
 fi
 
 # --- 3f. RED-shaped redaction control: a github_pat_ token was uncovered
-# by round 1/2's pattern set (which only matched gh[pousr]_) -- round 3
-# of the critic panel. ---
+# by the gh[pousr]_-only pattern set. ---
 SECRET4="github_pat_11AAAAAAAAAAAAAAAAAAAA_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
 LOG2F="$WORKDIR/c2f.jsonl"
 run_hook "$(payload s2f /tmp/repo Bash 'ls' "denied because $SECRET4 was found")" "$LOG2F" >/dev/null
@@ -209,7 +208,7 @@ else
     fail "input_sha collapses differing SHAs to the same hash ($sha_a vs $sha_b)"
 fi
 
-# --- 4b. SHA boundary rule (HIMMEL-3699: BSD sed has no \b, so the collapse is
+# --- 4b. SHA boundary rule (BSD sed has no \b, so the collapse is
 # a perl lookaround). A 40-hex run bounded by non-word chars / start / end
 # collapses; one touching [A-Za-z0-9_] stays; 39/41-hex runs stay. ---
 LOG4B="$WORKDIR/c4b.jsonl"
@@ -349,10 +348,10 @@ if [ "$(id -u)" != "0" ]; then
     chmod 700 "$RO"
 fi
 
-# --- 14. HARD RULE (HIMMEL-3724): input_head and reason_tag never leave the
+# --- 14. HARD RULE: input_head and reason_tag never leave the
 # host. Only these files may name them; a new consumer (the later Telegram
 # page) must not carry them, and adding one here is a conscious edit.
-# leg-digest.ts (+ its ledger fixture) is a host-local reader: it maps reason_tag onto the closed category list and never emits it raw; test-leg-digest.sh is the egress test that checks the digest's output (HIMMEL-4670).
+# leg-digest.ts (+ its ledger fixture) is a host-local reader: it maps reason_tag onto the closed category list and never emits it raw; test-leg-digest.sh is the egress test that checks the digest's output.
 # ponytail: a file-list pin is a coarse proxy (a reader can forward the fields
 # under another name); test-tick.sh pins the real tick-line output. Upgrade: an
 # egress test on the Telegram page when that slice lands. ---
