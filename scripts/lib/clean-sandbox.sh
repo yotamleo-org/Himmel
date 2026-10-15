@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # clean-sandbox.sh — the ONE sanctioned way to observe a command against a
-# clean environment (HIMMEL-3321).
+# clean environment.
 #
 # Usage: clean-sandbox.sh [--keep VAR]... [--allow-handover-dir] [--scratch DIR] -- cmd args...
 #

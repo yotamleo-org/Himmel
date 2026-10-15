@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# scripts/ci/test-pr-plan.sh — scripts/ci/pr-plan.sh (HIMMEL-5524): the
+# scripts/ci/test-pr-plan.sh — scripts/ci/pr-plan.sh: the
 # BASE-sourced per-job plan a pull_request prints so jobs whose inputs the diff
 # does not touch skip. Each case runs a COPY of the planner inside a throwaway
 # git repo whose refs/remotes/origin/main plays the default branch; the input
@@ -115,9 +115,9 @@ out=$(plan "$BASE" "$H_ODD")
 if all_is "$out" true; then pass "P4 unnamed path: all gates true"
 else fail "P4 unnamed path: $out"; fi
 
-# P4b: trust judge j2543c — the git-env baseline is the data input of
+# P4b: the git-env baseline is the data input of
 # check-git-env-scrub.sh; a baseline-only diff must run the job, not skip it.
-# The baseline exists at BASE (j2543e: a missing file made this plan all-true
+# The baseline exists at BASE (a missing file made this plan all-true
 # whatever the gates said), so the branch edits a tracked file and only the
 # gate line can turn git_env_scrub on while docs-only stays all-false.
 out=$(plan "$BASE" "$H_BASE")
@@ -187,7 +187,7 @@ else fail "P9 ci.yml reads undefined gates: ${missing:-<none read>}"; fi
 # touched none of its listed paths is only safe if every file its entry suites
 # EXECUTE (the file plus the files it names, one hop, comments stripped) falls in
 # its own gate group or is a trust path (trust paths force every gate true).
-# HIMMEL-5524 trust judge: claude-startup ran headed-arm-leg.sh and
+# Regression: claude-startup ran headed-arm-leg.sh and
 # plugin-profiles.mjs, which the group did not name, so it skipped and passed.
 TRACKED="$SB/tracked.txt"
 git -C "$SRC_ROOT" ls-files > "$TRACKED"
@@ -243,7 +243,7 @@ EF="$SB/entries.txt"
 printf '%s\n' scripts/testing/test-fakekey-claude-startup.sh scripts/testing/test-claude-mock-turn.sh \
   scripts/testing/test-mock-consult-sandbox.sh scripts/testing/test-mock-hook-smoke.sh \
   scripts/testing/test-mock-hook-live-turn.sh > "$EF"
-# A1 (claude_startup) is gone: the job is ungated (j2543g).
+# A1 (claude_startup) is gone: the job is ungated.
 printf '%s\n' scripts/hooks/check-guardrail-matrices.sh > "$EF"
 audit_case A2 guardrail_matrices "$EF"
 printf '%s\n' scripts/guardrails/check-git-env-scrub.sh > "$EF"
@@ -255,19 +255,19 @@ printf '%s\n' scripts/hooks/check-lockfile-integrity.sh scripts/hooks/check-uv-l
 audit_case A5 deps_audit "$EF"
 printf '%s\n' scripts/check-plugin-drift.sh scripts/lib/vm-mode.sh > "$EF"
 audit_case A6 plugin_version_bump "$EF"
-# A7 (lint) is gone: the job is ungated (j2543g).
-# A8 (lanes_and_trust) is gone: the job is ungated (j2543e). The A8 test below
+# A7 (lint) is gone: the job is ungated.
+# A8 (lanes_and_trust) is gone: the job is ungated. The A8 test below
 # pins that no gate group or ci.yml output brings it back.
 tests_under 'scripts/jira|scripts/bitbucket|scripts/himmel-run|scripts/ci-orchestrator|plugins/himmel-gh|plugins/himmel-jira|marketplace/plugins/himmel-bus' > "$EF"
 audit_case A9 node_suites "$EF"
-# A10 (bun_suites) is gone: the job is ungated (j2543g).
+# A10 (bun_suites) is gone: the job is ungated.
 # A11 control: the audit sees the one-hop reference the judge found (a vacuous
 # closure would pass every A case above).
 printf '%s\n' scripts/testing/test-fakekey-claude-startup.sh > "$EF"
 if audit_closure "$EF" | grep -qx 'scripts/lanes/plugin-profiles.mjs'; then
   pass "A11 audit closure reaches scripts/lanes/plugin-profiles.mjs from test-fakekey-claude-startup.sh"
 else fail "A11 audit closure missed a known reference (vacuous audit)"; fi
-# A8: structural pin (j2543e, j2543g). Jobs whose suites glob or run files no
+# A8: structural pin. Jobs whose suites glob or run files no
 # gate group can enumerate stay ungated: parse each job's block in ci.yml for a
 # plan dependency or an if: on the plan outputs, and require no gate group of
 # their old name and no run_<group> plan output.

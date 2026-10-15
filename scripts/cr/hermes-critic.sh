@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/hermes-critic.sh — Orchestrator-Critic reviewer over a branch diff
-# (HIMMEL-273). Claude implements, a fresh model family reviews: this script
+# Claude implements, a fresh model family reviews: this script
 # assembles the final code changes (NEVER the orchestrator's plans/reasoning —
 # reviewer isolation, ticket item 3), sends them through the hermes chokepoint
 # (scripts/hermes/invoke.sh) under a strict JSON response contract, and
@@ -28,24 +28,24 @@
 #                    [--model <name>] [--max-pack-bytes <n>]
 #
 # Defaults: repo = cwd; base = merge-base with the default branch — origin/main,
-# origin/master, main, then master in order (HIMMEL-297);
+# origin/master, main, then master in order;
 # route = hermes with NO --model, but the HERMES route itself now defaults to
-# the critics.json-pinned gpt-6.1-sol/openai-codex (HIMMEL-2059, operator
+# the critics.json-pinned gpt-6.1-sol/openai-codex (operator
 # ruling 2026-08-23) — NOT the himmel_agent hermes profile default (ox-alpha
-# today: free, front-tier, temporary; operator ruling 2026-08-22 on
-# HIMMEL-2017; lane profiling: HIMMEL-2024). ox-alpha stays the profile
+# today: free, front-tier, temporary; operator ruling 2026-08-22).
+# ox-alpha stays the profile
 # default for implementation/one-shot dispatch (hermes-oneshot); CR critics
 # just no longer ride it. HERMES_CRITIC_MODEL still overrides the pin.
 # That default deliberately spends no Claude subscription bank: a claude
 # print-mode default would draw the same 5h/weekly bank as interactive use
-# (HIMMEL-128) with no bank-preflight. `--route claude` is opt-in.
+# with no bank-preflight. `--route claude` is opt-in.
 # (The 2026-06-12 nemotron spike default died: no strict JSON obedience on the
 # NIM free tier; the 550b ultra took 105s+ on a trivial prompt.)
 #
 # Bash 3.2 safe (macOS / Git Bash on Windows).
 set -uo pipefail
 # the opt-in `--route claude` pass IS the CR critic lane's
-# sanctioned product surface (HIMMEL-2017), not unattended background work.
+# sanctioned product surface, not unattended background work.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INVOKE="$SCRIPT_DIR/../hermes/invoke.sh"
@@ -124,9 +124,9 @@ if [ -n "$goal_file" ]; then
 fi
 [ -n "$goal" ] || goal="(no task goal provided — review the change on its own merits)"
 
-# HIMMEL-2059 (operator ruling 2026-08-23): CR critics must not ride the
+# Operator ruling 2026-08-23: CR critics must not ride the
 # himmel_agent hermes profile default (ox-alpha today — free/front-tier,
-# reserved for implementation/one-shot work, HIMMEL-2024). When neither
+# reserved for implementation/one-shot work). When neither
 # --model nor HERMES_CRITIC_MODEL pins the hermes reviewer, default it to the
 # critics.json "codex" row's model (gpt-6.1-sol/openai-codex) — the same pin
 # the codex-CLI panel critic uses. Reused rather than duplicated into a
@@ -151,7 +151,7 @@ if [ -z "$model" ] && [ -z "$hermes_model" ]; then
     [ -n "$hermes_model" ] || hermes_model="gpt-6.1-sol"
 fi
 
-# Which model family the HERMES reviewer actually is. HIMMEL-2059: hermes_model
+# Which model family the HERMES reviewer actually is. hermes_model
 # now defaults to the critics.json-pinned gpt-6.1-sol (codex family) rather
 # than the profile default, so `codex -> hermes` is SAME-family by default —
 # the route-derivation case below already falls back to claude for that
@@ -184,7 +184,7 @@ case "${HERMES_CRITIC_FAMILY:-}" in
     *) echo "hermes-critic.sh: unknown HERMES_CRITIC_FAMILY '$HERMES_CRITIC_FAMILY' (codex|claude|other|profile-default)" >&2; exit 2 ;;
 esac
 
-# HIMMEL-2017 route selection by implementer family (cross-family guarantee):
+# Route selection by implementer family (cross-family guarantee):
 # the reviewer family must differ from the implementer family. Explicit
 # --route/CRITIC_ROUTE wins; else derive from --implementer; else hermes.
 case "$route" in
@@ -215,7 +215,7 @@ case "$route" in
 esac
 
 # Resolve the diff base: explicit --base, else merge-base with the default
-# branch (main OR master, HIMMEL-297) — origin first, then local. The diff is
+# branch (main OR master) — origin first, then local. The diff is
 # the FINAL code change only (reviewer isolation). Two-dot semantics ($base
 # HEAD) everywhere: with a merge-base SHA the result equals three-dot, and with
 # an explicit --base ref two-dot is what the caller literally asked to compare
@@ -300,7 +300,7 @@ run_claude_review() {
     local claude_model_args=()
     [ -n "$model" ] && claude_model_args=(--model "$model")
     local out crc scratch_dir bank
-    # HIMMEL-128 / CLAUDE.md § billing: this route draws the SAME 5h/weekly
+    # CLAUDE.md § billing: this route draws the SAME 5h/weekly
     # subscription bank as interactive use, and its callers (/pr-check, and the
     # auto-derived route for a hermes implementer) run unattended. Preflight the
     # bank and fall back to another reviewer rather than spend the last of it on
@@ -313,18 +313,18 @@ run_claude_review() {
         return 1
     fi
     # Ambient proxy exports must not silently redirect this subscription launch
-    # off native auth (HIMMEL-1867). The whole function runs in a command
+    # off native auth. The whole function runs in a command
     # substitution, so the unsets stay scoped to this review.
     # shellcheck source=../lib/native-auth-pin.sh
     # shellcheck disable=SC1091
-    # HIMMEL-4459: the pin's rc is advisory; the keyword-only LAUNCH GATE
+    # the pin's rc is advisory; the keyword-only LAUNCH GATE
     # (native-auth-pin.sh) re-checks, immune to shadowed builtins.
     if ! . "$SCRIPT_DIR/../lib/native-auth-pin.sh" ||
        { native_auth_pin_env; [[ -n "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; }; then
         echo "hermes-critic.sh: native-auth pin unavailable — refusing the claude route" >&2
         return 1
     fi
-    # HIMMEL-3640: dedupe PATH before this direct `claude -p` launch — Claude
+    # dedupe PATH before this direct `claude -p` launch — Claude
     # Code prepends each enabled plugin's bin/ dir at startup without
     # checking for an existing copy, so an already-duplicated inherited PATH
     # compounds across critic passes in a long-lived session.
@@ -342,7 +342,7 @@ run_claude_review() {
         echo "hermes-critic.sh: could not create the reviewer scratch cwd — refusing the claude route" >&2
         return 1
     fi
-    # HIMMEL-4013: a one-turn, tool-less reviewer needs no plugins — run it under
+    # a one-turn, tool-less reviewer needs no plugins — run it under
     # the floor-only `bare` profile instead of the operator's full plugin set.
     local critic_settings
     if ! critic_settings="$(bash "$SCRIPT_DIR/../lanes/profile-settings.sh" bare)" || [ -z "$critic_settings" ]; then
@@ -350,19 +350,19 @@ run_claude_review() {
         rm -rf "$scratch_dir"
         return 1
     fi
-    # HIMMEL-4082: lane seam — unset/native is plain `claude`; unknown lane refuses.
+    # lane seam — unset/native is plain `claude`; unknown lane refuses.
     # shellcheck source=../lib/claude-lane.sh
     # shellcheck disable=SC1091
-    # HIMMEL-4111: the cwd is still the reviewed repo here; classify IT before a
+    # the cwd is still the reviewed repo here; classify IT before a
     # non-native lane launches (the launchers only see the scratch cwd below).
     if ! . "$SCRIPT_DIR/../lib/claude-lane.sh" || ! claude_lane_resolve "$SCRIPT_DIR/../.." || ! claude_lane_egress "$(pwd)"; then
         rm -rf "$scratch_dir"
         return 1
     fi
-    # CR critic pass — this invocation IS the product (HIMMEL-2017).
-    # HIMMEL-4459: the launch sits INSIDE the keyword-only gate, so a shadowed
+    # CR critic pass — this invocation IS the product.
+    # the launch sits INSIDE the keyword-only gate, so a shadowed
     # `return`/`[`/`exit` above can skip a refusal but never reach this launch.
-    # HIMMEL-4461: the `cd` precedes the gate (a shadowed `cd` could export a proxy
+    # the `cd` precedes the gate (a shadowed `cd` could export a proxy
     # variable after it); only the launch sits between gate and launch.
     cd "$scratch_dir" || { rm -rf "$scratch_dir"; return 1; }
     out=""; crc=1
@@ -378,7 +378,7 @@ run_claude_review() {
 }
 
 run_hermes_review() {
-    # HIMMEL-2059: hermes_model is resolved above to the critics.json-pinned
+    # hermes_model is resolved above to the critics.json-pinned
     # gpt-6.1-sol whenever neither --model nor HERMES_CRITIC_MODEL set it, so
     # "$m" is no longer empty in the default case — the profile default is not
     # used for critics. The openai-codex provider pin applies ONLY to
@@ -461,7 +461,7 @@ process.stdin.on("data", c => d += c).on("end", () => {
     // Raw head on EVERY rc=3 path — a malformed-JSON body is the case where it
     // helps most. C0/C1 controls are stripped first: the head is model output,
     // so it can carry ANSI escapes that would rewrite an operator or CI log.
-    // The CONTENT is deliberately kept (operator ruling, HIMMEL-2017); this is
+    // The CONTENT is deliberately kept (operator ruling); this is
     // only about the escape sequences.
     const clean = (s) => s.slice(0, 300).replace(/[\x00-\x1F\x7F-\x9F]/g, " ");
     if (!m) { console.error("hermes-critic.sh: no JSON object in critic response. Raw head: " + clean(d)); process.exit(3); }

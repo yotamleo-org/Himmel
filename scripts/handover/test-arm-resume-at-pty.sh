@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-at-pty.sh -- HIMMEL-2534: an `at`-launched claude leg has
+# test-arm-resume-at-pty.sh -- an `at`-launched claude leg has
 # stdin=/dev/null and no tty, so it exits at the first idle cross-session
 # message (five fleet legs lost 2026-09-05). The at body now runs claude under
 # a pty with its stdin held open (scripts/lib/pty-run.sh).
@@ -25,13 +25,13 @@ trap 'rm -rf "$TMP"' EXIT
 . "$SCRIPT_DIR/../lib/fleet-slots-shield.sh"
 fleet_slots_shield "$TMP" || exit 1
 export ARM_RESUME_LOG_DIR="$TMP/arm-logs"
-# HIMMEL-3846: keep the real bank-preflight's usage-cache refresh off the live cache.
+# keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 export SKILL_TELEMETRY_DIR="$TMP/telemetry"
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
 unset HIMMEL_HEADROOM_PROXY HEADROOM_BIN ARMAUTOMERGE 2>/dev/null || true
-# Dotenv-read shield (HIMMEL-2254): an empty root, so a host .env carrying the
+# Dotenv-read shield: an empty root, so a host .env carrying the
 # ARMAUTOMERGE=1 default cannot turn P4/P5 into a statement about the host.
 mkdir -p "$TMP/dotenv-empty"
 export ARM_RESUME_DOTENV_ROOT="$TMP/dotenv-empty"
@@ -72,7 +72,7 @@ chmod +x "$SCHED_STUB/atq" "$SCHED_STUB/at" "$SCHED_STUB/powershell"
 export FLEET_PS_CMD="$SCHED_STUB/atq"
 
 # Stub claude: report what it is running under, then idle 2s on stdin. A leg
-# that sees EOF here is the HIMMEL-2534 death; a leg that times out is alive.
+# that sees EOF here is the death; a leg that times out is alive.
 STUB_BIN="$TMP/stub-bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/claude" <<'EOF'
@@ -110,7 +110,7 @@ if [ "$HAVE_SCRIPT" -eq 1 ] && [ -r "$LIB" ]; then
     if ! ( . "$LIB"; _himmel_pty_run true </dev/null >/dev/null 2>&1 ); then
         HAVE_PTY=0
         # ponytail: real-pty cases stay unproven wherever BSD script(1) needs a
-        # tty on stdin (macOS CI); a pty-allocating seam would lift it, HIMMEL-3719.
+        # tty on stdin (macOS CI); a pty-allocating seam would lift it,.
         echo "SKIP P1-P6/Q1-Q2: script(1) cannot allocate a pty on this host (no controlling tty)"
     fi
 fi

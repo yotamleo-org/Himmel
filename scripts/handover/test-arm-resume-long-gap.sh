@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-1475 long-gap guard twin for scripts/handover/arm-resume.sh.
+# long-gap guard twin for scripts/handover/arm-resume.sh.
 #
 # arm-resume now REFUSES (rc=9) an explicit --time HH:MM more than 60 min out
 # unless --long-gap sanctions the park (the ALWAYS-CONTINUE directive: an
@@ -23,7 +23,7 @@ ARM="$(cd "$(dirname "$0")" && pwd)/arm-resume.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# HIMMEL-2765: arm-resume.sh now calls scripts/lib/bank-preflight.sh's
+# arm-resume.sh now calls scripts/lib/bank-preflight.sh's
 # fleet-size cap before every real (non-dry-run) arm - LG6a/LG6b below are
 # this suite's real-arm cases. Without this, they would call the REAL fleet
 # count against THIS machine's own ambient process table and could
@@ -34,7 +34,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 
-# HIMMEL-2774: bank-preflight.sh now RESERVES a fleet slot per declared launch
+# bank-preflight.sh now RESERVES a fleet slot per declared launch
 # (CADENCE_BANK_LAUNCH=1, set unconditionally by arm-resume.sh for every
 # non-dry-run arm) under ${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u) -- a
 # real, per-user, machine-shared directory this suite never pinned. LG6a's
@@ -46,7 +46,7 @@ export FLEET_PS_CMD="$FLEET_PS_STUB"
 export XDG_RUNTIME_DIR="$TMP/xdg"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-# HIMMEL-3103: pin the slot dir explicitly and fail the suite if it could leak
+# pin the slot dir explicitly and fail the suite if it could leak
 # into the production dir the live fleet counts.
 . "$(dirname "$ARM")/../lib/fleet-slots-shield.sh"
 fleet_slots_shield "$TMP" || exit 1
@@ -60,7 +60,7 @@ unset ARM_NAME_TEMPLATE 2>/dev/null || true
 unset RESUME_SLOT_THRESHOLD 2>/dev/null || true
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
-# Temp-target shield (HIMMEL-1365/1622): fixtures live under $TMP, the exact
+# Temp-target shield: fixtures live under $TMP, the exact
 # shape arm-resume now refuses (exit 12). Scheduler is stubbed — no real task
 # is ever created. Same declared opt-out as test-arm-resume.sh; missing it
 # cost 7 failures first caught by the public wave-2k CI.
@@ -121,7 +121,7 @@ make_handover() {
     printf '%s' "$path"
 }
 
-# HIMMEL-2666: arm-resume's exact-minute collision check (rc 6) reads the
+# arm-resume's exact-minute collision check (rc 6) reads the
 # HOST's `crontab -l` on linux/macos. Unstubbed, a concurrent session's real
 # HIMMEL-* cron entry at the same minute turned LG2/LG3/LG6 into rc 6. Each
 # stub dir gets a crontab whose `-l` prints its own store (empty unless a case
@@ -143,7 +143,7 @@ EOF
 # only thing under test.
 SCHED_STUB="$TMP/sched-stub"
 mkdir -p "$SCHED_STUB"
-# HIMMEL-1879: /create must actually register something. A stub that reports
+# /create must actually register something. A stub that reports
 # success and then answers every /query with an empty scheduler is internally
 # inconsistent, and the post-arm existence verify reads it (correctly) as "the
 # create armed nothing" -> rc 2, so the telemetry cases below never see an arm.
@@ -205,7 +205,7 @@ cat > "$SCHED_STUB/powershell" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-# HIMMEL-3181: macOS routes to _crontab_schedule and Windows to the .bat
+# macOS routes to _crontab_schedule and Windows to the .bat
 # branch; both REFUSE (rc=2) when `claude` does not resolve on PATH at arm
 # time, and the nightly macOS/Windows runners have no claude installed. A stub
 # keeps every dry-run arm below independent of the host's claude.
@@ -219,7 +219,7 @@ chmod +x "$SCHED_STUB/schtasks" "$SCHED_STUB/atq" "$SCHED_STUB/at" "$SCHED_STUB/
 # Armed stub (the ARMED_STUB pattern): a non-dry-run arm completes on any
 # platform without touching the real scheduler, so the "armed" telemetry
 # record is emitted. TMPDIR pinned so a windows .bat lands under $TMP.
-# HIMMEL-1879: /create must REGISTER what it was given -- a stub that reports
+# /create must REGISTER what it was given -- a stub that reports
 # success and then answers every /query empty is internally inconsistent, and
 # the post-arm existence verify reads that (correctly) as an arm that armed
 # nothing (rc 2), so no "armed" telemetry line is ever written. Own state file,
@@ -297,7 +297,7 @@ chmod +x "$ARMED_STUB/schtasks" "$ARMED_STUB/atq" "$ARMED_STUB/at" "$ARMED_STUB/
 #                     would yield ~-10 min -> <=60 -> not refused -> LG4 fails)
 FAR_HHMM=$(python3 -c 'import datetime; print((datetime.datetime.now()+datetime.timedelta(hours=3)).strftime("%H:%M"))')
 # NEAR is a FUNCTION, not a captured value, and its lead is 20 min, not 5
-# (HIMMEL-1879 / HIMMEL-1756). Both halves answer the same failure: a captured
+# Both halves answer the same failure: a captured
 # +5 min target expires long before the last use, then reads as past-for-today,
 # rolls to TOMORROW, lands >60 min out, and is refused rc=9 by the very guard
 # the case is trying to show STAYING SILENT (LG6b, 3x on unmodified main under
@@ -334,7 +334,7 @@ print(candidate.strftime("%H:%M"))
 PY
 }
 
-# HIMMEL-2877: these three fixtures used to be built on datetime.now() (i.e.
+# these three fixtures used to be built on datetime.now (i.e.
 # "today"). On a day the local zone falls into a DST spring-forward gap,
 # local wall-clock 00:05 (or the other two clock times) can be a NONEXISTENT
 # or ambiguous local time, and naive datetime.timestamp()'s handling of that
@@ -346,7 +346,7 @@ PY
 # in mid-June, so this never lands in a gap or fold, on any date the suite
 # actually runs on.
 #
-# HIMMEL-2908: extracted so the SAME construction can be replayed below
+# extracted so the SAME construction can be replayed below
 # against a known DST spring-forward day (deterministic guard), not just
 # the pinned mid-June anchor. Also emits an epoch for local 02:30, unused
 # by the mid-June fixtures but consumed by that replay.
@@ -366,7 +366,7 @@ print(
 PY
 }
 read -r _lg4_0005_epoch _lg4_1234_epoch _lg4_0000_epoch _lg4_0230_epoch < <(lg4_fixture_epochs "$(date +%Y)" 6 15)
-# HIMMEL-2877: regression guard for the fixture itself, independent of
+# regression guard for the fixture itself, independent of
 # lg4_wrap_hhmm - round-trip the epoch back through localtime and confirm
 # it still reads 00:05. A future edit that reintroduces a "today"-based
 # construction would only drift on an actual DST gap/fold day; this catches
@@ -379,7 +379,7 @@ else
     echo "FAIL LG4 fixture epoch round-trips to $_lg4_0005_roundtrip, not 00:05 -- fixture date may sit inside a DST gap/fold"
     FAILED=$((FAILED + 1))
 fi
-# HIMMEL-2914: the round-trip guards above (here and the DST replay below)
+# the round-trip guards above (here and the DST replay below)
 # only prove the CONSTRUCTION handles a given date correctly -- they say
 # nothing about the CALL SITE below still passing the literal 6 15 rather
 # than, say, a reintroduced $(date +%m) "$(date +%d)". Assert the anchor
@@ -391,7 +391,7 @@ else
     echo "FAIL LG4 fixture anchor resolved to $_lg4_0005_anchor, not 06-15 -- the real-fixture call site no longer pins June 15"
     FAILED=$((FAILED + 1))
 fi
-# HIMMEL-2908: the round-trip guard just above is honest but weak -- it only
+# the round-trip guard just above is honest but weak -- it only
 # fires if the suite happens to run ON a real DST transition day, since on
 # an ordinary day a reintroduced datetime.date.today() round-trips cleanly
 # too. Make the catch deterministic by replaying lg4_fixture_epochs against
@@ -410,7 +410,7 @@ except Exception as e:
     print(e)
     sys.exit(1)
 
-# codex-2 (HIMMEL-2908 pr-check round 1): the zoneinfo check above only
+# the zoneinfo check above only
 # proves the tzdata TABLE exists, not that this Python/OS actually honors
 # TZ for naive datetime.timestamp()/fromtimestamp() (notably native Windows
 # Python, whose C runtime does not parse IANA TZ names) -- verify against a
@@ -444,7 +444,7 @@ print(d.year, d.month, d.day)
         echo "FAIL LG4 DST transition-day fixture epoch (12:34) round-tripped to $_lg4_dst_1234_roundtrip, not 12:34"
         FAILED=$((FAILED + 1))
     fi
-    # codex-1 (HIMMEL-2908 pr-check round 1): assert success on `!=`, so a
+    # assert success on `!=`, so a
     # failed/empty conversion (which is also != "02:30") must be its own
     # branch rather than silently reading as PASS.
     if ! _lg4_dst_0230_roundtrip=$(TZ=Europe/Berlin python3 -c "import datetime, sys; print(datetime.datetime.fromtimestamp(int(sys.argv[1])).strftime('%H:%M'))" "$_lg4_dst_0230_epoch"); then
@@ -497,7 +497,7 @@ assert_rc "LG4 fixture exact midnight signals skip" 10 "$_lg4_midnight_rc"
 assert_contains "LG4 fixture exact midnight names the skip reason" "exact local midnight has no earlier same-day HH:MM" "$_lg4_midnight_reason"
 unset _lg4_0005_epoch _lg4_1234_epoch _lg4_0000_epoch _lg4_0230_epoch _lg4_0005_roundtrip _lg4_0005_anchor _lg4_0005_hhmm _lg4_0005_rolled _lg4_1234_hhmm _lg4_midnight_reason _lg4_midnight_rc
 
-# HIMMEL-2877 (E1): WRAP_HHMM used to be captured ONCE here, before LG1-LG3
+# (E1): WRAP_HHMM used to be captured ONCE here, before LG1-LG3
 # run below - each of which shells out to python3 and arm-resume, taking
 # real wall-clock seconds under load. lg4_wrap_hhmm's "stays inside today"
 # vs. "rolls to tomorrow" clamp is a snapshot relative to the wall-clock AT
@@ -507,7 +507,7 @@ unset _lg4_0005_epoch _lg4_1234_epoch _lg4_0000_epoch _lg4_0230_epoch _lg4_0005_
 # minutes later (after LG1-3) is consumed against a `now` that has moved
 # forward - "00:00 today" can go from ~1430 min in the past (refused) to
 # well under the 60-min silent threshold, flipping LG4's expected rc=9 into
-# a spurious rc=0. This is the exact HIMMEL-1879/1756 class near_hhmm() was
+# a spurious rc=0. This is the exact class near_hhmm was
 # already turned into a function to fix, a few lines up - recompute
 # immediately before use instead of capturing early.
 compute_wrap_hhmm() {
@@ -571,14 +571,14 @@ else
     rc=$?
     assert_rc "LG4 past-time wrap refused (positive gap, rc 9)" 9 "$rc"
     assert_contains "LG4 wrap refusal still cites the directive" "ALWAYS-CONTINUE" "$out"
-    # HIMMEL-2247: the rolled path must carry BOTH messages. The ALWAYS-CONTINUE
-    # WARN is the guardrail citation; the HIMMEL-2147 "already past for today" ERR
+    # the rolled path must carry BOTH messages. The ALWAYS-CONTINUE
+    # WARN is the guardrail citation; the "already past for today" ERR
     # line is the up-front rollover context. A regression that drops either one
     # (e.g. re-making them an if/else) fails here.
     assert_contains "LG4 wrap refusal still asks if the queue is empty" "is the queue actually empty" "$out"
     assert_contains "LG4 wrap refusal names the rollover up front" "already past for today" "$out"
-    # HIMMEL-2247 (CR round 1): ORDER is the contract, not just presence. The
-    # HIMMEL-2147 rollover line must come UP FRONT, PREFIXING the WARN — the
+    # ORDER is the contract, not just presence. The
+    # rollover line must come UP FRONT, PREFIXING the WARN — the
     # regression was exactly a swap of prefix for replace. This pattern also
     # pins the FULL citation text, which a bare "ALWAYS-CONTINUE" match does not.
     case "$out" in
@@ -603,7 +603,7 @@ assert_not_contains "LG5 no refusal on a safety-arm env" "is the queue actually 
 
 # ---------------------------------------------------------------------------
 # LG5b: --dedup-any ALONE (no ARM_RESUME_SAFETY_ARM) does NOT bypass the guard
-#       (HIMMEL-1475 CR-fix): --dedup-any is a public dedup-scope flag any
+#       --dedup-any is a public dedup-scope flag any
 #       caller can add, not a provenance signal. A far arm with only
 #       --dedup-any is REFUSED just like a bare far arm.
 # ---------------------------------------------------------------------------
@@ -619,7 +619,7 @@ assert_contains "LG5b refusal still cites the directive" "ALWAYS-CONTINUE" "$out
 #      yet the old `//60` floor rounded 3601-3659s down to 60 min and let it
 #      pass.
 # ---------------------------------------------------------------------------
-# Rollover-safe edge (HIMMEL-1475 CR-fix): EDGE_HHMM is computed here in a
+# Rollover-safe edge: EDGE_HHMM is computed here in a
 # SEPARATE process from arm-resume's own now-capture. The gap arm-resume sees
 # is 3660 - now.seconds - lag (lag = the wall time between this capture and
 # arm-resume's). The prior comment's "no flaky split across the 3600 boundary"
@@ -661,7 +661,7 @@ assert_contains "LG6a record names the event" '"event":"armed"' "$tline"
 assert_contains "LG6a record marks the explicit long-gap choice" '"long_gap":"1"' "$tline"
 
 # ---------------------------------------------------------------------------
-# LG-fix (HIMMEL-1756): the fixture self-check, run HERE — immediately before
+# LG-fix: the fixture self-check, run HERE — immediately before
 #       the case that broke, i.e. after everything slow in this suite has
 #       already happened. That placement is the slow-path simulation: no sleep
 #       is injected, the run's own elapsed time is the load. A regression to a
@@ -710,7 +710,7 @@ assert_contains "LG6b record names the event" '"event":"armed"' "$tline"
 assert_contains "LG6b near arm records long_gap=0" '"long_gap":"0"' "$tline"
 
 # ---------------------------------------------------------------------------
-# LG-hermetic (HIMMEL-2666): the collision check reads the STUB crontab, not the
+# LG-hermetic: the collision check reads the STUB crontab, not the
 #       host's, and keeps its teeth. A stub entry at the same minute still
 #       refuses (rc 6); with the store removed the same arm proceeds, so the
 #       rc 6 is the stub entry and not an artefact of the host scheduler.

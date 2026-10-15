@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/shard-has-work.sh — HIMMEL-5524: does shell-unit shard <i/n> have
+# scripts/ci/shard-has-work.sh — does shell-unit shard <i/n> have
 # any suite to run under the current selection env? Prints one
 # `has_work=true|false` line (GITHUB_OUTPUT-compatible) so the shard job can
 # skip its heavy setup (apt, bun, ffmpeg, gitleaks, pre-commit) when a

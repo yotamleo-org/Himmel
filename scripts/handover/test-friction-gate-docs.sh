@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test-friction-gate-docs.sh — HIMMEL-4935. Pins the leg-preface wording that
-# cuts two friction rows measured by HIMMEL-4926:
+# test-friction-gate-docs.sh — Pins the leg-preface wording that
+# cuts two friction rows:
 #   1. console-ruling latency: a brief may state `default-if-no-ruling (N min)`;
 #      the default is NARROWING only and never stands in for GO / a merge / a
 #      token-quoting message;

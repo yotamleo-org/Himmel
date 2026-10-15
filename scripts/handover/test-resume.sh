@@ -9,7 +9,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"; R="$HERE/resume.sh"
@@ -55,7 +55,7 @@ printf '**Status:** in-progress\nBRIEF-77-MARKER body.\n' > "$base/standalones/#
 printf '**Status:** done\n' > "$base/epics/HIMMEL-414-cr-epic/master-plan.md"
 printf '**Status:** in-progress\n' > "$base/epics/HIMMEL-500-live-epic/master-plan.md"
 
-# Epic-task: a task carries its OWN Jira key (HIMMEL-501), NOT epic-key+subnum —
+# Epic-task: a task carries its OWN Jira key, NOT epic-key+subnum —
 # so the ID extractor takes the full key, no truncation. No session file -> brief fallback.
 mkdir -p "$base/epics/HIMMEL-500-live-epic/tasks/HIMMEL-501-first-task"
 printf '**Status:** in-progress\nTASK-501-MARKER body.\n' > "$base/epics/HIMMEL-500-live-epic/tasks/HIMMEL-501-first-task/brief.md"
@@ -83,7 +83,7 @@ hasnt "key form: excludes overnight" "$o" "Overnight Mode Trigger"
 hasnt "key form: not the older v1"   "$o" "RESUME-389-V1"
 has "key form: stale nudge"      "$o" "lingering-example"
 
-# 2. Bare numeric -> dual scan finds HIMMEL-389.
+# 2. Bare numeric -> dual scan finds
 has "bare numeric finds key item" "$(run 389)" "RESUME-389-V2 line one"
 
 # 3. #N with no session file -> fallback to brief.md.
@@ -126,10 +126,10 @@ chmod +x "$fakebin/node"
 PATH="$fakebin:$PATH" HANDOVER_DIR="$root" HANDOVER_REGISTRY="$reg" bash "$R" --repo-root "$RR" 389 >/dev/null 2>&1
 check "node crash (rc=5) -> hard error, not graceful skip" "$?" "2"
 
-# HIMMEL-3719: BSD sed (macOS) has no `\|` alternation in a BRE, so the list
+# BSD sed (macOS) has no `\|` alternation in a BRE, so the list
 # id split silently fell through. Keep resume.sh free of it (use sed -E).
 # ponytail: a source grep, because Linux CI cannot execute BSD sed; the macOS
-# shard's --list epic-task row is the behavioural proof, HIMMEL-3719.
+# shard's --list epic-task row is the behavioural proof,
 o="$(grep -nE 'sed .*\\\|' "$R")"
 check "resume.sh: no GNU-only \\| alternation in sed" "$o" ""
 

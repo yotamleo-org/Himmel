@@ -8,7 +8,7 @@
 # (resume-context.sh) and a stale nudge from tech-debt.md. `--list` prints
 # active items for the No-ID picker (the calling command runs the prompt).
 # Read-only — never mutates. Lets /handover-resume skip the 47KB handover
-# SKILL.md load. HIMMEL-1038.
+# SKILL.md load.
 #
 # Exit: 0 = printed; 2 = usage/hard error; 3 = graceful (no repo match in
 #       registry / item not found).
@@ -34,7 +34,7 @@ if [ "$mode" = "resume" ] && [ -z "$id" ]; then
   echo "resume.sh: no ID given (use --list for the picker)" >&2; exit 2
 fi
 
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # --- handover root + repo/bucket resolution (mirrors resolve-active-item.sh) ---

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/lib/cr-available.sh (HIMMEL-1125).
+# Tests for scripts/lib/cr-available.sh.
 #
 # Hermetic: every case runs against a throwaway `git init` repo in a temp dir.
 # Never talks to GitHub. Never reads the real checkout's git config.
@@ -22,7 +22,7 @@
 #   14. a GLOBAL himmel.coderabbit does not arm  -> rc 1 (availability is per-repo)
 #   15. the probe is SILENT on both verdicts     -> no stdout/stderr either way
 #
-# HIMMEL-2380 — cr_app_state, the WHY behind the yes/no:
+# — cr_app_state, the WHY behind the yes/no:
 #   16-17. armed / not-configured                -> the two ordinary states
 #   18. an unparseable marker                    -> `broken`, NOT `not-configured`
 #       [the only state where today's rc 1 hides a real defect]
@@ -33,7 +33,7 @@
 #   26. NEGATIVE CONTROL: every cr_app_configured rc unchanged by the new state
 #   27. cr_app_state writes nothing to stderr, even on the broken marker
 #
-# HIMMEL-2769 — a linked worktree must read the PRIMARY's arming flag:
+# — a linked worktree must read the PRIMARY's arming flag:
 #   28. armed on the primary -> a linked worktree sees `armed` too
 #   29. same, with extensions.worktreeConfig enabled on the primary -> still
 #       `armed` (the extension only changes where NEW per-worktree writes
@@ -196,7 +196,7 @@ expect 1 "12. not a git repo -> rc 1, no crash" "$d" - -
 #     must NOT arm the gate: it is tracked, so every clone/fork inherits it
 #     WITHOUT inheriting the App installation. This harness ships by being
 #     cloned, so arming on the file would block every adopter's merges forever —
-#     the exact bug HIMMEL-1125 removes. The file is evidence of a config, never
+# the exact bug removes. The file is evidence of a config, never
 #     of an installation.
 r=$(mk_repo forked)
 printf 'reviews:\n  profile: chill\n' > "$r/.coderabbit.yaml"
@@ -227,7 +227,7 @@ else
 fi
 
 
-# ── HIMMEL-2380: cr_app_state — WHY the gate is disarmed ──────────────────────
+# ── cr_app_state — WHY the gate is disarmed ──────────────────────
 # cr_app_configured answers a yes/no and is deliberately SILENT, because "an
 # adopter must not notice it exists" (case 15, and test-check-ci.sh case 57).
 # That silence is right for the adopter and WRONG for one caller: a repo whose
@@ -301,7 +301,7 @@ expect_state not-configured "25. not a git repo -> not-configured, no crash" "$d
 
 # 26. NEGATIVE CONTROL — the whole point. cr_app_state must not move
 #     cr_app_configured's rc for ANY of the states above. If adding the
-#     predicate changed one verdict, HIMMEL-1125's gate moved and this case
+# predicate changed one verdict, the gate moved and this case
 #     goes red before any caller notices.
 expect 0 "26a. armed still rc 0" "$(mk_repo nc_armed true)" - -
 expect 1 "26b. not-configured still rc 1" "$(mk_repo nc_bare)" - -
@@ -319,7 +319,7 @@ else
     fail "27. cr_app_state emits nothing on stderr (even on the broken marker)" "emitted: $noise"
 fi
 
-# ── HIMMEL-2769: a linked worktree reads the PRIMARY's flag ──────────────────
+# ── a linked worktree reads the PRIMARY's flag ──────────────────
 # mk_worktree <repo> <name>  -> echoes the new linked worktree's path
 mk_worktree() {
     local repo="$1" name="$2"

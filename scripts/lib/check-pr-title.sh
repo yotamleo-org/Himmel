@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/check-pr-title.sh — HIMMEL-3616.
+# scripts/lib/check-pr-title.sh
 #
 # WHY. The squash merge makes the PR TITLE main's commit subject, but no gate
 # checked the title itself: check-commit-msg.sh runs at author time on local
@@ -35,8 +35,8 @@ case "$TITLE" in
         ;;
 esac
 
-# HIMMEL-3616 (judge J1284O F5/minor): accept GitHub's own revert-button
-# title shape, e.g. `Revert "fix(x): [HIMMEL-1] foo"`. check-commit-msg.sh's
+# Accept GitHub's own revert-button
+# title shape, e.g. `Revert "fix(x): [KEY-1] foo"`. check-commit-msg.sh's
 # own revert exemption requires a `This reverts commit <hash>.` line whose
 # hash resolves to a real commit object -- a bare title never has one, so
 # that exemption can never fire here; refusing a legitimate merge path is
@@ -52,7 +52,7 @@ if [ ! -f "$CHECK_MSG" ]; then
     exit 2
 fi
 
-# HIMMEL-3806: an external PR author (not on the internal allowlist) skips only
+# an external PR author (not on the internal allowlist) skips only
 # the ticket-ID requirement; the conventional shape is still checked. An empty
 # TICKET_ID_TRUSTED_AUTHOR keeps the ID required. See ticket-id-internal.sh.
 # shellcheck source=scripts/lib/ticket-id-internal.sh

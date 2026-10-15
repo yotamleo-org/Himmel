@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # orphan-census.sh — READ-ONLY census of orphaned himmel suite/probe processes.
 #
-# WHY (HIMMEL-1978). run-shell-tests.sh caps each suite with a watchdog that
+# WHY. run-shell-tests.sh caps each suite with a watchdog that
 # terminates the suite's process tree, and worker lanes time out around their
 # own children. Neither reliably collects grandchildren: ~107 stray bash
 # processes were alive on the OVERLORD8 box by the end of one afternoon, and
@@ -84,7 +84,7 @@ case "$MIN_AGE_MIN" in
 esac
 MIN_AGE=$(( MIN_AGE_MIN * 60 ))
 
-# ROOT ANCHOR (HIMMEL-1995). `scripts/**/test-*.sh` and `probe-*.sh` are a
+# ROOT ANCHOR. `scripts/**/test-*.sh` and `probe-*.sh` are a
 # LAYOUT, not an identity: any repo that happens to use it would be classified
 # here — and, under an operator's --reap, signalled. Require the command line to
 # name a path inside THIS checkout. Worktrees live at
@@ -411,7 +411,7 @@ cat "$WORK/report"
 # between the re-check and the signal. It does not close it: bash cannot signal
 # by handle, only by PID, so a PID freed and reused inside that gap is still
 # theoretically reachable. What the re-check buys is turning a minutes-wide
-# window into a microseconds-wide one; the residual is accepted (HIMMEL-1995).
+# window into a microseconds-wide one; the residual is accepted.
 awk '$4 == "ORPHAN" { print $1 "|" $5 }' "$WORK/report" > "$WORK/reapable"
 
 if [ "$REAP" -ne 1 ]; then

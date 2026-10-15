@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-source-key.sh -- HIMMEL-841: arm-resume --source-key dedups a
+# test-arm-resume-source-key.sh -- arm-resume --source-key dedups a
 # re-arm for the SAME source even when the handover path differs (an edited
 # source gets a new content-digest path from vmsdk.trigger_claude), so two
 # guest sessions can never queue for one source.
@@ -18,7 +18,7 @@ ARM="$SCRIPT_DIR/arm-resume.sh"
 TMP=$(mktemp -d) || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
-# HIMMEL-2765: arm-resume.sh now calls scripts/lib/bank-preflight.sh's
+# arm-resume.sh now calls scripts/lib/bank-preflight.sh's
 # fleet-size cap before every real (non-dry-run) arm. Without this, every
 # case here that reaches that far would call the REAL fleet count against
 # THIS machine's own ambient process table and could spuriously refuse
@@ -31,7 +31,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 
-# HIMMEL-2774: bank-preflight.sh now RESERVES a fleet slot per declared launch
+# bank-preflight.sh now RESERVES a fleet slot per declared launch
 # (CADENCE_BANK_LAUNCH=1, set unconditionally by arm-resume.sh for every
 # non-dry-run arm), not just census live processes -- so the FLEET_PS_CMD
 # stub above (which zeroes the live count) no longer zeroes the fleet count
@@ -52,7 +52,7 @@ HANDOVER_DIR="$TMP/statedocs/handovers"
 mkdir -p "$HANDOVER_DIR"
 export HANDOVER_DIR
 
-# HIMMEL-2813: `acquire` persists the release token under XDG_RUNTIME_DIR,
+# `acquire` persists the release token under XDG_RUNTIME_DIR,
 # so this suite must pin that at a temp dir too -- otherwise every acquire
 # below writes into the operator's real /run/user/<uid>/ runtime dir. Same
 # hermeticity rule as HANDOVER_DIR above.
@@ -60,7 +60,7 @@ XDG_RUNTIME_DIR="$TMP/xdg"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 export XDG_RUNTIME_DIR
-# HIMMEL-3103: pin the slot dir explicitly and fail the suite if it could leak
+# pin the slot dir explicitly and fail the suite if it could leak
 # into the production dir the live fleet counts.
 . "$SCRIPT_DIR/../lib/fleet-slots-shield.sh"
 fleet_slots_shield "$TMP" || exit 1
@@ -68,17 +68,17 @@ fleet_slots_shield "$TMP" || exit 1
 export SKILL_TELEMETRY_DIR="$TMP/telemetry"
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 export WORKER_BRIDGE_ROOT="$TMP/bridge"
-# Temp-target shield (HIMMEL-1365/1622): every fixture here lives under $TMP,
+# Temp-target shield: every fixture here lives under $TMP,
 # exactly the shape arm-resume now refuses (exit 12). This suite means it —
 # its scheduler is stubbed, so no real task is ever created. Same declared
 # opt-out as test-arm-resume.sh; missing it cost 30 failures first caught by
 # the public wave-2k CI (the private repo runs no Actions by design).
 export ARM_TEMP_CWD_OK=1
-# HIMMEL-3846: keep the real bank-preflight's usage-cache refresh off the live cache.
+# keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
-# Shipped-work shield (HIMMEL-2118): the HIMMEL-1331 preflight derives a ticket
-# ID from the handover (fixtures here name HIMMEL-1304) and probes LIVE Jira —
-# the day HIMMEL-1304 went Done, every fixture arm refused rc=11 (21/36 FAIL).
+# Shipped-work shield: the preflight derives a ticket
+# ID from the handover (fixtures here name one) and probes LIVE Jira —
+# the day that ticket went Done, every fixture arm refused rc=11 (21/36 FAIL).
 # This suite exercises arm identity/slots; test-arm-resume.sh owns the
 # shipped-work gate (1331/1331b cases, Jira stubbed) and sets this per-case.
 export ARM_SHIPPED_OK=1
@@ -92,18 +92,18 @@ WORK_REPO="$TMP/work-repo"
 mkdir -p "$WORK_REPO"
 git init -q "$WORK_REPO"
 
-# HIMMEL-1543: FUTURE_TIME is captured ONCE (every alias/dedup pair in Groups 1-2
+# FUTURE_TIME is captured ONCE (every alias/dedup pair in Groups 1-2
 # must share ONE target time, else two arms for the same handover park at
 # different minutes and the aliasing assertions lose their meaning). But this
 # suite runs 40+ min, so by Group 3 the wall clock has passed FUTURE_TIME,
-# arm-resume.sh resolves it to ~tomorrow (>60 min out), and the HIMMEL-1475
+# arm-resume.sh resolves it to ~tomorrow (>60 min out), and the
 # long-gap guard refuses rc=9 before the injected condition is ever reached.
 # So EVERY arm below carries --long-gap: this suite's subject is identity,
 # dedup and transactionality, NOT the long-gap guard, and --long-gap is a no-op
 # for an arm already inside the 60-min window (so it cannot regress a fast run).
 # The guard itself stays covered by the dedicated Group 4 case.
 #
-# HIMMEL-1879: the offset is 8h, not the original 30m. A 30-minute target lapses
+# the offset is 8h, not the original 30m. A 30-minute target lapses
 # somewhere inside this 40+ minute run, and for ~one minute either side of that
 # crossing an arm's target could go PAST between derivation and /create --
 # observed live as G5.1 rc=2 ("lead=-30s; the arm itself took 60s"). That is the
@@ -202,7 +202,7 @@ mk_ho() {
 #       keep working -- the failure-injection seam for defect B's "fails inside
 #       schedule_arm" case.
 # Plus the two stubs test-arm-resume.sh does NOT carry but this suite MUST:
-#   * powershell -> exit 1 (probe "unavailable" => arm-resume's HIMMEL-938
+#   * powershell -> exit 1 (probe "unavailable" => arm-resume's
 #     post-arm verify fail-OPENS, WARN + arm stands).
 #   * reg -> emit a parseable US short-date pattern (M/d/yyyy) so locale
 #     detection is HEALTHY. Without it, a degraded locale + the dead powershell
@@ -234,7 +234,7 @@ case "$cmd" in
         done < "$db"
         exit 0 ;;
     /create)
-        # Failure injection (HIMMEL-1304 defect B): when SCHED_CREATE_FAIL=1,
+        # Failure injection: when SCHED_CREATE_FAIL=1,
         # /create exits nonzero so schedule_arm fails AFTER --force already
         # deleted the prior slot -- the non-transactional delete this suite
         # must catch.
@@ -286,7 +286,7 @@ exit 0
 EOF
     cat > "$dir/powershell" <<'EOF'
 #!/usr/bin/env bash
-# Probe "unavailable" -> arm-resume's HIMMEL-938 post-arm verify fail-opens
+# Probe "unavailable" -> arm-resume's post-arm verify fail-opens
 # (WARN, arm stands). Faking a NextRunTime would need the TARGET_EPOCH this
 # stub can't know; the fail-open path is the honest fake for tests that
 # exercise identity/dedup/transactionality, not the verify feature itself.
@@ -304,7 +304,7 @@ exit 0
 EOF
     cat > "$dir/crontab" <<'EOF'
 #!/usr/bin/env bash
-# Stateful crontab stub (HIMMEL-1567). arm-resume.sh routes macOS (Darwin)
+# Stateful crontab stub. arm-resume.sh routes macOS (Darwin)
 # through crontab ONLY -- list_existing()'s macos arm calls _crontab_list, which
 # is `crontab -l | grep`, and _crontab_schedule/_crontab_delete rewrite via
 # `| crontab -` (arm-resume.sh ~:1415-1629). Without a stub here, a local

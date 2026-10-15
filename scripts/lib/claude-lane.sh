@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-lane.sh — HIMMEL-4082 lane seam for headless `claude` spawn sites.
+# claude-lane.sh — lane seam for headless `claude` spawn sites.
 # Source it, then: claude_lane_resolve <repo-root>
 # Sets CLAUDE_LANE_CMD (array) to the command a site execs in place of `claude`:
 #   HIMMEL_CLAUDE_LANE unset / empty / native -> claude            (today's argv, unchanged)
@@ -12,7 +12,7 @@
 # and claude-openrouter classifies the corpus by cwd, while the wired sites run
 # claude from a TMPDIR scratch cwd, so neither launcher sees the reviewed repo.
 # A site that reviews a repo therefore calls claude_lane_egress <reviewed-repo>
-# after it (HIMMEL-4111): it classifies that repo and asks the egress matrix.
+# after it: it classifies that repo and asks the egress matrix.
 # bash 3.2-safe.
 # shellcheck disable=SC2034  # CLAUDE_LANE_CMD is read by the sourcing site
 claude_lane_resolve() {
@@ -83,7 +83,7 @@ claude_lane_egress() {
     done
   fi
   if [ "$corpus" != salus ]; then
-    # HIMMEL-5099: every vault var that is set must resolve (a stale one would otherwise be
+    # every vault var that is set must resolve (a stale one would otherwise be
     # read as "no vault"), and a resolvable one never masks the other.
     for v in "${LUNA_VAULT:-}" "${LUNA_VAULT_PATH:-}"; do
       [ -n "$v" ] || continue
@@ -94,7 +94,7 @@ claude_lane_egress() {
         "$lroot/"*) corpus=luna-personal ;;
       esac
     done
-    # HIMMEL-4420: handover_root reads only the live env, so a .env-only HANDOVER_DIR
+    # handover_root reads only the live env, so a .env-only HANDOVER_DIR
     # is loaded from himmel's own primary checkout (cwd = this lib, never the reviewed repo).
     # A HANDOVER_DIR set from ANY source (live env or .env) that handover_root cannot
     # resolve exits 4 in the subshell: refuse, never read it as "no handover root".
@@ -114,7 +114,7 @@ claude_lane_egress() {
     # positive himmel-code classification (as claude-openrouter does); anything else is
     # unclassified, and the matrix default for an unclassified corpus is deny
     root="$(cd -P "$_CLAUDE_LANE_DIR/../.." 2>/dev/null && pwd -P)" || root=""
-    # HIMMEL-5099: bound to the git common dir, so a worktree of this checkout passes and a
+    # bound to the git common dir, so a worktree of this checkout passes and a
     # foreign repo nested inside it does not.
     if [ -n "$root" ] && . "$_CLAUDE_LANE_DIR/git-clean.sh" 2>/dev/null; then
       lroot="$(git_clean -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || lroot=""

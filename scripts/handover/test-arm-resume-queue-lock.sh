@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-queue-lock.sh -- regression test for the HIMMEL-856
+# test-arm-resume-queue-lock.sh -- regression test for the
 # queue-lock + cross-machine arms-registry integration added to
 # scripts/handover/arm-resume.sh (rc=7 / rc=8 refusals + overrides).
 #
@@ -27,7 +27,7 @@ QL="$SCRIPT_DIR/queue-lock.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# HIMMEL-2765: arm-resume.sh now calls scripts/lib/bank-preflight.sh's
+# arm-resume.sh now calls scripts/lib/bank-preflight.sh's
 # fleet-size cap before every real (non-dry-run) arm. Without this, this
 # suite's real-arm cases (T10/T11/T12/T15/T7c) call the REAL fleet count
 # against THIS machine's own ambient process table and can spuriously
@@ -38,7 +38,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 
-# HIMMEL-2774: bank-preflight.sh now RESERVES a fleet slot per declared launch
+# bank-preflight.sh now RESERVES a fleet slot per declared launch
 # (CADENCE_BANK_LAUNCH=1, set unconditionally by arm-resume.sh for every
 # non-dry-run arm), not just census live processes — so the FLEET_PS_CMD stub
 # above no longer zeroes the fleet count by itself: this suite's several real
@@ -56,7 +56,7 @@ HANDOVER_DIR="$TMP/statedocs/handovers"
 mkdir -p "$HANDOVER_DIR"
 export HANDOVER_DIR
 
-# HIMMEL-2813: `acquire` persists the release token under XDG_RUNTIME_DIR,
+# `acquire` persists the release token under XDG_RUNTIME_DIR,
 # so this suite must pin that at a temp dir too -- otherwise every acquire
 # below writes into the operator's real /run/user/<uid>/ runtime dir. Same
 # hermeticity rule as HANDOVER_DIR above.
@@ -64,7 +64,7 @@ XDG_RUNTIME_DIR="$TMP/xdg"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 export XDG_RUNTIME_DIR
-# HIMMEL-3103: pin the slot dir explicitly and fail the suite if it could leak
+# pin the slot dir explicitly and fail the suite if it could leak
 # into the production dir the live fleet counts.
 . "$SCRIPT_DIR/../lib/fleet-slots-shield.sh"
 fleet_slots_shield "$TMP" || exit 1
@@ -73,35 +73,35 @@ export SKILL_TELEMETRY_DIR="$TMP/telemetry"
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 unset QUEUE_LOCK_TAKEOVER QUEUE_LOCK_TTL_SECONDS ARM_DUP_OK 2>/dev/null || true
 # This suite deliberately arms $TMP fixtures — declare it, or every arming case
-# hits the HIMMEL-1365 temp-target refusal (rc=12). Same shield
-# test-arm-resume.sh carries (HIMMEL-1623).
+# hits the temp-target refusal (rc=12). Same shield
+# test-arm-resume.sh carries.
 export ARM_TEMP_CWD_OK=1
-# HIMMEL-3846: keep the real bank-preflight's usage-cache refresh off the live cache.
+# keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
-# Split-leg shield (HIMMEL-1830): this suite's fixtures are a flat POOL of
+# Split-leg shield: this suite's fixtures are a flat POOL of
 # next-session-<N>.md files in ONE directory, all created seconds apart and
 # none of them ever a relaunch point — which is exactly the shape the split-leg
 # guard refuses (rc=17). They are not a leg chain; declare the opt-out once
 # here rather than teaching every case to dodge the numbering.
 export ARM_SPLIT_LEG_OK=1
-# Worker-census shield (HIMMEL-1622/#1635, same as test-arm-resume.sh): point
+# Worker-census shield (same as test-arm-resume.sh): point
 # the live-lane-worker census at an isolated empty root under $TMP, or every
 # REAL-arm case here refuses rc=10 whenever a GLM/claudex lane worker (or a
 # codex render) is live on the machine — the exact suites-reading-machine-wide-
 # state class that produced this suite's shifting 8/13/18-fail reds under
 # parallel lane load (leg 7, 2026-08-09).
 export WORKER_BRIDGE_ROOT="$TMP/worker-bridge-shield"
-# Shipped-work shield (HIMMEL-2118): the HIMMEL-1331 preflight derives a ticket
-# ID from the handover (this suite's H1 lines all name HIMMEL-856) and probes
-# LIVE Jira/gh on every non-dry-run arm below -- the day HIMMEL-856 went Done,
+# Shipped-work shield: the preflight derives a ticket
+# ID from the handover (this suite's H1 lines all name one) and probes
+# LIVE Jira/gh on every non-dry-run arm below -- the day that ticket went Done,
 # every such arm would refuse rc=11. This suite exercises queue-lock/registry
 # behavior; test-arm-resume.sh owns the shipped-work gate (1331/1331b cases,
 # Jira stubbed) and sets this per-case.
 export ARM_SHIPPED_OK=1
-# Ticket-mutex shield (HIMMEL-2165): every fixture in this suite names the same
-# synthetic ticket (HIMMEL-856), and each real arm (T7c onward) registers a
+# Ticket-mutex shield: every fixture in this suite names the same
+# synthetic ticket, and each real arm (T7c onward) registers a
 # slot for it under a DIFFERENT handover file than the one before -- exactly
-# what the HIMMEL-1329 ticket-level mutex exists to refuse (rc=13). That mutex
+# what the ticket-level mutex exists to refuse (rc=13). That mutex
 # postdates this suite and fires BEFORE the queue-lock/cross-host checks this
 # suite actually exercises (arm-resume.sh evaluates it ahead of the rc=7/8
 # paths), so left unshielded it masked every later assertion behind a false
@@ -110,7 +110,7 @@ export ARM_SHIPPED_OK=1
 # are shielded.
 export ARM_TICKET_DUP_OK=1
 
-# A near future time keeps these queue-lock fixtures inside the HIMMEL-1475
+# A near future time keeps these queue-lock fixtures inside the
 # explicit-HH:MM long-gap limit. Computed LAZILY at each use, never once at
 # suite start: a compute-once value goes STALE when earlier sections run long
 # (observed: >30 min under parallel lane load), and a stale HH:MM parses as
@@ -125,7 +125,7 @@ FAILED=0
 # On a mismatch, dump the arm's captured combined output (every call site
 # assigns it to $out). Without this the suite reported bare "expected rc=0, got
 # rc=2" lines and swallowed the one message that names the cause -- which is
-# what made HIMMEL-1301 cost a session to diagnose rather than a minute.
+# what made cost a session to diagnose rather than a minute.
 assert_rc() {
     local label="$1" expected="$2" actual="$3"
     if [ "$actual" = "$expected" ]; then
@@ -158,10 +158,10 @@ assert_not_contains() {
 # Empty-scheduler stub (same pattern as test-arm-resume.sh SCHED_STUB_T17):
 # /query (and atq/at) return nothing, rc 0 -- reads as "no existing jobs" so
 # the pre-existing same-machine dedup/collision checks never interfere with
-# these HIMMEL-856-specific assertions.
+# these KEY-856-specific assertions.
 SCHED_STUB="$TMP/sched-stub"
 mkdir -p "$SCHED_STUB"
-# HIMMEL-1879: the scheduler still starts EMPTY (so the dedup/collision checks
+# the scheduler still starts EMPTY (so the dedup/collision checks
 # stay out of the way, as the note above intends) but /create now REGISTERS the
 # name it was given. A stub that reports create success and then answers every
 # /query empty is internally inconsistent, and the post-arm existence verify
@@ -219,7 +219,7 @@ case "\${1:-}" in
     *) cat > /dev/null 2>&1 || true; exit 0 ;;
 esac
 EOF
-# HIMMEL-1301 / HIMMEL-938: the schtasks /create above is a stateless "always
+# the schtasks /create above is a stateless "always
 # succeeds" fake -- it never registers anything with the real OS scheduler. On
 # an ACTUAL Windows box (this suite runs on Windows dev machines, not just
 # Linux CI), arm-resume's post-arm NextRunTime verify would otherwise fall
@@ -259,7 +259,7 @@ echo "HKEY_CURRENT_USER\\Control Panel\\International"
 echo "    sShortDate    REG_SZ    M/d/yyyy"
 exit 0
 EOF
-# HIMMEL-3181: macOS routes to _crontab_schedule and Windows to the .bat
+# macOS routes to _crontab_schedule and Windows to the .bat
 # branch; both REFUSE (rc=2) when `claude` does not resolve on PATH at arm
 # time, and the nightly macOS/Windows runners have no claude installed. A stub
 # keeps every dry-run arm below independent of the host's claude.
@@ -267,7 +267,7 @@ cat > "$SCHED_STUB/claude" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-# HIMMEL-3181: macOS arms via crontab, never `at`. Without this stub the real
+# macOS arms via crontab, never `at`. Without this stub the real
 # arms below (T3, T8-T22) write the runner's REAL crontab and then collide with
 # each other's leftovers at the same future_time (rc=6). File-backed so the
 # post-arm verify finds its entry; the schedule fields are rewritten to a fixed
@@ -299,7 +299,7 @@ assert_rc "T2: FRESH queue lock refuses arm" 7 "$rc"
 assert_contains "T2: stderr names the live holder" "live-session" "$out"
 assert_contains "T2: stderr names the override" "QUEUE_LOCK_TAKEOVER" "$out"
 
-# --- T2b: HIMMEL-2125 ARM_PROFILE inflight marker on the SAME rc=7 refusal --
+# --- T2b: ARM_PROFILE inflight marker on the SAME rc=7 refusal --
 # _arm_phase_done for "queue-lock-probe" only ran on the phase's RETURN path;
 # the `exit 7` above fires INSIDE the phase, before that call, so the old
 # EXIT-trap reporter printed no queue-lock-probe entry at all on this exact
@@ -342,7 +342,7 @@ assert_rc "T6: same-host registry entry is not a cross-machine dup" 0 "$rc"
 
 # --- T7: a foreign-host NEW-FORMAT record written under another spelling ----
 # still refuses rc=8. The raw field remains for old readers, but the canonical
-# root-relative key is the cross-script/cross-layout identity (HIMMEL-1344).
+# root-relative key is the cross-script/cross-layout identity.
 HO_ALT="$HANDOVER_DIR/HIMMEL-856-test/../HIMMEL-856-test/next-session-1.md"
 printf '{"host":"other-host","handover":"%s","handover-key":"%s","ticket":"HIMMEL-856","fire-at":"202601010000","task-name":"HIMMEL-Resume-other-host"}\n' \
     "$HO_ALT" "$HO_KEY" > "$HANDOVER_DIR/.locks/arms.jsonl"
@@ -442,7 +442,7 @@ else
 fi
 assert_not_contains "T10: dry-run banner absent on a real (non-dry-run) arm" "dry-run complete" "$out"
 
-# --- T11: post-append double-arm detection (HIMMEL-856 CR, codex-1) ---------
+# --- T11: post-append double-arm detection ---------
 # The registry check-then-append pair cannot be atomic across machines; the
 # mitigation is a re-read AFTER our own append that warns LOUDLY when another
 # host's arm for the same handover is visible. Simulate the double-arm by
@@ -485,12 +485,12 @@ assert_not_contains "T12: no DOUBLE-ARM warning on a clean arm" "DOUBLE-ARM DETE
 FAKE="$TMP/no-ql"
 mkdir -p "$FAKE/handover" "$FAKE/lib"
 cp "$SCRIPT_DIR/arm-resume.sh" "$FAKE/handover/arm-resume.sh"
-# HIMMEL-4013: arm-resume resolves its plugin profile through ../lanes (fail-closed).
+# arm-resume resolves its plugin profile through ../lanes (fail-closed).
 cp -R "$SCRIPT_DIR/../lanes" "$FAKE/lanes"
 for lib in console-context py-armor handover-path telemetry macos-app-resolve chokepoint-seam-guard claude-version; do
     cp "$SCRIPT_DIR/../lib/$lib.sh" "$FAKE/lib/$lib.sh"
 done
-# HIMMEL-3165 guard: a lib arm-resume.sh hard-sources (column-0 `. .../lib/X.sh`
+# guard: a lib arm-resume.sh hard-sources (column-0 `. .../lib/X.sh`
 # with no `||` / `2>/dev/null` fail-open) must exist in the fake tree, else the
 # T13-T14 cases die at source time with an unrelated-looking rc=1. Name the
 # missing lib here instead. Derived from arm-resume.sh so the next hard-sourced
@@ -524,11 +524,11 @@ rc=$?
 assert_rc "T13b: arm proceeds with handover-path.sh absent" 0 "$rc"
 assert_contains "T13b: dry-run reaches the completion banner" "dry-run complete" "$out"
 
-# --- T13c: PARTIAL deployment — library present but PRE-HIMMEL-1344 ----------
+# --- T13c: PARTIAL deployment — library present but an older revision ----------
 # The gap T13b cannot see (codex-adv round): removing the whole library makes
 # the registry path skip entirely, so it never exercises the scan helpers. The
 # real skew is a library that resolves handover_root fine and exports the JSON
-# globals/helpers, but deliberately lacks the HIMMEL-1344 identity + matcher.
+# globals/helpers, but deliberately lacks the identity + matcher.
 # This test-owned fixture pins that exact old-library property; deriving it
 # from main would silently stop exercising the fallback after this branch merges.
 PRE_1344_LIB="$SCRIPT_DIR/fixtures/handover-path-pre-himmel-1344.sh"
@@ -558,7 +558,7 @@ assert_rc "T14: arm proceeds despite a broken status probe" 0 "$rc"
 assert_contains "T14: WARN reports the unexpected status rc" "queue-lock status failed (rc=5)" "$out"
 
 # --- T15: re-arming the SAME handover from the SAME host replaces its own --
-# prior arms.jsonl record instead of accumulating a second one (HIMMEL-882).
+# prior arms.jsonl record instead of accumulating a second one.
 # A stale same-host record left behind by a repeated re-arm/--force would
 # otherwise sit in the append-only registry forever -- harmless to THIS
 # host (foreign-hits only looks at OTHER hosts) but a permanent rc=8 trap
@@ -569,19 +569,19 @@ out=$(bash "$ARM" --time "$(future_time)" --handover "$HO15" 2>&1)
 rc=$?
 assert_rc "T15: first real arm succeeds" 0 "$rc"
 HO15_ALT="$HANDOVER_DIR/HIMMEL-856-test/../HIMMEL-856-test/next-session-15.md"
-# HIMMEL-1879: the stub scheduler REGISTERS now (it has to -- the post-arm
+# the stub scheduler REGISTERS now (it has to -- the post-arm
 # existence verify refuses a create that armed nothing), and both spellings
 # canonicalize to the same task name, so the second arm would be a legitimate
 # rc 3 same-handover dedup. This case is about the arms.jsonl prune, not dedup:
 # clear the scheduler, which is what "always exit 0" used to mean. arms.jsonl is
 # deliberately NOT cleared -- the record from the first arm is the thing the
 # assertion below expects the re-arm to REPLACE.
-# HIMMEL-2964: clearing sched-stub.tasks alone only resets the Windows
+# clearing sched-stub.tasks alone only resets the Windows
 # schtasks stub. On POSIX (ubuntu/macOS CI) arm-resume's dedup check queries
 # atq, which reads sched-stub.atdir -- a leftover job file there still names
 # the same derived task, so the second arm hit a real (if here unwanted)
 # same-task dedup refusal (rc=3). Clear both stores. On macOS the dedup reads
-# the crontab stub instead (HIMMEL-3181), so clear that store too.
+# the crontab stub instead, so clear that store too.
 : > "$TMP/sched-stub.tasks"
 rm -rf "$TMP/sched-stub.atdir"
 rm -f "$TMP/sched-stub.crontab"
@@ -604,7 +604,7 @@ else
 fi
 rm -f "$HANDOVER_DIR/.locks/arms.jsonl"
 
-# --- T16: a FIRED foreign-host record no longer blocks a re-arm (HIMMEL-882)
+# --- T16: a FIRED foreign-host record no longer blocks a re-arm
 # queue-lock.sh's acquire marks a record "fired":"true" once the armed
 # session actually starts; that record must stop counting as a PENDING
 # cross-host dup from then on.
@@ -619,7 +619,7 @@ assert_not_contains "T16: no rc=8 PENDING-arm refusal for a fired record" "alrea
 rm -f "$HANDOVER_DIR/.locks/arms.jsonl"
 
 # --- T17: a STILL-LIVE (unfired) foreign-host record still refuses rc=8 ----
-# (HIMMEL-882 regression guard) -- confirms the fired-skip added for T16 is
+# -- confirms the fired-skip added for T16 is
 # scoped to records actually marked "fired":"true" and does not silently
 # widen to every foreign record.
 HO17="$HANDOVER_DIR/HIMMEL-856-test/next-session-17b.md"
@@ -668,7 +668,7 @@ rc=$?
 assert_rc "T19: first arm with a backslash path succeeds" 0 "$rc"
 # Same reason as T15: clear the (now registering) stub scheduler so the re-arm
 # is not refused as its own duplicate. arms.jsonl stays -- it is what is under test.
-# HIMMEL-2964: both stores, same reason as T15 (plus the macOS crontab stub).
+# both stores, same reason as T15 (plus the macOS crontab stub).
 : > "$TMP/sched-stub.tasks"
 rm -rf "$TMP/sched-stub.atdir"
 rm -f "$TMP/sched-stub.crontab"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-claude-lane.sh — HIMMEL-4082. Hermetic: no claude launch.
+# test-claude-lane.sh — Hermetic: no claude launch.
 # Pins the HIMMEL_CLAUDE_LANE resolver (scripts/lib/claude-lane.sh) and that the
 # headless claude spawn sites honour it with a stubbed launcher.
 set -uo pipefail
@@ -36,7 +36,7 @@ err="$( (HIMMEL_CLAUDE_LANE=bogus; export HIMMEL_CLAUDE_LANE; claude_lane_resolv
 case "$err" in *bogus*native*openrouter*claudex*) r=ok;; *) r="got: $err";; esac
 check "unknown refusal names value + valid lanes" "ok" "$r"
 
-# HIMMEL-4111: claude_lane_egress classifies the REVIEWED repo (not the cwd) and
+# claude_lane_egress classifies the REVIEWED repo (not the cwd) and
 # refuses a non-native lane when the matrix forbids that backend for its corpus.
 W="$(mktemp -d "${TMPDIR:-/tmp}/test-claude-lane.XXXXXX")" || { echo "FAIL - mktemp"; exit 1; }
 trap 'rm -rf "$W"' EXIT
@@ -99,7 +99,7 @@ rm -f "$W/tree/.env"
 r="$(egress openrouter "$W/nope")";  case "$r" in 3\|*) r=ok;; esac
 check "unresolvable reviewed repo refused (fail closed)" ok "$r"
 
-# HIMMEL-5099: a LUNA_VAULT / LUNA_VAULT_PATH that is set but does not resolve refuses
+# a LUNA_VAULT / LUNA_VAULT_PATH that is set but does not resolve refuses
 # (the himmel repo itself is otherwise allowed, so only the vault var can cause the rc 3).
 # shellcheck disable=SC2030,SC2031 # the vars are set in a subshell on purpose
 vaultegress() { # <lane> <LUNA_VAULT|-> <LUNA_VAULT_PATH|-> -> prints "rc|stderr-first-line"
@@ -118,7 +118,7 @@ r="$(vaultegress claudex "$W/plain" "$W/gone")"; case "$r" in 3\|*vault*fail\ cl
 check "resolvable LUNA_VAULT does not mask an unresolvable LUNA_VAULT_PATH" ok "$r"
 r="$(vaultegress claudex "$W/plain" "$W/plain")"; check "resolvable vault vars elsewhere: himmel repo still allowed" "0|" "$r"
 
-# HIMMEL-5099: himmel-code means the reviewed repo shares THIS checkout's git common dir.
+# himmel-code means the reviewed repo shares THIS checkout's git common dir.
 # A hermetic checkout (lib copy + real guardrails) holds a nested foreign repo and a worktree.
 G="$W/gt"; mkdir -p "$G/scripts/lib" "$G/.claude/worktrees" "$G/foreign" "$G/plain-sub"
 cp "$REPO/scripts/lib/claude-lane.sh" "$REPO/scripts/lib/load-dotenv.sh" "$REPO/scripts/lib/handover-path.sh" "$REPO/scripts/lib/git-clean.sh" "$G/scripts/lib/"

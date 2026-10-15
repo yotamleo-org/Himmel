@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # scripts/ci/test-run-shell-tests-rotation-cursor.sh — run-shell-tests.sh
-# resume rotation (HIMMEL-2243), sub-cases 17k-17m: the cursor FILE'S PATH —
+# resume rotation, sub-cases 17k-17m: the cursor FILE'S PATH —
 # what the runner refuses to follow, and how it keys one cursor per scan root.
 #
 # CASE 17 SPANS THREE FILES. If you grepped "Case 17" and landed here, the
 # other two are test-run-shell-tests-rotation.sh (17a-17f: the rotation
 # contract proper) and test-run-shell-tests-rotation-guards.sh (17g-17j: HOME
-# unset, narrowed plans). HIMMEL-2895 split them because each sub-case costs
+# unset, narrowed plans). Split them because each sub-case costs
 # 25-51s against the same 25s-sleep sandbox, and the eleven of them were 327s
 # of the original file's 382s — the floor on every shard of the sharded
 # shell-unit job.
@@ -40,7 +40,7 @@ set -uo pipefail
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
-# Case 17 -- resume rotation (HIMMEL-2243), the cursor file's own path. 17a-17j are in the -rotation and -rotation-guards siblings.
+# Case 17 -- resume rotation, the cursor file's own path. 17a-17j are in the -rotation and -rotation-guards siblings.
 # --------------------------------------------------------------------------
 echo "== Case 17 (cursor path): symlink refusal and key encoding (17k-17m) =="
 sb17=$(mktemp -d "${TMPDIR:-/tmp}/himmel-suite-rotate.XXXXXX") || {
@@ -51,7 +51,7 @@ order17="$sb17/order.log"
 mk_rotate_sandbox "$sb17" "$order17"
 
 # 17k — a symlinked cursor path must be refused outright, not followed for
-# either read or write (HIMMEL-2243 FIX 9, panel finding [codex-1]). A plain
+# either read or write. A plain
 # redirect FOLLOWS symlinks, and the default cursor path is entirely
 # predictable ($HOME/.himmel/himmel-shell-suite-<slug>.cursor), so a symlink
 # planted (or created by accident) there would make a budget-truncated run
@@ -96,8 +96,8 @@ fi
 rm -rf "$sb17"
 
 # --------------------------------------------------------------------------
-# Case 17l/17m -- rotation-cursor key no longer collides across scan roots
-# (HIMMEL-2243 CodeRabbit Major finding). The cursor key used to be the
+# Case 17l/17m -- rotation-cursor key no longer collides across scan roots.
+# The cursor key used to be the
 # SAME lossy slug the lock uses: "/" folds to "__" before the rest collapses
 # to "-", so a scan root "a/b" and a literal scan root "a__b" slug to the
 # IDENTICAL key. That collision is benign for the lock (it only

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/triviality-gate.sh (unwired).
+# Smoke test for scripts/cr/triviality-gate.sh.
 # The suite is the spec: override > safety > docs-only > one-liner > substantive,
 # with empty stdin failing closed. Mirrors scripts/cr/test-lane-classify.sh.
 set -euo pipefail
@@ -131,7 +131,7 @@ new file mode 100644
 +second"
 check "$(vverdict "$(classify_triviality "$devnull_headers")")" trivial
 
-# The safety carve-out covers the CR pipeline itself - a
+# the safety carve-out covers the CR pipeline itself - a
 # one-line change to the panel scripts, the lane registry, or the backend
 # router registry must never classify trivial (the gate cannot blind the
 # pipeline that runs it). Assert reason too: these must hit safety-path.

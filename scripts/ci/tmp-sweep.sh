@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tmp-sweep.sh — sweep himmel's own leftover fixture trees out of %TEMP%.
 #
-# WHY (HIMMEL-1978). Git-Bash /tmp on the OVERLORD8 suite box reached ~149,600
+# WHY. Git-Bash /tmp on the OVERLORD8 suite box reached ~149,600
 # top-level entries; `ls /tmp | wc -l` alone took >120s and every suite that
 # calls mktemp paid for it. The litter is ours: suites and probes that crashed
 # or were killed by run-shell-tests.sh's watchdog never ran their cleanup, and
@@ -138,7 +138,7 @@ fi
 # One entry deliberately ends WITHOUT a separator, because its writer does not
 # use one: `graphify-refresh-lock` is followed by a bare lock index.
 #
-# HIMMEL-1995 finished the narrowing the r5 pass left half-done. The remaining
+# The remaining
 # family stems (`bench-`, `critic-`, `critics-`, `fleet-`, `graphmap-`,
 # `lanes-`, `pp-`) are gone, replaced by the templates their writers actually
 # use. Where one writer family has many near-identical templates
@@ -268,7 +268,7 @@ waw-
 # OPT-IN, and separate from the list above on purpose. `tmp.` is coreutils
 # `mktemp`'s DEFAULT template, so it is the one prefix here that any program on
 # the box can produce — 15,588 of the 125,839 entries the first sweep matched.
-# HIMMEL-1978 asks for it, but a top-level mtime older than the floor does not
+# Sweeping it is tempting, but a top-level mtime older than the floor does not
 # prove a tree is unused (a long-running program can hold a stale-looking dir
 # open), and the rest of the list carries no such doubt. So the default sweep
 # stays strictly-ours and this is an explicit operator choice.

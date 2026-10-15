@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/test-ci-main-cron.sh -- regression suite for HIMMEL-5113: main CI
+# scripts/ci/test-ci-main-cron.sh -- regression suite for main CI
 # runs on a cron (plus workflow_dispatch) instead of on every merge push.
 #
 # Asserts, over .github/workflows/ci.yml (comment-stripped):

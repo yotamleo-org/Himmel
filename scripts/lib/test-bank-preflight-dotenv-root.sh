@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-bank-preflight-dotenv-root.sh — HIMMEL-3532. RED-first regression: the
+# test-bank-preflight-dotenv-root.sh — RED-first regression: the
 # fleet cap must come from bank-preflight's OWN checkout's .env, never from
 # whatever git repo the caller's CWD happens to be inside.
 #
@@ -35,7 +35,7 @@ own="$W/own-checkout"
 mkdir -p "$own/scripts/lib"
 cp "$REPO/scripts/lib/bank-preflight.sh" "$own/scripts/lib/bank-preflight.sh"
 cp "$REPO/scripts/lib/load-dotenv.sh" "$own/scripts/lib/load-dotenv.sh"
-# HIMMEL-3914: every chokepoint fails closed without its seam-guard lib.
+# every chokepoint fails closed without its seam-guard lib.
 cp "$REPO/scripts/lib/chokepoint-seam-guard.sh" "$own/scripts/lib/chokepoint-seam-guard.sh"
 printf 'HIMMEL_FLEET_CAP=15\n' > "$own/.env"
 SUT="$own/scripts/lib/bank-preflight.sh"

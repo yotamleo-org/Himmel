@@ -160,7 +160,7 @@ model=$(awk 'NR==1 && $0!="---" {exit} NR>1 && $0=="---" {exit} /^model:/ {sub(/
 [ -n "$model" ] || die "the reviewer agent frontmatter names no model: — claude-headless.sh requires one (HIMMEL-2198)" 1
 cat >> "$work/system.md" <<'EOF'
 
-## Floor-review output contract (HIMMEL-3107)
+## Floor-review output contract
 
 You are running headless with no conversation history. Your working directory
 is a snapshot of the repository at the reviewed commit (read any file you need;
@@ -192,7 +192,7 @@ record_failure() {
 # shellcheck source=scripts/lib/claude-lane.sh
 . "$REPO_ROOT/scripts/lib/claude-lane.sh" || die "cannot load scripts/lib/claude-lane.sh" 1
 claude_lane_egress "$(git rev-parse --show-toplevel)" || die "not eligible: the ${HIMMEL_CLAUDE_LANE:-native} lane may not receive this repo. Nothing spent." 3
-# Context-free CR floor reviewer — runs only when
+# context-free CR floor reviewer — runs only when
 # every non-Claude critic is exhausted and the operator opted in via
 # CR_FLOOR_FALLBACK=claude-only; claude-headless.sh pins native auth (native-auth-pin.sh native_auth_pin_env), does the mandatory bank
 # preflight (refuses on a non-PROCEED verdict), the explicit acceptEdits

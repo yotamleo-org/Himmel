@@ -1,4 +1,4 @@
-// HIMMEL-4904: secret-free accounting fixtures. No provider calls or credentials.
+// secret-free accounting fixtures. No provider calls or credentials.
 // Breaks caught: fallback to another account/bank, duplicate spend, automatic
 // rollover, stale evidence admission, rounding and concurrent over-reservation.
 import { test } from 'node:test';
@@ -75,7 +75,7 @@ function bankApi(f, extra = {}) {
   } });
 }
 
-// HIMMEL-4985: the launcher opts in with HIMMEL_API_LANE=on; the native bank is irrelevant.
+// the launcher opts in with HIMMEL_API_LANE=on; the native bank is irrelevant.
 test('opted-in API launch with a funded account proceeds while the native bank is exhausted', () => {
   const f = fixture();
   writeFileSync(join(f.dir, 'native-cache.json'), JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
@@ -339,7 +339,7 @@ test('bank read prints API row and does not use native producer', () => {
   assert.match(r.stderr, /api:A.*grant-cycle=cycle-a.*available-est=1\.000000/);
 });
 
-// HIMMEL-5519: the operator's reading carries no freshness window; the cap and the
+// the operator's reading carries no freshness window; the cap and the
 // reserve accounting are the overspend guard, so a two-hour-old reading still admits.
 test('an operator snapshot two hours old still admits within the cap', () => {
   const f = fixture();
@@ -379,7 +379,7 @@ test('twenty parallel reserves all succeed under the cap and the next one over i
   assert.equal(f.call().reserved_usd, '0.200000');
 });
 
-// HIMMEL-5519: an API call is not a subscription session; it takes its own slots.
+// an API call is not a subscription session; it takes its own slots.
 test('an API launch does not move the subscription FLEET count and has its own cap', () => {
   const f = fixture();
   const launch = (job) => bankApi(f, {
@@ -397,7 +397,7 @@ test('an API launch does not move the subscription FLEET count and has its own c
   assert.match(three.stderr, /api lane at\/over its own cap \(2\/2\)/);
 });
 
-// HIMMEL-5519: automatic snapshot from the Admin API cost report. HTTP is stubbed;
+// automatic snapshot from the Admin API cost report. HTTP is stubbed;
 // the key is a fixture string. Endpoint and fields per the Admin API cost_report docs:
 // GET /v1/organizations/cost_report, x-api-key, amounts in cents as decimal strings.
 const FIXTURE_KEY = 'fixture-admin-key-not-real';

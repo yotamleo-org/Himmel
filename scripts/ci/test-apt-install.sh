@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/ci/test-apt-install.sh -- .github/scripts/apt-install.sh survives a
-# stalled Ubuntu archive mirror (HIMMEL-2872): cached .debs first, a bounded
+# stalled Ubuntu archive mirror: cached .debs first, a bounded
 # retry against an alternate mirror second, one failure line naming the mirror
 # and the packages last. apt-get is a stub; no network, no sudo.
 #
@@ -110,7 +110,7 @@ failed_line="$(grep 'apt-install: FAILED' <<<"$out")"
   && grep -q 'ffmpeg at' <<<"$failed_line" \
   && ok "total failure prints one line naming mirror and packages" || bad "final failure (rc=$rc n=$n out=$out)"
 
-# 6. real runner sources (HIMMEL-2872 judge j2268a): the comment header names
+# 6. real runner sources: the comment header names
 #    help.ubuntu.com and the stanza is mirror+file:, so the primary is the first
 #    mirror in the list and the fallback must rewrite that list, not the comments.
 FIXTURE=real STUB_BAD=azure.example run_case c6a

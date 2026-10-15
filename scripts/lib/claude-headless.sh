@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # claude-headless.sh — the P1 chokepoint wrapper for `claude` `-p` dispatch
-# (HIMMEL-2178, Chain 2a). ONE headless claude invocation site; every other
+# (Chain 2a). ONE headless claude invocation site; every other
 # script that needs a headless worker calls this one instead of shelling out
 # directly. Bash 3.2 safe.
 #
@@ -20,7 +20,7 @@
 # (himmel-architecture-2026-08-28.md §3 — file-per-session, no shared-write
 # store), written ONLY by this script.
 set -uo pipefail
-# HIMMEL-3914/HIMMEL-4460: refuse a chokepoint seam (NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK)
+# /refuse a chokepoint seam (NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK)
 # that differs from the session's launch env. Parameter expansion, not dirname:
 # a PATH-shadowed dirname must not pick what is sourced before the seam guard.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
@@ -134,12 +134,12 @@ command -v node >/dev/null 2>&1 || die "node is required"
 PROMPT_FILE_IS_TEMP=0
 if [ -z "$PROMPT_FILE" ]; then
   PROMPT_FILE="$(mktemp "${TMPDIR:-${TEMP:-/tmp}}/claude-headless-stdin.XXXXXX")"
-  # codex-1 (CR round 8): the full finalize_on_exit trap isn't installed
+  # the full finalize_on_exit trap isn't installed
   # until further down (after LIVE_DIR exists), so an interrupt during this
   # `cat` — which can block waiting on stdin — would leave this temp file
   # (potentially holding a partial/sensitive prompt) behind uncleaned.
   # A minimal early trap closes that window; the real trap below replaces it.
-  # codex-1 (CR round 9): an INT/TERM trap that only removes the file and
+  # An INT/TERM trap that only removes the file and
   # does not exit lets bash fall through and CONTINUE the script past the
   # interrupted `cat` — dispatching with a deleted/partial prompt instead of
   # aborting. Exit with the same conventional codes finalize_on_exit uses.
@@ -152,7 +152,7 @@ fi
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
-# HIMMEL-5119: a row's `heartbeat` (epoch seconds) is stamped at each lifecycle
+# a row's `heartbeat` (epoch seconds) is stamped at each lifecycle
 # write (row create, launching mark, worker pid record). A row older than the TTL
 # is reaped even with live pids, and a launching row with no worker pid ages out
 # too. Default is well above the longest expected dispatch (--max-turns bounded).
@@ -161,11 +161,11 @@ case "$ROW_TTL_SECS" in ''|*[!0-9]*) ROW_TTL_SECS=14400 ;; esac
 
 # Process start time of <pid> ("" when it is gone or ps is unavailable). Paired
 # with the pid it identifies one process even after the pid is reused. TZ=UTC
-# LC_ALL=C (as proc-tree.sh does, HIMMEL-3791): lstart is printed in the caller's
+# LC_ALL=C (as proc-tree.sh does): lstart is printed in the caller's
 # TZ and locale, and a row may be recorded and read under different ones.
 proc_start() { TZ=UTC LC_ALL=C ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed 's/^ //; s/ $//'; }
 
-# HIMMEL-2197: a dispatched/running row whose wrapper died without running
+# a dispatched/running row whose wrapper died without running
 # finalize_on_exit (SIGKILL, host death) would count against the cap forever.
 # True when the row recorded a wrapper pid and that process is gone (or reused
 # with a different start time), AND the launched claude worker, when its pid was
@@ -189,17 +189,17 @@ pid_gone() { # <pid> <recorded start>
 
 # True when <pid> is a zombie (state Z): exited, not yet reaped. kill -0 and ps
 # lstart still answer for it, so under a non-reaping init (container PID 1, a
-# subreaper) a killed process would otherwise hold its slot indefinitely
-# (HIMMEL-5133). Unknown state (ps unavailable) is not a zombie: the slot stays.
+# subreaper) a killed process would otherwise hold its slot indefinitely.
+# Unknown state (ps unavailable) is not a zombie: the slot stays.
 # A stat carrying the l flag (Zl, Z<l, ZNl) is a multithreaded process whose main thread
-# exited while other threads still run: alive, never a zombie (HIMMEL-5139).
+# exited while other threads still run: alive, never a zombie.
 proc_zombie() {
   case "$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" in *l*) return 1 ;; Z*) return 0 ;; esac
   return 1
 }
 
 # True when the row's heartbeat is older than the TTL. A row with no heartbeat
-# (written before HIMMEL-5119) is unknown, never stale.
+# (written by an older version) is unknown, never stale.
 row_heartbeat_stale() {
   local hb ttl
   hb="$(jq -r '.heartbeat // empty' "$1" 2>/dev/null)"
@@ -236,10 +236,10 @@ tree_descendants() {
 # returns 1 when that worker is still alive after the kill (SIGTERM ignored), so
 # the caller keeps the slot rather than admit a second dispatch beside it.
 # A row with no worker_pid (launch gap) targets its wrapper instead: releasing it
-# on TTL alone admitted a dispatch beside a live wrapper (HIMMEL-5133). The
+# on TTL alone admitted a dispatch beside a live wrapper. The
 # wrapper's own trap takes its launched child down with it.
 # ponytail: a worker launched but not yet recorded is only reached through that
-# wrapper; upgrade path is a wrapper-side process-group record (HIMMEL-5119).
+# wrapper; upgrade path is a wrapper-side process-group record.
 kill_expired_worker() {
   local wpid wstart i kids k alive
   wpid="$(jq -r '.worker_pid // empty' "$1" 2>/dev/null)"
@@ -340,12 +340,12 @@ LIVE_DIR="$(registry_dir)/live"
 ADMISSION_LOCK="$LIVE_DIR/.admission.lock"
 RECLAIM_LOCK="$ADMISSION_LOCK.reclaim"
 LOCK_HELD=0
-# HIMMEL-2196 test seam: inert unless HIMMEL_HEADLESS_SEAM_DIR is set. Marks
+# test seam: inert unless HIMMEL_HEADLESS_SEAM_DIR is set. Marks
 # `<name>.<pid>.arrived` there, then blocks (bounded) until the test creates
 # `<name>.<pid>.go`, so two reclaimers can be sequenced without racing timers.
 seam() {
   local n=0
-  # No `return` on the hot path: HIMMEL-4459 shadows `return` and this runs
+  # No `return` on the hot path: shadows `return` and this runs
   # on every dispatch.
   if [ -n "${HIMMEL_HEADLESS_SEAM_DIR:-}" ]; then
     : > "$HIMMEL_HEADLESS_SEAM_DIR/$1.$$.arrived"
@@ -366,7 +366,7 @@ lock_is_stale() {
   fi
   [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null
 }
-# HIMMEL-2196: removal of a stale lock is serialized by a reclaim-intent lock
+# removal of a stale lock is serialized by a reclaim-intent lock
 # and re-verified under it, so a reclaimer that lost the race cannot delete the
 # lock a winner just re-acquired. Contended -> do nothing; the caller keeps
 # polling. With flock(1) the intent lock is a kernel lock on a sibling file:
@@ -429,14 +429,14 @@ steal_stale_reclaim_lock() {
     # Between the pid read and the rename a live reclaimer's marker may be the
     # one we moved. Restore it by mkdir (atomic create-if-absent) and re-record
     # its pid, never by mv: an mv onto a slot a third process took in the
-    # meantime nests the marker or replaces theirs (HIMMEL-5107). Losing the
+    # meantime nests the marker or replaces theirs. Losing the
     # mkdir means the slot is taken and the displaced owner's own ownership
     # re-check (reclaim_stale_lock) refuses it.
     # ponytail: dir fallback only (flock absent). The displaced owner's
     # check-then-rm in reclaim_stale_lock is still not atomic, so a steal landing
     # between its pid re-check and its rm can still let two reclaimers proceed;
     # no portable kernel lock exists without flock(1). Upgrade path: require
-    # flock on macOS (HIMMEL-5107). Also open: an owner pid still empty after
+    # flock on macOS. Also open: an owner pid still empty after
     # 0.2s counts as dead.
     seam steal-restore
     if mkdir "$RECLAIM_LOCK" 2>/dev/null; then
@@ -457,7 +457,7 @@ lock_acquire() {
     # contended, not stale) case.
     if [ "$tries" -eq 20 ] && [ "$stale_checked" = "0" ]; then
       stale_checked=1
-      # codex-3 (round 4): an EMPTY/unreadable pid file (the write below
+      # an EMPTY/unreadable pid file (the write below
       # failed, or the holder crashed before writing it) also counts as
       # stale (lock_is_stale), or a lock that never got a valid owner
       # recorded would block admission permanently.
@@ -496,7 +496,7 @@ lock_release() {
 # detection for a HUNG-but-still-running worker is the heartbeat TTL (below);
 # this only covers THIS process's own death, which needs no heartbeat. A SIGKILL
 # skips this trap, so the row also records pid + pid_start and the next
-# admission reaps it (count_active, HIMMEL-2197). HIMMEL-5119: the row's
+# admission reaps it (count_active). The row's
 # heartbeat is stamped at lifecycle writes only (create, launching, worker pid);
 # a worker alive past HIMMEL_DISPATCH_ROW_TTL_SECS is reaped and killed.
 # ponytail: the TTL is a wall-clock bound, not a progress probe (the worker's
@@ -531,7 +531,7 @@ finalize_on_exit() {
   if [ -n "${_LAUNCHED_CLAUDE_PID:-}" ] && kill -0 "$_LAUNCHED_CLAUDE_PID" 2>/dev/null; then
     kill_tree "$_LAUNCHED_CLAUDE_PID"
   else
-    # codex-6 (HIMMEL-2514, CR round 3): `( ... ) &` and the very next line
+    # ` &` and the very next line
     # (`_LAUNCHED_CLAUDE_PID=$!`) are two separate commands — bash runs
     # pending traps BETWEEN commands, so a SIGTERM/SIGINT landing in that
     # exact window fires this trap while the variable is still empty, and
@@ -543,7 +543,7 @@ finalize_on_exit() {
     # launching session; this closes the residual leak, not a regression.
     # `jobs -p` (this shell's own background job table) is the fallback,
     # not `ps` + a `$$`-children scan: it can never return the ambient
-    # CLAUDE_PID, which is the whole bug HIMMEL-2514 is about, so it
+    # CLAUDE_PID (the inherited pid this guards against), so it
     # cannot reintroduce an inherited-pid surface. On every genuine
     # pre-launch refusal path (bank-preflight, concurrency cap,
     # registry-row failure, bypassPermissions) no background job has ever
@@ -561,7 +561,7 @@ finalize_on_exit() {
       && mv "$ROW.tmp" "$ROW" 2>/dev/null
     TERMINAL_WRITTEN=1
   fi
-  # codex-5 (round 4, suggestion): the materialized stdin prompt (may carry
+  # the materialized stdin prompt (may carry
   # sensitive content) was only cleaned on the normal post-dispatch path — a
   # bank-preflight refusal, admission refusal, or interruption before that
   # point left it behind in the OS temp dir. Clean it here instead, on
@@ -598,16 +598,16 @@ BANK_VERDICT="$(CADENCE_BANK_LEG="${CADENCE_BANK_LEG:-claude-headless:$ROLE}" ba
 # file/dir at the same path cannot pass the post-dispatch check (a failed or
 # denied dispatch that touches nothing must not read as "completed" just
 # because something was already sitting at that path). ---
-# codex-2 (round 2): whole-second mtimes (`%s`) miss a pre-existing artifact
+# whole-second mtimes (`%s`) miss a pre-existing artifact
 # rewritten within the SAME second — a real case for a fast dispatch. `%s.%N`
 # (GNU date, which Git Bash ships) gives nanosecond resolution instead.
-# codex-2 (round 3): for a pre-existing DIRECTORY, a file's own mtime is what
+# For a pre-existing DIRECTORY, a file's own mtime is what
 # advances when its content changes — the directory's own mtime does NOT
 # (on NTFS and most filesystems, a directory's mtime only tracks entries
 # being added/removed/renamed, not content changes to files already inside
 # it). So compare the newest mtime among the files INSIDE the directory,
 # not the directory entry itself.
-# codex-1 (round 4): a directory containing only subdirectories (no regular
+# A directory containing only subdirectories (no regular
 # files anywhere in its tree) yields no `find -type f` output at all, so the
 # scan above returned empty — read by artifact_present() as "no baseline",
 # which skips the freshness check entirely and lets an untouched pre-existing
@@ -675,7 +675,7 @@ lock_release
 JSON_SCHEMA=""
 if [ -n "$JSON_SCHEMA_FILE" ]; then JSON_SCHEMA="$(cat "$JSON_SCHEMA_FILE")"; fi
 
-# HIMMEL-4082: HIMMEL_CLAUDE_BIN (tests) wins; else the lane seam picks the
+# HIMMEL_CLAUDE_BIN (tests) wins; else the lane seam picks the
 # launcher (unset/native = plain `claude`, unchanged; unknown lane refuses).
 if [ -n "${HIMMEL_CLAUDE_BIN:-}" ]; then
   CLAUDE_LANE_CMD=("$HIMMEL_CLAUDE_BIN")
@@ -683,7 +683,7 @@ else
   # shellcheck source=scripts/lib/claude-lane.sh
   . "$SCRIPT_DIR/claude-lane.sh" && claude_lane_resolve "$REPO_ROOT" || exit 2
 fi
-# launch-profile-ok: profile-agnostic chokepoint; its callers own the plugin-profile choice (HIMMEL-4013)
+# launch-profile-ok: profile-agnostic chokepoint; its callers own the plugin-profile choice
 CMD=("${CLAUDE_LANE_CMD[@]}" -p --output-format json --permission-mode "$PERMISSION_MODE" --max-turns "$MAX_TURNS")
 CMD+=(--model "$MODEL")
 [ -z "$ALLOWED_TOOLS" ] || CMD+=(--allowedTools "$ALLOWED_TOOLS")
@@ -708,10 +708,10 @@ fi
 STDERR_FILE="$(mktemp "${TMPDIR:-${TEMP:-/tmp}}/claude-headless-stderr.XXXXXX")"
 STDOUT_FILE="$(mktemp "${TMPDIR:-${TEMP:-/tmp}}/claude-headless-stdout.XXXXXX")"
 
-# HIMMEL-2178 Chain 2a dispatch wrapper — the sanctioned
+# Chain 2a dispatch wrapper — the sanctioned
 # chokepoint for headless `claude -p`; bank-preflight (above) + concurrency
 # guard (above) + artifact-check (below) gate every call, and
-# native_auth_pin_env (native-auth-pin.sh, HIMMEL-1867) strips any ambient
+# native_auth_pin_env (native-auth-pin.sh) strips any ambient
 # ANTHROPIC_*/CLAUDE_CODE_USE_* proxy env right before the launch so this
 # stays on native subscription auth. rc is diagnostic only (P0: a denial can
 # exit 0) — the verdict comes from the artifact check, not this exit code.
@@ -723,14 +723,14 @@ STDOUT_FILE="$(mktemp "${TMPDIR:-${TEMP:-/tmp}}/claude-headless-stdout.XXXXXX")"
 # claude session (the most likely time to be interrupted) never reached
 # finalize_on_exit, leaving the dispatch row permanently "dispatched". A
 # background job + `wait "$pid"` IS promptly interruptible.
-# HIMMEL-3640: dedupe PATH before the nested `claude -p` launch — Claude
+# Dedupe PATH before the nested `claude -p` launch — Claude
 # Code prepends each enabled plugin's bin/ dir at startup without checking
 # for an existing copy, so handing it an already-duplicated inherited PATH
 # lets that compound across every headless dispatch in a long session.
 DEDUPED_PATH="$(dedupe_path "$PATH")"
-# HIMMEL-2197: mark the row BEFORE the fork. A wrapper SIGKILLed between the
+# mark the row BEFORE the fork. A wrapper SIGKILLed between the
 # fork and the worker_pid write below must not look launch-free to the reaper;
-# the heartbeat stamped here (HIMMEL-5119) bounds how long such a row holds a slot.
+# the heartbeat stamped here bounds how long such a row holds a slot.
 if [ -n "${ROW:-}" ] && [ -f "$ROW" ]; then
   if ! { jq --argjson hb "$(date +%s)" '.launching = true | .heartbeat = $hb' "$ROW" > "$ROW.tmp" 2>/dev/null && mv "$ROW.tmp" "$ROW" 2>/dev/null; }; then
     rm -f "$ROW.tmp" 2>/dev/null
@@ -738,7 +738,7 @@ if [ -n "${ROW:-}" ] && [ -f "$ROW" ]; then
   fi
 fi
 # shellcheck disable=SC1091,SC2031  # SC2031: ${!PREFIX*} parses as an empty-named var
-# HIMMEL-4459: native_auth_pin_env's return value is ADVISORY here — a shadowed
+# native_auth_pin_env's return value is ADVISORY here — a shadowed
 # `unset`/`return` (function, alias, startup file) can make it return 0 with the
 # proxy variables still set. The launch is gated on the keyword-only snippet
 # documented in native-auth-pin.sh ("LAUNCH GATE"), which no shadow can reach.
@@ -748,7 +748,7 @@ fi
      [[ ${ANTHROPIC_BASE_URL-} == http://127.0.0.1 || ${ANTHROPIC_BASE_URL-} == http://127.0.0.1[:/]* ||
         ${ANTHROPIC_BASE_URL-} == http://localhost || ${ANTHROPIC_BASE_URL-} == http://localhost[:/]* ]]; then
     _nd=$(</proc/net/dev); _nd=${_nd#*$'\n'}; _nd=${_nd#*$'\n'}; _re=$'^[[:space:]]*lo:[^\n]*$'
-    # Exact names only (HIMMEL-4461): a substring strip would also erase a name
+    # Exact names only: a substring strip would also erase a name
     # built from the two kept ones, e.g. ANTHROPIC_BASE_URLANTHROPIC_API_KEY.
     # Sentinel: a readonly `_v` aborts `for _v` and leaves _k empty, a nameref
     # walks values; the self-named assignment errors on the first and `${!_v}`
@@ -761,13 +761,13 @@ fi
   [[ -z $_l ]] && \
   PATH="$DEDUPED_PATH" MSYS_NO_PATHCONV=1 "${CMD[@]}" < "$PROMPT_FILE" \
   >"$STDOUT_FILE" 2>"$STDERR_FILE"; } ) &
-# HIMMEL-2514: deliberately NOT named CLAUDE_PID — an interactive Claude Code
+# deliberately NOT named CLAUDE_PID — an interactive Claude Code
 # session exports its OWN pid into every subprocess under that exact name, so
 # any pre-launch refusal (bank-preflight, concurrency cap, a registry-row
 # write failure) would have finalize_on_exit read the ambient value and
 # kill_tree the session that launched this wrapper, not the child it spawned.
 _LAUNCHED_CLAUDE_PID=$!
-# HIMMEL-2197: record the worker so a SIGKILLed wrapper's surviving worker keeps
+# record the worker so a SIGKILLed wrapper's surviving worker keeps
 # its slot (row_holder_dead). Best effort: a failed write leaves the row as is.
 if [ -n "${ROW:-}" ] && [ -f "$ROW" ]; then
   jq --arg wpid "$_LAUNCHED_CLAUDE_PID" --arg wstart "$(proc_start "$_LAUNCHED_CLAUDE_PID")" --argjson hb "$(date +%s)" \
@@ -778,7 +778,7 @@ wait "$_LAUNCHED_CLAUDE_PID"
 RC=$?
 ENVELOPE="$(cat "$STDOUT_FILE" 2>/dev/null)"
 rm -f "$STDOUT_FILE"
-# (temp prompt file cleanup moved into finalize_on_exit — see codex-5 round 4)
+# (temp prompt file cleanup lives in finalize_on_exit)
 
 # codex-5: structured_output (the --json-schema-file contract) was being
 # read off the envelope and then discarded — a caller that asked for a

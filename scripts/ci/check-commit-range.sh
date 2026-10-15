@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check-commit-range.sh — lint every commit message in a range against the
 # project's conventional-commit + ticket gate (scripts/hooks/check-commit-msg.sh),
-# so a PR can't merge non-conventional or untraceable commits (HIMMEL-594/1483).
+# so a PR can't merge non-conventional or untraceable commits.
 #
 # Local parity: the commit-msg hook runs check-commit-msg.sh per commit at author
 # time. This re-checks the WHOLE PR range in CI (covering commits authored where
@@ -37,7 +37,7 @@ MERGE_REF=0
 if [ "${1:-}" = "--merge-ref" ]; then MERGE_REF=1; shift; fi
 
 BASE="${1:-${COMMIT_RANGE_BASE:-}}"
-# --merge-ref (HIMMEL-3413): CI lints refs/pull/N/merge, the merge of the CURRENT
+# --merge-ref: CI lints refs/pull/N/merge, the merge of the CURRENT
 # base tip and the PR head. pull_request.base.sha is the tip when the PR was
 # OPENED, so <base.sha>..HEAD also holds every commit main gained since (a bot's
 # ticketless bump), none of them the PR's. The merge commit's first parent is
@@ -62,7 +62,7 @@ fi
 # otherwise reach here and `rev-list` would error — DON'T swallow it to an empty
 # "nothing to lint" pass. A genuinely empty range (base == HEAD) exits rev-list 0
 # with no output and is handled below.
-# --no-merges (HIMMEL-1483 CR1): the hook's merge exemption is live-MERGE_HEAD
+# --no-merges: the hook's merge exemption is live-MERGE_HEAD
 # only, so a HISTORICAL merge commit in the range would be validated as an
 # ordinary message and fail. Parent count is the unfakeable merge signal — a
 # message SHAPED like a merge still has one parent and is still validated —
@@ -76,7 +76,7 @@ if [ -z "$commits" ]; then
   exit 0
 fi
 
-# HIMMEL-3806: HIMMEL is a private Jira, so only internal committers (the
+# HIMMEL is a private Jira, so only internal committers (the
 # allowlist in scripts/ci/ticket-id-internal-authors.txt) must cite an ID. An
 # external PR author skips ONLY the ticket-ID requirement (TICKET_ID_REQUIRED=0
 # makes check-commit-msg.sh return after the conventional-shape check); an empty

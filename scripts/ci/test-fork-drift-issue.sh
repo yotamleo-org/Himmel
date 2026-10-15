@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/ci/fork-drift-issue.sh (HIMMEL-1046). Uses DRY_RUN=1
+# Smoke test for scripts/ci/fork-drift-issue.sh. Uses DRY_RUN=1
 # so no gh, no auth, no network — asserts the issue-state decisions per guard
 # exit code from the emitted DRY: gh command lines.
 set -uo pipefail
@@ -10,7 +10,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

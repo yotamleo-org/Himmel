@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-bus-rebind.sh — HIMMEL-5201: arm-resume.sh wraps the resumed
+# test-arm-resume-bus-rebind.sh —: arm-resume.sh wraps the resumed
 # claude so the new pid is rebound to its name on the himmel-bus.
 #
 # A resumed session gets a NEW claude pid and stays unbound on the bus (bus

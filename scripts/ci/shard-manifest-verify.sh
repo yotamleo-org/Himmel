@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/shard-manifest-verify.sh — HIMMEL-3897 (HIMMEL-3815 slice G).
+# scripts/ci/shard-manifest-verify.sh
 #
 # The shell-unit aggregator's proof that the fixed shards ran exactly what the
 # base-sourced selection picked, at this head. Each shard's run-shell-tests.sh
@@ -74,7 +74,6 @@ fi
 
 # Suite paths are carried as the space-delimited fields above, so one holding
 # whitespace would be split and mis-accounted: refuse it, naming the path
-# (HIMMEL-3916).
 #
 # A `[SKIP]` line carries ` — <reason>` after its path, so the reason's own
 # spaces must not read as path whitespace: past the first field only empty or a

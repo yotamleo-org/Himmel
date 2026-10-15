@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-bank-monitor.sh — HIMMEL-2767. Deterministic one-shot tests for the
+# test-bank-monitor.sh — Deterministic one-shot tests for the
 # 30-minute bank sample ring, burn projections, wake-up suppression, resets,
 # missing data, and the claudex/codex bank input.
 #
@@ -34,7 +34,7 @@ export BANK_STATE_FILE="$W/state"
 export BANK_STUB_ROW_FILE="$W/codex-row"
 export REPO="$W/repo"
 
-# HIMMEL-1712: every fixture below stamps the matching current-session account
+# every fixture below stamps the matching current-session account
 # hash so the new usage_cache_account_mismatch() check in bank-monitor.sh
 # stays out of the way of the pre-existing rate/state coverage below — this
 # suite is about sampling math, not identity. A dedicated account-mismatch
@@ -176,7 +176,7 @@ printf '%s' '{"oauthAccount":{"accountUuid":"uuid-bank-monitor-test"}}' > "$HOME
 check 'HIMMEL-1712: an account-mismatched cache is silent (same as a missing cache), never fatal' '' "$out"
 check 'HIMMEL-1712: an account-mismatched cache exits 0' 0 "$rc"
 
-# HIMMEL-4421: seven_day_reset_in / unspent_at_reset. Rate +10/h (20 -> 25 over
+# seven_day_reset_in / unspent_at_reset. Rate +10/h (20 -> 25 over
 # 30 min); reset epochs 10000 = 1970-01-01T02:46:40Z (2.0h out), 38800 = 10:46:40Z.
 printf '%s\n' 'claudex funded measured 5h used=10% free=90%; weekly used=20% free=80%' > "$W/codex-row"
 sample_reset() { # <five> <seven> <resets_at json>
@@ -259,7 +259,7 @@ BANK_NOW_EPOCH=1900 BANK_NOW_HM=12:15 bash "$SUT" --spare >/dev/null
 out="$(run_at 1900 12:15)"
 check 'alternating series: WEEKLY-CEILING at 91 is unchanged and silent' '' "$out"
 
-# HIMMEL-4470: five_hour_reset_in, parsed like the seven-day field. Now is 2800s;
+# five_hour_reset_in, parsed like the seven-day field. Now is 2800s;
 # 10000 = 1970-01-01T02:46:40Z, so 2.0h out.
 sample_five() { # <five resets_at json>
     sample_revision=$((sample_revision + 1))

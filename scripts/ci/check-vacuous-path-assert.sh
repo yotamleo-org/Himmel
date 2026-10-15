@@ -3,7 +3,7 @@
 #
 # Pre-commit gate: flag an emptiness assertion whose shell-test-suite line
 # follows an AMBIENT hermetic-PATH scrub in the same file, hence vacuous by
-# construction — the class HIMMEL-2812 found (himmel-dev only).
+# construction — the class seen in himmel-dev.
 #
 # Why line-oriented, not scope-aware: this codebase's SAFE, normal idiom is
 # the per-command prefix (`PATH=... bash "$SCRIPT"` / `env PATH=... cmd`),
@@ -16,7 +16,7 @@
 # restoration (a later `PATH=$OLD_PATH`, a subshell, a function boundary);
 # this one deliberately does not — it flags the co-occurrence and leaves the
 # call on whether it is real to the reader, via a same-line
-# `# vacuous-path-ok: <reason>` marker (HIMMEL-2957).
+# `# vacuous-path-ok: <reason>` marker.
 #
 # A THIRD safe idiom the whole-tree run surfaced: an ambient assignment
 # whose value verbatim retains `$PATH`/`${PATH}` as a component
@@ -28,20 +28,19 @@
 # complete path-component boundary (value start/end, or a colon) on both
 # sides — `PATH="/nonexistent$PATH"` and `PATH="${PATH}/suffix"` instead
 # MERGE a bogus segment onto the first/last real entry with no colon
-# between them, silently dropping it, so neither counts as preserving
-# (CR round 3, codex-2). This boundary rule also resolves the round-2
+# between them, silently dropping it, so neither counts as preserving.
+# This boundary rule also resolves the round-2
 # codex-1 gap where a single-quoted `PATH='$PATH'` literal was misread as
 # preserving: the `'` immediately before the reference is not a boundary.
 #
-# Known limitations (deferred, HIMMEL-2957 — both rare and either
+# Known limitations (deferred — both rare and either
 # under-flagging in a way a reviewer would still catch, or an explicit
 # ticket-design tradeoff, not a detector defect to fix here):
 #   - A single-quoted value that STILL has a colon on both sides of a
 #     literal `$PATH` (`PATH='/stub:$PATH:/other'`) passes the boundary
 #     check and is read as preserving, even though single quotes suppress
 #     expansion entirely and the assignment does not preserve anything
-#     (CR round 4, codex-2).
-#   - The multi-operand `export` scan (HIMMEL-3015) tokenizes double-quoted
+#   - The multi-operand `export` scan tokenizes double-quoted
 #     values but not single-quoted ones, so a single-quoted operand holding
 #     a space (`export PATH=/stub OTHER='a b'`) ends the scan unterminated
 #     and the line is NOT flagged — an under-flag, rare, and the same
@@ -49,7 +48,7 @@
 #   - Pattern B matches both `-z` and `-n`; a `-n` (non-emptiness)
 #     assertion after a real PATH break fails loudly rather than passing
 #     vacuously, so flagging it is noise, not a missed vacuous pass — kept
-#     symmetric with `-z` per the ticket's own design (CR round 4, codex-3).
+#     symmetric with `-z` per the ticket's own design.
 #
 # Usage:
 #   check-vacuous-path-assert.sh              # tree-walk: every git-tracked
@@ -114,7 +113,7 @@ for f in "${files[@]}"; do
                 # PATH="$(scrub_path "$PATH" tool)" -- the greedy .*
                 # reaches the LAST )" on the line, so an inner quoted
                 # $PATH argument does not truncate the match early
-                # (CR round 1, codex-1: the plain quoted-string branch
+                # (the plain quoted-string branch
                 # below stops at that inner quote and silently misses
                 # this ambient scrub).
                 tv_val = substr(rest, RSTART, RLENGTH)
@@ -128,8 +127,8 @@ for f in "${files[@]}"; do
                 # boundary (start/end of the value, or a colon) on both
                 # sides -- `"/nonexistent$PATH"` and `"${PATH}/suffix"`
                 # instead MERGE a bogus segment onto the first/last real
-                # entry with no colon between them, silently dropping it
-                # (CR round 3, codex-2). This boundary requirement also
+                # entry with no colon between them, silently dropping it.
+                # This boundary requirement also
                 # resolves the round-2 codex-1 single-quote-literal gap:
                 # a single-quoted PATH assignment has a quote character
                 # immediately before the reference, which is not a
@@ -145,7 +144,7 @@ for f in "${files[@]}"; do
             } else if (match(rest, /^[^ \t;]+/)) {
                 # An unquoted word ends at an unquoted `;` -- the command
                 # separator is not part of the value, so `PATH=/stub; cmd`
-                # leaves `; cmd` as the remainder (HIMMEL-3015).
+                # leaves `; cmd` as the remainder.
                 tv_val = substr(rest, RSTART, RLENGTH)
                 tv_rem = substr(rest, RSTART + RLENGTH)
                 tv_pres = (tv_val ~ /(^|[:"])\$\{?PATH\}?([:"]|$)/)
@@ -156,7 +155,7 @@ for f in "${files[@]}"; do
         # operands and the statement ends cleanly (end of line, comment, `;`,
         # `&&`, `||`); 0 otherwise. Each operand is NAME or NAME=value, so
         # `export PATH=/stub OTHER=1` and `export OTHER=1 PATH=/stub` both
-        # count, while PATH_X is a different name (HIMMEL-3015).
+        # count, while PATH_X is a different name.
         function export_scrubs(s,   name, hit) {
             sub(/^[ \t]*export[ \t]+/, "", s)
             hit = 0
@@ -179,7 +178,7 @@ for f in "${files[@]}"; do
             # ── Heredoc bodies are DATA, not code the enclosing shell runs
             # ambiently -- a fixture inside a quoted heredoc can legitimately
             # contain the exact vacuous shape under test without being a live
-            # assertion (HIMMEL-2957 self-scan false positive: this
+            # assertion (a self-scan false positive: this
             # detectors own test suite embeds such fixtures as heredoc
             # bodies). Skip pattern A/B entirely while inside one.
             if (in_heredoc) {
@@ -199,7 +198,7 @@ for f in "${files[@]}"; do
             } else if (line ~ /^[ \t]*export[ \t]/) {
                 # Every operand of the export is scanned, so a trailing
                 # `OTHER=1` (or PATH in a later position) cannot hide the
-                # scrub behind a leading operand (HIMMEL-3015).
+                # scrub behind a leading operand.
                 isA = export_scrubs(line)
             } else if (match(line, /^[ \t]*PATH=/)) {
                 take_value(substr(line, RSTART + RLENGTH))
@@ -208,7 +207,7 @@ for f in "${files[@]}"; do
                     # A verbatim $PATH / ${PATH} reference retained in the
                     # assigned value means this assignment can only ADD
                     # entries, never remove one -- no later assertions tool
-                    # lookup can be made vacuous by it (HIMMEL-2957 tree-run
+                    # lookup can be made vacuous by it (a tree-run
                     # false positives: export PATH="$stub:$PATH" idioms).
                     if (!tv_pres) { isA = 1 }
                 }
@@ -230,13 +229,13 @@ for f in "${files[@]}"; do
             # without stripping the comment first, either shape would
             # falsely open heredoc state and silently skip every real line
             # after it, including the assertion this detector exists to
-            # catch (CR round 2 codex-2: whole-line; CR round 3 codex-1:
+            # catch (both whole-line and
             # trailing). A here-string (`cat <<<EOF`) is a single self-
             # contained expression, never a multi-line redirect -- its
             # third `<` would otherwise let the `<<` half of the pattern
             # match starting one character in, wrongly opening heredoc-skip
-            # state with no real terminator to ever close it (CR round 4,
-            # codex-1). Strip any `<<<` run before the heredoc-open check so
+            # state with no real terminator to ever close it
+            # Strip any `<<<` run before the heredoc-open check so
             # only a genuine `<<`/`<<-` survives.
             hd_line = line
             sub(/(^[ \t]*|[ \t])#.*$/, "", hd_line)

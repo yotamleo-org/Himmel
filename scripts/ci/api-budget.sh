@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# api-budget.sh — one read-only line for a console (HIMMEL-3850):
+# api-budget.sh — one read-only line for a console:
 #
 #   gh-api: remaining=4321/5000 reset=14:05Z graphql=4954/5000
 #

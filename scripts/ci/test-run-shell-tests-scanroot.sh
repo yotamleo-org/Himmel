@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/ci/test-run-shell-tests-scanroot.sh — the run-shell-tests.sh scan-root
-# guard (HIMMEL-2504).
+# guard.
 #
 # The runner cds to its OWN repo (REPO_ROOT) before it parses a single
 # argument, so invoked by absolute path from a different checkout (a worktree
@@ -10,7 +10,7 @@
 # the script's repo, unless --scan-repo-of-script is passed, and it names the
 # tree it scanned (root, branch, sha) in the plan header and the --pr SUMMARY.
 #
-#   26a  foreign git cwd              -> rc 6 (own code, HIMMEL-5104), names the flag, runs nothing
+#   26a  foreign git cwd              -> rc 6 (own code), names the flag, runs nothing
 #   26b  foreign git cwd + the flag   -> runs, rc 0
 #   26c  cwd = the script's own repo  -> unaffected (rc 0)
 #   26d  cwd not in any git work tree -> unaffected (rc 0)
@@ -20,7 +20,7 @@
 #   26h  an exported GIT_DIR cannot redirect the scanning line or the head
 #   26i  an exported GIT_COMMON_DIR cannot either
 #   26j  a git that names no toplevel (a test's fake git) is no mismatch
-#   26k  caller_top: a git printing nothing is "no tree known" (HIMMEL-5111)
+#   26k  caller_top: a git printing nothing is "no tree known"
 #   26l  CDPATH cannot steer the guard's cd or the scanned root
 #   26m  GIT_INDEX_FILE / GIT_OBJECT_DIRECTORY / GIT_ALTERNATE_OBJECT_DIRECTORIES /
 #        GIT_CEILING_DIRECTORIES do not reach the suites
@@ -134,7 +134,7 @@ else
   fail "26f: rc=$rc body: $body output: $out"
 fi
 
-# --- 26g. an absolute scan root inside another work tree (HIMMEL-5104) --------
+# --- 26g. an absolute scan root inside another work tree --------
 mkdir -p "$FOREIGN/suites"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$FOREIGN/suites/test-trivial.sh"
 out=$(cd "$SRC_ROOT" && env -u SUITE_TIER_MODE bash "$RUNNER" "$FOREIGN/suites" 2>&1); rc=$?
@@ -194,7 +194,7 @@ else
 fi
 rm -f "$GH_STUB" "$GH_BODY"
 
-# --- 26k. caller_top: a git that prints nothing is "no tree known" (HIMMEL-5111) -
+# --- 26k. caller_top: a git that prints nothing is "no tree known" -
 # `rev-parse --show-toplevel` printing nothing at rc 0 used to be cd'd into in
 # place, so the caller's own cwd became its "work tree" and was refused against
 # the script's repo. From a cwd outside every tree that must be no mismatch.
@@ -210,7 +210,7 @@ else
   fail "26k: rc=$rc output: $out"
 fi
 
-# --- 26m. GIT_INDEX_FILE / GIT_OBJECT_DIRECTORY (+ ALTERNATE, CEILING: HIMMEL-5120) do not reach the suites
+# --- 26m. GIT_INDEX_FILE / GIT_OBJECT_DIRECTORY (+ ALTERNATE, CEILING) do not reach the suites
 ENVPROBE="$(fixture_mktemp_dir)" || exit 1
 ENVOUT="$ENVPROBE/seen.txt"
 cat > "$ENVPROBE/test-envprobe.sh" <<'EOF'
@@ -227,7 +227,7 @@ else
 fi
 rm -rf "$ENVPROBE"
 
-# --- 26n. a runner outside any work tree, scan root inside one (HIMMEL-5111) -----
+# --- 26n. a runner outside any work tree, scan root inside one -----
 # A tarball install has no tree; a scan root that DOES name one is a mismatch
 # (fail-closed). A scan root outside every tree stays allowed.
 TARBALL="$PLAIN/tarball"
@@ -247,7 +247,7 @@ else
   fail "26n: outside-tree rc=$rc output: $out"
 fi
 
-# --- 26l. CDPATH cannot steer the guard's or the resolution's cd (HIMMEL-5111) ---
+# --- 26l. CDPATH cannot steer the guard's or the resolution's cd ---
 # The same runner copy, now inside its own work tree. CDPATH=<foreign tree> and a
 # relative root named like a dir under it: the cd used to land in the foreign
 # tree, so the guard refused (or the scan ran there).

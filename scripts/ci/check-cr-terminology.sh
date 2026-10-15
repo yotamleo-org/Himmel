@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # scripts/ci/check-cr-terminology.sh — CR means code review, never a
-# CodeRabbit abbreviation (HIMMEL-3561, operator ruling 2026-09-24).
+# CodeRabbit abbreviation.
 #
 # himmel's docs use "CR" for the pre-PR code-review gate (the CR marker, the
 # CR ledger, the critic panel, /pr-check). CodeRabbit is one best-effort
 # reviewer inside that gate and is always spelled out — never abbreviated CR.
 # This scans tracked docs for text that defines CR AS a CodeRabbit
 # abbreviation (e.g. "CR is short for CodeRabbit"), the exact confusion
-# HIMMEL-3561 found and fixed at docs/adoption-trail.html.
+# once found in docs/adoption-trail.html.
 #
 # Usage:
 #   check-cr-terminology.sh [scan-dir ...]   # default: docs .claude/commands README.md CLAUDE.md marketplace

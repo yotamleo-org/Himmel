@@ -83,7 +83,7 @@ n_if="$(grep -c "github.event.schedule == '17 7 \* \* \*'" <<< "$agg")"
 if [ "$n_if" -ge 2 ]; then ok "shell-unit's extended-tier issue steps are gated on schedule ($n_if if:s)"
 else bad "shell-unit has only $n_if schedule-gated steps (expected >= 2)"; fi
 
-# 5b. HIMMEL-3902: macOS is not in ci.yml at all -- no matrix leg, no health
+# 5b. macOS is not in ci.yml at all -- no matrix leg, no health
 # step -- it runs on macos-cadence.yml, so a macOS red can never redden `CI`.
 if grep -qi 'macos' <<< "$stripped"; then
   bad "ci.yml still runs or reads a macOS job: $(grep -i -m1 'macos' <<< "$stripped")"
@@ -100,7 +100,7 @@ for job in shell-unit-shard bun-suites; do
   fi
 done
 
-# 7. HIMMEL-3919: the shard job and its apt/at install step are bounded (a hung
+# 7. the shard job and its apt/at install step are bounded (a hung
 # apt lock once held a shard ~1.5 h; the 6 h default queued every later main run).
 blk="$(job_block shell-unit-shard)"
 # Windows shards (79-128 min) are gone, so the cap is flat: 1.7x the slowest
@@ -124,9 +124,9 @@ if grep -Eq '^        timeout-minutes: [0-9]+$' <<< "$step"; then
 else
   bad "shell-unit-shard: at/atd install step has no step-level timeout-minutes"
 fi
-# HIMMEL-2872: the apt calls moved into .github/scripts/apt-install.sh; the step
+# The apt calls moved into .github/scripts/apt-install.sh; the step
 # must call it for exactly at + bubblewrap + socat, and the helper carries the
-# HIMMEL-3919 / 4073 / 4077 invariants this block used to pin inline.
+# invariants this block used to pin inline.
 HELPER_SH="$ROOT/.github/scripts/apt-install.sh"
 if grep -Eq '^ +bash \.github/scripts/apt-install\.sh at bubblewrap socat$' <<< "$step" \
    && ! grep -q 'apt-get ' <<< "$step"; then
@@ -146,7 +146,7 @@ else
   else
     bad "shell-unit-shard: helper has an unbounded apt call or lacks DPkg::Lock::Timeout"
   fi
-  # HIMMEL-4073: plain install first, index refresh only after it fails
+  # Plain install first, index refresh only after it fails
   plain_ln="$(grep -n 'apt "\$T_PLAIN" install' "$HELPER_SH" | head -1 | cut -d: -f1)"
   upd_ln="$(grep -n 'apt "\$T_ALT" update' "$HELPER_SH" | head -1 | cut -d: -f1)"
   alt_ln="$(grep -n 'apt "\$T_ALT" install' "$HELPER_SH" | head -1 | cut -d: -f1)"
@@ -156,7 +156,7 @@ else
   else
     bad "shell-unit-shard: helper order is not plain install, update, retry install"
   fi
-  # HIMMEL-4077: a swallowed install failure would let `at` stay absent
+  # A swallowed install failure would let `at` stay absent
   if grep -Eq 'install .*\|\|[[:space:]]*true([[:space:];]|$)' "$HELPER_SH"; then
     bad "shell-unit-shard: helper swallows an apt-get install failure with || true"
   else

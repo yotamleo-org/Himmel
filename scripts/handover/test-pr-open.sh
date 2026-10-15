@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/handover/pr-open.sh + pr-merge.sh (HIMMEL-141).
+# Smoke test for scripts/handover/pr-open.sh + pr-merge.sh.
 #
 # Strategy: gh CLI is not invoked against real GitHub. Tests inject
 # GH_CMD=<fake> where <fake> is a shell function that records args and
@@ -18,7 +18,6 @@
 #   7. pr-merge exits 0 when no PR is found for the branch.
 #   8. pr-merge suppresses the worktree-held branch-delete cosmetic error.
 #   9. pr-merge fails closed (rc=7) when the head SHA is explicitly empty
-#      (HIMMEL-1058 — refuses to merge unbound).
 #  10. HANDOVER_PR_AUTO=0 short-circuits pr-open (exit 0, no gh calls).
 set -euo pipefail
 
@@ -28,7 +27,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -111,7 +110,7 @@ case "$1" in
                 exit 0
                 ;;
             view)
-                # HIMMEL-1058: pr-merge.sh reads `pr view --json headRefOid` to bind
+                # pr-merge.sh reads `pr view --json headRefOid` to bind
                 # the merge to a vetted head SHA, and the forge seam's mergeability
                 # poll reads `pr view --json mergeable`. Answer by which --json field
                 # was requested so both callers get a usable value.
@@ -152,7 +151,7 @@ git init -q --initial-branch=main "$REPO" 2>/dev/null || git init -q "$REPO"
     echo "content" > handovers/$SLUG/state.md
     git -c user.email=t@test.com -c user.name=test add handovers/$SLUG/state.md
     git -c user.email=t@test.com -c user.name=test commit -q -m "handover: HIMMEL-141 seed"
-    # Forge seam (HIMMEL-326): pr-open/pr-merge resolve the forge from origin.
+    # Forge seam: pr-open/pr-merge resolve the forge from origin.
     # A github origin makes forge_detect pick the github backend, which
     # reproduces the exact `gh` call shapes the stub + asserts below expect.
     git remote add origin https://github.com/test/test.git
@@ -226,8 +225,8 @@ assert_eq       "rc=0 (best-effort)" "0" "$rc"
 assert_contains "stderr explains best-effort" "best-effort" "$out"
 
 # Test 6: pr-merge --dry-run prints the plain squash-merge intent ------
-# HIMMEL-224 dropped --admin from the default/dry-run; HIMMEL-326 made the
-# message forge-aware. The dry-run now states intent, not a literal command.
+# The default/dry-run has no --admin and the
+# message is forge-aware. The dry-run now states intent, not a literal command.
 
 echo "TEST: pr-merge --dry-run prints the plain squash-merge intent"
 out=$(
@@ -263,7 +262,7 @@ assert_eq       "rc=0 (cosmetic ignored)" "0" "$rc"
 assert_contains "stdout mentions cosmetic-fail" "cosmetic-fail" "$out"
 
 # Test 9: pr-merge fails closed on an explicitly-empty head SHA --------
-# HIMMEL-1058: an empty headRefOid must never fall through to an unbound
+# an empty headRefOid must never fall through to an unbound
 # merge. FAKE_GH_HEAD_SHA="" (vs. unset) exercises that fail-closed branch.
 
 echo "TEST: pr-merge fails closed (rc=7) on empty head SHA"
@@ -275,8 +274,8 @@ out=$(
 ) || rc=$?
 assert_eq       "rc=7 (refuses to merge unbound)" "7" "$rc"
 assert_contains "stderr explains unbound refusal" "refusing to merge unbound" "$out"
-# HIMMEL-1058 side effect: the unbound path must never reach `gh pr merge` —
-# an impl that merged first and returned 7 would pass the checks above (CR #1295).
+# Side effect: the unbound path must never reach `gh pr merge` —
+# an impl that merged first and returned 7 would pass the checks above.
 assert_eq       "unbound head never invokes pr merge" "0" "$(grep -c '^gh pr merge' "$FAKE_GH_LOG" || true)"
 
 # Test 10: HANDOVER_PR_AUTO=0 short-circuits ---------------------------

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/test-check-pr-title.sh - HIMMEL-3616. check-pr-title.sh validates
+# scripts/lib/test-check-pr-title.sh — check-pr-title.sh validates
 # a PR-title string against the SAME conventional-commit + ticket regex
 # check-commit-msg.sh enforces on commits, by invoking that script on a
 # synthesized one-line message (the same reuse check-commit-range.sh already

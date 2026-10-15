@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # scripts/ci/test-run-shell-tests-timing.sh — the run-shell-tests.sh cases
-# that spend their wall clock WAITING on the runner's own watchdog
-# (HIMMEL-2895, split out of test-run-shell-tests.sh).
+# that spend their wall clock WAITING on the runner's own watchdog.
 #
-#   16. CAP EXCEEDED vs a genuine rc=124 (HIMMEL-2233): a watchdog-killed
+#   16. CAP EXCEEDED vs a genuine rc=124: a watchdog-killed
 #       suite renders distinctly from a real assertion failure, keyed on
 #       `capped` not on the exit code; the Disposition order block appears
 #       only when fail>0.
-#   20. CAP EXCEEDED with every OBSERVED assertion passing (HIMMEL-2401)
+#   20. CAP EXCEEDED with every OBSERVED assertion passing
 #       renders distinctly from a genuine failure in the same run.
 #
 # Both fixtures must outlive a real cap, so their 41s is timer waits, not work
@@ -35,7 +34,7 @@ set -uo pipefail
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
-# Case 16 — CAP EXCEEDED renders distinctly from a genuine rc=124 (HIMMEL-2233).
+# Case 16 — CAP EXCEEDED renders distinctly from a genuine rc=124.
 # Before this fix a suite the watchdog killed for exceeding its wall-clock cap
 # rendered identically to a suite that failed its own assertions and merely
 # happened to exit 124 — a leg reading a red run could not tell "the runner's
@@ -147,7 +146,7 @@ fi
 
 
 # --------------------------------------------------------------------------
-# Case 20 (HIMMEL-2401) — a watchdog-killed suite with every OBSERVED
+# Case 20 — a watchdog-killed suite with every OBSERVED
 # assertion passing renders distinctly from a genuine failure in the same
 # run. Before this fix both cases rendered identically as FAIL: 1, which is
 # what cost a leg two extra full runs to disposition (a green 195/195 suite
@@ -215,7 +214,7 @@ else
   fail "20: expected the plain CAP EXCEEDED wording for test-dirtyslow.sh; out: $out20"
 fi
 
-# 3a (HIMMEL-2401 codex-1). okayword (only "okay, ..." lines -- never a real
+# 3a. okayword (only "okay, ..." lines -- never a real
 # TAP "ok" token) -> the PLAIN wording. A bare `^ok` line-prefix match would
 # false-positive here; the fix anchors on a whole token.
 if ! grepq "$out20" -E '\[CAP EXCEEDED\].*test-okayword\.sh.*assertions passing'; then
@@ -224,7 +223,7 @@ else
   fail "20: test-okayword.sh wrongly rendered as assertions passing; out: $out20"
 fi
 
-# 3b (HIMMEL-2401 codex-1). indentednotok (a "not ok" line INDENTED, TAP
+# 3b. indentednotok (a "not ok" line INDENTED, TAP
 # subtest style) -> the PLAIN wording. A bare `^not ok` anchor would miss the
 # leading whitespace and misread this suite as clean.
 if ! grepq "$out20" -E '\[CAP EXCEEDED\].*test-indentednotok\.sh.*assertions passing'; then

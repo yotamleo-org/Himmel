@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/test-critic-panel-registry.sh — regression guards for HIMMEL-1221:
+# scripts/cr/test-critic-panel-registry.sh — regression guards:
 #   T1  the Z.ai critic credential is loaded from the primary checkout's .env and
 #       reaches the dispatched critic (credential-path guard).
 #   T2  critics.local.json MERGES per-slug over critics.json (override / append /
@@ -63,14 +63,14 @@ index 0000000..1111111 100644
 
 # ---------------------------------------------------------------------------
 # T1 — credential path: .env ZAI_API_KEY reaches the dispatched critic, with NO
-# manual export. HIMMEL-1648 pinned critic-panel.sh's credential load_dotenv to
+# manual export. critic-panel.sh's credential load_dotenv is pinned to
 # SCRIPT-ROOT resolution (`load_dotenv --root "$(_load_dotenv_primary_for
 # "$SCRIPT_DIR/../..")"`), so the loader reads the .env at the PANEL's own
 # himmel root, NOT the process cwd's. This block therefore plants its .env
 # where the pinned loader actually resolves: a fake himmel-root tree with the
 # panel (and scripts/lib/load-dotenv.sh) copied in so $SCRIPT_DIR/../.. lands on
 # the fixture root, and the .env planted THERE (mirrors test-critic-panel.sh's
-# HIMMEL-1648 block; failure-classify.sh / triviality-gate.sh are [ -r ]-guarded
+# credential block; failure-classify.sh / triviality-gate.sh are [ -r ]-guarded
 # fail-open sources, so they degrade when absent and the panel still runs). The
 # sentinel value proves the panel read THIS .env, not himmel's.
 # ---------------------------------------------------------------------------
@@ -129,10 +129,10 @@ check "T3: CRITICS_JSON row dispatched"                "$(grep -c 'slug=onlyme '
 check "T3: local overlay NOT merged (CRITICS_JSON wins)" "$(grep -c 'slug=other ' "$LOG3")" "0"
 
 # ---------------------------------------------------------------------------
-# T4 — HIMMEL-3500: the SHIPPED default registry (scripts/cr/critics.json, no
+# T4 — the SHIPPED default registry (scripts/cr/critics.json, no
 # CRITICS_JSON/CRITICS_BASE_JSON/CRITICS_LOCAL_JSON override) actually dispatches
-# the codex row with the model the operator's codex CLI default now expects
-# (gpt-6.1-sol, re-pinned from gpt-6-sol, HIMMEL-3879). CR_PROFILE=paid selects the codex
+# the codex row with the model the operator's codex CLI default expects
+# (gpt-6.1-sol). CR_PROFILE=paid selects the codex
 # row's tier; CR_TRIVIALITY_OVERRIDE=full stops the triviality gate from
 # stripping the paid tier for this tiny fixture diff.
 # ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ check "T4: default registry pinned codex to gpt-6.1-sol"  "$(grep -c 'model=gpt-
 check "T4: default registry did NOT pin the retired id" "$(grep -c 'model=gpt-6-astra' "$LOG4")" "0"
 
 # ---------------------------------------------------------------------------
-# T5 — HIMMEL-3059 S3: an unset CRITICS_LOCAL_JSON checks the himmelctl cache
+# T5 — an unset CRITICS_LOCAL_JSON checks the himmelctl cache
 # dir first (a read-only install prefix can't carry an in-tree overlay), and
 # an explicit CRITICS_LOCAL_JSON still overrides both.
 # ---------------------------------------------------------------------------

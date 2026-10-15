@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/test-critic-panel-triviality.sh -- HIMMEL-737 triviality-gate wiring.
+# scripts/cr/test-critic-panel-triviality.sh -- triviality-gate wiring.
 # Proves the panel drops the PAID tier when the diff classifies 'trivial', keeps
 # both tiers on a nontrivial diff, honors CR_TRIVIALITY_OVERRIDE=full, and does
 # NOT apply the gate in --check mode. The member seam is CRITIC_FIRST_PASS
@@ -12,12 +12,12 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
-# Hermetic: the panel reads CR_PROFILE (HIMMEL-558). Clear ambient values; each
+# Hermetic: the panel reads CR_PROFILE. Clear ambient values; each
 # case sets CR_PROFILE explicitly.
-# HIMMEL-1950: CR_REQUIRE_CROSS_MODEL now steers the trivial-diff path, and the
+# CR_REQUIRE_CROSS_MODEL steers the trivial-diff path, and the
 # panel falls back to .env when it is UNSET — so "unset" is not a hermetic
 # value here. Every case that depends on it states it explicitly; this scrub
 # only stops an ambient export from deciding before they do.
@@ -59,7 +59,7 @@ check_contains() {
 
 # skip <label> -- a case that could not run in this environment. Must NEVER
 # be reported with the "ok - " pass token: a skip credited as a pass hides
-# the fact that nothing was asserted (HIMMEL-2258 audit; HIMMEL-2226 fix).
+# the fact that nothing was asserted.
 skip() {
     echo "SKIP - $1"
     _skips=$((_skips + 1))
@@ -177,7 +177,7 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     check_contains "4: --check --all-tiers probes the paid row (gate not applied)" "$chk_out" "row paidcrit: ok"
     check "4: --check emits NO triviality skip line" "$(printf '%s\n' "$chk_out" | grep -cF 'triviality-gate')" "0"
 else
-    # HIMMEL-2226 (HIMMEL-2258 audit): was "ok - " (a silently-credited pass).
+    # was "ok - " (a silently-credited pass).
     skip "4: no timeout binary"
     skip "4: no timeout binary"
     skip "4: no timeout binary"
@@ -193,7 +193,7 @@ PAID_ONLY_JSON="$tmp/critics-paidonly.json"
 printf '{"panel":[{"slug":"paidcrit","model":"%s","provider":"test","tier":"paid"}]}' \
     "$PAID_MODEL" > "$PAID_ONLY_JSON"
 : > "$tmp/cap5"
-# CR_REQUIRE_CROSS_MODEL=0 is load-bearing here (HIMMEL-1950): this is the
+# CR_REQUIRE_CROSS_MODEL=0 is load-bearing here: this is the
 # adopter WITHOUT the cross-model floor, where dropping the last tier is
 # right because the claude-only floor clears the marker on its own.
 printf '%s' "$TRIVIAL_DIFF" | CR_PROFILE=paid CR_REQUIRE_CROSS_MODEL=0 CRITICS_JSON="$PAID_ONLY_JSON" \
@@ -207,7 +207,7 @@ check "5: NO paid-tier-skipped line (the strip is total, not partial)" \
     "$(printf '%s\n' "$err5" | grep -cF 'paid tier skipped')" "0"
 
 # ===========================================================================
-# HIMMEL-1950: paid is the ONLY tier and the diff is trivial.
+# paid is the ONLY tier and the diff is trivial.
 #
 # Dropping the last tier here degrades to claude-only, which clear-cr-marker
 # gate 3b then REFUSES when CR_REQUIRE_CROSS_MODEL=1 (exit 14) — two correct
@@ -240,7 +240,7 @@ check "6: exactly ONE critic ran" "$(grep -c . "$tmp/cap6")" "1"
 check_contains "6: says why it kept a critic" "$err6" "keeping exactly ONE external critic"
 check_contains "6: names the cap it applied" "$err6" "panel capped to 1 critic"
 check_contains "6: the surviving critic answered" "$out6" "(1/1 critics responded)"
-# HIMMEL-2129 (HIMMEL-2128 follow-up): the SKIPPED critic (paidcrit2) is
+# the SKIPPED critic (paidcrit2) is
 # configured AND available -- just not consulted to save cost -- so it must
 # get a non-exhaustion avail row too, not silent absence (which looked
 # identical to "never configured" to clear-cr-marker's
@@ -251,7 +251,7 @@ check_contains "6: dropped critic reported keep-one-skipped (HIMMEL-2129)" "$err
 check "6: dropped critic never actually consulted (no ok line)" \
     "$(printf '%s\n' "$err6" | grep -cF 'panel-availability: paidcrit2 ok')" "0"
 
-# 6c (codex-1 CR round, HIMMEL-2129): the stderr diagnostic above is not
+# 6c: the stderr diagnostic above is not
 # proof a REAL ledger row landed -- prove it against the real
 # ledger-append.sh (this file otherwise stubs CRITIC_LEDGER_APPEND to a
 # no-op), the same way clear-cr-marker.sh's CR_FLOOR_FALLBACK=claude-only

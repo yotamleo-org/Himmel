@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cr-merge-gate.sh — shared predicate for the HIMMEL-936 CR merge gate.
+# cr-merge-gate.sh — shared predicate for the CR merge gate.
 #
 # cr_merge_gate <pr-selector> [<owner/repo>]
 #   rc 0 = allow; rc 2 = block, one-line reason on stdout.
@@ -7,16 +7,16 @@
 #          — callers that extracted the selector heuristically (the PreToolUse
 #          hook) should retry once with a better-anchored selector (the cwd
 #          branch) so quoted/mis-tokenized selectors cannot dodge the gate
-#          (codex-1 / codex-adv-1, HIMMEL-936 CR round). Top-level consumers
+# (/ codex-adv-1, CR round). Top-level consumers
 #          treat any non-2 rc as allow.
-#   HIMMEL-3360 (operator ruling 2026-09-21): CodeRabbit is best effort. Deny
+# CodeRabbit is best effort. Deny
 #   only on an unresolved coderabbitai review thread, or an outside-diff body
 #   finding with no ledger disposition at this exact head — CodeRabbit's
 #   commit-status state (pending/absent/paged/skipped/etc.) prints an
 #   advisory NOTE and falls through; it never blocks on its own.
 #
 #   A repo with no CodeRabbit is detected automatically and gets a NO-OP gate
-#   (HIMMEL-1125, scripts/lib/cr-available.sh).
+# (scripts/lib/cr-available.sh).
 #   INFRASTRUCTURE failures (gh missing, API error, no PR, parse failure) still
 #   fail OPEN (rc 0/3) with a "cr-merge-gate: degraded (...) - failing open" note
 #   — a broken query is not evidence of anything.
@@ -27,16 +27,15 @@
 # made set -e-safe with a trailing `|| true` inside the subshell so that a
 # caller running `set -e` (pr-merge.sh) does not abort on a jq parse failure
 # (a parse failure is a normal fail-open input here, not a hard error).
-# HIMMEL-936.
 
 _cmg_degrade() { echo "cr-merge-gate: degraded ($*) - failing open" >&2; }
 
-# _cmg_prior_outside_block — HIMMEL-3360 operator ruling + HIMMEL-3379: the
+# _cmg_prior_outside_block — operator ruling + the
 # PR's real head carries no CodeRabbit review of its own, but prior head(s)
 # carry posted outside-diff findings. EVERY such head governs
 # (cr_body_prior_outside_heads), each finding dispositioned at the head that
 # raised it — a newer prior review must not mask an older head's finding
-# (mirrors check-ci's _cr_prior_outside_gate, HIMMEL-3365). Every blocking
+# (mirrors check-ci's _cr_prior_outside_gate). Every blocking
 # head's reason is printed on stdout; rc 2 if any blocks. Reads
 # $owner/$name/$num/$head from the caller (cr_merge_gate), same dynamic-scoping
 # convention as every other _cmg_* helper here.
@@ -59,9 +58,9 @@ _cmg_prior_outside_block() {
     return "$rc"
 }
 
-# _cmg_outside_block <gate_head> <expected_count> — HIMMEL-3124/HIMMEL-3360.
+# _cmg_outside_block <gate_head> <expected_count> — /.
 # Reads + dispositions the outside-diff findings CodeRabbit posted AT
-# <gate_head> — either the PR's real head, or (HIMMEL-3360/3379) a PRIOR head
+# <gate_head> — either the PR's real head, or a PRIOR head
 # _cmg_prior_outside_block walks, when the real head carries no review of its
 # own (best effort covers ABSENCE at that head only, never a finding
 # CodeRabbit already posted at a prior one). <expected_count> is the
@@ -120,31 +119,31 @@ _cmg_outside_block() {
     return 0
 }
 
-# The ONE reader for CodeRabbit's verdict (HIMMEL-1072). Sourced relative to this
+# The ONE reader for CodeRabbit's verdict. Sourced relative to this
 # file so a hook can source this gate from any cwd.
 # shellcheck source=scripts/lib/cr-signal.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-# HIMMEL-3929: every nested source is readability-checked first and a missing one
+# every nested source is readability-checked first and a missing one
 # makes THIS file's own source fail (`return 1`), so the hook's load check denies
 # instead of the gate running with its helper functions undefined (fail open).
 _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 { [ -r "$_cmg_dir/cr-signal.sh" ] && . "$_cmg_dir/cr-signal.sh"; } || return 1
 
-# The ONE reader for CodeRabbit's review-BODY findings (HIMMEL-1126/1147) —
+# The ONE reader for CodeRabbit's review-BODY findings —
 # outside-diff-range / nitpick / additional comments the thread gate below
 # cannot see (S1: no thread, no isResolved, unresolvable by construction).
 # shellcheck source=scripts/lib/cr-body-findings.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 { [ -r "$_cmg_dir/cr-body-findings.sh" ] && . "$_cmg_dir/cr-body-findings.sh"; } || return 1
 
-# Is CodeRabbit configured here at all (HIMMEL-1125)? Same posture as check-ci:
+# Is CodeRabbit configured here at all? Same posture as check-ci:
 # this whole gate is CodeRabbit-specific, so on a repo without it the gate is a
 # no-op rather than a permanent block on "absent".
 # shellcheck source=scripts/lib/cr-available.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 { [ -r "$_cmg_dir/cr-available.sh" ] && . "$_cmg_dir/cr-available.sh"; } || return 1
 
-# The CR-ledger evidence reader (HIMMEL-1465): tells the outside-diff body-
+# The CR-ledger evidence reader: tells the outside-diff body-
 # findings gate below (stage 3) whether a given finding carries an explicit
 # disposition at this exact head (deferred + tracked ticket, or disproved).
 # shellcheck source=scripts/lib/cr-ledger-evidence.sh
@@ -152,7 +151,7 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 { [ -r "$_cmg_dir/cr-ledger-evidence.sh" ] && . "$_cmg_dir/cr-ledger-evidence.sh"; } || return 1
 
 # _cmg_canon_nwo / _cmg_nwo_eq / _cmg_local_nwo — moved to scripts/lib/nwo.sh
-# (HIMMEL-2034) so the CodeRabbit TRIGGER path can reuse the same "is this OUR
+#  so the CodeRabbit TRIGGER path can reuse the same "is this OUR
 # repo?" answer instead of re-deriving origin-URL parsing. Names unchanged.
 # shellcheck source=scripts/lib/nwo.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
@@ -163,7 +162,7 @@ cr_merge_gate() {
 
     local sel="${1:-}" repo="${2:-}"
 
-    # Availability gate (HIMMEL-1125). Silent: an adopter without CodeRabbit must
+    # Availability gate. Silent: an adopter without CodeRabbit must
     # not see a CodeRabbit gate announce itself. Subsumes the old
     # `CR_PROFILE=none` early return — cr_app_configured reads that switch first,
     # so an operator who set it sees identical behaviour.
@@ -179,7 +178,7 @@ cr_merge_gate() {
     # Only a WELL-FORMED owner/name counts as a foreign target. A mis-tokenized
     # value — `--repo "o/r"` arriving with its quotes, a flag, a fragment — is
     # NOT a foreign repo, and must fall through to the existing rc=3 re-anchor
-    # path (HIMMEL-936 codex-1). Short-circuiting on garbage here would mean a
+    # path. Short-circuiting on garbage here would mean a
     # quoted --repo SILENTLY DISABLES this gate: a worse bypass than the one the
     # foreign-target check exists to close. Both sides are canonicalized so a
     # mere spelling (case, or a HOST/ prefix) cannot make the local repo look
@@ -199,7 +198,7 @@ cr_merge_gate() {
                 # trailing-slash URL, ...). Arming is a deliberate per-clone
                 # act, so an armed-but-unparseable clone is treated as LOCAL
                 # (fall through and gate) rather than silently disabled as
-                # foreign (HIMMEL-1404 T9). An unarmed clone still exits here
+                # foreign (T9). An unarmed clone still exits here
                 # via the same cr_app_configured check used below, preserving
                 # today's unarmed behaviour.
                 cr_app_configured "$PWD" || return 0
@@ -226,8 +225,8 @@ cr_merge_gate() {
     name=$(printf '%s' "$url"  | sed -n 's|^https://[^/]*/[^/]*/\([^/]*\)/.*|\1|p')
     if [ -z "$owner" ] || [ -z "$name" ]; then _cmg_degrade "cannot parse owner/name from $url"; return 0; fi
 
-    # 1) CodeRabbit's verdict on the head SHA is advisory only (HIMMEL-3360,
-    # operator ruling 2026-09-21: CodeRabbit is best effort). The read still
+    # 1) CodeRabbit's verdict on the head SHA is advisory only
+    # (operator ruling 2026-09-21: CodeRabbit is best effort). The read still
     # happens BEFORE the thread query below (coderabbit-10) for the same
     # ordering reason as before: once CodeRabbit has concluded (`success`),
     # the thread set the query below sees is final. Threads-first would lose
@@ -261,11 +260,11 @@ cr_merge_gate() {
         -f owner="$owner" -f name="$name" -F number="$num" \
         -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved path line comments(first:1){nodes{author{login}}}}}}}}' \
         2>/dev/null) || { _cmg_degrade "reviewThreads query failed"; return 0; }
-    # Page-completeness marker (HIMMEL-980 codex-adv-1): this single-page query
+    # Page-completeness marker (codex-adv-1): this single-page query
     # is the hook's ONLY thread evidence, so "zero unresolved on page one" is a
     # pass ONLY when page one was the whole story. It now feeds exactly one
     # consumer: the >100-thread BLOCK below (coderabbit-5 — it used to gate the
-    # zombie override, which HIMMEL-1072 removed).
+    # zombie override, which removed).
     # `== false` on purpose (coderabbit 980-r2): only an EXPLICIT
     # hasNextPage:false proves completeness — a missing/null pageInfo yields
     # "false" here (so an unprovable page blocks). jq's `//` operator cannot
@@ -298,7 +297,7 @@ cr_merge_gate() {
         return 2
     fi
 
-    # 3) CodeRabbit review-BODY findings (HIMMEL-1126/1147, S1 — see
+    # 3) CodeRabbit review-BODY findings (S1 — see
     # cr-body-findings.sh header): outside-diff-range comments carry NO
     # thread, so every gate above is blind to them by construction. Read only
     # now that CodeRabbit has concluded and the thread set above is final —
@@ -312,7 +311,7 @@ cr_merge_gate() {
     # SHOWS a section keyword but the count would not parse) is POSITIVE
     # evidence of an unparseable finding and BLOCKS outright, same rank as
     # outside>0 itself. `nitpick` is surfaced on the ALLOW note only
-    # (HIMMEL-1147: the failure was invisibility, not permissiveness —
+    # (the failure was invisibility, not permissiveness —
     # blocking Trivial-severity findings tanks the loop).
     local body_line body_rc outside nitpick prior_outside substantive body_degraded=0 body_nitpick=0 tok
     body_line=$(cr_body_findings "$owner" "$name" "$num" "$head")
@@ -350,14 +349,14 @@ cr_merge_gate() {
             if [ "$_body_bad" -eq 1 ]; then
                 body_degraded=1
             elif [ "$prior_outside" -gt 0 ] && [ "$substantive" -eq 0 ] && [ "$outside" -eq 0 ]; then
-                # HIMMEL-3360 operator ruling (2026-09-21): best effort covers
+                # operator ruling: best effort covers
                 # ABSENCE at THIS head only — every prior head's ALREADY-POSTED
                 # outside-diff findings still govern the gate, keyed to the
-                # head that actually carries them (HIMMEL-3379).
+                # head that actually carries them.
                 _cmg_prior_outside_block || return 2
                 body_nitpick="$nitpick"
             elif [ "$outside" -gt 0 ]; then
-                # HIMMEL-3124: each outside-diff finding may carry an explicit
+                # each outside-diff finding may carry an explicit
                 # ledger disposition AT THIS EXACT HEAD (deferred + tracked
                 # ticket + reason, or disproved + reason) — same reader and rule
                 # as check-ci.sh. Anything undispositioned, or a list that cannot
@@ -378,7 +377,7 @@ cr_merge_gate() {
     esac
 
     # Nothing blocked. If the verdict query or the body-findings reader
-    # degraded, note it (codex-1 / HIMMEL-1126) — a broken query is not
+    # degraded, note it — a broken query is not
     # evidence; unresolved threads and outside-diff findings are, and both
     # are already checked above.
     if [ "$cr_degraded" -eq 1 ] || [ "$body_degraded" -eq 1 ]; then

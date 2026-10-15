@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/ci/shell-extended-nightly-issue.sh (HIMMEL-3132).
+# Smoke test for scripts/ci/shell-extended-nightly-issue.sh.
 # Uses DRY_RUN=1 so no gh, no auth, no network — asserts the issue-state
 # decisions per shell-unit outcome from the emitted DRY: gh command lines.
 set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
-# pipeline (HIMMEL-1430: this file runs under `set -o pipefail`, where a
+# pipeline (this file runs under `set -o pipefail`, where a
 # pipe into `grep -q` can report a successful match as failed via SIGPIPE).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 

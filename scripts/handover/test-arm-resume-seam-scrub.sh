@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-seam-scrub.sh -- HIMMEL-4118 F2: `at` snapshots the
+# test-arm-resume-seam-scrub.sh -- F2: `at` snapshots the
 # submitting shell's env, so an arm made from inside a consult handed the
 # resumed session LEG_PROFILE_NO_SETTING_SOURCES (and the rest of the launch
 # seam: the shim, its binary, the profile files). The at job body now clears
@@ -93,7 +93,7 @@ for v in $KEEP; do
     assert_eq "S2 the resumed session keeps $v" "$v=set" "$(printf '%s\n' "$R" | grep "^$v=")"
 done
 
-# HIMMEL-4142 S3: clearing the seam (above) leaves a resumed consult as a bare, UNconfined
+# clearing the seam (above) leaves a resumed consult as a bare, UNconfined
 # claude, so arm-resume refuses to arm from inside a consult at all (fail closed).
 rc=0
 OUT3=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu LEG_PROFILE_NO_SETTING_SOURCES=1 bash "$ARM" --time "$(future_time)" \
@@ -108,7 +108,7 @@ env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu LEG_PROFILE_NO_SETTING_SOURCES= ba
     --handover "$HANDOVER" --dry-run >/dev/null 2>&1 || rc=$?
 assert_eq "S3 an empty LEG_PROFILE_NO_SETTING_SOURCES still arms (exit 0)" "0" "$rc"
 
-# HIMMEL-4163: the read-only --list-temp-arms sweep arms nothing, so a consult may run it,
+# the read-only --list-temp-arms sweep arms nothing, so a consult may run it,
 # but ONLY as the sole argument; every other mode, or the flag beside one, still refuses.
 rc=0
 OUT4=$(env PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu LEG_PROFILE_NO_SETTING_SOURCES=1 bash "$ARM" --list-temp-arms 2>&1) || rc=$?

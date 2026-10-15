@@ -7,8 +7,8 @@
 #   1. dedupes against the CURRENT handover's HIMMEL-Resume-<name> job
 #      in the OS scheduler — refuses (rc=3) or replaces with --force,
 #      so we never end up with two claude sessions cron-relaunched for
-#      the SAME handover (the user's stated requirement for HIMMEL-122).
-#      Distinct handovers each get their own slot (HIMMEL-340); pass
+#      the SAME handover (the user's stated requirement).
+#      Distinct handovers each get their own slot; pass
 #      --dedup-any to instead defer to ANY existing slot (the auto-arm
 #      watchdog safety-arm semantics — never queue a duplicate relaunch).
 #   2. directly invokes schtasks / at / crontab — does NOT round-trip
@@ -26,12 +26,12 @@
 #      fired slot never lingers to block a same-handover re-arm or fire
 #      twice.
 #   6. checks for time collisions with other HIMMEL-* claude-launching
-#      scheduled tasks (HIMMEL-407): HARD-REFUSES (rc=6) on an exact-
+#      scheduled tasks: HARD-REFUSES (rc=6) on an exact-
 #      minute match; WARNs (continues) within ±COLLISION_WINDOW_MINUTES
 #      (default 5 min). --force bypasses both. --dedup-any arms run
 #      WARN-ONLY so unattended watchdog arms never refuse.
 #
-# This is the *arm* half of HIMMEL-122 (auto-resume on usage-cap
+# This is the *arm* half  (auto-resume on usage-cap
 # detection). The *detect* half (monitoring claude-statusline / API
 # rate-limit signals to auto-trigger this) is a separate wedge.
 #
@@ -46,20 +46,20 @@
 #
 # Optional:
 #   --time <HH:MM|smart|auto>
-#                      Default: smart (HIMMEL-3121) -- omitting --time is
+#                      Default: smart -- omitting --time is
 #                      exactly `--time smart`. An explicit HH:MM is 24h local
 #                      time (today if future, tomorrow if past), is never moved
 #                      forward, and a lapsed one still refuses; auto is
 #                      unchanged.
 #   --force            Replace the existing same-handover HIMMEL-Resume job
 #                      (always THIS handover's own job only — never a sibling
-#                      chain's, even under --dedup-any; HIMMEL-1563).
+#                      chain's, even under --dedup-any).
 #                      Default refuses (rc=3) — explicit opt-in only.
-#                      Also bypasses the time-collision check (HIMMEL-407).
+#                      Also bypasses the time-collision check.
 #   --long-gap         Sanction a far park: an explicit HH:MM more than 60 min
-#                      out (HIMMEL-1475, rc=9), OR --time smart resolving to a
-#                      multi-hour/day quota-exhaustion park (HIMMEL-2113,
-#                      rc=19). Default REFUSES both so a long wait is an
+#                      out (rc=9), OR --time smart resolving to a
+#                      multi-hour/day quota-exhaustion park
+#                      (rc=19). Default REFUSES both so a long wait is an
 #                      explicit choice, not a silent default (ALWAYS-CONTINUE:
 #                      an orchestrator leg arms <=30-60 min out while work
 #                      remains). ARM_RESUME_SAFETY_ARM=1 is exempt from BOTH
@@ -70,8 +70,8 @@
 #                      it never covered smart's OWN rc=19 park refusal, which
 #                      --long-gap is what overrides.
 #   --dedup-any        Dedup against ANY HIMMEL-Resume job, not just this
-#                      handover's (HIMMEL-340 safety-arm semantics).
-#   --source-key <tag> Stable dedup identity for one SOURCE (HIMMEL-841); see
+#                      handover's.
+#   --source-key <tag> Stable dedup identity for one SOURCE; see
 #                      the --help text.
 #   --dry-run          Print what would be scheduled, touch nothing.
 #
@@ -84,11 +84,11 @@
 #   ARM_COLLISION_WINDOW    Test seam: overrides COLLISION_WINDOW_MINUTES.
 #   ARM_RESUME_SAFETY_ARM   Internal signal (=1) marking an automated
 #                           machine-wide SAFETY arm (auto-arm-on-cap.sh,
-#                           spawn-glm cap-respawn) so the HIMMEL-1475 long-gap
+#                           spawn-glm cap-respawn) so the long-gap
 #                           guard exempts it. NOT a public flag: set only by
 #                           the in-repo automated callers in their child env.
 #   ARM_NAME_TEMPLATE       Naming template for the derived session identity
-#                           (HIMMEL-716): placeholders {ticket} {slug}
+#                           placeholders {ticket} {slug}
 #                           {session}. Unset = the built-in ticket-first
 #                           composition. See _compose_arm_name.
 #   ARM_WITH_LIVE_WORKERS   Exact value 1 bypasses the live lane-worker guard
@@ -96,21 +96,21 @@
 #                           killing in-flight workers at session exit. Also
 #                           downgrades a reconcile/census tool FAILURE (e.g. a
 #                           malformed meta.json) from a hard refusal to a loud
-#                           warning naming the offending path (HIMMEL-1511) --
+#                           warning naming the offending path;
 #                           without it, that failure exits 2 unconditionally.
 #   SCHTASKS_CMD            Windows scheduler binary. Default `schtasks`; tests
 #                           pin it to a stub path so the suite drives the stub
 #                           through this seam instead of relying on PATH
-#                           resolution order (HIMMEL-1610). Same shape as the
+#                           resolution order. Same shape as the
 #                           GH_CMD seam in graph-publish / the forge backends.
 #                           Left at its default, arm-resume also tries a fast
-#                           PowerShell wildcard listing first (HIMMEL-1337)
+#                           PowerShell wildcard listing first
 #                           before falling back to a full `schtasks /query`.
-#   ARM_TICKET_DUP_OK       Exact value 1 overrides the HIMMEL-1329 ticket-level
+#   ARM_TICKET_DUP_OK       Exact value 1 overrides the ticket-level
 #                           mutex refusal (rc 13) -- arms anyway when this
 #                           ticket already has another slot under a different
 #                           handover. Env twin of --force for this check.
-#   ARM_VAULT_CWD_OK        Exact value 1 overrides the HIMMEL-1330 single-writer
+#   ARM_VAULT_CWD_OK        Exact value 1 overrides the single-writer
 #                           auto-detected-cwd refusal (rc 14) -- arms anyway
 #                           into a vault/state repo with no explicit
 #                           --cwd/--worktree/resume_cwd:.
@@ -148,59 +148,59 @@
 #      --dedup-any, any HIMMEL-Resume job exists); pass --force to replace
 #   4  scheduler invocation failed (job NOT armed; stderr above)
 #   5  refused — --channels passed while the bun Telegram bridge is live
-#      (HIMMEL-225: a 2nd getUpdates consumer 409s + the dev-channels prompt
+#      (a 2nd getUpdates consumer 409s + the dev-channels prompt
 #      hangs an unattended relaunch). Drop --channels (the bun bridge owns
 #      Telegram) or, after stopping the bridge, override with ARM_CHANNELS_OK=1.
 #   6  time collision — the requested time exactly matches another HIMMEL-*
-#      scheduled task (HIMMEL-407). Pass --force to override, or choose a
+#      scheduled task. Pass --force to override, or choose a
 #      different time (suggest_free_slot prints nearby free options).
 #   7  refused — the handover's queue lock (scripts/handover/queue-lock.sh)
 #      is currently FRESH: a session is LIVE on this queue right now
-#      (HIMMEL-856). Override with QUEUE_LOCK_TAKEOVER=1.
+# Override with QUEUE_LOCK_TAKEOVER=1.
 #   8  refused — this handover already has a PENDING arm recorded on
-#      ANOTHER host in the cross-machine arms registry (HIMMEL-856; the
+#      ANOTHER host in the cross-machine arms registry (the
 #      win2+main double-arm shape). Override with ARM_DUP_OK=1. A record
 #      stops being PENDING (and stops causing this refusal) once the arm it
 #      names actually fires and the relaunched session acquires its queue
-#      lock — queue-lock.sh CONSUMES (drops) it at that point (HIMMEL-882);
+#      lock — queue-lock.sh CONSUMES (drops) it at that point;
 #      this script also prunes ITS OWN host's prior records for the same
 #      handover on every re-arm, so neither a fired arm nor a superseded
 #      re-arm blocks a later cross-host arm forever.
 #   9  long-gap refused — an explicit --time HH:MM more than 60 min out
-#      without --long-gap (HIMMEL-1475). Pass --long-gap to sanction an
+#      without --long-gap. Pass --long-gap to sanction an
 #      overnight/idle wait, or pick a nearer --time. Automated safety arms
 #      (ARM_RESUME_SAFETY_ARM=1) are exempt; smart/auto sentinels are exempt
 #      by design.
 #   19 quota-park refused — --time smart resolved to a multi-hour/day park at
-#      the next usage-window reset (HIMMEL-2113 Ask A): refuses FAST, before
+#      the next usage-window reset: refuses FAST, before
 #      the worker census / queue-lock / shipped-work-preflight phases spend
 #      real wall-clock discovering the same park anyway. Pass --time HH:MM to
 #      arm a specific slot instead, or --long-gap to accept the park.
 #      ARM_RESUME_SAFETY_ARM=1 is exempt, same as the rc 9 guard.
 #   12 temp-target refused — the resolved work directory OR the handover file
-#      itself lives under a TEMP/scratch root (HIMMEL-1365), so arming would
+#      itself lives under a TEMP/scratch root, so arming would
 #      create a REAL scheduled task launching an UNATTENDED session against a
 #      throwaway path. Set ARM_FIXTURE_OK=1 (or the original ARM_TEMP_CWD_OK=1)
 #      when that is genuinely intended (a test harness arming its own fixture).
 #      --dry-run is exempt.
 #   11 shipped-work refused — the work this handover re-arms already looks
-#      landed (HIMMEL-1331): its ticket is Done/Closed, or its branch has a
+#      landed: its ticket is Done/Closed, or its branch has a
 #      MERGED PR, or an OPEN+MERGEABLE one. The ERR names which check tripped.
 #      Only POSITIVE evidence refuses — a missing gh/Jira CLI, no network or a
 #      detached HEAD skip the probe. Pass --force or set ARM_SHIPPED_OK=1 for a
 #      deliberate follow-up leg on the same ticket.
 #   10 live workers refused — one or more GLM/claudex bridge rows are running
-#      with a live or unprobeable pid (HIMMEL-1463). Unprobeable fails closed as
+#      with a live or unprobeable pid. Unprobeable fails closed as
 #      possibly alive. Wait for them or explicitly set ARM_WITH_LIVE_WORKERS=1
 #      to accept that session exit may kill them.
 #   13 ticket-dup refused — this ticket already has another armed resume slot
-#      under a DIFFERENT handover file (HIMMEL-1329). The identity dedup (rc 3)
+#      under a DIFFERENT handover file. The identity dedup (rc 3)
 #      only catches the SAME handover armed twice; this catches two handovers
 #      naming the same ticket. Pass --force or set ARM_TICKET_DUP_OK=1 for a
 #      deliberate parallel leg on the same ticket.
 #   14 vault-cwd refused — no --cwd/--worktree/resume_cwd: named a work repo,
 #      so the auto-detected cwd (the handover's own git toplevel) would be
-#      used, and that directory is a SINGLE-WRITER repo (HIMMEL-1330) — e.g. a
+#      used, and that directory is a SINGLE-WRITER repo — e.g. a
 #      himmel/code handover parked in the luna vault, about to arm INSIDE the
 #      vault and inherit its direct-to-main commit behavior. Set
 #      'resume_cwd: <work-repo>' in the handover frontmatter, pass
@@ -209,36 +209,36 @@
 #   15 already-fired refused — the flow-run ledger holds an `armed-resume`
 #      start row for THIS task name with NO matching end row, i.e. this
 #      handover's arm fired and that run never recorded completion
-#      (HIMMEL-1879). The scheduler reads clean because a fired arm deletes its
+# The scheduler reads clean because a fired arm deletes its
 #      own registration, so rc 3 cannot see it; re-arming would put a SECOND
 #      session on one seat. A run that COMPLETED never trips this (stable
 #      handovers re-arm all day), and ARM_RESUME_SAFETY_ARM=1 is exempt. Pass
 #      --force when the session is known gone (crashed before its end row).
 #   16 --list-temp-arms found at least one armed entry targeting a temp/scratch
-#      path (HIMMEL-1365 sweep). REPORT ONLY — nothing is ever deleted. 0 = clean.
+#      path. REPORT ONLY — nothing is ever deleted. 0 = clean.
 #   18 --list-temp-arms found NO temp target but could not INSPECT one or more
 #      armed entries — the scheduler would not describe them (access denied, or
 #      the task vanished between the roster read and the query). Not a clean
 #      bill of health, and rc 0 would let a machine caller record one
-#      (HIMMEL-1998). Re-run where schtasks can read them. 16 outranks this: a
+# Re-run where schtasks can read them. 16 outranks this: a
 #      sweep with BOTH a hit and an uninspectable entry exits 16 and says so in
 #      the report, because the hit is the actionable half.
 #   17 split-leg refused — the handover is `<prefix>-session-N.md` and its
 #      sibling `<prefix>-session-<N-1>.md` was written inside this leg window
 #      AND was never itself a relaunch point (no `armed-resume` ledger row
 #      names its arm identity): one leg wrote two numbered files and is arming the
-#      wrong half, so the other half's state would be orphaned (HIMMEL-1830).
+#      wrong half, so the other half's state would be orphaned.
 #      Fold them into ONE file and arm that; ARM_SPLIT_LEG_OK=1 or --force opts
 #      out. Safety arms (ARM_RESUME_SAFETY_ARM=1) are exempt.
 #   20 fable-tier refused — --model names a Fable-family model on a
-#      non-console arm with no --fable-ok (HIMMEL-2332, operator ruling 30:
+#      non-console arm with no --fable-ok (operator ruling 30:
 #      "we shouldn't arm fable unless theres a good reason"). Pass
 #      --fable-ok "<reason>" to arm it anyway, or drop --model to get the
 #      opus default. *-console.md handovers are exempt (ruling 25 -- the
 #      console lane is ALWAYS Fable). rc 0-19 were already taken by this
 #      script, so 20 is the first free code.
 #   21 base-not-verified refused — the handover's `fence:` frontmatter key
-#      (HIMMEL-2383, console ruling 66) names a fence scripts/console/base-status.sh
+#      (console ruling 66) names a fence scripts/console/base-status.sh
 #      could not certify clean: it reported a PENDING/RED merged PR, OR it
 #      could not run at all (missing script, gh query error, a truncated
 #      merged-PR list) — a certification failure refuses exactly like a
@@ -247,16 +247,16 @@
 #      --provisional-base-ok to arm anyway — this WARNS loudly and prints
 #      the warning text (paste it into the leg's first message per ruling
 #      66) instead of refusing.
-#   22 fleet-size cap refused (HIMMEL-2765) — scripts/lib/bank-preflight.sh
+#   22 fleet-size cap refused — scripts/lib/bank-preflight.sh
 #      reported SKIPPED-FLEET: the number of live LEG sessions is already at
 #      or above HIMMEL_FLEET_CAP (default 4; concurrency, not bank
-#      exhaustion, burned the fleet on 2026-09-07, HIMMEL-2750). Checked at
+#      exhaustion, burned the fleet on 2026-09-07). Checked at
 #      ARM time (before the scheduler entry is created), --dry-run exempt.
 #      Set FLEET_CAP_OK=1 in the LAUNCHING shell to arm anyway.
 set -euo pipefail
-# HIMMEL-3914: refuse a chokepoint seam that differs from the session's launch env.
+# refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
-# what is sourced before the seam guard (HIMMEL-3914).
+# what is sourced before the seam guard.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
 _csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
@@ -277,7 +277,7 @@ CHANNELS=""
 MODEL=""
 PROFILE=""
 FABLE_OK=""
-# HIMMEL-4013: the relaunched claude runs under a role-matched plugin profile
+# the relaunched claude runs under a role-matched plugin profile
 # (--settings <file>), never the operator's full plugin set. --profile wins;
 # else the role is read from the handover doc (role-profile.sh). Resolved at
 # ARM time to a stable per-user file (an at/cron relaunch fires later) and
@@ -297,12 +297,12 @@ _arm_profile_settings_flag() {
     }
     printf -- '--settings %s ' "$(printf '%q' "$settings")"
 }
-# HIMMEL-5201: the line that backgrounds arm-resume-bus-rebind.sh next to a
+# the line that backgrounds arm-resume-bus-rebind.sh next to a
 # resumed launch, so the new claude pid is rebound to its name on the
 # himmel-bus. Opt-in: prints NOTHING (the emitted command stays byte-identical)
 # unless the session name already has a bus peer file. Linux at/crontab only;
 # the schtasks and --wsl-distro bodies are deliberately untouched (Windows
-# development is parked, HIMMEL-4102). Output goes to /dev/null: the helper
+# development is parked). Output goes to /dev/null: the helper
 # writes its own WARNs to the arm log it is handed.
 _bus_rebind_line() { # _bus_rebind_line <arm-log-file>
     local name="$SESSION_NAME" secs="${ARM_RESUME_BUS_REBIND_SECS:-15}" bus
@@ -319,7 +319,7 @@ _bus_rebind_line() { # _bus_rebind_line <arm-log-file>
         "$(printf '%q' "$SCRIPT_DIR/arm-resume-bus-rebind.sh")" "$(printf '%q' "$name")" \
         "$(printf '%q' "$bus")" "$(printf '%q' "$1")" "$secs"
 }
-# HIMMEL-2658: --context resolution (arming-time 1m/standard choice, never
+# --context resolution (arming-time 1m/standard choice, never
 # inherited from the operator's user-level model setting). Left empty means
 # "use the console/non-console default" -- resolved right after the MODEL_REASON
 # block below, where CONTEXT_MODE and AUTOCOMPACT get their real values.
@@ -568,7 +568,7 @@ Env:
 EOF
 }
 
-# HIMMEL-2975 T6: sourced here (ahead of SCRIPT_DIR at the bottom of the
+# sourced here (ahead of SCRIPT_DIR at the bottom of the
 # file) because --context validation below needs console_context_valid
 # during arg parsing, well before SCRIPT_DIR/py-armor sourcing normally
 # happens.
@@ -641,7 +641,7 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         --context)
-            # HIMMEL-2658: same missing/empty/option-value trap as --model
+            # same missing/empty/option-value trap as --model
             # above -- `--context --dry-run` must error, not silently
             # consume --dry-run as the value and arm with a wrong context.
             if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then
@@ -701,7 +701,7 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         --fable-ok)
-            # HIMMEL-2332: justifies an explicit Fable-family --model pin on
+            # justifies an explicit Fable-family --model pin on
             # a non-console arm (ruling 30). Same missing/empty/option-value
             # shape as --model above.
             if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then
@@ -773,7 +773,7 @@ if [ -n "$WSL_DISTRO" ] && ! [[ "$WSL_DISTRO" =~ ^[A-Za-z0-9._-]+$ ]]; then
     exit 2
 fi
 
-# HIMMEL-3118: --automerge and --no-automerge are opposite explicit signals;
+# --automerge and --no-automerge are opposite explicit signals;
 # accepting both silently would leave it ambiguous which one the launch body
 # honors. Refuse instead of picking a winner.
 if [ "$AUTOMERGE" -eq 1 ] && [ "$NO_AUTOMERGE" -eq 1 ]; then
@@ -781,17 +781,17 @@ if [ "$AUTOMERGE" -eq 1 ] && [ "$NO_AUTOMERGE" -eq 1 ]; then
     exit 2
 fi
 
-# HIMMEL-4142 S3: a consult is confined only by headed-arm-leg.sh --consult's
+# a consult is confined only by headed-arm-leg.sh --consult's
 # `--setting-sources ""`, which no arm-resume launch path carries (and the at body
-# clears the seam, HIMMEL-4118 F2), so a re-armed consult would start unconfined.
+# clears the seam), so a re-armed consult would start unconfined.
 # Fail closed: a session carrying the consult marker never arms. A consult is a
 # short question; the console relaunches one with headed-arm-leg.sh if it must.
-# HIMMEL-4163: the read-only --list-temp-arms sweep arms nothing, so it alone passes,
+# the read-only --list-temp-arms sweep arms nothing, so it alone passes,
 # and only as the SOLE argument (the flag beside any other mode or arm arg still refuses).
 # ponytail: the consult is identified by this env var alone, so a consult that unsets
 # LEG_PROFILE_NO_SETTING_SOURCES is not recognised here; the consult's deny rules and
 # sandbox bound that, upgrade path = a process-ancestry check or a consult-workdir
-# token file, trigger = an exploit beyond the sandbox (HIMMEL-4163).
+# token file, trigger = an exploit beyond the sandbox.
 if [ -n "${LEG_PROFILE_NO_SETTING_SOURCES:-}" ] \
     && ! { [ "${LIST_TEMP_ARMS:-0}" -eq 1 ] && [ "$ARGC_AT_START" -eq 1 ]; }; then
     echo "ERR arm-resume: refusing to arm from inside a consult (LEG_PROFILE_NO_SETTING_SOURCES is set): no arm-resume launch carries the consult's --setting-sources confinement; relaunch it with headed-arm-leg.sh --consult" >&2
@@ -799,7 +799,7 @@ if [ -n "${LEG_PROFILE_NO_SETTING_SOURCES:-}" ] \
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-1365 -- temp/scratch-path detection.
+# temp/scratch-path detection.
 #
 # Defined HERE (right after the arg loop) rather than beside its arming-path
 # caller further down, because --list-temp-arms is a READ-ONLY sweep that must
@@ -820,7 +820,7 @@ _arm_is_temp_path() { # <path> -> rc 0 when it lives under a temp/scratch root
         # guard that catches every directory beneath them -- the same
         # root-itself gap the r1 round closed for the $TMPDIR loop below.
         /tmp/*|/tmp|/var/tmp/*|/var/tmp|/var/folders/*|/var/folders) return 0 ;;
-        # HIMMEL-1999 item 3: the bare root too, not only its descendants. An
+        # the bare root too, not only its descendants. An
         # exact `…/AppData/Local/Temp` that belongs to ANOTHER user -- or that
         # this shell's TEMP/TMPDIR does not mirror, so the loop below misses it
         # -- is the same throwaway target as a directory inside it.
@@ -842,7 +842,7 @@ _arm_is_temp_path() { # <path> -> rc 0 when it lives under a temp/scratch root
     return 1
 }
 
-# --list-temp-arms (HIMMEL-1365 sweep half): REPORT, never delete, every armed
+# --list-temp-arms: REPORT, never delete, every armed
 # HIMMEL-Resume-* entry whose runner targets a temp/scratch path. Deletion stays
 # an operator decision -- the incident response was `Disable-ScheduledTask`
 # precisely because it is reversible and preserves the artifact.
@@ -895,7 +895,7 @@ EOF
         msys*|cygwin*|win32*|MINGW*)
             while IFS= read -r _lta_name; do
                 [ -n "$_lta_name" ] || continue
-                # HIMMEL-1998: read the runner out of the task's XML, not out
+                # read the runner out of the task's XML, not out
                 # of `/fo LIST /v`. That listing's "Task To Run:" label is
                 # LOCALIZED -- on a non-English Windows the sed matches
                 # nothing, the runner path comes back EMPTY, and a
@@ -928,7 +928,7 @@ EOF
                 _lta_body=""
                 # cygpath the win path back to the MSYS view so we can read it.
                 if command -v cygpath >/dev/null 2>&1 && [ -n "$_lta_bat" ]; then
-                    # HIMMEL-1370: a cygpath that exits 0 with EMPTY output must
+                    # a cygpath that exits 0 with EMPTY output must
                     # not blank the path -- keep the raw one unless it converted.
                     _lta_conv=$(cygpath -u "$_lta_bat" 2>/dev/null) || _lta_conv=""
                     [ -n "$_lta_conv" ] && _lta_bat=$_lta_conv
@@ -970,7 +970,7 @@ EOF
     if [ "$_lta_hits" -eq 0 ]; then
         if [ "$_lta_degraded" -gt 0 ]; then
             # "No hits" is only a clean bill of health when every entry was
-            # actually readable (HIMMEL-1998). Its OWN exit code, not 0: a
+            # actually readable. Its OWN exit code, not 0: a
             # machine caller reads the status, not the warning text, and rc 0
             # is this sweep's documented "nothing suspect" answer.
             echo "  no temp-targeted arm found, but $_lta_degraded entry/entries could not be inspected — NOT a clean sweep; re-run where schtasks can read them"
@@ -994,7 +994,7 @@ EOF
     exit 16
 fi
 
-# HIMMEL-3121: an OMITTED --time is `--time smart` -- the self-correcting
+# an OMITTED --time is `--time smart` -- the self-correcting
 # ASAP-or-wait slot -- so a caller never hand-picks an HH:MM that nothing moves
 # forward. Keyed on whether --time was passed, not on the value being empty: an
 # explicit `--time ""` is malformed and still refuses below. An explicit
@@ -1007,9 +1007,9 @@ if [ -z "$RESUME_TIME" ] || [ -z "$HANDOVER_PATH" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-2332 -- Fable-tier arm guard. Operator ruling 30: "we shouldn't arm
+# "we shouldn't arm
 # fable unless theres a good reason" / "make sure this is STRUCTURAL
-# otherwise it won't work". The --model passthrough (HIMMEL-2192) is opt-in,
+# otherwise it won't work". The --model passthrough is opt-in,
 # so an arm that omits it relaunches on the operator's default model, which
 # is the Fable tier -- expensive. Two worker legs got armed unpinned on
 # 2026-08-31 and landed on Fable parents where Opus was right.
@@ -1027,8 +1027,8 @@ fi
 # ceremony-free -- neither defaulted to opus nor required to justify a Fable
 # pin. An UNPINNED console arm passes no --model at all, so the launched
 # claude uses the operator's own default; console.sh / headed-arm.sh default
-# their console parent to Opus (#836, HIMMEL-3079) but arm-resume does not
-# choose one (HIMMEL-3169). Computed from the raw --handover path as typed; the file-existence
+# their console parent to Opus (#836) but arm-resume does not
+# choose one. Computed from the raw --handover path as typed; the file-existence
 # check happens later, so no canonicalization dependency is needed here.
 _arm_is_console=0
 case "$(basename -- "$HANDOVER_PATH" | tr '[:upper:]' '[:lower:]')" in
@@ -1068,7 +1068,7 @@ fi
 # not stderr -- this is a report, not an error.
 echo "arm-resume: $MODEL_REASON"
 
-# --context resolution (HIMMEL-2658, default re-pinned by HIMMEL-2975 T6):
+# --context resolution (default re-pinned):
 # the ONLY structural fix for a station silently running a 1M window on
 # every session -- a stray [1m] suffix on the operator's user-level `model`
 # setting drove ~25-35% of the weekly token bank, and dropping the suffix
@@ -1081,16 +1081,16 @@ echo "arm-resume: $MODEL_REASON"
 # changing. Reuses _arm_is_console and _arm_model_is_fable, already computed
 # above for the MODEL_REASON block -- do not recompute either.
 #
-# HIMMEL-3884: consoles default to 1m; non-console arms remain standard.
+# consoles default to 1m; non-console arms remain standard.
 # The shared resolver honors CONSOLE_CONTEXT=standard as a console-only
 # opt-down. An explicit --context takes precedence over both.
 if [ -z "$CONTEXT_MODE" ]; then
     console_context_default "$_arm_is_console" "${CONSOLE_CONTEXT:-}"
     CONTEXT_MODE="$CONSOLE_CONTEXT_RESOLVED_MODE"
-    # HIMMEL-3282: the source word is the one headed-arm.sh emits and spec
+    # the source word is the one headed-arm.sh emits and spec
     # 2973 sec 2.4 keys on (`context=1m (explicit)`), from the shared
-    # resolver. It used to be prose per case (HIMMEL-2975 console default,
-    # HIMMEL-2658 non-console default, the CONSOLE_CONTEXT=1m opt-in) that no
+    # resolver. It used to be prose per case (console default,
+    # non-console default, the CONSOLE_CONTEXT=1m opt-in) that no
     # reader could match; the provenance is in those tickets, not the string.
     _arm_context_source=$(console_context_source_label 0)
 else
@@ -1121,7 +1121,7 @@ if [ "$CONTEXT_MODE" = "1m" ]; then
         # set 1m context on one. Say so instead of staying silent.
         CONTEXT_REASON="$CONTEXT_REASON; model=$MODEL is Fable-family -- the CLI silently strips a [1m] suffix there, so it is NOT applied (autocompact=auto still is)"
     elif ! console_context_model_takes_1m_suffix "$MODEL"; then
-        # HIMMEL-5501: native-1M and non-Anthropic ids launch bare.
+        # native-1M and non-Anthropic ids launch bare.
         CONTEXT_REASON="$CONTEXT_REASON; model=$MODEL runs 1M without a suffix -- [1m] NOT applied (autocompact=auto still is)"
     else
         MODEL="${MODEL}[1m]"
@@ -1136,12 +1136,12 @@ fi
 # MODEL_REASON echo above.
 echo "arm-resume: $CONTEXT_REASON (autocompact=$AUTOCOMPACT)"
 
-# HIMMEL-5501: the relaunch passes --autocompact and the resolved model id; a
+# the relaunch passes --autocompact and the resolved model id; a
 # CLI below the floor rejects them at parse time, so nothing fires and nothing
 # says why. Refuse before any scheduler work (a dry run only warns).
 claude_floor_gate arm-resume "$DRY_RUN" "${HEADED_ARM_CLAUDE_CLI:-claude}" || exit 2
 
-# HIMMEL-2779: worker legs are capped by the explicit CLI argv pair, not by a
+# worker legs are capped by the explicit CLI argv pair, not by a
 # model suffix (Fable-family launches can silently strip [1m]). Refuse before
 # any preflight or scheduler work when context resolution chose another value.
 if [ "$TIER" = "leg" ] && [ "$AUTOCOMPACT" != "200000" ]; then
@@ -1163,7 +1163,7 @@ _arm_require_leg_autocompact_argv() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# python3 hang armor (HIMMEL-249): the Windows Store python3 stub can wedge
+# python3 hang armor: the Windows Store python3 stub can wedge
 # (ignores SIGTERM, orphan child holds the $() pipe). The auto-arm-on-cap
 # watchdog calls this script, so the armor chain is only as strong as the
 # weakest python call here — every one goes through the shared armor.
@@ -1171,13 +1171,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/py-armor.sh"
 
-# HIMMEL-3474: shared with konsole-macos.sh's own ARM_TERMINAL_APP /
+# shared with konsole-macos.sh's own ARM_TERMINAL_APP /
 # ARM_APP_DIRS resolution -- one copy of the decision instead of two.
 # shellcheck source=../lib/macos-app-resolve.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/macos-app-resolve.sh"
 
-# HIMMEL-2113 Ask B: opt-in phase timing. ARM_PROFILE=1 wraps the slow phases
+# opt-in phase timing. ARM_PROFILE=1 wraps the slow phases
 # (usage-cache/slot resolve, worker census, queue-lock probe, arms-registry
 # cross-host check, shipped-work preflight) with wall-clock second markers and
 # prints one summary line at the end -- zero-cost by default (the ARM_PROFILE
@@ -1185,7 +1185,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # telemetry/handover_root sourcing pattern below).
 ARM_PROFILE="${ARM_PROFILE:-0}"
 _ARM_PROFILE_LOG=()
-# HIMMEL-2125: the currently-open phase (set by _arm_phase_t0, cleared by
+# the currently-open phase (set by _arm_phase_t0, cleared by
 # _arm_phase_done). A refusal/exit INSIDE a phase -- worker-census, queue-lock,
 # arms-registry -- used to leave _ARM_PROFILE_LOG with no entry at all for that
 # phase, since _arm_phase_done only ever ran on the RETURN path; the profile
@@ -1226,8 +1226,8 @@ _arm_profile_report() {
     # shellcheck disable=SC2317  # Invoked indirectly by the EXIT trap.
     echo "PROFILE arm-resume: ${_ARM_PROFILE_LOG[*]}" >&2
 }
-# HIMMEL-2774: releases this arm's own fleet reservation on EVERY exit,
-# success included. codex-4 (4th panel round): this reservation is keyed by
+# releases this arm's own fleet reservation on EVERY exit,
+# success included. This reservation is keyed by
 # the flattened handover path (below), which cannot match the `-n` name the
 # scheduled task will eventually launch under -- so it can never be consumed
 # by a live-session census entry, only expire by TTL. Earlier this was left
@@ -1245,7 +1245,7 @@ _arm_profile_report() {
 _arm_fleet_release_pending() {
     # shellcheck disable=SC2317  # Invoked indirectly by the EXIT trap.
     [ -n "${_ARM_FLEET_RESERVED_LEG:-}" ] || return 0
-    # HIMMEL-3017 (codex-4): bank-preflight.sh reserves under
+    # bank-preflight.sh reserves under
     # fleet_reservation_key <name> — a HASH of the name when it is over
     # NAME_MAX or leads with '.' — not under the name itself, and on a
     # filesystem with a stricter limit it retries under fleet_hash_key. Release
@@ -1292,9 +1292,9 @@ _arm_mktemp_or_fail() {
     printf '%s\n' "$_t"
 }
 
-# HIMMEL-2765: fleet-size cap, checked at ARM time (before the scheduler
+# fleet-size cap, checked at ARM time (before the scheduler
 # entry is even created) — concurrency, not bank exhaustion, burned the
-# fleet on 2026-09-07 (HIMMEL-2750). --dry-run is exempt (side-effect-free
+# fleet on 2026-09-07. --dry-run is exempt (side-effect-free
 # preview, same exemption the worker-census block below carries). Only the
 # SKIPPED-FLEET token refuses; every other bank-preflight.sh verdict
 # (PROCEED, SKIPPED-BANK, BANK-STALE, BANK-UNKNOWN) is out of scope for this
@@ -1302,7 +1302,7 @@ _arm_mktemp_or_fail() {
 # bank guard. FLEET_CAP_OK=1 in the LAUNCHING shell bypasses (registered in
 # scripts/chokepoints.json so a per-call prefix cannot forge it).
 #
-# HIMMEL-2774 refinements (disclosed in the PR body):
+# refinements (disclosed in the PR body):
 #   - CADENCE_BANK_LEG must be a bare name (bank-preflight.sh's reservation
 #     directory is `mkdir "$SLOTS/$LEG"`) — HANDOVER_PATH almost always
 #     contains '/', which the pre-fix caller passed straight through. Under
@@ -1326,7 +1326,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     _arm_phase_t0 "fleet-preflight"
     _ARM_BANK_PREFLIGHT="$SCRIPT_DIR/../lib/bank-preflight.sh"
     if [ -f "$_ARM_BANK_PREFLIGHT" ]; then
-        # HIMMEL-3017: the shared leg-name -> reservation-key helper, which
+        # the shared leg-name -> reservation-key helper, which
         # _arm_fleet_release_pending (EXIT trap) releases by. Fail closed: a
         # launch whose reservation this run could not later release must not
         # be reserved at all. Sourced BEFORE the reservation exists so a
@@ -1339,12 +1339,12 @@ if [ "$DRY_RUN" -eq 0 ]; then
         # </dev/null: bank-preflight.sh's own producer reads stdin to EOF
         # (its held-open-stdin regression test exists for exactly this) - an
         # unattended arm must never inherit an open stdin here.
-        # HIMMEL-2789: this call arms a new leg, so it declares launch intent
+        # this call arms a new leg, so it declares launch intent
         # — the fleet cap must be able to actually refuse it, unlike a plain
         # bank-status READ.
         _arm_fleet_leg="${HANDOVER_PATH:-arm-resume}"
         _arm_fleet_leg="${_arm_fleet_leg//\//-}"
-        # HIMMEL-3846: only SKIPPED-FLEET is read from this call, and the producer
+        # only SKIPPED-FLEET is read from this call, and the producer
         # refresh it runs rewrites the shared usage cache under the CALLER's
         # identity (a test suite arming for real under a fixture
         # CLAUDE_ACCOUNT_CONFIG stamped the live cache 233bed9c... and turned
@@ -1374,18 +1374,18 @@ fi
 
 # Resolve the requested slot to an absolute epoch (TARGET_EPOCH). Three forms:
 #   smart  — usage-aware: ASAP when the bank is free, else the binding window's
-#            reset (resume-slot.sh, HIMMEL-204). Operator no longer has to
+#            reset (resume-slot.sh). Operator no longer has to
 #            guess AND we don't park hours away when quota is available.
-#   auto   — next 5-hour cap reset regardless of headroom (cap-reset-time.sh,
-#            HIMMEL-126). Kept for "explicitly wait for the reset".
+#   auto   — next 5-hour cap reset regardless of headroom (cap-reset-time.sh).
+#            Kept for "explicitly wait for the reset".
 #   HH:MM  — explicit local clock time; today if still future, else tomorrow.
 TARGET_EPOCH=""
-# HIMMEL-1879 part 1: wall-clock at the moment slot resolution starts. The
+# wall-clock at the moment slot resolution starts. The
 # smart/ASAP slot is "now + 4 min" measured HERE, but everything between here
 # and schtasks /create -- the worker census, the shipped-work preflight's two
 # NETWORK probes, the queue lock, the collision scan, worktree creation -- can
 # take longer than that lead. The task then registers already-expired and the
-# HIMMEL-938 verify deletes it: net zero arms. _ARM_SENTINEL marks the arms
+# verify deletes it: net zero arms. _ARM_SENTINEL marks the arms
 # whose target is a SYSTEM-computed "as soon as practical" (smart/auto), which
 # may therefore be moved forward; an explicit HH:MM is an operator's clock
 # choice and is never silently moved (a lapsed one exits 2 loudly instead).
@@ -1406,7 +1406,7 @@ case "$RESUME_TIME" in
         # genuinely abandoned cache (>1h) still errors out. SLOT_MAX_AGE
         # overrides for tests / tighter freshness; RESUME_SLOT_CACHE injects a
         # fixture cache (test seam — keeps the smart path end-to-end testable).
-        # The THRESHOLD is deliberately NOT in _slot_args (HIMMEL-1271):
+        # The THRESHOLD is deliberately NOT in _slot_args:
         # resume-slot.sh runs as a plain child of this process, so a
         # RESUME_SLOT_THRESHOLD set in the environment already reaches it —
         # including down the auto-arm-on-cap.sh -> arm-resume -> resume-slot
@@ -1435,7 +1435,7 @@ case "$RESUME_TIME" in
             echo "    the statusline usage cache, then retry --time smart." >&2
             exit 1
         fi
-        # HIMMEL-1968: a SUCCESSFUL resolve used to discard resume-slot's stderr,
+        # a SUCCESSFUL resolve used to discard resume-slot's stderr,
         # so its near-wall WARN (ASAP into a >=85% window under a raised
         # threshold) never reached the operator. Relay it, then drop the file.
         if [ -s "$_slot_err" ]; then
@@ -1446,7 +1446,7 @@ case "$RESUME_TIME" in
         _reason=$(printf '%s' "$_slot_out" | cut -f3-)
         echo "arm-resume: --time smart -> $(_epoch_hhmm "$TARGET_EPOCH") (${_reason:-usage-aware})"
         _ARM_SENTINEL=1
-        # HIMMEL-2113 Ask A: fail FAST and LOUD on a multi-hour quota-exhaustion
+        # fail FAST and LOUD on a multi-hour quota-exhaustion
         # park, BEFORE the worker census / cache-dir GC / queue-lock / shipped-
         # work preflight below spend minutes discovering it anyway (the exact
         # incident shape: several minutes of census ending in a silently-chosen
@@ -1501,7 +1501,7 @@ case "$RESUME_TIME" in
             echo "ERR arm-resume: --time must be HH:MM (24h), 'smart', or 'auto', got: $RESUME_TIME" >&2
             exit 1
         fi
-        # HIMMEL-708: emit the epoch AND the three schedule fields the derive
+        # emit the epoch AND the three schedule fields the derive
         # block below would otherwise compute in a SECOND python round-trip.
         # For the common explicit-HH:MM path this collapses two py_armor calls
         # (each ~4 helper spawns: 2 mktemp + interpreter + 2 rm) into one.
@@ -1517,21 +1517,21 @@ rolled = 0
 if cand <= now:          # time already passed today -> tomorrow
     cand += timedelta(days=1)
     rolled = 1
-# 6th field (rolled, 0/1) drives the HIMMEL-1674 Part B loud-roll WARN below.
+# 6th field (rolled, 0/1) drives the loud-roll WARN below.
 print(int(cand.timestamp()), cand.strftime("%H:%M"), cand.strftime("%m/%d/%Y"), cand.strftime("%Y%m%d%H%M"), int((cand - now).total_seconds()), rolled)
 ' "$RESUME_TIME" || {
             echo "ERR arm-resume: could not resolve --time $RESUME_TIME to an epoch (python3 failed/timed out)" >&2
             exit 2
         }
-        # 5th field is the gap in RAW SECONDS (HIMMEL-1475 CR-fix): a floored-
+        # 5th field is the gap in RAW SECONDS: a floored-
         # to-minutes value made 60m01s-60m59s read as 60 and slip past a
         # >60min check. The guard compares gap_sec > 3600 directly.
         read -r TARGET_EPOCH RESUME_TIME START_DATE AT_STAMP _GAP_SEC _ROLLED <<<"$PY_ARMOR_OUT"
         _SCHED_FIELDS_DERIVED=1
-        # HIMMEL-2113 Ask D: outrun warning for an EXPLICIT --time, printed
+        # outrun warning for an EXPLICIT --time, printed
         # IMMEDIATELY (before any slow phase -- worker census, cache-dir GC,
         # queue-lock, the shipped-work preflight's network probes). The
-        # elapsed-aware lead-floor bump below (search HIMMEL-1879) only moves
+        # elapsed-aware lead-floor bump below only moves
         # smart/auto SENTINEL targets -- an explicit HH:MM is an operator's
         # clock choice and is never silently moved, so today the only "this
         # target is too close" signal for it is the post-arm verify, which
@@ -1551,7 +1551,7 @@ print(int(cand.timestamp()), cand.strftime("%H:%M"), cand.strftime("%m/%d/%Y"), 
             echo "WARN arm-resume: --time $RESUME_TIME is only ${_GAP_SEC}s away; this script's own runtime (~${_arm_expected_runtime}s, ARM_EXPECTED_RUNTIME_SEC) plus the ${_arm_lead_floor}s lead floor (ARM_MIN_LEAD_SEC) can outrun that lead and roll the arm to tomorrow -- pick a later --time or accept the risk (a lapsed target still refuses loudly at the end, HIMMEL-1879)." >&2
         fi
         unset _arm_expected_runtime _arm_lead_floor
-        # HIMMEL-1674 Part B: a past HH:MM silently rolled to tomorrow above.
+        # a past HH:MM silently rolled to tomorrow above.
         # Surface it LOUDLY when the roll is a FAR park (gap > 3600s -- the same
         # threshold the long-gap guard below uses): that is the "resume in 10
         # minutes silently became resume in 24 hours" accident class. A NEAR roll
@@ -1559,13 +1559,13 @@ print(int(cand.timestamp()), cand.strftime("%H:%M"), cand.strftime("%m/%d/%Y"), 
         # stays silent -- the success banner already shows tomorrow's date for it.
         # The mid-run target-lapse race (target still future at derivation but
         # past by /create time) is a separate path, already closed by the
-        # HIMMEL-938 post-arm NextRunTime verify (create-after-target -> exit 2).
+        # post-arm NextRunTime verify (create-after-target -> exit 2).
         if [ "${_ROLLED:-0}" = "1" ] && [ "${_GAP_SEC:-0}" -gt 3600 ]; then
             _rgh=$(( _GAP_SEC / 3600 )); _rgm=$(( (_GAP_SEC % 3600) / 60 ))
             echo "WARN arm-resume: --time $RESUME_TIME was already past for today -- rolled the arm to TOMORROW $RESUME_TIME ($START_DATE, ~${_rgh}h${_rgm}m out). A lapsed target silently becomes a 24h wait; if that was not intended, pick a later --time and re-arm." >&2
             unset _rgh _rgm
         fi
-        # HIMMEL-1475 long-gap guard. An explicit HH:MM work arm parked more
+        # long-gap guard. An explicit HH:MM work arm parked more
         # than 60 min out is a deliberate choice, not a default: the
         # ALWAYS-CONTINUE directive says an orchestrator leg should arm
         # <=30-60 min out while work remains (the original failure was a leg
@@ -1588,26 +1588,26 @@ print(int(cand.timestamp()), cand.strftime("%H:%M"), cand.strftime("%m/%d/%Y"), 
         #     branches above and never reach this HH:MM arm.
         # Only an explicit per-handover work arm (the orchestrator's
         # --time HH:MM) is guarded.
-        # The exemption is an EXACT string compare on literal "1" (CR-fix):
+        # The exemption is an EXACT string compare on literal "1":
         # a numeric `-ne 1` treats a non-numeric ambient value (e.g. "yes",
         # "true", garbage) as a FAILED expression whose non-zero return makes
         # the whole && chain false and SKIPS the refusal — the guard silently
         # drops. Anything other than the literal "1" (unset, "0", junk) → the
         # guard applies. See also the launch-body unset that prevents this var
-        # leaking into a resumed session (HIMMEL-1475).
+        # leaking into a resumed session.
         if [ "${_GAP_SEC:-0}" -gt 3600 ] && [ "$LONG_GAP" -eq 0 ] && [ "${ARM_RESUME_SAFETY_ARM:-}" != "1" ]; then
             _gh=$(( _GAP_SEC / 3600 )); _gm=$(( (_GAP_SEC % 3600) / 60 ))
             {
-                # HIMMEL-2147: when this refusal was CAUSED by a past-time
+                # when this refusal was CAUSED by a past-time
                 # rollover (the requested HH:MM had already passed today, so
-                # the HIMMEL-1674 Part B block above silently retargeted it to
+                # the block above silently retargeted it to
                 # tomorrow), say so up front -- otherwise the refusal reads as
                 # a generic "queue not empty?" nag with no visible link back to
                 # the WARN a few lines above it, and a retry that just re-passes
                 # the same now-further-past --time repeats the same confusing
                 # refusal.
                 #
-                # HIMMEL-2247: this rollover line PREFIXES the WARN, it does
+                # this rollover line PREFIXES the WARN, it does
                 # not replace it. As an `else` it silently dropped the
                 # ALWAYS-CONTINUE citation (and the "is the queue actually
                 # empty?" prompt) from EVERY rolled far arm -- and a rolled
@@ -1626,12 +1626,12 @@ print(int(cand.timestamp()), cand.strftime("%H:%M"), cand.strftime("%m/%d/%Y"), 
         ;;
 esac
 
-# HIMMEL-2254: the dotenv ROOT both pre-arm WARN loads below resolve against.
+# the dotenv ROOT both pre-arm WARN loads below resolve against.
 # load_dotenv reads a `.env` FILE, and `_load_dotenv_primary_for` falls back to
 # the PRIMARY checkout when the candidate has none -- so a caller that unsets
 # ARMAUTOMERGE in its own shell still gets the operator's on-disk value, and a
 # suite asserting "no --automerge => no grant" fails on exactly the hosts that
-# adopted the HIMMEL-2147 default. ARM_RESUME_DOTENV_ROOT redirects the READ to
+# adopted the default. ARM_RESUME_DOTENV_ROOT redirects the READ to
 # a caller-owned directory (one with no `.env` makes every key genuinely
 # absent, load_dotenv no-ops rc 0). Unset => the original expression verbatim,
 # so production resolution is untouched.
@@ -1643,10 +1643,10 @@ _arm_dotenv_root() {
     _load_dotenv_primary_for "$SCRIPT_DIR/../.."
 }
 
-# HIMMEL-2128 — two ADVISORY pre-arm WARNs (never refusals), placed here right
+# two ADVISORY pre-arm WARNs (never refusals), placed here right
 # after schedule resolution and before the worker census / cache-dir GC /
 # queue-lock / shipped-work preflight below spend real wall-clock -- the same
-# "surface early" placement as the HIMMEL-2113 Ask D outrun warning above.
+# "surface early" placement as the outrun warning above.
 # Both fire on --dry-run too (advisory only, rc stays whatever it already was).
 
 # (a) ARMAUTOMERGE. The launch body always `unset ARMAUTOMERGE ...` before
@@ -1657,18 +1657,18 @@ _arm_dotenv_root() {
 # does not silently discover, hours later, that it stopped at every green PR
 # instead of shipping through it.
 #
-# HIMMEL-2147: an explicit --automerge always wins; when it wasn't passed,
+# an explicit --automerge always wins; when it wasn't passed,
 # default it from the primary checkout's ARMAUTOMERGE .env value (the
-# standing ruling, HIMMEL-2128 pre-arm checklist item 5) before deciding
+# standing ruling, pre-arm checklist item 5) before deciding
 # whether to WARN below. Same load_dotenv bridge the CR_FLOOR_FALLBACK load
 # right after this uses (process env wins; a load_dotenv READ FAILURE is
 # advisory-only, arming never refuses over it).
 #
-# HIMMEL-3118: --no-automerge forces AUTOMERGE=0 and skips the dotenv default
+# --no-automerge forces AUTOMERGE=0 and skips the dotenv default
 # entirely -- the whole point of the flag is to decline the station-wide
 # opt-in for THIS arm, so it must win even when ARMAUTOMERGE=1 on disk.
 #
-# HIMMEL-3118 item 4 (operator ruling): the dotenv-derived grant and the
+# (operator ruling): the dotenv-derived grant and the
 # explicit --automerge flag are NOT the same grant. `.env` ARMAUTOMERGE
 # expresses consent to "merge when green" only -- CR_MERGE_GATE_OK=1 is the
 # merge gate's OWN bypass, and an operator who set a dotenv default never
@@ -1686,8 +1686,8 @@ elif [ "$AUTOMERGE" -eq 1 ]; then
 elif [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     # shellcheck disable=SC1091
     . "$SCRIPT_DIR/../lib/load-dotenv.sh"
-    # HIMMEL-3118 item 4: load_dotenv is non-clobbering -- it skips a key that
-    # already holds a non-empty value (HIMMEL-1922) -- so an ambient
+    # load_dotenv is non-clobbering -- it skips a key that
+    # already holds a non-empty value -- so an ambient
     # ARMAUTOMERGE exported into THIS shell would win over the .env read
     # below and get mistaken for the on-disk default, contradicting the (a)
     # comment above that an ambient value is irrelevant here. Unset it first
@@ -1713,11 +1713,11 @@ elif [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     fi
 fi
 # Same stdout-not-stderr, guard-time-not-only-banner reasoning as the
-# HIMMEL-2658 CONTEXT_REASON echo above -- an operator reading the arm log
+# CONTEXT_REASON echo above -- an operator reading the arm log
 # needs the resolved value AND why it resolved that way.
 echo "arm-resume: automerge=$AUTOMERGE merge_gate_bypass=$AUTOMERGE_GRANTS_MERGE_GATE (source: $AUTOMERGE_SOURCE)"
 if [ "$NO_AUTOMERGE" -eq 1 ]; then
-    # HIMMEL-3118 CR round 1: the OFF-warning below recommends --automerge,
+    # the OFF-warning below recommends --automerge,
     # which contradicts an operator who just typed --no-automerge. The warning
     # exists to catch an ACCIDENTAL omission; an explicit decline is not one,
     # and the resolved-state echo above already reports it (source:
@@ -1726,14 +1726,14 @@ if [ "$NO_AUTOMERGE" -eq 1 ]; then
 elif [ "$AUTOMERGE" -ne 1 ]; then
     echo "WARN arm-resume: --automerge was not passed -- the armed session will NOT set ARMAUTOMERGE=1, so merge-on-green.sh will not fire and the chain stops at every green PR instead of merging it. Pass --automerge if this arm is meant to ship through green PRs unattended." >&2
 elif [ "$AUTOMERGE_SOURCE" != "--automerge flag" ]; then
-    # HIMMEL-3118: the inherited-ON case used to resolve silently -- the only
+    # the inherited-ON case used to resolve silently -- the only
     # one of the three launch parameters (automerge/context/tier) that did.
     # WARN symmetrically with the OFF case above.
     echo "WARN arm-resume: automerge is ON via $AUTOMERGE_SOURCE, not an explicit --automerge on THIS invocation -- the armed session WILL set ARMAUTOMERGE=1 (but NOT CR_MERGE_GATE_OK=1 -- that bypass is granted only by an explicit --automerge), so merge-on-green.sh WILL fire and ship through every green PR unattended. Pass --no-automerge if this arm must park on green instead." >&2
 fi
 
-# (b) CR_FLOOR_FALLBACK. When CR_REQUIRE_CROSS_MODEL is on (HIMMEL-1237) and no
-# fallback is configured (HIMMEL-2128), a mid-chain exhaustion of every
+# (b) CR_FLOOR_FALLBACK. When CR_REQUIRE_CROSS_MODEL is on and no
+# fallback is configured, a mid-chain exhaustion of every
 # non-Claude critic leaves clear-cr-marker gate 3b with no escape: it refuses
 # every subsequent branch until a human resets the bank or sets
 # CR_FLOOR_FALLBACK, which PARKS the whole armed chain rather than just the one
@@ -1752,7 +1752,7 @@ if [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     if "$_arm_policy_reader" --root "$(_arm_dotenv_root)" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK; then
         case "$(printf '%s' "${CR_REQUIRE_CROSS_MODEL:-}" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" in
             1|true|on|yes)
-                # HIMMEL-2128 codex-2: key on the RECOGNIZED value, not mere
+                # key on the RECOGNIZED value, not mere
                 # non-emptiness -- clear-cr-marker.sh only ever treats an exact
                 # (trim+lowercase) "claude-only" as the fallback; any other
                 # value (a typo like "claude_only", or unset) never actually
@@ -1768,7 +1768,7 @@ if [ -f "$SCRIPT_DIR/../lib/load-dotenv.sh" ]; then
     fi
 fi
 
-# HIMMEL-1463: an unattended arm normally ends this Claude session, and the
+# an unattended arm normally ends this Claude session, and the
 # harness then reaps its background task tree. Lane workers are children of
 # that tree, so arming while one is live silently kills it and can strand its
 # shared-branch lock. For a REAL arm, reconcile dead rows first and then fail
@@ -1804,7 +1804,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     # Chained, not a bare `trap _arm_worker_stderr_cleanup EXIT` -- bash keeps
     # only ONE handler per signal, and that would silently drop the top-of-
     # script `trap '_arm_fleet_release_pending; _arm_profile_report' EXIT`
-    # (HIMMEL-2113 Ask B; fleet release added HIMMEL-2774) for the rest of
+    # (Ask B; fleet release added) for the rest of
     # this run, exactly the "PROFILE line / fleet release missing on a real-
     # arm refusal" bug this chain fixes.
     trap '_arm_worker_stderr_cleanup; _arm_fleet_release_pending; _arm_profile_report' EXIT
@@ -1868,7 +1868,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     _arm_phase_done "worker-census" "$_ARM_PT0"
 fi
 
-# 0-cost telemetry seam (HIMMEL-236): measure-during for in-use skills —
+# 0-cost telemetry seam: measure-during for in-use skills —
 # one disk append per arm outcome, nothing into context. FAIL-OPEN both
 # ways: a missing/broken lib must never block an arm (no-op fallback
 # below), and telemetry_emit itself always returns 0 under our set -e.
@@ -1877,18 +1877,18 @@ fi
 # shellcheck disable=SC1091,SC2015
 # The [ -f ] + bash -n guard (all four fail-open sources): macOS bash 3.2 exits the
 # whole script on a `.` of a MISSING or syntax-broken file even under `|| true`
-# (HIMMEL-3699).
+#
 [ -f "$SCRIPT_DIR/../lib/telemetry.sh" ] \
     && bash -n "$SCRIPT_DIR/../lib/telemetry.sh" 2>/dev/null \
     && . "$SCRIPT_DIR/../lib/telemetry.sh" 2>/dev/null || true
 command -v telemetry_emit >/dev/null 2>&1 || telemetry_emit() { return 0; }
 
-# handover_root (HIMMEL-856): resolves the single handover root (Mode A
+# handover_root: resolves the single handover root (Mode A
 # inline vs Mode B external HANDOVER_DIR) so the queue-lock + arms-registry
 # checks below read/write the SAME root every other scripts/handover/*.sh
 # script uses -- never a hardcoded ./handovers/ (scripts/handover/CLAUDE.md
 # hard rule). Same caller-side fail-open contract as telemetry.sh above
-# (HIMMEL-236 T24): an absent/broken lib must never break arming -- a
+# (T24): an absent/broken lib must never break arming -- a
 # missing handover_root just means the queue-lock/arms-registry checks
 # below WARN and skip (see their own guard), same as the existing dedup/
 # collision checks proceed unaffected.
@@ -1899,26 +1899,26 @@ command -v telemetry_emit >/dev/null 2>&1 || telemetry_emit() { return 0; }
     && . "$SCRIPT_DIR/../lib/handover-path.sh" 2>/dev/null || true
 command -v handover_root >/dev/null 2>&1 || handover_root() { return 2; }
 # Identity helpers are optional under the same fail-open contract. If this lib
-# is absent or only partially deployed, degrade to the pre-HIMMEL-1304 raw-path
+# is absent or only partially deployed, degrade to the earlier raw-path
 # identity instead of aborting under set -e; registry probes then use an
 # absolute raw key and retain their existing WARN-and-skip behaviour.
 command -v _arm_realpath >/dev/null 2>&1 || _arm_realpath() { printf '%s\n' "$1"; }
 command -v _arm_identity_path >/dev/null 2>&1 || _arm_identity_path() { printf '%s' "$1"; }
 command -v _arm_registry_identity_root >/dev/null 2>&1 || _arm_registry_identity_root() { printf '%s' "$1"; }
 command -v _arm_registry_identity_path >/dev/null 2>&1 || _arm_registry_identity_path() { printf 'absolute:%s' "$1"; }
-# The registry SCAN helper needs a fallback too (HIMMEL-1344 codex-adv round).
+# The registry SCAN helper needs a fallback too.
 # The scans below call it unconditionally, and a partially-deployed
-# handover-path.sh that predates HIMMEL-1344 exports handover_root + the JSON
+# handover-path.sh that predates the matcher yet exports handover_root + the JSON
 # helpers but NOT this matcher — so without this the scan aborts under set -e,
 # and with an initially empty registry that abort lands AFTER the scheduler has
 # already been written: an irreversible action reported as a failure, inviting a
 # duplicate retry. Degrade to a raw exact-match instead: a miss only weakens
-# duplicate detection back to the pre-HIMMEL-1304 behaviour, which is strictly
+# duplicate detection back to the earlier behaviour, which is strictly
 # safer than aborting post-schedule.
 # Mirrors the real contract: the result is returned in the global
 # $_HP_ARMS_MATCH (1 = this record identifies the handover), NOT the exit
 # status, which is always 0. A miss degrades duplicate detection to the
-# pre-HIMMEL-1304 behaviour; escaped (e.g. backslash) spellings simply do not
+# earlier behaviour; escaped (e.g. backslash) spellings simply do not
 # match here, which is a weaker probe, never a wrong abort.
 _HP_ARMS_MATCH=0
 command -v _hp_arms_record_matches_path >/dev/null 2>&1 || _hp_arms_record_matches_path() {
@@ -1931,7 +1931,7 @@ command -v _hp_arms_record_matches_path >/dev/null 2>&1 || _hp_arms_record_match
     return 0
 }
 
-# HIMMEL_HEADROOM_PROXY flag parser (HIMMEL-901): same fail-open contract as
+# HIMMEL_HEADROOM_PROXY flag parser: same fail-open contract as
 # the two libs above — an absent/broken lib just means the .env fallback
 # never activates (the process-env check right below still works either
 # way), never a broken arm. CR round: the failure WARNs once here at source
@@ -1945,12 +1945,12 @@ command -v _hp_arms_record_matches_path >/dev/null 2>&1 || _hp_arms_record_match
     || echo "WARN arm-resume: headroom-proxy lib failed to load -- .env HIMMEL_HEADROOM_PROXY fallback disabled (process env still honored)" >&2
 command -v _headroom_proxy_env_file_active >/dev/null 2>&1 || _headroom_proxy_env_file_active() { return 1; }
 
-# cadence_cmd_escape (HIMMEL-1281/HIMMEL-1287): the shared CMD-metachar
+# cadence_cmd_escape: the shared CMD-metachar
 # escape for interpolating a value into a generated .bat INSIDE DOUBLE
 # QUOTES -- % -> %% plus best-effort " handling, and deliberately NO caret
 # escapes (cmd.exe treats ^ as a LITERAL character inside double quotes, so
 # caret-escaping corrupts the value instead of protecting it). Same lib the
-# four HIMMEL-1281 cadence emitters use; arm-resume.sh carried a fifth,
+# four cadence emitters use; arm-resume.sh carried a fifth,
 # independently-buggy copy of the over-escaping mistake until this fix.
 # Sourced fail-open (matches headroom-proxy.sh above): an absent or
 # syntactically broken lib WARNs but never aborts the arm -- the inline
@@ -1982,7 +1982,7 @@ command -v cadence_cmd_escape >/dev/null 2>&1 || cadence_cmd_escape() {
 # cadence_cmd_escape single-parse base (% -> %%, " -> \") PLUS the caret
 # escapes for the inner cmd /c parse. cadence_cmd_escape is guaranteed
 # defined here (lib OR the inline fallback above), so this composes safely.
-# This distinction IS the HIMMEL-1281/HIMMEL-1287 bug class: 1281 over-
+# This distinction IS the bug class: 1281 over-
 # escaped the single-parse sites (cd path, prompt, --channels, the curl
 # livez checks -- those keep cadence_cmd_escape); do NOT route them here.
 _arm_nested_cmd_escape() {
@@ -1998,10 +1998,10 @@ _arm_nested_cmd_escape() {
 
 # _arm_realpath / _arm_identity_path live in ../lib/handover-path.sh so the
 # scheduler-row identity and the cross-script arms-registry key share one
-# canonicalizer (HIMMEL-1304/HIMMEL-1344).
+# canonicalizer.
 
 # _arm_path_hash <canonical-path> — a short stable digest of the canonical
-# identity: the collision-proof half of the task name (HIMMEL-1304). The
+# identity: the collision-proof half of the task name. The
 # readable half is built with `tr -cd '[:alnum:]_-'`, which DELETES every
 # out-of-class byte, so `.../a+b.md` and `.../ab.md` both reduce to the same
 # suffix — a spurious rc-3 refusal, and worse, a `--force` that replaces the
@@ -2033,7 +2033,7 @@ _arm_path_hash() {
 }
 
 # _arm_own_identity_match [line-prefix] — filter stdin to the lines that are one
-# of THIS arm's identities: the current $TASK_NAME or the pre-HIMMEL-1304
+# of THIS arm's identities: the current $TASK_NAME or the earlier
 # $TASK_NAME_LEGACY. Exact whole-line compare.
 #
 # The legacy arm is the upgrade migration, and it is load-bearing rather than a
@@ -2055,7 +2055,7 @@ _arm_own_identity_match() {
 }
 
 # _arm_marker_is_own_identity <marker> — true when a marker printed by
-# list_existing names THIS arm's own slot (HIMMEL-1636).
+# list_existing names THIS arm's own slot.
 #
 # list_existing's output shape is per-backend, so a bare `[ "$m" = "$TASK_NAME" ]`
 # own-identity exclusion is correct on ONE of the three:
@@ -2063,7 +2063,7 @@ _arm_own_identity_match() {
 #   crontab  — the whole crontab LINE; the identity is its trailing `# <name>`.
 #   at       — an opaque `at-job-<id>`; the identity is only inside the job body.
 # On the latter two the compare can never be true, so every own slot reads as a
-# foreign one — a --force re-arm of the SAME handover then emits the HIMMEL-1329
+# foreign one — a --force re-arm of the SAME handover then emits the
 # ticket-mutex's "DIFFERENT handover" WARN against itself. Noise, not a false
 # clear, but only because that site WARNs; the exclusion has to hold everywhere.
 #
@@ -2088,7 +2088,7 @@ _arm_marker_is_own_identity() {
 }
 
 # _arm_marker_is_new_arm <marker> — true when <marker> names the job this run
-# just created, rather than a superseded sibling (HIMMEL-1304). See the
+# just created, rather than a superseded sibling. See the
 # post-commit reap sweep near schedule_arm for why each arm matters.
 #
 # windows-only: `schtasks /create /f` overwrites a task of the SAME name in
@@ -2103,7 +2103,7 @@ _arm_marker_is_own_identity() {
 # always be reaped — treating a same-identity crontab marker as "already
 # ours" (the pre-fix `*"# $TASK_NAME")  return 0` case) left the stale line
 # unreaped while the append created a second one: a genuine double-fire, not
-# just a test artifact (HIMMEL-1304 fix).
+# just a test artifact.
 _arm_marker_is_new_arm() {
     local _m="$1"
     case "$PLATFORM" in
@@ -2131,13 +2131,13 @@ _bash_single_quote() {
 #   RESUME_TIME  HH:MM        — schtasks /st, at, banner
 #   START_DATE   MM/DD/YYYY   — schtasks /sd. FIXES the bug where /st with no
 #                /sd defaulted to TODAY, so a time already past today gave
-#                "Next Run Time: N/A" and never fired (HIMMEL-204). NOTE:
+#                "Next Run Time: N/A" and never fired. NOTE:
 #                schtasks /sd parses per the user's Windows short-date LOCALE,
 #                so this MM/DD/YYYY value is only a DEFAULT — the Windows
 #                branch of schedule_arm re-renders it in the machine's own
 #                locale (via _win_short_date_pattern + a registry read) right
 #                before /create, and verifies the registered NextRunTime
-#                afterward (HIMMEL-938; a dd/MM/yyyy machine, e.g. win2,
+#                afterward (a dd/MM/yyyy machine, e.g. win2,
 #                previously misread MM/DD/YYYY and armed months out with no
 #                error). Non-Windows platforms never read this field as a
 #                schtasks /sd — it stays MM/DD/YYYY here as a harmless default.
@@ -2145,7 +2145,7 @@ _bash_single_quote() {
 #                today/tomorrow heuristic that broke for resets >24h out).
 # Capture FIRST (explicit || handler — a $(...) failure inside a heredoc
 # body would not abort), then validate non-empty before arming.
-# HIMMEL-708: the explicit-HH:MM branch already derived these fields in its
+# the explicit-HH:MM branch already derived these fields in its
 # single python pass (_SCHED_FIELDS_DERIVED); only the smart/auto paths (which
 # get TARGET_EPOCH from a subprocess) still need this second derivation.
 if [ -z "${_SCHED_FIELDS_DERIVED:-}" ]; then
@@ -2186,7 +2186,7 @@ if [ -n "$WSL_DISTRO" ] && [ "$PLATFORM" != windows ]; then
     exit 2
 fi
 
-# HIMMEL_HEADROOM_PROXY (HIMMEL-901): route the armed relaunch through the
+# HIMMEL_HEADROOM_PROXY: route the armed relaunch through the
 # local headroom Anthropic-API proxy (127.0.0.1:8787) when the operator has
 # opted in. Resolved ONCE here, at arm time, and baked into whichever
 # launcher schedule_arm emits below — the fired relaunch never re-reads this
@@ -2210,13 +2210,13 @@ if [ -n "$WSL_DISTRO" ] && [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
     echo "WARN arm-resume: headroom proxy gate skipped for a WSL-station arm (distro '$WSL_DISTRO')" >&2
     HEADROOM_PROXY_ACTIVE=0
 fi
-# Port fixed at 8787 for this slice — no port config (HIMMEL-901 minimal
+# Port fixed at 8787 for this slice — no port config (minimal
 # slice; a variable only to avoid repeating the literal across 3 platform
 # launchers). HEADROOM_BIN: operator override wins; else the platform
 # default venv layout. Only resolved when the flag is active, so an
 # inactive arm never even looks at $HOME/.headroom-venv.
 HEADROOM_PROXY_PORT=8787
-# CR round (HIMMEL-901): resolve curl ONCE at arm time and bake the ABSOLUTE
+# resolve curl ONCE at arm time and bake the ABSOLUTE
 # path into the launcher — scheduler contexts fire with a minimal PATH (the
 # same reason claude/cygpath are resolved at arm time above), so a bare
 # `curl` in the launcher could miss at fire time, fail both livez checks,
@@ -2278,7 +2278,7 @@ _pid_alive() {
     case "$PLATFORM" in
         windows)
             # Capture stdout+stderr together (NOT 2>/dev/null) so a broken/absent
-            # tasklist is distinguishable from a clean miss (HIMMEL-228). A clean
+            # tasklist is distinguishable from a clean miss. A clean
             # miss prints "No tasks are running..." (legit dead pid); a genuine
             # tooling failure prints something else (e.g. "ERROR: ..."). If we
             # silently swallowed a malfunctioning tasklist, every pid would read
@@ -2290,7 +2290,7 @@ _pid_alive() {
             # (rc 0): a nonzero rc that merely echoed the pid digits into stderr
             # (a tasklist error variant) must NOT short-circuit to "alive" — gate
             # the match on rc==0 so it falls through to the warn branch instead
-            # of masking the failure the rc check is meant to surface (HIMMEL-228).
+            # of masking the failure the rc check is meant to surface.
             case "$out" in
                 *"No tasks"*) return 1 ;;
                 *"$pid"*)     [ "$rc" -eq 0 ] && return 0 ;;
@@ -2311,7 +2311,7 @@ _pid_alive() {
     esac
 }
 
-# rc 0 if the always-on bun Telegram bridge (HIMMEL-207/208) appears to be
+# rc 0 if the always-on bun Telegram bridge appears to be
 # running. Liveness = the supervisor pidfile exists AND at least one recorded
 # pid (supervisor or poller) is alive. ARM_BRIDGE_LIVE is a test seam (1/0
 # forces the answer without a real process); BRIDGE_PIDFILE / BRIDGE_ROOT
@@ -2331,7 +2331,7 @@ bridge_poller_live() {
     # stale/corrupt file is the documented ARM_CHANNELS_OK=1.
     [ -f "$pidfile" ] || return 1
     local pids parse_rc=0
-    # Armored capture (HIMMEL-249): a wedged python3 stub reads as a parse
+    # Armored capture: a wedged python3 stub reads as a parse
     # failure (nonzero rc -> fail-closed WARN below), never a hang. The `||`
     # also keeps this errexit-safe regardless of the call context.
     py_armor_capture -c '
@@ -2362,7 +2362,7 @@ for k in ("supervisor", "poller"):
     return 1
 }
 
-# HIMMEL-225: refuse to arm a --channels relaunch while the bun Telegram
+# refuse to arm a --channels relaunch while the bun Telegram
 # bridge is live. Telegram reachability comes from the bun bridge, NOT from a
 # session holding --channels, and a --channels relaunch alongside the live
 # bridge is unattended-fatal two ways: (1) it is a 2nd getUpdates consumer ->
@@ -2384,7 +2384,7 @@ if [ -n "$CHANNELS" ] && [ -z "${ARM_CHANNELS_OK:-}" ] && bridge_poller_live; th
     exit 5
 fi
 
-# Ticket inference for the scheduler task name (HIMMEL-540). The task name is
+# Ticket inference for the scheduler task name. The task name is
 # built AFTER the cwd/worktree resolution block below (so $WORKTREE_BRANCH is
 # fully resolved); these helpers are defined here and used there.
 #
@@ -2408,7 +2408,7 @@ _validate_key() {
 #   1. ticket: front-matter key (consume-if-present; forward-compat).
 #   2. worktree branch type/<ticket>-slug ($WORKTREE_BRANCH; lowercase->uppercase).
 #   3. first H1 (`# `) line's first canonical [A-Z][A-Z0-9]+-[0-9]+ key.
-#   4. (HIMMEL-716) CHAIN FILES ONLY (basename next-session-N.md): the leading
+#   4. CHAIN FILES ONLY (basename next-session-N.md): the leading
 #      canonical key of the parent dir. The handover skill's chain layout names
 #      the epic dir <TICKET>-<slug>, so a chained handover whose file carries
 #      no key still resolves its chain identity. Scoped to chain files so an
@@ -2417,7 +2417,7 @@ _validate_key() {
 # Each `grep` is `|| true`-guarded — grep exits 1 on no-match and `set -o
 # pipefail` would otherwise abort the assignment. The last command (src-4's
 # `if`, rc 0 whether or not it fires) keeps the function errexit-safe.
-# _infer_ticket_strict <handover_path> -- HIMMEL-1329: sets the global
+# _infer_ticket_strict <handover_path> -- sets the global
 # $_ho_ticket_strict to _infer_ticket's src-1 (frontmatter `ticket:`) match
 # ONLY, or empty on a miss. A dedicated function rather than a side-channel
 # variable set from inside _infer_ticket: _infer_ticket is always invoked as
@@ -2434,12 +2434,12 @@ _validate_key() {
 # meant to carry semantic weight for a BLOCKING check. The ticket-level mutex
 # reads $_ho_ticket_strict, not _infer_ticket's combined return value, so a
 # handover whose H1 merely MENTIONS a ticket for documentation (e.g. this
-# suite's own "# HIMMEL-1304 test handover" fixtures) can't false-positive a
+# suite's own "# test handover" fixtures) can't false-positive a
 # refusal against an unrelated handover.
 _ho_ticket_strict=""
 _infer_ticket_strict() {
     local _ho="$1" _raw _key _fm _fm_rc _stem
-    # HIMMEL-1640: honor a frontmatter `ticket:` ONLY from lines strictly inside
+    # honor a frontmatter `ticket:` ONLY from lines strictly inside
     # a well-formed YAML block -- one that OPENS at line 1 of the document
     # (optionally after a UTF-8 BOM) and CLOSES at a later `---`. The opening
     # delimiter is anchored to the document start (codex-adv r3): only NR==1
@@ -2447,7 +2447,7 @@ _infer_ticket_strict() {
     # optional leading BOM -- enters frontmatter mode (c==1). A file whose first
     # line is anything else NEVER enters frontmatter mode, so a `---` horizontal
     # rule in the BODY of a plain-markdown handover is ordinary text: it can
-    # neither masquerade as an opener (false ticket mutex, HIMMEL-1329) nor as a
+    # neither masquerade as an opener (false ticket mutex) nor as a
     # lone unclosed block (false hard error on a valid handover). CRLF is
     # tolerated by the existing `[[:space:]]`. Lines buffer while c==1 and emit
     # on the close; the old one-pass `c==1` filter never closed, so an unclosed
@@ -2463,7 +2463,7 @@ _infer_ticket_strict() {
     # BEFORE any scheduler mutation. Any other awk exit code stays fail-soft
     # (no ticket, like the old `|| true`). The BOM is the octal escape
     # \357\273\277, not `\xef\xbb\xbf`: `\xHH` is a gawk extension that mawk
-    # (Ubuntu's default awk) silently skips (HIMMEL-1654); the rest is plain
+    # (Ubuntu's default awk) silently skips; the rest is plain
     # POSIX awk (string concat, printf, exit-to-END).
     _fm_rc=0
     _fm=$(awk 'NR==1{sub(/^\357\273\277/,"")} NR==1 && /^---[[:space:]]*$/{c=1; next} c==1 && /^---[[:space:]]*$/{printf "%s",b; c=2; exit} c==1{b=b $0 "\n"} END{if(c==1) exit 3}' "$_ho") || _fm_rc=$?
@@ -2476,7 +2476,7 @@ _infer_ticket_strict() {
     _raw="${_raw#\'}" ; _raw="${_raw%\'}"
     _raw="${_raw#\"}" ; _raw="${_raw%\"}"
     _key=$(_validate_key "$_raw")
-    # HIMMEL-2113 (codex-1 CONFIRMED): frontmatter-only was too strict for a
+    # frontmatter-only was too strict for a
     # CHAIN file (next-session-N.md) that carries no `ticket:` frontmatter --
     # it silently dropped _infer_ticket's src-4 (parent-dir name), an
     # UNAMBIGUOUS signal (the handover skill's chain layout names the epic dir
@@ -2489,9 +2489,9 @@ _infer_ticket_strict() {
         _stem=$(basename "${_ho//\\//}"); _stem="${_stem%.md}"
         if printf '%s' "$_stem" | grep -qE '^next-session-[0-9]+$'; then
             _raw=$(basename "$(dirname "${_ho//\\//}")")
-            # HIMMEL-2113 (codex-3): require a delimiter or end-of-string
+            # require a delimiter or end-of-string
             # right after the digit run -- a bare prefix match welded
-            # HIMMEL-9004 out of a dir named HIMMEL-9004foo, false-tripping
+            # out of a dir named KEY-9004foo, false-tripping
             # the shipped-work preflight against a ticket the dir name never
             # actually named. Two-step: verify the delimited shape with -q
             # first, THEN extract with the original -o pattern (safe once -q
@@ -2533,7 +2533,7 @@ _infer_ticket() {
     fi
     # src-3: first H1 line only, first canonical (uppercase) key. H1-only so a
     # stray ticket *mention* in the body can't be welded into the scheduler name.
-    # HIMMEL-2113: skip this source entirely for chain files (basename
+    # skip this source entirely for chain files (basename
     # next-session-<N>.md) -- their H1 is a "# Next Session -- <epic
     # leg-header>" convention (documented at src-4 below), not a ticket
     # reference, and a project with a Done ticket numbered like the leg
@@ -2541,7 +2541,7 @@ _infer_ticket() {
     # identity comes from its PARENT DIR (src-4), never its own H1.
     _stem=$(basename "${_ho//\\//}"); _stem="${_stem%.md}"
     if ! printf '%s' "$_stem" | grep -qE '^next-session-[0-9]+$'; then
-        # HIMMEL-3074: the `q` is `;`-terminated before the closing brace --
+        # the `q` is `;`-terminated before the closing brace --
         # BSD sed (macOS) rejects a bare `q` followed directly by `}` ("extra
         # characters at the end of q command"), which made every macOS arm
         # print a sed error and infer no ticket from the H1. The `;}` form is
@@ -2561,7 +2561,7 @@ _infer_ticket() {
 }
 
 # _infer_session_number <handover_path> - chain position N for a CHAINED
-# handover (HIMMEL-716): the handover skill's auto-continuing chains write
+# handover: the handover skill's auto-continuing chains write
 # next-session-<N>.md files, so a stem that is (or ends in) next-session-<N>
 # IS the chain sequence number. Echoes N or empty. Filename-only by design -
 # a body mention of "next-session-9" can never leak into the name (the same
@@ -2573,7 +2573,7 @@ _infer_session_number() {
     printf '%s\n' "$_stem" | grep -oE '(^|-)next-session-[0-9]+$' | grep -oE '[0-9]+$' || true
 }
 
-# _infer_slug <handover_path> - human slug from the handover NAME (HIMMEL-716),
+# _infer_slug <handover_path> - human slug from the handover NAME,
 # the no-ticket-system identity source (OSS adopters without Jira). The file
 # stem, minus .md and minus a trailing next-session-<N> chain tail (carried
 # separately as the session number); when nothing is left (a bare
@@ -2598,12 +2598,12 @@ _infer_slug() {
 }
 
 # _compose_arm_name <ticket> <handover_path> <title|task> - ONE composer for
-# BOTH derived names (HIMMEL-716; subsumes HIMMEL-702's _infer_session_name so
+# BOTH derived names (subsumes _infer_session_name so
 # the `claude -n` title and the scheduler-row segment can never drift apart):
 #   title -> the `claude -n` value, canonical retitle form "<TICKET> <name>"
-#            (HIMMEL-432, space-joined), sanitized to [A-Za-z0-9._ -] so the
+#            (space-joined), sanitized to [A-Za-z0-9._ -] so the
 #            Windows .bat launch line can inject it quoted WITHOUT ^-escaping
-#            (HIMMEL-702) and printf %q keeps it one arg for cron/at. Empty
+# and printf %q keeps it one arg for cron/at. Empty
 #            tells the caller to omit -n (fail-open - let claude auto-title
 #            rather than force a meaningless name).
 #   task  -> the identity segment welded into TASK_NAME (dash-joined; space
@@ -2611,8 +2611,8 @@ _infer_slug() {
 #            self-clean ERE and the CMD launch lines stay injection-proof.
 # Identity grammar (default): <ticket> + <name-half> + <s<N> chain position>.
 # The name-half, by priority:
-#   1. the worktree slug minus its leading ticket token (the HIMMEL-702
-#      source, unchanged);
+#   1. the worktree slug minus its leading ticket token
+#      (the source, unchanged);
 #   2. a ticket-KEYED handover slug - the file/dir is named <ticket>-<slug>,
 #      so the slug is that ticket's own name-half;
 #   3. ticketless only: the raw handover slug (the no-Jira adopter fallback).
@@ -2620,7 +2620,7 @@ _infer_slug() {
 # already meaningful, welding an unrelated filename in adds noise, and this
 # keeps plain ticketed arms byte-identical to the pre-716 names (existing
 # armed slots still dedup across the upgrade).
-# ARM_NAME_TEMPLATE (HIMMEL-716; arming config, same surface as
+# ARM_NAME_TEMPLATE (arming config, same surface as
 # ARM_MAX_SLOTS): operator override with placeholders {ticket} {slug}
 # {session} ({session} renders s<N> or empty; {slug} prefers the worktree
 # half, else the keyed-stripped or raw handover slug). One template drives
@@ -2678,10 +2678,10 @@ _compose_arm_name() {
     fi
 }
 
-# HIMMEL-1719: the pointer clause names § Launch preamble (docs/handover/overnight-mode.md) — single line, quoting-safe charset; test section 1719 pins both.
+# the pointer clause names § Launch preamble (docs/handover/overnight-mode.md) — single line, quoting-safe charset; test section 1719 pins both.
 RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble standing instructions in docs/handover/overnight-mode.md before Phase 1."
 
-# HIMMEL-2973 S3: a console arm exports HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
+# a console arm exports HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
 # into the relaunched session, which is what switches on the PreCompact
 # snapshot hook (scripts/hooks/console-precompact-snapshot.sh); any other arm
 # exports neither (the launch bodies still always-clear an ambient pair -- `at`
@@ -2722,7 +2722,7 @@ fi
 # unintended "C:\Windows\System32" project in ~/.claude/projects/.
 #
 # Priority:
-#   1. --cwd override. hop.sh (HIMMEL-130) passes the ORIGIN repo here
+#   1. --cwd override. hop.sh passes the ORIGIN repo here
 #      because the handover lives in the state repo but claude must run
 #      from the origin repo, not the state repo.
 #   2. resume_cwd: in the handover file's YAML frontmatter. Lets a
@@ -2731,7 +2731,7 @@ fi
 #   3. Auto-detect: git toplevel containing the handover file.
 #   4. Fallback: handover's parent dir if it isn't tracked by git.
 #
-# Priority 0 (HIMMEL-387): --worktree <branch> / 'resume_worktree:' frontmatter
+# Priority 0: --worktree <branch> / 'resume_worktree:' frontmatter
 # short-circuits all of the above — the relaunch runs in a FRESH himmel
 # worktree instead of a shared checkout. Required when github-sync / the
 # Telegram bridge run concurrently, so an autonomous code arm never mutates a
@@ -2843,7 +2843,7 @@ else
         if [ "$_fm_cwd_found" -eq 0 ]; then
             echo "WARN arm-resume: no --cwd and no 'resume_cwd:' in handover frontmatter — defaulting cwd to '$RESUME_CWD'. For cross-repo handovers (handover in one repo, work in another) set 'resume_cwd: <work-repo>' in the handover frontmatter or pass --cwd." >&2
         fi
-        # HIMMEL-1330: a handover parked inside a SINGLE-WRITER repo (the luna
+        # a handover parked inside a SINGLE-WRITER repo (the luna
         # vault, or any other repo that commits straight to main by design --
         # see the repo-root `.single-writer` marker) and carrying no explicit
         # --cwd/--worktree/resume_cwd: auto-detects its cwd as THAT repo. A
@@ -2855,9 +2855,9 @@ else
         # resume_cwd: already skips this whole fallback block (see above), and
         # ARM_VAULT_CWD_OK=1 is the escape hatch for a genuine vault arm.
         # --dry-run stays side-effect-free (preview only, matches the
-        # HIMMEL-1365 temp-path guard's own --dry-run exemption).
+        # temp-path guard's own --dry-run exemption).
         if [ -f "$RESUME_CWD/.single-writer" ] && [ "${ARM_VAULT_CWD_OK:-}" != "1" ]; then
-            # HIMMEL-2147 pre-refusal fallback: a handover parked under the
+            # pre-refusal fallback: a handover parked under the
             # bucket layout (handovers/<user>/<repo-bucket>/...) names its own
             # work repo implicitly via that bucket segment. Look it up in the
             # handover registry (the same file resolve-active-item.sh reads)
@@ -2928,7 +2928,7 @@ if [ -n "$WSL_DISTRO" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-2383 -- base verification gate. Console ruling 66: arm a leg on a
+# arm a leg on a
 # fence only once every merged PR that touched it already carries its
 # after-report SUMMARY. Opt-in via the handover's OWN `fence:` frontmatter
 # key (same convention as resume_cwd:/resume_worktree: above) -- a doc with
@@ -2952,7 +2952,7 @@ if [ -n "$_fm_fence" ]; then
     # Any of these three shapes means "the base cannot be certified clean":
     # the script is missing, it query-errored (gh down, rate-limited, a
     # truncated merged-PR list — base-status.sh now exits nonzero on all of
-    # these), or it printed PENDING/RED lines. Per HIMMEL-2383 CR finding
+    # these), or it printed PENDING/RED lines. Per finding
     # codex-1, "cannot verify" must refuse exactly like "verified dirty" —
     # an infra hiccup at arm time is precisely the moment ruling 66 exists
     # to catch, so it gets the SAME --provisional-base-ok gate, never a
@@ -2962,8 +2962,7 @@ if [ -n "$_fm_fence" ]; then
         _base_rc=127
         _base_out="base-status.sh is missing at $_base_status_sh -- cannot verify the base."
     else
-        # Run FROM the resolved work repo (HIMMEL-2383 CR finding codex-2,
-        # round 2), not the launching session's own cwd — base-status.sh
+        # Run FROM the resolved work repo, not the launching session's own cwd — base-status.sh
         # resolves its target repo via `gh repo view` off ITS cwd, and this
         # arm can be for a different repo entirely (cross-repo handovers,
         # documented above at --cwd/resume_cwd). Without the cd, the fence
@@ -3016,10 +3015,10 @@ if [ -n "$_fm_fence" ]; then
 fi
 unset _fm_fence
 
-# Task name — ticket-aware (HIMMEL-540), extended with the full derived
-# identity (HIMMEL-716): <TICKET>-<name-half>-<sN> so scheduler rows
+# Task name — ticket-aware, extended with the full derived
+# identity: <TICKET>-<name-half>-<sN> so scheduler rows
 # (schtasks /query, atq) are scannable AND chain-attributable, e.g.
-# HIMMEL-Resume-HIMMEL-654-ws7-gates-s32-<path-suffix>. The HIMMEL-Resume-
+# HIMMEL-Resume-KEY-654-ws7-gates-s32-<path-suffix>. The HIMMEL-Resume-
 # prefix AND the per-handover-unique <path-suffix> are preserved, so every
 # dedup/collision/marker site that reads $TASK_NAME is unaffected - the value
 # only gains a middle identity segment, recomputed deterministically from the
@@ -3029,13 +3028,13 @@ unset _fm_fence
 # convention so broad cross-route dedup (the HIMMEL-Resume- prefix grep)
 # still matches between routes.
 _ho_ticket=$(_infer_ticket "$HANDOVER_PATH")
-# HIMMEL-1329: the strict, frontmatter-only ticket (see _infer_ticket_strict
+# the strict, frontmatter-only ticket (see _infer_ticket_strict
 # above) -- what the ticket-level mutex keys on, deliberately narrower than
-# $_ho_ticket (which also feeds the best-effort naming/HIMMEL-1331
+# $_ho_ticket (which also feeds the best-effort naming/
 # ticket-status paths). Called as a PLAIN statement, NOT `$(...)` -- see the
 # function's own comment for why a subshell would silently lose this.
 _infer_ticket_strict "$HANDOVER_PATH"
-# HIMMEL-1304: derive the identity from the CANONICAL path, not the path as
+# derive the identity from the CANONICAL path, not the path as
 # typed, and make the suffix injective. Pre-1304 this read $HANDOVER_PATH
 # directly, which broke dedup in BOTH directions at once:
 #   false-negative — no canonicalization, so `x.md` / `./x.md` / an absolute
@@ -3081,7 +3080,7 @@ if [ -n "$_name_seg" ]; then
 else
     TASK_NAME="HIMMEL-Resume-${_path_suffix}"
 fi
-# The pre-HIMMEL-1304 name for this same handover. Dedup matches EITHER, so a
+# The earlier name for this same handover. Dedup matches EITHER, so a
 # slot armed before this upgrade is still found (and still replaced by --force)
 # instead of being orphaned into an unseen second fire. See
 # _arm_own_identity_match for why this migration is required, not optional.
@@ -3096,11 +3095,11 @@ else
     TASK_NAME_LEGACY="HIMMEL-Resume-${_path_suffix_legacy}"
 fi
 [ "$TASK_NAME_LEGACY" = "$TASK_NAME" ] && TASK_NAME_LEGACY=""
-# HIMMEL-841: --source-key replaces the path-derived half of the identity with
+# --source-key replaces the path-derived half of the identity with
 # a caller-stable tag, so a re-arm for the same SOURCE (whose delivered
 # handover path changed because its content did) matches the queued job and
 # hits the rc 3 dedup / --force replace instead of arming a second one. The
-# ticket stays in the name so the HIMMEL-1329 ticket-level listing still finds it.
+# ticket stays in the name so the ticket-level listing still finds it.
 if [ -n "$SOURCE_KEY" ]; then
     if [ -n "$_ho_ticket" ]; then
         TASK_NAME="HIMMEL-Resume-${_ho_ticket}-src-${SOURCE_KEY}"
@@ -3109,20 +3108,20 @@ if [ -n "$SOURCE_KEY" ]; then
     fi
     TASK_NAME_LEGACY=""
 fi
-# The armed relaunch's `claude -n` session title (HIMMEL-702/716) - the same
+# The armed relaunch's `claude -n` session title - the same
 # composer renders both surfaces from one identity, so the scheduler row name
 # and the session/tab title can never disagree.
 SESSION_NAME=$(_compose_arm_name "$_ho_ticket" "$HANDOVER_PATH" title)
 FLOW_RUN_NOTE=$(_infer_slug "$HANDOVER_PATH")
-# HIMMEL-1329/1331 fix: _ho_ticket is kept alive (NOT unset here) -- it is
-# read again below by the HIMMEL-1329 ticket-level mutex and by the
-# HIMMEL-1331 shipped-work preflight's ticket-status probe. Pre-fix this was
+# fix: _ho_ticket is kept alive (NOT unset here) -- it is
+# read again below by the ticket-level mutex and by the
+# shipped-work preflight's ticket-status probe. Pre-fix this was
 # unset right here and both later readers silently saw an empty string
 # (`${_ho_ticket:-}`), so the shipped-preflight's Jira ticket-status check
 # was permanently dead code — confirmed by grep: no test exercised it.
 unset _path_suffix _name_seg _ho_ident _path_hash _path_readable _path_suffix_legacy _name_seg_legacy
 
-# Pre-trust the resolved cwd (HIMMEL-386) so the fired relaunch doesn't stall
+# Pre-trust the resolved cwd so the fired relaunch doesn't stall
 # on Claude Code's interactive workspace-trust prompt ("Is this a project you
 # trust?"). An autonomous relaunch has no human to answer it and its stdin is
 # closed, so an untrusted cwd silently wastes the whole run. Non-fatal: a
@@ -3137,10 +3136,10 @@ fi
 # Dedup: list existing HIMMEL-Resume jobs. Fail-CLOSED if the listing
 # tool itself errors — silent empty result + arm = duplicate.
 #
-# Scope ($1, HIMMEL-340):
+# Scope ($1):
 #   task — only the CURRENT $TASK_NAME (per-handover dedup; the default for
 #          an explicit arm, so N distinct handovers each get their own slot).
-#          This is the ONLY scope a --force replace ever reaps from (HIMMEL-1563).
+#          This is the ONLY scope a --force replace ever reaps from.
 #   all  — every HIMMEL-Resume-* job (the legacy broad behavior; used by the
 #          --dedup-any safety arms and by the soft slot-cap count). READ-ONLY
 #          only post-1563: the rc=3 refusal message and the cap count, never a
@@ -3148,7 +3147,7 @@ fi
 # Defaults to "all" so any unscoped caller keeps the pre-340 semantics.
 
 # _crontab_list <scope> — grep the crontab for our HIMMEL-Resume markers
-# (HIMMEL-594: shared by the linux crontab fallback + the macOS crontab-only
+# (shared by the linux crontab fallback + the macOS crontab-only
 # branch so dedup reads the same store the schedule wrote).
 _crontab_list() {
     local scope="${1:-all}"
@@ -3157,7 +3156,7 @@ _crontab_list() {
         # line, so this cannot use the whole-line _arm_own_identity_match the
         # other two sites share — match the anchored suffix per identity
         # instead. TASK_NAME is sanitized to [:alnum:]_- so it carries no BRE
-        # specials. HIMMEL-1304: also match the legacy identity, guarded on
+        # specials. Also match the legacy identity, guarded on
         # non-empty — an empty alternative would anchor to `# $` and sweep in
         # unrelated lines.
         if [ -n "${TASK_NAME_LEGACY:-}" ]; then
@@ -3167,7 +3166,7 @@ _crontab_list() {
             crontab -l 2>/dev/null | grep -E "# ${TASK_NAME}$" || true
         fi
     elif [ "$scope" = ticket ]; then
-        # HIMMEL-1329: any OTHER handover's slot for this same ticket. Reads
+        # any OTHER handover's slot for this same ticket. Reads
         # the STRICT (frontmatter-only) ticket, not the best-effort combined
         # one -- see _infer_ticket_strict. Ticket keys are validated by
         # _validate_key to [A-Z][A-Z0-9]*-[0-9]+ — no BRE specials, so it's
@@ -3181,7 +3180,7 @@ _crontab_list() {
     fi
 }
 
-# HIMMEL-708 spawn-tax reduction: memoize the Windows scheduler listing.
+# spawn-tax reduction: memoize the Windows scheduler listing.
 # `schtasks /query` is ~1.2s per spawn and was re-run up to 4× per arm — once
 # for the dedup read, twice for the soft-slot-cap count (list_existing all +
 # task), and once for the collision check — each also re-running its own CSV
@@ -3197,10 +3196,10 @@ _crontab_list() {
 # Fail-CLOSED on a genuine schtasks error (same policy list_existing had: an
 # error keyword in stderr → ERR + exit 2), so a silent empty result can never
 # be mistaken for "no jobs" and produce a duplicate arm.
-# MSYS_NO_PATHCONV=1 is per-call (HIMMEL-125): without it gitbash mangles each
+# MSYS_NO_PATHCONV=1 is per-call: without it gitbash mangles each
 # /flag into a Windows-rooted path and schtasks rejects the call; scoping it to
 # this one command keeps it off the later git -C in RESUME_CWD resolution.
-# HIMMEL-1337: `schtasks /query` enumerates the operator's ENTIRE Task
+# `schtasks /query` enumerates the operator's ENTIRE Task
 # Scheduler library, not just the ~9 HIMMEL-Resume-* jobs this script cares
 # about. Reported live: 219 real scheduled tasks on the machine turned a
 # single --dry-run into a 5+ minute wait -- schtasks.exe's per-task overhead
@@ -3214,8 +3213,8 @@ _crontab_list() {
 # parser (list_existing / list_collision_candidates) needs no change at all.
 #
 # Gated on SCHTASKS_CMD being the untouched default: every existing test that
-# fabricates scheduler state pins SCHTASKS_CMD to its own stub path
-# (HIMMEL-1610), so this fast path never intercepts a test's simulated CSV --
+# fabricates scheduler state pins SCHTASKS_CMD to its own stub path,
+# so this fast path never intercepts a test's simulated CSV --
 # it only activates for a real, unstubbed arm. Bounded by `timeout` and
 # fail-open on any error/timeout/absence: a slow or missing `powershell`
 # falls straight through to the pre-1337 full schtasks scan below, never
@@ -3296,11 +3295,11 @@ list_existing() {
         windows)
             _ensure_schtasks_cache
             if [ "$scope" = task ]; then
-                # Matches the current identity OR the pre-HIMMEL-1304 one, so an
+                # Matches the current identity OR the earlier one, so an
                 # already-armed slot survives the upgrade as a dedup hit.
                 printf '%s\n' "$_SCHTASKS_NAMES" | _arm_own_identity_match
             elif [ "$scope" = ticket ]; then
-                # HIMMEL-1329: any OTHER handover's slot for this same ticket,
+                # any OTHER handover's slot for this same ticket,
                 # keyed on the STRICT frontmatter-only ticket (see
                 # _infer_ticket_strict). _compose_arm_name always puts a
                 # present ticket FIRST in the task-name segment
@@ -3346,7 +3345,7 @@ list_existing() {
                     if [ "$scope" = task ]; then
                         # Exact whole-line marker (# $TASK_NAME) so a task
                         # whose name is a prefix of another's can't match it.
-                        # HIMMEL-1304: the POSIX at-job marker is the SAME
+                        # the POSIX at-job marker is the SAME
                         # identity as the Windows task name, so it moves in
                         # lockstep — including the legacy-name migration arm.
                         if at -c "$job_id" 2>/dev/null \
@@ -3354,7 +3353,7 @@ list_existing() {
                             printf 'at-job-%s\n' "$job_id"
                         fi
                     elif [ "$scope" = ticket ]; then
-                        # HIMMEL-1329: same STRICT ticket-prefix scan as the
+                        # same STRICT ticket-prefix scan as the
                         # crontab/windows cases above, applied to the at-job body.
                         if [ -n "${_ho_ticket_strict:-}" ] && at -c "$job_id" 2>/dev/null \
                             | grep -qE "# HIMMEL-Resume-${_ho_ticket_strict}(-|\$)"; then
@@ -3378,9 +3377,9 @@ list_existing() {
     esac
 }
 
-# _crontab_delete <marker> [soft] — remove exactly one crontab LINE (HIMMEL-594:
-# shared by the linux crontab branch + the macOS crontab-only branch). `soft`
-# (HIMMEL-1304) mirrors delete_existing's windows/at-job soft handling: a
+# _crontab_delete <marker> [soft] — remove exactly one crontab LINE
+# (shared by the linux crontab branch + the macOS crontab-only branch). `soft`
+# mirrors delete_existing's windows/at-job soft handling: a
 # failed delete WARNs and returns 1 instead of exiting 2, because soft mode is
 # only used by the post-commit replace sweep where the new arm is already
 # registered and verified -- see the `delete_existing` comment for why exiting
@@ -3392,7 +3391,7 @@ list_existing() {
 _crontab_delete() {
     local marker="$1" mode="${2:-hard}"
     # marker is the full matched crontab LINE — rewrite without exactly that
-    # line (HIMMEL-340: scoped delete so a --force on one handover can't wipe
+    # line (scoped delete so a --force on one handover can't wipe
     # sibling slots). Snapshot first so a mid-pipeline failure doesn't wipe.
     local snap
     snap=$(mktemp -t crontab.snap.XXXXXX)
@@ -3405,7 +3404,7 @@ _crontab_delete() {
         echo "ERR arm-resume: crontab -l failed; aborting before rewrite" >&2
         exit 2
     fi
-    # HIMMEL-1304: drop only the FIRST line exactly matching $marker, not every
+    # drop only the FIRST line exactly matching $marker, not every
     # occurrence. _crontab_schedule always APPENDS rather than overwriting a
     # same-marker line in place, so a --force re-arm at the same time can
     # leave the superseded line and the freshly-created one byte-identical —
@@ -3455,7 +3454,7 @@ _crontab_delete() {
 
 # delete_existing <marker> [soft]
 #
-# `soft` (HIMMEL-1304) turns the hard `exit 2` on a failed delete into a WARN +
+# `soft` turns the hard `exit 2` on a failed delete into a WARN +
 # return 1. It is used ONLY by the post-commit replace sweep, which runs AFTER
 # the new job is registered and verified: at that point exiting 2 would be a lie
 # in the operator's most decision-relevant direction — it reads as "the arm
@@ -3466,7 +3465,7 @@ delete_existing() {
     local marker="$1" mode="${2:-hard}"
     case "$PLATFORM" in
         windows)
-            # MSYS_NO_PATHCONV=1: see HIMMEL-125 note in list_existing.
+            # MSYS_NO_PATHCONV=1:  note in list_existing.
             if MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /delete /tn "$marker" /f >/dev/null 2>&1; then
                 echo "arm-resume: deleted scheduled task: $marker"
             elif [ "$mode" = soft ]; then
@@ -3501,7 +3500,7 @@ delete_existing() {
     esac
 }
 
-# HIMMEL-407: time-collision check against all other HIMMEL-* scheduled tasks.
+# time-collision check against all other HIMMEL-* scheduled tasks.
 #
 # list_collision_candidates(): query the scheduler for all HIMMEL-* tasks
 # (broader than the HIMMEL-Resume- filter used by list_existing), parse each
@@ -3516,7 +3515,7 @@ list_collision_candidates() {
     fi
     case "$PLATFORM" in
         windows)
-            # HIMMEL-708: reuse the memoized `schtasks /query` from
+            # reuse the memoized `schtasks /query` from
             # _ensure_schtasks_cache instead of a 2nd (identical) spawn. This
             # tightens ONE narrow case in the safe direction: a GENUINE schtasks
             # error now fail-closes (exit 2) at the earlier dedup read rather
@@ -3558,7 +3557,7 @@ list_collision_candidates() {
                 _cc_names+=("$name")
                 _cc_dts+=("$datetime")
             done <<< "$raw_lines"
-            # HIMMEL-2125: parse every queued datetime in ONE armored python
+            # parse every queued datetime in ONE armored python
             # invocation instead of one py_armor_capture (mktemp x2 + interpreter
             # + rm x2) per candidate task -- a machine with several HIMMEL-*
             # cadences armed used to pay that ~4-spawn cost once per row here.
@@ -3629,7 +3628,7 @@ for s in sys.argv[1:]:
 # _minutes_from_midnight <HH:MM>: convert HH:MM to minutes since midnight (pure bash).
 _minutes_from_midnight() {
     local t="$1" hh mm
-    # HIMMEL-2177: strip a trailing CR first. py_armor_capture's python round-
+    # strip a trailing CR first. py_armor_capture's python round-
     # trip writes through a Windows-native python.exe to a redirected FILE
     # (not a console), which text-mode-translates its \n to \r\n; cat reads
     # those bytes back raw (no CRLF translation under Git Bash), so a `\r`
@@ -3764,13 +3763,13 @@ check_collision() {
     return 0
 }
 
-# HIMMEL-340: dedup against the CURRENT handover's $TASK_NAME by default
+# dedup against the CURRENT handover's $TASK_NAME by default
 # (so N distinct handovers each arm their own slot), or against ANY
 # HIMMEL-Resume job under --dedup-any (the safety-arm semantics the
 # auto-arm watchdogs rely on — defer to whatever is already queued).
 DEDUP_SCOPE=task
 [ "$DEDUP_ANY" -eq 1 ] && DEDUP_SCOPE=all
-# HIMMEL-708: warm the Windows scheduler-listing cache in THIS (parent) shell so
+# warm the Windows scheduler-listing cache in THIS (parent) shell so
 # the $()-wrapped list_existing / list_collision_candidates readers below inherit
 # it — a subshell populating it could not persist the globals up. Fail-closed
 # (exit 2 on a genuine schtasks error) happens here, at the first read, exactly
@@ -3779,7 +3778,7 @@ if [ "$PLATFORM" = windows ]; then
     _ensure_schtasks_cache
 fi
 existing=$(list_existing "$DEDUP_SCOPE")
-# HIMMEL-1304: markers a --force replace must reap, deleted only AFTER the new
+# markers a --force replace must reap, deleted only AFTER the new
 # job is registered and verified. Pre-1304 the deletion happened right here,
 # BEFORE the rc-7 queue-lock refusal, the rc-8 cross-host refusal, and
 # schedule_arm itself — so an arm that deleted and then refused (or failed
@@ -3788,7 +3787,7 @@ existing=$(list_existing "$DEDUP_SCOPE")
 # deletion makes the replace transactional in the direction that matters — the
 # old arm is only given up once a new one demonstrably exists.
 #
-# HIMMEL-1563: the reap list is THIS invocation's OWN identity only (the
+# the reap list is THIS invocation's OWN identity only (the
 # current $TASK_NAME + the pre-1304 legacy one) — NEVER the broad --dedup-any
 # enumeration in $existing. Pre-1563 the force loop reaped straight out of
 # $existing, so under `--dedup-any --force` (scope = every HIMMEL-Resume-* job)
@@ -3804,7 +3803,7 @@ existing=$(list_existing "$DEDUP_SCOPE")
 ARM_REPLACE_MARKERS=""
 if [ -n "$existing" ]; then
     if [ "$FORCE" -eq 1 ]; then
-        # HIMMEL-1563: reap only THIS handover's own job(s). list_existing task
+        # reap only THIS handover's own job(s). list_existing task
         # is the exact-identity match (current + legacy); the broad $existing
         # above is deliberately NOT the reap source.
         _force_reap_list=$(list_existing task)
@@ -3823,7 +3822,7 @@ if [ -n "$existing" ]; then
             # Own-identity list empty but broad list non-empty: every queued
             # resume job belongs to a DIFFERENT chain. Say so explicitly so the
             # rc=0 silence is not read as "nothing else was queued" — foreign
-            # arms are left untouched (HIMMEL-1563).
+            # arms are left untouched.
             echo "arm-resume: --force set; no job of THIS handover to replace — leaving other chains' resume job(s) untouched (HIMMEL-1563)." >&2
         fi
     else
@@ -3838,7 +3837,7 @@ if [ -n "$existing" ]; then
                 echo "    $marker"
             done <<< "$existing"
             echo ""
-            # Scope-accurate reason (HIMMEL-1297): the default per-handover scope
+            # Scope-accurate reason: the default per-handover scope
             # and the --dedup-any broad scope refuse for DIFFERENT reasons, and a
             # single "same handover" blurb misdescribes the broad one — the same
             # doc-overstates-the-guard drift this ticket fixed in the runbooks.
@@ -3866,7 +3865,7 @@ if [ -n "$existing" ]; then
                 *)       echo "    atq && at -c <job-id>   (or: crontab -l)" ;;
             esac
         } >&2
-        # Telemetry (HIMMEL-236): dedup friction signal. Guarded so a
+        # Telemetry: dedup friction signal. Guarded so a
         # --dry-run that hits the block keeps the touch-nothing contract
         # (this else-branch is reachable under --dry-run without --force).
         if [ "$DRY_RUN" -eq 0 ]; then
@@ -3877,7 +3876,7 @@ if [ -n "$existing" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-1879 part 3 -- idempotency against an ALREADY-FIRED arm.
+# idempotency against an ALREADY-FIRED arm.
 #
 # The dedup check above asks the SCHEDULER. That is a sound question only while
 # a task still exists: every arm this script emits deletes its OWN registration
@@ -3886,7 +3885,7 @@ fi
 # therefore re-arms and DOUBLE-FIRES -- two sessions for one seat, under one
 # name (proven live 2026-07-17).
 #
-# The arms registry cannot answer this: queue-lock.sh's HIMMEL-882 consume DROPS
+# The arms registry cannot answer this: queue-lock.sh's consume DROPS
 # a record when the fired session starts (and GCs any legacy '"fired":"true"'
 # line), by design -- absence there means "never armed" and "armed, fired,
 # consumed" indistinguishably. The flow-run ledger CAN: every runner this script
@@ -3909,7 +3908,7 @@ fi
 #   cover the live-session case from the LOCK side. This is the ledger side of
 #   the same question, and it answers where those cannot -- a fire whose session
 #   never reached its queue lock at all.
-# ARM_RESUME_SAFETY_ARM=1 is exempt for the same reason the HIMMEL-1475 long-gap
+# ARM_RESUME_SAFETY_ARM=1 is exempt for the same reason the long-gap
 # guard exempts it: an automated machine-wide safety arm cannot pass --force and
 # must never be the thing that parks the machine.
 # --force is the same escape hatch the dedup check documents.
@@ -3970,7 +3969,7 @@ if [ "$FORCE" -eq 0 ] && [ -n "${TASK_NAME:-}" ] \
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-1830 -- ONE FILE PER LEG.
+# ONE FILE PER LEG.
 #
 # A leg can write TWO numbered next-session files -- one carrying STATE, one
 # carrying ORDERS -- and arm the relaunch on the ORDERS half (2026-08-17, leg
@@ -3995,7 +3994,7 @@ fi
 # innocent pair look simultaneous. Both conditions are heuristics over a naming
 # convention, so ARM_SPLIT_LEG_OK=1 (and --force) opt out in one step; the
 # canonical leg->file mapping for the audited chain lives next to the files, in
-# HIMMEL-654-dispatch-session-legs.md.
+# the <ticket>-dispatch-session-legs.md doc.
 if [ "${ARM_SPLIT_LEG_OK:-}" != "1" ] && [ "$FORCE" -eq 0 ] \
    && [ "${ARM_RESUME_SAFETY_ARM:-}" != "1" ]; then
     _sl_base=$(basename "$HANDOVER_PATH")
@@ -4028,7 +4027,7 @@ if [ "${ARM_SPLIT_LEG_OK:-}" != "1" ] && [ "$FORCE" -eq 0 ] \
         if [ -f "$_sl_sib" ]; then
             _sl_window="${ARM_SPLIT_LEG_WINDOW_SEC:-3600}"
             case "$_sl_window" in ''|*[!0-9]*) _sl_window=3600 ;; esac
-            # HIMMEL-2125: py_armor_mtime tries GNU/BSD `stat` before falling
+            # py_armor_mtime tries GNU/BSD `stat` before falling
             # back to this same python one-liner -- skips the python spawn
             # entirely on every host where `stat` is available.
             _sl_mtime=$(py_armor_mtime "$_sl_sib")
@@ -4093,12 +4092,12 @@ if [ "${ARM_SPLIT_LEG_OK:-}" != "1" ] && [ "$FORCE" -eq 0 ] \
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-1329 -- ticket-level mutex.
+# ticket-level mutex.
 #
 # The dedup block above matches on the DERIVED task name, which folds in the
-# handover's own slug and a hash of its canonical path (HIMMEL-1304). Two
+# handover's own slug and a hash of its canonical path. Two
 # DIFFERENT handover files naming the SAME ticket -- a worktree handover and a
-# state-repo handover both for HIMMEL-999, say -- therefore produce two
+# state-repo handover both, say -- therefore produce two
 # DIFFERENT task names and sail straight past the check above: each arms its
 # own slot for work that, underneath, is the same ticket. Since
 # _compose_arm_name always places a present ticket FIRST in the task-name
@@ -4111,7 +4110,7 @@ fi
 # handover.
 #
 # Keyed on the STRICT frontmatter-only ticket ($_ho_ticket_strict), not the
-# best-effort combined one ($_ho_ticket also used for naming/HIMMEL-1331):
+# best-effort combined one ($_ho_ticket also used for naming/):
 # _infer_ticket's other sources (worktree branch, H1 title, chain-dir name)
 # are documented as cosmetic-only best-effort guesses, and a handover whose
 # H1 merely MENTIONS a ticket for documentation purposes (not as a real work
@@ -4121,7 +4120,7 @@ if [ -n "${_ho_ticket_strict:-}" ]; then
     _ticket_hits=""
     while IFS= read -r _tmarker; do
         [ -z "$_tmarker" ] && continue
-        # HIMMEL-1636: per-backend own-identity compare — a crontab LINE and an
+        # per-backend own-identity compare — a crontab LINE and an
         # `at-job-N` id never equal $TASK_NAME, so a raw compare here excluded
         # nothing on POSIX and this arm saw its own slot as a foreign one.
         if _arm_marker_is_own_identity "$_tmarker"; then continue; fi
@@ -4148,7 +4147,7 @@ if [ -n "${_ho_ticket_strict:-}" ]; then
     unset _ticket_hits _tmarker
 fi
 
-# Soft slot cap (HIMMEL-340): WARN — never block — when arming would push the
+# Soft slot cap: WARN — never block — when arming would push the
 # machine past ARM_MAX_SLOTS concurrent resume slots. Each fired slot is
 # another concurrent claude process + API spend, so the operator gets a
 # heads-up while still being allowed to proceed. Skipped under --dedup-any
@@ -4183,7 +4182,7 @@ if [ "$DEDUP_ANY" -eq 0 ]; then
     fi
 fi
 
-# HIMMEL-856: queue-lock FRESH-holder refusal + cross-machine arms-registry
+# queue-lock FRESH-holder refusal + cross-machine arms-registry
 # dedup -- the two double-fire vectors from the 2026-07-10 00:51 incident
 # that the existing same-machine dedup above cannot see: (a) a LIVE session
 # is actively working this queue right now (scripts/handover/queue-lock.sh),
@@ -4194,8 +4193,8 @@ fi
 # can't be resolved (HANDOVER_DIR unset and no inline handovers/ dir yet):
 # this mechanism is additive infrastructure and must never brick every arm.
 #
-# LAYERED DEFENSE -- why check-then-append is acceptable here (HIMMEL-856
-# CR, codex-1): the registry is a git-synced FILE shared across machines,
+# LAYERED DEFENSE -- why check-then-append is acceptable here:
+# the registry is a git-synced FILE shared across machines,
 # so the pre-arm check and the append below cannot be made atomic across
 # hosts -- two hosts arming in the same sync window can both pass the
 # check. That is BY DESIGN: the registry is the ADVISORY EARLY-WARNING
@@ -4212,10 +4211,10 @@ fi
 # _arm_registry_foreign_hits <registry-file> <handover-path> <handover-key>
 # <handover-root> <this-host> -- print a "; "-joined summary of every registry
 # line recording an arm for this canonical handover on a host OTHER than
-# <this-host> (empty = none). HIMMEL-1344: new lines match the durable
+# <this-host> (empty = none). New lines match the durable
 # root-relative handover-key; legacy raw-only lines match exact raw or a
 # best-effort canonicalized raw path through the shared migration helper.
-# HIMMEL-882: consumed records are dropped, and legacy fired-marked lines are
+# consumed records are dropped, and legacy fired-marked lines are
 # skipped here until the next locked rewrite garbage-collects them.
 _arm_registry_foreign_hits() {
     local _reg="$1" _ho="$2" _key="$3" _root="$4" _this_host="$5"
@@ -4242,7 +4241,7 @@ _arm_registry_foreign_hits() {
     printf '%s' "$_hits"
 }
 
-# _arm_registry_mutex_acquire <registry-file> -- HIMMEL-882 CR round-2/3:
+# _arm_registry_mutex_acquire <registry-file> -- round-2/3:
 # acquire the short-lived mkdir-CAS mutex (<registry>.lock, a DIRECTORY)
 # that serializes every arms.jsonl read-filter-rewrite writer. MUST stay
 # path- and protocol-identical to queue-lock.sh's _ql_arms_mutex_acquire --
@@ -4274,7 +4273,7 @@ _arm_registry_mutex_acquire() {
     while :; do
         if mkdir "$_lockd" 2>/dev/null; then
             # Brand the lock (see queue-lock.sh's twin for the full uutils
-            # rationale, HIMMEL-966): mkdir is NOT a reliable mutex primitive
+            # rationale): mkdir is NOT a reliable mutex primitive
             # on uutils coreutils (concurrent mkdir can BOTH return rc=0), so
             # the OWNER create via set -C (noclobber) -- a single kernel
             # open(O_CREAT|O_EXCL) by bash itself -- is the real arbiter.
@@ -4322,7 +4321,7 @@ _arm_registry_mutex_release() {
 }
 
 # _arm_registry_replace_and_append <registry-file> <host> <handover-path>
-# <handover-key> <handover-root> <new-record-line> -- HIMMEL-882/HIMMEL-1344:
+# <handover-key> <handover-root> <new-record-line>:
 # drop any existing line whose host AND canonical handover identity match
 # (this host's own prior record(s) for this same handover),
 # GC any legacy '"fired":"true"'-marked line in passing (retention, round
@@ -4420,9 +4419,9 @@ _arm_hostname() {
 }
 
 # ---------------------------------------------------------------------------
-# HIMMEL-1365 -- do not arm a REAL scheduled task against a throwaway path.
+# do not arm a REAL scheduled task against a throwaway path.
 #
-# A hand-run HIMMEL-1304 repro created a real schtasks entry pointing at a
+# A hand-run repro created a real schtasks entry pointing at a
 # scratchpad fixture, set to fire at 23:59, launching an unattended
 # `claude.exe ... OVERNITE MODE` session mid-chain. It was found still armed
 # days later. The blast radius was small only because that fixture repo had no
@@ -4448,7 +4447,7 @@ _arm_hostname() {
 # differs in the rare overlap. --force skips dedup but NOT this: a forced arm at
 # a throwaway target is precisely the incident shape.
 #
-# BOTH halves of the fired session's identity are checked (HIMMEL-1879 round):
+# BOTH halves of the fired session's identity are checked:
 # the cwd it lands in AND the handover it loads. The 2026-07 incident task was
 # HIMMEL-Resume-ho1-...scratchpad_repro_work2_ho1md -- a scratchpad HANDOVER; a
 # cwd-only predicate misses the shape where a fixture handover names a real repo
@@ -4484,13 +4483,13 @@ if [ "${ARM_TEMP_CWD_OK:-}" != "1" ] && [ "${ARM_FIXTURE_OK:-}" != "1" ] && [ "$
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-1331 -- shipped-work preflight.
+# shipped-work preflight.
 #
 # arm-resume had NO notion of whether the work it is re-arming still exists as
 # work. Confirmed by grep against this script at 3386 lines: zero references to
 # a ticket status, a merge state, or a PR. It armed on the clock and nothing
-# else. Two real instances on 2026-07-28: HIMMEL-1296 re-armed at 23:40 after
-# shipping and merging at 21:25, and HIMMEL-1286 re-armed while PR #1428 was
+# else. Two real instances on 2026-07-28: re-armed at 23:40 after
+# shipping and merging at 21:25, and re-armed while PR #1428 was
 # open and mergeable. Each burns a full autonomous session and produces rework
 # -- the same loss class as a worker that loses its commit, arriving through
 # the scheduler instead of the spawner.
@@ -4551,7 +4550,7 @@ _arm_shipped_preflight() {
     # (same shape as SCHTASKS_CMD/GH_CMD elsewhere in this file): a worktree
     # never has dist/ built, so a test exercising this branch has no other way
     # to point it at a fixture CLI.
-    # Anchored to the PRIMARY checkout via the git common dir (HIMMEL-4456, same
+    # Anchored to the PRIMARY checkout via the git common dir (same
     # idiom as console-kit/leg-jira-status.sh): script-relative would run branch
     # bytes, or find nothing, from a worktree. Outside git it stays script-relative.
     _jira="${ARM_JIRA_CLI:-}"
@@ -4571,7 +4570,7 @@ _arm_shipped_preflight() {
     # (b) PR / MERGE STATE. Asked from inside the resume cwd so gh resolves the
     # right repo. `--state all` deliberately: a MERGED pr is the strongest
     # signal, and an OPEN+MERGEABLE one means the work is finished and waiting
-    # on a human, which is the HIMMEL-1286 shape.
+    # on a human, which is the shape.
     # GH_CMD is the house seam for this (scripts/graphify/graph-publish.sh,
     # scripts/cr/*): invoked DIRECTLY rather than found on PATH, because a
     # PATH-shadowing stub does not work on Windows -- an extensionless `gh`
@@ -4604,11 +4603,11 @@ elif [ "${DRY_RUN:-0}" -eq 1 ]; then
     :   # --dry-run touches nothing and must stay side-effect-free + fast;
         # the network probes above are neither.
 else
-    # HIMMEL-2113: use the STRICT ticket (frontmatter, plus the parent-dir
+    # use the STRICT ticket (frontmatter, plus the parent-dir
     # src-4 fallback for chain files), not the loose combined _ho_ticket --
     # src-3 (H1 leg-header match) is documented
     # (:1406-1413) as a cosmetic-only heuristic never meant to carry semantic
-    # weight for a BLOCKING check, same rationale the HIMMEL-1329 ticket-mutex
+    # weight for a BLOCKING check, same rationale the ticket-mutex
     # check already applies. A chain handover's "# Next Session -- LUNA-64"
     # leg header was matching an unrelated Done ticket and false-positiving
     # this refusal.
@@ -4626,7 +4625,7 @@ else
     fi
 fi
 
-# _arm_root_from_handover_path <handover-file> -- HIMMEL-1603 fallback root
+# _arm_root_from_handover_path <handover-file> -- fallback root
 # resolver. handover_root() answers from HANDOVER_DIR or <cwd's git root>
 # /handovers -- i.e. from WHERE WE ARE, never from WHAT WE ARE ARMING. Arm from
 # a cwd that maps to neither and it returns nothing, and the caller below used
@@ -4664,14 +4663,14 @@ _arm_root_from_handover_path() {
 HIMMEL_856_HR_ROOT=""
 HIMMEL_856_HR_ROOT=$(handover_root 2>/dev/null) || HIMMEL_856_HR_ROOT=""
 if [ -z "$HIMMEL_856_HR_ROOT" ]; then
-    # HIMMEL-1603: before giving up (and silently arming unregistered), derive
+    # before giving up (and silently arming unregistered), derive
     # the root from the handover being armed.
     HIMMEL_856_HR_ROOT=$(_arm_root_from_handover_path "$HANDOVER_PATH" 2>/dev/null) || HIMMEL_856_HR_ROOT=""
     [ -n "$HIMMEL_856_HR_ROOT" ] && \
         echo "WARN arm-resume: handover_root did not resolve from the cwd/HANDOVER_DIR -- using the root derived from the handover path instead: $HIMMEL_856_HR_ROOT (HIMMEL-1603)" >&2
 fi
 if [ -z "$HIMMEL_856_HR_ROOT" ]; then
-    # HIMMEL-1603: this branch arms WITHOUT a registry record, so every later
+    # this branch arms WITHOUT a registry record, so every later
     # reader -- the census, the double-arm detector, any staleness guard -- is
     # blind to this arm. A WARN on a session's stderr does not survive that
     # session, which is why the gap went unnoticed until an unrecorded arm was
@@ -4687,7 +4686,7 @@ else
         # normal outcome, not a script error) would otherwise abort the
         # whole arm right here instead of reaching the rc-7 refusal below.
         _ql_status_rc=0
-        # HIMMEL-1603: hand the resolved root DOWN. queue-lock.sh re-resolves
+        # hand the resolved root DOWN. queue-lock.sh re-resolves
         # via its own handover_root, i.e. from the same cwd that just failed us,
         # so without this it answers "could not resolve handover root" and the
         # check degrades to a WARN even though we know exactly which root to
@@ -4749,7 +4748,7 @@ else
     _arm_phase_done "arms-registry-cross-host" "$_ARM_PT0"
 fi
 
-# HIMMEL-407: time-collision check — runs AFTER the same-handover dedup block
+# time-collision check — runs AFTER the same-handover dedup block
 # and BEFORE schedule_arm. Runs even under --dry-run (it mutates nothing).
 # On exact-minute collision: rc=6 (HARD-REFUSE) unless --force or --dedup-any.
 # Near collision (within window): WARN only. Outside window: silent.
@@ -4761,14 +4760,14 @@ fi
 
 # Build and execute the scheduler command directly — no round-trip
 # through schedule-resume.sh's mixed-prose stdout (the v1 bug).
-# _crontab_schedule — install the one-shot crontab entry (HIMMEL-594: shared by
+# _crontab_schedule — install the one-shot crontab entry (shared by
 # the linux crontab fallback + the macOS crontab-only branch). Uses the script
 # globals RESUME_TIME/RESUME_PROMPT/RESUME_CWD/CHANNELS/TASK_NAME/DRY_RUN (plus
-# PATH/HOME and the ARM_RESUME_LOG_DIR seam, HIMMEL-3074).
+# PATH/HOME and the ARM_RESUME_LOG_DIR seam).
 # A `return 0` here (dry-run) returns to the schedule_arm case, which then ends
 # and returns 0 — equivalent to the pre-extraction inline `return 0`.
 #
-# HIMMEL-3074 (himmel#774) — DECISION, revised (fold of Goomal's
+# (himmel#774) — DECISION, revised (fold of Goomal's
 # fix/arm-resume-macos-cron, commit 122659613fe458649327075a9fbda9cc6a8ee15f):
 # the crontab LINE itself only ever carries a fixed-shape `/bin/sh <runner> #
 # <TASK_NAME>` command now (see the runner-file block inside the function
@@ -4778,7 +4777,7 @@ fi
 # line at parse time, and because the self-clean and the launch were BOTH part
 # of that one truncated line, the entry never removes itself either -- it just
 # re-fires, mangled, every day (this is the actual mechanism behind himmel#774,
-# not merely the read-failure bugs CR round 2 fixed below, which a byte-count
+# not merely the read-failure bugs fixed below, which a byte-count
 # render confirmed independently of Goomal's own report). A short, well-under-
 # the-cap crontab line that execs a generated FILE sidesteps this regardless of
 # handover path/prompt/cwd length. claude is still resolved to an ABSOLUTE path
@@ -4816,8 +4815,8 @@ _crontab_schedule() {
     # path.
     local hh="${RESUME_TIME%:*}" mm="${RESUME_TIME#*:}"
     local q_prompt q_cwd q_channels="" q_name="" q_model="" q_autocompact=""
-    # Fold of Goomal's fix/arm-resume-macos-cron: the \%-escape HIMMEL-2199/
-    # HIMMEL-2192 added at these sites existed ONLY because these values sat
+    # Fold of Goomal's fix/arm-resume-macos-cron: the \%-escape
+    # added at these sites existed ONLY because these values sat
     # on the crontab LINE itself, and crontab (unlike /bin/sh) reads a bare %
     # as end-of-command + stdin. They now land in the RUNNER FILE below,
     # parsed by /bin/sh, not cron, so a literal % is just a literal % -- %q
@@ -4827,20 +4826,20 @@ _crontab_schedule() {
     q_prompt=$(printf '%q' "$RESUME_PROMPT")
     q_cwd=$(printf '%q' "$RESUME_CWD")
     [ -n "$CHANNELS" ] && q_channels="--channels $(printf '%q' "$CHANNELS") "
-    # -n <session name> (HIMMEL-702): %q-quote so a space in "<TICKET> <name>"
+    # -n <session name>: %q-quote so a space in "<TICKET> <name>"
     # stays ONE arg through the /bin/sh re-parse at fire time. Empty -> omit.
     [ -n "$SESSION_NAME" ] && q_name="-n $(printf '%q' "$SESSION_NAME") "
-    # Optional --model passthrough (HIMMEL-2192), same %q-quote shape as
+    # Optional --model passthrough, same %q-quote shape as
     # --channels above.
     [ -n "$MODEL" ] && q_model="--model $(printf '%q' "$MODEL") "
-    # --autocompact passthrough (HIMMEL-2658): always non-empty by the time
+    # --autocompact passthrough: always non-empty by the time
     # this runs (resolved unconditionally alongside CONTEXT_MODE above) --
     # same %q-quote shape as q_model, since this is the actual cost-driving
     # lever and a skipped site here is a silent no-op on this platform.
     q_autocompact="--autocompact $(printf '%q' "$AUTOCOMPACT") "
-    # HIMMEL-4013: role-matched plugin profile, appended after the autocompact arg.
+    # role-matched plugin profile, appended after the autocompact arg.
     q_autocompact="$q_autocompact$(_arm_profile_settings_flag)" || exit 2
-    # HIMMEL-3074: resolve claude ABSOLUTELY at arm time (see the function
+    # resolve claude ABSOLUTELY at arm time (see the function
     # header). `command -v` may return a function/alias name for a shell-level
     # `claude`; only a leading `/` is a path cron can exec, anything else
     # refuses. rc 2 = the Windows twin's "'claude' not on PATH at arm time"
@@ -4859,8 +4858,8 @@ _crontab_schedule() {
     # line -- see below) so claude's own helpers (node, git, gh, the himmel
     # hook scripts) resolve as they did in the arming shell. PATH ONLY --
     # never a whole-env snapshot: a console-spawned leg's arming shell carries
-    # INLINE_IMPL_OK / HIMMEL_CONSOLE_LEG / HIMMEL_HOOK_INTEGRITY_BYPASS_OK
-    # (HIMMEL-3092), and baking those into the relaunch would silently
+    # INLINE_IMPL_OK / HIMMEL_CONSOLE_LEG / HIMMEL_HOOK_INTEGRITY_BYPASS_OK,
+    # and baking those into the relaunch would silently
     # neuter its guardrails. Fold of Goomal's fix/arm-resume-macos-cron: an
     # npm-installed `claude` is a node shim, so a PATH snapshot that resolves
     # `claude` (above) but omits node's own directory can still fail at fire
@@ -4878,7 +4877,7 @@ _crontab_schedule() {
     fi
     local q_path
     q_path=$(printf '%q' "$_snap_path")
-    # CR round 2 on #780 (still needed: Goomal's fix/arm-resume-macos-cron
+    # (still needed: Goomal's fix/arm-resume-macos-cron
     # relocates this exact one-liner into the runner file unchanged, so it
     # keeps failing open the same way): `crontab -l | grep -v ... | crontab -`
     # fails open two ways -- if `crontab -l` fails, grep sees empty input and
@@ -4899,7 +4898,7 @@ else
     echo \"ERR arm-resume-runner: crontab -l failed (rc=\$_scr) at fire time -- refusing to self-clean or launch this tick; entry stays armed for the next one\" >&2
     exit 1
 fi"
-    # HIMMEL_HEADROOM_PROXY (HIMMEL-901): a crontab entry is ONE line, so the
+    # HIMMEL_HEADROOM_PROXY: a crontab entry is ONE line, so the
     # livez-check-then-launch logic (same shape as the `at` branch's
     # $launch_lines) has to be a single ';'-joined compound wrapped in its
     # own `{ ; }` group — `cd ... && { ...; }` keeps `cd` a hard gate (plain
@@ -4908,13 +4907,13 @@ fi"
     # at equal precedence). Inactive -> $tail is byte-identical to the
     # pre-901 line (zero behavior change).
     # CR round: absolute curl path ($q_curl) + one mode-marker echo per
-    # branch (HIMMEL-897 trail). The marker uses `echo "\$(date) ..."`, NOT
+    # branch. The marker uses `echo "\$(date) ..."`, NOT
     # printf: cron treats an unescaped % in the command as end-of-command +
     # stdin, so a printf format string would truncate the entry. `\$(date)`
     # lands literally and evaluates at fire time.
     local q_automerge=""
     if [ "$AUTOMERGE" -eq 1 ]; then
-        # HIMMEL-3118 item 4: CR_MERGE_GATE_OK=1 is granted only alongside an
+        # CR_MERGE_GATE_OK=1 is granted only alongside an
         # explicit --automerge on THIS invocation, never by the dotenv default.
         if [ "$AUTOMERGE_GRANTS_MERGE_GATE" -eq 1 ]; then
             q_automerge="ARMAUTOMERGE=1 CR_MERGE_GATE_OK=1 "
@@ -4922,17 +4921,17 @@ fi"
             q_automerge="ARMAUTOMERGE=1 "
         fi
     fi
-    # HIMMEL-1382 fix round: unset both vars unconditionally before the
+    # unset both vars unconditionally before the
     # (possibly empty) grant prefix — same always-clear contract as the
     # `at`/Windows/WSL launch bodies, so a crontab entry never depends on
     # whatever env cron happened to run it under. `&&`, not `;`, so a failed
     # unset (should never happen) can't fall through to an ungated claude
     # launch outside the entry's `cd ... && $tail` gate.
-    # HIMMEL-1475: also unset ARM_RESUME_SAFETY_ARM — a crontab entry fired by
+    # also unset ARM_RESUME_SAFETY_ARM — a crontab entry fired by
     # an automated safety arm (auto-arm-on-cap/spawn-glm set the var in their
     # child env) must NOT hand the long-gap exemption to the resumed session,
     # or a later far HH:MM arm it makes silently bypasses the guard.
-    # HIMMEL-2545: the same always-clear contract, for the vars claude
+    # the same always-clear contract, for the vars claude
     # itself injects. claude exports CLAUDE_CODE_CHILD_SESSION=1 (and
     # CLAUDE_PID) into every process it spawns, so an arm made from inside a
     # claude tool call hands the relaunch a THROWAWAY-CHILD marker: transcript
@@ -4940,7 +4939,7 @@ fi"
     # archaeology, nothing for the luna session-capture hook. An armed resume
     # is the session that most needs its transcript, so the launch body clears
     # both and forces persistence ON rather than depending on the ambient env
-    # the arm happened to be submitted from. CLAUDE_PID is the HIMMEL-2514
+    # the arm happened to be submitted from. CLAUDE_PID is the
     # sibling: the relaunch must not inherit the arming session's pid either.
     # CLAUDE_CODE_SESSION_ID is a round-6 addition to the same clear: claude
     # generates its own id and exports the correct one to its own tool
@@ -4968,7 +4967,7 @@ fi"
     q_task=$(printf '%q' "$TASK_NAME")
     q_note=$(printf '%q' "$FLOW_RUN_NOTE")
     tail="{ _flow_run_id=\$($q_flow_lib --append-start armed-resume \"\" \"\" claude \"\" $q_task \"\" \"\$\$\" 2>/dev/null) || _flow_run_id=; _flow_rc=0; $tail || _flow_rc=\$?; _flow_outcome=\$($q_flow_lib --classify \"\$_flow_rc\" \"\" 2>/dev/null) || _flow_outcome=complete; test \"\$_flow_outcome\" != \"\" || _flow_outcome=complete; test \"\$_flow_run_id\" != \"\" && $q_flow_lib --append-end armed-resume \"\$_flow_run_id\" \"\" \"\$_flow_rc\" \"\$_flow_outcome\" \"\" $q_note >/dev/null 2>&1 || true; exit \"\$_flow_rc\"; }"
-    # HIMMEL-812: --safety-child marks the relaunch as the child of an auto-arm
+    # --safety-child marks the relaunch as the child of an auto-arm
     # SAFETY escalation. Exported once here, ahead of $tail, so it covers the
     # plain and the headroom-proxy launch bodies alike (both hang off the same
     # `cd ... &&` gate) instead of being threaded through every claude line.
@@ -4976,7 +4975,7 @@ fi"
     # be governed by its own text, not by whatever env cron hands it.
     local q_safety_child="unset AUTO_ARM_SAFETY_CHILD && "
     [ "$SAFETY_CHILD" -eq 1 ] && q_safety_child="export AUTO_ARM_SAFETY_CHILD=1 && "
-    # HIMMEL-2973 S3: same always-clear-then-grant shape for the console
+    # same always-clear-then-grant shape for the console
     # PreCompact pair. `%` is escaped for cron like q_log_file below.
     q_safety_child="${q_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR && "
     if [ -n "$CONSOLE_PRECOMPACT_DOC" ]; then
@@ -4985,7 +4984,7 @@ fi"
         q_cp_wd=$(printf '%q' "$CONSOLE_PRECOMPACT_WORKDIR"); q_cp_wd=${q_cp_wd//%/\\%}
         q_safety_child="${q_safety_child}export HIMMEL_CONSOLE_DOC=$q_cp_doc HIMMEL_CONSOLE_WORKDIR=$q_cp_wd && "
     fi
-    # HIMMEL-3074: the headless shape (function header). The redirects hang
+    # the headless shape (function header). The redirects hang
     # off the flow-ledger `{ ...; }` group so the ledger writes, the launch and
     # its exit all share the one stdin/log; stdin is /dev/null explicitly
     # (never cron's undefined stdin), stdout+stderr APPEND to a per-arm log so
@@ -5002,7 +5001,7 @@ fi"
     # .command file (macOS headed launch) instead -- see the function header.
     local launch_body="cd $q_cwd && ${q_safety_child}$headless_tail"
     local headed_launch_body="cd $q_cwd && ${q_safety_child}$tail"
-    # HIMMEL-5201: own line ahead of the launch, so an unregistered name
+    # own line ahead of the launch, so an unregistered name
     # leaves both bodies byte-identical.
     local bus_rebind_line
     bus_rebind_line=$(_bus_rebind_line "$log_file")
@@ -5036,7 +5035,7 @@ $headed_launch_body"
         # which is not an acceptable probe. Fail open to Terminal.app
         # (present on every Mac) rather than refuse the whole arm over a bad
         # app name. Shared with konsole-macos.sh via macos-app-resolve.sh
-        # (HIMMEL-3474).
+        #
         term_app="$(macos_resolve_term_app arm-resume)"
         command_path="$runner_dir/$TASK_NAME.command"
         q_commandfile=$(printf '%q' "$command_path")
@@ -5118,10 +5117,10 @@ $launch_body"
         }
         chmod 700 "$command_path"
     fi
-    # HIMMEL-3074 CR round 3: a fired runner/.command file never removes
+    # a fired runner/.command file never removes
     # itself (only its crontab entry does), and neither does a stale one left
     # by a mode change -- both carry the resume prompt and handover path.
-    # HIMMEL-3122: this prune runs AFTER both writes above have already
+    # this prune runs AFTER both writes above have already
     # succeeded, never before -- a re-arm of THIS task just wrote (or
     # rewrote) its own runner/.command with mtime=now, so this can only ever
     # prune files OTHER arms left behind; a just-armed file is never at risk
@@ -5141,13 +5140,13 @@ $launch_body"
     # append, fails the runner's own /bin/sh at fire time, after self_clean
     # has already removed the entry -- the exact silent no-op this ticket
     # removes. Probe the file itself (`: >>` creates it empty, touches
-    # nothing else), not just the directory (CR round 1 on #780). Fail loud
+    # nothing else), not just the directory. Fail loud
     # here instead.
     if ! { mkdir -p "$log_dir" && : >> "$log_file"; }; then
         echo "ERR arm-resume: cannot create or append the arm log $log_file (the fired entry would have nowhere to write)" >&2
         exit 4
     fi
-    # CR round 2 on #780: a read failure other than the trusted "no crontab
+    # a read failure other than the trusted "no crontab
     # yet" signature must NOT be treated as an empty crontab -- doing so would
     # rewrite over (delete) every unrelated cron job. Same fail-closed
     # classifier as uninstall.sh:1056 / pipeline-cadence.sh's cron_read: only
@@ -5189,16 +5188,16 @@ $launch_body"
     echo "    crontab -l | grep -v 'HIMMEL-Resume' | crontab -"
 }
 
-# _win_short_date_pattern (HIMMEL-938): read the machine's Windows short-date
+# _win_short_date_pattern: read the machine's Windows short-date
 # format from the registry so schedule_arm's Windows branch can render
 # `schtasks /sd` in the LOCALE schtasks itself will parse it with — schtasks
 # reads /sd per-locale, and a hardcoded MM/dd/yyyy silently misreads as
 # day-first on a dd/MM/yyyy machine (win2, 4 recurrences), arming the task
 # months out with no error. MSYS_NO_PATHCONV=1 is the same idiom every other
-# schtasks/reg call in this file uses (HIMMEL-125) — without it gitbash
+# schtasks/reg call in this file uses — without it gitbash
 # mangles the /v flag into a Windows-rooted path. ANY failure (missing reg,
 # unreadable key, empty/unparseable value) falls back to "MM/dd/yyyy" —
-# byte-identical to the pre-HIMMEL-938 hardcoded behavior. Returns 0 when
+# byte-identical to the earlier hardcoded behavior. Returns 0 when
 # the pattern came from the registry, 1 when the fallback was used -- the
 # caller must know the difference: a fallback pattern on a day-first
 # machine re-opens the misarm class, so when the post-arm verify is ALSO
@@ -5221,7 +5220,7 @@ _win_short_date_pattern() {
     printf '%s\n' "$_pat"
 }
 
-# _win_delete_bad_task <task-name> (HIMMEL-938, codex-adv-11): delete a task
+# _win_delete_bad_task <task-name> (codex-adv-11): delete a task
 # the post-arm verify rejected, LOUDLY surfacing a failed delete -- a
 # known-mistimed task left scheduled would relaunch at the wrong moment
 # while the ERR above implied it was cleaned up. Callers exit 2 either way;
@@ -5234,7 +5233,7 @@ _win_delete_bad_task() {
     return 1
 }
 
-# _win_restore_backup_task <task-name> <backup-xml> (HIMMEL-1304 finding 2):
+# _win_restore_backup_task <task-name> <backup-xml> (finding 2):
 # `schtasks /create /f` overwrites a same-named task IN PLACE, so a
 # same-identity re-arm leaves no separate old row for the post-commit reap
 # sweep to defer deleting (see _arm_marker_is_new_arm above) -- the
@@ -5255,16 +5254,16 @@ _win_restore_backup_task() {
     return 1
 }
 
-# _win_render_short_date <epoch> <pattern> (HIMMEL-938): render TARGET_EPOCH
+# _win_render_short_date <epoch> <pattern>: render TARGET_EPOCH
 # as a schtasks-parseable date string in the given Windows short-date
 # pattern (e.g. "dd/MM/yyyy", "M/d/yyyy", "yyyy-MM-dd"). Scans the pattern
 # for runs of d/M/y: a `d`/`M` run always zero-pads to >=2 digits (even a
 # single-letter token like the real Windows en-US DEFAULT "M/d/yyyy" —
 # verified live on the operator's own box, which is NOT "MM/dd/yyyy" as
-# originally assumed). HIMMEL-938 is about the day/month ORDER a locale
+# originally assumed). The fix is about the day/month ORDER a locale
 # implies, not digit width, and schtasks parses "7/2/2026" and "07/02/2026"
 # identically — so fixing width at >=2 keeps a same-order locale's /sd value
-# byte-identical to the pre-HIMMEL-938 hardcoded render (only a genuinely
+# byte-identical to the earlier hardcoded render (only a genuinely
 # reordered pattern, e.g. dd/MM/yyyy, changes the emitted string). A `y` run
 # of length <=2 renders a 2-digit year, longer renders 4-digit; a `d` run of
 # length >=3 is a day-NAME token (e.g. "dddd" in a locale whose short-date
@@ -5348,7 +5347,7 @@ print("".join(out))
 # the Windows NextRunTime branch inside schedule_arm and the generic post-arm
 # existence verify after it.
 # _arm_fired_row -- this task's NEWEST armed-resume start row, or empty. Split
-# out of _arm_fired_evidence (HIMMEL-1999) because the pre-arm snapshot below
+# out of _arm_fired_evidence because the pre-arm snapshot below
 # needs the same read without any of the this-arm-or-not judgement.
 _arm_fired_row() {
     local _fr_ledger
@@ -5370,7 +5369,7 @@ _arm_fired_row() {
 _arm_fired_evidence() {
     local _fe_row _fe_at _fe_try
     [ -n "${_ARM_START_UTC:-}" ] || return 1
-    # HIMMEL-1999 item 1: a short GRACE window, not one look. The fired runner
+    # a short GRACE window, not one look. The fired runner
     # deletes its own registration as its FIRST action and writes its
     # armed-resume start row only after that, so a verify landing inside that
     # gap sees "no task, no evidence" and reports REGISTERED NOTHING -- which
@@ -5385,7 +5384,7 @@ _arm_fired_evidence() {
         [ "$_fe_try" -eq 1 ] || sleep 1
         _fe_row=$(_arm_fired_row) || _fe_row=""
         [ -n "$_fe_row" ] || continue
-        # HIMMEL-1999 item 2: a row that ALREADY EXISTED when we armed can
+        # a row that ALREADY EXISTED when we armed can
         # never be this arm's fire, whatever its stamp reads. The compare below
         # is second-resolution and inclusive, so a prior run that started in
         # the same second as this arm would otherwise pass it -- and rc 15
@@ -5415,7 +5414,7 @@ schedule_arm() {
             # wrote to a path NAMED %TEMP%\himmel-resume.bat instead
             # of $TEMP-resolved.
             local bat_path
-            # Portability only (HIMMEL-3699): BSD `mktemp -t` ignores $TMPDIR and
+            # Portability only: BSD `mktemp -t` ignores $TMPDIR and
             # appends its random tail AFTER a .bat suffix, so the file neither
             # landed in the caller's dir nor matched the prune's `*.bat` glob.
             # Mint under an explicit dir, then add the suffix.
@@ -5430,7 +5429,7 @@ schedule_arm() {
                 return 1
             }
             bat_path="$bat_path.bat"
-            # HIMMEL-1606: prune our own leaked siblings. The .bat deletes its
+            # prune our own leaked siblings. The .bat deletes its
             # own scheduled task on its first line but never removes ITSELF, so
             # every arm since 2026-06-28 left one behind -- 1665 files / 2.1 MB
             # measured 2026-08-06, growing with the arming cadence, i.e. in the
@@ -5448,7 +5447,7 @@ schedule_arm() {
             # Both the prefix AND the .bat suffix are required in the match so
             # this can never widen into an unrelated temp file.
             # Best-effort throughout: a prune failure must never fail an arm.
-            # HIMMEL-1624: skip the prune under --dry-run. This block runs
+            # skip the prune under --dry-run. This block runs
             # before the DRY_RUN early-return below, so without the gate a
             # dry-run arm would delete leaked .bat siblings -- a real side
             # effect that breaks the side-effect-free contract a dry run
@@ -5497,7 +5496,7 @@ schedule_arm() {
                     rm -f "$bat_path"
                     exit 2
                 fi
-                # HIMMEL-708: convert all three paths (.bat, claude, cwd) in ONE
+                # convert all three paths (.bat, claude, cwd) in ONE
                 # cygpath spawn instead of three — cygpath emits one Windows path
                 # per input line, in argument order. Windows paths contain no
                 # newlines, so split the result with pure-bash parameter expansion
@@ -5511,7 +5510,7 @@ schedule_arm() {
                 _cyg_rest="${_cyg_out#*$'\n'}"
                 claude_cmd_win="${_cyg_rest%%$'\n'*}"
                 resume_cwd_win="${_cyg_rest#*$'\n'}"
-                # Belt-and-suspenders (HIMMEL-708 CR): a well-behaved cygpath emits
+                # Belt-and-suspenders: a well-behaved cygpath emits
                 # exactly three non-empty lines on rc 0, so the split above is sound.
                 # Guard anyway against a build that exits 0 with fewer lines —
                 # otherwise resume_cwd_win would silently inherit claude_cmd_win (the
@@ -5531,13 +5530,13 @@ schedule_arm() {
                 [ -n "$SESSION_NAME" ] && q_name=" -n $(_bash_single_quote "$SESSION_NAME")"
                 [ -n "$CHANNELS" ] && q_channels=" --channels $(_bash_single_quote "$CHANNELS")"
                 [ -n "$MODEL" ] && q_model=" --model $(_bash_single_quote "$MODEL")"
-                # --autocompact passthrough (HIMMEL-2658): same
+                # --autocompact passthrough: same
                 # _bash_single_quote shape as q_model above; always non-empty
                 # by the time this runs.
                 q_autocompact=" --autocompact $(_bash_single_quote "$AUTOCOMPACT")"
                 local q_automerge=""
                 if [ "$AUTOMERGE" -eq 1 ]; then
-                    # HIMMEL-3118 item 4: CR_MERGE_GATE_OK=1 is granted only
+                    # CR_MERGE_GATE_OK=1 is granted only
                     # alongside an explicit --automerge, never the dotenv default.
                     if [ "$AUTOMERGE_GRANTS_MERGE_GATE" -eq 1 ]; then
                         q_automerge="ARMAUTOMERGE=1 CR_MERGE_GATE_OK=1 "
@@ -5545,13 +5544,13 @@ schedule_arm() {
                         q_automerge="ARMAUTOMERGE=1 "
                     fi
                 fi
-                # HIMMEL-1382 fix round: unset both vars first (defense against
+                # unset both vars first (defense against
                 # ambient carryover), THEN conditionally re-grant via the
                 # per-command prefix — same always-clear contract as the
-                # Windows/at/crontab launch bodies below. HIMMEL-1475: the same
+                # Windows/at/crontab launch bodies below. The same
                 # unset also drops ARM_RESUME_SAFETY_ARM so the resumed in-distro
                 # session does not inherit a leaked long-gap exemption.
-                # HIMMEL-812: a `set` in the .bat cannot cross into the distro,
+                # a `set` in the .bat cannot cross into the distro,
                 # so the safety-child mark rides the in-distro command instead.
                 local q_safety_child=""
                 [ "$SAFETY_CHILD" -eq 1 ] && q_safety_child="AUTO_ARM_SAFETY_CHILD=1 "
@@ -5575,8 +5574,8 @@ schedule_arm() {
                         ;;
                 esac
                 # A pattern-leading `%` is the end-anchor in some bash 3.2
-                # builds, so the %->%% doubling silently no-ops on macOS
-                # (HIMMEL-3699); keep the % out of the pattern's literal text.
+                # builds, so the %->%% doubling silently no-ops on macOS;
+                # keep the % out of the pattern's literal text.
                 local _pct='%'
                 wsl_launch="${wsl_command//$_pct/%%}"
             fi
@@ -5593,7 +5592,7 @@ schedule_arm() {
             fi
 
             # .bat content: escape for interpolation INSIDE DOUBLE QUOTES via
-            # cadence_cmd_escape (HIMMEL-1281/HIMMEL-1287) — % -> %% plus
+            # cadence_cmd_escape — % -> %% plus
             # best-effort " handling, deliberately NO caret escapes (cmd.exe
             # treats ^ as a LITERAL character inside double quotes, so
             # caret-escaping corrupts the value instead of protecting it).
@@ -5615,7 +5614,7 @@ schedule_arm() {
                 cs=$(cadence_cmd_escape "$cs")
                 ch=" --channels \"$cs\""
             fi
-            # Optional --model passthrough (HIMMEL-2192). Same cadence_cmd_escape
+            # Optional --model passthrough. Same cadence_cmd_escape
             # + inline-quote shape as --channels above — MODEL is operator-
             # supplied and lands inside its own embedded double quotes.
             local mo=""
@@ -5624,22 +5623,22 @@ schedule_arm() {
                 ms=$(cadence_cmd_escape "$ms")
                 mo=" --model \"$ms\""
             fi
-            # --autocompact passthrough (HIMMEL-2658). Same cadence_cmd_escape
+            # --autocompact passthrough. Same cadence_cmd_escape
             # + inline-quote shape as --model above; always non-empty by the
             # time this runs.
             local ac=""
             local acs="$AUTOCOMPACT"
             acs=$(cadence_cmd_escape "$acs")
             ac=" --autocompact \"$acs\""
-            # -n <session name> (HIMMEL-702). SESSION_NAME is sanitized to
+            # -n <session name>. SESSION_NAME is sanitized to
             # [A-Za-z0-9._ -] (see _compose_arm_name) so it carries no CMD
             # metacharacter and needs no ^-escaping here; quote it so the space
             # in "<TICKET> <name>" stays a single argv entry. Empty -> omit.
             local nm=""
             [ -n "$SESSION_NAME" ] && nm=" -n \"$SESSION_NAME\""
-            # HIMMEL_HEADROOM_PROXY (HIMMEL-901): a SEPARATE cygpath call
+            # HIMMEL_HEADROOM_PROXY: a SEPARATE cygpath call
             # (not folded into the batched bat/claude/cwd conversion above)
-            # so the existing HIMMEL-708 3-path split logic stays untouched
+            # so the existing 3-path split logic stays untouched
             # when the flag is off — this only spawns when the flag is on.
             # CR round: curl gets the same treatment as HEADROOM_BIN (one
             # cygpath spawn for both) so the livez checks below carry an
@@ -5656,7 +5655,7 @@ schedule_arm() {
                 _hp_cyg_rest="${_hp_cyg_out#*$'\n'}"
                 curl_bin_win="${_hp_cyg_rest%%$'\n'*}"
                 # Same incomplete-output guard as the batched 3-path split
-                # above (HIMMEL-708 CR): a cygpath that exits 0 with fewer
+                # above: a cygpath that exits 0 with fewer
                 # lines must not leave curl_bin_win aliasing headroom_bin_win.
                 if [ -z "$headroom_bin_win" ] || [ -z "$curl_bin_win" ] || [ "$_hp_cyg_out" = "$_hp_cyg_rest" ]; then
                     echo "ERR arm-resume: cygpath -w produced incomplete output (headroom/curl): $_hp_cyg_out" >&2
@@ -5669,7 +5668,7 @@ schedule_arm() {
                 # escapes on ^ & < > |). cu (the curl livez checks) is a
                 # single-parse top-level .bat line, so it keeps
                 # cadence_cmd_escape. Do NOT unify them -- the two-parse
-                # distinction is the HIMMEL-1287 contract (proxy-suite T4b
+                # distinction is the contract (proxy-suite T4b
                 # pins ^& on hb's line; T1287a/b/c pin NO carets on the
                 # single-parse sites).
                 hb=$(_arm_nested_cmd_escape "$headroom_bin_win")
@@ -5692,7 +5691,7 @@ schedule_arm() {
             # Prompt MUST come before --channels: --channels is variadic
             # (consumes following args), so a trailing positional prompt
             # gets parsed as a bogus channel entry ("must be tagged" → exit 1).
-            # HIMMEL_HEADROOM_PROXY (HIMMEL-901): when active, gate the
+            # HIMMEL_HEADROOM_PROXY: when active, gate the
             # claude launch on a livez check, starting the proxy DETACHED
             # if it's down and giving it ~3s before rechecking. Fail-open:
             # if it's STILL down after the retry, fall through to a bare
@@ -5709,7 +5708,7 @@ schedule_arm() {
             # escaping below, which is for literal-data percents only).
             # CR round: each branch appends ONE mode-marker line to the
             # proxy log before launching (proxied vs bare-fallback) — the
-            # HIMMEL-897 measurement trail; without it a fired launch is
+            # measurement trail; without it a fired launch is
             # indistinguishable after the fact. %DATE%/%TIME% expand when
             # CMD parses the if-block, close enough to launch time.
             # TASK_NAME is sanitized to [:alnum:]_- (no CMD metachars).
@@ -5730,7 +5729,7 @@ schedule_arm() {
                 printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1
 '
                 if [ -n "$WSL_DISTRO" ]; then
-                    # -d value MUST be unquoted (HIMMEL-998): wsl.exe splits its
+                    # -d value MUST be unquoted: wsl.exe splits its
                     # pre--e command line naively and does NOT strip CMD-level
                     # double quotes, so -d "Ubuntu" resolves the five-char name
                     # plus quotes -> WSL_E_DISTRO_NOT_FOUND (rc -1, live win2
@@ -5741,7 +5740,7 @@ schedule_arm() {
                     printf 'wsl.exe -d %s -e bash -lc "%s"\r\n' "$WSL_DISTRO" "$wsl_launch"
                 else
                     printf 'cd /d "%s" || exit /b 1\r\n' "$c"
-                    # HIMMEL-1382 fix round: ALWAYS clear both vars first, then
+                    # ALWAYS clear both vars first, then
                     # conditionally re-grant when --automerge was explicit on
                     # THIS arm. A cap-triggered auto re-arm never passes
                     # --automerge (auto-arm-on-cap.sh), so its generated .bat
@@ -5749,14 +5748,14 @@ schedule_arm() {
                     # ambient ARMAUTOMERGE/CR_MERGE_GATE_OK through from
                     # whatever launched it -- the emitted text enforces its
                     # own contract regardless of ambient env.
-                    # HIMMEL-1475: clear ARM_RESUME_SAFETY_ARM too, for the same
+                    # clear ARM_RESUME_SAFETY_ARM too, for the same
                     # reason and by symmetry with the POSIX launch bodies — the
                     # fired .bat session must not inherit a leaked long-gap
                     # exemption from the submitting safety-arm env.
                     printf 'set "ARMAUTOMERGE="\r\n'
                     printf 'set "CR_MERGE_GATE_OK="\r\n'
                     printf 'set "ARM_RESUME_SAFETY_ARM="\r\n'
-                    # HIMMEL-2545: claude exports CLAUDE_CODE_CHILD_SESSION=1
+                    # claude exports CLAUDE_CODE_CHILD_SESSION=1
                     # (and CLAUDE_PID) into every process it spawns, so a
                     # session armed FROM a claude tool call fires as a
                     # throwaway CHILD: transcript saving off, context-fill
@@ -5777,13 +5776,13 @@ schedule_arm() {
                     printf 'set "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"\r\n'
                     if [ "$AUTOMERGE" -eq 1 ]; then
                         printf 'set "ARMAUTOMERGE=1"\r\n'
-                        # HIMMEL-3118 item 4: CR_MERGE_GATE_OK=1 is granted only
+                        # CR_MERGE_GATE_OK=1 is granted only
                         # alongside an explicit --automerge, never the dotenv default.
                         if [ "$AUTOMERGE_GRANTS_MERGE_GATE" -eq 1 ]; then
                             printf 'set "CR_MERGE_GATE_OK=1"\r\n'
                         fi
                     fi
-                    # HIMMEL-812: the auto-arm stale escalation's own child.
+                    # the auto-arm stale escalation's own child.
                     # auto-arm-on-cap.sh reads this out of the relaunched
                     # session's env and warns instead of arming again, which is
                     # what bounds the +5h safety-arm chain. Cleared first on the
@@ -5823,12 +5822,12 @@ schedule_arm() {
             } > "$bat_path"
             _arm_require_leg_autocompact_argv "$(tr -d '\r' < "$bat_path")"
 
-            # HIMMEL-938 Part A: re-render START_DATE in the MACHINE's own
+            # re-render START_DATE in the MACHINE's own
             # Windows short-date locale right before it's used as /sd —
             # schtasks parses /sd per-locale, so the MM/DD/YYYY default
             # derived above is only correct on a US-format machine. Any
             # render failure (empty PY_ARMOR_OUT) falls back to the
-            # original START_DATE, i.e. exactly the pre-HIMMEL-938 behavior.
+            # original START_DATE, i.e. exactly the earlier behavior.
             # _locale_degraded=1 when the /sd value did NOT come from a
             # successful registry-read + render (fallback used). On its own
             # that only degrades locale-correctness -- but if the post-arm
@@ -5857,7 +5856,7 @@ schedule_arm() {
                 return 0
             fi
 
-            # HIMMEL-1304 finding 2: export whatever is currently registered
+            # finding 2: export whatever is currently registered
             # under $TASK_NAME before the /create below overwrites it in
             # place (see _win_restore_backup_task above for why). A query
             # failure just means there was nothing to back up -- the normal
@@ -5871,7 +5870,7 @@ schedule_arm() {
 
             local err_file
             err_file=$(mktemp -t arm-resume.err.XXXXXX)
-            # MSYS_NO_PATHCONV=1: see HIMMEL-125 note in list_existing.
+            # MSYS_NO_PATHCONV=1:  note in list_existing.
             if ! MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /create /tn "$TASK_NAME" /tr "$bat_path_win" /sc ONCE /st "$RESUME_TIME" /sd "$_win_sd" /f 2>"$err_file"; then
                 echo "ERR arm-resume: schtasks /create failed:" >&2
                 cat "$err_file" >&2
@@ -5887,12 +5886,12 @@ schedule_arm() {
             local _create_done_epoch
             _create_done_epoch=$(date +%s)
 
-            # HIMMEL-938 Part B: post-arm NextRunTime verify. A successful
+            # post-arm NextRunTime verify. A successful
             # schtasks /create rc=0 is not proof the task will fire at the
             # intended moment -- a misregistered /sd (wrong locale, or any
             # other silent misparse) still returns rc=0, and the task then
             # just sits Ready and never fires (or fires months out — the
-            # exact HIMMEL-938 bug). Get-ScheduledTaskInfo's .NextRunTime is
+            # exact bug). Get-ScheduledTaskInfo's .NextRunTime is
             # a real DateTime (locale-independent), unlike `schtasks /query`
             # output, so it's the trustworthy cross-check. Fail-OPEN on the
             # PROBE itself (missing/broken PowerShell must never block an
@@ -5946,7 +5945,7 @@ schedule_arm() {
                     rm -f "$bat_path"
                     exit 2
                 fi
-                # HIMMEL-1879 (r5): fail-OPEN stands -- an unreachable probe is
+                # (r5): fail-OPEN stands -- an unreachable probe is
                 # not evidence of a bad arm, and refusing here would strand every
                 # host where powershell is unavailable. But the closing banner
                 # must not then claim an EARNED success: the whole point of this
@@ -5993,7 +5992,7 @@ schedule_arm() {
                     # against, and the same ledger row settles it.
                     if [ "$_lead" -le 0 ] && [ "$_create_done_epoch" -lt "$TARGET_EPOCH" ] \
                        && _arm_fired_evidence; then
-                        # HIMMEL-1879: consumed is NOT armed. The flag stops the
+                        # consumed is NOT armed. The flag stops the
                         # generic post-arm existence verify from re-refusing a
                         # legitimately-fired task, and swaps the closing banner
                         # from "RESUME ARMED" to a CONSUMED one -- an operator
@@ -6083,31 +6082,31 @@ schedule_arm() {
                 # re-interpret it at fire time; trailing space separates
                 # it from the prompt arg (empty when no --channels).
                 [ -n "$CHANNELS" ] && q_channels="--channels $(printf '%q' "$CHANNELS") "
-                # -n <session name> (HIMMEL-702): %q so "<TICKET> <name>"
+                # -n <session name>: %q so "<TICKET> <name>"
                 # stays one arg after the /bin/sh re-parse. Empty -> omit.
                 [ -n "$SESSION_NAME" ] && q_name="-n $(printf '%q' "$SESSION_NAME") "
-                # Optional --model passthrough (HIMMEL-2192), same %q-quote
+                # Optional --model passthrough, same %q-quote
                 # shape as --channels above.
                 [ -n "$MODEL" ] && q_model="--model $(printf '%q' "$MODEL") "
-                # --autocompact passthrough (HIMMEL-2658), same %q-quote shape
+                # --autocompact passthrough, same %q-quote shape
                 # as q_model above; always non-empty by the time this runs.
                 q_autocompact="--autocompact $(printf '%q' "$AUTOCOMPACT") "
-                # HIMMEL-4013: role-matched plugin profile (--settings <file>),
+                # role-matched plugin profile (--settings <file>),
                 # appended after the autocompact arg; fails closed.
                 q_autocompact="$q_autocompact$(_arm_profile_settings_flag)" || exit 2
-                # HIMMEL_HEADROOM_PROXY (HIMMEL-901): $launch_lines is the
+                # HIMMEL_HEADROOM_PROXY: $launch_lines is the
                 # plain 'claude ...' line unless the flag is active, in
                 # which case it becomes a livez-check-then-launch block
                 # (same shape as _crontab_schedule's $tail above) — built
                 # ONCE so the dry-run echo and the real heredoc can't drift
                 # apart. Inactive -> byte-identical to the pre-901 line.
                 # CR round: absolute curl path ($q_curl — see HEADROOM_CURL)
-                # + one mode-marker echo per branch (HIMMEL-897 trail).
+                # + one mode-marker echo per branch.
                 # `\$(date)` is escaped so it lands LITERALLY in the job
                 # body and evaluates at FIRE time, not arm time.
                 local q_automerge=""
                 if [ "$AUTOMERGE" -eq 1 ]; then
-                    # HIMMEL-3118 item 4: CR_MERGE_GATE_OK=1 is granted only
+                    # CR_MERGE_GATE_OK=1 is granted only
                     # alongside an explicit --automerge, never the dotenv default.
                     if [ "$AUTOMERGE_GRANTS_MERGE_GATE" -eq 1 ]; then
                         q_automerge="ARMAUTOMERGE=1 CR_MERGE_GATE_OK=1 "
@@ -6115,19 +6114,19 @@ schedule_arm() {
                         q_automerge="ARMAUTOMERGE=1 "
                     fi
                 fi
-                # HIMMEL-1382 fix round: `at` snapshots the submitting shell's
+                # `at` snapshots the submitting shell's
                 # ambient env, so an automerge-armed session's `at -t` job
                 # would otherwise silently RETAIN CR_MERGE_GATE_OK/ARMAUTOMERGE
                 # even when THIS arm's generated text sets neither. Unset both
                 # unconditionally as the first line of the job body so the
                 # emitted text — not the ambient env it was submitted from —
-                # is what governs. HIMMEL-1475: the same line also unsets
+                # is what governs. The same line also unsets
                 # ARM_RESUME_SAFETY_ARM — on Linux `at` snapshots the submitter
                 # env, so without this the RESUMED claude session inherits the
                 # sticky long-gap exemption from the safety arm that scheduled
                 # it, and every later far HH:MM arm it makes silently bypasses
                 # the guard.
-                # HIMMEL-2545: the same always-clear contract, for the vars claude
+                # the same always-clear contract, for the vars claude
                 # itself injects. claude exports CLAUDE_CODE_CHILD_SESSION=1 (and
                 # CLAUDE_PID) into every process it spawns, so an arm made from inside a
                 # claude tool call hands the relaunch a THROWAWAY-CHILD marker: transcript
@@ -6135,7 +6134,7 @@ schedule_arm() {
                 # archaeology, nothing for the luna session-capture hook. An armed resume
                 # is the session that most needs its transcript, so the launch body clears
                 # both and forces persistence ON rather than depending on the ambient env
-                # the arm happened to be submitted from. CLAUDE_PID is the HIMMEL-2514
+                # the arm happened to be submitted from. CLAUDE_PID is the
                 # sibling: the relaunch must not inherit the arming session's pid either.
                 # CLAUDE_CODE_SESSION_ID is a round-6 addition to the same clear:
                 # claude generates its own id and exports the correct one to its own
@@ -6175,7 +6174,7 @@ fi"
                 q_flow_lib=$(printf '%q' "$SCRIPT_DIR/../lib/flow-run-ledger.sh")
                 q_task=$(printf '%q' "$TASK_NAME")
                 q_note=$(printf '%q' "$FLOW_RUN_NOTE")
-                # HIMMEL-812: prepended to the WRAPPED body (not to each launch
+                # prepended to the WRAPPED body (not to each launch
                 # variant) so the dry-run echo and the real `at` heredoc below
                 # cannot drift apart — both render this same $launch_lines.
                 # ALWAYS-CLEAR, then conditionally grant, exactly like the
@@ -6187,13 +6186,13 @@ fi"
 "
                 [ "$SAFETY_CHILD" -eq 1 ] && at_safety_child="export AUTO_ARM_SAFETY_CHILD=1
 "
-                # HIMMEL-2973 S3: the console PreCompact pair, same
+                # the console PreCompact pair, same
                 # always-clear-then-grant shape (`at` snapshots the submitting
                 # env, so a console arm's own pair must not leak into a
                 # non-console relaunch).
                 at_safety_child="${at_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR
 "
-                # HIMMEL-4118 F2: same always-clear for the launch-seam vars a
+                # same always-clear for the launch-seam vars a
                 # leg or consult carries (LEG_PROFILE_NO_SETTING_SOURCES, the
                 # shim, its binary), so the resumed session never inherits them.
                 at_safety_child="${at_safety_child}unset $(console_context_launch_seam_env_names | tr '\n' ' ')
@@ -6202,7 +6201,7 @@ fi"
                     at_safety_child="${at_safety_child}export HIMMEL_CONSOLE_DOC=$(printf '%q' "$CONSOLE_PRECOMPACT_DOC") HIMMEL_CONSOLE_WORKDIR=$(printf '%q' "$CONSOLE_PRECOMPACT_WORKDIR")
 "
                 fi
-                # HIMMEL-2534: atd runs the job with stdin=/dev/null and no tty,
+                # atd runs the job with stdin=/dev/null and no tty,
                 # and a claude launched that way exits at the first idle
                 # cross-session message. Shadow `claude` with a function that
                 # runs the real one under a pty with stdin held open
@@ -6219,7 +6218,7 @@ else
     echo \"WARN arm-resume: $q_pty_lib missing -- claude launches WITHOUT a pty (HIMMEL-2534)\" >&2
 fi
 "
-                # HIMMEL-5201: bus rebind of the resumed pid (opt-in, own line).
+                # bus rebind of the resumed pid (opt-in, own line).
                 local at_bus_line
                 at_bus_line=$(_bus_rebind_line "${ARM_RESUME_LOG_DIR:-$HOME/.himmel/arm-resume}/$TASK_NAME.log")
                 [ -n "$at_bus_line" ] && at_bus_line="$at_bus_line
@@ -6244,7 +6243,7 @@ exit \"\$_flow_rc\""
                 # at -t takes an exact [[CC]YY]MMDDhhmm datetime, so we pass the
                 # already-resolved START date+time (AT_STAMP). Avoids at's
                 # impl-defined past-time handling AND the old today/tomorrow
-                # heuristic that broke for resets >24h out. HIMMEL-204.
+                # heuristic that broke for resets >24h out..
                 if ! at -t "$AT_STAMP" 2>"$err_file" <<CMD
 # $TASK_NAME
 cd $q_cwd || exit 1
@@ -6265,13 +6264,13 @@ CMD
             # macOS deliberately uses crontab, NOT at: atrun (com.apple.atrun)
             # is off-by-default and may be unenableable under SIP, so an `at -t`
             # job would silently never fire. crontab is the per-user one-shot
-            # primitive needing no privileged daemon. (HIMMEL-594)
+            # primitive needing no privileged daemon.
             _crontab_schedule ;;
     esac
 }
 
 # ---------------------------------------------------------------------------
-# HIMMEL-1879 part 1 -- elapsed-aware lead floor, applied at the LAST moment
+# elapsed-aware lead floor, applied at the LAST moment
 # before the scheduler is touched.
 #
 # This is the point of maximum knowledge: every slow step (worker census, the
@@ -6335,7 +6334,7 @@ print(dt.strftime("%H:%M"), dt.strftime("%m/%d/%Y"), dt.strftime("%Y%m%d%H%M"))
     unset _arm_now
 fi
 
-# HIMMEL-1999 item 2: snapshot this task's newest armed-resume start row BEFORE
+# snapshot this task's newest armed-resume start row BEFORE
 # anything is registered. Nothing of ours can have fired yet, so whatever is
 # here belongs to a PREVIOUS run of the same task name -- and _arm_fired_evidence
 # refuses to read it as this arm's fire even when the two share a start second.
@@ -6350,11 +6349,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# HIMMEL-1879 part 1 -- the SUCCESS line must be EARNED.
+# the SUCCESS line must be EARNED.
 #
 # Everything above can print an encouraging trail and still leave nothing armed:
 # schtasks /create returns rc=0 for a task whose fire time already passed, and
-# the HIMMEL-938 guard then deletes it. That guard exits 2 on the Windows paths
+# the guard then deletes it. That guard exits 2 on the Windows paths
 # it can see -- but POSIX at/crontab had NO post-arm check at all (`at -t` rc=0
 # went straight to the banner), and no platform re-asked the cheapest question
 # of all: is the target still in the FUTURE now that we are done?
@@ -6366,7 +6365,7 @@ fi
 # invalidated first or we would be reading a snapshot from before the create.
 #
 # Fail-OPEN on a broken PROBE, fail-CLOSED on a bad ANSWER -- the same split
-# HIMMEL-938 settled on. _ARM_CONSUMED marks the one legitimate no-task case
+# settled on. _ARM_CONSUMED marks the one legitimate no-task case
 # (the arm fired during the create->verify window); it is reported as CONSUMED,
 # never as ARMED.
 if [ "${_ARM_CONSUMED:-0}" -ne 1 ]; then
@@ -6434,10 +6433,10 @@ if [ "${_ARM_CONSUMED:-0}" -ne 1 ]; then
     unset _arm_verify_found _arm_verify_marker _arm_verify_lead _arm_verify_now
 fi
 
-# HIMMEL-3282: a console-class arm records the context it resolved DURABLY.
-# headed-arm.sh does this for the Linux/KDE path (HIMMEL-3279); this is the
+# a console-class arm records the context it resolved DURABLY.
+# headed-arm.sh does this for the Linux/KDE path; this is the
 # other arming path (the Windows schtasks backend), and without it a console
-# armed here is unattributable for HIMMEL-2973 the moment the arm log is gone.
+# armed here is unattributable  the moment the arm log is gone.
 # Here, not at the top: the arm has been verified, so no `NOT armed` exit above
 # leaves a row for a session that never launches -- and before the CONSUMED
 # exit below, because a consumed arm DID launch with this mode. Best-effort
@@ -6448,14 +6447,14 @@ if [ "$_arm_is_console" -eq 1 ] && ! console_context_write_record "$SESSION_NAME
     echo "WARN arm-resume: context record NOT written under ${CONSOLE_CONTEXT_RECORD_DIR:-<no cache dir>} (this console's launch context is unrecoverable after a reboot)" >&2
 fi
 
-# A CONSUMED arm exits HERE -- before the HIMMEL-1304 force-replace reap and
-# before the HIMMEL-856 arms-registry publication (r5 round). Both of those
+# A CONSUMED arm exits HERE -- before the force-replace reap and
+# before the arms-registry publication (r5 round). Both of those
 # blocks exist to service a NEW future arm, and on this path there is none:
 #   - the reap gives up the previous slot because a replacement now exists.
 #     Nothing replaced anything here, so reaping would destroy a slot and leave
 #     the operator with neither.
 #   - the registry publishes an "armed" record for a PENDING arm. This task has
-#     already fired and self-deleted, and queue-lock's HIMMEL-882 consume
+#     already fired and self-deleted, and queue-lock's consume
 #     already dropped its record when that session started -- republishing it
 #     resurrects a stale PENDING row that no fire will ever clear, which is a
 #     permanent rc 8 cross-host refusal for the next host to try this handover.
@@ -6479,9 +6478,9 @@ EOF
     exit 0
 fi
 
-# HIMMEL-1304: the second half of the transactional --force replace. Everything
+# the second half of the transactional --force replace. Everything
 # that can refuse (rc 7 queue lock, rc 8 cross-host registry, rc 6 collision)
-# and schedule_arm itself — including its HIMMEL-938 post-arm NextRunTime
+# and schedule_arm itself — including its post-arm NextRunTime
 # verify, which DELETES a task it judges misregistered and exits 2 — has now
 # run. Only here is a new arm known to exist, so only here is it safe to give up
 # the old one. Reached only on the --force path; ARM_REPLACE_MARKERS is empty
@@ -6518,26 +6517,26 @@ if [ -n "${ARM_REPLACE_MARKERS:-}" ]; then
     unset _arm_reap_failed _rm
 fi
 
-# Telemetry (HIMMEL-236): a successful arm IS the re-launch signal the
+# Telemetry: a successful arm IS the re-launch signal the
 # measure-during protocol wants — one append, after the dry-run gate so
 # --dry-run keeps its "touch nothing" contract.
-# HIMMEL-1490: emit the MEASURED gap (raw seconds, the guard's canonical
+# emit the MEASURED gap (raw seconds, the guard's canonical
 # unit — _GAP_SEC, deliberately not floored to minutes: the guard compares
 # >3600 directly because a //60 floor made 60m01s-60m59s read as 60). On the
-# Telegram HH:MM surface --long-gap rides every explicit arm (HIMMEL-1475),
+# Telegram HH:MM surface --long-gap rides every explicit arm,
 # so long_gap=1 alone can't tell a genuine >60-min park from a near arm in
 # the audit; gap_sec records how far out it actually is. Default 0 for the
 # smart/auto sentinel arms, which never derive _GAP_SEC (no measured park).
 telemetry_emit handover-arm-resume armed "time=$RESUME_TIME" "force=$FORCE" "long_gap=$LONG_GAP" "gap_sec=${_GAP_SEC:-0}"
 
-# HIMMEL-856: record this arm in the cross-machine arms registry, same
+# record this arm in the cross-machine arms registry, same
 # dry-run gate as telemetry above. Best-effort -- a registry write failure
 # must never fail an arm that already succeeded (fail-open, loud trail).
-# HIMMEL-882: prune this SAME host's prior record(s) for this SAME handover
+# prune this SAME host's prior record(s) for this SAME handover
 # before appending the fresh one (see _arm_registry_replace_and_append) --
 # closes the re-arm/--force accumulation gap that would otherwise block a
 # later cross-host arm forever, on top of the consume queue-lock.sh does at
-# session start (see its own HIMMEL-882 comment).
+# session start (see its own comment).
 if [ -n "${HIMMEL_856_HR_ROOT:-}" ]; then
     _arm_host=$(_arm_hostname)
     # `|| true`: an unwritable .locks (e.g. a FILE squatting on the dir
@@ -6563,7 +6562,7 @@ if [ -n "${HIMMEL_856_HR_ROOT:-}" ]; then
         echo "WARN arm-resume: failed to append the arms.jsonl registry record (the arm itself still succeeded)${_ARM_REGISTRY_REPLACE_ERR:+ (write error: $_ARM_REGISTRY_REPLACE_ERR)}" >&2
     fi
     unset _arm_new_record
-    # Post-append re-read (HIMMEL-856 CR, codex-1 -- see the LAYERED
+    # Post-append re-read (see the LAYERED
     # DEFENSE comment at the pre-arm check): the check-then-append pair
     # above cannot be atomic across machines, so AFTER recording our own
     # arm, re-scan the registry. If another host's arm for this same
@@ -6592,7 +6591,7 @@ fi
 # The headline is the ticket's whole claim, so it states exactly what was
 # established: plain RESUME ARMED only after the entry was queried back and
 # confirmed to fire in the future; the UNVERIFIED spelling when a probe could
-# not run and the arm was let stand on the fail-open (HIMMEL-938). Same rc
+# not run and the arm was let stand on the fail-open. Same rc
 # either way -- this is a truthfulness fix, not a new refusal.
 if [ "${_ARM_UNVERIFIED:-0}" -eq 1 ]; then
     _arm_headline="RESUME ARMED (UNVERIFIED — scheduler query failed) for $RESUME_TIME on $START_DATE (handover: $HANDOVER_PATH)"

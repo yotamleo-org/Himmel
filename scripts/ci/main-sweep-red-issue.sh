@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/ci/main-sweep-red-issue.sh -- maintain ONE `main-red` issue for the
-# push-to-main CI sweep (HIMMEL-3841 slice E, spec HIMMEL-3815 section 6.1 B).
+# push-to-main CI sweep.
 #
-# HIMMEL-5113: main has no per-merge push run; a sweep is a cron / dispatch run
+# Main has no per-merge push run; a sweep is a cron / dispatch run
 # of ci.yml on main, each testing the tip at its start, so completed sweeps
 # cover contiguous ranges of merges. main-sweep-red.yml runs this once per
 # completed sweep with the run id. A red job means "a green merge produced a red
@@ -83,10 +83,10 @@ while IFS= read -r line; do
   case "$name" in
     *"$tab"*) jid="${name#*"$tab"}"; name="${name%%"$tab"*}" ;;
   esac
-  # HIMMEL-5143: the aggregate is named `shell-unit (dispatch verify) (os)` on a
+  # The aggregate is named `shell-unit (dispatch verify) (os)` on a
   # workflow_dispatch run and `shell-unit (os)` otherwise. One job, one identity,
   # or a report recorded from a push run could never be re-proven on a dispatch.
-  # HIMMEL-5146: only that aggregate is rewritten; no other job loses the text.
+  # Only that aggregate is rewritten; no other job loses the text.
   case "$name" in
     "shell-unit (dispatch verify) ("*) name="${name/ (dispatch verify)/}" ;;
   esac
@@ -111,7 +111,7 @@ while IFS= read -r line; do
       esac
       continue ;;
     "main-sweep"*) continue ;;
-    # HIMMEL-5113: the nightly is swept too (event `schedule`). Its windows
+    # The nightly is swept too (event `schedule`). Its windows
     # legs are continue-on-error by design and guard-corpus-full is
     # schedule-only with its own nightly signal; neither is main's health.
     # Their presence is also how the nightly is recognised (see is_nightly).
@@ -139,7 +139,7 @@ while IFS= read -r line; do
   esac
 done < "$TMP/jobs"
 
-# HIMMEL-5143: the aggregate fails when its shards were cancelled (a superseded
+# The aggregate fails when its shards were cancelled (a superseded
 # run). If no shard finished red or green and some were cancelled, that failure
 # is not a verdict on main (same rule as a cancelled run with no job finished).
 # A finished red shard, or a timed-out one, keeps it red.
@@ -198,7 +198,7 @@ if [ -n "$num" ]; then
   fi
 fi
 
-# HIMMEL-5129: the ordering guard above only sees an OPEN issue. A newer green
+# The ordering guard above only sees an OPEN issue. A newer green
 # sweep closes the issue, so an older red sweep that finishes afterwards finds
 # none and would open a stale report. The close step therefore stamps the run id
 # into the issue body (main-red-closed-run) before closing; a red run with no
@@ -245,7 +245,7 @@ now() { date -u +'%Y-%m-%d %H:%M UTC' 2>/dev/null || echo "unknown-time"; }
 # --- the range since the last green sweep ----------------------------------
 range_text() {
   local green
-  # HIMMEL-5113: no push runs; the anchor is the newest earlier green cron or
+  # No push runs; the anchor is the newest earlier green cron or
   # dispatch run on main. branch=main also lists a fork PR's head branch named
   # main, so pull_request runs are dropped.
   green="$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=20" \

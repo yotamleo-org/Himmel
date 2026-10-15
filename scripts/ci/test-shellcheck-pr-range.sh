@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/ci/test-shellcheck-pr-range.sh -- regression suite for
-# scripts/ci/shellcheck-pr-range.sh (HIMMEL-4319), the PR-path selector of CI's
+# scripts/ci/shellcheck-pr-range.sh, the PR-path selector of CI's
 # lint job. Every case builds a commit in a throwaway repo (scratch HOME, no
 # network, no pre-commit) and asserts the --dry-run verdict: ALL (fall back to
 # --all-files) or FILES (+ the neighbours that must be linted). A selector that

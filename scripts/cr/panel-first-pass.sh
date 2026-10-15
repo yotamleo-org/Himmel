@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/panel-first-pass.sh - step 3.0 critic-panel first pass, extracted
-# verbatim (in behavior) from .claude/commands/pr-check.md (HIMMEL-2226).
+# verbatim (in behavior) from .claude/commands/pr-check.md.
 #
 # WHY A SCRIPT, NOT AN INLINE FENCE: this logic used to run as a ```bash
 # block inside the /pr-check runbook, executed by the orchestrating Claude
@@ -18,7 +18,7 @@
 #   bash scripts/cr/panel-first-pass.sh --head <sha> --branch <name>
 #
 # --head/--branch are REQUIRED and must be step 1's CAPTURED values, never
-# re-derived here (HIMMEL-1175): review the SHA the ledger will certify, not
+# re-derived here: review the SHA the ledger will certify, not
 # live HEAD, and pin the branch too - a SHA pin alone would pass a switch to a
 # different branch sitting at the same commit.
 #
@@ -26,12 +26,12 @@
 #   CR_PROFILE - loaded from the primary checkout's .env (a live env var
 #     already set wins); CR_PROFILE=none skips the panel entirely
 #     (claude-only, no spend). Passed through to critic-panel.sh, which
-#     resolves its own tiers from it (HIMMEL-558) - this script never
+#     resolves its own tiers from it - this script never
 #     hand-computes a tier filter.
 #
 # Stdout/stderr contract (the calling session reads BOTH streams and must
 # never merge them):
-#   stdout - "captured diff base: <db> (<db_sha>)" (HIMMEL-1984: the session
+#   stdout - "captured diff base: <db> (<db_sha>)" (the session
 #            carries $db_sha forward as a literal into step 3.2), followed by
 #            the panel's merged findings block, if any.
 #   stderr - every status/skip note, every "panel-availability: ..." line
@@ -41,19 +41,19 @@
 #   0 - ran to completion (panel invoked, skipped, or failed open to
 #       claude-only). Findings, if any, are on stdout.
 #   2 - usage error: missing --head or --branch.
-#   7 - input-pin failure. Two causes, both ABORT: (a) HIMMEL-2542 - the
+#   7 - input-pin failure. Two causes, both ABORT: (a) the
 #       --head this script was given names no commit in this repo, detected
-#       here before any git command consumes it; (b) HIMMEL-1175/HIMMEL-1984
+#       here before any git command consumes it; (b)
 #       pin MISMATCH reported by critic-panel.sh, on the FIRST attempt or
 #       independently on the rtk retry. ABORT: nothing was reviewed, nothing
 #       was recorded. Never degrades to claude-only - re-run /pr-check from
 #       step 1.
 #   Every other critic-panel.sh failure fails OPEN to claude-only (this
 #   script still exits 0; panel findings are empty and a loud note went to
-#   stderr). Panel exit 6 (HIMMEL-1932, a refusal to certify) gets its own note
+#   stderr). Panel exit 6 (a refusal to certify) gets its own note
 #   instead of the all-critics-failed text.
 set -uo pipefail
-# HIMMEL-3395: a relative-entry copy that is not the anchor's hands off to it.
+# a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
 
@@ -79,7 +79,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$HEAD_SHA" ] || { echo "panel-first-pass: --head is required (step 1's captured SHA, HIMMEL-1175)" >&2; exit 2; }
 [ -n "$BRANCH" ]   || { echo "panel-first-pass: --branch is required (step 1's captured branch, HIMMEL-1175)" >&2; exit 2; }
-# HIMMEL-3495: the round counter and ledger are per-branch shared state; only
+# the round counter and ledger are per-branch shared state; only
 # the branch checked out in cwd may be written (review-round.sh refuses too).
 current_branch="$(git branch --show-current 2>/dev/null)" || current_branch=""
 if [ -z "$current_branch" ] || [ "$current_branch" != "$BRANCH" ]; then
@@ -87,7 +87,7 @@ if [ -z "$current_branch" ] || [ "$current_branch" != "$BRANCH" ]; then
     exit 2
 fi
 
-# HIMMEL-2542 - validate the INPUT PIN before any git command consumes it.
+# validate the INPUT PIN before any git command consumes it.
 # A --head naming no commit in this repo is a CALLER error, not a reviewer
 # outage, and the two are indistinguishable downstream: `git diff
 # <base>...<bad-head>` fails rc=128, the fail-open branch below reports
@@ -103,12 +103,12 @@ if ! git rev-parse --verify --quiet "$HEAD_SHA^{commit}" >/dev/null 2>&1; then
     exit 7
 fi
 
-# Resolve the protected default (main OR master, HIMMEL-297) for the diff base.
+# Resolve the protected default (main OR master) for the diff base.
 # shellcheck source=../guardrails/lib.sh
 # shellcheck disable=SC1091
 db=$(. "$HIMMEL_ROOT/scripts/guardrails/lib.sh" 2>/dev/null && default_branch || echo main)
 # Fetch ONCE at the start of the row, then capture the BASE commit through the
-# shared origin-first resolver (HIMMEL-2787). A repository with no origin falls
+# shared origin-first resolver. A repository with no origin falls
 # back to its local branch; a repository that HAS origin must not silently
 # certify a stale cached ref when the refresh itself failed.
 review_root="$(git rev-parse --show-toplevel 2>/dev/null)" || review_root=""
@@ -124,7 +124,7 @@ if [ -z "$db_sha" ]; then
 fi
 echo "captured diff base: $db ($db_sha)"   # carry this literal into step 3.2
 
-# HIMMEL-558: load CR_PROFILE from the PRIMARY checkout's .env (a live process
+# load CR_PROFILE from the PRIMARY checkout's .env (a live process
 # env var wins) so /pr-check honours it DETERMINISTICALLY - even from a
 # worktree, where the gitignored .env is not present (load_dotenv resolves the
 # primary checkout via git-common-dir). We do NOT hand-compute a tier filter:
@@ -138,16 +138,16 @@ load_dotenv --root "$(_load_dotenv_primary_for "$HIMMEL_ROOT")" CR_PROFILE || tr
 export CR_PROFILE
 
 diff_rc=0
-# HIMMEL-1175 - review the SHA the ledger will certify, not live HEAD.
+# review the SHA the ledger will certify, not live HEAD.
 # --head "$HEAD_SHA" plus --branch "$BRANCH" on the panel below make a moved
 # checkout a REFUSAL (exit 7) instead of a silently-wrong review.
-# Diff from the CAPTURED base SHA, not the live $db name (HIMMEL-1984): $db
+# Diff from the CAPTURED base SHA, not the live $db name: $db
 # stays the operator-visible name in messages.
 diff_range="$db_sha...$HEAD_SHA"
 diff_out=$(git diff "$diff_range") || diff_rc=$?
 panel_avail_lines=""   # "panel-availability: <slug> ok|unavailable (rc=N)" lines
 panel_findings=""      # the merged findings block
-# HIMMEL-2542 elapsed tell: a real panel round takes ~2 minutes, so an empty
+# elapsed tell: a real panel round takes ~2 minutes, so an empty
 # findings block that arrived in ~0s is a bad pin or an outage, never a clean
 # review. Only meaningful once the panel was actually INVOKED - the skip paths
 # (CR_PROFILE=none, empty diff) legitimately return instantly.
@@ -175,7 +175,7 @@ else
     fi
     case "$review_round" in
         *" delta "*)
-            # HIMMEL-4600: the one delta round reviews only last-reviewed
+            # the one delta round reviews only last-reviewed
             # head..HEAD_SHA, never the whole branch again.
             delta_from="${review_round##* delta }"
             review_round="${review_round%% *}"
@@ -195,14 +195,14 @@ else
     [ -z "${CR_PROFILE:-}" ] && echo "Default cross-model CR - no free critics registered, using the PAID codex anchor (~2min; set CR_PROFILE=none for instant claude-only)."
     panel_ran=1
     panel_tmp=$(mktemp -t cr-panel-avail.XXXXXX)
-    # CR_USAGE_LOG=1 (HIMMEL-485): each critic logs a chars/4 ESTIMATED usage
-    # ledger record. No CRITIC_PANEL_TIERS here (HIMMEL-558): the panel
+    # CR_USAGE_LOG=1: each critic logs a chars/4 ESTIMATED usage
+    # ledger record. No CRITIC_PANEL_TIERS here: the panel
     # resolves tiers from the exported CR_PROFILE.
     panel_findings=$(printf '%s' "$diff_out" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" --base "$db" --base-sha "$db_sha" 2>"$panel_tmp")
     panel_rc=$?
     panel_avail_lines=$(cat "$panel_tmp"); rm -f "$panel_tmp"
     if [ "$panel_rc" -eq 7 ]; then
-        # HIMMEL-1175/HIMMEL-1984 - the checkout or the base branch moved
+        # the checkout or the base branch moved
         # since step 1. Every later step is keyed to the captured
         # branch/SHA/base, so continuing would certify a review of code
         # nobody reviewed. ABORT the whole run; do NOT degrade to claude-only.
@@ -227,7 +227,7 @@ PINABORT
         # loudly (same fail-open contract as below). Only rc=1 retries: an
         # exit-6 refusal is not a diff problem, and a retry would overwrite it.
         if [ "$panel_rc" -eq 1 ] && command -v rtk >/dev/null 2>&1; then
-            # Same captured-base rule as the first attempt (HIMMEL-1984).
+            # Same captured-base rule as the first attempt.
             retry_diff=$(rtk proxy git diff "$diff_range" 2>/dev/null) || retry_diff=""
             if [ -n "$retry_diff" ]; then
                 retry_tmp=$(mktemp -t cr-panel-avail.XXXXXX)
@@ -253,7 +253,7 @@ PINABORTRETRY
         if [ "$panel_rc" -ne 0 ]; then
             # rc=1 after retry (or rtk absent / retry-diff empty) - fail-open.
             if [ "$panel_rc" -eq 6 ]; then
-                # HIMMEL-1932: exit 6 is a deliberate fail-closed refusal, not
+                # exit 6 is a deliberate fail-closed refusal, not
                 # a failed panel. The panel recorded certify-refused on the
                 # ledger, so clear-cr-marker.sh holds this SHA closed. If that
                 # write failed there is nothing to hold, so ABORT instead.
@@ -272,14 +272,14 @@ PINABORTRETRY
     fi
 fi
 
-# Surface the captured availability lines to our own stderr (HIMMEL-1219/1280
+# Surface the captured availability lines to our own stderr
 # step 4.5 records these): this script's process exits when it returns, so -
 # unlike the original inline fence, whose shell variables lived on for later
 # fences in the same session - the calling session can only carry
 # panel_avail_lines forward by reading it here.
 [ -n "$panel_avail_lines" ] && printf '%s\n' "$panel_avail_lines" >&2
 
-# HIMMEL-2542 - elapsed tell next to the availability rows, so a reader who
+# elapsed tell next to the availability rows, so a reader who
 # sees an empty findings block also sees how long it took to produce one.
 if [ "$panel_ran" -eq 1 ] && [ -z "$panel_findings" ]; then
     echo "panel-elapsed: $((SECONDS - panel_t0))s with an EMPTY findings block (a real round is ~2min; a sub-second empty round means the panel did not review anything)" >&2

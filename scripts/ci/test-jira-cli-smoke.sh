@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-jira-cli-smoke.sh — jira-cli-smoke.sh must FAIL on a broken build or a
-# broken dist and PASS on a working CLI (HIMMEL-3813). Hermetic: fixture dirs
+# broken dist and PASS on a working CLI. Hermetic: fixture dirs
 # stand in for scripts/jira; the real-CLI case runs only when its deps exist.
 set -uo pipefail
 

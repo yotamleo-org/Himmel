@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/test-suite-coverage.sh — HIMMEL-4112. Covers suite-coverage.sh:
+# scripts/handover/test-suite-coverage.sh — Covers suite-coverage.sh:
 # fixture runner for each verdict branch, then the real run-shell-tests.sh for
 # the three suites the ticket names.
 set -uo pipefail
@@ -41,7 +41,7 @@ expect "SKIP_LIST suite is uncovered, never verified" 'not run in CI.*uncovered'
 mkdir -p "$tmp/scripts/big"; : > "$tmp/scripts/big/test-big-fast.sh"; : > "$tmp/scripts/big/test-big-slow.sh"
 out=$(bash "$SC" --runner "$tmp/runner.sh" --root "$tmp" scripts/big/test-big.sh 2>&1); rc=$?
 expect "superseded suite names its wrappers" 'superseded by .*test-big-fast.sh.*test-big-slow.sh' "$out" 0
-# HIMMEL-4113: a wrapper that is missing, or itself in SKIP_LIST, carries no coverage
+# a wrapper that is missing, or itself in SKIP_LIST, carries no coverage
 rm "$tmp/scripts/big/test-big-slow.sh"
 out=$(bash "$SC" --runner "$tmp/runner.sh" --root "$tmp" scripts/big/test-big.sh 2>&1); rc=$?
 expect "superseded by a missing wrapper is uncovered" 'uncovered.*test-big-slow.sh \(missing\)' "$out" 0

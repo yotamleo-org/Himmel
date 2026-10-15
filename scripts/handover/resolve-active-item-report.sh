@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # scripts/handover/resolve-active-item-report.sh — /pr-check steps 4.6/4.7's
 # best-effort item-dir resolution, moved out of an inline shell fence
-# (HIMMEL-3707). guard-pr-check-literal.sh's tokenizer reads a `case`
+# guard-pr-check-literal.sh's tokenizer reads a `case`
 # statement's bare `*` default arm as an unresolved scripts/handover/ writer
 # operand whenever the same simple command also invokes a scripts/handover/
 # script, denying pr-check.md's own step 4.6/4.7 fence outright. Wrapping the
-# rc branching in a script — the same move HIMMEL-2321 made for the
+# rc branching in a script — the same move as for the
 # reviewer-notes/bugs writers — keeps the runbook down to one plain
 # `bash "<path>" --branch '<branch>'` call the guard never needs to parse a
 # case out of.

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # cr-high-risk-diff.sh — classify whether a PR diff touches a review gate or
 # permission-bearing surface that must not be panel-carried silently
-# (HIMMEL-1718).
 #
 # WHY THIS EXISTS. A clean exact-head critic panel may carry a stale CodeRabbit
 # review anchor for ordinary diffs, but the same availability shortcut is too
@@ -104,12 +103,12 @@ cr_diff_is_high_risk() {
 }
 
 # cr_paths_are_high_risk  —  the PATH PREDICATE alone, reading a newline-
-# separated path list on stdin (HIMMEL-2707).
+# separated path list on stdin.
 #   rc 0 = HIGH RISK; stdout is the matched paths (comma-joined, length-capped)
 #   rc 1 = ordinary diff; stdout is empty
 #
 # Split out of cr_diff_is_high_risk so a caller that already HAS the path list
-# does not have to re-query GitHub for it — formerly codex-adv-kickoff.sh (removed, HIMMEL-3818),
+# does not have to re-query GitHub for it — formerly codex-adv-kickoff.sh (removed),
 # which runs during /pr-check BEFORE the PR exists, so there is no PR number to
 # ask about and the paths can only come from `git diff --name-only`. The point
 # of the split is that there stays exactly ONE copy of the list below: this
@@ -132,17 +131,17 @@ cr_paths_are_high_risk() {
         # self-authorizing its own carry. Same reason the pr-check runbook and
         # its codex twin are listed. This matches the repo's existing
         # gate-infrastructure predicate in scripts/cr/pr-check-external.sh
-        # (GATE 6, HIMMEL-1224); keep the two in step.
+        # (GATE 6); keep the two in step.
         #
         # merge-on-green.sh IS listed below: it EXECUTES the squash-merge
-        # unattended under the ARMAUTOMERGE=1 standing allow (HIMMEL-1042),
+        # unattended under the ARMAUTOMERGE=1 standing allow,
         # gating only on a check-ci.sh green plus a certified head SHA — and
         # check-ci.sh itself consults this classifier's panel-carry, so a
         # defect or self-edit there can merge a PR the review gate did not
         # actually clear. The predicate now also covers surfaces that EXECUTE
         # merge/push unattended under a standing allow; a codex counterexample
-        # to the prior scope-out was ACCEPTED by the operator (2026-08-12,
-        # HIMMEL-1744), superseding the 2026-08-11 ruling on this single path.
+        # to the prior scope-out was ACCEPTED by the operator (2026-08-12),
+        # superseding the 2026-08-11 ruling on this single path.
         # It is named explicitly because it lives under scripts/handover/, so
         # the scripts/cr/* broadening above does not quietly pull in the rest
         # of that directory.
@@ -151,7 +150,7 @@ cr_paths_are_high_risk() {
         # (scripts/handover/pr-merge.sh, scripts/propagate-public.sh) and the
         # check-ci runbook (.claude/commands/check-ci.md) — same executing-
         # surface class but not yet counter-exampled; tracked for audit by the
-        # HIMMEL-1744 follow-up, not added speculatively. The list targets
+        # follow-up, not added speculatively. The list targets
         # surfaces that GRANT permission, are CONSUMED by the harness, decide
         # what merges, OR now EXECUTE that merge/push unattended under a
         # standing allow — not everything merge-adjacent.

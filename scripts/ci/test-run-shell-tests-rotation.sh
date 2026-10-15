@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/ci/test-run-shell-tests-rotation.sh — run-shell-tests.sh resume
-# rotation (HIMMEL-2243), sub-cases 17a-17f.
+# rotation, sub-cases 17a-17f.
 #
 # CASE 17 SPANS THREE FILES. If you grepped "Case 17" and landed here, the
 # other two are test-run-shell-tests-rotation-guards.sh (17g-17j: HOME unset,
@@ -9,8 +9,8 @@
 #
 # Why three files: every 17x sub-case drives the same six-suite sandbox whose
 # test-a.sh sleeps 25s, so each one costs 25-51s and the eleven of them were
-# 327s of the original single file's 382s (HIMMEL-2895 measurement). The
-# sharded shell-unit job (HIMMEL-2872) parallelises across FILES, so that was
+# 327s of the original single file's 382s. The
+# sharded shell-unit job parallelises across FILES, so that was
 # the floor on every shard count. The sleep is load-bearing — a
 # SUITE_RUN_BUDGET below it is what truncates the run — so the cases were
 # split, not made cheaper.
@@ -43,7 +43,7 @@ set -uo pipefail
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
-# Case 17 -- resume rotation (HIMMEL-2243), the contract proper. 17g-17m are in the -rotation-guards and -rotation-cursor siblings.
+# Case 17 -- resume rotation, the contract proper. 17g-17m are in the -rotation-guards and -rotation-cursor siblings.
 # --------------------------------------------------------------------------
 echo "== Case 17: resume rotation (17a-17f) =="
 sb17=$(mktemp -d "${TMPDIR:-/tmp}/himmel-suite-rotate.XXXXXX") || {

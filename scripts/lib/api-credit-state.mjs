@@ -1,4 +1,4 @@
-// HIMMEL-4904: local, secret-free API grant accounting. No auth or network.
+// local, secret-free API grant accounting. No auth or network.
 // Amounts are decimal-string USD with at most six places; arithmetic is BigInt.
 // One shared ledger/lock covers both accounts. Locks are never reclaimed by age
 // or PID: a crashed holder requires operator recovery, not guessed free credit.
@@ -19,7 +19,7 @@ const MAX_AGE = 600;
 // 'automatic-snapshot' treats all spend since the grant start as grant spend; upgrade
 // path: a promotional-credit balance endpoint, if Anthropic exposes one.
 const SOURCES = ['operator-console-snapshot', 'automatic-snapshot'];
-// HIMMEL-5519: parallel admissions queue on the ledger lock instead of failing; the
+// parallel admissions queue on the ledger lock instead of failing; the
 // wait is bounded so a crashed holder still refuses, never admits.
 const LOCK_WAIT_MS = 5000;
 function takeLock(lock, env) {
@@ -116,7 +116,7 @@ function row(config, snapshot, a, account, now) {
   if (s.starts_at >= s.expires_at || s.starts_at > now || s.observed_at < s.starts_at) refuse('invalid-grant-interval');
   if (s.expires_at <= now) refuse('expired-grant', 'SKIPPED-BANK');
   const age = now - s.observed_at;
-  // HIMMEL-5519: an operator reading never goes stale; the remaining credit is derived
+  // an operator reading never goes stale; the remaining credit is derived
   // from it minus the ledger below, and the cap plus reserve accounting stay the hard
   // stop. Only an automatically pulled snapshot carries a freshness window.
   if (age < 0 || (s.source === 'automatic-snapshot' && age > MAX_AGE)) refuse('stale-snapshot', 'BANK-STALE');
@@ -160,7 +160,7 @@ function save(statePath, state, lock, sentinels) {
 const stateRoot = () => join(userInfo().homedir, '.himmel/state/api-credit');
 const configPathFor = (env) => resolve(env.HIMMEL_API_CREDIT_CONFIG || join(stateRoot(), 'config.json'));
 
-// HIMMEL-4985: the secret-free roster entry for HIMMEL_API_ACCOUNT, or a refusal.
+// the secret-free roster entry for HIMMEL_API_ACCOUNT, or a refusal.
 export function configuredAccount(env = process.env) {
   try {
     const account = env.HIMMEL_API_ACCOUNT;
@@ -267,7 +267,7 @@ export function creditState(command, options = {}, env = process.env) {
   }
 }
 
-// HIMMEL-5433: routing for HIMMEL_API_ACCOUNT=auto. Of the configured accounts
+// routing for HIMMEL_API_ACCOUNT=auto. Of the configured accounts
 // whose own row has room for the whole budget (each under its own cap), spend
 // the grant that expires first; a tie goes to A. The reservation re-checks headroom, so a race
 // with another launch can only refuse, never overspend.
@@ -287,7 +287,7 @@ export function pickAccount(budget, env = process.env) {
   }
 }
 
-// HIMMEL-5433: operator snapshot refresh from a Console reading. The reading
+// operator snapshot refresh from a Console reading. The reading
 // already includes every job the provider has billed, so the watermark moves up
 // with it; without that the billed spend counts twice. It moves by the smaller
 // of the local spend and the billed spend added since the previous reading, so
@@ -296,7 +296,7 @@ export function pickAccount(budget, env = process.env) {
 // ponytail: billed spend from outside the ledger that lands in the same window
 // as an unbilled settlement is read as that settlement (exclusive_org attests
 // there is none), upgrade path: the Admin cost_report collector (task 6 of the
-// HIMMEL-4904 plan).
+// plan).
 export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot', expect, pulled = false }) {
   let lock = null;
   try {
@@ -367,7 +367,7 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
   }
 }
 
-// HIMMEL-5519: automatic snapshot. Remaining = the row's grant minus the Admin API cost
+// automatic snapshot. Remaining = the row's grant minus the Admin API cost
 // report's spend since the grant start (GET /v1/organizations/cost_report, x-api-key,
 // amounts in cents as decimal strings, daily buckets, paged). The report carries no
 // promotional-vs-card field, so spend past the grant reads as zero remaining, never as

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# test-ruling-bullet-docs.sh — HIMMEL-4931. A leg records a console ruling / GO
+# test-ruling-bullet-docs.sh — A leg records a console ruling / GO
 # in its doc as a PLAIN FACT ("ruling received, see console message"); the token
 # quote-back lives only in the SendMessage reply. The auto-mode classifier
 # refused 19 bullets that echoed a ruling or GO as instruction poisoning
-# (HIMMEL-4926). Pins, over the leg prefaces:
+# Pins, over the leg prefaces:
 #   1. the RESOLVED rule tells the leg to write the plain-fact wording;
 #   2. no preface tells a leg to put approval / GO / merge-authorising text or a
 #      token into a doc bullet;

@@ -19,7 +19,7 @@ set -euo pipefail
 path_is_safety() {
   case "$1" in
     scripts/hooks/*|scripts/guardrails/*|.claude/*|.github/*) return 0 ;;
-    # The gate must not be able to blind the pipeline that
+    # the gate must not be able to blind the pipeline that
     # runs it - the CR scripts, the hermes invocation path the panel rides
     # (invoke.sh / dispatch-trusted.sh / parity assets), the lane registry,
     # and the backend router registry are safety surface too (a one-line

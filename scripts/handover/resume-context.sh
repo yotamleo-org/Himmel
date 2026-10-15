@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/handover/resume-context.sh — resume panel for one handover item:
 # open bugs (avoid re-trying failed fixes) + the latest CR-findings block
-# (HIMMEL-416 F2 / C5). Read-only; prints nothing for a clean item.
+# Read-only; prints nothing for a clean item.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
@@ -21,10 +21,10 @@ if [ -f "$bugs" ]; then
   fi
 fi
 
-# Pending CR markers for this item's ticket (HIMMEL-1553): re-derive the
+# Pending CR markers for this item's ticket: re-derive the
 # machine classification EVERY resume, so an inherited "blocked/unopenable"
 # claim in the handover prose always sits next to what the marker + ledger
-# actually say (HIMMEL-1519 stayed falsely "blocked" for four legs because the
+# actually say (one ticket stayed falsely "blocked" for four legs because the
 # claim propagated leg-to-leg unchallenged). Ticket key comes from the item
 # dir name (KEY-N-slug); #N items have no key and are skipped. Best-effort:
 # an audit failure never breaks the panel.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-wrap-subtree-check.sh — HIMMEL-2761. Hermetic tests for
+# test-wrap-subtree-check.sh — Hermetic tests for
 # wrap-subtree-check.sh, the wrap/halt gate that prints CLOSABLE only when the
 # session's own process subtree holds nothing but harness (MCP) processes. The
 # process table is a PATH `ps` stub over a fixture; nothing live is read and
@@ -124,7 +124,7 @@ eq 'a non-numeric pid is a usage error' 2 "$rc"
 # A chain deeper than any fixed hop budget: the check is pid 4066, 67 tool-call
 # shells below the session, and 5000 is a poll loop beside it. It must still be
 # listed (a walk that runs out of hops fails closed, never "outside") and the
-# check's own long chain must not be counted (codex-1, round 2).
+# check's own long chain must not be counted.
 {
     printf '    1     0 40-00:00:01 /sbin/init\n  101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work\n'
     prev=101
@@ -141,7 +141,7 @@ eq 'a process beyond the old 64-hop budget is still withheld: rc 1 (codex-1 r2)'
 contains 'only the deep sibling is listed; the check'"'"'s own 67-deep chain is exempt' "$out" 'WITHHELD: 1 process(es)'
 contains 'the deep sibling is named' "$out" 'pid=5000'
 
-# HIMMEL-3265: harness-owned MCP servers that match no name pattern. The shapes
+# harness-owned MCP servers that match no name pattern. The shapes
 # are the real ones read off a live station (mcp-obsidian under `uv tool uvx`,
 # graphify-mcp, an `uv run … server.py`, each with its python child): direct
 # children of the session, forked within ~1s of it. 101's etime is 05:00:00, so
@@ -244,14 +244,13 @@ eq 'a child older than its session is not exempt: rc 1' 1 "$rc"
 contains 'the older-than-session child is pid 122' "$out" '  pid=122 ppid='
 
 # #1337: a harness-spawned tree macOS legs actually produce, that the
-# HIMMEL-3265 name/session-start matcher does not catch. The session keep-awake
+# name/session-start matcher does not catch. The session keep-awake
 # (`caffeinate`) re-arms on a rolling cadence, so its etime never lands inside
 # the isearly() start window (proven here by a session that has run 5h against
 # a caffeinate that just (re)started); it must be exempt by name alone. A
 # stray node server and a leg's own sleep sit alongside it and must still
 # withhold. (#1337 also reported a claude-hud statusline false WITHHELD; a
-# claude-hud-by-path exemption was tried and reverted on re-judge — see
-# HIMMEL-3723 — so no claude-hud row is exempt here.)
+# claude-hud-by-path exemption was tried and reverted on re-judge — so no claude-hud row is exempt here.)
 cat > "$W/harness-trees.txt" <<'FIX'
     1     0 40-00:00:01 /sbin/init
   101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work
@@ -269,7 +268,7 @@ contains 'harness pid 300 is ignored, not withheld (#1337)' "$out" 'ignored pid=
 lacks 'harness pid 300 is not listed as withheld (#1337)' "$out" '  pid=300 ppid='
 contains 'the caffeinate keep-awake is name-matched (#1337)' "$out" 'ignored pid=300 ppid=101 etime=00:05 why=name-match cmd=/usr/bin/caffeinate'
 
-# J1355O (Opus judge, round 2): the #1337 fix above matched `caffeinate` as a
+# The #1337 fix above matched `caffeinate` as a
 # WORD anywhere in argv, so a leg running a real job named
 # `caffeinate ./long-job.sh`, or a `sleep` invocation that merely mentions the
 # word, got falsely exempted too. Anchor caffeinate to the PROGRAM position
@@ -292,12 +291,12 @@ contains '"sleep 999 caffeinate" is not exempt by the word alone (J1355O)' "$out
 lacks 'a withheld run never prints CLOSABLE (J1355O)' "$out" 'CLOSABLE:'
 contains 'the legit caffeinate keep-awake stays exempt (J1355O)' "$out" 'ignored pid=300 '
 
-# J1355P (Opus judge, round 3): a claude-hud-by-path exemption
+# A claude-hud-by-path exemption
 # (`^([^ ]*/)?(node|bun) [^ ]*/claude-hud/[^ ]*`) was proposed to fix the
 # claude-hud half of #1337 and rejected — it exempted ANY node/bun script
 # under any directory merely NAMED claude-hud, plus its descendants, not just
-# the real statusline install. That exemption was removed entirely (tracked
-# as HIMMEL-3723, not fixed here); this row is the negative control proving
+# the real statusline install. That exemption was removed entirely (not
+# fixed here); this row is the negative control proving
 # it stays gone: a real service that happens to live under a `claude-hud`
 # directory, with its own child, must still withhold.
 cat > "$W/claude-hud-decoy.txt" <<'FIX'
@@ -312,13 +311,13 @@ contains 'the claude-hud-path decoy withholds (J1355P)' "$out" '  pid=340 ppid='
 contains "the decoy's own child withholds too (J1355P)" "$out" '  pid=341 ppid='
 lacks 'no claude-hud exemption remains (J1355P)' "$out" 'why=name-match cmd=node /repo/claude-hud'
 
-# HIMMEL-4139 (closes the claude-hud half of #1337 / HIMMEL-3723): the real
+# the real
 # statusLine refresh (`sh -c [ -f P ] && exec node P || true`, so argv is
 # `node <repo>/marketplace/plugins/claude-hud/dist/index.js`) re-spawns every few
 # seconds under the session, with hud-custom-lines.sh, statusline-segment.sh and
 # a `timeout 3 node …/provision.mjs slice` beneath it, all at etime 00:00. That
 # whole subtree is harness; the path anchor is the exact install shape, not any
-# directory named claude-hud (the J1355P decoy above stays withheld).
+# directory named claude-hud (the decoy above stays withheld).
 HUD=/home/u/himmel/marketplace/plugins/claude-hud/dist/index.js
 cat > "$W/hud-tree.txt" <<FIX
     1     0 40-00:00:01 /sbin/init
@@ -370,7 +369,7 @@ out="$(run "$W/dirty.txt" 101 2>&1)"
 lacks 'WITHHELD text does not tell the leg to TaskStop every process listed (HIMMEL-4139)' "$out" 'still alive under claude pid 101 — TaskStop every'
 contains 'WITHHELD text limits TaskStop to what the leg started (HIMMEL-4139)' "$out" 'TaskStop only what you started'
 
-# HIMMEL-4161: the whole per-render statusline chain is exempt as a subtree whose
+# the whole per-render statusline chain is exempt as a subtree whose
 # EVERY member matches a tight install-path anchor — also when the claude-hud node
 # is not in the table (a render caught mid-way), and real `timeout N` / `$(…)`
 # subshell shapes. A non-chain process anywhere in the subtree still withholds.
@@ -411,7 +410,7 @@ grep -v ' node /home/u/himmel/marketplace' "$W/chain-full.txt" | sed 's/^  501  
 out="$(run "$W/chain-nohud.txt" 101 2>&1)"; rc=$?
 eq 'the chain without its hud node is exempt too: rc 0 (HIMMEL-4161)' 0 "$rc"
 # (c) a non-chain child of a chain node is a chain descendant and is ignored
-# (HIMMEL-4592); a chain member under a non-chain parent still withholds (below).
+#; a chain member under a non-chain parent still withholds (below).
 { cat "$W/chain-full.txt"; printf '  510   500       00:00 sleep 100\n'; } > "$W/chain-extra-under-hud.txt"
 out="$(run "$W/chain-extra-under-hud.txt" 101 2>&1)"; rc=$?
 eq 'a non-chain child of the hud node is a chain descendant, ignored: rc 0 (HIMMEL-4592)' 0 "$rc"
@@ -427,7 +426,7 @@ printf '  520   101    00:10:00 sleep 100\n  521   520       00:00 bash %s/statu
 out="$(run "$W/chain-under-sleep.txt" 101 2>&1)"; rc=$?
 eq 'a chain member under a non-chain parent withholds: rc 1 (HIMMEL-4161)' 1 "$rc"
 contains 'both the parent and the member are named (HIMMEL-4161)' "$out" 'WITHHELD: 2 process(es)'
-# (e) HIMMEL-4592: a git/other child the statusline chain itself spawns (claude-hud
+# (e) a git/other child the statusline chain itself spawns (claude-hud
 # runs `git status --porcelain` in the session cwd, new pid each render, etime
 # 00:00) is a DESCENDANT of an ignored chain node and inherits the ignore, matched
 # by the parent chain. A leg-owned git (child of a tool-call wrapper or of the
@@ -492,7 +491,7 @@ contains 'the same-tool-call caffeinate job withholds (fx3)' "$out" '  pid=951 p
 contains "the job's own child withholds too (fx3)" "$out" '  pid=952 ppid='
 lacks 'a withheld run never prints CLOSABLE (fx3)' "$out" 'CLOSABLE:'
 
-# Weakening controls (HIMMEL-3265, contract item 3). Each weakened check must RUN
+# Weakening controls. Each weakened check must RUN
 # and lose the leg-left loop for the specific reason — a check that merely
 # crashes would "fail" every assertion and prove nothing.
 # shellcheck disable=SC2086 # the pid lists are space-separated words on purpose
@@ -525,7 +524,7 @@ else
 fi
 
 # The wrap step points every leg/judge at this script instead of a hand-typed
-# banner (HIMMEL-2761): pin the three docs that carry the HALT/WRAP line.
+# banner: pin the three docs that carry the HALT/WRAP line.
 DOCS="$HERE/../../docs/handover"
 for f in leg-preface.md judge-preface.md leg-brief-template.md; do
     if grep -q 'wrap-subtree-check.sh' "$DOCS/$f"; then

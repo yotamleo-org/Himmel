@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-retask-doc-bus.sh — HIMMEL-4836 (himmel-bus T13). Greps the RETASK doc and
+# test-retask-doc-bus.sh — Greps the RETASK doc and
 # the glossary for the bus authority rules: hook delivery is the only bus
 # authority path, `data from` is data, `read` is data, the 1,500-byte rule,
 # succession mapping, the T1/T4/T6 residuals (same-uid, speed bump), and the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/critic-first-pass.sh — generic model-parametrized first-pass CR reviewer (HIMMEL-415).
+# scripts/cr/critic-first-pass.sh — generic model-parametrized first-pass CR reviewer.
 #
 # Reads a unified diff on stdin, reviews it via the hermes chokepoint
 # (scripts/hermes/invoke.sh, --prompt-file pattern), validates + normalizes
@@ -9,9 +9,9 @@
 #   0  findings emitted (including zero findings)
 #   1  invoke failed or output malformed — caller proceeds claude-only
 #   2  usage error (no/empty stdin, unknown flag, missing --model, artifact
-#      mode with zero extractable ATX headings - HIMMEL-1915)
+#      mode with zero extractable ATX headings)
 #   4  structurally valid review whose BLOCKING findings were ALL dropped by
-#      citation validation (HIMMEL-1915 x HIMMEL-1871): stdout carries the
+#      citation validation: stdout carries the
 #      gated body incl. ## Dropped Citations (never "(0 found)"); the panel
 #      treats 4 as responded and raises its citation guard; guard-less
 #      callers treat it like 1 (not clean, proceed claude-only)
@@ -24,7 +24,7 @@ export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INVOKE="$SCRIPT_DIR/../hermes/invoke.sh"
-# HIMMEL-3105: first_signal_line (see _cfp_emit_raw_diag). Sourcing only defines
+# first_signal_line (see _cfp_emit_raw_diag). Sourcing only defines
 # functions. Fail-open on a missing file, like critic-panel.sh's own source of
 # it: the raw-signal line degrades to absent, never a broken review.
 if [ -r "$SCRIPT_DIR/failure-classify.sh" ]; then
@@ -95,8 +95,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# family_for_model NAME -> gpt | open | claude (HIMMEL-473). Each model FAMILY
-# gets prompt scaffolding tuned to its anatomy (HIMMEL-427 prompt-anatomy):
+# family_for_model NAME -> gpt | open | claude. Each model FAMILY
+# gets prompt scaffolding tuned to its anatomy (prompt-anatomy):
 # GPT/codex = explicit non-contradiction + spec tags; open models = rigid
 # format-obedience (they drift from the contract + over-report); Claude =
 # XML + IMPORTANT. The shared [<slug>-N] + heading contract is identical across
@@ -132,10 +132,10 @@ if [ -n "$perspective_file" ] && [ "${CRITIC_PERSPECTIVES:-1}" != "0" ]; then
 Reviewer perspective (an analytical lens applied IN ADDITION to the rules above, which keep final authority on output format):
 $perspective_text"
 fi
-# HIMMEL-2058: known_block (already-adjudicated finding classes) is rendered
+# known_block (already-adjudicated finding classes) is rendered
 # AFTER the diff is read — see the guard below diff_in.
 known_block=""
-# HIMMEL-2034: default --provider (and --slug) from the critics registry.
+# default --provider (and --slug) from the critics registry.
 # critic-panel.sh always passes --provider explicitly; a HAND-RUN invocation
 # does not, and hermes' default provider is openai-api — so the sanctioned
 # "review this upstream diff with the codex critic" call,
@@ -183,7 +183,7 @@ if [ -z "${slug:-}" ]; then
 fi
 
 diff_in="$(cat)"
-# HIMMEL-2058: already-adjudicated finding classes (scripts/cr/known-findings.json,
+# already-adjudicated finding classes (scripts/cr/known-findings.json,
 # rendered by known-findings.sh --prompt) ride along after the perspective block in
 # diff mode, so a critic does not re-spend a round on a class the repo has already
 # disproved — unless the code regressed, in which case it must say why THIS instance
@@ -199,7 +199,7 @@ diff_in="$(cat)"
 # reviewed as ordinary content. Residual is the existing boundary: this script and
 # critic-panel.sh themselves run from the checkout under review.
 # Capture, never `| grep -q`: under pipefail an early grep exit SIGPIPEs the
-# producer and a negated guard inverts (HIMMEL-1430 shape; panel r4 codex-1).
+# producer and a negated guard inverts.
 _kf_touched="$(printf '%s\n' "$diff_in" | grep -E '^(diff --git .* b/|\+\+\+ b/|rename to )scripts/cr/known-findings\.(json|sh)$')"
 if [ "${CRITIC_KNOWN_FINDINGS:-1}" != "0" ] && [ -z "$charter_file" ] && [ -f "$SCRIPT_DIR/known-findings.sh" ] && [ -z "$_kf_touched" ]; then
     _known_text="$(bash "$SCRIPT_DIR/known-findings.sh" --prompt 2>/dev/null)" || _known_text=""
@@ -258,7 +258,7 @@ cleanup() { rm -f "${ranges_file:-}" "${headings_file:-}" "${newside_file:-}" "$
 trap cleanup EXIT
 ranges_file="$(mktemp -t cfp-ranges.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
 headings_file="$(mktemp -t cfp-headings.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
-# HIMMEL-1714: new-side text "file<TAB>line" per line, for the [file#symbol]
+# new-side text "file<TAB>line" per line, for the [file#symbol]
 # citation form. Written by the SAME pass as the ranges so the diff is scanned
 # once and both guards see byte-identical (post-truncation) input.
 newside_file="$(mktemp -t cfp-newside.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
@@ -285,7 +285,7 @@ printf '%s\n' "$diff_in" | awk -v nsf="$newside_file" '
             if (len > 0) print f, start, start + len - 1
         }
     }
-    # HIMMEL-1714: new-side body lines (added "+" and context " "), never the
+    # new-side body lines (added "+" and context " "), never the
     # removed "-" side — the same new-side scope the hunk-range guard uses, so
     # a symbol that only exists in deleted code cannot certify a citation.
     # "+++"/"---" headers already took their branches above.
@@ -301,13 +301,13 @@ printf '%s\n' "$diff_in" | awk '
         print h
     }' > "$headings_file"
 
-# HIMMEL-1915 entry gate: artifact mode with ZERO extractable headings means no
+# Entry gate: artifact mode with ZERO extractable headings means no
 # citation can survive the validator below - every finding would be dropped and
 # the report would falsely print "0 found". Refuse before any model call. Uses
 # the REAL $headings_file (extracted AFTER the byte-cap truncation), so headings
 # past the cap do not count - a wrapper reading the whole file cannot see that.
 #
-# ACCEPTED LIMITATION (CR round 5): a unified diff with a heading prepended
+# ACCEPTED LIMITATION: a unified diff with a heading prepended
 # ("# Patch review" + diff body) passes this gate and, on a zero-finding model
 # response, reports clean. Deliberate: artifact mode cannot distinguish a
 # heading-decorated diff from genuine prose at parse level, and the diff-shape
@@ -374,10 +374,10 @@ else
     # you are not confident, OMIT it"), calibrated on ledger evidence that the
     # free/open critics over-reported at low cross-model agreement. Those rows
     # are gone — gptoss + kimi were dropped for ~12%/13% agreed-rate
-    # (HIMMEL-667) and qwen3coder for persistent rc=1 (HIMMEL-953), leaving
+    # and qwen3coder for persistent rc=1, leaving
     # critics.json with codex + glm, both paid frontier models. The rationale
     # for the omission bias retired with the critics it was written for.
-    # Per HIMMEL-480, the anti-FABRICATION half stays (it is about evidence) and
+    # The anti-FABRICATION half stays (it is about evidence) and
     # the omission half goes: himmel already filters downstream, so a withheld
     # finding is destroyed rather than triaged.
     rules="Rules:
@@ -416,7 +416,7 @@ else
     fence_open="<diff>"; fence_close="</diff>"; open_data_label="DIFF:"; open_cite_hint="[<file>:<line>]"
 fi
 
-# --- Family-ADAPTED framing (HIMMEL-473) ----------------------------------
+# --- Family-ADAPTED framing ----------------------------------
 case "$family" in
     gpt)
         # GPT/codex: spec-style tags + an explicit non-contradiction guarantee
@@ -467,7 +467,7 @@ fi
 pf="$(mktemp "${TMPDIR:-/tmp}/cfp-prompt.XXXXXX")"
 printf '%s' "$role_prompt" > "$pf"
 
-# The paid codex critic reviews as a SENIOR reviewer (HIMMEL-558). Route the
+# The paid codex critic reviews as a SENIOR reviewer. Route the
 # gpt/codex-family one-shot through the himmel_agent profile (its main-tier SOUL)
 # instead of the hermes user-DEFAULT profile, whose SOUL is the low-risk JUNIOR
 # persona — that framing produced shallow reviews from a strong model.
@@ -478,7 +478,7 @@ printf '%s' "$role_prompt" > "$pf"
 # Codex". So the free/open critics stay on the hermes default profile (which
 # routes each model to its own provider) — their senior framing comes from the
 # role_prompt above, and empirically they already review well. A dedicated
-# NVIDIA-provider senior critic profile is HIMMEL-559 (per-model SOUL/prompt).
+# NVIDIA-provider senior critic profile (per-model SOUL/prompt) is not built yet.
 #
 # Override: CR_CRITIC_PROFILE, when SET, applies to EVERY family (the operator
 # then owns provider-compat); `none`/empty forces the hermes default profile.
@@ -497,7 +497,7 @@ fi
 # invoke.sh flags. `none`/empty → omit --profile (hermes default profile). An
 # array would hit the bash-3.2 `set -u` empty-array expansion bug, so branch instead.
 _cfp_invoke() {
-    # --provider threads the registry row's provider to hermes (HIMMEL-727) so
+    # --provider threads the registry row's provider to hermes so
     # model ids newer than hermes' catalog can't silently fall to its default
     # provider. Branching (not arrays) for the same bash-3.2 reason as --profile.
     if [ -n "$_crit_profile" ] && [ "$_crit_profile" != "none" ]; then
@@ -515,26 +515,26 @@ _cfp_invoke() {
     fi
 }
 
-# HIMMEL-3109: bounded, TAIL-biased excerpt of a hermes response for the
-# panel's failure-classify.sh signature match. HIMMEL-737 printed a HEAD bound
-# (%.300s) so a provider failure buried in a large response would still reach
-# stderr — but hermes' own gateway prepends a multi-line banner ("a previous
+# bounded, TAIL-biased excerpt of a hermes response for the
+# panel's failure-classify.sh signature match. A HEAD bound
+# (%.300s) would surface a provider failure buried in a large response,
+# but hermes' own gateway prepends a multi-line banner ("a previous
 # hermes update...", fallback-provider hints) ahead of the actual "Provider
 # said: HTTP 429: ..." line, so a head bound pushes the ONE line
 # classify_failure matches on (429/401/quota wording) past the cut and only
 # critic-first-pass.sh's own "malformed output" text survives — reproducing
-# exactly the dark-fallback bug HIMMEL-737 was written to fix, one banner
+# the dark-fallback bug, one banner
 # later. Provider diagnostics are summary lines, not full transcripts, so the
 # LAST bytes are where the decisive status text lives; 2000 bytes is generous
 # headroom for a banner+message body while staying far short of
-# ledger-append.sh's own 200-char --detail cap (HIMMEL-1176) that scrubs and
+# ledger-append.sh's own 200-char --detail cap that scrubs and
 # truncates whatever critic-panel.sh derives from this excerpt before it ever
 # reaches the ledger.
 _cfp_raw_excerpt() {
     printf '%s' "$1" | tail -c 2000
 }
 
-# HIMMEL-3105: the tail bound above still loses a decisive line at the HEAD of
+# The tail bound above still loses a decisive line at the HEAD of
 # a long body (an HTTP 429 line followed by >2000 bytes of diagnostics), so
 # classify_failure saw only this file's own "malformed output" text and
 # recorded reason=malformed-output — CR_FLOOR_FALLBACK, keyed on the quota
@@ -553,7 +553,7 @@ _cfp_emit_raw_diag() {
     fi
 }
 
-# HIMMEL-3104: keep the critic's raw response and write ONE `score` ledger row
+# Keep the critic's raw response and write ONE `score` ledger row
 # for a COMPLETED run (rc 0 and rc 4 — the model answered). A clean 0/0/0
 # verdict used to leave no raw output and no row: the one verdict that can carry
 # the merge gate alone had no evidence behind it, and "0 findings" was
@@ -629,10 +629,9 @@ if [ "$rc" -ne 0 ] || [ -z "$(printf '%s' "$raw" | tr -d '[:space:]')" ]; then
     if [ -n "$log" ]; then
         printf '%s\n' "$raw" > "$log"
         echo "critic-first-pass.sh: invoke failed (rc=$rc) — fail-open, proceed claude-only. Raw output: $log" >&2
-        # HIMMEL-3109: this branch used to stop here — only the log PATH
-        # reached stderr, never the response text, so a real transport error
-        # (auth/quota/rate-limit) landing here was invisible to
-        # failure-classify.sh and fell through to generic-rc-N. See
+        # Emit the response text, not just the log PATH: a real transport error
+        # (auth/quota/rate-limit) landing here would otherwise be invisible to
+        # failure-classify.sh and fall through to generic-rc-N. See
         # _cfp_raw_excerpt for why this is a tail, not a head.
         _cfp_emit_raw_diag "$raw" "$log"
     else
@@ -642,7 +641,7 @@ if [ "$rc" -ne 0 ] || [ -z "$(printf '%s' "$raw" | tr -d '[:space:]')" ]; then
     exit 1
 fi
 
-# Best-effort ESTIMATED usage telemetry (HIMMEL-485). hermes does not surface
+# Best-effort ESTIMATED usage telemetry. hermes does not surface
 # real token usage through the one-shot chokepoint (oneshot prints only the final
 # text and discards the agent's session counters), so when CR_USAGE_LOG=1 we log a
 # chars/4 estimate of the prompt+response as a `usage` ledger record — a cost
@@ -689,7 +688,7 @@ BEGIN {
 /^## Important Issues \([0-9]+ found\)[[:space:]]*$/ { sec = 2; seen[2] = 1; declared[2] = getn($0); next }
 /^## Suggestions \([0-9]+ found\)[[:space:]]*$/      { sec = 3; seen[3] = 1; declared[3] = getn($0); next }
 /^- / { if (sec > 0) { count[sec]++; bullets[sec, count[sec]] = $0; next } }
-# CR round 5 (HIMMEL-1915): a list bullet BEFORE any recognized section has no
+# A list bullet BEFORE any recognized section has no
 # severity to land in. It used to be silently discarded — a real blocker
 # emitted pre-heading, followed by all-"(0 found)" headings, rendered as a
 # clean report with EMPTY stderr. Any list marker (-, *, +, indented or not)
@@ -752,7 +751,7 @@ END {
                     if (rfile[r] == cfile && cline >= rs[r] && cline <= re[r]) { okc = 1; break }
                 }
             } else if (match(b, /\[[^][]+#[^][]+\][[:space:]]*$/)) {
-                # HIMMEL-1714: [file#symbol] is a legitimate citation shape —
+                # [file#symbol] is a legitimate citation shape —
                 # arguably better than a line number for a function-level claim,
                 # since it survives line drift. It used to be dropped outright in
                 # diff mode, and a well-reasoned finding then rendered as
@@ -787,25 +786,24 @@ END {
             keep[i, kept[i]] = b
         }
     }
-    # HIMMEL-1915 output gate: bullets were parsed but EVERY one was dropped by
+    # Output gate: bullets were parsed but EVERY one was dropped by
     # the citation guard. "All findings discarded" must never render as
     # "(0 found)" - exit 4 so the shell takes the fail-open path instead of
     # printing a clean report.
-    # Severity-aware first (CR round 4): a surviving Suggestion must not mask
+    # Severity-aware first: a surviving Suggestion must not mask
     # "every BLOCKING finding (Critical/Important) was dropped" - that renders
     # the same false clean through a narrower door.
     blockparsed = count[1] + count[2]
     blockkept = kept[1] + kept[2]
     parsed = blockparsed + count[3]
     keptall = blockkept + kept[3]
-    # HIMMEL-1915 x HIMMEL-1871 (merge of #1730 into #1728): the gate no
-    # longer exits BEFORE printing — an early exit starved the panel citation
-    # guard of the very evidence it blocks on (the drop lines never reached
-    # stdout, the panel marked the member unavailable, and the all-dropped
-    # case rounds 4-8 exist for produced NO positive blocking ledger row).
+    # The gate does not exit BEFORE printing — an early exit would starve the panel
+    # citation guard of the very evidence it blocks on (the drop lines would never
+    # reach stdout, the panel would mark the member unavailable, and the
+    # all-dropped case would produce NO positive blocking ledger row).
     # Instead: set a flag, print the heading, print ONLY sections with
     # surviving findings (a gated review must never render "(0 found)" — the
-    # HIMMEL-1915 false-clean shape), always print Dropped Citations, and
+    # false-clean shape), always print Dropped Citations, and
     # exit 4 at the end so the shell can hand the evidence to guard-aware
     # callers while every other caller still sees a nonzero, not-clean rc.
     gate = 0
@@ -830,7 +828,7 @@ END {
             print b
         }
     }
-    # HIMMEL-1871 round 4: emit rejected bullets whenever ANY were rejected —
+    # Emit rejected bullets whenever ANY were rejected —
     # emission is a function of the dropped findings themselves, never of what
     # else survived. Conditioning this section on the surrounding review state
     # (all-dropped / all-blocking-dropped) is how a dropped Important vanished
@@ -849,13 +847,13 @@ END {
 }')"
 rc=$?
 if [ "$rc" -eq 4 ]; then
-    # HIMMEL-1915 output gate tripped: structurally VALID output whose blocking
+    # Output gate tripped: structurally VALID output whose blocking
     # findings were ALL dropped by citation validation. NOT a clean review and
     # NOT unavailability — the model responded. Print the gated body (heading,
     # surviving non-blocking sections, ## Dropped Citations; never "(0 found)")
     # and exit 4, a DISTINCT documented code: critic-panel.sh maps 4 ->
     # responded and its citation guard converts the drops into a POSITIVE
-    # blocking ledger row (HIMMEL-1871); every guard-less caller must treat
+    # blocking ledger row; every guard-less caller must treat
     # the nonzero rc as not-clean and fail open claude-only, exactly as the
     # old collapsed exit 1 behaved.
     printf '%s
@@ -865,7 +863,7 @@ if [ "$rc" -eq 4 ]; then
     exit 4
 fi
 if [ "$rc" -ne 0 ]; then
-    # HIMMEL-2399: a short vendor error body ("API call failed after 3 retries:
+    # a short vendor error body ("API call failed after 3 retries:
     # Our servers are currently overloaded.") has no review headings either, so
     # the awk above rejects it and it used to be reported as "malformed output"
     # — sending the operator to fix a prompt for an outage that clears itself.
@@ -876,7 +874,7 @@ if [ "$rc" -ne 0 ]; then
     # quota is not mistaken for one. The keyword alone is not enough: the body
     # must also carry a vendor-error shape (an API/Error/HTTP line prefix or a
     # JSON error envelope), so prose that quotes a keyword stays
-    # malformed-output (HIMMEL-5103).
+    # malformed-output.
     # ponytail: keyword list and prefix shapes cover only the vendor error
     # wordings seen so far, extend them as new vendor wordings are observed.
     _cfp_up=0
@@ -904,13 +902,13 @@ if [ "$rc" -ne 0 ]; then
     elif [ -n "$log" ]; then
         printf '%s\n' "$raw" > "$log"
         echo "critic-first-pass.sh: malformed output — fail-open, proceed claude-only. Raw output: $log" >&2
-        # HIMMEL-737: surface a bounded excerpt of the raw reply on stderr too -
+        # surface a bounded excerpt of the raw reply on stderr too -
         # provider failures (e.g. an HTTP 403 quota message) arrive as the
         # "review" body, and the panel's quota-exhaustion fallback matches its
         # signature against THIS stderr; a path-only line kept the fallback
         # chain permanently dark (live-debugged: qwen3coder 403 never fell back).
-        # HIMMEL-3109: switched from a 300-char HEAD to _cfp_raw_excerpt's tail
-        # bound — a hermes gateway banner ahead of the provider's own message
+        # Uses _cfp_raw_excerpt's tail bound, not a 300-char HEAD cut — a hermes
+        # gateway banner ahead of the provider's own message
         # pushed the decisive status line past a head cut, so a genuine
         # 429/401 classified malformed-output instead (see _cfp_raw_excerpt
         # above for the full account).

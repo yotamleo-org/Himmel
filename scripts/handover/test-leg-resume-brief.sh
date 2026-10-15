@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/handover/leg-resume-brief.sh (HIMMEL-2369).
+# Tests for scripts/handover/leg-resume-brief.sh.
 #
 # Builds a throwaway git repo + a real `git worktree add` fixture under
 # mktemp -d, dirties one file in the worktree, writes a fake leg doc naming
@@ -41,7 +41,7 @@ mkdir -p "$REPO"
     git commit -qm "base commit"
     # stand-in for a remote-tracking ref: write refs/remotes/origin/main
     # directly (no real "origin" remote needed) -- the script now resolves
-    # the base via this exact qualified ref (codex-1 round 2), so the
+    # the base via this exact qualified ref, so the
     # fixture must have something real living there, not a same-named
     # refs/heads/* branch.
     git update-ref refs/remotes/origin/main refs/heads/main
@@ -119,7 +119,7 @@ esac
 # (C:/Users/... forward slashes), not the /c/Users/... POSIX form $WT is
 # built from -- normalize via cygpath -m before comparing (falls back to
 # the raw $WT if cygpath is unavailable, e.g. non-Windows CI).
-# HIMMEL-3181: git also reports the RESOLVED path, so accept every form the
+# git also reports the RESOLVED path, so accept every form the
 # brief can legitimately carry -- the mktemp form, the symlink-resolved form
 # (macOS mktemp gives /var/..., git prints /private/var/...), the cygpath -m
 # mixed form, and its long-name expansion (a Windows runner's mktemp yields the
@@ -144,7 +144,7 @@ case "$doc_after" in
     *) ko "base SHA missing from the brief" ;;
 esac
 
-# HIMMEL-2369 CR follow-up: the brief is copied verbatim into another
+# The brief is copied verbatim into another
 # command's --head/--base-sha argument, which accepts a short hash silently
 # -- so base/head must be the FULL 40-hex SHA, never --short. This is the
 # assertion that fails if --short is ever re-added.
@@ -383,7 +383,7 @@ case "$unrel_out" in
     *) ok "codex-4: did not use the misleading 'could not resolve a base' message" ;;
 esac
 
-# --- codex-1 (round 2): same disambiguation class as the branch/head fix
+# --- Same disambiguation class as the branch/head fix
 # above, applied to the BASE -- a TAG literally named "origin/main" must
 # not hijack the reported base SHA. This tags the shared $REPO with the
 # real "origin/main" name, so it MUST be the last thing this suite does:
@@ -422,7 +422,7 @@ else
     ko "codex-1 (round 2) REGRESSION: reported base SHA ('$base_tag_emitted') does not match the real base ('$REAL_BASE_SHA') -- came from the tag instead"
 fi
 
-# --- codex-1 (round 3): a failed APPEND must return non-zero and must NOT
+# --- A failed APPEND must return non-zero and must NOT
 # leave the caller thinking the brief was saved. Mechanism: chmod -w on the
 # target FILE -- verified empirically on THIS box below (a read-only
 # DIRECTORY is sometimes suggested as more reliable under Windows/Git-Bash,
@@ -466,7 +466,7 @@ case "$ro_out" in
     *) ko "codex-1 (round 3): the failure message did not name the target path" ;;
 esac
 
-# --- codex-5: the same read-only-append failure from round 3 above must no
+# --- The same read-only-append failure as above must no
 # longer claim the doc "was NOT updated" -- a `>>` can fail PART-WAY (disk
 # full mid-write), so asserting nothing was written is a state we never
 # verified, the same species of defect as the other three fixed in this
@@ -527,9 +527,9 @@ case "$inject_out" in
     *) ko "codex-2: the brief is missing the data-not-instructions label line" ;;
 esac
 
-# --- codex-1 (round 5): dirty PATHS are equally repo-controlled text and
+# --- Dirty PATHS are equally repo-controlled text and
 # must go through the same sanitizer as commit subjects. Checked what
-# actually reaches this code first (round-4 CR-vs-LF discipline): on this
+# actually reaches this code first: on this
 # Windows/NTFS box a raw control byte (CR, LF, DEL) cannot even be embedded
 # in a filename -- `touch` silently drops it at creation time -- so a
 # control-byte fixture would be vacuous here. An unusually long filename
@@ -567,7 +567,7 @@ case "$longpath_out" in
     *) ok "codex-1 (round 5): the full untruncated filename did NOT reach the brief" ;;
 esac
 
-# --- codex-2 (round 5): the branch-token scan must skip ONLY the CONTENTS of
+# --- The branch-token scan must skip ONLY the CONTENTS of
 # generated "## RESUME BRIEF" blocks, not everything after the first one --
 # an append-only doc can legitimately gain a real new branch mention after a
 # brief (this repo's own convention is a fresh "-v2" branch on a rebase, not
@@ -615,8 +615,8 @@ case "$scan_new_out" in
     *) ko "codex-2 (round 5) REGRESSION: the inferred branch is not the new post-brief mention" ;;
 esac
 
-# --- codex-1 (round 6): a backtick INSIDE an untrusted value must not close
-# the code span it is wrapped in early -- the exact bug this round reports
+# --- A backtick INSIDE an untrusted value must not close
+# the code span it is wrapped in early -- the exact bug
 # (a plain single-backtick wrap breaks the instant the value contains its
 # own backtick, and everything after renders as document prose again). Two
 # fixtures: a BRANCH name containing a backtick, and a COMMIT SUBJECT
@@ -681,7 +681,7 @@ case "$bt_subject_out" in
     *) ko "codex-1 (round 6) REGRESSION: a commit subject with a backtick was not safely fenced -- it can escape its code span" ;;
 esac
 
-# --- HIMMEL-2403: --repo overrides the self-discovery. A leg whose branch
+# --- --repo overrides the self-discovery. A leg whose branch
 # lives in a SECOND, genuinely separate repo must be briefable via --repo,
 # while the default (the script's own repo) and a wrong --repo still fail
 # loudly (exit 2, naming the repo searched). A single-repo fixture cannot

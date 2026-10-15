@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # scripts/ci/run-shell-tests-fixture.sh — shared fixtures for the
-# test-run-shell-tests* family (HIMMEL-2895).
+# test-run-shell-tests* family.
 #
-# The runner's self-test was one 3086-line file until HIMMEL-2895 split it
-# along its case boundaries, so the sharded shell-unit job (HIMMEL-2872) could
+# The runner's self-test was one 3086-line file until it was split
+# along its case boundaries, so the sharded shell-unit job could
 # place the pieces independently — the sharder parallelises across FILES, so
 # one 382s file was a hard floor on every shard count. Everything below was
 # file-scoped in that single file; it lives here so the six split suites share
@@ -39,7 +39,7 @@
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 RST_FIXTURE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,7 +50,7 @@ if [ ! -f "$RUNNER" ]; then
   exit 1
 fi
 
-# Point every invocation in the family at a throwaway lock (HIMMEL-1338).
+# Point every invocation in the family at a throwaway lock.
 # Without this, the cases would contend for the real machine-wide lock with any
 # full-suite run happening elsewhere on the box and refuse with rc 2 — a red
 # suite that says nothing about the behaviour under test. Lock ACQUISITION is
@@ -63,7 +63,7 @@ SUITE_LOCK_SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/himmel-rst-fixture.XXXXXX") || {
   exit 1
 }
 export SUITE_LOCK_DIR="$SUITE_LOCK_SANDBOX/suite.lock"
-# Same reasoning for the rotation cursor (HIMMEL-2243): no case in the family
+# Same reasoning for the rotation cursor: no case in the family
 # may write the real $HOME/.himmel cursor. Case 17 -- the three
 # test-run-shell-tests-rotation*.sh suites -- overrides this per sub-case with
 # its own cursor path to exercise rotation itself.
@@ -78,15 +78,15 @@ export SUITE_LOCK_DIR="$SUITE_LOCK_SANDBOX/suite.lock"
 export SUITE_ROTATE_STATE="$SUITE_LOCK_SANDBOX/rotate.cursor"
 trap 'rm -rf "$SUITE_LOCK_SANDBOX"' EXIT
 
-# HIMMEL-2599: neutralize the ambient suite-control environment for every
+# Neutralize the ambient suite-control environment for every
 # nested $RUNNER invocation. CI's shell-unit job (.github/workflows/ci.yml)
 # exports SUITE_TIER_MODE and SUITE_CHANGED_SINCE on every pull_request/push
-# leg (HIMMEL-2166) so the OUTER run-shell-tests.sh call narrows its own plan --
+# leg so the OUTER run-shell-tests.sh call narrows its own plan --
 # but the family's nested calls inherited them too, silently narrowing THEIR
 # plans (SUITE_TIER_MODE=fast tier-skips, --changed-since-shaped filtering) and
 # short-circuiting the very rotation/conditional-suite code paths under test.
 # Some cases already neutralize SUITE_TIER_MODE per-call (`env -u
-# SUITE_TIER_MODE`, HIMMEL-2120/2243) where they need it explicit and local;
+# SUITE_TIER_MODE`) where they need it explicit and local;
 # unsetting both here once, for every suite that sources this, closes the gap
 # for every OTHER call site instead of requiring each new case to remember its
 # own `env -u`. A case that wants to exercise these vars still sets them
@@ -94,7 +94,7 @@ trap 'rm -rf "$SUITE_LOCK_SANDBOX"' EXIT
 # same way it would override an inherited one.
 unset SUITE_TIER_MODE SUITE_CHANGED_SINCE
 
-# HIMMEL-2518/HIMMEL-2544: Case 18m-R's mutation control goes through the
+# Case 18m-R's mutation control goes through the
 # RED-control contract helper rather than a hand-rolled inequality — the helper
 # asserts the mutant RAN, PRODUCED a value, and produced the SPECIFIC wrong
 # value predicted, the three properties a `!=` check cannot establish.
@@ -133,7 +133,7 @@ rst_tally() {
 #
 # Every 17x sub-case drives this same sandbox, which is why each one costs
 # 25-51s: test-a.sh's sleep is paid on every full run, so the eleven sub-cases
-# were 327s of the original file's 382s (HIMMEL-2895 measurement). That is why
+# were 327s of the original file's 382s. That is why
 # they now live in three files -- test-run-shell-tests-rotation.sh (17a-17f),
 # -rotation-guards.sh (17g-17j) and -rotation-cursor.sh (17k-17m) -- and why
 # this builder is here rather than copied into each of them.
@@ -142,7 +142,7 @@ mk_rotate_sandbox() {
   # Refuse an empty or non-existent target rather than writing the six suites
   # to "/test-a.sh" and truncating "/order.log": every caller builds both
   # paths from a `mktemp -d` whose failure leaves the variable EMPTY, and this
-  # is the last place that can still catch it (codex-1, HIMMEL-2895).
+  # is the last place that can still catch it.
   if [ -z "$_d" ] || [ ! -d "$_d" ]; then
     echo "FAIL: mk_rotate_sandbox: '$_d' is not a directory"
     return 1

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-compute-duration.sh -- HIMMEL-653 / GH#192. compute_duration() in
+# test-compute-duration.sh -- GH#192. compute_duration() in
 # session-transcript.sh must work on macOS/BSD date, which has no `-d` flag. On a
 # GNU box the `-d` branch always wins, so the BSD fallback can't be exercised
 # naturally -- this is exactly why the bug shipped (GNU CI stayed green while every
@@ -13,7 +13,7 @@
 # GNU-HOST TEST: runs on Linux CI + Windows Git Bash (GNU date), where the shim is
 # the only way to reach the BSD branch. NOT a macOS-native runner — the real-date
 # GNU case + the harness use GNU-only date; on real BSD the fallback is exercised
-# natively instead. (HIMMEL-653 CR.)
+# natively instead.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null
@@ -38,7 +38,7 @@ td="$(mktemp -d)"; trap 'rm -rf "$td"' EXIT
 cap="$td/ts"
 # The shim reads its capture path from $TS_CAP (env) rather than a sed-patched
 # placeholder — `sed -i` differs between GNU and BSD and would be a fresh portability
-# trap in a portability fix. (HIMMEL-653 CR.)
+# trap in a portability fix.
 cat > "$td/date" <<'SHIM'
 #!/usr/bin/env bash
 # BSD-like date stub: no -d; on -j -f, record the timestamp arg (-> $TS_CAP) + emit
@@ -69,7 +69,7 @@ check "BSD path (bare Z): normalized ts (single, no Z)" "2026-06-30T16:00:00" "$
 # --- Unparseable timestamp under BSD stub -> honest 0 (gate skips, no crash) ---
 # Stub marks ($REACHED) that it got PAST the -d rejection (i.e. the -j -f call ran),
 # then fails the parse -- so case 3 proves the fallback RAN and honestly failed, not
-# that -d short-circuited. Matches the marker rigor of cases i/ii. (HIMMEL-653 CR.)
+# that -d short-circuited. Matches the marker rigor of cases i/ii.
 reached="$td/reached"; : > "$reached"
 cat > "$td/date" <<'SHIM2'
 #!/usr/bin/env bash

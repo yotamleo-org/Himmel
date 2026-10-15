@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/test-leg-timeline.sh — HIMMEL-1485
+# scripts/handover/test-leg-timeline.sh
 #
 # Hermetic suite for scripts/handover/leg-timeline.sh. Builds FIXTURE copies of
 # each source (worker meta.json, CR ledger JSONL, chain-ledger md) under a temp
@@ -18,7 +18,7 @@ set -uo pipefail
 # grepq: a `grep -q` against a here-string with NO pipeline. printf|grep -q is a
 # trap under `set -o pipefail` (grep -q exits on first match -> SIGPIPE -> the
 # pipeline reports failed on a successful match). A here-string is not a pipeline
-# so the status is grep's alone. (HIMMEL-1430.)
+# so the status is grep's alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -113,7 +113,7 @@ EOF
 ENVOFF=("LEG_TIMELINE_WORKER_GLM=$ROOT/glm-sessions" "LEG_TIMELINE_WORKER_CLAUDEX=$ROOT/claudex-sessions" "LEG_TIMELINE_CR_LEDGER=$ROOT/cr-critic-scores.jsonl" "LEG_TIMELINE_CHAIN_LEDGER=$ROOT/chain-ledger.md")
 
 # run_lt: invoke leg-timeline.sh against the full-source fixtures. ENVOFF is an
-# array so fixture paths containing spaces stay intact (HIMMEL-1504).
+# array so fixture paths containing spaces stay intact.
 run_lt() { env "${ENVOFF[@]}" bash "$LT" "$@"; }
 
 # ===========================================================================
@@ -195,7 +195,7 @@ matches "first session pairs with its own land" "$out" 'fix/shared \[session-one
 matches "second session pairs with its own land" "$out" 'fix/shared \[session-two\] +7m00s'
 
 # mktemp -d failure (TMPDIR at a non-existent parent) must be fatal, not silently
-# continue with an empty $tmp into "/raw.tsv" (HIMMEL-1485 r4 #1). TMPDIR is the
+# continue with an empty $tmp into "/raw.tsv". TMPDIR is the
 # script's only mktemp input, so pointing it at a path whose parent does not
 # exist is the cheap injection — no scaffolding required.
 echo "--- 1e. mktemp failure is fatal ---"
@@ -292,7 +292,7 @@ else
 fi
 
 # ===========================================================================
-# 5. Pre-window dispatch pairing (HIMMEL-1485 r5 #1). A worker dispatched
+# 5. Pre-window dispatch pairing. A worker dispatched
 #    BEFORE since-ts that LANDS inside the window must still appear in the
 #    dispatch→land + worker-active summaries (marked "dispatched pre-window"),
 #    while its pre-window dispatch row stays out of the displayed table.
@@ -325,7 +325,7 @@ contains "handed-over in-window land shown in table" "$out" "08-03 00:20"
 contains "worker-active includes handed-over (25m00s)" "$out" "worker-active 25m00s"
 
 # ===========================================================================
-# 6. Lowercase-z timestamp normalization (HIMMEL-1485 r5 #2). An event row
+# 6. Lowercase-z timestamp normalization. An event row
 #    whose ISO ts ends in a lowercase "z" must normalize to valid UTC, not be
 #    re-suffixed into an invalid "zZ" that Date.parse drops.
 # ===========================================================================
@@ -353,8 +353,7 @@ contains "lowercase-z dispatch row shown (not dropped)" "$out" "08-03 01:00:00"
 matches "lowercase-z worker pairs lowz [lowz-1] land 5m00s" "$out" 'lowz \[lowz-1\] +5m00s \(land'
 
 # ===========================================================================
-# 7. Fractional-second + explicit offset in a chain-ledger stamp (HIMMEL-1485
-#    r7 #1). A stamp like 2026-08-03T13:40:00.5+02:00 must keep its offset:
+# 7. Fractional-second + explicit offset in a chain-ledger stamp. A stamp like 2026-08-03T13:40:00.5+02:00 must keep its offset:
 #    without the (?:\.\d+)? clause the capture truncates before ".5+02:00",
 #    silently stripping the offset so r5 normalization misreads it as UTC.
 #    +02:00 -> 13:40:00.5 local == 11:40:00Z. Ledger-only run (no workers).
@@ -374,7 +373,7 @@ contains "offset honored -> 11:40 UTC" "$out" "08-03 11:40:00"
 not_contains "offset stripped misread as 13:40 UTC" "$out" "08-03 13:40:00"
 
 # ===========================================================================
-# 8. Gate branch containing '@' shown intact (HIMMEL-1485 r7 #2). The gate
+# 8. Gate branch containing '@' shown intact. The gate
 #    label is <branch>@<head-7>; the per-branch summary extracts the branch by
 #    splitting on the LAST '@' (the head suffix), so a branch name that itself
 #    contains '@' survives. Splitting on the FIRST '@' truncated it.
@@ -395,7 +394,7 @@ contains "gate avail row for '@'-branch" "$out" "avail codex"
 # "feat/x@y" survives on the run= line (first-'@' split would truncate to "feat/x").
 matches "'@'-branch shown intact in gate run" "$out" 'feat/x@y.*run='
 
-# HIMMEL-4202: a worker whose shared_branch contains '@' must match its gate
+# a worker whose shared_branch contains '@' must match its gate
 # branch for wait-to-first. The worker leg is the RAW branch (no @<head>), so
 # only the gate label may be suffix-stripped; cutting the worker's last '@' too
 # turned feat/x@y into feat/x and printed n/a. dispatch 02:00, first gate 02:01.
@@ -413,7 +412,7 @@ matches "'@'-branch worker wait-to-first = 1m00s" "$out" 'feat/x@y.*wait-to-firs
 not_contains "'@'-branch worker wait-to-first not n/a" "$out" "wait-to-first=n/a"
 
 # ===========================================================================
-# HIMMEL-3533: .env read must come from leg-timeline.sh's OWN checkout, never
+# .env read must come from leg-timeline.sh's OWN checkout, never
 # the caller's CWD repo. Fixture mirrors test-bank-preflight-dotenv-root.sh: a
 # scratch "own checkout" (scripts/lib + scripts/handover copied verbatim, plus
 # a fixture .env carrying HANDOVER_DIR/USER_SLUG) is run with CWD inside a
@@ -434,7 +433,7 @@ check "own-checkout .env resolves rc=0" "$rc" "0"
 contains "own-checkout's HANDOVER_DIR used, not the foreign CWD repo" "$out" "$own/state-fixture/ownslug"
 
 # ===========================================================================
-# HIMMEL-1504: run_lt must pass env overrides whose fixture paths contain a
+# run_lt must pass env overrides whose fixture paths contain a
 # space intact — a word-split override string broke them into stray args.
 # ===========================================================================
 echo "--- 9. run_lt env overrides survive spaced fixture paths ---"

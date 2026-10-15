@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# scripts/ci/test-shard-manifest-verify.sh — scripts/ci/shard-manifest-verify.sh
-# (HIMMEL-3897): the shell-unit aggregator's check that the fixed shards ran
+# scripts/ci/test-shard-manifest-verify.sh — scripts/ci/shard-manifest-verify.sh:
+# the shell-unit aggregator's check that the fixed shards ran
 # exactly what the base-sourced selection picked, at this head.
 #
 # Manifests and the aggregator's `--list .` output (disc.txt) are hand-built
@@ -261,7 +261,7 @@ else fail "MV22: want rc 1 matching /accounting.*failed/, got rc $rc: $out"; fi
 # --- MV23 --------------------------------------------------------------------
 # A suite path holding whitespace would be split at the first space by every
 # space-delimited field, so the verifier refuses it, naming the path, wherever
-# it appears (HIMMEL-3916). The control keeps normal paths passing.
+# it appears. The control keeps normal paths passing.
 d=$(case_dir mv23); header impacted scripts/test-a.sh > "$d/sel.txt"
 disc "$d" RUN scripts/test-a.sh RUN "scripts/test b.sh"
 manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'skip scripts/test b.sh'
