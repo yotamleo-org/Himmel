@@ -1026,8 +1026,9 @@ rm -rf "$t"
 # ── C10 removed: its mirror tooling is gone ──────────────────────────────────
 echo "== C10: private→public propagation check is gone =="
 t="$(mktemp -d)"; mkdir -p "$t/claude"; write_settings "$t/claude" "$WRAPPER"
-out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'C10-propagation'; then fail "C10 -> still emitted: $(printf '%s' "$out" | grep C10)"; else pass "C10 -> not emitted"; fi
+out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ] || ! grepq "$out" 'C9-scheduler' || ! grepq "$out" 'C11-glm-seed'; then fail "C10 -> doctor did not run its neighbouring checks (rc=$rc)"
+elif grepq "$out" 'C10-propagation'; then fail "C10 -> still emitted: $(printf '%s' "$out" | grep C10)"; else pass "C10 -> not emitted"; fi
 rm -rf "$t"
 
 echo "== C13: himmel-ops hooks.json target missing -> WARN C13-plugin-hooks =="
