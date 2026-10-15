@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/context-fill.sh - print THIS session's CONTEXT WINDOW FILL (HIMMEL-2212).
+# scripts/context-fill.sh - print THIS session's CONTEXT WINDOW FILL.
 #
 # WHAT THIS IS: the fraction of the model's context window the current Claude
 # Code session has consumed. WHAT THIS IS NOT: the <total_tokens> spend budget
@@ -17,7 +17,7 @@
 # ever read its OWN entry.
 #
 # Exit codes: 0 = fresh readout printed on stdout. 3 = STALE - either the
-# snapshot is older than the freshness window, or (HIMMEL-2342) its saved_at
+# snapshot is older than the freshness window, or its saved_at
 # lags the session transcript's own mtime by more than the lag window. The
 # latter catches a frozen snapshot: Claude Code can emit
 # context_window.used_percentage=0 while current_usage is non-zero (a
@@ -27,7 +27,7 @@
 # can sit comfortably inside the age window - age alone cannot distinguish it
 # from a quiet session - so the lag against the transcript's mtime is the only
 # externally visible signal. 4 = UNKNOWN (no session id, no transcript, no
-# snapshot, or a malformed one). 5 = ESTIMATE (HIMMEL-4955): STALE as above, but
+# snapshot, or a malformed one). 5 = ESTIMATE: STALE as above, but
 # the transcript's latest assistant usage over the snapshot's window gives a
 # labelled "~NN% (est)" - see stale_estimate_or_return(). On 3 and 4 stdout stays EMPTY - a caller
 # capturing "$(context-fill.sh --percent)" gets nothing rather than a
@@ -62,7 +62,7 @@ esac
 [ "$MAX_AGE_SECONDS" -gt 0 ] || MAX_AGE_SECONDS=900
 
 # Same fail-safe convention: a frozen-snapshot lag beyond this many seconds is
-# STALE (HIMMEL-2342). Default 60s sits comfortably above the HUD's own
+# STALE. Default 60s sits comfortably above the HUD's own
 # WRITE_TTL_MS=3000 write-throttle plus its 300ms tick debounce, and far below
 # the 900s freshness window above.
 MAX_LAG_SECONDS="${CONTEXT_FILL_MAX_LAG_SECONDS:-60}"
@@ -183,7 +183,7 @@ resolve_transcript() {
   return 1
 }
 
-# HIMMEL-2545: name the cause when resolution fails, instead of leaving the
+# name the cause when resolution fails, instead of leaving the
 # reader with "fill is blind on this station" (five console handovers carried
 # that note through one night; it was never a station property).
 #
@@ -235,7 +235,7 @@ launched_as_child_session() {
 resolve_cache_path() {
   local transcript hash hint=""
   if ! transcript="$(resolve_transcript)"; then
-    # HIMMEL-2545: only when the claude PROCESS itself carries the marker -
+    # only when the claude PROCESS itself carries the marker -
     # see launched_as_child_session() for why our own env cannot be trusted.
     if launched_as_child_session; then
       hint='
@@ -295,7 +295,7 @@ if (latest !== undefined) process.stdout.write(`${latest}\n`);
 NODE
 }
 
-# HIMMEL-4955: a STALE snapshot (aged out, or frozen behind the transcript) is
+# a STALE snapshot (aged out, or frozen behind the transcript) is
 # not a dead end when the session transcript still carries usage. Estimate the
 # fill as the latest assistant turn's resident input tokens over the snapshot's
 # context_window_size, print it labelled "~NN% (est)" on stdout and exit 5 - a
@@ -332,7 +332,7 @@ mode="human"
 mode_flag=""
 warn_at_arg=""
 # A loop (not the old single-arg case) so --warn-at N can compose with
-# --percent/--cache-path/(no flag) (HIMMEL-2653). Any other/unknown token
+# --percent/--cache-path/(no flag). Any other/unknown token
 # still fails the documented way (exit 2) rather than silently ignoring it.
 # --percent and --cache-path remain mutually exclusive output modes: the old
 # single-arg parser rejected two of them together via `[ "$#" -gt 1 ]`, and a
@@ -384,7 +384,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# HIMMEL-2653/HIMMEL-2779: flag beats env beats default. Values 1-100 retain
+# flag beats env beats default. Values 1-100 retain
 # the original percentage meaning; larger values are absolute per-turn input
 # token thresholds (input + cache-read + cache-create from the latest assistant
 # message in this session's own transcript). A bad threshold warns and falls
@@ -475,7 +475,7 @@ if [ "$age" -gt "$MAX_AGE_SECONDS" ]; then
   exit 3
 fi
 
-# The age check above cannot see a frozen snapshot (HIMMEL-2342): the HUD can
+# The age check above cannot see a frozen snapshot: the HUD can
 # skip a cache write on a documented in-flight used_percentage=0 tick, and a
 # frozen-but-recent saved_at is indistinguishable from a genuinely quiet
 # session by age alone. Compare saved_at against the transcript's own mtime -
@@ -545,7 +545,7 @@ printf '\n'
 printf '  session: %s | snapshot age: %ss\n' "${session_name:-unnamed}" "$age"
 printf '  NOTE: this is context-window FILL, NOT the <total_tokens> spend budget.\n'
 
-# HIMMEL-2653/HIMMEL-2779: name the crossing so a leg reads it without doing
+# name the crossing so a leg reads it without doing
 # the arithmetic itself. Human mode only - a leg polling --percent in a loop
 # must not gain a line (mirrors the lag-diagnostic printf above).
 if [ "$WARN_AT_KIND" = "percent" ] && [ "$used_pct" -ge "$WARN_AT" ]; then

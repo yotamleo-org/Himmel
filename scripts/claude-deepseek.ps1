@@ -1,5 +1,5 @@
 #Requires -Version 7
-# claude-deepseek.ps1 — isolated DeepSeek inference lane (HIMMEL-4084).
+# claude-deepseek.ps1 — isolated DeepSeek inference lane.
 # Security predicates are byte-identical to bash. The seed mirrors the sibling
 # allowlist into this lane only; native ~/.claude remains read-only.
 $ErrorActionPreference = 'Stop'
@@ -139,7 +139,7 @@ try {
  fs.writeFileSync(temp,JSON.stringify(j,null,2)+"\n",{mode:0o600});fs.renameSync(temp,p);
 }catch(e){console.error("claude-deepseek: onboarding seed failed: "+e.message);process.exit(4);}
 '@
-# --- config-dir seed concurrency lock (HIMMEL-830) ---------------------------
+# --- config-dir seed concurrency lock ---------------------------
 $Lock            = "$ConfigDir.seed-lock"
 function Read-SeedLockSeconds([string]$Name, [int]$Default) {
   $Raw = [Environment]::GetEnvironmentVariable($Name, 'Process')

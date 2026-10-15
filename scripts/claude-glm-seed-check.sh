@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # claude-glm-seed-check.sh -- read-only drift check for the glm-launcher seeded set.
-# HIMMEL-654 WS5 Task 1. bash 3.2-safe. PowerShell twin: claude-glm-seed-check.ps1.
+# bash 3.2-safe. PowerShell twin: claude-glm-seed-check.ps1.
 #
 # The launcher (scripts/claude-glm) mirrors a seeded set from ~/.claude into
 # ~/.claude-glm ONCE, then re-seeds only on --reseed or a missing .seeded

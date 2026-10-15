@@ -2,7 +2,7 @@
 # by version tag: `## [Unreleased]` for commits after the newest version tag,
 # then one `## [<tag>] - <date>` section per release, newest release first.
 # With NO version tags (the pre-first-release state) the output is a single
-# `## [Unreleased]` over all history -- byte-identical to the pre-HIMMEL-2250
+# `## [Unreleased]` over all history -- byte-identical to the pre-version-tag
 # generator, so a tagless repo sees no churn.
 # Non-conventional/merge/revert -> ### Other.
 # Fully generated; do not hand-edit. Idempotent on immediate re-run.
@@ -12,7 +12,7 @@
 #   gen-changelog.ps1 --check    write nothing; exit 1 if the committed file is
 #                                 stale (prints the missing-entry count). This is
 #                                 the staleness primitive the morning report and
-#                                 the release step read -- HIMMEL-2250.
+#                                 the release step read.
 $ErrorActionPreference = 'Stop'
 # PowerShell decodes a captured native-command's stdout using [Console]::
 # OutputEncoding, which on this platform defaults to the legacy OEM codepage,
@@ -29,7 +29,7 @@ $out = Join-Path $root 'CHANGELOG.md'
 
 # Version tags only. The repo also carries non-version tags (recovery stashes
 # etc.); matching them would invent phantom release sections, so the glob is
-# `v` + digit -- the scheme proposed in HIMMEL-2250 (`vMAJOR.MINOR.PATCH`, with
+# `v` + digit -- the scheme proposed (`vMAJOR.MINOR.PATCH`, with
 # `-rc.N` pre-releases sorting inside the same glob).
 # KEEP IN SYNC with scripts/gen-changelog.sh VERSION_TAG_GLOB.
 $versionTagGlob = 'v[0-9]*'
@@ -76,7 +76,7 @@ function render([string]$heading, [string]$range = '') {
 
 # generate -> [string[]] full CHANGELOG.md content, one entry per line. Twin of
 # the .sh's generate(): with zero version tags this is a single Unreleased
-# section over all history (byte-identical to the pre-HIMMEL-2250 output); with
+# section over all history (byte-identical to the pre-version-tag output); with
 # >=1 tag, Unreleased covers <newest-tag>..HEAD then one section per tag
 # newest-first, each ranged against its predecessor (the oldest tag gets the
 # open-ended all-history-up-to-it range).
@@ -93,7 +93,7 @@ function generate {
     # predecessor. Assumes a linear release history (this repo's `main`,
     # squash merges) -- a tag on a side branch is not orderable this way, so
     # such tags are filtered out below (with a warning) before the count sort
-    # even runs (HIMMEL-2363).
+    # even runs.
     # On an ancestry tie (two tags on the SAME commit, e.g. an rc promoted to
     # its release), a release sorts before a pre-release of the same version
     # -- semver precedence, `v0.1.0` outranks `v0.1.0-rc.1` -- via Rank (1 =
@@ -106,7 +106,7 @@ function generate {
     # Reachable-commit-count ordering is only valid for tags that are
     # ancestors of HEAD -- a tag on a side branch has no topological
     # relationship to HEAD's history, so its count is meaningless and sorting
-    # by it corrupts every release range (HIMMEL-2363: a side-branch tag with
+    # by it corrupts every release range (a side-branch tag with
     # a higher count than the real latest release outranks it, and commits
     # already released reappear under both `## [Unreleased]` and their real
     # release section). Drop it, but never silently -- a dropped release tag
@@ -114,7 +114,7 @@ function generate {
     # `--is-ancestor` exits 1 for "not an ancestor" but >1 for a real git
     # error (bad object, corrupt ref) -- conflating the two would silently
     # drop a release tag on an operational error instead of failing
-    # generation (HIMMEL-2363 CR).
+    # generation.
     # KEEP IN SYNC with scripts/gen-changelog.sh ancestry filter.
     $rawTags = @($rawTags | Where-Object {
         git merge-base --is-ancestor $_ HEAD 2>$null | Out-Null
@@ -134,7 +134,7 @@ function generate {
         [pscustomobject]@{ Tag = $_; Count = [int](git rev-list --count $_); Rank = $rank }
     } | Sort-Object -Property Count, Rank, Tag -Descending | ForEach-Object { $_.Tag })
 
-    # Same-commit fold (HIMMEL-3603): a final tag absorbs a pre-release of its
+    # Same-commit fold: a final tag absorbs a pre-release of its
     # own series at the SAME commit. KEEP IN SYNC with scripts/gen-changelog.sh.
     $all = $tags
     $tags = @($all | Where-Object {
