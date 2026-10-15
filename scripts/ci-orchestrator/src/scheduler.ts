@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/scheduler.ts
-// HIMMEL-502 P3.2 — the scheduler supervisor loop (one scheduling pass = tick()).
+// The scheduler supervisor loop (one scheduling pass = tick()).
 //
 // One pass: discover git work → planSubmission (doc-only skip + content-hash
 // dedup, P2.6) → submit the enqueue set → route each queued job (P2.3) → for a
@@ -43,7 +43,7 @@ export type TickReport = {
   deferred: string[];
   verdicts: { jobId: string; conclusion: string }[];
   posted: string[];
-  deadLettered: string[]; // required verdicts the reporter gave up on (permanent error / attempt cap) — surfaced, not silently retried forever (HIMMEL-714)
+  deadLettered: string[]; // required verdicts the reporter gave up on (permanent error / attempt cap) — surfaced, not silently retried forever
 };
 
 export type SchedulerDeps = {
@@ -187,7 +187,7 @@ export async function tick(deps: SchedulerDeps): Promise<TickReport> {
   // 6. Drain any still-unposted backlog (prior ticks where GitHub was down).
   //    Dead-lettered required verdicts (permanent error / attempt cap) are
   //    surfaced in the report so a wedged required check is visible rather than
-  //    retried forever (HIMMEL-714).
+  //    retried forever.
   const drain = await deps.reporter.retryUnposted(readState(env, path), deps.gh);
   report.deadLettered = drain.deadLettered;
 

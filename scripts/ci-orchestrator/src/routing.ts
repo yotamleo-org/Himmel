@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/routing.ts
-// HIMMEL-502 P2.3 — the pure routing decision function (the heart of the system).
+// The pure routing decision function (the heart of the system).
 //
 // PURE: no I/O. Given a job, live lane availability, host work-profile, private-
 // minute headroom, the act matrix, and github reachability, it returns the chosen

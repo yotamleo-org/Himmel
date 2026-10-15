@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/index.ts
-// HIMMEL-502 P3.7 — the executable entry. Thin wrapper over runCli (cli.ts owns
+// The executable entry. Thin wrapper over runCli (cli.ts owns
 // the testable logic; this only binds process IO + the exit code).
 import { runCli } from "./cli.js";
 

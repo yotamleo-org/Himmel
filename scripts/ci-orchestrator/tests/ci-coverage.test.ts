@@ -15,7 +15,7 @@ describe("extractJobIds", () => {
   });
 
   // A column-0 comment or blank line is valid YAML inside the jobs: block
-  // and must not be mistaken for the next top-level key (HIMMEL-2880 CR).
+  // and must not be mistaken for the next top-level key.
   test("does not stop at a column-0 comment or blank line inside jobs:", () => {
     const yaml = "jobs:\n  a:\n    runs-on: ubuntu-latest\n\n# a column-0 comment\n  b:\n    runs-on: ubuntu-latest\n";
     expect(extractJobIds(yaml)).toEqual(["a", "b"]);
@@ -31,7 +31,7 @@ describe("ci-coverage gate", () => {
     expect(missing, `unmodeled ci.yml jobs: ${missing.join(", ")}`).toEqual([]);
   });
 
-  // RED control (HIMMEL-2880): a coverage gate that can never fail is the
+  // RED control: a coverage gate that can never fail is the
   // vacuous-pass class — this proves it fails when ci.yml carries a job the
   // real act-matrix.json neither models nor lists as intentionally-absent.
   test("RED control: a ci.yml job absent from both lists fails the gate", () => {

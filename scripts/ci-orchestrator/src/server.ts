@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/server.ts
-// HIMMEL-502 P3.3 — the VM-owned queue HTTP API (resolves OQ1 transport).
+// The VM-owned queue HTTP API (resolves OQ1 transport).
 //
 // The VM daemon is the SINGLE writer (OQ1 B2/B3). Its one Node event loop
 // SERIALIZES /submit and /claim, so claim exclusivity is a property of

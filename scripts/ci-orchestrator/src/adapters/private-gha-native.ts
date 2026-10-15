@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/adapters/private-gha-native.ts
-// HIMMEL-502 P3.5 — the self-hosted-runner adapter (OBSERVE-ONLY, native).
+// The self-hosted-runner adapter (OBSERVE-ONLY, native).
 //
 // The VM registered as a GitHub self-hosted runner runs native `on: pull_request`
 // jobs — GitHub SCHEDULES them, we do not dispatch (I2). So dispatch() is a no-op:

@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/adapters/dry-run.ts
-// HIMMEL-502 P3.1 — the dry-run adapter (the integration test seam).
+// The dry-run adapter (the integration test seam).
 //
 // Wraps a real adapter and RECORDS its dispatch calls to an in-memory array
 // instead of firing them, so the whole scheduler loop is testable with no real

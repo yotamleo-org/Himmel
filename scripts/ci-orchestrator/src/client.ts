@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/client.ts
-// HIMMEL-502 P3.4 — the local claiming client + degrade-to-direct fallback.
+// The local claiming client + degrade-to-direct fallback.
 //
 // The local daemon is a claiming CLIENT of the VM queue authority — it never
 // appends to the ledger directly (OQ1 B2/B3). It claims work through the VM's

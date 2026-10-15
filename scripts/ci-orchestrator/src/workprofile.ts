@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/workprofile.ts
-// HIMMEL-502 P2.4 — host work-profile resolver (resolves OQ4).
+// Host work-profile resolver (resolves OQ4).
 //
 // Decides whether the local host will lend CI capacity: `focus` (protect local —
 // never run local CI), `shared` (spare cycles), `drain` (idle window, run freely).

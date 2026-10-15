@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/adapters/act-exec.ts
-// HIMMEL-502 P3.5 — the act-exec backbone adapter (dispatched).
+// The act-exec backbone adapter (dispatched).
 //
 // Shells to scripts/ci-orchestrator/bin/act-run.sh (the P1.2 executor) to run one
 // workflow job via nektos/act in Docker, GitHub-independently. `exec` is injected

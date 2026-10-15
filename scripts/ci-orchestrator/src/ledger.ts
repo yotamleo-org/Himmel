@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/ledger.ts
-// HIMMEL-502 P2.1 — the CI queue event ledger.
+// The CI queue event ledger.
 //
 // A single-writer, append-only JSONL event log, reduced to current state. Mirrors
 // the quota-gauge.jsonl model the codebase already ships and hardened on Windows

@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/daemon.ts
-// HIMMEL-502 P3.7 — the daemon supervisor loop harness.
+// The daemon supervisor loop harness.
 //
 // Loops tick() every intervalMs, honoring a stop-marker file (the loop exits as
 // soon as the marker exists). All I/O is injected (tickFn, sleep, existsFn,

@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/adapters/private-gha-hosted.ts
-// HIMMEL-502 P3.5 — the private-gha-hosted adapter (dispatched, sparing).
+// The private-gha-hosted adapter (dispatched, sparing).
 //
 // The only PRE-MERGE win/mac path (act/VM are Linux-only) — used sparingly under
 // the private-minute cap. dispatch() first checks for an EXISTING native
@@ -30,7 +30,7 @@ export function makePrivateGhaHostedAdapter(opts: PrivateGhaHostedOptions): Lane
     },
     async dispatch(job: JobAttrs): Promise<{ runId: string }> {
       // 1. Observe an existing native run for this head SHA + THIS workflow, if
-      //    any. Scoping to the workflow (HIMMEL-714) matters: a repo with >1
+      //    any. Scoping to the workflow matters: a repo with >1
       //    workflow can have several runs at the same head SHA, and observing the
       //    wrong one attributes a sibling workflow's conclusion to this job. We
       //    scope server-side with `--workflow <file>` rather than a jq

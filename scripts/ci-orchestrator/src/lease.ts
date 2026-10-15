@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/lease.ts
-// HIMMEL-502 P2.2 — VM-internal claim/lease grant.
+// VM-internal claim/lease grant.
 //
 // grantClaim runs ONLY inside the VM daemon, called by the HTTP /claim handler
 // (P3.3). Because the VM's single Node event loop handles /claim SEQUENTIALLY,

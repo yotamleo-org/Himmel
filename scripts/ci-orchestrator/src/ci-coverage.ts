@@ -1,8 +1,8 @@
 // scripts/ci-orchestrator/src/ci-coverage.ts
-// HIMMEL-2880 — structural coverage gate: every job id in ci.yml must be
+// Structural coverage gate: every job id in ci.yml must be
 // modeled in act-matrix.json's `jobs` or listed in its `intentionallyAbsent`,
 // or a rename/add in ci.yml drifts the orchestrator's topology model with no
-// signal (exactly what happened to `shell-unit` under HIMMEL-2872).
+// signal (exactly what happened to `shell-unit`).
 import { readFileSync } from "node:fs";
 
 // Extract top-level job ids from a GitHub Actions workflow's `jobs:` block.

@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/reporter.ts
-// HIMMEL-502 P3.6 — the required-check reporter (resolves OQ3).
+// The required-check reporter (resolves OQ3).
 //
 // Writes a job's verdict to the GitHub Checks / commit-status API at
 // `job.headSha` — ALWAYS the PR head, NEVER `runSha` (M2). Because a public-fork
@@ -9,7 +9,7 @@
 // the status writer throws the verdict is kept `verdict-known, status-unposted`
 // and re-attempted on a later scheduler pass (OQ3).
 //
-// HIMMEL-714 (P3 hardening) wires the error classification + bounded backoff +
+// P3 hardening wires the error classification + bounded backoff +
 // dead-letter the P3 V1 boundary deferred:
 //   - classifyGhError: a PERMANENT gh error (4xx — bad sha, auth, not-found) can
 //     never be fixed by retrying, so it dead-letters immediately and is surfaced

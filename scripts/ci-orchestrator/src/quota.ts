@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/quota.ts
-// HIMMEL-502 P2.5 — private-minute headroom predicate (corrected — B1).
+// Private-minute headroom predicate (corrected — B1).
 //
 // PURE headroom test over GitHub billing-API usage. The usage numbers come from
 // the GitHub billing API (/users/{user}/settings/billing/actions — the same

@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/act-matrix.ts
-// HIMMEL-502 P1.1 (partial — the type + data surface P2 depends on).
+// The type + data surface the routing core depends on.
 //
 // The `act` compatibility matrix classifies every job in .github/workflows/ci.yml
 // by whether nektos/act can run it faithfully in Docker, its OS set, and whether
@@ -29,7 +29,7 @@ export type ActMatrixEntry = { fidelity: ActFidelity; os: OsName[]; heavy: boole
 export type ActMatrix = Record<string, ActMatrixEntry>;
 
 // act-matrix.json's on-disk shape: `jobs` is the classification ActMatrix
-// consumed by routing.ts/dedup.ts; `intentionallyAbsent` (HIMMEL-2880) names
+// consumed by routing.ts/dedup.ts; `intentionallyAbsent` names
 // every ci.yml job deliberately left out of `jobs`, one-line reason each — the
 // coverage gate (ci-coverage.ts) treats a ci.yml job as covered iff it is a key
 // in one of the two.

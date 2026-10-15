@@ -65,7 +65,7 @@ describe("reporter.retryUnposted", () => {
   });
 });
 
-// HIMMEL-714 — error classification + bounded backoff + dead-letter.
+// Error classification + bounded backoff + dead-letter.
 describe("classifyGhError", () => {
   test("4xx (except 429) is permanent; 5xx / 429 / unknown-shape is transient", () => {
     expect(classifyGhError(Object.assign(new Error(), { status: 404 }))).toBe("permanent");

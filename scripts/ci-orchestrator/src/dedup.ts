@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/dedup.ts
-// HIMMEL-502 P2.6 — submit-time reductions (resolves B5).
+// Submit-time reductions (resolves B5).
 //
 // The two trivially-safe reductions the spec §Guard explicitly allows. These are
 // ROUTING, not skips: a reduced job is either not-enqueued (its check reuses a

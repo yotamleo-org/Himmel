@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/cli.ts
-// HIMMEL-502 P3.7 — the CLI command surface (state | tick | daemon | measure).
+// The CLI command surface (state | tick | daemon | measure).
 //
 // runCli is pure over an injected IO object (out/err/env) so it is hermetically
 // testable — `state` on an empty ledger prints `{}`. `tick` and `daemon` require
@@ -30,7 +30,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
     }
     case "tick":
     case "daemon":
-      // WIRING NOTE (HIMMEL-714): when the production tick is assembled here, the
+      // WIRING NOTE: when the production tick is assembled here, the
       // reporter (makeReporter, reporter.ts) MUST be constructed ONCE and reused
       // across passes — its backoff/dead-letter state is in-memory in the reporter
       // closure, so a per-tick reporter silently resets the counters and defeats

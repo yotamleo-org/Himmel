@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/adapters/types.ts
-// HIMMEL-502 P3.1 — the lane adapter interface (one seam for all five lanes).
+// The lane adapter interface (one seam for all five lanes).
 //
 // Every lane is driven behind ONE interface so the scheduler (P3.2) routes and
 // dispatches lane-agnostically. Adapter↔lane cardinality is 1:1 with the five

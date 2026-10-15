@@ -1,5 +1,5 @@
 // scripts/ci-orchestrator/src/adapters/local-exec.ts
-// HIMMEL-502 P3.5 — the local-exec adapter (dispatched, work-profile-gated).
+// The local-exec adapter (dispatched, work-profile-gated).
 //
 // Runs a job directly on the local host (last resort, load-gated). available()
 // consults resolveProfile (P2.4): the lane is only "up" when the host is
