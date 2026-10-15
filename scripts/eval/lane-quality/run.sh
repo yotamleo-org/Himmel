@@ -582,7 +582,10 @@ cmd_table() {
 cmd_pair() {
   [ $# -eq 2 ] || die "pair needs exactly two run directories"
   local d
-  for d in "$1" "$2"; do [ -r "$d/runs.jsonl" ] || die "no runs.jsonl in $d"; done
+  for d in "$1" "$2"; do
+    [ -r "$d/runs.jsonl" ] || die "no runs.jsonl in $d"
+    jq -e . "$d/runs.jsonl" >/dev/null 2>&1 || die "unreadable rows in $d/runs.jsonl"
+  done
   jq -n -r '
     def n: if . == null then "?" else tostring end;
     def key: "\(.task)#\(.rep // 1)";

@@ -64,12 +64,12 @@ while IFS= read -r f; do
 done < <(git -C "$WT" ls-files -- scripts)
 [ -s "$LIST" ] || die "no history comments found under scripts/ at $BASE"
 
-REMOVED=0
+TMP="$(mktemp "${TMPDIR:-/tmp}/prune-history.tmp.XXXXXX")" || die "mktemp failed"
 while IFS="$(printf '\t')" read -r _ f; do
-  awk "$AWK_DROP"'{ s = $0; sub(/^[ \t]+/, "", s); if (!history(s)) print }' "$WT/$f" >"$WT/$f.pruned" || die "could not prune $f"
-  cat "$WT/$f.pruned" >"$WT/$f" || die "could not write $f"
-  rm -f "$WT/$f.pruned"
+  awk "$AWK_DROP"'{ s = $0; sub(/^[ \t]+/, "", s); if (!history(s)) print }' "$WT/$f" >"$TMP" || die "could not prune $f"
+  cat "$TMP" >"$WT/$f" || die "could not write $f"
 done < <(sort -rn "$LIST" | head -n "$N")
+rm -f "$TMP"
 REMOVED="$(git -C "$WT" diff --numstat | awk '{ d += $2 } END { print d + 0 }')"
 rm -f "$LIST"
 
