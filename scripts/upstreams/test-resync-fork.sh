@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/upstreams/test-resync-fork.sh — hermetic suite for the fork-resync
-# auditor (HIMMEL-1323 follow-up).
+# auditor.
 #
 # Fully offline: every case builds TWO real local git repos under a temp dir
 # (a fake "upstream" and a clone of it standing in for the himmel "fork"),

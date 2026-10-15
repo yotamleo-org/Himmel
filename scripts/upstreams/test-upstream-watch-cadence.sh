@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # scripts/upstreams/test-upstream-watch-cadence.sh — hermetic suite for the
-# daily upstream-watch scheduler cadence (HIMMEL-2367).
+# daily upstream-watch scheduler cadence.
 #
 # Never touches the real scheduler or observability registry: schtasks is
 # replaced by a fake via UPSTREAMWATCH_SCHTASKS, the runner dir by
 # UPSTREAMWATCH_BAT_DIR, the himmel root by UPSTREAMWATCH_HIMMEL_ROOT pointing
 # at a stub tree, and — critically — HIMMEL_OBSERVABILITY_CONFIG is pinned to
 # a per-test scratch file on EVERY invocation below. Omitting that seam is
-# exactly the HIMMEL-2367 leak this ticket caught live: a hand smoke-test that
+# exactly the leak seen live: a hand smoke-test that
 # forgot it registered a real task into ~/.himmel/observability.json and paged
 # on the resulting scheduled-task-missing alert.
 #
@@ -15,7 +15,7 @@
 # needs a real `cygpath` to convert paths for schtasks — schtasks itself is
 # faked via UPSTREAMWATCH_SCHTASKS, but cygpath is NOT, so on a non-Windows
 # host cmd_arm dies with "cygpath not on PATH; cannot convert paths for
-# schtasks" (HIMMEL-2508). That half is gated below the same way
+# schtasks". That half is gated below the same way
 # scripts/luna/test-qmd-cadence.sh and scripts/graphify/test-ggs-cadence.sh
 # gate their own Windows-only schtasks suites, loudly skipping on Linux/macOS
 # rather than failing on a dependency this suite cannot fake.
@@ -97,8 +97,7 @@ FAKE
 # Fake crontab — same shape as test-drift-fix-cadence.sh's: `-l` prints the
 # stored tab (rc 1 + "no crontab" when absent, the trusted-empty signature);
 # `-` installs from stdin. $state/install_fail fails ONLY the install path,
-# leaving `-l` working, so cron_arm's publish-then-install ordering (round-3
-# fix, HIMMEL-2367 codex-2) can be exercised without also tripping the
+# leaving `-l` working, so cron_arm's publish-then-install ordering can be exercised without also tripping the
 # fail-closed cron_read guard.
 make_fake_crontab() {
   local state="$1" f="$1/crontab"
@@ -123,7 +122,7 @@ FAKE
 }
 
 # make_anchor <state> — a stub `.env`-bearing anchor for HANDOVER_DIR
-# resolution (HIMMEL-2619): symlinks the REAL scripts/lib/load-dotenv.sh (a
+# resolution: symlinks the REAL scripts/lib/load-dotenv.sh (a
 # static utility, never mutated by this suite) so go_resolve_root's `.env`
 # read works, then points its .env at an external scratch handover dir —
 # never inside $state/root, the stub payload cd's into.
@@ -177,7 +176,7 @@ run_cadence() {
 
 # run_cadence_posix — same contract as run_cadence but the POSIX/crontab arm
 # path (UPSTREAMWATCH_CRONTAB), never touching a real cygpath/wscript
-# dependency the Windows path needs. HANDOVER_DIR resolution (HIMMEL-2619) is
+# dependency the Windows path needs. HANDOVER_DIR resolution is
 # pinned to a scratch external anchor so this stays hermetic regardless of
 # this station's own real HANDOVER_DIR/`.env` — see make_anchor.
 run_cadence_posix() {
@@ -269,7 +268,7 @@ if [ "$rc" -eq 0 ]; then pass "status after disarm: rc=0"; else fail "status aft
 assert_has "$out" "not armed" "status after disarm: reports not armed"
 
 echo "== test: disarm no-op still cleans a stale registry entry =="
-# Simulate the HIMMEL-2367 leak shape directly: a registry entry exists with
+# Simulate the leak shape directly: a registry entry exists with
 # no matching live task (e.g. the task was deleted outside this script).
 state2=$(new_scratch); root2=$(make_root); mv "$root2" "$state2/root"
 jq -n '{flows:[{name:"upstream-watch",cadence_seconds:86400}], expected_tasks:["HIMMEL-UpstreamWatch"]}' \
@@ -323,10 +322,10 @@ out=$(run_cadence "$state" arm --time nonsense 2>&1); rc=$?
 if [ "$rc" -eq 1 ]; then pass "bad --time (rc=1)"; else fail "bad --time — expected rc=1 got rc=$rc; output: $out"; fi
 assert_has "$out" "--time must be HH:MM" "bad --time: rejected for the right reason"
 
-# --- POSIX (crontab) path — HIMMEL-2367 codex-3, round 4: the suite above
-# only ever exercised win_arm/win_disarm via UPSTREAMWATCH_PLATFORM=windows;
-# cron_arm/cron_disarm (including the round-3 codex-2 publish-before-install
-# ordering fix) had zero coverage. No cygpath/wscript dependency here — the
+# --- POSIX (crontab) path — the Windows cases above
+# only exercise win_arm/win_disarm via UPSTREAMWATCH_PLATFORM=windows;
+# cron_arm/cron_disarm (including the publish-before-install
+# ordering) need their own coverage. No cygpath/wscript dependency here — the
 # fake crontab is the only external tool cron_arm/cron_disarm touch.
 echo "== test: POSIX arm =="
 pstate=$(new_scratch_posix); proot=$(make_root); mv "$proot" "$pstate/root"
@@ -348,11 +347,11 @@ if registry_has_task "$pstate/observability.json"; then
 else
   fail "posix arm: HIMMEL-UpstreamWatch missing from scratch registry"
 fi
-# HIMMEL-3332 S8: the arm records a `job register` row so uninstall can remove this line.
+# The arm records a `job register` row so uninstall can remove this line.
 jobs=$(HIMMEL_PROVENANCE_DIR="$pstate/provenance" bash -c '. "$1/lib/provenance.sh" && . "$1/lib/provenance-read.sh" && prov_read_load >/dev/null && prov_read_units --kind job | jq -r ".unit + \" ours=\" + (.ours|tostring) + \" scheduler=\" + .fields.scheduler"' _ "$SCRIPT_DIR/..")
 assert_has "$jobs" "HIMMEL-UpstreamWatch ours=true scheduler=cron" "posix arm: recorded the cron job row (ours, cron)"
 
-# HIMMEL-4286: the runner goes through the shared emitter. Fire it against a
+# The runner goes through the shared emitter. Fire it against a
 # stub payload + stub cadence-alert.sh: rc 2 (watch failure) pages, rc 0 and
 # rc 10 (delta found, handled) clear, and rc 10 still exits 0 for cron.
 echo "== test: POSIX runner alerts on failure, clears on success (HIMMEL-4286) =="
@@ -430,7 +429,7 @@ else
   pass "posix dry-run arm: no cron entry installed"
 fi
 
-# --- HANDOVER_DIR resolution (HIMMEL-2619) — a cron-fired shell has no
+# --- HANDOVER_DIR resolution — a cron-fired shell has no
 # interactive/login env, so the generated runner must bake in an external
 # HANDOVER_DIR at arm time rather than let the payload's own handover_root()
 # fall back to <repo>/handovers at fire time.
@@ -463,7 +462,7 @@ case "$runner_body" in
   *) pass "posix arm with handover: never references the inline <repo>/handovers stub" ;;
 esac
 
-# HIMMEL-3619: the generated runner's shebang is `#!/bin/sh`, but the value it
+# The generated runner's shebang is `#!/bin/sh`, but the value it
 # bakes HANDOVER_DIR in with was `printf '%q'` — a bash-only escaping that can
 # emit `$'...'` ANSI-C quoting a stricter /bin/sh does not reliably parse the
 # same way bash does. Prove it round-trips byte-exact under `sh` for a value
@@ -525,7 +524,7 @@ else
   fail "posix arm with nasty handover: $SH_BIN exported a corrupted HANDOVER_DIR"
 fi
 
-# HIMMEL-3619 (codex CR on this same fix): posix_sh_quote wraps its `sed`
+# posix_sh_quote wraps its `sed`
 # output through `$(...)`, which strips ALL trailing newlines from command
 # substitution — a HANDOVER_DIR ending in a newline byte would silently lose
 # it before being quoted. This must be a UNIT test of posix_sh_quote itself,

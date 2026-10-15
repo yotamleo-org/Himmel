@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/upstreams/apply-tool-upgrade.sh — upgrade ONE installed vendor CLI
-# that himmel tracks by probe (HIMMEL-1323).
+# that himmel tracks by probe.
 #
 # WHY a second script instead of extending apply-drift-bump.sh: the two repair
 # the same registry but they are not the same operation. A `mode: base` entry's
@@ -224,7 +224,7 @@ probe_version() {
 
 # Strictly-greater comparison on the leading dotted-numeric run. python, not
 # `sort -V`: sort -V is GNU-only and macOS support is already an open thorn
-# (HIMMEL-1054 / HIMMEL-1059) — no reason to add a third call site to it.
+# — no reason to add a third call site to it.
 version_gt() {
   python3 -c '
 import re, sys

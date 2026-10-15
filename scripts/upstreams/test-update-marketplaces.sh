@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # test-update-marketplaces.sh — hermetic tests for update-marketplaces.sh
-# (HIMMEL-2134).
 #
 # Fully offline: known_marketplaces.json is a fixture supplied via
 # DRIFT_KNOWN_MARKETPLACES, and the claude CLI is a local stub supplied via
@@ -41,7 +40,7 @@ assert_fail() { fail=$((fail + 1)); echo "  FAIL: $1"; }
 # grepq — a `grep -q` test with NO pipeline. printf-into-`grep -q` is a trap
 # under pipefail: grep exits on first match, the producer takes SIGPIPE, and the
 # PIPELINE reports failure on a SUCCESSFUL match. A here-string is not a
-# pipeline. (Same guard as test-himmel-update-chain.sh, HIMMEL-1430.)
+# pipeline. (Same guard as test-himmel-update-chain.sh.)
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 assert_contains() {
@@ -192,7 +191,7 @@ LOG6d="$TMP/log6d"; : >"$LOG6d"
 # (the same-named helper in test-himmel-update-axis-b.sh takes that other shape).
 # Passing `0` as the log made this assert vacuous: the stub logged to a file
 # named "0" and $LOG6d stayed empty whether or not the CLI was invoked, so the
-# mutation check passed for the wrong reason. Caught by CR round 2, codex-2.
+# mutation check passed for the wrong reason.
 STUB6d="$TMP/claude6d.sh"; make_claude_stub "$STUB6d" "$LOG6d"
 OUT6d="$(run_case "$FIX6d" "$STUB6d")"; RC6d=$?
 assert_eq "a malformed ENTRY exits 2, not a partial clean run" "2" "$RC6d"

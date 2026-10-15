@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/upstreams/test-apply-drift-bump.sh — hermetic suite for the
-# mechanical upstream pin bumper (HIMMEL-1323).
+# mechanical upstream pin bumper.
 #
 # Fully offline: every case builds a throwaway repo root (registry + a fake pin
 # file) under a temp dir and points the script at it via DRIFT_REGISTRY /
@@ -295,7 +295,7 @@ esac
 assert_file_has "$root/scripts/lib/widget-bin.sh" 'WIDGET_VERSION:-1.2.4' "CRLF file still got bumped"
 rm -rf "$root"
 
-# HIMMEL-4283 item 2: an entry whose pin is split across files (cli-proxy-api: the
+# An entry whose pin is split across files (cli-proxy-api: the
 # .ps1 $Version is the registry's version_pin, the Linux twin's VERSION= and
 # ASSET_SHA256= are companions). The bump must move ALL of them or none.
 make_split_fixture() {
@@ -383,7 +383,7 @@ if [ -f "$REAL_ROOT/scripts/upstreams.json" ]; then
   assert_contains "$out" "scripts/lib/graphify-bin.sh" "graphify version_pin points at the real resolver"
   out=$(DRIFT_REPO_ROOT="$REAL_ROOT" bash "$BUMP" qmd 99.99.99 --dry-run 2>&1); rc=$?
   if [ "$rc" -eq 3 ]; then pass "qmd is SKIP (SHA pin, no version_pin, not auto-bumpable)"; else fail "qmd — expected rc=3 (SKIP) got $rc: $out"; fi
-  # HIMMEL-4258: CI's bun version is a bare-version file the nightly bump owns.
+  # CI's bun version is a bare-version file the nightly bump owns.
   out=$(DRIFT_REPO_ROOT="$REAL_ROOT" bash "$BUMP" bun-ci 99.99.99 --dry-run 2>&1); rc=$?
   if [ "$rc" -eq 0 ]; then pass "bun-ci resolves against the live registry (dry-run)"; else fail "bun-ci dry-run — expected rc=0 got $rc: $out"; fi
   assert_contains "$out" ".bun-version" "bun-ci version_pin points at the repo-root .bun-version"

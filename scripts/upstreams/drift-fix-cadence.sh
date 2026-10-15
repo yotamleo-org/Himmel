@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # drift-fix-cadence.sh — arm/status/disarm the nightly upstream-drift REPAIR
-# cadence (HIMMEL-1323).
+# cadence.
 #
-# WHY: the nightly `fork-drift` GitHub Action (HIMMEL-1046) only DETECTS drift.
+# WHY: the nightly `fork-drift` GitHub Action only DETECTS drift.
 # It opens one tracking issue and refreshes it forever; closing that loop was
-# always a hand-driven ticket, and those stall — HIMMEL-1260 ("bump graphify
-# 0.9.22 -> 0.9.23") sat in To Do while the pin advanced past it twice in
-# unrelated PRs, and issue #518 accumulated "still drifting" comments for days.
+# always a hand-driven ticket, and those stall — a pin advanced past a still-open
+# bump ticket in unrelated PRs, and the tracking issue accumulated "still
+# drifting" comments for days.
 # Detection without repair is just a nag.
 #
 # This is the repair half, and it runs LOCALLY on purpose (operator decision,
 # 2026-07-28): doing it in Actions would spend CI minutes on every nightly, and
 # the private repo has Actions off by design anyway. TWO scheduled tasks fire
-# an INTERACTIVE claude session each (HIMMEL-128 — never `-p`/`--print`): one on
+# an INTERACTIVE claude session each (never `-p`/`--print`, which bills against
+# the subscription budget): one on
 # the `/drift-fix` runbook (bump what is mechanically bumpable), one on the
 # `/fork-resync` runbook (rebase the carried fork against upstream). The drift
 # leg opens an ordinary PR against origin and stops; the resync leg's
@@ -38,8 +39,8 @@
 # block below for why this is two tasks in one script rather than one task or
 # two scripts.
 #
-# STOP-point derivation (HIMMEL-2866, re-derived after HIMMEL-2865 retired the
-# public-repo propagation tail): fork-resync's STOP at the end of its step 3
+# STOP-point derivation (re-derived after the public-repo propagation tail was
+# retired): fork-resync's STOP at the end of its step 3
 # protects `resync-fork.sh --push` — moving a fork branch on a remote the
 # operator owns — a hazard unchanged by origin being public, so it stays.
 # drift-fix's old STOP protected a SECOND review loop on a second (public)
@@ -76,7 +77,7 @@ CRONTAB_BIN="${DRIFTFIX_CRONTAB:-crontab}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Cross-platform user-home resolution (HIMMEL-645): on Windows Git-Bash the MSYS
+# Cross-platform user-home resolution: on Windows Git-Bash the MSYS
 # $HOME can differ from where ~/.claude actually lives, so prefer USERPROFILE.
 resolve_user_home() {
     if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
@@ -91,7 +92,7 @@ resolve_user_home() {
 BAT_DIR="${DRIFTFIX_BAT_DIR:-$(resolve_user_home)/.claude/drift-fix-cadence}"
 
 # Resolve the himmel root to the PRIMARY checkout, never this script's own
-# location (HIMMEL-892 codex-adv-1, same trap): arming from a feature worktree
+# location: arming from a feature worktree
 # would embed that worktree's absolute path in the persistent runner, and the
 # post-merge prune then deletes it — every later fire would cd into nothing.
 # `--git-common-dir` resolves to the PRIMARY .git even from a linked worktree.
@@ -121,7 +122,7 @@ BUMP_SCRIPT="$HIMMEL_ROOT/scripts/upstreams/apply-drift-bump.sh"
 TOOL_UPGRADE_SCRIPT="$HIMMEL_ROOT/scripts/upstreams/apply-tool-upgrade.sh"
 RESYNC_SCRIPT="$HIMMEL_ROOT/scripts/upstreams/resync-fork.sh"
 
-# Runner-format version stamp (HIMMEL-588) — shared with the sibling cadences so
+# Runner-format version stamp — shared with the sibling cadences so
 # himmel-doctor / himmel-update can spot a runner armed before a format change.
 # shellcheck source=../lib/cadence-format.sh
 # shellcheck disable=SC1091
@@ -382,7 +383,7 @@ status_log() {
 }
 
 # Best-effort: pre-trust the himmel checkout so an unattended `< NUL` run can't
-# stall on Claude Code's interactive workspace-trust prompt (HIMMEL-386). Never
+# stall on Claude Code's interactive workspace-trust prompt. Never
 # fatal — a pre-seed failure must not block arming.
 pretrust_workspace() {
     local lib="$HIMMEL_ROOT/scripts/lib/ensure-workspace-trust.sh"
@@ -406,9 +407,9 @@ run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
 # Emit the .bat runner: stamp the format version, rotate the log, stamp the fire
 # time, cd into the primary checkout (a failed cd lands in the log rather than
 # running claude from the wrong cwd), then the bounded interactive claude run.
-# `< NUL` gives stdin EOF; there is deliberately no -p/--print (HIMMEL-128).
+# `< NUL` gives stdin EOF; there is deliberately no -p/--print.
 # EVERY parameter arrives already cadence_cmd_escape'd — the convention the
-# sibling emitters settled on (HIMMEL-1281): if it is not named _esc it does not
+# sibling emitters settled on: if it is not named _esc it does not
 # belong in a printf here.
 emit_bat() {
     local root_esc="$1" claude_esc="$2" prompt_esc="$3" log_esc="$4" model_esc="$5"
@@ -416,7 +417,7 @@ emit_bat() {
     printf 'rem drift-fix-cadence runner (HIMMEL-1323)\r\n'
     printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt (HIMMEL-1753).
+    # schtasks) can never block on an editor prompt.
     cadence_bat_editor_set
     printf 'if exist "%s" move /y "%s" "%s.prev" > NUL 2>&1\r\n' "$log_esc" "$log_esc" "$log_esc"
     printf 'echo [fired %%DATE%% %%TIME%%] >> "%s" 2>&1\r\n' "$log_esc"
@@ -436,11 +437,11 @@ xml_escape() {
 
 # schtasks /create has no flag for StartWhenAvailable, so a daily run is
 # SILENTLY SKIPPED when the machine was off/asleep. The only CLI route is
-# /create /xml (same approach as the sibling cadences, HIMMEL-362).
+# /create /xml (same approach as the sibling cadences).
 #
 # The `encoding="UTF-16"` declaration on ASCII bytes is DELIBERATE and correct
-# here — do not "fix" it. Two cross-model CR rounds flagged it as a parse risk
-# (HIMMEL-1323 rounds 2 and 3), and it is disproved by production evidence, not
+# here — do not "fix" it. It looks like a parse risk, but it is disproved by
+# production evidence, not
 # argument: `HIMMEL-CodexOrphanSweep` is armed and Ready on the operator's
 # machine right now, created by scripts/cleanup/codex-sweep-cadence.sh through
 # `schtasks /create /xml` with byte-identical output. Real schtasks accepts the
@@ -454,7 +455,7 @@ xml_escape() {
 # which is why every interpolated value above is ASCII-only by construction.
 emit_task_xml() {
     local bat_win="$1" start_time="$2" vbs_win vbs_args
-    # HIMMEL-1753: Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
+    # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
     # The earlier hidden-powershell wrapper (-WindowStyle Hidden) was MEASURED to
     # still allocate visible consoles; wscript //B hosting the .vbs shim (which
     # runs the .bat hidden via WScript.Shell.Run and forwards its exit code via
@@ -463,7 +464,7 @@ emit_task_xml() {
     # file with — so the referenced path and the written file can never disagree.
     # //B is the WSH batch-mode flag (no error/prompt UI); the path is quoted so
     # a BAT_DIR with spaces survives, then xml_escaped like any element text.
-    # WScript.Quit in the shim preserves HIMMEL-1706 exit-code fidelity (rc=42
+    # WScript.Quit in the shim preserves exit-code fidelity (rc=42
     # re-arm survives — proven in test-cadence-format.sh).
     vbs_win=$(cadence_vbs_path "$bat_win")
     vbs_args=$(xml_escape "//B \"${vbs_win}\"")
@@ -553,7 +554,7 @@ query_task() {
 # Roll back BOTH legs, best-effort (a leg that was never created simply errors
 # on /delete, which is ignored) — arm is all-or-nothing, so any failure past
 # the dedup gate rolls back whatever the run may have already created.
-# HIMMEL-1753 round 2 (glm-2): rollback also removes the $slug.vbs shims this
+# Rollback also removes the $slug.vbs shims this
 # arm may have published — a failed arm must not leave orphaned shims behind
 # for a later disarm to trip over. Only once the leg's task is confirmed GONE,
 # though (query_task rc 1, trusted not-found): if the /delete itself failed,
@@ -677,7 +678,7 @@ cmd_arm() {
         slug=$(leg_slug "$leg")
         time=$(leg_time "$leg")
         bat_file="$BAT_DIR/$slug.bat"
-        # wscript //B shim (HIMMEL-1753) lives beside the .bat; rollback + disarm
+        # wscript //B shim lives beside the .bat; rollback + disarm
         # remove both. The Windows path cadence_vbs_path derives from $bat_win is
         # the same one emit_task_xml references, so write + reference agree.
         vbs_file="$BAT_DIR/$slug.vbs"
@@ -703,7 +704,7 @@ cmd_arm() {
             continue
         fi
 
-        # Atomic runner publication (HIMMEL-1753 round 2, glm-2/3 class): emit
+        # Atomic runner publication: emit
         # to a staged temp BESIDE the final path (same dir -> same filesystem
         # -> `mv` is an atomic rename, not a copy; mirrors codex-sweep's
         # publish discipline). Redirecting straight onto the final path let a
@@ -1058,8 +1059,8 @@ cron_arm() {
         # Under set -e (line 59) a write/chmod failure here (e.g. disk full on
         # leg 2 after leg 1 was already overwritten) would otherwise exit
         # WITHOUT the restore below — a pre-existing armed runner silently
-        # mutated while the crontab still points at it (CR round 5; the same
-        # class the win_arm emit_bat fix closed on Windows).
+        # mutated while the crontab still points at it (the same class
+        # win_arm's emit_bat guards against on Windows).
         if ! emit_runner "$q_root" "$q_claude" "$q_prompt" "$q_log" "$q_model" "$q_node_dir" > "$runner" \
            || ! chmod +x "$runner"; then
             echo "ERR drift-fix-cadence: could not write $runner — restoring any pre-existing runners." >&2
@@ -1184,7 +1185,7 @@ drift-fix-cadence ARMED (HIMMEL-1323)
 EOF
 }
 
-# HIMMEL-3068: dispatch renamed to the cmd_arm/cmd_status/cmd_disarm naming
+# Dispatch uses the cmd_arm/cmd_status/cmd_disarm naming
 # every OTHER registry-eligible cadence script already uses (pipeline-cadence.sh,
 # qmd-cadence.sh, graphmap-cadence.sh) — the windows-branch function IS the
 # literal name; cadence-registry.json's staleness lint (test-wizard-cadence-

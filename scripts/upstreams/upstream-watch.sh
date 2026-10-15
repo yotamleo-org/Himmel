@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # upstream-watch.sh — daily, delta-gated, zero-token-on-no-delta scan of
-# himmel's open upstream PRs/issues (HIMMEL-2367).
+# himmel's open upstream PRs/issues.
 #
 # WHY: a resident interactive claude session used to poll these every 20
 # minutes, burning tokens on a mostly-unchanged inventory. Operator ruling
@@ -38,7 +38,7 @@
 #   UPSTREAM_WATCH_ME           skip `gh api user`; use this login directly
 #   UPSTREAM_WATCH_STATE_DIR    overrides the whole .himmel/upstream-watch dir
 #   UPSTREAM_WATCH_HIMMEL_ROOT  overrides the resolved primary checkout, used
-#                                for the Telegram .env lookup AND (HIMMEL-2426)
+#                                for the Telegram .env lookup AND
 #                                as the path matched against the handover
 #                                registry to resolve the report bucket
 #                                (mirrors drift-fix-cadence.sh's
@@ -82,7 +82,7 @@ command -v node >/dev/null 2>&1 || {
     exit 2
 }
 
-# jq shim — strip CR from every jq invocation in this script (HIMMEL-2407).
+# jq shim — strip CR from every jq invocation in this script.
 #
 # The native Windows jq (winget jqlang.jq, and the msys/choco builds) writes
 # stdout in TEXT mode: `jq -rn '"abc"'` emits `abc\r\n`, not `abc\n`. Command
@@ -376,7 +376,7 @@ write_state() {
 }
 
 # require_field <value> <label> -- guard against ever rendering a null/empty
-# REQUIRED field again (HIMMEL-2407: the jq() CRLF shim above fixes the
+# REQUIRED field again (the jq() CRLF shim above fixes the
 # CAUSE; this is the belt to that suspenders — a required render field that
 # still comes back null/empty makes build_report fail outright instead of
 # printing `(null)`). A jq lookup miss answers the literal string "null"; a
@@ -511,7 +511,7 @@ fi
 # layer is applied by callers, on top of the resolved root) -- every other
 # report writer lands at <handover-root>/<user>/<repo-bucket>/specs/reports,
 # so this resolves the same way: registry + user slug. Mirrors the REVERSE
-# lookup arm-resume.sh already does for its own HIMMEL-2147 fallback
+# lookup arm-resume.sh already does for its own fallback
 # (scripts/handover/arm-resume.sh ~L2295, bucket -> path); this is the
 # forward direction (path -> bucket).
 HIMMEL_ROOT_FOR_BUCKET="$(resolve_himmel_root)" || HIMMEL_ROOT_FOR_BUCKET=""
@@ -560,7 +560,7 @@ REG_MATCH=$(REG="$REGISTRY_FILE" HROOT="$HIMMEL_ROOT_FOR_BUCKET" node -e '
     // direction -- the run exits 2 with the state untouched and no report is
     // misfiled -- and folding case unconditionally is what caused the bug this
     // gate replaced. Doing it properly means comparing the two paths by
-    // identity (stat dev+ino) rather than by string; tracked as HIMMEL-2449.
+    // identity (stat dev+ino) rather than by string; not done yet.
     const isWin = process.platform === "win32";
     function norm(p) {
         if (!p) return "";
@@ -649,7 +649,7 @@ mkdir_rc=0
 mkdir -p "$REPORT_DIR" 2>"$TMP/mkdir.err" || mkdir_rc=$?
 build_rc=0
 if [ "$mkdir_rc" -eq 0 ]; then
-    # set +e/set -e bracket, NOT `subshell || build_rc=$?` (codex-1, round 4):
+    # set +e/set -e bracket, NOT `subshell || build_rc=$?`:
     # bash's -e suspension for a command whose exit status is being TESTED
     # (the non-last operand of `||`, an `if` condition, `!`) propagates INTO
     # any subshell that command forks — an explicit `set -e` inside that

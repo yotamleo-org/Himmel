@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # scripts/upstreams/apply-drift-bump.sh — mechanically apply ONE upstream pin
-# bump (HIMMEL-1323).
+# bump.
 #
-# WHY: the nightly fork-drift workflow (HIMMEL-1046) only DETECTS drift and
-# files a tracking issue; every resolution was a hand-driven ticket, and those
-# stall — HIMMEL-1260 ("bump graphify 0.9.22 -> 0.9.23") sat in To Do while the
-# pin silently advanced past it in unrelated PRs. The bump itself is two edits
+# WHY: the nightly fork-drift workflow only DETECTS drift and files a tracking
+# issue; every resolution was a hand-driven ticket, and those stall (a pin
+# silently advanced past a still-open bump ticket in unrelated PRs). The bump
+# itself is two edits
 # that MUST move together: the in-repo pin literal (what a fresh machine
 # actually installs) and `synced_base` in scripts/upstreams.json (what the drift
 # guard compares against). Split them and the guard lies in one direction or the
@@ -15,8 +15,8 @@
 # It deliberately does NOT resolve "what is upstream's latest" — that is
 # scripts/check-plugin-drift.sh's job and it already owns the Releases-API /
 # highest-stable-tag logic plus the latest_source escape hatch. Duplicating it
-# here would mean a second version comparator to keep in sync (see HIMMEL-1054 /
-# HIMMEL-1059, which are still chasing the FIRST one). So the caller reads the
+# here would mean a second version comparator to keep in sync (the first one is
+# still being chased). So the caller reads the
 # guard's BEHIND line and passes the target version in. That also keeps this
 # script hermetic: no network, no gh, unit-testable offline.
 #
@@ -32,7 +32,7 @@
 # Usage:
 #   bash scripts/upstreams/apply-drift-bump.sh <name> <new-version> [--sha256 <hex>] [--dry-run]
 #
-# Split pins (HIMMEL-4283): an entry may add `companion_pins`, a list of
+# Split pins: an entry may add `companion_pins`, a list of
 # {file, template} rows for literals that live elsewhere than `version_pin`
 # (cli-proxy-api: the Linux twin's VERSION= and ASSET_SHA256=). Each template
 # holds ONE placeholder, {version} or {sha256}; a {sha256} row needs --sha256
@@ -211,7 +211,7 @@ pin_path = os.path.join(repo_root, pin_rel)
 if not os.path.isfile(pin_path):
     die(4, "version_pin file not found: %s" % pin_path)
 
-# --- companion pins (HIMMEL-4283) -------------------------------------------
+# --- companion pins -------------------------------------------
 # An entry whose pin literal lives in more than one place (cli-proxy-api: the
 # registry's version_pin is the .ps1, the Linux twin's VERSION= and ASSET_SHA256=
 # are separate literals) declares the rest as `companion_pins`, each

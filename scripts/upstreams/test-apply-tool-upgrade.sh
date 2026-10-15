@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/upstreams/test-apply-tool-upgrade.sh — hermetic suite for the
-# mode:probe installed-tool upgrader (HIMMEL-1323).
+# mode:probe installed-tool upgrader.
 #
 # Fully offline: every case builds a throwaway repo root under a temp dir
 # containing a synthetic scripts/upstreams.json plus a bin/ of fake tools

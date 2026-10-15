@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # update-marketplaces.sh — re-sync the installed Claude Code marketplaces that
-# NOTHING else updates (HIMMEL-2134).
+# NOTHING else updates.
 #
 # WHY: the 2026-08-26 full drift sweep (issue #518) found `mkt-manual` rows
 # sitting BEHIND with no repair path on either side of the fence:
@@ -60,7 +60,7 @@ set -uo pipefail
 
 CLAUDE_BIN="${HIMMEL_UPDATE_CLAUDE_BIN:-claude}"
 
-# Cross-platform user-home resolution (HIMMEL-645): on Windows Git-Bash the MSYS
+# Cross-platform user-home resolution: on Windows Git-Bash the MSYS
 # $HOME can differ from where ~/.claude actually lives, so prefer USERPROFILE.
 # Same resolution check-plugin-drift.sh's own consumers use.
 _user_home() {
@@ -89,7 +89,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 if [ ! -f "$KNOWN_MKTS" ]; then
-    # NOT "nothing to update" (CR round 4, codex-3): that is the rc-0
+    # NOT "nothing to update": that is the rc-0
     # empty-selection wording, and reusing it on an rc-2 path made a
     # could-not-look read like a successful empty run — the exact distinction
     # this script's exit codes exist to keep.
@@ -118,7 +118,7 @@ if not isinstance(mkts, dict):
     raise ValueError('known_marketplaces.json "marketplaces" is not an object')
 for name, info in sorted(mkts.items()):
     # A non-object ENTRY is malformed for the same reason a non-object
-    # top-level doc is (CR round 1, codex-4): silently skipping it would let a
+    # top-level doc is: silently skipping it would let a
     # corrupted registry report a clean run for the very rows it corrupted.
     # Raise -> rc 2, consistent with the shape checks above.
     if not isinstance(info, dict):
@@ -147,7 +147,7 @@ if [ -z "$rows" ]; then
     exit 0
 fi
 
-# CRLF strip (HIMMEL-2134). On Windows the python3 that MSYS resolves is a
+# CRLF strip. On Windows the python3 that MSYS resolves is a
 # NATIVE python whose text-mode stdout writes "\r\n" — so every name read below
 # would carry a trailing CR. That is not cosmetic: `claude plugin marketplace
 # update "obsidian-skills\r"` is a lookup for a marketplace that does not

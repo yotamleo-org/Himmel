@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # upstream-watch-cadence.sh — arm/status/disarm the daily upstream-watch scan
-# cadence (HIMMEL-2367).
+# cadence.
 #
 # WHY: a resident interactive claude session used to poll himmel's open
 # upstream PRs/issues every 20 minutes, burning tokens. Operator ruling
@@ -9,7 +9,7 @@
 # Linux/macOS; structural sibling of drift-fix-cadence.sh / qmd-cadence.sh)
 # that runs `bash scripts/upstreams/upstream-watch.sh` directly. There is NO
 # claude session here at all — never `--model`, never a payload prompt — so
-# HIMMEL-128 (headless-claude billing) does not apply even indirectly, the
+# the headless-claude billing rule does not apply even indirectly, the
 # same reasoning qmd-cadence.sh's header gives for its own deterministic
 # runner. ONE leg, unlike drift-fix-cadence's two: upstream-watch.sh has no
 # "conflicted, a human must decide" branch that would need isolating from a
@@ -45,8 +45,8 @@
 #                                 smoke-tests alike: this arm/disarm's registration
 #                                 write is otherwise unscoped and lands in the real
 #                                 ~/.himmel/observability.json regardless of every
-#                                 other UPSTREAMWATCH_* seam above (HIMMEL-2367 leak,
-#                                 caught live: a hand smoke-test without this set
+#                                 other UPSTREAMWATCH_* seam above (a hand
+#                                 smoke-test without this set
 #                                 registered HIMMEL-UpstreamWatch as an expected task
 #                                 and paged on the resulting scheduled-task-missing
 #                                 alert once disarm wasn't called to match)
@@ -66,7 +66,7 @@ CRONTAB_BIN="${UPSTREAMWATCH_CRONTAB:-crontab}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Cross-platform user-home resolution (HIMMEL-645): prefer USERPROFILE via
+# Cross-platform user-home resolution: prefer USERPROFILE via
 # cygpath on Windows Git-Bash (MSYS $HOME can differ from where ~/.claude
 # actually lives).
 resolve_user_home() {
@@ -82,8 +82,7 @@ resolve_user_home() {
 BAT_DIR="${UPSTREAMWATCH_BAT_DIR:-$(resolve_user_home)/.claude/upstream-watch-cadence}"
 
 # Resolve the himmel root to the PRIMARY checkout, never this script's own
-# location (mirrors drift-fix-cadence.sh's resolve_himmel_root, HIMMEL-892
-# codex-adv-1): arming from a feature worktree would embed that worktree's
+# location (mirrors drift-fix-cadence.sh's resolve_himmel_root): arming from a feature worktree would embed that worktree's
 # absolute path in the persistent runner, and the post-merge prune then
 # deletes it — every later fire would cd into nothing.
 resolve_himmel_root() {
@@ -122,7 +121,7 @@ else
     [ -n "$ANCHOR_ROOT" ] || ANCHOR_ROOT="$HIMMEL_ROOT"
 fi
 
-# Runner-format version stamp (HIMMEL-588) — shared with the sibling cadences.
+# Runner-format version stamp — shared with the sibling cadences.
 # shellcheck source=../lib/cadence-format.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/cadence-format.sh"
@@ -138,7 +137,7 @@ fi
 
 # Resolve HANDOVER_DIR for the generated cron wrapper the same way the rest
 # of himmel does (live env / anchor .env / Mode A default) — and refuse the
-# Mode A inline stub outright rather than silently baking it in (HIMMEL-2619):
+# Mode A inline stub outright rather than silently baking it in:
 # a wrapper armed without an external root would fire daily into
 # <repo>/handovers, invisible to the real handover system.
 resolve_watch_handover_dir() {
@@ -296,7 +295,7 @@ emit_bat() {
     printf 'rem upstream-watch-cadence runner (HIMMEL-2367)\r\n'
     printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     cadence_bat_editor_set
-    # Prepend Git's usr\bin + bin (HIMMEL-1672): the payload is a bash script
+    # Prepend Git's usr\bin + bin: the payload is a bash script
     # that itself shells out to jq/gh/git/node, and a NON-LOGIN bash.exe (the
     # interpreter this runner bakes in) does not source the MSYS profile that
     # would otherwise put GNU coreutils ahead of System32.
@@ -576,7 +575,7 @@ cmd_disarm() {
                 # was deleted outside this script, or arm registered then a
                 # later step failed before this disarm ran) — unregister
                 # unconditionally so disarm never leaves a stale expectation
-                # behind (HIMMEL-2367 leak: caught live via a paging alert).
+                # behind (which would page as a missing scheduled task).
                 observability_unregister_cadence upstream-watch "$TASK_NAME"
             fi
             echo "upstream-watch-cadence: nothing armed — disarm is a no-op"
@@ -614,13 +613,12 @@ cron_escape() {
 }
 
 # posix_sh_quote <value> — single-quote-wrap (POSIX `'\''` escaping) for the
-# generated runner's own `#!/bin/sh` (HIMMEL-3619): `printf '%q'` is a
+# generated runner's own `#!/bin/sh`: `printf '%q'` is a
 # bash-only escaping that can emit `$'...'` ANSI-C quoting, which a stricter
 # /bin/sh does not reliably parse the same way bash does. Every value baked
 # into the runner is externally overridable (HANDOVER_DIR, HIMMEL_ROOT via
 # UPSTREAMWATCH_HIMMEL_ROOT, the BAT_DIR log path via UPSTREAMWATCH_BAT_DIR),
-# so this is the one quoting the generated `#!/bin/sh` runner ever uses
-# (codex CR round 3).
+# so this is the one quoting the generated `#!/bin/sh` runner ever uses.
 posix_sh_quote() {
     local s
     # trailing sentinel survives $(...)'s trailing-newline stripping so a
@@ -678,7 +676,7 @@ emit_runner() {
     printf '#!/bin/sh\n'
     printf '# upstream-watch-cadence runner — generated by upstream-watch-cadence.sh arm (HIMMEL-2367)\n'
     printf '# %s %s\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
-    # HANDOVER_DIR (HIMMEL-2619): resolved at arm time and baked in here —
+    # HANDOVER_DIR: resolved at arm time and baked in here —
     # a cron-fired shell has no interactive/login env, so without this the
     # payload's own handover_root() would silently fall back to the inline
     # <repo>/handovers stub.
@@ -689,7 +687,7 @@ emit_runner() {
     printf '{\n'
     printf '    echo "[fired $(date "+%%Y-%%m-%%d %%H:%%M:%%S")]"\n'
     printf '    cd %s || exit 1\n' "$q_himmel"
-    # Shared emitter (HIMMEL-4286, runner format v22): flow-run row + cadence-
+    # Shared emitter: flow-run row + cadence-
     # alert fail/clear. rc 10 is a handled delta, so it counts as success.
     local q_flow_lib q_alert_lib
     q_flow_lib=$(posix_sh_quote "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")
@@ -740,7 +738,7 @@ cron_disarm() {
             # No live entry, but the registry may still expect one (e.g. the
             # crontab line was removed outside this script) — unregister
             # unconditionally so disarm never leaves a stale expectation
-            # behind (HIMMEL-2367 leak: caught live via a paging alert).
+            # behind (which would page as a missing scheduled task).
             observability_unregister_cadence upstream-watch "$TASK_NAME"
         fi
         echo "upstream-watch-cadence: nothing armed — disarm is a no-op"
@@ -829,8 +827,8 @@ cron_arm() {
     # publish never reaches the scheduler at all, and a failed crontab
     # install afterward leaves a fully-published runner an operator can
     # inspect or retry against, rather than a live schedule pointing at a
-    # runner that was never actually updated (HIMMEL-2367 codex-2 — the
-    # opposite order used to install the crontab FIRST with an unchecked mv
+    # runner that was never actually updated (the
+    # opposite order would install the crontab FIRST with an unchecked mv
     # after it, so a failed mv left the crontab live against a missing or
     # stale runner while still reporting success).
     local tmp_runner
@@ -896,7 +894,7 @@ upstream-watch-cadence ARMED (HIMMEL-2367)
 EOF
 }
 
-# HIMMEL-3068: dispatch renamed to the cmd_arm/cmd_status/cmd_disarm naming
+# Dispatch uses the cmd_arm/cmd_status/cmd_disarm naming
 # every OTHER registry-eligible cadence script already uses (pipeline-cadence.sh,
 # qmd-cadence.sh, graphmap-cadence.sh) — the windows-branch function IS the
 # literal name; cadence-registry.json's staleness lint (test-wizard-cadence-

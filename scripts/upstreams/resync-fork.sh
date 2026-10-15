@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # scripts/upstreams/resync-fork.sh — mechanically audit (and, on request,
 # push) a rebase of a TRUE FORK's delta onto a newer upstream base
-# (HIMMEL-1323 follow-up).
 #
 # WHY a third script instead of extending the other two: apply-drift-bump.sh
 # moves a version PIN (a text literal); apply-tool-upgrade.sh upgrades an
 # INSTALLED BINARY. Neither fits a carried fork. himmel has historically
-# carried SHA-pinned forks (qmd, de-forked HIMMEL-3045 once its delta collapsed
-# to empty against upstream, re-forked HIMMEL-3956 for launcher signal
-# forwarding) and installable-tag-pinned forks (claude-obsidian, retired at
-# v2.2.0 — HIMMEL-2925); qmd is the one entry with a `fork` block today (every
+# carried SHA-pinned forks (qmd, de-forked once its delta collapsed to empty
+# against upstream, re-forked for launcher signal forwarding) and
+# installable-tag-pinned forks (claude-obsidian, since retired); qmd is the
+# one entry with a `fork` block today (every
 # other eligible entry reports SKIP, rc=3), and each carried its
 # own delta on top of a recorded upstream base (`synced_base` in
 # scripts/upstreams.json). When upstream tags past that base, bumping
@@ -22,9 +21,9 @@
 #
 # Some forks are deliberately NOT strictly additive. qmd's carried delta, back
 # when it had one, was a small reviewed set of real bugfixes against existing
-# upstream files (HIMMEL-2136), so its audit reported NON-ADDITIVE (rc=4) —
-# until HIMMEL-2882 found upstream had merged both fixes under its own SHAs,
-# collapsing the delta to empty, and HIMMEL-3045 de-forked it. That NON-
+# upstream files, so its audit reported NON-ADDITIVE (rc=4) — until upstream
+# merged both fixes under its own SHAs, collapsing the delta to empty and
+# letting qmd be de-forked. That NON-
 # ADDITIVE case is still a useful nightly result for any future fork: the
 # cadence stops after this report, never pushes, and surfaces rebase
 # feasibility + touched paths for operator judgment.

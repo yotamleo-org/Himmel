@@ -106,8 +106,7 @@ def discover(root):
         elif r.startswith(".github/workflows/") and name.endswith((".yml", ".yaml")):
             text = open(p).read()
             # `uses: o/r@ref` is deliberately NOT scanned: Dependabot's
-            # github-actions ecosystem owns action bumps (one owner per pin,
-            # HIMMEL-4258).
+            # github-actions ecosystem owns action bumps (one owner per pin).
             for pm in re.finditer(r"pip install\b[^\n]*", text):
                 for m in re.finditer(r"(?<![\w.=-])([A-Za-z0-9_.-]+)==(\d+(?:\.\d+)*)(?![\w.+!-])", pm.group(0)):
                     add("pypi", m.group(1), m.group(2), r)
@@ -173,7 +172,7 @@ def compare(current, latest):
 def main():
     root = sys.argv[1]
     holds_path = sys.argv[2] if len(sys.argv) > 2 else ""
-    # How a "release": "vm-proof" hold is lifted, as vm.mode resolves it (HIMMEL-4583).
+    # How a "release": "vm-proof" hold is lifted, as vm.mode resolves it.
     vm_release = sys.argv[3] if len(sys.argv) > 3 else "vm-proof"
     holds = []
     if holds_path and os.path.exists(holds_path):

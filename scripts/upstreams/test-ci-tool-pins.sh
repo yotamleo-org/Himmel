@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/upstreams/test-ci-tool-pins.sh — every CI bun install is pinned (HIMMEL-4258).
+# scripts/upstreams/test-ci-tool-pins.sh — every CI bun install is pinned.
 #
 # An unpinned `oven-sh/setup-bun` lists bun's tags through api.github.com and
 # dies on a 503 before any test runs; an exact version (or the repo-root

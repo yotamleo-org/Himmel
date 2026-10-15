@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/upstreams/test-upstream-watch.sh — hermetic suite for the daily
-# upstream-watch delta scan (HIMMEL-2367, extended HIMMEL-2426: report
-# bucketing and the null-row guard).
+# upstream-watch delta scan (including report bucketing and the null-row
+# guard).
 #
 # Never touches the real gh/state/handover/registry: gh is replaced by a fake
 # driven by a $STATE/world.json fixture (UPSTREAM_WATCH_GH), state lands in a
@@ -45,7 +45,7 @@ assert_not_has() {
 
 # assert_no_cr_in_file <file> <label> -- inspects the FILE's actual bytes
 # (not a command-substitution-mangled variable) for a literal CR. Pins the
-# HIMMEL-2407 root cause directly: `tr -d '\r'` round-trips identically iff
+# CRLF root cause directly: `tr -d '\r'` round-trips identically iff
 # no \r byte was present.
 assert_no_cr_in_file() {
   local file="$1" label="$2"
@@ -108,7 +108,7 @@ fi
 # (real gh rejects a second positional arg) — mirror that shape here so a
 # regression back to the old two-positional-arg form fails this fake
 # immediately instead of silently "working" against a fixture that never
-# modeled the real CLI contract (HIMMEL-2367 codex-1/codex-2).
+# modeled the real CLI contract.
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   num="$3"; nwo=""; jsonfields=""; prev=""
   for a in "$@"; do
@@ -155,7 +155,7 @@ FAKE
 # case exercises the vanished path rather than the positive-control refusal.
 # Also the ONLY fixture with two authored items sorted alphabetically as
 # "acme/other#7" then "acme/widget#12" — that ordering is what reproduced the
-# HIMMEL-2407 CRLF defect (see assert_no_cr_in_file below): native Windows jq
+# CRLF defect (see assert_no_cr_in_file below): native Windows jq
 # writes CRLF per LINE of a multi-line `jq -r` array dump, and bash's `$(...)`
 # strips only the FINAL trailing newline, so every non-last line keeps its \r.
 base_world() {
@@ -204,7 +204,7 @@ run_watch() {
 
 # report_path <state> -- the report the SCRIPT actually just wrote, in the
 # location the fixture registry (user "testuser", bucket "himmel") predicts.
-# HIMMEL-2992: this used to compute today's date itself at ASSERT time, which
+# This must not compute today's date itself at ASSERT time, which
 # can disagree with the RUN-time date `upstream-watch.sh` named the file
 # with (a midnight boundary crossed mid-run, or a stale report left behind by
 # an earlier call in the same case) -- so instead take the newest matching
@@ -231,7 +231,7 @@ new_scratch() {
 # `-u +%Y-%m-%d` form upstream-watch.sh and report_path() use, returns a
 # DIFFERENT day on the first call vs every call after (a midnight boundary
 # crossed mid-run); every other invocation shape passes through to the real
-# date (HIMMEL-2992 regression: pins the assert-time/run-time date seam).
+# date (pins the assert-time/run-time date seam).
 make_date_stub() {
   local dir="$1" real_date
   real_date=$(command -v date) || return 1
@@ -260,7 +260,7 @@ if [ -f "$report" ]; then pass "first run: report file written"; else fail "firs
 found_report=$(find "$state/handover" -name 'upstream-watch-*.md' 2>/dev/null | head -1)
 assert_has "$found_report" "/testuser/himmel/specs/reports/" "first run: report lands under <user>/<repo-bucket>/specs/reports (resolved via registry)"
 assert_has "$(cat "$report" 2>/dev/null)" "## New" "first run: report has New section"
-# Positive control (HIMMEL-2407 regression): the real title/url must render,
+# Positive control: the real title/url must render,
 # not "(null)" — see base_world's comment on why two sorted authored items
 # are required to expose the CRLF defect this pins.
 assert_has "$(cat "$report" 2>/dev/null)" "[acme/widget#12](https://github.com/acme/widget/pull/12) — fix thing" "first run: New row carries the real url+title (positive control)"
@@ -305,7 +305,7 @@ state=$(new_scratch)
 base_world > "$state/world.json"
 seed_baseline "$state"
 base_world | jq '.prs = [] | .dispositions["acme/widget#12"] = {state:"MERGED", mergedAt:"2026-08-05T00:00:00Z", closedAt:"2026-08-05T00:00:00Z"}' > "$state/world.json"
-# HIMMEL-2992 regression: force the script's date (REPORT_FILE naming, then
+# Regression: force the script's date (REPORT_FILE naming, then
 # the report header) to disagree with an assert-time date, reproducing the
 # midnight-boundary flake from main CI run 34726530679 where the assert read
 # a file the script never wrote.

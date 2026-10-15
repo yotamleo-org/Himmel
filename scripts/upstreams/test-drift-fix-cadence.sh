@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/upstreams/test-drift-fix-cadence.sh — hermetic suite for the nightly
-# upstream-drift repair cadence (HIMMEL-1323): two legs, HIMMEL-DriftFix
+# upstream-drift repair cadence: two legs, HIMMEL-DriftFix
 # (/drift-fix) and HIMMEL-ForkResync (/fork-resync).
 #
 # Never touches the real scheduler: schtasks/crontab are replaced by fakes via
@@ -18,7 +18,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -274,7 +274,7 @@ if [ -f "$state/tab" ]; then
   assert_has "$tab" "# HIMMEL-DriftFix" "drift entry is marker-tagged"
   assert_has "$tab" "# HIMMEL-ForkResync" "resync entry is marker-tagged"
   pass "crontab installed with both entries"
-  # HIMMEL-3332 S8: both legs are recorded as `job register` rows.
+  # Both legs are recorded as `job register` rows.
   jobs=$(HIMMEL_PROVENANCE_DIR="$state/provenance" bash -c '. "$1/lib/provenance.sh" && . "$1/lib/provenance-read.sh" && prov_read_load >/dev/null && prov_read_units --kind job | jq -r ".unit + \" ours=\" + (.ours|tostring) + \" scheduler=\" + .fields.scheduler" | LC_ALL=C sort' _ "$SCRIPT_DIR/..")
   assert_has "$jobs" "HIMMEL-DriftFix ours=true scheduler=cron" "drift leg recorded as a job row"
   assert_has "$jobs" "HIMMEL-ForkResync ours=true scheduler=cron" "resync leg recorded as a job row"
@@ -373,7 +373,7 @@ echo "[test-drift-fix-cadence] POSIX: mid-loop runner-write failure restores ALL
 # already been overwritten by the same loop. Under set -e (line 59) this used
 # to exit WITHOUT restoring leg 1: a pre-existing armed runner silently
 # mutated while the crontab still pointed at it (the same class the win_arm
-# emit_bat fix closed on Windows, round 2).
+# emit_bat guards against on Windows).
 before_drift=$(cat "$state/bat/drift-fix.sh")
 before_resync=$(cat "$state/bat/fork-resync.sh")
 before_tab=$(cat "$state/tab")
@@ -484,7 +484,7 @@ if command -v cygpath >/dev/null 2>&1; then
   assert_has "$out" "himmel-cadence-runner-format:" "runner carries the format stamp"
   assert_has "$out" "/drift-fix" "drift runner fires the /drift-fix runbook"
   assert_has "$out" "/fork-resync" "resync runner fires the /fork-resync runbook"
-  # HIMMEL-1753: Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
+  # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
   # The hidden-powershell shape still allocated consoles; wscript allocates zero.
   assert_has "$out" "<Command>wscript.exe</Command>" "task XML Exec Command is wscript.exe, not the bare .bat"
   assert_has "$out" "//B" "task XML Exec Arguments carries //B batch mode"
@@ -549,7 +549,7 @@ if command -v cygpath >/dev/null 2>&1; then
   out=$(win_env bash "$CADENCE" arm --force 2>&1); rc=$?
   if [ "$rc" -eq 0 ]; then pass "--force replaces"; else fail "--force rc=$rc: $out"; fi
   # /create /f overwrites in place — a pre-emptive /delete would leave no
-  # cadence at all if a later prep step failed (HIMMEL-892 codex-adv-2).
+  # cadence at all if a later prep step failed.
   if grep -q '/delete' "$state/calls"; then fail "--force pre-deleted a task instead of /create /f"; else pass "--force replaced via /create /f, never a pre-emptive /delete"; fi
 
   out=$(win_env bash "$CADENCE" status 2>&1)
@@ -591,7 +591,7 @@ if command -v cygpath >/dev/null 2>&1; then
   else
     fail "post-arm verify failure left a leg armed"
   fi
-  # HIMMEL-1753 r2 (glm-2): the drift leg's shim WAS published before the
+  # The drift leg's shim WAS published before the
   # resync leg failed the verify — rollback must remove it too, not orphan it.
   if [ ! -f "$state/bat/drift-fix.vbs" ] && [ ! -f "$state/bat/fork-resync.vbs" ]; then
     pass "failed arm leaves no orphan .vbs shim (rollback removed both)"
@@ -624,7 +624,7 @@ FAKE
   else
     fail "mid-loop cygpath failure left a leg armed (half-armed cadence)"
   fi
-  # HIMMEL-1753 r2 (glm-2): leg 1 published its shim before leg 2's cygpath
+  # Leg 1 published its shim before leg 2's cygpath
   # failed — rollback removes it instead of orphaning it.
   if [ ! -f "$state/bat/drift-fix.vbs" ]; then
     pass "mid-loop cygpath rollback removed the published shim too"
@@ -636,7 +636,7 @@ FAKE
   echo "[test-drift-fix-cadence] Windows: publication onto a non-regular final path rolls back BOTH legs (CR + HIMMEL-1753 r2)"
   root=$(make_root); state=$(mktemp -d); fake_st=$(make_fake_schtasks "$state"); fake_claude=$(make_stub_claude "$state" .exe)
   # A directory sitting where the drift leg's .bat should be a file. Staging
-  # (HIMMEL-1753 r2) means the emitter's redirect no longer fails — the staged
+  # means the emitter's redirect no longer fails — the staged
   # temp path is free — so this sabotage must be caught by the pre-promotion
   # guard: `mv` onto a directory would "succeed" by moving the staged file
   # INSIDE it, arming a task at a path that is not a file. The refusal must
