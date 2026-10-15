@@ -3512,3 +3512,15 @@ test("a corrupt or missing high-water marker fails open to the inbox check (HIMM
   expect(readFileSync(inbox, "utf8").trim().split("\n")).toHaveLength(1);
   expect(readFileSync(join(r, "handled-update.hw"), "utf8").trim()).toBe("56");
 });
+
+test("a failed marker write drops the stale marker so the replay still hits the inbox check (HIMMEL-5795)", async () => {
+  const r = ackRoot();
+  const run = async (_s: string) => {};
+  await handleInbound(r, { from: 1, chat_id: 7, text: "a", update_id: 20 }, run);
+  mkdirSync(join(r, "handled-update.hw.tmp"));    // the next atomic write cannot create its temp file
+  const msg = { from: 1, chat_id: 7, text: "b", update_id: 21 };
+  await handleInbound(r, msg, run);
+  await handleInbound(r, msg, run);               // replay: marker still at 20 would let it through
+  const [session] = readdirSync(join(r, "sessions"));
+  expect(readFileSync(join(r, "sessions", session, "inbox.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
+});

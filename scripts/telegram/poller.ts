@@ -376,7 +376,7 @@ async function appendInboxOnce(inboxFile: string, hwFile: string, line: string, 
   if (typeof id === "number" && hw !== undefined && id <= hw) return false;
   if (hw === undefined && await inboxHasUpdate(inboxFile, id)) return false;
   await appendLine(inboxFile, JSON.stringify({ text: line, from: msg.from, ts: msg.ts ?? 0, ...(typeof id === "number" ? { update_id: id } : {}), ...(msg.image_path ? { image_path: msg.image_path } : {}), ...(msg.document_path ? { document_path: msg.document_path, document_name: msg.document_name } : {}) }));
-  if (typeof id === "number") { try { await atomicWrite(hwFile, String(id)); } catch (e) { console.error("[poller] could not persist handled-update high-water mark: " + e); } }
+  if (typeof id === "number") { try { await atomicWrite(hwFile, String(id)); } catch (e) { console.error("[poller] could not persist handled-update high-water mark: " + e); await unlink(hwFile).catch(() => {}); } }
   return true;
 }
 export type RunFn = (session: string, modelOverride?: ModelOverride) => Promise<void>;
