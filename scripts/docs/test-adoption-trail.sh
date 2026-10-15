@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Suite for docs/adoption-trail.html and the Pages docs that point at it
-# (HIMMEL-3225).
+# Suite for docs/adoption-trail.html and the Pages docs that point at it.
 #
 # The trail is a static page served by GitHub Pages, so nothing else ever loads
 # it in CI: a dead href, a detail chip whose panel text was deleted, or a claim
@@ -141,7 +140,7 @@ else
   bad "the page must state the wizard question counts (seven always, up to twenty-two in total, up to fifteen conditional)"
 fi
 
-# adopt.sh's install_precommit_hooks runs for every profile (HIMMEL-2441), so the
+# adopt.sh's install_precommit_hooks runs for every profile, so the
 # git gates are no longer roadmap; a "Gates for every profile" roadmap chip or
 # panel would contradict the page's own "wired by the install" sentence.
 gates_roadmap='rm-gates|Gates for every profile|roadmap gates item|arrive with the developer setup'
@@ -151,7 +150,7 @@ else
   ok "the git gates are not listed as roadmap work"
 fi
 
-# HIMMEL-3329: an uninstall leaves a few settings.json keys behind on purpose (the
+# An uninstall leaves a few settings.json keys behind on purpose (the
 # claude CLI's empty enabledPlugins / extraKnownMarketplaces objects, an empty hooks
 # object, and the HUD gate key when no install record says himmel wrote it). The
 # "Removed" list says only himmel's own wiring goes, so the "Kept on purpose" list
@@ -167,7 +166,7 @@ else
   bad "the Kept-on-purpose list must name the settings.json residue (HIMMEL-3329)" "missing:$kept_missing"
 fi
 
-# HIMMEL-3332 slice 3: qmd is ledger-decided (kept by default; --purge-state
+# qmd is ledger-decided (kept by default; --purge-state
 # removes only units this install's own record shows it created), and the
 # plugin-cache stub patch is a separate, permanent keep that is never
 # reverted even under --purge-state. Both must be named where a reader
@@ -190,7 +189,7 @@ else
   bad "the qmd detail panel must state the --purge-state keep/remove rule"
 fi
 
-# --- 4. FRESH-USER (HIMMEL-2476) -----------------------------------------------
+# --- 4. FRESH-USER ----------------------------------------------------
 
 # The three first questions (what is this / what will it do to my machine /
 # how do I undo it) must be answered before the reader meets the first

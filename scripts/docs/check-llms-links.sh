@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-llms-links.sh — the executable half of llms.txt's contract (HIMMEL-2832).
+# check-llms-links.sh — the executable half of llms.txt's contract.
 #
 # llms.txt is the machine-readable router an LLM reads when it is pointed at
 # himmel. It ships to the PUBLIC repo, so a relative link that resolves only in
@@ -76,7 +76,7 @@ fi
 # ------------------------------------------------------------- 2. forbidden
 # One row per class: <label>|<extended regex>. The private repo name is not
 # spelled here — this file ships publicly too; it is derived from the public
-# remote instead, so the rule stays true after the HIMMEL-2705 cutover.
+# remote instead, so the rule stays true after the cutover.
 forbidden_hit() {
   label=$1
   pattern=$2

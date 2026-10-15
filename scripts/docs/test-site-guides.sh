@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite for the designed guide pages under docs/guide/ (HIMMEL-5372).
+# Suite for the designed guide pages under docs/guide/.
 #
 # The guides are static pages GitHub Pages serves as-is, so nothing else loads
 # them in CI. They explain what each setting changes, which only helps while

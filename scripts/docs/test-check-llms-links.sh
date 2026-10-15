@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# Suite for scripts/docs/check-llms-links.sh (HIMMEL-2832).
+# Suite for scripts/docs/check-llms-links.sh.
 #
 # Every case builds a throwaway git repo and points the script at it through
 # CLAUDE_PROJECT_DIR, which is how repo_root() resolves ROOT. That makes each
@@ -28,7 +28,7 @@ SCRIPT="$HERE/check-llms-links.sh"
 . "$HERE/../lib/fixture-tempdir.sh"
 
 # Every fixture dir is recorded in FIXTURE_LIST (a file, so a record made inside a
-# subshell survives) and removed by the one EXIT trap (HIMMEL-4434).
+# subshell survives) and removed by the one EXIT trap.
 FIXTURE_LIST=$(mktemp "${TMPDIR:-/tmp}/himmel-fixture-list.XXXXXX") || exit 1
 _d=''
 trap 'while IFS= read -r _d; do [ -n "$_d" ] && rm -rf "$_d"; done <"$FIXTURE_LIST"; rm -f "$FIXTURE_LIST"' EXIT
@@ -308,7 +308,7 @@ run_check llms.txt
 expect 1 "RED link: tracked, but dropped by DETECTOR_DROP"
 expect_says "targets a DETECTOR_DROP path" "RED link: names the DETECTOR_DROP drop"
 
-# HIMMEL-2847: a link to the bare carved-out DIRECTORY (no trailing slash) must
+# A link to the bare carved-out DIRECTORY (no trailing slash) must
 # be rejected too. path_in_token_list anchored the trailing-slash token to the
 # directory's CONTENTS only, so `docs/specs` (no slash) skipped both carve-out
 # checks and then passed `git ls-files` through its tracked descendant.
@@ -385,7 +385,7 @@ expect_says "forbidden (handover state path)" "reporting: first violation printe
 expect_says "is not tracked at HEAD" "reporting: second violation printed too"
 
 # ------------------------------------------------- real tree: UI surfaces
-# HIMMEL-5251: llms.txt is what an adopter's agent reads, so every user-facing UI
+# llms.txt is what an adopter's agent reads, so every user-facing UI
 # surface is named there and described in docs/ui.md. Grep-level on purpose: a
 # page id in config-ui's nav.js with no docs/ui.md mention is the drift.
 REAL_ROOT=$(cd "$HERE/../.." && pwd)

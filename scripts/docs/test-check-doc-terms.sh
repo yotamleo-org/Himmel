@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite for scripts/docs/check-doc-terms.sh (HIMMEL-2832).
+# Suite for scripts/docs/check-doc-terms.sh.
 #
 # Each case builds a throwaway git repo and points the script at it through
 # CLAUDE_PROJECT_DIR, which is how repo_root() resolves ROOT. Both invariants
@@ -27,7 +27,7 @@ SCRIPT="$HERE/check-doc-terms.sh"
 . "$HERE/../lib/fixture-tempdir.sh"
 
 # Every fixture dir is recorded in FIXTURE_LIST (a file, so a record made inside a
-# subshell survives) and removed by the one EXIT trap (HIMMEL-4434).
+# subshell survives) and removed by the one EXIT trap.
 FIXTURE_LIST=$(mktemp "${TMPDIR:-/tmp}/himmel-fixture-list.XXXXXX") || exit 1
 _d=''
 trap 'while IFS= read -r _d; do [ -n "$_d" ] && rm -rf "$_d"; done <"$FIXTURE_LIST"; rm -f "$FIXTURE_LIST"' EXIT
@@ -74,7 +74,7 @@ run_check() {
 
 # run_check_from <dir> <relative-doc>... — like run_check, but with the
 # script's own cwd pinned to <dir> rather than wherever the suite runs from.
-# HIMMEL-2847's glob-expansion case needs this: the bug only shows up when the
+# The glob-expansion case needs this: the bug only shows up when the
 # invoking cwd happens to contain files a glob-shaped code span would match.
 run_check_from() {
   _dir=$1
@@ -303,7 +303,7 @@ DOC
 run_check doc.md
 expect 0 "reference: a trailing slash is stripped before the existence test"
 
-# HIMMEL-2847: a code span can spell an assignment (`KNOB=value`), not a bare
+# A code span can spell an assignment (`KNOB=value`), not a bare
 # identifier. The existence test must ask about the KNOB, never about the
 # literal "KNOB=value" string, which appears nowhere by construction.
 setup_repo || exit 1
@@ -318,7 +318,7 @@ DOC
 run_check doc.md
 expect 0 "HIMMEL-2847: KNOB=value is split at '=' before the existence test"
 
-# HIMMEL-2847 (CodeRabbit #585 item 5): `for tok in $tokens` is an unquoted
+# `for tok in $tokens` is an unquoted
 # split — a code span holding a glob must be judged as the LITERAL string
 # regardless of whether the invoking cwd happens to contain files the glob
 # would match. Before the fix, running from $R (which does) lets the glob

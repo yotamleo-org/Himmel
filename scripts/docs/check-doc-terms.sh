@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-doc-terms.sh — the two prose invariants of the v1 adopter docs
-# (HIMMEL-2832: llms.txt, docs/setup/install.md, docs/setup/migrating.md).
+# (llms.txt, docs/setup/install.md, docs/setup/migrating.md).
 #
 #   1. QUALIFIED "PROFILE". "Profile" names three unrelated things in himmel —
 #      the INSTALL profile (which manifest items are desired), the SAVED
