@@ -27,7 +27,9 @@
 #          basename (settings, runner, CI job, doctor check, caller, a sourcing
 #          script, or a runbook/cadence doc: operator-run tools are wired by the doc
 #          that says when to run them; a suite or handovers/ file never counts).
-#          A referencer that is itself an unwired added file does not count.
+#          A referencer that is itself an unwired added file does not count, nor does
+#          a doc the same PR adds. A generic TS/JS stem (index, utils) is matched by
+#          directory/stem in an extensionless import, not the bare stem.
 #          A test helper (under a tests?/ or *-cases/ dir, or named testlib-*) is also
 #          wired by a suite that names it; an added suite still unwired does not count.
 # Standalone by design (no reference needed): fixtures/testdata paths, ALLOW_PATH_RE.
@@ -56,13 +58,19 @@ exists() { git cat-file -e "$ref:$1" 2>/dev/null; }
 # whole-basename match: not-foo.sh must not reference foo.sh
 bn_re() { printf '(^|[^A-Za-z0-9._-])%s([^A-Za-z0-9._-]|$)' "${1//./\\.}"; }
 
+# is_pending <path> — the path is an added file still judged unwired (literal match)
+is_pending() { P="$1" awk -F'|' '$2 == ENVIRON["P"] {f=1} END {exit !f}' "$tmp/pending"; }
+
 # pkg_runs <pkg dir, "" = root> <file> — the package.json test script runs a known
 # runner whose discovery reaches <file> (path args narrow it; bare = whole package)
 pkg_runs() {
-  local pd="$1" f="$2" ts rel tok prev="" pre have=0 hit=0 pj="package.json"
+  local pd="$1" f="$2" ts rel tok prev="" pre reach have=0 hit=0 pj="package.json"
   [ -z "$pd" ] || pj="$pd/package.json"
   ts=$(show "$pj" | jq -r '.scripts.test // empty' 2>/dev/null)
-  case "$ts" in *"bun test"*|*"node --test"*|*vitest*|*jest*) ;; *) return 1 ;; esac
+  # a runner counts only as the start of a command (echo bun test runs nothing)
+  printf '%s\n' "$ts" | sed -E 's/&&|;|\|\|?/\n/g' \
+    | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*((npx|bunx|pnpm exec|yarn)[[:space:]]+)?//' \
+    | grep -qE '^(bun test|node --test|vitest|jest)([[:space:]]|$)' || return 1
   case "$ts" in  # node --test globs only reach JS unless the script loads a TS transform
     *"bun test"*|*vitest*|*jest*) ;;
     *) case "${f##*/}" in *.js|*.mjs|*.cjs) ;; *) case "$ts" in *strip-types*|*tsx*|*--import*|*--loader*) ;; *) return 1 ;; esac ;; esac ;;
@@ -83,8 +91,15 @@ pkg_runs() {
       *) pre="${tok%/}" ;;
     esac
     [ "$pre" != . ] || pre=""
-    case "$rel" in "$pre"|"$pre"/*) hit=1 ;; esac
-    [ -n "$pre" ] || hit=1
+    case "$rel" in "$pre"|"$pre"/*) reach=1 ;; *) reach=0 ;; esac
+    [ -n "$pre" ] || reach=1
+    case "$tok" in  # a glob must also match the file itself (braces: directory narrowing only)
+      *\{*) ;;
+      *[*?[]*)
+        # shellcheck disable=SC2254  # the glob is the point: the arg's wildcards match the file
+        case "$rel" in $tok|${tok//\*\*\//}|$tok/*) ;; *) reach=0 ;; esac ;;
+    esac
+    [ "$reach" -eq 0 ] || hit=1
   done
   set +f
   [ "$have" -eq 0 ] || [ "$hit" -eq 1 ]
@@ -122,7 +137,7 @@ runner="$tmp/run-shell-tests.sh"
 show scripts/ci/run-shell-tests.sh > "$runner"
 
 judge() {  # <path> <kind> -> prints a reason when unwired
-  local p="$1" k="$2" b="${1##*/}" d plug
+  local p="$1" k="$2" b="${1##*/}" d plug imp
   case "$k" in
     hook)
       printf '%s\n' "$wiring_text" | grep -qE -- "$(bn_re "$b")" && return 0
@@ -141,13 +156,13 @@ judge() {  # <path> <kind> -> prints a reason when unwired
           git grep -lIE -e "$(bn_re "$b")" "$ref" -- . ':(exclude)handovers' 2>/dev/null | sed "s#^$ref:##" | grep -vxF "$p" > "$tmp/refs" || true
           while IFS= read -r r; do
             [ -n "$r" ] || continue
-            grep -q "|$r\$" "$tmp/pending" || return 0
+            is_pending "$r" || return 0
           done < "$tmp/refs"
           # a CI job that runs the test command on a directory above it
           d="${p%/*}"
           while :; do
             dre=$(printf '%s' "$d" | sed 's/[.+]/\\&/g')
-            git grep -qIE -e "(bun test|node --test|vitest|jest)[^#]*[ '\"]${dre}(/?|/[^ /'\"]*\\*[^ '\"]*)( |\$|'|\")" -e "cd ${dre}/?[ ;&'\"][^#]*(bun|node|vitest|jest)" "$ref" -- .github/workflows 2>/dev/null && return 0
+            git grep -qIE -e "(bun test|node --test|vitest|jest)[^#]*[ '\"]${dre}(/?|/[^ /'\"]*\\*[^ '\"]*)( |\$|'|\")" -e "cd ${dre}/?[ ;&'\"][^#]*(bun test|node --test|vitest|jest)" "$ref" -- .github/workflows 2>/dev/null && return 0
             [ "$d" = "${d%/*}" ] && break
             d="${d%/*}"
           done
@@ -170,8 +185,8 @@ judge() {  # <path> <kind> -> prints a reason when unwired
         case "$(kind_of "$r")" in
           hook) printf '%s\n' "$wiring_text" | grep -qE -- "$(bn_re "$rb")" && return 0
                 printf '%s\n' "$hook_allow" | grep -qxF -- "$rb" && return 0 ;;
-          suite) printf '%s\n' "$p" | grep -qE "$TEST_HELPER_RE" && { grep -q "|$r\$" "$tmp/pending" || return 0; } ;;
-          *) grep -q "|$r\$" "$tmp/pending" || return 0 ;;
+          suite) printf '%s\n' "$p" | grep -qE "$TEST_HELPER_RE" && { is_pending "$r" || return 0; } ;;
+          *) is_pending "$r" || return 0 ;;
         esac
       done < "$tmp/refs"
       echo "no wired hook (or live hook library) in scripts/hooks names it" ;;
@@ -189,7 +204,13 @@ judge() {  # <path> <kind> -> prints a reason when unwired
     script)
       pat="$(bn_re "$b")"
       case "$b" in  # TS/JS import without the extension: from './sector.js', require('./sector')
-        *.ts|*.tsx|*.js|*.mjs) pat="$pat|/${b%.*}(\\.[jt]sx?|\\.mjs)?['\"]" ;;
+        *.ts|*.tsx|*.js|*.mjs)
+          # a generic stem (index, utils) also needs its directory: any './index' would wire it
+          case "${b%.*}" in
+            index|utils|util|helpers|types|main|config|constants|common) imp="${p%/*}"; imp="${imp##*/}/${b%.*}" ;;
+            *) imp="${b%.*}" ;;
+          esac
+          pat="$pat|/${imp}(\\.[jt]sx?|\\.mjs)?['\"]" ;;
       esac
       if printf '%s\n' "$p" | grep -qE "$TEST_HELPER_RE"; then
         # a test helper is reached by the suite that uses it
@@ -200,7 +221,9 @@ judge() {  # <path> <kind> -> prints a reason when unwired
       # an added referencer still unwired itself does not count
       while IFS= read -r r; do
         [ -n "$r" ] || continue
-        grep -q "|$r\$" "$tmp/pending" || return 0
+        # a doc the same PR adds only describes the file; it is not independent wiring
+        case "$r" in *.md|*.txt|*.rst|*.adoc) grep -qxF -- "$r" "$tmp/added" && continue ;; esac
+        is_pending "$r" || return 0
       done < "$tmp/refs"
       echo "no wiring, runner, CI job or wired script names it" ;;
   esac
