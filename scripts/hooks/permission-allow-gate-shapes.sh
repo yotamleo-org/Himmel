@@ -46,6 +46,9 @@ top="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" || exit 0
 gitdir="$(git -C "$cwd" rev-parse --path-format=absolute --git-dir 2>/dev/null)" || exit 0
 common="$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || exit 0
 [ "$gitdir" != "$common" ] || exit 0
+# Only worktrees of the repository this hook ships in: another repo's scripts are not ours to approve.
+own_common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || exit 0
+[ "$common" = "$own_common" ] || exit 0
 case "$top" in */.claude/worktrees/*) ;; *) exit 0 ;; esac
 # A relative script path resolves against cwd, so only the worktree root is allowed.
 [ "$(cd "$cwd" && pwd -P)" = "$(cd "$top" && pwd -P)" ] || exit 0

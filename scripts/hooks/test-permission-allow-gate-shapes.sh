@@ -24,6 +24,15 @@ mkdir -p "$T/repo/.claude/worktrees" "$T/plain"
 git -C "$T/repo" worktree add -q "$T/repo/.claude/worktrees/leg" -b leg 2>/dev/null || exit 1
 git -C "$T/repo" worktree add -q "$T/outside-wt" -b outside 2>/dev/null || exit 1
 WT="$T/repo/.claude/worktrees/leg"
+# The hook only trusts worktrees of the repository it lives in, so run a copy placed inside the throwaway repo.
+mkdir -p "$T/repo/scripts/hooks/data" "$T/repo/scripts/lib"
+cp "$HOOK" "$T/repo/scripts/hooks/permission-allow-gate-shapes.sh" || exit 1
+cp "$(dirname "$HOOK")/data/gate-shapes.tsv" "$T/repo/scripts/hooks/data/" || exit 1
+cp "$(dirname "$HOOK")/../lib/git-clean.sh" "$T/repo/scripts/lib/" || exit 1
+HOOK="$T/repo/scripts/hooks/permission-allow-gate-shapes.sh"
+git init -q "$T/other" && git -C "$T/other" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init || exit 1
+mkdir -p "$T/other/.claude/worktrees"
+git -C "$T/other" worktree add -q "$T/other/.claude/worktrees/leg" -b leg 2>/dev/null || exit 1
 SHA="$(printf 'a%.0s' $(seq 1 40))"
 DOC="/home/u/handovers/x/HIMMEL-1-N1-foo.md"
 
@@ -55,6 +64,7 @@ expect "non-registered dir passes through" pass "$T/plain" Bash "bash scripts/ch
 expect "linked worktree outside .claude/worktrees passes through" pass "$T/outside-wt" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
 mkdir -p "$WT/sub"
 expect "worktree subdirectory passes through" pass "$WT/sub" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
+expect "worktree of a different repository passes through" pass "$T/other/.claude/worktrees/leg" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
 expect "non-Bash tool passes through" pass "$WT" Edit "bash scripts/check-ci.sh 123 --max-wait 600"
 expect "unlisted SKIP hook passes through" pass "$WT" Bash "SKIP=check-commit-msg git commit -F .tmp/msg.txt"
 expect "chained command passes through" pass "$WT" Bash "bash scripts/check-ci.sh 123 --max-wait 600; rm -rf /"
