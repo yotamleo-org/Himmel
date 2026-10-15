@@ -12,8 +12,8 @@
 # on Windows: the child still writes the OPERATOR'S real ~/.claude/himmel/ and
 # ~/.himmel/ files.
 #
-# THIS GUARD WENT GREEN OVER A LIVE LEAK ONCE ALREADY ('s own
-# incident): every suite already set HIMMELCTL_CACHE_DIR on every
+# THIS GUARD WENT GREEN OVER A LIVE LEAK ONCE ALREADY (an
+# earlier incident): every suite already set HIMMELCTL_CACHE_DIR on every
 # "$node_bin" "$wizard" invocation the static check_dir() below could see,
 # and the operator's real ~/.claude/himmel/install-profile.json still got
 # overwritten by a writeCache() call reached through askQuestions() with an

@@ -240,7 +240,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
     // independently enabled cadence-armed/bridge-health, each was pushed as
     // an ordinary "not enabled" n/a row below and its probe never ran at
     // all, so the corrupt config was invisible in `himmelctl status`
-    // entirely ('s loud-degradation rule: a check that can't
+    // entirely (the loud-degradation rule: a check that can't
     // evaluate something must say so at severity, never go quiet). Surfaced
     // HERE, once, for both affected items, rather than trusting either
     // item's own probe to catch it (see configDesiredOverride's comment for

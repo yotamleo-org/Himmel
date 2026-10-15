@@ -4316,7 +4316,7 @@ function applyPluginStep(answers) {
 // refusal, and the additional wire/apply plan for a stamped vault); the
 // install sequence itself is the SAME one every other vault mode runs below,
 // with wire/apply layered on top of adopt.sh exactly like the dev overlay is
-// ('s own comment on that pattern, a few lines down).
+// (see the comment on that pattern a few lines down).
 async function runPlan(answers, args) {
   const vaultExisting = Boolean(answers.vault && answers.vault.mode === 'existing');
   let existingVaultPlan = null;
@@ -4476,7 +4476,7 @@ async function runPlan(answers, args) {
   provStep = 'adopt';
   const rc = runSpawn(cmd);
   // write the PATH shim BEFORE checking adopt.sh's rc — a failed
-  // core install (e.g. a plugin SSH-clone failure, same shape as)
+  // core install (e.g. a plugin SSH-clone failure)
   // must not leave the adopter with no `himmelctl` on PATH to run
   // `himmelctl ensure` and resume. Best-effort, same posture as adopt.sh's own
   // git-hook placement: never blocks on or masks adopt.sh's rc.
@@ -5101,7 +5101,7 @@ function printHimmelctlPathInstruction(binDir, platform) {
 // hands node a path in the form it expects.
 //
 // <dir> defaults to repoRoot() (all pre-existing call sites); an explicit
-// <dir> ('s checkUninstallCompleteness) resolves a DIFFERENT
+// <dir> (as checkUninstallCompleteness passes) resolves a DIFFERENT
 // directory's primary checkout the same way, so two directories' identity
 // can be compared regardless of which linked worktree either one is.
 function primaryCheckoutRoot(dir) {

@@ -10,7 +10,7 @@
 # What "lints clean" means here: every row's `script` (repo-root-relative)
 # exists on disk AND contains cmd_arm()/cmd_status()/cmd_disarm() function
 # definitions — the same three subcommands bin.js's arm/disarm plumbing
-# assumes every registry row's script implements ('s
+# assumes every registry row's script implements (see
 # cadenceArmFlags()/cadenceScriptPath()). A row naming a renamed/deleted
 # script, or one missing a subcommand, must fail loud in CI rather than
 # surface as a silent runtime spawn failure at install time.

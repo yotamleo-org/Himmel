@@ -6,7 +6,7 @@
 #
 # docs/setup/profiles/*.install-profile.json is the agreed canonical location
 # for hand-authored install-profile fixtures an operator can point
-# --from-profile at (landed the operator profile there). This
+# --from-profile at. This
 # suite proves every file that ends up there actually validates against the
 # REAL v2 schema bin.js's own loadProfile() enforces — never a hand-rolled
 # duplicate of that schema that could silently drift from it.

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# test-wizard-status-upgrade.sh — hermetic tests for (CR
-# follow-up from): himmelctl `status` must reconcile new
+# test-wizard-status-upgrade.sh — hermetic tests for: himmelctl `status` must reconcile new
 # manifest items into an EXISTING state.json, and stop false-redding
 # opt-in tools. Mirrors sibling test-wizard-status-*.sh conventions: a fake
 # HOME + HIMMELCTL_CACHE_DIR + HIMMELCTL_REPO_ROOT fixture, node launched by

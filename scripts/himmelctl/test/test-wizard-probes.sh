@@ -124,7 +124,7 @@
 #                  degraded naming the dimension, and a payload
 #                  with NO v2 fields (stale checkout or stripped/tampered
 #                  output) OR a PARTIAL v2 set FAILS CLOSED — degraded, never
-#                  the v1 'present' ('s fail-OPEN back-compat re-opened
+#                  the v1 'present' (a fail-OPEN back-compat would re-open
 #                  the downgrade path the attestation exists to close).
 #   dep gemini-cli — present/absent via stub PATH.
 #   cmd:hermes_checkout hermes-checkout
@@ -1319,7 +1319,7 @@ echo "ok: mcp-registered is scope-aware — project scope resolves .mcp.json, us
 # carries both fields — removed the one that did, tokensave-mcp
 # so this block builds its own fixture rather than depend on one), keeping
 # the registered command itself pinned to an absolute-path stub that always
-# resolves ('s unconditional registered-command check — see below
+# resolves (the unconditional registered-command check — see below
 # is not what this block is isolating; it only wants bin/initMarker to be
 # the thing that varies across the three sub-cases).
 fixture_mcp_item='{ "id": "fixture-mcp", "probe": { "type": "mcp-registered", "server": "fixture", "bin": "fixture-bin", "initMarker": ".fixture-marker" } }'
@@ -2839,7 +2839,7 @@ echo "ok: luna-sources — a configured-but-broken source alongside an unconfigu
 # a profile naming a
 # source fetch-health.py has never heard of (typo, renamed, dropped upstream)
 # used to fold into a footnote and still read 'present' — a fail-open-
-# silently shape ('s loud-degradation rule): a source that isn't
+# silently shape (violating the loud-degradation rule): a source that isn't
 # being monitored at all must never hide behind an otherwise-green verdict.
 # Pins the fix: one healthy + one unrecognized must NOT report present.
 outLunaOneUnrecognized=$(PATH="$pathLuna" "$node_bin" -e "
@@ -5931,7 +5931,7 @@ bp_linux_unit_dir="$work/bp-linux-unit-dir"; mkdir -p "$bp_linux_unit_dir"
 # On a real Linux host (retask stage1-build-6d2e — WSL) systemctl/loginctl
 # live in /usr/bin ALONGSIDE bash itself (confirmed on this repo's WSL host).
 # scrub_path drops a PATH dir WHOLESALE when it carries a scrubbed tool
-# ('s own documented hazard) — scrubbing systemctl/loginctl
+# (a documented hazard) — scrubbing systemctl/loginctl
 # would therefore also drop bash, and the stub scripts' own
 # `#!/usr/bin/env bash` shebang would then fail to resolve `bash` in the
 # child's own PATH. link_hermetic_tool (hermetic-path.sh's documented

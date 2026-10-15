@@ -2235,7 +2235,7 @@ function probeGuardrailBlockStatus(item, ctx) {
 // is present and access.json's allow-rule shape is usable — neither proves
 // the token actually AUTHENTICATES against Telegram (revoked, typo'd, or a
 // deleted bot's token pasted from an old note). getMe() already exists at
-// scripts/telegram/telegram-api.ts:39-46 ('s injectable-fetch
+// scripts/telegram/telegram-api.ts:39-46 (its injectable-fetch
 // signature) — reused here rather than a second HTTP client, but it's
 // Bun/TypeScript and probes.js is zero-dep Node CommonJS, so there is no
 // require()/import seam between them. The seam is the SAME one every other
@@ -2588,7 +2588,7 @@ function probeDistinctTokens(item, ctx) {
 // argparse's own fixed exit code 2. That source isn't being monitored AT
 // ALL, which is a configuration error, not a runtime one — own
 // CR round found the original cut (fold it into a footnote and still report
-// 'present') was a fail-open-silently shape ('s loud-degradation
+// 'present') was a fail-open-silently shape (violating the loud-degradation
 // rule): a check that cannot evaluate something must say so at severity, so
 // an unrecognized source now forces 'degraded' whenever at least one OTHER
 // source was actually evaluated (see `unrecognized` below) — it is kept in

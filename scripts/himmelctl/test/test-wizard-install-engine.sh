@@ -501,7 +501,7 @@ echo "ok: case l — HIMMELCTL_SUDO_PASSWORD unset: the fail-fast 'sudo -n' form
 # -Command/-CommandArgsB64 in the captured powershell argv, decoded here and
 # asserted against case k's real buildEntry shape — while the password
 # appears NOWHERE in that argv, under ANY encoding. ────────────────────────
-# HIMMELCTL_POWERSHELL pins the resolved interpreter ('s
+# HIMMELCTL_POWERSHELL pins the resolved interpreter (see
 # resolvePowershell(), same seam class as HIMMELCTL_BASH) so this case's
 # `cmd:'powershell'` assertion is deterministic regardless of whether THIS
 # host happens to have pwsh on PATH — case v below covers the pwsh-preferred
