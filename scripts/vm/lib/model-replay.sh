@@ -9,6 +9,7 @@
 # (Apache-2.0); no code taken.
 #
 #   replay_key <model> <input-file>...           -> prints the sha256 key (rc 2: input unreadable)
+#   replay_valid <cache-dir> <key>               -> rc 0 when a checksum-valid recording exists
 #   replay_run <cache-dir> <key> <artifact> -- <record-cmd> [args...]
 #       Sets REPLAY_MODE_USED=replay|record and REPLAY_MODEL_CALLS=0|1.
 #       rc 0 ok; the record command's rc when it fails; 4 replay-only with no
@@ -39,6 +40,13 @@ replay_key() {
   } | replay_sha256
 }
 
+# replay_valid <cache-dir> <key>: rc 0 when the slot holds a recording whose bytes match its checksum.
+replay_valid() {
+  local slot="$1/$2"
+  [ -s "$slot/artifact" ] && [ -r "$slot/artifact.sha256" ] \
+    && [ "$(replay_sha256 < "$slot/artifact")" = "$(cat "$slot/artifact.sha256")" ]
+}
+
 replay_run() {
   local cache="$1" key="$2" art="$3" slot mode rc
   shift 3
@@ -47,8 +55,7 @@ replay_run() {
   mode="${HIMMEL_REPLAY_MODE:-auto}"
   REPLAY_MODE_USED="" REPLAY_MODEL_CALLS=0
 
-  if [ "$mode" != record ] && [ -s "$slot/artifact" ] && [ -r "$slot/artifact.sha256" ] \
-     && [ "$(replay_sha256 < "$slot/artifact")" = "$(cat "$slot/artifact.sha256")" ]; then
+  if [ "$mode" != record ] && replay_valid "$cache" "$key"; then
     mkdir -p "$(dirname "$art")" && cp "$slot/artifact" "$art" || return 1
     REPLAY_MODE_USED=replay
     return 0

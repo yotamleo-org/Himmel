@@ -82,6 +82,11 @@ if [ "$rc" = 5 ] && [ ! -e "$CACHE/$KEY5/artifact.sha256" ]; then pass "T8 missi
 replay_key haiku "$WORK/nope" >/dev/null 2>&1
 if [ "$?" = 2 ]; then pass "T9 missing key input refuses (rc 2)"; else fail_case "T9 missing input accepted"; fi
 
+# --- T10: replay_valid agrees with replay_run (valid, then tampered) -------
+replay_valid "$CACHE" "$KEY2" || fail_case "T10 a fresh recording reads invalid"
+printf 'TAMPERED\n' > "$CACHE/$KEY2/artifact"
+if replay_valid "$CACHE" "$KEY2"; then fail_case "T10 a tampered recording reads valid"; else pass "T10 replay_valid rejects a tampered recording"; fi
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "test-model-replay: ALL PASS"; exit 0; fi
 echo "test-model-replay: $FAILED FAILED" >&2

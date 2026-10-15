@@ -59,7 +59,7 @@ KEY="$(replay_key "$MODEL" "$PROMPT" "$SUT")" || exit 1
 
 # --- Doctor (read-only) -------------------------------------------------------
 recorded=no
-[ -s "$CACHE/$KEY/artifact" ] && recorded=yes
+replay_valid "$CACHE" "$KEY" && recorded=yes
 need_model=yes
 [ "$recorded" = yes ] && [ "$HIMMEL_REPLAY_MODE" != record ] && need_model=no
 if [ "$need_model" = yes ] && [ "$HIMMEL_REPLAY_MODE" != replay-only ]; then
@@ -87,8 +87,14 @@ t1="$(now_ms)"
 content="$(cat "$ARTIFACT" 2>/dev/null)"
 ok=false
 [ "$drive_rc" -eq 0 ] && [ "$content" = OK ] && ok=true
-mkdir -p "$EVIDENCE" && printf '{"key":"%s","mode":"%s","model_calls":%s,"wall_ms":%s,"drive_rc":%s,"artifact":"%s","ok":%s}\n' \
-  "$KEY" "${REPLAY_MODE_USED:-none}" "${REPLAY_MODEL_CALLS:-0}" "$((t1 - t0))" "$drive_rc" "$content" "$ok" > "$EVIDENCE/last.json"
+if ! { mkdir -p "$EVIDENCE" && jq -n --arg key "$KEY" --arg mode "${REPLAY_MODE_USED:-none}" \
+    --argjson calls "${REPLAY_MODEL_CALLS:-0}" --argjson wall "$((t1 - t0))" --argjson rc "$drive_rc" \
+    --arg artifact "$content" --argjson ok "$ok" \
+    '{key:$key, mode:$mode, model_calls:$calls, wall_ms:$wall, drive_rc:$rc, artifact:$artifact, ok:$ok}' \
+    > "$EVIDENCE/last.json"; }; then
+  echo "replay-poc-check: could not write evidence to $EVIDENCE/last.json" >&2
+  exit 1
+fi
 echo "replay-poc-check: mode=${REPLAY_MODE_USED:-none} model_calls=${REPLAY_MODEL_CALLS:-0} wall_ms=$((t1 - t0)) ok=$ok (evidence: $EVIDENCE/last.json)"
 
 # --- Cleanup: the EXIT trap removes $W ----------------------------------------
