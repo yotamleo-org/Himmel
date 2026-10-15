@@ -35,7 +35,7 @@ Idempotent. Exit 0 on success/skip, non-zero only on bad input.
 
 import sys
 
-# Every tool reaches the guard (HIMMEL-2637). hermes fullmatches this against the
+# Every tool reaches the guard. hermes fullmatches this against the
 # tool name and pre_tool_call is its ONLY blocking event, so any tool the pattern
 # missed was never judged at all — the old hand-listed pattern left execute_code,
 # delegate_task, browser_*, skill_manage, process_manage, cronjob_manage and

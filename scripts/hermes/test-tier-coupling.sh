@@ -32,7 +32,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone. (.)
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 # --- the tier-coupling rule ---------------------------------------------------
@@ -157,7 +157,7 @@ expect_unsafe() {
 # expect_unsafe_named <label> <fixture-path> <model>: expect_unsafe PLUS a
 # reason pin -- stderr must name <model> as the untrusted one, so an UNSAFE
 # from a different cause (e.g. the fail-closed empty-chain path) cannot
-# masquerade as the trust-classification verdict (HIMMEL-916 CR, coderabbit).
+# masquerade as the trust-classification verdict (CR, coderabbit).
 # The pin is an EXACT match against the comma-separated unsafe-model list
 # (not a substring grep), so a pinned model that is a prefix of another
 # entry (deepseek-v4-flash vs deepseek-v4-flash-lite) can never false-pass.
@@ -212,7 +212,7 @@ expect_unsafe_named "deepseek-v4-flash (untrusted CN tier) + full control" \
 expect_unsafe_named "deepseek-v4-pro (untrusted CN tier) + full control" \
     "$(fixture bad_deepseek_r parity deepseek-v4-pro '')" deepseek-v4-pro
 # Legacy names stay guarded through the 2026-07-24 retirement overlap
-# (guard parity, HIMMEL-916) -- both must still FAIL.
+# (guard parity) -- both must still FAIL.
 expect_unsafe_named "deepseek-chat (legacy, untrusted CN tier) + full control" \
     "$(fixture bad_deepseek_legacy parity deepseek-chat '')" deepseek-chat
 expect_unsafe_named "deepseek-reasoner (legacy, untrusted CN tier) + full control" \

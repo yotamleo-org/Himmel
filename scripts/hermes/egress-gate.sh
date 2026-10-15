@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # scripts/hermes/egress-gate.sh — egress-matrix gate for the Hermes dispatch
-# chokepoint (HIMMEL-1259). Called by invoke.sh (which dispatch-trusted.sh execs)
+# chokepoint. Called by invoke.sh (which dispatch-trusted.sh execs)
 # BEFORE hermes is spawned.
 #
 # WHY: scripts/guardrails/egress-matrix.json is the one corpus x provider x
 # purpose policy, but the Hermes chokepoint never evaluated it — so a handover-
 # or vault-backed prompt could still reach a provider the matrix denies
-# (Alibaba/qwen, DeepSeek, Z.ai/GLM: de-listed by HIMMEL-1257 / HIMMEL-2224)
+# (Alibaba/qwen, DeepSeek, Z.ai/GLM: de-listed by  /)
 # while graphify and claude-openrouter both honored the same deny.
 #
 # What it does: classifies the --prompt-file by PATH (physical path — symlinks
@@ -31,7 +31,7 @@
 # ~/.himmel/hermes-egress.jsonl) carrying the resolved path and its byte size;
 # a ledger that cannot be written refuses the dispatch (allow+log obligation).
 #
-# SNAPSHOT (HIMMEL-3221): with --snapshot the gate copies the classified file
+# SNAPSHOT: with --snapshot the gate copies the classified file
 # ONCE into a snapshot it creates itself — a fresh private mode-0700 directory
 # (mktemp -d) holding <dir>/prompt, created exclusively under umask 077 — and
 # prints that DIRECTORY on stdout on success (nothing on stdout otherwise; a
@@ -202,7 +202,7 @@ done
 handover_root=""
 HANDOVER_LIB="$SCRIPT_DIR/../lib/handover-path.sh"
 [ -f "$HANDOVER_LIB" ] || refuse "handover-path.sh not found ($HANDOVER_LIB) — the handover root cannot be resolved, so a handover brief could not be recognised"
-# HIMMEL-4420: handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
+# handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../lib/handover-path.sh

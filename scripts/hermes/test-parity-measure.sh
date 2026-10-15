@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for parity-measure.py (HIMMEL-5496): the harness can tell MATCH, GAP and
+# Tests for parity-measure.py: the harness can tell MATCH, GAP and
 # OVER-DENY apart, classifies without executing any payload, and runs the full
 # corpus against the live hook chain. Hermetic: throwaway HOME and repos, no
 # model call, no network.

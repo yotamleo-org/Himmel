@@ -2,7 +2,7 @@
 # scripts/hermes/dispatch-trusted.sh — TRUSTED-engine hermes dispatch with the
 # external-writes opt-in (HERMES_EXTERNAL_WRITES_OK=1) set INSIDE the wrapper.
 #
-# WHY (HIMMEL-654 session-8, operator-directed): a hermes WORKER writing repo
+# WHY: a hermes WORKER writing repo
 # files needs the fence opt-in in its launch env, but an inline
 # `HERMES_EXTERNAL_WRITES_OK=1 bash invoke.sh …` is denied by the auto-mode
 # classifier as an unnamed safety-bypass flag. This wrapper is the NAMED

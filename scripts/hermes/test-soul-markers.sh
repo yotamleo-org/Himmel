@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Marker-diff assertion for the 559 free-tier + premium SOUL assets
-# (HIMMEL-654 WS5 Task 4 / T11). Asserts:
+# (WS5 Task 4 / T11). Asserts:
 #   - the FREE-tier SOUL carries the open-model markers: a literal
 #     "Context budget:" line AND a fenced JSON / format-contract block;
 #   - the PREMIUM himmel_agent SOUL carries the GPT-anatomy markers: a

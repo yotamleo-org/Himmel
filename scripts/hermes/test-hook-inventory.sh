@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hook inventory assertion for the Hermes himmel_agent profile (HIMMEL-2021).
+# Hook inventory assertion for the Hermes himmel_agent profile.
 #
 # The installer owns himmel_agent's whole `hooks:` block, so the block IS the
 # inventory: a dropped hook type is invisible everywhere else. Two invocations
@@ -109,7 +109,7 @@ check("full: pre_tool_call scripts",
       [scripts_in(c) for c in full.get("pre_tool_call", [])],
       [["parity_guard.py"]])
 # ONE entry, not one per member: the chain is what keeps a hermes teardown to a
-# single node launch (HIMMEL-2002/2003). Two entries here would be a regression
+# single node launch. Two entries here would be a regression
 # even though the same hooks run.
 check("full: on_session_finalize scripts",
       [scripts_in(c) for c in full.get("on_session_finalize", [])],
@@ -136,7 +136,7 @@ print("PASS: hermes hook inventory matches expected list")
 PY
 inv_rc=$?
 
-# --- C) registry conformance (HIMMEL-2637) -----------------------------------
+# --- C) registry conformance -----------------------------------
 # The hook matcher is fullmatch-ed against the tool name, and pre_tool_call is
 # the ONLY blocking event: a registered tool the matcher does not cover never
 # reaches parity_guard.py at all. test-parity-guard.sh proves the guard DENIES
@@ -144,7 +144,7 @@ inv_rc=$?
 # statically from the installed hermes source (never imported — importing it
 # would initialise tools that hold live credentials); when no install is present
 # the fixture controls below still run, and the installed scan is reported SKIP.
-# The live-install read is OPT-IN (HIMMEL-4209): a station's own ~/.hermes can run
+# The live-install read is OPT-IN: a station's own ~/.hermes can run
 # ahead of the guard's classification (it did, with manage_catalog), so a local run
 # never reads it unless HERMES_AGENT_SRC names it; CI and fixtures stay hermetic.
 REGISTRY_SRC="${HERMES_AGENT_SRC:-}"
@@ -167,7 +167,7 @@ registry.register(
 )
 registry.register(toolset="new", name='zz_single_quoted_late_name')
 EOF
-# manage_catalog (HIMMEL-4209): a tool the live hermes ships that the guard once
+# manage_catalog: a tool the live hermes ships that the guard once
 # left unclassified.
 cat > "$tmpdir/fixture-catalog/tools/cat.py" <<'EOF'
 registry.register(

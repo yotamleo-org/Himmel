@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/hermes/dispatch-trusted.sh (HIMMEL-654 escape hatch).
+# Tests for scripts/hermes/dispatch-trusted.sh (escape hatch).
 # Stubs invoke.sh via HERMES_INVOKE; asserts env opt-in + profile defaulting.
 set -uo pipefail
 

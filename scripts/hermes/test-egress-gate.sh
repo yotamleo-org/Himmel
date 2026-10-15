@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/hermes/test-egress-gate.sh — denial + pass tests for the egress-matrix
-# gate at the Hermes dispatch chokepoint (HIMMEL-1259).
+# gate at the Hermes dispatch chokepoint.
 #
 # Stubs only: HERMES_PY is a fake interpreter, no hermes is started and nothing
 # is dispatched to a real provider. Every roots/ledger env is pointed at a temp
@@ -144,7 +144,7 @@ check "evaluator missing -> refused, never allowed" 4 "$rc"
 check_contains "evaluator-missing refusal is explicit" "egress-matrix" "$err"
 
 # handover-path.sh missing: the handover root cannot be resolved, so a handover
-# brief could ride the un-gated exit — refuse instead (HIMMEL-1259 review round 1)
+# brief could ride the un-gated exit — refuse instead
 NOLIB="$TMP/nolib/scripts/hermes"
 mkdir -p "$NOLIB" "$TMP/nolib/scripts/guardrails"
 cp "$GATE" "$NOLIB/egress-gate.sh"

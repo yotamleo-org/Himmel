@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # scripts/hermes/invoke.sh — single chokepoint for shelling out to hermes-agent.
 #
-# Mirror of scripts/gemini/invoke.sh (HIMMEL-158): all himmel entrypoints that
+# Mirror of scripts/gemini/invoke.sh: all himmel entrypoints that
 # need a hermes one-shot funnel through here so interpreter/model/toolset
-# resolution lives in one place. Story 1 of the hermes critic pipeline
-# (HIMMEL-273).
+# resolution lives in one place. Story 1 of the hermes critic pipeline.
 #
 # Why not the `hermes` console script: the hermes.exe setuptools wrapper is
 # unreliable under non-TTY shells on Windows (spike 2026-06-12 — wrapper runs
@@ -12,7 +11,7 @@
 # the venv python directly and enter via hermes_cli.main.
 #
 # Why a prompt FILE (not argv, not stdin): argv hits the Windows spawn
-# length limit on large diffs (same issue as HIMMEL-270 for gemini), and
+# length limit on large diffs (same issue as  for gemini), and
 # hermes one-shot runs hung in the spike when stdin was consumed/closed.
 # The prompt travels via a temp file read inside the python snippet.
 #
@@ -27,19 +26,19 @@
 #
 # No retries. Exits with hermes' return code, UNLESS the watchdog below fires.
 #
-# Egress gate (HIMMEL-1259): before hermes is spawned, a --prompt-file under the
+# Egress gate: before hermes is spawned, a --prompt-file under the
 # handover root / luna vault / a .salus tree is checked against the egress
 # matrix (scripts/hermes/egress-gate.sh -> scripts/guardrails/egress-matrix-eval.mjs)
 # and REFUSED with rc 4 when the --provider is de-listed or unresolvable. Such a
 # prompt needs an explicit --provider. Public-code prompts are not gated.
 #
-# Watchdog + deny-escalation (HIMMEL-2025): a parity_guard pre_tool_call DENY
+# Watchdog + deny-escalation: a parity_guard pre_tool_call DENY
 # is not terminal to hermes — hermes' tool_executor.py feeds the block back to
 # the model as an ordinary tool result and the agent may retry the same/an
 # adjacent action; run_agent.py's max_iterations defaults to sys.maxsize, so an
 # unattended run whose every tool call is denied can spin indefinitely, burning
 # the bank silently. This chokepoint now bounds every one-shot two ways,
-# mirroring dispatch-codex-exec.sh's watchdog (HIMMEL-2023):
+# mirroring dispatch-codex-exec.sh's watchdog:
 #   1. a hard wall-clock timebox (HERMES_INVOKE_TIMEOUT, default 1800s — the
 #      hermes-oneshot lane's own timeoutSeconds in scripts/lanes/lanes.json);
 #   2. a poll for the deny-escalation marker parity_guard.py writes after N
@@ -54,7 +53,7 @@
 # outcome complete|error|timeout|denied|truncated (the last added by the
 # iteration-budget scan below, HIMMEL-2049).
 #
-# Iteration-budget truncation (HIMMEL-2049): separately from the watchdog,
+# Iteration-budget truncation: separately from the watchdog,
 # hermes' OWN turn loop can exhaust its "agent.max_turns" iteration budget
 # (one API call per iteration; default 500, himmel_agent profile ships 150)
 # and still exit 0 — the CLI prints "⚠ Iteration budget reached (N/max) —
@@ -163,7 +162,7 @@ done
 tmp_prompt=""
 snapdir=""    # private gate-made directory holding the gated prompt copy (HIMMEL-3221)
 snapshot=""   # <snapdir>/prompt — the ONLY file hermes reads
-# Watchdog/deny-escalation state (HIMMEL-2025), declared up front (set -u
+# Watchdog/deny-escalation state, declared up front (set -u
 # safe) so the trap never trips on an early exit before they are assigned.
 watch_pid=""
 timeout_flag=""
@@ -199,7 +198,7 @@ else
     prompt_file="$tmp_prompt"
 fi
 
-# Egress-matrix gate (HIMMEL-1259): evaluate scripts/guardrails/egress-matrix.json
+# Egress-matrix gate: evaluate scripts/guardrails/egress-matrix.json
 # for a handover/vault-backed --prompt-file BEFORE anything is spawned or
 # ledgered, so a de-listed provider is refused fail-closed at the chokepoint the
 # matrix never reached. Pure-shell gate that reuses egress-matrix-eval.mjs; see
@@ -226,7 +225,7 @@ snapshot="$snapdir/prompt"
 [ -s "$snapshot" ] || { echo "invoke.sh: prompt file is empty: $prompt_file" >&2; exit 2; }
 prompt_file="$snapshot"
 
-# Resolve the hermes interpreter at RUNTIME via the shared resolver (HIMMEL-613):
+# Resolve the hermes interpreter at RUNTIME via the shared resolver:
 # HERMES_PY overrides (tests stub through it) ONLY when it still points at an
 # executable, else probe the venv — a moved/rebuilt venv re-resolves instead of
 # breaking on a stale path.
@@ -238,12 +237,12 @@ if [ -z "$py" ]; then
     echo "invoke.sh: hermes interpreter not found (set HERMES_PY or install hermes)" >&2
     exit 3
 fi
-# HIMMEL-4307: a PM-managed install's interpreter (Python 3.14) is not a venv with
+# a PM-managed install's interpreter (Python 3.14) is not a venv with
 # an editable hermes install, so the checkout must be put on sys.path and
 # hermes_bootstrap imported (what upstream's launcher does) before hermes_cli.
 hermes_src="$(_hermes_src_dir)"
 
-# Watchdog (HIMMEL-2025): the run-shell-tests.sh/codex timeout convention —
+# Watchdog: the run-shell-tests.sh/codex timeout convention —
 # see scripts/codex/dispatch-codex-exec.sh Invariant 8.
 # shellcheck source=../lib/flow-run-ledger.sh
 # shellcheck disable=SC1091
@@ -264,7 +263,7 @@ if [ "${#invoke_timeout}" -gt 6 ] || [ "$invoke_timeout" -gt 86400 ]; then
     exit 2
 fi
 
-# Deny-escalation state dir (HIMMEL-2025): handed to the hermes subprocess (and
+# Deny-escalation state dir: handed to the hermes subprocess (and
 # transitively to every parity_guard.py invocation it spawns) via
 # PARITY_GUARD_STATE_DIR so the guard can persist an identical-deny counter
 # across the many pre_tool_call calls one hermes run makes, and signal an
@@ -293,7 +292,7 @@ if [ -z "$timeout_flag" ]; then
     exit 2
 fi
 
-# Capture sink for the iteration-budget scan below (HIMMEL-2049): hermes'
+# Capture sink for the iteration-budget scan below: hermes'
 # own banner ("Iteration budget reached (N/max) — response may be
 # incomplete") prints to stdout but hermes still exits 0, so this chokepoint
 # needs the text to grep after the run, not just its rc. Reuse --log's tee
@@ -333,7 +332,7 @@ if command -v cygpath >/dev/null 2>&1; then
     pf_native="$(cygpath -w "$prompt_file")"
 fi
 
-# Profile selection (HIMMEL-558): pass `-p <profile>` so the one-shot runs under
+# Profile selection: pass `-p <profile>` so the one-shot runs under
 # that profile's SOUL + config (e.g. himmel_agent = the senior main-tier reviewer
 # persona, NOT the user-default junior SOUL). FAIL-OPEN guard: hermes exits 1 on a
 # missing profile, which would break a CR one-shot — so only forward -p when the
@@ -358,14 +357,14 @@ run_hermes() {
 import os, sys, io
 with io.open(os.environ["HERMES_PROMPT_FILE"], encoding="utf-8") as fh:
     prompt = fh.read()
-# HIMMEL-3639: the hermes venv-sync relaunch (hermes_cli/venv_sync.py) does
+# the hermes venv-sync relaunch (hermes_cli/venv_sync.py) does
 # runpy.run_path(Path(argv[0]).absolute()), which resolves a bare "hermes"
 # against the caller cwd -- from a worktree that is <cwd>/hermes (absent), so
 # the relaunched process dies rc=1 and the codex critic reads "unavailable".
 # Hand it the checkout launcher by absolute path instead; fall back to the
 # bare name when the layout is not the expected one.
 import importlib.util
-# HIMMEL-4307: same bootstrap as the upstream launcher (.hermes/bin/hermes) -- when
+# same bootstrap as the upstream launcher (.hermes/bin/hermes) -- when
 # hermes_cli is not already importable (a PM-managed interpreter is not a venv with
 # an editable install) put the checkout on sys.path, then import hermes_bootstrap
 # (adds the PM dependency generation site-packages) and default HERMES_HOME.
@@ -481,7 +480,7 @@ watch_pid=""
 # `wait "$hermes_pid"` above only waits for run_hermes itself — the `tee`
 # reading the OTHER end of the `>(tee "$capture_log")` process substitution
 # is a separate async job that may not have flushed the banner's final bytes
-# yet (CR finding codex-2, HIMMEL-2049). hermes_pid and watch_pid are both
+# yet. hermes_pid and watch_pid are both
 # reaped by this point, so a bare `wait` here can only be waiting on that
 # tee (if one is open), before the budget scan below reads the file.
 wait 2>/dev/null
@@ -500,7 +499,7 @@ case "$flag_reason" in
         flow_run_append "$(flow_run_row_end "hermes-invoke" "$run_id" "" 125 denied 1 "$deny_reason")"
         ;;
     *)
-        # HIMMEL-2049: hermes' own CLI still exits 0 when it hits its
+        # hermes' own CLI still exits 0 when it hits its
         # iteration budget mid-run (the "summarize what you have" fallback
         # still counts as a clean process exit) — the only signal is this
         # banner in its stdout. Scan the captured output for it and override
@@ -512,7 +511,7 @@ case "$flag_reason" in
         # its own print), not just the "Iteration budget (…) (N/max)"
         # fragment — a bare fragment match could also fire on a model
         # response that merely discusses or paraphrases hermes' own budget
-        # mechanism (CR finding codex-2, HIMMEL-2049). Residual (declined,
+        # mechanism. Residual (declined,
         # round 4): a response that quotes hermes' full, exact banner line —
         # numbers and differentiating suffix both — is still indistinguishable
         # from the CLI actually emitting it. The ticket's ask is text-scanning
@@ -540,7 +539,7 @@ case "$flag_reason" in
             outcome=complete
             if [ "$rc" -ne 0 ]; then
                 outcome=error
-                # HIMMEL-2751: until now this branch was SILENT. The three
+                # until now this branch was SILENT. The three
                 # loud paths above (124/125/126) are the ones this script
                 # itself decides; an ordinary non-zero rc from hermes just
                 # propagated with nothing on stderr — and because the spawn

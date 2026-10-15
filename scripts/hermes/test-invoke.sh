@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/hermes/test-invoke.sh — stub-based tests for invoke.sh (HIMMEL-273).
+# scripts/hermes/test-invoke.sh — stub-based tests for invoke.sh.
 #
 # No live hermes calls: a fake interpreter is injected via HERMES_PY (the
 # repo pattern from scripts/gemini/test-invoke.sh, adapted — gemini stubs via
@@ -45,7 +45,7 @@ EOF
 chmod +x "$stub"
 export HERMES_PY="$stub"
 
-# HIMMEL-2241: invoke.sh appends a flow-run start row BEFORE it spawns the
+# invoke.sh appends a flow-run start row BEFORE it spawns the
 # interpreter and an end row on every exit path, so HERMES_PY (a MODEL stub)
 # does not keep these tests out of the ledger. Tests 1-7b below and the opt-in
 # live-smoke block carried no redirect and wrote the PRODUCTION ledger --
@@ -96,7 +96,7 @@ rc=$?
 [ ! -f "$STUB_CAPTURE" ] || fail "empty prompt: interpreter was invoked"
 echo "  ok" >&2
 
-# 6. Stub failure rc propagates, and (HIMMEL-2751) the rc + output tail now
+# 6. Stub failure rc propagates, and the rc + output tail now
 # land on stderr. Before this, an ordinary non-zero hermes exit was SILENT on
 # stderr (run_hermes's stdout+stderr are merged into capture_log for the
 # HIMMEL-2049 iteration-budget scan, so invoke.sh's own stderr had nothing to
@@ -111,7 +111,7 @@ grep -q "hermes exited 7" "$stub_dir/rc6.err" || fail "rc propagation: stderr mi
 grep -q "no-usable-credentials-marker" "$stub_dir/rc6.err" || fail "rc propagation: stderr missing output tail ($(cat "$stub_dir/rc6.err"))"
 echo "  ok" >&2
 
-# 7a. --profile forwarded when the profile directory exists (HIMMEL-558).
+# 7a. --profile forwarded when the profile directory exists.
 echo "test: --profile forwarded when profile exists" >&2
 export STUB_CAPTURE="$stub_dir/cap7a"
 mkdir -p "$stub_dir/profiles/himmel_agent"
@@ -133,7 +133,7 @@ grep -q "not found" "$prof_err" \
     || fail "profile-missing: expected 'not found' warning on stderr"
 echo "  ok" >&2
 
-# 8. Watchdog + deny-escalation (HIMMEL-2025).
+# 8. Watchdog + deny-escalation.
 echo "test: default HERMES_INVOKE_TIMEOUT matches lanes.json hermes-oneshot" >&2
 if command -v node >/dev/null 2>&1; then
     LANE_TIMEOUT="$(node -e '
@@ -286,7 +286,7 @@ PYEOF
     echo "  ok" >&2
 fi
 
-# 6b. PM-managed layout (HIMMEL-4307): no HERMES_PY; the interpreter comes from the
+# 6b. PM-managed layout: no HERMES_PY; the interpreter comes from the
 # launcher's --print-runtime-command and the embedded script must put the checkout
 # on sys.path and import hermes_bootstrap (a legacy venv got both from its editable
 # install). Fake hermes modules + a real python3; skipped when none exists.

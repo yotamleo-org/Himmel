@@ -147,7 +147,7 @@ _CMDPOS = r"(?:^|[;&|(\n])\s*"
 # non-dash value token (CR r7: `sudo -u root`, `env -u PATH` — generic, no
 # per-option table; over-consumes at worst one benign token → over-block in
 # exotic cases, never a bypass), and env also tolerates assignment arguments
-# (`env -i foo=bar shutdown`). Mirrors the .sh CMDPOS idiom (HIMMEL-754) + its
+# (`env -i foo=bar shutdown`). Mirrors the .sh CMDPOS idiom + its
 # CR-r1..r7 extensions. Deliberately NOT a general shell parser — the RESIDUAL
 # documented gap is QUOTED-PAYLOAD wrappers (`bash -c "shutdown …"`, `sh -c`,
 # xargs / nohup chains), which stays out of scope per the ticket's
@@ -160,18 +160,18 @@ _CMDPOS = r"(?:^|[;&|(\n])\s*"
 # one slash-terminated segment run. "/" only — norm() folds "\" to "/".
 # The run stops at "(" and at ")" before "{": both are command-position anchors,
 # so a "((((…" or "){){){…" run otherwise rescans the rest of the run from every
-# anchor (quadratic, HIMMEL-4190).
+# anchor (quadratic).
 _EXE_PREFIX = r"[\"']?(?:[a-z]:)?(?:(?:[^\s|;&(`\"')]|\)(?!\{))*/)?"
 # Quote-aware assignment (CR r5): FOO='a b' / FOO="a b" / FOO=bare. Shared by
 # the env-prefix assignment tolerance and the leading env-assignment prefix so
 # a quoted value's space does not drop the verb out of command position.
 _ASSIGNS = (r"[a-z0-9_]+='[^']*'", r"[a-z0-9_]+=\"[^\"]*\"", r"[a-z0-9_]+=[^\s|;&]*")
-# HIMMEL-4134: parity with the .sh grammar (scripts/guardrails/lib.sh
+# parity with the .sh grammar (scripts/guardrails/lib.sh
 # guard_cmdpos_grammar, HIMMEL-3983/3984): a compound keyword or a function
 # body's `{` starts a command (`) {` too), and so do the exec-style wrappers
 # exec, timeout, nohup, nice, time and xargs, each with its own flags. A flag
 # value may be quoted with a space in it (`exec -a 'my proc' shutdown`).
-# HIMMEL-4158: a value is one shell word of concatenated segments ('…', "…",
+# a value is one shell word of concatenated segments ('…', "…",
 # $'…', \x, bare) and a flag word may hold them too (`-u'a b'`); the old
 # whitespace-run and HIMMEL-4150 quoted atoms stay as alternatives, so the set
 # only grows. Twin of lib.sh CMDVAL / CMDFLG. Every reading is its own pattern
@@ -220,7 +220,7 @@ _CMDPOS_WRAPS = tuple(
 # The hermes hook times out at 10s and fails OPEN, so a slow scan turns a deny
 # into an allow. Every walk carries a budget and answers "match" (deny) once it
 # is spent: whatever quadratic shape a later regex change reintroduces degrades
-# to a refusal, never to an allow (HIMMEL-4190).
+# to a refusal, never to an allow.
 _SCAN_BUDGET = 2.0
 
 
@@ -260,7 +260,7 @@ def _cmdpos_destructive(text: str) -> bool:
     return _cmdpos_match(text, _CMDPOS_VERBS)
 
 
-# ScheduledTasks module WRITE verbs (HIMMEL-1821). Shared by the two anchors
+# ScheduledTasks module WRITE verbs. Shared by the two anchors
 # the rule below applies it under; mirrors the .sh hook's SCHEDVERBS.
 _SCHED_VERBS = r"(?:register|unregister|set|start|stop|disable|enable)-scheduledtask(?:[^A-Za-z0-9_.-]|$)"
 
@@ -275,14 +275,14 @@ _CMDPOS_VERBS = re.compile(
     + r"|(?:icacls|takeown)(?:\.exe)?(?:[^A-Za-z0-9_.-]|$)"
     + r")"
 )
-# HIMMEL-4190: `find -delete` is a recursive delete of its own. Twin of the .sh
+# `find -delete` is a recursive delete of its own. Twin of the .sh
 # FIND_DELETE_PAT: the gap is unbounded (a `;` in it too), so a quoted `;`
 # cannot hide the flag. Linear here: find the last -delete once, then ask for a
 # bounded `find` verb at command position in the text up to it (an unbounded
 # gap re-scanned at every anchor was quadratic and ran the 10s hook timeout out).
 _DELETE_FLAG = re.compile(r"\s-delete(?=[^A-Za-z0-9_-]|$)")
 _FIND_VERB = re.compile(_EXE_PREFIX + r"find(?:\.exe)?(?=\s)")
-# HIMMEL-4255: the mass-delete family (find -delete, find/fd running rm, xargs
+# the mass-delete family (find -delete, find/fd running rm, xargs
 # running rm) also sees through the launchers _WRAPPERS leaves out: busybox,
 # command [-p|--|-v …], eval, and a shell's -c with its own flags first
 # (`bash -o pipefail -c`). The quoted payload is read as text, so
@@ -306,7 +306,7 @@ _X_WRAPS = tuple(
         ("eval", (), ()),
         (r"(?:(?:ba|da|k|mk|z|a)?sh|fish)", _FLG_VALS, (r"\s+-[a-z0-9]*c[a-z0-9]*",)),
     ))
-# HIMMEL-4255: an rm that find (-exec/-execdir/-ok/-okdir) or fd (-x/-X/
+# an rm that find (-exec/-execdir/-ok/-okdir) or fd (-x/-X/
 # --exec/--exec-batch) runs, or that xargs runs, deletes every match, with or
 # without -r. Twin of the .sh FIND_RM_PAT / XARGS_RM_PAT: the exec flag is not
 # tied to find or fd (over-deny only: `grep -x rm f`), and a command that is a
@@ -324,11 +324,11 @@ TERMINAL_DESTRUCTIVE = re.compile(
     + r"|\bcipher\s+/w"
     # HIMMEL-1141 verb split: schtasks /query is read-only (cadence diagnostic),
     # so only the mutating verbs are refused. Mirrors the .sh hook schtasks line.
-    # HIMMEL-1821: same capability, other spellings — the PowerShell
+    # same capability, other spellings — the PowerShell
     # ScheduledTasks module drives the Task Scheduler COM API and never
     # launches schtasks.exe, so the CLI line alone guards one spelling out of
     # several. Read/write split preserved by omission: get-/export-scheduledtask
-    # are absent and stay allowed (HIMMEL-1141), and the trailing boundary keeps
+    # are absent and stay allowed, and the trailing boundary keeps
     # the object-builder cmdlets (new-scheduledtask itself, plus
     # -trigger/-action/-principal) allowed — they construct an in-memory
     # definition and the register/set that consumes it is refused here.
@@ -359,9 +359,9 @@ TERMINAL_DESTRUCTIVE = re.compile(
     # continuation, and the reflective [Type]::GetTypeFromProgID route (a
     # literal-spelling match for that was tried and REMOVED in r5: one variable
     # assignment defeats it, while it denied a plain grep for the API name).
-    # A tokenizer closes these, a wider regex does not (HIMMEL-912). Mirrors
+    # A tokenizer closes these, a wider regex does not. Mirrors
     # the .sh hook's ScheduledTasks + Schedule.Service lines
-    # (lockstep, HIMMEL-754).
+    # (lockstep).
     + r"|(?:^|[{])\s*[\"']?" + _SCHED_VERBS
     + r"|(?:^|[|;&(={`\n])\s*new-object[^|;&\n]*-c[a-z0-9]*\s*[:=]?\s*[(\"']*schedule\.service(?:[^A-Za-z0-9_.-]|$)"
     + r"|\bkill\s+-9"
@@ -407,7 +407,7 @@ def _terminal_destructive(text: str) -> bool:
     return bool(TERMINAL_DESTRUCTIVE.search(text)) or _cmdpos_destructive(text)
 
 
-# Container privesc shapes (block-docker-privesc parity, HIMMEL-731). Membership
+# Container privesc shapes (block-docker-privesc parity). Membership
 # in the docker group is root-equivalent, so a docker/podman run|exec|create that
 # grants root-equivalent host access bypasses the write / secret fences. Regex
 # port of the shapes in scripts/hooks/block-docker-privesc.sh (semantics over
@@ -536,7 +536,7 @@ def check_write_path(path: str) -> None:
         block("Writes into Claude Code's home are forbidden.")
 
 
-# --- Main-branch edit/commit lock (block-edit-on-main parity, HIMMEL-731) -----
+# --- Main-branch edit/commit lock (block-edit-on-main parity) -----
 # himmel does NOT load its Claude Code PreToolUse hooks under hermes, so the
 # branch-awareness of scripts/hooks/block-edit-on-main.sh has to live here.
 # Semantics (semantics over parity-of-implementation): refuse a write/patch/
@@ -552,7 +552,7 @@ def check_write_path(path: str) -> None:
 # — the default-branch check specifically targets main/master, and a detached
 # HEAD is neither.
 #
-# WHICH DIRECTORY IS JUDGED (cwd contract, HIMMEL-2008). The guard runs as a
+# WHICH DIRECTORY IS JUDGED (cwd contract). The guard runs as a
 # child of the hermes AGENT process, so its own cwd is the session's LAUNCH dir
 # (the primary checkout, usually on main) — never evidence about the worktree
 # the agent is working in. Judging that dir refused legitimate worktree writes
@@ -577,7 +577,7 @@ DEFAULT_BRANCHES = ("main", "master")
 
 # git commit at command position (start / after a separator), flag-tolerant, with
 # `commit` as the verb (so `commit-graph` / `commit-tree` do NOT match). An
-# option VALUE may be quoted-with-spaces (HIMMEL-2008): a bare `\S+` stopped at
+# option VALUE may be quoted-with-spaces: a bare `\S+` stopped at
 # the first space, so `git -C "C:/main repo" commit` did not match this pattern
 # AT ALL and the commit locks were never entered.
 _QUOTED_OR_BARE = r"\"[^\"]+\"|'[^']+'|\S+"
@@ -586,7 +586,7 @@ _GIT_COMMIT = re.compile(
     r"\s+commit(?:\s|$)", re.IGNORECASE)
 # Git-level options that move the commit's REPO — the thing the branch lock
 # asks about, since HEAD (and so the branch committed to) lives in the git dir
-# (HIMMEL-2008). `-C` chdirs, which moves repo DISCOVERY; `--git-dir` names the
+# `-C` chdirs, which moves repo DISCOVERY; `--git-dir` names the
 # repo outright and OUTRANKS the cwd, so `git --git-dir=<main>/.git commit` run
 # from a worker really does land on main's branch. `_git_dir_for` walks UP from
 # whatever it is handed, so a `.git` dir resolves to its checkout. Valued
@@ -601,7 +601,7 @@ _GIT_REDIRECT_PREFIXES = ("-C", "--git-dir=")
 # `git -C <dir>` change-dir options are read TOKEN-WISE by `_commit_dir`, not
 # by a regex: a pattern scanning raw text cannot tell a real `-C` from one
 # sitting INSIDE a quoted value (`git -c core.pager="less -C <worker>" commit`)
-# and chdir'd to it, dropping the branch lock (HIMMEL-2008).
+# and chdir'd to it, dropping the branch lock.
 
 
 def _shell_tokens(text: str):
@@ -636,7 +636,7 @@ _CD_OR_POPD = re.compile(
 # a separator), the same convention every matcher above uses: a `(` mid-token
 # belongs to a PATH, not a subshell, and blanking it corrupted the dir before
 # the walk ever saw it (`cd "C:/Program Files (x86)/repo"`, `cd C:/t(x86)/r`)
-# -> an unresolvable dir -> fail-open (HIMMEL-2008). Groups 1-2 re-emit the
+# -> an unresolvable dir -> fail-open. Groups 1-2 re-emit the
 # separator so the stripped text still parses; `_commit_dir` loops to a
 # fixpoint, so nesting needs no arithmetic here.
 _SUBSHELL = re.compile(r"(^|[;&|(\n])(\s*)\([^()]*\)")
@@ -791,7 +791,7 @@ def _commit_dir(raw_cmd: str, base_cwd: str, gc) -> str:
     the parent, yet the walk follows it. Both are documented rather than
     guessed: closing them needs a quote-aware shell parser, and this is a
     command-text heuristic, not a shell."""
-    # Drop `( … )` groups to a FIXPOINT (HIMMEL-2008): one `sub` pass strips
+    # Drop `( … )` groups to a FIXPOINT: one `sub` pass strips
     # only the innermost level, so an outer `(cd <x> && (git log))` kept its
     # `cd` in the walk and REFUSED a commit the subshell never moved. Every
     # pass strictly shortens the text, so this terminates.
@@ -802,7 +802,7 @@ def _commit_dir(raw_cmd: str, base_cwd: str, gc) -> str:
             break
         pre = stripped
     # A dir STACK walked IN ORDER, so it tracks a running cwd rather than a
-    # bag of candidates (HIMMEL-2008). Two shell facts the old
+    # bag of candidates. Two shell facts the old
     # nearest-entry-wins walk got wrong, both fail-OPEN (they judged base_cwd
     # while the commit really ran elsewhere): every hop resolves against the
     # hop before it, so a relative chain (`cd ..` then `cd <x>`) lands where
@@ -816,7 +816,7 @@ def _commit_dir(raw_cmd: str, base_cwd: str, gc) -> str:
         else:
             tgt = _resolve_target(m.group(3), st[-1])
             # A `cd`/`pushd` to a dir that is not there FAILS in the shell and
-            # leaves the cwd ALONE (HIMMEL-2008). Following it anyway judged a
+            # leaves the cwd ALONE. Following it anyway judged a
             # path nothing runs in, and when that path had no repo ancestor the
             # branch lock fell OPEN on a commit still running in the base
             # checkout (`cd <missing>; git commit` on main).
@@ -826,7 +826,7 @@ def _commit_dir(raw_cmd: str, base_cwd: str, gc) -> str:
                 st.append(tgt)
             else:
                 st[-1] = tgt
-    # The commit invocation's OWN redirections (HIMMEL-2008): `-C <dir>` plus
+    # The commit invocation's OWN redirections: `-C <dir>` plus
     # `--git-dir` / `--work-tree`, which aim a commit at another checkout
     # entirely. They count only on the commit itself — it scopes that one git
     # call and never moves the shell, so an earlier `git -C <other> status`
@@ -869,7 +869,7 @@ def _commit_dirs(raw_cmd: str, base_cwd: str):
         yield _commit_dir(raw_cmd, base_cwd, gc)
 
 
-# --- Merged-PR commit lock (block-merged-pr-commit parity, HIMMEL-731) --------
+# --- Merged-PR commit lock (block-merged-pr-commit parity) --------
 # HYGIENE guard (NOT a security boundary), so it FAILS-OPEN everywhere except a
 # positively confirmed merged-PR branch — mirrors scripts/hooks/block-merged-pr-
 # commit.sh. Before allowing a terminal `git commit`, if gh is available, query
@@ -929,7 +929,7 @@ def _merged_pr_reason(start: str):
     return None
 
 
-# --- PHI / data-egress fence (HIMMEL-695, F-B5) ------------------------------
+# --- PHI / data-egress fence (F-B5) ------------------------------
 # parity_guard runs on the himmel_agent (CLOUD) profile — every engine hermes
 # routes through it (openai/codex AND z.ai/GLM) is a third-party cloud. Sending
 # PHI-marked material to any of them is a data-egress violation, so this fence
@@ -1055,7 +1055,7 @@ def terminal_phi_egress_reason(cmd_norm: str):
     return None
 
 
-# --- Engine-specific external-write fence (HIMMEL-695, write-fence half) ------
+# --- Engine-specific external-write fence (write-fence half) ------
 # The egress half (above) stops PHI from being READ / searched / written on this
 # cloud profile. THIS half stops an UNTRUSTED engine from pushing work OUT — git
 # push, remote-URL rewrite, gh PR-mutations, network CLIs — the exact shapes
@@ -1074,7 +1074,7 @@ def terminal_phi_egress_reason(cmd_norm: str):
 #     --provider through them (HERMES_ENGINE is a launcher/operator signal the
 #     one-shot dispatch path never sets) — without scanning them,
 #     `dispatch-trusted.sh --model deepseek-v4-flash` would ride the wrapper's
-#     external-writes opt-in with an untrusted engine (HIMMEL-916 CR finding).
+#     external-writes opt-in with an untrusted engine.
 #   * HERMES_EXTERNAL_WRITES_OK=1               -> the operator / gateway affirms
 #     a trusted main-tier (codex/openai) engine for this session -> PERMITTED.
 #   * anything else (no recognised signal)      -> FAIL-CLOSED -> refused.
@@ -1361,7 +1361,7 @@ def _bash_words(s: str, regions: int = 0) -> str:
     return "".join(out)
 
 
-# HIMMEL-4032: bash deletes a backslash-newline before parsing; an ODD trailing run only (an
+# bash deletes a backslash-newline before parsing; an ODD trailing run only (an
 # even run is a literal backslash and a real boundary). `\r` after the backslash = CRLF.
 _LINE_CONT = re.compile(r"(?<!\\)((?:\\\\)*)\\\r?\n")
 
@@ -1375,13 +1375,13 @@ def terminal_external_write_reason(cmd_norm: str, raw_cmd: str = ""):
     shape (git push / remote-URL rewrite / gh PR-mutation / network CLI), else
     None. `raw_cmd` is the un-norm()-ed command (norm() destroys backslash escapes).
     The caller gates this on an untrusted / unknown engine."""
-    # HIMMEL-4032: every arm also reads a continuation-joined copy and refuses if EITHER text
+    # every arm also reads a continuation-joined copy and refuses if EITHER text
     # does (deny-only, so `foo \<newline>gh pr merge` stays refused as before).
     texts = (cmd_norm, norm(_join_continuations(raw_cmd or cmd_norm)))
     if any(EXT_GIT_PUSH.search(t) for t in texts):
         return ("git push is refused on an untrusted/unknown engine — commit "
                 "locally; the trusted main tier / operator pushes (HIMMEL-695).")
-    # HIMMEL-844 round 7: decode every ANSI-C dollar-quote segment (bash's own escape set)
+    # decode every ANSI-C dollar-quote segment (bash's own escape set)
     # from the RAW command (norm() already mangled backslashes), then delete every quote and
     # backslash and lowercase: the words git sees. Blunt rule: `git` AND `insteadof` denies.
     # Accepted overmatch: `git log --grep insteadof`.
@@ -1400,7 +1400,7 @@ def terminal_external_write_reason(cmd_norm: str, raw_cmd: str = ""):
     return None
 
 
-# --- qmd MCP collection fence (HIMMEL-1239) ---------------------------------
+# --- qmd MCP collection fence ---------------------------------
 # v1 allow-list: ONLY the "himmel" collection (non-sensitive, repo-local
 # docs). qmd indexes salus (a PHI medical vault) alongside himmel/luna/
 # luna-curated with NO built-in isolation, so a blanket allow of the qmd MCP
@@ -1432,7 +1432,7 @@ def qmd_scope_reason(tool: str, args: dict):
         # isinstance-guard each entry — a non-string entry (e.g. a dict) makes
         # `c not in <set-of-str>` raise TypeError, which would otherwise reach
         # the outer fail-closed catch-all (main()'s try/except) instead of
-        # denying with a specific, documented reason (CR round 1, HIMMEL-1239).
+        # denying with a specific, documented reason.
         bad = [c for c in collections
                if not isinstance(c, str) or c not in QMD_ALLOWED_COLLECTIONS]
         if bad:
@@ -1463,7 +1463,7 @@ def qmd_scope_reason(tool: str, args: dict):
             f"can verify — denied fail-closed (HIMMEL-1239).")
 
 
-# --- Tool classification (HIMMEL-2637) ---------------------------------------
+# --- Tool classification ---------------------------------------
 # The hook matcher is `.*` (wire_parity_guard.py): pre_tool_call is hermes'
 # ONLY blocking event and it fullmatches the tool name, so a tool the matcher
 # missed was never judged at all — execute_code, delegate_task, browser_*,
@@ -1642,7 +1642,7 @@ def _check_write_targets(payload: dict, args: dict, keys=None) -> None:
         if isinstance(v, str) and k not in CONTENT_KEYS and (keys is None or k in keys):
             check_write_path(norm(v))
             # The REAL target: a relative path belongs to the agent's cwd,
-            # not this guard's (HIMMEL-2008). "" = undeterminable.
+            # not this guard's. "" = undeterminable.
             target = _resolve_target(v, base_cwd)
             # PHI fence gets the resolved target when known, else raw v —
             # it is never SKIPPED the way the branch check below is. Be
@@ -1672,7 +1672,7 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
     if TERMINAL_FORBIDDEN_PATHS.search(cmd):
         block("Shell access to secret paths, the guard hook, or Claude "
               "Code's home is forbidden — use the file tools for those.")
-    # HIMMEL-4158: norm() turns `\` into `/`, which hides a shell escape in a
+    # norm() turns `\` into `/`, which hides a shell escape in a
     # wrapper value (`sudo -u a\ b reboot`); also read the raw text then.
     if _terminal_destructive(cmd) or _find_delete(raw_cmd) or (
             "\\" in raw_cmd and _terminal_destructive(raw_cmd.strip().lower())):
@@ -1693,11 +1693,11 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
     # in a repo checked out on the default branch is refused; a worker's own
     # type/slug branch commits freely.
     # EVERY `git commit` in the command is judged, not just the first
-    # (HIMMEL-2008) — one refusal is enough to block the whole command.
+    # One refusal is enough to block the whole command.
     for commit_dir in _commit_dirs(raw_cmd, _agent_cwd(payload, args)):
         # "" = that commit's dir is undeterminable (no -C, no cd/pushd, no
         # agent cwd) -> skip both locks rather than judge this guard
-        # process's own cwd, which is the session launch dir (HIMMEL-2008).
+        # process's own cwd, which is the session launch dir.
         if commit_dir:
             reason = _edit_on_main_reason(commit_dir)
             if reason:

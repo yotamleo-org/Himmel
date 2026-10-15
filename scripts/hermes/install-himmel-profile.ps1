@@ -24,7 +24,7 @@ $ErrorActionPreference = "Stop"
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted (reference fix: gen-changelog.ps1).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $Profile_ = "himmel_agent"
 $AssetDir = Join-Path $PSScriptRoot "assets"
@@ -104,7 +104,7 @@ if (-not (Test-Path $HaDir)) { throw "$Profile_ profile dir missing after create
 Copy-Item $SoulAsset $HaSoul -Force
 Write-Host "installed   : $HaSoul"
 
-# 4. sync the root config's model_aliases block onto himmel_agent (HIMMEL-737):
+# 4. sync the root config's model_aliases block onto himmel_agent:
 #    the one-shot dispatch path loads the PROFILE config, not the root config,
 #    so a profile cloned before the aliases existed never picks them up on
 #    its own - keep it synced on every create/refresh.
@@ -114,7 +114,7 @@ Write-Host "installed   : $HaSoul"
 if ($LASTEXITCODE -ne 0) { throw "sync_model_aliases.py failed (exit $LASTEXITCODE) syncing model_aliases into $HaConfig" }
 
 # 5. wire himmel_agent's pre_tool_call hook -> parity_guard (full set), plus the
-#    END-side on_session_finalize chain (HIMMEL-2021) when node and this repo are
+#    END-side on_session_finalize chain when node and this repo are
 #    both resolvable. Paths are already native here (twin of the .sh cygpath step).
 $NodeBin = if (Get-Command node -CommandType Application -ErrorAction SilentlyContinue) { (Get-Command node -CommandType Application | Select-Object -First 1).Source } else { $null }
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
@@ -126,7 +126,7 @@ if ($NodeBin -and (Test-Path (Join-Path $RepoRoot "scripts/hooks/run-hook-with-b
 }
 if ($LASTEXITCODE -ne 0) { throw "wire_parity_guard.py set failed (exit $LASTEXITCODE) wiring $HaConfig" }
 
-# 6. universal guard (HIMMEL-744): ensure parity_guard on EVERY other profile.
+# 6. universal guard: ensure parity_guard on EVERY other profile.
 #    Default (no flag) = the `default` profile + all others. -ParityGuard <csv>
 #    narrows to named profiles; all is the explicit form of the default. ensure
 #    is non-clobbering: swaps a luna_vault_guard, adds the guard where none

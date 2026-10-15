@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# install-himmel-profile.sh (HIMMEL-557, HIMMEL-744)
+# install-himmel-profile.sh
 #
 # Provision the ADDITIVE `himmel_agent` hermes profile — himmel's main-tier
 # orchestrator (Codex / GPT-5.5) — then wire the parity_guard into EVERY hermes
-# profile (universal guard, HIMMEL-744). himmel owns only himmel_agent's
+# profile (universal guard). himmel owns only himmel_agent's
 # SOUL/identity; SOUL stays per-role. The guard does NOT: it is universal.
 # Non-clobbering — an existing luna_vault_guard is swapped, a profile with no
 # guard has parity_guard ADDED (other unrelated hooks preserved). Idempotent.
@@ -105,14 +105,14 @@ fi
 cp "$SOUL_ASSET" "$HA_SOUL"
 echo "installed   : $HA_SOUL"
 
-# 4. sync the root config's model_aliases block onto himmel_agent (HIMMEL-737):
+# 4. sync the root config's model_aliases block onto himmel_agent:
 #    the one-shot dispatch path loads the PROFILE config, not the root config,
 #    so a profile cloned before the aliases existed never picks them up on
 #    its own - keep it synced on every create/refresh.
 "$PYBIN" "$SYNC" "$HOME_DIR/config.yaml" "$HA_CONFIG"
 
 # 5. wire himmel_agent's pre_tool_call hook -> parity_guard (full set), plus the
-#    END-side on_session_finalize chain (HIMMEL-2021) when node and this repo are
+#    END-side on_session_finalize chain when node and this repo are
 #    both resolvable. Windows note: the hook command is consumed by hermes, not
 #    by Git Bash, so both paths are converted to native form — an MSYS `/c/...`
 #    from `command -v` / `pwd` would not resolve there.
@@ -133,7 +133,7 @@ else
   "$PYBIN" "$WIRE" set "$HA_CONFIG" "$GUARD_DEST" "$PYBIN"
 fi
 
-# 6. universal guard (HIMMEL-744): ensure parity_guard on EVERY other profile.
+# 6. universal guard: ensure parity_guard on EVERY other profile.
 #    Default (no flag) = the `default` profile + all others. --parity-guard=<csv>
 #    narrows to named profiles; =all is the explicit form of the default. ensure
 #    is non-clobbering: swaps a luna_vault_guard, adds the guard where none

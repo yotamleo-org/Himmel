@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for install-himmel-profile.sh (HIMMEL-557).
+# Hermetic tests for install-himmel-profile.sh.
 # No real hermes install needed: a stub CLI simulates `profile list/create`
 # and HERMES_HOME points at a throwaway temp tree. Asserts the provisioner is
 # additive (only himmel_agent gets the main-tier SOUL + parity_guard) and that

