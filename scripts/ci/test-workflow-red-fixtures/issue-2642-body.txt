@@ -1,0 +1,15 @@
+**Automated ci-red report** -- maintained in place by workflow-red.yml. Do not open duplicates; this issue is refreshed on each red run of **os-verify** on **chore/himmel-5729-drop-windows-ci** and is closed automatically by the next green run of the same workflow on the same branch.
+
+- workflow: os-verify
+- branch: chore/himmel-5729-drop-windows-ci
+- event: workflow_dispatch
+- tested sha: eb4a3e64bdae3e2c8ef0bc6767785353b63ed9db
+- run: https://github.com/yotamleo/Himmel/actions/runs/38660360246
+- last red run: 2026-10-15 01:38 UTC
+
+Failed jobs:
+- failed: os-verify / shell (macos-latest, 1)
+- failed: os-verify / shell (macos-latest, 2)
+
+<!-- ci-red-branch: chore/himmel-5729-drop-windows-ci -->
+<!-- ci-red-run: 38660360246 -->
