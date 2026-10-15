@@ -95,12 +95,10 @@ _deny() { echo "block-unresolved-cr-merge: $1" >&2; exit 2; }
 _norm() {
     printf '%s' "$1" | sed -e ':a' -e '$!N' -e '$!ba' -e 's/\\\n//g' -e 's/\\//g' -e "s/['\"\$\`{}]//g" | tr '\n' ' '
 }
-# The ONE dequote every added rule shares: strip quotes AND backslashes from the
-# word stream (`"gh"`, `\gh`, `g\h`, `"m?rge"` all become the bare word).
-_dq() { tr -d "'\"\\\\"; }
 # Monotone versus main: main's own detector runs byte for byte and every rule
 # below only ADDS a deny, so nothing main denied can pass (judge r1, C1).
-merge_re='gh[[:space:]]+pr[[:space:]]+merge'
+# A whole `gh` word: `ghc pr merge` / `xgh pr merge` are other programs.
+merge_re='(^|[^[:alnum:]_.-])gh[[:space:]]+pr[[:space:]]+merge'
 cmd_old=$(printf '%s' "$cmd" | sed -e ':a' -e '$!N' -e '$!ba' -e 's/\\\n//g' -e 's/\\//g' -e "s/['\"\$]//g" | tr '\n' ' ')
 fires=0
 printf '%s' "$cmd_old" | grep -E "$merge_re" >/dev/null && fires=1
@@ -130,99 +128,19 @@ for _n in "$cmd_norm" "$cmd_sq"; do
             if (w == "api") api = 1; else if (w == "alias") al = 1; else g = 0 } }
         END { exit !f }' && fires=1
 done
-# Expansion-built verbs, scoped to a segment that has a gh word, a `$`/backtick
-# AND a merge-ish word (a literal merge word in any copy, or a word whose literal
-# residue is letters of `merge`: `m${X:-er}ge`, `$'m\x65rge'`). A non-merge gh
-# command (`gh pr view "$PR"`) never fires.
-if [ "$fires" = "0" ]; then
-    # shellcheck disable=SC2020,SC2016 # five separators map to newlines; the sed pattern is literal
-    printf '%s' "$cmd" | sed -e ':a' -e '$!N' -e '$!ba' -e 's/\\\n//g' -e 's/\$(/$ /g' | tr ';&|(\n' '\n\n\n\n\n' \
-        | awk -v q="'" 'function res(w,  t) { t = w; gsub("[$]" q, "", t)
-                gsub(/\\x[0-9a-fA-F]+|\\u[0-9a-fA-F]+|\\[0-7]+/, "", t)
-                gsub(/[$][{][^}]*[}]/, "", t); gsub(/[$][A-Za-z_][A-Za-z0-9_]*/, "", t)
-                gsub("[$`{}\\\\\"" q "]", "", t); return t }
-            { g = 0; d = 0; m = 0
-            for (i = 1; i <= NF; i++) { w = $i; s = w; gsub("[\"" q "]", "", s)
-                if (s == "gh" || s ~ "/gh$") g = 1
-                if (w ~ /[$`]/) d = 1
-                t1 = w; gsub("[$`{}\\\\\"" q "]", "", t1)
-                t2 = w; gsub(/[$][{][^}]*[}]/, " ", t2); gsub("[$`{}\\\\\"" q "]", " ", t2)
-                n = split(t2, a, " "); for (j = 1; j <= n; j++) if (a[j] == "gh" || a[j] ~ "/gh$") g = 1
-                r = res(w)
-                if (t1 ~ "(^|[^A-Za-z0-9])merge([^A-Za-z0-9]|$|PullRequest)" || t2 ~ "(^|[^A-Za-z0-9])merge([^A-Za-z0-9]|$|PullRequest)" \
-                    || t1 ~ "mergePullRequest" || (length(r) >= 3 && r ~ /^m?e?r?g?e?$/)) m = 1 }
-            if (g && d && m) f = 1 }
-            END { exit !f }' && fires=1
-fi
-# A word that only GLOBS to `merge` (`m?rge`, `[m]erge`, a bare `*`) hides the verb
-# from every text copy: a segment with a gh word, a `pr` word and such a word fires
-# (quoted spans are dropped first; `ls *` has no gh+pr precondition).
-if [ "$fires" = "0" ]; then
-    # shellcheck disable=SC2020 # five separators each map to a newline, by design
-    printf '%s' "$cmd" | tr ';&|(\n' '\n\n\n\n\n' | _dq \
-        | awk '{ g = 0; p = 0; s = 0
-            for (i = 1; i <= NF; i++) { w = $i
-                if (w == "gh" || w ~ "/gh$") g = 1
-                if (w == "pr") p = 1
-                if (w ~ "[*?[]") { re = w; gsub(/\[[!^]/, "[^", re); gsub(/[.]/, "[.]", re); gsub(/[*]/, ".*", re); gsub(/[?]/, ".", re)
-                    if ("merge" ~ ("^" re "$")) s = 1 } }
-            if (g && p && s) f = 1 }
-            END { exit !f }' 2>/dev/null && fires=1
-fi
-# Positional rules for a SINGLE shell-computed word (judge r2): (R1) a literal gh
-# word, then an expansion or substitution in the subcommand position or, after
-# `pr`, in the verb position (`gh pr "$M" 1`, `gh $A 42`, `gh "$@" 42`); (R2) a
-# segment with any non-plain word (rule D's allowlist, so assignments and wrappers
-# such as `command "$G"`, `env "$G"`, `X=1 "$G"` count) before an `api` word, then a
-# merge-ish word or a PUT with a pulls/ path (`"$G" api -X PUT repos/o/r/pulls/1/merge`).
-# `gh pr view "$PR"` never reaches an expansion in those positions. Both words
-# computed, or a computed merge path (`gh api -X PUT "$U"`) stays the HIMMEL-3945
-# residual.
-if [ "$fires" = "0" ]; then
-    # shellcheck disable=SC2020,SC2016 # five separators map to newlines; the sed pattern is literal
-    printf '%s' "$cmd" | sed -e ':a' -e '$!N' -e '$!ba' -e 's/\\\n//g' -e 's/\$(/$ /g' | tr ';&|(\n' '\n\n\n\n\n' | _dq \
-        | awk '{ g = 0; pr = 0; skip = 0; api = 0; put = 0; pul = 0; bad = 0
-            for (i = 1; i <= NF; i++) { w = $i; s = w
-                if (bad && !api && s == "api") { api = 1; continue }
-                if (api) { if (s == "PUT") put = 1; if (s ~ "pulls/") pul = 1
-                    if (s ~ "merge" || (put && pul)) f = 1 }
-                if (s !~ "^[A-Za-z0-9_./+=-]+$") bad = 1
-                if (!g) { if (s == "gh" || s ~ "/gh$") g = 1; continue }
-                if (skip) { skip = 0; continue }
-                if (s ~ "^-") { if (s == "-R" || s == "--repo") skip = 1; continue }
-                if (w ~ /[$`]/) { f = 1; continue }
-                if (s == "pr") { pr = 1; continue }
-                g = 0 } }
-            END { exit !f }' 2>/dev/null && fires=1
-fi
-# The mirror case: in a segment with a `pr` word then a merge word, EVERY word
-# up to the merge word must be plain (`^[A-Za-z0-9_./+=-]+$`, quote chars and
-# backslashes ignored); a computed, globbed or wrapper-hidden word (`$'\x67\x68'
-# pr merge`, `${G} pr merge`, `"$G" pr me\rge`) fires. An allowlist, so no
-# spelling needs listing.
-if [ "$fires" = "0" ] && printf '%s\n%s' "$cmd_norm" "$cmd_sq" | grep -qE '(^|[^A-Za-z0-9])merge([^A-Za-z0-9]|$|PullRequest)'; then
-    # shellcheck disable=SC2020 # five separators each map to a newline, by design
-    printf '%s' "$cmd" | sed -e ':a' -e '$!N' -e '$!ba' -e 's/\\\n//g' -e 's/\\//g' | tr ';&|(\n' '\n\n\n\n\n' | _dq \
-        | awk '{ pr = 0; bad = 0
-            for (i = 1; i <= NF; i++) { w = $i
-                if (w ~ "^[A-Za-z0-9_./+=-]+$") {
-                    if (w == "pr") pr = 1
-                    else if (w == "merge" && pr && bad) f = 1
-                } else { bad = 1
-                    if (pr && w ~ "(^|[^A-Za-z0-9])merge([^A-Za-z0-9]|$)") f = 1 } } }
-            END { exit !f }' && fires=1
-fi
-# ponytail: both the program word AND the verb shell-computed (or `bash -c` fed
-# from a variable holding both) stay undetectable by text, structural backstop
-# is a gh- or credential-level merge gate (HIMMEL-3945).
+# ponytail: text detection covers the common mistake (a plain or quoted `gh pr merge`, `gh api` merge, `mergePullRequest`) and not spellings that compute the program or verb in the shell (HIMMEL-3945: gh- or credential-level merge gate).
 [ "$fires" = "1" ] || exit 0
-case "$cmd" in
+# A head pin is one word to bash whether or not it is quoted: unquote a hex-only
+# value (`--match-head-commit "<sha>"`, `'<sha>'`, `=` form) before the plain-command
+# check. Anything else inside quotes still fails the check below.
+cmd_plain=$(printf '%s' "$cmd" | sed -E -e 's/(--match-head-commit[ =])"([0-9a-fA-F]+)"/\1\2/g' -e "s/(--match-head-commit[ =])'([0-9a-fA-F]+)'/\\1\\2/g")
+case "$cmd_plain" in
     *[!A-Za-z0-9\ _./:=,-]*) plain=0 ;;
     *) plain=1 ;;
 esac
 set -f
 # shellcheck disable=SC2086
-set -- $cmd
+set -- $cmd_plain
 set +f
 if [ "$plain" != "1" ] || [ "${1-}" != "gh" ]; then
     _deny "gh pr merge must be a single plain command with no quoting (only letters, digits, space and _ . / : = - , are allowed; no chaining, redirects, pipes, substitution, prefixes or quotes) — refusing (GATE INTEGRITY). Use scripts/handover/merge-on-green.sh for a custom subject/body. (For help run: gh help pr merge)"
@@ -387,9 +305,9 @@ _go_view() {
     go_meta=""
     [ -n "$go_tmp" ] || return 1
     if [ -n "${2:-}" ]; then
-        _gate4_bounded 10 "$go_tmp" gh pr view "$1" --repo "$2" --json number,headRefOid,url || return 1
+        _gate4_bounded "$(_budget_left 10)" "$go_tmp" gh pr view "$1" --repo "$2" --json number,headRefOid,url || return 1
     else
-        _gate4_bounded 10 "$go_tmp" gh pr view "$1" --json number,headRefOid,url || return 1
+        _gate4_bounded "$(_budget_left 10)" "$go_tmp" gh pr view "$1" --json number,headRefOid,url || return 1
     fi
     go_meta=$(cat "$go_tmp" 2>/dev/null) || go_meta=""
 }
@@ -682,7 +600,12 @@ trust_anchor=$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd -P) || trust_anchor=""
 [ -n "$trust_anchor" ] || gate4_refuse "cannot resolve the harness anchor for the CI trust-path check of PR #$go_num — refusing"
 trust_tmp=$(mktemp "${TMPDIR:-/tmp}/block-unresolved-cr-merge-trust.XXXXXX" 2>/dev/null) \
     || gate4_refuse "cannot create a temp file for the CI trust-path check of PR #$go_num — refusing"
-_gate4_bounded 10 "$trust_tmp" gh repo view "$go_nwo" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' || true
+trust_br_rc=0
+trust_br_secs=$(_budget_left 10)
+[ "$trust_br_secs" -gt 0 ] || gate4_refuse "the hook budget is spent before the default-branch read for PR #$go_num — refusing"
+_gate4_bounded "$trust_br_secs" "$trust_tmp" gh repo view "$go_nwo" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' || trust_br_rc=$?
+[ "$trust_br_rc" -eq 0 ] \
+    || gate4_refuse "gh failed (rc=$trust_br_rc) reading $go_nwo's default branch for the CI trust-path check of PR #$go_num — refusing"
 trust_branch=$(cat "$trust_tmp" 2>/dev/null) || trust_branch=""
 [ -n "$trust_branch" ] \
     || gate4_refuse "cannot read $go_nwo's default branch for the CI trust-path check of PR #$go_num — refusing"

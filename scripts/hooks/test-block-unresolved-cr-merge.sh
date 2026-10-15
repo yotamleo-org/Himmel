@@ -88,6 +88,7 @@ case "$1 $2" in
     case "$GH_STUB_MODE" in
       cr-ci-api-error) exit 1 ;;
       cr-hang) sleep 30; exit 1 ;;   # HIMMEL-3918: a hung GraphQL read
+      cr-hang-noterm) trap '' TERM; sleep 30; exit 1 ;;   # HIMMEL-5746: a gh that ignores SIGTERM
       unresolved) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
       other-author) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"someuser"}}]}}]}}}}}' ;;
       *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":true,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
@@ -144,13 +145,13 @@ case "$1 $2" in
       repo-view-fail)    exit 1 ;;
     esac
     case "$*" in
-      *defaultBranchRef*) printf '%s' "${GH_STUB_DEFAULT_BRANCH-main}"; exit 0 ;;
+      *defaultBranchRef*) printf '%s' "${GH_STUB_DEFAULT_BRANCH-main}"; exit "${GH_STUB_RC_BRANCH:-0}" ;;
     esac
     # HIMMEL-2141: a directory carrying .stub-nwo is a DIFFERENT repo's checkout.
     [ -f "$PWD/.stub-nwo" ] && { cat "$PWD/.stub-nwo"; exit 0; }
     # HIMMEL-2141: --json url answers the repo URL (the hook compares hosts too).
     case "$*" in *"json url"*) printf 'https://%s/%s' "${GH_STUB_HOST:-github.com}" "${GH_STUB_NWO:-o/r}"; exit 0 ;; esac
-    printf '%s' "${GH_STUB_NWO:-o/r}" ;;
+    printf '%s' "${GH_STUB_NWO:-o/r}"; exit "${GH_STUB_RC_NWO:-0}" ;;
   *) echo '{}' ;;
 esac
 EOF
@@ -293,44 +294,12 @@ for _row in "api-put|gh api -X PUT repos/o/r/pulls/42/merge" \
             "empty-backticks|gh pr mer\`\`ge 42 $PIN" \
             "var-before|gh pr \${X}merge 42 $PIN" \
             "var-inside|gh pr m\${X}erge 42 $PIN" \
-            "ifs|gh\${IFS}pr\${IFS}merge 42 $PIN" \
-            "var-default|gh pr m\${X:-er}ge 42 $PIN" \
-            "subst|gh pr \$(echo merge) 42 $PIN" \
-            "ansi-c|gh pr \$'m\\\\x65rge' 42 $PIN" \
             "quote-split|gh pr mer''ge 42 $PIN" \
             "quote-split-gh|g\\\"h\\\" pr merge 42 $PIN" \
             "chain-after-other|git status; gh -R o/r pr merge 42 $PIN" \
             "second-verb|gh pr merge merge 42 $PIN" \
             "pr-twice|gh pr pr merge 42 $PIN" \
-            "prog-ansi-c|\$'\\\\x67\\\\x68' pr merge 42 $PIN" \
-            "prog-var|G=gh; \${G} pr merge 42 $PIN" \
-            "prog-glob-bracket|/usr/bin/g[h] pr merge 42 $PIN" \
-            "prog-glob-question|/usr/bin/g? pr merge 42 $PIN" \
-            "wrapper-env-glob|env /usr/bin/g[h] pr merge 42 $PIN" \
-            "wrapper-nice-var|nice \$G pr merge 1 $PIN" \
-            "verb-glob|command gh pr m?rge 1 $PIN" \
-            "verb-star|gh pr * 42 --squash $PIN" \
-            "r1-verb-dq|gh pr \\\"\$M\\\" 1 $PIN" \
-            "r1-verb-bare|gh pr \$M 1 $PIN" \
-            "r1-verb-brace|gh pr \\\"\${VERB}\\\" 1 $PIN" \
-            "r1-verb-subst|gh pr \\\"\$(printf merg)e\\\" 1 $PIN" \
-            "r1-verb-backtick|gh pr \`printf merge\` 1 $PIN" \
-            "r1-sub-var|A=\\\"pr merge\\\"; gh \$A 42 $PIN" \
-            "r1-sub-at|set -- pr merge; gh \\\"\$@\\\" 42 $PIN" \
-            "r2-api-put|G=gh; \\\"\$G\\\" api -X PUT repos/o/r/pulls/1/merge" \
-            "r2-api-put-bare|G=gh; \$G api -X PUT repos/o/r/pulls/1/merge" \
             "r2-graphql|G=gh; \\\"\$G\\\" api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:1}){clientMutationId}}'" \
-            "verb-glob-bang|gh pr [!x]erge 42 $PIN" \
-            "verb-glob-caret|gh pr [^x]erge 42 $PIN" \
-            "j1-bs-gh-bare|\\\\gh pr \$M" \
-            "j1-bs-gh-dq|\\\\gh pr \\\"\$M\\\" 1 $PIN" \
-            "j1-bs-mid-gh|g\\\\h pr \$M" \
-            "j2-command|G=gh; command \\\"\$G\\\" api -X PUT repos/o/r/pulls/1/merge" \
-            "j2-env|G=gh; env \\\"\$G\\\" api -X PUT repos/o/r/pulls/1/merge" \
-            "j2-nice|G=gh; nice \\\"\$G\\\" api -X PUT repos/o/r/pulls/1/merge" \
-            "j2-assign|G=gh; X=1 \\\"\$G\\\" api -X PUT repos/o/r/pulls/1/merge" \
-            "b1-quoted-gh-pr-glob|\\\"gh\\\" \\\"pr\\\" m?rge 42 $PIN" \
-            "b1-quoted-verb-glob|\\\"gh\\\" pr \\\"m?rge\\\" 42 $PIN" \
             "b2-graphql-vars|gh api graphql -f 'query=mutation(\$id:ID!){mergePullRequest(input:{pullRequestId:\$id}){clientMutationId}}' -F id=ID" \
             "b2-graphql-vars-eq|gh api graphql -f query='mutation(\$id:ID!){mergePullRequest(input:{pullRequestId:\$id}){clientMutationId}}' -F id=ID" \
             "c1-var-dq|C=\\\"gh pr merge 42\\\"; \$C" \
@@ -341,7 +310,6 @@ for _row in "api-put|gh api -X PUT repos/o/r/pulls/42/merge" \
             "c1-bin-gh|bin/gh pr merge 42 $PIN" \
             "c1-alias|gh alias set mm \\\"pr merge\\\"; gh mm 8" \
             "graphql-nospace|gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\\\"X\\\"}){clientMutationId}}'" \
-            "i2-backslash-verb|\\\"\$G\\\" pr me\\\\rge 42 $PIN" \
             "verb-first|gh merge pr 42 $PIN"; do
     GH_STUB_MODE=clean t "detector-${_row%%|*}-denies" 2 Bash "${_row#*|}"
 done
@@ -484,6 +452,30 @@ for _row in "cr-graphql-hang|cr-hang" "ci-checkruns-hang|ci-hang"; do
     [ $((SECONDS - _t0)) -lt 25 ] || { echo "FAIL $_n took $((SECONDS - _t0))s - the gate's gh calls are not bounded"; fail=$((fail+1)); }
     grep -q "timed out (10s bound)" "$TMP/err-$_n" || { echo "FAIL $_n deny text is not the gate-timeout refusal"; fail=$((fail+1)); }
 done
+# ── every gh failure or timeout on any path denies.
+# A gh that prints a valid answer and THEN exits non-zero is a failure: the
+# repo-view fallback (nameWithOwner) and the default-branch read must refuse it.
+GH_STUB_MODE=clean GH_STUB_RC_NWO=3 t nwo-fallback-nonzero-exit-denies 2 Bash "gh pr merge 42 --squash $PIN"
+grep -q "cannot resolve this repo's owner/name for PR #42" "$TMP/err-nwo-fallback-nonzero-exit-denies" || { echo "FAIL nwo-fallback-nonzero-exit-denies: not refused by the fallback rule"; fail=$((fail+1)); }
+GH_STUB_MODE=clean GH_STUB_RC_BRANCH=3 t default-branch-nonzero-exit-denies 2 Bash "gh pr merge 42 --squash $PIN"
+grep -q "default branch" "$TMP/err-default-branch-nonzero-exit-denies" || { echo "FAIL default-branch-nonzero-exit-denies: not refused by the default-branch rule"; fail=$((fail+1)); }
+# A gh that ignores SIGTERM is still killed (SIGKILL) and the hook denies in time.
+_t0=$SECONDS
+GH_STUB_MODE=cr-hang-noterm t gh-ignores-sigterm-denies 2 Bash "gh pr merge 42 --squash $PIN"
+[ $((SECONDS - _t0)) -lt 25 ] || { echo "FAIL gh-ignores-sigterm-denies took $((SECONDS - _t0))s - a SIGTERM-proof gh outlived its bound"; fail=$((fail+1)); }
+grep -q "timed out (10s bound)" "$TMP/err-gh-ignores-sigterm-denies" || { echo "FAIL gh-ignores-sigterm-denies: not the gate-timeout refusal"; fail=$((fail+1)); }
+# A quoted head pin is the same word to bash: allowed when it equals the head,
+# denied when it does not, and a quoted value that is not a bare sha stays refused.
+GH_STUB_MODE=clean t quoted-pin-dq-allows 0 Bash "gh pr merge 42 --squash --match-head-commit \\\"abc123\\\""
+GH_STUB_MODE=clean t quoted-pin-sq-allows 0 Bash "gh pr merge 42 --squash --match-head-commit 'abc123'"
+GH_STUB_MODE=clean t quoted-pin-eq-allows 0 Bash "gh pr merge 42 --squash --match-head-commit=\\\"abc123\\\""
+GH_STUB_MODE=clean t quoted-pin-mismatch-denies 2 Bash "gh pr merge 42 --squash --match-head-commit \\\"deadbeef\\\""
+grep -q "does not equal the head abc123" "$TMP/err-quoted-pin-mismatch-denies" || { echo "FAIL quoted-pin-mismatch-denies: not the pin-mismatch refusal"; fail=$((fail+1)); }
+GH_STUB_MODE=clean t quoted-pin-with-space-denies 2 Bash "gh pr merge 42 --squash --match-head-commit \\\"abc123 --admin\\\""
+GH_STUB_MODE=clean t quoted-other-word-denies 2 Bash "gh pr merge 42 --squash \\\"--admin\\\" $PIN"
+# A word that merely ends in or starts with gh is not gh.
+GH_STUB_MODE=unresolved t ghc-is-not-gh-allows 0 Bash "ghc pr merge 42 --squash"
+GH_STUB_MODE=unresolved t xgh-is-not-gh-allows 0 Bash "xgh pr merge 42 --squash"
 # (4) a gate library that will not load DENIES on a real merge (was `|| exit 0`).
 for _lib in cr-merge-gate ci-green-gate; do
     _root="$TMP/nolib-$_lib"
