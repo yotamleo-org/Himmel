@@ -53,7 +53,7 @@ test("record the AG-UI page streaming a live run", async ({ browser }) => {
       await follow();
       await sleep(ms);
     });
-    await page.getByRole("status").filter({ hasText: "finished" }).waitFor();
+    await page.getByRole("status").filter({ hasText: "idle" }).waitFor(); // a live page never says "finished"
     await sleep(1200);
     await page.evaluate(() => window.scrollTo({ top: 0 }));
     await sleep(2400); // the closing frame: the strip, the agents, the filled review panel
