@@ -274,4 +274,36 @@ else
   fail "24p: rc=$rc ran='$ran' output: $out"
 fi
 
+# 24q: a `#` line inside a heredoc is data, and a mode-only change is not a
+# comment: neither may hide the driving suite.
+git -C "$SB" checkout -q "$P0"
+git -C "$SB" checkout -q -b hd
+printf 'cat <<EOF\ndata\nEOF\n' >> "$SB/scripts/machine-setup/uninstall-plugins.sh"
+git -C "$SB" commit -q -am "feat: heredoc"
+HD0=$(git -C "$SB" rev-parse HEAD)
+printf '# inside\n' > "$SB/hd.tmp"
+sed '2i # inside' "$SB/scripts/machine-setup/uninstall-plugins.sh" > "$SB/hd.tmp"
+cp "$SB/hd.tmp" "$SB/scripts/machine-setup/uninstall-plugins.sh"
+rm -f "$SB/hd.tmp"
+git -C "$SB" commit -q -am "docs: heredoc-adjacent comment"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$HD0..$(git -C "$SB" rev-parse HEAD)" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
+  pass "24q: a comment edit in a file with a heredoc still selects the suite"
+else
+  fail "24q: rc=$rc ran='$ran' output: $out"
+fi
+MD0=$(git -C "$SB" rev-parse HEAD)
+git -C "$SB" update-index --chmod=+x scripts/machine-setup/uninstall-plugins.sh
+git -C "$SB" commit -q -m "chore: mode"
+: > "$IMP_LOG"
+out=$(bash "$IMPRUN" --scan-repo-of-script --impacted "$MD0..$(git -C "$SB" rev-parse HEAD)" 2>&1); rc=$?
+ran=$(cat "$IMP_LOG")
+if [ "$rc" -eq 0 ] && [ "$ran" = "uninstall" ]; then
+  pass "24q: a mode-only change still selects the suite"
+else
+  fail "24q: rc=$rc ran='$ran' output: $out"
+fi
+
 rst_tally
