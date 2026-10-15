@@ -196,6 +196,8 @@ cutwith() { # <dir> <json-escaped command>: digest the commit-cut fixture with t
 check "echoed text that mentions git commit is not a commit cut" '[ "$(cutwith ex4 "echo git commit done")" = none ]'
 check "git commit-tree is not a commit cut" '[ "$(cutwith ex5 "git commit-tree abc123 -m x")" = none ]'
 check "a git commit after && and with a global option still cuts" '[ "$(cutwith ex6 "cd x \&\& git -C y commit -m x")" = commit ]'
+check "a git commit behind an env assignment still cuts" '[ "$(cutwith ex7 "GIT_AUTHOR_DATE=2026-01-01 git commit -m x")" = commit ]'
+check "a git commit behind command still cuts" '[ "$(cutwith ex8 "command git commit -m x")" = commit ]'
 grep -v '"name": "Edit"' "$TMP/$S11.jsonl" | grep -v 'toolu_x4' | grep -v 'msg_x4' >"$TMP/ex3.jsonl"
 mkdir -p "$TMP/ex3" && mv "$TMP/ex3.jsonl" "$TMP/ex3/$S11.jsonl"
 digest "$TMP/ex3/$S11.jsonl" >"$TMP/ex3.json" 2>/dev/null || bad "the no-cut digest exits 0"
