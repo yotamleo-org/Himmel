@@ -35,11 +35,13 @@ _ga_check_doctor() {
     local root="$1" rows line json
     command -v jq >/dev/null 2>&1 || { _ga_skip "doctor rows (jq missing)"; return 0; }
     if [ -n "${GAP_AUDIT_DOCTOR_CMD:-}" ]; then
-        json="$($GAP_AUDIT_DOCTOR_CMD 2>/dev/null)" || { _ga_skip "doctor rows (doctor failed)"; return 0; }
+        json="$($GAP_AUDIT_DOCTOR_CMD 2>/dev/null)"
     else
-        json="$(bash "$root/scripts/himmel-doctor.sh" --json --no-color --only C8,C33,C40,C49,C50,C56 2>/dev/null)" || { _ga_skip "doctor rows (doctor failed)"; return 0; }
+        json="$(bash "$root/scripts/himmel-doctor.sh" --json --no-color --only C8,C33,C40,C49,C50,C56 2>/dev/null)"
     fi
-    rows="$(printf '%s\n' "$json" | jq -r 'select(.sev == "WARN" or .sev == "FAIL") | "\(.id)\t\(.msg)\t\(.remedy)"' 2>/dev/null)" || return 0
+    # the doctor may exit non-zero precisely because it found WARN/FAIL rows: judge its output, not its rc
+    [ -n "$json" ] || { _ga_skip "doctor rows (no output)"; return 0; }
+    rows="$(printf '%s\n' "$json" | jq -r 'select(.sev == "WARN" or .sev == "FAIL") | "\(.id)\t\(.msg)\t\(.remedy)"' 2>/dev/null)" || { _ga_skip "doctor rows (unreadable output)"; return 0; }
     [ -n "$rows" ] || return 0
     while IFS="$(printf '\t')" read -r id msg remedy; do
         [ -n "$id" ] && _ga_add "doctor $id" "$msg" "$remedy"

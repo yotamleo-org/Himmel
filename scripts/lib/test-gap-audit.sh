@@ -121,6 +121,15 @@ has "default doctor runs from a path with spaces" "$out" "C40-spaced"
 # --- read-only + never fatal ------------------------------------------------
 out="$(run GAP_AUDIT_DOCTOR_CMD="bash $TMP/missing.sh")"
 has "broken doctor never aborts the offer" "$out" "gap audit"
+has "doctor with no output: reported as not checked" "$out" "not checked: doctor rows"
+lacks "doctor with no output is not a bare all clear" "$out" "all clear"
+printf '#!/usr/bin/env bash\ncat "%s"\nexit 1\n' "$TMP/doctor-red.json" > "$TMP/doctor-rc1.sh"
+out="$(run GAP_AUDIT_DOCTOR_CMD="bash $TMP/doctor-rc1.sh")"
+has "doctor exiting non-zero still has its WARN rows shown" "$out" "C50-qmd-fork-stamp"
+printf '#!/usr/bin/env bash\nprintf "not json\\n"\n' > "$TMP/doctor-bad.sh"
+out="$(run GAP_AUDIT_DOCTOR_CMD="bash $TMP/doctor-bad.sh")"
+has "malformed doctor json: reported as not checked" "$out" "not checked: doctor rows (unreadable output)"
+lacks "malformed doctor json is not a bare all clear" "$out" "all clear"
 
 # --- wiring: himmel-update.sh ends both exit paths with the offer ------------
 UPD="$HERE/../himmel-update.sh"
