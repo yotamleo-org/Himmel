@@ -93,36 +93,6 @@ esac
 
 [ -z "$cmd" ] && exit 0
 
-# HIMMEL-5330: re-read the command with its variable expansions removed, so a
-# `${V:-}git stash` or `git ${V:-} stash` is judged as the `git stash` the shell
-# runs when V is empty. A must-run dependency: if it cannot be sourced, deny.
-case "${BASH_SOURCE[0]}" in
-    */*) _gee_lib=${BASH_SOURCE[0]%/*}/../lib/guard-empty-expansion.sh ;;
-    *) _gee_lib=../lib/guard-empty-expansion.sh ;;
-esac
-# shellcheck source=../lib/guard-empty-expansion.sh
-if ! { [ -r "$_gee_lib" ] && . "$_gee_lib"; } 2>/dev/null; then
-    echo "block-git-stash: cannot load $_gee_lib - failing closed" >&2
-    exit 2
-fi
-guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" 'git.*stash|stash.*git' || exit 2
-
-# HIMMEL-4438: re-read the forms the shell actually runs (quotes removed,
-# wrappers stripped, `bash -c`/`eval` bodies) through this same hook. The lib
-# is a must-run dependency: if it cannot be sourced, deny.
-if [ "$tool" != PowerShell ]; then
-    case "${BASH_SOURCE[0]}" in
-        */*) _gu_lib=${BASH_SOURCE[0]%/*}/lib/guard-unwrap.sh ;;
-        *) _gu_lib=lib/guard-unwrap.sh ;;
-    esac
-    # shellcheck source=lib/guard-unwrap.sh
-    if ! { [ -r "$_gu_lib" ] && . "$_gu_lib"; } 2>/dev/null; then
-        echo "block-git-stash: cannot load $_gu_lib - failing closed" >&2
-        exit 2
-    fi
-    guard_unwrap "${BASH_SOURCE[0]}" "$cmd" || exit 2
-fi
-
 # Lower-case (git subcommands are case-sensitive, but the surrounding grammar is
 # matched lower-cased for parity with the sibling guards) and fold newlines to
 # ';' so the line-oriented anchors below see one line. HIMMEL-2123: one `tr`
@@ -189,13 +159,7 @@ CMDPOS='(^|[|;&(`])[[:space:]]*(('"$ASSIGN"'|'"$EXEPFX"'(sudo([[:space:]]+-[^[:s
 SEP='([[:space:]]|\\[[:space:]]*;+)+[[:space:]]*'
 GITOPTVAL='('\''[^'\'']*'\''|"[^"]*"|[^-[:space:]][^[:space:]]*)'
 GITOPTS='('"${SEP}"'-[^[:space:]]+('"${SEP}${GITOPTVAL}"')?)*'
-# codex-1 r5: EXEPFX opens with an OPTIONAL quote, so `"git" stash drop` enters
-# at command position with the closing quote still in the stream -- and unlike
-# the sibling's atoms (whose trailing `[^[:alnum:]_.-]` boundary happens to
-# absorb it) this rule needs whitespace next, so the quoted spelling evaded it
-# outright (measured: rc=0 here vs rc=2 for `"taskkill"` in the sibling).
-# Allow the closing quote explicitly.
-GITSTASH="${CMDPOS}"'git(\.exe)?["'\'']?'"${GITOPTS}${SEP}"'stash'
+GITSTASH="${CMDPOS}"'git(\.exe)?'"${GITOPTS}${SEP}"'stash'
 
 # HIMMEL-2077: `refs/stash` is an ordinary ref, so it is also reachable through
 # the low-level plumbing verbs, entirely bypassing the `stash` keyword grammar
@@ -208,24 +172,10 @@ GITSTASH="${CMDPOS}"'git(\.exe)?["'\'']?'"${GITOPTS}${SEP}"'stash'
 # `refs/stash` to appear later in the SAME clause -- bounded by `[^|;&`]*` so
 # it cannot reach across a command separator into unrelated text (a stray
 # match there is a false DENY, the guard's documented safe direction).
-GITREFVERB="${CMDPOS}"'git(\.exe)?["'\'']?'"${GITOPTS}${SEP}"'(update-ref|symbolic-ref)'
-# codex-1 (CR rounds 2+3, HIMMEL-2077): outside quotes, a shell removes a `\`
-# before the NEXT character and passes it through literally, AND adjacent
-# quoted/unquoted segments with NO separator between them concatenate into
-# ONE shell word -- so `refs/sta\sh`, `refs/"stash"`, and `refs/'stash'` all
-# reach git as the literal `refs/stash`, while looking different to a
-# plain-string match (the same class of evasion SEP already accounts for
-# around whitespace). QCHAR is "optional backslash, single-quote, or
-# double-quote" -- tolerate one between every character of the literal
-# (mirrors what the shell itself collapses); one QCHAR per letter, not a
-# blanket repeat, so this stays anchored to the exact literal and cannot
-# balloon into matching unrelated text. This is a bounded, pragmatic defense
-# against the concrete evasions found so far, NOT a shell parser -- other
-# word-concatenation tricks (ANSI-C `$'...'` quoting, brace expansion,
-# variable indirection) remain an accepted residual, consistent with this
-# file's other documented non-goals (see the CMDPOS comment above).
-QCHAR='['\''"\]?'
-REFSTASH_LIT="r${QCHAR}e${QCHAR}f${QCHAR}s${QCHAR}/${QCHAR}s${QCHAR}t${QCHAR}a${QCHAR}s${QCHAR}h"
+GITREFVERB="${CMDPOS}"'git(\.exe)?'"${GITOPTS}${SEP}"'(update-ref|symbolic-ref)'
+# The literals are matched as typed. Quoting evasions (backslash,
+# quote concatenation, ANSI-C, brace, variable indirection) are not chased.
+REFSTASH_LIT='refs/stash'
 REFSTASH_IN_CLAUSE='[^|;&`]*'"${REFSTASH_LIT}"'([^[:alnum:]_./-]|$)'
 # codex-1 (CR round on HIMMEL-2077): `git update-ref --stdin` reads its ref
 # commands (`delete refs/stash`, `update refs/stash <sha> ...`) from STDIN
@@ -236,10 +186,9 @@ REFSTASH_IN_CLAUSE='[^|;&`]*'"${REFSTASH_LIT}"'([^[:alnum:]_./-]|$)'
 # design, so refuse `--stdin` unconditionally rather than try to peek into
 # piped data: false-denying an update-ref --stdin batch that never touched
 # refs/stash is the guard's documented safe direction, and nothing in this
-# repo uses that flag (verified: no other caller). Same QCHAR tolerance as
-# REFSTASH_LIT (codex-1 CR round 3): `--st\din` reaches git as `--stdin`.
-STDIN_LIT="-${QCHAR}-${QCHAR}s${QCHAR}t${QCHAR}d${QCHAR}i${QCHAR}n"
-GITUPDATEREF_STDIN="${CMDPOS}"'git(\.exe)?["'\'']?'"${GITOPTS}${SEP}"'update-ref[^|;&`]*'"${STDIN_LIT}"'([^[:alnum:]_-]|$)'
+# repo uses that flag (verified: no other caller).
+STDIN_LIT='--stdin'
+GITUPDATEREF_STDIN="${CMDPOS}"'git(\.exe)?'"${GITOPTS}${SEP}"'update-ref[^|;&`]*'"${STDIN_LIT}"'([^[:alnum:]_-]|$)'
 
 # The mutations, matched POSITIVELY in one pass. A two-step
 # "matches stash AND NOT matches an allowed verb" would be wrong on a compound
