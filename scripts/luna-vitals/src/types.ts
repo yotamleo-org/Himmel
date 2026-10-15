@@ -10,8 +10,8 @@ export type Conflict = {
   values: Candidate[];
   chosen: Candidate;
 };
-// Optional operator-facing degradation/degradation-adjacent signals (HIMMEL-794).
-// Absent on a clean pull (byte-identical artifacts to pre-794); present only when
+// Optional operator-facing degradation/degradation-adjacent signals.
+// Absent on a clean pull (byte-identical artifacts to before warnings existed); present only when
 // deriveSleep recorded a warning (degraded stage data, dropped session, non-array
 // stages). Preserved (and deduped across inputs) by the `merge` CLI command in
 // cli.ts — mergeRows itself never touches warnings. writeSeries ignores it.
@@ -63,7 +63,7 @@ export function validateConflict(c: Conflict): void {
  * be a non-empty array of non-empty strings — the documented contract is "absent
  * when empty, never []", so a present-but-empty array is rejected too. Returns an
  * error message when the value is malformed, or undefined when valid — absent
- * (undefined) counts as valid, so artifacts written before HIMMEL-794 (no warnings
+ * (undefined) counts as valid, so artifacts written before warnings existed (no warnings
  * field) keep loading unchanged. Shared by writeArtifact (outgoing) and
  * readArtifact (incoming, which prefixes the path), so both gates reject a
  * malformed warnings shape identically.

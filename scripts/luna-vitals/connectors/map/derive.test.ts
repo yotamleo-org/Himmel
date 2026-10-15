@@ -363,7 +363,7 @@ describe('deriveSleep', () => {
 
   test('classic session (no stages) → sleep_in_bed_hours only, no sleep_hours row, no warning', () => {
     // Fitbit classic-era sync: interval present, stages array absent/empty. An absent
-    // stages field is the normal stage-less case — NO warning (HIMMEL-794).
+    // stages field is the normal stage-less case — NO warning.
     const fixture = {
       dataPoints: [
         {
@@ -493,8 +493,8 @@ describe('deriveSleep', () => {
         },
       ],
     };
-    // The degraded warning goes BOTH to stderr (the pre-HIMMEL-793 operator signal)
-    // and, since HIMMEL-794, into the returned warnings[] (the durable artifact copy).
+    // The degraded warning goes BOTH to stderr (the operator signal)
+    // and into the returned warnings[] (the durable artifact copy).
     // Assert both while the spy is live — mockRestore() clears the recorded calls.
     const degradedText = 'sleep 2026-01-02: malformed stage timestamps - sleep_hours omitted (degraded stage data)';
     const errSpy = spyOn(console, 'error');
@@ -659,8 +659,8 @@ describe('deriveSleep', () => {
 
   test('session with no civilEndTime and no endUtcOffset → dropped, no rows, exact warning', () => {
     // An interval with startTime + endTime but neither civilEndTime nor endUtcOffset:
-    // no local end date can be derived, so the session is dropped. HIMMEL-794: the
-    // drop is now warned (stderr + artifact) instead of silent; row emission unchanged.
+    // no local end date can be derived, so the session is dropped. The
+    // drop is warned (stderr + artifact) instead of silent; row emission unchanged.
     const fixture = {
       dataPoints: [
         {
@@ -677,7 +677,7 @@ describe('deriveSleep', () => {
     const { rows, warnings } = deriveSleep(fixture);
 
     expect(rows).toEqual([]);
-    // No date derivable at all for this path — `date` is undefined (HIMMEL-794 Fix A).
+    // No date derivable at all for this path — `date` is undefined.
     expect(warnings).toContainEqual({
       date: undefined,
       text: 'sleep dataPoint 0 ending 2026-01-02T06:00:00Z: no civilEndTime and no endUtcOffset - session dropped',
@@ -686,7 +686,7 @@ describe('deriveSleep', () => {
 
   test('session with unparseable interval start/end → dropped, no rows, exact warning', () => {
     // civilEndTime is present so a date IS derivable, but the interval start/end are
-    // unparseable (Date.parse → NaN) → no duration → session dropped. HIMMEL-794: warned.
+    // unparseable (Date.parse → NaN) → no duration → session dropped and warned.
     const fixture = {
       dataPoints: [
         {
@@ -704,7 +704,7 @@ describe('deriveSleep', () => {
     const { rows, warnings } = deriveSleep(fixture);
 
     expect(rows).toEqual([]);
-    // civilEndTime made a date derivable, so the warning carries it (HIMMEL-794 Fix A).
+    // civilEndTime made a date derivable, so the warning carries it.
     expect(warnings).toContainEqual({
       date: '2026-01-02',
       text: 'sleep dataPoint 0 (2026-01-02): unparseable interval start/end - session dropped',

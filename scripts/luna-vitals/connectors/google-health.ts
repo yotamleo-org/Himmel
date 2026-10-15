@@ -139,7 +139,7 @@ export async function pull(opts: {
   );
 
   // warnings only when non-empty — a clean pull produces a byte-identical artifact
-  // to pre-HIMMEL-794 (no warnings key in the JSON).
+  // to a pre-warnings pull (no warnings key in the JSON).
   return {
     bucket: `${opts.from}..${opts.to}`,
     rows: sorted,

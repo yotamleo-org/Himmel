@@ -78,7 +78,7 @@ async function runWrapper(pullCmdSnippet: string): Promise<RunResult> {
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
-// 60 s per test (HIMMEL-1109). Each run spawns bash plus three nested
+// 60 s per test. Each run spawns bash plus three nested
 // `bash flow-run-ledger.sh` subprocesses; on Windows that costs ~2.5 s idle
 // but >15 s when the rest of the suite is spawning subprocesses in parallel,
 // which timed the old 15 s budget out. The budget is a harness allowance, not

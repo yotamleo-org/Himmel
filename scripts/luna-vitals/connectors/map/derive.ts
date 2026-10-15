@@ -176,7 +176,7 @@ export function deriveRestingHeartRate(response: { dataPoints?: unknown[] }): Ex
     const fieldKey = Object.keys(point).find((k) => k !== 'name' && k !== 'dataSource');
     if (!fieldKey) {
       // A malformed point with no typed payload field is dropped — but not
-      // silently (HIMMEL-801): emit the [google-health] stderr signal that the
+      // silently: emit the [google-health] stderr signal that the
       // rest of this connector uses. deriveRestingHeartRate returns a bare
       // ExtractedRow[] with no warnings channel, so stderr is the signal here.
       console.error(`[google-health] heart-rate dataPoint ${i}: no typed payload field - skipped`);
@@ -229,7 +229,7 @@ type SleepSession = {
   platform: string;
   // True when this session's raw `stages` field was present but non-array (malformed).
   // The warning for this is deferred to the per-date main-session-selection loop
-  // below (Fix B / HIMMEL-794 codex-adv-2): a malformed NAP alongside a clean main
+  // below: a malformed NAP alongside a clean main
   // session must not warn, since the emitted sleep_hours row never came from it.
   stagesMalformed: boolean;
 };
@@ -278,7 +278,7 @@ export type SleepWarning = { date?: string; text: string };
  *   in data-point order, then per-date warnings (degraded stage data; non-array
  *   stages on the MAIN session) in per-date main-session order. Each warning is
  *   ALSO printed to stderr as `[google-health] <text>` — the stderr behavior
- *   predates HIMMEL-794 and is unchanged; the returned copy is additive so `pull`
+ *   is unchanged; the returned copy is additive so `pull`
  *   can record it durably on the review artifact (window-scoped there, see
  *   google-health.ts). Six warning-producing paths, all with row emission
  *   unchanged: (1) a session dropped because its interval is missing
@@ -293,14 +293,14 @@ export type SleepWarning = { date?: string; text: string };
  *   (5) a non-array `stages` field on the MAIN session for a date, coerced to
  *   stage-less (an absent `stages` field is the normal classic case and does NOT
  *   warn; a malformed shorter/nap session that loses main-session selection does
- *   NOT warn either — it contributes no rows, see Fix B / HIMMEL-794 codex-adv-2).
+ *   NOT warn either — it contributes no rows).
  *   Paths 1-3 (session-scoped) embed the dataPoint index in the text so distinct
  *   events never share a text — the merge CLI dedups warnings by exact text, so
  *   identical text must mean the same event (over-reporting across re-pulls with
  *   different windows is the accepted safe direction). (6) a dataPoint with no
  *   typed payload field at all (the fieldKey lookup fails) is skipped WITH an
  *   undated, index-embedded warning (`sleep dataPoint <i>: no typed payload
- *   field - skipped`) — HIMMEL-801; the sibling deriveRestingHeartRate emits the
+ *   field - skipped`); the sibling deriveRestingHeartRate emits the
  *   same drop as a stderr-only [google-health] line (it has no warnings channel).
  *
  * Source: 'google-health:sleep:<platform>'.
@@ -310,7 +310,7 @@ export function deriveSleep(response: { dataPoints?: unknown[] }): { rows: Extra
   const sessions: SleepSession[] = [];
   const warnings: SleepWarning[] = [];
   // Each warning is recorded in `warnings` (durable, returned to the caller) AND
-  // printed to stderr with the [google-health] prefix (the pre-HIMMEL-794 operator
+  // printed to stderr with the [google-health] prefix (the operator
   // signal, kept byte-identical). The stderr line is `[google-health] ` + text —
   // `date` is carried only in the returned copy, never in the stderr line. Callers
   // that embed a date in `text` must pass that same date as the second argument.
@@ -330,7 +330,7 @@ export function deriveSleep(response: { dataPoints?: unknown[] }): { rows: Extra
     const fieldKey = Object.keys(point).find((k) => k !== 'name' && k !== 'dataSource');
     if (!fieldKey) {
       // A malformed point with no typed sleep payload is dropped through the
-      // same warn() channel as the other parse-loop drops (HIMMEL-801): a
+      // same warn() channel as the other parse-loop drops: a
       // durable, undated SleepWarning (index-embedded so distinct drops never
       // dedup-collide) plus the stderr line. No date is derivable here.
       warn(`sleep dataPoint ${i}: no typed payload field - skipped`);
@@ -361,7 +361,7 @@ export function deriveSleep(response: { dataPoints?: unknown[] }): { rows: Extra
     if (!interval?.startTime || !interval?.endTime) {
       // A missing interval entirely, or an interval missing startTime/endTime — no
       // duration computable, so drop the session (no row) and warn (the fifth
-      // silent-drop path of this class; HIMMEL-794 Fix D), dated when derivable.
+      // silent-drop path of this class), dated when derivable.
       warn(
         date !== undefined
           ? `sleep dataPoint ${i} (${date}): missing interval startTime/endTime - session dropped`
@@ -404,7 +404,7 @@ export function deriveSleep(response: { dataPoints?: unknown[] }): { rows: Extra
     // below: sleep_in_bed_hours still emits, sleep_hours naturally does not).
     // Recorded as stagesMalformed rather than warned here: the warning fires only
     // for the MAIN session for this date, decided after main-session selection
-    // below (Fix B / HIMMEL-794 codex-adv-2) — a malformed shorter/nap session
+    // below — a malformed shorter/nap session
     // that loses selection contributes no rows, so nothing needs correcting. An
     // absent `stages` field is the normal classic stage-less case: no warning.
     const stagesMalformed = rawStages !== undefined && !Array.isArray(rawStages);
@@ -460,8 +460,8 @@ export function deriveSleep(response: { dataPoints?: unknown[] }): { rows: Extra
     rows.push(rowInBed);
 
     if (main.stagesMalformed) {
-      // Non-array `stages` field on the MAIN session for this date (Fix B /
-      // HIMMEL-794 codex-adv-2) — main.stages is [] so `degraded`/`sleepHours` above
+      // Non-array `stages` field on the MAIN session for this date —
+      // main.stages is [] so `degraded`/`sleepHours` above
       // are trivially false/0; warn here instead, scoped to the winning session.
       warn(`sleep ${date}: non-array "stages" field - treated as stage-less (sleep_hours unavailable)`, date);
     } else if (degraded) {

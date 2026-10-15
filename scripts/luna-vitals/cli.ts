@@ -61,7 +61,7 @@ async function main(): Promise<void> {
     }
     // Fail fast unless the inputs carry at least one row OR one warning: a valid
     // degraded pull can produce a rows-empty artifact whose warnings still must
-    // merge through (HIMMEL-794), but rows-empty AND warnings-empty inputs
+    // merge through, but rows-empty AND warnings-empty inputs
     // (including zero artifact files) are a total extraction failure — error out.
     if (!det.length && !llm.length && !collectedWarnings.length) { console.error("usage: merge [--det <det.json>...] [--llm <llm.json>...] --out <merged.json> (no rows or warnings to merge)"); process.exit(1); }
     const uniq = [...new Set(buckets)];

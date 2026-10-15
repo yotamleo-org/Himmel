@@ -38,7 +38,7 @@ test("parse --note-date anchors inline fields, then merge --det/--llm keeps dete
   // deterministic value (3) wins; no conflict raised across the det/llm boundary
   expect(m.rows).toContainEqual({ metric: "migraine", date: "2024-06-14", value: 3, source: join(FX, "daily-2024-06-14.md") });
   expect(m.conflicts).toEqual([]);
-  // clean merge (no input carried warnings) → warnings key ABSENT (byte-identical to pre-HIMMEL-794)
+  // clean merge (no input carried warnings) → warnings key ABSENT (byte-identical to a pre-warnings artifact)
   expect(m.warnings).toBeUndefined();
 });
 

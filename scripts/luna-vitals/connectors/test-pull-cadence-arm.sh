@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/luna-vitals/connectors/test-pull-cadence-arm.sh — hermetic suite for
 # the daily Google Health connector pull cadence's arm/status/disarm
-# subcommands (HIMMEL-3068). Distinct from pull-cadence.test.ts, which covers
+# subcommands. Distinct from pull-cadence.test.ts, which covers
 # the connector-pull path itself (bun/Bun.spawn, no args) — this covers ONLY
 # the scheduler management this ticket adds.
 #
@@ -16,7 +16,7 @@
 #
 # HIMMEL_OBSERVABILITY_CONFIG is pinned to a per-test scratch file on EVERY
 # invocation — never omit it, or a hand run registers a real task into
-# ~/.himmel/observability.json (the exact HIMMEL-2367 leak this pattern
+# ~/.himmel/observability.json (the leak this pattern
 # exists to avoid).
 #
 # bash 3.2-safe: no mapfile, no associative arrays.
@@ -126,7 +126,7 @@ assert_has "$out" "ARMED" "arm: reports ARMED"
 if [ -x "$state/bat/pull-cadence.sh" ]; then pass "arm: runner published + executable"; else fail "arm: runner not published/executable"; fi
 if grep -qF 'HIMMEL-LunaVitalsPull' "$state/tab" 2>/dev/null; then pass "arm: cron entry installed"; else fail "arm: no cron entry installed"; fi
 if registry_has_task "$state/observability.json"; then pass "arm: registered in scratch registry"; else fail "arm: not registered in scratch registry"; fi
-# HIMMEL-3332 S8: the arm records a `job register` row so uninstall can remove this line.
+# The arm records a `job register` row so uninstall can remove this line.
 jobs=$(HIMMEL_PROVENANCE_DIR="$state/provenance" bash -c '. "$1/lib/provenance.sh" && . "$1/lib/provenance-read.sh" && prov_read_load >/dev/null && prov_read_units --kind job | jq -r ".unit + \" ours=\" + (.ours|tostring) + \" scheduler=\" + .fields.scheduler"' _ "$SCRIPT_DIR/../..")
 assert_has "$jobs" "HIMMEL-LunaVitalsPull ours=true scheduler=cron" "arm: recorded the cron job row (ours, cron)"
 

@@ -28,7 +28,7 @@
 #   -d '1 day ago'. Script tries BSD first and falls back to GNU.
 #   Set FROM explicitly to bypass date computation entirely.
 #
-# arm/status/disarm (HIMMEL-3068): this same file doubles as its own cadence
+# arm/status/disarm: this same file doubles as its own cadence
 # controller, structural sibling of upstream-watch-cadence.sh (ONE daily task,
 # no claude session, no --model). `bash pull-cadence.sh <arm|status|disarm>`
 # manages the OS scheduler (schtasks on Windows, crontab on Linux/macOS); ANY
@@ -89,8 +89,8 @@ case "${1:-}" in
     BAT_DIR="${PULLCADENCE_BAT_DIR:-$(resolve_user_home)/.claude/pull-cadence}"
 
     # Resolve the himmel root to the PRIMARY checkout, never this script's own
-    # location (mirrors upstream-watch-cadence.sh's resolve_himmel_root,
-    # HIMMEL-892 codex-adv-1): arming from a feature worktree would embed that
+    # location (mirrors upstream-watch-cadence.sh's resolve_himmel_root):
+    # arming from a feature worktree would embed that
     # worktree's absolute path in the persistent runner, and the post-merge
     # prune then deletes it — every later fire would cd into nothing.
     resolve_himmel_root() {

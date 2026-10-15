@@ -278,7 +278,7 @@ describe('pull', () => {
   test('degraded sleep date → artifact carries the warning in warnings[]', async () => {
     // A sleep payload whose main session has a malformed non-AWAKE stage → degraded.
     // pull must surface the deriveSleep warning durably on the returned artifact
-    // (HIMMEL-794); row emission is unchanged (sleep_in_bed_hours only).
+    // row emission is unchanged (sleep_in_bed_hours only).
     const degradedSleep = {
       dataPoints: [
         {
@@ -330,7 +330,7 @@ describe('pull', () => {
 
   test('clean pull → warnings key is ABSENT (undefined, not [])', async () => {
     // The fixtures are clean (no degraded/dropped/non-array sleep) → pull omits the
-    // warnings key entirely, so a clean artifact is byte-identical to pre-HIMMEL-794.
+    // warnings key entirely, so a clean artifact is byte-identical to a pre-warnings artifact.
     const artifact = await pull({
       from: '2024-01-01',
       to: '2026-12-31',
@@ -392,7 +392,7 @@ describe('pull', () => {
   test('no-date-derivable dropped session → warning is kept regardless of window (undateable = conservative keep)', async () => {
     // A session with no civilEndTime and no endUtcOffset has no derivable date, so
     // the warning's `date` is undefined — it must be kept no matter what the pull
-    // window is (HIMMEL-794 Fix A: `!w.date` always keeps).
+    // window is (`!w.date` always keeps).
     const droppedSleep = {
       dataPoints: [
         {
