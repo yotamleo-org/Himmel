@@ -484,11 +484,14 @@ set_rule() {
     return 0
 }
 
+# _opt_prefix <full-name> <typed>: true when <typed> is a getopt prefix of <full-name>.
+_opt_prefix() { case "$1" in "$2"*) return 0 ;; esac; return 1; }
+
 # check_copy <verb> <args...>: cp / mv / install / rsync / ln destination and
 # aliasing rules.
 check_copy() {
     local verb="$1"; shift
-    local tdir="" T=0 sym=0 a v src srcb need dest dk endopts=0
+    local tdir="" T=0 sym=0 a v n src srcb need dest dk endopts=0
     local -a pos=()
     while [ $# -gt 0 ]; do
         a="$1"; shift
@@ -501,6 +504,11 @@ check_copy() {
             --no-dereference) [ "$verb" = ln ] && T=1 ;;
             --symbolic*|--link) sym=1 ;;
             --suffix|--mode|--owner|--group|--backup-dir|--rsh|--filter|--exclude|--include|--temp-dir|--partial-dir|--compare-dest|--copy-dest|--link-dest|--chmod|--chown) shift ;;
+            --t*)
+                n="${a#--}"; n="${n%%=*}"
+                if _opt_prefix target-directory "$n"; then
+                    case "$a" in *=*) tdir="${a#*=}" ;; *) tdir="${1:-}"; shift ;; esac
+                fi ;;
             --*) ;;
             -?*)
                 v="${a#-}"
@@ -576,7 +584,7 @@ check_copy() {
 # value, else the first operand; -f files are not read.
 check_sed() {
     local -a scripts=() ops=() files=()
-    local a nx="" have=0 eoo=0 inplace=0 rest ch line p cand
+    local a nx="" have=0 eoo=0 inplace=0 rest ch line p cand n
     for a in "$@"; do
         case "$nx" in
             e) scripts+=("$a"); nx=""; continue ;;
@@ -586,6 +594,7 @@ check_sed() {
         case "$a" in
             --) eoo=1 ;;
             --in-place*) inplace=1 ;;
+            --i*) n="${a#--}"; n="${n%%=*}"; _opt_prefix in-place "$n" && inplace=1 ;;
             --expression=*) have=1; scripts+=("${a#*=}") ;;
             --expression) have=1; nx=e ;;
             --file=*) have=1 ;;
@@ -789,8 +798,8 @@ check_clause() {
     _lb "$w"; cmd=$R
 
     # Generic output-file options (-o / -O / --output[=] / --output-document):
-    # the full spellings only; a getopt abbreviation is an evaluated spelling.
-    local pexp=0 prev=""
+    # the full spellings plus a getopt prefix of --output.
+    local pexp=0 prev="" n
     for a in "$@"; do
         if [ "$pexp" = 1 ] && is_lift "$a"; then
             deny "$cmd $prev writes the bank lift ($a)"
@@ -803,6 +812,14 @@ check_clause() {
                 is_lift "${a#*=}" && deny "$cmd writes the bank lift (${a#*=})" ;;
             --output|--output-document|--out-file|--outfile)
                 [[ "$cmd" =~ $READ_RE ]] || pexp=1 ;;
+            --o*)
+                n="${a#--}"; n="${n%%=*}"
+                if _opt_prefix output "$n"; then
+                    case "$a" in
+                        *=*) is_lift "${a#*=}" && deny "$cmd writes the bank lift (${a#*=})" ;;
+                        *) [[ "$cmd" =~ $READ_RE ]] || pexp=1 ;;
+                    esac
+                fi ;;
         esac
         prev="$a"
     done
