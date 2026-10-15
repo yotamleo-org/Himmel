@@ -37,6 +37,7 @@ BIN="$TMP/bin"; mkdir -p "$BIN"
 #   issues.json    ci-red issues [{number,body,state?}], state defaults to open
 #                  (repos/<r>/issues?state=all, served 100 per page like the API, the caller's --jq runs per page)
 #   default_branch the repo default branch (default: main)       (repos/<r> --jq .default_branch)
+#   default_branch_fail  if present, the default-branch lookup exits 1
 #   list_fail      if present, the issue lookup exits 1
 #   mut_fail       if present, `issue create` exits 1
 #   edit_fail      if present, `issue edit` exits 1
@@ -52,11 +53,12 @@ case "$*" in
     f=""; prev=""
     for a in "$@"; do [ "$prev" = "--jq" ] && f="$a"; prev="$a"; done
     total="$(jq length "$STUB/issues.json")"; i=0
+    case " $* " in *" --paginate "*) : ;; *) total=$(( total < 100 ? total : 100 )) ;; esac
     while [ "$i" -lt "$total" ]; do
       jq -r "[.[$i:$((i + 100))][] | .state //= \"open\"] | $f" "$STUB/issues.json"
       i=$((i + 100))
     done ;;
-  "api repos/"*"--jq .default_branch") cat "$STUB/default_branch" 2>/dev/null || echo main ;;
+  "api repos/"*"--jq .default_branch") [ -e "$STUB/default_branch_fail" ] && exit 1; cat "$STUB/default_branch" 2>/dev/null || echo main ;;
   "issue create"*)          [ -e "$STUB/mut_fail" ] && exit 1 ;;
   "issue edit"*)
     [ -e "$STUB/edit_fail" ] && exit 1
@@ -205,6 +207,14 @@ cp "$FIX/jobs-38660360246-dispatch-feature-red.tsv" "$STUB/jobs.tsv"
 setrun 3 main
 report 38660360246
 has "gh issue create" "$log" "dispatch red on the default branch still opens the issue"
+# ... a failed default-branch lookup fails the run and changes no issue.
+newcase default-branch-fail
+cp "$FIX/run-38660360246-dispatch-feature-red.tsv" "$STUB/run.tsv"
+cp "$FIX/jobs-38660360246-dispatch-feature-red.tsv" "$STUB/jobs.tsv"
+: > "$STUB/default_branch_fail"
+report 38660360246
+if [ "$rc" -eq 1 ]; then ok "failed default-branch lookup exits 1"; else bad "failed default-branch lookup exit=$rc; out: $out"; fi
+hasnt "gh issue \(create\|edit\|comment\|close\)" "$log" "failed default-branch lookup changes no issue"
 # ... and so is a non-dispatch run on a ref that is not the default branch (a Release tag).
 newcase push-tag-red
 setrun 2 push; setrun 3 v1.2.3

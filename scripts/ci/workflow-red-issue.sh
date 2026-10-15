@@ -123,7 +123,10 @@ fi
 num=""; body=""; seen_run=0
 while IFS="$tab" read -r cand state b64; do
   [ -n "$cand" ] || continue
-  cbody="$(printf '%s' "$b64" | base64 -d 2>/dev/null)"
+  if ! cbody="$(printf '%s' "$b64" | base64 -d 2>/dev/null)"; then
+    echo "workflow-red-issue: could not decode the body of issue #$cand -- not creating/closing, to avoid a duplicate or a blind close." >&2
+    exit 1
+  fi
   grep -Fxq -- "$MARK" <<< "$cbody" || continue
   # the newest run any issue of this branch has seen: open (the live issue) or closed (the watermark)
   r="$(printf '%s\n' "$cbody" | sed -n 's/^<!-- ci-red-run: \([0-9][0-9]*\) -->[[:space:]]*$/\1/p' | sort -n | tail -n 1)"
