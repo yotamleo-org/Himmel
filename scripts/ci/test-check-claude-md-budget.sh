@@ -175,18 +175,25 @@ if [ -n "$py" ] && "$py" -c 'import graphify.install' 2>/dev/null; then
     # pass; (b) drift in himmel-owned text outside the section must be seen;
     # (c) a duplicated section is still refused by the gate (cases E/E2).
     echo "== Case H2: stock variants pass, himmel-text drift still fails =="
-    sed 's/^- When graphify-out\/graph.json exists, run .*first grep.*$/- OLD STOCK WORDING for the query rule./' "$REPO_ROOT/CLAUDE.md" > "$tmp/variant.md"
-    if install_strip "$tmp/variant.md" "$tmp/proj2" \
+    # reword every bullet inside the section: a stand-in for another version's stock text
+    sed '/^## graphify$/,$ s/^- .*$/- ALT STOCK WORDING./' "$REPO_ROOT/CLAUDE.md" > "$tmp/variant.md"
+    if cmp -s "$REPO_ROOT/CLAUDE.md" "$tmp/variant.md"; then
+        fail "H2a fixture did not mutate the section (no bullets under the heading?)"
+    elif install_strip "$tmp/variant.md" "$tmp/proj2" \
         && cmp -s <(outside_section "$tmp/variant.md") <(outside_section "$tmp/proj2/stripped.md"); then
         pass "H2a: a stock-text variant of the section passes"
     else
         fail "H2a: a stock-text variant of the section was rejected"
     fi
     sed 's/^## WORKFLOWS$/## WORKFLOWS-DRIFT/' "$REPO_ROOT/CLAUDE.md" > "$tmp/drifted.md"
-    if cmp -s <(outside_section "$REPO_ROOT/CLAUDE.md") <(outside_section "$tmp/drifted.md"); then
+    # cmp: 0 equal, 1 differ, 2 trouble — only 1 proves the drift was seen
+    cmp -s <(outside_section "$REPO_ROOT/CLAUDE.md") <(outside_section "$tmp/drifted.md"); cmp_rc=$?
+    if [ "$cmp_rc" -eq 0 ]; then
         fail "H2b: drift outside the section compared equal — the compare has no teeth"
-    else
+    elif [ "$cmp_rc" -eq 1 ]; then
         pass "H2b: drift outside the section is detected"
+    else
+        fail "H2b: cmp could not compare (rc=$cmp_rc) — drift detection unproven"
     fi
 else
     echo "  SKIP  no uv-managed graphifyy venv — real-installer idempotence not exercised here"
