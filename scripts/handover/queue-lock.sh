@@ -2677,6 +2677,16 @@ _ql_doc_worktree_changes() {
     } | sort -u
 }
 
+# _ql_doc_repo_id <handover-doc> -- print the git common dir of the doc's
+# `resume_cwd:` checkout (one id per repository, shared by its worktrees).
+_ql_doc_repo_id() {
+    local doc="$1" cwd
+    [ -f "$doc" ] || return 0
+    cwd=$(sed -n '1,/^---$/{s/^resume_cwd:[[:space:]]*//p;}' "$doc" 2>/dev/null | sed -n '1p')
+    [ -n "$cwd" ] && [ -d "$cwd" ] || return 0
+    git_clean -C "$cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true
+}
+
 # queue_lock_preflight <handover-path> [file...] -- READ-ONLY collision
 # preflight: compares the files this session intends to touch
 # (the operands, plus whatever its own resume_cwd checkout has already
@@ -2694,7 +2704,8 @@ queue_lock_preflight() {
     shift
     local roots r mine other_files hits=0 lockdir o_raw o_doc o_session slug f
     _ql_enter "$ho" "queue-lock: could not resolve handover root" || return 1
-    local own_doc="$_QL_DOC"
+    local own_doc="$_QL_DOC" my_repo o_repo
+    my_repo=$(_ql_doc_repo_id "$own_doc")
     mine=$({ for f in "$@"; do printf '%s\n' "$f"; done; _ql_doc_worktree_changes "$own_doc"; } | sort -u)
     [ -n "$mine" ] || { echo "preflight: no files declared and none changed in this session's checkout"; return 0; }
     roots=$({ handover_root_ensure 2>/dev/null; _ql_lock_roots; } | awk 'NF && !seen[$0]++')
@@ -2707,6 +2718,8 @@ queue_lock_preflight() {
             o_session=$(_ql_json_field_str "$o_raw" session)
             [ -n "$o_doc" ] && [ "$o_doc" != "$own_doc" ] || continue
             _ql_owner_provably_dead "$lockdir" "${QUEUE_LOCK_TTL_SECONDS:-21600}" && continue
+            o_repo=$(_ql_doc_repo_id "$o_doc")
+            [ -z "$my_repo" ] || [ -z "$o_repo" ] || [ "$my_repo" = "$o_repo" ] || continue
             slug=$(_ql_sweep_field "$(basename "$lockdir" .lock)")
             other_files=$(_ql_doc_worktree_changes "$o_doc")
             [ -n "$other_files" ] || continue

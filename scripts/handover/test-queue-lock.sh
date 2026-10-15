@@ -3078,6 +3078,17 @@ if [ "$rc" -eq 20 ] && grepq "$out" "COLLISION file=newdir/fresh.sh "; then
 else
     fail "T104d: preflight untracked dir (rc=$rc out=$out)"
 fi
+P_REPO2="$TMPDIR_ROOT/pf-repo2"; mkdir -p "$P_REPO2"
+git -C "$P_REPO2" init -q -b main && git -C "$P_REPO2" config user.email t@t && git -C "$P_REPO2" config user.name t
+echo base > "$P_REPO2/shared.sh"; git -C "$P_REPO2" add . && git -C "$P_REPO2" commit -q -m base
+P_MINE2="$P_ROOT/q/my-other-repo-leg.md"
+printf -- '---\nresume_cwd: %s\n---\n# mine\n' "$P_REPO2" > "$P_MINE2"
+out="$(HANDOVER_DIR="$P_ROOT" bash "$LIB" preflight "$P_MINE2" shared.sh 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && ! grepq "$out" "COLLISION"; then
+    pass "T104e: preflight ignores a same-named file in a different repository"
+else
+    fail "T104e: preflight cross-repo (rc=$rc out=$out)"
+fi
 out="$(HANDOVER_DIR="$P_ROOT" bash "$LIB" preflight "$P_OTHER" shared.sh 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then
     pass "T104c: preflight never collides a session with its own lock"
