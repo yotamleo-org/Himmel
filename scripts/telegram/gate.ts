@@ -78,7 +78,8 @@ export function isGroupAllowed(access: Access | null | undefined, chatId: number
 export const GROUP_ANONYMOUS_BOT_ID = 1087968824;
 
 // Is this sender the OPERATOR, for the purposes of the triage operator floor
-// (poller.ts handleInbound)? Two ways to be:
+// AND the per-message `operator:true` inbox stamp (poller.ts handleInbound)?
+// Two ways to be:
 //   1. the global allowFrom identity — unchanged semantics;
 //   2. the anonymous-admin substitute id, in a group that has OPTED IN via
 //      `trustAnonymousAdmins`.
@@ -124,6 +125,12 @@ export function isOperatorIdentity(access: Access | null | undefined, fromId: nu
   if (!Array.isArray(allow) || allow.length === 0) return false;
   if (access?.groups?.[String(chatId)]?.trustAnonymousAdmins !== true) return false;
   if (senderChatId != null && String(senderChatId) !== String(chatId)) return false;
+  // Intended: an anonymous-admin line in a trustAnonymousAdmins ticket session is
+  // stamped operator:true, so the run acts on it. The opt-in is the operator's
+  // statement that every admin of that group speaks for them.
+  // ponytail: any admin of an opted-in group can drive the ticket session, revisit
+  // if a group's admin list stops being operator-controlled or sender_chat stops
+  // being authoritative.
   return Number(chatId) < 0 && isGroupAllowed(access, chatId, fromId);
 }
 
