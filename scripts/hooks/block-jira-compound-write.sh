@@ -42,7 +42,7 @@
 # with "issue ONE literal command" would be advice the agent has already followed
 # and cannot act on — an unactionable loop, the exact failure this guard exists to
 # remove. Staying silent leaves the pre-guidance status quo (classifier judges
-# it) instead of making it worse. The upstream gap is.
+# it) instead of making it worse. The upstream gap stays open.
 #
 # Same class, same reasoning — a QUOTED VERB (`… index.js "create" …`) is masked
 # as data and not detected. Valid bash, but a shape nothing here writes; making

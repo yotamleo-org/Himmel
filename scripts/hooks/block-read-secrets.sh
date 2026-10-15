@@ -69,7 +69,7 @@
 #     and nested quoting the quote-naive body close misreads stay unscanned
 #     (a glob in a later body statement, `bash -c 'echo; cat .e*'`, IS
 #     expanded: rs_tokens drops the body's closing quote first), revisit
-#     or on the first real leak of that shape.
+#     when the first real leak of that shape appears.
 #   * `git show HEAD:.env`, `git cat-file -p HEAD:.env` — git not in
 #     reader list (would false-positive on most git commands).
 #   * Cross-command exfil: `mv .env /tmp/x; cat /tmp/x` — mv is write-only,
@@ -173,7 +173,7 @@
 #     ponytail: wrappers outside the set (`strace`, `stdbuf`, `ionice`,
 #     `flatpak-spawn`) and a value-taking wrapper flag missing from the table
 #     still make their operand the command token, revisit
-#     or when a real call shows one of them.
+#     when a real call shows one of them.
 #   * `cat <<< .env` here-string normalises to `cat < < < .env` and trips the
 #     `<`-redirect path though it reads no file.
 #   * NTFS alternate data streams: `.env:stream` is not matched (low risk —
@@ -833,7 +833,7 @@ g4_scan() {
         d="${w//[\'\"\\]/}"
         # any word naming the xtrace option, in any
         # command (`shopt -os xtrace`, `setopt XTRACE`, `set -o xtrace`); zsh
-        # ignores case and underscores in option names. Over-deny:.
+        # ignores case and underscores in option names.
         # Not in a data position: an operand of the repo's
         # queue-lock / append-results scripts (a doc name carries the word), or
         # the value of a git/gh message flag. `-m`-style flags are marked here,
@@ -1063,7 +1063,7 @@ g4_scan() {
 # perl %ENV, ruby ENV and `uv run python` are not read. Revisit on the first
 # real call of either shape. TEXT is the whole command, not the interpreter's
 # own clause, so a later clause naming os.environ (a commit message) also
-# denies; per-clause scanning that keeps the heredoc body is.
+# denies; per-clause scanning that keeps the heredoc body is not done.
 # Also (not matched here): an interpreter shell-out to `env`
 # (`os.system('env')`, `execSync('env')`), `process['env']` and a destructured
 # `const {env} = process`.
@@ -1356,8 +1356,8 @@ scan_clause() {
         if [ "$interp" = "1" ]; then
             if [ "$found_c" = "0" ]; then
                 # Hunt for -c: skip interpreter flags and the value of a
-                # value-taking one (`-o errexit`, `-euo pipefail`, `--rcfile f`,
-                #); a -c or a short bundle holding c (-lc, -xc,
+                # value-taking one (`-o errexit`, `-euo pipefail`, `--rcfile f`);
+                # a -c or a short bundle holding c (-lc, -xc,
                 # -ce) arms the next operand as the body. A non-flag operand
                 # BEFORE any -c (`bash run.sh`) means this isn't a -c
                 # invocation → no body.

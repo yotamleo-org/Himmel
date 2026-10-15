@@ -25,7 +25,7 @@
 # obfuscation): the ENFORCED boundary is the chokepoint (a raw dispatch that
 # never reaches it gets no containment/mutex/quota/ledger) and CODEX_WSL_RAW_OK
 # is the documented bypass. Shell-aware tokenization (the complete fix) is
-# tracked in.
+# a known follow-up, not done here.
 #
 # Bypass: CODEX_WSL_RAW_OK=1 (set in the LAUNCHING shell).
 set -uo pipefail

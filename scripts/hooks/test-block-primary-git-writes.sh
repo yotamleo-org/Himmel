@@ -104,8 +104,8 @@ allow() {
 }
 
 # deny_direct / allow_direct <label> <cwd> <command> — direct-exec mode only,
-# for `git push`: the codex fence refuses every push (external-write class,
-#) before it sources this hook, so only the Claude lane decides.
+# for `git push`: the codex fence refuses every push (external-write class)
+# before it sources this hook, so only the Claude lane decides.
 deny_direct() {
     local j got err
     j=$(payload "$3" "$2")
