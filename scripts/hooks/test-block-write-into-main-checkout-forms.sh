@@ -687,6 +687,11 @@ check_both "4921 D echo x > /tmp-symlink-to-primary/f (cwd=wt) denies" block \
     "$(_j4921 "echo x > $TMPFIX/plink/f4921" "$FIX/wt")"
 check_both "4921 D mirror: echo x > plain /tmp dir/f allows" allow \
     "$(_j4921 "echo x > $TMPFIX/f4921" "$FIX/wt")"
+# E. an empty backtick pair splits the assignment name: the shell runs HOME=...
+check_both "5747 E export H\`\`OME=primary; ls > ~/x (cwd=wt) denies" block \
+    "$(_j4921 "export H\`\`OME=$FIX/primary; ls > ~/x" "$FIX/wt")"
+check_both "5747 E mirror: export H\`\`OME=primary; ls > /tmp file allows" allow \
+    "$(_j4921 "export H\`\`OME=$FIX/primary; ls > $TMPFIX/f5747" "$FIX/wt")"
 
 echo "== non-command / non-Bash payloads (direct-exec only — sourced covered by test-block-terminal-write-fence.sh) =="
 # HIMMEL-3401 (S6): a Bash payload with no command fails CLOSED.

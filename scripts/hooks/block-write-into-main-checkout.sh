@@ -2302,12 +2302,12 @@ _bwimc_ansic_spans() {
 #
 # _bwimc_unqv leaves the word in _BWIMC_UNQ so a caller does not
 # fork a `$(…)` subshell per token; _bwimc_unq prints it for the callers that
-# still want a stream. A word with no quote, backslash, `$` or \006 is its own
-# unquoted form.
+# still want a stream. A word with no quote, backtick, backslash, `$` or \006
+# is its own unquoted form.
 _bwimc_unqv() {
     local t="$1" o="" c k=0 q
     case "$t" in
-        *[\'\"\\\$$'\006']*) ;;
+        *[\'\"\\\$\`$'\006']*) ;;
         *) _BWIMC_UNQ=$t; return 0 ;;
     esac
     # HIMMEL-4143: a newline inside a quoted span travels as \006 in clause
