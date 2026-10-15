@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# test-report-deep.sh — `himmelctl report --json --deep` adds the wiring layers
+# selector: tree-scan
+# test-report-deep.sh —`himmelctl report --json --deep` adds the wiring layers
 # (pre-commit ids, Claude hooks, git hooks, CI workflows) to the config feed
 # (spec A15). declared + installed are derived from config files;
 # fires is `unverified` (A9: no component run evidence exists for these).

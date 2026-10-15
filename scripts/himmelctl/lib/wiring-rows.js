@@ -13,7 +13,7 @@ const { spawnSync } = require('child_process');
 
 const UNVERIFIED = { state: 'unverified', evidence: null, at: null };
 // pre-commit stage names -> the git hook file that serves them
-const STAGE_HOOK = { commit: 'pre-commit', 'pre-commit': 'pre-commit', push: 'pre-push', 'pre-push': 'pre-push', 'commit-msg': 'commit-msg', 'prepare-commit-msg': 'prepare-commit-msg', 'post-commit': 'post-commit', 'post-checkout': 'post-checkout', 'post-merge': 'post-merge', 'post-rewrite': 'post-rewrite' };
+const STAGE_HOOK = { commit: 'pre-commit', 'pre-commit': 'pre-commit', push: 'pre-push', 'pre-push': 'pre-push', 'commit-msg': 'commit-msg', 'prepare-commit-msg': 'prepare-commit-msg', 'pre-merge-commit': 'pre-merge-commit', 'post-commit': 'post-commit', 'post-checkout': 'post-checkout', 'post-merge': 'post-merge', 'post-rewrite': 'post-rewrite' };
 // the runner every chained command goes through; not a rule of its own
 const RUNNERS = new Set(['run-hook-with-bash.js']);
 
@@ -33,7 +33,7 @@ function precommitIds(file) {
     if (id) { cur = { id: id[1], stages: [] }; out.push(cur); continue; }
     if (/^\s*-\s+repo:/.test(line)) { cur = null; continue; }
     const st = cur && /^\s*stages:\s*\[([^\]]*)\]/.exec(line);
-    if (st) cur.stages = st[1].split(',').map((s) => s.trim()).filter(Boolean);
+    if (st) cur.stages = st[1].split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
   }
   return out;
 }
