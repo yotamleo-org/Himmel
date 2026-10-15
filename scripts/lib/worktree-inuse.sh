@@ -2,7 +2,7 @@
 # worktree-inuse.sh — shared predicate: is a live process holding a directory
 # inside this worktree, and did a failed `git worktree remove` leave it whole?
 #
-# HIMMEL-2227. A plain `git worktree remove` is NOT atomic on Windows:
+# A plain `git worktree remove` is NOT atomic on Windows:
 # git-for-Windows deletes with POSIX semantics, so an open handle does not
 # stop the delete. MEASURED, in a throwaway repo:
 #
@@ -35,7 +35,7 @@
 
 # shellcheck disable=SC2034  # WORKTREE_INUSE_RESULT and WORKTREE_INUSE_DETAIL are output contract globals, read by sourcing scripts
 
-# HIMMEL-2227 — is a live process holding a directory inside this worktree?
+# Is a live process holding a directory inside this worktree?
 # A `git worktree remove` is NOT atomic on Windows (see the repro table
 # above): a held directory does not stop the delete, it only stops the FINAL
 # rmdir, after the contents and the `worktree list` admin entry are already
@@ -55,7 +55,7 @@
 # a handle in the window between the probe returning and the caller's
 # `git worktree remove` reproduces the exact failure this probe exists to
 # predict. Closing that window needs a lock held across probe+remove, which
-# this deliberately does not do — tracked as HIMMEL-2229. worktree_intact
+# this deliberately does not do. worktree_intact
 # (below) is the backstop for that residual: a tree lost to this race is
 # reported as gutted with a recovery recipe, never silently.
 # Sets WORKTREE_INUSE_RESULT (a caller-facing outcome tag) and
@@ -87,7 +87,7 @@ worktree_in_use() {
         return 0
     fi
 
-    # HIMMEL-2602 -- the rename probe below is a NO-OP on Linux. POSIX rename
+    # The rename probe below is a NO-OP on Linux. POSIX rename
     # does not care about open file handles or a process's cwd, so `mv "$path"
     # "$probe"` succeeds unconditionally there even with a live holder inside
     # $path -- MEASURED on this station:
@@ -96,7 +96,7 @@ worktree_in_use() {
     #   mv "$p/held" "$p/held.probe"     ->  RENAME SUCCEEDED
     # so on Linux the rename probe alone always reports "free to remove",
     # holder or not. worktree_has_live_suite_run (merge-on-green.sh,
-    # HIMMEL-2517) already proved the fix for one narrow population -- a live
+    # already proved the fix for one narrow population -- a live
     # process whose argv names run-shell-tests.sh/quiet-run.sh -- by scanning
     # /proc/*/cwd, because `ps` reports argv but not cwd. This generalizes
     # that same technique to ANY live process: the underlying gap is not
@@ -105,33 +105,31 @@ worktree_in_use() {
     # actually renaming the tree buys nothing (it will succeed regardless)
     # and would just be a pointless mutation.
     #
-    # CONTRACT (revised 2026-09-06, same day as the first post-HIMMEL-2584
-    # merge): a live process's cwd inside $path is only a FOREIGN holder --
+    # CONTRACT: a live process's cwd inside $path is only a FOREIGN holder --
     # and therefore blocks the remove -- when it is NOT in the CALLING
     # process's own ancestry (this process, its parent, its parent's parent,
     # ..., up to pid 1). A process in that chain is not a hazard sitting in
     # the tree; it IS the chain that asked for this removal, and refusing on
-    # it would break the exact auto-prune (HIMMEL-1970) this whole mechanism
+    # it would break the exact auto-prune this whole mechanism
     # exists to make safe -- merge-on-green's own armed chain leg sits in the
     # tree it just merged, and that leg is this process's own ancestor.
     #
     # This is a BROADER exclusion than "skip this shell's own pid/cwd" (an
     # earlier draft of this fix): {self} is a subset of the ancestry chain,
-    # so ancestry excludes more processes, not fewer. HIMMEL-2517 was
-    # written when a merge was always LEG-run, so the merge process's own
-    # ancestry naturally included the leg holding the tree and no exclusion
-    # was needed. Merges are now CONSOLE-run while the leg still holds its
-    # tree, and the very first post-HIMMEL-2584 merge (PR #2179) showed why
-    # the scan must exist at all -- a FOREIGN holder OUTSIDE the merge
+    # so ancestry excludes more processes, not fewer. The exclusion was
+    # once unneeded because a merge was always LEG-run, so the merge
+    # process's own ancestry naturally included the leg holding the tree.
+    # Merges are now CONSOLE-run while the leg still holds its tree, which
+    # shows why the scan must exist at all -- a FOREIGN holder OUTSIDE the merge
     # process's ancestry must still block the prune, or it removes a tree
     # out from under a live leg -- not why ancestry beats self-only. The
     # real reason: merge-on-green's own armed chain leg holds the tree as
     # this process's ANCESTOR, and a self-only exclusion would misclassify
     # that ancestor as foreign, refusing the prune and breaking
-    # HIMMEL-1970's auto-prune. T10 and 11k14 pin that case; T9 covers the
+    # the auto-prune. T10 and 11k14 pin that case; T9 covers the
     # trivial hop-0 self case.
     #
-    # HIMMEL-2602 CR fix -- gate on Linux AND /proc/self, not /proc/self alone.
+    # Gate on Linux AND /proc/self, not /proc/self alone.
     # A bare `[ -d /proc/self ]` does not establish Linux: MSYS2/Cygwin (Git
     # Bash for Windows) also expose a /proc, so that test alone could let this
     # branch run on Windows. This scan's /proc/<pid>/cwd walk is written
@@ -216,7 +214,7 @@ worktree_in_use() {
                             ;;
                     esac
                     WORKTREE_INUSE_RESULT="in-use-confirmed"
-                    # HIMMEL-4334: name the holder's command, so a long-lived
+                    # Name the holder's command, so a long-lived
                     # daemon (VBoxSVC, qmd.js mcp) reads differently from a leg.
                     inuse_comm=$(tr '\0' ' ' < "$inuse_entry/cmdline" 2>/dev/null | cut -c1-80)
                     [ -n "$inuse_comm" ] || inuse_comm=$(cat "$inuse_entry/comm" 2>/dev/null)
@@ -252,7 +250,7 @@ worktree_in_use() {
     # explicitly NOT warned: there the rename probe IS a real, measured
     # detector (the 4/4 table above), so there is nothing to warn about.
     # lsof/fuser as an actual Darwin detector is the tracked follow-up on
-    # HIMMEL-2602, not implemented here.
+    # not implemented here.
     if [ -z "$WORKTREE_INUSE_DARWIN_WARNED" ] && [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
         WORKTREE_INUSE_DARWIN_WARNED=1
         echo "worktree-inuse: this platform (Darwin) has no /proc to scan for a live holder -- in-use detection here falls back to the rename probe alone, which does NOT detect a holder (POSIX rename ignores open handles/cwd, same as Linux). See HIMMEL-2602." >&2
@@ -303,7 +301,7 @@ worktree_in_use() {
     return 1
 }
 
-# HIMMEL-2227 — after a failed `git worktree remove`, is the tree still
+# After a failed `git worktree remove`, is the tree still
 # WHOLE, or did the remove get partway through (delete contents + deregister,
 # then fail the final rmdir)? Call this only on the failure path — it must
 # never itself fail the caller's script.
@@ -316,7 +314,7 @@ worktree_in_use() {
 # legitimately DIRTY worktree where the user themselves deleted a tracked
 # file would then be misreported as gutted -- a worse error, and one that
 # would break the "a genuinely dirty worktree is refused untouched" guarantee
-# this whole HIMMEL-2227 fix exists to preserve. So "whole" here means "still
+# this whole check exists to preserve. So "whole" here means "still
 # registered with its .git link present", not "contents intact" -- callers
 # must not claim more than that.
 #

@@ -1,5 +1,5 @@
 # test-wire-handover-dir.ps1 -- committed PS test for wire-handover-dir.ps1
-# (HIMMEL-839). Mirrors test-wire-luna-vault.ps1's shape (its own .env merge
+#. Mirrors test-wire-luna-vault.ps1's shape (its own .env merge
 # is genuinely new logic, and clobbering a sibling key is the highest-risk
 # failure on the operator's primary platform, so it gets a real assertion, not
 # parity-by-inspection). No case-8 "seam" test here: unlike LUNA_VAULT_PATH

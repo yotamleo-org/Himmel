@@ -3,7 +3,7 @@
 # a clone-path change (SC8); rtk guard preserved; SessionStart shared-array merge +
 # sibling survival; idempotent; invalid JSON refused; the hook path is
 # SHELL-ESCAPED while the project-scope $CLAUDE_PROJECT_DIR literal survives
-# unexpanded (HIMMEL-2905). Run:
+# unexpanded. Run:
 #   pwsh -File test-wire-pretooluse-hooks.ps1
 
 $ErrorActionPreference = 'Stop'
@@ -16,7 +16,7 @@ function Check($name, $got, $want) {
     else { Write-Host "FAIL - ${name}: [$got]!=[$want]"; $script:fails++ }
 }
 function JqVal($file, $expr) { Get-Content $file -Raw | jq -r $expr }
-# HIMMEL-3574: the wired command guards its own script with `[ -f ]` before
+# the wired command guards its own script with `[ -f ]` before
 # invoking it -- build the expected string the same way the lib does.
 function HookCmdExpect($p) {
     "if [ -f `"$p`" ]; then bash `"$p`"; else echo `"himmel: hook script missing ($p) -- re-run the install (himmelctl install) or unwire it (himmelctl uninstall)`" >&2; exit 0; fi"
@@ -100,7 +100,7 @@ try { Set-PretooluseHooks -SettingsPath $s8 -Prefix 'C:/himmel' | Out-Null } cat
 if ($threw) { Write-Host 'ok - refuses invalid JSON' } else { Write-Host 'FAIL: invalid JSON not refused'; $fails++ }
 Check 'invalid file unchanged' ((Get-Content $s8 -Raw).Trim()) 'nope {'
 
-# 9. HIMMEL-2905: a prefix carrying shell metacharacters is SHELL-ESCAPED for
+# 9. A prefix carrying shell metacharacters is SHELL-ESCAPED for
 # the double-quoted context the command lands in — twin of case 8f in
 # test-wire-pretooluse-hooks.sh. Pre-fix the composer emitted
 # `bash "/opt/we"ird/clone/.../X.sh"`, whose unmatched quote is a syntax error,
@@ -123,14 +123,14 @@ $s9c = Join-Path $td 's9c.json'
 Set-SessionStartHook -SettingsPath $s9c -Prefix 'C:/himmel' -HookBasename 'we"ird-hook.sh' | Out-Null
 Check 'quote in basename: basename is shell-escaped' (JqVal $s9c '.hooks.SessionStart[0].hooks[0].command') (HookCmdExpectEscaped 'C:/himmel/scripts/hooks/we"ird-hook.sh')
 # ...and the DEDUP needle is derived from that same escaped string, so a
-# re-wire still REPLACES rather than appending (CR round 3, [codex-1]).
+# re-wire still REPLACES rather than appending.
 Set-SessionStartHook -SettingsPath $s9c -Prefix 'C:/moved' -HookBasename 'we"ird-hook.sh' | Out-Null
 Check 'quote in basename: re-wire dedups' (JqVal $s9c '[.hooks.SessionStart[].hooks[]] | length') '1'
 Check 'quote in basename: re-wire repoints' (JqVal $s9c '.hooks.SessionStart[0].hooks[0].command') (HookCmdExpectEscaped 'C:/moved/scripts/hooks/we"ird-hook.sh')
 
-# 9c. HIMMEL-2913: an entry wired by a PREVIOUS release carries the RAW
+# 9c. An entry wired by a PREVIOUS release carries the RAW
 # (unescaped) basename in its command -- shesc() on the basename postdates
-# HIMMEL-2905. A needle derived only from the escaped form cannot match that
+# A needle derived only from the escaped form cannot match that
 # legacy text, so a re-wire APPENDS the repaired hook beside the old malformed
 # one instead of replacing it. RED before the fix: 2 hook objects survive.
 $s9d = Join-Path $td 's9d.json'

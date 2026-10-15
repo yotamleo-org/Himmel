@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/red-control-extraction-lint.sh -- repo-wide gate against a
-# specific RED-control fragility class (HIMMEL-3154 / HIMMEL-3018): a test
+# specific RED-control fragility class: a test
 # suite extracting a RED-control mutant via `git show <historical-sha>:<path>`
 # at test time. Once the introducing PR's branch is squash-merged, that
 # commit is permanently unreachable from a fresh clone of origin -- and even
@@ -10,7 +10,7 @@
 # pattern, `fail` if found); this is the repo-wide equivalent so every
 # `test-*.sh` suite is covered by one check, not one copy-pasted per file.
 #
-# Unlike scripts/lib/red-control-lint.sh (HIMMEL-2544, a DIFFERENT, advisory-
+# Unlike scripts/lib/red-control-lint.sh (a DIFFERENT, advisory-
 # only tool for a DIFFERENT defect class -- vacuous mutation controls, always
 # exits 0 by contract), this is a real gate: it exits nonzero on a hit. Its
 # own suite (test-red-control-extraction-lint.sh) is what wires it into CI --
@@ -67,7 +67,7 @@ fi
 # by the SHA-variable branch since the quote is optional here).
 #
 # ponytail: a historical-ref variable whose name does not end in `_SHA`
-# escapes this gate -- e.g. the HIMMEL-3018 motivating case itself,
+# escapes this gate -- e.g. the motivating case itself,
 # `git show "$BASE_PRE2831_1:scripts/..."`. Widening the pattern to match
 # any `$VAR:path` would false-positive on legitimate ref vars (branch names,
 # `$commit:file`, etc.), so this is a deliberate trade-off, not an oversight.

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # handover/pr-merge — squash-merge the PR for the current handover branch.
 #
-# HIMMEL-141 (HIMMEL-59 v2 child). Merge mode locked to squash per
+# Merge mode locked to squash per
 # operator's 2026-05-25 decision: repo settings block merge-commits.
 #
 #   gh pr merge <N> --squash --delete-branch        (default)
 #
-# HIMMEL-224: default to a PLAIN squash merge — NO `--admin`. This repo has
+# default to a PLAIN squash merge — NO `--admin`. This repo has
 # no branch protection, so `--admin` bypasses nothing yet trips the Opus
 # auto-mode classifier's "bypassing the approval gate = destructive op"
 # HARD-veto, stalling every overnight run. `--admin` is now only a FALLBACK,
@@ -22,16 +22,16 @@
 #   1  usage error
 #   2  required tool missing
 #   3  not on a handover/* branch (refuses)
-#   4  gh pr merge failed (HIMMEL-3381: on GitHub this sends one operator DM
+#   4  gh pr merge failed (on GitHub this sends one operator DM
 #      naming gh's last error line, via scripts/lib/merge-block-alert.sh)
-#   5  blocked by the CR merge gate (unresolved CodeRabbit remarks - HIMMEL-936)
-#   6  blocked by the CI-green merge gate (head SHA not green - HIMMEL-1043);
-#      HIMMEL-3381: also one operator DM (deduped per repo/PR/head)
+#   5  blocked by the CR merge gate (unresolved CodeRabbit remarks)
+#   6  blocked by the CI-green merge gate (head SHA not green);
+#      also one operator DM (deduped per repo/PR/head)
 #   7  cannot read the PR head SHA, so the merge cannot be bound to the vetted
-#      commit — refuses rather than merge unbound (HIMMEL-1058)
+#      commit — refuses rather than merge unbound
 #
 # Environment overrides:
-#   FORGE / GH_CMD / BITBUCKET_CMD   Forge-seam overrides (HIMMEL-326). The PR
+#   FORGE / GH_CMD / BITBUCKET_CMD   Forge-seam overrides. The PR
 #                            merge routes through scripts/lib/forge.sh, so this
 #                            works on GitHub and Bitbucket Cloud. The github
 #                            backend still honors GH_CMD (tests set it to a stub).
@@ -39,9 +39,9 @@
 #                            non-cosmetic plain-merge failure (GitHub only).
 #                            Default off. The github backend reads this directly.
 #
-# Jira auto-transition is opt-in per merge (HIMMEL-3143; --jira-transition
+# Jira auto-transition is opt-in per merge (--jira-transition
 # above), not the old unconditional default. It used to fire on every merge
-# and closed HIMMEL-2975 while sibling work was still outstanding — one of
+# and closed a ticket while sibling work was still outstanding — one of
 # those closes had no open PR, branch or commit referencing the ticket at
 # all, because the owed work lived only in a design doc's task list. An
 # "only transition when no other PR references this ticket" heuristic
@@ -51,13 +51,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Forge-dispatch seam: forge_pr_find_open / forge_pr_mergeable / forge_pr_merge
-# route to the github or bitbucket backend per the repo's origin (HIMMEL-326).
+# route to the github or bitbucket backend per the repo's origin.
 # The admin-fallback + cosmetic-branch-delete handling lives in the github
 # backend (gh_forge_pr_merge); this script orchestrates find → check → merge.
 # shellcheck source=../lib/forge.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/forge.sh"
-# HIMMEL-3381: one operator DM when GitHub blocks the merge (deduped per repo/PR/
+# one operator DM when GitHub blocks the merge (deduped per repo/PR/
 # head). The fallback keeps the MERGE-BLOCKED stderr line if the lib is missing.
 # shellcheck source=../lib/merge-block-alert.sh
 # shellcheck disable=SC1091
@@ -133,7 +133,7 @@ fi
 # Locate the PR for this branch via the forge seam. Distinguish a genuine API
 # failure (auth expired / network / 5xx) from "no PR exists": the former must
 # NOT be reported as a clean no-op or an overnight run silently fails to ship
-# (HIMMEL-224 CR — silent-failure-hunter).
+# (silent-failure hunting).
 pr_num=""
 if ! pr_num=$(forge_pr_find_open "$current_branch"); then
     echo "ERR pr-merge: open-PR lookup failed for $current_branch (auth/network?). Cannot determine PR state — refusing to report success." >&2
@@ -149,7 +149,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
-# HIMMEL-1346 — clear this branch's pending CR marker through the sanctioned
+# clear this branch's pending CR marker through the sanctioned
 # chokepoint (scripts/cr/clear-cr-marker.sh, never a raw `rm`) so the merge does
 # not leave one behind: the marker lives in the SHARED git-common-dir and
 # check-cr-marker-on-pr-create.sh resolves the branch from the session cwd, so a
@@ -159,9 +159,9 @@ fi
 # Ordering. AFTER the merge is impossible: deleteBranchOnMerge removes the
 # remote head branch, and the marker's endpoint binding then refuses (exit 16)
 # for every merged branch. So it runs before — and before the CR/CI gates
-# below, not between them and the merge (codex-1): the chokepoint runs its own
+# below, not between them and the merge: the chokepoint runs its own
 # check-ci watch, which can take minutes, and inserting that between this
-# script's gates and its merge would widen exactly the window HIMMEL-1058's
+# script's gates and its merge would widen exactly the window the
 # head binding narrows. Nothing here depends on those gates: clear-cr-marker
 # re-derives its whole verdict (ledger + PR head + check-ci) itself.
 #
@@ -172,8 +172,8 @@ _cr_marker_common=$(git rev-parse --git-common-dir 2>/dev/null || true)
 _cr_clearer="$SCRIPT_DIR/../cr/clear-cr-marker.sh"
 if [ -n "$_cr_marker_common" ] && [ -f "$_cr_marker_common/cr-pending/$current_branch" ]; then
     if [ ! -f "$_cr_clearer" ]; then
-        # Say so (codex-2): a pending marker left behind silently is the exact
-        # failure HIMMEL-1346 is about.
+        # Say so: a pending marker left behind silently is the exact
+        # failure the marker clearing exists to prevent.
         echo "pr-merge: clear-cr-marker.sh not found at $_cr_clearer — the CR marker for '$current_branch' stays pending (HIMMEL-1346). Merging anyway." >&2
     else
         _cr_clear_rc=0
@@ -184,13 +184,13 @@ if [ -n "$_cr_marker_common" ] && [ -f "$_cr_marker_common/cr-pending/$current_b
     fi
 fi
 
-# HIMMEL-936: CR merge gate on the same predicate as the PreToolUse hook, so
+# CR merge gate on the same predicate as the PreToolUse hook, so
 # machines without the plugin hook still get the gate on this path. Placed
 # before the mergeability check so a CR-blocked merge fails fast (exit 5).
 # GitHub-only: cr_merge_gate resolves via gh; the bitbucket forge skips it.
 vetted_head=""
 if [ "$forge" = "github" ]; then
-    # HIMMEL-1058 (TOCTOU): capture the head we are about to vet, and bind the
+    # capture the head we are about to vet, and bind the
     # eventual merge to it. Captured BEFORE the gates on purpose — the gates run
     # inside `$(...)` subshells and cannot hand their own SHA back, so this is
     # the only value we can prove the gates saw-or-newer. If a push lands during
@@ -216,7 +216,7 @@ if [ "$forge" = "github" ]; then
             exit 5
         fi
     fi
-    # HIMMEL-1043: CI-green gate, same predicate as the PreToolUse hook's
+    # CI-green gate, same predicate as the PreToolUse hook's
     # second gate, so machines without the plugin hook still require green CI
     # on this path. Runs AFTER the CR gate (exit 5) and before the
     # mergeability check; a CI-blocked merge fails fast (exit 6). pr-merge passes
@@ -236,10 +236,10 @@ if [ "$forge" = "github" ]; then
     fi
 fi
 
-# Deterministic mergeability check before merging (HIMMEL-1232) — GitHub only.
+# Deterministic mergeability check before merging — GitHub only.
 # forge_pr_mergeable now computes the conflict LOCALLY via `git merge-tree`
 # (github backend), so there is no async GitHub `mergeable` field to wait on: the
-# old bounded poll (HIMMEL-179, 5x3s) is gone — a single read decides.
+# old bounded poll (5x3s) is gone — a single read decides.
 #   CONFLICTING     -> fail fast (exit 4); a conflict won't self-resolve.
 #   MERGEABLE       -> proceed to merge.
 #   UNKNOWN / empty -> a tooling gap (git < 2.38, refs unavailable, no PR view).
@@ -256,7 +256,7 @@ if [ "$forge" = "github" ]; then
     fi
 fi
 
-# HIMMEL-374: best-effort Jira auto-transition on merge — same structural fix
+# best-effort Jira auto-transition on merge — same structural fix
 # as merge-on-green.sh's jira_auto_transition_on_merge (duplicated rather than
 # shared: the two scripts already have no common helper file, and this is a
 # handful of lines). Never fails the merge: every step degrades to a skip/
@@ -300,7 +300,7 @@ jira_auto_transition_on_merge() {
     # Never touch an Epic (standing project invariant — reconcile-lib.mjs's
     # own classifyTicket enforces this for the batch reconciler; this
     # merge-time hook has no classifyTicket call in its path, so it must
-    # check independently). A Story IS transitioned (HIMMEL-5540), matching
+    # check independently). A Story IS transitioned, matching
     # merge-on-green.sh. Fails safe: an unreadable/undetermined type skips
     # the transition rather than risking one on an Epic.
     issue_type_json=$(cd "$jira_repo_root" && node scripts/jira/dist/index.js get "$key" --json 2>/dev/null)
@@ -322,7 +322,7 @@ jira_auto_transition_on_merge() {
             ;;
     esac
 
-    # HIMMEL-3143: opt-in per merge, not a heuristic (see the file header).
+    # opt-in per merge, not a heuristic (see the file header).
     # Report what WOULD have happened and stop — no comment, no transition.
     if [ "$JIRA_TRANSITION_OPT_IN" != "1" ]; then
         echo "pr-merge: PR #$pr merged; would auto-transition $key to '$target_status' (pass --jira-transition to do it — opt-in per HIMMEL-3143)." >&2
@@ -351,7 +351,7 @@ jira_auto_transition_on_merge() {
 }
 
 # Squash-merge via the forge seam. The github backend does a PLAIN squash first
-# and escalates to --admin only when GH_ADMIN_MERGE_OK=1 (HIMMEL-224); it also
+# and escalates to --admin only when GH_ADMIN_MERGE_OK=1; it also
 # absorbs the cosmetic worktree-held branch-delete error. The bitbucket backend
 # maps a 400 merge-conflict (spec §5.1, atomic — nothing merged) to a distinct
 # failure. Either way: rc 0 = merged, non-zero = real failure.
@@ -364,7 +364,7 @@ if [ "$merge_rc" -eq 0 ]; then
     jira_auto_transition_on_merge "$pr_num"
     exit 0
 fi
-# HIMMEL-3381: a refused GitHub merge is a block — name the last gh error line as
+# a refused GitHub merge is a block — name the last gh error line as
 # the rule, alert once, and exit (this path never retries beyond the authorized
 # --admin fallback the backend already made).
 if [ "$forge" = "github" ]; then

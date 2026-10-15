@@ -2,7 +2,7 @@
 # shellcheck disable=SC2015
 # test-unwire-singlekey.sh -- hermetic tests for the single-key unwire helpers
 # (unwire-statusline.sh, unwire-himmel-repo.sh, unwire-luna-vault.sh,
-# unwire-handover-dir.sh; SC6 + HIMMEL-839). Each: removes only its
+# unwire-handover-dir.sh; SC6). Each: removes only its
 # key/stanza, preserves siblings, idempotent, absent -> no-op, refuses
 # invalid JSON. statusLine removal is conditional (himmel binary only).
 set -u
@@ -22,18 +22,18 @@ printf '%s' '{"statusLine":{"type":"command","command":"bash \"C:/h/scripts/stat
 bash "$sl" "$s" >/dev/null
 check "statusLine removed"      "$(jq -r 'has("statusLine")' "$s")" "false"
 check "statusLine sibling kept" "$(jq -r '.env.X' "$s")" "1"
-# 1b. removes the himmel WRAPPER path too (scripts/where-are-we/statusline.sh; HIMMEL-538).
+# 1b. removes the himmel WRAPPER path too (scripts/where-are-we/statusline.sh).
 s="$td/sl1b.json"
 printf '%s' '{"statusLine":{"type":"command","command":"bash \"C:/h/scripts/where-are-we/statusline.sh\""},"env":{"X":"1"}}' > "$s"
 bash "$sl" "$s" >/dev/null
 check "wrapper statusLine removed" "$(jq -r 'has("statusLine")' "$s")" "false"
-# 1c. removes the NEW hud renderer command too (marketplace/.../claude-hud/dist/index.js;
-#     HIMMEL-718) -- single-arg = REMOVE, so uninstall clears a hud-wired statusLine.
+# 1c. removes the NEW hud renderer command too (marketplace/.../claude-hud/dist/index.js) --
+#     single-arg = REMOVE, so uninstall clears a hud-wired statusLine.
 s="$td/sl1c.json"
 printf '%s' '{"statusLine":{"type":"command","command":"node \"C:/h/marketplace/plugins/claude-hud/dist/index.js\""},"env":{"CLAUDE_HUD_ALLOW_EXTRA_CMD":"1"}}' > "$s"
 bash "$sl" "$s" >/dev/null
 check "hud statusLine removed" "$(jq -r 'has("statusLine")' "$s")" "false"
-# 1d. WITH a himmel path -> REPOINT to the bash-bar fallback (HIMMEL-718 migration
+# 1d. WITH a himmel path -> REPOINT to the bash-bar fallback (migration
 #     rollback); the extra-cmd gate is deliberately left in place.
 s="$td/sl1d.json"
 printf '%s' '{"statusLine":{"type":"command","command":"node \"C:/h/marketplace/plugins/claude-hud/dist/index.js\""},"env":{"CLAUDE_HUD_ALLOW_EXTRA_CMD":"1"}}' > "$s"
@@ -76,7 +76,7 @@ bash "$lv" "$s" >/dev/null
 check "LUNA_VAULT_PATH removed"  "$(jq -r '.env.LUNA_VAULT_PATH // "ABSENT"' "$s")" "ABSENT"
 check "HIMMEL_REPO kept"         "$(jq -r '.env.HIMMEL_REPO' "$s")" "C:/h"
 
-# ── unwire-handover-dir (HIMMEL-839) ────────────────────────────────────────
+# ── unwire-handover-dir ────────────────────────────────────────
 # 6. removes HANDOVER_DIR, preserves sibling env keys.
 s="$td/hd1.json"
 printf '%s' '{"env":{"HANDOVER_DIR":"C:/v/handovers","HIMMEL_REPO":"C:/h"}}' > "$s"

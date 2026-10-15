@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pure vault-root resolver for the end-session-wiki hook (HIMMEL-403).
+# Pure vault-root resolver for the end-session-wiki hook.
 # bash 3.2-safe. No eval. Source it, then call resolve_vault_root.
 #
 #   resolve_vault_root <config_json> <registry_json> [<dry_run>]
@@ -16,11 +16,11 @@
 #   4. default: registry["luna"] -> else the ~/Documents/luna convention, but
 #      ONLY if it's a real vault (.obsidian/ marker) or in dry-run. No configured
 #      and no real luna vault => empty (skip) — the hook never materializes a
-#      phantom vault for an adopter who never set luna up (HIMMEL-590 F7).
+#      phantom vault for an adopter who never set luna up.
 
 # Emit a file's text with a leading UTF-8 BOM (EF BB BF) stripped, if present.
 # A BOM makes jq treat the file as invalid JSON, so the resolver would skip and
-# the hook would silently stop capturing (HIMMEL-408). bash 3.2-safe (ANSI-C
+# the hook would silently stop capturing. bash 3.2-safe (ANSI-C
 # quoting + prefix removal); no GNU-only sed.
 _vault_debom() { # <file>
   local c
@@ -112,7 +112,7 @@ resolve_vault_root() { # <config_json> <registry_json> [<dry_run>]
   #    like vault_path) else the ~/Documents/luna convention, but ONLY if it's a
   #    REAL vault (.obsidian/ marker) or in dry-run. An adopter who never
   #    configured luna has no such directory -> empty (skip), so the session-end
-  #    hook never writes into / creates a phantom vault (HIMMEL-590 F7).
+  #    hook never writes into / creates a phantom vault.
   def="$(_vault_jq "$registry" '.vaults.luna // ""')"
   if [ -n "$def" ]; then
     printf '%s\n' "$def"

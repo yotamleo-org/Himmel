@@ -10,7 +10,7 @@ wire="$here/wire-pretooluse-hooks.sh"
 fails=0
 check(){ [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 
-# HIMMEL-3574: the wired command guards its own script with `[ -f ]` before
+# the wired command guards its own script with `[ -f ]` before
 # invoking it -- build the expected string the same way the lib does, so
 # these assertions don't hand-duplicate the shape.
 hookcmd_expect() {
@@ -31,7 +31,7 @@ warn_expect() {
 }
 
 td="$(mktemp -d)"
-# HIMMEL-3332: the wire writes provenance rows; keep them out of the real ~/.himmel.
+# the wire writes provenance rows; keep them out of the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$td/prov"
 
 # 1. missing file -> creates the 3 PreToolUse stanzas, forward-slashed + quoted.
@@ -99,7 +99,7 @@ s8c="$td/s8c.json"; printf '\t\n ' > "$s8c"
 ( . "$wire"; wire_sessionstart_hook "$s8c" "C:/himmel" "inject-initiative.sh" 0 >/dev/null )
 check "whitespace file -> SessionStart inject" "$(jq -r '[.hooks.SessionStart[].hooks[].command | select(test("inject-initiative"))] | length' "$s8c")" "1"
 
-# 8d. HIMMEL-2892 CR round 1 [codex-1]: dedup is per (hook, MATCHER). A hook
+# 8d. Dedup is per (hook, MATCHER). A hook
 # registered under two DISTINCT matchers is two genuinely different
 # registrations -- keeping only the first silently drops the second's tool
 # coverage. RED before the fix: the `Write` stanza vanished, leaving Write
@@ -137,7 +137,7 @@ bash "$wire" "$s8e" "C:/himmel" >/dev/null
 check "same matcher twice: deduped to one" \
   "$(jq -r '[.hooks.PreToolUse[].hooks[].command | select(test("block-edit-on-main"))] | length' "$s8e")" "1"
 
-# 8f. CodeRabbit round 1: a prefix containing a `"` must still wire. The specs
+# 8f. a prefix containing a `"` must still wire. The specs
 # JSON is built with `jq -n --arg pfx`, not by interpolating the prefix into
 # JSON TEXT — a POSIX path may legally contain a quote, and the old textual
 # form produced malformed JSON that `jq --argjson specs` rejected. RED control
@@ -148,7 +148,7 @@ s8f="$td/s8f.json"
 printf '%s' '{}' > "$s8f"
 bash "$wire" "$s8f" '/opt/we"ird/clone' >/dev/null 2>&1 || true
 check "quote in prefix: block still wired" "$(jq -r '.hooks.PreToolUse | length' "$s8f" 2>/dev/null)" "3"
-# HIMMEL-2905: one layer further out than the JSON. The command is a SHELL
+# one layer further out than the JSON. The command is a SHELL
 # string, so the prefix must survive a shell round-trip too -- the pre-fix lib
 # emitted `bash "/opt/we"ird/clone/scripts/hooks/X.sh"`, whose unmatched quote
 # is a syntax error, so the hook (and with it every installed guard) was
@@ -158,7 +158,7 @@ check "quote in prefix: block still wired" "$(jq -r '.hooks.PreToolUse | length'
 cmd8f=$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$s8f" 2>/dev/null)
 if bash -n -c "$cmd8f" 2>/dev/null; then echo "ok - quote in prefix: command parses as shell"
 else echo "FAIL - quote in prefix: command does not parse as shell: [$cmd8f]"; fails=$((fails+1)); fi
-# HIMMEL-3574: the command now guards itself with `[ -f ]`; the script at
+# the command now guards itself with `[ -f ]`; the script at
 # this path does not exist, so running it FOR REAL takes the `else` branch
 # and echoes the path back out -- the same round-trip proof, one layer later.
 check "quote in prefix: path round-trips through the shell" \
@@ -186,8 +186,7 @@ else echo "FAIL - quote in basename: command does not parse as shell: [$cmd8f3]"
 check "quote in basename: path round-trips through the shell" \
   "$(bash -c "$cmd8f3" 2>&1 1>/dev/null)" \
   "$(warn_expect 'C:/himmel/scripts/hooks/we"ird-hook.sh')"
-# ...and the DEDUP test must still recognise the command it just wrote (CR
-# round 3, [codex-1]). Escaping the basename without re-deriving the needle
+# ...and the DEDUP test must still recognise the command it just wrote. Escaping the basename without re-deriving the needle
 # from the same escaped string left the pattern unable to match its own
 # output, so a re-run APPENDED instead of replacing. RED before that fix:
 # 2 hook objects here, at the OLD path.
@@ -198,9 +197,9 @@ check "quote in basename: re-wire repoints at the new clone path" \
   "$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$s8f3" 2>/dev/null)" \
   "$(hookcmd_expect_escaped 'C:/moved/scripts/hooks/we"ird-hook.sh')"
 
-# 8f4. HIMMEL-2913: an entry wired by a PREVIOUS release carries the RAW
+# 8f4. An entry wired by a PREVIOUS release carries the RAW
 # (unescaped) basename in its command -- shesc() on the basename postdates
-# HIMMEL-2905. A needle derived only from the escaped form cannot match that
+# A needle derived only from the escaped form cannot match that
 # legacy text, so a re-wire APPENDS the repaired hook beside the old malformed
 # one instead of replacing it. RED before the fix: 2 hook objects survive.
 s8f4="$td/s8f4.json"
@@ -243,7 +242,7 @@ else
 fi
 check "invalid file unchanged" "$(cat "$s9")" "nope {"
 
-# 10. HIMMEL-3574: the wired script itself is gone (deleted prefix / clone) --
+# 10. The wired script itself is gone (deleted prefix / clone) --
 # running the wired command must warn on stderr and exit 0, never a silent
 # exit 127 "hook error". RED on the pre-fix lib: the command is a bare
 # `bash "<missing path>"`, which exits 127 and prints no himmel-authored line.

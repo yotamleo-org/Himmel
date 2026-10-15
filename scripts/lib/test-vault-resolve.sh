@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test (the executable spec) for scripts/lib/vault-resolve.sh — HIMMEL-403.
+# Smoke test (the executable spec) for scripts/lib/vault-resolve.sh.
 # bash 3.2-safe. Run: bash scripts/lib/test-vault-resolve.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -25,7 +25,7 @@ trap 'rm -rf "$SB"' EXIT
 mkcfg() { printf '%s\n' "$1" >"$SB/cfg.json"; }
 NOREG="$SB/none.json" # nonexistent registry
 
-# ---- undeclared default requires a REAL luna vault (HIMMEL-590 F7) ----
+# ---- undeclared default requires a REAL luna vault ----
 # An adopter who never configured luna has no ~/Documents/luna/.obsidian, so the
 # bare convention default must SKIP (empty) — the hook never materializes a
 # phantom vault. dry-run + a real .obsidian marker still resolve the convention.
@@ -41,7 +41,7 @@ mkdir -p "$FAKEHOME/Documents/luna/.obsidian"
 check "undeclared + real luna vault (.obsidian) -> convention path" "$FAKEHOME/Documents/luna" \
   "$(HOME="$FAKEHOME" USERPROFILE='' LUNA_VAULT_PATH='' resolve_vault_root "$SB/cfg.json" "$NOREG")"
 
-# Windows USERPROFILE-form fallback (HIMMEL-590 F7): when $HOME (MSYS) has no
+# Windows USERPROFILE-form fallback: when $HOME (MSYS) has no
 # vault but a real one exists under the USERPROFILE Windows-form path, the
 # convention is honored and the resolver returns the HOME-form (the hook
 # reconciles). cygpath-gated — only meaningful on Windows Git Bash.
@@ -63,7 +63,7 @@ mkcfg '{"enabled":true}'
 check "LUNA_VAULT_PATH env" "/tmp/envvault" \
   "$(LUNA_VAULT_PATH=/tmp/envvault resolve_vault_root "$SB/cfg.json" "$NOREG")"
 
-# F1-SC5 (HIMMEL-458): the value wire-luna-vault writes to settings.json
+# F1-SC5: the value wire-luna-vault writes to settings.json
 # .env.LUNA_VAULT_PATH is actually consumed at resolver step 3. Empty config
 # object + empty registry -> falls through to LUNA_VAULT_PATH.
 mkcfg '{}'
@@ -114,7 +114,7 @@ mkcfg '{"vault":"futurevault"}'
 check "dry_run bypasses marker" "$SB/home/Documents/futurevault" \
   "$(HOME="$SB/home" resolve_vault_root "$SB/cfg.json" "$NOREG" true)"
 
-# ---- CR follow-ups (HIMMEL-403 review) ----
+# ---- registry edge cases ----
 # registry present but THIS key absent -> convention fallback (not the other key, not skip)
 printf '{"vaults":{"other":"/somewhere"}}\n' >"$SB/reg3.json"
 mkdir -p "$SB/home/Documents/medic/.obsidian"
@@ -160,12 +160,12 @@ done
 check "empty config file -> skip" "" \
   "$(LUNA_VAULT_PATH=/tmp/should_not_be_used resolve_vault_root "$SB/cfg.json" "$NOREG")"
 
-# UTF-8 BOM-prefixed config must still PARSE, not fail-closed (HIMMEL-408).
+# UTF-8 BOM-prefixed config must still PARSE, not fail-closed.
 printf '\xef\xbb\xbf{"vault_path":"/tmp/bomvault"}\n' >"$SB/cfg.json"
 check "BOM-prefixed config parses (not skip)" "/tmp/bomvault" \
   "$(LUNA_VAULT_PATH='' resolve_vault_root "$SB/cfg.json" "$NOREG")"
 
-# UTF-8 BOM-prefixed registry must still resolve a name (HIMMEL-408).
+# UTF-8 BOM-prefixed registry must still resolve a name.
 printf '\xef\xbb\xbf{"vaults":{"bomreg":"/tmp/bomreg"}}\n' >"$SB/regbom.json"
 mkcfg '{"vault":"bomreg"}'
 check "BOM-prefixed registry resolves name" "/tmp/bomreg" \

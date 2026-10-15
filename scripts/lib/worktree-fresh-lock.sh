@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# worktree-fresh-lock.sh — HIMMEL-3297 (option B): is a worktree's leg still
+# worktree-fresh-lock.sh — is a worktree's leg still
 # holding a FRESH scripts/handover/queue-lock.sh lock on its own handover doc?
 #
 # WHY: a leg's handover doc records the worktree it runs in as `resume_cwd:`
 # in its frontmatter, and the leg holds queue-lock.sh's lock on that SAME doc
 # for its whole life (released only at wrap). clean-garden.sh's fleet-wide
 # prune already refuses a worktree that is some live process's CWD
-# (worktree_in_use, lib/worktree-inuse.sh, HIMMEL-2227) — but a leg's cwd can
+# (worktree_in_use, lib/worktree-inuse.sh) — but a leg's cwd can
 # fall back to the primary checkout while the leg is still mid-wrap, and the
 # window between that and the lock's actual release is exactly when a
-# fleet-wide sweep pruned a live leg's tree out from under it (HIMMEL-3297).
+# fleet-wide sweep pruned a live leg's tree out from under it.
 # The lock, not the process cwd, is the leg's real "done with it" signal.
 #
 # HOW: reverse the normal doc -> lock lookup. For every lock dir under every

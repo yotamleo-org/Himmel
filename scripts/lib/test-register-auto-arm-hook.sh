@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic test for scripts/lib/register-auto-arm-hook.sh (HIMMEL-594).
+# Hermetic test for scripts/lib/register-auto-arm-hook.sh.
 set -uo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 REG="$REPO_ROOT/scripts/lib/register-auto-arm-hook.sh"

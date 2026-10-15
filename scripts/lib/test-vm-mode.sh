@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-vm-mode.sh — hermetic tests for scripts/lib/vm-mode.sh (HIMMEL-4583).
+# test-vm-mode.sh — hermetic tests for scripts/lib/vm-mode.sh.
 # Every case runs against a temp HOME; the live ~/.himmel/config.json is never read.
 set -uo pipefail
 

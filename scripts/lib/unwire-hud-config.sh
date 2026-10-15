@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # unwire-hud-config.sh -- remove the claude-hud config himmel wrote (the inverse
-# of the config drop in wire-statusline.sh; HIMMEL-3251):
+# of the config drop in wire-statusline.sh):
 # ${CLAUDE_CONFIG_DIR:-~/.claude}/plugins/claude-hud/config.json.
 #
 # Usage:
@@ -8,7 +8,7 @@
 #
 # Acts ONLY when display.customLineCommand runs himmel's hud-custom-lines.sh --
 # the one field himmel's template sets that an operator's own hud config would
-# not -- AND (HIMMEL-3334 I2, console ruling on judge J1269C) the file is
+# not -- AND the file is
 # byte-identical to himmel's own shipped template once substituted. This is
 # the no-ledger fallback (no provenance row to ask instead), so a operator-
 # added key alongside himmel's customLineCommand is kept, not lost with the
@@ -18,7 +18,7 @@
 # ponytail: the byte-identity check compares against the plain template only,
 # not the optional HIMMEL_STATUSLINE_ECON prefix wire-statusline.sh may have
 # carried forward -- a prefixed-but-otherwise-himmel's-own file is kept
-# rather than removed; HIMMEL-3334 follow-up if that false negative matters.
+# rather than removed follow-up if that false negative matters.
 #
 # Requires jq. Source it to call unwire_hud_config directly, or invoke via bash.
 set -euo pipefail
@@ -26,7 +26,7 @@ set -euo pipefail
 # Also read by uninstall.sh's read-back so the two cannot drift.
 # Anchored to the exact command shape wire-statusline.sh writes (the template's
 # `bash "<path>/scripts/statusline/hud-custom-lines.sh"`, optionally behind the
-# HIMMEL-3157 HIMMEL_STATUSLINE_ECON=<alnum> prefix), so an operator command that
+# HIMMEL_STATUSLINE_ECON=<alnum> prefix), so an operator command that
 # merely MENTIONS the script is never taken for himmel's.
 _UNWIRE_HUD_PAT='^(HIMMEL_STATUSLINE_ECON=[A-Za-z0-9]+ )?bash "[^"]*/scripts/statusline/hud-custom-lines[.]sh"$'
 

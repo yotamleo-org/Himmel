@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/lib/resolve-hermes-py.sh (HIMMEL-613).
+# Smoke test for scripts/lib/resolve-hermes-py.sh.
 # Usage: bash scripts/lib/test-resolve-hermes-py.sh
 # Exit 0 if all cases pass, 1 otherwise. Hermetic — no hermes runtime needed.
 set -uo pipefail
@@ -73,7 +73,7 @@ out="$( base_env; HERMES_HOME="$tmp/nope" resolve_hermes_py )"; rc=$?
 if [ "$rc" -eq 1 ] && [ -z "$out" ]; then pass "none -> rc1 empty"; else fail "none -> rc=$rc out='$out'"; fi
 rm -rf "$tmp"
 
-# HIMMEL-2582: with HERMES_HOME unset, the derived root used to be
+# with HERMES_HOME unset, the derived root used to be
 # ${LOCALAPPDATA:-$HOME/AppData/Local}/hermes — a WINDOWS path — on EVERY host,
 # so the resolver failed on any POSIX box that had not exported HERMES_HOME.
 # That is what made the bridge's triage fail open with "hermes interpreter not
@@ -119,7 +119,7 @@ else
 fi
 rm -rf "$tmp"
 
-# HIMMEL-4307: the 2026-10-04 hermes update moved to PM-managed dependency
+# the 2026-10-04 hermes update moved to PM-managed dependency
 # generations (Python 3.14, cpython-314 wheels) under ~/.hermes/tools. The legacy
 # venv python (3.11) cannot load them. Upstream's launcher prints the exact
 # runtime argv (`hermes --print-runtime-command`); the resolver must prefer it.

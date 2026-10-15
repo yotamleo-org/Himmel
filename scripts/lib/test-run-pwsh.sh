@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-run-pwsh.sh — hermetic smoke for scripts/lib/run-pwsh.sh (HIMMEL-611).
+# test-run-pwsh.sh — hermetic smoke for scripts/lib/run-pwsh.sh.
 # Verifies the pwsh-absent guard (silent fail-open + breadcrumb) and the
 # pwsh-present exec path. Usage: bash scripts/lib/test-run-pwsh.sh
 set -uo pipefail
@@ -10,7 +10,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"

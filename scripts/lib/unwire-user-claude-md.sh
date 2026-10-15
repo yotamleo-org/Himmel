@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # unwire-user-claude-md.sh -- strip himmel's "working principles" block from a
-# user-scope rule file (the inverse of wire_user_claude_md in user-claude-md.sh;
-# HIMMEL-3251). Installed once per harness: ~/.claude/CLAUDE.md and
+# user-scope rule file (the inverse of wire_user_claude_md in user-claude-md.sh).
+# Installed once per harness: ~/.claude/CLAUDE.md and
 # ~/.codex/AGENTS.md.
 #
 # Usage:
@@ -10,8 +10,8 @@
 #   bash unwire-user-claude-md.sh --extract <rule-file-path>
 #
 # --file-created yes|no overrides the "left empty" decision below with the
-# provenance ledger's own record instead of the blank-line guess (HIMMEL-3332
-# S6): yes deletes a file left empty (no blank-line guess); no always writes
+# provenance ledger's own record instead of the blank-line guess:
+# yes deletes a file left empty (no blank-line guess); no always writes
 # it back empty and never deletes. Omit the flag for today's heuristic. A
 # symlink is never deleted either way.
 #
@@ -22,7 +22,7 @@
 # edited, a copy of it as found goes to <file>.himmel-uninstall-backup (the
 # error and DRY lines name it), so a surprise can be undone by hand.
 #
-# The empty case is DECIDED, not emergent (HIMMEL-3333). wire_user_claude_md
+# The empty case is DECIDED, not emergent. wire_user_claude_md
 # writes the block alone into a file it creates, and a blank line + the block
 # when it appends to a file that already existed, so the blank line is the
 # provenance record install left us:
@@ -56,7 +56,7 @@
 # 3 = at least one marker line (a block, a fragment, or a CRLF one) is present;
 # 1 = unreadable. Read by uninstall.sh's read-back, which must agree with the
 # strip about what counts as a marker or a documented block trips it.
-# --extract (HIMMEL-3787 S2d): prints the block -- the exact BEGIN line through
+# --extract: prints the block -- the exact BEGIN line through
 # the exact END line, byte for byte -- to stdout, rc 0; rc 3 = no marker line and
 # no file (nothing wired); rc 1 = the block cannot be told apart from text
 # (malformed / duplicated / CRLF / open-fence markers, or unreadable). The same
@@ -76,7 +76,7 @@ _UNWIRE_UCM_MARKER="HIMMEL:working-principles"
 # to strip" would leave the operator silently wired).
 # rc 1 when the file cannot be read. The file goes in by redirect, never as an
 # awk operand: awk parses a relative name shaped var=value as an assignment and
-# reads stdin, a silent "no block" (HIMMEL-3342).
+# reads stdin, a silent "no block".
 # Fences follow CommonMark far enough for a rule file: up to three leading
 # spaces, three or more of the same backtick/tilde, closed by a run of the same
 # char at least as long with nothing but whitespace after it; a backtick
@@ -146,7 +146,7 @@ unwire_user_claude_md() {
   # A marker UNDER a fence that never closes may be the real block: refuse
   # before it can read as "nothing to strip". Only fm (marker lines inside the
   # still-open fence) is ambiguous; markers above the fence opener are ordinary
-  # and fall through to the count and CRLF checks below (HIMMEL-3335).
+  # and fall through to the count and CRLF checks below.
   if [ "$openfence" -eq 1 ] && [ "$fm" -gt 0 ]; then
     echo "unwire-user-claude-md: $target opens a code fence that never closes, so a marker line cannot be told from quoted text -- refusing to guess; close the fence or remove the block by hand" >&2
     return 1
@@ -178,7 +178,7 @@ unwire_user_claude_md() {
   # the top of the file) is exactly that, so head only runs when there are lines
   # before the block.
   { { [ "$start" -le 1 ] || head -n $((start - 1)) "$target"; } && tail -n +$((le + 1)) "$target"; } > "$tmp" || { rm -f "$tmp"; return 1; }
-  # WHY (HIMMEL-3332 S6): --file-created overrides the blank-line guess below
+  # WHY: --file-created overrides the blank-line guess below
   # with the ledger's own record of whether install created this file.
   _ucm_delete_empty=0
   if [ ! -s "$tmp" ] && [ ! -L "$target" ]; then
@@ -200,7 +200,7 @@ unwire_user_claude_md() {
   # The backup path must be ours to write: cp follows a symlink sitting there
   # and would overwrite whatever it points at, a directory cannot take the
   # copy, and a HARD-LINKED regular file shares its inode with another name, so
-  # cp would overwrite that twin too (HIMMEL-3341). Refuse all three rather than
+  # cp would overwrite that twin too. Refuse all three rather than
   # remove what the operator (or an earlier tool) put there; a singly-linked
   # regular file at that path is a previous run's backup and is replaced.
   # ponytail: check-then-copy is not atomic -- a link planted at $backup between

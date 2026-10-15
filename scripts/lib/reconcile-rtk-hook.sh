@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # reconcile-rtk-hook.sh — standalone "reconcile now" path for the rtk
-# PreToolUse hook in a Claude Code settings.json (HIMMEL-399).
+# PreToolUse hook in a Claude Code settings.json.
 #
 # WHY this exists separately from machine-setup:
 #   `rtk init -g` (the external rtk tool, rtk-ai/rtk) appends a bare
 #   `rtk hook claude` PreToolUse(Bash) entry to ~/.claude/settings.json
 #   WITHOUT checking for an existing one — so running it twice stacks two
 #   entries. himmel swaps that bare entry for the rtk-hook-guard.sh wrapper
-#   (HIMMEL-241, the compound-find fix), but the swap by itself never
+# (the compound-find fix), but the swap by itself never
 #   COLLAPSES the result: a guard entry plus a freshly re-added bare entry,
 #   swapped again, yields two guard entries. The full machine-setup scripts
 #   (ubuntu.sh / win11.ps1) run `rtk init -g` exactly once so they never hit
@@ -76,7 +76,7 @@ reconcile_rtk_hook() {
   #      guard command (mirrors ubuntu.sh's inline swap filter, line ~548).
   #   1.5 NORMALIZE — every PLAIN guard invocation (`bash "<any>/rtk-hook-
   #      guard.sh"`, anchored shape-match) is rewritten to the freshly
-  #      computed guard path (HIMMEL-985: settings restored from another
+  #      computed guard path (settings restored from another
   #      machine/username/checkout carry a stale absolute guard path; dedup
   #      keeps the FIRST guard in document order, so without this the stale
   #      entry would win and the current one be dropped). Deliberately

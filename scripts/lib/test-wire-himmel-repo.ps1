@@ -1,5 +1,5 @@
 # test-wire-himmel-repo.ps1 -- committed PS test for wire-himmel-repo.ps1
-# (HIMMEL-453). The .env merge is genuinely new logic vs the statusline twin's
+#. The .env merge is genuinely new logic vs the statusline twin's
 # single-object set, and clobbering a sibling key (e.g. HIMMEL_INITIATIVE) is the
 # highest-risk failure on the operator's primary platform -- so it gets a real
 # assertion, not parity-by-inspection. Run: pwsh -File test-wire-himmel-repo.ps1

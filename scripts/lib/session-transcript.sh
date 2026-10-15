@@ -69,7 +69,7 @@ parse_session_transcript() {
         # HAS_CONTENT: 1 if the transcript carries ANY salvageable signal — a
         # non-empty string-content assistant turn, an assistant text/thinking
         # block, or ANY tool_use block (any tool, not just Bash). Used by the
-        # husk-skip gate (HIMMEL-576) so content-free sessions never write a
+        # husk-skip gate so content-free sessions never write a
         # "Transcript unavailable" husk note. A thinking/tool-only session (no
         # final text turn → empty LAST_ASSISTANT) is therefore NOT a husk.
         if [ -n "$COMMANDS" ]; then

@@ -2,15 +2,15 @@
 # unwire-statusline.sh -- roll back the himmel statusLine in a Claude Code
 # settings.json (the inverse of wire-statusline.sh; HIMMEL install/uninstall
 # symmetry). Acts ONLY when .statusLine points at a himmel statusLine -- the hud
-# renderer (marketplace/plugins/claude-hud/dist/index.js; HIMMEL-718), the
-# where-are-we wrapper (HIMMEL-538), or the older vendored bar -- a user's own
+# renderer (marketplace/plugins/claude-hud/dist/index.js), the
+# where-are-we wrapper, or the older vendored bar -- a user's own
 # custom statusLine is left untouched.
 #
 # Usage:
 #   bash unwire-statusline.sh <settings-json-path> [himmel-path]
 #
 # With a himmel path -> REPOINT .statusLine.command to the bash-bar fallback
-#   (bash "<himmel>/scripts/where-are-we/statusline.sh"; the HIMMEL-718 migration
+#   (bash "<himmel>/scripts/where-are-we/statusline.sh"; the migration
 #   rollback -- the .env.CLAUDE_HUD_ALLOW_EXTRA_CMD gate is left in place, being
 #   harmless when the bash bar renders).
 # Without a himmel path -> REMOVE .statusLine entirely (the uninstall path).
@@ -25,7 +25,7 @@ set -euo pipefail
 
 # Matches the himmel statusLine in any of its shapes; a user's own custom
 # statusLine matches none and is left alone. Also read by uninstall.sh's
-# post-unwire read-back (HIMMEL-3058), so the two cannot drift.
+# post-unwire read-back, so the two cannot drift.
 _UNWIRE_SL_PAT='marketplace/plugins/claude-hud/dist/index[.]js|scripts/(statusline/bin/statusline|where-are-we/statusline)[.]sh'
 
 unwire_statusline() {

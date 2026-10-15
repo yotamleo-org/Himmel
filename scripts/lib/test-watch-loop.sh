@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # scripts/lib/test-watch-loop.sh -- tests for scripts/lib/watch-loop.sh
-# (HIMMEL-1820).
 #
 # Usage: bash scripts/lib/test-watch-loop.sh
 #
@@ -23,7 +22,7 @@
 # must not leave orphaned ones behind (the very bug being fixed). Note a
 # background child that exits un-waited stays a zombie, and `kill -0` on a
 # zombie succeeds -- which is why the pre-kill liveness check reads the
-# reason LINE, not kill -0 (HIMMEL-1338 documents the same trap).
+# reason LINE, not kill -0.
 #
 # Exit: 0 = all pass, 1 = at least one failed.
 set -uo pipefail
@@ -37,7 +36,7 @@ FAILED=0
 pass() { printf 'PASS %s\n' "$1"; PASSED=$((PASSED + 1)); }
 fail() { printf 'FAIL %s\n' "$1"; FAILED=$((FAILED + 1)); }
 
-# codex-1 (round 4, Suggestion): `kill -0 <pid>` succeeds for a ZOMBIE too --
+# `kill -0 <pid>` succeeds for a ZOMBIE too --
 # the pid slot stays allocated until something reaps it -- so a grandchild
 # liveness assertion built on kill -0 alone can read an already-dead pid as
 # still alive. `ps -o stat=` distinguishes a zombie (leading Z) from a live
@@ -60,10 +59,10 @@ cleanup() {
     for _p in "$W1" "$P1" "$W2" "$P2" "$W3" "$P3" "$P5" "$W6" "$P6" "$P7" "$GC7" "$P8" "$GC8"; do
         [ -n "$_p" ] && kill "$_p" 2>/dev/null
     done
-    # codex-1 (round 3, Suggestion): plain TERM never reaped GC8, which traps
+    # plain TERM never reaped GC8, which traps
     # and ignores it on purpose (case 8's fixture) -- escalate to KILL for
     # anything still alive after a grace period, same as the fallback tier
-    # under test. codex-2 (round 4, Suggestion): skip the grace sleep when
+    # under test. skip the grace sleep when
     # nothing is left to escalate against.
     for _p in "$W1" "$P1" "$W2" "$P2" "$W3" "$P3" "$P5" "$W6" "$P6" "$P7" "$GC7" "$P8" "$GC8"; do
         [ -n "$_p" ] && kill -0 "$_p" 2>/dev/null && _still_alive=1
@@ -204,8 +203,8 @@ else
     fail "missing --parent-pid gave rc=$rc4 (expected 2): $(cat "$LOG4")"
 fi
 
-# --- Case 5: a hung probe cannot block the loop past its TTL (CR: HIMMEL-1820,
-#             codex-1) -- without _wl_timeout, the FIRST `"$@"` call below
+# --- Case 5: a hung probe cannot block the loop past its TTL:
+#             without _wl_timeout, the FIRST `"$@"` call below
 #             (sleep 30) would block the loop for 30s before it ever
 #             re-checked the 2s TTL, defeating self-termination.
 if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
@@ -236,8 +235,8 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
     fi
 
     # --- Case 6: a parent dying MID-PROBE is still noticed within about one
-    #             interval, not the (much larger) TTL (CR: HIMMEL-1820,
-    #             codex-1 round 3) -- bounding the probe by the remaining TTL
+    #             interval, not the (much larger) TTL:
+    #             bounding the probe by the remaining TTL
     #             instead of --interval would let a hung probe mask a dead
     #             parent for up to that whole remaining TTL, which breaks the
     #             "noticed within about one interval" acceptance criterion
@@ -274,7 +273,7 @@ else
 fi
 
 # --- Case 7: the no-timeout/gtimeout fallback kills the probe's WHOLE
-#             process tree, not just its direct pid (HIMMEL-2110) -- a
+#             process tree, not just its direct pid -- a
 #             scratch PATH hides timeout/gtimeout (and setsid, so the
 #             set-m sub-branch is exercised) with only the tools the probe
 #             itself needs symlinked in. At base, the fallback tier only
@@ -318,8 +317,8 @@ else
 fi
 
 # --- Case 8: the no-timeout/gtimeout fallback's KILL escalation is
-#             group-scoped, not direct-pid-scoped (HIMMEL-2110, codex-1
-#             critic finding). At base, the escalation only sends KILL
+#             group-scoped, not direct-pid-scoped.
+#             At base, the escalation only sends KILL
 #             when `kill -0 "$cpid"` (the probe's OWN pid) still succeeds;
 #             if the probe dies from the TERM (no trap of its own) while a
 #             grandchild ignores TERM (SIG_IGN surviving an exec, so not

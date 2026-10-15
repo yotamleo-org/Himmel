@@ -52,8 +52,7 @@ default_ref="$(env -u QMD_FORK_REF bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
 assert "default QMD_FORK_REF is a full 40-hex SHA" \
   bash -c 'printf "%s" "$1" | grep -qE "^[0-9a-f]{40}$"' _ "$default_ref"
-# HIMMEL-3956: the carried launcher-signal fork until tobi/qmd#1030 lands
-# (HIMMEL-3982 pins back to tobi/qmd).
+# the carried launcher-signal fork until tobi/qmd#1030 lands
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
 assert "default QMD_FORK_REPO is the carried fork yotamleo/qmd" \
   test "$default_repo" = "https://github.com/yotamleo/qmd.git"
@@ -156,7 +155,7 @@ assert "PATH branch token is exactly the PATH qmd" test "$pin_path" = "$tmpdir/b
 # shellcheck disable=SC2016
 assert "PATH branch token is absolute" \
   bash -c 'grep -qE "^(/|[A-Za-z]:[/\\])" <<<"$1"' _ "$pin_path"
-# RELATIVE inputs must still yield ABSOLUTE tokens (HIMMEL-1283 CR). Two ways a
+# RELATIVE inputs must still yield ABSOLUTE tokens. Two ways a
 # relative path leaks in: a relative entry on PATH (so `command -v` answers
 # relatively) and a relative BUN_INSTALL (so the derived qmd.js path is
 # relative). Either would pin a path that resolves against the caller's cwd,
@@ -241,7 +240,7 @@ if [ "$1" = "-C" ]; then shift 2; fi
 echo "GIT $*" >> "${GIT_LOG:?}"
 case "$1" in
   init)
-    # `git init <fork_dir>` (HIMMEL-911: a SHA can't be `git clone --branch`ed,
+    # `git init <fork_dir>` (a SHA can't be `git clone --branch`ed,
     # so the fresh-install path is init + fetch-by-sha + checkout).
     [ "${STUB_GIT_CLONE_RC:-0}" -eq 0 ] || exit "$STUB_GIT_CLONE_RC"
     target="$2"
@@ -256,7 +255,7 @@ case "$1" in
     fi
     if [ "$2" = "set-url" ]; then
       # `remote set-url origin <url>` -- the known-origin re-point
-      # (HIMMEL-3045/3956); nothing to simulate, just succeed and let the GIT_LOG
+      #; nothing to simulate, just succeed and let the GIT_LOG
       # line above record it.
       exit 0
     fi
@@ -269,7 +268,7 @@ case "$1" in
   checkout)
     # A successful checkout moves HEAD to the requested commit -- mirror it
     # into the head-state file (when the scenario tracks one) so rev-parse
-    # answers realistically after a re-pin (HIMMEL-911).
+    # answers realistically after a re-pin.
     if [ "${STUB_GIT_FETCH_RC:-0}" -eq 0 ] && [ -n "${STUB_GIT_HEAD_FILE:-}" ]; then
       printf '%s\n' "$2" > "$STUB_GIT_HEAD_FILE"
     fi
@@ -277,7 +276,7 @@ case "$1" in
     ;;
   rev-parse)
     # HEAD probe (qmd_fork_served pin gate + qmd_install post-checkout
-    # verify, HIMMEL-911): the head-state file when tracked, else the
+    # verify): the head-state file when tracked, else the
     # STUB_GIT_HEAD env (qmd_install_env defaults it to the pinned ref).
     if [ -n "${STUB_GIT_HEAD_FILE:-}" ] && [ -f "$STUB_GIT_HEAD_FILE" ]; then
       cat "$STUB_GIT_HEAD_FILE"
@@ -301,7 +300,7 @@ echo "BUN $*" >> "${BUN_LOG:?}"
 case "$1" in
   install)
     [ "${STUB_BUN_INSTALL_RC:-0}" -eq 0 ] || exit "$STUB_BUN_INSTALL_RC"
-    # Mirror what a real `bun install` materializes for the HIMMEL-928
+    # Mirror what a real `bun install` materializes for the
     # binding step: the better-sqlite3 + prebuild-install package dirs --
     # but NOT the compiled binding (bun blocks that postinstall; the
     # binding only appears via the node-run prebuild fetch, stubbed in
@@ -324,7 +323,7 @@ case "$1" in
 esac
 STUB
 chmod +x "$id2/bin/bun"
-# Fake node for the HIMMEL-928 better-sqlite3 binding step. Two verbs:
+# Fake node for the better-sqlite3 binding step. Two verbs:
 #   node <...>/prebuild-install/bin.js   -> the prebuild fetch: create the
 #     binding file in cwd (qmd_install runs it from node_modules/
 #     better-sqlite3), controllable via STUB_NODE_FETCH_RC.
@@ -415,8 +414,7 @@ assert "idempotent re-run: did not re-run bun install" bash -c '! grep -q "BUN i
 # shellcheck disable=SC2016
 assert "idempotent re-run: did not re-run bun build" bash -c '! grep -q "BUN run build" "$1"' _ "$bun_log"
 
-# -- qmd_fork_served / `fork-served` CLI verb (the caller-side install gate,
-#    HIMMEL-877 CR codex-adv-1) ------------------------------------------------
+# -- qmd_fork_served / `fork-served` CLI verb (the caller-side install gate) ------------------------------------------------
 assert "fork-served CLI verb: rc 0 when the fork is served" \
   qmd_install_env "$fresh_home" bash "$SCRIPT_DIR/qmd-bin.sh" fork-served
 noserve_home="$id2/noserve"
@@ -426,7 +424,7 @@ rc=0
 qmd_install_env "$noserve_home" bash "$SCRIPT_DIR/qmd-bin.sh" fork-served >/dev/null 2>&1 || rc=$?
 assert "fork-served CLI verb: nonzero on an upstream REAL-dir install (qmd present)" test "$rc" -ne 0
 
-# -- pin-drift (HIMMEL-911 CR r1 codex-adv-1): a linked, version-compatible
+# -- pin-drift: a linked, version-compatible
 #    clone checked out at a DIFFERENT commit must NOT count as served -- that
 #    is exactly the pre-pin population (built from the mutable himmel-main
 #    head) this change migrates. qmd_install must fall through to the update
@@ -443,7 +441,7 @@ assert "pin-drift: re-pinned successfully (rc 0)" grep -q '^RC=0$' <<<"$out"
 assert "pin-drift: clone HEAD is the pinned SHA afterward" grep -q "$default_ref" "$drift_head"
 
 # -- pinned-update failure on a SERVED-but-drifted install: FAIL CLOSED
-#    (HIMMEL-911 CR r1 codex-adv-2). The old fallback (WARN + build the clone
+#. The old fallback (WARN + build the clone
 #    contents as-is) silently served an UNPINNED commit while reporting
 #    success. Now: honest nonzero, ERROR names the pinned SHA, and the
 #    previously served installation is left untouched (no rebuild, no
@@ -465,7 +463,7 @@ assert "served-drift update-fail: clone HEAD untouched (still drifted)" \
   grep -q 'deadbeef' "$drift_head"
 
 # -- build failure DURING a drifted upgrade must not mint a served pin
-#    (HIMMEL-911 CR r3 codex-adv): checkout moves HEAD to the pin BEFORE bun
+#: checkout moves HEAD to the pin BEFORE bun
 #    runs, so a build failure leaves HEAD==pin while the OLD dist (built from
 #    the mutable commit) keeps serving. Without the build-success stamp a
 #    RETRY would see HEAD==pin + version>=min -> served -> skip silently
@@ -487,7 +485,7 @@ assert "drift+build-fail retry: rebuilt" grep -q 'BUN run build' "$bun_log"
 assert "drift+build-fail retry: rc 0" grep -q '^RC=0$' <<<"$out"
 STUB_GIT_HEAD_FILE=""
 
-# -- legacy migration (HIMMEL-911 CR r3): a pre-stamp machine (linked, pinned
+# -- legacy migration: a pre-stamp machine (linked, pinned
 #    HEAD, version ok -- but no .himmel-build-ok stamp) intentionally reads
 #    as NOT-served, so it converges onto a stamped pinned build on its next
 #    install pass. Desired migration behavior, not a bug.
@@ -526,7 +524,7 @@ assert "no-bun: rc nonzero" grep -qv '^RC=0$' <<<"$out"
 assert "no-bun: WARNs" grep -qi 'bun not found' <<<"$out"
 
 # -- pinned-update failure on an EXISTING unlinked clone: FAIL CLOSED
-#    (HIMMEL-911 CR r1 codex-adv-2) -- never build/link contents that could
+# -- never build/link contents that could
 #    not be brought to the pinned SHA. Pre-seed the clone dir directly (NOT
 #    via a first qmd_install call) so the global path is NOT yet linked --
 #    otherwise the idempotent-skip check above would short-circuit this run
@@ -554,7 +552,7 @@ assert "fetch-fail: did NOT link the global path" \
 assert "update path: no git call references the mutable himmel-main branch" \
   bash -c '! grep -q "himmel-main" "$1"' _ "$git_log"
 
-# -- owned-dir guard (HIMMEL-877 CR codex-adv-2): never hard-reset a repo
+# -- owned-dir guard: never hard-reset a repo
 #    the installer does not own -------------------------------------------------
 # unrelated origin at QMD_FORK_DIR -> refused untouched, rc nonzero, no fetch.
 unrel_home="$id2/unrelorigin"
@@ -569,12 +567,12 @@ assert "unrelated-origin: refuses with the origin mismatch WARNING" grep -qi 're
 assert "unrelated-origin: never fetch/checkout/reset" bash -c '! grep -qE "GIT (fetch|checkout|reset)" "$1"' _ "$git_log"
 assert "unrelated-origin: dir contents untouched" grep -q 'precious local work' "$unrel_home/.himmel/qmd-fork/work.txt"
 
-# -- known-origin re-point (HIMMEL-3045, both directions since HIMMEL-3956):
+# -- known-origin re-point (both directions):
 #    an existing owned clone whose origin is the OTHER known qmd remote is
 #    re-pointed via `git remote set-url` -- never re-cloned -- instead of
 #    refused like any other mismatched origin above. Upstream tobi/qmd to the
 #    carried fork (today's default) in its exact, no-.git and trailing-slash
-#    forms; the fork back to tobi/qmd (the HIMMEL-3982 port-back, as
+#    forms; the fork back to tobi/qmd (the port-back, as
 #    QMD_FORK_REPO); SSH forms are different strings and stay refused.
 repoint_case() {
   local label="$1" origin="$2" want="$3" home="$id2/repoint-$1"
@@ -629,7 +627,7 @@ STUB_GIT_DIRTY=""
 assert "dirty+FORCE: proceeds to fetch" grep -q 'GIT fetch' "$git_log"
 assert "dirty+FORCE: rc 0" grep -q '^RC=0$' <<<"$out"
 
-# -- populated NON-git dir at QMD_FORK_DIR (HIMMEL-911 CR r2 codex-adv):
+# -- populated NON-git dir at QMD_FORK_DIR:
 #    refused untouched. QMD_FORK_DIR is operator-overridable, so a populated
 #    non-git dir here is USER DATA that predates the installer -- an
 #    init-in-place followed by the clone-failure `rm -rf` cleanup would
@@ -940,11 +938,11 @@ echo "[test-qmd-bin] consumer integration — scripts/setup.sh uses helpers"
 # Guard against accidental reintroduction of plain `qmd` in consumers.
 repo_root="$(cd "$SCRIPT_DIR/../.." && pwd)"
 assert "setup.sh sources qmd-bin.sh" grep -q 'lib/qmd-bin.sh' "$repo_root/scripts/setup.sh"
-# setup.sh [4/10] was refactored to call qmd_register_collection (HIMMEL-752),
+# setup.sh [4/10] was refactored to call qmd_register_collection,
 # which wraps qmd_cmd - either helper counts as "uses the resolver, not bare qmd".
 assert "setup.sh calls a qmd-bin.sh helper (qmd_cmd/qmd_register_collection)" \
   grep -qE 'qmd_cmd |qmd_register_collection ' "$repo_root/scripts/setup.sh"
-# HIMMEL-887: ubuntu.sh no longer sources lib/qmd-bin.sh or calls qmd_cmd
+# ubuntu.sh no longer sources lib/qmd-bin.sh or calls qmd_cmd
 # directly -- himmel/luna wiring delegates to `himmelctl bootstrap` (the NOTICE
 # at ubuntu.sh). Assert the delegation instead of the removed direct wiring.
 # shellcheck disable=SC2016
@@ -954,8 +952,7 @@ assert "ubuntu.sh does NOT reference lib/qmd-bin.sh (wiring delegated, HIMMEL-88
 assert "ubuntu.sh does NOT call qmd_cmd (wiring delegated, HIMMEL-887)" \
   bash -c '! grep -qF -- "qmd_cmd " "$1"' _ "$repo_root/scripts/machine-setup/ubuntu.sh"
 # The NOTICE alone is not the contract: assert the executable delegation
-# statement too, so removing the exec while keeping the NOTICE fails
-# (codex-adv finding, HIMMEL-934 CR round).
+# statement too, so removing the exec while keeping the NOTICE fails.
 # shellcheck disable=SC2016
 assert "ubuntu.sh execs himmelctl bootstrap.sh (delegation is real, HIMMEL-887)" \
   grep -qE -- '^[[:space:]]*(HIMMELCTL_REPO_ROOT="\$HIMMEL_PATH"[[:space:]]+)?exec[[:space:]]+bash[[:space:]]+"\$HIMMEL_PATH/scripts/himmelctl/bootstrap\.sh"([[:space:]]+--default-scope[[:space:]]+[A-Za-z]+)?[[:space:]]*$' "$repo_root/scripts/machine-setup/ubuntu.sh"
@@ -982,7 +979,7 @@ assert "CDPATH set -> _qmd_abs_path still emits ONE line" \
   test "$(printf '%s\n' "$cdp_out" | wc -l)" -eq 1
 assert "CDPATH set -> resolved path still ends at the requested file" \
   grep -q 'target/file\.js$' <<<"$cdp_out"
-# The SIBLING cd site, _qmd_canonical_dir, needs its own pin (CodeRabbit round):
+# The SIBLING cd site, _qmd_canonical_dir, needs its own pin:
 # the CDPATH='' guard went onto BOTH sites but only _qmd_abs_path was covered,
 # so a future edit could drop it here and the whole suite would still pass.
 #
@@ -1026,7 +1023,7 @@ mkdir -p "$sym_root/real/target"
 # paths and fail for a reason that has nothing to do with `pwd -P`. Require the
 # thing itself, not the command's opinion of it.
 #
-# Three outcomes, kept DISTINCT (CodeRabbit round): a real symlink runs the
+# Three outcomes, kept DISTINCT: a real symlink runs the
 # assertions; a non-symlink at the link path is the documented MSYS copy and
 # SKIPs; NOTHING at the link path is a genuine setup failure and FAILS. Folding
 # the last into the SKIP branch is the same defect this file keeps finding —
@@ -1080,7 +1077,7 @@ assert "qmd_bin_desc: bun-served -> both tokens, space-separated" \
 # The `:-` reads are load-bearing: this lib is sourced by scripts that never pin
 # at all, and an unset global under `set -u` would abort them rather than print
 # an empty string. Drop the `:-` and this goes red.
-# `unset` in the CHILD is load-bearing (CodeRabbit round): this suite runs from
+# `unset` in the CHILD is load-bearing: this suite runs from
 # a shell where a real qmd is present, so QMD_BIN/QMD_JS can be exported in the
 # ambient environment and inherited. Without the unset the child would exercise
 # the SET path and pass no matter what the `:-` guards did — a test that cannot

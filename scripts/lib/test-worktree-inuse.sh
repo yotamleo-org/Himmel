@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-worktree-inuse.sh — self-contained tests for worktree_in_use /
-# worktree_intact (scripts/lib/worktree-inuse.sh, HIMMEL-2227).
+# worktree_intact (scripts/lib/worktree-inuse.sh).
 #
 # Usage: bash scripts/lib/test-worktree-inuse.sh
 # Exit:  0 = all pass, 1 = one or more failures.
@@ -137,7 +137,7 @@ case "$(uname -s)" in
         ;;
 esac
 
-# ── T6-T10: HIMMEL-2602 -- the /proc-based live-holder detector on Linux ─────
+# ── T6-T10: the /proc-based live-holder detector on Linux ─────
 # The rename probe (T3, above) is Windows-only in what it can catch: on POSIX
 # a process's cwd blocks neither the rename nor the rmdir, so it always
 # reports "free to remove" there, holder or not. These rows exercise the
@@ -186,7 +186,7 @@ case "$(uname -s)" in
             else
                 fail "T6: detail did not name pid $T6_HOLDER: $WORKTREE_INUSE_DETAIL"
             fi
-            # HIMMEL-4334: the detail names the holder's command so a daemon
+            # The detail names the holder's command so a daemon
             # (VBoxSVC, qmd.js mcp) can be told from a live leg.
             if grepq "$WORKTREE_INUSE_DETAIL" -F "(sleep"; then
                 pass "T6: detail names the holder command"
@@ -239,7 +239,7 @@ case "$(uname -s)" in
         wait "$T8_HOLDER" 2>/dev/null
 
         # ── T9: the CALLING process's own cwd inside the tree -> PRUNABLE ───
-        # HIMMEL-2602 contract revision (2026-09-06): worktree_in_use now
+        # worktree_in_use now
         # excludes the calling process's own ANCESTRY (this process, its
         # parent, ... up to pid 1) from what counts as a foreign holder -- a
         # process in that chain is the one that ASKED for the removal, not a
@@ -303,7 +303,7 @@ case "$(uname -s)" in
             fail "T10: expected an EMPTY RESULT: $t10_out"
         fi
 
-        # ── T11: HIMMEL-2602 fix 1 (codex-1) -- a worktree addressed through a
+        # ── T11: a worktree addressed through a
         # SYMLINKED ancestor component, held by a live process cwd -> in-use ──
         # worktree_in_use resolves $path with `pwd -P` (physical) before
         # comparing it against /proc/<pid>/cwd (always physical). A plain
@@ -402,7 +402,7 @@ else
     pass "T4b: a worktree missing its .git is NOT intact"
 fi
 
-# T4c: the measured HIMMEL-2227 wreck shape — contents removed, admin row
+# T4c: the measured wreck shape — contents removed, admin row
 # pruned away, then the directory reappears empty (the same reproduction
 # test-merge-on-green.sh's 11k3 case drives through a git-remove shim).
 read -r T4C_REPO T4C_WT <<< "$(mk_wt)"
@@ -458,7 +458,7 @@ fi
 unset -f mv
 
 # ── RC-1: RED control — revert the /proc arm, T6's own fixture must flip ─────
-# T6 above asserts the HIMMEL-2602 detector reports a live holder as in-use.
+# T6 above asserts the detector reports a live holder as in-use.
 # That assertion is only load-bearing if the /proc arm is what produces it, so
 # revert the real fix (never a stub) and show the SAME fixture shape flips back
 # to the pre-fix answer: FREE. Neutralise the arm's gate with `false &&` rather
@@ -473,7 +473,7 @@ case "$(uname -s)" in
         # shellcheck disable=SC2016  # same as above -- literal text, not meant to expand here
         rc1_neutered='    if false && [ "$(uname -s 2>/dev/null)" = "Linux" ] && [ -d /proc/self ]; then'
         # Templated + shape-checked before anything is built on it: this path
-        # feeds an `rm -rf` below, and an empty root there is the HIMMEL-2518
+        # feeds an `rm -rf` below, and an empty root there is a
         # hazard. `fail` rather than `exit 1` — a scratch-dir failure must not
         # abort the suite mid-run and strand the summary.
         rc1_dir=$(mktemp -d "${TMPDIR:-/tmp}/worktree-inuse-rc1.XXXXXX")

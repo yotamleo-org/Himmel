@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# user-slug.sh — resolver for the operator's user slug (HIMMEL-145).
+# user-slug.sh — resolver for the operator's user slug.
 #
 # Replaces the hardcoded operator user-slug references that scripts under
 # scripts/handover/, scripts/improve/, marketplace/plugins/handover/, etc.
@@ -12,8 +12,8 @@
 # Resolution order (first hit wins):
 #   1. $USER_SLUG env var (preferred — explicit operator intent).
 #   2. Forge username via the forge seam (GitHub login or Bitbucket nickname),
-#      slugified (the operator's identity — HIMMEL-297 home-base: the slug is the
-#      forge user id, HIMMEL-326). Needs the forge CLI authed + an origin; one
+#      slugified (the operator's identity — the slug is the
+#      forge user id). Needs the forge CLI authed + an origin; one
 #      network call, so callers capture once.
 #   3. `git config user.name`, slugified (kebab-case, lowercase, non-alnum
 #      stripped) — offline fallback for fresh clones without gh auth.
@@ -52,8 +52,8 @@ user_slug() {
         printf '%s' "$USER_SLUG"
         return 0
     fi
-    # Forge username — the operator's identity (HIMMEL-297 home-base: the slug
-    # is the forge user id; HIMMEL-326 generalizes it to GitHub OR Bitbucket).
+    # Forge username — the operator's identity (the slug
+    # is the forge user id generalizes it to GitHub OR Bitbucket).
     # One network call, gated behind USER_SLUG so anyone who sets it skips this;
     # fails through to git config when the forge is undetermined (no origin) or
     # the forge CLI is absent / unauthenticated.
@@ -85,7 +85,7 @@ user_slug() {
 #
 # `severity` labels the unresolved-case diagnostic and defaults to ERR, so
 # every pre-existing caller is unchanged. Pass WARN when the caller CONTINUES
-# on an unresolved slug (HIMMEL-2537: himmel's setup.sh step [0.5/9] does) —
+# on an unresolved slug (himmel's setup.sh step [0.5/9] does) —
 # a block that opens with "ERR" above a run that then completes normally
 # teaches the reader the wrong thing about what just happened.
 user_slug_verify() {

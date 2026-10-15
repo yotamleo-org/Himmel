@@ -1,6 +1,5 @@
 // scripts/lib/settings-lock.mjs — exclusive lock around .claude/settings.json
 // writes, shared by the two sanctioned writers (wire-hook-bash, wire-trust-hooks).
-// HIMMEL-1552.
 //
 // WHY. Each writer does read -> transform -> atomic-rename. Without coordination,
 // a writer that replaces settings.json AFTER another's read and BEFORE its rename

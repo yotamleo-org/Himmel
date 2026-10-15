@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scheduler-backend.sh — detect + remediate the OS scheduler backend the
-# auto-arm-on-cap watchdog relies on via arm-resume.sh (HIMMEL-594). Pure: no
+# auto-arm-on-cap watchdog relies on via arm-resume.sh. Pure: no
 # privileged commands, sourceable, bash-3.2-safe. The STATUS mirrors what
 # arm-resume.sh actually selects so the verdict can never be a false-OK:
 #   - windows: schtasks (always present)

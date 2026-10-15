@@ -10,13 +10,13 @@
 # `command -p` (POSIX: search the standard utilities PATH) rather than a bare
 # `sh`, because a hook shell may carry a pinned minimal PATH on which `sh` does
 # not resolve — that killed the whole chain at rc=127 where the old `.` form,
-# needing no lookup, still worked (HIMMEL-2758 CR round 4).
+# needing no lookup, still worked.
 #
 # NOT `. run-node.sh <script.js> [args...]` (dot-source): POSIX leaves `.`
 # with operands beyond the filename UNSPECIFIED, and dash — /bin/sh on
 # Debian/Ubuntu — DROPS them, so a dot-wired hook silently ran a BARE node
 # with an empty argv (reads empty stdin, exits 0) instead of the intended
-# script — every guardrail wired that way was silently off (HIMMEL-2758). See
+# script — every guardrail wired that way was silently off. See
 # the empty-"$@" guard just below `set -u`.
 #
 # Hook commands route through this instead of a
@@ -27,7 +27,7 @@
 # Ubuntu, so the bash shebang never applies on the sourced path. In particular
 # NO ${BASH_SOURCE[0]}: dash rejects the array subscript as "Bad substitution",
 # which left the script dir empty, made the `.` below fail, and exited 2 — a
-# PreToolUse DENY on EVERY tool call, on every Debian/Ubuntu box (HIMMEL-2692).
+# PreToolUse DENY on EVERY tool call, on every Debian/Ubuntu box.
 #
 # FAIL-OPEN: if no node is found, write ONE breadcrumb line to
 # ${CLAUDE_DIR:-$HOME/.claude}/himmel-node.log and exit 0 with NOTHING on
@@ -36,7 +36,7 @@
 # what surfaces a genuinely-missing node.
 set -u
 
-# Refuse LOUDLY rather than run a payload-less node (HIMMEL-2758). A launcher
+# Refuse LOUDLY rather than run a payload-less node. A launcher
 # reached with zero arguments has lost its script argument — most likely a
 # `. run-node.sh <args>` wiring, whose operands dash drops silently (see the
 # header above). rc=2 on PreToolUse is a VISIBLE DENY, which is the correct
@@ -64,11 +64,11 @@ fi
 # one: `dirname sh` is `.`, so an unguarded $0 candidate would resolve to the
 # CWD — which for a hook is the repo under review — and source whatever
 # `./resolve-node.sh` that repo happened to ship, as shell code, on every tool
-# call (codex-2 on the HIMMEL-2692 panel).
+# call.
 #
 # Otherwise use the root the call site itself exported, and ONLY that one. The
 # two lanes are MUTUALLY EXCLUSIVE, deliberately — this is not a fallback chain
-# (HIMMEL-2702). CLAUDE_PROJECT_DIR is the repo UNDER REVIEW, and resolve-node.sh
+#. CLAUDE_PROJECT_DIR is the repo UNDER REVIEW, and resolve-node.sh
 # is sourced, not executed, so a resolver found there runs that repo's shell code
 # in the hook's own shell. A chain that tried the plugin root and then fell
 # through to the project root would do exactly that whenever a plugin install is
@@ -97,7 +97,7 @@ fi
 # lane to the env-var lanes below — noisy and wrong. `${0%/*}` is a builtin and
 # cannot fail. `*/*` guards the no-slash case, where `${0%/*}` would return $0
 # unchanged rather than a directory; `.` there matches what `dirname` returned
-# and keeps the existing behaviour byte-for-byte (HIMMEL-2758 CR round 4).
+# and keeps the existing behaviour byte-for-byte.
 _script_dir=''
 case "$0" in
     */run-node.sh|run-node.sh)
@@ -128,7 +128,7 @@ if [ -n "$_script_dir" ]; then
     _node="$(resolve_node)" || _node=''
 fi
 if [ -n "$_node" ]; then
-    # HIMMEL-3073: resolve_node() just proved node is reachable at an
+    # resolve_node() just proved node is reachable at an
     # ABSOLUTE location PATH does not cover (a hook shell may carry a
     # minimal PATH — see the WHY at the top of this file and
     # resolve-node.sh's own header — and `command -p sh`, the wiring every
@@ -149,13 +149,13 @@ if [ -n "$_node" ]; then
     # standard homebrew/Linux/per-user locations `gh` and friends actually
     # live in.
     #
-    # ORDER (HIMMEL-3096): the well-known dirs go AFTER the inherited PATH.
+    # ORDER: the well-known dirs go AFTER the inherited PATH.
     # 3073's bug was a PATH that was absent or truncated, not misordered —
     # the fallbacks only have to be REACHABLE. Prepending them let every
     # binary in /usr/bin et al. shadow a wrapper or virtualenv the caller
     # had deliberately put earlier in PATH.
     #
-    # HIMMEL-3246: the node dir is appended too, never prepended. 3096 kept
+    # the node dir is appended too, never prepended. 3096 kept
     # it first as "the exact node resolve_node() chose", but when node lives
     # in a SHARED dir (/usr/bin, /usr/local/bin) that is not already on PATH,
     # prepending the whole dir let every sibling binary shadow a caller's

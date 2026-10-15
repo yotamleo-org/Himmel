@@ -13,11 +13,11 @@
 # when present, honoring BUN_INSTALL for relocated bun roots.
 #
 # scripts/lib/fix-qmd-stub.sh patches the broken plugin-cache stub at
-# source (HIMMEL-163), which fixes plain `qmd` for call sites that don't
+# source, which fixes plain `qmd` for call sites that don't
 # source this lib; this resolver stays as the consumer-side path until
 # the upstream plugin fix is pulled.
 #
-# HIMMEL-877: qmd installs from a local clone, never upstream
+# qmd installs from a local clone, never upstream
 # `bun add -g @tobilu/qmd` -- that command EPERM-wedges on this project's
 # machines (zombie `qmd mcp` stdio node processes hold locks) and bun blocks
 # the postinstall script. The proven recipe (done by hand on the primary
@@ -31,22 +31,21 @@
 # clone AND the clone's HEAD is the pinned commit AND `qmd --version`
 # reports >= QMD_FORK_MIN_VERSION) and skips.
 #
-# HIMMEL-3956: carries the `yotamleo/qmd` fork again -- two commits on top of
+# carries the `yotamleo/qmd` fork again -- two commits on top of
 # tobi/qmd main 04e4dbd8 that make the bin/qmd launcher forward signals to
-# its bun child (tobi/qmd#1030, fixing #1029). HIMMEL-3045 had dropped the
-# earlier fork once upstream merged its fixes. An existing clone whose origin
+# its bun child (tobi/qmd#1030, fixing #1029). An existing clone whose origin
 # is either known qmd remote (tobi/qmd or yotamleo/qmd, https) is re-pointed
 # with `git remote set-url` -- no re-clone -- the next time qmd_install()
 # runs, in either direction, so moving back to upstream is a pin change only.
 # QMD_FORK_REPO/_REF/_DIR and the on-disk `qmd-fork` dir name are unchanged.
 #
-# PIN (HIMMEL-911): the install ref is a FULL COMMIT SHA -- not a branch.
+# PIN: the install ref is a FULL COMMIT SHA -- not a branch.
 # A branch is a MUTABLE tracking ref; a force-push there would silently
 # change what every future `qmd-bin.sh install` runs, with no reviewed repo
 # change -- a supply-chain trust boundary on new-machine bootstrap (mirrors
-# the HIMMEL-891 graphify precedent, scripts/lib/graphify-bin.sh). The commit
+# the graphify precedent, scripts/lib/graphify-bin.sh). The commit
 # SHA is the only content-addressed, unmovable ref; a pin bump is a reviewed
-# change to this file (HIMMEL-3041 owns moving it past tobi/qmd's current
+# change to this file (moving it past tobi/qmd's current
 # main). Repo/ref/clone-dir are overridable via QMD_FORK_REPO / QMD_FORK_REF
 # / QMD_FORK_DIR for testing or a private mirror.
 # qmd_register_collection() is the shared idempotent collection-
@@ -56,7 +55,7 @@
 # scripts/adopt.ps1) can delegate to this ONE implementation instead of
 # duplicating the clone/build/link recipe natively.
 
-# qmd_cmd runs qmd under qmd_bounded (HIMMEL-3956): a deadline that kills the
+# qmd_cmd runs qmd under qmd_bounded: a deadline that kills the
 # whole process tree, since `timeout` alone orphans qmd's bun child.
 # Named lib-dir var so the standalone-bundle closure walk follows this source.
 # Pure parameter expansion: a hermetic probe PATH may carry no dirname.
@@ -68,11 +67,11 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # Fork config -- overridable per call (env var set before sourcing/calling).
 # ponytail: carried fork until tobi/qmd#1030 merges (or tobi/qmd main gains
 # an equivalent launcher signal fix); then pin back to tobi/qmd at that SHA --
-# HIMMEL-3982. upstream-watch reports #1030 merging; the upstreams.json qmd
+# upstream-watch reports #1030 merging; the upstreams.json qmd
 # `fork` block keeps /fork-resync auditing the delta meanwhile.
-# The pin is the tip of origin/himmel/pin-http-auth (HIMMEL-5002: the former pin
+# The pin is the tip of origin/himmel/pin-http-auth (the former pin
 # 932839a, the tip of fix/launcher-forward-signals, plus the HTTP bearer-token
-# commit of fork PR #14), not fork main. HIMMEL-4324: the pin is now the merge
+# commit of fork PR #14), not fork main. The pin is now the merge
 # commit of fork PR #15 (b1858ca on himmel/pin-http-auth; it brings c5cc17b, the
 # HTTP daemon start honouring the embed-swap lock, onto 791fdf8).
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
@@ -82,7 +81,7 @@ _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or
 # without .git, a trailing slash from a hand-fixed remote). A known origin
 # that differs from QMD_FORK_REPO is re-pointed rather than refused
-# (HIMMEL-3045, both directions since HIMMEL-3956). The SSH forms are
+# (both directions). The SSH forms are
 # genuinely different strings and are intentionally NOT matched -- they fall
 # through to the ordinary unrecognized-origin refusal, same as any other
 # unowned remote.
@@ -94,13 +93,13 @@ _qmd_is_known_origin() {
   esac
 }
 _qmd_fork_min_version() { printf '%s\n' "${QMD_FORK_MIN_VERSION:-2.6.3}"; }
-# Build-success stamp INSIDE the clone (HIMMEL-911 CR r3): one file, no
+# Build-success stamp INSIDE the clone: one file, no
 # schema -- its content is the exact pinned SHA the artifacts were BUILT
 # from. Written only after build + link + version verification all succeed;
 # cleared at the start of any update attempt. HEAD alone cannot distinguish
 # "checked out the pin" from "successfully BUILT the pin".
 _qmd_build_stamp() { printf '%s\n' "$(_qmd_fork_dir)/.himmel-build-ok"; }
-# better-sqlite3's native binding inside the fork clone (HIMMEL-928). Only
+# better-sqlite3's native binding inside the fork clone. Only
 # the NODE runtime consumes it: under bun qmd takes the bun:sqlite branch
 # (src/db.ts isBun; bun refuses to dlopen better-sqlite3 at all --
 # oven-sh/bun#4290). bun BLOCKS the package's postinstall (the fork lists it
@@ -132,7 +131,7 @@ _qmd_sqlite_binding() {
 # True when the node-side better-sqlite3 binding actually LOADS -- an
 # existence-only check would bless a wrong-ABI or corrupt artifact (file
 # present, `qmd --version` passes, every node-run DB open still dies at
-# dlopen; HIMMEL-928 CR codex-adv). The probe must be a FILE INSIDE THE
+# dlopen). The probe must be a FILE INSIDE THE
 # CLONE: node resolves a bare require() relative to the SCRIPT's location,
 # so a /tmp probe would hit a different copy (observed live: bun's global
 # install cache, at a different version). Asserts the success marker, not
@@ -161,7 +160,7 @@ _qmd_sqlite_binding_ok() {
 }
 
 # Prints the manual recipe (clone + build + link). Best-effort documentation
-# text embedded in WARN messages -- NOT eval'd (HIMMEL-877 dropped the old
+# text embedded in WARN messages -- NOT eval'd (there is no
 # single-command `bun add -g @tobilu/qmd@latest` eval path; qmd_install()
 # below runs the multi-step recipe directly).
 qmd_install_hint() {
@@ -308,10 +307,10 @@ _qmd_backup_name() {
 }
 
 # _qmd_prov_record <what> <prov_record args...> -- records one install-
-# provenance row for a qmd path this call just created (HIMMEL-3332 slice 3),
+# provenance row for a qmd path this call just created,
 # so a ledger-mode uninstall can remove exactly what himmel brought and
-# nothing else. Mirrors cadence_prov_record (HIMMEL-3332 S8,
-# scripts/lib/cadence-format.sh): sources provenance.sh lazily in a subshell
+# nothing else. Mirrors cadence_prov_record
+# (scripts/lib/cadence-format.sh): sources provenance.sh lazily in a subshell
 # so its functions/shell options never leak into callers that don't source it
 # themselves (setup.sh, himmel-update.sh use qmd-bin.sh without provenance.sh,
 # and must stay unaffected). Best-effort by design: an unwritable ledger WARNs
@@ -395,7 +394,7 @@ _qmd_ensure_global_link() {
 # @tobilu/qmd path resolves to the fork clone AND the clone's HEAD is the
 # pinned commit AND the build-success stamp records that exact pin AND the
 # version probe reports >= QMD_FORK_MIN_VERSION. This
-# is the caller-side install gate (HIMMEL-877 CR codex-adv-1): callers must
+# is the caller-side install gate: callers must
 # gate qmd_install on THIS, never on presence (has_qmd) -- a machine carrying
 # the old upstream bun-global install (the exact population this change
 # migrates) is qmd-PRESENT but not fork-served, and a presence gate would
@@ -404,7 +403,7 @@ _qmd_ensure_global_link() {
 qmd_fork_served() {
   local ver head stamp
   _qmd_global_points_to_fork || return 1
-  # HIMMEL-911 CR r1 codex-adv-1: link-target + version alone would bless an
+  # link-target + version alone would bless an
   # existing clean install built from the mutable himmel-main branch head --
   # exactly the population the pin migrates -- and qmd_install would skip it
   # forever. The clone's resolved HEAD must BE the pinned commit. Guarded:
@@ -412,7 +411,7 @@ qmd_fork_served() {
   # never touches the network).
   head="$(git -C "$(_qmd_fork_dir)" rev-parse HEAD 2>/dev/null)" || return 1
   [ "$head" = "$(_qmd_fork_ref)" ] || return 1
-  # HIMMEL-911 CR r3 codex-adv: HEAD==pin is necessary but NOT sufficient --
+  # HEAD==pin is necessary but NOT sufficient --
   # a drifted upgrade moves HEAD to the pin BEFORE bun runs, so a build
   # failure would leave HEAD==pin while the OLD dist (built from the mutable
   # commit) keeps serving, and every retry would skip here forever. The
@@ -423,14 +422,14 @@ qmd_fork_served() {
   stamp="$(cat "$(_qmd_build_stamp)" 2>/dev/null)" || return 1
   [ "$stamp" = "$(_qmd_fork_ref)" ] || return 1
   # The version probe below does NOT open the DB, so it cannot see a missing
-  # or non-loadable better-sqlite3 binding (HIMMEL-928) -- load it for real.
+  # or non-loadable better-sqlite3 binding -- load it for real.
   _qmd_sqlite_binding_ok || return 1
   ver="$(qmd_cmd --version 2>/dev/null)" || return 1
   _qmd_version_ge "$ver" "$(_qmd_fork_min_version)"
 }
 
 # Install/update the qmd fork and serve it from the bun-global @tobilu/qmd
-# path (HIMMEL-877). Returns an honest rc: 0 ONLY when `qmd_cmd --version`
+# path. Returns an honest rc: 0 ONLY when `qmd_cmd --version`
 # verifiably succeeds afterward. WARN-not-fail by contract -- callers
 # (adopt.sh/adopt.ps1, setup.sh/setup.ps1, ubuntu.sh) decide whether a qmd
 # failure aborts. Every external command is under an `if`/`&&` guard so a
@@ -455,7 +454,7 @@ qmd_install() {
     return 0
   fi
 
-  # HIMMEL-3332 slice 3: snapshot BEFORE any mutation below. A fork clone
+  # snapshot BEFORE any mutation below. A fork clone
   # that already exists here predates (or survived) this call -- himmel never
   # claims ownership of it, so only a fresh clone (the `else` branch further
   # down) gets a provenance row for the build stamp.
@@ -473,7 +472,7 @@ qmd_install() {
   fi
 
   if [ -d "$fork_dir/.git" ]; then
-    # HIMMEL-877 CR codex-adv-2: never hard-reset a repo the installer does
+    # never hard-reset a repo the installer does
     # not own. QMD_FORK_DIR is operator-overridable -- pointed at an
     # unrelated working repo, the fetch/checkout/reset below would DESTROY
     # its local changes. Refuse (WARN + nonzero, dir untouched) unless the
@@ -482,7 +481,7 @@ qmd_install() {
     origin_url="$(git -C "$fork_dir" remote get-url origin 2>/dev/null)"
     if [ "$origin_url" != "$repo" ]; then
       if _qmd_is_known_origin "$origin_url"; then
-        # HIMMEL-3045/3956: a clone of the other known qmd remote (fork or
+        # a clone of the other known qmd remote (fork or
         # upstream) -- re-point its origin in place instead of refusing an
         # install this tool actually owns.
         echo "  $fork_dir origin is a known qmd remote ('$origin_url') - re-pointing to $repo (HIMMEL-3956)."
@@ -496,7 +495,7 @@ qmd_install() {
         return 1
       fi
     fi
-    # HIMMEL-911 CR r3: clear the build-success stamp FIRST (ownership is
+    # clear the build-success stamp FIRST (ownership is
     # established by the origin check above) -- from here until the
     # post-verification stamp write this machine is NOT fork-served, so an
     # interrupted or failed upgrade can never be mistaken for served on a
@@ -509,7 +508,7 @@ qmd_install() {
       return 1
     fi
     echo "  qmd fork clone exists at $fork_dir - updating to $ref..."
-    # HIMMEL-911 CR r1 codex-adv-2: FAIL CLOSED. The old fallback (WARN +
+    # FAIL CLOSED. The old fallback (WARN +
     # build the clone contents as-is) silently served an UNPINNED commit
     # while reporting success -- the exact outcome the pin exists to prevent.
     # An already-served install stays untouched (nothing rebuilt/re-linked);
@@ -523,7 +522,7 @@ qmd_install() {
       return 1
     fi
   else
-    # HIMMEL-911 CR r2 codex-adv: never adopt an existing NON-git path.
+    # never adopt an existing NON-git path.
     # QMD_FORK_DIR is operator-overridable, so a populated non-git directory
     # here is USER DATA that predates the installer -- `git init`ing it in
     # place and then `rm -rf`ing it on a clone failure would destroy it (the
@@ -541,7 +540,7 @@ qmd_install() {
     fi
     # A commit SHA cannot be passed to `git clone --branch` -- GitHub allows
     # fetching a reachable SHA directly, so init + fetch-by-sha + checkout is
-    # the pinned-ref equivalent of a shallow branch clone (HIMMEL-911).
+    # the pinned-ref equivalent of a shallow branch clone.
     if ! git init "$fork_dir" >/dev/null \
          || ! git -C "$fork_dir" remote add origin "$repo" \
          || ! git -C "$fork_dir" fetch --depth 1 origin "$ref" \
@@ -549,13 +548,13 @@ qmd_install() {
       echo "  qmd fork clone failed." >&2
       # Safe by construction: the refusal above guarantees $fork_dir did not
       # exist before this invocation created it (never delete what we did
-      # not create -- HIMMEL-911 CR r2).
+      # not create).
       rm -rf -- "$fork_dir"
       return 1
     fi
   fi
 
-  # Belt-and-braces (HIMMEL-911 CR r1 codex-adv-2): whichever path ran above,
+  # Belt-and-braces: whichever path ran above,
   # the clone must actually BE at the pinned commit before anything is built
   # or served -- guards a partial checkout that still returned 0.
   if [ "$(git -C "$fork_dir" rev-parse HEAD 2>/dev/null)" != "$ref" ]; then
@@ -570,7 +569,7 @@ qmd_install() {
     return 1
   fi
 
-  # Fetch better-sqlite3's native binding explicitly (HIMMEL-928): bun blocks
+  # Fetch better-sqlite3's native binding explicitly: bun blocks
   # the package's postinstall, so `bun install` above never produces it -- see
   # _qmd_sqlite_binding. Fetch UNDER NODE: only the node runtime ever loads
   # better-sqlite3 (bun takes the bun:sqlite branch and refuses the package
@@ -581,7 +580,7 @@ qmd_install() {
   # load-check is the real gate, and every external command here must stay
   # set-e-safe for callers.
   if command -v node >/dev/null 2>&1 && ! _qmd_sqlite_binding_ok; then
-    # Preserve packaged candidates for this node platform (HIMMEL-2506/2955).
+    # Preserve packaged candidates for this node platform.
     # Match _qmd_sqlite_binding; foreign-only prebuilds must not block repair.
     platform_arch="$(node -p "process.platform + '-' + process.arch" 2>/dev/null)" || true
     if [ -n "$platform_arch" ]; then
@@ -620,7 +619,7 @@ qmd_install() {
   fi
 
   if qmd_cmd --version >/dev/null 2>&1; then
-    # HIMMEL-911 CR r3: stamp build success only NOW -- build + link +
+    # stamp build success only NOW -- build + link +
     # version verification all passed, so the served artifacts really were
     # built from the pinned commit. An unwritable stamp keeps the install
     # honestly not-served (nonzero) instead of silently unstamped.
@@ -671,7 +670,7 @@ qmd_register_collection() {
     fi
     return "$add_rc"
   fi
-  # HIMMEL-3525 S16: record the live identity token read straight back from
+  # record the live identity token read straight back from
   # qmd, so uninstall removes the collection only while it still points where
   # himmel pointed it. The reader runs in a subshell, like _qmd_prov_record.
   # A failed read-back records the legacy path row (no identity_v), which the
@@ -778,7 +777,7 @@ _qmd_abs_path() {
   printf '%s/%s\n' "${d%/}" "$b"
 }
 
-# qmd_pinned_invocation (HIMMEL-1283)
+# qmd_pinned_invocation
 # Print the ABSOLUTE invocation qmd_cmd would choose, one token per line:
 #   line 1  the executable      (bun's absolute path, or a qmd found on PATH)
 #   line 2  optional script arg (the bun-global dist/cli/qmd.js, when line 1
@@ -859,7 +858,7 @@ has_qmd() {
 }
 
 # True (rc 0) iff `qmd collection list` succeeds and lists at least one
-# collection (HIMMEL-756 T1.4: the himmelctl `qmd-index` probe's presence
+# collection (the himmelctl `qmd-index` probe's presence
 # signal). qmd's actual on-disk data/index directory layout is an internal
 # implementation detail with no stable path documented anywhere in this repo
 # to probe directly (unlike the fork clone dir / bun-global link dir above,
@@ -877,7 +876,7 @@ has_index() {
 # CLI entry -- only when EXECUTED (not sourced). Lets the pwsh mirrors
 # (scripts/setup.ps1, scripts/adopt.ps1) delegate to this ONE
 # implementation (`bash scripts/lib/qmd-bin.sh install`) instead of
-# duplicating the fork clone/build/link recipe natively (HIMMEL-877).
+# duplicating the fork clone/build/link recipe natively.
 if [ "${BASH_SOURCE[0]:-}" = "${0:-}" ]; then
   case "${1:-}" in
     install) qmd_install ;;
@@ -885,8 +884,7 @@ if [ "${BASH_SOURCE[0]:-}" = "${0:-}" ]; then
     # caller-side install gate -- see qmd_fork_served above). Lets the pwsh
     # mirrors share the bash predicate instead of duplicating it.
     fork-served) qmd_fork_served ;;
-    # has-index: rc 0 iff has_index (see above) -- lets probes.js (HIMMEL-756
-    # T1.4) and any other non-bash consumer share the same predicate via a
+    # has-index: rc 0 iff has_index (see above) -- lets probes.js and any other non-bash consumer share the same predicate via a
     # single subprocess call instead of sourcing this file.
     has-index) has_index ;;
     *) echo "Usage: bash scripts/lib/qmd-bin.sh install|fork-served|has-index" >&2; exit 2 ;;

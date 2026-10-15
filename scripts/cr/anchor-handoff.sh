@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/anchor-handoff.sh - hand a relative-entry gate writer off to the
-# anchor's copy (HIMMEL-3395; generalized to any depth under the repo root by
-# HIMMEL-3437). Sourced, never run, as the FIRST statement of each pre-approved
+# anchor's copy (at any depth under the repo root). Sourced, never run, as the FIRST statement of each pre-approved
 # gate-writer entry script:
 #
 #   case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
@@ -11,17 +10,17 @@
 # literals of a set of gate-writer entry scripts — the nine original
 # scripts/cr/ writers (write-verdicts, clear-cr-marker, panel-first-pass,
 # docs-audit-panel, doc-freshness-advisory,
-# known-findings, ledger-append, and since HIMMEL-3495 review-round,
-# orphan-check, impacted-suites, cr-scores), and since HIMMEL-3437 also
+# known-findings, ledger-append, and the later review-round,
+# orphan-check, impacted-suites, cr-scores), and also
 # scripts/handover/merge-on-green.sh and scripts/handover/console-kit/go.sh.
 # From a leg's worktree that literal runs the BRANCH's copy, so a branch that
 # edits its own gate writer would run it unseen under the allow rule. Every
 # writer resolves the reviewed repo from cwd (git-common-dir / show-toplevel)
 # and uses its own directory only for helper libs, so running the anchor's
 # copy from the same cwd reviews the same branch with trusted code - the
-# pr-check-env.sh HIMMEL-3375 pattern, shared.
+# pr-check-env.sh pattern, shared.
 #
-# Depth-agnostic (HIMMEL-3437): the sourcing script's own repo root is found
+# Depth-agnostic: the sourcing script's own repo root is found
 # via `git rev-parse --show-toplevel` (not a hardcoded `../..` walk, which
 # only held for two-levels-deep scripts/cr/*.sh), and the anchor target is
 # that root-relative path re-applied under HIMMEL_REPO - so this same file,
@@ -45,28 +44,28 @@
 # branch's copy decide. One hop only: a hand-off that lands on a copy which is
 # still not the anchor refuses instead of looping.
 # ponytail: this file and the one line sourcing it are branch bytes. For the
-# nine original scripts/cr/ writers, guard-pr-check-literal.sh (HIMMEL-3495)
+# nine original scripts/cr/ writers, guard-pr-check-literal.sh
 # denies a relative run unless the entry script and this file equal the
 # anchor's byte for byte, so a branch that deletes either is refused before it
 # runs. guard-pr-check-literal's TARGETS list covers scripts/cr only
-# (HIMMEL-3437 comment thread) - it does NOT yet extend that same byte-compare
+# - it does NOT yet extend that same byte-compare
 # to scripts/handover/merge-on-green.sh or console-kit/go.sh, so for those two
 # this file's hand-off is defence in depth, not yet undeletable on its own;
-# closing that gap is a scripts/hooks/ edit tracked as a HIMMEL-3437 follow-up.
+# closing that gap is a scripts/hooks/ edit tracked as a follow-up.
 # HIMMEL_REPO is still read from the environment, so whoever sets it picks the
 # anchor (a residual the hook shares, where the hook applies). The absolute
 # door is left open on purpose: `bash /abs/worktree/scripts/cr/<writer>.sh`
 # runs the branch's copy, because no allow rule matches that spelling, so the
 # classifier or the operator sees it. "Relative" is decided on the entry path
 # AS INVOKED (`./scripts/cr/x.sh` counts), never on a resolved path. The
-# structural control is the narrowed allow list (HIMMEL-3402): no prefix rule
+# structural control is the narrowed allow list: no prefix rule
 # reaches scripts/cr/, and none reaches scripts/handover/ either.
 
 _ah_self="${BASH_SOURCE[1]:-$0}"
 case "$_ah_self" in
     /* | [A-Za-z]:[\\/]*) ;;
     *)
-        # HIMMEL-3932: nothing below resolves an external command through PATH
+        # Nothing below resolves an external command through PATH
         # where the answer steers the hand-off. Names and dirs come from
         # parameter expansion (never basename/dirname); git, env and cmp come
         # from the fixed system dirs, the same order chokepoint-seam-guard.sh
@@ -89,7 +88,7 @@ case "$_ah_self" in
         _ah_name="${_ah_self##*/}"
         case "$_ah_self" in */*) _ah_dir="$(cd "${_ah_self%/*}" && pwd)" ;; *) _ah_dir="$(pwd)" ;; esac
         _ah_anchor="${HIMMEL_REPO:-}"
-        # HIMMEL-3451: a relative HIMMEL_REPO (".", "..", a bare name) resolves
+        # A relative HIMMEL_REPO (".", "..", a bare name) resolves
         # against whatever cwd happens to be at `-ef` test time below, so it can
         # accidentally equal $_ah_root and make a branch self-anchor. The anchor
         # is only ever meant to be pinned by an absolute path (adopt/setup wire
@@ -103,7 +102,7 @@ case "$_ah_self" in
                     ;;
             esac
         fi
-        # -u GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR (HIMMEL-3437 F4): a caller
+        # -u GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR: a caller
         # that inherits any of these pointed at the anchor makes git resolve
         # the anchor as the toplevel regardless of $_ah_dir, so this copy
         # would believe it was ALREADY the anchor and skip the hand-off,
@@ -122,7 +121,7 @@ case "$_ah_self" in
             # computed by git itself - correct regardless of any
             # logical/physical divergence between `pwd` (used for _ah_dir
             # above) and git's own (physical) toplevel, unlike the old
-            # string-subtraction this replaced (HIMMEL-3437 F1: a symlinked
+            # string-subtraction this replaced: a symlinked
             # worktree path made that subtraction a no-op, leaving _ah_rel
             # absolute instead of relative and breaking the hand-off).
             _ah_prefix="$(cd "$_ah_dir" && "$_ah_env" -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX -u GIT_IMPLICIT_WORK_TREE -u GIT_GRAFT_FILE -u GIT_REPLACE_REF_BASE -u GIT_SHALLOW_FILE -u GIT_CONFIG -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT "$_ah_git" rev-parse --show-prefix 2>/dev/null)"
@@ -142,14 +141,14 @@ case "$_ah_self" in
             # real worktree). The self-anchor case still needs no genuine
             # root: walk up from here looking for an ancestor that IS the
             # anchor: found -> we're already the anchor's own copy, so a
-            # hand-off is not needed either way (matches the pre-HIMMEL-3437
+            # hand-off is not needed either way (matches the old
             # depth-2 resolver, which never validated its guessed root was a
             # real repo top). A cross-tree hand-off still requires git, so a
             # non-git wt still fails closed below. A `.git` entry anywhere
             # between here and a matched ancestor means git rev-parse failed
             # for some OTHER reason (a corrupted/misdirected worktree, not a
             # genuine non-git tree) - stop instead of treating that as a
-            # self-anchor match (HIMMEL-3437 F2: without this check, a
+            # self-anchor match: without this check, a
             # worktree nested under the anchor with its own broken .git ran
             # its own bytes unchecked instead of failing closed).
             _ah_walk="$_ah_dir"
@@ -177,7 +176,7 @@ case "$_ah_self" in
             echo "$_ah_name: HIMMEL_REPO is unset or empty - refusing to let this relative-entry copy ($_ah_root) decide; export it non-empty (adopt/setup wires it into settings.json env), or run the anchored \"<himmel_dir>/$_ah_rel\" spelling" >&2
             exit 2
         fi
-        # HIMMEL-3451: the anchor must be a PRIMARY checkout, never a linked
+        # The anchor must be a PRIMARY checkout, never a linked
         # worktree (the caller's own included) - a worktree's git-common-dir
         # points at the primary's .git elsewhere, never at its own .git. Without
         # this, HIMMEL_REPO pointed at the caller's own worktree made
@@ -223,8 +222,8 @@ case "$_ah_self" in
         _ah_is_anchor=0
         if [ "$_ah_root" -ef "$_ah_anchor" ]; then
             if [ "$_ah_via_git" -eq 1 ]; then
-                # -u GIT_INDEX_FILE joins the F4 scrub list here (HIMMEL-3437
-                # review round 2): this call reads the anchor's INDEX, not
+                # -u GIT_INDEX_FILE joins the scrub list here:
+                # this call reads the anchor's INDEX, not
                 # just its toplevel, so a caller-supplied GIT_INDEX_FILE (or
                 # GIT_DIR, which locates the default index) pointed at a
                 # crafted index that happens to track $_ah_rel made an
@@ -259,21 +258,21 @@ case "$_ah_self" in
                 echo "$_ah_name: hand-off target ($_ah_anchor/$_ah_rel) is this same file - refusing rather than re-run it unchecked as an absolute entry" >&2
                 exit 2
             fi
-            # HIMMEL-3451: before trusting the hand-off, byte-compare this
+            # Before trusting the hand-off, byte-compare this
             # helper's own file and the two libs a scripts/cr/ or
             # scripts/handover/ entry sources (scripts/guardrails/lib.sh,
             # scripts/lib/load-dotenv.sh) against the anchor's copies at the
             # same root-relative path. This is defense in depth alongside
             # guard-pr-check-literal.sh's own byte-compare (which does not run
-            # outside a himmel-project hook chain, HIMMEL-3558): a tree whose
+            # outside a himmel-project hook chain): a tree whose
             # copy of any of the three disagrees with the anchor's is treated
             # as tampered and refused, rather than handed off while leaving a
             # differing copy of shared trust code sitting in the worktree.
             # Only checked when THIS tree carries the file - a fixture or a
             # tree that never had it is not "tampered", just incomplete.
             #
-            # This file's OWN root-relative path is NOT "${_ah_prefix}anchor-handoff.sh"
-            # (HIMMEL-3451 review round 2): $_ah_prefix is the ENTRY script's
+            # This file's OWN root-relative path is NOT "${_ah_prefix}anchor-handoff.sh":
+            # $_ah_prefix is the ENTRY script's
             # prefix (e.g. scripts/handover/ or scripts/handover/console-kit/),
             # but this file always physically lives at scripts/cr/anchor-handoff.sh
             # regardless of who sources it. Using the entry's prefix resolved
@@ -285,7 +284,7 @@ case "$_ah_self" in
             # own path from BASH_SOURCE[0] instead, which always points at
             # THIS file however it was sourced.
             # git rev-parse --show-prefix, not a pwd/string-subtraction of
-            # $_ah_root (HIMMEL-3437 F1, same reason $_ah_prefix above uses
+            # $_ah_root (same reason $_ah_prefix above uses
             # it): `pwd` is logical and symlink-preserving, `--show-toplevel`
             # is physical, and a symlinked worktree makes the two diverge -
             # a string-subtraction against $_ah_root then leaves this empty

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/watch-loop.sh -- a BOUNDED poll-loop runner (HIMMEL-1820).
+# scripts/lib/watch-loop.sh -- a BOUNDED poll-loop runner.
 #
 # WHY: on 2026-08-16 a `watch-branches.sh` poll loop written into a Claude
 # session's scratchpad was found still running ~10 hours after its session
@@ -51,41 +51,39 @@ usage() {
 # _wl_timeout <secs> <cmd...> -- run cmd under `timeout`, or `gtimeout`
 # (macOS coreutils). Neither is guaranteed on every box this runs on, so a
 # THIRD fallback (fork the probe, poll `kill -0` for up to <secs>, kill it
-# if still alive) keeps the hang bound even then -- critic-panel round 2
-# (codex-1, Critical) flagged the earlier "run it directly, unbounded" third
-# branch as defeating the whole point of this script on such a box.
+# if still alive) keeps the hang bound even then; running it directly,
+# unbounded, would defeat the whole point of this script on such a box.
 #
 # `-k 1` on both timeout/gtimeout (and its manual equivalent -- a 1s grace
 # after TERM, then KILL -- in the fallback) matters because plain
 # `timeout $secs` only SENDS a TERM at $secs and then keeps waiting for the
 # child to actually exit; a probe that ignores TERM would block `timeout`
-# itself (and this whole loop) past $secs indefinitely -- critic-panel
-# round 4 (codex-1, Critical) caught this. <secs> is clamped to >=1
-# (round 4, codex-2, Critical): `remaining` can read 0 by the time this
+# itself (and this whole loop) past $secs indefinitely. <secs> is clamped to
+# >=1: `remaining` can read 0 by the time this
 # function is called (real wall-clock time elapses between the loop's own
 # TTL check and here), and `timeout 0` DISABLES GNU timeout's bound
 # entirely rather than firing it immediately.
 #
 # bash 3.2-safe: no `wait -n` (bash 4.3+), just a plain poll loop.
 #
-# Third-tier group kill (HIMMEL-2110): without job control, a background
+# Third-tier group kill: without job control, a background
 # `"$@" &` shares THIS script's process group, so a group-kill would take
 # the watcher down with the probe. `setsid` (when on PATH) or `set -m`
 # scoped tightly around the spawn puts the probe in its own process group
 # instead, so `kill -TERM -- -"$cpid"` reaps the probe AND any children it
 # spawned before hanging -- falling back to the direct pid if the group
 # signal fails (e.g. `set -m` did not take, so cpid never became a pgid).
-# The KILL-escalation check is group-scoped too (critic-panel round 1,
-# codex-1, Important): if the probe itself dies from TERM (no trap) while a
-# child ignores it (SIG_IGN, e.g. surviving an exec), `kill -0 "$cpid"` alone
-# reports the probe gone and skips KILL entirely, leaving that child running
-# forever -- confirmed by reproduction. `kill -0 -- -"$cpid"` reports alive
+# The KILL-escalation check is group-scoped too: if the probe itself dies
+# from TERM (no trap) while a child ignores it (SIG_IGN, e.g. surviving an
+# exec), `kill -0 "$cpid"` alone reports the probe gone and skips KILL
+# entirely, leaving that child running forever. `kill -0 -- -"$cpid"`
+# reports alive
 # if ANY group member still is; the direct-pid check stays as the fallback
 # for the same non-pgid case as the TERM line above.
 #
 # The `set -m`/`set +m` pair is scoped to restore the CALLER's prior monitor
-# state rather than unconditionally disabling it (critic-panel round 1,
-# codex-2, Suggestion): a caller that already had job control on (e.g. an
+# state rather than unconditionally disabling it: a caller that already had
+# job control on (e.g. an
 # interactive shell sourcing this file) would otherwise have it silently
 # turned off by this function.
 _wl_timeout() {
@@ -147,10 +145,9 @@ if [ $# -lt 1 ]; then
 fi
 
 # Force SECONDS to start counting from THIS point, not wherever it already
-# was -- critic-panel round 6 (codex-3, Suggestion) noted that an inherited
-# exported SECONDS (bash imports it from the environment like any other
-# shell var) would otherwise make a freshly started watcher read as already
-# partway through its TTL, expiring early.
+# was -- an inherited exported SECONDS (bash imports it from the environment
+# like any other shell var) would otherwise make a freshly started watcher
+# read as already partway through its TTL, expiring early.
 SECONDS=0
 iterations=0
 reason=""
@@ -168,10 +165,9 @@ while :; do
         break
     fi
     # Bound the probe to --interval, not the (much larger, default 1h) TTL --
-    # critic-panel round 3 (codex-1, Important) noted that a probe bounded to
-    # the remaining TTL could mask a parent's death for up to that whole
-    # remaining TTL, violating the acceptance criterion (case 1 above) that
-    # a dead parent is noticed within about one interval. remaining is only
+    # a probe bounded to the remaining TTL could mask a parent's death for up
+    # to that whole remaining TTL, violating the acceptance criterion (case 1
+    # above) that a dead parent is noticed within about one interval. remaining is only
     # consulted as a tighter ceiling near TTL expiry, never a looser one.
     remaining=$((TTL - SECONDS))
     probe_bound=$INTERVAL
@@ -179,10 +175,9 @@ while :; do
     _wl_timeout "$probe_bound" "$@"
     iterations=$((iterations + 1))
     # Re-check parent liveness IMMEDIATELY after the probe, before sleeping
-    # another full --interval -- critic-panel round 5 (codex-1, Important)
-    # noted that without this, a parent dying mid-probe was only caught at
-    # the TOP of the next iteration, after both the probe's bound AND the
-    # following sleep had elapsed (~2 intervals, not "about one").
+    # another full --interval -- without this, a parent dying mid-probe was
+    # only caught at the TOP of the next iteration, after both the probe's
+    # bound AND the following sleep had elapsed (~2 intervals, not "about one").
     if ! kill -0 "$PARENT_PID" 2>/dev/null; then
         reason=parent-gone
         break

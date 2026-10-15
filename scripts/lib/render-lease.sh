@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# scripts/lib/render-lease.sh -- the render lease registry (HIMMEL-1509).
+# scripts/lib/render-lease.sh -- the render lease registry.
 #
 # WHY: the static :00 launch-window rule is RETIRED. Renders and the orphan
 # sweep now coordinate DYNAMICALLY through this registry: every codex
 # adversarial render acquires a per-branch lease at launch, the sweep reads the
 # registry before it may kill anything, and the same lease doubles as the
-# same-branch launch claim (subsumes HIMMEL-1496's TOCTOU: two concurrent
+# same-branch launch claim (no TOCTOU window: two concurrent
 # kickoffs on one branch race no further than one atomic mkdir).
 #
 # LAYOUT (one directory per lease, under the registry root):
@@ -29,7 +29,7 @@
 # .registry.lock only serializes claim/reclaim against the sweep's
 # read-before-kill pass. Lock owner is tagged with its pid SPACE
 # ("msys:<pid>" here, "win:<pid>" from PowerShell) because the two runtimes
-# cannot verify each other's pids. Stale-break disposition (HIMMEL-1509 r4):
+# cannot verify each other's pids. Stale-break disposition:
 # a same-space owner probed ALIVE is NEVER broken -- not even by age (a slow
 # sweep or mid-claim launcher legitimately holds the lock; contenders wait
 # out their retries and refuse); a same-space owner probed DEAD is broken
@@ -43,7 +43,7 @@
 #   * release happens ONLY on a verified-clean exit (the launcher calls it from
 #     its cleanup-rc==0 path); every other exit leaves the lease as evidence
 #     for the sweep/orchestrator to adjudicate;
-#   * release removes ONLY this process's own acquisition (HIMMEL-1509 r9):
+#   * release removes ONLY this process's own acquisition:
 #     claim stamps a claim_nonce into the record and remembers it in-process;
 #     release verifies the on-disk nonce still matches before rm - a former
 #     holder whose stale lease was reclaimed can never delete a successor's
@@ -53,14 +53,14 @@
 # CONVENTIONS: bash 3.2-safe (no mapfile/associative arrays), ASCII only,
 # same as proc-tree.sh. No comment line may BEGIN with the linter's name.
 # COVERAGE: scripts/lib/test-render-lease.sh (unit; its only launcher,
-# run-codex-adversarial.sh, was removed in HIMMEL-3818).
+# run-codex-adversarial.sh, was removed).
 
 render_lease_registry_dir() {
     printf '%s\n' "${RENDER_LEASE_DIR:-$HOME/.claude/handover/bridge/render-leases}"
 }
 
-# render_lease_slug <branch> -- filesystem-safe INJECTIVE slug (HIMMEL-1509
-# r6, codex-2). [A-Za-z0-9._-] passes through; every other BYTE becomes
+# render_lease_slug <branch> -- filesystem-safe INJECTIVE slug.
+# [A-Za-z0-9._-] passes through; every other BYTE becomes
 # '+HH' (two uppercase hex; '/' -> +2F, '+' itself -> +2B). Because '+' can
 # only ever appear as the start of a fixed-width +HH escape, the map parses
 # uniquely left-to-right: distinct branches (e.g. feat/a+b vs feat/a/b) can
@@ -99,7 +99,7 @@ _render_lease_mtime() {
 }
 
 # _render_lease_secs <value> -- print the value when it is a positive integer,
-# else 600 (HIMMEL-1509 r7: env knobs must be validated BEFORE they reach
+# else 600 (env knobs must be validated BEFORE they reach
 # shell arithmetic; same fallback contract as the sweep's env resolvers).
 # Shared by every env read (RENDER_LEASE_TTL_SECS, RENDER_LEASE_LOCK_STALE_SECS).
 _render_lease_secs() {
@@ -115,7 +115,7 @@ _render_lease_secs() {
 
 # _render_lease_delay <value> -- print the value when it is a simple
 # non-negative decimal (0 and fractions are legitimate retry DELAYS, unlike
-# the seconds knobs), else the 0.5 default (HIMMEL-1509 r9, codex-3: the last
+# the seconds knobs), else the 0.5 default (the last
 # raw RENDER_LEASE_* numeric env read - garbage must never reach sleep).
 _render_lease_delay() {
     case "$1" in
@@ -212,7 +212,7 @@ render_lease_lock_acquire() {
 }
 
 # render_lease_lock_release -- remove the registry lock ONLY when its owner
-# record names this process (HIMMEL-1509 r7, codex-1): a former holder whose
+# record names this process: a former holder whose
 # lock was broken must never delete a successor's newly acquired lock. A
 # mismatched or unreadable owner leaves the lock in place (the dead-owner /
 # age breaks self-heal it) and says so loudly.
@@ -365,7 +365,7 @@ render_lease_bind() {
 }
 
 # render_lease_release <branch> -- drop the lease, ONLY when it is still this
-# process's own acquisition (HIMMEL-1509 r9, codex-1): the on-disk claim_nonce
+# process's own acquisition: the on-disk claim_nonce
 # must match the nonce remembered by OUR claim. A former holder whose stale
 # lease was reclaimed by a successor must never delete the successor's live
 # lease - mismatch (or no in-process claim, or an unreadable record) leaves

@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
 # scripts/handover/console/test-console.sh — RED/GREEN suite for console.sh
-# (HIMMEL-2873).
 #
 # Every case runs against a TEMP handover root AND a throwaway fixture
 # "repo" (a fresh `git init` holding REAL copies of scripts/handover,
 # scripts/lib and docs/handover, the rest of scripts/ and docs/ symlinked
 # back to this checkout's real ones): console.sh resolves its own "repo"
-# from its OWN location (`git -C $HERE rev-parse --git-common-dir`,
-# HIMMEL-3623 J1271O C1), never the cwd, and git resolves a symlinked dir
+# from its OWN location (`git -C $HERE rev-parse --git-common-dir`),
+# never the cwd, and git resolves a symlinked dir
 # physically -- so a symlinked scripts/ would resolve to this checkout's
 # PRIMARY, whose path lives under this operator's real home directory, embed
 # it into every doc console.sh writes and trip the private-string-leak check
@@ -27,7 +26,7 @@ QL="$REPO_REAL/scripts/handover/queue-lock.sh"
 . "$HERE/../../lib/permission-test.sh"
 # shellcheck source=../../lib/host-caps.sh
 . "$HERE/../../lib/host-caps.sh"
-# HIMMEL-3182: cases 27/29/30/40 need a real symlink, 31/32/33/36/39/41/42 a
+# Cases 27/29/30/40 need a real symlink, 31/32/33/36/39/41/42 a
 # chmod / `mkdir -m` that sticks -- neither holds on Git Bash / NTFS, so those
 # cases SKIP there (measured, not keyed off uname) rather than fail.
 HOST_SYMLINKS_REAL=0; host_symlinks_real && HOST_SYMLINKS_REAL=1
@@ -40,25 +39,25 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/console-test.XXXXXX")" || { echo "test-console
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
-# HIMMEL-3299: console.sh records the launch context of the console it prints a
+# console.sh records the launch context of the console it prints a
 # launch line for, under ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs.
 # Pin that dir under $tmp for the WHOLE suite so no case can leave a fixture row
 # (session DEMO-nextleg-...) in the operator's real launch-record directory.
 export HIMMELCTL_CACHE_DIR="$tmp/himmelctl-cache"
 
-# HIMMEL-3623 verdict J1268O change 4: registry_lookup_for_project() falls back
+# registry_lookup_for_project() falls back
 # to $HOME/.claude/handover/registry.json when HANDOVER_REGISTRY is unset. Pin
 # it to a path that never exists for the WHOLE suite, so every --project case
 # that doesn't set its own scratch registry stays hermetic -- never reads the
 # operator's real registry (Do-Not: tests use scratch copies only).
 export HANDOVER_REGISTRY="$tmp/no-registry-for-this-suite.json"
 
-# HIMMEL-4204: console.sh renders the resolved inbox path into every doc. Pin
+# console.sh renders the resolved inbox path into every doc. Pin
 # BRIDGE_ROOT under $tmp for the WHOLE suite so no doc embeds the operator's
 # real home directory (case 8 scans the temp root for private strings).
 export BRIDGE_ROOT="$tmp/bridge"
 
-# HIMMEL-4902: `next` pre-fills the HANDOFF through handoff-facts.sh, which reads
+# `next` pre-fills the HANDOFF through handoff-facts.sh, which reads
 # the bank and open PRs. Stub both for the WHOLE suite so no case reads the real
 # bank or calls gh.
 printf '#!/usr/bin/env bash\necho "bank-preflight: leg=unknown five_hour=9.0 seven_day=91.0 extra_usage=n/a"\necho PROCEED\n' > "$tmp/facts-bank.sh"
@@ -88,7 +87,7 @@ today="$(date +%F)"
 
 # root_digest_of <canonical-root> -- mirrors console.sh's _console_sha256_8:
 # first 8 hex chars of the sha256 of the resolved, canonicalized handover
-# root (HIMMEL-2889). $root is already canonical here (built via `pwd -P`
+# root. $root is already canonical here (built via `pwd -P`
 # above), so no realpath step is needed for fixture roots.
 root_digest_of() {
     if command -v sha256sum >/dev/null 2>&1; then
@@ -104,7 +103,7 @@ console_root() {  # console_root <root> <args...> -- invoke console.sh with
                   # handover root (used by cases exercising a non-default
                   # root, e.g. one containing a space). CONSOLE_WORK_DIR is
                   # pinned to an isolated fixture dir so the eager work-dir
-                  # hardening (HIMMEL-2881) never touches, and every case
+                  # hardening never touches, and every case
                   # here never collides on, the REAL live
                   # /tmp/himmel-console-<uid> tree other running consoles use.
     local r="$1"; shift
@@ -113,7 +112,7 @@ console_root() {  # console_root <root> <args...> -- invoke console.sh with
 
 console() { console_root "$root" "$@"; }
 
-# HIMMEL-2910: acquire prints the token backticked
+# Acquire prints the token backticked
 # ("release-token: `<token>`"); strip a matched pair so callers get the bare
 # token either way -- a no-op on the pre-2910 bare form.
 token_of() {
@@ -132,7 +131,7 @@ out1="$(console new --bucket demorepo)"
 check "1 new writes the console doc" "$([ -f "$docA" ] && echo yes)" "yes"
 check "1 Telegram metadata records the console bucket" "$(grep -c '"bucket":"demorepo"' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.meta.json" 2>/dev/null || true)" "1"
 check "2 doc has no surviving placeholder" "$(grep -c '{{' "$docA" 2>/dev/null)" "0"
-# HIMMEL-4204: the step-10/11 commands carry the RESOLVED literal inbox path,
+# The step-10/11 commands carry the RESOLVED literal inbox path,
 # never a ${BRIDGE_ROOT:-...} expansion guard-pr-check-literal denies.
 check "2b doc has no BRIDGE_ROOT expansion" "$(grep -c 'BRIDGE_ROOT' "$docA" 2>/dev/null)" "0"
 # shellcheck disable=SC2016  # literal, unexpanded on purpose
@@ -158,10 +157,10 @@ check "3 lock freed after release" "$rc_freed" "0"
 sumA_before="$(cksum < "$docA")"
 t4_start=$SECONDS
 out4="$(console new --bucket demorepo)"
-# HIMMEL-3912: bash 3.2's ${var//pat/rep} render burned ~60 s per call on macOS
+# Bash 3.2's ${var//pat/rep} render burned ~60 s per call on macOS
 # (Linux: <1 s). Generous bound; RED only reproduces on bash 3.2 / macOS.
 check "4 new renders in bounded time" "$([ $((SECONDS - t4_start)) -lt 20 ] && echo yes)" "yes"
-# HIMMEL-3912: render_template must splice values LITERALLY ('&', backslash,
+# render_template must splice values LITERALLY ('&', backslash,
 # '/', '$', quotes, newline).
 (
     # shellcheck disable=SC2317,SC2329  # called by the eval'd render_template
@@ -192,19 +191,19 @@ after5="$(find "$root" -type f | sort)"
 check "5 dry-run writes nothing" "$before5" "$after5"
 check "5 dry-run prints would-doc" "$(printf '%s\n' "$out5" | grep -c '^would-doc: ')" "1"
 
-# --- 5b (HIMMEL-3884): consoles default to 1m/auto, not standard.
+# --- 5b: consoles default to 1m/auto, not standard.
 out5b="$(unset CONSOLE_CONTEXT; console new --bucket dryrepo5b --dry-run)"
 check "5b default launch line carries --autocompact auto" \
     "$(printf '%s\n' "$out5b" | grep -c -- '--autocompact auto')" "1"
 check "5b default launch line carries no --autocompact 200000" \
     "$(printf '%s\n' "$out5b" | grep -c -- '--autocompact 200000')" "0"
-# HIMMEL-4013: the console launch line applies the console plugin profile.
+# The console launch line applies the console plugin profile.
 check "5b launch line carries --settings <console profile>" \
     "$(printf '%s\n' "$out5b" | grep -c -- 'claude --settings [^ ]*/console.json --model ')" "1"
-# HIMMEL-5310: the console loads only its profile's MCP servers (no graphify).
+# The console loads only its profile's MCP servers (no graphify).
 check "5b launch line carries --mcp-config <console.mcp.json> --strict-mcp-config" \
     "$(printf '%s\n' "$out5b" | grep -c -- '--mcp-config [^ ]*/console.mcp.json --strict-mcp-config ')" "1"
-# HIMMEL-5310: an allowlist that does not resolve (the settings still do) refuses
+# An allowlist that does not resolve (the settings still do) refuses
 # the printed launch line: rc 2 and no launch line at all.
 python3 - "$REPO_REAL/scripts/lanes/plugin-profiles.json" "$tmp/registry-5310.json" <<'PYE'
 import json, sys
@@ -223,7 +222,7 @@ check "5c CONSOLE_CONTEXT=1m launch line carries --autocompact auto" \
 check "5c CONSOLE_CONTEXT=1m launch line carries no --autocompact 200000" \
     "$(printf '%s\n' "$out5c" | grep -c -- '--autocompact 200000')" "0"
 
-# HIMMEL-3884: catch console default regressions and ignored CLI overrides.
+# Catch console default regressions and ignored CLI overrides.
 out3884="$(unset CONSOLE_CONTEXT; console next --bucket demorepo --doc "$docA" --dry-run)"
 check "3884 next defaults to --autocompact auto" \
     "$(printf '%s\n' "$out3884" | grep -c -- '--autocompact auto')" "1"
@@ -250,14 +249,14 @@ check "3884 env opt-down is explicit" \
 resolved3884="$(. "$REPO_REAL/scripts/lib/console-context.sh"; console_context_default 0 1m; printf '%s %s' "$CONSOLE_CONTEXT_RESOLVED_MODE" "$CONSOLE_CONTEXT_RESOLVED_SOURCE")"
 check "3884 non-console ignores env and stays standard" "$resolved3884" "standard default"
 
-# --- 5d (HIMMEL-3081): the printed launch line must clear the inherited
+# --- 5d: the printed launch line must clear the inherited
 # child-session marker. An operator pastes this line into a terminal that was
 # itself spawned from a claude session, so CLAUDE_CODE_CHILD_SESSION=1,
 # CLAUDE_PID and CLAUDE_CODE_SESSION_ID are live in that shell's environment.
 # Without an `env -u` prefix the new console adopts them, writes no transcript,
 # and cannot read its own context fill -- which is the handover trigger its
 # operating contract is built on. headed-arm.sh already does this for the leg
-# path (HIMMEL-2545); the printed line was missed.
+# path; the printed line was missed.
 for v in CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID; do
     check "5d launch line unsets $v" \
         "$(printf '%s\n' "$out5b" | grep -c -- "-u $v")" "1"
@@ -290,7 +289,7 @@ check "6 successor has no surviving placeholder" "$(grep -c '{{' "$doc6B" 2>/dev
 check "6 successor has no BRIDGE_ROOT expansion" "$(grep -c 'BRIDGE_ROOT' "$doc6B" 2>/dev/null)" "0"
 check "6 successor names its inbox literally" "$(grep -cF "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-console.md" "$doc6B" 2>/dev/null)" "3"
 check "6 handoff has no surviving placeholder" "$(grep -c '{{' "$handoff6A" 2>/dev/null)" "0"
-# HIMMEL-4902: the mechanical fields are pre-filled by handoff-facts.sh (the
+# The mechanical fields are pre-filled by handoff-facts.sh (the
 # bank and PR commands are stubbed above), so the console writes only judgement
 # notes; and `next` puts the predecessor's waiter in handover mode.
 check "6 handoff pre-fills the bank line" "$(grep -c '^\*\*Bank at write:\*\* 5-hour 9.0 %, 7-day 91.0 %' "$handoff6A")" "1"
@@ -302,7 +301,7 @@ check "6 handoff section tells the successor to disposition before dispatch (HIM
 check "6 handoff leaves one judgement-notes block" "$(grep -c '^## Rulings and judgement notes' "$handoff6A")" "1"
 check "6 next puts the predecessor waiter in handover mode" "$(cat "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-console"
 
-# --- 6c (HIMMEL-3266): the GENERATED stub and HANDOFF must not tell the
+# --- 6c: the GENERATED stub and HANDOFF must not tell the
 # successor to mint and rotate a fresh nonce per leg -- leg-preface.md (the
 # authority) says a relay MAY keep the leg's token. Asserted on the emitted
 # files, not the templates: this is what every console hand-patched.
@@ -349,8 +348,8 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc6bSrc" "$token6ba" >/dev/null 2>&1
 doc7A="$root/tester/armrepo/DEMO-nextleg-${today}A-console.md"
 session7B="DEMO-nextleg-${today}B-console"
 # Signal/log live under a chain-identity subdir ($slug-$bucket-$digest), not
-# $workdir directly -- see codex-2 round-2 (bucket-only-differing chains
-# must not collide on the same signal/log path) and HIMMEL-2889 (chains under
+# $workdir directly -- bucket-only-differing chains
+# must not collide on the same signal/log path, and chains under
 # DIFFERENT handover roots must not collide either, hence the root digest).
 log7B="$tmp/work/tester-armrepo-${root_digest}/launch-${session7B}.log"
 
@@ -385,7 +384,7 @@ leak_free() {
     [ "$matches" = "0" ] && echo yes || echo no
 }
 # The temp-root scan is narrowly exempted for the queue-lock RELEASE TOKEN
-# this round's {{RELEASE_TOKEN}} fix deliberately writes into every console
+# the {{RELEASE_TOKEN}} placeholder deliberately writes into every console
 # doc: its shape is "<hostname>-pid<N>" (queue-lock.sh's
 # _ql_default_session), and on a station whose hostname itself happens to
 # contain one of the banned words above, the token trips this scan on the
@@ -551,9 +550,9 @@ check "16 the already-claimed doc is left untouched" "$sum_racetestA_before" "$s
 HANDOVER_DIR="$root" bash "$QL" release "$racetest_docB" "$token16" >/dev/null 2>&1
 
 # --- 16b: exhaustion requires ALL 702 letters (A-Z, AA-ZZ) as real
-# collisions, not arbitrary I/O errors. HIMMEL-2984 moved the boundary from
-# 26 (single letters) to 702 (single + bijective base-26 double letters) now
-# that `new` rolls past Z instead of refusing there.
+# collisions, not arbitrary I/O errors. The boundary is
+# 26 (single letters) to 702 (single + bijective base-26 double letters), since
+# `new` rolls past Z instead of refusing there.
 mkdir -p "$root/tester/exhausted"
 for letter16 in {A..Z}; do
     printf 'claimed\n' > "$root/tester/exhausted/DEMO-nextleg-${today}${letter16}-console.md"
@@ -601,7 +600,7 @@ check "17 log path differs when only --bucket differs" "$([ -n "$log17a" ] && [ 
 
 # --- 17b: case 17's sibling -- chains under DIFFERENT handover roots that
 # otherwise agree on slug/bucket/prefix/date/letter/name must not collide
-# on the same signal/log path either (HIMMEL-2889). Same $root twice would
+# on the same signal/log path either. Same $root twice would
 # reuse letter A on the second call, so use two disjoint fixture roots.
 root17b1="$tmp/handovers-17b1"
 root17b2="$tmp/handovers-17b2"
@@ -805,7 +804,7 @@ rc26=0
 HANDOVER_DIR="$root" bash "$QL" release "$doc26" "$token26_in_doc" >/dev/null 2>&1 || rc26=$?
 check "26 the control: release using the token read out of the document succeeds" "$rc26" "0"
 
-# --- 27: default work dir refuses a pre-created SYMLINK (HIMMEL-2881) --
+# --- 27: default work dir refuses a pre-created SYMLINK --
 # Another local user could symlink the predictable default path elsewhere
 # before this process's first run; the eager work-dir hardening must catch
 # it regardless of --arm. TMPDIR is pointed at an isolated fixture dir (never
@@ -826,8 +825,8 @@ else
     host_skip "27 symlinked default work dir: ln -s does not make a real link on this host"
 fi
 
-# --- 28: default work dir refuses a directory owned by a DIFFERENT uid
-# (HIMMEL-2881) -- skipped cleanly (never faked) if this host offers no way
+# --- 28: default work dir refuses a directory owned by a DIFFERENT uid;
+# skipped cleanly (never faked) if this host offers no way
 # to arrange one without privileges we do not have.
 if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true >/dev/null 2>&1; then
     echo "ok - SKIPPED: default work dir owned by another uid (no passwordless privilege escalation on this host to arrange one - sudo -n true failed)"
@@ -848,7 +847,7 @@ else
 fi
 
 # --- 29: two spellings of the SAME handover root (a symlink alias) must
-# digest to the SAME chain dir (HIMMEL-2889) -- canonicalization has to
+# digest to the SAME chain dir -- canonicalization has to
 # happen before hashing, or a symlinked root would silently degrade back
 # into the very collision the digest exists to prevent.
 if [ "$HOST_SYMLINKS_REAL" = 1 ]; then
@@ -863,8 +862,7 @@ else
     host_skip "29 symlink-aliased handover root: ln -s does not make a real link on this host"
 fi
 
-# --- 30: work-dir creation TOCTOU (HIMMEL-2881 round 2, codex-1 panel
-# finding) -- if another local process wins the race between console.sh's
+# --- 30: work-dir creation TOCTOU -- if another local process wins the race between console.sh's
 # `[ ! -e ]` absence check and its `mkdir -p` call, planting a directory or
 # symlink first, `mkdir -p` treats the path as already-satisfied and returns
 # 0 without creating anything; console_workdir_ensure must not trust that
@@ -905,8 +903,7 @@ else
 fi
 
 # --- 31: XDG_RUNTIME_DIR itself group- or world-writable must NOT be
-# trusted for the default work dir (HIMMEL-2881 round 2, codex-1 panel
-# finding) -- console_workdir_ensure only validates the CHILD
+# trusted for the default work dir -- console_workdir_ensure only validates the CHILD
 # ($XDG_RUNTIME_DIR/himmel-console) it creates; a local user with write
 # access to the PARENT can still unlink/replace that child after
 # validation completes (Unix permission semantics: write access to a
@@ -935,8 +932,7 @@ else
 fi
 
 # --- 32: a CONSOLE_WORK_DIR override sitting under a group/world-writable,
-# non-sticky PARENT must be refused (HIMMEL-2881 round 3, codex-1 panel
-# finding) -- console_workdir_ensure only ever validates the override path
+# non-sticky PARENT must be refused -- console_workdir_ensure only ever validates the override path
 # itself, never its parent; an override is exactly as reachable by another
 # local user as the default path, so an insecure parent lets that user
 # swap the (validated) override directory out from under this process the
@@ -959,8 +955,7 @@ fi
 
 # --- 33: the TMPDIR-fallback work dir's parent (normally /tmp, sticky) must
 # be checked the same way when TMPDIR itself is overridden to a
-# group/world-writable, non-sticky directory (HIMMEL-2881 round 3, codex-1
-# panel finding, TMPDIR half). No XDG_RUNTIME_DIR and no CONSOLE_WORK_DIR
+# group/world-writable, non-sticky directory (TMPDIR half). No XDG_RUNTIME_DIR and no CONSOLE_WORK_DIR
 # override, so the default TMPDIR-fallback path is exercised directly.
 if [ "$HOST_MODES_STICK" = 1 ]; then
 tmp33="$tmp/c33"
@@ -977,7 +972,7 @@ else
 fi
 
 # --- 34: a sticky PARENT owned by neither root nor us must still be refused
-# (HIMMEL-2881 round 4, codex-1 panel finding) -- the round-3 fix exempted
+# -- a blanket sticky exemption would accept
 # any sticky directory, but the sticky bit only protects entries from users
 # who are NOT the directory's own owner; the owner can still rename/unlink
 # entries inside their own directory regardless of the sticky bit, so a
@@ -1010,8 +1005,8 @@ check "34 sticky but attacker-owned parent: refuses with a distinct exit code" "
 check "34 sticky but attacker-owned parent: stderr names the cause" "$(printf '%s\n' "$out34" | grep -ci parent)" "1"
 
 # --- 35 (control): a sticky parent owned by US (the real /tmp shape) must
-# still be accepted -- proves the round-4 ownership check does not regress
-# the plain /tmp case the round-3 sticky exemption exists for.
+# still be accepted -- proves the ownership check does not regress
+# the plain /tmp case the sticky exemption exists for.
 tmp35="$tmp/c35"
 mkdir -p "$tmp35/self-owned"
 chmod 1777 "$tmp35/self-owned"
@@ -1023,8 +1018,8 @@ rc35=0
 check "35 sticky self-owned parent (real /tmp analogue): accepted" "$rc35" "0"
 
 # --- 36: an insecure GRANDPARENT must be refused even when the immediate
-# parent looks safe on its own (HIMMEL-2881 round 4, codex-2 panel finding)
-# -- checking only the immediate parent leaves the rest of the ancestor
+# parent looks safe on its own:
+# checking only the immediate parent leaves the rest of the ancestor
 # chain unchecked; a local user with write access to a grandparent can
 # rename/replace it, substituting the entire subtree including an
 # otherwise-safe immediate parent.
@@ -1044,9 +1039,8 @@ else
 fi
 
 # --- 37: an attacker-owned parent that is NOT group/world-writable (e.g.
-# mode 0755) must still be refused (HIMMEL-2881 round 5, codex-1 panel
-# finding) -- the round-4 fix only added an ownership check on the STICKY
-# branch; a non-writable-by-group/other directory was still accepted
+# mode 0755) must still be refused -- an ownership check on only the STICKY
+# branch would leave this open; a non-writable-by-group/other directory was still accepted
 # regardless of owner, but the owner of a directory can chmod it (or may
 # already have owner-only write access at 0755) at any time after this
 # check runs, so ownership by neither root nor us is disqualifying even
@@ -1073,7 +1067,7 @@ check "37 attacker-owned non-writable (0755) parent: refuses with a distinct exi
 check "37 attacker-owned non-writable (0755) parent: stderr names the cause" "$(printf '%s\n' "$out37" | grep -ci parent)" "1"
 
 # --- 38 (control): a self-owned, non-writable (0755) parent must still be
-# accepted -- proves the round-5 ownership-first reordering does not
+# accepted -- proves the ownership-first ordering does not
 # regress the ordinary, non-shared TMPDIR-fallback case.
 tmp38="$tmp/c38"
 mkdir -p "$tmp38/self-0755"
@@ -1086,8 +1080,7 @@ rc38=0
 check "38 self-owned non-writable (0755) parent: accepted" "$rc38" "0"
 
 # --- 39: a RELATIVE CONSOLE_WORK_DIR must still walk the real ancestor
-# chain above the current working directory (HIMMEL-2881 round 5, codex-2
-# panel finding) -- a lexical `dirname` loop on a relative path like "work"
+# chain above the current working directory -- a lexical `dirname` loop on a relative path like "work"
 # stops at "." (dirname(".") is itself "."), so only the cwd is ever
 # checked; canonicalizing to an absolute path first is required to reach an
 # insecure ancestor sitting above cwd.
@@ -1107,8 +1100,8 @@ else
 fi
 
 # --- 40: a symlink ANCESTOR of CONSOLE_WORK_DIR must be resolved ONCE and
-# the canonical form reused for every subsequent operation (HIMMEL-2881
-# round 6, codex-1 panel finding). console_workdir_ensure already refuses
+# the canonical form reused for every subsequent operation
+# console_workdir_ensure already refuses
 # $workdir itself being a symlink, but a symlink one level UP (workdir's
 # own last component still a plain, not-yet-existing directory) isn't
 # caught by that -- ancestor validation ran against the canonicalized path,
@@ -1136,7 +1129,7 @@ fi
 # --- 41: a MISSING intermediate ancestor of CONSOLE_WORK_DIR is skipped by
 # the ancestor-walk above (nothing to validate yet) and then created by a
 # single `mkdir -p` alongside the work dir itself, with no ownership check
-# of its own (HIMMEL-2881 round 7, codex-1 panel finding). A local attacker
+# of its own. A local attacker
 # who races to plant that ancestor between the walk and the create call gets
 # it silently adopted, then owns a directory in this process's path that was
 # never validated. A real race cannot be scheduled deterministically, so
@@ -1186,8 +1179,7 @@ fi
 # --- 42: an ancestor an attacker races into existence AFTER the outer
 # ancestor-unsafe walk concludes "safe" but BEFORE _console_mkdir_chain_safe's
 # own missing-component scan runs is silently trusted as that scan's stopping
-# point, with no validation of its own (HIMMEL-2881 round 8, codex-1 panel
-# finding on the round-7 fix): the scan's `while [ ! -e "$prefix" ]` loop
+# point, with no validation of its own: the scan's `while [ ! -e "$prefix" ]` loop
 # just stops at the first EXISTING directory it meets and hands it to the
 # create loop as a trusted base -- but "existing" only means existing NOW,
 # at scan time, not at the time the outer walk last looked. A real race
@@ -1234,11 +1226,11 @@ else
 fi
 
 # --- 43: the rendered "Handing over" line must carry --model <resolved> --
-# same class as HIMMEL-2873 rounds 3-4 (--bucket, then --prefix): the doc
+# same class as the --bucket and --prefix flags: the doc
 # tells its own console what to literally run at handover, so any flag
 # missing from that line is a flag the next `console next` invocation never
 # receives, and re-resolves from CONSOLE_MODEL / the built-in default
-# instead of inheriting (HIMMEL-2888). CONSOLE_MODEL is deliberately set to
+# instead of inheriting. CONSOLE_MODEL is deliberately set to
 # a DIFFERENT value than --model on every invocation below, so a fallback
 # to the environment shows up as the wrong string landing in the doc.
 doc43A="$root/tester/modelbucket/DEMO-nextleg-${today}A-console.md"
@@ -1246,7 +1238,7 @@ out43a="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     CONSOLE_MODEL=envdefault-model \
     bash "$C" new --bucket modelbucket --model custom-model-x ) )"
 token43a="$(token_of "$out43a")"
-# HIMMEL-3287: the value is single-quoted in the rendered line -- an unquoted
+# The value is single-quoted in the rendered line -- an unquoted
 # claude-opus-5[1m] is a zsh glob and fails at the exact moment of handover.
 check "43 new's own rendered handover line carries --model <given>" "$(grep -c -- "--model 'custom-model-x'" "$doc43A")" "1"
 check "43 new's rendered handover line does not carry CONSOLE_MODEL instead" "$(grep -c -e '--model envdefault-model' -e "--model 'envdefault-model'" "$doc43A")" "0"
@@ -1265,7 +1257,7 @@ check "43 next's rendered successor doc carries --model <given>" "$(grep -c -- "
 check "43 next's rendered successor doc does not carry CONSOLE_MODEL instead" "$(grep -c -e '--model envdefault-model' -e "--model 'envdefault-model'" "$doc43B")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc43A" "$token43a" >/dev/null 2>&1
 
-# --- 44: same-day rollover past Z (HIMMEL-2984) --------------------------
+# --- 44: same-day rollover past Z --------------------------
 # 26 consoles on 2026-09-12 hit a hard refusal at letter Z with a live leg
 # in flight. Continuation with no --date flag at all must roll bijective
 # base-26: Z -> AA (an explicit --date, even one matching the predecessor's
@@ -1335,8 +1327,8 @@ out50="$(console next --bucket rollorder --dry-run)"
 check "50 auto-discovery treats AA as newer than B (numeric, not lexical)" "$(printf '%s\n' "$out50" | grep -c "^would-doc: .*${today}AB-console.md$")" "1"
 
 # --- 51-55: --date validates a real calendar date, and an explicitly ------
-# empty value is an ERROR, not a silent reset to today's own chain (console
-# ruling on HIMMEL-3000). An explicit --doc bypasses predecessor auto-
+# empty value is an ERROR, not a silent reset to today's own chain (a console
+# ruling). An explicit --doc bypasses predecessor auto-
 # discovery so these exercise the date-validation branch alone, not "no
 # predecessor found".
 mkdir -p "$root/tester/dateval"
@@ -1366,7 +1358,7 @@ check "54 --date= prints a usage line" "$(printf '%s\n' "$out54" | grep -c '^usa
 out55="$(console next --bucket dateval --dry-run --date "2026-09-14" --doc "$docZval")"
 check "55 a real --date still mints the successor" "$(printf '%s\n' "$out55" | grep -c '^would-doc: .*2026-09-14A-console.md$')" "1"
 
-# --- 56/57 (HIMMEL-2975, renamed HIMMEL-3133; HIMMEL-3136 R2): CONSOLE_ROLE is
+# --- 56/57: CONSOLE_ROLE is
 # retired -- console is implicit, so do_arm never hands headed-arm.sh a
 # --role. Each stub records its FULL "$*" to a fixed path baked into the stub
 # itself (never a positional like $5), so an unexpected leading --role shows
@@ -1409,7 +1401,7 @@ check "57 no CONSOLE_ROLE: the arm is launched --role console (HIMMEL-4052)" \
     "$(grep -c -- '--role console ' "$record57" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc57A" "$token57a" >/dev/null 2>&1
 
-# --- 58 (HIMMEL-3136 R2): a stale CONSOLE_ROLE=relay in the environment no
+# --- 58: a stale CONSOLE_ROLE=relay in the environment no
 # longer refuses the arm -- the retired variable is ignored, the stub IS
 # invoked and no --role reaches it. (Was 58/59: relay/bogus exited 2 before the
 # detached launch.)
@@ -1435,7 +1427,7 @@ check "58 CONSOLE_ROLE=relay (retired): --role console, never relay (HIMMEL-4052
     "$(grep -c -- '--role console ' "$record58" 2>/dev/null)$(grep -c -- '--role relay' "$record58" 2>/dev/null)" "10"
 HANDOVER_DIR="$root" bash "$QL" release "$doc58A" "$token58a" >/dev/null 2>&1
 
-# --- 58b (HIMMEL-4052): a console profile refusal (profile-settings.sh rc 2)
+# --- 58b: a console profile refusal (profile-settings.sh rc 2)
 # inside launch_cmd must fail the whole command. It ran inside $(...) at the
 # `launch:` / `would-launch:` echoes, so the exit 2 was lost and the arm went on
 # (rc 0) with no profiled launch line. HIMMEL_PROFILE_SETTINGS_DIR under /dev/null
@@ -1452,7 +1444,7 @@ out58n="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work" \
     bash "$C" new --bucket rolerepo4 --arm --deadline-min 0 ) 2>&1 )" || rc58n=$?
 check "58b new --arm with an unresolvable console profile: exit 2" "$rc58n" "2"
-# HIMMEL-4058: the profile is resolved BEFORE the lock, so the refusal leaves no
+# The profile is resolved BEFORE the lock, so the refusal leaves no
 # doc and no held lock (the release token must not even have been printed).
 doc58nA="$root/tester/rolerepo4/DEMO-nextleg-${today}A-console.md"
 check "58b new refusal: no doc left behind (HIMMEL-4058)" "$([ -e "$doc58nA" ] && echo 1 || echo 0)" "0"
@@ -1478,7 +1470,7 @@ check "58b next with an unresolvable console profile: exit 2" "$rc58x" "2"
 check "58b next refusal: successor doc removed" "$([ -e "$doc58xB" ] && echo 1 || echo 0)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc58xA" "$token58x" >/dev/null 2>&1
 
-# --- 60: HIMMEL-2973 Delta 6 -- `next` copies the predecessor's
+# --- 60: `next` copies the predecessor's
 # `## Live state` verbatim into the successor's HANDOFF `## In flight`
 # section, and ONLY that section: a marker planted in the neighbouring
 # `## Compact instructions` body must NOT leak. Two controls, not one
@@ -1528,7 +1520,7 @@ check "60 the control: Compact instructions marker does not leak into the HANDOF
 check "60 successor doc itself was still written" "$([ -s "$doc60B" ] && echo yes)" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$doc60A" "$token60a" >/dev/null 2>&1
 
-# --- 60b: HIMMEL-3361 -- the console board's artifact URL rides on the
+# --- 60b: the console board's artifact URL rides on the
 # `board:` line of `## Live state` and `next` seeds the successor's own line
 # with it, so the successor updates the same artifact. Controls: a fresh
 # console starts at "none yet" (the RED at the base: no `board:` line at all),
@@ -1558,7 +1550,7 @@ check "60b a fresh console's Live state starts tracker: at none (tick tracker=sk
     "$(grep -Fxc 'tracker: none' "$doc60bA" 2>/dev/null)" "1"
 check "60b no-URL predecessor yields tracker: none on the successor, never empty" \
     "$(grep -Fxc 'tracker: none' "$doc60bC" 2>/dev/null)" "1"
-# HIMMEL-3933: a published tracker URL is carried to the successor.
+# A published tracker URL is carried to the successor.
 trackerurl60b='https://claude.ai/artifact/fixture-3933-tracker'
 sed "s|^tracker: none|tracker: $trackerurl60b|" "$doc60bA" >"$doc60bA.new" && mv "$doc60bA.new" "$doc60bA"
 rm -f "$doc60bB"
@@ -1569,7 +1561,7 @@ check "60b no unrendered {{TRACKER_URL}} left in the successor doc" \
     "$(grep -Fc '{{TRACKER_URL}}' "$doc60bB" 2>/dev/null)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc60bA" "$token60b" >/dev/null 2>&1
 
-# --- 61: HIMMEL-3079 -- the console parent defaults to Opus, not Fable
+# --- 61: the console parent defaults to Opus, not Fable
 # (Opus = default parent, Fable = the escalation target; operator halt
 # 2026-09-14). The armed path has no terminal to notice a wrong default, so
 # the check reads what the arm stub actually RECEIVED (its model positional,
@@ -1591,7 +1583,7 @@ out61d="$( ( cd "$fixture_repo" && unset CONSOLE_MODEL && HANDOVER_DIR="$root" U
 check "61 a non-Anthropic model never gets [1m] (HIMMEL-5501)" \
     "$(printf '%s\n' "$out61d" | grep -cF -- '--model gpt-5.6-sol ')" "1"
 
-# --- 61f: HIMMEL-5501 -- a Claude Code below the version floor refuses an
+# --- 61f: a Claude Code below the version floor refuses an
 # armed launch (rc=2, names the version and `claude update`); a dry run only
 # warns. Version shapes copied from the real `claude --version` output.
 cat > "$tmp/claude-old-61f" <<'OLD_STUB'
@@ -1636,7 +1628,7 @@ token61d="$(token_of "$out61d")"
 check "61 armed console without --model: the arm target received claude-opus-5-5" "$(cat "$record61" 2>/dev/null)" "claude-opus-5-5"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/modeldefault/DEMO-nextleg-${today}A-console.md" "$token61d" >/dev/null 2>&1
 
-# --- 62: console.sh must not expand a possibly-EMPTY array bare (HIMMEL-3182).
+# --- 62: console.sh must not expand a possibly-EMPTY array bare.
 # Under `set -u` bash < 4.4 (macOS /bin/bash 3.2) treats `"${arr[@]}"` of an
 # empty array as an unbound variable and aborts -- the workdir ancestor scan's
 # `missing` array is empty whenever the work dir already exists, so every
@@ -1647,9 +1639,9 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/modeldefault/DEMO-nextleg-
 check "62 console.sh expands the possibly-empty 'missing' array only via the [@]+ guard" \
     "$(grep -v '^[[:space:]]*#' "$C" | grep -cE '[^+]"\$\{missing\[@\]\}"')" "0"
 
-# --- 63 (HIMMEL-3299): a console started from the printed launch line leaves a
+# --- 63: a console started from the printed launch line leaves a
 # launch record. That line is PASTED by an operator, so no launcher runs and the
-# HIMMEL-3279/3282 writers in headed-arm.sh / arm-resume.sh never fire -- every
+# writers in headed-arm.sh / arm-resume.sh never fire -- every
 # real console read `context-unknown` while the only role=console rows in the
 # durable dir were another suite's fixtures. The row must exist if and only if
 # the console starts, so it is written by the pasted command, never at print
@@ -1722,7 +1714,7 @@ rm -f "$tmp/claude-argv-63"
 ( cd "$tmp" && HIMMELCTL_CACHE_DIR="$tmp/not-a-dir-63" PATH="$stub63:$PATH" bash -c "touch $tmp/not-a-dir-63; $(printf '%s\n' "$out63a" | sed -n 's/^launch: //p')" ) >/dev/null 2>&1
 check "63e unwritable record dir: claude still started" "$([ -s "$tmp/claude-argv-63" ] && echo started || echo not-started)" "started"
 
-# 64. HIMMEL-3304: `next` never acquires the successor doc's lock (the
+# 64. `next` never acquires the successor doc's lock (the
 # RELEASE_TOKEN placeholder above says "none yet"), so ACTION ZERO step 8 must
 # present `free` as the expected state on that path, not as the exception. RED
 # control (pre-fix template): step 8 read "`held` by that session is the
@@ -1734,7 +1726,7 @@ check "64 step 8 says /console next never acquires, so free is expected there" \
 check "64 step 8 no longer calls held the only expected state" \
     "$(printf '%s\n' "$step8_64" | grep -c 'is the expected, correct state')" "0"
 
-# 65. HIMMEL-3533: HANDOVER_DIR / USER_SLUG / JIRA_PROJECT_KEY must resolve
+# 65. HANDOVER_DIR / USER_SLUG / JIRA_PROJECT_KEY must resolve
 # from console.sh's OWN checkout, never the caller's CWD repo. Fixture mirrors
 # test-bank-preflight-dotenv-root.sh: a scratch "own checkout" (scripts/lib +
 # scripts/handover copied verbatim, plus a fixture .env carrying the three
@@ -1742,11 +1734,11 @@ check "64 step 8 no longer calls held the only expected state" \
 # .env of its own and none of the three vars exported by the caller.
 own65="$tmp/own-checkout-65"
 mkdir -p "$own65/scripts"
-cp -r "$REPO_REAL/scripts/lanes" "$own65/scripts/lanes"  # HIMMEL-4052: launch_cmd refusals now propagate, so the fixture needs the profile resolver
+cp -r "$REPO_REAL/scripts/lanes" "$own65/scripts/lanes"  # launch_cmd refusals propagate, so the fixture needs the profile resolver
 cp -r "$REPO_REAL/scripts/lib" "$own65/scripts/lib"
 cp -r "$REPO_REAL/scripts/handover" "$own65/scripts/handover"
 ln -s "$REPO_REAL/docs" "$own65/docs"
-ln -s "$REPO_REAL/marketplace" "$own65/marketplace"  # HIMMEL-5310: launch_cmd resolves the console MCP allowlist from the marketplace manifests
+ln -s "$REPO_REAL/marketplace" "$own65/marketplace"  # launch_cmd resolves the console MCP allowlist from the marketplace manifests
 mkdir -p "$own65/state-fixture-65/ownslug"
 printf 'HANDOVER_DIR=%s\nUSER_SLUG=ownslug\nJIRA_PROJECT_KEY=OWNKEY\n' "$own65/state-fixture-65" > "$own65/.env"
 foreign65="$tmp/foreign-repo-65"
@@ -1761,7 +1753,7 @@ case "$out65" in
 esac
 check "65 own-checkout's HANDOVER_DIR used, not the foreign CWD repo" "$contains65" "yes"
 
-# --- 66: HIMMEL-3568 -- next --arm run from inside a leg's own shell must
+# --- 66: next --arm run from inside a leg's own shell must
 # arm a CLEAN console. A leg's env keeps every leg_propagate_env / plain
 # `export` name from headed-arm-leg.sh live for its whole session (plain
 # export crosses every descendant of that long-running process, not just its
@@ -1779,7 +1771,7 @@ doc66A="$root/tester/cleanenv66/DEMO-nextleg-${today}A-console.md"
 
 cat > "$tmp/stub-arm-66.sh" <<STUB
 #!/usr/bin/env bash
-# HIMMEL-3568: dump whether each scrubbed name is still SET in this child's
+# Dump whether each scrubbed name is still SET in this child's
 # own environment (not just absent from headed-arm.sh's printed output) --
 # the console's ruling asked for direct evidence on the child process, since
 # a text-scan of argv/output cannot tell "unset" from "set to a value that
@@ -1839,10 +1831,10 @@ check "66 armed child's OWN environment still lacks HEADED_ARM_REQUIRED_AUTOCOMP
     "$(grep -c '^HEADED_ARM_REQUIRED_AUTOCOMPACT=set$' "$tmp/child-env-66.txt")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc66A" "$token66a" >/dev/null 2>&1
 
-# --- 67: HIMMEL-3568 sync -- console_context_leg_env_unset_names must name
+# --- 67: console_context_leg_env_unset_names must name
 # every var headed-arm-leg.sh propagates to a leg via leg_propagate_env, so a
 # NEW leg_propagate_env call site there is a visible gap here, not a silent
-# new leak (headed-arm-leg.sh is read-only for HIMMEL-3568; this is the
+# new leak (headed-arm-leg.sh is read-only here; this is the
 # contract's "a test that fails when it gains a var the strip list does not
 # name").
 propagated67="$(grep -v -E '^[[:space:]]*#' "$REPO_REAL/scripts/handover/console-kit/headed-arm-leg.sh" | grep -oE 'leg_propagate_env [A-Z_][A-Z0-9_]*' | awk '{print $2}' | sort -u)"
@@ -1886,7 +1878,7 @@ out68d="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     HANDOVER_REGISTRY="$tmp/no-such-registry-68.json" \
     CONSOLE_HEADED_ARM="$tmp/stub-arm-68.sh" CONSOLE_ARM_FOREGROUND=1 CONSOLE_WORK_DIR="$tmp/work68" \
     bash "$C" new --project "$proj68" --arm --deadline-min 0 ) 2>&1 )"
-# 68d (HIMMEL-3623 verdict J1268O change 2): the console session itself stays
+# 68d: the console session itself stays
 # in the himmel checkout -- --project is data recorded in the doc, never an
 # exported HEADED_ARM_REPO for the ARMED CONSOLE (a leg for the project is
 # dispatched separately via LEG_REPO). RED against the imported commit (which
@@ -1935,7 +1927,7 @@ if [ "$HOST_SYMLINKS_REAL" = "1" ]; then
         "$(printf '%s\n' "$out68g" | grep -c '^would-doc: .*/DEMO-nextleg-')" "1"
 fi
 
-# --- 68h (codex-2, pr-check round 1 on HIMMEL-3623): the 68f collision
+# --- 68h: the 68f collision
 # message itself says "pass --bucket to disambiguate", but the collision
 # exit used to fire unconditionally -- an explicit --bucket could never
 # reach the bucket-resolution code below it. RED against the pre-fix
@@ -1951,14 +1943,14 @@ check "68h an explicit --bucket disambiguates a registry collision (no refusal)"
 check "68h the disambiguated doc uses the explicit --bucket" \
     "$(printf '%s\n' "$out68h" | grep -c "^would-doc: $root/tester/disambig68h/")" "1"
 
-# --- 69a/69b/69c (codex-1, pr-check round 1 EXPANSION ruling on HIMMEL-3623):
+# --- 69a/69b/69c:
 # `next` with no --project must not silently record the successor as "the
 # himmel checkout itself" for a chain that is FOR a foreign project -- the
 # plugin console.md no longer derives --project for `next` (only for `new`,
 # see marketplace/plugins/himmel-ops/commands/supervisor-session.md), so without this a
 # foreign-project chain's successor would fall back into himmel's own DEMO
-# bucket. RED against the pre-codex-1 console.sh (PROJECT_ARG never seeded
-# from the predecessor doc), GREEN after.
+# bucket. RED against a console.sh that never seeds PROJECT_ARG
+# from the predecessor doc.
 reg69="$tmp/registry-69.json"
 foreignproj69="$tmp/Acme Co 69"; mkdir -p "$foreignproj69"
 foreignproj69_canon="$(cd "$foreignproj69" && pwd -P)"
@@ -1993,7 +1985,7 @@ out69c="$( console next --bucket demorepo --doc "$docA" --dry-run )"
 check "69c a predecessor doc with no recorded project prints no would-project (native fallback unchanged)" \
     "$(printf '%s\n' "$out69c" | grep -c '^would-project:')" "0"
 
-# --- 70 (HIMMEL-3623 verdict J1271O, C1): the plugin runs console.sh with the
+# --- 70: the plugin runs console.sh with the
 # cwd in a FOREIGN repo. `repo` (template, kit, queue-lock, the doc's REPO)
 # must come from console.sh's OWN location, never the cwd: RED against the
 # cwd-first resolve_repo (missing template rc=2 / the foreign queue-lock ran).
@@ -2041,7 +2033,7 @@ esac
 check "70c the cd guards the whole line (one braced group)" "$l70e" "braced"
 
 # --- 71 (I1): a same-NAME repo at a different path must not inherit himmel's or
-# notes' bucket/prefix through a registry ALIAS (J1268O change 4 case).
+# notes' bucket/prefix through a registry ALIAS.
 reg71="$tmp/registry-71.json"
 notes71="$tmp/notes71"; mkdir -p "$notes71"
 cat > "$reg71" <<JSON
@@ -2085,7 +2077,7 @@ out72ok="$( HANDOVER_REGISTRY="$reg72" console next --doc "$doc72" --dry-run 2>&
 check "72 (control) an intact recorded project still inherits" "$(printf '%s\n' "$out72ok" | grep -c "^would-project: $proj72\$")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc72" "$(token_of "$out72")" >/dev/null 2>&1
 
-# --- 73 (HIMMEL-3631): a bare `next` with NOTHING pinning down where to
+# --- 73: a bare `next` with NOTHING pinning down where to
 # search (no --doc, no CONSOLE_DOC, no --bucket/--project/--prefix) must
 # still find a foreign predecessor and inherit ITS bucket/prefix/project --
 # not silently fall back to himmel's own DEMO bucket. RED against pre-fix
@@ -2110,7 +2102,7 @@ check "73 a bare next with nothing pinning the search finds the foreign predeces
 check "73 a bare next inherits the foreign predecessor's recorded project" \
     "$(printf '%s\n' "$out73" | grep -c "^would-project: $foreignproj73\$")" "1"
 
-# --- 74 (HIMMEL-3631, mirrors 72 for the auto-discovery path): a poisoned
+# --- 74 (mirrors 72 for the auto-discovery path): a poisoned
 # recorded PROJECT reached through auto-discovery (no --doc) is refused
 # exactly like --project would refuse it -- never silently dropped so the
 # successor falls back to himmel's own bucket.
@@ -2132,8 +2124,8 @@ check "74 the refusal is --project's own message" \
     "$(printf '%s\n' "$out74" | grep -c "^console: --project must be an existing directory, got '$tmp/no-such-dir-74'\$")" "1"
 check "74 nothing falls back to himmel's bucket" "$(printf '%s\n' "$out74" | grep -c '^would-doc:')" "0"
 
-# 75 (#1410): the user slug resolves from console.sh's OWN checkout, never the
-# caller's cwd -- the same pinning HIMMEL-3533 gave load_dotenv. The plugin
+# 75: the user slug resolves from console.sh's OWN checkout, never the
+# caller's cwd -- the same pinning load_dotenv gets. The plugin
 # /himmel-ops:supervisor-session runs console.sh from any directory; from a non-git one
 # forge_detect found no origin, so the slug fell back to the cwd's slugified
 # git user.name and the chain forked into a second user dir.
@@ -2150,7 +2142,7 @@ out75="$( cd "$tmp75/foreign-cwd" && env -u USER_SLUG -u FORGE HANDOVER_DIR="$ro
 check "75 slug is console.sh's own checkout's forge login, not the cwd's git user.name" \
     "$(printf '%s\n' "$out75" | grep -c "^would-doc: $root/forge-login-75/slug75/")" "1"
 
-# 76 (#1410, CR): an inherited GIT_DIR must not steer the slug either -- the cd
+# 76: an inherited GIT_DIR must not steer the slug either -- the cd
 # into console.sh's checkout is void if git still answers about GIT_DIR's repo
 # (no origin -> no forge login -> that repo's own user.name wins).
 tmp76="$tmp/t76"
@@ -2163,7 +2155,7 @@ out76="$( cd "$tmp76/foreign-cwd" && env -u USER_SLUG -u FORGE HANDOVER_DIR="$ro
 check "76 slug ignores an inherited GIT_DIR (checkout's forge login, not GIT_DIR's user.name)" \
     "$(printf '%s\n' "$out76" | grep -c "^would-doc: $root/forge-login-75/slug76/")" "1"
 
-# 77 (HIMMEL-3989): `next` COPIES the predecessor's <stem>.fleet.json to the
+# 77: `next` COPIES the predecessor's <stem>.fleet.json to the
 # successor's stem (copy, not rename: the outgoing waiter still reads its own),
 # and the successor stub's ACTION ZERO step 10 names the carried manifest path.
 out77="$(console new --bucket fleet77src)"
@@ -2186,7 +2178,7 @@ check "77 successor step 10 names the carried manifest path" "$(grep -Fc "$man77
 check "77 no unrendered {{FLEET_MANIFEST}} left in the successor doc" "$(grep -Fc '{{FLEET_MANIFEST' "$doc77B" 2>/dev/null)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc77A" "$token77" >/dev/null 2>&1
 
-# --- 78 (HIMMEL-4571): a name without the -console suffix is refused, nothing armed
+# --- 78: a name without the -console suffix is refused, nothing armed
 before78="$(find "$root" -type f -not -path "$root/.locks/*" | sort)"
 rc78n=0; out78n="$(console new --bucket nosuffix78 --name roadmap 2>&1)" || rc78n=$?
 check "78 new --name roadmap (no -console suffix) exits non-zero" "$([ "$rc78n" -ne 0 ] && echo yes)" "yes"
@@ -2198,7 +2190,7 @@ rc78ok=0; out78ok="$(console new --bucket nosuffix78 --name roadmap-console 2>&1
 check "78 new --name roadmap-console is accepted" "$rc78ok" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/nosuffix78/DEMO-nextleg-${today}A-roadmap-console.md" "$(token_of "$out78ok")" >/dev/null 2>&1
 
-# --- 79 (HIMMEL-4832): the console profile's himmel-bus opt-in registers the
+# --- 79: the console profile's himmel-bus opt-in registers the
 # armed console (--predecessor on next), exports only HIMMEL_BUS_NAME plus the
 # bind flag, and drops a predecessor's own HIMMEL_BUS_*; opted-out registers
 # and exports nothing; a failed register warns and still arms.

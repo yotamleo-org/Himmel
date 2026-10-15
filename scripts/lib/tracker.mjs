@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// tracker.mjs — JS mirror of the tracker seam's normalisation (HIMMEL-4759,
-// HIMMEL-4748 spec section 2). One owner of the normalised item shape
+// tracker.mjs — JS mirror of the tracker seam's normalisation. One owner of the normalised item shape
 // {id,title,status,type,fix_version,epic}: tracker-jira.sh and tracker-local.sh
 // shell out to it, and board / where-are-we / cloud-route import it.
 //

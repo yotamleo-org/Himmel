@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016,SC2030,SC2031,SC2123,SC2317,SC2329  # literal $ payloads; PATH scoped to subshells on purpose; cleanup runs via trap
-# Tests for scripts/lib/qmd-bounded.sh (HIMMEL-3956).
+# Tests for scripts/lib/qmd-bounded.sh.
 # Usage: bash scripts/lib/test-qmd-bounded.sh
 # Hermetic: a sh trampoline stands in for the qmd launcher (node, which forwards
 # no signals) and a TERM-ignoring sleep stands in for bun blocked in native
@@ -60,7 +60,7 @@ pid_of() {
     cat "$1"
 }
 
-# HIMMEL-4812: missing qmd is an error, never an empty search result.
+# missing qmd is an error, never an empty search result.
 mkdir -p "$TMP/no-qmd" "$TMP/empty-home"
 ln -s "$(command -v dirname)" "$TMP/no-qmd/dirname"
 missing_out=$(env -i PATH="$TMP/no-qmd" HOME="$TMP/empty-home" /bin/bash "$LIB_DIR/qmd-bounded.sh" collection list 2>&1); missing_rc=$?
@@ -78,12 +78,12 @@ assert_eq "installed bun-global qmd works off PATH" "installed:search cloud -c h
 
 export QMD_KILL_GRACE_SECS=1
 
-# HIMMEL-4011: an outer deadline for every case that exercises a hang. If
+# an outer deadline for every case that exercises a hang. If
 # qmd_bounded regresses so it never returns, the case is killed here and FAILS
 # instead of hanging the suite before its assertions and the EXIT cleanup run.
 # 124 is also qmd_bounded's own deadline rc, so the outer firing is detected by
 # elapsed time. Without a timeout binary a hanging case must not run unbounded
-# (timeout-bin.sh, HIMMEL-4121): every row that calls `outer` is guarded by
+# (timeout-bin.sh): every row that calls `outer` is guarded by
 # `hang_row`, which SKIPs it instead.
 OUTER_SECS=${QMD_TEST_OUTER_SECS:-20}
 hang_row() {

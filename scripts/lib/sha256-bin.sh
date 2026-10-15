@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/sha256-bin.sh — SOURCED. Resolve a sha256 hasher ONCE. HIMMEL-3177.
+# scripts/lib/sha256-bin.sh — SOURCED. Resolve a sha256 hasher ONCE.
 #
 # `sha256sum` is a GNU coreutil: stock macOS has neither `sha256sum` nor
 # `gsha256sum` (brew's coreutils installs the latter under `g`-prefixes, but

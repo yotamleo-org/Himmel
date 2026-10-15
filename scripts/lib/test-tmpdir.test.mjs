@@ -1,4 +1,4 @@
-// scripts/lib/test-tmpdir.test.mjs — HIMMEL-2864 finding 3: makeTmpDir()
+// scripts/lib/test-tmpdir.test.mjs — makeTmpDir()
 // used to register a new process.on('exit') listener per call; suites
 // calling it 10+ times in one process trip Node's MaxListenersExceededWarning.
 import { test } from 'node:test';
