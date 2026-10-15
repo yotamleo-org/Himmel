@@ -169,8 +169,8 @@ export function registerLink(program: Command): void {
   program
     .command('link <key> [otherKey]')
     .description(
-      'Create an issue link. Relates takes two keys: `link A B`. Directional types ' +
-      '(Blocks) are refused in the bare two-key form because it stores "A is blocked ' +
+      'Create an issue link: `link A B [--type T]` (first key is the inward issue). ' +
+      'Blocks is refused in the bare two-key form because it stores "A is blocked ' +
       'by B"; use `link A --blocks B` ("A blocks B") or `link A --blocked-by B` ' +
       '("A is blocked by B").',
     )
@@ -225,11 +225,10 @@ export function registerLink(program: Command): void {
           inwardKey = key;
           outwardKey = opts.blockedBy;
         } else {
-          if (match.inward !== undefined && match.inward !== match.outward) {
+          if (match.name.toLowerCase() === 'blocks') {
             fail(
-              `Link type "${match.name}" is directional ("${match.inward}" / "${match.outward}"); ` +
-              'the bare two-key form is ambiguous. Use `link A --blocks B` (A blocks B) ' +
-              'or `link A --blocked-by B` (A is blocked by B).',
+              'The bare two-key form is ambiguous for Blocks (it stores "A is blocked by B"). ' +
+              'Use `link A --blocks B` (A blocks B) or `link A --blocked-by B` (A is blocked by B).',
             );
           }
           inwardKey = key;

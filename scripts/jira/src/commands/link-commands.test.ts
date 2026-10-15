@@ -81,6 +81,17 @@ describe('link / links / unlink', () => {
     exit.mockRestore();
   });
 
+  it('bare link A B --type Duplicate (other directional types) is still accepted', async () => {
+    mockRequest.mockImplementation(async (m: string) =>
+      m === 'GET' ? { issueLinkTypes: [{ name: 'Duplicate', inward: 'is duplicated by', outward: 'duplicates' }] } : {});
+    await run(['link', 'A-1', 'B-2', '--type', 'Duplicate']);
+    expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/issueLink', {
+      type: { name: 'Duplicate' },
+      inwardIssue: { key: 'A-1' },
+      outwardIssue: { key: 'B-2' },
+    });
+  });
+
   it('link A B with no --type (Relates) still works bare', async () => {
     mockRequest.mockImplementation(async (m: string) => (m === 'GET' ? TYPES : {}));
     await run(['link', 'A-1', 'B-2', '--type', 'Relates']);
