@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-ci.sh — token-free PR merge-gate watcher (HIMMEL-949).
+# check-ci.sh — token-free PR merge-gate watcher.
 #
 # Friction this prevents: merge-on-green sessions burn tokens re-running
 # `gh pr checks` in an agent poll loop. This wraps the whole wait in ONE
@@ -20,13 +20,13 @@
 #                   CI provider picks up the commit — that window is not a
 #                   failure, so we retry through it.
 #   --settle <sec>  after the first green verdict, wait this long and watch
-#                   once more (default 30; 0 disables). Guards the codex-adv-1
+#                   once more (default 30; 0 disables). Guards a
 #                   race: check runs register at different times, so the first
 #                   watch can go green before a slower workflow has created
 #                   its check run at all. One settle round bounds that window;
 #                   a workflow that registers even later is out of scope.
-#   --max-wait <sec> bound on the WHOLE run's waiting (HIMMEL-4131): one deadline
-#                   from script start covers the watch rounds, the HIMMEL-2907
+#   --max-wait <sec> bound on the WHOLE run's waiting: one deadline
+#                   from script start covers the watch rounds, the
 #                   extension and the settle wait, so total wall time is N plus
 #                   the fixed --grace-bounded probes, never a multiple of N. A
 #                   round that may still be extended takes half of what is left;
@@ -34,12 +34,12 @@
 #                   A deadline hit with checks still pending and nothing failed
 #                   is exit 2 with a `DEADLINE-PENDING` verdict line (not an
 #                   error: re-invoke; exit 7 instead under
-#                   CHECK_CI_DISTINCT_DEADLINE=1, HIMMEL-4136). A value below
-#                   --settle is a usage error (exit 64, HIMMEL-4136): the settle
-#                   wait alone would outlast it. Before HIMMEL-4131 N was a per-round cap
+#                   CHECK_CI_DISTINCT_DEADLINE=1). A value below
+#                   --settle is a usage error (exit 64): the settle
+#                   wait alone would outlast it. Before N was a per-round cap
 #                   (default 900,
-#                   HIMMEL-2907 — the measured slowest shell-unit shard runs
-#                   12m16s-12m45s; 0 = unbounded, today's behaviour). HIMMEL-2062: CodeRabbit
+#                   The measured slowest shell-unit shard runs
+#                   12m16s-12m45s; 0 = unbounded, today's behaviour). CodeRabbit
 #                   leaves its rollup row "pending"/"Review queued" long after
 #                   every other check — and, when armed, its own gate status —
 #                   is decidable, so the watch keeps polling well past a 10-
@@ -50,12 +50,12 @@
 #                   first; either way the verdict is then derived structurally
 #                   instead of waited out.
 #
-# API cost (HIMMEL-3850): every checks read goes through a shared per-PR cache
+# API cost: every checks read goes through a shared per-PR cache
 # (scripts/lib/gh-ci-cache.sh) — N concurrent waiters on one PR cost ONE fetch
 # per TTL — and the watch is scripts/lib/check-ci-watch.sh (adaptive interval)
 # instead of gh's own --watch. REST check-runs/status reads use cached ETags;
 # core/GraphQL budgets rotate with at most one fallback per snapshot. Both low
-# use the existing reset wait bounded by --max-wait (HIMMEL-4136). Knobs (env):
+# use the existing reset wait bounded by --max-wait. Knobs (env):
 #   CHECK_CI_CACHE=0            legacy path: gh's own --watch, no cache
 #   CHECK_CI_CACHE_DIR          default $HOME/.himmel/state/ci-cache
 #   CHECK_CI_CACHE_TTL          poll-read TTL, default 60
@@ -71,17 +71,16 @@
 # session, automation) during the run means the certified commit is not the
 # mergeable one, so the script fails closed with exit 2 (re-run).
 #
-# HIMMEL-3360: CodeRabbit is best effort. Its commit STATUS (cr_signal_gate)
+# CodeRabbit is best effort. Its commit STATUS (cr_signal_gate)
 # is read and printed, but pending/failure/error/absent/skipped/unrecognized
 # states are advisory ONLY — never a block, never a wait. A green verdict
 # still REQUIRES zero unresolved PR review threads (any author, CodeRabbit
 # included — review_state_gate, generic, NOT availability-gated) and zero
-# undispositioned outside-diff-range CodeRabbit body findings (HIMMEL-1126/
-# 1147, S1 + HIMMEL-3124 — see cr_body_gate / _cr_outside_gate, in
+# undispositioned outside-diff-range CodeRabbit body findings (see cr_body_gate / _cr_outside_gate, in
 # scripts/lib/cr-body-findings.sh). Runs on BOTH the full path and
 # --threads-only (the latter binds its own head to do so).
 #
-# CodeRabbit's status is read only when AVAILABILITY-GATED armed (HIMMEL-1125):
+# CodeRabbit's status is read only when AVAILABILITY-GATED armed:
 # it arms only on a repo that declares CodeRabbit (scripts/lib/cr-available.sh).
 # On a repo without it, cr_signal_gate is a silent no-op — an adopter without
 # CodeRabbit must not notice a CodeRabbit gate exists.
@@ -89,12 +88,11 @@
 # Exit codes:
 #   0 — all checks green AND all review threads resolved AND no outside-diff-
 #       range body finding left undispositioned (an exact-head ledger
-#       deferred/disproved disposition counts, HIMMEL-3124 — see exit 3).
+#       deferred/disproved disposition counts; see exit 3).
 #       CodeRabbit's own status, when armed, is printed as an advisory NOTE on
 #       any state other than success — it never changes this exit code
-#       (HIMMEL-3360).
 #   1 — at least one check failed (--fail-fast: returns on the first red)
-#   64 — usage error (sysexits EX_USAGE, HIMMEL-3317): an unknown flag, a flag
+#   64 — usage error (sysexits EX_USAGE): an unknown flag, a flag
 #       missing its value, a non-numeric --grace/--settle/--max-wait, or more
 #       than one PR selector. NO gate ran, so it is deliberately not 2 — a caller
 #       reading only `$?` cannot mistake a mistyped command line (e.g.
@@ -106,29 +104,29 @@
 #       / the review-body-findings reader could not evaluate (infra failure
 #       or an anti-drift canary — both fail closed here, see cr-body-findings.sh)
 #       (CodeRabbit's own commit status never lands here: unreadable, paged,
-#       absent and every other non-success state are advisory, HIMMEL-3360)
+#       absent and every other non-success state are advisory)
 #   3 — checks green but the review state blocks the merge: unresolved review
 #       threads remain, a review requests changes, or CodeRabbit's review body
 #       reports an outside-diff-range finding with no exact-head ledger
-#       disposition (HIMMEL-3124) — address, resolve, or record the disposition
+#       disposition — address, resolve, or record the disposition
 #       recipe the message prints (deferred needs a tracked ticket AND a reason,
 #       disproved needs a reason; a disposition never carries to a new head),
 #       then re-run
-#   4 — retired (HIMMEL-3360) — no longer emitted.
-#   7 — only under CHECK_CI_DISTINCT_DEADLINE=1 (HIMMEL-4136): the
+#   4 — retired — no longer emitted.
+#   7 — only under CHECK_CI_DISTINCT_DEADLINE=1: the
 #       DEADLINE-PENDING verdict that is otherwise exit 2 — nothing failed, checks
 #       still pending at the --max-wait deadline. Never a red (that stays 1).
-#   5 — GitHub will BLOCK this merge and waiting cannot fix it (HIMMEL-3381): a
+#   5 — GitHub will BLOCK this merge and waiting cannot fix it: a
 #       check the base branch REQUIRES (rulesets via rules/branches, unioned
 #       with classic protection contexts) never reported within --grace, or the
 #       required set itself could not be read ("required-set unreadable" — read
 #       failure fails CLOSED, never as an empty set). A required entry carrying a
-#       producer id (ruleset integration_id / classic app_id, HIMMEL-3385) is met
+#       producer id (ruleset integration_id / classic app_id) is met
 #       only by a check run from THAT app — a same-named check from another app
 #       reads as never reported — and an unreadable check-runs read ("producers
 #       unreadable") fails closed too; an entry with no id stays a name match. A
 #       pinned check the app publishes as a commit STATUS reads as never
-#       reported too (a status carries no app id to verify, HIMMEL-3391); the
+#       reported too (a status carries no app id to verify); the
 #       refusal names that "status-only producer" cause. A
 #       required check that is FAILED exits 1, as any red does. Each of these prints one MERGE-BLOCKED
 #       line naming the rule and sends ONE operator DM per (repo, PR, head)
@@ -136,7 +134,7 @@
 #       exit code. Sits ABOVE 3 in severity: 3 is "fix the review state and
 #       re-run", 5 is "a rule GitHub enforces will refuse this until it changes".
 #   6 — every gate above passed but GitHub's own mergeStateStatus refuses the
-#       merge (HIMMEL-3473): BLOCKED, BEHIND, DIRTY or DRAFT at the watched head,
+#       merge: BLOCKED, BEHIND, DIRTY or DRAFT at the watched head,
 #       still so after polling through --grace. GitHub's answer IS the verdict —
 #       check-ci does not model GitHub's merge rule from check-run data (three
 #       models of it were each wrong on #1115). The message prints the state and
@@ -154,12 +152,12 @@
 #                            goes through (default `sleep`); hermetic suites set
 #                            it to `:` so a simulated poll costs no real seconds
 #   CHECK_CI_MAX_WAIT      — default for --max-wait (flag wins; default 900, 0 =
-#                            unbounded; HIMMEL-2062, raised in HIMMEL-2907)
+#                            unbounded)
 #   CHECK_CI_DISTINCT_DEADLINE=1 — a DEADLINE-PENDING verdict exits 7 instead of
-#                            2 (HIMMEL-4136), so a caller that re-runs on it
+#                            2, so a caller that re-runs on it
 #                            (merge-on-green) never re-runs on any other exit 2
 #   CHECK_CI_WATCH_INTERVAL — seconds between `gh pr checks --watch` polls
-#                            (default 30; gh's own default is 10). HIMMEL-3190.
+#                            (default 30; gh's own default is 10).
 #   CHECK_CI_PROBE_INTERVAL — seconds between watch_decidable probes (default 60;
 #                            the first probe is immediate). Each probe is 4
 #                            GraphQL calls; at 10 s it was ~80% of a watcher's
@@ -175,13 +173,13 @@
 #   CR_BOT_USER_ID         — creator.id to trust as CodeRabbit (see cr-signal.sh
 #                            and cr-body-findings.sh; REST identity)
 #
-# The HIMMEL-980 zombie-check-run override is GONE: it keyed off a CodeRabbit
+# The zombie-check-run override is GONE: it keyed off a CodeRabbit
 # CHECK-RUN, which CodeRabbit never posts (it posts a commit STATUS), so it had
 # never once fired. Reading the status directly makes it moot.
 #
-# Un-maskable verdict (HIMMEL-974): every exit path additionally prints
+# Un-maskable verdict: every exit path additionally prints
 # "check-ci: verdict exit=N" to STDOUT via an EXIT trap installed before arg
-# parsing, so usage errors (exit 64) carry it too (HIMMEL-3317); only --help,
+# parsing, so usage errors (exit 64) carry it too; only --help,
 # which is not a gate result, stays clean. A caller that pipes the run
 # (`check-ci.sh | tail`) gets the PIPE's exit code, not this script's — the
 # verdict line keeps the real status readable in any captured output.
@@ -249,11 +247,11 @@ EOF
 THREADS_ONLY=0
 GRACE=180
 SETTLE="${CHECK_CI_SETTLE:-30}"
-# Default 900s (HIMMEL-2907): the measured slowest shell-unit shard runs
+# Default 900s: the measured slowest shell-unit shard runs
 # 12m16s-12m45s, over the prior 540s default.
 MAX_WAIT="${CHECK_CI_MAX_WAIT:-900}"
 POLL="${CHECK_CI_POLL_INTERVAL:-10}"
-# HIMMEL-3190: the GraphQL budget (5000/h) is shared by every leg on the box and
+# The GraphQL budget (5000/h) is shared by every leg on the box and
 # ~7 watchers each spending ~30 calls/min ran it dry twice in three hours. Both
 # cadences are per-watcher GraphQL spend, so they are knobs — defaults chosen so
 # a watcher costs ~6 calls/min: gh's own poll (3 setup + 1 status per poll) every
@@ -268,7 +266,7 @@ case "$PROBE_INTERVAL" in
     ''|*[!0-9]*|0) echo "check-ci: CHECK_CI_PROBE_INTERVAL='$PROBE_INTERVAL' is not a positive integer — using 60" >&2
         PROBE_INTERVAL=60 ;;
 esac
-# HIMMEL-3850: the shared per-PR status cache (scripts/lib/gh-ci-cache.sh) and the
+# The shared per-PR status cache (scripts/lib/gh-ci-cache.sh) and the
 # cache-backed watch helper (scripts/lib/check-ci-watch.sh). One cost knob per
 # concern; CHECK_CI_CACHE=0 restores the pre-cache behaviour exactly (gh's own
 # --watch and one gh call per probe). Every knob is validated here; the lib and
@@ -291,7 +289,7 @@ case "$WATCH_INTERVAL_MAX" in
         WATCH_INTERVAL_MAX=120 ;;
 esac
 export CHECK_CI_CACHE_TTL="$CACHE_TTL" CHECK_CI_DECIDE_TTL="$DECIDE_TTL"
-# Sleep seam (HIMMEL-1953). EVERY wall-clock wait below goes through this one
+# Sleep seam. EVERY wall-clock wait below goes through this one
 # command word so a hermetic suite can inject `:` and never burn real seconds on
 # a simulated poll — a test that sleeps is a test that can hang, and a hang is
 # indistinguishable from a slow suite.
@@ -307,8 +305,8 @@ case "$POLL" in
         POLL=10 ;;
 esac
 
-# Un-maskable verdict line (HIMMEL-974) — installed BEFORE arg parsing
-# (HIMMEL-3317) so a usage error (exit 64) prints its marker too: a caller that
+# Un-maskable verdict line — installed BEFORE arg parsing
+# so a usage error (exit 64) prints its marker too: a caller that
 # read only `$?` used to record a gate result for a gate that never ran. Prints
 # on EVERY exit path but --help: a piped caller's pipeline exit code is the LAST
 # command's, not this script's, so the numeric verdict must survive in the
@@ -375,7 +373,7 @@ if [ -n "$RUN_ID" ]; then
     exit $?
 fi
 if [ -n "$JOB_NAME" ]; then echo "check-ci: --job requires --run" >&2; exit 64; fi
-# HIMMEL-4136: the settle wait comes out of the same deadline, so a deadline
+# The settle wait comes out of the same deadline, so a deadline
 # shorter than it can never certify green — every run would exit 2. Refuse the
 # combination here (flags or the env defaults alike) instead.
 if [ "$MAX_WAIT" -gt 0 ] && [ "$MAX_WAIT" -lt "$SETTLE" ]; then
@@ -383,7 +381,7 @@ if [ "$MAX_WAIT" -gt 0 ] && [ "$MAX_WAIT" -lt "$SETTLE" ]; then
     exit 64
 fi
 
-# HIMMEL-4131: --max-wait bounds the WHOLE run, not each watch round. RUN_START
+# --max-wait bounds the WHOLE run, not each watch round. RUN_START
 # anchors one deadline; _budget_left is what remains of it (0 once spent).
 RUN_START=$SECONDS
 _budget_left() {
@@ -392,7 +390,7 @@ _budget_left() {
     echo "$left"
 }
 
-# HIMMEL-4136: a DEADLINE-PENDING verdict exits 2 like every other "cannot
+# A DEADLINE-PENDING verdict exits 2 like every other "cannot
 # evaluate", unless the caller opts in with CHECK_CI_DISTINCT_DEADLINE=1 — then
 # it exits 7, so merge-on-green can re-run the watch on a slow-but-healthy CI
 # without also re-running on a gh error or a moved head. Only the two
@@ -402,7 +400,7 @@ _deadline_exit() {
     exit 2
 }
 
-# HIMMEL-4136: a GraphQL-budget wait is bounded by what is LEFT of --max-wait,
+# A GraphQL-budget wait is bounded by what is LEFT of --max-wait,
 # not the whole of it, so the rate-limit waits stay inside the run's deadline.
 # Prints the bound to hand the budget helper (0 = unbounded, as --max-wait 0
 # is); rc 1 = the deadline is already spent, so no wait may be taken at all.
@@ -419,7 +417,7 @@ if ! command -v gh >/dev/null 2>&1; then
     exit 2
 fi
 
-# GraphQL budget preflight (HIMMEL-3190). The shared helper reads the
+# GraphQL budget preflight. The shared helper reads the
 # X-Ratelimit-* headers of ONE real call (`gh api rate_limit` misreports) and,
 # when the budget is under its floor, sleeps until the reset instead of letting
 # the first gh call fail generically. Called once here and again only after a
@@ -449,14 +447,13 @@ if ! rl_bound=$(_rl_bound) || ! ghb_wait_for_budget "$rl_bound" "$CHECK_CI_SLEEP
     exit 2
 fi
 # jq is needed to read CodeRabbit's status + review-body findings, so require
-# it only when the CodeRabbit signal gate is ARMED (coderabbit-7, extended by
-# HIMMEL-1126/HIMMEL-1125): --threads-only USED to be a pure GraphQL+gh path,
-# but it now also runs cr_signal_gate + cr_body_gate (S1 — a body-only finding
+# it only when the CodeRabbit signal gate is ARMED. --threads-only is not a pure GraphQL+gh path;
+# it also runs cr_signal_gate + cr_body_gate (a body-only finding
 # is exactly as invisible to /pr-check step 4.8's threads-only call as it is
 # to the full run), so it needs jq too whenever CodeRabbit is in play.
-# Is the CodeRabbit App configured for this repo at all (HIMMEL-1125)? The
+# Is the CodeRabbit App configured for this repo at all? The
 # signal + body gates below are armed ONLY when it is: on a repo without
-# CodeRabbit, "absent" is the permanent steady state — but HIMMEL-3360 made
+# CodeRabbit, "absent" is the permanent steady state — but made
 # "absent" advisory rather than blocking, so this now only controls whether
 # the gates run at all, not a fail-closed exit. Probed once here;
 # cr_signal_gate/cr_body_gate read the result.
@@ -464,43 +461,43 @@ fi
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/cr-available.sh"
 CR_ARMED=0
-# ONE probe, read twice (HIMMEL-2380): the rc arms the gates below exactly as it
+# ONE probe, read twice: the rc arms the gates below exactly as it
 # always did, and CR_STATE names WHY — which is the difference between an
 # adopter who never had CodeRabbit and a repo that just lost its gate to a typo.
 CR_STATE=$(cr_app_state "$PWD")
 [ "$CR_STATE" = armed ] && CR_ARMED=1
 
-# The ONE merge-block alert (HIMMEL-3381): a MERGE-BLOCKED line + one operator DM.
+# The ONE merge-block alert: a MERGE-BLOCKED line + one operator DM.
 # shellcheck source=scripts/lib/merge-block-alert.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/merge-block-alert.sh"
 
-# The one state that must NOT stay silent (HIMMEL-2380, console ruling 88).
+# The one state that must NOT stay silent.
 # `not-configured` is the adopter and gets no line at all — "an adopter must not
 # notice it exists" (scripts/test-check-ci.sh case 57 pins that, and it still
 # passes). `broken` is different in kind: the marker IS set, so this repo was
 # meant to have the CodeRabbit gates, and a value git cannot parse as a boolean
 # silently disarms them. Every green below would then assert a review nobody
 # ever checked for — the one genuinely vacuous pass in this design. Warn, do not
-# block: HIMMEL-1125 exists to stop blocking on CodeRabbit's absence, and a
+# block: exists to stop blocking on CodeRabbit's absence, and a
 # config typo must not wedge a merge at 3am.
 if [ "$CR_STATE" = broken ]; then
     echo "check-ci: WARNING - this repo's himmel.coderabbit marker holds a value git cannot parse as a boolean, so the CodeRabbit gates are DISARMED and any green below certifies a CodeRabbit review that was never checked for. If this repo HAS CodeRabbit: git config --local himmel.coderabbit true. If it does not: git config --local --unset himmel.coderabbit (HIMMEL-2380)." >&2
 fi
 
-# HIMMEL-2769: `not-configured` is silently correct for the adopter with no
+# `not-configured` is silently correct for the adopter with no
 # CodeRabbit at all (case 17's whole point) — but a repo that carries a
 # COMMITTED `.coderabbit.yaml`/`.yml` has declared it wants CodeRabbit, so an
 # unarmed marker here is not the adopter's steady state, it is a clone nobody
 # ever ran `git config --local himmel.coderabbit true` on. Every green below
 # would then certify a review that was never armed to run. Fail loud instead
 # of silently certifying it, same as the vacuous-green class this ticket
-# names (HIMMEL-1317/2062). CR_APP=0 is the sole bypass, and it already is
+# names. CR_APP=0 is the sole bypass, and it already is
 # one: CR_APP=0 makes cr_app_state report `disabled`, never `not-configured`,
 # so this block cannot fire while it is set.
 if [ "$CR_STATE" = not-configured ]; then
     cr_repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || cr_repo_root="$PWD"
-    # codex-1 (round 1): read the COMMITTED tree at HEAD, not the working
+    # Read the COMMITTED tree at HEAD, not the working
     # tree — an untracked local .coderabbit.yaml must not arm this gate, and
     # a tracked one a caller merely deleted locally must not disarm it.
     if git -C "$cr_repo_root" cat-file -e HEAD:.coderabbit.yaml 2>/dev/null || git -C "$cr_repo_root" cat-file -e HEAD:.coderabbit.yml 2>/dev/null; then
@@ -514,19 +511,19 @@ if [ "$CR_ARMED" -eq 1 ]; then
         echo "check-ci: jq not found on PATH (required to read CodeRabbit's status)" >&2
         exit 2
     fi
-    # The ONE reader for CodeRabbit's verdict (HIMMEL-1072).
+    # The ONE reader for CodeRabbit's verdict.
     # shellcheck source=scripts/lib/cr-signal.sh
     # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
     . "$(cd "$(dirname "$0")" && pwd)/lib/cr-signal.sh"
-    # The ONE reader for CodeRabbit's review-BODY findings (HIMMEL-1126/1147) —
+    # The ONE reader for CodeRabbit's review-BODY findings —
     # outside-diff-range / nitpick / additional comments the thread gate below
-    # cannot see (S1: no thread, no isResolved, unresolvable by construction).
+    # cannot see (no thread, no isResolved, unresolvable by construction).
     # shellcheck source=scripts/lib/cr-body-findings.sh
     # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
     . "$(cd "$(dirname "$0")" && pwd)/lib/cr-body-findings.sh"
-    # The CR-ledger evidence reader (HIMMEL-3124): tells _cr_outside_gate below
+    # The CR-ledger evidence reader: tells _cr_outside_gate below
     # whether an outside-diff-range finding has a recorded exact-head
-    # disposition (deferred/disproved). HIMMEL-3360 removed this lib's OTHER
+    # disposition (deferred/disproved). The lib's OTHER
     # function, cr_ledger_carries_gate (the rate-limited/absent-signal panel
     # carry) — that reader is now unused, but the lib stays sourced for
     # cr_ledger_outside_dispositioned.
@@ -535,7 +532,7 @@ if [ "$CR_ARMED" -eq 1 ]; then
     . "$(cd "$(dirname "$0")" && pwd)/lib/cr-ledger-evidence.sh"
 fi
 
-# HIMMEL-4762: the check-rollup read lives on the forge seam (_gh_pr_checks in
+# The check-rollup read lives on the forge seam (_gh_pr_checks in
 # forge-github.sh, the same `gh pr checks [<selector>] <args>` call, args
 # verbatim); the github backend is called directly, so no forge detection runs
 # here.
@@ -550,12 +547,12 @@ pr_view() {
     if [ -n "$selector" ]; then gh pr view "$selector" "$@"; else gh pr view "$@"; fi
 }
 
-# HIMMEL-3850 — the per-PR check rows through the shared cache.
+# The per-PR check rows through the shared cache.
 # shellcheck source=scripts/lib/gh-ci-cache.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/gh-ci-cache.sh"
 # A budget wait taken in this process is bounded by what is LEFT of --max-wait
-# (HIMMEL-4136; _cic_get_bounded sets it before each read) and goes through the
+# (_cic_get_bounded sets it before each read) and goes through the
 # same sleep seam as every other wait here (0 = unbounded, as --max-wait 0 is).
 # shellcheck disable=SC2034  # read by the sourced lib/gh-ci-cache.sh
 CIC_MAX_WAIT="$MAX_WAIT"
@@ -571,7 +568,7 @@ _cic_get_bounded() {
     cic_get "$1"
 }
 
-# _prune_cache_dir <dir> — HIMMEL-4890: drop aged pr-*/run-* cache rows and their
+# _prune_cache_dir <dir> — drop aged pr-*/run-* cache rows and their
 # .wait heartbeats. Only REGULAR files directly in <dir> (no recursion, a symlink
 # is never matched or followed), older than the cache TTL plus the longest watch
 # interval a live waiter can go between heartbeats. A row with a fresh .wait
@@ -618,7 +615,7 @@ _fail_count() {
     printf '%s\n' "$rows" | awk -F'\t' '$1 == "fail" { c++ } END { print c + 0 }'
 }
 
-# HIMMEL-3381 — the required-check gate. GitHub refuses a merge while a check the
+# The required-check gate. GitHub refuses a merge while a check the
 # base branch REQUIRES is failed or has never reported; watching cannot fix
 # either, so neither is waited on past --grace. `gh pr checks --watch` knows
 # nothing about the required set, which is why a required check that never
@@ -634,7 +631,7 @@ _alert() { merge_watch_alert "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "
 #
 # ponytail: a token without admin cannot read the classic endpoint (403), so it
 # reads as unreadable and refuses every merge (exit 5) rather than guessing —
-# there is no opt-out knob; the fail-closed choice is deliberate (HIMMEL-3381).
+# there is no opt-out knob; the fail-closed choice is deliberate.
 required_set() {
     local base rules classic
     base=$(pr_view --json baseRefName --jq .baseRefName 2>/dev/null) || return 1
@@ -649,7 +646,7 @@ required_set() {
 }
 
 # _required_normalize — "<name>\t<producer id>" in, the same out. An id of -1 is
-# classic protection's "any source" (HIMMEL-3385), so it is no id. When a name
+# classic protection's "any source", so it is no id. When a name
 # carries an id anywhere, its id-less rows drop: a producer-pinned requirement is
 # stricter, and the deprecated classic `contexts` list repeats every name id-less,
 # which must not weaken the pinned one back to a name-only match.
@@ -671,10 +668,10 @@ _has_producer_ids() {
 
 # _producer_rows — "<bucket>\t<name>\t<app id>\t<started_at>\t<id>" for every
 # check run on the head. `gh pr checks --json` exposes no app id, so a
-# producer-pinned requirement is read from the check-runs API instead
-# (HIMMEL-3385). --paginate: a busy head has more than one page of runs, and an
+# producer-pinned requirement is read from the check-runs API instead.
+# --paginate: a busy head has more than one page of runs, and an
 # unread page would read as "missing". `id` lets the caller judge only the
-# LATEST run of a name (HIMMEL-3434): this REST list returns EVERY run ever
+# LATEST run of a name: this REST list returns EVERY run ever
 # created for the sha, including ones a re-run or a close/reopen superseded.
 # started_at is carried for diagnostics only — ordering uses `id` alone (see
 # `_required_status`).
@@ -690,7 +687,7 @@ _producer_rows() {
 # only the latest check suite per name. One with an id matches name AND app id
 # over <producer rows> — the raw check-runs API, which lists every run ever
 # created for the sha — so only the LATEST matching run is judged, not any run
-# that ever failed (HIMMEL-3434): a re-run or a close/reopen on an unchanged
+# that ever failed: a re-run or a close/reopen on an unchanged
 # head must be able to clear an earlier red, the same as GitHub's own merge
 # gate does. "Latest" is decided by `id` alone (always present, assigned
 # strictly in creation order by GitHub), not `started_at`: a queued run can
@@ -702,8 +699,7 @@ _producer_rows() {
 # read twice across a --paginate page boundary), the completed row wins over
 # a pending duplicate, in either array order. If the latest matching run is
 # itself still pending, the label is "pending", never folded into "seen" —
-# a required check that has not settled yet must not read as satisfied
-# (round-4 adversarial finding, HIMMEL-3434).
+# a required check that has not settled yet must not read as satisfied.
 _required_status() {
     local name id
     while IFS=$'\t' read -r name id; do
@@ -722,7 +718,7 @@ _required_status() {
     done <<<"$1"
 }
 
-# _status_only <required status rows> — HIMMEL-3391: of the MISSING producer-pinned
+# _status_only <required status rows> — of the MISSING producer-pinned
 # labels ("<name> (app <id>)"), the ones a commit STATUS by that name exists for,
 # comma-joined ("" when none, or when the status read fails — no cause is guessed).
 # Naming the cause is all this does: a missing check stays missing either way.
@@ -746,7 +742,7 @@ _status_only() {
     printf '%s' "$hit"
 }
 
-# _job_log_hint — HIMMEL-4071: the pre-READY red is the LEG's to fix, so name each
+# _job_log_hint — the pre-READY red is the LEG's to fix, so name each
 # failed GitHub Actions job's log command the moment a red is known (job id from
 # the check's link; `gh run view --log-failed` refuses until the whole run ends).
 # Best effort: an unreadable read or a non-Actions link (an external status)
@@ -785,7 +781,7 @@ required_gate() {
             echo "check-ci: cannot read the PR's check rows for the required-check gate — cannot evaluate; re-run" >&2
             exit 2
         fi
-        # HIMMEL-3385: an unreadable producer read fails CLOSED like the set itself —
+        # An unreadable producer read fails CLOSED like the set itself —
         # falling back to the name-only rows would certify the wrong producer.
         if _has_producer_ids "$reqs" && ! prows=$(_producer_rows); then
             echo "check-ci: BLOCKED — required-check producers unreadable: could not read which app reported each check on this PR's head, so a required check pinned to an app cannot be verified. Refusing rather than matching by name alone; re-run once gh/API access recovers (HIMMEL-3385, exit 5)" >&2
@@ -807,7 +803,7 @@ required_gate() {
         # not listed until its dependencies finish, so "missing" while another
         # check is still pending is not yet "never reported": leave it to the
         # watch; the post-settle call (wait 0) is the one that refuses. A
-        # required check whose own latest run is still pending (HIMMEL-3434)
+        # required check whose own latest run is still pending
         # gets the same grace, not a silent pass.
         if [ "$wait_ok" -eq 1 ] && { [ -n "$pending" ] || printf '%s\n' "$rows" | awk -F'\t' '$1 == "pending" { f = 1 } END { exit !f }'; }; then
             return 0
@@ -852,9 +848,9 @@ red_exit() {
     exit 1
 }
 
-# watch_decidable — HIMMEL-2062: is the watch's verdict already decidable
+# watch_decidable — is the watch's verdict already decidable
 # without waiting out CodeRabbit's pending rollup row? True when every check
-# NOT named CodeRabbit is terminal (not in the "pending" bucket). HIMMEL-3360:
+# NOT named CodeRabbit is terminal (not in the "pending" bucket).
 # CodeRabbit is best effort — this never waits on CodeRabbit's own status to
 # settle either; cr_signal_gate reads whatever state the head carries when the
 # rest of the run reaches it and prints an advisory NOTE, it never blocks the
@@ -862,7 +858,7 @@ red_exit() {
 #
 # Fail-SAFE by construction: any unreadable/unparsable probe returns 1 (keep
 # watching) — this can only ever shorten a wait, never fabricate a verdict.
-# HIMMEL-3850: cached, a "decidable" answer on a poll-grade snapshot is only
+# Cached, a "decidable" answer on a poll-grade snapshot is only
 # accepted after the same test passes on a decide-grade one, so a check that went
 # pending inside the poll TTL is never stopped over.
 watch_decidable() {
@@ -876,7 +872,7 @@ watch_decidable() {
 _watch_decidable_at() {
     local rows first n low
     if [ "$CACHE_ON" -eq 1 ]; then
-        # HIMMEL-3850: from the shared snapshot ($1 = its max age) instead of a gh
+        # From the shared snapshot ($1 = its max age) instead of a gh
         # call per probe. An empty snapshot is not "decidable" (fail-safe: keep
         # watching).
         rows=$(pr_rows "$1") || return 1
@@ -896,7 +892,7 @@ _watch_decidable_at() {
         [ "$n" = "CHECKCI_OK" ] && continue
         [ -n "$n" ] || continue
         low=$(printf '%s' "$n" | tr '[:upper:]' '[:lower:]')
-        # Exact match, not a substring (codex-2, HIMMEL-2062 CR round 1): the
+        # Exact match, not a substring: the
         # rollup's own check name is exactly "CodeRabbit" — a substring glob
         # would also treat a hypothetical "CodeRabbit integration tests"
         # check as the ignorable rollup and certify green over it.
@@ -909,7 +905,7 @@ _watch_decidable_at() {
     return 0
 }
 
-# _pending_checks_report — HIMMEL-2907: names (and counts) the checks still in
+# _pending_checks_report names (and counts) the checks still in
 # the "pending" bucket, for the one-time cap-extension notice and the
 # cannot-evaluate line below — a reader should see "shell-unit-shard (ubuntu-
 # latest, 7)" instead of a bare "checks still pending". Fail-safe like
@@ -931,12 +927,12 @@ _pending_checks_report() {
 }
 
 watch_round() {
-    # $1 — extensions still allowed this call (HIMMEL-2907): 1 (default, the
+    # $1 — extensions still allowed this call: 1 (default, the
     # outer caller) permits ONE more full --max-wait round on a cap-with-
     # pending verdict before refusing; the recursive self-call below passes 0
     # so a second cap-with-pending exits 2 instead of extending forever.
     local extend_ok="${1:-1}"
-    # Runs one `gh pr checks --watch --fail-fast`, BOUNDED (HIMMEL-2062):
+    # Runs one `gh pr checks --watch --fail-fast`, BOUNDED:
     # foreground would block a session's tool wrapper past its own timeout
     # even after the verdict is decidable, because CodeRabbit's rollup row can
     # sit "pending"/"Review queued" long after every other check (and, when
@@ -953,7 +949,7 @@ watch_round() {
     # rc + non-empty stderr → cannot evaluate (exit 2); nonzero rc + empty
     # stderr → red_exit.
     local err_file err wpid stopped failed rc_file gh_pid_file gh_pid_recorded _gh_pid_wait
-    # HIMMEL-4131: this round's cap comes out of the ONE run deadline. A round
+    # This round's cap comes out of the ONE run deadline. A round
     # that may still be extended takes half of what is left, so the extension
     # keeps a real window inside the same total; the last round takes it all.
     # --max-wait 0 (unbounded) is untouched.
@@ -969,7 +965,7 @@ watch_round() {
     rc_file="$err_file.rc"
     gh_pid_file="$err_file.ghpid"
     watch_start=$SECONDS
-    # HIMMEL-2206: `kill -0 "$wpid"` is NOT a valid liveness probe for a
+    # `kill -0 "$wpid"` is NOT a valid liveness probe for a
     # backgrounded child under MSYS/Git-Bash — once gh exits it becomes a
     # zombie until something `wait`s on it, and `kill -0` on a zombie
     # SUCCEEDS. The loop below never observed gh actually finishing (reproduced
@@ -984,9 +980,7 @@ watch_round() {
     # running detached. Both sidecars are written tmp-then-`mv -f` (same
     # directory, so the mv is atomic) so the poll loop below never observes a
     # half-written file.
-    # codex-1, HIMMEL-2206 CR round 1 (this fallback replaces an earlier
-    # kill-0-based one from the same round that codex-1 correctly rejected on
-    # ITS OWN re-review: a wrapper wedged into a zombie by the exact MSYS
+    # This fallback replaces an earlier kill-0-based one, which a wrapper wedged into a zombie by the exact MSYS
     # behavior this ticket exists to route around would ALSO answer kill -0
     # as "alive" forever, so that fallback could not actually fire in the
     # case it was written for. Fixed the right way instead — write-side, not
@@ -1000,8 +994,7 @@ watch_round() {
     # cannot survive a filesystem that rejects EVERY write (no file-based
     # signal can), but that is a different, unsolvable failure, not the one
     # under discussion.
-    # codex-1, HIMMEL-2206 CR round 3 (verified, not theoretical — reproduced
-    # directly with `ps -W`): backgrounding the `pr_checks` FUNCTION call
+    # Verified, not theoretical (reproduced directly with `ps -W`): backgrounding the `pr_checks` FUNCTION call
     # (`pr_checks --watch --fail-fast &`) does not exec into `gh` — bash
     # forks a process to run the function body, and calling `gh` from inside
     # an if/else keeps that wrapper alive as `gh`'s PARENT, one level below
@@ -1019,7 +1012,7 @@ watch_round() {
         trap 'printf "%s\n" "$gh_rc" >"$rc_file.tmp" 2>/dev/null && mv -f "$rc_file.tmp" "$rc_file" 2>/dev/null' EXIT
         (
             if [ "$CACHE_ON" -eq 1 ]; then
-                # HIMMEL-3850: the cache-backed loop stands in for gh's own --watch
+                # The cache-backed loop stands in for gh's own --watch
                 # (which polls per watcher and cannot be cached); same exit contract.
                 exec env CHECK_CI_WATCH_INTERVAL="$WATCH_INTERVAL" CHECK_CI_WATCH_INTERVAL_MAX="$WATCH_INTERVAL_MAX" \
                     CHECK_CI_CACHE_HEAD="$cache_head" CHECK_CI_MAX_WAIT="$LIB_CAP" CIC_NOTICE_FD=1 \
@@ -1029,8 +1022,7 @@ watch_round() {
             fi
         ) 2>"$err_file" &
         gh_pid=$!
-        # codex-1, HIMMEL-2206 CR round 5 (REJECTED deferral — the pid-sidecar
-        # write below is a single unguarded line, not a trap: if it never
+        # The pid-sidecar write below is a single unguarded line, not a trap: if it never
         # lands (write failure, or the outer subshell is killed inside the
         # 10s pid-write-race poll below before the write completes), the
         # early-stop path has no pid to read and gh survives reparented —
@@ -1051,21 +1043,21 @@ watch_round() {
     ) &
     wpid=$!
     stopped=""            # "" = gh exited on its own; "cap" | "decidable" = we stopped it
-    # Probe throttle (HIMMEL-2062 round 2). The wall-clock wait goes through the
+    # Probe throttle. The wall-clock wait goes through the
     # CHECK_CI_SLEEP_CMD seam, which hermetic suites set to `:` — and
     # CHECK_CI_POLL_INTERVAL can legitimately be 0 — so this loop can spin with
     # no delay at all. watch_decidable forks a `gh` call, so an unthrottled spin
     # is a subprocess STORM: it made test-check-ci.sh crawl and intermittently
     # wedge on Windows Git-Bash. Probe at most once per $PROBE_INTERVAL seconds
-    # (HIMMEL-3190: was once per real second, i.e. every loop pass, = 4 GraphQL
+    # (was once per real second, i.e. every loop pass, = 4 GraphQL
     # calls per probe and ~80% of the watcher's spend; the first probe is still
     # the first pass); between probes the loop body is builtins only (a file
     # existence test + arithmetic), which costs nothing and stays correct
-    # because the rc sentinel appears on its own once gh exits (HIMMEL-2206).
+    # because the rc sentinel appears on its own once gh exits.
     local last_probe=-1 elapsed remaining sleep_for
     while [ ! -f "$rc_file" ]; do
-        # Cap check BEFORE sleeping + clamp the sleep to the remaining budget
-        # (codex-1, HIMMEL-2062 CR round 1): sleeping the full $POLL first let
+        # Cap check BEFORE sleeping + clamp the sleep to the remaining budget:
+        # sleeping the full $POLL first let
         # --max-wait overshoot by up to one whole CHECK_CI_POLL_INTERVAL —
         # arbitrarily long on a high POLL. Sleeping min(POLL, remaining)
         # instead means the cap fires within ~1s of the deadline regardless
@@ -1078,11 +1070,11 @@ watch_round() {
             remaining=$((WATCH_CAP - elapsed))
             [ "$remaining" -lt "$sleep_for" ] && sleep_for=$remaining
         fi
-        # Floor at 1s (codex-1, HIMMEL-2062 CR round 2): CHECK_CI_POLL_INTERVAL=0
+        # Floor at 1s: CHECK_CI_POLL_INTERVAL=0
         # is documented as legitimate, and the 1/s watch_decidable throttle above
         # does not gate this sleep call itself — an unfloored POLL=0 forks
         # "$CHECK_CI_SLEEP_CMD" 0 on every spin, a sleep-fork storm. Flooring
-        # makes POLL=0 behave as a 1s poll, matching the round-1 throttle's
+        # makes POLL=0 behave as a 1s poll, matching the throttle's
         # intent (no unthrottled spin). Only fires for POLL=0: remaining is
         # always >=1 once the MAX_WAIT clamp above applies. The `:` seam used by
         # hermetic suites is unaffected either way (its argument is a no-op).
@@ -1100,7 +1092,7 @@ watch_round() {
         # gh finished on its own — reap the wrapper subshell (it has already
         # exited or is about to, immediately after writing $rc_file) and read
         # gh's real rc from the sentinel rather than trust the wrapper's own
-        # status blindly (HIMMEL-2206 edge case: validate the sentinel is
+        # status blindly: validate the sentinel is
         # actually numeric before treating it as a verdict).
         wait "$wpid" 2>/dev/null
         rc=$(cat "$rc_file" 2>/dev/null)
@@ -1113,7 +1105,7 @@ watch_round() {
         esac
         if [ "$rc" -ne 0 ]; then
             if [ -n "$err" ]; then
-                # HIMMEL-3190: a rate limit is not a verdict — wait for the
+                # A rate limit is not a verdict — wait for the
                 # reset and re-run the round instead of exit 2.
                 if ghb_is_rate_limited "$err" && _rl_recover; then
                     watch_round "$extend_ok"
@@ -1152,12 +1144,12 @@ watch_round() {
     # structurally, the same probe the rc==1 path above already uses.
     #
     # Kill BOTH the wrapper subshell ($wpid) AND the real gh pid recorded in
-    # $gh_pid_file (HIMMEL-2206): the inner `gh pr checks --watch` runs one
+    # $gh_pid_file: the inner `gh pr checks --watch` runs one
     # process below the subshell now, so signaling only $wpid would leave gh
     # itself running detached — still writing to the terminal after this gate
     # has already moved on to a structural verdict.
     #
-    # codex-1/codex-2, HIMMEL-2206 CR rounds 3-4: the pid write is the FIRST
+    # The pid write is the FIRST
     # thing the subshell does, but a stop requested in that same instant
     # could still race it — killing $wpid before the write lands would leave
     # gh already started with no recorded pid to terminate. A short bounded
@@ -1169,7 +1161,7 @@ watch_round() {
     # any finite bound still has a "what if it takes even longer" edge in
     # principle, which is why that idiom's bound is what it is rather than
     # something tighter.
-    # codex-1, HIMMEL-2206 CR rounds 8-9: $rc_file is checked twice below
+    # $rc_file is checked twice below
     # (the poll's own loop condition, then again immediately before
     # signaling anything) rather than once, because gh can finish NATURALLY
     # at any point in this sequence — the poll can run up to 10 real
@@ -1184,7 +1176,7 @@ watch_round() {
     # .claude/commands/pr-check.md carries the same "what if it takes even
     # longer" edge in principle for the same class of race).
     #
-    # codex-1/codex-2, HIMMEL-2206 CR rounds 3-4: the pid write is the FIRST
+    # The pid write is the FIRST
     # thing the subshell does, but a stop requested in that same instant
     # could still race it — killing $wpid before the write lands would leave
     # gh already started with no recorded pid to terminate. This poll (real,
@@ -1198,7 +1190,7 @@ watch_round() {
         _gh_pid_wait=$((_gh_pid_wait + 1))
     done
     if [ ! -f "$rc_file" ]; then
-        # codex-1, HIMMEL-2206 CR round 7: only fall back to killing the raw
+        # Only fall back to killing the raw
         # recorded pid when $wpid was ALREADY gone (kill on it failed) —
         # when $wpid was alive, its own TERM trap (armed right after
         # $gh_pid was assigned) already signals the real gh directly, so
@@ -1238,7 +1230,7 @@ watch_round() {
     fi
 
     # Cap ONLY: a cap reached with non-CodeRabbit work still pending is not a
-    # decidable verdict on its own. HIMMEL-2907: nothing failed here (the
+    # decidable verdict on its own: nothing failed here (the
     # check above already returned otherwise) — a slow-but-healthy shard
     # still mid-run must not read as "cannot evaluate" on the FIRST cap. So
     # extend once: run one more full --max-wait round before refusing. Only a
@@ -1295,7 +1287,7 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
     # which produces the authoritative verdict. Any OTHER stderr (auth, network,
     # rate-limit) is a gate we cannot evaluate — exit 2, never a fake red.
     start=$SECONDS
-    # HIMMEL-3850: bind the cache to the head read up front; a PR gh cannot resolve
+    # Bind the cache to the head read up front; a PR gh cannot resolve
     # (or a cache dir that cannot be made) drops to the uncached path, whose
     # messages are the ones callers already know.
     cache_head=""
@@ -1326,7 +1318,7 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
             exit 2
         fi
         if ! printf '%s' "$err" | grep -i 'no checks reported' >/dev/null; then
-            # HIMMEL-3190: budget exhaustion is a wait, not a verdict.
+            # Budget exhaustion is a wait, not a verdict.
             if ghb_is_rate_limited "$err" && _rl_recover; then continue; fi
             echo "check-ci: gh pr checks failed — cannot evaluate the gate: $err" >&2
             exit 2
@@ -1377,7 +1369,7 @@ repo=${repo_rest%%/*}
 # review_state_gate — the CHANGES_REQUESTED blocker + the paginated
 # unresolved-thread gate, as one re-runnable unit. It runs BEFORE the zombie
 # probe (fail-fast, and the override's zero-unresolved evidence) and AGAIN
-# after the final watch/settle on every success path (codex-adv 980-r2):
+# after the final watch/settle on every success path:
 # review state can change during a long watch WITHOUT moving the head SHA —
 # a pre-watch snapshot must never be what gets certified.
 review_state_gate() {
@@ -1436,7 +1428,7 @@ review_state_gate() {
         cursor=${rest#* }
         case "$page_count" in
             ''|*[!0-9]*)
-                # HIMMEL-3190: stderr is discarded above, so ask the budget
+                # Stderr is discarded above, so ask the budget
                 # itself: exhausted -> wait for the reset and retry THIS page;
                 # healthy (or beyond --max-wait) -> the original fail-closed exit.
                 if _rl_recover; then pages=$((pages - 1)); cursor="$sent_cursor"; continue; fi
@@ -1470,7 +1462,7 @@ review_state_gate() {
 [ "$THREADS_ONLY" -eq 1 ] || required_gate 1
 review_state_gate
 
-# cr_signal_gate — HIMMEL-1072, the reason this file changed.
+# cr_signal_gate
 #
 # `gh pr checks --watch` only waits on checks that EXIST when the watch starts.
 # CodeRabbit registers seconds-to-minutes after a push, so a watch launched right
@@ -1489,7 +1481,7 @@ review_state_gate
 # Runs AFTER the watch + settle so the normal registration race resolves itself
 # in the window that already exists; only a signal still missing by then fails.
 cr_signal_gate() {
-    # Availability gate (HIMMEL-1125): no CodeRabbit App on this repo -> no-op.
+    # Availability gate: no CodeRabbit App on this repo -> no-op.
     # Silent on purpose — an adopter without CodeRabbit must not notice that a
     # CodeRabbit gate exists. Note this turns OFF only the CodeRabbit-status
     # requirement; review_state_gate above is a generic unresolved-THREAD gate
@@ -1497,7 +1489,7 @@ cr_signal_gate() {
     [ "$CR_ARMED" -eq 1 ] || return 0
 
     local state
-    # HIMMEL-3360: CodeRabbit is best effort. Every state but success
+    # CodeRabbit is best effort. Every state but success
     # (pending, failure, error, absent, skipped, paged, anything this script
     # does not recognize) is advisory, never a block — and so is a status
     # read that FAILED: an unreadable advisory signal cannot be a gate
@@ -1512,7 +1504,7 @@ cr_signal_gate() {
     esac
 }
 
-# cr_body_gate — HIMMEL-1126/1147 (S1, see cr-body-findings.sh header):
+# cr_body_gate (see cr-body-findings.sh header):
 # CodeRabbit posts findings the thread gate above cannot see at all — outside-
 # diff-range / nitpick / additional comments living only in the review BODY
 # text, never as a resolvable thread. Runs after cr_signal_gate (concluded)
@@ -1582,7 +1574,7 @@ _cr_body_read() {
 }
 
 cr_body_gate() {
-    # Availability gate (HIMMEL-1125), same posture as cr_signal_gate above:
+    # Availability gate, same posture as cr_signal_gate above:
     # cr_body_findings lives in cr-body-findings.sh, which is only SOURCED when
     # CR_ARMED=1 (see the sourcing block near the top of this script) — reaching
     # past this early return while disarmed would call an undefined function.
@@ -1590,14 +1582,14 @@ cr_body_gate() {
 
     _cr_body_read
 
-    # HIMMEL-3360 operator ruling (2026-09-21): best effort covers ABSENCE
+    # operator ruling (2026-09-21): best effort covers ABSENCE
     # only — a rate-limited/silent/not-yet-posted CodeRabbit never waits or
     # re-triggers. It does NOT cover a finding CodeRabbit already POSTED: when
     # this head carries no review of its own (substantive=0, outside=0) but a
     # prior head DOES carry outside-diff findings (prior_outside>0), that
     # prior review still GOVERNS the gate — it must be dispositioned exactly
     # like a finding at this head, just keyed to the head that actually
-    # carries it. EVERY prior head with a posted finding governs (HIMMEL-3365),
+    # carries it. EVERY prior head with a posted finding governs,
     # not only the latest one — a newer prior review must not mask an older
     # head's undispositioned finding.
     if [ "$_cbg_prior_outside" -gt 0 ] && [ "$_cbg_substantive" -eq 0 ] && [ "$_cbg_outside" -eq 0 ]; then
@@ -1613,7 +1605,7 @@ cr_body_gate() {
     body_additional="$_cbg_additional"
 }
 
-# _cr_prior_outside_gate — HIMMEL-3365. head0 carries no review of its own, but
+# _cr_prior_outside_gate. head0 carries no review of its own, but
 # prior head(s) carry posted outside-diff findings (prior_outside>0): run the
 # outside gate over EVERY such head (cr_body_prior_outside_heads), each finding
 # keyed to the head that raised it, and report every undispositioned one in ONE
@@ -1638,9 +1630,9 @@ _cr_prior_outside_gate() {
     fi
 }
 
-# _cr_outside_gate <gate_head> <expected_count> [defer] — HIMMEL-3124. An outside-diff-
-# range finding has no thread, so it used to be clearable only by a commit
-# (which moves the head and discards CodeRabbit's review, HIMMEL-1252 — an
+# _cr_outside_gate <gate_head> <expected_count> [defer]. An outside-diff-
+# range finding has no thread, so it was once clearable only by a commit
+# (which moves the head and discards CodeRabbit's review, an
 # entire re-review over a Minor). Each one may instead carry an explicit,
 # adjudicated ledger disposition AT THIS EXACT HEAD (cr_ledger_outside_
 # dispositioned: deferred + tracked ticket + reason, or disproved + reason;
@@ -1650,7 +1642,7 @@ _cr_prior_outside_gate() {
 #
 # <gate_head> is head0 at the call site above, OR a PRIOR head that carries a
 # posted finding (_cr_prior_outside_gate calls this once per such head;
-# HIMMEL-3360 operator ruling: best effort covers ABSENCE at head0 only, not a
+# operator ruling: best effort covers ABSENCE at head0 only, not a
 # finding CodeRabbit already posted at a prior head). A non-empty [defer] (3rd
 # arg) turns the undispositioned exit 3 into `_cog_blocked=1` + return, after the
 # message is printed, so the caller can gate every prior head and exit 3 once
@@ -1719,7 +1711,7 @@ _cr_outside_gate() {
 }
 
 # _cbg_note — appended to the success line when non-blocking body findings
-# exist (HIMMEL-1147: the failure mode was invisibility, not permissiveness —
+# exist (the failure mode was invisibility, not permissiveness —
 # surface the count, never block on it alone).
 _cbg_note() {
     printf '%s' "${body_outside_note:-}"
@@ -1728,7 +1720,7 @@ _cbg_note() {
     fi
 }
 
-# merge_state_gate — HIMMEL-3473. The verdict equals GitHub's mergeStateStatus
+# merge_state_gate. The verdict equals GitHub's mergeStateStatus
 # at the watched head; nothing here models WHY GitHub says what it says. Any
 # state other than a mergeable one is re-read through --grace (UNKNOWN is "not
 # computed yet", and a BLOCKED can lag checks that just went green), then
@@ -1779,15 +1771,14 @@ if [ "$THREADS_ONLY" -eq 1 ]; then
         fi
         cr_signal_gate
 
-        # Re-verify threads AFTER CodeRabbit has concluded (codex CR round;
-        # mirrors the full path's post-watch re-verification, codex-adv
-        # 980-r2): CodeRabbit can post an unresolved thread and THEN flip its
+        # Re-verify threads AFTER CodeRabbit has concluded (this mirrors the full
+        # path's post-watch re-verification): CodeRabbit can post an unresolved thread and THEN flip its
         # status to success WHILE cr_signal_gate ran above — the pre-conclude
         # snapshot from the earlier unconditional review_state_gate call
         # (before this if) must not be the one that gets certified.
         review_state_gate
 
-        # Body findings (HIMMEL-3360: freshness is no longer gated here — a
+        # Body findings (freshness is no longer gated here — a
         # body becoming visible during the thread re-verification must not
         # slip past on a pre-refresh read).
         cr_body_gate
@@ -1805,13 +1796,13 @@ if [ "$THREADS_ONLY" -eq 1 ]; then
     exit 0
 fi
 
-# Watch round 1: authoritative red/green for the checks registered so far.
+# First watch: authoritative red/green for the checks registered so far.
 watch_round
 
-# Settle round (codex-adv-1): give slow-registering check runs time to appear,
-# then watch again — round 2 waits for (or fails fast on) any late arrivals.
+# Settle: give slow-registering check runs time to appear,
+# then watch again — the second watch waits for (or fails fast on) any late arrivals.
 if [ "$SETTLE" -gt 0 ]; then
-    # HIMMEL-4131: the settle wait comes out of the same --max-wait deadline.
+    # The settle wait comes out of the same --max-wait deadline.
     settle_for=$SETTLE
     if [ "$MAX_WAIT" -gt 0 ]; then
         settle_left=$(_budget_left)
@@ -1828,33 +1819,33 @@ if [ "$SETTLE" -gt 0 ]; then
 fi
 
 # A required check that STILL has not reported after the watch + settle had its
-# window (HIMMEL-3381): refuse now rather than certify a green GitHub will block.
+# window: refuse now rather than certify a green GitHub will block.
 required_gate 0
 
-# CodeRabbit must be PRESENT + CONCLUDED on this head (HIMMEL-1072). It runs
+# CodeRabbit must be PRESENT + CONCLUDED on this head. It runs
 # AFTER the watch/settle (that window is where a racing review posts) but BEFORE
-# the thread re-verification below, and that order is load-bearing
-# (coderabbit-11): threads-first loses a race — snapshot threads (clean) ->
+# the thread re-verification below, and that order is load-bearing:
+# threads-first loses a race — snapshot threads (clean) ->
 # CodeRabbit posts its findings and flips to success -> read the verdict
 # (success) -> exit 0 over threads never seen. Establishing that the reviewer
 # CONCLUDED first makes the thread set below final.
 cr_signal_gate
 
-# Re-verify review state AFTER the watch/settle (codex-adv 980-r2) and after the
+# Re-verify review state AFTER the watch/settle and after the
 # verdict: a review can request changes or a new unresolved thread can land
 # during a long watch without moving the head SHA — certifying the pre-watch
 # snapshot would let merge-on-green proceed over fresh blocking feedback.
 review_state_gate
 
-# Body findings (HIMMEL-1126/1147, S1): runs after the concluded + threads
+# Body findings: runs after the concluded + threads
 # re-verification above, before the final head re-bind (spec-ordered
 # concluded -> threads -> bodies -> head re-bind) — a body becoming visible
 # in the same post-watch window the other gates already re-check must not
-# slip past on a stale pre-watch read. HIMMEL-3360: review freshness is no
+# slip past on a stale pre-watch read. Review freshness is no
 # longer gated here — CodeRabbit is best effort.
 cr_body_gate
 
-# HIMMEL-3473 — GitHub's own verdict decides, last: our gates can all be green
+# GitHub's own verdict decides, last: our gates can all be green
 # while GitHub refuses the merge. Run after every other gate so a reported cause
 # of ours (red check, thread, body finding) still names itself first.
 merge_state_gate
