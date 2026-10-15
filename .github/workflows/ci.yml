@@ -381,7 +381,7 @@ jobs:
             exit 1
           fi
           gates="$RUNNER_TEMP/base-gates"
-          for p in scripts/lint/check-mcp-sdk-v1.sh scripts/hooks/check-fail-open-lint.sh scripts/hooks/check-pip-hashes.sh scripts/install/bundle-registry-lint.mjs; do
+          for p in scripts/lint/check-mcp-sdk-v1.sh scripts/hooks/check-pip-hashes.sh scripts/install/bundle-registry-lint.mjs; do
             mkdir -p "$gates/$(dirname "$p")"
             if ! git show "$BASE_SHA:$p" > "$gates/$p" || [ ! -s "$gates/$p" ]; then
               echo "tree-only gates: $p absent at base $BASE_SHA, cannot evaluate" >&2
@@ -393,9 +393,17 @@ jobs:
             echo "tree-only gates: himmelctl lib absent at base $BASE_SHA, cannot evaluate" >&2
             exit 1
           fi
+          # fail-open-lint cds to its repo root and runs the suite from there: judge the
+          # PR tree with the BASE suite, lint and fixtures laid over a copy of it
+          fo="$RUNNER_TEMP/fail-open-tree"
+          mkdir -p "$fo"
+          if ! git archive HEAD | tar -x -C "$fo" || ! git archive "$BASE_SHA" scripts/guardrails scripts/hooks/check-fail-open-lint.sh | tar -x -C "$fo"; then
+            echo "tree-only gates: fail-open suite absent at base $BASE_SHA, cannot evaluate" >&2
+            exit 1
+          fi
           rc=0
           bash "$gates/scripts/lint/check-mcp-sdk-v1.sh" "$PWD" || rc=1
-          bash "$gates/scripts/hooks/check-fail-open-lint.sh" || rc=1
+          (cd "$fo" && bash scripts/hooks/check-fail-open-lint.sh) || rc=1
           node "$gates/scripts/install/bundle-registry-lint.mjs" --root "$PWD" || rc=1
           git ls-files -z -- 'requirements*.txt' '*/requirements*.txt' | xargs -0 -r bash "$gates/scripts/hooks/check-pip-hashes.sh" || rc=1
           exit "$rc"

@@ -39,14 +39,22 @@ cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$S/scripts/"
 cp "$REPO_ROOT/scripts/lanes/lanes.json" "$S/scripts/lanes/"
 cp "$REPO_ROOT/docs/setup/settings-template.json" "$S/docs/setup/"
 cp -R "$REPO_ROOT/scripts/himmelctl" "$S/scripts/himmelctl"
-printf '#!/usr/bin/env bash\necho suite-ok\n' > "$S/scripts/guardrails/test-lint-fail-open.sh"
+cp -R "$REPO_ROOT/scripts/guardrails/." "$S/scripts/guardrails/"
+cp -R "$REPO_ROOT/scripts/hooks/." "$S/scripts/hooks/"
+cp -R "$REPO_ROOT/scripts/lanes/." "$S/scripts/lanes/"
+cp "$REPO_ROOT/.pre-commit-config.yaml" "$S/"
+# the other guard surfaces the fail-open suite expects to find
+mkdir -p "$S/scripts/graphify" "$S/scripts/telegram"
+cp "$REPO_ROOT/scripts/graphify/refresh-graph-map.sh" "$S/scripts/graphify/"
+cp "$REPO_ROOT/scripts/claude-codex" "$REPO_ROOT/scripts/claude-glm" "$REPO_ROOT/scripts/claude-routed" "$S/scripts/"
+cp "$REPO_ROOT/scripts/telegram/spawn-glm.ts" "$S/scripts/telegram/"
 printf 'pkg==1.0 --hash=sha256:abc\n' > "$S/requirements.txt"
 printf 'x\n' > "$S/a.txt"
 git -C "$S" add -A; git -C "$S" commit -q -m base
 BASE="$(git -C "$S" rev-parse HEAD)"
 
 run_step() { # <base sha> -> OUT, RC
-  OUT="$(cd "$S" && BASE_SHA="$1" RUNNER_TEMP="$S/tmp" bash "$STEP" 2>&1)"; RC=$?
+  OUT="$(cd "$S" && BASE_SHA="$1" RUNNER_TEMP="$T/rt" bash "$STEP" 2>&1)"; RC=$?
 }
 branch() { git -C "$S" checkout -q -B "$1" "$BASE"; }
 commit() { git -C "$S" add -A; git -C "$S" commit -q -m "$1"; }
@@ -72,14 +80,28 @@ if [ "$RC" -ne 0 ] && has "UNMAPPED zz-unmapped-row"; then pass "PR adding an un
 
 branch libweaken
 node -e 'const f=process.argv[1],fs=require("fs"),m=JSON.parse(fs.readFileSync(f,"utf8"));m.items.push({id:"zz-unmapped-row"});fs.writeFileSync(f,JSON.stringify(m,null,2))' "$S/scripts/install/manifest.json"
-{ printf 'process.exit(0);\n'; cat "$S/scripts/himmelctl/lib/config-feed.js"; } > "$S/tmp/cf.js"; cp "$S/tmp/cf.js" "$S/scripts/himmelctl/lib/config-feed.js"
+{ printf 'process.exit(0);\n'; cat "$S/scripts/himmelctl/lib/config-feed.js"; } > "$T/cf.js"; cp "$T/cf.js" "$S/scripts/himmelctl/lib/config-feed.js"
 commit libweaken
 run_step "$BASE"
 if [ "$RC" -ne 0 ] && has "UNMAPPED zz-unmapped-row"; then pass "PR weakening the himmelctl lib is still judged by the base copy"; else fail "libweaken -> rc=$RC: $OUT"; fi
 
 branch failopen; printf '#!/usr/bin/env bash\necho regression >&2\nexit 1\n' > "$S/scripts/guardrails/test-lint-fail-open.sh"; commit failopen
 run_step "$BASE"
-if [ "$RC" -ne 0 ]; then pass "PR breaking the fail-open lint suite fails"; else fail "failopen -> rc=$RC: $OUT"; fi
+if [ "$RC" -eq 0 ]; then pass "PR's own copy of the fail-open suite is ignored (base suite judges the tree)"; else fail "failopen -> rc=$RC: $OUT"; fi
+
+# a fail-open violation in a guard surface, shipped by a PR that also neuters the lint or its suite
+violation() { cp "$S/scripts/guardrails/fixtures/fail-open/instance1-unreadable-denylist.sh.fxt" "$S/scripts/hooks/zz-fail-open.sh"; }
+branch violation; violation; commit violation
+run_step "$BASE"
+if [ "$RC" -ne 0 ] && has "zz-fail-open.sh"; then pass "PR adding a fail-open violation fails"; else fail "violation -> rc=$RC: $OUT"; fi
+
+branch lintneuter; violation; printf '#!/usr/bin/env bash\nexit 0\n' > "$S/scripts/guardrails/lint-fail-open.sh"; commit lintneuter
+run_step "$BASE"
+if [ "$RC" -ne 0 ] && has "zz-fail-open.sh"; then pass "PR neutering lint-fail-open.sh is still judged by the base lint"; else fail "lintneuter -> rc=$RC: $OUT"; fi
+
+branch suiteneuter; violation; printf '#!/usr/bin/env bash\nexit 0\n' > "$S/scripts/guardrails/test-lint-fail-open.sh"; commit suiteneuter
+run_step "$BASE"
+if [ "$RC" -ne 0 ] && has "zz-fail-open.sh"; then pass "PR neutering the suite is still judged by the base suite"; else fail "suiteneuter -> rc=$RC: $OUT"; fi
 
 branch weaken
 printf '#!/usr/bin/env bash\nexit 0\n' > "$S/scripts/hooks/check-pip-hashes.sh"
