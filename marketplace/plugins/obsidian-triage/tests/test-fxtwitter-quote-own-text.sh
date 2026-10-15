@@ -405,7 +405,7 @@ https://t.co/iDl6I25AQu
 EOF
 
 # -- Clip 11: quote-only clip whose author added NO text of their own ---
-# . There is nothing to body-fill; the fix marks this terminal
+# There is nothing to body-fill; the fix marks this terminal
 # so a later --reenrich-quote-only run does not refetch and rewrite it.
 cat >"$vault_no_own_text/Clippings/tweet-quote-no-text.md" <<'EOF'
 ---

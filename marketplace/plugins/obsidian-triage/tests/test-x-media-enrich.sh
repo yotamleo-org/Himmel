@@ -714,7 +714,7 @@ assert "_done same.md -> _media/same-7002/ (distinct, no collision)" ok "$a"
 
 # --- Test 15: _splice_crawled preserves x-media provenance when splicing into
 # an EXISTING ## Crawled content section from an earlier fxtwitter pass
-# . Before the fix, the existing-section branch started at the
+# Before the fix, the existing-section branch started at the
 # first ### heading and dropped the <!-- media-enriched ... via x-media -->
 # comment, so --apply-digest's provenance guard refused every such clip.
 echo "Test 15: _splice_crawled preserves provenance into an EXISTING crawled section (HIMMEL-1235)"

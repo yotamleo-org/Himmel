@@ -207,7 +207,6 @@ def canonicalize(url: str):
 
     # youtube.com / youtu.be → youtube.com/watch?v=<id>. The id is re-encoded,
     # so a crafted v=X%26a%3Db stays one value and a second pass is a no-op
-    #.
     if host in {"youtu.be", "www.youtu.be"}:
         vid = unquote(path.lstrip("/").split("/")[0])
         return f"https://youtube.com/watch?v={quote(vid, safe='')}" if vid else url

@@ -260,7 +260,7 @@ assert "preflight no longer names the removed switch" absent "$a"
 export IG_SCRAPLING_PYTHON="$tmp/scrapling-python"
 
 # --- Test 12: wall-clock budget stops the batch and still prints the summary
-# . The stub helper hangs; the per-clip timeout is capped by what
+# The stub helper hangs; the per-clip timeout is capped by what
 # is left of the budget, and no clip starts once it is spent.
 echo "Test 12: --budget"
 make_vault "$tmp/v12" SCRP0012

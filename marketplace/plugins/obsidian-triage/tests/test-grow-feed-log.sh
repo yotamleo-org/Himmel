@@ -155,8 +155,7 @@ assert "grow-feed-log.mjs parses" ok "$s"
 # -- Test 2: usage / arg errors ----------------------------------------------
 # Every invocation below dies before reaching vault resolution (msg-id/mode/
 # required-flag/sender checks all run before resolveVault in main()) — but
-# per NO test may rely on that ordering
-# staying that way. Every one still passes an explicit --vault at a scratch
+# NO test may rely on that ordering staying that way. Every one still passes an explicit --vault at a scratch
 # dir that doesn't even need to exist (never reached), so none of them could
 # ever touch the operator's real default vault even under a future refactor.
 echo "Test 2: usage / arg errors"
