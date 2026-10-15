@@ -1204,7 +1204,7 @@ contains 'a wrapped (FREE) leg with no session is a real procs=0 (HIMMEL-3277)' 
 # The doc under test is the REAL docs/handover/console-template.md, not a fixture
 # copy of its line: the template shipped `legs: <none dispatched yet, or
 # `N1:<nonce>:<lock-token>:<pid>`, `N2:…`>`, whose two backtick spans are exactly
-# the entry shape the parser was taught the parser to read. RED control
+# the entry shape the parser was taught to read. RED control
 # (pre-fix template, this fixture, a console that has dispatched nothing):
 #   livestate=MALFORMED:N2;DRIFT:N1
 tpl3287="$HERE/../../../docs/handover/console-template.md"
@@ -1218,7 +1218,7 @@ case "$o3287" in
 esac
 # The template's other three defects, pinned against its own text. (b) the
 # tick no longer runs as a 30-min Monitor re-arm loop (a test pinned the
-# cap; the console-wait.sh event waiter replaced the loop with the console-wait.sh event waiter);
+# cap; console-wait.sh replaced the loop with an event waiter);
 # (c) a bare --legs name resolves against the handover ROOT and reads
 # NOTFOUND; (d) an unquoted --model {{MODEL}} is a zsh glob (claude-opus-5[1m]).
 tick3287="$(grep -F '| tick |' "$tpl3287")"

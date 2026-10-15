@@ -1163,7 +1163,7 @@ if [ "$RESOLVED_AUTOCOMPACT" != "200000" ] && [ "$AB_ARM" != "400k" ]; then
     # positional - a var it consumes in THIS SAME process tree, so a plain
     # export (never leg_propagate_env) is the right channel, same convention
     # leg_propagate_env's own header documents for HEADED_ARM_REPO etc. The
-    # The scrub above already ran unconditionally and unset any
+    # scrub above already ran unconditionally and unset any
     # ambient value before this point; this is a deliberate, narrow re-set
     # for the one sanctioned exec below, not a change to that scrub. Any
     # further headed-arm-leg.sh launch this leg itself makes re-scrubs it
