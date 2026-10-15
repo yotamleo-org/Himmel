@@ -348,10 +348,10 @@ PLUGIN_DAEMON="${QMD_DAEMON_SCRIPT:-$SCRIPT_DIR/../../marketplace/plugins/qmd/sc
 stale_verdicts() { # <script>: stale/live verdict per lock-dir shape
     bash -c '
         eval "$(sed -n "/^swap_lock_stale() {/,/^}/p" "$1")"
-        d=$(mktemp -d) || exit 1; trap "rm -rf $d" EXIT
+        d=$(mktemp -d) || exit 1; trap "rm -rf \"\$d\"" EXIT
         mkdir "$d/dead" "$d/live" "$d/nopid-fresh" "$d/nopid-old" "$d/junk"
         echo 2147483646 >"$d/dead/pid"; echo "$$" >"$d/live/pid"; echo abc >"$d/junk/pid"
-        touch -d "10 minutes ago" "$d/nopid-old" "$d/junk"
+        touch -t 200001010000 "$d/nopid-old" "$d/junk"
         for n in dead live nopid-fresh nopid-old junk; do
             if swap_lock_stale "$d/$n"; then echo "$n stale"; else echo "$n live"; fi
         done' _ "$1"
