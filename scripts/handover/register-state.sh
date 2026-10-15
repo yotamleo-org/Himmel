@@ -96,6 +96,7 @@ fi
 case "$USER_ARG" in *[!A-Za-z0-9._-]*|.|..) echo "ERR register-state: user slug must be [A-Za-z0-9._-]: $USER_ARG" >&2; exit 1 ;; esac
 NAME="${NAME:-$(slugify "$(basename "$REPO_PATH")")}"
 BUCKET="${BUCKET:-$(slugify "$(basename "$REPO_PATH")")}"
+case "$BUCKET" in ''|*[!a-z0-9-]*) echo "ERR register-state: bucket name must be kebab-case: $BUCKET" >&2; exit 1 ;; esac
 case "$NAME" in ''|*[!a-z0-9-]*) echo "ERR register-state: name must be kebab-case: $NAME" >&2; exit 1 ;; esac
 [ "${#NAME}" -le 30 ] || { echo "ERR register-state: name longer than 30 chars: $NAME" >&2; exit 1; }
 

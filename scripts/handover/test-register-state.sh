@@ -51,6 +51,10 @@ run --repo-path "$tmp/beta" --state-host "$state2" --user '../evil' --registry "
 [ "$rc" -eq 1 ] && [ ! -e "$tmp/evil" ] || fail "a user slug with path separators must be rejected (rc=$rc: $out)"
 echo "ok: user slug validated"
 
+run --repo-path "$tmp/beta" --state-host "$state2" --user tester --registry "$tmp/reg3.json" --bucket-name '../evil'
+[ "$rc" -eq 1 ] && [ ! -e "$tmp/reg3.json" ] || fail "a bucket name with path separators must be rejected (rc=$rc: $out)"
+echo "ok: bucket name validated"
+
 mkdir "$tmp/reg2.json.lock"
 run --repo-path "$tmp/beta" --state-host "$state2" --user tester --registry "$tmp/reg2.json" --init-if-empty
 [ "$rc" -eq 2 ] || fail "a held registry lock must refuse (rc=$rc: $out)"
