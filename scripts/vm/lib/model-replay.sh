@@ -81,10 +81,18 @@ replay_run() {
   mkdir -p "$slot" || return 1
   # The checksum lands last: a recording interrupted before it reads as invalid.
   rm -f "$slot/artifact.sha256"
-  # Per-process staging names: two runs recording the same key never share a temp file.
-  cp "$art" "$slot/artifact.$$.tmp" && mv "$slot/artifact.$$.tmp" "$slot/artifact" \
-    && replay_sha256 < "$slot/artifact" > "$slot/artifact.sha256.$$.tmp" \
-    && mv "$slot/artifact.sha256.$$.tmp" "$slot/artifact.sha256" || return 1
+  # mktemp staging names: two runs recording the same key never share a temp file,
+  # even as background subshells of one process (where $$ is identical).
+  local stage_a stage_s
+  stage_a=$(mktemp "$slot/artifact.XXXXXX") || return 1
+  stage_s=$(mktemp "$slot/artifact.sha256.XXXXXX") || { rm -f "$stage_a"; return 1; }
+  if cp "$art" "$stage_a" && replay_sha256 < "$stage_a" > "$stage_s" \
+    && mv "$stage_a" "$slot/artifact" && mv "$stage_s" "$slot/artifact.sha256"; then
+    :
+  else
+    rm -f "$stage_a" "$stage_s"
+    return 1
+  fi
   REPLAY_MODE_USED=record
   return 0
 }
