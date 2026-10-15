@@ -78,7 +78,7 @@ fi
 # ref while the primary worktree owns that checkout. That made
 # `git diff <default>...HEAD` re-flag every shell/script file that was
 # already on origin/<default> but not yet in the linked worktree's local
-# copy - producing the friction we hit, -110, -108 etc.
+# copy.
 # origin/<default> is the actual push target; comparing against it is what
 # the gate is conceptually about. <default> = main OR master.
 #
