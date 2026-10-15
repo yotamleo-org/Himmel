@@ -64,3 +64,11 @@ test("no bus store: no edges and zero counts, and nothing is created", async () 
   expect(b.sessions.every((s: any) => s.bus.unacked === 0 && s.bus.undelivered === 0 && s.bus.unbound === false)).toBe(true);
   expect(existsSync(join(dir, "state", "himmel"))).toBe(false);
 });
+
+test("an unanswered ruling past its expiry no longer counts as pending", async () => {
+  const { port, root } = await boot(true);
+  const old = Date.now() - 3 * 24 * 3600_000;
+  await append(root, FLEET.idle.name, { t: old, b: "x", c: 1, i: "OLD", f: FLEET.console.name, r: FLEET.idle.name });
+  const b = await fleet(port);
+  expect(b.sessions.find((s: any) => s.name === FLEET.idle.name).bus).toMatchObject({ unacked: 0, undelivered: 0 });
+});

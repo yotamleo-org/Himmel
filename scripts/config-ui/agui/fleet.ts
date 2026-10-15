@@ -199,15 +199,15 @@ const BUS_KINDS = new Set(["ruling", "report", "proposal", "data"]);
 
 // The bus's edges and each session's counts, from busEvents' metadata; an unreadable or absent store is no traffic.
 async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: string) => BusCounts }> {
-  type Msg = { f?: string | null; r?: string | null; t?: number; c?: number; kind?: string; delivered?: boolean; acked?: boolean };
+  type Msg = { f?: string | null; r?: string | null; t?: number; c?: number; kind?: string; delivered?: boolean; acked?: boolean; expired?: boolean };
   const msgs = new Map<string, Msg>();
   try {
     for await (const e of busEvents(root)) {
-      const d = e.delta[0], m = /^\/bus\/msgs\/([^/]+)(?:\/(delivered|acked))?$/.exec(d.path);
+      const d = e.delta[0], m = /^\/bus\/msgs\/([^/]+)(?:\/(delivered|acked|expired))?$/.exec(d.path);
       if (!m) continue;
       const msg = msgs.get(m[1]) ?? {};
       msgs.set(m[1], msg);
-      if (m[2]) msg[m[2] as "delivered" | "acked"] = true;
+      if (m[2]) msg[m[2] as "delivered" | "acked" | "expired"] = true;
       else Object.assign(msg, { f: plain(d.value.f), r: plain(d.value.r), t: d.value.t, c: d.value.c, kind: d.value.kind });
     }
   } catch { return { edges: [], of: () => NO_BUS }; }
@@ -216,14 +216,14 @@ async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: strin
   const edges = new Map<string, BusEdge>(), rows = new Map<string, BusCounts>();
   for (const msg of msgs.values()) {
     if (!msg.f || !msg.r || msg.t === undefined) continue; // a follow-up whose send is gone
-    const ruling = msg.c === 1 && !msg.acked;
+    const ruling = msg.c === 1 && !msg.acked && !msg.expired;
     const edge = edges.get(`${msg.f}\0${msg.r}`) ?? { from: msg.f, to: msg.r, n: 0, unacked: 0, lastAt: 0, kinds: {} };
     edges.set(`${msg.f}\0${msg.r}`, edge);
     const kind = BUS_KINDS.has(msg.kind ?? "") ? msg.kind! : "data";
     edge.n++; edge.unacked += ruling ? 1 : 0; edge.lastAt = Math.max(edge.lastAt, msg.t); edge.kinds[kind] = (edge.kinds[kind] ?? 0) + 1;
     const row = rows.get(msg.r) ?? { ...NO_BUS };
     rows.set(msg.r, row);
-    row.undelivered += msg.delivered ? 0 : 1; row.unacked += ruling ? 1 : 0;
+    row.undelivered += msg.delivered || msg.expired ? 0 : 1; row.unacked += ruling ? 1 : 0;
   }
   return { edges: [...edges.values()], of: (name) => ({ ...(rows.get(name) ?? NO_BUS), unbound: !!peers[name] && peers[name].pid === undefined }) };
 }
