@@ -56,6 +56,11 @@ fire permission_prompt eeee9999-0000 HIMMEL_CONSOLE_LEG=1
 fire permission_prompt aaaa1111-2222 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=my-console HIMMEL_PROMPT_ALERT_DEBOUNCE=0
 [ "$(count)" = 3 ] && ok "debounce 0 re-sends" || bad "debounce 0 re-sends"
 
+printf '#!/usr/bin/env bash\nexit 1\n' > "$T/fail-send.sh"
+jq -n '{notification_type:"permission_prompt",session_id:"ffff0000-1111",cwd:"/w/x"}' \
+    | env HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=my-console HIMMEL_PROMPT_ALERT_DIR="$T/state" HIMMEL_INBOX_SEND="$T/fail-send.sh" bash "$HOOK" >/dev/null 2>&1
+[ ! -e "$T/state/ffff0000-1111" ] && ok "failed delivery does not start the debounce window" || bad "failed delivery does not start the debounce window"
+
 printf 'not json' | env HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=c bash "$HOOK" >/dev/null 2>&1
 [ $? -eq 0 ] && ok "malformed stdin exits 0" || bad "malformed stdin exits 0"
 

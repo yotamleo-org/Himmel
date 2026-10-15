@@ -54,6 +54,8 @@ expect "SKIP=no-history-comments commit" allow "$WT" Bash "SKIP=no-history-comme
 expect "primary checkout passes through" pass "$T/repo" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
 expect "non-registered dir passes through" pass "$T/plain" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
 expect "linked worktree outside .claude/worktrees passes through" pass "$T/outside-wt" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
+mkdir -p "$WT/sub"
+expect "worktree subdirectory passes through" pass "$WT/sub" Bash "bash scripts/check-ci.sh 123 --max-wait 600"
 expect "non-Bash tool passes through" pass "$WT" Edit "bash scripts/check-ci.sh 123 --max-wait 600"
 expect "unlisted SKIP hook passes through" pass "$WT" Bash "SKIP=check-commit-msg git commit -F .tmp/msg.txt"
 expect "chained command passes through" pass "$WT" Bash "bash scripts/check-ci.sh 123 --max-wait 600; rm -rf /"

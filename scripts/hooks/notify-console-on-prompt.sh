@@ -46,11 +46,12 @@ if [ -f "$stamp" ]; then
     last="$(stat -c %Y "$stamp" 2>/dev/null || echo 0)"
     [ $((now - last)) -ge "$debounce" ] || exit 0
 fi
-: > "$stamp" 2>/dev/null || exit 0
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 sender="${HIMMEL_INBOX_SEND:-$here/../handover/console-kit/inbox-send.sh}"
 [ -r "$sender" ] || exit 0
 leg="$(basename "${cwd:-unknown}")"
-timeout 8 bash "$sender" "$HIMMEL_CONSOLE_NAME" "PARKED-ON-PROMPT leg=$leg session=${sid%%-*} - stopped on a permission prompt; the operator answers it, the console never does" >/dev/null 2>&1
+if timeout 8 bash "$sender" "$HIMMEL_CONSOLE_NAME" "PARKED-ON-PROMPT leg=$leg session=${sid%%-*} - stopped on a permission prompt; the operator answers it, the console never does" >/dev/null 2>&1; then
+    : > "$stamp" 2>/dev/null
+fi
 exit 0

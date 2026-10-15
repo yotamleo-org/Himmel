@@ -47,6 +47,8 @@ gitdir="$(git -C "$cwd" rev-parse --path-format=absolute --git-dir 2>/dev/null)"
 common="$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || exit 0
 [ "$gitdir" != "$common" ] || exit 0
 case "$top" in */.claude/worktrees/*) ;; *) exit 0 ;; esac
+# A relative script path resolves against cwd, so only the worktree root is allowed.
+[ "$(cd "$cwd" && pwd -P)" = "$(cd "$top" && pwd -P)" ] || exit 0
 git -C "$cwd" worktree list --porcelain 2>/dev/null | grep -Fxq "worktree $top" || exit 0
 
 shapes="${HIMMEL_GATE_SHAPES_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/data/gate-shapes.tsv}"
