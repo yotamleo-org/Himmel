@@ -599,7 +599,7 @@ assert_contains "e2: RED CONTROL -- unrelated job survives a failed self-clean" 
 #     task whose OWN prior runner had gone stale (parked, not yet fired)
 #     pruned that file first; if the replacement write then failed for a
 #     reason unrelated to the prune, schedule_arm exited 4 having already
-#     deleted the runner -- and because defers the old crontab
+#     deleted the runner -- and because schedule_arm defers the old crontab
 #     entry's replacement until the NEW job is registered, that untouched old
 #     entry is left installed pointing at a now-missing file.
 #

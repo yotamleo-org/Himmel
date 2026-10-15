@@ -1933,7 +1933,7 @@ out=$(TMPDIR="$TMP" SCHED_DB="$DB28E" SCHED_DB_DIR="$DB28ED" SCHTASKS_CMD="$STAT
 rc=$?
 assert_rc "T28c --dedup-any on empty scheduler arms (rc 0)" 0 "$rc"
 
-# T28d (re-pointed ): --dedup-any --force is NO
+# T28d (re-pointed): --dedup-any --force is NO
 # LONGER destructive to foreign chains. Pre-1563 its broad dedup scope matched
 # EVERY resume job, so the --force replace loop reaped every HIMMEL-Resume-*
 # task on the box — two queued FOREIGN sibling arms (distinct handovers, not
@@ -2631,7 +2631,7 @@ case "$(uname -s)" in
         assert_contains "S1 cron/at bakes -n <ticket> <name>" '-n HIMMEL-702\ demo' "$out" ;;
 esac
 
-# S2 (semantics extended ): ticketless handover, no worktree ->
+# S2 (semantics extended): ticketless handover, no worktree ->
 # the handover-slug fallback names the session from the file stem (the
 # no-Jira adopter path). Pre-716 this case was fail-open (no -n); the truly
 # nothing-derivable fail-open now lives in S9 (empty template render).
@@ -4685,7 +4685,7 @@ assert_not_contains "1640 leg B did not arm" "RESUME ARMED" "$out"
 
 # Leg C (codex-adv r2): a REAL frontmatter ticket whose closing `---` was
 # truncated. Silently yielding no strict ticket here would bypass the
-# mutex (leg A already holds an armed slot ) and
+# mutex (leg A already holds an armed slot) and
 # schedule a duplicate resume — the fail-open direction. Must hard-refuse
 # (rc 1) with the parse error, before any scheduler mutation.
 HO_1640_C="$R1640/leg-c-truncated.md"

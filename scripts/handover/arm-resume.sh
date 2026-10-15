@@ -7,7 +7,7 @@
 #   1. dedupes against the CURRENT handover's HIMMEL-Resume-<name> job
 #      in the OS scheduler — refuses (rc=3) or replaces with --force,
 #      so we never end up with two claude sessions cron-relaunched for
-#      the SAME handover (the user's stated requirement ).
+#      the SAME handover (the user's stated requirement).
 #      Distinct handovers each get their own slot; pass
 #      --dedup-any to instead defer to ANY existing slot (the auto-arm
 #      watchdog safety-arm semantics — never queue a duplicate relaunch).
@@ -1068,7 +1068,7 @@ fi
 # not stderr -- this is a report, not an error.
 echo "arm-resume: $MODEL_REASON"
 
-# --context resolution (default re-pinned ):
+# --context resolution (default re-pinned):
 # the ONLY structural fix for a station silently running a 1M window on
 # every session -- a stray [1m] suffix on the operator's user-level `model`
 # setting drove ~25-35% of the weekly token bank, and dropping the suffix
@@ -1908,7 +1908,7 @@ command -v _arm_registry_identity_root >/dev/null 2>&1 || _arm_registry_identity
 command -v _arm_registry_identity_path >/dev/null 2>&1 || _arm_registry_identity_path() { printf 'absolute:%s' "$1"; }
 # The registry SCAN helper needs a fallback too.
 # The scans below call it unconditionally, and a partially-deployed
-# handover-path.sh that predates exports handover_root + the JSON
+# handover-path.sh that predates the matcher yet exports handover_root + the JSON
 # helpers but NOT this matcher — so without this the scan aborts under set -e,
 # and with an initially empty registry that abort lands AFTER the scheduler has
 # already been written: an irreversible action reported as a failure, inviting a
