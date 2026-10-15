@@ -12,9 +12,9 @@ frontmatter naming source, sha and deviations. The reference files are verbatim.
 |---|---|---|
 | `skills/correct/SKILL.md` | `pstack/skills/correct/SKILL.md` | none |
 | `skills/blast-radius/SKILL.md` | `pstack/skills/blast-radius/SKILL.md` | none |
-| `skills/create-verification-skill/SKILL.md` | `pstack/skills/create-verification-skill/SKILL.md` | none |
+| `skills/create-verification-skill/SKILL.md` | `pstack/skills/create-verification-skill/SKILL.md` | `.cursor/skills/` paths are `.claude/skills/` |
 | `skills/create-verification-skill/references/**` | `pstack/skills/create-verification-skill/references/**` | none (verbatim) |
-| `skills/maintain-verification-skill/SKILL.md` | `pstack/skills/maintain-verification-skill/SKILL.md` | none |
+| `skills/maintain-verification-skill/SKILL.md` | `pstack/skills/maintain-verification-skill/SKILL.md` | `.cursor/skills/` path is `.claude/skills/` |
 | `skills/benchmark-checklist/SKILL.md` | `pstack/skills/benchmark-checklist/SKILL.md` | none |
 | `skills/principle-explain-the-number/SKILL.md` | `pstack/skills/principle-explain-the-number/SKILL.md` | link to unshipped `principle-prove-it-works` made plain text |
 | `skills/in-your-own-words/SKILL.md` | `pstack/skills/in-your-own-words/SKILL.md` | none |

@@ -4,7 +4,7 @@ description: "Periodic pass that keeps a project's verification skill and featur
 disable-model-invocation: true
 ---
 
-<!-- Vendored from cursor/plugins pstack/skills/maintain-verification-skill/SKILL.md at 99743e9c151c8537cbbf1f98bb38f34ef3368453 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: none. -->
+<!-- Vendored from cursor/plugins pstack/skills/maintain-verification-skill/SKILL.md at 99743e9c151c8537cbbf1f98bb38f34ef3368453 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: generated-skill path `.cursor/skills/` is `.claude/skills/`, the directory Claude discovers. -->
 
 # Maintain a verification skill
 
@@ -24,7 +24,7 @@ Only edit the verification skill's own directory (its SKILL.md, features/, and a
 
 ## Pass
 
-0. **Locate the target.** Find the verification skill to maintain: the project-local skill whose body has launch/drive sections and a feature map (usually `.cursor/skills/verify-*/`). Several candidates → ask which one; none → stop and point at `/create-verification-skill` instead of inventing a target.
+0. **Locate the target.** Find the verification skill to maintain: the project-local skill whose body has launch/drive sections and a feature map (usually `.claude/skills/verify-*/`). Several candidates → ask which one; none → stop and point at `/create-verification-skill` instead of inventing a target.
 
 1. **Index hygiene.** Read the feature map README and glob its sibling files. Fix missing, extra, duplicate, or dead entries. Lightweight; no generated inventory.
 
