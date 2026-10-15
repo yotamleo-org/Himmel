@@ -36,8 +36,7 @@ export function readCache(cacheRootOverride, cwd) {
   if (typeof data.name !== 'string' || data.name.length === 0) return null;
   // Strict string compare — Windows case-folding and POSIX-symlink resolution
   // are NOT normalized here. False-negative (cwd looks different than cached)
-  // is safe: worst case is one extra `gh repo view` call. See HIMMEL-106 §4
-  // for rationale.
+  // is safe: worst case is one extra `gh repo view` call.
   if (data.cwd !== cwd) return null;
   return data;
 }

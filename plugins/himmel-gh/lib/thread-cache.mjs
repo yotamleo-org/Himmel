@@ -90,7 +90,7 @@ export function readThreadCache(cacheRootOverride, owner, repo, number) {
     return null;
   }
   if (!data || typeof data !== 'object' || Array.isArray(data) || !data.threads) return null;
-  // Schema-version gate (HIMMEL-106 RepoContextCache precedent). A legacy or
+  // Schema-version gate (same as RepoContextCache). A legacy or
   // future version triggers a single refetch — safer than silently returning
   // a misshaped object.
   if (data.schema_version !== SCHEMA_VERSION) {

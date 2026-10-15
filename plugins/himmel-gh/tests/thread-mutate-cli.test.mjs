@@ -115,9 +115,9 @@ describe('thread-reply-cli / thread-resolve-action-cli — no-cache', () => {
   });
 });
 
-// Bitbucket forge route: stub bitbucket CLI via env. Runs on Windows too
-// (HIMMEL-345) — the JSON-array BITBUCKET_CLI is parsed as exact argv, so the
-// space in process.execPath no longer hits the (space-splitting) legacy path.
+// Bitbucket forge route: stub bitbucket CLI via env. Runs on Windows too:
+// the JSON-array BITBUCKET_CLI is parsed as exact argv, so the space in
+// process.execPath never reaches the (space-splitting) legacy path.
 describe('thread mutate CLIs — bitbucket forge route', () => {
   let stub;
   function writeBbStub(body) {

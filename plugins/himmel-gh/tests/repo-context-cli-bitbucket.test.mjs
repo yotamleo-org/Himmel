@@ -20,7 +20,7 @@ function envBb(extras = {}) {
   const env = {
     ...process.env,
     FORGE: 'bitbucket',
-    // JSON-array form (HIMMEL-345): exact argv, no space-split — safe on Windows
+    // JSON-array form: exact argv, no space-split — safe on Windows
     // where process.execPath contains a space (C:\Program Files\nodejs\node.exe).
     BITBUCKET_CLI: JSON.stringify([process.execPath, stub]),
     ...extras,
@@ -43,9 +43,9 @@ beforeEach(() => {
   cacheRoot = join(workDir, 'cache');
 });
 
-// Runs on Windows too (HIMMEL-345): BITBUCKET_CLI now takes a JSON-array form
-// parsed as exact argv, so the space in process.execPath (Program Files) no
-// longer hits the (space-splitting) legacy path — same seam the thread CLIs use.
+// Runs on Windows too: BITBUCKET_CLI takes a JSON-array form parsed as exact
+// argv, so the space in process.execPath (Program Files) never reaches the
+// (space-splitting) legacy path — same seam the thread CLIs use.
 describe('repo-context-cli — bitbucket forge', () => {
   it('repo view JSON {workspace, repo_slug} → owner=workspace name=repo_slug', () => {
     writeStub(

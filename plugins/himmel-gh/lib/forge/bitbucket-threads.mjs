@@ -42,7 +42,7 @@ export async function listThreads({ number, env = process.env, cwd = process.cwd
   } catch (e) {
     throw new Error(`bitbucket pr comments: parse error: ${e.message}`);
   }
-  // `pr comments` wraps the threads in { threads, truncated, pages } (HIMMEL-344)
+  // `pr comments` wraps the threads in { threads, truncated, pages }
   // so a page-capped list isn't mistaken for a complete one. Return the mapped
   // nodes array (the forge-agnostic shape downstream consumes), and surface the
   // truncation on stderr so the caller knows the cache it builds is partial.

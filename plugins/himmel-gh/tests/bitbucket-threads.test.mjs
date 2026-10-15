@@ -104,7 +104,7 @@ describe('bitbucket-threads backend', () => {
   });
 
   it('listThreads throws on a valid-JSON payload missing the threads array', async () => {
-    // The pre-HIMMEL-344 bare-array shape must now be rejected, not silently
+    // The old bare-array shape must be rejected, not silently
     // mishandled — the contract is { threads: [...] }.
     writeStub(`process.stdout.write('[]'); process.exit(0);`);
     await expect(listThreads({ number: 5, cli: cli() })).rejects.toThrow(/expected \{ threads/);

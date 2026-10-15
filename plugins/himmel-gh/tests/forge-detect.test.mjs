@@ -76,7 +76,7 @@ describe('detectForge — safe github default', () => {
   });
 });
 
-// HIMMEL-3337: the forge is the origin URL's HOST (the domain or a subdomain of
+// The forge is the origin URL's HOST (the domain or a subdomain of
 // it), never a substring of the URL. Driven by the answer table forge.sh's own
 // suite and status-report's suite read (scripts/lib/fixtures/forge-origins.tsv),
 // so this matcher is held to the same answers as forge_detect. `none` (neither

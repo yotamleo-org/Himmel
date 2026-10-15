@@ -41,7 +41,7 @@ describe('buildPrefixMap', () => {
     // Two threads with identical SHA-256 hashes can only happen via duplicate
     // input ids — GraphQL guarantees thread ids are unique. Surface this as a
     // loud error rather than fabricating a disambiguation suffix that would
-    // break lookupPrefix.startsWith semantics. See W5 in HIMMEL-99 round-1 fix.
+    // break lookupPrefix.startsWith semantics.
     const threads = [
       { id: 'PRRT_dup', path: 'a.ts', line: 1, isResolved: false },
       { id: 'PRRT_dup', path: 'b.ts', line: 2, isResolved: false },

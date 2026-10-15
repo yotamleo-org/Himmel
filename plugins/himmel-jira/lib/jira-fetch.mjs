@@ -7,10 +7,9 @@ function repoRoot() {
     const dir = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
     return dirname(dir);
   } catch (e) {
-    // Pre-HIMMEL-108 the non-ENOENT arm silently fell back to cwd, masking
-    // the case where a corrupt/bare/missing local git state caused the plugin
-    // to load the WRONG .env (cwd) or no creds at all (cwd has no .env) → 401
-    // with no clue why. Mirror the HIMMEL-101 fix in scripts/jira/src/client.ts:
+    // Falling back to cwd silently would mask a corrupt/bare/missing local git
+    // state: the plugin would load the WRONG .env (cwd) or no creds at all
+    // (cwd has no .env) → 401 with no clue why. Mirrors scripts/jira/src/client.ts:
     // surface every non-ENOENT failure with the underlying error message so
     // an operator can diagnose, and keep the ENOENT branch specific so the
     // "git not on PATH" case stays distinguishable in logs.

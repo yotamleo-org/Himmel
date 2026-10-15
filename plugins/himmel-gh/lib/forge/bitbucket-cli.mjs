@@ -7,7 +7,7 @@
 // Two forms: a JSON array (`["node","C:\\…\\index.js"]`) is parsed as an exact
 // argv with NO splitting — the Windows-safe form, since `process.execPath`
 // contains a space (`C:\Program Files\nodejs\node.exe`) that the space-split
-// form mangles (HIMMEL-345); any other string is space-split for back-compat.
+// form mangles; any other string is space-split for back-compat.
 
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';

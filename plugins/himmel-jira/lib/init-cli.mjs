@@ -41,7 +41,7 @@ if (args.discover) {
   loadEnvIntoProcess(envFile);
   // No hardcoded HIMMEL/LUNA — resolve the project(s) to cache from config so
   // the plugin is portable for users who don't work on himmel (mirrors the
-  // CLI's HIMMEL-146 JIRA_PROJECT_KEY portability). resolveProjects honours
+  // CLI's JIRA_PROJECT_KEY portability). resolveProjects honours
   // --projects > JIRA_PROJECTS (comma-list) > JIRA_PROJECT_KEY. No project
   // configured → fail loud, never silently default to HIMMEL.
   const projects = resolveProjects({ rawArg: args.projects, env: process.env });

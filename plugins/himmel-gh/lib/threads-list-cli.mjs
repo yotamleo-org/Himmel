@@ -41,7 +41,7 @@ function execGhApi(owner, repo, number) {
     // Mapping null → 0 would silently hide the kill and trip downstream JSON.parse
     // with an empty stdout (confusing "parse error"). Match init-flow / repo-context-cli
     // pattern: synthesise exitCode 129 (signal) or 1 (unknown) and surface the
-    // signal name in stderr. See HIMMEL-106 (#100).
+    // signal name in stderr.
     proc.on('close', (code, signal) => {
       const exitCode = code ?? (signal ? 129 : 1);
       const finalStderr = signal ? `${stderr}gh killed by signal ${signal}\n` : stderr;

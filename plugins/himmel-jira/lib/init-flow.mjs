@@ -93,7 +93,7 @@ export async function discoverMetadata(projectsToTrack) {
       if (!found) {
         // Don't silently drop a configured key — every other degraded path in
         // this function warns; a typo'd/no-access key would otherwise cache 0
-        // projects with no clue why (HIMMEL-334).
+        // projects with no clue why.
         process.stderr.write(`[jira-init] warning: configured project '${k}' not found via /project/search (typo or no access?) — skipping; it will NOT be cached\n`);
       }
       return found;
@@ -122,7 +122,7 @@ export async function discoverMetadata(projectsToTrack) {
     try {
       // Enhanced JQL search endpoint — the old /search?jql= was removed
       // (Atlassian CHANGE-2046, HTTP 410); /search/jql returns the same
-      // `issues` shape (HIMMEL-337).
+      // `issues` shape.
       const search = await jiraFetch('GET', `/search/jql?jql=project=${p.key}&maxResults=1&fields=summary`);
       if (search.issues?.[0]) {
         const tx = await jiraFetch('GET', `/issue/${search.issues[0].key}/transitions`);

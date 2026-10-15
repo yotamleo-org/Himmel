@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { bitbucketCli } from '../lib/forge/bitbucket-cli.mjs';
 
-// HIMMEL-345: BITBUCKET_CLI accepts a JSON-array form parsed as exact argv (no
+// BITBUCKET_CLI accepts a JSON-array form parsed as exact argv (no
 // space-split), so a path containing a space — e.g. Windows'
 // C:\Program Files\nodejs\node.exe in process.execPath — survives intact. The
 // legacy space-split string form stays for back-compat.

@@ -1,6 +1,6 @@
 // forge/detect.mjs — the plugin's forge answer, delegated to
-// scripts/lib/project-mode.mjs (HIMMEL-4762, HIMMEL-4748 I2: one owner decides
-// the forge; this file no longer reads the origin host itself).
+// scripts/lib/project-mode.mjs (one owner decides the forge; this file does
+// not read the origin host itself).
 //
 // Precedence is project-mode's: env.FORGE > git config himmel.forge > the
 // origin HOST (github.com / bitbucket.org or a subdomain). The plugin drives

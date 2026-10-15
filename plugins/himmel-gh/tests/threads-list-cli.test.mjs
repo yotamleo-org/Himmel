@@ -122,7 +122,7 @@ describe.skipIf(IS_WIN)('threads-list-cli signal-killed gh subprocess', () => {
 });
 
 // Bitbucket forge route (spec §5.3): FORGE=bitbucket + a node-stub bitbucket CLI
-// that emits the `pr comments` payload. Runs on Windows too (HIMMEL-345): the
+// that emits the `pr comments` payload. Runs on Windows too: the
 // JSON-array BITBUCKET_CLI form is parsed as exact argv with no space-split, so
 // the space in process.execPath (C:\Program Files\nodejs\node.exe) is safe.
 describe('threads-list-cli — bitbucket forge route', () => {
