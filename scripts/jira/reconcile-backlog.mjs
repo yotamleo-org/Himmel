@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// scripts/jira/reconcile-backlog.mjs — HIMMEL-374 pure-code backlog reconciler.
+// scripts/jira/reconcile-backlog.mjs — pure-code backlog reconciler.
 //
-// Structural fix for Jira backlog drift (HIMMEL-195 philosophy): classify
+// Structural fix for Jira backlog drift: classify
 // every open ticket against the merged-commit corpus with the deterministic
 // rules in reconcile-lib.mjs, then comment+transition. No model calls.
 //
@@ -80,7 +80,7 @@ export function loadConfig(path) {
 // LEFT ALONE / decided-but-not-written) of the hygiene-sweep report is
 // "already adjudicated" — including the LEFT ALONE rows that carry no Jira
 // comment at all (the gap this reconciler must not blindly re-close).
-// All of the report's tables share one markdown shape: `| HIMMEL-1234 | ...`.
+// All of the report's tables share one markdown shape: `| <KEY> | ...`.
 export function loadHygieneKeys(path) {
   if (!path) return new Set();
   if (!existsSync(path)) {
@@ -208,7 +208,7 @@ function makeJiraClient(jiraCliPath) {
   };
 }
 
-// HIMMEL-3127: the orchestration loop main() used to run inline against real
+// The orchestration loop main() used to run inline against real
 // I/O (network Jira calls baked into loadCommentBodies/loadDescription,
 // makeJiraClient's subprocess). Extracted here with every I/O boundary
 // injected so the /backlog-reconcile surface's operator-approval gate is
@@ -324,7 +324,7 @@ async function main() {
     );
     process.exit(1);
   }
-  // HIMMEL-3128: --apply requires an explicit --max-close N so a run can
+  // --apply requires an explicit --max-close N so a run can
   // never close more than N tickets without that being a deliberate choice
   // (defence in depth on top of the evidence-rule fix — the only writing
   // disposition on the backlog is CLOSE). No default N: an unset cap would

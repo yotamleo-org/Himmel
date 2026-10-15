@@ -11,7 +11,7 @@ function repoRoot(): string {
     ).trim();
     return dirname(gitCommonDir);
   } catch (e) {
-    // Pre-HIMMEL-101 this silently fell back to cwd, which masked the case
+    // Falling back to cwd here would silently mask the case
     // where a corrupt/bare/missing local git state caused jira CLI to load
     // the WRONG .env (cwd) or no creds at all (cwd has no .env) → 401 with
     // no clue why. Surface the underlying error so an operator can diagnose.
@@ -41,7 +41,7 @@ function loadEnv(): void {
   }
 }
 
-// HIMMEL-111: normalize JIRA_* env vars regardless of how they got into
+// Normalize JIRA_* env vars regardless of how they got into
 // process.env. The loadEnv() path above already trims (CRLF-safe), but
 // `bash source ~/.config/himmel-cli/jira.env` with a CRLF file (common
 // after Windows->Linux scp) preserves the trailing \r in the value, and
@@ -77,7 +77,7 @@ loadEnv();
 normalizeEnv();
 
 export const baseUrl = (): string => {
-  // HIMMEL-286: no hardcoded default. A stranger who sets a token but
+  // No hardcoded default. A stranger who sets a token but
   // not the base URL must fail loud here — never silently send requests
   // to the author's instance.
   const url = process.env.JIRA_BASE_URL;
@@ -91,7 +91,7 @@ export const baseUrl = (): string => {
 };
 
 export const projectKey = (): string => {
-  // HIMMEL-146: no hardcoded default. Operators must set
+  // No hardcoded default. Operators must set
   // JIRA_PROJECT_KEY explicitly so this plugin is portable across
   // repos/projects without code edits.
   const key = process.env.JIRA_PROJECT_KEY;

@@ -14,7 +14,7 @@ import { resolveTitle, registerCreate } from './create.js';
 import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 
-// A body that satisfies the HIMMEL-5226 plain-block rule.
+// A body that satisfies the plain-block rule.
 const PLAIN = PLAIN_BLOCK_TEMPLATE;
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
@@ -105,7 +105,7 @@ describe('create — command wiring (--summary → POST /issue payload)', () => 
   });
 });
 
-// HIMMEL-4489: a Bug defaults to the earliest unreleased version at the filing point.
+// A Bug defaults to the earliest unreleased version at the filing point.
 describe('create — Bug default fixVersion wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -244,7 +244,7 @@ describe('create --fix-version (HIMMEL-3713)', () => {
   });
 });
 
-// HIMMEL-5226: a body without the plain Impact/What/Why block is refused.
+// A body without the plain Impact/What/Why block is refused.
 describe('create — plain block rule (HIMMEL-5226)', () => {
   beforeEach(() => {
     vi.clearAllMocks();

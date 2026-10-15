@@ -1,4 +1,4 @@
-// scripts/jira/reconcile-lib.mjs — HIMMEL-374/378 pure-code backlog reconciler.
+// scripts/jira/reconcile-lib.mjs — pure-code backlog reconciler.
 //
 // Pure classification + evidence matching. No network, no subprocess, no
 // filesystem here — reconcile-backlog.mjs owns all I/O (git log, the jira CLI)
@@ -27,7 +27,7 @@ const REVERT_RE = /^revert(:|\b|\s*")/i;
 // the TICKET is done when the ticket's own acceptance criterion is an
 // outcome outside the repository — a flipped repo setting, a served URL,
 // a published package/release, a DNS/dashboard change, an enabled
-// third-party integration. HIMMEL-2875 is the known-positive case: the
+// third-party integration. The reopened Pages ticket is the known-positive case: the
 // merged commit delivered a content audit + Pages config prep, but the
 // ticket's acceptance was the live URL (`curl -sI ... -> 200`), and
 // enabling Pages is an operator-only repo setting the description reserves
@@ -60,13 +60,13 @@ export function describeOutcome(descriptionText) {
   return text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd).trim();
 }
 
-// HIMMEL-3128: a bare `[KEY]` on a commit subject only proves ONE commit
+// A bare `[KEY]` on a commit subject only proves ONE commit
 // landed for this ticket, not that the ticket's own scope is finished — and
 // himmel's commit convention puts the ticket key in every commit subject, so
 // subject-match alone has near-zero evidential value for a ticket that ships
-// across several PRs (HIMMEL-2975's "1. Relay / 2. Judge" Proposal section,
-// HIMMEL-2977's "Scope ... 1. Baseline / 2. minerva grill / 3. Quality
-// scorecard / 4. Deliverables"). A description declaring ≥2 numbered items,
+// across several PRs (a "1. Relay / 2. Judge" Proposal section, or a
+// "Scope ... 1. Baseline / 2. minerva grill / 3. Quality scorecard /
+// 4. Deliverables" list). A description declaring ≥2 numbered items,
 // or ≥2 distinct task-id markers (`T25`, `Task 9`), is multi-task by
 // construction; a SINGLE numbered item (most descriptions have one somewhere)
 // is not a decomposition and must not trigger this, or nearly every CLOSE
@@ -106,8 +106,8 @@ export function ticketKeyPattern(key) {
 // The bracketed-tag form `[KEY]` is the strong signal: a commit deliberately
 // filed under that ticket. A bare word-boundary mention (no brackets) is
 // weaker — often a cross-reference to related work filed under a DIFFERENT
-// ticket's brackets (e.g. HIMMEL-1833 mentioned inside a commit tagged
-// [HIMMEL-1887]). Callers use this to avoid promoting a cross-reference to
+// ticket's brackets (e.g. one key mentioned inside a commit tagged
+// with another). Callers use this to avoid promoting a cross-reference to
 // a full subject match.
 export function hasBracketedTag(subject, key) {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

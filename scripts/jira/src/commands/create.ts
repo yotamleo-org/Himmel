@@ -95,7 +95,7 @@ export function registerCreate(program: Command): void {
         } else {
           found = lintPlainBlock('');
         }
-        // HIMMEL-5226: the plain Impact/What/Why block is required; Epic and Subtask only warn.
+        // The plain Impact/What/Why block is required; Epic and Subtask only warn.
         const verdict = plainBlockVerdict(options.type, found);
         if (verdict.action === 'refuse') {
           console.error(verdict.message);
@@ -111,7 +111,7 @@ export function registerCreate(program: Command): void {
         }
         // A Bug without an explicit --fix-version defaults to the earliest
         // unreleased version; an unreadable/empty version list files with no
-        // fixVersion rather than guess (HIMMEL-4489). The release gate is the
+        // fixVersion rather than guess. The release gate is the
         // v1-blocker label and priority, not the version default.
         if (options.fixVersion === undefined && options.type.toLowerCase() === 'bug') {
           let defaultVersion: string | undefined;
@@ -131,7 +131,7 @@ export function registerCreate(program: Command): void {
 
         const result = await request<CreateIssueResponse>('POST', '/issue', { fields });
         // Breadcrumb BEFORE attachments (same rationale as comment): the issue
-        // exists even if a later attachment upload fails (HIMMEL-618 F11).
+        // exists even if a later attachment upload fails.
         writeJiraBreadcrumb(result.key);
 
         // Print the issue key to STDOUT immediately on success, BEFORE

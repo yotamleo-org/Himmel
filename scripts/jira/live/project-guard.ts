@@ -1,4 +1,4 @@
-// HIMMEL-4642: the live suite's project guard, kept out of jira-live.test.ts so
+// The live suite's project guard, kept out of jira-live.test.ts so
 // a default (non-live) run can unit-test it.
 const PROJECT_KEY = /^[A-Z][A-Z0-9_]+$/;
 

@@ -17,7 +17,7 @@ interface JiraCommentResp {
 
 const PAGE_MAX = 100;
 
-// HIMMEL-3164. /issue/<key>/comment paginates (startAt/maxResults/total), so a
+// /issue/<key>/comment paginates (startAt/maxResults/total), so a
 // single GET silently drops everything past the first page. Walk it by offset
 // (same query-string idiom as list.ts's searchAllIssues, but offset- not
 // token-based: this endpoint returns no cursor). The offset advances by the

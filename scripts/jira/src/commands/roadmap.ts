@@ -5,8 +5,8 @@ import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { resolveBoard } from './sprint.js';
 import { checkDate } from './versions.js';
 
-// HIMMEL-3890: the roadmap lives in Jira custom fields (design doc section 1,
-// scoring from the HIMMEL-3882 frame sections 2 and 5). Fields are always
+// The roadmap lives in Jira custom fields (design doc section 1,
+// scoring from the frame sections 2 and 5). Fields are always
 // addressed by the id resolved from their display name, never by a hardcoded
 // id, so the CLI survives a re-created field; a missing field fails loud.
 

@@ -1,4 +1,4 @@
-// HIMMEL-4642: tracks what the live suite creates so an afterAll can undo it
+// Tracks what the live suite creates so an afterAll can undo it
 // even when an assertion failed midway.
 export interface Teardown {
   trackIssue(key: string): void;

@@ -70,7 +70,7 @@ describe('formatComments', () => {
   });
 });
 
-// HIMMEL-3164. Jira paginates /issue/<key>/comment (startAt/maxResults/total);
+// Jira paginates /issue/<key>/comment (startAt/maxResults/total);
 // a single GET silently drops everything past the first page, and `--last N`
 // then slices the tail of that first page instead of the newest N.
 function pageOf(n: number, from: number): JiraCommentEntry[] {

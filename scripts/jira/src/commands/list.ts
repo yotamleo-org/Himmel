@@ -8,7 +8,7 @@ import type { JiraIssue, JiraSearchResult } from '../types.js';
 // touching types.ts, which this ticket's scope excludes.
 type IssueWithLabels = JiraIssue & { fields: JiraIssue['fields'] & { labels?: string[] } };
 
-// HIMMEL-3890: Planning and Ready sit between To Do and In Progress in the roadmap
+// Planning and Ready sit between To Do and In Progress in the roadmap
 // workflow; without them those tickets vanish from the default list.
 const DEFAULT_STATUSES = ['To Do', 'Planning', 'Ready', 'In Progress'];
 
@@ -109,8 +109,7 @@ export async function searchAllIssues(
   let token: string | undefined;
   // Guard against a Jira cursor that does not advance: a repeated nextPageToken
   // paired with non-empty pages would otherwise loop forever, pushing duplicate
-  // issues until `target`. Track consumed tokens and fail loud on a repeat
-  // (HIMMEL-1624).
+  // issues until `target`. Track consumed tokens and fail loud on a repeat.
   const seenTokens = new Set<string>();
 
   do {

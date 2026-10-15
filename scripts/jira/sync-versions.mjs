@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/jira/sync-versions.mjs — HIMMEL-3429: Jira fixVersions mirror the
+// scripts/jira/sync-versions.mjs — Jira fixVersions mirror the
 // GitHub release tags.
 //
 //   1. Every published GitHub release becomes a Jira project version with the

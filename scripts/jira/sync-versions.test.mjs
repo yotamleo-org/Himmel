@@ -367,7 +367,7 @@ describe('checkNotTruncated', () => {
   });
 });
 
-// Real fixture git repos on disk — HIMMEL-3431 item 1. A shallow clone's tag
+// Real fixture git repos on disk. A shallow clone's tag
 // refs exist but `git rev-list` from them may not reach the true root, so the
 // guard has to observe real git shallow-clone behavior, not a fake.
 function gitRepo(dir, args) {
@@ -426,7 +426,7 @@ describe('runSync — shallow-clone guard', () => {
   });
 });
 
-// HIMMEL-3431 item 3 — a trailing option with no value must be rejected, not
+// A trailing option with no value must be rejected, not
 // silently fall back (a trailing --repo used to fall back to the local repo
 // even under --apply; a trailing --v1-keys used to silently skip the v1 step).
 describe('CLI option-value validation', () => {

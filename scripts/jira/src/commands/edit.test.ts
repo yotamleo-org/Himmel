@@ -169,7 +169,7 @@ describe('edit --add-labels (HIMMEL-3610)', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { request } = await import('../client.js');
     mockRequest = request as unknown as ReturnType<typeof vi.fn>;
-    // PUT returns {}; the HIMMEL-4644 read-back GET returns the labels.
+    // PUT returns {}; the read-back GET returns the labels.
     mockRequest.mockImplementation(async (method: string) =>
       method === 'GET' ? { fields: { labels: ['a', 'b'] } } : {},
     );
@@ -233,7 +233,7 @@ describe('edit --fix-version / --add-fix-version (HIMMEL-3713)', () => {
     mockRequest = request as unknown as ReturnType<typeof vi.fn>;
     mockRequest.mockImplementation(async (method: string, path: string) => {
       if (method !== 'GET') return {};
-      // /versions GETs return the known versions; the HIMMEL-4644 issue read-back
+      // /versions GETs return the known versions; the issue read-back
       // returns the fixVersions the edit set.
       return path.endsWith('/versions') ? KNOWN_VERSIONS : { fields: { fixVersions: [{ name: 'v1.0.0' }] } };
     });

@@ -108,7 +108,7 @@ export function markdownToAdf(md: string): AdfDoc {
     // heading
     const hMatch = line.match(/^(#{1,3})\s+(.+)$/);
     if (hMatch) {
-      // HIMMEL-101 §10: clamp defensively even though the regex `#{1,3}` already
+      // Clamp defensively even though the regex `#{1,3}` already
       // bounds the count. If a future regex relaxation allows #{1,6}, this clamp
       // keeps the ADF type-correct (and a violation surfaces as a runtime guard,
       // not a silent type cast).

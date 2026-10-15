@@ -145,7 +145,7 @@ export function createTools(): JiraTool[] {
         } else {
           found = lintPlainBlock('');
         }
-        // HIMMEL-5226: same plain Impact/What/Why rule as the CLI create.
+        // Same plain Impact/What/Why rule as the CLI create.
         const verdict = plainBlockVerdict(args.type as string, found);
         if (verdict.action === 'refuse') throw new Error(verdict.message);
         if (args.parent) fields['parent'] = { key: args.parent };

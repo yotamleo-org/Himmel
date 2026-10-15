@@ -3,7 +3,7 @@ import { request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import type { JiraTransition } from '../types.js';
 
-// HIMMEL-197: Jira Cloud REST API does NOT support direct project-change
+// Jira Cloud REST API does NOT support direct project-change
 // on an issue. The pattern here is close-and-recreate:
 //   0. PRE-FLIGHT GET /project/<to-project> — fail fast if target invalid
 //   1. GET source (summary, description, issuetype)
@@ -22,7 +22,7 @@ import type { JiraTransition } from '../types.js';
 // (target key, comments copied/total, failed-comment IDs) so the operator can
 // finish manually rather than re-running and double-creating the target.
 //
-// Out of scope (v2 follow-ups documented in HIMMEL-197):
+// Out of scope (v2 follow-ups):
 // - attachments (binary upload + size limits)
 // - custom fields (need per-field project mapping)
 // - worklogs
@@ -244,7 +244,7 @@ export function registerMove(program: Command): void {
           console.log(`Created ${created.key}`);
           // Breadcrumb on the source ticket: the move has mutated Jira (target
           // created) even if a later step (comment copy / transition) partially
-          // fails, so the SessionEnd nudge must not fire (HIMMEL-618 F5/F11).
+          // fails, so the SessionEnd nudge must not fire.
           writeJiraBreadcrumb(srcKey);
 
           // 4. Copy comments — per-iteration try/catch so a single failure does

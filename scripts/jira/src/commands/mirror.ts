@@ -9,7 +9,7 @@ import type { ADFDocument } from '../adf-render.js';
 import { fetchAllComments } from './comments.js';
 import type { JiraCommentEntry } from './comments.js';
 
-// HIMMEL-3889. Jira -> markdown mirror: one <KEY>.md per issue under a root
+// Jira -> markdown mirror: one <KEY>.md per issue under a root
 // outside any repo/vault, plus a qmd collection over it. Read-only against Jira.
 
 const PAGE_MAX = 100;

@@ -1,4 +1,4 @@
-// HIMMEL-4640: opt-in LIVE integration suite for the Jira CLI. It writes to a
+// Opt-in LIVE integration suite for the Jira CLI. It writes to a
 // real Jira project, reads each change back and asserts the field really
 // changed (the silent-no-op class). Never part of default CI:
 //

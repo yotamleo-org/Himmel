@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-// Contract test for the `--list-commands` introspection flag (HIMMEL-231).
+// Contract test for the `--list-commands` introspection flag.
 //
 // The block-mcp-when-plugin-exists.sh hook derives its blocked-set by
 // running `node dist/index.js --list-commands`. That output is therefore a

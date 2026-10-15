@@ -57,7 +57,7 @@ registerRoadmap(program);
 registerRank(program);
 registerResolution(program);
 
-// HIMMEL-159: expose the CLI verbs over the Model Context Protocol on stdio.
+// Expose the CLI verbs over the Model Context Protocol on stdio.
 // The MCP SDK is heavy, so import it lazily inside the action — keeping it out
 // of the hot path for every other verb (and `--list-commands` below).
 program
@@ -68,7 +68,7 @@ program
     await runMcpServer();
   });
 
-// Machine-readable command introspection (HIMMEL-231). Emits one
+// Machine-readable command introspection. Emits one
 // registered verb name per line, then exits 0 — a STABLE surface the
 // block-mcp-when-plugin-exists hook derives its blocked-set from, so the
 // hook no longer hand-maintains a literal list that drifts when this CLI

@@ -15,8 +15,8 @@ import {
   TOOL_EVIDENCE_MARKER,
 } from './reconcile-lib.mjs';
 
-// Real HIMMEL-2975 description (fetched 2026-09-17): the ticket the 40 %
-// false-positive audit named as the known-positive case for HIMMEL-3128 —
+// Real description (fetched 2026-09-17): the ticket the 40 %
+// false-positive audit named as a known-positive case —
 // task T27 of its scope (PR #754) shipped, and subject-match alone would
 // CLOSE it while T25/T26/T28 and the remaining design work are still open.
 // The description's "Proposal" section is a genuine 2-item numbered list
@@ -31,7 +31,7 @@ Split the console into two roles:
 Acceptance
 - One full shift run relay+judge; Fable turns per shift ≤ 40 % of the baseline; no missed READY→GO; no lock held by the relay.`;
 
-// Real HIMMEL-2977 description (fetched 2026-09-17): the second known-positive
+// Real description (fetched 2026-09-17): the second known-positive
 // case — the P0 instrumentation commit (#689) is one precondition step of a
 // 4-item numbered Scope list, not the ticket's actual deliverable (the
 // scorecard re-baseline).
@@ -45,7 +45,7 @@ Scope — one design leg, minerva-driven, escalation-only
 Acceptance
 - Baseline file exists with every metric sourced; the bench run's manifest is referenced.`;
 
-// Real HIMMEL-2875 description (fetched 2026-09-16): closed on a merged
+// Real description (fetched 2026-09-16): closed on a merged
 // commit that delivered only the leg-owned prep (content audit + Pages
 // config); the ticket's acceptance criterion is the live URL, and enabling
 // Pages is an operator-only repo setting the description reserves
@@ -375,7 +375,7 @@ describe('classifyTicket — HIMMEL-3128: multi-task tickets never CLOSE on thei
   };
 
   // The RED control this ticket's DONE WHEN names: the PRE-FIX rule (no
-  // hasNumberedTaskList check) closed HIMMEL-2975 on this exact subject —
+  // hasNumberedTaskList check) closed the multi-task ticket on this exact subject —
   // see the manual demonstration pasted into the PR body/handover, which
   // instantiates the pre-fix reconcile-lib.mjs against this same fixture.
   // This test is the fixed rule's GREEN: it must not CLOSE here.

@@ -4,8 +4,8 @@ import { formatIssue, formatIssueWithDescription, printJson } from '../output.js
 import type { JiraIssue } from '../types.js';
 import { SECTOR_FIELD, sectorOf } from './sector.js';
 
-// Local widening: the get.ts fields query includes `labels` (HIMMEL-3610) and
-// `fixVersions` (HIMMEL-3713), but the shared JiraIssue type does not declare
+// Local widening: the get.ts fields query includes `labels` and
+// `fixVersions`, but the shared JiraIssue type does not declare
 // them — kept local rather than touching types.ts, which this ticket's scope
 // excludes.
 type IssueWithLabels = JiraIssue & {
@@ -53,7 +53,7 @@ export function registerGet(program: Command): void {
         printJson(issue);
       } else if (options.short) {
         // --short is documented as one-line header only (backward-compatible
-        // with the pre-HIMMEL-121 output) and is consumed as a single line by
+        // with the earlier output) and is consumed as a single line by
         // scripts/handover/pr-open.sh — never append the labels line here.
         console.log(formatIssue(issue));
       } else {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { searchAllIssues } from './list.js';
 
-// HIMMEL-1602. Jira Cloud's /search/jql SILENTLY clamps maxResults to 100 —
+// Jira Cloud's /search/jql SILENTLY clamps maxResults to 100 —
 // asking for 999 returns exactly 100, with no error and nothing to say more
 // exist. Every count taken through this CLI was therefore quietly truncated:
 // a consolidation pass read "100 open tickets" when the real figure was 389.
@@ -83,7 +83,7 @@ describe('searchAllIssues', () => {
   });
 
   it('throws on a repeated nextPageToken with non-empty pages', async () => {
-    // HIMMEL-1624: the empty-page guard cannot catch a cursor that does not
+    // The empty-page guard cannot catch a cursor that does not
     // advance — a non-empty page repeating the same token would loop forever,
     // pushing duplicates until `target`. Fail loud instead.
     const req = vi

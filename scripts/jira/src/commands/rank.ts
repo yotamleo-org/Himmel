@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { agileRequest } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 
-// HIMMEL-3890: board order is the roadmap's placement order. Agile REST
+// Board order is the roadmap's placement order. Agile REST
 // PUT /issue/rank moves up to 50 issues per call (API max) before or after one
 // anchor issue; a partial failure answers 207 with per-issue entries.
 

@@ -47,7 +47,7 @@ export function registerComment(program: Command): void {
         }
         await request('POST', `/issue/${key}/comment`, { body });
         // Breadcrumb BEFORE attachments: the comment mutation has landed even
-        // if a later attachment upload fails and we exit 1 (HIMMEL-618 F11).
+        // if a later attachment upload fails and we exit 1.
         writeJiraBreadcrumb(key);
 
         // Print the success indicator to STDOUT immediately, BEFORE

@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 
-// HIMMEL-3890: resolution is not on the edit screen, so PUT /issue cannot set
+// Resolution is not on the edit screen, so PUT /issue cannot set
 // it. The roadmap workflow owns it instead: every transition's post-function
 // sets it from the target status (Done/Closed/In Public -> Done, wont do/wont
 // fix -> Won't Do, anything else -> cleared). Re-running the current status's

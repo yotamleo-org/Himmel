@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-// HIMMEL-618: jira-mutation breadcrumb.
+// Jira-mutation breadcrumb.
 //
 // Every mutating verb (transition, comment, create, move, edit, assign,
 // worklog, link, unlink, sprint) calls writeJiraBreadcrumb(<ticket>) immediately after

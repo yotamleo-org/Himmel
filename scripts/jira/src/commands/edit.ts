@@ -58,13 +58,13 @@ export function buildEditFields(opts: EditOptions): Record<string, unknown> {
   // that otherwise forced an MCP editJiraIssue fallback (blocked by the
   // plugin-first hook).
   if (opts.parent) fields['parent'] = { key: opts.parent };
-  // --labels is FULL-REPLACE (HIMMEL-243): the comma-separated set becomes
+  // --labels is FULL-REPLACE: the comma-separated set becomes
   // the issue's complete label list — any existing label not in the set is
-  // removed. Use --add-labels (HIMMEL-3610) for an incremental, non-destructive
+  // removed. Use --add-labels for an incremental, non-destructive
   // append instead.
   if (opts.labels !== undefined) fields['labels'] = parseLabels(opts.labels);
   // --fix-version is FULL-REPLACE, same rationale as --labels: a single-valued
-  // field the operator explicitly wants set. --add-fix-version (HIMMEL-3713)
+  // field the operator explicitly wants set. --add-fix-version
   // appends via Jira's atomic `update` operation instead.
   if (opts.fixVersion !== undefined) fields['fixVersions'] = [{ name: opts.fixVersion }];
   if (opts.sector !== undefined) fields[SECTOR_FIELD] = { value: resolveSector(opts.sector) };
@@ -81,14 +81,14 @@ export function buildEditFields(opts: EditOptions): Record<string, unknown> {
   return fields;
 }
 
-// Jira's atomic `update` operation for labels (HIMMEL-3610): unlike `fields.labels`
+// Jira's atomic `update` operation for labels: unlike `fields.labels`
 // (full-replace), `update.labels: [{ add: '<label>' }, ...]` appends without ever
 // reading or replacing the issue's existing label set.
 export function buildAddLabelsUpdate(addLabels: string): { labels: Array<{ add: string }> } {
   return { labels: parseLabels(addLabels).map((label) => ({ add: label })) };
 }
 
-// Jira field names edit sends, in read-back order (HIMMEL-4644).
+// Jira field names edit sends, in read-back order.
 function readBackFieldNames(o: EditOptions): string[] {
   const names: string[] = [];
   if (o.priority) names.push('priority');
@@ -255,10 +255,10 @@ export function registerEdit(program: Command): void {
       }
       if (Object.keys(update).length > 0) body.update = update;
       await request('PUT', `/issue/${key}`, body);
-      // HIMMEL-4640: a 2xx PUT does not prove the field changed (Jira can drop a
+      // A 2xx PUT does not prove the field changed (Jira can drop a
       // field its edit screen or scheme does not take), so read the priority
       // back and fail loud instead of reporting a silent no-op as "edited".
-      // HIMMEL-4644: same for every other field edit sends — one GET covers all.
+      // Same for every other field edit sends — one GET covers all.
       const names = readBackFieldNames(options);
       if (names.length > 0) {
         const got = await request<{ fields?: Record<string, unknown> }>(

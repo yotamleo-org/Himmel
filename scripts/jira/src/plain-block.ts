@@ -1,4 +1,4 @@
-// HIMMEL-5226: the ticket shape. Every ticket body opens with a plain-language
+// The ticket shape. Every ticket body opens with a plain-language
 // Impact / What / Why block (readable without knowing the code), then an
 // "Agent detail" section (files, contract, done-when, suites). `create` refuses
 // a body without it; the roadmap tracker reads the Impact section.

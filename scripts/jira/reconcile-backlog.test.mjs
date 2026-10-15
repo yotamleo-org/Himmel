@@ -169,7 +169,7 @@ describe('loadCommits', () => {
   });
 });
 
-// HIMMEL-3127: the /backlog-reconcile surface's operator-approval gate is
+// The /backlog-reconcile surface's operator-approval gate is
 // `apply` on this injectable orchestration entrypoint — the only thing that
 // decides whether the loop ever calls into jiraClient. A fixture backlog
 // with a CLOSE-worthy commit proves the classifier still finds the

@@ -4,7 +4,7 @@ import { createTools, buildServer, type ToolDeps, type JiraTool } from './mcp.js
 import { markdownToAdf } from './adf.js';
 import { PLAIN_BLOCK_TEMPLATE } from './plain-block.js';
 
-// Unit coverage for the MCP surface (HIMMEL-159). We mock the underlying
+// Unit coverage for the MCP surface. We mock the underlying
 // client (`request` / `uploadAttachment`) and assert that every one of the
 // tools (a) is registered, (b) carries an input schema, and (c) on a
 // happy-path invocation routes to the client with the same payload the
@@ -95,7 +95,7 @@ describe('MCP server wiring', () => {
   it('CallTool error path: non-Error throwable yields String() text (HIMMEL-292)', async () => {
     // Make the `get` tool's request throw a plain string — not an Error instance.
     const throwingRequest = vi.fn(async () => {
-      // oxlint-disable-next-line no-throw-literal -- deliberate non-Error throw; the test verifies String() fallback (HIMMEL-2163)
+      // oxlint-disable-next-line no-throw-literal -- deliberate non-Error throw; the test verifies String() fallback
       throw 'plain string error';
     });
     const deps = { request: throwingRequest, uploadAttachment: vi.fn() } as unknown as ToolDeps;

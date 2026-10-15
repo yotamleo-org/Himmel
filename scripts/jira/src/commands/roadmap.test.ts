@@ -334,7 +334,7 @@ describe('syncSprints', () => {
   });
 
   it('keeps an issue on several dated versions in the earliest-releasing sprint', async () => {
-    // HIMMEL-5 is on both versions and already sits in v1.0.0's sprint 7.
+    // The issue is on both versions and already sits in v1.0.0's sprint 7.
     const api = stub({
       'GET /project/HIMMEL/versions': [versions[1], versions[0]],
       [search(jql('v1.0.0'))]: issues('HIMMEL-5'),

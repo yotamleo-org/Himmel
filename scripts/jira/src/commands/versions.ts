@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 
-// HIMMEL-3429: Jira project versions (the fixVersions pick-list) mirror the
+// Jira project versions (the fixVersions pick-list) mirror the
 // GitHub release tags. REST v3: GET /project/{key}/versions is unpaginated (a
 // plain array); POST /version creates; PUT /version/{id} releases; an issue's
 // fixVersions is multi-valued and edited with the add/remove `update` verbs so
@@ -34,12 +34,12 @@ export interface VersionCreateOptions {
   released?: boolean;
 }
 
-// HIMMEL-3890: the start date is what `roadmap sync-sprints` uses as a sprint start.
+// The start date is what `roadmap sync-sprints` uses as a sprint start.
 export type VersionEditOptions = Pick<VersionCreateOptions, 'description' | 'startDate' | 'releaseDate'> & {
   name?: string;
 };
 
-// HIMMEL-4872: a version name must be semver (vX.Y.Z, optional -pre.N) so git can
+// A version name must be semver (vX.Y.Z, optional -pre.N) so git can
 // tag it; a letter milestone like v1.0.2b cannot be tagged and drifts from GitHub.
 const SEMVER_VERSION = /^v\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$/;
 
@@ -126,7 +126,7 @@ export interface VersionArchiveOptions {
   force?: boolean;
 }
 
-// HIMMEL-4469: archiving hides a version from the fixVersion pick-list. It is
+// Archiving hides a version from the fixVersion pick-list. It is
 // refused while issues still carry the version (counted via relatedIssueCounts)
 // unless --force; --unarchive restores it and never needs the check.
 export async function archiveVersion(
@@ -177,7 +177,7 @@ export interface VersionMoveOptions {
 
 const MOVE_POSITIONS = ['First', 'Last'];
 
-// HIMMEL-4006: Jira appends a new version at the END of the release list; this
+// Jira appends a new version at the END of the release list; this
 // repositions one (POST /version/{id}/move) so a trail version sits by its parent.
 export async function moveVersion(
   project: string,
@@ -207,7 +207,7 @@ export async function moveVersion(
   return `Moved version ${name} to ${opts.position}`;
 }
 
-// HIMMEL-3713: shared validation so `edit --fix-version`/`--add-fix-version`
+// Shared validation so `edit --fix-version`/`--add-fix-version`
 // and `create --fix-version` fail loud on a typo'd version name instead of
 // silently no-oping or surfacing a bare Jira 400 with no project context.
 export async function assertVersionExists(project: string, name: string): Promise<void> {
@@ -217,8 +217,8 @@ export async function assertVersionExists(project: string, name: string): Promis
 
 // A Jira project key never contains a hyphen, so the project is everything
 // before the LAST one — used to validate `edit <key> --fix-version` against
-// the issue's own project rather than the configured default (HIMMEL-3713:
-// `edit` has no `--project` flag, unlike `create`).
+// the issue's own project rather than the configured default
+// (`edit` has no `--project` flag, unlike `create`).
 export function projectFromKey(key: string): string {
   const idx = key.lastIndexOf('-');
   if (idx <= 0) throw new Error(`"${key}" is not a valid issue key (expected PROJECT-NUMBER)`);

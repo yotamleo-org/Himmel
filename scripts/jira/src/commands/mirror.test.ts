@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { runMirror, renderIssue, qmdRefresh, mirrorAgeMinutes, scrubEmails } from './mirror.js';
 import type { MirrorIssue, Req } from './mirror.js';
 
-// HIMMEL-3889. Stubbed Jira API: paging, cursor, idempotence, edit, delete.
+// Stubbed Jira API: paging, cursor, idempotence, edit, delete.
 
 const issue = (n: number, over: Partial<MirrorIssue['fields']> = {}): MirrorIssue => ({
   key: `HIMMEL-${n}`,
