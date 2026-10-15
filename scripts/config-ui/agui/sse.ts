@@ -165,7 +165,10 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
   const sniff = (lines: Line[]) => {
     for (const l of lines) {
       if (!l.text.includes('"agent-name"')) continue;
-      try { const n = JSON.parse(l.text); if (n?.type === "agent-name" && typeof n.agentName === "string") session = n.agentName; } catch { /* torn line */ }
+      try { const n = JSON.parse(l.text); if (n?.type === "agent-name" && typeof n.agentName === "string") {
+        if (session !== n.agentName) { mine.clear(); busSince = 0; } // a new name is a new bus identity: collect its history afresh
+        session = n.agentName;
+      } } catch { /* torn line */ }
     }
   };
   const map = (lines: Line[]) => lines.sort(byTime).flatMap((l) => mapper.pushLine(l.text));
@@ -181,7 +184,7 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
       const d = e.delta[0];
       if (/^\/bus\/msgs\/[^/]+$/.test(d.path) && (d.value?.f === session || d.value?.r === session)) mine.add(idOf(e));
     }
-    if (batch.length) busSince = Math.max(...batch.map((e) => e.timestamp));
+    for (const e of batch) if (e.timestamp > busSince) busSince = e.timestamp; // a loop: a spread of a huge first batch overflows the argument limit
     return batch.filter((e) => mine.has(idOf(e)));
   };
   return new ReadableStream<Uint8Array>({

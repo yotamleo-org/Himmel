@@ -55,6 +55,8 @@ test("an ack from the recipient clears the unacked count", async () => {
   const b = await fleet(port);
   expect(b.edges.find((e: any) => e.from === FLEET.console.name).unacked).toBe(0);
   expect(b.sessions.find((s: any) => s.name === FLEET.leg.name).bus.unacked).toBe(0);
+  // the acked message was seen by its recipient, so it is no longer undelivered (M2 still is)
+  expect(b.sessions.find((s: any) => s.name === FLEET.leg.name).bus.undelivered).toBe(1);
 });
 
 test("no bus store: no edges and zero counts, and nothing is created", async () => {

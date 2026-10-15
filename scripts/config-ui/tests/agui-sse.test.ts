@@ -470,6 +470,43 @@ test("the stream merges only the bus events of the run's own session", async () 
   expect(paths.filter((x) => x.includes("S2"))).toEqual([]);
 });
 
+// a new agent-name mid-stream is a new bus identity: its earlier (older-timestamped) messages arrive, the old
+// name's messages stop
+test("a session rename mid-stream restarts the bus merge for the new name", async () => {
+  const { busRoot, append } = await import("../../../marketplace/plugins/himmel-bus/lib/store.mjs");
+  const h = home();
+  const root = await busRoot({ stateHome: join(h, "state") });
+  const t = Date.now() - 5000;
+  const rec = (o: Record<string, unknown>) => ({ t, b: "x", c: 0, ...o });
+  await append(root, "leg-a", rec({ i: "R1", f: "console-x", r: "leg-a", t: t + 10 }));
+  await append(root, "leg-c", rec({ i: "R2", f: "console-x", r: "leg-c", t: t + 1 })); // older than R1
+  const p = journal(h, "-proj", RUN, JSON.stringify({ type: "agent-name", agentName: "leg-a", sessionId: RUN }) + "\n");
+  const stream = new Response(journalStream(p, { ...direct, idleMs: 800, busRoot: root })).text();
+  await sleep(150);
+  appendFileSync(p, JSON.stringify({ type: "agent-name", agentName: "leg-c", sessionId: RUN }) + "\n");
+  await sleep(100);
+  writeFileSync(join(root, "ack", "leg-a.jsonl"), JSON.stringify({ i: "R1", re: "Z", t: Date.now() }) + "\n"); // old name's follow-up
+  const paths = parse(await stream).filter((e) => e.type === "STATE_DELTA").flatMap((e) => (e.delta as { path: string }[]).map((d) => d.path));
+  expect(paths).toContain("/bus/msgs/R1");
+  expect(paths).toContain("/bus/msgs/R2");
+  expect(paths).not.toContain("/bus/msgs/R1/acked");
+});
+
+// the cursor is the newest timestamp of the batch, whatever the batch's order or size: each message once
+test("a large out-of-order bus batch advances the cursor once, with no re-emission", async () => {
+  const { busRoot, append } = await import("../../../marketplace/plugins/himmel-bus/lib/store.mjs");
+  const h = home();
+  const root = await busRoot({ stateHome: join(h, "state") });
+  const t = Date.now() - 5000;
+  for (const [i, off] of [["B1", 30], ["B2", 10], ["B3", 20]] as const) await append(root, "leg-a", { t: t + off, b: "x", c: 0, i, f: "console-x", r: "leg-a" });
+  const p = journal(h, "-proj", RUN, JSON.stringify({ type: "agent-name", agentName: "leg-a", sessionId: RUN }) + "\n");
+  const stream = new Response(journalStream(p, { ...direct, idleMs: 600, busRoot: root })).text();
+  const paths = parse(await stream).filter((e) => e.type === "STATE_DELTA").flatMap((e) => (e.delta as { path: string }[]).map((d) => d.path));
+  expect(paths.filter((x) => x === "/bus/msgs/B1")).toHaveLength(1);
+  expect(paths.filter((x) => x === "/bus/msgs/B2")).toHaveLength(1);
+  expect(paths.filter((x) => x === "/bus/msgs/B3")).toHaveLength(1);
+});
+
 // the route passes the bus root (XDG_STATE_HOME) to the stream, so the merge is live through server.ts
 test("GET /api/agui/<run> merges the run's bus events through the server", async () => {
   const { busRoot, append } = await import("../../../marketplace/plugins/himmel-bus/lib/store.mjs");

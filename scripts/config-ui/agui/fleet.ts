@@ -223,7 +223,7 @@ async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: strin
     edge.n++; edge.unacked += ruling ? 1 : 0; edge.lastAt = Math.max(edge.lastAt, msg.t); edge.kinds[kind] = (edge.kinds[kind] ?? 0) + 1;
     const row = rows.get(msg.r) ?? { ...NO_BUS };
     rows.set(msg.r, row);
-    row.undelivered += msg.delivered || msg.expired ? 0 : 1; row.unacked += ruling ? 1 : 0;
+    row.undelivered += msg.delivered || msg.acked || msg.expired ? 0 : 1; row.unacked += ruling ? 1 : 0;
   }
   return { edges: [...edges.values()], of: (name) => ({ ...(rows.get(name) ?? NO_BUS), unbound: !!peers[name] && peers[name].pid === undefined }) };
 }
