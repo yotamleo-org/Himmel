@@ -175,6 +175,38 @@ else
 fi
 assert "description advertises bitbucket.org" "yes" "$desc_bb"
 
+echo "Test: reference-file wording (HIMMEL-5787)"
+REFS="$PLUGIN_DIR/references/luna-ingest"
+QMD_GATE="$PLUGIN_DIR/../himmel-ops/skills/memory-compound/references/qmd-gate.md"
+
+# rc=4 must not imply --force works (unsupported in the MVP).
+if grep -F -- "stays unless \`--force\`" "$REFS/exit-codes.md" >/dev/null; then
+    force_ok=no
+else
+    force_ok=yes
+fi
+assert "exit-codes rc=4 does not imply --force works" "yes" "$force_ok"
+grep -qiF "delete the existing synthesis" "$REFS/exit-codes.md" && del=yes || del=no
+assert "exit-codes rc=4 says delete the existing synthesis and rerun" "yes" "$del"
+
+# Stale-repo skip must come before the positive verdict rules.
+stale_line=$(grep -n 'more than 24 months old' "$REFS/phase-3-classification.md" | head -1 | cut -d: -f1)
+# shellcheck disable=SC2016  # backticks are literal markdown, not expansion
+integ_line=$(grep -n '^   - `integrate`'"$REFS/phase-3-classification.md" | head -1 | cut -d: -f1)
+[ -n "$stale_line" ] && [ -n "$integ_line" ] && [ "$stale_line" -lt "$integ_line" ] && order=yes || order=no
+assert "phase-3 stale-repo skip precedes the integrate rule" "yes" "$order"
+
+# Confidence bands must be exclusive.
+grep -qF "medium (0.6–0.8)" "$REFS/phase-3-classification.md" && band=overlap || band=exclusive
+assert "phase-3 confidence bands are exclusive" "exclusive" "$band"
+
+# qmd-gate must spell out CLI flags and MCP JSON fields.
+grep -qF -- "--min-score" "$QMD_GATE" && f1=yes || f1=no
+grep -qF -- "--intent" "$QMD_GATE" && f2=yes || f2=no
+grep -qF '"minScore"' "$QMD_GATE" && f3=yes || f3=no
+grep -qF '"intent"' "$QMD_GATE" && f4=yes || f4=no
+assert "qmd-gate names --min-score, --intent, minScore and intent fields" "yes yes yes yes" "$f1 $f2 $f3 $f4"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 if [ "$fail" -gt 0 ]; then
