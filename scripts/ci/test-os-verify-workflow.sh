@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/test-os-verify-workflow.sh -- static suite for # dispatch-only os-verify.yml that replaces ci.yml's force_all_os input.
+# scripts/ci/test-os-verify-workflow.sh -- static suite for the dispatch-only os-verify.yml workflow that replaces ci.yml's force_all_os input.
 # The workflow exists to verify impacted suites on ONE chosen OS on demand, so
 # three properties must hold or it is worse than what it replaces:
 #   1. it can only ever be DISPATCHED (a pull_request/push/schedule trigger

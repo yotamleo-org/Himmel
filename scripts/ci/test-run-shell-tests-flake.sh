@@ -29,11 +29,10 @@
 #       charset and still matches its own rows
 #   F16 one repo is one id across URL spellings and worktrees; a relative or
 #       local-path origin stays case-exact and keeps its .git, a default port
-#       drops; an absolute local origin is
-#       lexically normalised, a file:// path is percent-decoded and its scheme
-#       is case-insensitive, file://host/... drops the host like git;
-# a decoded or literal trailing newline and %00 keep
-#       their own ids
+#       drops; an absolute local origin is lexically normalised; a file://
+#       path is percent-decoded, its scheme is case-insensitive, and
+#       file://host/... drops the host like git; a decoded or literal
+#       trailing newline and %00 each keep their own ids
 #   F17 with no override, the row's repo is the shared lib's id for the
 #       runner's own checkout
 #   F18 a runner that cannot read the id lib writes no ledger row, names the
