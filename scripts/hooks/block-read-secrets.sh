@@ -824,7 +824,7 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
-    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0
+    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -835,10 +835,22 @@ g4_scan() {
         # HIMMEL-5484 (j2544g): any word naming the xtrace option, in any
         # command (`shopt -os xtrace`, `setopt XTRACE`, `set -o xtrace`); zsh
         # ignores case and underscores in option names. Over-deny: HIMMEL-5609.
+        # Not in a data position: an operand of the repo's
+        # queue-lock / append-results scripts (a doc name carries the word), or
+        # the value of a git/gh message flag. `-m`-style flags are marked here,
+        # for the NEXT word.
+        xskip=$dsc
+        if [ "$msgv" = 1 ]; then msgv=0; xskip=1; fi
+        case "$cmd:$d" in
+            git:-m|git:-am|git:--message|gh:-b|gh:--body|gh:-t|gh:--title) msgv=1 ;;
+            git:--message=*|gh:--body=*|gh:--title=*) xskip=1 ;;
+        esac
+        if [ "$xskip" = 0 ]; then
         case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
         # j2544h: brace expansion splits the word (`shopt -os x{,}trace`), so a
         # word with an unquoted `{` matches xtrace as an in-order subsequence.
         case "$w" in *'{'*) case "${d//_/}" in *[xX]*[tT]*[rR]*[aA]*[cC]*[eE]*) xt=1 ;; esac ;; esac
+        fi
         # Redirect and fd skips run on the RAW split only. Tokenized, a real
         # redirect is already out of the words (GU_SR), so a `>` word there is
         # a user-quoted argument (`'>'`, `\>`, `$'>'`) and must not hide the next.
@@ -867,6 +879,7 @@ g4_scan() {
             esac
             if [ "$need_dur" = 1 ]; then need_dur=0; continue; fi
             cmd="${d##*/}"; cmd="${cmd%.exe}"
+            case "$d" in scripts/handover/queue-lock.sh|*/scripts/handover/queue-lock.sh|scripts/handover/console-kit/append-results.sh|*/scripts/handover/console-kit/append-results.sh) dsc=1 ;; esac
             case "$cmd" in
                 python|python[23]|python[23].*|node|nodejs|bun|deno) g4_interp=1 ;;
                 curl|wget|nc|ncat|netcat|socat|sftp|ftp|tar|zip|7z|7za) cls=any ;;
@@ -895,6 +908,13 @@ g4_scan() {
         case "$cmd:$d" in
             setopt:-*x*|unsetopt:-*x*|unsetopt:+*x*) case "$d" in --*) ;; *) xt=1 ;; esac ;;
         esac
+        # `bash <data script> ...`: the first operand, with no trace
+        # flag before it, names the script whose operands are data.
+        if [ "$nargs" = 1 ] && [ "$xt" = 0 ] && [ "$d" = "$a1" ]; then
+            case "$cmd:$d" in
+                bash:scripts/handover/queue-lock.sh|bash:*/scripts/handover/queue-lock.sh|bash:scripts/handover/console-kit/append-results.sh|bash:*/scripts/handover/console-kit/append-results.sh) dsc=1 ;;
+            esac
+        fi
         case "$cmd" in
             # HIMMEL-5484: `bash -x`, `-xe`, `-o xtrace`, `set -x`. Only the
             # flags before the first operand count (`bash s.sh -x` is the
