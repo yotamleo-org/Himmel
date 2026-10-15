@@ -11,6 +11,8 @@
 // denied. The matrix is evaluated by the shared egress-matrix-eval.mjs, never
 // re-implemented here.
 //
+// A provider in PINNED additionally accepts only its pinned model per role.
+//
 // Usage: node qmd-jina-gate.mjs <index.yml> [<index.sqlite>]
 // Exit 0 allowed (also when no role is remote), 3 refused, 2 usage/unreadable.
 // qmd reads the config first and these environment variables only when the
@@ -25,6 +27,9 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const evalCli = join(here, "..", "guardrails", "egress-matrix-eval.mjs");
+// The matrix is per provider, not per model, so the consumer pins the models a
+// provider may serve. A role with no entry has no pinned model and is refused.
+const PINNED = { openrouter: { embed: "openai:qwen/qwen3-embedding-8b", rerank: "openai:cohere/rerank-4-fast" } };
 const PURPOSE = { embed: "embedding", rerank: "rerank", generate: "inference" };
 const ENV_ROLE = { embed: "QMD_EMBED_MODEL", rerank: "QMD_RERANK_MODEL", generate: "QMD_GENERATE_MODEL" };
 
@@ -108,7 +113,8 @@ function providerOf() {
   if (["localhost", "127.0.0.1", "::1"].includes(host)) return null; // on-machine server
   if (url.protocol !== "https:") return `${host}-insecure-${url.protocol.replace(":", "")}`; // never matches an allow row
   if (host === "jina.ai" || host.endsWith(".jina.ai")) return "jina";
-  return host;
+  if (host === "openrouter.ai") return "openrouter";
+  return `${host}-unrecognised`; // a wildcard allow row must never approve a host nobody vetted
 }
 
 // A role is local only when its value is plainly a local GGUF (hf: URI, a path,
@@ -127,6 +133,19 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
   if (provider.includes("-insecure-")) {
     refusals.push(`${role} endpoint ${baseUrl} is not https and not loopback`);
     continue;
+  }
+  if (provider.endsWith("-unrecognised")) {
+    refusals.push(`${role} endpoint ${baseUrl} is not a recognised provider (jina, openrouter)`);
+    continue;
+  }
+  if (PINNED[provider]) {
+    const pin = PINNED[provider][role];
+    for (const value of [models[role] ?? "", process.env[ENV_ROLE[role]] ?? ""]) {
+      if (isLocalModel(value) || value === pin) continue;
+      refusals.push(pin
+        ? `${role} model "${value}" is not the pinned ${provider} model ${pin}`
+        : `${role} on ${provider} has no pinned model (remote ${role} refused)`);
+    }
   }
   for (const col of collections) {
     const corpora = map[col];
@@ -151,6 +170,7 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
 const fileRemote = (text.replace(/#.*$/gm, "").match(/openai:/g) ?? []).length;
 const fileRoleRemote = Object.keys(PURPOSE).filter((r) => !isLocalModel(models[r] ?? "")).length;
 if (fileRemote > fileRoleRemote) refusals.push(`${fileRemote - fileRoleRemote} "openai:" model URI(s) in the config are not under models.embed/rerank/generate in a supported layout`);
+if (remoteRoles > 0 && models.openai_api_key) refusals.push("models.openai_api_key is set in the config: the provider key belongs only in the daemon environment (QMD_OPENAI_API_KEY)");
 if (remoteRoles > 0) for (const p of dbProblems) refusals.push(p);
 for (const u of modelsUnreadable) refusals.push(`unsupported config layout: ${u}`);
 if (remoteRoles > 0) {

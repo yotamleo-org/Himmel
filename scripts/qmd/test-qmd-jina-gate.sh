@@ -146,6 +146,75 @@ printf 'collections:\n  salus:\n    path: /x\nmodels: {embed: "openai\\x3ajina-e
 run_gate "$work/fe.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(10k) flow-style models with an escaped URI and salus: expected rc 3, got $rc"
 
+# ---- OpenRouter: host maps to provider openrouter, models pinned ----
+OR_EMBED='openai:qwen/qwen3-embedding-8b'
+OR_RERANK='openai:cohere/rerank-4-fast'
+OR_BASE=https://openrouter.ai/api/v1
+
+# (22) the non-salus index on the pinned OpenRouter models is allowed.
+cfg "$work/or1.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" \
+  himmel luna ggs-local ggs-bridge agent-command-chain station-ops nvidia-steam-shader-cache jira-himmel roadmap-plan skills
+run_gate "$work/or1.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(22) non-salus index on pinned OpenRouter models: expected rc 0, got $rc: $(cat "$work/err")"
+
+# (23) salus in an OpenRouter index is refused, whichever role is remote.
+cfg "$work/or2.yml" "$OR_EMBED" "$LOCAL_EMBED" "$OR_BASE" himmel salus
+run_gate "$work/or2.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(23) salus on OpenRouter embed: expected rc 3, got $rc"
+grep -q 'salus' "$work/err" || fail "(23) the refusal must name salus: $(cat "$work/err")"
+cfg "$work/or3.yml" "$LOCAL_EMBED" "$OR_RERANK" "$OR_BASE" himmel salus
+run_gate "$work/or3.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(23b) salus on OpenRouter rerank: expected rc 3, got $rc"
+grep -q 'salus' "$work/err" || fail "(23b) the refusal must name salus"
+
+# (24) a model that is not the pinned one is refused on an allowed corpus.
+cfg "$work/or4.yml" 'openai:openai/text-embedding-3-large' "$OR_RERANK" "$OR_BASE" himmel
+run_gate "$work/or4.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(24) unpinned OpenRouter embed model: expected rc 3, got $rc"
+grep -q 'pinned' "$work/err" || fail "(24) the refusal must say the model is not pinned: $(cat "$work/err")"
+cfg "$work/or5.yml" "$OR_EMBED" 'openai:cohere/rerank-v3.5' "$OR_BASE" himmel
+run_gate "$work/or5.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(24b) unpinned OpenRouter rerank model: expected rc 3, got $rc"
+grep -q 'pinned' "$work/err" || fail "(24b) the refusal must say the model is not pinned: $(cat "$work/err")"
+
+# (25) a pinned model name in the wrong role is not pinned for that role.
+cfg "$work/or6.yml" "$OR_RERANK" "$OR_EMBED" "$OR_BASE" himmel
+run_gate "$work/or6.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(25) swapped embed/rerank models: expected rc 3, got $rc"
+grep -q 'pinned' "$work/err" || fail "(25) the refusal must say the model is not pinned: $(cat "$work/err")"
+
+# (26) an unpinned model named only by the environment is refused too.
+cfg "$work/or7.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
+QMD_EMBED_MODEL='openai:openai/text-embedding-3-large' node "$gate" "$work/or7.yml" 2>"$work/err"; rc=$?
+[ "$rc" -eq 3 ] || fail "(26) unpinned env model over a pinned file: expected rc 3, got $rc"
+grep -q 'pinned' "$work/err" || fail "(26) the refusal must say the model is not pinned: $(cat "$work/err")"
+
+# (27) a lookalike host is not OpenRouter: it stays default-deny.
+cfg "$work/or8.yml" "$OR_EMBED" "$OR_RERANK" https://openrouter.ai.evil.example/api/v1 himmel
+run_gate "$work/or8.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(27) lookalike OpenRouter host: expected rc 3, got $rc"
+
+# (28) the generate role is inference, which no corpus allows on openrouter for qmd.
+cfg "$work/or9.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
+printf '  generate: openai:qwen/qwen3-embedding-8b\n' >> "$work/or9.yml"
+run_gate "$work/or9.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(28) OpenRouter generate role: expected rc 3, got $rc"
+
+# (29) an active salus document in the database refuses an OpenRouter index.
+sqlite3 "$work/db3.sqlite" "CREATE TABLE documents(collection TEXT, active INTEGER); INSERT INTO documents VALUES('himmel',1),('salus',1);"
+cfg "$work/or10.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
+run_gate "$work/or10.yml" "$work/db3.sqlite"; rc=$?
+[ "$rc" -eq 3 ] || fail "(29) active salus doc under an OpenRouter index: expected rc 3, got $rc"
+grep -q 'salus' "$work/err" || fail "(29) the refusal must name salus"
+
+# (30) a provider key in index.yml is refused: the key lives only in the daemon environment.
+cfg "$work/or11.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
+printf '  openai_api_key: sk-or-not-a-real-key\n' >> "$work/or11.yml"
+run_gate "$work/or11.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(30) api key in index.yml: expected rc 3, got $rc"
+grep -q 'api_key' "$work/err" || fail "(30) the refusal must name the key: $(cat "$work/err")"
+if grep -q 'not-a-real-key' "$work/err"; then fail "(30) the refusal must not echo the key"; fi
+
 # ---- the daemon launcher -------------------------------------------------
 mkdir -p "$work/bun/bin" "$work/home" "$work/cfg" "$work/cache"
 cat > "$work/bun/bin/qmd" <<EOF
@@ -257,4 +326,4 @@ launch index; rc=$?
 grep -q 'salus' "$work/err" || fail "(21) the launcher refusal must name salus"
 rm -f "$work/cache/qmd/index.sqlite"
 
-echo "PASS: test-qmd-jina-gate.sh (32 checks)"
+echo "PASS: test-qmd-jina-gate.sh (43 checks)"
