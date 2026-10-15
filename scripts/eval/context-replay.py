@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # scripts/eval/context-replay.py - replay recorded session JSONL at several
-# context windows and price each with the burn-weights (HIMMEL-5042).
+# context windows and price each with the burn-weights.
 # Local-only: reads ~/.claude/projects/*himmel*/*.jsonl, runs no inference,
 # sends nothing anywhere. Weights mirror scripts/lanes/lib/burn-weights.sh
 # (override with the same LEG_BURN_W_* env vars).

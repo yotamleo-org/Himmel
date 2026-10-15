@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/glm/ship-branch.sh - push a reviewed glm branch from the TRUSTED main
-# checkout (HIMMEL-750).
+# checkout.
 #
 # The claude-down ship lane's push half. The GLM worker stays FULLY quarantined
 # (the worker no-push prompt + the external-writes deny hook are

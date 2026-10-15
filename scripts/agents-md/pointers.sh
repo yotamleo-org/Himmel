@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-5384 — keep a one-line AGENTS.md pointer next to every non-root
+# Keep a one-line AGENTS.md pointer next to every non-root
 # CLAUDE.md (or _CLAUDE.md, the luna template's manual), so CLAUDE.md stays the
 # one source per directory and agents that read only AGENTS.md are sent to it.
 # The ROOT pair is not handled here: scripts/agents-md/generate.mjs owns it.
@@ -11,7 +11,7 @@
 # Env:    POINTERS_ROOT  repo to scan (default: this repo's root)
 #
 # Excluded: vendored upstream trees, where an added file would be himmel delta
-# on every re-vendor (marketplace/plugins/claude-hud, HIMMEL-4578).
+# on every re-vendor (marketplace/plugins/claude-hud,).
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${POINTERS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"

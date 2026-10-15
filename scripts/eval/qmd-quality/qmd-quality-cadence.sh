@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # qmd-quality-cadence.sh — run the qmd retrieval-quality eval weekly, append the
-# metrics to a log and tell the operator when MRR drops (HIMMEL-4184, ask 5).
+# metrics to a log and tell the operator when MRR drops.
 #
 # WHY: retrieval quality drifts silently (a model swap, a reindex, a changed
 # chunker) and nobody reruns qmd-quality.sh by hand. This keeps one metrics
-# row per mode per run so drift is visible, and alerts through the HIMMEL-4181
+# row per mode per run so drift is visible, and alerts through the
 # path (scripts/luna/cadence-alert.sh) when a mode regresses.
 #
 #   qmd-quality-cadence.sh run --golden <file> --index <file>   (what cron fires)
@@ -31,7 +31,7 @@
 # qmd-quality.sh, same arguments), QMD_QUALITY_TS (the run timestamp),
 # QMD_QUALITY_KEEP_RUNS, QMD_QUALITY_DRIFT_MRR, QMDQUAL_CRONTAB,
 # QMDQUAL_RUNNER_DIR, plus cadence-alert.sh's own CADENCE_ALERT_* seams.
-# Platform: cron (Linux/macOS). Windows development is parked (HIMMEL-4102).
+# Platform: cron (Linux/macOS). Windows development is parked.
 set -uo pipefail
 
 TASK_NAME="HIMMEL-Qmd-Quality"

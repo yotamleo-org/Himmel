@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # repo-sync-cadence.sh — arm/status/disarm the daily repo-sync cadence
-# (HIMMEL-2115).
 #
 # WHY: operator directive (2026-08-25, NOW-20): a DAILY cadence that syncs
 # every git repo on the machine to its remote default branch, safely — fetch
@@ -11,16 +10,16 @@
 # never a fix attempt.
 #
 # RUNNER SPLIT (mirrors graphmap-cadence.sh's structural/semantic legs,
-# HIMMEL-829, and ggs-cadence.sh's flow-run-ledger use, HIMMEL-2048): the
+# and ggs-cadence.sh's flow-run-ledger use): the
 # actual per-repo enumeration/fetch/ff-only-merge logic is real branching
 # logic, not reasonably expressible as generated .bat lines, so it lives in
 # the sibling scripts/sync/repo-sync-runner.sh. This file owns ONLY the OS
 # scheduler arm/status/disarm layer and fires the runner by absolute path;
 # the runner sources scripts/lib/flow-run-ledger.sh itself and writes its own
 # start/end rows (flow "repo-sync") with a REAL exit code — never an
-# unconditional exit 0 (the HIMMEL-2048 bug class).
+# unconditional exit 0.
 #
-# SELF-REGISTRATION (HIMMEL-1680): arm registers the "repo-sync" flow (daily,
+# SELF-REGISTRATION: arm registers the "repo-sync" flow (daily,
 # 86400s) into the observability registry (scripts/lib/observability-registry.sh)
 # so himmel-doctor's C24 catches a silently-vanished task; disarm unregisters
 # it.
@@ -38,7 +37,7 @@
 # Principal needed (every leg is a plain git/bash filesystem operation, not a
 # process-liveness sweep), so this follows ggs-cadence.sh's simpler shape.
 #
-# STALE-WT CLEANUP (HIMMEL-2116, follow-up): the runner also examines every
+# STALE-WT CLEANUP: the runner also examines every
 # enumerated folder that looks like a scratch worktree (a linked-worktree
 # `.git` file, or a `wt-*`-named directory) against a stricter safety gate
 # and deletes it (+ prunes the parent repo's worktree registry) only when
@@ -75,7 +74,7 @@ TASK_NAME="HIMMEL-RepoSync"
 SCHTASKS_BIN="${RSC_SCHTASKS:-schtasks}"
 
 # Cross-platform user-home resolution (mirrors codex-sweep-cadence's /
-# ggs-cadence's resolve_user_home, HIMMEL-645): prefer USERPROFILE via
+# ggs-cadence's resolve_user_home): prefer USERPROFILE via
 # cygpath on Windows Git-Bash (MSYS $HOME can differ from where ~/.claude
 # actually lives).
 resolve_user_home() {
@@ -95,8 +94,7 @@ BAT_DIR="${RSC_BAT_DIR:-$(resolve_user_home)/.claude/repo-sync-cadence}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Resolve the himmel root to the PRIMARY checkout, not this script's own
-# location (mirrors codex-sweep-cadence's resolve_himmel_root, HIMMEL-892
-# codex-adv-1): arming from a feature worktree would otherwise embed absolute
+# location (mirrors codex-sweep-cadence's resolve_himmel_root): arming from a feature worktree would otherwise embed absolute
 # runner paths under THAT worktree in the persistent .bat runner; post-merge
 # worktree pruning then deletes those paths and every scheduled fire fails
 # thereafter.
@@ -126,7 +124,7 @@ else
 fi
 RUNNER_SCRIPT="$HIMMEL_ROOT/scripts/sync/repo-sync-runner.sh"
 
-# Runner-format version stamp (HIMMEL-588): shared with the other cadences so
+# Runner-format version stamp: shared with the other cadences so
 # a stale-format armed runner is detectable via the same marker convention.
 # shellcheck source=../lib/cadence-format.sh
 # shellcheck disable=SC1091
@@ -282,7 +280,7 @@ if ! [[ "$SYNC_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
 fi
 [ -n "$WT_STALE_DAYS" ] || WT_STALE_DAYS=14
 # Same 6-digit cap + STRING-length glob as repo-sync-runner.sh's own
-# validation (codex-2, HIMMEL-2116 pr-check round-2 panel) -- kept in sync
+# validation -- kept in sync
 # since this value is threaded straight into the runner's own flag.
 case "$WT_STALE_DAYS" in
     ''|*[!0-9]*)
@@ -322,9 +320,9 @@ run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
 
 # Emit the runner .bat body: stamp the format version, prepend Git's GNU
 # coreutils to PATH (the runner needs dirname/date/mkdir/mv/find/sed — a
-# non-login schtasks-launched bash.exe inherits the bare Windows PATH,
-# HIMMEL-1672), rotate the log, stamp the fire time, fire the runner
-# (`call`, HIMMEL-1389: a shim-resolvable payload must never transfer control
+# non-login schtasks-launched bash.exe inherits the bare Windows PATH),
+# rotate the log, stamp the fire time, fire the runner
+# (`call`: a shim-resolvable payload must never transfer control
 # away for good), capture its ERRORLEVEL, and propagate it AS the task's exit
 # code (2048 pattern — never an unconditional exit /b 0). The runner owns its
 # own flow-run ledger rows internally; this .bat writes none.
@@ -504,7 +502,7 @@ cmd_arm() {
     # --github-root is handled gracefully by the runner every fire (it just
     # skips scanning it, since a fresh machine may not have cloned anything
     # there yet) — but silently accepting it at arm time hid a real typo
-    # from the operator (codex CR round 5), so surface it loudly here while
+    # from the operator, so surface it loudly here while
     # still letting arm proceed for the legitimate not-yet-created case.
     if [ ! -d "$GITHUB_ROOT" ]; then
         echo "WARN repo-sync-cadence: --github-root is not a directory: $GITHUB_ROOT (arming anyway — the runner skips a missing root every fire, but verify this wasn't a typo)" >&2
@@ -599,14 +597,14 @@ cmd_arm() {
     fi
 
     # Atomic runner publication BEFORE task registration (same ordering as
-    # codex-sweep-cadence/ggs-cadence, HIMMEL-892 round-3 CR fix): emit to a
+    # codex-sweep-cadence/ggs-cadence): emit to a
     # temp file beside the target, then publish it BEFORE /create runs.
     #
     # On a --force re-arm of an ALREADY-LIVE task, this publish already
     # overwrites the fixed-path .bat/.vbs the existing task invokes. If
     # `schtasks_create_xml` then fails, the pre-existing task stays armed but
     # now silently runs the new, never-registered payload despite this
-    # command reporting failure (codex-2, HIMMEL-2115 pr-check round-7 panel).
+    # command reporting failure.
     # Back up any pre-existing .bat/.vbs and restore them on failure, so a
     # reported arm failure truthfully means "nothing changed" for an already-
     # armed task; on a first-ever arm there is nothing to restore, so the
@@ -635,8 +633,7 @@ cmd_arm() {
         # The .vbs publish above already succeeded -- restore it too (or
         # remove it, first-arm case) rather than discarding the backup and
         # leaving .vbs on new content while .bat stays on old content, an
-        # inconsistent pair despite this command reporting failure
-        # (codex-3, HIMMEL-2115 pr-check round-8 panel).
+        # inconsistent pair despite this command reporting failure.
         if [ -n "$vbs_backup" ]; then mv -f "$vbs_backup" "$vbs_file"; else rm -f "$vbs_file"; fi
         exit 4
     fi
@@ -655,7 +652,7 @@ cmd_arm() {
     if [ -s "$err_file" ]; then cat "$err_file" >&2; fi
     rm -f "$err_file" "$bat_backup" "$vbs_backup"
 
-    # Best-effort (codex CR round 5): the scheduled task above is already
+    # Best-effort: the scheduled task above is already
     # live at this point (schtasks_create_xml succeeded) — a registration
     # failure here is an observability-bookkeeping gap, not an arming
     # failure, and under set -e a bare unguarded call would abort the whole
@@ -727,8 +724,7 @@ cmd_disarm() {
         # (the actually-destructive disarm steps already succeeded), so a
         # bare unguarded call here would abort under set -e on a registry
         # write failure, skip the "cadence disarmed" confirmation, and leave
-        # a stale registration despite the disarm itself having worked
-        # (codex-3, HIMMEL-2115 pr-check round-9 panel).
+        # a stale registration despite the disarm itself having worked.
         observability_unregister_cadence repo-sync "$TASK_NAME" \
             || echo "WARN repo-sync-cadence: observability unregistration failed (rc=$?) -- $TASK_NAME IS disarmed and its runner files are removed, but himmel-doctor's C24 check may still show a stale registration until this is retried (re-run disarm, or fix the registry directly)" >&2
     fi

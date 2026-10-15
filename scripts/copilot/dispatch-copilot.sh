@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # scripts/copilot/dispatch-copilot.sh - the copilot-cli lane's dispatch
-# chokepoint (HIMMEL-772, mirrors the codex chokepoint HIMMEL-781/#1001).
+# chokepoint (mirrors the codex chokepoint).
 #
 # WHY: copilot-cli has permission flags only - no PreToolUse hook surface
-# like Claude Code, no hooks.json adapter like codex (HIMMEL-427). Per the
-# enforcement doctrine (structural > instructional, HIMMEL-195) it cannot
+# like Claude Code, no hooks.json adapter like codex. Per the
+# enforcement doctrine (structural > instructional) it cannot
 # route ANY work until a wrapper supplies the missing structure. This script
 # IS that structure: the ONLY sanctioned entry point for the copilot-cli free
 # lane (lanes.json names it). It:
@@ -77,7 +77,7 @@ case "$WT_ABS" in
 esac
 WORKTREE="$WT_ABS"
 
-# ALLOW-LIST (never a deny-list - the codex convergence lesson, HIMMEL-781):
+# ALLOW-LIST (never a deny-list - the codex convergence lesson):
 # specific BANNED flags get their own actionable message BEFORE the generic
 # dash catch-all. Positional (non-dash) task args pass through untouched.
 have_model=0

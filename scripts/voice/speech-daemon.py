@@ -219,7 +219,7 @@ def worker() -> None:
             job, _pending = _pending, None
         # Stamped at enqueue under _gen_lock, NOT re-read here: re-reading it
         # after the dequeue is what let a /stop in that window bless a job it
-        # had just cancelled (CR round 7, [codex-adv-4]).
+        # had just cancelled.
         job_gen = job["gen"]           # the generation this job belongs to
 
         try:
@@ -343,15 +343,15 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("interrupt", True):
                 _stop_flag.set()
                 _generation += 1        # supersede anything already generating
-            # Stamp the job with its generation HERE, at enqueue (CR round 7,
-            # [codex-adv-4]). The worker used to snapshot `_generation` itself
+            # Stamp the job with its generation HERE, at enqueue.
+            # The worker used to snapshot `_generation` itself
             # after dequeuing, which left a window: a /stop landing between the
             # dequeue and the snapshot bumped the counter, the worker then read
             # the POST-stop value, generations matched, and the cancelled job
             # played anyway. A generation captured at enqueue can only ever be
             # invalidated by a later bump, never blessed by one.
             job_gen = _generation
-            # Stamp AND enqueue in ONE critical section (CR round 9). Splitting
+            # Stamp AND enqueue in ONE critical section. Splitting
             # them left a window between two ThreadingHTTPServer handlers:
             # request A stamps generation 1, B advances to 2 and stores B, then
             # A overwrites _pending with its stale job. The worker drops A as

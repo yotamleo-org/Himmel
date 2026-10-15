@@ -1,5 +1,5 @@
 // scripts/eval/qmd-quality/run-eval.ts - run the golden set through qmd's SDK
-// in each retrieval mode and write the ranked lists (HIMMEL-4184). Called by
+// in each retrieval mode and write the ranked lists. Called by
 // qmd-quality.sh, which hands it a SNAPSHOT of the index (the SDK's store
 // opens read-write and caches LLM calls into the DB).
 //

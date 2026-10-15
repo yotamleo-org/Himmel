@@ -1,5 +1,5 @@
 // scripts/eval/qmd-quality/score.ts - score qmd ranked lists against the
-// golden set (HIMMEL-4184). Pure: reads two JSONL files, prints a TSV.
+// golden set. Pure: reads two JSONL files, prints a TSV.
 //
 //   bun score.ts --golden <golden.jsonl> --runs <runs.jsonl>
 //
@@ -12,7 +12,7 @@
 //   missing        golden queries with no run row for that mode (scored 0)
 // Paths compare case-blind: qmd lowercases the paths it indexes.
 // --ci-out <file>: bootstrap 95% CIs over the ALL queries (hit1, hit5, mrr per
-//   mode) as {"<mode>.hit1":{"lo","hi"},...}, for the eval-runs ledger (HIMMEL-4650).
+//   mode) as {"<mode>.hit1":{"lo","hi"},...}, for the eval-runs ledger.
 // --cases-out <file>: per-query {"<id>":{"<mode>.rr":x}}, for a paired compare.
 // Exit 0 scored, 2 bad input (unreadable file, no expect doc, duplicate id,
 // or a mode where every query errored).

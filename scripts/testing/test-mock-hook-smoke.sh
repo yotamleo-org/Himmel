@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Mock-backed print-mode claude leg of scripts/codex/hook-smoke-demo.sh (HIMMEL-4412, epic HIMMEL-4409).
+# Mock-backed print-mode claude leg of scripts/codex/hook-smoke-demo.sh.
 #
 # MOCK-BACKED: the model is scripts/testing/mock-anthropic, so this proves only that a
 # REAL claude session starts in a throwaway clone of this checkout, runs the scripted
 # tool calls and stops with the project hook chain firing and ZERO hook failures. It is
 # NOT evidence of real-model behaviour; hook-smoke-demo.sh is the live, bank-spending twin.
-# mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh (HIMMEL-4411)
+# mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh
 #
 # A hook that stops running fails OPEN and nothing in the transcript says so, which is why
 # the smoke asserts a positive: the hook chain's own debug lines for the tool calls, not

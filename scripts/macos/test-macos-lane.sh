@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-macos-lane.sh — HIMMEL-4980. Dry-run tests for macos-lane.sh: docker,
+# test-macos-lane.sh — Dry-run tests for macos-lane.sh: docker,
 # ssh, rsync and timeout are PATH-independent stubs that log their argv, so
 # nothing real (no docker, no network, no VM) is touched.
 #

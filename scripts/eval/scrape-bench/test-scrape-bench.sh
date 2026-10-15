@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-scrape-bench.sh — HIMMEL-4362. Runs the stubbed python unit tests for the
+# test-scrape-bench.sh — runs the stubbed python unit tests for the
 # scrape-provider benchmark harness (no network, no key). Needs python3.
 # PLATFORM GUARD: no .ps1 twin; the bench is a Linux-station eval tool.
 set -uo pipefail

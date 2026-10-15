@@ -185,7 +185,7 @@ describe('run', () => {
     expect(disjoint).toBe(true);
   });
 
-  // HIMMEL-101 §6: bytesToClient must reflect the emitted (sliced) line, not the raw summary
+  // bytesToClient must reflect the emitted (sliced) line, not the raw summary
   it('bytesToClient <= 200 even when summary is very long', async () => {
     const res = await run({
       tag: 'sandbox',
@@ -202,7 +202,7 @@ describe('run', () => {
     expect(entry.bytesToClient).toBe(res.bytesToClient);
   });
 
-  // HIMMEL-101 §7: SIGKILL → exitCode 137 (POSIX 128+9 convention)
+  // SIGKILL → exitCode 137 (POSIX 128+9 convention)
   it.skipIf(process.platform === 'win32')(
     'SIGKILL kills the child and surfaces exitCode 137 (primitive verification)',
     async () => {

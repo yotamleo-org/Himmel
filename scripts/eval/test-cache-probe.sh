@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/test-cache-probe.sh - suite for scripts/eval/cache-probe.sh
-# (HIMMEL-3837). Every scenario is a fixture directory under
+# Every scenario is a fixture directory under
 # fixtures/cache-probe/<scenario>/*.jsonl plus ONE `scenario` line below; the
 # fixtures carry synthetic token counts only (no transcript content). The
 # scenario names are what docs/internals/prompt-cache.md's `eval:` column cites.
@@ -51,7 +51,7 @@ has "too-few-turns: classed inconclusive" "$LAST_OUT" "a	inconclusive"
 scenario ttl-expiry inconclusive 2 invalidation --event "$EVENT"
 has "ttl-expiry: classed ttl, not invalidated" "$LAST_OUT" "a	ttl"
 
-# HIMMEL-4422 live run L5 (2026-10-05 weekly-bank reset, same account): a kept
+# Live run L5 (2026-10-05 weekly-bank reset, same account): a kept
 # its 317k prefix across a 35 min idle, b wrote ~16k but still read 77% of it.
 scenario account-switch not-invalidated 0 invalidation --event "$EVENT"
 has "account-switch: both sessions kept" "$LAST_OUT" "kept=2 invalidated=0"

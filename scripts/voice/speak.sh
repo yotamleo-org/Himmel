@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Speak text through the local voice daemon (HIMMEL-1522). BETA.
+# Speak text through the local voice daemon. BETA.
 #
 # BETA: voice is a detached, opt-in feature. It is not a himmelctl install item,
 # so `himmelctl status` will not report it and `ensure` will not repair it, and

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/test-eval-runs.sh - suite for the eval-runs ledger writer
-# (scripts/eval/lib/eval_runs.py) and eval-compare (HIMMEL-4647).
+# (scripts/eval/lib/eval_runs.py) and eval-compare.
 # Fixture ledgers only: no eval runs, no model calls, no live ledger.
 set -u
 
@@ -188,7 +188,7 @@ eq "compare: no run of the eval at all is exit 3" "$rc" "3"
 out=$(python3 "$CMP" --ledger "$U" 2>&1); rc=$?
 eq "compare: no eval named is a usage error" "$rc" "2"
 
-# --- eval-compare: observational rows get a series, never a verdict (HIMMEL-4670) ---
+# --- eval-compare: observational rows get a series, never a verdict ---
 O="$TMP/obs.jsonl"
 cat >"$TMP/obs-th.json" <<'EOF'
 {"leg-trajectory": {"fail_denied": {"higher_is_better": false, "band": 0}}}
@@ -215,7 +215,7 @@ orow s1 '{"fail_denied":7}'
 out=$(python3 "$CMP" leg-trajectory --ledger "$O" --thresholds "$TMP/obs-th.json" 2>&1)
 eq "compare: a superseding row for an older run_id becomes the latest" "$(printf '%s\n' "$out" | awk '$1 == "fail_denied" {print $4}')" "7"
 
-# HIMMEL-4778: the cohort is the newest row's configuration. A newest row of another
+# The cohort is the newest row's configuration. A newest row of another
 # configuration that is not ok leaves an empty series, never the older cohort's.
 O2="$TMP/obs2.jsonl"
 orow2() { python3 "$LIB" append --ledger "$O2" --eval leg-trajectory --run-id "$1" --source s --config-json "$2" \
@@ -253,7 +253,7 @@ if python3 "$LIB" validate "$QL" >/dev/null 2>&1; then pass "qmd adapter: the ro
 python3 "$LIB" qmd-quality "$TMP/empty-dir" --ledger "$QL" --golden "$TMP/golden.jsonl" --modes lex >/dev/null 2>&1; rc=$?
 if [ "$rc" -ne 0 ]; then pass "qmd adapter: a dir with no scores.tsv is refused"; else fail "qmd adapter: accepted a dir with no scores.tsv"; fi
 
-# HIMMEL-4658: the retrieval-corpus identity (the index content hash) is in the hashed config.
+# The retrieval-corpus identity (the index content hash) is in the hashed config.
 printf 'corpus-one' >"$TMP/idx1.sqlite"; printf 'corpus-two' >"$TMP/idx2.sqlite"; cp "$TMP/idx1.sqlite" "$TMP/idx1-copy.sqlite"
 QI="$TMP/qidx.jsonl"
 for ix in idx1 idx2 idx1-copy; do

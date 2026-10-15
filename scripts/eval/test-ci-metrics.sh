@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/test-ci-metrics.sh - suite for scripts/eval/ci-metrics.sh
-# (HIMMEL-5655). No live API: fixtures/ci-metrics/ is a recording of the real
+# No live API: fixtures/ci-metrics/ is a recording of the real
 # yotamleo/Himmel data (runs list + GraphQL checkRuns + the REST step count of
 # cancelled jobs, as the script fetches it, trimmed to the fields it reads),
 # taken 2026-10-14 17:24Z. It holds every run of one PR branch (CI runs cancelled

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/cache-probe.sh - measure prompt-cache behaviour from session
-# transcripts (HIMMEL-3837). READ-ONLY: it only reads the JSONL files you give
+# transcripts. READ-ONLY: it only reads the JSONL files you give
 # it, prints a deterministic report, and exits with a verdict code. It is the
 # check behind docs/internals/prompt-cache.md - a cache claim is not TRUE until
 # one of these modes (or a fixture scenario in test-cache-probe.sh) shows it.
@@ -42,7 +42,7 @@
 # create > read) and the compaction test a fixed 0.75x context drop, chosen to
 # separate the fixture shapes and the 2026-09-29 measurements; a workload with
 # a much smaller prefix could sit near them. Upgrade path: make them flags when
-# a real run lands within 10% of a threshold (HIMMEL-3837 follow-up).
+# a real run lands within 10% of a threshold.
 # ponytail: timestamps are read to whole seconds (fractions dropped), so a gap
 # is +-1s; TTL tiers are inferred from usage, not from the request.
 # ponytail: usage rows only exist for main-thread and sidechain calls written

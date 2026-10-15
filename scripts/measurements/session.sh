@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-102 representative session - DO NOT EDIT without re-baselining.
+# Representative session - DO NOT EDIT without re-baselining.
 # Usage: session.sh <arm> <out-dir>
 #   arm: "baseline" or "plugin"
 #   out-dir: directory to dump stdout per call (must exist)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scripts/eval/autocompact-ab.py - per-leg report for the HIMMEL-5193 autocompact
+# scripts/eval/autocompact-ab.py - per-leg report for the autocompact
 # A/B (200k control vs 400k audited arm). Local-only: reads leg docs and Claude
 # Code session JSONL, runs no inference, sends nothing anywhere.
 #

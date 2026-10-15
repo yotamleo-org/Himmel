@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/ci-metrics.sh - CI baseline from GitHub Actions data (HIMMEL-5655).
+# scripts/eval/ci-metrics.sh - CI baseline from GitHub Actions data.
 #
 # Read-only against the GitHub API for one repo: the REST runs list (6 h slices,
 # the list caps at 1000 per query) plus GraphQL WorkflowRun -> checkSuite ->

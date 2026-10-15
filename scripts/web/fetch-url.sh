@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fetch-url.sh <url> — fetch a pasted link as text (HIMMEL-4908).
+# fetch-url.sh <url> — fetch a pasted link as text.
 # X / Instagram links (hosts in scripts/web/walled-hosts.conf) go through the
 # Scrapling stealth fetcher with no cookies; any other host is a plain GET.
 # Exit: 0 ok, 2 usage, 3 scrapling venv missing (install hint on stderr),

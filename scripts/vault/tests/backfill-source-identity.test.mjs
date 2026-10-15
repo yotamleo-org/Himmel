@@ -1,4 +1,4 @@
-// End-to-end tests for scripts/vault/backfill-source-identity.mjs (HIMMEL-3063).
+// End-to-end tests for scripts/vault/backfill-source-identity.mjs.
 //
 // The script is run as a subprocess against a TEMP-DIR vault with a PATH-stub
 // `gh` and a preloaded fetch stub — never the live vault, never the network.

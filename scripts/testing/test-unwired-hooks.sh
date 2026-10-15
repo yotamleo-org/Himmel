@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for check-unwired-hooks.sh (HIMMEL-5228): a hook-named script that no wiring
+# Tests for check-unwired-hooks.sh: a hook-named script that no wiring
 # file references fails the lint unless it is on the allowlist with a reason, and the
 # allowlist cannot rot (a wired or vanished entry fails too).
 #

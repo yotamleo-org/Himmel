@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/friction/test-friction.sh - suite for friction.py (HIMMEL-4926).
+# scripts/eval/friction/test-friction.sh - suite for friction.py.
 # Fixture clock: --now 2026-10-08T00:00:00Z, 7-day window. The 2026-01-01 row is outside it.
 set -u
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# himmel Codex hook wrapper (HIMMEL-427/HIMMEL-2019). Unix-only; Codex selects
+# himmel Codex hook wrapper. Unix-only; Codex selects
 # this file through command. Windows uses run-hook.cmd through commandWindows.
 #
 # Resolve + run the adapter, which runs the guardrail and translates an exit-2

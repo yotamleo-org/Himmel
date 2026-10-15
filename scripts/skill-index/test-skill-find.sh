@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/skill-index/test-skill-find.sh — HIMMEL-2222
+# scripts/skill-index/test-skill-find.sh
 # Verifies skill-find.sh fails loudly (rebuild commands, non-zero rc) when the
 # 'skills' qmd collection is missing or empty, and queries through when it's
 # present — a stub `qmd` on PATH (BUN_INSTALL pointed at nothing, so qmd_cmd's
@@ -79,7 +79,7 @@ case "$(qmd collection list)" in
     *) echo "FAIL - empty collection: stub did not register a zero-file 'skills' collection"; fail=1 ;;
 esac
 
-# Remedy honours a customised SKILL_INDEX_DIR (HIMMEL-3760) in both the build
+# Remedy honours a customised SKILL_INDEX_DIR in both the build
 # and ingest lines, instead of a hardcoded default path.
 custom="$td/custom index"
 out="$(SKILL_INDEX_DIR="$custom" bash "$TARGET" 'read a post from X' 2>&1)"; rc=$?

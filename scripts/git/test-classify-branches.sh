@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for classify-branches.sh (HIMMEL-1600).
+# Hermetic tests for classify-branches.sh.
 #
 # Every case runs in a throwaway repo built here, and the PR data comes from
 # --pr-map, so the suite never touches the network, gh, or the real repo.

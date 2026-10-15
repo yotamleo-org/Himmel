@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# repo-sync-runner.sh — the payload for the daily repo-sync cadence
-# (HIMMEL-2115). Enumerates every git repo under the operator's host roots,
+# repo-sync-runner.sh — the payload for the daily repo-sync cadence.
+# Enumerates every git repo under the operator's host roots,
 # fetches each, and fast-forward-only pulls the DEFAULT branch when it is
 # safe to do so. NEVER merges/rebases/resolves — anything not safely
 # fast-forwardable is recorded as a failure and left untouched.
@@ -13,14 +13,14 @@
 # and does nothing else — same split as graphmap-cadence's structural/
 # semantic legs.
 #
-# LEDGER PATTERN (mirrors scripts/codex/dispatch-codex-exec.sh, HIMMEL-2023):
+# LEDGER PATTERN (mirrors scripts/codex/dispatch-codex-exec.sh):
 # this script sources scripts/lib/flow-run-ledger.sh directly and writes its
 # own start/end rows (flow "repo-sync") — unlike ggs-cadence, where the .bat
 # owns the ledger calls because the payload there is a non-bash .exe. A bash
 # runner can call the lib in-process, so the ledger write lives HERE, once,
 # not duplicated into the generated runner text.
 #
-# RC-PRESERVING (2048 pattern, HIMMEL-2048): exits 0 only when every
+# RC-PRESERVING (2048 pattern): exits 0 only when every
 # processed repo either pulled cleanly or was benignly skipped (dirty,
 # non-default branch, single-writer, undetermined default branch). Exits 1
 # when ANY repo hit a real failure (fetch failed, or the default branch is
@@ -36,7 +36,7 @@
 # Bare repos and anything under a .claude/worktrees path are EXCLUDED from
 # enumeration entirely (never fetched, never rowed) — see enumerate_repos().
 #
-# STALE-WT CLEANUP PASS (HIMMEL-2116, follow-up to HIMMEL-2115): a repo
+# STALE-WT CLEANUP PASS: a repo
 # already enumerated below (has a `.git` entry) is routed to
 # classify_wt_candidate() INSTEAD OF classify_repo() when it looks like a
 # scratch worktree folder made by some other harness/tool outside the
@@ -159,8 +159,8 @@ fi
 # would make `[ "$age_days" -lt "$WT_STALE_DAYS" ]` in
 # classify_wt_candidate itself throw an integer-range error, and that test
 # sits inside an `if`, so under `set -e` the error is swallowed as "false"
-# and falls through to the DELETE branch instead of "not stale" (codex-2,
-# HIMMEL-2116 pr-check round-2 panel) -- reject the pathological input here,
+# and falls through to the DELETE branch instead of "not stale".
+# Reject the pathological input here,
 # before it ever reaches that comparison.
 case "$WT_STALE_DAYS" in
     ''|*[!0-9]*)
@@ -209,7 +209,7 @@ _is_bare() {
 # entry (unlike a normal checkout or a linked worktree), so _scan_dir's
 # `[ -e "$dir/.git" ]` gate never fires for one and — without this check —
 # it falls through to being recursed into like an ordinary directory,
-# scanning its entire object database (codex CR round 4). Only directories
+# scanning its entire object database.. Only directories
 # that pass this cheap check pay for the _is_bare git subprocess call below;
 # every other directory (the overwhelming majority of a github-root scan)
 # never shells out to git just to learn it isn't a repo.
@@ -260,13 +260,13 @@ _scan_dir() {
     # failure (permission denied on a nested dir, the dir vanishing
     # mid-scan) was silently discarded: no error surfaced, and any repos
     # under the unreadable subtree were never enumerated while the run still
-    # reported success (codex-2, HIMMEL-2115 pr-check panel). gnu-ok:
+    # reported success. gnu-ok:
     # -mindepth/-maxdepth are also standard BSD find (macOS) flags, not
     # GNU-only.
     # set +e / set -e bracket (matches this file's other rc-capturing calls,
     # e.g. the fetch/ls-remote/status calls in classify_repo below): a bare
     # `find_out=$(find ...)` assignment IS subject to this script's
-    # `set -e` (codex-1, HIMMEL-2115 pr-check round-9 panel) -- unlike the
+    # `set -e` -- unlike the
     # process-substitution form this replaced, a failing `find` here would
     # abort the ENTIRE runner mid-scan before `find_rc=$?` on the next line
     # even ran, turning the original silent-repo-loss bug into a full crash
@@ -280,8 +280,8 @@ _scan_dir() {
         echo "WARN repo-sync-runner: 'find' failed (rc=$find_rc) scanning $dir -- repos under this directory may be silently missing from this run" >&2
         # Marker file, not a variable: this call may be running inside the
         # caller's `<(...)` process substitution subshell, where a plain
-        # variable write never reaches the parent (codex-1, HIMMEL-2115
-        # pr-check round-10 panel) -- the parent checks for this file's
+        # variable write never reaches the parent;
+        # the parent checks for this file's
         # existence after enumeration to fold the failure into the run's
         # outcome/exit code instead of leaving it a stderr-only signal.
         [ -n "${_rs_find_fail_marker:-}" ] && : >> "$_rs_find_fail_marker" 2>/dev/null
@@ -346,7 +346,7 @@ classify_repo() {
     # symref line (a benign, differently-configured-remote case). Capture
     # stdout+stderr together and check rc BEFORE parsing, so the two cases
     # classify differently instead of both collapsing into "could not
-    # determine the default branch" (codex CR round 6).
+    # determine the default branch".
     set +e
     ls_remote_raw=$(git -C "$repo" ls-remote --symref "$REMOTE" HEAD 2>&1)
     ls_remote_rc=$?
@@ -401,7 +401,7 @@ classify_repo() {
     RS_ACTION="pulled"; RS_OK="true"; RS_REASON="fast-forwarded to $REMOTE/$default_branch"
 }
 
-# --- stale-wt cleanup (HIMMEL-2116) ---------------------------------------
+# --- stale-wt cleanup ---------------------------------------
 
 # _is_wt_candidate <repo> — true when a repo already found by enumeration
 # looks like a scratch worktree folder rather than a real sync target: a
@@ -438,7 +438,7 @@ classify_wt_candidate() {
 
     # A `git worktree lock`ed folder is an explicit "do not touch" signal --
     # checked FIRST, before any other gate, and never overridden by clean/
-    # pushed/stale (codex-3, HIMMEL-2116 pr-check round-4 panel): a raw
+    # pushed/stale: a raw
     # `rm -rf` later in this function has no awareness of the lock at all
     # (only `git worktree remove` respects it), so this must be caught here.
     # Only linked worktrees (.git is a FILE) can carry a lock file.
@@ -454,11 +454,11 @@ classify_wt_candidate() {
     # --ignored (unlike classify_repo's plain --porcelain): this function's
     # clean folders get `rm -rf`ed, so a gitignored-but-real file (a local
     # .env, a build artifact, a local DB) must count as dirty here, or it is
-    # silently destroyed with no git history to recover it from (codex-2,
-    # HIMMEL-2116 pr-check panel round 1). --untracked-files=all: an
+    # silently destroyed with no git history to recover it from.
+    # --untracked-files=all: an
     # explicit CLI flag, so it overrides a local `status.showUntrackedFiles`
     # config that would otherwise silently hide untracked (non-ignored)
-    # content from plain --porcelain (codex-1, round 4 panel) -- without it,
+    # content from plain --porcelain -- without it,
     # a repo configured that way could read as clean while carrying
     # untracked data.
     set +e
@@ -483,14 +483,14 @@ classify_wt_candidate() {
     fi
 
     # Resolve @{u}'s OWN remote -- NOT the fixed $REMOTE -- before refreshing
-    # anything (HIMMEL-2208, codex-4 round-5 / codex-2+4 rounds 3-4 pr-check
-    # panels): a branch tracking a DIFFERENT remote than $REMOTE (default
+    # anything:
+    # a branch tracking a DIFFERENT remote than $REMOTE (default
     # origin) never got that remote's tracking ref refreshed by a fetch
     # scoped to $REMOTE, so a deleted/rewritten branch on the OTHER remote
     # could still read ahead=0 below and wrongly clear this gate.
     upstream_remote=$(git -C "$repo" for-each-ref --format='%(upstream:remotename)' "refs/heads/$branch" 2>/dev/null)
     # Assert the resolved remotename is an ACTUAL configured remote, rather
-    # than denylisting the values that aren't (HIMMEL-2208 review): empty (no
+    # than denylisting the values that aren't: empty (no
     # upstream at all) and "." (a LOCAL-branch upstream -- git's own
     # convention for branch.<name>.remote) are the two known cases, but
     # branch.<name>.remote also accepts a bare URL -- an allowlist covers
@@ -506,15 +506,15 @@ classify_wt_candidate() {
         return 0
     fi
 
-    # Refresh the remote-tracking ref BEFORE trusting it for "fully pushed"
-    # (codex-1, HIMMEL-2116 pr-check round-3 panel): without a fetch here,
+    # Refresh the remote-tracking ref BEFORE trusting it for "fully pushed":
+    # without a fetch here,
     # a stale local @{u} can show ahead=0 for a branch the remote no longer
     # has (deleted or force-pushed away since the last fetch), wrongly
     # clearing this gate. --prune so a DELETED remote branch's stale
     # tracking ref is actually removed (not just left pointing at its last-
     # known commit) -- without --prune, @{u} would still resolve and still
     # read ahead=0, defeating the point of fetching at all. Fetches
-    # $upstream_remote (the branch's OWN configured remote, HIMMEL-2208),
+    # $upstream_remote (the branch's OWN configured remote),
     # not the fixed $REMOTE, for the same reason. A fetch failure is itself
     # an alert -- never silently trust a possibly-stale cache for a
     # deletion decision.
@@ -559,7 +559,7 @@ classify_wt_candidate() {
     # existing file need not touch it) -- ponytail: known ceiling, bounded
     # by the other three gates (clean + fully pushed + genuine linked
     # worktree already route an in-use folder to ALERT, not delete).
-    # HIMMEL-2203 (follow-up, reviewed and kept as-is): the two literal
+    # The two literal
     # alternatives don't hold up on inspection -- .git/HEAD only changes on
     # checkout (branch switch), not on a same-branch commit, so it MISSES
     # the exact activity pattern this ticket worries about; the linked
@@ -577,7 +577,7 @@ classify_wt_candidate() {
     # `stat -c` as a last resort -- on BSD/macOS, `date -r` treats its
     # argument as epoch seconds to CONVERT, not a reference file, so
     # without a fallback it silently mis-parses and disables deletion
-    # entirely there (codex-4, HIMMEL-2116 pr-check round-4 panel).
+    # entirely there.
     mtime=$(date -r "$repo" +%s 2>/dev/null || stat -f %m "$repo" 2>/dev/null || stat -c %Y "$repo" 2>/dev/null || echo 0)
     now=$(date -u +%s)
     age_days=$(( (now - mtime) / 86400 ))
@@ -589,7 +589,7 @@ classify_wt_candidate() {
 
     # Auto-delete only a genuine linked worktree (`.git` is a FILE) -- a
     # wt-*-NAMED but otherwise ordinary standalone clone (`.git` is a DIR)
-    # matched on name alone (codex-1, HIMMEL-2116 pr-check panel: an
+    # matched on name alone (an
     # unrelated repo that happens to be named "wt-something" must not be
     # silently rm -rf'd by naming coincidence). It still gets examined and
     # surfaced -- salvage-first via an alert, never silently ignored -- but
@@ -606,7 +606,7 @@ classify_wt_candidate() {
     WT_REASON="clean, fully pushed (branch '$branch' == $upstream), stale ${age_days}d >= ${WT_STALE_DAYS}d threshold"
 }
 
-# _wt_reverify_deletable <repo> — cheap TOCTOU guard (HIMMEL-2207): classify_
+# _wt_reverify_deletable <repo> — cheap TOCTOU guard: classify_
 # wt_candidate's cleanliness AND fully-pushed checks both run well before the
 # actual rm -rf in delete_wt_folder; something could commit new work into the
 # folder in that window -- a NEW commit makes the worktree CLEAN again, so
@@ -623,7 +623,7 @@ classify_wt_candidate() {
 # candidate's own dirty check (--ignored --untracked-files=all): a
 # gitignored file written in the window must still block the delete.
 #
-# Per-gate enumeration (HIMMEL-2208 pr-check round-3 panel review): the
+# Per-gate enumeration: the
 # delete decision rests on FOUR classify_wt_candidate preconditions -- can
 # each flip in the window between classify_wt_candidate returning and the
 # actual rm -rf?
@@ -636,8 +636,8 @@ classify_wt_candidate() {
 #       own mtime only advances when an entry is added/removed directly
 #       inside it, never from editing a tracked file's content or from a
 #       subdirectory's internal churn (git status rewriting .git/index does
-#       NOT touch this repo's own top-level mtime -- same reasoning as the
-#       HIMMEL-2203 index-mtime finding on this file). Every way to advance
+#       NOT touch this repo's own top-level mtime).
+#       Every way to advance
 #       the folder's own mtime in this window is already caught by gate (1)
 #       or (2) above: a new/removed top-level entry left uncommitted is
 #       dirty (gate 1); committed but not yet pushed is ahead>0 (gate 2);
@@ -667,7 +667,7 @@ _wt_reverify_deletable() {
     rc=$?
     set -e
     # A failed status call (repo gone/corrupted/unreadable) must fail CLOSED,
-    # not read as clean (codex-1, HIMMEL-2208 pr-check panel): stdout is empty
+    # not read as clean: stdout is empty
     # either way, so without the rc check a git-status failure right before
     # the delete would pass this guard.
     if [ "$rc" -ne 0 ] || [ -n "$out" ]; then
@@ -714,7 +714,7 @@ delete_wt_folder() {
             # bare repo's own directory (no nested .git one level up), so
             # dirname(common_dir)/.git above never matches and the prune
             # step was silently skipped, leaving a stale worktree registry
-            # entry on the bare parent (HIMMEL-2207). Prune directly there.
+            # entry on the bare parent. Prune directly there.
             git -C "$common_dir" worktree prune 2>/dev/null || true
         fi
     fi
@@ -738,7 +738,7 @@ _rs_json_null_str() {
 
 # --- main -----------------------------------------------------------------
 
-# EXIT trap (mirrors dispatch-codex-exec.sh's composed EXIT trap, HIMMEL-2023,
+# EXIT trap (mirrors dispatch-codex-exec.sh's composed EXIT trap,
 # which this file's own header claims to follow): guarantees an end row is
 # written even if something between the start row and the normal end-of-
 # script write dies unexpectedly (e.g. a results-file append failing on a
@@ -757,7 +757,7 @@ _rs_exit_trap() {
 }
 trap _rs_exit_trap EXIT
 
-# Start row FIRST, before any results-file I/O (codex CR round 4): the EXIT
+# Start row FIRST, before any results-file I/O: the EXIT
 # trap can only report a failure once run_id is set, so if creating/rotating
 # RESULTS_FILE itself fails, the run must already have a start row on record
 # for the trap's error end row to attach to — otherwise that failure mode
@@ -792,8 +792,8 @@ github_canon=""
 
 # _scan_dir's `find` failures (round-9 fix) only WARN to stderr — that
 # WARN never reaches the run's outcome/exit code, so a directory-scan
-# failure still reports a clean run despite possibly-missing repos
-# (codex-1, HIMMEL-2115 pr-check round-10 panel). Enumeration runs inside
+# failure still reports a clean run despite possibly-missing repos.
+# Enumeration runs inside
 # `<(...)` process substitutions below, so a plain shell variable set by
 # `_scan_dir` would be lost when that subshell exits -- use a marker FILE
 # instead, which does survive (a real filesystem effect, not shell state).

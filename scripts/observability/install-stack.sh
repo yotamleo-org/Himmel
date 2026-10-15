@@ -22,7 +22,7 @@
 #
 # ponytail: flow-exporter.ts serves no /healthz route yet, so a /healthz 404
 # falls back to /metrics, upgrade path: once flow-exporter.ts answers /healthz
-# (HIMMEL-4288 ask, deferred), drop the /metrics fallback in probe().
+# (deferred), drop the /metrics fallback in probe().
 set -uo pipefail
 
 NAME="himmel-flow-exporter"

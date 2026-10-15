@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # scripts/usage/usage-compute.sh -- per-ticket usage records, computed once,
-# append-only (HIMMEL-3994). Joins two computations that used to live apart:
-#   1. per-session tokens   -- scripts/lib/bank-attribution.sh output (HIMMEL-2764)
+# append-only. Joins two computations that used to live apart:
+#   1. per-session tokens   -- scripts/lib/bank-attribution.sh output
 #   2. CR rounds / verdicts -- the CR critic ledger (scripts/cr/ledger-append.sh)
-# Both read local files and fail closed. A third, opt-in join (HIMMEL-4030)
+# Both read local files and fail closed. A third, opt-in join
 # adds PR/CI facts from gh when --repo is given; it fails closed too: any gh
 # failure aborts the WHOLE run before anything is appended, and a record never
 # stores null for an unknown fact.

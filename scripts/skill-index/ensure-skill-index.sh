@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # skill-index/ensure-skill-index — idempotently build the /skill-find index
-# and register it as the qmd 'skills' collection (HIMMEL-4302). Run by the
+# and register it as the qmd 'skills' collection. Run by the
 # himmelctl qmd install flow, so install and `himmelctl ensure` (which the
 # update drift pass runs) both leave doctor C44-skill-index green.
 #

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/test-context-replay.sh - tests for context-replay.py (HIMMEL-5042).
+# scripts/eval/test-context-replay.sh - tests for context-replay.py.
 # Synthetic session: 60 calls, context 50k growing 10k per call, 100 out each.
 # Platform guard: POSIX bash + python3; no .ps1 twin (eval tooling, linux only).
 set -uo pipefail

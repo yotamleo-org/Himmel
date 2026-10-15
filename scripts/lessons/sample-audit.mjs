@@ -1,4 +1,4 @@
-// scripts/lessons/sample-audit.mjs — HIMMEL-767 deliverable 2: sample-audit
+// scripts/lessons/sample-audit.mjs — sample-audit
 // precision gate for lesson provenance records (docs/internals/lesson-provenance.md).
 //
 // Three verbs:

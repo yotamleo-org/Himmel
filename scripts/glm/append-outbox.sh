@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Append one GLM worker progress note to its dispatcher-minted outbox (HIMMEL-1649).
+# Append one GLM worker progress note to its dispatcher-minted outbox.
 #
 # THIS IS THE OFF-LANE IMPLEMENTATION OF THE SAME PAYLOAD CONTRACT the
 # block-glm-external-writes.sh hook enforces. On the GLM lane this file NEVER
@@ -134,10 +134,10 @@ if (structured) {
   record = { type: "note", text };
 }
 // Consecutive-duplicate suppression, same rule as the hook — including its
-// documented v1 limits (adjudication-blind, unlocked; deferred to HIMMEL-1663).
+// documented v1 limits (adjudication-blind, unlocked).
 const rawSig = require("node:crypto").createHash("sha256").update(text, "utf8").digest("hex");
 let lastSig = null;
-// Torn-tail boundary, lockstep with the hook (HIMMEL-1649 round 4): an
+// Torn-tail boundary, lockstep with the hook: an
 // interrupted earlier append leaves the file ending mid-line, and appending
 // onto it would concatenate this record into that partial line — which
 // consumers then skip entirely.

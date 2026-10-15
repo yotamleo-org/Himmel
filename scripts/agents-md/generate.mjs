@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// HIMMEL-471 — generate a GPT-adapted AGENTS.md from CLAUDE.md.
+// Generate a GPT-adapted AGENTS.md from CLAUDE.md.
 //
 // CLAUDE.md stays the single source of truth; AGENTS.md is regenerated (never
 // hand-maintained) so the two cannot drift. A pre-commit guard runs --check.
@@ -54,12 +54,12 @@ function build() {
   if (!Array.isArray(table)) {
     die(2, `agents-md: cannot evaluate — debrand table must be a JSON array, got ${typeof table}.`);
   }
-  // Coverage validation (HIMMEL-480). `split/join` silently no-ops when `from`
+  // Coverage validation. `split/join` silently no-ops when `from`
   // is absent, so a CLAUDE.md edit that moves or rewrites debranded text turns
   // its rule into a dead no-op with NO signal — the transform quietly stops
   // protecting that string. Every rule must therefore either match, or declare
   // `"dormant": true` with a `note` saying why. An unmatched, undeclared rule is
-  // a hard error: structural, not a warning nobody reads (HIMMEL-195).
+  // a hard error: structural, not a warning nobody reads.
   const orphans = [];
   const revived = [];
   const seenFrom = new Set();

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/skill-index/skill-find.sh — HIMMEL-2222
+# scripts/skill-index/skill-find.sh
 #
 # /skill-find used to hand its query straight to `qmd_cmd query --collection
 # skills ...`. When the `skills` collection was never built on a machine (or

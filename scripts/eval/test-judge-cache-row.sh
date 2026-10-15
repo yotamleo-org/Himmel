@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-judge-cache-row.sh — judge-cache-row.sh ledger row + the judge agent
-# frontmatter (HIMMEL-5180). Fixture transcripts only; nothing real is read.
+# frontmatter. Fixture transcripts only; nothing real is read.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"

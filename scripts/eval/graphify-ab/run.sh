@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run.sh -- graphify leg A/B sweep (HIMMEL-5317).
+# run.sh -- graphify leg A/B sweep.
 #
 #   run.sh run [--reps N] [--out DIR] [--max-usd USD] [--tasks id,id] [--model M]
 #   run.sh plan [--reps N] [--tasks id,id]     print the run matrix, call nothing
@@ -131,7 +131,7 @@ for rep in $(seq 1 "$REPS"); do
       if [ "$arm" = A ]; then sys_text="$ARM_A_TEXT"; deny=""; else sys_text="$ARM_B_TEXT"; deny='Bash(graphify:*),Bash(bash scripts/graphify/leg-graph.sh:*)'; fi
       prompt="$(task_prompt "$t")"
       start="$(date +%s)"
-      # HIMMEL-5317 graphify A/B agent run, bank-preflighted per run, explicit permission mode, budget-capped
+      # graphify A/B agent run, bank-preflighted per run, explicit permission mode, budget-capped
       # launch-profile-ok: eval arm pins its own --tools/--allowedTools and --strict-mcp-config; a leg profile would change the measured condition
       ( cd "$CHECKOUT" && "$TIMEOUT_BIN" "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --model "$MODEL" \
           --permission-mode dontAsk --output-format json --max-budget-usd "$run_cap" \

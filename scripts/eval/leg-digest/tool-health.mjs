@@ -1,4 +1,4 @@
-// HIMMEL-4816: shared read-only rollup for the Tool health page and console board.
+// Shared read-only rollup for the Tool health page and console board.
 // Denominators live in eval-runs metadata; class/recovery rows come from leg-failures.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';

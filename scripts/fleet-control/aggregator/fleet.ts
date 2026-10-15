@@ -6,7 +6,7 @@ import { readArmedSlots } from "./armed";
 import { readFeeds, type Feeds } from "./ledger";
 import type { Worker } from "./types";
 
-// HIMMEL-760 seam: the deterministic zero-token scheduler will be the first
+// Seam: the deterministic zero-token scheduler will be the first
 // non-human consumer of this API as a fleet-control CLIENT/principal - never a
 // second dispatch authority. Phase-1 read surfaces (GET /fleet) are designed
 // with a programmatic consumer in mind (stable JSON contract, no HTML-only state).

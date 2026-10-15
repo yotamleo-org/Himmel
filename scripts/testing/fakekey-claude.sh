@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# launch-profile-ok-file: startup tests run claude under a fake key with no model turn; a role profile would change the config under test (HIMMEL-4410)
+# launch-profile-ok-file: startup tests run claude under a fake key with no model turn; a role profile would change the config under test
 # fakekey-claude.sh — credential-free headless claude runner for startup-only tests
-# (HIMMEL-4410, epic HIMMEL-4409). Source it, then call:
+# Source it, then call:
 #
 #   fakekey_run <outdir> <claude args...>
 #
@@ -112,7 +112,7 @@ fakekey_run() {
   fi
   local rc mock="${FAKEKEY_MOCK_FIXTURE:-}"
   if [ -n "$mock" ]; then
-    # HIMMEL-4411: scripted local API. It must listen INSIDE the netns (loopback is
+    # Scripted local API. It must listen INSIDE the netns (loopback is
     # isolated there), so it starts in the same sandboxed shell as claude and is
     # killed when claude ends. Never without the sandbox.
     [ "$sandbox" = 1 ] || { echo "fakekey: FAKEKEY_MOCK_FIXTURE requires the sandbox (fail closed)" >&2; return 2; }
@@ -122,7 +122,7 @@ fakekey_run() {
     mock=$(cd "$(dirname "$mock")" && printf '%s/%s' "$(pwd)" "${mock##*/}")
     rm -f "$out/mock.port" "$out/mock.log"
     # shellcheck disable=SC2016  # the sh -c body expands inside the sandbox, not here
-    # fake-key mock-backed test, HIMMEL-4411 (env -i here does the work native-auth-pin does for real launches)
+    # fake-key mock-backed test (env -i here does the work native-auth-pin does for real launches)
     (cd "$out" && env -i "${envv[@]}" unshare -rn sh -c '
       ip link set lo up || exit 1
       "$1" "$2" --fixture "$3" --port-file "$4" --log "$5" & m=$!
@@ -138,12 +138,12 @@ fakekey_run() {
     printf '%s\n' "$rc" >"$out/rc"
     return 0
   fi
-  # fake-key credential-free test, HIMMEL-4410
+  # fake-key credential-free test
   if [ "$sandbox" = 1 ]; then
     (cd "$out" && env -i "${envv[@]}" unshare -rn sh -c 'ip link set lo up && exec timeout "$@"' _ \
       "$secs" "$claude_bin" -p "say hi" --output-format json --debug "$@" >"$out/out.json" 2>"$out/err.txt")
   else
-    # fake-key credential-free test, HIMMEL-4410
+    # fake-key credential-free test
     (cd "$out" && env -i "${envv[@]}" timeout "$secs" "$claude_bin" -p "say hi" --output-format json --debug "$@" \
       >"$out/out.json" 2>"$out/err.txt")
   fi

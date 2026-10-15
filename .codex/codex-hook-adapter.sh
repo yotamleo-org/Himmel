@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Codex hook adapter (HIMMEL-427). Bridges himmel's exit-code block convention to
+# Codex hook adapter. Bridges himmel's exit-code block convention to
 # Codex's JSON decision convention.
 #
 # himmel guardrails signal a BLOCK by exiting 2 (Claude Code's convention: exit 2
@@ -17,7 +17,7 @@
 # name, unset CLAUDE_PROJECT_DIR, missing guardrail file) — a bare `exit 2` there
 # would fail OPEN under Codex. Exception: a hook the wrapper marked --lifecycle
 # (SessionStart/Stop) has no permission gate to fail closed ON, so those
-# preconditions report honestly instead — see fail_precondition (HIMMEL-1981).
+# preconditions report honestly instead — see fail_precondition.
 # Every other guardrail outcome passes through
 # unchanged, so the guardrails stay single-sourced and keep working verbatim under
 # Claude Code (which never invokes this adapter — only .codex/hooks.json does).
@@ -41,7 +41,7 @@ emit_deny() {
 }
 
 # emit_context <reason> <event> — print Codex's non-blocking additionalContext
-# JSON on stdout and exit 0 (HIMMEL-565). Used for guardrail exit 2 on lifecycle
+# JSON on stdout and exit 0. Used for guardrail exit 2 on lifecycle
 # events that have NO permission gate (PostToolUse, SessionStart, UserPromptSubmit).
 # Their `*.command.output` schema (openai/codex generated schemas) carries
 # `hookSpecificOutput.additionalContext` — appended to the model's context — not a
@@ -69,7 +69,7 @@ emit_context() {
 }
 
 # fail_precondition <reason> — the adapter's OWN startup errors, raised BEFORE
-# stdin is read, so the inbound event is still unknown (HIMMEL-1981). For a hook
+# stdin is read, so the inbound event is still unknown. For a hook
 # wired to a permission-gate event that must be a fail-CLOSED deny; for one wired
 # to a NO-permission-gate event (SessionStart/Stop) a deny envelope is both
 # meaningless and rejected by that event's output schema, so report the failure
@@ -94,7 +94,7 @@ name="${1:-}"
 [ -n "${CLAUDE_PROJECT_DIR:-}" ] || fail_precondition "codex-hook-adapter: CLAUDE_PROJECT_DIR unset — fail closed"
 proj="${CLAUDE_PROJECT_DIR//\\//}"
 
-# HIMMEL-1989: <name> may be a PLUS-separated CHAIN — `a.sh+b.sh+c.sh`. Codex
+# <name> may be a PLUS-separated CHAIN — `a.sh+b.sh+c.sh`. Codex
 # launches one cmd.exe -> Git Bash -> adapter stack PER hook entry, so nine
 # PreToolUse entries on a Bash tool call cost nine of them; a chain runs the same
 # guardrails, in the same order, inside ONE adapter. Order is the order Codex
@@ -145,12 +145,12 @@ nl='
 # Inbound lifecycle event, parsed once. SessionStart / UserPromptSubmit are
 # advisory CONTEXT events with no permission gate. Under Codex a hook feeds the
 # model via `hookSpecificOutput.additionalContext`, NOT raw stdout — that JSON
-# channel is exactly why HIMMEL-565 added emit_context. So for these two events
+# channel is exactly why emit_context exists. So for these two events
 # the guardrail's output (stdout for an exit-0 advisory hook like
 # inject-initiative / inject-where-are-we / inject-doc-freshness; stderr for a
 # defensive exit-2) is captured and re-emitted through emit_context; empty output
 # → nothing injected, exit 0. This is what makes himmel's advisory SessionStart /
-# UserPromptSubmit hooks actually FIRE under Codex (HIMMEL-596) instead of being
+# UserPromptSubmit hooks actually FIRE under Codex instead of being
 # wired-but-inert. PreToolUse / PermissionRequest / PostToolUse keep the
 # stdout-passthrough contract below (auto-approve emits its JSON decision on
 # stdout — it MUST pass through verbatim, so it must NOT be wrapped).
@@ -161,7 +161,7 @@ case "$ev" in
     # to preserve) and run each chain member exactly once, in order. $(...) strips
     # trailing newlines; also drop a stray CR (Windows). emit_context exits 0; an
     # empty body is an advisory no-op (exit 0) — these hooks never block session
-    # start. SessionStart is a real multi-member chain since HIMMEL-2003 (Stop is
+    # start. SessionStart is a real multi-member chain (Stop is
     # still one entry per hook); the join below is what makes the members' bodies
     # arrive as one context block. There is no per-member clamp here, so the
     # entry's own `timeout` in hooks.json is the ONLY bound — a multi-member
@@ -176,7 +176,7 @@ case "$ev" in
     exit 0
     ;;
   Stop|SessionEnd)
-    # SessionEnd-class hooks (HIMMEL-599): refresh-where-are-we-on-end,
+    # SessionEnd-class hooks: refresh-where-are-we-on-end,
     # jira-nudge-on-end, end-session-wiki. Unlike SessionStart/UserPromptSubmit,
     # Codex's stop.command.output schema has NO additionalContext / hookSpecificOutput
     # — only a continue/decision/systemMessage gate. himmel's SessionEnd hooks are
@@ -186,7 +186,7 @@ case "$ev" in
     # Stop *decision* parser (raw advisory text there is mis-parsed), and NOT through
     # the generic exit-2 path (which would emit a hookSpecificOutput shape Stop's
     # strict deny_unknown_fields schema rejects). Always exit 0. Under Codex,
-    # Codex's real SessionEnd event shares this branch (HIMMEL-2021): its output
+    # Codex's real SessionEnd event shares this branch: its output
     # schema is input-only, so the same never-emit-a-decision rule is what makes
     # it safe, and its 1-3s cap is why only an enqueue-and-exit hook is wired
     # there.
@@ -208,7 +208,7 @@ esac
 # deny decision: it REJECTS a Claude-style permissionDecision:"allow" or an
 # `updatedInput` — codex-cli 0.149 surfaces "unsupported permissionDecision:allow"
 # / "updatedInput without permissionDecision:allow" and marks the hook failed
-# (HIMMEL-1987). himmel guardrails that emit that allow envelope on stdout
+# himmel guardrails that emit that allow envelope on stdout
 # (auto-approve-safe-bash; the Claude-only rtk-hook-guard) are a no-op under
 # Codex's own approval model anyway, so the adapter must NEVER forward guardrail
 # stdout verbatim — it captures everything and re-emits only what Codex honours:
@@ -219,7 +219,7 @@ esac
 # command substitution; appended last, it survives guardrail output containing
 # "EXIT:" (## / % both resolve to the final marker).
 #
-# HIMMEL-1989: the chain runs in declared order and the FIRST deny wins and
+# The chain runs in declared order and the FIRST deny wins and
 # SHORT-CIRCUITS — emit_deny/emit_context exit, so later members do not run.
 # Codex's own semantics ran every matched hook and then honoured the deny; that
 # difference is safe here because every himmel PreToolUse guardrail is a pure
@@ -265,7 +265,7 @@ for script in "${scripts[@]}"; do
 
   # Non-block: this member proceeds. Its stdout is deliberately NOT forwarded to
   # Codex — a permissionDecision:"allow" / updatedInput would be rejected
-  # (HIMMEL-1987) — so it is held for OUR stderr once the whole chain is through.
+  # and is held for OUR stderr once the whole chain is through.
   [ -n "$out" ] && advisory="${advisory:+$advisory$nl}$out"
 done
 

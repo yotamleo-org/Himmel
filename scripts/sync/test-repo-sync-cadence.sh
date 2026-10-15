@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/sync/repo-sync-runner.sh + repo-sync-cadence.sh (HIMMEL-2115).
+# Tests for scripts/sync/repo-sync-runner.sh + repo-sync-cadence.sh.
 #
 # The runner is pure bash operating on real (throwaway) git repos, so its
 # fixture suite runs on EVERY platform, no schtasks fakery needed. The
@@ -65,7 +65,7 @@ REAL_BASH="$(command -v bash)"
 export HOME="$TMP_ROOT/home"
 mkdir -p "$HOME"
 
-# Hermetic + fast fixture git config (HIMMEL-1589) + a fixed commit identity
+# Hermetic + fast fixture git config + a fixed commit identity
 # so `git commit` never blocks on a missing user.name/user.email.
 # shellcheck source=../lib/git-test-env.sh
 # shellcheck disable=SC1091
@@ -503,7 +503,7 @@ assert_contains "rotation failure emits a stderr WARN (results file now mixes st
 assert_contains "the run's note surfaces the rotation failure" "results-file rotation failed" "$out"
 
 # ============================================================================
-# Stale-wt cleanup pass (HIMMEL-2116, follow-up to HIMMEL-2115) — runs on
+# Stale-wt cleanup pass — runs on
 # every platform, same fixture style as the sync tests above.
 # ============================================================================
 

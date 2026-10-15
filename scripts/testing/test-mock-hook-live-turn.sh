@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Live hook-wiring e2e under mock-anthropic (HIMMEL-5228, epic HIMMEL-4409).
+# Live hook-wiring e2e under mock-anthropic.
 #
 # MOCK-BACKED: the model is scripts/testing/mock-anthropic. This proves that a
 # REGISTERED project hook (the clone's own .claude/settings.json) fires inside a
 # real claude turn and that its deny is HONOURED: the denied tool never executes.
-# CI proves hook scripts in isolation; this proves the wiring (HIMMEL-5030 shipped
+# CI proves hook scripts in isolation; this proves the wiring (shipped
 # bus hooks unwired for exactly this gap).
-# mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh (HIMMEL-4411)
+# mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh
 #
 # The deny case scripts a Bash call `touch <sentinel>; git stash drop` which
 # block-git-stash.sh refuses. `--allowedTools` names both command shapes, which removes

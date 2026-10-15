@@ -362,7 +362,7 @@ def record(digest, who, failures_ledger, eval_ledger):
             return 0, 0
         if status == "ok" and prev is not None:
             # A non-ok digest left rows the ok one may no longer have, or with other counts:
-            # replace the session's rows so readers see only the final digest (HIMMEL-4701).
+            # replace the session's rows so readers see only the final digest.
             add = frows
             _replace_session(failures_ledger, session, add)
         else:

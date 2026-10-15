@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Mock-backed smoke of the --consult Bash sandbox (HIMMEL-4412, epic HIMMEL-4409).
+# Mock-backed smoke of the --consult Bash sandbox.
 #
 # MOCK-BACKED: the model is scripts/testing/mock-anthropic, so this proves only that
 # Claude Code HONOURS the consult sandbox block for the tool_use it is handed. It is
 # NOT evidence of real-model behaviour (what a model chooses to run, or says after a
 # refusal); smoke-consult-sandbox.sh is the live, bank-spending twin for that.
-# mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh (HIMMEL-4411)
+# mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh
 #
 # The consult settings are the ones headed-arm-leg.sh --consult really generates (same
 # stubs as smoke-consult-sandbox.sh), run with `--setting-sources ""` like the shim does.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/leg-digest/test-leg-ledger.sh - hermetic suite for the leg ledgers (HIMMEL-4670 P2).
+# scripts/eval/leg-digest/test-leg-ledger.sh - hermetic suite for the leg ledgers.
 # Scratch ledgers only; never ~/.himmel. No model call, no bank.
 #  1. record writes one leg-failures row per digest class and one leg-trajectory eval-runs row; both validate;
 #  2. idempotence by session: a second run, and a run after a crash between writes, append only what is missing;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # prose-audit.sh — report mechanical prose in himmel command/skill files
-# (HIMMEL-1939). Read-only and deterministic: findings are advisory, so a
+# Read-only and deterministic: findings are advisory, so a
 # successful scan always exits 0. Non-zero means this reporter itself failed.
 # "~tokens" is bytes / 4, rounded; it is an approximation, not a tokenizer.
 set -uo pipefail

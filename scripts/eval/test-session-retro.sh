@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/eval/test-session-retro.sh - hermetic suite for session-retro.py (HIMMEL-5514).
+# scripts/eval/test-session-retro.sh - hermetic suite for session-retro.py.
 # Fixture rows are real leg-failures rows (scripts/eval/fixtures/session-retro-ledger.jsonl).
 # Never ~/.himmel. No model call, no bank.
 #  1. classes rank by distinct sessions, then count, and name example legs;

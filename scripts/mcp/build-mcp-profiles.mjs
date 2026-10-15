@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// build-mcp-profiles.mjs — HIMMEL-719 MCP fleet tiered management.
+// build-mcp-profiles.mjs — MCP fleet tiered management.
 //
 // Emits per-lane MINIMAL `--strict-mcp-config` profiles so a session/subagent
 // launches with only the servers it needs instead of the full per-session fleet
@@ -38,7 +38,7 @@ const PLUGIN_SERVERS = {
   "context7-remote": { type: "http", url: "https://mcp.context7.com/mcp" },
 };
 
-// HIMMEL-5002: secret env values (API keys, tokens) never land in the repo-tree
+// Secret env values (API keys, tokens) never land in the repo-tree
 // profile. They are written to 0600 files under ~/.config/himmel/mcp-secrets/
 // <server>/<VAR>, and the profile launches the server through secret-launch.mjs,
 // which reads them back into the server's environment.

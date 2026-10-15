@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# failure-review-cadence.sh — the daily failure review on a schedule (HIMMEL-4713, P5b of HIMMEL-4670).
+# failure-review-cadence.sh — the daily failure review on a schedule.
 #
 # WHY: the failure loop records failures on every leg close and the router (failure_router.py) turns
 # recurring classes into tickets, but nothing ran the router or showed the operator what failed.
@@ -23,7 +23,7 @@
 #
 # Seams (tests): FAILREV_CRONTAB, FAILREV_RUNNER_DIR, FAILURE_REVIEW_PREFLIGHT, plus
 # failure_review.py's own (HIMMEL_FAILURE_REVIEW_DIR, FAILURE_REVIEW_NOTIFY_CMD) and the router's.
-# Platform: cron (Linux/macOS). Windows development is parked (HIMMEL-4102).
+# Platform: cron (Linux/macOS). Windows development is parked.
 set -uo pipefail
 
 TASK_NAME="HIMMEL-FailureReview"
@@ -88,7 +88,7 @@ cmd_arm() {
         esac
     done
     [[ "$time" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "ERR failure-review-cadence: --time must be HH:MM, got: $time" >&2; return 1; }
-    # The router fails closed without a project key and cron has none, so a live runner carries it (HIMMEL-4792).
+    # The router fails closed without a project key and cron has none, so a live runner carries it.
     if [ "$live" -eq 1 ]; then
         [[ "${JIRA_PROJECT_KEY:-}" =~ ^[A-Z][A-Z0-9]+$ ]] || { echo "ERR failure-review-cadence: --live needs JIRA_PROJECT_KEY set to a project key (got: ${JIRA_PROJECT_KEY:-<unset>})" >&2; return 2; }
     fi

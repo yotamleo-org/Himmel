@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# plan-index.sh — HIMMEL-4000. Index the roadmap plan (HIMMEL-3882) into the
+# plan-index.sh — Index the roadmap plan into the
 # `roadmap-plan` qmd collection, rebuilding only when something it depends on
 # changed. Same "no change = no rebuild" idea as tick.sh's tracker= freshness.
 #
@@ -9,7 +9,7 @@
 # --watch P (repeatable): the Jira mirror dir, a handover status file/dir, the
 # fleet manifest. Their size+mtime joins the plan files' content hashes in the
 # change key. --out defaults to ~/.himmel/state/roadmap-plan (outside any repo or
-# vault; docs land in <out>/docs, the graphify graph.json (HIMMEL-4050) in
+# vault; docs land in <out>/docs, the graphify graph.json in
 # <out>/graph.json, the key in <out>/.fp, the doc-name manifest in <out>/.docs). The key is written ONLY
 # after the rebuild (docs AND graph: a failed emit fails the refresh) and the qmd
 # register+embed both succeed, so a failed run is retried next time; a missing or failing qmd exits non-zero. ROADMAP_QMD_BIN

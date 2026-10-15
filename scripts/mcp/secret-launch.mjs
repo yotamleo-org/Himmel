@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// secret-launch.mjs — HIMMEL-5002 MCP launcher shim.
+// secret-launch.mjs — MCP launcher shim.
 //
 // build-mcp-profiles.mjs keeps secret env values (API keys, tokens) OUT of the
 // repo-tree profile JSON: it writes each one to a 0600 file under

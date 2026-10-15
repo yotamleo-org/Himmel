@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Paired smoke test for scripts/glm/append-outbox.sh (HIMMEL-1649).
+# Paired smoke test for scripts/glm/append-outbox.sh.
 # Usage: bash scripts/glm/test-append-outbox.sh
 set -uo pipefail
 
@@ -68,7 +68,7 @@ assert_rc "oversize token denied" 2 "$(run_helper "$OWN_SESSION_NATIVE" "$OVERSI
 assert_rc "missing payload argument denied" 2 "$(env -u GLM_SESSION_DIR GLM_SESSION_DIR="$OWN_SESSION_NATIVE" bash "$HELPER" >/dev/null 2>&1; echo $?)"
 assert_rc "extra payload argument denied" 2 "$(env -u GLM_SESSION_DIR GLM_SESSION_DIR="$OWN_SESSION_NATIVE" bash "$HELPER" "$PAYLOAD" extra >/dev/null 2>&1; echo $?)"
 
-# --- HIMMEL-1649 round 3: schema LOCKSTEP with block-glm-external-writes.sh ---
+# --- schema LOCKSTEP with block-glm-external-writes.sh ---
 # This helper is the OFF-LANE implementation of the hook's payload contract. A
 # divergence means an off-lane worker writes records the adjudicator cannot
 # read — which is exactly what the previous revision did by hardcoding {text}
@@ -107,7 +107,7 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# HIMMEL-1649 round 4 [codex-adv-r4-1] — torn JSONL tail, lockstep with the hook.
+# Torn JSONL tail, lockstep with the hook.
 # An interrupted earlier append leaves the file ending mid-line. Appending
 # straight onto it would CONCATENATE this record into that partial line, and a
 # consumer that skips invalid lines then loses BOTH — while the caller is told

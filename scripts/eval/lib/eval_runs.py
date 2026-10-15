@@ -358,7 +358,7 @@ def qmd_quality_row(out_dir, golden, modes, scope="all", candidate_limit=40, emb
         "embed_model": embed_model or None,
         "rerank_model": rerank_model or None,
         "golden_sha256": file_sha256(golden),
-        # HIMMEL-4658: the retrieval corpus is the index CONTENT, not its path.
+        # The retrieval corpus is the index CONTENT, not its path.
         "index_sha256": file_sha256(index) if index and os.path.isfile(index) else None,
     }
     m = dict(meta or {})
@@ -448,7 +448,7 @@ def lane_quality_row(run_dir, run_id, judge_model=None, status="ok"):
         "permission_denials": total("permission_denials"),
         "peeked": float(sum(1 for t in tasks if t.get("peeked") is True)),
     })
-    # HIMMEL-4651 trajectory fields (scripts/eval/lane-quality/trajectory.py):
+    # Trajectory fields (scripts/eval/lane-quality/trajectory.py):
     # each rate counts only the rows where its field applies (not null), so a
     # run dir written before them gets null metrics, never a schema change.
     for k in ("red_before_green", "verify_before_claim"):
