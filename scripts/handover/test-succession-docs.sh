@@ -57,8 +57,10 @@ for f in "$PREFACE" "$JUDGE" "$CONSOLE" "$RUNNING" "$HANDOFF" "$RETASK"; do
 done
 
 # --- 1. leg-preface.md: the succession rule and its decision table ----------
-succ="$(section "$PREFACE" '^## Console succession')"
-if [ -n "$succ" ]; then pass 'leg-preface.md has a "Console succession" section'; else fail 'leg-preface.md has a "Console succession" section'; fi
+SUCCESSION="$DOCS/handover/leg-sections/succession.md"
+succ="$(section "$SUCCESSION" '^## Console succession')"
+if [ -n "$succ" ]; then pass 'leg-sections/succession.md has a "Console succession" section'; else fail 'leg-sections/succession.md has a "Console succession" section'; fi
+contains 'leg-preface.md names the succession section file on demand' "$(cat "$PREFACE")" 'leg-sections/succession.md'
 
 contains 'succession is genuine when the outgoing console relays it directly' "$succ" 'relays it directly'
 contains 'or when the incoming message quotes BOTH tokens' "$succ" 'quotes **both**'
