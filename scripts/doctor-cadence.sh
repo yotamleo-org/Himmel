@@ -4,8 +4,8 @@
 #
 # WHY: himmel-doctor flagged the missing pre-commit/commit-msg hooks (C16) for
 # nine days and nobody saw it, because nothing ran the doctor on a
-# schedule. This is the visibility half; repair is `himmel-update`'s drift pass
-# . Nothing here fixes anything.
+# schedule. This is the visibility half; repair is `himmel-update`'s drift pass.
+# Nothing here fixes anything.
 #
 #   doctor-cadence.sh run                  one pass (what cron fires)
 #   doctor-cadence.sh arm [--time HH:MM] [--force] [--dry-run]

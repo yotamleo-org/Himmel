@@ -377,8 +377,8 @@ wire_luna_vault_path() {
   bash "$HIMMEL_ROOT/scripts/lib/wire-luna-vault.sh" "$settings" "$dest"
 }
 
-# env.HANDOVER_DIR — seed the handover state root at the scaffolded luna vault
-# . Without this, a fresh adopter's handover state silently
+# env.HANDOVER_DIR — seed the handover state root at the scaffolded luna vault.
+# Without this, a fresh adopter's handover state silently
 # defaults to the inline <repo-root>/handovers/ stub and the operator has to
 # discover + set HANDOVER_DIR by hand (observed on a fresh ubuntu_new install
 # with no prior state). Creates <dest>/handovers/ so Mode B resolves cleanly
@@ -515,8 +515,8 @@ wire_qmd_core() {
   fi
 }
 
-# wire_graphify_core — opt-in install of the graphify knowledge-graph CLI
-# . Unlike wire_qmd_core, this is NOT called unconditionally —
+# wire_graphify_core — opt-in install of the graphify knowledge-graph CLI.
+# Unlike wire_qmd_core, this is NOT called unconditionally —
 # do_core() below only calls it when --with-graphify was passed. Detects +
 # adopts a foreign or already-himmel-fork install (graphify_install's own
 # contract); never installs over an existing install. WARN-not-fail: a
@@ -1281,8 +1281,8 @@ fi
 case "$PROFILE" in
   core) do_core ;;
   # `luna` historically used --target; also honor an explicit --luna-target so
-  # the intuitive `--profile luna --luna-target` is no longer a silent no-op
-  # . --target still wins when --luna-target is absent.
+  # the intuitive `--profile luna --luna-target` is no longer a silent no-op.
+  # --target still wins when --luna-target is absent.
   luna) if [[ $LUNA_TARGET_SET -eq 1 ]]; then do_luna "$LUNA_TARGET"; else do_luna "$TARGET"; fi ;;
   all)  do_core; do_luna "$LUNA_TARGET" ;;
 esac

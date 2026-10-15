@@ -319,8 +319,8 @@ update_hermes() {
         echo "    FAILED: hermes git fetch failed ($(printf '%s' "$fetch_err" | head -n1)) — resolve in $src." >&2
         return 1
     fi
-    # A non-fast-forward FETCH_HEAD is not automatically a fault here
-    # : NousResearch FORCE-PUSHES hermes-agent's main — its own
+    # A non-fast-forward FETCH_HEAD is not automatically a fault here:
+    # NousResearch FORCE-PUSHES hermes-agent's main — its own
     # remote-tracking reflog records `forced-update` — so after every rewrite
     # our HEAD stops being an ancestor of upstream and this merge fails
     # PERMANENTLY, wedging the whole update chain until a human hand-resets
@@ -875,8 +875,8 @@ report_guardrail_block() {
 # is WARN + the unset command only.
 # qmd-index: ensure registers any missing himmel/luna/skills
 # collection (idempotent qmd_install + collection add + ensure-skill-index.sh;
-# it never embeds or reindexes). It does not honour the embed-model swap lock
-# , so _qmd_swap_held keeps qmd-index in the DRIFT block while a
+# it never embeds or reindexes). It does not honour the embed-model swap lock,
+# so _qmd_swap_held keeps qmd-index in the DRIFT block while a
 # swap holds it.
 DRIFT_CONVERGE_IDS="pre-commit-hooks qmd-index"
 DRIFT_LINES=""

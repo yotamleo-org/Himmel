@@ -1463,8 +1463,8 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             esac
             # verdict is "nonworktree", "clean", or "strays ..." — safe on
             # tracked/non-ignored state. A real worktree ($stray_git_marker
-            # non-empty) still needs the ignored-content check below
-            # : classify_worktree never sees ignored paths.
+            # non-empty) still needs the ignored-content check below:
+            # classify_worktree never sees ignored paths.
             # A "nonworktree" leftover has no .git, so git has no gitignore
             # semantics to ask it about — nothing to check.
             if [ -n "$stray_git_marker" ]; then
@@ -1727,8 +1727,8 @@ if [ "$NO_PRUNE" -eq 0 ]; then
         local script="$PRIMARY_WORKTREE/scripts/unlanded-work.sh"
         [ -f "$script" ] || return 0
         echo "clean-garden: full accounting — unlanded local work (never a PR)"
-        # Capture stderr separately and cd into PRIMARY_WORKTREE first
-        # : unlanded-work.sh always
+        # Capture stderr separately and cd into PRIMARY_WORKTREE first:
+        # unlanded-work.sh always
         # exits 0 by contract even on a scan failure (an unresolvable
         # --base), writing the diagnostic to stderr instead — a discarded
         # stderr made a failed scan print the same all-zero accounting as a

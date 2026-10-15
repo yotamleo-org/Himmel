@@ -36,7 +36,7 @@
 #                     commit; mirrors uninstall.ps1's own -SkipHooks.
 #   -HandoverMode <inline|external>
 #                     Gate for Wire-HandoverDirLuna's env.HANDOVER_DIR write
-# . external (the default, today's behaviour)
+#                     external (the default, today's behaviour)
 #                     wires it when a vault is scaffolded; inline leaves
 #                     settings.json untouched. Windows twin of adopt.sh's
 #                     --handover-mode.
@@ -351,8 +351,8 @@ function Wire-LunaVaultPath([string]$Dest) {
     if ($LASTEXITCODE -ne 0) { throw "wire-luna-vault failed (exit $LASTEXITCODE)" }
 }
 
-# env.HANDOVER_DIR — seed the handover state root at the scaffolded luna vault
-# . Without this, a fresh adopter's handover state silently
+# env.HANDOVER_DIR — seed the handover state root at the scaffolded luna vault.
+# Without this, a fresh adopter's handover state silently
 # defaults to the inline <repo-root>/handovers/ stub. Creates <Dest>/handovers
 # so Mode B resolves cleanly out of the box. Sibling of Wire-LunaVaultPath;
 # $Dest = the scaffolded vault dir.
@@ -597,8 +597,8 @@ function Wire-QmdCoreInner {
             $ErrorActionPreference = $savedEAP
         }
     }
-    # Install the qmd CLI unless the FORK is already the served install
-    # : gate on Test-QmdForkServed, NOT presence
+    # Install the qmd CLI unless the FORK is already the served install:
+    # gate on Test-QmdForkServed, NOT presence
     # (Test-Qmd) - a machine carrying the old upstream bun-global install is
     # qmd-present but must still MIGRATE to the fork. Install-Qmd re-checks
     # internally as the second line of defense.
@@ -660,8 +660,8 @@ function Install-Graphify {
     return $LASTEXITCODE
 }
 
-# Wire-GraphifyCore -- opt-in install of the graphify knowledge-graph CLI
-# . Unlike Wire-QmdCore, this is NOT called unconditionally --
+# Wire-GraphifyCore -- opt-in install of the graphify knowledge-graph CLI.
+# Unlike Wire-QmdCore, this is NOT called unconditionally --
 # Do-Core below only calls it when -WithGraphify was passed. WARN-not-fail:
 # a missing Git Bash/uv or a network hiccup must not abort adopt. Honors
 # -DryRun.
@@ -960,8 +960,8 @@ Write-Host "==> himmel adopt — profile=$Profile scope=$Scope$dryNote"
 switch ($Profile) {
     'core' { Do-Core }
     # `luna` historically used -Target; also honor an explicit -LunaTarget so the
-    # intuitive `-Profile luna -LunaTarget` is no longer a silent no-op
-    # . -Target still wins when -LunaTarget is absent.
+    # intuitive `-Profile luna -LunaTarget` is no longer a silent no-op.
+    # -Target still wins when -LunaTarget is absent.
     'luna' { if ($LunaTargetSet) { Do-Luna $LunaTarget } else { Do-Luna $Target } }
     'all'  { Do-Core; Do-Luna $LunaTarget }
 }

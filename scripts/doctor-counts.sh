@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# doctor-counts.sh — the one writer of the statusline's doctor counts file
-# . Sourced by himmel-doctor.sh (full runs only) and
+# doctor-counts.sh — the one writer of the statusline's doctor counts file.
+# Sourced by himmel-doctor.sh (full runs only) and
 # doctor-cadence.sh. The HUD segment (scripts/statusline/hud-custom-lines.sh)
 # reads `<state dir>/counts` and shows its mtime age once it is over 24 h.
 #
