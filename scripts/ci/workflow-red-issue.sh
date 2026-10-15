@@ -201,7 +201,10 @@ mut=0
 # Stamp this run into the body first: the closed issue is the watermark that keeps
 # an older red run, finishing late, from opening a stale issue.
 { printf '%s\n' "$body"; echo "<!-- ci-red-run: $RUN_ID -->"; } > "$TMP/closed.md"
-gh issue edit "$num" --body-file "$TMP/closed.md" || mut=1
+if ! gh issue edit "$num" --body-file "$TMP/closed.md"; then
+  echo "workflow-red-issue: could not stamp run $RUN_ID into #$num -- leaving it open; retries on the next run." >&2
+  exit 1
+fi
 gh issue comment "$num" --body "Green as of $(now) at $SHA: $WF passed on $BRANCH in $RUN_URL. Closing." || mut=1
 gh issue close "$num" || mut=1
 if [ "$mut" -ne 0 ]; then

@@ -39,6 +39,7 @@ BIN="$TMP/bin"; mkdir -p "$BIN"
 #   default_branch the repo default branch (default: main)       (repos/<r> --jq .default_branch)
 #   list_fail      if present, the issue lookup exits 1
 #   mut_fail       if present, `issue create` exits 1
+#   edit_fail      if present, `issue edit` exits 1
 # `issue edit --body-file` is copied to $STUB/edit-<n>.md.
 cat > "$BIN/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -58,6 +59,7 @@ case "$*" in
   "api repos/"*"--jq .default_branch") cat "$STUB/default_branch" 2>/dev/null || echo main ;;
   "issue create"*)          [ -e "$STUB/mut_fail" ] && exit 1 ;;
   "issue edit"*)
+    [ -e "$STUB/edit_fail" ] && exit 1
     prev=""; for a in "$@"; do [ "$prev" = "--body-file" ] && cp "$a" "$STUB/edit-$3.md"; prev="$a"; done ;;
   "issue comment"*|"issue close"*|"label create"*) : ;;
   *) echo "stub gh: unhandled: $*" >&2; exit 99 ;;
@@ -226,6 +228,13 @@ setrun 5 success
 report 900
 has "gh issue close 7" "$log" "green closes #7"
 has "ci-red-run: 900" "$(cat "$STUB/edit-7.md" 2>/dev/null)" "green close stamps its run id into the body"
+newcase stamp-fails
+printf '[{"number":7,"body":"%s"}]\n' "$BODY_MAIN" > "$STUB/issues.json"
+setrun 5 success
+: > "$STUB/edit_fail"
+report 900
+if [ "$rc" -eq 1 ]; then ok "failed stamp exits 1"; else bad "failed stamp exit=$rc"; fi
+hasnt "gh issue close" "$log" "an issue whose stamp failed stays open (no lost watermark)"
 newcase stale-red-after-green
 printf '[{"number":7,"state":"closed","body":"%s"}]\n' '<!-- ci-red-branch: main -->\n<!-- ci-red-run: 950 -->\n' > "$STUB/issues.json"
 report 900
