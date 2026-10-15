@@ -45,7 +45,7 @@ import shlex
 import sys
 
 FIELDS = ("red_before_green", "denial_recovery", "identical_denied_retries", "verify_before_claim")
-# Bumped when a field's definition changes, so an eval-runs series never mixes two meanings (HIMMEL-4670).
+# Bumped when a field's definition changes, so an eval-runs series never mixes two meanings.
 TRAJECTORY_SCHEMA = 1
 
 # A hook or permission refusal: the tool never ran. A result that starts with
@@ -64,13 +64,13 @@ NO_RUN_FLAGS = ("--collect-only", "--co", "--help", "-h", "--version", "-V", "--
 # `-c` counts tests under bats but names a config file under pytest.
 NO_RUN_FLAGS_BATS = ("-c",)
 RUNNER_SUBCMD = ("npm", "pnpm", "yarn", "bun", "go", "cargo", "make")
-# HIMMEL-4698: quiet-run.sh's one-line outcome (OK ... "(" / ERR ... "exit=N"); a
+# quiet-run.sh's one-line outcome (OK ... "(" / ERR ... "exit=N"); a
 # refusal ("ERR quiet-run: ...") or a kill ("... killed by ...") matches neither.
 QUIET_RUN_LINE_RE = re.compile(r"^(OK|ERR) quiet-run ([^\s:]\S*)(?: exit=\d+| \()", re.M)
-# HIMMEL-5023: output that reports failures. The suites here print `  FAIL ...` per case and
+# output that reports failures. The suites here print `  FAIL ...` per case and
 # `<n> passed, <m> failed` (also `RESULT(S): ...`); `0 failed` is green.
 # ponytail: line-shape heuristic, a suite printing neither shape and exiting 0 still reads as passing, upgrade by
-# having suites print a quiet-run OK/ERR line (HIMMEL-4698) or by parsing the runner's own summary.
+# having suites print a quiet-run OK/ERR line or by parsing the runner's own summary.
 OUTPUT_FAIL_RE = re.compile(r"^\s*FAIL\b|\b[1-9]\d* failed\b", re.M)
 WRAPPERS = ("env", "time", "sudo", "command", "exec", "nice", "nohup")
 # Setup whose failure a test's RED is not mistaken for, in `cd d && test`.
@@ -410,7 +410,7 @@ def score_calls(calls, texts, report=None):
     elif not impl:
         rbg = False
     else:
-        # A run sent in the write's own message may finish on either side of it (HIMMEL-4672).
+        # A run sent in the write's own message may finish on either side of it.
         w, wm = impl[0]
         ordered = [(pos, ok) for pos, _, ok, mid in runs if wm is None or mid != wm]
         rbg = any(not ok and pos < w for pos, ok in ordered) and any(ok and pos > w for pos, ok in ordered)
