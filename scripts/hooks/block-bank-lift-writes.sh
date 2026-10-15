@@ -564,7 +564,8 @@ check_copy() {
     # --parents / -R rebuild each source path under the destination.
     if [ "$rel" = 1 ]; then
         for src in ${pos[@]+"${pos[@]}"}; do
-            if is_lift "$dest/$src"; then deny "$verb rebuilds the bank lift path under $dest ($src)"; fi
+            _lift_ref1 "$dest/$src" 0
+            case "$LREF" in LIFT|STATE) deny "$verb rebuilds the bank lift path under $dest ($src)" ;; esac
         done
     fi
     _lift_ref1 "$dest" 0

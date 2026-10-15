@@ -334,7 +334,11 @@ row "cp --parents lift path into ~"    deny "cp --parents .himmel/state/bank-lif
 row "cp --parents lift path into \$HOME" deny "cp --parents .himmel/state/bank-lift.json \$HOME"
 row "rsync -R lift path into ~"        deny "rsync -R .himmel/state/bank-lift.json ~"
 row "rsync --relative lift path into \$HOME" deny "rsync --relative .himmel/state/bank-lift.json \$HOME"
+row "cp -r --parents state dir into ~" deny "cp -r --parents .himmel/state ~"
+row "rsync -aR state dir into ~"       deny "rsync -aR .himmel/state ~"
+row "rsync -a --relative state dir into \$HOME" deny "rsync -a --relative .himmel/state \$HOME"
 row "cp --parents other path into ~ (allow)" allow "cp --parents docs/x.md ~"
+row "cd; cp --parents state-dir file (writes no lift, allow)" allow "cd /tmp && cp --parents .himmel/state/x.json overlord"
 
 echo "== tokenizer failure denies =="
 mkdir -p "$T/noawk"
