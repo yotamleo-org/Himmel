@@ -96,7 +96,7 @@ function readJira(activeKeys = []) {
 
 function readPRs() {
   try {
-    const out = execFileSync('gh', ['pr', 'list', '--state', 'all', '--json', 'number,state,headRefName,title'], { encoding: 'utf8' });
+    const out = execFileSync('gh', ['pr', 'list', '--state', 'all', '--json', 'number,state,headRefName,title,mergeable,mergeStateStatus,statusCheckRollup'], { encoding: 'utf8' });
     return JSON.parse(out);
   } catch (err) {
     console.error('[where-are-we] gh reader unavailable:', err.message);

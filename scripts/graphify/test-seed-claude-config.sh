@@ -368,6 +368,39 @@ else
   fail "fresh foreign-owned seed lock was changed or did not time out (rc=$fresh_lock_rc)"
 fi
 
+# Deterministic interleaving: the original holder's release races a contender's
+# steal-and-reacquire. The hook fires once, at the holder's first lock-touching
+# command (cat after the read, mv before the rename), and the replacement lock
+# must survive with its owner token intact and nothing orphaned.
+RELEASE_RACE_DIR="$WS/release-race"
+mkdir -p "$RELEASE_RACE_DIR"
+awk '/^seed_lock_release\(\)/,/^}/' "$HELPER" > "$RELEASE_RACE_DIR/release-fn.sh"
+release_race_rc=0
+(
+  LOCK="$RELEASE_RACE_DIR/cfg.seed-lock"
+  # shellcheck disable=SC2034  # read by the sourced seed_lock_release
+  SEED_LOCK_TOKEN="holder-A"
+  mkdir "$LOCK"; printf 'holder-A\n' > "$LOCK/owner"
+  race_fired=0
+  contender_steals() {
+    [ "$race_fired" -eq 0 ] || return 0
+    race_fired=1
+    command mv "$LOCK" "$LOCK.stale.contender" && command rm -rf "$LOCK.stale.contender"
+    command mkdir "$LOCK" && printf 'replacement-B\n' > "$LOCK/owner"
+  }
+  cat() { command cat "$@"; local rc=$?; contender_steals; return $rc; }
+  mv() { contender_steals; command mv "$@"; }
+  . "$RELEASE_RACE_DIR/release-fn.sh"
+  seed_lock_release 1 2> "$RELEASE_RACE_DIR/release.err"
+  [ -d "$LOCK" ] && [ "$(command cat "$LOCK/owner")" = "replacement-B" ] \
+    && ! command ls -A "$RELEASE_RACE_DIR" | command grep -qv -e '^release-fn.sh$' -e '^release.err$' -e '^cfg.seed-lock$'
+) || release_race_rc=$?
+if [ "$release_race_rc" -eq 0 ]; then
+  pass "holder release interleaved with steal-and-reacquire leaves the replacement lock intact"
+else
+  fail "holder release destroyed or orphaned the replacement lock (rc=$release_race_rc)"
+fi
+
 STALE_LOCK_HOME="$WS/stale-lock-home"
 setup_home "$STALE_LOCK_HOME"
 mkdir "$STALE_LOCK_HOME/.claude-graphify.seed-lock"

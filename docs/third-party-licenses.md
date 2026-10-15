@@ -94,18 +94,57 @@ exclusion from a bundle, correct usage does.
 
 ## Vendored skill: `unslop` (MIT, Lauren Tan)
 
-Added 2026-09-17, the first single-file skill vendored outside
+Added 2026-09-17 (re-synced to the pin below in HIMMEL-5812), the first single-file skill vendored outside
 `marketplace/plugins/*`. Lives at `.claude/skills/unslop/SKILL.md`, sourced
 from `cursor/plugins` (pstack) at pinned commit
-`e8d856f0273b42ebafe0ec3546bd645709e7c1b0`, path
+`99743e9c151c8537cbbf1f98bb38f34ef3368453`, path
 `pstack/skills/unslop/SKILL.md`. No `node_modules`/npm involvement — a
 single vendored markdown file, MIT-licensed. Decision record:
 `specs/adr/adr-unslop-skill.md` in the handover state repo (registry row:
 [`tool-adoption/registry.md`](tool-adoption/registry.md)).
 
 MIT License text as it appeared at that commit
-(`pstack/LICENSE`), reproduced here per the license's own attribution
+(`pstack/LICENSE`, unchanged between the two pins), reproduced here per the license's own attribution
 requirement:
+
+```
+MIT License
+
+Copyright (c) 2026 Lauren Tan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Vendored plugin: `pstack` (MIT, Lauren Tan)
+
+Added 2026-10-15 (HIMMEL-5803). `marketplace/plugins/pstack/`, seven skills
+(`correct`, `blast-radius`, `create-verification-skill`,
+`maintain-verification-skill`, `benchmark-checklist`,
+`principle-explain-the-number`, `in-your-own-words`) sourced from
+`cursor/plugins` at pinned commit `99743e9c151c8537cbbf1f98bb38f34ef3368453`, path `pstack/`. Every file
+names the pin and its deviations; the `unslop`, `no-comments` and
+`comment-sicko` files above are re-synced to the same pin (HIMMEL-5812). Never
+sourced from the `michael-denyer/pstack-claude` fork. Opt-in, off in every leg
+profile (registry row: [`tool-adoption/registry.md`](tool-adoption/registry.md)).
+
+MIT License text as it appeared at that commit (`pstack/LICENSE`), reproduced
+here per the license's own attribution requirement:
 
 ```
 MIT License

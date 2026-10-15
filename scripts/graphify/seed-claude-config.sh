@@ -210,25 +210,35 @@ seed_lock_is_stale() {
 }
 
 seed_lock_release() { # $1 = 1 to warn when our owned lock cannot be removed
-  local warn="$1" owner
-  owner="$(cat "$LOCK/owner" 2>/dev/null)"
-  [ "$owner" = "$SEED_LOCK_TOKEN" ] || return 0
-  rm -f "$LOCK/owner" 2>/dev/null
+  local warn="$1" claimed owner
+  # Claim ONLY the owner file, by atomic rename to a path this call alone uses,
+  # then read the token from it. The lock dir stays in place throughout, so a
+  # contender can never mkdir into a gap, and a steal needs a stale mtime that
+  # the rename just refreshed. A claimed foreign (replacement) token goes back.
+  claimed="$LOCK.rel.$$.$RANDOM"
+  mv "$LOCK/owner" "$claimed" 2>/dev/null || return 0
+  owner="$(cat "$claimed" 2>/dev/null)"
+  if [ "$owner" != "$SEED_LOCK_TOKEN" ]; then
+    mv "$claimed" "$LOCK/owner" 2>/dev/null || rm -f "$claimed" 2>/dev/null
+    return 0
+  fi
+  rm -f "$claimed" 2>/dev/null
   if ! rmdir "$LOCK" 2>/dev/null && [ "$warn" -eq 1 ]; then
     echo "seed-claude-config: WARNING - failed to release seed lock $LOCK; it becomes stealable after ${SEED_LOCK_STALE}s." >&2
   fi
 }
 
 seed_with_lock() {
-  local ticks=0 max_ticks=$(( SEED_LOCK_TIMEOUT * 2 )) mkdir_error=""
+  local ticks=0 max_ticks=$(( SEED_LOCK_TIMEOUT * 2 )) mkdir_error="" stale
   while :; do
     if mkdir_error="$(mkdir "$LOCK" 2>&1)"; then
       printf '%s\n' "$SEED_LOCK_TOKEN" > "$LOCK/owner" \
         || { rm -rf "$LOCK"; seed_fail "record seed-lock ownership"; }
       break
     fi
-    if seed_lock_is_stale && mv "$LOCK" "$LOCK.stale.$$" 2>/dev/null; then
-      rm -rf "$LOCK.stale.$$"
+    stale="$LOCK.stale.$$.$RANDOM"
+    if seed_lock_is_stale && mv "$LOCK" "$stale" 2>/dev/null; then
+      rm -rf "$stale"
       continue
     fi
     if [ "$ticks" -ge "$max_ticks" ]; then

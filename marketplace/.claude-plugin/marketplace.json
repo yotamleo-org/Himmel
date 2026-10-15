@@ -137,6 +137,21 @@
       ]
     },
     {
+      "name": "pstack",
+      "source": "./plugins/pstack",
+      "description": "[himmel vendor] Seven opt-in skills from cursor/plugins pstack, pinned at 99743e9c151c8537cbbf1f98bb38f34ef3368453 (/correct, /blast-radius, /create-verification-skill, /maintain-verification-skill, /benchmark-checklist, principle-explain-the-number, /in-your-own-words). All disable-model-invocation; no hooks, agents or autonomy. On for interactive sessions only, off in every leg profile; one-step disable. See marketplace/plugins/pstack/README.md.",
+      "author": {
+        "name": "Lauren Tan (upstream) / yotamleo (vendor)"
+      },
+      "license": "MIT",
+      "keywords": [
+        "himmel",
+        "vendored",
+        "pstack",
+        "opt-in"
+      ]
+    },
+    {
       "name": "claude-obsidian",
       "source": {
         "source": "url",
