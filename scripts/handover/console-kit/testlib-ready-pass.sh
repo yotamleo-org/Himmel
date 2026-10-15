@@ -37,6 +37,7 @@ case "$*" in
         exit $? ;;
     *"commits(first:100)"*) exit 0 ;;
     *"api graphql"*) printf '0 false null\n'; exit 0 ;;
+    *"api --paginate"*"/files"*'select(.status'*) exit 0 ;;
     *"api --paginate"*"/files"*) printf 'scripts/x.sh\n'; exit 0 ;;
 esac
 self=$(cd "$(dirname "$0")" && pwd)
