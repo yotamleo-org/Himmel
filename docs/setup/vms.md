@@ -45,6 +45,14 @@ bad sha and passes only when the stage fails on the checksum. Run it on a
 disposable `himmel-ar-N` clone and restore `suite-ready-v4` + power off after.
 Not covered: `himmel-update pull` (needs a credentialed clone) and the live lane
 canaries, which stay a host step after the station roll.
+**Record-once model check (opt-in).** `scripts/vm/replay-poc-check.sh` runs the
+trivial headless `claude -p` dispatch through `scripts/vm/lib/model-replay.sh`:
+the first run records the model's artifact (one call), later runs with the same
+model, prompt and `scripts/lib/claude-headless.sh` replay it with no model call
+(`HIMMEL_REPLAY_MODE=auto|record|replay-only`; evidence in
+`$HIMMEL_REPLAY_ROOT/evidence/last.json`). Run it from the host or a clone when a
+VM e2e needs this check without paying a model call per run. It replays only the
+inputs it keys on, so do not widen it to checks whose point is live plumbing.
 `scripts/setup/cli-proxy-lane.sh` accepts `CLIPROXY_API_VERSION` +
 `CLIPROXY_API_SHA256` (both required together) to install a non-pinned release.
 
