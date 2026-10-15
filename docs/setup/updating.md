@@ -172,7 +172,7 @@ skipped.
 
 After the chain — win or lose, these never abort and always run,
 including on a chain failure — six **best-effort advisory
-steps** run: a codex plugin re-sync + hooks.json re-sanitize, a
+steps** run: a codex plugin re-sync, a
 statusLine hud re-wire, a **plugin install-state report**
 (`marketplace update` only re-syncs *already-installed*
 plugins, so it can't surface a himmel plugin that is missing or being served
