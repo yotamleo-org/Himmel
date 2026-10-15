@@ -386,7 +386,8 @@ wrap_subtree_gate() {
                 # wrap is refused with the waiter left running
                 now=$(ps -o args= -p "$sp" 2>/dev/null) || now=""
                 [ -n "$now" ] || continue
-                case "$now" in "$cmd"*) ;; *)
+                # an empty snapshot cmd would match any live process at that pid
+                case "$now" in "$cmd"*) [ -n "$cmd" ] || { err "wrap refused: descendant $sp of the console-wait waiter has no recorded command - waiter left running, re-run"; exit 5; } ;; *)
                     err "wrap refused: descendant $sp of the console-wait waiter changed since the check (now: $now) - waiter left running, re-run"
                     exit 5 ;;
                 esac

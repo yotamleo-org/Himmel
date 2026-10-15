@@ -2352,6 +2352,34 @@ check "80 TERM-ignoring descendant: wrap succeeds" "$rc" "0"
 check "80 TERM-ignoring descendant: stopped" "$(kill -0 "$mid80" 2>/dev/null && echo alive || echo dead)" "dead"
 kill -KILL "$waiter80" "$mid80" "$grand80" 2>/dev/null; wait "$waiter80" 2>/dev/null
 
+# a descendant whose live argv no longer matches its snapshot row (a reused or exec'd pid)
+# is never signalled: the wrap is refused and the waiter is left running
+mk80 argvchanged
+bash "$w80/console-wait.sh" & waiter80=$!
+sleep 300 & foreign80=$!
+sleep 0.3
+printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=%s etime=00:05 cmd=bash %s/other.sh\n' "$waiter80" "$w80" "$foreign80" "$waiter80" "$w80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 changed descendant argv: wrap refused (rc 5)" "$rc" "5"
+check "80 changed descendant argv: names the reason" "$(printf '%s\n' "$out" | grep -c 'descendant .* changed since the check')" "1"
+check "80 changed descendant argv: descendant left running" "$(kill -0 "$foreign80" 2>/dev/null && echo alive || echo dead)" "alive"
+check "80 changed descendant argv: waiter left running" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "alive"
+check "80 changed descendant argv: lock still held" "$(lock80)" "held"
+kill "$waiter80" "$foreign80" 2>/dev/null; wait 2>/dev/null
+
+# an empty snapshot cmd would match any live process at that pid: refused the same way
+mk80 emptycmd
+bash "$w80/console-wait.sh" & waiter80=$!
+sleep 300 & foreign80=$!
+sleep 0.3
+printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=%s etime=00:05 cmd=\n' "$waiter80" "$w80" "$foreign80" "$waiter80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 empty descendant cmd: wrap refused (rc 5)" "$rc" "5"
+check "80 empty descendant cmd: descendant left running" "$(kill -0 "$foreign80" 2>/dev/null && echo alive || echo dead)" "alive"
+check "80 empty descendant cmd: waiter left running" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "alive"
+check "80 empty descendant cmd: lock still held" "$(lock80)" "held"
+kill "$waiter80" "$foreign80" 2>/dev/null; wait 2>/dev/null
+
 # the waiter does NOT hide a second, foreign process, and is left running on a refusal
 mk80 mixed
 bash "$w80/console-wait.sh" & waiter80=$!
