@@ -810,6 +810,14 @@ check guard-judge-writes Bash 2 "gi""t push" "deny push in a judge session" \
 check guard-judge-writes Bash 0 "gi""t status" "allow a read in a judge session" \
     HIMMEL_CONSOLE_JUDGE=1
 
+# ── guard-console-foreground.sh — console long-script nudge ───
+# The listed-name match ends at a tail class; a terminal CR must not glue itself
+# to the script name.
+check guard-console-foreground Bash 2 "bash scripts/handover/console-kit/wrap-merged.sh --pr 12" \
+    "deny a foreground long kit script in a console" HIMMEL_CONSOLE_DOC=/x/N-console.md
+check guard-console-foreground Bash 0 "bash scripts/handover/console-kit/go.sh x" \
+    "allow a short kit script in a console" HIMMEL_CONSOLE_DOC=/x/N-console.md
+
 # guard-leg-context-handoff reads the fill through the transcript, so its rows
 # run against a leg fixture at 90 % with the guard on (it is off by default,
 # enabled here): a hand-off command must stay allowed and an ordinary one denied
