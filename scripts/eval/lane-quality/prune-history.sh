@@ -12,6 +12,7 @@
 # removed lines goes to stderr. Run the same task set at <base-sha> and at the
 # printed sha, then compare with `run.sh pair`.
 #
+# ponytail: line match, also drops a matching line inside a heredoc or multi-line string and adds a final newline, per-language tokeniser in HIMMEL-5629.
 # Sample, never the whole repo: N defaults to 40. Fixtures, vendored trees and
 # generated output are skipped, as the gate skips them.
 set -u
@@ -54,6 +55,7 @@ function history(s,   l) {
 LIST="$WT.list"
 : >"$LIST"
 while IFS= read -r f; do
+  [ -L "$WT/$f" ] && continue
   awk -v p="$f" "$AWK_DROP"'
     BEGIN { if (!in_scope(p)) exit; c = 0 }
     { s = $0; sub(/^[ \t]+/, "", s); if (history(s)) c++ }
