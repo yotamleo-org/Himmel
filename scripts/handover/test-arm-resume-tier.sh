@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# test-arm-resume-tier.sh — HIMMEL-2332 Fable-tier arm guard.
+# test-arm-resume-tier.sh — Fable-tier arm guard.
 #
 # Operator ruling 30: "we shouldn't arm fable unless theres a good reason" /
 # "make sure this is STRUCTURAL otherwise it won't work". arm-resume.sh's
-# --model passthrough (HIMMEL-2192) is opt-in, so an unpinned arm relaunches
+# --model passthrough is opt-in, so an unpinned arm relaunches
 # on the operator's default model (Fable) — expensive, and wrong outside the
 # judgment lane. This suite exercises the guard: an unpinned non-console arm
 # now defaults to opus; an explicit Fable-family --model on a non-console arm
@@ -23,7 +23,7 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume-tier.XXXXXX") || {
     exit 1
 }
 trap 'rm -rf "$TMP"' EXIT
-# HIMMEL-3103: every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
+# every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.
 . "$(dirname "$ARM")/../lib/fleet-slots-shield.sh"
 fleet_slots_shield "$TMP" || exit 1
@@ -41,14 +41,14 @@ unset CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK 2>/dev/null || true
 export WORKER_BRIDGE_ROOT="$TMP/worker-bridge-shield"
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
-# Temp-target shield (HIMMEL-1365): every fixture here lives under $TMP,
+# Temp-target shield: every fixture here lives under $TMP,
 # which is exactly the shape arm-resume refuses for a REAL scheduled task.
 # This suite's scheduler is PATH-stubbed, so no real task is ever created;
 # --dry-run is exempt from rc=12 anyway, but --time smart's resume-slot.sh
 # hop can still read the work-dir before DRY_RUN is known, so keep the
 # opt-out for parity with the sibling suite.
 export ARM_TEMP_CWD_OK=1
-# Dotenv-read shield (HIMMEL-2254): defeats a FILE read (not just an env
+# Dotenv-read shield: defeats a FILE read (not just an env
 # var) so an operator .env carrying ARMAUTOMERGE=1 can't leak "--model
 # opus" assertions into carrying an unexpected ARMAUTOMERGE prefix too.
 export ARM_RESUME_DOTENV_ROOT="$TMP/dotenv-shield"
@@ -76,7 +76,7 @@ assert_contains() {
     esac
 }
 
-# HIMMEL-3181: the POSIX at-body leaves the --model token bare (`--model opus `)
+# the POSIX at-body leaves the --model token bare (`--model opus `)
 # while the Windows .bat renderer wraps it (`--model "opus"`); accept whichever
 # the host's real branch renders. The flag prefix still pins the left edge and
 # the trailing space / closing quote pins the right edge, as before.
@@ -103,7 +103,7 @@ assert_not_contains() {
 # `--model` with no space). `<<<"$haystack"` is a HERE-STRING, deliberately
 # not a pipe: this file runs under `set -o pipefail` (line 16), and `grep -q`
 # exits the instant it finds a match, SIGPIPEing a producer on the other end
-# of a pipe and flipping the pipeline's reported exit status (HIMMEL-1430).
+# of a pipe and flipping the pipeline's reported exit status.
 # There is no producer here, but a here-string keeps this helper safe to copy
 # into a call site that has one.
 #
@@ -139,9 +139,9 @@ HANDOVER_DIR="$TMP/statedocs/handovers"
 mkdir -p "$HANDOVER_DIR"
 git init -q "$TMP/statedocs"
 
-# future_time — same near-future HH:MM cache as test-arm-resume.sh (HIMMEL-1579)
+# future_time — same near-future HH:MM cache as test-arm-resume.sh
 # so a slow box doesn't roll the target to tomorrow mid-suite and trip the
-# unrelated HIMMEL-1475 long-gap guard (rc=9).
+# unrelated long-gap guard (rc=9).
 _FT_FILE="$TMP/future-time.cache"
 future_time() {
     local _now _target _value
@@ -174,7 +174,7 @@ make_handover() {
 
 # ---------------------------------------------------------------------------
 # Scheduler stub — same empty-scheduler shape as test-arm-resume.sh's
-# SCHED_STUB_T17 (HIMMEL-1879): /query reports back what /create registered,
+# SCHED_STUB_T17: /query reports back what /create registered,
 # /delete removes it, at/atq/powershell are no-ops. Keeps every arm below
 # from touching (or dedup-blocking against) a real HIMMEL-Resume job on this
 # machine.
@@ -222,7 +222,7 @@ cat > "$SCHED_STUB/powershell" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-# HIMMEL-3181: macOS routes to _crontab_schedule and Windows to the .bat
+# macOS routes to _crontab_schedule and Windows to the .bat
 # branch; both REFUSE (rc=2) when `claude` does not resolve on PATH at arm
 # time, and the nightly macOS/Windows runners have no claude installed. A stub
 # keeps every dry-run arm below independent of the host's claude.
@@ -244,7 +244,7 @@ out=$(run_arm --time "$(future_time)" --handover "$HO_A" --dry-run 2>&1)
 rc=$?
 assert_rc "a: unpinned non-console arm exits 0" 0 "$rc"
 assert_contains "a: guard line reports opus default" "arm-resume: model=opus (no --model given; non-console arms default to opus -- ruling 30)" "$out"
-# HIMMEL-2642: this suite's PATH-stubbed `at` (SCHED_STUB, above) is found on
+# this suite's PATH-stubbed `at` (SCHED_STUB, above) is found on
 # this Linux station, so schedule_arm renders the model passthrough via the
 # POSIX `at`-heredoc branch (arm-resume.sh's `linux)` case, ~5140-5152), NOT
 # the Windows .bat path -- and only the .bat renderer wraps --model's value
@@ -278,7 +278,7 @@ rc=$?
 assert_rc "b2: bare 'fable' pin refused (family match, not literal)" 20 "$rc"
 assert_contains "b2: stderr names --fable-ok" '--fable-ok' "$out"
 
-# Case-insensitive family match, HIMMEL-2332's stated shape.
+# Case-insensitive family match, stated shape.
 HO_B3=$(make_handover)
 out=$(run_arm --time "$(future_time)" --handover "$HO_B3" --model Claude-Fable-5 --dry-run 2>&1)
 rc=$?
@@ -292,7 +292,7 @@ out=$(run_arm --time "$(future_time)" --handover "$HO_C" --model claude-fable-5 
 rc=$?
 assert_rc "c: justified fable pin exits 0" 0 "$rc"
 assert_contains "c: guard line echoes the reason" "arm-resume: model=claude-fable-5 (fable pinned; reason: operator ruling: judgment lane)" "$out"
-# HIMMEL-2642: bare/unquoted POSIX %q rendering, trailing-space boundary --
+# bare/unquoted POSIX %q rendering, trailing-space boundary --
 # see case (a)'s comment above.
 assert_model_flag "c: relaunch command carries the fable model" claude-fable-5 "$out"
 
@@ -301,7 +301,7 @@ HO_C2=$(make_handover)
 out=$(run_arm --time "$(future_time)" --handover "$HO_C2" --model=fable --fable-ok="judgment lane" --dry-run 2>&1)
 rc=$?
 assert_rc "c2: --fable-ok= spelling exits 0" 0 "$rc"
-# HIMMEL-2642: bare/unquoted POSIX %q rendering -- see case (a) above. The
+# bare/unquoted POSIX %q rendering -- see case (a) above. The
 # trailing-space right boundary keeps "--model fable" from also being
 # satisfied by a longer value that merely STARTS with "fable" (e.g. a future
 # "fable-turbo") -- case (a)'s literal "--model " left boundary is what
@@ -311,7 +311,7 @@ assert_model_flag "c2: relaunch command carries the fable model" fable "$out"
 # ---------------------------------------------------------------------------
 # (d) *-console.md handover: unpinned -> NO --model flag at all (operator
 #     default stands; arm-resume itself names no model -- unlike console.sh /
-#     headed-arm.sh, whose own default is Opus since #836, HIMMEL-3169).
+#     headed-arm.sh, whose own default is Opus since #836).
 #     Fable-pinned + no --fable-ok -> exempt, rc=0 (ruling 25).
 # ---------------------------------------------------------------------------
 HO_D1=$(make_handover "arm-guard-console.md")
@@ -337,7 +337,7 @@ out=$(run_arm --time "$(future_time)" --handover "$HO_D2" --model claude-fable-5
 rc=$?
 assert_rc "d2: console arm with fable pin, no --fable-ok, is exempt" 0 "$rc"
 assert_contains "d2: guard line names the ruling-25 exemption" "arm-resume: model=claude-fable-5 (fable pinned; console arm -- ruling 25, exempt)" "$out"
-# HIMMEL-2642: bare/unquoted POSIX %q rendering -- see case (a) above.
+# bare/unquoted POSIX %q rendering -- see case (a) above.
 assert_model_flag "d2: relaunch command carries the fable model" claude-fable-5 "$out"
 
 # ---------------------------------------------------------------------------
@@ -347,7 +347,7 @@ HO_E1=$(make_handover)
 out=$(run_arm --time "$(future_time)" --handover "$HO_E1" --model opus --dry-run 2>&1)
 rc=$?
 assert_rc "e1: explicit non-fable --model opus still passes through" 0 "$rc"
-# HIMMEL-2642: bare/unquoted POSIX %q rendering -- see case (a) above.
+# bare/unquoted POSIX %q rendering -- see case (a) above.
 assert_model_flag "e1: relaunch command carries --model opus" opus "$out"
 assert_contains "e1: guard line reports an explicit pin" "arm-resume: model=opus (explicitly pinned)" "$out"
 
@@ -355,7 +355,7 @@ HO_E2=$(make_handover)
 out=$(run_arm --time "$(future_time)" --handover "$HO_E2" --model sonnet --dry-run 2>&1)
 rc=$?
 assert_rc "e2: explicit non-fable --model sonnet still passes through" 0 "$rc"
-# HIMMEL-2642: bare/unquoted POSIX %q rendering -- see case (a) above.
+# bare/unquoted POSIX %q rendering -- see case (a) above.
 assert_model_flag "e2: relaunch command carries --model sonnet" sonnet "$out"
 
 HO_E3=$(make_handover)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-base.sh — HIMMEL-2383 base verification arm guard.
+# test-arm-resume-base.sh — base verification arm guard.
 #
 # Console ruling 66: a leg must not be armed on a fence whose merged PRs
 # still have a pending or red after-report. arm-resume.sh reads the
@@ -36,7 +36,7 @@ export WORKER_BRIDGE_ROOT="$TMP/worker-bridge-shield"
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
 export ARM_TEMP_CWD_OK=1
-# HIMMEL-3846: keep the real bank-preflight's usage-cache refresh off the live cache.
+# keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 export ARM_RESUME_DOTENV_ROOT="$TMP/dotenv-shield"
 mkdir -p "$ARM_RESUME_DOTENV_ROOT"
@@ -158,7 +158,7 @@ cat > "$SCHED_STUB/powershell" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-# HIMMEL-3181: macOS routes to _crontab_schedule and Windows to the .bat
+# macOS routes to _crontab_schedule and Windows to the .bat
 # branch; both REFUSE (rc=2) when `claude` does not resolve on PATH at arm
 # time, and the nightly macOS/Windows runners have no claude installed. A stub
 # keeps every dry-run arm below independent of the host's claude.
@@ -273,7 +273,7 @@ assert_not_contains "e: no refusal text" "refusing to arm" "$out"
 assert_not_contains "e: no provisional warning" "PROVISIONAL base" "$out"
 
 # ---------------------------------------------------------------------------
-# (f) HIMMEL-2383 CR finding codex-1: when base-status.sh ITSELF cannot
+# (f) when base-status.sh ITSELF cannot
 #     certify the fence (a gh query error — not a clean/pending/red read),
 #     that refuses exactly like a certified-dirty fence, never a silent
 #     unchecked proceed. --provisional-base-ok covers this case too.
@@ -300,7 +300,7 @@ assert_rc "g: --provisional-base-ok also covers a query error" 0 "$rc"
 assert_contains "g: warns loudly on the query error" "WARN arm-resume: arming on a PROVISIONAL base" "$out"
 
 # ---------------------------------------------------------------------------
-# (h) HIMMEL-2383 CR finding codex-2 (round 2): base-status.sh must run FROM
+# (h) base-status.sh must run FROM
 #     the resolved work repo (RESUME_CWD / resume_cwd:), not the launching
 #     session's own cwd — a cross-repo handover would otherwise certify the
 #     WRONG repo's fence. The gh stub itself asserts its cwd.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# probe-arm-resume.sh -- HIMMEL-2125 timing probe for arm-resume.sh.
-# Renamed off the test-*.sh pattern (HIMMEL-3580): it is a measurement tool
+# probe-arm-resume.sh -- timing probe for arm-resume.sh.
+# Renamed off the test-*.sh pattern: it is a measurement tool
 # that always exits 0, not an assertion suite, so it must not be collected by
 # run-shell-tests.sh's `find ... -name 'test-*.sh'` discovery.
 #
@@ -16,7 +16,7 @@
 #     one was for -- via a PATH shim ahead of the real python3 that appends
 #     one line per invocation to $PY_SPAWN_LOG before exec'ing through.
 #
-# The spawn count is the number the HIMMEL-2125 consolidation work moves;
+# The spawn count is the number the consolidation work moves;
 # wall-clock on a loaded Windows host is noisy enough that the count is the
 # more honest signal. Run it before and after a change and diff both.
 #
@@ -49,7 +49,7 @@ done
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume-probe.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
-# HIMMEL-3103: every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
+# every non-dry-run arm reserves a FLEET_CAP slot; redirect it off
 # the production dir the live fleet counts, and fail the suite if it could leak.
 . "$SCRIPT_DIR/../lib/fleet-slots-shield.sh"
 fleet_slots_shield "$TMP" || exit 1
@@ -76,7 +76,7 @@ git init -q "$WORK_REPO"
 # --- stubs ------------------------------------------------------------------
 # Only the binaries an arm actually reaches. Stateful schtasks (flat file, one
 # task name per line) so a real arm registers exactly as the identity suite
-# models it; powershell exits 1 so the HIMMEL-938 post-arm verify fail-OPENS;
+# models it; powershell exits 1 so the post-arm verify fail-OPENS;
 # reg emits a parseable US short-date so the locale probe stays HEALTHY (a
 # degraded locale + a dead verify is the deliberate rc-2 dual-failure refuse,
 # which would cut the arm short and make the timing meaningless).

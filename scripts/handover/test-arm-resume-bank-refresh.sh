@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-arm-resume-bank-refresh.sh -- HIMMEL-3846 regression: a REAL (non-dry-run)
+# test-arm-resume-bank-refresh.sh -- regression: a REAL (non-dry-run)
 # arm with an explicit HH:MM must not run the usage-cache producer refresh;
 # --time auto / smart-on-the-live-cache keep it (the slot lookup reads the cache).
 #

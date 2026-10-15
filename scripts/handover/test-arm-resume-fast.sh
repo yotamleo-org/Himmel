@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # scripts/handover/test-arm-resume-fast.sh — the fast-tier 91/92 of
 # test-arm-resume.sh's sections, restored to per-PR CI via the `--only`
-# seam (HIMMEL-1637).
+# seam.
 #
-# HIMMEL-3132: test-arm-resume.sh (637 asserts) sits on run-shell-tests.sh's
-# SKIP_LIST -- measured 2775s standalone (HIMMEL-2254) against the runner's
-# 600s per-suite default (HIMMEL-2233) -- so it never runs in CI and a
-# regression shipped straight into it (PR #787 / HIMMEL-3118 case (h)) went
+# test-arm-resume.sh (637 asserts) sits on run-shell-tests.sh's
+# SKIP_LIST -- measured 2775s standalone against the runner's
+# 600s per-suite default -- so it never runs in CI and a
+# regression shipped straight into it (PR #787 / case (h)) went
 # unwatched the same day it landed.
 #
 # Per-section timing (2026-09-18) found the 2775s is NOT spread evenly: 91 of
