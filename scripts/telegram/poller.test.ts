@@ -3468,3 +3468,47 @@ test("a replayed update_id after enqueue-before-commit neither enqueues nor spaw
   expect(inboxes.join("").trim().split("\n")).toHaveLength(1);
   expect(ran).toHaveLength(1);
 });
+
+test("a replayed update_id after the inbox was consumed and truncated neither enqueues nor spawns twice (HIMMEL-5795)", async () => {
+  const r = ackRoot();
+  const ran: string[] = [];
+  const msg = { from: 1, chat_id: 7, text: "hello", update_id: 88 };
+  await handleInbound(r, msg, async (s: string) => { ran.push(s); });
+  const [session] = readdirSync(join(r, "sessions"));
+  const inbox = join(r, "sessions", session, "inbox.jsonl");
+  writeFileSync(inbox, "");                       // a run consumed and truncated it
+  await handleInbound(r, msg, async (s: string) => { ran.push(s); });
+  expect(readFileSync(inbox, "utf8")).toBe("");
+  expect(ran).toHaveLength(1);
+});
+
+test("the handled high-water mark skips any id at or below it and lets a higher id through (HIMMEL-5795)", async () => {
+  const r = ackRoot();
+  const ran: string[] = [];
+  const run = async (s: string) => { ran.push(s); };
+  await handleInbound(r, { from: 1, chat_id: 7, text: "b", update_id: 20 }, run);
+  await handleInbound(r, { from: 1, chat_id: 7, text: "a", update_id: 10 }, run);   // below the mark
+  const [session] = readdirSync(join(r, "sessions"));
+  const inbox = join(r, "sessions", session, "inbox.jsonl");
+  expect(readFileSync(inbox, "utf8").trim().split("\n")).toHaveLength(1);
+  writeFileSync(inbox, "");
+  await handleInbound(r, { from: 1, chat_id: 7, text: "c", update_id: 21 }, run);
+  expect(readFileSync(inbox, "utf8").trim().split("\n")).toHaveLength(1);
+});
+
+test("a corrupt or missing high-water marker fails open to the inbox check (HIMMEL-5795)", async () => {
+  const r = ackRoot();
+  const ran: string[] = [];
+  const run = async (s: string) => { ran.push(s); };
+  const msg = { from: 1, chat_id: 7, text: "hello", update_id: 55 };
+  await handleInbound(r, msg, run);
+  const [session] = readdirSync(join(r, "sessions"));
+  const inbox = join(r, "sessions", session, "inbox.jsonl");
+  writeFileSync(join(r, "handled-update.hw"), "not-a-number");
+  await handleInbound(r, msg, run);               // still in the inbox: inbox check catches it
+  expect(readFileSync(inbox, "utf8").trim().split("\n")).toHaveLength(1);
+  writeFileSync(inbox, "");
+  await handleInbound(r, { ...msg, update_id: 56, text: "next" }, run);   // fail open: enqueues, and rewrites the marker
+  expect(readFileSync(inbox, "utf8").trim().split("\n")).toHaveLength(1);
+  expect(readFileSync(join(r, "handled-update.hw"), "utf8").trim()).toBe("56");
+});

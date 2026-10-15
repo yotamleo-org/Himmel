@@ -358,12 +358,25 @@ async function inboxHasUpdate(inboxFile: string, updateId: number | undefined): 
   return false;
 }
 
-// Append the message to the session inbox unless this update_id is already there.
+// Highest update_id already enqueued, persisted at the bridge root so it survives
+// the session inbox being consumed and truncated. A corrupt or missing marker
+// reads as undefined and the caller falls back to the inbox check.
+async function readHandledHighWater(hwFile: string): Promise<number | undefined> {
+  let raw = ""; try { raw = await readFile(hwFile, "utf8"); } catch { return undefined; }
+  const n = Number(raw.trim());
+  return raw.trim() !== "" && Number.isSafeInteger(n) && n >= 0 ? n : undefined;
+}
+
+// Append the message to the session inbox unless this update_id was already
+// handled: at or below the persisted high-water mark, or still in the inbox.
 // Returns false (nothing appended) for a replay.
-// ponytail: dedup only sees an update still in the inbox; a replay after a run consumed and truncated it re-enqueues, upgrade = a persisted handled-id high-water mark.
-async function appendInboxOnce(inboxFile: string, line: string, msg: DeliveredMsg): Promise<boolean> {
-  if (await inboxHasUpdate(inboxFile, msg.update_id)) return false;
-  await appendLine(inboxFile, JSON.stringify({ text: line, from: msg.from, ts: msg.ts ?? 0, ...(typeof msg.update_id === "number" ? { update_id: msg.update_id } : {}), ...(msg.image_path ? { image_path: msg.image_path } : {}), ...(msg.document_path ? { document_path: msg.document_path, document_name: msg.document_name } : {}) }));
+async function appendInboxOnce(inboxFile: string, hwFile: string, line: string, msg: DeliveredMsg): Promise<boolean> {
+  const id = msg.update_id;
+  const hw = typeof id === "number" ? await readHandledHighWater(hwFile) : undefined;
+  if (typeof id === "number" && hw !== undefined && id <= hw) return false;
+  if (hw === undefined && await inboxHasUpdate(inboxFile, id)) return false;
+  await appendLine(inboxFile, JSON.stringify({ text: line, from: msg.from, ts: msg.ts ?? 0, ...(typeof id === "number" ? { update_id: id } : {}), ...(msg.image_path ? { image_path: msg.image_path } : {}), ...(msg.document_path ? { document_path: msg.document_path, document_name: msg.document_name } : {}) }));
+  if (typeof id === "number") { try { await atomicWrite(hwFile, String(id)); } catch (e) { console.error("[poller] could not persist handled-update high-water mark: " + e); } }
   return true;
 }
 export type RunFn = (session: string, modelOverride?: ModelOverride) => Promise<void>;
@@ -655,7 +668,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // not see it (it would read as part of the request — and on an unknown tag it
   // would be a stale instruction the run cannot act on).
   const line = route.kind === "followup" ? route.text : tag.rest;
-  if (!(await appendInboxOnce(join(sessionDir(root, session), "inbox.jsonl"), line, msg))) { console.error("[poller] update " + msg.update_id + " already in " + session + " inbox — replay skipped"); return; }
+  if (!(await appendInboxOnce(join(sessionDir(root, session), "inbox.jsonl"), join(root, "handled-update.hw"), line, msg))) { console.error("[poller] update " + msg.update_id + " already handled for " + session + " — replay skipped"); return; }
   // Everything above this line can throw BEFORE the append, and handleBatch's
   // drop notice ("could not be queued — please resend") is truthful for those.
   // The dispatch below is AFTER the message is durable, so its failure must not
