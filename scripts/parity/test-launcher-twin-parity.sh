@@ -53,7 +53,7 @@ SCRIPTS="$(cd "$HERE/.." && pwd)"              # scripts/
 # in PowerShell, so no byte twin exists BY DESIGN. Each count is a reviewed
 # exception, not an open category: a new bash-only `node -e` block fails this
 # suite until it is either ported to the .ps1 twin or added here with a reason.
-#   claude-codex: 2        — proxy config validation JS; .ps1 validates natively
+#   claude-codex: 2        — --settings payload + project-settings env screens; .ps1 screens natively
 #   claude-glm: 1          — GLM-specific settings surgery; .ps1 equivalent is native
 #   claude-openrouter: 1   — stdin credit-parser; .ps1 parses ConvertFrom-Json natively
 #   claude-deepseek: 0    — egress, balance, sanitizer and trust all have JS twins
