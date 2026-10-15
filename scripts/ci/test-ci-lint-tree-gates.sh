@@ -54,7 +54,7 @@ git -C "$S" add -A; git -C "$S" commit -q -m base
 BASE="$(git -C "$S" rev-parse HEAD)"
 
 run_step() { # <base sha> -> OUT, RC
-  OUT="$(cd "$S" && BASE_SHA="$1" RUNNER_TEMP="$T/rt" bash "$STEP" 2>&1)"; RC=$?
+  OUT="$(cd "$S" && BASE_SHA="$1" RUNNER_TEMP="$T/rt" bash -e "$STEP" 2>&1)"; RC=$?
 }
 branch() { git -C "$S" checkout -q -B "$1" "$BASE"; }
 commit() { git -C "$S" add -A; git -C "$S" commit -q -m "$1"; }
@@ -103,6 +103,10 @@ branch exportignore; violation; printf 'scripts/hooks/zz-fail-open.sh export-ign
 run_step "$BASE"
 if [ "$RC" -ne 0 ] && has "zz-fail-open.sh"; then pass "PR export-ignore attribute cannot hide a violating file"; else fail "exportignore -> rc=$RC: $OUT"; fi
 
+branch backslash; cp "$S/scripts/guardrails/fixtures/fail-open/instance1-unreadable-denylist.sh.fxt" "$S/scripts/hooks/zz-back\\slash.sh"; commit backslash
+run_step "$BASE"
+if [ "$RC" -ne 0 ] && has "zz-back"; then pass "PR violation in a file whose name has a backslash is still scanned"; else fail "backslash -> rc=$RC: $OUT"; fi
+
 branch lintneuter; violation; printf '#!/usr/bin/env bash\nexit 0\n' > "$S/scripts/guardrails/lint-fail-open.sh"; commit lintneuter
 run_step "$BASE"
 if [ "$RC" -ne 0 ] && has "zz-fail-open.sh"; then pass "PR neutering lint-fail-open.sh is still judged by the base lint"; else fail "lintneuter -> rc=$RC: $OUT"; fi
@@ -129,6 +133,13 @@ branch absent; printf 'z\n' > "$S/c.txt"; git -C "$S" add -A; git -C "$S" commit
 git -C "$S" checkout -q "$NOGATE"
 run_step "$NOGATE"
 if [ "$RC" -ne 0 ]; then pass "gate script absent at base fails closed"; else fail "absent gate -> rc=$RC: $OUT"; fi
+
+branch nosuite; git -C "$S" rm -q scripts/guardrails/test-lint-fail-open.sh; commit rmsuite
+NOSUITE="$(git -C "$S" rev-parse HEAD)"
+branch suiteabsent; printf 'z\n' > "$S/d.txt"; git -C "$S" add -A; git -C "$S" commit -q -m d
+git -C "$S" checkout -q "$NOSUITE"
+run_step "$NOSUITE"
+if [ "$RC" -ne 0 ] && has "fail-open suite absent at base"; then pass "fail-open suite absent at base fails closed"; else fail "absent suite -> rc=$RC: $OUT"; fi
 
 if [ "$failures" -eq 0 ]; then echo "== all passed =="; else echo "== $failures failed =="; fi
 [ "$failures" -eq 0 ]
