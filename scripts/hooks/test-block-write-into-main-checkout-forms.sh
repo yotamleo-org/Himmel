@@ -613,7 +613,11 @@ _c20=""; _i=0; while [ ${#_c20} -lt 20000 ]; do _c20="${_c20}echo line$_i > $_WR
 _k20=""; while [ ${#_k20} -lt 20000 ]; do _k20="$_k20$_unit"; done
 _t_row "5747 20 KB of redirect clauses (leg worktree) allows" allow "$_c20" 22
 _el_c20=$_T_EL
-_t_row "5747 20 KB plain echo control allows" allow "echo $_k20" 12
+# the control is bound against a 5 KB echo timed in the same run: a linear scan
+# costs ~4x it, a quadratic one ~16x, and runner load scales both alike
+_t_row "5747 5 KB plain echo baseline allows" allow "echo $_blob" 60
+_el_b5=$_T_EL
+_t_row "5747 20 KB plain echo control allows" allow "echo $_k20" $((_el_b5 * 6 + 3))
 _el_k20=$_T_EL
 # the 2 s slack absorbs whole-second timer granularity
 if [ "$_el_c20" -le $((_el_k20 * 3 + 2)) ]; then ok "5747 20 KB clauses ${_el_c20}s within 3x + 2s of the same-length control ${_el_k20}s"
