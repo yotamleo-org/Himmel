@@ -105,7 +105,7 @@ judge() {  # <path> <kind> -> prints a reason when unwired
           d="${p%/*}"
           while :; do
             dre=$(printf '%s' "$d" | sed 's/[.+]/\\&/g')
-            git grep -qIE -e "(bun test|node --test|vitest|jest)[^#]*[ '\"]${dre}/?( |\$|'|\")" -e "cd ${dre}/?[ ;&'\"][^#]*(bun|node|vitest|jest)" "$ref" -- .github/workflows 2>/dev/null && return 0
+            git grep -qIE -e "(bun test|node --test|vitest|jest)[^#]*[ '\"]${dre}(/?|/[^ /'\"]*\\*[^ '\"]*)( |\$|'|\")" -e "cd ${dre}/?[ ;&'\"][^#]*(bun|node|vitest|jest)" "$ref" -- .github/workflows 2>/dev/null && return 0
             [ "$d" = "${d%/*}" ] && break
             d="${d%/*}"
           done
