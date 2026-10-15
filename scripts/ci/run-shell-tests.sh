@@ -3029,7 +3029,8 @@ if [ -n "$impacted_range" ]; then
           _imp_code=$(git diff -U0 --no-renames "$_imp_mb" "$_imp_hs" -- "$_imp_f" | grep -E '^[+-]' | grep -Ev '^(\+\+\+|---)' | grep -Ev '^[+-][[:space:]]*(#([^!]|$)|$)' | head -n 1)
           [ -z "$_imp_code" ] || continue
           # ponytail: a `#` or blank line inside a heredoc or multiline string is data, not a comment; a heredoc anywhere in the file keeps it code, multiline quoted strings are not detected, upgrade path is a bash-aware parse.
-          git show "$_imp_hs:$_imp_f" | grep -qF '<<' && continue
+          _imp_src=$(git show "$_imp_hs:$_imp_f") || continue
+          case "$_imp_src" in *'<<'*) continue ;; esac
           [ "$(git ls-tree "$_imp_mb" -- "$_imp_f" | cut -d' ' -f1)" = "$(git ls-tree "$_imp_hs" -- "$_imp_f" | cut -d' ' -f1)" ] || continue
           git diff -U0 --no-renames "$_imp_mb" "$_imp_hs" -- "$_imp_f" | grep -qE '^[+-]' || continue
           if [ "$_imp_n" -eq 0 ]; then
