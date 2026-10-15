@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-himmel-codex.sh (HIMMEL-597)
+# install-himmel-codex.sh
 #
 # Provision himmel under the Codex CLI by managing user-global plugin state in
 # ~/.codex/config.toml the SAME way scripts/hermes/install-himmel-profile.sh
@@ -42,7 +42,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MARKET_PATH="$REPO_ROOT/marketplace"
 
 # The marketplace name + plugin sets live in ONE data file, shared with
-# startup-health (which asserts they are still registered — HIMMEL-1145).
+# startup-health (which asserts they are still registered).
 PLUGIN_SET_FILE="$SCRIPT_DIR/himmel-plugin-set.conf"
 plugin_set_field() { tr -d '\r' < "$PLUGIN_SET_FILE" | awk -F': *' -v k="$1" '$1==k{print $2; exit}'; }
 [ -r "$PLUGIN_SET_FILE" ] || { echo "ERR: plugin set file not found at $PLUGIN_SET_FILE" >&2; exit 1; }
@@ -111,14 +111,14 @@ for p in $PLUGINS; do
   fi
 done
 
-# --- 3. sanitize external-plugin hooks.json (HIMMEL-651) ---------------------
+# --- 3. sanitize external-plugin hooks.json ---------------------
 # Codex versions BEFORE rust-v0.143.0 reject a top-level `description` key that
 # several external plugins ship in their hooks.json ("unknown field
 # description") and skip those hooks at boot. Strip it so `codex` boots clean.
 # Idempotent + non-fatal (cosmetic cleanup must never fail the install).
-# DEPRECATED (HIMMEL-1104): upstream fixed this in rust-v0.143.0 (PR #30229), so
+# DEPRECATED: upstream fixed this in rust-v0.143.0 (PR #30229), so
 # on that version or newer this phase mutates external plugin files for no
-# benefit. Removing the phase is tracked in HIMMEL-1114.
+# benefit.
 echo ""
 echo "--- 3. sanitize external-plugin hooks.json (codex strict-parser workaround) ---"
 if [ "$DRY_RUN" = "1" ]; then
@@ -127,14 +127,14 @@ else
   bash "$SCRIPT_DIR/sanitize-plugin-hooks.sh" || echo "WARN: sanitize step failed (non-fatal)" >&2
 fi
 
-# --- 4. lint the effective Codex hook set for the pwsh runner (HIMMEL-1982) --
+# --- 4. lint the effective Codex hook set for the pwsh runner --
 # Windows-only, advisory: codex-cli runs every hook as `pwsh -NoProfile -Command
 # "<cmd>"`, where a bare `bash ...` resolves to the WSL launcher stub (hangs to
 # the 600s default) and a command starting with a quoted path is a pwsh string
 # expression (ParserError, exit 1). The probe enumerates what Codex would
 # ACTUALLY load — global + project + every enabled plugin — so hook-set drift and
 # both traps surface on `/himmel-update`, which runs THIS script, not the .ps1
-# twin that already carried this phase (HIMMEL-1981). Never fails the install.
+# twin that already carried this phase. Never fails the install.
 echo ""
 echo "--- 4. lint the effective Codex hook set for the Windows pwsh runner (HIMMEL-1982) ---"
 case "$(uname -s 2>/dev/null || echo unknown)" in

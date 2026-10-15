@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Surface a DEGRADED Codex CLI startup (HIMMEL-747) — twin of startup-health.sh.
+  Surface a DEGRADED Codex CLI startup — twin of startup-health.sh.
 
 .DESCRIPTION
   When himmel routes work to the Codex lane, a codex session can start degraded
@@ -49,7 +49,7 @@ function Emit([string]$signal, [string]$detail) {
   Write-Output "WARN ${signal}: ${detail}"
   $script:findings++
 }
-# Every finding here is about the codex CLI alone (the HIMMEL-1104 convention).
+# Every finding here is about the codex CLI alone.
 $scopeNote = "Scope: the codex CLI only — claudex / cc-glm / hermes are separate surfaces and are NOT implicated by this finding."
 
 # Newest rollout session (lexical sort of ISO-timestamp-prefixed filenames).
@@ -108,7 +108,7 @@ if ((Test-Path -LiteralPath $logdb) -and $tid) {
   foreach ($run in [regex]::Matches($text, '[\x20-\x7E]{20,}')) {
     $r = $run.Value
     if ($r -notmatch [regex]::Escape($tid)) { continue }
-    # HIMMEL-1104: LOAD path only. The identical "ignoring hooks" text is also
+    # LOAD path only. The identical "ignoring hooks" text is also
     # emitted by list_tool_suggest_discoverable_plugins — a marketplace
     # SUGGESTION scan over NON-INSTALLED plugins that discards the parsed hooks.
     # Matching the bare string reported a healthy session as DEGRADED.
@@ -175,7 +175,7 @@ if ($newest) {
   }
 }
 
-# --- (d) himmel plugin registration (HIMMEL-1145) -----------------------------
+# --- (d) himmel plugin registration -----------------------------
 # (a)-(c) all read what codex LOGGED. A codex that lost the himmel marketplace +
 # plugin registration loads nothing, parses no manifest, and so logs nothing: every
 # check above reads healthy while every himmel guardrail is absent. Assert
@@ -213,7 +213,7 @@ function Remove-TomlComment([string]$l) {
   }
   return $o.ToString()
 }
-# A table-header key with its quote boundary kept (HIMMEL-3234): a dot OUTSIDE quotes
+# A table-header key with its quote boundary kept: a dot OUTSIDE quotes
 # is a segment separator ($script:KeySep, U+001C — like the .sh twin's \034), a dot
 # INSIDE quotes is part of the key, so a hand-written ["plugins.X"] never collides
 # with the nested [plugins."X"]. Whitespace inside quotes is kept; outside, dropped.

@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# reap-mcp-fleet.sh (HIMMEL-741; HIMMEL-840 descendant-reap primitive) -
-# cross-platform twin of reap-mcp-fleet.ps1.
+# reap-mcp-fleet.sh - cross-platform twin of reap-mcp-fleet.ps1.
 #
 # The app-server-fleet FINGERPRINT (Win32_Process ancestry walk with codex
 # path markers) is a Windows-only concern - the default (no-args) mode's
 # orphan scan forwards entirely to the .ps1 on Windows; on other platforms
 # Codex reaps its own app-server children, so that scan is skipped there.
 #
-# The HIMMEL-840 descendant-reap PRIMITIVE (--root-pid) is NOT Windows-only:
+# The descendant-reap PRIMITIVE (--root-pid) is NOT Windows-only:
 # dispatch-codex-exec.sh's own EXIT trap calls it on every platform right
 # after its codex child exits. On Windows this still forwards to the .ps1
 # (Win32_Process + CreationDate is the authoritative source there); on
@@ -20,7 +19,7 @@
 #   scripts/codex/reap-mcp-fleet.sh                                    # report-only (default)
 #   scripts/codex/reap-mcp-fleet.sh --kill                             # reap the above
 #   scripts/codex/reap-mcp-fleet.sh --root-pid <pid> [--started-at <epoch>] [--kill]
-#                                                                       # HIMMEL-840: report/reap descendants of one root pid
+#                                                                       # report/reap descendants of one root pid
 #
 # ENVIRONMENT:
 #   CODEX_JOBS_DIR   Override the job registry dir (tests; default
@@ -103,7 +102,7 @@ _reap_ps_table() {
 }
 
 # _reap_registry_scan - non-Windows twin of the .ps1's registry-driven
-# maintenance block (visibility surface, HIMMEL-840 point 4). Reads
+# maintenance block. Reads
 # $JOBS_DIR/*.json (node -e, mirroring companion-liveness.sh's own JSON-
 # parsing convention) and, for each entry whose codex_pid is dead, reports
 # (default) / reaps (--kill) its descendants, dropping the entry under

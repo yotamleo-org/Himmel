@@ -1,5 +1,5 @@
 ﻿<#
-  Hermetic tests for install-himmel-codex.ps1 (HIMMEL-597) — Windows twin of
+  Hermetic tests for install-himmel-codex.ps1 — Windows twin of
   test-install-himmel-codex.sh. A stub `codex` CLI (codex-stub.ps1) simulates
   `plugin marketplace list/add` + `plugin list/add`, driven by test-controlled
   state files, logging every mutating call. The installer runs in a child pwsh
@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ScriptDir = $PSScriptRoot
 $Installer = Join-Path $ScriptDir "install-himmel-codex.ps1"
@@ -77,7 +77,7 @@ exit 0
     $env:CODEX_BIN = $codexBin
     $env:CODEX_STUB_STATE = $state
     # CODEX_HOME -> an empty temp dir so the wired sanitize-plugin-hooks step
-    # (HIMMEL-651) finds no plugin cache and no-ops, keeping the test hermetic
+    # finds no plugin cache and no-ops, keeping the test hermetic
     # (never touches the real ~/.codex cache).
     $env:CODEX_HOME = Join-Path $TMP "codex-home"
     try {

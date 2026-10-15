@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# hook-smoke-demo.sh - HIMMEL-2000. End-to-end smoke of the PROJECT hook chain
+# hook-smoke-demo.sh - End-to-end smoke of the PROJECT hook chain
 # in BOTH harnesses, run against a disposable clone of the himmel checkout.
 #
-# WHY: every recent change to the hook plumbing (HIMMEL-1981/1982/1985/1987/1989)
+# WHY: every recent change to the hook plumbing
 # can break a session's hooks SILENTLY - a hook that no longer runs fails OPEN
 # and nothing in the transcript says so. The unit suites cover each adapter in
 # isolation; nothing proved that a REAL session still starts, runs a tool call
@@ -23,7 +23,7 @@
 #                  through run-hook-with-bash.js is fed a canned benign payload
 #                  and must exit 0 - a 2 there is a guardrail blocking something
 #                  benign, which is itself a break. Positive control for the
-#                  Claude side / HIMMEL-1985 runner wiring.
+#                  Claude side runner wiring.
 #
 # `--from <path>` points the clone at a WORKTREE instead of the primary, which
 # is the main intended use: smoke a branch BEFORE it merges.
@@ -49,7 +49,7 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 # absent (a missing lib does the same).
 # ponytail: without a GNU timeout a hung leg or hook is not bounded, so it stalls
 # the run instead of reporting a failed leg; upgrade path is requiring coreutils on
-# the macOS runners (HIMMEL-3699).
+# the macOS runners.
 _TIMEOUT_BIN=""
 # shellcheck source=scripts/lib/timeout-bin.sh
 [ -r "$REPO/scripts/lib/timeout-bin.sh" ] && . "$REPO/scripts/lib/timeout-bin.sh"
@@ -334,7 +334,7 @@ if [ "$RUN_CODEX" = "1" ] && command -v codex >/dev/null 2>&1; then
     # CODEX_HOME relocates the whole codex state dir; hardcoding ~/.codex would
     # make every otherwise-clean run on such an install fail the rollout check.
     # `-mtime -1` only prunes the scan: BSD/macOS find cannot parse GNU's
-    # `-newermt "@epoch"` (HIMMEL-3699), and the CX_TAG grep below is what
+    # `-newermt "@epoch"`, and the CX_TAG grep below is what
     # selects OUR rollout (the demo basename is unique per run).
     find "${CODEX_HOME:-$HOME/.codex}/sessions" -name '*.jsonl' -mtime -1 2>/dev/null \
     | while IFS= read -r _roll; do
@@ -416,14 +416,14 @@ fi
 if [ "$RUN_CLAUDE" = "1" ] && command -v claude >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     BANK=$(bash "$REPO/scripts/lib/bank-preflight.sh" 2>/dev/null | tail -1)
     # Ambient proxy exports must not redirect this Max-plan launch
-    # (HIMMEL-1867). FAIL CLOSED: an unpinned launch can be routed through a
+    # FAIL CLOSED: an unpinned launch can be routed through a
     # local proxy - wrong auth, wrong billing, no error - so if the pin cannot
     # be applied the leg is SKIPPED rather than spent, never silently launched.
     PIN_OK=1
     # shellcheck source=scripts/lib/native-auth-pin.sh
     # shellcheck disable=SC1091
     . "$REPO/scripts/lib/native-auth-pin.sh" 2>/dev/null || PIN_OK=0
-    # HIMMEL-4459: the pin's rc is advisory (shadowed builtins can fake rc 0);
+    # the pin's rc is advisory (shadowed builtins can fake rc 0);
     # the keyword-only LAUNCH GATE in native-auth-pin.sh is the real check.
     [ "$PIN_OK" = "1" ] && { native_auth_pin_env; [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]] || PIN_OK=0; }
     if [ "$PIN_OK" != "1" ]; then
@@ -440,11 +440,11 @@ if [ "$RUN_CLAUDE" = "1" ] && command -v claude >/dev/null 2>&1 && command -v jq
         # fired. Do NOT "fix" the trust warning - it is the positive control.
         (
             cd "$DEMO" || exit 2
-            # HIMMEL-4459: the launch sits INSIDE the keyword-only gate, so a shadowed
+            # the launch sits INSIDE the keyword-only gate, so a shadowed
             # `[`/`exit` above can skip a refusal but never reach this launch.
             if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
-                # launch-profile-ok: the demo proves the PreToolUse hook chain fires; a profile would change what it measures (HIMMEL-4013)
-                # hook-chain smoke demo (HIMMEL-2000); bank-gated above, --model haiku, one read-only turn
+                # launch-profile-ok: the demo proves the PreToolUse hook chain fires; a profile would change what it measures
+                # hook-chain smoke demo; bank-gated above, --model haiku, one read-only turn
                 env "${INERT_ENV[@]}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$LEG_TIMEOUT"} claude -p "$PROMPT" \
                     --model haiku --permission-mode default --output-format json
             else
@@ -484,7 +484,7 @@ fi
 # live hook set all 15 return 0, so a 2 here is a guardrail blocking something
 # benign - the same break the agent legs fail on - and anything else (a crash, a
 # missing runner, a broken $CLAUDE_PROJECT_DIR substitution) is the
-# HIMMEL-1985-shaped one.
+# runner-wiring one.
 if [ "$RUN_CLAUDE" = "1" ] && command -v jq >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
     echo "hook-smoke-demo: claude-replay leg"
     CR_START=$(date +%s)

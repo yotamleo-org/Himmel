@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Hermetic tests for probe-codex-hooks.ps1 (HIMMEL-1982).
+  Hermetic tests for probe-codex-hooks.ps1.
 
 .DESCRIPTION
   A temp CODEX_HOME (never the real ~/.codex) holds a global hooks.json (one
@@ -403,7 +403,7 @@ if ($clampSw.Elapsed.TotalSeconds -lt 30) { Pass '-TimeoutSec -1 does not hang (
 $cr = @((Get-Content -LiteralPath $clampJson -Raw | ConvertFrom-Json).replayResults)
 if ($cr.Count -eq 1 -and $cr[0].result -eq 'ok') { Pass '-TimeoutSec -1 clamp still completes the hook (exit 0 -> ok)' } else { Fail "clamp replay result: $($cr | ConvertTo-Json -Compress)" }
 
-# === 11. plugin hook file resolves via .codex-plugin/plugin.json (HIMMEL-2001) ==
+# === 11. plugin hook file resolves via .codex-plugin/plugin.json ==
 # Separate hermetic CODEX_HOME so the counts asserted above stay untouched.
 # Three plugin shapes, all enabled:
 #   nohookplug  - manifest declares "hooks": {}      -> contributes nothing

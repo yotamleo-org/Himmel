@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Enumerate the EFFECTIVE Codex hook set on Windows and lint (or replay) it
-  for the pwsh-runner traps (HIMMEL-1982).
+  for the pwsh-runner traps.
 
 .DESCRIPTION
   codex-cli on Windows runs every hook command as
@@ -92,7 +92,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 if (-not $CodexHome) { $CodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' } }
@@ -187,7 +187,7 @@ function Resolve-PluginRoot([string]$CodexHome, [string]$Marketplace, [string]$N
   return @($versions | Sort-Object Name)[-1].FullName
 }
 
-# Which file holds a plugin's CODEX hook set (HIMMEL-2001). Codex consults the
+# Which file holds a plugin's CODEX hook set. Codex consults the
 # plugin's Codex-specific manifest <root>/.codex-plugin/plugin.json first: its
 # "hooks" field names the file, and an absent/empty value means the plugin
 # registers NO Codex hooks. Only a plugin that ships no .codex-plugin manifest
@@ -354,7 +354,7 @@ if ($Replay) {
   }
 
   # field set per event matches the empirical matrix recorded in
-  # docs/internals/harness-compat.md (event/tool-name table, HIMMEL-1982 probe).
+  # docs/internals/harness-compat.md (event/tool-name table).
   function Get-HookPayload([string]$Event, [string]$Project, [string]$ToolName) {
     $cwdj = $Project.Replace('\','/')
     $base = '"session_id":"probe","transcript_path":"","cwd":"' + $cwdj + '"'

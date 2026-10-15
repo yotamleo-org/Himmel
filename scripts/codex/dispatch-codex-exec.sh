@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # scripts/codex/dispatch-codex-exec.sh - the codex-exec lane's dispatch
-# chokepoint (HIMMEL-781, follow-up to the HIMMEL-741 diagnosis).
+# chokepoint.
 #
 # WHY: the lane's safety requirements must be structural, not prose (the
 # lanes.json row alone cannot enforce them). This wrapper encodes the
-# HIMMEL-741 invariants at the single entry point (arg checks run first,
+# invariants at the single entry point (arg checks run first,
 # then the preflight, then codex - nothing reaches codex unchecked):
 #   1. ACL preflight: normalize-worktree-acl.sh <worktree> runs before the
 #      codex CLI is invoked and aborts the dispatch on failure (Windows
@@ -15,7 +15,7 @@
 #      default --wait behavior + scripts/codex/companion-liveness.sh).
 #   4. Workspace-redirect (-C/--cd/--add-dir) and sandbox-widening flags
 #      refused - the preflight covers only the dispatched worktree.
-#   5. Shared-branch mode (--shared-branch, HIMMEL-800), opt-in: the caller
+#   5. Shared-branch mode, opt-in: the caller
 #      names an EXISTING branch the worktree must already be checked out on
 #      (the caller states intent, the wrapper verifies reality - branch
 #      match, never main/master, no uncommitted changes). On success the
@@ -28,9 +28,9 @@
 #      lock helper's own release verb (see scripts/codex/README.md).
 #      Default posture (no --shared-branch) is unchanged: own worktree, own
 #      throwaway branch, no lock.
-#   6. Job registry + descendant reap (HIMMEL-840): the codex-exec CLI sandbox
+#   6. Job registry + descendant reap: the codex-exec CLI sandbox
 #      leaks its own MCP-server fleet (npx/node children under cmd.exe
-#      wrappers) that the HIMMEL-741 app-server fingerprint cannot see (no
+#      wrappers) that the app-server fingerprint cannot see (no
 #      codex path marker survives on those processes once codex.exe is gone).
 #      This wrapper now ALWAYS runs codex as a child (never exec's it, in
 #      either path - exec would drop the trap below), records the child pid
@@ -39,7 +39,7 @@
 #      removing the registry entry. A stale registry entry (dispatcher killed
 #      before its own EXIT trap ran) is still visible to reap-mcp-fleet's
 #      registry-driven maintenance mode.
-#   7. Reasoning-effort passthrough (HIMMEL-905), opt-in: the caller may pass
+#   7. Reasoning-effort passthrough, opt-in: the caller may pass
 #      --reasoning-effort <value> or --reasoning-effort=<value> with value in
 #      none|low|medium|high|xhigh|max. The codex CLI has no native flag for
 #      this - the wrapper validates the enum, strips the raw flag from the
@@ -49,7 +49,7 @@
 #      this wrapper-computed override is emitted). Does NOT change the
 #      model selection below; this flag only lets the default (or a
 #      caller-named model) run at a non-default reasoning effort.
-#   8. Watchdog + ledger (HIMMEL-2023, HIMMEL-1788 instance 5): the wait below
+#   8. Watchdog + ledger: the wait below
 #      used to be UNBOUNDED, so a wedged headless run was invisible - no
 #      timeout, no kill, and (unlike the codex-wsl twin) no flow-run-ledger
 #      row to show it had even started. Now:
@@ -71,18 +71,18 @@
 #      STDIN: `codex exec` reads stdin to EOF even when the prompt is argv
 #      ("Reading additional input from stdin..."), so a tty OR an empty open
 #      pipe blocks before a token is spent. Default to </dev/null; only an
-#      explicit --stdin-brief passes the caller's stdin through (HIMMEL-2786).
+#      explicit --stdin-brief passes the caller's stdin through.
 #      Timeout evidence includes a reason, distinguishing an empty stdout
 #      event log at kill time from a run that emitted output.
-#   9. Hook-trust preflight (HIMMEL-5291): codex keys hook trust to the
+#   9. Hook-trust preflight: codex keys hook trust to the
 #      absolute .codex/hooks.json path, so a fresh worktree runs with none of
-#      himmel's hooks (HIMMEL-5288 gap 1). The dispatch refuses (exit 2, before
+#      himmel's hooks. The dispatch refuses (exit 2, before
 #      the lock/ledger/registry) unless every hook of every event of the
 #      worktree's hooks.json has a trusted entry in $CODEX_HOME/config.toml
-#      whose hash equals the one codex recomputes (HIMMEL-5293), under a
+#      whose hash equals the one codex recomputes, under a
 #      primary checkout that resolves. There is no bypass:
 #      --dangerously-bypass-hook-trust stays refused by the filter, and a
-#      CODEX_BIN script naming it is refused too (HIMMEL-5297).
+#      CODEX_BIN script naming it is refused too.
 #
 # Usage:
 #   dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [--reasoning-effort <none|low|medium|high|xhigh|max>] [codex exec args...]
@@ -110,7 +110,7 @@
 # Bash 3.2 safe (macOS / Git Bash on Windows).
 set -uo pipefail
 
-# HIMMEL-5297: CODEX_BIN and CODEX_HOOK_TRUST_CHECK are registered seams
+# CODEX_BIN and CODEX_HOOK_TRUST_CHECK are registered seams
 # (scripts/chokepoints.json): refuse one that differs from the session's launch
 # env. Sourced by BASH_SOURCE, never PATH's dirname, before any seam is read.
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
@@ -135,12 +135,12 @@ REAP_HELPER="${CODEX_REAP_HELPER:-$SCRIPT_DIR/reap-mcp-fleet.sh}"
 # asserts the two match, which is what actually prevents the drift.
 EXEC_TIMEOUT="${CODEX_EXEC_TIMEOUT:-1800}"
 
-# HIMMEL-999: the passthrough-args filter is shared with dispatch-codex-wsl.sh.
+# the passthrough-args filter is shared with dispatch-codex-wsl.sh.
 # shellcheck source=codex-arg-filter.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/codex-arg-filter.sh"
 # Invariant 8: the ledger the codex-wsl twin already writes, and the ONE
-# process-tree kill (HIMMEL-1338) - never a hand-rolled taskkill here.
+# process-tree kill - never a hand-rolled taskkill here.
 # shellcheck source=../lib/flow-run-ledger.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/flow-run-ledger.sh"
@@ -213,7 +213,7 @@ _preserve_job_file() {
     JOB_FILE=""
 }
 
-# Single composed EXIT trap (HIMMEL-800 lock-release + HIMMEL-840 fleet-reap).
+# Single composed EXIT trap.
 # Registered once, up front, so every early-exit path (usage errors, deny-
 # listed flags, preflight failure) also runs it - each branch below is a
 # no-op until its guard var is actually set, so nothing fires for a dispatch
@@ -300,7 +300,7 @@ case "$WT_ABS" in
 esac
 WORKTREE="$WT_ABS"
 
-# Invariant 5 (HIMMEL-800): shared-branch mode gate. Trunk is checked FIRST
+# Invariant 5: shared-branch mode gate. Trunk is checked FIRST
 # and unconditionally - main/master is refused as the requested branch
 # regardless of what the worktree actually has checked out (fail fast on an
 # obviously-wrong request before doing any git introspection). Then the
@@ -350,10 +350,10 @@ if ! bash "$NORMALIZE" "$WORKTREE"; then
     exit 1
 fi
 
-# Invariant 9 (HIMMEL-5291): hook-trust preflight, fail-closed. codex keys hook
+# Invariant 9: hook-trust preflight, fail-closed. codex keys hook
 # trust to the ABSOLUTE .codex/hooks.json path of the PRIMARY checkout (a linked
 # worktree's hook discovery resolves there), so an untrusted tree would run the
-# lane with no himmel hooks at all (HIMMEL-5288 gap 1: an in-workspace force
+# lane with no himmel hooks at all (an in-workspace force
 # push succeeded). The filter refuses --dangerously-bypass-hook-trust, so the
 # only honest options are to refuse or to run guarded: refuse unless every
 # hook of the primary checkout's hooks.json has a trusted state entry in
@@ -362,7 +362,7 @@ fi
 # the lock, the ledger start row and the job registry, so a refusal leaves
 # nothing behind. CODEX_HOOK_TRUST_CHECK swaps the check (tests; same idiom as
 # CODEX_ACL_NORMALIZE): <script> <worktree>, rc 0 trusted, nonzero refuses.
-# HIMMEL-5293: every hook of EVERY event is checked, and each trusted_hash must
+# every hook of EVERY event is checked, and each trusted_hash must
 # equal the hash codex recomputes from the hook definition (openai/codex
 # rust-v0.161.0: hooks/src/engine/discovery.rs hook_hash() +
 # config/src/fingerprint.rs version_for_toml(); see the port in the node program
@@ -379,7 +379,7 @@ fi
 # surviving every open-ended refusal list; a valid hooks.json outside it (a
 # bracket class or escape in a matcher, a new handler field) refuses, which is
 # the fail-closed direction. Upgrade path is a Rust-regex-compatible validator
-# and a schema generated from the codex release (HIMMEL-5337).
+# and a schema generated from the codex release.
 _hook_trust_check() {
     local wt="$1" hooks_json=""
     local cfg="${CODEX_HOME:-$HOME/.codex}/config.toml" primary_native="$1" primary="" common
@@ -524,10 +524,10 @@ try { cfg = fs.readFileSync(cfgFile, "utf8"); } catch (error) { /* absent = noth
 const trusted = new Map();
 let key = null, hash = null, off = false;
 const flush = () => { if (key !== null && hash !== null && !off) trusted.set(key, hash); };
-// HIMMEL-5350: a header-looking line inside a multi-line string is string content
+// A header-looking line inside a multi-line string is string content
 // to codex, so track """ / \x27\x27\x27 across lines (single-line strings and
 // comments skipped) and read only the lines that start outside one.
-// HIMMEL-5355: the same for a line inside a multi-line array or inline table
+// The same for a line inside a multi-line array or inline table
 // (bracket/brace depth outside strings): its [ line is an element, not a header.
 let ml = null, depth = 0;
 const trackStrings = (line) => {
@@ -557,7 +557,7 @@ const trackStrings = (line) => {
     }
 };
 // TOML basic-string escapes: \b \t \n \f \r \e \" \\ \uXXXX \UXXXXXXXX \xHH. A key
-// is compared decoded. HIMMEL-5365: strict (header keys) returns null on \x, \e,
+// is compared decoded. Strict (header keys) returns null on \x, \e,
 // an unknown escape or an invalid code point and the caller refuses the key:
 // toml 1.0 fails the whole file on \x / \e and 1.1 decodes it, which one codex
 // links is not verified, and the raw text could equal a real key that itself
@@ -603,7 +603,7 @@ for (const line of cfg.split(/\r?\n/)) {
         if (h) hash = h[1];
         // codex reads enabled as a bool: anything but true discards the entry.
         // Positive form: [\s\S] in the comment tail, since `.` skips U+2028/U+2029.
-        // HIMMEL-5355: the key may be quoted ("enabled", \x27enabled\x27).
+        // The key may be quoted ("enabled", \x27enabled\x27).
         const kv = line.match(/^\s*("(?:[^"\\]|\\.)*"|\x27[^\x27]*\x27|[A-Za-z0-9_-]+)\s*=([\s\S]*)$/);
         if (kv && keyName(kv[1]) === "enabled" && !/^\s*true\s*(?:#[\s\S]*)?$/.test(kv[2])) off = true;
     }
@@ -650,7 +650,7 @@ const matcherOk = (m) => {
     // backslash, no bracket, no brace. A quantifier needs an atom before it (and
     // may then take one lazy ?), groups balance to at most 16 deep (Rust refuses
     // past 250) and no alternative or group is empty.
-    // HIMMEL-5350: no counted repetition, so the compiled size is linear in the
+    // No counted repetition, so the compiled size is linear in the
     // length; a length cap keeps it far under the Rust compile-size limit.
     // ponytail: a conservative length bound, not the crate real size accounting
     // (it refuses some matchers codex would compile); revisit if a legitimate
@@ -774,7 +774,7 @@ if [ "$TRUST_RC" -ne 0 ]; then
     exit 2
 fi
 
-# Invariant 5 (HIMMEL-800): acquire the single-writer lock now that the gate
+# Invariant 5: acquire the single-writer lock now that the gate
 # and the ACL preflight both passed. The composed EXIT trap (registered up
 # front) releases on every CATCHABLE exit from here on (codex CLI missing,
 # worktree vanishing, codex nonzero exit) once LOCK_ACQUIRED is set - a
@@ -810,15 +810,14 @@ if ! command -v "$CODEX" >/dev/null 2>&1; then
     exit 127
 fi
 
-# HIMMEL-5297: the argv filter bounds the CALLER's flags, but CODEX_BIN can name
+# the argv filter bounds the CALLER's flags, but CODEX_BIN can name
 # a wrapper that adds --dangerously-bypass-hook-trust (or the sandbox/rules
 # bypasses) itself. CODEX_BIN is a registered chokepoint seam (scripts/
 # chokepoints.json), and here a resolved script (shebang) naming a refused flag
 # is refused before launch, as is any such flag in the argv finally passed.
-# ponytail: a static text scan of a script wrapper - a compiled wrapper or a
+# ponytail: a static text scan of a script wrapper (HIMMEL-5347) - a compiled wrapper or a
 # flag assembled at run time evades it; upgrade path is pinning CODEX_BIN to the
-# resolved codex install (basename + realpath allowlist, no own CODEX_HOME),
-# HIMMEL-5347.
+# resolved codex install (basename + realpath allowlist, no own CODEX_HOME).
 CODEX_RESOLVED="$(command -v "$CODEX" 2>/dev/null || true)"
 if [ -n "$CODEX_RESOLVED" ] && [ -f "$CODEX_RESOLVED" ] && [ "$(head -c 2 "$CODEX_RESOLVED" 2>/dev/null)" = "#!" ]; then
     if grep -qE -e '--dangerously-bypass-hook-trust|--dangerously-bypass-approvals-and-sandbox|--yolo|--ignore-rules' "$CODEX_RESOLVED" 2>/dev/null; then
@@ -834,7 +833,7 @@ if ! cd "$WORKTREE"; then
     exit 1
 fi
 
-# Invariant 2 (HIMMEL-2811): share the critic's model source. HIMMEL-2546
+# Invariant 2: share the critic's model source.
 # left this lane's pin divergent; that stale default later 404'd. Only an
 # unreadable registry permits the named fallback; invalid content must refuse.
 FALLBACK_MODEL="gpt-6.1-sol"
@@ -889,7 +888,7 @@ fi
 if [ "$have_sandbox" -eq 0 ]; then
     pin_args="$pin_args --sandbox workspace-write"
 fi
-# Invariant 7 (HIMMEL-905): translate the validated --reasoning-effort enum
+# Invariant 7: translate the validated --reasoning-effort enum
 # into a trusted -c override (codex has no native flag for this). The value
 # is quoted (a real TOML string) so it survives pin_args' later unquoted
 # word-splitting as ONE argv token; the enum has no embedded whitespace so
@@ -898,7 +897,7 @@ if [ -n "$reasoning_effort" ]; then
     # shellcheck disable=SC2089  # the embedded quotes are intentional TOML string syntax for the -c override; see SC2090 note below where pin_args is expanded
     pin_args="$pin_args -c model_reasoning_effort=\"$reasoning_effort\""
 fi
-# HIMMEL-5297: the argv codex is finally launched with never carries a refused
+# the argv codex is finally launched with never carries a refused
 # trust/sandbox bypass flag, whatever built it (the caller args were already
 # filtered; this covers the pin args and any later change to either).
 # shellcheck disable=SC2086 # pin_args is a fixed, space-safe flag list
@@ -910,12 +909,12 @@ for _final_arg in $pin_args "$@"; do
     esac
 done
 
-# Invariants 5+6 (HIMMEL-800/840): NEVER exec codex in either path - exec
+# Invariants 5+6: NEVER exec codex in either path - exec
 # replaces this process image, which would drop the composed EXIT trap above
 # (losing both the shared-branch lock release and the fleet reap). Run codex
 # as a background child so its pid is known immediately, register the job
 # registry entry, then wait for it and propagate its exit code.
-# Invariant 8 (stdin, HIMMEL-2786): explicit <&0 preserves an opted-in brief
+# Invariant 8: explicit <&0 preserves an opted-in brief
 # across backgrounding. Otherwise use /dev/null even for non-tty stdin: an
 # empty pipe held open by a tool harness is just as unbounded as a terminal.
 STARTED_AT="$(date +%s)"
@@ -937,14 +936,14 @@ LEDGER_STARTED=1
 # before codex starts, also means nothing has been spent when it happens.
 #
 # The template is explicit: a BARE `mktemp` honours $TMPDIR on GNU but ignores it
-# on macOS/BSD (HIMMEL-3699), so the flag/event files would land outside the
+# on macOS/BSD, so the flag/event files would land outside the
 # caller's temp root. GNU's bare default is `$TMPDIR/tmp.XXXXXXXXXX`.
 if ! TIMEOUT_FLAG="$(mktemp "${TMPDIR:-/tmp}/tmp.XXXXXXXXXX" 2>/dev/null)" || [ -z "$TIMEOUT_FLAG" ]; then
     echo "dispatch-codex-exec.sh: cannot create the watchdog flag file (mktemp failed; TMPDIR=${TMPDIR:-<unset>}) - refusing to run codex with an unreadable watchdog verdict" >&2
     exit 2
 fi
 # Observe stdout (JSON events with --json), not stderr startup diagnostics.
-# Retain only its first byte (HIMMEL-2806); the watchdog samples non-emptiness,
+# Retain only its first byte; the watchdog samples non-emptiness,
 # not content. The owned relay forwards that byte and then the remaining stdin.
 if ! EVENT_LOG="$(mktemp "${TMPDIR:-/tmp}/tmp.XXXXXXXXXX" 2>/dev/null)" || [ -z "$EVENT_LOG" ]; then
     echo "dispatch-codex-exec.sh: cannot create the event log - refusing to run codex without timeout diagnostics" >&2
@@ -974,7 +973,7 @@ OUTPUT_PID=$!
 exec 3> "$EVENT_FIFO"
 rm -f "$EVENT_FIFO"
 if [ "$STDIN_BRIEF" -eq 0 ]; then
-    # shellcheck disable=SC2086,SC2090  # pin_args is a fixed, space-safe flag list built above; embedded quotes (HIMMEL-905 -c override) are intentional, single argv tokens once split
+    # shellcheck disable=SC2086,SC2090  # pin_args is a fixed, space-safe flag list built above; embedded quotes are intentional, single argv tokens once split
     "$CODEX" exec $pin_args "$@" </dev/null >&3 3>&- &
 else
     # shellcheck disable=SC2086,SC2090  # see above
@@ -1008,7 +1007,7 @@ exec 3>&-
 WATCH_PID=$!
 set +m
 
-# Job registry (HIMMEL-840): one file per job so a leaked fleet (dispatcher
+# Job registry: one file per job so a leaked fleet (dispatcher
 # killed before its own EXIT trap ran) is still visible to reap-mcp-fleet's
 # registry-driven maintenance mode. Best-effort: a write failure here does
 # not abort the dispatch - the at-source reap below still works off

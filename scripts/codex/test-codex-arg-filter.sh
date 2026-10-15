@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034 # CAF_* globals configure sourced filter calls.
-# Hermetic tests for codex-arg-filter.sh (HIMMEL-999). The filter cases are
+# Hermetic tests for codex-arg-filter.sh. The filter cases are
 # cross-checked against test-dispatch-codex-exec.sh — the exec lane's
 # messages must stay byte-identical (that suite is the extraction proof);
 # THIS suite pins the lib's own contract + the WSL-lane parameterization.

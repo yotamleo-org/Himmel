@@ -1,4 +1,4 @@
-# reap-mcp-fleet.ps1 (HIMMEL-741) - report/reap ORPHANED Codex MCP-fleet processes.
+# reap-mcp-fleet.ps1 - report/reap ORPHANED Codex MCP-fleet processes.
 #
 # WHY: the Codex app-server (`codex.exe app-server`, launched via
 # app-server-broker.mjs) spawns a fleet of ~5-6 MCP server processes per job
@@ -9,7 +9,7 @@
 # fleet processes whose Codex app-server ancestor is GONE - never a fleet with a
 # live app-server (that fleet is legitimately in use).
 #
-# HIMMEL-840 EXTENSION: the codex-exec CLI sandbox (a DIFFERENT lane than the
+# EXTENSION: the codex-exec CLI sandbox (a DIFFERENT lane than the
 # app-server above, dispatched via dispatch-codex-exec.sh) leaks its own MCP
 # fleet - plain `npx <mcp-server>` under `cmd.exe` wrappers with NO codex path
 # marker of their own once the `codex.exe` supervisor is gone, structurally
@@ -37,7 +37,7 @@
 #     killed (no marker to prove they are ours; the conservative "when unsure,
 #     exclude" rule from the app-server fingerprint applies here too).
 #
-# HIMMEL-1328 EXTENSION: a second, entirely distinct leak class - duplicate
+# EXTENSION: a second, entirely distinct leak class - duplicate
 # MCP-fleet children under a LIVE app-server. Get-OrphanFleet above only ever
 # fires when the supervisor is DEAD; a job that respawns its fleet (e.g. one
 # `luna-correlate` MCP server per retried request) while the app-server stays
@@ -55,7 +55,7 @@
 # launch, the leading package argument for `uvx`/`npx`, else the process
 # Name) and flags any identity with more than one live instance. Printed as
 # its own report block plus its own summary-line count, distinct from the
-# orphan count (HIMMEL-1328: "0 orphans, 8 duplicates" must be expressible).
+# orphan count.
 #
 # GROUNDING (verified on this machine, 2026-07-07):
 #   Live topology, one app-server subtree (`Get-CimInstance Win32_Process`):
@@ -86,13 +86,13 @@
 #   pwsh -NoProfile -File scripts/codex/reap-mcp-fleet.ps1            # report-only (default; app-server scan + registry maintenance)
 #   pwsh -NoProfile -File scripts/codex/reap-mcp-fleet.ps1 -Kill     # terminate the orphans + dead-job registry fleets
 #   pwsh -NoProfile -File scripts/codex/reap-mcp-fleet.ps1 -RootPid <pid> [-StartedAt <epoch>] [-Kill]
-#                                                                     # HIMMEL-840: report/reap descendants of one root pid
+#                                                                     # report/reap descendants of one root pid
 # Exit codes: 0 = ran (report or kill); 1 = usage/enumeration error.
 
 [CmdletBinding()]
 param(
   [switch]$Kill,
-  # HIMMEL-840: single-root descendant-reap primitive (dispatch-codex-exec.sh's
+  # single-root descendant-reap primitive (dispatch-codex-exec.sh's
   # own EXIT trap). 0 = not provided (a real pid is never 0) -> default mode.
   [int]$RootPid = 0,
   [string]$StartedAt = '',
@@ -167,7 +167,7 @@ function Get-OrphanFleet {
   return $out.ToArray()
 }
 
-# Test-AppServerSupervisor (HIMMEL-1328) - narrower than Test-FleetSupervisor:
+# Test-AppServerSupervisor - narrower than Test-FleetSupervisor:
 # true only for the actual MCP-fleet owner (codex.exe app-server / desktop
 # app), never the broker. Multiple LIVE app-servers under one broker are a
 # normal, already-documented topology (see GROUNDING above) and must never be
@@ -178,19 +178,19 @@ function Test-AppServerSupervisor {
   return [bool]($Proc.Name -and ($Proc.Name -ieq 'codex.exe'))
 }
 
-# Get-ServerIdentity (HIMMEL-1328) - normalizes a fleet child's CommandLine
+# Get-ServerIdentity - normalizes a fleet child's CommandLine
 # into the "which server is this" identity used to group duplicates. Prefers
 # the plugin-cache package name (distinguishes `luna-correlate` from
 # `telegram-himmel` even though both launch as bun.exe), then the LEADING
 # package argument of a uvx/npx invocation - including the `cmd.exe /c npx
-# <pkg>` wrapper shape the HIMMEL-840 EXTENSION above documents (without this,
+# <pkg>` wrapper shape the codex-exec EXTENSION above documents (without this,
 # every cmd.exe-wrapped npx server would collapse into one "cmd.exe" bucket
 # regardless of which package it launches - a false-positive risk for two
 # genuinely different servers, not just repeated instances of one). Falls
 # back to the process Name when nothing more specific is found.
 #
-# KNOWN LIMITATION, deliberately deferred (codex adversarial review,
-# HIMMEL-1328): the plugin-cache branch captures only the PACKAGE segment
+# KNOWN LIMITATION, deliberately deferred (deliberate):
+# the plugin-cache branch captures only the PACKAGE segment
 # (`luna-correlate`), discarding the VENDOR segment that precedes it
 # (`himmel`) - two different vendors publishing a same-named package would
 # collapse to one identity. Every plugin observed on this host (and in this
@@ -201,14 +201,14 @@ function Test-AppServerSupervisor {
 # than done reflexively at the tail of an already-long review cycle. File a
 # follow-up ticket if a multi-vendor plugin cache is ever in play.
 #
-# Takes the FIRST qualifying token, not the last (panel review, HIMMEL-1328):
+# Takes the FIRST qualifying token, not the last:
 # uvx/npx CLI convention is `uvx|npx [flags] <package> [package's own args]`,
 # so the package name is the leading positional argument, not the trailing
 # one - `uvx mcp-obsidian --extra positional-arg` must resolve to
 # `mcp-obsidian`, not `positional-arg`.
 #
 # Walks the split tokens in order rather than filtering the whole array at
-# once (codex adversarial review, HIMMEL-1328 - two rounds): a naive
+# once: a naive
 # "drop flag names, take the first survivor" filter still fails when a flag
 # TAKES A VALUE - the value itself has no `-` prefix, so it survives the
 # filter and gets mistaken for the package. `uvx --python 3.12 server-a` and
@@ -227,7 +227,7 @@ function Test-AppServerSupervisor {
 # quote/whitespace delimiter) so that fragment can never be picked ahead of
 # the real package token that follows it.
 #
-# Tokenization (CodeRabbit App review, HIMMEL-1328): splitting on runs of
+# Tokenization: splitting on runs of
 # quote-or-whitespace chars (`-split '["\s]+'`) fragments a QUOTED,
 # space-containing flag VALUE into multiple raw tokens, so `$i += 2` only
 # consumes the first fragment and a later fragment (e.g. `dir` from `--with
@@ -280,9 +280,8 @@ function Get-ServerIdentity {
   # A generic OS shell/wrapper OR generic language-runtime launcher is never
   # itself a distinct server identity - falling back to its bare Name would
   # group unrelated invocations as if they were the same duplicated server,
-  # corrupting the report (panel + codex adversarial review, HIMMEL-1328;
-  # `node.exe`/`bun.exe`/`uvx.exe`/`npx.exe` added on a follow-up panel round
-  # - glm-3 - same reasoning as the shell wrappers: a bare `node.exe`/
+  # corrupting the report. `node.exe`/`bun.exe`/`uvx.exe`/`npx.exe` follow the
+  # same reasoning as the shell wrappers: a bare `node.exe`/
   # `bun.exe` child that does NOT match the plugin-cache regex above, or a
   # `uvx.exe`/`npx.exe` child whose command line yields zero tokens above,
   # could launch ANY package - the executable name alone identifies nothing).
@@ -299,7 +298,7 @@ function Get-ServerIdentity {
   return [string]$Proc.Name
 }
 
-# Get-DuplicateFleets (HIMMEL-1328) - pure grouping filter, sibling to
+# Get-DuplicateFleets - pure grouping filter, sibling to
 # Get-OrphanFleet. For each LIVE app-server (Test-AppServerSupervisor), groups
 # its IMMEDIATE children (ParentProcessId = the app-server's own pid) by
 # Get-ServerIdentity and flags any identity with more than one live instance.
@@ -316,7 +315,7 @@ function Get-DuplicateFleets {
     # shell/wrapper Name with no more specific signal - see its own comment)
     # BEFORE grouping, so they never collapse into one meaningless "$null" bucket.
     #
-    # Stale-PPID guard (codex adversarial review, HIMMEL-1328): Windows does
+    # Stale-PPID guard: Windows does
     # NOT clear a process's recorded ParentProcessId when its real parent
     # exits, so pid reuse can make an unrelated, long-dead-parent process
     # appear as a "child" of a freshly-started supervisor that was simply
@@ -356,7 +355,7 @@ function Get-DuplicateFleets {
   return $out.ToArray()
 }
 
-# Get-DescendantPids (HIMMEL-840) - pure descendant walk. Returns every LIVE
+# Get-DescendantPids - pure descendant walk. Returns every LIVE
 # pid in $Procs reachable from $RootPid by following ParentProcessId links
 # DOWNWARD (children, grandchildren, ...). $RootPid itself need not be present
 # in $Procs (it is typically already dead - that is why we are reaping) - a
@@ -401,7 +400,7 @@ function Get-DescendantPids {
   return $result.ToArray()
 }
 
-# Test-McpShaped (HIMMEL-840, observability-only) - a coarse "looks like an
+# Test-McpShaped - a coarse "looks like an
 # MCP-server-launching process" predicate used ONLY for the report-mode
 # visibility count of unregistered/historic dead-parent leaks (point 4). It is
 # deliberately looser than Test-CodexOwned (no path-marker requirement) and
@@ -440,7 +439,7 @@ try {
   exit 1
 }
 
-# --- HIMMEL-840: -RootPid mode - report/reap descendants of ONE root pid ----
+# --- -RootPid mode - report/reap descendants of ONE root pid ----
 # (the dispatcher's own EXIT trap, called with its codex child's pid).
 if ($RootPid -gt 0) {
   # Entry-point safety parity with the registry-scan path below (which skips a
@@ -529,7 +528,7 @@ if ($orphans.Count -eq 0) {
   }
 }
 
-# --- HIMMEL-1328: duplicate MCP-fleet children under a LIVE app-server ------
+# --- duplicate MCP-fleet children under a LIVE app-server ------
 # Distinct leak class from the orphan scan above - every process here is
 # fully live throughout, so it is invisible to Get-OrphanFleet by design.
 # Report-only: no -Kill wiring for this class (see header).
@@ -553,7 +552,7 @@ if ($duplicates.Count -eq 0) {
   Write-Host "[reap-mcp-fleet] report-only - duplicates under a live supervisor are never killed by this tool."
 }
 
-# --- HIMMEL-840: registry-driven maintenance (visibility surface, point 4) --
+# --- registry-driven maintenance (visibility surface, point 4) --
 # Every job dispatch-codex-exec.sh registered under CODEX_JOBS_DIR whose
 # codex_pid is now dead is a leak the dispatcher's own EXIT-trap reap never
 # cleaned up (killed before it could run). Report (default) or reap (-Kill)

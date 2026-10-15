@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for companion-liveness.sh (HIMMEL-741).
+# Hermetic tests for companion-liveness.sh.
 # No real Codex install: temp state dirs hold fixture state.json files shaped
 # exactly like lib/state.mjs (queued/running jobs with real+dead pids, empty,
 # missing, corrupt). Asserts the exit-code contract: 0 healthy / 1 findings /

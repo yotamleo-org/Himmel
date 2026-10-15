@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/codex/codex-wsl-verify.sh - in-distro clone verification for the
-# codex WSL lane (HIMMEL-999 B2.3). Shipped across the boundary by
+# codex WSL lane. Shipped across the boundary by
 # dispatch-codex-wsl.sh via `bash -s -- <clone> [root]` so the SAME file is
 # locally unit-testable (test-dispatch-codex-wsl.sh runs it directly).
 #

@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Provision himmel under the Codex CLI (HIMMEL-597) — the codex-CLI half of the
+  Provision himmel under the Codex CLI — the codex-CLI half of the
   install split, twin of scripts/codex/install-himmel-codex.sh.
 
 .DESCRIPTION
@@ -39,7 +39,7 @@ $ErrorActionPreference = "Stop"
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 if ($Rest -and $Rest.Count -gt 0) {
   Write-Error "unknown argument(s): $($Rest -join ' ') (use -DryRun / -All / -Plugins <csv>)"
@@ -49,7 +49,7 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $MarketPath = Join-Path $RepoRoot "marketplace"
 
 # The marketplace name + plugin sets live in ONE data file, shared with
-# startup-health (which asserts they are still registered — HIMMEL-1145).
+# startup-health (which asserts they are still registered).
 $PluginSetFile = Join-Path $PSScriptRoot "himmel-plugin-set.conf"
 if (-not (Test-Path -LiteralPath $PluginSetFile)) { Write-Error "plugin set file not found at $PluginSetFile"; exit 1 }
 function Get-PluginSetField([string]$key) {
@@ -135,14 +135,14 @@ foreach ($p in $PluginSet) {
   }
 }
 
-# --- 3. sanitize external-plugin hooks.json (HIMMEL-651) ---
+# --- 3. sanitize external-plugin hooks.json ---
 # Codex versions BEFORE rust-v0.143.0 reject a top-level `description` key that
 # several external plugins ship in their hooks.json ("unknown field
 # description") and skip those hooks at boot. Strip it so codex boots clean.
 # Idempotent + non-fatal (cosmetic cleanup must never fail the install).
-# DEPRECATED (HIMMEL-1104): upstream fixed this in rust-v0.143.0 (PR #30229), so
+# DEPRECATED: upstream fixed this in rust-v0.143.0 (PR #30229), so
 # on that version or newer this phase mutates external plugin files for no
-# benefit. Removing the phase is tracked in HIMMEL-1114.
+# benefit.
 Write-Host ""
 Write-Host "--- 3. sanitize external-plugin hooks.json (codex strict-parser workaround) ---"
 $sanitizer = Join-Path $PSScriptRoot "sanitize-plugin-hooks.ps1"
@@ -153,7 +153,7 @@ try {
   Write-Warning "sanitize step failed (non-fatal): $($_.Exception.Message)"
 }
 
-# --- 4. lint Codex hook commands for the Windows pwsh runner (HIMMEL-1982) ---
+# --- 4. lint Codex hook commands for the Windows pwsh runner ---
 # codex-cli on Windows runs every hook as `pwsh -NoProfile -Command "<cmd>"`;
 # a bare `bash ...` resolves via the Machine PATH to the WSL launcher stub and
 # can hang, and a command starting with a quoted path is a pwsh string

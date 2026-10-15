@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# companion-liveness.sh (HIMMEL-741) - flag stuck codex-companion jobs.
+# companion-liveness.sh - flag stuck codex-companion jobs.
 #
 # WHY: the codex-companion background task-worker can die silently, leaving its
 # job pinned at "queued"/"running" in the per-workspace job registry forever;

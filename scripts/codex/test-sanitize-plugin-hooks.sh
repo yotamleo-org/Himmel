@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for sanitize-plugin-hooks.sh (HIMMEL-651).
+# Hermetic tests for sanitize-plugin-hooks.sh.
 # No real Codex install needed: a temp CODEX_HOME holds fixture plugin-cache
 # hooks.json files (one WITH a top-level `description`, one already clean, one
 # malformed). Asserts the sanitizer strips only the `description` key, preserves
@@ -13,7 +13,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

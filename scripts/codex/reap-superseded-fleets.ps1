@@ -1,4 +1,4 @@
-﻿# reap-superseded-fleets.ps1 (HIMMEL-1309) - report/reap SUPERSEDED Codex MCP
+﻿# reap-superseded-fleets.ps1 - report/reap SUPERSEDED Codex MCP
 # fleets that accumulate UNDER A STILL-LIVE app-server.
 #
 # WHY (the gap the two existing tools structurally cannot cover):
@@ -39,7 +39,7 @@
 #        during the sample window is NOT protected by this gate - gate 2 is.
 #
 #   Deliberately NOT used: dead-parent and "has a codex.exe descendant" (both
-#   documented false signals, HIMMEL-718), and bare per-plugin cardinality
+#   documented false signals), and bare per-plugin cardinality
 #   (kills live tooling - it is exactly why the two existing scripts are
 #   conservative).
 #
@@ -64,7 +64,7 @@
 #     avoid. The per-app-server census makes the accumulation visible instead.
 #   * A fleet root whose CommandLine WMI will not show us cannot be keyed, so it
 #     is counted as blind and never reaped (mirrors sweep-codex-orphans.ps1's
-#     pid-reuse refusal). The long-lived unreadable `bun.exe` from HIMMEL-1296 is
+#     pid-reuse refusal). The long-lived unreadable `bun.exe` seen earlier is
 #     not under an app-server at all, so it is out of this tool's scope entirely
 #     and stays documented rather than killed - there is no signal that would
 #     identify it without guessing.
@@ -139,8 +139,7 @@ function Test-IsCodexAppServer {
 # Strip the leading executable token from a command line, quoted or bare, and
 # return the normalized remainder (whitespace-collapsed, lowercased). This is
 # what makes `uvx mcp-obsidian` and `node_repl.exe` (no args at all) keyable
-# alongside the bun launchers - the fix must not be bun-only (HIMMEL-1309 gap 3:
-# 146 codex-lineage procs / 2.6 GB survived a bun-keyed sweep).
+# alongside the bun launchers - the fix must not be bun-only (146 codex-lineage procs / 2.6 GB survived a bun-keyed sweep).
 function Get-CommandTail {
   param([Parameter(Mandatory)][AllowEmptyString()][AllowNull()][string]$CommandLine)
   if ([string]::IsNullOrWhiteSpace($CommandLine)) { return '' }
@@ -290,8 +289,6 @@ function Get-BlindFleetRootPids {
 }
 
 # Re-gate the descendant walk's output against the ROOT's creation time
-# (HIMMEL-1309, codex adversarial pass — "the main kill path has a concrete
-# safety gap").
 #
 # Get-DescendantPids' own stale-PPID filter is deliberately fail-OPEN: it keeps
 # a parent->child link whenever EITHER creation date is unknown. That is correct
@@ -335,7 +332,7 @@ function Select-VerifiedDescendants {
 # across the sample window; $null means the sample could not be taken (access
 # denied / process gone mid-sample) - fail SAFE by vetoing, because an
 # unmeasurable candidate has no evidence of being idle.
-# Platform guard ([codex-1]/[glm-3], HIMMEL-1309). `$IsWindows` is a PowerShell
+# Platform guard. `$IsWindows` is a PowerShell
 # 6+ AUTOMATIC VARIABLE — under Windows PowerShell 5.1 it is simply UNDEFINED
 # ($null), so the obvious `if (-not $IsWindows)` evaluates TRUE and the script
 # exits 0 announcing "non-Windows" on the exact platform it exists for.

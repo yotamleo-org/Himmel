@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for hook-smoke-demo.sh (HIMMEL-2000).
+# Hermetic tests for hook-smoke-demo.sh.
 #
 # Pins OUR contract only: argument parsing, the hook-failure banner regex
 # (against canned output from BOTH harnesses), the nonzero-on-failure paths,
@@ -572,8 +572,8 @@ else
 fi
 
 # --- 11a: the claude leg fails CLOSED when the native-auth pin is unavailable -
-# An unpinned headless launch can be routed through a local proxy with no error
-# (HIMMEL-1867), so it must be skipped, never spent. Run a copy of the script
+# An unpinned headless launch can be routed through a local proxy with no error,
+# so it must be skipped, never spent. Run a copy of the script
 # from a repo layout that has no scripts/lib.
 FAKEREPO="$TMP/fakerepo/scripts/codex"; mkdir -p "$FAKEREPO"
 cp "$SMOKE" "$FAKEREPO/"
@@ -585,7 +585,7 @@ then pass "claude leg skips when the native-auth pin cannot be applied"
 else fail "claude leg launched unpinned: $OUT"; fi
 
 # --- 11a2: exported exit/return/unset/[ shadows must never reach the launch -----
-# HIMMEL-4459: the pin's rc and the PIN_OK refusal run through shadowable builtins;
+# the pin's rc and the PIN_OK refusal run through shadowable builtins;
 # the launch itself sits inside the keyword-only gate. Control (no ambient proxy)
 # proves the shadowed script still reaches the launch, so the proxied row is not
 # vacuous. The `[` shadow answers false for a `0` first operand (the PIN_OK probe).

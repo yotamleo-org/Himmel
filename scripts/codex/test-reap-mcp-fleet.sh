@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermetic tests for the cross-platform descendant-walk logic added to
-# reap-mcp-fleet.sh by HIMMEL-840 (_reap_descendants - the bash twin of
+# reap-mcp-fleet.sh (_reap_descendants - the bash twin of
 # reap-mcp-fleet.ps1's Get-DescendantPids, unit-tested in
 # test-reap-mcp-fleet.ps1). No real process table is touched: this file
 # sources reap-mcp-fleet.sh (the sourcing guard skips production code, only
@@ -17,7 +17,7 @@ fail() { echo "  FAIL: $1" >&2; fails=$((fails + 1)); }
 # _TIMEOUT_BIN -- GNU `timeout` is absent on a stock macOS (homebrew coreutils
 # installs `gtimeout`). Resolve once, same pattern as
 # scripts/himmelctl/test/test-wizard-save-profile.sh: the bound below is a safety
-# net for the HIMMEL-840 hang, so without either binary run unbounded and say so.
+# net for the hang, so without either binary run unbounded and say so.
 _TIMEOUT_BIN=""
 if command -v timeout >/dev/null 2>&1; then _TIMEOUT_BIN="timeout"
 elif command -v gtimeout >/dev/null 2>&1; then _TIMEOUT_BIN="gtimeout"
@@ -95,7 +95,7 @@ else
 fi
 
 # --- Test 4: malformed argv - missing option value fails fast, no hang ------
-# (HIMMEL-840 Fix 2: `shift 2` under `set -u` without `-e` was a no-op when
+# (`shift 2` under `set -u` without `-e` was a no-op when
 # only one arg remained, spinning the option-parsing `while` loop forever -
 # confirmed rc=124 under `timeout` before the fix. Invokes the real script as
 # a subprocess, wrapped in `timeout`, so a regression here would show up as

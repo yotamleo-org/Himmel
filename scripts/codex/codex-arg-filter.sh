@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# scripts/codex/codex-arg-filter.sh - the codex-exec passthrough-args filter
-# (HIMMEL-999), extracted from dispatch-codex-exec.sh so the exec and WSL
-# dispatchers share ONE decision source (HIMMEL-195: never two prose-synced
+# scripts/codex/codex-arg-filter.sh - the codex-exec passthrough-args filter,
+# extracted from dispatch-codex-exec.sh so the exec and WSL
+# dispatchers share ONE decision source (never two prose-synced
 # copies of a security filter).
 #
 # Contract:

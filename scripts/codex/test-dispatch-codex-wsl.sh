@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2181,SC2012,SC2016 # test harness intentionally uses compact status assertions and literal grep patterns.
-# Hermetic tests for dispatch-codex-wsl.sh (HIMMEL-999). No real WSL: a stub
+# Hermetic tests for dispatch-codex-wsl.sh. No real WSL: a stub
 # wsl.exe records argv/stdin and plays scripted verification/quota outputs.
 set -uo pipefail
 
@@ -137,7 +137,7 @@ echo $$ > "$LOCK_KEY_DIR/pid"   # OUR live pid -> genuinely held
 STUB_VERIFY_OUT="/home/u/work/himmel" run_dispatch --distro Ubuntu --clone /home/u/work/himmel "hi"
 assert_rc 4 "live lock -> exit 4" "live lock not honored"
 rm -rf "$LOCK_KEY_DIR"
-# codex-adv HIMMEL-999: a lock dir with NO pid file (winner mkdir'd but has
+# A lock dir with NO pid file (winner mkdir'd but has
 # not yet written its pid) is a live acquisition in progress, NOT stale - it
 # must NOT be broken. Deterministic stand-in for the mkdir/echo race window.
 echo "test: empty-pid lock -> acquisition-in-progress, exit 4 (not stale-broken)"

@@ -1,10 +1,10 @@
 ﻿<#
 .SYNOPSIS
   Strip the top-level `description` key from external-plugin hooks.json under the
-  Codex plugin cache (HIMMEL-651) — twin of sanitize-plugin-hooks.sh.
+  Codex plugin cache — twin of sanitize-plugin-hooks.sh.
 
 .DESCRIPTION
-  DEPRECATED (HIMMEL-1104, 2026-07-17) — upstream FIXED the bug this works
+  DEPRECATED (2026-07-17) — upstream FIXED the bug this works
   around. codex PR #30229 ("Relax hooks.json top-level metadata validation",
   2026-06-26) added `description` to the `HooksFile` serde struct, so a
   root-level `description` is accepted from rust-v0.143.0 onward. PREFER

@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Hermetic tests for startup-health.ps1 (HIMMEL-747) — twin of test-startup-health.sh.
+  Hermetic tests for startup-health.ps1 — twin of test-startup-health.sh.
 .DESCRIPTION
   Builds a temp CODEX_HOME per case (synthetic rollout .jsonl naming the session
   thread_id + a synthetic logs_2.sqlite text file carrying the real WARN message
@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 # Captured native stdout is decoded via [Console]::OutputEncoding -- the
 # legacy OEM codepage on default Windows installs, not UTF-8, so any
 # non-ASCII byte a native command emits is silently mis-decoded on capture
-# and written back corrupted (HIMMEL-2256; reference fix: gen-changelog.ps1).
+# and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $DET  = Join-Path $PSScriptRoot 'startup-health.ps1'
@@ -34,7 +34,7 @@ function New-Home([string]$name, [string]$tid, [string]$waw) {
   '{"type":"event_msg","payload":{"type":"token_count"}}' | Set-Content -LiteralPath $f -Encoding utf8
   $rec = [pscustomobject]@{ type = 'response_item'; payload = [pscustomobject]@{ type = 'message'; content = @([pscustomobject]@{ type = 'text'; text = $waw }) } }
   ($rec | ConvertTo-Json -Depth 20 -Compress) | Add-Content -LiteralPath $f -Encoding utf8
-  # HIMMEL-1145: a fully-registered config.toml, so every case that is NOT about
+  # a fully-registered config.toml, so every case that is NOT about
   # registration stays healthy. Registration cases overwrite it via Write-Config.
   Write-Config $h 'all'
   return $h
@@ -89,7 +89,7 @@ function New-Hooks([string]$homeDir, [string]$rel, [bool]$withDesc) {
 
 $small = "<system-reminder>`n# Where are we`nsmall"
 $hookLine  = "WARN codex_core_plugins::manifest session_loop{thread_id=__TID__}:submission_dispatch{}:turn: load_plugins_from_layer_stack: ignoring hooks: expected a string, string array, object, or object array; found object"
-# HIMMEL-1104: same "ignoring hooks" text from the marketplace SUGGESTION scan
+# same "ignoring hooks" text from the marketplace SUGGESTION scan
 # (non-installed plugins; parsed hooks discarded) — must NOT be a hook failure.
 $suggestLine = "WARN codex_core_plugins::manifest session_loop{thread_id=__TID__}:submission_dispatch{}:turn:built_tools.load_discoverable_tools:list_tool_suggest_discoverable_tools_with_auth:list_tool_suggest_discoverable_plugins: ignoring hooks: expected a string, string array, object, or object array; found object"
 $skillLine = "WARN codex_core_plugins::manifest session_loop{thread_id=__TID__}:built_tools: ignoring interface.defaultPrompt[0]: prompt must be at most 128 characters path=X"
@@ -191,7 +191,7 @@ try {
   $r = Run $h @{ budget = '100000' }
   if ($r.rc -eq 0) { Pass 'big block under generous budget -> exit 0' } else { Fail "budget-gate rc=$($r.rc)" }
 
-  # 8. HIMMEL-1145: himmel plugin registration is asserted PRESENT (twin of the
+  # 8. himmel plugin registration is asserted PRESENT (twin of the
   # .sh suite's section 8). The session in each case is otherwise clean — only
   # config.toml differs.
   function New-RegHome([string]$name, [string]$mode, [string]$skip = '') {
@@ -265,7 +265,7 @@ try {
   $r = Run $h
   if ($r.rc -eq 0) { Pass 'literal-quoted header is the same registration' } else { Fail "literal rc=$($r.rc) out=$($r.out)" }
 
-  # 8f4. HIMMEL-3234: a QUOTED key is ONE segment. A hand-written top-level
+  # 8f4. A QUOTED key is ONE segment. A hand-written top-level
   # ["plugins.himmel-ops@himmel"] / ["marketplaces.himmel"] is not the nested
   # registration; quoting a SEGMENT (["plugins"."himmel-ops@himmel"]) still is.
   $h = New-RegHome 'regqdotplug' 'skip' 'himmel-ops'

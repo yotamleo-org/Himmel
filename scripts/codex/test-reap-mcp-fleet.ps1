@@ -1,4 +1,4 @@
-﻿# Hermetic tests for reap-mcp-fleet.ps1 (HIMMEL-741).
+﻿# Hermetic tests for reap-mcp-fleet.ps1.
 # Get-CimInstance is NOT mocked: the .ps1 exposes a pure filter, Get-OrphanFleet,
 # that takes a synthetic process-records array. We dot-source the script with
 # -AsLibrary (defines functions, skips the live scan) and assert the orphan set
@@ -89,7 +89,7 @@ Check 'codex.exe is a supervisor'  (Test-FleetSupervisor -Proc (Rec 1 0 'codex.e
 Check 'broker.mjs is a supervisor' (Test-FleetSupervisor -Proc (Rec 1 0 'node.exe' $BROKER))
 Check 'playwright node NOT a supervisor' (-not (Test-FleetSupervisor -Proc (Rec 1 0 'node.exe' '"node" @playwright/mcp/cli.js')))
 
-# --- HIMMEL-1328: Get-DuplicateFleets (duplicate MCP-fleet children under a
+# --- Get-DuplicateFleets (duplicate MCP-fleet children under a
 # LIVE app-server - the ORPHAN scan is structurally blind to this: every
 # process below is fully live throughout, mirroring the 2026-07-28 fleet
 # audit that found 5 live luna-correlate instances under one codex.exe and 3
@@ -138,20 +138,20 @@ Check 'node_repl falls back to Name' ((Get-ServerIdentity -Proc (Rec 1 0 'node_r
 $CMD_NPX = 'cmd.exe /e:ON /v:OFF /d /c ""C:\Program Files\nodejs\npx.cmd" -y @upstash/context7-mcp"'
 Check 'cmd.exe-wrapped npx identity is the package, not "cmd.exe"' ((Get-ServerIdentity -Proc (Rec 1 0 'cmd.exe' $CMD_NPX)) -eq '@upstash/context7-mcp') "got=$(Get-ServerIdentity -Proc (Rec 1 0 'cmd.exe' $CMD_NPX))"
 Check 'two DIFFERENT cmd.exe-wrapped npx packages are NOT grouped together' ((Get-ServerIdentity -Proc (Rec 1 0 'cmd.exe' $CMD_NPX)) -ne (Get-ServerIdentity -Proc (Rec 1 0 'cmd.exe' 'cmd.exe /c npx -y @other/mcp-server')))
-# Panel review (HIMMEL-1328, codex-2): the package name is the LEADING
+# The package name is the LEADING
 # positional argument in uvx/npx CLI convention, not the trailing one - a
 # server invoked with its OWN positional/flag args after the package name
 # must still resolve to the package, not to that trailing argument.
 $UVX_WITH_ARGS = '"' + $UserHomeFwd + '/.local/bin/uvx.exe" mcp-obsidian --extra positional-project-name'
 Check 'uvx package with a trailing positional arg still identifies as the package' ((Get-ServerIdentity -Proc (Rec 1 0 'uvx.exe' $UVX_WITH_ARGS)) -eq 'mcp-obsidian') "got=$(Get-ServerIdentity -Proc (Rec 1 0 'uvx.exe' $UVX_WITH_ARGS))"
-# Codex adversarial review, round 5 (HIMMEL-1328): a value-taking flag's own
+# A value-taking flag's own
 # VALUE (not the flag name itself) survived the filter, so `uvx --python
 # 3.12 server-a` and `uvx --python 3.12 server-b` both resolved to `3.12` -
 # reproduced directly before fixing. A bare version-number-shaped token is
 # now excluded (a package is never itself named e.g. `3.12`).
 Check 'uvx --python <version> <package> resolves to the package, not the version' ((Get-ServerIdentity -Proc (Rec 1 0 'uvx.exe' 'uvx.exe --python 3.12 server-a')) -eq 'server-a') "got=$(Get-ServerIdentity -Proc (Rec 1 0 'uvx.exe' 'uvx.exe --python 3.12 server-a'))"
 Check 'two DIFFERENT packages behind the same --python version are NOT grouped together' ((Get-ServerIdentity -Proc (Rec 1 0 'uvx.exe' 'uvx.exe --python 3.12 server-a')) -ne (Get-ServerIdentity -Proc (Rec 1 0 'uvx.exe' 'uvx.exe --python 3.12 server-b')))
-# Codex adversarial review, round 6 (HIMMEL-1328): the SAME class of bug,
+# The SAME class of bug,
 # generalized - any value-taking flag (not just --python) leaves its value
 # as the mistaken identity. `uvx --from ./local-pkg mcp-server` resolved to
 # `./local-pkg` - reproduced directly before fixing. The walk now skips a
@@ -159,7 +159,7 @@ Check 'two DIFFERENT packages behind the same --python version are NOT grouped t
 Check 'uvx --from <path> <package> resolves to the package, not the --from value' ((Get-ServerIdentity -Proc (Rec 1 0 'uvx.exe' 'uvx.exe --from ./local-pkg mcp-server')) -eq 'mcp-server') "got=$(Get-ServerIdentity -Proc (Rec 1 0 'uvx.exe' 'uvx.exe --from ./local-pkg mcp-server'))"
 Check 'uvx --with <path> <package> resolves to the package, not the --with value' ((Get-ServerIdentity -Proc (Rec 1 0 'uvx.exe' 'uvx.exe --with ./extra-dep mcp-server')) -eq 'mcp-server') "got=$(Get-ServerIdentity -Proc (Rec 1 0 'uvx.exe' 'uvx.exe --with ./extra-dep mcp-server'))"
 Check 'a boolean/unknown flag (e.g. -y) is still skipped without consuming a value' ((Get-ServerIdentity -Proc (Rec 1 0 'npx.exe' 'npx.exe -y mcp-server')) -eq 'mcp-server') "got=$(Get-ServerIdentity -Proc (Rec 1 0 'npx.exe' 'npx.exe -y mcp-server'))"
-# CodeRabbit App review, HIMMEL-1328: the raw-token split (`-split '["\s]+'`)
+# The raw-token split (`-split '["\s]+'`)
 # splits on quotes AND whitespace, so a QUOTED, space-containing value for a
 # value-taking flag fragments into multiple tokens - the `$i += 2` skip only
 # consumes the first fragment, leaving the rest to reach the candidate filter
@@ -180,7 +180,7 @@ Write-Host "Test 5e: empty input yields no duplicate groups (no throw)"
 $emptyDup = @(Get-DuplicateFleets -Procs @())
 Check 'empty input -> 0 duplicate groups' ($emptyDup.Count -eq 0)
 
-# Panel + codex adversarial review (HIMMEL-1328): a bare `cmd.exe` (or other
+# A bare `cmd.exe` (or other
 # generic shell wrapper) child that is NOT wrapping npx has no identity more
 # specific than its own Name - grouping repeats of it as a "duplicate MCP
 # server" would be a false positive with no real server behind it. Two such
@@ -197,7 +197,7 @@ $shellNoiseProcs = @(
 )
 $shellNoiseGroups = @(Get-DuplicateFleets -Procs $shellNoiseProcs)
 Check 'bare cmd.exe pair produces 0 groups for it (false positive avoided)' (-not ($shellNoiseGroups | Where-Object { $_.Identity -eq 'cmd.exe' }))
-# CodeRabbit round 5 (HIMMEL-1328): the per-identity checks below name the
+# The per-identity checks below name the
 # identities they expect, so a regression that leaked an EXTRA group under a
 # $null or otherwise unforeseen identity would satisfy every one of them. Only
 # asserting the TOTAL group set closes that - it names no identity, so it
@@ -213,7 +213,7 @@ $shellNoiseMembers = if ($lunaShellNoiseGroups.Count -ge 1) { $lunaShellNoiseGro
 Check 'the real luna-correlate duplicate is still caught alongside the excluded noise' ($lunaShellNoiseGroups.Count -eq 1) "groups got=$($lunaShellNoiseGroups.Count)"
 Check 'that luna-correlate group holds both duplicate instances' ($lunaShellNoiseGroups.Count -eq 1 -and $shellNoiseMembers -eq 2) "members got=$shellNoiseMembers"
 
-# Panel review, round 2 (glm-3, HIMMEL-1328): a GENERIC language-runtime
+# A GENERIC language-runtime
 # launcher (node.exe/bun.exe/uvx.exe/npx.exe) whose command line does NOT
 # resolve to a more specific identity (no plugin-cache path match; a
 # uvx/npx invocation with no extractable package token) says nothing about
@@ -231,14 +231,14 @@ $runtimeNoiseProcs = @(
 )
 $runtimeNoiseGroups = @(Get-DuplicateFleets -Procs $runtimeNoiseProcs)
 Check 'bare bun.exe pair (different scripts) produces 0 false-positive group' (-not ($runtimeNoiseGroups | Where-Object { $_.Identity -eq 'bun.exe' }))
-# Same total-set guard as the shell-noise fixture above (CodeRabbit round 5).
+# Same total-set guard as the shell-noise fixture above.
 Check 'only the real runtime-noise group remains (no leaked $null/other identity)' ($runtimeNoiseGroups.Count -eq 1) "groups got=$($runtimeNoiseGroups.Count)"
 $lunaRuntimeNoiseGroups = @($runtimeNoiseGroups | Where-Object { $_.Identity -eq 'luna-correlate' })
 $runtimeNoiseMembers = if ($lunaRuntimeNoiseGroups.Count -ge 1) { $lunaRuntimeNoiseGroups[0].Count } else { 0 }
 Check 'the real luna-correlate duplicate is still caught alongside the excluded runtime noise' ($lunaRuntimeNoiseGroups.Count -eq 1) "groups got=$($lunaRuntimeNoiseGroups.Count)"
 Check 'that luna-correlate group holds both duplicate instances' ($lunaRuntimeNoiseGroups.Count -eq 1 -and $runtimeNoiseMembers -eq 2) "members got=$runtimeNoiseMembers"
 
-# Codex adversarial review, round 4 (HIMMEL-1328): Windows does not clear a
+# Windows does not clear a
 # process's recorded ParentProcessId when its true parent exits, so a
 # long-dead-parent process whose PPID happens to alias onto a FRESHLY
 # started supervisor's newly-assigned pid (pid reuse) could otherwise be
@@ -270,7 +270,7 @@ $freshMembers = if ($lunaFreshGroups.Count -ge 1) { $lunaFreshGroups[0].Count } 
 Check 'two genuinely-post-supervisor children still form a duplicate group' ($lunaFreshGroups.Count -eq 1) "groups got=$($lunaFreshGroups.Count)"
 Check 'that luna-correlate group holds both duplicate instances' ($lunaFreshGroups.Count -eq 1 -and $freshMembers -eq 2) "members got=$freshMembers"
 
-# --- HIMMEL-840: Get-DescendantPids (codex-exec CLI sandbox fleet) -----------
+# --- Get-DescendantPids (codex-exec CLI sandbox fleet) -----------
 # The codex-exec CLI sandbox spawns npx/node MCP servers under a cmd.exe
 # wrapper with NO codex path marker of their own once codex.exe is gone -
 # structurally invisible to Test-CodexOwned/Get-OrphanFleet above. The ONLY
@@ -319,8 +319,8 @@ $noChildren = @(Get-DescendantPids -Procs $sandboxProcs -RootPid 999999)
 Check 'root pid with no children in the table -> 0 descendants' ($noChildren.Count -eq 0)
 
 Write-Host "Test 9: malformed argv - missing value for -RootPid/-StartedAt fails fast (no hang)"
-# The .sh twin's option-parsing loop had a `shift 2` no-op bug (HIMMEL-840
-# Fix 2) that spun forever on a missing value; PowerShell's own typed-param
+# The .sh twin's option-parsing loop had a `shift 2` no-op bug
+# that spun forever on a missing value; PowerShell's own typed-param
 # binding already fails fast on this, but the coverage closes the parity gap
 # on both twins. Invokes the real script as a genuine subprocess (never the
 # dot-sourced -AsLibrary functions) so a regression would show up as an

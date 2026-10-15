@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# startup-health.sh (HIMMEL-747) — surface a DEGRADED Codex CLI startup.
+# startup-health.sh — surface a DEGRADED Codex CLI startup.
 #
 # When himmel routes work to the Codex lane, a codex session can start degraded
 # in ways that leave the lane LOOKING healthy to the orchestrator: skills/plugin
@@ -18,7 +18,7 @@
 #      * hook-failure     "...load_plugins_from_layer_stack: ignoring hooks:
 #                          expected a string, string array, object, or object
 #                          array; found object"
-#        The SPAN PREFIX is load-bearing (HIMMEL-1104). The identical "ignoring
+#        The SPAN PREFIX is load-bearing. The identical "ignoring
 #        hooks: ..." text is emitted from a SECOND span:
 #          "...list_tool_suggest_discoverable_plugins: ignoring hooks: ..."
 #        which is codex enumerating NON-INSTALLED marketplace plugins to build
@@ -40,7 +40,7 @@
 # so a since-FIXED misconfig's stale rows persist forever; filtering by the newest
 # session's thread_id means a fixed config stops firing on the next launch.
 #
-# PRESENCE, not just complaints (HIMMEL-1145): everything above is read from what
+# PRESENCE, not just complaints: everything above is read from what
 # codex LOGGED, so a codex that lost the himmel marketplace/plugin registration
 # entirely — nothing loads, nothing is logged — would read healthy. The
 # `plugin-unregistered` signal reads $CODEX_HOME/config.toml and asserts the himmel
@@ -75,7 +75,7 @@ fi
 
 findings=0
 emit() { printf 'WARN %s: %s\n' "$1" "$2"; findings=$((findings + 1)); }
-# Every finding here is about the codex CLI alone (the HIMMEL-1104 convention).
+# Every finding here is about the codex CLI alone.
 scope_note="Scope: the codex CLI only — claudex / cc-glm / hermes are separate surfaces and are NOT implicated by this finding."
 
 # Newest rollout session. Rollout filenames are ISO-timestamp-prefixed
@@ -133,7 +133,7 @@ EOF
 # so scope by $tid to the current session (avoids stale, since-fixed rows).
 if [ -f "$LOGDB" ] && [ -n "$tid" ]; then
   runs="$(LC_ALL=C grep -aoE '[[:print:]]{20,}' "$LOGDB" 2>/dev/null | grep -F "$tid" 2>/dev/null || true)"
-  # HIMMEL-1104: match the LOAD path only. codex emits the identical
+  # match the LOAD path only. codex emits the identical
   # "ignoring hooks: ..." text from two spans, and the span name immediately
   # precedes the message on the same row:
   #   load_plugins_from_layer_stack        -> the real hook-load path. REAL.
@@ -202,7 +202,7 @@ if [ -n "$newest_jsonl" ] && command -v jq >/dev/null 2>&1; then
   fi
 fi
 
-# --- (d) himmel plugin registration (HIMMEL-1145) -------------------------------
+# --- (d) himmel plugin registration -------------------------------
 # (a)-(c) all read what codex LOGGED. A codex that lost the himmel marketplace +
 # plugin registration loads nothing, parses no manifest, and so logs nothing: every
 # check above reads healthy while every himmel guardrail is absent. Assert
@@ -233,7 +233,7 @@ config_state() {
   # only whitespace around the dots and the ends is dropped. hdrkey keeps the
   # quote boundary: a dot OUTSIDE quotes is a segment separator (rewritten to \034),
   # a dot INSIDE quotes is part of the key, so a hand-written ["plugins.X"] never
-  # collides with the nested [plugins."X"] (HIMMEL-3234).
+  # collides with the nested [plugins."X"].
   awk '
     function hdrkey(l,   i, n, c, q, o) {
       n = length(l); q = ""; o = ""

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# sanitize-plugin-hooks.sh (HIMMEL-651)
+# sanitize-plugin-hooks.sh
 #
-# DEPRECATED (HIMMEL-1104, 2026-07-17) — upstream FIXED the bug this works around.
+# DEPRECATED — upstream FIXED the bug this works around.
 # codex PR #30229 ("Relax hooks.json top-level metadata validation", 2026-06-26)
 # added `description` to the `HooksFile` serde struct, so a root-level
 # `description` is accepted from **rust-v0.143.0** onward. Before that, HooksFile

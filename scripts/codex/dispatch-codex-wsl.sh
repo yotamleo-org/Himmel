@@ -3,13 +3,13 @@
 # shellcheck disable=SC2016 # QUOTA_SCRIPT is intentionally single-quoted for in-distro bash.
 # shellcheck disable=SC1003 # the '\' clone-path glob arm is an intentional single-quoted backslash, not a quote-escape.
 # scripts/codex/dispatch-codex-wsl.sh - the codex WSL lane's dispatch
-# chokepoint (HIMMEL-999; sibling of dispatch-codex-exec.sh / HIMMEL-741).
+# chokepoint.
 #
 # WHY: the proven WSL impl flow (ext4 clone in-distro + raw codex exec)
 # bypassed every lane invariant. This wrapper is the single entry point:
 #   1. Clone containment IN-DISTRO: physical path (pwd -P) under
 #      ${CODEX_WSL_CLONE_ROOT:-$HOME/work}, never under /mnt/ (write-reach
-#      containment + the HIMMEL-939 perf cliff), must be a git work tree.
+#      containment + the perf cliff), must be a git work tree.
 #   2. Shared flag filter (codex-arg-filter.sh): same allow-list as the
 #      exec lane, WSL-parameterized messages.
 #   3. Per-clone mutex keyed on distro + RESOLVED physical path: the lane
@@ -22,7 +22,7 @@
 #      workspace-write unless caller-named; --reasoning-effort translated
 #      to a trusted -c model_reasoning_effort override.
 #   6. Ledger: flow-runs.jsonl start/end rows (flow=codex-wsl) - the
-#      HIMMEL-654 feed AND the egress-matrix brief-scoped audit line.
+#      feed AND the egress-matrix brief-scoped audit line.
 #   7. Brief delivery: --brief-file crosses as the backgrounded child's
 #      EXPLICITLY-redirected stdin and is materialized into the positional
 #      prompt in-distro via "$(cat)" (bare stdin briefs silently no-op).
@@ -120,7 +120,7 @@ if [ -n "$BRIEF_FILE" ] && [ ! -f "$BRIEF_FILE" ]; then
     exit 2
 fi
 
-# Shared filter, WSL-parameterized messages (HIMMEL-999 B1).
+# Shared filter, WSL-parameterized messages.
 CAF_SELF_NAME="dispatch-codex-wsl.sh"
 CAF_SCOPE_NOUN="clone"
 CAF_CONTAINER_FLAG="--clone"
@@ -155,7 +155,7 @@ mkdir -p "$LOCKS_DIR" 2>/dev/null
 if mkdir "$LOCK_CAND" 2>/dev/null; then
     # Won the lock. Write our pid IMMEDIATELY (before any other work) so a
     # racing contender never reads an EMPTY pid and mistakes a live
-    # acquisition-in-progress for a stale lock (codex-adv HIMMEL-999: the
+    # acquisition-in-progress for a stale lock (the
     # mkdir/echo gap let a racer rm -rf a live lock and both proceed).
     echo "$$" > "$LOCK_CAND/pid"
 else
@@ -210,7 +210,7 @@ else
     RESETS_AT="$(printf '%s' "$QUOTA_OUT" | awk '{print $2}')"
     ROLLOUT_MT="$(printf '%s' "$QUOTA_OUT" | awk '{print $3}')"
     NOW_EPOCH="$(date +%s)"
-    # Float-safe compares via awk (HIMMEL-392 lesson: never bash [ -ge ] on floats).
+    # Float-safe compares via awk.
     IS_NUM="$(printf '%s' "$USED_PCT" | awk '/^[0-9]+([.][0-9]+)?$/{print "y"}')"
     if [ "$IS_NUM" != "y" ]; then
         echo "dispatch-codex-wsl.sh: WARN unparseable quota reading '$QUOTA_OUT' - proceeding fail-open" >&2
@@ -267,8 +267,7 @@ if [ "${#CAF_NEW_ARGS[@]}" -gt 0 ]; then
         IN_ARGS="$IN_ARGS '$a'"
     done
 fi
-# CLONE is SINGLE-quoted in the in-distro string (codex-adv + coderabbit
-# HIMMEL-999): inside 'single quotes' no $()/backtick/$var substitutes, so a
+# CLONE is SINGLE-quoted in the in-distro string (inside 'single quotes' no $()/backtick/$var substitutes, so a
 # metacharacter path can never command-execute when bash -lc re-parses this.
 # Safe because the validation above rejects a single quote in CLONE (and the
 # metachar refusal is the belt-and-suspenders early gate). Matches the

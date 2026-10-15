@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for install-himmel-codex.sh (HIMMEL-597).
+# Hermetic tests for install-himmel-codex.sh.
 # No real Codex install needed: a stub `codex` CLI simulates
 # `plugin marketplace list/add` and `plugin list/add`, driven by test-controlled
 # state files, and records every mutating call to a log. Asserts the installer is
@@ -14,7 +14,7 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,7 +79,7 @@ mk_state() {  # $1 = state dir; seeds empty marketplaces + plugins + calls
 run() {  # state-dir, then installer args
   local s="$1"; shift
   # CODEX_HOME -> an empty temp dir so the wired sanitize-plugin-hooks step
-  # (HIMMEL-651) finds no plugin cache and no-ops, keeping the test hermetic
+  # finds no plugin cache and no-ops, keeping the test hermetic
   # (never touches the real ~/.codex cache).
   CODEX_BIN="$STUB" CODEX_STUB_STATE="$s" CODEX_HOME="$TMP/codex-home" bash "$INSTALLER" "$@"
 }

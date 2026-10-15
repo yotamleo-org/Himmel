@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Hermetic tests for dispatch-codex-exec.sh (HIMMEL-781).
+# Hermetic tests for dispatch-codex-exec.sh.
 # No real codex install: CODEX_BIN + CODEX_ACL_NORMALIZE inject stubs that
 # record their argv/cwd/order. Asserts the lane invariants: ACL preflight
 # before codex + fail-closed, critic-model default (unless caller-named), the
 # --background refusal, the workspace-redirect/sandbox-widening deny-list,
-# and the --reasoning-effort passthrough (HIMMEL-905).
+# and the --reasoning-effort passthrough.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,7 +26,7 @@ assert_rc() {  # assert_rc <expected> <ok-name> <fail-detail>
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-# HIMMEL-3179: dispatch-codex-exec.sh resolves the worktree with `pwd -P`, so the
+# dispatch-codex-exec.sh resolves the worktree with `pwd -P`, so the
 # fixture root must be the physical spelling too (macOS TMPDIR sits behind the
 # /var -> /private/var link).
 # Assign through a scratch var: a failed substitution would otherwise blank TMP
@@ -62,7 +62,7 @@ EOF
 chmod +x "$NORM_STUB"
 echo 0 > "$TMP/norm.rc"
 
-# reap-mcp-fleet stub (HIMMEL-840): records invocation + argv, exits 0 - no
+# reap-mcp-fleet stub: records invocation + argv, exits 0 - no
 # real process table or pwsh is touched. Injected into every run_dispatch
 # call below so a codex stub that actually runs (rc-0 or nonzero-rc paths)
 # never shells out to the real reap-mcp-fleet.sh/.ps1.
@@ -75,7 +75,7 @@ exit 0
 EOF
 chmod +x "$REAP_STUB"
 
-# HIMMEL-2023: every dispatch now writes flow-run-ledger rows. Point the lib
+# every dispatch now writes flow-run-ledger rows. Point the lib
 # at a temp ledger so the suite never appends to the operator's real
 # ~/.himmel/flow-runs.jsonl.
 LEDGER="$TMP/flow-runs.jsonl"
@@ -90,7 +90,7 @@ run_dispatch() {  # run_dispatch <args...> ; sets $RC and $OUT
   set -e
 }
 
-# HIMMEL-5291: the hook-trust preflight reads $CODEX_HOME/config.toml, which no
+# the hook-trust preflight reads $CODEX_HOME/config.toml, which no
 # hermetic row below fixtures. Default every dispatch to a pass stub (the
 # CODEX_ACL_NORMALIZE idiom); section 16 unsets it to run the REAL check.
 TRUST_PASS_STUB="$TMP/trust-pass.sh"
@@ -341,7 +341,7 @@ set -e
 assert_rc 1 "vanished worktree exits 1" "vanish rc=$RC out=$OUT"
 case "$OUT" in *"worktree vanished before dispatch"*) pass "vanish failure is named";; *) fail "vanish out: $OUT";; esac
 
-# --- 14: --shared-branch mode (HIMMEL-800) ------------------------------------
+# --- 14: --shared-branch mode ------------------------------------
 # Real git repo + real worktree under .claude/worktrees (so the containment
 # check passes) and the REAL shared-branch-lock.sh (not a stub) - this
 # section tests the integration between dispatch-codex-exec.sh and the
@@ -427,7 +427,7 @@ pwd > "$TMP/codex.cwd"
 exit 0
 EOF
 
-# --- 15: job registry (HIMMEL-840) - created during the run, removed after; --
+# --- 15: job registry - created during the run, removed after; --
 # the composed EXIT trap invokes the reap primitive with the codex CHILD's
 # own pid (never the dispatcher's own $$); rc propagation unchanged with the
 # new always-a-child flow. A dedicated slow stub records its own pid and
@@ -453,7 +453,7 @@ OUT="$(CODEX_BIN="$SLOW_CODEX_STUB" CODEX_ACL_NORMALIZE="$NORM_STUB" SBL_HELPER=
 RC=$?
 set -e
 assert_rc 0 "registry-test dispatch exits 0" "registry rc=$RC out=$OUT"
-# Line-wise, not a whole-string glob: HIMMEL-2023 adds a sibling failed/ dir
+# Line-wise, not a whole-string glob: the watchdog adds a sibling failed/ dir
 # that earlier nonzero-exit cases leave behind, and `ls` sorts it AFTER the
 # digit-prefixed job file.
 if grep -q '\.json$' "$TMP/jobs-during.txt" 2>/dev/null; then
@@ -462,7 +462,7 @@ else
   fail "job registry file missing during run: $(cat "$TMP/jobs-during.txt" 2>/dev/null)"
 fi
 # The SUCCESS path still removes its own entry; only failed/ survives, and it
-# holds no live-job *.json (HIMMEL-2023 keeps evidence out of the live glob).
+# holds no live-job *.json.
 if [ -z "$(ls "$JOBS_DIR"/*.json 2>/dev/null)" ]; then
   pass "job registry file removed after the run (EXIT trap cleanup)"
 else
@@ -476,7 +476,7 @@ case "$(cat "$TMP/reap.args" 2>/dev/null)" in
     fail "reap.args: $(cat "$TMP/reap.args" 2>/dev/null) (expected root-pid=$CODEX_CHILD_PID_SEEN)" ;;
 esac
 
-# --- 16: --reasoning-effort passthrough (HIMMEL-905) --------------------------
+# --- 16: --reasoning-effort passthrough --------------------------
 # 16a: two-word form, valid value -> translated to -c model_reasoning_effort="<v>"
 #      and stripped from the codex passthrough.
 : > "$LOG"; echo 0 > "$TMP/norm.rc"
@@ -551,7 +551,7 @@ run_dispatch --worktree "$WT" do-it --reasoning-effort
 assert_rc 2 "trailing --reasoning-effort with no value refused" "trailing-reff rc=$RC out=$OUT"
 if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite trailing bare --reasoning-effort"; else pass "codex not invoked on trailing bare --reasoning-effort"; fi
 
-# --- 17: watchdog + ledger + evidence (HIMMEL-2023 / HIMMEL-1788 inst. 5) ----
+# --- 17: watchdog + ledger + evidence ----
 # 17a: the default budget must equal the codex-exec lane's own timeoutSeconds.
 # The dispatcher keeps the number as a literal (no JSON reader on its hot
 # path), so THIS assertion is what stops the two drifting apart.
@@ -724,7 +724,7 @@ else
   fail "nonzero exit deleted the job registry evidence"
 fi
 
-# --- 18: explicit stdin + timeout diagnosis (HIMMEL-2786) ---------------------
+# --- 18: explicit stdin + timeout diagnosis ---------------------
 # A stub that reads to EOF catches the non-tty empty-pipe hang. Keep a FIFO
 # open for reading AND writing: no data and no EOF until the fixture closes
 # fd 9. The dispatch's short watchdog bounds the regression, not the producer.
@@ -964,9 +964,9 @@ run_stdin_dispatch /dev/null
 assert_rc 124 "timeout wins over late child rc=7" "late child rc=$RC out=$OUT"
 assert_timeout_reason 'timeout after 2s'
 
-# --- 16: hook-trust preflight (HIMMEL-5291) ----------------------------------
+# --- 16: hook-trust preflight ----------------------------------
 # codex keys hook trust to the absolute hooks.json path, so a fresh worktree
-# runs with NO himmel hooks (HIMMEL-5288 gap 1: an in-workspace force push
+# runs with NO himmel hooks (an in-workspace force push
 # succeeded). The lane must refuse to launch unless every PreToolUse hook of
 # the worktree's .codex/hooks.json is trusted in $CODEX_HOME/config.toml.
 # Fixtures: hooks.json is the REAL repo file; the config table shape
@@ -976,13 +976,13 @@ REAL_HOOKS="$SCRIPT_DIR/../../.codex/hooks.json"
 TRUST_WT="$TMP/.claude/worktrees/trust-wt"
 mkdir -p "$TRUST_WT/.codex"
 cp "$REAL_HOOKS" "$TRUST_WT/.codex/hooks.json"
-# HIMMEL-5293: the primary checkout must RESOLVE; a fixture that is its own git
+# the primary checkout must RESOLVE; a fixture that is its own git
 # repo is its own primary (git-common-dir = <it>/.git).
 git -C "$TRUST_WT" init -q -b main
 TRUST_HOME="$TMP/codex-home"
 mkdir -p "$TRUST_HOME"
 
-# HIMMEL-5293: codex trusts a hook only when trusted_hash equals the hash it
+# codex trusts a hook only when trusted_hash equals the hash it
 # recomputes from the hook definition. The helper below is a second, independent
 # port of that computation, written from openai/codex rust-v0.161.0:
 # hooks/src/engine/discovery.rs hook_hash() (a NormalizedHookIdentity of
@@ -1107,7 +1107,7 @@ PRIM_WT="$PRIM/.claude/worktrees/prim-wt"
 git -C "$PRIM" worktree add -q -b prim-wt "$PRIM_WT"
 mkdir -p "$PRIM_WT/.codex"
 cp "$REAL_HOOKS" "$PRIM_WT/.codex/hooks.json"
-# HIMMEL-5293: codex loads a linked worktree's hooks from the PRIMARY checkout.
+# codex loads a linked worktree's hooks from the PRIMARY checkout.
 mkdir -p "$PRIM/.codex"
 cp "$REAL_HOOKS" "$PRIM/.codex/hooks.json"
 node -e '
@@ -1143,7 +1143,7 @@ printf '%s' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[]}]}}' > "$EMPTY
 run_trust "$EMPTY_WT"
 assert_rc 2 "PreToolUse with only empty groups refused" "16i rc=$RC out=$OUT"
 
-# --- 17: trust-hash validity, primary resolution, CODEX_BIN (HIMMEL-5293/5297) --
+# --- 17: trust-hash validity, primary resolution, CODEX_BIN --
 # 17a: the hash helper reproduces codex's own published fingerprint vector
 # (upstream codex-rs/config/src/fingerprint_tests.rs) - the one fixture here
 # copied from the real upstream, so the helper's serialization is not my guess.
@@ -1229,7 +1229,7 @@ const v = (r && r.seam_env_vars) || [];
 process.exit(v.includes("CODEX_BIN") && v.includes("CODEX_HOOK_TRUST_CHECK") ? 0 : 1);
 ' "$SCRIPT_DIR/../chokepoints.json"; then pass "17h CODEX_BIN + CODEX_HOOK_TRUST_CHECK registered as chokepoint seams"; else fail "17h chokepoints.json lacks the codex dispatch seams"; fi
 
-# --- 18: primary-keyed hooks, strict parse, real-codex hashes (HIMMEL-5293, j2416a) --
+# --- 18: primary-keyed hooks, strict parse, real-codex hashes --
 # trust_keyed <hooks-file-to-hash> <root> <out>: a config.toml trusting every hook
 # of <hooks-file> under <root>/.codex/hooks.json (single-quoted key style).
 trust_keyed() {
@@ -1292,7 +1292,7 @@ assert_rc 2 "a real-codex hash goes stale when its hook is edited" "18b rc=$RC o
 case "$OUT" in *"stop:0:1"*) pass "18b refusal names stop:0:1";; *) fail "18b out: $OUT";; esac
 cp "$TMP/real-hooks.good" "$REAL_WT/.codex/hooks.json"
 
-# 18c-f: a LINKED worktree runs the PRIMARY's hooks (judge j2416a, verified live on
+# 18c-f: a LINKED worktree runs the PRIMARY's hooks (verified live on
 # codex 0.161.0). Trust is keyed to the primary; PRIM and PRIM_WT both carry the
 # real hooks.json from 16g.
 trust_keyed "$PRIM/.codex/hooks.json" "$PRIM" "$TRUST_HOME/config.toml"
@@ -1400,7 +1400,7 @@ shape_case "18av grammar-conformant matcher allowed" 2 "stale trusted_hash" 'd.h
 # must not change the identity: dispatch still accepts the unchanged hashes.
 shape_case "18n matcher on a Stop group is ignored" 0 "" 'd.hooks.Stop[0].matcher = "Bash"; return d;'
 
-# 18aw-18bc (HIMMEL-5350): residual differences from codex. A matcher inside the
+# 18aw-18bc: residual differences from codex. A matcher inside the
 # closed grammar can still blow the Rust regex compile-size limit (no counted
 # repetition, so the cost is linear in its length: refuse past a conservative
 # length cap), and codex skips a command hook whose command is empty or only
@@ -1413,7 +1413,7 @@ shape_case "18ba whitespace-only command" 2 "command is empty" 'd.hooks.PreToolU
 shape_case "18bb NBSP-only command (Unicode White_Space)" 2 "command is empty" 'd.hooks.PreToolUse[0].hooks[0].command = String.fromCharCode(0xa0); return d;'
 shape_case "18bc BOM-only command is not White_Space to Rust" 2 "stale trusted_hash" 'd.hooks.PreToolUse[0].hooks[0].command = String.fromCharCode(0xfeff); return d;'
 
-# 19a-i (HIMMEL-5350): the config.toml reader counts only what codex keeps. An
+# 19a-i: the config.toml reader counts only what codex keeps. An
 # entry whose `enabled` is not a TOML boolean is discarded by codex; a header
 # inside a multi-line string is string content, not a table.
 : > "$LOG"
@@ -1451,7 +1451,7 @@ toml_edit "19g enabled = false with a U+2028 comment is discarded" 2 "pre_tool_u
 toml_edit "19h enabled = false with a U+2029 comment is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\nenabled = false # x" + String.fromCharCode(0x2029) + "\n");'
 toml_edit "19i enabled = true with a U+2028 comment stays trusted" 0 "" 'return text.replace(header + "\n", header + "\nenabled = true # x" + String.fromCharCode(0x2028) + "\n");'
 
-# 19j-19q (HIMMEL-5355): a quoted `enabled` key is the same key to codex, and a
+# 19j-19q: a quoted `enabled` key is the same key to codex, and a
 # line starting with [ inside a multi-line array is an element, not a table header.
 toml_edit "19j basic-quoted \"enabled\" = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enabled\" = false\n");'
 toml_edit "19k literal-quoted single-quoted enabled = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\x27enabled\x27 = false\n");'
@@ -1463,7 +1463,7 @@ toml_edit "19p bracket inside an array string does not close it" 2 "pre_tool_use
 toml_edit "19q enabled = false inside an array is not the key" 0 "" 'const at = text.indexOf(header); const nl = text.indexOf("\n", text.indexOf("trusted_hash", at)) + 1; return text.slice(0, nl) + "note = [\n[\"a\"],\n\"enabled = false\",\n]\n" + text.slice(nl);'
 toml_edit "19r escaped quoted key (enab\\u006ced) = false is discarded" 2 "pre_tool_use:3:0" 'return text.replace(header + "\n", header + "\n\"enab\\u006ced\" = false\n");'
 
-# 19s-19x (HIMMEL-5365): escapes in a header key decode like TOML (\n LF, \t TAB,
+# 19s-19x: escapes in a header key decode like TOML (\n LF, \t TAB,
 # not n / t), a header key with \x or \e is refused (toml 1.0 fails the whole file,
 # 1.1 decodes it: unknown which codex links), \x in a quoted setting name decodes,
 # and an unterminated array / multi-line string at EOF trusts nothing.
@@ -1474,7 +1474,7 @@ toml_edit "19v escaped quoted key (enab\\x6Ced) = false is discarded" 2 "pre_too
 toml_edit "19w unterminated array at EOF trusts nothing" 2 "pre_tool_use:3:0" 'return text + "note = [\n\"a\",\n";'
 toml_edit "19x unterminated multi-line string at EOF trusts nothing" 2 "pre_tool_use:3:0" 'return text + "note = \"\"\"\nopen\n";'
 
-# 19y-19ae (HIMMEL-5365): a REAL key may hold a backslash (a Windows path, a POSIX
+# 19y-19ae: a REAL key may hold a backslash (a Windows path, a POSIX
 # directory named a\x41). A raw, unescaped backslash in a basic-quoted header is an
 # escape to TOML (1.1 decodes \x41 to A, \e is ESC; 1.0 refuses the file), so the
 # raw text must not be trusted even when it equals the real key; the escaped form

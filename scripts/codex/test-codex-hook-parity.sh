@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# test-codex-hook-parity.sh — drift gate for the Codex hook inventory (HIMMEL-1981).
+# test-codex-hook-parity.sh — drift gate for the Codex hook inventory.
 #
 # WHY: `.codex/hooks.json` is a hand-maintained re-wiring of himmel's guardrails
-# for the Codex lane. It drifts silently: HIMMEL-708 un-wired the no-op
-# `improve-on-submit` UserPromptSubmit hook from `.claude/settings.json` and the
+# for the Codex lane. It drifts silently: the no-op
+# `improve-on-submit` UserPromptSubmit hook was un-wired from `.claude/settings.json` and the
 # Codex copy stayed, so every Codex prompt paid a pwsh+cmd+bash spawn chain for a
 # guaranteed no-op — and showed up as one of the "UserPromptSubmit hook (failed)"
-# lines that opened HIMMEL-1981.
+# lines it showed.
 #
 # The gate: every guardrail `.codex/hooks.json` wires must EITHER also be wired
 # for Claude (project `.claude/settings.json` or a himmel plugin `hooks.json`) OR
@@ -42,13 +42,13 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 1
 # is_settings_tracked <repo-dir> <path> — prints tracked|untracked|unknown.
 # NOTE: this function's body is intentionally duplicated verbatim in
 # scripts/himmelctl/test/test-trust-clean-checkout.sh (same defect, same
-# fix, CR round 3 codex-1/codex-2) rather than shared from a lib — the brief
+# fix) rather than shared from a lib — the brief
 # fixing this restricted edits to those two files only, so extracting a
 # shared scripts/lib/*.sh would itself be a scope violation. Keep the two
 # bodies byte-identical if either ever needs to change.
 #
-# `git ls-files --error-unmatch` alone reads the INDEX, not HEAD (CR round 3,
-# codex-1): a STAGED deletion (`git rm --cached`) removes the index entry
+# `git ls-files --error-unmatch` alone reads the INDEX, not HEAD:
+# a STAGED deletion (`git rm --cached`) removes the index entry
 # while HEAD still carries it, so an index-only probe misreports a genuinely
 # tracked, merely-mid-deletion file as untracked — the exact hole this probe
 # exists to close, moved one step along rather than closed (proven in a
@@ -69,7 +69,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 1
 # "unknown" instead, and the caller (below) treats unknown the same as tracked
 # (fail-closed toward FAIL, never toward SKIP).
 #
-# CR round 3, second pass (codex, Suggestion but correct): every probe above
+# Every probe above
 # was written as `if git ...; then yes; else no; fi`, which collapsed "git
 # ran and confirmed absence" and "git failed to run at all" into the same
 # `no`/`unborn` branch — a corrupted index or an unreadable ref would then
@@ -152,23 +152,23 @@ assert_empty() {
 
 # Guardrails Codex wires that Claude deliberately does NOT — each needs a reason.
 #   block-terminal-write-fence.sh : Codex writes to the operator's terminal; the
-#     fence is a Codex-lane guard with no Claude-side counterpart (HIMMEL-745).
-#   end-session-wiki.sh           : ported to Codex's Stop event (HIMMEL-599);
+#     fence is a Codex-lane guard with no Claude-side counterpart.
+#   end-session-wiki.sh           : ported to Codex's Stop event;
 #     on the Claude side the session note is written by the handover flow.
 CODEX_ONLY="block-terminal-write-fence.sh end-session-wiki.sh"
 
 # Claude Stop/SessionEnd hooks deliberately not mirrored to Codex Stop/SessionEnd.
 CLAUDE_END_ONLY=(
-  run-node.sh               # HIMMEL-2047: the node-resolving launcher every Claude
-                             # hook command is now RUN through (`sh …`, HIMMEL-2758
+  run-node.sh               # the node-resolving launcher every Claude
+                             # hook command is now RUN through (`sh …`,
                              # — dash drops a dot-source's operands), not a guardrail
                              # script itself — the .sh-basename scan below picks it
                              # up from the command line same as a real guardrail.
   speak-reply.sh            # deliberate: cosmetic TTS, gated off by default, not ported.
   session-run-hook.ts       # deliberate: the session-runs census is Claude-scoped, and the
                             # Codex adapter resolves scripts/hooks/<name>.sh only - a bun .ts
-                            # entrypoint has no adapter shape (HIMMEL-2021).
-  stop-console-idle-guard.sh # deliberate (HIMMEL-3144): console detection reads
+                            # entrypoint has no adapter shape.
+  stop-console-idle-guard.sh # deliberate: console detection reads
                              # queue-lock.sh's persisted token, keyed on
                              # CLAUDE_CODE_SESSION_ID -- a Claude Code-specific env
                              # var the Codex lane never sets -- and the console
@@ -217,7 +217,7 @@ const scriptBasenames = (command) =>
 
 // Codex side: command selects the Unix .sh wrapper; commandWindows selects the
 // Windows .cmd wrapper. Their arguments must remain identical, and one entry may
-// CHAIN several guardrails into a single adapter invocation (HIMMEL-1989).
+// CHAIN several guardrails into a single adapter invocation.
 const codexJson = read(".codex/hooks.json");
 const codex = new Set();
 const unparsed = [];
@@ -306,7 +306,7 @@ for (const c of platformMismatch) lines.push("PLATFORM-MISMATCH " + c);
 for (const c of commas) lines.push("COMMA " + c);
 for (const d of dupes) lines.push("DUPE " + d);
 
-// The point of the dispatcher (HIMMEL-1989) is ONE chained invocation per tool
+// The point of the dispatcher is ONE chained invocation per tool
 // event. That only holds while the PreToolUse matchers stay pairwise DISJOINT:
 // two matching blocks means two adapter launches again, and the drift would be
 // invisible in a diff. `.*` is exempt by design — it carries auto-arm-on-cap,
@@ -361,9 +361,9 @@ assert_empty "every Claude end-side hook is mirrored to Codex or declared exempt
 assert_empty "no stale CLAUDE_END_ONLY allowlist entry" "$(field STALE-CLAUDE-END-ALLOW)"
 
 # Two invariants:
-#   timeout    — on EVERY event (HIMMEL-2023). Codex defaults to 600s on every
+#   timeout    — on EVERY event. Codex defaults to 600s on every
 #                event but SessionEnd, so an un-budgeted entry can stall a turn
-#                ten minutes. HIMMEL-1985 asserted this for the lifecycle
+#                ten minutes. An earlier check asserted this for the lifecycle
 #                events only, which left the six PreToolUse + one PostToolUse
 #                permission-gate chains — the ones on every tool call — able to
 #                do exactly that.
@@ -382,7 +382,7 @@ for (const ev of Object.keys(h))
       const flagged = /\s--lifecycle\s/.test(e.command);
       if (typeof e.timeout !== "number") out.push("NOTIMEOUT " + ev + ":" + e.command);
       // The adapter runs a plus-joined chain SERIALLY with no per-member clamp,
-      // so the entry timeout is the only bound the whole chain gets. HIMMEL-2003
+      // so the entry timeout is the only bound the whole chain gets.
       // wired the SessionStart chain at 15s — the largest of the four per-hook
       // timeouts it replaced, against the ~50s those four had between them —
       // which let one slow member eat the budget and drop its siblings.
@@ -407,7 +407,7 @@ assert_empty "every multi-member Codex chain carries at least a 60s timeout" "$(
 assert_empty "every Codex lifecycle hook is marked --lifecycle" "$(lc_field NOFLAG)"
 assert_empty "no permission-gate Codex hook is marked --lifecycle" "$(lc_field BADFLAG)"
 
-# HIMMEL-5422: four Claude shell-surface guards (git-stash, scheduler, quiet-run,
+# four Claude shell-surface guards (git-stash, scheduler, quiet-run,
 # live-settings) were never mirrored, so Codex sessions skipped them. Each row
 # drives the REAL chain `.codex/hooks.json` wires for the tool through the real
 # adapter and asserts a deny - a guard missing from the chain fails its row.

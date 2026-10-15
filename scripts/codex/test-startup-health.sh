@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for startup-health.sh (HIMMEL-747).
+# Hermetic tests for startup-health.sh.
 # No real Codex install: each case builds a temp CODEX_HOME with a synthetic
 # rollout .jsonl (names the session thread_id) + a synthetic logs_2.sqlite. The
 # detector reads logs_2.sqlite by printable-run byte extraction (grep -aoE), NOT
@@ -15,7 +15,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +42,7 @@ make_home() {
   # A token_count line (noise) + the where-are-we injection line.
   printf '%s\n' '{"type":"event_msg","payload":{"type":"token_count"}}' > "$f"
   jq -cn --arg t "$waw" '{type:"response_item",payload:{type:"message",content:[{type:"text",text:$t}]}}' >> "$f"
-  # HIMMEL-1145: a fully-registered config.toml, so every case below that is NOT
+  # a fully-registered config.toml, so every case below that is NOT
   # about registration stays healthy. Cases that are overwrite it via write_config.
   write_config "$home" all
   echo "$home"
@@ -81,7 +81,7 @@ write_config() {
 
 # A real-shape WARN row body (level+target+span+message on one printable line).
 db_hook_row()  { printf 'WARN codex_core_plugins::manifest session_loop{thread_id=%s}:submission_dispatch{}:turn: load_plugins_from_layer_stack: ignoring hooks: expected a string, string array, object, or object array; found object\n' "$1"; }
-# HIMMEL-1104: the SAME "ignoring hooks" text from the marketplace SUGGESTION
+# the SAME "ignoring hooks" text from the marketplace SUGGESTION
 # scan (non-installed plugins; parsed hooks discarded). Real shape, captured live.
 db_suggest_row() { printf 'WARN codex_core_plugins::manifest session_loop{thread_id=%s}:submission_dispatch{}:turn:built_tools.load_discoverable_tools:list_tool_suggest_discoverable_tools_with_auth:list_tool_suggest_discoverable_plugins: ignoring hooks: expected a string, string array, object, or object array; found object\n' "$1"; }
 # Write a plugin-cache hooks.json fixture: make_hooks <home> <rel-dir> <with_desc>
@@ -123,7 +123,7 @@ rc=0; out="$(CODEX_HOME="$H" bash "$DETECT" 2>&1)" || rc=$?
 check_rc 1 "$rc" "hook-failure -> exit 1"
 want_line '^WARN hook-failure:' "$out" "hook-failure WARN line present"
 
-# --- 2b. HIMMEL-1104: suggestion-scan noise must NOT fire -> exit 0 -------------
+# --- 2b. suggestion-scan noise must NOT fire -> exit 0 -------------
 # The regression that made a session distrust its own guardrails (live 2026-07-16):
 # the marketplace suggestion scan emits the identical "ignoring hooks" text, but
 # discards the parsed hooks. Offending plugins present in the cache too, to prove
@@ -243,7 +243,7 @@ want_line '^WARN where-are-we-oversized:' "$out" "where-are-we-oversized line pr
 rc=0; out="$(CODEX_HOME="$H" WHERE_ARE_WE_BUDGET_BYTES=100000 bash "$DETECT" 2>&1)" || rc=$?
 check_rc 0 "$rc" "big block under generous budget -> exit 0"
 
-# --- 8. HIMMEL-1145: himmel plugin registration is asserted PRESENT --------------
+# --- 8. himmel plugin registration is asserted PRESENT --------------
 # Every check above reads what codex LOGGED. A codex that lost its plugin
 # registration loads nothing, parses no manifest and logs nothing, so all of them
 # read healthy while every himmel guardrail is absent. The current session below
@@ -341,7 +341,7 @@ sed "s/\"himmel-ops@$MARKET\"/'himmel-ops@$MARKET'/" "$H/config.toml" > "$H/conf
 rc=0; out="$(CODEX_HOME="$H" bash "$DETECT" 2>&1)" || rc=$?
 check_rc 0 "$rc" "literal-quoted header is the same registration -> exit 0"
 
-# 8f4. HIMMEL-3234: a QUOTED key is ONE segment. A hand-written top-level
+# 8f4. A QUOTED key is ONE segment. A hand-written top-level
 # ["plugins.himmel-ops@himmel"] / ["marketplaces.himmel"] is not the nested
 # [plugins."himmel-ops@himmel"] / [marketplaces.himmel] registration, even though
 # both used to normalise to the same dotted string. Quoting a SEGMENT
