@@ -61,8 +61,8 @@ SCRIPTS="$(cd "$HERE/.." && pwd)"              # scripts/
 #   claude-glm-seed-check.sh: 0  (no embedded JS on either side)
 #   Temporary: the CLAUDE_CODE_AUTO_MODE_SERVER settings strip is bash-only
 #   until it is ported to the .ps1 twins (windows-parked). It adds one bash-only
-#   block to codex (3), glm (2), openrouter (2), deepseek (1) and routed (1) — revert those counts then.
-EXPECT_BASH_ONLY="claude-codex:3 claude-glm:2 claude-openrouter:2 claude-deepseek:1 claude-routed:1 claude-glm-seed-check.sh:0"
+#   block to glm (2), openrouter (2), deepseek (1) and routed (1) — revert those counts then.
+EXPECT_BASH_ONLY="claude-codex:2 claude-glm:2 claude-openrouter:2 claude-deepseek:1 claude-routed:1 claude-glm-seed-check.sh:0"
 
 # Canary floors — today's counts. A pair deleted or a PS delegation dropped
 # trips these; update them CONSCIOUSLY when the twin set genuinely changes.
