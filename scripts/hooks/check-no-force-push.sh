@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-push hook: refuse force-push to protected refs (HIMMEL-136).
+# Pre-push hook: refuse force-push to protected refs.
 #
 # Pre-commit framework wires this into the pre-push stage. Stdin
 # contract (per git): "local_ref local_sha remote_ref remote_sha" per
@@ -16,7 +16,7 @@
 #   otherwise. This hook adds explicit force-push framing + catches the
 #   theoretical case where no-push-to-main is bypassed.
 #
-# Two-layer relationship (HIMMEL-212): this pre-push hook is the ref-level
+# Two-layer relationship: this pre-push hook is the ref-level
 # backstop — it sees only the remote/local SHAs (git's stdin contract), NOT the
 # command flags, so it CANNOT tell `--force` from `--force-with-lease`. The
 # lease-vs-bare distinction is enforced one layer up at PreToolUse: the

@@ -38,7 +38,7 @@ NEG="((never|do not|don't|not) +)?"
 BAD_RE="${NEG}(write|record|append)[^.]{0,80}(bullet|Results)[^.]{0,80}${KW}[^.]*|${NEG}(write|record|append)[^.]{0,80}${KW}[^.]{0,80}(bullet|Results)[^.]*"
 # 2. no preface instructs the leg to write GO / approval / token text into a doc bullet
 bad=0
-for f in "$DOCS"/handover/leg-preface*.md; do
+for f in "$DOCS"/handover/leg-preface*.md "$DOCS"/handover/leg-sections/*.md; do
     # lines joined so an instruction wrapped across lines is still one sentence
     if [ ! -r "$f" ]; then fail "$(basename "$f") unreadable"; bad=1; continue; fi
     joined="$(tr '\n' ' ' < "$f")"
@@ -71,7 +71,7 @@ fi
 
 # 4. SUCCESSION grammar tick.sh parses is intact
 # shellcheck disable=SC2016  # literal backticks, nothing to expand
-if grep -qF -- '`- SUCCESSION accepted: <new console session> replaces <old>`' "$PREFACE"; then
+if grep -qF -- '`- SUCCESSION accepted: <new console session> replaces <old>`' "$DOCS/handover/leg-sections/succession.md"; then
     pass "SUCCESSION accepted bullet grammar unchanged"
 else
     fail "SUCCESSION accepted bullet grammar unchanged"

@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# guard-subagent-model.sh — PreToolUse hook (matcher "Agent"): [HIMMEL-2653]
+# guard-subagent-model.sh — PreToolUse hook (matcher "Agent"):
 # structural enforcement of root CLAUDE.md's "Every dispatch names an explicit
 # model" rule. An Agent dispatch with no `model` inherits the PARENT session's
 # model (or falls to the agent definition's default) — silently billing the
 # scarcer parent tier for work that could have run on a cheaper one. Nothing
 # enforced this before; it was prose only, then a WARN for untyped dispatches.
 #
-# WHY NOW: a 24h/4.40e9-token measurement (HIMMEL-2653) found subagents at
+# WHY NOW: a 24h/4.40e9-token measurement found subagents at
 # 50.06% of raw spend, with subagent_type "general-purpose" alone at 49.85% —
 # the dominant shape is exactly the unnamed-model, generic-worker dispatch
-# this hook targets. HIMMEL-5421 extended the deny to every typed agent: a
-# typed agent with no model passed with no signal at all.
+# this hook targets. The deny covers every typed agent too: a typed agent
+# with no model would otherwise pass with no signal at all.
 #
-# OWNERSHIP (HIMMEL-5421): this hook owns "a model must be named";
+# OWNERSHIP: this hook owns "a model must be named";
 # guard-agent-model.sh owns "the named model must not be a blocked one".
 # Neither duplicates the other's check.
 #
 # DENY CONDITION (both must hold):
 #   1. tool_input.model is absent, null, empty, or whitespace-only
-#      (explicit null counts as absent, HIMMEL-2680).
+# (explicit null counts as absent).
 #   2. tool_input.subagent_type is anything but "fork". A fork always inherits
 #      the parent model and ignores `model`, so a missing one says nothing.
 #
@@ -63,7 +63,7 @@ if ! tool=$(printf '%s' "$input" | jq -r '.tool_name | select(type == "string") 
 fi
 [ "$tool" = "Agent" ] || exit 0
 
-# HIMMEL-2653: a missing/non-object tool_input, or a model/subagent_type
+# a missing/non-object tool_input, or a model/subagent_type
 # field present with the WRONG JSON type, must fail open like any other
 # unparseable payload — it must NOT be treated as the field being genuinely
 # omitted (which trips the guard). `select(type == "string") // empty` alone

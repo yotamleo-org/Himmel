@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # PreToolUse hook for Bash/PowerShell — codex-lane terminal write-fence.
 #
-# WHY (HIMMEL-745): the codex-direct lane runs himmel's deny-guards through the
+# WHY: the codex-direct lane runs himmel's deny-guards through the
 # .codex/hooks.json adapter, but block-edit-on-main.sh is wired ONLY on the
 # Edit|Write|MultiEdit matcher — so the PATCH path (Edit/Write tools) is fenced
 # while the TERMINAL path (a shell command that writes a file, pushes, or hits
 # the network) is not. On the Claude lane the auto-mode classifier + the
 # GLM-lane block-glm-external-writes.sh cover that terminal surface; codex has
-# NO classifier layer (HIMMEL-748 ratified deterministic-guards-only for codex),
+# NO classifier layer (ratified deterministic-guards-only for codex),
 # so this hook is the codex-lane classifier SUBSTITUTE for the terminal write
 # surface. It is the behavioural port of hermes's parity_guard.py
 # (terminal_external_write_reason + the terminal branch of _edit_on_main_reason)
@@ -23,7 +23,7 @@
 #       denied UNLESS the named opt-in CODEX_EXTERNAL_WRITES_OK=1 is set (mirrors
 #       HERMES_EXTERNAL_WRITES_OK / GLM_EXTERNAL_WRITES_OK semantics).
 #
-#   (b) WRITE-ON-MAIN — as of HIMMEL-2526, DESTINATION-based rather than
+#   (b) WRITE-ON-MAIN — DESTINATION-based rather than
 #       cwd-only: a write-shaped terminal command (redirect > / >>, tee,
 #       sed -i, cp/mv/rm/touch) has its actual TARGET PATH(s) resolved and
 #       refused when a target lands inside a protected checkout (on
@@ -32,7 +32,7 @@
 #       the primary checkout from an unrelated cwd and this class never saw
 #       it. The git-commit and PowerShell-writer (Set-Content/Out-File/
 #       Add-Content) arms have no extractable target, so they keep this
-#       lane's ORIGINAL HIMMEL-745 cwd predicate (is_on_main on
+#       lane's ORIGINAL cwd predicate (is_on_main on
 #       tool_input.cwd, fail-open on a feature branch or an unreadable
 #       branch, honouring a repo-root .single-writer marker) — a deliberate,
 #       documented carve-out (codex-lane parity), not an oversight; see
@@ -120,7 +120,7 @@ if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
     # `-\S+`) so an attached-value long flag like `--git-dir=/x` before `push`
     # cannot break the anchor (CR under-block).
     gp_shape='git(\.exe)?([[:space:]]+-[^[:space:];&|]+([[:space:]]+[^[:space:];&|]+)?)*[[:space:]]+push([[:space:]]|$)'
-    # HIMMEL-844: `url.<base>.insteadOf` / `.pushInsteadOf` rewrite every remote
+    # `url.<base>.insteadOf` / `.pushInsteadOf` rewrite every remote
     # URL without ending in `url`, so the key may also end in `insteadof` (both
     # spellings; cmd_lc is lowercased), and the one-shot `git -c <k>.insteadof=`.
     # config-url branch requires a VALUE token after the url key, so a read
@@ -134,7 +134,7 @@ if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
     gh_allow='gh(\.exe)?[[:space:]]+(issue([[:space:]]|$)|pr[[:space:]]+(view|diff|checks|status|list)([[:space:]]|$)|run[[:space:]]+(view|list|watch)([[:space:]]|$))'
     net_shape='(curl|wget|invoke-webrequest|invoke-restmethod|iwr|irm)(\.exe)?([[:space:]]|$)'
 
-    # HIMMEL-4032: bash deletes a backslash-newline before parsing, so `git \<newline>push`
+    # bash deletes a backslash-newline before parsing, so `git \<newline>push`
     # runs `git push` while cmd_lc reads a segment break. Every arm also counts on a joined
     # copy and denies if EITHER text does: deny-only, so `foo \<newline>gh pr merge` (base
     # DENY) stays denied. Odd trailing run only (an even run is a literal backslash and a real
@@ -168,12 +168,12 @@ if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
     if [ "$(count_either "$gp_shape")" -gt 0 ]; then
         deny_ext "git push is refused (external-write class)."
     fi
-    # Flat decode (HIMMEL-844 round 10): ONE position-free pass over the whole command, no quote
+    # Flat decode: ONE position-free pass over the whole command, no quote
     # state. Drop every dollar-quote opener and decode every backslash escape (bash's ANSI-C set)
     # wherever it sits, so decoys and split segments cannot hide `git` or the key. A NUL escape
     # (\0 \x00 \c@ \c`) truncates a segment in bash, so the pass runs twice: NUL kept as `#`, and
     # NUL dropping everything through the next unescaped quote. Over-approximation only.
-    # HIMMEL-4032 adds a fourth, quote-aware stream (words()): bash decodes escapes ONLY inside
+    # adds a fourth, quote-aware stream (words()): bash decodes escapes ONLY inside
     # a dollar-quote body; outside one a backslash quotes the next char (`ns\teadOf` is
     # `nsteadOf`, not a TAB) and a backslash-newline is deleted. Mixing both hid the key from
     # every flat stream. Added beside the other three, never instead of them: deny-only.
@@ -217,7 +217,7 @@ if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
             return out
         }
         # words(): the quote-aware stream. st 0 = bare, 1 = single, 2 = double, 3 = dollar-quote.
-        # HIMMEL-4225: words(1) also reads a # comment at word start and a heredoc body as text
+        # words(1) also reads a # comment at word start and a heredoc body as text
         # that opens no quote, kept verbatim, so a stray apostrophe there cannot desync the rest.
         # A delimiter it cannot classify ($-expansion, backtick, escape in a double or dollar quote, open
         # quote) reads no body; no heredoc inside (( )). words(2) resets the quote state at every
@@ -326,7 +326,7 @@ if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
 fi
 
 # ------------------------------------------------------------------ class (b)
-# Write-on-main lock. As of HIMMEL-2526 this class is DESTINATION-based
+# Write-on-main lock. This class is DESTINATION-based
 # (redirect/tee/sed -i/cp/mv/rm/touch targets resolved and checked against
 # main_checkout_verdict) rather than the old cwd-only "is this command
 # write-shaped AND is the cwd's repo on main" test — the shared logic now
@@ -338,7 +338,7 @@ fi
 #
 # CODEX-LANE PARITY (unchanged in this PR): the git-commit / PowerShell-writer
 # arms have no extractable destination, so they stay on this lane's original
-# HIMMEL-745 cwd predicate (is_on_main, fail-open on a feature branch or an
+# cwd predicate (is_on_main, fail-open on a feature branch or an
 # unreadable branch) — block-write-into-main-checkout.sh ports that exact
 # logic for the SOURCED case; see its header for the full rationale.
 # shellcheck disable=SC2329,SC2317

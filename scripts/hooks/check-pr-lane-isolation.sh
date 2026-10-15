@@ -2,7 +2,7 @@
 # Pre-commit gate: refuse commits on `main` that touch PR-lane paths.
 #
 # Portable export of himmel's worktree-isolation posture for two-lane repos
-# like luna (HIMMEL-214: isolation was structurally enforced only in himmel;
+# like luna (isolation is structurally enforced in himmel;
 # other repos relied on prose). Consumed via pre-commit's remote-repo
 # mechanism: the consuming repo references himmel in .pre-commit-config.yaml
 # and scopes this hook with a `files:` regex listing its PR-lane paths.

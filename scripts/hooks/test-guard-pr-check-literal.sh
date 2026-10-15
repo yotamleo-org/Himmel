@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/guard-pr-check-literal.sh (HIMMEL-3383).
+# Smoke test for scripts/hooks/guard-pr-check-literal.sh.
 #
 # Builds a throwaway himmel-shaped fixture — an "origin" repo carrying
 # scripts/cr/pr-check-context.sh and scripts/guardrails/lib.sh on main, a
@@ -23,7 +23,7 @@ ENV_LITERAL='bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS'
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 
 FAILED=0
-# HIMMEL-4609: fixture paths sit under a FIXED leaf, so a random mktemp suffix that
+# fixture paths sit under a FIXED leaf, so a random mktemp suffix that
 # ends in "cr" can never read as a `cr/` path word to the guard's handover scan.
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/guard-pr-check-literal.XXXXXX")" || { echo "FAIL mktemp"; exit 1; }
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -40,21 +40,21 @@ mkdir -p "$ORIGIN/scripts/cr" "$ORIGIN/scripts/guardrails" "$ORIGIN/scripts/lib"
     "$ORIGIN/scripts/handover/console-kit"
 g init -q "$ORIGIN"
 echo 'echo anchor' >"$ORIGIN/scripts/cr/pr-check-context.sh"
-# HIMMEL-3798 codex-1: the sentinel file the guard's himmel_anchor_prefix
+# The sentinel file the guard's himmel_anchor_prefix
 # exemption checks for before trusting HIMMEL_REPO's runtime value.
 echo 'echo step0' >"$ORIGIN/scripts/cr/pr-check-step0.sh"
 echo ': lib' >"$ORIGIN/scripts/guardrails/lib.sh"
 echo 'echo env' >"$ORIGIN/scripts/cr/pr-check-env.sh"
 echo ': dotenv' >"$ORIGIN/scripts/lib/load-dotenv.sh"
 echo ': other lib' >"$ORIGIN/scripts/lib/other.sh"
-# HIMMEL-3495: every gate-allowed scripts/cr entry, and the hand-off each sources.
+# every gate-allowed scripts/cr entry, and the hand-off each sources.
 for t in anchor-handoff.sh clear-cr-marker.sh \
     cr-scores.sh doc-freshness-advisory.sh docs-audit-panel.sh impacted-suites.sh \
     known-findings.sh ledger-append.sh orphan-check.sh panel-first-pass.sh \
     review-round.sh write-verdicts.sh; do
     echo "echo $t" >"$ORIGIN/scripts/cr/$t"
 done
-# HIMMEL-3437: the two scripts/handover/ gate-writer entries this hook also
+# the two scripts/handover/ gate-writer entries this hook also
 # targets, held to the entry + scripts/cr/anchor-handoff.sh (narrower family) -
 # plus go.sh's own sibling-sourced libs (go-gate.sh, handover-path.sh), which
 # it reads via a branch-relative path even after the hand-off's re-exec lands
@@ -135,7 +135,7 @@ for t in bash env jq git awk find paste wc tr comm cat realpath basename dirname
 done
 run "a PATH without sort -> deny (fail closed)" 2 "$(payload "$LITERAL" "$WT")" "$HR" "PATH=$TMP/nosort-bin"
 need_in_err "deny names the missing tool" "'sort' is not on PATH"
-# Round 6: classification itself must not need a tool - a missing tr once
+# Classification itself must not need a tool - a missing tr once
 # emptied the command into a silent no-op.
 mkdir -p "$TMP/notr-bin"
 for t in bash env jq git awk find paste wc sort comm cat realpath basename dirname grep sed; do
@@ -143,7 +143,7 @@ for t in bash env jq git awk find paste wc sort comm cat realpath basename dirna
 done
 run "a PATH without tr -> deny (fail closed)" 2 "$(payload "$LITERAL" "$WT")" "$HR" "PATH=$TMP/notr-bin"
 need_in_err "deny names the missing tr" "'tr' is not on PATH"
-# Round 6: the path must resolve against the cwd the conditions are checked
+# The path must resolve against the cwd the conditions are checked
 # in - a clean root proves nothing about the copy a cd or ../ reaches.
 mkdir -p "$TMP/elsewhere/scripts/cr"
 run "cd elsewhere && the literal, clean root -> deny" 2 \
@@ -155,7 +155,7 @@ run "a ../ path out of the root, clean root -> deny" 2 \
     "$(payload "bash ../elsewhere/scripts/cr/pr-check-context.sh" "$WT")" "$HR"
 run "a path under another directory, clean root -> deny" 2 \
     "$(payload "bash docs/scripts/cr/pr-check-context.sh" "$WT")" "$HR"
-# Round 7: .. resolves after symlinks, so it is never taken lexically.
+# .. resolves after symlinks, so it is never taken lexically.
 ln -s "$TMP/elsewhere/scripts" "$WT/scripts/x"
 run "scripts/x/../cr/ through a symlinked dir, clean root -> deny" 2 \
     "$(payload "bash scripts/x/../cr/pr-check-context.sh" "$WT")" "$HR"
@@ -163,7 +163,7 @@ rm "$WT/scripts/x"
 run "env -C elsewhere and the literal, clean root -> deny" 2 \
     "$(payload "env -C $TMP/elsewhere $LITERAL" "$WT")" "$HR"
 need_in_err "deny names the directory change" "changes directory"
-# Round 9: a relative wrapper operand hides the command word, and a second
+# A relative wrapper operand hides the command word, and a second
 # command can rewrite the checked bytes before the script runs.
 run "env -C with a relative dir and the literal, clean root -> deny" 2 \
     "$(payload "env -C elsewhere $LITERAL" "$WT")" "$HR"
@@ -172,7 +172,7 @@ run "cp over the script; the literal, clean root -> deny" 2 \
 need_in_err "deny names the compound" "not one simple command"
 run "timeout 60 and the literal, clean root -> deny" 2 \
     "$(payload "timeout 60 $LITERAL" "$WT")" "$HR"
-# Round 11: BASH_ENV (or any VAR= prefix) runs code before the checked bytes.
+# BASH_ENV (or any VAR= prefix) runs code before the checked bytes.
 run "BASH_ENV= and the literal, clean root -> deny" 2 \
     "$(payload "BASH_ENV=$TMP/x.sh $LITERAL" "$WT")" "$HR"
 need_in_err "deny names the VAR= prefix" "VAR= prefix"
@@ -180,7 +180,7 @@ echo doc2 >"$WT/docs/a.md"
 run "an unrelated (docs) diff -> allow" 0 "$(payload "$LITERAL" "$WT")" "$HR"
 g -C "$WT" checkout -q -- docs/a.md
 
-# ---- HIMMEL-3495: every gate-allowed scripts/cr script is a target ------------
+# ---- every gate-allowed scripts/cr script is a target ------------
 # The set is DERIVED from every `Bash(...` allow row in both permission files
 # that names scripts/cr/<name>.sh ANYWHERE (a `./scripts/cr/x.sh` row too), so a
 # new row the hook does not guard fails here.
@@ -244,7 +244,7 @@ rm "$WT/scripts/cr"
 mv "$WT/scripts/cr-real" "$WT/scripts/cr"
 run "scripts/cr dir restored, review-round -> allow" 0 "$(payload "$RR" "$WT")" "$HR"
 
-# ---- HIMMEL-3437: scripts/handover/ gate writers are targets too --------------
+# ---- scripts/handover/ gate writers are targets too --------------
 # merge-on-green.sh and console-kit/go.sh are gate-allowed RELATIVE literals
 # too (scripts/lanes/plugin-profiles.json gateAllow), outside scripts/cr/ -
 # held to the same narrower condition as the other thirteen: the entry script
@@ -298,7 +298,7 @@ run "handover writers restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$W
 run "handover writers restored, go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
 
 # ---- console-O NO-GO finding 1: the $HIMMEL_REPO-prefixed anchor spelling -----
-# HIMMEL-3491's documented anchored spelling for merge-on-green.sh, gate-
+# The documented anchored spelling for merge-on-green.sh, gate-
 # allowed at scripts/lanes/plugin-profiles.json:7 and .claude/settings.json,
 # is a LITERAL `$HIMMEL_REPO` (or `${HIMMEL_REPO}`) prefix - never evaluated
 # by this hook (it only sees the raw command text), so it is exactly as
@@ -324,7 +324,7 @@ run 'literal $HIMMEL_REPO/ prefix onto a scripts/cr/ target -> allow' 0 \
 run 'literal $HIMMEL_REPO/ prefix onto go.sh -> allow' 0 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/handover/console-kit/go.sh"' "$WT")" "$HR"
 
-# codex-1 (round 2 critic panel, HIMMEL-3798): the anchor-prefix exemption
+# codex-1: the anchor-prefix exemption
 # above trusted the COMMAND TEXT shape alone, never the hook's own actual
 # HIMMEL_REPO runtime value - so an unset or empty HIMMEL_REPO (the Git Bash
 # hazard main's pr-check.md documents: "$HIMMEL_REPO/..." then resolves to a
@@ -339,7 +339,7 @@ run 'control: HIMMEL_REPO empty -> anchor-prefix step0 call still denies (HIMMEL
 run 'HIMMEL_REPO correctly set to the anchor -> step0 call still allows (HIMMEL-3798 codex-1)' 0 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh"' "$WT")" "$HR"
 
-# ---- console-O NO-GO round 2: the exemption must not survive a re-point ------
+# ---- the exemption must not survive a re-point ------
 # A `$HIMMEL_REPO` re-point earlier in the SAME command, any wrapper, or any
 # separator must still deny - the exemption is sound only when HIMMEL_REPO
 # is the command's sole reference to itself, on a genuinely single simple
@@ -374,8 +374,8 @@ run '$HIMMEL_REPO_X is a different variable, not a prefix match -> deny' 2 \
 run 'literal prefix followed by a second scripts/cr/ command -> deny (compound)' 2 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh"; bash scripts/cr/review-round.sh start --branch feat/x' "$WT")" "$HR"
 
-# ---- console-O NO-GO round 3 (F1): a stray quote/backslash ANYWHERE denies ---
-# Round 2 only checked the character immediately before the reference; a
+# ---- a stray quote/backslash ANYWHERE denies ---
+# Checking only the character immediately before the reference is not enough; a
 # quote or backslash elsewhere in the command still changes how a real
 # shell groups tokens even though $flat has already stripped it by the
 # time any later check runs. Decided from the raw command, so the
@@ -395,7 +395,7 @@ run "fully single-quoted \$HIMMEL_REPO never expands -> deny" 2 \
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
 run "single-quoted with leading junk before the dollar -> deny" 2 \
     "$(payload "bash 'x \$HIMMEL_REPO/scripts/handover/console-kit/go.sh'" "$WT")" "$HR"
-# Console round 4 (evidence request): byte-exact reproductions of the
+# Byte-exact reproductions of the
 # original report's probes 4 and 6, built with $'...' ANSI-C quoting so
 # no character is reinterpreted along the way - $'...' processes only
 # backslash escapes and never expands a $VAR, so $HIMMEL_REPO here stays
@@ -407,7 +407,7 @@ PROBE6=$'bash \'"$HIMMEL_REPO/scripts/cr/pr-check-context.sh"\''
 run 'probe 6: the whole double-quoted prefix wrapped in single quotes -> deny' 2 \
     "$(payload "$PROBE6" "$WT")" "$HR"
 
-# ---- console-O NO-GO round 3 (F2): the tail must resolve as a plain path -----
+# ---- the tail must resolve as a plain path -----
 # A `..` or a second `$` after the exempted prefix must still deny - the
 # word must resolve to exactly the anchor's own file, not somewhere else
 # the substitution can be steered to.
@@ -415,7 +415,7 @@ run 'probe 6: the whole double-quoted prefix wrapped in single quotes -> deny' 2
 run 'traversal plus a second $ after the prefix -> deny' 2 \
     "$(payload 'bash "$HIMMEL_REPO/../../../../../../..$PWD/scripts/cr/pr-check-context.sh"' "$WT")" "$HR"
 
-# ---- console-O NO-GO round 4: the merge-on-green remedy must not loop --------
+# ---- the merge-on-green remedy must not loop --------
 # F1 denies ANY quote/backslash anywhere in the command, so a leg that reaches
 # for the remedy with a quoted argument (`--branch 'x'`) would trip F1 again.
 # The remedy text itself must say so, and name a fallback that never needs
@@ -463,7 +463,7 @@ run "mention (not run) of the edited file -> no-op" 0 \
     "$(payload "git diff -- scripts/handover/merge-on-green.sh" "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/handover/merge-on-green.sh
 
-# ---- HIMMEL-1813: deny-on-unresolvable for an env -S mention ---------------
+# ---- deny-on-unresolvable for an env -S mention ---------------
 # On a clean tree. $flat drops every backslash, so GNU env -S's \c ("ignore
 # the rest") hid the target from the text scan (merge-on-green.shc). An env
 # -S command that mentions a target and carries a backslash, '#' or '$' is
@@ -519,7 +519,7 @@ for v in \
     "source <(cat <<< \"env -S 'bash scripts/handover/merge-on-green.sh\\c'\")" \
     "<<< x bash <<< \"env -S 'bash scripts/handover/merge-on-green.sh\\c'\""; do
     run "1813: [$v] clean root -> deny" 2 "$(payload "$v" "$WT")" "$HR"
-    # HIMMEL-3913: the raw backstop runs first, so a reader/shell here-string that
+    # the raw backstop runs first, so a reader/shell here-string that
     # also carries an executor now denies with its message; either is a deny.
     if grep -qF -- "cannot be fully resolved" <<<"$LAST_ERR" || grep -qF -- "can write text to a file" <<<"$LAST_ERR"; then
         echo "PASS 1813: [$v] deny names the unresolvable split string or the 3913/3917 backstop"
@@ -545,7 +545,7 @@ run "1813: env grep of a pr-check pattern with a backslash (no -S) -> no-op" 0 \
 run "1813: the program's own -S-like flag is not env's (git log --stat) -> no-op" 0 \
     "$(payload "env GIT_PAGER=cat git log --stat --grep='pr-check\\|x'" "$WT")" "$HR"
 
-# ---- HIMMEL-4491: env -S inside a nested shell body -----------------------
+# ---- env -S inside a nested shell body -----------------------
 # A `bash|sh -c <body>` or `eval <words>` body is ONE quoted word to the outer
 # tokenizer, so its `env` was never a word env_split_option saw, and the 1813
 # deny never fired. Clean root: every deny below is the 1813 message.
@@ -596,7 +596,7 @@ git commit -m "note: env -S 'bash scripts/handover/merge-on-green.sh\c'"
 bash scripts/other/x.sh "env -S 'bash scripts/handover/merge-on-green.sh\c'"
 NESTEDOK
 
-# ---- HIMMEL-5356: a data reader's output piped into a shell is not data ----
+# ---- a data reader's output piped into a shell is not data ----
 # `echo eval "env -S '<target>\c'" | bash` hands the reader's text to a shell
 # that re-reads it as a script, so the reader exemption must not apply to a
 # segment whose output feeds bash/sh/zsh/dash/ksh. Clean root: every row is
@@ -654,7 +654,7 @@ echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | rg --pre=sh x
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ack --pager=sh x
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | ag --pager=sh x
 PIPETOSHELL
-# Controls (HIMMEL-4503): the same data with no shell on the pipe keeps its verdict.
+# Controls: the same data with no shell on the pipe keeps its verdict.
 while IFS= read -r v; do
     run "5356 control: [$v] clean root -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done <<'PIPEOK'
@@ -668,7 +668,7 @@ echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | grep merge; true
 echo "env -S 'bash scripts/handover/merge-on-green.sh\c'" | if true; then grep x; fi
 PIPEOK
 
-# ---- HIMMEL-4516: nested-body depth cap ------------------------------------
+# ---- nested-body depth cap ------------------------------------
 # Each nested eval body is re-tokenized, so a 350-deep chain used to burn the
 # whole 15 s hook budget (a bare timeout). The guard now stops re-reading past
 # 32 nested bodies and denies with a message naming the cap; a chain AT the cap
@@ -693,7 +693,7 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# ---- HIMMEL-3913: raw-text backstop - a reader writes text to a file, a later ----
+# ---- raw-text backstop - a reader writes text to a file, a later ----
 # ---- executor runs it. The tokenizer reads the quoted here-string as inert, so
 # ---- only the raw scan can see it. Clean root: every deny below is the backstop's.
 while IFS= read -r v; do
@@ -760,7 +760,7 @@ for v in \
     run "3913: anchored spelling [$v] clean root -> no-op" 0 "$(payload "$v" "$WT")" "$HR"
 done
 
-# ---- HIMMEL-3917: the backstop denies the WRITE CHANNEL, never an executor ------
+# ---- the backstop denies the WRITE CHANNEL, never an executor ------
 # No executor is recognised any more, so each row writes with a plain `>` (no
 # here-string) and runs the file through something the old executor grammar
 # never listed - or never runs it in this command at all (a later tool call).
@@ -819,7 +819,7 @@ run "3917: [append-results bullet naming merge-on-green with an arrow] -> deny" 
 need_in_err "3917: arrow deny names the Write-tool remedy" "write it with the Write tool and pass the file"
 need_in_err "3917: arrow deny names the arrow remedy" "use '→' / 'to' instead"
 # Only an fd dup or a redirect to exactly /dev/null is inert: the backstop stays
-# silent on these (the main path decides, as before HIMMEL-3917).
+# silent on these (the main path decides, as before).
 while IFS= read -r v; do
     run "3917: inert redirect [$v] clean root -> no-op" 0 "$(payload "$v" "$WT")" "$HR"
 done <<'INERT'
@@ -837,7 +837,7 @@ echo 'bash scripts/cr/write-verdicts.sh' >/dev/null 2>&1
 git commit -m 'fix scripts/cr/review-round.sh to deny'
 INERT
 # A real run with an inert redirect: the main path still refuses it as not one
-# simple command (HIMMEL-3458), but the backstop must stay silent.
+# simple command, but the backstop must stay silent.
 while IFS= read -r v; do
     run "3917: inert redirect on a run [$v] -> main-path deny" 2 "$(payload "$v" "$WT")" "$HR"
     if grep -qF -- "HIMMEL-3917" <<<"$LAST_ERR"; then
@@ -851,7 +851,7 @@ bash scripts/handover/merge-on-green.sh --jira-transition >/dev/null 2>&1
 bash scripts/cr/pr-check-context.sh 2>&1
 INERTRUN
 
-# ---- HIMMEL-3433 (d): an interpreter or find -exec word ANYWHERE runs ---------
+# ---- an interpreter or find -exec word ANYWHERE runs ---------
 # On a clean tree, so each deny comes from the shape, not from an edit.
 run "2>&1 before the literal, clean root -> deny" 2 \
     "$(payload "2>&1 $LITERAL" "$WT")" "$HR"
@@ -1001,7 +1001,7 @@ ls * > /tmp/o.txt
 find . -name '*.md' -exec grep -l foo {} +
 MENTIONS
 
-# ---- HIMMEL-3517: a target's stem inside an unrelated test-*.sh filename
+# ---- a target's stem inside an unrelated test-*.sh filename
 # must not flag $VAR tokens elsewhere in the same command as unresolved,
 # and -execdir with a non-interpreter command word keeps the {} carve-out.
 # shellcheck disable=SC2016 # command text, verbatim
@@ -1023,7 +1023,7 @@ run "find -execdir grep (non-interpreter) -> allow (HIMMEL-3517)" 0 \
 run "find -execdir ./wrapper (path-qualified, unrecognized) -> deny (HIMMEL-3517, codex-2)" 2 \
     "$(payload "find . -maxdepth 0 -execdir ./wrapper {} \\;" "$WT")" "$HR"
 
-# codex-1 (/pr-check critic panel round 4, Important, 2026-09-23): a BARE
+# codex-1: a BARE
 # (no /) -execdir command word that codex-2's fix above did not deny fell
 # through as safe whenever it was neither a known interpreter nor a guarded
 # target's own name - an arbitrary PATH executable (randomtool) is exactly
@@ -1037,7 +1037,7 @@ run "find -execdir randomtool (bare, unrecognized, not allowlisted) -> deny (HIM
 run "find -execdir sed -i (never allowlisted) -> deny (HIMMEL-3517, codex-1 round 4)" 2 \
     "$(payload "find . -maxdepth 0 -execdir sed -i s/a/b/ {} \\;" "$WT")" "$HR"
 
-# codex-1 (/pr-check critic panel round 5, Important, 2026-09-23): an
+# codex-1: an
 # earlier version of this fix allowlisted sed/awk without -i/--in-place as
 # "read-only". That is false - sed's `e` command and awk's `system()` can
 # execute an arbitrary command, including a guarded relative script, from
@@ -1048,10 +1048,10 @@ run "find -execdir sed -i (never allowlisted) -> deny (HIMMEL-3517, codex-1 roun
 # No scripts/cr/ mention in either payload below - deliberately, so the
 # deny can only come from the -execdir chdir-gate itself (same isolation as
 # the "randomtool" row above), never from the unrelated direct-mention deny
-# path. At the base (round-4) hook, sed/awk without -i/--in-place stayed
+# path. At the base hook, sed/awk without -i/--in-place stayed
 # off the chdir gate (is_target("sed"/"awk") is false), so these ALLOWED
 # despite sed's `e` command / awk's `system()` being able to execute
-# anything - the exact gap codex-1 flagged in round 5.
+# anything - the exact gap this closes.
 run "find -execdir sed e (no -i, but sed's e command executes) -> deny (HIMMEL-3517, codex-1 round 5)" 2 \
     "$(payload "find . -maxdepth 0 -execdir sed -n 'e ls' {} \\;" "$WT")" "$HR"
 run "find -execdir awk system() (no -i, but system() executes) -> deny (HIMMEL-3517, codex-1 round 5)" 2 \
@@ -1061,7 +1061,7 @@ run "find -execdir awk system() (no -i, but system() executes) -> deny (HIMMEL-3
 run "control: bash scripts/cr/\$X (real unresolved target) -> still deny" 2 \
     "$(payload 'bash scripts/cr/$X' "$WT")" "$HR"
 
-# Console FINDING 2026-09-23 (K-N431-7980c9b9), fixed by HIMMEL-3546: a
+# A
 # `sed -i` edit whose SINGLE-QUOTED sed script carries a backtick span naming
 # a gate-script stem as markdown-style prose used to deny, because the quote
 # strip made that backtick read like a real command substitution. The
@@ -1077,7 +1077,7 @@ run "sed-i backtick span in single-quoted replacement text allows (HIMMEL-3546 q
     "$(payload "sed -i 's|x|y \`bash scripts/cr/review-round.sh\` z|' handover.md" "$WT")" "$HR" # gnu-ok: fixture text fed to the hook as tool_input.command, never executed
 run "control: same span but a malformed s command (unescaped / ends it) -> still deny (HIMMEL-3546)" 2 \
     "$(payload "sed -i 's/x/y \`bash scripts/cr/review-round.sh\` z/' handover.md" "$WT")" "$HR" # gnu-ok: fixture text fed to the hook as tool_input.command, never executed
-# ---- HIMMEL-3546: quoted text that is provably inert is data, not a command.
+# ---- quoted text that is provably inert is data, not a command.
 # pr-check-context.sh is branch-edited here; ledger-append.sh is clean.
 while IFS= read -r v; do
     run "inert quoted text [$v] on an edited branch -> allow (HIMMEL-3546)" 0 "$(payload "$v" "$WT")" "$HR"
@@ -1089,14 +1089,14 @@ jq 'test("a|b") or .x == "scripts/cr/pr-check-context.sh"' docs/a.md
 bash scripts/cr/ledger-append.sh amend --head abc --id codex-1 --set verdict=deferred --deferred-to HIMMEL-3547 --reason "same gap as prior round, already tracked via Jira comment; deferred to S18"
 bash scripts/cr/ledger-append.sh --reason 'a|b & c → d'
 INERT
-# HIMMEL-3917: a quoted '>' beside a target is a write channel to the raw-text
+# a quoted '>' beside a target is a write channel to the raw-text
 # backstop even as inert data - the ruled remedy is '→' / 'to' or a file.
 run "3917: quoted '>' in a guarded script's argument -> deny" 2 \
     "$(payload "bash scripts/cr/ledger-append.sh --reason 'a|b & c > d'" "$WT")" "$HR"
 need_in_err "3917: quoted '>' deny names the arrow remedy" "use '→' / 'to' instead"
 # Controls: quoted text that reaches an interpreter, a substitution or a
 # second command is not inert - every one still denies.
-# HIMMEL-3458: the 2>&1 fd-dup forms stay denied too.
+# the 2>&1 fd-dup forms stay denied too.
 while IFS= read -r v; do
     run "not inert [$v] on an edited branch -> deny (HIMMEL-3546)" 2 "$(payload "$v" "$WT")" "$HR"
 done <<'NOTINERT'
@@ -1241,7 +1241,7 @@ run "refs/remotes/origin/main missing, bytes equal the anchor's -> allow" 0 "$(p
 run "malformed JSON -> deny" 2 '{"tool_name":"Bash","tool_input":{"command":'
 run "empty stdin -> deny" 2 ''
 
-# ---- HIMMEL-3707: pr-check.md's own 4.6/4.7 item-resolution fence ----------
+# ---- pr-check.md's own 4.6/4.7 item-resolution fence ----------
 # The runbook's literal `case "$item_rc" in ... esac` rc-branching fence (base
 # pr-check.md 4.6/4.7) denies: the same simple command also mentions
 # scripts/handover/ (the resolve-active-item.sh call), which routes it into
@@ -1260,22 +1260,22 @@ case "$item_rc" in
 esac'
 run "base pr-check.md 4.6/4.7 case-fence literal, clean tree -> still denied (HIMMEL-3707, guard unchanged)" 2 \
     "$(payload "$OLD_ITEM_FENCE" "$WT")" "$HR"
-# HIMMEL-5102 (j2328c): a tokenizer failure is now unsafe on its own, so this
+# a tokenizer failure is now unsafe on its own, so this
 # fence is refused by the generic git-option deny before the operand check.
 need_in_err "deny names the tokenizer failure as unsafe" "cannot be proven to be pathspec mentions"
 
-# The rewritten pr-check.md 4.6/4.7 literal (HIMMEL-3707 fix): one plain bash
+# The rewritten pr-check.md 4.6/4.7 literal: one plain bash
 # call, no case statement left for the tokenizer to misread -> allow.
 NEW_ITEM_LITERAL='bash "'"$PRIMARY"'/scripts/handover/resolve-active-item-report.sh" --branch '"'"'feat/x'"'"''
 run "rewritten pr-check.md 4.6/4.7 one-line wrapper literal, clean tree -> allow" 0 \
     "$(payload "$NEW_ITEM_LITERAL" "$WT")" "$HR"
 
-# ---- HIMMEL-3798 round 3 (Rule 5, "CUT, do not patch"): three rounds of the
+# ---- CUT, do not patch: the
 # same regex-approximates-bash-grammar mechanism finding a new bypass means
 # the mechanism itself is wrong, not the regex. The heredoc and `< <file>`
 # acceptance shapes are REMOVED entirely; every one of these must now deny,
 # falling back to the pre-existing "not one simple command" check exactly as
-# it behaved before HIMMEL-3798 round 1. The sanctioned replacement is
+# it behaved before they were accepted. The sanctioned replacement is
 # --from-file <literal-path>, tested further below.
 WV_HEREDOC=$(cat <<'ENVELOPE'
 bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' <<'WV_STDIN_EOF'
@@ -1321,7 +1321,7 @@ ENVELOPE
 run "impacted-suites.sh heredoc body mentions another script's name still denies post-cut (HIMMEL-3798 round 3)" 2 \
     "$(payload "$IS_HEREDOC_MENTIONS" "$WT")" "$HR"
 
-# ---- HIMMEL-3798 round 3: --from-file <literal-path> replaces the cut
+# ---- --from-file <literal-path> replaces the cut
 # heredoc/redirect shapes. Guard-side: the --from-file VALUE must be a
 # single literal token with no shell metacharacters, quotes or globs (the
 # guard checks the RAW command text, not the quote-stripped flat form, so a
@@ -1370,7 +1370,7 @@ rm -rf /' "$WT")" "$HR"
 run "control: trailing command after the redirect target still denies (HIMMEL-3798)" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh prior-blocking --branch 'feat/x' < /dev/null; rm -rf /" "$WT")" "$HR"
 
-# codex-2 (round 2 critic panel, HIMMEL-3798): the unquoted redirect-file
+# codex-2: the unquoted redirect-file
 # alternative did not exclude shell separators, so a trailing `;id` etc. was
 # captured as part of the "filename" and passed validation - the guard
 # classified a two-command line as one simple redirect, letting the second
@@ -1391,7 +1391,7 @@ run "control: redirect file with trailing backtick-id-backtick still denies (HIM
 # shellcheck disable=SC2016 # the literal $(id) text, never expanded here
 run "control: redirect file with trailing \$(id) still denies (HIMMEL-3798 codex-2)" 2 \
     "$(payload 'bash scripts/cr/write-verdicts.sh prior-blocking --branch '"'"'feat/x'"'"' < /dev/null$(id)' "$WT")" "$HR"
-# codex-1 (round 3 critic panel, HIMMEL-3798): the line1 regexes' exclusion
+# codex-1: the line1 regexes' exclusion
 # class [^;&|()<>`] does not exclude '#'. A '#' starting a new word makes
 # real bash treat everything from there to end-of-line as a COMMENT, so bash
 # never parses the trailing <<'WV_STDIN_EOF'/<<'IS_STDIN_EOF' as a heredoc
@@ -1426,7 +1426,7 @@ run "control: '#' before < file redirect still denies (HIMMEL-3798 codex-1)" 2 \
 # A worktree whose write-verdicts.sh copy differs from the anchor's still
 # denies at the existing byte-equality tail, unaffected by this fix. Vehicle
 # switched from the (now pre-empted) heredoc shape to a clean --from-file
-# invocation post-cut (HIMMEL-3798 round 3): a heredoc now denies earlier, at
+# invocation post-cut: a heredoc now denies earlier, at
 # the unconditional "not one simple command" fallback, before ever reaching
 # the byte-equality check this control means to exercise.
 echo tampered >>"$WT/scripts/cr/write-verdicts.sh"
@@ -1435,7 +1435,7 @@ run "control: --from-file shape on a tampered worktree copy still denies (HIMMEL
 need_in_err "deny names the byte mismatch, not the shape" "differs from the HIMMEL_REPO anchor's"
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
 
-# ---- HIMMEL-4367 item 5: only a command that can run a target is judged -----
+# ---- only a command that can run a target is judged -----
 # On an edited branch, so every deny control below would run edited bytes. A
 # brace group with no comma and no `..` is literal text to bash ({url}), never
 # a brace list; a quoted-delimiter heredoc read only by a data reader is data
@@ -1530,7 +1530,7 @@ for v in \
 done
 g -C "$WT" checkout -q -- scripts/cr/pr-check-context.sh
 
-# HIMMEL-4574: a message argument (gh pr/issue comment|create|edit|review|view,
+# a message argument (gh pr/issue comment|create|edit|review|view,
 # the anchor's Jira CLI) is data that mentions a target, not a run of it -
 # allowed outside any checkout too.
 JIRA_CLI=$PRIMARY/scripts/jira/dist/index.js
@@ -1619,7 +1619,7 @@ for v in \
     run "HIMMEL-4574 control [${v%%"$NL"*}] -> deny" 2 "$(payload "$v" "$TMP")" "$HR"
 done
 
-# HIMMEL-4916: staging/pathspec operands mention a changed policy file;
+# staging/pathspec operands mention a changed policy file;
 # exempting a git segment must never exempt an executor beside or inside it.
 echo ': changed policy' >>"$WT/scripts/cr/pr-check-env.sh"
 for v in \
@@ -1664,7 +1664,7 @@ for v in \
     'git diff -S -- --ext-diff scripts/cr/pr-check-env.sh'; do
     run "HIMMEL-4916 exec control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
-# HIMMEL-4950: a brace- or glob-expanded option word before a guarded pathspec
+# a brace- or glob-expanded option word before a guarded pathspec
 # can expand into an exec-capable git option; the early expansion return in
 # git_mentions_only must flag it unsafe, not let it pass as a mention.
 # shellcheck disable=SC2016 # literal attack payloads, never expanded here
@@ -1687,7 +1687,7 @@ run "HIMMEL-4950 brace operand after -- keeps prior verdict" 0 \
 # A brace word that is not option-shaped keeps its prior verdict (allow).
 run "HIMMEL-4950 non-option brace word keeps prior verdict" 0 \
     "$(payload 'git add docs/{a,b}.md scripts/cr/pr-check-env.sh' "$WT")" "$HR"
-# HIMMEL-4953: the git exec/write-option check runs for EVERY git segment and
+# the git exec/write-option check runs for EVERY git segment and
 # fails closed on a bailed walk. Each payload used to exit 0 because
 # readers_only returned before it reached the git word.
 # shellcheck disable=SC2016 # literal attack payloads, never expanded here
@@ -1727,7 +1727,7 @@ for v in \
     'g`echo i`t grep -Obash -- scripts/cr/pr-check-env.sh'; do
     run "HIMMEL-4953 unwalked git segment [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
-# Pathspec mentions and the HIMMEL-4950 allow cases stay allowed.
+# Pathspec mentions and the allow cases stay allowed.
 for v in \
     'git log -- scripts/cr/pr-check-env.sh' \
     'git log --oneline -- scripts/cr/pr-check-env.sh' \
@@ -1739,7 +1739,7 @@ for v in \
     'git add -- --foo{a,b} scripts/cr/pr-check-env.sh'; do
     run "HIMMEL-4953 control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
-# HIMMEL-4958: a directory or empty pathspec matches the guarded scripts
+# a directory or empty pathspec matches the guarded scripts
 # without naming them; a git exec/write option is denied whatever the pathspec.
 # shellcheck disable=SC2016 # literal attack payloads, never expanded here
 for v in \
@@ -1784,7 +1784,7 @@ for v in \
     'git grep --extended-regexp -e .'; do
     run "HIMMEL-4958 control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
-# HIMMEL-5095: a capital O after a value-taking short option in a cluster is
+# a capital O after a value-taking short option in a cluster is
 # part of that option's value (git's parse-options), not the pager flag.
 # shellcheck disable=SC2016 # literal payloads, never expanded here
 for v in \
@@ -1849,12 +1849,12 @@ for v in \
     'FOO=1 git -oObash grep -e x'; do
     run "HIMMEL-5095 O before any value letter [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
-# Accepted over-deny (HIMMEL-4953 judge ruling): any substitution beside a
+# Accepted over-deny: any substitution beside a
 # guarded mention is unsafe, since it can assemble the git word; split the command.
 # shellcheck disable=SC2016 # the $( is literal hook input
 run "HIMMEL-4953 accepted over-deny [wc + unrelated substitution] -> deny" 2 \
     "$(payload 'wc -l scripts/cr/pr-check-env.sh; echo $(date)' "$WT")" "$HR"
-# HIMMEL-5102: `git bisect run <prog>` and `git rebase -x|--exec <cmd>` run an
+# `git bisect run <prog>` and `git rebase -x|--exec <cmd>` run an
 # arbitrary program, so a guarded script named beside them is never a pathspec
 # mention. Every spelling (separate, joined, = form, bundled) is denied.
 for v in \
@@ -1893,7 +1893,7 @@ for v in \
     'git grep -e run -- scripts/cr/pr-check-env.sh'; do
     run "HIMMEL-5102 control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
-# Round 2 (judge j2328a): an unknown global option before the subcommand, an
+# An unknown global option before the subcommand, an
 # abbreviated --exec, a redirect before the run verb, a glob in the verb slot,
 # and the policy rows (fail closed whenever a program is run, no writer named).
 for v in \
@@ -1933,7 +1933,7 @@ for v in \
     'git rebase -rx main'; do
     run "HIMMEL-5102 round2 control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
-# Round 3 (judge j2328b): a valued global option after an unknown one takes its
+# A valued global option after an unknown one takes its
 # value as the subcommand, and a command word the tokenizer cannot parse.
 # shellcheck disable=SC2016 # a literal ${x:-y} is the tokenizer-failure payload
 for v in \
@@ -1953,7 +1953,7 @@ for v in \
     'git -P --namespace rebase main'; do
     run "HIMMEL-5102 round3 control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
-# Round 4 (codex-1): a later bisect/rebase operand word must not overwrite the
+# A later bisect/rebase operand word must not overwrite the
 # other builtin's armed state.
 for v in \
     'git -P rebase bisect -x scripts/cr/pr-check-env.sh main' \
@@ -1962,7 +1962,7 @@ for v in \
     run "HIMMEL-5102 round4 [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 run "HIMMEL-5102 round4 control [git -P rebase bisect main] -> allow" 0 "$(payload 'git -P rebase bisect main' "$WT")" "$HR"
-# Round 5 (judge j2328c): a glob/brace word in the subcommand slot, and a
+# A glob/brace word in the subcommand slot, and a
 # tokenizer failure on an obfuscated git word, fail closed.
 for v in \
     'git re[b]ase -x scripts/cr/pr-check-env.sh main' \
@@ -1980,7 +1980,7 @@ for v in \
     'git -P grep foo -- scripts/*'; do
     run "HIMMEL-5102 round5 control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
-# Round 6 (judge j2328d): an unknown first word may be an alias for rebase or
+# An unknown first word may be an alias for rebase or
 # bisect (`git rb -x CMD`); arm both, fail closed.
 for v in \
     'git rb -x scripts/cr/pr-check-env.sh main' \
@@ -1999,7 +1999,7 @@ done
 run "HIMMEL-5102 round6 control [git -P log --oneline] -> allow" 0 "$(payload 'git -P log --oneline' "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/cr/pr-check-env.sh
 
-# HIMMEL-5170 (j2328a follow-up): git runs an editor or an alias program the
+# git runs an editor or an alias program the
 # guard never reads. An editor env prefix, or a git config write of an editor
 # or alias key, that names a guarded writer is denied (the VAR= prefix only
 # sets `wrapped`, and the positional `git config <key> <value>` is a later
@@ -2058,7 +2058,7 @@ for v in \
     "GIT_EDITOR='scripts/c\\r/write-verdicts.sh' git commit"; do
     run "HIMMEL-5170 editor/alias hook [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
-# Already denied on base (HIMMEL-5102 one-call -c exec keys): controls, not RED.
+# Already denied on base (one-call -c exec keys): controls, not RED.
 for v in \
     'git -c sequence.editor=scripts/cr/write-verdicts.sh rebase -i main' \
     'git -c core.editor=scripts/cr/write-verdicts.sh commit' \
@@ -2078,7 +2078,7 @@ for v in \
     'git diff -- scripts/cr/write-verdicts.sh'; do
     run "HIMMEL-5170 control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
-# Judge j2353d: the word match uses flat's normalisation (continuations joined,
+# The word match uses flat's normalisation (continuations joined,
 # then unquoted), and an executed value carrying an sh expansion character is
 # denied whether or not a guarded script is named (a second shell builds the path).
 for v in \
@@ -2115,7 +2115,7 @@ for v in \
     "git log --oneline 'scripts/*.sh'"; do
     run "HIMMEL-5170 j2353d control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
-# Judge j2353e: line-level fail-closed rules on a line with a git word or a
+# Line-level fail-closed rules on a line with a git word or a
 # GIT_*/EDITOR/VISUAL/PAGER assignment: a tokenizer failure plus any
 # metacharacter, a value slot that ends in a substitution, --config-env, and a
 # builtin that sets one of those names.
@@ -2147,7 +2147,7 @@ for v in \
     'git config core.editor vim'; do
     run "HIMMEL-5170 j2353e control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
-# Judge j2353h: short options after a non-reader subcommand are value checks
+# Short options after a non-reader subcommand are value checks
 # (clone -u runs its value through sh -c), a git-<sub> binary by path is git,
 # and a shell-built command word with another metacharacter word is denied.
 for v in \

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Unit test for scripts/hooks/block-write-into-main-checkout.sh — the
-# HIMMEL-4329 rows: path-qualified wrapper names and chroot readings.
+# rows: path-qualified wrapper names and chroot readings.
 # Platform guard: Git Bash on Windows / any POSIX bash 3.2+ (same as the
 # guard; no .ps1 twin). A sibling of test-block-write-into-main-checkout.sh,
 # split out so the parent suite stays under the CI per-suite cap; the harness
@@ -99,7 +99,7 @@ echo "== HIMMEL-4329 path-qualified wrapper names, chroot readings =="
 # shellcheck disable=SC2016  # row templates are literal shell text
 {
 # A wrapper name matches on its basename, any case, `.exe` dropped (the
-# HIMMEL-4138 interp-body treatment): `/usr/bin/nice` strips like `nice`.
+# interp-body treatment): `/usr/bin/nice` strips like `nice`.
 # One row per wrapper _bwimc_strip_prefix knows, bare / path / .exe.
 for _w4329 in 'command|' 'exec|' 'nohup|' 'chrt|5' 'taskset|-c 0' 'ionice|-c 3' 'nice|-n 5' \
     'timeout|5' 'stdbuf|-oL' 'env|FOO=1' 'sudo|-u root' 'chroot|/'; do
@@ -140,7 +140,7 @@ _r4213 "102p sudo -R /srv/x touch /f (ALLOW)"                          allow 'su
 _r4213 "102q chroot primary ls (no write, ALLOW)"                      allow 'chroot @P@ ls /'
 _r4213 "102r chroot worktree touch /f (ALLOW)"                         allow 'chroot @W@ touch /f'
 _r4213 "102s chroot / touch /tmp (ALLOW)"                              allow 'chroot / touch /tmp/himmel-4329-f'
-# CR round 1 codex-1: inside the jail an absolute symlink restarts at the root
+# Inside the jail an absolute symlink restarts at the root
 # and `..` stops there, so a root ABOVE the primary reaches it through a link
 # the host resolves elsewhere. Fixture links live under $FIX only.
 ln -sfn /primary "$FIX/jlnk"          # jail /jlnk -> jail /primary = $FIX/primary
@@ -154,7 +154,7 @@ _subst_row "102w chroot fixture-root rm /jlnk/README.md, cwd /tmp" block "chroot
 _subst_row "102x chroot primary/somedir touch /../../x (.. clamps at a root inside the primary), cwd /tmp" block "chroot $FIX/primary/somedir touch /../../x" /tmp
 _subst_row "102y chroot fixture-root touch /../../../primary/f (.. clamps at an ancestor root), cwd /tmp" block "chroot $FIX touch /../../../primary/f" /tmp
 _subst_row "102z chroot unrelated-jail touch /jlnk/f (ALLOW), cwd /tmp" allow "chroot $FIX/jail touch /jlnk/f" /tmp
-# CR round 2 codex-2: tee behind a chroot (or any wrapper arm (a) does not
+# Tee behind a chroot (or any wrapper arm (a) does not
 # anchor) and a git write behind a chroot escaped the root model.
 _r4213 "103a chroot primary tee /f"                                    block 'echo x | chroot @P@ tee /f'
 _r4213 "103b chroot primary tee -a /f"                                 block 'chroot @P@ tee -a /f'

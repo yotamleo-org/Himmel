@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Unit test for scripts/hooks/block-write-into-main-checkout.sh — the
-# HIMMEL-5098 rows: eval / source / `.` / bash -c / sh -c / zsh -c whose
+# rows: eval / source / `.` / bash -c / sh -c / zsh -c whose
 # argument is (or contains) a command substitution that READS repository or
 # file data (git log, git show, git cat-file, cat, head, tail, `$(<f)`) is
 # denied, because the text scan never sees the write hidden in that data.
 # Ordinary eval of a literal string and of a benign substitution stays allowed.
-# HIMMEL-5349: every rule runs on the dequoted, tokenised words of the whole
+# every rule runs on the dequoted, tokenised words of the whole
 # command (the shared tokenizer), so a quoted, escaped or spaced spelling of a
 # shadowing word or a PATH change is the same word (rows 218-220), and an eval
 # of ANY variable is denied (a variable set by an earlier call is not seen).
@@ -205,7 +205,7 @@ _r5098 "215g export PATH before eval"                block 'export PATH=/x/bin:$
 # an assignment is skipped only when the name is a valid identifier
 _r5098 "216a path-shaped word with an equals"        block 'eval "$(wt/sub=x)"'
 _r5098 "216b dotted word with an equals"             block 'eval "$(./sub=x)"'
-# j2422c: the shadowing rule is whole-command, and the allow-list is case-sensitive
+# the shadowing rule is whole-command, and the allow-list is case-sensitive
 _r5098 "217a function shadows echo, source <(echo)"  block 'echo() { cat @W@/msg; }; source <(echo)'
 _r5098 "217b function shadows date, bash <(date)"    block 'date() { cat @W@/msg; }; bash <(date)'
 _r5098 "217c upper-case ECHO is not echo"            block 'eval "$(ECHO x)"'
@@ -232,7 +232,7 @@ _r5098 "220f escaped quote before the eval"          block "echo \\' ; eval \"\$
 _r5098 "220g ANSI-C span with an escaped quote"      block "echo \$'it\\'s' ; eval \"\$(cat @W@/msg)\""
 _r5098 "220h quoted eval name"                       block "'eval' \"\$(git log -1 --format=%B)\""
 _r5098 "220i backslash in eval name"                 block 'ev\al "$(git log -1 --format=%B)"'
-# HIMMEL-5349 (j2422d): a shadowing word or PATH change is judged on the
+# a shadowing word or PATH change is judged on the
 # dequoted word, whatever quotes, backslashes or spacing spell it
 _r5098 "218a backslash hash -p"                      block '\hash -p /usr/bin/cat date; eval "$(date)"'
 _r5098 "218b quoted export PATH"                     block 'export "PATH=/tmp/b:$PATH"; eval "$(date)"'
@@ -250,7 +250,7 @@ _r5098 "218m function without spaces"                block 'date(){ cat @W@/msg;
 _r5098 "218n declare PATH"                           block 'declare PATH=/tmp/b; eval "$(ssh-agent -s)"'
 _r5098 "218o zsh path array"                         block 'path=(/tmp/b $path); eval "$(date)"'
 _r5098 "218p builtin wrapper"                        block 'builtin eval "$(cat @W@/msg)"'
-# HIMMEL-5343 deferrals, folded in
+# deferrals, folded in
 _r5098 "219a here-string into a shell"               block 'bash <<< "$(cat @W@/msg)"'
 _r5098 "219b eval through a function"                block 'f() { eval "$1"; }; f "$(cat @W@/msg)"'
 _r5098 "219c variable command word"                  block 'x=eval; $x "$(cat @W@/msg)"'
@@ -267,7 +267,7 @@ _r5098 "219m eval of a glob"                         block 'eval *'
 _r5098 "219n pipe into bash -s"                      block 'cat @W@/msg | bash -s'
 _r5098 "219o nested literal eval of data"            block "eval 'eval \"\$(cat @W@/msg)\"'"
 _r5098 "219p bash -c of a variable"                  block 'bash -c "$m"'
-# /pr-check round 1: a generator whose output its arguments shape is only
+# A generator whose output its arguments shape is only
 # trusted when that output is computed and inert
 _r5098 "222a eval printf of octal escapes"           block "eval \"\$(printf '\\164\\157\\165\\143\\150 @P@/pwned')\""
 _r5098 "222b eval echo of a write"                   block 'eval "$(echo touch @P@/pwned)"'
@@ -346,7 +346,7 @@ _r5098 "228r padded ANSI-C quoted assignment before a shell" block "A=\$'x\\' y'
 _r5098 "228s padded quoted-blank assignment before a variable" block "x=eval; A='x y' \$x \"\$(cat @W@/msg)\"; : ${_PAD}"
 _r5098 "228t padded quoted-blank assignment inside a substitution" block "echo \"\$(A='x y' bash -c \"\$(cat @W@/msg)\")\"; : ${_PAD}"
 _r5098 "228u control: padded quoted-blank assignment before ls" allow "A=\"x y\" ls; : ${_PAD}"
-# a wrapper's option argument is part of the prefix, not the command (HIMMEL-5456)
+# a wrapper's option argument is part of the prefix, not the command
 _r5098 "228v padded env option argument before a shell"  block "env -u x bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
 _r5098 "228w padded sudo option argument before a shell" block "sudo -u root bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
 _r5098 "228x padded timeout duration before a shell"     block "timeout 5s bash -c \"\$(cat @W@/msg)\"; : ${_PAD}"
@@ -358,10 +358,10 @@ _r5098 "228zb padded ANSI-C hex shell after a quoted-blank assignment" block "A=
 _r5098 "228zc padded ANSI-C span inside a verb after a quoted-blank assignment" block "A='x y' e\$'\\166'al \"\$(cat @W@/msg)\"; : ${_PAD}"
 _r5098 "228zd padded ANSI-C octal verb after a quoted-blank assignment" block "A='x y' \$'\\145val' \"\$(cat @W@/msg)\"; : ${_PAD}"
 _r5098 "228ze control: padded ANSI-C argument after a quoted-blank assignment" allow "A='x y' printf \$'a\\tb'; : ${_PAD}"
-# quoted heredoc prose naming a shell is not code, past 8 KiB too (j2481e)
+# quoted heredoc prose naming a shell is not code, past 8 KiB too
 _r5098 "228zf control: padded quoted heredoc naming bash x.sh" allow "cat > @W@/n.md <<'EOF'${NL}bash x.sh | sort runs the lint${NL}${_PAD}${NL}EOF"
 _r5098 "228zg padded shell fed a quoted heredoc"          block "bash <<'EOF'${NL}eval \"\$(cat @W@/msg)\"${NL}EOF${NL}: ${_PAD}"
-# shell options: an o in a cluster takes a word, -c's body follows its options (j2481e)
+# shell options: an o in a cluster takes a word, -c's body follows its options
 _r5098 "230a bash -euo pipefail -c git log"            block 'bash -euo pipefail -c "$(git log -1 --format=%B)"'
 _r5098 "230b bash -c -- variable body"                 block 'm=$(cat @W@/msg); bash -c -- "$m"'
 _r5098 "230c sh -c -e cat body"                        block 'sh -c -e "$(cat @W@/msg)"'
@@ -371,7 +371,7 @@ _r5098 "230f bash -c -o pipefail cat body"             block 'bash -c -o pipefai
 _r5098 "230g control: bash -euo pipefail script"       allow 'bash -euo pipefail @W@/x.sh'
 _r5098 "230h control: bash -c -- literal body"         allow "bash -c -- 'echo ok'"
 _r5098 "230i control: bash -s with a positional"       allow 'bash -s "$(cat @W@/msg)"'
-# under xargs a script operand keeps the data positional (j2481e)
+# under xargs a script operand keeps the data positional
 _r5098 "231a control: xargs bash -n"                   allow "git ls-files '*.sh' | xargs bash -n @W@/x.sh"
 _r5098 "231b control: xargs bash script"               allow "git ls-files '*.sh' | xargs bash scripts/lint.sh"
 _r5098 "231c xargs bash with no script runs data"      block 'cat @W@/msg | xargs bash -n'
@@ -381,7 +381,7 @@ _r5098 "232a /bin/\$x -c git log"                     block 'x=sh; /bin/$x -c "$
 _r5098 "232b pipe into /usr/bin/\$x"                  block 'x=sh; cat @W@/msg | /usr/bin/$x'
 _r5098 "232c empty basename after a variable dir"     block 'd=/bin/sh; "$d"/ -c "$(cat @W@/msg)"'
 _r5098 "232d control: literal basename under \$HOME"  allow '"$HOME/bin/tool" "$(git log -1 --format=%s)"'
-# a variable in option position may itself be -c (judge j2481f)
+# a variable in option position may itself be -c
 _r5098 "233a bash -e \$X -c variable body"              block 'bash -e $X -c "$m"'
 _r5098 "233b sh \$DBG -c variable body"                 block 'sh $DBG -c "$m"'
 _r5098 "233c bash \$OPTS -c git log"                    block 'bash $OPTS -c "$(git log -1 --format=%B)"'
@@ -392,13 +392,13 @@ _r5098 "233g two variables: the second may be a body"  block 'bash $F "$m"'
 _r5098 "233i control: bash \$OPTS ./run.sh"             allow 'bash $OPTS ./run.sh'
 _r5098 "233j control: bash -e \$X -c literal body"      allow "bash -e \$X -c 'ls'"
 _r5098 "233k control: bash -x \$F"                      allow 'bash -x $F'
-# pins for option shapes the judge probed (j2481f)
+# pins for option shapes the judge probed
 _r5098 "233l bash -O extglob -c git log"                block 'bash -O extglob -c "$(git log -1 --format=%B)"'
 _r5098 "233m bash +O extglob -c git log"                block 'bash +O extglob -c "$(git log -1 --format=%B)"'
 _r5098 "233n bash -Oextglob -c git log"                 block 'bash -Oextglob -c "$(git log -1 --format=%B)"'
 _r5098 "233o bash --rcfile f -c git log"                block 'bash --rcfile @W@/rc -c "$(git log -1 --format=%B)"'
 _r5098 "233p control: bash -O extglob -c literal"      allow "bash -O extglob -c 'ls'"
-# HIMMEL-5483: an unquoted variable in a shell's argv, assigned earlier in the
+# an unquoted variable in a shell's argv, assigned earlier in the
 # command from data (a non-generator substitution) or from text carrying -c
 _r5098 "234a data var as an option word"                block 'F=$(git log -1 --format=%B); bash -x $F'
 _r5098 "234b -c literal var as an option word"          block "F='-c touch @P@/x'; bash -x \$F"
@@ -417,7 +417,7 @@ _r5098 "234n control: unrelated data var"               allow 'F=$(git log -1 --
 _r5098 "234o -c literal var in the -o argument slot"    block "F='errexit -c touch\${IFS}@P@/x'; bash -o \$F"
 _r5098 "234r control: quoted data var as the -o name"   allow 'F=$(git log -1 --format=%s); bash -o "$F" @W@/x.sh'
 _r5098 "234s control: literal -o argument"              allow 'bash -o errexit @W@/x.sh'
-# HIMMEL-5349 controls: ordinary commands that only mention the words
+# controls: ordinary commands that only mention the words
 _r5098 "221a toplevel substitution as the command"   allow '"$(git rev-parse --show-toplevel)/scripts/x.sh" a'
 _r5098 "221b script with a variable argument"        allow 'bash @W@/x.sh "$HOME"'
 _r5098 "221c echo of shadowing words"                allow "echo 'hash alias PATH'"
@@ -426,7 +426,7 @@ _r5098 "221e source of a variable path"              allow 'source "$HOME/env.sh
 _r5098 "221f quoted heredoc into bash, literal body" allow "bash <<'EOF'${NL}ls${NL}EOF"
 _r5098 "221g literal here-string into bash"          allow "bash <<< 'ls'"
 _r5098 "221h path command word"                      allow '"$HOME/bin/tool" x'
-# j2481b: only a path generator may build the command word
+# only a path generator may build the command word
 _r5098 "229a echo spells the command word"           block '$(echo rm) -rf @P@/f'
 _r5098 "229b printf spells the command word"         block '$(printf tee) @P@/f'
 _r5098 "229c echo spells cp as the command word"     block '$(echo cp) a @P@/f'

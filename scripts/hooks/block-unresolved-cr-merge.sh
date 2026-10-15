@@ -2,15 +2,15 @@
 # PreToolUse hook: block-unresolved-cr-merge.sh
 #
 # Blocks `gh pr merge` on FOUR independent gates, run in order:
-#   1. CR gate (HIMMEL-936): unresolved CodeRabbit review threads or a
+#   1. CR gate: unresolved CodeRabbit review threads or a
 #      CodeRabbit check-run still running on the head SHA (except a proven old
-#      zombie backed by success status + zero unresolved threads, HIMMEL-980;
+#      zombie backed by success status + zero unresolved threads,;
 #      operator rule 2026-07-11: never merge over unresolved CodeRabbit remarks).
-#   2. CI-green gate (HIMMEL-1043): the PR's head SHA must have green overall
+#   2. CI-green gate: the PR's head SHA must have green overall
 #      CI — no failing/pending check-run, no failing/pending combined status.
 #      This repo has NO branch protection, so GitHub will not otherwise block a
 #      merge over red/pending CI (operator rule: "ready to merge" requires green).
-#   3. Console-GO gate (HIMMEL-2919/HIMMEL-3142): when this is a console-spawned
+#   3. Console-GO gate: when this is a console-spawned
 #      leg (HIMMEL_CONSOLE_LEG truthy, exported by headed-arm-leg.sh), the PR's
 #      head SHA must have a matching GO file under the handover root's
 #      `.locks/go/` (console-kit/go.sh writes it — "the file IS the GO"). Before
@@ -21,16 +21,16 @@
 #      its predicate with (scripts/lib/go-gate.sh) so the two cannot drift.
 #      Untouched for a non-leg session (HIMMEL_CONSOLE_LEG unset/falsy skips it
 #      whole).
-#   4. CI trust-path gate (HIMMEL-3910): for EVERY session, a PR touching a CI
+#   4. CI trust-path gate: for EVERY session, a PR touching a CI
 #      trust path (scripts/ci/ci-trust-paths.txt on the default branch) needs a
 #      trust-reviewed console GO (go.sh --trust-reviewed) and a merge pinned
-#      to its head — merge-on-green.sh's rule (HIMMEL-3895), asked through the
+#      to its head — merge-on-green.sh's rule, asked through the
 #      same trust_path_check in scripts/lib/go-gate.sh. Fails closed.
 # Sibling of check-cr-marker-on-pr-create.sh / block-merged-pr-commit.sh.
 #
 # Exit: 0 allow (incl. every fail-open path), 2 block (stderr shown to model).
-# HIMMEL-3915: the PR lookup itself (bounded `gh pr view`) fails CLOSED on a
-# real merge; the CR/CI gates' own API errors stay fail-open (HIMMEL-936).
+# the PR lookup itself (bounded `gh pr view`) fails CLOSED on a
+# real merge; the CR/CI gates' own API errors stay fail-open.
 # Bypass: CR_MERGE_GATE_OK=1 and/or CI_MERGE_GATE_OK=1 in the LAUNCHING shell
 # (each gates its own check independently). CR_PROFILE=none skips the CR gate.
 # The console-GO and trust-path gates have no bypass (see gates 3 and 4 above).
@@ -56,7 +56,7 @@ payload=$(cat) || exit 0
 case "$payload" in
     # A JSON backslash may split the word (`mer\ge`): let jq and the normalized
     # detector below decide instead of skipping.
-    # HIMMEL-3929: so may an expansion (`m${X}erge`, a backtick pair).
+    # so may an expansion (`m${X}erge`, a backtick pair).
     # A glob word can spell the verb (`m?rge`).
     *merge*|*\\*|*\'*|*\$*|*\`*|*\**|*\?*|*\[*) ;;
     *) exit 0 ;;
@@ -68,8 +68,8 @@ cmd=$(printf '%s' "$cmd" | tr -d '\r')
 
 _deny() { echo "block-unresolved-cr-merge: $1" >&2; exit 2; }
 
-# HIMMEL-3918: ONE structural rule instead of a grammar. Every parse rule this
-# hook grew for a chained, redirected, prefixed or quoted merge (HIMMEL-3915,
+# ONE structural rule instead of a grammar. Every parse rule this
+# hook grew for a chained, redirected, prefixed or quoted merge (including
 # then more /pr-check rounds of the same class) became a hook-vs-bash
 # disagreement and so a bypass. A command that names `gh pr merge` must BE a
 # single plain command whose RAW text is only [A-Za-z0-9], space and _ . / : = - ,
@@ -77,11 +77,11 @@ _deny() { echo "block-unresolved-cr-merge: $1" >&2; exit 2; }
 # first word is literally `gh` (which also covers every env/command/exec/nohup/
 # time/NAME=value prefix and cd/pushd/popd). With no quotes the tokenizer below
 # needs no quote-stripping, so the hook and bash always read the same words.
-# Accepted over-denies (HIMMEL-3917 precedent): ANY text mention of `gh pr
+# Accepted over-denies (precedent): ANY text mention of `gh pr
 # merge` that is not a plain merge (`git commit -m "gh pr merge"`, `echo gh pr
 # merge`), a custom --subject/--body (use scripts/handover/merge-on-green.sh),
 # and a path-qualified `/usr/bin/gh`.
-# HIMMEL-3929: the detector is DENY-LEANING instead of a text regexp for one
+# the detector is DENY-LEANING instead of a text regexp for one
 # spelling. It fires on a `gh` word (command position, or after a wrapper/
 # separator, or a /path/to/gh) followed anywhere by `merge` in a NORMALIZED
 # copy of the text (backslash-newline pairs removed, then every backslash,
@@ -151,7 +151,7 @@ fi
 sel=""; repo=""; match_head=""
 # `gh help pr merge` (the deny text's own pointer) only prints help.
 [ "$*" = "gh help pr merge" ] && exit 0
-# HIMMEL-3929: up to the verb the ONLY tokens are `gh`, -R/--repo <v> (before or
+# up to the verb the ONLY tokens are `gh`, -R/--repo <v> (before or
 # after `pr`) and one `pr`; the repo found here is the gated repo exactly like one
 # after the verb. Anything else (api, alias, a wrapper word, another flag) denies.
 shift
@@ -176,7 +176,7 @@ while [ "$#" -gt 0 ]; do
         --repo=*) repo="${1#--repo=}" ;;
         --repo|-R) if [ "$#" -ge 2 ]; then repo="$2"; shift; fi ;;
         # --match-head-commit is captured (not just consumed) so gate 3 can
-        # verify a leg's merge pins the head its GO was bound to (HIMMEL-3142
+        # verify a leg's merge pins the head its GO was bound to (
         # CR round). Both spellings: the space form below, and =-form here.
         --match-head-commit=*) match_head="${1#--match-head-commit=}" ;;
         --match-head-commit)
@@ -195,7 +195,7 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 
-# No --help/-h carve-out (HIMMEL-3915): every spelling of it was a new bypass
+# No --help/-h carve-out: every spelling of it was a new bypass
 # (escaped spaces, $'..' quoting, delimiters). A help-flagged merge is gated like
 # any other; the deny text points at `gh help pr merge`, which is not a merge.
 
@@ -219,12 +219,12 @@ fi
 [ -z "$sel" ] && exit 0   # cannot resolve target: fail open
 
 # ── Resolve the PR (number + head, shared by gates 3 and 4) — FIRST, before any
-# gate, and BOUNDED. HIMMEL-3915: on a real merge command an UNRESOLVED lookup
+# gate, and BOUNDED. On a real merge command an UNRESOLVED lookup
 # (selector AND cwd-branch re-anchor) fails CLOSED for every session. It used to
 # exit 0 after the CR/CI gates, so a transient gh/auth error let a trust-path PR
 # through with no GO; and an unbounded `gh pr view` hang (here or in the gates'
 # own lookups) exhausted the hook budget, which Claude Code reads as non-blocking.
-# The HIMMEL-936 api-error-fails-open contract now covers only the CR/CI gates'
+# The api-error-fails-open contract now covers only the CR/CI gates'
 # own API reads, after this lookup has already succeeded. Each lookup is
 # bounded (10s); a timeout reads as unresolved.
 # _gate4_bounded <secs> <outfile> <cmd...> — run <cmd> with stdout to
@@ -252,7 +252,7 @@ _gate4_bounded() {
 }
 go_tmp=$(mktemp "${TMPDIR:-/tmp}/block-unresolved-cr-merge-view.XXXXXX" 2>/dev/null) || go_tmp=""
 gh_t0=$SECONDS
-# HIMMEL-3918 (I1): ONE 45s budget for the whole hook (Claude Code kills it at
+# (I1): ONE 45s budget for the whole hook (Claude Code kills it at
 # 60s and reads that as non-blocking). _budget_left <cap> prints min(cap, left).
 _budget_left() {
     local left=$((45 - (SECONDS - gh_t0)))
@@ -262,10 +262,10 @@ _budget_left() {
 }
 gh_to_flag=$(mktemp "${TMPDIR:-/tmp}/block-unresolved-cr-merge-timeout.XXXXXX" 2>/dev/null) || gh_to_flag=""
 trap 'rm -f "$go_tmp" "$gh_to_flag" "${trust_tmp:-}"' EXIT
-# HIMMEL-3918 (3): every gh call the sourced gate libraries make (cr-merge-gate,
+# every gh call the sourced gate libraries make (cr-merge-gate,
 # ci-green-gate and the cr-signal / cr-body-findings helpers they call) goes
 # through this shadow function, bounded (10s) like the lookup above. The libs
-# fail OPEN on a gh error (HIMMEL-936), and an unbounded hang would run out the
+# fail OPEN on a gh error, and an unbounded hang would run out the
 # hook budget, which Claude Code reads as non-blocking - so a timeout is recorded
 # in $gh_to_flag and the hook DENIES after each gate call (_gh_timed_out). Set in
 # the hook, not the libs: it also bounds the transitive calls, and the libs'
@@ -311,7 +311,7 @@ _go_view() {
     fi
     go_meta=$(cat "$go_tmp" 2>/dev/null) || go_meta=""
 }
-# HIMMEL-2141: bind the PR number to ITS repo before anything resolves it. The
+# bind the PR number to ITS repo before anything resolves it. The
 # effective repo is the explicit -R/--repo, else the repo of the payload cwd (the
 # directory `gh pr merge` will run in); the project repo is the one this hook runs
 # in. A selector is only meaningful inside one repo, so when the two differ the
@@ -361,7 +361,7 @@ if [ -z "$go_num" ] || [ -z "$go_sha" ]; then
     exit 2
 fi
 
-# HIMMEL-3918 (4): a gate library that will not load DENIES on a real merge (it
+# a gate library that will not load DENIES on a real merge (it
 # used to `|| exit 0`, so a missing/unreadable/truncated lib silently dropped the
 # CR and CI gates). Readability first, per scripts/hooks/CLAUDE.md: on bash 3.2 a
 # failed `.` exits the shell regardless of an `||` guard.
@@ -393,7 +393,7 @@ if [ "$rc" = "2" ]; then
     exit 2
 fi
 
-# ── CI-green merge gate (HIMMEL-1043) — runs SECOND, after the CR gate ──
+# ── CI-green merge gate — runs SECOND, after the CR gate ──
 # Same extracted selector ($sel)/$repo + rc=3 re-anchor pattern as the CR gate
 # above; the CI gate is independent (its own bypass CI_MERGE_GATE_OK=1) and
 # never coupled to CR_PROFILE. A guard bug must NEVER block a legit merge, so
@@ -422,14 +422,14 @@ if [ "$ci_rc" = "2" ]; then
     exit 2
 fi
 
-# ── Console-GO merge gate (HIMMEL-2919/HIMMEL-3142) — runs THIRD, after CR
+# ── Console-GO merge gate — runs THIRD, after CR
 # and CI — see the header comment for gate 3. Only binds a console-spawned leg
-# (console_leg truthy, scripts/lib/go-gate.sh — HIMMEL-3149); a non-leg
+# (console_leg truthy, scripts/lib/go-gate.sh —); a non-leg
 # session (HIMMEL_CONSOLE_LEG unset/empty, by far the common case) never
 # reaches the `. go-gate.sh` below, so gate 3 never turns a broken library
 # into a blocker for sessions it was never meant to bind. (Gate 4, the
 # trust-path gate at the end, does load go-gate.sh for EVERY session — see
-# there, HIMMEL-3910.)
+# there.)
 #
 # console_leg lives in scripts/lib/go-gate.sh beside go_gate() itself, shared
 # with merge-on-green.sh's own console-GO gate and go.sh's own refusal, so
@@ -458,28 +458,28 @@ else
 fi
 
 # PR number + head-sha (shared by gates 3 and 4) were resolved up front
-# (HIMMEL-3915, see "Resolve the PR" above).
+# (see "Resolve the PR" above).
 go_url=$(printf '%s' "$go_meta" | jq -r '.url // empty' 2>/dev/null || true)
 
-# HIMMEL-3578: the GO mac binds the repo, and gate 4 reads the trust list from
+# the GO mac binds the repo, and gate 4 reads the trust list from
 # it, so resolve nwo the same way merge-on-green.sh does — from an explicit
 # --repo/-R on the merge command itself when given (already extracted into
 # $repo above), else the current checkout. `gh repo view` is timeout-bounded:
 # this hook runs on a budget, and a hang here must read as a refusal, never
 # as an allow.
-# HIMMEL-3578 (round 2): resolve the GNU-semantics `timeout` through the
+# resolve the GNU-semantics `timeout` through the
 # shared resolver, which also tries `gtimeout` — a bare `timeout` check alone
 # left every merge refused on stock macOS (no coreutils). Gate 4 bounds its
 # own calls with it too.
 # shellcheck disable=SC1091
 # shellcheck source=../lib/timeout-bin.sh
-# HIMMEL-3929: a missing/unreadable timeout-bin.sh DENIES (readability first, as
+# a missing/unreadable timeout-bin.sh DENIES (readability first, as
 # for the libraries above) instead of running on with no resolver.
 if ! { [ -r "$SCRIPT_DIR/../lib/timeout-bin.sh" ] && . "$SCRIPT_DIR/../lib/timeout-bin.sh"; } 2>/dev/null; then
     _deny "cannot load scripts/lib/timeout-bin.sh — refusing (the bounded gate calls must fail closed, not silently lose their timeout resolver)"
 fi
 go_nwo="$repo"
-# HIMMEL-3918 (I1): through the shadow gh (10s cap, shared hook budget), never
+# (I1): through the shadow gh (10s cap, shared hook budget), never
 # the real gh - a hang here must read as a refusal, not run out the hook budget.
 if [ -z "$go_nwo" ]; then
     go_nwo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || go_nwo=""
@@ -489,7 +489,7 @@ if [ -z "$go_nwo" ]; then
     exit 2
 fi
 
-# HIMMEL-3910 (judge round): gates 3 and 4 use the PR's CANONICAL owner/name,
+# (judge round): gates 3 and 4 use the PR's CANONICAL owner/name,
 # read from the url of the PR gh resolved — never the --repo text as typed.
 # gh accepts `-R github.com/o/r` (HOST/OWNER/REPO); fed verbatim to the trust
 # list read, that spelling 404s, and a 404 reads as "another repo"
@@ -526,7 +526,7 @@ if [ "$is_leg" -eq 1 ]; then
     go_root=""
     # shellcheck source=scripts/lib/handover-path.sh
     # shellcheck disable=SC1091
-    # HIMMEL-3573 row 1: go_resolve_root is the same resolver go.sh writes
+    # row 1: go_resolve_root is the same resolver go.sh writes
     # through, so a leg running `gh pr merge` directly with no HANDOVER_DIR in
     # its own env still lands on the anchor's .env-configured root, the one a
     # valid console GO was actually written under — a plain handover_root()
@@ -572,10 +572,10 @@ if [ "$is_leg" -eq 1 ]; then
     fi
 fi
 
-# ── Trust-path gate (HIMMEL-3910) — runs FOURTH, for EVERY session. A PR
+# ── Trust-path gate — runs FOURTH, for EVERY session. A PR
 # touching a CI trust path (scripts/ci/ci-trust-paths.txt) needs a
 # trust-reviewed console GO, pinned to its head. merge-on-green.sh has asked
-# this since HIMMEL-3895; a direct `gh pr merge` used to pass the same PR on an
+# this; a direct `gh pr merge` used to pass the same PR on an
 # ordinary GO (a leg) or on none (the operator). The question itself is
 # trust_path_check in scripts/lib/go-gate.sh, shared with merge-on-green.sh so
 # the two entry points cannot drift. Unlike gate 3 this binds the operator too,
@@ -640,7 +640,7 @@ case "$trust_out" in
         ;;
     *) gate4_refuse "CI trust-path check gave an unrecognised answer for PR #$go_num — refusing" ;;
 esac
-# HIMMEL-3918 (5) — runs LAST, so each gate keeps its own reason: head TOCTOU. Every gate read the PR at $go_sha, but a
+# (5) — runs LAST, so each gate keeps its own reason: head TOCTOU. Every gate read the PR at $go_sha, but a
 # bare `gh pr merge 42` merges whatever head the PR has at merge time - a push in
 # that window lands unreviewed code past the gates. Gates 3 and 4 already demanded
 # the pin when they applied; it is now required of EVERY direct merge, and it must

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/block-leg-askuserquestion.sh (HIMMEL-2923):
-# a console-spawned leg (HIMMEL_CONSOLE_LEG=1, set by HIMMEL-2919's launcher)
+# Smoke suite for scripts/hooks/block-leg-askuserquestion.sh:
+# a console-spawned leg (HIMMEL_CONSOLE_LEG=1, set by the launcher)
 # calling AskUserQuestion is denied — nobody answers in that window. Covers:
 # marker+tool -> deny, marker unset -> allow, marker+other tool -> allow,
 # malformed/empty stdin -> allow (fail-open; a hook crash must never lock an
@@ -13,7 +13,7 @@ set -uo pipefail
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HOOKS/block-leg-askuserquestion.sh"
 
-# HIMMEL-3092: a console leg's shell exports guard overrides (INLINE_IMPL_OK,
+# a console leg's shell exports guard overrides (INLINE_IMPL_OK,
 # HIMMEL_CONSOLE_LEG, HIMMEL_HOOK_INTEGRITY_BYPASS_OK, ...) that reach the hook
 # under test and flip every "override UNSET" case. Clear them before any case
 # runs; a case that needs one still sets it explicitly on its own invocation.

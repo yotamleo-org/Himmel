@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Shard of test-block-write-into-main-checkout.sh (HIMMEL-4164 split, so each
-# suite stays under its CI per-suite cap): slice 1 of 3 of the HIMMEL-2592
+# Shard of test-block-write-into-main-checkout.sh (split, so each
+# suite stays under its CI per-suite cap): slice 1 of 3 of the
 # generated grammar matrix (this slice also carries the one-off ordering and
 # enumerator guards) plus the round-9 POSITION x ARM rows.
 # Same fixtures + harness as the parent suite via lib-test-write-fence.sh and
@@ -16,17 +16,17 @@ _matrix_run_slice 1 3
 
 echo "== HIMMEL-2592 round 9 (RETASK R-N1-SED-4b91d7) — POSITION x ARM: a redirect leading/mid/trailing =="
 #
-# Console-mandated STANDING GUARD, not a scratch probe: three rounds each
+# STANDING GUARD, not a scratch probe: three separate fixes each
 # fixed one shape a redirect could take relative to an option/operand
-# (round 6: before a separated option value; round 7: input vs output
-# direction; round 8: a bare fd digit as a real value) and round 8's fix
+# before a separated option value, input vs output
+# direction, a bare fd digit as a real value — and the last fix
 # still had a live fail-open because TRAILING position — the redirect after
-# every real operand — had never been tested in ANY arm. Round 9 replaced
+# every real operand — had never been tested in ANY arm. A structural fix replaced
 # the point fixes with a structural one (see _bwimc_space_before_redirects'
 # header): a bare fd number now never becomes a separate token at all, so
 # no arm can see one. This matrix is what proves that holds across EVERY
 # arm this fence models, at all three redirect positions, not just cp
-# (where the round-8 panel happened to find it) — "re-ask the question per
+# (where it was first found) — "re-ask the question per
 # arm rather than reasoning from cp," per the retask.
 #
 # `dd` is on the console's arm list but is NOT modelled by this fence at

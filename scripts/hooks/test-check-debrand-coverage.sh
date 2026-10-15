@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-debrand-coverage.sh (HIMMEL-480).
+# Smoke test for scripts/hooks/check-debrand-coverage.sh.
 #
 # WHY THIS FILE EXISTS: the generator suite (scripts/agents-md/test-generate.sh)
 # only exercises generate.mjs. The hook WRAPPER around it was untested, and a

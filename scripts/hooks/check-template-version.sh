@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Template-version gate (HIMMEL-524): a commit/push that changes any
+# Template-version gate: a commit/push that changes any
 # template-OWNED file under templates/luna-second-brain/ MUST also bump the
 # template's marketplace.json metadata.version — the stamp scripts/upgrade.sh
 # compares against each vault's .vault-template.json. A content change with no
 # bump ships "already current" and strands the change for every stamped vault,
-# the 449/501/521 failure mode this closes structurally (HIMMEL-195).
+# the 449/501/521 failure mode this closes structurally.
 #
 # "Owned" = the upgrade.sh classifier's propagated-content classes
 # (overwrite | threeway | jsonmerge); skip-class files (skip / skipexists /
@@ -44,7 +44,7 @@ MP_REPO="$TEMPLATE_ROOT/$MP_REL"
 # No early "$TEMPLATE_ROOT absent -> exit 0" short-circuit here on purpose: a
 # WORKING-TREE dir check run before the diff is inspected would bypass the
 # gate on exactly the case it exists to catch — deleting the entire template
-# dir in this commit/range (HIMMEL-524 CR round 3). The owned-files collection
+# dir in this commit/range The owned-files collection
 # below is diff-driven (git diff --name-only / --cached), so it still catches
 # deletions even though the dir is now gone from the working tree; a checkout
 # that genuinely never had the template (nothing touched under TEMPLATE_ROOT
@@ -96,7 +96,7 @@ if [ "$mode" = "--pre-push" ]; then
     # than hard-block a legit offline push. A FAILED fetch (network blip, etc.)
     # is different: falling through would silently compare against a STALE
     # local origin/$db, which can carry an upstream version bump the branch
-    # never earned — fail-closed instead (HIMMEL-524 CR round 5).
+    # never earned — fail-closed instead
     if [ "${TEMPLATE_VERSION_NO_FETCH:-0}" != "1" ]; then
         git fetch -q origin "$db" 2>/dev/null || { echo "→ template-version: git fetch origin/$db failed — fail-closed (bypass: TEMPLATE_VERSION_NO_FETCH=1)" >&2; exit 2; }
     fi
@@ -109,10 +109,10 @@ if [ "$mode" = "--pre-push" ]; then
     # --no-renames: name-only rename detection would report only the
     # destination path for a moved owned file, so the deleted source is never
     # classified and a rename-out-of-template silently escapes the gate
-    # (HIMMEL-524 CR round 4). Force delete+add so both sides surface.
+    # Force delete+add so both sides surface.
     # A FAILED diff must fail-closed too, not fall through as an empty
     # touched set — `|| true` here would turn "git couldn't evaluate the
-    # range" into a silent pass (HIMMEL-524 CR round 5).
+    # range" into a silent pass
     if ! touched=$(git diff --no-renames --name-only "$base...HEAD" 2>/dev/null); then
         echo "→ template-version: cannot collect pre-push changes — fail-closed" >&2; exit 2
     fi
@@ -120,13 +120,13 @@ if [ "$mode" = "--pre-push" ]; then
     # prev_v must be read at the MERGE-BASE, not the base tip: the touched set
     # above is a three-dot diff (merge-base...HEAD), so the version comparison
     # has to match that same base or a post-split bump on main's tip falsely
-    # clears a branch that never bumped (HIMMEL-524 CR).
+    # clears a branch that never bumped.
     mb=$(git merge-base "$base" HEAD 2>/dev/null) || { echo "→ template-version: cannot resolve merge-base — fail-closed" >&2; exit 2; }
     prev_v="$(version_at "$mb:$MP_REPO")"
 else
     # --no-renames: same rationale as the pre-push branch above — force
     # delete+add so a renamed owned file surfaces both sides. Fail-closed on
-    # a diff failure too (HIMMEL-524 CR round 5) — see the pre-push branch.
+    # a diff failure too — see the pre-push branch.
     if ! touched=$(git diff --no-renames --cached --name-only); then
         echo "→ template-version: cannot collect staged changes — fail-closed" >&2; exit 2
     fi

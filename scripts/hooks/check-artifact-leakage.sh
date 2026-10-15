@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Pre-commit hook: block stray generated artifacts from being committed
-# (HIMMEL-371).
 #
 # Why: himmel runs concurrent sessions sharing one repo tree, and build/test
 # steps (sometimes the wrong package manager) drop untracked artifacts. A
-# blanket `git add -A` then sweeps them into a commit — on HIMMEL-366 an npm
+# blanket `git add -A` then sweeps them into a commit — an npm
 # `package-lock.json` landed in the bun package scripts/luna-vitals/ and rode
 # into a commit, caught only by reading `git show --stat` after the fact.
 #

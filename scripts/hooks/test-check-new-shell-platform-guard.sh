@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-new-shell-platform-guard.sh (HIMMEL-2682).
+# Smoke test for scripts/hooks/check-new-shell-platform-guard.sh.
 #
 # Builds throwaway git repos, stages a newly-added scripts/**/*.sh in each,
 # exercises each rc case, asserts exact rc. Modeled on test-doc-guard.sh:
@@ -46,7 +46,7 @@ run_case() {
     fi
 }
 
-# A1 (HIMMEL-3125: advisory, no longer a RED control) -- a staged new
+# A1 (advisory, no longer a RED control) -- a staged new
 # scripts/x/foo.sh with no header -> WARNS but does not block (rc=0).
 setup_repo
 mkdir -p "$R/scripts/x"
@@ -69,8 +69,8 @@ printf 'Write-Host "hi"\n' > "$R/scripts/x/foo.ps1"
 git -C "$R" add scripts/x/foo.sh scripts/x/foo.ps1
 run_case "A3 new .sh with .ps1 twin -> passes" 0
 
-# A3b (HIMMEL-3125: advisory) -- an UNTRACKED .ps1 sitting next to a
-# markerless staged .sh must NOT satisfy the twin check (codex-1): the gate
+# A3b (advisory) -- an UNTRACKED .ps1 sitting next to a
+# markerless staged .sh must NOT satisfy the twin check: the gate
 # validates the STAGED index, not the working tree, so this still WARNS --
 # but warning is not blocking, so rc=0.
 setup_repo
@@ -111,12 +111,12 @@ else
     _failures=$((_failures + 1))
 fi
 
-# B1 (HIMMEL-2745) -- the real ws5-invariants T15 section on this checkout
+# B1 -- the real ws5-invariants T15 section on this checkout
 # still runs CLEANLY, via the SHARED platform_guard_ok predicate this change
 # points it at (proving the guard hook and ws5-invariants' T15 have not
 # drifted apart -- see scripts/lib/platform-guard.sh's own header).
 #
-# T15 is deliberately environment-dependent (HIMMEL-2642): a public
+# T15 is deliberately environment-dependent: a public
 # propagation-snapshot checkout SKIPs T12/T13/T15 outright, so asserting a
 # literal PASS line -- what this case used to require -- fails on the public
 # projection even though the shared predicate is perfectly wired there; it is
@@ -126,7 +126,7 @@ fi
 # exactly what a genuinely diverged/broken shared predicate would produce.
 t15_out="$(cd "$REPO_ROOT" && bash scripts/parity/test-ws5-invariants.sh 2>&1)"
 rc=$?
-# Captured into variables rather than piped into `grep -q` (HIMMEL-1430):
+# Captured into variables rather than piped into `grep -q`:
 # this file runs under `set -o pipefail`, where grep -q exits at its first
 # match and the producer's SIGPIPE can flip the pipeline's status.
 t15_pass="$(printf '%s' "$t15_out" | grep -E '^PASS T15 x-platform' || true)"

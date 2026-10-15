@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Detects `core.hooksPath` misconfiguration that silently bypasses git hooks.
 #
-# Background (HIMMEL-105): in HIMMEL-45 the repo on disk was renamed
+# Background: the repo on disk was renamed
 # `yotam_internal` → `himmel`. The `.git/config` was carried over but the
 # absolute path inside `core.hooksPath` was not updated. Git silently
 # skipped every pre-commit + pre-push hook for an unknown duration —
@@ -100,7 +100,7 @@ fi
 # `.git` — that's where the canonical pre-commit hooks live. We accept
 # core.hooksPath pointing inside EITHER as valid.
 #
-# HIMMEL-2640: --git-common-dir is relative to CWD, not to toplevel — joining
+# --git-common-dir is relative to CWD, not to toplevel — joining
 # it against toplevel (as this used to do) is only correct when cwd IS
 # toplevel. Invoked from a subdirectory, that join anchored the wrong number
 # of ".." segments and produced a gitcommondir that did not point at the

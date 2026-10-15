@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Shard of test-block-write-into-main-checkout.sh (HIMMEL-4164 split, so each
+# Shard of test-block-write-into-main-checkout.sh (split, so each
 # suite stays under its CI per-suite cap): the heredoc / fail-open bypass /
-# command-substitution / ANSI-C rows (HIMMEL-2656/2679/3621/3622/4010).
+# command-substitution / ANSI-C rows.
 # Same fixtures + harness as the parent suite via lib-test-write-fence.sh;
 # the FIXTURE RULE lives in test-block-write-into-main-checkout.sh.
 # shellcheck disable=SC2154  # pass/fail are defined by the sourced lib
@@ -11,7 +11,7 @@
 
 echo "== HIMMEL-2656/2679/2645: three fail-open bypasses =="
 
-# 69 (HIMMEL-2656): `sed -i --expr=...` — the ABBREVIATED long option matched
+# 69: `sed -i --expr=...` — the ABBREVIATED long option matched
 # neither the exact-name case nor follow-symlinks/in-place, so `_bwimc_saw_ef`
 # stayed 0 and the trailing file operand was mistaken for the sed PROGRAM —
 # no file token was ever checked, so the write was allowed outright.
@@ -21,19 +21,19 @@ check_both_reason "69a sed -i --expr='s/x/y/' primary/a.txt denies (abbreviated 
 check_both "69b NEGATIVE CONTROL: sed -i --expr='s/x/y/' |wt|/wtfile.txt still ALLOWS" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"sed -i --expr='s/x/y/' $FIX/wt/wtfile.txt\",\"cwd\":\"$FIX/wt\"}}"
 
-# 70 (HIMMEL-2679): `cp --remove-destination` unlinks the destination ENTRY
+# 70: `cp --remove-destination` unlinks the destination ENTRY
 # and creates a fresh regular file in its place — it does not write through a
 # symlink referent. The fence's destination resolution only checked the
 # resolved referent (worktree-owned, allow); `$FIX/primary/link-to-wt.txt` is
 # a symlink ENTRY inside the primary pointing at `$FIX/wt/wtfile.txt`
-# (fixture set up above, row "HIMMEL-2592 fixtures").
+# (fixture set up above).
 check_both_reason "70a cp --remove-destination wt/z.txt primary/link-to-wt.txt denies (entry replaced, not the referent)" \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp --remove-destination $FIX/wt/z.txt $FIX/primary/link-to-wt.txt\",\"cwd\":\"$FIX/wt\"}}" \
     "$FIX/primary/link-to-wt.txt"
 check_both "70b NEGATIVE CONTROL: plain cp (no --remove-destination) onto the same symlink writes THROUGH to the wt referent — still ALLOWS" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp $FIX/wt/z.txt $FIX/primary/link-to-wt.txt\",\"cwd\":\"$FIX/wt\"}}"
 
-# 70c (HIMMEL-2679): `-f`/`--force` folds into the SAME entry-mode trigger as
+# 70c: `-f`/`--force` folds into the SAME entry-mode trigger as
 # `--remove-destination` — GNU cp's `-f` falls back to unlinking the
 # destination ENTRY when a FOLLOW-mode write to the referent fails on
 # permissions (ground-truthed against real coreutils), the same
@@ -47,7 +47,7 @@ check_both_reason "70d cp -f wt/z.txt primary/link-to-wt.txt denies (bundled sho
 check_both "70e NEGATIVE CONTROL: cp -P wt/z.txt primary/link-to-wt.txt (no-dereference) still ALLOWS" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp -P $FIX/wt/z.txt $FIX/primary/link-to-wt.txt\",\"cwd\":\"$FIX/wt\"}}"
 
-# 70f/70g (J1285R Critical, regression against THIS PR's own 2679 change):
+# 70f/70g:
 # `-f`/`--force` does NOT unlink first like `--remove-destination` — GNU cp
 # opens the destination and FOLLOWS a symlink referent, falling back to
 # unlink-and-recreate only when that open fails on permissions (ground-truthed
@@ -66,7 +66,7 @@ check_both_reason "70g cp -f -t wt/childdir wt/z.txt denies (force follows the -
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cp -f -t $FIX/wt/childdir $FIX/wt/z.txt\",\"cwd\":\"$FIX/wt\"}}" \
     "$FIX/wt/childdir"
 
-# 71 (HIMMEL-2645): a heredoc OPENER that itself ends in a line continuation
+# 71: a heredoc OPENER that itself ends in a line continuation
 # (`cat <<EOF \` then a newline) is not yet a complete command line — bash
 # joins the next physical line onto it before the command ends, so a real
 # redirect there is still COMMAND text, not heredoc body. The old
@@ -83,7 +83,7 @@ HC_BODY_CMD=$(printf "cat <<EOF\nif a > b:\n    pass\nEOF")
 HC_BODY_JSON="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":$(printf '%s' "$HC_BODY_CMD" | jq -Rs .),\"cwd\":\"$FIX/wt\"}}"
 check_both "71c REGRESSION CONTROL: a heredoc body line containing '>' (no continuation) still ALLOWS" allow "$HC_BODY_JSON"
 
-# 71d COVERAGE (HIMMEL-2645 sibling, `<<-EOF` tab-strip opener variant): the
+# 71d COVERAGE (sibling, `<<-EOF` tab-strip opener variant): the
 # same opener-ends-in-a-continuation shape as 71a, dashed variant. NOT a RED
 # control — this shape already denies against main's (pre-fix) hook too, so
 # it doesn't demonstrate a bug this PR fixes; it pins that the fix doesn't
@@ -93,7 +93,7 @@ HCD_JSON="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":$(printf '%s' "$HC
 check_both_reason "71d COVERAGE: cat <<-EOF \\ + newline + > primary/a.txt denies (tab-strip opener, continued redirect is command text)" \
     "$HCD_JSON" "$FIX/primary/a.txt"
 
-# 71e COVERAGE (HIMMEL-2645 sibling, quoted opener `<<'EOF'` variant): same
+# 71e COVERAGE (sibling, quoted opener `<<'EOF'` variant): same
 # shape, quoted delimiter word. NOT a RED control, same reason as 71d — pins
 # that quoting the delimiter doesn't suppress the continuation check.
 HCQ_CMD=$(printf "cat <<'EOF' \\\\\n> %s/a.txt\nbody\nEOF" "$FIX/primary")
@@ -101,7 +101,7 @@ HCQ_JSON="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":$(printf '%s' "$HC
 check_both_reason "71e COVERAGE: cat <<'EOF' \\ + newline + > primary/a.txt denies (quoted opener, continued redirect is command text)" \
     "$HCQ_JSON" "$FIX/primary/a.txt"
 
-# 71f REGRESSION CONTROL (HIMMEL-2645 sibling): a line continuation that
+# 71f REGRESSION CONTROL: a line continuation that
 # occurs INSIDE an already-active heredoc BODY (not on the opener line
 # itself) must stay body text — it is not a second opener-continuation.
 HCI_CMD=$(printf 'cat <<EOF\nline with \\\n> not-a-real-redirect\nEOF')
@@ -110,7 +110,7 @@ check_both "71f REGRESSION CONTROL: a continuation INSIDE an active heredoc body
 
 echo "== HIMMEL-3621: a heredoc terminator that is never matched fails CLOSED =="
 
-# 72a (HIMMEL-3621): the heredoc delimiter word itself is split by a line
+# 72a: the heredoc delimiter word itself is split by a line
 # continuation (`<<EO\` + newline + `F`), so the real bash delimiter is
 # `EOF` split across two physical lines and no single following LINE can
 # ever equal it — the terminator is never found. The old walk blanked to
@@ -120,7 +120,7 @@ UT_JSON="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":$(printf '%s' "$UT_
 check_both_reason "72a heredoc delimiter split by continuation (terminator never matches) denies closed" \
     "$UT_JSON" "terminator was never found"
 
-# 72b/72c (J1285R Minor): an unquoted arithmetic left-shift by a NAME
+# 72b/72c: an unquoted arithmetic left-shift by a NAME
 # (`$((1 << n))`, `(( x = y << z ))`) was misread as a heredoc opener `<<`
 # followed by delimiter word `n`/`z` — no line ever equals that "delimiter",
 # so it failed closed as unresolved-heredoc, a new false DENY vs main. Fixed
@@ -130,8 +130,8 @@ check_both "72b echo \$((1 << n)) ALLOWS (arithmetic shift by a name is not a he
 check_both "72c (( x = y << z )) ALLOWS (same shift-by-name shape, arithmetic COMMAND form)" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"(( x = y << z ))\",\"cwd\":\"$FIX/wt\"}}"
 
-# HIMMEL-3622 (command-substitution body scanning) was pulled from this PR by
-# judge ruling J1285O: the extractor it added both left a real fail-open
+# (command-substitution body scanning) is deliberately absent:
+# the extractor it added both left a real fail-open
 # (backtick nested inside $(...)) and introduced a new false DENY on the
 # fleet's own `git commit -m "$(cat <<'EOF' … EOF)"` / `gh pr create --body`
 # idiom whenever the message has an apostrophe, a lone `(` or a `"`. 3622
@@ -168,7 +168,7 @@ check_both "74c REGRESSION CONTROL: commit heredoc message with a double-quote s
 
 # 74d: `gh pr create --body "$(cat <<'EOF' ... EOF)"` with an apostrophe —
 # same idiom, PR-body form. Direct-exec only, same rationale as row 27:
-# block-terminal-write-fence.sh has its own separate, pre-existing HIMMEL-745
+# block-terminal-write-fence.sh has its own separate, pre-existing
 # policy that hard-blocks ALL `gh pr create` in the codex-direct lane
 # regardless of content (external-write class) — unrelated to this hook's
 # substitution/heredoc scanning, so sourced mode is out of scope here.
@@ -194,7 +194,7 @@ check_both "74f REGRESSION CONTROL: sed -n '/\\\$(/p' f still ALLOWS" allow "$SD
 BTQ_LIT_JSON="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo 'don\`t'\",\"cwd\":\"$FIX/wt\"}}"
 check_both "74g REGRESSION CONTROL: echo 'don\`t' still ALLOWS" allow "$BTQ_LIT_JSON"
 
-# HIMMEL-3622: a redirect INSIDE a command substitution writes exactly like a
+# a redirect INSIDE a command substitution writes exactly like a
 # top-level one. The shared quote scanner marks everything inside a
 # double-quoted span inert, so `x="$(echo hi > P/f)"` hid the redirect; the
 # fix extracts every substitution body (any nesting, `$(...)` and backticks,
@@ -226,11 +226,11 @@ _subst_row "75p-W same shape aimed at the worktree (ALLOW)"               allow 
 _subst_row "75q-P a cd in an outer body reaches the nested body"          block "x=\"\$(cd $_PR; echo \"\$(echo hi > subst-rel.txt)\")\""
 _subst_row "75q-W same shape aimed at the worktree (ALLOW)"               allow "x=\"\$(cd $_WR; echo \"\$(echo hi > subst-rel.txt)\")\""
 # A body expands BEFORE its own clause runs: judged at the cwd the clause
-# starts in, not the one its own cd leaves (panel round 2, codex-1).
+# starts in, not the one its own cd leaves.
 _subst_row "75r-P body in a cd clause runs at the pre-cd cwd (primary)"      block "cd $_WR 2>\"\$(echo hi > subst-rel.txt)\"" "$_PR"
 _subst_row "75r-W same shape, pre-cd cwd is the worktree (ALLOW)"           allow "cd $_PR 2>\"\$(echo hi > subst-rel.txt)\"" "$_WR"
 # A quoted `)` inside a quoted nested substitution must not end the outer body
-# (panel round 3, codex-1): the body has a quote state of its own.
+# the body has a quote state of its own.
 _subst_row "75s-P quoted paren in a nested quoted body keeps the outer body open" block "x=\"\$(cd $_PR; echo \"\$(echo \")\" > subst-rel.txt)\")\""
 _subst_row "75s-W same shape aimed at the worktree (ALLOW)"                allow "x=\"\$(cd $_WR; echo \"\$(echo \")\" > subst-rel.txt)\")\""
 _subst_row "75t-P backtick with a quoted paren inside a quoted body"       block "x=\"\$(cd $_PR; echo \`echo \")\"\` > subst-rel.txt)\""
@@ -239,7 +239,7 @@ _subst_row "75u-P backtick body holds an escaped \$( that Bash unescapes"  block
 _subst_row "75u-W same shape aimed at the worktree (ALLOW)"                allow "x=\`echo \"\\\$(echo hi > $_WR/subst-rel.txt)\"\`"
 _SOH=$'\001'
 _subst_row "75v-P a literal U+0001 byte must not consume a body"           block "echo $_SOH; cd $_PR; x=\"\$(echo hi > subst-rel.txt)\""
-# HIMMEL-4010: a raw marker byte now fails closed anywhere (row 76zz)
+# a raw marker byte now fails closed anywhere (row 76zz)
 _subst_row "75v-W same shape aimed at the worktree (DENY: marker byte)"    block "echo $_SOH; cd $_WR; x=\"\$(echo hi > subst-rel.txt)\""
 # A `)` inside a ${...} expansion is text, not the body's closer.
 _subst_row "75w-P \${y:-)} must not close the body early"                   block "x=\"\$(echo \${y:-)} > $_PR/f.txt)\""
@@ -255,7 +255,7 @@ _subst_row "75k single-quoted \$(echo > P) is literal text (ALLOW)" allow "echo 
 _subst_row "75l read redirect inside a substitution (ALLOW)" allow "x=\"\$(cat < $FIX/primary/existing.txt)\""
 _subst_row "75m fd-dup inside a substitution (ALLOW)" allow "x=\"\$(ls 2>&1)\""
 
-# HIMMEL-4010: three residual gaps in the same substitution scan.
+# three residual gaps in the same substitution scan.
 # (1) An ANSI-C `$'…'` span ends only at an UNESCAPED `'`; the plain
 #     single-quote rule ended it at `\'` and flipped every later quote.
 # (2) A target computed from a substitution: `$(pwd)` is the cwd, any other
@@ -338,7 +338,7 @@ _subst_row "76zzf decoy sl_ itself stays a worktree path (ALLOW)" allow "touch $
 
 echo "== HIMMEL-4397: a large heredoc commit message stays linear =="
 # A 10 KB `git commit -m "$(cat <<'EOF' …)"` took ~10 s idle (12-13 s under
-# load in J1672c) because every raw reading char-scanned the whole body; the
+# load) because every raw reading char-scanned the whole body; the
 # member timeout is 15 s. Budget = measured loaded figure x2 (~1 s idle, 3 s
 # loaded), never an idle one. Each shape: verdict ALLOW (worktree cwd) in both
 # lanes, direct-exec inside the budget.
@@ -379,7 +379,7 @@ _subst_row "4397h bash -c quoted-heredoc body writes into the primary (DENY)" bl
     "$(printf 'bash -c "$(cat <<'"'"'EOF'"'"'\ntouch %s/a.txt\nEOF\n)"' "$_PR")"
 _subst_row "4397i eval quoted-heredoc body writes into the primary (DENY)" block \
     "$(printf 'eval "$(cat <<'"'"'EOF'"'"'\ntouch %s/a.txt\nEOF\n)"' "$_PR")"
-# J2249a: a `<<` whose delimiter the opener regex cannot parse (dash, dot,
+# A `<<` whose delimiter the opener regex cannot parse (dash, dot,
 # digit-led) is never counted, so its body is scanned as code; a lone quote in
 # that body must not let the fast path swallow a later real redirect.
 _gm=$(printf 'git commit -m "$(cat <<'"'"'EOF'"'"'\nfix: msg\nEOF\n)"')
@@ -393,7 +393,7 @@ _subst_row "4397m CONTROL: dashed heredoc with a lone quote, then a worktree wri
     "$(printf '%s\ncat <<'"'"'E-X'"'"'\nit'"'"'s\nE-X\necho x > %s/z.txt' "$_gm" "$_WR")"
 _subst_row "4397n CONTROL: dashed heredoc, no git commit, primary write (DENY)" block \
     "$(printf 'cat <<'"'"'E-X'"'"'\nit'"'"'s\nE-X\necho x > %s/a.txt' "$_PR")"
-# J2249b: a SECOND `<<` on the physical line of a recognised opener is not
+# A SECOND `<<` on the physical line of a recognised opener is not
 # counted (one terminator is tracked per line), so its body is scanned as code.
 _subst_row "4397o git-commit opener first, second '<<Y' on the same line with a lone quote, then a primary write (DENY)" block \
     "$(printf 'git commit -m "$(cat <<'"'"'EOF'"'"' <<'"'"'Y'"'"'\nfix: msg\nEOF\nit'"'"'s\nY\n)"\necho x > %s/a.txt' "$_PR")"
@@ -405,7 +405,7 @@ _subst_row "4397r git-commit opener first, same-line second opener, lone quote c
     "$(printf 'git commit -m "$(cat <<'"'"'EOF'"'"' <<'"'"'Y'"'"'\nfix: msg\nEOF\nit'"'"'s\nY\n)"\necho x > %s/a.txt\necho it'"'"'s' "$_PR")"
 _subst_row "4397s plain opener then git-commit opener on one line, lone quote closed after a primary write (DENY)" block \
     "$(printf 'cat <<'"'"'Y'"'"' ; git commit -m "$(cat <<'"'"'EOF'"'"'\nit'"'"'s\nY\nfix: msg\nEOF\n)"\necho x > %s/a.txt\necho it'"'"'s' "$_PR")"
-# J2249c: the walk only sees a `<<` while no heredoc is active, so a second
+# The walk only sees a `<<` while no heredoc is active, so a second
 # opener on the opener's line is never counted; a final line holding a `)`
 # rebalances the walk and the fast path swallowed the primary redirect between.
 _subst_row "4397t two quoted openers on one git commit, lone quote in the second body, primary write, then a line with a ) (DENY)" block \
@@ -416,7 +416,7 @@ _subst_row "4397v unquoted second opener beside the git commit opener, lone quot
     "$(printf 'git commit -m "$(cat <<'"'"'EOF'"'"' <<Y\nfix: msg\nEOF\nit'"'"'s\nY\n)"\necho x > %s/a.txt\necho "it'"'"'s )"' "$_PR")"
 _subst_row "4397w CONTROL: two quoted openers, lone quote, worktree write, then a line with a ) (ALLOW)" allow \
     "$(printf 'git commit -m "$(cat <<'"'"'EOF'"'"' <<'"'"'Y'"'"'\nfix: msg\nEOF\nit'"'"'s\nY\n)"\necho x > %s/z.txt\necho "it'"'"'s )"' "$_WR")"
-# J2249d: bash joins a backslash-newline before it reads `<`, so a second opener
+# Bash joins a backslash-newline before it reads `<`, so a second opener
 # split as `<\` + newline + `<'Y'` is the heredoc <<'Y'; the flat count must
 # drop every backslash-newline pair first or it misses that opener.
 _subst_row "4397x second opener split by a backslash-newline, lone quote, primary write, then a line with a ) (DENY)" block \

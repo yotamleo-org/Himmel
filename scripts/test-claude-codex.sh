@@ -120,6 +120,12 @@ for bad in '{"permissions":[]}' '{"permissions":"x"}' '{"permissions":{"deny":"x
   [ ! -f "$FAKEHOME/.claude-codex/.seeded" ] || { echo "FAIL: malformed permissions ($bad) still marked the config seeded"; FAILS=$((FAILS + 1)); }
 done
 
+# permissions.deny: null must refuse with the specific sanitizer message, so deleting the Array.isArray check cannot go unnoticed.
+setup
+printf '%s\n' '{"permissions":{"deny":null}}' > "$FAKEHOME/.claude/settings.json"
+run_launcher_expect "permissions.deny null refuses with the array message" 4 'permissions.deny is not an array'
+[ ! -f "$FAKEHOME/.claude-codex/.seeded" ] || { echo "FAIL: permissions.deny null still marked the config seeded"; FAILS=$((FAILS + 1)); }
+
 # the seeded lane settings carry explicit deny rules for the categories the weak
 # classifier misses. The force-push rows are read from this repo's own .claude/settings.json
 # (real syntax), so the lane cannot drift from the harness's deny vocabulary.
@@ -276,6 +282,19 @@ printf 'operator rules\n' > "$seeded5"
 printf '0\n' > "$seeded_sentinel5"
 run_launcher "old SEED_VERSION forces a reseed"
 grep -qF 'HIMMEL-1927' "$seeded5" || { echo "FAIL: old SEED_VERSION did not force the stanza to land"; FAILS=$((FAILS + 1)); }
+
+# --- T5b: a machine seeded at the previous generation (v4, matching model)
+# reseeds once at v5 — the bump is what lets a pre-5792 seed pick up the
+# fail-closed deny-rule refusal.
+setup
+MODEL="gpt-5.6-sol"
+printf 'operator rules\n' > "$FAKEHOME/.claude/CLAUDE.md"
+run_launcher "seed before v4 reseed test"
+printf 'operator rules\n' > "$FAKEHOME/.claude-codex/CLAUDE.md"
+printf '4|gpt-5.6-sol\n' > "$FAKEHOME/.claude-codex/.seeded"
+run_launcher "v4 sentinel reseeds once"
+grep -qF 'HIMMEL-1927' "$FAKEHOME/.claude-codex/CLAUDE.md" || { echo "FAIL: v4 sentinel did not force a reseed"; FAILS=$((FAILS + 1)); }
+grep -q '^5|' "$FAKEHOME/.claude-codex/.seeded" || { echo "FAIL: v4 reseed did not stamp v5"; FAILS=$((FAILS + 1)); }
 
 # --- T6: an EMPTY/legacy sentinel — the exact shape every currently-installed
 # machine has today, written by the old `: > "$CONFIG_DIR/.seeded"` — is also

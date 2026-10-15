@@ -1,4 +1,4 @@
-# Smoke test for scripts/hooks/check-agents-md-fresh.ps1 (HIMMEL-471).
+# Smoke test for scripts/hooks/check-agents-md-fresh.ps1.
 # Builds throwaway git repos, exercises each rc case, asserts exact rc.
 # PowerShell twin of test-check-agents-md-fresh.sh. The hook validates the
 # STAGED INDEX, so setups COMMIT an initial fresh pair then stage edits.

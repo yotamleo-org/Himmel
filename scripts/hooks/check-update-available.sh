@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-update-available.sh — SessionStart hook: nudge the operator when the
-# himmel checkout is behind its upstream (HIMMEL-413).
+# himmel checkout is behind its upstream.
 #
 # WHY this exists: himmel updates (hooks, commands, CLAUDE.md) only land via
 # git pull — autoUpdate never covers them (see docs/setup/updating.md). Without
@@ -11,7 +11,7 @@
 # Fail OPEN on everything: no git repo, no upstream, offline, git error, stat
 # error, any other unexpected state → exit 0, empty stdout. Never block.
 #
-# NON-GIT INSTALLS (HIMMEL-3247): a tarball / native-package install has no .git
+# NON-GIT INSTALLS: a tarball / native-package install has no .git
 # for the checks above to read, and used to fall out at "no git repo" — silent,
 # so the install rotted unannounced. When THIS script's own install root has no
 # .git, it compares VERSION against the latest release tag instead (see
@@ -24,7 +24,7 @@
 #   - State dir: UPDATE_CHECK_STATE_DIR, else the himmelctl cache dir
 #     (HIMMELCTL_CACHE_DIR, default ~/.claude/himmel — the same resolution
 #     himmelctl and scripts/uninstall.sh use, so uninstall removes what this
-#     writes). NOT /tmp/claude (HIMMEL-3260): the non-git "could not check" line
+#     writes). NOT /tmp/claude: the non-git "could not check" line
 #     below measures from a first-attempt stamp, and a reboot clears /tmp — an
 #     offline machine that reboots inside the stale window would never reach it
 #     and would stay silent, which is the state this check exists to end. A
@@ -35,7 +35,7 @@
 #   - IMPORTANT: stamp is written / touch'd BEFORE the network fetch so a
 #     hung git fetch never wedges future checks (operator restarts a session,
 #     hung job from the previous run holds the interval open).
-#   - The fetch itself is DETACHED (HIMMEL-1844): the count is read from the
+#   - The fetch itself is DETACHED: the count is read from the
 #     LOCAL remote-tracking refs, and the fetch only refreshes them for the
 #     NEXT check. Nothing here touches the network on the session-start path,
 #     so this hook can no longer be killed mid-run by the harness timeout.
@@ -98,7 +98,7 @@ fi
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 touch "$STAMP" 2>/dev/null || true
 
-# ─── non-git install: compare VERSION against the latest release (HIMMEL-3247) ─
+# ─── non-git install: compare VERSION against the latest release ─
 # Keyed on THIS script's own install root, not CLAUDE_PROJECT_DIR (that is the
 # operator's current project, which is usually some other git repo).
 SELF_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd) || SELF_ROOT=""
@@ -195,7 +195,7 @@ if [ -n "$upstream" ]; then
     behind=$(git -C "$ROOT" rev-list --count "HEAD..$upstream" 2>/dev/null) || behind=""
 fi
 
-# ─── refresh the remote refs OUT OF BAND (HIMMEL-1844) ──────────────────────
+# ─── refresh the remote refs OUT OF BAND ──────────────────────
 # Those remote-tracking refs ARE the cache; this detached fetch is its
 # out-of-band refresh. So the count above is the one the PREVIOUS check fetched
 # (at most INTERVAL old, and a commit count is not a signal that turns over in

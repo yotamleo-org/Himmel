@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-gh-json-fields.sh (HIMMEL-1288).
+# Smoke test for scripts/hooks/check-gh-json-fields.sh.
 #
 # The regression this locks: `gh pr view --json headRefSha` (no such
 # field) must FAIL LOUDLY here at commit time, instead of shipping and
@@ -23,7 +23,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -79,7 +79,7 @@ check() {
     fi
 }
 
-# The actual HIMMEL-1288 bug, verbatim in shape.
+# The actual bug, verbatim in shape.
 check "headRefSha is rejected" 1 \
     '    head=$(gh pr view "$pr" --repo "$REPO" --json headRefSha -q .headRefSha)'
 
@@ -87,7 +87,7 @@ check "headRefSha is rejected" 1 \
 check "headRefOid is accepted" 0 \
     '    head=$(gh pr view "$pr" --repo "$REPO" --json headRefOid -q .headRefOid)'
 
-# HIMMEL-1326: backslash continuation splits `gh` and `--json` across two
+# backslash continuation splits `gh` and `--json` across two
 # physical lines, so the per-physical-line grep saw neither half and the
 # bogus field shipped. The gate must join them into one logical command.
 # Fixtures are built with a heredoc so the backslash-newline is a REAL

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-689 — block re-introducing the lane INVENTORY into CLAUDE.md prose (himmel-dev only).
+# block re-introducing the lane INVENTORY into CLAUDE.md prose (himmel-dev only).
 # The lane inventory lives in scripts/lanes/lanes.json (queried via /lanes); CLAUDE.md keeps
 # only invariant tier semantics + policy. Mirrors check-agents-md-fresh.sh: .himmel-dev-gated,
 # validates the STAGED index bytes, fail-closed. rc: 0 pass | 1 drift | 2 cannot-evaluate.
@@ -17,7 +17,7 @@ rc=0; is_himmel_dev_repo || rc=$?
 [ "$rc" -eq 1 ] && exit 0
 [ "${LANES_GUARD_OK:-0}" = "1" ] && { echo "→ lanes-inventory-guard: LANES_GUARD_OK=1 — skipping" >&2; exit 0; }
 
-# Only when CLAUDE.md is staged. NOT `grep -q` (HIMMEL-1305): under pipefail,
+# Only when CLAUDE.md is staged. NOT `grep -q`: under pipefail,
 # -q exits on the first match and closes the pipe, so `git diff` dies of
 # SIGPIPE (141), the pipeline reports 141, and `|| exit 0` fires despite the
 # match — a silent fail-open on any staged list bigger than the ~64KB pipe

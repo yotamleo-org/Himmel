@@ -18,7 +18,7 @@ case "$rc" in
         # Use lib's _branch (single shared branch-read path) rather than
         # `git branch --show-current`; show-current is worktree-correct under
         # normal invocation but misreads the PRIMARY worktree's HEAD when
-        # GIT_DIR is aimed at the shared .git (HIMMEL-323).
+        # GIT_DIR is aimed at the shared .git.
         branch=$(_branch)
         echo "WARNING: Branch '${branch}' appears to be already merged into 'main' (direct or squash)."
         echo "         You may be editing stale code. Check out a fresh branch off main if so."

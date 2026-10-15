@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Shard of test-block-write-into-main-checkout.sh (HIMMEL-4164 split, so each
+# Shard of test-block-write-into-main-checkout.sh (split, so each
 # suite stays under its CI per-suite cap): the cd/cwd-tracking and
-# install/rsync/dd/eval rows (HIMMEL-3648 and its CR rounds, HIMMEL-3685).
+# install/rsync/dd/eval rows (and its CR rounds).
 # Same fixtures + harness as the parent suite via lib-test-write-fence.sh;
 # the FIXTURE RULE lives in test-block-write-into-main-checkout.sh.
 # shellcheck disable=SC2154  # pass/fail are defined by the sourced lib
@@ -104,7 +104,7 @@ check_both "25 bash -ce redirect into primary (combined short-flag cluster) deni
 check_both "25b bash -ce redirect into wt (combined short-flag cluster) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"bash -ce \\\"echo hi > $FIX/wt/a.txt\\\"\",\"cwd\":\"$FIX/wt\"}}"
 
-# 26 (codex-1, CR round 2 of the CR follow-up itself): an ATTACHED redirect
+# 26: an ATTACHED redirect
 # target inside an eval/bash-c body (`>/primary/f`, no space, one token) was
 # ignored — _bwimc_check_interp_body's redirect arm unconditionally advanced
 # to the NEXT token and checked THAT, the same false-negative shape the main
@@ -118,7 +118,7 @@ check_both "26c bash -c \"echo hi >primary/a.txt\" (attached redirect target) de
 
 echo "== HIMMEL-3648 CR round 3 (codex-1/2 on the interp-body scan) =="
 
-# 27 (codex-1, round 3): `git … commit` inside an eval/bash -c/sh -c/zsh -c
+# 27: `git … commit` inside an eval/bash -c/sh -c/zsh -c
 # body is a CWD predicate the redirect/token walk never checks (neither
 # "git" nor "commit" is a token PATH) — the git-commit arm (g) is a separate,
 # dedicated regex-anchored scan over OUTER clauses only, structurally
@@ -128,7 +128,7 @@ check_both "27 bash -c 'cd primary && git commit' denies (codex-1 round 3)" bloc
 check_both "27b bash -c 'cd wt && git commit' allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"bash -c 'cd $FIX/wt && git commit --allow-empty -m x'\",\"cwd\":\"$FIX/wt\"}}"
 
-# 28 (codex-2, round 3): an intra-body cd/pushd was never tracked at all —
+# 28: an intra-body cd/pushd was never tracked at all —
 # item 17/18 above cover a DIRECT `cd <primary> && <write>`, but the SAME
 # shape wrapped in `bash -c '...'` bypassed both the outer cd-tracking (it
 # only ever saw the literal string "bash", "-c", "'cd ... '" as its OWN
@@ -141,7 +141,7 @@ check_both "28b bash -c 'cd wt; echo x > a.txt' allows" allow \
 
 echo "== HIMMEL-3648 CR round 4 (codex-1 on the interp-body scan) =="
 
-# 29 (codex-1, round 4): the round-3 fix tracked cwd across the WHOLE body
+# 29: the earlier fix tracked cwd across the WHOLE body
 # first and only then checked every token against that FINAL cwd — correct
 # when the body never cd's again after its last write, wrong when it does: a
 # write that happens WHILE cd'd into the primary, followed by a LATER cd back
@@ -154,7 +154,7 @@ check_both "29b bash -c 'cd wt; echo x > a.txt; cd wt' allows" allow \
 
 echo "== HIMMEL-3648 CR round 5 (codex-1 on 'cd --' handling) =="
 
-# 30 (codex-1, round 5): the cd/pushd flag-skip loop (both _bwimc_ecwd_track
+# 30: the cd/pushd flag-skip loop (both _bwimc_ecwd_track
 # and _bwimc_git_clause) recognized -L/-P/-e/-@ but not the POSIX option
 # terminator `--`. Given `cd -- <dir>`, the loop left its index pointing at
 # the `--` token itself, which was then misread as the cd TARGET (a relative
@@ -218,7 +218,7 @@ check_both "33b same, but absolute write target allows" allow \
 F34_CMD="cd \`echo $FIX/primary\`; echo x > a.txt"
 F34_JSON="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":$(printf '%s' "$F34_CMD" | jq -Rs .),\"cwd\":\"$FIX/wt\"}}"
 check_both "34 cd \`echo primary\`; echo x > a.txt denies (CodeRabbit #1307)" block "$F34_JSON"
-# HIMMEL-4815: a fail-closed (shape) refusal names its literal retry.
+# a fail-closed (shape) refusal names its literal retry.
 check_both_reason "34 fail-closed deny names the one-literal-write retry" "$F34_JSON" \
     "one write per Bash call"
 F34B_CMD="cd \`echo $FIX/primary\`; echo x > $FIX/wt/a.txt"
@@ -313,7 +313,7 @@ check_both "42b bash -c install --target-directory=wt allows" allow "$F42B_JSON"
 
 echo "== HIMMEL-3648 CR round 9 (judge J1307O verdict — union fix: cd tracking may only ADD denies, C1) =="
 
-# 43-54 (J1307O C1): from a PRIMARY payload cwd, _bwimc_ecwd_track treats
+# 43-54: from a PRIMARY payload cwd, _bwimc_ecwd_track treats
 # every cd/pushd clause as though it ran in the CURRENT shell — it has no
 # model of a nonexistent target, ||/&&-short-circuiting, a subshell, a
 # pipeline, a background &, an if/while body that never runs, or a $(...)
@@ -347,13 +347,13 @@ check_both "53 fromP: while false; do cd wt; done; echo x > a.txt (never-entered
 check_both "54 fromP: x=\$(cd wt); echo x > a.txt (cd inside a command substitution is its own subshell) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"x=\$(cd $FIX/wt); echo x > a.txt\",\"cwd\":\"$FIX/primary\"}}"
 
-# 55 (J1307O C1, relaxation-loss control): base has no cd tracking at all,
+# 55 (relaxation-loss control): base has no cd tracking at all,
 # so it DENIES `cd <wt> && echo x > a.txt` from a primary cwd outright
 # (documented in base's header as correct-by-policy), even though this ONE
 # shape is a genuine, unconditional cd and runtime lands safely in wt. The
 # strict superset rule (cd tracking may only ADD denies relative to a
 # payload-cwd-only check, never remove one — except the cp/mv/ln
-# destination-type class deferred to HIMMEL-3726) takes this relaxation back:
+# destination-type class deferred to) takes this relaxation back:
 # post-fix, the union check fires on every _bwimc_ecwd/_bwimc_cwd
 # divergence unconditionally, so this row denies again too.
 check_both "55 fromP: cd wt && echo x > a.txt (genuine, runtime-safe cd — still denies post-fix under the strict superset rule)" block \
@@ -385,7 +385,7 @@ check_both "58 fromP: cd wt/nope; ln -sf $FIX/wt/z.txt link-to-wt.txt (ln DEST i
 
 echo "== HIMMEL-3648 CR round 13 (J1307Q — the cp/mv POSITIONAL-destination arm never threaded its own mode into _bwimc_cd_guard) =="
 
-# 60-65 (J1307Q): rows 56-58 fixed the fallback's mode for rm/mv-source/ln,
+# 60-65: rows 56-58 fixed the fallback's mode for rm/mv-source/ln,
 # but the cp/mv POSITIONAL-destination arm (the branch computing entry/both
 # for a symlink-entry destination via mv, `cp --remove-destination`, `cp -f`
 # and `mv -T`) still called _bwimc_cd_guard BEFORE that mode was computed,
@@ -417,7 +417,7 @@ check_both "65 fromP: cd wt | cat; mv -T wt/z.txt link-to-wt.txt (mv -T DEST ent
 check_both "66 control: cd wt | cat; mv wt/z.txt wt/dest-ctl.txt (explicit absolute wt destination) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt | cat; mv $FIX/wt/z.txt $FIX/wt/dest-ctl.txt\",\"cwd\":\"$FIX/primary\"}}"
 
-# 59 (codex-2, round 10): the shc dispatch regex's middle group used to
+# 59: the shc dispatch regex's middle group used to
 # require every intervening token to itself start with "-" (a flag) — a
 # flag that takes its own separate argument, e.g. `-o pipefail`, has a
 # bare (non-dash) token in the middle ("pipefail"), which broke the match
@@ -430,7 +430,7 @@ check_both "59b bash -o pipefail -c 'redirect into wt' (flag-with-arg before -c)
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"bash -o pipefail -c \\\"echo hi > $FIX/wt/a.txt\\\"\",\"cwd\":\"$FIX/wt\"}}"
 
 echo "== HIMMEL-3648 CR round 16 (judge J1307A F1 — cp/mv/-t/ln destination type resolved against BOTH cwds, union) =="
-# 67-77 (J1307A F1 / J1307R, closes HIMMEL-3726's regression class): the
+# 67-77: the
 # destination's TYPE (dir? existing entry?) was decided against the tracked
 # cwd only. When a pipe, subshell or `||` makes the tracked cwd (wt) diverge
 # from the real one (primary), a name that is a DIRECTORY in wt but a SYMLINK
@@ -509,14 +509,14 @@ check_both "85 fromW: cd primary || { :; cd wt; }; echo x > a.txt denies (flag s
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary || { :; cd $FIX/wt; }; echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
 check_both "85b fromW: cd primary || { echo a; echo b; cd wt; }; echo x > a.txt denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary || { echo a; echo b; cd $FIX/wt; }; echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
-# 85d (codex-1 round 2): same for a ( ) subshell group.
+# 85d: same for a ( ) subshell group.
 check_both "85d fromW: cd primary || ( :; cd wt; ); echo x > a.txt denies (flag survives the subshell group)" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary || ( :; cd $FIX/wt; ); echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
 check_both "85e fromW: cd primary || ( echo a; cd wt ); echo x > a.txt denies (no ; before the close paren)" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary || ( echo a; cd $FIX/wt ); echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
 check_both "85f control: cd wt || ( echo no; exit 1 ); echo x > a.txt (cwd=wt) now denies (allowlist over-deny: parens)" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt || ( echo no; exit 1 ); echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
-# 85g (codex-1 round 3): if / for compound commands after the ||.
+# 85g: if / for compound commands after the ||.
 check_both "85g fromW: cd primary || if true; then :; cd wt; fi; echo x > a.txt denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary || if true; then :; cd $FIX/wt; fi; echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
 check_both "85h fromW: cd primary || for i in 1; do :; cd wt; done; echo x > a.txt denies" block \
@@ -575,7 +575,7 @@ check_both "92c fromW: cd wt || exit; echo x > a.txt still allows (control)" all
 check_both "92d fromW: cd wt; echo x 2>&1 > a.txt still allows (redirect & is not a background &)" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt; echo x 2>&1 > a.txt\",\"cwd\":\"$FIX/wt\"}}"
 
-# 93 (HIMMEL-4934): a single `|` taints only the clause on its LEFT (a pipeline
+# 93: a single `|` taints only the clause on its LEFT (a pipeline
 # member runs its cd in a subshell) and everything after it; an earlier cd stays
 # trusted, so `cd wt && git status | cat && write` is no longer a blanket deny.
 check_both "93 fromW: cd wt && git status | cat && echo x > a.txt (cd precedes the pipe) allows" allow \
@@ -589,7 +589,7 @@ check_both "93d fromW: cd \$UNSET_VAR && git status | cat && echo x > a.txt (dyn
 check_both "93e fromW: cd primary && git status | cat && echo x > a.txt (cd into primary) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary \\u0026\\u0026 git status | cat \\u0026\\u0026 echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
 
-# 93f-j (HIMMEL-4934 judge NO-GO): a redirect `&` on the pipe's left member is
+# 93f-j: a redirect `&` on the pipe's left member is
 # no boundary, so the whole member (`cd wt 2>&1`) is tainted, not just its tail.
 check_both "93f fromW: cd wt 2>&1 | cat && echo x > a.txt denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt 2>&1 | cat && echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
@@ -604,7 +604,7 @@ check_both "93j fromW: cd wt; cd wt 2>&1 | cat && echo x > a.txt denies" block \
 check_both "93k fromW: cd wt && git status 2>&1 | cat && echo x > a.txt (cd precedes) allows" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt && git status 2>&1 | cat && echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
 
-# 94 (HIMMEL-4956): a cd the shell would FAIL (missing dir, extra operands, zsh
+# 94: a cd the shell would FAIL (missing dir, extra operands, zsh
 # two-arg form, CDPATH) leaves the real cwd where it was, so the modelled cwd
 # must not move to its target; a later relative write fails closed.
 check_both "94 fromW: cd primary; cd wt/nonexist; echo x > a.txt (missing dir) denies" block \
@@ -636,7 +636,7 @@ check_both "94m fromW: cd primary; cd wt 2>&9; echo x > a.txt (dup of a closed f
 check_both "94n fromW: cd primary; cd wt 999999999999999999999>/dev/null; echo x > a.txt (out-of-range fd) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary; cd $FIX/wt 999999999999999999999>/dev/null; echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
 
-# 95 (HIMMEL-4976): four more cd forms the shell does NOT land where the hook
+# 95: four more cd forms the shell does NOT land where the hook
 # models. Each deny row is paired with a REAL bash run (payload cwd = wt) that
 # proves the write lands in the primary, so the deny is not a guess.
 _real_lands() {  # _real_lands <label> <file-in-primary> <command>

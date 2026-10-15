@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/guard-leg-wakeup.sh (HIMMEL-3034): a
+# Smoke suite for scripts/hooks/guard-leg-wakeup.sh: a
 # console-spawned leg (HIMMEL_CONSOLE_LEG=1, set by headed-arm-leg.sh) calling
 # ScheduleWakeup is denied — each self-scheduled wake re-reads the leg's whole
 # context to find "not yet". Covers: marker+tool -> deny with a `leg wakeup-deny:`
@@ -74,7 +74,7 @@ esac
 echo "== marker unset / not 1 -> allow, zero output (context cost 0) =="
 check "no marker + ScheduleWakeup -> allow" allow "$WAKE"
 # Larger than a pipe buffer: the early-exiting hook cannot consume the writer's
-# remaining bytes, making a piped stdin feeder fail with SIGPIPE (HIMMEL-4160).
+# remaining bytes, making a piped stdin feeder fail with SIGPIPE.
 printf -v padding '%1048576s' ''
 check "no marker + large stdin -> allow without SIGPIPE" allow "$WAKE$padding"
 silent "no marker + ScheduleWakeup -> no output" "$WAKE"
