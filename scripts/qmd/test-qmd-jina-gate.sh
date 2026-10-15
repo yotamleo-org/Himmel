@@ -308,6 +308,13 @@ pcfg "$work/p12.yml" luna "$work/clean"
 run_path "$work/p12.yml"; rc=$?
 [ "$rc" -eq 0 ] || fail "(34b) a clean tree must pass the downward check: rc $rc: $(cat "$work/err")"
 if [ "$(id -u)" -ne 0 ]; then
+  # (34d) a sub-directory the walk cannot read may hide a .salus vault: fail closed.
+  mkdir -p "$work/locked-tree/sub/hidden"
+  chmod 000 "$work/locked-tree/sub"
+  pcfg "$work/p13.yml" luna "$work/locked-tree"
+  run_path "$work/p13.yml"; rc=$?
+  chmod 755 "$work/locked-tree/sub"
+  [ "$rc" -eq 3 ] || fail "(34d) an unreadable sub-directory under a remote collection: expected rc 3, got $rc"
   # (34c) an unreadable claude-glm config dir cannot prove "no PHI roots": fail closed.
   mkdir -p "$work/glm-locked"
   chmod 000 "$work/glm-locked"

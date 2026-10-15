@@ -1107,6 +1107,17 @@ out="$(env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PA
 assert "a local config is not gated" test "$rc" -eq 0
 assert "a local config still reaches qmd" grep -q '^PATH-QMD query x' <<<"$out"
 
+# a named index (--index NAME / --index=NAME) opens NAME.yml + NAME.sqlite: the gate checks THOSE
+printf 'collections:\n  notes:\n    path: %s\nmodels:\n  embed: hf:x/y.gguf\n' "$gh_home" >"$gh_home/.config/qmd/index.yml"
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1\n' "$gh_home" >"$gh_home/.config/qmd/salus.yml"
+for idx_args in "--index salus query x" "--index=salus query x"; do
+  rc=0
+  # shellcheck disable=SC2086  # the word split is the point: it builds qmd's argv
+  out="$(env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd '"$idx_args" 2>&1)" || rc=$?
+  assert "named index ($idx_args) holding salus + remote model: refused (rc 10)" test "$rc" -eq 10
+done
+
 echo "[test-qmd-bin] has_qmd matches binary presence in this env"
 if has_qmd; then
   echo "  has_qmd=true in this env (real qmd present)"

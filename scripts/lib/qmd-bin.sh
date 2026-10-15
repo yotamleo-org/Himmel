@@ -716,8 +716,21 @@ _qmd_global_dir() {
 # gate against the index this call would open, or no qmd process starts. Covers
 # every himmel caller of qmd_cmd (direct CLI shapes: query, embed, update, mcp).
 _qmd_egress_ok() {
-  local cfg idx gate
-  cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
+  local cfg idx gate name=index a prev=""
+  # a named index (--index NAME / --index=NAME) opens NAME.yml + NAME.sqlite, so gate those
+  for a in "$@"; do
+    case "$a" in
+      --index=*) name="${a#--index=}" ;;
+      *) [ "$prev" = "--index" ] && name="$a" ;;
+    esac
+    prev="$a"
+  done
+  case "$name" in
+    *[!A-Za-z0-9._-]* | '')
+      echo "qmd-bin: --index name must match [A-Za-z0-9._-]+ - qmd not started." >&2
+      return 10 ;;
+  esac
+  cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/$name.yml"
   case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in
     *[Oo][Pp][Ee][Nn][Aa][Ii]:*) : ;;
     *)
@@ -730,7 +743,7 @@ _qmd_egress_ok() {
       done <"$cfg"
       [ "$found" -eq 0 ] || return 0 ;;
   esac
-  idx="${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}"
+  idx="${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/$name.sqlite}"
   gate="$_QMDBIN_LIB_DIR/../qmd/qmd-jina-gate.mjs"
   if [ ! -f "$gate" ] || ! command -v node >/dev/null 2>&1; then
     echo "qmd-bin: a remote model is configured but the egress gate or node is missing - qmd not started." >&2
@@ -744,7 +757,7 @@ _qmd_egress_ok() {
 
 qmd_cmd() {
   local bun_qmd
-  _qmd_egress_ok || return $?
+  _qmd_egress_ok "$@" || return $?
   bun_qmd="$(_qmd_bun_js)"
   if [ -f "$bun_qmd" ] && command -v bun >/dev/null 2>&1; then
     qmd_bounded "$(qmd_timeout_secs)" bun "$bun_qmd" "$@"

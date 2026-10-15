@@ -90,10 +90,12 @@ const forms = (p) => {
 };
 // A .salus marker anywhere BELOW a collection path makes the collection PHI too. Symlinks are not followed.
 const SKIP_DIRS = new Set([".git", "node_modules"]);
+// ponytail: the walk stops 6 levels down, so a vault deeper than that is not seen; raise the depth or index the vault as its own collection.
 function hasMarkerBelow(dir, depth = 6) {
   if (depth < 0) return false;
   let ents;
-  try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+  // a directory we cannot read may hide a vault: treat it as marked (a path that vanished mid-walk has nothing to hide)
+  try { ents = readdirSync(dir, { withFileTypes: true }); } catch (e) { return e?.code !== "ENOENT"; }
   if (ents.some((e) => e.name === ".salus")) return true;
   return ents.some((e) => e.isDirectory() && !SKIP_DIRS.has(e.name) && hasMarkerBelow(join(dir, e.name), depth - 1));
 }
