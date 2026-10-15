@@ -272,7 +272,7 @@ if command -v python3 >/dev/null 2>&1; then
     check "15: rc 0" "$rc" 0
     contains "15: a stale tracker is re-rendered, tracker=CHANGED" "$out" "tracker=CHANGED"
     check "15: the page's fp now matches what tick derives (tick reads tracker=ok)" "$(fp_now)" "$(cat "$W/roadmap-tracker.html.fp" 2>/dev/null)"
-    contains "15: the mirror was refreshed" "$calls" "jira mirror"
+    contains "15: the mirror was refreshed into the mirror dir" "$calls" "jira mirror --root $TMIR"
     contains "15: the versions snapshot was taken" "$calls" "jira versions"
     check "15: versions snapshot written next to the mirror" "v1.0.1	false	2026-12-01" "$(cat "$TMIR.versions.tsv" 2>/dev/null)"
 
@@ -285,6 +285,19 @@ if command -v python3 >/dev/null 2>&1; then
     check "17: a failing render never fails the wrap (rc 0)" "$rc" 0
     contains "17: and says why" "$out" "tracker=failed:"
     contains "17: the bullet and board still ran" "$calls" "board --doc"
+
+    printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$W/bin/sleeper"; chmod +x "$W/bin/sleeper"
+    tracker_fixture 'https://claude.ai/artifact/x'
+    WM_TRACKER_PY="$W/bin/sleeper" WM_TRACKER_TIMEOUT=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    check "17b: a hung render never fails the wrap (rc 0)" "$rc" 0
+    contains "17b: the render is cut at the timeout" "$out" "tracker=failed:render-rc124"
+    contains "17b: the board still ran" "$calls" "board --doc"
+
+    tracker_fixture 'https://claude.ai/artifact/x'
+    WM_MIRROR_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    check "17c: a failing mirror never fails the wrap (rc 0)" "$rc" 0
+    contains "17c: and says why" "$out" "tracker=failed:mirror-rc1"
+    contains "17c: the board still ran" "$calls" "board --doc"
 
     tracker_fixture
     run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"

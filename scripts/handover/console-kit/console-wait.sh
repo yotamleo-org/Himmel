@@ -102,7 +102,8 @@
 #                      `hb=<epoch> pid=<pid> key=<sha16> tick=<ok|fail|-> state=waiting`,
 #                      `state=sampling` while a tick runs, then on every
 #                      catchable exit `... state=exited exit=<reason>`.
-#                      A sample (tick, then bank) can take up to twice
+#                      A sample (a predecessor close, a tick, then bank) can take up to
+#                      CONSOLE_WAIT_CLOSE_TIMEOUT once, then twice
 #                      CONSOLE_WAIT_TICK_TIMEOUT (+5 s kill grace each), and a
 #                      Telegram line waits for it. A heartbeat older than that
 #                      plus a few polls, still
@@ -502,7 +503,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
     case "$rc" in
         0) printf 'closed:%s\n' "$pdoc" > "$pred_file"
            bash "$HERE/append-results.sh" "$console_doc" "LIVE — predecessor console ${pred%.md} was WRAPPED and lock-free; the waiter closed its window" >/dev/null 2>&1 || true ;;
-        3|4|6|7) ;;
+        3|4|6|7|124|137) ;;  # 124/137: the close hung past its timeout - retry next sample, never a wake
         5) if grep -Fq 'refusing - 0 live session' "$errf"; then printf 'gone:%s\n' "$pdoc" > "$pred_file"
            else printf 'woke:%s\n' "$pdoc" > "$pred_file"; printf 'WAKE predecessor-open rc=5\n%s\n' "$(head -n 1 "$errf")"; rm -f "$errf"; return 0; fi ;;
         *) printf 'woke:%s\n' "$pdoc" > "$pred_file"; printf 'WAKE predecessor-open rc=%s\n%s\n' "$rc" "$(head -n 1 "$errf")"; rm -f "$errf"; return 0 ;;

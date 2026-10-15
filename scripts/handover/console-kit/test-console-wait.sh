@@ -1051,6 +1051,16 @@ start "$I" "$WORK/pc6.out" --doc "$CD" --legs "N1.md"
 wait_exit "$WPID"
 rm -f "$STUB/close.msg"
 check "(pc6) 10 live sessions is not 0: the ambiguous refusal wakes" "WAKE predecessor-open rc=5" "$(head -n1 "$WORK/pc6.out")"
+reset_stub
+CD="$(pc_console pc7 0)"; I="$(new_inbox pc7)"
+printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$STUB/close.sleep.sh"; chmod +x "$STUB/close.sleep.sh"
+CONSOLE_WAIT_CLOSE="$STUB/close.sleep.sh" CONSOLE_WAIT_CLOSE_TIMEOUT=1 start "$I" "$WORK/pc7.out" --doc "$CD" --legs "N1.md"
+sleep 0.5
+printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
+n=0
+while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(pc7) a hung close is killed at CONSOLE_WAIT_CLOSE_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/pc7.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CONSOLE_WAIT_CLOSE
 
 # --- (k) usage ---------------------------------------------------------------

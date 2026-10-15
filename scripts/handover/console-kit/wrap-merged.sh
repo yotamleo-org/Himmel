@@ -145,7 +145,7 @@ tracker_refresh() {
     tmo="${WM_TRACKER_TIMEOUT:-120}"
     mir="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/HIMMEL}"
     mkdir -p "${mir%/*}" 2>/dev/null
-    JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" mirror >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
+    JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" mirror --root "$mir" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
     [ "$rc" -eq 0 ] || { echo "tracker=failed:mirror-rc$rc"; return 0; }
     JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" versions > "$mir.versions.tsv.tmp.$$" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
     if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-rc$rc"; return 0; fi
