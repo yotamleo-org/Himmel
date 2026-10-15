@@ -75,7 +75,8 @@ $ConfigDir = Join-Path $HomeDir '.claude-codex'
 # v1 = initial version (the claudex model-identity stanza).
 # v3 = SanitizerJs also injects the destructive-category permissions.deny rules (v2 was bash-only).
 # v4 = the recursive-delete deny rules also cover option-separator and split-flag spellings.
-$SeedVersion = '4'
+# v5 = SanitizerJs also strips env.CLAUDE_CODE_AUTO_MODE_SERVER, matching the bash twin.
+$SeedVersion = '5'
 
 # --- key resolution: process env first, else the launcher-repo .env ----------
 # CLAUDE_CODEX_DOTENV_ROOT (test hook) pins the .env root; production falls back to
@@ -433,7 +434,7 @@ const fs=require("fs");
 const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
 if (j===null || typeof j!=="object" || Array.isArray(j)) { console.error("user settings is not a JSON object"); process.exit(1); }
 delete j.model;
-if (j.env) for (const k of Object.keys(j.env)) { const u=k.toUpperCase(); if (u.indexOf("ANTHROPIC_")===0 || u.indexOf("CLAUDE_CODE_USE_")===0) delete j.env[k]; }
+if (j.env) for (const k of Object.keys(j.env)) { const u=k.toUpperCase(); if (u.indexOf("ANTHROPIC_")===0 || u.indexOf("CLAUDE_CODE_USE_")===0 || u==="CLAUDE_CODE_AUTO_MODE_SERVER") delete j.env[k]; }
 const A=[],B=(r)=>A.push("Bash("+r+")");
 for (const r of ["git push --force","git push --force *","git push --force*","git push -f*","git push --mirror*","git push --delete*","git push origin --delete*","git push * --force*","git push * -f*","git push * +*","git push * main","git push * master","git push * *:main","git push * *:master","git push * *refs/heads/main","git push * *refs/heads/master"]) { B(r); B("rtk "+r); }
 for (const f0 of ["-rf","-fr","-Rf","-fR","-r","-R","--recursive","-r -f","-f -r","-R -f","-f -R","--recursive --force","--force --recursive","-r --force","--force -r","-R --force","--force -R","--recursive -f","-f --recursive"]) for (const f of [f0,f0+" --"]) for (const t of ["/","/ *","/home*","/etc*","/usr*","/var*","/boot*","~","~/*","\u0024HOME","\u0024HOME/*","..","../*"]) B("rm "+f+" "+t);
@@ -446,8 +447,10 @@ for (const n of ["curl","wget"]) {
 }
 for (const r of ["curl -d @*","curl --data* @*","curl -F *","curl --form *","curl -T *","curl --upload-file *","curl * -d @*","curl * --data* @*","curl * -F *","curl * --form *","curl * -T *","curl * --upload-file *","wget --post-file*","wget --post-data*","wget * --post-file*","wget * --post-data*","nc *","ncat *","socat *"]) B(r);
 for (const r of ["terraform destroy*","terraform apply -destroy*","terraform apply * -destroy*","tofu destroy*","tofu apply -destroy*","pulumi destroy*","cdk destroy*","kubectl delete *","helm uninstall *","aws s3 rb *","aws s3 rm * --recursive*","aws * terminate-*","aws * delete-*","gcloud * delete *","az * delete *","docker system prune*"]) B(r);
-j.permissions=j.permissions||{};
-const dn=Array.isArray(j.permissions.deny)?j.permissions.deny:[];
+if (j.permissions===undefined) j.permissions={};
+if (j.permissions===null || typeof j.permissions!=="object" || Array.isArray(j.permissions)) { console.error("user settings permissions is not an object"); process.exit(1); }
+if (j.permissions.deny!==undefined && !Array.isArray(j.permissions.deny)) { console.error("user settings permissions.deny is not an array"); process.exit(1); }
+const dn=j.permissions.deny||[];
 for (const r of A) if (!dn.includes(r)) dn.push(r);
 j.permissions.deny=dn;
 fs.writeFileSync(process.argv[2], JSON.stringify(j,null,2));

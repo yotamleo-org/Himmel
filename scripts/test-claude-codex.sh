@@ -112,6 +112,14 @@ for bad in '[]' 'null' '7'; do
   [ ! -f "$FAKEHOME/.claude-codex/.seeded" ] || { echo "FAIL: non-object user settings ($bad) still marked the config seeded"; FAILS=$((FAILS + 1)); }
 done
 
+# a malformed permissions value (non-object) or permissions.deny (non-array) must also refuse (exit 4): it would otherwise seed with no deny rules.
+for bad in '{"permissions":[]}' '{"permissions":"x"}' '{"permissions":{"deny":"x"}}'; do
+  setup
+  printf '%s\n' "$bad" > "$FAKEHOME/.claude/settings.json"
+  run_launcher_expect "malformed permissions ($bad) refuses before seeding" 4 'sanitize settings'
+  [ ! -f "$FAKEHOME/.claude-codex/.seeded" ] || { echo "FAIL: malformed permissions ($bad) still marked the config seeded"; FAILS=$((FAILS + 1)); }
+done
+
 # the seeded lane settings carry explicit deny rules for the categories the weak
 # classifier misses. The force-push rows are read from this repo's own .claude/settings.json
 # (real syntax), so the lane cannot drift from the harness's deny vocabulary.

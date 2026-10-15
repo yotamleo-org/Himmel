@@ -225,6 +225,16 @@ try {
     if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-codex\.seeded')) { Fail "non-object user settings ($bad) still seeded the config dir" } else { Pass "non-object user settings ($bad) seeded nothing" }
   }
 
+  # A malformed permissions (non-object) or permissions.deny (non-array) also refuses (exit 4): it would otherwise seed with no deny rules.
+  foreach ($bad in '{"permissions":[]}', '{"permissions":"x"}', '{"permissions":{"deny":"x"}}') {
+    New-Sandbox
+    $env:CODEX_MODEL = 'gpt-5.6-sol'
+    Set-Content -LiteralPath (Join-Path $FAKEHOME '.claude\settings.json') -Value $bad -NoNewline
+    Invoke-Launcher
+    if ($script:LastLaunchExit -eq 4) { Pass "malformed permissions ($bad) refuses (exit 4)" } else { Fail "malformed permissions ($bad) did not refuse (exit $script:LastLaunchExit)" }
+    if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-codex\.seeded')) { Fail "malformed permissions ($bad) still seeded the config dir" } else { Pass "malformed permissions ($bad) seeded nothing" }
+  }
+
   # --- --guard-check <dir> — the check-only entry the unattended
   # spawn-claudex dispatcher calls PRE-CREATION, before it mints a worktree.
   # Only exit codes are asserted (Invoke-Launcher captures output in $script:LastLaunchOut), same as
