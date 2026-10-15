@@ -11,7 +11,7 @@
 # the venv python directly and enter via hermes_cli.main.
 #
 # Why a prompt FILE (not argv, not stdin): argv hits the Windows spawn
-# length limit on large diffs (same issue as  for gemini), and
+# length limit on large diffs (same issue for gemini), and
 # hermes one-shot runs hung in the spike when stdin was consumed/closed.
 # The prompt travels via a temp file read inside the python snippet.
 #

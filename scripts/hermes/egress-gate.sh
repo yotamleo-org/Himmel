@@ -6,7 +6,7 @@
 # WHY: scripts/guardrails/egress-matrix.json is the one corpus x provider x
 # purpose policy, but the Hermes chokepoint never evaluated it — so a handover-
 # or vault-backed prompt could still reach a provider the matrix denies
-# (Alibaba/qwen, DeepSeek, Z.ai/GLM: de-listed by  /)
+# (Alibaba/qwen, DeepSeek, Z.ai/GLM: de-listed)
 # while graphify and claude-openrouter both honored the same deny.
 #
 # What it does: classifies the --prompt-file by PATH (physical path — symlinks
