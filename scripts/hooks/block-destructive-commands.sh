@@ -567,7 +567,6 @@ if [[ $rm_scrub_raw == *'<<'* ]]; then
         # would miss a quote opened earlier on the same line, with text
         # between it and the `<<`, and a real `rm -rf` on the next line would
         # hide the same way. So count quote chars on the CURRENT line (since
-        # same way). Fixed by counting quote chars on the CURRENT line (since
         # the last real newline) before the opener - an odd count of either
         # quote char means we are still inside that quote, so the opener is
         # data.
