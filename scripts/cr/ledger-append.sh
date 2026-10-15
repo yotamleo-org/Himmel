@@ -868,7 +868,6 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
   if(e.KIND==="amend"){
     const findings=parsed.filter(o=>o.kind==="finding");
     // When the caller gave no --branch, resolve it from the ledger BEFORE
-    // when the caller gave no --branch, resolve it from the ledger BEFORE
     // computing `matches` below (matches/effective() both read e.BRANCH, so
     // this must run first, not after). Two sources feed the candidate branch
     // set: a raw head match (keyForHead) AND any amend record that RE-KEYED
