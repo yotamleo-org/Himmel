@@ -857,6 +857,9 @@ contains "pkg test script scoped to tests: file under it passes" "$out" "[PASS] 
 UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
 unw_run scripts/cfg/tests/a.test.ts
 contains "bare bun test script: file passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"npm run build && bun test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "compound test script: only the runner's own words narrow it" "$out" "[PASS] 11."
 UNW_EXTRA="printf '{\"scripts\":{\"test\":\"echo hi\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
 unw_run scripts/cfg/tests/a.test.ts
 contains "pkg test script with no test runner: file fails" "$out" "[FAIL] 11."

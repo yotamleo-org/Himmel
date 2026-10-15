@@ -68,7 +68,8 @@ pkg_runs() {
     *) case "${f##*/}" in *.js|*.mjs|*.cjs) ;; *) case "$ts" in *strip-types*|*tsx*|*--import*|*--loader*) ;; *) return 1 ;; esac ;; esac ;;
   esac
   rel="$f"; [ -z "$pd" ] || rel="${f#"$pd"/}"
-  ts=$(printf '%s' "$ts" | sed -E 's/bun test|node --test|vitest( run)?|jest//g')
+  # only the words after the runner, up to the next command, can narrow discovery
+  ts=$(printf '%s' "$ts" | sed -E 's/.*(bun test|node --test|vitest( run)?|jest)//; s/(&&|;|\|).*//')
   set -f
   for tok in $ts; do
     tok="${tok//[\"\']/}"; tok="${tok#./}"
