@@ -696,9 +696,14 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     # the same command look unresolvable (HIMMEL-3517) - so a target only
     # counts here when its stem is immediately preceded by "cr/", never as a
     # substring anywhere else.
-    local t rc=1
+    local t rc=1 pc=$1
     shopt -s nocasematch
-    case "$1" in *pr-check*) rc=0 ;; esac
+    # This hook's own file name (and its suite's) and the slash
+    # command's doc are not a pr-check script
+    # (`head -n 5 test-guard-pr-check-literal.sh > out`).
+    pc=${pc//pr-check-literal.sh/}
+    pc=${pc//pr-check.md/}
+    case "$pc" in *pr-check*) rc=0 ;; esac
     for t in $TARGETS; do
         # ponytail: this is a PREFIX-stem match (cr/<stem>*), so a filename
         # that merely STARTS WITH a guarded stem after "cr/" (e.g. a target
