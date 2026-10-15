@@ -100,8 +100,10 @@ for (const p of providers) {
         `salus x ${p} x ${u} must be allow via its OWN openai-codex row (HIMMEL-5002 ruling), got ${effective}`);
     } else if (p === "openrouter") {
       assert(effective === "deny", `salus x ${p} x ${u} must stay deny by default (configurable ≠ open), got ${effective}`);
-      assert(rule && rule.provider === "openrouter" && rule.hard === undefined,
-        `salus x ${p} x ${u} must deny via its OWN non-hard openrouter row (operator-configurable, 2026-08-15 ruling), got ${rule ? `hard=${rule.hard}` : "default"}`);
+      // embedding and rerank are HARD (pinned in block 6e); every other purpose stays configurable.
+      const wantHard = u === "embedding" || u === "rerank" ? true : undefined;
+      assert(rule && rule.provider === "openrouter" && rule.hard === wantHard,
+        `salus x ${p} x ${u} must deny via its OWN ${wantHard ? "hard" : "non-hard (operator-configurable, 2026-08-15 ruling)"} openrouter row, got ${rule ? `hard=${rule.hard}` : "default"}`);
     } else {
       assert(effective === "deny", `salus x ${p} x ${u} must be deny, got ${effective}`);
       assert(rule && rule.hard === true, `salus x ${p} x ${u} deny must be hard`);
@@ -355,6 +357,35 @@ for (const u of purposes)
 const firstSalusHard = m.rules.findIndex(r => r.corpus === "salus" && r.provider === "*" && r.purpose === "*" && r.hard === true);
 const firstJinaAllow = m.rules.findIndex(r => r.provider === "jina" && r.verdict === "allow");
 assert(firstSalusHard >= 0 && firstSalusHard < firstJinaAllow, "the salus hard wildcard must precede every jina allow row");
+
+// 6e. openrouter (US) as the remote qmd embedder and reranker (operator
+//     ruling 2026-10-15): every non-salus qmd corpus gets its OWN
+//     embedding and rerank allow rows; every other purpose keeps its prior
+//     verdict; salus is HARD-denied for embedding and rerank, ahead of every
+//     openrouter allow row.
+const qmdOpenRouterCorpora = ["himmel-code", "luna-personal", "luna-clippings", ...qmdJinaCorpora];
+for (const c of qmdOpenRouterCorpora)
+  for (const u of ["embedding", "rerank"]) {
+    const { effective, rule } = evaluate(c, "openrouter", u);
+    assert(effective === "allow" && rule && rule.corpus === c && rule.provider === "openrouter" && rule.purpose === u &&
+      rule.hard === undefined && /HIMMEL-5756/.test(rule.why),
+      `${c} x openrouter x ${u} must be allow via its OWN row naming HIMMEL-5756, got ${effective}`);
+  }
+for (const c of ["luna-personal", "luna-clippings"])
+  for (const u of purposes.filter(x => x !== "embedding" && x !== "rerank"))
+    assert(evaluate(c, "openrouter", u).effective === "deny", `${c} x openrouter x ${u} must stay deny (embedding and rerank only)`);
+for (const c of ["handover-state", "voice-audio"])
+  for (const u of ["embedding", "rerank"])
+    assert(evaluate(c, "openrouter", u).effective === "deny", `${c} x openrouter x ${u} must stay deny (not a qmd corpus)`);
+for (const u of ["embedding", "rerank"]) {
+  const { effective, rule } = evaluate("salus", "openrouter", u);
+  assert(effective === "deny" && rule && rule.corpus === "salus" && rule.provider === "openrouter" && rule.purpose === u && rule.hard === true,
+    `salus x openrouter x ${u} must be HARD deny via its OWN row (HIMMEL-5756), got ${effective}`);
+}
+const firstSalusOrHard = m.rules.findIndex(r => r.corpus === "salus" && r.provider === "openrouter" && r.hard === true);
+const firstOrAllow = m.rules.findIndex(r => r.provider === "openrouter" && r.verdict === "allow" && (r.purpose === "embedding" || r.purpose === "rerank"));
+assert(firstSalusOrHard >= 0 && firstOrAllow >= 0 && firstSalusOrHard < firstOrAllow,
+  "the salus x openrouter hard rows must precede every openrouter embedding/rerank allow row");
 
 // 7. OpenRouter: declared as its OWN provider — content transits
 //    the aggregator, a different trust boundary from the vendor cells, so the
