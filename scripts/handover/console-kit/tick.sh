@@ -1116,7 +1116,7 @@ fi
 orphans_wip=skip
 nd_mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
 if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
-    if nd_out="$(timeout -k 5 60 bash "$HERE/next-dispatchable.sh" --resume-only --top 200 --owners "$owner_keys" 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only
+    if nd_out="$(timeout -k 5 60 bash "$HERE/next-dispatchable.sh" --resume-only --top 1000 --owners "$owner_keys" 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only
         case "$nd_out" in
             *'open PRs unknown'*) orphans_wip='?' ;;
             *)

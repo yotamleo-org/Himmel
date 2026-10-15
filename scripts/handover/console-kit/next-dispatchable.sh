@@ -196,6 +196,10 @@ for i in issues.values():
         continue
     if i['key'] in leg_keys or i['key'] in pr_keys:
         continue
+    if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
+        continue
+    if pr_unknown:  # an unread PR set could hide a PR already covering the ticket
+        continue
     if any(collides(f, h) for f in i['files'] for h, _ in held):
         continue
     resume.append(i)
