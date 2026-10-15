@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# record-launch.sh <session> <mode> <source> <autocompact> (HIMMEL-3299)
+# record-launch.sh <session> <mode> <source> <autocompact>
 #
 # Writes a console's durable launch-context row. console.sh puts this in front
 # of the `claude` command it prints, so the row is written by the command the

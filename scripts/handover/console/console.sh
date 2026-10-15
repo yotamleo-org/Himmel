@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # scripts/handover/console/console.sh — start or hand over a console session
-# (HIMMEL-2873).
 #
 # A console is a long-running headed Claude session that holds a queue lock
 # on its own handover document, runs monitors, dispatches implementation
@@ -12,14 +11,14 @@
 #   console.sh next — write the successor's doc stub, write the predecessor's
 #                     HANDOFF skeleton, print the launch line.
 #   console.sh wrap — the predecessor's WRAPPED + lock release, refused while
-#                     it has live subagents (HIMMEL-5071).
+#                     it has live subagents.
 #
 # Env seams: HANDOVER_DIR / USER_SLUG / JIRA_PROJECT_KEY (via .env, see
 # load-dotenv.sh); CONSOLE_BUCKET, CONSOLE_DOC, CONSOLE_MODEL,
 # CONSOLE_FILL_PERCENT, CONSOLE_TEMPLATE_DIR, CONSOLE_WORK_DIR (default:
 # $XDG_RUNTIME_DIR/himmel-console when set and owned by this uid, else
 # ${TMPDIR:-/tmp}/himmel-console-<uid>; an override is validated the same as
-# the default — see HIMMEL-2881 below), CONSOLE_HEADED_ARM,
+# the default — see below), CONSOLE_HEADED_ARM,
 # CONSOLE_ARM_FOREGROUND (test seam: run the arm in the foreground instead of
 # detaching it).
 # Flag seams: --name (both commands; on next it selects which console
@@ -30,7 +29,7 @@
 # derive from it instead of himmel's own repo basename/JIRA_PROJECT_KEY, and
 # an --arm session opens there, not in himmel)
 # --date (next only; overrides the day used for the SUCCESSOR's own name --
-# HIMMEL-2984 -- letting a 23:5x console pre-mint tomorrow's A without
+# letting a 23:5x console pre-mint tomorrow's A without
 # waiting for midnight; passing --date always starts that day's succession at A,
 # while omitting it continues the predecessor's own bijective sequence (Z ->
 # AA -> ... -> ZZ) regardless of whether the calendar day rolled over since).
@@ -39,12 +38,11 @@
 # Exit codes: 0 ok; 1 usage/state error (letters A-Z, AA-ZZ exhausted (past
 # ZZ), no predecessor found, an unresolved {{PLACEHOLDER}} survived a
 # render); 2 unresolved handover root / user slug / a missing template file
-# / no sha256 hasher available to derive the per-chain digest (HIMMEL-2889)
+# / no sha256 hasher available to derive the per-chain digest
 # / a malformed --date value; 3
 # the work dir (default or CONSOLE_WORK_DIR) exists but is a symlink, is not
-# owned by this user, is group/other-writable, or could not be created
-# (HIMMEL-2881); 4 `wrap` refused: this session has a live in-process
-# subagent, or live-subagents.sh could not prove it has none (HIMMEL-5071).
+# owned by this user, is group/other-writable, or could not be created; 4 `wrap` refused: this session has a live in-process
+# subagent, or live-subagents.sh could not prove it has none.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+; --arm launches through
 # konsole (Linux/KDE, via headed-arm.sh), so no .ps1 twin — the Windows
@@ -55,12 +53,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/leg-tail-status.sh
 . "$HERE/../../lib/leg-tail-status.sh"
 
-# HIMMEL-3081: the launch line below is PASTED by an operator, and the terminal
+# The launch line below is PASTED by an operator, and the terminal
 # they paste it into was itself spawned from a claude session -- so
 # CLAUDE_CODE_CHILD_SESSION=1, CLAUDE_PID and CLAUDE_CODE_SESSION_ID are live in
 # that shell. A console that adopts them writes no transcript and cannot read
 # its own context fill, which is the signal its handover contract runs on.
-# headed-arm.sh scrubs these on the --arm path (HIMMEL-2545); the printed line
+# headed-arm.sh scrubs these on the --arm path; the printed line
 # was missed, so an un-armed console silently became a throwaway child session.
 # Keep this identical to headed-arm.sh's env prefix.
 CONSOLE_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
@@ -79,9 +77,9 @@ CONSOLE_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_COD
 # shellcheck source=../../lib/git-clean.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/git-clean.sh"
-# HIMMEL-3533: pin to this script's OWN checkout, never the caller's CWD repo
+# Pin to this script's OWN checkout, never the caller's CWD repo
 # (load_dotenv with no --root resolves via the process CWD's git repo — see
-# HIMMEL-3532 / bank-preflight.sh for the failure mode).
+# bank-preflight.sh for the failure mode).
 load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../..")" HANDOVER_DIR USER_SLUG JIRA_PROJECT_KEY
 
 ALPHABET="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -135,7 +133,7 @@ slugify() {
 # dir), which resolves correctly from a plain checkout OR a linked worktree.
 # Anchored on THIS script's own location ($HERE), never the cwd: the plugin
 # /console runs it with the cwd in a FOREIGN repo, and the template, kit and
-# queue-lock.sh below must be himmel's, not that repo's (HIMMEL-3623 J1271O C1).
+# queue-lock.sh below must be himmel's, not that repo's.
 resolve_repo() {
     local common
     if common="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
@@ -146,7 +144,7 @@ resolve_repo() {
 }
 
 # next_letter <A-Z or AA-ZZ> -- bijective base-26 successor: A..Y -> next
-# letter, Z -> AA (same-day rollover past Z, HIMMEL-2984), AA..AY -> next
+# letter, Z -> AA (same-day rollover past Z), AA..AY -> next
 # second letter, AZ -> BA, ..., YZ -> ZA. Fails (rc=1, no stdout) at ZZ, the
 # cap -- a third letter is out of scope.
 next_letter() {
@@ -201,7 +199,7 @@ render_template() {
     # bash ${var//pat/rep}: bash 3.2 (macOS /bin/bash) is quadratic on this
     # 34 KB UTF-8 template (~60 s per render, 604 s across test-console.sh),
     # it keeps a quoted replacement's inner quotes literal, and bash 5.2+
-    # patsub treats '&' in the replacement as the match (HIMMEL-3912).
+    # patsub treats '&' in the replacement as the match.
     while [ "$#" -gt 0 ]; do
         export "RT_K$n=$1" "RT_V$n=$2"
         n=$((n + 1))
@@ -247,7 +245,7 @@ console_metadata() {
     bun "$repo/scripts/telegram/console-route.ts" register "$1" "$bucket" "${project_dir:-$repo}" >/dev/null 2>&1 || true
 }
 
-# HIMMEL-4832: set by cmd_next to the outgoing console's session name; assigned
+# Set by cmd_next to the outgoing console's session name; assigned
 # here so an ambient value can never name a predecessor.
 CONSOLE_BUS_PREDECESSOR=""
 
@@ -257,14 +255,14 @@ CONSOLE_BUS_PREDECESSOR=""
 # (constant for the whole invocation), not passed positionally.
 do_arm() {
     local session="$1" doc="$2" fill_signal="$3" log="$4" arm
-    # HIMMEL-3136 R2: CONSOLE_ROLE is retired (its only working value was the
+    # CONSOLE_ROLE is retired (its only working value was the
     # implicit default; a relay is a leg, armed via headed-arm-leg.sh --relay,
     # never through this console path). A console is what console.sh arms, so
     # nothing is forwarded to headed-arm.sh's --role; a stale CONSOLE_ROLE in
     # the environment is ignored.
     mkdir -p "$(dirname "$log")"
     arm="${CONSOLE_HEADED_ARM:-$HERE/../headed-arm.sh}"
-    # HIMMEL-3568: this process itself may BE a leg (console.sh next --arm run
+    # This process itself may BE a leg (console.sh next --arm run
     # from inside one) -- a leg's own profile/launcher env stays live in its
     # shell for its whole session (see console_context_leg_env_unset_names),
     # and headed-arm.sh would otherwise resolve its ${HEADED_ARM_*:-default}
@@ -280,7 +278,7 @@ do_arm() {
         leg_env_names+=("$leg_env_name")
     done
     unset "${leg_env_names[@]}"
-    # HIMMEL-4832 (himmel-bus T9): the console's bus identity is registered here,
+    # The console's bus identity is registered here,
     # by its launcher, and bound by headed-arm.sh once it confirms the claude
     # pid. Whatever HIMMEL_BUS_* this process carries (a predecessor console's
     # own HIMMEL_BUS_NAME is live in its shell) never reaches the successor, and
@@ -302,7 +300,7 @@ do_arm() {
             fi
             ;;
     esac
-    # plugin /console from any repo (HIMMEL-3623 verdict J1268O change 2): a
+    # plugin /console from any repo: a
     # foreign --project selects the bucket/prefix and is recorded in the
     # doc as data (see project_doc_value below) -- the console session
     # itself ALWAYS opens in the himmel checkout, never HEADED_ARM_REPO'd
@@ -325,7 +323,7 @@ do_arm() {
     echo "arm-log: $log"
 }
 
-# HIMMEL-5071: the predecessor's wrap. A console run inside its own session
+# The predecessor's wrap. A console run inside its own session
 # ($CLAUDE_CODE_SESSION_ID) writes WRAPPED and releases its lock only when
 # live-subagents.sh proves it has no in-process subagent still running (a judge
 # call whose verdict would otherwise die with the session); a live child, or no
@@ -357,7 +355,7 @@ cmd_wrap() {
     bash "$HERE/../queue-lock.sh" release "$doc" "$token" || exit 1
 }
 
-# The HANDOFF's open-judge-calls fact (HIMMEL-5071): this session's running
+# The HANDOFF's open-judge-calls fact: this session's running
 # subagents when `next` runs. Fails open to a note, like handoff-facts.sh.
 judge_calls_now() {
     local out rc=0
@@ -479,7 +477,7 @@ case "$DEADLINE_MIN" in
 esac
 
 # --- resolve root / slug / repo (moved ahead of the project-inheritance
-# block below, HIMMEL-3631): the cross-bucket auto-discovery block that
+# block below): the cross-bucket auto-discovery block that
 # follows needs root/slug to search with, and nothing between here and the
 # old position depended on the previous ordering.
 if ! root="$(handover_root)"; then
@@ -497,7 +495,7 @@ if ! slug="$(cd "$HERE/../../.." && git_env_scrub && user_slug)"; then
 fi
 repo="$(resolve_repo)"
 
-# HIMMEL-3631: a bare `next` with nothing pinning down where to search (no
+# A bare `next` with nothing pinning down where to search (no
 # --doc, no $CONSOLE_DOC, no --bucket/$CONSOLE_BUCKET/--prefix/--project)
 # cannot resolve state_dir before searching for a predecessor -- state_dir
 # derives from bucket, which derives from the project this block is trying
@@ -509,7 +507,7 @@ repo="$(resolve_repo)"
 # project-inheritance block right after this one, the --name-from-doc
 # inference further down, resolve_predecessor itself) does the rest
 # unmodified -- including refusing a poisoned recorded project exactly as
-# --project would (J1271R). Any of --doc/$CONSOLE_DOC/--bucket/
+# --project would. Any of --doc/$CONSOLE_DOC/--bucket/
 # $CONSOLE_BUCKET/--prefix/--project pins the search on its own and skips
 # this block entirely, so explicit flags always still win.
 if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ] && [ -z "$DOC_ARG" ] && [ -z "${CONSOLE_DOC:-}" ] && [ -z "$BUCKET" ] && [ -z "${CONSOLE_BUCKET:-}" ] && [ -z "$PREFIX" ]; then
@@ -540,7 +538,7 @@ if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ] && [ -z "$DOC_ARG" ] && [ -z "${CO
     unset _auto_name
 fi
 
-# codex-1 (pr-check round 1, HIMMEL-3623): a `next` with no explicit
+# A `next` with no explicit
 # --project must not silently record the successor as running "in the
 # himmel checkout itself" for a chain that is FOR a foreign project -- the
 # console session always lives in $REPO by design, so the plugin /console
@@ -559,8 +557,7 @@ if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ]; then
             ''|none*) _predecessor_project_early="" ;;
         esac
         # A recorded project that is not an absolute, existing directory is
-        # refused exactly as --project would refuse it (HIMMEL-3623 J1271O
-        # I2): dropping it would silently turn a foreign chain into a himmel
+        # refused exactly as --project would refuse it: dropping it would silently turn a foreign chain into a himmel
         # one. A relative value is refused too -- it would resolve against
         # whatever cwd this run happens to have.
         if [ -n "$_predecessor_project_early" ]; then
@@ -584,8 +581,7 @@ fi
 # bucket/prefix below derive from the PROJECT instead of from himmel, and the
 # project is recorded as data in the console doc (see project_doc_value) --
 # the console session itself always stays in $repo (do_arm above never
-# retargets it). Canonicalized with `pwd -P` (HIMMEL-3623 verdict J1268O
-# change 7): a symlink to himmel, or two spellings of the SAME real repo (a
+# retargets it). Canonicalized with `pwd -P`: a symlink to himmel, or two spellings of the SAME real repo (a
 # trailing slash, a relative path), still compare equal and count as "not
 # foreign".
 project_dir=""
@@ -599,8 +595,7 @@ fi
 project_doc_value="none — this console runs in the himmel checkout itself"
 [ -n "$project_dir" ] && project_doc_value="$project_dir"
 
-# registry_lookup_for_project <project_dir> -- HIMMEL-3623 verdict J1268O
-# change 4. Prints "<key>\t<jira_project>" and returns 0 on a match: an exact
+# registry_lookup_for_project <project_dir> -- prints "<key>\t<jira_project>" and returns 0 on a match: an exact
 # registered path, or the project's slugified basename against one of a
 # registry key's ALIASES (curated, so no path check needed). 1 on no match,
 # 2 on an unreadable registry. Refuses instead (exit 1, caller exits 1) when
@@ -632,7 +627,7 @@ registry_lookup_for_project() {
         // checked above and already returned. Treat it as a collision, not a
         // match: an unrelated project sharing a basename (a repo named
         // himmel, internal or docs at another path) must not silently inherit
-        // another projects bucket/prefix (HIMMEL-3623 J1271O I1).
+        // another projects bucket/prefix.
         const display = p => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "");
         for (const k of Object.keys(repos)) {
             const aliases = (repos[k].aliases || []).map(a => String(a).toLowerCase());
@@ -675,7 +670,7 @@ if [ -n "$project_dir" ]; then
         3)
             # An explicit --bucket already disambiguates the collision the
             # message below is warning about -- refusing anyway would make
-            # the documented remedy unusable (codex-2 pr-check round 1).
+            # the documented remedy unusable.
             if [ -z "$BUCKET" ]; then
                 err "resolved bucket '$(slugify "$(basename "$project_dir")")' for --project '$project_dir' collides with the registered project at '${_reg_match#*$'\t'}' — pass --bucket to disambiguate, or register this path: /handover register"
                 exit 1
@@ -691,7 +686,7 @@ fi
 # registered foreign --project, else basename of a foreign --project, else
 # derived from the repo basename — every branch already goes through
 # `slugify` uniformly, so no ONE source can bypass sanitization the others
-# get (the class codex-3 round 5 flagged for --prefix). The only gap
+# get (the class of bug a --prefix flag branch alone would leave open). The only gap
 # slugify itself doesn't close is a source that slugifies to nothing (e.g.
 # CONSOLE_BUCKET='###') — refused once, after precedence settles, same
 # principle as prefix below.
@@ -715,9 +710,8 @@ fi
 # himmel's own key doesn't belong to another project), else derived from
 # bucket. Validated ONCE here, on the RESOLVED value, after precedence
 # settles — not per-branch — so no source (flag, env, or a future derivation
-# change) can bypass it. Round 4 only validated the --prefix flag branch;
-# JIRA_PROJECT_KEY reached the same path construction unvalidated, the exact
-# asymmetry this round's codex-3 caught. Unlike --name/--bucket (slugified),
+# change) can bypass it. Validating only the --prefix flag branch would leave
+# JIRA_PROJECT_KEY reaching the same path construction unvalidated. Unlike --name/--bucket (slugified),
 # a malformed prefix is refused rather than silently rewritten: a Jira-style
 # project key is uppercase alphanumerics, and '../OTHER' copied verbatim
 # would escape the selected bucket entirely.
@@ -761,7 +755,7 @@ if [ -z "$name" ]; then
     err "--name resolved to an empty slug (got '$NAME')"
     exit 1
 fi
-# HIMMEL-4571: stop-console-idle-guard (*-console.lock), guard-console-dispatch
+# stop-console-idle-guard (*-console.lock), guard-console-dispatch
 # (*-console.md) and console-compact-reinject (-n name) all key on the -console
 # suffix, so a console armed without it silently loses them. The bare default
 # `console` already yields the `…A-console` doc.
@@ -772,7 +766,7 @@ case "$name" in
         exit 1 ;;
 esac
 date="$(date +%F)"
-# successor_date: the day used for `next`'s SUCCESSOR name only (HIMMEL-2984).
+# successor_date: the day used for `next`'s SUCCESSOR name only.
 # Defaults to today; --date overrides it so a 23:5x console can pre-mint
 # TOMORROW's console without waiting for midnight. Nothing else (predecessor
 # resolution, `new`) reads this — they keep using $date.
@@ -783,7 +777,7 @@ if [ "$DATE_GIVEN" -eq 1 ]; then
             # Shape alone isn't enough ('2026-99-99' matches it): round-trip
             # through the platform date(1) and require the output to equal
             # the input, so a shape-valid but nonexistent calendar date
-            # (also '2026-02-30') is rejected too (HIMMEL-3000).
+            # (also '2026-02-30') is rejected too.
             _date_round_trip="$(date -d "$DATE_ARG" +%F 2>/dev/null)" || _date_round_trip="$(date -j -f %Y-%m-%d "$DATE_ARG" +%F 2>/dev/null)" || _date_round_trip=""
             [ "$_date_round_trip" = "$DATE_ARG" ] || { err "--date must be a real calendar date, got '$DATE_ARG'"; usage >&2; exit 2; }
             successor_date="$DATE_ARG"
@@ -792,11 +786,11 @@ if [ "$DATE_GIVEN" -eq 1 ]; then
     esac
 fi
 state_dir="$root/$slug/$bucket"
-# HIMMEL-3079: the console parent defaults to Opus (default parent tier);
+# The console parent defaults to Opus (default parent tier);
 # Fable is the escalation target, reached only via --model / CONSOLE_MODEL.
 model="${MODEL:-${CONSOLE_MODEL:-claude-opus-5-5}}"
 fill_percent="${CONSOLE_FILL_PERCENT:-45}"
-# HIMMEL-3884: resolve once for both printed and armed launches. An explicit
+# Resolve once for both printed and armed launches. An explicit
 # --context overrides the console-only environment choice and 1m default.
 if [ "$CONTEXT_GIVEN" -eq 1 ]; then
     CONSOLE_CONTEXT_RESOLVED_MODE="$CONTEXT"
@@ -809,7 +803,7 @@ if [ "$CONSOLE_CONTEXT_RESOLVED_MODE" = 1m ] && ! console_context_model_is_fable
     && console_context_model_takes_1m_suffix "$launch_model"; then
     launch_model="${launch_model}[1m]"
 fi
-# HIMMEL-5501: the launch line carries --autocompact and an Opus 5.5 id, which a
+# The launch line carries --autocompact and an Opus 5.5 id, which a
 # CLI below the floor rejects at parse time. An --arm run refuses here, before
 # any doc, lock or arm exists; a print-only or dry-run only warns.
 _floor_dry=1
@@ -817,7 +811,7 @@ _floor_dry=1
 claude_floor_gate console.sh "$_floor_dry" "${HEADED_ARM_CLAUDE_CLI:-claude}" || exit 2
 
 # launch_cmd <session> <doc> -- the command line printed for an operator to
-# paste. HIMMEL-3299: no launcher runs for it, so the console's durable launch
+# paste. No launcher runs for it, so the console's durable launch
 # row is written by the command itself (record-launch.sh, then claude), never
 # when the line is merely printed -- a row for a console nobody started would
 # be indistinguishable from a real one. The row carries the mode/source/
@@ -825,17 +819,17 @@ claude_floor_gate console.sh "$_floor_dry" "${HEADED_ARM_CLAUDE_CLI:-claude}" ||
 # `;` not `&&`: a row that cannot be written must not stop the console.
 # An --arm console is launched by headed-arm.sh, which writes its own row; the
 # line printed beside it is informational and is not pasted.
-# The line opens with `cd <himmel checkout> && { ...; }` (HIMMEL-3623 J1271O
-# I3): the plugin prints it to an operator sitting in a FOREIGN repo, and the
+# The line opens with `cd <himmel checkout> && { ...; }` because the
+# plugin prints it to an operator sitting in a FOREIGN repo, and the
 # console must start in himmel for its project hooks and GO gate. The group
 # keeps a failed cd from falling through to claude in the wrong directory.
 launch_cmd() {
-    # HIMMEL-4013: the printed console line carries the `console` plugin profile
+    # The printed console line carries the `console` plugin profile
     # (--settings), like the armed launch; fails closed (no profile, no line).
     local console_settings
     console_settings=$(bash "$HERE/../../lanes/profile-settings.sh" console) \
         || { err "the console plugin profile did not resolve; refusing to print a full-plugin-set console launch (HIMMEL-4013)"; exit 2; }
-    # HIMMEL-5310: only the profile's MCP servers (--strict-mcp-config), as the
+    # Only the profile's MCP servers (--strict-mcp-config), as the
     # armed launch does; the flags sit between --model and --autocompact.
     local console_mcp mcp_flags=""
     console_mcp=$(bash "$HERE/../../lanes/profile-settings.sh" console --mcp-config) \
@@ -865,7 +859,7 @@ _console_sha256_8() {
     fi
 }
 
-# HIMMEL-2889: two consoles under DIFFERENT $HANDOVER_DIR roots that happen
+# Two consoles under DIFFERENT $HANDOVER_DIR roots that happen
 # to agree on slug/bucket/prefix/date/letter/name would otherwise collide on
 # the same signal/log path — touching one chain's signal could arm the
 # other's successor. Folding a digest of the RESOLVED, CANONICALIZED root
@@ -877,8 +871,7 @@ root_canon="$(_arm_realpath "$root")"
 root_digest="$(_console_sha256_8 "$root_canon")"
 
 # _console_group_or_world_writable <dir> -- true if <dir>'s own permission
-# bits allow group or other write. HIMMEL-2881 round 2 (codex-1 panel
-# finding): console_workdir_ensure only ever validates the CHILD it creates
+# bits allow group or other write. console_workdir_ensure only ever validates the CHILD it creates
 # ($XDG_RUNTIME_DIR/himmel-console); it never checks the PARENT
 # ($XDG_RUNTIME_DIR itself). Unix permission semantics mean write access to
 # a directory controls its entries regardless of the entries' own
@@ -900,7 +893,7 @@ _console_group_or_world_writable() {
     esac
 }
 
-# HIMMEL-2881: the default work dir is a PREDICTABLE path
+# The default work dir is a PREDICTABLE path
 # (${TMPDIR:-/tmp}/himmel-console-<uid>) another local user could pre-create
 # — as a directory they own, or as a symlink elsewhere — before this
 # process's first run; `mkdir -p` silently accepts an existing directory
@@ -908,8 +901,8 @@ _console_group_or_world_writable() {
 # $XDG_RUNTIME_DIR/himmel-console (already a per-user 0700 directory on
 # systemd hosts) when it is set AND already owned by this uid AND not
 # itself group- or world-writable; otherwise fall back to the uid-qualified
-# /tmp path. Modeled directly on headed-arm.sh's LOCKDIR hardening
-# (HIMMEL-2545): `-L` before `-d` before `-O` (plain test operators, no
+# /tmp path. Modeled directly on headed-arm.sh's LOCKDIR hardening:
+# `-L` before `-d` before `-O` (plain test operators, no
 # stat/uid comparison needed), then a stat-based permission-bit check for
 # the GNU/BSD split. Exit 3 is a new, distinct code for this whole class of
 # refusal — never conflated with the exit-1 usage errors or the exit-2
@@ -928,20 +921,18 @@ workdir="${CONSOLE_WORK_DIR:-$_console_default_workdir}"
 
 # _console_dir_component_unsafe <dir> -- true if <dir> is group- or
 # world-writable AND (lacks the sticky bit OR the sticky bit is present but
-# <dir> is owned by neither root nor us). HIMMEL-2881 round 3 (codex-1
-# panel finding): console_workdir_ensure (below) validates only $workdir
+# <dir> is owned by neither root nor us). console_workdir_ensure (below) validates only $workdir
 # itself, in every one of its three origins -- the XDG_RUNTIME_DIR default,
 # a CONSOLE_WORK_DIR override, or the TMPDIR fallback. The XDG_RUNTIME_DIR
 # case alone got a parent check (the `if` above deciding whether to prefer
-# it) in round 2; the override and TMPDIR-fallback parents were left
+# it); the override and TMPDIR-fallback parents would be left
 # unchecked, so another local user with write access to either parent could
 # still swap the (already-validated) work dir out from under this process,
 # same as the XDG_RUNTIME_DIR case. A sticky bit changes that: it restores
 # per-entry protection inside an otherwise world-writable directory -- but
 # ONLY against users who are neither the entry's owner, the directory's
 # owner, nor root; the directory's OWNER can still rename/unlink entries
-# inside their own directory regardless of the sticky bit (round 4,
-# codex-1 panel finding), so a sticky directory owned by an attacker is not
+# inside their own directory regardless of the sticky bit, so a sticky directory owned by an attacker is not
 # actually safe -- the exemption must also require the directory itself be
 # owned by root or by us. This is exactly what makes plain /tmp (mode 1777,
 # root-owned) a safe TMPDIR-fallback parent despite being world-writable,
@@ -954,7 +945,7 @@ _console_dir_component_unsafe() {
     owner=$(stat -c %u "$1" 2>/dev/null || stat -f %u "$1" 2>/dev/null)  # gnu-ok: GNU stat -c is paired with the BSD stat -f fallback on this same line
     [ -n "$owner" ] || return 0  # unreadable owner: fail closed, treat as unsafe
     if [ "$owner" != "0" ] && [ "$owner" != "$(id -u)" ]; then
-        # HIMMEL-2881 round 5 (codex-1 panel finding): an attacker-owned
+        # An attacker-owned
         # directory is unsafe REGARDLESS of its current permission bits --
         # its owner can chmod it to add write access (or already has owner
         # write access even at e.g. mode 0755) at any point after this
@@ -982,8 +973,7 @@ _console_dir_component_unsafe() {
     return 0  # trusted owner but group/world-writable without sticky: other non-owning local users could tamper
 }
 # _console_ancestor_unsafe <dir> -- true if <dir> or any of its existing
-# ancestors is unsafe per _console_dir_component_unsafe. HIMMEL-2881 round 4
-# (codex-2 panel finding): checking only the immediate parent leaves the
+# ancestors is unsafe per _console_dir_component_unsafe. Checking only the immediate parent leaves the
 # REST of the ancestor chain unchecked -- a local user with write access to
 # a GRANDPARENT (or higher) can rename/replace that ancestor, substituting
 # the entire subtree beneath it (including an immediate parent that, in
@@ -1002,7 +992,7 @@ _console_ancestor_unsafe() {
     done
     return 1
 }
-# HIMMEL-2881 round 5 (codex-2 panel finding): the ancestor walk is a
+# The ancestor walk is a
 # lexical `dirname` loop -- on a RELATIVE workdir (e.g. CONSOLE_WORK_DIR=work)
 # `dirname` stops at "." after one step ("." is its own dirname), so only the
 # current working directory itself is ever checked, never anything above it.
@@ -1015,9 +1005,9 @@ if _console_ancestor_unsafe "$_console_workdir_parent"; then
     err "refusing to use work dir '$workdir' — its parent directory '$_console_workdir_parent' (or an ancestor of it) is group- or world-writable without adequate sticky-bit/ownership protection, so another local user could replace it out from under this process (HIMMEL-2881)"
     exit 3
 fi
-# HIMMEL-2881 round 6 (codex-1 panel finding): ancestor validation above ran
-# against the CANONICALIZED path, but every use below this point (creation,
-# chain_dir) previously kept the ORIGINAL $workdir spelling -- if a symlink
+# Ancestor validation above runs
+# against the CANONICALIZED path, so every use below this point (creation,
+# chain_dir) must use that path rather than the ORIGINAL $workdir spelling -- if a symlink
 # in one of workdir's own path components resolved to a safe tree at
 # validation time, an attacker could repoint that symlink before the actual
 # create/access below, and the two would silently diverge. Adopting the
@@ -1036,8 +1026,7 @@ workdir="$_console_workdir_abs"
 # _console_mkdir_chain_safe <dir> -- create <dir> and every missing ancestor
 # ONE COMPONENT AT A TIME (never a single `mkdir -p`), validating ownership
 # of each component the instant it exists -- whether because this call just
-# created it or because it was already there. HIMMEL-2881 round 7 (codex-1
-# panel finding): `_console_ancestor_unsafe` above only walks EXISTING
+# created it or because it was already there. `_console_ancestor_unsafe` above only walks EXISTING
 # ancestors -- a missing one is skipped on the assumption that `mkdir -p`
 # will create it safely -- but `mkdir -p` silently adopts any ancestor an
 # attacker races into existence between that walk and this create step, with
@@ -1056,8 +1045,7 @@ _console_mkdir_chain_safe() {
         prefix="$(dirname "$prefix")"
         [ "$prefix" = "/" ] && break
     done
-    # HIMMEL-2881 round 8 (codex-1 panel finding on the round-7 fix): the
-    # scan above just stops at the first EXISTING directory and hands it to
+    # The scan above just stops at the first EXISTING directory and hands it to
     # the create loop below as a trusted base -- but "existing" only means
     # existing NOW, at scan time, not at the time the OUTER ancestor-unsafe
     # walk (which ran before this function was ever called) last looked. An
@@ -1069,7 +1057,7 @@ _console_mkdir_chain_safe() {
         err "refusing to use work dir '$target' — its ancestor '$prefix' (or one above it) is unsafe, and appeared after the initial check ran (HIMMEL-2881)"
         exit 3
     fi
-    # HIMMEL-3182: `${missing[@]+...}` -- `missing` is empty whenever the work
+    # `${missing[@]+...}` -- `missing` is empty whenever the work
     # dir already exists, and bash < 4.4 (macOS 3.2) aborts a bare
     # "${missing[@]}" of an empty array under `set -u`.
     for p in ${missing[@]+"${missing[@]}"}; do
@@ -1172,7 +1160,7 @@ cmd_new() {
 
     mkdir -p "$state_dir"
     # Claim a letter by ATOMIC EXCLUSIVE CREATE, never scan-then-create (the
-    # repo's own convention — see headed-arm.sh's codex-2 note): two
+    # repo's own convention — see headed-arm.sh): two
     # concurrent `new` runs racing a plain find_free_letter could both pick
     # the same free letter, and the second would truncate the first's doc
     # before either took its queue lock. `set -C` (noclobber) makes `: >`
@@ -1199,13 +1187,13 @@ cmd_new() {
     set +C
     [ "$claimed" -eq 1 ] || { err "all letters A-Z, AA-ZZ (past ZZ) are taken for today's '$name' console in $state_dir"; exit 1; }
     local session="${prefix}-nextleg-${date}${letter}-${name}"
-    # HIMMEL-4204: the Telegram inbox, resolved here (same default as
+    # The Telegram inbox, resolved here (same default as
     # arm-resume.sh / bus.ts) so step 10/11 print a literal, runnable path.
     local inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${session}.md"
     local fill_signal="$chain_dir/sig-$session"
     local log="$chain_dir/launch-$session.log"
 
-    # HIMMEL-4058: resolve the launch line (and so the console profile) BEFORE
+    # Resolve the launch line (and so the console profile) BEFORE
     # the lock and the render, as cmd_next does before clearing its cleanup
     # trap: a profile refusal must leave neither a rendered doc nor a held lock.
     # The doc claimed above is still the empty placeholder, so remove it.
@@ -1231,7 +1219,7 @@ cmd_new() {
     # {{RELEASE_TOKEN}}, so ACTION ZERO can adopt it from the doc it already
     # loaded instead of depending on operator scrollback — and on --arm,
     # nothing else could ever have delivered it to the launched console at
-    # all (do_arm's own argv carries no token, and HIMMEL-2813's per-session
+    # all (do_arm's own argv carries no token, and the per-session
     # token file is keyed to THIS process, not the one `--arm` launches).
     # Only stdout is captured (not stderr): queue-lock.sh's own diagnostics
     # ("stderr says which" on a takeover) still stream live; only the
@@ -1244,7 +1232,7 @@ cmd_new() {
         exit 1
     fi
     release_token="$(printf '%s\n' "$lock_out" | sed -n 's/^release-token: //p')"
-    # HIMMEL-2910: acquire now prints the token backticked
+    # Acquire now prints the token backticked
     # ("release-token: `<token>`"), so this extraction would otherwise embed
     # the backticks into {{RELEASE_TOKEN}} too -- strip a matched pair.
     # Tolerates the pre-2910 bare form too -- a no-op when there are no
@@ -1372,7 +1360,7 @@ cmd_next() {
         err "predecessor console doc does not exist: $predecessor_doc"
         exit 1
     fi
-    # HIMMEL-2973 S1: the predecessor's `## Live state` (nonces, lock
+    # The predecessor's `## Live state` (nonces, lock
     # tokens, held queue, last GO) is copied verbatim into the successor's
     # HANDOFF below — a continuously maintained Live state IS a handoff, so
     # the successor never has to re-derive authority-bearing state by hand.
@@ -1383,14 +1371,14 @@ cmd_next() {
         f && /^## / { exit }
         f { print }
     ' "$predecessor_doc")"
-    # HIMMEL-3361: the console board's artifact URL rides on the `board:` line
+    # The console board's artifact URL rides on the `board:` line
     # of that Live state; the successor's own Live state starts from it, so it
     # updates the same artifact instead of minting a new one.
     predecessor_board="$(printf '%s\n' "$predecessor_live_state" | sed -n 's/^board:[[:space:]]*//p' | head -n 1)"
     case "$predecessor_board" in
         ""|"none yet"*) predecessor_board="none yet — publish it at ACTION ZERO step 12" ;;
     esac
-    # HIMMEL-3933: the roadmap tracker's URL rides on `tracker:` the same way.
+    # The roadmap tracker's URL rides on `tracker:` the same way.
     predecessor_tracker="$(printf '%s\n' "$predecessor_live_state" | sed -n 's/^tracker:[[:space:]]*//p' | head -n 1)"
     [ -n "$predecessor_tracker" ] || predecessor_tracker="none"
     predecessor_base="$(basename "$predecessor_doc")"
@@ -1421,7 +1409,7 @@ cmd_next() {
 
     local doc="$state_dir/${prefix}-nextleg-${successor_date}${successor_letter}-${name}.md"
     local session="${prefix}-nextleg-${successor_date}${successor_letter}-${name}"
-    # HIMMEL-4204: the Telegram inbox, resolved here (same default as
+    # The Telegram inbox, resolved here (same default as
     # arm-resume.sh / bus.ts) so step 10/11 print a literal, runnable path.
     local inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${session}.md"
     # HANDOFF sits beside the predecessor's OWN doc, not in $state_dir — a
@@ -1501,7 +1489,7 @@ cmd_next() {
     # An honest, explicit placeholder rather than an empty string: the
     # successor's own ACTION ZERO acquires and records it, exactly as the
     # console-template's own instructions already tell it to.
-    # HIMMEL-3989: carry the predecessor's fleet manifest to the successor's
+    # Carry the predecessor's fleet manifest to the successor's
     # stem so its waiter can start with --legs-from and keep watching the same
     # legs. A COPY, not a rename: the outgoing console's waiter still reads
     # its own until that console releases. No manifest = no-op.
@@ -1538,7 +1526,7 @@ cmd_next() {
     echo "doc: $doc"
     echo "session: $session"
 
-    # Same class as the successor-doc race this round's codex-1 fixed: a
+    # Same class as the successor-doc race: a
     # plain `[ -f ]` check here is check-then-write, so two concurrent
     # `next` runs targeting DIFFERENT successor buckets but the SAME
     # predecessor (e.g. both via --doc) could both see "missing" and both
@@ -1549,7 +1537,7 @@ cmd_next() {
     set -C
     if : 2>/dev/null > "$predecessor_handoff"; then
         set +C
-        # HIMMEL-4902: every mechanically derivable field is filled here so the
+        # Every mechanically derivable field is filled here so the
         # outgoing console writes only its judgement notes (one Edit), not
         # ~18 turns of hand derivation. Each fact fails open to "unavailable".
         local facts="$HERE/../console-kit/handoff-facts.sh"
@@ -1589,14 +1577,14 @@ cmd_next() {
             exit 1
         fi
     fi
-    # HIMMEL-4052: resolved BEFORE the cleanup trap is cleared, so a profile
+    # Resolved BEFORE the cleanup trap is cleared, so a profile
     # refusal (exit 2) removes the claimed successor doc and a retry is not
     # blocked by "successor doc already exists".
     launch_line=$(launch_cmd "$session" "$doc") || exit $?
     trap - EXIT
     console_metadata "$inbox"
     echo "launch: $launch_line"
-    # HIMMEL-4902: handover mode for the OUTGOING console's waiter, set only now
+    # Handover mode for the OUTGOING console's waiter, set only now
     # that the successor doc, HANDOFF and launch line all validated. The marker
     # sits beside the predecessor's inbox (console-wait.sh reads it): its waiter
     # keeps delivering Telegram lines but stops tick/bank/page sampling, so an

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in scripts/test-context-fill.sh
-# scripts/handover/test-headed-arm.sh - suite for headed-arm.sh (HIMMEL-2545).
+# scripts/handover/test-headed-arm.sh - suite for headed-arm.sh.
 #
 # headed-arm.sh launches a headed successor session (a konsole window with a
-# real TTY). The point of HIMMEL-2545 is that the launch line clears
+# real TTY). The point is that the launch line clears
 # CLAUDE_CODE_CHILD_SESSION and CLAUDE_PID and forces
 # CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 - without that, the launched session
 # inherits a throwaway-child marker, claude saves no transcript for it, and
@@ -36,7 +36,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/headed-arm.sh"
 # suite's own per-case overrides are the only source, same as
 # console-kit/test-headed-arm-leg.sh:40.
 unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER 2>/dev/null || true
-# HIMMEL-3719: a real macOS host reads uname=Darwin, which picks the macOS shim
+# A real macOS host reads uname=Darwin, which picks the macOS shim
 # and its ~7 minute session-visibility budget; every case that launches but
 # never confirms (44c+) then outruns the CI timeout. Pin the platform so the
 # suite is host-independent; cases that want Darwin (43, 43c) set or unset it
@@ -44,13 +44,13 @@ unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER 2>/dev/nul
 # ponytail: the Darwin-shim launch path is exercised only by cases 43/43c, not
 # end to end on a real Mac, until the shim's ~7 min budget can be shortened via a test seam.
 export HEADED_ARM_UNAME=Linux
-# r2-codex-4: this mktemp used to be unchecked. A failed mktemp leaves $tmp
+# This mktemp used to be unchecked. A failed mktemp leaves $tmp
 # EMPTY, and every fixture path built on it below ("$tmp/..." -> "/...")
 # then targets an unintended location instead of a throwaway one - abort
 # loudly rather than let that happen.
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
-# HIMMEL-3299: marker for the end-of-suite check that no case left a launch
+# Marker for the end-of-suite check that no case left a launch
 # record in the operator's real launch-record dir (see case 40).
 : > "$tmp/suite-start-marker"
 # headed-arm.sh writes a console arm's launch row to
@@ -59,7 +59,7 @@ trap 'rm -rf "$tmp"' EXIT
 # case that forgets its own dir (38a-38l did) lands here, not in production data.
 # Cases 1e-1h still pass a per-case dir, which overrides this.
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
-# HIMMEL-3182: headed-arm.sh mkdirs its claim-lock root `-m 0700` and then
+# Headed-arm.sh mkdirs its claim-lock root `-m 0700` and then
 # validates it (owner, group/world-writable bits), and most cases below (fresh
 # lock root, 0700 readback, chmod 777 refusal) assert exactly that. On a host
 # where a mode does not stick (Git Bash / NTFS) the fresh root is refused (exit
@@ -81,7 +81,7 @@ fails=0
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 check()        { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains()     { grepq "$2" -F -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
-# HIMMEL-3484: only grep's rc 1 means "absent"; rc >1 is an execution error,
+# Only grep's rc 1 means "absent"; rc >1 is an execution error,
 # which would otherwise pass every negative assertion vacuously.
 not_contains() {
   local _rc=0
@@ -93,7 +93,7 @@ not_contains() {
   esac
 }
 
-# _fake_claude_proc <dir> <name> [pid] - r7-codex-1 test infra: headed-arm.sh's
+# _fake_claude_proc <dir> <name> [pid] - test infra: headed-arm.sh's
 # session_confirmed() walks each pgrep-matched pid's OWN /proc/<pid>/comm
 # before believing a match (a launcher whose argv quotes the claude command
 # is not a claude session), so a stub that wants to report "a session IS
@@ -101,7 +101,7 @@ not_contains() {
 # a bare exit 0. HEADED_ARM_PROC then points headed-arm.sh at this fixture
 # instead of the real /proc.
 #
-# r9-codex-3: session_confirmed() now ALSO requires a POSITIONAL, EXACT
+# session_confirmed() now ALSO requires a POSITIONAL, EXACT
 # "-n <name>" pair in that pid's real argv (_argv_has_n_name reads
 # /proc/<pid>/cmdline, NUL-separated) - a comm match alone is no longer
 # enough. <name> is now REQUIRED (no default) so every caller states
@@ -121,24 +121,24 @@ _fake_claude_proc() {
 # space-joined) to <dir>/record, and a pgrep stub whose exit status is
 # fixed at <pgrep-exit-code>. <konsole-behavior> defaults to "alive" (the
 # stub sleeps briefly after recording, so it is still running when
-# headed-arm.sh's own codex-1 aliveness check looks at it a moment later -
+# headed-arm.sh's own aliveness check looks at it a moment later -
 # a REAL konsole window stays open, so this is the realistic default for
 # every case that expects a launch to succeed); "dying" makes the stub
 # exit immediately after recording, simulating a konsole that dies on
-# arrival (no DISPLAY, a bad invocation) - the exact case codex-1 exists to
-# catch.
+# arrival (no DISPLAY, a bad invocation) - the exact case that aliveness check exists
+# to catch.
 #
-# r8-codex-4: the "alive" stub also touches a SEPARATE <dir>/confirmable
+# The "alive" stub also touches a SEPARATE <dir>/confirmable
 # marker, distinct from <dir>/record - the pgrep stub below now reports a
 # match on THAT, not on record's mere existence. Before this, "dying" ALSO
 # left record populated (the write happens before its early exit), so once
 # headed-arm.sh's post-launch poll started running regardless of pid
-# liveness (see r8-codex-4 in headed-arm.sh itself), a dying konsole would
+# Liveness (see headed-arm.sh itself), a dying konsole would
 # have been wrongly CONFIRMED by this fixture even though no real session
 # was ever running - record only proves konsole was invoked, never that a
 # session is actually up.
 #
-# r9-codex-3: [name] is OPTIONAL here (unlike _fake_claude_proc's own
+# [name] is OPTIONAL here (unlike _fake_claude_proc's own
 # required parameter) because plenty of callers below never reach a
 # "match" branch at all (an error exit before dedup, or a pgrep stub that
 # always reports no match) - the fake pid fixture would just be unused.
@@ -163,14 +163,14 @@ sleep 5
 KONSOLE_EOF
   fi
   chmod 755 "$dir/konsole"
-  # r3-codex-2: headed-arm.sh now polls pgrep AFTER a successful launch too
+  # Headed-arm.sh now polls pgrep AFTER a successful launch too
   # (to confirm the session is visible before releasing the lock). A pgrep
   # stub whose exit code never reflects reality would make every happy-path
   # launch stall for the full post-launch budget - so once the konsole stub
   # has actually recorded a launch AND touched confirmable (never for the
   # "dying" behavior - see the note above), this stub reports a match
   # immediately; before that, it still respects <pgrep-exit-code> for the
-  # PRE-launch dedup decisions the case is actually testing. r7-codex-1: a
+  # PRE-launch dedup decisions the case is actually testing. A
   # "match" now also has to survive headed-arm.sh's own comm check, so both
   # branches print the fake claude pid _fake_claude_proc set up above, not
   # just a bare exit 0.
@@ -188,9 +188,9 @@ PGREP_EOF
 # receives against one fixed fake process line, via a REAL `grep -E`, and
 # exits with grep's own verdict. This lets a case assert exactly what
 # pattern reaches pgrep (via ere_escape's effect) without needing a
-# genuinely running process - the whole point of the codex-3 cases below.
+# genuinely running process - the whole point of the ERE-escape cases below.
 #
-# r9-codex-3: <name> is the arm's OWN -n value, embedded in pid 9001's real
+# <name> is the arm's OWN -n value, embedded in pid 9001's real
 # /proc cmdline fixture via _fake_claude_proc - session_confirmed() now
 # walks that positionally regardless of which pgrep branch produced the
 # candidate, so a genuine dedup (case 10b, where <candidate> already equals
@@ -201,11 +201,11 @@ mk_matcher_pgrep() {
   mkdir -p "$dir"
   _fake_claude_proc "$dir" "$name"
   printf '%s\n' "$candidate" > "$dir/candidate"
-  # r3-codex-2: same record-aware short-circuit as mk_stub's pgrep - once
+  # Same record-aware short-circuit as mk_stub's pgrep - once
   # THIS case's own konsole stub has recorded a launch, the post-launch
   # visibility poll resolves instantly instead of running out the full
   # budget against a candidate line that was never meant to match itself.
-  # r7-codex-1: either branch that decides "match" now also has to print a
+  # Either branch that decides "match" now also has to print a
   # pid whose comm survives headed-arm.sh's own comm check.
   cat > "$dir/pgrep" <<'PGREP_EOF'
 #!/usr/bin/env bash
@@ -249,7 +249,7 @@ settle() {
 # has to clean up after another, and the real /tmp lock root is never
 # touched). A case that wants to test lock contention pre-seeds
 # "$stubdir/locks" before calling run_headed_arm.
-# [context] (HIMMEL-2658) is the 8th positional; since headed-arm.sh reads it
+# [context] is the 8th positional; since headed-arm.sh reads it
 # by POSITION, a case that wants an explicit [context] with the default
 # model has to pass that default model explicitly too (there is no way to
 # skip position 6 while filling position 7).
@@ -293,15 +293,15 @@ contains "happy path: carries the session name via -n"  "$rec1" "-n HIMMEL-9999-
 contains     "happy path: carries the default model (Opus parent, HIMMEL-3079)" "$rec1" "claude-opus-5-5"
 not_contains "happy path: default model is not Fable"   "$rec1" "claude-fable-5-1"
 contains "happy path: doc reaches the prompt"            "$rec1" "load some/handover-doc.md and continue"
-# HIMMEL-3884: direct consoles default to 1m/auto with honest provenance.
+# Direct consoles default to 1m/auto with honest provenance.
 contains     "happy path: default context passes autocompact auto" "$rec1" "--autocompact auto"
 not_contains "happy path: default context has no autocompact 200000" "$rec1" "--autocompact 200000"
-# HIMMEL-5501: Opus 5.5 is native-1M, so the suffix is NOT appended to it.
+# Opus 5.5 is native-1M, so the suffix is NOT appended to it.
 not_contains "happy path: native-1M default model gets no [1m] suffix" "$rec1" "[1m]"
 log1="$(cat "$d1/log" 2>/dev/null || true)"
 contains "happy path: log records the default context (1m)" "$log1" "context=1m (default)"
 
-# --- 1b (HIMMEL-2973). CONSOLE_CONTEXT=1m opts into 1m without a positional -
+# --- 1b. CONSOLE_CONTEXT=1m opts into 1m without a positional -
 d1b="$tmp/c1b"; mk_stub "$d1b" 1 alive "HIMMEL-9999b-leg"
 rc1b=0
 CONSOLE_CONTEXT=1m run_headed_arm "$d1b" "$REPO" "HIMMEL-9999b-leg" "some/handover-doc.md" "$d1b/signal-never" "$PAST" >/dev/null 2>&1 || rc1b=$?
@@ -311,12 +311,12 @@ check "CONSOLE_CONTEXT=1m: exit 0" "$rc1b" "0"
 contains     "CONSOLE_CONTEXT=1m: passes autocompact auto"   "$rec1b" "--autocompact auto"
 not_contains "CONSOLE_CONTEXT=1m: no autocompact 200000"     "$rec1b" "--autocompact 200000"
 log1b="$(cat "$d1b/log" 2>/dev/null || true)"
-# HIMMEL-3279: spec §2.4 keys on `context=1m (explicit)`; the emitter used to
+# Spec §2.4 keys on `context=1m (explicit)`; the emitter used to
 # say `(CONSOLE_CONTEXT=1m)`. One spelling, the spec's.
 contains     "CONSOLE_CONTEXT=1m: log spells the source (explicit)" "$log1b" "context=1m (explicit)"
 not_contains "CONSOLE_CONTEXT=1m: log no longer spells the mechanism as the source" "$log1b" "(CONSOLE_CONTEXT=1m)"
 
-# --- 1c (HIMMEL-3884). positional 1m needs no environment workaround ----
+# --- 1c. positional 1m needs no environment workaround ----
 d1c="$tmp/c1c"; mk_stub "$d1c" 1 alive "HIMMEL-9999c-leg"
 outc1c=$(env -u CONSOLE_CONTEXT KONSOLE_CMD="$d1c/konsole" PGREP_CMD="$d1c/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d1c/locks" HEADED_ARM_PROC="$d1c/proc" \
     bash "$SCRIPT" --dry-run "HIMMEL-9999c-leg" "some/handover-doc.md" "$d1c/signal-never" "$PAST" "$d1c/log" claude-opus-5 1m 2>&1)
@@ -329,7 +329,7 @@ check "positional standard: exit 0" "$?" "0"
 wait_record "$d1c" || true
 contains "positional standard: argv opts down" "$(cat "$d1c/record" 2>/dev/null || true)" "--autocompact 200000"
 
-# --- 1d (HIMMEL-5501). the [1m] suffix only goes on the 4.6 family ---------
+# --- 1d. the [1m] suffix only goes on the 4.6 family ---------
 # 4.6 ids need it to reach 1M; native-1M and non-Anthropic ids launch bare.
 sfx_run() { # <case dir> <model> -> the dry-run argv line
   local d="$tmp/sfx-$1"; mk_stub "$d" 1 alive
@@ -352,7 +352,7 @@ bare_launch "glm-5.1 never [1m]"           glm      glm-5.1
 bare_launch "a slash id never [1m]"        slash    openrouter/deepseek-v4
 contains     "suffix: a native-1M id still passes --autocompact auto" "$(sfx_run sonnet55b claude-sonnet-5-5)" "--autocompact auto"
 
-# --- 1x (HIMMEL-5501). Claude Code version floor ----------------------------
+# --- 1x. Claude Code version floor ----------------------------
 # Fixture shape copied from the real `claude --version`: "2.1.296 (Claude Code)".
 dfl="$tmp/cfl"; mk_stub "$dfl" 1 alive "HIMMEL-floor-leg"
 printf '#!/bin/sh\necho "2.1.200 (Claude Code)"\n' > "$dfl/claude-old"; chmod 755 "$dfl/claude-old"
@@ -373,7 +373,7 @@ rcfl=0
 outfl=$(HEADED_ARM_CLAUDE_CLI="$dfl/claude-new" run_headed_arm "$dfl" "$REPO" "HIMMEL-floor-leg" "doc.md" "$dfl/signal-never" "$PAST" 2>&1) || rcfl=$?
 check "at the floor: armed launch proceeds (exit 0)" "$rcfl" "0"
 
-# HIMMEL-4094/3884: ambient leg profiles cannot override a console opt-down.
+# Ambient leg profiles cannot override a console opt-down.
 for ambient in profile resolver both stale; do
   ambient_env=(-u HEADED_ARM_CONTEXT_PROFILE -u HEADED_ARM_LEG_PROFILES -u HEADED_ARM_CONTEXT_PID)
   case "$ambient" in
@@ -390,7 +390,7 @@ for ambient in profile resolver both stale; do
   not_contains "ambient profile inputs ($ambient): no profile 1m ceiling" "$out" "--autocompact 600000"
 done
 
-# --- 1e (HIMMEL-5193). the audited 400k A/B arm: HEADED_ARM_AB_AUTOCOMPACT is
+# --- 1e. the audited 400k A/B arm: HEADED_ARM_AB_AUTOCOMPACT is
 # honoured only when paired to this exec's PID (the wrapper's `export
 # HEADED_ARM_CONTEXT_PID=$$; exec` shape), the context is standard and the
 # value is exactly 400000. A wrong pid is ignored; 1m or another value refuses.
@@ -423,7 +423,7 @@ rc=0; out="$(ab_run paired standard 300000 other)" || rc=$?
 check "A/B arm (value 300000): refused exit 2" "$rc" "2"
 not_contains "A/B arm (value 300000): no launch argv" "$out" "--autocompact 300000"
 
-# --- 1d (HIMMEL-2973). positional 1m WITH the env is accepted ---------------
+# --- 1d. positional 1m WITH the env is accepted ---------------
 d1d="$tmp/c1d"; mk_stub "$d1d" 1 alive "HIMMEL-9999d-leg"
 rc1d=0
 CONSOLE_CONTEXT=1m run_headed_arm "$d1d" "$REPO" "HIMMEL-9999d-leg" "some/handover-doc.md" "$d1d/signal-never" "$PAST" claude-opus-5 1m >/dev/null 2>&1 || rc1d=$?
@@ -432,8 +432,8 @@ rec1d="$(cat "$d1d/record" 2>/dev/null || true)"
 check "positional 1m with env: exit 0" "$rc1d" "0"
 contains "positional 1m with env: passes autocompact auto" "$rec1d" "--autocompact auto"
 
-# --- 1e (HIMMEL-3279). a console arm records its launch context DURABLY, at
-# launch, in the HIMMEL-3270 launch-logs dir (btrfs) - the tmpfs arm log
+# --- 1e. a console arm records its launch context DURABLY, at
+# launch, in the launch-logs dir (btrfs) - the tmpfs arm log
 # ($LOG) is cleared at every reboot. A non-console arm writes nothing here
 # (headed-arm-leg.sh owns a leg's own one-line record in the same file).
 run_console_arm() {
@@ -490,7 +490,7 @@ rec2="$(cat "$d2/record" 2>/dev/null || true)"
 contains     "explicit model: carries the given model (Fable stays reachable)" "$rec2" "claude-fable-5-1"
 not_contains "explicit model: does not fall back to the default" "$rec2" "claude-opus-5"
 
-# --- 2b (HIMMEL-2658). explicit [context] positional, non-default value ---
+# --- 2b. explicit [context] positional, non-default value ---
 # claude-opus-5 is not Fable-family, so `standard` here also proves the
 # [1m]-strip-then-DON'T-reapply path never fires when unsuffixed to begin
 # with (nothing to strip, nothing appended).
@@ -504,7 +504,7 @@ not_contains "explicit standard context: no [1m] suffix"            "$rec2b" "[1
 log2b="$(cat "$d2b/log" 2>/dev/null || true)"
 contains "explicit standard context: log records context=standard" "$log2b" "context=standard"
 
-# --- 2c (HIMMEL-2658). a bad [context] value refuses before any launch ----
+# --- 2c. a bad [context] value refuses before any launch ----
 outc=$(bash "$SCRIPT" HIMMEL-leg2c doc2c.md "$tmp/signal-never-2c" "$PAST" "$tmp/log2c" claude-opus-5 bogus 2>&1)
 rcc=$?
 check    "bad context value: exit 2"      "$rcc" "2"
@@ -547,7 +547,7 @@ else echo "FAIL - signal file: triggers a launch"; fails=$((fails+1)); fi
 log7="$(cat "$d7/log" 2>/dev/null || true)"
 contains "signal file: log records the signal seen" "$log7" "signal seen"
 
-# --- 8 (codex-1). a konsole that dies on arrival is a LOUD failure, never a
+# --- 8. a konsole that dies on arrival is a LOUD failure, never a
 # false "launched" success -------------------------------------------------
 d8="$tmp/c8"; mk_stub "$d8" 1 dying
 rc8=0
@@ -558,14 +558,14 @@ log8="$(cat "$d8/log" 2>/dev/null || true)"
 contains     "dying konsole: log says FAILED"           "$log8" "FAILED"
 not_contains "dying konsole: log NEVER claims launched" "$log8" "konsole launched"
 
-# --- 9 (codex-2). a held lock blocks a second arm from launching ----------
-# (r2-codex-3 changed WHAT the eventual log message says: this lock never
+# --- 9. a held lock blocks a second arm from launching ----------
+# (The retry changed WHAT the eventual log message says: this lock never
 # clears for the whole retry budget, so the second arm exhausts its ~2s of
 # retries and gives up - "still claimed after waiting", not the old
-# immediate "already claimed". r3-codex-1 changed the EXIT CODE: exhausting
+# immediate "already claimed". Exhausting
 # the retry without ever confirming a real session is UNRESOLVED, not a
 # dedup - exit 6, not the old 0. This lock never clears at all, so this
-# case now pins that outcome instead of the round-2 "deferred, harmless"
+# case now pins that outcome instead of a "deferred, harmless"
 # framing.)
 d9="$tmp/c9"; mkdir -p "$d9/locks/HIMMEL-locked.lock"
 date +%s > "$d9/locks/HIMMEL-locked.lock/acquired"
@@ -580,10 +580,10 @@ else echo "ok - held lock: konsole not invoked"; fi
 log9="$(cat "$d9/log" 2>/dev/null || true)"
 contains "held lock: log names the claim" "$log9" "still claimed after waiting"
 
-# --- 10 (codex-3). NAME's regex metacharacters are ERE-escaped, so the
+# --- 10. NAME's regex metacharacters are ERE-escaped, so the
 # pgrep match is on the LITERAL name in both directions -------------------
-# (a) must NOT false-match: an unescaped '.' in "HIMMEL-2545.leg" would match
-# ANY character, so a real session named "HIMMEL-2545Xleg" (a genuinely
+# (a) must NOT false-match: an unescaped '.' in the dotted name below would match
+# ANY character, so a real session named with an X in that position (a genuinely
 # different name) would wrongly look like a dedup hit and block the launch.
 d10a="$tmp/c10a"
 mk_stub "$d10a" 0  # konsole stub + a placeholder pgrep; overwritten below by the real matcher
@@ -605,7 +605,7 @@ settle
 if [ -s "$d10b/record" ]; then echo "FAIL - regex metachar: konsole must NOT be invoked (self-match)"; fails=$((fails+1))
 else echo "ok - regex metachar: konsole not invoked (self-match)"; fi
 
-# --- 11 (codex-4). a missing pgrep refuses closed, never silently disables
+# --- 11. a missing pgrep refuses closed, never silently disables
 # dedup ---------------------------------------------------------------------
 d11="$tmp/c11"; mk_stub "$d11" 1
 rc11=0
@@ -616,7 +616,7 @@ settle
 if [ -s "$d11/record" ]; then echo "FAIL - missing pgrep: konsole must NOT be invoked"; fails=$((fails+1))
 else echo "ok - missing pgrep: konsole not invoked"; fi
 
-# --- 12 (r2-codex-2). an unwritable/unavailable lock root is a LOUD exit 5,
+# --- 12. an unwritable/unavailable lock root is a LOUD exit 5,
 # never a silent "already claimed" dedup -----------------------------------
 # A regular FILE where the lock root's parent path component needs to be a
 # directory makes `mkdir -p` fail for a genuine filesystem reason, not
@@ -631,7 +631,7 @@ settle
 if [ -s "$d12/record" ]; then echo "FAIL - unwritable lock root: konsole must NOT be invoked"; fails=$((fails+1))
 else echo "ok - unwritable lock root: konsole not invoked"; fi
 
-# --- 13 (r2-codex-3). the retry actually recovers a failed holder's launch -
+# --- 13. the retry actually recovers a failed holder's launch -
 # A lock is pre-seeded FRESH (held, not stale) and a background releaser
 # clears it well inside the ~2s retry budget while NO session is running
 # (the pgrep stub always says "no match") - the old immediate-exit-0
@@ -651,7 +651,7 @@ else echo "FAIL - retry recovers a failed holder: konsole IS invoked"; fails=$((
 log13="$(cat "$d13/log" 2>/dev/null || true)"
 contains "retry recovers a failed holder: log says launched" "$log13" "konsole launched"
 
-# --- 14 (r2-codex-3). the retry correctly backs off when the lock clears
+# --- 14. the retry correctly backs off when the lock clears
 # because the HOLDER SUCCEEDED (a real session is now running) -------------
 # Same shape as case 13, but this time the "releaser" also makes pgrep
 # report a match once it fires, simulating the holder's own successful
@@ -660,7 +660,7 @@ d14="$tmp/c14"; mk_stub "$d14" 1  # konsole stub unused either way; the real ass
 mkdir -p "$d14/locks/HIMMEL-donedeal.lock"
 date +%s > "$d14/locks/HIMMEL-donedeal.lock/acquired"
 _fake_claude_proc "$d14" "HIMMEL-donedeal"
-# HIMMEL-2877 (panel round 1, codex-1): a SEPARATE background releaser that
+# A SEPARATE background releaser that
 # reacts to a sync file still races the very check it exists to
 # synchronize with - whichever session_confirmed() call the releaser
 # reacted to necessarily observed "no match" (that observation is what
@@ -702,7 +702,7 @@ else echo "ok - retry backs off on a genuine dedup: konsole not invoked"; fi
 log14="$(cat "$d14/log" 2>/dev/null || true)"
 contains "retry backs off on a genuine dedup: log names the claim-retry loop's dedup line" "$log14" "a session named HIMMEL-donedeal is already running - not launching"
 
-# --- 15 (r2-codex-4). the suite's OWN mktemp failure must abort loudly,
+# --- 15. the suite's OWN mktemp failure must abort loudly,
 # never silently continue with an empty $tmp --------------------------------
 # SAFETY: this extracts and runs ONLY this file's own lines up to and
 # including the `tmp=...mktemp...` statement (never the whole suite) - the
@@ -741,7 +741,7 @@ if [ "$rc15" -ne 0 ]; then echo "ok - suite's own mktemp failure: aborts non-zer
 else echo "FAIL - suite's own mktemp failure: aborts non-zero (got rc=0)"; fails=$((fails+1)); fi
 not_contains "suite's own mktemp failure: never reaches past the check" "$out15" "REACHED-AFTER-MKTEMP"
 
-# --- 16 (r2-codex-1). the stale-lock steal is genuinely ATOMIC: two real
+# --- 16. the stale-lock steal is genuinely ATOMIC: two real
 # contenders forced to the exact same race window never BOTH believe they
 # hold the lock -----------------------------------------------------------
 # DETERMINISTIC INTERLEAVING, not a timing guess: HEADED_ARM_STALE_HOOK (a
@@ -801,7 +801,7 @@ HOOK_EOF
   while [ ! -e "$root/barrier/ready-A" ] || [ ! -e "$root/barrier/ready-B" ]; do
     sleep 0.02; n=$((n+1)); [ "$n" -lt 500 ] || break
   done
-  # r12-codex-3: record whether each contender ACTUALLY reached the
+  # Record whether each contender ACTUALLY reached the
   # barrier, rather than assuming the wait loop above succeeded just
   # because it returned - a timeout break (n hit its cap) exits this same
   # loop with one or both ready-files still missing. If only one arm ever
@@ -819,7 +819,7 @@ HOOK_EOF
   [ -s "$root/dA/record" ] && race_a=1
   [ -s "$root/dB/record" ] && race_b=1
 }
-# r3-codex-3: the original assertion only checked race_a==1 && race_b==1,
+# The original assertion only checked race_a==1 && race_b==1,
 # so it read as PASS whenever ZERO contenders launched too - a fixture
 # break, or a regression that suppresses both launches (e.g. a lock that
 # can never be claimed), would look identical to "the atomic steal worked".
@@ -834,8 +834,8 @@ HOOK_EOF
 # loser's dedup-catch is slow enough that the loser's retry budget expires
 # first), zero launches is CORRECT behaviour, loudly reported by both arms -
 # not a stuck lock, not a broken fixture. Observed live once (0/5 iterations
-# in a round-8 run) and, on a live run of a 40-iteration isolated probe plus
-# 465 further iterations total (see HIMMEL-2545 round-9 evidence log),
+# in one run) and, on a live run of a 40-iteration isolated probe plus
+# 465 further iterations total,
 # never reproduced again - genuinely rare, not routine. Traced in the code
 # rather than merely assumed: every "exit 0" in headed-arm.sh is gated
 # behind session_confirmed() returning confirmed, and in THIS fixture pgrep
@@ -844,19 +844,19 @@ HOOK_EOF
 # REAL launch. So under a genuine NEITHER (both records empty), neither
 # contender's session_confirmed() can ever return 0 at any of its four call
 # sites; the only reachable exits are the loud non-zero ones (1/5/6/7/8/9).
-# r12-codex-3: round 9 stopped one step short. Removing "exactly one
+# An earlier version stopped one step short. Removing "exactly one
 # winner" fixed the false-flake, but left NOTHING in its place proving a
 # successful steal ever happens - a broken fixture, or a regression that
 # prevents stale-lock reclamation entirely, would satisfy "never both,
 # never silent" on EVERY iteration being a loud double-loss, and pass
-# green having tested nothing. That is the same vacuity r3-codex-3 flagged
+# green having tested nothing. That is the same vacuity as a vacuous race assertion
 # originally, reintroduced from the other direction. So the invariant
 # actually worth protecting is FOUR things, not two:
 #   1. BOTH launching is ALWAYS a hard failure (the duplicate window).
 #   2. NEITHER launching is acceptable ONLY if BOTH arms said so loudly -
 #      every non-launching contender's own exit code must be a distinct
 #      non-zero, never 0. A zero-launch iteration where either arm exited 0
-#      is the exact vacuous-green bug r3-codex-3 exists to catch, and must
+#      is the exact vacuous-green bug the race assertion exists to catch, and must
 #      still FAIL, naming which arm claimed success without launching.
 #   3. NEITHER launching WITH both arms loud is acceptable for an
 #      INDIVIDUAL iteration - a genuine double-loss is legitimate under
@@ -885,7 +885,7 @@ HOOK_EOF
 # p=0.5, this would rise to 1/32 (~3%) at 5 iterations - genuinely flaky -
 # and the fix at THAT point is to raise race_iters (each added iteration
 # divides the failure probability by another 1/p), never to weaken
-# property 4 back toward round 9's vacuous shape. Kept at 5 here since the
+# property 4 back toward the earlier vacuous shape. Kept at 5 here since the
 # evidence does not currently support paying for more.
 race_both=0
 race_neither_silent=0
@@ -935,7 +935,7 @@ else
   fails=$((fails+1))
 fi
 
-# --- 17 (r3-codex-1). exhausting the retry without ever confirming a
+# --- 17. exhausting the retry without ever confirming a
 # running session is UNRESOLVED, not a dedup - a distinct non-zero exit,
 # never the same code as a genuine dedup's exit 0 -----------------------
 d17="$tmp/c17"; mkdir -p "$d17/locks/HIMMEL-unresolved.lock"
@@ -948,7 +948,7 @@ check "unresolved arm: exit 6, distinct from dedup's exit 0" "$rc17" "6"
 log17="$(cat "$d17/log" 2>/dev/null || true)"
 contains "unresolved arm: log says UNRESOLVED" "$log17" "UNRESOLVED"
 
-# --- 18 (r3-codex-2). the lock is held until the session is CONFIRMED
+# --- 18. the lock is held until the session is CONFIRMED
 # visible to pgrep, not released the instant konsole survives its settle -
 # deterministic slow-startup fixture: pgrep reports "not yet visible" for
 # the first several post-launch calls, then reports a match ---------------
@@ -989,10 +989,10 @@ check "slow startup: exit 0 once confirmed" "$rc18" "0"
 log18="$(cat "$d18/log" 2>/dev/null || true)"
 not_contains "slow startup: no UNCONFIRMED (it confirmed within budget)" "$log18" "UNCONFIRMED"
 
-# --- 19 (r4-codex-1). the budget expiring must still release the lock
+# --- 19. the budget expiring must still release the lock
 # (never hold forever) but is now a DISTINCT non-zero exit (7), never the
-# same code as a confirmed launch - r3-codex-2's "still exit 0, just log a
-# WARNING" was itself the bug r4-codex-1 fixed: an outcome we could not
+# same code as a confirmed launch - "still exit 0, just log a
+# WARNING" was itself a bug: an outcome we could not
 # CONFIRM must not share an exit code with one we did -----------------------
 d19="$tmp/c19"; mk_stub "$d19" 1
 # mk_stub's pgrep is record-aware (case 18's whole point) - it would
@@ -1018,7 +1018,7 @@ fi
 log19="$(cat "$d19/log" 2>/dev/null || true)"
 contains "budget exhausted: log names it plainly" "$log19" "UNCONFIRMED"
 
-# --- 20 (r4-codex-3). a claim whose "acquired" stamp cannot be written must
+# --- 20. a claim whose "acquired" stamp cannot be written must
 # be refused loudly, never held as a silently-unstampable (and therefore
 # permanently unreclaimable) lock -------------------------------------------
 # Deterministic seam, no root, no timing: LOCKDIR is pre-created normally
@@ -1060,7 +1060,7 @@ rc20=0
 ) || rc20=$?
 stderr20="$(cat "$d20/stderr" 2>/dev/null || true)"
 check "unstampable lock: exit 8, distinct from every other outcome" "$rc20" "8"
-# HIMMEL-3182: the lock was mkdir'd mode 000 (umask 0777); headed-arm.sh
+# The lock was mkdir'd mode 000 (umask 0777); headed-arm.sh
 # restores owner access before its `rm -rf`, so a BSD/macOS rm (which cannot
 # remove a mode-000 directory) removes it too - case 20b emulates that rm.
 if [ -d "$LOCK20" ]; then
@@ -1078,7 +1078,7 @@ else
 fi
 contains "unstampable lock: stderr names the cause" "$stderr20" "acquired stamp"
 
-# --- 20b (HIMMEL-3182). same unstampable-claim path, but under a BSD-rm
+# --- 20b. same unstampable-claim path, but under a BSD-rm
 # emulation: macOS rm -rf cannot remove a mode-000 directory (EACCES), so
 # stamp_or_fail_loudly must restore owner permissions on the lock it created
 # before removing it, and must touch nothing else. macOS itself is NOT run
@@ -1142,7 +1142,7 @@ else
   echo "ok - unstampable lock under bsd rm: konsole never invoked"
 fi
 
-# --- 20c (HIMMEL-3182). the owner-permission restore must not follow a
+# --- 20c. the owner-permission restore must not follow a
 # symlink found inside the lock: a `mkdir` stub, right after creating the
 # lock, plants a symlink inside it to a mode-000 directory OUTSIDE it and
 # re-closes the lock to 000 (as umask 0777 would), so the stamp write fails
@@ -1188,7 +1188,7 @@ case "$(ls -ld "$d20c/outside")" in
 esac
 chmod 700 "$d20c/outside" 2>/dev/null
 
-# --- 21 (r5-codex-3). a HARD deadline wakes the wait loop near the
+# --- 21. a HARD deadline wakes the wait loop near the
 # deadline, not up to 30s late - a flat `sleep 30` used to let a deadline
 # only 2s out sit unnoticed for the whole 30s, since the loop checked the
 # deadline once, well before it was due, then slept the full 30s regardless
@@ -1209,7 +1209,7 @@ wait "$pid21" 2>/dev/null; rc21=$?
 contains "near deadline: fires within a small tolerance, not up to 30s late" "$log21_early" "deadline reached"
 check "near deadline: exit 0 (a launch, not a dedup)" "$rc21" "0"
 
-# --- 22 (self-caught while fixing r5-codex-3). a DEADLINE carrying a
+# --- 22 (self-caught). a DEADLINE carrying a
 # leading zero must not crash the wait loop's remaining-time arithmetic -
 # `[ ]` compares DEADLINE as decimal (fine, always was), but `$(( ))` is an
 # octal context for a leading-zero operand, and 8/9 are not valid octal
@@ -1230,7 +1230,7 @@ if [ -s "$d22/record" ]; then echo "ok - leading-zero deadline: konsole IS invok
 else echo "FAIL - leading-zero deadline: konsole IS invoked"; fails=$((fails+1)); fi
 check "leading-zero deadline: exit 0 (a clean launch, confirmed)" "$rc22" "0"
 
-# --- 23 (r6-codex-2). a SYMLINKED lock root must be refused loudly, never
+# --- 23. a SYMLINKED lock root must be refused loudly, never
 # silently used - another local user could symlink the predictable default
 # path elsewhere before this script ever runs -----------------------------
 d23="$tmp/c23"; mk_stub "$d23" 1
@@ -1246,7 +1246,7 @@ contains "symlinked lock root: stderr names the cause" "$stderr23" "SYMLINK"
 if [ -s "$d23/record" ]; then echo "FAIL - symlinked lock root: konsole must NEVER be invoked"; fails=$((fails+1))
 else echo "ok - symlinked lock root: konsole never invoked"; fi
 
-# --- 24 (r6-codex-2). a group- or world-writable lock root must be refused
+# --- 24. a group- or world-writable lock root must be refused
 # loudly too - a directory another local user could write into (even one
 # THIS user happens to own) is not a directory this process controls -----
 d24="$tmp/c24"; mk_stub "$d24" 1
@@ -1263,7 +1263,7 @@ if [ -s "$d24/record" ]; then echo "FAIL - group/world-writable lock root: konso
 else echo "ok - group/world-writable lock root: konsole never invoked"; fi
 chmod 700 "$d24/locks-open" 2>/dev/null
 
-# --- 25 (r6-codex-2). a lock root owned by a DIFFERENT uid must be refused
+# --- 25. a lock root owned by a DIFFERENT uid must be refused
 # too - skipped cleanly (never faked) if this host offers no way to arrange
 # one without privileges we do not have -------------------------------------
 if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true >/dev/null 2>&1; then
@@ -1287,7 +1287,7 @@ else
   fi
 fi
 
-# --- 26 (r6-codex-2). the happy path is unaffected: a fresh lock root is
+# --- 26. the happy path is unaffected: a fresh lock root is
 # still created mode 0700, and the launch still proceeds -------------------
 d26="$tmp/c26"; mk_stub "$d26" 1 alive "HIMMEL-freshroot"
 rc26=0
@@ -1299,7 +1299,7 @@ check "fresh lock root: created mode 0700" "$root_mode" "700"
 if [ -s "$d26/record" ]; then echo "ok - fresh lock root: konsole IS invoked"
 else echo "FAIL - fresh lock root: konsole IS invoked"; fails=$((fails+1)); fi
 
-# --- 27 (r7-codex-1). `pgrep -f` matches the FULL command line, and
+# --- 27. `pgrep -f` matches the FULL command line, and
 # konsole's OWN argv literally quotes the whole claude invocation it was
 # told to run - so a REALISTIC recorded argv line (below, shaped exactly
 # like what pgrep would actually see for a live konsole launch) matches the
@@ -1333,7 +1333,7 @@ check "konsole-argv false match: exit 7, never confirmed via the launcher's own 
 log27="$(cat "$d27/log" 2>/dev/null || true)"
 contains "konsole-argv false match: log says UNCONFIRMED" "$log27" "UNCONFIRMED"
 
-# --- 28 (r7-codex-2). pgrep was only checked BEFORE acquiring the lock - a
+# --- 28. pgrep was only checked BEFORE acquiring the lock - a
 # contender that saw "no session" right before the lock frees up (because
 # the ORIGINAL holder just launched and released) must not blindly launch a
 # duplicate just because ITS OWN pre-lock check was clean. A call-counting
@@ -1372,7 +1372,7 @@ fi
 log28="$(cat "$d28/log" 2>/dev/null || true)"
 contains "post-lock recheck: log names the appeared-after-claim race" "$log28" "appeared after this arm claimed the lock"
 
-# --- 29 (r8-codex-4). konsole can hand off to an already-running instance
+# --- 29. konsole can hand off to an already-running instance
 # and let the backgrounded pid exit immediately - a dead pid must NOT be
 # treated as failure on its own if a real claude session IS confirmable.
 # This konsole stub exits right away (like the "dying" behavior) but ALSO
@@ -1402,7 +1402,7 @@ check "konsole hand-off (dead pid, confirmed session): exit 0, a success" "$rc29
 log29="$(cat "$d29/log" 2>/dev/null || true)"
 not_contains "konsole hand-off: log never says FAILED" "$log29" "FAILED"
 
-# --- 30 (r8-codex-3). a pgrep SCAN failure (rc=2, a usage/fatal error, not
+# --- 30. a pgrep SCAN failure (rc=2, a usage/fatal error, not
 # a genuine no-match) must refuse rather than launch - conflating it with
 # "nothing running" would bypass dedup on a broken scan ---------------------
 d30="$tmp/c30"; mk_stub "$d30" 1
@@ -1420,7 +1420,7 @@ else echo "ok - pgrep scan failure: konsole never invoked"; fi
 log30="$(cat "$d30/log" 2>/dev/null || true)"
 contains "pgrep scan failure: log names it INDETERMINATE" "$log30" "INDETERMINATE"
 
-# mk_positional_pgrep <dir> <cmdline-fields...> - r9-codex-3 test infra: a
+# mk_positional_pgrep <dir> <cmdline-fields...> - test infra: a
 # pgrep stub that reports pid 9001 as a candidate once <dir>/confirmable
 # exists, with 9001's REAL /proc cmdline set to the given fields (each
 # written with a genuine NUL separator, never space-joined - a
@@ -1450,7 +1450,7 @@ KONSOLE_EOF
   chmod 755 "$1/konsole"
 }
 
-# --- 31 (r9-codex-3). the name appears ONLY inside a PROMPT text element -
+# --- 31. the name appears ONLY inside a PROMPT text element -
 # a flattened-string match would see "-n HIMMEL-promptonly " sitting right
 # there, but the REAL argv never has "-n" as a SEPARATE element immediately
 # before it (it is all one quoted prompt argument) - must NOT confirm ------
@@ -1465,7 +1465,7 @@ check "name only inside a PROMPT element: exit 7, never confirmed" "$rc31" "7"
 log31="$(cat "$d31/log" 2>/dev/null || true)"
 contains "name only inside a PROMPT element: log says UNCONFIRMED" "$log31" "UNCONFIRMED"
 
-# --- 32 (r9-codex-3). a genuine positional "-n <name>" pair MUST still
+# --- 32. a genuine positional "-n <name>" pair MUST still
 # confirm - the fix must not overcorrect into never confirming anything ---
 d32="$tmp/c32"; mkdir -p "$d32"
 mk_alive_konsole "$d32"
@@ -1476,8 +1476,8 @@ KONSOLE_CMD="$d32/konsole" PGREP_CMD="$d32/pgrep" HEADED_ARM_REPO="$REPO" HEADED
   bash "$SCRIPT" "HIMMEL-genuine" "doc32.md" "$d32/signal-never" "$PAST" "$d32/log" >/dev/null 2>&1 || rc32=$?
 check "genuine positional -n match: exit 0, confirmed" "$rc32" "0"
 
-# --- 33 (r9-codex-3). a session whose name merely has ours as a PREFIX
-# (HIMMEL-2545-x when this arm is HIMMEL-2545) must NOT satisfy an exact
+# --- 33. a session whose name merely has ours as a PREFIX
+# Must NOT satisfy an exact
 # positional match --------------------------------------------------------
 d33="$tmp/c33"; mkdir -p "$d33"
 mk_alive_konsole "$d33"
@@ -1490,7 +1490,7 @@ check "name-prefix near-miss: exit 7, never confirmed" "$rc33" "7"
 log33="$(cat "$d33/log" 2>/dev/null || true)"
 contains "name-prefix near-miss: log says UNCONFIRMED" "$log33" "UNCONFIRMED"
 
-# --- 34 (r10-codex-3). a RELATIVE $LOG and a RELATIVE HEADED_ARM_LOCK_DIR
+# --- 34. a RELATIVE $LOG and a RELATIVE HEADED_ARM_LOCK_DIR
 # override, invoked from a cwd that is NOT $REPO, must resolve against the
 # CALLER's cwd - not silently start writing under $REPO (or leave the
 # cleanup targeting a path that never existed there) once this script cd's
@@ -1518,7 +1518,7 @@ else
   echo "ok - relative lock root: lock actually removed from where it was created"
 fi
 
-# --- 35 (r10-codex-4). a candidate whose argv ENDS at the name (no
+# --- 35. a candidate whose argv ENDS at the name (no
 # trailing prompt argument) must still be recognized as a genuine dedup -
 # the old pattern's trailing-space requirement would filter this candidate
 # out of pgrep's own results before the exact argv check ever got a look,
@@ -1554,7 +1554,7 @@ fi
 log35="$(cat "$d35/log" 2>/dev/null || true)"
 contains "candidate argv ends at the name: log names it already running" "$log35" "already running"
 
-# --- 36 (HIMMEL-2782). HEADED_ARM_LAUNCHER + HEADED_ARM_LAUNCHER_ENV: a
+# --- 36. HEADED_ARM_LAUNCHER + HEADED_ARM_LAUNCHER_ENV: a
 # non-default launcher and extra env tokens reach the konsole argv, and the
 # default (unset) case is unchanged - the plain `claude ...` exec, no
 # `script` wrapper, no extra env tokens. ------------------------------------
@@ -1569,7 +1569,7 @@ check "HEADED_ARM_LAUNCHER unset: exit 0" "$rc36" "0"
 contains "HEADED_ARM_LAUNCHER unset: still execs claude directly" "$rec36" "claude --model"
 not_contains "HEADED_ARM_LAUNCHER unset: no script(1) tty wrapper" "$rec36" "script -q -a -f"
 
-# codex CR fix: HEADED_ARM_LAUNCHER_ENV must reach the konsole argv even
+# HEADED_ARM_LAUNCHER_ENV must reach the konsole argv even
 # WITHOUT HEADED_ARM_RECORDER=1 - the non-recorder (default-exec) branch had
 # silently dropped it, an asymmetry with no basis in the documented contract.
 d36c="$tmp/c36c"; mk_stub "$d36c" 1 alive "HIMMEL-launcher3"
@@ -1584,7 +1584,7 @@ check "HEADED_ARM_LAUNCHER_ENV without RECORDER: exit 0" "$rc36c" "0"
 not_contains "HEADED_ARM_LAUNCHER_ENV without RECORDER: no script(1) tty wrapper" "$rec36c" "script -q -a -f"
 contains "HEADED_ARM_LAUNCHER_ENV without RECORDER: env tokens still reach the konsole argv" "$rec36c" "CLAUDEX_LANE_OK=1 CLAUDE_CODE_EFFORT_LEVEL=medium"
 
-# 36d (HIMMEL-2534, PR 1129 console review): HEADED_ARM_LAUNCHER_ENV is read
+# 36d: HEADED_ARM_LAUNCHER_ENV is read
 # into LAUNCHER_ENV and must then be unset, like HEADED_ARM_HEADLESS. konsole
 # inherits headed-arm.sh's environment and hands it to the leg's claude, so a
 # leaked list would make any arm spawned from that leg prepend the PARENT's
@@ -1625,7 +1625,7 @@ contains "resolved launcher: the launcher path reaches the recorded argv" "$rec3
 not_contains "resolved launcher: not force-wrapped in bash (execs via its own shebang)" "$rec36b" "bash /some/repo/scripts/claude-codex"
 contains "resolved launcher: still carries --model gpt-6-astra, bare (HIMMEL-5501)" "$rec36b" "--model gpt-6-astra --autocompact"
 contains "resolved launcher: still carries -n NAME" "$rec36b" "-n HIMMEL-launcher2"
-# codex-2 (HIMMEL-2782 CR fix): `script -c` interprets $LAUNCH_CMD (bash %q
+# `script -c` interprets $LAUNCH_CMD (bash %q
 # quoting) with the shell named by ITS OWN $SHELL, not necessarily bash -
 # force it via an explicit SHELL=<bash> token ahead of `script` in the
 # konsole argv, so the interpreting shell always matches the shell that
@@ -1635,7 +1635,7 @@ contains "resolved launcher: SHELL forced to bash ahead of script(1), independen
 # --- 37. RED control: a mutant that always takes the RECORDER=1 branch
 # must fail case 36's "no script(1) wrapper" assertion for the DEFAULT
 # (unset) launcher - proves that assertion is not vacuous. -----------------
-# HIMMEL-2975 T6: the mutant must keep the same scripts/handover + ../lib
+# The mutant must keep the same scripts/handover + ../lib
 # layout as the real tree -- headed-arm.sh now sources
 # scripts/lib/console-context.sh relative to its OWN path ($0), and a bare
 # copy dropped straight into $tmp has no sibling ../lib to find.
@@ -1646,7 +1646,7 @@ mutant36="$mutant36dir/scripts/handover/headed-arm.sh"
 sed 's/if \[ "\$RECORDER" = "1" \]; then/if true; then/' "$SCRIPT" > "$mutant36"
 cp "$HERE/../lib/console-context.sh" "$mutant36dir/scripts/lib/console-context.sh"
 cp "$HERE/../lib/claude-version.sh" "$mutant36dir/scripts/lib/claude-version.sh"
-# HIMMEL-5201: headed-arm.sh sources its argv check from its own directory.
+# Headed-arm.sh sources its argv check from its own directory.
 cp "$HERE/argv-has-n-name.sh" "$mutant36dir/scripts/handover/argv-has-n-name.sh"
 fixture_profiles "$mutant36dir/scripts"
 chmod 755 "$mutant36"
@@ -1664,7 +1664,7 @@ else
   fails=$((fails+1))
 fi
 
-# --- 38 (HIMMEL-2975, renamed HIMMEL-3133; HIMMEL-3136 R1). --role console (the
+# --- 38. --role console (the
 # only accepted value) on the console arm path --------------------------------
 # 38a. --role console unsets HIMMEL_CONSOLE_RELAY in the child env and stamps
 # role=console on the armed: log line.
@@ -1691,7 +1691,7 @@ rec38b="$(cat "$d38b/record" 2>/dev/null || true)"
 check "38b --role console with inherited HIMMEL_CONSOLE_RELAY=1: exit 0" "$rc38b" "0"
 contains "38b --role console with inherited HIMMEL_CONSOLE_RELAY=1: still cleared in the child argv" "$rec38b" "-u HIMMEL_CONSOLE_RELAY"
 
-# 38c. --role relay is no longer a value at all (HIMMEL-3136 R1): it is refused
+# 38c. --role relay is no longer a value at all: it is refused
 # by the same "must be console" branch as any other unknown value, and neither
 # the error nor the usage line advertises relay as valid.
 outc38c=$(bash "$SCRIPT" --role relay "HIMMEL-role38c" "doc38c.md" "$tmp/signal-never-38c" "$PAST" "$tmp/log38c" 2>&1)
@@ -1701,7 +1701,7 @@ contains "38c --role relay: error names 'console' as the only valid role" "$outc
 not_contains "38c --role relay: usage does not advertise relay as a valid role" "$outc38c" "relay|console"
 
 # 38d. --role bogus: exit 2 + usage. The unknown-role message must name the
-# new spelling (HIMMEL-3133) -- a passing exit code alone doesn't prove the
+# New spelling -- a passing exit code alone doesn't prove the
 # renamed error text shipped.
 outd38d=$(bash "$SCRIPT" --role bogus "HIMMEL-role38d" "doc38d.md" "$tmp/signal-never-38d" "$PAST" "$tmp/log38d" 2>&1)
 rc38d=$?
@@ -1729,7 +1729,7 @@ contains "38f no --role: armed log line stamps role=unsplit" "$log38f" "role=uns
 not_contains "38f no --role: konsole record carries no HIMMEL_CONSOLE_RELAY clear" "$rec38f" "HIMMEL_CONSOLE_RELAY"
 not_contains "38f no --role: konsole record exports no HIMMEL_CONSOLE_DOC (HIMMEL-2973)" "$rec38f" "HIMMEL_CONSOLE_DOC"
 
-# 38g (HIMMEL-2973 S3). --role console exports HIMMEL_CONSOLE_DOC (the console
+# 38g. --role console exports HIMMEL_CONSOLE_DOC (the console
 # doc) and HIMMEL_CONSOLE_WORKDIR (dirname of the signal file = the console's
 # chain dir) into the launched session, so the PreCompact hook can snapshot;
 # a session that is not a console gets neither (38f).
@@ -1751,7 +1751,7 @@ rec38h="$(cat "$d38h/record" 2>/dev/null || true)"
 check "38h --role console (absolute DOC): exit 0" "$rc38h" "0"
 contains "38h --role console: an absolute DOC is exported unchanged" "$rec38h" "HIMMEL_CONSOLE_DOC=/abs/doc38h.md"
 
-# 38i/38j (HIMMEL-3035). The console clear survives HEADED_ARM_LAUNCHER_ENV:
+# 38i/38j. The console clear survives HEADED_ARM_LAUNCHER_ENV:
 # `env -u FOO FOO=1` ends with FOO=1, so a HIMMEL_CONSOLE_RELAY=<v> token carried
 # in the launcher env must be stripped for --role console, in BOTH konsole
 # branches (38i default exec, 38j RECORDER=1), while the sibling tokens still
@@ -1807,10 +1807,10 @@ check "38l --role console + prefix-sharing token: exit 0" "$rc38l" "0"
 contains "38l --role console: HIMMEL_CONSOLE_RELAY_X=1 (prefix-sharing) is NOT stripped" "$rec38l" "HIMMEL_CONSOLE_RELAY_X=1"
 not_contains "38l --role console: the exact HIMMEL_CONSOLE_RELAY=1 beside it IS stripped" "$rec38l" "HIMMEL_CONSOLE_RELAY="
 
-# --- 39. --dry-run (HIMMEL-3140): prints the resolved argv + exits 0 BEFORE
+# --- 39. --dry-run: prints the resolved argv + exits 0 BEFORE
 # the signal/deadline wait loop, the claim lock, or konsole/pgrep are ever
-# touched -- proving a flag is accepted must never cost a real billed launch
-# (N279, N13-of-3133). Both stubs below record every invocation to their own
+# touched -- proving a flag is accepted must never cost a real billed launch.
+# Both stubs below record every invocation to their own
 # counter file (distinct from mk_stub's launch-record file, which only proves
 # a REAL launch happened); asserting those counters stay absent is what
 # proves dry-run never reached the dedup pgrep scan or the konsole exec, not
@@ -1853,7 +1853,7 @@ bash "$SCRIPT" --dry-run "session" "doc.md" "$tmp/signal-never" "$PAST" "$tmp/lo
 rcc39b=$?
 check "39b --dry-run placeholder name 'session': exit 2" "$rcc39b" "2"
 
-# --- 40 (HIMMEL-3299). the --role console cases must not write into the
+# --- 40. the --role console cases must not write into the
 # operator's real launch-record dir. headed-arm.sh records every console arm in
 # ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs, and the 38a-38l
 # cases pass no HIMMELCTL_CACHE_DIR, so each run left HIMMEL-role38* rows there:
@@ -1875,19 +1875,19 @@ check "40a no HIMMEL-role*/9999*/red* launch record was written into the real la
 check "40b the --role console rows landed in the suite's pinned record dir" \
   "$(grep -c '^headed-arm: role=console session=HIMMEL-role38a ' "${HIMMELCTL_CACHE_DIR:-/nonexistent}/launch-logs/HIMMEL-role38a.log" 2>/dev/null || true)" "1"
 
-# --- 43. HIMMEL-2534: with KONSOLE_CMD unset, the konsole default resolves
+# --- 43. with KONSOLE_CMD unset, the konsole default resolves
 # per-platform. On macOS it must point at the konsole-macos.sh shim BESIDE
 # this script (not a bare "konsole", which does not exist there and would
 # make every arm exit 3). Proved by running a copy of the script from a dir
 # with NO shim next to it: the refusal must then name konsole-macos.sh, which
 # is only possible if the default resolved to it. Not a Darwin station ->
 # nothing to assert, the Linux default is unchanged and case 6 covers it.
-# codex-review S11: driven through the HEADED_ARM_UNAME seam rather than a
+# Driven through the HEADED_ARM_UNAME seam rather than a
 # real `uname`, so this runs on the Linux CI runner too instead of printing a
 # passing-looking skip there.
 d43="$tmp/c43"; mkdir -p "$d43/bare" "$d43/lib"
 cp "$SCRIPT" "$d43/bare/headed-arm.sh"
-# HIMMEL-2975 made headed-arm.sh source $HERE/../lib/console-context.sh, so the
+# headed-arm.sh sources $HERE/../lib/console-context.sh, so the
 # lone copy needs that sibling to reach the konsole-default resolution at all.
 # konsole-macos.sh is still deliberately absent -- that is what this case proves.
 cp "$HERE/../lib/console-context.sh" "$d43/lib/console-context.sh"
@@ -1901,25 +1901,25 @@ check "43 macOS default: exit 3 when the shim is absent" "$rc43" "3"
 contains "43 macOS default resolves to the konsole-macos.sh shim" "$out43" "konsole-macos.sh"
 not_contains "43 macOS default is never a bare 'konsole'" "$out43" "no 'konsole' on PATH"
 
-# 43b. The Linux default is unchanged by the per-platform resolution. HIMMEL-2534
-# CR fix (N346, #1122): this row used to leave KONSOLE_CMD unset and rely on
-# `command -v konsole` failing, the only case in this suite to do so (every
-# other konsole case pins KONSOLE_CMD explicitly). On a station that actually
-# has konsole on PATH - this one - the refusal never fires and the row falls
-# through into launching a REAL konsole + REAL claude session instead of
-# testing anything. Pin KONSOLE_CMD at a path that cannot exist so the refusal
-# is deterministic regardless of the running station, same seam every other
+# 43b. The Linux default is unchanged by the per-platform resolution.
+# This row pins KONSOLE_CMD at a nonexistent path rather than leaving it unset and
+# relying on `command -v konsole` failing (every other konsole case pins
+# KONSOLE_CMD explicitly). On a station that actually
+# has konsole on PATH, leaving it unset would never fire the refusal and the row
+# would fall through into launching a REAL konsole + REAL claude session
+# instead of testing anything. A path that cannot exist makes the refusal
+# deterministic regardless of the running station, same seam every other
 # konsole case already uses.
 d43b="$tmp/c43b"; mkdir -p "$d43b/bare" "$d43b/lib"
 cp "$SCRIPT" "$d43b/bare/headed-arm.sh"
-# HIMMEL-2975 made headed-arm.sh source $HERE/../lib/console-context.sh, so the
+# headed-arm.sh sources $HERE/../lib/console-context.sh, so the
 # lone copy needs that sibling to reach the konsole-default resolution at all.
 # konsole-macos.sh is still deliberately absent -- that is what this case proves.
 cp "$HERE/../lib/console-context.sh" "$d43b/lib/console-context.sh"
 cp "$HERE/../lib/claude-version.sh" "$d43b/lib/claude-version.sh"
 fixture_profiles "$d43b"
 mk_stub "$d43b" 1 alive
-# HIMMEL-3484: pinning KONSOLE_CMD exercised the OVERRIDE, not the Linux
+# Pinning KONSOLE_CMD exercised the OVERRIDE, not the Linux
 # default this row names. KONSOLE_CMD is now unset and the default's bare
 # `konsole` resolves through PATH to mk_stub's recorder, which shadows any
 # real konsole on the station - so the row is deterministic AND launches
@@ -1931,7 +1931,7 @@ wait_record "$d43b" || true
   || { echo "FAIL - 43b Linux default: the konsole on PATH was never invoked"; fails=$((fails+1)); }
 not_contains "43b Linux default: never mentions the macOS shim" "$out43b" "konsole-macos.sh"
 
-# 43c. HIMMEL-3474: HEADED_ARM_UNAME's own chosen contract, distinct from
+# 43c. HEADED_ARM_UNAME's own chosen contract, distinct from
 # every other case above (all of which pin it explicitly) -- with the var
 # genuinely UNSET, headed-arm.sh must fall back to the real `uname -s`, not
 # to some hardcoded platform. The seam is additive (a test convenience),
@@ -1940,7 +1940,7 @@ not_contains "43b Linux default: never mentions the macOS shim" "$out43b" "konso
 # default must behave identically to case 43's explicit
 # HEADED_ARM_UNAME=Darwin (the macOS shim is absent here too, so it refuses);
 # anywhere else it must behave identically to case 43b's explicit
-# HEADED_ARM_UNAME=Linux. HIMMEL-3523: without this branch, a real macOS
+# HEADED_ARM_UNAME=Linux. without this branch, a real macOS
 # runner FAILS this case (it expects the Linux-only outcome) instead of
 # proving the fallback -- the gap this ticket closes.
 d43c="$tmp/c43c"; mkdir -p "$d43c/bare" "$d43c/lib"
@@ -1965,7 +1965,7 @@ else
   not_contains "43c HEADED_ARM_UNAME unset: never mentions the macOS shim on this (non-macOS) runner" "$out43c" "konsole-macos.sh"
 fi
 
-# --- 41. HIMMEL-2534 (codex-review C1, CRITICAL): the post-launch visibility
+# --- 41. the post-launch visibility
 # budget was 5s, sized for konsole. The macOS launcher has to bring an app up
 # first (~16s cold), so a cold arm used to release the lock and report
 # UNCONFIRMED while a REAL session was still on its way up - the duplicate
@@ -2013,7 +2013,7 @@ wait_record "$d41d" || true
 log41d="$(cat "$d41d/log" 2>/dev/null || true)"
 contains "41d an 08 tick count does not abort the arm (8*2+100 iters)" "$log41d" "session-visibility budget 116 iters"
 
-# --- 44. HIMMEL-2534: where $PROC is absent (macOS), session_confirmed()
+# --- 44. where $PROC is absent (macOS), session_confirmed()
 # must fall back to a `ps`-based comm check instead of silently answering
 # "not running" for every pid. Without this the /proc walk skips every
 # candidate, dedup fails OPEN into duplicate windows, and every launch lands
@@ -2023,12 +2023,10 @@ d44="$tmp/c44"; mk_stub "$d44" 0 alive
 cat > "$d44/ps" <<'PS_EOF'
 #!/usr/bin/env bash
 # stands in for macOS `ps -o comm= -p <pid>`, which emits the FULL executable
-# path (verified on a real Mac: `ps -o comm= -p $$` -> /bin/zsh). codex-review
-# I7: this stub used to echo a bare "claude", so the ${comm##*/} basename
-# strip -- the one macOS-specific adaptation in the fallback -- was never
-# exercised and the case passed with or without it. A full path only matches
-# once the strip is applied.
-# HIMMEL-3484: session_confirmed() now also reads each pid's own argv
+# path (verified on a real Mac: `ps -o comm= -p $$` -> /bin/zsh). This stub echoes a full path so the
+# ${comm##*/} basename strip -- the one macOS-specific adaptation in the
+# fallback -- is exercised: a full path only matches once the strip is applied.
+# session_confirmed() now also reads each pid's own argv
 # (`ps -o args=`), so the stub answers the two queries separately.
 case "$*" in
   *args=*) echo "/Users/x/.local/bin/claude --model m -n HIMMEL-mac44 load doc44.md and continue" ;;
@@ -2049,7 +2047,7 @@ d44b="$tmp/c44b"; mk_stub "$d44b" 0 alive
 cat > "$d44b/ps" <<'PS_EOF'
 #!/usr/bin/env bash
 # a pgrep-matched pid whose comm is NOT claude (a launcher quoting the
-# claude command, r7-codex-1's original finding) must not confirm.
+# claude command) must not confirm.
 echo node
 PS_EOF
 chmod 755 "$d44b/ps"
@@ -2060,7 +2058,7 @@ wait_record "$d44b" || true
 [ -e "$d44b/record" ] && echo "ok - 44b no /proc: a non-claude comm does NOT dedup (konsole launched)" \
   || { echo "FAIL - 44b no /proc: a non-claude comm wrongly deduped the arm"; fails=$((fails+1)); }
 
-# 44c. codex-review I7: a `ps` that FAILS outright (the `|| continue` guard)
+# 44c. A `ps` that FAILS outright (the `|| continue` guard)
 # must read as "this pid told us nothing", never as a confirmation -- so the
 # arm still launches rather than being silently deduped away.
 d44c="$tmp/c44c"; mk_stub "$d44c" 0 alive
@@ -2076,7 +2074,7 @@ wait_record "$d44c" || true
 [ -e "$d44c/record" ] && echo "ok - 44c no /proc: a failing ps does NOT confirm (konsole launched)" \
   || { echo "FAIL - 44c no /proc: a failing ps was wrongly read as a confirmation"; fails=$((fails+1)); }
 
-# 44d. N357 (codex-2): a `ps` failing with anything other than rc 1 (pid gone)
+# 44d. A `ps` failing with anything other than rc 1 (pid gone)
 # -- a missing or broken ps -- is a failed SCAN, not "not running": the arm
 # must refuse as indeterminate (exit 9) rather than launch a possible duplicate.
 d44d="$tmp/c44d"; mk_stub "$d44d" 0 alive
@@ -2093,7 +2091,7 @@ check "44d no /proc: a broken ps is indeterminate (exit 9)" "$rc44d" "9"
 [ -e "$d44d/record" ] && { echo "FAIL - 44d no /proc: a broken ps must not launch konsole"; fails=$((fails+1)); } \
   || echo "ok - 44d no /proc: konsole was never invoked"
 
-# --- 44e-h. HIMMEL-3484: without /proc, confirmation used to rest on pgrep's
+# --- 44e-h. without /proc, confirmation used to rest on pgrep's
 # FLATTENED match, so any claude process whose free text carried "-n <NAME>"
 # (its prompt, a system prompt) or whose own name merely had ours as a
 # prefix suppressed the arm. Each candidate pid's argv is now read on its
@@ -2151,7 +2149,7 @@ line two -n HIMMEL-mac44i load x"
 run44 "$d44i" "HIMMEL-mac44i"; rc44i=$?
 check "44i no /proc: a -n after a multiline argv element still dedups (exit 0)" "$rc44i" "0"
 
-# --- 45. HIMMEL-3484: KONSOLE_MACOS_STARTUP_TICKS is read by BOTH this script
+# --- 45. KONSOLE_MACOS_STARTUP_TICKS is read by BOTH this script
 # and the shim. The shim refuses anything but plain decimal digits; this one
 # used to take "200+1" through its 10# arithmetic and size a budget for a
 # launch the shim then refused. Same validation on both sides, and refused
@@ -2175,13 +2173,13 @@ wait_record "$d45b" || true
 [ -e "$d45b/record" ] && echo "ok - 45b Linux ignores KONSOLE_MACOS_STARTUP_TICKS (konsole launched)" \
   || { echo "FAIL - 45b a Linux arm must not refuse over a macOS-only var"; fails=$((fails+1)); }
 
-# --- 46. HIMMEL-3484: not_contains must not read a grep EXECUTION error
+# --- 46. not_contains must not read a grep EXECUTION error
 # (rc 2) as "absent" - that would pass every negative assertion vacuously.
 # shellcheck disable=SC2317,SC2329  # grep() is invoked indirectly, through grepq
 nc46=$( grep() { return 2; }; not_contains "46 probe" "x" "y" )
 check "46 not_contains reports a grep error as a failure, not as absence" "$nc46" "FAIL - 46 probe: grep itself failed (rc 2)"
 
-# --- 42. HIMMEL-2534 (codex-review I6): the recorder branch uses util-linux
+# --- 42. the recorder branch uses util-linux
 # `script -f/-c`, which BSD script rejects ("illegal option -- f"). Since
 # console-kit/headed-arm-leg.sh exports HEADED_ARM_RECORDER=1 unconditionally
 # for --lane claudex, a Mac must refuse with the real reason rather than fail
@@ -2194,7 +2192,7 @@ check "46 not_contains reports a grep error as a failure, not as absence" "$nc46
 # the only way to reach the resolved-shim branch with KONSOLE_CMD unset.
 d42="$tmp/c42"; mkdir -p "$d42/bare" "$d42/lib"
 cp "$SCRIPT" "$d42/bare/headed-arm.sh"
-# HIMMEL-2975: the lone copy needs its ../lib sibling to get this far at all.
+# The lone copy needs its ../lib sibling to get this far at all.
 cp "$HERE/../lib/console-context.sh" "$d42/lib/console-context.sh"
 cp "$HERE/../lib/claude-version.sh" "$d42/lib/claude-version.sh"
 fixture_profiles "$d42"
@@ -2233,8 +2231,8 @@ rec42b="$(cat "$d42b/record" 2>/dev/null || true)"
 check "42b macOS + RECORDER=1 + explicit KONSOLE_CMD: exit 0, not the refusal" "$rc42b" "0"
 contains "42b explicit KONSOLE_CMD: the util-linux script(1) wrapper still reaches the argv" "$rec42b" "script -q -a -f $d42b/log -c"
 
-# --- 43 (HIMMEL-4052): a headless console arm keeps the console profile. The
-# HEADED_ARM_HEADLESS=1 argv rebuild used to drop --settings (HIMMEL-4013).
+# --- 43: a headless console arm keeps the console profile. The
+# HEADED_ARM_HEADLESS=1 argv rebuild used to drop --settings.
 d43="$tmp/c43"; mkdir -p "$d43"
 rc43=0
 out43=$(HEADED_ARM_HEADLESS=1 LEG_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI=true \
@@ -2244,7 +2242,7 @@ check "43 headless console --dry-run: exit 0" "$rc43" "0"
 contains "43 headless console: argv is the background launch" "$out43" "--bg"
 contains "43 headless console: argv keeps the console --settings (HIMMEL-4052)" "$out43" "--settings"
 
-# --- 43b (HIMMEL-5310): a console arm launches with only the console profile's
+# --- 43b: a console arm launches with only the console profile's
 # MCP servers: --mcp-config <file> + --strict-mcp-config, so a user-level server
 # (graphify) never reaches the console. Both the headed and the headless argv.
 for _m43 in headed headless; do
@@ -2259,7 +2257,7 @@ for _m43 in headed headless; do
   contains "43b $_m43 console: argv carries the console --mcp-config file" "$out43b" "console.mcp.json"
 done
 
-# --- 43d (HIMMEL-5310): the console's MCP allowlist names an undefined server
+# --- 43d: the console's MCP allowlist names an undefined server
 # (the settings still resolve): refuse, exit 2, konsole never invoked.
 d43d="$tmp/c43d"; mk_stub "$d43d" 1 alive
 python3 - "$HERE/../lanes/plugin-profiles.json" "$d43d/registry.json" <<'PYE'
@@ -2277,7 +2275,7 @@ contains "43d unresolvable MCP allowlist: names the MCP allowlist refusal" "$out
 [ ! -e "$d43d/record" ] && echo "ok - 43d konsole never invoked" \
   || { echo "FAIL - 43d konsole was invoked despite the refusal"; fails=$((fails+1)); }
 
-# --- bb (HIMMEL-4832): HEADED_ARM_BUS=1 makes the confirmed claude pid bound to
+# --- bb: HEADED_ARM_BUS=1 makes the confirmed claude pid bound to
 # the session name via `bus bind <name> <pid>`. The bus CLI is a recording stub
 # (HEADED_ARM_BUS_CLI); the flag is consumed, never leaked into the session.
 dbb="$tmp/cbb"; mk_stub "$dbb" 1 alive "HIMMEL-busbb"
@@ -2307,7 +2305,7 @@ wait_record "$dbbc" || true
 check "bbe failed bind: launch still exits 0" "$rcbbc" "0"
 contains "bbf failed bind: warned into the arm log" "$(cat "$dbbc/log" 2>/dev/null)" "bus bind of HIMMEL-busbbc to pid 9001 failed"
 
-# --- bg (HIMMEL-5207): a bind that hangs (a stuck registry lock: flock -x with no
+# --- bg: a bind that hangs (a stuck registry lock: flock -x with no
 # -w) is bounded by HEADED_ARM_BUS_BIND_SECS; the launch result is unchanged and
 # the timeout is warned into the arm log. The stub stands in for the stuck lock.
 dbg="$tmp/cbg"; mk_stub "$dbg" 1 alive "HIMMEL-busbg"
@@ -2332,7 +2330,7 @@ check "bgg hung bind: headed-arm.sh returns within 15s" "$hungbg" "no"
 check "bgh hung bind: launch exit 0 (fail-open)" "$rcbg" "0"
 contains "bgi hung bind: timeout warned into the arm log" "$(cat "$dbg/log" 2>/dev/null)" "bus bind of HIMMEL-busbg to pid 9001 failed"
 
-# --- bj (HIMMEL-5207, review round 1): a bind that IGNORES SIGTERM is escalated to
+# --- bj: a bind that IGNORES SIGTERM is escalated to
 # SIGKILL after a one-second grace, so the post-timeout `wait` cannot hang.
 dbj="$tmp/cbj"; mk_stub "$dbj" 1 alive "HIMMEL-busbj"
 cat > "$dbj/bus" <<'BUS_EOF'

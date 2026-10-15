@@ -3,305 +3,237 @@
 # window with a real TTY) when a signal file appears OR a hard deadline passes,
 # whichever comes first.
 #
-# WHY HEADED (HIMMEL-2534): a leg launched through `at` has no TTY, and such a
+# WHY HEADED: a leg launched through `at` has no TTY, and such a
 # session exits at the first idle cross-session message - five legs were lost
 # that way on 2026-09-05. A headed window survives, and the operator can watch
 # the context threshold.
 #
-# WHY THE env -u (HIMMEL-2545): claude exports CLAUDE_CODE_CHILD_SESSION=1 and
+# WHY THE env -u: claude exports CLAUDE_CODE_CHILD_SESSION=1 and
 # CLAUDE_PID into every process it spawns, so a session launched from inside a
 # claude tool call inherits a THROWAWAY-CHILD marker: transcript saving off,
 # `scripts/context-fill.sh` blind (rc=4), no armed-resume archaeology, nothing
 # for the luna session-capture hook. Every console and leg of the 2026-09-05
 # night run was launched that way. The launch below clears both and forces
-# persistence ON. CLAUDE_PID is the HIMMEL-2514 sibling: the launched session
+# persistence ON. CLAUDE_PID is a sibling: the launched session
 # must not inherit the launcher's pid either. CLAUDE_CODE_SESSION_ID is a
-# third clear in the same family (round 6): claude generates its OWN id and
+# third clear in the same family: claude generates its OWN id and
 # exports the correct one to its own tool subprocesses regardless, so this
 # never affected context-fill.sh - but the launched claude PROCESS's own
 # environ still carried the ARMING session's stale id until cleared, which
-# is exactly the surface this ticket taught people to inspect
-# (/proc/<claude pid>/environ) and actively misled that inspection.
+# is exactly the surface people inspect (/proc/<claude pid>/environ) and
+# actively misled that inspection.
 #
 # Usage:
 #   headed-arm.sh <session-name> <handover-doc> <signal-file> <deadline-epoch> \
 #                 <log> [model] [context: 1m|standard]
-# [context] (HIMMEL-2658, default flipped by HIMMEL-2973): arming-time
+# [context]: arming-time
 # context-window choice, same two measured levers as
 # scripts/handover/arm-resume.sh's --context (the [1m] model-id suffix,
 # silently a no-op on a Fable-family model, and the actual cost-driving
 # --autocompact auto|200000). Direct consoles default to `1m` (auto),
-# HIMMEL-3884's console-class exemption from HIMMEL-2975. A positional
+# a console-class exemption from the general 200000 default. A positional
 # `standard` or CONSOLE_CONTEXT=standard opts down to 200000. Leg-wrapper
 # launches retain their profile mode and existing ceiling guard.
 # Run detached, so it outlives the session that armed it:
 #   setsid nohup bash scripts/handover/headed-arm.sh ... >/dev/null 2>&1 &
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+ plus a terminal emulator -
-# konsole on Linux/KDE, and on macOS (HIMMEL-2534) the konsole-macos.sh shim
+# konsole on Linux/KDE, and on macOS the konsole-macos.sh shim
 # this defaults to there, which translates the SAME konsole argv into the
 # house `open -a <App> <file>.command` launch arm-resume.sh already uses.
 # macOS has no /proc, so the confirmation reads each pid's argv via ps -
 # see session_confirmed() below. No .ps1 twin - the Windows station arms through
 # scripts/handover/arm-resume.sh's schtasks backend, which carries the same
-# HIMMEL-2545 clears in its generated .bat. This marker sits ABOVE the
+# env clears in its generated .bat. This marker sits ABOVE the
 # exit-code table below, rather than after it: that table gains an entry
-# almost every CR round and would otherwise keep pushing this marker toward
+# almost every change and would otherwise keep pushing this marker toward
 # (and eventually past) the first 60 lines of the file, the window
-# scripts/parity/test-ws5-invariants.sh's T15 check scans for one - it has
-# already done so twice.
+# scripts/parity/test-ws5-invariants.sh's T15 check scans for one.
 #
-# Exit codes: 2 usage / bad argument; 3 no konsole on PATH; 13 (HIMMEL-2534
-# CR fix, N346) could not resolve this script's own directory to locate the
+# Exit codes: 2 usage / bad argument; 3 no konsole on PATH; 13 could not
+# resolve this script's own directory to locate the
 # macOS konsole shim, a distinct failure from 3 above; 4 no pgrep on
-# PATH (see codex-4 below); 5 the claim-lock root could not be created (see
-# r2-codex-2 below - an environment fault, never a dedup hit); 6 the claim
-# retry budget was exhausted without ever confirming a running session (see
-# r3-codex-1 below - an UNRESOLVED arm, never a dedup hit either); 7 konsole
+# PATH (see the pgrep availability check below); 5 the claim-lock root could
+# not be created (an environment fault, never a dedup hit); 6 the claim
+# retry budget was exhausted without ever confirming a running session (an
+# UNRESOLVED arm, never a dedup hit either); 7 konsole
 # survived its settle but the named session never became visible to pgrep
-# within the post-launch budget (see r4-codex-1 below - UNCONFIRMED, never
+# within the post-launch budget (UNCONFIRMED, never
 # a confirmed launch either); 8 a claimed lock's "acquired" stamp could not
-# be written (see r4-codex-3 below - an unstampable lock is refused rather
+# be written (an unstampable lock is refused rather
 # than held); 9 a pgrep scan itself failed (rc>1, a usage or fatal error,
 # never a genuine no-match) at ANY of the four session_confirmed() call
-# sites (see r8-codex-3 below - an INDETERMINATE scan, refused rather than
+# sites (an INDETERMINATE scan, refused rather than
 # read as either "nothing running" or "confirmed"); 1 the launch itself
 # failed - cd into REPO failed, OR the terminal pid was never confirmed
-# alive by session_confirmed AND the pid itself is also gone (see codex-1
-# and r8-codex-4 below: a dead pid ALONE is no longer sufficient, since
+# alive by session_confirmed AND the pid itself is also gone (a dead pid
+# ALONE is not sufficient, since
 # konsole can hand off to an already-running instance and exit after a
 # SUCCESSFUL launch); 0 armed, and either launched or correctly deduped (a
 # real pgrep-confirmed running session - including one that appeared after
-# this arm claimed the lock, see r7-codex-2, or one confirmed despite the
-# launcher's own pid having already exited, see r8-codex-4 - or a genuine
+# this arm claimed the lock, or one confirmed despite the
+# launcher's own pid having already exited - or a genuine
 # successful launch this run made AND confirmed).
 #
-# CR PANEL FIXES ROUND 1 (HIMMEL-2545 follow-up, all four AGREED):
-#  - codex-1: backgrounding the konsole launch used to be reported successful
-#    UNCONDITIONALLY (`... &`; log "launched"; exit 0). A konsole that dies
-#    immediately (no DISPLAY, a bad invocation) silently lost the armed
-#    successor while this script still exited 0 -- defeating its entire
-#    purpose. The pid is now settled briefly and checked alive (`kill -0`)
-#    before the success line is written; a dead process is a loud failure.
-#  - codex-2: the pgrep dedup below is a non-atomic check-then-launch -- two
-#    arms racing on the exact same NAME could both see "no match" and open
-#    duplicate windows. An atomic `mkdir` claim (this repo's convention --
-#    "claim by atomic mkdir, never scan-then-create") now sits between the
-#    pgrep check and the launch. See the STALE-LOCK POLICY comment at the
-#    claim site for what happens to a lock left by a crashed arm.
-#  - codex-3: $NAME reached pgrep's -f ERE unescaped, so a name carrying
-#    regex metacharacters (`.`, `(`, `|`, ...) could false-match an unrelated
-#    session or false-miss its own. It is now ERE-escaped first, so the
-#    match is on the literal name in both directions.
-#  - codex-4: $PGREP was never availability-checked, unlike $KONSOLE right
-#    above it. A missing pgrep used to fail the dedup call rc=127, which
-#    reads exactly like "no matching session" and silently disabled dedup --
-#    failing OPEN into duplicate windows. It is now checked the same way
-#    konsole is, and refuses closed with a distinct exit code.
-#
-# CR PANEL FIXES ROUND 2 (four of five findings landed here; the fifth,
-# treating an EMPTY CLAUDE_CODE_FORCE_SESSION_PERSISTENCE value as absent,
-# is context-fill.sh's fix, not this file's -- prefixed r2-codex-N below to
-# avoid colliding with round 1's codex-N labels on DIFFERENT findings):
-#  - r2-codex-1 (CRITICAL): the round-1 stale-lock reclaim
-#    (`rm -rf "$LOCK"; mkdir "$LOCK"`) was ITSELF non-atomic -- two
-#    reclaimers could both classify the same lock stale, and whichever
-#    finished its rm+mkdir SECOND would silently remove the FIRST one's
-#    brand-new lock and create its own, so both believed they held it: the
-#    exact duplicate window the lock exists to prevent. Fixed with an
-#    atomic `mv`-based steal (see steal_stale_lock below) -- rename(2) lets
-#    exactly one racer win, the other gets ENOENT and must not proceed.
-#  - r2-codex-2 (CRITICAL): `mkdir -p "$LOCKDIR"`'s result used to be
-#    discarded, so an unwritable/unavailable lock root made every `mkdir
-#    "$LOCK"` fail exactly like a genuine concurrent claim -- the script
-#    logged "already claimed" and exited 0, silently skipping a launch
-#    nobody actually claimed. Now checked, with its own distinct exit 5.
-#  - r2-codex-3 (IMPORTANT): a contender that found the lock held used to
-#    exit 0 immediately, never learning what the holder did. Now retries
-#    the claim for a couple of seconds (never the stale timeout) before
-#    giving up -- a lock that clears with a real session running is a
-#    genuine dedup; one that clears with nothing running means the holder
-#    failed and this arm takes over the launch.
-#
-# CR PANEL FIXES ROUND 3 (three of four findings landed here; the fourth,
-# aligning himmel-doctor.sh's C29 with context-fill.sh's empty-value
-# contract, is that file's fix, not this file's; a fifth, tightening the
-# test suite's race assertion, is test-headed-arm.sh's fix):
-#  - r3-codex-1 (IMPORTANT): exhausting the r2-codex-3 retry budget used to
-#    exit 0 -- the SAME code as a genuine pgrep-confirmed dedup. A holder
-#    that crashes while its lock is still FRESH (age < STALE_LOCK_SECS)
-#    cannot be stolen from for 120s (extending the retry to match would be
-#    worse: a 120s block), so a contender that gives up after ~2s without
-#    ever seeing pgrep confirm a session has NOT deduped against anything
-#    real -- the armed successor may be genuinely lost. Now a distinct,
-#    non-zero exit 6, never sharing an outcome with a confirmed dedup.
-#  - r3-codex-2 (IMPORTANT): the lock used to be released the instant
-#    konsole survived its 0.3s settle, before the named claude process was
-#    actually visible to pgrep. During a slow terminal/claude startup,
-#    another contender could claim the freed lock in that window and
-#    launch a genuine duplicate. Now polls pgrep for the same literal-name
-#    match on a bounded budget (SESSION_VISIBLE_RETRY_ITERS/SLEEP) before
-#    releasing; releases anyway if the budget expires (holding forever is
-#    worse), but logs a slow start plainly rather than staying silent.
-#
-# CR PANEL FIXES ROUND 4 (three of four findings landed here; the fourth is
-# DEFERRED to HIMMEL-2558, not fixed in this PR - see below):
-#  - r4-codex-1 (CRITICAL): the r3-codex-2 post-launch poll expiring used to
-#    log a WARNING and still exit 0 -- the SAME code as a confirmed launch.
-#    A konsole that survives its settle but whose claude child then fails
-#    (or never appears) was reported as a successfully armed successor when
-#    no session exists. Now a distinct, non-zero exit 7; the lock is still
-#    released either way (holding it forever remains worse). RESOLVED IN
-#    FAVOUR OF LOUDNESS: a genuinely slow start now also reports failure,
-#    deliberately - a claude process appears in pgrep at exec time, long
-#    before it finishes loading, and the post-launch budget is already
-#    ~5s, so a miss that long is suspicious, not routine.
-#  - r4-codex-3 (IMPORTANT): `date +%s > "$LOCK/acquired" || true` used to
-#    discard its own failure. An unstamped lock is read by claim_lock()'s
-#    own case statement as "not stale by definition", so it could NEVER be
-#    reclaimed - a permanent wedge for this session name, reached through
-#    the stale-lock policy's own bookkeeping. Now checked (stamp_or_fail_
-#    loudly): a failed stamp write removes the lock and exits 8 rather than
-#    holding an unstampable one.
-#  - r4-codex-4 (SUGGESTION): test-himmel-doctor.sh's own fix, not this
-#    file's - a leaked temp dir in that suite, now cleaned up on exit.
-#  - r4-codex-2 (deferred to HIMMEL-2558, not fixed in this file): the
-#    best-effort restore in steal_stale_lock (`mv "$victim" "$LOCK"` when
-#    the stolen stamp does not match) can itself lose a race, orphaning the
-#    real holder's lock so that its later release deletes a DIFFERENT
-#    arm's lock. The lock's identity lives in its PATH, not in its own
-#    contents, so a restore that loses the mv race cannot tell "put back
-#    the lock I displaced" apart from "a different arm's lock now occupies
-#    this path" - closing that gap needs identity carried inside the lock
-#    itself, which is a redesign of the primitive, tracked as HIMMEL-2558.
-#
-# CR PANEL FIXES ROUND 6 (the only finding landed here; the other is the
-# HIMMEL-2558 deferral re-raised, unchanged, not fixed in this file):
-#  - r6-codex-2 (security hardening): the lock root used to default to a
-#    PREDICTABLE, SHARED path under /tmp - another local user on the same
-#    host could pre-create it (as a directory they own, or a symlink) and
-#    every lock operation would then happen inside a directory this
-#    process does not control. Now prefers $XDG_RUNTIME_DIR (per-user 0700
-#    on systemd hosts already) and otherwise falls back to a uid-qualified
-#    path under ${TMPDIR:-/tmp}, created 0700; the resulting root - and an
-#    explicit HEADED_ARM_LOCK_DIR override, identically - is then VALIDATED
-#    (not a symlink, owned by this user, not group/world-writable) before
-#    anything is claimed inside it. See the validation block at the claim
-#    site for the exact checks.
-#
-# CR PANEL FIXES ROUND 7 (fresh critic model, on code six earlier rounds had
-# already reviewed - both findings land here; the other two re-raise the
-# HIMMEL-2558 deferral, unchanged, not fixed in this file):
-#  - r7-codex-1 (IMPORTANT, and worse than that severity suggests: it made
-#    two EARLIER fixes vacuous): `pgrep -f` matches the FULL command line,
-#    and konsole's OWN argv literally quotes the whole claude invocation it
-#    was told to run (`konsole ... -e env -u ... claude --model X -n NAME
-#    "load ..."`), so the dedup/visibility pattern below matched konsole's
-#    OWN process, not the claude process it spawns. That meant the
-#    post-launch visibility poll (r3-codex-2) confirmed a session the
-#    instant konsole itself appeared in pgrep - essentially instantly - so
-#    r4-codex-1's exit 7 for a never-confirmed launch could almost never
-#    fire, and the dedup layers could likewise be satisfied by a surviving
-#    terminal with no claude inside it. Same class this repo's own
-#    himmel-doctor.sh C29 check already guards against: a launcher whose
-#    argv quotes the claude command is not a claude session. Fixed the same
-#    way - see session_confirmed() below.
-#  - r7-codex-2 (IMPORTANT): checking pgrep only BEFORE acquiring the lock
-#    still allowed a duplicate: a contender sees no session, is
-#    descheduled, the holder launches and releases, then the contender
-#    acquires the now-freed lock and launches anyway. Now re-checked
-#    immediately AFTER acquiring the lock, before konsole is ever touched -
-#    see the recheck right after the claim retry loop below.
-#
-# CR PANEL FIXES ROUND 8 (0 Critical; both findings land here - the other
-# two re-raise the HIMMEL-2558 deferral, unchanged, not fixed in this file):
-#  - r8-codex-4 (filed a Suggestion, treated as the important one - a real
-#    launch bug, verified on this machine: `konsole --help` genuinely lists
-#    `--separate`/`--nofork` as opt-in): the success check assumed the
-#    konsole process backgrounded above stays alive, but konsole can hand
-#    off to an ALREADY-RUNNING instance and let the pid this script
-#    backgrounded exit immediately - on any station with a konsole already
-#    open, that turns a SUCCESSFUL hand-off into `kill -0` failing, which
-#    used to be read as FAILED (exit 1) on a launch that actually worked -
-#    the exact inversion of round 4's fix. Fixed both halves: (1) `konsole`
-#    is now invoked with `--separate`, so the pid backgrounded here is
-#    genuinely its own process, not a hand-off target, and the pid check
-#    means something again; (2) even so, a dead pid is no longer treated as
-#    failure ON ITS OWN - the post-launch session_confirmed() poll now
-#    always runs regardless of whether the pid still looks alive at the
-#    0.3s settle point, and only "never confirmed AND the pid is also gone"
-#    reaches the exit-1 FAILED branch. This keeps the check robust even
-#    against a future konsole that ignores the flag.
-#  - r8-codex-3 (IMPORTANT): session_confirmed() folded EVERY pgrep failure
-#    into "no match" (`|| return 1`), but pgrep exits 1 for a genuine
-#    no-match and 2 or 3 for a usage or fatal scan error - a broken scan
-#    then silently read as "nothing running" and bypassed dedup. Same
-#    principle this file has now applied five times over: an indeterminate
-#    answer must never be reported as a confirmed one. session_confirmed()
-#    now distinguishes rc 1 (return 1, genuinely not running) from rc > 1
-#    (return 2, the scan itself failed); every one of its four call sites
-#    refuses with a new, distinct exit 9 on the latter rather than treating
-#    it as either a dedup hit or a green light to launch.
-#
-# CR PANEL FIXES ROUND 9 (0 Critical; the one Suggestion lands here because
-# it deletes a whole class rather than patching an instance - the two
-# Importants re-raise the HIMMEL-2558 deferral, unchanged, not fixed in
-# this file):
-#  - r9-codex-3 (SUGGESTION, taken anyway): `pgrep -f` matches a FLATTENED
-#    command line, so an unrelated claude session whose PROMPT happened to
-#    contain "-n <our name> ", or whose OWN name merely had ours as a
-#    prefix, could satisfy the dedup pattern and silently suppress a launch
-#    that should have happened. Fixed by requiring a POSITIONAL, EXACT
-#    match against the real NUL-separated argv (see _argv_has_n_name and
-#    the r9-codex-3 note above session_confirmed()) rather than trusting
-#    that a flattened-string match means `-n NAME` was actually an option.
-#
-# CR PANEL FIXES ROUND 10 (0 Critical; both findings land here - the other
-# two re-raise the HIMMEL-2558 deferral, unchanged, not fixed in this
-# file):
-#  - r10-codex-3 (IMPORTANT): $LOG and the lock root are both used AFTER
-#    `cd "$REPO"` - the konsole redirect, every status line, and the
-#    post-launch `rm -rf "$LOCK"` cleanup on every exit path. A RELATIVE
-#    $LOG silently started writing somewhere else (or failed outright), and
-#    a relative HEADED_ARM_LOCK_DIR override made the cleanup target a path
-#    that no longer resolved to where the lock actually lived - LEAKING it,
-#    blocking every arm for that name until the stale timeout: the exact
-#    failure mode this file has spent four rounds keeping out, arriving
-#    through a path nobody was looking at. Both now resolved to absolute
-#    before anything can cd - see the r10-codex-3 notes at each variable's
-#    own construction site (right after REPO is set, and right after
-#    LOCKDIR is computed) for the resolution mechanism and why SIGNAL and
-#    DOC do not need the same treatment.
-#  - r10-codex-4 (SUGGESTION, taken anyway): the pgrep candidate pattern
-#    required a trailing space after the name, so a command line that
-#    ENDS at the name (no trailing prompt argument) was filtered out
-#    before the exact argv check ever saw it, and could receive a genuine
-#    duplicate successor. Now that the positional argv walk is
-#    authoritative, the pre-filter is permissive rather than precise -
-#    see the r10-codex-4 note above _argv_has_n_name.
+# DESIGN NOTES (the failure each guard exists to prevent):
+#  - A konsole that dies immediately (no DISPLAY, a bad invocation) must not
+#    be reported as a successful launch: the pid is settled briefly and
+#    checked alive (`kill -0`) before the success line is written, and a dead
+#    process is a loud failure.
+#  - The pgrep dedup is a non-atomic check-then-launch, so two arms racing on
+#    the exact same NAME could both see "no match" and open duplicate
+#    windows. An atomic `mkdir` claim (this repo's convention - "claim by
+#    atomic mkdir, never scan-then-create") sits between the pgrep check and
+#    the launch. See the STALE-LOCK POLICY comment at the claim site for what
+#    happens to a lock left by a crashed arm.
+#  - $NAME reaches pgrep's -f ERE ERE-escaped, so a name carrying regex
+#    metacharacters (`.`, `(`, `|`, ...) matches the literal name in both
+#    directions rather than false-matching an unrelated session.
+#  - $PGREP is availability-checked like $KONSOLE. A missing pgrep would fail
+#    the dedup call rc=127, which reads exactly like "no matching session"
+#    and silently disables dedup - failing OPEN into duplicate windows - so it
+#    refuses closed with a distinct exit code.
+#  - Stale-lock reclaim must be atomic: `rm -rf "$LOCK"; mkdir "$LOCK"` lets
+#    two reclaimers both classify the same lock stale, and whichever finishes
+#    SECOND silently removes the FIRST one's brand-new lock, so both believe
+#    they hold it - the exact duplicate window the lock exists to prevent.
+#    The `mv`-based steal (see steal_stale_lock below) uses rename(2), which
+#    lets exactly one racer win; the other gets ENOENT and must not proceed.
+#  - `mkdir -p "$LOCKDIR"`'s result is checked (exit 5): an
+#    unwritable/unavailable lock root would otherwise make every `mkdir
+#    "$LOCK"` fail exactly like a genuine concurrent claim, and the script
+#    would log "already claimed" and exit 0, skipping a launch nobody
+#    actually claimed.
+#  - A contender that finds the lock held retries the claim for a couple of
+#    seconds (never the stale timeout) before giving up: a lock that clears
+#    with a real session running is a genuine dedup; one that clears with
+#    nothing running means the holder failed and this arm takes over.
+#  - Exhausting that retry budget is exit 6, never 0. A holder that crashes
+#    while its lock is still FRESH (age < STALE_LOCK_SECS) cannot be stolen
+#    from for 120s (extending the retry to match would be a 120s block), so a
+#    contender that gives up after ~2s without ever seeing pgrep confirm a
+#    session has NOT deduped against anything real - the armed successor may
+#    be genuinely lost.
+#  - The lock is not released the instant konsole survives its 0.3s settle:
+#    during a slow terminal/claude startup another contender could claim the
+#    freed lock in that window and launch a genuine duplicate. pgrep is
+#    polled for the same literal-name match on a bounded budget
+#    (SESSION_VISIBLE_RETRY_ITERS/SLEEP) before releasing; the lock is
+#    released anyway if the budget expires (holding forever is worse).
+#  - That budget expiring is exit 7, not a warning with exit 0: a konsole that
+#    survives its settle but whose claude child then fails (or never appears)
+#    must not be reported as a successfully armed successor when no session
+#    exists. Deliberately resolved in favour of loudness: a claude process
+#    appears in pgrep at exec time, long before it finishes loading, and the
+#    post-launch budget is already ~5s, so a miss that long is suspicious,
+#    not routine.
+#  - `date +%s > "$LOCK/acquired"` is checked (stamp_or_fail_loudly). An
+#    unstamped lock is read by claim_lock()'s own case statement as "not
+#    stale by definition", so it could NEVER be reclaimed - a permanent wedge
+#    for this session name. A failed stamp write removes the lock and exits 8
+#    rather than holding an unstampable one.
+#  - Known gap (needs a redesign of the lock primitive): the best-effort restore in
+#    steal_stale_lock (`mv "$victim" "$LOCK"` when the stolen stamp does not
+#    match) can itself lose a race, orphaning the real holder's lock so that
+#    its later release deletes a DIFFERENT arm's lock. The lock's identity
+#    lives in its PATH, not in its own contents, so a restore that loses the
+#    mv race cannot tell "put back the lock I displaced" apart from "a
+#    different arm's lock now occupies this path" - closing that gap needs
+#    identity carried inside the lock itself, a redesign of the primitive.
+#  - The lock root must not be a predictable, shared path under /tmp: another
+#    local user on the same host could pre-create it (as a directory they
+#    own, or a symlink) and every lock operation would then happen inside a
+#    directory this process does not control. It prefers $XDG_RUNTIME_DIR
+#    (per-user 0700 on systemd hosts already) and otherwise falls back to a
+#    uid-qualified path under ${TMPDIR:-/tmp}, created 0700; the resulting
+#    root - and an explicit HEADED_ARM_LOCK_DIR override, identically - is
+#    then VALIDATED (not a symlink, owned by this user, not group/world-
+#    writable) before anything is claimed inside it. See the validation block
+#    at the claim site for the exact checks.
+#  - `pgrep -f` matches the FULL command line, and konsole's OWN argv
+#    literally quotes the whole claude invocation it was told to run
+#    (`konsole ... -e env -u ... claude --model X -n NAME "load ..."`), so a
+#    bare pattern would match konsole's OWN process, not the claude process it
+#    spawns. The post-launch visibility poll would then confirm a session the
+#    instant konsole itself appeared in pgrep, the exit 7 for a
+#    never-confirmed launch could almost never fire, and the dedup layers
+#    could be satisfied by a surviving terminal with no claude inside it.
+#    Same class this repo's himmel-doctor.sh C29 check already guards against:
+#    a launcher whose argv quotes the claude command is not a claude session.
+#    See session_confirmed() below.
+#  - pgrep is also re-checked immediately AFTER acquiring the lock, before
+#    konsole is ever touched (see the recheck right after the claim retry
+#    loop below). Checking only BEFORE would still allow a duplicate: a
+#    contender sees no session, is descheduled, the holder launches and
+#    releases, then the contender acquires the now-freed lock and launches
+#    anyway.
+#  - The success check must not assume the konsole process backgrounded above
+#    stays alive: konsole can hand off to an ALREADY-RUNNING instance and let
+#    the pid this script backgrounded exit immediately (`konsole --help`
+#    lists `--separate`/`--nofork` as opt-in). On any station with a konsole
+#    already open that would turn a SUCCESSFUL hand-off into `kill -0`
+#    failing, read as FAILED (exit 1) on a launch that actually worked. So
+#    (1) `konsole` is invoked with `--separate`, making the backgrounded pid
+#    genuinely its own process, and (2) a dead pid is not treated as failure
+#    ON ITS OWN - the post-launch session_confirmed() poll always runs
+#    regardless of whether the pid still looks alive at the 0.3s settle
+#    point, and only "never confirmed AND the pid is also gone" reaches the
+#    exit-1 FAILED branch. This stays robust even against a future konsole
+#    that ignores the flag.
+#  - session_confirmed() distinguishes pgrep rc 1 (return 1, genuinely not
+#    running) from rc > 1 (return 2, the scan itself failed): folding EVERY
+#    failure into "no match" would let a broken scan silently read as
+#    "nothing running" and bypass dedup. An indeterminate answer must never
+#    be reported as a confirmed one; every one of its four call sites refuses
+#    with the distinct exit 9 on the latter rather than treating it as either
+#    a dedup hit or a green light to launch.
+#  - `pgrep -f` matches a FLATTENED command line, so an unrelated claude
+#    session whose PROMPT happened to contain "-n <our name> ", or whose OWN
+#    name merely had ours as a prefix, could satisfy the dedup pattern and
+#    silently suppress a launch that should have happened. A POSITIONAL,
+#    EXACT match against the real NUL-separated argv is required (see
+#    _argv_has_n_name and the note above session_confirmed()) rather than
+#    trusting that a flattened-string match means `-n NAME` was an option.
+#  - $LOG and the lock root are both used AFTER `cd "$REPO"` - the konsole
+#    redirect, every status line, and the post-launch `rm -rf "$LOCK"` cleanup
+#    on every exit path. A RELATIVE $LOG would silently write somewhere else
+#    (or fail outright), and a relative HEADED_ARM_LOCK_DIR override would make
+#    the cleanup target a path that no longer resolves to where the lock
+#    actually lives - LEAKING it and blocking every arm for that name until
+#    the stale timeout. Both are resolved to absolute before anything can cd;
+#    see the notes at each variable's own construction site (right after REPO
+#    is set, and right after LOCKDIR is computed) for the mechanism and why
+#    SIGNAL and DOC do not need the same treatment.
+#  - The pgrep candidate pattern does not require a trailing space after the
+#    name: a command line that ENDS at the name (no trailing prompt argument)
+#    would otherwise be filtered out before the exact argv check ever saw it,
+#    and could receive a genuine duplicate successor. Since the positional
+#    argv walk is authoritative, the pre-filter is permissive rather than
+#    precise - see the note above _argv_has_n_name.
 #
 # Seams (tests only): KONSOLE_CMD / PGREP_CMD pin the two external binaries by
 # name so a suite can shim them on PATH; HEADED_ARM_REPO overrides the repo
 # root this otherwise derives from its own location; HEADED_ARM_LOCK_DIR
 # overrides the durable per-name claim-lock root (default: $XDG_RUNTIME_DIR
-# if set, else a uid-qualified path under ${TMPDIR:-/tmp} - see r6-codex-2
-# below) so a suite can point it at a throwaway directory - the override is
-# validated exactly like the default is, never a way around that check;
+# if set, else a uid-qualified path under ${TMPDIR:-/tmp} - see the lock-root
+# note above) so a suite can point it at a throwaway directory - the override
+# is validated exactly like the default is, never a way around that check;
 # HEADED_ARM_STALE_HOOK (a no-op by default) is invoked right after a lock
 # is classified stale but before it is stolen, so a suite can
 # deterministically interleave two real
-# contenders at the exact race window (see r2-codex-1 below);
+# contenders at the exact race window (see the atomic steal note above);
 # HEADED_ARM_PROC overrides the procfs root session_confirmed() reads each
-# candidate pid's comm from (default: /proc - see r7-codex-1 below), so a
+# candidate pid's comm from (default: /proc - see the konsole-argv note
+# above), so a
 # suite can point a matched pid at a fixture comm without a genuinely
 # running claude process. HEADED_ARM_UNAME overrides the platform read
 # (default: `uname -s`) that picks konsole vs. the macOS shim below
-# (HIMMEL-3474, formerly documented only at its own use site as "a seam,
-# like PGREP_CMD and HEADED_ARM_PROC already are" - codex-review S11), so a
+# (documented at its own use site as "a seam,
+# like PGREP_CMD and HEADED_ARM_PROC already are"), so a
 # suite can exercise the macOS branch on a Linux runner instead of silently
 # reporting green there.
 #
-# HIMMEL-2782: HEADED_ARM_LAUNCHER overrides the binary the konsole tab
+# HEADED_ARM_LAUNCHER overrides the binary the konsole tab
 # execs (default: claude, PATH-resolved - unchanged for every existing
 # caller). HEADED_ARM_LAUNCHER_ENV is a space-separated list of extra
 # NAME=VALUE tokens (same "no spaces inside a value" contract as
@@ -311,23 +243,23 @@
 # the launcher in `script -q -f "$LOG" -c ...` instead of execing it
 # directly: konsole's own `-e` output is otherwise lost, and a launcher
 # whose own child can die silently (the codex proxy path) leaves no trace
-# at all - measured on the claudex pilots (N41b: no process, empty log).
+# at all - measured on the claudex pilots (no process, empty log).
 # The default launcher keeps the plain exec (unchanged argv shape - every
 # existing test asserts its exact form) since it has never shown this
 # failure mode; only a caller that sets HEADED_ARM_RECORDER=1 pays for the
 # extra tty layer.
 #
-# --role (HIMMEL-2975, renamed HIMMEL-3133; HIMMEL-3136 R1): an optional
+# --role: an optional
 # leading `--role console` flag, ahead of the positionals, for the console arm
 # path only. `console` clears HIMMEL_CONSOLE_RELAY from the child env (so a
 # console session never inherits a relay marker from whatever armed it) and
 # stamps `role=console` on the `armed:` log line. It is the ONLY accepted
-# value: a relay is a LEG, armed via headed-arm-leg.sh --relay (Task 25,
-# #752), never through this console-oriented launcher, so it is not a role
-# here. Omitting --role keeps today's behaviour byte-identical
+# value: a relay is a LEG, armed via headed-arm-leg.sh --relay,
+# never through this console-oriented launcher, so it is not a role
+# here. Omitting --role keeps the unsplit behaviour byte-identical
 # (`role=unsplit` on the log line, no env change).
 #
-# --dry-run (HIMMEL-3140): prints the resolved argv this would hand to
+# --dry-run: prints the resolved argv this would hand to
 # konsole, plus the env it would apply, and exits 0 -- BEFORE the
 # signal/deadline wait loop, the dedup pgrep scan, the claim lock, or konsole
 # are ever touched. Every usage/argument validation below (usage-arity,
@@ -335,8 +267,8 @@
 # checks, and konsole/pgrep PATH availability) still runs first and can still
 # exit non-zero -- --dry-run only skips the parts that actually cost a real
 # launch. WHY: proving this launcher accepts a flag or a resolved argv used
-# to mean a REAL billed konsole+claude launch, twice (N279, N13-of-3133) --
-# second occurrence, structural seam.
+# to mean a REAL billed konsole+claude launch, twice -- so it is a
+# structural seam.
 set -u
 
 usage() {
@@ -373,7 +305,7 @@ if [ "$#" -lt 5 ]; then
     exit 2
 fi
 
-# HIMMEL-2975 T6: resolved from $0, NOT $HEADED_ARM_REPO -- tests point that
+# Resolved from $0, NOT $HEADED_ARM_REPO -- tests point that
 # override at a synthetic tmp repo with no scripts/lib of its own, and this
 # script's own source location never moves with it.
 . "$(cd "$(dirname "$0")" && pwd)/../lib/console-context.sh"
@@ -382,11 +314,10 @@ fi
 # shellcheck source=../lib/dedupe-path.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/dedupe-path.sh"
 
-# HIMMEL-3079: the console parent defaults to Opus (default parent tier);
+# The console parent defaults to Opus (default parent tier);
 # Fable is the escalation target, reached only via an explicit [model].
 NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-claude-opus-5-5}"
-# HIMMEL-2973 (default re-pinned by HIMMEL-2975 T6, resolution now shared
-# via scripts/lib/console-context.sh): --context resolution, arming-time
+# --context resolution (shared via scripts/lib/console-context.sh), arming-time
 # only (see the header comment above). Direct consoles default to 1m/auto;
 # non-console wrapper profiles retain their configured mode. A positional
 # choice overrides CONSOLE_CONTEXT and the default. $#-ge 7 (not just
@@ -396,7 +327,7 @@ NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-claude-op
 # distinction costs nothing and matches how arm-resume.sh tells explicit
 # from default. This launcher is always console-class (is_console=1) --
 # it has no non-console callers, unlike arm-resume.sh's handover-name test.
-# HIMMEL-4021: the profile is validated before any wait/claim/launch. Legs
+# The profile is validated before any wait/claim/launch. Legs
 # supply their selected profile; a direct console arm resolves console.
 _context_profile="console"
 _context_profiles="$(dirname "$0")/../lanes/plugin-profiles.mjs"
@@ -407,7 +338,7 @@ if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
     _context_profile="${HEADED_ARM_CONTEXT_PROFILE:-console}"
     _context_profiles="${HEADED_ARM_LEG_PROFILES:-$_context_profiles}"
 fi
-# HIMMEL-5193: the audited 400k A/B arm marker, set only by headed-arm-leg.sh.
+# The audited 400k A/B arm marker, set only by headed-arm-leg.sh.
 # Same PID pairing as above, so an ambient value from another process is ignored.
 _ab_autocompact=""
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
@@ -433,7 +364,7 @@ else
     if [ "$_context_profile" != "console" ] && [ "${CONSOLE_CONTEXT:-}" != "1m" ]; then
         CONTEXT="$_profile_mode"
     fi
-    # HIMMEL-3279/3282: the source word (an env opt-in spells `explicit` too)
+    # The source word (an env opt-in spells `explicit` too)
     # is the shared one arm-resume.sh emits, so the two paths cannot disagree.
     _headed_context_source=$(console_context_source_label 0)
 fi
@@ -442,7 +373,7 @@ if ! console_context_valid "$CONTEXT"; then
     echo "headed-arm: context must be 1m or standard, got: $CONTEXT" >&2
     exit 2
 fi
-# HIMMEL-3884: direct consoles may select 1m without an env opt-in.
+# Direct consoles may select 1m without an env opt-in.
 # Keep the existing non-console profile guard for leg-wrapper launches.
 if [ "$_context_profile" != "console" ] && [ "$CONTEXT" = "1m" ] && [ "${CONSOLE_CONTEXT:-}" != "1m" ] && [ "$_profile_mode" != "1m" ]; then
     usage
@@ -455,7 +386,7 @@ if [ -n "$_ab_autocompact" ] && { [ "$_ab_autocompact" != "400000" ] || [ "$CONT
 fi
 # Fable-family match (shared with arm-resume.sh via console_context_model_is_fable)
 # -- only an explicit Fable [model] takes this branch now (the default MODEL
-# is Opus, HIMMEL-3079).
+# is Opus).
 _headed_model_is_fable=0
 if console_context_model_is_fable "$MODEL"; then
     _headed_model_is_fable=1
@@ -479,7 +410,7 @@ if [ "$CONTEXT" = "1m" ]; then
         # models -- never claim to have set 1m context on one.
         CONTEXT_REASON="context=1m ($_headed_context_source); model=$MODEL is Fable-family -- the CLI silently strips a [1m] suffix there, so it is NOT applied (autocompact=$AUTOCOMPACT still is)"
     elif ! console_context_model_takes_1m_suffix "$MODEL"; then
-        # HIMMEL-5501: native-1M and non-Anthropic ids launch bare.
+        # Native-1M and non-Anthropic ids launch bare.
         CONTEXT_REASON="context=1m ($_headed_context_source); model=$MODEL runs 1M without a suffix -- [1m] NOT applied (autocompact=$AUTOCOMPACT still is)"
     else
         MODEL="${MODEL}[1m]"
@@ -488,12 +419,12 @@ if [ "$CONTEXT" = "1m" ]; then
 else
     CONTEXT_REASON="context=standard ($_headed_context_source); model=$MODEL"
 fi
-# HIMMEL-2534: macOS has no konsole. The default resolves to the shim beside
+# MacOS has no konsole. The default resolves to the shim beside
 # this script rather than branching the two launch blocks below - every
 # existing test asserts their exact argv shape, and a shim keeps that
 # contract instead of forking it per platform. KONSOLE_CMD still overrides
 # on every platform, unchanged.
-# codex-review S11: HEADED_ARM_UNAME is a documented seam (see the header
+# HEADED_ARM_UNAME is a documented seam (see the header
 # above), so the macOS-only resolution and budget below are testable on a
 # Linux runner instead of silently reporting green there.
 HEADED_ARM_UNAME="${HEADED_ARM_UNAME:-$(uname -s 2>/dev/null)}"
@@ -511,17 +442,17 @@ KONSOLE_IS_RESOLVED_SHIM=0
 if [ -n "${KONSOLE_CMD:-}" ]; then
     KONSOLE="$KONSOLE_CMD"
 elif [ "$HEADED_ARM_UNAME" = "Darwin" ]; then
-    # codex-review S12: an unchecked `cd` here collapses to the literal
+    # An unchecked `cd` here collapses to the literal
     # "/konsole-macos.sh", and the refusal below then names a path that never
     # existed -- "the shim is missing" instead of "I could not resolve my own
     # directory". Fail with the real reason.
     _here="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || _here=""
     if [ -z "$_here" ]; then
-        # HIMMEL-2534 CR fix (N346): exit 3 already means "no konsole/CLI dep
+        # Exit 3 already means "no konsole/CLI dep
         # on PATH" (below); this is a different failure (can't even resolve
         # this script's own directory) and needs its own code, not a collision.
         echo "headed-arm: could not resolve this script's own directory to locate the macOS konsole shim" >&2
-        # 13, not 10 (N357 r2 codex-3): headed-arm-leg.sh execs into this
+        # 13, not 10: headed-arm-leg.sh execs into this
         # script and already owns 10-12 and 17 for its own refusals.
         exit 13
     fi
@@ -531,7 +462,7 @@ elif [ "$HEADED_ARM_UNAME" = "Darwin" ]; then
 else
     KONSOLE="konsole"
 fi
-# HIMMEL-3484: the shim refuses anything but plain decimal digits here, while
+# The shim refuses anything but plain decimal digits here, while
 # the budget below reads the var through 10# arithmetic, which would take
 # "200+1". Same validation on both sides, refused before anything is claimed.
 if [ "$KONSOLE_IS_MACOS_SHIM" = "1" ]; then
@@ -548,14 +479,14 @@ REPO="${HEADED_ARM_REPO:-$(cd "$(dirname "$0")/../.." && pwd)}"
 INIT="execute,prcheck,pr,ticket,merge,public,handover"
 LAUNCHER="${HEADED_ARM_LAUNCHER:-claude}"
 LAUNCHER_ENV="${HEADED_ARM_LAUNCHER_ENV:-}"
-# PR 1129 console review: konsole inherits this environment and hands it to the
+# Konsole inherits this environment and hands it to the
 # leg's claude. A leaked list would make any arm spawned from that leg prepend
 # the PARENT's profile tokens (first token wins) ahead of its own.
 unset HEADED_ARM_LAUNCHER_ENV
 RECORDER="${HEADED_ARM_RECORDER:-0}"
 REQUIRED_AUTOCOMPACT="${HEADED_ARM_REQUIRED_AUTOCOMPACT:-}"
 unset HEADED_ARM_REQUIRED_AUTOCOMPACT
-# HIMMEL-3403: headed-arm-leg.sh --headless sets these. HEADLESS launches the
+# Headed-arm-leg.sh --headless sets these. HEADLESS launches the
 # session in the background (no konsole) and confirms it through
 # `$CLAUDE_CLI agents --json` - a background session's process comm is the
 # CLI version string, not `claude`, so the pgrep census below never sees it.
@@ -563,12 +494,12 @@ HEADLESS="${HEADED_ARM_HEADLESS:-0}"
 CLAUDE_CLI="${HEADED_ARM_CLAUDE_CLI:-claude}"
 LAUNCH_RECORD="${HEADED_ARM_LAUNCH_RECORD:-}"
 unset HEADED_ARM_HEADLESS HEADED_ARM_LAUNCH_RECORD
-# HIMMEL-4832 (himmel-bus T9): the launcher registered $NAME on the bus and sets
+# The launcher registered $NAME on the bus and sets
 # HEADED_ARM_BUS=1 to have the claude pid confirmed below bound to it. Read once
 # and cleared, so the flag can never ride into the launched session's env.
 BUS_BIND="${HEADED_ARM_BUS:-0}"
 BUS_CLI="${HEADED_ARM_BUS_CLI:-$(dirname "$0")/../../marketplace/plugins/himmel-bus/bin/bus}"
-# HIMMEL-5207: the registry lock is `flock -x` with no -w, so a stuck holder
+# The registry lock is `flock -x` with no -w, so a stuck holder
 # would hang this detached process. The bind gets this many seconds, then dies.
 BUS_BIND_SECS="${HEADED_ARM_BUS_BIND_SECS:-15}"
 case "$BUS_BIND_SECS" in
@@ -576,14 +507,14 @@ case "$BUS_BIND_SECS" in
 esac
 unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI HEADED_ARM_BUS_BIND_SECS
 SESSION_PID=""
-# HIMMEL-2975 (renamed HIMMEL-3133): a console session must never inherit a
+# A console session must never inherit a
 # relay marker from whatever armed it -- ROLE_ENV_UNSET is an extra `-u`
 # token added to BOTH konsole launch branches' env -u list below,
 # unconditional (not merely "if set"), so a HIMMEL_CONSOLE_RELAY already
 # present in the arming shell's own env is cleared the same way
 # CLAUDE_CODE_CHILD_SESSION etc already are.
 ROLE_ENV_UNSET=""
-# HIMMEL-2973 S3: a console also gets HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
+# A console also gets HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
 # exported, which is what switches on the PreCompact snapshot hook
 # (scripts/hooks/console-precompact-snapshot.sh); every other session gets
 # neither, so that hook stays a silent no-op fleet-wide. The workdir is
@@ -595,7 +526,7 @@ ROLE_ENV_UNSET=""
 CONSOLE_ENV=()
 if [ "$ROLE" = "console" ]; then
     ROLE_ENV_UNSET="-u HIMMEL_CONSOLE_RELAY"
-    # HIMMEL-3035: the `-u` above sits BEFORE $LAUNCHER_ENV in both konsole
+    # The `-u` above sits BEFORE $LAUNCHER_ENV in both konsole
     # branches, and `env -u FOO FOO=1` ends with FOO=1 -- so a
     # HIMMEL_CONSOLE_RELAY=<v> token carried in HEADED_ARM_LAUNCHER_ENV would
     # silently undo the unconditional clear. Drop that exact name here (a
@@ -622,12 +553,12 @@ if [ "$ROLE" = "console" ]; then
     esac
     CONSOLE_ENV=("HIMMEL_CONSOLE_DOC=$_console_doc" "HIMMEL_CONSOLE_WORKDIR=$(dirname -- "$SIGNAL")")
 fi
-# HIMMEL-5501: this argv carries --autocompact and an Opus 5.5 id, which a CLI
+# This argv carries --autocompact and an Opus 5.5 id, which a CLI
 # below the floor rejects at parse time -- refuse here, naming the version,
 # instead of arming a session that never starts.
 claude_floor_gate headed-arm.sh "$DRY_RUN" "$CLAUDE_CLI" || exit 2
 LAUNCH_ARGV=("$LAUNCHER" --model "$MODEL" --autocompact "$AUTOCOMPACT" -n "$NAME" "load $DOC and continue")
-# HIMMEL-4013: a console arm runs under the `console` plugin profile (the
+# A console arm runs under the `console` plugin profile (the
 # floor plus lean-skills; no review toolkit). A leg arm reaches here through
 # leg-claude-launcher.sh, which already prepends its own --settings, so only
 # --role console adds one. Fails closed: no profile, no console launch.
@@ -636,7 +567,7 @@ if [ "$ROLE" = "console" ]; then
         echo "headed-arm.sh: the console plugin profile did not resolve; refusing to launch a console with the full plugin set (HIMMEL-4013)" >&2
         exit 2
     }
-    # HIMMEL-5310: the console loads only the servers its profile names. Without
+    # The console loads only the servers its profile names. Without
     # --strict-mcp-config every user-level server (graphify, ...) leaks in and its
     # tool schemas are paid on every turn. Empty output = no allowlist declared.
     _console_profile_mcp=$(bash "$(dirname "$0")/../lanes/profile-settings.sh" console --mcp-config) || {
@@ -651,15 +582,15 @@ if [ "$HEADLESS" = "1" ]; then
     # auto is what a headed leg runs in (defaultMode=auto in the operator's
     # user settings), declared here because an unattended launch must never
     # rely on the default (CLAUDE.md "Claude invocation billing").
-    # HIMMEL-3403 console-armed leg; headed-arm-leg.sh ran the bank/fleet preflight
+    # Console-armed leg; headed-arm-leg.sh ran the bank/fleet preflight
     LAUNCH_ARGV=("$LAUNCHER" --bg --permission-mode auto --model "$MODEL" --autocompact "$AUTOCOMPACT" -n "$NAME" "load $DOC and continue")
-    # HIMMEL-4052: the rebuild above would drop the console profile --settings.
+    # The rebuild above would drop the console profile --settings.
     if [ "$ROLE" = "console" ]; then
         LAUNCH_ARGV=("$LAUNCHER" "${_console_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
     fi
 fi
 
-# HIMMEL-2779: headed-arm-leg.sh sets this required value. Validate the same
+# Headed-arm-leg.sh sets this required value. Validate the same
 # argv array both launch branches consume, so a future renderer cannot drop or
 # change the cost-driving pair while the wrapper still reports standard mode.
 if [ -n "$REQUIRED_AUTOCOMPACT" ]; then
@@ -680,7 +611,7 @@ if [ -n "$REQUIRED_AUTOCOMPACT" ]; then
     fi
 fi
 
-# r10-codex-3: $LOG is used AFTER `cd "$REPO"` below - the konsole redirect
+# $LOG is used AFTER `cd "$REPO"` below - the konsole redirect
 # (`>> "$LOG"`), and every status line this script writes on every exit
 # path. A RELATIVE $LOG would silently start writing somewhere else (or
 # fail outright) the instant the cwd changes. The lock root has the SAME
@@ -700,8 +631,8 @@ fi
 # fact this script is running at all, so prefixing needs nothing
 # pre-created and is exact for a later open()/mkdir() regardless of
 # whether the target exists yet. The lock root itself is resolved the same
-# way at its own construction site below (see r10-codex-3 there) - the
-# round-6 validation that follows it there applies to this RESOLVED path,
+# way at its own construction site below (see the note there) - the
+# validation that follows it there applies to this RESOLVED path,
 # never the pre-resolution one, so a relative override that would have
 # resolved into someone else's directory is still refused.
 #
@@ -725,7 +656,7 @@ case "$NAME" in
     */*) echo "headed-arm: session name must not contain '/': '$NAME'" >&2; exit 2 ;;
 esac
 
-# HIMMEL-3140: no legitimate caller (console.sh, headed-arm-leg.sh) ever
+# No legitimate caller (console.sh, headed-arm-leg.sh) ever
 # passes one of the usage string's own placeholder tokens - both build a
 # real session name first. The likeliest way one of these reaches NAME is a
 # human copy-pasting the usage line verbatim (including the angle brackets)
@@ -756,7 +687,7 @@ elif ! command -v "$KONSOLE" >/dev/null 2>&1; then
     echo "headed-arm: no '$KONSOLE' on PATH - this launcher needs a terminal emulator to give the session a TTY (HIMMEL-2534)" >&2
     exit 3
 fi
-# codex-4: unchecked, a missing pgrep fails the dedup call below rc=127,
+# Unchecked, a missing pgrep fails the dedup call below rc=127,
 # which reads exactly like "no matching session" and silently disables
 # dedup - failing OPEN into duplicate windows. This script is already
 # tied to a terminal emulator (konsole, or the macOS shim), so refusing here
@@ -766,7 +697,7 @@ if ! command -v "$PGREP" >/dev/null 2>&1; then
     exit 4
 fi
 
-# HIMMEL-3140: everything above this point is pure argument resolution and
+# Everything above this point is pure argument resolution and
 # validation (usage-arity, --role, context, the placeholder-name refusal,
 # NAME/DEADLINE shape, konsole/pgrep PATH availability) - none of it writes
 # to $LOG, touches the claim lock, or execs anything. Report the resolved
@@ -789,7 +720,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 echo "$(date +%F_%T) armed: name=$NAME doc=$DOC signal=$SIGNAL deadline=$DEADLINE role=${ROLE:-unsplit}" >> "$LOG"
-# r5-codex-3: the header calls $DEADLINE a hard deadline, but a flat `sleep
+# The header calls $DEADLINE a hard deadline, but a flat `sleep
 # 30` let the loop overshoot it by up to nearly 30s before the launch even
 # started - the wait loop woke on its own schedule, not the deadline's.
 # Fixed to sleep for the SHORTER of 30s and the time actually remaining, so
@@ -813,7 +744,7 @@ while :; do
     sleep "$remaining"
 done
 
-# codex-3: ERE-escape NAME before it reaches pgrep -f, so a name carrying
+# ERE-escape NAME before it reaches pgrep -f, so a name carrying
 # regex metacharacters (e.g. '.' or '(') matches only itself, never as a
 # wildcard against an unrelated session's command line.
 # The single quotes are LOAD-BEARING: this is a sed BRE/ERE pattern, and its
@@ -825,7 +756,7 @@ ere_escape() {
 }
 NAME_ERE="$(ere_escape "$NAME")"
 
-# r7-codex-1: `pgrep -f` matches the FULL command line, and konsole's OWN
+# `pgrep -f` matches the FULL command line, and konsole's OWN
 # argv literally quotes the whole claude invocation it was told to run
 # (`konsole ... -e env -u ... claude --model X -n NAME "load ..."`) - the
 # bracket trick above only keeps pgrep from matching ITS OWN invocation, it
@@ -839,19 +770,19 @@ NAME_ERE="$(ere_escape "$NAME")"
 # each matched pid's own comm actually IS claude before believing the
 # match, exactly like C29 does. A pid that vanishes between pgrep and the
 # comm read is silently skipped (`|| continue`), never treated as an error.
-# r8-codex-3: this used to fold EVERY pgrep failure into "no match"
+# This used to fold EVERY pgrep failure into "no match"
 # (`|| return 1`), but pgrep exits 1 for a genuine no-match and 2 or 3 for a
 # usage or fatal scan error - a broken scan then silently read as "nothing
 # running" and bypassed dedup, or a green light to launch, either way an
 # indeterminate answer reported as a confirmed one. Now returns a third
 # state (2) for rc>1 so every call site can refuse rather than guess.
 #
-# r9-codex-3: matching a FLATTENED command line does not establish that
+# Matching a FLATTENED command line does not establish that
 # `-n NAME` is actually an OPTION - `pgrep -f` matches against the whole
 # argv joined by spaces, so an unrelated claude session whose PROMPT text
 # happens to contain "-n <our session name> " (or whose OWN session name
-# merely has ours as a PREFIX, e.g. HIMMEL-2545-x while this arm is
-# HIMMEL-2545) could satisfy the pattern and suppress a launch that should
+# merely has ours as a PREFIX, e.g. FOO-12-x while this arm is
+# FOO-12) could satisfy the pattern and suppress a launch that should
 # have happened - a silently skipped successor, the exact failure class
 # this whole ticket exists to eliminate. Fixed below (_argv_has_n_name) by
 # reading that same pid's /proc/<pid>/cmdline - NUL-separated, so it is the
@@ -866,7 +797,7 @@ NAME_ERE="$(ere_escape "$NAME")"
 # have returned, and the positional decision below never gets a chance to
 # run on a candidate pgrep never handed back.
 #
-# r10-codex-4 (SUGGESTION): the pattern used to require a trailing space
+# The pattern used to require a trailing space
 # after $NAME_ERE, so a command line that ENDS at the name (no trailing
 # prompt argument) was filtered out before the exact argv check ever saw
 # it - our own launches always put a prompt after the name, but another
@@ -875,11 +806,11 @@ NAME_ERE="$(ere_escape "$NAME")"
 # pre-filter is made PERMISSIVE rather than precise: `(space or
 # end-of-line)` after the name, via the ERE alternation `( |$)` every call
 # site below uses.
-# HIMMEL-5201: factored out so arm-resume's bus rebind helper shares it. It
+# Factored out so arm-resume's bus rebind helper shares it. It
 # reads the PROC and NAME globals set above, exactly as it did inline here.
 # shellcheck source=argv-has-n-name.sh
 . "$(cd "$(dirname "$0")" && pwd)/argv-has-n-name.sh"
-# HIMMEL-3484: the no-/proc equivalent of _argv_has_n_name. `ps -o args=`
+# The no-/proc equivalent of _argv_has_n_name. `ps -o args=`
 # is the only argv source a stock Mac offers from the shell, and it joins the
 # elements with spaces, so this walks whitespace TOKENS and lets only the
 # FIRST `-n` token decide: our launches put every option ahead of the prompt,
@@ -903,14 +834,14 @@ _flat_argv_has_n_name() { # _flat_argv_has_n_name <space-joined argv>
     done
     return 1
 }
-# HIMMEL-3403: the headless census. A background session is listed by
+# The headless census. A background session is listed by
 # `agents --json` with its pid while it runs. A CLI or jq failure is the same
 # third state (2) as a failed pgrep scan, and so is an answer that is not a
 # JSON array (jq's error() exits 5).
 headless_session_listed() {
     local out
     out="$("$CLAUDE_CLI" agents --json 2>/dev/null)" || return 2
-    _HSL_OUT="$out"  # HIMMEL-3426: the caller reuses this instead of a second census call
+    _HSL_OUT="$out"  # the caller reuses this instead of a second census call
     printf '%s' "$out" | jq -e --arg n "$NAME" \
         'if type == "array" then any(.[]; .name == $n and .pid != null) else error("not an array") end' >/dev/null 2>&1
     case $? in
@@ -932,14 +863,14 @@ session_confirmed() { # session_confirmed <pgrep-ere-pattern> - returns
     pids="$("$PGREP" -f "$pat" 2>/dev/null)"
     pg_rc=$?
     [ "$pg_rc" -gt 1 ] && return 2
-    # HIMMEL-2534: where $PROC is absent (macOS) the /proc walk below would
+    # Where $PROC is absent (macOS) the /proc walk below would
     # answer "not running" forever (every `cat` fails, every pid is skipped,
     # dedup fails OPEN into duplicate windows and every launch lands
     # UNCONFIRMED/rc 7). So each candidate is read through `ps` instead: comm
-    # per pid, then (HIMMEL-3484) that pid's own argv, decided by
+    # Per pid, then that pid's own argv, decided by
     # _flat_argv_has_n_name rather than by pgrep's flattened match, which let
     # ANY claude whose prompt carried "-n <NAME>" suppress the arm - the
-    # HIMMEL-2999 class. `ps -o args=` is still space-joined, so the residual
+    # same class. `ps -o args=` is still space-joined, so the residual
     # gap its ponytail names is announced once - never silent.
     if [ ! -d "$PROC" ]; then
         if [ "$_LOSSY_WARNED" -eq 0 ]; then
@@ -948,7 +879,7 @@ session_confirmed() { # session_confirmed <pgrep-ere-pattern> - returns
         fi
         # ps rc 1 = that pid vanished since pgrep saw it (skip it); any other
         # failure (a missing or broken ps) means the scan itself failed, so
-        # it is indeterminate (2), never "not running" (N357, codex-2).
+        # it is indeterminate (2), never "not running".
         local ps_rc args
         for pid in $pids; do
             ps_rc=0
@@ -956,7 +887,7 @@ session_confirmed() { # session_confirmed <pgrep-ere-pattern> - returns
             [ "$ps_rc" -eq 1 ] && continue
             [ "$ps_rc" -eq 0 ] || return 2
             [ "${comm##*/}" = claude ] || continue
-            # HIMMEL-3484: this pid's OWN argv decides, as on /proc - never
+            # This pid's OWN argv decides, as on /proc - never
             # pgrep's flattened match (same rc policy as the comm read).
             args="$(ps -ww -o args= -p "$pid" 2>/dev/null)" || ps_rc=$?
             [ "$ps_rc" -eq 1 ] && continue
@@ -986,7 +917,7 @@ elif [ "$sc_rc" -eq 2 ]; then
     exit 9
 fi
 
-# Dedup layer 2 (codex-2): the check above is a non-atomic check-then-launch
+# Dedup layer 2: the check above is a non-atomic check-then-launch
 # - two arms racing on the exact same NAME could both see "no match" here
 # and both proceed to launch. Claim atomically with `mkdir` (fails if the
 # directory already exists - this repo's convention for exactly this
@@ -1008,7 +939,7 @@ fi
 # mtime, which a stray `touch` or a slow/foreign filesystem could disturb),
 # mirroring the acquired-stamp idiom scripts/graphify/refresh-graph-map.sh
 # already uses for its own mkdir promote lock.
-# HIMMEL-3403: a background session gets the env of the claude daemon (the
+# A background session gets the env of the claude daemon (the
 # process the first background launch spawned, from whatever shell ran it),
 # not ours. Measured: a session launched with FOO=second read FOO=first, the
 # daemon spawner's value. The one per-session channel is the settings file's
@@ -1095,7 +1026,7 @@ headless_launch() {
     _hl_set ARMAUTOMERGE 1
     set -f
     # The role's `env -u` removals, applied before the explicit env exactly as
-    # the konsole branches order them (HIMMEL-3035: LAUNCHER_ENV may re-set).
+    # the konsole branches order them.
     for tok in $ROLE_ENV_UNSET; do
         [ "$tok" = "-u" ] || _hl_set "$tok" ""
     done
@@ -1108,7 +1039,7 @@ headless_launch() {
     val=""
     [ "${HIMMEL_HOOK_INTEGRITY_BYPASS_OK:-}" = "1" ] && val=1
     _hl_set HIMMEL_HOOK_INTEGRITY_BYPASS_OK "$val"
-    pids="$("$PGREP" -u "$(id -u)" -f '[c]laude daemon run' 2>/dev/null)"  # t13b-ok: read-only pgrep lookup of the Claude Code service, starts nothing; HIMMEL-3426: scoped to the launching user, never host-wide
+    pids="$("$PGREP" -u "$(id -u)" -f '[c]laude daemon run' 2>/dev/null)"  # t13b-ok: read-only pgrep lookup of the Claude Code service, starts nothing; scoped to the launching user, never host-wide
     pg_rc=$?
     [ "$pg_rc" -gt 1 ] && headless_fail 9 "headless: pgrep scan for the claude background service failed - its env decides what the leg inherits, refusing to launch blind"
     local qualified=0
@@ -1153,7 +1084,7 @@ headless_launch() {
         sleep 0.2
     done
     [ "$seen" -eq 1 ] || headless_fail 7 "UNCONFIRMED: headless launch of $NAME exited 0 but it never appeared in \`agents --json\`"
-    out="$_HSL_OUT"  # HIMMEL-3426: the census that CONFIRMED the session, not a second lookup
+    out="$_HSL_OUT"  # the census that CONFIRMED the session, not a second lookup
     row="$(printf '%s' "$out" | jq -r --arg n "$NAME" '[.[] | select(.name == $n and .pid != null)][0] | "\(.pid) \(.sessionId // "-") \(.id // "-")"' 2>/dev/null)"
     # shellcheck disable=SC2086  # deliberately split: "<pid> <session-id> <short-id>".
     set -- $row
@@ -1171,7 +1102,7 @@ headless_launch() {
 }
 
 STALE_LOCK_SECS=120
-# r6-codex-2: the lock root used to default to a PREDICTABLE, SHARED path
+# The lock root used to default to a PREDICTABLE, SHARED path
 # under /tmp. On a multi-user host another local user could pre-create that
 # exact path - as a directory they own, or a symlink elsewhere - before
 # this script ever ran; `mkdir -p` on an ALREADY-EXISTING path succeeds
@@ -1195,7 +1126,7 @@ elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
 else
     LOCKDIR="${TMPDIR:-/tmp}/himmel-headed-arm-locks.$(id -u)"
 fi
-# r10-codex-3: resolved to absolute the SAME way $LOG was above ($_here
+# Resolved to absolute the SAME way $LOG was above ($_here
 # prefix, no `cd`) and for the same reason - the post-launch `rm -rf
 # "$LOCK"` cleanup below runs AFTER `cd "$REPO"`, so a relative
 # HEADED_ARM_LOCK_DIR override would leave that cleanup targeting a path
@@ -1209,7 +1140,7 @@ case "$LOCKDIR" in
     /*) : ;;
     *) LOCKDIR="$_here/$LOCKDIR" ;;
 esac
-# r2-codex-2: an unwritable/unavailable lock root used to be swallowed here,
+# An unwritable/unavailable lock root used to be swallowed here,
 # so every subsequent `mkdir "$LOCK"` failed the same way a genuine
 # concurrent claim would, and the script logged "already claimed" and
 # exited 0 -- an ENVIRONMENT FAULT read as a successful dedup, silently
@@ -1219,7 +1150,7 @@ esac
 # the shellcheck linter, suppressed below) is fine here on purpose: an
 # unconditional chmod after this call would "launder" a pre-existing
 # group/world-writable (or symlinked) LOCKDIR left by another local user
-# BEFORE the r6-codex-2 validation below ever inspects it, defeating that
+# BEFORE the lock-root validation below ever inspects it, defeating that
 # exact check. `mkdir -p` is a documented no-op on a path that already
 # exists, so a hostile pre-created root survives untouched into the
 # validation, which is what actually has to catch it.
@@ -1228,7 +1159,7 @@ if ! mkdir -p -m 0700 "$LOCKDIR" 2>/dev/null; then
     echo "headed-arm: cannot create the claim-lock root '$LOCKDIR' - refusing to silently skip a launch that was never actually claimed (HIMMEL-2545)" >&2
     exit 5
 fi
-# r6-codex-2: VALIDATE the root rather than trusting it, regardless of
+# VALIDATE the root rather than trusting it, regardless of
 # where it came from - mkdir -p is a no-op on a path that already exists,
 # so a pre-created directory (or symlink) from another user survives the
 # mkdir above untouched. `-L` is checked before `-d`, since a symlink TO a
@@ -1258,7 +1189,7 @@ fi
 # known-findings.sh classes at once: a GNU-leaning find flag, and this
 # script's `set -o pipefail` turning a SUCCESSFUL match into a
 # pipeline-status failure (grep exits the instant it matches, the producer
-# then SIGPIPEs writing the rest, HIMMEL-1430) -- so a bare `if <that> | grep
+# then SIGPIPEs writing the rest) -- so a bare `if <that> | grep
 # -q .` here would read backwards. An unreadable mode counts as untrusted
 # (fail closed, same as every other check in this block).
 _lockdir_mode=$(stat -c %a "$LOCKDIR" 2>/dev/null || stat -f %Lp "$LOCKDIR" 2>/dev/null)  # gnu-ok: GNU stat -c is paired with the BSD stat -f fallback on this same line
@@ -1277,7 +1208,7 @@ case "$_lockdir_oth$_lockdir_grp" in
 esac
 LOCK="$LOCKDIR/$NAME.lock"
 
-# r2-codex-1: stale-lock reclamation used to be a non-atomic
+# Stale-lock reclamation used to be a non-atomic
 # `rm -rf "$LOCK"; mkdir "$LOCK"` pair. Two reclaimers can both classify the
 # SAME lock stale (both read the same old "acquired" stamp); if A completes
 # its rm+mkdir before B starts, B's OWN unconditional rm then removes A's
@@ -1302,7 +1233,7 @@ LOCK="$LOCKDIR/$NAME.lock"
 # point it at a script that pauses right after staleness is confirmed but
 # before the steal, to deterministically interleave two real contenders at
 # the exact race window instead of guessing at timing.
-# r4-codex-3: a claimed lock whose "acquired" stamp fails to write is left
+# A claimed lock whose "acquired" stamp fails to write is left
 # UNSTAMPED. claim_lock()'s own case statement below reads a missing or
 # unreadable stamp as "not stale by definition" - so an unstamped lock can
 # NEVER be reclaimed, permanently blocking every future arm for this
@@ -1314,7 +1245,7 @@ stamp_or_fail_loudly() {
     if date +%s > "$LOCK/acquired" 2>/dev/null; then
         return 0
     fi
-    # HIMMEL-3182: the failed stamp write usually means $LOCK was mkdir'd mode
+    # The failed stamp write usually means $LOCK was mkdir'd mode
     # 000 (umask 0777); BSD/macOS `rm -rf` cannot remove such a directory
     # (EACCES), so restore owner access to the lock this claim created first.
     chmod -R u+rwx "$LOCK" 2>/dev/null
@@ -1370,7 +1301,7 @@ claim_lock() {
     steal_stale_lock "$held_at"
 }
 
-# r2-codex-3: a contender that found the lock held used to exit 0 IMMEDIATELY,
+# A contender that found the lock held used to exit 0 IMMEDIATELY,
 # without ever finding out what the holder did - "claim by atomic mkdir AND
 # RETRY, never scan-then-create" (this repo's convention) means retrying,
 # not giving up on the first no. The lock is only ever held for the
@@ -1390,19 +1321,19 @@ claim_lock() {
 # but before this arm ever looks at pgrep again.
 CLAIM_RETRY_ITERS=40
 CLAIM_RETRY_SLEEP=0.05
-# r3-codex-2: named budget for the post-launch pgrep-visibility poll below
+# Named budget for the post-launch pgrep-visibility poll below
 # (kept next to the claim-retry constants, same shape).
 SESSION_VISIBLE_RETRY_ITERS=100
 SESSION_VISIBLE_RETRY_SLEEP=0.05
-# HIMMEL-2534 (codex-review C1, CRITICAL): the 5s budget above was sized for
+# The 5s budget above was sized for
 # konsole, where the window and the claude exec are effectively instantaneous.
 # The macOS shim is NOT: `open -a` has to bring the app up first, measured at
 # ~16s for a first-ever (cold) iTerm start and ~1s warm. Left at 5s, a cold
 # arm gives up, RELEASES THE LOCK (see the rm -rf "$LOCK" below) and exits 7
 # UNCONFIRMED at t=5s -- and then the window opens at t=16s and a real,
 # untracked session runs anyway, so the next arm on the same NAME launches a
-# genuine duplicate. That is the exact failure r3-codex-2/r4-codex-1/r8-codex-4
-# exist to prevent, reached through a budget mismatch instead of a race.
+# genuine duplicate. That is the exact failure the post-launch visibility
+# poll and its exit 7 exist to prevent, reached through a budget mismatch instead of a race.
 #
 # Both budgets are now derived from the SAME env var the shim itself reads
 # (KONSOLE_MACOS_STARTUP_TICKS, 0.1s per tick), so they cannot drift apart:
@@ -1437,21 +1368,21 @@ while :; do
     [ "$n" -lt "$CLAIM_RETRY_ITERS" ] || break
     sleep "$CLAIM_RETRY_SLEEP"
 done
-# r3-codex-1: exhausting the retry budget used to exit 0, sharing its exit
+# Exhausting the retry budget used to exit 0, sharing its exit
 # code with the genuine-dedup branch above. A holder that crashes while its
 # lock is still FRESH (age < STALE_LOCK_SECS) cannot be stolen from for
 # 120s - not extended here, a 120s block would be worse - so a contender
 # that gives up after ~2s without ever seeing pgrep confirm a running
 # session has NOT deduped against anything real: the armed successor may be
 # genuinely lost, and reporting that as exit 0 success is exactly the class
-# of bug r2-codex-2 already fixed for an unwritable lock root. An
+# of bug already fixed for an unwritable lock root. An
 # indeterminate outcome must not share an exit code with a confirmed one.
 if [ "$claimed" -ne 1 ]; then
     echo "$(date +%F_%T) UNRESOLVED: a launch for $NAME is still claimed after waiting, and no running session was ever confirmed - the armed successor may be lost" >> "$LOG"
     exit 6
 fi
 
-# r7-codex-2: pgrep was only ever checked BEFORE acquiring the lock. A
+# Pgrep was only ever checked BEFORE acquiring the lock. A
 # contender can see "no session" there, get descheduled, and by the time it
 # actually acquires the lock - freed by the ORIGINAL holder's own
 # successful launch and release - a genuine session now exists; launching
@@ -1472,11 +1403,11 @@ elif [ "$sc_rc" -eq 2 ]; then
 fi
 
 cd "$REPO" || { rm -rf "$LOCK" 2>/dev/null; exit 1; }
-# HIMMEL-3403: a headless launch never reaches konsole; headless_launch exits.
+# A headless launch never reaches konsole; headless_launch exits.
 if [ "$HEADLESS" = "1" ]; then
     headless_launch
 fi
-# r6-codex (session-id leak): env -u cleared CLAUDE_CODE_CHILD_SESSION and
+# Env -u cleared CLAUDE_CODE_CHILD_SESSION and
 # CLAUDE_PID but NOT CLAUDE_CODE_SESSION_ID, so the launched claude PROCESS
 # inherited the ARMING session's id in its own environ. claude generates
 # its own session id and exports the CORRECT one to ITS OWN tool
@@ -1485,14 +1416,14 @@ fi
 # exactly the surface this ticket taught people to inspect
 # (/proc/<claude pid>/environ), so a stale id there actively misled that
 # diagnostic and is how one console came to see another's session id.
-# r8-codex-4: `--separate` (equivalently `--nofork`) forces konsole to run
+# `--separate` (equivalently `--nofork`) forces konsole to run
 # in its own process rather than handing this invocation off to an
 # ALREADY-RUNNING konsole instance and letting the pid backgrounded below
 # exit immediately - opt-in behaviour verified on this machine
 # (`konsole --help` lists it). Without it, the pid this script owns is not
 # necessarily the window that got created, so the aliveness check right
 # below means nothing on a station that already has a konsole open.
-# HIMMEL-2534 (codex-review I6): the recorder branch below runs
+# The recorder branch below runs
 # `script -q -a -f "$LOG" -c "$LAUNCH_CMD"`, which is util-linux syntax. BSD
 # script (macOS) has neither -f nor -c ("illegal option -- f"; it takes the
 # file positionally and the command as trailing argv), so on a Mac the branch
@@ -1516,7 +1447,7 @@ if [ "$RECORDER" = "1" ] && [ "$KONSOLE_IS_RESOLVED_SHIM" = "1" ]; then
     rm -rf "$LOCK" 2>/dev/null
     exit 2
 fi
-# HIMMEL-3640: Claude Code prepends each enabled plugin's bin/ dir onto PATH
+# Claude Code prepends each enabled plugin's bin/ dir onto PATH
 # at process startup without checking for an existing copy, so handing this
 # inherited (already-duplicated) PATH straight to the nested claude lets the
 # duplication compound across every himmel-driven relaunch. Dedupe it here,
@@ -1524,17 +1455,16 @@ fi
 DEDUPED_PATH="$(dedupe_path "$PATH")"
 
 if [ "$RECORDER" = "1" ]; then
-    # HIMMEL-2782: give the launcher a real tty via `script` rather than
+    # Give the launcher a real tty via `script` rather than
     # execing it straight under konsole -e (see the RECORDER seam doc
     # above). $LAUNCH_CMD is a single shell-quoted argv string built with
     # bash's own %q, which `script -c` hands to the shell named by ITS OWN
-    # $SHELL (or /bin/sh if unset) - NOT necessarily bash (codex-2, HIMMEL-2782
-    # CR fix: a zsh launching shell would otherwise leak into script's
+    # $SHELL (or /bin/sh if unset) - NOT necessarily bash (a zsh launching shell would otherwise leak into script's
     # environment and interpret bash's %q quoting under zsh's own rules).
     # BASH_BIN below is passed through `env` as SHELL=... so `script -c`
     # always interprets $LAUNCH_CMD with the same shell that quoted it,
     # regardless of the launching shell. $LAUNCHER itself is NOT
-    # force-wrapped in `bash` (codex CR fix) - the default/non-recorder
+    # force-wrapped in `bash` - the default/non-recorder
     # branch below execs it directly via its own shebang, and forcing
     # `bash "$LAUNCHER"` here only for the recorder path broke a non-bash-script
     # HEADED_ARM_LEG_CLAUDEX_BIN override (e.g. a compiled binary or a python
@@ -1547,11 +1477,11 @@ if [ "$RECORDER" = "1" ]; then
     # shellcheck disable=SC2094  # script -a -f appends the terminal
     # transcript to $LOG; the outer >> "$LOG" separately captures konsole's
     # own launch stdout/stderr (spawn errors before script even starts) into
-    # the same file. -a is load-bearing (codex CR fix): without it, `script
+    # the same file. -a is load-bearing: without it, `script
     # -f` TRUNCATES $LOG on open, discarding whatever the outer >> already
     # wrote there.
     # shellcheck disable=SC2086  # ROLE_ENV_UNSET is either empty or the
-    # single literal token pair "-u HIMMEL_CONSOLE_RELAY" (HIMMEL-2975) --
+    # single literal token pair "-u HIMMEL_CONSOLE_RELAY" --
     # deliberately unquoted, same word-split contract as LAUNCHER_ENV above.
     "$KONSOLE" --separate --workdir "$REPO" -p "tabtitle=$NAME" \
         -e env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET \
@@ -1560,9 +1490,9 @@ if [ "$RECORDER" = "1" ]; then
         >> "$LOG" 2>&1 &
 else
     # shellcheck disable=SC2086  # LAUNCHER_ENV word-split, same contract as
-    # the recorder branch above (codex CR fix: this branch dropped it).
+    # the recorder branch above.
     # shellcheck disable=SC2086  # ROLE_ENV_UNSET, same contract as the
-    # recorder branch above (HIMMEL-2975).
+    # recorder branch above.
     "$KONSOLE" --separate --workdir "$REPO" -p "tabtitle=$NAME" \
         -e env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $ROLE_ENV_UNSET \
             CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CONSOLE_ENV[@]+"${CONSOLE_ENV[@]}"} $LAUNCHER_ENV PATH="$DEDUPED_PATH" \
@@ -1571,12 +1501,12 @@ else
 fi
 KPID=$!
 
-# HIMMEL-3279: the arm log ($LOG) lives on tmpfs under /run/user and is gone
+# The arm log ($LOG) lives on tmpfs under /run/user and is gone
 # at the next reboot, and it is the only place a console's launch context was
-# recorded - so the attribution HIMMEL-2973 needs was unrecoverable for every
+# recorded - so the context attribution was unrecoverable for every
 # console before the last boot. Write the mode durably, at launch (retention
 # on a timer would still lose whatever was written since its last copy), as a
-# row in the HIMMEL-3270 launch record dir (btrfs, already the cost cohort's
+# row in the launch record dir (btrfs, already the cost cohort's
 # source, already removed by uninstall): one more line format in the same
 # per-session file, keyed `headed-arm:` so it cannot read as a leg's
 # `headed-arm-leg:` profile line. Console arms only - a leg's own record is
@@ -1584,7 +1514,7 @@ KPID=$!
 # one: a record that cannot be written is noted in $LOG, never stops the
 # launch (the reader then says `unknown`, never a proxy). The row itself comes
 # from console_context_write_record (scripts/lib/console-context.sh), the same
-# function arm-resume.sh calls (HIMMEL-3282), so the two arming paths write one
+# function arm-resume.sh calls, so the two arming paths write one
 # shape.
 if [ "$ROLE" = "console" ]; then
     if ! console_context_write_record "$NAME" "$CONTEXT" "$_headed_context_source" "$AUTOCOMPACT"; then
@@ -1592,18 +1522,18 @@ if [ "$ROLE" = "console" ]; then
     fi
 fi
 
-# codex-1: settle briefly, then note whether the process still looks alive
+# Settle briefly, then note whether the process still looks alive
 # - see the header CR-fixes note.
 sleep 0.3
 sv_alive=0
 if kill -0 "$KPID" 2>/dev/null; then
     sv_alive=1
     echo "$(date +%F_%T) konsole launched pid=$KPID for $NAME" >> "$LOG"
-    # HIMMEL-2658: same stdout-report-not-error reasoning as arm-resume.sh's
+    # Same stdout-report-not-error reasoning as arm-resume.sh's
     # context line -- report the resolved mode next to the launch record it
     # governs, not just at usage-error time.
     echo "$(date +%F_%T) $CONTEXT_REASON (autocompact=$AUTOCOMPACT)" >> "$LOG"
-    # HIMMEL-2534 (codex-review C1): record the reconciled budget next to the
+    # Record the reconciled budget next to the
     # launch it governs, same stdout-report-not-error reasoning as the context
     # line above. An UNCONFIRMED on a Mac is then readable against the budget
     # that actually applied, instead of the 5s konsole default one might assume.
@@ -1611,15 +1541,15 @@ if kill -0 "$KPID" 2>/dev/null; then
         echo "$(date +%F_%T) macOS launch: session-visibility budget $SESSION_VISIBLE_RETRY_ITERS iters x ${SESSION_VISIBLE_RETRY_SLEEP}s (covers the launcher startup budget of ${KONSOLE_MACOS_STARTUP_TICKS:-200} ticks, then the standard post-launch allowance)" >> "$LOG"
     fi
 fi
-# r8-codex-4: even with --separate above, a dead pid at this point is not
+# Even with --separate above, a dead pid at this point is not
 # treated as failure ON ITS OWN anymore - `kill -0` failing used to
-# short-circuit straight to FAILED (exit 1), which inverted round 4's fix
+# short-circuit straight to FAILED (exit 1), which misread a SUCCESSFUL hand-off as a failed launch
 # on any station where a hand-off (or a future konsole ignoring the flag)
 # let this pid exit after a launch that actually SUCCEEDED. The
 # session_confirmed() poll below now ALWAYS runs regardless of $sv_alive;
 # only "never confirmed AND the pid is also gone" reaches exit 1 below.
 #
-# r3-codex-2: the lock used to be released the instant konsole survived the
+# The lock used to be released the instant konsole survived the
 # 0.3s settle, before the named claude process was actually visible to
 # pgrep. During a slow terminal/claude startup, another contender could
 # claim the freed lock in that window and launch a genuine duplicate.
@@ -1638,7 +1568,7 @@ while :; do
     [ "$sv_n" -lt "$SESSION_VISIBLE_RETRY_ITERS" ] || break
     sleep "$SESSION_VISIBLE_RETRY_SLEEP"
 done
-# r4-codex-1: the budget expiring used to log a WARNING and still exit 0
+# The budget expiring used to log a WARNING and still exit 0
 # -- the SAME code as "launched and confirmed". A konsole that survives
 # its 0.3s settle but whose claude child then fails (or never appears)
 # was reported as a successfully armed successor when no session
@@ -1664,7 +1594,7 @@ if [ "$sv_indeterminate" -eq 1 ]; then
     exit 9
 fi
 if [ "$sv_seen" -eq 1 ]; then
-    # HIMMEL-4832: bind the confirmed claude pid to the name the launcher
+    # Bind the confirmed claude pid to the name the launcher
     # registered. Best-effort: a failed bind leaves the session unbound (bus
     # send refused) and never changes the launch result.
     if [ "$BUS_BIND" = "1" ] && [ -n "$SESSION_PID" ]; then
@@ -1699,7 +1629,7 @@ if [ "$sv_seen" -eq 1 ]; then
     fi
     exit 0
 fi
-# r8-codex-4: only reached once session_confirmed has ALSO never found a
+# Only reached once session_confirmed has ALSO never found a
 # real claude process within the whole post-launch budget - see the note
 # above the poll. A dead pid alone is no longer sufficient on its own.
 if [ "$sv_alive" -eq 1 ]; then
