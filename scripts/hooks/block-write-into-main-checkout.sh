@@ -391,6 +391,42 @@ _bwimc_quote_run() {
     _BWIMC_RUN=${#rest}
 }
 
+# _bwimc_plain_run TEXTVAR I [nb] — (TEXTVAR is the caller's variable NAME, so the
+# text is not copied into an argument on every call). Unquoted, unescaped, with no `$`
+# pending, a letter, digit, blank or one of `_./:,+@%-` is read by
+# _bwimc_scan_step as ACT=1 and nothing else, so a walker takes the whole run
+# at once (the quote-run fast-forward's twin for code text). Sets _BWIMC_RUN
+# (length, capped at 4096), _BWIMC_RUNTXT (the run) and _BWIMC_RUNLAST (its
+# last non-blank character, empty when it is all blanks). The caller sets
+# _BWIMC_DL=0 and _BWIMC_ACT=1 after taking it.
+_bwimc_plain_run() {
+    local rest tail full="" w=48
+    # a short window first, read from the caller's 264-char window (_ww/_wb/_we
+    # are the caller's locals, refreshed by the same rule the walkers use):
+    # slicing the whole text at offset I costs O(I), which made the walk
+    # quadratic. Widen from the text only when the run fills the window.
+    if [ "$2" -ge "$_we" ] || [ "$2" -lt "$_wb" ]; then _wb=$2; _ww="${!1:$2:264}"; _we=$(($2+256)); fi
+    rest="${_ww:$(($2-_wb)):48}"
+    [ "${#rest}" -lt 48 ] && rest="${!1:$2:48}"
+    while :; do
+        if [ -n "${3:-}" ]; then
+            full="${rest%%[!A-Za-z0-9_./:,+@%-]*}"
+        else
+            full="${rest%%[!A-Za-z0-9_./:,+@%$' \t'-]*}"
+        fi
+        if [ "${#full}" -lt "$w" ] || [ "$w" -ge 4096 ]; then break; fi
+        w=$((w*8)); [ "$w" -gt 4096 ] && w=4096
+        rest="${!1:$2:$w}"
+    done
+    rest="$full"
+    _BWIMC_RUN=${#rest}
+    _BWIMC_RUNTXT="$rest"
+    tail="${rest##*[!$' \t']}"
+    _BWIMC_RUNLAST=""
+    [ "${#tail}" -lt "$_BWIMC_RUN" ] && _BWIMC_RUNLAST="${rest:$((_BWIMC_RUN-${#tail}-1)):1}"
+    return 0
+}
+
 # Blank heredoc bodies line-by-line, keeping every OTHER line (including the
 # opener and terminator lines) byte-identical, so a `>` inside a heredoc body
 # (`if a > b:`) never reaches the redirect scan. Recognises `<<`/`<<-`
@@ -666,6 +702,13 @@ _bwimc_text_untrusted() {
             if [ "$_BWIMC_RUN" -gt 0 ]; then
                 wq=1; prevact=""; _BWIMC_ACT=0; _BWIMC_DL=0
                 i=$((i+_BWIMC_RUN)); continue
+            fi
+        fi
+        if [ -z "$_BWIMC_Q" ] && [ "$_BWIMC_ESC" = 0 ]; then
+            _bwimc_plain_run text "$i" nb
+            if [ "$_BWIMC_RUN" -gt 0 ]; then
+                w+="${_BWIMC_RUNTXT}"; prevact="${_BWIMC_RUNTXT: -1}"
+                _BWIMC_ACT=1; _BWIMC_DL=0; i=$((i+_BWIMC_RUN)); continue
             fi
         fi
         if [ "$i" -ge "$_we" ] || [ "$i" -lt "$_wb" ]; then _wb=$i; _ww="${text:$i:264}"; _we=$((i+256)); fi
@@ -993,7 +1036,15 @@ _bwimc_flat_mask() {
             fi
             case "$c$prev" in
                 ';'*|'&'[!\<\>]|'&'|'|'[!\>]|'|'|"$_BWIMC_NL"*) ;;
-                *) [[ "$c" =~ [[:space:]] ]] || prev="$c"; seg+="$c"; i=$((i+1)); continue ;;
+                *)
+                    [[ "$c" =~ [[:space:]] ]] || prev="$c"; seg+="$c"; i=$((i+1))
+                    # a run of plain word characters and blanks changes no scan state
+                    _bwimc_plain_run t "$i"
+                    if [ "$_BWIMC_RUN" -gt 0 ]; then
+                        seg+="${_BWIMC_RUNTXT}"; i=$((i+_BWIMC_RUN)); _BWIMC_DL=0; _BWIMC_ACT=1
+                        [ -z "$_BWIMC_RUNLAST" ] || prev="$_BWIMC_RUNLAST"
+                    fi
+                    continue ;;
             esac
         fi
         # end of a command: mask it when plain
@@ -1284,6 +1335,13 @@ _bwimc_split_clauses() {
                 i=$((i+_BWIMC_RUN)); continue
             fi
         fi
+        if [ -z "$_BWIMC_Q" ] && [ "$_BWIMC_ESC" = 0 ]; then
+            _bwimc_plain_run text "$i"
+            if [ "$_BWIMC_RUN" -gt 0 ]; then
+                clause+="${_BWIMC_RUNTXT}"; prevact="${_BWIMC_RUNTXT: -1}"
+                _BWIMC_ACT=1; _BWIMC_DL=0; i=$((i+_BWIMC_RUN)); continue
+            fi
+        fi
         if [ "$i" -ge "$_we" ] || [ "$i" -lt "$_wb" ]; then _wb=$i; _ww="${text:$i:264}"; _we=$((i+256)); fi
         c="${_ww:$((i-_wb)):1}"
         _bwimc_scan_step "$c"
@@ -1367,6 +1425,13 @@ _bwimc_tokenize() {
                 tok+="${text:$i:$_BWIMC_RUN}"; have=1
                 _BWIMC_ACT=0; _BWIMC_DL=0
                 i=$((i+_BWIMC_RUN)); continue
+            fi
+        fi
+        if [ -z "$_BWIMC_Q" ] && [ "$_BWIMC_ESC" = 0 ]; then
+            _bwimc_plain_run text "$i" nb
+            if [ "$_BWIMC_RUN" -gt 0 ]; then
+                tok+="${_BWIMC_RUNTXT}"; have=1
+                _BWIMC_ACT=1; _BWIMC_DL=0; i=$((i+_BWIMC_RUN)); continue
             fi
         fi
         if [ "$i" -ge "$_we" ] || [ "$i" -lt "$_wb" ]; then _wb=$i; _ww="${text:$i:264}"; _we=$((i+256)); fi
@@ -1467,7 +1532,7 @@ _bwimc_tokenize() {
 _bwimc_space_before_redirects() {
     local _ww="" _wb=0 _we=0
     local text="$1"
-    local out="" i=0 len=${#text} c prev="" prevact="" boundary=0 run
+    local out="" i=0 len=${#text} c prev="" prevact="" boundary=0 run _pr_tr
     local _bwimc_word_alldigit=1
     _bwimc_scan_init
     while [ "$i" -lt "$len" ]; do
@@ -1478,6 +1543,20 @@ _bwimc_space_before_redirects() {
                 out+="${run}"; prev="${run: -1}"; prevact=""
                 _bwimc_word_alldigit=0; _BWIMC_ACT=0; _BWIMC_DL=0
                 i=$((i+_BWIMC_RUN)); continue
+            fi
+        fi
+        if [ -z "$_BWIMC_Q" ] && [ "$_BWIMC_ESC" = 0 ]; then
+            _bwimc_plain_run text "$i"
+            if [ "$_BWIMC_RUN" -gt 0 ]; then
+                run="${_BWIMC_RUNTXT}"; out+="${run}"; prev="${run: -1}"; prevact="$prev"
+                _pr_tr="${run##*[!0-9]}"
+                if [ "${#_pr_tr}" -lt "${#run}" ]; then
+                    case "${run:$((${#run}-${#_pr_tr}-1)):1}" in
+                        [[:space:]]) _bwimc_word_alldigit=1 ;;
+                        *) _bwimc_word_alldigit=0 ;;
+                    esac
+                fi
+                _BWIMC_ACT=1; _BWIMC_DL=0; i=$((i+_BWIMC_RUN)); continue
             fi
         fi
         if [ "$i" -ge "$_we" ] || [ "$i" -lt "$_wb" ]; then _wb=$i; _ww="${text:$i:264}"; _we=$((i+256)); fi
@@ -2214,8 +2293,23 @@ _bwimc_ansic_spans() {
     printf '%s' "$o"
 }
 
-_bwimc_unq() {
+# Quotes are dropped and backslash escapes undone (`\git`, `gi\t`, `\-C`, and
+# a backslash-newline line continuation joined), so an escaped spelling
+# matches the word the shell runs. ANSI-C `$'…'` is decoded and locale
+# `$"…"` read as `"…"` first (`$'\x67it'` runs git). Quote-blind: a backslash
+# the shell would keep inside quotes is dropped too, which only
+# over-classifies.
+#
+# _bwimc_unqv leaves the word in _BWIMC_UNQ so a caller does not
+# fork a `$(…)` subshell per token; _bwimc_unq prints it for the callers that
+# still want a stream. A word with no quote, backslash, `$` or \006 is its own
+# unquoted form.
+_bwimc_unqv() {
     local t="$1" o="" c k=0 q
+    case "$t" in
+        *[\'\"\\\$$'\006']*) ;;
+        *) _BWIMC_UNQ=$t; return 0 ;;
+    esac
     # HIMMEL-4143: a newline inside a quoted span travels as \006 in clause
     # transport (_bwimc_split_clauses); the word itself carries the newline.
     t="${t//$'\006'/$'\n'}"
@@ -2257,7 +2351,32 @@ _bwimc_unq() {
             done
             t="$o$t" ;;
     esac
-    printf '%s' "$t"
+    _BWIMC_UNQ=$t
+}
+
+_bwimc_unq() {
+    _bwimc_unqv "$1"
+    printf '%s' "$_BWIMC_UNQ"
+}
+
+# _bwimc_gm ERE — sets _bwimc_m to the lines of _bwimc_clause_lc that match ERE
+# (what `printf | grep -E` printed) and succeeds when there are any. A
+# one-line clause is matched in-shell with no fork; a multi-line one still
+# goes through grep, which matches per line.
+_bwimc_gm() {
+    _bwimc_m=""
+    case "$_bwimc_clause_lc" in
+        *$'\n'*)
+            _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E "$1") && [ -n "$_bwimc_m" ]
+            return ;;
+    esac
+    if [[ "$_bwimc_clause_lc" =~ $1 ]]; then _bwimc_m=$_bwimc_clause_lc; [ -n "$_bwimc_m" ]; else return 1; fi
+}
+
+# _bwimc_unq_eq WORD VALUE — true when WORD unquotes to VALUE, no subshell.
+_bwimc_unq_eq() {
+    _bwimc_unqv "$1"
+    [ "$_BWIMC_UNQ" = "$2" ]
 }
 
 # HIMMEL-3648: shared cd/pushd/popd cwd-tracking for arm (a) and arm (b)/(e)
@@ -2282,7 +2401,7 @@ _bwimc_chdir_model() {
         ''|*'$'*|*'`'*|*[*?[]*|*\\*) _bwimc_ecwd_unres=1; return 0 ;;
     esac
     if [ $(( ${#q} % 2 )) = 1 ] || [ $(( ${#a} % 2 )) = 1 ]; then _bwimc_ecwd_unres=1; return 0; fi
-    carg=$(_bwimc_unq "$raw")
+    _bwimc_unqv "$raw"; carg=$_BWIMC_UNQ
     case "$carg" in
         /*|[A-Za-z]:/*|[A-Za-z]:\\*) ;;
         *) [ "$_bwimc_ecwd_unres" = 0 ] || return 0 ;;
@@ -2383,7 +2502,7 @@ _bwimc_cd_would_fail() {
 _bwimc_fsmut_note() {
     local t u b verb=0 fnd=0 r c dd=0
     for t in "$@"; do
-        u=$(_bwimc_unq "$t"); b="${u##*/}"
+        _bwimc_unqv "$t"; u=$_BWIMC_UNQ; b="${u##*/}"
         if [ "$verb" = 1 ]; then
             if [ "$dd" = 0 ] && [ "$u" = -- ]; then dd=1; continue; fi
             case "$u" in '') continue ;; -*) [ "$dd" = 1 ] || continue ;; esac
@@ -2434,19 +2553,19 @@ _bwimc_ecwd_track() {
     # below. Accepted over-deny: any clause that merely names cd as an argument.
     i=0
     while [ "$i" -lt "$n" ]; do
-        case "$(_bwimc_unq "${toks[$i]}")" in
+        _bwimc_unqv "${toks[$i]}"; case "$_BWIMC_UNQ" in
             "{"|"!"|"("|""|if|then|else|elif|do|while|until|builtin) i=$((i+1)) ;;
             *) break ;;
         esac
     done
     [ "$i" -lt "$n" ] || return 0
-    tu=$(_bwimc_unq "${toks[$i]}")
+    _bwimc_unqv "${toks[$i]}"; tu=$_BWIMC_UNQ
     cmdi=$i
     case "$tu" in
         cd|pushd)
             i=$((i+1))
             while [ "$i" -lt "$n" ]; do
-                case "$(_bwimc_unq "${toks[$i]}")" in
+                _bwimc_unqv "${toks[$i]}"; case "$_BWIMC_UNQ" in
                     -P) cdphys=1; i=$((i+1)) ;;
                     -L|-e|-@) i=$((i+1)) ;;
                     --) i=$((i+1)); break ;;
@@ -2467,7 +2586,7 @@ _bwimc_ecwd_track() {
                 elif [ "$_bwimc_ecwd_pushn" -ge 1 ]; then
                     _bwimc_ecwd_unres=1
                 fi
-            elif [ "$(_bwimc_unq "${toks[$i]}")" = "-" ]; then
+            elif _bwimc_unq_eq "${toks[$i]}" "-"; then
                 _bwimc_ecwd_unres=1
             else
                 craw="${toks[$i]}"
@@ -2496,7 +2615,7 @@ _bwimc_ecwd_track() {
                         _bwimc_ecwd_unres=1
                         ;;
                     *)
-                        carg=$(_bwimc_unq "$craw")
+                        _bwimc_unqv "$craw"; carg=$_BWIMC_UNQ
                         case "$carg" in
                             /*|[A-Za-z]:/*|[A-Za-z]:\\*) cabs=1 ;;
                             *) cabs=0 ;;
@@ -2545,7 +2664,7 @@ _bwimc_ecwd_track() {
     esac
     for ((j = 0; j < n; j++)); do
         [ "$j" = "$cmdi" ] && continue
-        case "$(_bwimc_unq "${toks[$j]}")" in
+        _bwimc_unqv "${toks[$j]}"; case "$_BWIMC_UNQ" in
             cd|pushd|popd) _bwimc_ecwd_unres=1 ;;
         esac
     done
@@ -4300,7 +4419,7 @@ if [ -n "${CDPATH:-}" ]; then
 else
     case "$cmd" in
         *CDPATH*) _bwimc_cdpath_taint=1 ;;
-        *\"*|*\'*|*\\*) case "$(_bwimc_unq "$cmd")" in *CDPATH*) _bwimc_cdpath_taint=1 ;; esac ;;
+        *\"*|*\'*|*\\*) _bwimc_unqv "$cmd"; case "$_BWIMC_UNQ" in *CDPATH*) _bwimc_cdpath_taint=1 ;; esac ;;
     esac
 fi
 
@@ -4555,7 +4674,7 @@ _bwimc_check_interp_body() {
             esac
         done
         if [ "$i" -lt "$n" ]; then
-            t=$(_bwimc_unq "${toks[$i]}"); t="${t##*/}"
+            _bwimc_unqv "${toks[$i]}"; t=$_BWIMC_UNQ; t="${t##*/}"
             _tolower_ascii "$t"; t="${_TOLOWER_OUT%.exe}"
             case "$t" in
                 grep|egrep|fgrep)
@@ -4574,7 +4693,7 @@ _bwimc_check_interp_body() {
         fi
         kind=""; i=0
         while [ "$i" -lt "$n" ]; do
-            t=$(_bwimc_unq "${toks[$i]}"); t="${t##*/}"
+            _bwimc_unqv "${toks[$i]}"; t=$_BWIMC_UNQ; t="${t##*/}"
             _tolower_ascii "$t"; t="${_TOLOWER_OUT%.exe}"
             case "$t" in
                 eval) kind="eval"; break ;;
@@ -5259,58 +5378,6 @@ _bwimc_ansic() {
     printf '%s' "$o"
 }
 
-# Quotes are dropped and backslash escapes undone (`\git`, `gi\t`, `\-C`, and
-# a backslash-newline line continuation joined), so an escaped spelling
-# matches the word the shell runs. ANSI-C `$'…'` is decoded and locale
-# `$"…"` read as `"…"` first (`$'\x67it'` runs git). Quote-blind: a backslash
-# the shell would keep inside quotes is dropped too, which only
-# over-classifies.
-_bwimc_unq() {
-    local t="$1" o="" c k=0 q
-    # HIMMEL-4143: a newline inside a quoted span travels as \006 in clause
-    # transport (_bwimc_split_clauses); the word itself carries the newline.
-    t="${t//$'\006'/$'\n'}"
-    case "$t" in
-        *\$\'*|*\$\"*)
-            while [ "$k" -lt "${#t}" ]; do
-                # HIMMEL-4397: jump over runs of plain text, not one char a step
-                c="${t:$k}"; c="${c%%\$*}"
-                if [ -n "$c" ]; then o+="$c"; k=$((k+${#c})); continue; fi
-                c="${t:$k:1}"
-                if [ "$c" = '$' ] && [ "${t:$((k+1)):1}" = "'" ]; then
-                    k=$((k+2)); q=""
-                    while [ "$k" -lt "${#t}" ] && [ "${t:$k:1}" != "'" ]; do
-                        c="${t:$k}"; c="${c%%[\'\\]*}"
-                        if [ -n "$c" ]; then q+="$c"; k=$((k+${#c})); continue; fi
-                        if [ "${t:$k:1}" = "\\" ]; then q="$q\\"; k=$((k+1)); fi
-                        q="$q${t:$k:1}"; k=$((k+1))
-                    done
-                    k=$((k+1))
-                    o="$o$(_bwimc_ansic "$q")"
-                    continue
-                fi
-                if [ "$c" = '$' ] && [ "${t:$((k+1)):1}" = '"' ]; then k=$((k+1)); continue; fi
-                o+="$c"; k=$((k+1))
-            done
-            t="$o"; o=""; k=0 ;;
-    esac
-    _bwimc_drop_quotes "$t"
-    t=$_bwimc_dq
-    case "$t" in
-        *\\*)
-            t="${t//\\$'\n'/}"
-            # HIMMEL-4591: drop each backslash and keep the character after it,
-            # one jump per backslash instead of one step per character
-            while [[ "$t" == *\\* ]]; do
-                c="${t%%\\*}"; o+="$c"
-                t="${t:$((${#c}+1))}"
-                o="$o${t:0:1}"; t="${t:1}"
-            done
-            t="$o$t" ;;
-    esac
-    printf '%s' "$t"
-}
-
 # _bwimc_git_push CLAUSE DIR UNRES ARG... — `push` writes only the repository
 # it pushes TO, so its destination (not the -C dir) gets the repo-root
 # verdict: `.`, a path, a file:// URL, or a bare name that is an existing
@@ -5441,7 +5508,7 @@ _bwimc_cfg_safe() {
 # read-shaped git clause run a program (a blocklist: env is open-ended).
 _bwimc_env_prog() {
     local v
-    v=$(_bwimc_unq "${1#*=}")
+    _bwimc_unqv "${1#*=}"; v=$_BWIMC_UNQ
     case "${1%%=*}" in
         GIT_PAGER|PAGER) ! _bwimc_pager_ok "$v"; return ;;
         GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM) [ "$v" != /dev/null ]; return ;;
@@ -5890,15 +5957,15 @@ _bwimc_git_wrapped() {
     wsp="$_BWIMC_SP"; wsp0="$_BWIMC_SP0"; wdir="$_BWIMC_SPDIR"
     while IFS= read -r t; do xt+=("$t"); done < <(_bwimc_tokenize "$wsp")
     [ "${#xt[@]}" -gt 0 ] || return 0
-    t=$(_bwimc_unq "${xt[0]}"); t="${t##*/}"; _tolower_ascii "$t"; wl="${_TOLOWER_OUT%.exe}"
+    _bwimc_unqv "${xt[0]}"; t=$_BWIMC_UNQ; t="${t##*/}"; _tolower_ascii "$t"; wl="${_TOLOWER_OUT%.exe}"
     case "$wl" in
         git) [ "$wsp" != "$wsp0" ] || return 0 ;;
         xargs)
             k=1
             while [ "$k" -lt "${#xt[@]}" ]; do
-                t=$(_bwimc_unq "${xt[$k]}")
+                _bwimc_unqv "${xt[$k]}"; t=$_BWIMC_UNQ
                 case "$t" in
-                    -I) k=$((k+1)); xr=$(_bwimc_unq "${xt[$k]:-}"); k=$((k+1)); continue ;;
+                    -I) k=$((k+1)); _bwimc_unqv "${xt[$k]:-}"; xr=$_BWIMC_UNQ; k=$((k+1)); continue ;;
                     -I*) xr="${t#-I}" ;;
                     -i|--replace) xr="{}" ;;
                     -i*) xr="${t#-i}" ;;
@@ -5927,7 +5994,7 @@ _bwimc_git_wrapped() {
                 fi
                 if [ "$k" = 0 ]; then k=1
                 elif [ "$k" = 1 ]; then
-                    case "$(_bwimc_unq "$t")" in
+                    _bwimc_unqv "$t"; case "$_BWIMC_UNQ" in
                         -C|-c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix) k=3 ;;
                         -*) ;;
                         *) k=2 ;;
@@ -5935,11 +6002,11 @@ _bwimc_git_wrapped() {
                 elif [ "$k" = 3 ]; then k=1
                 elif [ "$k" = 4 ]; then k=2
                 elif [ "$k" = 5 ]; then :
-                elif [ "$(_bwimc_unq "$t")" = --output ]; then k=4
-                elif [ "$(_bwimc_unq "$t")" = -- ] || [ "$(_bwimc_unq "$t")" = --end-of-options ]; then
+                elif _bwimc_unq_eq "$t" --output; then k=4
+                elif _bwimc_unq_eq "$t" -- || _bwimc_unq_eq "$t" --end-of-options; then
                     # ...unless the word before may be an option taking it as
                     # its operand (`--grep --`).
-                    case "$(_bwimc_unq "${xt[$((xi-1))]}")" in -*=*|[!-]*) k=5 ;; esac
+                    _bwimc_unqv "${xt[$((xi-1))]}"; case "$_BWIMC_UNQ" in -*=*|[!-]*) k=5 ;; esac
                 fi
                 xg="$xg$t "; xi=$((xi+1))
             done
@@ -5956,7 +6023,7 @@ _bwimc_git_wrapped() {
     # is not modelled (fail closed).
     local wprog="${5:-0}"
     while IFS= read -r t; do
-        t=$(_bwimc_unq "$t")
+        _bwimc_unqv "$t"; t=$_BWIMC_UNQ
         case "$t" in [A-Za-z_]*=*) ! _bwimc_env_prog "$t" || wprog=1 ;; esac
     done < <(_bwimc_tokenize "$strip")
     if [ -n "$4" ]; then
@@ -6020,7 +6087,7 @@ _bwimc_git_clause() {
     # leaves attached (`if cd <p>; then git merge x; fi`).
     i=0
     while [ "$i" -lt "$n" ]; do
-        case "$(_bwimc_unq "${toks[$i]}")" in
+        _bwimc_unqv "${toks[$i]}"; case "$_BWIMC_UNQ" in
             "{"|"!"|"("|""|if|then|else|elif|do|while|until|builtin) i=$((i+1)) ;;
             *) break ;;
         esac
@@ -6033,7 +6100,7 @@ _bwimc_git_clause() {
         esac
     fi
     [ "$i" -lt "$n" ] || return 0
-    tu=$(_bwimc_unq "${toks[$i]}")
+    _bwimc_unqv "${toks[$i]}"; tu=$_BWIMC_UNQ
 
     # cd / pushd / popd: move the modelled cwd for later clauses. The cwd it
     # leaves is kept as an alternative: the cd may not have run (`false && cd
@@ -6046,7 +6113,7 @@ _bwimc_git_clause() {
         cd|pushd)
             i=$((i+1))
             while [ "$i" -lt "$n" ]; do
-                case "$(_bwimc_unq "${toks[$i]}")" in
+                _bwimc_unqv "${toks[$i]}"; case "$_BWIMC_UNQ" in
                     -L|-P|-e|-@) i=$((i+1)) ;;
                     --) i=$((i+1)); break ;;
                     *) break ;;
@@ -6054,7 +6121,7 @@ _bwimc_git_clause() {
             done
             if [ "$i" -ge "$n" ]; then
                 [ -n "${HOME:-}" ] && [ "${_bwimc_home_taint:-0}" = 0 ] && { _bwimc_gcwd="$HOME"; _bwimc_gcwd_unres=0; } || _bwimc_gcwd_unres=1
-            elif [ "$(_bwimc_unq "${toks[$i]}")" = "-" ]; then
+            elif _bwimc_unq_eq "${toks[$i]}" "-"; then
                 _bwimc_gcwd_unres=1
             elif r=$(_bwimc_resolve_abs "${toks[$i]}" "$cwd"); then
                 _bwimc_gcwd="$r"; _bwimc_gcwd_unres=0
@@ -6070,7 +6137,7 @@ _bwimc_git_clause() {
             local op="$tu"
             i=$((i+1))
             while [ "$i" -lt "$n" ]; do
-                t=$(_bwimc_unq "${toks[$i]}")
+                _bwimc_unqv "${toks[$i]}"; t=$_BWIMC_UNQ
                 if [ "$op" = unset ]; then
                     case "$t" in
                         GIT_DIR) _bwimc_genv_dir="" ;;
@@ -6117,7 +6184,7 @@ _bwimc_git_clause() {
             GIT_CONFIG*=*) cfg=1 ;;
             [A-Za-z_]*=*) ;;
             *)
-                case "$(_bwimc_unq "$t")" in
+                _bwimc_unqv "$t"; case "$_BWIMC_UNQ" in
                     env)
                         i=$((i+1))
                         # -i / `-` and -u NAME drop the modelled GIT_* values
@@ -6127,7 +6194,7 @@ _bwimc_git_clause() {
                         # re-splits a string we do not re-parse, so a git
                         # inside it fails closed.
                         while [ "$i" -lt "$n" ]; do
-                            t=$(_bwimc_unq "${toks[$i]}")
+                            _bwimc_unqv "${toks[$i]}"; t=$_BWIMC_UNQ
                             local eopt="" eval_="" ci ch
                             case "$t" in [A-Za-z_]*=*) ! _bwimc_env_prog "$t" || progrun=1 ;; esac
                             case "$t" in
@@ -6164,7 +6231,7 @@ _bwimc_git_clause() {
                                 *) break ;;
                             esac
                             if [ -n "$eopt" ] && [ -z "$eval_" ]; then
-                                i=$((i+1)); eval_=$(_bwimc_unq "${toks[$i]:-}")
+                                i=$((i+1)); _bwimc_unqv "${toks[$i]:-}"; eval_=$_BWIMC_UNQ
                             fi
                             case "$eopt" in
                                 u) case "$eval_" in
@@ -6186,7 +6253,7 @@ _bwimc_git_clause() {
                     # setsid takes only flags (-c -f -w and long forms).
                     setsid)
                         while [ $((i+1)) -lt "$n" ]; do
-                            case "$(_bwimc_unq "${toks[$((i+1))]}")" in -*) i=$((i+1)) ;; *) break ;; esac
+                            _bwimc_unqv "${toks[$((i+1))]}"; case "$_BWIMC_UNQ" in -*) i=$((i+1)) ;; *) break ;; esac
                         done ;;
                     *) break ;;
                 esac
@@ -6206,7 +6273,7 @@ _bwimc_git_clause() {
         fi
         return 0
     fi
-    tu=$(_bwimc_unq "${toks[$i]}")
+    _bwimc_unqv "${toks[$i]}"; tu=$_BWIMC_UNQ
     case "${tu##*/}" in
         git|git.exe|GIT|GIT.EXE|Git.exe) ;;
         *) _bwimc_git_wrapped "$1" "$_bwimc_gcwd" "$_bwimc_gcwd_unres" "$e_dir$e_wt$e_idx" "$progrun"; return 0 ;;
@@ -6218,13 +6285,13 @@ _bwimc_git_clause() {
     [ "$_bwimc_gcwd_unres" = 1 ] && unres=1
     i=$start
     while [ "$i" -lt "$n" ]; do
-        t=$(_bwimc_unq "${toks[$i]}")
+        _bwimc_unqv "${toks[$i]}"; t=$_BWIMC_UNQ
         case "$t" in
             -C)
                 i=$((i+1))
                 if r=$(_bwimc_resolve_abs "${toks[$i]:-}" "$dir"); then dir="$r"; else unres=1; fi ;;
             -c|--config-env)
-                cfg=1; i=$((i+1)); v=$(_bwimc_unq "${toks[$i]:-}"); _bwimc_cfg_key "$v"
+                cfg=1; i=$((i+1)); _bwimc_unqv "${toks[$i]:-}"; v=$_BWIMC_UNQ; _bwimc_cfg_key "$v"
                 if [ "$t" = -c ]; then _bwimc_cfg_safe "$v" || progrun=1; else _bwimc_cfg_safe "$v" noval || progrun=1; fi ;;
             --config-env=*) cfg=1; _bwimc_cfg_key "${t#--config-env=}"; _bwimc_cfg_safe "${t#--config-env=}" noval || progrun=1 ;;
             -c*) cfg=1; _bwimc_cfg_key "${t#-c}"; _bwimc_cfg_safe "${t#-c}" || progrun=1 ;;
@@ -6238,7 +6305,7 @@ _bwimc_git_clause() {
     # Pass 2: --git-dir / --work-tree (resolved against the FINAL -C dir).
     i=$start
     while [ "$i" -lt "$n" ]; do
-        t=$(_bwimc_unq "${toks[$i]}")
+        _bwimc_unqv "${toks[$i]}"; t=$_BWIMC_UNQ
         case "$t" in
             -C|-c|--namespace|--config-env|--super-prefix) i=$((i+1)) ;;
             --git-dir=*) gitdir="${toks[$i]#*=}" ;;
@@ -6921,7 +6988,7 @@ while IFS= read -r _bwimc_clause; do
     # verb-scan arm below — under pipefail a multi-line, >64KiB clause can
     # SIGPIPE the producer mid-match and flip the pipeline's exit status,
     # which would fail this fence OPEN on the exact class it exists to catch.
-    if _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*sed(\.exe)?[[:space:]]+') && [ -n "$_bwimc_m" ]; then
+    if _bwimc_gm '^[[:space:]]*sed(\.exe)?[[:space:]]+'; then
         # HIMMEL-2592 round 9 codex-3: this used to be
         # `sed(\.exe)?[[:space:]]+.*-i` — an UNANCHORED substring search over
         # the WHOLE clause text, which matched the `-i` inside a PATH
@@ -7127,11 +7194,11 @@ while IFS= read -r _bwimc_clause; do
             done
         fi
 
-    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*eval([[:space:]]|$)') && [ -n "$_bwimc_m" ]; then
+    elif _bwimc_gm '^[[:space:]]*eval([[:space:]]|$)'; then
         _bwimc_interp_seen=1
         _bwimc_check_interp_body "$_bwimc_clause_sp" eval
 
-    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*([^[:space:]]*/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+-[a-z]*c[a-z]*([[:space:]]|$)') && [ -n "$_bwimc_m" ]; then
+    elif _bwimc_gm '^[[:space:]]*([^[:space:]]*/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+-[a-z]*c[a-z]*([[:space:]]|$)'; then
         # HIMMEL-3648 (CR #1307): allow an optional path prefix (`/bin/sh`,
         # `./bash`, …) before the shell name — an anchor on the bare name
         # only let a path-qualified invocation bypass body scanning entirely.
@@ -7153,7 +7220,7 @@ while IFS= read -r _bwimc_clause; do
         _bwimc_interp_seen=1
         _bwimc_check_interp_body "$_bwimc_clause_sp" shc
 
-    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*(install|rsync)(\.exe)?[[:space:]]+') && [ -n "$_bwimc_m" ]; then
+    elif _bwimc_gm '^[[:space:]]*(install|rsync)(\.exe)?[[:space:]]+'; then
         # HIMMEL-3648: install/rsync — the LAST non-option operand is the
         # write destination (install: `SOURCE... DEST` or, with -t/
         # --target-directory, `SOURCE... -t DIR`; rsync: `SRC... DEST`).
@@ -7305,7 +7372,7 @@ while IFS= read -r _bwimc_clause; do
             fi
         fi
 
-    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*dd(\.exe)?([[:space:]]|$)') && [ -n "$_bwimc_m" ]; then
+    elif _bwimc_gm '^[[:space:]]*dd(\.exe)?([[:space:]]|$)'; then
         # HIMMEL-3648: dd's `of=PATH` key=value token is its write
         # destination; dd itself never takes it as two separate tokens.
         _bwimc_toks=()
@@ -7328,7 +7395,7 @@ while IFS= read -r _bwimc_clause; do
             _bwimc_i=$((_bwimc_i+1))
         done
 
-    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*(cp|mv)(\.exe)?[[:space:]]+') && [ -n "$_bwimc_m" ]; then
+    elif _bwimc_gm '^[[:space:]]*(cp|mv)(\.exe)?[[:space:]]+'; then
         _bwimc_verb=$(printf '%s' "$_bwimc_clause_lc" | sed -E 's/^[[:space:]]*(cp|mv).*/\1/')
         _bwimc_toks=()
         while IFS= read -r _bwimc_t; do _bwimc_toks+=("$_bwimc_t"); done < <(_bwimc_tokenize "$_bwimc_clause_sp")
@@ -7594,7 +7661,7 @@ while IFS= read -r _bwimc_clause; do
             fi
         fi
 
-    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*(rm|touch|truncate)(\.exe)?[[:space:]]+') && [ -n "$_bwimc_m" ]; then
+    elif _bwimc_gm '^[[:space:]]*(rm|touch|truncate)(\.exe)?[[:space:]]+'; then
         # rm  -> ENTRY  (unlink removes the directory entry; the referent of a
         #                symlink operand is never touched)
         # touch -> FOLLOW (creates or timestamps the REFERENT)
@@ -7643,7 +7710,7 @@ while IFS= read -r _bwimc_clause; do
             _bwimc_i=$((_bwimc_i+1))
         done
 
-    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*([^[:space:]]*/)?(tar|gtar|bsdtar)(\.exe)?[[:space:]]+') && [ -n "$_bwimc_m" ]; then
+    elif _bwimc_gm '^[[:space:]]*([^[:space:]]*/)?(tar|gtar|bsdtar)(\.exe)?[[:space:]]+'; then
         # HIMMEL-4921 (C): an EXTRACTING tar writes under its -C/--directory
         # destination, which nothing checked (the fence only relieved a /tmp
         # extract, never denied one). When the clause extracts (-x/--extract/
@@ -7729,7 +7796,7 @@ while IFS= read -r _bwimc_clause; do
             done
         fi
 
-    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*([^[:space:]]*/)?tee(\.exe)?[[:space:]]+') && [ -n "$_bwimc_m" ]; then
+    elif _bwimc_gm '^[[:space:]]*([^[:space:]]*/)?tee(\.exe)?[[:space:]]+'; then
         # HIMMEL-4329 CR codex-2: arm (a) reads `tee` on the host only and
         # only behind its own short wrapper list, so `chroot P tee /f`,
         # `sudo -R P tee /f`, `nice tee`, `timeout 5 tee` and `/usr/bin/tee`
@@ -7761,7 +7828,7 @@ while IFS= read -r _bwimc_clause; do
             _bwimc_i=$((_bwimc_i+1))
         done
 
-    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*ln(\.exe)?[[:space:]]+') && [ -n "$_bwimc_m" ]; then
+    elif _bwimc_gm '^[[:space:]]*ln(\.exe)?[[:space:]]+'; then
         # `ln`/`ln -s` CREATES a directory entry (HIMMEL-2592 §2) — the fence
         # had no `ln` arm at all, so `ln -s x <primary>/link` wrote into a
         # protected checkout unseen. Only the LINK NAME is a write; the link
@@ -7926,7 +7993,7 @@ while IFS= read -r _bwimc_clause; do
         # into the CWD under basename(target)) is not modelled — it is the
         # `cd`/cwd-predicate class this script deliberately leaves alone.
 
-    elif _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*git(\.exe)?([[:space:]]+-[^[:space:]]+([[:space:]]+[^[:space:]]+)?)*[[:space:]]+commit([[:space:]]|$)') && [ -n "$_bwimc_m" ]; then
+    elif _bwimc_gm '^[[:space:]]*git(\.exe)?([[:space:]]+-[^[:space:]]+([[:space:]]+[^[:space:]]+)?)*[[:space:]]+commit([[:space:]]|$)'; then
         _bwimc_git_commit_target "$_bwimc_clause_sp" "$_bwimc_ecwd"
         if [ "$_BWIMC_GIT_TARGET_UNRESOLVED" = 1 ]; then
             # HIMMEL-2884 codex-2: an unresolved -C/--git-dir/--work-tree value
@@ -7942,7 +8009,7 @@ while IFS= read -r _bwimc_clause; do
             _bwimc_cwd_check_direct "$_BWIMC_GIT_TARGET_DIR"
         fi
 
-    elif [ "$_bwimc_sourced" = 1 ] && _bwimc_m=$(printf '%s' "$_bwimc_clause_lc" | grep -E '^[[:space:]]*(set-content|out-file|add-content)([[:space:]]|$)') && [ -n "$_bwimc_m" ]; then
+    elif [ "$_bwimc_sourced" = 1 ] && _bwimc_gm '^[[:space:]]*(set-content|out-file|add-content)([[:space:]]|$)'; then
         # PowerShell writers: sourced/codex lane only (see CODEX-LANE PARITY
         # header note) — PowerShell never reaches direct-exec (Claude wires
         # this script on the "Bash" matcher only).

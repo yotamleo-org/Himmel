@@ -584,6 +584,43 @@ else
     bad "4591 ${#_big}-byte payload: got $_got in ${_el}s (want allow within 12s)"
 fi
 
+# The DENY twin of the 4591 row (a primary write after, or inside,
+# a 15 KB quoted payload still denies), the literal archive forms,
+# and a 20 KB command decided in bounded time. The clause command and a
+# same-length plain echo are both timed, so the ratio budget shows the scan
+# does not charge more for code-shaped text than for text.
+echo "== HIMMEL-5747: large payload still denies; archive -o to the primary; 20 KB bound =="
+_blob15="$_blob$_blob$_blob"
+_j5747() { # _j5747 <command> -> hook JSON, cwd the leg worktree
+    printf '{"tool_name":"Bash","tool_input":{"command":%s,"cwd":"%s"}}' "$(printf '%s' "$1" | jq -Rs .)" "$_WR"
+}
+_t_row() { # _t_row <label> <want> <command> <bound-seconds>
+    local t0=$SECONDS got el
+    got=$(_run "$DIRECT" "$(_j5747 "$3")" "$_WR"); el=$((SECONDS - t0)); _T_EL=$el
+    if [ "$got" = "$2" ] && [ "$el" -le "$4" ]; then ok "$1: $got in ${el}s (bound ${4}s)"
+    else bad "$1: got $got in ${el}s (want $2 within ${4}s)"; fi
+}
+_t_row "5747 15 KB quoted payload then a primary write denies" block "echo '$_blob15'; echo x > $_PR/f5747" 12
+_t_row "5747 primary write inside a 15 KB double-quoted substitution denies" block "echo \"$_blob15 \$(echo x > $_PR/f5747)\"" 12
+_t_row "5747 15 KB quoted payload, write to the leg worktree allows" allow "echo '$_blob15' > $_WR/f5747" 12
+_t_row "5747 15 KB quoted payload, write to /tmp allows" allow "echo '$_blob15' > /tmp/f5747-$$" 12
+_subst_row "5747 git archive -o primary/a.tar denies"            block "git archive -o $_PR/a5747.tar HEAD" "$_WR"
+_subst_row "5747 git archive --output=primary/a.tar denies"      block "git archive --output=$_PR/a5747.tar HEAD" "$_WR"
+_subst_row "5747 git archive --output primary/a.tar denies"      block "git archive --output $_PR/a5747.tar HEAD" "$_WR"
+_subst_row "5747 git archive -o leg worktree/a.tar allows"       allow "git archive -o $_WR/a5747.tar HEAD" "$_WR"
+_subst_row "5747 git archive -o /tmp/a.tar allows"               allow "git archive -o /tmp/a5747.tar HEAD" "$_WR"
+_c20=""; _i=0; while [ ${#_c20} -lt 20000 ]; do _c20="${_c20}echo line$_i > $_WR/f$_i; "; _i=$((_i+1)); done
+_k20=""; while [ ${#_k20} -lt 20000 ]; do _k20="$_k20$_unit"; done
+_t_row "5747 20 KB of redirect clauses (leg worktree) allows" allow "$_c20" 22
+_el_c20=$_T_EL
+_t_row "5747 20 KB plain echo control allows" allow "echo $_k20" 12
+_el_k20=$_T_EL
+# the 2 s slack absorbs whole-second timer granularity
+if [ "$_el_c20" -le $((_el_k20 * 3 + 2)) ]; then ok "5747 20 KB clauses ${_el_c20}s within 3x + 2s of the same-length control ${_el_k20}s"
+else bad "5747 20 KB clauses ${_el_c20}s exceed 3x + 2s of the same-length control ${_el_k20}s"; fi
+_c20p="${_c20}echo x > $_PR/f5747"
+_t_row "5747 20 KB of redirect clauses ending in a primary write denies" block "$_c20p" 22
+
 echo "== HIMMEL-4921: nested-quote \${:-} redirect, truncate, tar -C, /tmp symlink into the primary =="
 _j4921() {  # _j4921 <command> <cwd> -> hook JSON
     printf '{"tool_name":"Bash","tool_input":{"command":%s,"cwd":"%s"}}' "$(printf '%s' "$1" | jq -Rs .)" "$2"
