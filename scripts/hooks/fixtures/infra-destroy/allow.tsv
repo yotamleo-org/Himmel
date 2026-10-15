@@ -25,3 +25,13 @@ grep-sql	grep 'DROP TABLE' schema.sql
 git-commit-msg	git commit -m "document terraform destroy and DELETE FROM"
 cat-sql	cat drop-table.sql
 git-status	git status
+aws-s3-rm-single	aws s3 rm s3://bucket/key
+aws-s3-cp	aws s3 cp a s3://bucket/a
+helm-status	helm status release
+tf-state-list	terraform state list
+tf-workspace-list	terraform workspace list
+docker-container-ls	docker container ls
+docker-image-ls	docker image ls
+mongosh-find	mongosh --eval "db.users.find()"
+var-command-word-plain	$EDITOR notes.md
+var-command-word-plan	T=terraform; $T plan

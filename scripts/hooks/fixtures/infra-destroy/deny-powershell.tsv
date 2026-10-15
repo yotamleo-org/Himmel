@@ -1,0 +1,2 @@
+ps-echo-over-deny	Write-Output "terraform destroy"
+ps-call-operator	& terraform destroy

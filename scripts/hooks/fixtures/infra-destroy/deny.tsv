@@ -39,3 +39,14 @@ apply-destroy-eq	terraform apply -destroy=true
 upper-bin	KUBECTL delete pod web-1
 redis-quoted-verb	redis-cli "FLUSHALL"
 npx-package-option	npx -p prisma@6 prisma migrate reset
+aws-s3-rb	aws s3 rb s3://bucket --force
+aws-s3-rm-recursive	aws s3 rm s3://bucket/prefix --recursive
+helm-del	helm del release -n prod
+helm-un	helm un release -n prod
+tf-state-rm	terraform state rm aws_instance.web
+tf-workspace-delete	terraform workspace delete staging
+docker-container-prune	docker container prune -f
+docker-image-prune	docker image prune -a
+mongosh-deletemany	mongosh --eval "db.users.deleteMany({})"
+var-command-word	T=terraform; $T destroy
+var-command-word-braced	T=kubectl; ${T} delete pod web-1
