@@ -857,6 +857,12 @@ contains "pkg test script scoped to tests: file under it passes" "$out" "[PASS] 
 UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
 unw_run scripts/cfg/tests/a.test.ts
 contains "bare bun test script: file passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test tests/a*.test.ts\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/abc.test.ts
+contains "glob arg with a partial segment: a matching file passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test .\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "bun test . discovers the whole package: passes" "$out" "[PASS] 11."
 UNW_EXTRA="printf '{\"scripts\":{\"test\":\"npm run build && bun test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
 unw_run scripts/cfg/tests/a.test.ts
 contains "compound test script: only the runner's own words narrow it" "$out" "[PASS] 11."

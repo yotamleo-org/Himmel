@@ -77,7 +77,12 @@ pkg_runs() {
     # a bare word is a path when it exists, or when it is not an option's value (--reporter dot)
     case "$tok" in *[/*?\{[]*) ;; *) exists "${pd:+$pd/}$tok" || case "$prev" in -*) prev="$tok"; continue ;; esac ;; esac
     prev="$tok"
-    have=1; pre="${tok%%[*?{[]*}"; pre="${pre%/}"
+    have=1
+    case "$tok" in  # a glob narrows to the directory before its first wildcard segment
+      *[*?\{[]*) pre="${tok%%[*?\{[]*}"; case "$pre" in */) pre="${pre%/}" ;; */*) pre="${pre%/*}" ;; *) pre="" ;; esac ;;
+      *) pre="${tok%/}" ;;
+    esac
+    [ "$pre" != . ] || pre=""
     case "$rel" in "$pre"|"$pre"/*) hit=1 ;; esac
     [ -n "$pre" ] || hit=1
   done
