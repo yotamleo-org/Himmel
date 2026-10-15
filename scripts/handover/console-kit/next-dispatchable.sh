@@ -198,7 +198,7 @@ for i in issues.values():
         continue
     if any(issues.get(b, {}).get('status') != 'Done' for b in i['blocked_by']):
         continue
-    if pr_unknown:  # an unread PR set could hide a PR already covering the ticket
+    if pr_unknown or legs_unknown:  # an unread PR set or leg set could hide the ticket's owner
         continue
     if any(collides(f, h) for f in i['files'] for h, _ in held):
         continue
