@@ -1135,52 +1135,6 @@ jobs:
           path: failed-suite-logs/
           if-no-files-found: ignore
           retention-days: 14
-      # LUNA-131 soak/sweeper suites — DORMANT in the private repo (HIMMEL-297:
-      # CI lives on the public side). Kept here as reference/commented-out YAML,
-      # not wired into any step — no `on:` trigger reaches this block. Un-comment
-      # only on the public repo once these suites are ready to gate there.
-      # run-shell-tests.sh cannot reach these: it only discovers `test-*.sh`, so
-      # no .ps1 suite is visible to it at all.
-      #
-      # HONEST SCOPE (preserved from the design, for when this is un-commented
-      # on the public repo): the windows-latest leg of this job expands only
-      # on `schedule` and carries continue-on-error, so the
-      # two Windows steps below would be a SIGNAL, not a gate — the real gate
-      # is the local run in the LUNA-131 build. The correlator step is
-      # cross-platform and would run on every PR's ubuntu leg, making IT the
-      # one real gate among the three. None of this fires here — the whole
-      # block is inert YAML comments.
-      #
-      # The vault suites hard-SKIP without pre-commit (test-vault-git.ps1:16-21),
-      # and a SKIP exits 0 — so without this install the Windows steps below
-      # would be a permanent vacuous PASS (LUNA-131).
-      # - name: Install pre-commit (Windows)
-      #   if: runner.os == 'Windows'
-      #   shell: bash
-      #   run: python -m pip install --disable-pip-version-check pre-commit==4.7.0
-      #
-      # - name: Vault sweeper suite (Windows only)
-      #   if: runner.os == 'Windows'
-      #   shell: bash
-      #   run: |
-      #     set -o pipefail
-      #     pwsh -NoProfile -File templates/luna-second-brain/scripts/test-vault-sweeper.ps1 | tee sweeper.log
-      #     if grep -q '^SKIP all' sweeper.log; then
-      #       echo "::error::vault-sweeper suite SKIPPED — a SKIP is not a pass"; exit 1
-      #     fi
-      #
-      # - name: Foreground-window logger suite (Windows only)
-      #   if: runner.os == 'Windows'
-      #   shell: bash
-      #   run: |
-      #     set -o pipefail
-      #     pwsh -NoProfile -File scripts/observability/test-foreground-window-log.ps1 | tee focus.log
-      #     if grep -q '^SKIP all' focus.log; then
-      #       echo "::error::foreground-window-log suite SKIPPED — a SKIP is not a pass"; exit 1
-      #     fi
-      #
-      # - name: Focus/tick correlator suite
-      #   run: node --test scripts/observability/focus-tick-correlate.test.mjs
 
   # Aggregating gate (HIMMEL-2872). Four things worth knowing before touching
   # this job:

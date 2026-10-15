@@ -506,15 +506,16 @@ fi
 # REPO_ROOT), so b/c drive it through a fake `git` on PATH that emits a
 # controlled `diff --name-only` -- the same faking idiom cases 8/9/11 use for
 # find/sort/sleep. Only the runner's two changed-set calls hit it; the stub
-# suites call no git. The conditional suite under test is test-propagate-public.sh
-# (the one real entry in the runner's SUITE_CONDITIONAL table), so a sandbox
-# stub of that name exercises the real table, not a hand-rolled one.
+# suites call no git. The production SUITE_CONDITIONAL table is empty, so the
+# cases drive the filter through the SUITE_CONDITIONAL env override (the same
+# seam SUITE_TIER and SUITE_REQUIRE_TOOL expose) with scripts/test-cond.sh.
 # --------------------------------------------------------------------------
 echo "== Case 12: conditional-suite filter (--changed-since) =="
+COND12='scripts/test-cond.sh  ^scripts/cond-trigger\.sh$  # injected conditional entry'
 
 # The fixtures live under $1/scripts/ and the runner is pointed at that dir,
 # because the built-in table entries are repo-root-relative
-# ("scripts/test-propagate-public.sh"). A flat sandbox would not match them and
+# ("scripts/test-cond.sh"). A flat sandbox would not match them and
 # the case would silently stop exercising the production table (HIMMEL-2260).
 # The nested namesake is the collision control: same basename, different
 # directory, so it must NOT inherit the conditional rule.
@@ -524,18 +525,18 @@ mk_cond_sandbox() {  # $1 = sandbox dir; test-pass.sh + the prop stub + a namesa
 #!/usr/bin/env bash
 exit 0
 SHEOF
-  cat > "$1/scripts/test-propagate-public.sh" <<'SHEOF'
+  cat > "$1/scripts/test-cond.sh" <<'SHEOF'
 #!/usr/bin/env bash
 touch "$(dirname "$0")/prop-ran.sentinel"
 exit 0
 SHEOF
-  cat > "$1/scripts/nested/test-propagate-public.sh" <<'SHEOF'
+  cat > "$1/scripts/nested/test-cond.sh" <<'SHEOF'
 #!/usr/bin/env bash
 touch "$(dirname "$0")/../namesake-ran.sentinel"
 exit 0
 SHEOF
-  chmod +x "$1/scripts/test-pass.sh" "$1/scripts/test-propagate-public.sh" \
-           "$1/scripts/nested/test-propagate-public.sh"
+  chmod +x "$1/scripts/test-pass.sh" "$1/scripts/test-cond.sh" \
+           "$1/scripts/nested/test-cond.sh"
 }
 
 # Fake `git`: emits a controlled `diff --name-only` (contents of $GIT_FAKE_DIFF)
@@ -576,7 +577,7 @@ sb12a=$(mktemp -d "${TMPDIR:-/tmp}/rst-case12a.XXXXXX") || { fail "12a: mktemp f
 if [ -n "$sb12a" ]; then
 mk_cond_sandbox "$sb12a"
 sentinel12a="$sb12a/scripts/prop-ran.sentinel"
-out12a=$(bash "$RUNNER" "$sb12a/scripts" 2>&1); rc12a=$?
+out12a=$(env SUITE_CONDITIONAL="$COND12" bash "$RUNNER" "$sb12a/scripts" 2>&1); rc12a=$?
 if [ "$rc12a" -eq 0 ] && [ -f "$sentinel12a" ]; then
   pass "12a: flag absent -> conditional suite runs"
 else
@@ -590,8 +591,8 @@ sb12b=$(mktemp -d "${TMPDIR:-/tmp}/rst-case12b.XXXXXX") || { fail "12b: mktemp f
 if [ -n "$sb12b" ]; then
 mk_cond_sandbox "$sb12b"
 sentinel12b="$sb12b/scripts/prop-ran.sentinel"
-diff12b="$sb12b/diff.txt"; printf 'scripts/propagate-public.sh\n' > "$diff12b"
-out12b=$(GIT_FAKE_DIFF="$diff12b" PATH="$fakebin12:$PATH" bash "$RUNNER" "$sb12b/scripts" --changed-since HEAD 2>&1); rc12b=$?
+diff12b="$sb12b/diff.txt"; printf 'scripts/cond-trigger.sh\n' > "$diff12b"
+out12b=$(GIT_FAKE_DIFF="$diff12b" PATH="$fakebin12:$PATH" env SUITE_CONDITIONAL="$COND12" bash "$RUNNER" "$sb12b/scripts" --changed-since HEAD 2>&1); rc12b=$?
 if [ "$rc12b" -eq 0 ] && [ -f "$sentinel12b" ] && ! grepq "$out12b" "conditional: no changed path matches"; then
   pass "12b: flag + matching change -> conditional suite runs"
 else
@@ -607,21 +608,21 @@ if [ -n "$sb12c" ]; then
 mk_cond_sandbox "$sb12c"
 sentinel12c="$sb12c/scripts/prop-ran.sentinel"
 diff12c="$sb12c/diff.txt"; printf 'scripts/ci/run-shell-tests.sh\n' > "$diff12c"
-out12c=$(GIT_FAKE_DIFF="$diff12c" PATH="$fakebin12:$PATH" bash "$RUNNER" "$sb12c/scripts" --changed-since HEAD 2>&1); rc12c=$?
+out12c=$(GIT_FAKE_DIFF="$diff12c" PATH="$fakebin12:$PATH" env SUITE_CONDITIONAL="$COND12" bash "$RUNNER" "$sb12c/scripts" --changed-since HEAD 2>&1); rc12c=$?
 if [ "$rc12c" -eq 0 ] && [ ! -f "$sentinel12c" ] && grepq "$out12c" "conditional: no changed path matches"; then
   pass "12c: flag + no matching change -> conditional suite SKIPped with reason"
 else
   fail "12c: expected SKIP with reason; rc=$rc12c sentinel=$([ -f "$sentinel12c" ] && echo yes || echo no); out: $out12c"
 fi
-# Collision control (HIMMEL-2260, CR): scripts/nested/test-propagate-public.sh
+# Collision control: scripts/nested/test-cond.sh
 # shares its BASENAME with the SUITE_CONDITIONAL entry but is a different
-# suite, so it must RUN even while the real entry is conditional-skipped. An
+# suite, so it must RUN even while the injected entry is conditional-skipped. An
 # under-qualified entry would suffix-match it and silently withhold an
 # unrelated suite from the run.
 if [ -f "$sb12c/scripts/namesake-ran.sentinel" ]; then
   pass "12c: the nested same-basename suite still RAN — the conditional entry did not suffix-match it"
 else
-  fail "12c: scripts/nested/test-propagate-public.sh was withheld by the conditional entry; out: $out12c"
+  fail "12c: scripts/nested/test-cond.sh was withheld by the conditional entry; out: $out12c"
 fi
 rm -rf "$sb12c"
 fi
@@ -631,7 +632,7 @@ sb12d=$(mktemp -d "${TMPDIR:-/tmp}/rst-case12d.XXXXXX") || { fail "12d: mktemp f
 if [ -n "$sb12d" ]; then
 mk_cond_sandbox "$sb12d"
 sentinel12d="$sb12d/scripts/prop-ran.sentinel"
-out12d=$(bash "$RUNNER" "$sb12d/scripts" --changed-since definitely-not-a-ref-xyz-1589 2>&1); rc12d=$?
+out12d=$(env SUITE_CONDITIONAL="$COND12" bash "$RUNNER" "$sb12d/scripts" --changed-since definitely-not-a-ref-xyz-1589 2>&1); rc12d=$?
 if [ "$rc12d" -eq 0 ] && [ -f "$sentinel12d" ] && grepq "$out12d" "running every suite"; then
   pass "12d: bad ref -> fail-open runs every suite (NOTE printed)"
 else
@@ -654,7 +655,7 @@ sb12e=$(mktemp -d "${TMPDIR:-/tmp}/rst-case12e.XXXXXX") || { fail "12e: mktemp f
 if [ -n "$sb12e" ]; then
 mk_cond_sandbox "$sb12e"
 sentinel12e="$sb12e/scripts/prop-ran.sentinel"
-out12e=$(PATH="$fakebin12:$PATH" bash "$RUNNER" "$sb12e/scripts" --changed-since --exit-code 2>&1); rc12e=$?
+out12e=$(PATH="$fakebin12:$PATH" env SUITE_CONDITIONAL="$COND12" bash "$RUNNER" "$sb12e/scripts" --changed-since --exit-code 2>&1); rc12e=$?
 if [ "$rc12e" -eq 0 ] && [ -f "$sentinel12e" ] && grepq "$out12e" "running every suite"; then
   pass "12e: option-shaped --changed-since value -> fail-open runs every suite (NOTE printed)"
 else
@@ -1146,7 +1147,7 @@ fi
 
 # --------------------------------------------------------------------------
 # Case 2267 — _suite_timeout_for's HIMMEL-2267 timeout-table arms
-# (scripts/test-propagate-public.sh, scripts/ci/test-suite-concurrency.sh, and
+# (scripts/ci/test-suite-concurrency.sh, and
 # until HIMMEL-2895 this file's own 1200s arm) were new/revised on that branch
 # and had no assertion. Each arm uses a dual "path|*/path" pattern because the
 # real caller passes a scan-root-prefixed path (see the comment above
@@ -1175,8 +1176,6 @@ else
       fail "2267: _suite_timeout_for '$1' (tier ${3:-all}) expected ${2}s got '$got'"
     fi
   }
-  check_timeout_2267 "scripts/test-propagate-public.sh" "2700"
-  check_timeout_2267 "/repo/scripts/test-propagate-public.sh" "2700"
   # HIMMEL-5375: adoption must not fall back to the 600s cap it hit in CI.
   check_timeout_2267 "scripts/test-adopt.sh" "1200"
   check_timeout_2267 "/repo/scripts/test-adopt.sh" "1200"
@@ -1239,8 +1238,7 @@ else
   # heavily node-spawning suite (winpath/hermetic-path.sh throughout), not a
   # suite hang or regression. This table has one shared value per suite
   # across every platform, so it is sized for the slower one, matching this
-  # table's established convention (test-propagate-public.sh,
-  # test-suite-concurrency.sh). 799 * 1.5 = 1198.5, rounded up to 1200.
+  # table's established convention (test-suite-concurrency.sh). 799 * 1.5 = 1198.5, rounded up to 1200.
   check_timeout_2267 "scripts/himmelctl/test/test-wizard-probes.sh" "1200"
   check_timeout_2267 "/repo/scripts/himmelctl/test/test-wizard-probes.sh" "1200"
 fi

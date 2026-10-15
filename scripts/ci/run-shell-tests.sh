@@ -386,31 +386,6 @@ _suite_timeout_for() {
       # pass. 3600s covers the worst figure ever observed with headroom;
       # SUITE_RUN_BUDGET stays the runaway backstop.
       printf '3600' ;;
-    scripts/test-propagate-public.sh|*/scripts/test-propagate-public.sh)
-      # HIMMEL-2267. HIMMEL-2243's coverage-validation window B was killed by
-      # the runner watchdog: "CAP EXCEEDED after 603s, cap 600s" -- a 3s
-      # overshoot of the 600s default. A standalone re-run on this box
-      # (overlord8, Git Bash, Windows 11) on 2026-08-30 finished healthy: rc=0
-      # in 1761s, summary line PASS, 124 ok: lines, zero failures. That 1761s
-      # was taken under moderate concurrent load.
-      #
-      # A second attempt at a clean idle figure was INVALIDATED, not red: it
-      # aborted at 1423s, rc=128, when the machine's global core.hooksPath
-      # tokensave watcher raced the suite's own `git add -A` ("unable to
-      # index file '.tokensave/.branch-meta.json...tmp'" / "fatal: adding
-      # files failed"). That is an environment defect, tracked separately as
-      # HIMMEL-2281, not a suite defect -- noted explicitly so a future reader
-      # does not mistake it for a red run.
-      #
-      # The 1423s partial and the 1761s complete run bracket the same place,
-      # so load turned out to be noise for this suite: it lands around
-      # 1700-1800s either way, making 1761s the honest figure rather than an
-      # inflated one. No clean idle benchmark exists yet. 2700s is 1761 + ~50%
-      # headroom. This is a LEAK-BARRIER suite (SUITE_CONDITIONAL, never
-      # SKIP_LIST) that must keep running in full passes, so a false CAP
-      # EXCEEDED is the exact failure class this entry deletes;
-      # SUITE_RUN_BUDGET stays the runaway backstop.
-      printf '2700' ;;
     # NO ARM for scripts/ci/test-run-shell-tests*.sh (HIMMEL-2895). It used to
     # carry a 1200s arm (HIMMEL-2267: 712s measured standalone by the
     # HIMMEL-2260 leg on 2026-08-30, x ~1.5). HIMMEL-2895 split that one
@@ -430,7 +405,7 @@ _suite_timeout_for() {
       # completed measurement. Measured standalone TO COMPLETION by the
       # HIMMEL-2260 leg on 2026-08-30, 19:20:28-19:35:52: 924s, rc=0, 158
       # PASS, summary line "OK: all cases passed". That window overlapped
-      # another suite run on this box (a test-propagate-public.sh
+      # another suite run on this box (a long-suite
       # measurement), so 924s is a possibly-loaded / worst-observed figure,
       # not an idle benchmark. 1500s is ~62% headroom over 924s.
       printf '1500' ;;
@@ -823,13 +798,12 @@ esac
 #   <repo-root-relative suite path>  <ERE over repo-relative changed paths>  # <reason>
 # The ERE is matched (grep -E, unanchored unless you anchor it) against each
 # repo-relative changed path from `git diff --name-only <ref>` + untracked.
-# test-propagate-public.sh is a LEAK-BARRIER suite: it must NOT move into
-# SKIP_LIST (that would drop it from every full run); it is conditional instead,
-# so a change unrelated to the propagation path skips it under --changed-since
-# while a full run still always exercises it.
-SUITE_CONDITIONAL="
-scripts/test-propagate-public.sh  ^scripts/(propagate-public|lib/public-clone-paths|test-propagate-public)\.sh$  # leak-barrier suite; only the propagation path can break it
-"
+# The table is empty: its one entry (a propagation leak-barrier suite) went with
+# scripts/propagate-public.sh. The mechanism stays, and the SUITE_CONDITIONAL env
+# override (the seam SUITE_TIER and SUITE_REQUIRE_TOOL expose) is how its
+# self-test (Case 12) drives it.
+SUITE_CONDITIONAL_DEFAULT=""
+SUITE_CONDITIONAL="${SUITE_CONDITIONAL:-$SUITE_CONDITIONAL_DEFAULT}"
 
 # Tier suites (HIMMEL-2120). A declarative corpus-reduction table, distinct
 # from SKIP_LIST (never runs here) and SUITE_CONDITIONAL (change-scoped): a
