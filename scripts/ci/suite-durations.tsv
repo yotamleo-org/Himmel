@@ -390,7 +390,6 @@ scripts/hooks/test-check-lanes-inventory.sh	0
 scripts/hooks/test-check-lockfile-integrity.sh	1
 scripts/hooks/test-check-main-ref-transaction.sh	3
 scripts/hooks/test-check-mcp-plugin-refs.sh	1
-scripts/hooks/test-check-new-shell-platform-guard.sh	0
 scripts/hooks/test-check-no-force-push.sh	1
 scripts/hooks/test-check-no-headless-gemini.sh	0
 scripts/hooks/test-check-no-ticket-id-in-user-strings.sh	0
@@ -538,7 +537,6 @@ scripts/lib/test-native-auth-pin.sh	1
 scripts/lib/test-observability-registry.sh	0
 scripts/lib/test-orphan-branches.sh	6
 scripts/lib/test-override-env.sh	1
-scripts/lib/test-platform-guard.sh	0
 scripts/lib/test-proc-tree.sh	1
 scripts/lib/test-provenance-identity.sh	0
 scripts/lib/test-provenance-read.sh	18

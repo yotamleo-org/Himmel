@@ -18,13 +18,6 @@ is how to safely edit a hook.
   Exception: `auto-arm-on-cap.sh` is a WATCHDOG, deliberately fail-open
   (it must never block tool calls on its own bugs) — do not "fix" it
   back to fail-closed; see its header for the exit-semantics contract.
-- Some hooks have `.ps1` Windows twins (`check-commit-msg`,
-  `check-hookspath`) — change both in lockstep (Windows dispatches these
-  specific hooks via PowerShell, so the twin is functionally required, not
-  advisory). For an ordinary new `scripts/**/*.sh` that isn't one of these
-  PowerShell-dispatched hooks, a `.ps1` twin is optional (HIMMEL-3125, Windows
-  is alpha) — `check-new-shell-platform-guard.sh` now warns rather than
-  blocks.
 
 ## Adding a NEW hook (the non-obvious part)
 

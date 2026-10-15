@@ -12,7 +12,7 @@
 #   a Jira key               (skipped on a `ponytail:` line, the one sanctioned place)
 #   a review-fix note, a bot-review round, "round <n>", a judge qid (j + 4 digits + letter)
 # Scope: .sh .bash .zsh .ps1 .psm1 .py .js .mjs .cjs .ts .tsx .mts .cts; paths with a
-# fixtures/ or *-fixtures/ segment, vendored trees and generated output are skipped.
+# fixtures/ or *-fixtures/ segment, archive/, vendored trees and generated output are skipped.
 # ponytail: only whole-line comments are seen, so a trailing comment after code slips through (a
 # trailing `#` is indistinguishable from a shell string without a parser); upgrade to a
 # per-language tokenizer if trailing history comments start to appear.
@@ -45,6 +45,7 @@ esac
 awk '
 function in_scope(p) {
     if (p !~ /\.(sh|bash|zsh|ps1|psm1|py|js|mjs|cjs|ts|tsx|mts|cts)$/) return 0
+    if (p ~ /^archive\//) return 0
     if (p ~ /(^|\/)[^\/]*fixtures?\//) return 0
     if (p ~ /^(graphify-out|node_modules)\// || p ~ /(^|\/)node_modules\//) return 0
     if (p ~ /^marketplace\/plugins\/claude-hud\// || p ~ /^marketplace\/plugins\/lean-skills\/skills\//) return 0

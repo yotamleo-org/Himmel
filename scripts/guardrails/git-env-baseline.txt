@@ -78,7 +78,6 @@ SHELL:scripts/hooks/check-lanes-inventory.sh
 SHELL:scripts/hooks/check-lockfile-integrity.sh
 SHELL:scripts/hooks/check-main-ref-transaction.sh
 SHELL:scripts/hooks/check-mcp-plugin-refs.sh
-SHELL:scripts/hooks/check-new-shell-platform-guard.sh
 SHELL:scripts/hooks/check-no-force-push.sh
 SHELL:scripts/hooks/check-no-headless-gemini.sh
 SHELL:scripts/hooks/check-no-ticket-id-in-user-strings.sh

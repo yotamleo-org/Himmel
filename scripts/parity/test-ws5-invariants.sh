@@ -34,10 +34,9 @@
 #                       gemini/copilot/cursor index rows stay deferred.
 #                       (The former T14(a) claude-codex-launcher prohibition
 #                       was retired 2026-07-13.)
-#   T15 x-platform   -- every NEW scripts/**/*.sh ships a .ps1 twin OR carries
-#                       a documented platform-guard marker in its header.
+#   T15 no-windows   -- no tracked .ps1/.cmd/.bat outside archive/windows/.
 #
-# Public propagation-snapshot guard: T12/T13/T15 assume
+# Public propagation-snapshot guard: T12/T13 assume
 # $BASE...HEAD is a normal feature-branch diff -- what one PR authored. A
 # public re-baseline (propagate-public.sh's `snapshot`/`reship` modes) breaks
 # that assumption: it re-projects the ENTIRE private tree onto the public
@@ -45,7 +44,7 @@
 # carried for months read as brand-new relative to PUBLIC's own git history.
 # T14 is untouched by this (T14(c) reads a doc directly, not diff-scoped) and
 # keeps running -- and keeps failing -- on every diff, snapshot or not; only
-# T12/T13/T15 are SKIPPED (never silently, always with a named reason), so a
+# T12/T13 are SKIPPED (never silently, always with a named reason), so a
 # snapshot that genuinely breaks T14 still fails the suite. Two EARLIER
 # revisions of this guard inferred "is this a snapshot" from added-file volume
 # and, later, volume PLUS scripts/lib/public-clone-paths.sh's absence -- both
@@ -117,7 +116,7 @@ fi
 # PLUS scripts/lib/public-clone-paths.sh's absence -- a second critic showed
 # that signal distinguishes "public repo" from "private repo", not
 # "propagation snapshot" from "feature PR": an ordinary public-repo PR adding
-# >100 scripts would ALSO have lost T12/T13/T15 under it. Two rounds, two
+# >100 scripts would ALSO have lost T12/T13 under it. Two rounds, two
 # holes in two different inferred signals -- that pattern is itself the
 # finding: inference is the wrong shape for this check, not a tuning problem.
 #
@@ -130,7 +129,7 @@ fi
 # a fact the propagator itself asserts by writing it.
 #
 # Ride-back guard: the marker must never appear on a
-# PRIVATE tree (a stray copy would falsely skip T12/T13/T15 there too).
+# PRIVATE tree (a stray copy would falsely skip T12/T13 there too).
 # scripts/propagate-public.sh is ITSELF private-only, by its own header, and
 # scripts/lib/propagation-drift.sh already relies on exactly that fact as
 # "a sufficient private signal" (its Guard 1) -- reused here rather than
@@ -143,7 +142,7 @@ fi
 # public main after a propagation INHERITS it. Presence therefore identifies
 # projection ANCESTRY -- "this tree descends from a snapshot" -- not "this diff
 # IS a snapshot", so an ordinary public-repo feature PR would inherit the
-# exemption and skip T12/T13/T15 indefinitely.
+# exemption and skip T12/T13 indefinitely.
 #
 # What distinguishes the two is the DIFF, and the marker already carries it:
 # snapshot and reship REWRITE the marker on every run (a fresh private base SHA
@@ -160,12 +159,12 @@ PRIVATE_ONLY_SIGNAL="scripts/propagate-public.sh"
 FAIL=0
 marker_in_diff="$(git diff --name-only "$BASE...HEAD" -- "$PUBLIC_PROJECTION_MARKER" 2>/dev/null)"
 if [ -f "$PUBLIC_PROJECTION_MARKER" ] && [ -f "$PRIVATE_ONLY_SIGNAL" ]; then
-    echo "FAIL: $PUBLIC_PROJECTION_MARKER is present alongside $PRIVATE_ONLY_SIGNAL -- a public-only propagation marker rode back into a private tree (HIMMEL-2642). This checkout is treated as private: T12/T13/T15 still run below." >&2
+    echo "FAIL: $PUBLIC_PROJECTION_MARKER is present alongside $PRIVATE_ONLY_SIGNAL -- a public-only propagation marker rode back into a private tree (HIMMEL-2642). This checkout is treated as private: T12/T13 still run below." >&2
     FAIL=$((FAIL + 1))
     PROPAGATION_SNAPSHOT=0
 elif [ -f "$PUBLIC_PROJECTION_MARKER" ] && [ -n "$marker_in_diff" ]; then
     PROPAGATION_SNAPSHOT=1
-    SNAPSHOT_REASON="$PUBLIC_PROJECTION_MARKER written by this diff -- propagate-public.sh rewrites it on every snapshot/reship, so this range IS a projection (HIMMEL-2642), not a feature branch that merely inherited the marker; T12/T13/T15 assume the diff is PR-authored content, so skipping. T14 still runs (see file header)."
+    SNAPSHOT_REASON="$PUBLIC_PROJECTION_MARKER written by this diff -- propagate-public.sh rewrites it on every snapshot/reship, so this range IS a projection (HIMMEL-2642), not a feature branch that merely inherited the marker; T12/T13 assume the diff is PR-authored content, so skipping. T14 still runs (see file header)."
 else
     PROPAGATION_SNAPSHOT=0
 fi
@@ -716,7 +715,7 @@ else
             # A trailing `# t13b-ok: <reason>` on THIS
             # shipped line is now the ONLY exemption (the lexical lookup
             # carve-out above is gone). It exempts only THIS line, only
-            # T13(b) (not T13(a), not T12/T14/T15), and never a different
+            # T13(b) (not T13(a), not T12/T14), and never a different
             # line (`t` holds only this own line text, so a marker on the
             # line above cannot cancel a hit here).
             # The marker only counts when it is
@@ -810,43 +809,19 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-# T15 -- cross-platform (AC9): every NEW scripts/**/*.sh ships a .ps1 twin OR
-# a documented platform-guard marker in its header. Predicate shared with
-# scripts/hooks/check-new-shell-platform-guard.sh via
-# scripts/lib/platform-guard.sh so the two cannot drift.
+# T15 -- Windows is dropped: no tracked .ps1/.cmd/.bat outside
+# archive/windows/, except a vendored upstream copy and the himmelctl installer files held for a follow-up.
 # ----------------------------------------------------------------------------
-if [ "$PROPAGATION_SNAPSHOT" -eq 1 ]; then
-    echo "SKIP T15 x-platform: $SNAPSHOT_REASON"
+t15_held='marketplace/plugins/i-have-adhd/hooks/always-on.ps1
+scripts/himmelctl/bootstrap.ps1
+scripts/himmelctl/lib/job-run.ps1'
+t15_stray="$(git ls-files '*.ps1' '*.cmd' '*.bat' | grep -v '^archive/windows/' | grep -v '/fixtures/' | grep -vxF "$t15_held" || true)"
+if [ -z "$t15_stray" ]; then
+    echo "PASS T15 no-windows: no tracked .ps1/.cmd/.bat outside archive/windows/."
 else
-    # shellcheck source=scripts/lib/platform-guard.sh
-    # shellcheck disable=SC1091
-    . "$REPO/scripts/lib/platform-guard.sh"
-    t15_fail=0
-    t15_n=0
-    while IFS= read -r sh_path; do
-        [ -n "$sh_path" ] || continue
-        t15_n=$((t15_n + 1))
-        if platform_guard_ok "$sh_path"; then
-            twin="${sh_path%.sh}.ps1"
-            if [ -f "$twin" ]; then
-                echo "ok T15: $sh_path -> .ps1 twin present ($twin)."
-            else
-                echo "ok T15: $sh_path -> documented platform-guard marker."
-            fi
-            continue
-        fi
-        echo "WARN T15: $sh_path has neither a .ps1 twin nor a platform-guard marker (advisory only, HIMMEL-3125 -- Windows is alpha)." >&2
-        t15_fail=1
-    done < <(git diff "$BASE...HEAD" --diff-filter=A --name-only -- 'scripts/' \
-        | grep -E '\.sh$' || true)
-
-    if [ "$t15_n" -eq 0 ]; then
-        echo "PASS T15 x-platform: no new scripts/**/*.sh in the diff (vacuous)."
-    elif [ "$t15_fail" -eq 0 ]; then
-        echo "PASS T15 x-platform: all ${t15_n} new scripts/**/*.sh have a twin or guard."
-    else
-        echo "PASS T15 x-platform (advisory, HIMMEL-3125): ${t15_n} new scripts/**/*.sh, some without a twin or guard -- no longer CI-gated now that Windows is alpha; see docs/internals/harness-compat.md."
-    fi
+    echo "FAIL T15 no-windows: tracked Windows files outside archive/windows/:" >&2
+    printf '%s\n' "$t15_stray" | head -10 >&2
+    FAIL=$((FAIL + 1))
 fi
 
 # ----------------------------------------------------------------------------
@@ -854,15 +829,15 @@ fi
 # ----------------------------------------------------------------------------
 if [ "$FAIL" -ne 0 ]; then
     if [ "$PROPAGATION_SNAPSHOT" -eq 1 ]; then
-        echo "FAIL: WS5 invariants test failed ($FAIL section(s)) -- T12/T13/T15 skipped (propagation snapshot), T14 ran and failed." >&2
+        echo "FAIL: WS5 invariants test failed ($FAIL section(s)) -- T12/T13 skipped (propagation snapshot), T14 ran and failed." >&2
     else
         echo "FAIL: WS5 invariants test failed ($FAIL section(s))." >&2
     fi
     exit 1
 fi
 if [ "$PROPAGATION_SNAPSHOT" -eq 1 ]; then
-    echo "PASS: WS5 invariants test (T14 locks ran; T12 no-bloat, T13 no-always-on, T15 x-platform SKIPPED -- propagation snapshot, HIMMEL-2642)."
+    echo "PASS: WS5 invariants test (T14 locks ran; T12 no-bloat, T13 no-always-on SKIPPED -- propagation snapshot, HIMMEL-2642)."
 else
-    echo "PASS: WS5 invariants test (T12 no-bloat, T13 no-always-on, T14 locks, T15 x-platform)."
+    echo "PASS: WS5 invariants test (T12 no-bloat, T13 no-always-on, T14 locks, T15 no-windows)."
 fi
 exit 0

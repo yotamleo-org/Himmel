@@ -53,7 +53,6 @@ run_case() {
     cases=$((cases+1))
     mkdir -p "$dir/scripts/parity" "$dir/scripts/lib" "$dir/docs/internals" "$dir/$(dirname "$path")"
     cp "$REPO/scripts/parity/test-ws5-invariants.sh" "$REPO/scripts/parity/t12-no-bloat-lib.sh" "$dir/scripts/parity/"
-    cp "$REPO/scripts/lib/platform-guard.sh" "$dir/scripts/lib/"
     printf '| gemini | deferred |\n' > "$dir/docs/internals/lane-parity.md"
     printf '# fixture\n' > "$dir/CLAUDE.md"
     printf 'x\n' > "$dir/$path"

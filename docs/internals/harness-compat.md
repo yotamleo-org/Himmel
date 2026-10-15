@@ -1,17 +1,10 @@
 # Harness compatibility — running himmel under Codex (and beyond)
 
-> **Platform tier:** this doc's **Windows** content (Git Bash,
-> `.ps1` twins, WSL) describes the **alpha** tier — code paths present, best
-> effort, not CI-gated. Linux and macOS are the **Supported** tier. See the
-> [README support matrix](../../README.md#support-matrix). New scripts target
-> bash (still bash 3.2-safe, for macOS); a `.ps1` twin is optional, added only
-> when someone is actually working the Windows path — except hooks that run in
-> a PowerShell-dispatched context (e.g. `SessionEnd`), which still need a twin
-> in lockstep with the `.sh`. Enforcement is warn-only at every site that used
-> to hard-block on a missing twin: the pre-commit gate
-> (`scripts/hooks/check-new-shell-platform-guard.sh`,
-> `.pre-commit-config.yaml:536`) and CI's T15 check
-> (`scripts/parity/test-ws5-invariants.sh`) both warn instead of failing.
+> **Platform tier:** Windows is dropped (HIMMEL-5729); the `.ps1` twins live in
+> `archive/windows/`, unmaintained and unscanned. Linux and macOS are the **Supported**
+> tier, see the [README support matrix](../../README.md#support-matrix). New scripts
+> target bash (still bash 3.2-safe, for macOS) and need no `.ps1` twin. Windows
+> content below is kept as history.
 
 himmel is built end-to-end around **Claude Code's** contract: PreToolUse
 guardrail hooks, a plugin/marketplace system, skills, slash commands, and
