@@ -196,9 +196,10 @@ run against a different value — it just isn't what the armed cadence uses.)
 
 With `--semantic`, `graph-cadence.sh` runs `semantic-update.sh` on the
 dedicated worktree and classifies its exit code. The backend is
-`GRAPH_CADENCE_SEMANTIC_BACKEND`: `claude-cli` (default, Sonnet, gated on the subscription usage budget) or
-`ollama` (opt-in, local, needs a GPU); any other value refuses (rc 1) before
-any work (HIMMEL-5367).
+`GRAPH_CADENCE_SEMANTIC_BACKEND`: `claude-cli` (default, Sonnet, gated on the subscription usage budget),
+`claude-api` (API credit through the API lane; needs `HIMMEL_API_LANE=on` and `HIMMEL_API_ACCOUNT`, refuses rc 1
+otherwise, never falls back to the subscription) or `ollama` (opt-in, local, needs a GPU); `api` and `cli` are
+aliases, resolved by `scripts/lib/llm-backend.sh`. Any other value refuses (rc 1) before any work (HIMMEL-5367, HIMMEL-5835).
 
 | rc | meaning | cadence result |
 |---|---|---|
