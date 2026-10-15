@@ -47,4 +47,16 @@ run --repo-path "$tmp/beta" --state-host "$state2" --user tester --registry "$re
 [ "$rc" -eq 0 ] && [ ! -e "$state2/tester/counter.md" ] || fail "--init-if-empty must register without bootstrapping non-empty state (rc=$rc: $out)"
 echo "ok: --init refuses non-empty state; --init-if-empty registers it as-is"
 
+run --repo-path "$tmp/beta" --state-host "$state2" --user '../evil' --registry "$tmp/reg2.json" --init
+[ "$rc" -eq 1 ] && [ ! -e "$tmp/evil" ] || fail "a user slug with path separators must be rejected (rc=$rc: $out)"
+echo "ok: user slug validated"
+
+mkdir "$tmp/reg2.json.lock"
+run --repo-path "$tmp/beta" --state-host "$state2" --user tester --registry "$tmp/reg2.json" --init-if-empty
+[ "$rc" -eq 2 ] || fail "a held registry lock must refuse (rc=$rc: $out)"
+rmdir "$tmp/reg2.json.lock"
+run --repo-path "$tmp/beta" --state-host "$state2" --user tester --registry "$tmp/reg2.json" --init-if-empty
+[ "$rc" -eq 0 ] && [ ! -e "$tmp/reg2.json.lock" ] || fail "lock must be released after a run (rc=$rc: $out)"
+echo "ok: registry lock held -> refused, released after use"
+
 echo "PASS"

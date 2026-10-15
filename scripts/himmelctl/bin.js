@@ -2753,7 +2753,7 @@ function handoverRegistered() {
   const script = registerStateScript();
   if (!fs.existsSync(script)) return true;
   const r = spawnSync(resolveBash(), [toBashPath(script), '--check', '--repo-path', toBashPath(repoRoot())], { encoding: 'utf8' });
-  return r.status !== 3;
+  return r.status === 0;
 }
 
 function registerHandoverState(p) {

@@ -6,8 +6,7 @@
 # and the himmelctl install wizard (external handover mode), so neither carries
 # a parallel registry implementation.
 #
-# PLATFORM GUARD: no .ps1 twin — bash + node only, runs under Git Bash on
-# Windows and any POSIX bash 3.2+ (same contract as set-handover-dir.sh).
+# bash 3.2-safe; bash + node only.
 #
 # Usage:
 #   register-state.sh --repo-path <abs git repo> --state-host <abs dir>
@@ -94,12 +93,24 @@ if [ -z "$USER_ARG" ]; then
     . "$SCRIPT_DIR/../lib/user-slug.sh"
     USER_ARG="$(user_slug)" || { echo "ERR register-state: cannot resolve user slug; pass --user or set USER_SLUG" >&2; exit 2; }
 fi
+case "$USER_ARG" in *[!A-Za-z0-9._-]*|.|..) echo "ERR register-state: user slug must be [A-Za-z0-9._-]: $USER_ARG" >&2; exit 1 ;; esac
 NAME="${NAME:-$(slugify "$(basename "$REPO_PATH")")}"
 BUCKET="${BUCKET:-$(slugify "$(basename "$REPO_PATH")")}"
 case "$NAME" in ''|*[!a-z0-9-]*) echo "ERR register-state: name must be kebab-case: $NAME" >&2; exit 1 ;; esac
 [ "${#NAME}" -le 30 ] || { echo "ERR register-state: name longer than 30 chars: $NAME" >&2; exit 1; }
 
 STATE_ROOT="$STATE_HOST/$USER_ARG"
+
+# Serialise validate + write across concurrent registrations (mkdir is atomic).
+mkdir -p "$(dirname "$REG")"
+LOCK="$REG.lock"
+tries=0
+until mkdir "$LOCK" 2>/dev/null; do
+    tries=$((tries + 1))
+    [ "$tries" -le 100 ] || { echo "ERR register-state: registry lock busy: $LOCK (remove it if no other registration is running)" >&2; exit 2; }
+    sleep 0.1
+done
+trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
 
 # Validate against the registry BEFORE any disk write (collisions leave no
 # partial state). Prints "noop" when the same path+name is already registered.
@@ -108,7 +119,7 @@ verdict="$(REG="$REG" RP="$REPO_PATH" NAME="$NAME" BUCKET="$BUCKET" node -e '
   let j={repos:{}};
   if(fs.existsSync(e.REG)){ try{ j=JSON.parse(fs.readFileSync(e.REG,"utf8")); }catch(err){ console.error("ERR register-state: registry parse error: "+err.message); process.exit(2); } }
   const repos=(j&&j.repos)||{};
-  const n=(s)=>String(s||"").replace(/\\/g,"/").replace(/\/+$/,"").toLowerCase();
+  const n=(s)=>String(s||"").replace(/\\/g,"/").replace(/\/+$/,"").toLowerCase();  // same fold as the registry readers (resolve-active-item.sh, resume.sh)
   for(const k of Object.keys(repos)){
     const samePath=n(repos[k].path)===n(e.RP);
     if(samePath&&k===e.NAME){ console.log("noop"); process.exit(0); }
