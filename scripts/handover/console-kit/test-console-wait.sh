@@ -775,6 +775,18 @@ wait_exit "$WPID"
 check "(pk2) a leg joining the parked set ends the wait" "0" "$rc"
 check "(pk2) the wake names parked" "WAKE tick changed=parked bank=PROCEED" "$(head -n1 "$WORK/pk2.out")"
 
+# the same legs parked in a different order is not a membership change
+reset_stub
+parked_line N1:6m,N2:7m
+I="$(new_inbox pk4)"
+start "$I" "$WORK/pk4.out" --legs "N1.md"
+wait_hb "$I" || fail "(pk4) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+parked_line N2:7m,N1:6m
+wait_exit "$WPID"
+check "(pk4) a reordered parked set does not wake" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 # a leg LEAVING the parked set (the field disappears) wakes too
 reset_stub
 parked_line N1:6m

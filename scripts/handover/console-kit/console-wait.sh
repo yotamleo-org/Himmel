@@ -251,7 +251,8 @@ sample() {
         # vmrun= keeps its class only (off|ok|DEAD|STUCK), not the counts.
         [ "$f" = vmrun ] && v="${v%%,*}"
         # parked= keeps the leg names only: the age grows every tick and must not re-wake.
-        [ "$f" = parked ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g')"
+        # The names are sorted: the doc order must not decide the key.
+        [ "$f" = parked ] && v="$(printf '%s' "$v" | sed -E 's/:[0-9]+m(,|$)/\1/g' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
         key="$key$f=$v|"
     done
     key="${key}bank=$bank"
