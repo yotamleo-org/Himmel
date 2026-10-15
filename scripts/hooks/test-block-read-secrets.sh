@@ -1208,6 +1208,8 @@ assert_rc "5659 git -c mixed-case Alias key then commit -m" 2 "$(run_case "$(j_b
 assert_rc "5659 GIT_CONFIG_* alias then commit -m word"    2 "$(run_case "$(j_bash "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.x GIT_CONFIG_VALUE_0='!set -o \"\$1\"' git x commit -m xtrace")")"
 assert_rc "5659 git subcommand must be positional"         2 "$(run_case "$(j_bash "git x commit -m xtrace")")"
 assert_rc "5659 git --config-env then commit -m word"      2 "$(run_case "$(j_bash "git --config-env=alias.x=AL x commit -m xtrace")")"
+assert_rc "5659 gh alias with -b carrying the word"        2 "$(run_case "$(j_bash "gh x -b xtrace")")"
+assert_rc "5659 gh pr create --body word still allows"     0 "$(run_case "$(j_bash "gh pr create -t T -b xtrace")")"
 assert_rc "5659 git -C dir commit -m word still allows"    0 "$(run_case "$(j_bash "git -C /tmp/some-dir commit -m xtrace")")"
 
 echo ""

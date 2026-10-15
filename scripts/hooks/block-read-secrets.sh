@@ -841,11 +841,11 @@ g4_scan() {
         # for the NEXT word.
         xskip=$dsc
         if [ "$msgv" = 1 ]; then msgv=0; xskip=1; fi
-        # git's message flag is data only for the positional subcommand (the
+        # git/gh message flags are data only for the positional subcommand (the
         # first non-option word, past the values of -C/--git-dir/--work-tree/
         # --namespace) and only when no config override could define an alias
         # that runs the flag's value as code (-c, --config-env, GIT_CONFIG_*).
-        if [ "$cmd" = "git" ]; then
+        if [ "$cmd" = "git" ] || [ "$cmd" = "gh" ]; then
             if [ "$gskip" = 1 ]; then gskip=0
             else
                 case "$d" in
@@ -854,16 +854,16 @@ g4_scan() {
                     -*) ;;
                     *) if [ "$gsub" = 0 ]; then
                            gsub=1
-                           case "$d" in commit|tag|merge|notes|revert) gmsg=1 ;; esac
+                           case "$cmd:$d" in git:commit|git:tag|git:merge|git:notes|git:revert|gh:pr|gh:issue|gh:release) gmsg=1 ;; esac
                        fi ;;
                 esac
             fi
         fi
         case "$cmd:$d" in
             git:-m|git:-am|git:--message) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then msgv=1; fi ;;
-            gh:-b|gh:--body|gh:-t|gh:--title) msgv=1 ;;
+            gh:-b|gh:--body|gh:-t|gh:--title) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then msgv=1; fi ;;
             git:--message=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
-            gh:--body=*|gh:--title=*) xskip=1 ;;
+            gh:--body=*|gh:--title=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
         esac
         if [ "$xskip" = 0 ]; then
         case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
