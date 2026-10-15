@@ -780,6 +780,17 @@ for f in scripts/hooks/brand-new-guard.sh scripts/hooks/new-guard.mjs .claude/se
   out="$(run_is "$range")"
   if grepq "$out" "$UWH"; then pass "$f -> test-unwired-hooks.sh (scan root)"; else fail "unwired-hooks suite not selected for $f: $out"; fi
 done
+# Parity: every entry of check-unwired-hooks.sh's WIRING array must list the suite,
+# so a root added there without a scan_roots row fails here, not on main.
+wiring_entries="$(awk '/^WIRING=\(/{on=1;next} on&&/^\)/{exit} on{gsub(/^[ \t]+|[ \t]+$/,"");print}' "$REPO_ROOT/scripts/testing/check-unwired-hooks.sh")"
+if [ -z "$wiring_entries" ]; then fail "could not read WIRING from check-unwired-hooks.sh"; fi
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  mkdir -p "$FX/$(dirname "$f")"
+  change "$f"
+  out="$(run_is "$range")"
+  if grepq "$out" "$UWH"; then pass "WIRING entry $f -> test-unwired-hooks.sh (parity)"; else fail "WIRING entry $f has no scan_roots row for test-unwired-hooks.sh: $out"; fi
+done <<< "$wiring_entries"
 git -C "$FX" mv scripts/hooks/brand-new-guard.sh scripts/hooks/renamed-guard.sh
 git -C "$FX" commit -q -m "chore: rename hook"
 range="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
