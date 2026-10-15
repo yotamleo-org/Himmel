@@ -1862,12 +1862,26 @@ jira_auto_transition_on_merge() {
                 const dated = vs.filter(v => v[1] === "false" && v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
                 const unrel = vs.filter(v => v[1] === "false");
                 const cur = dated.length ? dated[0][0] : unrel.length ? unrel[0][0] : "";
-                if (cur && have.some(n => open.has(n) && n !== cur)) process.stdout.write(cur);
+                if (cur && have.some(n => open.has(n) && n !== cur)) {
+                    const keep = have.filter(n => !open.has(n));
+                    process.stdout.write([cur].concat(keep).join("\n"));
+                }
             } catch {}
         ' "$versions_out" 2>/dev/null)
         if [ -n "$fold_to" ]; then
-            if ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --fix-version "$fold_to" ) >/dev/null 2>&1; then
-                JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fixversion=$fold_to"
+            # --fix-version replaces the whole set, so the versions the ticket
+            # already holds outside the unreleased ones are re-added after it.
+            local fold_cur fold_keep fold_rc=0
+            fold_cur=${fold_to%%$'\n'*}
+            ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --fix-version "$fold_cur" ) >/dev/null 2>&1 || fold_rc=1
+            if [ "$fold_rc" -eq 0 ] && [ "$fold_to" != "$fold_cur" ]; then
+                while IFS= read -r fold_keep; do
+                    [ -n "$fold_keep" ] || continue
+                    ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 || fold_rc=1
+                done <<< "${fold_to#*$'\n'}"
+            fi
+            if [ "$fold_rc" -eq 0 ]; then
+                JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fixversion=$fold_cur"
             else
                 JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fixversion=failed"
             fi
