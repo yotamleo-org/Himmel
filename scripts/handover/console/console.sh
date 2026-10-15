@@ -340,7 +340,7 @@ do_arm() {
 # naming each one. The console's own console-wait.sh waiter (and what it forked)
 # is the one exemption: it is stopped here, and only after nothing else blocks.
 wrap_subtree_gate() {
-    local sub src=0 plan kills blocks pid subs sp
+    local sub src=0 plan kills blocks pid subs sp pp alive
     sub=$(bash "${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}" 2>&1) || src=$?
     [ "$src" -ne 0 ] || return 0
     if [ "$src" -ne 1 ]; then
@@ -380,9 +380,22 @@ wrap_subtree_gate() {
             # its whole subtree first, deepest-first, each pid confirmed gone, so
             # no descendant outlives it as an orphan the re-check below can no
             # longer see
+            alive=" $pid $(printf '%s' "$subs" | tr '\n' ' ') "
             for sp in $subs; do
+                # a descendant that exited since the snapshot may have had its pid reused:
+                # signal only a pid still parented inside the waiter's subtree
+                pp=$(ps -o ppid= -p "$sp" 2>/dev/null | tr -d ' ') || true
+                case "$alive" in *" $pp "*) ;; *) continue ;; esac
                 kill -TERM "$sp" 2>/dev/null || true
                 for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$sp" 2>/dev/null || break; sleep 0.2; done
+                if kill -0 "$sp" 2>/dev/null; then
+                    kill -KILL "$sp" 2>/dev/null || true
+                    sleep 0.2
+                fi
+                if kill -0 "$sp" 2>/dev/null; then
+                    err "wrap refused: descendant $sp of the console-wait waiter survived TERM and KILL - waiter left running, re-run once it exits"
+                    exit 5
+                fi
             done
             kill -TERM "$pid" 2>/dev/null || true
         fi
