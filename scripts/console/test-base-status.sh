@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit test for scripts/console/base-status.sh (HIMMEL-2383). Exit 0 if all
+# Unit test for scripts/console/base-status.sh. Exit 0 if all
 # pass. GH_CMD stub seam (matches test-sweep-cr-threads.sh); no network.
 set -uo pipefail
 
@@ -91,7 +91,7 @@ else
 fi
 
 # A comments-query failure on one PR is a QUERY-ERROR + nonzero exit, not a
-# swallowed clean result (HIMMEL-2320 posture, matching sweep-cr-threads.sh).
+# swallowed clean result (matching sweep-cr-threads.sh).
 GH_STUB3="$TMP_ROOT/gh-stub-commentfail.sh"
 cat > "$GH_STUB3" <<'STUB'
 #!/usr/bin/env bash
@@ -147,7 +147,7 @@ else
     fail "exact-file fence" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err4")'"
 fi
 
-# HIMMEL-2383 CR finding codex-3: a SUMMARY comment posted against an
+# A SUMMARY comment posted against an
 # EARLIER revision of the PR (a stale head) must not certify the
 # subsequently-merged head — PR 501's current headRefOid is "new501" but
 # its only SUMMARY comment carries "head: old501".
@@ -175,7 +175,7 @@ else
     fail "stale-head SUMMARY" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err6")'"
 fi
 
-# HIMMEL-2383 CR finding codex-4: a TRUNCATED (budget-expired) report is
+# A TRUNCATED (budget-expired) report is
 # PENDING regardless of its FAIL count — PR 502 has FAIL: 0 but is marked
 # TRUNCATED, so it must not read as clean.
 GH_STUB6="$TMP_ROOT/gh-stub-truncated.sh"
@@ -202,7 +202,7 @@ else
     fail "TRUNCATED report" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err7")'"
 fi
 
-# HIMMEL-2383 CR finding codex-5: an unparseable FAIL count must not default
+# An unparseable FAIL count must not default
 # to clean — PR 503's SUMMARY carries the markers + a matching head, but no
 # 'FAIL: <n>' line at all (a malformed/hand-copied report).
 GH_STUB7="$TMP_ROOT/gh-stub-nofailcount.sh"
@@ -229,7 +229,7 @@ else
     fail "unparseable FAIL count" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err8")'"
 fi
 
-# HIMMEL-2383 CR finding codex-2: hitting the merged-PR list limit means
+# Hitting the merged-PR list limit means
 # older history was not checked — that is a QUERY-ERROR (nonzero exit), not
 # a silently-clean sweep. Generate exactly PR_LIST_LIMIT (200) merged PRs
 # via jq rather than hand-writing them.
@@ -256,7 +256,7 @@ else
     fail "list truncated at the limit" "rc=$rc out='$out' err='$err'"
 fi
 
-# HIMMEL-2469: 300+ merges per 30 days is everyday volume, so a list of 250
+# 300+ merges per 30 days is everyday volume, so a list of 250
 # (above the 200 cap of one query, spread over the paged merge days) must
 # certify clean at exit 0, not QUERY-ERROR.
 GH_STUB8B="$TMP_ROOT/gh-stub-250list.sh"
@@ -293,7 +293,7 @@ else
     fail "250-PR window" "rc=$rc out='$out' err='$err'"
 fi
 
-# HIMMEL-2469: one failing page of the paged fetch must still refuse to
+# One failing page of the paged fetch must still refuse to
 # certify (fail-closed), not be skipped.
 GH_STUB8C="$TMP_ROOT/gh-stub-pagefail.sh"
 cat > "$GH_STUB8C" <<'STUB'
@@ -320,8 +320,7 @@ else
     fail "failed page" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err9c")'"
 fi
 
-# HIMMEL-2383 CR finding codex-3 (round 3): author-binding was tried in
-# round 2 and REVERTED — this repo's multi-session, multi-machine
+# Author-binding was rejected: this repo's multi-session, multi-machine
 # architecture means the poster and the checker need not share a gh
 # identity, so binding to "whoever gh is currently authenticated as" would
 # silently and permanently reject legitimate reports posted under a
@@ -353,7 +352,7 @@ else
     fail "different-author SUMMARY" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err10")'"
 fi
 
-# HIMMEL-2383 CR finding codex-4 (round 2): malformed JSON on a successful
+# Malformed JSON on a successful
 # `gh pr list` exit must be a QUERY-ERROR, not a silent "0 PRs, all clean".
 GH_STUB11="$TMP_ROOT/gh-stub-malformed.sh"
 cat > "$GH_STUB11" <<'STUB'
@@ -375,7 +374,7 @@ else
     fail "malformed pr-list JSON" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err12")'"
 fi
 
-# HIMMEL-2383 CR finding codex-3 (round 5): malformed COMMENTS JSON on a
+# Malformed COMMENTS JSON on a
 # successful `gh pr view` exit must be a QUERY-ERROR, not silently folded
 # into the same PENDING outcome an empty/no-match comments list gets.
 GH_STUB12="$TMP_ROOT/gh-stub-malformed-comments.sh"
@@ -403,7 +402,7 @@ else
     fail "malformed comments JSON" "rc=$rc out='$out' err='$err'"
 fi
 
-# HIMMEL-2383 CR finding codex-3 (round 6): valid-but-wrong-shaped JSON
+# Valid-but-wrong-shaped JSON
 # ({} or null, not an array) on a successful gh exit must be a QUERY-ERROR,
 # not read as "0 PRs" (a jq `length` on either also returns a valid 0).
 GH_STUB13="$TMP_ROOT/gh-stub-wrongshape.sh"
@@ -426,7 +425,7 @@ else
     fail "wrong-shaped pr-list JSON" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err14")'"
 fi
 
-# HIMMEL-2383 CR finding codex-4 (round 6): a fence arg WITH a trailing
+# A fence arg WITH a trailing
 # slash must still match — a natural way to spell a directory.
 GH_STUB14="$TMP_ROOT/gh-stub-trailingslash.sh"
 cat > "$GH_STUB14" <<'STUB'
@@ -451,7 +450,7 @@ else
     fail "trailing-slash fence arg" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err15")'"
 fi
 
-# HIMMEL-2421: a fence arg with a leading ./ must still match (gh lists
+# A fence arg with a leading ./ must still match (gh lists
 # paths without one), and a bare . is the repo root — it matches every path.
 echo "TEST: a fence arg with a leading ./ still matches"
 out=$(GH_CMD="$GH_STUB14" "$BASE_STATUS" ./scripts/hooks 2>"$TMP_ROOT/err21")
@@ -473,7 +472,7 @@ else
     fail "bare-. fence arg" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err22")'"
 fi
 
-# HIMMEL-2383 CR finding codex-1 (round 12): a SUMMARY with no scope line at
+# A SUMMARY with no scope line at
 # all (an older-format report) must read PENDING, not clean — missing scope
 # means "coverage unknown", not "assume covered".
 GH_STUB15="$TMP_ROOT/gh-stub-noscope.sh"
@@ -500,7 +499,7 @@ else
     fail "missing scope line" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err16")'"
 fi
 
-# HIMMEL-2383 CR finding codex-1 (round 12): a SUMMARY whose scope is a
+# A SUMMARY whose scope is a
 # DIFFERENT, non-ancestor subtree (scripts/ci) must not certify an unrelated
 # fence (scripts/hooks) as clean, even though PASS/head/markers all match.
 GH_STUB16="$TMP_ROOT/gh-stub-scopemismatch.sh"
@@ -553,7 +552,7 @@ else
     fail "ancestor scope" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err18")'"
 fi
 
-# HIMMEL-2383 CR finding codex-1 (round 13): a PR touching TWO of the
+# A PR touching TWO of the
 # requested fences, with a report scoped to only ONE of them, must certify
 # the covered fence but still flag the other as PENDING — not silently skip
 # it because the first-matched fence happened to be clean.
@@ -582,7 +581,7 @@ else
     fail "multi-fence partial coverage" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err19")'"
 fi
 
-# HIMMEL-2383 CR finding codex-2 (round 13): a --changed-since run's
+# A --changed-since run's
 # CHANGED-SINCE marker means suites were conditionally filtered — not full
 # scope coverage — so it reads PENDING despite an otherwise-clean summary.
 GH_STUB19="$TMP_ROOT/gh-stub-changedsince.sh"
@@ -609,7 +608,7 @@ else
     fail "CHANGED-SINCE report" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err20")'"
 fi
 
-# HIMMEL-2500: gh rejects `--comments` combined with `--json` — the stub
+# gh rejects `--comments` combined with `--json` — the stub
 # mimics that real rejection (the other stubs above match on args loosely
 # and never actually enforce it). Certification must reach a real verdict,
 # not a QUERY-ERROR fallback, once the fix drops `--comments`.

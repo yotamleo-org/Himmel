@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit test for scripts/console/sweep-cr-threads.sh (HIMMEL-2320). Exit 0 if
+# Unit test for scripts/console/sweep-cr-threads.sh. Exit 0 if
 # all pass. GH_CMD stub seam (matches scripts/lib/test-forge.sh); no network.
 set -uo pipefail
 
@@ -43,7 +43,7 @@ else
     fail "clean sweep" "rc=$rc out='$out' err='$(cat "$TMP_ROOT/err1")'"
 fi
 
-# ── stub 2: the HIMMEL-2320 wrong-slug shape — GraphQL errors + null PR ─────
+# ── stub 2: the wrong-slug shape — GraphQL errors + null PR ─────
 # This is the exact regression: a query against the wrong repo returns a
 # NOT_FOUND error and a null pullRequest, NOT a zero thread count.
 GH_STUB2="$TMP_ROOT/gh-stub-wrongslug.sh"

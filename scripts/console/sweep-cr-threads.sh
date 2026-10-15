@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/console/sweep-cr-threads.sh — fail-closed GraphQL review-thread
-# sweep for a judge/console session (HIMMEL-2320).
+# sweep for a judge/console session.
 #
 # Freezes an ad-hoc sweep that shipped a false-clean verdict: it queried
 # reviewThreads against the WRONG repo slug (yotamleo/himmel instead of

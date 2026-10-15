@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/console/base-status.sh — HIMMEL-2383 base verification.
+# scripts/console/base-status.sh — base verification.
 #
 # Console ruling 66: arm a leg on a fence only when every merged PR that
 # touched it already carries its after-report SUMMARY comment. This lists the
@@ -9,18 +9,18 @@
 # "what's blocking the arm" list, not a full status dump.
 #
 # The after-report this looks for is the LITERAL block
-# scripts/ci/run-shell-tests.sh posts (HIMMEL-2383 item 4): a comment
+# scripts/ci/run-shell-tests.sh posts: a comment
 # containing '== Summary ==', a 'PASS:' line, a 'head: <sha>' line
 # matching the PR's CURRENT headRefOid exactly (a report from an earlier
 # revision does not certify the head that actually merged), AND a
-# 'scope: <scan-root>' line that IS this fence or an ancestor of it (round-12
-# CR finding codex-1 — a scoped run's clean PASS must not be read as
+# 'scope: <scan-root>' line that IS this fence or an ancestor of it (a
+# scoped run's clean PASS must not be read as
 # certifying an unrelated or narrower fence; checked per touched fence,
-# round-13 CR finding codex-1 — a report can cover one of a PR's touched
+# since a report can cover one of a PR's touched
 # fences but not another). A TRUNCATED report (budget-expired run), a
-# CHANGED-SINCE report (conditionally filtered suites, round-13 CR finding
-# codex-2), or one whose FAIL count cannot be parsed is never read as clean
-# either. NOT author-bound (tried and reverted — see the
+# CHANGED-SINCE report (conditionally filtered suites), or one whose FAIL
+# count cannot be parsed is never read as clean
+# either. NOT author-bound (see the
 # comment at the summary match below): this repo's multi-session,
 # multi-machine architecture means the poster and the checker need not share
 # a gh identity, so author-binding would silently and permanently reject
@@ -29,9 +29,6 @@
 # Prose that merely TALKS about test results (a hand-written "80/80 pass"
 # note, a CodeRabbit review) does not count — PENDING means "the
 # machine-posted after-report isn't here yet", not "nobody mentioned tests"
-# (HIMMEL-2320: a zero here is real evidence of a gap, not a detection miss
-# — verified live against #2085/#2090/#2092, none of which carry the
-# literal block yet).
 #
 # Usage: base-status.sh <fence-path> [<fence-path> ...]
 #   fence-path   a repo-relative dir (matches itself and everything under it)
@@ -44,14 +41,14 @@
 #
 # Exit: 0 if every PR was queried successfully (whatever PENDING/RED lines
 # resulted — that is data, not a failure); nonzero if any PR hit a
-# QUERY-ERROR, the merged-PR list may be truncated (HIMMEL-2383 CR: cannot
+# QUERY-ERROR, the merged-PR list may be truncated (cannot
 # certify "every merged PR" was checked), or the repo/default-branch could
 # not be resolved (fail-closed, same posture as sweep-cr-threads.sh).
 #
 # Env: GH_CMD overrides the `gh` binary (test seam, matches
 # scripts/console/sweep-cr-threads.sh). GH_TIMEOUT_SECS bounds each `gh`
 # call (default 30s) so an unattended arm can't hang indefinitely on a
-# GitHub network stall (CodeRabbit round on PR #2099); skipped when
+# GitHub network stall; skipped when
 # `timeout` isn't on PATH rather than failing the call outright.
 set -uo pipefail
 
@@ -70,8 +67,7 @@ if [ "$#" -eq 0 ]; then
     exit 1
 fi
 
-# Strip a trailing slash from every fence arg (HIMMEL-2383 CR finding
-# codex-4, round 6) — _touches_fence matches `.path == $f` or
+# Strip a trailing slash from every fence arg — _touches_fence matches `.path == $f` or
 # `startswith($f + "/")`; a caller-supplied "scripts/hooks/" (trailing
 # slash, a natural way to spell a directory) would match NEITHER
 # ("scripts/hooks/" != "scripts/hooks", and startswith("scripts/hooks//")
@@ -79,7 +75,7 @@ fi
 # under it clean. Word-split rebuild (fence paths carry no spaces, same
 # assumption arm-resume.sh's own space-separated fence: forwarding makes).
 #
-# Likewise strip a leading ./ (HIMMEL-2421): gh lists paths without one, so
+# Likewise strip a leading ./:: gh lists paths without one, so
 # "./scripts/hooks" would match nothing. A bare "." (or "./", or empty after
 # stripping) is the repo root — normalized to "." which _touches_fence
 # treats as matching every path.
@@ -100,8 +96,8 @@ default_branch=$(_gh repo view --json defaultBranchRef --jq '.defaultBranchRef.n
 }
 [ -n "$default_branch" ] || { echo "base-status: could not determine the repo default branch — aborting" >&2; exit 1; }
 
-# Scope by RECENT merge date, not a raw --limit alone (HIMMEL-2383 CR
-# finding codex-1, round 2): an unfiltered --limit 200 hits its cap on ANY
+# Scope by RECENT merge date, not a raw --limit alone: an unfiltered
+# --limit 200 hits its cap on ANY
 # repo with >=200 merged PRs EVER — this repo already does — so every fence
 # would permanently fail certification regardless of its own history. A
 # LOOKBACK_DAYS window scopes the query to "recent merge traffic" (this
@@ -113,13 +109,13 @@ default_branch=$(_gh repo view --json defaultBranchRef --jq '.defaultBranchRef.n
 # BSD `date -v` are not compatible; when python3 is unavailable, fall back
 # to an unscoped query rather than fail-closed on a working host.
 #
-# Residual (HIMMEL-2383 CR finding codex-2, round 3, deferred -> HIMMEL-2402):
+# Residual:
 # a PR merged BEFORE this window that still lacks its after-report is
 # silently excluded from the sweep. Deliberate scope tradeoff, not
 # reopened here — the ticket's concern is "safe to build on TODAY", and an
 # after-report gap that old is unlikely to reflect current suite health.
 LOOKBACK_DAYS="${BASE_STATUS_LOOKBACK_DAYS:-30}"
-# HIMMEL-2469: one 30-day query hit the 200 cap on every run at 300+ merges
+# One 30-day query hit the 200 cap on every run at 300+ merges
 # per window (and a single --limit 1000 fetch with `files` 502s at GitHub).
 # So the window is PAGED by merge day: one `gh pr list --search merged:<day>`
 # per day, each far under the cap, concatenated and de-duplicated by PR number
@@ -165,7 +161,7 @@ for day in $slice_days; do
 done
 prs_json=$(printf '%s' "$all_pages" | jq -cs 'add // [] | unique_by(.number)' 2>/dev/null) || prs_json=""
 
-# Known residual (HIMMEL-2383 CR round 4, deferred -> HIMMEL-2404): this
+# Known residual: this
 # matches only each file's CURRENT `.path` from `gh pr list --json files`,
 # which is (a) blind to a rename OUT of the fence (the new path is what's
 # listed, not the old one) and (b) subject to gh's own per-PR files-list
@@ -177,7 +173,7 @@ _touches_fence() {
 }
 
 # A tested scan root COVERS a fence only when it IS the fence or an ancestor
-# of it (round-12 CR finding codex-1) — same prefix semantics as
+# of it — same prefix semantics as
 # _touches_fence above, just in the other direction: a scoped `--pr` run
 # (e.g. scan root scripts/ci) must not be read as certifying an unrelated
 # fence (scripts/handover) just because SOME run against this head passed.
@@ -190,18 +186,16 @@ _scope_covers_fence() {
 }
 
 had_error=0
-# 'if type=="array" then length else "not-an-array" end' (HIMMEL-2383 CR
-# finding codex-3, round 6) — a bare `jq 'length'` also accepts a
+# 'if type=="array" then length else "not-an-array" end': a bare `jq 'length'` also accepts a
 # wrong-SHAPED but syntactically valid response (`{}`, `null`): both parse
-# fine and `length` reads 0, so the round-2 malformed-JSON check below (unparseable
+# fine and `length` reads 0, so the malformed-JSON check below (unparseable
 # text only) missed this case and would have certified an empty, clean
 # sweep on a genuinely broken response.
 count=$(printf '%s' "$prs_json" | jq 'if type == "array" then length else "not-an-array" end' 2>/dev/null)
 case "$count" in
     ''|*[!0-9]*)
         # Malformed JSON, or valid-but-wrong-shaped JSON, on a successful
-        # `gh` exit must not read as "0 PRs, all clean" (HIMMEL-2383 CR
-        # finding codex-4 round 2 / codex-3 round 6) — the documented
+        # `gh` exit must not read as "0 PRs, all clean" — the documented
         # contract is a QUERY-ERROR + nonzero exit on anything that isn't a
         # genuine, parseable ARRAY result.
         echo "base-status: 'gh pr list' returned unparseable or wrong-shaped JSON — aborting (fail-closed)" >&2
@@ -211,13 +205,12 @@ esac
 
 had_error=$slice_limit_hit
 
-# Known residual (HIMMEL-2383 CR finding codex-2, round 8, deferred ->
-# HIMMEL-2404): only the top-level array shape is validated above. A single
+# Known residual: only the top-level array shape is validated above. A single
 # entry with a missing/null `files`, `number`, or `headRefOid` (a
 # malformed per-PR record within an otherwise well-formed array — rare)
 # reads as "doesn't touch the fence" via _touches_fence's own null-safe
 # `?`, rather than a QUERY-ERROR. Same "per-entry data completeness" theme
-# as HIMMEL-2404's rename/truncation gaps; not split into a separate
+# as the rename/truncation gaps above; not split into a separate
 # ticket.
 i=0
 while [ "$i" -lt "$count" ]; do
@@ -227,7 +220,7 @@ while [ "$i" -lt "$count" ]; do
     files=$(printf '%s' "$pr" | jq -c '.files')
     i=$((i + 1))
 
-    # ALL touched fences are collected (round-13 CR finding codex-1) — not
+    # ALL touched fences are collected — not
     # just the first match. A PR can touch two of the fences passed on the
     # command line, and a scope-limited report might cover one but not the
     # other; checking only the first match let the other go uncertified.
@@ -248,15 +241,14 @@ while [ "$i" -lt "$count" ]; do
         continue
     fi
 
-    # Bound to THIS PR's head (round-1 CR finding codex-3): a summary posted
+    # Bound to THIS PR's head: a summary posted
     # against an earlier revision of the PR must not certify the
     # subsequently-merged head. The runner embeds 'head: <full sha>' in
     # every summary it posts (scripts/ci/run-shell-tests.sh) — require it to
     # literally match this PR's headRefOid, not just carry the generic
     # markers.
     #
-    # NOT author-bound (tried in round 2, reverted in round 3 — HIMMEL-2383
-    # CR finding codex-3, round 3): binding to "whoever gh is currently
+    # NOT author-bound: binding to "whoever gh is currently"
     # authenticated as" assumes the SAME identity posts the report and later
     # checks it, which this system does not guarantee — merge-on-green.sh,
     # run-shell-tests.sh --pr, and any console/leg session running
@@ -264,18 +256,18 @@ while [ "$i" -lt "$count" ]; do
     # different machines (this repo's whole architecture is multi-session,
     # multi-machine). Author-binding would silently and PERMANENTLY reject a
     # legitimate report posted under a different identity, which is a worse
-    # failure than the spoofing risk it defended against (round-2 codex-1's
-    # own point: failing open on an unresolved identity reopens the same
+    # failure than the spoofing risk it defended against (failing open on an
+    # unresolved identity reopens the same
     # hole anyway). On this PRIVATE, access-controlled repo, the head-SHA
     # binding above is the load-bearing protection; residual risk is a
     # comment from another repo collaborator forging the exact literal
     # markers + the real 40-hex head — accepted for now, not hardened
     # further here.
-    # jq's own exit code (not just its output) is checked (HIMMEL-2383 CR
-    # finding codex-3, round 5): a successful `gh` exit carrying malformed
+    # jq's own exit code (not just its output) is checked: a successful `gh`
+    # exit carrying malformed
     # comments JSON must be a QUERY-ERROR, not silently folded into the
     # same PENDING outcome an empty/no-match comments list gets — same
-    # contract as the pr-list malformed-JSON fix above (codex-4, round 2).
+    # contract as the pr-list malformed-JSON check above.
     summary_rc=0
     summary=$(printf '%s' "$comments_json" | jq -r --arg head "$head" \
         '[.comments[]?.body | select(contains("== Summary ==") and test("PASS:") and contains("head: " + $head))] | last // ""' \
@@ -293,7 +285,7 @@ while [ "$i" -lt "$count" ]; do
         continue
     fi
 
-    # A truncated run (HIMMEL-2383 CR finding codex-4) is not evidence of
+    # A truncated run is not evidence of
     # clean, whatever its FAIL count says — some suites never ran.
     case "$summary" in
         *TRUNCATED:*)
@@ -305,7 +297,7 @@ while [ "$i" -lt "$count" ]; do
             ;;
     esac
 
-    # A --changed-since run (round-13 CR finding codex-2) conditionally
+    # A --changed-since run conditionally
     # skipped suites unrelated to that diff, so a clean-looking scope
     # covering the whole scan root does not mean every suite under it
     # actually ran — same "not full evidence" class as TRUNCATED above.
@@ -319,7 +311,7 @@ while [ "$i" -lt "$count" ]; do
             ;;
     esac
 
-    # An unparseable FAIL count (HIMMEL-2383 CR finding codex-5) must not
+    # An unparseable FAIL count must not
     # default to clean — a malformed/manually-copied comment that happens to
     # carry the marker strings + this head's SHA but no real FAIL: N is
     # suspect, not proof of a passing run.
@@ -333,11 +325,11 @@ while [ "$i" -lt "$count" ]; do
     fi
 
     # A SUMMARY with no scope line, or a scope that doesn't cover a given
-    # fence (round-12 CR finding codex-1), is not evidence THAT fence is
+    # fence, is not evidence THAT fence is
     # clean — it may certify only an unrelated or narrower subtree. A
     # missing scope (an older-format report, posted before this field
     # existed) fails closed rather than being read as "scope unknown,
-    # assume covered". Checked PER FENCE (round-13 CR finding codex-1): a
+    # assume covered". Checked PER FENCE: a
     # scope-limited report can cover one touched fence but not another.
     scope=$(printf '%s\n' "$summary" | grep -oE 'scope: [^ ]+' | tail -1 | cut -d' ' -f2)
     printf '%s' "$matched_fences" | while IFS= read -r mf; do
