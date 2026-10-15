@@ -46,6 +46,7 @@ truth for presence; named profiles can still opt in. Full detail:
 |--------|-------------|------|
 | `lean-skills` | himmel's vendored subset of `superpowers` + `mattpocock-skills` workflow skills — 11 of superpowers' 14 (the reference closure of the 4 himmel invokes: brainstorming, writing-plans, systematic-debugging, verification-before-completion) plus `grilling` from mattpocock/skills. Replaces both fat upstream plugins in the base profiles; their dormant installs remain available, off by default — see `marketplace/plugins/lean-skills/README.md` | ALWAYS |
 | `i-have-adhd` | Vendored (`ayghri/i-have-adhd` MIT, pinned commit) output-shaping skill for an ADHD reader: action first, numbered steps, one next action. `disable-model-invocation`, so 0 listing tokens; one SessionStart hook injects it (~1.75k tokens once per session) only when `~/.claude/.i-have-adhd-always` exists, which the installer and updater create unless `HIMMEL_NO_ADHD_ALWAYS=1` — see `marketplace/plugins/i-have-adhd/README.md` | ALWAYS |
+| `pstack` | Seven vendored opt-in skills from `cursor/plugins` pstack (pinned `99743e9c`, MIT): `/correct`, `/blast-radius`, `/create-verification-skill`, `/maintain-verification-skill`, `/benchmark-checklist`, `principle-explain-the-number`, `/in-your-own-words`. All `disable-model-invocation`, no hooks or agents. Off in every leg profile; remove with `claude plugin disable pstack@himmel` — see `marketplace/plugins/pstack/README.md` | ON in the interactive `user` profile only |
 | `context7` | Fetches current library/framework docs on demand (MCP server) | ON-DEMAND |
 | `code-review` | Code review agent with severity-tagged findings | ON-DEMAND — cached, off by default |
 | `code-simplifier` | Simplifies recently written code for clarity/maintainability | ON-DEMAND — cached, off by default |
@@ -228,6 +229,7 @@ can also be passed to `--installed` for a hermetic observation.
 | `ponytail@ponytail` | INSTALLED |
 | `pr-review-toolkit-himmel@himmel` | INSTALLED |
 | `pr-review-toolkit@claude-plugins-official` | INSTALLED |
+| `pstack@himmel` | NOT INSTALLED |
 | `pyright-lsp@claude-plugins-official` | INSTALLED |
 | `qmd@himmel` | INSTALLED |
 | `qmd@qmd` | NOT INSTALLED |

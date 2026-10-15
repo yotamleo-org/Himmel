@@ -42,6 +42,14 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 > "stop adhd mode". See
 > [marketplace/plugins/i-have-adhd/README.md](../marketplace/plugins/i-have-adhd/README.md).
 
+> **Not itemized: `marketplace/plugins/pstack/skills/`**.
+> Seven vendored `cursor/plugins` pstack skills, all `disable-model-invocation: true`
+> (`/correct`, `/blast-radius`, `/create-verification-skill`,
+> `/maintain-verification-skill`, `/benchmark-checklist`,
+> `principle-explain-the-number`, `/in-your-own-words`): typed by the operator,
+> no `commands/` directory, on in the interactive `user` profile only. See
+> [marketplace/plugins/pstack/README.md](../marketplace/plugins/pstack/README.md).
+
 > **Not itemized: `marketplace/plugins/shadcn-mcp/skills/`**.
 > One himmel-owned skill, `motion-budget`: the design core's short animation
 > duration and frequency note, model-invoked (no slash command). See

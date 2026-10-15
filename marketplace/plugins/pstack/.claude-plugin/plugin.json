@@ -1,0 +1,10 @@
+{
+  "name": "pstack",
+  "version": "0.1.0",
+  "description": "[himmel vendor] Seven opt-in skills from cursor/plugins pstack, pinned at 99743e9c: /correct, /blast-radius, /create-verification-skill, /maintain-verification-skill, /benchmark-checklist, principle-explain-the-number, /in-your-own-words. All disable-model-invocation. No hooks, agents or autonomy.",
+  "author": {
+    "name": "Lauren Tan (upstream) / yotamleo (vendor)"
+  },
+  "license": "MIT",
+  "keywords": ["himmel", "vendored", "pstack", "opt-in"]
+}
