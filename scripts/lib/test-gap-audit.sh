@@ -94,6 +94,8 @@ out="$(run GAP_AUDIT_RESUME_CMD="bash $TMP/resume.sh" JIRA_PROJECT_KEY=HIMMEL)"
 has "orphaned ticket surfaced" "$out" "HIMMEL-4242"
 out="$(run GAP_AUDIT_RESUME_CMD="bash $TMP/resume.sh" JIRA_PROJECT_KEY=)"
 lacks "Jira not configured: orphan check skipped" "$out" "HIMMEL-4242"
+has "Jira not configured: reported as not checked" "$out" "not checked: in-work tickets"
+lacks "skipped check is not a bare all clear" "$out" "all clear"
 out="$(run GAP_AUDIT_RESUME_CMD="bash $TMP/nonexistent.sh" JIRA_PROJECT_KEY=HIMMEL)"
 has "detector absent: skipped cleanly" "$out" "all clear"
 
@@ -106,6 +108,14 @@ printf -- '---\nkey: "HIMMEL-7002"\nstatus: "To Do"\n---\n' > "$TMP/mirror/HIMME
 out="$(run)"
 has "ponytail with Done ticket flagged" "$out" "b.sh"
 lacks "ponytail with open ticket not flagged" "$out" "c.sh"
+
+# --- default doctor command survives a checkout path with spaces -------------
+mkdir -p "$TMP/sp ace/scripts"
+printf '#!/usr/bin/env bash\nprintf '"'"'{"sev":"WARN","id":"C40-spaced","msg":"ran from spaced path","remedy":"x"}\\n'"'"'\n' > "$TMP/sp ace/scripts/himmel-doctor.sh"
+out="$(env GAP_AUDIT_ROOT="$TMP/sp ace" GAP_AUDIT_NOW="$NOW" GAP_AUDIT_QMD_STATUS_FILE="$TMP/qmd-green.txt" \
+    GAP_AUDIT_GRAPH_OUT="$TMP/nogo" GAP_AUDIT_MIRROR="$TMP/mirror" GAP_AUDIT_RESUME_CMD="" \
+    bash -c ". \"$LIB\"; gap_audit_offer" 2>&1)"
+has "default doctor runs from a path with spaces" "$out" "C40-spaced"
 
 # --- read-only + never fatal ------------------------------------------------
 out="$(run GAP_AUDIT_DOCTOR_CMD="bash $TMP/missing.sh")"

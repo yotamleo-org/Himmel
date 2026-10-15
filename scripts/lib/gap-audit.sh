@@ -19,6 +19,9 @@
 
 GAP_AUDIT_ROOT_DEFAULT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." 2>/dev/null && pwd)"
 GAP_AUDIT_FINDINGS=""
+GAP_AUDIT_SKIPPED=""
+
+_ga_skip() { GAP_AUDIT_SKIPPED="${GAP_AUDIT_SKIPPED}${GAP_AUDIT_SKIPPED:+, }$1"; }
 
 _ga_add() { # _ga_add <area> <message> [remedy]
     GAP_AUDIT_FINDINGS="${GAP_AUDIT_FINDINGS}      · $1: $2${3:+
@@ -29,10 +32,14 @@ _ga_add() { # _ga_add <area> <message> [remedy]
 _ga_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 
 _ga_check_doctor() {
-    local root="$1" cmd rows line
-    command -v jq >/dev/null 2>&1 || return 0
-    cmd="${GAP_AUDIT_DOCTOR_CMD:-bash $root/scripts/himmel-doctor.sh --json --no-color --only C8,C33,C40,C49,C50,C56}"
-    rows="$($cmd 2>/dev/null | jq -r 'select(.sev == "WARN" or .sev == "FAIL") | "\(.id)\t\(.msg)\t\(.remedy)"' 2>/dev/null)" || return 0
+    local root="$1" rows line json
+    command -v jq >/dev/null 2>&1 || { _ga_skip "doctor rows (jq missing)"; return 0; }
+    if [ -n "${GAP_AUDIT_DOCTOR_CMD:-}" ]; then
+        json="$($GAP_AUDIT_DOCTOR_CMD 2>/dev/null)" || { _ga_skip "doctor rows (doctor failed)"; return 0; }
+    else
+        json="$(bash "$root/scripts/himmel-doctor.sh" --json --no-color --only C8,C33,C40,C49,C50,C56 2>/dev/null)" || { _ga_skip "doctor rows (doctor failed)"; return 0; }
+    fi
+    rows="$(printf '%s\n' "$json" | jq -r 'select(.sev == "WARN" or .sev == "FAIL") | "\(.id)\t\(.msg)\t\(.remedy)"' 2>/dev/null)" || return 0
     [ -n "$rows" ] || return 0
     while IFS="$(printf '\t')" read -r id msg remedy; do
         [ -n "$id" ] && _ga_add "doctor $id" "$msg" "$remedy"
@@ -48,7 +55,7 @@ _ga_check_qmd() {
     elif command -v qmd >/dev/null 2>&1; then
         text="$(qmd status 2>/dev/null)"
     fi
-    [ -n "${text:-}" ] || return 0
+    [ -n "${text:-}" ] || { _ga_skip "qmd (no status)"; return 0; }
     pending="$(printf '%s\n' "$text" | sed -n 's/^ *Pending: *\([0-9][0-9]*\) need embedding.*/\1/p' | head -1)"
     if [ -n "$pending" ] && [ "$pending" -gt 0 ]; then
         _ga_add qmd "$pending document(s) need embedding" "qmd embed"
@@ -83,17 +90,16 @@ _ga_check_semantic() {
 }
 
 _ga_check_resume() {
-    local root="$1" cmd rows n
-    [ -n "${JIRA_PROJECT_KEY:-}" ] || return 0
+    local root="$1" out rows nd="$1/scripts/handover/console-kit/next-dispatchable.sh"
+    if [ "${GAP_AUDIT_RESUME_CMD+set}" = set ] && [ -z "$GAP_AUDIT_RESUME_CMD" ]; then return 0; fi
+    [ -n "${JIRA_PROJECT_KEY:-}" ] || { _ga_skip "in-work tickets (Jira not configured)"; return 0; }
     if [ "${GAP_AUDIT_RESUME_CMD+set}" = set ]; then
-        cmd="$GAP_AUDIT_RESUME_CMD"
+        out="$($GAP_AUDIT_RESUME_CMD 2>/dev/null)"
     else
-        local nd="$root/scripts/handover/console-kit/next-dispatchable.sh"
-        grep -q -- '--resume-only' "$nd" 2>/dev/null || return 0
-        cmd="bash $nd --resume-only"
+        grep -q -- '--resume-only' "$nd" 2>/dev/null || { _ga_skip "in-work tickets (detector not present)"; return 0; }
+        out="$(bash "$nd" --resume-only 2>/dev/null)"
     fi
-    [ -n "$cmd" ] || return 0
-    rows="$($cmd 2>/dev/null | awk -F'\t' '$1 == "RESUME" { printf "%s (%s, %s); ", $2, $5, $7 }')"
+    rows="$(printf '%s\n' "$out" | awk -F'\t' '$1 == "RESUME" { printf "%s (%s, %s); ", $2, $5, $7 }')"
     [ -n "$rows" ] && _ga_add tickets "in-work with no session or open PR: $rows" "bash scripts/handover/console-kit/next-dispatchable.sh --resume-only"
     return 0
 }
@@ -120,7 +126,7 @@ EOF
 
 gap_audit_offer() {
     local root="${GAP_AUDIT_ROOT:-$GAP_AUDIT_ROOT_DEFAULT}" now="${GAP_AUDIT_NOW:-$(date +%s)}"
-    GAP_AUDIT_FINDINGS=""
+    GAP_AUDIT_FINDINGS=""; GAP_AUDIT_SKIPPED=""
     echo ""
     echo "==> gap audit (HIMMEL-5836)"
     _ga_check_doctor "$root" || true
@@ -129,11 +135,16 @@ gap_audit_offer() {
     _ga_check_resume "$root" || true
     _ga_check_ponytail "$root" || true
     if [ -z "$GAP_AUDIT_FINDINGS" ]; then
-        echo "    all clear: qmd, graphify, in-work tickets and ponytail markers show no gap."
+        if [ -n "$GAP_AUDIT_SKIPPED" ]; then
+            echo "    no gap found in the checks that ran; not checked: $GAP_AUDIT_SKIPPED."
+        else
+            echo "    all clear: qmd, graphify, in-work tickets and ponytail markers show no gap."
+        fi
         return 0
     fi
     echo "    checks that came back non-green:"
     printf '%s' "$GAP_AUDIT_FINDINGS"
+    [ -z "$GAP_AUDIT_SKIPPED" ] || echo "    not checked: $GAP_AUDIT_SKIPPED."
     echo "    Run the full audit? Say yes and ask Claude to run: bash scripts/himmel-doctor.sh"
     echo "    (this offer is print-only; nothing was changed and no audit runs unattended)."
     return 0
