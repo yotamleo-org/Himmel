@@ -1,0 +1,15 @@
+# gate-shapes.tsv — the exact himmel gate command shapes the PermissionRequest
+# hook scripts/hooks/permission-allow-gate-shapes.sh allows.
+# Columns (TAB-separated): id <TAB> ERE matched against the WHOLE command <TAB> fence that already guards the action.
+# {WT} expands to an optional "<registered worktree toplevel>/" prefix, so both
+# the relative spelling and the unquoted absolute-worktree spelling match.
+# Evidence: ~/.himmel/state/classifier-denials.jsonl (2026-10-15 mining) and the
+# console docs/HANDOFFs under the himmel handover bucket ('[CI Bypass]' denials).
+# An argument class never admits a shell metacharacter; add a row, never widen one.
+append-results	^bash {WT}scripts/handover/console-kit/append-results\.sh /[A-Za-z0-9_./+-]+\.md "[^"$`\\]*"$	append-results.sh refuses a doc outside the handover root and a coined marker
+impacted-suites-check	^bash {WT}scripts/cr/impacted-suites\.sh --check [0-9a-f]{40}\.\.[0-9a-f]{40} --from-file /?[A-Za-z0-9_./+-]+$	read-only suite enumeration
+review-round-promote	^bash {WT}scripts/cr/review-round\.sh promote --branch '?[A-Za-z0-9_./+-]+'? --head [0-9a-f]{40}$	review-round.sh validates branch and head against the round ledger
+write-verdicts	^bash {WT}scripts/cr/write-verdicts\.sh (aggregate|sweep) --branch '?[A-Za-z0-9_./+-]+'? --from-file /?[A-Za-z0-9_./+-]+$	write-verdicts.sh validates every verdict line before writing; the CR marker clear still gates the merge
+check-ci	^(bash )?{WT}scripts/check-ci\.sh [0-9]+ --max-wait [0-9]+$	read-only CI status read
+quiet-run-suite	^bash {WT}scripts/quiet-run\.sh suite -- bash {WT}scripts/([A-Za-z0-9_+-]+/)*test-[A-Za-z0-9_.+-]+\.sh$	quiet-run.sh runs a tracked test suite; require-quiet-run.sh pins the spelling
+skip-history-commit	^SKIP=no-history-comments git commit -F /?[A-Za-z0-9_./+-]+$	check-commit-msg and the CI range gate still run; only the console-ruled history-comment hook is skipped
