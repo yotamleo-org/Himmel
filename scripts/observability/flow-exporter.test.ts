@@ -2278,7 +2278,7 @@ test("renderMetrics and renderSessionsJson still render when the ledgers registr
   expect(typeof (await renderSessionsJson(opts))).toBe("string");
 });
 
-for (const [label, text] of [["invalid JSON", "{not json"], ["a null row", '{"ledgers":[null]}']] as const) test(`renderMetrics and renderSessionsJson still render when the ledgers registry is malformed (${label})`, async () => {
+for (const [label, text] of [["invalid JSON", "{not json"], ["a null row", '{"ledgers":[null]}'], ["a row without default_path", '{"ledgers":[{"id":"flow-runs"}]}']] as const) test(`renderMetrics and renderSessionsJson still render when the ledgers registry is malformed (${label})`, async () => {
   const bad = join(tmp, "bad-ledgers.json");
   writeFileSync(bad, text);
   const flow = join(tmp, "flow.jsonl");

@@ -37,7 +37,7 @@ export function registryLedgerPath(id: string, env: Record<string, string | unde
   let rows: LedgerRegistryRow[];
   try {
     rows = (JSON.parse(readFileSync(registryFile, "utf-8")) as { ledgers: LedgerRegistryRow[] }).ledgers;
-    if (!Array.isArray(rows) || rows.some((r) => !r || typeof r !== "object")) throw new Error("ledgers is not an array of rows");
+    if (!Array.isArray(rows) || rows.some((r) => !r || typeof r.id !== "string" || typeof r.default_path !== "string" || (r.override_env !== undefined && typeof r.override_env !== "string"))) throw new Error("ledgers is not an array of {id, default_path, override_env?} rows");
   } catch (e) {
     // One unreadable registry must cost the registry's configurability, not every render.
     if (!warnedRegistryFiles.has(registryFile)) {
