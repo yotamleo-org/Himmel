@@ -132,11 +132,13 @@ function trackerIsExplicitlyNotJira(targetPath) {
 // ONLY one): luna-vault-scaffold's ctx.targetPath is the cached vault.path
 // answer (expanded), not the caller's targetPath — its probe descriptor is
 // a {vaultPath} placeholder with no other source of truth.
-function ctxForItem(item, answers, targetPath, scope) {
+function ctxForItem(item, answers, targetPath, scope, deadline) {
   const resolvedTargetPath = item.id === 'luna-vault-scaffold'
     ? expandHome(answers.vault && answers.vault.path)
     : targetPath;
-  return { repoRoot: repoRoot(), targetPath: resolvedTargetPath, scope, env: process.env };
+  const ctx = { repoRoot: repoRoot(), targetPath: resolvedTargetPath, scope, env: process.env };
+  if (deadline !== null) ctx.deadline = deadline;
+  return ctx;
 }
 
 // for a small, named set of items, desired-state can
@@ -232,6 +234,9 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
     return activeFeatures !== null && !activeFeatures.has(feature);
   }
 
+  // One whole-run deadline for the sweep (HIMMELCTL_STATUS_TOTAL_TIMEOUT_SECS),
+  // carried on every probe ctx; probes reached after it read degraded.
+  const runDeadline = probesLib.statusDeadline(process.env);
   const results = [];
   for (const item of items) {
     // a malformed ~/.himmel/config.json used to
@@ -310,7 +315,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       });
       continue;
     }
-    const ctx = ctxForItem(item, answers, targetPath, scope);
+    const ctx = ctxForItem(item, answers, targetPath, scope, runDeadline);
     const probe = probesLib.runProbe(item, ctx);
     let severity;
     let detail = probe.detail;

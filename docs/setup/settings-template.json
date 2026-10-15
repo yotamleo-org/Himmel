@@ -59,6 +59,7 @@
   "enabledPlugins": {
     "lean-skills@himmel": true,
     "i-have-adhd@himmel": true,
+    "pstack@himmel": true,
     "plannotator-effective-html@himmel": false,
     "impeccable@himmel": false,
     "ui-ux-pro-max@himmel": false,

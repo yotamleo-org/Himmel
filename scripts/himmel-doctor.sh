@@ -111,6 +111,20 @@ KEYS="$(mktemp "${TMPDIR:-/tmp}/himmel-doctor-keys.XXXXXX")" || { echo "himmel-d
 trap 'rm -f "$BODY" "$KEYS"' EXIT
 printf '## himmel-doctor findings (%s)\n\n' "$(uname -s 2>/dev/null || echo ?)" >> "$BODY"
 
+# ledger_registry_path <id> — a ledger's default path from the registry
+# (scripts/observability/ledgers.json; HIMMEL_LEDGERS_JSON overrides the file),
+# ~ and <repo> expanded. Non-zero when jq, the registry or the row is missing.
+ledger_registry_path() {
+    local reg="${HIMMEL_LEDGERS_JSON:-$SELF_DIR/observability/ledgers.json}" p
+    command -v jq >/dev/null 2>&1 && [ -f "$reg" ] || return 1
+    p="$(jq -r --arg id "$1" '.ledgers[] | select(.id == $id) | .default_path' "$reg" 2>/dev/null)" && [ -n "$p" ] || return 1
+    case "$p" in
+        \~/*) p="$HOME/${p#\~/}" ;;
+        "<repo>/"*) p="$REPO_ROOT/${p#\<repo\>/}" ;;
+    esac
+    printf '%s\n' "$p"
+}
+
 # emit <SEV> <id> <msg> <remedy>
 emit() {
     local sev="$1" id="$2" msg="$3" remedy="${4:-}" col=""
@@ -1210,7 +1224,8 @@ check_c21() {
 # visible without grepping session transcripts. No log = nothing has been
 # starved yet — OK, not a finding.
 check_c22() {
-    local log="${HIMMEL_DOCTOR_CHAIN_SKIPS_LOG:-$REPO_ROOT/.claude/logs/hook-chain-skips.jsonl}"
+    local log="${HIMMEL_DOCTOR_CHAIN_SKIPS_LOG:-}"
+    [ -n "$log" ] || log="$(ledger_registry_path hook-chain-skips)" || { emit INFO C22-chain-skips "ledger registry unreadable (needs jq + scripts/observability/ledgers.json) — hook-chain-skips path unknown"; return; }
     [ -f "$log" ] || { emit OK C22-chain-skips "no hook-chain-skips.jsonl — no starved chain member recorded"; return; }
     command -v jq >/dev/null 2>&1 || { emit INFO C22-chain-skips "hook-chain-skips.jsonl present but jq missing — counts not checked"; return; }
     local summary jq_rc=0 window_h="${HIMMEL_DOCTOR_CHAIN_SKIPS_WINDOW_H:-24}" total cutoff
@@ -3746,7 +3761,11 @@ check_c48_tmp_usage() {
 # this WARN between runs and DMs once for a new one.
 # Seam: HIMMEL_FIRECRAWL_PARKED (the state file).
 check_c51_firecrawl_parked() {
-    local f="${HIMMEL_FIRECRAWL_PARKED:-$HOME/.himmel/state/firecrawl-parked.jsonl}" now
+    local f="${HIMMEL_FIRECRAWL_PARKED:-}" now
+    if [ -z "$f" ] && ! f="$(ledger_registry_path firecrawl-parked)"; then
+        emit INFO C51-firecrawl-parked "ledger registry unreadable - cannot locate the Firecrawl-parked state"
+        return 0
+    fi
     if [ ! -f "$f" ] || ! command -v jq >/dev/null 2>&1; then
         emit OK C51-firecrawl-parked "no Firecrawl-parked items"
         return 0

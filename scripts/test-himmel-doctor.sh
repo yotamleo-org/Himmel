@@ -6043,6 +6043,13 @@ printf '{"ts":"%s","action":"skip","member":"recent-guard.sh","reason":"ETIMEDOU
 out="$(PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$n_t/claude" HOME="$n_t/home" HIMMEL_DOCTOR_MCP_ROOT="$n_t/root" HIMMEL_DOCTOR_CHAIN_SKIPS_LOG="$n_t/skips-recent.jsonl" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C22-chain-skips.*recent-guard.sh' && ! grepq "$out" 'WARN C22-chain-skips.*block-read-secrets.sh'; then pass "C22 recent -> WARN (recent row only)"; else fail "C22 recent -> $(printf '%s' "$out" | grep C22)"; fi
 
+echo "== C22: default log path follows a moved ledgers.json default_path (HIMMEL-4338) =="
+mkdir -p "$n_t/home/moved"
+cp "$n_t/skips-recent.jsonl" "$n_t/home/moved/skips.jsonl"
+jq '(.ledgers[] | select(.id == "hook-chain-skips") | .default_path) = "~/moved/skips.jsonl"' "$REPO_ROOT/scripts/observability/ledgers.json" > "$n_t/ledgers-moved.json"
+out="$(env -u HIMMEL_DOCTOR_CHAIN_SKIPS_LOG PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$n_t/claude" HOME="$n_t/home" HIMMEL_DOCTOR_MCP_ROOT="$n_t/root" HIMMEL_LEDGERS_JSON="$n_t/ledgers-moved.json" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C22-chain-skips.*recent-guard.sh'; then pass "C22 follows the registry path"; else fail "C22 registry path -> $(printf '%s' "$out" | grep C22)"; fi
+
 echo "== C22: window is env-overridable =="
 out="$(HIMMEL_DOCTOR_CHAIN_SKIPS_WINDOW_H=999999 PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$n_t/claude" HOME="$n_t/home" HIMMEL_DOCTOR_MCP_ROOT="$n_t/root" HIMMEL_DOCTOR_CHAIN_SKIPS_LOG="$n_t/skips-old.jsonl" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C22-chain-skips.*block-read-secrets.sh'; then pass "C22 wide window -> old rows count again"; else fail "C22 wide window -> $(printf '%s' "$out" | grep C22)"; fi
@@ -6157,6 +6164,17 @@ echo "== C51-firecrawl-parked: resolved item -> OK =="
   c51_row available '"call_site":"harvest-clip-body-batch"'; } > "$c51_t/s3.jsonl"
 out="$(c51_run "$c51_t/s3.jsonl")"
 if grepq "$out" 'OK   C51-firecrawl-parked'; then pass "C51 resolved -> OK"; else fail "C51 resolved -> $(printf '%s' "$out" | grep -A1 C51)"; fi
+
+echo "== C51-firecrawl-parked: default state path follows a moved ledgers.json default_path (HIMMEL-4338) =="
+mkdir -p "$c51_t/home/moved"
+cp "$c51_t/s1.jsonl" "$c51_t/home/moved/parked.jsonl"
+jq '(.ledgers[] | select(.id == "firecrawl-parked") | .default_path) = "~/moved/parked.jsonl"' "$REPO_ROOT/scripts/observability/ledgers.json" > "$c51_t/ledgers-moved.json"
+out="$(env -u HIMMEL_FIRECRAWL_PARKED HIMMEL_LEDGERS_JSON="$c51_t/ledgers-moved.json" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c51_t/claude" HOME="$c51_t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C51-firecrawl-parked'; then pass "C51 follows the registry path"; else fail "C51 registry path -> $(printf '%s' "$out" | grep -A1 C51)"; fi
+
+echo "== C51-firecrawl-parked: unreadable registry -> INFO, not a healthy OK =="
+out="$(env -u HIMMEL_FIRECRAWL_PARKED HIMMEL_LEDGERS_JSON="$c51_t/no-such-registry.json" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c51_t/claude" HOME="$c51_t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'INFO C51-firecrawl-parked.*registry unreadable'; then pass "C51 unreadable registry -> INFO"; else fail "C51 unreadable registry -> $(printf '%s' "$out" | grep -A1 C51)"; fi
 
 echo "== C51-firecrawl-parked: parked item whose file is gone -> not counted =="
 { c51_row parked "\"call_site\":\"harvest-clip-body-batch\",\"vault\":\"$c51_t/vault\",\"item\":\"gone.md\",\"reason\":\"exhausted\""; } > "$c51_t/s4.jsonl"

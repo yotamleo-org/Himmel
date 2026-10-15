@@ -14,6 +14,7 @@ import {
   transcriptDirFor,
   glmSessionRoot,
   mintGlmOutboxHelper,
+  mintSpawnStamp,
   PUSH_PROTECTION_DISCLOSURE,
   ensureWorkspaceTrust,
   planSpawn,
@@ -2596,4 +2597,39 @@ test("HIMMEL-1778: runBody runs the shared huge-diff guard BEFORE the worker lau
   // shared module, not a local re-definition (copy-paste drift: PR #1680, #1691)
   expect(src).toContain('from "./huge-diff-guard"');
   expect(src).not.toContain("function findDominatingPath");
+});
+
+// --- mintSpawnStamp ---
+
+test("mintSpawnStamp: two stamps minted under a frozen Date.now differ", () => {
+  const dateSpy = spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+  try {
+    const a = mintSpawnStamp();
+    const b = mintSpawnStamp();
+    expect(a).not.toBe(b);
+    expect(a).toMatch(/^1700000000000-[0-9a-f]+$/);
+  } finally {
+    dateSpy.mockRestore();
+  }
+});
+
+test("planSpawn: default slugs minted under a frozen Date.now differ and stay sanitised", () => {
+  const dateSpy = spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+  try {
+    const a = planSpawn("/repo", undefined, okDeps());
+    const b = planSpawn("/repo", undefined, okDeps());
+    expect(a.ok && b.ok).toBe(true);
+    const sa = (a as any).slug as string;
+    const sb = (b as any).slug as string;
+    expect(sa).not.toBe(sb);
+    expect(sa).toMatch(/^[a-zA-Z0-9-]+$/);
+  } finally {
+    dateSpy.mockRestore();
+  }
+});
+
+test("spawn-glm session dir mints through the shared collision-proof stamp (HIMMEL-1745)", () => {
+  const src = readFileSync(join(import.meta.dir, "spawn-glm.ts"), "utf8");
+  expect(src).toContain("glm-${slug}-${mintSpawnStamp()}");
+  expect(src).not.toContain("glm-${slug}-${Date.now()}");
 });

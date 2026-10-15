@@ -124,11 +124,12 @@ for (const name of ['operator', 'user', 'bare']) {
       'lean-skills@himmel',
       // i-have-adhd@himmel rides base beside lean-skills.
       'i-have-adhd@himmel',
+      // pstack@himmel is user-only and added below.
       // The operator's interactive profile works the vault.
       'obsidian-second-brain@himmel',
     ];
     const expected = name === 'operator' ? null : {
-      enabledPlugins: Object.fromEntries(REG.catalog.map((id) => [id, on.includes(id)])),
+      enabledPlugins: Object.fromEntries(REG.catalog.map((id) => [id, on.includes(id) || (name === 'user' && id === 'pstack@himmel')])),
     };
     const settings = resolveProfile(REG, name);
     assert.equal(JSON.stringify(settings), JSON.stringify(expected));

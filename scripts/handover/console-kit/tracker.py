@@ -528,6 +528,21 @@ def read_versions(path, mir):
             if len(f) >= 2 and TRAIN_RE.match(f[0]) and f[0] != 'v1.0.0'], False
 
 
+def done_in_future(mir, vers, unknown):
+    """Done tickets carrying an unreleased version other than the current one (HIMMEL-5801); must be 0.
+
+    The current version is the earliest unreleased by release date, else the first unreleased listed. Release
+    state unknown counts nothing."""
+    if unknown:
+        return 0
+    unrel = [v for v in vers if not v['rel']]
+    cur = min((v for v in unrel if v['date']), key=lambda v: v['date'], default=unrel[0] if unrel else None)
+    if cur is None:
+        return 0
+    fut = {v['n'] for v in unrel} - {cur['n']}
+    return sum(1 for m in mir.values() if m['st'] == 2 and any(f in fut for f in m['fv']))
+
+
 def jira_view(mir, legs, vers, prows, vnames):
     """The version-first page data: JT tickets, JC working-on, JN up-next, JA released-but-open alerts.
 
@@ -1063,11 +1078,12 @@ def main():
     open(outp + '.fp', 'w', encoding='utf-8').write(fp0 + '\n')
     unp = sum(1 for r in rows if r[7] == 2 and r[2] != 2)  # open only
     drift = sum(1 for r in rows if r[7] == 1)
-    cov = sum(1 for r in rows[:n_plan] if r[8])
+    dif = done_in_future(mir, jv, ru)
+    cov =sum(1 for r in rows[:n_plan] if r[8])
     print('wrote %s.bench.tsv: %d planned items, operator bundle %d, unattributed %d'
           % (outp, len(bn), bop[8], bun[8]))
-    print('wrote %s (%.1f KB): %d planned, %d unplanned, %d drift, %d unthemed, %d unplaced; mirror %d issues'
-          % (outp, os.path.getsize(outp) / 1024, n_plan, unp, drift, nothm, len(unpl), len(mir)))
+    print('wrote %s (%.1f KB): %d planned, %d unplanned, %d drift, %d unthemed, %d unplaced, %d done-in-future; mirror %d issues'
+          % (outp, os.path.getsize(outp) / 1024, n_plan, unp, drift, nothm, len(unpl), dif, len(mir)))
     if dt:
         print('drift trend: ' + ' → '.join('%s %d/%d/%d' % (x[0][:10], x[1], x[2], x[3]) for x in dt[-6:]) + ' (drift/unplanned/unthemed)')
     for l in lg:
