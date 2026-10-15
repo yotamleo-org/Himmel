@@ -45,7 +45,7 @@ function Invoke-Launcher {
   $env:CLAUDE_CODEX_DOTENV_ROOT = $WORK
   Push-Location $WORK
   try {
-    & pwsh -NoProfile -File $Launcher @LArgs *> $null
+    $script:LastLaunchOut = (& pwsh -NoProfile -File $Launcher @LArgs *>&1 | Out-String)
     $script:LastLaunchExit = $LASTEXITCODE
   } finally {
     Pop-Location
@@ -204,6 +204,16 @@ try {
   Invoke-Launcher
   if ($script:LastLaunchExit -eq 3) { Pass '.salus-profile-only marker refuses (exit 3)' } else { Fail ".salus-profile-only marker did not refuse (exit $script:LastLaunchExit)" }
   if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-codex\.seeded')) { Fail '.salus-profile-only refusal still seeded the config dir' } else { Pass '.salus-profile-only refusal seeded nothing' }
+
+  # --- No user settings file -> refuse exit 4 before any seeding: without it the
+  # lane would launch with no seeded permissions.deny rules.
+  New-Sandbox
+  $env:CODEX_MODEL = 'gpt-5.6-sol'
+  Remove-Item -LiteralPath (Join-Path $FAKEHOME '.claude\settings.json') -Force
+  Invoke-Launcher
+  if ($script:LastLaunchExit -eq 4) { Pass 'missing user settings refuses (exit 4)' } else { Fail "missing user settings did not refuse (exit $script:LastLaunchExit)" }
+  if ($script:LastLaunchOut -match 'settings\.json is missing') { Pass 'missing-settings refusal names the settings file' } else { Fail 'missing-settings refusal message does not name the settings file' }
+  if (Test-Path -LiteralPath (Join-Path $FAKEHOME '.claude-codex\.seeded')) { Fail 'missing-settings refusal still seeded the config dir' } else { Pass 'missing-settings refusal seeded nothing' }
 
   # --- HIMMEL-2626: --guard-check <dir> — the check-only entry the unattended
   # spawn-claudex dispatcher calls PRE-CREATION, before it mints a worktree.
