@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { classifyForSpawn, defaultInvoke, parseTriageVerdict, type TriageVerdict } from "./triage";
+import { classifyForSpawn, defaultInvoke, getTriageCounters, parseTriageVerdict, resetTriageCounters, type TriageVerdict } from "./triage";
 import { BASH_BIN, REPO_ROOT, resolveBash } from "./run";
 
 test("parseTriageVerdict accepts the four strict single-token verdicts", () => {
@@ -235,4 +235,33 @@ test("cancelable timeout: a fast-resolving invoke leaves no unhandled rejection"
   } finally {
     process.off("unhandledRejection", handler);
   }
+});
+
+test("a throwing invoke increments fail-open and total, not the spawn-high verdict count (HIMMEL-948)", async () => {
+  resetTriageCounters();
+  const errs: string[] = [];
+  const orig = console.error;
+  console.error = (...a: unknown[]) => { errs.push(a.join(" ")); };
+  try {
+    const v = await classifyForSpawn("hi", { invoke: async () => { throw new Error("boom"); }, timeoutMs: 1000, sessionLabel: "s1" });
+    expect(v).toBe("spawn-high");
+  } finally {
+    console.error = orig;
+  }
+  expect(getTriageCounters()).toEqual({ spawnHighVerdict: 0, failOpen: 1, total: 1 });
+  expect(errs.join("\n")).toContain("fail-open 1/1");
+});
+
+test("a legit spawn-high verdict increments the verdict count only (HIMMEL-948)", async () => {
+  resetTriageCounters();
+  const v = await classifyForSpawn("hi", { invoke: async () => "spawn-high\n", timeoutMs: 1000 });
+  expect(v).toBe("spawn-high");
+  expect(getTriageCounters()).toEqual({ spawnHighVerdict: 1, failOpen: 0, total: 1 });
+});
+
+test("garbage classifier output counts as fail-open, a non-spawn-high verdict as neither (HIMMEL-948)", async () => {
+  resetTriageCounters();
+  await classifyForSpawn("a", { invoke: async () => "maybe", timeoutMs: 1000 });
+  await classifyForSpawn("b", { invoke: async () => "ack", timeoutMs: 1000 });
+  expect(getTriageCounters()).toEqual({ spawnHighVerdict: 0, failOpen: 1, total: 2 });
 });
