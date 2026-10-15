@@ -554,6 +554,13 @@ SEED_LOCK_TIMEOUT="${CLAUDE_LANE_SEED_LOCK_TIMEOUT:-60}"
 # shellcheck disable=SC2034 # State consumed by the sourced mirror-seed library.
 SEED_LOCK_STALE="${CLAUDE_LANE_SEED_LOCK_STALE:-120}"
 
+# Without a user settings file the seed carries no permissions.deny rules, leaving the client
+# classifier alone to stop a force push to main. Refuse rather than run unseeded.
+if [ "$PREFLIGHT_ONLY" -ne 1 ] && [ ! -f "$HOME/.claude/settings.json" ]; then
+  echo "claude-codex: REFUSED - $HOME/.claude/settings.json is missing, so the lane would launch without the seeded permissions.deny rules. Create it (an empty {} is enough) and re-run." >&2
+  exit 4
+fi
+
 # HIMMEL-1037: a --preflight-only probe never launches claude, so it needs no
 # seeded config dir — skip the (potentially heavy) seed entirely to keep the
 # per-dispatch auth probe cheap.

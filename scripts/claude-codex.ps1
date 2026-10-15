@@ -480,6 +480,13 @@ $LaneSeed.LockTimeout = if ($env:CLAUDE_LANE_SEED_LOCK_TIMEOUT) { [int]$env:CLAU
 $LaneSeed.LockStale = if ($env:CLAUDE_LANE_SEED_LOCK_STALE) { [int]$env:CLAUDE_LANE_SEED_LOCK_STALE } else { 120 }
 function Invoke-SeedWithLock { Invoke-LaneSeedWithLock $LaneSeed $Reseed $null }
 
+# No user settings file means no seeded permissions.deny rules; refuse rather than run unseeded.
+$UserSettings = Join-Path $HomeDir (Join-Path '.claude' 'settings.json')
+if ((-not $PreflightOnly) -and (-not (Test-Path -LiteralPath $UserSettings))) {
+  [Console]::Error.WriteLine("claude-codex: REFUSED - $UserSettings is missing, so the lane would launch without the seeded permissions.deny rules. Create it (an empty {} is enough) and re-run.")
+  exit 4
+}
+
 # HIMMEL-1037: a --preflight-only probe never launches claude, so skip seeding.
 if ((-not $PreflightOnly) -and ((-not (Test-Path -LiteralPath (Join-Path $ConfigDir '.seeded'))) -or $Reseed -or (Test-ConfigSeedStale))) {
   Invoke-SeedWithLock

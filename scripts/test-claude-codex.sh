@@ -16,6 +16,7 @@ setup() {
   BIN="$(mktemp -d "${TMPDIR:-/tmp}/claude-codex-test.bin.XXXXXX")"
   SANDBOXES+=("$FAKEHOME" "$WORK" "$BIN")
   mkdir -p "$FAKEHOME/.claude"
+  printf '%s\n' '{}' > "$FAKEHOME/.claude/settings.json"
   cat > "$BIN/claude" <<'MOCK'
 #!/usr/bin/env bash
 exit 0
@@ -215,6 +216,17 @@ esac
 run_launcher "double seed does not double-append" --reseed
 count="$(grep -c '^## Claudex lane model identity (HIMMEL-1927)$' "$seeded")"
 [ "$count" -eq 1 ] || { echo "FAIL: double seed produced $count identity stanzas"; FAILS=$((FAILS + 1)); }
+
+# With no user settings file the seed carries no deny rules (the classifier alone can allow a
+# force push to main), so the launch must refuse instead of running unseeded.
+setup
+rm -f "$FAKEHOME/.claude/settings.json"
+run_launcher_expect "no user settings file refuses to launch without deny rules" 4 "settings.json"
+[ ! -f "$FAKEHOME/.claude-codex/.seeded" ] || { echo "FAIL: launch without user settings still seeded the config dir"; FAILS=$((FAILS + 1)); }
+setup
+printf '%s\n' '{}' > "$FAKEHOME/.claude/settings.json"
+run_launcher "a user settings file keeps the launch working"
+grep -q 'git push \* main' "$FAKEHOME/.claude-codex/settings.json" || { echo "FAIL: seed lost the push deny rules"; FAILS=$((FAILS + 1)); }
 
 # Source-absent must remain lane-copy-absent or the stale check churns forever.
 setup
