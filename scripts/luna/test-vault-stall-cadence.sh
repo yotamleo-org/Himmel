@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4471: scripts/luna/vault-stall-cadence.sh detects a luna vault
+# scripts/luna/vault-stall-cadence.sh detects a luna vault
 # auto-commit stall and remediates ONLY the known-benign classes under
 # handovers/ (a shellcheck/check-json path exclude; a gitleaks finding whose
 # secret fully matches a CLOSED machine-generated shape). Anything else alerts
@@ -299,7 +299,7 @@ out="$(cadence disarm)"
 assert_eq "T12 disarm removes the row" "" "$(grep -F HIMMEL-VaultStall "$TMP/cron.tab")"
 assert_has "T12 status not armed" "not armed" "$(cadence status)"
 
-# --- T13 an operator edit to a config file → alert, no commit (codex-1) -----
+# --- T13 an operator edit to a config file → alert, no commit -----
 mkvault
 printf '#!/usr/bin/env bash\nfor f in $(cat list); do echo $f; done\n' >"$V/handovers/x.sh"
 git -C "$V" add handovers/x.sh
@@ -310,7 +310,7 @@ assert_eq "T13 no commit over a dirty config" "$before" "$(head_sha)"
 assert_eq "T13 the operator's edit is left as it was" "$cfg_before" "$(cat "$V/.pre-commit-config.yaml")"
 assert_has "T13 alert names the dirty config" "config-dirty" "$(sent)"
 
-# --- T14 no flock on PATH → a loud error, never a silent busy (codex-3) ------
+# --- T14 no flock on PATH → a loud error, never a silent busy ------
 mkdir -p "$TMP/noflock"
 old_ifs="$IFS"; IFS=:
 for d in $PATH; do
@@ -330,21 +330,21 @@ assert_eq "T14 missing flock exits 2" "2" "$rc"
 assert_has "T14 names flock" "flock" "$out"
 assert_not_has "T14 never reports busy" "busy" "$out"
 
-# --- T15 a relative --vault is baked as an absolute path (codex-5) -----------
+# --- T15 a relative --vault is baked as an absolute path -----------
 rm -f "$TMP/cron.tab"; rm -rf "$TMP/runner"
 out="$(cd "$TMP" && cadence arm --vault v1)"; rc=$?
 assert_eq "T15 arm with a relative vault exits 0" "0" "$rc"
 assert_has "T15 runner carries the absolute vault path" "run --vault $(cd "$TMP/v1" && pwd -P)" "$(cat "$TMP/runner/vault-stall-cadence.sh")"
 cadence disarm >/dev/null
 
-# --- T16 arm refuses a host without flock (panel round 2, codex-2) ------------
+# --- T16 arm refuses a host without flock ------------
 rm -f "$TMP/cron.tab"; rm -rf "$TMP/runner"
 out="$(PATH="$TMP/noflock" cadence arm --vault "$TMP/v1")"; rc=$?
 assert_eq "T16 arm without flock exits 2" "2" "$rc"
 assert_has "T16 arm names flock" "flock" "$out"
 assert_eq "T16 no crontab row written" "" "$(cat "$TMP/cron.tab" 2>/dev/null)"
 
-# --- T17 a sync that lands the edit mid-run is not rolled back (codex-1) ------
+# --- T17 a sync that lands the edit mid-run is not rolled back ------
 mkvault
 printf '#!/usr/bin/env bash\nfor f in $(cat list); do echo $f; done\n' >"$V/handovers/x.sh"
 git -C "$V" add handovers/x.sh
@@ -371,7 +371,7 @@ assert_has "T17 HEAD carries the exclude" "^handovers/" "$(git -C "$V" show HEAD
 assert_not_has "T17 no rollback alert" "(rolled back)" "$out"
 assert_has "T17 reports the landed edit" "landed through another commit" "$out"
 
-# --- T18 a rollback never overwrites a concurrent edit (round 3, codex-1) -----
+# --- T18 a rollback never overwrites a concurrent edit -----
 mkvault
 printf '#!/usr/bin/env bash\nfor f in $(cat list); do echo $f; done\n' >"$V/handovers/x.sh"
 git -C "$V" add handovers/x.sh
@@ -396,7 +396,7 @@ assert_eq "T18 no commit" "$before" "$(head_sha)"
 assert_has "T18 still alerts the refusal" "still-refused-after-remediation" "$(sent)"
 assert_has "T18 the concurrent edit survives the rollback" "# concurrent edit" "$(cat "$V/.pre-commit-config.yaml")"
 
-# --- T19 the regex lands in the global [allowlist], not a rule's (codex-3) ----
+# --- T19 the regex lands in the global [allowlist], not a rule's ----
 mkvault
 cat >"$V/.gitleaks.toml" <<'EOF'
 [extend]
@@ -428,7 +428,7 @@ assert_eq "T19 the regex sits after the [allowlist] header" "yes" \
     "$(awk '/^\[allowlist\]/ { a = NR } /pid\[0-9\]\+/ { r = NR } END { print (a && r > a) ? "yes" : "no" }' "$V/.gitleaks.toml")"
 assert_eq "T19 the hook now passes" "0" "$(hook_rc)"
 
-# --- T20 an empty exclude becomes the canonical one alone (round 4, codex-1) --
+# --- T20 an empty exclude becomes the canonical one alone --
 # '^handovers/|' would carry an empty alternative that matches every path.
 mkvault
 awk -v l="        exclude: ''" '/verdicts\|logs/ { print l; next } { print }' "$V/.pre-commit-config.yaml" >"$TMP/empty.yaml"
@@ -458,7 +458,7 @@ out="$(run_sut)"
 assert_eq "T21 no commit" "$before" "$(head_sha)"
 assert_has "T21 alerts cannot-edit" "cannot-edit" "$(sent)"
 
-# --- T22 a config edited during the run is not committed (round 4, codex-2) ---
+# --- T22 a config edited during the run is not committed ---
 mkvault
 printf '#!/usr/bin/env bash\nfor f in $(cat list); do echo $f; done\n' >"$V/handovers/x.sh"
 git -C "$V" add handovers/x.sh
@@ -482,7 +482,7 @@ assert_eq "T22 no commit" "$before" "$(head_sha)"
 assert_has "T22 alerts the mid-run change" "config-changed-during-run" "$(sent)"
 assert_has "T22 the concurrent edit survives" "# concurrent edit" "$(cat "$V/.pre-commit-config.yaml")"
 
-# --- T23 a '%' in the runner path is escaped for cron (round 4, codex-3) ------
+# --- T23 a '%' in the runner path is escaped for cron ------
 rm -f "$TMP/cron.tab"
 out="$(HOME="$TMP/home" VAULT_STALL_CRONTAB="$TMP/crontab" VAULT_STALL_RUNNER_DIR="$TMP/run%dir" \
     HIMMEL_OBSERVABILITY_CONFIG="$TMP/obs.json" bash "$SUT" arm --vault "$TMP/v1" 2>&1)"; rc=$?
@@ -491,7 +491,7 @@ assert_has "T23 cron row escapes the percent sign" 'run\%dir' "$(cat "$TMP/cron.
 HOME="$TMP/home" VAULT_STALL_CRONTAB="$TMP/crontab" VAULT_STALL_RUNNER_DIR="$TMP/run%dir" \
     HIMMEL_OBSERVABILITY_CONFIG="$TMP/obs.json" bash "$SUT" disarm >/dev/null 2>&1
 
-# --- T24 run with a relative --vault remediates (round 5, codex-1) -----------
+# --- T24 run with a relative --vault remediates -----------
 mkvault
 printf -- '- 10:00 LIVE — release-token: `%s`\n' "$LOCK_TOKEN" >"$V/handovers/b.md"
 git -C "$V" add handovers/b.md
@@ -502,7 +502,7 @@ out="$(cd "$(dirname "$V")" && HOME="$TMP/home" VAULT_STALL_STATE_DIR="$S" \
 assert_eq "T24 run exits 0" "0" "$rc"
 assert_eq "T24 commit holds ONLY the gitleaks config" ".gitleaks.toml " "$(head_files)"
 
-# --- T25 a config committed between planning and writing is kept (round 6) ---
+# --- T25 a config committed between planning and writing is kept ---
 # A git shim plays the sync: on the cadence's dirty-config check it commits an
 # operator's config edit first, so the tree is clean but the plan is stale.
 mkvault
@@ -529,7 +529,7 @@ assert_has "T25 the synced edit survives" "# synced operator edit" "$(cat "$V/.p
 assert_has "T25 alerts the mid-run change" "config-changed-during-run" "$(sent)"
 assert_eq "T25 nothing committed after the sync" "sync" "$(git -C "$V" log -1 --format=%s)"
 
-# --- T26 the loop cap is per vault (round 6, codex-3) -------------------------
+# --- T26 the loop cap is per vault -------------------------
 mkvault
 printf '#!/usr/bin/env bash\nfor f in $(cat list); do echo $f; done\n' >"$V/handovers/x.sh"
 git -C "$V" add handovers/x.sh
@@ -543,7 +543,7 @@ out="$(run_sut)"
 assert_has "T26 another vault's first stall is remediated" "REMEDIATED" "$out"
 assert_not_has "T26 no did-not-hold across vaults" "did-not-hold" "$(sent)"
 
-# --- T27 shell metacharacters in the runner path stay literal (round 7) -------
+# --- T27 shell metacharacters in the runner path stay literal -------
 # shellcheck disable=SC2016  # the $ and backticks are the payload
 odd="$TMP/run\$HOME'q\`id\`%d"
 rm -f "$TMP/cron.tab"
@@ -557,7 +557,7 @@ assert_eq "T27 cron's shell sees the literal runner path" "$odd/vault-stall-cade
 HOME="$TMP/home" VAULT_STALL_CRONTAB="$TMP/crontab" VAULT_STALL_RUNNER_DIR="$odd" \
     HIMMEL_OBSERVABILITY_CONFIG="$TMP/obs.json" bash "$SUT" disarm >/dev/null 2>&1
 
-# --- T28 toml_regex refuses an empty regex (HIMMEL-4493) ----------------------
+# --- T28 toml_regex refuses an empty regex ----------------------
 # cmd_run cannot reach this (a benign finding always has a closed shape), so the
 # function is exercised directly; an empty ''''''  regex would allowlist everything.
 eval "$(grep '^EDIT_ALREADY_PRESENT=' "$SUT")"

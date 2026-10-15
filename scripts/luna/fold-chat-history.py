@@ -379,7 +379,7 @@ class Report:
     assets_unrecognized: int = 0
     audio_placeholders: int = 0
     dry_run: bool = False
-    # telegram-only (HIMMEL-1170); unused for chatgpt/gemini
+    # telegram-only; unused for chatgpt/gemini
     provider: str = ""
     tg_group: str = ""
     tg_months: int = 0
@@ -473,7 +473,7 @@ def write_index(chats_dir, dry_run):
 
 
 # --------------------------------------------------------------------------
-# Telegram Desktop HTML group export (HIMMEL-1170)
+# Telegram Desktop HTML group export
 # One chronological group log -> monthly notes. It has no user/assistant
 # turns, so it does NOT go through render_note; it has its own parse+render.
 # --------------------------------------------------------------------------

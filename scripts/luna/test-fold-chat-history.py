@@ -205,7 +205,7 @@ class TestParseGemini(unittest.TestCase):
     def test_synthetic_id_stable_across_reexport(self):
         # A re-export changes volatile fields (exported_at) but not the chat;
         # the synthetic id must stay identical so a re-fold dedups instead of
-        # duplicating (HIMMEL-885 codex-adv).
+        # duplicating.
         with tempfile.TemporaryDirectory() as td:
             ed = Path(td)
             first = gemini_chat()
@@ -463,7 +463,7 @@ class TestAssets(unittest.TestCase):
             self.assertFalse(assets.exists())
 
     def test_copy_assets_junk_extension_in_map_falls_back_to_sniff(self):
-        # HIMMEL-832: a .dat file with PNG magic whose map entry has junk
+        # a .dat file with PNG magic whose map entry has junk
         # (e.g. "x.png/../../evil") should sniff the magic and return "png",
         # not the crafted string
         with tempfile.TemporaryDirectory() as td:
@@ -628,7 +628,7 @@ class TestFold(unittest.TestCase):
             self.assertEqual(len(notes), 3)
 
     def test_fold_same_title_same_time_same_size_different_content_no_collision(self):
-        # HIMMEL-832: two conversations with identical title + create_time +
+        # two conversations with identical title + create_time +
         # message count but DIFFERENT text must NOT collide (old seed bug:
         # title|create_time|mapping-size would collide; full-record hash fixes)
         with tempfile.TemporaryDirectory() as td:
@@ -890,7 +890,7 @@ class TestCli(unittest.TestCase):
             self.assertIn("assets copied: 0", report)
 
 
-# ---------- Telegram HTML group export (HIMMEL-1170) ----------
+# ---------- Telegram HTML group export ----------
 
 # Minimal Telegram Desktop HTML export shape: a page_header group name, one
 # `service` date separator (must be skipped), one message with <b>+<br> in the

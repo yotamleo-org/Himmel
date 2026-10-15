@@ -19,7 +19,7 @@
 #   --vault-registry <path>  Override vault registry (default: ~/.claude/luna-vaults.json)
 #   --luna-vault-path <dir>  Override default vault path (sets LUNA_VAULT_PATH)
 #
-# Reheal mode (HIMMEL-576):
+# Reheal mode:
 #   --reheal               Instead of importing transcripts, scan the resolved
 #                          vault's sessions/**/*.md for husk notes (crystallized
 #                          != true AND "_Transcript unavailable._" AND Files
@@ -30,7 +30,7 @@
 #                          transcript) are left as-is. Idempotent. Honours
 #                          --dry-run and --vault-registry/--luna-vault-path.
 #
-# Recrystallize mode (HIMMEL-620):
+# Recrystallize mode:
 #   --recrystallize        Like --reheal, but the broader predicate: crystallize
 #                          ANY note with crystallized != true that has a
 #                          recoverable (content-bearing) transcript — NOT just
@@ -53,7 +53,7 @@
 #                          --dry-run reports refresh-eligible notes (any note with
 #                          a content-bearing transcript, crystallized or not).
 #
-# Rules injection (HIMMEL-663):
+# Rules injection:
 #   --rules <file>         Operator rules/context file appended to the crystallizer
 #                          prompt (applies to --reheal + --recrystallize). Validated
 #                          readable; exported as CRYSTALLIZE_RULES_FILE.
@@ -88,7 +88,7 @@ RECRYS_LIMIT=0
 REFRESH=false
 RULES_FILE=""
 
-# Progress cadence (HIMMEL-627): print a periodic scan heartbeat to stderr every
+# Progress cadence: print a periodic scan heartbeat to stderr every
 # N notes during the reheal/recrystallize loop so a long run on a large vault
 # (~800+ candidate notes, each globbing ~188 project dirs in _find_transcript) is
 # observably-working, not silent-for-minutes. Overridable for tests only.
@@ -185,12 +185,12 @@ fi
 # Temp files (cleaned up on exit)
 # ---------------------------------------------------------------------------
 TMP_JSONL_LIST="$(mktemp 2>/dev/null)" || TMP_JSONL_LIST="/tmp/backfill-jl-$$"
-# Per-vault session_id set cache (HIMMEL-662): one file per resolved vault_hash,
+# Per-vault session_id set cache: one file per resolved vault_hash,
 # holding the session_id of every note already in that vault's sessions/ tree.
 TMP_VAULTSETS_DIR="$(mktemp -d 2>/dev/null)" || TMP_VAULTSETS_DIR="/tmp/backfill-vsets-$$"
 # The literal fallback path must actually EXIST (mktemp -d creates its dir; the
 # fallback string does not) — otherwise every set-file write fails silently and
-# the dedup no-ops for the whole run (CR round, HIMMEL-662).
+# the dedup no-ops for the whole run.
 [ -d "$TMP_VAULTSETS_DIR" ] || mkdir -p "$TMP_VAULTSETS_DIR" 2>/dev/null || true
 _cleanup() {
     rm -f "$TMP_JSONL_LIST" 2>/dev/null || true
@@ -207,7 +207,7 @@ trap _cleanup EXIT
 # '-claude', 'work_notes' -> 'work-notes'). Mapping only : \ / (the old
 # behaviour) produced the wrong slug for any path containing a dot / underscore
 # / space, so the project dir was never found and the whole project was silently
-# skipped (HIMMEL-588).
+# skipped.
 # ---------------------------------------------------------------------------
 _path_to_slug() {
     local p="$1"
@@ -332,7 +332,7 @@ _ledger_add() {
 }
 
 # ---------------------------------------------------------------------------
-# Vault session_id set (HIMMEL-662) — dedup against live-captured notes.
+# Vault session_id set — dedup against live-captured notes.
 # The ledger only tracks sessions backfill itself imported; a note written live
 # by end-session-wiki.sh is invisible to it, and the filename-collision check in
 # _process_one almost never fires because the live hook names notes by session-
@@ -363,7 +363,7 @@ _vault_set_build() { # <vault_root> <vault_hash>
     { find "$sessions_dir" -type f -name '*.md' \
         -exec grep -h '^session_id: ' {} + ; } 2>/dev/null \
         | sed 's/^session_id: //' > "$setf"
-    # Broken-scan visibility (CR round, HIMMEL-662): an EMPTY set for a vault
+    # Broken-scan visibility: an EMPTY set for a vault
     # that visibly holds notes means the dedup is inactive for this vault
     # (failed/partial scan, or frontmatter drift) and duplicates are possible
     # again — say so instead of silently degrading. stderr advisory only.
@@ -462,7 +462,7 @@ _process_one() {
     # shellcheck disable=SC2153
     local has_content="$HAS_CONTENT"
 
-    # Husk-skip gate (HIMMEL-576): a transcript with no salvageable content would
+    # Husk-skip gate: a transcript with no salvageable content would
     # render a content-free "Transcript unavailable" husk note (FILES_COUNT is
     # always 0 in backfill, so the live hook's files_touched term doesn't apply).
     # Skip it — this is what kills the same-minute collision flood.
@@ -536,7 +536,7 @@ _process_one() {
         return 0
     fi
 
-    # Already-in-vault (HIMMEL-662): a session captured live by end-session-wiki.sh
+    # Already-in-vault: a session captured live by end-session-wiki.sh
     # is absent from the (backfill-only) ledger, so it slips past the check above.
     # Scan the vault's existing notes once (lazy, cached per vault) and skip a
     # session already present. Self-healing: ledger the hit so a later run skips it
@@ -664,7 +664,7 @@ _process_one() {
 }
 
 # ===========================================================================
-# Reheal mode (HIMMEL-576 Phase 3) — recover husk notes already in the vault.
+# Reheal mode — recover husk notes already in the vault.
 # ===========================================================================
 CNT_REHEAL=0
 CNT_REHEAL_INERT=0
@@ -824,7 +824,7 @@ _reheal_one() { # <note>
     fi
     if [ "$healed" -eq 1 ]; then
         CNT_REHEAL=$((CNT_REHEAL + 1))
-        # Per-note line (HIMMEL-627): show each heal as it lands on a real run.
+        # Per-note line: show each heal as it lands on a real run.
         printf 'reheal: healed %s (%d)\n' "$(basename "$note")" "$CNT_REHEAL" >&2
     else
         # Couldn't clear the husk this run (crystallizer unavailable/failed, or
@@ -835,7 +835,7 @@ _reheal_one() { # <note>
 }
 
 # ===========================================================================
-# Recrystallize mode (HIMMEL-620) — crystallize ANY note with crystallized != true
+# Recrystallize mode — crystallize ANY note with crystallized != true
 # that has a recoverable (content-bearing) transcript, NOT just husks. --reheal is
 # husk-only (crystallized!=true AND "_Transcript unavailable._" AND Files None), so
 # it SKIPS content-bearing-but-uncrystallized notes — which is the common shape of
@@ -905,7 +905,7 @@ _recrystallize_one() { # <note>
         bash "$SCRIPT_DIR/crystallize-note.sh" "$note" "$jl" || true
         if grep -q '^crystallized: true$' "$note" 2>/dev/null; then
             CNT_RECRYS=$((CNT_RECRYS + 1))
-            # Per-note line (HIMMEL-627): on a real run, show each crystallization as
+            # Per-note line: on a real run, show each crystallization as
             # it lands so --limit chunk progress is visible note-by-note. stderr only;
             # the machine-parseable summary stays on stdout.
             printf 'recrystallize: crystallized %s (%d)\n' "$(basename "$note")" "$CNT_RECRYS" >&2
@@ -944,7 +944,7 @@ _run_reheal() {
     find "$sessions_dir" -type f -name '*.md' 2>/dev/null > "$TMP_JSONL_LIST"
 
     # Total candidate count drives the X/total heartbeat below. Perf follow-up
-    # (HIMMEL-627, NOT built here): _find_transcript globs all ~188 project dirs
+    # (NOT built here): _find_transcript globs all ~188 project dirs
     # per note -> the scan is O(notes * projectdirs); a one-time project-dir index
     # (session_id -> path) would cut it to O(N + projectdirs).
     local total scanned=0
@@ -959,7 +959,7 @@ _run_reheal() {
         else
             _reheal_one "$note"
         fi
-        # Periodic heartbeat to stderr (HIMMEL-627): every PROGRESS_EVERY notes,
+        # Periodic heartbeat to stderr: every PROGRESS_EVERY notes,
         # report scanned X/total + running counts so a multi-minute run is
         # observably alive. Summary line (stdout) is unaffected.
         if [ "$PROGRESS_EVERY" -gt 0 ] && [ $((scanned % PROGRESS_EVERY)) -eq 0 ]; then
@@ -1005,7 +1005,7 @@ done < "$TMP_JSONL_LIST"
 printf 'backfill: new=%d already-in-ledger=%d already-in-vault=%d opt-out-skip=%d orphaned-skip=%d under-min=%d husk-skip=%d\n' \
     "$CNT_NEW" "$CNT_LEDGER" "$CNT_INVAULT" "$CNT_OPTOUT" "$CNT_ORPHANED" "$CNT_UNDERMIN" "$CNT_HUSK"
 
-# Crystallization nudge (HIMMEL-590 F3 / HIMMEL-620): plain backfill writes
+# Crystallization nudge: plain backfill writes
 # MECHANICAL notes (crystallized: false) — only the live end-session hook and the
 # crystallize passes run the LLM crystallizer. Auto-spawning it per imported note
 # during a bulk `--all` import would fan out an unbounded number of billed

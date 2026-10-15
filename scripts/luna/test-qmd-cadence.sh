@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/luna/qmd-cadence.sh (HIMMEL-568).
+# Smoke test for scripts/luna/qmd-cadence.sh.
 #
 # ONE daily cadence task is armed: HIMMEL-Qmd-Reindex (daily 05:00 ->
 # qmd-reindex.sh --qmd-bin <qmd>). Like the graphmap sibling — and unlike
@@ -17,7 +17,7 @@
 # touches the real user profile. The cron suite runs on EVERY platform (the
 # POSIX path is forced with an OSTYPE override); the schtasks suite runs on
 # Windows against the real cygpath, and elsewhere against a deterministic
-# cygpath STUB (scripts/lib/cygpath-stub.sh, HIMMEL-3114) — see the note at the
+# cygpath STUB (scripts/lib/cygpath-stub.sh) — see the note at the
 # top of that section for what the stubbed run does and does not prove.
 set -euo pipefail
 
@@ -38,7 +38,7 @@ trap cleanup EXIT
 
 pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FAIL=$((FAIL+1)); }
-# Match with a HERE-STRING, not `printf … | grep -q` (HIMMEL-1115). Under the
+# Match with a HERE-STRING, not `printf … | grep -q`. Under the
 # `set -o pipefail` in force here, grep -q exits early on a match, printf takes
 # SIGPIPE (141), and pipefail surfaces 141 as the pipeline status — so a
 # SUCCESSFUL match reads as a FAILURE as soon as the haystack outgrows the pipe
@@ -101,7 +101,7 @@ REAL_MV="$(command -v mv)"
 # Fake bash on PATH (arm resolves it via `command -v bash`). A no-op stub is
 # enough — the tests assert runner TEXT, they never fire the runner. Shebang is
 # /bin/sh (absolute) so the stub can never shebang-recurse into itself.
-# HIMMEL-1701/1686: the stub is PLATFORM-NAMED. An EXTENSIONLESS file called
+# the stub is PLATFORM-NAMED. An EXTENSIONLESS file called
 # `bash` makes Windows ShellExecute return SE_ERR_NOASSOC, which pops the
 # "Select an app to open 'bash'" picker — a modal that hangs an unattended
 # cadence run with nobody there to dismiss it. HERMETIC_EXE_SUFFIX is CONSUMED
@@ -115,7 +115,7 @@ mkdir -p "$TMP_ROOT/bin"
 printf '#!/bin/sh\nexit 0\n' > "$TMP_ROOT/bin/bash$HERMETIC_EXE_SUFFIX"
 chmod +x "$TMP_ROOT/bin/bash$HERMETIC_EXE_SUFFIX"
 
-# The HIMMEL-1686 assertion, ported from scripts/test-adopt.sh: the
+# The assertion ported from scripts/test-adopt.sh: the
 # platform-named stub must EXIST, and on Windows no extensionless `bash` may
 # be created. The expected suffix comes from an INDEPENDENT platform probe,
 # never from HERMETIC_EXE_SUFFIX — reusing the writer's own value makes the
@@ -189,14 +189,14 @@ IFS=$_oldifs
 # this cadence primarily runs on.
 export HOME="$TMP_ROOT/home"
 mkdir -p "$HOME"
-# HIMMEL-3332 S8: arms record a provenance row; never into the operator's ledger.
+# Arms record a provenance row; never into the operator's ledger.
 export HIMMEL_PROVENANCE_DIR="$HOME/.himmel"
 export USERPROFILE="$HOME"
-# HIMMEL-4286: fired probe runners now call cadence-alert + the flow ledger;
+# fired probe runners now call cadence-alert + the flow ledger;
 # keep both sinks inside the scratch HOME and never reach Telegram.
 export CADENCE_ALERT_SEND_CMD=/bin/true
 export HIMMEL_FLOW_RUNS_LEDGER="$HOME/flow-runs.jsonl"
-# BUN_INSTALL too (HIMMEL-1283 CR): arm resolves qmd through
+# BUN_INSTALL too: arm resolves qmd through
 # qmd_pinned_invocation, whose FIRST branch looks for the bun-served install at
 # $BUN_INSTALL/install/global/node_modules/@tobilu/qmd/dist/cli/qmd.js — before
 # it consults PATH at all. BUN_INSTALL defaults to $HOME/.bun, so redirecting
@@ -335,7 +335,7 @@ assert_contains "dry-run marker" "# HIMMEL-Qmd-Reindex" "$out"
 assert_contains "dry-run fires qmd-reindex.sh" "qmd-reindex.sh" "$out"
 assert_contains "dry-run pins the qmd binary" "--qmd-bin" "$out"
 
-# HIMMEL-4896: a retired receiver option must fail, never arm a ship task.
+# a retired receiver option must fail, never arm a ship task.
 echo "TEST: retired --ship-to is rejected before arming"
 rc=0; out=$(run_cron arm --ship-to receiver --dry-run 2>&1) || rc=$?
 assert_rc "retired receiver cadence is rc 1" 1 "$rc"
@@ -356,7 +356,7 @@ else
 fi
 
 # Test C4c: --hourly emits an hourly crontab line instead of the daily one
-# (HIMMEL-2111) -- mirrors graphmap-cadence's AST-himmel hourly cron entry.
+# -- mirrors graphmap-cadence's AST-himmel hourly cron entry.
 
 echo "TEST: --hourly emits an hourly cron entry (fixed minute, every hour)"
 out=$(run_cron arm --hourly --dry-run)
@@ -396,7 +396,7 @@ assert_contains "daily entry 05:00" "00 05 * * *" "$tab"
 assert_contains "entry marker-tagged" "# HIMMEL-Qmd-Reindex" "$tab"
 assert_contains "entry fires the runner" "qmd-reindex.sh" "$tab"
 assert_contains "unrelated entry preserved" "keep-me" "$tab"
-# HIMMEL-3332 S8: the arm records a `job register` row so uninstall can remove
+# The arm records a `job register` row so uninstall can remove
 # exactly this line. Read back through the real reader, from the scratch HOME.
 jobs=$( . "$SCRIPT_DIR/../lib/provenance.sh" && . "$SCRIPT_DIR/../lib/provenance-read.sh" && prov_read_load >/dev/null && prov_read_units --kind job \
     | jq -r '"\(.unit) ours=\(.ours) scheduler=\(.fields.scheduler)"' )
@@ -415,7 +415,7 @@ runner=$(cat "$CRON_DIR/qmd-reindex.sh" 2>/dev/null || echo MISSING)
 # The sh runner embeds paths via printf %q (backslash-escapes); strip the
 # escapes before multi-word / path asserts.
 runner_plain=${runner//\\/}
-# The expected version is SOURCED, never retyped (HIMMEL-2044): a hardcoded
+# The expected version is SOURCED, never retyped: a hardcoded
 # literal here bounces this suite on every format bump for no coverage gain --
 # the assertion that matters is "the runner stamps the CURRENT format".
 # shellcheck source=../lib/cadence-format.sh
@@ -529,7 +529,7 @@ for want_rc in 0 5; do
 done
 
 # Test C6d: the runner alerts + writes flow rows through the shared emitter ----
-# HIMMEL-4286. Fire the generated runner against a stub payload and a stub
+# Fire the generated runner against a stub payload and a stub
 # cadence-alert.sh: a failed reindex must page (`fail`), a good one must `clear`.
 echo "TEST: generated cron runner alerts on failure and clears on success"
 # shellcheck source=../lib/cadence-runner-exec.sh
@@ -554,7 +554,7 @@ for want_rc in 5 0; do
     assert_contains "rc $want_rc writes a qmd-reindex flow-run row" "qmd-reindex" "$rows"
 done
 
-# Test C6c: the self-overlap lock actually SERIALIZES (HIMMEL-1286) ------------
+# Test C6c: the self-overlap lock actually SERIALIZES ------------
 #
 # Behavioural, like C6b, and for the same reason: the textual assertions above
 # prove the lock code is PRESENT, which is not the same as proving it works —
@@ -834,7 +834,7 @@ env OSTYPE=linux-gnu QMD_CADENCE_CRONTAB="$FAKE_CRONTAB" \
 
 # Test C18: LIVENESS — a qmd that EXISTS but errors must refuse to arm --------
 #
-# HIMMEL-1283, the core of the ticket. Every pre-existing guard here proves
+# Every pre-existing guard here proves
 # "a file exists, is absolute, and is executable" — which the broken
 # Claude-plugin stub satisfies perfectly. It resolves, arms cleanly, and then
 # dies on every unattended fire with `Module not found ... dist/cli/qmd.js`.
@@ -917,7 +917,7 @@ assert_rc "unknown platform rc 2" 2 "$rc"
 assert_contains "unknown platform message" "unsupported platform" "$out"
 
 # ============================================================================
-# Darwin Full Disk Access arm-time warning (HIMMEL-3075, himmel#771), POSIX/
+# Darwin Full Disk Access arm-time warning, POSIX/
 # cron path. cron_arm is IDENTICAL on macos and linux (both take the crontab
 # branch of the platform case) except for this warning, so OSTYPE is the only
 # hermetic seam needed to exercise the real Darwin branch without a macOS
@@ -949,7 +949,7 @@ assert_not_contains "Linux arm prints no FDA warning" "Full Disk Access" "$out"
 run_fda linux-gnu disarm >/dev/null 2>&1
 
 # ============================================================================
-# schtasks suite (HIMMEL-3114). cmd_arm hard-refuses without cygpath, and the
+# schtasks suite. cmd_arm hard-refuses without cygpath, and the
 # cron suite above only exercised the POSIX path, so this section used to SKIP
 # everywhere but Git-Bash — the green tally held zero schtasks cases.
 #
@@ -1047,7 +1047,7 @@ esac
 FAKE
 chmod +x "$FAKE_SCHTASKS"
 
-# Hermetic WSH preflight fixtures (HIMMEL-1793). The fake PowerShell returns
+# Hermetic WSH preflight fixtures. The fake PowerShell returns
 # the requested HKLM/HKCU Enabled state; ABSENT models a missing value. The
 # fake wscript is the same host seam production smoke-probes before arming.
 FAKE_WSCRIPT="$TMP_ROOT/wscript-fake.exe"
@@ -1143,7 +1143,7 @@ else
 fi
 
 # Test W2b: --hourly layers a Repetition fragment onto the daily CalendarTrigger
-# (HIMMEL-2111) -- same idiom graphmap-cadence.sh uses for its AST-himmel task.
+# -- same idiom graphmap-cadence.sh uses for its AST-himmel task.
 
 echo "TEST: schtasks --hourly dry-run XML carries the Repetition fragment"
 out=$(run_qc arm --hourly --dry-run)
@@ -1172,7 +1172,7 @@ assert_contains "XML StartWhenAvailable" "<StartWhenAvailable>true</StartWhenAva
 assert_contains "XML IgnoreNew (no self-overlap)" "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" "$task_xml"
 assert_contains "XML names the ticket" "HIMMEL-568" "$task_xml"
 assert_contains "Exec points at the runner shim" "qmd-reindex.vbs" "$task_xml"
-# HIMMEL-1753: Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
+# Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
 # The hidden-powershell shape still allocated consoles; wscript allocates zero.
 # Element-scoped (not whole-XML) checks so a wrapper regression that happened
 # to still mention the .bat somewhere else in the document wouldn't hide a
@@ -1320,7 +1320,7 @@ assert_rc "arm works again after a full disarm (no wedge)" 0 "$rc"
 run_qc disarm >/dev/null
 
 # Test W8e: --hourly arm registers the Repetition fragment for real, in the
-# schema-required order (HIMMEL-2111) -- mirrors graphmap-cadence's assertion
+# schema-required order -- mirrors graphmap-cadence's assertion
 # that Repetition precedes ScheduleByDay in the emitted trigger.
 
 echo "TEST: schtasks arm --hourly registers the Repetition fragment for real"
@@ -1345,7 +1345,7 @@ else
 fi
 run_qc disarm >/dev/null
 
-# Test W8d: a failed promotion aborts BEFORE registration (HIMMEL-1753 r2) -----
+# Test W8d: a failed promotion aborts BEFORE registration -----
 #
 # The two publish `mv`s sit between staging and schtasks /create. Unchecked, a
 # failed promotion fell through to registering a task that pointed at a missing
@@ -1474,7 +1474,7 @@ run_qc disarm >/dev/null
 
 # Test W12: hostile-but-legal BAT_DIR lands on the REAL dir in the .bat -------
 #
-# HIMMEL-1281: every value the emitter interpolates sits inside double quotes,
+# every value the emitter interpolates sits inside double quotes,
 # where cmd.exe treats & < > | as literal data and ^ as a literal character.
 # So the only transform cadence_cmd_escape applies is % -> %% (percent
 # expansion DOES happen inside quotes in a .bat). The caret escaping this

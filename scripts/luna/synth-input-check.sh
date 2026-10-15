@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# synth-input-check.sh — HIMMEL-2045. Free precondition for the nightly
+# synth-input-check.sh — free precondition for the nightly
 # Pipeline-Synthesize cadence leg: is there anything new to synthesize?
 #
 # WHY: /synthesize-clips wrote 0, 1, 0 pages on 2026-08-21/22/23 — two of three

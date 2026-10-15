@@ -1,6 +1,6 @@
-﻿# crystallize-note.ps1 — Windows twin of crystallize-note.sh (HIMMEL-576).
+﻿# crystallize-note.ps1 — Windows twin of crystallize-note.sh.
 # Upgrades a mechanical session note into an LLM synthesis: asks a bounded
-# `claude "<prompt>"` run (interactive, NOT headless -p -> HIMMEL-128-safe; Max
+# `claude "<prompt>"` run (interactive, NOT headless -p, so no headless billing; Max
 # plan, no API key) to rewrite the four body sections and flip crystallized: true.
 #
 # Usage: pwsh -File crystallize-note.ps1 <note_path> <transcript_path>
@@ -24,15 +24,15 @@ $rulesFile = if ($env:CRYSTALLIZE_RULES_FILE) { $env:CRYSTALLIZE_RULES_FILE } el
 $refresh = ($env:CRYSTALLIZE_REFRESH -eq '1')
 
 # Recursion guards: the throwaway claude subsession must not re-fire the session-
-# end hooks (end-session-wiki + HIMMEL-572 where-are-we refresh).
+# end hooks (end-session-wiki + where-are-we refresh).
 $env:CLAUDE_END_SESSION_WIKI = '0'
 $env:HIMMEL_WHERE_ARE_WE = '0'
 
 # A lane config dir carries proxy routing but no native credentials. Defer this
 # best-effort synthesis to backfill rather than fire its Anthropic model pin into
-# the lane proxy (HIMMEL-1927); an unresolvable path is fail-open in the same way.
+# the lane proxy; an unresolvable path is fail-open in the same way.
 #
-# HIMMEL-1927 CR finding: this predicate is deliberately conservative -- ANY
+# This predicate is deliberately conservative -- ANY
 # CLAUDE_CONFIG_DIR that differs from ~/.claude defers, even a legitimate
 # custom-but-native one. Do NOT narrow this to also require ANTHROPIC_BASE_URL:
 # a lane config dir (e.g. ~/.claude-codex) carries no .credentials.json, so
@@ -175,8 +175,8 @@ $rulesContent
 
     # The note lives in the luna vault, OUTSIDE the himmel repo. Running claude in
     # HIMMEL_ROOT left the out-of-workspace note edit waiting on a permission
-    # prompt that bounded stdin EOFed -> byte-unchanged note (HIMMEL-590 F1). Fix
-    # (HIMMEL-575 class): cwd = the note's directory, --add-dir the transcript
+    # prompt that bounded stdin EOFed -> byte-unchanged note. Fix:
+    # cwd = the note's directory, --add-dir the transcript
     # dir, and inject auto-approve-safe-bash by absolute path via --settings. The
     # LLM rewrites only the body; this script owns the crystallized flag from the
     # body diff (T1d).
@@ -214,7 +214,7 @@ $rulesContent
     # Pre-hash: the edit-confirmed flag-set keys off whether the body moved.
     $hashBefore = (Get-FileHash -LiteralPath $NotePath -Algorithm SHA256).Hash
 
-    # Ambient proxy exports must not redirect this Max-plan launch (HIMMEL-1867).
+    # Ambient proxy exports must not redirect this Max-plan launch.
     try {
         . (Join-Path $himmelRoot 'scripts\lib\native-auth-pin.ps1')
         NativeAuthPinEnv

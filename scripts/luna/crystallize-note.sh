@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# crystallize-note.sh — upgrade a mechanical session note into an LLM synthesis
-# (HIMMEL-576). Reads the session transcript + the just-written note and asks a
+# crystallize-note.sh — upgrade a mechanical session note into an LLM synthesis.
+# Reads the session transcript + the just-written note and asks a
 # bounded `claude` run to rewrite the four body sections (Summary / Decisions /
 # Files Touched / Follow-ups), preserving frontmatter identity and setting
 # `crystallized: true`. Billed to the operator's Max plan — this is an
 # INTERACTIVE bounded run (`claude "<prompt>" </dev/null`), NOT headless `-p`,
-# so it is HIMMEL-128-safe and needs no API key.
+# so it is safe from headless billing and needs no API key.
 #
 # Usage: crystallize-note.sh <note_path> <transcript_path>
 #
@@ -31,7 +31,7 @@ RULES_FILE="${CRYSTALLIZE_RULES_FILE:-${3:-}}"
 # Recursion guards: the throwaway claude session we spawn must not itself re-fire
 # the session-end hooks. CLAUDE_END_SESSION_WIKI=0 silences end-session-wiki;
 # HIMMEL_WHERE_ARE_WE=0 silences the where-are-we session-end refresh
-# (refresh-where-are-we-on-end.sh, HIMMEL-572) so a crystallizer subsession does
+# (refresh-where-are-we-on-end.sh) so a crystallizer subsession does
 # not kick off a synchronous jira/gh/git ledger refresh.
 export CLAUDE_END_SESSION_WIKI=0
 export HIMMEL_WHERE_ARE_WE=0
@@ -143,16 +143,16 @@ _refresh_valid() { # <note>
 # only auto-approves edits to files INSIDE the spawned run's workspace — so the
 # out-of-workspace note Edit fell through to a permission prompt, `</dev/null`
 # EOFed it, and the note was left BYTE-UNCHANGED with `crystallized: false`
-# (HIMMEL-590 F1; confirmed by capturing the spawned run's stdout: "each write to
+# (confirmed by capturing the spawned run's stdout: "each write to
 # the note is waiting on your permission grant"). The stub-based suite masked it
 # because the stub edits the note directly.
 #
-# Fix (same class as HIMMEL-575): put the note's directory in the workspace by
+# Fix: put the note's directory in the workspace by
 # running `claude` with cwd = the note's directory, add the transcript's
 # directory via `--add-dir`, and inject himmel's `auto-approve-safe-bash`
 # PreToolUse hook by ABSOLUTE path via `--settings` (the vault cwd carries no
 # himmel project settings, so any bash the run does would otherwise stall on the
-# HIMMEL-203 compound-bash prompt). The LLM rewrites only the four body sections;
+# compound-bash prompt). The LLM rewrites only the four body sections;
 # the `crystallized` flag is owned DETERMINISTICALLY by this script, set only
 # when the note body actually changed (T1d) — so a no-op never falsely flags and
 # a real synthesis always does, regardless of what the model touched.
@@ -232,7 +232,7 @@ fi
 HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 AUTO_APPROVE_HOOK="$HIMMEL_ROOT/scripts/hooks/auto-approve-safe-bash.sh"
 
-# Settings fragment wiring auto-approve-safe-bash by absolute path (HIMMEL-575).
+# Settings fragment wiring auto-approve-safe-bash by absolute path.
 # HIMMEL_ROOT comes from `pwd`, so it is already forward-slash (JSON-safe and
 # bash-readable) on Git Bash / macOS / Linux alike.
 SETTINGS_TMP="$(mktemp 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/crys-settings-$$.json")"
@@ -263,11 +263,11 @@ TR_DIR=""
 _hash() { { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1" 2>/dev/null; } | awk '{print $1}'; }
 HASH_BEFORE="$(_hash "$NOTE_PATH")"
 
-# Ambient proxy exports must not redirect this Max-plan launch (HIMMEL-1867).
+# Ambient proxy exports must not redirect this Max-plan launch.
 # shellcheck source=scripts/lib/native-auth-pin.sh
 # shellcheck disable=SC1091
 . "$HIMMEL_ROOT/scripts/lib/native-auth-pin.sh" || exit 0
-# HIMMEL-4459: the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
+# the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
 # Subshell function: its `exit 0` ends only the launch, and `cd` precedes the gate
 # so nothing runs between gate and launch.
 launch_claude_if_native_auth_pinned() {

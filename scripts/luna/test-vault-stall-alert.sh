@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-3851: scripts/luna/vault-stall-alert.sh must hand the message to the
+# scripts/luna/vault-stall-alert.sh must hand the message to the
 # operator's chat through the shared sender seam, and fail (non-zero) when it
 # cannot deliver, so vault-autosync.sh retries instead of marking the stall
 # episode alerted.

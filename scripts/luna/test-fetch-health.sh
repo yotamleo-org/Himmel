@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline classifier/auth/state tests for HIMMEL-1449 fetch-health probes.
+# Offline classifier/auth/state tests for the fetch-health probes.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

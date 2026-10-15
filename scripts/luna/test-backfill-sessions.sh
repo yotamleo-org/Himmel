@@ -27,7 +27,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -197,7 +197,7 @@ else
     fail "first run wrote no note" "$out1"
 fi
 
-# F3 (HIMMEL-590): a real import prints the --reheal crystallization nudge.
+# F3: a real import prints the --reheal crystallization nudge.
 assert_contains "F3: real import prints the --recrystallize nudge" "--recrystallize" "$out1"
 # The imported note is mechanical (crystallized: false) until reheal runs.
 if grep -q '^crystallized: false$' "$NOTE" 2>/dev/null; then
@@ -466,7 +466,7 @@ fi
 
 # Also assert --dry-run does not write but reports correct counts. The first run
 # already wrote this session's note into the custom vault, so with a FRESH ledger
-# (STATE7B) the vault scan (HIMMEL-662) now recognizes it as already-in-vault=1
+# (STATE7B) the vault scan now recognizes it as already-in-vault=1
 # rather than re-counting it as a new import — this is the self-healing property
 # (a lost ledger is rebuilt from the vault's own notes).
 STATE7B="$SB/state7b.json"
@@ -565,7 +565,7 @@ out8b=$(bash "$BACKFILL" \
 assert_contains "collision-dedup: re-run idempotent (new=0)" "new=0" "$out8b"
 
 # ============================================================================
-# Case 9: husk-skip — a contentless transcript writes NO note (HIMMEL-576)
+# Case 9: husk-skip — a contentless transcript writes NO note
 # ============================================================================
 echo ""
 echo "Case 9: husk-skip (contentless transcript)"
@@ -605,7 +605,7 @@ else
 fi
 
 # ============================================================================
-# Reheal helpers (HIMMEL-576 Phase 3)
+# Reheal helpers
 # ============================================================================
 # Write a husk note (crystallized unset/false + "_Transcript unavailable._" +
 # Files Touched "_None._") at $1 with session_id $2.
@@ -661,7 +661,7 @@ _None._
 EOF
 }
 
-# A CONTENT-bearing crystallized:false note (HIMMEL-620): real Raw Conversation
+# A CONTENT-bearing crystallized:false note: real Raw Conversation
 # (NOT "_Transcript unavailable._"), so it is NOT a husk — --reheal skips it,
 # --recrystallize crystallizes it. This is the shape of an F1-affected live note
 # and a backfilled prose-session note.
@@ -1060,8 +1060,8 @@ else
 fi
 
 # ============================================================================
-# Case 17: full-scope --all routes TWO repos to TWO DIFFERENT vaults
-#          (HIMMEL-590 F4). Each repo's per-repo config carries its own
+# Case 17: full-scope --all routes TWO repos to TWO DIFFERENT vaults.
+#          Each repo's per-repo config carries its own
 #          vault_path, so a single `--all` pass must file each session into its
 #          OWN vault — not pool both into one default. This locks the
 #          per-session resolve_vault_root routing that makes multi-vault work.
@@ -1112,7 +1112,7 @@ fi
 
 # ============================================================================
 # Case 18: --recrystallize crystallizes a CONTENT-bearing note that --reheal
-#          SKIPS (HIMMEL-620). The note is crystallized:false with a real Raw
+#          SKIPS. The note is crystallized:false with a real Raw
 #          Conversation (not a husk). --reheal must skip it (non-husk-skip);
 #          --recrystallize must crystallize it (crystallized:true).
 # ============================================================================
@@ -1190,7 +1190,7 @@ _cryst_count=$(grep -l '^crystallized: true$' "$N19A" "$N19B" 2>/dev/null | wc -
 if [ "$_cryst_count" = "1" ]; then pass "recrys(limit): exactly one note crystallized on disk"; else fail "recrys(limit): $_cryst_count crystallized (expected 1)" "$out19l"; fi
 
 # ============================================================================
-# Case 20: progress logging (HIMMEL-627) — periodic heartbeat + per-note lines
+# Case 20: progress logging — periodic heartbeat + per-note lines
 #          appear on stderr for a multi-note recrystallize run; the stdout
 #          summary line stays byte-stable; --limit chunk boundaries are
 #          observable per-note.
@@ -1247,7 +1247,7 @@ fi
 assert_not_contains "progress: no heartbeat leaked onto stdout" "scanned " "$out20"
 
 # ============================================================================
-# Case 21: heartbeat is PERIODIC, not every-note (HIMMEL-627). With
+# Case 21: heartbeat is PERIODIC, not every-note. With
 #          BACKFILL_PROGRESS_EVERY=2 over 3 notes the heartbeat fires at note 2
 #          only — "scanned 2/3" present, "scanned 1/3" and "scanned 3/3" absent.
 #          (Case 20 used EVERY=1, which fires every note and so does NOT prove
@@ -1276,7 +1276,7 @@ assert_not_contains "periodic: no heartbeat at note 1 (every-2, not every-1)" "s
 assert_not_contains "periodic: no heartbeat at note 3 (3 % 2 != 0)" "scanned 3/3" "$err21"
 
 # ============================================================================
-# Case 22: --reheal emits progress too (HIMMEL-627). The reheal arm has its own
+# Case 22: --reheal emits progress too. The reheal arm has its own
 #          per-note line + 5-field heartbeat, written independently of the
 #          recrystallize arm — Case 20/21 cover only recrystallize.
 # ============================================================================
@@ -1444,7 +1444,7 @@ if [ "$rc27" -ne 0 ]; then pass "rules(backfill): unreadable --rules file errors
 
 # ============================================================================
 # Case 28: a CORRUPTING refresh is rolled back and counted skipped, not
-#          refreshed (loss-proofing, HIMMEL-663). The corrupt stub truncates the
+#          refreshed (loss-proofing). The corrupt stub truncates the
 #          note; the crystallizer restores the snapshot (byte-identical), so the
 #          backfill hash-compare must record skipped=1 / crystallized=0.
 # ============================================================================
@@ -1469,7 +1469,7 @@ assert_contains "refresh(corrupt): counted skipped, not refreshed" "crystallized
 if [ "$SHA28" = "$(_file_sha256 "$NOTE28")" ]; then pass "refresh(corrupt): note restored byte-identical (prior synthesis kept)"; else fail "refresh(corrupt): corrupted result persisted" "$out28"; fi
 
 # ============================================================================
-# Case 29: already-in-vault dedup (HIMMEL-662) — a session captured live by
+# Case 29: already-in-vault dedup — a session captured live by
 #          end-session-wiki.sh already sits in the vault under a DIFFERENT
 #          filename shape (end-time + repo-branch slug, source: live) and is
 #          invisible to the (backfill-only) ledger. Plain backfill must scan the
@@ -1550,7 +1550,7 @@ assert_contains "in-vault(2nd run): nothing re-imported (new=0)" "new=0" "$out29
 
 # ============================================================================
 # Case 30: --dry-run counts already-in-vault but does NOT write the ledger
-#          (HIMMEL-662 — the scan is read-only so it runs in dry-run, but
+#          (the scan is read-only so it runs in dry-run, but
 #          _ledger_add stays dry-run-guarded).
 # ============================================================================
 echo ""
@@ -1582,7 +1582,7 @@ else
 fi
 
 # ============================================================================
-# Case 31: broken-scan advisory (HIMMEL-662 CR round) — a vault whose sessions/
+# Case 31: broken-scan advisory — a vault whose sessions/
 #          tree holds .md notes but yields ZERO session_id frontmatter means the
 #          dedup is inactive; the scan must say so on stderr instead of silently
 #          degrading to duplicate-possible behavior. A genuinely-new session
@@ -1644,7 +1644,7 @@ out32b=$(bash "$BACKFILL" --reheal --rules 2>&1) || rc32b=$?
 if [ "$rc32b" -eq 1 ]; then pass "rules(guard): trailing --rules exits 1"; else fail "rules(guard): wrong exit $rc32b (want 1)" "$out32b"; fi
 assert_contains "rules(guard): explicit needs-a-value message" "--rules needs a value" "$out32b"
 
-# Trailing --limit with no value (HIMMEL-842): the guard must fail fast with a
+# Trailing --limit with no value: the guard must fail fast with a
 # clean message, not a raw set -u "$1: unbound variable" abort. Uses the same
 # safe expansion shape (${1:-}) as the --rules arm.
 rc32c=0

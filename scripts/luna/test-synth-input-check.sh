@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-synth-input-check.sh — HIMMEL-2045. Hermetic: a scratch vault, no claude.
+# test-synth-input-check.sh — hermetic: a scratch vault, no claude.
 # Mirrors test-bank-preflight.sh's shape — the sibling verdict-token helper.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # vault-stall-cadence.sh — detect a luna vault auto-commit STALL and remediate
-# the known-benign pre-commit refusals; alert on everything else (HIMMEL-4471).
+# the known-benign pre-commit refusals; alert on everything else.
 #
 # WHY: the vault auto-commits every ~10 min (Obsidian github-sync, through the
 # vault's no-stash pre-commit wrapper). When a hook refuses, the commit just
@@ -57,7 +57,7 @@
 #
 # Seams (tests): VAULT_STALL_STATE_DIR, VAULT_STALL_MIN, VAULT_STALL_GITLEAKS,
 # VAULT_STALL_CRONTAB, VAULT_STALL_RUNNER_DIR, plus cadence-alert.sh's own.
-# Platform: cron (Linux/macOS). Windows development is parked (HIMMEL-4102).
+# Platform: cron (Linux/macOS). Windows development is parked.
 set -uo pipefail
 
 TASK_NAME="HIMMEL-VaultStall"

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # qmd-staleness.sh — report whether the LOCAL qmd index is fresh and complete
-# enough to be trusted, and say so LOUDLY when it is not (HIMMEL-1286).
+# enough to be trusted, and say so LOUDLY when it is not.
 #
 # WHY: the index degrades silently, and the degradation is invisible at query
-# time. During HIMMEL-564 the luna collection sat five days stale while notes
+# time. In one incident the luna collection sat five days stale while notes
 # written that week were simply not searchable. Measured 2026-07-26 the win2
 # station was 23h stale, missing an entire collection, and carrying 2722
 # un-embedded chunks — semantic search there was quietly degraded and NOTHING
@@ -23,7 +23,7 @@
 #
 # SHAPE: a deterministic script, like its sibling qmd-reindex.sh — no claude
 # session, no NUL stdin, no settings fragment.
-# HIMMEL-128 (headless-claude billing) does not apply; nothing here invokes
+# Headless-claude billing does not apply; nothing here invokes
 # claude.
 #
 # WHAT `Updated:` ACTUALLY MEASURES — READ THIS BEFORE TRUSTING IT.
@@ -50,8 +50,7 @@
 #     partial coverage.
 #
 # The honest fix is a durable timestamp written ONLY after a verified refresh
-# (qmd-reindex.sh) —
-# HIMMEL-1307. This script now prefers that stamp (QMD_REFRESH_STAMP) when one
+# (qmd-reindex.sh): this script prefers that stamp (QMD_REFRESH_STAMP) when one
 # is present and readable, and falls back to the MAX(mtime) proxy below when it
 # is absent or malformed — printing which source it used either way, since the
 # two are not equally trustworthy. The signal is still worth having on the
@@ -62,8 +61,8 @@
 # `qmd status` has no machine format. `--format json` is a SEARCH option; there
 # is no `qmd status --format json` (verified 2026-07-27 — it prints the ordinary
 # report and exits 0, so a caller cannot even detect the unsupported flag). That
-# is the same coupling HIMMEL-1282 was filed for, so this script takes the same
-# precaution qmd-reindex.sh took: it ANCHORS on the block's required fields and
+# is the same coupling qmd-reindex.sh has, so this script takes the same
+# precaution: it ANCHORS on the block's required fields and
 # exits 6 when it cannot recognise them, rather than treating an unparseable
 # report as healthy. A rewording upstream must surface as a loud "I can no
 # longer read this", never as a silent all-clear.
@@ -82,7 +81,7 @@
 # inference is only safe once the block has been positively identified, which
 # is why Total/Vectors/Updated are all required before absence is read as zero.
 #
-# WHY 36h DEFAULT: the reindex cadence (HIMMEL-568) fires daily at 05:00 local,
+# WHY 36h DEFAULT: the reindex cadence fires daily at 05:00 local,
 # so a healthy index is at most ~24h old plus the run's own duration. 36h is one
 # missed cadence fire plus headroom — it trips on a cadence that has actually
 # stopped, not on the ordinary trough of a daily rhythm.
@@ -142,7 +141,7 @@ QUIET=0
 QMD_BIN=""
 QMD_JS=""
 REQUIRE_COLLECTIONS=""
-# HIMMEL-1307: same path convention qmd-reindex.sh uses for its
+# Same path convention qmd-reindex.sh uses for its
 # own index default, so the stamp lands next to the index data without a
 # separate env var to keep in sync on a station that never overrides either.
 QMD_INDEX_PATH_DEFAULT="${QMD_INDEX_PATH:-$HOME/.cache/qmd/index.sqlite}"
@@ -211,8 +210,8 @@ if [ -n "$REQUIRE_COLLECTIONS" ]; then
     esac
 fi
 
-# Resolve qmd through the SHARED resolver, never a bare `command -v qmd`
-# (HIMMEL-1283): on Git Bash inside a Claude Code session the bare lookup finds
+# Resolve qmd through the SHARED resolver, never a bare `command -v qmd`:
+# on Git Bash inside a Claude Code session the bare lookup finds
 # the broken plugin-cache stub that shadows the bun shim, and every call then
 # dies with `Module not found ".../dist/cli/qmd.js"`.
 # shellcheck source=../lib/qmd-bin.sh
@@ -302,7 +301,7 @@ fi
 # because the caller writes `TOTAL_RAW=$(field 'Total')`, `set -e` would then
 # ABORT the guard outright — a parser that dies rather than reports. The report
 # is ~1KB so it fits the pipe buffer and this never fires today, but it is the
-# same latent HIMMEL-1115 trap age_hours() was just rewritten to avoid, and a
+# same latent pipefail/SIGPIPE trap age_hours() avoids, and a
 # standard the codebase applies to itself unevenly is one that stops being
 # applied. A here-string has no pipeline to fail.
 field() {
@@ -357,7 +356,7 @@ age_hours() {
     # failure, which in this function means a perfectly readable age is rejected
     # and the guard exits 6. Today's inputs are short enough to fit the pipe
     # buffer, so it is latent rather than live; it is still the exact
-    # HIMMEL-1115 trap the sibling suites carry warnings about, sitting in the
+    # pipefail/SIGPIPE trap the sibling suites carry warnings about, sitting in the
     # one function whose job is to not misread the age. The pattern goes in a
     # variable because bash 3.2 (macOS) treats a QUOTED =~ operand as a literal.
     local age_re='^[0-9]+[[:space:]]*[a-zA-Z]+[[:space:]]+ago$'
@@ -414,7 +413,7 @@ age_hours() {
 }
 
 # portable ISO-8601Z -> epoch: GNU `date -d` first, then BSD `date -j -f`
-# (HIMMEL-3725, same fallback shape as himmel-doctor.sh's _c33_epoch). TZ=UTC
+# (same fallback shape as himmel-doctor.sh's _c33_epoch). TZ=UTC
 # so BSD date -- which has no %Z in this format and would otherwise assume the
 # local zone -- reads the literal "Z" as UTC too. Echoes nothing (rc=1) on an
 # unparsable timestamp; the caller treats that as a mismatch, not a match.
@@ -423,7 +422,7 @@ _qs_iso_to_epoch() {
         || TZ=UTC date -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null  # gnu-ok: GNU date -d is paired with the BSD date -j fallback on this same line
 }
 
-# --- refresh stamp (HIMMEL-1307), preferred over the MAX(mtime) proxy above --
+# --- refresh stamp, preferred over the MAX(mtime) proxy above --
 # A durable timestamp is a DIRECT measurement of "when was this index last
 # verified refreshed/received", not a proxy for it — so it wins when present
 # and readable. Same strict-format discipline as the rest of this script:
@@ -438,12 +437,12 @@ if [ -r "$QMD_REFRESH_STAMP" ]; then
         stamp_iso="${stamp_line%% *}"
         stamp_epoch="${stamp_line##* }"
         now_epoch=$(date -u +%s)
-        # HIMMEL-1307 [codex-2]: a leading zero makes bash treat the epoch as
+        # A leading zero makes bash treat the epoch as
         # octal -- silently wrong for digits 0-7 (e.g. 01234567), a hard
         # "value too great for base" shell error for 8/9. force base-10 so
         # any all-digit epoch parses as the decimal value it plainly is.
         stamp_epoch_dec=$(( 10#$stamp_epoch ))
-        # HIMMEL-3725: the regex above validates the ISO date and the epoch's
+        # The regex above validates the ISO date and the epoch's
         # SHAPE independently -- it never checks the epoch actually names the
         # ISO date it is paired with. The refresh writer (qmd-reindex.sh)
         # derives iso+epoch from the same `date` invocation, so they always agree;
@@ -452,12 +451,12 @@ if [ -r "$QMD_REFRESH_STAMP" ]; then
         # slop, not a wrong-epoch cover); an unparsable ISO date is treated as
         # a mismatch, same as a wrong epoch, not partially trusted. Kept tight
         # (not ~1 day) so a mismatched epoch can't understate age enough to
-        # clear a caller's freshness budget (codex-1, /pr-check round 1).
+        # clear a caller's freshness budget.
         iso_epoch=$(_qs_iso_to_epoch "$stamp_iso") || iso_epoch=""
         skew=$(( stamp_epoch_dec - iso_epoch ))
         [ "$skew" -ge 0 ] || skew=$(( -skew ))
         if [ -n "$iso_epoch" ] && [ "$skew" -le 3600 ]; then
-            # Age from the OLDER of the two agreeing epochs (codex-1, round 2):
+            # Age from the OLDER of the two agreeing epochs:
             # within tolerance they can still differ by up to an hour, and
             # using the newer one would understate age by that much.
             older_epoch=$stamp_epoch_dec
@@ -540,7 +539,7 @@ if [ -n "$REQUIRE_COLLECTIONS" ]; then
         [ -n "$_want" ] || continue
         # Here-string, not `printf | grep -q`: under pipefail an early-exiting
         # grep -q SIGPIPEs the producer and the whole pipeline reads as a MISS,
-        # which here would invent an absent collection (HIMMEL-1115).
+        # which here would invent an absent collection.
         if ! grep -qxF -- "$_want" <<<"$FOUND_COLLECTIONS"; then
             MISSING_COLLECTIONS="${MISSING_COLLECTIONS:+$MISSING_COLLECTIONS, }$_want"
         fi
@@ -609,8 +608,8 @@ fi
         # MAX(source-file mtime) over indexed documents, so this number cannot
         # tell "the index stopped updating" from "nobody edited anything" — and
         # a banner that asserts the first every time the second is true is a
-        # banner the reader stops seeing (HIMMEL-1307 tracks the durable
-        # refresh/receipt stamp that would settle it).
+        # banner the reader stops seeing (a refresh stamp, when present,
+        # settles it).
         echo "  The newest document this index knows about was edited ${UPDATED_RAW}."
         echo "  That means EITHER the index stopped being refreshed, OR the corpus"
         echo "  has simply been quiet. qmd cannot distinguish the two: the figure is"

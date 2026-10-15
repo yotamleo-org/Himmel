@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/luna/vault-stall-alert.sh — the operator alert sink for the luna
-# vault's auto-commit STALL (HIMMEL-3851).
+# vault's auto-commit STALL.
 #
 # vault-autosync.sh (templates/luna-second-brain/scripts/) is generic and ships
 # to the public luna-brain repo, so it carries no Telegram code: it calls the

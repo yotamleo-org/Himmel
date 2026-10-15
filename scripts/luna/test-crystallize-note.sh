@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test-crystallize-note.sh — hermetic smoke tests for crystallize-note.sh
-# (HIMMEL-576). A `claude` stub (CRYSTALLIZE_CLAUDE_BIN) keeps the suite offline:
+# test-crystallize-note.sh — hermetic smoke tests for crystallize-note.sh.
+# A `claude` stub (CRYSTALLIZE_CLAUDE_BIN) keeps the suite offline:
 # no real model call, no network, no billing.
 #
 # Run: bash scripts/luna/test-crystallize-note.sh
@@ -111,7 +111,7 @@ write_note "$NOTE"; printf '{}\n' > "$TR"
 ID_BEFORE="$(identity_lines "$NOTE")"
 ENVD="$SB/env.txt"
 # CRYSTALLIZE_NOW pins the stamp time so the assertion below is deterministic
-# (the script — not the stub — now owns the flag + timestamp, HIMMEL-590 T1d).
+# (the script — not the stub — now owns the flag + timestamp).
 env CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success \
     CRYSTALLIZE_PID_DIR="$SB/pids" CRYSTALLIZE_ENV_DUMP="$ENVD" \
     ANTHROPIC_BASE_URL="http://ambient-proxy.invalid" \
@@ -127,7 +127,7 @@ if grep -q '^ANTHROPIC_BASE_URL=<unset>$' "$ENVD" 2>/dev/null; then pass "native
 rm -rf "$SB"
 
 # --- Case 1b: exported exit/return/unset shadows must never reach the launch ---
-# HIMMEL-4459: the pin's rc and any `|| exit` refusal are shadowable builtins; the
+# the pin's rc and any `|| exit` refusal are shadowable builtins; the
 # launch must sit inside the keyword-only gate. Control (no ambient proxy) proves
 # the shadowed script still reaches the launch; the proxied run must not.
 shadow_launch() { # <proxy-url|-> -> prints launched|refused
@@ -146,7 +146,7 @@ if [ "$(shadow_launch -)" = launched ]; then pass "shadowed exit/return/unset, n
 if [ "$(shadow_launch http://evil.invalid)" = refused ]; then pass "shadowed exit/return/unset + ambient ANTHROPIC_BASE_URL: claude is NOT launched"; else fail "shadowed builtins let an ambient proxy variable reach the launch"; fi
 
 # --- Case 1c: a shadowed `cd` must not export a proxy var between gate and launch ---
-# HIMMEL-4461: the exported `cd` sets ANTHROPIC_BASE_URL then runs the real cd. The
+# the exported `cd` sets ANTHROPIC_BASE_URL then runs the real cd. The
 # control (plain cd) launches with the variable unset; the shadow must not launch
 # claude with the proxy variable set.
 cd_shadow_env() { # <shadow|plain> -> prints the ANTHROPIC_BASE_URL line claude saw, or none
@@ -239,7 +239,7 @@ if [ -s "$MARK" ]; then pass "detach: crystallizer survived the process-group ki
 rm -rf "$SB"
 
 # --- Case 7: workspace guard — the spawn puts the note-dir in the workspace -----
-# HIMMEL-590 T1c: the real-claude no-op was an OUT-OF-WORKSPACE edit (cwd=himmel,
+# The real-claude no-op was an OUT-OF-WORKSPACE edit (cwd=himmel,
 # note in vault) that acceptEdits could not auto-approve. This hermetic guard
 # asserts the fix shape directly from the spawned argv/cwd dump: the run's cwd is
 # the note's directory, the transcript dir is added via --add-dir, and a
@@ -291,7 +291,7 @@ env CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success \
     CRYSTALLIZE_RULES_FILE="$RULES" bash "$CRYS" "$NOTE" "$TR"
 if grep -qF 'PREFER_ACTIVE_VOICE_MARKER' "$ARGVD" 2>/dev/null; then pass "rules: rules content reaches the claude prompt"; else fail "rules: rules content not in prompt"; fi
 if grep -qF 'begin operator rules' "$ARGVD" 2>/dev/null; then pass "rules: delimited operator-rules block present"; else fail "rules: no operator-rules delimiter"; fi
-# Lesson-provenance prompt pin (HIMMEL-767): a heredoc-escaping break must not
+# Lesson-provenance prompt pin: a heredoc-escaping break must not
 # silently drop the ## Lessons instruction block from the spawned prompt.
 if grep -qF '## Lessons' "$ARGVD" 2>/dev/null; then pass "lessons: ## Lessons instruction present in prompt"; else fail "lessons: ## Lessons instruction missing from prompt"; fi
 if grep -qF 'validate-lesson.mjs --capture' "$ARGVD" 2>/dev/null; then pass "lessons: validate-lesson.mjs --capture pointer present in prompt"; else fail "lessons: validator pointer missing from prompt"; fi
@@ -401,7 +401,7 @@ if grep -q '^crystallized: true$' "$NOTE"; then pass "rules(empty): run still pr
 rm -rf "$SB"
 
 # --- Case R9: whitespace-only rules file — parity test (bash vs ps1 divergence) --
-# HIMMEL-841: bash `$(cat file)` strips trailing newline; PS `Get-Content -Raw`
+# bash `$(cat file)` strips trailing newline; PS `Get-Content -Raw`
 # keeps it. A file with ONLY a newline must NOT append a rules block in BOTH.
 # This tests the trimmed check for parity.
 SB="$(mktemp -d)"
@@ -416,7 +416,7 @@ if grep -q '^crystallized: true$' "$NOTE"; then pass "rules(ws-only): run still 
 rm -rf "$SB"
 
 # --- Case 9: real-claude smoke (OPT-IN: CRYSTALLIZE_REAL_CLAUDE=1) --------------
-# The whole point of HIMMEL-590 is that the STUB hides the real-claude no-op.
+# The whole point is that the STUB hides the real-claude no-op.
 # This case runs the genuine `claude` across the himmel-cwd -> vault-note boundary
 # and proves a real edit lands + the flag flips. Skipped by default (billing /
 # no claude in CI); run manually with CRYSTALLIZE_REAL_CLAUDE=1.

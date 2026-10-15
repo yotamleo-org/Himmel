@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # qmd-embed-model.sh — choose qmd's embedding model per machine, and keep the
-# index consistent with it (HIMMEL-4232).
+# index consistent with it.
 #
 # WHY: Qwen3-Embedding-0.6B beats the default embeddinggemma-300M on our golden
-# set (scoped hybrid MRR .886 to .930, HIMMEL-4184), but not every machine can
+# set (scoped hybrid MRR .886 to .930), but not every machine can
 # build an index with it. So it is an OPTION, chosen per machine; gemma stays
 # the default.
 #
@@ -213,7 +213,7 @@ daemon_running() {
     pgrep -f 'qmd(\.js)? (mcp|update|embed)' >/dev/null 2>&1
 }
 
-# --- swap lock (HIMMEL-4314) -------------------------------------------------
+# --- swap lock -------------------------------------------------
 # A daemon relaunched mid-swap (the SessionStart hook ensure-qmd-daemon.sh does
 # it for any new Claude session) served the OLD model's query embeddings against
 # the NEW vectors. `swap` holds this lock from its liveness check to its commit
@@ -224,7 +224,7 @@ daemon_running() {
 # are inlined in marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh, which
 # cannot source this repo. A lock whose pid is dead is stale; one with no pid
 # file is stale once a minute old (the holder died between mkdir and the write).
-# The qmd fork's own `mcp --http` start (src/cli/swap-lock.ts, HIMMEL-4324) honours
+# The qmd fork's own `mcp --http` start (src/cli/swap-lock.ts) honours
 # the same lock, so a hand-typed `qmd mcp --http --daemon` is refused too.
 # ponytail: pid liveness is POSIX kill -0 only (Git Bash pids do not map), and a qmd binary older than the HIMMEL-4324 fork pin does not check the lock, so the second daemon check just before the commit and the do-not-start-by-hand line are the guard against it; upgrade in HIMMEL-4314 follow-ups if either bites.
 swap_lock_dir() { printf '%s/qmd/embed-swap.lock\n' "${XDG_CACHE_HOME:-$HOME/.cache}"; }

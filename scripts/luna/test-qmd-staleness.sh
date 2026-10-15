@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit tests for scripts/luna/qmd-staleness.sh (HIMMEL-1286).
+# Unit tests for scripts/luna/qmd-staleness.sh.
 #
 # The guard is a pure READ: it runs `qmd status` and classifies the result. So
 # every case here drives a FAKE qmd that prints a canned report, which makes the
@@ -31,7 +31,7 @@ trap cleanup EXIT
 
 pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FAIL=$((FAIL+1)); }
-# Here-string, not `printf … | grep -q` — see the HIMMEL-1115 note in
+# Here-string, not `printf … | grep -q` — see the note in
 # test-qmd-reindex.sh: under pipefail a successful early-exiting grep -q turns
 # the producer's SIGPIPE into a pipeline failure, so a real match reads as a
 # miss once the haystack outgrows the pipe buffer.
@@ -89,7 +89,7 @@ run_guard() {
 set_fixture() { printf '%s\n' "$1" >"$FIXTURE"; }
 
 # iso_from_epoch <epoch> -- the ISO-8601Z that PAIRS with an epoch, GNU first
-# then BSD (HIMMEL-3725: the fixtures below must write a genuinely matching
+# then BSD (the fixtures below must write a genuinely matching
 # iso+epoch, same as the real writers do, now that the guard cross-validates).
 iso_from_epoch() {
     TZ=UTC date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \

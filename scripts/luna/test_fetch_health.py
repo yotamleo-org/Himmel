@@ -149,7 +149,7 @@ class FetchHealthTests(unittest.TestCase):
         self.assertEqual(seen, ["/bin/gh", "api", "repos/cli/cli", "--jq", ".full_name"])
 
     def test_run_command_scrubs_pythonhome_and_pythonpath_from_child_env(self):
-        # HIMMEL-2149: a uv python stub injects its own PYTHONHOME into
+        # a uv python stub injects its own PYTHONHOME into
         # os.environ. Foreign CLIs (gh) may embed a DIFFERENT
         # Python runtime, so inheriting it crashes them (SRE module mismatch).
         # run_command is the single chokepoint all command probes route
@@ -193,7 +193,7 @@ class FetchHealthTests(unittest.TestCase):
                 seen.update(kwargs)
                 return fetch_health.HttpResult(200, b'{"uuid":"{abc}"}')
 
-            # HIMMEL-2549: the merge is the registry's job now, so the probe
+            # the merge is the registry's job now, so the probe
             # is handed the effective dict the registry would build.
             result = fetch_health.probe_bitbucket(fetch_health.load_repo_env({}, root), http)
             self.assertEqual(result.status, "ok")
@@ -201,7 +201,7 @@ class FetchHealthTests(unittest.TestCase):
             self.assertNotIn("token", seen["headers"]["Authorization"])
 
     def test_load_repo_env_strips_quotes_and_inline_comments(self):
-        # HIMMEL-1468: a raw value.strip() left a quoted dotenv value holding
+        # a raw value.strip() left a quoted dotenv value holding
         # its literal quotes (Basic auth then fails on non-cron paths) and kept
         # an inline `# comment` on the value. Covered: double + single quoted
         # values, a quoted value with a trailing comment, an inline comment, a
@@ -228,7 +228,7 @@ class FetchHealthTests(unittest.TestCase):
             self.assertEqual(loaded["BITBUCKET_EMAIL"], "ops@example.com")
 
     def test_firecrawl_probes_free_credit_usage_not_scrape(self):
-        # HIMMEL-4335: the nightly probe must not spend a credit — it reads the
+        # the nightly probe must not spend a credit — it reads the
         # free GET /v2/team/credit-usage, never POST /v2/scrape.
         seen = {}
         with tempfile.TemporaryDirectory() as tmp:
@@ -264,7 +264,7 @@ class FetchHealthTests(unittest.TestCase):
             self.assertEqual(fetch_health.probe_firecrawl(env, http).status, "auth-or-cookie-expired")
 
     def test_firecrawl_normalizes_base_url_with_v2_suffix(self):
-        # HIMMEL-1468: a FIRECRAWL_BASE_URL set WITH a /v2 suffix (or a trailing
+        # a FIRECRAWL_BASE_URL set WITH a /v2 suffix (or a trailing
         # slash) used to compose /v2/v2/<path>. Each variant must collapse to the
         # single canonical /v2 path.
         for base_url in (
@@ -358,7 +358,7 @@ class FetchHealthTests(unittest.TestCase):
             registry = fetch_health.build_probe_registry(env, http, command, root)
             self.assertEqual(set(registry), set(full))
             for source in registry:
-                # HIMMEL-4306: Instagram probes share throttle + cache state, so
+                # Instagram probes share throttle + cache state, so
                 # each comparison starts from the same fresh state the full run had.
                 fresh = dict(env, HIMMEL_IG_THROTTLE_STATE=str(root / f"{source}-t.json"),
                              HIMMEL_IG_PROBE_CACHE=str(root / f"{source}-c.json"))
@@ -414,7 +414,7 @@ class FetchHealthTests(unittest.TestCase):
             self.assertEqual(payload, {"status": "ok", "reason": "command probe succeeded"})
 
     def test_main_probe_reads_keys_that_live_only_in_the_repo_dotenv(self):
-        # HIMMEL-2549: load_repo_env used to be called from probe_bitbucket
+        # load_repo_env used to be called from probe_bitbucket
         # ALONE, so every other probe saw the raw process env. The cron wrapper
         # sources nothing, so a key that lives only in the checkout's .env — the
         # documented place — read as "missing" on every scheduled and manual
@@ -457,10 +457,10 @@ class FetchHealthTests(unittest.TestCase):
                 self.assertIn(expected, payload["reason"], source)
 
     def test_load_repo_env_keeps_first_occurrence_and_treats_empty_as_absent(self):
-        # HIMMEL-2549 duplicate-key policy: FIRST occurrence in the file wins,
+        # Duplicate-key policy: FIRST occurrence in the file wins,
         # matching the awk `key in seen` guard in scripts/lib/load-dotenv.sh.
         # A set-but-EMPTY process value counts as ABSENT (also matching that
-        # loader, HIMMEL-1922) — an exported `KEY=` placeholder used to shadow
+        # loader) — an exported `KEY=` placeholder used to shadow
         # the real .env value and every probe then reported "missing".
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -475,7 +475,7 @@ class FetchHealthTests(unittest.TestCase):
             self.assertEqual(loaded["BITBUCKET_API_TOKEN"], "live")
 
     def test_load_repo_env_treats_a_whitespace_only_process_value_as_present(self):
-        # HIMMEL-2549 CR round 5 codex-1: "empty" means ZERO-LENGTH, exactly
+        # "empty" means ZERO-LENGTH, exactly
         # like bash's `[ -z "${KEY-}" ]` (the documented shell-side policy
         # this mirrors) — confirmed live: `KEY="   "; [ -z "${KEY-}" ]` is
         # FALSE, i.e. present, so load_dotenv.sh does NOT load from the file.
@@ -490,7 +490,7 @@ class FetchHealthTests(unittest.TestCase):
             self.assertEqual(loaded["FIRECRAWL_API_KEY"], "   ")
 
     def test_child_process_probes_never_see_the_merged_dotenv_secrets(self):
-        # CR round 1 CRITIC-1: build_probe_registry's merged .env dict
+        # build_probe_registry's merged .env dict
         # (`effective`) is for CONFIG LOOKUP only. A probe that shells out to
         # a third-party binary (gh) must receive the PRE-MERGE process env as
         # its child environment, never `effective` -- the checkout's real .env
@@ -630,7 +630,7 @@ class XYouTubeScraplingProbeTests(unittest.TestCase):
         self.assertNotIn("--cookies", args)
 
     def test_x_probe_tweet_still_carries_media(self):
-        # HIMMEL-5407: the old pin (Twitter/1354143047324299264) lost its media, so
+        # the old pin (Twitter/1354143047324299264) lost its media, so
         # the helper correctly said no_media and the probe alerted nightly. The
         # fixture is the recorded api.fxtwitter.com response for the pinned tweet;
         # re-record it when re-pinning DEFAULT_URLS["x"].

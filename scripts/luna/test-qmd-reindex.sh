@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit tests for scripts/luna/qmd-reindex.sh (HIMMEL-568).
+# Unit tests for scripts/luna/qmd-reindex.sh.
 #
 # The runner is a deterministic two-step (`qmd update` then `qmd embed`) plus a
 # completeness assert (a second `qmd embed` that must report the all-clear).
@@ -30,7 +30,7 @@ trap cleanup EXIT
 
 pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FAIL=$((FAIL+1)); }
-# Match with a HERE-STRING, not `printf … | grep -q` (HIMMEL-1115). Under the
+# Match with a HERE-STRING, not `printf … | grep -q`. Under the
 # `set -o pipefail` in force here, grep -q exits early on a match, printf takes
 # SIGPIPE (141), and pipefail surfaces 141 as the pipeline status — so a
 # SUCCESSFUL match reads as a FAILURE as soon as the haystack outgrows the pipe
@@ -82,7 +82,7 @@ mkdir -p "$STATE"
 #   fail-embed    the FIRST `qmd embed` exits nonzero
 #   fail-verify   the SECOND `qmd embed` (the completeness assert) exits nonzero
 #   incomplete    every `qmd embed` reports work remaining (never the all-clear)
-#   tail-once     the first verify pass finds a small tail (HIMMEL-4860); the
+#   tail-once     the first verify pass finds a small tail; the
 #                 retry pass reports the all-clear
 #   fail-cleanup  `qmd cleanup` exits nonzero
 #   did-work      the first embed reports it embedded chunks (the realistic
@@ -135,7 +135,7 @@ case "${1:-}" in
             echo "Embedded 100 chunks from 20 documents in 5s"
             exit 0
         fi
-        # A future qmd release that REWORDS its no-op line (HIMMEL-1282). Note
+        # A future qmd release that REWORDS its no-op line. Note
         # what this says: the index IS complete, just phrased differently. The
         # runner must not report it as "INCOMPLETE" — that diagnosis would be
         # wrong, and wrong nightly.
@@ -185,7 +185,7 @@ for _d in $PATH; do
 done
 IFS=$_oldifs
 
-# HERMETICITY: PATH filtering ALONE is no longer sufficient (HIMMEL-1283).
+# HERMETICITY: PATH filtering ALONE is no longer sufficient.
 # The no-flag fallback now resolves through scripts/lib/qmd-bin.sh, whose
 # preference order checks the bun-served install at
 # $BUN_INSTALL/install/global/node_modules/@tobilu/qmd/dist/cli/qmd.js BEFORE
@@ -243,7 +243,7 @@ assert_rc "empty --qmd-bin=VALUE rc 1" 1 "$rc"
 echo "TEST: qmd not found (absent from PATH, no --qmd-bin) exits 2"
 rc=0; out=$(env PATH="$PATH_NOQMD" bash "$SCRIPT" 2>&1) || rc=$?
 assert_rc "missing qmd rc 2" 2 "$rc"
-# Wording follows the resolver, not PATH: since HIMMEL-1283 the fallback checks
+# Wording follows the resolver, not PATH: the fallback checks
 # the bun-served install too, so "not found on PATH" would have been a lie.
 assert_contains "missing-qmd error is actionable" "no usable qmd found" "$out"
 
@@ -342,7 +342,7 @@ rc=0; out=$(env PATH="$TMP_ROOT:$PATH" bash "$SCRIPT" 2>&1) || rc=$?
 assert_rc "PATH-resolved qmd rc 0" 0 "$rc"
 assert_contains "banner names the resolved qmd" "$FAKE_QMD" "$out"
 
-# HIMMEL-1283: with no --qmd-bin, the fallback goes through the SHARED resolver,
+# with no --qmd-bin, the fallback goes through the SHARED resolver,
 # which prefers the bun-served install over whatever is first on PATH — the same
 # preference order qmd_cmd uses, and the whole point of the ticket (a bare
 # `command -v qmd` finds the broken Claude-plugin stub). Assert the preference
@@ -485,13 +485,13 @@ else
     fail "incomplete embed writes no refresh stamp" "stamp exists after an incomplete embed"
 fi
 
-# HIMMEL-1282: a REWORDED verifier is not an incomplete index -----------------
+# a REWORDED verifier is not an incomplete index -----------------
 #
 # This is the whole ticket. Before, anything that was not the exact sentinel
 # read as "embed INCOMPLETE" (rc 5) — so the day qmd rewords its no-op line, a
 # fully COMPLETE index reports a loud failure with a WRONG diagnosis, nightly,
 # and the rational operator response to a cadence that cries wolf every night
-# is to disarm it. That re-opens the staleness hole HIMMEL-568 closed. The
+# is to disarm it. That re-opens the staleness hole the cadence closed. The
 # fixture below says "the index IS complete", just differently: the runner must
 # still refuse (fail-closed), but say what is actually true — it cannot READ the
 # verifier — and it must NOT claim the index is stale.
@@ -528,7 +528,7 @@ else
     fail "failing verify pass writes no refresh stamp" "stamp exists after a failing verify pass"
 fi
 
-# HIMMEL-4860: a 1-2 doc tail after the first verify pass must not fail the run,
+# a 1-2 doc tail after the first verify pass must not fail the run,
 # and orphaned embedding chunks must be cleaned up -----------------------------
 echo "TEST: a small tail after the first verify pass is retried once, then OK"
 reset_state
@@ -573,7 +573,7 @@ else
     fail "cleanup failure keeps the refresh stamp (vectors ARE complete)" "no stamp"
 fi
 
-# HIMMEL-4897: busy is contention, not a reworded verifier or embed failure.
+# busy is contention, not a reworded verifier or embed failure.
 for busy_case in busy busy-verify busy-nonzero; do
     echo "TEST: $busy_case exits BUSY with bounded retries and no success stamp"
     reset_state
@@ -610,7 +610,7 @@ assert_not_contains "hash count does not claim pending vectors" "33515 unique ha
 assert_contains "hash count explicitly disclaims pending chunk count" "not a pending chunk count" "$out"
 assert_contains "hash count preserves upstream diagnostic count" "33515 unique hashes" "$out"
 
-# HIMMEL-4232: a configured embed model that differs from the index's vectors
+# a configured embed model that differs from the index's vectors
 # must FAIL loud before `qmd update`, never embed a mixed index.
 echo "TEST: an index embedded with another model exits 7 BEFORE qmd update"
 if command -v sqlite3 >/dev/null 2>&1; then

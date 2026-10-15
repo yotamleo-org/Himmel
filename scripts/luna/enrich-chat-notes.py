@@ -49,9 +49,9 @@ PEAK_HOURS_UTC = (1, 2, 3, 6, 7, 8, 9)
 API_URL = "https://api.deepseek.com/chat/completions"
 SKIP_DIRS = {".obsidian", ".trash", ".git", "graphify-out", "_assets", "assets"}
 
-# Provider registry (HIMMEL-1167): the LLM backend is selectable so adopters
+# Provider registry: the LLM backend is selectable so adopters
 # enrich on whichever provider their egress matrix ratifies. claude is the
-# default (HIMMEL-1049/1257: shipped default Claude-only; anthropic is the
+# default (shipped default Claude-only; anthropic is the
 # always-allowed operating substrate on luna-personal; DeepSeek de-listed). Each cell pins the api_style (which HTTP path),
 # endpoint url, model id, the env var holding the API key, the egress-matrix
 # provider id the gate+ledger are queried/recorded under, and — for the
@@ -476,7 +476,7 @@ def call_anthropic(url, api_key, model, title, payload, vocab, auth, post=None):
     # is 1024 — at 500 a verbose thinking block can truncate the (tiny) JSON
     # answer, which then fails json.loads, retries (double egress), and skips
     # the note. The openai path (deepseek) has no default thinking, so it keeps
-    # the tighter 500 budget. (CR codex-adv-2, HIMMEL-1167.)
+    # the tighter 500 budget.
     body = {
         "model": model,
         "max_tokens": 1024,
@@ -632,9 +632,9 @@ def main(argv=None):
     if verdict not in ("allow", "allow+log"):
         # Accept BOTH permitted verdicts: `allow+log` (a cell carrying the
         # matrix ledger obligation) and plain `allow` (the anthropic cell —
-        # Claude is the operating substrate). As of HIMMEL-2224 only the
-        # anthropic cell is open here: deepseek was de-listed by HIMMEL-1257
-        # and zai-glm by HIMMEL-2224, so `--provider deepseek|glm` reaches this
+        # Claude is the operating substrate). Only the
+        # anthropic cell is open here: deepseek and zai-glm are de-listed, so
+        # `--provider deepseek|glm` reaches this
         # branch and is refused. Their PROVIDERS entries stay so the refusal is
         # legible rather than a KeyError. This tool calls
         # ledger_append UNCONDITIONALLY below regardless of which verdict, so

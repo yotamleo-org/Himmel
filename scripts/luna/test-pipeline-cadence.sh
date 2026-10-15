@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/luna/pipeline-cadence.sh (HIMMEL-255 schtasks
-# path + HIMMEL-265 cron path + HIMMEL-357 daily harvest+triage leg +
-# HIMMEL-362 XML-based schtasks create carrying StartWhenAvailable +
-# HIMMEL-1449 no-LLM fetch-health leg).
+# Smoke test for scripts/luna/pipeline-cadence.sh (schtasks path, cron path,
+# daily harvest+triage leg, XML-based schtasks create carrying
+# StartWhenAvailable, no-LLM fetch-health leg).
 #
 # Four cadence tasks are armed: HIMMEL-Pipeline-FetchHealth (daily 01:30 ->
 # direct fetch-health.py), HIMMEL-Pipeline-Harvest (daily 02:00 ->
 # /harvest-clips + /triage-clips), HIMMEL-Pipeline-Synthesize (daily 03:00
 # -> /synthesize-clips + /archive-clips), and HIMMEL-Pipeline-Health (daily
-# 04:00 -> vault-lint / obsidian-triage:vault-lint, HIMMEL-1383/HIMMEL-1386).
+# 04:00 -> vault-lint / obsidian-triage:vault-lint).
 # The three Claude legs launch with explicit --model pins
-# (harvest/synth=claude-sonnet-5-5, health=haiku — HIMMEL-506); fetch health is a plain
+# (harvest/synth=claude-sonnet-5-5, health=haiku); fetch health is a plain
 # Python script. All four legs are exercised throughout the dry-run / arm /
 # shape / status / dedup / force / disarm / rollback tests below.
 #
@@ -23,7 +22,7 @@
 # on EVERY platform (the POSIX code path is forced with an OSTYPE
 # override, exactly like the old non-Windows-stub test); the schtasks
 # suite runs on Windows against the real cygpath, and elsewhere against a
-# deterministic cygpath STUB (scripts/lib/cygpath-stub.sh, HIMMEL-3114) —
+# deterministic cygpath STUB (scripts/lib/cygpath-stub.sh) —
 # see the note at the top of that section for what the stubbed run proves.
 #
 # Cron suite covers (C*):
@@ -71,7 +70,7 @@
 #   4.  arm --dry-run prints the XML creates (trigger + StartWhenAvailable)
 #       + .bat bodies, registers nothing.
 #   5.  arm registers all four daily tasks from XML carrying
-#       StartWhenAvailable (HIMMEL-362) at 01:30/02:00/03:00/04:00 + writes
+#       StartWhenAvailable at 01:30/02:00/03:00/04:00 + writes
 #       the .bats.
 #   6.  Armed .bats are interactive-claude shaped: bounded `< NUL`,
 #       chained synthesize->archive prompt, NO -p/--print/--bg.
@@ -113,13 +112,13 @@ set -euo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/pipeline-cadence.sh"
-# resolve_user_home/default_vault moved out to a shared lib on HIMMEL-2176
-# Stage 1 (pipeline-cadence.sh now sources it) — extract them from there.
+# resolve_user_home/default_vault live in a shared lib that
+# pipeline-cadence.sh sources — extract them from there.
 HOME_LIB="$SCRIPT_DIR/../lib/resolve-user-home.sh"
 
 PASS=0
@@ -127,7 +126,7 @@ FAIL=0
 TMP_ROOT=""
 
 # cleanup() reaps the temp tree. Every fixture — including the hook-readability
-# sandboxes (HIMMEL-1682 CR r3) — lives under $TMP_ROOT, so a SIGKILL / host
+# sandboxes — lives under $TMP_ROOT, so a SIGKILL / host
 # crash can only ever leave temp litter, never a tracked hook file missing:
 # these tests no longer rename a real scripts/hooks/*.sh, so there is nothing
 # to restore.
@@ -176,12 +175,12 @@ build_hook_sandbox() {
     cp "$SCRIPT" "$sb/scripts/luna/pipeline-cadence.sh"
     cp "$HOME_LIB" "$sb/scripts/lib/resolve-user-home.sh"
     cp "$real_lib/cadence-format.sh" "$sb/scripts/lib/cadence-format.sh"
-    # Sourced at load too (HIMMEL-1152, for FLOW_RUN_ATTEMPT_MARKER), and it
+    # Sourced at load too (for FLOW_RUN_ATTEMPT_MARKER), and it
     # sources its own path resolver — the sandboxed script cannot load without
     # both.
     cp "$real_lib/flow-run-ledger.sh" "$sb/scripts/lib/flow-run-ledger.sh"
     cp "$real_lib/flow-run-ledger-path.sh" "$sb/scripts/lib/flow-run-ledger-path.sh"
-    # Also sourced at load (HIMMEL-3075), so the sandbox needs it too.
+    # Also sourced at load, so the sandbox needs it too.
     cp "$real_lib/macos-fda-warning.sh" "$sb/scripts/lib/macos-fda-warning.sh"
     cp "$real_hooks/auto-approve-safe-bash.sh" "$sb/scripts/hooks/"
     cp "$real_hooks/cadence-deny-background.sh" "$sb/scripts/hooks/"
@@ -192,9 +191,9 @@ build_hook_sandbox() {
 
 TMP_ROOT=$(mktemp -d)
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
-# HIMMEL-3332 S8: arms record a provenance row; never into the operator's ledger.
+# Arms record a provenance row; never into the operator's ledger.
 export HIMMEL_PROVENANCE_DIR="$TMP_ROOT/provenance"
-# HIMMEL-2044: the generated claude runners now shell bank-preflight.sh before
+# The generated claude runners shell bank-preflight.sh before
 # launching, and the fire tests below EXECUTE those runners. Left alone, every
 # fire would do a live usage-API fetch through usage-cache-producer.sh — slow,
 # networked, and dependent on the arming machine's real bank state, which is
@@ -225,12 +224,12 @@ chmod +x "$FAKE_WSH_POWERSHELL"
 export CADENCE_WSCRIPT_BIN="$FAKE_WSCRIPT"
 export CADENCE_WSH_POWERSHELL="$FAKE_WSH_POWERSHELL"
 
-# HIMMEL-386: redirect the workspace-trust pre-seed (cmd_arm / cron_arm now
+# Redirect the workspace-trust pre-seed (cmd_arm / cron_arm now
 # pre-trust the vault) at a throwaway config so non-dry-run arm tests never
 # mutate the operator's real ~/.claude.json.
 export WORKSPACE_TRUST_CONFIG="$TMP_ROOT/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP_ROOT/flow-runs.jsonl"
-# HIMMEL-4181: a failing fired runner appends to the cadence alert file and
+# A failing fired runner appends to the cadence alert file and
 # sends one deduped Telegram DM through cadence-alert.sh. Every seam points into
 # the temp tree, and the sender is a recorder, so no fire here ever writes
 # ~/.himmel/state or reaches the real bridge.
@@ -248,7 +247,7 @@ mkdir -p "$VAULT"
 HEADLESS_RE='(^|[^A-Za-z0-9_-])claude[[:space:]]+(-p|--print|--bg)($|[^A-Za-z0-9_-])'
 
 # ============================================================================
-# xml_escape unit (HIMMEL-362) — the one non-trivial new string transform.
+# xml_escape unit — the one non-trivial new string transform.
 # Pure + platform-agnostic, so it runs on EVERY platform: extract the
 # function from the script and call it directly. Pins the &-first ordering
 # (escaping & last would double-escape the &lt;/&gt; entities) so a
@@ -260,7 +259,7 @@ assert_contains "xml_escape produces well-formed entities (& first)" "a &amp; b 
 assert_not_contains "xml_escape leaves no bare ampersand" "a & b" "$xesc"
 
 # ============================================================================
-# default_vault unit (HIMMEL-642) — cross-platform default --vault resolution.
+# default_vault unit — cross-platform default --vault resolution.
 # Pure (reads only env + cygpath), so it runs on EVERY platform: extract the
 # function from the script and call it under controlled env. Pins: (1)
 # LUNA_VAULT_PATH wins; (2) POSIX shape (USERPROFILE unset) is $HOME-based,
@@ -269,7 +268,7 @@ assert_not_contains "xml_escape leaves no bare ampersand" "a & b" "$xesc"
 # hit (vault resolved to /home/<user>/Documents/luna, not the real profile).
 # ============================================================================
 echo "TEST: default_vault resolves the cross-platform default vault"
-# default_vault delegates the home part to resolve_user_home (HIMMEL-645), so
+# default_vault delegates the home part to resolve_user_home, so
 # extract BOTH functions for the standalone call.
 DV_SRC="$(sed -n '/^resolve_user_home()/,/^}/p' "$HOME_LIB"; sed -n '/^default_vault()/,/^}/p' "$HOME_LIB")"
 run_dv() { env "$@" bash -c "$DV_SRC"$'\n'"default_vault"; }
@@ -314,7 +313,7 @@ else
 fi
 
 # ============================================================================
-# resolve_user_home unit (HIMMEL-645) — the shared home resolver that ALSO
+# resolve_user_home unit — the shared home resolver that ALSO
 # backs the BAT_DIR default ($(resolve_user_home)/.claude/pipeline-cadence).
 # Pins the same cross-platform contract directly on the helper so a BAT_DIR
 # regression (runners landing under the MSYS home on Windows) is caught even
@@ -340,7 +339,7 @@ else
 fi
 
 # ============================================================================
-# POSIX (cron) suite — HIMMEL-265. Runs on EVERY platform: the cron code
+# POSIX (cron) suite. Runs on EVERY platform: the cron code
 # path is forced via an OSTYPE override + the PIPELINE_CRONTAB seam.
 # ============================================================================
 
@@ -422,14 +421,14 @@ assert_rc "cron bad --synth-time -> rc 1" 1 "$rc"
 rc=0; out=$(run_cron arm --vault "$VAULT" --ig-limit abc 2>&1) || rc=$?
 assert_rc "cron bad --ig-limit (abc) -> rc 1" 1 "$rc"
 assert_contains "cron bad --ig-limit message names flag" "--ig-limit must be a non-negative integer" "$out"
-# HIMMEL-506: --synth-day removed (synthesize is daily). Model pins must be
+# --synth-day removed (synthesize is daily). Model pins must be
 # non-empty.
 rc=0; out=$(run_cron arm --vault "$VAULT" --synth-day mon 2>&1) || rc=$?
 assert_rc "cron removed --synth-day -> rc 1 (HIMMEL-506)" 1 "$rc"
 assert_contains "cron --synth-day message points at daily" "daily now" "$out"
-# --health-day is BACK (cadence audit 2026-08-23): HIMMEL-1383 flipped the
-# health leg daily, and four days of vault-lint moving 363 -> 369 findings
-# flipped it back to weekly. A lowercase spelling is accepted and canonicalised;
+# --health-day defaults to weekly (cadence audit 2026-08-23): four days of vault-lint moving
+# 363 -> 369 findings did not justify a daily health leg, so it is weekly again.
+# A lowercase spelling is accepted and canonicalised;
 # a non-DOW value is still rejected outright rather than silently ignored.
 # --dry-run on the valid case so the rejection block leaves nothing armed --
 # an actually-armed cron here would trip the dedup guard in the next test.
@@ -476,7 +475,7 @@ echo "TEST: cron arm installs entries with defaults, preserves unrelated lines"
 printf '5 5 * * * /usr/bin/true # keep-me\n' > "$CSTATE/crontab"
 out=$(run_cron arm --vault "$VAULT")
 assert_contains "cron arm banner" "PIPELINE CADENCE ARMED" "$out"
-# HIMMEL-386: the real (non-dry-run) arm pre-trusts the vault in the (temp) config.
+# The real (non-dry-run) arm pre-trusts the vault in the (temp) config.
 if command -v node >/dev/null 2>&1; then
     trust=$(WT_F="$WORKSPACE_TRUST_CONFIG" WT_K="$VAULT" node -e 'try{const j=JSON.parse(require("fs").readFileSync(process.env.WT_F,"utf8"));process.stdout.write(String(j.projects&&j.projects[process.env.WT_K]&&j.projects[process.env.WT_K].hasTrustDialogAccepted))}catch(e){process.stdout.write("ERR")}')
     assert_contains "cron arm pre-trusts vault in config" "true" "$trust"
@@ -491,7 +490,7 @@ assert_contains "weekly health entry SUN 04:00"   "00 04 * * 0" "$tab"
 assert_contains "harvest entry marker-tagged" "# HIMMEL-Pipeline-Harvest"     "$tab"
 assert_contains "synth entry marker-tagged"  "# HIMMEL-Pipeline-Synthesize" "$tab"
 assert_contains "health entry marker-tagged" "# HIMMEL-Pipeline-Health"     "$tab"
-# HIMMEL-3332 S8: every armed entry is recorded as a `job register` row.
+# Every armed entry is recorded as a `job register` row.
 jobs=$( . "$SCRIPT_DIR/../lib/provenance.sh" && . "$SCRIPT_DIR/../lib/provenance-read.sh" && prov_read_load >/dev/null && prov_read_units --kind job | jq -r '"\(.unit) ours=\(.ours) scheduler=\(.fields.scheduler)"' | LC_ALL=C sort )
 assert_contains "arm recorded all four pipeline jobs (ours, cron)" \
     "HIMMEL-Pipeline-FetchHealth ours=true scheduler=cron
@@ -515,7 +514,7 @@ fetch_health_sh=$(cat "$CRON_DIR/pipeline-fetch-health.sh" 2>/dev/null || echo M
 harvest_sh=$(cat "$CRON_DIR/pipeline-harvest.sh" 2>/dev/null || echo MISSING)
 synth_sh=$(cat "$CRON_DIR/pipeline-synthesize.sh" 2>/dev/null || echo MISSING)
 health_sh=$(cat "$CRON_DIR/pipeline-health.sh" 2>/dev/null || echo MISSING)
-# The expected version is SOURCED, never retyped (HIMMEL-2044): this suite
+# The expected version is SOURCED, never retyped: this suite
 # bounced on a hardcoded 14 the moment the constant moved to 15, which is a
 # test maintenance cost with no coverage value -- the assertion that matters is
 # "the runner stamps the CURRENT format", not "the runner stamps 14".
@@ -529,7 +528,7 @@ assert_not_contains "fetch-health runner invokes no claude" "claude --model" "$f
 assert_contains "fetch-health runner restores arming PATH (HIMMEL-1449 r2)" '; export PATH' "$fetch_health_sh"
 assert_contains "fetch-health runner guards the repo .env source (HIMMEL-1449 r2)" '] && . ' "$fetch_health_sh"
 assert_contains "fetch-health runner .env source targets the repo env file (HIMMEL-1449 r2)" '/.env' "$fetch_health_sh"
-# HIMMEL-1724: the leg writes the same flow-run ledger rows as the claude legs,
+# The leg writes the same flow-run ledger rows as the claude legs,
 # so a FetchHealth run that stops firing is detectable as a MISSING row rather
 # than being indistinguishable from a cadence that was never armed.
 assert_contains "fetch-health runner opens a flow-run ledger row (HIMMEL-1724)" '--append-start pipeline-fetch-health' "$fetch_health_sh"
@@ -539,7 +538,7 @@ assert_contains "fetch-health runner names the leg's task in the start row (HIMM
 assert_contains "fetch-health runner derives the outcome from the probe rc (HIMMEL-1724)" '_flow_outcome=complete; [ "$_rc" = 0 ] || _flow_outcome=error' "$fetch_health_sh"
 
 # Test C4d: fetch-health runner PATH export restores binary resolution under
-# cron's empty environment (HIMMEL-1449 r2). The real failure mode: cron runs
+# cron's empty environment. The real failure mode: cron runs
 # with PATH=/usr/bin:/bin and no user env, so the probes' shelled-out CLIs
 # (gallery-dl, twitter, gh) vanish and every night is a false exit 1. The
 # emitted runner bakes the arming shell's PATH in, so a binary present at arm
@@ -583,7 +582,7 @@ assert_contains "harvest runner stamps the format version (HIMMEL-588)" "# himme
 assert_contains "synth runner stamps the format version (HIMMEL-588)"   "# himmel-cadence-runner-format: $FMT" "$synth_sh"
 assert_contains "health runner stamps the format version (HIMMEL-588)"  "# himmel-cadence-runner-format: $FMT" "$health_sh"
 # Same PATH-snapshot shape assertion as fetch-health above, but against the
-# REAL emit_runner output (not a reconstructed shape, HIMMEL-2840 CR round 1):
+# REAL emit_runner output (not a reconstructed shape):
 # the old node-dir-only line was `export PATH=<node_dir>:$PATH` (no leading
 # semicolon), so this distinguishes the fix's `PATH=<snapshot>; export PATH`
 # shape from a regression back to the old prepend-only line.
@@ -594,17 +593,17 @@ assert_contains "harvest runner cds into vault" "cd $VAULT || {" "$harvest_sh"
 assert_contains "harvest runner runs /harvest-clips" "/harvest-clips" "$harvest_sh"
 assert_contains "harvest runner chains /triage-clips" "/triage-clips" "$harvest_sh"
 # The sh runner embeds the prompt via printf %q, which backslash-escapes
-# spaces - strip the escapes before multi-word prompt assertions (HIMMEL-798).
+# spaces - strip the escapes before multi-word prompt assertions.
 harvest_sh_plain=${harvest_sh//\\/}
 assert_contains "harvest runner chains /ig-media-enrich default limit" "/ig-media-enrich --limit 10" "$harvest_sh_plain"
 assert_contains "harvest runner passes --include-evidence to /ig-media-enrich (HIMMEL-3174)" "/ig-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner names --include-evidence on the step sentence too (HIMMEL-3174)" "step uses --limit 10 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner fail-opens ig-media-enrich" "must not abort" "$harvest_sh_plain"
-# HIMMEL-4181 / HIMMEL-4108 item 1: x-media-enrich runs nightly beside
+# x-media-enrich runs nightly beside
 # ig-media, bounded by the same --ig-limit, and fail-opens the same way.
 assert_contains "harvest runner chains /x-media-enrich (HIMMEL-4181)" "/x-media-enrich --limit 10 --include-evidence" "$harvest_sh_plain"
 assert_contains "harvest runner fail-opens x-media-enrich (HIMMEL-4181)" "If /x-media-enrich fails" "$harvest_sh_plain"
-# HIMMEL-4684: a backlog left for later nights is not a failure. The 04:47 run
+# A backlog left for later nights is not a failure. The 04:47 run
 # withheld the marker over the X backlog and 3 slides-pending-digest IG clips.
 assert_contains "harvest DONE: a remaining backlog still completes (HIMMEL-4684)" "A backlog left for later runs is not unfinished work" "$harvest_sh_plain"
 assert_contains "harvest DONE: backlog is reported, not withheld (HIMMEL-4684)" "report the remaining counts and still print the marker" "$harvest_sh_plain"
@@ -627,7 +626,7 @@ for what in harvest synth health; do
     assert_contains "$what runner requires foreground execution" "Run every command in the foreground. Never background a command or wait for a notification." "$body_plain"
     assert_contains "$what runner carries the fail-closed bare marker instruction" "Only if this cadence leg genuinely completed all of its work, print exactly PIPELINE-LEG-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation." "$body_plain"
 done
-# HIMMEL-1152: every CLAUDE leg (not just harvest) carries the bounded
+# Every CLAUDE leg (not just harvest) carries the bounded
 # retry/resume wrapper — same emitter, so all three or none.
 # shellcheck disable=SC2016  # literal $_attempt/$_rc needles — the runner expands them at fire time
 for what in harvest synth health; do
@@ -648,7 +647,7 @@ for what in harvest synth health; do
     fi
 done
 
-# Test C4e: runner_path_snapshot unit (HIMMEL-2840) — the shared helper both
+# Test C4e: runner_path_snapshot unit — the shared helper both
 # emitters call. Pure (string-only), so extract it the way xml_escape/
 # default_vault are tested above and call it standalone. Pins: (1) a node_dir
 # NOT already in the snapshot gets prepended (keeps #317's guarantee: nvm-
@@ -678,7 +677,7 @@ rps_no_node=$(run_rps "/usr/bin:/bin" "")
 assert_contains "runner_path_snapshot with no node_dir echoes the snapshot as-is" "/usr/bin:/bin" "$rps_no_node"
 
 # Test C4f: emitted runner PATH line resolves a stub tool that lives ONLY in
-# a fixture ~/.local/bin-shaped dir under env -i (HIMMEL-2840). RED control:
+# a fixture ~/.local/bin-shaped dir under env -i. RED control:
 # the OLD emit_runner line (`export PATH=<node_dir>:$PATH`, prepending only
 # node's directory) must FAIL this — it never puts the fixture dir on PATH at
 # all — proving the regression this ticket fixes stays caught. The fixture
@@ -711,7 +710,7 @@ if command -v env >/dev/null 2>&1 && [ -x /bin/sh ]; then
     chmod +x "$new_shape"
 
     # OLD shape (pre-fix emit_runner): node-dir-only prepend, never touches the
-    # fixture dir — this is the exact line HIMMEL-2840 replaces.
+    # fixture dir — this is the exact line the snapshot replaces.
     q_old_node_dir=$(printf '%q' "$fake_node_dir")
     old_shape="$TMP_ROOT/c4f-old-shape.sh"
     {
@@ -736,7 +735,7 @@ else
     pass "emitted runner PATH-snapshot env -i execution skipped (host lacks env -i / /bin/sh)"
 fi
 
-# Test C4c: per-leg --model pins (HIMMEL-506) — every runner carries an
+# Test C4c: per-leg --model pins — every runner carries an
 # explicit --model right after the binary so the cadence never inherits the
 # operator's saved default tier. Defaults: harvest/synth=claude-sonnet-5-5, health=haiku.
 echo "TEST: cron runners carry the per-leg --model pin (HIMMEL-506)"
@@ -749,7 +748,7 @@ assert_not_contains "harvest runner omits bg-wait ceiling override" "CLAUDE_CODE
 assert_not_contains "synth runner omits bg-wait ceiling override"   "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" "$synth_sh"
 assert_not_contains "health runner omits bg-wait ceiling override"  "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" "$health_sh"
 
-# Test C4a2: every claude leg gates before it spends (HIMMEL-2044 / 2045) ------
+# Test C4a2: every claude leg gates before it spends ------
 # The audit finding this closes: `grep -c bank-preflight pipeline-cadence.sh`
 # was 0 while three claude legs fired nightly. These assertions are the reason
 # a future refactor cannot quietly drop the guard again.
@@ -773,7 +772,7 @@ assert_contains "synth runner stamps a completed leg" "--stamp" "$synth_sh"
 assert_not_contains "harvest runner is not input-gated" "synth-input-check.sh" "$harvest_sh"
 assert_not_contains "health runner is not input-gated" "synth-input-check.sh" "$health_sh"
 
-# Test C4b: --settings injection wires the auto-approve hook (HIMMEL-575) -------
+# Test C4b: --settings injection wires the auto-approve hook -------
 
 echo "TEST: cron runners inject --settings + fragment wires auto-approve hook"
 assert_contains "harvest runner injects --settings" "--settings" "$harvest_sh"
@@ -793,7 +792,7 @@ if command -v jq >/dev/null 2>&1; then
     else
         fail "fragment JSON does not wire a PreToolUse Bash hook" "$frag_body"
     fi
-    # HIMMEL-1682 S2a/S2b wire two cadence-scoped controls AHEAD of
+    # Two cadence-scoped controls are wired AHEAD of
     # auto-approve, so auto-approve is no longer hooks[0]. Take the LAST entry
     # (its documented slot) for the path assertions below, and assert the whole
     # ORDER separately — deny-background must precede the allow, and
@@ -805,7 +804,7 @@ if command -v jq >/dev/null 2>&1; then
     else
         fail "fragment PreToolUse hook order is wrong" "$hookorder"
     fi
-    # HIMMEL-1973: every hook above matches Bash only, so the PowerShell tool is
+    # Every hook above matches Bash only, so the PowerShell tool is
     # an unguarded second shell in a cadence session — the health leg emitted the
     # vault-lint engine through it and parked. A second matcher block denies it.
     pwshorder=$(printf '%s' "$frag_body" | jq -r '[.hooks.PreToolUse[] | select(.matcher == "PowerShell") | .hooks[].command | gsub("\"";"") | sub("^.*/"; "")] | join(",")' 2>/dev/null || echo "")
@@ -818,7 +817,7 @@ else
     hookcmd="$frag_body"
 fi
 assert_contains "fragment command references auto-approve-safe-bash" "auto-approve-safe-bash.sh" "$hookcmd"
-# HIMMEL-1682: every command must invoke an ABSOLUTE, quoted interpreter — a
+# Every command must invoke an ABSOLUTE, quoted interpreter — a
 # bare `bash` resolves to the System32 WSL stub under raw CreateProcess order
 # and cannot read a C:/... path. Assert over the whole fragment body so a new
 # command added later cannot reintroduce the bare form unnoticed.
@@ -847,7 +846,7 @@ else
     fail "fragment hook path does not resolve to a file" "$hookpath_check"
 fi
 
-# HIMMEL-1036: the fragment force-enables obsidian-triage@himmel so the nightly
+# The fragment force-enables obsidian-triage@himmel so the nightly
 # cadence stays live even when the operator disables the plugin interactively.
 if command -v jq >/dev/null 2>&1; then
     if printf '%s' "$frag_body" | jq -e '.enabledPlugins["obsidian-triage@himmel"] == true' >/dev/null 2>&1; then
@@ -859,7 +858,7 @@ else
     assert_contains "fragment force-enables obsidian-triage (HIMMEL-1036)" "obsidian-triage@himmel" "$frag_body"
 fi
 
-# HIMMEL-4181: the 2026-10-03 harvest's Skill call came back
+# The 2026-10-03 harvest's Skill call came back
 # toolDenialKind=user-rejected. A headless cadence session has nobody to answer
 # a permission ask, so every obsidian-triage command a leg prompt names needs an
 # explicit allow, plus Read of the plugin's command files as the fallback.
@@ -882,20 +881,19 @@ do
 done
 
 # Test C4d: readability warnings for the two S2a/S2b cadence-scoped hooks ----
-# HIMMEL-1682 RETASK (CodeRabbit Major, judge-verified AGREED): AUTO_APPROVE_HOOK
-# gets a `[ -r ] || echo WARN` in cron_arm, but the two hooks
+# AUTO_APPROVE_HOOK gets a `[ -r ] || echo WARN` in cron_arm, and the two hooks
 # emit_settings_fragment wires beside it (cadence-deny-background.sh,
-# cadence-approve-engines.sh) had no matching check. A missing hook file at
+# cadence-approve-engines.sh) need the same check. A missing hook file at
 # fire time makes that hook process fail to start; Claude Code treats a
 # non-2 exit as NON-BLOCKING, so the cadence session runs with that hook's
-# protection silently absent — exactly the permission surface this PR
-# hardens.
+# protection silently absent — exactly the permission surface these hooks
+# guard.
 #
-# HIMMEL-1682 CR r3: arm derives the hooks dir from pipeline-cadence.sh's OWN
+# Arm derives the hooks dir from pipeline-cadence.sh's OWN
 # location (HIMMEL_ROOT -> AUTO_APPROVE_HOOK's sibling dir), so the mutation
 # runs against a SANDBOX COPY of the script tree (build_hook_sandbox) and the
-# SANDBOX hook is hidden — never the tracked file. The prior form `mv`'d the
-# real hook and leaned on `trap cleanup EXIT` to restore it, but SIGKILL / a
+# SANDBOX hook is hidden — never the tracked file. Moving the
+# real hook and leaning on `trap cleanup EXIT` to restore it would fail, since SIGKILL / a
 # host crash defeats the trap and leaves live cadence protections missing from
 # the working tree. (The shell-suite runner waits for each suite — sequential,
 # not concurrent — against one shared tree with no per-suite isolation, so a
@@ -937,7 +935,7 @@ assert_contains "cron synthesize armed" "ARMED      HIMMEL-Pipeline-Synthesize" 
 assert_contains "cron health armed"     "ARMED      HIMMEL-Pipeline-Health"     "$out"
 assert_contains "cron status daily row mentions ig-media-enrich" "/ig-media-enrich" "$out"
 assert_contains "cron status surfaces run log state" "run log" "$out"
-# HIMMEL-506: status parses the --model pin back out of each runner so an
+# Status parses the --model pin back out of each runner so an
 # armed-but-wrong-model cadence is visible. Scope each pin to its OWN status
 # line — harvest and synth are both [model: sonnet], so a whole-output check
 # would pass even if one leg's pin were wrong or missing.
@@ -970,9 +968,9 @@ fi
 rm -f "$CRON_DIR/pipeline-synthesize.log.prev"
 
 # Test C5c: a deleted runner file surfaces as [runner missing], NOT plain
-# ARMED (HIMMEL-506 CR fix). A scheduler entry whose generated runner file is
+# ARMED. A scheduler entry whose generated runner file is
 # gone fires-and-fails every time — status must distinguish that from the
-# intentional pre-HIMMEL-506 no-pin case (which exists on disk and is silent).
+# intentional pre-pin case (which exists on disk and is silent).
 # model_suffix is shared by the cron + schtasks status paths, so this covers
 # the fix on EVERY platform (the schtasks 9d mirror is Windows-only).
 
@@ -1011,7 +1009,7 @@ tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
 harvest_sh=$(cat "$CRON_DIR/pipeline-harvest.sh" 2>/dev/null || echo MISSING)
 assert_contains "cron daily fetch-health override"             "45 00 * * *" "$tab"
 assert_contains "cron daily harvest override"                  "15 01 * * *" "$tab"
-# %q-escaped prompt: strip backslashes for the multi-word assert (HIMMEL-798).
+# %q-escaped prompt: strip backslashes for the multi-word assert.
 assert_contains "cron --ig-limit override reaches harvest runner" "/ig-media-enrich --limit 25" "${harvest_sh//\\/}"
 assert_contains "cron --harvest-model override reaches runner (HIMMEL-506)" "--model opus" "${harvest_sh//\\/}"
 assert_contains "cron daily synth override (time only, daily)" "30 02 * * *" "$tab"
@@ -1128,7 +1126,7 @@ if ! compgen -G "$CRON_DIR/*.tmp.*" >/dev/null; then
 else
     fail "staged .tmp runner litter left" "$(ls "$CRON_DIR")"
 fi
-# HIMMEL-575: the settings fragment is staged + promoted on the SAME gate, so a
+# The settings fragment is staged + promoted on the SAME gate, so a
 # failed fresh arm must leave NO orphan cadence-settings.json (and no .tmp).
 if [ ! -f "$CRON_DIR/cadence-settings.json" ]; then
     pass "no orphan settings fragment on write failure"
@@ -1235,7 +1233,7 @@ echo "TEST: armed runner .sh executes end-to-end (recording claude stub)"
 FIRE_VAULT="$TMP_ROOT/fire va&ult \$Z dir"
 FIRE_DIR="$TMP_ROOT/fire rnr"
 mkdir -p "$FIRE_VAULT"
-# HIMMEL-2045: the synthesize runner asks synth-input-check.sh whether anything
+# The synthesize runner asks synth-input-check.sh whether anything
 # has been triaged since the last completed leg, and an EMPTY vault correctly
 # answers NONE — it would skip before reaching the claude stub these fire tests
 # exist to record. One triaged clip is the fixture that keeps the gate open.
@@ -1278,12 +1276,12 @@ cat >>"$TMP_ROOT/bin-rec/claude" <<'STUB'
     printf 'cwd=%s\n' "$(pwd)"
 } > "$REC"
 echo "claude-stub-ran"
-# A completed leg ends with the bare marker (HIMMEL-1716 gate); the blocked-leg
+# A completed leg ends with the bare marker; the blocked-leg
 # twin below omits it and must surface as exit 3.
 echo "PIPELINE-LEG-DONE"
 STUB
 chmod +x "$TMP_ROOT/bin-rec/claude"
-# A python3 stub for the no-LLM FetchHealth leg (HIMMEL-1724): arm resolves
+# A python3 stub for the no-LLM FetchHealth leg: arm resolves
 # `python3` first, so this is what gets baked into that runner — the fire below
 # can then never reach the real fetch-health.py, which makes live network
 # probes. Same fail-fast guard as the claude stub before it is executed.
@@ -1316,7 +1314,7 @@ assert_rc "runner fires cleanly under plain sh" 0 "$rc"
 log=$(cat "$FIRE_DIR/pipeline-synthesize.log" 2>/dev/null || echo MISSING)
 assert_contains "fire log captures claude output" "claude-stub-ran" "$log"
 assert_contains "fire log carries the [fired stamp" "[fired" "$log"
-# HIMMEL-1716: the same runner with a claude that exits 0 WITHOUT the bare
+# The same runner with a claude that exits 0 WITHOUT the bare
 # PIPELINE-LEG-DONE line (blocked on a prompt, parked, bailed) must exit 3 --
 # a parked leg may never read as a clean pass to the scheduler.
 cat >"$TMP_ROOT/bin-rec/claude" <<'STUB'
@@ -1331,7 +1329,7 @@ if grep -q "bin-rec" "$FIRE_DIR/pipeline-synthesize.sh"; then
     log=$(cat "$FIRE_DIR/pipeline-synthesize.log" 2>/dev/null || echo MISSING)
     assert_contains "parked fire log still captures claude output" "claude-stub-ran" "$log"
 fi
-# HIMMEL-1716 / coderabbit #1762: with the classifier itself UNAVAILABLE
+# With the classifier itself UNAVAILABLE
 # (ledger lib path broken), a zero-rc run has no proof of completion -> the
 # runner must fail closed (exit 3), never default to complete. Same runner,
 # completing stub restored, ledger lib path redirected to a missing file.
@@ -1347,7 +1345,7 @@ if grep -q "bin-rec" "$FIRE_DIR/pipeline-synthesize.sh"; then
     assert_rc "runner with an unavailable classifier fails closed (exit 3, not complete)" 3 "$rc"
 fi
 recdata=$(cat "$REC" 2>/dev/null || echo MISSING)
-# HIMMEL-506/575: the runner injects `--model <pin>` then `--settings
+# The runner injects `--model <pin>` then `--settings
 # <fragment>` before the prompt, so claude sees five argv: --model, the
 # pinned model, --settings, the fragment path, the prompt.
 assert_contains "claude invoked with --model + --permission-mode + --settings injection" "argc=7" "$recdata"
@@ -1366,7 +1364,7 @@ cur=$(cat "$FIRE_DIR/pipeline-synthesize.log" 2>/dev/null || echo MISSING)
 assert_contains "second fire rotated first log to .log.prev" "RUN1-SENTINEL" "$prev"
 assert_not_contains "fresh log after rotation" "RUN1-SENTINEL" "$cur"
 assert_contains "fresh log captured the second fire" "claude-stub-ran" "$cur"
-# Test C15c: the FetchHealth leg actually LANDS ledger rows (HIMMEL-1724) -------
+# Test C15c: the FetchHealth leg actually LANDS ledger rows -------
 # The text assertions above prove the runner CONTAINS the append calls; this
 # fires it and reads the ledger, which is the only thing that proves the leg is
 # now visible to stall / never-started detection (a leg that writes no row is
@@ -1395,7 +1393,7 @@ else
     assert_contains "the failing end row carries the true exit code" '"exit_code":3' "$fh_ledger"
 fi
 
-# Test C15e: a failed leg is never silent (HIMMEL-4181) ----------------------
+# Test C15e: a failed leg is never silent ----------------------
 # Each pipeline family, forced to fail through stubs, must land exactly one
 # `<iso-ts> <leg> <reason> <log>` line in the alert file and exactly one send
 # through the recorder; a repeat of the same failure appends again but does not
@@ -1461,7 +1459,7 @@ assert_rc "a non-zero leg keeps its rc" 5 "$rc"
 assert_contains "non-zero rc is logged as FAILED" "[PIPELINE-LEG-FAILED rc=5]" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
 assert_contains "non-zero rc alerts with reason rc-5" "pipeline-harvest rc-5 " "$(cat "$CADENCE_ALERT_FILE")"
 assert_rc "non-zero rc sends once" 1 "$(count_lines "$ALERT_SENDS")"
-# The truncated outcome (HIMMEL-4226): rc 0 plus the background-task truncation
+# The truncated outcome: rc 0 plus the background-task truncation
 # signature classifies `truncated`, which is neither complete nor an rc failure.
 cat >"$TMP_ROOT/bin-rec/claude-truncated" <<'STUB'
 #!/usr/bin/env bash
@@ -1477,7 +1475,7 @@ assert_contains "a truncated leg is logged as FAILED" "[PIPELINE-LEG-FAILED no-c
 assert_contains "a truncated leg alerts with reason no-completion-marker" "pipeline-harvest no-completion-marker " "$(cat "$CADENCE_ALERT_FILE")"
 assert_rc "a truncated leg sends once" 1 "$(count_lines "$ALERT_SENDS")"
 # A runner that dies at its cd into the vault alerts too, not only one that
-# reaches the claude launch (HIMMEL-4226).
+# reaches the claude launch.
 sed "s#^    cd [^ ]* #    cd $TMP_ROOT/no-such-vault #" "$FIRE_DIR/pipeline-harvest.sh" > "$FIRE_DIR/pipeline-harvest-novault.sh"
 reset_alerts
 use_claude ok
@@ -1513,7 +1511,7 @@ FETCH_HEALTH_STUB_RC=3 sh "$FIRE_DIR/pipeline-fetch-health.sh" || true
 assert_rc "a clean probe clears the dedupe, so the next bad probe sends" 2 "$(count_lines "$ALERT_SENDS")"
 use_claude ok
 
-# HIMMEL-4182: harvest and synthesize refresh the day note's timeline after the
+# Harvest and synthesize refresh the day note's timeline after the
 # leg, must-not-abort. `node` is stubbed AFTER arm (the runner's PATH snapshot
 # already carries bin-rec), so no fire here touches a real vault note.
 echo "TEST: runners run daily-timeline.mjs, must-not-abort (HIMMEL-4182)"
@@ -1579,7 +1577,7 @@ bash "$SCRIPT_DIR/cadence-alert.sh" clear a
 bash "$SCRIPT_DIR/cadence-alert.sh" fail a.b rc-1 /x.log
 assert_rc "clearing one leg leaves a dotted sibling's dedupe intact" 1 "$(count_lines "$ALERT_SENDS")"
 
-# Test C15d: bounded retry/resume for a transient upstream API error (HIMMEL-1152)
+# Test C15d: bounded retry/resume for a transient upstream API error
 # The 2026-07-17 harvest died 48 minutes in on `API Error: Server error
 # mid-response.` with 7 clips already recorded, and nothing retried it. Text
 # assertions above prove the runner CONTAINS the loop; these fire it against a
@@ -1674,7 +1672,7 @@ env OSTYPE=linux-gnu PIPELINE_CRONTAB="$FAKE_CRONTAB" \
     PIPELINE_BAT_DIR="$FIRE_DIR" bash "$SCRIPT" disarm >/dev/null
 
 # Test C15b: rotation regression — fire with .log ABSENT must not clobber .log.prev
-# Pins PR430 CR fix: the old brace-group `{ [ -f "$log" ] && mv; } >> "$log"` form
+# Pins the rotation fix: the old brace-group `{ [ -f "$log" ] && mv; } >> "$log"` form
 # opened (created) $log via the redirect BEFORE the [ -f ] test ran, making the
 # test always true and clobbering .log.prev with an empty file on the first fire
 # of a session whose .log was absent. The fix moves the existence test before any
@@ -1711,7 +1709,7 @@ assert_rc "unknown platform rc 2" 2 "$rc"
 assert_contains "unknown platform message" "unsupported platform" "$out"
 
 # ============================================================================
-# Darwin Full Disk Access arm-time warning (HIMMEL-3075, himmel#771), POSIX/
+# Darwin Full Disk Access arm-time warning, POSIX/
 # cron path. cron_arm is IDENTICAL on macos and linux (both take the crontab
 # branch of the platform case) except for this warning, so OSTYPE + HOME are
 # the only two hermetic seams needed to exercise the real Darwin branch
@@ -1773,7 +1771,7 @@ assert_not_contains "Linux arm on the same protected path prints no FDA warning"
 run_fda linux-gnu disarm >/dev/null 2>&1
 
 # ============================================================================
-# schtasks suite (HIMMEL-3114). cmd_arm hard-refuses without cygpath, and the
+# schtasks suite. cmd_arm hard-refuses without cygpath, and the
 # cron suite above only exercised the POSIX path, so this section used to SKIP
 # everywhere but Git-Bash — the green tally held zero schtasks cases.
 #
@@ -1836,7 +1834,7 @@ case "$mode" in
             echo "ERROR: Access is denied." >&2
             exit 1
         fi
-        # HIMMEL-362: real arm now creates from XML (/create /tn X /xml F).
+        # Real arm creates from XML (/create /tn X /xml F).
         # Store the XML file's CONTENT under $STATE/tasks/<tn> so assertions
         # can inspect the trigger + StartWhenAvailable + Exec command. The
         # xml path arrives Windows-form (schtasks gets a cygpath -w'd path);
@@ -1948,7 +1946,7 @@ assert_contains "bad --health-day names the accepted set" "MON TUE WED THU FRI S
 rc=0; out=$(run_pc arm --vault "$VAULT" --harvest-model "" 2>&1) || rc=$?
 assert_rc "empty --harvest-model -> rc 1 (HIMMEL-506)" 1 "$rc"
 assert_contains "empty --harvest-model message names the flag + grammar" "--harvest-model must match [A-Za-z0-9][A-Za-z0-9._:-]*" "$out"
-# HIMMEL-506 CR fix: a model value carrying " and & (CMD metacharacters)
+# A model value carrying " and & (CMD metacharacters)
 # must be REJECTED by the grammar gate before it can reach emit_bat's
 # raw "%s" interpolation. Names the offending flag + value.
 rc=0; out=$(run_pc arm --vault "$VAULT" --harvest-model 'a"&b' 2>&1) || rc=$?
@@ -1979,7 +1977,7 @@ assert_contains "health not armed"       "not armed  HIMMEL-Pipeline-Health"    
 
 echo "TEST: arm --dry-run prints plan, registers nothing"
 out=$(run_pc arm --vault "$VAULT" --dry-run)
-# HIMMEL-362: create is now XML-based; dry-run previews the /xml create line
+# Create is XML-based; dry-run previews the /xml create line
 # + the generated task XML (trigger + StartWhenAvailable).
 assert_contains "dry-run daily fetch-health create" "/tn HIMMEL-Pipeline-FetchHealth /xml" "$out"
 assert_contains "dry-run fetch-health runner invokes plain script" "fetch-health.py" "$out"
@@ -2003,10 +2001,10 @@ else
 fi
 
 # Test 4b: readability warnings for the two S2a/S2b cadence-scoped hooks ----
-# HIMMEL-1682 RETASK (CodeRabbit Major, judge-verified AGREED): the schtasks
+# The schtasks
 # path's cmd_arm has the same AUTO_APPROVE_HOOK-only readability gap as
 # cron_arm — see the matching C4d block in the cron suite above for the full
-# rationale, including the CR r3 sandbox rationale (hide a SANDBOX hook, never
+# rationale, including the sandbox rationale (hide a SANDBOX hook, never
 # the tracked file — arm resolves hooks from pipeline-cadence.sh's own
 # location, so the mutation runs against a copy of the script tree under
 # $TMP_ROOT). Placed before Test 5 arms anything, so plain --dry-run (no
@@ -2021,7 +2019,7 @@ sb_pc() {
 
 echo "TEST: schtasks arm warns when the deny-background hook is unreadable"
 mv "$SB_PC_HOOKS/cadence-deny-background.sh" "$SB_PC_HOOKS/cadence-deny-background.sh.hidden"
-# HIMMEL-1682 CR round 5 Minor: --force so the dedup guard (which runs BEFORE
+# --force so the dedup guard (which runs BEFORE
 # the readability checks in cmd_arm) can never short-circuit this test out
 # from under the readability assertions — cheap and harmless here since no
 # task is armed yet, but it keeps the test honest against reordering. Assert
@@ -2053,7 +2051,7 @@ fetch_health_args=$(cat "$STATE/tasks/HIMMEL-Pipeline-FetchHealth" 2>/dev/null |
 harvest_args=$(cat "$STATE/tasks/HIMMEL-Pipeline-Harvest" 2>/dev/null || echo MISSING)
 synth_args=$(cat "$STATE/tasks/HIMMEL-Pipeline-Synthesize" 2>/dev/null || echo MISSING)
 health_args=$(cat "$STATE/tasks/HIMMEL-Pipeline-Health" 2>/dev/null || echo MISSING)
-# HIMMEL-362: tasks are created from XML; the fake records the XML content.
+# Tasks are created from XML; the fake records the XML content.
 assert_contains "daily fetch-health schedule (XML)" "<ScheduleByDay>" "$fetch_health_args"
 assert_contains "daily fetch-health time (XML)" "T01:30:00" "$fetch_health_args"
 assert_contains "fetch-health XML StartWhenAvailable" "<StartWhenAvailable>true</StartWhenAvailable>" "$fetch_health_args"
@@ -2070,7 +2068,7 @@ assert_contains "health XML StartWhenAvailable"  "<StartWhenAvailable>true</Star
 assert_contains "harvest Exec points at runner shim" "pipeline-harvest.vbs"  "$harvest_args"
 assert_contains "synth Exec points at runner shim"  "pipeline-synthesize.vbs" "$synth_args"
 assert_contains "health Exec points at runner shim" "pipeline-health.vbs"     "$health_args"
-# HIMMEL-1753: Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
+# Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
 # The hidden-powershell shape still allocated consoles; wscript allocates zero.
 # Element-scoped checks ensure the .bat appearing elsewhere cannot mask a broken
 # Exec Command or Arguments shape.
@@ -2099,13 +2097,13 @@ assert_contains "fetch-health bat invokes the plain probe script" "fetch-health.
 assert_not_contains "fetch-health bat invokes no claude" "claude --model" "$fetch_health_bat"
 assert_contains "fetch-health bat loads repo .env via for /f at fire time (HIMMEL-1470)" 'for /f' "$fetch_health_bat"
 assert_contains "fetch-health bat .env load targets the repo env file (HIMMEL-1470)" '.env"' "$fetch_health_bat"
-# HIMMEL-1724: same ledger rows as the claude legs (see the cron twin above).
+# Same ledger rows as the claude legs (see the cron twin above).
 assert_contains "fetch-health bat opens a flow-run ledger row (HIMMEL-1724)" '--append-start "pipeline-fetch-health"' "$fetch_health_bat"
 assert_contains "fetch-health bat closes the flow-run ledger row (HIMMEL-1724)" '--append-end "pipeline-fetch-health"' "$fetch_health_bat"
 assert_contains "fetch-health bat names the leg's task in the start row (HIMMEL-1724)" '"HIMMEL-Pipeline-FetchHealth"' "$fetch_health_bat"
 assert_contains "fetch-health bat maps a non-zero probe rc to outcome=error (HIMMEL-1724)" 'if not "%FETCH_HEALTH_RC%"=="0" set "FLOW_RUN_OUTCOME=error"' "$fetch_health_bat"
 assert_contains "fetch-health bat passes the true probe rc to the end row (HIMMEL-1724)" '"%FETCH_HEALTH_RC%" "%FLOW_RUN_OUTCOME%"' "$fetch_health_bat"
-# HIMMEL-1389 (the #1454 fix, carried to the siblings): a payload that resolves
+# A payload that resolves
 # to a .cmd/.bat shim is TRANSFERRED to, not called, so everything after it —
 # the rc stamp, the ledger end row, exit /b — silently never runs.
 if printf '%s' "$fetch_health_bat" | grep -E 'call "[^"]*" "[^"]*fetch-health\.py"' >/dev/null; then
@@ -2146,7 +2144,7 @@ for what in harvest synth health; do
     assert_contains "$what bat requires foreground execution" "Run every command in the foreground. Never background a command or wait for a notification." "$body"
     assert_contains "$what bat carries the fail-closed bare marker instruction" "Only if this cadence leg genuinely completed all of its work, print exactly PIPELINE-LEG-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation." "$body"
 done
-# HIMMEL-1152: the .bat twin of the cron retry loop. cmd has no `while`, so
+# The .bat twin of the cron retry loop. cmd has no `while`, so
 # the shape to pin is the goto label + the transient gate + the bound; the
 # cron suite above proves the BEHAVIOUR by executing it (the .bat is never
 # executed here — no cmd.exe fixture).
@@ -2162,7 +2160,7 @@ for what in harvest synth health; do
     # A successful leg must not loop: the zero-rc exit precedes every retry line.
     assert_contains "$what bat leaves the loop on a clean run" 'if "%FLOW_RUN_RC%"=="0" goto pipeline_done' "$body"
 done
-# HIMMEL-1716: the runner hands the bare completion marker to the classifier
+# The runner hands the bare completion marker to the classifier
 # and raises a parked leg (zero claude rc, no marker) to exit 3 so Task
 # Scheduler records a failure instead of a silent pass.
 for what in harvest synth health; do
@@ -2183,7 +2181,7 @@ for what in harvest synth health; do
     assert_contains "$what runner fails closed when the classifier is silent" 'if [ "$_flow_outcome" = "" ]; then if [ "$_rc" = 0 ]; then _flow_outcome=parked; else _flow_outcome=error; fi; fi' "$body"
     assert_not_contains "$what runner has no complete-by-default fallback" '_flow_outcome=complete' "$body"
     # shellcheck disable=SC2016  # the runner's own $_flow_outcome/$_rc, asserted as literal emitted text
-    # HIMMEL-4181 widened parked-only to any zero-rc outcome short of complete.
+    # Any zero-rc outcome short of complete exits 3, not only a parked one.
     assert_contains "$what runner raises a no-op leg (rc 0, not complete) to exit 3" 'if [ "$_rc" = 0 ] && [ "$_flow_outcome" != complete ]; then exit 3; fi' "$body"
 done
 for what in harvest synth health; do
@@ -2194,7 +2192,7 @@ for what in harvest synth health; do
         pass "$what bat has no headless claude flags"
     fi
 done
-# HIMMEL-1389: claude resolves to a .cmd shim on an npm-global install, and a
+# claude resolves to a .cmd shim on an npm-global install, and a
 # bare invocation of one never returns control to the .bat — the rc capture,
 # the classify, the --append-end ledger row and the exit /b below it would all
 # silently never run, which is exactly the "log with no exit stamp" #1454 fixed
@@ -2208,7 +2206,7 @@ for what in harvest synth health; do
     fi
 done
 
-# Test 6c: per-leg --model pins in the .bat runners (HIMMEL-506) — every
+# Test 6c: per-leg --model pins in the .bat runners — every
 # runner carries `--model "<m>"` right after the binary.
 echo "TEST: .bat runners carry the per-leg --model pin (HIMMEL-506)"
 assert_contains "harvest bat pins --model claude-sonnet-5-5" '--model "claude-sonnet-5-5"' "$harvest_bat"
@@ -2220,7 +2218,7 @@ assert_not_contains "harvest bat omits bg-wait ceiling override" "CLAUDE_CODE_PR
 assert_not_contains "synth bat omits bg-wait ceiling override"   "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" "$synth_bat"
 assert_not_contains "health bat omits bg-wait ceiling override"  "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" "$health_bat"
 
-# Test 6a2: every claude leg gates before it spends (HIMMEL-2044 / 2045) -----
+# Test 6a2: every claude leg gates before it spends -----
 # The .bat twin of the cron assertions above; see that block for the WHY.
 
 echo "TEST: .bat claude runners preflight the bank, attribute the leg, pin the mode"
@@ -2241,7 +2239,7 @@ assert_contains "synth bat stamps a completed leg" "--stamp" "$synth_bat"
 assert_not_contains "harvest bat is not input-gated" "synth-input-check.sh" "$harvest_bat"
 assert_not_contains "health bat is not input-gated" "synth-input-check.sh" "$health_bat"
 
-# Test 6b: --settings injection wires the auto-approve hook (HIMMEL-575) ------
+# Test 6b: --settings injection wires the auto-approve hook ------
 
 echo "TEST: .bat runners inject --settings + fragment wires auto-approve hook"
 assert_contains "harvest bat injects --settings" "--settings" "$harvest_bat"
@@ -2261,7 +2259,7 @@ if command -v jq >/dev/null 2>&1; then
     else
         fail "fragment JSON does not wire a PreToolUse Bash hook" "$wfrag_body"
     fi
-    # HIMMEL-1682 S2a/S2b — same ordering contract as the cron fragment above.
+    # Same ordering contract as the cron fragment above.
     whookcmd=$(printf '%s' "$wfrag_body" | jq -r '.hooks.PreToolUse[0].hooks[-1].command' 2>/dev/null || echo "")
     whookorder=$(printf '%s' "$wfrag_body" | jq -r '[.hooks.PreToolUse[0].hooks[].command | gsub("\"";"") | sub("^.*/"; "")] | join(",")' 2>/dev/null || echo "")
     if [ "$whookorder" = "cadence-deny-background.sh,cadence-approve-engines.sh,auto-approve-safe-bash.sh" ]; then
@@ -2269,7 +2267,7 @@ if command -v jq >/dev/null 2>&1; then
     else
         fail "fragment PreToolUse hook order is wrong" "$whookorder"
     fi
-    # HIMMEL-1973 — same PowerShell-tool deny contract as the cron fragment above.
+    # Same PowerShell-tool deny contract as the cron fragment above.
     wpwshorder=$(printf '%s' "$wfrag_body" | jq -r '[.hooks.PreToolUse[] | select(.matcher == "PowerShell") | .hooks[].command | gsub("\"";"") | sub("^.*/"; "")] | join(",")' 2>/dev/null || echo "")
     if [ "$wpwshorder" = "cadence-deny-powershell.sh" ]; then
         pass "fragment wires a PowerShell matcher denying the PowerShell tool"
@@ -2280,7 +2278,7 @@ else
     whookcmd="$wfrag_body"
 fi
 assert_contains "fragment command references auto-approve-safe-bash" "auto-approve-safe-bash.sh" "$whookcmd"
-# HIMMEL-1682 — same interpreter contract as the cron fragment above: absolute
+# Same interpreter contract as the cron fragment above: absolute
 # quoted bash, never the bare token, never the System32 WSL stub.
 case "$wfrag_body" in
     *'"command": "bash '*) fail "fragment emits a bare 'bash ' interpreter token" "$wfrag_body" ;;
@@ -2342,7 +2340,7 @@ assert_contains "synthesize armed" "ARMED      HIMMEL-Pipeline-Synthesize" "$out
 assert_contains "health armed"     "ARMED      HIMMEL-Pipeline-Health"     "$out"
 assert_contains "status daily row mentions ig-media-enrich" "/ig-media-enrich" "$out"
 assert_contains "status surfaces run log state" "run log" "$out"
-# HIMMEL-506: status parses the --model pin back out of each .bat runner.
+# Status parses the --model pin back out of each .bat runner.
 # Scope each pin to its OWN status line — harvest and synth are both
 # [model: sonnet], so a whole-output check would pass even if one leg's pin
 # were wrong or missing.
@@ -2410,7 +2408,7 @@ out=$(run_pc arm --vault "$VAULT" --force --ig-limit 25 --harvest-model opus 2>&
 harvest_bat=$(cat "$BAT_DIR/pipeline-harvest.bat" 2>/dev/null || echo MISSING)
 assert_contains "--ig-limit 25 reaches harvest bat" "/ig-media-enrich --limit 25" "$harvest_bat"
 
-# Test 9b: --force re-arm model pin round-trips through status (HIMMEL-506).
+# Test 9b: --force re-arm model pin round-trips through status.
 # status parses the --model token back out of the .bat runner; after a
 # --force re-arm with --harvest-model opus, the harvest status line must
 # show [model: opus].
@@ -2419,8 +2417,8 @@ out=$(run_pc status)
 harvest_line=$(printf '%s\n' "$out" | grep 'HIMMEL-Pipeline-Harvest')
 assert_contains "status round-trips --force harvest model pin" "[model: opus]" "$harvest_line"
 
-# Test 9c: pre-HIMMEL-506 runner (no --model token) stays silent in status
-# (HIMMEL-506). A v1 runner never carried --model; status must NOT print a
+# Test 9c: pre-pin runner (no --model token) stays silent in status
+# A v1 runner never carried --model; status must NOT print a
 # [model: ...] suffix for it (no "model: unknown", no error). Emulate by
 # stripping the --model token the v1 emitter never wrote. disarm (Test 10)
 # removes the modified runner right after, so no cleanup needed here.
@@ -2434,7 +2432,7 @@ assert_not_contains "v1 harvest runner has no [model:] suffix" "[model:" "$harve
 assert_not_contains "v1 runner status has no 'model: unknown'" "model: unknown" "$out"
 
 # Test 9d: a deleted runner file surfaces as [runner missing], NOT plain ARMED
-# (HIMMEL-506 CR fix). The schtasks mirror of cron C5c: a scheduler entry whose
+#. The schtasks mirror of cron C5c: a scheduler entry whose
 # .bat runner is gone fires-and-fails every time, so status must distinguish
 # it from the v1 no-pin runner above (9c, which exists on disk and is silent).
 # Backs up + restores the runner so Test 10's disarm state is unaffected.
@@ -2448,11 +2446,11 @@ assert_contains "synth runner-missing shows [runner missing]" "[runner missing]"
 assert_not_contains "synth runner-missing has no [model:] suffix" "[model:" "$synth_line"
 mv "$BAT_DIR/pipeline-synthesize.bat.bak" "$BAT_DIR/pipeline-synthesize.bat"
 
-# Test 9e: runner + shim publication is staged-then-renamed (HIMMEL-1753 r2) ---
+# Test 9e: runner + shim publication is staged-then-renamed ---
 #
-# glm-3: the .bat/.vbs publishes used to redirect straight onto the FINAL
+# The .bat/.vbs publishes must not redirect straight onto the FINAL
 # paths, so a task firing concurrently with a re-arm could read a half-written
-# shim. The fix stages each file to a temp BESIDE its final path and promotes
+# shim. Each file is staged to a temp BESIDE its final path and promotes
 # with `mv` (an atomic same-filesystem rename). Post-hoc directory state can't
 # distinguish rename-published from redirect-published, so the property is
 # observed at the mechanism: a PATH-first RECORDING mv (delegates to the real
@@ -2556,7 +2554,7 @@ echo "TEST: vault path with CMD metachars lands on the REAL dir in the .bat"
 EVIL_VAULT="$TMP_ROOT/va&ult %X%^Y"
 mkdir -p "$EVIL_VAULT"
 out=$(run_pc arm --vault "$EVIL_VAULT")
-# HIMMEL-1281: every value is interpolated INSIDE double quotes, where cmd.exe
+# Every value is interpolated INSIDE double quotes, where cmd.exe
 # treats & < > | as literal data and ^ as a literal character. So the only
 # transform is % -> %% ; the & and ^ must arrive VERBATIM. The old caret
 # escaping produced "va^&ult %%X%%^^Y" — a directory that does not exist.
@@ -2867,7 +2865,7 @@ if [ -n "$emit_body" ]; then
 else
     fail "emit_bat body was located" "awk range matched nothing — the guards below would assert nothing"
 fi
-# Full-line COMMENTS are stripped before the search (CodeRabbit round). The body
+# Full-line COMMENTS are stripped before the search. The body
 # carries explanatory comments, and one of them naming cadence_cmd_escape — e.g.
 # "these arrive pre-escaped by cadence_cmd_escape in cmd_arm", the most natural
 # sentence to write here — would fail this guard on prose. That direction is
@@ -2883,10 +2881,10 @@ fi
 # Every one of the ten positional locals must carry the _esc suffix. That is the
 # checkable form of the convention: if it is not named _esc it does not belong
 # in a printf here, so the NEXT parameter added is reviewable by eye.
-# Scans EVERY `local` line in the body, not just the one carrying "$1"
-# (CodeRabbit round). The old form anchored on that single declaration, so
+# Scans EVERY `local` line in the body, not just the one carrying "$1".
+# Anchoring on that single declaration is fragile:
 # splitting the parameters across two `local` lines — the obvious thing to do
-# when an 11th is added and the line gets long — left everything on the second
+# when an 11th is added and the line gets long — leaves everything on the second
 # line UNCHECKED. That is the false-PASS direction, in the one guard whose whole
 # job is to catch a newly added parameter that is not escaped.
 #
@@ -2910,19 +2908,19 @@ else
     fail "all emit_bat parameters are named _esc" "raw-looking parameter(s): $(printf '%s' "$unescaped" | tr '\n' ' ')"
 fi
 
-# The THIRD leg, and the one that actually pins this round's fix (CodeRabbit
-# round). The two checks above constrain the CALLEE: its parameters are named
+# The THIRD leg, and the one that actually pins the caller-side fix. The two checks
+# above constrain the CALLEE: its parameters are named
 # _esc, and it escapes nothing itself. Neither looks at what the CALLER passes.
 # Revert one call-site argument to a raw `"$HARVEST_MODEL"` and both still pass
 # — the parameter is still NAMED model_esc, emit_bat still escapes nothing, and
 # the emitted .bat is byte-identical for any value without a metacharacter. That
-# is exactly the regression this PR fixed, and until now nothing pinned it.
+# is exactly the regression this leg pins.
 #
 # Arguments are taken from `emit_bat` up to the first pipe or redirect, so the
 # trailing `| sed 's/^/    /'` and `> "$bat_harvest"` are not mistaken for
 # arguments (the sed script is not even a variable, and the redirect target is
 # legitimately not escaped).
-# FAIL CLOSED on a construct this guard cannot read (CodeRabbit round). The
+# FAIL CLOSED on a construct this guard cannot read. The
 # checks below are line-based greps over shell source, which is an approximation
 # — and the approximation has a specific hole: a call continued across lines
 # with a trailing backslash is seen only up to the first line, so every argument
@@ -2942,7 +2940,7 @@ else
         "backslash-continued call(s) cannot be checked safely: $(printf '%s' "$continued_calls" | tr '\n' ' ')"
 fi
 
-# Anchored at line start (CodeRabbit round): an unanchored `emit_bat "` also
+# Anchored at line start: an unanchored `emit_bat "` also
 # matches PROSE — a comment quoting a call, say — and any "$VAR" inside that
 # prose would then be reported as a raw argument of a call site that does not
 # exist. No such line exists today; anchoring keeps it that way for free.
@@ -2952,7 +2950,7 @@ if [ -n "$call_lines" ]; then
 else
     fail "emit_bat call sites were located" "no 'emit_bat \"' call lines found in $SCRIPT"
 fi
-# BRACED expansions count too (CodeRabbit round). `"${HARVEST_MODEL}"` is the
+# BRACED expansions count too. `"${HARVEST_MODEL}"` is the
 # same raw argument as `"$HARVEST_MODEL"`, but the unbraced-only pattern did not
 # match it — so the guard would have waved through exactly the regression it
 # exists to catch, written with braces. Measured before the fix: a line carrying

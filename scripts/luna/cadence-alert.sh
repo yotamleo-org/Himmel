@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/luna/cadence-alert.sh — the one failure sink every generated cadence
-# runner calls (HIMMEL-4181). A failed leg must never be silent: the 2026-10-03
+# runner calls. A failed leg must never be silent: the 2026-10-03
 # harvest did nothing and logged rc=0, and nobody found out until morning.
 #
 #   cadence-alert.sh fail <leg> <reason> <log-path>

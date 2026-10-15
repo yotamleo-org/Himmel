@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # qmd-cadence.sh — arm/status/disarm the recurring qmd reindex cadence
-# (HIMMEL-568).
 #
-# WHY: the qmd index goes stale SILENTLY. During HIMMEL-564 Phase A the luna
+# WHY: the qmd index goes stale SILENTLY. In one incident the luna
 # collection sat five days stale (lastUpdated 2026-06-22, needsEmbedding 0) while
 # notes written that week were simply not searchable — every qmd-backed workflow
 # answered off a stale index and nothing signalled it. scripts/luna/qmd-reindex.sh
@@ -10,7 +9,7 @@
 # assert); what was missing is the scheduler. This is that layer: one daily
 # OS-scheduler task that fires the runner off-peak.
 #
-# DESIGN: modelled on the sibling graphmap-cadence.sh (HIMMEL-829), NOT on
+# DESIGN: modelled on the sibling graphmap-cadence.sh, NOT on
 # pipeline-cadence.sh. pipeline-cadence fires interactive `claude "<prompt>" < NUL`
 # bounded sessions, each wired with a --settings auto-approve fragment. THIS
 # scheduler fires a DETERMINISTIC SCRIPT — `bash <himmel>/scripts/luna/
@@ -18,7 +17,7 @@
 # settings fragment and NO auto-approve hook. `qmd update` / `qmd embed` are plain
 # CLI calls, so the deterministic shape is the correct precedent.
 #
-# HIMMEL-128 (headless-claude billing) does NOT apply here, not even indirectly.
+# Headless-claude billing does NOT apply here, not even indirectly.
 # The graphmap sibling carries that caveat because its graphify backend shells the
 # `claude` CLI underneath; nothing in the qmd path invokes claude at all.
 #
@@ -45,7 +44,7 @@
 # and stricter. Verified 2026-07-25: qmd runs correctly under a bare
 # PATH=C:\Windows\system32, so no PATH surgery is needed.
 #
-# HOW it is resolved, and why that matters (HIMMEL-1283): via
+# HOW it is resolved, and why that matters: via
 # scripts/lib/qmd-bin.sh's qmd_pinned_invocation, NOT a bare `command -v qmd`.
 # The bare lookup finds the broken Claude-plugin stub
 # (~/.claude/plugins/cache/qmd/qmd/<v>/bin/qmd) that shadows the bun shim on Git
@@ -65,12 +64,12 @@
 # existence-only test passes on the broken stub, which is the whole failure
 # class this closes.
 #
-# WITH --hourly (HIMMEL-2111) the SAME single task fires every hour instead of
+# WITH --hourly the SAME single task fires every hour instead of
 # once daily. Windows keeps the daily CalendarTrigger anchored at --time and
 # layers graphmap-cadence's Repetition fragment on top
 # (<Interval>PT1H</Interval><Duration>P1D</Duration><StopAtDurationEnd>false
-# </StopAtDurationEnd>) — the same "hourly forever" idiom HIMMEL-1948
-# established for graphmap's AST-himmel task, since schtasks has no bare
+# </StopAtDurationEnd>) — the same "hourly forever" idiom
+# graphmap's AST-himmel task uses, since schtasks has no bare
 # /sc HOURLY reachable from /xml. The POSIX/cron path emits `MM * * * *`
 # instead of `MM HH * * *`, using --time's minute as the fixed :MM past every
 # hour — --time's hour is then irrelevant for scheduling, but the flag still
@@ -105,7 +104,7 @@ TASK_REINDEX="${TASK_PREFIX}Reindex"
 SCHTASKS_BIN="${QMD_CADENCE_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${QMD_CADENCE_CRONTAB:-crontab}"
 
-# Cross-platform user-home resolution (mirrors graphmap-cadence's, HIMMEL-645).
+# Cross-platform user-home resolution (mirrors graphmap-cadence's).
 # On Windows Git-Bash $HOME can be the MSYS home (/home/<user>) while Claude
 # Code's config (~/.claude) lives under the Windows user profile, so prefer
 # USERPROFILE via cygpath BEFORE $HOME. POSIX hosts have USERPROFILE unset and
@@ -129,10 +128,10 @@ HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 REINDEX_SCRIPT="$HIMMEL_ROOT/scripts/luna/qmd-reindex.sh"
 RUNNER_SCRIPT="$REINDEX_SCRIPT"
 
-# Runner-format version stamp (HIMMEL-588): emit_bat / emit_runner stamp
+# Runner-format version stamp: emit_bat / emit_runner stamp
 # CADENCE_RUNNER_FORMAT_VERSION into the runner so a stale-format armed cadence
 # is detectable. Shared lib, same as the sibling cadences.
-# Shared qmd resolver (HIMMEL-1283): qmd_pinned_invocation returns the absolute
+# Shared qmd resolver: qmd_pinned_invocation returns the absolute
 # tokens qmd_cmd would choose, so the cadence pins the SAME install every other
 # consumer resolves instead of whatever `command -v qmd` happens to hit first.
 # shellcheck source=../lib/qmd-bin.sh
@@ -143,7 +142,7 @@ RUNNER_SCRIPT="$REINDEX_SCRIPT"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/cadence-format.sh"
 
-# HIMMEL-3075 (himmel#771): macOS cron Full Disk Access arm-time warning.
+# macOS cron Full Disk Access arm-time warning.
 # shellcheck source=../lib/macos-fda-warning.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/macos-fda-warning.sh"
@@ -152,7 +151,7 @@ RUNNER_SCRIPT="$REINDEX_SCRIPT"
 REINDEX_TIME="05:00"
 FORCE=0
 DRY_RUN=0
-# --hourly (HIMMEL-2111): fire every hour instead of once daily. See the
+# --hourly: fire every hour instead of once daily. See the
 # header for the Windows Repetition / POSIX cron-line mechanics.
 HOURLY=0
 # Set when a --force arm has actually DELETED a previously armed task, so a
@@ -163,7 +162,7 @@ REPLACED_EXISTING=0
 # runner. QMD_BIN is the executable (--qmd-bin); QMD_JS is the optional script
 # argument (--qmd-js), set only when the bun-served install wins the resolver's
 # preference order — there the canonical invocation is `bun <…/dist/cli/qmd.js>`,
-# two tokens, neither of which is a `qmd` executable (HIMMEL-1283). See the
+# two tokens, neither of which is a `qmd` executable. See the
 # header for why this is pinned at arm time.
 QMD_BIN=""
 QMD_JS=""
@@ -254,7 +253,7 @@ done
 
 RUNNER_DESC="qmd update + qmd embed"
 RUNNER_NAME=$(basename "$RUNNER_SCRIPT")
-# The banner's schedule line has to say hourly when it is (HIMMEL-2111) —
+# The banner's schedule line has to say hourly when it is —
 # --hourly changes how often the task fires, not what it runs.
 CADENCE_DESC="daily $REINDEX_TIME"
 if [ "$HOURLY" -eq 1 ]; then
@@ -470,13 +469,13 @@ cmd_disarm() {
 # qmd-reindex.sh with stdout+stderr captured to the rotating log. NO claude
 # SESSION, NO stdin redirect: the runner IS the payload. The qmd BINARY path is
 # still passed to the runner explicitly (see the header) — but Git's usr\bin + bin
-# are prepended to PATH (HIMMEL-1672) so the NON-LOGIN bash.exe finds the GNU
+# are prepended to PATH so the NON-LOGIN bash.exe finds the GNU
 # coreutils qmd-reindex.sh itself calls (sed/grep/date) ahead of System32.
 emit_bat() {
     local himmel_win_esc="$1" payload="$2" log_win_esc="$3" git_bin_esc="${4:-}"
     printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt (HIMMEL-1753).
+    # schtasks) can never block on an editor prompt.
     cadence_bat_editor_set
     if [ -n "$git_bin_esc" ]; then
         printf 'set "PATH=%s;%%PATH%%"\r\n' "$git_bin_esc"
@@ -494,7 +493,7 @@ emit_bat() {
 # the machine was off/asleep at 05:00 — which for a staleness-prevention cadence
 # is the whole failure mode returning. The only CLI route is `schtasks /create
 # /xml`; we keep the .bat as the Exec Command and wrap it in XML carrying
-# StartWhenAvailable=true (same approach as the sibling cadences, HIMMEL-362).
+# StartWhenAvailable=true (same approach as the sibling cadences).
 
 # Escape the three XML-significant characters for element-body text (the Exec
 # <Command> path — a BAT_DIR path may legally contain `&`). `&` first so the `&`
@@ -508,12 +507,12 @@ schedule_daily_xml() {
     printf '      <ScheduleByDay>\n        <DaysInterval>1</DaysInterval>\n      </ScheduleByDay>'
 }
 
-# Repetition fragment (--hourly, HIMMEL-2111): re-fires every hour (PT1H) for a
+# Repetition fragment (--hourly): re-fires every hour (PT1H) for a
 # full day (Duration P1D) — the standard Task Scheduler XML idiom for "hourly,
 # forever" (schtasks has no bare /sc HOURLY equivalent reachable from /xml).
 # StopAtDurationEnd=false: the repetition itself re-arms with the next day's
 # CalendarTrigger fire, so the task keeps firing hourly indefinitely. Same
-# fragment graphmap-cadence.sh uses for its AST-himmel task (HIMMEL-1948) —
+# fragment graphmap-cadence.sh uses for its AST-himmel task —
 # see that script's repetition_xml for the base-type element-ordering
 # rationale (Repetition must precede the ScheduleByX fragment in the emitted
 # trigger, or `schtasks /create /xml` can reject it).
@@ -531,7 +530,7 @@ repetition_xml() {
 # file; declaring UTF-8 is rejected on Win11).
 emit_task_xml() {
     local bat_win="$1" start_time="$2" schedule_xml="$3" repetition="${4:-}" vbs_win vbs_args
-    # HIMMEL-1753: Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
+    # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
     # The earlier hidden-powershell wrapper (-WindowStyle Hidden) was MEASURED to
     # still allocate visible consoles; wscript //B hosting the .vbs shim (which
     # runs the .bat hidden via WScript.Shell.Run and forwards its exit code via
@@ -540,7 +539,7 @@ emit_task_xml() {
     # file with — so the referenced path and the written file can never disagree.
     # //B is the WSH batch-mode flag (no error/prompt UI); the path is quoted so
     # a BAT_DIR with spaces survives, then xml_escaped like any element text.
-    # WScript.Quit in the shim preserves HIMMEL-1706 exit-code fidelity (rc=42
+    # WScript.Quit in the shim preserves exit-code fidelity (rc=42
     # re-arm survives — proven in test-cadence-format.sh).
     vbs_win=$(cadence_vbs_path "$bat_win")
     vbs_args=$(xml_escape "//B \"${vbs_win}\"")
@@ -618,7 +617,7 @@ validate_arm_inputs() {
     # the runner as --qmd-bin (+ --qmd-js when the bun-served install wins).
     #
     # Resolve through the SHARED resolver's preference order, NOT a bare
-    # `command -v qmd` (HIMMEL-1283). The bare lookup finds the broken
+    # `command -v qmd`. The bare lookup finds the broken
     # Claude-plugin stub (~/.claude/plugins/cache/qmd/qmd/<v>/bin/qmd) that
     # shadows the bun shim on Git Bash $PATH inside a Claude Code session —
     # which is exactly where an operator arms this from — and bakes THAT into
@@ -671,7 +670,7 @@ validate_arm_inputs() {
         fi
     fi
 
-    # LIVENESS, not existence (HIMMEL-1283). Everything above proves "a file
+    # LIVENESS, not existence. Everything above proves "a file
     # exists and is executable" — which the broken plugin stub also satisfies.
     # It is the exact class of failure the arm-time fail-fast was written to
     # prevent, reintroduced one layer up. So RUN the resolved invocation once
@@ -679,7 +678,7 @@ validate_arm_inputs() {
     #
     # `collection list` is the probe, deliberately NOT `--version`: --version
     # never opens the index, so it passes even when better-sqlite3's native
-    # binding is missing or wrong-ABI (HIMMEL-928) — a qmd that answers
+    # binding is missing or wrong-ABI — a qmd that answers
     # --version and then dies on every real op is precisely what must not get
     # armed. `collection list` opens the DB, which is what the cadence's
     # `update`/`embed` do. It is also the same probe the shared resolver's own
@@ -688,8 +687,8 @@ validate_arm_inputs() {
     # one would wedge `arm` forever with no output — a worse outcome than the
     # broken stub this check exists for, since the operator gets nothing to act
     # on. qmd opens a SQLite index that another process may hold, so a stall is
-    # a live possibility, not a hypothetical. The bound is qmd_bounded
-    # (HIMMEL-3956), not timeout(1): timeout returns when qmd's node launcher
+    # a live possibility, not a hypothetical. The bound is qmd_bounded, not timeout(1):
+    # timeout returns when qmd's node launcher
     # dies and orphans its bun child, and on Git Bash PATH can resolve Windows'
     # timeout.exe, which is a sleep, not a command runner.
     # Build the probe as ONE argv rather than branching on QMD_JS — two copies
@@ -811,11 +810,11 @@ cmd_arm() {
     # expanded by cmd.exe at fire time instead of taken literally, and leaving
     # one of three interpolated values unescaped is the kind of asymmetry that
     # reads as intentional later. (The graphmap sibling used to leave its bash
-    # path raw — HIMMEL-1281 closed that divergence in graphmap's favour of
-    # this one, so all four emitters now escape every interpolated value.)
+    # path raw; that divergence is closed, so all four
+    # emitters now escape every interpolated value.)
     local bash_win_esc script_esc qmd_esc himmel_win_esc qmd_js_esc="" git_bin_esc
     bash_win_esc=$(cadence_cmd_escape "$bash_win")
-    # Git's usr\bin + bin, derived from the bash.exe path above (HIMMEL-1672):
+    # Git's usr\bin + bin, derived from the bash.exe path above:
     # prepended to PATH in emit_bat so the non-login bash.exe finds GNU coreutils
     # ahead of System32. Empty for a non-Git bash → emit_bat then omits the line.
     git_bin_esc=$(cadence_cmd_escape "$(cadence_git_bin_path_win "$bash_win")")
@@ -824,13 +823,13 @@ cmd_arm() {
     himmel_win_esc=$(cadence_cmd_escape "$himmel_win")
     [ -n "$qmd_js_mixed" ] && qmd_js_esc=$(cadence_cmd_escape "$qmd_js_mixed")
 
-    # --qmd-js rides along only when the bun-served install won the resolver
-    # (HIMMEL-1283); a PATH-qmd pin emits the single-token form unchanged.
+    # --qmd-js rides along only when the bun-served install won the resolver;
+    # a PATH-qmd pin emits the single-token form unchanged.
     local payload
     payload="\"$bash_win_esc\" \"$script_esc\" --qmd-bin \"$qmd_esc\""
     [ -n "$qmd_js_esc" ] && payload="$payload --qmd-js \"$qmd_js_esc\""
     local bat="$BAT_DIR/qmd-reindex.bat"
-    # wscript //B shim (HIMMEL-1753) lives beside the .bat; disarm removes both.
+    # wscript //B shim lives beside the .bat; disarm removes both.
     # Derived from the .bat Windows path through cadence_vbs_path — the same
     # helper emit_task_xml derives the referenced path with.
     local vbs="$BAT_DIR/qmd-reindex.vbs"
@@ -879,14 +878,14 @@ cmd_arm() {
     emit_bat "$himmel_win_esc" "$payload" "$log_esc" "$git_bin_esc" > "$tmp_bat"
     cadence_vbs_wrapper "$bat_win" > "$tmp_vbs"
 
-    # HIMMEL-1753 (CR codex-1): publish the runner .bat AND its .vbs shim BEFORE
+    # Publish the runner .bat AND its .vbs shim BEFORE
     # registering the task. These tasks carry StartWhenAvailable=true, so a run
     # missed while the PC was off can fire the moment the task is created — and
     # if the shim were still staged at that point the task would reference a
     # missing path (first arm) or the previous shim (re-arm). Promoting first
     # means the only failure mode is an unarmed task beside an unused runner,
     # which is inert; the reverse is an armed task pointing at nothing.
-    # HIMMEL-1753 round 2 (codex-1): the promotions are CHECKED — an unchecked
+    # The promotions are CHECKED — an unchecked
     # mv that failed silently fell through to registering the task anyway, the
     # exact armed-at-nothing state the ordering above exists to prevent. A
     # non-regular final path is refused as well: `mv` onto a directory
@@ -1061,8 +1060,7 @@ emit_runner() {
     #      sits at $lock, not the instance this process created.
     # Each fix produced the next, which is what a lock at the wrong layer looks
     # like. The resource being protected lives on the RECEIVER, and only the
-    # receiver can see every sender, so that is where real serialization belongs
-    # (HIMMEL-1306).
+    # receiver can see every sender, so that is where real serialization belongs.
     #
     # So: mkdir is the whole protocol. It is atomic, this process runs ONLY if
     # its own mkdir succeeded, and nothing ever removes a lock it did not
@@ -1110,7 +1108,7 @@ emit_runner() {
     printf '{\n'
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
     printf '    cd %s || exit 1\n' "$q_himmel"
-    # Shared emitter (HIMMEL-4286, runner format v22): a flow-run row for the
+    # Shared emitter: a flow-run row for the
     # leg and a cadence-alert fail/clear on its outcome. Every non-zero rc of
     # qmd-reindex.sh is a failure (its rc 0 is the only success), so no skip
     # list is passed.
@@ -1221,7 +1219,7 @@ cron_arm() {
     q_log=$(printf '%q' "$BAT_DIR/qmd-reindex.log")
     [ -n "$QMD_JS" ] && q_qmd_js=$(printf '%q' "$QMD_JS")
 
-    # Same two-token pin as the Windows path (HIMMEL-1283): --qmd-js only when
+    # Same two-token pin as the Windows path: --qmd-js only when
     # the bun-served install won the resolver.
     local payload
     payload="$q_bash $q_script --qmd-bin $q_qmd"
@@ -1232,7 +1230,7 @@ cron_arm() {
     q_runner=$(cron_escape "$CRON_RUNNER")
     if [ "$HOURLY" -eq 1 ]; then
         # Hourly forever: fixed minute, every hour — mirrors graphmap-cadence's
-        # AST-himmel cron entry (HIMMEL-1948), the cron(5) idiom for "hourly"
+        # AST-himmel cron entry, the cron(5) idiom for "hourly"
         # since cron has no repetition construct to layer on top like schtasks.
         entry="$mm * * * * $q_runner # $TASK_REINDEX"
     else

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # graphmap-cadence.sh — arm/status/disarm the recurring graphify curated-map
-# cadence (HIMMEL-829, Option B).
+# cadence.
 #
 # WHY: graphify graphs are point-in-time snapshots that drift as the corpus
-# changes. scripts/graphify/refresh-graph-map.sh (HIMMEL-825) is the schedulable
+# changes. scripts/graphify/refresh-graph-map.sh is the schedulable
 # RUNNER that does a fence-safe incremental refresh + republishes a curated MOC
 # for ONE corpus. What was missing is the scheduler/arm layer. This is that
 # layer: a SEPARATE OS-scheduler cadence (Option B) that bounds graph drift with
-# TWO tiers, inverted from the original daily-semantic-only shape (HIMMEL-1948):
+# TWO tiers:
 #   - STRUCTURAL/AST (`graphify update <corpus> --force`): pure local parse, no
 #     LLM, no API key, no bank, no egress. Cheap enough to run HOURLY.
 #   - SEMANTIC (refresh-graph-map.sh: LLM extraction of markdown docs + curated
@@ -16,31 +16,26 @@
 #     5h/weekly Anthropic bank as a live session, gated by bank-preflight.sh
 #     inside refresh-graph-map.sh (SKIPPED-BANK stops the run instead of
 #     draining the bank unattended).
-# HIMMEL-1948: the ORIGINAL shape ran the expensive semantic tier daily and the
-# free structural tier never. When the operator's 5h/weekly bank got tight,
-# bank-preflight silently no-opped the daily semantic refresh for a month
-# (nobody noticed — see graph-refresh.sh's exit-code fix, HIMMEL-1948 Task 1)
-# while the structural graph, which needed no bank at all, went stale right
-# alongside it for no reason. Inverted: cheap+free runs often, expensive+paid
-# runs rarely.
+# Cheap+free runs often, expensive+paid runs rarely: a daily semantic tier that
+# bank-preflight silently no-ops whenever the 5h/weekly bank is tight would
+# leave the structural graph, which needs no bank at all, stale for no reason.
 #
 # DESIGN DIFFERENCE from the sibling pipeline-cadence.sh: pipeline-cadence fires
 # interactive `claude "<prompt>" < NUL` bounded sessions (each pipeline task = a
 # claude session, wired with a --settings auto-approve fragment). THIS scheduler
 # fires DETERMINISTIC commands directly — `bash <himmel>/scripts/graphify/
 # refresh-graph-map.sh <args>` for the semantic pair, `bash <himmel>/scripts/
-# graphify/ast-update.sh <corpus>` for the structural pair (CR r1b: routed
-# through the promote-lock wrapper instead of a bare `graphify update` call)
+# graphify/ast-update.sh <corpus>` for the structural pair (routed
+# through the promote-lock wrapper rather than a bare `graphify update` call)
 # — so NEITHER pair ever opens a claude SESSION, NO NUL-stdin, NO settings
 # fragment, and NO auto-approve hook.
 # That keeps pipeline-cadence's "every task = a claude session" invariant
 # clean, and makes this scheduler strictly simpler than its sibling.
-# HIMMEL-2101: the semantic BACKEND is `claude-cli` (operator ruling
-# 2026-08-24/2026-09-15: kimi is retired, there is no kimi backend). Unlike
+# The semantic BACKEND is `claude-cli` (there is no kimi backend). Unlike
 # pipeline-cadence's interactive `claude "<prompt>" < NUL` sessions, the
 # semantic pair never opens a claude SESSION itself — graphify (shelled by
 # refresh-graph-map.sh) is what shells the local `claude` CLI headlessly for
-# extraction, so HIMMEL-128's claude invocation billing DOES apply (the same
+# extraction, so claude invocation billing DOES apply (the same
 # 5h/weekly interactive bank as a live session), and refresh-graph-map.sh
 # gates every claude-cli fire on bank-preflight.sh before it shells `claude`
 # (SKIPPED-BANK stops the run rather than draining the bank unattended). The
@@ -53,7 +48,7 @@
 #
 # OPERATOR FLIP: arming this cadence commits to an HOURLY free structural
 # extraction per corpus (no bank, no egress) AND a WEEKLY semantic extraction
-# per corpus on the claude-cli backend (HIMMEL-2101 — draws the SAME
+# per corpus on the claude-cli backend (draws the SAME
 # interactive 5h/weekly Anthropic bank as a live session, gated by
 # bank-preflight.sh inside refresh-graph-map.sh). It never auto-arms —
 # `arm` registers all five tasks only when explicitly invoked, so the
@@ -69,9 +64,9 @@
 #   HIMMEL-GraphMapAst-Himmel  hourly, structural, free (default :15 past)
 #       bash <himmel>/scripts/graphify/ast-update.sh <himmel repo>
 #   (ast-update.sh runs `graphify update <corpus> --force` itself, behind the
-#   HIMMEL-910 promote lock shared with the semantic pair -- CR r1b, see that
+#   promote lock shared with the semantic pair -- see that
 #   script's header.)
-#   HIMMEL-GraphPublish-Himmel  every 6h, free (default :35 past, HIMMEL-2095)
+#   HIMMEL-GraphPublish-Himmel  every 6h, free (default :35 past)
 #       bash <himmel>/scripts/graphify/graph-cadence.sh <himmel repo>
 #   (graph-cadence.sh measures staleness against origin/main and, above its
 #   --threshold, refreshes + opens/refreshes a publish PR + auto-merges it
@@ -81,7 +76,7 @@
 #   graph-cadence.md for the one-line note on adding a second corpus.)
 #
 # WHY SUNDAY 13:00 / 13:20 LOCAL for the semantic pair (staggered 20 min apart,
-# same as before HIMMEL-1948, now weekly instead of daily): a quiet day/time
+# weekly): a quiet day/time
 # default; the stagger REDUCES THE CHANCE of the two extraction jobs
 # overlapping (it cannot guarantee no overlap — luna and himmel are different
 # corpora / out dirs, so the per-out-dir promote lock does not serialize them).
@@ -100,8 +95,8 @@
 #   bash scripts/luna/graphmap-cadence.sh status
 #   bash scripts/luna/graphmap-cadence.sh disarm
 #
-# --luna-time/--himmel-time apply ONLY to the weekly semantic pair (unchanged
-# from before HIMMEL-1948); the structural pair's fire offsets are not
+# --luna-time/--himmel-time apply ONLY to the weekly semantic pair; the
+# structural pair's fire offsets are not
 # operator-configurable (see WHY :05/:15 above).
 #
 # Test seams (used by test-graphmap-cadence.sh):
@@ -122,12 +117,12 @@ set -euo pipefail
 TASK_PREFIX="HIMMEL-GraphMap-"
 TASK_LUNA="${TASK_PREFIX}Luna"
 TASK_HIMMEL="${TASK_PREFIX}Himmel"
-# Structural (AST) pair (HIMMEL-1948 Task 3): a DISTINCT prefix so these can
+# Structural (AST) pair: a DISTINCT prefix so these can
 # never collide with the semantic pair above.
 TASK_AST_PREFIX="HIMMEL-GraphMapAst-"
 TASK_AST_LUNA="${TASK_AST_PREFIX}Luna"
 TASK_AST_HIMMEL="${TASK_AST_PREFIX}Himmel"
-# Publish leg (HIMMEL-2095): a FIFTH, standalone task -- refresh+publish+
+# Publish leg: a FIFTH, standalone task -- refresh+publish+
 # auto-merge himmel's own graphify graph via scripts/graphify/graph-cadence.sh.
 # Distinct prefix from both the semantic and structural pairs above, same
 # rationale as TASK_AST_PREFIX: it must never collide with an operator's own
@@ -138,19 +133,19 @@ TASK_AST_HIMMEL="${TASK_AST_PREFIX}Himmel"
 TASK_PUBLISH_PREFIX="HIMMEL-GraphPublish-"
 TASK_PUBLISH_HIMMEL="${TASK_PUBLISH_PREFIX}Himmel"
 # Exact-name match for "does this task/cron-entry belong to THIS cadence"
-# (HIMMEL-1948 CR r2): built from the owned names only, used by
+# is built from the owned names only, used by
 # list_existing/cron_existing/the crontab own-entry filters so arm/status/
 # disarm treat exactly these as one cadence family. A dash-less PREFIX
 # match used to sit here and would catch an operator's own unrelated
 # "HIMMEL-GraphMap*" task/cron-entry too — collateral delete on disarm, or a
 # false dedup-block on arm. Adding a task later means adding it to this
-# alternation, not widening a prefix (HIMMEL-2095 added the fifth this way).
+# alternation, not widening a prefix.
 TASK_MATCH_RE="(${TASK_LUNA}|${TASK_HIMMEL}|${TASK_AST_LUNA}|${TASK_AST_HIMMEL}|${TASK_PUBLISH_HIMMEL})"
 SCHTASKS_BIN="${GRAPHMAP_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${GRAPHMAP_CRONTAB:-crontab}"
 
 # Cross-platform user-home resolution (mirrors pipeline-cadence's
-# resolve_user_home, HIMMEL-645). On Windows Git-Bash $HOME can be the MSYS home
+# resolve_user_home). On Windows Git-Bash $HOME can be the MSYS home
 # (/home/<user>) while Claude Code's config (~/.claude) lives under the Windows
 # user profile, so prefer USERPROFILE via cygpath BEFORE $HOME. POSIX hosts have
 # USERPROFILE unset and fall straight through to $HOME. /tmp is the last-resort
@@ -172,29 +167,28 @@ BAT_DIR="${GRAPHMAP_BAT_DIR:-$(resolve_user_home)/.claude/graphmap-cadence}"
 # so the runner fires the shipped refresh-graph-map.sh by absolute path.
 HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 REFRESH_SCRIPT="$HIMMEL_ROOT/scripts/graphify/refresh-graph-map.sh"
-# HIMMEL-3718: ONE resolver for the out-of-corpus promote destination — see
+# ONE resolver for the out-of-corpus promote destination — see
 # graph-out-root.sh for why (Obsidian hangs on the vault-internal
 # graphify-out/ churn). Empty for himmel (its graphify-out/ stays tracked +
 # in-corpus). Used by both the semantic pair (cron_payload --out-root) and
 # the structural pair (ast_cron_payload GRAPHIFY_OUT=) below, so the two legs
-# that share one promote lock (HIMMEL-1948) keep resolving the SAME directory.
+# that share one promote lock keep resolving the SAME directory.
 # shellcheck source=../graphify/graph-out-root.sh
 # shellcheck disable=SC1091
 . "$HIMMEL_ROOT/scripts/graphify/graph-out-root.sh"
-# Structural (AST) pair (HIMMEL-1948 CR r1b): routes through the promote-lock
+# Structural (AST) pair: routes through the promote-lock
 # wrapper, by absolute path, same rationale as REFRESH_SCRIPT above -- see
-# ast-update.sh's own header for why (HIMMEL-910 lock, shared graphify-out).
+# ast-update.sh's own header for why (promote lock, shared graphify-out).
 AST_UPDATE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/ast-update.sh"
-# Publish leg (HIMMEL-2095): fires by absolute path, same rationale as
+# Publish leg: fires by absolute path, same rationale as
 # AST_UPDATE_SCRIPT/REFRESH_SCRIPT above.
 PUBLISH_CADENCE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/graph-cadence.sh"
 # The observability-registry FLOW NAME must be DERIVED from the same
 # corpus-slug computation graph-cadence.sh itself uses (basename(HIMMEL_ROOT),
-# sanitized) -- never hardcoded separately (PR-B panel r2, codex-7: round 1
-# aligned the LITERAL string "graph-publish-himmel" on both sides, which
-# still drifts the moment either side's corpus resolution changes -- e.g. a
+# sanitized) -- never hardcoded separately: a LITERAL
+# "graph-publish-himmel" agreed on both sides still drifts the moment either side's corpus resolution changes -- e.g. a
 # checkout named anything but "himmel" -- because a literal is not a
-# derivation). Identical sanitization to graph-cadence.sh's own CORPUS_SLUG /
+# derivation. Identical sanitization to graph-cadence.sh's own CORPUS_SLUG /
 # graph-publish.sh's own corpus_slug (documented duplication, small + stable
 # -- same rationale as those two). ONE source (this variable), used at every
 # register/unregister call site below.
@@ -203,7 +197,7 @@ PUBLISH_CORPUS_SLUG="$(printf '%s' "$_publish_corpus_basename" | tr -c 'A-Za-z0-
 [ -n "$PUBLISH_CORPUS_SLUG" ] || PUBLISH_CORPUS_SLUG="repo"
 PUBLISH_FLOW_NAME="graph-publish-${PUBLISH_CORPUS_SLUG}"
 
-# Runner-format version stamp (HIMMEL-588): emit_bat / emit_runner stamp
+# Runner-format version stamp: emit_bat / emit_runner stamp
 # CADENCE_RUNNER_FORMAT_VERSION into every runner so a stale-format armed cadence
 # is detectable. Reused from the shared lib (same as pipeline-cadence).
 # shellcheck source=../lib/cadence-format.sh
@@ -212,28 +206,27 @@ PUBLISH_FLOW_NAME="graph-publish-${PUBLISH_CORPUS_SLUG}"
 # shellcheck source=../lib/observability-registry.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/observability-registry.sh"
-# HIMMEL-3075 (himmel#771): macOS cron Full Disk Access arm-time warning.
+# macOS cron Full Disk Access arm-time warning.
 # shellcheck source=../lib/macos-fda-warning.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/macos-fda-warning.sh"
 
 # Off-peak defaults for the WEEKLY semantic legs (see the header for the
-# Sunday 13:00 / 13:20 local rationale; HIMMEL-1948 changed daily -> weekly,
-# same times/stagger).
+# Sunday 13:00 / 13:20 local rationale).
 LUNA_TIME="13:00"
 HIMMEL_TIME="13:20"
-# Weekly day-of-week, semantic legs only (HIMMEL-1948). Sunday: quiet, low odds
+# Weekly day-of-week, semantic legs only. Sunday: quiet, low odds
 # of colliding with weekday operator work; ONE fixed day shared by both legs
 # (the 20-min stagger still separates them within that day).
 WEEKLY_DAY_XML="Sunday"    # schtasks XML <DaysOfWeek> element name
 WEEKLY_DAY_CRON="0"        # cron day-of-week field (0 = Sunday)
 
-# Structural (AST) legs: free, no bank, no claude session (HIMMEL-1948 Task 3).
+# Structural (AST) legs: free, no bank, no claude session.
 # Fixed offsets, not operator flags — there's no cost/off-peak reason to make
 # these configurable (see the header's WHY :05/:15); 10 minutes apart so the two
 # corpora's `graphify update` calls never start in the same instant.
 #
-# CADENCE IS ASYMMETRIC (HIMMEL-1960, operator decision (a)): himmel fires
+# CADENCE IS ASYMMETRIC: himmel fires
 # HOURLY, luna only DAILY. Both legs are free either way — the asymmetry is
 # about the artifact, not the cost. luna is a live personal vault with an
 # auto-committer, so an hourly in-place `graphify update` meant ~24 commits a
@@ -244,14 +237,14 @@ WEEKLY_DAY_CRON="0"        # cron day-of-week field (0 = Sunday)
 AST_LUNA_TIME="00:05"
 AST_HIMMEL_TIME="00:15"
 
-# Publish leg (HIMMEL-2095): every 6 hours, anchored at :35 past. Stagger
+# Publish leg: every 6 hours, anchored at :35 past. Stagger
 # rationale, extending the header's WHY :05/:15-PAST-THE-HOUR note: this leg
 # is NOT free like the AST pair -- it can run ast-update.sh, open/refresh a
 # PR, and drive merge-on-green.sh's own check-ci watch, all in one fire, so
 # it gets the WIDEST offset of any leg on this file (20 min clear of
 # AST_HIMMEL_TIME's :15, vs the AST pair's own 10-min mutual stagger) to
 # minimize the odds of overlapping a concurrent AST_HIMMEL fire on the SAME
-# corpus (both would otherwise contend for ast-update.sh's HIMMEL-910
+# corpus (both would otherwise contend for ast-update.sh's
 # promote lock — skip-not-wait, so a collision just means the publish leg's
 # refresh is skipped-and-retried next fire, not a failure, but the wider
 # offset makes that the exception rather than the rule). :35 keeps it inside
@@ -271,14 +264,14 @@ default_vault() {
 VAULT="$(default_vault)"
 FORCE=0
 DRY_RUN=0
-# --ast-only (HIMMEL-2071): arm/dedup-check ONLY the free structural (AST)
+# --ast-only: arm/dedup-check ONLY the free structural (AST)
 # pair, leaving the weekly semantic pair (and its backend credential
 # requirement) untouched/absent. Lets the free legs re-arm independently of
 # an operator ruling on the semantic pair's backend/egress. arm-only flag;
 # ignored by status/disarm (both already report/remove per-task).
 AST_ONLY=0
 
-# --with-publish (HIMMEL-3075, himmel#771): the publish leg
+# --with-publish: the publish leg
 # (HIMMEL-GraphPublish-Himmel) opens graph-refresh PRs on a schedule, so
 # `arm` registers it only when asked for explicitly. disarm still removes
 # it unconditionally if present (idempotent either way).
@@ -292,34 +285,26 @@ LUNA_TAG="luna"
 HIMMEL_TITLE="Graphify Himmel Map"
 HIMMEL_SLUG="graphify-himmel-map"
 HIMMEL_TAG="himmel"
-# HIMMEL-1948 inverted the cadence to WEEKLY and moved the semantic legs to
-# the `kimi` (Moonshot) backend to get off the interactive Anthropic bank
-# entirely, because the earlier daily claude-cli semantic refresh (HIMMEL-1049)
-# had silently starved the free structural layer for weeks (bank hit 87%,
-# bank-preflight refused, every scheduled refresh no-opped, nobody noticed
-# until HIMMEL-1948). HIMMEL-2101 (operator ruling 2026-08-24/2026-09-15: kimi
-# is retired, there is no kimi backend) reverts BACKEND to `claude-cli`,
-# keeping the WEEKLY cadence HIMMEL-1948 introduced as the mitigation: a
-# semantic leg once a week, gated by bank-preflight.sh inside
-# refresh-graph-map.sh (SKIPPED-BANK stops the run instead of draining the
-# bank unattended), replaces the old daily-drain failure mode without needing
-# a second provider. claude-cli authenticates via the operator's own Claude
-# Code subscription (no API key, HIMMEL-1049) and needs no egress-matrix
-# ratification the way an external API backend would. Already-armed tasks
-# keep their baked-in --backend until re-armed with this default.
+# The semantic legs run WEEKLY on the `claude-cli` backend: a semantic leg once
+# a week, gated by bank-preflight.sh inside refresh-graph-map.sh (SKIPPED-BANK
+# stops the run instead of draining the bank unattended), avoids a daily-drain
+# failure mode without needing a second provider. claude-cli authenticates via
+# the operator's own Claude Code subscription (no API key) and needs no
+# egress-matrix ratification the way an external API backend would.
+# Already-armed tasks keep their baked-in --backend until re-armed with this
+# default.
 BACKEND="claude-cli"
 
 # Resolved by validate_arm_inputs (both arm paths call it): `graphify` itself,
 # and its directory. ALL FIVE tasks need it on PATH at fire time — the
 # semantic legs (refresh-graph-map.sh shells graphify with --backend
 # $BACKEND) and the structural/publish legs (ast-update.sh shells `graphify
-# update`, HIMMEL-1948 Task 3 / CR r1b) — the scheduler's minimal PATH carries
+# update`) — the scheduler's minimal PATH carries
 # neither node nor graphify by default. Both runner formats prepend the
-# directory to PATH — see the HIMMEL-1070 note in validate_arm_inputs.
+# directory to PATH — see the note in validate_arm_inputs.
 GRAPHIFY_BIN=""
 GRAPHIFY_DIR=""
-# Resolved the same way, semantic pair only (HIMMEL-2101, restoring the
-# pre-HIMMEL-1948 `claude` resolution — see validate_arm_inputs): under
+# Resolved the same way, semantic pair only (see validate_arm_inputs): under
 # BACKEND=claude-cli, graphify shells the local `claude` CLI internally at
 # fire time, so its directory must ALSO be on the runner's PATH. Empty when
 # --ast-only skips the semantic pair (nothing shells claude then).
@@ -477,7 +462,7 @@ list_existing() {
     # shellcheck disable=SC1003  # strips both quote and the literal backslash schtasks prefixes task names with
     # First narrow to candidates carrying either prefix (cheap pre-filter),
     # then require an EXACT match against one of the four owned names
-    # (TASK_MATCH_RE, HIMMEL-1948 CR r2) — a task merely starting with
+    # (TASK_MATCH_RE) — a task merely starting with
     # "HIMMEL-GraphMap" (an operator's own unrelated task) must not be treated
     # as ours, or --force would delete it and a plain arm would false-dedup-block.
     printf '%s\n' "$out" \
@@ -534,10 +519,9 @@ query_one() {
     return 2
 }
 
-# HIMMEL-3048 (HIMMEL-2101 CR round 3, codex-1 Suggestion): the semantic
-# pair's backend label must come from the INSTALLED runner's baked-in
-# --backend, not this script's current BACKEND constant -- a runner armed
-# before HIMMEL-2101 still carries --backend kimi until re-armed, so reading
+# The semantic pair's backend label must come from the INSTALLED runner's
+# baked-in --backend, not this script's current BACKEND constant -- a runner
+# armed under an older BACKEND still carries it until re-armed, so reading
 # BACKEND here would assert a migration that has not happened on that
 # station. "installed: X" (read from the runner file) vs "configured: X"
 # (BACKEND, no runner armed yet) stay visually distinct so a reader can tell
@@ -587,7 +571,7 @@ status_one() {
     esac
 }
 
-# Runaway summary for one run log (HIMMEL-1901 ask 3). Prints ONE line, or
+# Runaway summary for one run log. Prints ONE line, or
 # nothing when the file carries none of the three markers (not a graphify run
 # log, or a run that died before its first chunk).
 #
@@ -733,12 +717,12 @@ bat_payload() {
     if [ -n "$out_root_esc" ]; then printf ' --out-root "%s"' "$out_root_esc"; fi
 }
 
-# Structural (AST) payload builder (HIMMEL-1948 Task 3, routed through the
-# promote-lock wrapper as of CR r1b): fires ast-update.sh by absolute path
+# Structural (AST) payload builder (routed through the
+# promote-lock wrapper): fires ast-update.sh by absolute path
 # with the corpus root as its sole argument. No --backend/--maps-dir/--title/
 # --slug: `update` publishes no curated MOC, just the local structural
 # re-parse. --force stays but is no longer on THIS command line -- it is
-# baked into ast-update.sh itself (kept, HIMMEL-1938 -- see that script's
+# baked into ast-update.sh itself (see that script's
 # header). ast-update.sh is a bash script, so (unlike the old bare `graphify`
 # call) it needs the bash prefix the caller adds, same as bat_payload's
 # refresh-graph-map.sh call. GRAPHIFY_DECLARED_BACKEND (luna leg only, see
@@ -750,7 +734,7 @@ ast_bat_payload() {
     printf '"%s" "%s"' "$script_esc" "$corpus_esc"
 }
 
-# Publish leg payload builder (HIMMEL-2095): unlike ast-update.sh, graph-
+# Publish leg payload builder: unlike ast-update.sh, graph-
 # cadence.sh takes its corpus root via an explicit `--corpus-root` flag, not
 # a bare positional -- it also accepts a bare `--threshold`, but that is left
 # at its documented default (see graph-cadence.sh's own header for the
@@ -765,28 +749,23 @@ publish_bat_payload() {
 # run log (one prior run kept as .log.prev), stamp the fire time, cd into the
 # himmel root (a failing cd aborts + is logged, instead of firing from the wrong
 # CWD), then fire the payload with its stdout+stderr captured to the rotating
-# log. NO interactive claude SESSION, NO stdin redirect, on ANY pair
-# (HIMMEL-1948): the runner IS the payload, and `graphify` itself (semantic
+# log. NO interactive claude SESSION, NO stdin redirect, on ANY pair --
+# the runner IS the payload, and `graphify` itself (semantic
 # pair, via refresh-graph-map.sh; structural pair, via ast-update.sh) must be
 # resolvable on the scheduler's minimal PATH -- hence the PATH prepend below.
 # The semantic pair's claude-cli backend additionally shells the local
-# `claude` CLI headlessly from inside graphify (HIMMEL-2101, restoring the
-# pre-HIMMEL-1948 shape) -- its directory is prepended too, when resolved.
+# `claude` CLI headlessly from inside graphify -- its directory is prepended too, when resolved.
 emit_bat() {
     # No bash-path parameter: the interpreter is already baked into $payload by
-    # the caller (cmd-escaped, HIMMEL-1281). There used to be a $2 carrying the
-    # RAW bash_win that this body never read — dead weight, and the one raw
-    # value left sitting among escaped ones, which is exactly how an unescaped
-    # path gets used by accident later. Dropped rather than fed an escaped
-    # value nothing reads.
+    # the caller (cmd-escaped).
     local himmel_win_esc="$1" payload="$2" log_win_esc="$3" graphify_dir_win_esc="${4:-}" git_bin_esc="${5:-}" declare_ollama="${6:-0}" claude_dir_win_esc="${7:-}" graphify_out_esc="${8:-}"
     printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt (HIMMEL-1753).
+    # schtasks) can never block on an editor prompt.
     cadence_bat_editor_set
     # Prepend Git's usr\bin + bin so a NON-LOGIN bash.exe finds GNU coreutils
-    # ahead of their System32 namesakes (HIMMEL-1672); then the npm-global bin
-    # dir pins `graphify` itself (HIMMEL-1070); then (HIMMEL-2101, semantic
+    # ahead of their System32 namesakes; then the npm-global bin
+    # dir pins `graphify` itself; then (semantic
     # pair only) the `claude` CLI's own dir, since graphify's claude-cli
     # backend shells it internally. schtasks fires with a minimal PATH that
     # carries none of these by default. Git's dirs come FIRST (GNU tools must
@@ -800,7 +779,7 @@ emit_bat() {
     if [ -n "$path_prefix" ]; then
         printf 'set "PATH=%s;%%PATH%%"\r\n' "$path_prefix"
     fi
-    # Luna's structural leg only (HIMMEL-1948 Task 3): the fence refuses an
+    # Luna's structural leg only: the fence refuses an
     # undeclared backend on graphify's LLM-free `update` for the luna-personal
     # corpus (it cannot see which cloud key graphify would auto-detect).
     # GRAPHIFY_DECLARED_BACKEND=ollama satisfies that declaration in-policy
@@ -809,7 +788,7 @@ emit_bat() {
     if [ "$declare_ollama" -eq 1 ]; then
         printf 'set "GRAPHIFY_DECLARED_BACKEND=ollama"\r\n'
     fi
-    # HIMMEL-3718 CR (codex-1): mirror ast_cron_payload's GRAPHIFY_OUT= prefix
+    # Mirror ast_cron_payload's GRAPHIFY_OUT= prefix
     # on the POSIX structural leg -- a .bat sets env vars as their own `set`
     # line, not as part of the command, so this stays a separate emit_bat arg
     # rather than something ast_bat_payload's payload string could carry.
@@ -819,7 +798,7 @@ emit_bat() {
     printf 'if exist "%s" move /y "%s" "%s.prev" > NUL 2>&1\r\n' "$log_win_esc" "$log_win_esc" "$log_win_esc"
     printf 'echo [fired %%DATE%% %%TIME%%] >> "%s" 2>&1\r\n' "$log_win_esc"
     printf 'cd /d "%s" >> "%s" 2>&1 || exit /b 1\r\n' "$himmel_win_esc" "$log_win_esc"
-    # `call` (HIMMEL-1389, mirroring #1454's fix in drift-fix-cadence.sh): the
+    # `call`: the
     # payload leads with an absolute interpreter path, and if that ever resolves
     # to a .cmd/.bat shim cmd.exe transfers control into it and never returns —
     # the .bat's own exit path (and anything a later change appends after this
@@ -834,7 +813,7 @@ emit_bat() {
 # after a missed scheduled start"), so a daily 13:00 run is SILENTLY SKIPPED if
 # the machine was off/asleep at 13:00. The only CLI route is `schtasks /create
 # /xml`; we keep the per-task .bat as the Exec Command and wrap it in XML that
-# carries StartWhenAvailable=true (same approach as pipeline-cadence, HIMMEL-362).
+# carries StartWhenAvailable=true (same approach as pipeline-cadence).
 
 # Escape the three XML-significant characters for element-body text (the Exec
 # <Command> path — a BAT_DIR path may legally contain `&`). `&` first so the `&`
@@ -844,14 +823,14 @@ xml_escape() {
     printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
 
-# Weekly schedule fragment (semantic pair, HIMMEL-1948): one fixed day/week,
+# Weekly schedule fragment (semantic pair): one fixed day/week,
 # the given <DaysOfWeek> element name (WEEKLY_DAY_XML, e.g. "Sunday").
 schedule_weekly_xml() {
     local day="$1"
     printf '      <ScheduleByWeek>\n        <WeeksInterval>1</WeeksInterval>\n        <DaysOfWeek>\n          <%s/>\n        </DaysOfWeek>\n      </ScheduleByWeek>' "$day"
 }
 
-# Hourly-forever schedule fragment (structural/AST pair, HIMMEL-1948 Task 3):
+# Hourly-forever schedule fragment (structural/AST pair):
 # a daily CalendarTrigger (fires once at StartBoundary's time-of-day, then
 # restarts every day). The re-fire-every-hour Repetition lives in
 # repetition_xml() below, NOT here — it belongs at the base-type position in
@@ -861,7 +840,7 @@ schedule_hourly_xml() {
     printf '      <ScheduleByDay>\n        <DaysInterval>1</DaysInterval>\n      </ScheduleByDay>'
 }
 
-# Repetition fragment (structural/AST pair only, HIMMEL-1948 CR fix): re-fires
+# Repetition fragment (structural/AST pair only): re-fires
 # every hour (PT1H) for a full day (Duration P1D) — the standard Task Scheduler
 # XML idiom for "hourly, forever" (schtasks has no bare /sc HOURLY equivalent
 # reachable from /xml). StopAtDurationEnd=false: the repetition itself re-arms
@@ -879,10 +858,10 @@ repetition_xml() {
     printf '      <Repetition>\n        <Interval>PT1H</Interval>\n        <Duration>P1D</Duration>\n        <StopAtDurationEnd>false</StopAtDurationEnd>\n      </Repetition>'
 }
 
-# Same fragment, parameterized interval in HOURS (HIMMEL-2095, publish leg:
+# Same fragment, parameterized interval in HOURS (publish leg:
 # every 6h, not hourly). repetition_xml() above stays hardcoded to PT1H —
 # untouched — because it is also the DOCUMENTED interoperability shape (its
-# own comment + the CR history it cites); this sibling exists rather than
+# own comment); this sibling exists rather than
 # widening that one, so the AST pair's proven PT1H path is never touched by
 # a change made for a different leg's cadence.
 repetition_xml_hours() {
@@ -901,7 +880,7 @@ repetition_xml_hours() {
 # UTF-8 is rejected on Win11).
 emit_task_xml() {
     local bat_win="$1" start_time="$2" schedule_xml="$3" repetition="${4:-}" vbs_win vbs_args
-    # HIMMEL-1753: Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
+    # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
     # The earlier hidden-powershell wrapper (-WindowStyle Hidden) was MEASURED to
     # still allocate visible consoles; wscript //B hosting the .vbs shim (which
     # runs the .bat hidden via WScript.Shell.Run and forwards its exit code via
@@ -910,7 +889,7 @@ emit_task_xml() {
     # file with — so the referenced path and the written file can never disagree.
     # //B is the WSH batch-mode flag (no error/prompt UI); the path is quoted so
     # a BAT_DIR with spaces survives, then xml_escaped like any element text.
-    # WScript.Quit in the shim preserves HIMMEL-1706 exit-code fidelity (rc=42
+    # WScript.Quit in the shim preserves exit-code fidelity (rc=42
     # re-arm survives — proven in test-cadence-format.sh).
     vbs_win=$(cadence_vbs_path "$bat_win")
     vbs_args=$(xml_escape "//B \"${vbs_win}\"")
@@ -997,18 +976,18 @@ validate_arm_inputs() {
         echo "ERR graphmap-cadence: graph-cadence.sh not found at $PUBLISH_CADENCE_SCRIPT" >&2
         exit 2
     fi
-    # FAIL FAST on a missing `graphify` (HIMMEL-1070, updated HIMMEL-1948). ALL
+    # FAIL FAST on a missing `graphify`. ALL
     # FIVE tasks need graphify itself on PATH at fire time — the semantic pair
     # via refresh-graph-map.sh (which shells it with --backend $BACKEND), the
-    # structural/publish pair via ast-update.sh (`graphify update ...`, CR
-    # r1b). Resolving graphify HERE, at arm time, is what makes the failure
+    # structural/publish pair via ast-update.sh (`graphify update ...`).
+    # Resolving graphify HERE, at arm time, is what makes the failure
     # visible: cron and schtasks fire with a MINIMAL PATH (no
     # npm-global/cargo bin dir), so without this the arm "succeeds" and the
     # first unattended fire dies in a log nobody reads with "graphify:
     # command not found". The resolved directory is prepended to PATH in
     # BOTH generated runner formats (.sh/.bat). `claude` itself is resolved
-    # separately below (semantic pair only, HIMMEL-2101 — BACKEND is
-    # claude-cli again).
+    # separately below (semantic pair only -- BACKEND is
+    # claude-cli).
     if ! GRAPHIFY_BIN=$(command -v graphify 2>/dev/null); then
         {
             echo "ERR graphmap-cadence: 'graphify' not on PATH at arm time, but every armed task shells it at fire time."
@@ -1022,8 +1001,8 @@ validate_arm_inputs() {
     # ALIAS resolves to its own name/definition, and a relative PATH entry
     # resolves to a relative path. Either would make GRAPHIFY_DIR meaningless in
     # a runner that has cd'd elsewhere and runs under a different PATH — the
-    # exact failure this check exists to prevent, silently reintroduced
-    # (CodeRabbit-major on HIMMEL-1070). Demand a real, absolute, executable
+    # exact failure this check exists to prevent, silently reintroduced.
+    # Demand a real, absolute, executable
     # file (Windows: the `.exe`/`.cmd` a POSIX -x test still accepts under MSYS).
     case "$GRAPHIFY_BIN" in
         /*|[A-Za-z]:[/\\]*) : ;;
@@ -1036,21 +1015,19 @@ validate_arm_inputs() {
         exit 2
     fi
     GRAPHIFY_DIR=$(dirname "$GRAPHIFY_BIN")
-    # --ast-only (HIMMEL-2071): the semantic pair is not being armed, so
+    # --ast-only: the semantic pair is not being armed, so
     # neither its backend credential nor its `claude` resolution is
     # relevant here -- requiring either would defeat the whole point of the
     # flag (arm the free legs without the semantic pair's egress/credential
     # ruling).
     if [ "$AST_ONLY" -eq 0 ]; then
         validate_backend_credential
-        # FAIL FAST on a missing `claude` CLI (HIMMEL-2101, restoring the
-        # pre-HIMMEL-1948 resolution this script carried when BACKEND was
-        # last claude-cli -- git log -p -S'BACKEND="kimi"' shows the exact
-        # shape this restores). graphify shells the local `claude` CLI
+        # FAIL FAST on a missing `claude` CLI.
+        # graphify shells the local `claude` CLI
         # internally under BACKEND=claude-cli, and the scheduler's minimal
         # PATH carries it no more than it carries graphify -- same
-        # rationale as the GRAPHIFY_BIN check above. Gated on BACKEND itself
-        # (CR r2, HIMMEL-2101): narrowed to claude-cli only -- `claude` is
+        # rationale as the GRAPHIFY_BIN check above. Gated on BACKEND itself,
+        # narrowed to claude-cli only -- `claude` is
         # graphify's Anthropic API backend (ANTHROPIC_API_KEY, no local CLI
         # shelled; see refresh-graph-map.sh's seed-claude-config gate, only
         # entered `if [ "$BACKEND" = "claude-cli" ]`), so requiring the CLI
@@ -1082,14 +1059,14 @@ validate_arm_inputs() {
     fi
 }
 
-# FAIL FAST on a missing backend credential (HIMMEL-1960). Sibling of the
+# FAIL FAST on a missing backend credential. Sibling of the
 # graphify check above and there for the same reason: an API-key backend
-# (glm/deepseek; kimi was HIMMEL-1948's choice, retired by HIMMEL-2101) with
+# (glm/deepseek) with
 # nothing verifying its credential could let `arm` succeed while EVERY weekly
 # semantic run then died unattended. An armed-and-inert cadence is worse than
 # a refused arm -- it reports ARMED in `status` while producing nothing.
 #
-# WHAT COUNTS AS PROOF is the whole subtlety here (CR codex-1). A key exported
+# WHAT COUNTS AS PROOF is the whole subtlety here. A key exported
 # into the ARMING shell proves nothing about fire time: cron and Task Scheduler
 # start with a minimal environment, and the generated runners deliberately carry
 # no secrets (refresh-graph-map.sh re-resolves the key itself when it fires).
@@ -1122,7 +1099,7 @@ validate_backend_credential() {
     # is a fixed constant in this script today (claude-cli) with no flag to
     # change it, so only that row is live -- but the default branch used to
     # `return 0` SILENTLY, which meant a future one-word edit to BACKEND would
-    # have switched the gate off without a word (CR r3 codex-1). An
+    # have switched the gate off without a word. An
     # unclassified backend now says so instead of quietly passing: this whole
     # check exists because a credential problem that stays silent becomes an
     # armed-and-inert cadence.
@@ -1132,7 +1109,7 @@ validate_backend_credential() {
         # Subscription/local backends need no API key at arm time: claude-cli
         # uses the operator's own Claude Code auth, ollama is local.
         claude|claude-cli|ollama) return 0 ;;
-        # Fail CLOSED on anything unclassified (CR r4). A warning here would be
+        # Fail CLOSED on anything unclassified. A warning here would be
         # read at arm time and forgotten; the cadence it permits fails silently
         # weeks later, which is the whole failure mode this gate exists for. A
         # refusal instead forces whoever changes BACKEND to classify the new
@@ -1150,7 +1127,7 @@ validate_backend_credential() {
         return 0
     fi
 
-    # A live env var is NOT accepted as proof, on EITHER scheduler (CR r5).
+    # A live env var is NOT accepted as proof, on EITHER scheduler.
     # Earlier revisions of this check tried to be clever about it: accept it
     # with a warning on schtasks (Task Scheduler DOES inherit persistent
     # user/system variables) and refuse on cron (which does not). But "is this
@@ -1183,7 +1160,7 @@ validate_backend_credential() {
 # probe never leaks a value into the arming shell. The value is never printed.
 credential_in_dotenv() {
     local key_var="$1"
-    # A seam that can satisfy a SAFETY gate must never do so silently (CR r7).
+    # A seam that can satisfy a SAFETY gate must never do so silently.
     # GRAPHMAP_DOTENV_ROOT points this check at a different .env than the one
     # scheduled runs read, so with it set an arm can pass while the real
     # primary-checkout credential is missing -- the precise armed-and-inert
@@ -1191,7 +1168,7 @@ credential_in_dotenv() {
     # hook. It stays (the suite needs both outcomes deterministically), but it
     # announces itself, so a redirected verdict can never be mistaken for a
     # verified one.
-    # The seam is honoured ONLY inside the hermetic suite (CR r8). Warning was
+    # The seam is honoured ONLY inside the hermetic suite. Warning was
     # not enough: an unrestricted override that can satisfy this gate IS the
     # armed-and-inert failure, just with a note attached. A real arm registers
     # against the real scheduler, so it never sets GRAPHMAP_SCHTASKS or
@@ -1201,7 +1178,7 @@ credential_in_dotenv() {
     # says so -- never silently obeyed, never silently dropped.
     local dotenv_root=""
     if [ -n "${GRAPHMAP_DOTENV_ROOT:-}" ]; then
-        # THREE conditions, none of which a production arm sets (CR r11/r12).
+        # THREE conditions, none of which a production arm sets.
         # Presence of a scheduler seam was too weak (GRAPHMAP_SCHTASKS=schtasks
         # names the REAL scheduler and would register real tasks); requiring it
         # to be a file on disk was better but an absolute path to the real
@@ -1289,7 +1266,7 @@ cmd_arm() {
         exit 4
     fi
     # Same trailing-separator normalization as pipeline-cadence.sh's vault path
-    # (public-PR CR, secondary site) — see the long note there for why this is
+    # — see the long note there for why this is
     # done at the source rather than in the shared cadence_cmd_escape, and for
     # the measurement showing cmd.exe does NOT consume the `\"` as an escape.
     # Lower probability here: HIMMEL_ROOT is resolved via `cd … && pwd`, which
@@ -1306,15 +1283,15 @@ cmd_arm() {
         esac
     done
 
-    # Dedup guard — never double-register the cadence. --ast-only (HIMMEL-2071)
+    # Dedup guard — never double-register the cadence. --ast-only
     # scopes both the dedup check AND --force's replacement to the two AST
     # tasks only — an already-armed semantic pair must survive an --ast-only
     # (re-)arm untouched, never dedup-blocked on and never deleted by it.
     local existing
     existing=$(list_existing)
-    # --ast-only (HIMMEL-2071, extended HIMMEL-2095): scopes dedup/--force to
-    # the free legs only -- the AST pair AND, only under --with-publish
-    # (HIMMEL-3075), the publish leg -- leaving the semantic pair untouched.
+    # --ast-only: scopes dedup/--force to
+    # the free legs only -- the AST pair AND, only under --with-publish,
+    # the publish leg -- leaving the semantic pair untouched.
     if [ "$AST_ONLY" -eq 1 ]; then
         if [ "$WITH_PUBLISH" -eq 1 ]; then
             existing=$(printf '%s\n' "$existing" | grep -xE "(${TASK_AST_LUNA}|${TASK_AST_HIMMEL}|${TASK_PUBLISH_HIMMEL})" || true)
@@ -1330,7 +1307,7 @@ cmd_arm() {
     # dedup-blocks naming it. cmd_arm used to delete straight from $existing,
     # which is unfiltered whenever --ast-only is absent, so a plain
     # `arm --force` DELETED the publish task and then skipped re-creating it,
-    # silently disarming the operator's opt-in leg (HIMMEL-3075, CR round 1).
+    # silently disarming the operator's opt-in leg.
     # Mirror cron's dedup/deletion split rather than widening the dedup scope.
     local own_match_re="(${TASK_AST_LUNA}|${TASK_AST_HIMMEL})"
     if [ "$WITH_PUBLISH" -eq 1 ]; then
@@ -1376,8 +1353,7 @@ cmd_arm() {
     fi
     graphify_dir_win_esc=$(cadence_cmd_escape "$graphify_dir_win")
     # CLAUDE_DIR is only resolved (validate_arm_inputs) for the semantic pair
-    # (empty under --ast-only) -- HIMMEL-2101, restoring the pre-HIMMEL-1948
-    # claude resolution. Only the luna/himmel semantic emit_bat calls below
+    # (empty under --ast-only). Only the luna/himmel semantic emit_bat calls below
     # pass this through; the AST/publish legs never shell claude.
     claude_dir_win_esc=""
     if [ -n "$CLAUDE_DIR" ]; then
@@ -1401,8 +1377,8 @@ cmd_arm() {
     # ($himmel_esc, so its derived graphify-out stays repo-local + gitignored) —
     # but BOTH publish their curated MOC into the luna vault's 60-Maps ($maps_esc).
     # The luna vault is the single home for every map; the cross-corpus mix here
-    # is intentional, not a copy-paste bug (HIMMEL-829 wiring decision).
-    # luna_out_root_esc (HIMMEL-3718): same graphify_out_root_for resolver the
+    # is intentional, not a copy-paste bug.
+    # luna_out_root_esc: same graphify_out_root_for resolver the
     # POSIX cron_payload path uses; himmel gets none (stays in-corpus), so its
     # bat_payload call below omits the arg entirely.
     local luna_out_root luna_out_root_esc
@@ -1411,7 +1387,7 @@ cmd_arm() {
     if [ -n "$luna_out_root" ]; then
         luna_out_root_esc=$(cadence_cmd_escape "$luna_out_root")
     fi
-    # luna_out_dir_esc (HIMMEL-3718 CR, codex-1): the Windows structural
+    # luna_out_dir_esc: the Windows structural
     # (AST) runner's GRAPHIFY_OUT= counterpart to luna_out_root_esc above --
     # same full out-dir (out-root/graphify-out) the POSIX q_out_dir_ast_luna
     # resolves to. Like luna_out_root_esc's --out-root value, this is read by
@@ -1426,17 +1402,15 @@ cmd_arm() {
     payload_luna=$(bat_payload "$script_esc" luna "$vault_esc" "$maps_esc" "$LUNA_TITLE" "$LUNA_SLUG" "$LUNA_TAG" "$luna_out_root_esc")
     payload_himmel=$(bat_payload "$script_esc" himmel "$himmel_esc" "$maps_esc" "$HIMMEL_TITLE" "$HIMMEL_SLUG" "$HIMMEL_TAG")
     # Both .bats get the bash exe prepended; assemble the full exec line.
-    # bash_win is cmd-escaped like every other interpolated value (HIMMEL-1281
-    # CR round 1). It used to go in raw — a documented divergence from the qmd
-    # sibling, but the wrong side of it: a `%` anywhere in the resolved
+    # bash_win is cmd-escaped like every other interpolated value: a `%` anywhere in the resolved
     # interpreter path would be expanded by cmd.exe at fire time instead of
     # taken literally, and it is inside quotes exactly like the rest.
     local bash_win_esc
     bash_win_esc=$(cadence_cmd_escape "$bash_win")
     payload_luna="\"$bash_win_esc\" $payload_luna"
     payload_himmel="\"$bash_win_esc\" $payload_himmel"
-    # Structural (AST) payloads (HIMMEL-1948 Task 3, routed through the
-    # promote-lock wrapper as of CR r1b): ast-update.sh IS a bash script, so
+    # Structural (AST) payloads (routed through the
+    # promote-lock wrapper): ast-update.sh IS a bash script, so
     # (unlike the old bare `graphify` call) it gets the same bash prefix as
     # the semantic pair. Same asymmetric corpus roots as the semantic pair:
     # luna = vault, himmel = repo.
@@ -1445,12 +1419,12 @@ cmd_arm() {
     payload_ast_himmel=$(ast_bat_payload "$ast_script_esc" "$himmel_esc")
     payload_ast_luna="\"$bash_win_esc\" $payload_ast_luna"
     payload_ast_himmel="\"$bash_win_esc\" $payload_ast_himmel"
-    # Publish leg (HIMMEL-2095): himmel repo only (v1) -- same corpus root
+    # Publish leg: himmel repo only (v1) -- same corpus root
     # the AST_HIMMEL leg uses ($himmel_esc).
     local payload_publish_himmel
     payload_publish_himmel=$(publish_bat_payload "$publish_script_esc" "$himmel_esc")
     payload_publish_himmel="\"$bash_win_esc\" $payload_publish_himmel"
-    # Git's usr\bin + bin, derived from the bash.exe path above (HIMMEL-1672):
+    # Git's usr\bin + bin, derived from the bash.exe path above:
     # prepended to PATH in emit_bat so the non-login bash.exe finds GNU coreutils
     # ahead of System32. Empty for a non-Git bash → emit_bat then omits the line.
     local git_bin_esc
@@ -1461,7 +1435,7 @@ cmd_arm() {
     local bat_ast_luna="$BAT_DIR/graphmap-ast-luna.bat"
     local bat_ast_himmel="$BAT_DIR/graphmap-ast-himmel.bat"
     local bat_publish_himmel="$BAT_DIR/graphmap-publish-himmel.bat"
-    # wscript //B shims (HIMMEL-1753) live beside their .bats; disarm removes
+    # wscript //B shims live beside their .bats; disarm removes
     # both together. Derived from the .bat Windows path through cadence_vbs_path
     # — the same helper emit_task_xml derives the referenced path with.
     local vbs_luna="$BAT_DIR/graphmap-luna.vbs"
@@ -1511,7 +1485,7 @@ cmd_arm() {
     sched_semantic=$(schedule_weekly_xml "$WEEKLY_DAY_XML")
     sched_ast=$(schedule_hourly_xml)
     rep_ast=$(repetition_xml)
-    # Publish leg (HIMMEL-2095): same daily ScheduleByDay shape as the AST
+    # Publish leg: same daily ScheduleByDay shape as the AST
     # pair (hourliness lives entirely in the Repetition element, same as
     # AST_HIMMEL) -- just a 6-hour interval instead of 1.
     sched_publish=$(schedule_hourly_xml)
@@ -1561,7 +1535,7 @@ cmd_arm() {
     fi
 
     mkdir -p "$BAT_DIR"
-    # Atomic runner publication (HIMMEL-1753 round 2, glm-3): every runner .bat
+    # Atomic runner publication: every runner .bat
     # and .vbs shim is emitted to a staged temp BESIDE its final path (same dir
     # -> same filesystem -> `mv` is an atomic rename, not a copy) and promoted
     # only once complete, mirroring codex-sweep-cadence's publish discipline.
@@ -1588,7 +1562,7 @@ cmd_arm() {
     local promote_src promote_dst idx
     promote_src=("$tmp_ast_luna_vbs" "$tmp_ast_himmel_vbs" "$tmp_ast_luna_bat" "$tmp_ast_himmel_bat")
     promote_dst=("$vbs_ast_luna" "$vbs_ast_himmel" "$bat_ast_luna" "$bat_ast_himmel")
-    # --with-publish (HIMMEL-3075): opt-in, like the semantic pair below --
+    # --with-publish: opt-in, like the semantic pair below --
     # the publish leg's runner files are neither built nor promoted unless
     # asked for, leaving a pre-existing one (from an earlier --with-publish
     # arm) untouched.
@@ -1600,7 +1574,7 @@ cmd_arm() {
         promote_src+=("$tmp_publish_himmel_vbs" "$tmp_publish_himmel_bat")
         promote_dst+=("$vbs_publish_himmel" "$bat_publish_himmel")
     fi
-    # --ast-only (HIMMEL-2071): the semantic pair's runner files are neither
+    # --ast-only: the semantic pair's runner files are neither
     # built nor promoted — leaving them absent (or untouched, on a re-arm that
     # left an earlier semantic pair's files on disk) is exactly "the semantic
     # tasks stay absent/disabled": no orphaned runner ever gets registered as
@@ -1632,21 +1606,20 @@ cmd_arm() {
     done
 
     # Create the AST tasks always, the semantic pair only without --ast-only,
-    # the publish leg only with --with-publish (HIMMEL-3075). Rolls back
-    # every task that DID register if a later /create fails (generalized
-    # from the original 2-task hand-rolled rollback so status/dedup stay
-    # truthful no matter which task fails, HIMMEL-1948 Task 3; --ast-only,
-    # HIMMEL-2071, just shrinks the array to two).
+    # the publish leg only with --with-publish. Rolls back
+    # every task that DID register if a later /create fails (so status/dedup stay
+    # truthful no matter which task fails; --ast-only just shrinks the array
+    # to two).
     local create_names=("$TASK_AST_LUNA" "$TASK_AST_HIMMEL")
     local create_scheds=("$sched_ast" "$sched_ast")
     local create_times=("$AST_LUNA_TIME" "$AST_HIMMEL_TIME")
     local create_bats=("$bat_ast_luna_win" "$bat_ast_himmel_win")
-    # HIMMEL-1960 (operator decision (a)): only the HIMMEL corpus gets the
+    # Only the HIMMEL corpus gets the
     # hourly Repetition. luna's AST leg keeps the same daily CalendarTrigger
     # with NO repetition, i.e. it fires once a day instead of 24 times. Both
     # AST legs share sched_ast (a plain ScheduleByDay) -- hourliness lives
     # entirely in rep_ast, so "lower cadence for luna" is the absence of it.
-    # The publish leg (HIMMEL-2095), when armed, always gets rep_publish
+    # The publish leg, when armed, always gets rep_publish
     # (every 6h).
     local create_reps=("" "$rep_ast")
     if [ "$WITH_PUBLISH" -eq 1 ]; then
@@ -1671,8 +1644,8 @@ cmd_arm() {
             cat "$err_file" >&2
             local rb
             # ${created[@]+"${created[@]}"} -- empty-array guard: under
-            # `set -u` on bash < 4.4 (this repo's floor is 3.2, HIMMEL-1948
-            # CR), expanding "${created[@]}" when created is still empty
+            # `set -u` on bash < 4.4 (this repo's floor is 3.2),
+            # expanding "${created[@]}" when created is still empty
             # (the FIRST /create failed, so nothing was ever appended) is an
             # unbound-variable error that aborts this rollback path before
             # `rm -f "$err_file"` and before the deliberate `exit 4` below --
@@ -1690,14 +1663,13 @@ cmd_arm() {
     done
     rm -f "$err_file"
 
-    # HIMMEL-1680: register every task this arm actually created so absence
+    # Register every task this arm actually created so absence
     # (a silently vanished scheduled task) is detectable via the registry's
     # expected-but-absent report. AST pair is unconditional (created on
     # every arm, --ast-only or not); the semantic pair only when this arm
     # created it.
     if [ "$AST_ONLY" -eq 0 ]; then
-        # weekly (604800s), not daily -- these are the semantic pair (codex-1,
-        # HIMMEL-1680 CR): a wrong cadence here would make future
+        # weekly (604800s), not daily -- these are the semantic pair: a wrong cadence here would make future
         # cadence-based staleness tooling flag a healthy weekly job as
         # stalled every day it hasn't fired.
         observability_register_cadence graphmap-luna 604800 "$TASK_LUNA"
@@ -1706,14 +1678,13 @@ cmd_arm() {
     observability_register_cadence graphmap-ast-luna 86400 "$TASK_AST_LUNA"
     observability_register_cadence graphmap-ast-himmel 3600 "$TASK_AST_HIMMEL"
     if [ "$WITH_PUBLISH" -eq 1 ]; then
-        # Publish leg (HIMMEL-2095): opt-in (HIMMEL-3075), like the AST pair
+        # Publish leg: opt-in, like the AST pair
         # unconditional WHEN present -- every 6h (21600s). $PUBLISH_FLOW_NAME
         # ("graph-publish-<slug>"), NOT the "graphmap-*.bat/.vbs/.log"
         # runner-file naming this file's OTHER legs use -- it must match
         # graph-cadence.sh's OWN FLOW_NAME byte-for-byte, or the observability
         # registry's .flows[] entry can never be joined against the
-        # flow-run-ledger rows the runner actually emits (codex-4, PR-B panel
-        # r1; hardened codex-7, PR-B panel r2 -- both sides now DERIVE the
+        # flow-run-ledger rows the runner actually emits (both sides DERIVE the
         # name from the same corpus-slug computation instead of a hardcoded
         # literal).
         observability_register_cadence "$PUBLISH_FLOW_NAME" 21600 "$TASK_PUBLISH_HIMMEL"
@@ -1721,11 +1692,11 @@ cmd_arm() {
 
     local semantic_lines arming_note
     if [ "$AST_ONLY" -eq 1 ]; then
-        # codex-1, HIMMEL-2071 CR round 1: an --ast-only (re-)arm never
+        # An --ast-only (re-)arm never
         # touches the semantic pair, but it can already be armed from an
         # EARLIER full arm — report its REAL scheduler state, not a blanket
         # "NOT armed" that would be a false negative in that case.
-        # codex-1, CR round 2 (Suggestion): don't restate this arm's $BACKEND/
+        # Don't restate this arm's $BACKEND/
         # $LUNA_TIME/$HIMMEL_TIME for a task this run never touched — a
         # pre-existing task may have been armed with different values (e.g.
         # a since-changed BACKEND). Point at `status` for its real config
@@ -1851,7 +1822,7 @@ cron_install() {
 # Marker-tagged cadence lines in the current CRON_TAB (empty if none). Every
 # entry this script writes carries a trailing "# <task-name>" comment (see
 # entry_luna et al below); matching on that comment anchored at end-of-line
-# against TASK_MATCH_RE (the four owned names, HIMMEL-1948 CR r2) means an
+# against TASK_MATCH_RE (the four owned names) means an
 # operator's own unrelated "# HIMMEL-GraphMap*" entry is never swept up.
 cron_existing() {
     printf '%s\n' "$CRON_TAB" | grep -E "# ${TASK_MATCH_RE}\$" || true
@@ -1862,7 +1833,7 @@ cron_existing() {
 # name/slug/tag/backend are fixed ASCII literals.
 cron_payload() {
     local q_bash="$1" q_script="$2" name="$3" q_corpus="$4" q_maps="$5" q_title="$6" slug="$7" tag="$8" q_out_root="${9:-}"
-    # HIMMEL-3718 CR (codex-1, round 6): refresh-graph-map.sh now falls back to
+    # refresh-graph-map.sh falls back to
     # GRAPHIFY_OUT_ROOT from the environment when --out-root is absent -- clear
     # it whenever this leg omits --out-root, so an ambient value left over from
     # the OTHER leg's out-of-corpus run can't redirect this one.
@@ -1872,8 +1843,8 @@ cron_payload() {
     if [ -n "$q_out_root" ]; then printf ' --out-root %s' "$q_out_root"; fi
 }
 
-# Structural (AST) payload builder, POSIX form (HIMMEL-1948 Task 3, routed
-# through the promote-lock wrapper as of CR r1b): bash + ast-update.sh +
+# Structural (AST) payload builder, POSIX form (routed
+# through the promote-lock wrapper): bash + ast-update.sh +
 # corpus-root. q_bash/q_script/q_corpus arrive pre-quoted (printf %q).
 # Mirrors ast_bat_payload's rationale -- --force now lives INSIDE
 # ast-update.sh, not on this command line.
@@ -1883,14 +1854,14 @@ ast_cron_payload() {
     # graphify itself does (paths.py) -- an absolute value is used as-is, so
     # this is the FULL out dir (out-root/graphify-out), not just the root, to
     # land on the same directory refresh-graph-map.sh's --out-root resolves to.
-    # HIMMEL-3718 CR (codex-1, round 7): mirror cron_payload's unset -- clear
+    # Mirror cron_payload's unset -- clear
     # an ambient GRAPHIFY_OUT whenever this leg omits its own GRAPHIFY_OUT=.
     if [ -z "$q_out_dir" ]; then printf 'unset GRAPHIFY_OUT; '; fi
     if [ -n "$q_out_dir" ]; then printf 'GRAPHIFY_OUT=%s ' "$q_out_dir"; fi
     printf '%s %s %s' "$q_bash" "$q_script" "$q_corpus"
 }
 
-# Publish leg payload builder, POSIX form (HIMMEL-2095): unlike ast-update.sh,
+# Publish leg payload builder, POSIX form: unlike ast-update.sh,
 # graph-cadence.sh takes its corpus root via an explicit --corpus-root flag,
 # not a bare positional -- see publish_bat_payload's identical note.
 publish_cron_payload() {
@@ -1902,8 +1873,8 @@ publish_cron_payload() {
 # rotate the run log, stamp the fire time, cd into the himmel root, then fire the
 # payload with output captured to the log. PATH prepends for nvm-managed node
 # (refresh-graph-map.sh calls node, semantic pair only — q_node_dir is empty
-# for the structural pair), for `graphify` itself (updated HIMMEL-1948: every
-# task needs graphify on PATH), and (HIMMEL-2101, semantic pair only) for the
+# for the structural pair), for `graphify` itself (every
+# task needs graphify on PATH), and (semantic pair only) for the
 # `claude` CLI graphify's claude-cli backend shells internally — under cron's
 # minimal PATH. The dirs are frequently the same bin dir — a duplicate PATH
 # entry is harmless, so they are emitted independently rather than deduped.
@@ -1922,7 +1893,7 @@ emit_runner() {
     if [ -n "$q_claude_dir" ]; then
         printf 'export PATH=%s:$PATH\n' "$q_claude_dir"
     fi
-    # Luna's structural leg only (HIMMEL-1948 Task 3) — see emit_bat's identical
+    # Luna's structural leg only — see emit_bat's identical
     # rationale: satisfies the fence's LLM-free-subcommand backend declaration
     # requirement in-policy (ollama -> local-ollama, luna-personal x
     # local-ollama = allow, zero egress).
@@ -1936,7 +1907,7 @@ emit_runner() {
     printf '{\n'
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
     printf '    cd %s || exit 1\n' "$q_himmel"
-    # Shared emitter (HIMMEL-4286, runner format v22): a flow-run row for the
+    # Shared emitter (runner format v22): a flow-run row for the
     # leg and a cadence-alert fail/clear on its outcome. An empty flow name (the
     # publish leg) skips it: graph-cadence.sh alerts and writes its own rows.
     # skip_rcs are the payload's benign non-failures (semantic rc 3 = bank
@@ -2029,16 +2000,16 @@ cron_arm() {
         node_dir=$(dirname "$node_bin")
     fi
 
-    # Dedup guard — never double-register the cadence. --ast-only (HIMMEL-2071)
+    # Dedup guard — never double-register the cadence. --ast-only
     # scopes both the dedup check AND --force's replacement to the two AST
     # entries only — a pre-existing semantic pair survives an --ast-only
     # (re-)arm untouched.
     cron_read
     local existing
     existing=$(cron_existing)
-    # --ast-only (HIMMEL-2071, extended HIMMEL-2095): see cmd_arm's identical
+    # --ast-only: see cmd_arm's identical
     # comment -- the publish leg is grouped with the AST pair here too, but
-    # only when --with-publish (HIMMEL-3075) is also asking for it this run.
+    # only when --with-publish is also asking for it this run.
     if [ "$AST_ONLY" -eq 1 ]; then
         if [ "$WITH_PUBLISH" -eq 1 ]; then
             existing=$(printf '%s\n' "$existing" | grep -E "# (${TASK_AST_LUNA}|${TASK_AST_HIMMEL}|${TASK_PUBLISH_HIMMEL})\$" || true)
@@ -2078,7 +2049,7 @@ cron_arm() {
     q_node_dir=$([ -n "$node_dir" ] && printf '%q' "$node_dir" || printf '')
     q_graphify_dir=$(printf '%q' "$GRAPHIFY_DIR")
     # CLAUDE_DIR is only resolved (validate_arm_inputs) for the semantic pair
-    # (empty under --ast-only) -- HIMMEL-2101. Only the luna/himmel semantic
+    # (empty under --ast-only). Only the luna/himmel semantic
     # emit_runner calls below pass this through.
     q_claude_dir=$([ -n "$CLAUDE_DIR" ] && printf '%q' "$CLAUDE_DIR" || printf '')
     q_vault=$(printf '%q' "$VAULT")
@@ -2092,7 +2063,7 @@ cron_arm() {
     q_log_ast_himmel=$(printf '%q' "$BAT_DIR/graphmap-ast-himmel.log")
     q_log_publish_himmel=$(printf '%q' "$BAT_DIR/graphmap-publish-himmel.log")
 
-    # HIMMEL-3718: luna's out-of-corpus destination, resolved ONCE and shared
+    # luna's out-of-corpus destination, resolved ONCE and shared
     # by both the semantic (--out-root) and structural (GRAPHIFY_OUT=) legs
     # below -- see graph-out-root.sh. Empty when no override is configured
     # (today's in-corpus default, byte-for-byte unchanged).
@@ -2108,12 +2079,12 @@ cron_arm() {
     local payload_luna payload_himmel payload_ast_luna payload_ast_himmel payload_publish_himmel
     payload_luna=$(cron_payload "$q_bash" "$q_script" luna "$q_vault" "$q_maps" "$q_luna_title" "$LUNA_SLUG" "$LUNA_TAG" "$q_out_root_luna")
     payload_himmel=$(cron_payload "$q_bash" "$q_script" himmel "$q_himmel" "$q_maps" "$q_himmel_title" "$HIMMEL_SLUG" "$HIMMEL_TAG")
-    # Structural (AST) payloads (HIMMEL-1948 Task 3, routed through the
-    # promote-lock wrapper as of CR r1b): same asymmetric corpus roots as the
+    # Structural (AST) payloads (routed through the
+    # promote-lock wrapper): same asymmetric corpus roots as the
     # semantic pair (luna = vault, himmel = repo).
     payload_ast_luna=$(ast_cron_payload "$q_bash" "$q_ast_script" "$q_vault" "$q_out_dir_ast_luna")
     payload_ast_himmel=$(ast_cron_payload "$q_bash" "$q_ast_script" "$q_himmel")
-    # Publish leg (HIMMEL-2095): himmel repo only (v1).
+    # Publish leg: himmel repo only (v1).
     payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
 
     local luna_hh luna_mm himmel_hh himmel_mm
@@ -2131,15 +2102,15 @@ cron_arm() {
     q_runner_ast_himmel=$(cron_escape "$CRON_RUNNER_AST_HIMMEL")
     q_runner_publish_himmel=$(cron_escape "$CRON_RUNNER_PUBLISH_HIMMEL")
     local entry_luna entry_himmel entry_ast_luna entry_ast_himmel entry_publish_himmel
-    # Weekly (semantic pair, HIMMEL-1948): day-of-week field pinned to
+    # Weekly (semantic pair): day-of-week field pinned to
     # WEEKLY_DAY_CRON instead of "*".
     entry_luna="$luna_mm $luna_hh * * $WEEKLY_DAY_CRON $q_runner_luna # $TASK_LUNA"
     entry_himmel="$himmel_mm $himmel_hh * * $WEEKLY_DAY_CRON $q_runner_himmel # $TASK_HIMMEL"
-    # Structural pair (HIMMEL-1948 Task 3): himmel hourly (fixed minute, every
-    # hour); luna DAILY at its full HH:MM (HIMMEL-1960, operator decision (a)).
+    # Structural pair: himmel hourly (fixed minute, every
+    # hour); luna DAILY at its full HH:MM.
     entry_ast_luna="$ast_luna_mm $ast_luna_hh * * * $q_runner_ast_luna # $TASK_AST_LUNA"
     entry_ast_himmel="$ast_himmel_mm * * * * $q_runner_ast_himmel # $TASK_AST_HIMMEL"
-    # Publish leg (HIMMEL-2095): every 6h at its fixed minute (cron's
+    # Publish leg: every 6h at its fixed minute (cron's
     # `*/6` hour-field step, standard vixie-cron syntax).
     entry_publish_himmel="$publish_himmel_mm */6 * * * $q_runner_publish_himmel # $TASK_PUBLISH_HIMMEL"
 
@@ -2181,7 +2152,7 @@ cron_arm() {
     # crontab install succeeds: writing them in place first would let a failed
     # install (exit 4) leave the OLD crontab live while the runner files already
     # carry the NEW config — a silent half-state under --force re-arm.
-    # --ast-only (HIMMEL-2071): the semantic runners are neither built nor
+    # --ast-only: the semantic runners are neither built nor
     # promoted, and their entries never enter $own_match_re below, so a
     # PRE-EXISTING semantic pair's crontab lines and runner files survive an
     # --ast-only (re-)arm untouched.
@@ -2192,7 +2163,7 @@ cron_arm() {
     chmod +x "$tmp_ast_luna" "$tmp_ast_himmel"
     local own_match_re="(${TASK_AST_LUNA}|${TASK_AST_HIMMEL})"
     local new_entries="$entry_ast_luna"$'\n'"$entry_ast_himmel"
-    # --with-publish (HIMMEL-3075): opt-in, like the semantic pair under
+    # --with-publish: opt-in, like the semantic pair under
     # --ast-only -- left out of own_match_re/new_entries entirely so a
     # pre-existing publish entry (armed by an earlier --with-publish run)
     # survives an arm that doesn't ask for it untouched.
@@ -2232,8 +2203,7 @@ cron_arm() {
     if [ -n "$tmp_luna" ]; then
         mv -f "$tmp_luna" "$CRON_RUNNER_LUNA"
         mv -f "$tmp_himmel" "$CRON_RUNNER_HIMMEL"
-        # weekly (604800s), not daily -- these are the semantic pair (codex-1,
-        # HIMMEL-1680 CR): a wrong cadence here would make future
+        # weekly (604800s), not daily -- these are the semantic pair: a wrong cadence here would make future
         # cadence-based staleness tooling flag a healthy weekly job as
         # stalled every day it hasn't fired.
         observability_register_cadence graphmap-luna 604800 "$TASK_LUNA"
@@ -2247,13 +2217,12 @@ cron_arm() {
     observability_register_cadence graphmap-ast-himmel 3600 "$TASK_AST_HIMMEL"
     cadence_prov_record "$TASK_AST_LUNA"
     cadence_prov_record "$TASK_AST_HIMMEL"
-    # Publish leg (HIMMEL-2095): opt-in via --with-publish (HIMMEL-3075).
+    # Publish leg: opt-in via --with-publish.
     # $PUBLISH_FLOW_NAME ("graph-publish-<slug>"), NOT the
     # "graphmap-*.bat/.vbs/.log" runner-file naming this file's OTHER legs use --
     # it must match graph-cadence.sh's OWN FLOW_NAME byte-for-byte, or the
     # observability registry's .flows[] entry can never be joined against the
-    # flow-run-ledger rows the runner actually emits (codex-4, PR-B panel r1;
-    # hardened codex-7, PR-B panel r2 -- both sides now DERIVE the name from
+    # flow-run-ledger rows the runner actually emits (both sides DERIVE the name from
     # the same corpus-slug computation instead of a hardcoded literal).
     if [ "$WITH_PUBLISH" -eq 1 ]; then
         mv -f "$tmp_publish_himmel" "$CRON_RUNNER_PUBLISH_HIMMEL"
@@ -2263,11 +2232,11 @@ cron_arm() {
 
     local semantic_lines arming_note
     if [ "$AST_ONLY" -eq 1 ]; then
-        # codex-1, HIMMEL-2071 CR round 1 (same fix as cmd_arm): report the
+        # Report the
         # semantic pair's REAL post-install crontab state, not a blanket
         # "NOT armed" — an --ast-only (re-)arm never touches it, but it can
         # already be armed from an earlier full arm.
-        # codex-1, CR round 2 (Suggestion, same fix as cmd_arm): don't
+        # Don't
         # restate this arm's $BACKEND/$LUNA_TIME/$HIMMEL_TIME for a task this
         # run never touched — point at `status` for its real config instead
         # of guessing.
@@ -2319,7 +2288,7 @@ EOF
     macos_fda_warn_if_needed "$VAULT" "$HIMMEL_ROOT"
 }
 
-# Runtime preflight on the ARM path only (HIMMEL-1991): arming hands this
+# Runtime preflight on the ARM path only: arming hands this
 # machine's runtime to an unattended schedule that will re-run for weeks with
 # nobody reading the output, so drift gets named at the one moment a human is
 # still here. status/disarm change nothing and stay silent. Advisory by default;

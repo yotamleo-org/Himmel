@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-# HIMMEL-4306: the Instagram throttle lives with the obsidian-triage tools.
+# the Instagram throttle lives with the obsidian-triage tools.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "marketplace" / "plugins" / "obsidian-triage" / "tools" / "lib"))
 try:
     import ig_throttle
@@ -33,7 +33,7 @@ STATUSES = (
     "auth-or-cookie-expired",
     "blocked-or-rate-limited",
     "transport-fail",
-    # HIMMEL-4306: the Instagram throttle is holding requests back. Not a fault.
+    # the Instagram throttle is holding requests back. Not a fault.
     "cooldown",
 )
 TIMEOUT_SECONDS = 30
@@ -47,7 +47,7 @@ DEFAULT_URLS = {
     "x-fxtwitter": "https://api.fxtwitter.com/jack/status/20",
     "instagram-embed": "https://www.instagram.com/p/CG0UU3ylXnv/embed/captioned/",
     "instagram": "https://www.instagram.com/p/CG0UU3ylXnv/",
-    # HIMMEL-5407: a 2012 photo tweet from a head-of-state account; the old pin
+    # a 2012 photo tweet from a head-of-state account; the old pin
     # (Twitter/1354143047324299264) lost its media. Re-record the fxtwitter fixture
     # scripts/luna/fixtures/x-media-probe-fxtwitter.json when re-pinning.
     "x": "https://x.com/BarackObama/status/266031293945503744",
@@ -231,7 +231,7 @@ def probe_github(
     if not binary:
         return ProbeResult("transport-fail", "gh CLI missing")
     try:
-        # HIMMEL-2549 CR round 1 CRITIC-1: gh authenticates from its own
+        # gh authenticates from its own
         # config, needing no .env key — child_env (pre-merge process env)
         # unchanged, never `env` (the whole-checkout-.env lookup dict).
         completed = command(
@@ -265,7 +265,7 @@ def primary_repo_root() -> Path:
 
 
 def _clean_dotenv_value(raw: str) -> str:
-    # Normalize a dotenv value (HIMMEL-1468): the prior raw value.strip() left
+    # Normalize a dotenv value: the prior raw value.strip() left
     # BITBUCKET_API_TOKEN="secret" holding literal quotes, so Basic auth failed
     # on any non-cron path where no shell pre-sources the file, and an inline
     # `# comment` was kept on the value. Strip MATCHED surrounding single or
@@ -273,7 +273,7 @@ def _clean_dotenv_value(raw: str) -> str:
     # where it closes), then drop a trailing unquoted inline comment: a `#`
     # preceded by whitespace, mirroring python-dotenv so a bare mid-token `#`
     # (KEY=a#b) is preserved and a quoted value keeps the `#` inside its quotes.
-    # HIMMEL-1476: scan for the first UNESCAPED closing quote (prev char not a
+    # Scan for the first UNESCAPED closing quote (prev char not a
     # backslash) so an embedded `\"` no longer counts as the delimiter — the
     # prior value.find(value[0], 1) truncated `"abc\"def"` to `abc\`. A full
     # escape parser is out of scope, so `\\"` (escaped backslash, then the real
@@ -301,18 +301,18 @@ def load_repo_env(env: dict[str, str], repo_root: Path) -> dict[str, str]:
     env_file = repo_root / ".env"
     if not env_file.is_file():
         return loaded
-    # HIMMEL-2549 duplicate/absent policy, mirroring scripts/lib/load-dotenv.sh
+    # Duplicate/absent policy, mirroring scripts/lib/load-dotenv.sh
     # so the two loaders cannot disagree about the same file:
     #   * the FIRST occurrence of a key in the file wins (that loader's awk
     #     `key in seen` guard) — including an empty `KEY=` placeholder, which
     #     therefore shadows a value appended lower down, in BOTH loaders;
     #   * an existing value that is set-but-EMPTY counts as ABSENT (its
-    #     HIMMEL-1922 rule). The prior setdefault let a bare `KEY=` exported
-    #     into the process env win, and every probe then read "missing" while
+    #     rule). A plain setdefault would let a bare `KEY=` exported
+    #     into the process env win, and every probe would then read "missing" while
     #     the .env held the real value.
     # A live NON-empty process value still wins over the file.
     #
-    # HIMMEL-2549 CR round 5: "empty" here means ZERO-LENGTH, exactly like
+    # "empty" here means ZERO-LENGTH, exactly like
     # bash's `[ -z "${KEY-}" ]` (the documented shell-side policy this
     # mirrors) — NOT `.strip()`-empty. A whitespace-only exported value
     # (`KEY="   "`) makes `[ -z ]` false, so load_dotenv.sh treats it as
@@ -342,7 +342,7 @@ def load_repo_env(env: dict[str, str], repo_root: Path) -> dict[str, str]:
 
 
 def probe_bitbucket(env: dict[str, str], http: Callable[..., HttpResult]) -> ProbeResult:
-    # HIMMEL-2549: the .env merge moved up to build_probe_registry, so this
+    # The .env merge happens in build_probe_registry, so this
     # probe is no longer the only one that can see the checkout's config.
     email = env.get("BITBUCKET_EMAIL", "").rstrip()
     token = env.get("BITBUCKET_API_TOKEN", "").rstrip()
@@ -397,12 +397,12 @@ def probe_firecrawl(env: dict[str, str], http: Callable[..., HttpResult]) -> Pro
     api_key = env.get("FIRECRAWL_API_KEY", "").strip()
     if not api_key:
         return ProbeResult("auth-or-cookie-expired", "Firecrawl API key missing")
-    # Normalize the base (HIMMEL-1468): rstrip("/") alone left a FIRECRAWL_BASE_URL
+    # Normalize the base: rstrip("/") alone left a FIRECRAWL_BASE_URL
     # set WITH a /v2 suffix composing /v2/v2/scrape. Drop a trailing /v2 (then any
     # newly-exposed slash) before appending the /v2 path ourselves.
     base_url = re.sub(r"/v2$", "", env.get("FIRECRAWL_BASE_URL", "").strip().rstrip("/")) or "https://api.firecrawl.dev"
     api_host = (urllib.parse.urlparse(base_url).hostname or "").lower()
-    # HIMMEL-4335: probe the FREE credit-usage endpoint — a scrape probe cost a
+    # probe the FREE credit-usage endpoint — a scrape probe cost a
     # credit every night. A valid response proves the key and the API are live.
     endpoint = "/v2/team/credit-usage"
     try:
@@ -427,7 +427,7 @@ def probe_firecrawl(env: dict[str, str], http: Callable[..., HttpResult]) -> Pro
 
 
 def probe_jina_reader(env: dict[str, str], http: Callable[..., HttpResult]) -> ProbeResult:
-    # Keyless Jina Reader scrape rung (HIMMEL-4335): fetch a known public page
+    # Keyless Jina Reader scrape rung: fetch a known public page
     # through r.jina.ai and check the page text comes back.
     url = env.get("FETCH_HEALTH_JINA_URL", DEFAULT_URLS["jina-reader"])
     try:
@@ -661,14 +661,14 @@ def build_probe_registry(
     command: Callable[..., subprocess.CompletedProcess[str]],
     repo_root: Path,
 ) -> dict[str, Callable[[], ProbeResult]]:
-    # HIMMEL-2549: merge the primary checkout's .env HERE — the one boundary
+    # Merge the primary checkout's .env HERE — the one boundary
     # where the process env and the resolved repo root meet — so every probe,
     # the FETCH_HEALTH_* URL overrides included, sees the
     # same effective config on both the `--probe` and the scheduled path. The
-    # cron wrapper sources nothing, so before this only probe_bitbucket (which
-    # called load_repo_env itself) could read a key that lives only in .env.
+    # cron wrapper sources nothing, so without it only a probe that called
+    # load_repo_env itself could read a key that lives only in .env.
     #
-    # CR round 1 CRITIC-1: that merge is for CONFIG LOOKUP only. The checkout's
+    # That merge is for CONFIG LOOKUP only. The checkout's
     # .env carries ~120 keys (router/wifi/sudo passwords, Jira/Confluence/Codex
     # tokens, Grafana/VM credentials, a dozen vendor API keys...) that a
     # third-party child process (gh) has no business seeing. `effective` is the merged

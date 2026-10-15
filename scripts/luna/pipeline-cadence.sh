@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pipeline-cadence.sh — arm/status/disarm the recurring clip-pipeline
-# cadence (HIMMEL-255).
+# cadence.
 #
 # The luna vault's runbooks table gives only loose guidance
 # (/synthesize-clips = "after a clip batch", /obsidian-health = "after
@@ -9,28 +9,25 @@
 # (markers: harvested_at, processed, synthesis dedup window, _done/
 # move) — exactly the cron-safe shape. This script registers the four
 # recurring jobs with the OS scheduler, following the
-# scripts/handover/arm-resume.sh precedent (HIMMEL-122):
+# scripts/handover/arm-resume.sh precedent:
 #
-#   HIMMEL-Pipeline-FetchHealth daily  (default 01:30, no LLM)          HIMMEL-1449
+#   HIMMEL-Pipeline-FetchHealth daily  (default 01:30, no LLM)
 #       python fetch-health.py
-#   HIMMEL-Pipeline-Harvest     daily   (default 02:00, model: claude-sonnet-5-5)  HIMMEL-357/798
+#   HIMMEL-Pipeline-Harvest     daily   (default 02:00, model: claude-sonnet-5-5)
 #       claude --model claude-sonnet-5-5 "/harvest-clips ... then /triage-clips ... then /ig-media-enrich ..." < NUL
 #   HIMMEL-Pipeline-Synthesize  daily   (default 03:00, model: claude-sonnet-5-5)
 #       claude --model claude-sonnet-5-5 "/synthesize-clips … then /archive-clips …" < NUL
 #   HIMMEL-Pipeline-Health      daily   (default 04:00, model: haiku)
 #       claude --model haiku "vault-lint (obsidian-triage:vault-lint) …" < NUL
 #
-# Defaults are the operator decision pinned on HIMMEL-255 (2026-06-10),
-# plus the daily harvest+triage leg added on HIMMEL-357 (2026-06-17),
-# the bounded ig-media-enrich chain link added on HIMMEL-798, and the
-# per-leg model pins + frequency shift on HIMMEL-506 (2026-07-11):
+# Defaults:
 # harvest+triage+ig-media-enrich daily at 02:00 (cheap, idempotent,
 # keeps the Clippings/ inbox flowing and drains pending Instagram media
 # across nights); synthesize+archive DAILY at 03:00 — synthesis is now
 # cheap enough to run nightly once pinned to a cheap model, so cross-clip
 # themes surface without a week's lag (archive only graduates clips
 # synthesis has wikilinked, so it follows synth in the SAME session);
-# health DAILY at 04:00 (HIMMEL-1383 — the weekly cadence meant vault
+# health DAILY at 04:00 (the weekly cadence meant vault
 # drift was only visible once a week, and the haiku pin makes nightly
 # affordable); machine assumed awake. Every leg
 # launches with an explicit --model pin (harvest/synth=claude-sonnet-5-5,
@@ -41,14 +38,14 @@
 # The armed command is interactive-claude shaped — `claude "<prompt>"`
 # with stdin redirected from NUL (the bounded-run primitive: the session
 # runs the full turn, then exits clean). NOT headless (`-p`/`--print`)
-# (HIMMEL-128 billing rule: headless invocations bill to a separate
+# (billing rule: headless invocations bill to a separate
 # Agent SDK credit bucket from 2026-06-15; interactive stays on Max
 # quota). Each task fires a runner (.bat on Windows, .sh on POSIX) that
 # cd's into the luna vault so the obsidian-triage skills operate on the
 # right tree.
 #
-# Windows (schtasks) is the primary platform per the HIMMEL-255
-# acceptance criteria. macOS/Linux use crontab entries (HIMMEL-265),
+# Windows (schtasks) is the primary platform.
+# macOS/Linux use crontab entries,
 # following the arm-resume.sh crontab-fallback precedent: each entry
 # fires a persistent runner .sh (same role as the Windows .bat — log
 # rotation + fire stamp + cd into the vault + bounded claude run) and
@@ -87,9 +84,8 @@ TASK_HEALTH="${TASK_PREFIX}Health"
 SCHTASKS_BIN="${PIPELINE_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${PIPELINE_CRONTAB:-crontab}"
 
-# Cross-platform user-home resolution (HIMMEL-645, generalized from
-# HIMMEL-642's default_vault) + default_vault (HIMMEL-642), extracted into a
-# shared lib on HIMMEL-2176 Stage 1 so other cadence scripts can source the
+# Cross-platform user-home resolution + default_vault, extracted into a
+# shared lib so other cadence scripts can source the
 # same resolver instead of carrying their own copy.
 # shellcheck source=../lib/resolve-user-home.sh
 # shellcheck disable=SC1091
@@ -98,15 +94,15 @@ CRONTAB_BIN="${PIPELINE_CRONTAB:-crontab}"
 # Persistent runner home (.bat on Windows, .sh on POSIX) — NOT mktemp
 # like arm-resume's one-shot task: these tasks recur indefinitely, and
 # %TEMP% / /tmp are subject to cleanup sweeps that would silently kill
-# the cadence. Default home resolved cross-platform (HIMMEL-645): the bare
+# the cadence. Default home resolved cross-platform: the bare
 # $HOME default put the runners under the MSYS home on Windows Git-Bash,
 # where Claude Code does not read its config.
 BAT_DIR="${PIPELINE_BAT_DIR:-$(resolve_user_home)/.claude/pipeline-cadence}"
 
-# HIMMEL-575: a `claude --settings` fragment that wires himmel's
+# A `claude --settings` fragment that wires himmel's
 # auto-approve-safe-bash PreToolUse hook by ABSOLUTE path. The cadence fires in
 # the luna vault cwd, which carries no himmel .claude/settings.json — so without
-# this an autonomous run STALLS on the HIMMEL-203 compound-bash permission
+# this an autonomous run STALLS on the compound-bash permission
 # prompt (the static matcher bails on any `$var`/`$()`/pipe/compound command and
 # prompts; an unattended `< NUL` run has nobody to answer it, wasting the run).
 # Injecting the hook by absolute himmel path — resolved here at arm time —
@@ -116,22 +112,20 @@ HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 AUTO_APPROVE_HOOK="$HIMMEL_ROOT/scripts/hooks/auto-approve-safe-bash.sh"
 SETTINGS_FRAGMENT="$BAT_DIR/cadence-settings.json"
 
-# HIMMEL-2044: the bank guard the three claude legs launch behind. It was wired
-# into refresh-graph-map.sh/graphmap-cadence.sh on HIMMEL-1841 and into NOTHING
-# here, so Harvest/Synthesize/Health spent the shared 5h/weekly subscription
-# bank unconditionally every night — against CLAUDE.md's HIMMEL-128 rule that a
-# scheduled or unattended site preflights before spending. The generated runners
+# The bank guard the three claude legs launch behind (CLAUDE.md's billing rule:
+# a scheduled or unattended site preflights before spending the shared
+# 5h/weekly subscription bank). The generated runners
 # branch on the helper's VERDICT TOKEN, never its exit code: bank-preflight.sh
 # always exits 0 by design, and its BANK-STALE / BANK-UNKNOWN verdicts are
 # deliberately fail-open (a box with no usage cache must still run its cadence).
 # Only SKIPPED-BANK stops a leg.
 BANK_PREFLIGHT="$HIMMEL_ROOT/scripts/lib/bank-preflight.sh"
 
-# HIMMEL-2045: the free precondition for the synthesize leg. Answers NEW/NONE
+# The free precondition for the synthesize leg. Answers NEW/NONE
 # from the filesystem so a night with no newly triaged clips costs no session.
 SYNTH_GATE="$HIMMEL_ROOT/scripts/luna/synth-input-check.sh"
 
-# HIMMEL-4181: the shared failure sink. Every generated runner calls it on a
+# The shared failure sink. Every generated runner calls it on a
 # failed leg (alert-file line + one deduped Telegram DM) and on a completed one
 # (clears the dedupe). Baked by absolute path at arm time like the libs above.
 CADENCE_ALERT="$HIMMEL_ROOT/scripts/luna/cadence-alert.sh"
@@ -141,11 +135,11 @@ CADENCE_ALERT="$HIMMEL_ROOT/scripts/luna/cadence-alert.sh"
 # means no session was ever launched. Distinct words on purpose — a skipped
 # night must not read as a parked one.
 LEG_SKIPPED_MARKER="PIPELINE-LEG-SKIPPED"
-# HIMMEL-4181: the log line a runner writes when a launched leg failed: a
+# The log line a runner writes when a launched leg failed: a
 # non-zero rc, or a zero rc without LEG_DONE_MARKER (a no-op is not green).
 LEG_FAILED_MARKER="PIPELINE-LEG-FAILED"
 
-# HIMMEL-2044 / CLAUDE.md § billing: every scheduled claude launch declares an
+# CLAUDE.md § billing: every scheduled claude launch declares an
 # explicit --permission-mode instead of inheriting the operator's saved default
 # (a cadence must not change behaviour because someone toggled a mode in an
 # interactive session). `acceptEdits` is the mode these legs have effectively
@@ -154,14 +148,14 @@ LEG_FAILED_MARKER="PIPELINE-LEG-FAILED"
 # NEVER bypassPermissions — that is the one mode the billing rule forbids.
 CADENCE_PERMISSION_MODE="acceptEdits"
 
-# Runner-format version stamp (HIMMEL-588): emit_bat / emit_runner stamp
+# Runner-format version stamp: emit_bat / emit_runner stamp
 # CADENCE_RUNNER_FORMAT_VERSION into every runner so himmel-doctor / himmel-update
 # can detect a cadence armed before a format change and nudge `arm --force`.
 # shellcheck source=../lib/cadence-format.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/cadence-format.sh"
 
-# Sourced for ONE constant: FLOW_RUN_ATTEMPT_MARKER (HIMMEL-1152). The emitted
+# Sourced for ONE constant: FLOW_RUN_ATTEMPT_MARKER. The emitted
 # runners stamp that word into their log before each attempt and the same lib's
 # --is-transient scan keys off it, so the two must never drift into separate
 # copies of the same literal. (The lib is sourced, not executed — its only load
@@ -170,25 +164,18 @@ CADENCE_PERMISSION_MODE="acceptEdits"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/flow-run-ledger.sh"
 
-# HIMMEL-3075 (himmel#771): macOS cron Full Disk Access arm-time warning.
+# macOS cron Full Disk Access arm-time warning.
 # shellcheck source=../lib/macos-fda-warning.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/macos-fda-warning.sh"
 
-# Operator-decision defaults (HIMMEL-255 pinned comment, 2026-06-10;
-# harvest leg added on HIMMEL-357, 2026-06-17; model pins + frequency
-# shift on HIMMEL-506, 2026-07-11: synth weekly->daily, health
-# monthly->weekly, per-leg --model pins so the cadence never inherits
-# the operator's saved default tier; health weekly->daily on
-# HIMMEL-1383, 2026-07-29; no-LLM fetch health added on HIMMEL-1449,
-# 2026-08-02).
+# Operator-decision defaults.
 FETCH_HEALTH_TIME="01:30"
 HARVEST_TIME="02:00"
 IG_LIMIT="10"
 SYNTH_TIME="03:00"
 HEALTH_TIME="04:00"
-# Health day-of-week (HIMMEL-1383 flipped this leg weekly -> daily; the
-# 2026-08-23 cadence audit flips it back). Evidence: vault-lint's finding count
+# Health day-of-week. Evidence for the weekly default: vault-lint's finding count
 # moved 363 -> 369 in FOUR DAYS, and nobody consumes a nightly 369-line report —
 # a daily session bought for a weekly-or-less signal. Weekly is the default
 # again; `--health-day daily` restores the every-night shape for an operator who
@@ -202,7 +189,7 @@ SYNTH_MODEL="claude-sonnet-5-5"
 HEALTH_MODEL="haiku"
 
 # Bounded retry/resume for a claude leg killed by a TRANSIENT upstream API
-# error (HIMMEL-1152). The 2026-07-17 harvest run died 48 minutes in on
+# error. A harvest run died 48 minutes in on
 # `API Error: Server error mid-response.` with 7 clips already recorded, and
 # nothing retried it — the day's harvest simply sat unfinished. Every stage is
 # idempotent through its own markers, so a re-invoke RESUMES; this is a
@@ -213,7 +200,7 @@ RETRY_MAX_ATTEMPTS=3
 RETRY_BACKOFF_1=60
 RETRY_BACKOFF_2=180
 
-# default_vault (HIMMEL-642) is sourced from ../lib/resolve-user-home.sh above.
+# default_vault is sourced from ../lib/resolve-user-home.sh above.
 VAULT="$(default_vault)"
 FORCE=0
 DRY_RUN=0
@@ -222,7 +209,7 @@ DRY_RUN=0
 # the OEM codepage, where UTF-8 punctuation mojibakes into the prompt.
 DAILY_CHAIN="/harvest-clips + /triage-clips + /ig-media-enrich + /x-media-enrich"
 # The bare completion marker the leg prompt asks for; flow_run_classify treats
-# a zero exit WITHOUT this line in the log tail as `parked` (HIMMEL-1716).
+# a zero exit WITHOUT this line in the log tail as `parked`.
 LEG_DONE_MARKER="PIPELINE-LEG-DONE"
 COMPLETION_INSTRUCTIONS="Run every command in the foreground. Never background a command or wait for a notification. Only if this cadence leg genuinely completed all of its work, print exactly PIPELINE-LEG-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation. If it was blocked, parked, or bailed early, do not print the marker."
 HARVEST_PROMPT=""
@@ -357,7 +344,7 @@ case "$PLATFORM" in
         ;;
 esac
 
-# MSYS_NO_PATHCONV=1 per call (HIMMEL-125): without it gitbash mangles
+# MSYS_NO_PATHCONV=1 per call: without it gitbash mangles
 # /query, /create etc. into Windows-rooted paths before schtasks sees them.
 run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
 
@@ -469,7 +456,7 @@ task_summary() {
 }
 
 # Map a cadence task name to its generated runner file path (.bat on
-# Windows, .sh on POSIX) so status can surface the pinned model (HIMMEL-506).
+# Windows, .sh on POSIX) so status can surface the pinned model.
 # Returns the path on stdout; rc 1 on an unknown name.
 runner_for_name() {
     local base ext
@@ -488,10 +475,10 @@ runner_for_name() {
 }
 
 # Read the --model pin back out of a generated runner (.bat or .sh) so
-# status can flag an armed-but-wrong-model cadence (HIMMEL-506). Both
+# status can flag an armed-but-wrong-model cadence. Both
 # emitters inject `--model <m>` right after the binary; this greps that
 # token. rc 1 when the runner is absent (not armed / dry-run), empty
-# stdout when armed without a stampable pin (pre-HIMMEL-506 runner).
+# stdout when armed without a stampable pin (pre-pin runner).
 runner_model() {
     local f="$1"
     [ -f "$f" ] || return 1
@@ -502,10 +489,10 @@ runner_model() {
 # Status suffix: " [model: <m>]" when the runner carries a --model pin;
 # " [runner missing]" when the scheduler entry is armed but its generated
 # runner file is gone (every fire fails — distinguished from the
-# intentional pre-HIMMEL-506 no-pin case, which exists on disk and stays
+# intentional pre-pin case, which exists on disk and stays
 # silent rather than print "model: unknown"); empty otherwise. Without this
 # guard a deleted runner read identically to a healthy v1 runner, so status
-# reported ARMED while every fire failed (HIMMEL-506 CR fix).
+# reported ARMED while every fire failed.
 model_suffix() {
     local runner model
     runner=$(runner_for_name "$1" 2>/dev/null) || return 0
@@ -631,7 +618,7 @@ cmd_disarm() {
 # a bounded interactive claude run. `< NUL` is the cmd.exe spelling of
 # the `claude "<prompt>" < /dev/null` bounded-run primitive — the
 # session runs the full turn on stdin-EOF and exits clean (no
-# -p/--print: HIMMEL-128). `cd /d ... || exit /b 1` aborts instead of
+# -p/--print: billing rule). `cd /d ... || exit /b 1` aborts instead of
 # silently running claude from the wrong CWD — and its output (incl.
 # the cd error if the vault moved/was deleted after arming) goes to the
 # .log next to the .bat, so the log exists on EVERY fire and a failing
@@ -639,16 +626,12 @@ cmd_disarm() {
 # transient console (03:00 Sunday) whose output would otherwise vanish;
 # `status` surfaces the log.
 # EVERY parameter arrives already cadence_cmd_escape'd, and every name says so.
-# This emitter used to split the job: four values came in pre-escaped from
-# cmd_arm while six arrived raw and were escaped here (public-PR CR). Both
-# sibling emitters — codex-sweep-cadence.sh and graphmap-cadence.sh — settle on
-# caller-escapes-everything, so this file was the outlier. The split is also
-# precisely how a value slips through unescaped: this PR's own history has the
-# model (HIMMEL-506), then bash_win, then claude_win (HIMMEL-1281) each being
-# discovered as "the last raw %s" in a separate round, because a raw parameter
-# sitting among escaped ones looks like it was already handled. With the
-# convention "if it is not named _esc it does not belong in a printf here",
-# the next added parameter is checkable by eye instead of by archaeology.
+# Mixing pre-escaped and raw parameters is how a value slips through unescaped:
+# a raw parameter sitting among escaped ones looks like it was already handled.
+# Both sibling emitters, codex-sweep-cadence.sh and graphmap-cadence.sh, settle on
+# caller-escapes-everything. With the convention "if it is not named _esc it
+# does not belong in a printf here", the next added parameter is checkable by
+# eye instead of by archaeology.
 #
 # The escaping itself did NOT move to a weaker place: cmd_arm already builds
 # vault/prompt/log/settings that way and is the single call path (the dry-run
@@ -658,11 +641,11 @@ emit_bat() {
     local vault_win_esc="$1" claude_win_esc="$2" prompt_esc="$3" log_win_esc="$4" settings_esc="$5" model_esc="$6" flow_esc="$7" task_name_esc="$8" bash_win_esc="$9" flow_lib_m_esc="${10}" git_bin_esc="${11:-}" bank_lib_m_esc="${12:-}" gate_lib_m_esc="${13:-}"
     printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt (HIMMEL-1753).
+    # schtasks) can never block on an editor prompt.
     cadence_bat_editor_set
     # Prepend Git's usr\bin + bin so the NON-LOGIN bash.exe the flow-run-ledger
     # legs fire finds GNU coreutils (dirname/date/tail/grep/wc/tr) ahead of
-    # System32 (HIMMEL-1672). claude/bash/flow-lib are all absolute paths below;
+    # System32. claude/bash/flow-lib are all absolute paths below;
     # this fixes their unqualified coreutils, not those resolutions.
     if [ -n "$git_bin_esc" ]; then
         printf 'set "PATH=%s;%%PATH%%"\r\n' "$git_bin_esc"
@@ -677,7 +660,7 @@ emit_bat() {
     # command line with a redirect parses fine.
     printf 'set "FLOW_RUN_TMP=%%TEMP%%\\flow-run-%s.tmp"\r\n' "$task_name_esc"
 
-    # --- Gate 1 (HIMMEL-2045): is there anything to do? -------------------
+    # --- Gate 1: is there anything to do? -------------------
     # Emitted ONLY for a leg that was given a gate script (today: synthesize).
     # Ordered BEFORE the bank preflight on purpose: this check is pure local
     # filesystem work, the preflight shells a network fetch. Ask the free
@@ -704,7 +687,7 @@ emit_bat() {
         printf 'if "%%PIPELINE_GATE%%"=="NONE" goto pipeline_skipped\r\n'
     fi
 
-    # --- Gate 2 (HIMMEL-2044): may we spend the bank? ---------------------
+    # --- Gate 2: may we spend the bank? ---------------------
     # CADENCE_BANK_LEG is what makes the spend ATTRIBUTABLE: before this every
     # row in ~/.himmel/cadence-ledger.jsonl read leg:"unknown". The flow name
     # (pipeline-harvest / -synthesize / -health) is already this leg's identity
@@ -731,7 +714,7 @@ emit_bat() {
         printf 'if "%%PIPELINE_BANK%%"=="SKIPPED-BANK" goto pipeline_skipped\r\n'
     fi
 
-    # HIMMEL-1152 retry/resume loop. cmd.exe has no `while`, so an attempt is a
+    # Retry/resume loop. cmd.exe has no `while`, so an attempt is a
     # goto label — which also means no delayed expansion (`!var!`) is needed:
     # a goto re-parses each line on every pass, so %FLOW_RUN_ATTEMPT% is the
     # current value. The marker line is what --is-transient scans FORWARD from,
@@ -745,17 +728,17 @@ emit_bat() {
     printf '"%s" "%s" --append-start "%s" "" "%%COMPUTERNAME%%" "claude" "%s" "%s" "%s" "" > "%%FLOW_RUN_TMP%%" 2>NUL\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$flow_esc" "$model_esc" "$task_name_esc" "$log_win_esc"
     printf 'if exist "%%FLOW_RUN_TMP%%" set /p FLOW_RUN_ID=<"%%FLOW_RUN_TMP%%"\r\n'
     printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1\r\n'
-    # HIMMEL-951: no bg-wait ceiling override here — CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS
-    # only affects --print mode, and cadence runners are interactive-shaped (HIMMEL-128).
-    # `call` (HIMMEL-1389, mirroring the #1454 fix in drift-fix-cadence.sh): when
+    # No bg-wait ceiling override here — CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS
+    # only affects --print mode, and cadence runners are interactive-shaped.
+    # `call`: when
     # claude resolves to a .cmd/.bat shim (npm-global install), a bare invocation
     # makes cmd.exe TRANSFER control into the shim and never come back — every
     # line below (rc capture, classify, the --append-end ledger row, exit /b)
     # would silently never run. Latent where claude is an .exe; fatal on a shim.
-    # --permission-mode is EXPLICIT (HIMMEL-2044): an unattended launch must not
+    # --permission-mode is EXPLICIT: an unattended launch must not
     # inherit whatever mode the operator last saved interactively. In-repo
     # constant, no operator input, so it carries no escaping burden.
-    # launch-profile-ok: HIMMEL-4013 audited, NOT folded into a named profile: cadence-settings.json (emit_settings_fragment) is already a per-run --settings that force-enables obsidian-triage@himmel over the operator's disable and wires the cadence hooks; the .bat is written on Windows where plugin-profiles.mjs is not run at arm time
+    # launch-profile-ok: audited, NOT folded into a named profile: cadence-settings.json (emit_settings_fragment) is already a per-run --settings that force-enables obsidian-triage@himmel over the operator's disable and wires the cadence hooks; the .bat is written on Windows where plugin-profiles.mjs is not run at arm time
     printf 'call "%s" --model "%s" --permission-mode "%s" --settings "%s" "%s" < NUL >> "%s" 2>&1\r\n' "$claude_win_esc" "$model_esc" "$CADENCE_PERMISSION_MODE" "$settings_esc" "$prompt_esc" "$log_win_esc"
     printf 'set "FLOW_RUN_RC=%%ERRORLEVEL%%"\r\n'
     # Fail-closed fallback (coderabbit #1762): if the classifier is unavailable
@@ -768,7 +751,7 @@ emit_bat() {
     printf 'if "%%FLOW_RUN_OUTCOME%%"=="" if "%%FLOW_RUN_RC%%"=="0" set "FLOW_RUN_OUTCOME=parked"\r\n'
     printf 'if "%%FLOW_RUN_OUTCOME%%"=="" set "FLOW_RUN_OUTCOME=error"\r\n'
     # The end row carries the attempt in `note` — the ONE ledger, one row pair
-    # per attempt (HIMMEL-1152), so a retried night is readable as
+    # per attempt, so a retried night is readable as
     # attempt=1/3 error -> attempt=2/3 complete instead of a single mystery.
     printf 'if not "%%FLOW_RUN_ID%%"=="" "%s" "%s" --append-end "%s" "%%FLOW_RUN_ID%%" "" "%%FLOW_RUN_RC%%" "%%FLOW_RUN_OUTCOME%%" "" "attempt=%%FLOW_RUN_ATTEMPT%%/%s" > NUL 2>&1\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$flow_esc" "$RETRY_MAX_ATTEMPTS"
     # Retry ONLY a non-zero exit whose own attempt log carries the transient
@@ -789,13 +772,13 @@ emit_bat() {
     printf 'set /a FLOW_RUN_ATTEMPT+=1\r\n'
     printf 'goto pipeline_attempt\r\n'
     printf ':pipeline_done\r\n'
-    # HIMMEL-1716: a parked leg (zero claude rc, no PIPELINE-LEG-DONE in the
+    # A parked leg (zero claude rc, no PIPELINE-LEG-DONE in the
     # log) must reach Task Scheduler as a FAILURE, not rc=0 -- the same
-    # exit-code fidelity HIMMEL-1706 gave the codex sweep. The ledger row
+    # exit-code fidelity the codex sweep has. The ledger row
     # above keeps the true rc + outcome=parked; only the scheduler-visible
     # code is raised. 3 = parked (1 = cd failed, claude's own rc otherwise).
     printf 'if "%%FLOW_RUN_OUTCOME%%"=="parked" if "%%FLOW_RUN_RC%%"=="0" exit /b 3\r\n'
-    # HIMMEL-2045 completion stamp. Written ONLY on a leg that genuinely
+    # Completion stamp. Written ONLY on a leg that genuinely
     # finished (`complete` is the classifier's verdict when the session printed
     # PIPELINE-LEG-DONE), because it is the reference the input gate measures
     # "new since" against. Stamping a parked or errored night would advance the
@@ -805,7 +788,7 @@ emit_bat() {
         printf 'if "%%FLOW_RUN_OUTCOME%%"=="complete" "%s" "%s" --stamp "." >> "%s" 2>&1\r\n' "$bash_win_esc" "$gate_lib_m_esc" "$log_win_esc"
     fi
     printf 'exit /b %%FLOW_RUN_RC%%\r\n'
-    # --- deliberate skip (HIMMEL-2044 / HIMMEL-2045) ----------------------
+    # --- deliberate skip ----------------------
     # rc 0, NOT the 3 a parked leg exits with. Those are different events: a
     # parked leg SPENT a session and produced nothing (a failure the scheduler
     # must surface), a skipped leg deliberately spent nothing. The evidence
@@ -829,7 +812,7 @@ emit_bat() {
 # Emit the plain-script fetch-health runner. It rotates one prior log, writes
 # no fetched response content, and returns the probe's aggregate exit code.
 #
-# HIMMEL-1724: it also writes the SAME flow-run ledger start/end rows emit_bat
+# It also writes the SAME flow-run ledger start/end rows emit_bat
 # writes, so the FetchHealth leg participates in stall / never-started
 # detection. Without them the ledger never had a `pipeline-fetch-health` row,
 # so "the task stopped firing" was indistinguishable from "never armed" — the
@@ -847,11 +830,11 @@ emit_fetch_health_bat() {
     local python_win_esc="$1" script_win_esc="$2" log_win_esc="$3" env_file_win_esc="$4" bash_win_esc="$5" flow_lib_m_esc="$6" flow_esc="$7" task_name_esc="$8" git_bin_esc="${9:-}"
     printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt (HIMMEL-1753).
+    # schtasks) can never block on an editor prompt.
     cadence_bat_editor_set
     # Prepend Git's usr\bin + bin so the NON-LOGIN bash.exe the flow-run-ledger
     # legs fire finds GNU coreutils (dirname/date/mkdir/mv) ahead of System32
-    # (HIMMEL-1672) — same reason as emit_bat, and now the same need: this
+    # — same reason as emit_bat, and now the same need: this
     # runner shells that lib twice.
     if [ -n "$git_bin_esc" ]; then
         printf 'set "PATH=%s;%%PATH%%"\r\n' "$git_bin_esc"
@@ -861,20 +844,20 @@ emit_fetch_health_bat() {
     # Source the repo's gitignored .env at FIRE time (not arm time) so the
     # credentialed probes (bitbucket/firecrawl) inherit env-sourced secrets
     # under schtasks' minimal environment — mirrors emit_fetch_health_runner's
-    # `[ -f .env ] && . .env` (HIMMEL-1449 r2). Only the PATH is embedded
+    # `[ -f .env ] && . .env`. Only the PATH is embedded
     # (quoted); the values are parsed by cmd at fire time, never baked into the
-    # .bat — secrets stay in the gitignored file (HIMMEL-1470). `for /f` skips
+    # .bat — secrets stay in the gitignored file. `for /f` skips
     # blank lines; eol=# skips comments; tokens=1,* with delims== keeps `=` in
     # values; the quoted `set "K=V"` survives value metacharacters (& | < >).
     printf 'if exist "%s" for /f "usebackq eol=# tokens=1,* delims==" %%%%K in ("%s") do set "%%%%K=%%%%L"\r\n' "$env_file_win_esc" "$env_file_win_esc"
-    # Ledger start row (HIMMEL-1724). Same temp-file capture as emit_bat — NOT
+    # Ledger start row. Same temp-file capture as emit_bat — NOT
     # `for /f`, whose cmd /c re-parse mangles a quoted-path command line.
     printf 'set "FLOW_RUN_ID="\r\n'
     printf 'set "FLOW_RUN_TMP=%%TEMP%%\\flow-run-%s.tmp"\r\n' "$task_name_esc"
     printf '"%s" "%s" --append-start "%s" "" "%%COMPUTERNAME%%" "python" "" "%s" "%s" "" > "%%FLOW_RUN_TMP%%" 2>NUL\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$flow_esc" "$task_name_esc" "$log_win_esc"
     printf 'if exist "%%FLOW_RUN_TMP%%" set /p FLOW_RUN_ID=<"%%FLOW_RUN_TMP%%"\r\n'
     printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1\r\n'
-    # `call` (HIMMEL-1389): pyenv-win/conda expose `python` as a .bat shim, and
+    # `call`: pyenv-win/conda expose `python` as a .bat shim, and
     # a bare invocation of one transfers control away for good — the rc stamp,
     # the ledger end row and the exit /b below would never run, which is the
     # exact invisibility this leg is being fixed for.
@@ -888,20 +871,20 @@ emit_fetch_health_bat() {
 }
 
 # Emit the JSON settings fragment that wires the auto-approve-safe-bash hook by
-# absolute path (HIMMEL-575). hook_path must be a forward-slash, JSON-safe
+# absolute path. hook_path must be a forward-slash, JSON-safe
 # absolute path (no backslashes — use cygpath -m on Windows). The command is
 # unquoted to match himmel's own .claude/settings.json hook wiring convention.
 #
-# HIMMEL-1036: the fragment also force-enables obsidian-triage@himmel via
+# The fragment also force-enables obsidian-triage@himmel via
 # enabledPlugins. The operator disables that plugin INTERACTIVELY (user-scope
 # settings.local.json {"obsidian-triage@himmel": false}) — it's the luna clip
 # pipeline, unused in hand-driven sessions. But this cadence IS that pipeline,
 # so the nightly run must re-enable it. `--settings` is the highest non-managed
-# precedence layer (spike-confirmed, HIMMEL-1040 design), so this enabledPlugins
+# precedence layer (spike-confirmed), so this enabledPlugins
 # override wins over the settings.local.json disable and keeps the cadence live.
 emit_settings_fragment() {
     local hook_path="$1"
-    # HIMMEL-1682 S2a/S2b: two cadence-scoped controls live beside
+    # Two cadence-scoped controls live beside
     # auto-approve-safe-bash.sh. Derive their paths in the SAME form the caller
     # already resolved for hook_path (cygpath -m on Windows, POSIX elsewhere),
     # so no new path plumbing or signature change is needed. The deny wires
@@ -910,7 +893,7 @@ emit_settings_fragment() {
     # the enumerated-engine allow follows; auto-approve stays last. These three
     # are wired ONLY here (cadence-settings.json via --settings), so interactive
     # sessions are untouched.
-    # HIMMEL-1973: a fourth control on its own matcher. Every hook above is
+    # A fourth control on its own matcher. Every hook above is
     # Bash-only, so the PowerShell tool is an unguarded second shell in a
     # cadence session — the health leg emitted the vault-lint engine through it
     # on 2026-08-20 and parked on an approval nobody was awake to give. Deny it
@@ -919,10 +902,10 @@ emit_settings_fragment() {
     local deny_bg_hook="$hooks_dir/cadence-deny-background.sh"
     local approve_engines_hook="$hooks_dir/cadence-approve-engines.sh"
     local deny_pwsh_hook="$hooks_dir/cadence-deny-powershell.sh"
-    # HIMMEL-1682: emit an ABSOLUTE interpreter path, never a bare `bash`.
+    # Emit an ABSOLUTE interpreter path, never a bare `bash`.
     # Under raw CreateProcess order a bare `bash` resolves to
     # C:\Windows\System32\bash.exe — the WSL stub, which cannot read a
-    # C:/Users/... Windows path (the recurring WSL trap, HIMMEL-486/453). The
+    # C:/Users/... Windows path (the recurring WSL trap). The
     # fragment works today only because the v8 runner format prepends a GNU
     # PATH (1b34a070); that is one PATH change away from silently breaking
     # every cadence hook, and this function emits three such commands. Resolve
@@ -961,7 +944,7 @@ emit_settings_fragment() {
                     break
                 fi
             done
-            # HIMMEL-1682 CR round 4: no candidate above was executable — the
+            # No candidate above was executable — the
             # canonical last-resort assignment below names an interpreter
             # that does NOT exist on this machine. The emitted hook commands
             # will reference it anyway, and hooks fail non-blocking (exit !=
@@ -978,7 +961,7 @@ emit_settings_fragment() {
     # same reason (a checkout under a spaced path would otherwise split), which
     # is the convention himmel's own .claude/settings.json hook wiring uses for
     # every argument.
-    # HIMMEL-4181: a headless cadence session cannot answer a permission ask,
+    # A headless cadence session cannot answer a permission ask,
     # so the 2026-10-03 harvest's Skill call came back user-rejected and the
     # whole chain no-oped. Allow exactly the obsidian-triage commands the leg
     # prompts name, plus Read of the plugin's command files as the fallback.
@@ -1021,7 +1004,7 @@ emit_settings_fragment() {
 JSON
 }
 
-# --- schtasks task XML (HIMMEL-362) ---------------------------------------
+# --- schtasks task XML ---------------------------------------
 #
 # schtasks /create has no flag for StartWhenAvailable ("run the task as
 # soon as possible after a missed scheduled start"), so a daily 02:00 run
@@ -1047,7 +1030,7 @@ xml_escape() {
 }
 
 # The <CalendarTrigger> schedule fragment. Three legs are daily (harvest +
-# synthesize on HIMMEL-506; fetch health on HIMMEL-1449); health is weekly
+# synthesize, fetch health); health is weekly
 # again unless --health-day daily says otherwise (cadence audit 2026-08-23).
 schedule_daily_xml() {
     printf '      <ScheduleByDay>\n        <DaysInterval>1</DaysInterval>\n      </ScheduleByDay>'
@@ -1094,7 +1077,7 @@ cron_dow() {
 # — a non-ASCII byte here would need a real UTF-16LE+BOM file.
 emit_task_xml() {
     local bat_win="$1" start_time="$2" schedule_xml="$3" vbs_win vbs_args
-    # HIMMEL-1753: Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
+    # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
     # The earlier hidden-powershell wrapper (-WindowStyle Hidden) was MEASURED to
     # still allocate visible consoles; wscript //B hosting the .vbs shim (which
     # runs the .bat hidden via WScript.Shell.Run and forwards its exit code via
@@ -1103,7 +1086,7 @@ emit_task_xml() {
     # file with — so the referenced path and the written file can never disagree.
     # //B is the WSH batch-mode flag (no error/prompt UI); the path is quoted so
     # a BAT_DIR with spaces survives, then xml_escaped like any element text.
-    # WScript.Quit in the shim preserves HIMMEL-1706 exit-code fidelity (rc=42
+    # WScript.Quit in the shim preserves exit-code fidelity (rc=42
     # re-arm survives — proven in test-cadence-format.sh).
     vbs_win=$(cadence_vbs_path "$bat_win")
     vbs_args=$(xml_escape "//B \"${vbs_win}\"")
@@ -1162,7 +1145,7 @@ schtasks_create_xml() {
     return "$rc"
 }
 
-# Validate a per-leg --*-model value (HIMMEL-506 CR fix). Defense in
+# Validate a per-leg --*-model value. Defense in
 # depth: a conservative identifier grammar rejects empty/whitespace and
 # every shell/CMD metacharacter BEFORE the value is interpolated into a
 # runner, so a model like a"&b can't corrupt the .bat (which additionally
@@ -1232,7 +1215,7 @@ validate_arm_inputs() {
         echo "ERR pipeline-cadence: --health-time must be HH:MM (24h), got: $HEALTH_TIME" >&2
         exit 1
     fi
-    # Per-leg model pins (HIMMEL-506): each --*-model must match a
+    # Per-leg model pins: each --*-model must match a
     # conservative identifier grammar ([A-Za-z0-9][A-Za-z0-9._:-]*) -
     # this rejects empty/whitespace AND every shell/CMD metacharacter
     # before the value reaches a runner. The .bat emitter additionally
@@ -1292,7 +1275,7 @@ cmd_arm() {
         echo "ERR pipeline-cadence: cygpath -w failed for fetch-health.py: $fetch_script_win" >&2
         exit 4
     fi
-    # HIMMEL-1470: the repo .env (gitignored, may be absent) is sourced by the
+    # The repo .env (gitignored, may be absent) is sourced by the
     # .bat at FIRE time so credentialed probes inherit env-sourced secrets under
     # schtasks' minimal environment. cygpath -w is a pure string transform, so a
     # missing .env still resolves; the .bat guards the load with `if exist`.
@@ -1304,7 +1287,7 @@ cmd_arm() {
         echo "ERR pipeline-cadence: cygpath -m failed for flow-run-ledger.sh: $flow_lib_m" >&2
         exit 4
     fi
-    # The two gate helpers (HIMMEL-2044 / HIMMEL-2045). MIXED form (`cygpath
+    # The two gate helpers. MIXED form (`cygpath
     # -m`, C:/...), like flow_lib_m and unlike the -w paths above: these are
     # bash arguments, and a Windows-form path loses its backslashes to shell
     # escaping the moment it crosses the cmd -> bash boundary.
@@ -1318,7 +1301,7 @@ cmd_arm() {
         exit 4
     fi
     # Both gates are fail-open at fire time, so a missing helper degrades to the
-    # pre-HIMMEL-2044 behaviour rather than breaking the cadence — but it must
+    # pre-gate behaviour rather than breaking the cadence — but it must
     # not do so silently, because "the bank guard is armed" would then be false.
     [ -r "$BANK_PREFLIGHT" ] || \
         echo "WARN pipeline-cadence: bank-preflight not readable at $BANK_PREFLIGHT (claude legs will spend the bank UNGUARDED)" >&2
@@ -1361,7 +1344,7 @@ cmd_arm() {
         esac
     done
 
-    # Pre-trust the vault dir (HIMMEL-386) so the fired cadence runs don't stall
+    # Pre-trust the vault dir so the fired cadence runs don't stall
     # on Claude Code's interactive workspace-trust prompt ("Is this a project
     # you trust?"). An autonomous run has no human to answer it and its stdin is
     # NUL (cmd.exe's /dev/null — see the runner below), so an untrusted cwd
@@ -1416,7 +1399,7 @@ cmd_arm() {
     local claude_win_esc bash_win_esc flow_lib_m_esc python_win_esc fetch_script_win_esc env_file_win_esc git_bin_esc
     claude_win_esc=$(cadence_cmd_escape "$claude_win")
     bash_win_esc=$(cadence_cmd_escape "$bash_win")
-    # Git's usr\bin + bin, derived from the bash.exe path above (HIMMEL-1672):
+    # Git's usr\bin + bin, derived from the bash.exe path above:
     # prepended to PATH in emit_bat so the non-login bash.exe finds GNU coreutils
     # ahead of System32. Empty for a non-Git bash → emit_bat then omits the line.
     git_bin_esc=$(cadence_cmd_escape "$(cadence_git_bin_path_win "$bash_win")")
@@ -1450,7 +1433,7 @@ cmd_arm() {
     local bat_harvest="$BAT_DIR/pipeline-harvest.bat"
     local bat_synth="$BAT_DIR/pipeline-synthesize.bat"
     local bat_health="$BAT_DIR/pipeline-health.bat"
-    # wscript //B shims (HIMMEL-1753) live beside their .bats; disarm removes
+    # wscript //B shims live beside their .bats; disarm removes
     # both together. Derived from the .bat Windows path through cadence_vbs_path
     # — the same helper emit_task_xml derives the referenced path with.
     local vbs_fetch_health="$BAT_DIR/pipeline-fetch-health.vbs"
@@ -1470,7 +1453,7 @@ cmd_arm() {
     log_synth_esc=$(cadence_cmd_escape "$bat_dir_win\\pipeline-synthesize.log")
     log_health_esc=$(cadence_cmd_escape "$bat_dir_win\\pipeline-health.log")
 
-    # Settings fragment (HIMMEL-575): the `claude --settings` target inside each
+    # Settings fragment: the `claude --settings` target inside each
     # .bat (a Windows path, cmd-escaped) plus the auto-approve hook's mixed
     # (C:/...) path embedded in the fragment JSON (forward-slash so it's both
     # JSON-safe and bash-readable when claude runs the hook command).
@@ -1482,12 +1465,11 @@ cmd_arm() {
     fi
     [ -r "$AUTO_APPROVE_HOOK" ] || \
         echo "WARN pipeline-cadence: auto-approve hook not readable at $AUTO_APPROVE_HOOK (cadence runs may stall on compound-bash prompts)" >&2
-    # HIMMEL-1682 RETASK (CodeRabbit Major, judge-verified): the two S2a/S2b
-    # cadence-scoped hooks emit_settings_fragment wires beside AUTO_APPROVE_HOOK
-    # got no matching readability check. If either is missing at fire time, the
+# The two cadence-scoped hooks emit_settings_fragment wires beside AUTO_APPROVE_HOOK
+# need the same readability check. If either is missing at fire time, the
     # hook process fails to start; Claude Code treats a non-2 exit as
     # NON-BLOCKING, so the cadence session runs with that hook's protection
-    # silently absent — exactly the permission surface this PR hardens.
+    # silently absent — exactly the permission surface these hooks guard.
     local hooks_dir_check="${AUTO_APPROVE_HOOK%/*}"
     [ -r "$hooks_dir_check/cadence-deny-background.sh" ] || \
         echo "WARN pipeline-cadence: deny-background hook not readable at $hooks_dir_check/cadence-deny-background.sh (background-command denies will be silently absent)" >&2
@@ -1496,7 +1478,7 @@ cmd_arm() {
     [ -r "$hooks_dir_check/cadence-deny-powershell.sh" ] || \
         echo "WARN pipeline-cadence: deny-powershell hook not readable at $hooks_dir_check/cadence-deny-powershell.sh (PowerShell-tool calls will bypass every cadence guardrail)" >&2
 
-    # Per-cadence schedule fragments for the task XML (HIMMEL-362). Built
+    # Per-cadence schedule fragments for the task XML. Built
     # once and reused by the dry-run preview and the real create below.
     local sched_fetch_health sched_harvest sched_synth sched_health
     sched_fetch_health=$(schedule_daily_xml)
@@ -1563,7 +1545,7 @@ cmd_arm() {
 
     mkdir -p "$BAT_DIR"
     emit_settings_fragment "$hook_path_m" > "$SETTINGS_FRAGMENT"
-    # Atomic runner publication (HIMMEL-1753 round 2, glm-3): every runner .bat
+    # Atomic runner publication: every runner .bat
     # and .vbs shim is emitted to a staged temp BESIDE its final path (same dir
     # -> same filesystem -> `mv` is an atomic rename, not a copy) and promoted
     # only once complete, mirroring codex-sweep-cadence's publish discipline.
@@ -1683,7 +1665,7 @@ cmd_arm() {
 EOF
 }
 
-# --- POSIX (cron) implementation — HIMMEL-265 ------------------------------
+# --- POSIX (cron) implementation ------------------------------
 #
 # Same arm/status/disarm contract as the schtasks path above, against
 # the user crontab. Both cadence entries live in ONE crontab rewrite
@@ -1769,7 +1751,7 @@ cron_existing() {
 
 # runner_path_snapshot <path> <node_dir>
 # The PATH value both cron emitters (emit_runner, emit_fetch_health_runner)
-# stamp into their generated runners (HIMMEL-2840): the FULL arm-time $PATH
+# stamp into their generated runners: the FULL arm-time $PATH
 # snapshot, so under cron's minimal PATH=/usr/bin:/bin every arm-time user bin
 # dir (~/.local/bin uv tools, bun, cargo, go, ...) is found — not just node's
 # directory the way emit_runner's old prepend-only line
@@ -1793,7 +1775,7 @@ runner_path_snapshot() {
 # (one prior run kept as .log.prev), stamp the fire time, cd into the
 # vault (a failing cd lands in the log instead of silently running
 # claude from the wrong CWD), then the bounded interactive claude run
-# — `< /dev/null` stdin-EOF, NO -p/--print (HIMMEL-128). All values
+# — `< /dev/null` stdin-EOF, NO -p/--print (billing rule). All values
 # arrive pre-quoted with printf %q.
 # shellcheck disable=SC2016  # single-quoted $log/$(date)/_rc are emitted literally for the runner's own /bin/sh to expand at fire time
 emit_runner() {
@@ -1804,7 +1786,7 @@ emit_runner() {
     printf '#!/bin/sh\n'
     printf '# %s runner — generated by pipeline-cadence.sh arm (HIMMEL-265)\n' "$name"
     printf '# %s %s\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
-    # Restore the arm-time PATH snapshot (HIMMEL-2840) so cron's minimal
+    # Restore the arm-time PATH snapshot so cron's minimal
     # PATH=/usr/bin:/bin still finds every arm-time user bin dir, with node's
     # directory folded in when it isn't already there (#317) — see
     # runner_path_snapshot's header for why this replaced the old
@@ -1820,7 +1802,7 @@ emit_runner() {
     printf 'fi\n'
     printf '{\n'
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
-    # HIMMEL-4226: a runner that dies here never reaches the alert below, so it
+    # A runner that dies here never reaches the alert below, so it
     # alerts on this path itself.
     if [ -n "$q_alert_lib" ]; then
         printf '    cd %s || { echo "[%s cd-vault]"; %s fail %s cd-vault "$log" || true; exit 1; }\n' "$q_vault" "$LEG_FAILED_MARKER" "$q_alert_lib" "$q_flow"
@@ -1832,7 +1814,7 @@ emit_runner() {
     # single verdict token is captured. `exit` from a brace group (not a
     # subshell) exits the runner, so a refused leg never reaches the claude
     # launch below.
-    # Gate 1 (HIMMEL-2045): free filesystem precondition, asked first.
+    # Gate 1: free filesystem precondition, asked first.
     if [ -n "$q_gate_lib" ]; then
         printf '    _gate=$(%s .) || _gate=\n' "$q_gate_lib"
         printf '    if [ "$_gate" = NONE ]; then\n'
@@ -1842,14 +1824,14 @@ emit_runner() {
         printf '        exit 0\n'
         printf '    fi\n'
     fi
-    # Gate 2 (HIMMEL-2044): bank preflight. Only SKIPPED-BANK refuses; the
+    # Gate 2: bank preflight. Only SKIPPED-BANK refuses; the
     # helper's BANK-STALE / BANK-UNKNOWN verdicts are fail-open by design and
     # an empty capture means it could not run at all.
     if [ -n "$q_bank_lib" ]; then
         printf '    _bank=$(CADENCE_BANK_LEG=%s %s) || _bank=\n' "$q_flow" "$q_bank_lib"
         printf '    if [ "$_bank" = SKIPPED-BANK ]; then\n'
         printf '        echo "[%s bank-at-threshold]"\n' "$LEG_SKIPPED_MARKER"
-        # HIMMEL-4181: one skipped night is the guard working; two running is
+        # One skipped night is the guard working; two running is
         # a leg that has silently stopped. The previous night's log is $log.prev.
         if [ -n "$q_alert_lib" ]; then
             printf '        if grep -qF "[%s bank-at-threshold]" "$log.prev" 2>/dev/null; then %s fail %s bank-skip-2-nights "$log" || true; fi\n' "$LEG_SKIPPED_MARKER" "$q_alert_lib" "$q_flow"
@@ -1859,7 +1841,7 @@ emit_runner() {
         printf '        exit 0\n'
         printf '    fi\n'
     fi
-    # HIMMEL-1152 retry/resume loop, the POSIX twin of the .bat goto loop. The
+    # Retry/resume loop, the POSIX twin of the .bat goto loop. The
     # marker line is what --is-transient scans FORWARD from, so each attempt is
     # judged on its own output; each attempt lands its own start/end ledger
     # pair, the end row tagged attempt=N/MAX.
@@ -1867,9 +1849,9 @@ emit_runner() {
     printf '    while :; do\n'
     printf '        echo "[%s $_attempt/%s]"\n' "$FLOW_RUN_ATTEMPT_MARKER" "$RETRY_MAX_ATTEMPTS"
     printf '        _flow_run_id=$(%s --append-start %s "" "" claude %s %s "$log" "$$" 2>/dev/null) || _flow_run_id=\n' "$q_flow_lib" "$q_flow" "$q_model" "$q_task"
-    # HIMMEL-951: no bg-wait ceiling override here — CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS
-    # only affects --print mode, and cadence runners are interactive-shaped (HIMMEL-128).
-    # --permission-mode is EXPLICIT (HIMMEL-2044) — see emit_bat's twin.
+    # No bg-wait ceiling override here — CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS
+    # only affects --print mode, and cadence runners are interactive-shaped.
+    # --permission-mode is EXPLICIT — see emit_bat's twin.
     printf '        _rc=0; %s --model %s --permission-mode %s --settings %s %s < /dev/null || _rc=$?\n' "$q_claude" "$q_model" "$CADENCE_PERMISSION_MODE" "$q_settings" "$q_prompt"
     # Fail-closed fallback (coderabbit #1762): classifier unavailable/silent ->
     # parked on rc 0, error otherwise -- never complete by default.
@@ -1884,13 +1866,13 @@ emit_runner() {
     printf '        %s --is-transient "$_rc" "$log" || break\n' "$q_flow_lib"
     printf '        _delay=%s; [ "$_attempt" -ge 2 ] && _delay=%s\n' "$RETRY_BACKOFF_1" "$RETRY_BACKOFF_2"
     printf '        echo "[retry $_attempt/%s after transient upstream API error - sleeping ${_delay}s]"\n' "$((RETRY_MAX_ATTEMPTS - 1))"
-    # Sleep seam (the CHECK_CI_SLEEP_CMD shape, HIMMEL-1953) so the hermetic
+    # Sleep seam (the CHECK_CI_SLEEP_CMD shape) so the hermetic
     # suite can fire a full three-attempt run without waiting four minutes.
     printf '        ${PIPELINE_CADENCE_SLEEP_CMD:-sleep} "$_delay"\n'
     printf '        _attempt=$((_attempt + 1))\n'
     printf '    done\n'
     printf '    echo "[exit rc=$_rc]"\n'
-    # HIMMEL-4181: a failed leg says so in its log and in the alert sink; a
+    # A failed leg says so in its log and in the alert sink; a
     # completed one re-arms the sink's dedupe.
     printf '    if [ "$_rc" != 0 ]; then _fail="rc-$_rc"; echo "[%s rc=$_rc]"\n' "$LEG_FAILED_MARKER"
     printf '    elif [ "$_flow_outcome" != complete ]; then _fail=no-completion-marker; echo "[%s no-completion-marker]"\n' "$LEG_FAILED_MARKER"
@@ -1898,12 +1880,12 @@ emit_runner() {
     if [ -n "$q_alert_lib" ]; then
         printf '    if [ "$_fail" != "" ]; then %s fail %s "$_fail" "$log" || true; else %s clear %s || true; fi\n' "$q_alert_lib" "$q_flow" "$q_alert_lib" "$q_flow"
     fi
-    # HIMMEL-2045 completion stamp — the POSIX twin; `complete` only, for the
+    # Completion stamp — the POSIX twin; `complete` only, for the
     # reason emit_bat documents.
     if [ -n "$q_gate_lib" ]; then
         printf '    { [ "$_flow_outcome" = complete ] && %s --stamp .; } || true\n' "$q_gate_lib"
     fi
-    # HIMMEL-4182: refresh the day note's `## Clip pipeline` + `## Daily report`
+    # Refresh the day note's `## Clip pipeline` + `## Daily report`
     # sections after the leg. Must-not-abort: it runs after _rc / _flow_outcome
     # are final and writes only its own _tl_rc, so a failing timeline logs and
     # the runner's exit code and the LEG-FAILED logic above are untouched.
@@ -1912,8 +1894,8 @@ emit_runner() {
         printf '    if [ "$_tl_rc" != 0 ]; then echo "[daily-timeline failed rc=$_tl_rc - continuing]"; fi\n'
     fi
     printf '} >> "$log" 2>&1\n'
-    # HIMMEL-1716: parked (zero rc, no marker) exits 3 so cron/the operator
-    # sees a failure, mirroring the .bat runner. HIMMEL-4181 widens it to any
+# A parked leg (zero rc, no marker) exits 3 so cron/the operator
+# sees a failure, mirroring the .bat runner; it covers any
     # zero-rc outcome short of complete (truncated too): a no-op is not green.
     printf 'if [ "$_rc" = 0 ] && [ "$_flow_outcome" != complete ]; then exit 3; fi\n'
     printf 'exit "$_rc"\n'
@@ -1928,19 +1910,19 @@ emit_fetch_health_runner() {
     printf '#!/bin/sh\n'
     printf '# %s runner — generated by pipeline-cadence.sh arm (HIMMEL-1449)\n' "$TASK_FETCH_HEALTH"
     printf '# %s %s\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
-    # Restore the arm-time PATH snapshot (runner_path_snapshot, HIMMEL-2840) so
+    # Restore the arm-time PATH snapshot (runner_path_snapshot) so
     # the probes' shelled-out CLIs (gallery-dl, twitter, gh) resolve under
     # cron's minimal PATH=/usr/bin:/bin, and source the repo's gitignored .env
     # (if present) so env-sourced credentials (Twitter/Firecrawl) are available
     # — mirrors fetch-health.py's load_repo_env. Both lines flow through printf
-    # %s with pre-quoted q_ vars (SC2016-safe) (HIMMEL-1449 r2).
+    # %s with pre-quoted q_ vars (SC2016-safe).
     printf 'PATH=%s; export PATH\n' "$q_path"
     printf '[ -f %s ] && . %s\n' "$q_env_file" "$q_env_file"
     printf 'log=%s\n' "$q_log"
     printf 'if [ -f "$log" ]; then mv -f "$log" "$log.prev" || exit 1; fi\n'
     printf '{\n'
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
-    # Flow-run ledger rows (HIMMEL-1724) — the POSIX twin of the .bat leg's
+    # Flow-run ledger rows — the POSIX twin of the .bat leg's
     # rows, so a cron-armed FetchHealth leg is equally visible to stall /
     # never-started detection. Outcome derived from the rc (no LLM, so no
     # truncation/parked state to classify); see emit_fetch_health_bat.
@@ -1949,7 +1931,7 @@ emit_fetch_health_runner() {
     printf '    _flow_outcome=complete; [ "$_rc" = 0 ] || _flow_outcome=error\n'
     printf '    test "$_flow_run_id" != "" && %s --append-end %s "$_flow_run_id" "" "$_rc" "$_flow_outcome" "" "" >/dev/null 2>&1 || true\n' "$q_flow_lib" "$q_flow"
     printf '    echo "[exit rc=$_rc]"\n'
-    # HIMMEL-4181: a probe going bad is a cadence failure like any other.
+    # A probe going bad is a cadence failure like any other.
     if [ -n "$q_alert_lib" ]; then
         printf '    if [ "$_rc" != 0 ]; then %s fail %s probe-bad "$log" || true; else %s clear %s || true; fi\n' "$q_alert_lib" "$q_flow" "$q_alert_lib" "$q_flow"
     fi
@@ -2037,7 +2019,7 @@ cron_arm() {
         node_dir=$(dirname "$node_bin")
     fi
 
-    # Pre-trust the vault dir (HIMMEL-386) — same rationale as cmd_arm: a
+    # Pre-trust the vault dir — same rationale as cmd_arm: a
     # cron-fired claude run (stdin /dev/null) has no human to answer Claude
     # Code's interactive workspace-trust prompt, so an untrusted cwd wastes
     # the run. Non-fatal: a pre-seed failure must never block the arm.
@@ -2089,7 +2071,7 @@ cron_arm() {
     q_gate_lib=$(printf '%q' "$SYNTH_GATE")
     q_alert_lib=$(printf '%q' "$CADENCE_ALERT")
     q_timeline=$(printf '%q' "$HIMMEL_ROOT/marketplace/plugins/obsidian-triage/tools/daily-timeline.mjs")
-    # Shared arm-time PATH snapshot (HIMMEL-2840) — one helper, both emitters,
+    # Shared arm-time PATH snapshot — one helper, both emitters,
     # so they can no longer disagree about what a cadence runner's PATH is.
     q_runner_path=$(runner_path_snapshot "$PATH" "$node_dir")
     q_harvest_prompt=$(printf '%q' "$HARVEST_PROMPT")
@@ -2102,7 +2084,7 @@ cron_arm() {
     q_harvest_model=$(printf '%q' "$HARVEST_MODEL")
     q_synth_model=$(printf '%q' "$SYNTH_MODEL")
     q_health_model=$(printf '%q' "$HEALTH_MODEL")
-    # Settings fragment (HIMMEL-575): the `claude --settings` target, shared by
+    # Settings fragment: the `claude --settings` target, shared by
     # the three Claude runners. The hook path inside the fragment is the POSIX absolute
     # path (JSON-safe — no backslashes — and bash-readable).
     local q_settings
@@ -2110,14 +2092,13 @@ cron_arm() {
     # Repo .env path for the fetch-health runner (its PATH comes from the
     # shared q_runner_path snapshot above): under real cron (no user env) the
     # probes' env-sourced credentials go missing. Sourced at fire time, never
-    # embedded — secrets stay in the gitignored file (HIMMEL-1449 r2).
+    # embedded — secrets stay in the gitignored file.
     local q_env_file
     q_env_file=$(printf '%q' "$HIMMEL_ROOT/.env")
     [ -r "$AUTO_APPROVE_HOOK" ] || \
         echo "WARN pipeline-cadence: auto-approve hook not readable at $AUTO_APPROVE_HOOK (cadence runs may stall on compound-bash prompts)" >&2
-    # HIMMEL-1682 RETASK (CodeRabbit Major, judge-verified): see the matching
-    # comment at the cmd_arm call site above — the two S2a/S2b cadence-scoped
-    # hooks need the same readability check as AUTO_APPROVE_HOOK.
+# See the matching comment at the cmd_arm call site above — the two
+# cadence-scoped hooks need the same readability check as AUTO_APPROVE_HOOK.
     local hooks_dir_check="${AUTO_APPROVE_HOOK%/*}"
     [ -r "$hooks_dir_check/cadence-deny-background.sh" ] || \
         echo "WARN pipeline-cadence: deny-background hook not readable at $hooks_dir_check/cadence-deny-background.sh (background-command denies will be silently absent)" >&2
@@ -2165,7 +2146,7 @@ cron_arm() {
     # let a failed install (exit 4) leave the OLD crontab live while
     # the runner files already carry the NEW config — a silent
     # half-state under --force re-arm.
-    # Stage the settings fragment (HIMMEL-575) alongside the runners and promote
+    # Stage the settings fragment alongside the runners and promote
     # it on the SAME success gate — writing it in place before the install would
     # leave an orphan cadence-settings.json on a failed fresh arm, and under a
     # --force re-arm that changes HIMMEL_ROOT then fails to install, the live old

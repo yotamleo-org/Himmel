@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # qmd-reindex.sh — deterministic qmd index refresh: `qmd update` then
-# `qmd embed`, then a completeness assert (HIMMEL-568).
+# `qmd embed`, then a completeness assert.
 #
-# WHY: the qmd index goes stale SILENTLY. Observed during HIMMEL-564 Phase A —
+# WHY: the qmd index goes stale SILENTLY. Observed once —
 # `qmd status` reported luna lastUpdated 2026-06-22 with needsEmbedding: 0 for
 # five days, so notes written 2026-06-27 were simply not searchable, and every
 # qmd-backed workflow (compounding, ingest, synthesis, recall) answered off a
 # stale index without signalling anything. This script is the RUNNER that fixes
 # that; scripts/luna/qmd-cadence.sh is the scheduler that fires it daily.
 #
-# The split is deliberate and mirrors the graphify precedent (HIMMEL-825/829):
+# The split is deliberate and mirrors the graphify precedent:
 # refresh-graph-map.sh is the runner, graphmap-cadence.sh the arm layer. Keeping
-# them separate is what lets HIMMEL-1275's ship transport invoke the SAME build
+# them separate is what lets a ship transport invoke the SAME build
 # step on demand ("ship after a successful local reindex") without re-entering a
 # scheduler.
 #
 # DESIGN: this is a DETERMINISTIC SCRIPT, not a claude session. `qmd update` and
 # `qmd embed` are plain CLI calls, so there is no bounded-session shape here — no
 # NUL stdin, no --settings auto-approve fragment, no claude invocation at all.
-# HIMMEL-128 (headless-claude billing) therefore does not apply: nothing in this
+# Headless-claude billing therefore does not apply: nothing in this
 # path shells `claude`, unlike refresh-graph-map.sh whose graphify backend does.
 #
 # WHY A SECOND `qmd embed` (the completeness assert): `qmd embed` has a session
@@ -31,8 +31,8 @@
 # reports embedding work means vectors were still pending, and we fail LOUD
 # (rc=5) instead of reporting success.
 #
-# WHY THIS STILL READS A STRING (HIMMEL-1282, decision recorded). The ticket
-# offered two routes: query the index directly (contentvectors / vectorsvec), or
+# WHY THIS STILL READS A STRING (decision recorded). There
+# are two routes: query the index directly (contentvectors / vectorsvec), or
 # accept the coupling with a pinned-version note. Taking the second, and the
 # reasoning is not "cheaper":
 #   - The SQL route swaps coupling to qmd's PUBLIC CLI output for coupling to
@@ -42,7 +42,7 @@
 #   - It puts a DB-driver dependency inside a cadence whose value is being
 #     dependency-light. Under node that means better-sqlite3, whose native
 #     binding is the exact thing scripts/lib/qmd-bin.sh carries ~60 lines of
-#     recovery machinery for (HIMMEL-928); a daily unattended job is the last
+#     recovery machinery for; a daily unattended job is the last
 #     place that belongs.
 #   - Checked first, as the ticket asked: qmd 2.6.3 offers NO machine-readable
 #     mode to prefer. `--format json` is a SEARCH option; `qmd status --format
@@ -86,7 +86,7 @@
 #   bash scripts/luna/qmd-reindex.sh [--qmd-bin PATH] [--qmd-js PATH] [--dry-run]
 #
 #   --qmd-bin PATH   Absolute path to the qmd EXECUTABLE. Default: resolved via
-#                    scripts/lib/qmd-bin.sh's preference order (HIMMEL-1283),
+#                    scripts/lib/qmd-bin.sh's preference order,
 #                    NOT a bare `command -v qmd`. The cadence passes this
 #                    explicitly, because schtasks and cron fire with a MINIMAL
 #                    PATH that does not carry the bun bin dir where qmd installs.
@@ -96,10 +96,10 @@
 #                    This is how the bun-served install is pinned: qmd's
 #                    canonical invocation there is `bun <.../dist/cli/qmd.js>`,
 #                    two tokens, and neither is a `qmd` executable. Requires
-#                    --qmd-bin (HIMMEL-1283).
+#                    --qmd-bin.
 #   --dry-run        Print the two commands that would run, execute neither.
 #
-# HIMMEL-1307: on verified success (see the completeness assert below) this
+# On verified success (see the completeness assert below) this
 # writes a refresh stamp to QMD_REFRESH_STAMP (default: alongside
 # QMD_INDEX_PATH, default $HOME/.cache/qmd/index.sqlite) that qmd-staleness.sh
 # prefers over its MAX(mtime) proxy. Never written on any failure path.
@@ -114,8 +114,8 @@
 #   6  completeness assert could not READ its verifier (qmd reworded its
 #      output) — distinct from 5 on purpose; see the sentinel note below
 #   7  MODEL MISMATCH — the index holds vectors from an embed model other
-#      than the configured one (HIMMEL-4232); nothing was run
-#   8  `qmd cleanup` failed (HIMMEL-4860) — vectors ARE complete and the
+#      than the configured one; nothing was run
+#   8  `qmd cleanup` failed — vectors ARE complete and the
 #      refresh stamp is written; only the orphaned chunks remain
 #  10  EGRESS REFUSED — a remote (openai:) model is configured and the egress
 #      gate (scripts/qmd/qmd-jina-gate.mjs) denies a collection the config or
@@ -127,14 +127,14 @@ set -euo pipefail
 QMD_BIN=""
 QMD_JS=""
 DRY_RUN=0
-# HIMMEL-1307: a durable timestamp written ONLY on the verified-success path
+# A durable timestamp written ONLY on the verified-success path
 # below, next to the index data qmd-staleness.sh already reads.
 QMD_INDEX_PATH="${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}"
 # qmd opens INDEX_PATH, so the egress gate and qmd must read the same file.
 export INDEX_PATH="$QMD_INDEX_PATH"
 QMD_REFRESH_STAMP="${QMD_REFRESH_STAMP:-$(dirname "$QMD_INDEX_PATH")/refresh-stamp}"
 
-# --- completeness-assert sentinels (HIMMEL-1282) -----------------------------
+# --- completeness-assert sentinels -----------------------------
 #
 # The assert reads `qmd embed` output. That is coupling to a human-readable
 # string, and the decision NOT to replace it with a SQL check is deliberate —
@@ -183,8 +183,8 @@ EOF
 
 # Invoke the resolved qmd. Two tokens when --qmd-js is in play (`bun <js> …`),
 # one otherwise — each quoted separately so a space in either path (a Windows
-# certainty) cannot split it (HIMMEL-1283). Group-bounded by qmd_bounded, from
-# qmd-bin.sh (HIMMEL-3956); an embed cut short resumes on the next fire.
+# certainty) cannot split it. Group-bounded by qmd_bounded, from
+# qmd-bin.sh; an embed cut short resumes on the next fire.
 run_qmd() {
     if [ -n "$QMD_JS" ]; then
         qmd_bounded "$(qmd_timeout_secs)" "$QMD_BIN" "$QMD_JS" "$@"
@@ -193,7 +193,7 @@ run_qmd() {
     fi
 }
 
-# The upstream scan counts hashes, not pending chunks (HIMMEL-4897). Keep the
+# The upstream scan counts hashes, not pending chunks. Keep the
 # diagnostic number, but never present it as an embedding backlog.
 relabel_hash_count() {
     sed 's/unique hashes need vectors/unique hashes in qmd scan (not a pending chunk count)/g'
@@ -275,7 +275,7 @@ done
 
 # --qmd-js is meaningless without an executable to pass it to: on its own it
 # would be silently ignored while the caller believes they pinned the bun-served
-# install. Reject it explicitly (HIMMEL-1283).
+# install. Reject it explicitly.
 if [ -n "$QMD_JS" ] && [ -z "$QMD_BIN" ]; then
     echo "ERR qmd-reindex: --qmd-js requires --qmd-bin (the invocation is '<qmd-bin> <qmd-js> …')" >&2
     usage >&2
@@ -283,7 +283,7 @@ if [ -n "$QMD_JS" ] && [ -z "$QMD_BIN" ]; then
 fi
 
 # Resolve qmd. An explicit --qmd-bin wins; otherwise fall back to the SHARED
-# resolver's preference order, NOT a bare `command -v qmd` (HIMMEL-1283). The
+# resolver's preference order, NOT a bare `command -v qmd`. The
 # bare lookup finds the broken Claude-plugin stub that shadows the bun shim on
 # Git Bash $PATH inside a Claude Code session — the exact context an operator
 # runs this from by hand — and that stub dies with "Module not found …
@@ -327,7 +327,7 @@ if [ ! -f "$QMD_BIN" ] || [ ! -x "$QMD_BIN" ]; then
 fi
 # The script arg gets the same absolute + real-file discipline. It is NOT
 # required to be executable — it is a .js handed to an interpreter, not run
-# directly (HIMMEL-1283).
+# directly.
 if [ -n "$QMD_JS" ]; then
     case "$QMD_JS" in
         /*|[A-Za-z]:[/\\]*) : ;;
@@ -344,7 +344,7 @@ fi
 
 stamp() { date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo '?'; }
 
-# HIMMEL-1307: durable refresh timestamp, written ONLY from the verified-success
+# Durable refresh timestamp, written ONLY from the verified-success
 # path below. Best-effort and non-fatal on purpose — a stamp-write failure means
 # qmd-staleness.sh falls back to its existing proxy, not that a genuinely
 # complete reindex should now report failure over a side-channel write.
@@ -379,14 +379,14 @@ fi
 
 echo "qmd-reindex: start $(stamp) (qmd: $(qmd_bin_desc))"
 
-# Invalidate any stamp from an earlier run BEFORE mutating the index (HIMMEL-1307
-# [codex-1]): 'qmd update' below can re-index files even if this run later fails
+# Invalidate any stamp from an earlier run BEFORE mutating the index:
+# 'qmd update' below can re-index files even if this run later fails
 # the embed or completeness steps, so a stamp certifying an EARLIER verified-complete
 # state must not survive to be read as this run's freshness. write_refresh_stamp()
 # re-installs it only once this run itself reaches verified-complete.
 rm -f "$QMD_REFRESH_STAMP" 2>/dev/null || true
 
-# --- 0. embed-model precheck (HIMMEL-4232) ------------------------------------
+# --- 0. embed-model precheck ------------------------------------
 # An embed pass with a configured model other than the index's would fail on a
 # dimension change, or on the same dimension silently mix two vector spaces.
 # Refuse BEFORE touching the index; an unreadable index only WARNs.
@@ -442,7 +442,7 @@ fi
 # ASCII substring only: the real line is prefixed with a UTF-8 check mark, and
 # this output is read under the OEM codepage when the cadence fires from cmd.exe.
 echo "qmd-reindex: [3/3] verifying embed completeness"
-# HIMMEL-4860: the first pass can leave a 1-2 document tail that the verify
+# The first pass can leave a 1-2 document tail that the verify
 # pass then embeds (observed with the daemon down, so not a concurrent writer);
 # the nightly run exited 5 and nothing retried it until the next day. Retry the
 # verify ONCE when it did work; a second did-work is still rc 5 below. Bounded
@@ -465,7 +465,7 @@ for VERIFY_TRY in 1 2; do
     fi
     [ "$VERIFY_TRY" -eq 1 ] && echo "qmd-reindex: verify pass embedded a tail; re-verifying once"
 done
-# Match with a HERE-STRING, not `printf … | grep -q` (HIMMEL-1115, same class
+# Match with a HERE-STRING, not `printf … | grep -q` (same class
 # already fixed in check-security-reviewed.sh). Under `set -o pipefail`, grep -q
 # exits early on a match, printf takes SIGPIPE (141), and pipefail surfaces 141
 # as the pipeline status — so a SUCCESSFUL match reads as a failure once the
@@ -488,12 +488,12 @@ elif grep -qE -- "$QMD_SENTINEL_DID_WORK" <<<"$VERIFY_OUT"; then
     } >&2
     exit 5
 else
-    # NEITHER sentinel matched. Do not guess (HIMMEL-1282). Before this, an
-    # unrecognized verifier read as "INCOMPLETE" (rc 5) — so the day qmd rewords
+    # NEITHER sentinel matched. Do not guess. Treating an
+    # unrecognized verifier as "INCOMPLETE" (rc 5) would mean that the day qmd rewords
     # its output, a fully COMPLETE index reports a loud daily failure with a
     # diagnosis that is simply WRONG, and the operator's rational response to a
     # cadence that cries wolf every night is to disarm it, re-opening the very
-    # staleness hole HIMMEL-568 closed. Report what actually happened instead:
+    # staleness hole the cadence closed. Report what actually happened instead:
     # the assert can no longer read its verifier. Still FAIL-CLOSED (nonzero,
     # nothing is called complete) — the fix is to make the wrong answer
     # distinguishable from the right one, not to start trusting it.

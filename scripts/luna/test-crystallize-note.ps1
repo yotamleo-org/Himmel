@@ -1,5 +1,5 @@
-﻿# test-crystallize-note.ps1 — hermetic smoke tests for crystallize-note.ps1
-# (HIMMEL-576). A `claude` stub (CRYSTALLIZE_CLAUDE_BIN -> claude-stub.ps1) keeps
+﻿# test-crystallize-note.ps1 — hermetic smoke tests for crystallize-note.ps1.
+# A `claude` stub (CRYSTALLIZE_CLAUDE_BIN -> claude-stub.ps1) keeps
 # the suite offline. Run: pwsh -NoProfile -File scripts/luna/test-crystallize-note.ps1
 $ErrorActionPreference = 'Stop'
 $CRYS = Join-Path $PSScriptRoot 'crystallize-note.ps1'
@@ -116,7 +116,7 @@ $env:CRYSTALLIZE_CLAUDE_BIN = $STUB; $env:STUB_MODE = 'success'
 $env:CRYSTALLIZE_PID_DIR = (Join-Path $SB 'pids'); $env:CRYSTALLIZE_ENV_DUMP = $envd
 $env:ANTHROPIC_BASE_URL = 'http://ambient-proxy.invalid'
 # CRYSTALLIZE_NOW pins the stamp time (the script — not the stub — now owns the
-# flag + timestamp from the body diff, HIMMEL-590 T1d).
+# flag + timestamp from the body diff).
 $env:CRYSTALLIZE_NOW = '2026-06-28T12:00:00Z'
 Run-Crys $note $tr
 Remove-Item Env:\CRYSTALLIZE_NOW -ErrorAction SilentlyContinue
@@ -185,7 +185,7 @@ Remove-Item Env:\CRYSTALLIZE_MAX_CONCURRENCY -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $SB -Recurse -Force
 
 # --- Case 6: workspace guard — the spawn puts the note-dir in the workspace -----
-# HIMMEL-590 T1c: assert the fix shape from the spawned argv/cwd dump — cwd is the
+# Assert the fix shape from the spawned argv/cwd dump — cwd is the
 # note's directory, the transcript dir is added via --add-dir, and a --settings
 # fragment (auto-approve-safe-bash) is injected.
 $SB = Join-Path ([System.IO.Path]::GetTempPath()) ("cnt-" + [guid]::NewGuid().ToString('N'))
@@ -240,7 +240,7 @@ Remove-Item Env:\CRYSTALLIZE_RULES_FILE -ErrorAction SilentlyContinue
 $avRaw = Get-Content -LiteralPath $argvd -Raw
 if ($avRaw -match 'PREFER_ACTIVE_VOICE_MARKER') { Pass 'rules: rules content reaches the claude prompt' } else { Fail 'rules: rules content not in prompt' }
 if ($avRaw -match 'begin operator rules') { Pass 'rules: delimited operator-rules block present' } else { Fail 'rules: no operator-rules delimiter' }
-# Lesson-provenance prompt pin (HIMMEL-767): a here-string-escaping break must
+# Lesson-provenance prompt pin: a here-string-escaping break must
 # not silently drop the ## Lessons instruction block from the spawned prompt.
 if ($avRaw.Contains('## Lessons')) { Pass 'lessons: ## Lessons instruction present in prompt' } else { Fail 'lessons: ## Lessons instruction missing from prompt' }
 if ($avRaw.Contains('validate-lesson.mjs --capture')) { Pass 'lessons: validate-lesson.mjs --capture pointer present in prompt' } else { Fail 'lessons: validator pointer missing from prompt' }
@@ -374,7 +374,7 @@ if ($avRaw -notmatch 'begin operator rules') { Pass 'rules(empty): no operator-r
 Remove-Item -LiteralPath $SB -Recurse -Force
 
 # --- Case 16: whitespace-only rules file — parity test (bash vs ps1 divergence) --
-# HIMMEL-841: bash `$(cat file)` strips trailing newline; PS `Get-Content -Raw`
+# bash `$(cat file)` strips trailing newline; PS `Get-Content -Raw`
 # keeps it. A file with ONLY a newline must NOT append a rules block in BOTH.
 $SB = Join-Path ([System.IO.Path]::GetTempPath()) ("cnt-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $SB -Force | Out-Null
@@ -389,7 +389,7 @@ Remove-Item Env:\CRYSTALLIZE_ARGV_DUMP -ErrorAction SilentlyContinue
 Remove-Item Env:\CRYSTALLIZE_RULES_FILE -ErrorAction SilentlyContinue
 $nc = Get-Content -LiteralPath $note -Raw
 if ($nc -match '(?m)^crystallized: true$') { Pass 'rules(ws-only): run still proceeds normally with whitespace-only rules file' } else { Fail 'rules(ws-only): run did not proceed' }
-# The load-bearing parity assertion (HIMMEL-841): the block must be ABSENT —
+# The load-bearing parity assertion: the block must be ABSENT —
 # without it this case stays green even if the trim guard is reverted.
 $avRaw = Get-Content -LiteralPath $argvd -Raw
 if ($avRaw -notmatch 'begin operator rules') { Pass 'rules(ws-only): no operator-rules block for whitespace-only file (parity with bash)' } else { Fail 'rules(ws-only): rules block wrongly present for whitespace-only file' }

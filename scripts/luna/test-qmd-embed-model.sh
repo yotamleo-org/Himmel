@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit tests for scripts/luna/qmd-embed-model.sh (HIMMEL-4232).
+# Unit tests for scripts/luna/qmd-embed-model.sh.
 #
 # Hermetic: a scratch HOME, a FAKE qmd, stubbed nvidia-smi and pgrep, and tiny
 # synthetic sqlite fixtures that carry only what the script reads
@@ -196,7 +196,7 @@ assert_contains "set rewrites embed under a commented models: line" "embed: $GEM
 assert_rc "set leaves one models block" 1 "$(grep -c '^models:' "$(CFG)")"
 
 echo "== reembed"
-# HIMMEL-4896: retired collection filtering must fail before creating a copy.
+# retired collection filtering must fail before creating a copy.
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --collections luna --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
 assert_rc "reembed rejects retired --collections" 1 "$rc"
 assert_contains "retired filtering is an unknown option" "reembed: unknown arg '--collections'" "$out"
