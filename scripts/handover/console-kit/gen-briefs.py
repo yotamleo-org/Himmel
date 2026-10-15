@@ -107,8 +107,11 @@ def check_lane_reads(l, hroot):
     root = hroot.rstrip('/')
     if l.get('lane', 'native') == 'native' or not root:
         return
-    for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'):
-        if re.search(re.escape(root) + r'(?![\w.-])', str(l.get(k, ''))):
+    tier = l.get('tier')
+    texts = [(k, l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra')]
+    texts.append(('tier.reason', tier.get('reason', '') if isinstance(tier, dict) else ''))
+    for k, v in texts:
+        if re.search(re.escape(root) + r'(?![\w.-])', str(v)):
             die('leg %s: %s points at a path under the handover root (%s), which lane %s cannot read; quote the requirements inline' % (l['label'], k, root, l['lane']))
 
 
