@@ -2751,6 +2751,10 @@ shard_given=0
 # Impacted-suites selection (HIMMEL-2821). Flag-only, like --shard: an ambient
 # env var must not silently narrow an unrelated run.
 impacted_range=""
+# --only-list <file>: run ONLY the suites the file names (one repo-relative
+# path per line, # comments and blanks ignored). Flag-only; it composes with
+# --impacted (the intersection) and --shard.
+only_list_file=""
 # OPT-IN conditional filter (HIMMEL-1589). Env is the default; the flag overrides.
 changed_since="${SUITE_CHANGED_SINCE:-}"
 # PR shard selection + manifest (HIMMEL-3897). CI-only env, read once and
@@ -2818,6 +2822,16 @@ while [ "$#" -gt 0 ]; do
           ;;
       esac
       impacted_range="$2"
+      shift 2
+      ;;
+    --only-list)
+      case "${2:-}" in
+        ''|-*)
+          echo "run-shell-tests.sh: --only-list requires a file argument, got '${2:-<missing>}'" >&2
+          exit 2
+          ;;
+      esac
+      only_list_file="$2"
       shift 2
       ;;
     --shard)
@@ -2991,6 +3005,25 @@ scan_resolved=$(cd "$scan" 2>/dev/null && pwd -P) || scan_resolved=""
 # set: "nothing impacted" would exit 0 having run nothing, the HIMMEL-1128
 # false green reached through a typo'd ref. A genuinely empty set (a docs-only
 # diff) is a clean exit 0 that says so.
+only_list_active=0
+only_list_nl=""
+only_list_repo_root=""
+if [ -n "$only_list_file" ]; then
+  if [ ! -f "$only_list_file" ]; then
+    echo "run-shell-tests.sh: --only-list '${only_list_file}' is not a file — refusing to guess a suite list" >&2
+    exit 2
+  fi
+  _only_list_body=$(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$only_list_file")
+  if [ -z "$_only_list_body" ]; then
+    echo "run-shell-tests.sh: --only-list '${only_list_file}' names no suites — refusing to run nothing" >&2
+    exit 2
+  fi
+  only_list_active=1
+  only_list_repo_root=$(pwd -P)
+  only_list_nl="
+${_only_list_body}
+"
+fi
 impacted_active=0
 impacted_nl=""
 impacted_repo_root=""
@@ -2998,6 +3031,13 @@ if [ -n "$impacted_range" ]; then
   if ! _impacted_out=$(bash "$REPO_ROOT/scripts/cr/impacted-suites.sh" "$impacted_range" --shell); then
     echo "run-shell-tests.sh: --impacted '${impacted_range}' could not be resolved — refusing to guess a suite list" >&2
     exit 2
+  fi
+  if [ "$only_list_active" -eq 1 ] && [ -n "$_impacted_out" ]; then
+    _impacted_out=$(printf '%s\n' "$_impacted_out" | grep -Fxf - <(printf '%s\n' "$_only_list_body") || true)
+    if [ -z "$_impacted_out" ]; then
+      echo "run-shell-tests.sh: --impacted ${impacted_range}: 0 impacted suites in --only-list ${only_list_file} — nothing to run"
+      exit 0
+    fi
   fi
   if [ -z "$_impacted_out" ]; then
     echo "run-shell-tests.sh: --impacted ${impacted_range}: 0 impacted shell suites — nothing to run"
@@ -3648,6 +3688,10 @@ if [ "$impacted_active" -eq 1 ]; then
   plan_narrowed=1
   plan_narrowed_why="${plan_narrowed_why}--impacted ${impacted_range}, "
 fi
+if [ "$only_list_active" -eq 1 ]; then
+  plan_narrowed=1
+  plan_narrowed_why="${plan_narrowed_why}--only-list ${only_list_file}, "
+fi
 plan_narrowed_why="${plan_narrowed_why%, }"
 
 
@@ -3669,6 +3713,19 @@ plan_narrowed_why="${plan_narrowed_why%, }"
 suite_filter_reason() {
   local _relpath="$1" _key="$2" _reason _ere
   _filter_reason=""
+
+  # --only-list: a suite outside the list never runs.
+  if [ "$only_list_active" -eq 1 ]; then
+    case "$only_list_nl" in
+      *"
+${_key#"$only_list_repo_root"/}
+"*) ;;
+      *)
+        _filter_reason="not in --only-list ${only_list_file}"
+        return 0
+        ;;
+    esac
+  fi
 
   # --impacted (HIMMEL-2821): FIRST, so every suite the range does not touch
   # reads as "not impacted" rather than as whichever standing skip it also

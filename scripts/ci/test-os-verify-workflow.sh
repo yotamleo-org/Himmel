@@ -219,6 +219,79 @@ else bad "a run: body interpolates an input (or no run: body was found)"; fi
 if check_concurrency "$WF"; then ok "concurrency group keys on github.ref + inputs.os, cancel-in-progress false"
 else bad "concurrency must be a group keyed on github.ref and inputs.os with cancel-in-progress false"; fi
 
+# --- 6c. macOS runs ONLY the curated POC list --------------------------------
+POC_LIST="${OS_VERIFY_POC_LIST:-$ROOT/scripts/ci/macos-poc-suites.txt}"
+POC_REL=scripts/ci/macos-poc-suites.txt
+
+# poc_entries <file> -- the suite paths the list names (comments/blanks dropped).
+poc_entries() { sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$1"; }
+
+# check_poc_list <file> -- rc 0 iff the list names at least one suite and every
+# entry is a tracked suite file under the repo (a stale path fails, not skips).
+check_poc_list() {
+  local e n=0
+  [ -f "$1" ] || return 1
+  while IFS= read -r e; do
+    [ -f "$ROOT/$e" ] || return 1
+    case "$e" in */test-*.sh|test-*.sh) ;; *) return 1 ;; esac
+    n=$((n + 1))
+  done <<< "$(poc_entries "$1")"
+  [ "$n" -gt 0 ]
+}
+
+# check_reads_poc_list <file> -- rc 0 iff EVERY run-shell-tests.sh invocation
+# (impacted and all) passes --only-list <the list>, so no path to a suite
+# outside the list exists on macOS.
+check_reads_poc_list() {
+  local runs n
+  runs="$(strip_comments "$1" | grep 'run-shell-tests\.sh')" || return 1
+  n=$(wc -l <<< "$runs" | tr -d ' ')
+  [ "$n" -ge 2 ] || return 1
+  [ "$(grep -c -- "--only-list $POC_REL" <<< "$runs" | tr -d ' ')" = "$n" ]
+}
+
+if check_poc_list "$POC_LIST"; then ok "macos-poc-suites.txt exists, is non-empty and every entry is a real suite file"
+else bad "macos-poc-suites.txt is missing, empty, or names a path that is not a test-*.sh file"; fi
+if check_reads_poc_list "$WF"; then ok "every run-shell-tests.sh call in os-verify.yml passes --only-list $POC_REL"
+else bad "a run-shell-tests.sh call in os-verify.yml does not pass --only-list $POC_REL"; fi
+# The 27 suites that FAILED on the macOS runner in os-verify run 38660360246
+# (eb4a3e64, read 2026-10-15 from the shard logs). A suite outside the list is
+# not selected on macOS, so none of these may be in it; remove a name here in
+# the same change that fixes it and adds it to the list (the macOS ratchet).
+MACOS_KNOWN_RED='scripts/ci/test-check-hooks-on-pr-range.sh
+scripts/ci/test-main-sweep-red-issue.sh
+scripts/ci/test-shard-manifest-verify.sh
+scripts/cr/test-impacted-suites.sh
+scripts/eval/leg-digest/test-failure-review.sh
+scripts/eval/leg-digest/test-failure-router.sh
+scripts/eval/leg-digest/test-leg-digest.sh
+scripts/handover/console-kit/test-append-results.sh
+scripts/handover/console-kit/test-close-wrapped-leg.sh
+scripts/handover/console-kit/test-live-subagents.sh
+scripts/handover/console-kit/test-wrap-merged.sh
+scripts/handover/test-arm-resume-fast.sh
+scripts/himmelctl/test/test-config-feed.sh
+scripts/himmelctl/test/test-wizard-probes.sh
+scripts/hooks/test-auto-approve-safe-bash.sh
+scripts/hooks/test-block-bank-lift-writes.sh
+scripts/hooks/test-block-chokepoint-env-prefix.sh
+scripts/hooks/test-block-destructive-commands.sh
+scripts/hooks/test-block-tail-pipe-on-gates.sh
+scripts/hooks/test-guard-pr-check-literal.sh
+scripts/hooks/test-wired-hooks-integrity-resolution.sh
+scripts/lanes/test-lane-canary.sh
+scripts/lib/test-claude-headless.sh
+scripts/lib/test-fixture-trap-clean.sh
+scripts/observability/test-suite-flake-summary.sh
+scripts/telegram/test-break-glass.sh
+scripts/test-quiet-run.sh'
+# check_poc_excludes_red <file> -- rc 0 iff no known-red suite is in the list.
+check_poc_excludes_red() {
+  ! grep -qFxf <(poc_entries "$1") <<< "$MACOS_KNOWN_RED"
+}
+if check_poc_excludes_red "$POC_LIST"; then ok "no suite that failed on macOS (run 38660360246) is in the POC list"
+else bad "the POC list names a suite that failed on macOS: $(grep -Fxf <(poc_entries "$POC_LIST") <<< "$MACOS_KNOWN_RED" | tr '\n' ' ')"; fi
+
 # --- 7. mutation controls: each check above must be able to fail --------------
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/os-verify-test.XXXXXX")" || { bad "mktemp failed"; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
@@ -253,6 +326,19 @@ else ok "control: cancel-in-progress true is detected"; fi
 sed 's/^  group: os-verify-.*$/  group: os-verify/' "$WF" > "$tmp/group.yml"
 if check_concurrency "$tmp/group.yml"; then bad "control: a group not keyed on ref + os was not detected"
 else ok "control: a group not keyed on ref + os is detected"; fi
+
+sed 's|--only-list scripts/ci/macos-poc-suites.txt ||' "$WF" > "$tmp/nolist.yml"
+if check_reads_poc_list "$tmp/nolist.yml"; then bad "control: a run-shell-tests call without --only-list was not detected"
+else ok "control: a run-shell-tests call without --only-list is detected"; fi
+{ cat "$POC_LIST"; echo "scripts/test-quiet-run.sh"; } > "$tmp/redlist.txt"
+if check_poc_excludes_red "$tmp/redlist.txt"; then bad "control: a known-red suite added to the list was not detected"
+else ok "control: a known-red suite added to the list is detected"; fi
+printf '# empty\n' > "$tmp/empty-list.txt"
+if check_poc_list "$tmp/empty-list.txt"; then bad "control: an empty list passed"
+else ok "control: an empty list fails the check"; fi
+printf 'scripts/ci/test-does-not-exist.sh\n' > "$tmp/stale-list.txt"
+if check_poc_list "$tmp/stale-list.txt"; then bad "control: a stale path passed"
+else ok "control: a stale list entry fails the check"; fi
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2

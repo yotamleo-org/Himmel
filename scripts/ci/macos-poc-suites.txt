@@ -1,0 +1,166 @@
+# macos-poc-suites.txt -- HIMMEL-5007 / HIMMEL-3183: the macOS POC suite set.
+#
+# os-verify.yml (macOS) runs ONLY the suites named here (run-shell-tests.sh
+# --only-list). This list IS the macOS proof: there is no Mac in the fleet, so
+# GitHub's macOS runners are the only test bed, and the full corpus is red there
+# (macos-cadence red 10-02..10-13; os-verify run 38660360246 failed 27 suites).
+# A suite not listed never runs on macOS until it is fixed and added.
+#
+# One repo-relative path per line; `#` comments and blank lines are ignored.
+# Admission rule: a suite is added ONLY with a green macOS log line for it
+# (`[PASS] <suite>`). The seed below is every suite that passed in BOTH
+#   os-verify  run 38660360246 (eb4a3e64, shards 1-2)
+#   macos-cadence run 38401182192 (d0123766, shards 1-8)
+# and failed in neither, minus three wall-clock-budget suites (hook-chain-latency,
+# run-shell-tests-timing, session-end-timeout-budget) that a shared macOS runner
+# can flake. Every suite left out stays tracked on HIMMEL-3183 (the ratchet).
+
+# --- hooks (scripts/hooks)
+# PreToolUse/stop hooks and guards run under macOS bash 3.2 and BSD userland; a guard that fails open there is a silent safety hole.
+scripts/hooks/test-block-jira-compound-write.sh
+scripts/hooks/test-block-rogue-claude-schedule.sh
+scripts/hooks/test-block-unresolved-cr-merge.sh
+scripts/hooks/test-block-write-into-main-checkout.sh
+scripts/hooks/test-cadence-approve-engines.sh
+scripts/hooks/test-check-commit-msg-precommit.sh
+scripts/hooks/test-check-hook-lib-suites.sh
+scripts/hooks/test-check-lockfile-integrity.sh
+scripts/hooks/test-check-npm-audit.sh
+scripts/hooks/test-check-npm-licenses.sh
+scripts/hooks/test-codex-run-hook.sh
+scripts/hooks/test-codex-stop-hooks.sh
+scripts/hooks/test-crlf-boundary.sh
+scripts/hooks/test-end-session-wiki.sh
+scripts/hooks/test-escape-class-corpus.sh
+scripts/hooks/test-hook-rewrite-integrity.sh
+scripts/hooks/test-jira-nudge-on-end.sh
+scripts/hooks/test-launcher-lifecycle-integrity.sh
+scripts/hooks/test-require-quiet-run.sh
+
+# --- lib (scripts/lib)
+# shared shell libs sourced by every hook and launcher: bash-3.2 syntax, BSD stat/date/sed, mktemp under /private/var.
+scripts/lib/test-chokepoint-seam-guard.sh
+scripts/lib/test-compute-duration.sh
+scripts/lib/test-cr-high-risk-diff.sh
+scripts/lib/test-detect-hook-dup.sh
+scripts/lib/test-flow-run-ledger-path.sh
+scripts/lib/test-git-test-env.sh
+scripts/lib/test-impacted-suites-runner.sh
+scripts/lib/test-override-env.sh
+scripts/lib/test-red-control-extraction-lint.sh
+scripts/lib/test-red-control-lint.sh
+scripts/lib/test-resolve-user-home.sh
+scripts/lib/test-runtime-preflight.sh
+scripts/lib/test-setup-wire.sh
+scripts/lib/test-suite-semaphore.sh
+scripts/lib/test-unwire-pretooluse-hooks.sh
+scripts/lib/test-vm-guest-excludes.sh
+scripts/lib/test-wire-luna-vault.sh
+scripts/lib/test-wire-pretooluse-hooks.sh
+scripts/lib/test-worktree-inuse.sh
+
+# --- handover + console-kit (scripts/handover)
+# queue lock, merge gate and arm-resume are the load-bearing handover paths; flock is absent and /tmp is a symlink on macOS.
+scripts/handover/console-kit/test-console-kit-e2e.sh
+scripts/handover/console-kit/test-cut-tag.sh
+scripts/handover/console-kit/test-go.sh
+scripts/handover/console-kit/test-ready-check.sh
+scripts/handover/console-kit/test-shepherd.sh
+scripts/handover/test-arm-resume-1879.sh
+scripts/handover/test-arm-resume-base.sh
+scripts/handover/test-arm-resume-wrapper-coverage.sh
+scripts/handover/test-handover-root-dotenv.sh
+scripts/handover/test-leg-handoff-threshold-docs.sh
+scripts/handover/test-merge-forward-check.sh
+scripts/handover/test-merge-on-green.sh
+scripts/handover/test-pr-merge.sh
+scripts/handover/test-suite-coverage.sh
+
+# --- ci scripts (scripts/ci)
+# the runner, selector and workflow-pin suites: the runner itself must work on bash 3.2 and BSD tools for any macOS proof to mean anything.
+scripts/ci/test-cancel-superseded-runs.sh
+scripts/ci/test-check-cr-terminology.sh
+scripts/ci/test-ci-job-timeouts.sh
+scripts/ci/test-ci-main-cron.sh
+scripts/ci/test-ci-nightly-only-os.sh
+scripts/ci/test-ci-pr-fail-fast.sh
+scripts/ci/test-ci-push-concurrency.sh
+scripts/ci/test-fork-drift-issue.sh
+scripts/ci/test-impacted-selection.sh
+scripts/ci/test-macos-breakage.sh
+scripts/ci/test-macos-cadence-workflow.sh
+scripts/ci/test-main-sweep-red-workflow.sh
+scripts/ci/test-orphan-census.sh
+scripts/ci/test-os-verify-workflow.sh
+scripts/ci/test-pr-title-lint-trigger.sh
+scripts/ci/test-run-shell-tests-discovery.sh
+scripts/ci/test-run-shell-tests-flake.sh
+scripts/ci/test-run-shell-tests-impacted.sh
+scripts/ci/test-run-shell-tests-manifest.sh
+scripts/ci/test-run-shell-tests-rotation-cursor.sh
+scripts/ci/test-run-shell-tests-rotation-guards.sh
+scripts/ci/test-run-shell-tests-rotation.sh
+scripts/ci/test-run-shell-tests-scanroot.sh
+scripts/ci/test-run-shell-tests.sh
+scripts/ci/test-shell-extended-nightly-issue.sh
+scripts/ci/test-shell-unit-dispatch-name.sh
+scripts/ci/test-suite-concurrency.sh
+scripts/ci/test-suite-lock-brand-gap.sh
+scripts/ci/test-suite-lock-orphan-reaper.sh
+
+# --- cr (scripts/cr)
+# pr-check and CR gate helpers (git + BSD sed/awk).
+scripts/cr/test-anchor-handoff.sh
+scripts/cr/test-cr-guarded-closure.sh
+scripts/cr/test-pr-check-pair.sh
+scripts/cr/test-pr-check-run.sh
+
+# --- himmelctl wizard (scripts/himmelctl)
+# installer/wizard paths and HOME handling (/private/var tmp resolution).
+scripts/himmelctl/test/test-suite-hermeticity.sh
+scripts/himmelctl/test/test-wizard-adopter-profile.sh
+scripts/himmelctl/test/test-wizard-cadence-per-unit.sh
+scripts/himmelctl/test/test-wizard-ensure-disable.sh
+scripts/himmelctl/test/test-wizard-luna-sections.sh
+scripts/himmelctl/test/test-wizard-status-golden.sh
+
+# --- vm, parity, observability, luna, codex, telegram, lanes, others
+# portable-shell and path-form sensitive helpers that passed on macOS.
+scripts/cleanup/test-codex-sweep-cadence.sh
+scripts/codex/test-codex-hook-parity.sh
+scripts/codex/test-dispatch-codex-exec.sh
+scripts/console/test-base-status.sh
+scripts/docs/test-check-llms-links.sh
+scripts/guardrails/test-check-git-env-scrub.sh
+scripts/install/test-capture-operator-profile.sh
+scripts/lanes/test-launch-site-profiles.sh
+scripts/luna/test-backfill-sessions.sh
+scripts/luna/test-crystallize-note.sh
+scripts/luna/test-graphmap-cadence.sh
+scripts/luna/test-qmd-cadence.sh
+scripts/observability/test-ledgers-registry.sh
+scripts/observability/test-promtool-validation.sh
+scripts/observability/test-restart-stack.sh
+scripts/parity/test-ps-twin-oem-encoding-projection.sh
+scripts/parity/test-ps-twin-oem-encoding.sh
+scripts/parity/test-ws5-invariants.sh
+scripts/telegram/test-auto-action.sh
+scripts/telegram/test-phi-egress-guard-parity.sh
+scripts/upstreams/test-ci-tool-pins.sh
+scripts/vm/test-after-report.sh
+scripts/vm/test-dry-run-restore.sh
+scripts/vm/test-upgrade-path-stage.sh
+scripts/vm/test-vm-lock.sh
+
+# --- top-level scripts/test-*.sh
+# install/uninstall/update chains: BSD cp/mv/readlink behavior.
+scripts/test-check-plugin-drift.sh
+scripts/test-claude-openrouter-pwsh.sh
+scripts/test-e2e-provenance-settings.sh
+scripts/test-e2e-symmetry.sh
+scripts/test-himmel-update-chain.sh
+scripts/test-himmel-update-check.sh
+scripts/test-merge-public-on-green.sh
+scripts/test-uninstall.sh
+scripts/test-uninstall-ux.sh
+scripts/test-vm-e2e-mode-guard.sh

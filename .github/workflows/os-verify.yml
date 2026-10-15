@@ -8,6 +8,11 @@ name: os-verify
 # concurrent jobs, 5 of them macOS, so the default here is one OS, two shards.
 # Windows is dropped (HIMMEL-5729): macOS is the only choice.
 #
+# HIMMEL-5007: macOS runs ONLY the curated POC list scripts/ci/macos-poc-suites.txt
+# (`all` = the whole list, `impacted` = impacted AND listed; an empty
+# intersection is a green no-op that says so). The full corpus is red on macOS,
+# so a suite joins the list only with a green macOS log line (ratchet: HIMMEL-3183).
+#
 # DISPATCH ONLY, by design: a pull_request/push/schedule trigger would put the
 # paid macOS legs back on every PR. Nothing here is a required check.
 # Every job name is prefixed `os-verify / ` so a dispatch on a PR head can never
@@ -88,11 +93,11 @@ jobs:
           SUITES: ${{ inputs.suites }}
         run: |
           if [ "$SUITES" = "all" ]; then
-            bash scripts/ci/run-shell-tests.sh --shard ${{ matrix.shard }}/2 .
+            bash scripts/ci/run-shell-tests.sh --only-list scripts/ci/macos-poc-suites.txt --shard ${{ matrix.shard }}/2 .
           else
             base="$(git merge-base origin/main HEAD)"
             echo "os-verify: impacted range ${base}..HEAD"
-            bash scripts/ci/run-shell-tests.sh --impacted "${base}..HEAD" --shard ${{ matrix.shard }}/2 .
+            bash scripts/ci/run-shell-tests.sh --impacted "${base}..HEAD" --only-list scripts/ci/macos-poc-suites.txt --shard ${{ matrix.shard }}/2 .
           fi
       - name: Upload failed-suite logs
         if: failure()
