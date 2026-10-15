@@ -482,7 +482,7 @@ function Invoke-SeedWithLock { Invoke-LaneSeedWithLock $LaneSeed $Reseed $null }
 
 # No user settings file means no seeded permissions.deny rules; refuse rather than run unseeded.
 $UserSettings = Join-Path $HomeDir (Join-Path '.claude' 'settings.json')
-if ((-not $PreflightOnly) -and (-not (Test-Path -LiteralPath $UserSettings))) {
+if ((-not $PreflightOnly) -and (-not (Test-Path -LiteralPath $UserSettings -PathType Leaf))) {
   [Console]::Error.WriteLine("claude-codex: REFUSED - $UserSettings is missing, so the lane would launch without the seeded permissions.deny rules. Create it (an empty {} is enough) and re-run.")
   exit 4
 }
