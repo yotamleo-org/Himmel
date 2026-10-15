@@ -127,6 +127,8 @@ assert_rc "long input allowed" 0 "$(run_hook "echo $long")"
 assert_rc "long input denies a verb at the tail" 2 "$(run_hook "echo $long; terraform destroy")"
 assert_rc "command word with too many words after it denies" 2 "$(run_hook "echo $huge")"
 assert_rc "verb past the span window denies (flat scan)" 2 "$(HOOK_TOOL=PowerShell run_hook "kubectl $opts delete pod web-1")"
+edge=$(awk 'BEGIN { for (i = 0; i < 254; i++) printf "x%d ", i; printf "x254" }')
+assert_rc "exactly 256 words after a command word allowed (flat scan)" 0 "$(HOOK_TOOL=PowerShell run_hook "kubectl get $edge")"
 elapsed=$((SECONDS - t0))
 if [ "$elapsed" -le 12 ]; then
     assert_rc "long input within budget (${elapsed}s)" 0 0

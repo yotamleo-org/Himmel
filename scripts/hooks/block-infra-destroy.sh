@@ -261,7 +261,7 @@ else
             *'$'*) _b='*' ;;
             *) case " $allbins " in *" $_b "*) ;; *) _k=$((_k + 1)); continue ;; esac ;;
         esac
-        if [ $((${#_all[@]} - _k)) -gt "$FLAT_SPAN" ]; then
+        if [ $((${#_all[@]} - _k - 1)) -gt "$FLAT_SPAN" ]; then
             deny "more than $FLAT_SPAN words follow a command word in a command this guard cannot tokenize" flat-scan-span
         fi
         SCAN_BIN=$_b
