@@ -13,6 +13,7 @@
 #   11.   clean why-comment                                      -> exit 0
 #   12.   --staged and --range read real git state
 #   13.   the lint-job step of ci.yml, run against a throwaway PR range
+#   14.   a .gitattributes -diff entry does not hide an added line (--staged, --range)
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
@@ -144,6 +145,21 @@ printf 'echo a\n# ponytail: prefix only, upgrade tracked in %s-77\n' "$H" > "$S/
 git -C "$S" add -A; git -C "$S" commit -q -m ponytail
 step "$pr_base"
 if [ "$RC" -eq 0 ]; then pass "step: ponytail line citing a ticket passes"; else fail "step ponytail -> rc=$RC: $OUT"; fi
+
+echo "== 14. .gitattributes -diff cannot hide added lines =="
+A="$T/attr"; mkdir -p "$A/scripts"; git -C "$A" init -q
+git -C "$A" config user.email t@t; git -C "$A" config user.name t
+printf '*.sh -diff\n' > "$A/.gitattributes"
+printf 'echo a\n' > "$A/scripts/a.sh"
+git -C "$A" add -A; git -C "$A" commit -q -m base
+attr_base="$(git -C "$A" rev-parse HEAD)"
+printf 'echo a\n# %s-1234 added this guard\n' "$H" > "$A/scripts/a.sh"
+git -C "$A" add -A
+OUT="$(cd "$A" && bash "$GATE" --staged 2>&1)"; RC=$?
+if [ "$RC" -eq 1 ] && has "scripts/a.sh:2"; then pass "--staged: -diff attribute does not hide the line"; else fail "--staged -diff -> rc=$RC: $OUT"; fi
+git -C "$A" commit -q -m ticket
+OUT="$(cd "$A" && bash "$GATE" --range "$attr_base" 2>&1)"; RC=$?
+if [ "$RC" -eq 1 ] && has "scripts/a.sh:2"; then pass "--range: -diff attribute does not hide the line"; else fail "--range -diff -> rc=$RC: $OUT"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
