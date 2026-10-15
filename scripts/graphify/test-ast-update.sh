@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-ast-update.sh — HIMMEL-1948 CR r1b: hermetic tests for ast-update.sh,
+# test-ast-update.sh — hermetic tests for ast-update.sh,
 # the wrapper that serializes the hourly free structural (AST) refresh
-# against refresh-graph-map.sh's per-out-dir promote lock (HIMMEL-910).
+# against refresh-graph-map.sh's per-out-dir promote lock.
 # Stubs `graphify` on PATH -- never a real extraction.
 # Run: bash scripts/graphify/test-ast-update.sh
 # shellcheck disable=SC2015  # A && pass || fail is the intentional test-assert idiom (pass/fail echo, always rc 0)
@@ -162,7 +162,7 @@ out4=$( bash "$SCRIPT" 2>&1 ); rc4=$?
 [ "$rc4" -eq 1 ] && pass "T4 missing corpus-root exits 1" || fail "T4 should exit 1 (got $rc4): $out4"
 
 # --- T6: uncreatable OUT_DIR (a real fs failure) -> distinct FAILURE, NEVER
-# exit 4 (HIMMEL-1948 CR r2) -- a swallowed `mkdir -p` used to fall through
+# exit 4 -- a swallowed `mkdir -p` used to fall through
 # into the lock mkdir, whose failure (parent missing) was misread as "lock
 # held" and reported hourly, forever, as a benign skip. GRAPHIFY_OUT points
 # under a path component that exists as a FILE: mkdir -p under it fails
@@ -232,8 +232,8 @@ echo "$out7" | grep -q "filesystem failure" && pass "T7 message says this is a r
   || pass "T7 graphify was never invoked"
 
 # --- T8: graphify itself exits 4 -> the wrapper must NEVER surface its own
-# reserved exit 4 (benign lock-skip) for a REAL graphify failure (HIMMEL-1948
-# exit-code collision finding) -- stub graphify to exit 4, assert the wrapper
+# reserved exit 4 (benign lock-skip) for a REAL graphify failure (exit-code
+# collision) -- stub graphify to exit 4, assert the wrapper
 # does not exit 4 and its message does not read as a benign skip.
 echo "T8: graphify itself exits 4 -> not reported as this script's benign skip (exit 4)"
 CORPUS8="$WS/c8"; mkdir -p "$CORPUS8"
@@ -261,7 +261,7 @@ echo "$out8" | grep -qF "graphify update exited 4" && pass "T8 message names gra
 [ -d "$OUT8/.promote.lock" ] && fail "T8 the lock directory was left behind after a graphify failure" \
   || pass "T8 the lock directory is released even after a graphify failure"
 
-# --- T9: TOCTOU on the lock mkdir (HIMMEL-1948 CR) -- the first mkdir fails
+# --- T9: TOCTOU on the lock mkdir -- the first mkdir fails
 # because another holder has the lock, but that holder releases it before
 # classification would run; the retry must observe the lock is now free and
 # acquire it, NOT report exit 3 (real filesystem failure). Shadow `mkdir` on
@@ -311,8 +311,8 @@ grep -qF -- "update $CORPUS9 --force" "$WS/call.log" 2>/dev/null \
   || pass "T9 the lock directory is gone after a successful retry+run"
 
 # --- T10: nonexistent CORPUS_ROOT -> FAILED (exit 3), loud, no bypass, no
-# stray directory created (HIMMEL-1948 cadence-inversion finding) -- a typoed
-# or missing corpus root used to be silently accepted (mkdir -p happily
+# stray directory created -- a typoed
+# or missing corpus root would be silently accepted (mkdir -p happily
 # creates the whole OUT_DIR tree under it), so graphify ran hourly against an
 # empty directory while the real corpus's graph went stale unalerted. Must
 # fail LOUDLY before creating anything, never fall through to graphify.
@@ -332,7 +332,7 @@ echo "$out10" | grep -qF "$CORPUS10" && pass "T10 message names the missing CORP
 [ -e "$CORPUS10" ] && fail "T10 a stray path was created at the bogus corpus root" \
   || pass "T10 no stray directory was created at the bogus corpus root"
 
-# --- T11 (HIMMEL-1960 CR r3): a NON-DIRECTORY on the lock path is a permanent
+# --- T11: a NON-DIRECTORY on the lock path is a permanent
 # filesystem conflict, not contention. mkdir fails EEXIST forever, `-d` stays
 # false, and OUT_DIR itself remains perfectly writable -- so the writability
 # probe that classifies the retry-exhausted case would call this "contention"
@@ -356,7 +356,7 @@ echo "$out11" | grep -qF "NOT a directory" && pass "T11 message names the confli
 [ -f "$CORPUS11/graphify-out/.promote.lock" ] && pass "T11 left the conflicting file alone (operator removes it)" \
   || fail "T11 must not delete the conflicting path itself"
 
-# --- T12 (HIMMEL-1960 CR r4): a SYMLINK on the lock path. Both variants defeat
+# --- T12: a SYMLINK on the lock path. Both variants defeat
 # a classifier that does not look at the link itself: one pointing at a real
 # directory satisfies `-d` and reads as "held by a semantic refresh", while a
 # DANGLING one fails `-e` (which follows the link) and then passes the sibling
@@ -391,7 +391,7 @@ else
   pass "T12 SKIPPED (this environment cannot create symlinks -- unprivileged Windows without Developer Mode; the classifier is still guarded on POSIX CI)"
 fi
 
-# --- T13 (HIMMEL-1960 CR r10): the structural leg must refuse the same source
+# --- T13: the structural leg must refuse the same source
 # directories the semantic leg does. Before this, GRAPHIFY_OUT=docs made the two
 # legs disagree -- refresh-graph-map.sh refused while this one wrote graph
 # artifacts straight into <corpus>/docs. ---
@@ -408,7 +408,7 @@ out13=$( PATH="$BIN13:$PATH" GRAPHIFY_OUT="docs" bash "$SCRIPT" "$CORPUS13" 2>&1
 [ -f "$CORPUS13/docs/handbook.md" ] && pass "T13 the refused directory's contents are untouched" \
   || fail "T13 must not modify the directory it refuses"
 
-# --- T14 (HIMMEL-1960 CR r12): a RELATIVE GRAPHIFY_OUT must be a single
+# --- T14: a RELATIVE GRAPHIFY_OUT must be a single
 # directory name, exactly as refresh-graph-map.sh requires. `foo/bar` was
 # accepted here and refused there, so the two cadence legs would sit on
 # different directories with the semantic one failing forever; `../out`
@@ -431,7 +431,7 @@ out14=$( PATH="$BIN14:$PATH" GRAPHIFY_OUT="graphify-out-feature" bash "$SCRIPT" 
   && pass "T14 a single-name relative override still works" \
   || fail "T14 the single-name form must still be accepted (rc=$rc14): $out14"
 
-# --- T15: graphify runs with GRAPHIFY_NO_AUTO_REFRESH=1 (HIMMEL-4514) -------
+# --- T15: graphify runs with GRAPHIFY_NO_AUTO_REFRESH=1 -------
 # An unattended hourly graphify run otherwise auto-refreshes the user's
 # ~/.claude / ~/.codex / ~/.hermes skill dirs on a version mismatch.
 echo "T15: graphify is invoked with GRAPHIFY_NO_AUTO_REFRESH=1"

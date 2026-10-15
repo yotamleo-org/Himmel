@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# semantic-merge.py -- HIMMEL-4185: the stdlib half of semantic-update.sh.
+# semantic-merge.py -- the stdlib half of semantic-update.sh.
 # Owns the content-hash manifest (<out>/semantic-manifest.json) and the merge of
 # a scratch semantic extraction into the live <out>/graph.json. Never imports
 # the `graphify` package (not importable from system python3; see
@@ -60,7 +60,7 @@ def sha256(path):
 
 
 def ignored_dirs(root):
-    # Same file + dialect as refresh-graph-map.sh (HIMMEL-1903): one
+    # Same file + dialect as refresh-graph-map.sh: one
     # corpus-relative directory per line, `#` comments, no `..` components.
     path = os.path.join(root, ".graphify-corpus-ignore")
     dirs = []

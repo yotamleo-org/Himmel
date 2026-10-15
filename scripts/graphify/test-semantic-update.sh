@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-semantic-update.sh — HIMMEL-4185: hermetic tests for semantic-update.sh
+# test-semantic-update.sh — hermetic tests for semantic-update.sh
 # (the incremental semantic layer). Runs the script from a fake repo tree whose
 # scripts/guardrails/ is the REAL fence (so the salus/DENY rows exercise the
 # real egress matrix) while bank-preflight, seed-claude-config and `graphify`
@@ -33,7 +33,7 @@ cat > "$REPO/scripts/lib/bank-preflight.sh" <<EOF
 echo bank >> "$WS/calls.log"
 cat "$WS/bank" 2>/dev/null || echo PROCEED
 EOF
-# API-lane stub (HIMMEL-5544): records its argv, stdin, cwd and whether `claude`
+# API-lane stub: records its argv, stdin, cwd and whether `claude`
 # still resolves to the semantic-update shim, then answers with a claude envelope.
 cat > "$REPO/scripts/api-lane/claude-api.sh" <<EOF
 #!/usr/bin/env bash
@@ -315,7 +315,7 @@ ext=$(grep '^graphify extract' "$WS/calls.log")
 case "$ext" in *"--backend ollama"*"--max-concurrency 1"*) pass "T23 extract args" ;; *) fail "T23 extract args: $ext" ;; esac
 grep -qx 'OLLAMA_MODEL=qwen3.6:27b' "$WS/env.log" && pass "T23 model qwen3.6:27b" || fail "T23 model: $(cat "$WS/env.log")"
 grep -qx bank "$WS/calls.log" && fail "T23 bank-preflight called on the ollama path" || pass "T23 ollama path does not call bank-preflight"
-# T23b (HIMMEL-4512 item 8): graphify warns "no OLLAMA_API_KEY set" on every local
+# T23b: graphify warns "no OLLAMA_API_KEY set" on every local
 # run; the loopback-verified path hands it the documented placeholder so the log
 # stays quiet, and a caller-set key is never overwritten.
 grep -qx 'OLLAMA_API_KEY=ollama' "$WS/env.log" && pass "T23b local ollama gets the placeholder OLLAMA_API_KEY" || fail "T23b placeholder key: $(cat "$WS/env.log")"
@@ -328,7 +328,7 @@ out=$(run --name t23d --corpus-root "$C23D" --corpus-class himmel-code --backend
 grep -qx 'OLLAMA_API_KEY=unset' "$WS/env.log" && pass "T23d claude-cli path gets no OLLAMA_API_KEY" || fail "T23d claude-cli key leak: $(cat "$WS/env.log")"
 grep -qx 'OLLAMA_NUM_CTX=unset' "$WS/env.log" && pass "T23h claude-cli path gets no GRAPHIFY_OLLAMA_NUM_CTX" || fail "T23h num_ctx leak: $(cat "$WS/env.log")"
 
-# T23e-g (HIMMEL-4527): qwen3.6:27b at graphify's auto-derived num_ctx (32768)
+# T23e-g: qwen3.6:27b at graphify's auto-derived num_ctx
 # spilled 55% to CPU and every request outran graphify's 600 s default timeout.
 # The ollama path pins a GPU-fitting num_ctx and a raised request timeout; a
 # caller-set value of either wins.
@@ -374,7 +374,7 @@ out=$(unset GRAPHIFY_NO_AUTO_REFRESH; PATH="$WS/bin:$PATH" bash "$SCRIPT" --name
 [ "$rc" -eq 0 ] && grep -qx 'NO_AUTO_REFRESH=1' "$WS/env.log" && pass "T31 graphify saw GRAPHIFY_NO_AUTO_REFRESH=1" \
   || fail "T31 (rc=$rc): $(cat "$WS/env.log") $out"
 
-# --- HIMMEL-5544: --backend claude-api through the API lane -----------------
+# --- --backend claude-api through the API lane -----------------
 LANE_ENV=(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A)
 run_api() { env "${LANE_ENV[@]}" PATH="$WS/bin:$PATH" bash "$SCRIPT" "$@" 2>&1; }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # graph-cadence.sh — the recurring refresh+publish leg for himmel's own
-# graphify graph (HIMMEL-2095).
+# graphify graph.
 #
 # PLATFORM GUARD: no .ps1 twin, by design, not oversight. This is plain
 # POSIX bash, and stays that way on purpose -- graphmap-cadence.sh (the ONLY
@@ -45,7 +45,7 @@
 #   6. graph-publish.sh, invoked with cwd = that worktree, opens/refreshes
 #      the publish PR.
 #   7. merge-on-green.sh, same cwd, ARMAUTOMERGE=1, lands it. The machine-
-#      generated PR class (HIMMEL-2278, see graph-publish.sh's PR body) gets
+#      generated PR class (see graph-publish.sh's PR body) gets
 #      no CodeRabbit review -- this cadence must not wait for one; it doesn't.
 #   8. One ledger row (this script's own JSONL, see LEDGER below) plus the
 #      standard flow-run-ledger start/end pair every other cadence writes,
@@ -86,7 +86,7 @@
 # look for "chore/graph-publish-himmel") would never find -- a silent no-op
 # merge every single run. See PUBLISH_BRANCH below.
 #
-# CRON ENVIRONMENT (HIMMEL-2619 class): cron gives no login shell -- no PATH
+# CRON ENVIRONMENT: cron gives no login shell -- no PATH
 # beyond a bare default, no HANDOVER_DIR, no tool dirs. Every external command
 # this script needs is resolved explicitly near the top (PATH self-heal +
 # `command -v` checks that fail LOUDLY, never silently), and HANDOVER_DIR
@@ -128,7 +128,7 @@
 #   refreshed -- ast-update.sh succeeded but graph-publish.sh found nothing
 #                new to publish (exit 5) -- the local rebuild produced
 #                byte-identical tracked output. Not a failure. ALSO this
-#                action, permanently, post-HIMMEL-2705-step-1: origin/main no
+#                action, permanently: origin/main no
 #                longer tracks graphify-out/graph.json at all (retired from
 #                the git tree), so there is nothing to compare a rebuild
 #                against and nothing to publish -- the local, AST-only refresh
@@ -148,21 +148,21 @@
 # Usage:
 #   graph-cadence.sh [--threshold N] [--corpus-root <path>] [--semantic]
 #
-# --semantic (HIMMEL-4185, OFF by default): after the structural refresh, run
+# --semantic (OFF by default): after the structural refresh, run
 # semantic-update.sh on the dedicated worktree with GRAPH_CADENCE_SEMANTIC_BACKEND
 # (default claude-cli: Sonnet, bank-gated; ollama is the opt-in: local, zero
-# egress, no bank draw; HIMMEL-5367). Under it the per-run `git clean` keeps
+# egress, no bank draw). Under it the per-run `git clean` keeps
 # graphify-out/, so the semantic manifest (the change gate) persists between
-# fires. A failure alerts through scripts/luna/cadence-alert.sh (HIMMEL-4181,
-# leg graph-semantic-<corpus-slug>) and fails the run (rc 3); a success clears
+# fires. A failure alerts through scripts/luna/cadence-alert.sh (leg
+# graph-semantic-<corpus-slug>) and fails the run (rc 3); a success clears
 # that leg's alert. semantic-update.sh rc 3 (bank at/over threshold) and rc 4
-# (promote lock held) are benign skips (HIMMEL-4512): no alert, run stays green. Without the flag nothing changes for an armed cadence.
+# (promote lock held) are benign skips: no alert, run stays green. Without the flag nothing changes for an armed cadence.
 #
 # THRESHOLD DEFAULT = 15 commits behind. Justified against the measured
-# numbers (HIMMEL-2095 brief): the shipped graph was 36 commits behind
+# numbers: the shipped graph was 36 commits behind
 # origin/main when this was written, with the operator refreshing by hand at
 # irregular multi-day intervals. This cadence is armed at a 6-hour interval
-# (graphmap-cadence.sh's HIMMEL-GraphPublish-Himmel task, HIMMEL-2095), i.e.
+# (graphmap-cadence.sh's HIMMEL-GraphPublish-Himmel task), i.e.
 # up to 4 checks/day. A threshold of 3 (this repo's typical single-PR commit
 # count) would open a publish PR on ALMOST EVERY run -- constant PR churn for
 # a marginal freshness gain. 15 sits below half of today's measured 36-commit
@@ -197,7 +197,7 @@
 # script locates <handover-root>/.graph-cadence/ledger.jsonl (via
 # scripts/lib/load-dotenv.sh -> scripts/lib/handover-path.sh, same as every
 # other handover-writing script in this repo). If it is unset (cron's own
-# minimal environment is exactly where this bites, HIMMEL-2619 class) this
+# minimal environment is exactly where this bites) this
 # script refuses LOUDLY rather than let handover_root_ensure silently
 # `mkdir -p` himmel's own Mode A handovers/ stub and write the cadence
 # ledger straight into the git repo it publishes. The refusal still lands in
@@ -218,7 +218,7 @@
 #      problem (PR-B panel r1, codex-6: the ledger IS the report).
 set -uo pipefail
 
-# --- PATH self-heal (HIMMEL-2619 class) -------------------------------------
+# --- PATH self-heal -------------------------------------
 # Cron fires with, at most, a bare default PATH -- sometimes none at all
 # (this script's own `env -i` test proves the no-PATH-at-all case). Every
 # coreutil this script's own body uses directly (dirname, date, mkdir, cat,
@@ -298,7 +298,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Resolve the PRIMARY checkout root, mirroring ggs-cadence.sh's
-# resolve_himmel_root (HIMMEL-892 codex-adv-1 rationale): via
+# resolve_himmel_root: via
 # --git-common-dir, not this script's own SCRIPT_DIR, so arming/firing from a
 # feature worktree copy of this file still targets the real primary.
 resolve_himmel_root() {
@@ -347,7 +347,7 @@ AST_UPDATE="${GRAPH_CADENCE_AST_UPDATE:-$SCRIPT_DIR/ast-update.sh}"
 GRAPH_PUBLISH="${GRAPH_CADENCE_GRAPH_PUBLISH:-$SCRIPT_DIR/graph-publish.sh}"
 MERGE_ON_GREEN="${GRAPH_CADENCE_MERGE_ON_GREEN:-$REPO_ROOT/scripts/handover/merge-on-green.sh}"
 SEMANTIC_UPDATE="${GRAPH_CADENCE_SEMANTIC_UPDATE:-$SCRIPT_DIR/semantic-update.sh}"
-# HIMMEL-5367: the semantic backend is claude-cli unless opted into ollama.
+# the semantic backend is claude-cli unless opted into ollama.
 # Anything else refuses before any work (fail closed, no silent fallback).
 SEMANTIC_BACKEND="${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}"
 case "$SEMANTIC_BACKEND" in
@@ -438,7 +438,7 @@ load_dotenv --root "$DOTENV_ROOT_FOR_LOAD" HANDOVER_DIR
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/handover-path.sh"
 
-# HIMMEL-2619 class, closed: cron gives no login shell, so HANDOVER_DIR --
+# Cron gives no login shell, so HANDOVER_DIR --
 # unset (never exported anywhere, and this checkout's .env doesn't carry it
 # either) -- is EXACTLY the variable that goes missing there. himmel's own
 # handovers/ is a Mode A stub by design (real state lives in the operator's
@@ -560,36 +560,35 @@ fi
 # `cat-file -e origin/main:<path>` returns non-zero both when origin/main
 # resolves but the path is absent AND when origin/main itself does not
 # resolve (a genuine git/ref error `git fetch origin` alone doesn't rule
-# out -- CodeRabbit, PR #2272). Only the first case is the permanent
-# HIMMEL-2705 steady state; the second must still route through _fail so a
+# out). Only the first case is the permanent
+# steady state; the second must still route through _fail so a
 # real ref/object-read failure is never misreported as a clean skip.
 if ! git -C "$HIMMEL_ROOT" rev-parse --verify -q origin/main >/dev/null; then
     _fail "origin/main does not resolve after git fetch origin"
 fi
 # graphify-out/ was REMOVED from the git tree entirely and gitignored outright
-# (HIMMEL-2705 step 1) -- this repo's derived graph no longer publishes at
+# -- this repo's derived graph does not publish at
 # all, so origin/main never has graphify-out/graph.json to read. That is the
-# permanent steady state now, not a transient gap. PUBLISH_POSSIBLE gates
+# permanent steady state, not a transient gap. PUBLISH_POSSIBLE gates
 # ONLY the origin-comparison staleness measurement (steps 3-4) and the
-# retired publish/merge legs (steps 6-7, renumbered below) -- it must NEVER
+# retired publish/merge legs (steps 6-7) -- it must NEVER
 # skip step 5, the local AST-only refresh, which has nothing to do with
-# whether origin has anything to compare against or publish to. An earlier
-# revision of this fix (this same PR, CR round 2) collapsed all of that into
-# one early `exit 0`, making step 5 -- the free, no-LLM-cost rebuild
-# .gitignore's own comment promises ("the daily HIMMEL-829 cadence keeps
-# rebuilding them locally") -- permanently unreachable. It is not gated on
-# staleness at all now: with no shipped graph left to measure distance
-# against, "stale" has no origin-side meaning any more, so the local refresh
+# whether origin has anything to compare against or publish to. Collapsing
+# all of that into one early `exit 0` would make step 5 -- the free,
+# no-LLM-cost rebuild .gitignore's own comment promises ("the daily cadence
+# keeps rebuilding them locally") -- permanently unreachable. It is not
+# gated on staleness at all: with no shipped graph left to measure distance
+# against, "stale" has no origin-side meaning, so the local refresh
 # just runs every fire, throttled only by this cadence's own external
-# schedule (6h, HIMMEL-2095) -- exactly what the .gitignore promise says.
+# schedule (6h) -- exactly what the .gitignore promise says.
 PUBLISH_POSSIBLE=1
 GRAPH_JSON_OBJECT_UNREADABLE=0
 if ! git -C "$HIMMEL_ROOT" cat-file -e "origin/main:graphify-out/graph.json" 2>/dev/null; then
     PUBLISH_POSSIBLE=0
-    # cat-file -e alone cannot tell "path absent" (the HIMMEL-2705 retired
+    # cat-file -e alone cannot tell "path absent" (the retired
     # steady state, handled by the plain message below) apart from "path IS
     # tracked but its object could not be read" (corrupt/partial clone,
-    # missing objects -- PR #2272 round-3). ls-tree only reads the TREE
+    # missing objects). ls-tree only reads the TREE
     # object, so it still lists the path even when the blob itself is
     # unreadable -- distinguish the two and say so loudly; PUBLISH_POSSIBLE
     # stays 0 either way (fail closed).
@@ -632,10 +631,9 @@ fi
 # --- 5. dedicated worktree: create on demand, always resync to origin/main --
 mkdir -p "$(dirname "$WORKTREE_DIR")" || _fail "could not create $(dirname "$WORKTREE_DIR")"
 
-# --- 5a. pipeline lock (PR-B panel r1 codex-1, hardened r2 codex-1, made
-# single-winner by HIMMEL-2654): serializes the WHOLE refresh/publish/merge
+# --- 5a. pipeline lock (single-winner): serializes the WHOLE refresh/publish/merge
 # pipeline below, not just ast-update.sh's own promote step. ast-update.sh's
-# HIMMEL-910 promote lock is SKIP-not-wait and scoped to ITS OWN write into
+# promote lock is SKIP-not-wait and scoped to ITS OWN write into
 # graphify-out/ -- it does not, and was never meant to, cover graph-
 # publish.sh's checkout/commit/push or merge-on-green.sh's merge, both of
 # which also mutate $WORKTREE_DIR. Without a run-wide lock, an overlapping
@@ -726,7 +724,7 @@ _pipeline_lock_stamp_heartbeat() {
 # the holder looks alive (skip). rc 1: the holder is gone (refuse loudly).
 # A same-host holder is live only when its pid is alive AND its heartbeat is
 # fresh: `kill -0` alone cannot tell a crashed holder from an unrelated process
-# that reused its pid (HIMMEL-3237).
+# that reused its pid.
 PIPELINE_LOCK_VERDICT=""
 _pipeline_lock_describe() {
     local pid host stamp now hb_age="" acq_age="" hb_raw pid_alive=0
@@ -829,9 +827,8 @@ if [ ! -f "$WORKTREE_DIR/.git" ] && [ ! -d "$WORKTREE_DIR/.git" ]; then
     _just_created_worktree=1
 fi
 
-# --- 5b. identity check (PR-B panel r1 codex-2, hardened r2 codex-2 -- the
-# SINGLE MOST DANGEROUS item across either panel): round 1 compared
-# --git-common-dir and called that "ownership". It is not. --git-common-dir
+# --- 5b. identity check (the SINGLE MOST DANGEROUS item): comparing
+# --git-common-dir is not proof of "ownership". --git-common-dir
 # only proves "this directory is A worktree of THIS repository" -- the
 # PRIMARY CHECKOUT ITSELF, and every OTHER active worktree of this repo
 # (any feature branch under .claude/worktrees/), share that EXACT same
@@ -842,7 +839,7 @@ fi
 # on a schedule. "Same repo" is not "ours"; only something WE OURSELVES
 # wrote can prove that.
 #
-# Two checks now, in order:
+# Two checks, in order:
 #   (a) WORKTREE_DIR must never canonicalize to HIMMEL_ROOT itself -- the
 #       single most catastrophic case (destroying the PRIMARY checkout),
 #       rejected EXPLICITLY (never left to the marker check below to also
@@ -888,23 +885,23 @@ fi
 # `git worktree add` just handed it to us in this same process; the marker
 # is written fresh below, after the sync succeeds, for the NEXT run to check.)
 
-# HIMMEL-2654: last ownership check before the first destructive command --
+# last ownership check before the first destructive command --
 # a lock we no longer hold must never reach checkout/reset/clean.
 _pipeline_lock_is_ours \
     || _fail "pipeline lock $PIPELINE_LOCK no longer carries this run's owner token -- refusing to checkout/reset/clean the worktree"
 if ! git -C "$WORKTREE_DIR" checkout -B graph-cadence-work origin/main >/dev/null 2>&1; then
     _fail "could not sync dedicated worktree $WORKTREE_DIR to origin/main"
 fi
-# --- 5c. hard-fail on a sync failure (PR-B panel r2, codex-3): round 1
-# swallowed a `reset --hard`/`clean -fdx` failure with `|| true` -- ast-
-# update.sh and graph-publish.sh would then run against a tree that is NOT
+# --- 5c. hard-fail on a sync failure: swallowing a
+# `reset --hard`/`clean -fdx` failure with `|| true` would let ast-
+# update.sh and graph-publish.sh run against a tree that is NOT
 # provably the clean origin/main snapshot they are told they're getting.
 # Publishing from a dirty/stale tree is exactly how a wrong graph gets
 # shipped as authoritative, so either step failing now aborts the pipeline.
 if ! git -C "$WORKTREE_DIR" reset --hard origin/main >/dev/null 2>&1; then
     _fail "could not reset dedicated worktree $WORKTREE_DIR to origin/main (git reset --hard failed) -- refusing to refresh/publish from a tree that is not provably the clean origin/main snapshot"
 fi
-# --semantic keeps graphify-out/ (untracked since HIMMEL-2705): it holds the
+# --semantic keeps graphify-out/ (untracked): it holds the
 # semantic manifest + merged graph the next incremental pass builds on.
 _clean_keep=()
 [ "$SEMANTIC" -eq 1 ] && _clean_keep=(-e /graphify-out/)
@@ -933,7 +930,7 @@ if [ "$_ast_rc" -ne 0 ]; then
 fi
 ACTION="refreshed"
 
-# --- 6 (cont). semantic step (HIMMEL-4185, --semantic only) -----------------
+# --- 6 (cont). semantic step (--semantic only) -----------------
 if [ "$SEMANTIC" -eq 1 ]; then
     _sem_leg="graph-semantic-$CORPUS_SLUG"
     _sem_out=$(bash "$SEMANTIC_UPDATE" --name "$CORPUS_SLUG" --corpus-root "$WORKTREE_DIR" \
@@ -942,7 +939,7 @@ if [ "$SEMANTIC" -eq 1 ]; then
     printf '%s\n' "$_sem_out"
     case "$_sem_rc" in
         0) bash "$CADENCE_ALERT" clear "$_sem_leg" ;;
-        # HIMMEL-4512: 3 = bank at/over threshold, 4 = promote lock held. Nothing
+        # 3 = bank at/over threshold, 4 = promote lock held. Nothing
         # was touched and the next fire retries, so neither alerts nor fails the
         # run. An existing alert is left standing: a skip is not a recovery.
         3|4) echo "graph-cadence: semantic step skipped (rc=$_sem_rc, benign: next fire retries)" ;;
@@ -955,8 +952,8 @@ fi
 
 # --- 6a. retired publish/merge legs: clean no-op, not a skip ----------------
 # PUBLISH_POSSIBLE=0 (see step 2/PUBLISH_POSSIBLE above) means origin/main
-# does not track graphify-out/graph.json at all -- the permanent HIMMEL-2705
-# step 1 steady state. The local refresh above still ran (that IS the point
+# does not track graphify-out/graph.json at all -- the permanent
+# steady state. The local refresh above still ran (that IS the point
 # of decoupling it from this check); there is simply nothing left to open a
 # PR against or merge. This is a clean no-op of steps 7-8, not an error and
 # not ACTION="skipped" -- real work happened this run.
@@ -989,7 +986,7 @@ PR_REF=$(printf '%s' "$_pub_out" | grep -oE 'https://[^ ]+/pull/[0-9]+|PR #[0-9]
 # "current branch" selector, which would resolve to this worktree's OWN
 # graph-cadence-work branch (no PR there) after graph-publish.sh's own
 # restore_branch put it back.
-# HIMMEL-3475: merge-on-green.sh resolves its gate from the HIMMEL_REPO anchor
+# merge-on-green.sh resolves its gate from the HIMMEL_REPO anchor
 # and fails closed (exit 19) without it. The cron runner sets only PATH, so
 # anchor an unset one to this script's own checkout -- the same REPO_ROOT
 # already trusted for this script's libs and for MERGE_ON_GREEN itself.
@@ -1018,7 +1015,7 @@ else
     #     env), 11 (required tool missing), 12 (repo/base misconfigured --
     #     will not resolve with time), 13 (can't even resolve the PR/head),
     #     16 (audit sink unwritable), 17 (console-GO refusal), 18 (GitHub-
-    #     blocked, HIMMEL-3381: a required check never reported / the required
+    #     blocked: a required check never reported / the required
     #     set unreadable / a required review outstanding / a ruleset refusal --
     #     it is alerted to the operator once and needs a human, so it must NOT
     #     read as a quiet "published"), or any code merge-on-green.sh does not

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# detect-duplicate-notes.sh -- himmel-side detection for HIMMEL-1391: flag a
+# detect-duplicate-notes.sh -- himmel-side detection: flag a
 # re-mint of graphify person-note duplicates (twins, and curated-vs-importer
 # overlaps) so a future graphify-out/vault refresh doesn't silently regrow
-# the mess dedup-ed by the HIMMEL-1391 luna cleanup.
+# the mess already deduplicated in the luna vault.
 #
 # WHAT IT FLAGS (report-only, never mutates anything):
 #   1. TWIN: two files directly under --graph-dir whose basenames are

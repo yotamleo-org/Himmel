@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # seed-claude-config.sh — build the hook-free native-auth Claude profile used by
-# refresh-graph-map.sh's claude-cli backend (HIMMEL-1902). bash 3.2-safe.
+# refresh-graph-map.sh's claude-cli backend. bash 3.2-safe.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-refresh-graph-map-backup-prune.sh — HIMMEL-3708: refresh-graph-map.sh
+# test-refresh-graph-map-backup-prune.sh — refresh-graph-map.sh
 # prunes upstream graphify's dated backup dirs (<out>/YYYY-MM-DD/, written by
 # backup_if_protected before every semantic/curated promote -- see the
 # _prune_graphify_backups doc comment in refresh-graph-map.sh) down to the
@@ -223,7 +223,7 @@ done
 [ "$n9" -eq 9 ] && pass "T9 all 9 backups survive ('010' read as decimal 10, not octal 8)" \
   || fail "T9 expected all 9 to survive under keep=10, only $n9 did (leading zero misread as octal?)"
 
-# --- T10: codex-1 (round 2) -- an out dir with only cache/ and a non-date
+# --- T10: an out dir with only cache/ and a non-date
 # dir (NO dated backups at all) is a clean no-op: return 0, print nothing,
 # touch nothing. This is exactly the shape (dirs=() stays empty) that could
 # raise "unbound variable" on bash <4.4 (e.g. macOS's stock 3.2) expanding an

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/graphify/graph-cadence.sh (HIMMEL-2095).
+# Smoke test for scripts/graphify/graph-cadence.sh.
 #
 # PLATFORM GUARD: no .ps1 twin, matching graph-cadence.sh's own (see that
 # script's header) -- this suite tests plain POSIX bash under Git Bash the
@@ -12,7 +12,7 @@
 # `graphify` itself is faked too (a stub on PATH ahead of anything real) --
 # ast-update.sh and graph-publish.sh run FOR REAL against the fixture, but
 # nothing this suite does ever shells the real graphify binary or the real
-# `gh` CLI (per HIMMEL-2095's brief: never run graphify for real in a test).
+# `gh` CLI (never run graphify for real in a test).
 # merge-on-green.sh is replaced outright via GRAPH_CADENCE_MERGE_ON_GREEN --
 # its own gh/check-ci resolution is deliberately NOT env-overridable (see its
 # own header), so a real invocation would need real GitHub; this suite tests
@@ -29,8 +29,8 @@
 # Covers:
 #   1. Below --threshold: action=skipped, ledger row, rc=0, no worktree
 #      created, no ast-update/graph-publish/merge-on-green invoked.
-#   1b. origin/main does not track graphify-out/graph.json AT ALL (HIMMEL-2705
-#      step 1's permanent steady state) -> the LOCAL AST-only refresh still
+#   1b. origin/main does not track graphify-out/graph.json AT ALL (the
+#      permanent steady state) -> the LOCAL AST-only refresh still
 #      runs (worktree created, ast-update.sh invoked, action=refreshed,
 #      rc=0), while publish/merge cleanly no-op (merge-on-green.sh AND `gh`
 #      never invoked) -- distinct from Test 1's below-threshold skip (which
@@ -54,7 +54,7 @@
 #   7. `env -i` (bare hermetic environment, pinned to the fixture) still
 #      completes -- proves the PATH self-heal + HOME/getent-fallback
 #      resolution the header documents. Also covers the two HANDOVER_DIR
-#      controls (HIMMEL-2619 class, no GRAPH_CADENCE_LEDGER_ROOT seam in
+#      controls (no GRAPH_CADENCE_LEDGER_ROOT seam in
 #      either): unset -> loud refusal (non-zero rc, real message, a
 #      flow-run-ledger error row, and the runner's own per-fire log all
 #      carry it, and NO ledger.jsonl is written anywhere); set to a
@@ -70,7 +70,7 @@ set -euo pipefail
 # the PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input, silently inverting an assertion
 # instead of tripping it. A here-string is not a pipeline, so the status is
-# grep's own verdict alone. (HIMMEL-1430.)
+# grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -141,7 +141,7 @@ case "$1" in
         echo "fake-graphify: simulated failure" >&2
         exit 1
     fi
-    # HIMMEL-2654 lock tests: park inside the pipeline (past the destructive
+    # Lock tests: park inside the pipeline (past the destructive
     # sync) until the test releases us, so a rival can race a LIVE holder.
     if [ -n "${FAKE_GRAPHIFY_HOLD_DIR:-}" ]; then
         : > "$FAKE_GRAPHIFY_HOLD_DIR/entered.$$"
@@ -299,7 +299,7 @@ done
 assert_contains "ledger merges_behind is the true distance (seed-graph commit + 3 filler = 4)" '"merges_behind":4' "$LEDGER_LINE"
 
 # =============================================================================
-# Test 1b (HIMMEL-2705 step 1): origin/main does not track
+# Test 1b: origin/main does not track
 # graphify-out/graph.json at all -> the LOCAL AST-only refresh still runs
 # (worktree created, ast-update.sh invoked, action=refreshed, rc=0), while
 # publish/merge cleanly no-op (merge-on-green.sh AND `gh` never invoked) --
@@ -377,7 +377,7 @@ LEDGER_LINE1C=$(tail -n1 "$LEDGER1C/.graph-cadence/ledger.jsonl" 2>/dev/null || 
 assert_contains "ledger action=failed" '"action":"failed"' "$LEDGER_LINE1C"
 
 # =============================================================================
-# Test 1d (PR #2272 round-3, HIMMEL-2824): origin/main:graphify-out/graph.json
+# Test 1d: origin/main:graphify-out/graph.json
 # IS listed in the tree (unlike Test 1b's genuinely-retired path) but its blob
 # object cannot be read -- `git cat-file -e` alone cannot distinguish "path
 # absent" from "object unreadable" (corrupt/partial clone, missing objects).
@@ -386,7 +386,7 @@ assert_contains "ledger action=failed" '"action":"failed"' "$LEDGER_LINE1C"
 # (worktree add cannot materialize a tree with a missing object) -- this test
 # is NOT about avoiding that failure, only about the diagnostic step 2 branch
 # (PUBLISH_POSSIBLE=0) naming the real cause instead of misreporting it as the
-# permanent HIMMEL-2705 retired-path skip on the way there.
+# permanent retired-path skip on the way there.
 # =============================================================================
 echo "TEST: origin/main lists graphify-out/graph.json but its blob object is unreadable -> loud warning names the object-read failure, not the retired-path message"
 REPO1D="$TMP_ROOT/t1d-primary"; BARE1D="$TMP_ROOT/t1d-origin.git"
@@ -439,11 +439,11 @@ BARE2_MAIN_BEFORE=$(git --git-dir="$BARE2" rev-parse main)
 BARE2_REFS_BEFORE=$(git --git-dir="$BARE2" for-each-ref --format='%(refname)')
 rc=0
 # HIMMEL_REPO is unset for this run, as under the cron runner
-# (graphmap-publish-himmel.sh sets only PATH) -- HIMMEL-3475.
+# (graphmap-publish-himmel.sh sets only PATH).
 out=$(unset HIMMEL_REPO; HOME="$HOME2" GRAPH_CADENCE_HIMMEL_ROOT="$REPO2" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER2" FAKE_MERGE_RC=0 \
       run_gc --threshold 10 2>&1) || rc=$?
 assert_eq        "full-pipeline rc=0" "0" "$rc"
-# OPERATOR REQUIREMENT (HIMMEL-2654): graph updates land ONLY via a PR --
+# OPERATOR REQUIREMENT: graph updates land ONLY via a PR --
 # never a direct push to main. origin/main is byte-identical after a full
 # publish+merge run, the ONLY new ref is the publish branch, a PR was opened
 # for it, and the merge went through merge-on-green.sh (the PR merge gate).
@@ -459,13 +459,13 @@ assert_not_contains "published branch landed on the bare origin" "MISSING" "$bar
 merge_log=$(cat "$FAKE_MERGE_LOG")
 assert_contains "merge-on-green invoked with the predicted branch selector" "args: chore/graph-publish-${CORPUS_SLUG}" "$merge_log"
 assert_contains "merge-on-green invoked with ARMAUTOMERGE=1" "ARMAUTOMERGE=1" "$merge_log"
-# HIMMEL-3475: merge-on-green.sh fails closed (exit 19) without the
+# merge-on-green.sh fails closed (exit 19) without the
 # HIMMEL_REPO anchor, so an unset one must reach it as this checkout's root.
 assert_contains "merge-on-green receives HIMMEL_REPO = this checkout when unset" "HIMMEL_REPO=$(cd "$SCRIPT_DIR/../.." && pwd)" "$merge_log"
 LEDGER_LINE2=$(tail -n1 "$LEDGER2/.graph-cadence/ledger.jsonl" 2>/dev/null || echo MISSING)
 assert_contains "ledger action=merged" '"action":"merged"' "$LEDGER_LINE2"
 assert_contains "ledger pr field populated" '"pr":"https://github.com/test/test/pull/42"' "$LEDGER_LINE2"
-# Worktree dirname equals the corpus slug (HIMMEL-2095: must match, or
+# Worktree dirname equals the corpus slug (must match, or
 # merge-on-green's selector would target a branch graph-publish.sh never
 # created -- see the script's header).
 if [ -d "$HOME2/.claude/graph-cadence/$CORPUS_SLUG" ]; then
@@ -516,7 +516,7 @@ assert_not_contains "ledger action is not published for an execution failure" '"
 assert_not_contains "ledger action is not failed" '"action":"failed"' "$LEDGER_LINE3"
 
 # =============================================================================
-# Test 3c (HIMMEL-3381): merge-on-green rc=18 (GitHub-blocked: a required check
+# Test 3c: merge-on-green rc=18 (GitHub-blocked: a required check
 # missing, a required review outstanding, or a ruleset refusal) needs a human and
 # was alerted once -- a LOUD failure, never the quiet "published" of a deferral.
 # =============================================================================
@@ -689,7 +689,7 @@ flow7c=$(cat "$FLOW_LEDGER7c" 2>/dev/null || echo MISSING)
 assert_contains "flow-run ledger lands in the FIXTURE, not real operator state" '"ev":"start"' "$flow7c"
 
 # --- HANDOVER_DIR unset (no test-seam GRAPH_CADENCE_LEDGER_ROOT either) -----
-# HIMMEL-2619 class: cron gives no login shell, so HANDOVER_DIR is exactly
+# cron gives no login shell, so HANDOVER_DIR is exactly
 # the variable that goes missing there. This is the control that proves the
 # runner fails LOUDLY instead of silently falling back to himmel's own
 # handovers/ Mode-A stub (which would write the cadence ledger straight into
@@ -815,12 +815,11 @@ assert_contains "the foreign checkout's file content is byte-identical (no reset
 LEDGER_LINE4c=$(tail -n1 "$LEDGER4c/.graph-cadence/ledger.jsonl" 2>/dev/null || echo MISSING)
 assert_contains "ledger records this as failed, not a silent skip" '"action":"failed"' "$LEDGER_LINE4c"
 
-# --- codex-2 (PR-B panel r2, hardened): the round-1 regression case. A
-# SIBLING WORKTREE of the SAME repo -- not a foreign clone -- squatting at
-# WORKTREE_DIR. Round 1's --git-common-dir check would have PASSED this
-# (same repo!) and gone on to checkout/reset/clean it, destroying whatever
-# that sibling worktree had uncommitted. This is the exact gap the panel
-# named as "the single most dangerous item on either PR".
+# --- A SIBLING WORKTREE of the SAME repo -- not a foreign clone -- squatting at
+# WORKTREE_DIR. A bare --git-common-dir check would PASS this
+# (same repo!) and go on to checkout/reset/clean it, destroying whatever
+# that sibling worktree had uncommitted. This is the single most dangerous
+# case for the identity check.
 echo "TEST: a SIBLING WORKTREE of the SAME repo squatting at WORKTREE_DIR is refused too (round-1's exact gap)"
 REPO4g="$TMP_ROOT/t4g-primary"; BARE4g="$TMP_ROOT/t4g-origin.git"
 HOME4g="$TMP_ROOT/t4g-home"; LEDGER4g="$TMP_ROOT/t4g-ledger"
@@ -830,8 +829,8 @@ CORPUS_SLUG4g=$(corpus_slug_of "$REPO4g")
 SIBLING_WT="$HOME4g/.claude/graph-cadence/$CORPUS_SLUG4g"
 mkdir -p "$(dirname "$SIBLING_WT")"
 # A REAL worktree of REPO4g -- git worktree add, not git init. Its
-# --git-common-dir genuinely matches REPO4g's own, so it would have passed
-# round 1's check outright.
+# --git-common-dir genuinely matches REPO4g's own, so a --git-common-dir
+# check alone would pass it.
 git -C "$REPO4g" worktree add -q "$SIBLING_WT" -b some-other-feature-branch >/dev/null 2>&1
 echo "sibling worktree's own uncommitted, precious work" > "$SIBLING_WT/sibling-precious-file.txt"
 rc=0
@@ -894,8 +893,8 @@ PRE_LOCK="$HOME4d/.claude/graph-cadence/${CORPUS_SLUG4d}.lock"
 mkdir -p "$(dirname "$PRE_LOCK")"
 mkdir "$PRE_LOCK"
 # A LIVE holder (this test shell, fresh heartbeat) on this host -- a dead one,
-# or a live pid with a stale heartbeat, is refused, not skipped (HIMMEL-2654,
-# HIMMEL-3237; see the stale-lock cases further down).
+# or a live pid with a stale heartbeat, is refused, not skipped (see the
+# stale-lock cases further down).
 echo "$$" > "$PRE_LOCK/pid"
 uname -n > "$PRE_LOCK/host"
 date -u +%s > "$PRE_LOCK/heartbeat"
@@ -915,9 +914,9 @@ else
 fi
 rm -rf "$PRE_LOCK"
 
-# (A STALE lock -- crashed prior run -- was TAKEN OVER here until HIMMEL-2654;
-# it now blocks every fire loudly until a human removes it. Covered by the
-# HIMMEL-2654 "STALE lock blocks and is reported" case below.)
+# (A STALE lock -- crashed prior run -- blocks every fire loudly until a
+# human removes it. Covered by the "STALE lock blocks and is reported" case
+# below.)
 
 # --- codex-3: a `git clean -fdx` failure aborts the pipeline (hard failure,
 # never a silent `|| true` that lets refresh/publish proceed on an unproven
@@ -942,7 +941,7 @@ mkdir -p "$WT4k/locked-untracked-dir"
 touch "$WT4k/locked-untracked-dir/blocks-removal"
 chmod 000 "$WT4k/locked-untracked-dir"
 # CodeRabbit (PR #2209) + panel codex, four raises across three rounds
-# (HIMMEL-2655 item 5). `chmod 000` is this case's ENTIRE mechanism, and it
+#. `chmod 000` is this case's ENTIRE mechanism, and it
 # only denies a non-root user on a POSIX filesystem: root ignores the bits and
 # Windows Git Bash does not enforce them on traversal or deletion. Where it
 # does not bite, `clean -fdx` SUCCEEDS, the run exits 0, and the assertions
@@ -1012,7 +1011,7 @@ flow4f=$(cat "$FLOW_LEDGER4f" 2>/dev/null || echo MISSING)
 assert_contains "the flow-run end row's own outcome is ALSO error (not masked)" '"outcome":"error"' "$flow4f"
 
 # =============================================================================
-# HIMMEL-2654: the pipeline lock is single-winner -- mkdir is the whole
+# the pipeline lock is single-winner -- mkdir is the whole
 # protocol (scripts/luna/qmd-cadence.sh precedent). A PATH-stub `git` counts
 # every `reset --hard` (the first destructive step) -- a stub, never a code
 # seam, so the SAME fixture drives the pre-fix code as its RED control. The
@@ -1082,7 +1081,7 @@ lock_fixture 2
 lock_run 2 b; PID_B=$LOCK_PID
 wait_for "$HOLD_L/entered.*" 3000 || fail "holder never entered the pipeline"
 # Make the live holder's lock look long-running: its acquired stamp is old, but
-# its heartbeat stays fresh (a stale heartbeat now reads as pid reuse, HIMMEL-3237).
+# its heartbeat stays fresh (a stale heartbeat now reads as pid reuse).
 echo "$(( $(date -u +%s) - 7200 ))" > "$LOCK_L/acquired"
 lock_run 2 a; PID_A=$LOCK_PID
 wait_exit_or_resets "$PID_A" 2 3000 || true
@@ -1122,7 +1121,7 @@ lock_fire 1 c
 assert_eq "after a human removes the lock, the next fire completes" "0" "$rc"
 assert_eq "...and reaches reset --hard exactly once" "1" "$(wc -l < "$RESETS_L" | tr -d ' ')"
 
-# HIMMEL-3237: a crashed holder whose pid an unrelated process reuses must not
+# a crashed holder whose pid an unrelated process reuses must not
 # read as live -- kill -0 alone cannot tell them apart, the heartbeat can.
 # $$ is a genuinely live process on this host that is NOT a holder.
 echo "TEST (HIMMEL-3237): a live pid with a STALE heartbeat (pid reuse) is refused loudly, never skipped"
@@ -1202,9 +1201,9 @@ assert_eq "a lock this run did not create survives its exit" "another-instance" 
 rm -rf "$LOCK_L"
 
 # =============================================================================
-# Test 9 (HIMMEL-4185): the semantic step is OFF by default and runs only with
+# Test 9: the semantic step is OFF by default and runs only with
 # --semantic, after the structural refresh, on the dedicated worktree with the
-# local ollama backend. A failure alerts through cadence-alert.sh (HIMMEL-4181)
+# local ollama backend. A failure alerts through cadence-alert.sh
 # and fails the run; a success clears the leg's alert. Under --semantic the
 # worktree's graphify-out survives the per-run clean, so the semantic manifest
 # (the change gate) persists between fires.
@@ -1272,7 +1271,7 @@ assert_eq "failing semantic step rc=3" "3" "$rc"
 assert_contains "failing semantic step ledgers action=failed" '"action":"failed"' "$(tail -n1 "$TMP_ROOT/t9-bad-ledger/.graph-cadence/ledger.jsonl" 2>/dev/null)"
 assert_contains "failing semantic step appends a cadence alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-bad-primary")" "$(cat "$TMP_ROOT/t9-bad-alerts.log" 2>/dev/null)"
 assert_contains "failing semantic step sends the alert" "sent: cadence leg failed: graph-semantic-" "$(cat "$FAKE_SEND_LOG")"
-# (e) HIMMEL-4512 item 4: rc 3 (bank at/over threshold) and rc 4 (promote lock
+# (e) rc 3 (bank at/over threshold) and rc 4 (promote lock
 # held) are benign skips -- the next fire retries -- so the run stays green and
 # raises no alert; a real failure (rc 2, above) still alerts.
 for brc in 3 4; do
@@ -1285,7 +1284,7 @@ for brc in 3 4; do
     assert_eq "benign semantic rc=$brc appends no alert line" "" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
     assert_contains "benign semantic rc=$brc is reported as a skip" "semantic step skipped (rc=$brc" "$out"
 done
-# (f) HIMMEL-5367: the backend is GRAPH_CADENCE_SEMANTIC_BACKEND, default
+# (f) the backend is GRAPH_CADENCE_SEMANTIC_BACKEND, default
 # claude-cli; ollama is the opt-in; anything else refuses before any work.
 for tag in ollama bogus; do
     mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"

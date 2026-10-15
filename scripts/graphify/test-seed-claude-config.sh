@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for seed-claude-config.sh (HIMMEL-1902).
+# Hermetic tests for seed-claude-config.sh.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

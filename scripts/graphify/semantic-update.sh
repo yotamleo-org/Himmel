@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# semantic-update.sh — HIMMEL-4185: incremental semantic layer for one corpus.
+# semantic-update.sh — incremental semantic layer for one corpus.
 #
 # WHY: the armed graphmap cadence rebuilds only the AST graph (hourly/daily
 # `graphify update`); semantic extraction of markdown never runs on a schedule.
@@ -10,7 +10,7 @@
 #
 # Flow: fence --eval (salus / any DENY refuses before anything is copied) ->
 # content-hash plan against <out>/semantic-manifest.json -> no change = no-op
-# (no bank, no copy) -> promote lock, re-planned under it (the HIMMEL-910 protocol ast-update.sh and
+# (no bank, no copy) -> promote lock, re-planned under it (the protocol ast-update.sh and
 # refresh-graph-map.sh share) -> bank-preflight -> scratch copy of the changed
 # files only (+ `.graphify-corpus` marker + seeded semantic cache) ->
 # `graphify extract --no-cluster` -> semantic-merge.py merge -> harden-graph.py.
@@ -20,11 +20,11 @@
 #
 # BILLING: --backend claude-cli makes graphify shell `claude -p` once per chunk,
 # which draws the SAME subscription 5h/weekly bank as interactive use
-# (HIMMEL-128); hence the bank-preflight gate and the --max-files cap. Changed
+#; hence the bank-preflight gate and the --max-files cap. Changed
 # files above the cap stay unstamped and roll to the next run (reported as
 # `backlog`).
 #
-# --backend claude-api (HIMMEL-5544) bills API credit, not the subscription bank:
+# --backend claude-api bills API credit, not the subscription bank:
 # graphify's claude-cli path runs through scripts/api-lane/claude-api.sh (per-
 # account key, roster, credit gate, reserve/settle ledger all stay in the lane;
 # this script never reads or handles a key). A scratch `claude` shim first on
@@ -90,7 +90,7 @@ if [ "$BACKEND" = "claude-api" ]; then
 fi
 MERGE=(python3 "$HERE/semantic-merge.py")
 
-# --backend ollama (HIMMEL-4185): local model, zero egress, no bank draw. This
+# --backend ollama: local model, zero egress, no bank draw. This
 # script's OWN check, independent of the fence (defence in depth): the endpoint
 # graphify will reach (OLLAMA_BASE_URL verbatim when set, else OLLAMA_HOST,
 # else the loopback default - graphify's llm.py order) must be loopback, and
@@ -117,12 +117,12 @@ if [ "$BACKEND" = "ollama" ]; then
     *-cloud|*:cloud) echo "semantic-update: refusing ollama: OLLAMA_MODEL '$OLLAMA_MODEL' is an Ollama cloud model -- nothing copied" >&2; exit 2 ;;
   esac
   # Loopback + non-cloud model are verified above, so graphify's "no OLLAMA_API_KEY
-  # set" warning (HIMMEL-4512) is noise: it exists to flag a corpus leaving the
+  # set" warning is noise: it exists to flag a corpus leaving the
   # machine. Hand it the documented placeholder; a caller-set key still wins, and
   # the cloud path (refresh-graph-map.sh) never gets one, so its warning and any
   # real auth error stay visible.
   : "${OLLAMA_API_KEY:=ollama}"; export OLLAMA_API_KEY
-  # HIMMEL-4527: graphify derives num_ctx from the chunk size (32768 seen), which
+  # graphify derives num_ctx from the chunk size (32768 seen), which
   # spilled qwen3.6:27b 55% to CPU, and its request timeout defaults to 600 s.
   # Pin a context that should fit the 24 GB card and raise the timeout; a
   # caller-set value of either wins.
@@ -131,7 +131,7 @@ if [ "$BACKEND" = "ollama" ]; then
   : "${GRAPHIFY_API_TIMEOUT:=1800}"; export GRAPHIFY_API_TIMEOUT
 fi
 
-# Egress first, before any copy or bank call (HIMMEL-1084 direct-eval contract:
+# Egress first, before any copy or bank call (direct-eval contract:
 # the same verdict, provider map and ledger an agent-typed graphify gets; the
 # asserted class can only be tightened by the path classifier, so a .salus
 # root denies whatever is asserted). Reroute selectors are cleared first, as
@@ -190,7 +190,7 @@ plan_or_noop() {
 plan_or_noop
 if [ "$BACKEND" = "claude-api" ]; then
   # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
-  # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered (HIMMEL-5544).
+  # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
   python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" <<'PY' >&2
 import json, os, sys
 plan, root, model, budget = sys.argv[1:5]
@@ -236,7 +236,7 @@ if [ "$N_BATCH" -gt 0 ]; then
       fi ;;
   esac
   if [ "$BACKEND" = "claude-cli" ] || [ "$BACKEND" = "claude-api" ]; then
-    # Same pins as refresh-graph-map.sh (HIMMEL-1748/1902): sonnet, low effort,
+    # Same pins as refresh-graph-map.sh: sonnet, low effort,
     # raised timeout, and a hook-free config dir.
     export GRAPHIFY_CLAUDE_CLI_MODEL="${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}"
     export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL-low}"
@@ -256,7 +256,7 @@ if [ "$N_BATCH" -gt 0 ]; then
     mkdir -p "$WORK/bin"
     cat > "$WORK/bin/claude" <<'SHIM'
 #!/usr/bin/env bash
-# HIMMEL-5544: graphify claude-cli -> API lane shim (written by semantic-update.sh)
+# graphify claude-cli -> API lane shim (written by semantic-update.sh)
 case "${1:-}" in
   --help|-h) echo "claude (himmel API-lane shim): -p [--model M] [--output-format json]; the prompt is read from stdin"; exit 0 ;;
 esac
@@ -298,7 +298,7 @@ PY
   EXTRA=()
   # One request at a time: the local model holds the whole GPU.
   if [ "$BACKEND" = "ollama" ]; then EXTRA=(--max-concurrency 1); fi
-  # GRAPHIFY_NO_AUTO_REFRESH=1 (HIMMEL-4514): no skill-dir rewrite from a cadence run.
+  # GRAPHIFY_NO_AUTO_REFRESH=1: no skill-dir rewrite from a cadence run.
   export GRAPHIFY_NO_AUTO_REFRESH=1
   set +e
   graphify extract "$SCRATCH" --backend "$GRAPHIFY_BACKEND" ${EXTRA[@]+"${EXTRA[@]}"} --no-cluster > "$WORK/extract.log" 2>&1

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# harden-graph.py -- HIMMEL-2983: idempotent post-update step that bridges
+# harden-graph.py -- idempotent post-update step that bridges
 # doc-extracted concept nodes whose label literally names a code file to that
 # file's AST node (relation "references"), and adds allowlisted subprocess-exec
 # code-fact edges (relation "calls"). Operates only on <out>/graph.json;
@@ -11,7 +11,7 @@
 # path match against an AST file node's source_file first; if the token has a
 # directory component, it must then match by PATH SUFFIX (never fall through
 # to a bare-basename guess -- a token naming a directory that contradicts the
-# only same-named file must not fabricate a confidence-1.0 edge, HIMMEL-3005);
+# only same-named file must not fabricate a confidence-1.0 edge);
 # only a token with no directory component falls back to a basename match, and
 # only if it is unique across AST file nodes. An ambiguous match (two+ files)
 # is skipped and counted; a directory-qualified token matching zero files is
@@ -55,8 +55,8 @@ def build_ast_index(nodes):
 
 def strip_leading_dot_slash(path):
     # str.lstrip("./") strips a CHARACTER CLASS, not the literal prefix -- it
-    # would mangle ".config/tool.sh" into "config/tool.sh" (codex-1, HIMMEL-2983
-    # round 2). Only a literal leading "./" is ever meant to be dropped here.
+    # would mangle ".config/tool.sh" into "config/tool.sh".
+    # Only a literal leading "./" is ever meant to be dropped here.
     return path[2:] if path.startswith("./") else path
 
 
@@ -202,8 +202,7 @@ def main(argv):
     # An explicitly-supplied --allowlist that doesn't exist is a typo, not the
     # normal "no allowlist for this corpus yet" case (only the DEFAULT path is
     # allowed to be silently absent) -- reporting success while a typo
-    # suppresses every code-fact edge would hide the failure (codex-2,
-    # HIMMEL-2983 round 3).
+    # suppresses every code-fact edge would hide the failure.
     if args.allowlist and not os.path.exists(args.allowlist):
         print(f"harden-graph: --allowlist path not found: {args.allowlist}", file=sys.stderr)
         return 1
@@ -213,8 +212,7 @@ def main(argv):
     facts = find_code_facts(by_path, load_allowlist(allowlist_path))
 
     # graph.json is "directed": false, "multigraph": false -- (u, v) and (v, u)
-    # are the SAME edge, so dedup keys must be order-independent (codex-2,
-    # HIMMEL-2983 round 1) or a pre-existing reverse-order edge between the
+    # are the SAME edge, so dedup keys must be order-independent or a pre-existing reverse-order edge between the
     # same two nodes would not be recognized as a duplicate.
     existing_pairs = {frozenset((e.get("source"), e.get("target"))) for e in edges}
     seen = set()

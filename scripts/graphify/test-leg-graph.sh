@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-leg-graph.sh — HIMMEL-5313: leg-graph.sh points graphify at the PRIMARY
+# test-leg-graph.sh — leg-graph.sh points graphify at the PRIMARY
 # checkout's graphify-out/ from a linked worktree, refuses `path`, and says so
 # when the graph is behind the worktree. A graphify stub on PATH echoes what it
 # was given, so no real graph is needed.

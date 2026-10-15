@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-detect-duplicate-notes.sh -- HIMMEL-1391. Hermetic: temp dirs only.
+# test-detect-duplicate-notes.sh -- Hermetic: temp dirs only.
 # Run: bash scripts/graphify/test-detect-duplicate-notes.sh
 # shellcheck disable=SC2015  # A && pass || fail is the intentional test-assert idiom
 set -u
@@ -33,7 +33,7 @@ echo "$out" | grep -q "^TWIN:" && pass "T2 reports a TWIN line" || fail "T2 shou
 # differ ONLY by case -- "NykBuilderz.md" and "nykbuilderz.md" collide to
 # one directory entry -- so that shape is untestable via real fixtures here
 # and isn't the shape graphify actually produces anyway (every real twin
-# pair found in HIMMEL-1391 differs by the leading @, not by case alone).
+# pair seen in practice differs by the leading @, not by case alone).
 G3="$WS/t3/graph"; mkdir -p "$G3"
 printf 'x' > "$G3/@NykBuilderz.md"
 printf 'x' > "$G3/nykbuilderz.md"

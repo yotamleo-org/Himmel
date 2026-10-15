@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# ast-update.sh — HIMMEL-1948 CR r1b: serialize the hourly free structural
+# ast-update.sh — serialize the hourly free structural
 # (AST) graphify refresh against refresh-graph-map.sh's per-out-dir promote
-# lock (HIMMEL-910).
+# lock.
 #
 # WHY: the hourly structural cadence leg used to fire bare `graphify update
 # <corpus> --force` directly, writing straight into <corpus>/graphify-out --
@@ -32,8 +32,7 @@
 # with a bash case). A lock taken on a hardcoded <corpus-root>/graphify-out
 # when GRAPHIFY_OUT points elsewhere would guard a directory nobody is
 # writing to -- false serialization, worse than none because it LOOKS
-# correct. The divergence this header used to warn about is CLOSED as of
-# HIMMEL-1960: refresh-graph-map.sh now resolves the same GRAPHIFY_OUT for
+# correct. refresh-graph-map.sh resolves the same GRAPHIFY_OUT for
 # its OUT_DIR, promote lock and corpus exclusion. One asymmetry remains by
 # design -- it accepts only the RELATIVE form and refuses an ABSOLUTE
 # GRAPHIFY_OUT outright, because it extracts into a scratch copy and
@@ -46,15 +45,15 @@
 # worth waiting out; the hourly structural leg is cheap (seconds) and fires
 # again in 60 minutes, so waiting buys nothing and risks stacking hourly runs
 # behind a long semantic extraction. Up to three mkdir attempts, retried only
-# while the lock dir is ABSENT (HIMMEL-1960 -- a retry there distinguishes "the
+# while the lock dir is ABSENT (a retry there distinguishes "the
 # holder released in the window" from a real path failure; a lock that is
 # actually present is never waited on): held -> skip
 # LOUDLY (distinct exit 4, never exit 0 -- a skip that reads as success is
-# the exact failure mode HIMMEL-1948 exists to eliminate); free -> acquire,
+# the exact failure mode this lock exists to eliminate); free -> acquire,
 # stamp, run, release on ANY exit (owner-tokened, so a takeover by the
 # semantic side while we're gone is never clobbered by our own release).
 #
-# --force is DELIBERATE and stays (do not "fix" this, HIMMEL-1938): `graphify
+# --force is DELIBERATE and stays (do not "fix" this): `graphify
 # update` silently refuses to overwrite graph.json when the rebuild has fewer
 # nodes unless --force is given -- that silent refusal caused a month of
 # unnoticed graph staleness. Dropping --force here would reintroduce it on an
@@ -73,20 +72,20 @@
 #   is released before exiting); 4 SKIPPED --
 #   promote lock held by a concurrent (semantic) refresh, nothing run this
 #   time (skip-not-wait; retried automatically on this corpus's next scheduled
-#   structural run -- hourly for himmel, DAILY for luna since HIMMEL-1960, so
+#   structural run -- hourly for himmel, DAILY for luna, so
 #   this wrapper must not promise an hour); 5 FAILED --
 #   `graphify update` itself ran and exited non-zero (its real exit code is
 #   logged to stderr, NEVER reused as this script's own exit status). Exit 3
 #   is deliberately DISTINCT from exit 4: a real filesystem failure must
 #   never be reported as the benign "lock held, retry next run" skip -- that
-#   is the exact false-benign failure class HIMMEL-1948 exists to eliminate
-#   (see graph-refresh.sh's own OK-on-bank-skip history). Exit 5 exists for
+#   is the exact false-benign failure class this lock exists to eliminate.
+#   Exit 5 exists for
 #   the SAME reason on the other side of the call: `graphify update` can
 #   itself exit 4 (or any other code) for reasons of its own, and propagating
-#   that unchanged used to let a genuine graphify failure masquerade as this
+#   that unchanged would let a genuine graphify failure masquerade as this
 #   script's benign lock-skip -- so ANY non-zero graphify exit is remapped to
 #   the fixed sentinel 5 here, never propagated as-is. Exit 4 mirrors
-#   graph-refresh.sh's HIMMEL-1948 exit-4-means-skipped convention.
+#   graph-refresh.sh's exit-4-means-skipped convention.
 set -euo pipefail
 
 CORPUS_ROOT="${1:-}"
@@ -95,7 +94,7 @@ if [ -z "$CORPUS_ROOT" ]; then
   exit 1
 fi
 
-# CR (HIMMEL-1948): a typoed/nonexistent CORPUS_ROOT used to be silently
+# A typoed/nonexistent CORPUS_ROOT would be silently
 # accepted here -- `mkdir -p "$OUT_DIR"` below happily creates the whole path
 # tree, so `graphify update` then runs (successfully, exit 0) against a
 # directory containing nothing, forever, while the real corpus's graph goes
@@ -178,7 +177,7 @@ if [ "$OUT_DIR" != "$CORPUS_ROOT/graphify-out" ] && [ -d "$OUT_DIR" ]; then
   # .graphify_build.json, .graphify_semantic_marker, .graphify_analysis.json,
   # .graphify_labels.json, .graphify_promoted_version -- while the CORPUS-side
   # file this repo puts at a source root, `.graphify-corpus-ignore`
-  # (HIMMEL-1903), is hyphenated. The looser glob accepted that as proof of
+  # is hyphenated. A looser glob would accept that as proof of
   # ownership, so a source tree carrying one could be adopted and have its
   # cache and manifest destroyed: the guard defeated by a file this very repo
   # tells operators to create.
@@ -222,7 +221,7 @@ _promote_lock_release() {
 }
 trap '_promote_lock_release' EXIT
 
-# CR r2 (HIMMEL-1948): a swallowed `mkdir -p` failure here used to fall
+# A swallowed `mkdir -p` failure here would fall
 # through into the lock mkdir below, whose failure (parent missing) was then
 # misread as "lock held" -> exit 4 forever, hiding a real, permanent,
 # operator-actionable path/permission failure behind the benign-skip code.
@@ -239,7 +238,7 @@ fi
 # permissions/read-only/etc on $OUT_DIR itself. Distinguish by checking
 # whether the lock dir actually exists after the failure.
 #
-# TOCTOU (HIMMEL-1948 CR, residual closed in HIMMEL-1960): mkdir can fail
+# TOCTOU: mkdir can fail
 # because the lock is genuinely held, and the holder can then RELEASE it
 # before the -d test runs -- the -d test then sees no lock dir and this
 # misreads a benign contention event as exit 3 (real filesystem failure),
@@ -348,7 +347,7 @@ PROMOTE_LOCK_HELD=1
 # its own, which would then misread as this script's reserved benign
 # lock-skip. Remap any non-zero graphify exit to the fixed sentinel 5 (see
 # header); the real code is logged, never reused as our own exit status.
-# GRAPHIFY_NO_AUTO_REFRESH=1 (HIMMEL-4514): an unattended graphify run otherwise
+# GRAPHIFY_NO_AUTO_REFRESH=1: an unattended graphify run otherwise
 # rewrites the user's ~/.claude / ~/.codex / ~/.hermes skill dirs on a version
 # mismatch; skill refresh stays an explicit himmel-update step.
 export GRAPHIFY_NO_AUTO_REFRESH=1
@@ -356,7 +355,7 @@ set +e
 graphify update "$CORPUS_ROOT" --force
 _graphify_rc=$?
 set -e
-# HIMMEL-2983: does NOT run harden-graph.py here. `graphify update --force`
+# This does NOT run harden-graph.py. `graphify update --force`
 # rewrites this OUT_DIR in place with no scratch/promote staging (unlike
 # refresh-graph-map.sh), so nothing here guarantees graph.json exists or is
 # well-formed on every hourly tick (confirmed by this script's own hermetic

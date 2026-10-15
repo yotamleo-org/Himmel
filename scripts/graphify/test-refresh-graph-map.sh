@@ -13,7 +13,7 @@ fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
 skip() { echo "  SKIP: $1"; SKIPS=$((SKIPS+1)); }
 
 WS="$(mktemp -d)"; trap 'rm -rf "$WS"' EXIT
-# HIMMEL-1406: scope the default scratch parent to $WS. Most tests below
+# scope the default scratch parent to $WS. Most tests below
 # don't pass --scratch, so refresh-graph-map.sh falls back to
 # ${TMPDIR:-/tmp} -- and a promote-refusal now quarantines the extracted
 # graphify-out there (see _scratch_cleanup) instead of deleting it. Without
@@ -26,14 +26,14 @@ export GRAPHIFY_LEDGER="$WS/graphify-egress.jsonl"
 # may itself be routed through an Anthropic-compatible proxy. Endpoint-specific
 # tests below set ANTHROPIC_BASE_URL explicitly.
 unset ANTHROPIC_BASE_URL
-# Same for ollama (HIMMEL-4185): the fence classifies the endpoint + model from
+# Same for ollama: the fence classifies the endpoint + model from
 # these, so an operator's ambient values must not leak into the T44c pins.
 unset OLLAMA_HOST OLLAMA_BASE_URL OLLAMA_MODEL
 HERMETIC_HOME="$WS/hermetic-home"; mkdir -p "$HERMETIC_HOME/.claude"
 printf 'test-subscription-auth\n' > "$HERMETIC_HOME/.claude/.credentials.json"
 printf '{}\n' > "$HERMETIC_HOME/.claude/settings.json"
 export HOME="$HERMETIC_HOME"
-# HIMMEL-2701 preamble pin: keep every run-path case hermetic w.r.t. the LIVE
+# Preamble pin: keep every run-path case hermetic w.r.t. the LIVE
 # bank. refresh-graph-map.sh runs bank-preflight.sh for claude/claude-cli, which
 # otherwise refreshes and reads the operator's ambient usage cache — at the 85 %
 # weekly ceiling every run-path case read SKIPPED-BANK and went red. A missing
@@ -42,7 +42,7 @@ export HOME="$HERMETIC_HOME"
 export CADENCE_BANK_SKIP_REFRESH=1
 export CADENCE_BANK_CACHE="$WS/no-bank-cache.json"
 unset CLAUDE_USAGE_CACHE CLAUDE_ACCOUNT_CONFIG
-# HIMMEL-2701 end pin
+# End of the preamble pin
 export GIT_AUTHOR_NAME="himmel test" GIT_AUTHOR_EMAIL="test@himmel.invalid"
 export GIT_COMMITTER_NAME="himmel test" GIT_COMMITTER_EMAIL="test@himmel.invalid"
 CORPUS="$WS/vault"; mkdir -p "$CORPUS/notes"; printf '# n\ncontent\n' > "$CORPUS/notes/a.md"
@@ -110,7 +110,7 @@ grep -q "Alpha" "$MAPS/graphify-luna-map.md" 2>/dev/null && pass "T1 MOC carries
 ls "$SCRATCH_PARENT"/graphify-refresh-* >/dev/null 2>&1 && fail "owned scratch subdir left behind" || pass "T1 owned scratch subdir cleaned"
 [ -f "$SCRATCH_PARENT/unrelated.txt" ] && pass "T1 scratch-parent unrelated data preserved" || fail "T1 clobbered unrelated data in scratch parent"
 
-# --- T1b: DEFAULT backend is claude-cli (HIMMEL-1049 "himmel off deepseek") —
+# --- T1b: DEFAULT backend is claude-cli —
 # when no --backend is passed, refresh-graph-map must invoke graphify with
 # --backend claude-cli: graphify's `claude-cli` routes through the local `claude`
 # CLI on the operator's Pro/Max SUBSCRIPTION (no ANTHROPIC_API_KEY, priced 0.0),
@@ -146,7 +146,7 @@ got_backend=$(awk 'prev=="--backend"{print; exit} {prev=$0}' "$BACKEND_LOG")
 [ "$got_backend" = "claude-cli" ] && pass "T1b default backend is exactly claude-cli" || fail "T1b default backend not exactly claude-cli (got: '$got_backend')"
 [ "$got_backend" != "deepseek" ] && pass "T1b default no longer deepseek" || fail "T1b default still uses deepseek"
 
-# --- T1c/T1d (HIMMEL-2983): harden-graph.py runs BETWEEN --update and
+# --- T1c/T1d: harden-graph.py runs BETWEEN --update and
 # cluster-only, and is skipped entirely under --no-update. A CUSTOM stub is
 # required here: the shared $BIN/graphify stub above overwrites graph.json to
 # {"nodes":[],"links":[]} on BOTH --update and cluster-only, which would wipe
@@ -201,7 +201,7 @@ grep -q "^harden-graph:" <<<"$out" && fail "T1d --no-update must not invoke hard
 
 # --- T2: --no-update publishes from an existing repo-local report without re-extracting ---
 printf 'SENTINEL-EXISTING' > "$CORPUS/graphify-out/graph.json"   # must NOT be overwritten under --no-update
-# F4 (HIMMEL-907): a .md added AFTER T1's stamp but BEFORE this no-update run
+# F4: a .md added AFTER T1's stamp but BEFORE this no-update run
 # must NOT appear in manifest.json — pins that --no-update never re-stamps (a
 # refactor dragging the stamp block below the fi would re-attest old graphs).
 printf '# t2 added\nadded between T1 stamp and no-update\n' > "$CORPUS/notes/t2-added.md"
@@ -246,10 +246,10 @@ rc=$?
 [ "$rc" -ne 0 ] && pass "T5 garbage report → non-zero exit (publish refused)" || fail "T5 garbage report exit code (got $rc)"
 grep -q "GOOD-MAP-KEEP" "$MAPS/graphify-luna-map.md" 2>/dev/null && pass "T5 last-good MOC not clobbered by garbage report" || fail "T5 garbage report clobbered the good MOC"
 
-# --- T6: HIMMEL-907 a SUCCESSFUL refresh stamps manifest.json + .graphify_root
+# --- T6: a SUCCESSFUL refresh stamps manifest.json + .graphify_root
 # at the out root, and check-graph-freshness.sh PASSES on that dir. This last
 # assertion is the real acceptance: the guard can VERIFY the refreshed graph
-# (no longer "fresh by age" only). Uses its own hermetic corpus so it is
+# (not "fresh by age" only). Uses its own hermetic corpus so it is
 # independent of the T1-T5 mutations above. ---
 FRESH="$WS/fresh"; FCORPUS="$FRESH/corpus"; FMAPS="$FRESH/maps"
 mkdir -p "$FCORPUS/notes" "$FMAPS"
@@ -272,7 +272,7 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 assert isinstance(d, dict) and d, "manifest is not a non-empty object"
 assert "a.md" in d and "notes/b.md" in d, "expected corpus md keys missing"
-# F5 (HIMMEL-907): the derived out dir must be pruned from the manifest walk —
+# F5: the derived out dir must be pruned from the manifest walk —
 # GRAPH_REPORT.md sits in graphify-out/ at walk time and must not leak into keys.
 assert not any(k.startswith("graphify-out/") for k in d), "graphify-out leaked into manifest keys"
 PY
@@ -302,7 +302,7 @@ fi
 
 # --- T6d: idempotent re-run — a second successful refresh rewrites the same
 # artifacts and the guard still PASSES. ---
-# F6 (HIMMEL-907): add a NEW .md between the T6 stamp and this re-run; the
+# F6: add a NEW .md between the T6 stamp and this re-run; the
 # re-run manifest must CONTAIN it (refresh semantics — a real re-walk — not mere
 # presence of the old manifest).
 printf '# t6d added\nadded between T6 and the idempotent re-run\n' > "$FCORPUS/notes/t6d-added.md"
@@ -314,7 +314,7 @@ grep -q "t6d-added.md" "$FOUT/manifest.json" 2>/dev/null && pass "T6d/F6 re-run 
 out=$( bash "$HERE/check-graph-freshness.sh" --out "$FOUT" --max-age-days 7 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && pass "T6d guard PASSES after idempotent re-run" || fail "T6d guard should PASS after re-run (got rc=$rc): $out"
 
-# --- T6e (HIMMEL-907 F1): manifest.json must come from the SCRATCH corpus the
+# --- T6e: manifest.json must come from the SCRATCH corpus the
 # graph actually saw, NOT the live corpus. A graphify stub that, mid --update,
 # ALSO drops a new .md into the LIVE corpus (via MUTATE_TARGET) — the manifest
 # must NOT attest that file: the scratch copy was made before the mutation, so
@@ -350,7 +350,7 @@ else
   pass "T6e manifest excludes mid-extraction corpus mutation (walks scratch copy)"
 fi
 
-# --- T6f (HIMMEL-907 F2+F3): a python3-less box must fail BEFORE spending
+# --- T6f: a python3-less box must fail BEFORE spending
 # extraction money AND before promoting a new graph. Run under a hermetic PATH
 # that carries every tool the script needs EXCEPT python3 (graphify stays an
 # absolute GRAPHIFY_MAP_BIN); pre-seed a sentinel graph.json; assert rc=2, stderr
@@ -361,13 +361,12 @@ fi
 . "$HERE/../lib/hermetic-path.sh"
 . "$HERE/../lib/timeout-bin.sh"
 HBIN="$WS/hbin"; mkdir -p "$HBIN"
-# grep (HIMMEL-2642): HIMMEL-1960 (PR #1756, commit 2d94dcb2) added an
-# unconditional `grep -Eq` validation of GRAPHIFY_OUT_NAME that runs on EVERY
-# invocation, long before the python3 preflight this case targets -- so a
+# grep: an unconditional `grep -Eq` validation of GRAPHIFY_OUT_NAME runs on
+# EVERY invocation, long before the python3 preflight this case targets -- so a
 # hermetic PATH omitting grep hits "grep: command not found" first, and the
-# resulting rc=2 was coincidentally the same as the python3-preflight rc=2,
-# masking the wrong-stderr failure until this was caught.
-# tr + mktemp (HIMMEL-1084): the egress preflight now runs graphify-fence.sh
+# resulting rc=2 is coincidentally the same as the python3-preflight rc=2,
+# masking a wrong-stderr failure.
+# tr + mktemp: the egress preflight runs graphify-fence.sh
 # --eval, which lower-cases the backend with tr and stages node stderr in a
 # mktemp file; without them the fence dies (fail-closed rc=2) before the
 # python3 preflight this case targets.
@@ -417,7 +416,7 @@ grep -q "SENTINEL-PRE-PYTHON" "$PCORPUS/graphify-out/graph.json" 2>/dev/null \
   && pass "T6f sentinel graph.json unchanged (no promotion before python3 check)" \
   || fail "T6f sentinel graph.json clobbered (promoted before the python3 check)"
 
-# --- T6g (HIMMEL-907 F2/F7): publish-failure semantics. A graphify stub that
+# --- T6g: publish-failure semantics. A graphify stub that
 # emits a VALID graph.json but a GARBAGE report BODY (unparseable by the
 # curator) → the run exits NON-ZERO at the publish step, AND the freshness
 # stamps ARE present: the graph itself is fresh (promote + stamp happen
@@ -453,7 +452,7 @@ else
   fail "T6g freshness stamps missing after publish failure (F2 stamp-before-publish broke)"
 fi
 
-# --- T7 (HIMMEL-1070): the clean-tree probe must not be defeatable by config.
+# --- T7: the clean-tree probe must not be defeatable by config.
 # `git status --porcelain` HONORS status.showUntrackedFiles, so on a repo (or a
 # machine) configured with `showUntrackedFiles=no` a tree full of untracked work
 # reported CLEAN and the refresh pulled straight over it. The probe now forces
@@ -470,15 +469,15 @@ git_corpus() { # <dir> — a git repo with one commit, hermetic identity
   git -C "$1" add -A >/dev/null 2>&1
   git -C "$1" -c core.hooksPath=/dev/null commit -qm init >/dev/null 2>&1
 }
-# HIMMEL-2245: install a pre-commit hook into a fixture corpus, hook body on
+# install a pre-commit hook into a fixture corpus, hook body on
 # stdin. `git init` materializes `.git/hooks/` by COPYING the git template dir,
 # and that copy is not guaranteed: observed absent on a concurrent Windows
-# full-corpus run (HIMMEL-2231 evidence, 2026-08-29). A bare
+# full-corpus run. A bare
 # `cat > "$c/.git/hooks/pre-commit"` then fails with ENOENT — unchecked — and
 # the hook is silently never installed, so T42a (asserts the hook RAN) and T42e
 # (asserts a rejecting hook BLOCKED the commit) go red on the hook's absence
 # with a message that blames refresh-graph-map.sh. Own the directory, and make
-# a failed install a NAMED failure instead of a mystery red (HIMMEL-1128: never
+# a failed install a NAMED failure instead of a mystery red (never
 # a vacuous pass, never an unexplained one).
 install_pre_commit() { # <corpus-dir> — hook body on stdin
   local hook="$1/.git/hooks/pre-commit"
@@ -511,7 +510,7 @@ grep -q "not a clean git toplevel" <<<"$out" \
   && fail "T7b a clean repo was judged unpullable (probe over-tightened): $out" \
   || pass "T7b clean repo still judged pullable"
 
-# --- T8 (HIMMEL-1070): the clean-tree verdict must not go STALE across the
+# --- T8: the clean-tree verdict must not go STALE across the
 # fetch. The probe ran before a bounded NETWORK op that can take the better part
 # of a minute; this refresh is unattended, so an operator starting to edit during
 # that window is routine. Merging on the stale verdict fast-forwards the worktree
@@ -569,7 +568,7 @@ fi
 grep -q "work started during the fetch" "$DCORPUS_G/raced.md" 2>/dev/null \
   && pass "T8 racing work survived" || fail "T8 racing work lost"
 
-# --- T9 (HIMMEL-1070 codex-adv-1): the scheduled path must not egress to
+# --- T9: the scheduled path must not egress to
 # another cloud. graphify-fence.sh hard-denies the CLAUDE_CODE_USE_* reroute
 # selectors, but it is a PreToolUse hook — it only sees what an AGENT types,
 # never this script fired directly by cron/schtasks. So the fence's guarantee is
@@ -609,7 +608,7 @@ out=$( env CLAUDE_CODE_USE_BEDROCK=1 CLAUDE_CODE_USE_VERTEX=1 CLAUDE_CODE_USE_FO
   && fail "T9 reroute selectors survived into the graphify dispatch (scheduled path can egress to another cloud): $(cat "$REROUTE_LOG")" \
   || pass "T9 reroute selectors cleared before the graphify dispatch"
 
-# --- T10 (HIMMEL-1134): reproduce the real leak — graphify titles
+# --- T10: reproduce the real leak — graphify titles
 # GRAPH_REPORT.md by the EXTRACTION PATH it was handed (here: the scratch dir
 # the stub receives as its target arg), which is a PID-suffixed scratchpad
 # dir = the operator's home dir + username. The stub below embeds that exact
@@ -653,7 +652,7 @@ grep -qiE '\\Users\\|/Users/|AppData' "$LEAKOUT/GRAPH_REPORT.md" 2>/dev/null \
   && fail "T10 promoted GRAPH_REPORT.md still contains a host-path shape" \
   || pass "T10 promoted GRAPH_REPORT.md contains no host-path shape"
 
-# --- T11 (HIMMEL-1134): the guard is a real backstop, not vacuous. The
+# --- T11: the guard is a real backstop, not vacuous. The
 # sanitize above only rewrites LINE 1 — a leak on any OTHER line is a shape
 # the sanitize genuinely cannot clean. Stub emits a clean line 1 (sanitize
 # succeeds trivially) but plants a host path a few lines further down (as if
@@ -700,7 +699,7 @@ else
   pass "T11 leaking refresh stamped nothing (fails closed before the stamp step)"
 fi
 
-# --- T12 (HIMMEL-1134 CR follow-up, Part A): multi-match fail-open
+# --- T12: multi-match fail-open
 # regression. The guard used to run `grep -inE ... | head -n 1` under
 # `set -o pipefail` (line 30 of refresh-graph-map.sh) -- when `head` closes
 # the pipe after its first line while `grep` still has thousands more
@@ -739,14 +738,14 @@ out=$( GRAPHIFY_MAP_BIN="$MULTIBIN/graphify" PATH="$MULTIBIN:$PATH" \
 [ "$rc" -eq 2 ] && pass "T12 multi-match leak (thousands of matches from line 2 on) still fails loudly (rc=2)" \
   || fail "T12 multi-match leak should fail loudly with rc=2 (got $rc) -- guard failed OPEN on SIGPIPE-under-pipefail: $out"
 
-# --- T13 (HIMMEL-1134 CR follow-up, Part B): JSON-escaped graph.json leak.
+# --- T13: JSON-escaped graph.json leak.
 # graph.json is JSON, so a Windows path embedded in it is serialized with
 # each backslash DOUBLED (a real path C:\Users\name becomes the literal
 # on-disk bytes C:\\Users\\name). Positive regression pin: the guard traps it
 # in graph.json specifically (not just GRAPH_REPORT.md). NOTE (verified via a
 # real old-vs-new A/B run, not just this in-suite assertion): this EXACT
 # construction is caught even by the pre-Part-B pattern -- the bare `\Users\`
-# alternative (present since the original HIMMEL-1134 cut) needs only ONE
+# alternative (the original pattern) needs only ONE
 # literal backslash on each side of "Users" as a substring match, and a run
 # of 2 backslashes trivially contains 1, so it already matches the doubled
 # form via its innermost backslash on each side. The JSON-escaped
@@ -754,7 +753,7 @@ out=$( GRAPHIFY_MAP_BIN="$MULTIBIN/graphify" PATH="$MULTIBIN:$PATH" \
 # defense-in-depth against a future edit that narrows/removes the bare
 # alternative), but this test is NOT a red/green differentiator for Part B
 # the way T12 is for Part A -- it stays green on both sides of that change.
-# HIMMEL-1406: the leaked value now sits on `source_file` rather than the
+# the leaked value now sits on `source_file` rather than the
 # synthetic `path` key this fixture originally used -- the guard's graph.json
 # scan is now scoped to STRUCTURAL fields only (id/source_file/source_url/
 # source/target, per graphify's real schema), so a leak has to live on one of
@@ -783,7 +782,7 @@ out=$( GRAPHIFY_MAP_BIN="$JSONBIN/graphify" PATH="$JSONBIN:$PATH" \
 grep -q "graph.json" <<<"$out" \
   && pass "T13 error names graph.json as the offending artifact" || fail "T13 error should name graph.json: $out"
 
-# --- T14 (HIMMEL-1134 CR follow-up, Part 3): the bare `AppData` alternative
+# --- T14: the bare `AppData` alternative
 # used to match ANYWHERE, unbounded -- a legit node name or prose containing
 # the word (no path delimiter immediately before/after it) would false-
 # positive-refuse a perfectly clean refresh. The pattern now requires a path
@@ -793,9 +792,8 @@ grep -q "graph.json" <<<"$out" \
 # report with a delimited AppData path segment must still trip the guard
 # (rc 2) -- the fix must not have collaterally weakened real-leak detection.
 # T14b's leaked line is deliberately "workspace/AppData/Local/Temp/thing"
-# (NOT a /Users/... path) -- CR-caught (HIMMEL-1134 follow-up round 3): an
-# earlier draft's leaked line also contained /Users/, so it tripped the
-# /Users/ alternative and never actually exercised the new
+# (NOT a /Users/... path) -- a leaked line that also contained
+# /Users/ would trip the /Users/ alternative and never actually exercise the
 # (^|[/\\])AppData([/\\]|$) alternative this test is meant to pin. ---
 FP_REPORT_FIXTURE='# Graph Report - X
 
@@ -876,7 +874,7 @@ out=$( GRAPHIFY_MAP_BIN="$TPBIN/graphify" PATH="$TPBIN:$PATH" \
 [ "$rc" -eq 2 ] && pass "T14b delimited AppData path (no /Users/ in the leak) still trips the guard (rc=2)" \
   || fail "T14b delimited AppData path leak should still trip the guard with rc=2 (got $rc): $out"
 
-# --- T15 (HIMMEL-1134 CR follow-up round 3, Part 1): the leak scan itself
+# --- T15: the leak scan itself
 # must fail CLOSED on a grep SCAN ERROR (unreadable artifact, engine
 # failure, ...), not just on rc 1 (no match). grep has THREE exit statuses:
 # 0 = match, 1 = no match, >1 = scan error. `leak_line=$(grep ...) &&
@@ -895,8 +893,8 @@ REALGREP="$(command -v grep)"
 SCANFAILBIN="$WS/scanfailbin"; mkdir -p "$SCANFAILBIN"
 cat > "$SCANFAILBIN/grep" <<STUB
 #!/usr/bin/env bash
-# Matches the guard's exact invocation shape (CR follow-up round 6 added
-# -a/--binary-files=text as the first flag: "-a -m1 -inE ...").
+# Matches the guard's exact invocation shape (-a/--binary-files=text is the
+# first flag: "-a -m1 -inE ...").
 case "\$*" in
   "-a -m1 -inE "*) exit 2 ;;
 esac
@@ -926,7 +924,7 @@ out=$( GRAPHIFY_MAP_BIN="$SCANBIN/graphify" PATH="$SCANFAILBIN:$PATH" \
 grep -q "SCAN FAILED" <<<"$out" \
   && pass "T15 error names the scan failure explicitly" || fail "T15 error should mention SCAN FAILED: $out"
 
-# --- T16 (HIMMEL-1134 CR follow-up round 4): the header-sanitize's
+# --- T16: the header-sanitize's
 # `awk ... > "$REPORT.tmp" && mv "$REPORT.tmp" "$REPORT"` put awk on the
 # LEFT of `&&` -- under `set -euo pipefail` that side is EXEMPT from set -e,
 # so an awk failure there short-circuited past the mv and fell through
@@ -977,7 +975,7 @@ grep -q "sanitize report header" <<<"$out" \
   && fail "T16 stale GRAPH_REPORT.md.tmp left behind after awk failure" \
   || pass "T16 no stale GRAPH_REPORT.md.tmp left behind"
 
-# --- T17 (HIMMEL-1134 CR follow-up round 5): a REJECTED (leaking) refresh
+# --- T17: a REJECTED (leaking) refresh
 # must leave the corpus's PRIOR clean graphify-out/ completely untouched --
 # no leaked bytes written, no stamp invalidation, no stray tmp files.
 # Previously the promote block invalidated manifest.json/.graphify_root and
@@ -999,10 +997,10 @@ printf 'PRIOR-GOOD-GRAPH-JSON' > "$PRIORCORPUS/graphify-out/graph.json"
 printf 'PRIOR-GOOD-REPORT' > "$PRIORCORPUS/graphify-out/GRAPH_REPORT.md"
 printf 'PRIOR-GOOD-MANIFEST' > "$PRIORCORPUS/graphify-out/manifest.json"
 printf 'PRIOR-GOOD-ROOT' > "$PRIORCORPUS/graphify-out/.graphify_root"
-# CR follow-up round 6 (CodeRabbit App PR #1274): snapshot the four prior
+# Snapshot the four prior
 # artifacts to a SIDE dir and compare with `cmp`, not `[ "$(cat a)" =
 # "$(cat b)" ]` -- command substitution strips trailing newlines and can't
-# hold embedded NULs, so the old form could miss a mutation that only
+# hold embedded NULs, so that form could miss a mutation that only
 # changed trailing whitespace or binary content. `cmp` compares raw bytes.
 PRIOR_SNAPSHOT="$WS/prior-snapshot"; mkdir -p "$PRIOR_SNAPSHOT"
 cp "$PRIORCORPUS/graphify-out/graph.json" "$PRIOR_SNAPSHOT/graph.json"
@@ -1047,7 +1045,7 @@ cmp -s "$PRIOR_SNAPSHOT/.graphify_root" "$PRIORCORPUS/graphify-out/.graphify_roo
   && fail "T17 stray .manifest.tmp left behind after rejection" \
   || pass "T17 no stray .manifest.tmp left behind after rejection"
 
-# --- T18 (HIMMEL-1134 CR follow-up round 6, CodeRabbit App PR #1274): a
+# --- T18: a
 # missing staging artifact must fail CLOSED, not fall through. A stub that
 # emits GRAPH_REPORT.md but omits graph.json entirely (a partial/crashed
 # extraction that still exits 0) used to sail past every check: sanitize
@@ -1055,7 +1053,7 @@ cmp -s "$PRIOR_SNAPSHOT/.graphify_root" "$PRIORCORPUS/graphify-out/.graphify_roo
 # missing graph.json rather than refusing, and nothing upstream noticed --
 # letting a half-produced staging area reach $OUT_DIR mutation. Assert the
 # refresh now fails loudly BEFORE that, naming the missing artifact --
-# AND (CR follow-up round 7, CodeRabbit App re-review) seed the corpus's
+# AND seed the corpus's
 # $OUT_DIR with PRIOR clean artifacts + stamps first, snapshot them, and
 # `cmp` each against its snapshot afterward -- proving the rejection didn't
 # just exit 2 but genuinely left $OUT_DIR untouched (the same proof T17
@@ -1067,7 +1065,7 @@ cat > "$MISSBIN/graphify" <<'STUB'
 target=""
 if [ "$1" = "cluster-only" ]; then target="$2"; else target="$1"; fi
 mkdir -p "$target/graphify-out"
-# The runner now seeds prior graphify-out before --update (HIMMEL-1097), so
+# The runner now seeds prior graphify-out before --update, so
 # remove the seeded graph and deliberately OMIT its replacement to simulate a
 # partial extraction whose final staging area genuinely lacks graph.json.
 rm -f "$target/graphify-out/graph.json"
@@ -1092,7 +1090,7 @@ out=$( GRAPHIFY_MAP_BIN="$MISSBIN/graphify" PATH="$MISSBIN:$PATH" \
   --maps-dir "$MISSMAPS" --title "Miss Map" --slug miss-map --corpus-tag miss 2>&1 ); rc=$?
 [ "$rc" -eq 2 ] && pass "T18 missing scratch graph.json fails loudly (rc=2)" \
   || fail "T18 missing scratch graph.json should fail loudly with rc=2 (got $rc): $out"
-# HIMMEL-2983: harden-graph.py now runs immediately after --update, before the
+# harden-graph.py now runs immediately after --update, before the
 # staging-artifact guard below ever sees this scratch dir -- so a graph.json
 # genuinely missing after --update is now caught by harden's own "cannot read"
 # failure first, not by the later required-scratch-artifact check. Both are
@@ -1114,14 +1112,13 @@ cmp -s "$MISS_SNAPSHOT/.graphify_root" "$MISSCORPUS/graphify-out/.graphify_root"
   && pass "T18 prior .graphify_root byte-identical after rejection" \
   || fail "T18 prior .graphify_root was invalidated/mutated by a rejected refresh"
 
-# --- T19 (HIMMEL-1134 CR follow-up round 6, CodeRabbit App PR #1274): an
+# --- T19: an
 # unrecognized header format must fail CLOSED, not silently skip the
 # sanitize. The `case "$report_line1"` previously had no default branch --
 # a report whose line 1 doesn't start with `# Graph Report - ` (a shape
 # graphify never actually emits, but nothing upstream GUARANTEES it) just
 # fell through with the header untouched. Assert the refresh now fails
-# loudly instead, naming the unexpected-format failure -- AND (CR follow-up
-# round 7, CodeRabbit App re-review) seed + snapshot + `cmp` the corpus's
+# loudly instead, naming the unexpected-format failure -- AND seed + snapshot + `cmp` the corpus's
 # prior $OUT_DIR artifacts, same as T18/T17, proving this rejection path
 # also leaves $OUT_DIR untouched. ---
 BADHDRBIN="$WS/badhdrbin"; mkdir -p "$BADHDRBIN"
@@ -1167,7 +1164,7 @@ cmp -s "$BADHDR_SNAPSHOT/.graphify_root" "$BADHDRCORPUS/graphify-out/.graphify_r
   && pass "T19 prior .graphify_root byte-identical after rejection" \
   || fail "T19 prior .graphify_root was invalidated/mutated by a rejected refresh"
 
-# --- T20 (HIMMEL-1134 CR follow-up round 6, CodeRabbit App PR #1274): a NUL
+# --- T20: a NUL
 # byte in the report must not defeat the guard. GNU grep switches to
 # "Binary file X matches" mode on a NUL byte -- that mode's output has NO
 # "N:content" line-number prefix, so `${leak_line%%:*}` (which normally
@@ -1206,7 +1203,7 @@ out=$( GRAPHIFY_MAP_BIN="$NULBIN/graphify" PATH="$NULBIN:$PATH" \
 grep -q "Binary file" <<<"$out" \
   && fail "T20 guard message leaked 'Binary file <path> matches' (grep fell into binary mode)" \
   || pass "T20 guard stayed in text mode (-a) -- no 'Binary file' leak in the message"
-# CR follow-up round 7 (CodeRabbit App re-review): the "no 'Binary file'"
+# The "no 'Binary file'"
 # check above only proves grep stayed in text mode -- it doesn't directly
 # prove the LEAKED host path itself was redacted from the message (mirrors
 # the T11 "shouldnotleak" token check). The fixture's distinctive token is
@@ -1215,7 +1212,7 @@ grep -q "nulleak" <<<"$out" \
   && fail "T20 error output exposes the rejected host path: $out" \
   || pass "T20 error output redacts the rejected host path"
 
-# --- T21: GRAPHIFY_MAX_CONCURRENCY knob (HIMMEL-1097 throttle) ---
+# --- T21: GRAPHIFY_MAX_CONCURRENCY knob (throttle) ---
 # Invalid values fail LOUD (rc=1) before any extraction, rather than silently
 # reverting to a concurrency that 429s the rate-limited backend.
 # GRAPHIFY_CALL_LOG lets the stub record every graphify invocation, so these
@@ -1292,7 +1289,7 @@ grep -q "GRAPHIFY_MAX_CONCURRENCY must be" <<<"$out" \
   && fail "T21d --no-update wrongly validated the irrelevant throttle value: $out" \
   || pass "T21d --no-update skips throttle validation (invalid value tolerated on publish-only path)"
 
-# --- T23 (HIMMEL-1645): GRAPHIFY_API_TIMEOUT knob — backend-scoped default
+# --- T23: GRAPHIFY_API_TIMEOUT knob — backend-scoped default
 # (900 for claude-cli ONLY; 300 = graphify's own default otherwise, incl. claude/glm),
 # unset-only, validated on the extraction path only (mirrors GRAPHIFY_MAX_CONCURRENCY / T21).
 # The logging stub records (a) the GRAPHIFY_API_TIMEOUT env var visible to the
@@ -1428,7 +1425,7 @@ got_flag=$(awk 'prev=="--api-timeout"{print; exit} {prev=$0}' "$t23calls")
 # (f) --backend glm (-> claude remap) with GRAPHIFY_API_TIMEOUT unset + ANTHROPIC_API_KEY
 # set (so the remap's key check passes; the graphify binary is the T23 stub, no real
 # calls) -> reaches claude, so it stays at 300 too, NOT the claude-cli 900.
-# --corpus-class himmel-code (HIMMEL-2224): every zai-glm VAULT cell is explicit
+# --corpus-class himmel-code: every zai-glm VAULT cell is explicit
 # deny now, so the default luna-personal class would fail this run closed at the
 # egress preflight before graphify is ever called, leaving the timeout wiring --
 # the only thing this case tests -- unexercised. himmel-code x zai-glm is still
@@ -1448,14 +1445,14 @@ got_flag=$(awk 'prev=="--api-timeout"{print; exit} {prev=$0}' "$t23calls")
 [ "$got_flag" = "300" ] && pass "T23f --backend glm --api-timeout flag wired to 300 (graphify's own default)" \
   || fail "T23f --backend glm --api-timeout should be 300 (got: '$got_flag')"
 
-# --- T22 (HIMMEL-1097): semantic cache continuity. graphify keeps its
+# --- T22: semantic cache continuity. graphify keeps its
 # content-keyed cache inside graphify-out/, while refresh extracts from a fresh
 # scratch path. Seed only the live cache artifacts (never derived reports); the
 # stub records whether they were present BEFORE an actual --update invocation,
 # then writes refreshed cache state and removes one seeded artifact during
 # cluster-only. The runner must (a) seed only cache state, (b) transactionally
 # mirror the final scratch cache/markers without preserving stale artifacts, and
-# (c) replace graphify's native manifest with the synthesized HIMMEL-907
+# (c) replace graphify's native manifest with the synthesized
 # freshness manifest keyed by corpus markdown paths. ---
 CACHECORPUS="$WS/cachecorpus"; CACHEMAPS="$WS/cachemaps"; CACHEBIN="$WS/cachebin"
 mkdir -p "$CACHECORPUS/notes" "$CACHEMAPS" "$CACHEBIN" "$CACHECORPUS/graphify-out/cache"
@@ -1529,7 +1526,7 @@ assert "notes/cache.md" in d
 assert "graphify_native" not in d
 PY
 
-# --- T23 (HIMMEL-1097 CR follow-up): the sideline `mv "$OUT_DIR/cache"
+# --- T23: the sideline `mv "$OUT_DIR/cache"
 # "$CACHE_BACKUP"` that makes room for the staged cache was unguarded (no
 # `if !`, no error message, no controlled exit). This script runs under
 # `set -euo pipefail`, so a bare failing `mv` here DOES still halt it via
@@ -1594,7 +1591,7 @@ MVFAILOUT="$MVFAILCORPUS/graphify-out"
   && pass "T23b staged cache content did not leak into the existing cache dir" \
   || fail "T23b staged cache content appeared in \$OUT_DIR/cache despite the aborted promotion"
 
-# --- T24 (HIMMEL-1097 CR follow-up): when the refreshed scratch output has NO
+# --- T24: when the refreshed scratch output has NO
 # staged semantic cache, a prior $OUT_DIR/cache must NOT survive -- the cache
 # path must be consistent with the sibling semantic artifacts handled right
 # below it (which rm -f the unstaged marker/analysis), else stale cache
@@ -1636,7 +1633,7 @@ NOCACHEOUT="$NOCACHECORPUS/graphify-out"
 [ ! -e "$NOCACHEOUT/cache" ] && pass "T24 stale cache removed when scratch produced none" \
   || fail "T24 stale \$OUT_DIR/cache survived a refresh that produced no staged cache (should be removed)"
 
-# --- T25 (HIMMEL-1406, defect 1): a promote-refusal must PRESERVE the
+# --- T25: a promote-refusal must PRESERVE the
 # extracted scratch graphify-out instead of the EXIT trap deleting it --
 # the real 2026-07-30 luna/glm incident spent a full extraction (14,569
 # nodes, 16.7M tokens in) only to have the refusal's cleanup discard the
@@ -1645,7 +1642,7 @@ NOCACHEOUT="$NOCACHECORPUS/graphify-out"
 # and asserts: (a) the refusal message names a quarantine path, (b) that
 # path exists and holds the promoted-would-be graph.json + GRAPH_REPORT.md
 # (the paid artifact, byte-identical to what extraction produced) plus a
-# semantic-cache marker (HIMMEL-1406: "keep any semantic cache reusable for
+# semantic-cache marker ("keep any semantic cache reusable for
 # the next run"), (c) a non-printed context snippet file also landed there,
 # and (d) the leaked host path itself never appears in stdout/stderr (same
 # redaction rule as T11/T20 -- the quarantine message must not itself leak
@@ -1699,7 +1696,7 @@ grep -q "quarantoken" <<<"$out" \
   && fail "T25 leaking refresh still promoted into \$CORPUS_ROOT/graphify-out" \
   || pass "T25 nothing promoted under \$CORPUS_ROOT on a leaking refresh"
 
-# --- T26 (HIMMEL-1406, defect 2): graph.json's host-path scan is scoped to
+# --- T26: graph.json's host-path scan is scoped to
 # STRUCTURAL fields only. Two halves against the SAME node shape (id/label/
 # source_file), differing only in WHICH field carries the host path:
 # (a) the path lives only in `label` (a content/summary field a vault note's
@@ -1765,7 +1762,7 @@ grep -q "structleaktoken" <<<"$out" \
   && pass "T26b nothing promoted under \$CORPUS_ROOT on a structural-field leak" \
   || fail "T26b leaking refresh still promoted into \$CORPUS_ROOT/graphify-out"
 
-# --- T27 (HIMMEL-1415): corpus-copy excludes graphify's own published
+# --- T27: corpus-copy excludes graphify's own published
 # derived pages -- <maps-dir>/graph/* (per-node/community notes graphify
 # mints there) and <maps-dir>/<slug>.md (the curated MOC this script's own
 # publish step writes) -- from the extraction corpus, closing the feedback
@@ -1820,7 +1817,7 @@ else
   fail "T27 over-excluded: a legitimate maps-dir note was dropped from the corpus"
 fi
 
-# --- T28 (HIMMEL-1415 CR follow-up, codex-adv-1): the computed maps-prefix
+# --- T28: the computed maps-prefix
 # and slug land inside `find -path` PATTERN arguments, where *, ?, and [ are
 # fnmatch wildcard syntax even though the arguments are shell-quoted -- shell
 # quoting only stops the SHELL from globbing them; find's own matcher still
@@ -1900,7 +1897,7 @@ else
   fail "T28 over-matched: a legitimate note resembling the slug pattern was wrongly excluded"
 fi
 
-# --- T29 (HIMMEL-1415 CR follow-up round 2, codex-1-r2): a trailing slash on
+# --- T29: a trailing slash on
 # --maps-dir must not defeat the exclusion. Passed raw, "$MAPS_DIR" ends with
 # "/" and the exclusion pattern becomes "./60-Maps//graph/*" -- find's -path
 # matcher never matches that against the real "./60-Maps/graph/..." path, so
@@ -1954,7 +1951,7 @@ else
   fail "T29 MOC not republished at the expected (trimmed) path (missing, or still the stale sentinel)"
 fi
 
-# --- T30a (HIMMEL-1415 CR follow-up round 3, codex-adv-3): a CALLER-generated
+# --- T30a: a CALLER-generated
 # internal double slash must not defeat the exclusion. graphmap-cadence.sh
 # accepts a --vault value that may itself end in "/" and constructs
 # --maps-dir as "$VAULT/60-Maps" by naive concatenation -- if $VAULT already
@@ -2007,7 +2004,7 @@ else
   fail "T30a over-excluded: a legitimate maps-dir note was dropped from the corpus"
 fi
 
-# --- T30b (HIMMEL-1415 CR follow-up round 3): a DOUBLE trailing slash on
+# --- T30b: a DOUBLE trailing slash on
 # --maps-dir (e.g. "60-Maps//") must be fully trimmed, not just one of the
 # two -- pins that the trailing-slash trim is a loop, not a single `%/`. ---
 EXCL5BIN="$WS/excl5bin"; mkdir -p "$EXCL5BIN"
@@ -2057,12 +2054,12 @@ else
   fail "T30b MOC not republished at the expected (fully-trimmed) path (missing, or still the stale sentinel)"
 fi
 
-# --- T31 (HIMMEL-1421): relative-vs-absolute corpus-root/maps-dir spellings
+# --- T31: relative-vs-absolute corpus-root/maps-dir spellings
 # must still be recognized as CONTAINED. Mirrors the exact bypass repro from
 # the ticket: `--corpus-root . --maps-dir "$PWD/60-Maps"` share no literal
 # string prefix (one begins with ".", the other with an absolute path) even
-# though maps-dir IS "./60-Maps" -- the OLD lexical-prefix check silently
-# disabled the HIMMEL-1415 exclusion for exactly this spelling, reopening
+# though maps-dir IS "./60-Maps" -- a lexical-prefix check would silently
+# disable the exclusion for exactly this spelling, reopening
 # the derived-page feedback loop. ---
 EXCL6BIN="$WS/excl6bin"; mkdir -p "$EXCL6BIN"
 cat > "$EXCL6BIN/graphify" <<STUB
@@ -2107,8 +2104,7 @@ else
   fail "T31 over-excluded: a legitimate maps-dir note was dropped from the corpus"
 fi
 
-# --- Case-insensitive filesystem probe (HIMMEL-1421 CR round 1 addendum,
-# codex-adv-4): T32/T33 below assert that a REAL case-variant --maps-dir
+# --- Case-insensitive filesystem probe: T32/T33 below assert that a REAL case-variant --maps-dir
 # spelling still resolves to the SAME on-disk directory as --corpus-root --
 # true only on a case-insensitive filesystem (Windows/NTFS, default
 # macOS). On a genuinely case-sensitive filesystem (Linux -- the public
@@ -2127,7 +2123,7 @@ FS_PROBE_DIR="$WS/case-probe"; mkdir -p "$FS_PROBE_DIR"
 printf 'x' > "$FS_PROBE_DIR/x"
 if [ -f "$FS_PROBE_DIR/X" ]; then FS_IS_CASE_INSENSITIVE=1; else FS_IS_CASE_INSENSITIVE=0; fi
 
-# --- T32 (HIMMEL-1421): Windows case variants (C:/Users vs c:/users) must
+# --- T32: Windows case variants (C:/Users vs c:/users) must
 # still be recognized as CONTAINED -- NTFS is case-insensitive but the
 # pre-fix `case` pattern prefix match was case-sensitive. --corpus-root is
 # passed with its real spelling; --maps-dir is passed with its corpus-root
@@ -2181,10 +2177,10 @@ else
 fi
 fi
 
-# --- T33 (HIMMEL-1421): the THREE required regressions TOGETHER --
+# --- T33: the THREE required regressions TOGETHER --
 # relative-vs-absolute, case variants, AND a metacharacter/space-laden path
-# -- is exactly the combination that broke the python3-round-trip attempt
-# tried on the HIMMEL-1415 branch (MSYS's argv-to-Windows-path translation
+# -- is exactly the combination that broke the python3-round-trip approach
+# (MSYS's argv-to-Windows-path translation
 # resolved --corpus-root/--maps-dir to DIFFERENT drive roots for a maps-dir
 # containing "[", silently disabling the exclusion -- observed live, T28).
 # --corpus-root is relative ("."), --maps-dir is absolute with its
@@ -2242,12 +2238,12 @@ else
 fi
 fi
 
-# --- T34a (HIMMEL-1421): a maps-dir genuinely OUTSIDE corpus-root stays a
+# --- T34a: a maps-dir genuinely OUTSIDE corpus-root stays a
 # SANCTIONED no-op (never an error) -- but when the two paths share no
 # common prefix even after canonicalization AND were passed in different
 # FORM CLASSES (one relative, one absolute), that's the ambiguous case the
 # design calls out for a loud advisory instead of a silent no-op. Own
-# GRAPHIFY_MAP_BIN/PATH stub (CR round 1 addendum, glm-4 sug): T31-T33 each
+# GRAPHIFY_MAP_BIN/PATH stub: T31-T33 each
 # set one explicitly; T34a/T34b previously relied on the global $BIN stub
 # exported at the top of this file instead. ---
 T34BIN="$WS/t34bin"; mkdir -p "$T34BIN"
@@ -2291,8 +2287,7 @@ else
   pass "T34b no WARN advisory for a same-form, no-overlap corpus-root/maps-dir pair (silent no-op, as designed)"
 fi
 
-# --- T35 (HIMMEL-1421 CR round 1, codex-1 + glm-3, sharpened by codex-adv):
-# _canon_path's ancestor walk must TERMINATE for a maps-dir that can never
+# --- T35: _canon_path's ancestor walk must TERMINATE for a maps-dir that can never
 # resolve to an existing ancestor via forward-slash splitting -- a bare
 # drive-absolute form with nothing beneath it, a backslash-form path (no
 # "/" to strip at all), and (for completeness/pinning) a relative
@@ -2301,9 +2296,8 @@ fi
 # failure, so the test itself would otherwise hang forever without the
 # bound.
 #
-# CR round 2 (codex-r2-1): `timeout` is GNU coreutils and is NOT present by
-# default on macOS (this repo's Bash-3.2/macOS compatibility floor, which
-# this same CR round just went out of its way to protect elsewhere -- T35
+# `timeout` is GNU coreutils and is NOT present by
+# default on macOS (this repo's Bash-3.2/macOS compatibility floor -- T35
 # unconditionally requiring it would break the suite on exactly that
 # floor). Probed once, cheaply, and SKIPPED (via skip(), not silently) when
 # absent -- mirrors the T32/T33 filesystem-capability probe/skip pattern
@@ -2385,8 +2379,7 @@ else
 fi
 fi
 
-# --- T36 (HIMMEL-1421 CR round 1, codex-2, doubles as codex-adv-4's
-# "comparison-level test"): on a case-SENSITIVE filesystem (this script
+# --- T36: the comparison-level test. On a case-SENSITIVE filesystem (this script
 # also runs on ubuntu CI in the public mirror), the containment comparison
 # must NOT fold case -- a maps-dir spelled with a different-case
 # corpus-root prefix is a DIFFERENT path there, not the same directory.
@@ -2420,7 +2413,7 @@ mkdir -p "$EXCL10CORPUS/notes" "$EXCL10MAPS/graph"
 printf '# n\ncontent\n' > "$EXCL10CORPUS/notes/n.md"
 printf '# derived node note\nminted by graphify\n' > "$EXCL10MAPS/graph/some-node.md"
 printf '# stale MOC from a prior run\n' > "$EXCL10MAPS/excl10-map.md"
-# HIMMEL-1444: case-flip ONLY the corpus-root subdir under the writable $WS
+# case-flip ONLY the corpus-root subdir under the writable $WS
 # temp root, not the whole $WS path. The original uppercased the entire
 # absolute path, rooting the publish target at "/TMP" (uppercased "/tmp") --
 # non-creatable for a non-root user on a case-SENSITIVE filesystem (the public
@@ -2443,7 +2436,7 @@ else
   fail "T36 over-excluded: the forced case-sensitive comparison wrongly treated a case-variant maps-dir prefix as contained"
 fi
 
-# --- T38 (HIMMEL-1421 CR round 3, [codex-1]): _fs_case_insensitive now
+# --- T38: _fs_case_insensitive now
 # PROBES the corpus filesystem instead of trusting OS type. Assert the
 # predicate's decision AGREES with an independent write-"x"/stat-"X" probe
 # of the test workspace (FS_IS_CASE_INSENSITIVE, set once near T32 above):
@@ -2477,7 +2470,7 @@ EXCL11CORPUS="$WS/excl11corpus"; EXCL11MAPS="$EXCL11CORPUS/60-Maps"
 mkdir -p "$EXCL11CORPUS/notes" "$EXCL11MAPS/graph"
 printf '# n\ncontent\n' > "$EXCL11CORPUS/notes/n.md"
 printf '# derived node note\nminted by graphify\n' > "$EXCL11MAPS/graph/some-node.md"
-# HIMMEL-1444: same root-under-$WS case-flip as T36 -- see that test's comment.
+# same root-under-$WS case-flip as T36 -- see that test's comment.
 EXCL11MAPS_ARG="$WS/$(printf '%s' "${EXCL11CORPUS##*/}" | tr '[:lower:]' '[:upper:]')/60-Maps"
 # env -u scrubs any inherited override so the real filesystem probe decides;
 # GNU/BSD/MSYS `env` all support -u. If env -u is somehow unavailable this
@@ -2500,7 +2493,7 @@ else
   fi
 fi
 
-# --- T39 (HIMMEL-1421 CR round 4, [codex-r4-2]): a stale UPPERCASE probe
+# --- T39: a stale UPPERCASE probe
 # leftover (.GRAPHIFY-FS-PROBE-<pid>-0-X) from a crashed prior run must NOT
 # poison the verdict -- the candidate whose uppercase twin already exists
 # must be SKIPPED, and the probe must still agree with the real filesystem.
@@ -2560,7 +2553,7 @@ else
 fi
 unset probe_lo probe_up i suffix_used _GRAPHIFY_FS_CASE CORPUS_ROOT_CANON
 
-# --- T40 (HIMMEL-1748, kimi cases retired HIMMEL-2101): the native Kimi
+# --- T40: the native Kimi
 # backend (key wiring, backend passthrough, one allow+log ledger line per run,
 # custom-endpoint rejection) is deleted along with the backend itself —
 # operator ruling 2026-08-24/2026-09-15: kimi is retired, there is no kimi
@@ -2585,7 +2578,7 @@ out=$( GRAPHIFY_CALL_LOG="$KCALLS_RETIRED" GRAPHIFY_MAP_BIN="$BIN/graphify" \
 # including literal tab/newline/ESC bytes in the corpus path. One invocation still
 # produces exactly one physical line, and that line must parse as JSON.
 #
-# HIMMEL-2101 CR r2: this test (T40b2) was deleted when kimi retired because its
+# this test (T40b2) was deleted when kimi retired because its
 # vehicle was `--backend kimi` -- the only matrix cell that ever reached
 # allow+log via this script's own corpora (see the T40f comment above). But the
 # allow+log)` ledger encoder in refresh-graph-map.sh (the printf around line 373
@@ -2638,7 +2631,7 @@ else
 fi
 
 # GLM must still fail closed when the selected corpus class has no ratified
-# extraction cell (kimi's parallel arm above this loop is now HIMMEL-2101's
+# extraction cell (kimi's parallel arm above this loop is the
 # retired-backend case, T40a, not a corpus-class denial).
 KCALLS_DENY="$WS/glm-deny-calls.log"; : > "$KCALLS_DENY"
 out=$( ANTHROPIC_API_KEY=stub ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic GRAPHIFY_CALL_LOG="$KCALLS_DENY" GRAPHIFY_MAP_BIN="$BIN/graphify" \
@@ -2666,7 +2659,7 @@ out=$( ANTHROPIC_API_KEY=stub ANTHROPIC_MODEL=glm-5.2 ANTHROPIC_BASE_URL='https:
   GRAPHIFY_LEDGER="$GLM_OK_LEDGER" GRAPHIFY_CALL_LOG="$GLM_OK_CALLS" GRAPHIFY_MAP_BIN="$BIN/graphify" \
   bash "$SCRIPT" --name glm-ok --corpus-root "$KCORPUS" --backend glm \
   --maps-dir "$KMAPS" --title "GLM" --slug glm-ok-map --corpus-tag glm 2>&1 ); rc=$?
-# HIMMEL-2224: luna-personal x zai-glm x extraction is explicit deny now, so this
+# luna-personal x zai-glm x extraction is explicit deny now, so this
 # run fails CLOSED instead of proceeding. Both of this case's subjects survive the
 # flip, and one of them gets STRONGER:
 #   (1) REDACTION must still hold on the DENY path -- a deny message that echoed
@@ -2678,7 +2671,7 @@ out=$( ANTHROPIC_API_KEY=stub ANTHROPIC_MODEL=glm-5.2 ANTHROPIC_BASE_URL='https:
 #       ledger line used to. The allow+log LEDGER SHAPE this producer emits is
 #       no longer independently pinned by a LIVE matrix rule here: kimi/moonshot,
 #       the only matrix cell that ever reached "allow+log" via this script's own
-#       corpora, is retired (HIMMEL-2101) — no remaining rule in
+#       corpora, is retired — no remaining rule in
 #       egress-matrix.json produces that verdict. T40b2 above restores coverage
 #       of the shape (and its C0-escaping) on a STUBBED allow+log verdict
 #       instead (a `node` shim over egress-matrix-eval.mjs, `--backend claude`
@@ -2701,7 +2694,7 @@ out=$( ANTHROPIC_API_KEY=stub ANTHROPIC_BASE_URL=http://api.z.ai/api/anthropic \
   && pass "T40g scheduled GLM rejects plaintext api.z.ai before graphify without echoing it" \
   || fail "T40g plaintext GLM endpoint should fail rc=2 before graphify without URL disclosure (got $rc): $out"
 
-# --- T40h-l (HIMMEL-1748/HIMMEL-1084): scheduled claude/claude-cli resolve
+# --- T40h-l: scheduled claude/claude-cli resolve
 # their effective ANTHROPIC_BASE_URL before any graphify call. Unknown endpoints
 # are hard-denied on every corpus without echoing them; default Anthropic proceeds
 # without a ledger; exact Z.ai is classified and ledgered; malformed hosts cannot
@@ -2723,7 +2716,7 @@ out=$( env -u ANTHROPIC_BASE_URL GRAPHIFY_LEDGER="$CLAUDE_PREFLIGHT_LEDGER" \
   GRAPHIFY_CALL_LOG="$CLAUDE_PREFLIGHT_CALLS" GRAPHIFY_MAP_BIN="$BIN/graphify" \
   bash "$SCRIPT" --name claude-default --corpus-root "$KCORPUS" --backend claude-cli \
   --maps-dir "$KMAPS" --title "Claude" --slug claude-default-map 2>&1 ); rc=$?
-# HIMMEL-1084: the preflight is graphify-fence.sh --eval, which treats the
+# the preflight is graphify-fence.sh --eval, which treats the
 # asserted --corpus-class as a DECLARATION and ledgers every allow-family
 # verdict (the same rule as a `.graphify-corpus` marker-declared staged copy),
 # so an allowed scheduled run now always leaves an audit line.
@@ -2738,8 +2731,8 @@ out=$( ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic GRAPHIFY_LEDGER="$CLAUD
   GRAPHIFY_CALL_LOG="$CLAUDE_PREFLIGHT_CALLS" GRAPHIFY_MAP_BIN="$BIN/graphify" \
   bash "$SCRIPT" --name claude-zai --corpus-root "$KCORPUS" --backend claude-cli \
   --maps-dir "$KMAPS" --title "Claude" --slug claude-zai-map 2>&1 ); rc=$?
-# HIMMEL-2224: this case exists to prove claude-cli is classified by its EFFECTIVE
-# ENDPOINT, not by its backend NAME (HIMMEL-1049). That proof gets STRONGER after
+# this case exists to prove claude-cli is classified by its EFFECTIVE
+# ENDPOINT, not by its backend NAME. That proof gets STRONGER after
 # the de-listing rather than weaker: luna-personal x anthropic is `allow`, so a run
 # wrongly waved through as anthropic would exit 0 -- only correct zai-glm
 # classification produces this deny. The discriminator moved from the ledger line
@@ -2771,7 +2764,7 @@ out=$( ANTHROPIC_API_KEY=stub ANTHROPIC_BASE_URL=not-a-url GRAPHIFY_LEDGER="$CLA
   && pass "T40l malformed claude backend host is refused instead of collapsing into the himmel-code wildcard allow" \
   || fail "T40l malformed claude host should fail rc=2 before wildcard/graphify without value disclosure (got $rc): $out calls=$(cat "$CLAUDE_PREFLIGHT_CALLS") ledger=$(cat "$CLAUDE_PREFLIGHT_LEDGER" 2>/dev/null)"
 
-# --- T41 (HIMMEL-1748): claude-cli model pin is unset-only. The stub captures
+# --- T41: claude-cli model pin is unset-only. The stub captures
 # the exported value on both graphify dispatches; unset defaults to sonnet,
 # explicit empty opts back into the CLI default, and an operator value wins. ---
 MODELBIN="$WS/modelbin"; mkdir -p "$MODELBIN"
@@ -2793,7 +2786,7 @@ MODELCORPUS="$WS/modelcorpus"; MODELMAPS="$WS/modelmaps"; mkdir -p "$MODELCORPUS
 printf '# model\ncontent\n' > "$MODELCORPUS/notes/a.md"
 for model_case in unset empty haiku; do
   : > "$MODELLOG"
-  # Each case also pins the EFFORT expectation (HIMMEL-1748 follow-up): unset
+  # Each case also pins the EFFORT expectation: unset
   # env defaults to low, an operator CLAUDE_CODE_EFFORT_LEVEL wins. The stub
   # logs "model:effort" per dispatch.
   case "$model_case" in
@@ -2804,7 +2797,7 @@ for model_case in unset empty haiku; do
     haiku) out=$( GRAPHIFY_CLAUDE_CLI_MODEL=haiku CLAUDE_CODE_EFFORT_LEVEL=medium GRAPHIFY_MAP_BIN="$MODELBIN/graphify" bash "$SCRIPT" \
       --name model-haiku --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-haiku 2>&1 ); rc=$?; expected=haiku:medium ;;
   esac
-  # HIMMEL-1787 (PR #1680 round-4 deferral): the stub logs a line on BOTH
+  # the stub logs a line on BOTH
   # graphify dispatches (comment above -- refresh-graph-map.sh:404 exports
   # the model so the cluster-only labeling call inherits it), so checking
   # only `head -n 1` would still pass a regression that set the model for
@@ -2817,7 +2810,7 @@ for model_case in unset empty haiku; do
     || fail "T41 model+effort case $model_case expected '$expected' on every dispatch (got: $(tr '\n' '|' < "$MODELLOG"), rc=$rc): $out"
 done
 
-# --- T42 (HIMMEL-1748): dirty single-writer corpora are auto-committed before
+# --- T42: dirty single-writer corpora are auto-committed before
 # the freshness fetch, while an ordinary dirty corpus keeps the old skip behavior.
 # A git wrapper forwards local probes/add/commit, stubs the network fetch and
 # ff-only merge as successful, and logs the reached subcommands. ---
@@ -3009,7 +3002,7 @@ else
   fail "T42g missing-timeout gate should skip sweep + print message (rc=$rc head=$nt_head_before->$nt_head_after): $out calls=$(cat "$PULLLOG")"
 fi
 
-# T42g2 (HIMMEL-3077): with no functional timeout the run deadline is DISABLED,
+# T42g2: with no functional timeout the run deadline is DISABLED,
 # and that message must name the remedy (macOS: brew install coreutils provides
 # gtimeout) the way the pull-before-regenerate message above already does.
 # Reuses NOBIN (timeout + gtimeout present but failing the GNU -k probe).
@@ -3025,7 +3018,7 @@ else
   fail "T42g2 DISABLED message should name 'brew install coreutils' + gtimeout (rc=$rc): $out"
 fi
 
-# T42h (HIMMEL-2245): T42a/T42e's hooks must not vanish when `git init` leaves
+# T42h: T42a/T42e's hooks must not vanish when `git init` leaves
 # no `.git/hooks/` (the template copy is not guaranteed — observed absent on a
 # concurrent Windows full-corpus run, where the old bare `cat >` failed with
 # ENOENT and both cases then went red on the hook's ABSENCE, blaming the code
@@ -3152,7 +3145,7 @@ else
   fail "T43e unreadable phi-roots policy should fail rc=2 before graphify (rc=$rc): $out calls=$(cat "$UNREADABLECALLS")"
 fi
 
-# T43f/T43g/T43h (HIMMEL-1748 r4): the phi-roots prefix-match loop fails OPEN
+# T43f/T43g/T43h: the phi-roots prefix-match loop fails OPEN
 # on untrimmed entries — on Windows Git Bash an operator config saved with CRLF
 # line endings leaves a trailing \r on every entry, and a stray leading/trailing
 # space does the same: the prefix pattern then never matches, a corpus that IS
@@ -3242,7 +3235,7 @@ out=$( HOME="$SALHOME" GRAPHIFY_MAP_BIN="$BIN/graphify" bash "$SCRIPT" \
   && pass "T44b unknown backend is unaffected on --no-update publish-only path" \
   || fail "T44b unknown backend --no-update should publish normally (rc=$rc): $out"
 
-# --- T44c (HIMMEL-1789 / HIMMEL-4185): the scheduled preflight classifies
+# --- T44c: the scheduled preflight classifies
 # --backend ollama through the fence (:374 --eval), never a private carve-out.
 # A loopback endpoint + plain model is local-ollama and runs; a remote endpoint
 # (LAN host, remote OLLAMA_BASE_URL even with a loopback OLLAMA_HOST) fails
@@ -3278,7 +3271,7 @@ if [ "$rc" -eq 2 ] && grep -qF 'egress preflight refused' <<< "$out" && [ ! -s "
 else
   fail "T44e remote OLLAMA_BASE_URL must be refused rc=2 (rc=$rc): $out calls=$(cat "$WS/ol-base.calls")"
 fi
-# T44c2 (HIMMEL-4512 item 5): the LOCAL ollama path holds the whole GPU, so both
+# T44c2: the LOCAL ollama path holds the whole GPU, so both
 # graphify subprocesses run at --max-concurrency 1 (semantic-update.sh's pin),
 # not the API-backend default 6. An explicit GRAPHIFY_MAX_CONCURRENCY still wins.
 if [ "$(grep -c -- '--max-concurrency 1\( \|$\)' "$WS/ol-local.calls")" -ge 2 ] \
@@ -3319,7 +3312,7 @@ else
   fail "T44h salus x ollama-cloud without opt-in must be refused rc=2 (rc=$rc): $out"
 fi
 
-# --- T45 (HIMMEL-1902): artifact-level proof for the billed-retry fix. Run a
+# --- T45: artifact-level proof for the billed-retry fix. Run a
 # one-file corpus through a stub graphify whose update call shells a stub
 # `claude`, exactly where graphify's claude-cli backend would. The source user
 # settings deliberately contain a SessionEnd hook. The chunk log must show the
@@ -3393,7 +3386,7 @@ else
   fail "T45 hook-free chunk artifact failed (rc=$rc): $out chunk-log=$(cat "$ARTLOG" 2>/dev/null)"
 fi
 
-# --- T37 (HIMMEL-1421 CR round 1 addendum, codex-adv-1): this repo's
+# --- T37: this repo's
 # documented shell compatibility floor (outside a narrow exception list)
 # is Bash 3.2 (macOS system bash), which does NOT support the
 # `${var,,}`/`${var^^}` case-conversion expansions -- Bash 4+ only, "bad
@@ -3410,11 +3403,11 @@ else
 fi
 
 
-# --- T46 (HIMMEL-1960): GRAPHIFY_OUT must resolve the out dir, the promote
+# --- T46: GRAPHIFY_OUT must resolve the out dir, the promote
 # lock and the corpus exclusion together. graphify itself reads
 # GRAPHIFY_OUT (paths.py) and ast-update.sh mirrors that, so a hardcoded
-# "graphify-out" here meant that under an override the semantic leg locked and
-# wrote a DIFFERENT directory than the hourly structural leg -- the HIMMEL-1948
+# "graphify-out" here would mean that under an override the semantic leg locks and
+# writes a DIFFERENT directory than the hourly structural leg -- the
 # serialization silently guarding nothing.
 #
 # SCOPE: these pin OUR script's handling, not graphify's resolution. T46a/T46c
@@ -3487,7 +3480,7 @@ out=$( GRAPHIFY_OUT=".." GRAPHIFY_MAP_BIN="$GOBIN/graphify" bash "$SCRIPT" \
   && pass "T46c a non-name GRAPHIFY_OUT ('..') is refused rc=2" \
   || fail "T46c '..' should be refused rc=2 (rc=$rc): $out"
 
-# --- T47 (HIMMEL-1960 CR r8): the out dir must not be adopted from somebody's
+# --- T47: the out dir must not be adopted from somebody's
 # SOURCE directory. Accepting any well-formed name means GRAPHIFY_OUT=docs
 # resolves OUT_DIR to <corpus>/docs, where the promote recursively deletes
 # cache/ and removes manifest.json before dropping graph.json in. The refusal
@@ -3581,7 +3574,7 @@ else
   fail "T47g run should succeed and write a manifest (rc=$rc): $out"
 fi
 
-# T47b3: `.graphify-corpus-ignore` (HIMMEL-1903, a CORPUS-side file this repo
+# T47b3: `.graphify-corpus-ignore` (a CORPUS-side file this repo
 # tells operators to create) must NOT read as proof of out-dir ownership. The
 # guard briefly globbed `.graphify*`, which matched it -- so a source tree
 # following this repo's own advice could be adopted and have its cache deleted.
@@ -3657,7 +3650,7 @@ out=$( GRAPHIFY_MAP_BIN="$GOBIN/graphify" bash "$SCRIPT" \
   && pass "T47e the default out-dir name is not content-gated" \
   || fail "T47e the default name must never be refused (rc=$rc): $out"
 
-# T48: HIMMEL-1704 TOCTOU guard — source-level pin. T49 below is the
+# T48: TOCTOU guard — source-level pin. T49 below is the
 # behavioural version and SKIPS without symlink support (this Windows box
 # included, same as T47h), so pin the two mechanisms in the SOURCE too (same
 # shape as test-graph-refresh.sh's 16f/16g): the guard functions exist, AND
@@ -3681,7 +3674,7 @@ grep -Fq 'cd "$MAPS_DIR" && _verify_fs_id "maps-dir" "."' "$SCRIPT" \
   && pass "T48d the maps-dir check is bound to a cd'd cwd, not a re-stat of the pathname" \
   || fail "T48d publish identity check is not cwd-bound (HIMMEL-1704 codex-2 residual reopened)"
 
-# T49 (HIMMEL-1704, behavioural): the ticket's own scenario — an actor with
+# T49 (behavioural): the TOCTOU scenario — an actor with
 # write access to the corpus-root's PARENT directory swaps the accepted
 # directory entry for a different tree AFTER a caller's preflight pinned an
 # identity but BEFORE this runner actually reads it. Assert refusal BEFORE
@@ -3728,7 +3721,7 @@ else
   skip "T49 SKIPPED (this environment cannot create symlinks -- unprivileged Windows without Developer Mode; guarded on POSIX CI)"
 fi
 
-# T50: HIMMEL-1704 round 3 (codex-1) source-level pin. The behavioural T51
+# T50: source-level pin. The behavioural T51
 # below needs symlink support and SKIPS on this Windows box, so pin the
 # first-ever-publish safe-create mechanism in the SOURCE too (same
 # discipline as T48 above): --maps-parent-id is accepted, the vault's
@@ -3745,7 +3738,7 @@ grep -Fq '&& mkdir "$MAPS_LEAF"' "$SCRIPT" \
   && pass "T50c first-publish creates 60-Maps via a TOCTOU-safe mkdir, not node's mkdirSync" \
   || fail "T50c mkdir-based safe-create missing (HIMMEL-1704 round 3 reopened)"
 
-# T51 (HIMMEL-1704 round 3, behavioural): the first-ever-publish case -- 60-
+# T51 (behavioural): the first-ever-publish case -- 60-
 # Maps does not exist at preflight time, so no --maps-id was pinned, only
 # --maps-parent-id (the vault's own identity, its PARENT). Positive control
 # first, and it needs NO symlink support -- a plain vault directory
@@ -3790,7 +3783,7 @@ else
   skip "T51b SKIPPED (this environment cannot create symlinks -- unprivileged Windows without Developer Mode; guarded on POSIX CI)"
 fi
 
-# --- T52 (HIMMEL-3205): --promote-only <scratch-workdir> recovers an orphaned,
+# --- T52: --promote-only <scratch-workdir> recovers an orphaned,
 # finished extraction: validate -> locks -> harden -> leak scan -> promote +
 # manifest stamp, optionally --publish. Stubs only: the shared graphify stub
 # LOGS every call (GRAPHIFY_CALL_LOG) so the happy path can prove promote-only
@@ -3995,7 +3988,7 @@ t52_tmp_left=0; for f in "$W"/.graph-structural-fields.*; do [ -e "$f" ] && t52_
 [ "$t52_tmp_left" -eq 0 ] && pass "T52 leak: no scan temp left in the workdir" || fail "T52 leak: scan temp left in the workdir"
 [ -d "$W/graphify-out" ] && pass "T52 leak: workdir kept" || fail "T52 leak: workdir removed"
 
-# --- T53 (HIMMEL-3718): --out-root / GRAPHIFY_OUT_ROOT lets the promote land
+# --- T53: --out-root / GRAPHIFY_OUT_ROOT lets the promote land
 # OUTSIDE the corpus (luna's graphify-out/ sat inside the vault; Obsidian
 # watches every vault file and hung on the nightly refresh churn). This is a
 # SEPARATE knob from GRAPHIFY_OUT (T46/T47 above): that one names the
@@ -4064,7 +4057,7 @@ out=$( GRAPHIFY_MAP_BIN="$GOBIN/graphify" bash "$SCRIPT" \
   && pass "T53e --out-root=<corpus root> is refused rc=2" \
   || fail "T53e --out-root=<corpus root> should be refused rc=2 (rc=$rc): $out"
 
-# T53e2 (HIMMEL-3718 CR round 3, codex-3): an --out-root that is a SUBDIRECTORY
+# T53e2: an --out-root that is a SUBDIRECTORY
 # of the corpus root (not equal to it) still churns inside the watched corpus
 # and must be refused too.
 T53SUB="$T53CORPUS/dedicated-out"; mkdir -p "$T53SUB"
@@ -4075,7 +4068,7 @@ out=$( GRAPHIFY_MAP_BIN="$GOBIN/graphify" bash "$SCRIPT" \
   && pass "T53e2 --out-root=<subdir of corpus> is refused rc=2" \
   || fail "T53e2 --out-root=<subdir of corpus> should be refused rc=2 (rc=$rc): $out"
 
-# T53e3 (HIMMEL-3718 CR round 3, codex-2): a --out-root with a SYMLINK component
+# T53e3: a --out-root with a SYMLINK component
 # followed by ".." can lexically collapse to one location (what the root/home/
 # corpus-root refusals above actually check) while the OS resolves the raw
 # string -- following the real symlink target, then applying ".." from THERE --
@@ -4123,8 +4116,8 @@ else
 fi
 
 # T53f: an --out-root pointing at an existing non-graphify, non-empty directory
-# is refused, EVEN AT THE DEFAULT leaf name -- HIMMEL-3718 widens the T47a/T47b2
-# guard (previously scoped only to a GRAPHIFY_OUT_NAME override) to also fire
+# is refused, EVEN AT THE DEFAULT leaf name -- the T47a/T47b2
+# guard (otherwise scoped to a GRAPHIFY_OUT_NAME override) also fires
 # whenever the promote is redirected out-of-corpus, since "the conventional
 # graphify-out needs no proof" only held while OUT_DIR was guaranteed to be a
 # child of an already-trusted corpus.
@@ -4161,7 +4154,7 @@ else
   skip "T53g SKIPPED (this environment cannot create symlinks)"
 fi
 
-# T53h (HIMMEL-3718 CR round 1, codex-1): a NOT-YET-EXISTING --out-root that
+# T53h: a NOT-YET-EXISTING --out-root that
 # lexically collapses (via "..") to the corpus root itself must be refused
 # exactly like T53e's direct spelling -- the "if -d" cd/pwd -P canonicalizer
 # alone never fires for a path that doesn't exist yet, so a naive resolver
@@ -4176,7 +4169,7 @@ out=$( GRAPHIFY_MAP_BIN="$GOBIN/graphify" bash "$SCRIPT" \
   && pass "T53h a not-yet-existing --out-root that collapses via .. to the corpus root is refused rc=2" \
   || fail "T53h .. traversal into the corpus root should be refused rc=2 (rc=$rc): $out"
 
-# T-bank-skip (HIMMEL-2701): the preamble pin makes the suite blind to the live
+# T-bank-skip: the preamble pin makes the suite blind to the live
 # bank, so the SKIPPED-BANK path is asserted here deliberately against a FIXTURE
 # cache (account-stamped, fresh) at 85 % weekly, with a 10 % positive control.
 mkdir -p "$WS/bank85"
@@ -4191,7 +4184,7 @@ else
       "$1" "$(date +%s)" "$bank_acct" > "$WS/bank85/cache.json"
   }
   bank_run() { # <name> <corpus> <maps>
-    # CADENCE_BANK_MAX_PCT/MAX_AGE pinned (HIMMEL-4512): the 85/10 % fixtures
+    # CADENCE_BANK_MAX_PCT/MAX_AGE pinned: the 85/10 % fixtures
     # assume the default threshold; a launching env exporting 95 or 99 made the
     # 85 % fixture run instead of skip.
     CLAUDE_ACCOUNT_CONFIG="$bank_cfg" CADENCE_BANK_CACHE="$WS/bank85/cache.json" CADENCE_BANK_SKIP_REFRESH=1 \

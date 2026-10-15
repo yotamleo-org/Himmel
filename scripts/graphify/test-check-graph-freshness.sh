@@ -86,7 +86,7 @@ printf '%s\n' "$EMPTYCORPUS" > "$OUT/.graphify_root"
 bash "$SCRIPT" --out "$OUT" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && pass "T4c absolute/traversal manifest keys skipped -> rc=2" || fail "T4c rc=2 (got $rc)"
 
-# --- T4d: majority of manifest paths exist -> corpus verified (HIMMEL-2072) ---
+# --- T4d: majority of manifest paths exist -> corpus verified ---
 # 3 of 4 manifest-named paths exist under the corpus (75%, above the >50%
 # threshold) -- must NOT be called orphaned, unlike the old "at least one
 # match" rule this replaces (which also would have passed here, but this
@@ -102,7 +102,7 @@ out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 >/dev/null ); rc=$?
 printf '%s\n' "$out" | grep -q '3/4 manifest paths exist' \
   && pass "T4d prints the measured ratio" || fail "T4d ratio not printed: $out"
 
-# --- T4e: majority of manifest paths MISSING -> orphaned (HIMMEL-2072) ---
+# --- T4e: majority of manifest paths MISSING -> orphaned ---
 # The exact regression this ticket reports: most manifest paths exist on
 # disk (75% here too, just the complement of T4d) is NOT this case -- this
 # is 1 of 4 existing (25%, below >50% missing threshold), which must FAIL.
@@ -146,7 +146,7 @@ bash "$SCRIPT" --out "$WS/no-such-dir" >/dev/null 2>&1; rc=$?
 bash "$SCRIPT" --max-age-days 7 >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 1 ] && pass "T8 missing --out -> usage rc=1" || fail "T8 usage rc=1 (got $rc)"
 
-# Make a git commit N days ago in $1 (repo dir); print its SHA. HIMMEL-1647 fixtures.
+# Make a git commit N days ago in $1 (repo dir); print its SHA.
 git_commit_days_ago() {  # $1=repo dir, $2=days ago
   local repo="$1" days="$2" epoch
   epoch=$(python3 -c 'import time,sys; print(int(time.time()-float(sys.argv[1])*86400))' "$days")
@@ -159,7 +159,7 @@ git_commit_days_ago() {  # $1=repo dir, $2=days ago
     && git rev-parse HEAD )
 }
 
-# --- T9: build-identity age overrides a FALSE-FRESH mtime (HIMMEL-1647) ---
+# --- T9: build-identity age overrides a FALSE-FRESH mtime ---
 # graph.json's own mtime is fresh (just written) but its embedded
 # built_at_commit points at a commit 10 days old -- the exact checkout/
 # restore shape the ticket describes. Must WARN off the commit's age.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-harden-graph.sh — HIMMEL-2983: hermetic tests for harden-graph.py, the
+# test-harden-graph.sh — hermetic tests for harden-graph.py, the
 # idempotent post-update step that bridges doc nodes naming a code file to
 # that file's AST node and adds allowlisted subprocess-exec code-fact edges.
 # Run: bash scripts/graphify/test-harden-graph.sh
@@ -84,7 +84,7 @@ fi
 # --- T2: idempotent re-run -> unchanged=1, byte-identical graph.json ---
 # cmp -s (not sha256sum) checks byte-identity directly: an absent/failing
 # checksum tool would silently compare two empty strings and false-pass
-# (codex-2, HIMMEL-2983 round 2), whereas a missing cmp itself fails loudly.
+#, whereas a missing cmp itself fails loudly.
 echo "T2: re-run is idempotent and byte-identical"
 cp "$D1/graph.json" "$D1/graph.json.before"
 out2=$( python3 "$SCRIPT" --out "$D1" --allowlist "$D1/allowlist.json" ); rc2=$?
@@ -149,7 +149,7 @@ python3 "$SCRIPT" --out "$D7" --allowlist "$D7/allowlist.json" >/dev/null
 
 # --- T8: allowlist source_file missing at its exact path must NOT fall back
 # to a same-basename file elsewhere -- that would fabricate a false,
-# confidence-1.0 "calls" edge (codex-1, HIMMEL-2983 round 1) ---
+# confidence-1.0 "calls" edge ---
 echo "T8: allowlist entry requires an exact source_file path match, no basename fallback"
 D8="$WS/t8"; mkdir -p "$D8"
 cat > "$D8/graph.json" <<'JSON'
@@ -178,7 +178,7 @@ echo "$out8" | grep -qF "code-facts=0" \
 
 # --- T9: a pre-existing edge between the same two nodes in REVERSE order
 # must count as a duplicate too -- graph.json is undirected/non-multigraph, so
-# (u, v) and (v, u) are the same edge (codex-2, HIMMEL-2983 round 1) ---
+# (u, v) and (v, u) are the same edge ---
 echo "T9: reverse-order existing edge is recognized as the same undirected edge"
 D9="$WS/t9"; mkdir -p "$D9"
 cat > "$D9/graph.json" <<'JSON'
@@ -209,7 +209,7 @@ echo "$out9" | grep -qF "code-facts=0 skipped-ambiguous=0 skipped-path-mismatch=
 
 # --- T10: an allowlisted dotfile-style path (leading "." that is not a "./"
 # prefix) must match itself exactly, never get mangled by a character-class
-# lstrip into an unrelated same-tail path (codex-1, HIMMEL-2983 round 2) ---
+# lstrip into an unrelated same-tail path ---
 echo "T10: allowlist source_file starting with a bare dot matches exactly, no character-class stripping"
 D10="$WS/t10"; mkdir -p "$D10"
 cat > "$D10/graph.json" <<'JSON'
@@ -251,8 +251,7 @@ fi
 
 # --- T11: an explicit --allowlist path that does not exist is a typo, not
 # the normal "no allowlist yet" case -- it must exit 1, never silently
-# suppress every code-fact edge while reporting success (codex-2,
-# HIMMEL-2983 round 3) ---
+# suppress every code-fact edge while reporting success ---
 echo "T11: explicit --allowlist pointing nowhere exits 1, not a silent no-op"
 D11="$WS/t11"; make_fixture "$D11"
 out11=$( python3 "$SCRIPT" --out "$D11" --allowlist "$D11/does-not-exist.json" 2>&1 ); rc11=$?
@@ -260,9 +259,8 @@ out11=$( python3 "$SCRIPT" --out "$D11" --allowlist "$D11/does-not-exist.json" 2
 
 # --- T12: a doc token with a directory component that CONTRADICTS the only
 # same-basename AST file must NOT fall back to a bare-basename guess -- it is
-# unresolved and counted in skipped-path-mismatch, never bridged (HIMMEL-3005;
-# this is the RED case on the pre-fix resolver, which bridges it via the
-# basename fallback) ---
+# unresolved and counted in skipped-path-mismatch, never bridged (a resolver
+# with a basename fallback would bridge it) ---
 echo "T12: directory-qualified token with no matching path is unresolved, not basename-guessed"
 D12="$WS/t12"; mkdir -p "$D12"
 cat > "$D12/graph.json" <<'JSON'
@@ -288,7 +286,6 @@ echo "$out12" | grep -qF "bridges=0 code-facts=0 skipped-ambiguous=0 skipped-pat
 # SUFFIX of the real path, not the whole thing) resolves by path suffix --
 # this is the common real-corpus shape (docs writing "lanes/resolve.mjs" for
 # "scripts/lanes/resolve.mjs") that a strict bare-token-only rule would drop
-# (HIMMEL-3005, console ruling E1) ---
 echo "T13: directory-qualified token resolves by unique path suffix"
 D13="$WS/t13"; mkdir -p "$D13"
 cat > "$D13/graph.json" <<'JSON'

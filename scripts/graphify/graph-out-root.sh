@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # graph-out-root.sh — ONE resolver for "where does this corpus's promoted
-# graphify-out/ live" (HIMMEL-3718). Sourced by every in-tree caller that
+# graphify-out/ live". Sourced by every in-tree caller that
 # invokes refresh-graph-map.sh for luna (graph-refresh.sh, graphmap-cadence.sh)
 # so the out-of-corpus destination is a single fact, not N copies of a path.
 #
@@ -8,7 +8,7 @@
 # per-file extraction cache/) sat inside the vault; Obsidian watches every
 # vault file (gitignored ones included) and hung on the nightly refresh churn.
 # himmel's OWN corpus is unaffected — its graphify-out/ is a tracked, shared
-# artifact (HIMMEL-1123) and must stay in-corpus, so this resolver returns
+# artifact and must stay in-corpus, so this resolver returns
 # empty for it (empty = refresh-graph-map.sh's existing in-corpus default,
 # unchanged).
 #

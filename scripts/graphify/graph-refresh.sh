@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # graph-refresh.sh — operator-invoked ONE-SHOT graphify refresh for the luna
-# and/or himmel corpora (HIMMEL-1644).
+# and/or himmel corpora.
 #
-# WHY: refresh-graph-map.sh (HIMMEL-825) is the fence-safe incremental refresh
-# runner for ONE corpus, and graphmap-cadence.sh (HIMMEL-829) arms a DAILY
+# WHY: refresh-graph-map.sh is the fence-safe incremental refresh
+# runner for ONE corpus, and graphmap-cadence.sh arms a DAILY
 # scheduler that fires it per corpus. But an operator refreshing BOTH graphs on
 # demand (off the cadence, ad hoc) had to reconstruct the canonical per-corpus
 # argument sets by reading the cadence script — the title/slug/tag literals, the
@@ -16,8 +16,8 @@
 # This is a LEAN-INVOKE operator command (a slash command the operator runs on
 # demand), NOT a hook and NOT a cadence. It owns NO safety itself — the runner
 # (refresh-graph-map.sh) owns the fence (scratchpad copy, never a live vault),
-# the per-out-dir promote lock (HIMMEL-910), the freshness manifest (HIMMEL-907),
-# and the host-path guard (HIMMEL-1134). This wrapper just resolves the vault,
+# the per-out-dir promote lock, the freshness manifest,
+# and the host-path guard. This wrapper just resolves the vault,
 # builds the per-corpus argv, and fires.
 #
 # SERIAL, never concurrent: luna then himmel, mirroring the cadence's stagger
@@ -25,8 +25,7 @@
 # them — a deliberate serial run here is the operator-side guard against two
 # back-to-back extractions piling onto the claude-cli backend at once.
 #
-# TIMEOUT CALIBRATION lives in refresh-graph-map.sh (HIMMEL-1645, a parallel
-# branch): this wrapper does NOT set GRAPHIFY_API_TIMEOUT itself — it forwards the
+# TIMEOUT CALIBRATION lives in refresh-graph-map.sh: this wrapper does NOT set GRAPHIFY_API_TIMEOUT itself — it forwards the
 # caller's environment verbatim, so a sane default landed in the runner applies
 # without a competing override here.
 #
@@ -61,7 +60,7 @@
 #      bank skip) -- investigate
 #   4  no failures, but one or more legs were SKIPPED (bank at/over threshold,
 #      runner exited 3) and nothing else failed -- benign, retry later
-#      (HIMMEL-1948: a skip is NOT success; it must never read as exit 0 "OK",
+#      (a skip is NOT success; it must never read as exit 0 "OK",
 #      the false-clean an unattended cadence cannot tell from a real refresh)
 set -euo pipefail
 
@@ -69,7 +68,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HIMMEL_ROOT="$(cd "$HERE/../.." && pwd)"
 REFRESH_SCRIPT="${GRAPH_REFRESH_RUNNER:-$HIMMEL_ROOT/scripts/graphify/refresh-graph-map.sh}"
 CADENCE_SCRIPT="${GRAPH_REFRESH_CADENCE_SCRIPT:-$HIMMEL_ROOT/scripts/luna/graphmap-cadence.sh}"
-# HIMMEL-3718: ONE resolver for the out-of-corpus promote destination — see
+# ONE resolver for the out-of-corpus promote destination — see
 # graph-out-root.sh for why (Obsidian hangs on the vault-internal graphify-out/
 # churn). Empty for himmel (its graphify-out/ stays tracked + in-corpus).
 # shellcheck source=./graph-out-root.sh
@@ -93,7 +92,7 @@ HIMMEL_SLUG="graphify-himmel-map"
 HIMMEL_TAG="himmel"
 
 # Cross-platform user-home resolution (mirrors graphmap-cadence.sh /
-# pipeline-cadence, HIMMEL-645). On Windows Git-Bash $HOME can be the MSYS home
+# pipeline-cadence). On Windows Git-Bash $HOME can be the MSYS home
 # while the vault lives under the Windows user profile, so prefer USERPROFILE via
 # cygpath BEFORE $HOME. POSIX hosts have USERPROFILE unset and fall straight
 # through to $HOME. /tmp is the last-resort floor when both are unset.
@@ -115,7 +114,7 @@ default_vault() {
     printf '%s/Documents/luna' "$(resolve_user_home)"
 }
 
-# --- vault preflight helpers (HIMMEL-1644 codex-adv-1) -----------------------
+# --- vault preflight helpers -----------------------
 # The graphify-fence PreToolUse hook only matches `graphify` in COMMAND
 # POSITION, so it cannot see through this wrapper to classify the vault the
 # luna leg extracts (the wrapper shells refresh-graph-map.sh, not graphify
@@ -136,7 +135,7 @@ default_vault() {
 # Refactoring the production guardrail into a shared lib both consume is a
 # larger, riskier change deliberately out of scope for this wrapper hardening.
 # The DURABLE fix is the in-runner-preflight design surface tracked as
-# HIMMEL-1084 (refresh-graph-map.sh already notes that residual: ANTHROPIC_*
+# an open ticket (refresh-graph-map.sh already notes that residual: ANTHROPIC_*
 # still pass through on the scheduled path with no matrix eval); until that
 # lands, keep these helpers in sync with graphify-fence.sh by hand.
 
@@ -231,7 +230,7 @@ _under_any_list() {
     [ -e "$listfile" ] || { echo miss; return; }
     { [ -f "$listfile" ] && [ -r "$listfile" ]; } || { echo unreadable; return; }
     while IFS= read -r root || [ -n "$root" ]; do
-        # HIMMEL-3242: kept in lockstep with graphify-fence.sh (trim + skip
+        # kept in lockstep with graphify-fence.sh (trim + skip
         # whole-line `#` comments; an entry that trims to "" is skipped).
         root="${root%$'\r'}"
         root="${root#"${root%%[![:space:]]*}"}"
@@ -255,7 +254,7 @@ _under_any_list() {
 # `cd "$p" && pwd -P` fallback (resolves the symlink chain via the shell's
 # physical pwd -- the vault is a directory, so the cd lands). The RESULT is
 # checked, not just the exit status (auto-action.sh idiom): a resolver that
-# exits 0 on an empty output is not a resolution. HIMMEL-1644 codex-1 r2: the
+# exits 0 on an empty output is not a resolution. The
 # lexical _abs/_normalize mirror the fence and deliberately do NOT follow
 # symlinks, so a vault path that is -- or traverses -- a symlink into a
 # .salus/denylisted tree is classified on the LINK's ancestors, not the
@@ -273,12 +272,12 @@ _resolve_symlinks() {
 
 # _fs_id <path> -> "device:inode" of the path on stdout; returns 1 if no stat
 # variant could read it (the caller FAILS CLOSED). This is the filesystem-
-# IDENTITY primitive (HIMMEL-1670): the same directory reached via different
+# IDENTITY primitive: the same directory reached via different
 # case, a trailing slash, a `.`/`..` segment, an 8.3 short path, or a symlink
 # all collapse to ONE id, and two genuinely-different directories -- even two
 # that differ only by case on a case-SENSITIVE FS -- keep distinct ids.
 #
-# -L IS LOAD-BEARING, NOT DECORATION (HIMMEL-1670 CR, codex-adv-1). Both GNU
+# -L IS LOAD-BEARING, NOT DECORATION. Both GNU
 # and BSD stat default to LSTAT: without -L a symlink reports the LINK's own
 # inode, not its target's. That is a guard BYPASS, not a cosmetic difference --
 # a vault symlinked at HOME would produce a link inode that never equals HOME's
@@ -304,7 +303,7 @@ _fs_id() {
 
 # _fs_dir_id <path> — ONE stat call returning "dev:inode" ONLY when <path> is
 # (symlink-resolved via -L, like _fs_id) a directory; empty output otherwise.
-# HIMMEL-1704 round 2 (codex-1): a separate `[ -d ]` existence/type test
+# a separate `[ -d ]` existence/type test
 # followed by a LATER `_fs_id` identity probe are two different stat-family
 # syscalls on the same pathname, and two separate syscalls can never be
 # atomic with each other in pure bash without holding a directory file
@@ -342,7 +341,7 @@ preflight_vault() {
     canon="$(_abs "$VAULT")"
     # Resolve symlinks so EVERY check below classifies the tree the extraction
     # will ACTUALLY read (the canonical target), not the symlink's lexical
-    # ancestors (HIMMEL-1644 codex-1 r2). _abs/_normalize are deliberately
+    # ancestors. _abs/_normalize are deliberately
     # lexical (they mirror the fence); without this resolution a vault path
     # that is -- or traverses -- a symlink into a .salus/denylisted tree is
     # classified on the LINK's ancestors and slips past the hard-refuse.
@@ -430,7 +429,7 @@ preflight_vault() {
     # disk, so this matches what the runner copy will stat).
     case "$CORPUS" in
         luna|both)
-            # HIMMEL-1704 round 2 (codex-1): the existence/type test and the
+            # the existence/type test and the
             # identity probe are now the SAME stat call (_fs_dir_id) -- a
             # separate `[ -d ]` followed by a LATER `_fs_id` left a gap
             # between two different syscalls on the same pathname, and an
@@ -471,7 +470,7 @@ preflight_vault() {
     # checks never saw. On the degraded no-resolver path this is the lexical
     # canon (already WARNed above).
     PREFLIGHT_CANONICAL_VAULT="$class_path"
-    # HIMMEL-1704: the NAME above is still just a pathname -- a replace-
+    # the NAME above is still just a pathname -- a replace-
     # between-check-and-use race (an actor with write access to the vault's
     # PARENT swaps the validated directory entry for a symlink to HOME after
     # this preflight returns but before refresh-graph-map.sh's cd/copy) can
@@ -484,7 +483,7 @@ preflight_vault() {
     PREFLIGHT_VAULT_ID="$vault_id"
     # --maps-dir is always $VAULT/60-Maps, for BOTH legs. On the luna/both
     # leg PREFLIGHT_MAPS_ID was already pinned above, right next to the
-    # sentinel that guarantees 60-Maps exists (HIMMEL-1704 codex-1 r1) --
+    # sentinel that guarantees 60-Maps exists --
     # never re-probe it here (a second probe would just reopen the same gap
     # this fix closes). On a himmel-only run there is no sentinel, so
     # 60-Maps legitimately may not exist yet (first-ever publish); probe it
@@ -495,7 +494,7 @@ preflight_vault() {
         if PREFLIGHT_MAPS_ID="$(_fs_dir_id "$class_path/60-Maps")"; then
             : # pinned
         elif [ -e "$class_path/60-Maps" ]; then
-            # HIMMEL-1704 round 2 (codex-2): something IS at that path but
+            # something IS at that path but
             # could not be identity-probed as a directory -- a transient
             # stat failure, a non-directory squatting on the name, or a race
             # in progress. That is suspicious, not the legitimate "doesn't
@@ -563,7 +562,7 @@ if [ ! -f "$REFRESH_SCRIPT" ]; then
     exit 2
 fi
 # Drive-RELATIVE input (X:tail) is refused outright, BEFORE the -d existence
-# check or _abs anchoring (codex-adv-2 r3, mirroring the fence's HIMMEL-845
+# check or _abs anchoring (mirroring the fence's
 # fail-closed rule): such a path resolves against Windows' per-drive current
 # directory, so the form _abs would synthesize under $PWD is NOT provably the
 # tree another layer reads -- classification and consumption could diverge.
@@ -579,7 +578,7 @@ if [ ! -d "$VAULT" ]; then
     exit 2
 fi
 
-# Vault preflight (HIMMEL-1644 codex-adv-1): refuse PHI/root/non-vault paths
+# Vault preflight: refuse PHI/root/non-vault paths
 # before ANY leg fires (dry-run included). See preflight_vault above.
 preflight_vault
 # Consume the validated canonical path everywhere downstream (codex-adv-2 r3):
@@ -638,11 +637,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
         RUNNER_ARGV=(bash "$REFRESH_SCRIPT" \
             --name "$R_NAME" --corpus-root "$R_CORPUS_ROOT" --maps-dir "$VAULT/60-Maps" \
             --title "$R_TITLE" --slug "$R_SLUG" --backend "$BACKEND" --corpus-tag "$R_TAG")
-        # HIMMEL-1704: --corpus-id is the vault's identity ONLY -- the himmel
+        # --corpus-id is the vault's identity ONLY -- the himmel
         # leg's corpus-root is $HIMMEL_ROOT, a different filesystem object the
         # vault preflight never classified, so pinning it here would always
         # mismatch. --maps-id applies to both legs (both publish into the same
-        # $VAULT/60-Maps). --maps-parent-id (round 3, codex-1) is the vault's
+        # $VAULT/60-Maps). --maps-parent-id is the vault's
         # OWN identity again, forwarded for both legs whenever the preflight
         # has one: it lets the runner safely mkdir a not-yet-existing
         # 60-Maps from within a verified vault cwd, instead of silently
@@ -654,7 +653,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
         if [ "$c" = "luna" ]; then RUNNER_ARGV+=(--corpus-class luna-personal); fi
         R_OUT_ROOT="$(graphify_out_root_for "$c")"
         if [ -n "$R_OUT_ROOT" ]; then RUNNER_ARGV+=(--out-root "$R_OUT_ROOT"); fi
-        # HIMMEL-3764: mirror the real run's conditional `env -u GRAPHIFY_OUT_ROOT`
+        # mirror the real run's conditional `env -u GRAPHIFY_OUT_ROOT`
         # wrapper (below) so the printed command matches what actually executes --
         # a copy-pasted dry-run line must behave the same under an ambient
         # GRAPHIFY_OUT_ROOT as the real run does.
@@ -688,7 +687,7 @@ for c in "${CORPORA[@]}"; do
             --slug "$R_SLUG" \
             --backend "$BACKEND" \
             --corpus-tag "$R_TAG")
-    # HIMMEL-1704: same identity-pin rule as the dry-run block above.
+    # same identity-pin rule as the dry-run block above.
     if [ "$c" = "luna" ] && [ -n "$PREFLIGHT_VAULT_ID" ]; then RUNNER_ARGV+=(--corpus-id "$PREFLIGHT_VAULT_ID"); fi
     if [ -n "$PREFLIGHT_MAPS_ID" ]; then RUNNER_ARGV+=(--maps-id "$PREFLIGHT_MAPS_ID"); fi
     if [ -n "$PREFLIGHT_VAULT_ID" ]; then RUNNER_ARGV+=(--maps-parent-id "$PREFLIGHT_VAULT_ID"); fi
@@ -699,7 +698,7 @@ for c in "${CORPORA[@]}"; do
     # The `if` guards the runner call from set -e so a failed leg is REPORTED and
     # the remaining legs still run (the operator wants the per-corpus summary for
     # BOTH, not a hard stop after the first failure).
-    # HIMMEL-3718 CR round 3 (codex-1): when this corpus's resolver says
+    # when this corpus's resolver says
     # in-corpus (R_OUT_ROOT empty), scrub an ambient GRAPHIFY_OUT_ROOT so a
     # value the invoking shell happens to have exported (e.g. left over from
     # testing luna's out-root) can't silently leak into this leg's child
@@ -712,10 +711,10 @@ for c in "${CORPORA[@]}"; do
     fi
     if "${RUNNER_CMD[@]}"; then
         echo "graph-refresh: [$c] OK -- published $VAULT/60-Maps/$R_SLUG.md"
-        # Himmel's graphify-out/ is TRACKED (HIMMEL-1123); the refresh regenerates
+        # Himmel's graphify-out/ is TRACKED; the refresh regenerates
         # it on disk but does NOT ship it. The operator must publish it separately
         # via /graph-publish so win2/weak stations pull the new graph instead of an
-        # arbitrarily stale one. Do NOT auto-run it (HIMMEL-1129 stays its own
+        # arbitrarily stale one. Do NOT auto-run it (publishing stays its own
         # operator action — a commit + push + PR the operator should opt into).
         if [ "$c" = "himmel" ]; then
             echo "graph-refresh: [$c] NEXT -- run /graph-publish to ship the refreshed graphify-out/ (HIMMEL-1129)"
@@ -757,8 +756,8 @@ fi
 # Three outcomes per leg (OK / SKIPPED-bank / FAILED) must stay distinguishable
 # here too -- the per-leg lines above already do this, but the final summary is
 # the line an operator is most likely to actually read, so it must never call a
-# skipped leg "refreshed" (same false-success class CodeRabbit flagged on the
-# per-leg OK line, HIMMEL-1901 CR round 1). REFRESHED is derived, not tracked,
+# skipped leg "refreshed" (same false-success class as the per-leg OK line).
+# REFRESHED is derived, not tracked,
 # same as FAILURES/SKIPPED already are -- it's just the remainder.
 REFRESHED=$(( ${#CORPORA[@]} - FAILURES - SKIPPED ))
 echo
@@ -771,7 +770,7 @@ if [ "$FAILURES" -gt 0 ]; then
     exit 3
 fi
 # A skip-only outcome (no failures, but at least one leg skipped for the bank)
-# is NOT success (HIMMEL-1948): it must never print the OK token or exit 0 --
+# is NOT success: it must never print the OK token or exit 0 --
 # that reads as "refreshed" on an unattended cadence, indistinguishable from a
 # real success, which is exactly how a month of skipped refreshes went
 # unnoticed. Distinct exit code 4 (not 3 -- 3 means a leg FAILED, and the

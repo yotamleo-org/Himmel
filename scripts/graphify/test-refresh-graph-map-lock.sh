@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-refresh-graph-map-lock.sh — HIMMEL-910: interleaved two-process test for
+# test-refresh-graph-map-lock.sh — interleaved two-process test for
 # refresh-graph-map.sh's exclusive per-out-dir promote lock. Hermetic: stubs
 # graphify (GRAPHIFY_MAP_BIN), no network, no real vault.
 # Run: bash scripts/graphify/test-refresh-graph-map-lock.sh
@@ -13,13 +13,10 @@ pass() { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
 
 WS="$(mktemp -d)"; trap 'rm -rf "$WS"' EXIT
-# HIMMEL-2050: the fixture used to pass --backend deepseek, a backend
-# refresh-graph-map.sh's egress preflight has no provider mapping for --
-# HIMMEL-1257 de-listed it, so every invocation below fail-closed before the
-# lock logic under test was ever reached. --backend kimi (native graphify
-# backend, no bank-preflight, no seed-claude-config.sh) used to be the
-# vehicle here, but kimi/moonshot is retired (HIMMEL-2101, operator ruling —
-# there is no kimi backend). --backend claude (deliberately NOT claude-cli,
+# The fixture avoids --backend deepseek: refresh-graph-map.sh's egress
+# preflight has no provider mapping for it, so every invocation would
+# fail-closed before the lock logic under test was ever reached. There is no
+# kimi backend either (kimi/moonshot is retired). --backend claude (deliberately NOT claude-cli,
 # the sibling test-refresh-graph-map.sh suite's default) resolves
 # EFFECTIVE_PROVIDER to "anthropic" and is the closest remaining equivalent:
 # this suite asserts sub-second lock-wait/timeout precision, and claude-cli's
@@ -194,8 +191,8 @@ while [ ! -d "$OUT2/.promote.lock" ] && [ "$i" -lt 200 ]; do
 done
 [ -d "$OUT2/.promote.lock" ] || fail "T2 setup: process C did not acquire the promote lock in time"
 
-# HIMMEL-1653: C's extraction lock (acquired before pull/extraction, held
-# through the whole run) now gates D BEFORE it can ever reach the promote
+# C's extraction lock (acquired before pull/extraction, held
+# through the whole run) gates D BEFORE it can ever reach the promote
 # lock C is holding -- so D's bound must be on the extraction lock too, or
 # it just waits out C's hold at the (wider-default) extraction gate instead
 # of refusing fast. Both bounds set short, matching this test's intent.
@@ -244,16 +241,16 @@ grep -q '"gen":"E"' "$OUT3/graph.json" 2>/dev/null && pass "T3 the refresh compl
 [ -d "$OUT3/.promote.lock" ] && fail "T3 lock dir left behind after takeover run (takeover -> acquire -> release did not compose)" \
   || pass "T3 lock dir gone after the takeover run (takeover -> acquire -> eager release composed)"
 
-# --- T4 (CR r1, codex-adv-1; HIMMEL-1653 retargeted): two SIMULTANEOUS
+# --- T4: two SIMULTANEOUS
 # contenders against one stale lock -- the takeover must be single-winner.
-# The rm-then-continue takeover let both contenders judge the same stale
-# stamp, then the second's rm -rf destroy the first's freshly-won lock --
+# A naive rm-then-continue takeover would let both contenders judge the same
+# stale stamp, then the second's rm -rf destroy the first's freshly-won lock --
 # both inside the guarded block at once. Asserts: exactly ONE takeover
 # trail, the two holds are fully serialized, and the final triple is one
 # self-consistent generation.
 #
-# HIMMEL-1653: retargeted from .promote.lock to .extraction.lock. The
-# extraction lock is now acquired BEFORE the promote lock and held through
+# This test targets .extraction.lock, not .promote.lock. The
+# extraction lock is acquired BEFORE the promote lock and held through
 # it, so two independent invocations can no longer be simultaneous
 # contenders for .promote.lock at all -- they serialize at the wider
 # extraction gate first (proven directly by T10). This test's single-winner-
@@ -273,11 +270,11 @@ printf '%s\n' "$STALE_AT4" > "$OUT4/.extraction.lock/acquired"
 GBIN4="$WS/g4bin"; make_stub "$GBIN4" "G"
 HBIN4="$WS/h4bin"; make_stub "$HBIN4" "H"
 
-# HIMMEL-2618: the interleaving is FORCED, not left to load. The test-only
+# The interleaving is FORCED, not left to load. The test-only
 # takeover gate parks the FIRST contender to judge the lock stale just before
 # its sideline mv; the other contender then runs its whole takeover+acquire
 # and is holding a LIVE lock when the parked one is released -- whose mv then
-# lands on that live lock (the pre-fix "got 2" takeovers / overlapping holds).
+# lands on that live lock (the "got 2" takeovers / overlapping holds failure).
 GATE4="$WS/gate4"; mkdir -p "$GATE4"
 START4=$(date -u +%s)
 GRAPHIFY_MAP_BIN="$GBIN4/graphify" PATH="$GBIN4:$PATH" \
@@ -329,14 +326,14 @@ else
   fail "T4 final artifacts are spliced across generations (graph=$GEN_GRAPH4 report=$GEN_REPORT4)"
 fi
 
-# --- T5 (CR r1, codex-1; HIMMEL-1653 retargeted): owner-blind release. A
+# --- T5: owner-blind release. A
 # stale-but-ALIVE former holder (machine-sleep mid-run) that was taken over
 # must NOT, on wake, delete the SUCCESSOR's lock -- release only removes the
 # lock dir when its owner token is still ours; on mismatch it WARNs loudly
 # and leaves the successor's lock alone.
 #
-# HIMMEL-1653: retargeted from .promote.lock to .extraction.lock, for the
-# same reason as T4 -- the extraction lock is acquired before (and held
+# This test targets .extraction.lock, not .promote.lock, for the
+# same reason as T4 --the extraction lock is acquired before (and held
 # through) the promote lock, so a successor can no longer reach
 # .promote.lock while a former owner is still inside its own run at all; it
 # would just wait at the wider extraction gate. The owner-blind-release
@@ -396,9 +393,8 @@ grep -q "not releasing" "$WS/f5.err" 2>/dev/null && pass "T5 former owner WARNs 
 
 wait "$SPID"; rc_s=$?
 [ "$rc_s" -eq 0 ] && pass "T5 successor S completes successfully" || fail "T5 S should exit 0 (got $rc_s): $(cat "$WS/s5.err" 2>/dev/null)"
-# HIMMEL-1653: unlike the old promote-lock-only version of this test, F's
-# and S's REAL (stubbed) pull/extraction/promote work can now both fall
-# inside the same wall-clock window (the extraction-lock hold moved earlier,
+# F's and S's REAL (stubbed) pull/extraction/promote work can both fall
+# inside the same wall-clock window (the extraction-lock hold sits earlier,
 # ahead of that work, instead of wrapping it) -- so which of F/S's promote
 # lands LAST is no longer deterministically S. What must still hold, and is
 # still promote-lock's job to guarantee regardless of extraction-lock
@@ -459,14 +455,11 @@ out_k=$( GRAPHIFY_MAP_BIN="$KBIN6/graphify" PATH="$KBIN6:$PATH" GRAPHIFY_PROMOTE
 grep -q '"gen":"K"' "$OUT6/graph.json" 2>/dev/null && pass "T6 promote completed normally after the garbage-stamp takeover" \
   || fail "T6 promote did not complete after the garbage-stamp takeover"
 
-# --- T7 (CR r1, pr-test-analyzer): the EXIT trap must release the lock on a
-# POST-acquire promote failure. The original blocker (a pre-planted
-# $OUT/.manifest.tmp DIRECTORY, making python's manifest open() fail) was
-# retired by HIMMEL-1134's stage-then-install refactor (30045a63): the
-# manifest is now built inside a per-run RANDOMIZED PROMOTE_STAGE dir
-# (.promote-stage.$$.$RANDOM), so a fixed-name .manifest.tmp blocker no
-# longer intercepts anything and the run quietly succeeds (rc=0), which is
-# the bug this suite caught. Target the current fixed-name write instead: a
+# --- T7: the EXIT trap must release the lock on a
+# POST-acquire promote failure. The manifest is built inside a per-run
+# RANDOMIZED PROMOTE_STAGE dir (.promote-stage.$$.$RANDOM), so a pre-planted
+# fixed-name $OUT/.manifest.tmp DIRECTORY blocker intercepts nothing and the
+# run quietly succeeds (rc=0). Target the fixed-name write instead: a
 # pre-planted $OUT/manifest.json DIRECTORY makes the post-stage
 # stamp-invalidation `rm -f "$OUT_DIR/manifest.json"` fail (rm refuses to
 # remove a directory) under the script's `set -euo pipefail`, aborting
@@ -611,7 +604,7 @@ grep -q 'GEN_Q' "$MOC9" 2>/dev/null && pass "T9 reader's MOC is the writer's pro
 [ -d "$OUT9/.promote.lock" ] && fail "T9 reader left the lock behind" \
   || pass "T9 reader released the lock after publishing"
 
-# --- T10 (HIMMEL-1653): the extraction-wide lock refuses a concurrent
+# --- T10: the extraction-wide lock refuses a concurrent
 # SECOND invocation from ever entering extraction while a FIRST is still
 # extracting -- the gap the promote lock alone left open (it deliberately
 # does not guard pull/copy/extraction, only the short promote block). Proof
@@ -664,8 +657,8 @@ wait "$EPID"; rc_e=$?
 [ -d "$OUT10/.extraction.lock" ] && fail "T10 process E left the extraction lock behind" \
   || pass "T10 process E released the extraction lock on exit"
 
-# --- T11 (HIMMEL-2731): mkdir -> owner acquisition race, now a passing
-# regression against the shipped exclusive-owner-publication protocol.
+# --- T11: mkdir -> owner acquisition race, a regression test
+# against the shipped exclusive-owner-publication protocol.
 #
 # Source the marker-delimited shipped extraction protocol, then pause contender
 # A after its successful mkdir but before its owner write. B reclaims the
@@ -858,7 +851,7 @@ done < "$LOG11"
 [ "$overlap11" -eq 0 ] && pass "T11 critical-section log has no overlapping enter/leave interval" \
   || fail "T11 RED: mutual exclusion violated: $(tr '\n' ';' < "$LOG11")"
 
-# --- T12 (HIMMEL-2618): identity-checked takeover + verify-after-stamp, driven
+# --- T12: identity-checked takeover + verify-after-stamp, driven
 # against the same shipped, marker-sliced protocol T11 uses. Each case runs in
 # its own bash so the shell overrides (date) cannot leak. ---
 echo "T12: takeover verifies what it grabbed; acquire verifies its own stamp"

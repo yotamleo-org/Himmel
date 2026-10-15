@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // publish-graph-map.mjs — curate a graphify GRAPH_REPORT.md into a compact,
-// tracked 60-Maps MOC note (HIMMEL-825/826).
+// tracked 60-Maps MOC note.
 //
 // WHY: the raw GRAPH_REPORT.md is 3k+ lines / 150KB+ (one ### per community,
 // 1500+ of them) — too big to track as an Obsidian note (git-diff noise every

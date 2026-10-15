@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# test-refresh-graph-map-scratch.sh — HIMMEL-1414: refresh-graph-map.sh must
-# never rm -rf a scratch dir it did not create this run. The old scratch path
-# was "$SCRATCH_PARENT/graphify-refresh-$NAME-$$" followed by an unconditional
-# startup rm -rf, so a later run whose PID collided with an earlier run's
-# suffix destroyed that run's finished-but-unpromoted graph (live loss,
-# 2026-07-31). Hermetic: stubs graphify (GRAPHIFY_MAP_BIN), no network, no
+# test-refresh-graph-map-scratch.sh — refresh-graph-map.sh must
+# never rm -rf a scratch dir it did not create this run. A PID-suffixed
+# scratch path ("$SCRATCH_PARENT/graphify-refresh-$NAME-$$") with an
+# unconditional startup rm -rf would let a later run whose PID collided with
+# an earlier run's suffix destroy that run's finished-but-unpromoted graph.
+# Hermetic: stubs graphify (GRAPHIFY_MAP_BIN), no network, no
 # real vault. Run: bash scripts/graphify/test-refresh-graph-map-scratch.sh
 # shellcheck disable=SC2015  # A && pass || fail is the intentional test-assert idiom (pass/fail echo, always rc 0)
 # shellcheck disable=SC2016  # the heredoc report fixture is literal on purpose (no expansion wanted)

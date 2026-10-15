@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/graphify/graph-publish.sh (HIMMEL-1129).
+# Smoke test for scripts/graphify/graph-publish.sh.
 #
 # Strategy (mirrors scripts/handover/test-pr-open.sh): git operations run for
 # real against a LOCAL bare "origin" repo (never real GitHub) — this exercises
@@ -27,32 +27,30 @@
 #      `gh pr edit` instead of `gh pr create`.
 #   8. Unknown flag exits 1 (usage error).
 #   9. A pr-create failure after a successful push exits 9 (distinct partial-
-#      success rc, NOT 0) — CR round 1 (codex-1): the branch IS on the bare
+#      success rc, NOT 0): the branch IS on the bare
 #      origin even though the command as a whole did not succeed.
 #  10. Refuses (rc=10) when graphify-out/manifest.json (refresh-graph-map.sh's
-#      transaction-complete marker) is missing — CR round 1 (codex-adv-4).
+#      transaction-complete marker) is missing.
 #  11. Refuses (rc=11) when GRAPH_REPORT.md is missing though graph.json +
-#      manifest.json are present — CR round 2 (codex-1/codex-adv-2): the
-#      report is required, never optional (this ALSO covers glm-3's finding
-#      that the old optional-report code path was unreachable/broken --
-#      the have_report=no path is gone entirely, not merely patched).
+#      manifest.json are present: the
+#      report is required, never optional (there is no have_report=no path).
 #  12. --base passthrough: publishing against a non-default base branch
-#      actually diffs/branches off THAT ref, not main (CR round 2, glm-4).
+#      actually diffs/branches off THAT ref, not main.
 #  13. A repo dirname with spaces sanitizes into a valid branch-name slug
-#      instead of failing checkout with a confusing rc=8 (CR round 2, glm-5).
+#      instead of failing checkout with a confusing rc=8.
 #  14. Interleaved publisher: a concurrent publish landing on the SAME target
 #      branch between the recorded remote OID and our push is DETECTED and
-#      REJECTED (rc=8), never silently overwritten — CR round 2 (codex-adv-1).
+#      REJECTED (rc=8), never silently overwritten.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PUBLISH="$SCRIPT_DIR/graph-publish.sh"
 
-# Hermeticity (CodeRabbit, PR #2209): graph-publish.sh resolves
-# TICKET="${GRAPH_PUBLISH_TICKET:-HIMMEL-2095}", so the LAUNCHING shell wins
+# Hermeticity: graph-publish.sh resolves its ticket from GRAPH_PUBLISH_TICKET
+# with a default, so the LAUNCHING shell wins
 # over the default this suite asserts. An inherited GRAPH_PUBLISH_TICKET would
 # flip the three ticket-ID assertions in case 6 for a reason that has nothing
-# to do with the code under test -- the HIMMEL-2642 class (a suite reading
+# to do with the code under test (a suite reading
 # live host state instead of its own fixture). Cleared once here, for every
 # case, rather than per-invocation.
 unset GRAPH_PUBLISH_TICKET
@@ -146,7 +144,7 @@ export FAKE_GH_LOG="$TMP_ROOT/gh.log"
 # bare "origin", PLUS a local graphify-out/manifest.json (the refresh-graph-
 # map.sh transaction-complete marker graph-publish.sh now requires) and a
 # .gitignore matching himmel's real graphify-out/* pattern (manifest.json
-# stays untracked/ignored, mirroring HIMMEL-1123 — its mtimes are
+# stays untracked/ignored, mirroring the real repo — its mtimes are
 # machine-local so it is never committed). Without the matching .gitignore,
 # manifest.json would show up as an untracked file in `git status
 # --porcelain` and spuriously trip the "dirty outside graph paths" refusal.
@@ -157,7 +155,7 @@ seed_repo() {
     git init -q --initial-branch=main "$repo" 2>/dev/null || git init -q "$repo"
     (
         cd "$repo"
-        # HIMMEL-1444: pin a REPO-LOCAL committer identity. graph-publish.sh's
+        # pin a REPO-LOCAL committer identity. graph-publish.sh's
         # own publish `git commit` (unlike seed_repo's -c user.email/-c
         # user.name commits below) inherits the repo config, so on a CLEAN
         # gitconfig -- the public mirror's ubuntu CI ships NO global
@@ -247,7 +245,7 @@ assert_eq        "untracked-graph rc=4" "4" "$rc"
 assert_contains  "untracked-graph message" "does not track" "$out"
 
 # Test: refuses (rc=10) when the refresh transaction marker is missing -------
-# CR round 1 (codex-adv-4): a missing graphify-out/manifest.json means
+# A missing graphify-out/manifest.json means
 # refresh-graph-map.sh's promote either never ran or crashed mid-way, so
 # graph.json/GRAPH_REPORT.md could be an inconsistent pair.
 
@@ -299,13 +297,13 @@ assert_contains  "bare origin received the new content" '"id":1' "$pushed_conten
 commit_body=$(git -C "$BARE" log -1 --format='%B' refs/heads/chore/graph-publish-t6-repo)
 assert_contains  "commit carries Security reviewed trailer" "Security reviewed: ad-hoc" "$commit_body"
 assert_contains  "commit subject is conventional" "chore(graphify): [HIMMEL-2095] publish refreshed t6-repo graph" "$commit_body"
-# HIMMEL-2095: the commit subject used to carry no ticket ID at all, so every
-# publish PR failed this repo's own CI commit-range gate (check-commit-msg.sh
-# requires one on every commit) -- the standing default is HIMMEL-2095,
-# overridable via --ticket / GRAPH_PUBLISH_TICKET.
+# the commit subject must carry a ticket ID, since this repo's CI
+# commit-range gate (check-commit-msg.sh) requires one on every commit -- the
+# standing default ticket is asserted below, overridable via --ticket /
+# GRAPH_PUBLISH_TICKET.
 assert_contains  "commit subject carries a ticket ID" "HIMMEL-2095" "$commit_body"
 assert_contains  "gh pr create log carries the ticket ID (in the --title arg)" "HIMMEL-2095" "$log"
-# HIMMEL-2278 — the PR this script opens declares its own review class, and the
+# The PR this script opens declares its own review class, and the
 # script NEVER posts a review-trigger comment on open. Both pins are on the gh
 # log: the body goes to `gh pr create --body <inline>`, so the whole PR body is
 # in "$log", and a trigger would have to be a `gh pr comment` / `gh api` POST.
@@ -332,7 +330,7 @@ assert_contains  "log has 'pr edit 42'" "pr edit 42" "$log"
 assert_not_contains "log has no 'pr create'" "pr create" "$log"
 
 # Test: pr-create failure after a successful push is rc=9, not rc=0 ----------
-# CR round 1 (codex-1): rc=0 must mean "commit + PR", never a silent partial
+# rc=0 must mean "commit + PR", never a silent partial
 # success. The branch must still land on the bare origin even though the
 # command overall reports failure.
 
@@ -349,9 +347,8 @@ pushed_content=$(git -C "$BARE" show "refs/heads/chore/graph-publish-t9-repo:gra
 assert_contains  "branch landed on bare origin despite PR failure" '"id":1' "$pushed_content"
 
 # Test: refuses (rc=11) when GRAPH_REPORT.md is missing but graph.json +
-# manifest.json are present -- CR round 2 (codex-1/codex-adv-2). The report
-# is now REQUIRED, never optional (this also proves the old have_report=no
-# code path -- where glm-3's set-e-under-assignment bug lived -- is gone).
+# manifest.json are present. The report
+# is REQUIRED, never optional (there is no have_report=no code path).
 
 echo "TEST: refuses (rc=11) when GRAPH_REPORT.md is missing though graph.json+manifest.json are present"
 REPO="$TMP_ROOT/t10-repo"; BARE="$TMP_ROOT/t10-origin.git"
@@ -366,7 +363,7 @@ assert_eq        "missing-report rc=11" "11" "$rc"
 assert_contains  "missing-report message" "GRAPH_REPORT.md is missing" "$out"
 
 # Test: --base passthrough actually targets the given branch -----------------
-# CR round 2 (glm-4): publish against a non-default base and confirm the
+# Publish against a non-default base and confirm the
 # script diffed/branched off THAT ref, not the default `main`.
 
 echo "TEST: --base passthrough diffs/branches off the given ref, not main"
@@ -392,7 +389,7 @@ assert_eq        "base-passthrough rc=0 (something to publish against develop)" 
 assert_contains  "base-passthrough dry-run names develop" "against origin/develop" "$out"
 
 # Test: a repo dirname with spaces sanitizes into a valid branch slug --------
-# CR round 2 (glm-5): a branch-hostile corpus name must not reach `git
+# A branch-hostile corpus name must not reach `git
 # checkout -B` verbatim and fail there with a confusing generic rc=8.
 
 echo "TEST: corpus dirname with spaces sanitizes into a valid branch-name slug"
@@ -413,7 +410,7 @@ case "$sanitized_branch" in
 esac
 
 # Test: an interleaved (concurrent) publisher is DETECTED and REJECTED, never
-# silently overwritten -- CR round 2 (codex-adv-1). GRAPH_PUBLISH_TEST_RACE_HOOK
+# silently overwritten. GRAPH_PUBLISH_TEST_RACE_HOOK
 # is a TEST-ONLY seam that runs right after graph-publish.sh records the
 # publish branch's remote OID and BEFORE it checks out/commits/pushes -- here
 # it simulates a concurrent publisher landing on that SAME (not-yet-existing)

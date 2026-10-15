@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/graphify/graph-refresh.sh (HIMMEL-1644).
+# Smoke test for scripts/graphify/graph-refresh.sh.
 #
 # graph-refresh.sh is a thin wrapper that resolves the vault + fires
 # refresh-graph-map.sh per corpus serially, then appends `graphmap-cadence.sh
@@ -32,7 +32,7 @@
 set -euo pipefail
 
 # grepq <text> [grep-args...] — `grep -q` against <text> with NO pipeline, so a
-# match never takes SIGPIPE under this file's `set -o pipefail` (HIMMEL-1430).
+# match never takes SIGPIPE under this file's `set -o pipefail`.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -86,7 +86,7 @@ TMP_ROOT=$(cd "$TMP_ROOT" && pwd -P)
 if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
 echo "test: TMP_ROOT=$TMP_ROOT"
 
-# Hermetic PHI config dir for the vault preflight (HIMMEL-1644 codex-adv-1):
+# Hermetic PHI config dir for the vault preflight:
 # graph-refresh.sh reads phi-roots / egress-denylist under CLAUDE_GLM_CONFIG_DIR
 # (mirroring graphify-fence.sh). Point it at an EMPTY temp dir so no real PHI
 # list can cause an unexpected refusal across the suite; Test 11 writes a
@@ -103,7 +103,7 @@ REAL_BASH="$(command -v bash)"
 HIMMEL_ROOT_EXP="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Stub vault carries the luna-vault sentinels the preflight now requires
-# (HIMMEL-1644 codex-adv-1): a 60-Maps/ dir (the publish target) + an .obsidian/
+#: a 60-Maps/ dir (the publish target) + an .obsidian/
 # dir (luna vault marker). Every test pointing a luna leg at $VAULT relies on
 # these; $VAULT2 below is upgraded the same way.
 VAULT="$TMP_ROOT/vault"
@@ -125,7 +125,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 # SKIP_REFRESH mirrors refresh-graph-map.sh's bank-skip: exit 3 for the named
-# corpus (HIMMEL-1948 Task 4 test 1 -- skip-only must NOT read as OK).
+# corpus (skip-only must NOT read as OK).
 if [ -n "${SKIP_REFRESH:-}" ] && [ "$name" = "$SKIP_REFRESH" ]; then
     echo "fake-runner: skipping on $name (SKIP_REFRESH, bank at/over threshold)" >&2
     exit 3
@@ -229,8 +229,8 @@ assert_contains "dry-run mentions cadence status plan" "status" "$out"
 assert_eq "dry-run invoked the runner zero times" "" "$(cat "$RUNNER_LOG")"
 
 # ============================================================================
-# Test 4b (HIMMEL-3718): GRAPHIFY_LUNA_OUT_ROOT threads --out-root into the
-# luna leg only -- himmel's own graphify-out stays in-corpus (HIMMEL-1123), so
+# Test 4b: GRAPHIFY_LUNA_OUT_ROOT threads --out-root into the
+# luna leg only -- himmel's own graphify-out stays in-corpus, so
 # graph-out-root.sh resolves it to empty and the himmel leg must never see
 # the flag.
 # ============================================================================
@@ -244,7 +244,7 @@ assert_contains "out-root dry-run luna leg carries --out-root" "--out-root /out/
 assert_not_contains "out-root dry-run himmel leg has no --out-root" "--out-root" "$himmel_dry_or"
 
 # ============================================================================
-# Test 4c (HIMMEL-3718 CR round 3, codex-1): a REAL (non-dry-run) both invocation
+# Test 4c: a REAL (non-dry-run) both invocation
 # must not let an AMBIENT GRAPHIFY_OUT_ROOT (left over in the invoking shell from
 # some unrelated prior call) leak into the himmel leg's runner process just
 # because himmel's own resolver says stay in-corpus. The dry-run-only Test 4b
@@ -261,13 +261,13 @@ assert_contains "himmel leg still runs" "--name himmel" "$line2"
 assert_not_contains "himmel leg does not see the ambient GRAPHIFY_OUT_ROOT" "GRAPHIFY_OUT_ROOT=/ambient/leftover" "$line2"
 
 # ============================================================================
-# Test 4d (HIMMEL-3764): the dry-run print must mirror the real run's
+# Test 4d: the dry-run print must mirror the real run's
 # conditional `env -u GRAPHIFY_OUT_ROOT` wrapper -- shown for an in-corpus leg
 # (R_OUT_ROOT empty), omitted for a leg with a resolved --out-root. Without
 # this, a copy-pasted dry-run command can behave differently from what the
 # real run actually executes whenever the invoking shell has an ambient
 # GRAPHIFY_OUT_ROOT exported. himmel's resolver always returns empty
-# (HIMMEL-1123, in-corpus by design) so its leg always needs the scrub; luna's
+# (in-corpus by design) so its leg always needs the scrub; luna's
 # resolver always returns a value (default or override, graph-out-root.sh) so
 # its leg never does.
 # ============================================================================
@@ -388,8 +388,7 @@ assert_not_contains "no publish hint on failed himmel leg" "[himmel] NEXT" "$out
 
 # ============================================================================
 # Test 9b: bank-skip only (no failures) -> exit 4, summary carries no OK token
-# (HIMMEL-1948 Task 1 -- the blocking sub-fix: a skipped leg must not read as
-# success on an unattended cadence).
+# (a skipped leg must not read as success on an unattended cadence).
 # ============================================================================
 echo "TEST: bank-skip only (no failures) -> exit 4, summary has no OK token"
 reset_runner_log
@@ -429,7 +428,7 @@ assert_contains "phi-roots refuse message names the list" "phi-roots" "$out"
 assert_eq "phi-roots refusal fired no runner leg" "" "$(cat "$RUNNER_LOG")"
 rm -f "$CLAUDE_GLM_CONFIG_DIR/phi-roots"
 
-# HIMMEL-3242: same list, indented + between #-comment lines (the fence's
+# same list, indented + between #-comment lines (the fence's
 # _under_any_list twin trims and skips comments in lockstep); a bare
 # whitespace/# line must not turn the whole tree into a phi root.
 echo "TEST: indented phi-roots entry between #-comments still refused (rc=2)"
@@ -474,8 +473,8 @@ rc=0; out=$(TEST_LUNA_ROOT="$OTHER_VAULT" run_refresh luna --vault "$OTHER_VAULT
 assert_rc "ratified via LUNA_VAULT_PATH -> rc 0" 0 "$rc"
 
 # ============================================================================
-# Test 12c: drive-relative vault path refused (HIMMEL-845 mirror, codex-adv-2
-# r3) — string-shape check, fires before the -d existence check.
+# Test 12c: drive-relative vault path refused (mirrors the fence)
+# — string-shape check, fires before the -d existence check.
 # ============================================================================
 echo "TEST: drive-relative vault path refused (rc=2)"
 reset_runner_log
@@ -505,7 +504,7 @@ assert_rc "himmel-only on non-vault dir -> rc 0 (no sentinel requirement)" 0 "$r
 
 # ============================================================================
 # Test 14: vault preflight — a symlinked vault into a salus tree is refused via
-# the RESOLVED path (HIMMEL-1644 codex-1 r2). The symlink's OWN ancestors carry
+# the RESOLVED path. The symlink's OWN ancestors carry
 # no .salus marker (so a LEXICAL preflight would PASS -- the bug); only the
 # resolved target's ancestry has the marker. A refusal here proves preflight
 # classifies the canonical target the extraction reads, not the link.
@@ -532,7 +531,7 @@ fi
 # ============================================================================
 # Test 15: vault preflight — a symlinked vault pointing at a LEGIT stub vault
 # (60-Maps/.obsidian sentinels at the TARGET) is ACCEPTED via the resolved path
-# (HIMMEL-1644 codex-1 r2). Proves resolution does not over-refuse: a safe
+#. Proves resolution does not over-refuse: a safe
 # symlinked target passes and the luna leg still fires.
 # ============================================================================
 echo "TEST: symlinked vault at a legit stub vault accepted via the resolved path (rc=0)"
@@ -541,8 +540,8 @@ mkdir -p "$GOOD_REAL/60-Maps" "$GOOD_REAL/.obsidian"
 GOOD_LINK="$TMP_ROOT/good-link"
 if ln -s "$GOOD_REAL" "$GOOD_LINK" 2>/dev/null && [ -L "$GOOD_LINK" ]; then
     reset_runner_log
-    # Ratify the symlinked vault as the configured luna root (HIMMEL-1644
-    # codex-adv-1 r3 containment). The default TEST_LUNA_ROOT pins the
+    # Ratify the symlinked vault as the configured luna root (containment).
+    # The default TEST_LUNA_ROOT pins the
     # configured root to the ordinary $VAULT stub, so passing the SYMLINK as
     # --vault while the configured root stays the stub makes the resolved target
     # ($GOOD_REAL) != the resolved configured root -> rc 2, which is containment
@@ -559,7 +558,7 @@ else
 fi
 
 # ============================================================================
-# Test 16: HOME-guard filesystem identity (HIMMEL-1670). The HOME guard must
+# Test 16: HOME-guard filesystem identity. The HOME guard must
 # identify "this root IS home" by filesystem IDENTITY (device+inode), not
 # case-folded path text, so the refusal set only GROWS (a symlink / trailing
 # slash / `.` / `..` / 8.3-short-path spelling of HOME is still REFUSED) while
@@ -652,7 +651,7 @@ else
     assert_not_contains "16f HOME guard dropped the lowercase-fold mechanism (_lc gone)" "_lc" "$region"
 fi
 
-# 16g (symlink-dereference logic dimension, HIMMEL-1670 CR codex-adv-1): the
+# 16g (symlink-dereference logic dimension): the
 # symlink-to-HOME bypass is exercised behaviourally by 16b, but 16b SKIPS on
 # every platform without symlink support -- including this Windows box, where
 # `ln -s` copies. A skipped test is not a passing one, so a green suite here is
@@ -677,7 +676,7 @@ else
     assert_not_contains "16g HOME guard no longer probes the lexical \$canon" '_fs_id "$canon"' "$region"
 fi
 
-# 17 (HIMMEL-1704, source-level pin — the runner-side behavioural test lives
+# 17 (source-level pin — the runner-side behavioural test lives
 # in test-refresh-graph-map.sh's T49 and needs symlink support this box may
 # lack). preflight_vault() must PUBLISH the filesystem identity it already
 # probed (not just the pathname it always published), and the two RUNNER_ARGV

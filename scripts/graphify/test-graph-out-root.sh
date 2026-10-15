@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-graph-out-root.sh — HIMMEL-3718: the one resolver every in-tree reader
+# test-graph-out-root.sh — the one resolver every in-tree reader
 # of luna's graph must share (graph-refresh.sh, graphmap-cadence.sh), so the
 # out-of-corpus destination is a single fact, not N copies of a path.
 set -u
@@ -28,7 +28,7 @@ else
 fi
 
 # T3: himmel's own corpus stays in-corpus (empty = no override) -- its
-# graphify-out/ is a tracked, shared artifact (HIMMEL-1123).
+# graphify-out/ is a tracked, shared artifact.
 # shellcheck source=/dev/null
 out=$( bash -c ". \"$RESOLVER\"; graphify_out_root_for himmel" )
 if [ -z "$out" ]; then

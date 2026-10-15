@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # leg-graph.sh — run `graphify query|explain` from a leg worktree against the
-# PRIMARY checkout's graphify-out/ (HIMMEL-5313).
+# PRIMARY checkout's graphify-out/.
 #
 # WHY: graphify-out/ is gitignored, so a fresh worktree has no graph and a bare
 # `graphify query` fails with "graph file not found". graphify honours the

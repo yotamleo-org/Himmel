@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # refresh-graph-map.sh — incremental graphify refresh + curated-MOC publish for
-# one corpus (HIMMEL-825). The schedulable core behind the interval refresh that
+# one corpus. The schedulable core behind the interval refresh that
 # bounds graph drift.
 #
 # WHY: graphify graphs are point-in-time snapshots that drift as the corpus
@@ -26,7 +26,7 @@
 #       --title "Graphify Luna Map" --slug graphify-luna-map \
 #       --promote-only <scratch-workdir> [--publish] [--force] [--allow-unverified-corpus]
 #
-# --promote-only (HIMMEL-3205) recovers an ORPHANED, finished extraction (a
+# --promote-only recovers an ORPHANED, finished extraction (a
 # scratch workdir `graphify-refresh-<name>-*` holding graphify-out/, or a
 # `graphify-refresh-<name>-*.quarantine` holding graph.json directly) without
 # re-paying for it: validate -> extraction lock -> promote lock -> harden ->
@@ -40,37 +40,34 @@
 # Freshness guard: this script REBUILDS the graph. To CHECK whether an existing
 # graphify-out/ is still fresh (and not orphaned from its corpus) before querying
 # it, run check-graph-freshness.sh --out <graphify-out> [--max-age-days N]
-# (companion script, same dir). HIMMEL-621/824/825 family.
+# (companion script, same dir).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 
-# HIMMEL-1776 (fence parity by extraction): file-readability and
-# endpoint-host predicates shared with scripts/guardrails/graphify-fence.sh,
-# the interactive path this scheduled script never runs under. ONE
-# implementation instead of two hand-kept copies that can drift (HIMMEL-1748 /
-# PR #1680 fixed exactly that drift once already).
+# The file-readability and endpoint-host predicates are shared with
+# scripts/guardrails/graphify-fence.sh, the interactive path this scheduled
+# script never runs under. ONE implementation instead of two hand-kept copies
+# that can drift.
 # shellcheck source=../guardrails/phi-egress-lib.sh
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/guardrails/phi-egress-lib.sh"
 
-# BACKEND default = claude-cli (HIMMEL-1049): graphify distinguishes `claude`
+# BACKEND default = claude-cli: graphify distinguishes `claude`
 # (Anthropic API — requires ANTHROPIC_API_KEY, pay-as-you-go) from `claude-cli`
 # (routes through the locally-installed `claude` CLI). The claude-ONLY adopter
 # story needs claude-cli, not claude.
-# BILLING (HIMMEL-1748, measured 2026-08-11/12): subscription-authenticated
+# BILLING (measured 2026-08-11/12): subscription-authenticated
 # `claude -p` draws from the SAME 5-hour/weekly usage bank as the operator's
 # interactive sessions — there is NO separate headless bucket for subscription
-# auth. (The HIMMEL-128 "separate bucket" note that used to live in the dispatch
-# comment below was wrong: a 48-chunk luna refresh exhausted the bank ~2.9h in
-# and chunks 27-48 all failed.) Mitigation: the sonnet model pin below
+# auth (a 48-chunk luna refresh exhausted the bank ~2.9h in and chunks 27-48
+# all failed). Mitigation: the sonnet model pin below
 # (GRAPHIFY_CLAUDE_CLI_MODEL, overridable), or an API backend (glm) for zero
-# bank draw. HIMMEL-2101: kimi/moonshot, the other former zero-bank-draw
-# option, is retired (operator ruling — there is no kimi backend); the weekly
+# bank draw. There is no kimi/moonshot backend (operator ruling); the weekly
 # graphmap-cadence.sh semantic leg accepts the bank draw and is gated by
 # bank-preflight.sh instead (see the bank guard below).
-# BILLING CAVEAT (CodeRabbit): claude-cli authenticates via the operator's
+# BILLING CAVEAT: claude-cli authenticates via the operator's
 # existing Pro/Max SUBSCRIPTION *only when no Anthropic API credential is in the
 # environment* — a set ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN takes precedence
 # in the `claude` CLI and switches the run back to pay-as-you-go. We deliberately
@@ -78,21 +75,21 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # default, not a billing guarantee.
 NAME="" CORPUS_ROOT="" BACKEND="claude-cli" MAPS_DIR="" TITLE="" SLUG="" CORPUS_TAG=""
 SCRATCH="" DO_UPDATE=1 CORPUS_CLASS="luna-personal"
-# HIMMEL-3718: OPTIONAL out-of-corpus promote destination. Empty (default)
+# OPTIONAL out-of-corpus promote destination. Empty (default)
 # keeps every existing in-corpus behaviour byte-for-byte. See the OUT_ROOT
 # validation block below (next to the GRAPHIFY_OUT_NAME resolution) for why
 # this is a SEPARATE knob from GRAPHIFY_OUT: that variable only names the
 # scratch-relative extraction leaf graphify itself writes; this one only
 # redirects where the finished promote lands.
 OUT_ROOT=""
-# HIMMEL-1704: OPTIONAL device:inode identity for --corpus-root / --maps-dir,
+# OPTIONAL device:inode identity for --corpus-root / --maps-dir,
 # as probed by the caller's OWN preflight (graph-refresh.sh) at validation
 # time. A caller that does not pass one (e.g. a direct/manual invocation, or
 # graphmap-cadence.sh, which has no vault preflight of its own) gets today's
 # behaviour unchanged -- this is defense-in-depth ON TOP of the caller's
 # validation, not a new requirement for every caller.
 CORPUS_ID="" MAPS_ID="" MAPS_PARENT_ID=""
-# HIMMEL-3205: --promote-only state. DO_EXTRACT is 1 for a normal run (the
+# --promote-only state. DO_EXTRACT is 1 for a normal run (the
 # copy + extraction + promote region) and 0 under --promote-only, which reuses
 # the promote half of that region on an existing workdir instead.
 PROMOTE_ONLY="" PUBLISH=0 FORCE=0 ALLOW_UNVERIFIED=0 DO_EXTRACT=1
@@ -104,31 +101,29 @@ while [ $# -gt 0 ]; do
     --corpus-root) CORPUS_ROOT="${2:-}"; shift 2 ;;
     --corpus-id) CORPUS_ID="${2:-}"; shift 2 ;;
     --maps-id) MAPS_ID="${2:-}"; shift 2 ;;
-    # HIMMEL-1704 round 3 (codex-1): identity of MAPS_DIR's PARENT (the
-    # vault), used ONLY when MAPS_ID is empty -- i.e. 60-Maps did not exist
-    # at the caller's preflight (a legitimate first-ever publish). See the
-    # publish site below for why this closes that residual.
+    # Identity of MAPS_DIR's PARENT (the vault), used ONLY when MAPS_ID is
+    # empty -- i.e. 60-Maps did not exist at the caller's preflight (a
+    # legitimate first-ever publish). See the publish site below for why this
+    # closes that residual.
     --maps-parent-id) MAPS_PARENT_ID="${2:-}"; shift 2 ;;
     --backend) BACKEND="${2:-}"; shift 2 ;;
-    # HIMMEL-1415 CR follow-up rounds 2-4 (codex-1-r2, codex-adv-3,
-    # CodeRabbit App): trim trailing slash(es) at parse time -- a raw
-    # "--maps-dir /vault/60-Maps/" (or "//") propagated unmodified made the
-    # HIMMEL-1415 exclusion patterns become "./60-Maps//graph/*", which
+    # Trim trailing slash(es) at parse time -- a raw
+    # "--maps-dir /vault/60-Maps/" (or "//") propagated unmodified makes the
+    # derived-pages exclusion patterns become "./60-Maps//graph/*", which
     # find's -path matcher never matches against the real
     # "./60-Maps/graph/..." path -- the exclusion silently no-ops and
     # derived pages leak back into the corpus. Looped, not a single `%/`, so
-    # it closes MULTIPLE trailing slashes too (round-3 panel flagged the
-    # single-trim as incomplete). Trimmed here (not just at the exclusion
+    # it closes MULTIPLE trailing slashes too. Trimmed here (not just at the exclusion
     # site, matching CORPUS_ROOT_TRIMMED there) so every downstream use --
     # the exclusion AND the OUT_NOTE publish path below, which would
     # otherwise get the same double slash -- sees the same clean value.
     #
-    # Guarded with `[ -n "${MAPS_DIR%/}" ]` (CodeRabbit App, round 4): a bare
+    # Guarded with `[ -n "${MAPS_DIR%/}" ]`: a bare
     # `--maps-dir /` would otherwise be stripped to the EMPTY string (each
     # iteration removes the one slash, `%/` on "" is a no-op, loop exits with
     # nothing left) -- silently losing the maps dir entirely for every
-    # downstream use, including the `[ -z "$MAPS_DIR" ]` usage-check at line
-    # ~64, which would then wrongly reject a technically-valid (if absurd)
+    # downstream use, including the `[ -z "$MAPS_DIR" ]` usage-check below,
+    # which would then wrongly reject a technically-valid (if absurd)
     # root maps-dir as a missing flag. The guard stops stripping once only
     # the bare "/" remains, so root is preserved as "/" instead of "".
     --maps-dir)
@@ -142,7 +137,7 @@ while [ $# -gt 0 ]; do
     --out-root) OUT_ROOT="${2:-}"; shift 2 ;;
     --scratch) SCRATCH="${2:-}"; shift 2 ;;
     --no-update) DO_UPDATE=0; shift ;;
-    # HIMMEL-3205: recover an orphaned finished extraction (see the header).
+    # recover an orphaned finished extraction (see the header).
     --promote-only) PROMOTE_ONLY="${2:-}"; shift 2 ;;
     --publish) PUBLISH=1; shift ;;
     --force) FORCE=1; shift ;;
@@ -156,7 +151,7 @@ done
 OUT_ROOT="${OUT_ROOT:-${GRAPHIFY_OUT_ROOT-}}"
 if [ -z "$NAME" ] || [ -z "$CORPUS_ROOT" ] || [ -z "$MAPS_DIR" ] || [ -z "$TITLE" ] || [ -z "$SLUG" ]; then usage; fi
 [ -d "$CORPUS_ROOT" ] || { echo "refresh-graph-map: corpus root not found: $CORPUS_ROOT" >&2; exit 1; }
-# HIMMEL-3205: the promote-only modifiers mean nothing without --promote-only,
+# the promote-only modifiers mean nothing without --promote-only,
 # and --no-update (publish-only: no extraction, no promote) contradicts it.
 if [ -z "$PROMOTE_ONLY" ]; then
   if [ "$PUBLISH" -eq 1 ] || [ "$FORCE" -eq 1 ] || [ "$ALLOW_UNVERIFIED" -eq 1 ]; then
@@ -172,7 +167,7 @@ fi
 # --promote-only, which run no extraction.
 if [ "$DO_UPDATE" -eq 0 ] || [ -n "$PROMOTE_ONLY" ]; then DO_EXTRACT=0; fi
 
-# HIMMEL-1704 TOCTOU guard: probe $1's filesystem identity (device+inode,
+# TOCTOU guard: probe $1's filesystem identity (device+inode,
 # symlink-resolved via stat -L, same as graph-refresh.sh's own _fs_id) and
 # compare it against an expected "dev:inode" string. Binds a check to the
 # ACTUAL filesystem object rather than a pathname, which a parent-directory
@@ -214,8 +209,8 @@ _verify_fs_id() {
 # otherwise accept only HTTPS and return the exact lower-cased host after
 # stripping path/query/fragment/userinfo/port. Malformed, plaintext, and
 # backslash-bearing values return no host. Never echo the raw URL — it may
-# carry userinfo/query credentials. _guard_endpoint_host (HIMMEL-1776,
-# scripts/guardrails/phi-egress-lib.sh) is the shared implementation with
+# carry userinfo/query credentials. _guard_endpoint_host
+# (scripts/guardrails/phi-egress-lib.sh) is the shared implementation with
 # graphify-fence.sh's _map_anthropic_endpoint — this is a thin wrapper so
 # existing call sites in this file don't all need renaming.
 _endpoint_host() {
@@ -233,7 +228,7 @@ _endpoint_host_allowed() {
   return 1
 }
 
-# GLM (Z.ai) alias (HIMMEL-1048). graphify has NO native `glm` backend — GLM is
+# GLM (Z.ai) alias. graphify has NO native `glm` backend — GLM is
 # reached via graphify's `claude` backend pointed at Z.ai's Anthropic-compatible
 # endpoint. The egress matrix + fence classify `--backend glm` as the zai-glm
 # provider, so make `--backend glm` a single-flag process instead of hand-setting
@@ -262,7 +257,7 @@ case "$BACKEND" in
     export ANTHROPIC_BASE_URL ANTHROPIC_MODEL ANTHROPIC_API_KEY
     endpoint_host="$(_endpoint_host "$ANTHROPIC_BASE_URL")"
     echo "refresh-graph-map: --backend glm -> claude backend @ https://$endpoint_host (model $ANTHROPIC_MODEL)" >&2
-    # DE-LISTED for private content (HIMMEL-2224, landing HIMMEL-1749's DROP):
+    # DE-LISTED for private content:
     # every zai-glm VAULT/handover cell is now explicit deny, so the in-script
     # egress preflight below fails this remap closed on luna-personal,
     # luna-clippings and handover-state — no code change here is what enforces
@@ -271,19 +266,17 @@ case "$BACKEND" in
     # himmel-code corpus remains a live, permitted path, and the de-listing is
     # deliberately not `hard`, so deleting the code would make the reversal
     # harder to undo than the matrix says it is. claude-cli (the operating
-    # substrate) is the sanctioned luna extraction backend now (HIMMEL-2101 —
-    # kimi/moonshot, the interim CN lane, is retired; operator ruling: there is
-    # no kimi backend).
+    # substrate) is the sanctioned luna extraction backend (there is no
+    # kimi/moonshot backend; operator ruling).
     ;;
 esac
 
-# Egress preflight for the scheduled/direct path (HIMMEL-1084).
+# Egress preflight for the scheduled/direct path.
 # graphify-fence.sh is wired only as a PreToolUse hook, so it never sees the
 # graphify calls THIS script makes when cron/schtasks fire it
 # (graphmap-cadence.sh). Rather than keep a private copy of the fence's
-# backend->provider map + matrix eval + ledger (the pre-HIMMEL-1084 shape,
-# which had already drifted: its own provider map, no conditional opt-ins, a
-# different ledger shape), run the fence's direct-eval contract:
+# backend->provider map + matrix eval + ledger (which would drift: its own
+# provider map, no conditional opt-ins, a different ledger shape), run the fence's direct-eval contract:
 #   graphify-fence.sh --eval <corpus-class> <backend> <corpus-root> refresh-graph-map
 # That gives the unattended run EXACTLY the verdict an agent-typed graphify
 # invocation gets (corpus class x resolved provider x extraction, per
@@ -298,9 +291,9 @@ esac
 # (--update and cluster-only): same corpus, same --backend, and nothing
 # between them touches the environment. Extraction path only: a --no-update
 # republish makes no backend calls, and neither does a --promote-only recovery
-# (HIMMEL-3205: DO_EXTRACT=0 skips every backend gate).
+# (DO_EXTRACT=0 skips every backend gate).
 if [ "$DO_EXTRACT" -eq 1 ]; then
-  # PATH-DERIVED salus guard (CR codex-adv r4): --corpus-class is a caller
+  # PATH-DERIVED salus guard: --corpus-class is a caller
   # ASSERTION, and the fence (which classifies by path) never runs on the
   # scheduled path — so before honoring the asserted class, derive the one
   # classification that is a HARD deny from the corpus root itself, with the
@@ -311,7 +304,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # non-local provider; its local-ollama and ollama-cloud conditionals are out
   # of scope for this guard, which refuses salus on every backend, ollama
   # included - stricter than the fence). --backend ollama is NOT exempt from
-  # the --eval preflight below (HIMMEL-1789, option 2): the fence classifies it
+  # the --eval preflight below: the fence classifies it
   # as local-ollama / ollama-cloud / fail-closed from the endpoint + model, the
   # same as an agent-typed run. Non-salus roots
   # proceed under the asserted class exactly as before — deriving
@@ -336,7 +329,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
         return 1
       fi
       while IFS= read -r p || [ -n "$p" ]; do
-        # trim before comparing (HIMMEL-1748 r4): a CRLF-saved config leaves a
+        # trim before comparing: a CRLF-saved config leaves a
         # trailing \r on every entry and a stray leading/trailing space does the
         # same — untrimmed, the prefix below never matches and a corpus that IS
         # under a declared PHI root classifies non-SALUS (fail-OPEN). An entry
@@ -362,8 +355,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     echo "refresh-graph-map: a PHI root list under $HOME/.config/claude-glm exists but is not readable (fail-closed)" >&2
     exit 2
   fi
-  # CLEAR THE CLAUDE REROUTE SELECTORS before the preflight (HIMMEL-1070,
-  # codex-adv-1), so the fence evaluates the environment graphify will actually
+  # CLEAR THE CLAUDE REROUTE SELECTORS before the preflight, so the fence evaluates the environment graphify will actually
   # run under. The fence hard-denies these for an agent-typed claude-cli run;
   # here we clear rather than refuse, which keeps a Bedrock/Vertex-configured
   # operator's cadence working on the intended provider and fails LOUDLY if
@@ -380,9 +372,9 @@ fi
 
 GRAPHIFY_MAP="${GRAPHIFY_MAP_BIN:-graphify}"   # test hook: stub graphify
 # graphify is only needed for the extraction path — --no-update publishes from
-# an existing report and must not require it (CR: code-reviewer).
+# an existing report and must not require it.
 
-# Extraction/labeling concurrency knob (HIMMEL-1097 mitigation). --max-concurrency
+# Extraction/labeling concurrency knob. --max-concurrency
 # caps only how many requests are IN FLIGHT at once — it is not true rate-limiting
 # (no pacing/backoff between sequential requests), so it reduces request pressure
 # but cannot beat a hard per-key quota. The default 6 overshoots a rate-limited
@@ -393,22 +385,22 @@ GRAPHIFY_MAP="${GRAPHIFY_MAP_BIN:-graphify}"   # test hook: stub graphify
 # with ~33s spacing). Applies to BOTH the --update extraction and the cluster-only
 # labeling pass (both make backend LLM calls against the same limit). Must be a
 # positive integer; anything else (including an explicitly-empty value) fails loud.
-# Band-aid — the durable fix (seed graphify's semantic cache so the regen is a
-# small incremental, not a full 255-chunk extraction) is HIMMEL-1097.
+# Band-aid — the durable fix is to seed graphify's semantic cache so the regen
+# is a small incremental, not a full 255-chunk extraction.
 # `-6` (unset-only default), NOT `:-6`: an explicitly-empty value stays empty and
 # is caught by the validation below, rather than silently defaulting to 6.
 # The default stays 6 (not glm-lowered): this script's DEFAULT backend is
-# claude-cli (line 45), which is unaffected — lowering the default would 6x-slow
+# claude-cli, which is unaffected — lowering the default would 6x-slow
 # every non-glm regen for no gain. glm callers pass the knob explicitly, and a
 # lower value would not rescue glm anyway when the request quota is exhausted
 # (it 429s even serialized, as above). Wiring a throttled default into the glm
 # cadence is a separate concern, out of scope for this knob.
-# claude-cli NOTE (HIMMEL-1748): graphify FORCE-SERIALIZES the claude-cli
+# claude-cli NOTE: graphify FORCE-SERIALIZES the claude-cli
 # backend (llm.py: max_concurrency=1 unless GRAPHIFY_CLAUDE_CLI_PARALLEL=1 —
 # parallel `claude -p` subprocesses conflict over session state), so this knob
 # and the --max-concurrency flags below are a NO-OP for claude-cli; they govern
 # the API backends only (claude, the glm remap, deepseek, ...).
-# HIMMEL-4512: the LOCAL ollama model holds the whole GPU, so default to 1 there
+# The LOCAL ollama model holds the whole GPU, so default to 1 there
 # (semantic-update.sh pins the same). Local = a loopback endpoint (OLLAMA_BASE_URL
 # verbatim, else OLLAMA_HOST, else graphify's loopback default) AND a non-cloud
 # model; anything else (ollama-cloud, other backends) keeps 6. An explicit
@@ -433,7 +425,7 @@ GRAPHIFY_MAX_CONCURRENCY="${GRAPHIFY_MAX_CONCURRENCY-$_default_concurrency}"
 # Validate ONLY on the extraction path (DO_UPDATE=1): the knob feeds the
 # --update + cluster-only graphify calls, which a --no-update publish-only run
 # never makes — so an invalid value is irrelevant there and must not fail an
-# unrelated republish (CR: codex-1).
+# unrelated republish.
 if [ "$DO_EXTRACT" -eq 1 ]; then
   case "$GRAPHIFY_MAX_CONCURRENCY" in
     ''|*[!0-9]*) echo "refresh-graph-map: GRAPHIFY_MAX_CONCURRENCY must be a positive integer (got '$GRAPHIFY_MAX_CONCURRENCY')" >&2; exit 1 ;;
@@ -441,10 +433,10 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   [ "$GRAPHIFY_MAX_CONCURRENCY" -ge 1 ] || { echo "refresh-graph-map: GRAPHIFY_MAX_CONCURRENCY must be >= 1 (got '$GRAPHIFY_MAX_CONCURRENCY')" >&2; exit 1; }
 fi
 
-# Per-chunk API timeout (HIMMEL-1645). graphify's DEFAULT API timeout is 300s, but
+# Per-chunk API timeout. graphify's DEFAULT API timeout is 300s, but
 # claude-cli chunks run SERIAL (graphify's own clamp — see the concurrency note
 # above) and a single serial chunk measures ~7 min wall on the luna corpus
-# (2026-08-11/12, HIMMEL-1748), past the 300s default — observed live 2026-08-08,
+# (2026-08-11/12), past the 300s default — observed live 2026-08-08,
 # a 399-doc incremental (claude-cli) produced 13 chunks and >=5 died "timed out after 300.0
 # seconds". graphify honors GRAPHIFY_API_TIMEOUT (seconds) as an override, so without
 # this both manual runs AND the armed daily cadence ride the 300s default and re-pay
@@ -452,7 +444,7 @@ fi
 # max-wait bound, not a duration — a fast chunk still returns as fast as ever) so a
 # contending chunk that simply needs longer gets headroom; graphify still kills a
 # genuinely wedged call at the bound, just a higher one (300s -> 900s = 3x, the
-# observed worst case + margin). Backend-scoped (codex-adv-1): the contention is
+# observed worst case + margin). Backend-scoped: the contention is
 # claude-cli ONLY — `claude` is graphify's Anthropic API backend (ANTHROPIC_API_KEY,
 # pay-as-you-go HTTP, no local-CLI contention), and `--backend glm`/`zai-glm` remaps
 # to `claude` (the Z.ai Anthropic-compatible API endpoint, above). So 900 ONLY for
@@ -474,7 +466,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   if [ "$BACKEND" = "claude-cli" ]; then
     GRAPHIFY_API_TIMEOUT="${GRAPHIFY_API_TIMEOUT-900}"
     export GRAPHIFY_API_TIMEOUT
-    # Model pin (HIMMEL-1748). Unpinned, graphify's claude-cli chunks run on the
+    # Model pin. Unpinned, graphify's claude-cli chunks run on the
     # CLI's DEFAULT model — the operator's top tier — against the shared
     # subscription usage bank (header billing note). Sonnet is the quality-safe
     # default for graphify's structured-JSON extraction (haiku rejected:
@@ -484,7 +476,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     # to the CLI default (graphify passes no --model for an empty value).
     GRAPHIFY_CLAUDE_CLI_MODEL="${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}"
     export GRAPHIFY_CLAUDE_CLI_MODEL
-    # Effort pin (HIMMEL-1748, same rationale as the model pin): an unpinned
+    # Effort pin (same rationale as the model pin): an unpinned
     # spawn inherits the operator's interactive effort default — which may be
     # xhigh, pure burn for schema-constrained extraction. The CLI reads
     # CLAUDE_CODE_EFFORT_LEVEL from the environment (the documented env channel
@@ -512,13 +504,13 @@ if [ "$BACKEND" = "deepseek" ]; then
   case "$H" in 01|02|03|06|07|08|09) echo "refresh-graph-map: WARN inside DeepSeek peak window (2x); off-peak resumes 10:00 UTC. Advisory." >&2 ;; esac
 fi
 
-# HIMMEL-1960: graphify resolves its own out-dir name from GRAPHIFY_OUT
+# graphify resolves its own out-dir name from GRAPHIFY_OUT
 # (paths.py: `os.environ.get("GRAPHIFY_OUT", "graphify-out")`, read once at
 # import; watch.py joins it as `out = watch_path / GRAPHIFY_OUT`), and
 # ast-update.sh resolves it the same way so the hourly structural leg takes
 # the promote lock on the directory actually being written. This script
-# hardcoded "graphify-out", so under an override the two legs locked and wrote
-# DIFFERENT directories: the serialization HIMMEL-1948 added would silently
+# hardcoded "graphify-out", so under an override the two legs would lock and write
+# DIFFERENT directories: the serialization would silently
 # guard nothing, and the semantic leg would publish from the wrong path.
 #
 # Only the RELATIVE form is honourable here. ast-update.sh can accept an
@@ -529,7 +521,7 @@ fi
 # promote, and "extraction never touches the live corpus" would stop holding.
 # Refuse it loudly rather than diverge quietly: a refusal is a cadence that
 # does not run, a divergence is a cadence that corrupts.
-# `${VAR-default}`, NOT `${VAR:-default}` (CR r5): Python's
+# `${VAR-default}`, NOT `${VAR:-default}`: Python's
 # `os.environ.get("GRAPHIFY_OUT", "graphify-out")` substitutes the default only
 # when the variable is ABSENT, and PRESERVES an exported empty string — which
 # pathlib then joins away, so graphify would write the corpus root itself. `:-`
@@ -549,7 +541,7 @@ if ! printf '%s' "$GRAPHIFY_OUT_NAME" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$';
   echo "refresh-graph-map: GRAPHIFY_OUT must be a single relative directory name matching [A-Za-z0-9][A-Za-z0-9._-]* (got '$GRAPHIFY_OUT_NAME')" >&2
   exit 2
 fi
-# HIMMEL-3718: OPTIONAL out-of-corpus promote destination (--out-root /
+# OPTIONAL out-of-corpus promote destination (--out-root /
 # GRAPHIFY_OUT_ROOT). This is UNRELATED to the GRAPHIFY_OUT_NAME refusal
 # above: that one refuses letting the SCRATCH-relative extraction leaf be
 # absolute (graphify would then write onto the live corpus instead of the
@@ -568,10 +560,10 @@ if [ -n "$OUT_ROOT" ]; then
   # corpus root, or a not-yet-existing OUT_ROOT (mkdir -p happens later, at
   # first use) can't dodge the refusals below by lexical spelling alone.
   CORPUS_ROOT_RESOLVED="$(cd "$CORPUS_ROOT" && pwd -P)"
-  # HIMMEL-3718 CR round 1 (codex-1): lexically collapse "." / ".." segments in
+  # Lexically collapse "." / ".." segments in
   # OUT_ROOT FIRST, purely as a string -- no filesystem call, so this fires
-  # even when nothing in the path exists yet. Before this, a not-yet-existing
-  # OUT_ROOT such as "<corpus-root>/x/.." (where "x" does not exist) reached
+  # even when nothing in the path exists yet. Without it, a not-yet-existing
+  # OUT_ROOT such as "<corpus-root>/x/.." (where "x" does not exist) would reach
   # the refusals below un-resolved, because the "if -d" cd/pwd -P canonicalizer
   # only fires once the directory exists -- while CORPUS_ROOT_RESOLVED is
   # always fully resolved, so the string-equality check below silently passed
@@ -597,7 +589,7 @@ if [ -n "$OUT_ROOT" ]; then
   done
   [ -n "$_or_norm" ] || _or_norm="/"
   OUT_ROOT_RESOLVED="$_or_norm"
-  # HIMMEL-3718 CR (CodeRabbit, PR #1367): the "if -d" canonicalizer above only
+  # The "if -d" canonicalizer above only
   # fires once the FULL OUT_ROOT_RESOLVED path exists. A not-yet-existing leaf
   # under a symlinked ANCESTOR then skips pwd -P entirely, so the corpus/home/
   # root refusals below compare the lexical (unresolved) value while the later
@@ -633,10 +625,10 @@ if [ -n "$OUT_ROOT" ]; then
     echo "refresh-graph-map: REFUSING --out-root=<corpus root> ($OUT_ROOT) -- that is the in-corpus case; omit --out-root/GRAPHIFY_OUT_ROOT instead." >&2
     exit 2
   fi
-  # HIMMEL-3718 CR round 3 (codex-3): a --out-root INSIDE the corpus (not
-  # equal to it) passed the check above but still puts graph churn under
+  # A --out-root INSIDE the corpus (not
+  # equal to it) passes the check above but still puts graph churn under
   # whatever this corpus's own watcher/backup tooling watches -- exactly what
-  # this ticket exists to get out of. Refuse any out-root that is the corpus
+  # --out-root exists to get out of. Refuse any out-root that is the corpus
   # root itself OR a descendant of it.
   case "$OUT_ROOT_RESOLVED/" in
     "$CORPUS_ROOT_RESOLVED"/*)
@@ -644,7 +636,7 @@ if [ -n "$OUT_ROOT" ]; then
       exit 2 ;;
   esac
   OUT_OF_CORPUS=1
-  # HIMMEL-3718 CR round 3 (codex-2): build OUT_DIR from OUT_ROOT_RESOLVED, not
+  # Build OUT_DIR from OUT_ROOT_RESOLVED, not
   # the raw $OUT_ROOT. A raw path with a symlink component followed by ".."
   # (e.g. "$CORPUS_ROOT/link/../../x" where "link" targets somewhere deep) gets
   # real OS symlink-then-".." resolution when used for mkdir/promote -- which
@@ -656,18 +648,18 @@ if [ -n "$OUT_ROOT" ]; then
 else
   OUT_DIR="$CORPUS_ROOT/$GRAPHIFY_OUT_NAME"
 fi
-# Refuse to adopt a directory that is not already a graphify out dir (CR r8/r9).
+# Refuse to adopt a directory that is not already a graphify out dir.
 # Accepting any well-formed NAME widened what the promote can land on: with
 # GRAPHIFY_OUT=docs, OUT_DIR becomes <corpus>/docs, and the promote block below
 # recursively deletes "$OUT_DIR/cache", deletes "$OUT_DIR/manifest.json" and
 # "$OUT_DIR/.graphify_root", then drops graph.json in. That is real data loss
 # inside a SOURCE directory, from one mistyped environment variable.
 #
-# SCOPED TO THE OVERRIDE, deliberately. Two earlier versions tried to answer
-# "does this directory belong to graphify?" from its contents and got it wrong
-# in both directions: a wide marker list accepted a source tree that merely had
-# a `cache/`, and a narrow one rejected legitimate out dirs that had not been
-# promoted yet. The contents are the wrong question. The RISK is a mistyped
+# SCOPED TO THE OVERRIDE, deliberately. Answering "does this directory belong
+# to graphify?" from its contents goes wrong in both directions: a wide marker
+# list accepts a source tree that merely has a `cache/`, and a narrow one
+# rejects legitimate out dirs that have not been promoted yet. The contents are
+# the wrong question. The RISK is a mistyped
 # GRAPHIFY_OUT; the conventional `graphify-out` under the corpus root is the
 # out dir by definition and needs no proof, so the default path keeps exactly
 # the behaviour it always had. Only an explicit override has to earn it — by
@@ -675,18 +667,18 @@ fi
 # (every promote writes `.graphify_root`, and an interrupted one leaves
 # `.promote-stage.*`, so a real out dir always has one). Unmatched globs expand
 # literally and fail `-e`, so the loop is safe with nullglob off.
-# Gate on the resolved NAME, not on the variable merely being SET (CR r10):
+# Gate on the resolved NAME, not on the variable merely being SET:
 # GRAPHIFY_OUT=graphify-out is the default spelled out loud and must behave
 # exactly like leaving it unset, or a harmless explicit setting would start
 # refusing a valid out dir that predates the marker convention.
-# A SYMLINK at the override path escapes the corpus (CR r14): the name check
+# A SYMLINK at the override path escapes the corpus: the name check
 # above only proves the NAME is a single segment, and `-d` follows the link, so
 # <corpus>/foo -> /somewhere/else would be adopted and the promote would then
 # write into, and delete graph-named content from, a directory outside the
 # corpus the operator named. `-L` is the only test that sees the link itself,
 # and it runs before `-d` so a link to a directory cannot slip past.
-# HIMMEL-3718: widened to also fire whenever OUT_ROOT redirects the promote
-# out-of-corpus, even at the default leaf name -- the original scoping's
+# The check also fires whenever OUT_ROOT redirects the promote
+# out-of-corpus, even at the default leaf name -- the override-only scoping's
 # premise ("the conventional graphify-out under the corpus root needs no
 # proof") only holds while OUT_DIR is guaranteed to be a child of a corpus
 # the operator already trusts. Once it can live anywhere, the default name
@@ -697,12 +689,12 @@ if { [ "$GRAPHIFY_OUT_NAME" != "graphify-out" ] || [ "$OUT_OF_CORPUS" -eq 1 ]; }
 fi
 if { [ "$GRAPHIFY_OUT_NAME" != "graphify-out" ] || [ "$OUT_OF_CORPUS" -eq 1 ]; } && [ -d "$OUT_DIR" ]; then
   _out_is_graphify=0
-  # `.graphify_*` with the UNDERSCORE, not `.graphify*` (CR r11). Every out-dir
+  # `.graphify_*` with the UNDERSCORE, not `.graphify*`. Every out-dir
   # control file graphify writes is underscored -- .graphify_root,
   # .graphify_build.json, .graphify_semantic_marker, .graphify_analysis.json,
   # .graphify_labels.json, .graphify_promoted_version -- while the CORPUS-side
-  # file this repo puts at a source root, `.graphify-corpus-ignore`
-  # (HIMMEL-1903), is hyphenated. The looser glob accepted that as proof of
+  # file this repo puts at a source root, `.graphify-corpus-ignore`,
+  # is hyphenated. The looser glob would accept that as proof of
   # ownership, so a source tree carrying one could be adopted and have its
   # cache and manifest destroyed: the guard defeated by a file this very repo
   # tells operators to create.
@@ -710,8 +702,8 @@ if { [ "$GRAPHIFY_OUT_NAME" != "graphify-out" ] || [ "$OUT_OF_CORPUS" -eq 1 ]; }
                  "$OUT_DIR"/.cache.previous.*; do
     if [ -e "$_marker" ]; then _out_is_graphify=1; break; fi
   done
-  # FAIL CLOSED when the directory cannot be listed (CR r14). `2>/dev/null`
-  # turned an unreadable directory into an empty-looking one, i.e. into "safe
+  # FAIL CLOSED when the directory cannot be listed. `2>/dev/null`
+  # turns an unreadable directory into an empty-looking one, i.e. into "safe
   # to adopt" -- a permissions problem silently granting the promote access to
   # contents nobody could see.
   if ! _out_listing=$(ls -A "$OUT_DIR" 2>/dev/null); then
@@ -725,11 +717,11 @@ if { [ "$GRAPHIFY_OUT_NAME" != "graphify-out" ] || [ "$OUT_OF_CORPUS" -eq 1 ]; }
 fi
 REPORT="$OUT_DIR/GRAPH_REPORT.md"
 
-# HIMMEL-910: exclusive per-out-dir promote lock. Two overlapping refreshes
+# Exclusive per-out-dir promote lock. Two overlapping refreshes
 # of the SAME out dir (a scheduler firing twice, an operator re-running
-# while a prior run is still in flight, ...) had no inter-process
-# serialization around the F2 transactional promote block below -- B
-# overwriting a .tmp before A renames it (or B's cp landing between A's
+# while a prior run is still in flight, ...) would otherwise have no
+# inter-process serialization around the transactional promote block below --
+# B overwriting a .tmp before A renames it (or B's cp landing between A's
 # invalidate and A's own cp) could stamp A's graph with B's corpus snapshot,
 # or leave the out dir with an artifact triple from two different runs.
 # mkdir is atomic (no check-then-create TOCTOU, works on NTFS/Git-Bash
@@ -741,7 +733,7 @@ REPORT="$OUT_DIR/GRAPH_REPORT.md"
 # arms-registry integration -- just a bounded-wait acquire with stale-by-age
 # takeover (a loud stderr trail either way), released on ANY exit (success
 # or failure) by the same EXIT trap that cleans up SCRATCH below.
-# Residual (accepted, CR r1): a stale-but-ALIVE holder (machine-sleep
+# Residual (accepted): a stale-but-ALIVE holder (machine-sleep
 # mid-promote) that was taken over can still be INSIDE the promote block
 # when it wakes and interleave with the successor -- inherent to fail-open
 # stale takeover; the 600s stale floor vs a promote block measured in
@@ -755,7 +747,7 @@ PROMOTE_LOCK_TOKEN=""
 PROMOTE_STAGE=""
 CACHE_BACKUP=""
 
-# EXTRACTION_LOCK (HIMMEL-1653) -- a SECOND, WIDER lock covering the whole
+# EXTRACTION_LOCK -- a SECOND, WIDER lock covering the whole
 # pull+copy+extraction+promote run, distinct from PROMOTE_LOCK above on
 # purpose. PROMOTE_LOCK alone only serializes the transactional promote
 # block and deliberately lets pull/copy/extraction overlap (see the "NOT
@@ -780,23 +772,20 @@ CACHE_BACKUP=""
 # slower. The acquire WAIT, by contrast, defaults short: this is an
 # expensive step, so a second invocation should get a fast, clear refusal
 # to retry later rather than block a session for the full extraction.
-# Residual (accepted, same class as PROMOTE_LOCK's own -- CR follow-up,
-# codex-2 @ HIMMEL-1653 paid panel): a fixed stale threshold with no
+# Residual (accepted, same class as PROMOTE_LOCK's own): a fixed stale threshold with no
 # heartbeat/lease renewal means a genuinely still-running extraction that
 # legitimately outlasts EXTRACTION_LOCK_STALE_SECONDS (default 7200s = 2h)
 # CAN be judged stale and taken over, letting two processes extract
 # concurrently for the tail of that window -- the exact class of race this
 # lock exists to close, just at a much longer timescale than promote's.
 # Not fixed here: heartbeat/lease renewal is a real feature, not a bug fix,
-# and the ticket's own text already scopes a full close of the
-# stale-overwrite path to a separate "consider also" snapshot-freshness
-# check at promote time, not this lock alone. Operators with corpora that
+# and a full close of the stale-overwrite path would be a separate
+# snapshot-freshness check at promote time, not this lock alone. Operators with corpora that
 # legitimately run past 7200s should raise GRAPHIFY_EXTRACTION_LOCK_STALE_SECONDS.
 EXTRACTION_LOCK="$OUT_DIR/.extraction.lock"
 EXTRACTION_LOCK_TIMEOUT_SECONDS="${GRAPHIFY_EXTRACTION_LOCK_TIMEOUT_SECONDS:-10}"
 EXTRACTION_LOCK_STALE_SECONDS="${GRAPHIFY_EXTRACTION_LOCK_STALE_SECONDS:-7200}"
-# Validate BOTH as non-negative integers (CR follow-up, codex-4 @ HIMMEL-1653
-# paid panel): a malformed override (non-numeric, or simply mistyped) makes
+# Validate BOTH as non-negative integers: a malformed override (non-numeric, or simply mistyped) makes
 # every `[ "$x" -ge "$y" ]` comparison against it fail with a shell error
 # rather than a true/false result -- under `if`, that failure reads as
 # FALSE, so the acquire loop's own timeout/stale check can never fire and
@@ -833,7 +822,7 @@ _extraction_lock_release() {
   fi
 }
 
-# _extraction_lock_test_seam -- test-only (HIMMEL-2618), default OFF: when
+# _extraction_lock_test_seam -- test-only, default OFF: when
 # GRAPHIFY_EXTRACTION_TEST_TAKEOVER_GATE names a directory, the FIRST contender
 # to reach a takeover mkdirs "$gate/first", touches "$gate/paused" and blocks
 # (bounded ~15s) until "$gate/go" exists -- i.e. between having judged the lock
@@ -857,7 +846,7 @@ _extraction_lock_test_seam() {
 # same atomic-rename protocol as _promote_lock_takeover (below): exactly one
 # contender's mv succeeds; the loser just loops back to the mkdir spin.
 #
-# HIMMEL-2618: the mv alone is NOT enough. Between a contender judging the
+# The mv alone is NOT enough. Between a contender judging the
 # lock stale and its mv, a rival can complete a whole takeover+acquire, so the
 # mv would sideline the rival's LIVE lock and both would then run extraction.
 # <judged-owner> is the owner token read (before the stamp) from the directory
@@ -895,7 +884,7 @@ _extraction_lock_takeover() {
 # Returns 1 (never held) once the wait budget is exhausted -- the caller
 # refuses to enter extraction rather than double-run it.
 #
-# HIMMEL-2731: owner publication is now the SOLE definition of holding,
+# Owner publication is the SOLE definition of holding,
 # and it is exclusive (noclobber `set -C` create, see below). The
 # missing-stamp grace window (~5 polls) still treats a holder that
 # mkdir'd but has not yet published owner as crashed and takes over, and
@@ -905,11 +894,11 @@ _extraction_lock_takeover() {
 # EEXIST (successor already published), so it holds nothing and loops
 # back to the top of this wait loop instead of clobbering the successor.
 # Same mkdir+stamp+grace-window algorithm PROMOTE_LOCK ships with (below)
-# gets the identical owner-publication fix.
+# uses the identical owner-publication protocol.
 #
-# HIMMEL-2618: the acquired-stamp write is no longer swallowed (it used to
-# `|| true`, so a failed stamp left a LIVE, PUBLISHED holder reading as a
-# crashed one to the 5-poll grace-window takeover): a failed stamp now fails
+# The acquired-stamp write is not swallowed (an `|| true` would let a failed
+# stamp leave a LIVE, PUBLISHED holder reading as a
+# crashed one to the 5-poll grace-window takeover): a failed stamp fails
 # closed, and holding is only claimed after re-reading our own token back
 # from the directory (verify-after-stamp). Takeover is identity-checked
 # against the owner token judged stale (see _extraction_lock_takeover).
@@ -922,7 +911,7 @@ _extraction_lock_acquire() {
     if mkdir "$EXTRACTION_LOCK" 2>/dev/null; then
       token="$$-$RANDOM"
       if ( set -C; printf '%s\n' "$token" > "$EXTRACTION_LOCK/owner" ) 2>/dev/null; then
-        # HIMMEL-2618 verify-after-stamp: the stamp is part of holding, so a
+        # Verify-after-stamp: the stamp is part of holding, so a
         # failed stamp write is not swallowed, and holding is only claimed if
         # the directory still carries OUR owner token afterwards -- a takeover
         # that sidelined us mid-acquire leaves it missing or someone else's.
@@ -956,7 +945,7 @@ _extraction_lock_acquire() {
       # EXTRACTION_LOCK_TIMEOUT_SECONDS.
       continue
     fi
-    # HIMMEL-2618: read the owner BEFORE the stamp -- if the directory is
+    # Read the owner BEFORE the stamp -- if the directory is
     # replaced between the two reads, the fresh replacement's stamp fails the
     # staleness judgement instead of pairing a stale stamp with a new owner.
     judged_owner=$(cat "$EXTRACTION_LOCK/owner" 2>/dev/null) || judged_owner=""
@@ -1007,7 +996,7 @@ _promote_stage_cleanup() {
     rm -rf "$PROMOTE_STAGE" 2>/dev/null || true
     PROMOTE_STAGE=""
   fi
-  # HIMMEL-3205: the leak scan's scoped extract lands in $SCRATCH; a normal run
+  # The leak scan's scoped extract lands in $SCRATCH; a normal run
   # removes the whole scratch, but a --promote-only workdir is the operator's
   # and survives, so its scan temp (which may hold the very host path a refusal
   # names) must not.
@@ -1016,7 +1005,7 @@ _promote_stage_cleanup() {
   fi
 }
 
-# _promote_lock_release -- owner-tokened (CR r1 [codex-1]): a former holder
+# _promote_lock_release -- owner-tokened: a former holder
 # that was taken over while paused (stale takeover) must NOT, on wake,
 # rm -rf the SUCCESSOR's lock -- so release compares the lock's owner file
 # against OUR token and only removes on a match; on mismatch it WARNs
@@ -1035,10 +1024,10 @@ _promote_lock_release() {
   fi
 }
 
-# _promote_lock_takeover <reason> -- SINGLE-WINNER takeover (CR r1
-# [codex-adv-1]): atomically SIDELINE the dead lock via a dir rename --
+# _promote_lock_takeover <reason> -- SINGLE-WINNER takeover: atomically
+# SIDELINE the dead lock via a dir rename --
 # exactly one contender's mv succeeds; the loser's mv fails and it just
-# loops back to the mkdir spin. rm-then-continue was a race: two contenders
+# loops back to the mkdir spin. rm-then-continue would race: two contenders
 # judging the same stale stamp could have the second's rm -rf destroy the
 # first's freshly-won lock. NOTE queue-lock.sh's header documents mv-to-
 # graveyard as unreliable under concurrent rename on MSYS (spurious rc-0);
@@ -1063,7 +1052,7 @@ _promote_lock_takeover() {
 # needed (portable across NTFS/ext4 without a stat-flag dance). A lock
 # whose stamp is missing/unparseable for ~5 consecutive polls (grace window
 # covering a healthy winner's mkdir->stamp gap) is treated as a holder that
-# crashed before stamping and reclaimed the same way (CR r1) -- otherwise
+# crashed before stamping and reclaimed the same way -- otherwise
 # such a lock would brick the out dir forever. Returns 1 (never held) once
 # the wait budget is exhausted -- the caller exits non-zero rather than
 # silently clobbering.
@@ -1078,7 +1067,7 @@ _promote_lock_acquire() {
         PROMOTE_LOCK_HELD=1
         return 0
       fi
-      # LOST (HIMMEL-2731, same fix as _extraction_lock_acquire above): the
+      # LOST (same protocol as _extraction_lock_acquire above): the
       # noclobber owner write failed -- a takeover moved the directory away
       # (ENOENT) or raced us into a replacement whose new holder already
       # published first (EEXIST). We never held anything; do not remove
@@ -1116,8 +1105,8 @@ _promote_lock_acquire() {
   done
 }
 
-# _scratch_cleanup -- EXIT-trap cleanup for the owned $SCRATCH subdir
-# (HIMMEL-1406). Previously this was a bare `rm -rf "$SCRATCH"`, which ran
+# _scratch_cleanup -- EXIT-trap cleanup for the owned $SCRATCH subdir.
+# A bare `rm -rf "$SCRATCH"` would run
 # on EVERY exit including a promote-refusal (host-path guard, a missing
 # scratch artifact, a failed sideline cache mv, ...) AFTER the paid
 # extraction had already completed -- discarding the only copy of a full,
@@ -1136,7 +1125,7 @@ _promote_lock_acquire() {
 _scratch_cleanup() {
   local rc=$?
   if [ "$rc" -ne 0 ] && [ -d "$SCRATCH/$GRAPHIFY_OUT_NAME" ] && [ -f "$SCRATCH/$GRAPHIFY_OUT_NAME/graph.json" ]; then
-    # HIMMEL-1414: never overwrite an older quarantine (it may hold another
+    # Never overwrite an older quarantine (it may hold another
     # run's paid artifact) -- pick the first free name instead of rm -rf'ing.
     local qdir="${SCRATCH}.quarantine" qn=0
     while [ -e "$qdir" ]; do qn=$((qn + 1)); qdir="${SCRATCH}.$qn.quarantine"; done
@@ -1149,7 +1138,7 @@ _scratch_cleanup() {
   rm -rf "$SCRATCH" 2>/dev/null || true
 }
 
-# _graph_structural_fields <graph.json> <out_txt> -- HIMMEL-1406. Extracts
+# _graph_structural_fields <graph.json> <out_txt> -- extracts
 # ONLY the structural fields graphify itself writes as artifact structure
 # (node id/source_file/source_url; link source/target/source_file; hyperedge
 # id/source_file/member node ids -- per graph.json's actual schema) into a
@@ -1160,7 +1149,7 @@ _scratch_cleanup() {
 # legitimately QUOTES a Windows path in prose; the luna vault routinely does
 # (handover specs quoting C:\Users\...). The artifact lands in the PRIVATE
 # vault, not a public repo, so a content-borne host path there is not a leak
-# (policy decision, HIMMEL-1406) -- only a path graphify wrote into the
+# (policy decision) -- only a path graphify wrote into the
 # artifact's own STRUCTURE is.
 # jq is preferred (matches this repo's `command -v jq` convention used
 # throughout scripts/); python3 is the fallback and is UNCONDITIONALLY
@@ -1198,7 +1187,7 @@ PYEOF
   return $?
 }
 
-# _report_leftover_scratches -- HIMMEL-1414. Name (never delete) every earlier
+# _report_leftover_scratches -- name (never delete) every earlier
 # run's scratch workdir or quarantine dir under $SCRATCH_PARENT for THIS --name
 # that still holds a finished graph.json: an orphaned unpromoted extraction is
 # the expensive artifact, and the operator needs to know it is there.
@@ -1242,7 +1231,7 @@ _prune_graphify_backups() {
   local out="$1" keep="${GRAPHIFY_BACKUP_KEEP:-3}"
   local entry name pruned=0 total=0 drop idx=0
   local -a dirs=() sorted=()
-  # codex-1: a digit-only value longer than 4 digits (e.g. a fat-fingered
+  # A digit-only value longer than 4 digits (e.g. a fat-fingered
   # 99999999999999999999) overflows bash's 64-bit `[ -gt ]` integer test below
   # and errors -- which under `set -e` would abort the whole refresh instead
   # of just skipping pruning. `?????*` (5+ chars) rejects it the same way
@@ -1277,7 +1266,7 @@ _prune_graphify_backups() {
         ;;
     esac
   done
-  # codex-1 (round 2): a plain counter, not `${#dirs[@]}` -- on bash <4.4
+  # A plain counter, not `${#dirs[@]}` -- on bash <4.4
   # (macOS's stock 3.2, still in the wild) expanding an EMPTY array under
   # `set -u` can raise "unbound variable" and abort the whole refresh when an
   # out dir simply has no dated backups yet (the common case on a first
@@ -1310,7 +1299,7 @@ _prune_graphify_backups() {
 # disagree on spelling.
 _corpus_root_marker() { ( cd "$CORPUS_ROOT" 2>/dev/null && pwd -P ); }
 
-# _promote_only_prepare -- HIMMEL-3205. Validate the --promote-only argument
+# _promote_only_prepare -- validate the --promote-only argument
 # and take the extraction lock. Every refusal is rc=2 and happens BEFORE
 # anything under $OUT_DIR is touched (the lock lives there, so it is taken last).
 # The EXIT trap it installs deliberately omits _scratch_cleanup: the workdir is
@@ -1384,7 +1373,7 @@ PYEOF
   _extraction_lock_acquire || exit 2
 }
 
-# _promote_only_post_lock -- HIMMEL-3205. Runs once BOTH locks are held (the
+# _promote_only_post_lock -- runs once BOTH locks are held (the
 # shared promote section calls it right after _promote_lock_acquire): the
 # staleness check is only race-free under the lock, and harden mutates the
 # workdir, so neither happens before the refusals above have all passed.
@@ -1407,15 +1396,15 @@ _promote_only_post_lock() {
 }
 
 if [ "$DO_UPDATE" -eq 1 ]; then
-  # Promote shrink guard (HIMMEL-1901 addendum -- operator directive: "graphify
+  # Promote shrink guard (operator directive: "graphify
   # should always expand but not just flat rewrite as this is huge costs"). The
-  # promote below is a flat `mv`, no floor: HIMMEL-1650 silently collapsed luna
-  # from 16,630 to 10,538 nodes on a 0.9.32 replay, HIMMEL-1817 collapsed a
+  # promote below is a flat `mv`, no floor: an unguarded promote once silently
+  # collapsed luna from 16,630 to 10,538 nodes on a 0.9.32 replay, collapsed a
   # single CLAUDE.md extraction from 17 nodes to 1 (134 source files vanished,
-  # nothing caught it), and leg 28 of this very chain overwrote a committed
+  # nothing caught it), and overwrote a committed
   # 1295-node/1605-edge graph with a 920/854 cluster-only run. Worse than
   # losing one good graph: the semantic cache the NEXT run seeds from
-  # (HIMMEL-1097, below) is whatever got promoted, so an uncaught collapse
+  # (see below) is whatever got promoted, so an uncaught collapse
   # also poisons every future incremental into a full, expensive
   # re-extraction -- this compounds, it does not just cost one bad graph.
   # Default 90 == refuse a promote that drops node OR link counts more
@@ -1434,39 +1423,39 @@ if [ -n "$PROMOTE_ONLY" ]; then
 fi
 
 if [ "$DO_UPDATE" -eq 1 ]; then
-# HIMMEL-3205: under --promote-only the whole copy + extraction region below is
+# Under --promote-only the whole copy + extraction region below is
 # skipped (DO_EXTRACT=0) -- it is one long `if`, kept un-indented so its
-# heredocs and the HIMMEL-2731-sliced lock protocol stay byte-identical. The
+# heredocs and the test-sliced lock protocol stay byte-identical. The
 # promote section after it is shared with --promote-only.
 if [ "$DO_EXTRACT" -eq 1 ]; then
   command -v "$GRAPHIFY_MAP" >/dev/null 2>&1 || { echo "refresh-graph-map: '$GRAPHIFY_MAP' not on PATH (needed for --update; use --no-update to publish from an existing report)" >&2; exit 2; }
-  # F3 (HIMMEL-907): python3 writes the freshness manifest (see stamp step
+  # python3 writes the freshness manifest (see stamp step
   # below). Preflight it next to the graphify check so a python3-less box fails
   # BEFORE the scratch copy / paid extraction — never after promoting a new graph.
   command -v python3 >/dev/null 2>&1 || { echo "refresh-graph-map: python3 not found (needed to write manifest.json for freshness verification)" >&2; exit 2; }
   # Fence-safe incremental refresh on a scratchpad COPY (never the live corpus).
   # Always work inside a uniquely-named, launcher-OWNED subdir (mktemp-suffixed) so
   # we never rm -rf an operator-supplied --scratch that may point at an existing
-  # directory holding unrelated data (codex-adv [codex-1]). --scratch names only
+  # directory holding unrelated data. --scratch names only
   # the PARENT under which the owned workdir is created.
   SCRATCH_PARENT="${SCRATCH:-${TMPDIR:-/tmp}}"
   mkdir -p "$SCRATCH_PARENT" || { echo "refresh-graph-map: cannot create scratch parent: $SCRATCH_PARENT" >&2; exit 1; }
-  # HIMMEL-1414: the workdir is created by mktemp -d (unguessable suffix, made
+  # The workdir is created by mktemp -d (unguessable suffix, made
   # exclusively by THIS run) -- never "$$" plus a startup rm -rf. PIDs recycle,
-  # so a later run whose PID matched an earlier run's suffix used to rm -rf that
-  # run's finished-but-unpromoted graph (live loss 2026-07-31). Nothing that
+  # so a later run whose PID matched an earlier run's suffix would rm -rf that
+  # run's finished-but-unpromoted graph. Nothing that
   # already exists under the parent is ever deleted at startup; leftovers that
   # hold a graph.json are only NAMED on stderr so the operator can recover them.
   _report_leftover_scratches
   SCRATCH="$(mktemp -d "$SCRATCH_PARENT/graphify-refresh-$NAME-XXXXXX")" \
     || { echo "refresh-graph-map: cannot create a scratch workdir under $SCRATCH_PARENT" >&2; exit 1; }
   # Clean the owned subdir on ANY exit — a graphify/cluster-only failure (exit 2)
-  # otherwise leaks it (CR suggestion). Scoped to the mktemp-owned dir only.
-  # _scratch_cleanup (HIMMEL-1406) quarantines the extracted graphify-out
+  # otherwise leaks it. Scoped to the mktemp-owned dir only.
+  # _scratch_cleanup quarantines the extracted graphify-out
   # instead of deleting it when the exit is a FAILURE and extraction had
   # already produced one — see its definition above.
   trap '_scratch_cleanup; _promote_stage_cleanup; _promote_lock_release; _extraction_lock_release' EXIT
-  # extraction-wide lock (HIMMEL-1653) -- acquired BEFORE pull/copy/
+  # Extraction-wide lock -- acquired BEFORE pull/copy/
   # extraction begins (see the EXTRACTION_LOCK definition above for why this
   # is a separate, wider lock than PROMOTE_LOCK) and released by the same
   # EXIT trap just armed above, so it covers this run's entire pull, copy,
@@ -1483,21 +1472,21 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # refresh-graph-map run" message.
   mkdir -p "$OUT_DIR"
   _extraction_lock_acquire || exit 2
-  # Test-only hook (HIMMEL-1653, mirrors GRAPHIFY_PROMOTE_TEST_HOLD_SECONDS
+  # Test-only hook (mirrors GRAPHIFY_PROMOTE_TEST_HOLD_SECONDS
   # above): hold the extraction lock for N seconds right after acquiring it,
   # before any pull/copy/extraction work, so a concurrency test can create a
   # deterministic overlap window. No-op unless set.
   if [ -n "${GRAPHIFY_EXTRACTION_TEST_HOLD_SECONDS:-}" ]; then
     sleep "$GRAPHIFY_EXTRACTION_TEST_HOLD_SECONDS"
   fi
-  # pull-before-regenerate (HIMMEL-1050): refresh the corpus from its remote
+  # Pull-before-regenerate: refresh the corpus from its remote
   # before copying to scratch, so the graph reflects the latest pushed state, not
   # a stale local checkout. Best-effort + advisory: a miss regenerates from the
   # current checkout (a stale-but-present corpus still yields a useful incremental
   # graph). --ff-only stays non-destructive (never a merge commit or a left-behind
   # conflict). Guarded so `set -e` never trips on the miss path.
   #
-  # GUARDED (codex-adv-1 on HIMMEL-1049) — pull ONLY when the corpus is BOTH:
+  # GUARDED — pull ONLY when the corpus is BOTH:
   #   (a) the git TOPLEVEL (empty --show-prefix), never a nested corpus whose
   #       pull would mutate an unrelated PARENT repo (a subdir passes
   #       is-inside-work-tree but a pull there updates the whole parent tree); and
@@ -1505,32 +1494,31 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   #       work the operator/another session is mid-edit on.
   # --show-prefix keeps this Windows-safe (no C:/ vs /c/ path-form comparison).
   #
-  # NOT under the promote lock — deliberate (codex-adv-3 + CodeRabbit asked for a
-  # lock here; it was tried and REVERTED, and here is why). The promote lock's
+  # NOT under the promote lock — deliberate. The promote lock's
   # takeover is AGE-based (PROMOTE_LOCK_STALE_SECONDS): holding it across the
   # pull+copy+extraction — extraction can outlast the stale floor — would let a
   # second refresh judge a STILL-ALIVE holder stale and take over, breaking the
-  # very promote exclusivity HIMMEL-910 built (and a heartbeat, or splitting into
+  # very promote exclusivity it provides (and a heartbeat, or splitting into
   # two holds, each conflicts with that same stale-takeover contract). The lock
   # therefore stays SHORT and promote-only, exactly as designed.
   # The residual it leaves is small and self-healing: only TWO CONCURRENT refreshes
   # of the SAME corpus could interleave a pull against the other's copy, yielding a
   # mixed-revision SCRATCH -> a slightly-off graph, corrected on the next refresh;
   # the promote itself stays serialized, and the scratch manifest always attests
-  # exactly what that copy saw (never a lie). What IS hardened below instead — the
-  # real teeth of codex-adv-3 — is the pull itself: toplevel-only (never mutate a
+  # exactly what that copy saw (never a lie). What IS hardened below instead
+  # is the pull itself: toplevel-only (never mutate a
   # nested corpus's PARENT repo), clean-tree-only (never pull over uncommitted
   # work), and bounded + non-interactive (never hang).
-  # CLEAN-TREE PROBE (CodeRabbit): `git status` must SUCCEED *and* be EMPTY. A
+  # CLEAN-TREE PROBE: `git status` must SUCCEED *and* be EMPTY. A
   # FAILED status (permissions, corrupt index, ...) writes nothing to STDOUT, so a
   # bare `[ -z "$(...)" ]` would misread the failure as "clean" and pull over an
   # unknown state. Capture rc via the assignment-in-condition form (set -e exempt).
   # EVERY probe must SUCCEED before its output is tested for emptiness — a failed
   # probe writes nothing to stdout, so a bare `[ -z "$(...)" ]` would read the
   # FAILURE as "empty prefix" (= toplevel) or "empty status" (= clean) and pull
-  # over an unknown state (CodeRabbit). Assignment-in-condition captures rc and is
+  # over an unknown state. Assignment-in-condition captures rc and is
   # set -e exempt.
-  # The probe FLAGS matter as much as its rc (public CodeRabbit, HIMMEL-1070):
+  # The probe FLAGS matter as much as its rc:
   # `git status --porcelain` honors the repo/global `status.showUntrackedFiles`
   # setting, so on a machine with `status.showUntrackedFiles=no` a tree full of
   # untracked work reports CLEAN and we pull over it. Submodules are equally
@@ -1540,12 +1528,12 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # --ignore-submodules=none makes dirty submodules count as dirty.
   _corpus_clean() { # -> 0 only if `git status` SUCCEEDS *and* reports nothing
     local out
-    # HIMMEL-2160: exclude the script's OWN out dir from the dirty check. Line
-    # ~1039 below (`mkdir -p "$OUT_DIR"`) runs BEFORE this pull decision -- on a
+    # Exclude the script's OWN out dir from the dirty check. The
+    # `mkdir -p "$OUT_DIR"` above runs BEFORE this pull decision -- on a
     # corpus's first-ever refresh (no committed graphify-out yet) that mkdir
     # alone makes `git status` report an untracked graphify-out/, so the
-    # freshness pull permanently refused itself on every such corpus's first
-    # run. GRAPHIFY_OUT_NAME is validated above to a single plain path segment
+    # freshness pull would permanently refuse itself on every such corpus's
+    # first run. GRAPHIFY_OUT_NAME is validated above to a single plain path segment
     # (no leading magic-pathspec char, no separators), so it's safe verbatim.
     out="$(git -C "$CORPUS_ROOT" status --porcelain \
              --untracked-files=normal --ignore-submodules=none \
@@ -1571,7 +1559,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       # CLAUDE.md ENFORCEMENT) are dirty most of the day between their
       # auto-committer sweeps (untracked session notes), which made the strict
       # clean-tree gate below skip the freshness pull on virtually every
-      # scheduled fire (HIMMEL-1748, observed daily on luna). For exactly those
+      # scheduled fire (observed daily on luna). For exactly those
       # repos, sweep the dirty state into a commit FIRST — the same thing their
       # own auto-committer does next pass — so the pull can proceed. The commit
       # deliberately runs THROUGH the vault's hooks: its pre-commit secret scan
@@ -1581,9 +1569,8 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       # into a pre-staged operator index. If the bounded commit fails (hook block
       # or timeout) after add -A, reset only the index we verified was clean, then
       # let the ordinary clean gate skip the pull as before.
-      # CONCURRENCY (adjudicated, CR codex-adv r3): a reviewer flagged staging
-      # that appears DURING the <=60s hook window being lost to the failure
-      # reset. Deliberately accepted: `git reset` (mixed) destroys no
+      # CONCURRENCY: staging that appears DURING the <=60s hook window can be
+      # lost to the failure reset. Deliberately accepted: `git reset` (mixed) destroys no
       # working-tree content, and mid-window staging requires a SECOND
       # concurrent writer — which the `.single-writer` marker semantically
       # excludes (the vault's own auto-committer is the same writer's
@@ -1591,14 +1578,14 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       # so a transiently unstaged selection reconstitutes itself). A
       # repo-scoped writer lock here would guard against a topology the
       # marker's contract already forbids.
-      # DIVERGENCE (adjudicated, CR r1 + r3): committing before the fetch can
+      # DIVERGENCE: committing before the fetch can
       # leave local+upstream diverged when BOTH moved; the ff-only merge then
-      # fails and the run regenerates from the current checkout — byte-for-byte
-      # the pre-change outcome for a dirty tree (which never pulled at all).
+      # fails and the run regenerates from the current checkout — the same
+      # outcome as for a dirty tree (which never pulls at all).
       # Divergence reconciliation stays the operator's manual-consolidate
       # policy (vault convention); auto-merging here would violate it.
       if [ -f "$CORPUS_ROOT/.single-writer" ] && ! _corpus_clean; then
-        # Sweep ONLY on the default branch (CR codex-adv r4): the marker's
+        # Sweep ONLY on the default branch: the marker's
         # commit-straight-to-main design is about main — a vault temporarily
         # on a PR-lane feature branch must not receive sweep commits there.
         corpus_branch="$(git -C "$CORPUS_ROOT" branch --show-current 2>/dev/null)"
@@ -1619,7 +1606,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
           # A failed `add -A` can still have PARTIALLY staged files before the
           # failure (unreadable path mid-walk, index.lock contention) — reset
           # the index we verified was clean two branches up, same restore as
-          # the commit-failure path (CR codex r3).
+          # the commit-failure path.
           git -C "$CORPUS_ROOT" reset -q
           echo "refresh-graph-map: single-writer pre-pull add -A failed — restored the clean index; freshness pull skipped as before" >&2
         fi
@@ -1628,12 +1615,12 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     fi
   fi
   if [ "$corpus_pullable" = 1 ]; then
-    # NEVER RUN THE PULL UNBOUNDED (CodeRabbit-major). This is a best-effort
+    # NEVER RUN THE PULL UNBOUNDED. This is a best-effort
     # freshness pull, so the safe degradation is to SKIP it — never to risk a hang:
     #   * GRAPHIFY_PULL_TIMEOUT_SECONDS must be a POSITIVE integer; non-numeric or
     #     <=0 DISABLES the pull (an explicit opt-out, not an unbounded run).
     #   * a HARD wall-clock cap requires coreutils `timeout` — absent on stock
-    #     macOS, where Homebrew's coreutils installs it as `gtimeout` (CodeRabbit),
+    #     macOS, where Homebrew's coreutils installs it as `gtimeout`,
     #     so BOTH names are probed. With neither we SKIP rather than pull unbounded
     #     (git's own transport limits bound a STALLED transfer but are not a
     #     wall-clock cap).
@@ -1652,7 +1639,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       echo "refresh-graph-map: pull-before-regenerate SKIPPED — no 'timeout'/'gtimeout' supporting GNU -k is available to bound the fetch (macOS: brew install coreutils provides gtimeout); refusing to fetch unbounded, regenerating from the current checkout" >&2
     else
       # FETCH (bounded, killable) then MERGE (local, fast, NOT killed) — never a
-      # timeout-killed `pull` (CodeRabbit). A `pull` both fetches AND mutates the
+      # timeout-killed `pull`. A `pull` both fetches AND mutates the
       # worktree, so SIGKILLing it mid-flight can strand a half-updated checkout
       # (interrupted merge/checkout, a left-behind index.lock) that we would then
       # silently regenerate from. Splitting them means the only thing the timeout
@@ -1669,13 +1656,13 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
         # @{u} = the current branch's upstream (empty/absent -> merge fails -> WARN).
         # core.hooksPath=/dev/null: a fast-forward still fires the repo's
         # post-merge hook, which is arbitrary user code and CAN BLOCK — that would
-        # hang this unattended refresh (CodeRabbit). We do NOT bound the merge with
+        # hang this unattended refresh. We do NOT bound the merge with
         # a kill instead: SIGKILLing a mutating merge is exactly the strand risk we
         # removed by splitting fetch from merge. Disabling hooks keeps it both
         # unhangable and unkilled. Scoped to THIS internal, automated
         # fast-forward only (it is not a user-authored commit/push), and it also
-        # stops a post-merge graph-refresh hook (HIMMEL-1050) recursing into us.
-        # RE-PROBE (public CodeRabbit, HIMMEL-1070): the clean-tree probe above
+        # stops a post-merge graph-refresh hook recursing into us.
+        # RE-PROBE: the clean-tree probe above
         # ran BEFORE the fetch, and the fetch is a bounded NETWORK op that can
         # take the better part of a minute. In that window the operator (or a
         # parallel session) can start editing the corpus — this refresh is
@@ -1699,40 +1686,39 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   fi
   # Copy only markdown (matches the extraction corpus); carry the fence marker.
   # No 2>/dev/null on find — a scan failure (permission/IO) is aborted by
-  # set -euo pipefail, and find's own stderr is the ONLY diagnostic for it (CR).
+  # set -euo pipefail, and find's own stderr is the ONLY diagnostic for it.
   #
-  # STREAMED, not per-file (HIMMEL-1103). This was a `while read` loop running
-  # dirname + mkdir -p + cp PER FILE — three process spawns each. Windows process
+  # STREAMED, not per-file. A `while read` loop running
+  # dirname + mkdir -p + cp PER FILE costs three process spawns each. Windows process
   # creation is expensive, so staging the luna vault (15,235 md files) measured
-  # ~1.8 files/sec => ~130 MINUTES of copying before extraction even started; the
-  # daily HIMMEL-829 cadence firing at 13:00 was still copying at ~15:10. tar
+  # ~1.8 files/sec => ~130 MINUTES of copying before extraction even started. tar
   # streams the same file set in ONE pass (3 processes, not ~45k) and preserves
-  # the relative layout, so the scratch mirrors the corpus exactly as before.
+  # the relative layout, so the scratch mirrors the corpus exactly.
   # --null -T - consumes find's -print0 list verbatim, so the predicate and the
-  # graphify-out exclusion are byte-identical to the loop's — no re-globbing, and
+  # graphify-out exclusion are byte-identical to a per-file loop's — no re-globbing, and
   # filenames with spaces/newlines stay safe. GNU tar and macOS's bsdtar both
   # accept `--null -T -`.
   # pipefail keeps the failure contract: a find/tar failure at ANY stage fails the
   # pipeline and trips the || below, so a partial corpus can never be silently
   # extracted into a confidently-wrong graph.
-  # NOTE tar preserves source mtimes where cp stamped copy-time. The manifest
+  # NOTE tar preserves source mtimes where cp would stamp copy-time. The manifest
   # below carries mtimes as free-form provenance only (the guard reads its KEYS,
-  # never these values), so nothing depends on the old behaviour — and the
+  # never these values), so nothing depends on copy-time — and the
   # preserved mtime is the more honest provenance of what the graph actually saw.
-  # -type f is LOAD-BEARING for the tar form (CodeRabbit): `-name '*.md'` also
+  # -type f is LOAD-BEARING for the tar form: `-name '*.md'` also
   # matches DIRECTORIES, and tar -T RECURSES into a directory entry — so a dir
   # named `foo.md` would drag its entire non-md subtree into the corpus and thus
-  # into the graph. The old per-file `cp` could not do that (it just failed on a
+  # into the graph. A per-file `cp` could not do that (it just fails on a
   # directory), so this predicate is what keeps the streamed form equivalent.
   # Both corpora are 100% regular files today (luna 15,239 / himmel 9,114, zero
   # dirs or symlinks named *.md), so this is a no-op on current data and a guard
   # against a silently-wrong corpus later.
   #
-  # HIMMEL-1415: also exclude graphify's OWN published derived pages --
+  # Also exclude graphify's OWN published derived pages --
   # <maps-dir>/graph/* (the per-node/community notes graphify mints there) and
   # <maps-dir>/<slug>.md (the curated MOC this script's own publish step,
   # below, writes). Extracting the graph's own published output back into the
-  # graph is a feedback loop: a leg-14 luna regen found these derived pages
+  # graph is a feedback loop: a luna regen found these derived pages
   # dense enough to blow a rate-limited backend's per-chunk output cap
   # (bisect-retry storms, depth-3 partials, outright-skipped chunks -- ALL
   # from 60-Maps/graph sources). Computed via a plain bash prefix match, NOT
@@ -1741,7 +1727,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # both from one $VAULT), so they already share syntactic path form --
   # handing them to a SEPARATE native python3.exe process for
   # os.path.relpath instead invites MSYS's own argv-to-Windows-path
-  # translation, which was observed (HIMMEL-1415 CR follow-up test) to
+  # translation, which was observed to
   # resolve the two strings to DIFFERENT drive roots for a maps-dir
   # containing "[", silently disabling the exclusion -- strictly worse than
   # the drive-letter mismatch a python3 round-trip was meant to guard
@@ -1751,25 +1737,25 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # hand-authored, non-derived note living directly under maps-dir is real
   # corpus content and still gets extracted.
   #
-  # HIMMEL-1421: the plain lexical prefix match above (git blame: HIMMEL-1415)
+  # The plain lexical prefix match above
   # only catches --maps-dir/--corpus-root spelled with a SHARED literal
   # prefix. Two equivalent-path spellings slip through it:
   #   (a) relative-vs-absolute -- e.g. `--corpus-root . --maps-dir
   #       "$PWD/60-Maps"` share no string prefix even though maps-dir IS
   #       "./60-Maps", silently disabling the exclusion and reopening the
-  #       HIMMEL-1415 feedback loop; and
+  #       derived-content feedback loop; and
   #   (b) Windows case variants (C:/Users vs c:/users) -- NTFS is
   #       case-insensitive but a bash `case` pattern match is not.
-  # Fixed by canonicalizing both to absolute paths FIRST (below), then doing
-  # the containment comparison case-insensitively.
+  # So both are canonicalized to absolute paths FIRST (below), then compared
+  # case-insensitively where the filesystem is.
   #
   # Resolved with ONLY bash builtins (`cd` + `pwd -P`, in a subshell so the
   # cd never leaks into the script's own $PWD) -- deliberately NOT a
-  # python3/external-process round-trip. HIMMEL-1415's CR follow-up TRIED
-  # exactly that (os.path.relpath in a spawned python3.exe) and it was
-  # WORSE: MSYS's argv-to-Windows-path translation resolved --corpus-root
+  # python3/external-process round-trip: os.path.relpath in a spawned
+  # python3.exe is WORSE, because MSYS's argv-to-Windows-path translation
+  # resolves --corpus-root
   # and --maps-dir to DIFFERENT drive roots for a maps-dir containing "[",
-  # silently disabling the exclusion (observed live, T28). `cd`/`pwd -P`
+  # silently disabling the exclusion (T28). `cd`/`pwd -P`
   # never cross into a separate native process -- the path stays a plain,
   # always-quoted bash string throughout, so a literal "[" is just a
   # directory-name byte, never glob syntax, and that translation never gets
@@ -1795,7 +1781,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # truth (and it's exactly the case still needed downstream to build the
   # `find -path` exclusion pattern once the dir DOES exist).
   #
-  # CR round 1 (codex-1 + glm-3, HIMMEL-1421): backslashes are normalized to
+  # Backslashes are normalized to
   # forward slashes UP FRONT -- the walk below only ever splits on "/", and
   # _abs_path accepts a backslash-form Windows-drive-absolute input
   # ("C:\Users\...") as already-absolute without touching its separators.
@@ -1830,7 +1816,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
         [ -n "$abs" ] || abs="/"
       done
       if [ -d "$abs" ]; then
-        # CR (data integrity): a cd INSIDE a command substitution is NOT
+        # Data integrity: a cd INSIDE a command substitution is NOT
         # guarded by errexit -- a failing cd just yields an empty string,
         # which would overwrite abs with "" and silently disable the
         # maps-directory containment exclusion downstream. Capture into a
@@ -1849,23 +1835,22 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       fi
     )
   }
-  # _lc -- lowercase via `tr`, NOT `${var,,}` (CR round 1 addendum,
-  # codex-adv-1): `${var,,}` is a Bash 4+ case-conversion expansion and
+  # _lc -- lowercase via `tr`, NOT `${var,,}`: `${var,,}` is a Bash 4+ case-conversion expansion and
   # dies with "bad substitution" on Bash 3.2 (macOS system bash, this
   # repo's documented compatibility floor for scripts outside a narrow
   # exception list) -- which would kill every refresh before extraction
   # even started. `tr` in a command substitution is POSIX and 3.2-safe.
   _lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
   # _fs_case_insensitive -- true iff the filesystem the CORPUS actually
-  # lives on is case-insensitive. PROBE-FIRST (CR round 3, [codex-1]): the
-  # previous implementation keyed off OS TYPE (msys/cygwin/mingw/win32 ->
-  # insensitive, everything else -> sensitive), but macOS APFS is
+  # lives on is case-insensitive. PROBE-FIRST: keying off OS TYPE
+  # (msys/cygwin/mingw/win32 -> insensitive, everything else -> sensitive)
+  # misreads macOS APFS, which is
   # case-INSENSITIVE by default while $OSTYPE reports "darwin" -- so on this
   # repo's Bash-3.2 macOS floor, a maps-dir passed with a case-variant
-  # corpus-root prefix would still bypass the HIMMEL-1415 exclusion this
+  # corpus-root prefix would bypass the derived-pages exclusion this
   # branch exists to close. A mounted case-sensitive volume anywhere defeats
   # an OS-type guess just the same. So instead we PROBE the corpus's own
-  # filesystem and let IT answer. CR round 1 (codex-2) still holds: the
+  # filesystem and let IT answer. The
   # containment comparison below must NOT fold unconditionally -- this
   # script also runs on ubuntu CI in the public mirror, where the fs is
   # case-sensitive and folding would treat e.g. "/tmp/Corpus" as contained
@@ -1892,8 +1877,8 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     # Probe the filesystem the corpus lives on. The probe file is
     # dot-prefixed (a crashed leftover is recognizable + won't read as
     # content) and removed on every path before returning -- it must never
-    # leak into the corpus. CREATE-UNIQUE + NO-CLOBBER + BOTH-TWINS-ABSENT
-    # (CR round 4, [codex-r4-1]/[codex-r4-2]), not a single `printf >`:
+    # leak into the corpus. CREATE-UNIQUE + NO-CLOBBER + BOTH-TWINS-ABSENT,
+    # not a single `printf >`:
     #   * NO-CLOBBER (`set -C` inside the subshell ONLY, so the outer
     #     shell's options are untouched): a plain `>` clobbers a pre-existing
     #     file at the candidate name (a stale leftover after PID reuse) and
@@ -1949,10 +1934,10 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     if [ -z "${_GRAPHIFY_FS_CASE:+x}" ]; then
       # Corpus root unwritable / read-only / not a directory yet, OR every
       # candidate name was occupied (pathological) -- the probe cannot run.
-      # Fall back to the former OS-type heuristic (CR round 1) rather than
+      # Fall back to the OS-type heuristic rather than
       # fail the whole refresh over the probe itself; the fold direction it
-      # picks is still strictly safer than no fold. NOT silent (CR round 5,
-      # codex-adv): on a case-insensitive fs the OS-type answer can be WRONG
+      # picks is still strictly safer than no fold. NOT silent:
+      # on a case-insensitive fs the OS-type answer can be WRONG
       # (macOS/APFS reads as case-sensitive here -- the exact misread the
       # probe exists to avoid), so a fallback is worth a loud advisory: the
       # operator can set GRAPHIFY_FS_CASE_INSENSITIVE=1/0 to pin the truth.
@@ -1970,9 +1955,8 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   MAPS_DIR_CANON="$(_canon_path "$MAPS_DIR")"
   MAPS_EXCL_REL=""
   CORPUS_ROOT_TRIMMED="${CORPUS_ROOT_CANON%/}"
-  # Containment test, folded ONLY on a case-insensitive filesystem (CR
-  # round 1, codex-2 -- see _fs_case_insensitive above for why this is
-  # gated, not unconditional). `_lc` (tr-based, Bash-3.2-safe -- see its
+  # Containment test, folded ONLY on a case-insensitive filesystem (see
+  # _fs_case_insensitive above for why this is gated, not unconditional). `_lc` (tr-based, Bash-3.2-safe -- see its
   # definition above) is length-preserving for the ASCII path text these
   # values are built from, so the fold's string length can be used to
   # slice the ORIGINAL-CASE $MAPS_DIR_CANON below -- keeping the real (or
@@ -1981,10 +1965,9 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # byte-literal, not case-folded, even on a case-insensitive filesystem).
   # On a case-SENSITIVE filesystem the "fold" is a no-op copy, so the same
   # length-slice logic below stays correct in both branches. A plain
-  # `${var#pattern}` prefix-removal was tried instead of the length slice
-  # and confirmed NOT to honor `shopt -s nocasematch` in this bash (it
-  # silently strips nothing on a case-differing match) -- the length slice
-  # is deterministic regardless.
+  # `${var#pattern}` prefix-removal does NOT honor `shopt -s nocasematch` in
+  # this bash (it silently strips nothing on a case-differing match) -- the
+  # length slice is deterministic regardless.
   if _fs_case_insensitive; then
     CORPUS_ROOT_FOLD="$(_lc "$CORPUS_ROOT_TRIMMED")"
     MAPS_DIR_FOLD="$(_lc "$MAPS_DIR_CANON")"
@@ -2000,8 +1983,8 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # a sanctioned no-op (nothing to exclude) -- but when the two paths share
   # NO prefix even after canonicalization AND were passed in different form
   # classes (one relative, one absolute), that specific combination is
-  # exactly what silently disabled the HIMMEL-1415 exclusion before this
-  # fix, so it's worth a loud WARN instead of a silent no-op.
+  # exactly what would silently disable the derived-pages exclusion, so it's
+  # worth a loud WARN instead of a silent no-op.
   if [ -z "$MAPS_EXCL_REL" ]; then
     case "$CORPUS_ROOT" in
       /*|[A-Za-z]:[/\\]*) CORPUS_ROOT_WAS_ABS=1 ;;
@@ -2015,7 +1998,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       echo "refresh-graph-map: WARN --corpus-root and --maps-dir share no common path after canonicalization (resolved to '$CORPUS_ROOT_TRIMMED' and '$MAPS_DIR_CANON') and were passed in different forms (one relative, one absolute) -- treating maps-dir as outside the corpus (no derived-page exclusion applied); pass both in the same form if maps-dir is meant to live inside corpus-root" >&2
     fi
   fi
-  # HIMMEL-1415 CR follow-up round 3 (codex-adv-3): strip any LEADING
+  # Strip any LEADING
   # slash(es) left on MAPS_EXCL_REL after the prefix-strip above. A caller
   # that builds --maps-dir by naive concatenation against a --corpus-root
   # that ALREADY ends in "/" (e.g. graphmap-cadence.sh accepting
@@ -2029,9 +2012,8 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # real "./60-Maps/..." target, silently no-opping the exclusion. Looped so
   # it also closes multiple leading slashes, not just one.
   #
-  # NOT given the round-4 "preserve a bare all-slash value" guard the
-  # --maps-dir parse-time trim above got (CodeRabbit App asked us to verify,
-  # not blanket-apply): unlike --maps-dir, this value can never legitimately
+  # NOT given the "preserve a bare all-slash value" guard the
+  # --maps-dir parse-time trim above got: unlike --maps-dir, this value can never legitimately
   # be reduced to "all slashes" here. --maps-dir's OWN trailing-slash trim
   # (above, already guarded) runs first and strips every trailing slash off
   # the raw flag value before this case statement ever sees it, so the only
@@ -2040,7 +2022,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # CORPUS_ROOT_TRIMMED="") AND --maps-dir is also "/" -- a corpus-root of
   # "/" is already nonsensical on unrelated grounds (the corpus-copy below
   # would try to walk the entire filesystem for *.md) and is not a
-  # configuration any of these CR rounds have tried to harden, so adding
+  # configuration worth hardening, so adding
   # branching here for a state that can't arise from any real caller would
   # be speculative complexity, not a fix. And unlike the --maps-dir case
   # (where losing "/" silently trips the UNRELATED `-z "$MAPS_DIR"`
@@ -2050,7 +2032,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # equivalent-but-different bug worth mirroring the guard for.
   while [ "${MAPS_EXCL_REL#/}" != "$MAPS_EXCL_REL" ]; do MAPS_EXCL_REL="${MAPS_EXCL_REL#/}"; done
   #
-  # HIMMEL-1415 CR follow-up (glm panel + codex-adv-1): $MAPS_EXCL_PREFIX and
+  # $MAPS_EXCL_PREFIX and
   # $SLUG land inside `find -path` PATTERN arguments, where *, ?, and [ are
   # fnmatch wildcard syntax even though the arguments are shell-quoted --
   # shell quoting only stops the SHELL from globbing them; find's own -path
@@ -2072,16 +2054,15 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     s="${s//\[/\\[}"
     printf '%s' "$s"
   }
-  # Exclude the DEFAULT out dir as well as the configured one (CR r13). This
-  # list used to be the hardcoded ./graphify-out/*; making it follow
-  # GRAPHIFY_OUT stopped excluding the default, so switching the override left
-  # a previous ./graphify-out/ in the corpus scan -- copied into scratch and
-  # semantically extracted as SOURCE, feeding the graph its own GRAPH_REPORT.md
-  # and wiki pages. That is the derived-content feedback loop HIMMEL-1903 exists
-  # to prevent, re-opened by a rename. Both names are excluded; when the
+  # Exclude the DEFAULT out dir as well as the configured one. Excluding only
+  # the GRAPHIFY_OUT name would stop excluding the default, so switching the
+  # override would leave a previous ./graphify-out/ in the corpus scan --
+  # copied into scratch and semantically extracted as SOURCE, feeding the graph
+  # its own GRAPH_REPORT.md and wiki pages. That is the derived-content feedback
+  # loop this exclusion exists to prevent, re-opened by a rename. Both names are excluded; when the
   # override IS the default the second entry is simply redundant.
   CORPUS_FIND_EXCLUDES=(-not -path "./$GRAPHIFY_OUT_NAME/*" -not -path './graphify-out/*')
-  # HIMMEL-1903: optional per-corpus exclusions, read from a
+  # Optional per-corpus exclusions, read from a
   # `.graphify-corpus-ignore` file at the CORPUS ROOT. One corpus-relative
   # directory per line; `#` comments and blank lines ignored.
   #
@@ -2173,7 +2154,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       && find . -type f -name '*.md' "${CORPUS_FIND_EXCLUDES[@]}" -print0 \
       | tar --null -T - -cf - ) | ( cd "$SCRATCH" && tar -xf - ) \
     || { echo "refresh-graph-map: corpus scan/copy failed or refused (see output above)" >&2; exit 1; }
-  # HIMMEL-1097: graphify's semantic cache is corpus-relative and content-keyed,
+  # graphify's semantic cache is corpus-relative and content-keyed,
   # but it lives under graphify-out/. Seed only the cache artifacts into the
   # fresh scratch path BEFORE --update so unchanged files are cache hits instead
   # of a full semantic re-extraction. Derived reports/graphs are deliberately not
@@ -2194,29 +2175,29 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     done
   fi
   printf '%s\n' "$CORPUS_CLASS" > "$SCRATCH/.graphify-corpus"
-  # HIMMEL-3205: record WHICH corpus this workdir was extracted from, so an
+  # Record WHICH corpus this workdir was extracted from, so an
   # orphaned workdir can later be recovered by --promote-only against the
   # right corpus only (a workdir is named for --name, which two corpora can share).
   _corpus_root_marker > "$SCRATCH/.graphify-source-root" \
     || { echo "refresh-graph-map: could not record the corpus root marker in $SCRATCH" >&2; exit 1; }
   # The CLAUDE_CODE_USE_* reroute selectors were cleared before the egress
-  # preflight above (HIMMEL-1070/HIMMEL-1084), so both dispatches below run
+  # preflight above, so both dispatches below run
   # under the environment the fence evaluated.
-  # HIMMEL-1901 ask 4 — bank preflight + TOTAL-run deadline.
+  # Bank preflight + TOTAL-run deadline.
   #
   # Two independent holes let the 2026-08-17 fire burn ~18x the previous day's
   # input tokens (144,540 -> 2,585,365 on the himmel corpus) and run 6h44m on
   # luna without finishing, contributing to a workstation hang:
   #
-  #   1. bank-preflight.sh shipped (HIMMEL-1841) but NOTHING on the graphify
-  #      path ever called it. The 13:00 fire proceeded at 86% 5h utilization.
+  #   1. Nothing on the graphify path called bank-preflight.sh. The 13:00 fire
+  #      proceeded at 86% 5h utilization.
   #   2. GRAPHIFY_API_TIMEOUT bounds ONE chunk, never the run. claude-cli
   #      chunks are serialized by graphify's own clamp, so N chunks x the
   #      per-chunk ceiling is the real worst case and nothing capped it.
   #
   # The upstream defect (graphify treats a hollow response as truncation and
-  # bisects, so one failed call fans out exponentially) is HIMMEL-1901 asks
-  # 1-3 and lives in Graphify-Labs/graphify, not here. This is the himmel-side
+  # bisects, so one failed call fans out exponentially) lives in
+  # Graphify-Labs/graphify, not here. This is the himmel-side
   # containment: refuse to start when the bank is already drawn down, and put
   # a ceiling on the run so a storm costs bounded time instead of a night.
 
@@ -2290,7 +2271,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
       ;;
   esac
 
-  # HIMMEL-1902: claude-cli otherwise inherits the operator's full plugin hook
+  # claude-cli otherwise inherits the operator's full plugin hook
   # stack. SessionEnd hooks are cancelled during each headless chunk teardown;
   # their failure text contaminates graphify's stdout envelope, which graphify
   # misclassifies as a hollow response and bills a duplicate extraction. Use a
@@ -2311,7 +2292,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   fi
 
   # (The promote shrink guard's GRAPHIFY_PROMOTE_MIN_RETAIN_PCT default +
-  # validation moved above the DO_UPDATE block, HIMMEL-3205: the shrink guard
+  # validation live above the DO_UPDATE block: the shrink guard
   # protects --promote-only too, which skips this whole extraction region.)
   _deadline_start="$(date +%s)"
   # Seconds left of the total budget, floor 0. Callers treat 0 as expired.
@@ -2339,8 +2320,8 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
 
   echo "refresh-graph-map: incremental update on scratchpad copy ($SCRATCH) backend=$BACKEND deadline=${GRAPHIFY_RUN_DEADLINE_SECONDS}s" >&2
   # Billing note. Under the default BACKEND (claude-cli) graphify shells the
-  # claude CLI headlessly from inside these two dispatches. Measured 2026-08-12
-  # (HIMMEL-1748): subscription-authenticated `claude -p` draws from the SAME
+  # claude CLI headlessly from inside these two dispatches. Measured 2026-08-12:
+  # subscription-authenticated `claude -p` draws from the SAME
   # 5h/weekly usage bank as interactive sessions. The sonnet model pin above is
   # what keeps the cadence's draw acceptable; operators who want zero bank draw
   # use an API backend (glm) instead. The real control for what those nested
@@ -2355,7 +2336,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     fi
     exit 2
   fi
-  # HIMMEL-2983: bridge doc-extracted concept nodes whose label literally
+  # Bridge doc-extracted concept nodes whose label literally
   # names a code file to that file's AST node (relation "references"), and
   # add allowlisted subprocess-exec code-fact edges (relation "calls") --
   # BETWEEN --update and cluster-only, so cluster-only re-clusters over the
@@ -2382,7 +2363,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     exit 2
   fi
 fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins here)
-  # HIMMEL-907: stamp freshness artifacts so the companion guard
+  # stamp freshness artifacts so the companion guard
   # check-graph-freshness.sh can VERIFY this graph (not "fresh by age" only).
   # Source-of-truth for shape is the guard's parser: manifest.json = flat
   # non-empty JSON object of corpus-relative path -> {mtime} (the parser uses
@@ -2390,7 +2371,7 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
   # the file mtime as honest provenance — stored as an INT epoch for compact,
   # human-greppable provenance — and invent nothing else); .graphify_root =
   # first non-blank line is the corpus root. graphify emits its own differently
-  # shaped graphify-out/manifest.json; we separately synthesize the HIMMEL-907
+  # shaped graphify-out/manifest.json; we separately synthesize the
   # freshness manifest from the same corpus predicate the extraction copy used
   # (`find -name '*.md'` minus the resolved AND default out dirs) and explicitly install
   # ours during promote (never graphify's native manifest). A zero-md corpus stamps
@@ -2411,8 +2392,7 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
   # tmp name -> invalidate the old stamps -> promote the derived graph ->
   # atomically install the new stamps (same-dir mv + marker write).
   mkdir -p "$OUT_DIR"
-  # (CORPUS_ROOT_ABS removed with HIMMEL-1116 — the .graphify_root marker is now
-  # relative, and that assignment was its only consumer.)
+  # The .graphify_root marker is relative, so no absolute corpus root is kept.
   SCRATCH_ABS="$(cd "$SCRATCH" && pwd)"
   MANIFEST_ROOT="$SCRATCH_ABS"
   if [ "$PROMOTE_ONLY_SHAPE" = quarantine ]; then
@@ -2423,7 +2403,7 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
     # only needs the keys to exist, so it verifies; the mtimes are provenance.
     MANIFEST_ROOT="$(cd "$CORPUS_ROOT" && pwd)"
   fi
-  # HIMMEL-910: acquire the exclusive per-out-dir lock (see its definition
+  # Acquire the exclusive per-out-dir lock (see its definition
   # above) around the WHOLE promote block that follows -- steps 1-4 below
   # must run as one atomic unit relative to any OTHER refresh-graph-map
   # promoting into this same out dir. Acquired HERE (not earlier, around the
@@ -2432,53 +2412,47 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
   # graphify/cluster-only failure exit code above (a refuse-to-clobber is a
   # fence/tooling failure, not a usage error).
   _promote_lock_acquire || exit 2
-  # Test-only hook (HIMMEL-910): hold the lock for N seconds before doing any
+  # Test-only hook: hold the lock for N seconds before doing any
   # promote work, so a concurrency test can create a deterministic overlap
   # window. No-op unless set.
   if [ -n "${GRAPHIFY_PROMOTE_TEST_HOLD_SECONDS:-}" ]; then
     sleep "$GRAPHIFY_PROMOTE_TEST_HOLD_SECONDS"
   fi
-  # HIMMEL-3205: --promote-only staleness check + harden, under both locks.
+  # --promote-only staleness check + harden, under both locks.
   if [ -n "$PROMOTE_ONLY" ]; then
     _promote_only_post_lock
   fi
-  # HIMMEL-1134 CR follow-up round 5: sanitize + guard-scan now run on the
+  # Sanitize + guard-scan run on the
   # SCRATCH artifacts (staging), BEFORE anything in $OUT_DIR is touched.
-  # Previously this block invalidated the old manifest.json/.graphify_root
-  # stamps and cp'd the new graph.json/GRAPH_REPORT.md into the TRACKED
-  # $OUT_DIR first, then sanitized + guard-scanned those PROMOTED copies --
-  # so a REJECTED (leaking) refresh had already (a) invalidated the prior
-  # stamps and (b) written leaked bytes into graphify-out/ before the
-  # guard's `exit 2` ever ran. The reject still failed closed on PUBLISH
-  # (nothing shipped to the vault's 60-Maps), but the tracked out dir was
-  # left holding leaked bytes a later `git add -A` could commit, and the
-  # corpus's prior-good stamps were gone. Scanning the scratch copies gives
-  # IDENTICAL coverage (byte-for-byte what would be promoted) while
-  # guaranteeing $OUT_DIR's prior clean artifacts + stamps are completely
-  # untouched on rejection.
+  # Doing it on already-promoted copies would let a REJECTED (leaking) refresh
+  # (a) invalidate the prior stamps and (b) write leaked bytes into
+  # graphify-out/ before the guard's `exit 2` ran, leaving the tracked out dir
+  # holding leaked bytes a later `git add -A` could commit. Scanning the
+  # scratch copies gives IDENTICAL coverage (byte-for-byte what would be
+  # promoted) while guaranteeing $OUT_DIR's prior clean artifacts + stamps are
+  # completely untouched on rejection.
   SCRATCH_REPORT="$SCRATCH_OUT/GRAPH_REPORT.md"
   SCRATCH_GRAPH="$SCRATCH_OUT/graph.json"
-  # HIMMEL-1134 CR follow-up (CodeRabbit App, PR #1274): assert BOTH staging
+  # Assert BOTH staging
   # artifacts exist BEFORE the sanitize/guard even start. Without this, a
   # missing graph.json (or report) would fall through every check below --
-  # `head ... 2>/dev/null || true` silently swallows the read failure, the
+  # an unreadable header is silently swallowed, the
   # `case` has no default so an empty/garbage header just skips the
-  # sanitize, and the scan loop's (now-removed) `[ -f ] || continue` would
-  # skip a missing artifact rather than refuse -- letting a malformed
-  # staging area reach $OUT_DIR mutation before some LATER cp happened to
-  # fail, defeating the round-5 preservation guarantee this whole reorder
-  # exists for.
+  # sanitize, and the scan loop would skip a missing artifact rather than
+  # refuse -- letting a malformed staging area reach $OUT_DIR mutation before
+  # some LATER cp happened to fail, defeating the preservation guarantee
+  # the scratch-first ordering exists for.
   for required_artifact in "$SCRATCH_REPORT" "$SCRATCH_GRAPH"; do
     if [ ! -f "$required_artifact" ]; then
       echo "refresh-graph-map: missing required scratch artifact ${required_artifact##*/}" >&2
       exit 2
     fi
   done
-  # HIMMEL-1134: sanitize the scratch report's HEADER, before promotion.
+  # Sanitize the scratch report's HEADER, before promotion.
   # graphify titles GRAPH_REPORT.md by the EXTRACTION path -- here that's
   # $SCRATCH, a mktemp-suffixed scratchpad dir = the operator's home dir +
   # username -- and that header would otherwise land in a TRACKED,
-  # public-mirrored artifact (graphify-out/ went tracked in HIMMEL-1123).
+  # public-mirrored artifact (graphify-out/ is tracked).
   # Rewrite line 1 to carry the corpus NAME instead, preserving a trailing
   # " (YYYY-MM-DD)" stamp if present. Matched on the generic
   # `# Graph Report - <anything>` SHAPE, not the specific scratch string
@@ -2497,7 +2471,7 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
       else
         report_header="# Graph Report - $NAME"
       fi
-      # HIMMEL-1134 CR follow-up round 4: explicit success/failure branches,
+      # Use explicit success/failure branches,
       # not `awk ... && mv` -- under `set -euo pipefail` a command on the
       # LEFT of `&&` is EXEMPT from set -e, so an awk failure there would
       # short-circuit the `&&` (skipping the mv) and fall through SILENTLY.
@@ -2519,10 +2493,9 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
       fi
       ;;
     *)
-      # HIMMEL-1134 CR follow-up (CodeRabbit App, PR #1274): the `case`
-      # previously had no default -- an unexpected header format (not
+      # The `case` needs a default -- an unexpected header format (not
       # starting with the fixed `# Graph Report - ` prefix graphify always
-      # emits) silently SKIPPED the sanitize and fell through to the guard
+      # emits) must not silently SKIP the sanitize and fall through to the guard
       # with whatever line 1 already was. Fail loudly instead: a header
       # this script doesn't recognize is itself a signal something is
       # wrong upstream (empty/corrupted report, a different tool's output,
@@ -2531,8 +2504,8 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
       exit 2
       ;;
   esac
-  # HIMMEL-1134: host-path GUARD, failing LOUDLY, BEFORE any $OUT_DIR
-  # mutation (CR follow-up round 5). The sanitize above only touches line 1
+  # Host-path GUARD, failing LOUDLY, BEFORE any $OUT_DIR
+  # mutation. The sanitize above only touches line 1
   # -- a leak elsewhere in the report (or in graph.json) would otherwise
   # ship silently until a reviewer happened to catch it by eye. Scan both
   # SCRATCH artifacts about to be promoted for a host-path SHAPE (case
@@ -2551,25 +2524,23 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
   # -- rather than a bare substring: an UNBOUNDED "AppData" would false-
   # positive-refuse a clean refresh over a legit node name or prose mentioning
   # it (e.g. "MyAppDataStore", "AppData sync"), which have no delimiter
-  # immediately before/after the word (CR-caught, HIMMEL-1134 follow-up). A
+  # immediately before/after the word. A
   # hit refuses the promote -- same exit-2 convention as the
   # graphify/cluster-only and lock-acquire failures above (a leak
   # fence-tripping is a tooling failure, not a usage error).
   leak_pattern='(/Users/|[A-Za-z]:\\Users\\|[A-Za-z]:/Users/|\\Users\\|[A-Za-z]:\\\\Users\\\\|\\\\Users\\\\|/home/[^/]+/|(^|[/\\])AppData([/\\]|$))'
   # The upfront existence check above already guarantees both artifacts are
-  # present, so no `[ -f ] || continue` skip is needed here (CR follow-up,
-  # CodeRabbit App PR #1274 -- that skip is now dead code the existence
-  # check made redundant, and a redundant skip is one more place a real gap
-  # could silently hide).
+  # present, so no `[ -f ] || continue` skip is needed here (a redundant skip
+  # is one more place a real gap could silently hide).
   for leak_artifact in "$SCRATCH_REPORT" "$SCRATCH_GRAPH"; do
-    # basenamed (CR follow-up round 5): the FULL path (now under $SCRATCH,
-    # previously $OUT_DIR/graph.json) can itself carry the corpus/home path
+    # Basenamed: the FULL path (under $SCRATCH)
+    # can itself carry the corpus/home path
     # -- error messages below print only the filename, never the full path.
     leak_artifact_name="${leak_artifact##*/}"
     scan_target="$leak_artifact"
     scan_target_note=""
     if [ "$leak_artifact" = "$SCRATCH_GRAPH" ]; then
-      # HIMMEL-1406: scope graph.json's scan to STRUCTURAL fields only,
+      # Scope graph.json's scan to STRUCTURAL fields only,
       # instead of the full raw JSON text -- see _graph_structural_fields
       # above for the field list + why (a vault note's content-borne host
       # path, e.g. a rationale/summary quoting C:\Users\..., is
@@ -2587,11 +2558,10 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
     # `grep | head -n 1` pipeline where grep gets SIGPIPE'd by head closing
     # early reports a NON-ZERO pipeline rc even on a real match, which made
     # `&&` short-circuit past the `exit 2` below -- the guard failed OPEN on
-    # exactly the leaks with a second match past the closed pipe (CR-caught,
-    # HIMMEL-1134 follow-up).
+    # exactly the leaks with a second match past the closed pipe.
     #
-    # grep has THREE exit statuses, not two (CR-caught, HIMMEL-1134 follow-up
-    # round 3): 0 = match, 1 = no match, >1 = SCAN ERROR (unreadable
+    # grep has THREE exit statuses, not two:
+    # 0 = match, 1 = no match, >1 = SCAN ERROR (unreadable
     # artifact, bad regex, out of memory, ...). `leak_line=$(...) && [ -n ]`
     # treated rc>1 the same as rc 1 (no match) -- a scan the guard couldn't
     # even perform was silently read as "clean", so a real leak in an
@@ -2599,7 +2569,7 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
     # explicitly (`|| grep_rc=$?` stays set -e safe) and fail CLOSED on
     # rc>1, distinct from the rc-0 leak-found path.
     #
-    # -a (--binary-files=text, CR follow-up, CodeRabbit App PR #1274): a NUL
+    # -a (--binary-files=text): a NUL
     # byte anywhere in the artifact flips GNU grep into "Binary file
     # matches" mode, which drops the line-number extraction this guard's
     # error message depends on and makes a real leak's detectability
@@ -2622,14 +2592,14 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
     fi
     rm -f "$scan_nonul"
     if [ "$grep_rc" -eq 0 ]; then
-      # HIMMEL-1134 CR follow-up: do NOT echo $leak_line -- it's the matched
+      # Do NOT echo $leak_line -- it's the matched
       # grep line, i.e. it CONTAINS the leaked host path. Printing it here
       # would have the guard leak the very secret it's refusing to promote,
       # straight into stderr (and from there into CI logs / captured
       # output). Report only the file NAME + the line NUMBER (grep's own
       # "N:..." prefix, stripped at the first colon).
       leak_line_number="${leak_line%%:*}"
-      # HIMMEL-1406: save a FEW lines of context around the match into the
+      # Save a FEW lines of context around the match into the
       # scratch graphify-out, so it travels with the quarantine copy
       # _scratch_cleanup preserves on this refusal (see its definition
       # above) -- for offline inspection only. This file DOES contain the
@@ -2666,12 +2636,12 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
       cp "$SCRATCH_OUT/$semantic_artifact" "$PROMOTE_STAGE/$semantic_artifact"
     fi
   done
-  # Build the synthesized HIMMEL-907 freshness manifest directly in the stage.
+  # Build the synthesized freshness manifest directly in the stage.
   # graphify's native scratch manifest is intentionally NOT among the promoted
   # artifacts: the guard consumes this corpus-path-keyed shape instead.
-  # The out-dir NAME is passed in (CR r13): this prune was hardcoded to
-  # "graphify-out", so under a GRAPHIFY_OUT override it pruned a directory that
-  # does not exist and the real one -- carrying GRAPH_REPORT.md -- leaked
+  # The out-dir NAME is passed in: a hardcoded "graphify-out" prune would, under
+  # a GRAPHIFY_OUT override, prune a directory that
+  # does not exist while the real one -- carrying GRAPH_REPORT.md -- leaked
   # straight into the manifest keys. The default name is pruned as well, so a
   # leftover from a previous default-named run cannot leak either.
   python3 - "$MANIFEST_ROOT" "$PROMOTE_STAGE/manifest.json" "$GRAPHIFY_OUT_NAME" <<'PYEOF'
@@ -2698,20 +2668,19 @@ with open(manifest_path, "w") as fh:
     json.dump(manifest, fh, sort_keys=True)
     fh.write("\n")
 PYEOF
-  # HIMMEL-3718: relative "." only resolves back to the corpus when OUT_DIR is
-  # a child of CORPUS_ROOT (the HIMMEL-1116 assumption this marker was built
-  # on). Out-of-corpus, "$OUT/../." would resolve to OUT_ROOT's parent, not
+  # A relative "." only resolves back to the corpus when OUT_DIR is
+  # a child of CORPUS_ROOT. Out-of-corpus, "$OUT/../." would resolve to OUT_ROOT's parent, not
   # the corpus -- so write the resolved absolute corpus root instead.
   # check-graph-freshness.sh already has an absolute-marker code path for
   # this (case "$MARKER_ROOT" in /*|...), so no downstream change is needed.
   # Every in-corpus corpus (himmel's own tracked graph included) keeps the
-  # exact relative "." it always had.
+  # exact relative ".".
   if [ "$OUT_OF_CORPUS" -eq 1 ]; then
     printf '%s\n' "$CORPUS_ROOT_RESOLVED" > "$PROMOTE_STAGE/.graphify_root"
   else
     printf '%s\n' "." > "$PROMOTE_STAGE/.graphify_root"
   fi
-  # Version stamp (HIMMEL-1901 addendum) -- captures the graphify version that
+  # Version stamp -- captures the graphify version that
   # produced THIS promoted graph, so a later refresh's shrink guard (1b, below)
   # can tell "the extractor changed" (an expected shrink -- e.g. the upcoming
   # 0.9.44 -> 0.9.46 dedup/prune fixes) apart from "the extractor is unchanged
@@ -2735,7 +2704,7 @@ PYEOF
     _graphify_version="$("$GRAPHIFY_MAP" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -n1)" || _graphify_version=""
   fi
   printf '%s\n' "$_graphify_version" > "$PROMOTE_STAGE/.graphify_promoted_version"
-  # 1b. PROMOTE SHRINK GUARD (HIMMEL-1901 addendum, see GRAPHIFY_PROMOTE_MIN_RETAIN_PCT
+  # 1b. PROMOTE SHRINK GUARD (see GRAPHIFY_PROMOTE_MIN_RETAIN_PCT
   #     above for the WHY). Must run here: both graph.json files exist and are
   #     countable (staged just landed in $PROMOTE_STAGE above; the prior one is
   #     still untouched at $OUT_DIR/graph.json -- the mv that replaces it is
@@ -2750,7 +2719,7 @@ PYEOF
   #     (top-level nodes/links; edges may appear as "edges" on older/other
   #     outputs, hence the fallback below) -- there is no top-level "edges" key
   #     in current output, and the "links" array IS what every incident count
-  #     (leg 28's 920/854, the committed 1295/1605) has always meant. HYPEREDGES
+  #     (e.g. 920/854, or the committed 1295/1605) has always meant. HYPEREDGES
   #     are informational only, never gating: on a live graph they number in
   #     the tens, so a 90% floor trips on a swing of five, and they are exactly
   #     what upstream's dedup/hyperedge-rewire fixes reshape -- thresholding
@@ -2892,8 +2861,7 @@ PYEOF
     # No staged semantic cache this refresh (the refreshed scratch output
     # produced none): mirror the sibling semantic artifacts handled just below
     # (they rm -f the marker/analysis that are absent from scratch) so a prior
-    # $OUT_DIR/cache does NOT survive and silently reseed later runs (HIMMEL-
-    # 1097). Guard the target the same way _promote_stage_cleanup guards its
+    # $OUT_DIR/cache does NOT survive and silently reseed later runs. Guard the target the same way _promote_stage_cleanup guards its
     # rm -rf below ([ -n "$VAR" ]) -- an empty/unset OUT_DIR must not
     # degenerate to a bare-root rm (rm -rf "/cache").
     if [ -n "$OUT_DIR" ]; then
@@ -2911,19 +2879,18 @@ PYEOF
   #    marker, and version stamp. The guard joins the corpus-relative manifest
   #    keys against the resolved corpus root.
   #
-  #    .graphify_root is RELATIVE (".") — not CORPUS_ROOT_ABS (HIMMEL-1116).
-  #    OUT_DIR is always <corpus>/graphify-out, so the guard's relative branch
+  #    .graphify_root is RELATIVE (".") for an in-corpus out dir, not absolute.
+  #    OUT_DIR is then <corpus>/graphify-out, so the guard's relative branch
   #    (`CORPUS_RESOLVED="$OUT/../$MARKER_ROOT"`) resolves "$OUT/../." == the
   #    corpus root on EVERY machine. An absolute marker only works on the host
-  #    that wrote it: the derived graph is now a tracked, SHARED artifact
-  #    (HIMMEL-1123 — stations that cannot afford extraction pull it instead of
+  #    that wrote it: the derived graph is a tracked, SHARED artifact
+  #    (stations that cannot afford extraction pull it instead of
   #    building it), so a marker carrying THIS host's path would make the guard
-  #    resolve a non-existent corpus on win2, fail closed "corpus orphaned", and
-  #    tell that station to rebuild the very graph we shipped it to avoid
-  #    rebuilding. The guard already supported relative markers; nothing there
-  #    changes.
+  #    resolve a non-existent corpus on another station, fail closed "corpus
+  #    orphaned", and tell that station to rebuild the very graph we shipped it
+  #    to avoid rebuilding.
   #
-  #    .graphify_promoted_version (HIMMEL-1901 addendum) rides the same
+  #    .graphify_promoted_version rides the same
   #    staging + atomic-rename discipline as the two stamps above -- staged in
   #    step 1, only ever installed here, on the success path. A REFUSED
   #    promote never reaches this line (the guard above exits 2 first), so the
@@ -2933,24 +2900,24 @@ PYEOF
   mv "$PROMOTE_STAGE/.graphify_promoted_version" "$OUT_DIR/.graphify_promoted_version"
   rm -rf "$PROMOTE_STAGE"
   PROMOTE_STAGE=""
-  # CR r2 [codex-adv-r2]: do NOT release here -- the publish step below
+  # Do NOT release the lock here -- the publish step below
   # READS $REPORT from the shared out dir, and a second refresh's promote can
   # replace it before that read; releasing early could publish the wrong run's
   # report despite the serialized promote.
   # The lock is held THROUGH publish and released after it (the EXIT trap
   # stays the failure-path backstop).
-  # eager clean on success; the EXIT trap is the failure-path backstop.
-  # HIMMEL-3205: never for --promote-only -- that workdir is the operator's
+  # Eager clean on success; the EXIT trap is the failure-path backstop.
+  # Never for --promote-only -- that workdir is the operator's
   # artifact, not this run's scratch; the operator removes it after reading
   # the "safe to remove" line below.
   if [ "$DO_EXTRACT" -eq 1 ]; then rm -rf "$SCRATCH"; fi
-  # HIMMEL-3708: only reachable after a successful promote (every refusal
+  # Only reachable after a successful promote (every refusal
   # above -- shrink guard, leak scan, cache-swap failure -- exits before this
   # point), on BOTH the normal --update path and --promote-only (this whole
   # region is inside `if [ "$DO_UPDATE" -eq 1 ]`, which --promote-only always
   # sets). See _prune_graphify_backups above for the why/how.
   _prune_graphify_backups "$OUT_DIR"
-  # Test-only hook (CR r2): hold between promote and publish, so the
+  # Test-only hook: hold between promote and publish, so the
   # promote-vs-publish overlap test can create a deterministic window.
   # No-op unless set.
   if [ -n "${GRAPHIFY_PUBLISH_TEST_HOLD_SECONDS:-}" ]; then
@@ -2958,7 +2925,7 @@ PYEOF
   fi
 fi
 
-# HIMMEL-3205 --promote-only: the workdir is untouched (never deleted or
+# --promote-only: the workdir is untouched (never deleted or
 # quarantined). The MOC is published ONLY on an explicit --publish (operator
 # ruling 2026-09-19); otherwise stop here, the EXIT trap releases both locks.
 if [ -n "$PROMOTE_ONLY" ]; then
@@ -2969,7 +2936,7 @@ if [ -n "$PROMOTE_ONLY" ]; then
   fi
 fi
 
-# CR r2 [codex-adv-r2]: the --no-update path publishes by READING the same
+# The --no-update path publishes by READING the same
 # shared $REPORT a concurrent full refresh WRITES (non-atomic cp) -- take
 # the same lock so reader-vs-writer is serialized in both directions (the
 # update path arrives here already holding it). Same timeout/exit-2
@@ -3000,7 +2967,7 @@ case "$SRC_GRAPH_REL" in
   *) SOURCE_GRAPH_ABS="$PWD/$SRC_GRAPH_REL" ;;
 esac
 if [ -n "$MAPS_ID" ]; then
-  # HIMMEL-1704 (codex-2): re-verifying MAPS_DIR's identity and then handing
+  # Re-verifying MAPS_DIR's identity and then handing
   # that same PATHNAME to a separate node process still leaves a race -- an
   # attacker can swap MAPS_DIR's parent-directory entry between the check
   # returning and node's own open(). Close it the same way the corpus-root
@@ -3018,7 +2985,7 @@ if [ -n "$MAPS_ID" ]; then
            ${CORPUS_TAG:+--corpus "$CORPUS_TAG"} --source-graph "$SOURCE_GRAPH_ABS" ) \
     || { echo "refresh-graph-map: publish failed or refused (see output above)" >&2; exit 1; }
 elif [ -n "$MAPS_PARENT_ID" ]; then
-  # HIMMEL-1704 round 3 (codex-1): MAPS_ID is empty because 60-Maps did NOT
+  # Here MAPS_ID is empty because 60-Maps did NOT
   # exist at the caller's preflight -- a legitimate first-ever publish -- so
   # there was no identity to pin for IT. But the VAULT that contains it
   # (MAPS_DIR's parent) WAS validated, and its identity is MAPS_PARENT_ID.
@@ -3038,7 +3005,7 @@ elif [ -n "$MAPS_PARENT_ID" ]; then
     echo "refresh-graph-map: TOCTOU guard: --maps-dir '$MAPS_DIR' has no parent/leaf to split for the first-publish identity check -- refusing (HIMMEL-1704)" >&2
     exit 1
   fi
-  # HIMMEL-1704 round 4 (codex-1): `mkdir` and the `cd` right after it are
+  # The `mkdir` and the `cd` right after it are
   # still two SEPARATE syscalls on the same name -- an actor could rmdir the
   # (still-empty) directory mkdir just created and drop a symlink in its
   # place before `cd` runs. Once `cd` SUCCEEDS the race is over for good:

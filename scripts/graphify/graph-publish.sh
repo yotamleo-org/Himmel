@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
 # graph-publish.sh — operator-invoked publish of a freshly-refreshed graphify
-# graph to the tracked graphify-out/ artifacts (HIMMEL-1129, option 2).
+# graph to the tracked graphify-out/ artifacts.
 #
-# WHY: HIMMEL-1123 flipped himmel's .gitignore so graphify-out/graph.json +
-# GRAPH_REPORT.md are TRACKED (win2/weak stations pull the graph instead of
+# WHY: graphify-out/graph.json + GRAPH_REPORT.md are meant to be TRACKED
+# (win2/weak stations pull the graph instead of
 # re-extracting — extraction is LLM-backed spend). But nothing PUBLISHES a
-# locally-refreshed graph: refresh-graph-map.sh (option 1, explicitly OUT OF
-# SCOPE here) only regenerates graphify-out/ on disk; someone still has to
+# locally-refreshed graph: refresh-graph-map.sh only regenerates
+# graphify-out/ on disk; someone still has to
 # `git add` + push + PR it, and that step is easy to forget. win2 then pulls
 # an arbitrarily stale shipped graph whose freshness guard misreads mtime as
 # FRESH (checkout time, not content age — see check-graph-freshness.sh and
-# HIMMEL-1123's manifest.json caveat).
+# the manifest.json mtime caveat).
 #
 # This script is that missing step: an explicit, operator-run "ship what I
 # just regenerated" action. It does NOT run on any cadence/hook and does NOT
-# touch refresh-graph-map.sh (HIMMEL-1421 owns that script's containment-check
-# region this wave — this is a wholly separate, standalone script by design).
+# touch refresh-graph-map.sh (a wholly separate, standalone script by design).
 #
 # WHAT IT DOES (only when there is something newer to publish):
-#   1. Verifies this repo tracks graphify-out/graph.json (HIMMEL-1123 applied),
+#   1. Verifies this repo tracks graphify-out/graph.json,
 #      BOTH graphify-out/graph.json and graphify-out/GRAPH_REPORT.md exist on
-#      disk (CR round 2, codex-1/codex-adv-2: refresh-graph-map.sh's promote
+#      disk (refresh-graph-map.sh's promote
 #      ALWAYS moves both together — there is no legitimate completed-refresh
 #      state with one but not the other, so the report is REQUIRED, never
 #      optional), AND graphify-out/manifest.json is present — refresh-graph-
@@ -29,7 +28,7 @@
 #      absence means graph.json/GRAPH_REPORT.md may be a crash-mismatched pair.
 #   2. Compares the on-disk bytes against the committed blob at
 #      origin/<base>:graphify-out/{graph.json,GRAPH_REPORT.md} (content hash,
-#      NOT mtime — mtime is exactly the trap HIMMEL-1123 warned about).
+#      NOT mtime — mtime is exactly the trap described above).
 #      Identical -> refuse cleanly, nothing to do.
 #   3. Refuses if the working tree has uncommitted changes OUTSIDE
 #      graphify-out/{graph.json,GRAPH_REPORT.md} — this script only ever
@@ -41,7 +40,7 @@
 #      `Security reviewed: ad-hoc` since graphify-out/*.json is NOT
 #      docs-exempt under check-security-reviewed.sh's filter and would
 #      otherwise block the push), and pushes pinned to that EXACT recorded
-#      OID via `--force-with-lease=<ref>:<oid>` (CR round 2, codex-adv-1: a
+#      OID via `--force-with-lease=<ref>:<oid>` (a
 #      concurrent publisher's newer commit must be DETECTED and REJECTED, not
 #      silently adopted as our own "expected" baseline and overwritten — see
 #      the comment at the push site for the full TOCTOU explanation). Then
@@ -64,8 +63,8 @@
 #   1  usage error
 #   2  required tool missing (git or gh)
 #   3  refused: no local graphify-out/graph.json on disk
-#   4  refused: repo does not track graphify-out/graph.json (HIMMEL-2705 step
-#      1: graphify-out/ retired from the git tree, gitignored outright —
+#   4  refused: repo does not track graphify-out/graph.json (graphify-out/
+#      is retired from the git tree, gitignored outright —
 #      nothing to publish TO, permanently)
 #   5  refused: nothing newer to publish (local graph == shipped graph)
 #   6  refused: working tree has uncommitted changes outside
@@ -101,10 +100,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRY_RUN=0
 BASE_REF="${GRAPH_PUBLISH_BASE:-main}"
 DO_FETCH=1
-# --ticket (HIMMEL-2095): the commit subject used to carry no ticket ID, so
-# every publish PR failed this repo's own CI commit-range gate (check-commit-
-# msg.sh requires one on every commit) -- plausibly why the manual bypass
-# (a bare, ticketless `git commit` straight to main) was reached for at all.
+# --ticket: the commit subject must carry a ticket ID, because this repo's CI
+# commit-range gate (check-commit-msg.sh) requires one on every commit.
 # Defaults to the standing ticket that tracks this publish flow; overridable
 # so the standing ticket can change without editing code.
 TICKET="${GRAPH_PUBLISH_TICKET:-HIMMEL-2095}"
@@ -157,10 +154,10 @@ REPORT_PATH="graphify-out/GRAPH_REPORT.md"
 corpus=$(basename "$repo_root")
 
 # --- 1. repo tracks the graph at all -----------------------------------------
-# graphify-out/ was REMOVED from the git tree entirely and gitignored outright
-# (HIMMEL-2705 step 1) -- this repo's derived graph no longer publishes at
-# all. That is the permanent steady state now, not a gap HIMMEL-1123 could
-# still close, so this refusal is expected to fire on every invocation.
+# graphify-out/ is REMOVED from the git tree entirely and gitignored outright
+# -- this repo's derived graph does not publish at
+# all. That is the permanent steady state, not a gap that could
+# still be closed, so this refusal is expected to fire on every invocation.
 if ! git ls-files --error-unmatch "$GRAPH_PATH" >/dev/null 2>&1; then
     echo "ERR graph-publish: this repo does not track $GRAPH_PATH (HIMMEL-2705 step 1: graphify-out/ retired from the git tree, gitignored outright) — nothing to publish to." >&2
     exit 4
@@ -169,7 +166,7 @@ fi
 # --- 2. a local graph exists on disk -----------------------------------------
 [ -f "$GRAPH_PATH" ] || { echo "ERR graph-publish: no local $GRAPH_PATH on disk — run refresh-graph-map.sh first." >&2; exit 3; }
 
-# --- 2a. the report is REQUIRED, never optional (CR round 2, codex-1/-adv-2) -
+# --- 2a. the report is REQUIRED, never optional ------------------------------
 # refresh-graph-map.sh's promote sequence copies + moves graph.json and
 # GRAPH_REPORT.md unconditionally together (verified by reading its promote
 # block, same read that grounded the 2b manifest check below) -- there is no
@@ -181,7 +178,7 @@ fi
 [ -f "$REPORT_PATH" ] || { echo "ERR graph-publish: $GRAPH_PATH is present but $REPORT_PATH is missing -- refresh-graph-map.sh always promotes both together, so this is anomalous (report deleted after a completed refresh?). Restore $REPORT_PATH or re-run refresh-graph-map.sh, then retry." >&2; exit 11; }
 
 # --- 2b. refresh-graph-map.sh's transaction must be COMPLETE ----------------
-# refresh-graph-map.sh's promote sequence (CR round 1, codex-adv-4): it first
+# refresh-graph-map.sh's promote sequence: it first
 # `rm -f`s graphify-out/manifest.json (invalidating the old stamp), THEN
 # promotes graph.json + GRAPH_REPORT.md, and ONLY THEN, last, promotes a fresh
 # manifest.json (each step an atomic same-dir rename). manifest.json's
@@ -191,7 +188,7 @@ fi
 # may be an inconsistent pair (one replaced, the other not). Publishing that
 # pair would ship a graph without its matching report, or vice versa, with no
 # signal anything was wrong. manifest.json itself is intentionally NOT
-# published (HIMMEL-1123: its mtimes are machine-local) -- this is a LOCAL
+# published (its mtimes are machine-local) -- this is a LOCAL
 # precondition check only, never committed.
 MANIFEST_PATH="graphify-out/manifest.json"
 if [ ! -f "$MANIFEST_PATH" ]; then
@@ -235,7 +232,7 @@ files_block="- \`$GRAPH_PATH\`
 - \`$REPORT_PATH\`"
 
 # Sanitize the corpus (repo dirname) into a valid, unambiguous branch-name
-# component (CR round 2, glm-5): a repo dir containing spaces or other
+# component: a repo dir containing spaces or other
 # branch-hostile characters would otherwise reach `git checkout -B` verbatim
 # and fail there with a confusing generic rc=8, instead of a clear cause.
 corpus_slug=$(printf '%s' "$corpus" | tr -c 'A-Za-z0-9._-' '-' | sed -e 's/-\{2,\}/-/g' -e 's/^-//' -e 's/-$//')
@@ -256,7 +253,7 @@ Publishes a refreshed graphify-out/graph.json + GRAPH_REPORT.md for **${corpus}*
 
 ${files_block}
 
-## Review class — MACHINE-GENERATED, not CodeRabbit-reviewable (HIMMEL-2278)
+## Review class — MACHINE-GENERATED, not CodeRabbit-reviewable
 
 Every path in this PR's diff is a tracked graphify-out artifact (\`graphify-out/graph.json\`, \`graphify-out/GRAPH_REPORT.md\`) — a regenerated data snapshot, zero code. The CodeRabbit App does not review this class, so **do not post a CodeRabbit review-trigger comment here, and do not park on the CR gate**: the review is never coming (precedents #2013 dependabot, #2035 this class; both ended in a manual operator merge after a dead poll). This body deliberately spells out no trigger phrase — a literal one here would fire the very request it is telling you not to make.
 
@@ -289,8 +286,8 @@ restore_branch() {
 }
 
 # Record the publish branch's CURRENT remote OID NOW, before any local
-# mutation, and pin the push below to EXACTLY this value (CR round 2,
-# codex-adv-1). Fetching right before push (round 1's fix) was itself racy:
+# mutation, and pin the push below to EXACTLY this value.
+# Fetching right before push would be racy:
 # a concurrent publisher's newer commit landing between our checkout/commit
 # and a LATE fetch would be picked up AS our own "expected" baseline, and
 # force-with-lease would then happily let us overwrite it with our (older)
@@ -300,7 +297,7 @@ restore_branch() {
 # longer matches what force-with-lease finds on push) and REJECTED, not
 # silently absorbed. remote_oid="" (branch does not exist yet on origin) pins
 # to `--force-with-lease=<ref>:` (git's own "must not already exist" form),
-# which is a STRONGER guarantee than round 1's bare --force-with-lease gave a
+# which is a STRONGER guarantee than a bare --force-with-lease gives a
 # first-ever publish.
 git fetch -q origin "$BRANCH" 2>/dev/null || true
 remote_oid=$(git rev-parse --verify --quiet "origin/$BRANCH" 2>/dev/null || echo "")
@@ -319,7 +316,7 @@ if [ -n "${GRAPH_PUBLISH_TEST_RACE_HOOK:-}" ]; then
     hook_path="$GRAPH_PUBLISH_TEST_RACE_HOOK"
     # Force a path-form invocation: a slash-less relative value would pass the
     # -f/-x checks against ./name but PATH-search on execution, so the file
-    # validated and the file run could differ (CR round 1, codex-1).
+    # validated and the file run could differ.
     case "$hook_path" in
         */*) : ;;
         *) hook_path="./$hook_path" ;;
@@ -361,7 +358,7 @@ restore_branch
 # From here down, any failure is a PARTIAL success (branch pushed, PR step
 # incomplete) -> rc=9, never rc=0. rc=0 must mean "commit + PR" both happened;
 # folding a silent PR-open miss into rc=0 is exactly the false-green class a
-# cadence/scripted caller could never see (CR round 1, codex-1).
+# cadence/scripted caller could never see.
 if ! forge_detect >/dev/null 2>&1; then
     echo "graph-publish: pushed $BRANCH but cannot determine forge (need a github.com/bitbucket.org origin) — open the PR manually." >&2
     exit 9

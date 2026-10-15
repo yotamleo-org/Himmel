@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check-graph-freshness.sh — freshness + corpus-orphan CHECK for one graphify-out
-# snapshot (HIMMEL-621/824/825 family). The check companion to
-# refresh-graph-map.sh (HIMMEL-825): the refresher REBUILDS the graph; this tells
+# snapshot. The check companion to
+# refresh-graph-map.sh: the refresher REBUILDS the graph; this tells
 # a caller (scheduler / operator / query path) whether an existing graphify-out/
 # is still trustworthy to query, or has gone stale / orphaned.
 #
@@ -19,8 +19,8 @@
 #               under the corpus root).
 #   rc=1 WARN — age is older than --max-age-days. Age is measured from
 #               graph.json's embedded built_at_commit (via that commit's
-#               committer date in the resolved corpus, when available —
-#               HIMMEL-1647), else falls back to graph.json's (or
+#               committer date in the resolved corpus, when available),
+#               else falls back to graph.json's (or
 #               manifest.json's) filesystem mtime.
 #   rc=0 OK   — fresh AND corpus verified; prints exactly one line:
 #               "graph-freshness: OK (<age-days>d old, corpus verified)"
@@ -63,7 +63,7 @@ esac
 
 # Remediation embedded in every non-OK message: the refresh invocation shape
 # (mirrors refresh-graph-map.sh's own usage). No --backend: the runner's own
-# default (claude-cli since HIMMEL-1049) is the one we want a copy-paste of this
+# default (claude-cli) is the one we want a copy-paste of this
 # hint to use — naming a backend here is how it went stale in the first place.
 REMEDIATION="Rebuild with: bash $REFRESH --name <N> --corpus-root <path> --maps-dir <vault>/60-Maps --title \"<Title>\" --slug <slug>"
 
@@ -89,7 +89,7 @@ MANIFEST="$OUT/manifest.json"
 [ -f "$MANIFEST" ] || fail "manifest.json missing at $MANIFEST."
 # Emit one manifest key per line.
 #
-# UTF-8 IS LOAD-BEARING, BOTH WAYS (HIMMEL-1116). The manifest keys are
+# UTF-8 IS LOAD-BEARING, BOTH WAYS. The manifest keys are
 # corpus-relative FILENAMES, and a real vault has filenames outside the Windows
 # default codepage (Hebrew, emoji). Two separate crashes came from that:
 #   * `open()` without encoding= decodes the manifest as cp1252 on Windows -> UnicodeDecodeError
@@ -152,12 +152,12 @@ else
   esac
   # Count how many manifest-named files exist under the resolved corpus root,
   # out of how many are checkable, and orphan only on a MAJORITY miss
-  # (HIMMEL-2072) rather than requiring just one hit. Keys are UNTRUSTED (a
+  # rather than requiring just one hit. Keys are UNTRUSTED (a
   # corrupt/crafted manifest could carry absolute or ..-traversal paths that
   # "verify" via files OUTSIDE the root — codex CR): only plain relative keys
   # may join the path; others are skipped (not counted either way).
   #
-  # Strip a trailing CR from each key (HIMMEL-2072 root cause): python3 on
+  # Strip a trailing CR from each key: python3 on
   # Windows writes text-mode stdout, translating each print()'s "\n" to
   # "\r\n"; bash's `$(...)` command substitution here strips only the very
   # LAST trailing newline, so every key but the last keeps a literal
@@ -186,7 +186,7 @@ else
 fi
 
 # --- 4. age check: build identity (built_at_commit) preferred over mtime ---
-# HIMMEL-1647: graph.json is git-tracked while manifest.json/.graphify_root
+# graph.json is git-tracked while manifest.json/.graphify_root
 # are not, so a checkout/restore can give an OLD graph a FRESH mtime while
 # corpus verification (step 3) still passes on retained metadata — mtime
 # alone then stays silent on genuinely stale structure. When graph.json
