@@ -1883,7 +1883,13 @@ jira_auto_transition_on_merge() {
             if [ "$fold_rc" -eq 0 ]; then
                 JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fixversion=$fold_cur"
             else
+                # The replace may already have dropped held versions: name them
+                # so the audit line is enough to restore them by hand.
                 JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fixversion=failed"
+                if [ "$fold_to" != "$fold_cur" ]; then
+                    fold_keep=${fold_to#*$'\n'}
+                    JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT keep=${fold_keep//$'\n'/,}"
+                fi
             fi
         fi
     else

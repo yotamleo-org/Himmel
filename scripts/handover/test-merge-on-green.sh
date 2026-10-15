@@ -680,6 +680,10 @@ case "\$1" in
             echo "jira transition failed" >&2
             exit 1
         fi
+        if [ "\${STUB_JIRA_ADD_FIX_FAIL:-0}" = "1" ] && [ "\$4" = "--add-fix-version" ]; then
+            echo "jira add-fix-version failed" >&2
+            exit 1
+        fi
         if [ "\${STUB_JIRA_COMMENT_FAIL:-0}" = "1" ] && [ "\$2" = "comment" ]; then
             echo "jira comment failed" >&2
             exit 1
@@ -3467,6 +3471,10 @@ assert_audit_has "jira: fold is recorded on the audit line" "jira-transition=ok 
 STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"},{"name":"v1.1.2"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: fold keeps a released version the ticket already holds" -- --jira-transition
 assert_jira_log_has "jira: fold re-adds the released version" "edit HIMMEL-374 --add-fix-version v1.1.2"
+
+STUB_JIRA_BUILD=1 STUB_JIRA_ADD_FIX_FAIL=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"},{"name":"v1.1.2"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a failed re-add of a held version names it on the audit line" -- --jira-transition
+assert_audit_has "jira: failed re-add keeps the lost version recoverable" "fixversion=failed keep=v1.1.2"
 
 STUB_JIRA_BUILD=1 STUB_JIRA_VERSIONS='v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n' STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: with no dated version the first unreleased one is current" -- --jira-transition
