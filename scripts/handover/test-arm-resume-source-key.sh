@@ -77,8 +77,8 @@ export ARM_TEMP_CWD_OK=1
 # keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 # Shipped-work shield: the preflight derives a ticket
-# ID from the handover (fixtures here name) and probes LIVE Jira —
-# the day went Done, every fixture arm refused rc=11 (21/36 FAIL).
+# ID from the handover (fixtures here name one) and probes LIVE Jira —
+# the day that ticket went Done, every fixture arm refused rc=11 (21/36 FAIL).
 # This suite exercises arm identity/slots; test-arm-resume.sh owns the
 # shipped-work gate (1331/1331b cases, Jira stubbed) and sets this per-case.
 export ARM_SHIPPED_OK=1

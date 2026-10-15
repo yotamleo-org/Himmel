@@ -135,8 +135,8 @@ export ARM_TEMP_CWD_OK=1
 # keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 # Shipped-work shield: the preflight derives a ticket
-# ID from the handover (fixtures here name) and probes LIVE Jira —
-# the day went Done, every fixture arm refused rc=11 (21/36 FAIL).
+# ID from the handover (fixtures here name one) and probes LIVE Jira —
+# the day that ticket went Done, every fixture arm refused rc=11 (21/36 FAIL).
 # This suite exercises arm identity/slots; test-arm-resume.sh owns the
 # shipped-work gate (1331/1331b cases, Jira stubbed) and sets this per-case.
 export ARM_SHIPPED_OK=1
@@ -618,8 +618,8 @@ out=$(SCHED_CREATE_FAIL=1 SCHED_DB="$DB9" SCHED_DB_DIR="${DB9}.atdir" PATH="$STU
     bash "$ARM" --time "$FUTURE_TIME" --long-gap --handover "$G3C" --force 2>&1)
 rc=$?
 assert_rc "G3.3 failing arm exits rc=4 (schedule_arm create failed)" 4 "$rc" "$out"
-# re-worded this line ("existing" -> "THIS handover's own") when it
-# narrowed the reap scope. G3.3 arms the SAME handover with a plain --force, so
+# The assertion text says "THIS handover's own" (not "existing") because the
+# reap scope is narrowed to the own identity. G3.3 arms the SAME handover with a plain --force, so
 # the own-identity reap list is non-empty and the replace branch still fires --
 # only the wording moved. Asserting the substring that is INVARIANT across the
 # rescope ("AFTER the new one is registered") would have been quieter, but the

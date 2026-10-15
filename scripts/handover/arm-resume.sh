@@ -1531,7 +1531,7 @@ print(int(cand.timestamp()), cand.strftime("%H:%M"), cand.strftime("%m/%d/%Y"), 
         # outrun warning for an EXPLICIT --time, printed
         # IMMEDIATELY (before any slow phase -- worker census, cache-dir GC,
         # queue-lock, the shipped-work preflight's network probes). The
-        # elapsed-aware lead-floor bump below (search) only moves
+        # elapsed-aware lead-floor bump below only moves
         # smart/auto SENTINEL targets -- an explicit HH:MM is an operator's
         # clock choice and is never silently moved, so today the only "this
         # target is too close" signal for it is the post-arm verify, which
@@ -2611,8 +2611,8 @@ _infer_slug() {
 #            self-clean ERE and the CMD launch lines stay injection-proof.
 # Identity grammar (default): <ticket> + <name-half> + <s<N> chain position>.
 # The name-half, by priority:
-#   1. the worktree slug minus its leading ticket token (the
-#      source, unchanged);
+#   1. the worktree slug minus its leading ticket token
+#      (the source, unchanged);
 #   2. a ticket-KEYED handover slug - the file/dir is named <ticket>-<slug>,
 #      so the slug is that ticket's own name-half;
 #   3. ticketless only: the raw handover slug (the no-Jira adopter fallback).
@@ -3156,7 +3156,7 @@ _crontab_list() {
         # line, so this cannot use the whole-line _arm_own_identity_match the
         # other two sites share — match the anchored suffix per identity
         # instead. TASK_NAME is sanitized to [:alnum:]_- so it carries no BRE
-        # specials.: also match the legacy identity, guarded on
+        # specials. Also match the legacy identity, guarded on
         # non-empty — an empty alternative would anchor to `# $` and sweep in
         # unrelated lines.
         if [ -n "${TASK_NAME_LEGACY:-}" ]; then
@@ -4211,7 +4211,7 @@ fi
 # _arm_registry_foreign_hits <registry-file> <handover-path> <handover-key>
 # <handover-root> <this-host> -- print a "; "-joined summary of every registry
 # line recording an arm for this canonical handover on a host OTHER than
-# <this-host> (empty = none).: new lines match the durable
+# <this-host> (empty = none). New lines match the durable
 # root-relative handover-key; legacy raw-only lines match exact raw or a
 # best-effort canonicalized raw path through the shared migration helper.
 # consumed records are dropped, and legacy fired-marked lines are
@@ -5260,7 +5260,7 @@ _win_restore_backup_task() {
 # for runs of d/M/y: a `d`/`M` run always zero-pads to >=2 digits (even a
 # single-letter token like the real Windows en-US DEFAULT "M/d/yyyy" —
 # verified live on the operator's own box, which is NOT "MM/dd/yyyy" as
-# originally assumed). is about the day/month ORDER a locale
+# originally assumed). The fix is about the day/month ORDER a locale
 # implies, not digit width, and schtasks parses "7/2/2026" and "07/02/2026"
 # identically — so fixing width at >=2 keeps a same-order locale's /sd value
 # byte-identical to the earlier hardcoded render (only a genuinely
@@ -5547,7 +5547,7 @@ schedule_arm() {
                 # unset both vars first (defense against
                 # ambient carryover), THEN conditionally re-grant via the
                 # per-command prefix — same always-clear contract as the
-                # Windows/at/crontab launch bodies below.: the same
+                # Windows/at/crontab launch bodies below. The same
                 # unset also drops ARM_RESUME_SAFETY_ARM so the resumed in-distro
                 # session does not inherit a leaked long-gap exemption.
                 # a `set` in the .bat cannot cross into the distro,
@@ -6120,7 +6120,7 @@ schedule_arm() {
                 # even when THIS arm's generated text sets neither. Unset both
                 # unconditionally as the first line of the job body so the
                 # emitted text — not the ambient env it was submitted from —
-                # is what governs.: the same line also unsets
+                # is what governs. The same line also unsets
                 # ARM_RESUME_SAFETY_ARM — on Linux `at` snapshots the submitter
                 # env, so without this the RESUMED claude session inherits the
                 # sticky long-gap exemption from the safety arm that scheduled

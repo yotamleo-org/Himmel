@@ -92,8 +92,8 @@ export ARM_SPLIT_LEG_OK=1
 # parallel lane load (leg 7, 2026-08-09).
 export WORKER_BRIDGE_ROOT="$TMP/worker-bridge-shield"
 # Shipped-work shield: the preflight derives a ticket
-# ID from the handover (this suite's H1 lines all name) and probes
-# LIVE Jira/gh on every non-dry-run arm below -- the day went Done,
+# ID from the handover (this suite's H1 lines all name one) and probes
+# LIVE Jira/gh on every non-dry-run arm below -- the day that ticket went Done,
 # every such arm would refuse rc=11. This suite exercises queue-lock/registry
 # behavior; test-arm-resume.sh owns the shipped-work gate (1331/1331b cases,
 # Jira stubbed) and sets this per-case.

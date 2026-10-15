@@ -3090,9 +3090,9 @@ assert_contains "T-wsl body uses unquoted distro + login shell" 'wsl.exe -d ubun
 assert_not_contains "T-wsl body never quotes the -d value" 'wsl.exe -d "' "$out"
 # the launch body now unsets ARMAUTOMERGE/
 # CR_MERGE_GATE_OK unconditionally between cd and claude (always-clear
-# contract — see arm-resume.sh's schedule_arm WSL branch comment).:
+# contract — see arm-resume.sh's schedule_arm WSL branch comment).
 # the same unset also drops ARM_RESUME_SAFETY_ARM so a resumed in-distro session
-# does not inherit a leaked long-gap exemption.: AUTO_ARM_SAFETY_CHILD
+# does not inherit a leaked long-gap exemption. AUTO_ARM_SAFETY_CHILD
 # joins the same list — a .bat `set` cannot cross into the distro, so the
 # in-distro command is the only place the safety-child mark can be cleared.
 # the in-distro unset list now also clears
@@ -4334,7 +4334,7 @@ assert_not_contains "2128a2 no WARN when --automerge is passed" "will NOT set AR
 # mid-chain bank exhaustion parks the whole armed chain. Process env is
 # authoritative over any .env for CR_REQUIRE_CROSS_MODEL=1 here — but
 # CR_FLOOR_FALLBACK is NOT: load_dotenv treats an empty value as absent and
-# reloads it from .env (own documented contract), so a bare
+# reloads it from .env (its own documented contract), so a bare
 # `CR_FLOOR_FALLBACK=` on the invocation does NOT force genuine absence when
 # the PRIMARY checkout's own .env already sets this key (this host's does).
 # the previous version of this test SKIPPED the

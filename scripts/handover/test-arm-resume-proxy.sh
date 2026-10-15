@@ -479,7 +479,7 @@ assert_not_contains "T7c broken lib: truthy .env fallback disabled" "livez" "$ou
 # T8 (CR round): cygpath failure on the headroom+curl conversion -> rc 4,
 #     ERR text, and no leftover temp .bat. The stub delegates the batched
 #     3-path call (-w + 3 args = $# 4) AND the single-path calls ($# 2:
-#     bash.exe -w, flow-run-ledger.sh -m —) to the REAL cygpath
+#     bash.exe -w, flow-run-ledger.sh -m) to the REAL cygpath
 #     and refuses the 2-path headroom+curl call ($# 3), so the failure lands
 #     exactly on the headroom conversion. Windows-only: the .bat branch is
 #     the only cygpath consumer (POSIX launchers never call it).
