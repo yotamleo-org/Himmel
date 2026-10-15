@@ -5,10 +5,10 @@
 // action's dry-run and binds a single-use preview id; POST /api/run runs only
 // that bound argv under the machine-wide write lock, re-probes the row and
 // appends one audit line.
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { extname, join, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { scrubProviderKeys } from "../fleet-control/server";
 // redact.js is the shared CommonJS redactor (P2); imported, not copied.
 import { redactDeep, envValues } from "../himmelctl/lib/redact.js";
@@ -188,6 +188,15 @@ export function jiraBin(env: Env, checkout: string = CHECKOUT): string {
   return [own, ...fallbacks].find((p) => p && existsSync(p)) ?? own;
 }
 
+// The station anchor the feed judges (config-feed.js repoRoot): the primary checkout behind a worktree
+// (git-common-dir), else the checkout itself.
+export function stationRoot(checkout: string): string {
+  try {
+    const common = execFileSync("git", ["-C", checkout, "rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return common && basename(common) === ".git" ? dirname(common) : checkout;
+  } catch { return checkout; }
+}
+
 export type Progress = { i: number; n: number; source: string };
 // one `himmel-probe {"i","n","source"}` line, validated; null for anything else.
 export function parseProbeLine(line: string): Progress | null {
@@ -256,7 +265,10 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     return redactDeep(v, { literals: envValues(raw, parseDotEnv, env) });
   };
   // The child's process group is recorded in the lock, so the lock outlives a server crash while it runs.
-  const childOpts = (p: Resolved, lock: Lock) => ({ cwd: p.cwd, env, timeoutMs: opts.actionTimeoutMs ?? p.timeoutMs, onSpawn: lock.setGroup });
+  // `config set` writes .env and lanes.local.json under himmelctl's repo root; the feed and the live hooks read the
+  // station anchor, so a worktree-served console points the config children there (an operator override wins).
+  const stationEnv = env.HIMMELCTL_REPO_ROOT ? env : { ...env, HIMMELCTL_REPO_ROOT: stationRoot(root) };
+  const childOpts = (p: Resolved, lock: Lock) => ({ cwd: p.cwd, env: p.action.startsWith("config.") ? stationEnv : env, timeoutMs: opts.actionTimeoutMs ?? p.timeoutMs, onSpawn: lock.setGroup });
 
   async function reprobe(rowIds: string[]): Promise<{ probe: Probe | null; state: string }> {
     if (rowIds.length === 0) return { probe: {}, state: "ok" };
