@@ -472,6 +472,9 @@ cmd_run() {
 
   init_env
   BASE_SHA="${BASE_ARG:-${LQ_BASE_SHA:-$(tr -d '[:space:]' <"$HERE/BASE_SHA")}}"
+  if [ -n "$BASE_ARG" ]; then
+    BASE_SHA="$(git -C "$REPO" rev-parse --verify "$BASE_ARG^{commit}" 2>/dev/null)" || die "base '$BASE_ARG' is not a commit in $REPO"
+  fi
   WORK_ROOT="${LQ_WORK_ROOT:-$REPO/.claude/worktrees}"
   # The judge always runs native; a metered lane's agent goes through its launcher.
   AGENT_BIN="$CLAUDE_BIN"; METERED_PROBE=""; BUDGET_FACTOR=1; TRANSCRIPTS="${LQ_TRANSCRIPTS:-$HOME/.claude/projects}"

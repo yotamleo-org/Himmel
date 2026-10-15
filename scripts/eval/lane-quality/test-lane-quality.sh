@@ -629,6 +629,8 @@ check "prune-history refuses an unknown base" '! bash "$PRUNE" "$TMP/repo" 11111
 # --base on run: the sweep is cut at the named commit, not the pinned one
 bash "$RUN" run --lane native --model claude-haiku-4-5 --tasks shell-red-green --no-judge --base "$PSHA" --out "$TMP/out-pr" >"$TMP/run-pr.log" 2>&1
 check "run --base cuts the sweep at the named commit" '[ "$(jq -r .base_sha "$TMP/out-pr/runs.jsonl")" = "$PSHA" ]'
+bash "$RUN" run --lane native --model claude-haiku-4-5 --tasks shell-red-green --no-judge --base HEAD --out "$TMP/out-pr2" >"$TMP/run-pr2.log" 2>&1
+check "run --base records a full sha for a ref spelling" '[ "$(jq -r .base_sha "$TMP/out-pr2/runs.jsonl")" = "$(git -C "$TMP/repo" rev-parse HEAD)" ]'
 
 echo "test-lane-quality: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

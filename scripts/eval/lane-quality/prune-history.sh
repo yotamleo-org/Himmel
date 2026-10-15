@@ -15,7 +15,8 @@
 # ponytail: line match, also drops a matching line inside a heredoc or multi-line string and adds a final newline, per-language tokeniser in HIMMEL-5629.
 # Sample, never the whole repo: N defaults to 40. Fixtures, vendored trees and
 # generated output are skipped, as the gate skips them.
-set -u
+set -uo pipefail
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
 
 die() { echo "prune-history: $*" >&2; exit 64; }
 [ $# -ge 2 ] || die "usage: prune-history.sh <repo> <base-sha> [--files N]"
