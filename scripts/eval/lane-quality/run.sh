@@ -9,9 +9,10 @@
 # Usage:
 #   run.sh list
 #   run.sh run --lane native|openrouter|api --model <model> [--tasks a,b] [--effort <level>]
-#              [--reps <n>] [--max-usd <usd>] [--timeout <sec>] [--judge-model <model>]
+#              [--reps <n>] [--base <sha>] [--max-usd <usd>] [--timeout <sec>] [--judge-model <model>]
 #              [--no-judge] [--keep] [--out <dir>] [--config <file>] [--dry-run]
 #   run.sh table <run-dir>...
+#   run.sh pair <run-dir-a> <run-dir-b>   (one task set on two base commits: one paired row per task)
 #   run.sh calibration <run-dir>... [--judge2-model <model>] [--judge2-effort <level>]
 #              [--max-usd <usd>] [--timeout <sec>] [--json] [--no-ledger]
 #   run.sh materialize <task> <dir> [--reference]   (used by the suite)
@@ -96,7 +97,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TASKS="$HERE/tasks"
 die() { echo "lane-quality: $*" >&2; exit 64; }
-usage() { sed -n '2,66p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+usage() { sed -n '2,67p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
 all_tasks() { for d in "$TASKS"/*/; do [ -f "$d/prompt.md" ] && basename "$d"; done; }
@@ -433,10 +434,10 @@ apply_config() {
 
 cmd_run() {
   LANE=""; MODEL=""; TASK_LIST=""; EFFORT=""; MAX_USD=""; TIMEOUT=1800; JUDGE_MODEL=opus
-  NO_JUDGE=0; KEEP=0; OUT=""; REPS=1; CONFIG=""; DRY_RUN=0; VARIANT=""; VARIANT_FILE=""
+  NO_JUDGE=0; KEEP=0; OUT=""; REPS=1; CONFIG=""; DRY_RUN=0; BASE_ARG=""; VARIANT=""; VARIANT_FILE=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --lane|--model|--tasks|--effort|--max-usd|--timeout|--judge-model|--out|--reps|--config|--steering-variant)
+      --lane|--model|--tasks|--effort|--max-usd|--timeout|--judge-model|--out|--reps|--config|--base|--steering-variant)
         [ $# -ge 2 ] || die "$1 needs a value"
         case "$1" in
           --steering-variant)
@@ -446,6 +447,7 @@ cmd_run() {
             [ -f "$VARIANT_FILE" ] || die "--steering-variant: no such file '$VARIANT_FILE'"
             VARIANT_FILE="$(cd "$(dirname "$VARIANT_FILE")" && pwd)/$(basename "$VARIANT_FILE")" ;;
           --config) CONFIG="$2" ;;
+          --base) BASE_ARG="$2" ;;
           --lane) LANE="$2" ;; --model) MODEL="$2" ;; --tasks) TASK_LIST="$2" ;;
           --effort) EFFORT="$2" ;; --max-usd) MAX_USD="$2" ;; --timeout) TIMEOUT="$2" ;;
           --judge-model) JUDGE_MODEL="$2" ;; --out) OUT="$2" ;; --reps) REPS="$2" ;;
@@ -493,7 +495,10 @@ cmd_run() {
   [ "$REPS" -gt 0 ] || die "--reps must be positive"
 
   init_env
-  BASE_SHA="${LQ_BASE_SHA:-$(tr -d '[:space:]' <"$HERE/BASE_SHA")}"
+  BASE_SHA="${BASE_ARG:-${LQ_BASE_SHA:-$(tr -d '[:space:]' <"$HERE/BASE_SHA")}}"
+  if [ -n "$BASE_ARG" ]; then
+    BASE_SHA="$(git -C "$REPO" rev-parse --verify "$BASE_ARG^{commit}" 2>/dev/null)" || die "base '$BASE_ARG' is not a commit in $REPO"
+  fi
   WORK_ROOT="${LQ_WORK_ROOT:-$REPO/.claude/worktrees}"
   # The judge always runs native; a metered lane's agent goes through its launcher.
   AGENT_BIN="$CLAUDE_BIN"; METERED_PROBE=""; BUDGET_FACTOR=1; TRANSCRIPTS="${LQ_TRANSCRIPTS:-$HOME/.claude/projects}"
@@ -593,6 +598,30 @@ cmd_table() {
     + "\(.permission_denials)/\(.hook_denials | n) | \(.peeked | n) |"' "${files[@]}"
   echo
   python3 "$HERE/lq_stats.py" summary "${files[@]}"
+}
+
+# pair <run-dir-a> <run-dir-b>: one row per (task, repeat) both runs
+# have, arm A then arm B: acceptance, tool calls and cost. The two runs must sit
+# on different base commits; a task only one arm ran is not paired.
+cmd_pair() {
+  [ $# -eq 2 ] || die "pair needs exactly two run directories"
+  local d
+  for d in "$1" "$2"; do
+    [ -r "$d/runs.jsonl" ] || die "no runs.jsonl in $d"
+    jq -e . "$d/runs.jsonl" >/dev/null 2>&1 || die "unreadable rows in $d/runs.jsonl"
+  done
+  jq -n -r '
+    def n: if . == null then "?" else tostring end;
+    def key: "\(.task)#\(.rep // 1)";
+    [inputs] as $all
+    | $all[0] as $A | $all[1] as $B
+    | if ($A[0].base_sha // "") == ($B[0].base_sha // "") then error("both runs are on one base commit") else . end
+    | ($B | map({(key): .}) | add) as $bk
+    | "| task | rep | accept A → B | tool calls A → B | cost USD A → B | base A → B |",
+      "|---|---|---|---|---|---|",
+      ($A[] | select($bk[key] != null) | . as $x | $bk[key] as $y
+       | "| \($x.task) | \($x.rep // 1) | \(if $x.accept_ok then 1 else 0 end) → \(if $y.accept_ok then 1 else 0 end) | \($x.tool_calls | n) → \($y.tool_calls | n) | \($x.cost_usd | n) → \($y.cost_usd | n) | \($x.base_sha[0:7]) → \($y.base_sha[0:7]) |")
+  ' <(jq -s . "$1/runs.jsonl") <(jq -s . "$2/runs.jsonl") || die "pair failed (both runs on one base commit, or unreadable rows)"
 }
 
 # calibration <run-dir>... [--judge2-model M] [--judge2-effort E] [--max-usd U]
@@ -701,8 +730,9 @@ case "$1" in
   list) all_tasks ;;
   run) shift; cmd_run "$@" ;;
   table) shift; cmd_table "$@" ;;
+  pair) shift; cmd_pair "$@" ;;
   calibration) shift; cmd_calibration "$@" ;;
   materialize) shift; [ $# -ge 2 ] || die "materialize <task> <dir> [--reference]"; materialize "$@" ;;
   -h|--help) usage ;;
-  *) die "unknown command '$1' (list|run|table|calibration|materialize)" ;;
+  *) die "unknown command '$1' (list|run|table|pair|calibration|materialize)" ;;
 esac

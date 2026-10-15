@@ -21,7 +21,14 @@
 #   * a destroy verb carried as DATA to another executor (`ssh host terraform
 #     destroy`, `kubectl exec pod -- psql ...`, `xargs`) is not read; and a SQL
 #     file run by `psql -f x.sql` is not read (only inline or heredoc SQL);
-#   * `terraform plan -destroy` and read forms pass; `apply -destroy` denies.
+#   * `terraform plan -destroy` and read forms pass; `apply -destroy` denies;
+#   * a command word held in a variable (`$T destroy`) is unreadable, so it is
+#     tried against every rule's arguments (`T=ls; $T delete` over-denies);
+#   * the flat scan (PowerShell, or input the tokenizer cannot read) denies a
+#     table-bin word followed by more than 256 words rather than crawl them
+#     or leave a verb past the window unread (a long command over-denies).
+#
+# A pattern in the verbs table that does not compile refuses the call (exit 2).
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 - allow   2 - block (stderr is shown to Claude and the user)
@@ -87,8 +94,29 @@ fi
 if ! runners=$(jq -r '(.runners // []) | join(" ")' "$TABLE" 2>/dev/null); then
     exit 2
 fi
+if ! allbins=$(jq -r '([.rules[].bins[]] + (.runners // [])) | join(" ")' "$TABLE" 2>/dev/null); then
+    exit 2
+fi
 [ -n "$rules" ] || { echo "block-infra-destroy: verbs table has no rules - failing closed" >&2; exit 2; }
 
+# A pattern bash cannot compile makes `[[ x =~ p ]]` return 2, which every
+# matcher below reads as "no match": the rule would silently stop firing. Refuse
+# the whole table instead.
+while IFS=$'\002' read -r _vid _vbins _vall _vany _vtext _valways _vnote; do
+    for _vf in "$_vall" "$_vany" "$_vtext"; do
+        [ -n "$_vf" ] || continue
+        IFS=$'\037' read -r -a _vpats <<<"$_vf"
+        for _vp in "${_vpats[@]}"; do
+            [[ x =~ $_vp ]]
+            if [ $? -eq 2 ]; then
+                echo "block-infra-destroy: verbs table rule '$_vid' has a malformed pattern '$_vp' - failing closed" >&2
+                exit 2
+            fi
+        done
+    done
+done <<<"$rules"
+
+SCAN_BIN=
 lc_cmd=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]')
 
 deny() {
@@ -118,8 +146,11 @@ eval_segment() {
     shift
     while IFS=$'\002' read -r id rbins rall rany rtext ralways note; do
         [ -n "$id" ] || continue
-        case " $rbins " in *" $bin "*) ;; *) continue ;; esac
-        if [ "$ralways" = true ]; then deny "$note" "$id"; fi
+        case " $rbins " in *" $bin "*) ;; *) [ "$bin" = '*' ] || continue ;; esac
+        if [ "$ralways" = true ]; then
+            [ "$bin" = '*' ] && continue
+            deny "$note" "$id"
+        fi
         if [ -n "$rtext" ]; then
             IFS=$'\037' read -r -a pats <<<"$rtext"
             for p in "${pats[@]}"; do
@@ -152,7 +183,15 @@ scan_words() {
     local bin
     local -a cw
     [ $# -gt 0 ] || return 0
-    bin=$(printf '%s' "${1##*[/\\]}" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}
+    if [ -n "$SCAN_BIN" ]; then
+        bin=$SCAN_BIN
+        SCAN_BIN=
+    else
+        bin=$(printf '%s' "${1##*[/\\]}" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}
+    fi
+    # A command word held in a variable or substitution cannot be read, so it
+    # matches every rule's arguments (the `*` bin).
+    case "$bin" in *'$'*|*'`'*) bin='*' ;; esac
     case " $runners " in
         *" $bin "*)
             shift
@@ -174,6 +213,7 @@ scan_words() {
             done
             [ $# -gt 0 ] || return 0
             bin=$(printf '%s' "${1##*[/\\]}" | tr '[:upper:]' '[:lower:]'); bin=${bin%.exe}; bin=${bin%.cmd}
+            case "$bin" in *'$'*|*'`'*) bin='*' ;; esac
             ;;
     esac
     shift
@@ -202,12 +242,31 @@ else
     # PowerShell, or a command the tokenizer does not model: no command-word
     # positions exist, so every word is tried as the command word. A form this
     # guard cannot read counts as a denied one if a verb rule fires.
+    # Linear: only a word whose lowercased basename is a table bin or runner
+    # (or holds a `$`) is tried as a command word, and one with more than
+    # FLAT_SPAN words after it denies (a verb past the window would go unread).
     _flat=${cmd//[;&|()\"\'\`]/ }
     _flat=${_flat//$'\n'/ }
     read -r -a _all <<<"$_flat"
+    _flat=${lc_cmd//[;&|()\"\'\`]/ }
+    _flat=${_flat//$'\n'/ }
+    read -r -a _lc <<<"$_flat"
+    FLAT_SPAN=256
     _k=0
     while [ "$_k" -lt "${#_all[@]}" ]; do
+        _b=${_lc[_k]##*[/\\]}
+        _b=${_b%.exe}
+        _b=${_b%.cmd}
+        case "$_b" in
+            *'$'*) _b='*' ;;
+            *) case " $allbins " in *" $_b "*) ;; *) _k=$((_k + 1)); continue ;; esac ;;
+        esac
+        if [ $((${#_all[@]} - _k - 1)) -gt "$FLAT_SPAN" ]; then
+            deny "more than $FLAT_SPAN words follow a command word in a command this guard cannot tokenize" flat-scan-span
+        fi
+        SCAN_BIN=$_b
         scan_words "${_all[@]:_k}"
+        SCAN_BIN=
         _k=$((_k + 1))
     done
 fi

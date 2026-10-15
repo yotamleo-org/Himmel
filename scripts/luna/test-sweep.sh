@@ -117,6 +117,27 @@ assert_stderr_contains "days-then-since message" "mutually exclusive" "$SWEEP" -
 assert_exit "since-then-days exits 1" 1 "$SWEEP" --since 2026-01-01 --days 3
 assert_stderr_contains "since-then-days message" "mutually exclusive" "$SWEEP" --since 2026-01-01 --days 3
 
+# pr_body_excerpt_of cuts at 600 characters, never mid-codepoint.
+eval "$(sed -n '/^pr_body_excerpt_of() {/,/^}/p' "$SWEEP")"
+if declare -F pr_body_excerpt_of >/dev/null; then
+    multibyte_body=$(printf 'é%.0s' $(seq 1 400))
+    excerpt=$(jq -cn --arg b "$multibyte_body" '{body: $b}' | pr_body_excerpt_of)
+    if [[ "${#excerpt}" == 400 ]] && printf '%s' "$excerpt" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
+        PASS=$((PASS + 1)); echo "  PASS: excerpt keeps valid multibyte text"
+    else
+        FAIL=$((FAIL + 1)); FAILED_CASES+=("excerpt keeps valid multibyte text"); echo "  FAIL: excerpt keeps valid multibyte text (got ${#excerpt} chars)"
+    fi
+    long_body=$(printf 'é%.0s' $(seq 1 700))
+    excerpt=$(jq -cn --arg b "$long_body" '{body: $b}' | pr_body_excerpt_of)
+    if [[ "${#excerpt}" == 600 ]] && printf '%s' "$excerpt" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
+        PASS=$((PASS + 1)); echo "  PASS: excerpt truncates at 600 characters, valid UTF-8"
+    else
+        FAIL=$((FAIL + 1)); FAILED_CASES+=("excerpt truncates at 600 characters"); echo "  FAIL: excerpt truncates at 600 characters (got ${#excerpt} chars)"
+    fi
+else
+    FAIL=$((FAIL + 1)); FAILED_CASES+=("pr_body_excerpt_of is defined"); echo "  FAIL: pr_body_excerpt_of is not defined in sweep-himmel.sh"
+fi
+
 echo ""
 echo "==> Results: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then

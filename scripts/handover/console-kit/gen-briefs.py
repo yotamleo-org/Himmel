@@ -26,7 +26,8 @@ opus or fable model, because headed-arm-leg.sh refuses such a launch without a
 design|unverified-finding|tier-return|operator-ruling, reason is non-blank single-line
 text; the brief gets that line, and nothing is written for a leg without it), lane (the manifest
 lane the printed add line passes as --lane; default native, the lane of the
-launchers written here). The brief follows
+launchers written here; a non-native lane's text may not name a path under the handover root,
+that worker cannot read it). The brief follows
 the v3 shape of docs/handover/leg-brief-template.md; invariant rules live in the
 leg preface and are not repeated.
 
@@ -98,6 +99,20 @@ def validate(leg, i):
             die('leg %s: tier.reason must be non-blank single-line text' % leg['label'])
     if re.search(r'<[^<>\s]+>', leg['prior']) or leg['prior'].strip().lower().rstrip('.') == 'none':
         die('leg %s: prior art must be filled (a bare none or a <placeholder> fails brief-lint)' % leg['label'])
+
+
+def check_lane_reads(l, hroot):
+    # A lane worker cannot read the state repo, so a brief that points it at a
+    # handover-root path would be a silent no-op instruction. Native legs can read it.
+    root = hroot.rstrip('/')
+    if l.get('lane', 'native') == 'native' or not root:
+        return
+    tier = l.get('tier')
+    texts = [(k, l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra')]
+    texts.append(('tier.reason', tier.get('reason', '') if isinstance(tier, dict) else ''))
+    for k, v in texts:
+        if re.search(re.escape(root) + r'(?![\w.-])', str(v)):
+            die('leg %s: %s points at a path under the handover root (%s), which lane %s cannot read; quote the requirements inline' % (l['label'], k, root, l['lane']))
 
 
 def render_brief(l, ctx):
@@ -223,6 +238,7 @@ def main():
 
     # Validate and reserve names for every leg before touching a worktree.
     for l in legs:
+        check_lane_reads(l, a.handover_root)
         l['hook'] = bool(l.get('hook'))
         l['judge'] = bool(l.get('judge'))
         l['model'] = l.get('model') or DEFAULT_MODEL

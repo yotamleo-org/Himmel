@@ -650,5 +650,40 @@ printf 'stand-in steering\n' >"$TMP/v-same.md"
 bash "$RUN" run --lane native --model m --tasks shell-red-green --no-judge --steering-variant same="$TMP/v-same.md" --out "$TMP/out-same" >"$TMP/same.log" 2>&1
 check "a variant identical to the pinned CLAUDE.md still runs" '[ "$(jq -s -r ".[0].variant" "$TMP/out-same/runs.jsonl")" = same ]'
 
+# h: pair: one task at two base commits gives one paired row
+echo "pair" >"$TMP/repo/pair.txt"
+git -C "$TMP/repo" add -A
+git -C "$TMP/repo" -c user.name=t -c user.email=t@t commit -qm pruned-arm
+BASE2="$(git -C "$TMP/repo" rev-parse HEAD)"
+LQ_BASE_SHA="$BASE2" bash "$RUN" run --lane native --model claude-haiku-4-5 --tasks shell-red-green --out "$TMP/out-pb" >"$TMP/run-pb.log" 2>&1
+bash "$RUN" pair "$TMP/out1" "$TMP/out-pb" >"$TMP/pair.md" 2>&1
+rc=$?
+check "pair exits 0 and prints exactly one row for the one shared task" '[ "$rc" -eq 0 ] && [ "$(grep -c "^| shell-red-green |" "$TMP/pair.md")" -eq 1 ]'
+check "the paired row carries success, tool calls and cost for both arms" 'grep "^| shell-red-green |" "$TMP/pair.md" | grep -q "| 1 → 1 | 2 → 2 | 0\.[0-9]* → 0\.[0-9]* |"'
+check "a task only one arm ran is not paired" '[ "$(grep -c "^| finding-verify |" "$TMP/pair.md")" -eq 0 ]'
+check "pair refuses two runs on the same base" '! bash "$RUN" pair "$TMP/out1" "$TMP/out1" >/dev/null 2>&1'
+
+# i: prune-history: the pruned arm drops history comments and nothing else
+PRUNE="$HERE/prune-history.sh"
+mkdir -p "$TMP/repo/scripts"
+printf '%s\n' '#!/usr/bin/env bash' '# HIMMEL-1 added for the old bug' '# ponytail: HIMMEL-2 known limit, upgrade later' '# keep: why this flag exists' 'echo hi  # HIMMEL-3 trailing stays' '// round 2 note' '# CR fix: tidy' >"$TMP/repo/scripts/demo.sh"
+printf '%s\n' '# HIMMEL-9 symlink target stays' >"$TMP/repo/ext.txt"
+ln -s ../ext.txt "$TMP/repo/scripts/link.sh"
+git -C "$TMP/repo" add -A
+git -C "$TMP/repo" -c user.name=t -c user.email=t@t commit -qm demo
+BASE3="$(git -C "$TMP/repo" rev-parse HEAD)"
+PSHA="$(bash "$PRUNE" "$TMP/repo" "$BASE3" --files 5 2>"$TMP/prune.err")"
+rc=$?
+check "prune-history prints a new commit sha on top of the base" '[ "$rc" -eq 0 ] && [ -n "$PSHA" ] && [ "$PSHA" != "$BASE3" ] && [ "$(git -C "$TMP/repo" rev-parse "$PSHA^")" = "$BASE3" ]'
+check "the pruned file lost the history comments only" '[ "$(git -C "$TMP/repo" show "$PSHA:scripts/demo.sh" | tr "\n" "|")" = "#!/usr/bin/env bash|# ponytail: HIMMEL-2 known limit, upgrade later|# keep: why this flag exists|echo hi  # HIMMEL-3 trailing stays|" ]'
+check "a tracked symlink is skipped, its target is untouched" '[ "$(git -C "$TMP/repo" show "$PSHA:ext.txt")" = "# HIMMEL-9 symlink target stays" ]'
+check "prune-history reports the removed line count" 'grep -q "removed [1-9][0-9]* history-comment lines" "$TMP/prune.err"'
+check "prune-history refuses an unknown base" '! bash "$PRUNE" "$TMP/repo" 1111111111111111111111111111111111111111 >/dev/null 2>&1'
+# --base on run: the sweep is cut at the named commit, not the pinned one
+bash "$RUN" run --lane native --model claude-haiku-4-5 --tasks shell-red-green --no-judge --base "$PSHA" --out "$TMP/out-pr" >"$TMP/run-pr.log" 2>&1
+check "run --base cuts the sweep at the named commit" '[ "$(jq -r .base_sha "$TMP/out-pr/runs.jsonl")" = "$PSHA" ]'
+bash "$RUN" run --lane native --model claude-haiku-4-5 --tasks shell-red-green --no-judge --base HEAD --out "$TMP/out-pr2" >"$TMP/run-pr2.log" 2>&1
+check "run --base records a full sha for a ref spelling" '[ "$(jq -r .base_sha "$TMP/out-pr2/runs.jsonl")" = "$(git -C "$TMP/repo" rev-parse HEAD)" ]'
+
 echo "test-lane-quality: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

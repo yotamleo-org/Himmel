@@ -1668,10 +1668,12 @@ if [ -n "$PROFILE" ]; then
     # nothing. Deny wins over additionalDirectories, so this holds even if a
     # future change widens the grant back toward the root. Gated the same as
     # the EnterWorktree deny above: the relay never works in a worktree and
-    # keeps its settings as they are.
+    # keeps its settings as they are. Both path rules here are spelled //abs:
+    # Claude Code reads a single leading slash as project-relative, so /abs
+    # would never match.
     if [ "$RELAY" -eq 0 ] && [ -n "$_leg_handover_dir_norm" ]; then
         if ! PROFILE_JSON="$(printf '%s' "$PROFILE_JSON" | jq --arg dir "$_leg_handover_dir_norm" \
-            '.permissions.deny = ((.permissions.deny // []) + (["Edit"] | map(. + "(" + $dir + "/.locks/**)")))')"; then
+            '.permissions.deny = ((.permissions.deny // []) + (["Edit"] | map(. + "(/" + $dir + "/.locks/**)")))')"; then
             echo "headed-arm-leg: --profile $PROFILE: cannot add the .locks deny to settings JSON" >&2
             exit 2
         fi
@@ -1696,7 +1698,7 @@ if [ -n "$PROFILE" ]; then
     # must not gain this grant even though it resolves its own DOC too.
     if [ "$RELAY" -eq 0 ] && [ "$READONLY_ROLE" -eq 0 ] && [ -n "$_leg_doc_path" ]; then
         if ! PROFILE_JSON="$(printf '%s' "$PROFILE_JSON" | jq --arg doc "$_leg_doc_path" \
-            '.permissions.allow = ((.permissions.allow // []) + ["Edit(" + $doc + ")"])')"; then
+            '.permissions.allow = ((.permissions.allow // []) + ["Edit(/" + $doc + ")"])')"; then
             echo "headed-arm-leg: --profile $PROFILE: cannot add the handover-doc Edit allow to settings JSON" >&2
             exit 2
         fi

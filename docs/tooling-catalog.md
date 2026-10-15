@@ -534,9 +534,7 @@ single-writer luna vault, C4 Bitbucket-remote-where-`gh`-fails, C5 repo not in t
 handover registry, C6 PATH-fragile bare-interpreter MCP servers (uvx/bun — same
 GUI-launch failure class as the node hook), C7 lingering merged-PR worktrees, C8
 stale pipeline-cadence runners, C9 auto-arm scheduler backend (reads
-`scripts/lib/scheduler-backend.sh`; never sudos), C10 private→public propagation
-drift (read-only advisory; surfaces MISSING/DRIFT/REVERSE-LEAK
-between the private mirror and the public clone; skips cleanly on adopter clones),
+`scripts/lib/scheduler-backend.sh`; never sudos),
 C28 guardrail-block-global armed-but-inert consent gap (read-only,
 never auto-wires; C1-guardrail already covers wired-and-healthy vs
 wired-but-degraded, so this adds the third distinction among the never-wired

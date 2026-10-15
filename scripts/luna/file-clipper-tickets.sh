@@ -2,14 +2,14 @@
 # One-shot batch-create of 18 LUNA tickets for the clipper pipeline plan.
 # Source: <state-repo>/handovers/<USER_SLUG>/cross/clipper-pipeline-plan-2026-05-26.md.
 #
-# PROVENANCE RECORD — DO NOT RE-RUN.
-# This script ALREADY ran on 2026-05-26 and created the LUNA-3 clipper-pipeline
-# tickets (LUNA-8/10/11/21/... — see the plan + the summary it printed). It is
-# kept in the tree as the record of HOW those tickets were generated, not as a
-# maintained tool. It is NOT idempotent: re-running creates a fresh DUPLICATE of
-# every ticket. If you need to (re)generate tickets, make a new dated script or
-# add a skip-if-exists guard first.
+# Provenance record: this ran once (2026-05-26) and is not idempotent.
 set -e
+
+# Re-running files a duplicate of every ticket, so it needs an explicit opt-in.
+if [ "${FILE_CLIPPER_TICKETS_RERUN:-}" != 1 ]; then
+  echo "file-clipper-tickets: already ran on 2026-05-26; a re-run duplicates every ticket (set FILE_CLIPPER_TICKETS_RERUN=1 to proceed)" >&2
+  exit 1
+fi
 
 cd "$(dirname "$0")/../.."
 

@@ -18,10 +18,11 @@
 # Identity: labels `ci-red` + `wf:<slug>` find the workflow's issues; the body
 # marker `<!-- ci-red-branch: <branch> -->` picks the branch.
 #
-# ponytail: an out-of-order older red run that completes after a newer green run
-# finds no open issue and opens a stale one (main-sweep-red-issue.sh stamps a
-# closed-run marker for this, HIMMEL-5129), upgrade to that stamp if a stale
-# ci-red issue is ever seen.
+# A red manual dispatch (workflow_dispatch) on a non-default branch is not tracked:
+# its branch merges and is deleted, so nothing would ever close the issue.
+# Closing an issue stamps the run id into its body, and the lookup
+# pages through closed issues too, so an older red run finishing after a newer
+# green one is ignored.
 # ponytail: a run `cancelled` by timeout-minutes is no verdict here (main-sweep
 # reads the job annotations for it), upgrade the same way if a hung job in a
 # listed workflow goes unreported.
@@ -88,41 +89,55 @@ case "$CONCLUSION" in
     exit 0 ;;
 esac
 
+# A red manual dispatch on a non-default branch is a proof run for a branch that
+# is about to merge and vanish: no later green run of that branch ever closes the
+# issue, so it is not opened (console-kit ready-check already gates a
+# PR on its own dispatch runs). A green one still falls through and closes any
+# issue left for the branch.
+if [ "$red" -eq 1 ] && [ "$EVENT" = "workflow_dispatch" ]; then
+  if ! default_branch="$(gh api "repos/$REPO" --jq .default_branch)"; then
+    echo "workflow-red-issue: could not read the default branch of $REPO (gh api failed)" >&2
+    exit 1
+  fi
+  if [ "$BRANCH" != "$default_branch" ]; then
+    echo "workflow-red-issue: run $RUN_ID is a $EVENT run on '$BRANCH', not the default branch '$default_branch' -- not tracked."
+    exit 0
+  fi
+fi
+
 # wf:<slug> -- lowercase, runs of non-alphanumerics become one dash.
 SLUG="$(printf '%s' "$WF" | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9][^a-z0-9]*/-/g' -e 's/^-//' -e 's/-$//')"
 WFLABEL="wf:$SLUG"
 MARK="<!-- ci-red-branch: $BRANCH -->"
 
-# --- the open issue for (workflow, branch); a failed lookup is never "no issue" ---
-# The branch marker is matched as data (grep -F over each issue body), never
-# interpolated into a jq filter: a git ref may carry a double quote.
-if ! gh issue list --label "$LABEL" --label "$WFLABEL" --state open --limit 100 \
-    --json number --jq '.[].number' > "$TMP/open" 2>/dev/null; then
+# --- the issues for (workflow, branch), open AND closed; a failed lookup is never "no issue" ---
+# All pages of the label-filtered issue list (state=all keeps the closed ones, so
+# a closed issue's last run id is a watermark). The branch marker is matched as
+# data (grep -Fx over each decoded body), never interpolated into a jq filter: a
+# git ref may carry a double quote.
+if ! gh api --paginate "repos/$REPO/issues?state=all&per_page=100&labels=$LABEL,$WFLABEL" \
+    --jq '.[] | "\(.number)\t\(.state)\t\(.body // "" | @base64)"' > "$TMP/issues" 2>/dev/null; then
   echo "workflow-red-issue: could not query existing issues (gh lookup failed) -- not creating/closing, to avoid a duplicate or a blind close." >&2
   exit 1
 fi
-num=""
-while IFS= read -r cand; do
+num=""; body=""; seen_run=0
+while IFS="$tab" read -r cand state b64; do
   [ -n "$cand" ] || continue
-  if ! cbody="$(gh issue view "$cand" --json body --jq .body 2>/dev/null)"; then
-    echo "workflow-red-issue: could not read issue #$cand (gh failed) -- not creating/closing." >&2
+  if ! cbody="$(printf '%s' "$b64" | base64 -d 2>/dev/null)"; then
+    echo "workflow-red-issue: could not decode the body of issue #$cand -- not creating/closing, to avoid a duplicate or a blind close." >&2
     exit 1
   fi
-  if grep -Fxq -- "$MARK" <<< "$cbody"; then num="$cand"; break; fi
-done < "$TMP/open"
+  grep -Fxq -- "$MARK" <<< "$cbody" || continue
+  # the newest run any issue of this branch has seen: open (the live issue) or closed (the watermark)
+  r="$(printf '%s\n' "$cbody" | sed -n 's/^<!-- ci-red-run: \([0-9][0-9]*\) -->[[:space:]]*$/\1/p' | sort -n | tail -n 1)"
+  [ -n "$r" ] && [ "$r" -gt "$seen_run" ] && seen_run="$r"
+  if [ "$state" = "open" ] && [ -z "$num" ]; then num="$cand"; body="$cbody"; fi
+done < "$TMP/issues"
 
-# Ordering guard: an older run must not overwrite or close a newer verdict.
-body=""
-if [ -n "$num" ]; then
-  if ! body="$(gh issue view "$num" --json body --jq .body 2>/dev/null)"; then
-    echo "workflow-red-issue: could not read issue #$num (gh failed) -- leaving it untouched." >&2
-    exit 1
-  fi
-  seen_run="$(printf '%s\n' "$body" | sed -n 's/^<!-- ci-red-run: \([0-9][0-9]*\) -->[[:space:]]*$/\1/p' | sort -n | tail -n 1)"
-  if [ -n "$seen_run" ] && [ "$seen_run" -gt "$RUN_ID" ]; then
-    echo "workflow-red-issue: #$num was last written by run $seen_run, newer than $RUN_ID -- ignoring this older run."
-    exit 0
-  fi
+# Ordering guard: an older run must not overwrite, reopen or close a newer verdict.
+if [ "$seen_run" -gt "$RUN_ID" ]; then
+  echo "workflow-red-issue: this branch's issue was last written by run $seen_run, newer than $RUN_ID -- ignoring this older run."
+  exit 0
 fi
 
 now() { date -u +'%Y-%m-%d %H:%M UTC' 2>/dev/null || echo "unknown-time"; }
@@ -186,6 +201,13 @@ if [ -z "$num" ]; then
 fi
 echo "workflow-red-issue: $WF is green on $BRANCH (run $RUN_ID) -- closing #$num"
 mut=0
+# Stamp this run into the body first: the closed issue is the watermark that keeps
+# an older red run, finishing late, from opening a stale issue.
+{ printf '%s\n' "$body"; echo "<!-- ci-red-run: $RUN_ID -->"; } > "$TMP/closed.md"
+if ! gh issue edit "$num" --body-file "$TMP/closed.md"; then
+  echo "workflow-red-issue: could not stamp run $RUN_ID into #$num -- leaving it open; retries on the next run." >&2
+  exit 1
+fi
 gh issue comment "$num" --body "Green as of $(now) at $SHA: $WF passed on $BRANCH in $RUN_URL. Closing." || mut=1
 gh issue close "$num" || mut=1
 if [ "$mut" -ne 0 ]; then

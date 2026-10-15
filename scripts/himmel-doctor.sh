@@ -517,58 +517,6 @@ check_c9() {
     esac
 }
 
-# --- C10: private→public propagation drift (read-only advisory) -----------------
-# Sources the drift detector (Component A) and surfaces MISSING/DRIFT/REVERSE-LEAK
-# between the private mirror and the public clone. Private-only tooling: on a
-# public/adopter clone propagate-public.sh + propagation-drift.sh are absent →
-# skipped, OK. NON-fatal (WARN never FAILs), no --fix — like C7. The detector's
-# own cwd/clone/fetch guards make a non-private or clone-less run skip cleanly.
-check_c10() {
-    local drift_lib="$REPO_ROOT/scripts/lib/propagation-drift.sh"
-    if [ ! -f "$REPO_ROOT/scripts/propagate-public.sh" ] || [ ! -f "$drift_lib" ]; then
-        emit OK C10-propagation "skipped (no private mirror tooling)"
-        return
-    fi
-    # shellcheck source=scripts/lib/public-clone-paths.sh
-    # shellcheck disable=SC1091
-    . "$REPO_ROOT/scripts/lib/public-clone-paths.sh"
-    # shellcheck source=scripts/lib/propagation-drift.sh
-    # shellcheck disable=SC1091
-    . "$drift_lib"
-    local out; out="$(propagation_drift 2>/dev/null)"
-    case "$out" in
-        *"propagation-drift: skipped"*)
-            emit OK C10-propagation "$(printf '%s\n' "$out" | sed -n 's/^propagation-drift: //p' | head -1)"
-            return ;;
-    esac
-    local total; total="$(printf '%s\n' "$out" | grep -c '^DRIFT-BUCKET ' || true)"
-    # A WARN line (fetch failed → stale/local refs, or unreadable/empty origin/main)
-    # means the comparison did NOT run against fresh trees — a "0 buckets" result
-    # there is NOT a clean bill of health, so surface it as WARN, never OK.
-    local warned; warned="$(printf '%s\n' "$out" | grep -c '^propagation-drift: WARN' || true)"
-    if [ "${total:-0}" -eq 0 ] && [ "${warned:-0}" -gt 0 ]; then
-        emit WARN C10-propagation \
-            "drift comparison ran against stale/unreadable refs — cannot assert clean" \
-            "re-run with network access (fetch origin/main on both private + public clone)"
-        printf '%s\n' "$out" | grep '^propagation-drift: WARN' | sed 's/^propagation-drift: /       /'
-        return
-    fi
-    if [ "${total:-0}" -eq 0 ]; then
-        emit OK C10-propagation "no private→public propagation drift"
-        return
-    fi
-    emit WARN C10-propagation \
-        "$total private→public propagation-drift finding(s) — public mirror behind/diverged" \
-        "review + propagate: scripts/propagate-public.sh prep/new (genericize MISSING-needs-review by hand)"
-    # Surface any fetch/unreadable WARN too — if drift was found AGAINST stale refs
-    # the counts may be inaccurate, and the operator must know the compare wasn't fresh.
-    printf '%s\n' "$out" | grep '^propagation-drift: WARN' | sed 's/^propagation-drift: /       /'
-    # One-screen breakdown: per-bucket counts + up to 5 example paths.
-    printf '%s\n' "$out" | sed -n '/propagation-drift summary/,$p' | grep -v 'summary (private' | sed 's/^/       /'
-    printf '       examples:\n'
-    printf '%s\n' "$out" | grep '^DRIFT-BUCKET ' | head -5 | sed 's/^DRIFT-BUCKET /       · /'
-}
-
 # --- C11: glm-launcher config-seed drift (read-only advisory) -------------------
 # The glm-LAUNCHER lane seeds ~/.claude-glm from ~/.claude once, then re-seeds
 # only on --reseed/missing .seeded, so a reused config dir lags the source.
@@ -576,7 +524,7 @@ check_c10() {
 # ~/.claude-glm exists and points to --reseed on drift. The glm-SPAWN lane has
 # no seeded dir, so the check is skipped there (no ~/.claude-glm -> OK skip).
 # NON-fatal (never FAIL): a stale launcher config is a nudge, not a breakage,
-# matching the read-only stance of C7/C8/C9/C10. No --fix here. HIMMEL-654 WS5.
+# matching the read-only stance of C7/C8/C9. No --fix here.
 check_c11() {
     # The launcher hardcodes ~/.claude-glm (NOT CLAUDE_DIR-derived), so this does
     # too -- diverging when an operator relocates .claude via CLAUDE_DIR would
@@ -595,7 +543,7 @@ check_c11() {
             emit WARN C11-glm-seed \
                 "glm-launcher config-seed drift -- ~/.claude-glm lags ~/.claude (reused config dir)" \
                 "claude-glm --reseed"
-            # Surface the per-file drift list (up to 8), like C10's example breakdown.
+            # Surface the per-file drift list (up to 8).
             printf '%s\n' "$out" | grep '^  · ' | sed 's/^  /       /' | head -8
             ;;
         2)
@@ -935,9 +883,8 @@ check_c15() {
 }
 
 # --- C17: dependency readiness -- enabled skills vs their required API keys ----
-# (HIMMEL-1393). Delegates to scripts/lib/dependency-readiness.sh (mirrors how
-# C10 delegates to propagation-drift.sh) so the SAME declaration map + logic
-# is shared with himmel-update's dependency-readiness advisory step. Two
+# Delegates to scripts/lib/dependency-readiness.sh so the SAME
+# declaration map + logic is shared with himmel-update's dependency-readiness advisory step. Two
 # drift directions, both WARN-only, never FAIL: (1) an enabled skill declares
 # a required env key that is absent/blank; (2) an enabled+keyed skill whose
 # toolkit a doc still calls disabled. Presence-only -- never reads/prints a
@@ -2686,7 +2633,7 @@ check_c32() {
 # scripts/luna/graphmap-cadence.sh, 6-hour interval) appends one JSONL row to
 # <handover-root>/.graph-cadence/ledger.jsonl per fire. This check reads only
 # the LAST row -- it reports current staleness, not history. Read-only,
-# advisory, no --fix (mirrors C7/C8/C9/C10's own "never sudo/mutate, WARN
+# advisory, no --fix (mirrors C7/C8/C9's own "never sudo/mutate, WARN
 # never FAILs" rationale: an unpublished graph degrades graphify query
 # quality, it never breaks the harness itself).
 #
@@ -4235,7 +4182,6 @@ run_check C6 check_c6
 run_heavy C7 check_c7 C7-shipped
 run_check C8 check_c8
 run_check C9 check_c9
-run_check C10 check_c10
 run_check C11 check_c11
 run_check C12 check_c12
 run_check C13 check_c13

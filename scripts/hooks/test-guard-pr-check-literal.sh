@@ -2173,6 +2173,30 @@ for v in \
     run "HIMMEL-5170 j2353h control [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
 
+# ---- gate-path text in ARGUMENT position is not an invocation ------
+# Clean trees first, so a deny below can only come from the text classification.
+g -C "$WT" checkout -q -- . 2>/dev/null
+g -C "$PRIMARY" checkout -q -- . 2>/dev/null
+D4932=/tmp/d4932.md
+AR4932="bash scripts/handover/console-kit/append-results.sh $D4932"
+run "4932: [append-results bullet naming go.sh and ready-check] -> allow" 0 \
+    "$(payload "$AR4932 'FINDING ready-check.sh item 7 and scripts/handover/console-kit/go.sh GO file'" "$WT")" "$HR"
+run "4932: [a file named after this hook, redirected] -> allow" 0 \
+    "$(payload "head -n 5 scripts/hooks/test-guard-pr-check-literal.sh > /tmp/o4932" "$WT")" "$HR"
+# Keep-denied controls: the shapes that carry the risk still deny.
+echo changed >>"$WT/scripts/cr/write-verdicts.sh"
+run "4932: control [differing copy, bare relative literal] -> deny" 2 \
+    "$(payload "bash scripts/cr/write-verdicts.sh" "$WT")" "$HR"
+run "4932: control [gate piped] -> deny" 2 "$(payload "bash scripts/cr/write-verdicts.sh | cat" "$WT")" "$HR"
+run "4932: control [gate redirected] -> deny" 2 "$(payload "bash scripts/cr/write-verdicts.sh > /tmp/o4932" "$WT")" "$HR"
+run "4932: control [gate chained] -> deny" 2 "$(payload "echo a; bash scripts/cr/write-verdicts.sh" "$WT")" "$HR"
+# shellcheck disable=SC2016  # the payload text must stay unexpanded
+run "4932: control [quoted-variable path] -> deny" 2 "$(payload 'bash "$X/scripts/cr/write-verdicts.sh"' "$WT")" "$HR"
+# shellcheck disable=SC2016  # the payload text must stay unexpanded
+run "4932: control [command substitution in path] -> deny" 2 "$(payload 'bash scripts/cr/$(echo write-verdicts).sh' "$WT")" "$HR"
+run "4932: control [pr-check script name] -> deny" 2 "$(payload 'bash scripts/cr/pr-check-context.sh > /tmp/o4932' "$WT")" "$HR"
+g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "all guard-pr-check-literal cases passed"

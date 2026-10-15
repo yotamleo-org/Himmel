@@ -34,23 +34,36 @@ BIN="$TMP/bin"; mkdir -p "$BIN"
 # The stub; the STUB dir names the canned files:
 #   run.tsv        "<name>\t<event>\t<branch>\t<sha>\t<conclusion>\t<url>" (actions/runs/<id>)
 #   jobs.tsv       "<conclusion>\t<job name>\t<id>" lines                  (actions/runs/<id>/jobs)
-#   issues.json    open ci-red issues [{number,body}]                      (issue list; the caller's --jq runs on it)
-#   list_fail      if present, `issue list` exits 1
+#   issues.json    ci-red issues [{number,body,state?}], state defaults to open
+#                  (repos/<r>/issues?state=all, served 100 per page like the API, the caller's --jq runs per page)
+#   default_branch the repo default branch (default: main)       (repos/<r> --jq .default_branch)
+#   default_branch_fail  if present, the default-branch lookup exits 1
+#   list_fail      if present, the issue lookup exits 1
 #   mut_fail       if present, `issue create` exits 1
+#   edit_fail      if present, `issue edit` exits 1
+# `issue edit --body-file` is copied to $STUB/edit-<n>.md.
 cat > "$BIN/gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "gh $*" >> "$STUB/gh.log"
 case "$*" in
   "api "*"/jobs"*)          cat "$STUB/jobs.tsv" 2>/dev/null ;;
   "api "*"/actions/runs/"*) cat "$STUB/run.tsv" ;;
-  "issue list"*)
+  "api "*"/issues?"*)
     [ -e "$STUB/list_fail" ] && exit 1
     f=""; prev=""
     for a in "$@"; do [ "$prev" = "--jq" ] && f="$a"; prev="$a"; done
-    jq -r "$f" "$STUB/issues.json" ;;
-  "issue view"*)            jq -r --argjson n "$3" '.[] | select(.number == $n) | .body' "$STUB/issues.json" ;;
+    total="$(jq length "$STUB/issues.json")"; i=0
+    case " $* " in *" --paginate "*) : ;; *) total=$(( total < 100 ? total : 100 )) ;; esac
+    while [ "$i" -lt "$total" ]; do
+      jq -r "[.[$i:$((i + 100))][] | .state //= \"open\"] | $f" "$STUB/issues.json"
+      i=$((i + 100))
+    done ;;
+  "api repos/"*"--jq .default_branch") [ -e "$STUB/default_branch_fail" ] && exit 1; cat "$STUB/default_branch" 2>/dev/null || echo main ;;
   "issue create"*)          [ -e "$STUB/mut_fail" ] && exit 1 ;;
-  "issue edit"*|"issue comment"*|"issue close"*|"label create"*) : ;;
+  "issue edit"*)
+    [ -e "$STUB/edit_fail" ] && exit 1
+    prev=""; for a in "$@"; do [ "$prev" = "--body-file" ] && cp "$a" "$STUB/edit-$3.md"; prev="$a"; done ;;
+  "issue comment"*|"issue close"*|"label create"*) : ;;
   *) echo "stub gh: unhandled: $*" >&2; exit 99 ;;
 esac
 exit 0
@@ -177,6 +190,78 @@ newcase mut-fail
 : > "$STUB/mut_fail"
 report
 if [ "$rc" -eq 1 ]; then ok "failed create exits 1"; else bad "failed create exit=$rc"; fi
+
+# 12. a red workflow_dispatch run on a feature branch opens no issue
+#     (real run 38660360246 and its jobs: the run behind the orphaned GH #2642).
+newcase dispatch-feature-red
+cp "$FIX/run-38660360246-dispatch-feature-red.tsv" "$STUB/run.tsv"
+cp "$FIX/jobs-38660360246-dispatch-feature-red.tsv" "$STUB/jobs.tsv"
+report 38660360246
+if [ "$rc" -eq 0 ]; then ok "feature-branch dispatch red exits 0"; else bad "feature-branch dispatch red exit=$rc; out: $out"; fi
+hasnt "gh issue \(create\|edit\|comment\)" "$log" "feature-branch dispatch red opens/refreshes nothing"
+has "not tracked" "$out" "feature-branch dispatch red says why"
+# ... the same dispatch run on the default branch is still tracked,
+newcase dispatch-default-red
+cp "$FIX/run-38660360246-dispatch-feature-red.tsv" "$STUB/run.tsv"
+cp "$FIX/jobs-38660360246-dispatch-feature-red.tsv" "$STUB/jobs.tsv"
+setrun 3 main
+report 38660360246
+has "gh issue create" "$log" "dispatch red on the default branch still opens the issue"
+# ... a failed default-branch lookup fails the run and changes no issue.
+newcase default-branch-fail
+cp "$FIX/run-38660360246-dispatch-feature-red.tsv" "$STUB/run.tsv"
+cp "$FIX/jobs-38660360246-dispatch-feature-red.tsv" "$STUB/jobs.tsv"
+: > "$STUB/default_branch_fail"
+report 38660360246
+if [ "$rc" -eq 1 ]; then ok "failed default-branch lookup exits 1"; else bad "failed default-branch lookup exit=$rc; out: $out"; fi
+hasnt "gh issue \(create\|edit\|comment\|close\)" "$log" "failed default-branch lookup changes no issue"
+# ... and so is a non-dispatch run on a ref that is not the default branch (a Release tag).
+newcase push-tag-red
+setrun 2 push; setrun 3 v1.2.3
+report
+has "gh issue create" "$log" "push red on a tag still opens the issue"
+
+# 13. a green run on a feature branch still closes an issue left for it
+#     (the real body of orphaned GH #2642).
+newcase dispatch-feature-green
+cp "$FIX/run-38660360246-dispatch-feature-red.tsv" "$STUB/run.tsv"
+setrun 5 success
+jq -n --rawfile b "$FIX/issue-2642-body.txt" '[{number: 2642, body: $b}]' > "$STUB/issues.json"
+report 38660360300
+has "gh issue close 2642" "$log" "green on the feature branch closes its leftover issue"
+
+# 14. a closed issue keeps the newest run id, so an older red finishing
+#     after a newer green opens nothing.
+newcase green-stamps-run
+printf '[{"number":7,"body":"%s"}]\n' "$BODY_MAIN" > "$STUB/issues.json"
+setrun 5 success
+report 900
+has "gh issue close 7" "$log" "green closes #7"
+has "ci-red-run: 900" "$(cat "$STUB/edit-7.md" 2>/dev/null)" "green close stamps its run id into the body"
+newcase stamp-fails
+printf '[{"number":7,"body":"%s"}]\n' "$BODY_MAIN" > "$STUB/issues.json"
+setrun 5 success
+: > "$STUB/edit_fail"
+report 900
+if [ "$rc" -eq 1 ]; then ok "failed stamp exits 1"; else bad "failed stamp exit=$rc"; fi
+hasnt "gh issue close" "$log" "an issue whose stamp failed stays open (no lost watermark)"
+newcase stale-red-after-green
+printf '[{"number":7,"state":"closed","body":"%s"}]\n' '<!-- ci-red-branch: main -->\n<!-- ci-red-run: 950 -->\n' > "$STUB/issues.json"
+report 900
+hasnt "gh issue \(create\|edit\|comment\|close\)" "$log" "older red after a newer green closed it opens nothing"
+newcase newer-red-after-closed
+printf '[{"number":7,"state":"closed","body":"%s"}]\n' '<!-- ci-red-branch: main -->\n<!-- ci-red-run: 800 -->\n' > "$STUB/issues.json"
+report 900
+has "gh issue create" "$log" "a newer red after a closed issue opens a fresh one"
+hasnt "gh issue \(edit\|close\) 7" "$log" "a closed issue is never reopened or edited by a red"
+
+# 15. the lookup paginates -- the branch issue sits past the first 100.
+newcase paginate
+jq -n '[range(0;150) | {number: (1000 + .), body: "<!-- ci-red-branch: b\(.) -->\n<!-- ci-red-run: 800 -->\n"}]
+  + [{number: 7, body: "<!-- ci-red-branch: main -->\n<!-- ci-red-run: 800 -->\n"}]' > "$STUB/issues.json"
+report
+has "gh issue edit 7" "$log" "branch issue past the first 100 is found and refreshed"
+hasnt "gh issue create" "$log" "no duplicate opened past 100 issues"
 
 echo
 if [ "$fails" -ne 0 ]; then echo "$fails check(s) failed." >&2; exit 1; fi

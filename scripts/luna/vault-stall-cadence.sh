@@ -71,6 +71,8 @@ RUNNER_DIR="${VAULT_STALL_RUNNER_DIR:-${HOME:-}/.claude/vault-stall-cadence}"
 GITLEAKS_BIN="${VAULT_STALL_GITLEAKS:-gitleaks}"
 ALERT="$SCRIPT_DIR/cadence-alert.sh"
 CAP_SECS=86400
+EDIT_ALREADY_PRESENT=3 EDIT_UNSAFE=4
+PHASE_STOP=1
 CANON_EXCLUDE='^handovers/'
 SKIP_FIXERS="trailing-whitespace,end-of-file-fixer"
 # The CLOSED list: id<TAB>regex, verbatim copies of the anchored regexes in
@@ -155,9 +157,10 @@ describe() {
 }
 
 # yaml_exclude <file> <hook> <out> — writes the edited config to <out>.
-# rc 0 = changed, 3 = the canonical alternative is already there, 4 = cannot edit safely.
+# rc 0 = changed, EDIT_ALREADY_PRESENT = the canonical alternative is already there,
+# EDIT_UNSAFE = cannot edit safely.
 yaml_exclude() {
-    awk -v id="$2" -v canon="$CANON_EXCLUDE" '
+    awk -v id="$2" -v canon="$CANON_EXCLUDE" -v already="$EDIT_ALREADY_PRESENT" -v unsafe="$EDIT_UNSAFE" '
         function flush_insert() { if (on && !done) { print pad "exclude: '\''" canon "'\''"; done = 1; changed = 1 } }
         {
             if ($0 ~ "^[ \t]*- id: " id "[ \t]*$") {
@@ -180,8 +183,8 @@ yaml_exclude() {
         }
         END {
             if (on) flush_insert()
-            if (!found || bad) exit 4
-            if (same) exit 3
+            if (!found || bad) exit unsafe
+            if (same) exit already
             exit 0
         }' "$1" > "$3"
 }
@@ -189,14 +192,14 @@ yaml_exclude() {
 # toml_regex <file> <regex> <out> — rc as yaml_exclude.
 toml_regex() {
     # An empty regex would write '''''' , which allowlists every secret.
-    [ -n "$2" ] || return 4
-    if grep -qF "'''$2'''" "$1"; then return 3; fi
+    [ -n "$2" ] || return "$EDIT_UNSAFE"
+    if grep -qF "'''$2'''" "$1"; then return "$EDIT_ALREADY_PRESENT"; fi
     # Only the global [allowlist] table's regexes; a rule-scoped array is not it.
     awk -v re="$2" -v q="'''" '
         /^[ \t]*\[/ { sec = $0; sub(/[ \t]*(#.*)?$/, "", sec); sub(/^[ \t]*/, "", sec) }
         { print }
         !done && sec == "[allowlist]" && /^[ \t]*regexes[ \t]*=[ \t]*\[/ { print "  " q re q ","; done = 1 }
-        END { exit !done }' "$1" > "$3" || return 4
+        END { exit !done }' "$1" > "$3" || return "$EDIT_UNSAFE"
 }
 
 alert() {
@@ -205,6 +208,126 @@ alert() {
     if [ "$dry" -eq 1 ]; then echo "vault-stall: would alert: $reason"; return 0; fi
     echo "vault-stall: ALERT $reason"
     bash "$ALERT" fail "$LEG" "$reason" "$STATE_DIR/last-run.log"
+}
+
+# A remediation runs as four phases that share cmd_run's vault, dry, now, classes,
+# work and files. Each returns 0 to continue, PHASE_STOP once it has alerted or
+# finished, or any other rc for cmd_run to return.
+
+# Plan: every edit lands in a scratch copy first; nothing is live until all succeed.
+plan_edits() {
+    local rc f re
+    work="$(mktemp -d "${TMPDIR:-/tmp}/vault-stall.XXXXXX")" || return 2
+    cp "$vault/.pre-commit-config.yaml" "$work/yaml" 2>/dev/null
+    cp "$vault/.gitleaks.toml" "$work/toml" 2>/dev/null
+    [ -f "$work/yaml" ] && cp "$work/yaml" "$work/yaml.orig"   # the plan's own baseline
+    [ -f "$work/toml" ] && cp "$work/toml" "$work/toml.orig"
+    for c in $classes; do
+        case "$c" in
+            shellcheck | check-json)
+                f=.pre-commit-config.yaml
+                yaml_exclude "$work/yaml" "$c" "$work/next"; rc=$?
+                [ "$rc" -eq 0 ] && mv -f "$work/next" "$work/yaml"
+                [ "$dry" -eq 1 ] && [ "$rc" -eq 0 ] && echo "vault-stall: would add $CANON_EXCLUDE to the $c exclude in $f" ;;
+            gitleaks:*)
+                f=.gitleaks.toml
+                re="$(shape_regex "${c#gitleaks:}")"
+                toml_regex "$work/toml" "$re" "$work/next"; rc=$?
+                [ "$rc" -eq 0 ] && mv -f "$work/next" "$work/toml"
+                [ "$dry" -eq 1 ] && [ "$rc" -eq 0 ] && echo "vault-stall: would add the canonical ${c#gitleaks:} regex to $f" ;;
+        esac
+        if [ "$rc" -eq "$EDIT_ALREADY_PRESENT" ]; then rm -rf "$work"; alert "remediation-already-present $c (still refused)" "$dry"; return "$PHASE_STOP"; fi
+        if [ "$rc" -ne 0 ]; then rm -rf "$work"; alert "cannot-edit $f for $c" "$dry"; return "$PHASE_STOP"; fi
+        case " $files " in *" $f "*) ;; *) files="${files:+$files }$f" ;; esac
+    done
+}
+
+# Apply: write the plan into the vault, unless an operator or the sync got there first.
+apply_edits() {
+    local f wf dirty
+    # An operator's own uncommitted edit to a config file would be overwritten
+    # and then committed under the cadence's name: never touch a dirty one.
+    # shellcheck disable=SC2086  # $files is a space-separated list of fixed names
+    dirty="$(git -C "$vault" status --porcelain -- $files 2>/dev/null)"
+    if [ -n "$dirty" ]; then rm -rf "$work"; alert "config-dirty $files (uncommitted edits; not remediated)" "$dry"; return "$PHASE_STOP"; fi
+    if [ "$dry" -eq 1 ]; then rm -rf "$work"; echo "vault-stall: would commit $files"; return "$PHASE_STOP"; fi
+
+    # The sync may have committed a config change since planning (the tree is
+    # clean again): writing the stale plan would revert it.
+    # ponytail: a change landing in the instant between this cmp and the cp
+    # below is still overwritten (no lock is shared with the vault sync).
+    # Upgrade: a lock the vault sync also takes.
+    for f in $files; do
+        case "$f" in .pre-commit-config.yaml) wf="$work/yaml.orig" ;; .gitleaks.toml) wf="$work/toml.orig" ;; esac
+        if ! cmp -s "$wf" "$vault/$f"; then
+            rm -rf "$work"; alert "config-changed-during-run $f (not written)" 0; return "$PHASE_STOP"
+        fi
+    done
+    for f in $files; do
+        case "$f" in .pre-commit-config.yaml) cp "$work/yaml" "$vault/$f" ;; .gitleaks.toml) cp "$work/toml" "$vault/$f" ;; esac
+    done
+}
+
+# Restore a file only while it still holds exactly this run's edit and HEAD
+# does not: another writer's change, or a commit that landed the edit
+# (the sync shares no lock with this run), is left alone.
+rollback_edits() {
+    local f new orig
+    for f in $files; do
+        case "$f" in
+            .pre-commit-config.yaml) new="$work/yaml"; orig="$work/yaml.orig" ;;
+            .gitleaks.toml) new="$work/toml"; orig="$work/toml.orig" ;;
+        esac
+        cmp -s "$new" "$vault/$f" || continue
+        git -C "$vault" diff --quiet HEAD -- "$f" && continue
+        [ -f "$orig" ] && cp "$orig" "$vault/$f"
+    done
+}
+
+# Verify: the hook must pass on the edited config, and the edit must still be ours.
+verify_edits() {
+    local f wf
+    if ! (cd "$vault" && SKIP="$SKIP_FIXERS" git hook run pre-commit </dev/null >/dev/null 2>&1); then
+        rollback_edits; rm -rf "$work"; alert "still-refused-after-remediation $classes (rolled back)" 0; return "$PHASE_STOP"
+    fi
+    # Another writer may have changed a config file since it was written: never
+    # commit someone else's edit under this cadence's name.
+    for f in $files; do
+        case "$f" in .pre-commit-config.yaml) wf="$work/yaml" ;; .gitleaks.toml) wf="$work/toml" ;; esac
+        if ! cmp -s "$wf" "$vault/$f"; then
+            rm -rf "$work"; alert "config-changed-during-run $f (not committed)" 0; return "$PHASE_STOP"
+        fi
+    done
+}
+
+# Commit: only the edited config files, then record the remediation for the loop cap.
+commit_edits() {
+    local c
+    # shellcheck disable=SC2086  # $files is a space-separated list of fixed names
+    if ! SKIP="$SKIP_FIXERS" git -C "$vault" commit -q --only -m "chore(vault): [HIMMEL-4471] remediate stall class ${classes// /, }" -- $files >/dev/null 2>&1; then
+        # The vault sync shares no lock with this run: it may have staged and
+        # committed the edit itself between the re-run and this commit. Then
+        # HEAD already holds it, and a rollback would revert a landed fix.
+        # shellcheck disable=SC2086  # $files is a space-separated list of fixed names
+        if ! git -C "$vault" diff --quiet HEAD -- $files; then
+            rollback_edits; rm -rf "$work"; alert "remediation-commit-refused $classes (rolled back)" 0; return "$PHASE_STOP"
+        fi
+        echo "vault-stall: the edit landed through another commit (the sync); not rolled back"
+    fi
+    rm -rf "$work"
+    for c in $classes; do printf '%s\t%s\t%s\n' "$now" "$c" "$vault" >> "$STATE_DIR/remediated.tsv"; done
+    echo "vault-stall: REMEDIATED $classes - committed $files; the next sync flushes the backlog"
+    bash "$ALERT" clear "$LEG"
+}
+
+run_phases() {
+    local phase status
+    for phase in plan_edits apply_edits verify_edits commit_edits; do
+        "$phase"; status=$?
+        [ "$status" -eq 0 ] && continue
+        [ "$status" -eq "$PHASE_STOP" ] && return 0
+        return "$status"
+    done
 }
 
 cmd_run() {
@@ -273,95 +396,8 @@ cmd_run() {
         fi
     done
 
-    # Plan every edit into a scratch copy first; nothing is live until all succeed.
-    local work rc files="" f re wf
-    work="$(mktemp -d "${TMPDIR:-/tmp}/vault-stall.XXXXXX")" || return 2
-    cp "$vault/.pre-commit-config.yaml" "$work/yaml" 2>/dev/null
-    cp "$vault/.gitleaks.toml" "$work/toml" 2>/dev/null
-    [ -f "$work/yaml" ] && cp "$work/yaml" "$work/yaml.orig"   # the plan's own baseline
-    [ -f "$work/toml" ] && cp "$work/toml" "$work/toml.orig"
-    for c in $classes; do
-        case "$c" in
-            shellcheck | check-json)
-                f=.pre-commit-config.yaml
-                yaml_exclude "$work/yaml" "$c" "$work/next"; rc=$?
-                [ "$rc" -eq 0 ] && mv -f "$work/next" "$work/yaml"
-                [ "$dry" -eq 1 ] && [ "$rc" -eq 0 ] && echo "vault-stall: would add $CANON_EXCLUDE to the $c exclude in $f" ;;
-            gitleaks:*)
-                f=.gitleaks.toml
-                re="$(shape_regex "${c#gitleaks:}")"
-                toml_regex "$work/toml" "$re" "$work/next"; rc=$?
-                [ "$rc" -eq 0 ] && mv -f "$work/next" "$work/toml"
-                [ "$dry" -eq 1 ] && [ "$rc" -eq 0 ] && echo "vault-stall: would add the canonical ${c#gitleaks:} regex to $f" ;;
-        esac
-        if [ "$rc" -eq 3 ]; then rm -rf "$work"; alert "remediation-already-present $c (still refused)" "$dry"; return 0; fi
-        if [ "$rc" -ne 0 ]; then rm -rf "$work"; alert "cannot-edit $f for $c" "$dry"; return 0; fi
-        case " $files " in *" $f "*) ;; *) files="${files:+$files }$f" ;; esac
-    done
-    # An operator's own uncommitted edit to a config file would be overwritten
-    # and then committed under the cadence's name: never touch a dirty one.
-    local dirty
-    # shellcheck disable=SC2086  # $files is a space-separated list of fixed names
-    dirty="$(git -C "$vault" status --porcelain -- $files 2>/dev/null)"
-    if [ -n "$dirty" ]; then rm -rf "$work"; alert "config-dirty $files (uncommitted edits; not remediated)" "$dry"; return 0; fi
-    if [ "$dry" -eq 1 ]; then rm -rf "$work"; echo "vault-stall: would commit $files"; return 0; fi
-
-    # The sync may have committed a config change since planning (the tree is
-    # clean again): writing the stale plan would revert it.
-    # ponytail: a change landing in the instant between this cmp and the cp
-    # below is still overwritten (no lock is shared with the vault sync).
-    # Upgrade: a lock the vault sync also takes.
-    for f in $files; do
-        case "$f" in .pre-commit-config.yaml) wf="$work/yaml.orig" ;; .gitleaks.toml) wf="$work/toml.orig" ;; esac
-        if ! cmp -s "$wf" "$vault/$f"; then
-            rm -rf "$work"; alert "config-changed-during-run $f (not written)" 0; return 0
-        fi
-    done
-    for f in $files; do
-        case "$f" in .pre-commit-config.yaml) cp "$work/yaml" "$vault/$f" ;; .gitleaks.toml) cp "$work/toml" "$vault/$f" ;; esac
-    done
-    # Restore a file only while it still holds exactly this run's edit and HEAD
-    # does not: another writer's change, or a commit that landed the edit
-    # (the sync shares no lock with this run), is left alone.
-    rollback() {
-        local f new orig
-        for f in $files; do
-            case "$f" in
-                .pre-commit-config.yaml) new="$work/yaml"; orig="$work/yaml.orig" ;;
-                .gitleaks.toml) new="$work/toml"; orig="$work/toml.orig" ;;
-            esac
-            cmp -s "$new" "$vault/$f" || continue
-            git -C "$vault" diff --quiet HEAD -- "$f" && continue
-            [ -f "$orig" ] && cp "$orig" "$vault/$f"
-        done
-    }
-    if ! (cd "$vault" && SKIP="$SKIP_FIXERS" git hook run pre-commit </dev/null >/dev/null 2>&1); then
-        rollback; rm -rf "$work"; alert "still-refused-after-remediation $classes (rolled back)" 0; return 0
-    fi
-    # Another writer may have changed a config file since it was written: never
-    # commit someone else's edit under this cadence's name.
-    for f in $files; do
-        case "$f" in .pre-commit-config.yaml) wf="$work/yaml" ;; .gitleaks.toml) wf="$work/toml" ;; esac
-        if ! cmp -s "$wf" "$vault/$f"; then
-            rm -rf "$work"; alert "config-changed-during-run $f (not committed)" 0; return 0
-        fi
-    done
-    # shellcheck disable=SC2086  # $files is a space-separated list of fixed names
-    if ! SKIP="$SKIP_FIXERS" git -C "$vault" commit -q --only -m "chore(vault): [HIMMEL-4471] remediate stall class ${classes// /, }" -- $files >/dev/null 2>&1; then
-        # The vault sync shares no lock with this run: it may have staged and
-        # committed the edit itself between the re-run and this commit. Then
-        # HEAD already holds it, and a rollback would revert a landed fix.
-        # shellcheck disable=SC2086  # $files is a space-separated list of fixed names
-        if ! git -C "$vault" diff --quiet HEAD -- $files; then
-            rollback; rm -rf "$work"; alert "remediation-commit-refused $classes (rolled back)" 0; return 0
-        fi
-        echo "vault-stall: the edit landed through another commit (the sync); not rolled back"
-    fi
-    rm -rf "$work"
-    for c in $classes; do printf '%s\t%s\t%s\n' "$now" "$c" "$vault" >> "$STATE_DIR/remediated.tsv"; done
-    echo "vault-stall: REMEDIATED $classes - committed $files; the next sync flushes the backlog"
-    bash "$ALERT" clear "$LEG"
-    return 0
+    local work="" files=""
+    run_phases
 }
 
 # "no crontab for <user>" is an empty table; any other read failure is an error

@@ -72,9 +72,15 @@ _stamp_dir() {
     [ "$_dir" = "$STAMP" ] || mkdir -p "$_dir" 2>/dev/null
 }
 
+# Same-directory `mv` preserves the pending mark's mtime.
+promote_pending_mark() { [ -f "$PENDING" ] && mv -f "$PENDING" "$STAMP" 2>/dev/null; }
+
+# Recorded at gate time, so the reference is the check instant, not leg end.
+write_pending_mark() { date -u +%Y-%m-%dT%H:%M:%SZ > "$PENDING" 2>/dev/null || true; }
+
 if [ "$STAMP_MODE" -eq 1 ]; then
     _stamp_dir
-    if [ -f "$PENDING" ] && mv -f "$PENDING" "$STAMP" 2>/dev/null; then
+    if promote_pending_mark; then
         echo "synth-input-check: stamped $STAMP (at the gate instant, not leg end)" >&2
     else
         # NO fallback to `now`. Without a pending mark there is no evidence of
@@ -102,7 +108,7 @@ fi
 # It is not lost — this gate is a TRIGGER, not a filter, and /synthesize-clips
 # reads the whole inbox — so the next night with any new input picks it up.)
 _stamp_dir
-date -u +%Y-%m-%dT%H:%M:%SZ > "$PENDING" 2>/dev/null || true
+write_pending_mark
 
 command -v find >/dev/null 2>&1 || {
     echo "synth-input-check: find(1) missing — cannot decide, proceeding" >&2
@@ -176,8 +182,9 @@ fi
 # failure is an unknown, and unknown means NEW.
 # awk's own fatal-error status is 2 in gawk/mawk/BSD awk, and a missing awk
 # gives 127; anything above 1 is therefore "did not answer", not "answered no".
+TRIAGED=0 NOT_TRIAGED=1 COULD_NOT_INSPECT=2
 is_triaged() {
-    [ -r "$1" ] || return 2
+    [ -r "$1" ] || return "$COULD_NOT_INSPECT"
     awk '
         NR == 1 { if ($0 ~ /^---[[:space:]]*$/) { n = 1; next } exit }
         n == 1 && /^---[[:space:]]*$/ { exit }
@@ -185,7 +192,7 @@ is_triaged() {
         END { exit !found }
     ' "$1" 2>/dev/null
     _awk_rc=$?
-    [ "$_awk_rc" -le 1 ] || return 2
+    [ "$_awk_rc" -le "$NOT_TRIAGED" ] || return "$COULD_NOT_INSPECT"
     return "$_awk_rc"
 }
 _found=""
@@ -194,8 +201,8 @@ while IFS= read -r _clip; do
     [ -n "$_clip" ] || continue
     is_triaged "$_clip"
     case $? in
-        0) _found="$_clip"; break ;;
-        2) _unreadable="$_clip"; break ;;
+        "$TRIAGED") _found="$_clip"; break ;;
+        "$COULD_NOT_INSPECT") _unreadable="$_clip"; break ;;
     esac
 done <<EOF
 $_candidates

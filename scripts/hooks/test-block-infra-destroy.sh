@@ -20,9 +20,9 @@ FAILED=0
 
 # run_hook <command> [env-assign...] -> hook exit code (0 when the hook is absent)
 run_hook() {
-    local cmd="$1" json
+    local cmd="$1" json tool="${HOOK_TOOL:-Bash}"
     shift
-    json=$(jq -cn --arg c "$cmd" '{tool_name:"Bash",tool_input:{command:$c}}')
+    json=$(jq -cn --arg c "$cmd" --arg t "$tool" '{tool_name:$t,tool_input:{command:$c}}')
     if [ ! -f "$HOOK" ]; then echo 0; return; fi
     if [ $# -gt 0 ]; then
         printf '%s' "$json" | env "$@" bash "$HOOK" >/dev/null 2>&1
@@ -63,6 +63,9 @@ run_fixture() {
 
 run_fixture "$FIX/deny.tsv" 2
 run_fixture "$FIX/allow.tsv" 0
+# The PowerShell scan has no command-word positions, so a verb named as text
+# still denies (accepted over-deny). These rows pin it.
+HOOK_TOOL=PowerShell run_fixture "$FIX/deny-powershell.tsv" 2
 
 # Bypass: INFRADESTROYOK=1 in the launching shell lets a deny row through.
 first_deny=$(head -n1 "$FIX/deny.tsv" | cut -f2)
@@ -87,6 +90,51 @@ if [ -f "$HOOK" ]; then
     rm -rf "$tmp"
 else rc=0; fi
 assert_rc "missing verbs table fails closed" 2 "$rc"
+
+# A malformed pattern in the verbs table refuses with exit 2 (it used to read as
+# no-match and silently disable the rule), whatever the command is.
+if [ -f "$HOOK" ]; then
+    tmp=$(mktemp -d) || exit 1
+    if cp "$HOOK" "$tmp/block-infra-destroy.sh" && mkdir -p "$tmp/lib" && cp "$DIR"/lib/*.sh "$tmp/lib/" && [ -r "$tmp/lib/guard-unwrap.sh" ]; then
+        for bad in 'argv_any|["^(destroy"]' 'argv_all|["^apply$","[unclosed"]' 'text_any|["drop(["]'; do
+            jq -n --arg f "${bad%%|*}" --argjson v "${bad#*|}" \
+                '{runners:[],rules:[{id:"bad-rule",bins:["terraform"],note:"n"}|.[$f]=$v]}' >"$tmp/infra-destroy-verbs.json"
+            rc=0
+            jq -cn '{tool_name:"Bash",tool_input:{command:"ls"}}' | bash "$tmp/block-infra-destroy.sh" >/dev/null 2>&1 || rc=$?
+            assert_rc "malformed table (${bad%%|*}) fails closed" 2 "$rc"
+        done
+    else
+        assert_rc "malformed table setup" 0 setup-failed
+    fi
+    rm -rf "$tmp"
+fi
+
+# jq missing from PATH fails closed.
+if [ -f "$HOOK" ]; then
+    rc=0
+    jq -cn --arg c "$first_deny" '{tool_name:"Bash",tool_input:{command:$c}}' | env PATH=/nonexistent "$BASH" "$HOOK" >/dev/null 2>&1 || rc=$?
+    assert_rc "jq missing fails closed" 2 "$rc"
+fi
+
+# A command over 8 KiB takes the flat scan: it must finish well inside the 15 s
+# hook timeout, still deny a verb at the tail, and deny (not crawl) past the cap
+# on command words it would have to scan.
+long=$(awk 'BEGIN { for (i = 0; i < 1500; i++) printf "word%d ", i }')
+huge=$(awk 'BEGIN { for (i = 0; i < 6000; i++) printf "terraform plan x%d ", i }')
+opts=$(awk 'BEGIN { for (i = 0; i < 256; i++) printf "--request-timeout=1s " }')
+t0=$SECONDS
+assert_rc "long input allowed" 0 "$(run_hook "echo $long")"
+assert_rc "long input denies a verb at the tail" 2 "$(run_hook "echo $long; terraform destroy")"
+assert_rc "command word with too many words after it denies" 2 "$(run_hook "echo $huge")"
+assert_rc "verb past the span window denies (flat scan)" 2 "$(HOOK_TOOL=PowerShell run_hook "kubectl $opts delete pod web-1")"
+edge=$(awk 'BEGIN { for (i = 0; i < 254; i++) printf "x%d ", i; printf "x254" }')
+assert_rc "exactly 256 words after a command word allowed (flat scan)" 0 "$(HOOK_TOOL=PowerShell run_hook "kubectl get $edge")"
+elapsed=$((SECONDS - t0))
+if [ "$elapsed" -le 12 ]; then
+    assert_rc "long input within budget (${elapsed}s)" 0 0
+else
+    assert_rc "long input within budget (${elapsed}s)" 0 1
+fi
 
 echo
 echo "passed=$PASS failed=$FAILED"

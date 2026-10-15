@@ -33,6 +33,14 @@ send_cmd="${CADENCE_ALERT_SEND_CMD:-$_here/vault-stall-alert.sh}"
 # cannot match leg `a.b`'s sentinels.
 _slug() { printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_'; }
 
+# Writes the sentinel only after a delivered send, so a failed send retries the
+# DM on the next failure; an unwritable sentinel still counts as delivered.
+send_then_mark() { # <sentinel> <message>
+    "$send_cmd" "$2" || return 1
+    : > "$1" 2>/dev/null \
+        || echo "cadence-alert: could not record dedupe sentinel $1" >&2
+}
+
 case "${1:-}" in
     fail)
         leg="${2:-unknown}" reason="${3:-unknown}" log="${4:-}"
@@ -45,12 +53,8 @@ case "${1:-}" in
         # next alert. Two concurrent failures of one leg could both send; one
         # runner per leg per night makes that a harmless double DM at worst.
         if [ ! -e "$sentinel" ]; then
-            if "$send_cmd" "cadence leg failed: $leg $reason (log: $log)"; then
-                : > "$sentinel" 2>/dev/null \
-                    || echo "cadence-alert: could not record dedupe sentinel $sentinel" >&2
-            else
-                echo "cadence-alert: Telegram send failed for $leg $reason" >&2
-            fi
+            send_then_mark "$sentinel" "cadence leg failed: $leg $reason (log: $log)" \
+                || echo "cadence-alert: Telegram send failed for $leg $reason" >&2
         fi
         ;;
     clear)

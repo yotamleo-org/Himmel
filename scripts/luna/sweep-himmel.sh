@@ -227,6 +227,10 @@ fi
 
 # ---- emit candidate markdown ----------------------------------------
 
+pr_body_excerpt_of() {
+    jq -j '(.body // "") | .[0:600]' | tr '\r\n' '  ' | sed 's/  */ /g'
+}
+
 emit_candidate_md() {
     cat <<EOF
 ---
@@ -272,12 +276,7 @@ EOF
             pr_url=$(echo "$pr_line" | jq -r '.url')
             pr_merged=$(echo "$pr_line" | jq -r '.mergedAt')
             pr_author=$(echo "$pr_line" | jq -r '.author.login // "unknown"')
-            # head -c 600 = first 600 BYTES (not chars) of the PR body. A
-            # multibyte trailing character (emoji / CJK) can be sliced
-            # mid-codepoint and render as mojibake in the candidate file;
-            # acceptable for an excerpt the operator triages, and avoids a
-            # GNU-vs-BSD-specific char count fallback.
-            pr_body_excerpt=$(echo "$pr_line" | jq -r '.body // ""' | head -c 600 | tr '\r\n' '  ' | sed 's/  */ /g')
+            pr_body_excerpt=$(echo "$pr_line" | pr_body_excerpt_of)
             pr_labels=$(echo "$pr_line" | jq -r '[.labels[]?.name] | join(", ")')
 
             cat <<INNER

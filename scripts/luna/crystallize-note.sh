@@ -36,26 +36,27 @@ RULES_FILE="${CRYSTALLIZE_RULES_FILE:-${3:-}}"
 export CLAUDE_END_SESSION_WIKI=0
 export HIMMEL_WHERE_ARE_WE=0
 
-# A lane config dir carries proxy routing but no native credentials. Defer this
-# best-effort synthesis to backfill rather than fire its Anthropic model pin into
-# the lane proxy (HIMMEL-1927); an unresolvable path is fail-open in the same way.
-#
-# HIMMEL-1927 CR finding: this predicate is deliberately conservative -- ANY
-# CLAUDE_CONFIG_DIR that differs from ~/.claude defers, even a legitimate
-# custom-but-native one. Do NOT narrow this to also require ANTHROPIC_BASE_URL:
-# a lane config dir (e.g. ~/.claude-codex) carries no .credentials.json, so
-# proceeding there produces a SILENT auth failure swallowed by this script's
-# `>/dev/null 2>&1 ... || true` below -- same end state as the bug, minus the
-# error log. A false-defer here is recoverable via
-# `backfill-sessions.sh --reheal`; a credential-less proceed is not, because
-# the failure is silent. Keep the predicate as-is.
+# 0 = CLAUDE_CONFIG_DIR is ~/.claude, 1 = another dir, 2 = a path could not be resolved.
+is_native_claude_dir() {
+    local configured native
+    configured="$(cd "$CLAUDE_CONFIG_DIR" 2>/dev/null && pwd -P)" || return 2
+    native="$(cd "${HOME}/.claude" 2>/dev/null && pwd -P)" || return 2
+    [ "$configured" = "$native" ]
+}
+
+# Do not narrow this to also require ANTHROPIC_BASE_URL: a lane config dir has no
+# .credentials.json, so proceeding there fails silently below, while a false defer
+# is recovered by `backfill-sessions.sh --reheal`.
 if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
-    _configured_claude_dir="$(cd "$CLAUDE_CONFIG_DIR" 2>/dev/null && pwd -P)" || exit 0
-    _native_claude_dir="$(cd "${HOME}/.claude" 2>/dev/null && pwd -P)" || exit 0
-    if [ "$_configured_claude_dir" != "$_native_claude_dir" ]; then
-        echo "crystallize-note: DEFERRED (not failed) - CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR is not ~/.claude; the mechanical note is still written and stays crystallized: false; backfill-sessions.sh --reheal picks it up later once running on native auth." >&2
-        exit 0
-    fi
+    is_native_claude_dir
+    case $? in
+        0) ;;
+        1)
+            echo "crystallize-note: DEFERRED (not failed) - CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR is not ~/.claude; the mechanical note is still written and stays crystallized: false; backfill-sessions.sh --reheal picks it up later once running on native auth." >&2
+            exit 0
+            ;;
+        *) exit 0 ;;
+    esac
 fi
 
 # Resolve the claude binary (test override wins). No claude -> leave the
@@ -267,10 +268,9 @@ HASH_BEFORE="$(_hash "$NOTE_PATH")"
 # shellcheck disable=SC1091
 . "$HIMMEL_ROOT/scripts/lib/native-auth-pin.sh" || exit 0
 # HIMMEL-4459: the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
-# HIMMEL-4461: the `cd` runs BEFORE the gate (a shadowed `cd` could export a proxy
-# variable after it), so nothing but the launch sits between gate and launch.
-native_auth_pin_env
-(
+# Subshell function: its `exit 0` ends only the launch, and `cd` precedes the gate
+# so nothing runs between gate and launch.
+launch_claude_if_native_auth_pinned() {
     cd "$NOTE_DIR" 2>/dev/null || exit 0
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
         CRYSTALLIZE_NOTE="$NOTE_PATH" CRYSTALLIZE_TRANSCRIPT="$TRANSCRIPT_PATH" \
@@ -280,7 +280,9 @@ native_auth_pin_env
     else
         exit 0
     fi
-) || true
+}
+native_auth_pin_env
+( launch_claude_if_native_auth_pinned ) || true
 
 # Edit-confirmed flag-set (T1d): only stamp crystallized:true when the note body
 # actually changed. A failed/no-op run leaves the note byte-unchanged and the
