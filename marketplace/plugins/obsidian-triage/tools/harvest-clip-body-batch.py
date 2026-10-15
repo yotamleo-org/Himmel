@@ -65,7 +65,7 @@ TRACKING_PARAMS = {
     "fbclid", "gclid", "ref", "source", "mc_cid", "mc_eid",
 }
 
-# Firecrawl thin-body escalation (LUNA-27 / HIMMEL-320). Opt-in via
+# Firecrawl thin-body escalation. Opt-in via
 # --firecrawl-thin: a credit-conscious escalation lane that fetches clean
 # markdown for clips the Web Clipper captured thinly. Default runs never
 # touch firecrawl — the free tier (1000 credits/mo) is scarce.
@@ -79,7 +79,7 @@ FIRECRAWL_DEFAULT_MAX_CREDITS = 5  # per-call ceiling: a stealth call (5) passes
 #   github.com → luna-ingest gh-api (the github-ingest path; never reaches
 #       the clip-body path here anyway, but listed for defence-in-depth)
 #   youtube → playwright-crawl-youtube (transcript path)
-#   instagram → ig-media-fetch owns it (HIMMEL-770 media rung; firecrawl
+#   instagram → ig-media-fetch owns it (media rung; firecrawl
 #       can't pass the IG login wall or extract media anyway)
 FIRECRAWL_SKIP_HOSTS = {
     "x.com", "twitter.com", "mobile.twitter.com", "www.twitter.com", "www.x.com",
@@ -106,7 +106,7 @@ ENRICHER_GAP_HOSTS = {
 # thin if it carries one of these section headings with real content.
 _RICH_SECTION_HEADINGS = ("## highlights", "## the idea", "## summary", "## key points")
 
-# Prompt-injection screen (HIMMEL-256, harvest-clips.md Phase 4.5).
+# Prompt-injection screen.
 # CANONICAL pattern list — the runbook describes these classes in prose;
 # keep the two in sync. Flag-only: a match adds
 # `harvest_flag: injection-suspect` frontmatter. No deletion, no
@@ -207,7 +207,7 @@ def canonicalize(url: str):
 
     # youtube.com / youtu.be → youtube.com/watch?v=<id>. The id is re-encoded,
     # so a crafted v=X%26a%3Db stays one value and a second pass is a no-op
-    # (HIMMEL-4851).
+    #.
     if host in {"youtu.be", "www.youtu.be"}:
         vid = unquote(path.lstrip("/").split("/")[0])
         return f"https://youtube.com/watch?v={quote(vid, safe='')}" if vid else url
@@ -226,7 +226,7 @@ def canonicalize(url: str):
             rest = parts[2:]
             # Strip /tree/<branch> — a branch/subtree view of the same repo.
             # /blob/<branch>/<path> is kept: it is one specific FILE, a distinct
-            # document from the repo root (HIMMEL-1735).
+            # document from the repo root.
             if rest and rest[0] == "tree" and len(rest) >= 2:
                 rest = []
             new_path = "/" + "/".join([owner, repo] + rest)
@@ -550,7 +550,7 @@ def insert_harvested_section(body: str, section_md: str):
     return before + block + after, (before + after == body)
 
 
-# HIMMEL-4677: a thin YouTube clip (a bare watch link, e.g. Telegram-clipped)
+# a thin YouTube clip (a bare watch link, e.g. Telegram-clipped)
 # gets its metadata and transcript during the harvest from the cookieless
 # helper tools/yt-scrapling-meta.py (Scrapling page fetch + yt-dlp json3), run
 # under the scrapling venv python (YT_SCRAPLING_PYTHON overrides). A miss leaves
@@ -594,7 +594,7 @@ def youtube_scrapling(video_id: str, vault):
         if status == "ok":
             status, detail = "error", f"rc={proc.returncode}"
         return None, f"{status or 'error'}{f' ({detail})' if detail else ''}"
-    # HIMMEL-4722: youtube_section renders these fields directly, so a wrong
+    # youtube_section renders these fields directly, so a wrong
     # type defers the clip instead of raising mid-render.
     bad = [k for k in ("title", "channel", "description")
            if out.get(k) is not None and not isinstance(out[k], str)]
@@ -714,7 +714,7 @@ def ledger_append(call_site, endpoint, credits, ok=True, source="firecrawl", rea
         pass
 
 
-# Firecrawl-unavailable parking (HIMMEL-4371). An item that needed Firecrawl
+# Firecrawl-unavailable parking. An item that needed Firecrawl
 # while it was unavailable (402 / credits exhausted, 429, auth) is parked in an
 # enveloped JSONL state file, registered in scripts/observability/ledgers.json
 # as `firecrawl-parked`, so it is neither lost nor marked failed. Row kinds:
@@ -1486,7 +1486,7 @@ def persist_thin_partial(path: Path, text: str, fm: dict, fm_raw: str, body: str
     if gap_host and "harvest_enricher_gap" not in fm:
         pairs.append(("harvest_enricher_gap", f"harvest_enricher_gap: {gap_host}"))
     if is_instagram and "ig_media_pending" not in fm:
-        # HIMMEL-3043: a thin instagram clip needs the media rung
+        # a thin instagram clip needs the media rung
         # (/ig-media-enrich), so park it the same way harvest-clips.md
         # Phase 4's own instagram routing row does.
         pairs.append(("ig_media_pending", "ig_media_pending: true"))
@@ -1498,7 +1498,7 @@ def persist_thin_partial(path: Path, text: str, fm: dict, fm_raw: str, body: str
         return False
     return True
 
-# HIMMEL-4675: a deferred partial is retried nightly; after this many deferrals
+# a deferred partial is retried nightly; after this many deferrals
 # the clip moves to the pending report's needs-attention bucket and is skipped.
 # Five nights covers a work-week of transient outages (credits, a site's bad
 # day) before a human looks, while a clip no enricher can ever fix stops being
@@ -1520,7 +1520,7 @@ def bump_defer(path: Path) -> int | None:
         prev = int(fm.get("harvest_defer_count") or 0)
     except ValueError:
         prev = 0
-    # HIMMEL-4680: one bump per calendar day, so manual same-day re-runs do not
+    # one bump per calendar day, so manual same-day re-runs do not
     # burn the five-night budget. A counter with no date bumps once and sets it.
     day = TODAY or datetime.date.today().isoformat()
     if prev and fm.get("harvest_defer_last") == day:
@@ -1630,7 +1630,7 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
         return ("o", "skipped (frontmatter): no closing --- delimiter", [])
     if already_harvested(fm_raw):
         return ("o", "skipped (already-harvested)", [])
-    # Injection screen (HIMMEL-256) — flag-only, never blocks the harvest.
+    # Injection screen — flag-only, never blocks the harvest.
     # Runs BEFORE the outcome branches so skips/failures still carry the
     # hit classes. Scans body + full raw frontmatter (scan_clip).
     injection_hits = scan_clip(fm_raw, body)
@@ -1953,7 +1953,7 @@ def main():
     # Inbox-internal exclusions (harvest-clips.md "Scan for unharvested
     # clips"): _synthesis/ (/synthesize-clips proposal pages), _done/
     # (/archive-clips graduated archive), _deferred.md (backlog log), and
-    # _evidence/ (the reviewed-evidence pool, incl. _rejected/; HIMMEL-3043)
+    # _evidence/
     # are never source clips — scanning them pollutes derived/archived pages
     # with harvest_* frontmatter, and _synthesis pages (non-URL source:)
     # FAIL canonicalization → exit-4 noise.
@@ -1987,7 +1987,7 @@ def main():
             )
             sys.exit(2)
 
-    # HIMMEL-4371: items parked while Firecrawl was unavailable are retried FIRST.
+    # items parked while Firecrawl was unavailable are retried FIRST.
     vault_key = str(args.vault)
     mine, status, fc = {}, None, None
     if firecrawl is not None and not args.dry_run:
@@ -2068,7 +2068,7 @@ def main():
         f"{failed} failed, {skipped} skipped. (dry_run={args.dry_run})"
     )
     if not args.dry_run:
-        # HIMMEL-4675: every partial this tool emits is source-level and
+        # every partial this tool emits is source-level and
         # deferred (non-blocking); only FAIL lines block .harvest.done.
         n_def, n_att = write_pending_report(args.vault, clips_all)
         print(f"harvest-clip-body-batch: {n_def} deferred (non-blocking), {n_att} needs-attention; "

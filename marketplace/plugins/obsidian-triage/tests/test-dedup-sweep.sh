@@ -21,7 +21,7 @@ set -u -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOLS_DIR="$(cd "$SCRIPT_DIR/../tools" && pwd)"
 
-# HIMMEL-4850: tools/node_modules is gitignored, so a fresh worktree has no
+# tools/node_modules is gitignored, so a fresh worktree has no
 # js-yaml and every node-driven case fails. CI runs ensure-deps.sh before the
 # shards; do the same here (no-op when present, loud non-zero on failure).
 bash "$TOOLS_DIR/ensure-deps.sh" || { echo "ensure-deps.sh failed; cannot run" >&2; exit 1; }
@@ -87,7 +87,7 @@ const cases = [
   ["https://youtu.be/dQw4w9WgXcQ?t=10",              "https://youtube.com/watch?v=dQw4w9WgXcQ"],
   ["https://www.youtube.com/watch?v=ABCD&feature=x", "https://youtube.com/watch?v=ABCD"],
   ["https://github.com/Foo/Bar/tree/main/sub",       "https://github.com/foo/bar"],
-  // /blob/ is a distinct FILE, not a view of the repo root (HIMMEL-1735).
+  // /blob/ is a distinct FILE, not a view of the repo root.
   ["https://github.com/Foo/Bar/blob/main/x.md",      "https://github.com/foo/bar/blob/main/x.md"],
   ["https://github.com/Foo/Bar/",                    "https://github.com/foo/bar"],
   ["https://medium.com/path?source=tw",              "https://medium.com/path"],

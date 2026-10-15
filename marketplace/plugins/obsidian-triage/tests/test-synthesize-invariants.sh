@@ -73,7 +73,7 @@ fake_clip() {
 
 # 5 processed clips with overlap on domain medium.com / author Alice.
 # Alice's clips spread >24h apart so the cluster genuinely clears the
-# 24h-window floor (Test 2b relies on this — HIMMEL-242).
+# 24h-window floor.
 fake_clip "clip-1" "medium.com" "Alice" yes 2026-05-21 "30-Resources/Concepts/" 2026-05-19
 fake_clip "clip-2" "medium.com" "Alice" yes 2026-05-22 "30-Resources/Concepts/" 2026-05-20
 fake_clip "clip-3" "medium.com" "Alice" yes 2026-05-22 "30-Resources/Concepts/" 2026-05-22
@@ -103,7 +103,7 @@ assert "5 processed clips span >1 domain (synthesis would fire)" "3" "$distinct_
 
 # Synthesize a hypothetical Pattern 1 CONCEPT cluster — 3 clips, all
 # single-source (medium.com). The confidence floor MUST reject.
-# (Domain floor applies to Patterns 1, 3, 4 — NOT Pattern 2; HIMMEL-242.)
+#
 single_source_count=0
 for f in "$CLIP"/clip-{1,2,3}.md; do
     grep -q "^site: medium.com$" "$f" 2>/dev/null && single_source_count=$((single_source_count+1))

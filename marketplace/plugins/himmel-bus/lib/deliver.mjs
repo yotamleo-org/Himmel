@@ -1,4 +1,4 @@
-// Delivery worker for scripts/hooks/bus-deliver-hook.sh (HIMMEL-4828).
+// Delivery worker for scripts/hooks/bus-deliver-hook.sh.
 // Reads this session's bus log, formats the verified records and writes them to
 // stdout, then commits the cursor past the records it emitted. Commit is AFTER
 // the write: a crash between the two re-emits the same #n (at-least-once).

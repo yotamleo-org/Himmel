@@ -22,7 +22,7 @@ cat "$here/../commands/harvest-clips.md" "$here"/../references/harvest-clips/*.m
 grep -qi "thin-body" "$hc" || { echo "FAIL: harvest-clips missing thin-body rule"; exit 1; }
 grep -q "is-thin-cli.mjs" "$hc" || { echo "FAIL: harvest-clips not wired to is-thin-cli shim"; exit 1; }
 
-# HIMMEL-3043: thin instagram clips must get ig_media_pending: true (idempotent)
+# thin instagram clips must get ig_media_pending: true (idempotent)
 # so /ig-media-enrich picks them up; other instagram wiring lives in
 # harvest-clip-body-batch.py's process_clip -> persist_thin_partial.
 tool="$here/../tools/harvest-clip-body-batch.py"
@@ -72,7 +72,7 @@ print("OK ig_media_pending thin-IG + idempotence + non-IG exclusion")
 PY
 python3 "$tmp/ig_pending.py"
 
-# HIMMEL-3043: the clip scan must skip _evidence/ (the reviewed-evidence pool)
+# the clip scan must skip _evidence/ (the reviewed-evidence pool)
 # the same way it already skips _synthesis/, _done/ and _deferred.md.
 VEV="$tmp/vault-evidence"
 mkdir -p "$VEV/Clippings/_evidence"

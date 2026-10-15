@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # block-agent-native-egress.sh — PreToolUse(mcp__*agent-native*) egress fence
-# (HIMMEL-4328).
 #
-# builder-visual@himmel (design profile, HIMMEL-4326) registers the hosted
+# builder-visual@himmel (design profile) registers the hosted
 # OAuth MCP `agent-native-dispatch`, which sends every tool argument to
 # Builder.io. scripts/guardrails/egress-matrix.json holds the cell this hook
 # enforces: salus x builder-io x * = hard deny. The hook refuses an
@@ -38,7 +37,7 @@
 # ponytail: the cwd comes from the hook payload (falling back to the hook's
 # $PWD). A session that cd's out of salus and then pastes PHI that names no
 # salus path and no listed root is not caught. No path-keyed guard can see
-# content without a path. Upgrade path: a content classifier (the HIMMEL-1522
+# content without a path. Upgrade path: a content classifier (the
 # voice-audio residual is the same class).
 # ponytail: git signals trust the repo's own metadata. A salus clone renamed,
 # with its remote renamed and no .salus marker or phi-roots entry, is not
@@ -55,7 +54,7 @@
 # run-node.sh, and when run-node.sh finds no node it logs one breadcrumb to
 # himmel-node.log and exits 0 (deliberately fail-open, harness-wide, for
 # every plugin hook), so this hook never runs and the call is allowed.
-# Upgrade path: HIMMEL-4463.
+# Upgrade path: a content classifier.
 # No bypass: the matrix cell is hard. To run this design work, use the local
 # design skills, which keep content on the machine.
 #
@@ -214,10 +213,10 @@ fi
 # stops there; it never runs pattern expansion over a huge component.
 # ponytail: tokens are split on whitespace only, so a path containing spaces,
 # glued inside a word, or wrapped in more than strip_cap punctuation
-# characters is not resolved. Upgrade path: HIMMEL-4463 (content classifier).
+# characters is not resolved. Upgrade path: a content classifier.
 # ponytail: the budget is checked between steps, so one syscall hung in a
 # dead NFS/FUSE mount is not preempted (the harness timeout then allows).
-# Upgrade path: HIMMEL-4463 (a watchdog process).
+# Upgrade path: a watchdog process.
 payload_budget=262144
 path_cap=256
 walk_cap=128

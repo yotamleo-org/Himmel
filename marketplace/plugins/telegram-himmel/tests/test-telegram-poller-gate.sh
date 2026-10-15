@@ -53,7 +53,7 @@ run_case() {
 }
 
 reap_case() {
-  # HIMMEL-1858 regression: a second owner must actually REAP the first.
+  # Regression: a second owner must actually REAP the first.
   # Upstream 0.0.7 gates the SIGTERM on `execFileSync('ps', …)`; MSYS ps does
   # not support `-o args=`, so on Windows it throws, the broad catch swallows
   # it, the kill is skipped and bot.pid is overwritten anyway — two live

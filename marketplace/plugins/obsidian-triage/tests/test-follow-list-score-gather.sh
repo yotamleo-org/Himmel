@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Tests for HIMMEL-660 follow-list-score.mjs — CLI entry + gather subcommand.
+# Tests for follow-list-score.mjs — CLI entry + gather subcommand.
 # Wires Tasks 1-4 together end-to-end. Hermetic: no live network/gh/python —
-# every real dependency (gh, fxtwitter fetch, HIMMEL-256 screener) is
+# every real dependency is
 # bypassed via the FOLLOW_GH_FIXTURE / FOLLOW_ACCOUNT_FIXTURE /
 # FOLLOW_SCAN_FIXTURE env-fixture seams. Cross-platform: bash on
 # Linux/macOS/Git-Bash. Uses node (not bun) for CI.
@@ -169,7 +169,7 @@ out6="$(FOLLOW_GH_FIXTURE="$tmpdir/gh-fixture.json" \
 grep -qi 'skip' <<<"$out6" && r=yes || r=no
 assert "re-run without --refetch reports a skip for the fresh handle" yes "$r"
 
-# -- Test 6: Gap B (HIMMEL-703) — an injection-suspect dossier SKIPS the     --
+# -- Test 6: an injection-suspect dossier SKIPS the                        --
 # -- LLM-backed web rung. A web fixture that WOULD verify a role claim is    --
 # -- honored on a clean scan, but ignored once the injection screen fires.   --
 echo "Test 6: injection-suspect skips the web rung (HIMMEL-703 Gap B)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-legs.sh — transport wrapper for the shared leg resolver (HIMMEL-444).
+# test-legs.sh — transport wrapper for the shared leg resolver.
 # legs.sh holds ZERO leg logic; it locates the himmel checkout and re-execs
 # scripts/lib/initiative-legs.sh so the leg `case` lives in exactly one place.
 set -u
@@ -22,7 +22,7 @@ out="$(cd "$repo" && env -u HIMMEL_REPO HIMMEL_INITIATIVE='execute' bash "$here/
 case " $out " in *" execute "*) echo "ok - resolves via cwd git-toplevel";; *) echo "FAIL: cwd resolution [$out]"; fails=$((fails+1));; esac
 
 # fail-open: wrapper copied OUTSIDE any himmel checkout + no anchor + no checkout
-# at the default install path -> empty, exit 0. HOME="$td" defeats the HIMMEL-453
+# at the default install path -> empty, exit 0. HOME="$td" defeats the
 # default-path candidate ($HOME/Documents/github/himmel) so it cannot resolve to
 # the real machine checkout.
 td="$(mktemp -d)"; cp "$here/legs.sh" "$td/legs.sh"
@@ -30,7 +30,7 @@ out="$(cd "$td" && env -u HIMMEL_REPO HOME="$td" HIMMEL_INITIATIVE='execute' bas
 { [ -z "$out" ] && [ "$rc" = 0 ]; } && echo "ok - fail-open with no reachable resolver" || { echo "FAIL: not fail-open [$out] rc=$rc"; fails=$((fails+1)); }
 rm -rf "$td"
 
-# default-install fallback (HIMMEL-453): no anchor, cwd OUTSIDE any checkout, but
+# default-install fallback: no anchor, cwd OUTSIDE any checkout, but
 # a himmel checkout exists at $HOME/Documents/github/himmel -> resolves via the
 # 4th candidate. Same cwd/BASH_SOURCE setup as the fail-open case above (a non-git
 # mktemp dir, so candidates 2+3 fail); only HOME differs, isolating candidate 4.

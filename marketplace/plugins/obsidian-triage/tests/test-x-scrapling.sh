@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the cookieless Scrapling X backend (HIMMEL-4677):
+# Tests for the cookieless Scrapling X backend:
 # tools/x-scrapling-media.py (extraction from recorded status HTML) and its
 # wiring into x-media-fetch.py as the only backend.
 # Hermetic: NO network. Extraction runs on fixtures/x-scrapling/*.html (+ a
@@ -39,7 +39,7 @@ python3 "$HELPER" --from-html "$FIX/direct-mp4.html" --status-id 210088816621988
 assert "direct exit 0" 0 "$?"
 assert "direct status ok" ok "$(jq_py "$tmp/direct.json" 'd["status"]')"
 # The status is an X Article: its body images use the extension form
-# (media/<id>.jpg), which HIMMEL-4704 codex-3 stopped dropping - 22 images
+# (media/<id>.jpg), which stopped dropping - 22 images
 # (the header plus 21 body images) and four videos, in article order.
 assert "22 images and four videos, in article order" \
   "$(printf 'image %.0s' $(seq 20))video video video image video image" \
@@ -73,7 +73,7 @@ python3 "$HELPER" --from-html "$tmp/trailing.html" --net-log "$FIX/hls-quote.net
 assert "trailing permalink identifies the status" "ok 1" \
   "$(jq_py "$tmp/trailing.json" 'd["status"]+" "+str(len(d.get("items", [])))')"
 
-# HIMMEL-4688 codex-4: focal-post media placed AFTER the quoted post is kept;
+# focal-post media placed AFTER the quoted post is kept;
 # the quoted post's own media stays out.
 python3 - "$FIX/hls-quote.html" "$tmp/after.html" <<'PY'
 import sys
@@ -119,7 +119,7 @@ assert "a status id that only prefixes another is not that status" no_media "$(j
 python3 "$HELPER" --status-id abc --from-html "$FIX/direct-mp4.html" >/dev/null 2>&1
 assert "non-numeric status id refused" 2 "$?"
 
-# --- Test 4b: an extension-bearing pbs media URL is still an image (HIMMEL-4704)
+# --- Test 4b: an extension-bearing pbs media URL is still an image
 echo "Test 4b: extension-bearing image URL"
 cat >"$tmp/ext.html" <<'EOF'
 <article><a href="/u/status/42">t</a><img src="https://pbs.twimg.com/media/ExtId_1.jpg"><img src="https://pbs.twimg.com/media/ExtId_2.png?name=small"><img src="https://pbs.twimg.com/media/ExtId_3.exe"></article>
@@ -301,7 +301,7 @@ FAKE_FFMPEG_FULL=1 run_tool "$tmp/v6b" >"$tmp/v6b.out" 2>"$tmp/v6b.err"
 assert "an HLS copy stopped at the size cap is refused, never processed" 1 "$(grep -c '^ffmpeg ' "$tmp/calls")"
 grep -q '^x_media_pending: true$' "$tmp/v6b/Clippings/clip.md" && a=ok || a=no
 assert "the capped clip stays pending" ok "$a"
-# (HIMMEL-4704 round-1 codex-1) 200 MiB per media file: init + s1 fill 400 of
+#  200 MiB per media file: init + s1 fill 400 of
 # the 500 MiB cap, so the third file is over the remaining budget. The
 # fetch must stop there - never the 1.2 GB a per-file cap alone would allow.
 : >"$tmp/calls"; make_vault "$tmp/v6c" 6026
@@ -326,7 +326,7 @@ grep -q '^x_media_pending: true$' "$tmp/v7/Clippings/clip.md" && a=ok || a=no
 assert "clip stays pending (retryable)" ok "$a"
 
 # --- Test 7b: an HLS playlist naming a private or off-host URL is refused ---
-# (HIMMEL-4704 codex-1) Each case plants one bad URI in an otherwise good
+#  Each case plants one bad URI in an otherwise good
 # playlist set; the bad host must never be fetched and ffmpeg never run.
 echo "Test 7b: HLS playlist entries pass the media-host guard"
 export STUB_JSON="$tmp/hls-ok.json"
@@ -348,14 +348,14 @@ hls_case metadata-variant M.m3u8 's#^/amplify_video/9/pl/avc1/720x720/V2.m3u8$#h
 hls_case http-segment V2.m3u8 's#^/amplify_video/9/vid/avc1/720x720/s1.m4s$#http://video.twimg.com/s1.m4s#' 'http://video'
 hls_case offhost-map V2.m3u8 's#URI="/amplify_video/9/vid/avc1/720x720/init.mp4"#URI="https://video.twimg.com.evil.example/init.mp4"#' 'evil\.example'
 hls_case userinfo-audio M.m3u8 's#URI="/amplify_video/9/pl/mp4a/64000/A.m3u8"#URI="https://video.twimg.com@127.0.0.1/A.m3u8"#' '127\.0\.0\.1'
-# (HIMMEL-4797, judge S1) A nested-playlist tag inside a MEDIA playlist: the URL
+#  A nested-playlist tag inside a MEDIA playlist: the URL
 # under it would be fetched as a segment and could itself be a playlist.
 nl=$'\n'
 hls_case nested-stream-inf V2.m3u8 "s#^/amplify_video/9/vid/avc1/720x720/s2.m4s\$#\\#EXT-X-STREAM-INF:BANDWIDTH=1\\${nl}/amplify_video/9/nested/N.m4s#" 'nested/N'
 hls_case nested-iframe-inf V2.m3u8 "s#^\#EXT-X-ENDLIST\$#\\#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1,URI=\"/amplify_video/9/nested/I.m4s\"\\${nl}\\#EXT-X-ENDLIST#" 'nested/I'
 hls_case private-audio-seg A.m3u8 's#^/amplify_video/9/aud/mp4a/64000/s1.m4s$#https://192.168.1.1/s1.m4s#' '192\.168\.1\.1' # leak-allow: private-lan-ip SSRF test fixture, never fetched
 hls_case encrypted V2.m3u8 's#^\#EXT-X-MAP#\#EXT-X-KEY:METHOD=AES-128,URI="https://10.9.9.9/k"\n\#EXT-X-MAP#' '10\.9\.9\.9' # leak-allow: private-lan-ip SSRF test fixture, never fetched
-# (HIMMEL-4704 round-2 codex-1) A second URI on one tag, or an unquoted one,
+#  A second URI on one tag, or an unquoted one,
 # would reach ffmpeg un-rewritten and open a local file over the file protocol.
 hls_case dup-uri-map V2.m3u8 's#^\(\#EXT-X-MAP:.*\)$#\1,URI="/etc/passwd"#' '/etc/passwd'
 hls_case dup-uri-audio M.m3u8 's#^\(\#EXT-X-MEDIA:.*\)$#\1,URI="/etc/hostname"#' '/etc/hostname'

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# legs.sh — TRANSPORT ONLY (HIMMEL-444). Locates the himmel checkout and
+# legs.sh — TRANSPORT ONLY. Locates the himmel checkout and
 # re-execs the single-source leg resolver (scripts/lib/initiative-legs.sh), so
 # the leg `case` lives in exactly one place. This wrapper holds ZERO leg logic.
 #
@@ -8,7 +8,7 @@
 # git toplevel of the current dir (himmel-dev sessions run with cwd in the
 # checkout) -> the git toplevel of this wrapper's own dir (plugin loaded from the
 # repo's marketplace/) -> the canonical default install path
-# ($HOME/Documents/github/himmel, HIMMEL-453: we control the himmel install, so
+# ($HOME/Documents/github/himmel: we control the himmel install, so
 # it sits at a known path, resolving even outside any git checkout). If none
 # yields the resolver, fail open (empty, exit 0) -- minerva then keeps its prose
 # hand-off, never erroring on a missing resolver.

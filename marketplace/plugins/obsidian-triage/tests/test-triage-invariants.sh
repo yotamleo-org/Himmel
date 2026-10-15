@@ -485,7 +485,7 @@ guarded_move() {  # $1 = the clip being operated on (always exists), $2 = dest
         # it is equally true for a symlinked destination or a symlinked parent
         # directory, where the inode has only ONE entry and unlinking the
         # source destroys the data. nlink alone is not enough either
-        # (HIMMEL-1713 codex-2 round 3): it counts every directory entry on
+        # : it counts every directory entry on
         # $1's inode system-wide, not specifically $2, so an unrelated hard
         # link elsewhere could read nlink>=2 while $2 is still just a
         # symlink — require $2 itself NOT be a symlink before trusting it.
@@ -507,7 +507,7 @@ guarded_move() {  # $1 = the clip being operated on (always exists), $2 = dest
         # ln failed with a FREE destination => no hard-link support on this
         # filesystem (exFAT, network/sync mounts). The runbook degrades to
         # mv -n and verifies the POSTCONDITION rather than trusting the exit
-        # status (HIMMEL-1713 codex-1 round 2 — see the direct assertions in
+        # status (see the direct assertions in
         # Test 9g); this mirror must match or it asserts behaviour the
         # runbook forbids.
         mv -n "$1" "$2" 2>/dev/null
@@ -605,7 +605,7 @@ mkdir -p "$TMP/ambig/Clippings"
 printf -- 'body\n' > "$TMP/ambig/Clippings/foo.md"       # clip id "foo"
 printf -- 'body\n' > "$TMP/ambig/Clippings/foo.md.md"    # clip id "foo.md"
 printf -- 'body\n' > "$TMP/ambig/Clippings/lone.md.md"   # clip id "lone.md", NO colliding "lone" sibling
-# HIMMEL-1713 codex-2: the "ends in .md" branch must verify the ACTUAL
+# the "ends in .md" branch must verify the ACTUAL
 # colliding sibling exists, not refuse on the string shape alone — otherwise
 # a legitimate "lone.md.md" clip with no "lone" sibling is blocked forever.
 ambiguous() {  # $1 = clip identifier, $2 = clippings dir
@@ -826,7 +826,7 @@ claim_nolink() {  # $1 = clip, $2 = dest; ln always fails, as on exFAT
     if false; then :                      # stands in for a failing `ln`
     elif [ -e "$2" ]; then echo "collision"; return 0
     else
-        # -n (no-clobber, HIMMEL-1713 codex-1): mirrors the runbook's fix — a
+        # -n: mirrors the runbook's fix — a
         # concurrent claim landing between this function's own free-check
         # above and the mv call must be refused, not silently overwritten.
         # Verify the POSTCONDITION, never the exit status: GNU coreutils
@@ -864,7 +864,7 @@ assert "incumbent survives the real collision" "incumbent" \
 # exit-status check alone would misread a skipped move as successful (worse than
 # the bare `mv` this replaces: the clip would be left in the inbox while the
 # runbook proceeds as though it reached $dest). Newer coreutils exit 1 on that
-# refusal instead (the ubuntu CI runner does; HIMMEL-3196), so the status is
+# refusal instead, so the status is
 # HOST-DEPENDENT and is deliberately NOT asserted here. The postcondition — is
 # the SOURCE still there — is the only signal that holds on every host, which is
 # why the runbook checks `[ -e "$clip" ]` after the call rather than the call's
@@ -943,7 +943,7 @@ echo "Test 12: every mark/move route goes through triage-mark-processed.py (HIMM
 # route Phase 7, Phase 8, the debt drain and any fan-out through it, and must
 # no longer carry a hand-runnable move recipe a subagent could copy instead.
 TOOL_NAME="triage-mark-processed.py"
-# HIMMEL-5513: Phase 7/8 and the debt drain moved to references/triage-clips/;
+# Phase 7/8 and the debt drain moved to references/triage-clips/;
 # each section is read from its own reference file (it starts at the heading).
 REFS="$(cd "$(dirname "$0")/.." && pwd)/references/triage-clips"
 for spec in "**Phase 7|phase-7-mark-processed.md" "**Phase 8|phase-8-evidence-move.md" "### Phase-8 debt drain|phase-8-debt-drain.md"; do

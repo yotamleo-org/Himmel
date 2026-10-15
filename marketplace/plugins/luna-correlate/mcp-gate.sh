@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mcp-gate.sh — opt-in launch gate for an OPTIONAL plugin MCP server (HIMMEL-591).
+# mcp-gate.sh — opt-in launch gate for an OPTIONAL plugin MCP server.
 #
 # Claude Code has no native lazy / on-first-use stdio MCP spawn (it eagerly
 # starts every enabled plugin's server at session start; GitHub #18497 closed

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-himmel-update-cmd-resolution.sh -- F2-SC1b (HIMMEL-459). The himmel-update
+# test-himmel-update-cmd-resolution.sh -- F2-SC1b. The himmel-update
 # slash commands carry an embedded REPO-resolution snippet so they run from ANY
 # directory ($HIMMEL_REPO -> git toplevel -> canonical install path -> error).
 # This test EXTRACTS that snippet from the command file (single source of truth,

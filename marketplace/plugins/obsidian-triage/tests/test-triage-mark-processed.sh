@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Functional tests for tools/triage-mark-processed.py (HIMMEL-4685) — the ONE
+# Functional tests for tools/triage-mark-processed.py — the ONE
 # path /triage-clips may use to mark a clip processed (Phase 7) and move it to
 # Clippings/_evidence/ (Phase 8). The 2026-10-07 cadence run fanned triage out
 # to parallel subagents that marked and moved clips through their own helpers,

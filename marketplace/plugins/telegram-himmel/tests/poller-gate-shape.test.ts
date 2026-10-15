@@ -37,7 +37,7 @@ const serverPath = new URL(import.meta.resolve('../server.ts')).pathname.replace
 const serverDir = dirname(serverPath)
 const src = await Bun.file(serverPath).text()
 
-// HIMMEL-4446: without the plugin's node_modules server.ts dies at import
+// without the plugin's node_modules server.ts dies at import
 // (5 ms, no stderr line, no proxy hit) and every case below fails with a
 // misleading "expected true, got false". Missing deps are an environment
 // problem: skip the server-booting cases locally with the fix named, but fail loudly under CI so a

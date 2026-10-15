@@ -85,7 +85,7 @@ const PROMOTION_SECTION_RE = /\n## Promotion candidate\n<!-- triage (?:(?!-->)[\
 // A previously written fxtwitter quote-context "## Crawled content" section:
 // heading + its `<!-- enriched <date> via fxtwitter (quote-context) -->`
 // marker, up to the next `## ` heading or end-of-body. Replaced (not
-// duplicated) by the --reenrich-quote-only backfill (HIMMEL-2621).
+// duplicated) by the --reenrich-quote-only backfill.
 const QUOTE_SECTION_RE = /\n## Crawled content\n<!-- enriched \d{4}-\d{2}-\d{2} via fxtwitter \(quote-context\) -->[\s\S]*?(?=\n## |\s*$)/;
 
 function usage(code = 1) {
@@ -828,7 +828,7 @@ export function detectThreadSignal(text, repliesCount = 0) {
 }
 
 // ---------------------------------------------------------------------------
-// Post-body-fill injection re-screen (HIMMEL-256)
+// Post-body-fill injection re-screen
 //
 // Body-fill writes untrusted tweet.text into `## The Idea`. That content
 // didn't exist when the harvest-time screen ran, so the just-written clip
@@ -920,7 +920,7 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
     });
   }
 
-  // --reenrich-quote-only (HIMMEL-2621 backfill): clips already enriched by
+  // --reenrich-quote-only: clips already enriched by
   // fxtwitter whose tweet carried a quote lost the clipped author's own text,
   // because the old chooser was exclusive. They are already-enriched, so the
   // normal path skips them forever. This switch re-processes exactly those —
@@ -984,14 +984,14 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
   const bodyFill = {};
   // Quote tweet, thin body, but the author added no text of their own —
   // there is nothing to body-fill. Set below so the terminal last_error
-  // marker (HIMMEL-2628) stops isQuoteOnlyClip re-selecting this clip.
+  // marker stops isQuoteOnlyClip re-selecting this clip.
   let quoteOnlyNoOwnText = false;
   if (isArticle) {
     section = renderArticleSection(tweet);
   } else if (hasQuote) {
-    // HIMMEL-2621: a quote tweet carries BOTH — the clipped author's own text
+    // a quote tweet carries BOTH — the clipped author's own text
     // (body-filled into `## The Idea` when the clip body is thin, through the
-    // SAME didBodyFill path so the HIMMEL-256 injection re-screen runs) and
+    // SAME didBodyFill path so the injection re-screen runs) and
     // the quoted post under `## Crawled content`. The two render into one
     // section string so the single G-3 section-add identity still holds.
     // quoteBackfill implies thinBody (isQuoteOnlyClip requires
@@ -1071,7 +1071,7 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
     statusMsg: `${quoteBackfill ? "re-enriched (quote-only)" : "enriched"} (article=${isArticle}, note=${isNote}, quote=${hasQuote})`,
   });
 
-  // HIMMEL-256: re-screen the just-written clip for prompt injection on the
+  // re-screen the just-written clip for prompt injection on the
   // real-text body-fill path only (## The Idea now holds untrusted tweet
   // text). Flag-only — a hit (or a fail-closed screen-error) adds the
   // harvest_flag markers via a second small marker-only write. The body is
@@ -1126,7 +1126,7 @@ async function writeEnrichment({ clipPath, rel, text, baselineSha, fmRaw, body, 
   }
 
   let newBody = body;
-  // HIMMEL-2621 quote backfill: drop the stale fxtwitter quote-context
+  // Quote backfill: drop the stale fxtwitter quote-context
   // section before inserting the freshly rendered one, so the clip ends up
   // with exactly one `## Crawled content`.
   if (stripQuoteSection) newBody = newBody.replace(QUOTE_SECTION_RE, "");
@@ -1175,7 +1175,7 @@ async function writeEnrichment({ clipPath, rel, text, baselineSha, fmRaw, body, 
   // SKIPPED on the backfill re-triage reset: that path deliberately mutates
   // the body beyond a single-section-add (it strips the promotion section),
   // so the single-section-add identity no longer holds. Same for the
-  // HIMMEL-2621 quote backfill, which replaces the stale quote-context
+  // quote backfill, which replaces the stale quote-context
   // section. The other guards (post.body === newBody write-succeeded check
   // above, frontmatter-present check above, YAML parse-validate below) still
   // fully protect the write.

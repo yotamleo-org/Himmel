@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// follow-roster.mjs — HIMMEL-660 X-follow-list scorer, Task 1: roster +
+// follow-roster.mjs — X-follow-list scorer: roster +
 // handle-normalization lib. Pure (filesystem-only, no network).
 //
 // Grounded 2026-07-02 against REAL vault content (not assumed):

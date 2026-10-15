@@ -182,7 +182,7 @@ function isEligibleClip(vault, abs) {
   if (!b) return false;
   const processed = fmScalar(lines, b.close, "processed").toLowerCase();
   if (processed !== "true") return false;
-  // HIMMEL-770: a clip still awaiting the IG media rung must NOT drain into
+  // a clip still awaiting the IG media rung must NOT drain into
   // _evidence/ — hold it in the inbox until /ig-media-enrich clears the flag.
   const igPending = fmScalar(lines, b.close, "ig_media_pending").toLowerCase();
   if (igPending === "true") return false;

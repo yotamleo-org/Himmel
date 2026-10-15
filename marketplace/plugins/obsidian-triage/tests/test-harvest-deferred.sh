@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4675: source-level per-clip partials are a deferred, NON-blocking
+# source-level per-clip partials are a deferred, NON-blocking
 # class. The retry count lives on the clip (frontmatter), so it survives the
 # daily G-5 state rotation; after DEFER_ATTENTION_AFTER retries a clip moves to
 # the needs-attention bucket of the pending report and is no longer retried.
@@ -9,7 +9,7 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tool="$here/../tools/harvest-clip-body-batch.py"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/harvest-deferred.XXXXXX")" || exit 1; trap 'rm -rf "$tmp"' EXIT
-# HIMMEL-5513: the runbook body plus its on-demand references.
+# the runbook body plus its on-demand references.
 hc="$tmp/harvest-clips.all.md"
 cat "$here/../commands/harvest-clips.md" "$here"/../references/harvest-clips/*.md > "$hc"
 
@@ -114,7 +114,7 @@ g, msg, _ = mod.process_clip(p, dry_run=False)
 check("needs-attention clip is skipped, not retried", g == "o" and "needs-attention" in msg
       and p.read_text() == before, msg)
 
-# HIMMEL-4680: re-runs on the same day bump the counter at most once.
+# re-runs on the same day bump the counter at most once.
 p = clip("sameday.md", "https://example.com/sameday")
 mod.TODAY = "2026-10-06"
 for _ in range(5):
@@ -147,7 +147,7 @@ v = tmp / "vault"
     "harvest_defer_count: 5\nharvest_needs_attention: true\n---\nshort.\n")
 r = subprocess.run([sys.executable, tool, str(v)], capture_output=True, text=True)
 check("deferred-only batch exits 0", r.returncode == 0, r.stdout + r.stderr)
-# HIMMEL-4707: the tool writes only a PROVISIONAL marker; a run that dies before
+# the tool writes only a PROVISIONAL marker; a run that dies before
 # G-8 promotes it (a rename) leaves no .harvest.done, so downstream stays gated closed.
 done = v / ".harvest.done"
 prov = v / ".harvest.done.provisional"

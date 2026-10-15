@@ -52,7 +52,7 @@ if [ -r "$pkg" ]; then
     assert "package.json declares js-yaml" "yes" "$has_yaml"
     # Pin check — playwright must be pinned to an EXACT version (no ^ / ~ / range)
     # for stability. The test used to hard-code 1.58.x and went red on every
-    # legitimate bump (HIMMEL-3196); the invariant is "exact", not a version.
+    # legitimate bump; the invariant is "exact", not a version.
     if grep -qE '"playwright":[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"' "$pkg"; then pinned=yes; else pinned=no; fi
     assert "package.json pins playwright to an exact version" "yes" "$pinned"
 else

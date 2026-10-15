@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// follow-dossier.mjs — HIMMEL-660 X-follow-list scorer, Task 2: dossier
+// follow-dossier.mjs — X-follow-list scorer: dossier
 // schema + corpus-local evidence lib. Pure (filesystem-only, no network).
 //
 // buildCorpusEvidence scans the vault's Clippings/ for clips authored by a

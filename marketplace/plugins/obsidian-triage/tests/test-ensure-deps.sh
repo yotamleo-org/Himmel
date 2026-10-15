@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # marketplace/plugins/obsidian-triage/tests/test-ensure-deps.sh — smoke
-# tests for tools/ensure-deps.sh (HIMMEL-1135).
+# tests for tools/ensure-deps.sh.
 #
 # The bug this preflight fixes: tools/.gitignore ignores node_modules/, so
 # any git-derived copy of tools/ (most critically the Claude plugin cache
 # copy, populated straight from git) can never carry deps. Runbooks that
 # shelled out to js-yaml-importing tools from the cache path threw
 # `Cannot find package 'js-yaml'`, reverted the write, and (separately,
-# HIMMEL-1136, not this ticket) still exited 0 — a whole day of enrichment
+# not this ticket) still exited 0 — a whole day of enrichment
 # silently doing nothing.
 #
 # Coverage (all hermetic — a fake `npm` on PATH stands in for the real

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wrapper for the shared Instagram throttle tests (HIMMEL-4306). Hermetic: no
+# Wrapper for the shared Instagram throttle tests. Hermetic: no
 # network, no Instagram; matches the <name>.sh + <name>.py pair convention.
 set -u -o pipefail
 

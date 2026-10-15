@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for ig-media-fetch.py (HIMMEL-770). Hermetic: NO live network, NO
+# Tests for ig-media-fetch.py. Hermetic: NO live network, NO
 # ffmpeg/whisper. The only fetch backend is cookieless
 # Scrapling + curl: an adapter stands in for the Scrapling helper and a stub curl
 # serves the files, and the per-test "gallery-dl" stubs are kept only as the
@@ -297,7 +297,7 @@ echo "Test 4: download + slide write + outcome line"
 
 # Set IG_MEDIA_NO_SLEEP to skip rate limit in test
 export IG_MEDIA_NO_SLEEP=1
-# HIMMEL-4306: the shared Instagram throttle (state under $HOME) counts every
+# the shared Instagram throttle (state under $HOME) counts every
 # gallery-dl stub run; lift the daily cap so the suite is not budget-limited.
 export HIMMEL_IG_DAILY_CAP=100000
 
@@ -340,7 +340,7 @@ echo "Test 6: missing ffmpeg"
 rm "$tmp/bin/ffmpeg" "$tmp/bin/ffmpeg.bat"
 # Hide every host ffmpeg. Dropping the PATH dir is NOT enough: ffmpeg usually
 # lives in a shared dir (/usr/bin) that also carries bash/env/python, so
-# dropping it breaks the harness (HIMMEL-3196). Instead replace each ffmpeg-
+# dropping it breaks the harness. Instead replace each ffmpeg-
 # bearing dir with a symlink mirror of its contents minus ffmpeg*.
 hide_ffmpeg_path() {
   local d out="" n=0 mirror
@@ -637,7 +637,7 @@ n="$(grep -cF '![[Clippings/_media/clip/slide-' "$VP/Clippings/clip.md")"
 assert "exactly 20 slide embeds (cap)" 20 "$n"
 nf="$(find "$VP/Clippings/_media/clip" -name 'slide-*.jpg' | wc -l | tr -d ' ')"
 assert "exactly 20 slide files (cap)" 20 "$nf"
-# HIMMEL-791: cap trimming is disclosed on the outcome line (log-only; the
+# cap trimming is disclosed on the outcome line (log-only; the
 # clip still writes ok - cap != failure).
 grep -qF "20 slides (5 capped) + 0 transcript" "$tmp/cap.out" && a=ok || a=no
 assert "cap outcome line discloses 5 capped" ok "$a"
@@ -1569,7 +1569,7 @@ assert "smuggle: zero remaining literal control markers" 0 "$nmark"
 fm_after="$(sed -n '/^---$/,/^---$/p' "$AS/Clippings/clip.md" | sha256sum | cut -d' ' -f1)"
 assert "smuggle: frontmatter byte-identical after apply (scoped-G-3 held)" "$fm_before" "$fm_after"
 
-# --- Test 34: no-op runs exit 0 BEFORE preflight (HIMMEL-770) ----------------
+# --- Test 34: no-op runs exit 0 BEFORE preflight ----------------
 # A run with nothing to enrich (no Clippings/ dir, or zero selectable clips)
 # must exit 0 cleanly WITHOUT preflight - it must NOT fail on missing
 # gallery-dl/ffmpeg/cookies. Remove the binary stubs and filter any system
@@ -1616,7 +1616,7 @@ assert "zero-selectable prints 0-selected no-op summary" ok "$a"
 
 export PATH="$noop_saved_path"
 
-# --- Test 35: natural-sort carousel media (10.jpg after 2.jpg, HIMMEL-770) ----
+# --- Test 35: natural-sort carousel media ----
 # gallery-dl emits UNPADDED numeric filenames 1.jpg, 2.mp4, 10.jpg. A plain
 # lexicographic sort orders them 1.jpg, 10.jpg, 2.mp4 - corrupting slide order
 # (10 before 2) AND the mixed-carousel video item index (2.mp4 lands at position
@@ -1717,7 +1717,7 @@ assert "natsort mixed carousel gains ### Transcript" ok "$a"
 grep -qF "2 slides + 1 transcript" "$tmp/natsort.out" && a=ok || a=no
 assert "natsort outcome line: 2 slides + 1 transcript" ok "$a"
 
-# --- Test 36: soundless-video screenshot fallback (HIMMEL-786) ---------------
+# --- Test 36: soundless-video screenshot fallback ---------------
 # A GIF-like carousel video has NO audio stream: WAV extraction fails, the
 # audio probe (-map 0:a:0) confirms no audio, so the tool extracts a frame
 # (-frames:v 1) and routes it through render_slides as a screenshot slide in
@@ -1755,10 +1755,10 @@ exit /b 0
 STUB
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
-# HIMMEL-786 stub: -vn (WAV extract) fails like a soundless video; the audio
+# stub: -vn (WAV extract) fails like a soundless video; the audio
 # probe (-map 0:a:0) exits 1 (no audio stream); frame-extract/recompress copy
 # the -i source to the last arg.
-# HIMMEL-791: the probe branch mirrors a NON-English ffmpeg build - it reports a
+# the probe branch mirrors a NON-English ffmpeg build - it reports a
 # LOCALIZED "matches no streams" string unless LC_ALL=C. An UNPINNED probe (locale
 # leaked from the parent env) emits the localized form, the tool's substring check
 # misses it, _has_audio_stream stays conservative-True, and the screenshot
@@ -1810,7 +1810,7 @@ exit /b 0
 STUB
 VSL="$tmp/vault-soundless"
 make_ig_vault "$VSL" SLNT036
-# HIMMEL-791: force a NON-C locale into the tool's parent env so a LEAKED
+# force a NON-C locale into the tool's parent env so a LEAKED
 # (unpinned) probe is detectable. The pinned tool overrides it to LC_ALL=C for
 # the probe subprocess; an UNPINNED one leaks POSIX -> localized probe message
 # -> conservative-True -> no screenshot -> the 3-slide assertions below FAIL.
@@ -1849,14 +1849,14 @@ vid="$(find "$VSL" \( -name '*.mp4' -o -name '*.wav' \) 2>/dev/null)"
 [ -z "$vid" ] && a=ok || a=no
 assert "soundless: no video/wav under the vault" ok "$a"
 
-# --- Test 37: audio-bearing WAV failure keeps partial semantics (HIMMEL-786) -
+# --- Test 37: audio-bearing WAV failure keeps partial semantics -
 # The video HAS an audio stream (probe exits 0) but WAV extraction failed ->
 # a genuine transcription failure: NO screenshot fallback, clip stays partial.
 echo "Test 37: audio-bearing wav failure stays partial (HIMMEL-786)"
 emit_gallery_dl 1.jpg 2.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
-# HIMMEL-786 stub: -vn fails, but the audio probe SUCCEEDS (audio exists).
+# stub: -vn fails, but the audio probe SUCCEEDS (audio exists).
 case " $* " in
   *" -vn "*) echo "Conversion failed!" >&2; exit 1 ;;
   *" 0:a:0 "*) exit 0 ;;
@@ -1901,7 +1901,7 @@ assert "audio-partial: outcome line 1/1 slides, 0/1 transcripts" ok "$a"
 n="$(grep -cF '![[Clippings/_media/clip/slide-' "$VAP/Clippings/clip.md")"
 assert "audio-partial: only 1 slide embed (no screenshot)" 1 "$n"
 
-# --- Test 38: inconclusive audio probe keeps partial semantics (HIMMEL-786,
+# --- Test 38: inconclusive audio probe keeps partial semantics.
 #     codex-adv hardening). The WAV extract fails AND the probe fails for a
 #     NON-no-audio reason (corrupt media, decode error). Only a conclusive
 #     "matches no streams" proves soundless; anything else must NOT screenshot-
@@ -1910,7 +1910,7 @@ echo "Test 38: inconclusive audio probe stays partial (HIMMEL-786)"
 emit_gallery_dl 1.jpg 2.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
-# HIMMEL-786 stub: -vn fails; the probe fails with a GENERIC error (no
+# stub: -vn fails; the probe fails with a GENERIC error (no
 # "matches no streams" proof) - decode error / corrupt media.
 case " $* " in
   *" -vn "*) echo "Conversion failed!" >&2; exit 1 ;;
@@ -2126,8 +2126,8 @@ grep -qF "2/2 slides (1 video-frame), 0/1 transcripts" "$tmp/mixedprobe.out" && 
 assert "mixed-probe: outcome line marks surviving video-frame" ok "$a"
 
 # --- Test 42: frame-extract TIMEOUT after a conclusive probe -> traced +
-#     partial (codex-adv round 3). IG_MEDIA_FRAME_TIMEOUT=1 seams ONLY the
-#     frame-extract timeout (HIMMEL-805 split it from the global FFMPEG_TIMEOUT
+#     partial. IG_MEDIA_FRAME_TIMEOUT=1 seams ONLY the
+#     frame-extract timeout (split it from the global FFMPEG_TIMEOUT
 #     that also guards the probe/wav/recompress); the stub hangs only on the
 #     -frames:v call (exec sleep - the Git-Bash grandchild-reaping trap).
 echo "Test 42: frame-extract timeout traced, stays partial (HIMMEL-786)"
@@ -2179,7 +2179,7 @@ assert "frame-timeout: stays partial" ok "$a"
 grep -q 'ffmpeg(frame): timed out' "$tmp/frametimeout.err" && a=ok || a=no
 assert "frame-timeout: timeout traced (ffmpeg(frame))" ok "$a"
 
-# --- Test 42b: frame-extract TIMEOUT wrong-site race (HIMMEL-805 RED repro) ---
+# --- Test 42b: frame-extract TIMEOUT wrong-site race ---
 # Test 42 seams the GLOBAL FFMPEG_TIMEOUT down to 1s to trace the frame-extract
 # timeout, but that seam ALSO guards the audio probe / wav-extract / slide-
 # recompress. Under load the FAST probe can exceed 1s -> TimeoutExpired fires at
@@ -2190,7 +2190,7 @@ assert "frame-timeout: timeout traced (ffmpeg(frame))" ok "$a"
 # (0:a:0) sleeps ~2s before answering "matches no streams"; the frame branch
 # (-frames:v) hangs (exec sleep 5). Under IG_MEDIA_FFMPEG_TIMEOUT=1 (RED) the
 # slow probe exceeds the 1s GLOBAL seam -> probe wrong-site timeout -> no frame
-# trace. After the HIMMEL-805 seam-split + retarget to IG_MEDIA_FRAME_TIMEOUT=1
+# trace. After seam-split + retarget to IG_MEDIA_FRAME_TIMEOUT=1
 # (Step 3), the probe runs under the 300s default (completes -> soundless) and
 # ONLY the frame branch hangs under its 1s seam -> frame timeout traced.
 # Note: the probe sleeps THEN answers (the GREEN path needs the "matches no
@@ -2205,7 +2205,7 @@ echo "Test 42b: frame-timeout wrong-site race (slow probe) (HIMMEL-805)"
 emit_gallery_dl 1.jpg 2.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
 #!/usr/bin/env bash
-# HIMMEL-805 stub: slow probe (sleeps ~2s then answers "matches no streams") +
+# stub: slow probe (sleeps ~2s then answers "matches no streams") +
 # hanging frame (exec sleep 5). Under the 1s GLOBAL seam the slow probe times
 # out first (wrong site); under the split 1s FRAME seam only the frame hangs.
 case " $* " in
@@ -2253,7 +2253,7 @@ assert "frame-timeout-race: stays partial" ok "$a"
 grep -q 'ffmpeg(frame): timed out' "$tmp/framettrace.err" && a=ok || a=no
 assert "frame-timeout-race: frame timeout traced at the right site (HIMMEL-805)" ok "$a"
 
-# --- Test 42c: FRAME_TIMEOUT seam-inheritance contract (HIMMEL-805) ----------
+# --- Test 42c: FRAME_TIMEOUT seam-inheritance contract ----------
 # Unit-level (no ffmpeg run): FRAME_TIMEOUT must inherit IG_MEDIA_FFMPEG_TIMEOUT
 # when IG_MEDIA_FRAME_TIMEOUT is unset (an operator lowering the GLOBAL knob
 # still bounds the frame extract), and an explicit frame seam must win when both
@@ -2329,7 +2329,7 @@ grep -qF "video-frame" "$tmp/slidecapframe.out" && a=present || a=absent
 assert "slidecap-frame: capped-out screenshot not counted as video-frame" absent "$a"
 
 # --- Test 44: within-cap screenshot whose recompress FAILS is excluded from
-#     the video-frame marker (HIMMEL-791) -------------------------------------
+#     the video-frame marker -------------------------------------
 # The other guard of the marker count: the screenshot survives frame
 # extraction (it IS in images at a position <= SLIDE_CAP) but its own
 # recompress drops out, so it lands in slides_failed, produces no embed, and
@@ -2389,7 +2389,7 @@ grep -qF "video-frame" "$tmp/framercfail.out" && a=present || a=absent
 assert "frame-recompress-fail: failed screenshot not counted as video-frame" absent "$a"
 
 # --- Test 45: empty transcript (rc=0, no speech heard) -> PERMANENT no_speech,
-#     ig_media_pending released the same way as "removed" (HIMMEL-3043) --------
+#     ig_media_pending released the same way as "removed" --------
 # Sole video, no slides, audible (non-silent) audio: extract_wav succeeds,
 # whisper decodes fine but hears nothing. This must NOT be treated as a
 # retryable failure - whisper will never hear speech that isn't there.
@@ -2489,7 +2489,7 @@ grep -q '^ig_media_pending:' "$VNS/Clippings/clip.md" && a=present || a=absent
 assert "no-speech: ig_media_pending released (same path as removed)" absent "$a"
 
 # --- Test 46: whisper helper itself fails (rc!=0) -> stays RETRYABLE, flag kept
-#     (HIMMEL-3043 - distinct from Test 45's rc=0/empty-output outcome) --------
+#      --------
 echo "Test 46: whisper rc!=0 -> still retryable, flag kept (HIMMEL-3043)"
 emit_gallery_dl vid.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
@@ -2585,8 +2585,8 @@ assert "whisper-error: media_last_error no_media_content (retryable)" ok "$a"
 grep -q '^ig_media_pending: true$' "$VWE/Clippings/clip.md" && a=ok || a=no
 assert "whisper-error: ig_media_pending KEPT (retryable, unlike Test 45)" ok "$a"
 
-# --- Test 47: silent audio (stream present, mean_volume <= -60dB) -> HIMMEL-786
-#     screenshot fallback taken instead of a doomed transcription (HIMMEL-3043) -
+# --- Test 47: silent audio (stream present, mean_volume <= -60dB) ->
+#     screenshot fallback taken instead of a doomed transcription -
 echo "Test 47: silent audio -> frame fallback (HIMMEL-3043)"
 emit_gallery_dl vid.mp4
 cat > "$tmp/bin/ffmpeg" <<'STUB'
@@ -2670,7 +2670,7 @@ grep -qF "1 slides (1 video-frame) + 0 transcript" "$tmp/silentaudio.out" && a=o
 assert "silent-audio: outcome line marks 1 video-frame" ok "$a"
 
 # --- Test 48: carousel with slides + one no-speech video -> ok (no-speech video
-#     excluded from expected_videos; other media surviving is enough) (HIMMEL-3043)
+#     excluded from expected_videos; other media surviving is enough)
 echo "Test 48: slides + one no-speech video -> ok (HIMMEL-3043)"
 emit_gallery_dl 1.jpg 2.mp4 3.jpg
 cat > "$tmp/bin/ffmpeg" <<'STUB'

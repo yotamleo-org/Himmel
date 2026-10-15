@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# qmd-auth-headers.sh - MCP `headersHelper` for the qmd HTTP daemon (HIMMEL-5002).
+# qmd-auth-headers.sh - MCP `headersHelper` for the qmd HTTP daemon.
 #
 # The daemon requires `Authorization: Bearer <token>`; the token lives in a
 # 0600 file the daemon generates on first start. This prints the headers JSON

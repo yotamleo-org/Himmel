@@ -91,7 +91,7 @@ def write_text(path, text, expect=None):
         pass
     # ponytail: the re-read and the rename are not atomic, so an edit landing
     # between them is still lost; writers outside this tool (Obsidian) take no
-    # lock, so the window can only be narrowed, not closed (HIMMEL-4691).
+    # lock, so the window can only be narrowed, not closed.
     if expect is not None and read_text(p) != expect:
         os.unlink(tmp)
         return False

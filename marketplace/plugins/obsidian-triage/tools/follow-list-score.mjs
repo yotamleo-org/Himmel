@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// follow-list-score.mjs — HIMMEL-660 X-follow-list scorer, Task 5: CLI
+// follow-list-score.mjs — X-follow-list scorer CLI
 // entry + `gather` subcommand. Wires Tasks 1-4 (roster, dossier, verify,
 // screen) into one per-handle evidence-gathering pipeline.
 //
@@ -29,7 +29,7 @@
 // gather pipeline, per roster handle:
 //   buildCorpusEvidence -> fetchAccount -> extractClaims -> resolveGithub
 //   + fetchRepos -> verifyClaims -> screenDossier -> verifyWebClaims
-//   (skipped when injection_suspect, HIMMEL-703 Gap B) -> writeDossier
+// -> writeDossier
 // A handle with an existing (fresh) dossier is skipped unless --refetch.
 // "Fresh" == a dossier already exists on disk; the dossier schema (Task 2)
 // carries no fetch timestamp, so existence is the only signal available.
@@ -37,7 +37,7 @@
 // Hermetic test seams (mirror fxtwitter-enrich.mjs's FXT_FIXTURE): when
 // FOLLOW_GH_FIXTURE / FOLLOW_ACCOUNT_FIXTURE / FOLLOW_SCAN_FIXTURE are set
 // (to a file path OR inline JSON text), the corresponding real dependency
-// (gh / fxtwitter fetch / HIMMEL-256 python screener) is bypassed:
+// is bypassed:
 //   FOLLOW_GH_FIXTURE      -> JSON object keyed by `args.join(" ")`
 //                             (e.g. "api users/x/repos?per_page=100").
 //   FOLLOW_ACCOUNT_FIXTURE -> JSON object keyed by the fetch URL.
@@ -330,7 +330,7 @@ async function processHandle(vaultRoot, handle, rosterInfo, accountSource, deps)
     accountSource,
   });
 
-  // Injection screen BEFORE any LLM-backed web backend (HIMMEL-703 Gap B).
+  // Injection screen BEFORE any LLM-backed web backend.
   // screenDossier concatenates the untrusted bio / repo-descriptions / tweet
   // text that claim.text is derived from and flags injection_suspect
   // (fail-closed). It runs here — not after the web rung — so a suspect
@@ -341,7 +341,7 @@ async function processHandle(vaultRoot, handle, rosterInfo, accountSource, deps)
 
   // Web rung: upgrade the non-github claims verifyClaims left `unverified`
   // (course/role/product/url) against the open web. Skipped entirely for an
-  // injection-suspect dossier (HIMMEL-703 Gap B) — we never feed a flagged
+  // injection-suspect dossier — we never feed a flagged
   // account's claims to an LLM-backed backend. Dark unless a backend is wired
   // (deps.webFn null -> no-op); the chain tries free/local sources before the
   // metered firecrawl last resort. Shared webFn budget-caps the run.

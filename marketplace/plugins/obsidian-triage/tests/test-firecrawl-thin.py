@@ -73,9 +73,9 @@ check("is_thin_body: rich Summary section is not thin",
 check("is_thin_body: 10+ content lines is not thin",
       not mod.is_thin_body("\n".join(f"line {i}" for i in range(12))))
 
-# enricher_gap_host (HIMMEL-799): platform hosts flagged, dedicated routes +
+# enricher_gap_host: platform hosts flagged, dedicated routes +
 # generic articles are not; suffix-aware so real share-link subdomains fold to
-# their base domain (CR HIMMEL-799 Important #1).
+# their base domain.
 check("enricher_gap: bare tiktok host → tiktok.com", mod.enricher_gap_host("https://tiktok.com/@x/video/1") == "tiktok.com")
 check("enricher_gap: www. is stripped", mod.enricher_gap_host("https://www.linkedin.com/posts/x") == "linkedin.com")
 check("enricher_gap: open.spotify.com folds to spotify.com", mod.enricher_gap_host("https://open.spotify.com/episode/abc") == "spotify.com")
@@ -237,7 +237,7 @@ check("body-mismatch → glyph x (failed)", glyph == "x")
 check("body-mismatch → message notes credit spent", "credit spent" in msg)
 check("body-mismatch → clip reverted (unchanged)", p.read_text(encoding="utf-8") == before)
 
-# 13. HIMMEL-4351 — G-1 vault deny/allow lists gate EVERY scrape backend.
+# 13. G-1 vault deny/allow lists gate EVERY scrape backend.
 import io as _io
 import urllib.request
 
@@ -309,7 +309,7 @@ finally:
     sys.stderr = _se
 check("dangling symlink list -> fails closed", mod.url_gate("https://example.com/post", r) is not None)
 
-# HIMMEL-4351 judge round: both the pattern and the URL are normalised, so the
+# both the pattern and the URL are normalised, so the
 # same host spelled another way cannot slip past a deny line.
 r = mod.load_url_rules(make_vault(deny="https://secret.test/**\n"))
 for label, u in [

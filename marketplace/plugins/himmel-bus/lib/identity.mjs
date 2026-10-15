@@ -85,7 +85,7 @@ export async function loadPeers(root) {
 
 // Names are single-use once bound: the exclusive link() fails if the name ever
 // existed. The one idempotent case is a re-arm after a refused launch
-// (HIMMEL-5207): an entry that was registered but never bound, with the same
+// an entry that was registered but never bound, with the same
 // role, console, pair and predecessor, is adopted instead of refused - it has
 // no pid, so nothing can resolve to it and re-registering grants nothing new.
 export async function register(root, name, { role, console: owner, pair, predecessor } = {}) {

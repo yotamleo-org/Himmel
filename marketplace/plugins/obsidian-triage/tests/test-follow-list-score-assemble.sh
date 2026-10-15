@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for HIMMEL-660 follow-list-score.mjs — Task 7 `assemble` subcommand.
+# Tests for follow-list-score.mjs — Task 7 `assemble` subcommand.
 # Reads <handle>.judgment.json + dossier JSON fixtures written directly to
 # disk (no live judge pass), ranks via follow-score.mjs's rankAccounts
 # against the real ./follow-overrides.json seed ({whitelist:["cyrilxbt"],

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// follow-verify.mjs — HIMMEL-660 X-follow-list scorer, Task 3: claim
+// follow-verify.mjs — X-follow-list scorer: claim
 // extraction + gh-api resource evidence + claim verification. Pure —
 // takes injected `ghFn`/`headFn` deps, no network calls of its own.
 //
@@ -27,7 +27,7 @@ const COURSE_HOST_RE = /(?:maven\.com|udemy\.com|gumroad\.com|deeplearning\.ai)\
 // bio and tweets. A bare `@mention`, by contrast, is only a self-role when
 // it's in the BIO — tweet bodies open with a "# Tweet by @handle" byline and
 // mention other handles, so mining @mentions from tweets floods `claims`
-// with always-`unverified` noise that drowns real signal (HIMMEL-660).
+// with always-`unverified` noise that drowns real signal.
 const ROLE_PHRASE_RE = /\bworks?\s+at\s+\S+|\bfounder\s+of\s+\S+/gi;
 const MENTION_RE = /@[A-Za-z0-9_]+\b/gi;
 const STARS_RE = /\d[\d,.]*\s*[km]?\s*stars\b/gi;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4675: faster-whisper + av are pinned to a pair that decodes, both media
+# faster-whisper + av are pinned to a pair that decodes, both media
 # rungs install exactly that pair, and whisper-probe.py catches the av.open
 # `metadata_errors` mismatch (av 19 dropped the kwarg faster-whisper 1.2.1 passes).
 # Hermetic: fake av / faster_whisper modules, no install, no network.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-4677: a bare YouTube watch link (Telegram-clipped, skeleton body) must
+# a bare YouTube watch link (Telegram-clipped, skeleton body) must
 # get its metadata + transcript from the cookieless Scrapling path DURING the
 # harvest batch, not be left as a thin-body partial. The clip below is the shape
 # of the operator's evidence clip (UzMNBN6xLLA) before harvest. The scrapling
@@ -21,8 +21,8 @@ cat > "$tmp/notx.json" <<'JSON'
  "transcript_error": "transcript_empty"}
 JSON
 echo '{"status": "login_wall", "detail": "LOGIN_REQUIRED"}' > "$tmp/wall.json"
-# HIMMEL-4722: status ok but the wrong field types must not crash the render.
-# HIMMEL-4735: one malformed field per fixture, so each validation is pinned.
+# status ok but the wrong field types must not crash the render.
+# one malformed field per fixture, so each validation is pinned.
 echo '{"status": "ok", "title": "Probe Talk", "channel": "Probe Channel", "description": ["x"], "transcript": [{"ts": "0:00", "tx": "hello"}]}' > "$tmp/baddesc.json"
 echo '{"status": "ok", "title": "Probe Talk", "channel": "Probe Channel", "description": "A talk.", "transcript": [{"ts": "0:00", "tx": "hello"}, "bare"]}' > "$tmp/badtx.json"
 cat > "$tmp/scrapling-python" <<'STUB'

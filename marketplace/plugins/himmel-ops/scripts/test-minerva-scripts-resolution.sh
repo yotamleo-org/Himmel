@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-minerva-scripts-resolution.sh -- HIMMEL-606. The minerva SKILL.md embeds a
+# test-minerva-scripts-resolution.sh — The minerva SKILL.md embeds a
 # scripts-dir resolver (twice: Mode + Terminal) so it can invoke autonomy-mode.sh
 # / legs.sh even when CLAUDE_PLUGIN_ROOT is empty (a Codex skill shell). This test
 # EXTRACTS that resolver from the SKILL.md (single source of truth, so the test

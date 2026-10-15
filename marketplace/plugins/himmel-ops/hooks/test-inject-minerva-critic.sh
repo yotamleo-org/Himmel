@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # test-inject-minerva-critic.sh — smoke test for the PreToolUse(Skill) minerva
-# critic-injection hook (HIMMEL-429). The suite is the spec.
+# critic-injection hook. The suite is the spec.
 #
-# Field path (.skill) confirmed by the HIMMEL-429 spike: Claude Code records the
+# Field path (.skill) confirmed by a spike: Claude Code records the
 # Skill tool's input as {"tool_name":"Skill","tool_input":{"skill":"<name>"}}.
 set -uo pipefail
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/inject-minerva-critic.sh"
@@ -13,7 +13,7 @@ emit() { printf '%s' "$1" | bash "$SCRIPT"; }
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"superpowers:brainstorming"}}')
 case "$out" in *spec-critic*|*minerva*) ;; *) echo "FAIL: brainstorming not injected (got '$out')"; fail=1;; esac
 
-# grilling (mattpocock) → routed into minerva Stage 1a (HIMMEL-2039)
+# grilling (mattpocock) → routed into minerva Stage 1a
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"mattpocock-skills:grilling"}}')
 case "$out" in *minerva*) ;; *) echo "FAIL: grilling not routed to minerva (got '$out')"; fail=1;; esac
 

@@ -411,7 +411,7 @@ async function main() {
   // provenance markers already on file, and that field is delimited by
   // whitespace. A key that could itself contain the delimiter (or any
   // character sanitizeCell would rewrite) makes the field boundary
-  // ambiguous — CR round 5: `--msg-id "1 feed"` wrote `tg:1 feed feed`,
+  // ambiguous — e.g. `--msg-id "1 feed"` wrote `tg:1 feed feed`,
   // which a later legitimate `--msg-id 1 --mode feed` matched as its own
   // marker and silently skipped, data loss reported as ⊘ success. The
   // `\s+`/`\b` in the dedup regex were escape-shaped proxies for a field
@@ -526,12 +526,12 @@ async function main() {
   // junction at write time, so the proof and the effect could diverge if
   // a junction were swapped in between; using the proven real path removes
   // that re-resolution. (The narrower same-instant TOCTOU that remains is
-  // the cross-process-lock territory deliberately deferred as HIMMEL-1770.)
+  // the cross-process-lock territory deliberately deferred.)
   // The safety line below keeps the vault-shaped `target` spelling — that
   // is the operator-meaningful location, and the proof just established
   // both name the same contained place.
 
-  // Safety line (HIMMEL-130 review hardening — a manual-testing incident
+  // Safety line (a manual-testing incident
   // showed an unannounced write landing on the operator's REAL vault after a
   // missing --vault value silently fell through to the default resolution;
   // parseArgs now rejects that specific case, but ANY invocation that omits
@@ -658,7 +658,7 @@ async function main() {
       // section itself is load-bearing: this body is inserted INTO
       // `## Products`, whose extent and product headings are decided by
       // `^## …` / `^### …` line shapes — a raw heading line here would
-      // terminate the block it lands in (HIMMEL-1798).
+      // terminate the block it lands in.
       const bodyLines = neutralizeHeadings(neutralizeComments(bodyText).replace(/\r\n/g, "\n")).split("\n");
       while (bodyLines.length && bodyLines[bodyLines.length - 1].trim() === "") bodyLines.pop();
 

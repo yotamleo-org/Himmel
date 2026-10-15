@@ -3,7 +3,7 @@ import os, sys, unittest, copy, shutil, subprocess, json, tempfile, pathlib
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "skills", "vault-lint"))
 import vault_lint as vl
 
-# VAULT_LINT_ENGINE override is the containment-falsification seam (HIMMEL-1762):
+# VAULT_LINT_ENGINE override is the containment-falsification seam:
 # point the subprocess tests at a scratch engine copy with the containment check
 # stripped — the refusal tests must go RED against it.
 _ENGINE = os.environ.get("VAULT_LINT_ENGINE") or os.path.join(
@@ -38,7 +38,7 @@ class TestExtraction(unittest.TestCase):
         self.assertEqual(vl.link_target("Note^block1"), "Note")
         self.assertEqual(vl.link_target("  Note  "), "Note")
         # Table-escaped alias pipe (`[[target\|alias]]` inside a markdown table)
-        # must not leave a trailing backslash on the target (HIMMEL-411).
+        # must not leave a trailing backslash on the target.
         self.assertEqual(vl.link_target(r"path/Note\|Alias"), "path/Note")
         self.assertEqual(
             vl.extract_links(r"| [[30-Resources/Tech/rtk\|rtk]] | x |"),

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for HIMMEL-660 follow-dossier.mjs — corpus evidence gather +
+# Tests for follow-dossier.mjs — corpus evidence gather +
 # dossier write/read round-trip. Filesystem-only; no network. Cross-platform:
 # bash on Linux/macOS/Git-Bash. Uses node (not bun) for CI.
 

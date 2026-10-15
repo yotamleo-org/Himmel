@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ensure-qmd-daemon.sh - bring up the shared qmd HTTP MCP daemon if it is not
-# already serving on localhost:8181 (HIMMEL-592).
+# already serving on localhost:8181.
 #
 # Lives INSIDE the qmd plugin (wired via hooks/hooks.json SessionStart with
 # ${CLAUDE_PLUGIN_ROOT}) so it runs from ANY session in ANY repo where the
@@ -39,7 +39,7 @@
 #   QMD_CURL            curl binary         (default curl)
 #   QMD_START_TIMEOUT   daemon-start bound  (default 20 seconds)
 #   QMD_PS              ps binary           (default ps)
-# Operator knobs (HIMMEL-3062):
+# Operator knobs:
 #   QMD_RSS_CEILING_MB        recycle the daemon above this RSS (default 4096;
 #                              0 disables)
 #   QMD_RECYCLE_COOLDOWN_MIN  minimum minutes between recycles (default 30)
@@ -62,7 +62,7 @@ case "$QMD_RSS_CEILING_MB" in ''|*[!0-9]*) QMD_RSS_CEILING_MB=0 ;; esac
 QMD_RSS_CEILING_MB=$((10#$QMD_RSS_CEILING_MB))
 QMD_RECYCLE_COOLDOWN_MIN=$((10#$QMD_RECYCLE_COOLDOWN_MIN))
 
-# ---- Operator opt-out (HIMMEL-4494) ------------------------------------------
+# ---- Operator opt-out ------------------------------------------
 # The flag file (cross-session, no relaunched shells) or QMD_DAEMON_DISABLED=1
 # (one shell) keeps the shared daemon OFF on purpose, e.g. while gaming (its
 # embed/expand/rerank models contend for the GPU). Checked before ANY probe or
@@ -82,7 +82,7 @@ INIT_PAYLOAD='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolV
 
 # Echo the raw probe response body (empty on connection failure).
 probe_body() {
-  # The daemon requires a bearer token (HIMMEL-5002); read it per probe so the
+  # The daemon requires a bearer token; read it per probe so the
   # file the daemon creates on first start is picked up. The header goes via a
   # curl config on stdin, never argv (visible in ps).
   local tok
@@ -112,7 +112,7 @@ is_qmd_shaped() {
 }
 
 # Resolve how to invoke qmd. Sets QMD_BIN (argv0) and QMD_BIN_ARG1 (optional
-# first arg). Preference order (HIMMEL-928):
+# first arg). Preference order:
 #   1. bun + the bun-global @tobilu/qmd dist/cli/qmd.js -> `bun <qmd.js>`
 #   2. bun global bin shim ($HOME/.bun/bin/qmd, .exe variant on Windows)
 #   3. PATH
@@ -123,9 +123,9 @@ is_qmd_shaped() {
 # uses bun:sqlite; under node it needs the better-sqlite3 native binding,
 # which bun's install blocks by default and which breaks again on every node
 # ABI bump (reproduced live: absent binding + node 26 killed the daemon at
-# startup - HIMMEL-928). `bun <qmd.js>` makes process.execPath = bun and the
+# startup). `bun <qmd.js>` makes process.execPath = bun and the
 # daemon child inherits it. Bun-before-PATH:
-# a broken Windows qmd stub can shadow PATH (HIMMEL-163), so the known-good
+# a broken Windows qmd stub can shadow PATH, so the known-good
 # bun install wins when present. Provenance: minimal inline mirror of
 # qmd-bin.sh - see header.
 resolve_qmd() {
@@ -155,11 +155,11 @@ resolve_qmd() {
   return 1
 }
 
-# ---- Memory ceiling + detached self-recycle (HIMMEL-3062) --------------------
+# ---- Memory ceiling + detached self-recycle --------------------
 # A long-lived daemon has been seen to grow to 6.8 GB RSS / 37% idle CPU over
 # ~4.5h, at which point vec queries time out while lex keeps answering. Bound
 # it: on the healthy path, read the RSS of the pid in qmd's own pidfile (ONE ps
-# call, no network - this runs at every SessionStart, HIMMEL-1844) and, over
+# call, no network - this runs at every SessionStart) and, over
 # QMD_RSS_CEILING_MB, hand the recycle to a DETACHED copy of this script
 # (--recycle) so the SIGTERM + ~15s unwind + restart never spends the hook's
 # budget. Fleets start many sessions at once, so a mkdir lock admits one
@@ -310,7 +310,7 @@ if [ "$remote_models" -eq 1 ]; then
   fi
 fi
 
-# ---- Embed-model swap in progress: do NOT start (HIMMEL-4314) --------------
+# ---- Embed-model swap in progress: do NOT start --------------
 # scripts/luna/qmd-embed-model.sh swap holds this mkdir lock (holder pid inside)
 # from its liveness check to its commit or rollback. A daemon started in that
 # window serves the OLD model's query embeddings against the NEW vectors (a
@@ -393,7 +393,7 @@ fi
 # actually releases the port. If the MCP probe above found the endpoint dead
 # but a previous daemon is still mid-unwind, racing straight to start here
 # would launch a second daemon contending with the first for the same port
-# (HIMMEL-3062). Poll a raw TCP connect - distinct from the qmd-shaped MCP
+# Poll a raw TCP connect - distinct from the qmd-shaped MCP
 # probe above, this only asks "is anything listening", not "is it qmd" - and
 # wait for the port to fully free before starting. PORT_WAIT_TRIES=15 matches
 # the documented ~15s unwind time (common case: each connect attempt below
@@ -432,7 +432,7 @@ done
 # absent (rare platform), degrade to an unbounded start.
 # ${QMD_BIN_ARG1:+"$QMD_BIN_ARG1"} expands to the quoted qmd.js path on the
 # bun-js resolution and to NOTHING (no empty argv slot) otherwise.
-# The daemon outlives this session, so start it from $HOME (HIMMEL-4334): a
+# The daemon outlives this session, so start it from $HOME: a
 # daemon that inherits a worktree cwd pins that worktree ("in use") long after
 # its PR merges. A failed cd falls back to the filesystem root, never the
 # caller's cwd.
@@ -470,7 +470,7 @@ echo "  qmd output was:" >&2
 printf '%s\n' "$start_out" | sed 's/^/    /' >&2
 if [ -z "${QMD_BIN_ARG1:-}" ]; then
   # Non-bun-js resolution: the daemon was started via '$QMD_BIN' - a
-  # node-shebang shim/PATH path, the exact fragile leg HIMMEL-928 fixed.
+  # node-shebang shim/PATH path, the exact fragile leg a prior fix addressed.
   # Most likely cause: the node-side better-sqlite3 binding is missing.
   echo "  (daemon was started via '$QMD_BIN', not 'bun <qmd.js>' - if node's" >&2
   echo "  better-sqlite3 binding is missing, fix with:" >&2

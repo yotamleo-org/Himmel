@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-effort-assess.sh — HIMMEL-3995: effort_assess.py ticket + version modes.
-# Expected numbers are hand-computed from the HIMMEL-3992 formulas:
+# test-effort-assess.sh — effort_assess.py ticket + version modes.
+# Expected numbers are hand-computed from the effort-assess formulas:
 #   median = kappa * (floor + sqrt(Seq(lo) * Seq(hi))) * g1_mult (non-trivial G1)
 #   mean = median * exp(sigma^2/2); P80 = median * exp(0.8416 * sigma)
 # S..S  : 0.681 * (1 + 1) = 1.362,  sigma 0.45 -> mean 1.5071, P80 1.9891
@@ -91,7 +91,7 @@ python3 "$tool" version --in "$td/ver.json" --tol 0 >"$td/v3.json" 2>/dev/null; 
 [ "$rc" -ne 0 ] && ok "tolerance 0 -> non-zero exit" || bad "tolerance 0 should disagree"
 check "tolerance 0 -> agree False" "$(jget "$td/v3.json" "d['agree']")" False
 
-# version mode refuses a refused ticket record and an empty list (HIMMEL-3995 CR round 1)
+# version mode refuses a refused ticket record and an empty list
 cat >"$td/ver-refused.json" <<'EOF'
 [{"median_seq": 1.362, "sigma": 0.45}, {"median_seq": 2.0, "sigma": 0.85, "dod": {"passed": false, "failed": ["red"]}}]
 EOF
@@ -110,7 +110,7 @@ case "$grc" in
   *) bad "model-constant check could not read effort_assess.py (grep rc=$grc)" ;;
 esac
 
-# blank --scope-file does not satisfy scope_files; malformed version numbers are refused (CR round 2)
+# blank --scope-file does not satisfy scope_files; malformed version numbers are refused
 blank=(--low S --high S --g1 no --deps none --scope-file "" --red "test-x fails first" --goal G2 --alternative "keep midpoint")
 python3 "$tool" ticket "${blank[@]}" >"$td/bl.json" 2>"$td/bl.err"; rc=$?
 [ "$rc" -ne 0 ] && grep -q "scope_files" "$td/bl.err" && ok "blank scope-file fails scope_files" || bad "blank scope-file accepted (rc=$rc)"

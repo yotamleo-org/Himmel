@@ -137,7 +137,7 @@ printf '{"k":1,"off":0,"n":99,"h":"%064d","halted":5}\n' 0 > "$XDG_STATE_HOME/hi
 out=$("$BUS" gc 2>&1)
 if printf '%s' "$out" | grep -q 'kept otherLeg.0 (halted)' && ls "$XDG_STATE_HOME"/himmel/bus/log/otherLeg.0.jsonl.* >/dev/null 2>&1; then pass "gc keeps and reports a halted log"; else fail "gc halted: $out"; fi
 
-# KNOWN BREAK (HIMMEL-5072), why gc must not delete yet: store.scan chain-verifies
+# KNOWN BREAK, why gc must not delete yet: store.scan chain-verifies
 # from n=0, so a log with a segment removed scans as empty and --re / read #n die.
 before=$(lib "console.log((await store.scan(root, 'legB')).length)")
 rm -f "$seg0"

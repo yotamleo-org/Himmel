@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for HIMMEL-660 follow-score.mjs — Task 7 deterministic scoring/
+# Tests for follow-score.mjs — Task 7 deterministic scoring/
 # tiering math (composite/adjusted/tierOf) + rankAccounts overrides. Pure;
 # no filesystem/network. Cross-platform: bash on Linux/macOS/Git-Bash.
 # Uses node (not bun) for CI.

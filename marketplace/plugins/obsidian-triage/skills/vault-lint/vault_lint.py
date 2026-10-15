@@ -172,7 +172,7 @@ def main(argv=None) -> int:
     res = lint(a.vault, cfg, today)
     if not a.no_report:
         rp = os.path.join(a.vault, cfg["report_path"].replace("{date}", today))
-        # HIMMEL-1762: prove the report stays inside the vault before any write
+        # prove the report stays inside the vault before any write
         # (makedirs would already escape). Resolve BOTH sides to real paths —
         # symlinks/junctions followed — and require ancestor-or-equal; a
         # `..`-free report_path can still escape via a symlinked directory, so

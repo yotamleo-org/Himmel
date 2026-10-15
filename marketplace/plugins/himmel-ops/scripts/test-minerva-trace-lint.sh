@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016
-# test-minerva-trace-lint.sh — HIMMEL-4375: minerva's terminal lint refuses a
+# test-minerva-trace-lint.sh — minerva's terminal lint refuses a
 # surface-shaped spec with no Fact ownership matrix, a spec with no Invariants
 # section, and a plan that names no test for an invariant. RED fixture:
-# fixtures/minerva-trace-lint/red-spec.md (the HIMMEL-4254 shape, synthetic);
+# fixtures/minerva-trace-lint/red-spec.md;
 # the GREEN spec is that fixture plus the two sections, built here.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"

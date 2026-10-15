@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # guard-judge-writes.sh — PreToolUse hook (matcher
-# "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*"): [HIMMEL-4564].
+# "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*"):
 #
 # A console judge only advises: it reads, writes its verdict, appends Results
 # bullets to its own doc, and reports by SendMessage. headed-arm-leg.sh --judge
@@ -38,7 +38,7 @@
 #       - /tmp/claude-<uid>/ (judge-dir.sh's j<PR> scratch, the session scratchpad),
 #       - under $HANDOVER_DIR but not inside any inbox/ there: only
 #         verdicts/$HIMMEL_CONSOLE_JUDGE_QID/ and the one file
-#         $HIMMEL_CONSOLE_JUDGE_DOC (HIMMEL-4608; headed-arm-leg.sh --judge exports
+#         $HIMMEL_CONSOLE_JUDGE_DOC (headed-arm-leg.sh --judge exports
 #         both). An unset or malformed binding allows nothing under the root.
 #     With HANDOVER_DIR unset only the cache and /tmp scratch are allowed.
 #     A symlink that does not resolve is denied, never judged by its own path.
@@ -52,7 +52,7 @@
 # shell-separator words, not a shell parser — eval, a wrapper script that does
 # the write itself, curl to an API, or a write verb this vocabulary does not
 # list still pass, and Bash file writes (a redirect, rm/mv/tee/sed -i, an
-# interpreter -c) are not screened at all: the structural fix is HIMMEL-4607
+# interpreter -c) are not screened at all: the structural fix is
 # (judge-lane sandbox or permission profile). Over-matching (a read whose text
 # merely carries a verb word, e.g. `gh pr view 12 --comments` is fine but
 # `git log --grep push` denies) is the safe direction.
@@ -108,7 +108,7 @@ resolve() {
     r=$(readlink -f -- "$p" 2>/dev/null) && [ -n "$r" ] && { printf '%s\n' "$r"; return 0; }
     case "$p" in */) return 1 ;; esac
     # A symlink readlink could not resolve is dangling past a missing parent:
-    # its own path says nothing about where a write would land (HIMMEL-4614 T4).
+    # its own path says nothing about where a write would land.
     [ -L "$p" ] && return 1
     leaf="${p##*/}"
     parent="${p%/*}"
@@ -194,7 +194,7 @@ case "$tool" in
             "$cache"/*) exit 0 ;;
         esac
         # judge-dir.sh's /tmp/claude-<uid>/j<PR> scratch and the session
-        # scratchpad (HIMMEL-4614 T7).
+        # scratchpad.
         tmpscratch=$(resolve "/tmp/claude-$(id -u 2>/dev/null)") || tmpscratch=""
         if [ -n "$tmpscratch" ]; then
             case "$resolved" in
@@ -203,7 +203,7 @@ case "$tool" in
         fi
         if [ -n "${HANDOVER_DIR:-}" ]; then
             root=$(resolve "$HANDOVER_DIR") || deny "write-outside" "handover root does not resolve"
-            # The launched judge's own doc and qid (HIMMEL-4608): headed-arm-leg.sh
+            # The launched judge's own doc and qid: headed-arm-leg.sh
             # --judge exports both. A missing or malformed binding allows nothing
             # under the handover root.
             own_doc=""
