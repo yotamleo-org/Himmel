@@ -53,7 +53,7 @@ SCRIPTS="$(cd "$HERE/.." && pwd)"              # scripts/
 # in PowerShell, so no byte twin exists BY DESIGN. Each count is a reviewed
 # exception, not an open category: a new bash-only `node -e` block fails this
 # suite until it is either ported to the .ps1 twin or added here with a reason.
-#   claude-codex: 2        — proxy config validation JS; .ps1 validates natively
+#   claude-codex: 2        — --settings payload + project-settings env screens; .ps1 screens natively
 #   claude-glm: 1          — GLM-specific settings surgery; .ps1 equivalent is native
 #   claude-openrouter: 1   — stdin credit-parser; .ps1 parses ConvertFrom-Json natively
 #   claude-deepseek: 0    — egress, balance, sanitizer and trust all have JS twins
@@ -61,8 +61,8 @@ SCRIPTS="$(cd "$HERE/.." && pwd)"              # scripts/
 #   claude-glm-seed-check.sh: 0  (no embedded JS on either side)
 #   Temporary: the CLAUDE_CODE_AUTO_MODE_SERVER settings strip is bash-only
 #   until it is ported to the .ps1 twins (windows-parked). It adds one bash-only
-#   block to codex (3), glm (2), openrouter (2), deepseek (1) and routed (1) — revert those counts then.
-EXPECT_BASH_ONLY="claude-codex:3 claude-glm:2 claude-openrouter:2 claude-deepseek:1 claude-routed:1 claude-glm-seed-check.sh:0"
+#   block to glm (2), openrouter (2), deepseek (1) and routed (1) — revert those counts then.
+EXPECT_BASH_ONLY="claude-codex:2 claude-glm:2 claude-openrouter:2 claude-deepseek:1 claude-routed:1 claude-glm-seed-check.sh:0"
 
 # Canary floors — today's counts. A pair deleted or a PS delegation dropped
 # trips these; update them CONSCIOUSLY when the twin set genuinely changes.

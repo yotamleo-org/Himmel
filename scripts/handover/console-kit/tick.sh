@@ -63,6 +63,14 @@ per-row suite, case, sha and run: scripts/observability/suite-flake-summary.sh
 console-wait's action key, so it wakes nothing. Env seams: SUITE_FLAKE_LEDGER,
 SUITE_FLAKE_REPO_ID, SUITE_FLAKE_TAIL_ROWS.
 
+parked=<leg>:<age>m[,...] (HIMMEL-2563) follows vmrun= (and flakes= when present), comes
+before spare= when present, and is ABSENT
+unless a leg's newest trust-ledger row (scripts/trust/shadow-ledger.mjs) is a
+permission prompt older than TICK_PARKED_MIN minutes (default 5): the leg is parked on
+the auto-mode confirmation dialog, which its fresh lock heartbeat hides. Names only
+wake console-wait.sh (a leg joining or leaving the set), never the age. Read via
+parked-on-prompt.sh; env seams HIMMEL_TRUST_LEDGER_DIR, TICK_PARKED_TAIL_BYTES.
+
 spare=<pct>@<h>h (HIMMEL-4421) is the very last field and is ABSENT unless the
 weekly quota the current burn leaves unspent at the reset (bank-monitor.sh
 --spare) is >= TICK_SPARE_MIN percent (default 10) and the reset is <=
@@ -1270,6 +1278,19 @@ if [ -n "$console_doc" ] && [ -n "${fails_start:-}" ] && command -v jq >/dev/nul
     fi
 fi
 
+# parked=<leg>:<age>m,...: a headed leg whose newest trust-ledger row is a
+# permission prompt nobody answered for TICK_PARKED_MIN minutes (default 5), i.e. it
+# is sitting on the auto-mode confirmation dialog while its lock heartbeat stays
+# fresh. ABSENT unless a leg is parked, so a quiet fleet changes no line. Read-only;
+# parked-on-prompt.sh holds the rule and the seams (HIMMEL_TRUST_LEDGER_DIR).
+parked_tail=""
+parked_docs=()
+for leg in $LEGS_SPLIT; do parked_docs+=("$(resolve_doc "$leg")"); done
+if [ "${#parked_docs[@]}" -gt 0 ]; then
+    parked_out="$(bash "$HERE/parked-on-prompt.sh" "${parked_docs[@]}" 2>/dev/null | head -n 1)" || parked_out=""
+    case "$parked_out" in ''|parked=none|'parked=?') ;; *[!A-Za-z0-9._:,=+@-]*) ;; parked=*) parked_tail=" $parked_out" ;; esac
+fi
+
 fill="$(bash "$REPO/scripts/context-fill.sh" --percent 2>/dev/null)" || fill=""
 case "$fill" in ''|*[!0-9]*) fill='?' ;; esac
 
@@ -1604,6 +1625,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'worker-session failures: %s\n' "$fails_summary"
     printf 'vm runner: %s\n' "$vmrun_summary"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
+    [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
@@ -1620,10 +1642,10 @@ else
     # `vault=` sits between `tracker=` and `denials=`; `cloud=` follows `vault=`.
     if [ "$burn" -eq 1 ]; then
         printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$spare_tail"
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$spare_tail"
     else
         printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$spare_tail"
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$spare_tail"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

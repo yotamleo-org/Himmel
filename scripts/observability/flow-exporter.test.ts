@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderMetrics, createExporterCache, parseHostDetectorJson, runGitDivergence, readShippedGraphCommitTime, renderSessionsJson, defaultPidLiveness, hookChainMetrics, defaultHookChainSkipLogPaths, hookChainSkipLogUnreadableMetrics } from "./flow-exporter";
+import { renderMetrics, createExporterCache, parseHostDetectorJson, runGitDivergence, readShippedGraphCommitTime, renderSessionsJson, defaultPidLiveness, hookChainMetrics, defaultHookChainSkipLogPaths, hookChainSkipLogUnreadableMetrics, registryLedgerPath } from "./flow-exporter";
 import { serializeSessionRun, type SessionCloseEvidence, type SessionEndReason, type SessionRunRow, type SubagentOutcome } from "./session-run-ledger";
 import { serializeFlowRunEnd, serializeFlowRunStart, type FlowRunEnd, type FlowRunStart } from "../telegram/flow-run-ledger";
 import { serializeQuotaGauge, type QuotaGaugeRecord } from "../telegram/quota-gauge";
@@ -2206,4 +2206,62 @@ test("eval-runs regression gauge skips a metric whose eval-compare.json band is 
   // control: a valid band still gates, and 0.8 -> 0.5 is beyond it
   expect(body).toContain('himmel_eval_metric_regression{eval="lane-quality",metric="valid"} 1');
   expect(body).not.toContain("metric=valid ");
+});
+
+// The exporter resolves each ledger it reads from ledgers.json,
+// so a registry row whose default_path moves must move the read with it.
+function registryWithPaths(paths: Record<string, string>): string {
+  const reg = JSON.parse(readFileSync(join(import.meta.dir, "ledgers.json"), "utf-8"));
+  for (const row of reg.ledgers) if (paths[row.id]) row.default_path = paths[row.id];
+  const out = join(tmp, "ledgers.json");
+  writeFileSync(out, JSON.stringify(reg));
+  return out;
+}
+
+test("exporter follows a moved ledgers.json default_path for flow-runs, session-runs, tool-call-census and eval-runs", async () => {
+  const flow = join(tmp, "moved", "flow.jsonl");
+  const session = join(tmp, "moved", "session.jsonl");
+  const census = join(tmp, "moved", "census.jsonl");
+  const evalRuns = join(tmp, "moved", "eval.jsonl");
+  mkdirSync(join(tmp, "moved"));
+  writeLines(flow, [
+    serializeFlowRunStart(flowStart("moved-flow", "m1", "2026-07-13T11:00:00Z")),
+    serializeFlowRunEnd(flowEnd("moved-flow", "m1", "2026-07-13T11:05:00Z", "complete", 1)),
+  ]);
+  writeLines(session, [serializeSessionRun(sessionStart("moved-s1", "2026-07-13T11:00:00Z", null, "moved-host"))]);
+  // An unparseable row is the cheapest proof the exporter opened this file.
+  writeLines(census, ["not json"]);
+  writeLines(evalRuns, ["not json"]);
+  const registry = registryWithPaths({ "flow-runs": flow, "session-runs": session, "tool-call-census": census, "eval-runs": evalRuns });
+  const env = { HOME: join(tmp, "no-home"), HIMMEL_LEDGERS_JSON: registry };
+  const body = await renderMetrics({
+    nowMs: NOW,
+    env,
+    configPath: join(tmp, "missing-observability.json"),
+    lanesPath: join(tmp, "no-lanes.json"),
+    platform: "linux",
+    procRoot: mkdtempSync(join(tmp, "empty-proc-")),
+  });
+  expect(body).toContain('flow="moved-flow"');
+  expect(body).toContain("moved-host");
+  expect(body).toContain("himmel_tool_* partial: 1 unparseable census row");
+  expect(body).toContain("himmel_eval_* partial: 1 unparseable eval-runs row");
+});
+
+test("registryLedgerPath keeps USERPROFILE-first home for census and eval-runs, HOME-first for flow-runs", () => {
+  const env = { HOME: "/h", USERPROFILE: "/u" };
+  expect(registryLedgerPath("tool-call-census", env)).toBe(join("/u", ".himmel", "tool-call-census.jsonl"));
+  expect(registryLedgerPath("eval-runs", env)).toBe(join("/u", ".himmel", "eval-runs.jsonl"));
+  expect(registryLedgerPath("flow-runs", env)).toBe(join("/h", ".himmel", "flow-runs.jsonl"));
+});
+
+test("hook-chain-skips outside the repo root scans no worktree paths", () => {
+  mkdirSync(join(tmp, "repo", ".claude", "worktrees", "wt1"), { recursive: true });
+  const { paths } = defaultHookChainSkipLogPaths({ HOME: "/h", HIMMEL_LEDGERS_JSON: registryWithPaths({ "hook-chain-skips": "~/skips/skips.jsonl" }) }, join(tmp, "repo"));
+  expect(paths).toEqual([join("/h", "skips", "skips.jsonl")]);
+});
+
+test("exporter follows a moved ledgers.json hook-chain-skips path", () => {
+  const { paths } = defaultHookChainSkipLogPaths({ HIMMEL_LEDGERS_JSON: registryWithPaths({ "hook-chain-skips": "<repo>/moved-logs/skips.jsonl" }) }, join(tmp, "repo"));
+  expect(paths[0]).toBe(join(tmp, "repo", "moved-logs", "skips.jsonl"));
 });

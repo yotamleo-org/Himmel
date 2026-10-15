@@ -2500,58 +2500,83 @@ fi
 # _fs_case_insensitive is a NESTED function inside _corpus_clean (not
 # sourceable in isolation), and a child `bash "$SCRIPT"` has its own
 # unknowable $$, so an end-to-end poison can never deterministically land on
-# the child's candidate-0 twin. So this exercises the production probe loop
-# in THIS shell (shared, known $$) on a poisoned corpus -- a faithful mirror
-# of refresh-graph-map.sh's _fs_case_insensitive loop; keep the two in sync.
-# It asserts (a) candidate 0 is SKIPPED (the loop lands on a later suffix)
-# and (b) the verdict still AGREES with the independent write-x/stat-X
-# reference probe (FS_IS_CASE_INSENSITIVE) with the poisoned twin present.
+# the child's candidate-0 twin. So the production definitions are lifted out of
+# the script text and run in THIS shell (shared, known $$) on a poisoned corpus
+# -- the test exercises the real probe loop, not a copy that could drift.
+# It asserts (a) the verdict AGREES with the independent write-x/stat-X
+# reference probe (FS_IS_CASE_INSENSITIVE) with the poisoned twin present and
+# (b) the poison was neither clobbered nor removed.
 # Portable -- passes on case-insensitive AND case-sensitive filesystems: on
 # the former the poisoned uppercase name IS the lowercase inode (the
 # existence check still rejects candidate 0); on the latter it is a separate
 # file (the twin check rejects it). ---
 T39PROBE="$WS/excl12probe"; mkdir -p "$T39PROBE"
-# Poison candidate 0's UPPERCASE twin with THIS shell's $$ (the in-shell
-# replica loop below uses the same $$). This is exactly the [codex-r4-2]
-# hazard: a leftover a crashed prior run (possibly with a reused PID) leaves
-# behind that a single-shot probe would mistake for case-insensitivity.
-printf 'stale' > "$T39PROBE/$(printf '%s' ".graphify-fs-probe-$$-0-x" | tr '[:lower:]' '[:upper:]')"
+T39POISON="$T39PROBE/$(printf '%s' ".graphify-fs-probe-$$-0-x" | tr '[:lower:]' '[:upper:]')"
+printf 'stale' > "$T39POISON"
 unset GRAPHIFY_FS_CASE_INSENSITIVE
+# shellcheck disable=SC2034 # read by the eval'd production _fs_case_insensitive
 CORPUS_ROOT_CANON="$T39PROBE"
 _GRAPHIFY_FS_CASE=""
-suffix_used=""
-probe_lo=""; probe_up=""; i=""
-# --- in-process mirror of refresh-graph-map.sh _fs_case_insensitive loop ---
-for i in 0 1 2 3 4 5 6 7 8 9; do
-  probe_lo="$CORPUS_ROOT_CANON/.graphify-fs-probe-$$-$i-x"
-  probe_up="$CORPUS_ROOT_CANON/$(printf '%s' ".graphify-fs-probe-$$-$i-x" | tr '[:lower:]' '[:upper:]')"
-  if [ -e "$probe_lo" ] || [ -L "$probe_lo" ] \
-     || [ -e "$probe_up" ] || [ -L "$probe_up" ]; then
-    continue
-  fi
-  if ( umask 077; set -C; printf 'x' > "$probe_lo" ) 2>/dev/null; then
-    if [ -e "$probe_up" ]; then
-      _GRAPHIFY_FS_CASE=1
-    else
-      _GRAPHIFY_FS_CASE=0
-    fi
-    suffix_used="$i"
-    rm -f "$probe_lo" 2>/dev/null || true
-    break
-  fi
-done
-# Sweep the poison + any stray candidate file (case-insensitive fs: the two
-# names are one inode; case-sensitive fs: only the uppercase poison lingers,
-# the chosen lowercase file was already removed above).
-rm -f "$T39PROBE/.GRAPHIFY-FS-PROBE-$$-0-X" "$T39PROBE/.graphify-fs-probe-$$-0-x" 2>/dev/null || true
-if [ -z "$suffix_used" ] || [ "$suffix_used" -eq 0 ]; then
-  fail "T39 stale-uppercase leftover was NOT skipped (probe landed on suffix '${suffix_used:-<none>}'); candidate 0 should have been rejected by the both-twins-absent check"
-elif [ "$_GRAPHIFY_FS_CASE" -ne "$FS_IS_CASE_INSENSITIVE" ]; then
-  fail "T39 probe verdict ($_GRAPHIFY_FS_CASE) DISAGREES with the independent write-x/stat-X reference probe ($FS_IS_CASE_INSENSITIVE) with a poisoned candidate-0 twin present"
+eval "$(sed -n '/^  _lc() {/p;/^  _fs_case_insensitive() {/,/^  }$/p' "$SCRIPT")"
+if ! declare -F _fs_case_insensitive >/dev/null; then
+  fail "T39 could not lift _fs_case_insensitive out of $SCRIPT"
 else
-  pass "T39 stale-uppercase probe leftover skipped (landed on suffix $suffix_used) and verdict ($_GRAPHIFY_FS_CASE) AGREES with the reference probe -- [codex-r4-2] hazard closed"
+  _fs_case_insensitive 2>/dev/null || true
+  t39_poison_body="$(cat "$T39POISON" 2>/dev/null || true)"
+  rm -f "$T39POISON" "$T39PROBE/.graphify-fs-probe-$$-0-x" 2>/dev/null || true
+  if [ "$_GRAPHIFY_FS_CASE" != "$FS_IS_CASE_INSENSITIVE" ]; then
+    fail "T39 probe verdict (${_GRAPHIFY_FS_CASE:-<none>}) DISAGREES with the independent write-x/stat-X reference probe ($FS_IS_CASE_INSENSITIVE) with a poisoned candidate-0 twin present"
+  elif [ "$t39_poison_body" != "stale" ]; then
+    fail "T39 the production probe clobbered or removed the stale candidate-0 twin (body: '$t39_poison_body')"
+  else
+    pass "T39 stale-uppercase probe leftover skipped, left intact, and verdict ($_GRAPHIFY_FS_CASE) AGREES with the reference probe -- [codex-r4-2] hazard closed"
+  fi
 fi
-unset probe_lo probe_up i suffix_used _GRAPHIFY_FS_CASE CORPUS_ROOT_CANON
+unset t39_poison_body _GRAPHIFY_FS_CASE CORPUS_ROOT_CANON
+unset -f _fs_case_insensitive _lc
+
+# --- T39b: _lc must fold under LC_ALL=C. The containment slice takes the FOLDED
+# string's length and applies it to the original-case path, so the fold has to
+# be byte-for-byte length-preserving; a locale-sensitive `tr` (BSD/macOS under a
+# UTF-8 locale) can remap non-ASCII characters and shift the slice. A `tr` shim
+# records the LC_ALL each fold of a corpus path ran under; the forced-fold run
+# must only ever see "C". ---
+T39BBIN="$WS/t39bbin"; mkdir -p "$T39BBIN"
+T39BREAL_TR="$(command -v tr)"
+cat > "$T39BBIN/tr" <<STUB
+#!/usr/bin/env bash
+in="\$(cat; printf x)"; in="\${in%x}"
+case "\$1:\$in:\$(ps -o command= -p "\$PPID" 2>/dev/null)" in "[:upper:]":*t39bcorpus*:*refresh-graph-map.sh*) printf "%s\n" "\${LC_ALL-unset}" >> "$WS/t39b-lc-all.log" ;; esac
+printf '%s' "\$in" | "$T39BREAL_TR" "\$@"
+STUB
+chmod +x "$T39BBIN/tr"
+cat > "$T39BBIN/graphify" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "--version" ]; then printf 'graphify 0.0.0\n'; exit 0; fi
+target=""
+if [ "\$1" = "cluster-only" ]; then target="\$2"; else target="\$1"; fi
+mkdir -p "\$target/graphify-out"
+printf '{"nodes":[],"links":[]}' > "\$target/graphify-out/graph.json"
+cat > "\$target/graphify-out/GRAPH_REPORT.md" <<'RPT'
+$REPORT_FIXTURE
+RPT
+exit 0
+STUB
+chmod +x "$T39BBIN/graphify"
+T39BCORPUS="$WS/t39bcorpus"; mkdir -p "$T39BCORPUS/notes" "$T39BCORPUS/60-Maps"
+printf '# n\ncontent\n' > "$T39BCORPUS/notes/n.md"
+: > "$WS/t39b-lc-all.log"
+out=$( env -u LC_ALL LANG=en_US.UTF-8 GRAPHIFY_FS_CASE_INSENSITIVE=1 GRAPHIFY_MAP_BIN="$T39BBIN/graphify" PATH="$T39BBIN:$PATH" \
+  bash "$SCRIPT" --name t39btest --corpus-root "$T39BCORPUS" --backend claude-cli \
+  --maps-dir "$T39BCORPUS/60-Maps" --title "T39b Map" --slug t39b-map --corpus-tag t39b 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T39b run exit 0 (got $rc): $out"
+if [ ! -s "$WS/t39b-lc-all.log" ]; then
+  fail "T39b the forced-fold run never reached _lc (shim saw no lowercase fold), so the LC_ALL pin is unobserved"
+elif grep -qv '^C$' "$WS/t39b-lc-all.log"; then
+  fail "T39b _lc ran a locale-sensitive fold (LC_ALL seen: $(sort -u "$WS/t39b-lc-all.log" | tr '\n' ' '))"
+else
+  pass "T39b every _lc fold ran under LC_ALL=C (byte-wise, length-preserving)"
+fi
 
 # --- T40: the native Kimi
 # backend (key wiring, backend passthrough, one allow+log ledger line per run,

@@ -53,14 +53,14 @@ deny_shapes() {  # <hook> <program words before the arguments> <arguments>
     check deny "$h" "V=ab; \${V[1,-3]}$p $a"
     check deny "$h" "V=Q; \${(P)V}$p $a"
     check deny "$h" "echo hi; \${V:-}$p $a"
-    # a quoted brace inside the expansion must not end it early (HIMMEL-5328 round 1)
+    # a quoted brace inside the expansion must not end it early
     check deny "$h" "\${V+'{}'}$p $a"
     check deny "$h" "\${V+'}'}$p $a"
     check deny "$h" "\${V+\"{\"}$p $a"
     check deny "$h" "\${V:-\\}}$p $a"
     check deny "$h" "\${V#{}$p $a"
     check deny "$h" "\${V:-\${Z}}$p $a"
-    # a brace inside a command substitution must not end the expansion (round 3)
+    # a brace inside a command substitution must not end the expansion
     check deny "$h" "\${V:-\$(true })}$p $a"
     check deny "$h" "\${V:-\`true }\`}$p $a"
     check deny "$h" "\${V:-\$(echo ')}')}$p $a"
@@ -76,7 +76,7 @@ deny_shapes() {  # <hook> <program words before the arguments> <arguments>
     check deny "$h" "\${V+\"\${Z:-\"}\"}\"}$p $a"
     check deny "$h" "\${V+\$'\\'}'}$p $a"
     # a body is an allowlist: a `$` not followed by `{`, a bracket or a paren
-    # fails closed (zsh/ksh `$[…]` arithmetic hides a `}`; round 9)
+    # fails closed
     check deny "$h" "\${V+\$[}]}$p $a"
     check deny "$h" "\${V:-\$((1))}$p $a"
   }
@@ -93,7 +93,7 @@ deny_shapes block-read-secrets.sh 'cat' '.env'
 check deny block-read-secrets.sh 'cat ${V:-} .env'
 
 # a default word is what the command runs when the variable is unset or empty:
-# the protected program can ride in it (HIMMEL-5525)
+# the protected program can ride in it
 for op in ':-' '-' ':=' '=' ':+' '+'; do
   check deny block-bare-qmd-query.sh "\${V${op}qmd} query hello"
   check deny block-read-secrets.sh "\${V${op}cat} .env"

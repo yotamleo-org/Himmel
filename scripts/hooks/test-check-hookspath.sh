@@ -52,7 +52,7 @@ make_repo() {
     local hooks_path_setting="$1"  # empty string = leave unset
     local dir
     dir=$(fixture_mktemp_dir) || return 1
-    # HIMMEL-3179: the cases below write "$d/..." into core.hooksPath and the hook
+    # the cases below write "$d/..." into core.hooksPath and the hook
     # compares it with the toplevel git reports (physical, native: macOS
     # /private/var/..., Git Bash C:/Users/... — never the raw /tmp/... mktemp
     # spelling). Hand the cases the one spelling git itself uses.
@@ -104,7 +104,7 @@ assert_rc "T2b set inside repo (relative)"             0 "$(run_in "$d")"
 rm -rf "$d"
 
 # --- T3: core.hooksPath = NONEXISTENT path → FAIL (rc=1) ---
-# This is the HIMMEL-45 reproduction: post-rename, the old absolute
+# This is the post-rename reproduction: post-rename, the old absolute
 # path no longer resolves to anything on disk.
 d=$(make_repo "/this/path/does/not/exist/anywhere") || exit 1
 assert_rc "T3 nonexistent path"                        1 "$(run_in "$d")"
@@ -151,7 +151,7 @@ assert_rc "T7 linked worktree -> primary git-common-dir/hooks" 0 "$(run_in "$lin
 ( cd "$d" && { git worktree remove -f ../linked-wt >/dev/null 2>&1 || true; } )
 rm -rf "$d" "$linked_wt"
 
-# --- T7b: bare `--git-common-dir` returns a RELATIVE value (HIMMEL-2640) →
+# --- T7b: bare `--git-common-dir` returns a RELATIVE value →
 # still OK (rc=0) ---
 # On the git installed on this station, --git-common-dir for a LINKED
 # worktree already comes back absolute regardless of cwd depth (confirmed by

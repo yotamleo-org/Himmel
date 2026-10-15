@@ -82,8 +82,11 @@ for i, r in enumerate(rows):
     # A reader may resolve the path through the writer module's own helper
     # (flow-exporter.ts imports ledgerPath from ../telegram/flow-run-ledger).
     writer_import = "/" + os.path.splitext(os.path.basename(r["writer"]))[0] + '"'
+    # A reader may also resolve the path from this registry by id
+    # (flow-exporter.ts registryLedgerPath("<id>", ...)).
+    registry_lookup = 'registryLedgerPath("' + r["id"] + '"'
     for role, rel in [("writer", r["writer"])] + [("reader", x) for x in r["readers"]]:
-        hit = mentions(rel, needles + ([writer_import] if role == "reader" else []))
+        hit = mentions(rel, needles + ([writer_import, registry_lookup] if role == "reader" else []))
         if hit is None:
             fails.append(f"{tag}: {role} {rel} does not exist")
         elif not hit:

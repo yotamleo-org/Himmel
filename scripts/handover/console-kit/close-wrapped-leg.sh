@@ -7,7 +7,12 @@
 # doc is free AND its own last Results marker-bullet is WRAPPED. It never
 # kills a pid it cannot independently prove belongs to that leg.
 #
-# Usage: close-wrapped-leg.sh [--console | --fleet <manifest>] <leg-doc>
+# Usage: close-wrapped-leg.sh [--check] [--console | --fleet <manifest>] <leg-doc>
+# --check runs every pre-close check below and stops before anything with a
+# side effect: no session-note capture, no TERM, no cost row, reap, digest or
+# prune. It prints SAFE-TO-CLOSE (rc 0) or the refusal a real close would
+# print, with the same exit code, so an operator closing a window by hand can
+# ask first. Exit 0 means safe to close.
 # --console closes a wrapped PREDECESSOR console's window: the
 # same lock/WRAPPED/one-session checks and subtree check, then TERM - no cost
 # row, /tmp reap, digest or worktree prune. Run it right after your own LIVE.
@@ -86,11 +91,15 @@ TMP_REAP="${TMP_REAP_BIN:-$HERE/../../tmp-reap.sh}"
 LIVE_SUBAGENTS="${LIVE_SUBAGENTS_BIN:-$HERE/live-subagents.sh}"
 
 usage() {
-    echo "usage: close-wrapped-leg.sh [--console | --fleet <manifest>] <doc>" >&2
+    echo "usage: close-wrapped-leg.sh [--check] [--console | --fleet <manifest>] <doc>" >&2
 }
 
 FLEET_MANIFEST=""
 CONSOLE_MODE=0
+CHECK_MODE=0
+if [ "${1:-}" = --check ]; then
+    CHECK_MODE=1; shift
+fi
 if [ "${1:-}" = --fleet ]; then
     if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then usage; exit 2; fi
     FLEET_MANIFEST="$2"; shift 2
@@ -222,7 +231,7 @@ if [ -z "$leg_cfg" ] && [ -n "$FLEET_MANIFEST" ] && [ -r "$FLEET_MANIFEST" ] \
 fi
 LEG_CONFIG_DIR="${leg_cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
 PROJECTS_DIR="${CLOSE_WRAPPED_LEG_PROJECTS_DIR:-$LEG_CONFIG_DIR/projects}"
-if [ -r "$END_SESSION_WIKI" ] && [ -d "$PROJECTS_DIR" ]; then
+if [ "$CHECK_MODE" -eq 0 ] && [ -r "$END_SESSION_WIKI" ] && [ -d "$PROJECTS_DIR" ]; then
     # The two-pass customTitle search lives in leg-transcripts.sh,
     # shared with leg-digest-step.sh --doc: same "exactly one" semantics.
     candidates=$(printf '%s\n%s\n' "${ident#*$'\t'}" "$doc_stem" | tr ',' '\n' | sed '/^$/d')
@@ -286,6 +295,12 @@ if [ "$subagents_rc" -ne 0 ]; then
         echo "close-wrapped-leg: refusing to signal pid $matched - cannot prove session '$digest_sid' has no live subagents (above); retry shortly" >&2
     fi
     exit 7
+fi
+
+# ---------- --check: every refusal above ran, nothing was signalled ----
+if [ "$CHECK_MODE" -eq 1 ]; then
+    echo "SAFE-TO-CLOSE: pid $matched ($(leg_label "$DOC")) has no live subtree or subagent; nothing was signalled"
+    exit 0
 fi
 
 # ---------- --console: a wrapped predecessor console -------------

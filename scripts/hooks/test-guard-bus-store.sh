@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/guard-bus-store.sh (HIMMEL-4829, himmel-bus T6).
+# Smoke suite for scripts/hooks/guard-bus-store.sh
 # A speed bump over the himmel-bus store (threat model T3, T5, T6): a session's
 # Bash/Write/Edit that reaches under the bus root, calls `bus register|bind|
 # rebind`, or assigns HIMMEL_BUS_* is denied; `bus status|peers|wait|send|adopt`

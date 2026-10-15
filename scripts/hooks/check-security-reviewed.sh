@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-push hook: security-review attestation gate (HIMMEL-176).
+# Pre-push hook: security-review attestation gate.
 #
 # Friction this prevents: code changes ship without an explicit security
 # review pass. Existing CR-before-push (multi-agent code review) catches
@@ -16,7 +16,7 @@
 #   3. an explicit bypass.
 #
 # The line is a self-attestation — the gate does NOT run the review
-# itself. This is HIMMEL-128 compliant: no new headless-claude
+# itself. No new headless-claude
 # invocations are introduced; the operator runs the security review
 # in-session (via /security-review slash command vendored from
 # anthropics/claude-code-security-review, OR via any other mechanism the
@@ -60,11 +60,11 @@
 #   1 — block (code changed + no attestation + no bypass)
 #   2 — block (cannot evaluate — fail-closed: can't source guardrails/lib.sh,
 #       can't read the current branch, or no diff base resolves on the online
-#       path; HIMMEL-323)
+#       path)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# default_branch() resolves the protected default (main OR master, HIMMEL-297)
+# default_branch() resolves the protected default (main OR master)
 # used as the diff base below. Fail-closed: a missing guardrail substrate means
 # we cannot compute the right base, so refuse the push.
 # shellcheck source=../guardrails/lib.sh
@@ -74,7 +74,7 @@ if ! { [ -r "$SCRIPT_DIR/../guardrails/lib.sh" ] && . "$SCRIPT_DIR/../guardrails
     exit 2
 fi
 
-# Resolve THIS worktree's branch via lib.sh::_branch (HIMMEL-323). `git branch
+# Resolve THIS worktree's branch via lib.sh::_branch. `git branch
 # --show-current` is worktree-correct under a normal pre-push (git points GIT_DIR
 # at the worktree's own gitdir) but reads the PRIMARY worktree's HEAD if GIT_DIR
 # is aimed at the shared .git; routing through _branch keeps the pre-push gates'
@@ -100,7 +100,7 @@ fi
 
 # Resolve diff base. Mirror check-platforms-tested.sh — prefer origin/<default>
 # over local <default> so linked worktrees do not re-flag work already on the
-# push target. <default> = main OR master (HIMMEL-297).
+# push target. <default> = main OR master.
 db=$(default_branch)
 if [ "${SECURITY_REVIEW_NO_FETCH:-0}" != "1" ]; then
     git fetch -q origin "$db" 2>/dev/null || true
@@ -115,20 +115,20 @@ elif [ "${SECURITY_REVIEW_NO_FETCH:-0}" = "1" ]; then
     # No resolvable base AND the operator opted into offline mode (NO_FETCH):
     # a shallow/offline clone legitimately may not carry the default ref. We
     # cannot evaluate the gate, but blocking here would break the documented
-    # offline workflow — skip with a LOUD warning (HIMMEL-323).
+    # offline workflow — skip with a LOUD warning.
     echo "→ security-review: no 'origin/$db' or local '$db' ref and SECURITY_REVIEW_NO_FETCH=1 — cannot compute diff; SKIPPING the gate (WARNING: security surface NOT checked — confirm review ran before merge)" >&2
     exit 0
 else
     # Online path: we attempted `git fetch origin $db` and STILL cannot resolve
     # any base. That is a genuinely broken state (default renamed and origin/HEAD
     # not pointing at it, corrupt refs) — not a normal clone, which always has
-    # origin/<default>. Fail CLOSED (HIMMEL-323): refusing the push beats silently
+    # origin/<default>. Fail CLOSED: refusing the push beats silently
     # skipping the gate on an unattested code change.
     echo "→ security-review: no 'origin/$db' or local '$db' ref after fetch — refusing the push (rc=2 = cannot evaluate the gate). Set SECURITY_REVIEW_NO_FETCH=1 for a known-offline/shallow clone, or bypass with SKIP_SECURITY_REVIEW=1 / git push --no-verify." >&2
     exit 2
 fi
 
-# Fail CLOSED if the diff itself can't be computed (HIMMEL-323). The 3-dot
+# Fail CLOSED if the diff itself can't be computed. The 3-dot
 # range needs a merge base; an orphan/unrelated-history branch makes `git diff`
 # exit non-zero. The old `|| true` swallowed that to an empty list, which the
 # `[ -z ]` line below then treated as "no changes" → a silent PASS on a branch
@@ -163,7 +163,7 @@ commit_msgs=$(git log --format='%B' "${diff_base}..HEAD" 2>/dev/null || true)
 #   `Security reviewed: manual.`           -> match
 #   `Security reviewed: manual, fix X`     -> match
 #
-# HIMMEL-1681: the token must sit IMMEDIATELY after the colon. The old
+# the token must sit IMMEDIATELY after the colon. The old
 # `:.*${TOKEN_RE}` let it appear anywhere later on the line, so a trailer that
 # explicitly NEGATES the attestation satisfied the gate:
 #   `Security reviewed: no manual review was performed`  -> used to MATCH
@@ -172,7 +172,7 @@ commit_msgs=$(git log --format='%B' "${diff_base}..HEAD" 2>/dev/null || true)
 TOKEN_RE='(manual|claude-code-security-review|pr-review-toolkit|ad-hoc)([[:space:]]|$|[.,;])'
 ATTEST_RE="^[[:space:]]*Security reviewed:[[:space:]]*${TOKEN_RE}"
 
-# HIMMEL-1115: match with a here-string, NOT `printf ... | grep -q`.
+# match with a here-string, NOT `printf ... | grep -q`.
 #
 # Under this script's `set -euo pipefail`, the piped form is actively broken
 # once "$commit_msgs" exceeds the OS pipe buffer (~64KB): printf BLOCKS
@@ -209,7 +209,7 @@ pr_body=""
 if command -v gh >/dev/null 2>&1; then
     pr_body=$(gh pr view "$branch" --json body --jq '.body' 2>/dev/null || true)
 fi
-# Same here-string form as the commit-message matches above (HIMMEL-1115). A
+# Same here-string form as the commit-message matches above. A
 # PR body rarely approaches 64KB, but the hazard is identical in shape and
 # there is no reason to leave one instance of it standing.
 if [ -n "$pr_body" ] && grep -qiE "$ATTEST_RE" <<<"$pr_body"; then
@@ -218,7 +218,7 @@ if [ -n "$pr_body" ] && grep -qiE "$ATTEST_RE" <<<"$pr_body"; then
     exit 0
 fi
 
-# HIMMEL-1562: the refusal must distinguish a MISSING attestation (case a)
+# the refusal must distinguish a MISSING attestation (case a)
 # from a PRESENT-but-nonconforming one (case b). The generic "no attestation
 # was found" misdirects the operator when the trailer EXISTS but its value
 # failed to match — which is the more common and more confusing failure (a

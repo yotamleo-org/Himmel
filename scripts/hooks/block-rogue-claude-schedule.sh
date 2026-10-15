@@ -3,7 +3,7 @@
 #
 # Blocks a tool call that registers an OS scheduler job which launches claude
 # WITHOUT routing through the sanctioned arming tools — the exact shape that bit
-# us in HIMMEL-647: a session hand-rolled
+# us once: a session hand-rolled
 #     schtasks /create /tn HIMMEL-Arm-640-detector /tr <temp.bat> /sc ONCE ...
 # where the .bat was just `"claude.exe" "load <handover> overnight mode"` — no
 # `cd /d`, no Start In. schtasks fires a task with its DEFAULT cwd
@@ -15,7 +15,7 @@
 # The fix is to force scheduled claude relaunches back through the tools that
 # already do it right:
 #   - scripts/handover/arm-resume.sh   (emits `cd /d "$RESUME_CWD" || exit /b 1`,
-#                                       pre-trusts the cwd HIMMEL-386, dedups,
+#                                       pre-trusts the cwd, dedups,
 #                                       names tasks HIMMEL-Resume-*, self-cleans)
 #   - scripts/luna/pipeline-cadence.sh (same cwd + trust handling for the
 #                                       recurring clip-pipeline cadence)
@@ -35,7 +35,7 @@
 # targets the accidental shape, not a determined bypass): if the rogue arm is
 # SPLIT across two tool calls (write the .bat in call 1, `schtasks /create
 # /tr that.bat` in call 2), call 2 carries no `claude` token and is not caught.
-# The HIMMEL-647 incident did both in ONE PowerShell call, which IS caught.
+# The incident did both in ONE PowerShell call, which IS caught.
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 — allow (default)
@@ -51,13 +51,13 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
-# HIMMEL-2123: bash builtin `read` instead of `$(cat)`, and tool_name +
+# bash builtin `read` instead of `$(cat)`, and tool_name +
 # command in ONE jq call (via `<<<`, no printf fork) instead of two separate
 # `printf | jq` pipelines. `// ""` (empty STRING), not `// empty` (a
 # zero-output jq GENERATOR): in a `+`-concatenation, one operand collapsing
 # to `empty` zeroes out the WHOLE expression, not just that field. Windows
 # jq.exe writes CRLF, so strip the stray CR off $tool (same shape as
-# require-quiet-run.sh, HIMMEL-2060).
+# require-quiet-run.sh).
 input=""
 IFS= read -r -d '' input 2>/dev/null || true
 result=$(jq -r '(.tool_name // "") + "\n" + (.tool_input.command // "")' <<<"$input" 2>/dev/null || true)
@@ -79,7 +79,7 @@ esac
 # command-position check) would match the start of ANY line — a benign multi-line
 # `git commit -m "...claude...<newline>at 0430..."` would false-block. Flattening
 # makes `^`/`$` mean true start/end of the whole command and keeps unrelated
-# tokens on different lines from jointly tripping the AND-gate. HIMMEL-2123: one
+# tokens on different lines from jointly tripping the AND-gate. One
 # `tr` call (a single SET1/SET2 mapping covers both the case fold and the
 # newline/CR fold) instead of two chained `tr` invocations; `printf` (not `<<<`)
 # feeds it since no risk either way here but keeping the exact prior byte
@@ -91,7 +91,7 @@ cmd_lc=$(printf '%s' "$cmd" | tr '[:upper:]\n\r' '[:lower:]  ')
 # OWN schtasks/at/crontab in a CHILD process the hook never sees, so this only
 # guards against a future caller that mentions both in one tool command.)
 #
-# HIMMEL-1741: every match below is the bash builtin `[[ =~ ]]` (or a `[[ ==
+# every match below is the bash builtin `[[ =~ ]]` (or a `[[ ==
 # *glob* ]]` for the two fixed-string tests), NOT `printf | grep`. The old form
 # forked a PAIR of processes per check and this hook runs up to nine of them on
 # every Bash/PowerShell tool call — ~667 ms a pair on Windows with Defender

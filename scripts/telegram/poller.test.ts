@@ -674,7 +674,7 @@ test("tent-group message without @mention from the OPERATOR is dropped before tr
   expect(triaged).toEqual([]);
   expect(ran).toEqual([]);
   expect(await readMeta(r, "group_-50")).toBeNull();
-  expect(logs.some((l) => l.includes("require-mention drop for group_-50"))).toBe(true);
+  expect(logs.some((l) => l.includes("require-mention drop for group_***"))).toBe(true);
 });
 
 test("the same tent-group message WITH @mention reaches triage (LUNA-158)", async () => {
@@ -3545,4 +3545,65 @@ test("a marker older than a day is ignored so a reset Telegram update_id is not 
   await handleInbound(r, { from: 1, chat_id: 7, text: "b", update_id: 5 }, run);
   const [session] = readdirSync(join(r, "sessions"));
   expect(readFileSync(join(r, "sessions", session, "inbox.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
+});
+
+// A group member's text must reach a session without the operator marker: the
+// run prompt frames only marked lines as operator requests.
+test("inbox line carries operator:true only for the operator's own messages", async () => {
+  const r = root();
+  const isOperator = (from: number) => from === 5;
+  await handleInbound(r, { from:5, chat_id:-50, text:"hi from op" }, async () => {}, undefined, spawnHighTriage, isOperator);
+  await handleInbound(r, { from:9, chat_id:-50, text:"hi from member" }, async () => {}, undefined, spawnHighTriage, isOperator);
+  const lines = (await readFile(join(sessionDir(r, "group_-50"), "inbox.jsonl"), "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+  expect(lines.find((l) => l.text === "hi from op").operator).toBe(true);
+  expect(lines.find((l) => l.text === "hi from member").operator).toBeUndefined();
+});
+
+// --- chat-id redaction boundary ---
+// Poller logs get captured into vault notes, so a raw chat id (or the
+// group_<chat_id> session name) must never reach one; telegram-api.ts already
+// redacts via redactChatId.
+const RAW_GROUP = -1001234567890;
+
+test("handleBatch drop log redacts the chat id (HIMMEL-1308)", async () => {
+  const logs: string[] = [];
+  const origError = console.error;
+  console.error = (...args: unknown[]) => { logs.push(args.join(" ")); };
+  try {
+    await handleBatch([{ ...inbound("poison", 1), chat_id: RAW_GROUP }], async () => { throw new Error("boom"); });
+  } finally { console.error = origError; }
+  const line = logs.find((l) => l.includes("handleInbound failed for update 1")) ?? "";
+  expect(line).not.toBe("");
+  expect(line).not.toContain("1001234567890");
+  expect(line).toContain("chat ***90");
+});
+
+test("require-mention drop log redacts the group_<chat_id> session name (HIMMEL-1308)", async () => {
+  const r = root(); const logs: string[] = [];
+  const origError = console.error;
+  console.error = (...args: unknown[]) => { logs.push(args.join(" ")); };
+  try {
+    await handleInbound(r, { from:5, chat_id:RAW_GROUP, text:"/grow status?" },
+      async () => {}, undefined, async (): Promise<TriageVerdict> => "spawn-high",
+      (fromId) => fromId === 5, undefined, mentionOn, BOT);
+  } finally { console.error = origError; }
+  const line = logs.find((l) => l.includes("require-mention drop")) ?? "";
+  expect(line).not.toBe("");
+  expect(line).not.toContain("1001234567890");
+  expect(line).toContain("group_***90");
+});
+
+// Structural guard: every poller log line that names a chat id or a session
+// goes through redactChatId / logRedacted. The one deliberate raw site is the
+// gated-out discovery line, whose whole point is to show the id to add to
+// access.json.
+test("poller.ts logs no raw chat id or session name (HIMMEL-1308)", () => {
+  const src = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("\n");
+  const offenders = src.map((l, i) => ({ l, n: i + 1 }))
+    .filter(({ l }) => /console\.error\(|logRedacted\(/.test(l))
+    .filter(({ l }) => /\$\{(?:rec|msg|i)\.chat_id\}|\$\{chatId\}/.test(l)
+      || (/console\.error\(/.test(l) && /\$\{session\}|"\s*\+\s*session\b|"\s*\+\s*s\b/.test(l)))
+    .filter(({ l }) => !l.includes("gated out chat"))
+    .map(({ n, l }) => `${n}: ${l.trim().slice(0, 100)}`);
+  expect(offenders).toEqual([]);
 });

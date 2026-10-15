@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-cr-before-push.sh (HIMMEL-142).
+# Smoke test for scripts/hooks/check-cr-before-push.sh.
 #
-# HIMMEL-142 locks the operator decision: pre-push CR is NOT exempted on
+# The operator decision: pre-push CR is NOT exempted on
 # handover/* branches — only handover-STATE-only diffs (handovers/) skip the
-# marker. HIMMEL-303 then split the old docs-only skip: reviewable docs
+# marker. The old docs-only skip is split: reviewable docs
 # (docs/, *.md/*.txt outside handovers/) now write a `docs-audit`-lane marker
 # (never zero CR), while handover state stays exempt and code still writes a
 # `full`-lane marker. The marker's 3rd field carries the lane.
@@ -15,8 +15,8 @@
 #   4. main branch -> exit 0, no marker.
 #   5. feature branch with docs-only diff -> docs-audit-lane marker.
 #   6. mixed docs + handover-state (no code) -> docs-audit-lane marker.
-#   + ancestor-pref (HIMMEL-295) now keyed on the marker lane.
-#   + HIMMEL-2104: empty-stdin up-to-date push mints a bound marker from the
+#   + ancestor-pref now keyed on the marker lane.
+#   + empty-stdin up-to-date push mints a bound marker from the
 #     upstream tracking ref; empty-stdin fallback never downgrades an
 #     existing BOUND marker to unbound when no fresh binding can be derived.
 set -euo pipefail
@@ -24,7 +24,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/check-cr-before-push.sh"
 # Most cases below deliberately push a feature refspec while the fixture repo
-# sits on main — they pin MARKER semantics, not the HIMMEL-1809 foreign-ref
+# sits on main — they pin MARKER semantics, not the foreign-ref
 # policy, which would otherwise refuse that shape before any marker work. The
 # policy itself has its own section at the bottom, which unsets this.
 export PUSH_FOREIGN_REF_OK=1
@@ -65,8 +65,8 @@ mkdir -p "$REPO" || exit 1
     git branch -m main 2>/dev/null || true
 ) || exit 1
 
-# HIMMEL-3634 round 6 (J1277O codex-1/codex-2): a weak lane (skip/docs-audit)
-# is now gated on verify_sha_is_reviewed(base_sha), which re-fetches origin's
+# A weak lane (skip/docs-audit)
+# is gated on verify_sha_is_reviewed(base_sha), which re-fetches origin's
 # own main. $REPO's main never gains a new commit anywhere in this file after
 # this point (every later mutation happens on a branch cut from it, or in an
 # unrelated scratch repo) — wire up a real, fetchable "origin" now, once, so
@@ -87,7 +87,7 @@ run_hook_refs() {
     local refs="$1"
     (
         cd "$REPO"
-        # HIMMEL-3634 round 6: a weak-lane diff now re-fetches this exact
+        # A weak-lane diff re-fetches this exact
         # push_remote_url (verify_sha_is_reviewed) — a fake unreachable
         # https://example.com/repo.git would always fail closed here, so this
         # points at the real, fetchable $BARE_ORIGIN set up at repo init.
@@ -191,7 +191,7 @@ else
     pass "main branch wrote no marker"
 fi
 
-# HIMMEL-1540: marker identity follows pushed refs, not worktree HEAD --------
+# marker identity follows pushed refs, not worktree HEAD --------
 
 echo "TEST: refspec push from main writes marker for pushed branch + local_sha"
 git -C "$REPO" checkout -q -b feat/refspec-1540
@@ -338,7 +338,7 @@ else
 fi
 git -C "$REPO" checkout -q main
 
-# HIMMEL-2104: up-to-date push (empty stdin) mints a bound marker ------------
+# up-to-date push (empty stdin) mints a bound marker ------------
 
 echo "TEST: empty-stdin up-to-date push mints marker binding from upstream (HIMMEL-2104)"
 git -C "$REPO" checkout -q -b feat/uptodate-2104 main
@@ -370,7 +370,7 @@ case "$out" in
 esac
 git -C "$REPO" checkout -q main
 
-# HIMMEL-2104: empty-stdin fallback must not downgrade a BOUND marker -------
+# empty-stdin fallback must not downgrade a BOUND marker -------
 
 echo "TEST: empty-stdin fallback preserves an existing BOUND marker it cannot rebind"
 git -C "$REPO" checkout -q -b feat/bound-protect-2104 main
@@ -397,7 +397,7 @@ case "$out" in
 esac
 git -C "$REPO" checkout -q main
 
-# Test 5: feature branch with reviewable-docs-only diff -> docs-audit marker (HIMMEL-303)
+# Test 5: feature branch with reviewable-docs-only diff -> docs-audit marker
 
 echo "TEST: feat branch with docs-only diff -> docs-audit marker"
 git -C "$REPO" checkout -q -b feat/docs-303
@@ -424,7 +424,7 @@ case "$out" in
 esac
 git -C "$REPO" checkout -q main
 
-# Test 6: mixed reviewable-docs + handover-state diff (no code) -> docs-audit (HIMMEL-303)
+# Test 6: mixed reviewable-docs + handover-state diff (no code) -> docs-audit
 # Exercises the two-stage filter: a real doc alongside exempt handover state must
 # still force the docs-audit lane (the `grep -Ev '^handovers/'` second stage).
 
@@ -450,7 +450,7 @@ else
 fi
 git -C "$REPO" checkout -q main
 
-# ── HIMMEL-297: master-default repo ─────────────────────────────────────────
+# ── master-default repo ─────────────────────────────────────────
 # A repo whose default branch is `master` (no `main` ref at all). Pre-fix the
 # hook diffed against a non-existent `main` and skipped with a WARNING (false
 # no-marker). Post-fix default_branch resolves master, so: master branch skips,
@@ -500,7 +500,7 @@ else
     fail "expected marker for code diff in master-default repo (proves master base resolved, not skipped)" "out: $out"
 fi
 
-# ── HIMMEL-295: ancestor-preference for diff_base ───────────────────────────
+# ── ancestor-preference for diff_base ───────────────────────────
 #
 # Set up a second repo that acts as origin, advance it ahead of local main,
 # then verify that the hook diffs against origin/main (the more current ref)
@@ -545,7 +545,7 @@ hook_out2=$(cd "$REPO2" && bash "$HOOK" 2>&1) || true
 m2_dir=$(cd "$REPO2" && git rev-parse --git-common-dir)
 case "$m2_dir" in /*|?:/*|?:\\*) ;; *) m2_dir="$REPO2/$m2_dir" ;; esac
 m2="${m2_dir}/cr-pending/feat/ancestor-test"
-# HIMMEL-303: docs/ now writes a docs-audit marker (no longer skipped). The
+# docs/ now writes a docs-audit marker (no longer skipped). The
 # ancestor-pref signal is now the marker LANE: diffing origin/main (correct)
 # sees only docs/note.md -> lane "docs-audit"; diffing stale local main (wrong)
 # would leak advance.sh (non-docs) -> lane "full". So lane == docs-audit proves
@@ -589,7 +589,7 @@ else
     fail "diverged: expected marker for code diff" "out: $hook_out3"
 fi
 
-# ── HIMMEL-323 item 1: fail-CLOSED when no diff base resolves ───────────────
+# ── fail-CLOSED when no diff base resolves ───────────────
 # A repo with no main/master ref and no remote: default_branch falls back to
 # "main", which doesn't exist. This hook does no fetch, so an unresolvable base
 # is a genuinely-broken state -> fail CLOSED (exit 2), not a silent skip that
@@ -609,7 +609,7 @@ if [ "$rc" -eq 2 ]; then pass "unresolvable base -> exit 2 (fail closed)"; else 
 rc=0; out=$(cd "$NB" && SKIP_CR=1 bash "$HOOK" 2>&1) || rc=$?
 if [ "$rc" -eq 0 ]; then pass "unresolvable base + SKIP_CR=1 -> exit 0 (bypass)"; else fail "SKIP_CR bypass -> expected exit 0 got $rc" "out: $out"; fi
 
-# ── HIMMEL-323 item 2: branch resolved via lib.sh::_branch ──────────────────
+# ── branch resolved via lib.sh::_branch ──────────────────
 echo "TEST: non-git dir -> rc=2 fail-closed (cannot read branch)"
 NG="$TMP_ROOT/nongit"; mkdir -p "$NG"
 rc=0; out=$(cd "$NG" && bash "$HOOK" 2>&1) || rc=$?
@@ -640,7 +640,7 @@ else
 fi
 git -C "$WB" worktree remove --force "$TMP_ROOT/wtbase-wt" >/dev/null 2>&1 || true
 
-# ── HIMMEL-323 item 1 (CR follow-up): fail-CLOSED when the diff itself errors ──
+# ── fail-CLOSED when the diff itself errors ──
 # An orphan/unrelated-history branch has no merge base, so `git diff base...HEAD`
 # exits non-zero. Without the guard `set -e` would abort with git's opaque code;
 # the hook now refuses the push with a clear rc=2 so an unreviewable change can't
@@ -662,8 +662,8 @@ if [ "$rc" -eq 2 ]; then pass "orphan branch -> exit 2 (fail closed)"; else fail
 rc=0; out=$(cd "$OB" && SKIP_CR=1 bash "$HOOK" 2>&1) || rc=$?
 if [ "$rc" -eq 0 ]; then pass "orphan branch + SKIP_CR=1 -> exit 0 (bypass)"; else fail "orphan SKIP_CR bypass -> expected exit 0 got $rc" "out: $out"; fi
 
-# ── HIMMEL-1540 R5: identity completion — endpoint E + base B ───────────────
-# Per HIMMEL-1554 every case asserts the specific refusal REASON or marker
+# ── identity completion — endpoint E + base B ───────────────
+# Every case asserts the specific refusal REASON or marker
 # binding, never rc alone.
 
 Z40="0000000000000000000000000000000000000000"
@@ -822,9 +822,9 @@ FORK_BARE="$TMP_ROOT/fork-explicit.git"
 git clone -q --bare "$FX" "$FORK_BARE"
 FORK_URL="file://$FORK_BARE"
 git -C "$FX" checkout -q -b feat/urlpush main
-# HIMMEL-3634 round 6: a .sh (not .txt) tail keeps this diff classified
-# "full" -- this test's own point (HIMMEL-3477, resolve_diff_base picking the
-# fork's own HEAD as base) is orthogonal to the round-6 weak-lane gate, which
+# A .sh (not .txt) tail keeps this diff classified
+# "full" -- this test's own point (resolve_diff_base picking the
+# fork's own HEAD as base) is orthogonal to the weak-lane gate, which
 # the CX1/CX2/R4C1F tests exercise deliberately on this same fixture shape.
 echo 'function urlfeature(){}' > "$FX/urlfeature.sh"
 git -C "$FX" add urlfeature.sh
@@ -955,7 +955,7 @@ case "$out" in
     *) fail "refusal must say 'no push endpoint URL'" "out: $out" ;;
 esac
 
-# HIMMEL-1809: foreign-ref push refusal ------------------------------
+# foreign-ref push refusal ------------------------------
 # pre-push gates lint the PUSHER'S working tree, so pushing a branch that is not
 # the checked-out one has the gates inspect content the push does not carry
 # (misattributed findings; fail-OPEN when the touched files are clean on the
@@ -1072,12 +1072,12 @@ case "$out" in
 esac
 git -C "$REPO" checkout -q main
 
-# HIMMEL-1558: the CR marker lock ------------------------------------
+# the CR marker lock ------------------------------------
 # The marker has exactly two writers — this hook and clear-cr-marker.sh — and
 # the second validates for minutes before unlinking. Both hold ONE
 # branch-scoped lock while they touch the file; these cases pin what this side
 # does when it cannot have it. Each asserts the specific REASON, not merely a
-# non-zero rc (HIMMEL-1554): a fail-closed bug and a fail-closed feature share
+# non-zero rc: a fail-closed bug and a fail-closed feature share
 # an exit code.
 LOCK_LIB="$SCRIPT_DIR/../lib/shared-branch-lock.sh"
 
@@ -1174,7 +1174,7 @@ else
 fi
 
 echo "TEST: an EMPTY holder record after acquire refuses the push before the marker is written"
-# HIMMEL-1994. acquire creates owner.json by redirect and keeps rc 0 when the
+# acquire creates owner.json by redirect and keeps rc 0 when the
 # printf fails (a full disk), so the lock can be HELD with a zero-byte record —
 # and that record is what every ownership check downstream compares against. An
 # empty one is no evidence of exclusion at all, so the write must not happen.
@@ -1232,7 +1232,7 @@ else
 fi
 git -C "$REPO" checkout -q main
 
-# ── HIMMEL-3634 P1: the CR pre-push gate must judge against origin's REAL
+# ── The CR pre-push gate must judge against origin's REAL
 #    default branch, never a base the pusher can make empty ────────────────
 #
 # resolve_diff_base's bases (an explicit-URL fork's fetched HEAD, or a local
@@ -1254,7 +1254,7 @@ git -C "$ATT" remote add origin "$ORIGIN_P1"
 git -C "$ATT" fetch -q origin
 # Checked out on feat/sneaky itself (not main) so the pushed branch name
 # matches the linted working tree -- a mismatch trips the UNRELATED
-# HIMMEL-1809 foreign-ref refusal before resolve_diff_base ever runs.
+# foreign-ref refusal before resolve_diff_base ever runs.
 git -C "$ATT" checkout -q -b feat/sneaky main
 echo 'function sneaky(){}' > "$ATT/sneaky.sh"
 git -C "$ATT" add sneaky.sh
@@ -1496,8 +1496,8 @@ echo "TEST: HIMMEL-3634 round-4 (J1277O C2) — pushurl/pushInsteadOf divergence
 # equivalently a url.<fork>.pushInsteadOf rewrite -- both resolve to the
 # same argv $2 from the hook's own point of view, since the hook never reads
 # git config, only argv) while remote.origin.url (what a bare "origin" fetch
-# resolves through) stays real. Before round 4, verify_sha_is_reviewed
-# fetched ONLY push_remote_url for an origin-nominal push -- validating this
+# resolves through) stays real. verify_sha_is_reviewed must not
+# fetch ONLY push_remote_url for an origin-nominal push -- validating this
 # empty diff against the attacker's own fork.
 R4C2_ORIGIN="$TMP_ROOT/r4c2-real-origin.git"
 git init -q --bare -b main "$R4C2_ORIGIN"
@@ -1573,11 +1573,9 @@ echo "TEST: HIMMEL-3634 round-6 (J1277O C1/I1, simplified) — a handover-only T
 # the tracking-ref/fork-HEAD branches P1(a)/P1(b) already cover: a locally
 # rewritten refs/heads/main puts the diff base just before an unreviewed
 # code commit (A), so the (non-empty) diff against it only ever shows the
-# handover-only TAIL (B) -- the code in A never appears. Before round 4 this
-# read as "handover-state-only" and wrote NO marker at all. Round 4 tried to
-# upgrade the lane to "full" by reclassifying against a fresh origin fetch;
-# round 6 (codex-1/codex-2 on that mechanism) simplifies instead of patching
-# it further: verify_sha_is_reviewed(base_sha) can't confirm the forged A is
+# handover-only TAIL (B) -- the code in A never appears. That would read
+# as "handover-state-only" and write NO marker at all, so
+# verify_sha_is_reviewed(base_sha) can't confirm the forged A is
 # real origin history (origin never received it), so the push is refused
 # outright rather than silently trusted at any lane.
 R4I1H_ORIGIN="$TMP_ROOT/r4i1h-real-origin.git"
@@ -1723,7 +1721,7 @@ echo "TEST: HIMMEL-3634 round-6 (J1277O codex-2) — weak lane REFUSED (fail clo
 # literally named "origin" -- any push through a differently-named remote,
 # on a repo with no "origin" remote configured, got no check at all.
 # verify_sha_is_reviewed's "any OTHER remote" branch still fetches the
-# literal name "origin" as the one independent authority (HIMMEL-3477); with
+# literal name "origin" as the one independent authority; with
 # no such remote configured that fetch fails, so it must fail CLOSED
 # (refuse) rather than silently trust the weak lane.
 CX2_ORIGIN="$TMP_ROOT/cx2-real-origin.git"
@@ -1791,15 +1789,14 @@ fi
 # own-URL ponytail note) are comment-only changes with no behavioural delta
 # -- no test row, per the contract's "where testable".
 
-# HIMMEL-3634 round 7 (J1277R F1): round 6's verify_sha_is_reviewed only
-# checked that base_sha is an ANCESTOR of a freshly fetched origin -- it
-# never checked whether the RANGE from that fresh origin to the pushed tip
+# verify_sha_is_reviewed must not merely
+# check that base_sha is an ANCESTOR of a freshly fetched origin -- it
+# must also check whether the RANGE from that fresh origin to the pushed tip
 # is itself still weak. A base that is genuine but STALE (a real ancestor of
 # origin, just not origin's current tip) passes that ancestor check even
 # when the pushed branch's tail silently reverts a fix that landed on
-# origin AFTER the forged base. Three shapes below, mirroring the judge's
-# scratch/repro.sh: a forged local tracking ref with no fork at all
-# (revert-handover, revert-docs) and an untampered fork whose own main is
+# origin AFTER the forged base. Three shapes below: a forged local
+# tracking ref with no fork at all (revert-handover, revert-docs) and an untampered fork whose own main is
 # genuinely = the stale base, with no local ref tampering (revert-fork-handover).
 
 echo "TEST: HIMMEL-3634 round-7 (J1277R F1) -- weak lane REFUSED when a genuine-but-stale forged base's tail reverts a fix that landed on origin after it (handover-only tail)"
@@ -1832,7 +1829,7 @@ git -C "$F1RH_PUSHER" add handovers/n.md
 git -C "$F1RH_PUSHER" -c user.email=b@t -c user.name=b commit -q -m "B: handover-only tail"
 f1rh_B=$(git -C "$F1RH_PUSHER" rev-parse HEAD)
 # Base forged to X: genuine origin history, but STALE (predates Y's fix) --
-# no fork, no url repoint, just a rewritten local tracking ref (J1277R F1).
+# no fork, no url repoint, just a rewritten local tracking ref.
 git -C "$F1RH_PUSHER" update-ref refs/remotes/origin/main "$f1rh_X"
 git -C "$F1RH_PUSHER" update-ref refs/heads/main "$f1rh_X"
 rc=0
@@ -1933,7 +1930,7 @@ else
     fail "F1 revert-fork-handover: expected rc=2 or a 'full' marker" "rc=$rc marker-exists=$([ -f "$f1rfh_marker" ] && echo yes || echo no) lane=$f1rfh_lane out: $out"
 fi
 
-# HIMMEL-3666 (judge J1277R, out-of-scope-of-#1277 finding): object-store
+# object-store
 # forgery via refs/replace/* -- no ref is forged at all. The pusher replaces
 # origin's real tip X with a same-named commit whose tree already contains
 # the unreviewed code, so every git command that resolves X (the fresh
@@ -1982,7 +1979,7 @@ else
     fail "replace-ref: expected rc=2 or a 'full' marker" "rc=$rc marker-exists=$([ -f "$rr_marker" ] && echo yes || echo no) lane=$rr_lane out: $out"
 fi
 
-# HIMMEL-1178 -- base-skew guard (both directions). A branch whose merge-base is
+# - base-skew guard (both directions). A branch whose merge-base is
 # far behind the diff base only warns (never refuses: refusing enforces
 # update-branch at push time), naming the recovery command; a local main ahead
 # of origin/main also only warns (review-artifact noise from landed work).

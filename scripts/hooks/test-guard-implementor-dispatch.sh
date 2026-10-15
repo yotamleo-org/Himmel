@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the composed HIMMEL-1513 lane-routing and HIMMEL-920 bank policies.
+# Tests for the composed lane-routing and bank policies.
 # Hermetic: lane availability, usage caches, and override logs use fixtures.
 #
 # Usage: bash scripts/hooks/test-guard-implementor-dispatch.sh
@@ -9,7 +9,7 @@ set -uo pipefail
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits as soon as it matches, the producer takes
 # SIGPIPE writing the remainder, and a successful match reports failure on
-# sufficiently large input. A here-string exposes grep's verdict. (HIMMEL-1430.)
+# sufficiently large input. A here-string exposes grep's verdict.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,7 +20,7 @@ HOOK="$SCRIPT_DIR/guard-implementor-dispatch.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/himmel-impl-guard.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
-# HIMMEL-4894: never read the operator's identity or real bank lift.
+# never read the operator's identity or real bank lift.
 mkdir -p "$TMP/home"
 printf '%s\n' '{"oauthAccount":{"accountUuid":"impl-guard-fixture"}}' > "$TMP/home/.claude.json"
 
@@ -36,7 +36,7 @@ printf '%s\n' '{"lanes":[{"id":"glm","class":"impl","probe":{"kind":"always"}}]}
 printf '%s\n' '{"lanes":[{"id":"sonnet","class":"claude-tier","probe":{"kind":"always"}}]}' > "$REG_NONE"
 printf '%s\n' '{"lanes":[{"id":"claudex","class":"impl","probe":{"kind":"always"}},{"id":"glm","class":"impl","probe":{"kind":"always"}}]}' > "$REG_BOTH"
 
-# HIMMEL-1513 runnability fixtures. A fake project root carrying a real,
+# Runnability fixtures. A fake project root carrying a real,
 # working lane resolver (copied, not symlinked — Windows worktrees can't rely
 # on symlink privileges) but a scripts/telegram/ that is missing the claudex
 # dispatcher and only has the glm one. Used to prove the guard checks
@@ -49,7 +49,7 @@ cp "$REPO_ROOT/scripts/lanes/bank-status-core.mjs" "$FAKE_REPO_NO_CLAUDEX/script
 cp "$REPO_ROOT/scripts/lanes/profile-managed.cjs" "$FAKE_REPO_NO_CLAUDEX/scripts/lanes/profile-managed.cjs"
 : > "$FAKE_REPO_NO_CLAUDEX/scripts/telegram/spawn-glm.ts"
 
-# HIMMEL-1513 funded-bank fixtures. A fake project root carrying BOTH dispatchers
+# Funded-bank fixtures. A fake project root carrying BOTH dispatchers
 # (so claudex AND glm pass lane_runnable) but NO bank-status.ts — proves the
 # default-path helper-missing branch reports UNKNOWN and skips the lane rather
 # than routing toward unmeasured capacity.
@@ -63,7 +63,7 @@ cp "$REPO_ROOT/scripts/lanes/profile-managed.cjs" "$FAKE_REPO_NO_BANK/scripts/la
 : > "$FAKE_REPO_NO_BANK/scripts/telegram/spawn-glm.ts"
 
 # Resolve bash ONCE from the suite's own unmodified PATH, before any test
-# hands `env` a narrowed one (HIMMEL-1567). run_hook invokes this absolute
+# hands `env` a narrowed one. run_hook invokes this absolute
 # path so a PATH override decides what the HOOK sees, never whether the hook
 # can be started at all.
 BASH_ABS=$(command -v bash)
@@ -74,7 +74,7 @@ fi
 # Refusing a relative PATH is deliberate: these are hermetic fixtures.
 # A bash resolved through a relative PATH means the invoking environment
 # is already broken in a way that makes any result untrustworthy
-# (HIMMEL-2520, CR [codex-1]).
+#
 case "$BASH_ABS" in
     /*) ;;
     *) echo "FATAL: bash resolved to a non-absolute path ('$BASH_ABS') — this fixture invokes it after a cd and/or as a shim shebang, both of which need an absolute path" >&2; exit 1 ;;
@@ -84,8 +84,7 @@ esac
 # no Bun runtime) -- a scratch dir holding ONLY forwarding shims for the
 # tools this hook's bun-missing path actually walks (verified empirically:
 # cat, jq, tr, sed, grep, dirname, node, stat, date, awk), each resolved from
-# THIS host's live PATH, and NO bun/bunx anywhere in it (HIMMEL-2520, shape
-# from HIMMEL-2470).
+# THIS host's live PATH, and NO bun/bunx anywhere in it.
 #
 # The prior version (directory-stripping: drop every PATH entry that itself
 # contains an executable bun/bun.exe) breaks on any host where bun shares a
@@ -94,8 +93,8 @@ esac
 # stripping that directory silently guts every tool the hook needs before it
 # even reaches its own bun check (it hit "jq not on PATH — allowing
 # (fail-open)" instead, a DIFFERENT fail-open message than the one this test
-# asserts on). HIMMEL-2160's insight (a machine can have more than one bun
-# install on PATH, so a single `command -v` strip is not enough) is still
+# asserts on). The fact that a machine can have more than one bun
+# install on PATH (so a single `command -v` strip is not enough) is still
 # true, but an allowlist makes it moot: bun/bunx are simply never placed in
 # it, no matter how many real installs exist elsewhere on the host.
 #
@@ -119,7 +118,7 @@ STUB_PATH_NO_BUN="$STUB_PATH_NO_BUN_DIR"
 # not found" verdict proves nothing if bun was never removed, and an
 # over-narrow allowlist that silently dropped (say) `node` would make the
 # hook fail for the wrong reason while looking identical to the case under
-# test (HIMMEL-2520).
+# test.
 _missing=""
 for _t in cat jq tr sed grep dirname node stat date awk; do
     PATH="$STUB_PATH_NO_BUN" command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
@@ -136,7 +135,7 @@ else
 fi
 unset _t _missing
 
-# HIMMEL-1567: the suite is not hermetic to whether the real `bun` binary is
+# the suite is not hermetic to whether the real `bun` binary is
 # on the runner's PATH -- it isn't on the CI (ubuntu-latest) box, so every
 # assertion below that expects the guard to treat claudex/glm as runnable
 # silently degraded to the "bun is not on PATH — skipping it" branch and
@@ -153,7 +152,7 @@ exit 0
 EOF
 chmod +x "$STUB_BUN_DIR/bun"
 
-# HIMMEL-1513 funded-bank fixtures. The guard's lane_funded() runs the
+# Funded-bank fixtures. The guard's lane_funded() runs the
 # bank-status probe under IMPL_GUARD_BANK_STATUS_CMD; stubbing it (rather than
 # building live codex-rollout / glm-ledger fixtures) keeps the suite hermetic
 # and independent of the operator's actual bank state (the codex weekly bank is
@@ -169,9 +168,9 @@ BANK_CLAUDEX_UNKNOWN_CMD="printf 'claudex unknown unmeasurable\\nglm funded meas
 BANK_GARBAGE_CMD="printf 'claudex ???\\nglm ???\\n'"
 BANK_HANG_CMD="sleep 30"
 
-# HIMMEL-1626 lane-readiness fixtures. Same stub pattern as the bank probe:
+# Lane-readiness fixtures. Same stub pattern as the bank probe:
 # run_hook injects a default ALL-READY stub via IMPL_GUARD_READINESS_CMD so
-# every pre-1626 case behaves unchanged (and the suite never spawns node per
+# every pre-readiness case behaves unchanged (and the suite never spawns node per
 # case); each readiness-scenario test overrides it. The two end-to-end cases
 # (RC69/RC70) clear the stub to exercise the REAL scripts/lanes/
 # lane-readiness.mjs against a gated registry fixture + a ledger fixture.
@@ -254,7 +253,7 @@ mkcache() {
     printf '{"five_hour":{"utilization":%s,"resets_at":"%s"}}' "$2" "$(( $(date +%s) + 3600 ))" > "$1"
 }
 
-# mkcache_both <path> <five_hour_util> <seven_day_util> - HIMMEL-2653 fixture
+# mkcache_both <path> <five_hour_util> <seven_day_util> - fixture
 # carrying BOTH windows, each with a live (future) resets_at.
 mkcache_both() {
     printf '{"five_hour":{"utilization":%s,"resets_at":"%s"},"seven_day":{"utilization":%s,"resets_at":"%s"}}' \
@@ -266,14 +265,14 @@ run_hook() {
     # PATH default (stub bun prepended) comes before "$@" so a caller-supplied
     # PATH override (e.g. the bun-missing negative test) wins -- env applies
     # repeated assignments in order, last one takes effect.
-    # Invoke bash by ABSOLUTE path (HIMMEL-1567): `env` resolves the command
+    # Invoke bash by ABSOLUTE path: `env` resolves the command
     # name using the PATH it was just handed, so a caller-supplied override
     # decides whether `bash` is findable at all. STUB_PATH_NO_BUN strips bun's
     # WHOLE directory, and on a runner where bash lives in that same directory
     # env would fail 127 before the hook ever ran -- RC31 would then be a
     # platform-dependent false RED that says nothing about the guard. BASH_ABS
     # is resolved once, above, from the suite's own unmodified PATH.
-    # HIMMEL-2735: the guard honours IMPL_GUARD_OK / IMPL_GUARD_DISABLE as
+    # the guard honours IMPL_GUARD_OK / IMPL_GUARD_DISABLE as
     # explicit session overrides that short-circuit it before any of the
     # policy this suite exercises runs. If either is set in the environment
     # of the shell running this suite (e.g. a leg armed with
@@ -314,7 +313,7 @@ assert_empty "research-shaped dispatch silent" "$(combined_output research)"
 RC4=$(run_hook research-then-fix "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Investigate and fix HIMMEL-1513' 'Research the cause and then implement the fix.')")
 assert_rc "research followed by implementation refuses" 2 "$RC4"
 
-# HIMMEL-1608: data is not an action verb, and the refusal names the Plan route.
+# data is not an action verb, and the refusal names the Plan route.
 TABLE_STATS=$'Cluster the tickets by subject and rank by value.\n\n| prefix | commits |\n|---|---|\n| fix: | 112 |\n| feat: | 40 |'
 RC4T=$(run_hook table-data "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Cluster backlog' "$TABLE_STATS")")
 assert_rc "1608: a table row is NOT stripped (an order in a step table is an order), over-refusal accepted" 2 "$RC4T"
@@ -362,13 +361,13 @@ RC4D=$(run_hook pure-research "$REG_CLAUDEX" "$(payload general-purpose sonnet '
 assert_rc "pure lane-router research remains allowed" 0 "$RC4D"
 assert_empty "pure lane-router research remains silent" "$(combined_output pure-research)"
 
-# HIMMEL-1534: the first gate used to exit 0 on
+# the first gate used to exit 0 on
 # [implementation=1] || [operational_context=1] before followed_by_action was
 # ever consulted. "research the parser, then edit the file" sets research=1
 # (word "research"), followed_by_action=1 ("then edit"), but implementation=0
 # ("edit" is not in the bare-verb set implement|fix|land) and
 # operational_context=0 -- so the OLD first gate exited 0 straight through,
-# bypassing lane routing and the HIMMEL-920 bank guard. followed_by_action
+# bypassing lane routing and the bank guard. followed_by_action
 # must now be a third disjunct in that gate.
 RC81=$(run_hook research-then-edit "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser module, then edit the config file.')")
 assert_rc "'research X, then edit Y' is governed like a direct implementation dispatch" 2 "$RC81"
@@ -394,7 +393,7 @@ RC87=$(run_hook pure-research-himmel-1534 "$REG_CLAUDEX" "$(payload general-purp
 assert_rc "pure research with no action transition remains allowed" 0 "$RC87"
 assert_empty "pure research with no action transition is silent" "$(combined_output pure-research-himmel-1534)"
 
-# HIMMEL-1608: a judgment dispatch that merely QUOTES 'fix:' inside a markdown
+# a judgment dispatch that merely QUOTES 'fix:' inside a markdown
 # table trips the bare-verb implementation regex ("fix:" satisfies the word
 # boundary) and is refused. That over-refusal is accepted (judge I1: an order in
 # a step table is an order); the refusal names the Plan route. Fences and
@@ -409,8 +408,8 @@ assert_rc "'fix:' in a table row still refuses (table rows are not stripped, HIM
 RC88P=$(run_hook land-in-theme "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Cluster tickets' 'Cluster these tickets by subject. Every open ticket must land in exactly one theme.')")
 assert_rc "'must land in exactly one theme' over-refuses, no modal strip (HIMMEL-1608 judge C1, HIMMEL-3922)" 2 "$RC88P"
 
-# Judge C1 round 2: every integration-target spelling refuses, because the modal
-# "land in" strip is gone. One row per bypass the judge found.
+# Every integration-target spelling refuses, because the modal
+# "land in" strip is gone. One row per known bypass.
 RC88R=$(run_hook land-in-linebreak "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Ship work' 'This PR must land in
 main today.')")
 assert_rc "'must land in' then a line break then main refuses" 2 "$RC88R"
@@ -427,12 +426,12 @@ assert_rc "'must land on origin main' refuses" 2 "$RC88U"
 RC88V=$(run_hook land-in-develop "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Ship work' 'This PR must land in develop, then release/2.0, then production.')")
 assert_rc "'must land in develop' (non-main target) refuses" 2 "$RC88V"
 
-# Judge round 2 (2): a line holding a run of 2+ backticks is not span-stripped.
+# A line holding a run of 2+ backticks is not span-stripped.
 # shellcheck disable=SC2016 # the backticks are literal prompt text
 RC88W=$(run_hook double-backtick "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Cluster the churn' 'Quote it as ``a`b`` then. Fix the parser bug in parse.sh. See `c`.')")
 assert_rc "a double-backtick line is not span-stripped, the order after it refuses" 2 "$RC88W"
 
-# Judge round 2 (3): a fence line indented 4+ spaces is not a fence (CommonMark).
+# A fence line indented 4+ spaces is not a fence (CommonMark).
 # shellcheck disable=SC2016 # the backticks are literal prompt text
 RC88X=$(run_hook indented-fence "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Cluster the churn' 'Cluster the churn.
     ```
@@ -483,7 +482,7 @@ assert_rc "'then write code for B' is governed -- not a report-type object" 2 "$
 RC94=$(run_hook write-summary-and-edit "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser, then write the summary and edit the config.')")
 assert_rc "'write the summary AND edit Y' is governed -- the edit half still trips followed_by_action" 2 "$RC94"
 
-# codex (PR #1388 round 2): a first-match-only extraction missed a SECOND
+# codex: a first-match-only extraction missed a SECOND
 # then/and-write occurrence, and a clause boundary cut at a literal "."
 # hid a file extension right after the report noun.
 RC95=$(run_hook write-report-and-write-code "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser, then write a report and write code for the fix.')")
@@ -492,7 +491,7 @@ assert_rc "'write a report AND write code' is governed -- the second write is a 
 RC96=$(run_hook write-report-dot-extension "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser, then write a report.md.')")
 assert_rc "'then write a report.md' is governed -- the extension is a file write, not prose" 2 "$RC96"
 
-# codex (PR #1388 round 3): the round-2 fix-up's own remedy was itself
+# codex: the round-2 fix-up's own remedy was itself
 # bounded -- a 1-5 char extension cap, and a fixed 60-char window per
 # occurrence -- so a longer extension or a long intervening phrase could
 # push the path-like signal out of view.
@@ -502,17 +501,15 @@ assert_rc "'then write a report.markdown' is governed -- a >5-char extension is 
 RC98=$(run_hook write-report-long-phrase-then-path "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Research the parser, then write a report about all of the various nuances and detailed considerations discussed above to scripts/router.sh.')")
 assert_rc "'then write a report <60+ char phrase> to <path>' is governed -- the path outlives any fixed window" 2 "$RC98"
 
-# J1388A (Opus judge, PR #1388): the write-clause exemption above cleared
+# The write-clause exemption above cleared
 # followed_by_action itself, and that variable is also the veto on the
-# read-only-declared allow exit below (:301) -- so a dispatch with a
+# read-only-declared allow exit below -- so a dispatch with a
 # read-only declaration, an implementation signal, and an EXEMPTED "then
 # write a summary" cleared the veto and was wrongly ALLOWed here, where main
-# GOVERNs it. Fix: split the signal into gate_action (feeds only the new
-# :290 first-gate disjunct, narrowed by the exemption) and followed_by_action
-# (recomputed exactly as main, bare "write" included, feeding only the
-# pre-existing research/read-only vetoes). These 6 rows are RED on
-# 22b0897173a9a7672d7f870068f0d336a4952730 (all ALLOW there) and GREEN with
-# the split.
+# GOVERNs it. The signal is split into gate_action (feeds only the
+# first-gate disjunct, narrowed by the exemption) and followed_by_action
+# (bare "write" included, feeding only the
+# research/read-only vetoes). These 6 rows pin that split.
 RC99=$(run_hook readonly-implement-then-summary "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-1534 dispatch' 'Read-only review. Assess whether we should implement caching, then write a summary.')")
 assert_rc "read-only + implement + exempted 'then write a summary' is governed (J1388A row 1)" 2 "$RC99"
 
@@ -535,8 +532,7 @@ RC104=$(run_hook readonly-numbered-steps-write-code "$REG_CLAUDEX" "$(payload ge
 3. write the code for retries')")
 assert_rc "read-only + numbered-list 'write the code for retries' is governed (J1388A row 6)" 2 "$RC104"
 
-# J1398B ruling (console J, HIMMEL-3784, responding to J1398A Finding 2): the
-# "write up" idiom exemption is cut entirely -- main has no "up" idiom
+# The "write up" idiom exemption is cut entirely -- main has no "up" idiom
 # support at all, and that is exactly why main governs "then write up your
 # summary module"/"then write up my notes file" (Finding 2's own examples).
 # "write up your findings" now falls through to gate_action and is GOVERNED
@@ -548,15 +544,15 @@ RC106=$(run_hook write-overview "$REG_CLAUDEX" "$(payload general-purpose sonnet
 assert_rc "'and write an overview' (report brief) allows (HIMMEL-3784)" 0 "$RC106"
 assert_empty "write-overview report brief silent" "$(combined_output write-overview)"
 
-# J1398A (Finding 2, Critical): the adjective slot ("(a|an|the|your|my)
+# The adjective slot ("(a|an|the|your|my)
 # [a-z]+ (summary|report|...)") is dropped with no right-anchor replacement
-# (console J ruling, this round) -- "write a short summary" no longer
+# -- "write a short summary" no longer
 # matches the bare determiner+noun branch and is GOVERNED again, matching
 # main. Accepted trade, not a regression.
 RC107=$(run_hook write-short-summary "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Locate where the lane router reads its config and write a short summary.')")
 assert_rc "'and write a short summary' (adjective slot dropped) governed (HIMMEL-3784, J1398A)" 2 "$RC107"
 
-# J1398A (Finding 3, Critical): the gate_text commit-history/edit-distance
+# The gate_text commit-history/edit-distance
 # strip is deleted entirely (its tightened boundary still admitted a literal
 # tab after a sentence-final mark), so gate_action is computed straight off
 # $text again, byte-identical to main. "commit history"/"edit distance" as a
@@ -568,7 +564,7 @@ assert_rc "'commit history' (gate_text strip deleted, matches main) governed (HI
 RC109=$(run_hook edit-distance "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Research the parser and edit distance heuristics used elsewhere.')")
 assert_rc "'edit distance' (gate_text strip deleted, matches main) governed (HIMMEL-3784, J1398A)" 2 "$RC109"
 
-# codex-1 (round 1 panel, HIMMEL-3784): the commit-history/edit-distance
+# codex-1: the commit-history/edit-distance
 # exclusions above must not be checked against the WHOLE brief -- an
 # unrelated "then/and commit history" or "then/and edit distance" phrase
 # elsewhere must not suppress a genuine, separate "then commit"/"then edit"
@@ -579,7 +575,7 @@ assert_rc "genuine 'then commit' action still governed despite unrelated 'then c
 RC111=$(run_hook edit-distance-plus-action "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Then edit the config file. Also and edit distance heuristics come up here.')")
 assert_rc "genuine 'then edit' action still governed despite unrelated 'and edit distance' elsewhere (codex-1)" 2 "$RC111"
 
-# codex-1 (round 2 panel, HIMMEL-3784): the write-clause exemption's
+# codex-1: the write-clause exemption's
 # leading-words-before-noun match must not fire without a determiner --
 # two arbitrary bare words ("patch", "for") must not satisfy it just
 # because a report noun happens to follow later in the same clause. (A
@@ -589,11 +585,11 @@ assert_rc "genuine 'then edit' action still governed despite unrelated 'and edit
 RC112=$(run_hook write-patch-for-report "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the bug, then write patch for report.')")
 assert_rc "'then write patch for report' (genuine implementation, not a report noun phrase) still governed (codex-1 round 2)" 2 "$RC112"
 
-# J1398A (Finding 1, Critical): path_scope (the sentence-boundary truncation
-# codex round 4 added) is reverted to main's whole-write_tail veto -- a path
+# path_scope (the sentence-boundary truncation)
+# is reverted to main's whole-write_tail veto -- a path
 # named in a genuinely unrelated LATER sentence is GOVERNED again, the same
 # as main, and the same as a path naming a real write target in a later
-# sentence (RC113 below). Accepted, ticketed known over-breadth (codex-1),
+# sentence (RC113 below). Accepted known over-breadth,
 # not a regression: correctness on the write-target direction matters more.
 RC110=$(run_hook write-summary-unrelated-later-path "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Research the parser, then write a summary. Also check scripts/router.sh for reference.')")
 assert_rc "path in an unrelated LATER sentence governs again (path_scope reverted, HIMMEL-3784, J1398A)" 2 "$RC110"
@@ -626,52 +622,47 @@ RC116=$(run_hook write-summary-then-explain-chain-allows "$REG_CLAUDEX" "$(paylo
 assert_rc "'write a summary. Then explain the findings' (a read-only chain, not a file write) allows (CodeRabbit)" 0 "$RC116"
 assert_empty "write-summary-then-explain-chain-allows brief silent" "$(combined_output write-summary-then-explain-chain-allows)"
 
-# codex-1 (round 4 panel, HIMMEL-3784): "write up" was exempt unconditionally
+# "write up" was once exempt unconditionally
 # regardless of what followed it, so a genuine implementation object after
 # "up" (not a report noun) still slipped through as a report brief. (A
 # trailing "to reproduce it" would independently trip the existing "to/into"
-# veto and mask this exact bug, so the fixture avoids it.) J1398B (console J
-# ruling, this round): the "up" idiom exemption itself is now cut entirely,
-# so this row is governed for a different reason than round 4 intended --
-# "write up" has no exemption at all any more -- but the assertion (GOVERNED)
-# is unchanged.
+# veto and mask this exact bug, so the fixture avoids it.) The "up" idiom exemption is now cut entirely,
+# so this row is governed because
+# "write up" has no exemption at all.
 RC117=$(run_hook write-up-shell-script-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the bug, then write up a shell script.')")
 assert_rc "'then write up a shell script' (genuine implementation, not a report) still governed (codex-1 round 4)" 2 "$RC117"
 
-# codex-2 (round 4 panel, HIMMEL-3784): the commit-history/edit-distance
+# codex-2: the commit-history/edit-distance
 # exclusion's trailing boundary accepted "/" as closing the descriptive
 # phrase, so a real path with a slash ("distance/parser.py") lost its "then"
 # the same way a bare extension did.
 RC118=$(run_hook edit-distance-slash-path-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the routine, then edit distance/parser.py.')")
 assert_rc "'then edit distance/parser.py' (a real path, not the descriptive phrase) still governed (codex-2 round 4)" 2 "$RC118"
 
-# codex-1 (round 5 panel, HIMMEL-3784): a hyphen closed the boundary the
+# codex-1: a hyphen closed the boundary the
 # same way "." and "/" did, so a real hyphenated filename lost its "then".
 RC119=$(run_hook edit-distance-hyphen-path-still-governed "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the routine, then edit distance-parser.py.')")
 assert_rc "'then edit distance-parser.py' (a real file, not the descriptive phrase) still governed (codex-1 round 5)" 2 "$RC119"
 
-# J1398A (Opus judge, PR #1398, Finding 1, Critical) hand-written example.
 # The write TARGET is in a sentence after the report clause; path_scope used
 # to truncate at the first sentence boundary and miss it entirely. Reverted
-# to main's whole-write_tail veto (this round) -- governed again.
+# to main's whole-write_tail veto -- governed again.
 RC120=$(run_hook j1398a-finding1-later-sentence-target "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Research the tokenizer, then write a summary. Afterwards create src/tok.ts with the new class.')")
 assert_rc "J1398A Finding 1 example: write target in a later sentence governs (path_scope reverted)" 2 "$RC120"
 
-# J1398A (Opus judge, PR #1398, Finding 2, Critical) hand-written examples.
 # Neither uses the adjective slot (determiner sits directly before the
 # noun) -- the escape was the now-deleted "write up" idiom exemption, not
-# the adjective slot. Cutting "write up" entirely (console J ruling, this
-# round) governs both again, matching main.
+# the adjective slot. Cutting "write up" entirely governs both,
+# matching main.
 RC121=$(run_hook j1398a-finding2-write-up-summary-module "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Explore X and then write up your summary module.')")
 assert_rc "J1398A Finding 2 example: 'then write up your summary module' governs ('up' idiom cut)" 2 "$RC121"
 
 RC122=$(run_hook j1398a-finding2-write-up-notes-file "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the bug, then write up my notes file.')")
 assert_rc "J1398A Finding 2 example: 'then write up my notes file' governs ('up' idiom cut)" 2 "$RC122"
 
-# J1398A (Opus judge, PR #1398, Finding 3, Critical) hand-written examples.
 # Both are a real verb+object continuation, not the descriptive noun phrase
-# the old gate_text strip tried to exempt; the strip is deleted entirely
-# (this round), so gate_action is computed straight off $text, same as main.
+# the old gate_text strip tried to exempt; the strip is deleted entirely,
+# so gate_action is computed straight off $text, same as main.
 RC123=$(run_hook j1398a-finding3-edit-distance-thresholds "$REG_CLAUDEX" "$(payload general-purpose sonnet 'HIMMEL-3784 dispatch' 'Investigate the fuzzy matcher, then edit distance thresholds in config/match.yaml to 0.8.')")
 assert_rc "J1398A Finding 3 example: 'then edit distance thresholds in config/match.yaml' governs (gate_text deleted)" 2 "$RC123"
 
@@ -806,7 +797,7 @@ RC28=$(run_hook plan-hard "$REG_CLAUDEX" "$(payload Plan sonnet 'Implementation 
 assert_rc "Plan lane exemption still retains bank HARD guard" 2 "$RC28"
 assert_contains "Plan bank refusal names Plan shape" "Plan/sonnet" "$(cat "$TMP/err-plan-hard")"
 
-# HIMMEL-1534: the same fail-open bypassed the INDEPENDENT HIMMEL-920 bank
+# the same fail-open bypassed the INDEPENDENT bank
 # guard for Plan too -- Plan is lane-exempt, not classifier-exempt, so a
 # research-then-edit Plan prompt must still reach the bank check once
 # followed_by_action is consulted at the first gate.
@@ -828,7 +819,7 @@ RC29B=$(run_hook haiku-full-id "$REG_CLAUDEX" "$(payload general-purpose claude-
 assert_rc "full Haiku model identifier also always allows" 0 "$RC29B"
 assert_empty "full Haiku identifier always-allow is silent" "$(combined_output haiku-full-id)"
 
-# HIMMEL-2658: the *haiku* case glob above matches on SUBSTRING, so a
+# the *haiku* case glob above matches on SUBSTRING, so a
 # [1m]-suffixed id (the arming-time context-window choice arm-resume.sh's
 # --context now produces) must take the same early exit as the unsuffixed
 # id -- a future refactor to an exact-match comparison would silently
@@ -906,7 +897,7 @@ assert_rc 'standing lift still refuses full five-hour bank' 2 "$(lift_hook lift-
 lift_cache 10 100
 assert_rc 'standing lift still refuses full weekly bank' 2 "$(lift_hook lift-weekly-full)"
 
-# HIMMEL-4920: a lift library that defines no validator must leave the guard
+# a lift library that defines no validator must leave the guard
 # refusing (thresholds stay default), never abort it — an aborted hook exits 1,
 # which Claude Code treats as a non-blocking error, i.e. a fail-OPEN.
 NOVAL_ROOT="$TMP/noval-repo"
@@ -1080,7 +1071,7 @@ assert_contains "spent-claudex warns why claudex was skipped" "bank is spent" "$
 assert_not_contains "spent-claudex does NOT name the claudex dispatcher" "spawn-claudex" "$(cat "$TMP/err-claudex-spent-glm-funded")"
 
 # 2. BOTH lanes spent -> NO lane refusal is emitted; control falls through to
-# the independent HIMMEL-920 bank guard (low bank here -> allow). This is the
+# the independent bank guard (low bank here -> allow). This is the
 # intended behaviour: an unfunded lane never produces a new hard-block.
 RC36=$(run_hook both-spent "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1513' 'Write the code and commit it.')" IMPL_GUARD_BANK_STATUS_CMD="$BANK_BOTH_SPENT_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
 assert_rc "both lanes spent falls through to the bank guard (low bank -> allow)" 0 "$RC36"
@@ -1142,7 +1133,7 @@ assert_contains "down-claudex warns why claudex was skipped" "readiness gate is 
 assert_not_contains "down-claudex does NOT name the claudex dispatcher" "spawn-claudex" "$(cat "$TMP/err-claudex-down-glm-ready")"
 
 # 2. THE ticket case: BOTH lanes runnable AND funded but down-listed -> NO lane
-# refusal; control falls through to the independent HIMMEL-920 bank guard (low
+# refusal; control falls through to the independent bank guard (low
 # bank here -> allow). A down-listed lane must not veto the in-process
 # Claude-tier dispatch.
 RC63=$(run_hook both-down "$REG_BOTH" "$(payload general-purpose sonnet 'Implement HIMMEL-1626' 'Write the code and commit it.')" IMPL_GUARD_READINESS_CMD="$READY_BOTH_DOWN_CMD" IMPL_GUARD_CACHE_PATH="$CACHE_LOW")
@@ -1219,14 +1210,14 @@ assert_empty "judgment brief with past-tense fixed is silent" "$(combined_output
 # A plan-shaped dispatch that declares no edits is categorically not
 # implementation, even though it asks for a plan to FIX something. "to fix the
 # flaky suite" sets implementation=1 (bare verb survives the strip), so this
-# exercises the HIMMEL-1617 declaration gate — the earlier phrasing never
-# tripped implementation and passed trivially (CR round 1, glm-3).
+# exercises the declaration gate — the earlier phrasing never
+# tripped implementation and passed trivially.
 RC44=$(run_hook plan-shaped "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Plan the X subsystem' 'Plan only. Do not edit, create, or commit any file. Produce an implementation plan to fix the flaky X suite and return it as text.')")
 assert_rc "plan-shaped brief allows" 0 "$RC44"
 assert_empty "plan-shaped brief is silent" "$(combined_output plan-shaped)"
 
 # The read-only declaration gate rescues a descriptive "fix" noun the strip does
-# not enumerate ("proposed fix") — proving the HIMMEL-1617 override gate, not
+# not enumerate ("proposed fix") — proving the override gate, not
 # just the strip. implementation trips on "fix", but the declaration + no action
 # transition + no operational context still allows.
 RC49=$(run_hook judgment-proposed-fix "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Judge doc placement' 'Read-only. Do not edit any file. The proposed fix is large. Return a recommendation as text.')")
@@ -1250,7 +1241,7 @@ assert_rc "imperative 'apply the fix and commit' still refuses" 2 "$RC47"
 RC48=$(run_hook readonly-then-implement "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Do the work' 'Read-only first. Do not edit any file. then implement it')")
 assert_rc "read-only declaration followed by 'then implement it' still refuses" 2 "$RC48"
 
-# CR round 1 regressions (glm-1, glm-2): the descriptive strip and the loose
+# The descriptive strip and the loose
 # read-only match must not launder genuine imperatives.
 # "commit the fix" is imperative — the action-verb mask must protect it from
 # the article strip (the apply-only mask let it classify as non-implementation).
@@ -1268,7 +1259,7 @@ assert_rc "imperative 'fix the readonly field' still refuses" 2 "$RC52"
 RC53=$(run_hook read-only-adjective "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Do the work' 'fix the read-only field in the config parser')")
 assert_rc "imperative 'fix the read-only field' still refuses" 2 "$RC53"
 
-# CR round 2 (CodeRabbit, PR #1605): a standalone imperative at a clause head
+# A standalone imperative at a clause head
 # is genuine implementation intent — the read-only declaration must NOT rescue
 # it (imperative_verb vetoes the override, like followed_by_action).
 RC54=$(run_hook readonly-then-imperative "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Do the work' 'Read-only. Do not edit any file. Fix the bug in X.')")
@@ -1277,7 +1268,7 @@ assert_rc "read-only declaration with a clause-head imperative still refuses" 2 
 RC55=$(run_hook imperative-at-start "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Do the work' 'Fix the flaky retry loop. Return a summary as text.')")
 assert_rc "text-initial imperative with a trailing return-as-text still refuses" 2 "$RC55"
 
-# CR round 3 (glm, PR #1605): an adverb-prefixed imperative ("Please fix",
+# An adverb-prefixed imperative ("Please fix",
 # "Now implement") defeated the bare clause-head anchor; the verb+determiner
 # shape and the adverb run must both veto the read-only override.
 RC56=$(run_hook readonly-please-fix "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Do the work' 'Read-only. Do not edit any file. Please fix the bug in X.')")
@@ -1291,7 +1282,7 @@ assert_rc "read-only declaration with 'Now implement the retry logic' still refu
 RC58=$(run_hook readonly-commit-fix "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Do the work' 'Read-only. Do not edit any file. Commit the fix.')")
 assert_rc "read-only declaration with 'Commit the fix' still refuses" 2 "$RC58"
 
-# CR round 2 (HIMMEL-1617): the descriptive strip carries the original ALLOW
+# The descriptive strip carries the original ALLOW
 # cases (no clause-initial bare verb survives), so they keep allowing. Probe (a)
 # is the full descriptive brief — it must stay allowed even though "committed a
 # fix" appears, because the strip removes the noun and no imperative remains.
@@ -1306,7 +1297,7 @@ assert_empty "descriptive analysis brief is silent" "$(combined_output probe-des
 RC57=$(run_hook standalone-implement-blocks "$REG_CLAUDEX" "$(payload general-purpose sonnet 'Do the work' 'Analysis only. Do not edit any file. Implement the new handler and report.')")
 assert_rc "analysis-only declaration does not rescue a standalone implement" 2 "$RC57"
 
-# CR round (HIMMEL-1624): the catch-all "fixed" descriptive strip is now
+# CR round: the catch-all "fixed" descriptive strip is now
 # word-boundary anchored, so "prefixed"/"unfixed"/"affixed" survive intact.
 # As descriptive context under a read-only declaration they must still ALLOW
 # (the "fix" inside them never trips the bounded implementation grep), and a
@@ -1327,16 +1318,16 @@ assert_rc "read-only declaration with 'Auto fix the parser' still refuses" 2 "$R
 echo ""
 echo "=== HIMMEL-1568: round guard at the Agent dispatch chokepoint ==="
 # Exercises scripts/telegram/round-guard.ts's `check` CLI through THIS hook,
-# never through spawn-glm.ts/spawn-claudex.ts — the whole point of HIMMEL-1568.
+# never through spawn-glm.ts/spawn-claudex.ts — the whole point of the chokepoint.
 # Each case gets its own scratch git repo (own git-common-dir, own ledger) so
 # nothing here touches the real/shared worktree ledger. `PATH="$PATH"` on
 # every call restores the suite's genuine PATH over run_hook's default
-# STUB_BUN_DIR stub (HIMMEL-1567): the round-guard probe actually EXECUTES
+# STUB_BUN_DIR stub: the round-guard probe actually EXECUTES
 # bun against the fixture ledger, so it must see a real bun, not the no-op.
 #
 # NOTE on (b)/(c) below: the ticket brief glosses these as "3 reviewed heads +
 # INVARIANT -> allow" / "2 reviewed heads -> allow", but the shipped,
-# untouched HIMMEL-1553 predicate (checkRoundGuard, round-guard.ts) only
+# untouched predicate (checkRoundGuard, round-guard.ts) only
 # allows-with-INVARIANT at exactly ROUND_WARN_THRESHOLD=2 trailing BLOCKING
 # rounds -- at ROUND_ESCALATE_THRESHOLD=3 it refuses regardless of INVARIANT
 # (only a --rounds-override text unblocks it, which this chokepoint does not
@@ -1469,7 +1460,7 @@ FILES:
 RC_RG_E=$(run_hook round-avail-nonok-excluded "$REG_NONE" "$(payload_cwd general-purpose sonnet 'Implement HIMMEL-9004' "$RG_INVARIANT_E" "$RG_REPO_E")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
 assert_rc "(e) a non-ok avail row does not count toward the trailing round total" 0 "$RC_RG_E"
 
-# --- (g), console ruling 2026-09-26 (judge J1305O finding 6): pin "2 blocking
+# --- (g), console ruling 2026-09-26: pin "2 blocking
 # rounds, no INVARIANT -> refuse" through THIS chokepoint. checkRoundGuard
 # already does this (round-guard.test.ts covers it directly); nothing here
 # exercised it through the hook until now.
@@ -1486,7 +1477,7 @@ RC_RG_G=$(run_hook round-2-no-invariant "$REG_NONE" "$(payload_cwd general-purpo
 assert_rc "(g) 2 blocking rounds, no INVARIANT: refuses (self-serviceable)" 2 "$RC_RG_G"
 assert_contains "(g) refusal tells the dispatcher to add an INVARIANT: section" "INVARIANT:" "$(combined_output round-2-no-invariant)"
 
-# --- (h), console ruling 2026-09-26 (judge J1305O finding 6): pin fail-CLOSED
+# --- (h), console ruling 2026-09-26: pin fail-CLOSED
 # on a runtime failure of the predicate itself. Stub `bun` via PATH (never an
 # env seam -- IMPL_GUARD_ROUND_CMD was removed for exactly this reason) to
 # exit 1 unconditionally, standing in for a throwing round-guard.ts; this must

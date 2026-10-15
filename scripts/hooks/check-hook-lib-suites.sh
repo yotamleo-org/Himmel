@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the scripts/hooks + scripts/lib node:test suites (HIMMEL-1578).
+# Run the scripts/hooks + scripts/lib node:test suites.
 #
 # Both suites are the spec for a SECURITY gate (the settings.json hook wirers
 # and the shared settings lock) and, until this hook existed, no runner on any
@@ -7,20 +7,20 @@
 # RED on committed main for a full day and five consecutive chain legs read,
 # discussed and deferred that file while it was broken.
 #
-# WHY PRE-COMMIT ONLY, HISTORICALLY (HIMMEL-1578 deviated from its own ticket):
+# WHY PRE-COMMIT ONLY, HISTORICALLY:
 # Actions was off on the then-private repo and the public mirror lacked
 # .claude/settings.json (the wire-hook-bash fixture source), so a ci.yml step
 # could not run this at all. Both premises died 2026-09-09 — origin is now the
 # public repo with Actions on every PR, and .claude/settings.json is tracked
 # there — so `lanes-and-trust-suites` in ci.yml now calls this script too
-# (HIMMEL-3028). Pre-commit remains the fast local gate; CI is the surface a
+#. Pre-commit remains the fast local gate; CI is the surface a
 # bypassed or skipped local hook can no longer dodge.
 set -uo pipefail
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$repo_root" || { echo "check-hook-lib-suites: cannot cd to $repo_root" >&2; exit 1; }
 
-# HIMMEL-1583: scrub the git environment pre-commit exports before running the
+# scrub the git environment pre-commit exports before running the
 # suites. pre-commit invokes its hooks with GIT_DIR/GIT_INDEX_FILE (and friends)
 # set; `node --test` inherits them, and every `git` the fixtures spawn then
 # resolves against THIS repository instead of the throwaway repo the fixture

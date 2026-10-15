@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|
-# apply_patch, HIMMEL-2170 - Codex's create/edit envelope, see lesson-write-
+# apply_patch, Codex's create/edit envelope, see lesson-write-
 # fence.sh's own header for the extraction detail) - thin
-# wrapper for the lesson-loop enforcement-path write-fence (HIMMEL-767
-# deliverable 3). The self-evolving loop (lessons -> tickets/draft-PRs) is
+# wrapper for the lesson-loop enforcement-path write-fence.
+# The self-evolving loop (lessons -> tickets/draft-PRs) is
 # PROPOSE-ONLY; this hook is the delivery surface that structurally denies it
 # enforcement-path writes. Mirrors block-graphify-egress.sh structurally
 # (env fast-exit -> stdin parse -> delegate to a fence script), but with two

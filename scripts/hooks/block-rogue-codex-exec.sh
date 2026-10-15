@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# PreToolUse hook - blocks RAW `codex exec` dispatches (HIMMEL-2023).
+# PreToolUse hook - blocks RAW `codex exec` dispatches.
 #
 # WHY: scripts/codex/dispatch-codex-exec.sh is the codex-exec lane's mandatory
 # chokepoint (ACL preflight, gpt-5.5 + sandbox pins, --background refusal,
-# worktree containment, job registry + fleet reap, and since HIMMEL-2023 the
+# worktree containment, job registry + fleet reap, and the
 # watchdog timebox + flow-run-ledger rows). A raw `codex exec` bypasses all of
 # it - including the watchdog, so it is exactly the invisible-hang shape
-# HIMMEL-1788 is about. The WSL variant has had this guard since HIMMEL-999;
+# is about. The WSL variant has had this guard;
 # the native one was the remaining unfenced path. Sibling of
 # block-rogue-codex-wsl.sh, same shape, same fail posture.
 #
@@ -21,7 +21,7 @@
 #   3. Tokens present + jq missing/parse failure -> fail CLOSED (exit 2).
 #
 # SCOPE: the same TEXTUAL command-position heuristic as the WSL sibling, with
-# its limits (HIMMEL-1016 tracks shell-aware tokenization for both). It DOES
+# its limits (tracks shell-aware tokenization for both). It DOES
 # catch a bare `VAR=value ... codex exec` env-assignment prefix and an `exec`
 # verb terminated by a shell metacharacter (`codex exec;`, `codex exec|cat`,
 # `codex exec>out`). It does NOT close deliberate evasions a textual matcher
@@ -92,7 +92,7 @@ STRIPPED="$(printf '%s' "$CMD" | sed -e 's/"[^"]*"//g' -e "s/'[^']*'//g")"
 #               slipped the command-position rule entirely (panel codex-1).
 #               Deliberately narrow: only bare `NAME=value` words, so `env -S`
 #               and friends stay on the documented not-closed list above (the
-#               enumeration trap HIMMEL-1813 names).
+#               enumeration trap).
 #   _CODEX_BASE the codex basename, path-qualified via an optional leading run
 #               ending in / or \ (/path/codex, C:\...\codex.exe).
 #   _END        token end (whitespace or end of line).

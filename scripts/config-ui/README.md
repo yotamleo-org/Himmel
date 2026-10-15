@@ -282,10 +282,10 @@ imports, so its suite runs in CI without an install.
   | lane on/off | written and read back (`probe.kind` always / never), but **the row cannot show which**: it reads `local override in lanes.local.json` for both (config-feed.js `laneRows`) |
 
   `profile.set` is in the action table, but no feed row offers it, so it is not
-  a console toggle. Served from a git **worktree**, initiative and lane toggles
-  look like they did nothing: `config set` writes the worktree's `.env` and
-  `lanes.local.json`, while the feed reads the primary checkout's (its station
-  anchor).
+  a console toggle. Served from a git **worktree**, the server runs `config set`
+  with `HIMMELCTL_REPO_ROOT` set to the primary checkout (the feed's station
+  anchor), so initiative and lane toggles write the `.env` and `lanes.local.json`
+  the feed and the live hooks read. An operator-set `HIMMELCTL_REPO_ROOT` wins.
 - Browser e2e: `scripts/config-ui/tests/e2e/`, Playwright pinned
   to 1.64.0. **Opt-in, not in CI**: a runner has no
   cached Chromium, and fetching one on every PR would make a download outage

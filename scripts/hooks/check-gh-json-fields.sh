@@ -6,9 +6,8 @@
 # field is invisible until the command runs live: `gh` exits 1 with
 # "Unknown JSON field", which a caller's fail-closed guard reports as a
 # generic "cannot evaluate" — indistinguishable from an auth/network
-# blip. That is how HIMMEL-1288 shipped: /cr-public's HIMMEL-1202
-# bounded-wait polled `--json headRefSha` (the real field is
-# headRefOid), so the wait could never run a single iteration, and the
+# blip. Example: a bounded wait that polled `--json headRefSha` (the real
+# field is headRefOid) could never run a single iteration, and the
 # operator-merge fallback it guards was unreachable precisely when a
 # public PR needed it.
 #
@@ -96,7 +95,7 @@ for f in "${files[@]}"; do
 
     # Match `gh <sub> … --json <fields>` on LOGICAL lines: backslash
     # continuations are joined first, so a command split across two physical
-    # lines is seen whole (HIMMEL-1326). awk prints
+    # lines is seen whole. awk prints
     # "<first-physical-line>:<joined text>" — the lineno kept below is the first
     # physical line of the logical line, so the message still points somewhere
     # useful. grep then filters exactly as it did on physical lines (awk, not a

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared DESTINATION-based write fence for Bash/PowerShell-mediated writes into
-# a PRIMARY checkout (HIMMEL-2526).
+# a PRIMARY checkout.
 #
 # WHY: block-edit-on-main.sh is wired ONLY on the Edit|Write|MultiEdit|
 # NotebookEdit matcher, so a Bash-mediated write (`cat >`, `sed -i`, `tee`, a
@@ -40,7 +40,7 @@
 # CODEX-LANE PARITY (RETASK, no behaviour change in this PR): the git-commit
 # and PowerShell-writer (Set-Content/Out-File/Add-Content) arms have NO
 # extractable destination — they are a CWD predicate, not a target. The
-# codex/sourced lane's contract for that predicate is HIMMEL-745's
+# codex/sourced lane's contract for that predicate is the
 # `is_on_main` (byte-identical port of block-terminal-write-fence.sh's old
 # inline class-(b) block: deny only when the cwd's repo is on main/master,
 # fail OPEN on a feature branch OR an unreadable branch, honouring a
@@ -51,7 +51,7 @@
 # arm in this script) while the sourced/codex lane keeps `is_on_main` exactly
 # as before. Every OTHER arm (redirect/tee/sed -i/cp/mv/rm/touch/ln) is
 # DESTINATION-based in BOTH modes — that dual contract is the actual point of
-# HIMMEL-2526 and is unaffected by the codex-parity carve-out above.
+# and is unaffected by the codex-parity carve-out above.
 #
 # Fail-open / fail-closed posture:
 #   - Destination resolution (guard_canon_path failure, main_checkout_verdict
@@ -59,16 +59,16 @@
 #   - A DYNAMIC target (still contains $ or a backtick after expansion) fails
 #     OPEN on THAT candidate only — scanning continues on every other
 #     candidate in the same command. A GLOB target does NOT simply fail open:
-#     its longest glob-free directory prefix is checked instead (HIMMEL-2592
-#     rule B), so `rm <worktree>/dirlink/*` cannot hide a write that
+#     its longest glob-free directory prefix is checked instead
+#     so `rm <worktree>/dirlink/*` cannot hide a write that
 #     traverses a link into the primary.
 #   - The codex-lane cwd predicate (git commit / PS writers) fails OPEN on a
-#     feature branch or an unreadable branch, matching HIMMEL-745 exactly
+#     feature branch or an unreadable branch, matching is_on_main exactly
 #     (see CODEX-LANE PARITY above).
 #   - Capability checks (jq, git, guardrails/lib.sh) fail CLOSED in
 #     direct-exec mode.
 #
-# Token classes (HIMMEL-2592). Every walk in this file — the heredoc-opener
+# Token classes. Every walk in this file — the heredoc-opener
 # walk, the clause splitter, the redirect pre-pass, the tokenizer — now
 # agrees on what a token IS, and NO loop may consume a token outside its own
 # class:
@@ -90,7 +90,7 @@
 # _bwimc_mode_for_operand.
 #
 # Known limitations:
-#   - Arm (g) (HIMMEL-3401, git subcommands that rewrite a protected
+#   - Arm (g) (git subcommands that rewrite a protected
 #     checkout — see its own header for the allowlist + the pull/fetch
 #     carve-out) targets the repo a git command is AIMED at, which for a
 #     write run from a LINKED worktree's own cwd (no -C) is the worktree's
@@ -98,7 +98,7 @@
 #     `config`/`remote` writes, `branch -u|--unset-upstream|-M|-C|-f`,
 #     `checkout -B`/`switch -C` onto main|master, and `update-ref`/
 #     `symbolic-ref` on refs/heads/main|master land in the primary's SHARED
-#     $GIT_COMMON_DIR. HIMMEL-3407 closes this for exactly those shapes by
+#     $GIT_COMMON_DIR. This is closed for exactly those shapes by
 #     also checking the target's owning primary checkout
 #     (_bwimc_git_check_common_owner) — narrowed to exempt config/remote
 #     shapes that do NOT touch the shared repo config at all
@@ -119,7 +119,7 @@
 #     a backslash is LITERAL and does not prevent the closing quote, because
 #     bash has no escape there. That asymmetry is deliberate and is pinned by
 #     the suite's MIRROR rows. Not modelled: `$'...'` ANSI-C quoting.
-#   - Command substitutions (HIMMEL-3622; this bullet used to claim their
+#   - Command substitutions (this bullet used to claim their
 #     bodies were scanned as ordinary text, which was false inside a
 #     double-quoted span — the scanner treats the whole span as inert, so
 #     `x="$(echo hi > P/f)"` wrote into the primary unseen). Now
@@ -133,14 +133,14 @@
 #     other non-shell `-c`) are NOT parsed for writes — heredoc bodies are
 #     blanked before scanning specifically so a `>` inside one (`if a > b:`)
 #     cannot produce a phantom target; the PostToolUse dirty-checkout
-#     detector (HIMMEL-2526 W3) covers what an interpreter body actually
+#     detector (W3) covers what an interpreter body actually
 #     wrote. `eval "..."` and `bash -c`/`sh -c`/`zsh -c "..."` bodies ARE now
-#     scanned (HIMMEL-3648, `_bwimc_check_interp_body`) — coarsely: the body
+#     scanned (`_bwimc_check_interp_body`) — coarsely: the body
 #     is word-split, not clause-parsed, and every non-flag token is run
 #     through the same destination check as every other arm, so a dynamic
 #     ($VAR, `cmd`) token inside one is the same unresolved-token residual
 #     _bwimc_check_target already accepts everywhere else.
-#   - HIMMEL-4138: where bash and zsh read a command differently, the hook
+#   where bash and zsh read a command differently, the hook
 #     fails closed instead of picking one reading. (1) A comment (`#` at a
 #     word start) can hide a quote from one reading and not the other, so
 #     every phase runs twice: once on the text as written and once with its
@@ -154,17 +154,17 @@
 #     `flock L -c`, ...) has its body scanned like a plain `bash -c` (the
 #     `wrap` kind of `_bwimc_check_interp_body`). Known residuals:
 #     `script -c` and `env -S` bodies; a `case` item `)` inside `$(…)`.
-#     HIMMEL-4143/4145: extra readings (mode 1) carry a newline inside a
+#     extra readings (mode 1) carry a newline inside a
 #     quoted span as \006, so it does not split a clause, on text whose
 #     heredoc bodies inside a dq-quoted `$(…)` are blanked too. The raw
 #     readings (mode 0) still run: their line split resyncs the quote scan
 #     after a body the blanker cannot parse, so the extra readings only ADD
-#     denials. HIMMEL-4153: leading assignment words are skipped before the
-#     verb arms read the command word. HIMMEL-4213: so are a leading `{`,
+#     denials. Leading assignment words are skipped before the
+#     verb arms read the command word. So are a leading `{`,
 #     `!`, reserved word, `time` and wrapper command (`nice -n 5 touch`,
 #     `sudo -u u touch`; `_bwimc_strip_prefix`).
 #   - `-T`/`--no-target-directory` IS modelled now (RETASK correction,
-#     HIMMEL-2592 round 6 codex-2 — this bullet used to say the opposite):
+#     the opposite of what one might expect):
 #     for `mv` it forces the destination to plain ENTRY resolution instead
 #     of directory-follow (`_bwimc_nodrf`, bundled forms like `-fT`
 #     included), and for `ln` the same flag — alongside `-n`/
@@ -183,7 +183,7 @@
 #     unchanged here (inherited from block-terminal-write-fence.sh).
 #   - A `cd`/`pushd` earlier in the command DOES move the resolution base for
 #     arms (a) (redirect/tee) and (b)/(e) (sed/cp/mv/rm/touch/ln/git-commit/
-#     install/rsync/dd/eval-bash-c) now (HIMMEL-3648 corrects the bullet this
+#     install/rsync/dd/eval-bash-c) now (corrects the bullet this
 #     used to be: `_bwimc_ecwd_track` re-tracks it per clause, and
 #     `_bwimc_cd_guard` denies a RELATIVE write candidate outright once a
 #     `cd`/`pushd` target could not be resolved statically or a `popd` left it
@@ -191,8 +191,8 @@
 #     target, `||`/`&&` short-circuiting, a subshell, a pipeline, a background
 #     `&`, an if/while body that never runs, or a `$(...)` command
 #     substitution — every one of those can leave the tracked cwd pointing
-#     somewhere the cd never actually took the shell (HIMMEL-3648 CR round 9,
-#     judge J1307O C1). Rather than model each shape, `_bwimc_cd_guard` closes
+#     somewhere the cd never actually took the shell.
+#     Rather than model each shape, `_bwimc_cd_guard` closes
 #     the gap structurally: whenever the tracked cwd has diverged from the
 #     real payload cwd at all, the write candidate is ALSO checked against the
 #     real payload cwd, and denied if THAT resolves inside the primary — so
@@ -207,8 +207,8 @@
 #     vs an entry, entry vs follow) and the `<dest>/<basename(src)>` child
 #     check (incl. `-t`) get the same rule separately: each destination block
 #     runs against the tracked cwd and, when it diverged, again against the
-#     real cwd, denying if either pass denies (judge J1307A F1, closing the
-#     HIMMEL-3726 regression). Arm (g) (git subcommands) keeps
+#     real cwd, denying if either pass denies (closing the
+#     regression). Arm (g) (git subcommands) keeps
 #     its own separate, pre-existing `_bwimc_git_clause` tracking, unaffected
 #     by this. Not modelled: an absolute or dynamic write candidate is checked
 #     against the tracked cwd exactly like before, and a `cd` performed by an
@@ -285,7 +285,7 @@ fi
 
 # --------------------------------------------------------------- utilities
 
-# ---- the ONE quote/escape scanner (HIMMEL-2592 CR codex-1) ----
+# ---- the ONE quote/escape scanner ----
 #
 # This file has four passes that each need to know what a character MEANS:
 # heredoc-opener detection, clause splitting, tokenizing, and the redirect
@@ -322,7 +322,7 @@ fi
 # Backslash before a newline is line continuation and is consumed the same
 # way, which is why callers step the newline through the scanner too.
 #
-# HIMMEL-4010: an UNQUOTED `'` right after an active `$` opens an ANSI-C
+# an UNQUOTED `'` right after an active `$` opens an ANSI-C
 # `$'…'` span (_BWIMC_Q = A), where `\` DOES escape — `$'\''` is one complete
 # string holding a quote. Read as a plain single-quoted span, its middle `'`
 # closed it and the last one opened a span that hid the rest of the command
@@ -330,7 +330,7 @@ fi
 # an active `$` (not the second `$` of `$$`, the PID); a caller that jumps over a substitution body clears it.
 # ponytail: a backslash-newline between `$` and `'` (`$\<LF>'…'`, one ANSI-C
 # string to Bash) clears _BWIMC_DL, so it scans as a plain quote; carry the
-# state across the continuation (HIMMEL-4133).
+# state across the continuation.
 _BWIMC_NL=$'\n'
 _BWIMC_NLENC=0
 
@@ -371,7 +371,7 @@ _bwimc_scan_step() {
     return 0
 }
 
-# _bwimc_quote_run TEXT I [dq] — HIMMEL-4591. Inside a quoted span
+# _bwimc_quote_run TEXT I [dq]. Inside a quoted span
 # (_BWIMC_Q set, _BWIMC_ESC 0) _bwimc_scan_step reads every character but the
 # closer (and, outside a single-quoted span, the backslash) as inert text and
 # changes no state but ACT=0/DL=0, so a walker can take the whole inert run in
@@ -432,7 +432,7 @@ _bwimc_plain_run() {
 # (`if a > b:`) never reaches the redirect scan. Recognises `<<`/`<<-`
 # optionally quoted. Bash 3.2-safe ([[ =~ ]] + BASH_REMATCH is bash 3.0+).
 #
-# HIMMEL-2591/2592: opener detection is a CHARACTER-LEVEL, quote- and
+# opener detection is a CHARACTER-LEVEL, quote- and
 # comment-aware walk, in the same style as _bwimc_split_clauses — NOT a
 # per-line regex over raw text, and NOT a call to _bwimc_tokenize. Blanking
 # deliberately runs BEFORE tokenizing (so a heredoc body cannot confuse the
@@ -447,12 +447,12 @@ _bwimc_plain_run() {
 # An opener is an unquoted `<<`/`<<-` NOT preceded by `<` and NOT followed by
 # `<`. Both exclusions are load-bearing:
 #   - the "not followed by `<`" / "not preceded by `<`" pair is the
-#     structural replacement for codex-3's (HIMMEL-2526 CR round 4)
+#     structural replacement for codex-3's
 #     `(^|[^\<])` anchor: bash's `[[ =~ ]]` tries every start position, so on
 #     `cat <<<EOF` the old regex could match beginning at the SECOND `<` and
 #     blank every following line — including a real write — until a line
 #     equal to "EOF" appeared.
-#   - the quote/comment rules are HIMMEL-2591: `echo '<<EOF'`, `echo "<<EOF"`
+#   - the quote/comment rules are: `echo '<<EOF'`, `echo "<<EOF"`
 #     and `# <<EOF` all used to start blanking, ERASING a real write on a
 #     following line (a fail-OPEN produced by ordinary text, not a crafted
 #     payload).
@@ -464,7 +464,7 @@ _bwimc_plain_run() {
 # here is a MISSED blanking (a phantom target from heredoc text), i.e. a
 # false positive, never a bypass.
 #
-# HIMMEL-4145: with a second argument `nest`, a `$(` inside a double-quoted
+# with a second argument `nest`, a `$(` inside a double-quoted
 # span opens CODE again (bash reads `"$(cat <<'EOF' … EOF )"` as a command
 # substitution whose heredoc body is literal), so a `<<` there is an opener
 # and its body is blanked — an apostrophe in a commit message can no longer
@@ -476,7 +476,7 @@ _bwimc_plain_run() {
 # ponytail: a case/esac, comment, backtick or `${` inside that `$(…)` falls
 # back to the flat reading, so a body apostrophe there still hides a later
 # write as before; count case arms the way _bwimc_subst_paren_end does if a
-# real command hits it (HIMMEL-4145).
+# real command hits it.
 _bwimc_blank_heredocs() {
     local _ww="" _wb=0 _we=0
     local text="$1" nest="${2:-}"
@@ -487,7 +487,7 @@ _bwimc_blank_heredocs() {
     local i len c prev rest check tab run
     local arith_pfx arith_open arith_close arith_scan
     tab=$(printf '\t')
-    # HIMMEL-4397: the line prefix before a `<<` of a `git commit -m "$(cat <<'X'` message
+    # the line prefix before a `<<` of a `git commit -m "$(cat <<'X'` message
     local gitmsg_re='(^|[;&|(][[:space:]]*)git[[:space:]]+commit[[:space:]]([^;&|<>$`]*[[:space:]])?(-[a-zA-Z]*m|--message)[=[:space:]]*"[$][(]cat[[:space:]]*$'
     # Quote/escape state is carried ACROSS lines (the scanner is initialised
     # once, here) but is FROZEN while a heredoc body is active — the body-line
@@ -549,7 +549,7 @@ _bwimc_blank_heredocs() {
                     '<')
                         if [ "$active" = 0 ] && [ -z "$pend_term" ] && [ "$prev" != '<' ] \
                            && [ "${_ww:$((i-_wb+1)):1}" = '<' ] && [ "${_ww:$((i-_wb+2)):1}" != '<' ]; then
-                            # J1285R Minor: `<<` inside an unclosed `((`/`$((`
+                            # `<<` inside an unclosed `((`/`$((`
                             # arithmetic context on this line (`$((1 << n))`,
                             # `(( x = y << z ))`) is a left-shift operator, not
                             # a heredoc opener. Count literal `((`/`))` pairs
@@ -589,7 +589,7 @@ _bwimc_blank_heredocs() {
             prev="$c"
             i=$((i+1))
         done
-        # HIMMEL-2645: an opener that ITSELF ends in a line continuation
+        # an opener that ITSELF ends in a line continuation
         # (`cat <<EOF \` then a newline) is not yet a complete command line —
         # bash joins the next physical line onto it before the command ends,
         # so a real redirect there (`> <primary>/f`) is still COMMAND text,
@@ -621,14 +621,14 @@ _bwimc_blank_heredocs() {
     if [ -n "$nest" ]; then
         # shellcheck disable=SC2016  # literal `${` is the glob pattern
         case "$ncode" in *'${'*) unsure=1 ;; esac
-        # HIMMEL-4177: case/esac as WORDS only, so `showcase` keeps this reading
+        # case/esac as WORDS only, so `showcase` keeps this reading
         [[ ! "$ncode" =~ (^|[^A-Za-z0-9_])(case|esac)([^A-Za-z0-9_]|$) ]] || unsure=1
         if [ "$unsure" = 1 ] || [ "$nl" -ne 0 ] || [ "$active" = 1 ] || [ -n "$pend_term" ]; then
             _bwimc_blank_heredocs "$text"
             return
         fi
     fi
-    # HIMMEL-3621: a heredoc opener whose terminator was never matched
+    # a heredoc opener whose terminator was never matched
     # (`active=1` at end of input) or whose opener continuation never
     # resolved (`pend_term` still set) means every line since the opener was
     # blindly blanked on a guess that never panned out — a real write after
@@ -637,7 +637,7 @@ _bwimc_blank_heredocs() {
         _bwimc_deny "unresolved-heredoc" "<<${term:-$pend_term} (terminator not found)" "" ""
     fi
     printf '%s' "$out"
-    # HIMMEL-4397: status 7 = nest mode blanked every body and every opener's
+    # status 7 = nest mode blanked every body and every opener's
     # delimiter was quoted, so no body expands anything, and every opener is a
     # `git commit -m "$(cat <<'X'` message (inert text, never run as code: a
     # `bash -c "$(cat <<'X'` body is code and keeps the flat reading).
@@ -664,7 +664,7 @@ _bwimc_blank_heredocs() {
 # Quote-aware (a quote char only toggles when it matches the CURRENTLY open
 # quote type, so a `'` inside a `"..."` span stays literal and vice versa).
 #
-# HIMMEL-2592: an unquoted `|` IMMEDIATELY preceded by an unquoted `>` is part
+# an unquoted `|` IMMEDIATELY preceded by an unquoted `>` is part
 # of the CLOBBER redirect operator `>|`, not a clause boundary. Without this
 # rule `echo x >| <primary>/f` split into `echo x >` + `<primary>/f`, and the
 # redirect target was lost entirely — a silent fail-OPEN produced by a token
@@ -672,13 +672,13 @@ _bwimc_blank_heredocs() {
 # are untouched: in both the character before the `|` is `|` or the `|` is
 # followed by `&`, never a bare `>`.
 #
-# HIMMEL-3685: ALLOWLIST for trusting a cd. The tracker trusts a cd/pushd/popd
+# ALLOWLIST for trusting a cd. The tracker trusts a cd/pushd/popd
 # only as a plain simple command that starts the text or follows `;`, `&&` or a
 # newline, in a command that contains none of: a standalone reserved word (`!`
 # time coproc if then elif else fi while until for select case esac do done
 # function `{` `}` `[[` `]]`), a parenthesis, a single `&` (anything but `&&`
 # or a redirect). A single `|` taints only the clause on its left and all later
-# ones (HIMMEL-4934). Anything else makes the modelled cwd
+# ones. Anything else makes the modelled cwd
 # UNRESOLVED for the rest of the command (fail closed): _bwimc_text_untrusted
 # prescans the whole text and, when it fires, EVERY clause is emitted with a
 # leading $_BWIMC_PIPE sentinel byte; every consumer strips it with
@@ -753,7 +753,7 @@ _bwimc_text_untrusted() {
 # _bwimc_drop_quotes TEXT — _bwimc_dq = TEXT without any ", ' or `. The
 # characters are ASCII and a UTF-8 sequence never contains an ASCII byte, so
 # the strip runs under a function-local LC_ALL=C: a UTF-8 ${x//c/} re-decodes
-# the whole text per match (HIMMEL-4729, 0.3 s at 640 quoted lines).
+# the whole text per match (0.3 s at 640 quoted lines).
 _bwimc_drop_quotes() {
     local LC_ALL=C
     _bwimc_dq=${1//\"/}
@@ -762,7 +762,7 @@ _bwimc_drop_quotes() {
 }
 # _bwimc_nonblank TEXT — true when TEXT holds a byte that is not ASCII
 # whitespace: what `[ -n "$(printf %s TEXT | tr -d '[:space:]')" ]` tested,
-# without the fork per clause (HIMMEL-4729: 6.6 s at 640 lines). GNU tr is
+# without the fork per clause (6.6 s at 640 lines). GNU tr is
 # byte-wise, so the glob runs under LC_ALL=C to see the same bytes.
 _bwimc_nonblank() {
     local LC_ALL=C
@@ -798,7 +798,7 @@ _bwimc_clause_unpipe() {
 # paren that drops the depth back to 1 is immediately followed by `)`, and
 # the span carries no quote, backslash, backtick, `$(`, stub, newline or
 # `;&|` — anything else returns 1 and the caller keeps today's break, so
-# `$((touch P/f) )` and `$((echo a); touch P/f)` still split (HIMMEL-4153).
+# `$((touch P/f) )` and `$((echo a); touch P/f)` still split.
 _bwimc_arith_end() {
     local t="$1" j=$(($2 + 2)) d=2 n=${#1} ch
     while [ "$j" -lt "$n" ]; do
@@ -818,7 +818,7 @@ _bwimc_arith_end() {
     return 1
 }
 # _bwimc_strip_assign TEXT — sets _BWIMC_SA to TEXT with its leading
-# assignment words removed (HIMMEL-4153), so the verb arms' `^verb` anchors
+# assignment words removed, so the verb arms' `^verb` anchors
 # see the command word: `x=1 touch P/f`, `a[1<<2]=1 touch P/f`,
 # `x=$(echo hi) touch P/f` and `x="a b" touch P/f` all reach the touch arm.
 # A word counts as an assignment only when it starts NAME[…]?+?= with NAME
@@ -875,7 +875,7 @@ _bwimc_strip_assign() {
         _BWIMC_SA="${t:$i}"
     done
 }
-# _bwimc_assign_flat TEXT — HIMMEL-4198/4174. Sets _BWIMC_AF to TEXT with
+# _bwimc_assign_flat TEXT. Sets _BWIMC_AF to TEXT with
 # every balanced `$((…))` span and every `NAME=(…)`/`NAME+=(…)` array value
 # replaced by `0`, and every backslash-newline joined, outside single quotes.
 # The splitter breaks at a `$((` that is not plain arithmetic (so
@@ -884,7 +884,7 @@ _bwimc_strip_assign() {
 # reading beside the unflattened one, so it can only add denials: the spans'
 # own contents are still read where they were. An unclosed span leaves TEXT
 # unchanged (no extra reading, today's behaviour).
-# HIMMEL-4228: a `${…}` or `$[…]` span holding a separator (`|;&()<>` or a
+# a `${…}` or `$[…]` span holding a separator (`|;&()<>` or a
 # newline) becomes `$_`, which stays a dynamic word, so `x=${y:-a|b} touch
 # P/f` shows its verb and `cp a ${HOME}/x` is not re-read as a cwd path. A
 # bash 5.3 `${ cmd; }`/`${| cmd; }` becomes `$( cmd; )`, so its body is read
@@ -965,7 +965,7 @@ _bwimc_assign_flat() {
                    && case "${t:$i:$((_BWIMC_PEND - i + 1))}" in *[\'\"\`]*) true ;; *) false ;; esac; then
                     # a `${` inside "…" holding a quote: _bwimc_brace_end scans it
                     # from the unquoted state, so its end may be wrong. Fail closed:
-                    # no flattening, the span reads as written (HIMMEL-4228)
+                    # no flattening, the span reads as written
                     _BWIMC_AF_CLEAN=0
                 elif [ "$_BWIMC_PEND" -lt "$n" ]; then
                     # a bash 5.3 `${ cmd; }`/`${| cmd; }` runs its body: read it as `$(…)`
@@ -1004,7 +1004,7 @@ _bwimc_assign_flat() {
     done
     _BWIMC_AF="$o"
 }
-# _bwimc_flat_mask ORIG — HIMMEL-4213 (latency): the flattened reading
+# _bwimc_flat_mask ORIG (latency): the flattened reading
 # (_BWIMC_AF) is scanned in full a second time, which doubled the hook's cost.
 # When every change was a quote-, paren-, `#`- and backslash-free `${…}`/`$[…]`
 # span (_BWIMC_AF_CLEAN) and ORIG has no `#`, `<<`, backtick, cd, pushd or popd,
@@ -1077,7 +1077,7 @@ _bwimc_flat_mask() {
     done
     _BWIMC_AF="$o"
 }
-# _bwimc_strip_prefix CLAUSE — HIMMEL-4213. Sets _BWIMC_SP0 to CLAUSE with
+# _bwimc_strip_prefix CLAUSE: Sets _BWIMC_SP0 to CLAUSE with
 # its leading assignment words removed (_bwimc_strip_assign), and _BWIMC_SP to CLAUSE
 # with its leading run of assignment words, `{`, `!`, if/then/elif/else/
 # while/until/do, `time [-p]` and wrapper commands (command, exec, nice,
@@ -1095,7 +1095,7 @@ _bwimc_flat_mask() {
 # operand lands in _BWIMC_SPDIR for the verb loop to model (_bwimc_chdir_model);
 # `sudo -i`/`--login`, a second chdir, or an unknown wrapper option record `$`
 # (dir unknown, fail closed). No other stripped wrapper changes directory.
-# HIMMEL-4329: a wrapper name matches on its basename (`/usr/bin/env`,
+# a wrapper name matches on its basename (`/usr/bin/env`,
 # `nice.exe`). `chroot [opts] DIR` and `sudo -R DIR`/`--chroot` change the
 # root: DIR lands in _BWIMC_SPROOT for the verb loop (_bwimc_root_model), and
 # chroot also chdirs to the new `/`.
@@ -1149,7 +1149,7 @@ _bwimc_sp_word() {
 _bwimc_sp_dir() {
     if [ -z "$_BWIMC_SPDIR" ]; then _BWIMC_SPDIR="$1"; else _BWIMC_SPDIR='$'; fi
 }
-# _bwimc_sp_root WORD — HIMMEL-4329: records a chroot's new root (`chroot
+# _bwimc_sp_root WORD: records a chroot's new root (`chroot
 # DIR`, `sudo -R DIR`) in _BWIMC_SPROOT; a second one reads as unknown (`$`).
 _bwimc_sp_root() {
     if [ -z "$_BWIMC_SPROOT" ]; then _BWIMC_SPROOT="$1"; else _BWIMC_SPROOT='$'; fi
@@ -1219,7 +1219,7 @@ _bwimc_strip_prefix() {
     while :; do
         _bwimc_sp_word; w="$_BWIMC_SPW"
         # a quoted command name still runs (`"sudo"`); a quoted keyword is no keyword.
-        # HIMMEL-4329: a wrapper matches on its basename, `.exe` dropped
+        # a wrapper matches on its basename, `.exe` dropped
         # (`/usr/bin/nice`, `nice.exe`), as _bwimc_check_interp_body does
         _tolower_ascii "${_BWIMC_SPU##*/}"; wl="${_TOLOWER_OUT%.exe}"
         r=0
@@ -1266,7 +1266,7 @@ _bwimc_strip_prefix() {
                         *) break ;;
                     esac
                 done ;;
-            # HIMMEL-4329: `chroot [opts] NEWROOT cmd` runs cmd from NEWROOT's
+            # `chroot [opts] NEWROOT cmd` runs cmd from NEWROOT's
             # `/` (`--skip-chdir`: the dir is unknown)
             chroot)
                 _BWIMC_SPT="${_BWIMC_SPT:${#w}}"
@@ -1283,7 +1283,7 @@ _bwimc_strip_prefix() {
             break
         elif [ "$r" = 2 ]; then
             # an unknown env/sudo/chroot option may be a chdir: the dir is
-            # unknown; an unknown sudo/chroot one may be a new root (HIMMEL-4329)
+            # unknown; an unknown sudo/chroot one may be a new root
             case "$wl" in env|sudo|chroot) _bwimc_sp_dir '$' ;; esac
             case "$wl" in sudo|chroot) _bwimc_sp_root '$' ;; esac
             # fail closed: the first later word a verb arm matches (none: as is)
@@ -1315,7 +1315,7 @@ _bwimc_strip_prefix() {
 }
 # _bwimc_split_clauses TEXT [skel] — with `skel` (TEXT is a _bwimc_subst_split
 # skeleton), the `(` of a `$(` STUB is not a break, so a target built from a
-# substitution (`f$(date)`) stays one token (HIMMEL-4010).
+# substitution (`f$(date)`) stays one token.
 _bwimc_split_clauses() {
     local _ww="" _wb=0 _we=0
     local text="$1" skel="${2:-}"
@@ -1328,7 +1328,7 @@ _bwimc_split_clauses() {
             _bwimc_quote_run "$text" "$i"
             if [ "$_BWIMC_RUN" -gt 0 ]; then
                 run="${text:$i:$_BWIMC_RUN}"
-                # HIMMEL-4143: a newline inside the span rides as \006 (mode 1)
+                # a newline inside the span rides as \006 (mode 1)
                 if [ "$_BWIMC_NLENC" = 1 ]; then run="${run//"$_BWIMC_NL"/$'\006'}"; fi
                 clause+="${run}"
                 prevact=""; _BWIMC_ACT=0; _BWIMC_DL=0
@@ -1351,7 +1351,7 @@ _bwimc_split_clauses() {
                     if [ "$prevact" = '>' ]; then
                         clause+="${c}"
                     else
-                        # HIMMEL-4934: a single `|` makes every piece since
+                        # a single `|` makes every piece since
                         # the last real boundary (`;` `&&` `||` newline, or a
                         # background `&`) a pipeline member (its cd would run
                         # in a subshell), so all of them and every later
@@ -1380,7 +1380,7 @@ _bwimc_split_clauses() {
                     if [ -n "$skel" ] && [ "$prevact" = '$' ] && { [ "${_ww:$((i-_wb+1)):1}" = $'\001' ] || [ "${_ww:$((i-_wb+1)):1}" = $'\005' ]; }; then
                         clause+="${c}"
                     elif [ "$prevact" = '$' ] && [ "${_ww:$((i-_wb+1)):1}" = '(' ] && _bwimc_arith_end "$text" "$i"; then
-                        # HIMMEL-4153: a plain `$((…))` is arithmetic, not a
+                        # a plain `$((…))` is arithmetic, not a
                         # subshell — keep it in the clause so `x=$((1<<2))
                         # touch P/f` stays ONE clause with its verb.
                         clause+="${text:$i:$((_BWIMC_AE - i + 1))}"
@@ -1392,7 +1392,7 @@ _bwimc_split_clauses() {
                 *) clause+="${c}" ;;
             esac
         elif [ "$c" = "$_BWIMC_NL" ] && [ -n "$_BWIMC_Q" ] && [ "$_BWIMC_NLENC" = 1 ]; then
-            # HIMMEL-4143: a newline inside a quoted span is part of the
+            # a newline inside a quoted span is part of the
             # word, not a clause break — carry it as \006 so the clause
             # stays one line in transport (`echo 'a⏎' > P/f` keeps its
             # redirect). Only in a mode-1 reading (_BWIMC_NLENC=1).
@@ -1453,7 +1453,7 @@ _bwimc_tokenize() {
     return 0
 }
 
-# codex-1 (HIMMEL-2526): a redirect operator ATTACHED to the preceding token
+# a redirect operator ATTACHED to the preceding token
 # (`echo x>/primary/f`, no space) tokenizes as ONE word — _bwimc_tokenize
 # splits on whitespace only — so _bwimc_redirect_op_of (anchored on the
 # TOKEN START) never matches and the target is missed entirely. Insert
@@ -1464,13 +1464,13 @@ _bwimc_tokenize() {
 # _bwimc_split_clauses/_bwimc_tokenize — a `>` inside a quoted span is left
 # completely untouched (codex-3's `echo 'text > "x"'` must keep ALLOWing).
 #
-# HIMMEL-2592: applied by EVERY arm now — (a) and the verb arms (b)/(e) — so
+# applied by EVERY arm now — (a) and the verb arms (b)/(e) — so
 # all of them share ONE tokenization and a redirect operator is always a
 # token of its own. `>` is left untouched when already preceded by
 # whitespace, so the clobber form survives as one token (`>|/p/f`) for
 # _bwimc_redirect_op_of to split.
 #
-# HIMMEL-2592 round 6 codex-1: `<` (input redirection) gets the SAME
+# `<` (input redirection) gets the SAME
 # treatment as `>`, for the SAME reason — an attached form (`-t</dev/null`)
 # tokenizes as one word otherwise, and _bwimc_redirect_op_of never gets a
 # chance to recognise it. Measured against real cp: `-t</dev/null DIR src`
@@ -1482,8 +1482,8 @@ _bwimc_tokenize() {
 # left GLUED here (same "prev matches the same char" rule that keeps `>>`
 # together), never split into a bogus `<` + `<...`.
 #
-# HIMMEL-2592 round 9 codex-1/codex-2 (console-mandated STRUCTURAL fix,
-# replacing rounds 6-8's sentinel-and-skip patchwork): a bare fd-NUMBER word
+# STRUCTURAL fix
+# (replacing a sentinel-and-skip patchwork): a bare fd-NUMBER word
 # glued directly to the operator (`2>foo`) is now kept in the SAME token as
 # the operator — never split at all — exactly what _bwimc_redirect_op_of's
 # own regex (`^([0-9]*|\&)(\>\>?)...`) was written to consume. No code
@@ -1504,18 +1504,18 @@ _bwimc_tokenize() {
 # leave it unrecognised by _bwimc_redirect_op_of entirely (its regex is
 # anchored at the token START) — a fail-open in the opposite direction.
 #
-# HIMMEL-2592 round 10 codex-2: `<>` (bash's READ-WRITE redirect — opens for
+# `<>` (bash's READ-WRITE redirect — opens for
 # both, CREATES the target if missing) is kept glued into ONE token with NO
 # exception, regardless of what precedes it or the digit-word tracking
 # below — measured: `cat < > file` (a space between `<` and `>`) is a bash
 # SYNTAX ERROR, so there is no legitimate spaced form to preserve, unlike
 # `2>foo` vs `2 > foo` where both are real and must tokenize differently.
-# Splitting `<>` (round 9's own `<`-is-a-read fix did exactly this,
+# Splitting `<>` (treating `<` as a read did exactly this,
 # incidentally) demoted the write half to a bogus, unchecked `<`-prefixed
 # input target — `cat <>@P@/new.txt` created a file in the primary and was
 # allowed.
 #
-# HIMMEL-2592 round 10 codex-1: the `<>` glue decision above must ask the
+# the `<>` glue decision above must ask the
 # shared quote/escape scanner whether the PREVIOUS character was itself
 # syntactically active — not the raw previous character — exactly the
 # `prevact` idiom _bwimc_split_clauses already uses for its own `>` before a
@@ -1567,7 +1567,7 @@ _bwimc_space_before_redirects() {
         elif [ "$_BWIMC_ACT" = 1 ] && { [ "$c" = '>' ] || [ "$c" = '<' ]; } \
              && [ "$prevact" = "$c" ]; then
             # A REPEATED ACTIVE operator (`>>`, `<<`) is ONE operator — keep it
-            # glued. Round 11 codex-1: this arm must ask `prevact`, not raw
+            # glued. This arm must ask `prevact`, not raw
             # `prev`, for exactly the reason the `<>` arm above already does.
             # On raw `prev`, an ESCAPED `>` glued the following REAL `>` to
             # itself: `echo \>>@P@/g.txt` (bash: a literal `>` in the word,
@@ -1578,7 +1578,7 @@ _bwimc_space_before_redirects() {
             # the active `>` after it must be SPACED OFF, not welded on.
             out+="${c}"
         elif [ "$_BWIMC_ACT" = 1 ] && { [ "$c" = '>' ] || [ "$c" = '<' ]; }; then
-            # Round 12 audit site B: only ACTIVE whitespace is a word
+            # Only ACTIVE whitespace is a word
             # boundary. An ESCAPED or QUOTED space is a literal space INSIDE
             # the word — `echo x\ >@P@/p.txt` is the single word `x ` followed
             # by a REAL output redirect — so reading raw `prev` here said
@@ -1598,7 +1598,7 @@ _bwimc_space_before_redirects() {
         else
             out+="${c}"
         fi
-        # Round 12 codex-1 (gate panel): the fd-digit run is a property of
+        # The fd-digit run is a property of
         # the current WORD, so only an ACTIVE character can end or extend it.
         # An inactive one — an escaped space, a quoted digit — is ordinary
         # word text: `echo foo\ 2>@P@/m.txt` is the word `foo 2` then a real
@@ -1636,7 +1636,7 @@ _bwimc_space_before_redirects() {
 _bwimc_expand_token_raw() {
     local t="${1//$'\006'/$'\n'}"
     local Q="\"'"
-    # HIMMEL-4010: an ANSI-C `$'…'` span names the path its decoded text spells
+    # an ANSI-C `$'…'` span names the path its decoded text spells
     # (`> $'<primary>/f'`); undecoded, its `$` made the target look dynamic.
     # A real \016 is doubled either way, so _bwimc_unsent cannot misread it.
     case "$t" in
@@ -1655,11 +1655,11 @@ _bwimc_expand_token_raw() {
     # scanning continues on every other candidate in the same command.
     # ponytail: edge whitespace and newlines in a real name (a symlink `f ` or
     # `nl<LF>` into the primary) are lost here and in $(…) captures, so the
-    # write is checked under the wrong name; carry them as sentinels (HIMMEL-4129).
+    # write is checked under the wrong name; carry them as sentinels.
     t="${t#"${t%%[![:space:]]*}"}"
     t="${t%"${t##*[![:space:]]}"}"
     [ -n "$t" ] || return 1
-    # HIMMEL-4359: once the command assigns HOME itself, the hook's own HOME
+    # once the command assigns HOME itself, the hook's own HOME
     # no longer names what ~ / $HOME expand to — unresolvable, like a cd.
     # shellcheck disable=SC2088,SC2016
     [ "${_bwimc_home_taint:-0}" = 1 ] && case "$t" in
@@ -1687,7 +1687,7 @@ _bwimc_expand_token() {
     _bwimc_unsent "$t"
 }
 
-# _bwimc_unsent TEXT — HIMMEL-4010: the literal chars _bwimc_ansic_spans
+# _bwimc_unsent TEXT: the literal chars _bwimc_ansic_spans
 # parked as \016+letter sentinels (and \016\016 for a real \016), restored.
 _bwimc_unsent() {
     local t="$1" o="" k=0 c
@@ -1708,7 +1708,7 @@ _bwimc_unsent() {
     printf '%s' "$o"
 }
 
-# _bwimc_glob_prefix RAW — HIMMEL-2592 RETASK rule B. A `glob` operand is not
+# _bwimc_glob_prefix RAW. A `glob` operand is not
 # a token this extractor may silently DROP: `rm <worktree>/dirlink/*` is
 # unresolvable as a whole, yet its directory part traverses `dirlink` and can
 # land inside the primary. Echo the operand's LONGEST GLOB-FREE DIRECTORY
@@ -1716,7 +1716,7 @@ _bwimc_unsent() {
 # glob-only token yielding `./` = the cwd), which the caller then checks with
 # FOLLOW semantics as a write-through directory. Returns 1 (nothing to check)
 # for a token that is not a glob at all, or that is DYNAMIC — a `$VAR`/backtick
-# operand still fails open on ITSELF only, per the ratified HIMMEL-2526 §2
+# operand still fails open on ITSELF only, per the ratified
 # spec. Deliberately NOT "deny any operand containing a glob".
 _bwimc_glob_prefix() {
     local t head
@@ -1759,7 +1759,7 @@ _bwimc_long_opt_name() {
     esac
 }
 
-# _bwimc_is_long_abbrev FULL TOKEN — HIMMEL-2592 round 5. True iff TOKEN is
+# _bwimc_is_long_abbrev FULL TOKEN: True iff TOKEN is
 # `--P` or `--P=V` where P is a non-empty, case-sensitive PREFIX of FULL (the
 # option's full name, no leading `--`). This mirrors how GNU getopt_long
 # resolves an unambiguous long-option ABBREVIATION (`--targ` for
@@ -1803,11 +1803,11 @@ _bwimc_is_long_abbrev() {
 }
 
 # _bwimc_opt_scan TOKEN — the ONE option splitter, shared by every verb arm
-# that cares about a semantics-changing flag (HIMMEL-2592 CR round 2). It
+# that cares about a semantics-changing flag. It
 # expands BUNDLED short options, because `mv -fT`, `cp -rT`, `ln -sfn` and
 # `rm -rf` are all ordinary shapes and a matcher that only recognises a
 # standalone `-T` silently misses every bundled form. Every LONG spelling is
-# matched via _bwimc_is_long_abbrev (HIMMEL-2592 round 5), so an abbreviation
+# matched via _bwimc_is_long_abbrev, so an abbreviation
 # of any of them is not a spelling this scanner has to separately enumerate.
 #
 # It REPORTS what it saw and lets each arm apply its own semantics, because
@@ -1821,11 +1821,11 @@ _bwimc_is_long_abbrev() {
 #   _BWIMC_OPT_SMALLN 1 when `-n` / `--no-dereference` (or an abbreviation)
 #                     was seen
 #   _BWIMC_OPT_RMDEST 1 when `--remove-destination` (or an abbreviation) was
-#                     seen. cp-only (HIMMEL-2679): it has no short form, so it
+#                     seen. cp-only: it has no short form, so it
 #                     is caught only here, not in the bundled-short-option
 #                     loop below.
 #   _BWIMC_OPT_FORCE  1 when `-f` / `--force` (or an abbreviation of the
-#                     latter) was seen. HIMMEL-2679: on cp, a FOLLOW-mode
+#                     latter) was seen. On cp, a FOLLOW-mode
 #                     write that fails on the referent's permissions falls
 #                     back to unlinking the destination ENTRY (ground-truthed
 #                     against real GNU coreutils) — the same entry-replacing
@@ -1850,7 +1850,7 @@ _bwimc_opt_scan() {
             elif _bwimc_is_long_abbrev "force" "$tok"; then
                 _BWIMC_OPT_FORCE=1
             elif _bwimc_is_long_abbrev "target-directory" "$tok"; then
-                # HIMMEL-2592 CR round 4, codex-2: the SEPARATED long form
+                # the SEPARATED long form
                 # takes its value from the NEXT token, exactly like a bare
                 # `-t`. Handling only `-t DIR`, `-tDIR` and
                 # `--target-directory=DIR` left `--target-directory DIR`
@@ -1890,7 +1890,7 @@ _bwimc_opt_scan() {
     return 0
 }
 
-# _bwimc_mode_for_operand RAW DEFAULT-MODE — HIMMEL-2592 RETASK rule A.
+# _bwimc_mode_for_operand RAW DEFAULT-MODE.
 # ENTRY resolution (don't dereference the final-component symlink) is only
 # correct when the symlink IS the final path component with NOTHING after it.
 # Anything after the link in the RAW token traverses it, so the operation is
@@ -1959,11 +1959,11 @@ _bwimc_deny() {
         echo "        reach a hook process)."
         case "$kind" in
             unresolved-cd|unresolved-heredoc|marker-byte|shell-ambiguous|unclosed-expansion|unresolved-git-target)
-                # A shape refusal (HIMMEL-4815): the target was unreadable, not proven primary.
+                # A shape refusal: the target was unreadable, not proven primary.
                 echo "    Retry (shape, not destination): one write per Bash call, an absolute"
                 echo "    worktree path as the target, no cd/heredoc/\$(…)/\$VAR — body via a file." ;;
             data-exec)
-                # HIMMEL-5349: the data was unreadable, not proven to write the primary.
+                # the data was unreadable, not proven to write the primary.
                 echo "    Retry (shape, not destination): read the data first (cat/git log), then"
                 echo "    run its commands as literal text in a separate Bash call — never eval,"
                 echo "    source or pipe into a shell what a file, a variable or git returns." ;;
@@ -1974,14 +1974,14 @@ _bwimc_deny() {
 
 # Ask main_checkout_verdict about an ALREADY-CANONICAL path and deny on any
 # non-allow verdict. An EMPTY canon means canonicalisation failed (including
-# HIMMEL-2597's symlink-hop-cap exhaustion, which returns 1) — fail CLOSED.
+# the symlink-hop-cap exhaustion, which returns 1) — fail CLOSED.
 _bwimc_check_canon() {
     local canon="$1" raw="$2" abs="$3"
     if [ -z "$canon" ]; then
         _bwimc_deny "cannot-canonicalise" "$raw" "$abs" ""
     fi
     local repo_root vrc
-    # codex-2 (HIMMEL-2526): `vrc` MUST be initialised and the command
+    # `vrc` MUST be initialised and the command
     # substitution's failure captured with `||`, not a bare trailing `$?` —
     # under `set -e`, a standalone `repo_root=$(cmd)` assignment whose `cmd`
     # exits non-zero fires errexit BEFORE the next statement (`vrc=$?`) ever
@@ -1992,7 +1992,7 @@ _bwimc_check_canon() {
     case "$vrc" in
         0) return 0 ;;
         1|2)
-            # HIMMEL-2946: the deny text below (and _bwimc_cwd_check_sourced's
+            # the deny text below (and _bwimc_cwd_check_sourced's
             # own copy) recommends `touch "$repo_root/.single-writer"` as the
             # opt-out for a repo that commits to main by design — but creating
             # that exact marker IS itself a write on main/primary-feature, so
@@ -2018,7 +2018,7 @@ _bwimc_check_canon() {
 # (exit 2) on 1/2/3; returns 0 (keep scanning) on 0 or a dropped/unreadable
 # candidate that fails open by contract elsewhere.
 #
-# MODE (HIMMEL-2592, acceptance criterion 2): path resolution is chosen by the
+# MODE (acceptance criterion 2): path resolution is chosen by the
 # OPERATION, not by the path.
 #   follow — dereference a final-component symlink (the default). Correct for
 #            anything writing THROUGH an existing link: a redirect target, a
@@ -2027,7 +2027,7 @@ _bwimc_check_canon() {
 #            (guard_canon_path_nofollow). Correct for `rm` (unlinks the entry,
 #            never touches the referent), a `mv` SOURCE (rename(2) moves the
 #            entry) and an `ln` target (creates an entry).
-#   both   — check the referent AND the entry. HIMMEL-2592 round 4: `sed -i`
+#   both   — check the referent AND the entry. `sed -i`
 #            used to route here on the theory that GNU sed's default ENTRY
 #            replacement and `--follow-symlinks`' FOLLOW write-through made
 #            `both` a safe superset for every `sed -i` invocation. Measured
@@ -2042,7 +2042,7 @@ _bwimc_check_canon() {
 #            contract — the suite may still exercise it directly — rather
 #            than being deleted for lack of a current caller.
 #
-# HIMMEL-4329: behind a chroot (_bwimc_chroot, set per clause by
+# behind a chroot (_bwimc_chroot, set per clause by
 # _bwimc_root_model) the write lands inside ROOT. Every reading is checked
 # (deny-only): the host reading as before; ROOT itself, so a root that IS the
 # primary or lies inside it denies any write whatever the target; ROOT + ABS
@@ -2074,7 +2074,7 @@ _bwimc_check_abs() {
     _tolower_ascii "$abs"
     lc="$_TOLOWER_OUT"
     if is_temp_or_devnull "$lc"; then
-        # HIMMEL-4921 (D): the /tmp exemption is by NAME, so a link under /tmp
+        # the /tmp exemption is by NAME, so a link under /tmp
         # that resolves into a protected checkout slipped through. Exempt only
         # when the RESOLVED path is temp-ish too; entry mode (rm, ln) resolves
         # ancestors only, since the link itself is what it touches. An
@@ -2103,12 +2103,12 @@ _bwimc_check_abs() {
     return 0
 }
 
-# _bwimc_check_glob_operand RAW CWD — HIMMEL-2592 RETASK rule B, applied ONLY
+# _bwimc_check_glob_operand RAW CWD, applied ONLY
 # by callers whose operand role WRITES (rm operands, mv SOURCES, cp/mv
 # DESTINATIONS, tee targets, redirect targets). A READ role (a `cp` SOURCE)
 # must never route through here — `cp <primary>/*.txt <worktree>/` only reads
 # the primary and must keep ALLOWing.
-# HIMMEL-4010: a write operand built from a command substitution never
+# a write operand built from a command substitution never
 # resolves statically, so every arm that falls back here (cp/mv/ln/install
 # destinations, mv sources) hands it to _bwimc_check_target's stub model.
 _bwimc_check_glob_operand() {
@@ -2129,7 +2129,7 @@ _bwimc_check_glob_operand() {
 # dropped silently: a glob falls back to its glob-free prefix, a dynamic
 # operand still fails open on itself alone.
 #
-# HIMMEL-4010: a target built from a command substitution (a _bwimc_subst_split
+# a target built from a command substitution (a _bwimc_subst_split
 # stub) is not dropped either. A leading `$(pwd)`/backtick-pwd stub (\005) is
 # the cwd, so it becomes `.` when a `/`, a `"/`, or the token end (quoted or
 # not) follows it; a pwd stub anywhere else is just another stub.
@@ -2139,7 +2139,7 @@ _bwimc_check_glob_operand() {
 # ponytail: a target that STARTS with a non-pwd substitution (`"$(mktemp)"`)
 # or a `$VAR`, or whose substitution output climbs out with `..` or names a
 # symlink (`/tmp/x$(pwd)/f`), is checked only as far as its static prefix —
-# the same dynamic-operand residual as `$VAR` (HIMMEL-2526 §2);
+# the same dynamic-operand residual as `$VAR`;
 # revisit only with a real expansion model.
 _bwimc_check_target() {
     local raw="$1" cwd="$2" mode="${3:-follow}" abs eff pfx h lq="" rest
@@ -2191,7 +2191,7 @@ _bwimc_check_target() {
     _bwimc_check_abs "$abs" "$raw" "$eff"
 }
 
-# HIMMEL-3648: forward declaration — _bwimc_ecwd_track below (used by arm (a),
+# forward declaration — _bwimc_ecwd_track below (used by arm (a),
 # which runs as top-level script code before _bwimc_unq's canonical
 # definition is reached further down) needs _bwimc_unq/_bwimc_ansic already
 # defined. Redefined identically at their original location later in the
@@ -2200,7 +2200,7 @@ _bwimc_check_target() {
 _bwimc_ansic() {
     local s="$1" o="" c k=0 h v m
     while [ "$k" -lt "${#s}" ]; do
-        # HIMMEL-4397: take the whole run before the next backslash in one step
+        # take the whole run before the next backslash in one step
         c="${s:$k}"; c="${c%%\\*}"
         if [ -n "$c" ]; then o+="$c"; k=$((k+${#c})); continue; fi
         k=$((k+1))
@@ -2238,7 +2238,7 @@ _bwimc_ansic() {
     printf '%s' "$o"
 }
 
-# _bwimc_ansic_spans TOKEN — HIMMEL-4010: TOKEN with each `$'…'` span replaced
+# _bwimc_ansic_spans TOKEN: TOKEN with each `$'…'` span replaced
 # by the text it decodes to; everything else is left as it is. Only an
 # UNQUOTED `$'` opens a span: inside "…" or '…' the `$'` is literal text.
 _bwimc_ansic_spans() {
@@ -2310,13 +2310,13 @@ _bwimc_unqv() {
         *[\'\"\\\$\`$'\006']*) ;;
         *) _BWIMC_UNQ=$t; return 0 ;;
     esac
-    # HIMMEL-4143: a newline inside a quoted span travels as \006 in clause
+    # a newline inside a quoted span travels as \006 in clause
     # transport (_bwimc_split_clauses); the word itself carries the newline.
     t="${t//$'\006'/$'\n'}"
     case "$t" in
         *\$\'*|*\$\"*)
             while [ "$k" -lt "${#t}" ]; do
-                # HIMMEL-4397: jump over runs of plain text, not one char a step
+                # jump over runs of plain text, not one char a step
                 c="${t:$k}"; c="${c%%\$*}"
                 if [ -n "$c" ]; then o+="$c"; k=$((k+${#c})); continue; fi
                 c="${t:$k:1}"
@@ -2342,7 +2342,7 @@ _bwimc_unqv() {
     case "$t" in
         *\\*)
             t="${t//\\$'\n'/}"
-            # HIMMEL-4591: drop each backslash and keep the character after it,
+            # drop each backslash and keep the character after it,
             # one jump per backslash instead of one step per character
             while [[ "$t" == *\\* ]]; do
                 c="${t%%\\*}"; o+="$c"
@@ -2379,7 +2379,7 @@ _bwimc_unq_eq() {
     [ "$_BWIMC_UNQ" = "$2" ]
 }
 
-# HIMMEL-3648: shared cd/pushd/popd cwd-tracking for arm (a) and arm (b)/(e)
+# shared cd/pushd/popd cwd-tracking for arm (a) and arm (b)/(e)
 # — the git-arm's cd/pushd/popd tracking (_bwimc_git_clause below) never
 # reaches these two arms, so a `cd <primary> && echo x > a.txt` left every
 # LATER relative write destination in the same command resolving against the
@@ -2391,7 +2391,7 @@ _bwimc_unq_eq() {
 # pass. Called as a plain statement once per clause, BEFORE that clause's own
 # scan runs — never via `$(…)`, which would discard the global updates in a
 # subshell.
-# _bwimc_chdir_model RAW — HIMMEL-4213: a wrapper chdir operand (`env -C RAW`)
+# _bwimc_chdir_model RAW: a wrapper chdir operand (`env -C RAW`)
 # moves _bwimc_ecwd like a `cd RAW` would. A non-literal operand (`$`, a
 # backtick, a glob, a backslash, an odd quote) or one that does not resolve
 # marks the cwd unresolved, so a relative write target behind it denies.
@@ -2412,7 +2412,7 @@ _bwimc_chdir_model() {
         _bwimc_ecwd_unres=1
     fi
 }
-# _bwimc_root_model RAW — HIMMEL-4329: a chroot's new root (`chroot RAW`,
+# _bwimc_root_model RAW: a chroot's new root (`chroot RAW`,
 # `sudo -R RAW`) for _bwimc_check_abs. Sets _bwimc_chroot to RAW resolved
 # against the cwd and canonicalised (a root that is a symlink into the primary
 # must not pass as its /tmp spelling), to "" for `/`, and to `$` (unknown, fail
@@ -2439,7 +2439,7 @@ _bwimc_root_model() {
         /*) _bwimc_chroot="$r" ;;
     esac
 }
-# _bwimc_jail_canon ROOT ABS — HIMMEL-4329: prints ABS resolved the way a
+# _bwimc_jail_canon ROOT ABS: prints ABS resolved the way a
 # process chrooted at ROOT (canonical, no trailing /) resolves it: `.` drops,
 # `..` stops at the jail's `/`, an absolute symlink target restarts at the
 # jail's `/`, a relative one resolves from its own dir. Every symlink is
@@ -2466,7 +2466,7 @@ _bwimc_jail_canon() {
     done
     printf '%s\n' "${cur:-/}"
 }
-# HIMMEL-4956: true when the shell would NOT land a literal `cd`/`pushd` on its
+# true when the shell would NOT land a literal `cd`/`pushd` on its
 # target, so the modelled cwd must not move: more than one operand (bash: too
 # many arguments; zsh: two-arg substitution), a relative target while the
 # CDPATH taint is set (the lookup may resolve elsewhere), or a target that is
@@ -2494,7 +2494,7 @@ _bwimc_cd_would_fail() {
     [ -d "$r" ] && [ -x "$r" ] || return 0
     return 1
 }
-# HIMMEL-4976: paths an earlier clause of THIS command removed, moved or
+# paths an earlier clause of THIS command removed, moved or
 # chmod-ed (newline-separated, canonical; a line `*` = unknown). The existence
 # check in _bwimc_cd_would_fail runs before the command does, so a cd whose
 # target (or an ancestor) was touched by then fails closed. _bwimc_fsmut_note
@@ -2548,7 +2548,7 @@ _bwimc_ecwd_track() {
     local toks=() t tu i n r carg cabs craw piped="${2:-0}" j cmdi cdphys=0
     while IFS= read -r t; do toks+=("$t"); done < <(_bwimc_tokenize "$1")
     n=${#toks[@]}
-    # HIMMEL-3685: a cd/pushd/popd that is not the clause's first command word
+    # a cd/pushd/popd that is not the clause's first command word
     # (past plain assignments) is not a plain simple cd: mark the cwd unresolved
     # below. Accepted over-deny: any clause that merely names cd as an argument.
     i=0
@@ -2573,7 +2573,7 @@ _bwimc_ecwd_track() {
                 esac
             done
             if [ "$i" -ge "$n" ]; then
-                # HIMMEL-3648 (CR #1307): a bare `pushd` swaps the top two
+                #: a bare `pushd` swaps the top two
                 # stack entries — but ONLY if the stack already has a second
                 # entry from an earlier `pushd <dir>` in this same command.
                 # With no prior push, bash errors and leaves cwd UNCHANGED
@@ -2593,7 +2593,7 @@ _bwimc_ecwd_track() {
                 # shellcheck disable=SC2016
                 case "$craw" in
                     *'`'*|*'$('*)
-                        # HIMMEL-3648 (CR #1307): a command-substitution
+                        #: a command-substitution
                         # cd/pushd target is dynamic, but _bwimc_unq strips
                         # backticks unconditionally — checking the target
                         # AFTER _bwimc_unq (as below) would see a laundered
@@ -2603,13 +2603,13 @@ _bwimc_ecwd_track() {
                         _bwimc_ecwd_unres=1
                         ;;
                     +[0-9]*|-[0-9]*)
-                        # HIMMEL-3648 (CR #1307): `pushd +N`/`-N` rotates
+                        #: `pushd +N`/`-N` rotates
                         # the directory stack this hook does not track —
                         # fail closed rather than resolve "+N"/"-N" as a
                         # literal relative path fragment. Not a push of a
                         # new dir onto the stack, so _bwimc_ecwd_pushn is
                         # left unchanged.
-                        # HIMMEL-4976: `cd +N/..`/`-N/..` is the same: bash
+                        # `cd +N/..`/`-N/..` is the same: bash
                         # fails it (or zsh rotates the stack) and the real
                         # cwd does not follow the literal path.
                         _bwimc_ecwd_unres=1
@@ -2620,7 +2620,7 @@ _bwimc_ecwd_track() {
                             /*|[A-Za-z]:/*|[A-Za-z]:\\*) cabs=1 ;;
                             *) cabs=0 ;;
                         esac
-                        # HIMMEL-3648 (codex-1): a stale _bwimc_ecwd (left
+                        #: a stale _bwimc_ecwd (left
                         # behind by an earlier popd, `cd -`, or unresolvable
                         # cd — none of which update it) must not be silently
                         # trusted again by a later RELATIVE cd/pushd
@@ -2632,20 +2632,20 @@ _bwimc_ecwd_track() {
                         if [ "$cabs" = 0 ] && [ "$_bwimc_ecwd_unres" = 1 ]; then
                             :
                         elif _bwimc_cd_would_fail "$cabs" "$carg" "$_bwimc_ecwd" "${toks[@]:$((i+1))}"; then
-                            # HIMMEL-4956: the shell fails this cd (extra
+                            # the shell fails this cd (extra
                             # operand, CDPATH lookup, missing directory) and
                             # the real cwd stays put - the target is no
                             # evidence of where a later relative write lands.
                             _bwimc_ecwd_unres=1
                         elif [ "$cdphys" = 1 ] && case "/$carg/" in */../*) true ;; *) false ;; esac; then
-                            # HIMMEL-4976: `cd -P` resolves symlinks BEFORE
+                            # `cd -P` resolves symlinks BEFORE
                             # `..`, so a link component then `..` lands in
                             # the link target's parent, not the lexical one.
                             _bwimc_ecwd_unres=1
                         elif r=$(_bwimc_resolve_abs "$carg" "$_bwimc_ecwd") && ! _bwimc_fsmut_hit "$r"; then
                             _bwimc_ecwd="$r"; _bwimc_ecwd_unres=0
                         else
-                            # HIMMEL-4976: also reached when an earlier clause
+                            # also reached when an earlier clause
                             # of this command removed/moved/chmod-ed the target.
                             _bwimc_ecwd_unres=1
                         fi
@@ -2656,7 +2656,7 @@ _bwimc_ecwd_track() {
         popd) _bwimc_ecwd_unres=1 ;;
     esac
     _bwimc_fsmut_note "${toks[@]}"
-    # HIMMEL-3685: a cd/pushd/popd reached across a `|`/`||` boundary may not
+    # a cd/pushd/popd reached across a `|`/`||` boundary may not
     # have run (or ran in a pipeline subshell) — whatever it modelled, the
     # real cwd is unknown, so fail closed like an unresolvable cd.
     case "$tu" in
@@ -2672,11 +2672,11 @@ _bwimc_ecwd_track() {
 }
 
 # Denies a RELATIVE, non-dynamic write candidate once a cd/pushd earlier in
-# this same command left the modelled cwd unresolved (HIMMEL-3648) — an
+# this same command left the modelled cwd unresolved — an
 # absolute or dynamic ($/backtick) candidate is untouched: those already
 # resolve (or fail open on themselves alone) regardless of cwd.
 #
-# HIMMEL-3648 (J1307O C1): _bwimc_ecwd_track has no model of a cd/pushd
+# _bwimc_ecwd_track has no model of a cd/pushd
 # target that doesn't exist, ||/&&-short-circuiting, a subshell, a
 # pipeline, a background &, an if/while body that never runs, or a $(...)
 # command substitution — every one of those can leave _bwimc_ecwd pointing
@@ -2692,7 +2692,7 @@ _bwimc_ecwd_track() {
 # before the call site's own _bwimc_ecwd-based check ever gets a chance to
 # allow.
 #
-# HIMMEL-3648 (CR #1307 round 10 codex-1): every call site used to pass only
+# every call site used to pass only
 # the candidate token — never its own operation mode (entry/follow) — so
 # this fallback defaulted to "follow" regardless of what the caller actually
 # needed. For an `rm` operand (entry semantics: unlink acts on the directory
@@ -2706,7 +2706,7 @@ _bwimc_ecwd_track() {
 # for instance — cp never checks its source as a destination) pass nothing
 # and get the harmless "follow" default, since main never contradicts it.
 #
-# HIMMEL-4253: an unquoted leading `~` or `~/` is not relative either — bash
+# an unquoted leading `~` or `~/` is not relative either — bash
 # expands it to $HOME whatever the cwd, so it is base-independent like an
 # absolute path, and the call site's own check still resolves it (via
 # _bwimc_expand_token) and denies a target inside the primary. Only those two
@@ -2718,7 +2718,7 @@ _bwimc_ecwd_track() {
 # _bwimc_expand_token already gives it; revisit if a literal `~` directory
 # ever appears inside a checkout.
 _bwimc_cd_guard() {
-    # HIMMEL-4359: after an in-command HOME assignment a ~ / $HOME write
+    # after an in-command HOME assignment a ~ / $HOME write
     # target resolves against a HOME this hook cannot see — fail closed.
     # A cp SOURCE passes here too, as behind a cd: its basename names the
     # child the copy writes, and `cp -r ~ d/` takes that name from HOME.
@@ -2739,7 +2739,7 @@ _bwimc_cd_guard() {
     return 0
 }
 
-# _bwimc_git_commit_target CLAUSE_SP CWD — HIMMEL-2884: `git … commit` is a
+# _bwimc_git_commit_target CLAUSE_SP CWD: `git … commit` is a
 # CWD predicate (see CODEX-LANE PARITY below), but `-C <path>` (repeatable —
 # each relative value resolves against the PREVIOUS one, git's own
 # semantics) and `--git-dir=<p>`/`--git-dir <p>` redirect the commit at a
@@ -2748,7 +2748,7 @@ _bwimc_cd_guard() {
 # commit actually addresses. An unresolvable value (dynamic/glob/empty)
 # fails CLOSED to CWD and sets _BWIMC_GIT_TARGET_UNRESOLVED=1 so the caller
 # can note it in the deny text.
-# Two passes, per git's own semantics (git(1) / codex CR round 1, HIMMEL-2884):
+# Two passes, per git's own semantics (git(1)):
 # pass 1 resolves every `-C` cumulatively to a single final base directory;
 # pass 2 resolves the LAST `--git-dir` against that FINAL base, regardless of
 # where it appears relative to a `-C` on the command line (`git
@@ -2758,7 +2758,7 @@ _bwimc_cd_guard() {
 # discovers the repository by walking up from cwd in that case — HEAD moves
 # in whatever repo cwd resolves to, and `--work-tree` only supplies
 # working-tree file content there (verified against real git, codex CR
-# round 2, HIMMEL-2884). Only when `--git-dir` is ALSO given does
+# Only when `--git-dir` is ALSO given does
 # `--work-tree` matter at all, and even then `--git-dir` alone determines the
 # repository the commit updates, so it always wins.
 # Not modelled (deliberately, per the ticket): GIT_DIR/GIT_WORK_TREE env,
@@ -2782,7 +2782,7 @@ _bwimc_git_commit_target() {
         if [ "$t" = "-C" ]; then
             i=$((i+1)); v="${toks[$i]:-}"
             r=$(_bwimc_resolve_abs "$v" "$dir") && dir="$r" || _BWIMC_GIT_TARGET_UNRESOLVED=1
-        # HIMMEL-2949: `--work-tree <p>` (two tokens) must skip its own
+        # `--work-tree <p>` (two tokens) must skip its own
         # operand too, exactly like `-C` above — otherwise an operand that
         # happens to equal the literal string "commit" trips the break check
         # one token early and a LATER -C is silently never seen. A standalone
@@ -2800,13 +2800,13 @@ _bwimc_git_commit_target() {
         tl="$_TOLOWER_OUT"
         [ "$tl" = "commit" ] && break
         case "$t" in
-            # codex-2 round 4 (HIMMEL-2884): this loop must also skip `-C`'s
+            # this loop must also skip `-C`'s
             # own operand, exactly like the first loop does — otherwise an
             # operand that happens to equal the literal string "commit" trips
             # the break check above one token early and a LATER --git-dir is
             # silently never seen.
             -C) i=$((i+1)) ;;
-            # HIMMEL-2949: same masking risk from `--work-tree`'s own operand.
+            # same masking risk from `--work-tree`'s own operand.
             --work-tree) i=$((i+1)) ;;
             --git-dir=*) gitdir_raw="${t#--git-dir=}" ;;
             --git-dir) i=$((i+1)); gitdir_raw="${toks[$i]:-}" ;;
@@ -2856,13 +2856,13 @@ _bwimc_cwd_check_sourced() {
 
 # DIRECT-EXEC (Claude Bash) cwd predicate for `git commit`: the tighter
 # main_checkout_verdict rule (main OR primary-feature both deny) — the actual
-# HIMMEL-2526 rule, applied here because PowerShell never reaches this mode
+# rule, applied here because PowerShell never reaches this mode
 # (the Claude wiring adds this script to the Bash matcher only).
 _bwimc_cwd_check_direct() {
     _bwimc_check_abs "$1" "cwd:$1 (git commit)"
 }
 
-# _bwimc_ansic_ambig SPAN NEXT — HIMMEL-4138. SPAN is the raw text of one
+# _bwimc_ansic_ambig SPAN NEXT: SPAN is the raw text of one
 # `$'…'` span, NEXT the character after its closing quote. Denies when the
 # shells decode it differently in a way that can move a path:
 #   - `\x{` + hex digit: bash 5.3 decodes `\x{2f}` as `/`, bash <= 5.2 keeps
@@ -2917,7 +2917,7 @@ _bwimc_ansic_ambig() {
     done
 }
 
-# _bwimc_ambig_check TEXT — HIMMEL-4138. Walks TEXT as one command (the same
+# _bwimc_ambig_check TEXT: Walks TEXT as one command (the same
 # quote/escape scanner every arm uses) and denies at each unquoted `'` that
 # follows a run of active `$` when bash and zsh read the span after it
 # differently. An even run (`$$'…'`) is the PID then a plain quote to bash, an
@@ -2951,12 +2951,12 @@ _bwimc_ambig_check() {
     done
 }
 
-# _bwimc_strip_comments TEXT — HIMMEL-4138. Sets _BWIMC_NC to TEXT with every
+# _bwimc_strip_comments TEXT: Sets _BWIMC_NC to TEXT with every
 # shell comment removed (from an unquoted `#` at the start of a word to the end
 # of its line), the second reading the scan below runs. The scanner itself
 # does not know comments, so a quote inside one (`$(echo hi # it's⏎)`) opened
 # a span that hid every later command. This is the bash/zsh `-c` reading:
-# HIMMEL-4921 (A): the shared scanner reads `"${x:-"it's"}"` wrongly. Inside a
+# the shared scanner reads `"${x:-"it's"}"` wrongly. Inside a
 # double-quoted `${…}` bash opens a NEW quoted span at the inner `"`, so the
 # `'` is a literal; the scanner closes the span at that `"` and takes the `'`
 # for an opener that swallows everything after it, redirect included. This
@@ -2966,7 +2966,7 @@ _bwimc_ambig_check() {
 # ponytail: braces are counted blind to quotes, so a `}` inside a quoted
 # default (`${x:-"}"}`) closes early and the tail reads as plain text, a
 # false-negative only on this extra reading; upgrade = a nested quote stack in
-# _bwimc_scan_step (HIMMEL-4921 follow-up).
+# _bwimc_scan_step (follow-up).
 _bwimc_flatten_pe() {
     local t="$1" o="" k=0 n=${#1} c d j q=0
     _BWIMC_PE="$t"
@@ -2993,7 +2993,7 @@ _bwimc_flatten_pe() {
         fi
         o+="$c"; k=$((k+1))
     done
-    # A quote-free `${...}` body is read correctly already (HIMMEL-4921 perf).
+    # A quote-free `${...}` body is read correctly already (perf).
     [ "$q" = 1 ] && _BWIMC_PE="$o"
     return 0
 }
@@ -3003,7 +3003,7 @@ _bwimc_flatten_pe() {
 # Only ever an EXTRA reading: the unstripped text is still scanned, so a
 # misread here can add a deny, never remove one.
 # ponytail: a `case` item's `)` inside `$(…)` closes the body early here, so a
-# comment after it stays unstripped (the old reading), HIMMEL-4138.
+# comment after it stays unstripped (the old reading),.
 _bwimc_strip_comments() {
     local t="$1" o="" k=0 n c nx st="C" top prev="" run=0
     local hdok=1 hd=() hdd=() hdk=() hi j w q1 q2 dash body line chk found
@@ -3139,7 +3139,7 @@ _bwimc_strip_comments() {
 
 # The shared tokenizer, inlined (never sourced: hook-integrity pins this file,
 # not a lib it sources). test-block-write-into-main-checkout-evaldata.sh fails
-# when this block drifts from scripts/hooks/lib/shell-tokenize.sh (HIMMEL-5349).
+# when this block drifts from scripts/hooks/lib/shell-tokenize.sh.
 # >>> BEGIN shell-tokenize (HIMMEL-3546; canonical: scripts/hooks/lib/shell-tokenize.sh) >>>
 # st_tokenize CMD — split CMD into words and segments the way bash reads it,
 # expanding nothing. Returns 0 (ST_OK=1) on success, 1 (ST_OK=0) on anything
@@ -3527,7 +3527,7 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 }
 # <<< END shell-tokenize <<<
 
-# ---- HIMMEL-5349 / HIMMEL-5098: execution of DATA (eval, source, a shell) ----
+# --- execution of DATA (eval, source, a shell) ----
 #
 # The scan above reads the command TEXT, so a write that only exists in data
 # the command executes — `eval "$(git log -1 --format=%B)"`, `bash -c "$m"`,
@@ -3566,17 +3566,17 @@ _st_sed_script() { # one sed script at word $1 with text $2, in st_sed_args's sc
 #
 # ponytail: generators outside the list (starship init, mise activate, brew
 # shellenv, `$(npm bin)/x`) are false denies, add a shape to _bwimc_dx_gen
-# when one is needed (HIMMEL-5349).
+# when one is needed.
 # ponytail: a -c body's extent is guessed across substitutions (the tokenizer
 # keeps no glue), so `bash -c 'ls' "$(date)"`-style arguments over-deny, until
-# the tokenizer records word glue (HIMMEL-5349).
+# the tokenizer records word glue.
 # ponytail: source of a variable path (`source "$HOME/x.sh"`) is allowed: it
 # names a file, never data; and a PATH, function or alias change made by an
 # EARLIER Bash call is unseen (one command at a time), which is why an eval of
-# ANY variable is denied (HIMMEL-5349).
+# ANY variable is denied.
 # ponytail: the tokenizer is a byte-identical inlined copy (the lib is never
 # sourced at runtime); test-block-write-into-main-checkout-evaldata.sh fails
-# when it drifts from scripts/hooks/lib/shell-tokenize.sh (HIMMEL-5349).
+# when it drifts from scripts/hooks/lib/shell-tokenize.sh.
 
 _BWIMC_DX_SHRE='^(hash|alias|unalias|enable|disable|function|functions|builtin|builtins|command|commands|aliases|galiases|saliases|dis_aliases|dis_functions|zmodload|autoload|PATH|path|FPATH|fpath|LD_PRELOAD|LD_LIBRARY_PATH|LD_AUDIT|DYLD_[A-Z_]*)$'
 _BWIMC_DX_FLAGRE='^-[A-Za-z]*(PATH|path)$'
@@ -3587,7 +3587,7 @@ _BWIMC_DX_FDEF='[A-Za-z0-9_.:-][[:space:]]*[(][[:space:]]*[)]'
 _BWIMC_DX_BRACE='[$][{][^${}`()]*[}]'
 # A prefix word is an assignment, a wrapper, a numeric-leading word (`nice 5`,
 # `timeout 5s`) or an option, and an option may take the next word as its
-# argument (`env -u x`, `sudo -u root`, HIMMEL-5456). No per-wrapper option
+# argument (`env -u x`, `sudo -u root`). No per-wrapper option
 # table: any option may consume one non-option word, which fails closed
 # (`sudo -E ls "$x"` reads `ls` as an argument and denies on `"$x"`).
 _BWIMC_DX_CRUDE='(^|[;&|(){}!`'$'\n'']|[$][(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|-[^[:space:]]*[[:space:]]+[^-[:space:]][^[:space:]]*|-[^[:space:]]*|[0-9][^[:space:]]*|([^[:space:]]*/)?(nice|nohup|env|command|builtin|exec|timeout|sudo|doas|stdbuf|setsid|time|xargs)|then|do|else)[[:space:]]+)*(eval|source|[.]|([^[:space:]]*/)?(bash|sh|zsh|dash|ksh|fish|mksh|yash|xargs))([[:space:]]|$)'
@@ -3608,7 +3608,7 @@ _BWIMC_DX_CRUDEVAR='(^|[;&|()}!'$'\n'']|[{][[:space:]]|[$][(])[[:space:]]*(([A-Z
 # is unknown here, so a command word holding one reads as built from an
 # expansion), a comment is dropped, a quoted heredoc body becomes _ and an
 # unquoted one is read as commands, one line at a time. The crude regexes run
-# on its output as well as on the plain dequoted text (HIMMEL-5349).
+# on its output as well as on the plain dequoted text.
 # ponytail: a heredoc is located by its own << scan, not by the tokenizer, so a
 # << it misplaces can hide the lines after it from this pass (the plain dequoted
 # pass still reads them); upgrade to the tokenizer's heredoc list if one escapes.
@@ -3716,7 +3716,7 @@ _bwimc_dx_queue() {
 
 # _bwimc_dx_crude TEXT — the fallback for a command the tokenizer cannot model.
 # The raw-text passes below run under a function-local LC_ALL=C: a UTF-8
-# ${x//…/…} or =~ re-decodes the whole text per match (HIMMEL-4729), and a
+# ${x//…/…} or =~ re-decodes the whole text per match, and a
 # 45 KB prose heredoc then costs seconds.
 _bwimc_dx_pre() {
     local LC_ALL=C
@@ -3801,7 +3801,7 @@ _bwimc_dx_crude() {
 # _bwimc_dx_gen SUB [CODE] — 0 when substitution SUB is one listed generator.
 # CODE=1: its output is spliced into code, so path generators do not count.
 # CODE=2: its output is the command word, so only a path generator that never
-# prints an empty or relative word counts (j2481b: an allowlist, not bad verbs).
+# prints an empty or relative word counts (an allowlist, not bad verbs).
 _bwimc_dx_gen() {
     local IFS=$' \t\n' g e wi a0 na=0 k code=${2:-0}
     local -a gl il av
@@ -3994,14 +3994,14 @@ _bwimc_dx_heredoc() {
     _bwimc_dx_deny "(the body of a heredoc fed to a shell cannot be located)"
 }
 
-# Variable provenance (HIMMEL-5483). _dx_vp (in _bwimc_dx_text's scope) lists
+# Variable provenance. _dx_vp (in _bwimc_dx_text's scope) lists
 # "NAME=d " for a variable assigned earlier in the command from data (a
 # substitution that is not a listed generator) and "NAME=c " for one whose
 # text carries a -c word. ponytail: only plain NAME=value words are tracked
 # (not export/declare/read, for/array assignments or F+=, nor a variable set by
 # an earlier call, nor positional $* / $1, nor a partly quoted word like ''$F),
 # so a shell fed by such a variable is
-# not seen; upgrade path HIMMEL-4178.
+# not seen; upgrade path.
 # _bwimc_dx_vtaint WORD — 0 when WORD expands a variable marked d or c.
 _bwimc_dx_vtaint() {
     local t=$1 n
@@ -4379,7 +4379,7 @@ _bwimc_check_data_exec() {
 _bwimc_cwd=$(printf '%s' "$input" | jq -r '.tool_input.cwd // .cwd // empty' 2>/dev/null || true)
 [ -n "$_bwimc_cwd" ] || _bwimc_cwd="$PWD"
 
-# HIMMEL-4010: the scan parks stubs, clause brackets and decoded chars as
+# the scan parks stubs, clause brackets and decoded chars as
 # \001-\005 and \016 markers, so a command carrying one of those raw bytes
 # cannot be classified (a symlink named with one reads as another name).
 case "$cmd" in
@@ -4387,13 +4387,13 @@ case "$cmd" in
         _bwimc_deny "marker-byte" "(raw control byte in command)" "" "" ;;
 esac
 
-# HIMMEL-5349 / HIMMEL-5098: deny execution of data (_bwimc_check_data_exec).
+# deny execution of data (_bwimc_check_data_exec).
 # Every cwd: the data's write target is unknown, so no cwd proves it safe.
 if [ "${tool:-}" != PowerShell ] && [ "${EDIT_ON_MAIN_OK:-0}" != 1 ]; then
     _bwimc_check_data_exec "$cmd"
 fi
 
-# HIMMEL-4359: a HOME assignment anywhere in the command (`HOME=x`, a prefix
+# a HOME assignment anywhere in the command (`HOME=x`, a prefix
 # `HOME=x cmd`, export/declare/typeset/local/readonly, `env [-i] HOME=x`, and
 # a quoted or escaped name those builtins still read as HOME) taints every ~ /
 # $HOME expansion: _bwimc_expand_token_raw stops resolving them and
@@ -4409,10 +4409,10 @@ else
     esac
 fi
 
-# HIMMEL-4956: a CD-search-path assignment (or one inherited by the hook) makes
+# a CD-search-path assignment (or one inherited by the hook) makes
 # a relative `cd` search elsewhere; same order-blind taint as the HOME one.
 _bwimc_cdpath_taint=0
-# HIMMEL-4976: ANY mention of CDPATH taints (read/printf -v/declare/mapfile
+# ANY mention of CDPATH taints (read/printf -v/declare/mapfile
 # set it with no `=` beside the name); a quoted spelling is read unquoted.
 if [ -n "${CDPATH:-}" ]; then
     _bwimc_cdpath_taint=1
@@ -4425,14 +4425,14 @@ fi
 
 _bwimc_hb=$(_bwimc_blank_heredocs "$cmd")
 
-# HIMMEL-4138: a comment can hide a quote from the scanner, which knows no
+# a comment can hide a quote from the scanner, which knows no
 # comments. Every arm below runs once on the text as written and once more
 # with its comments removed when that differs, so a command denies when
 # EITHER reading writes into the primary.
 _bwimc_strip_comments "$_bwimc_hb"
 _bwimc_readings=("$_bwimc_hb"); _bwimc_rmodes=(0)
 [ "$_BWIMC_NC" = "$_bwimc_hb" ] || { _bwimc_readings+=("$_BWIMC_NC"); _bwimc_rmodes+=(0); }
-# HIMMEL-4145/4143: the readings above keep the raw newline transport (mode
+# the readings above keep the raw newline transport (mode
 # 0) exactly as before. Two more run in mode 1, where a newline inside a
 # quoted span travels as \006 (_bwimc_split_clauses), on text whose heredoc
 # bodies inside a double-quoted `$(…)` are also blanked — so neither a body
@@ -4441,7 +4441,7 @@ _bwimc_readings=("$_bwimc_hb"); _bwimc_rmodes=(0)
 # body the flat blanker cannot parse (`<<\E`) leaves a stray quote open.
 # ponytail: a long quoted multi-line span is one long clause here, so a
 # multi-line single-quoted message costs about 2x the char scan of base (no
-# size gate: padding past one would reopen HIMMEL-4143), perf fix HIMMEL-4164.
+# size gate: padding past one would reopen), perf fix.
 _bwimc_hbq=0
 _bwimc_hbn=$(_bwimc_blank_heredocs "$cmd" nest) || { _bwimc_hbq=$?; [ "$_bwimc_hbq" = 7 ] || exit "$_bwimc_hbq"; }
 case "$_bwimc_hbn" in
@@ -4450,7 +4450,7 @@ case "$_bwimc_hbn" in
         _bwimc_strip_comments "$_bwimc_hbn"
         [ "$_BWIMC_NC" = "$_bwimc_hbn" ] || { _bwimc_readings+=("$_BWIMC_NC"); _bwimc_rmodes+=(1); } ;;
 esac
-# HIMMEL-4397: every opener had a quoted delimiter and every body is blanked
+# every opener had a quoted delimiter and every body is blanked
 # in the nested reading, so the raw readings only re-scan inert body text (a
 # 10 KB commit message took ~10 s of char scans, a 100 KB one hit the 300 s
 # deadline). Keep the nested readings alone; a bare delimiter, a fallback to
@@ -4468,7 +4468,7 @@ fi
 
 # ---- (a) redirect / tee, per-clause quote-aware token walk ----
 #
-# codex-3 (HIMMEL-2526): the OLD implementation ran two whole-command regex
+# the OLD implementation ran two whole-command regex
 # passes directly over the raw command text (Pass A: a QUOTED operand
 # directly after a real operator; Pass B: an UNQUOTED operand after blanking
 # every quoted span). Pass A's regex had no concept of quote STATE — a `>`
@@ -4477,7 +4477,7 @@ fi
 # extracting a phantom target purely because a quoted span happened to
 # follow it in the raw text.
 #
-# codex-4 (HIMMEL-2526): the old Pass B tee scan captured only ONE operand;
+# the old Pass B tee scan captured only ONE operand;
 # `tee` writes to every file operand it is given.
 #
 # Fix: tokenize each clause with the already quote-aware `_bwimc_tokenize`
@@ -4493,19 +4493,19 @@ _bwimc_redirect_op_of() {
     # caller resolves the actual target (attached in _bwimc_op_rest, or the
     # NEXT token when it is empty).
     #
-    # TWO DISTINCT QUESTIONS (HIMMEL-2592 round 8, panel-mandated split):
+    # TWO DISTINCT QUESTIONS (split):
     # "is this token a redirect operator, so an operand walk should skip it
     # and its target" is TRUE for input and output alike, and is what every
     # verb arm's operand loop and _bwimc_next_optval_idx need — they only
-    # ever SKIP, never inspect direction, and that half of round 6 was
+    # ever SKIP, never inspect direction, and that half was
     # correct. "is this token's target a WRITE destination" is TRUE only for
     # output forms and FALSE for input (`<`, `N<`) — conflating the two
-    # (round 6 added `<` to this SAME predicate with no direction output)
+    #
     # made `cat < <primary>/file`, a pure READ that touches nothing, read as
     # a write and get denied. _bwimc_op_write is how a caller tells them
     # apart; only the (a) redirect-target scan below needs to.
     #
-    # HIMMEL-2592: the optional `|` after `>`/`>>` is the CLOBBER form `>|`
+    # the optional `|` after `>`/`>>` is the CLOBBER form `>|`
     # (paired with _bwimc_split_clauses' rule that such a `|` is not a clause
     # boundary). This predicate is also the single arbiter every operand loop
     # below consults BEFORE treating a token as a filename, so a redirect
@@ -4521,7 +4521,7 @@ _bwimc_redirect_op_of() {
         _bwimc_op_write=1
         return 0
     fi
-    # HIMMEL-2592 round 6 codex-1: input redirection `<`, added alongside
+    # input redirection `<`, added alongside
     # `>` above — same shell-strips-it-before-the-real-command-runs
     # mechanism, ground-truthed against real cp (see
     # _bwimc_space_before_redirects' header). `<` never doubles as its own
@@ -4532,14 +4532,14 @@ _bwimc_redirect_op_of() {
     case "$1" in
         *'<<'*) return 1 ;;
     esac
-    # HIMMEL-2592 round 10 codex-2: `<>` (optionally fd-prefixed, `N<>`) is
+    # `<>` (optionally fd-prefixed, `N<>`) is
     # bash's READ-WRITE redirect — it opens for BOTH and CREATES the target
     # if missing (ground-truthed: `cat <>newfile` really creates an empty
     # file; `3<>newfile` does too). Checked BEFORE the plain `<` branch
     # below: that branch's regex is `^([0-9]*)(\<)(.*)$`, so on a token like
     # "<>/p/f" it would otherwise capture ">/p/f" as if it were an ordinary
     # (bogus, `>`-prefixed) input target — the write half swallowed by the
-    # read half, exactly the round 9 regression this closes. `<>` has no
+    # read half, exactly the regression this closes. `<>` has no
     # spaced-apart form for the OPERATOR itself — `cat < > file` is a bash
     # SYNTAX ERROR (measured) — so it is always one glued unit by
     # construction; _bwimc_space_before_redirects keeps `<`+`>` glued
@@ -4576,7 +4576,7 @@ _bwimc_skip_redirect_at() {
     printf '%s' "$idx"
 }
 
-# _bwimc_next_optval_idx IDX — HIMMEL-2592 round 6 codex-1. Finds the index
+# _bwimc_next_optval_idx IDX. Finds the index
 # of the REAL next option VALUE after position IDX, for every SEPARATED
 # option form that unconditionally reads "the next raw token" as its value
 # (`-t DIR`, `--target-directory DIR`, and any abbreviation of the latter —
@@ -4587,7 +4587,7 @@ _bwimc_skip_redirect_at() {
 # file's ONE redirect arbiter (_bwimc_redirect_op_of / _bwimc_skip_redirect_at)
 # rather than a second, subtly different recogniser.
 #
-# HIMMEL-2592 round 9: this function used to ALSO special-case a bare digit
+# this function used to ALSO special-case a bare digit
 # token immediately before a redirect token (the fd-number
 # _bwimc_space_before_redirects used to split off). That split no longer
 # happens — a bare fd number now stays glued to its operator in ONE token
@@ -4606,7 +4606,7 @@ _bwimc_next_optval_idx() {
     printf '%s' "$idx"
 }
 
-# _bwimc_is_shc_cflag TOKEN — HIMMEL-3648 (codex-3). True iff TOKEN is a
+# _bwimc_is_shc_cflag TOKEN. True iff TOKEN is a
 # single-dash, all-letters short-option cluster containing `c` (bash/sh/zsh's
 # own getopt-style combined short flags: `-c`, `-ce`, `-ec`, `-xc`, …) — real
 # shells accept the string-to-run argument right after such a cluster exactly
@@ -4629,7 +4629,7 @@ _bwimc_is_shc_cflag() {
     return 1
 }
 
-# _bwimc_check_interp_body CLAUSE_SP KIND — HIMMEL-3648. `eval "BODY"` /
+# _bwimc_check_interp_body CLAUSE_SP KIND: `eval "BODY"` /
 # `bash -c "BODY"` / `sh -c "BODY"` / `zsh -c "BODY"` hide a write-shaped
 # command inside a STRING argument the arms above never look at. Per the
 # ticket: do not re-parse BODY as a command (clause-split it, walk verb
@@ -4645,7 +4645,7 @@ _bwimc_is_shc_cflag() {
 # real write into it.
 # ponytail: a dynamic token ($VAR, `cmd`) inside BODY does not resolve and
 # is not further modelled — same residual _bwimc_check_target already
-# accepts for every other arm (HIMMEL-3648).
+# accepts for every other arm.
 _bwimc_check_interp_body() {
     local kind="$2" toks=() t t2 n i j0 cidx body="" _bwimc_ibody_clause="" _bwimc_ib_text="" _bwimc_ib_texts=() \
         _bwimc_ibody_clause_sp="" _bwimc_ibc_toks=() _bwimc_ibc_n=0 _bwimc_m="" _bwimc_ib_cw=0 _bwimc_ib_ro=0 \
@@ -4653,14 +4653,14 @@ _bwimc_check_interp_body() {
     toks=()
     while IFS= read -r t; do toks+=("$t"); done < <(_bwimc_tokenize "$1")
     n=${#toks[@]}
-    # HIMMEL-4138: KIND `wrap` — the shell or eval sits behind a wrapper
+    # KIND `wrap` — the shell or eval sits behind a wrapper
     # (`nice`, `timeout 5`, `env FOO=1`, `FOO=1`, `sudo -n`, `xargs`, …), so
     # find the first token that IS one (unquoted, any path, any case, `.exe`)
     # and read the body after it. `su`/`runuser`/`flock` run their `-c`
     # string through a shell too. No such token: nothing to scan.
     j0=1
     if [ "$kind" = wrap ]; then
-        # HIMMEL-4476: a grep (leading assignments and keywords skipped) runs
+        # a grep (leading assignments and keywords skipped) runs
         # no command, so an `eval`/`sh` word after it is a pattern or a file
         # operand, not a shell: `grep -n 'eval' <primary>/x` read the path as
         # an eval body. Its redirects are the outer arms' job. ugrep's
@@ -4729,7 +4729,7 @@ _bwimc_check_interp_body() {
                *) return 0 ;;
            esac ;;
     esac
-    # HIMMEL-3648 round 4 (codex-1): the round-3 fix tracked cwd across the
+    # the round-3 fix tracked cwd across the
     # WHOLE body first and only then checked every token/`git … commit`
     # against that final cwd — correct for a body that never cd's again
     # after its last write, wrong otherwise: `bash -c 'cd <primary>; echo x
@@ -4746,7 +4746,7 @@ _bwimc_check_interp_body() {
     _bwimc_ibody_saved_ecwd="$_bwimc_ecwd"
     _bwimc_ibody_saved_unres="$_bwimc_ecwd_unres"
     _bwimc_ibody_saved_pushn="$_bwimc_ecwd_pushn"
-    # HIMMEL-4138: the body once as written, once with its comments removed.
+    # the body once as written, once with its comments removed.
     _bwimc_strip_comments "$body"
     _bwimc_ib_texts=("$body")
     [ "$_BWIMC_NC" = "$body" ] || _bwimc_ib_texts+=("$_BWIMC_NC")
@@ -4773,7 +4773,7 @@ _bwimc_check_interp_body() {
         _bwimc_ibc_toks=()
         while IFS= read -r t; do _bwimc_ibc_toks+=("$t"); done < <(_bwimc_tokenize "$_bwimc_ibody_clause_sp")
         _bwimc_ibc_n=${#_bwimc_ibc_toks[@]}
-        # HIMMEL-4476: from the primary cwd every bare word resolves into it,
+        # from the primary cwd every bare word resolves into it,
         # so a loop keyword (`until`, `do`) or the operand of a command that
         # writes no file (`sleep 0.1`, `[ -e x ]`) denied. Leading reserved
         # words are skipped; for a read-only command word (raw, unquoted) in
@@ -4800,7 +4800,7 @@ _bwimc_check_interp_body() {
         while [ "$i" -lt "$_bwimc_ibc_n" ]; do
             t="${_bwimc_ibc_toks[$i]}"
             if _bwimc_redirect_op_of "$t"; then
-                # HIMMEL-3648 (codex-1): an attached target (`>/primary/f`, one
+                #: an attached target (`>/primary/f`, one
                 # token) was ignored — this loop unconditionally advanced to the
                 # NEXT token and checked THAT, the same false-negative shape the
                 # main clause loop's own _bwimc_op_rest handling (line ~1693)
@@ -4830,7 +4830,7 @@ _bwimc_check_interp_body() {
             fi
             case "$t" in
                 -*)
-                    # HIMMEL-3648 (CodeRabbit #1307 thread, "Heavy lift"
+                    # (CodeRabbit #1307 thread, "Heavy lift"
                     # finding, partial fix): a long option's value is
                     # ATTACHED with `=` (`--target-directory=PATH`) and is
                     # itself a write destination — the bare `-*` skip
@@ -4843,7 +4843,7 @@ _bwimc_check_interp_body() {
                     ;;
                 *)
                     _bwimc_cd_guard "$t"; _bwimc_check_target "$t" "$_bwimc_ecwd"
-                    # HIMMEL-3648 (CR #1307): a bare key=value token inside a
+                    #: a bare key=value token inside a
                     # body — dd's `of=PATH` above all — is a write
                     # destination this generic non-flag-token check never
                     # isolates on its own, since the whole "of=PATH" string
@@ -4864,7 +4864,7 @@ _bwimc_check_interp_body() {
     _bwimc_ecwd_pushn="$_bwimc_ibody_saved_pushn"
 }
 
-# _bwimc_subst_paren_end TEXT START — HIMMEL-3622. Sets _BWIMC_PEND to the index
+# _bwimc_subst_paren_end TEXT START: Sets _BWIMC_PEND to the index
 # of the `)` that closes a `$(` whose body begins at START (TEXT length when it
 # never closes, so an unterminated body is scanned to the end, never dropped).
 # The body is a fresh command context: a fresh scanner state, so only ACTIVE
@@ -4926,7 +4926,7 @@ _bwimc_subst_paren_end() {
     _BWIMC_PEND=$j
 }
 
-# _bwimc_subst_split TEXT — HIMMEL-3622. Splits TEXT into a SKELETON and the
+# _bwimc_subst_split TEXT: Splits TEXT into a SKELETON and the
 # bodies of its TOP-LEVEL command substitutions, `$(...)` and backtick alike:
 # _BWIMC_SKEL is TEXT with each substitution body replaced by one \001 byte
 # (`$(\001)`, backtick-\001-backtick), and _BWIMC_BODIES lists the bodies in
@@ -4995,7 +4995,7 @@ _bwimc_subst_split() {
             fi
         fi
         if [ "$end" -ge 0 ]; then
-            # HIMMEL-4010: a bare `pwd` body writes nothing and expands to the
+            # a bare `pwd` body writes nothing and expands to the
             # cwd, so it gets a stub of its own (\005) that _bwimc_check_target
             # reads as the cwd, and no body to scan.
             sq="${body#"${body%%[![:space:]]*}"}"
@@ -5020,7 +5020,7 @@ _bwimc_subst_split() {
 }
 
 # _bwimc_redir_scan_text TEXT — arm (a), the redirect/tee per-clause walk, as a
-# function so it can recurse (HIMMEL-3622). After each clause is walked, the
+# function so it can recurse. After each clause is walked, the
 # command substitutions inside THAT clause are scanned as their own commands,
 # from the cwd state the clause left and with that state restored after, so a
 # body's `cd` never leaks out and a body sees the `cd` that preceded it.
@@ -5055,7 +5055,7 @@ while IFS= read -r _bwimc_rclause; do
     _bwimc_rtoks=()
     while IFS= read -r _bwimc_t; do _bwimc_rtoks+=("$_bwimc_t"); done < <(_bwimc_tokenize "$_bwimc_rclause_sp")
     _bwimc_rn=${#_bwimc_rtoks[@]}
-    # codex-2 (HIMMEL-2526 CR round 4, retasked): anchor `tee` to COMMAND
+    # anchor `tee` to COMMAND
     # POSITION, but "command position" must mean "the first token that is
     # not a command PREFIX" — not literally index 0. The original
     # unanchored match (any token equal to "tee") was over-broad (the real
@@ -5110,7 +5110,7 @@ while IFS= read -r _bwimc_rclause; do
     while [ "$_bwimc_ri" -lt "$_bwimc_rn" ]; do
         _bwimc_rt="${_bwimc_rtoks[$_bwimc_ri]}"
         if [ "$_bwimc_ri" = "$_bwimc_teecmd" ] && [ "$_bwimc_rt" = "tee" ]; then
-            # HIMMEL-2592 CR round 2, codex-1: tee operand collection is a
+            # tee operand collection is a
             # STATE that persists to the end of the clause, not a nested loop.
             # A nested loop has to decide what to do at a redirect operator,
             # and BOTH obvious answers are wrong:
@@ -5132,7 +5132,7 @@ while IFS= read -r _bwimc_rclause; do
             continue
         fi
         if _bwimc_redirect_op_of "$_bwimc_rt"; then
-            # HIMMEL-2592 round 8 codex-1: only an OUTPUT redirect's target
+            # only an OUTPUT redirect's target
             # is a write to check — an input redirect (`<`, `N<`) is a READ
             # that touches nothing (`cat < <primary>/file` must ALLOW).
             # _bwimc_op_write (set by _bwimc_redirect_op_of itself) gates
@@ -5162,7 +5162,7 @@ while IFS= read -r _bwimc_rclause; do
             # active — including one that appears AFTER a redirect, which
             # `tee` writes exactly the same way.
             if [ "$_bwimc_teecollect" = 1 ]; then
-                # HIMMEL-2592 round 5 codex-1: `--` ends OPTION parsing (see
+                # `--` ends OPTION parsing (see
                 # the sed/cp/ln arms' identical comment). `tee -- -o` writes
                 # to a file literally named `-o`; without this, `-*` below
                 # eats it as a flag and the fence never checks it.
@@ -5193,13 +5193,13 @@ while IFS= read -r _bwimc_rclause; do
     done
 done < <(_bwimc_split_clauses "$_bwimc_skel" skel)
 }
-# HIMMEL-4921 (A): each reading again with its `${…}` bodies flattened.
+# each reading again with its `${…}` bodies flattened.
 for _bwimc_pei in "${!_bwimc_readings[@]}"; do
     _bwimc_flatten_pe "${_bwimc_readings[$_bwimc_pei]}"
     [ "$_BWIMC_PE" = "${_bwimc_readings[$_bwimc_pei]}" ] \
         || { _bwimc_readings+=("$_BWIMC_PE"); _bwimc_rmodes+=("${_bwimc_rmodes[$_bwimc_pei]}"); }
 done
-# HIMMEL-4198/4174: each reading again with `$((…))`/array values flattened
+# each reading again with `$((…))`/array values flattened
 # and continuations joined, so the verb after `x=$((1|2))` or `x=(a b)` shows.
 for _bwimc_afi in "${!_bwimc_readings[@]}"; do
     _bwimc_assign_flat "${_bwimc_readings[$_bwimc_afi]}"
@@ -5217,14 +5217,14 @@ _bwimc_ecwd_pushn=0
 _bwimc_fsmut=""
 _bwimc_redir_scan_text "$_bwimc_hb"
 
-# ---- (g) HIMMEL-3401: git commands that rewrite a PROTECTED checkout ----
+# ---- (g) git commands that rewrite a PROTECTED checkout ----
 #
 # WHY: every arm above resolves a FILE operand. A git subcommand writes the
 # working tree, index, HEAD, refs or config of whatever repository it is
 # aimed at without naming a single file — `git -C <primary> checkout
 # <leg-branch> -- f`, `restore --source=…`, `merge`, `pull . <leg>`,
 # `read-tree -u -m` — so a worktree-pinned leg could rewrite the PRIMARY
-# checkout (the trust anchor: /pr-check hand-off, HIMMEL-3383's byte compare
+# checkout (the trust anchor: /pr-check hand-off, the byte compare
 # and the live hooks all run from it) and every guard returned rc 0.
 #
 # RULE: an ALLOWLIST, not a denylist. A git clause whose subcommand is
@@ -5249,7 +5249,7 @@ _bwimc_redir_scan_text "$_bwimc_hb"
 # Env assignments are read from the clause prefix (`GIT_DIR=… git`, `env
 # GIT_DIR=… git`) and from an earlier `export` in the same command.
 #
-# COMMON-DIR OWNER (HIMMEL-3407): the TARGETS above are resolved to their own
+# COMMON-DIR OWNER: the TARGETS above are resolved to their own
 # repo root, which for a LINKED worktree's own cwd (no -C/--git-dir pointed
 # elsewhere) is the worktree itself — a legitimate feature checkout that
 # ALLOWS, even though a `config`/`remote` write, `branch -u|--unset-upstream|
@@ -5267,7 +5267,7 @@ _bwimc_redir_scan_text "$_bwimc_hb"
 # repo root, so a path outside any repo is exempt too; `remote update/prune/
 # show` are fetch-shaped and exempt (`get-url` never reaches here — already
 # read-shaped); the branch flags above trigger ONLY with an EXPLICIT
-# main/master operand (round 2 — `-u origin/x` with no branch name given
+# main/master operand (`-u origin/x` with no branch name given
 # targets the CURRENT branch, never main in a linked worktree, matching the
 # already-allowed `push -u`). `update-ref`/`symbolic-ref -m <reason>` now consumes the
 # reason value instead of misreading it as the ref-name positional, and
@@ -5291,7 +5291,7 @@ _bwimc_redir_scan_text "$_bwimc_hb"
 #
 # Mode parity: destination-based in BOTH lanes (main_checkout_verdict), like
 # every file-operand arm — EXCEPT `commit` on the sourced/codex lane, which
-# keeps HIMMEL-745's is_on_main predicate (CODEX-LANE PARITY, header) and now
+# keeps the is_on_main predicate (CODEX-LANE PARITY, header) and now
 # gets the modelled target instead of the payload cwd.
 #
 # Bypass: EDIT_ON_MAIN_OK=1 in the launching shell, or a repo-root
@@ -5299,7 +5299,7 @@ _bwimc_redir_scan_text "$_bwimc_hb"
 #
 # ponytail: command-text scanning, not a shell parser — a git invocation
 # displaced behind a wrapper _bwimc_strip_prefix does not model (setsid,
-# watch, parallel, `find -exec`; HIMMEL-4365 covers the modelled ones and
+# watch, parallel, `find -exec`; the modelled ones are covered and
 # xargs, see _bwimc_git_wrapped) or inside an interpreter body is missed, the
 # same residual as every other arm. A `cd` inside a conditional (`false && cd <primary>`) is assumed
 # to have run, and a write is ALSO checked from every cwd a cd left, so
@@ -5308,20 +5308,20 @@ _bwimc_redir_scan_text "$_bwimc_hb"
 # Shared-ref writes from the leg's own worktree (no -C) are checked against
 # the common dir's owning primary for `config`/`remote`/`branch
 # -u|--unset-upstream|-M|-C|-f`/`checkout -B`/`switch -C`/`update-ref`/
-# `symbolic-ref` on refs/heads/main|master (HIMMEL-3407, above); `tag`,
+# `symbolic-ref` on refs/heads/main|master (above); `tag`,
 # `reflog expire|delete`, and any other branch create/delete/plain-rename are
 # still reachable that way — narrower residual, same ticket. `git -c alias.x=…` and repo-level
 # hooks are code execution in the leg's own process, not a primary-state
 # write, and are out of scope. `worktree move|remove` of the primary is left
 # to git itself, which refuses to move or remove a main working tree.
-# HIMMEL-4504: a read aimed at the primary that RUNS A PROGRAM there (a -c /
+# a read aimed at the primary that RUNS A PROGRAM there (a -c /
 # --config-env key off a safe allowlist, a pager, --exec-path=, --ext-diff /
 # --textconv, `grep -O`, a GIT_PAGER/GIT_EXTERNAL_DIFF/GIT_EXEC_PATH-style
 # env) loses the read relief; `worktree move|add` get their destination's
 # file verdict. ponytail: a program named by config set in an EARLIER
 # command (~/.gitconfig, the primary's own config) or reached via a foreign
 # --git-dir is not seen, and plain `git diff` runs diff.external by default;
-# revisit if a config-provenance check lands (HIMMEL-4504 follow-up).
+# revisit if a config-provenance check lands (follow-up).
 # `git clone`/`init` into a path INSIDE the primary from a leg cwd is not
 # modelled. `push` is write-shaped only by DESTINATION: a local path, `.`, a
 # `file://` URL or a `--repo=` path that resolves into the primary is denied,
@@ -5331,7 +5331,6 @@ _bwimc_redir_scan_text "$_bwimc_hb"
 # the primary is not resolved. A repoint made in the SAME command (-c key,
 # GIT_CONFIG_COUNT/PARAMETERS/KEY_* env, `git remote add|set-url`) is
 # denied by key name; one made by an earlier, separate command is not seen
-# (HIMMEL-3407).
 
 # _bwimc_ansic BODY — the text bash's $'BODY' yields. A code point that is
 # NUL or non-ASCII, and a \c control letter, become `?`: none spells a word
@@ -5340,7 +5339,7 @@ _bwimc_redir_scan_text "$_bwimc_hb"
 _bwimc_ansic() {
     local s="$1" o="" c k=0 h v m
     while [ "$k" -lt "${#s}" ]; do
-        # HIMMEL-4397: take the whole run before the next backslash in one step
+        # take the whole run before the next backslash in one step
         c="${s:$k}"; c="${c%%\\*}"
         if [ -n "$c" ]; then o+="$c"; k=$((k+${#c})); continue; fi
         k=$((k+1))
@@ -5465,7 +5464,7 @@ _bwimc_cfg_key() {
     esac
 }
 
-# HIMMEL-4504: a read-shaped git clause can still RUN A PROGRAM — a pager, an
+# a read-shaped git clause can still RUN A PROGRAM — a pager, an
 # external diff or textconv driver, an fsmonitor, a credential helper, a git
 # found via --exec-path — and that program runs with the target repo as its
 # cwd, so aimed at the primary it can write there. Such a clause loses the
@@ -5539,7 +5538,7 @@ _bwimc_env_prog() {
 _bwimc_git_args_prog() {
     local sub="$1" a ci skip=0; shift
     for a in "$@"; do
-        # HIMMEL-4627: the word after a grep option that takes a separate
+        # the word after a grep option that takes a separate
         # operand (`-e --textconv`) is that operand, not an option.
         if [ "$skip" = 1 ]; then skip=0; continue; fi
         case "$sub:$a" in ls-remote:ext::*|fetch:ext::*|pull:ext::*) return 0 ;; esac
@@ -5598,7 +5597,7 @@ _bwimc_short_has() {
     return 1
 }
 
-# _bwimc_tar_clause_ok CLAUSE — HIMMEL-4476. rc 0 only for a plain
+# _bwimc_tar_clause_ok CLAUSE: rc 0 only for a plain
 # `tar -x … -C /tmp/<dir>` extract, read fail-closed: the command word is
 # tar/bsdtar/gtar, every option is from a short list (no member operands, no
 # exec or file-list options, no -P), the archive is stdin, and every -C /
@@ -5626,7 +5625,7 @@ _bwimc_tar_clause_ok() {
             while [ -n "$p" ] && [ ! -d "$p" ]; do p="${p%/*}"; done
             r=$(cd -P -- "${p:-/}" 2>/dev/null && pwd -P) || return 1
             case "$r" in /tmp|/tmp/*|/private/tmp|/private/tmp/*) ;; *) return 1 ;; esac
-            # HIMMEL-4598: a primary that itself lives under /tmp is still
+            # a primary that itself lives under /tmp is still
             # protected. Ask the same verdict _bwimc_check_canon uses about
             # the resolved ancestor; anything but "not a protected checkout"
             # (rc 0) refuses the relief, fail-closed.
@@ -5663,7 +5662,7 @@ _bwimc_tar_clause_ok() {
     [ -z "$w" ] && [ "$x" = 1 ] && [ "$c" = 1 ]
 }
 
-# _bwimc_xtract_ok TEXT — HIMMEL-4476. rc 0 when nothing in TEXT can turn a
+# _bwimc_xtract_ok TEXT: rc 0 when nothing in TEXT can turn a
 # `git archive` stream or file into writes: with a pipe, every clause is a
 # `git …` or one _bwimc_tar_clause_ok accepts; without one, no clause names an
 # extractor, interpreter, shell, xargs or file copier unless that accepts
@@ -5707,7 +5706,7 @@ _bwimc_git_sub_is_read() {
     local sub="$1"; shift
     local a npos=0 first="" second="" ff=0 skipval=0
     case "$sub" in
-        # HIMMEL-4476: archive writes only its --output (checked by the
+        # archive writes only its --output (checked by the
         # caller) or stdout, unless --exec/--remote runs a command or the
         # stream reaches something that can write it out (_bwimc_xtract_ok).
         # Only the built-in tar format: any other, zip included (probed on
@@ -5897,7 +5896,7 @@ _bwimc_git_check_path() {
     fi
 }
 
-# _bwimc_git_check_common_owner DIR LABEL — HIMMEL-3407. `config`/`remote`
+# _bwimc_git_check_common_owner DIR LABEL: `config`/`remote`
 # writes, `branch -u|--unset-upstream|-f`, and `update-ref`/`symbolic-ref` on
 # refs/heads/main|master land in $GIT_COMMON_DIR, which is SHARED by every
 # worktree of one repository. Run from a LINKED worktree's own cwd (no `-C`),
@@ -5933,7 +5932,7 @@ _bwimc_git_check_common_owner() {
     _bwimc_git_check_path "$owner" "$label"
 }
 
-# _bwimc_git_wrapped CLAUSE CWD UNRES GITENV — HIMMEL-4365. The prefix loop in
+# _bwimc_git_wrapped CLAUSE CWD UNRES GITENV: The prefix loop in
 # _bwimc_git_clause models env/command/exec/nohup/time only, so a git behind
 # any other wrapper (`timeout 60 git -C <primary> reset --hard`, `nice`,
 # `stdbuf`, `ionice`, `sudo`, `xargs`) never reached the subcommand check.
@@ -6017,7 +6016,7 @@ _bwimc_git_wrapped() {
     apfx="${1:0:$((${#1} - ${#wsp0}))}"
     strip="${wsp0:0:$((${#wsp0} - ${#wsp}))}"
     case "$strip" in *GIT_*) wu=1 ;; esac
-    # HIMMEL-4504 J1950 (B1): a program env before the wrappers ($5, from the
+    # J1950 (B1): a program env before the wrappers ($5, from the
     # caller's prefix loop) or among them (`nice env GIT_PAGER=x git`) voids
     # the re-read clause's read relief. An `env -i`/`sudo` that would drop it
     # is not modelled (fail closed).
@@ -6055,7 +6054,7 @@ _bwimc_git_clause() {
     local cfg="$_bwimc_genv_cfg"
     local cwd="$_bwimc_gcwd"
     local progrun="$_bwimc_genv_prog"
-    # HIMMEL-4329 CR codex-2: a git behind a chroot (`chroot P git -C / add .`,
+    # a git behind a chroot (`chroot P git -C / add .`,
     # `sudo -R P git …`) runs inside the new root, and none of git's paths
     # are mapped into it, so the prefix loop below cannot see it at all. A
     # root other than `/` (unresolved included) reads the clause behind the
@@ -6130,7 +6129,7 @@ _bwimc_git_clause() {
             fi
             return 0 ;;
         popd) _bwimc_gcwd_unres=1; return 0 ;;
-        # HIMMEL-4504 J1950: `declare -x` / `typeset -x` / `readonly -x` export
+        # `declare -x` / `typeset -x` / `readonly -x` export
         # like `export`; without -x the value may be exported later (`set -a`
         # earlier, `export NAME` after), so every spelling counts (fail closed).
         export|unset|declare|typeset|readonly)
@@ -6262,7 +6261,7 @@ _bwimc_git_clause() {
         i=$((i+1))
     done
     if [ "$i" -ge "$n" ]; then
-        # HIMMEL-4504 J1950 (B2/T5): a statement of bare assignments may be
+        # J1950 (B2/T5): a statement of bare assignments may be
         # exported (`set -a` before, `export NAME` after, or already in the
         # session), so it holds for the rest of the command like `export`.
         if [ "$asg" = 1 ]; then
@@ -6357,13 +6356,13 @@ _bwimc_git_clause() {
         return 0
     fi
 
-    # HIMMEL-4365: `xargs git` with no subcommand reads it, and any global
+    # `xargs git` with no subcommand reads it, and any global
     # option, from stdin.
     if [ "${_bwimc_g_xargs:-0}" = 1 ] && [ -z "$sub" ]; then
         _BWIMC_GIT_SUB="(xargs stdin)"
         _bwimc_deny "unresolved-git-target" "$1" "$dir" ""
     fi
-    # HIMMEL-4365: xargs puts stdin words among the subcommand's arguments
+    # xargs puts stdin words among the subcommand's arguments
     # (no -I string, or the string sits there), so an option such as
     # `--output=<primary>/x` can turn a read into a write anywhere. Only
     # subcommands with no option that writes a file keep the normal check:
@@ -6377,13 +6376,13 @@ _bwimc_git_clause() {
                _bwimc_deny "unresolved-git-target" "$1" "$dir" "" ;;
         esac
     fi
-    # HIMMEL-4365: `--output <file>` (the diff/log/show family) writes FILE,
+    # `--output <file>` (the diff/log/show family) writes FILE,
     # so a read subcommand can still overwrite a primary file (`git -C
     # <primary> diff --output=.claude/settings.json`). A relative FILE is
     # resolved from the -C dir and, when a --work-tree/GIT_WORK_TREE is set
     # (git then runs from the work tree's top), from that too; each is
     # checked like any other write operand. The clause itself stays a read.
-    # HIMMEL-4518: the same holds for `archive -o <f>`, `format-patch -o
+    # the same holds for `archive -o <f>`, `format-patch -o
     # <dir>` / `--output-directory[=]<dir>` (-o also ends a bundled cluster
     # such as `-ko <dir>`, the rest being its operand) and the `bundle create
     # <file>` operand, whose repo check alone passes from a leg cwd.
@@ -6392,7 +6391,7 @@ _bwimc_git_clause() {
         if [ "$ow" = 1 ]; then
             of="$v"; ow=0
         else
-            # HIMMEL-4476: archive takes an abbreviated --output too (`--out=`).
+            # archive takes an abbreviated --output too (`--out=`).
             if [ "$sub" = archive ] && _bwimc_long_is "$v" output 1; then
                 case "$v" in *=*) v="--output=${v#*=}" ;; *) v=--output ;; esac
             fi
@@ -6431,7 +6430,7 @@ _bwimc_git_clause() {
         _BWIMC_GIT_SUB=""
     done
 
-    # HIMMEL-4504: `worktree move <wt> <dst>` / `worktree add <path>` create a
+    # `worktree move <wt> <dst>` / `worktree add <path>` create a
     # checkout AT the destination, so it gets the file verdict like --output
     # (a gitignored or handovers/ path inside the primary stays allowed, as
     # for every file-operand arm). A sub-option that runs a program (see
@@ -6509,7 +6508,7 @@ _bwimc_git_clause() {
         _bwimc_git_check_path "$dir" "repo $dir"
         gtarget="$dir"
     fi
-    # HIMMEL-3407: config/remote writes, branch -u|--unset-upstream|-M|-C|-f,
+    # config/remote writes, branch -u|--unset-upstream|-M|-C|-f,
     # checkout -B/switch -C onto main|master, and update-ref/symbolic-ref on
     # refs/heads/main|master ALSO get checked against the target's owning
     # PRIMARY checkout (see _bwimc_git_check_common_owner) — closing the gap
@@ -6519,7 +6518,7 @@ _bwimc_git_clause() {
     # point at.
     case "$sub" in
         config)
-            # Adversarial review round 1: config's TARGET file is not always
+            # config's TARGET file is not always
             # the shared repo config. --global/--system/--worktree name a
             # DIFFERENT file entirely (worktree-local under
             # extensions.worktreeConfig), so they are exempt outright.
@@ -6532,7 +6531,7 @@ _bwimc_git_clause() {
             # and must be consumed (skipped) so their value can never be
             # misread as one of the flags above.
             #
-            # Adversarial review round 2:
+            # Further cases:
             #   N1 (bypass) — a glued `-f<path>` (no space) is a real git
             #     invocation and was not recognised as the file flag at all,
             #     so its value was never checked. `-f?*` now captures the
@@ -6543,7 +6542,7 @@ _bwimc_git_clause() {
             #     other arm in this file denies an unresolved git target
             #     (`unresolved-git-target`); this one now does too.
             #
-            # HIMMEL-3565 (residuals 1 + 3): GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM
+            # (residuals 1 + 3): GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM
             # set as an env prefix, `env VAR=…`, or `export` REPOINT what file
             # --global/--system actually write, so the exemption above is
             # unsound when either is present. Their VALUE is resolved and
@@ -6590,7 +6589,7 @@ _bwimc_git_clause() {
             esac
             ;;
         remote)
-            # Adversarial review round 1: `update`/`prune`/`show` are
+            # `update`/`prune`/`show` are
             # fetch-shaped (network/refresh operations, like the pull/fetch
             # carve-out above) — they do not repoint remote.*.url or any
             # other config key the ticket cares about. `get-url` never
@@ -6607,7 +6606,7 @@ _bwimc_git_clause() {
             esac
             ;;
         branch)
-            # Adversarial review round 2 (N4, false deny): -u/--set-upstream*
+            # -u/--set-upstream*
             # implicitly targets the CURRENT branch when no branch-name
             # operand is given — from a linked worktree that is always the
             # leg's OWN feature branch (git refuses to check main out in two
@@ -6618,7 +6617,7 @@ _bwimc_git_clause() {
             # _bwimc_is_long_abbrev, the same helper the option-value arms
             # above already use for exactly this purpose.
             #
-            # HIMMEL-3565 (residual 2): "any operand is main/master" false-denied
+            # (residual 2): "any operand is main/master" false-denied
             # `branch -f <new> main` (main is the START-POINT) and
             # `branch -C main <new>` (main is the SOURCE), and separately
             # false-DENIED `branch -u main` by reading -u's own mandatory
@@ -6642,9 +6641,9 @@ _bwimc_git_clause() {
             # worktree — and is deliberately not modelled here; see the
             # pinning test row. ponytail: static text scanning cannot special-
             # case every branch/git version's exact flag-value shape, revisit
-            # if HIMMEL-3546's shared tokenizer lands and can replace this
+            # if a shared tokenizer lands and can replace this
             # scan outright.)
-            # HIMMEL-3565 round-3 CR (B1, B2): a move (-m/-M/--move) DELETES
+            # A move (-m/-M/--move) DELETES
             # its source ref (real git moves refs/heads/<old> to
             # refs/heads/<new>, repointing HEAD if <old> was checked out
             # elsewhere) — unlike copy, <old> is a write target too, and
@@ -6710,7 +6709,7 @@ _bwimc_git_clause() {
             fi
             ;;
         update-ref|symbolic-ref)
-            # Adversarial review round 1 (HIGH, bypass): the old loop skipped
+            # The old loop skipped
             # every `-`-prefixed token but not the VALUE a value-taking flag
             # consumes, so `update-ref -m msg refs/heads/main HEAD` read "msg"
             # as if it were the ref-name positional and stopped there,
@@ -6739,7 +6738,7 @@ _bwimc_git_clause() {
             done
             ;;
         checkout|switch)
-            # Adversarial review round 1 (LOW): `checkout -B <name>` /
+            # `checkout -B <name>` /
             # `switch -C <name>` force-create-or-RESET <name> to the given
             # (or current) start-point — the same "move an existing ref"
             # class as `branch -M`/`-C` above, just spelled through a
@@ -6750,7 +6749,7 @@ _bwimc_git_clause() {
             # arm in this file; --ignore-other-worktrees and similar bare
             # flags are simply skipped over.
             #
-            # Adversarial review round 2 (N5): switch's LONG form of -C is
+            # switch's LONG form of -C is
             # --force-create (not modelled before), and a BUNDLED short
             # cluster (`checkout -fB main`) was missed entirely since the
             # old scan only matched a token whose FIRST characters were the
@@ -6827,7 +6826,7 @@ _BWIMC_GIT_SUB=""
 _bwimc_join_continuations() {
     local t="$1" o="" c n
     case "$t" in *\\*) ;; *) printf '%s' "$t"; return 0 ;; esac
-    # HIMMEL-4591: one jump per backslash, not one step per character
+    # one jump per backslash, not one step per character
     while [[ "$t" == *\\* ]]; do
         c="${t%%\\*}"; o+="$c"
         t="${t:$((${#c}+1))}"
@@ -6837,7 +6836,7 @@ _bwimc_join_continuations() {
     done
     printf '%s' "$o$t"
 }
-# _bwimc_verb_clauses TEXT — HIMMEL-4010. The clauses of TEXT's substitution
+# _bwimc_verb_clauses TEXT: The clauses of TEXT's substitution
 # skeleton, each one preceded by the clauses of its own substitution bodies
 # (recursively), bracketed by _BWIMC_SUBOPEN / _BWIMC_SUBCLOSE lines. A body
 # inside a double-quoted span or backticks never reached the verb arms
@@ -6895,12 +6894,12 @@ case "$_bwimc_ghb" in
 esac
 while IFS= read -r _bwimc_clause; do
     _bwimc_nonblank "$_bwimc_clause" || continue
-    # HIMMEL-4010: substitution bodies arrive as their own clauses; the
+    # substitution bodies arrive as their own clauses; the
     # brackets only matter to the (b)/(e) cwd tracker, and this arm keeps
     # every cwd it has seen anyway, so a body's cd can only add denies.
     case "$_bwimc_clause" in "$_BWIMC_SUBOPEN"|"$_BWIMC_SUBCLOSE") continue ;; esac
     ! _bwimc_is_colon "$_bwimc_clause" || continue
-    # HIMMEL-3685: this arm's own tracker already keeps every cwd a cd left
+    # this arm's own tracker already keeps every cwd a cd left
     # behind (_bwimc_gcwd_alts), so a `|`/`||`-reached cd needs no extra flag.
     _bwimc_clause_unpipe _bwimc_clause
     # A backtick substitution's body is its own command (`$(` is already a
@@ -6921,9 +6920,9 @@ _bwimc_fsmut=""
 _bwimc_spd_on=0
 _bwimc_sub_ecwd=(); _bwimc_sub_unres=(); _bwimc_sub_pushn=(); _bwimc_sub_d=0
 while IFS= read -r _bwimc_clause; do
-    # HIMMEL-4329: a chroot root holds for its own clause only
+    # a chroot root holds for its own clause only
     _bwimc_chroot=""
-    # HIMMEL-4213: a wrapper chdir (`env -C DIR`) moved the cwd for its own
+    # a wrapper chdir (`env -C DIR`) moved the cwd for its own
     # clause only — restore the cwd the clause before it left
     if [ "$_bwimc_spd_on" = 1 ]; then
         _bwimc_ecwd="$_bwimc_spd_ecwd"; _bwimc_ecwd_unres="$_bwimc_spd_unres"; _bwimc_spd_on=0
@@ -6950,21 +6949,21 @@ while IFS= read -r _bwimc_clause; do
     _tolower_ascii "$_bwimc_clause"
     _bwimc_clause_lc="$_TOLOWER_OUT"
     _bwimc_interp_seen=0
-    # HIMMEL-2592: the verb arms tokenize the SAME pre-spaced text arm (a)
+    # the verb arms tokenize the SAME pre-spaced text arm (a)
     # does, so all arms share ONE tokenization and a redirect operator is a
     # token of its own everywhere. Recorded consequence: `cp src >/primary/f`
     # no longer resolves `>/primary/f` as a cp DESTINATION — arm (a) resolves
     # the real redirect target instead, so the coverage is relocated, not
     # lost (probe row: adjudicate6 1d / the cp-redirect row in the suite).
     _bwimc_clause_sp=$(_bwimc_space_before_redirects "$_bwimc_clause")
-    # HIMMEL-3648: track cd/pushd/popd BEFORE this clause's own verb scan —
+    # track cd/pushd/popd BEFORE this clause's own verb scan —
     # a bare `cd <dir>` clause matches none of the verb regexes below, so
     # this never diverts the elif chain; it only updates _bwimc_ecwd for
     # THIS and every LATER clause in the command.
     _bwimc_ecwd_track "$_bwimc_clause_sp" "$_bwimc_clause_piped"
-    # HIMMEL-4153: the verb arms read the command word AFTER any leading
+    # the verb arms read the command word AFTER any leading
     # assignment words (ecwd tracking above keeps the whole clause — it
-    # already treats an assignment prefix as unresolved). HIMMEL-4213: and
+    # already treats an assignment prefix as unresolved). And
     # after a leading `{`, `!`, reserved word, `time` or wrapper command —
     # the wrapper check after the chain keeps the assignment-only reading.
     _bwimc_strip_prefix "$_bwimc_clause"
@@ -6973,7 +6972,7 @@ while IFS= read -r _bwimc_clause; do
         _bwimc_clause_sp=$(_bwimc_space_before_redirects "$_BWIMC_SP0")
     fi
     _bwimc_wrap_lc="$_bwimc_clause_lc"; _bwimc_wrap_sp="$_bwimc_clause_sp"
-    # HIMMEL-4329: a chroot root, read against the cwd before its own chdir
+    # a chroot root, read against the cwd before its own chdir
     [ -z "$_BWIMC_SPROOT" ] || _bwimc_root_model "$_BWIMC_SPROOT"
     if [ -n "$_BWIMC_SPDIR" ]; then
         _bwimc_spd_ecwd="$_bwimc_ecwd"; _bwimc_spd_unres="$_bwimc_ecwd_unres"; _bwimc_spd_on=1
@@ -6984,12 +6983,12 @@ while IFS= read -r _bwimc_clause; do
         _bwimc_clause_sp=$(_bwimc_space_before_redirects "$_BWIMC_SP")
     fi
 
-    # HIMMEL-1430: `grep -E` + capture instead of `grep -q` here and at every
+    # `grep -E` + capture instead of `grep -q` here and at every
     # verb-scan arm below — under pipefail a multi-line, >64KiB clause can
     # SIGPIPE the producer mid-match and flip the pipeline's exit status,
     # which would fail this fence OPEN on the exact class it exists to catch.
     if _bwimc_gm '^[[:space:]]*sed(\.exe)?[[:space:]]+'; then
-        # HIMMEL-2592 round 9 codex-3: this used to be
+        # this used to be
         # `sed(\.exe)?[[:space:]]+.*-i` — an UNANCHORED substring search over
         # the WHOLE clause text, which matched the `-i` inside a PATH
         # (`test-ws5-invariants.sh` contains "-i") and denied a pure read.
@@ -7020,7 +7019,7 @@ while IFS= read -r _bwimc_clause; do
                 _bwimc_i=$(_bwimc_skip_redirect_at "$_bwimc_i")
                 continue
             fi
-            # HIMMEL-2592 round 5 codex-1: `--` ends OPTION parsing — every
+            # `--` ends OPTION parsing — every
             # token after it is a plain OPERAND, even one shaped like a flag
             # (`sed -i -- -e` really edits a file literally named `-e`). A
             # scanner with no `--` concept keeps reading such a token as
@@ -7046,7 +7045,7 @@ while IFS= read -r _bwimc_clause; do
                     _bwimc_i=$((_bwimc_i+2))
                     continue
                     ;;
-                # codex-5 (HIMMEL-2526): the ATTACHED forms (`-e's/a/b/'`,
+                # the ATTACHED forms (`-e's/a/b/'`,
                 # `-fscript.sed`, `--expression=...`, `--file=...`, no space
                 # before the program/file) also carry an inline sed program —
                 # without recognising these too, `_bwimc_saw_ef` stays 0 and
@@ -7059,16 +7058,16 @@ while IFS= read -r _bwimc_clause; do
                     _bwimc_i=$((_bwimc_i+1))
                     continue
                     ;;
-                # HIMMEL-2592 §2 (round 4/5): `--follow-symlinks` flips GNU
+                # `--follow-symlinks` flips GNU
                 # sed -i's resolution mode from ENTRY (default) to FOLLOW —
                 # detected in this same option-scanning loop (the one arbiter
                 # that already skips redirect operators correctly), not via a
                 # separate grep over the raw clause. Matched via the shared
-                # _bwimc_is_long_abbrev prefix test (round 5) so an
+                # _bwimc_is_long_abbrev prefix test so an
                 # abbreviation (`--follow-sym`, `--follow`) is not a second
                 # spelling to enumerate.
                 #
-                # HIMMEL-2592 round 9 codex-3: `--follow-symlinks` alone,
+                # `--follow-symlinks` alone,
                 # with no `-i`/`--in-place` anywhere, does NOT write
                 # (measured against real GNU sed: it prints to stdout, the
                 # file is untouched) — so it must NOT set _bwimc_saw_inplace
@@ -7079,7 +7078,7 @@ while IFS= read -r _bwimc_clause; do
                 # against real sed), IS the in-place indicator and is
                 # matched via the SAME prefix helper.
                 --*)
-                    # HIMMEL-2656: an ABBREVIATED `--expression`/`--file`
+                    # an ABBREVIATED `--expression`/`--file`
                     # (`--expr=...`, `--exp foo.sed`) fell through this case
                     # entirely — matched neither the exact-name case above nor
                     # follow-symlinks/in-place below — so `_bwimc_saw_ef`
@@ -7105,7 +7104,7 @@ while IFS= read -r _bwimc_clause; do
                     continue
                     ;;
                 -*)
-                    # HIMMEL-2592 round 9 codex-3 / round 10 codex-1: a
+                    # a
                     # SHORT-option BUNDLE is scanned character by character,
                     # mirroring GNU sed's own bundling rule rather than a
                     # cleverer regex (which would just be wrong on the next
@@ -7120,7 +7119,7 @@ while IFS= read -r _bwimc_clause; do
                     # ground-truthed: it wrote "f.txte", not a separate
                     # `-e`) — the round-8 panel's own bundled example.
                     #
-                    # HIMMEL-2592 round 10 codex-1: `e`/`f` inside a bundle
+                    # `e`/`f` inside a bundle
                     # MUST set _bwimc_saw_ef, exactly like the standalone
                     # `-e`/`-f` forms already do — this round-9 code hit
                     # `e`/`f` and just `break`, so `_bwimc_saw_ef` stayed 0
@@ -7162,7 +7161,7 @@ while IFS= read -r _bwimc_clause; do
                     ;;
             esac
         done
-        # HIMMEL-2592 round 9 codex-3: NOTHING to check when in-place mode
+        # NOTHING to check when in-place mode
         # was never seen — a plain `sed -n`/`sed -e` read prints to stdout
         # and touches no file it names (measured against real GNU sed). The
         # entry test above now matches every `sed` invocation, not just
@@ -7174,7 +7173,7 @@ while IFS= read -r _bwimc_clause; do
             if [ "$_bwimc_saw_ef" = 0 ] && [ "${#_bwimc_bare[@]}" -ge 1 ]; then
                 _bwimc_start=1
             fi
-            # HIMMEL-2592 §2 (round 4): resolution mode is chosen by the
+            # resolution mode is chosen by the
             # OPERATION, not the path. GNU sed -i's default replaces the
             # directory ENTRY (`entry`); `--follow-symlinks` writes THROUGH
             # the link (`follow`). Measured with GNU sed 4.10: the default
@@ -7199,17 +7198,17 @@ while IFS= read -r _bwimc_clause; do
         _bwimc_check_interp_body "$_bwimc_clause_sp" eval
 
     elif _bwimc_gm '^[[:space:]]*([^[:space:]]*/)?(bash|sh|zsh|dash|ksh)(\.exe)?([[:space:]]+[^[:space:]]+)*[[:space:]]+-[a-z]*c[a-z]*([[:space:]]|$)'; then
-        # HIMMEL-3648 (CR #1307): allow an optional path prefix (`/bin/sh`,
+        #: allow an optional path prefix (`/bin/sh`,
         # `./bash`, …) before the shell name — an anchor on the bare name
         # only let a path-qualified invocation bypass body scanning entirely.
-        # HIMMEL-3648 (codex-3): loosened from a literal `-c` to any
+        #: loosened from a literal `-c` to any
         # single-dash all-letters cluster containing `c` (`-ce`, `-ec`, …) —
         # real bash/sh/zsh getopt-style combined short flags a literal `-c`
         # match let straight through. Deliberately over-inclusive: the
         # precise check (and the actual body lookup) is
         # _bwimc_is_shc_cflag inside _bwimc_check_interp_body; a prefilter
         # false-positive here only means a harmless extra scan.
-        # HIMMEL-3648 (round 10 codex-2): the middle group used to require
+        # the middle group used to require
         # each intervening token to itself start with `-` (a flag), so a
         # flag that takes its own separate argument (`bash -o pipefail -c
         # '…'`) broke the chain — "pipefail" isn't `-`-prefixed, so the
@@ -7221,7 +7220,7 @@ while IFS= read -r _bwimc_clause; do
         _bwimc_check_interp_body "$_bwimc_clause_sp" shc
 
     elif _bwimc_gm '^[[:space:]]*(install|rsync)(\.exe)?[[:space:]]+'; then
-        # HIMMEL-3648: install/rsync — the LAST non-option operand is the
+        # install/rsync — the LAST non-option operand is the
         # write destination (install: `SOURCE... DEST` or, with -t/
         # --target-directory, `SOURCE... -t DIR`; rsync: `SRC... DEST`).
         # install's `-t DIR` / `-tDIR` / `--target-directory[=]DIR` share cp's
@@ -7232,13 +7231,13 @@ while IFS= read -r _bwimc_clause; do
         # misread a bundled/bare rsync `-t` as consuming the next token.
         # rsync's other SEPARATED-value options (--exclude PATTERN, -e CMD,
         # --temp-dir DIR, ...) are now skipped below the same way, closing
-        # the gap a round-f688778c critic found live (HIMMEL-3648, codex-3):
+        # the gap a round-f688778c critic found live:
         # `rsync SRC /primary/dest --exclude pattern` used to let `pattern`
         # fall through as the "last operand", masking the real destination.
         # ponytail: only the SEPARATED form of those options is modelled — a
         # bundled/immediate-joined short-opt value (`-eCMD`) is not, and
         # falls through to the generic operand scan below. Escalate only if
-        # a real gap surfaces (HIMMEL-3648).
+        # a real gap surfaces.
         _bwimc_verb=$(printf '%s' "$_bwimc_clause_lc" | sed -E 's/^[[:space:]]*(install|rsync).*/\1/')
         _bwimc_toks=()
         while IFS= read -r _bwimc_t; do _bwimc_toks+=("$_bwimc_t"); done < <(_bwimc_tokenize "$_bwimc_clause_sp")
@@ -7282,7 +7281,7 @@ while IFS= read -r _bwimc_clause; do
                         _bwimc_i=$((_bwimc_i+1))
                         continue
                         ;;
-                    # HIMMEL-3648 (codex-2): `-d`/`--directory` puts install
+                    #: `-d`/`--directory` puts install
                     # in directory-creation mode, where EVERY operand (not
                     # just the last) is itself a destination directory to
                     # create — the generic `-*` skip below silently dropped
@@ -7291,13 +7290,13 @@ while IFS= read -r _bwimc_clause; do
                     # fire.
                     # ponytail: only the bare `-d`/`--directory` spelling is
                     # modelled, not a bundled short-opt form (`-vd`) —
-                    # escalate only if a real gap surfaces (HIMMEL-3648).
+                    # escalate only if a real gap surfaces.
                     -d|--directory)
                         _bwimc_install_dmode=1
                         _bwimc_i=$((_bwimc_i+1))
                         continue
                         ;;
-                    # HIMMEL-3648 (CR #1307): install's other SEPARATED
+                    #: install's other SEPARATED
                     # mandatory-value options were not skipped, so — exactly
                     # like the rsync gap below — the value token fell through
                     # to the generic operand scan and could become the
@@ -7311,7 +7310,7 @@ while IFS= read -r _bwimc_clause; do
                         ;;
                 esac
             fi
-            # HIMMEL-3648 (codex-3, round f688778c): rsync's other
+            # (codex-3, round f688778c): rsync's other
             # value-taking options were previously left un-skipped (see the
             # ponytail note above), so an option's VALUE fell through to the
             # generic `-*) : ;;` / bare-word split below and was picked up as
@@ -7320,7 +7319,7 @@ while IFS= read -r _bwimc_clause; do
             # true destination. Skip each one's separated value exactly like
             # install's -t/--target-directory above, so only real operands
             # ever reach _bwimc_ops.
-            # HIMMEL-3648 (CR #1307): -T/--temp-dir's short form, -B
+            #: -T/--temp-dir's short form, -B
             # (--block-size), -M (--remote-option) and --suffix were missing
             # from this list — the same "value falls through as a bogus
             # operand" gap the comment above already covers for the rest.
@@ -7351,7 +7350,7 @@ while IFS= read -r _bwimc_clause; do
             done
         elif [ "${#_bwimc_ops[@]}" -ge 2 ]; then
             _bwimc_dest_raw="${_bwimc_ops[$((${#_bwimc_ops[@]}-1))]}"
-            # HIMMEL-3648 (CodeRabbit #1307): a REMOTE rsync destination
+            #: a REMOTE rsync destination
             # (`user@host:/path`, `rsync://host/mod`) never writes into the
             # LOCAL primary checkout — resolving it as a local path (as the
             # generic destination check below does) can only mis-DENY it,
@@ -7373,7 +7372,7 @@ while IFS= read -r _bwimc_clause; do
         fi
 
     elif _bwimc_gm '^[[:space:]]*dd(\.exe)?([[:space:]]|$)'; then
-        # HIMMEL-3648: dd's `of=PATH` key=value token is its write
+        # dd's `of=PATH` key=value token is its write
         # destination; dd itself never takes it as two separate tokens.
         _bwimc_toks=()
         while IFS= read -r _bwimc_t; do _bwimc_toks+=("$_bwimc_t"); done < <(_bwimc_tokenize "$_bwimc_clause_sp")
@@ -7400,7 +7399,7 @@ while IFS= read -r _bwimc_clause; do
         _bwimc_toks=()
         while IFS= read -r _bwimc_t; do _bwimc_toks+=("$_bwimc_t"); done < <(_bwimc_tokenize "$_bwimc_clause_sp")
         _bwimc_ops=()
-        # codex-6 (HIMMEL-2526): `-t <dir>` / `-t<dir>` / `--target-directory=
+        # `-t <dir>` / `-t<dir>` / `--target-directory=
         # <dir>` (same option on cp AND mv) name the destination EXPLICITLY —
         # without recognising them, the old code both (a) discarded a
         # SEPARATED `-t`'s value as if it were a generic flag argument, and
@@ -7411,7 +7410,7 @@ while IFS= read -r _bwimc_clause; do
         # destination even if it exists as a dir) is NOT handled — left as a
         # documented gap, not cheap to fold in here.
         _bwimc_tdir_raw=""
-        # HIMMEL-2592 CR round 2 (twin 2): `-T`/`--no-target-directory` makes
+        # `-T`/`--no-target-directory` makes
         # the destination a plain ENTRY instead of a directory written
         # THROUGH — for `mv` ONLY. Ground truth at
         # `<primary>/dirlink-out -> <worktree>/somedir`: `mv` and `mv -n`
@@ -7422,7 +7421,7 @@ while IFS= read -r _bwimc_clause; do
         # `--no-dereference`, which is why _bwimc_opt_scan reports the two
         # separately and this arm consults only the `-T` one.
         _bwimc_nodrf=0
-        # HIMMEL-2679: `--remove-destination` (cp only) unlinks the
+        # `--remove-destination` (cp only) unlinks the
         # destination ENTRY and creates a fresh regular file in its place,
         # rather than writing through a symlink referent. Ground-truthed
         # against GNU cp 9.11 at `<primary>/link -> <worktree>/file`: both
@@ -7440,7 +7439,7 @@ while IFS= read -r _bwimc_clause; do
                 _bwimc_i=$(_bwimc_skip_redirect_at "$_bwimc_i")
                 continue
             fi
-            # HIMMEL-2592 round 5 codex-1: `--` ends OPTION parsing (see the
+            # `--` ends OPTION parsing (see the
             # sed arm's identical comment for the full finding). `cp --targ
             # DIR -- src dest` must still resolve `--targ DIR` as the
             # destination — `--` only takes effect for tokens AFTER it, so
@@ -7460,7 +7459,7 @@ while IFS= read -r _bwimc_clause; do
                     _bwimc_opt_scan "$_bwimc_t"
                     [ -n "$_BWIMC_OPT_TDIR" ] && _bwimc_tdir_raw="$_BWIMC_OPT_TDIR"
                     [ "$_BWIMC_OPT_BIGT" = 1 ] && _bwimc_nodrf=1
-                    # HIMMEL-2679/J1285R: `-f`/`--force` is NOT the same as
+                    # `-f`/`--force` is NOT the same as
                     # `--remove-destination`. `cp -f` does not unlink first —
                     # it opens the destination and FOLLOWS a symlink referent,
                     # falling back to unlink-and-recreate (ENTRY) only when
@@ -7474,7 +7473,7 @@ while IFS= read -r _bwimc_clause; do
                     [ "$_BWIMC_OPT_RMDEST" = 1 ] && _bwimc_rmdest=1
                     [ "$_BWIMC_OPT_FORCE" = 1 ] && _bwimc_force=1
                     if [ "$_BWIMC_OPT_TWANT" = 1 ]; then
-                        # HIMMEL-2592 round 6 codex-1: the value is the next
+                        # the value is the next
                         # REAL token, skipping any redirection (and its
                         # target) the shell would strip before this command
                         # ever runs — see _bwimc_next_optval_idx's header.
@@ -7494,18 +7493,18 @@ while IFS= read -r _bwimc_clause; do
         # PROMPT, never the mode.
         [ "$_bwimc_verb" = "cp" ] || _bwimc_rmdest=0
         [ "$_bwimc_verb" = "cp" ] || _bwimc_force=0
-        # INDEPENDENCE (HIMMEL-2592, acceptance criterion 1): operands are
+        # INDEPENDENCE (acceptance criterion 1): operands are
         # COLLECTED with their roles above, then EVERY statically-resolvable
         # one is checked below — never nested inside a sibling's resolution
         # guard. Three earlier rounds each fixed one instance of that nesting
-        # by hoisting one check (round 3: the positional destination inside
-        # the per-source loop; round 4: the identical defect in the `-t`
-        # branch; round 5: the `mv` SOURCE inside the destination guard). The
+        # by hoisting one check (the positional destination inside
+        # the per-source loop; the identical defect in the `-t`
+        # branch; the `mv` SOURCE inside the destination guard). The
         # invariant none of them stated, and the reason a fourth hoist would
         # not have prevented a fifth: an operand that cannot be resolved
         # fails open on ITSELF ALONE and never suppresses a sibling's check.
-        # DESTINATION resolution is verb- AND type-dependent (HIMMEL-2592 CR
-        # round 3, codex-2). Every line below was established by RUNNING the
+        # DESTINATION resolution is verb- AND type-dependent (CR
+        # Every line below was established by RUNNING the
         # real command against `<x>/link -> <y>/file`, not by reasoning:
         #   destination resolves to a DIRECTORY  -> FOLLOW  (both verbs move/
         #                                           copy INTO it)
@@ -7519,18 +7518,18 @@ while IFS= read -r _bwimc_clause; do
         # created inside a destination DIRECTORY, and it splits the same way:
         # `mv src <dir>/` REPLACES `<dir>/basename` even when that child is a
         # symlink, while `cp src <dir>/` writes THROUGH it. Both verified.
-        # `ln` gets ENTRY for the same reason (round 3, codex-3).
+        # `ln` gets ENTRY for the same reason.
         _bwimc_child_mode=follow
         [ "$_bwimc_verb" = "mv" ] && _bwimc_child_mode=entry
-        # HIMMEL-2679: `cp --remove-destination` unlinks the child entry and
+        # `cp --remove-destination` unlinks the child entry and
         # recreates it, the same as mv's rename(2) — ground-truthed at
         # `<dir>/link -> <worktree>/file`: the child became a REGULAR file.
         [ "$_bwimc_rmdest" = 1 ] && _bwimc_child_mode=entry
-        # HIMMEL-2679/J1285R: `-f`/`--force` (without `--remove-destination`)
+        # `-f`/`--force` (without `--remove-destination`)
         # normally still writes THROUGH the child symlink referent (FOLLOW),
         # falling back to ENTRY only on a permission failure — check both.
         [ "$_bwimc_rmdest" = 0 ] && [ "$_bwimc_force" = 1 ] && _bwimc_child_mode=both
-        # HIMMEL-3648 (round 10 codex-1): mv's SOURCE main check below uses
+        # mv's SOURCE main check below uses
         # ENTRY (rename(2) moves the entry, never writes through it); cp
         # never checks its source as a destination at all, so "follow" here
         # is an inert default the main check never contradicts. Computed
@@ -7544,7 +7543,7 @@ while IFS= read -r _bwimc_clause; do
             # SOURCE; the sink for each is <target-dir>/<basename(source)>.
             # `-t`/`--target-directory` name the destination MORE explicitly
             # than the positional form, so it never depends on source parsing.
-            # HIMMEL-3648 (J1307A F1, closes the HIMMEL-3726 regression): the
+            # The
             # destination TYPE is resolved against the tracked cwd and, when a pipe,
             # subshell or `||` cd made it diverge, again against the real cwd.
             # _bwimc_check_abs exits on the first deny, so a deny from EITHER
@@ -7587,7 +7586,7 @@ while IFS= read -r _bwimc_clause; do
             _bwimc_n=${#_bwimc_ops[@]}
             if [ "$_bwimc_n" -ge 2 ]; then
                 _bwimc_dest_raw="${_bwimc_ops[$((_bwimc_n-1))]}"
-                # HIMMEL-3648 (J1307A F1, closes the HIMMEL-3726 regression): the
+                # The
                 # destination TYPE is resolved against the tracked cwd and, when a pipe,
                 # subshell or `||` cd made it diverge, again against the real cwd.
                 # _bwimc_check_abs exits on the first deny, so a deny from EITHER
@@ -7611,10 +7610,10 @@ while IFS= read -r _bwimc_clause; do
                                 # that is a symlink to a NON-directory is written
                                 # AT, not through (codex-2, ground-truthed).
                                 # `cp --remove-destination` unlinks+recreates the
-                                # same way (HIMMEL-2679, ground-truthed).
+                                # same way (ground-truthed).
                                 _bwimc_dest_mode=$(_bwimc_mode_for_operand "$_bwimc_dest_raw" entry)
                             elif [ "$_bwimc_dest_is_dir" = 0 ] && [ "$_bwimc_force" = 1 ]; then
-                                # HIMMEL-2679/J1285R: `-f`/`--force` normally
+                                # `-f`/`--force` normally
                                 # writes THROUGH the referent (FOLLOW) and falls
                                 # back to unlink+recreate (ENTRY) only when that
                                 # open fails on permissions — check both, never
@@ -7626,7 +7625,7 @@ while IFS= read -r _bwimc_clause; do
                     else
                         _bwimc_check_glob_operand "$_bwimc_dest_raw" "$_bwimc_dbase"
                     fi
-                    # HIMMEL-3648 (round 13, J1307Q): threaded AFTER $_bwimc_dest_mode
+                    # threaded AFTER $_bwimc_dest_mode
                     # is fully known (entry/both for a symlink-entry destination,
                     # follow for a directory or an unresolved operand) so the
                     # cd-divergence fallback runs the SAME mode the checks above
@@ -7681,12 +7680,12 @@ while IFS= read -r _bwimc_clause; do
                 _bwimc_i=$(_bwimc_skip_redirect_at "$_bwimc_i")
                 continue
             fi
-            # HIMMEL-2592 round 5 codex-1: `--` ends OPTION parsing (see the
+            # `--` ends OPTION parsing (see the
             # sed arm's identical comment). `rm -- -f` removes a file
             # literally named `-f`; without this, `-*` below eats it as a
             # flag and the fence never checks it.
             if [ "$_bwimc_dd" = 1 ]; then
-                # HIMMEL-3648 (round 10 codex-1): pass rm/touch's own mode
+                # pass rm/touch's own mode
                 # through so the cd-divergence fallback in _bwimc_cd_guard
                 # runs the same entry-vs-follow check the line below does.
                 _bwimc_cd_guard "$_bwimc_t" "$_bwimc_mode"
@@ -7700,7 +7699,7 @@ while IFS= read -r _bwimc_clause; do
                 continue
             fi
             case "$_bwimc_t" in
-                # HIMMEL-4921 (B): truncate -s/-r take a separate VALUE (a
+                # truncate -s/-r take a separate VALUE (a
                 # size, a reference file that is only read), not a target.
                 -s|--size|-r|--reference)
                     [ "$_bwimc_verb" = truncate ] && _bwimc_i=$((_bwimc_i+1)) ;;
@@ -7711,7 +7710,7 @@ while IFS= read -r _bwimc_clause; do
         done
 
     elif _bwimc_gm '^[[:space:]]*([^[:space:]]*/)?(tar|gtar|bsdtar)(\.exe)?[[:space:]]+'; then
-        # HIMMEL-4921 (C): an EXTRACTING tar writes under its -C/--directory
+        # an EXTRACTING tar writes under its -C/--directory
         # destination, which nothing checked (the fence only relieved a /tmp
         # extract, never denied one). When the clause extracts (-x/--extract/
         # --get, bundled `-xzf`, or old-style `xf`), every -C/--directory
@@ -7797,7 +7796,7 @@ while IFS= read -r _bwimc_clause; do
         fi
 
     elif _bwimc_gm '^[[:space:]]*([^[:space:]]*/)?tee(\.exe)?[[:space:]]+'; then
-        # HIMMEL-4329 CR codex-2: arm (a) reads `tee` on the host only and
+        # arm (a) reads `tee` on the host only and
         # only behind its own short wrapper list, so `chroot P tee /f`,
         # `sudo -R P tee /f`, `nice tee`, `timeout 5 tee` and `/usr/bin/tee`
         # wrote into the primary unseen. Here tee is read behind every
@@ -7829,7 +7828,7 @@ while IFS= read -r _bwimc_clause; do
         done
 
     elif _bwimc_gm '^[[:space:]]*ln(\.exe)?[[:space:]]+'; then
-        # `ln`/`ln -s` CREATES a directory entry (HIMMEL-2592 §2) — the fence
+        # `ln`/`ln -s` CREATES a directory entry — the fence
         # had no `ln` arm at all, so `ln -s x <primary>/link` wrote into a
         # protected checkout unseen. Only the LINK NAME is a write; the link
         # TARGET is never touched (it need not even exist), so sources are
@@ -7838,7 +7837,7 @@ while IFS= read -r _bwimc_clause; do
         while IFS= read -r _bwimc_t; do _bwimc_toks+=("$_bwimc_t"); done < <(_bwimc_tokenize "$_bwimc_clause_sp")
         _bwimc_ops=()
         _bwimc_tdir_raw=""
-        # HIMMEL-2592 CR round 2, codex-2: `-n`/`--no-dereference` and
+        # `-n`/`--no-dereference` and
         # `-T`/`--no-target-directory` exist precisely to DISABLE the
         # dereference that makes a directory destination FOLLOW. Under either
         # one, `ln` REPLACES a symlink-to-directory destination as a plain
@@ -7858,7 +7857,7 @@ while IFS= read -r _bwimc_clause; do
                 _bwimc_i=$(_bwimc_skip_redirect_at "$_bwimc_i")
                 continue
             fi
-            # HIMMEL-2592 round 5 codex-1 (THE panel finding): `--` ends
+            # `--` ends
             # OPTION parsing — `ln -s -- -n <wt>/dirlink` creates a link
             # literally NAMED `-n`; without this, `-n` below is read as
             # `--no-dereference`, the destination check is skipped entirely,
@@ -7887,7 +7886,7 @@ while IFS= read -r _bwimc_clause; do
                         _bwimc_ln_nodrf=1
                     fi
                     if [ "$_BWIMC_OPT_TWANT" = 1 ]; then
-                        # HIMMEL-2592 round 6 codex-1: the value is the next
+                        # the value is the next
                         # REAL token, skipping any redirection (and its
                         # target) the shell would strip before this command
                         # ever runs — see _bwimc_next_optval_idx's header.
@@ -7899,7 +7898,7 @@ while IFS= read -r _bwimc_clause; do
             esac
             _bwimc_i=$((_bwimc_i+1))
         done
-        # ENTRY vs FOLLOW for an `ln` destination (HIMMEL-2592 CR codex-2, a
+        # ENTRY vs FOLLOW for an `ln` destination (CR codex-2, a
         # REFINEMENT of the §2.1 rule rather than an exception to it): ENTRY
         # is right when the destination IS the entry being created, but a
         # destination that RESOLVES TO A DIRECTORY is written THROUGH —
@@ -7925,7 +7924,7 @@ while IFS= read -r _bwimc_clause; do
         fi
         if [ -n "$_bwimc_dest_raw" ]; then
             _bwimc_ln_isdir0=$_bwimc_ln_isdir
-            # HIMMEL-3648 (J1307A F1, closes the HIMMEL-3726 regression): the
+            # The
             # destination TYPE is resolved against the tracked cwd and, when a pipe,
             # subshell or `||` cd made it diverge, again against the real cwd.
             # _bwimc_check_abs exits on the first deny, so a deny from EITHER
@@ -7952,7 +7951,7 @@ while IFS= read -r _bwimc_clause; do
                         _bwimc_ln_isdir=1
                     fi
                     if [ "$_bwimc_ln_isdir" = 1 ]; then
-                        # HIMMEL-3648 (round 10 codex-1): _bwimc_cd_guard moved
+                        # _bwimc_cd_guard moved
                         # here, after $_bwimc_ln_isdir is known, so its fallback
                         # runs the SAME mode ("follow") the check two lines below
                         # uses — calling it before this branch was decided meant
@@ -7973,13 +7972,13 @@ while IFS= read -r _bwimc_clause; do
                                 # is untouched, so FOLLOW here was a false
                                 # positive. The DIRECTORY itself stays FOLLOW,
                                 # which is what still catches a dirlink pointing
-                                # into the primary (round 1, codex-2).
+                                # into the primary.
                                 _bwimc_check_abs "${_bwimc_dest_abs%/}/$_bwimc_base" "$_bwimc_dest_raw" entry
                             fi
                             _bwimc_j=$((_bwimc_j+1))
                         done
                     else
-                        # HIMMEL-3648 (round 10 codex-1): same reasoning as the
+                        # same reasoning as the
                         # directory branch above — the fallback must match this
                         # branch's own ENTRY mode, not a guessed "follow".
                         _bwimc_cd_guard "$_bwimc_dest_raw" "$(_bwimc_mode_for_operand "$_bwimc_dest_raw" entry)"
@@ -7996,7 +7995,7 @@ while IFS= read -r _bwimc_clause; do
     elif _bwimc_gm '^[[:space:]]*git(\.exe)?([[:space:]]+-[^[:space:]]+([[:space:]]+[^[:space:]]+)?)*[[:space:]]+commit([[:space:]]|$)'; then
         _bwimc_git_commit_target "$_bwimc_clause_sp" "$_bwimc_ecwd"
         if [ "$_BWIMC_GIT_TARGET_UNRESOLVED" = 1 ]; then
-            # HIMMEL-2884 codex-2: an unresolved -C/--git-dir/--work-tree value
+            # an unresolved -C/--git-dir/--work-tree value
             # must deny outright, not fall back to checking the command's cwd
             # — the cwd's own permission says nothing about where the
             # unresolved value actually points, so falling back false-ALLOWed
@@ -8013,19 +8012,19 @@ while IFS= read -r _bwimc_clause; do
         # PowerShell writers: sourced/codex lane only (see CODEX-LANE PARITY
         # header note) — PowerShell never reaches direct-exec (Claude wires
         # this script on the "Bash" matcher only).
-        # HIMMEL-3648 (J1307P): this arm used to check only the TRACKED cwd
+        # this arm used to check only the TRACKED cwd
         # (_bwimc_ecwd), with no union fallback to the real payload cwd the
         # way _bwimc_cd_guard already gives every write-target arm — so a
         # `cd`/pushd whose tracked target diverges from where the shell
         # really is (nonexistent target, `||`/`|` short-circuit, etc., the
-        # same C1 class round 9 fixed for write-target resolution) let a
+        # same class as write-target resolution) let a
         # write-on-main through once the tracker's cd moved _bwimc_ecwd off
         # main. Checking the real cwd too makes this a strict superset: a
         # divergence can only ADD a deny, never remove one.
         _bwimc_cwd_check_sourced "$_bwimc_ecwd"
         _bwimc_cwd_check_sourced "$_bwimc_cwd"
     fi
-    # HIMMEL-4138: a shell or eval behind a wrapper (`nice bash -c`,
+    # a shell or eval behind a wrapper (`nice bash -c`,
     # `timeout 5 sh -c`, `env FOO=1 bash -c`, `command eval`, `flock L -c`)
     # matched none of the anchored arms above, so its body went unscanned.
     # Checked after the chain, never instead of an arm, so it cannot take a

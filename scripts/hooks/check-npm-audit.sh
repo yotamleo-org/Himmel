@@ -7,7 +7,7 @@ set -euo pipefail
 # only), so plugins under marketplace/ and plugins/ are covered too — not just
 # the packages under scripts/. The node_modules pathspec exclude is defensive:
 # `git ls-files` already omits untracked nested worktrees + dependency trees.
-# Bench FIXTURES are excluded (HIMMEL-1723): their package.json/lockfiles are
+# Bench FIXTURES are excluded: their package.json/lockfiles are
 # benchmark INPUTS — deliberately incomplete or stale as part of the task —
 # and `npm audit` completing an incomplete fixture lockfile MUTATES fixture
 # bytes mid-push (the stash-conflict abort this exclusion fixes).
@@ -26,7 +26,7 @@ if [ ${#pkgs[@]} -eq 0 ]; then
     exit 0
 fi
 
-# Matches the registry/transport-error shapes seen in practice (HIMMEL-2972):
+# Matches the registry/transport-error shapes seen in practice:
 # npm's own "audit endpoint returned an error", a raw 'Bad Request', the
 # ENOAUDIT/ENOTFOUND/ECONNREFUSED/ECONNRESET/ETIMEDOUT error codes, or an
 # npm error-code line naming a 4xx/5xx registry status. Anything else stays
@@ -35,7 +35,7 @@ is_transport_error() {
     # here-string, not `printf | grep -q` — under `set -o pipefail`, grep -q
     # exiting on first match SIGPIPEs a piped producer, and pipefail can then
     # report the pipeline as failed even though the match succeeded
-    # (HIMMEL-1430). A here-string has no producer process to SIGPIPE.
+    #. A here-string has no producer process to SIGPIPE.
     grep -Eqi \
         'audit endpoint returned an error|ENOAUDIT|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|Bad Request|code E[45][0-9]{2}' \
         <<< "$1"
@@ -110,7 +110,7 @@ for pkg in "${pkgs[@]}"; do
         else
             # Retry no longer errors as transport (e.g. now reports real
             # vulnerabilities, or an unrelated failure) — the original
-            # findings path, not INDETERMINATE (HIMMEL-2972 CR round 1).
+            # findings path, not INDETERMINATE
             fail=1
         fi
     elif [ $audit_rc -ne 0 ]; then

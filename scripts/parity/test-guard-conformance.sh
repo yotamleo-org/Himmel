@@ -11,7 +11,12 @@
 #          tested:<path>  -> the path resolves via [ -f <path> ] from the
 #                            repo root;
 #          GAP            -> accepted literal;
-#          pending:TaskN  -> accepted literal (N a run of digits).
+#          pending:TaskN  -> accepted literal (N a run of digits);
+#          n/a            -> accepted literal: an explicit out-of-scope
+#                            contract (the lane's guard is not an in-repo
+#                            artifact, so there is nothing to prove here). The
+#                            doc note for the lane must say why. An n/a cell is
+#                            not tested, so its column is never tested-green.
 #        Anything else, or an empty cell, FAILS.
 #   (iii) no lane column that is "tested-green" (EVERY one of its cells is a
 #        tested cell -- across the six deny-guards AND the write-authority
@@ -151,7 +156,7 @@ validate_cell() {
         CELL_HAS_PENDING=1
     fi
     residual="$(printf '%s' "$stripped" \
-        | sed -E 's/tested:[A-Za-z0-9_./-]+//g; s/pending:Task[0-9]+//g; s/GAP//g' \
+        | sed -E 's/tested:[A-Za-z0-9_./-]+//g; s/pending:Task[0-9]+//g; s/GAP//g; s#(^|[[:space:]])n/a([[:space:]]|$)#\1\2#g' \
         | tr -d '[:space:]')"
     if [ -n "$residual" ]; then
         echo "FAIL ${label}: cell has unknown content: <${residual}>" >&2

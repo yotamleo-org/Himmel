@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Tests for scripts/hooks/guard-console-dispatch.sh (HIMMEL-2323).
+# Tests for scripts/hooks/guard-console-dispatch.sh.
 #
 # Usage: bash scripts/hooks/test-guard-console-dispatch.sh
 set -uo pipefail
 
 # grepq <text> [grep-args...] — never `printf | grep -q` under pipefail
-# (HIMMEL-1430; see guard-implementor-dispatch.sh's identical helper).
+#
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,7 +64,7 @@ payload() {
         '{tool_name:"Agent",session_id:"sess-test",transcript_path:$tp,tool_input:{subagent_type:$st,description:$d,prompt:$p}}'
 }
 
-# HIMMEL-2916: feed stdin via redirection, never a pipe — a fail-open exit
+# feed stdin via redirection, never a pipe — a fail-open exit
 # (e.g. `command -v jq || exit 0`) can close the read end before the writer
 # finishes, turning the writer's EPIPE into the pipeline's rc under pipefail.
 run_hook() {
@@ -88,7 +88,7 @@ printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: handovers/y
 
 MISSING_TRANSCRIPT="$TMP/does-not-exist.jsonl"
 
-# HIMMEL-2323 CR round 1 [w1-2323-b7d2]: the transcript scan must require a
+# The transcript scan must require a
 # LOADED HANDOVER-DOC PATH, not a bare "*-console.md" mention — a session
 # that merely READ this hook's own header (which discusses "*-console.md" in
 # prose) must not be classified console-shaped.
@@ -101,7 +101,7 @@ printf '%s\n' '{"type":"user","message":{"content":"See notes-console.md for con
 REAL_HANDOVER_TRANSCRIPT="$TMP/real-handover.jsonl"
 printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: /home/yotamleo/state/handovers/yotamleo/himmel/HIMMEL-2323-console.md — resume from there."}}' > "$REAL_HANDOVER_TRANSCRIPT"  # leak-allow: home-path operator username in a dispatch fixture
 
-# HIMMEL-2323 CR round 2 [w1-2323-b7d2] [codex-2]: the scan must be scoped to
+# The scan must be scoped to
 # the FIRST USER TURN, not any early line — a system prompt, tool result, or
 # assistant turn merely mentioning a handover-console path must not count.
 ASSISTANT_TURN_TRANSCRIPT="$TMP/assistant-turn-only.jsonl"
@@ -129,7 +129,7 @@ printf '%s\n' \
     '{"type":"user","message":{"content":"Loaded handover: handovers/yotamleo/himmel/HIMMEL-2323-console.md — resume from there."}}' \
     > "$EMPTY_FIRST_USER_TRANSCRIPT"
 
-# CR round 4 [codex-1]: a mission doc routinely NAMES the console leg and its
+# A mission doc routinely NAMES the console leg and its
 # doc further down the same turn — that mention is not evidence of LOADING.
 # The doc actually being loaded is the FIRST path named (the mission doc).
 MISSION_THEN_CONSOLE_MENTION_TRANSCRIPT="$TMP/mission-then-console-mention.jsonl"
@@ -142,21 +142,21 @@ printf '%s\n' '{"type":"user","message":{"content":"load handovers/yotamleo/himm
 SHIP_FLOW_PROMPT='Create a worktree at .claude/worktrees/fix-x, land the change, then run gh pr create --title x, then run /pr-check to get it CR-clean.'
 ONE_FAMILY_PROMPT='Review this and check for any CodeRabbit-flagged issues in the diff.'
 RESEARCH_PROMPT='Investigate how the worktree lifecycle works; report findings only, no changes.'
-# [codex-3]: exercise the POSIX-boundary "open a PR" phrasing directly
+# Exercise the POSIX-boundary "open a PR" phrasing directly
 # (previously relied on a GNU-only \b).
 OPEN_A_PR_PROMPT='Create a worktree at .claude/worktrees/fix-x and open a PR for it.'
-# HIMMEL-2323 CR round 3: there is no prompt-text read-only carve-out any
-# more (three rounds each shipped one and each leaked it a different way —
+# There is no prompt-text read-only carve-out any
+# more (every version of it leaked a different way —
 # see the hook's own header). This prompt genuinely DISCUSSES the ship flow
 # rather than ordering it, which is exactly the shape the deleted carve-out
 # used to rescue — it must now refuse like any other >=2-family match.
 READONLY_DISCUSS_NOW_DENIES='Read-only. Review how the .claude/worktrees flow and the gh pr create step work, then report.'
-# CR round 3 [codex-2]: even a MODE declaration ("read-only analysis" / "do
+# Even a MODE declaration ("read-only analysis" / "do
 # analysis only") governing a subordinate CLAUSE, with a full ship-flow
 # instruction following it, must refuse — the deleted carve-out could not
 # tell "this whole brief is read-only" from "this whole brief is a writer
 # brief with a read-only-sounding clause up front", and it leaked exactly
-# that way in this hook's own CR history.
+# that way.
 READONLY_ANALYSIS_CLAUSE_BYPASS="Perform read-only analysis first, then ${SHIP_FLOW_PROMPT}"
 ANALYSIS_ONLY_CLAUSE_BYPASS="Do analysis only on the config, then ${SHIP_FLOW_PROMPT}"
 
@@ -267,7 +267,7 @@ printf '%s' "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT")" >"$TMP/in
 RC14=$(env HIMMEL_SESSION_ROLE=console PATH="$STUB_PATH_NO_JQ" "$BASH_ABS" "$HOOK" <"$TMP/in-nojq" >"$TMP/out-nojq" 2>"$TMP/err-nojq"; echo $?)
 assert_rc "jq absent allows (fail-open)" 0 "$RC14"
 
-# HIMMEL-2916 regression control: an early-exit reader fed via a pipe can
+# Regression control: an early-exit reader fed via a pipe can
 # inherit the writer's non-zero rc under pipefail; fed via redirect it cannot.
 STUB_EARLY_EXIT="$TMP/stub-early-exit.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$STUB_EARLY_EXIT"

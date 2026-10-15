@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the scripts/trust node:test suites (HIMMEL-1589, operator decision D4).
+# Run the scripts/trust node:test suites
 #
 # The trust suites are the spec for the trust-boundary gates. Like the
 # hook/lib suites (check-hook-lib-suites.sh) they had no runner on any machine
@@ -16,7 +16,7 @@ set -uo pipefail
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$repo_root" || { echo "check-trust-suites: cannot cd to $repo_root" >&2; exit 1; }
 
-# HIMMEL-1583: scrub the git environment pre-commit exports before running the
+# scrub the git environment pre-commit exports before running the
 # suites. pre-commit invokes its hooks with GIT_DIR/GIT_INDEX_FILE (and friends)
 # set; `node --test` inherits them, and every `git` the fixtures spawn then
 # resolves against THIS repository instead of the throwaway repo the fixture

@@ -54,7 +54,7 @@ make_repo() {
 }
 
 # Regression: an empty mktemp result must fail before fixture git writes can
-# fall through to the caller's repository (HIMMEL-1673).
+# fall through to the caller's repository.
 empty_mktemp_caller=$(fixture_mktemp_dir) || exit 1
 (
     fixture_enter_git_init_dir "$empty_mktemp_caller" || exit 1
@@ -122,8 +122,8 @@ run_in_with_path() {
 # Run the hook capturing its stderr (every refusal message is written >&2)
 # into the global LAST_MSG, and echo the exit code. `2>&1 >/dev/null` dups
 # stderr onto the captured pipe BEFORE stdout is sent to /dev/null, so only
-# stderr is captured. One invocation yields both rc and message (HIMMEL-1562
-# reason-string assertions need the message, not just the return code).
+# stderr is captured. One invocation yields both rc and message (reason-string
+# assertions need the message, not just the return code).
 #
 # Both results come back as GLOBALS, and callers MUST invoke this directly —
 # never as `rc=$(run_capture ...)`. A command substitution runs the function in
@@ -236,7 +236,7 @@ d=$(make_repo "src/foo.ts" "$(printf 'feat: foo\n\nSecurity reviewed:\n')") || e
 assert_rc "code + empty value = block"               1 "$(run_in "$d")"
 rm -rf "$d"
 
-# --- HIMMEL-1681: the token must sit IMMEDIATELY after the colon ---
+# --- the token must sit IMMEDIATELY after the colon ---
 # ATTEST_RE used to be `Security reviewed:.*${TOKEN_RE}`, so the token could
 # appear anywhere later on the line — a trailer that explicitly NEGATES the
 # attestation satisfied the gate. These pin token-first, both on the
@@ -275,7 +275,7 @@ d=$(make_repo "src/foo.ts" "$(printf 'feat: foo\n\n  Security reviewed: manual\n
 assert_rc "1681 indented trailer still passes"       0 "$(run_in "$d")"
 rm -rf "$d"
 
-# --- HIMMEL-1562: refusal distinguishes MISSING (case a) from NONCONFORMING (case b) ---
+# --- refusal distinguishes MISSING (case a) from NONCONFORMING (case b) ---
 #
 # Regression. The refusal used to always say "no attestation was found" —
 # which misdirects the operator when the trailer EXISTS but its value failed
@@ -324,7 +324,7 @@ rm -rf "$d"
 
 # Skip marker
 # INDENTED skip marker — twin of the case in test-check-platforms-tested.sh
-# (CodeRabbit on the HIMMEL-1115 PR): `\s` is GNU-only and BSD grep reads it as
+# `\s` is GNU-only and BSD grep reads it as
 # a literal 's', so an indented marker silently failed to match on macOS while
 # an unindented one kept working. Same honest caveat: this cannot fail on a
 # GNU-grep box, so it pins the contract rather than proving the fix red.
@@ -341,7 +341,7 @@ d=$(make_repo "src/foo.ts" "feat: foo") || exit 1
 assert_rc "code + env bypass"                        0 "$(run_in "$d" "SKIP_SECURITY_REVIEW=1")"
 rm -rf "$d"
 
-# --- HIMMEL-1115: a >64KB commit-message range must not SIGPIPE the gate ---
+# --- a >64KB commit-message range must not SIGPIPE the gate ---
 #
 # Regression. The gate used to test the attestation with
 #   grep -qiE "$ATTEST_RE" <<<"$commit_msgs"
@@ -513,7 +513,7 @@ origin=$(fixture_mktemp_dir) || exit 1
 assert_rc "linked-worktree: docs-only feat, ignore origin-only code" 0 "$(run_in "$d" "SECURITY_REVIEW_NO_FETCH=1")"
 rm -rf "$d" "$origin"
 
-# --- HIMMEL-297: master-default repo ---
+# --- master-default repo ---
 # A repo whose default branch is master (no main ref). Pre-fix the hook found
 # neither origin/main nor local main and SKIPPED (false pass). Post-fix
 # default_branch resolves master, so a code file with no attestation BLOCKS,
@@ -559,7 +559,7 @@ d=$(fixture_mktemp_dir) || exit 1
 assert_rc "on master branch — skip"                  0 "$(run_in "$d")"
 rm -rf "$d"
 
-# --- HIMMEL-323 item 1: fail-CLOSED on an unresolvable diff base ---
+# --- fail-CLOSED on an unresolvable diff base ---
 # A repo with NO main/master ref and NO remote: default_branch falls back to
 # "main", which doesn't exist, so no diff base resolves. ONLINE (no *_NO_FETCH)
 # this is a genuinely-broken state -> fail CLOSED (exit 2). With NO_FETCH the
@@ -586,7 +586,7 @@ assert_rc "unresolvable base, online -> fail CLOSED (exit 2)"         2 "$(run_i
 assert_rc "unresolvable base, NO_FETCH -> skip + warn (exit 0)"       0 "$(run_in "$d" "SECURITY_REVIEW_NO_FETCH=1")"
 rm -rf "$d"
 
-# --- HIMMEL-323 item 2: branch resolved via lib.sh::_branch (worktree-correct) ---
+# --- branch resolved via lib.sh::_branch (worktree-correct) ---
 # Non-git dir: _branch returns rc=2 -> hook fails CLOSED (exit 2) with a clear
 # diagnostic, rather than letting `set -e` abort on git's opaque exit 128.
 ngd=$(fixture_mktemp_dir) || exit 1
@@ -621,7 +621,7 @@ assert_rc "linked worktree (primary on main): reads worktree branch + blocks" 1 
 git -C "$base" worktree remove --force "${base}-wt" >/dev/null 2>&1 || true
 rm -rf "$origin" "$base" "${base}-wt"
 
-# --- HIMMEL-323: NO_FETCH only suppresses the fetch, NOT the gate ---
+# --- NO_FETCH only suppresses the fetch, NOT the gate ---
 # A repo with a resolvable LOCAL base + code + no attestation, run with
 # SECURITY_REVIEW_NO_FETCH=1, must still BLOCK (rc=1) — NO_FETCH skips only the
 # network refresh, it must never short-circuit the gate when a base resolves.
@@ -629,7 +629,7 @@ d=$(make_repo "src/foo.ts" "feat: code, no attestation") || exit 1
 assert_rc "NO_FETCH with a resolvable base still gates (block rc=1)"  1 "$(run_in "$d" "SECURITY_REVIEW_NO_FETCH=1")"
 rm -rf "$d"
 
-# --- HIMMEL-323 item 1 (CR follow-up): fail-CLOSED when the diff itself errors ---
+# --- fail-CLOSED when the diff itself errors ---
 # An orphan/unrelated-history branch has no merge base, so `git diff base...HEAD`
 # exits non-zero. The old `|| true` swallowed that to an empty changed-set -> a
 # silent PASS on code never inspected. Now it fails CLOSED (exit 2).

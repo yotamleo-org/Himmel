@@ -11,7 +11,6 @@
 #
 # Bypass: MERGED_PR_COMMIT_OK=1 (set in the LAUNCHING shell, not per-call).
 #
-# HIMMEL-512
 set -uo pipefail
 # NOTE: NOT set -e — a fail-open hook must never abort on rc 1 from a sub-call.
 
@@ -33,7 +32,7 @@ input=$(cat)
 
 raw_cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
 
-# Strip carriage returns at the CAPTURE boundary (HIMMEL-2234). CRLF command
+# Strip carriage returns at the CAPTURE boundary. CRLF command
 # text otherwise leaves a stray CR glued to the LAST token of every line, and
 # every position-sensitive check below then silently stops matching: a
 # $-anchored regex, an exact string comparison, a word-split token used as a

@@ -316,7 +316,16 @@ Granting it is an operator call. Defense in depth around it:
   `salus × openrouter × embedding|rerank` are explicit HARD denies placed
   ahead of every openrouter allow and of the non-hard `salus × openrouter × *`
   cell; the test pins both the verdict and the row order. Salus stays on its
-  own local-only qmd index and daemon.
+  own local-only qmd index and daemon. The qmd gate maps the host
+  `openrouter.ai` (exact) to provider `openrouter`, accepts only the pinned
+  models (`openai:qwen/qwen3-embedding-8b` embed, `openai:cohere/rerank-4-fast`
+  rerank; the matrix is per provider, so the consumer pins the model), refuses
+  a `generate` role, an unrecognised host and `models.openai_api_key` in the
+  yaml; a missing or unparseable base URL is refused like an unrecognised one.
+  The gate also refuses by path: a collection whose path overlaps a PHI root
+  (graphify fence lists, a sibling salus config's paths, a `.salus` vault) is
+  PHI whatever it is called. The key lives only in the daemon environment
+  (`QMD_OPENAI_API_KEY`).
 - **qmd enforcement (HIMMEL-5683).** qmd's model config is per index, not per
   collection, so salus lives in its own index (`qmd --index salus`, own
   `salus.yml`/db/daemon port, local models). `scripts/qmd/qmd-jina-gate.mjs`

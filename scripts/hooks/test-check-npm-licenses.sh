@@ -2,7 +2,7 @@
 # selector: tree-scan
 # Smoke test for scripts/hooks/check-npm-licenses.sh.
 #
-# Scope: the package-DISCOVERY logic, which is the thing the HIMMEL-179 fix
+# Scope: the package-DISCOVERY logic, which is the thing the fix
 # changed (find scripts -maxdepth 3 → git ls-files all committed packages).
 # We do NOT run npx license-checker here — that needs network + npm installs
 # and tests the license verdict, not the enumeration. We build a throwaway git
@@ -22,7 +22,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -127,7 +127,7 @@ else
     echo "PASS node_modules package.json excluded from enumeration"
 fi
 
-# Case 5: HIMMEL-523 — a bun-managed package (bun.lock, no package-lock.json) is
+# Case 5: a bun-managed package (bun.lock, no package-lock.json) is
 # SKIPPED by the gate, so a repo whose only package is bun-managed passes (rc 0)
 # instead of erroring "No packages found in this path". Runs the REAL script
 # against a throwaway repo; the skip happens before any npm/npx call (no network).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HIMMEL-480 — every debrand rule must still match the staged CLAUDE.md.
+# every debrand rule must still match the staged CLAUDE.md.
 #
 # generate.mjs debrands via `split(from).join(to)`, which silently no-ops when
 # `from` is absent. So a CLAUDE.md edit that moves, rewraps, or rewrites a

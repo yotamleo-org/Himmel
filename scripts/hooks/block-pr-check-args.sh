@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # UserPromptExpansion hook for the /pr-check slash command.
 #
-# HIMMEL-2306: `/pr-check` takes NO argument (HIMMEL-2226, operator ruling
+# `/pr-check` takes NO argument (operator ruling
 # 2026-08-31). Until this hook, a supplied argument was SILENTLY IGNORED, so a
 # stale `/pr-check <repo-path>` typed from muscle memory reviewed the CURRENT
 # repo — and could clear ITS CR marker — instead of the one the operator meant.
 #
-# Why this is a hook and not a line in the runbook. HIMMEL-2226 tried twice to
+# Why this is a hook and not a line in the runbook. It was tried twice to
 # enforce the contract in-prompt and both were rejected on review:
 #
 #   1. A fence reading `$ARGUMENTS` and refusing when non-empty. That IS the
-#      injection surface HIMMEL-2226 exists to delete: the harness substitutes
+#      injection surface this hook exists to delete: the harness substitutes
 #      the argument as literal TEXT before any shell parses it, so a path
 #      containing an apostrophe or `$(…)` breaks out and executes.
 #      `scripts/cr/test-pr-check-pair.sh` check (vi) now asserts `$ARGUMENTS`
@@ -58,8 +58,8 @@
 #   ]
 #
 # THE ANCHOR IS `HIMMEL_REPO`, NOT `CLAUDE_PROJECT_DIR` — and that is
-# load-bearing, not a style choice (panel round 3). `/pr-check`'s supported
-# foreign-repo workflow (HIMMEL-2035) is to start a session whose cwd IS the
+# load-bearing, not a style choice. `/pr-check`'s supported
+# foreign-repo workflow is to start a session whose cwd IS the
 # repo under review, so in exactly that lane `CLAUDE_PROJECT_DIR` points at the
 # REVIEWED repo. Wiring this hook through it would mean one of two things, both
 # bad: a crafted repo carrying its own `scripts/hooks/block-pr-check-args.sh`
@@ -67,7 +67,7 @@
 # never fires. `HIMMEL_REPO` is the anchor the guardrail stack already treats as
 # authoritative — adopt/setup wires it into settings.json `env`, so it arrives
 # from OUTSIDE any repo and a reviewed repo cannot forge it. Same reasoning as
-# HIMMEL-2226 Finding 1, which resolved `<himmel_dir>` from this anchor for
+# Finding 1, which resolved `<himmel_dir>` from this anchor for
 # precisely this reason; a security hook must not be located by the thing it is
 # guarding against.
 #
@@ -134,7 +134,7 @@ fi
 # are schema drift, not evidence. The 2.1.251 schema types all three of these
 # as plain strings (`command_name:i(), command_args:i()`), so anything that is
 # not a string here is by definition not the schema this hook was written
-# against, and must not be interpreted (panel round 4).
+# against, and must not be interpreted.
 type_type="$(printf '%s' "$payload" | jq -r '.expansion_type | type')"
 name_type="$(printf '%s' "$payload" | jq -r '.command_name | type')"
 args_type="$(printf '%s' "$payload" | jq -r '.command_args | type')"

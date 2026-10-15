@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/hooks/check-oxlint-complexity.sh (HIMMEL-2154).
+# Smoke test for scripts/hooks/check-oxlint-complexity.sh.
 #
 # Three cases: a clean fixture passes, a fixture function above the ratchet
 # fails with a per-function listing, and a PATH with no bunx/bun fails OPEN
@@ -20,7 +20,7 @@ set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline (a here-string is not a pipeline, so `set -o pipefail` cannot
-# report a SUCCESSFUL early match as a failed producer). HIMMEL-1430.
+# report a SUCCESSFUL early match as a failed producer).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -30,8 +30,8 @@ GATE="$SCRIPT_DIR/check-oxlint-complexity.sh"
 . "$SCRIPT_DIR/../lib/fixture-tempdir.sh"
 
 # Resolve bash ONCE from the suite's own unmodified PATH, before any test
-# hands the gate a narrowed one (HIMMEL-2520, shape from HIMMEL-2470/
-# HIMMEL-1567). Case 3 below invokes this absolute path so the narrowed PATH
+# hands the gate a narrowed one. Case 3 below invokes this absolute
+# path so the narrowed PATH
 # decides what the GATE sees, never whether it can start at all.
 BASH_ABS=$(command -v bash)
 if [ -z "$BASH_ABS" ]; then
@@ -41,7 +41,7 @@ fi
 # Refusing a relative PATH is deliberate: these are hermetic fixtures.
 # A bash resolved through a relative PATH means the invoking environment
 # is already broken in a way that makes any result untrustworthy
-# (HIMMEL-2520, CR [codex-1]).
+#
 case "$BASH_ABS" in
     /*) ;;
     *) echo "FATAL: bash resolved to a non-absolute path ('$BASH_ABS') — this fixture invokes it after a cd and/or as a shim shebang, both of which need an absolute path" >&2; exit 1 ;;
@@ -72,7 +72,7 @@ assert_says() {
     fi
 }
 
-# Source-level pin plus parity with the sibling hardening gate (HIMMEL-3044):
+# Source-level pin plus parity with the sibling hardening gate:
 # both gates must invoke the SAME oxlint version, so a future bump of one
 # without the other goes red here rather than in CI.
 HARDENING_GATE="$SCRIPT_DIR/check-oxlint-hardening.sh"
@@ -88,7 +88,7 @@ hardening_pin=$(grep -oE '^OXLINT_VERSION=.*$' "$HARDENING_GATE")
 assert_eq "complexity gate's OXLINT_VERSION matches the hardening gate's" \
   "$hardening_pin" "$complexity_pin"
 
-# --- bun present, bunx absent → gate runs oxlint through `bun x` (HIMMEL-5529) ---
+# --- bun present, bunx absent → gate runs oxlint through `bun x` ---
 # PATH layout copied from the main station: ~/.bun/bin holds `bun` and NOTHING
 # else (`ls -la ~/.bun/bin` → one 755 `bun`), so `command -v bunx` is empty
 # while `bun x` works. The stub stands in for bun; only grep is linked in
@@ -128,7 +128,7 @@ out=$(cd "$BUN_ONLY" && OXLINT_STUB_REGRESSION=1 OXLINT_COMPLEXITY_MAX=22 PATH="
 assert_eq "bun without bunx → a regression still blocks (exit 1)" "1" "$rc"
 rm -rf "$BUN_ONLY" "$BUN_ONLY_BIN"
 
-# --- `--files` changed-files mode + OXLINT_FAIL_CLOSED (HIMMEL-5526) ---
+# --- `--files` changed-files mode + OXLINT_FAIL_CLOSED ---
 # The stub's finding line is copied from a real run on this station:
 #   bun x oxlint@1.88.0 -A all -W complexity scripts/lanes/b.mjs  (25-branch function)
 #   -> scripts/lanes/b.mjs:1:8: warning eslint(complexity): function `b` has a complexity of 26. Maximum allowed is 20.
@@ -262,8 +262,8 @@ rm -rf "$REGRESSED"
 # --- Case 3: bunx/bun absent from PATH → fails OPEN (exit 0, loud WARN) ---
 #
 # An allowlist PATH -- an EMPTY scratch dir, so bunx/bun are absent
-# regardless of where they live on the host (HIMMEL-2520, shape from
-# HIMMEL-2470). The prior version filtered PATH by NAME
+# regardless of where they live on the host.
+# The prior version filtered PATH by NAME
 # (`grep -viE '(^|/)\.?bun(/bin)?$'`), which matches a `~/.bun/bin`-shaped
 # directory but NOT `/usr/bin` -- on a host where bun/bunx ship in /usr/bin
 # (Arch/CachyOS: both live there), that filter left bunx fully reachable and

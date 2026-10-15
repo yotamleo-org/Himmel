@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unit test for the HIMMEL-3401 arm of scripts/hooks/block-write-into-main-checkout.sh:
+# Unit test for the arm of scripts/hooks/block-write-into-main-checkout.sh:
 # a git command that rewrites the PRIMARY checkout's working tree, index,
 # HEAD, refs or config — aimed at it via -C, --git-dir/--work-tree,
 # GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE env, or a `cd` earlier in the command —
@@ -82,7 +82,7 @@ deny() {
 
 # deny_any <label> <cwd> <command> — both modes block, by any arm. For shapes
 # an older arm or the codex fence already owns in one mode (sourced-lane
-# `commit` keeps HIMMEL-745's is_on_main message; the fence denies remote
+# `commit` keeps the is_on_main message; the fence denies remote
 # URL rewrites before it sources this hook).
 deny_any() {
     local label="$1" j s got
@@ -104,8 +104,8 @@ allow() {
 }
 
 # deny_direct / allow_direct <label> <cwd> <command> — direct-exec mode only,
-# for `git push`: the codex fence refuses every push (external-write class,
-# HIMMEL-745) before it sources this hook, so only the Claude lane decides.
+# for `git push`: the codex fence refuses every push (external-write class)
+# before it sources this hook, so only the Claude lane decides.
 deny_direct() {
     local j got err
     j=$(payload "$3" "$2")
@@ -207,7 +207,7 @@ deny_any "env -S 'git …' split string"      "$W" "env -S 'git -C $P merge feat
 allow "env -u GIT_DIR git in the leg"       "$W" "env -u GIT_DIR git -C $W merge feat/x"
 
 # A config override can repoint the remote or refspec pull/fetch act on, so
-# it voids their carve-out (HIMMEL-3401 panel round 2).
+# it voids their carve-out.
 deny "-c remote url + pull --ff-only"       "$W" "git -C $P -c remote.origin.url=$W pull --ff-only"
 deny "-c attached + fetch"                  "$W" "git -C $P -cremote.origin.fetch=+refs/heads/*:refs/heads/* fetch origin"
 deny "--config-env + pull --ff-only"        "$W" "git -C $P --config-env=remote.origin.url=X pull --ff-only"
@@ -305,7 +305,7 @@ allow_direct "push -c advice.*=false origin" "$W" "git -c advice.pushUpdateRejec
 # "remote add alone" used to be allow_direct here (this row only ever
 # validated that the C1-a repoint+netop COMBO doesn't fire without a paired
 # push — it never claimed the sourced/fence lane's own, unrelated verdict).
-# HIMMEL-3407 now denies it too: adding ANY remote, even a harmless new name,
+# now denies it too: adding ANY remote, even a harmless new name,
 # still writes the leg worktree's SHARED $GIT_COMMON_DIR/config, and the
 # existing -C <primary> rows already deny `remote add` unconditionally — the
 # implicit-cwd form should not be a back door to the same write.
@@ -357,7 +357,7 @@ allow "cd <primary> && git log"             "$W" "cd $P && git log -1"
 allow "cd <primary> && git -C <wt> checkout" "$W" "cd $P && git -C $W checkout feat/x -- README.md"
 
 echo "== ALLOW: leg-local git is unaffected =="
-# "config core.x y" used to be ALLOW here; HIMMEL-3407 moved it to the DENY
+# "config core.x y" used to be ALLOW here; a later guard moved it to the DENY
 # section below (an ordinary `git config` from a leg worktree always writes
 # the shared config anyway — accepted cost, named in the ticket's proposed fix).
 for sub in "checkout feat/x -- README.md" "reset --hard HEAD" "merge main" "stash pop" "commit -m x" \
@@ -366,14 +366,14 @@ for sub in "checkout feat/x -- README.md" "reset --hard HEAD" "merge main" "stas
 done
 allow "git -C <wt> checkout (cwd = primary)" "$P" "git -C $W checkout feat/x -- README.md"
 # A cd may not have run, so a write is also checked from the cwd it left: the
-# primary here (panel round 3). Deliberate over-deny, named in the hook.
+# primary here. Deliberate over-deny, named in the hook.
 deny "cd <wt>/sub && git checkout (cwd = primary)" "$P" "cd $W/sub && git checkout feat/x -- README.md"
 deny "false && cd <leg>; git merge"         "$P" "false && cd $W; git merge feat/x"
 deny "cd <leg>; cd <leg>/sub; git merge"    "$P" "cd $W; cd sub; git merge feat/x"
 allow "cd <leg>/sub && git merge (cwd = leg)" "$W" "cd $W/sub && git merge feat/x"
 allow "cd <primary>; cd <leg>; git status"  "$W" "cd $P; cd $W; git status"
 
-# Ref-writing subcommands that used to sit on the read list (panel round 3).
+# Ref-writing subcommands that used to sit on the read list.
 deny "reflog delete on the primary"         "$W" "git -C $P reflog delete refs/heads/main@{0}"
 deny "reflog expire on the primary"         "$W" "git -C $P reflog expire --all"
 deny "tag create on the primary"            "$W" "git -C $P tag v9 main"
@@ -409,7 +409,7 @@ deny "config --unset, no -C"                "$W" "git config --unset branch.main
 deny "config set (new syntax), no -C"       "$W" "git config set core.hooksPath x"
 deny "remote add, no -C"                    "$W" "git remote add evil $W"
 deny_any "remote set-url, no -C"            "$W" "git remote set-url origin $W"
-# Round 2 (N4) narrowed these to require an EXPLICIT main/master operand —
+# These are narrowed to require an EXPLICIT main/master operand —
 # -u/-f/etc with NO branch name given targets the CURRENT branch, which in a
 # linked worktree is never main, so every row here now names main explicitly.
 deny "branch -u <upstream> main, no -C"     "$W" "git branch -u origin/feat/x main"
@@ -608,7 +608,7 @@ allow "-C ~/../primary status"                   "$W" "git -C ~/../primary statu
 allow "-C \$HOME/../primary log -1"              "$W" "git -C \$HOME/../primary log -1"
 allow "-C ../primary diff"                       "$W" "git -C ../primary diff"
 allow "--git-dir= --work-tree= status"           "$W" "git --git-dir=$P/.git --work-tree=$P status"
-# HIMMEL-4504: an unknown -c key fails closed on a read aimed at the primary
+# an unknown -c key fails closed on a read aimed at the primary
 # (it may name a program git runs); an allowlisted display key still passes.
 deny "-c <unknown key> -C <primary> show HEAD"   "$W" "git -c x.y=z -C $P show HEAD"
 allow "-c color.ui=never -C <primary> show HEAD" "$W" "git -c color.ui=never -C $P show HEAD"
@@ -644,7 +644,7 @@ deny "xargs -i git -C <primary> log -p --output {}" "$W" "xargs -i git -C $P log
 deny "xargs -I{} git diff --output {}, cwd=leg"  "$W" "printf x | xargs -I{} git diff --output {}"
 deny "xargs --replace=Q git show --output Q"      "$W" "xargs --replace=Q git show HEAD --output Q"
 deny "xargs -I{} git archive --output {}"         "$W" "xargs -I{} git archive --output {} HEAD"
-# Stdin words land among the subcommand's arguments (codex-1, round 2): an
+# Stdin words land among the subcommand's arguments: an
 # injected --output overrides any literal one, so only add/stage/rm pass.
 deny "xargs -I{} git -C <primary> diff --output /tmp/fixed {}" "$W" "xargs -I{} git -C $P diff --output /tmp/fixed {}"
 deny "xargs -I{} git diff {} (--output from stdin)" "$W" "printf '%s\n' '--output=$P/README.md' | xargs -I{} git diff {}"
@@ -682,7 +682,7 @@ allow "xargs -0 git add, cwd=leg"                 "$W" "xargs -0 git add"
 allow "xargs -a /tmp/f git rm, cwd=leg"           "$W" "xargs -a /tmp/f git rm"
 allow "xargs -I{} git commit, {} unused, cwd=leg" "$W" "echo x | xargs -I{} git commit -m msg"
 allow "xargs -I{} git add {} (pathspec), cwd=leg" "$W" "xargs -I{} git add {}"
-# HIMMEL-4518: archive/format-patch/bundle output operands are write targets.
+# archive/format-patch/bundle output operands are write targets.
 deny "git archive -o <primary>/x.tar, cwd=leg"    "$W" "git archive -o $P/x.tar HEAD"
 deny "git archive -o<primary>/x.tar, cwd=leg"     "$W" "git archive -o$P/x.tar HEAD"
 deny "git archive --output=<primary>/x.tar"       "$W" "git archive --output=$P/x.tar HEAD"

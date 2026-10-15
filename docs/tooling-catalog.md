@@ -306,6 +306,12 @@ README's fork-delta section).
   back up after a reboot without waiting for the first Claude session.
   One-shot per machine; remove with
   `Unregister-ScheduledTask -TaskName 'qmd-mcp-daemon' -Confirm:$false`.
+  The task's `Last Result` is the ensure twin's exit code: `0` = daemon
+  answering (or started and answering within `QmdStartTimeout`, default 20s),
+  `1` = foreign listener on 8181, qmd missing, or no qmd reply in time. It is
+  NOT a liveness probe for a daemon started by another path; for current
+  health, check the port directly (`Invoke-WebRequest http://localhost:8181/mcp`
+  MCP initialize, or doctor `C45-qmd-daemon`).
 - **Freshness:** the index is sqlite+WAL, read per query, so docs added by the
   existing `qmd update` cadence are served by the running daemon immediately —
   no daemon restart or watch mechanism, cadence unchanged.
