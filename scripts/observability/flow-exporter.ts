@@ -1,7 +1,7 @@
 // Passive Prometheus exporter over local flow/quota ledgers.
 // Pure reader: no ledger writes, no process control, no enforcement.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { homedir, hostname } from "node:os";
 import type { FlowRunEnd, FlowRunRow, FlowRunStart } from "../telegram/flow-run-ledger";
 import {
@@ -29,7 +29,10 @@ export function registryLedgerPath(id: string, env: Record<string, string | unde
   if (!row) throw new Error(`ledger '${id}' has no row in ${registryFile}`);
   const override = row.override_env ? env[row.override_env] : undefined;
   if (override && override.trim()) return override;
-  const home = env.HOME ?? env.USERPROFILE ?? homedir();
+  // census and eval-runs have always resolved USERPROFILE first; the rest HOME first.
+  const home = (id === "tool-call-census" || id === "eval-runs")
+    ? (env.USERPROFILE ?? env.HOME ?? homedir())
+    : (env.HOME ?? env.USERPROFILE ?? homedir());
   if (row.default_path.startsWith("~/")) return join(home, row.default_path.slice(2));
   if (row.default_path.startsWith("<repo>/")) return join(repoRoot, row.default_path.slice("<repo>/".length));
   return row.default_path;
@@ -1093,11 +1096,13 @@ export function defaultHookChainSkipLogPaths(env: Record<string, string | undefi
   if (override && override.trim()) return { paths: [override], worktreesDirUnreadable: false };
   // The registry row is `<repo>/<rel>`; the same <rel> repeats under each worktree.
   const repoLog = registryLedgerPath("hook-chain-skips", env, repoRoot);
-  const relLog = repoLog.slice(repoRoot.length + 1);
   const paths = [repoLog];
+  // A registry path outside the checkout has no per-worktree twin to scan.
+  const insideRepo = repoLog.startsWith(repoRoot + sep);
+  const relLog = insideRepo ? repoLog.slice(repoRoot.length + 1) : "";
   const worktreesDir = join(repoRoot, ".claude", "worktrees");
   let worktreesDirUnreadable = false;
-  if (existsSync(worktreesDir)) {
+  if (insideRepo && existsSync(worktreesDir)) {
     try {
       for (const name of readdirSync(worktreesDir)) {
         const dir = join(worktreesDir, name);

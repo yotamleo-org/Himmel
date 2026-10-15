@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderMetrics, createExporterCache, parseHostDetectorJson, runGitDivergence, readShippedGraphCommitTime, renderSessionsJson, defaultPidLiveness, hookChainMetrics, defaultHookChainSkipLogPaths, hookChainSkipLogUnreadableMetrics } from "./flow-exporter";
+import { renderMetrics, createExporterCache, parseHostDetectorJson, runGitDivergence, readShippedGraphCommitTime, renderSessionsJson, defaultPidLiveness, hookChainMetrics, defaultHookChainSkipLogPaths, hookChainSkipLogUnreadableMetrics, registryLedgerPath } from "./flow-exporter";
 import { serializeSessionRun, type SessionCloseEvidence, type SessionEndReason, type SessionRunRow, type SubagentOutcome } from "./session-run-ledger";
 import { serializeFlowRunEnd, serializeFlowRunStart, type FlowRunEnd, type FlowRunStart } from "../telegram/flow-run-ledger";
 import { serializeQuotaGauge, type QuotaGaugeRecord } from "../telegram/quota-gauge";
@@ -2246,6 +2246,19 @@ test("exporter follows a moved ledgers.json default_path for flow-runs, session-
   expect(body).toContain("moved-host");
   expect(body).toContain("himmel_tool_* partial: 1 unparseable census row");
   expect(body).toContain("himmel_eval_* partial: 1 unparseable eval-runs row");
+});
+
+test("registryLedgerPath keeps USERPROFILE-first home for census and eval-runs, HOME-first for flow-runs", () => {
+  const env = { HOME: "/h", USERPROFILE: "/u" };
+  expect(registryLedgerPath("tool-call-census", env)).toBe(join("/u", ".himmel", "tool-call-census.jsonl"));
+  expect(registryLedgerPath("eval-runs", env)).toBe(join("/u", ".himmel", "eval-runs.jsonl"));
+  expect(registryLedgerPath("flow-runs", env)).toBe(join("/h", ".himmel", "flow-runs.jsonl"));
+});
+
+test("hook-chain-skips outside the repo root scans no worktree paths", () => {
+  mkdirSync(join(tmp, "repo", ".claude", "worktrees", "wt1"), { recursive: true });
+  const { paths } = defaultHookChainSkipLogPaths({ HOME: "/h", HIMMEL_LEDGERS_JSON: registryWithPaths({ "hook-chain-skips": "~/skips/skips.jsonl" }) }, join(tmp, "repo"));
+  expect(paths).toEqual([join("/h", "skips", "skips.jsonl")]);
 });
 
 test("exporter follows a moved ledgers.json hook-chain-skips path", () => {
