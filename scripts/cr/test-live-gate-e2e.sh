@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/test-live-gate-e2e.sh — offline guard rows for live-gate-e2e.sh
-# (HIMMEL-5232). The live run itself is on-demand and never runs here; these
+# The live run itself is on-demand and never runs here; these
 # rows only prove the runner refuses to run where it must not.
 # Platform guard: bash 3.2+.
 set -uo pipefail

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# scripts/cr/cr-scores.sh — per-critic agreed/availability scorecard (HIMMEL-415)
+# scripts/cr/cr-scores.sh — per-critic agreed/availability scorecard
 # Usage: cr-scores.sh [--window N] [--artifact kind] [--perspective on|off]
 #        cr-scores.sh --by-branch [<branch>]
 # Reads CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
 # and prints a per-model table plus drop advice.
 #
-# --by-branch (HIMMEL-1299): per-PR review SPEND. Every other table here is
+# --by-branch: per-PR review SPEND. Every other table here is
 # per-model and cumulative, so "what did this PR cost the scarce reviewer?" was
 # unanswerable — the fix-then-re-review loop has no budget, no termination
 # policy, and no way to see the budget is nearly gone. #523 ran twelve rounds
@@ -17,7 +17,7 @@
 # that PR, and the distinct heads are the rounds. Measurement only: it sets no
 # budget and blocks nothing — you cannot budget what you cannot yet measure.
 set -uo pipefail
-# HIMMEL-3495: a relative-entry copy that is not the anchor's hands off to it.
+# a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
 
@@ -82,7 +82,7 @@ for (const r of records) {
   }
 }
 
-// HIMMEL-2067: unadjudicated[branch] = # findings at the LATEST head of that
+// unadjudicated[branch] = # findings at the LATEST head of that
 // branch (the head of the row with the max ts for that branch, across any
 // record kind) with no EFFECTIVE verdict. Mirrors clear-cr-marker.sh gate 4b:
 // amend supersede records are applied before a finding verdict is judged.
@@ -129,7 +129,7 @@ for (const v of unadjByKey.values()) {
 
 const branches = Object.keys(calls).sort();
 // Union of `branches` (from avail/usage CALL records) and the keys of
-// unadjudicated itself (HIMMEL-2067 CR round 3): branches alone would
+// unadjudicated itself: branches alone would
 // silently drop a branch that has finding records but no recorded call from
 // both the count and the denominator, even though it has real unadjudicated
 // findings — and this ticket exists precisely to backfill legacy ledger
@@ -138,7 +138,7 @@ const allUnadjBranches = Array.from(new Set(branches.concat(Object.keys(unadjudi
 const totalUnadjudicated = allUnadjBranches.reduce((s, b) => s + (unadjudicated[b] || 0), 0);
 if (!branches.length) {
   // The empty-`branches` early return must not also swallow a real
-  // unadjudicated count for a finding-only branch (codex-1, round 3) — it
+  // unadjudicated count for a finding-only branch — it
   // ran BEFORE the union above previously, so this case never reached it.
   if (only) {
     console.log(unadjudicated[only]
@@ -195,7 +195,7 @@ if (!only) {
   exit 0
 fi
 
-# shellcheck disable=SC2016  # $-refs below are inside the single-quoted node script (JS), not shell (HIMMEL-1176 surfaced this latent finding by extending the block)
+# shellcheck disable=SC2016  # $-refs below are inside the single-quoted node script (JS), not shell
 DROP_BELOW="$CR_SCORES_DROP_BELOW" MIN_N="$CR_SCORES_MIN_N" WINDOW="$WINDOW" LEDGER="$ledger" FILTER_ARTIFACT="$FILTER_ARTIFACT" FILTER_PERSPECTIVE="$FILTER_PERSPECTIVE" node -e '
 const fs = require("fs");
 const DROP_BELOW = Number(process.env.DROP_BELOW);
@@ -227,8 +227,8 @@ for (const r of filteredRecords) {
 const allHeads = Object.entries(headTs).sort((a,b)=>a[1]<b[1]?-1:1).map(e=>e[0]);
 const windowHeads = new Set(allHeads.slice(-WINDOW_N));
 
-// HIMMEL-2579: a finding row always carries an EMPTY verdict since
-// HIMMEL-2321 — the real verdict arrives only as a later amend record keyed
+// a finding row always carries an EMPTY verdict; the
+// real verdict arrives only as a later amend record keyed
 // on target_head. Same map shape as the unadjudicated block in the
 // --by-branch section above; built again here since that is a separate
 // node -e invocation with no shared state.
@@ -245,7 +245,7 @@ function emptyStats() {
   return { total:0, agreed:0, disproved:0, conflict:0, unaddressed:0, avail_ok:0, avail_total:0 };
 }
 const all = {}, win = {};
-// usage: per-model ESTIMATED token tallies (HIMMEL-485). Separate from all/win
+// usage: per-model ESTIMATED token tallies. Separate from all/win
 // so the finding/avail tables are untouched when no usage records exist.
 const usage = {};
 function emptyUsage() { return { est_prompt:0, est_completion:0, est_total:0, n:0 }; }
@@ -268,7 +268,7 @@ for (const r of filteredRecords) {
     const k = [r.head, r.finding_id, r.artifact || "diff", r.perspective || "off"].join(SEP);
     const eff = amendsMap.has(k) ? Object.assign({}, r, amendsMap.get(k)) : r;
     const effVerdict = typeof eff.verdict === "string" ? eff.verdict.trim() : eff.verdict;
-    // HIMMEL-3161: `fixed` is acceptance too (the code changed in response to
+    // `fixed` is acceptance too (the code changed in response to
     // the finding) — fold it into the same `agreed` bucket the agreed% column
     // and drop-advice read, rather than a dynamic bucket neither ever sees.
     const bucket = effVerdict === "fixed" ? "agreed" : effVerdict;
@@ -356,7 +356,7 @@ if (models.length) {
 }
 
 // ── Usage (estimated tokens) ─────────────────────────────────────────────────
-// chars/4 estimate (HIMMEL-485) — NOT a billed figure (hermes does not expose
+// chars/4 estimate — NOT a billed figure (hermes does not expose
 // real usage through the one-shot chokepoint). Shown only when usage records
 // exist so the finding/avail output is byte-identical without them.
 if (usageModels.length) {
@@ -375,10 +375,10 @@ if (usageModels.length) {
   console.log("cumulative: est_total=" + cumTotal + " over " + cumN + " critic call(s)");
 }
 
-// ── Unavailability breakdown (HIMMEL-1176) ──────────────────────────────────
+// ── Unavailability breakdown ──────────────────────────────────
 // Per-model x reason counts, from `avail` records carrying a `reason` field
 // (only present when the emitting script recorded a failure classification —
-// additive capture, HIMMEL-1176). Rendered ONLY when >=1 such record exists,
+// additive capture). Rendered ONLY when >=1 such record exists,
 // so a reason-less ledger keeps BYTE-IDENTICAL output (same precedent as the
 // Usage section above).
 const reasonCounts = {}; // "model\treason" -> count

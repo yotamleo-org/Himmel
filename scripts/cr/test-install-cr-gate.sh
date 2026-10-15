@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/cr/install-cr-gate.sh (HIMMEL-2035 T2).
+# Tests for scripts/cr/install-cr-gate.sh.
 # SC2015: `cond && pass || fail` is this suite family's house assertion
 # shape (test-cr-pending-audit.sh, test-clear-cr-marker.sh) — pass() cannot
 # fail, so the A&&B||C caveat does not apply here.
@@ -24,7 +24,7 @@ SKIP=0
 TMP_ROOT=""
 cleanup() {
     [ -n "$TMP_ROOT" ] && [ -d "$TMP_ROOT" ] && rm -rf "$TMP_ROOT" 2>/dev/null || true
-    # T15 (HIMMEL-2226) registers a throwaway linked worktree of REPO_ROOT
+    # T15 registers a throwaway linked worktree of REPO_ROOT
     # under TMP_ROOT; if the suite exits before its explicit `worktree
     # remove` runs, prune the now-dangling administrative entry rather than
     # leaving it behind in the real repo.
@@ -36,12 +36,12 @@ pass() { PASS=$((PASS + 1)); }
 fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1" >&2; }
 # skip <label> -- a case that could not run in this environment. Must NEVER
 # be reported via pass(): a skip credited as a pass hides the fact that
-# nothing was asserted (HIMMEL-2258 audit; HIMMEL-2226 fix).
+# nothing was asserted.
 skip() { SKIP=$((SKIP + 1)); echo "SKIP $1"; }
 
 # sed_inplace <sed args...> <file> -- GNU `sed -i -e` and BSD `sed -i -e` differ
 # (BSD reads the `-e` as the backup suffix: "sed: -e: No such file"). An
-# attached suffix works on both; the backup is removed (HIMMEL-3182).
+# attached suffix works on both; the backup is removed.
 sed_inplace() {
     local f
     for f; do :; done
@@ -49,7 +49,7 @@ sed_inplace() {
 }
 
 # run_bounded <secs> <cmd...> -- `timeout` where present (GNU coreutils, or
-# `gtimeout`), else a bash watchdog: stock macOS has neither (HIMMEL-3182). A
+# `gtimeout`), else a bash watchdog: stock macOS has neither. A
 # hang still fails the case (rc 124 from timeout, 143 from the watchdog).
 # shellcheck source=scripts/lib/timeout-bin.sh
 # shellcheck disable=SC1091
@@ -75,10 +75,10 @@ is_mingw() {
 
 TMP_ROOT=$(fixture_mktemp_dir) || exit 1
 # git and node report the physical, native spelling (macOS /private/var, Git
-# Bash C:/Users/runneradmin): build every fixture path from that one (HIMMEL-3179).
+# Bash C:/Users/runneradmin): build every fixture path from that one.
 TMP_ROOT=$(canon_path_native "$TMP_ROOT") || exit 1
 
-# HERMETIC GIT CONFIG (HIMMEL-2035 CR round 1). Without this the fixtures
+# HERMETIC GIT CONFIG. Without this the fixtures
 # inherit the OPERATOR's global git config — which on a himmel box sets
 # core.hooksPath, so every `git commit`/`git push` below ran the machine's
 # global pre-commit/commit-msg/pre-push hooks. That made the suite both
@@ -113,7 +113,7 @@ mk_foreign_repo() {
 # The hook writes `gate=<printf %q token>`, so parse it with one level of
 # shell parsing, exactly as the hook does at push time. A `sed` stripping a
 # `gate="..."` shape silently returns the WHOLE LINE once %q emits an
-# unquoted or backslash-escaped token (HIMMEL-2035 CR round 2).
+# unquoted or backslash-escaped token.
 baked_path_of() {
     sed -n 's/^# himmel-cr-gate-path: //p' "$1" 2>/dev/null | head -n1
 }
@@ -211,13 +211,10 @@ else
 fi
 
 echo "T15: installer invoked from a THROWAWAY LINKED WORKTREE -> baked path names the PRIMARY checkout"
-# HIMMEL-2226 (HIMMEL-2258 audit): the old version of this test only
-# discriminated worktree-vs-primary when the SUITE ITSELF happened to be
-# invoked from a linked worktree — the ordinary invocation state, but not a
-# guarantee. When the suite ran FROM the primary checkout, "this suite's own
-# root" and "expected primary" were the SAME directory, so that half was
-# SKIPPED (HIMMEL-2232) while the test still reported a plain pass — the
-# discrimination asserted nothing in that shape of run. Fix: stand up a
+# Discriminating worktree-vs-primary must not depend on the SUITE ITSELF being
+# invoked from a linked worktree: run FROM the primary checkout, "this suite's
+# own root" and "expected primary" are the SAME directory and the test would
+# assert nothing. So stand up a
 # genuine throwaway linked worktree of REPO_ROOT (itself either primary or a
 # worktree — irrelevant, `git worktree list` always resolves the SAME
 # primary) and run the installer FROM there, so the worktree-vs-primary
@@ -267,8 +264,8 @@ out=$(bash "$INSTALLER" --target "$d7/work" 2>&1); rc=$?
 echo "T20: repo-local core.hooksPath='~/hooks' is TILDE-EXPANDED by git, not treated as repo-relative [codex-2]"
 # The old hand-rolled resolver classified `~/hooks` as "relative" and produced
 # "<toplevel>/~/hooks" — a literal '~' directory git never reads.
-# [codex-4], CR round 2: this case previously configured an ALREADY-EXPANDED
-# absolute path, so it never exercised tilde expansion at all — it asserted
+# This case must configure a literal tilde path, not an ALREADY-EXPANDED
+# absolute path, which never exercises tilde expansion at all — it asserts
 # nothing the regression could break. Configure a literal `~/hooks` and point
 # HOME at a temp dir so the expansion is observable and hermetic.
 d9="$TMP_ROOT/f9"; mk_foreign_repo "$d9" || exit 1
@@ -325,8 +322,8 @@ out=$(GIT_CONFIG_GLOBAL="$g12" bash "$INSTALLER" --target "$d12/work" 2>&1); rc=
     && ! printf '%s' "$out" | grep -Fq "INSTALLED BUT INERT" \
     && pass || fail "T21b rc=$rc out=$out"
 
-# NAMED for what it actually verifies (round 3 [codex-2]): the earlier title
-# claimed failed-write preservation, which this does NOT cover — a regression
+# NAMED for what it actually verifies: failed-write preservation is NOT
+# covered here — a regression
 # to a direct truncating write would still pass. Interrupting a write is not
 # portably injectable (chmod on a directory is a no-op under MSYS, and the temp
 # name carries the INSTALLER's $$, so it cannot be pre-created from here). What
@@ -334,10 +331,10 @@ out=$(GIT_CONFIG_GLOBAL="$g12" bash "$INSTALLER" --target "$d12/work" 2>&1); rc=
 # ponytail: consequence-level check; a true mid-write interrupt needs a fault-
 # injection seam in the installer, which is not worth adding for this.
 echo "T22: a rewrite lands COMPLETE and leaves no staging residue (not failed-write coverage)"
-# [codex-5], CR round 2: this case previously set `core.gate-bump`, which does
-# NOT change the generated content — so the installer short-circuited on
-# `already-current` and the write path under test never ran. The assertion
-# passed vacuously. Force a genuine content difference by editing the baked
+# The case must not set `core.gate-bump`, which does
+# NOT change the generated content — the installer short-circuits on
+# `already-current` and the write path under test never runs. The assertion
+# passes vacuously. Force a genuine content difference by editing the baked
 # path in the INSTALLED hook (never the real gate), so the installer must
 # actually rewrite, then make the write fail.
 d11="$TMP_ROOT/f11"; mk_foreign_repo "$d11" || exit 1
@@ -412,7 +409,7 @@ out=$(GIT_CONFIG_GLOBAL="$g14" bash "$INSTALLER" --target "$d14/work" 2>&1); rc=
     && pass || fail "T24 rc=$rc out=$out"
 
 # NOT TESTED HERE: the control-character refusal in install-cr-gate.sh
-# ([codex-2], round 4). Reaching it needs himmel's own checkout to sit at a
+# Reaching it needs himmel's own checkout to sit at a
 # path containing a newline, and Windows filenames cannot hold one — every
 # attempt to stage that fixture either fails to create the directory or gets
 # normalised, so the case only ever produced a permanent SKIP. A test that can
@@ -444,11 +441,9 @@ git -C "$d8/work" commit -q -m "add change"
 pushed_sha=$(git -C "$d8/work" rev-parse feat/x)
 push_out=$(cd "$d8/work" && git push origin feat/x 2>&1); push_rc=$?
 marker="$d8/work/.git/cr-pending/feat/x"
-# HIMMEL-2226 (HIMMEL-2258 audit): this used to SKIP (uncounted, at least not
-# credited as a pass) whenever push stderr matched "cannot locate" or
-# "branch-lock library missing", on the theory that hook infrastructure might
-# be unavailable in some environments. Investigated and closed: neither
-# string can reach push-time stderr here.
+# No SKIP path for push stderr matching "cannot locate" or
+# "branch-lock library missing": neither string can reach push-time stderr
+# here, so hook infrastructure is never legitimately unavailable.
 #   - "cannot locate" is emitted ONLY by install-cr-gate.sh's own --target
 #     install step ("cannot locate himmel's primary checkout", line ~299) —
 #     that already ran (and succeeded, or this push would hit the hook-not-
@@ -464,7 +459,7 @@ marker="$d8/work/.git/cr-pending/feat/x"
 #     that ships with every himmel checkout, primary included, so this
 #     requires a corrupted/partial primary checkout to fire — not a
 #     property of "this environment" the way GNU timeout availability is.
-# Dead branch removed; the assertion below now runs unconditionally.
+# The assertion below runs unconditionally.
 if [ -f "$marker" ]; then
     field2=$(cut -d'|' -f2 "$marker" | tr -d ' ')
     [ "$field2" = "$pushed_sha" ] && pass || fail "T19 marker field2=$field2 expected=$pushed_sha"

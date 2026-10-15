@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
-# scripts/cr/ledger-append.sh — deduped JSONL writer for the CR critic ledger
-# (HIMMEL-415). Findings dedup on (head,finding_id); usage dedups on
+# scripts/cr/ledger-append.sh — deduped JSONL writer for the CR critic ledger.
+# Findings dedup on (head,finding_id); usage dedups on
 # (head,model). `avail` dedups on (head,model) too, but MONOTONE-SUPERSEDES
-# rather than flatly deduping (HIMMEL-1613): a critic that times out on run 1
+# rather than flatly deduping: a critic that times out on run 1
 # and succeeds on run 2 at the same head used to have its run-2 `ok` silently
 # dropped by the dedup, permanently wedging clear-cr-marker's gate 3 at that
 # SHA. unavailable -> ok is now appended as a real improvement; an identical
 # repeat stays a quiet no-op; ok -> unavailable (a downgrade that could dodge a
 # real blocker) is refused/dropped, same as a plain duplicate. See the avail
-# branch below for the transition logic. The `usage` kind (HIMMEL-485) records an ESTIMATED token count
+# branch below for the transition logic. The `usage` kind records an ESTIMATED token count
 # (chars/4 of the prompt+response) for the paid codex critic — hermes does not
 # expose real usage through the one-shot chokepoint, so this is a cost SIGNAL,
 # not a billed figure (every usage record carries "estimated":true).
-# `attempt` (HIMMEL-1500): per-attempt timing for a critic invocation (the
+# `attempt`: per-attempt timing for a critic invocation (the
 # primary try AND each fallback candidate) — NEVER deduped, so a retried
 # member leaves one row per try, letting a reader correlate timeout clusters
 # with a peak-usage window (e.g. z.ai peak-hours throttling) instead of only
 # seeing the final `avail` verdict. --status is ok|timeout|error; --attempt is
 # the 1-based try number; --duration-secs is the measured wall-clock elapsed.
-# --reason/--detail (HIMMEL-1176): OPTIONAL failure-classification capture,
+# --reason/--detail: OPTIONAL failure-classification capture,
 # mainly for `avail --status unavailable` records so cr-scores.sh can report
 # WHY a critic was down. Additive + back-compat: omitted -> the fields are
 # ABSENT from the JSON (never emitted as empty strings), so every pre-existing
 # caller and the dedup key (unchanged) are byte-for-byte unaffected.
-# --text (HIMMEL-2078): OPTIONAL one-line prose for a `finding` row — the
+# --text: OPTIONAL one-line prose for a `finding` row — the
 # panel's own rendered bullet, so an unadjudicated finding is still legible
 # once the panel transcript is gone (previously the ledger recorded only
 # id/severity/file/line/verdict, no claim text). Additive + back-compat, same
 # posture as --reason/--detail: omitted -> ABSENT from the JSON, never an
 # empty string, so every pre-existing row and caller is unaffected.
-# --deferred-to (HIMMEL-1294): an honestly-recorded crit/imp finding that is
+# --deferred-to: an honestly-recorded crit/imp finding that is
 # out-of-diff / pre-existing / out-of-scope used to have only two mechanical
 # exits at clear-cr-marker gate 4 — downgrade it to `sug`, or claim `disproved`.
 # Both are lies, so the gate actively pushed an honest session toward
@@ -38,17 +38,16 @@
 # branch proceeds. The gate REQUIRES both the ticket key and the reason, so a
 # bare "deferred" cannot become a free pass.
 #
-# `amend` (HIMMEL-1294): the ledger is append-only and had no way to correct a
+# `amend`: the ledger is append-only and had no way to correct a
 # record. A finding logged at the wrong severity or keyed to the wrong head
 # permanently wedged a branch — clear-cr-marker refuses, the CR-marker hook
 # hard-blocks `gh pr create`, and the session cannot fix it (a ledger-rewrite
 # script is classifier-denied as gate tampering; Edit is refused because the
-# ledger lives under the PRIMARY checkout's .git/). It cost the HIMMEL-1291
-# loop two full rounds and an operator-authorised hand-edit of the JSONL.
+# ledger lives under the PRIMARY checkout's .git/).
 # `amend` appends a SUPERSEDE record rather than rewriting a line, so the
 # ledger stays append-only and the correction is itself auditable.
 #
-# `delegation` (HIMMEL-2335): the /pr-check trusted-anchor entry point
+# `delegation`: the /pr-check trusted-anchor entry point
 # (scripts/cr/pr-check-context.sh) logs one row here every time it hands
 # execution off to the reviewed branch's own copy of itself (branch
 # self-review of a scripts/cr/-touching diff, moved out of the runbook fence
@@ -59,7 +58,7 @@
 # plus --reason (why: the diff touches scripts/cr/) and --detail (which
 # anchor, which branch copy) rather than inventing new ones.
 #
-# `score` (HIMMEL-3104): one row per COMPLETED critic run — the verdict counts
+# `score`: one row per COMPLETED critic run — the verdict counts
 # (--critical/--important/--suggestions, plus --dropped citation-guard drops)
 # and --raw-path, the durable copy of the critic's raw response. A clean 0/0/0
 # verdict used to leave neither a raw artifact nor any row, so the one verdict
@@ -69,7 +68,7 @@
 # deduped, same posture as `attempt`: each run owns its own raw file. Readers
 # key on `kind`, so the row is ignored by every gate/scorecard reader.
 set -uo pipefail
-# HIMMEL-3395: a relative-entry copy that is not the anchor's hands off to it.
+# A relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
 kind="${1:-}"; shift || true
@@ -106,7 +105,7 @@ while [ $# -gt 0 ]; do case "$1" in
   *) echo "ledger-append.sh: unknown $1" >&2; exit 2;;
 esac; done
 
-# --batch-file (HIMMEL-2052): one node process + one ledger read/dedup-scan for
+# --batch-file: one node process + one ledger read/dedup-scan for
 # N finding rows instead of N. The single-row-per-invocation shape above is
 # unchanged; this is purely additive. Restricted to `finding` because that is
 # the only kind a panel writes in bulk (avail/usage/attempt are one row per
@@ -133,7 +132,7 @@ normalize_head_arg() {
 if [ -n "$head" ]; then
   if [ "$kind" = "amend" ]; then
     # amend's --head is a LOOKUP key, not a write key (the emitted target_head
-    # is copied from the row it finds, never from this value) - HIMMEL-1294's
+    # is copied from the row it finds, never from this value) - the
     # re-key escape hatch deliberately allows `--set head=` to point at a sha
     # this repo cannot resolve, so a follow-up amend must still be able to
     # locate it by that same literal spelling. Fall back to the raw value on
@@ -158,7 +157,7 @@ for _round_value in "$round" "$disposition_round"; do
   fi
 done
 
-# HIMMEL-2901: an adjudication written during a /pr-check pass belongs to THAT
+# An adjudication written during a /pr-check pass belongs to THAT
 # round, not to the round that produced the finding. --disposition-round states
 # it explicitly; CR_REVIEW_ROUND is the ambient fallback for the amend verb, so
 # a gate that already exports the round does not have to thread a flag through.
@@ -183,7 +182,7 @@ if [ -n "$deferred_to" ] && ! valid_ticket "$deferred_to"; then
   exit 2
 fi
 
-# HIMMEL-4034: every deferral carries a follow-up class so deferrals are
+# Every deferral carries a follow-up class so deferrals are
 # countable per version (docs/release/follow-up-triage.md). The argv `finding`
 # path and `amend` enforce it; a batch spec row (panel output) does not --
 # ponytail: batch rows are not deferrals a person classifies, add if one ever is.
@@ -196,7 +195,7 @@ if [ "$kind" = "finding" ] && [ -z "$batch_file" ] && { [ -n "$deferred_to" ] ||
   echo "ledger-append.sh: a deferral needs --fu-class escape|hardening|polish (HIMMEL-4034; see docs/release/follow-up-triage.md) - NOTHING was written" >&2
   exit 2
 fi
-# HIMMEL-4604: the single-row finding verb is held to the batch writers' bar.
+# The single-row finding verb is held to the batch writers' bar.
 # clear-cr-marker.sh compares verdicts lowercase, so only the lowercase set is
 # a verdict; and a row with no branch stamp is exempt from gate 4d, so a
 # missing --branch is stamped with the current branch, and refused when there
@@ -214,7 +213,7 @@ if [ "$kind" = "finding" ] && [ -z "$batch_file" ]; then
   fi
 fi
 
-# HIMMEL-3340: the evidentiary bar for `disproved`. A wrong `agreed` costs a
+# The evidentiary bar for `disproved`. A wrong `agreed` costs a
 # wasted fix; a wrong `disproved` closes the question for good (it stops a class
 # reaching known-findings and scores the critic as wrong), so it takes a higher
 # bar. When the evidence text reports a MEASUREMENT (measured/probed/reproduced/
@@ -229,7 +228,7 @@ fi
 # of its reach. write-verdicts.sh VERDICT lines never reach the ledger (they are
 # scratch for orphan-check.sh), so the bar is enforced here, not there.
 #
-# HIMMEL-3357: the version check is per OCCURRENCE, not per name ("measured on
+# The version check is per OCCURRENCE, not per name ("measured on
 # bash 5.3 locally; reproduced on bash remotely" names bash twice and only the
 # first carries a version, so it is refused; so is a bare name closing a list,
 # "dash 0.5.13 and bash"). A version line for one occurrence no longer vouches
@@ -242,7 +241,7 @@ fi
 # ("the bash builtin `read`" beside "measured on bash 5.3"); the caller rewords
 # or versions it.
 #
-# HIMMEL-3373: the claim check also compares VERSIONS. When the finding text
+# The claim check also compares VERSIONS. When the finding text
 # names a version for a shell, the evidence covers it iff it names the same
 # shell with a version whose major.minor equals the finding's (bash 3.2 <=
 # bash 3.2.57); a finding naming only a major (bash 3, bash 3.x) is covered by
@@ -357,7 +356,7 @@ if [ "$kind" = "amend" ]; then
         # that FIXES it must be movable to the head it was RAISED against), so
         # the value cannot be constrained to one sha. What it CAN be constrained
         # to is the shape gate 4 will actually accept: clear-cr-marker's isHex
-        # takes 7-64 hex chars (HIMMEL-2029: a SHA-256 repo's full head is 64
+        # takes 7-64 hex chars (a SHA-256 repo's full head is 64
         # hex, not 40) and silently ignores anything else. Validating a
         # narrower shape here than the gate consumes is the split-validation
         # trap codex-1 already caught once on --deferred-to — so the two agree
@@ -369,17 +368,17 @@ if [ "$kind" = "amend" ]; then
         fi ;;
     esac
   done <<< "$set_pairs"
-  # HIMMEL-4034: an amend that makes a finding a deferral must classify it.
+  # An amend that makes a finding a deferral must classify it.
   if printf '%s' "$set_pairs" | grep -qE '^(verdict=deferred|deferred_to=)' && ! printf '%s' "$set_pairs" | grep -q '^fu_class='; then
     echo "ledger-append.sh: an amend that defers a finding needs --set fu_class=escape|hardening|polish (HIMMEL-4034; see docs/release/follow-up-triage.md) - NOTHING was written" >&2
     exit 2
   fi
   if [ "$_disproving" = 1 ]; then disproval_bar_ok "$_evidence" || exit 2; fi
-  # HIMMEL-2405 (revised per AE round-2 ruling): --branch is optional. When
+  # --branch is optional. When
   # omitted, the TARGET's own branch wins over the caller's checkout branch -
   # an escalation amend run from the primary checkout (branch `main`) for a
-  # finding raised on `feat/x` must stamp `feat/x`, not `main` (AE's R2:
-  # defaulting to the caller's checkout silently dropped exactly this
+  # finding raised on `feat/x` must stamp `feat/x`, not `main` (defaulting to
+  # the caller's checkout would silently drop exactly this
   # escalation). The lookup against the ledger runs inside the node block
   # below, where the head-resolution machinery (resolveHead/keyForHead)
   # already lives - duplicating it here in shell would drift. caller_branch is
@@ -392,7 +391,7 @@ if [ "$kind" = "amend" ]; then
   fi
 fi
 
-# attempt (HIMMEL-1500): one row per invocation ATTEMPT (primary + each
+# attempt: one row per invocation ATTEMPT (primary + each
 # fallback candidate), never deduped — unlike avail (one authoritative row per
 # head+model), the point of this kind is to keep every attempt's own timing,
 # so a chain of N tries at one head produces N rows, not one.
@@ -411,7 +410,7 @@ if [ "$kind" = "attempt" ]; then
   fi
 fi
 
-# score (HIMMEL-3104): a row with no head cannot be joined to a run, one with no
+# score: a row with no head cannot be joined to a run, one with no
 # model cannot say whose verdict it is, and one with no raw path or no counts is
 # exactly the unauditable verdict this kind exists to replace.
 if [ "$kind" = "score" ]; then
@@ -426,7 +425,7 @@ if [ "$kind" = "score" ]; then
   fi
 fi
 
-# delegation (HIMMEL-2335): --head and --reason are both required - a
+# delegation: --head and --reason are both required - a
 # delegation record with no head cannot be correlated to a run, and one with
 # no reason is indistinguishable from an unexplained hand-off.
 if [ "$kind" = "delegation" ]; then
@@ -434,7 +433,7 @@ if [ "$kind" = "delegation" ]; then
   [ -n "$reason" ] || { echo "ledger-append.sh: delegation requires --reason" >&2; exit 2; }
 fi
 
-# ci-red-unlock (HIMMEL-5257): review-round.sh granted the one CI-red post-cap
+# ci-red-unlock: review-round.sh granted the one CI-red post-cap
 # delta round. --head is the CI-red reviewed head, --reason the failing check
 # names (comma list), --detail the head the round runs on. NEVER deduped.
 if [ "$kind" = "ci-red-unlock" ]; then
@@ -442,14 +441,14 @@ if [ "$kind" = "ci-red-unlock" ]; then
   [ -n "$reason" ] || { echo "ledger-append.sh: ci-red-unlock requires --reason" >&2; exit 2; }
 fi
 
-# Secret scrub (HIMMEL-1176, reused for --text by HIMMEL-2078 CR round):
+# Secret scrub (shared by --detail and --text):
 # lightweight, anchored redaction — not a full gitleaks scan (this is a hot
 # per-call path with no external deps) — covering the common credential
 # shapes gitleaks' default ruleset + this repo's own telegram-bot-token rule
 # (.gitleaks.toml) flag. ONE definition shared by --detail (provider error
 # bodies can echo request fragments/credentials) and --text (critic review
 # prose can quote a secret straight out of the reviewed diff).
-# HIMMEL-3207: the flatten below maps each \r and \n to its OWN space, so a
+# The flatten below maps each \r and \n to its OWN space, so a
 # scheme word split from its secret by a CR/LF run ("Bearer\r\n<tok>") reaches
 # the scrub as "Bearer  <tok>" (2+ spaces). The patterns therefore take
 # whitespace RUNS after the scheme word and around the telegram ':' (the
@@ -464,7 +463,7 @@ scrub_secrets() {
     -e 's/AKIA[0-9A-Z]{16}/[REDACTED]/g' \
     -e 's/([Aa][Pp][Ii][_-]?[Kk]ey|[Tt]oken|[Ss]ecret)[[:space:]]*[:=][[:space:]]*[A-Za-z0-9._-]{12,}/\1=[REDACTED]/g'
 }
-# HIMMEL-2078 CR round (CodeRabbit): flatten embedded newlines BEFORE the
+# Flatten embedded newlines BEFORE the
 # scrub, not after. sed processes one line at a time, so a token+value pair
 # an embedded newline happens to split (e.g. "Token:\nabcdefghijklmnop")
 # never matches within a single sed cycle — flattening first joins it back
@@ -473,14 +472,13 @@ scrub_secrets() {
 if [ -n "$detail" ]; then
   # tr '\n\r' (not just '\n'): a LONE carriage return (old-Mac line ending,
   # or a stray \r in provider output) also splits a token from its value
-  # across a sed line-cycle boundary the same way \n does (HIMMEL-2078 CR
-  # round 2, CodeRabbit/codex).
+  # across a sed line-cycle boundary the same way \n does.
   detail="$(printf '%s' "$detail" | tr '\n\r' '  ')"
   detail="$(scrub_secrets "$detail")"
   detail="$(printf '%s' "$detail" | cut -c1-200)"
 fi
 
-# HIMMEL-3209: --reason is free text too (since HIMMEL-3124 legs write whole
+# --reason is free text too (legs write whole
 # dispositions into it) and is mirrored into handover notes, so it takes the
 # same flatten -> scrub as --detail. NOT capped: unlike a provider error
 # fragment a disposition is legitimately long, and the cap only ever mattered
@@ -496,7 +494,7 @@ fi
 # the ledger.
 raw_text=""
 
-# --text (HIMMEL-2078): the panel's own one-line prose bullet for a finding, so
+# --text: the panel's own one-line prose bullet for a finding, so
 # an unadjudicated finding is still legible after the panel transcript is
 # gone. Same flatten-then-scrub-then-cap shape as --detail above, just a
 # longer cap (a bullet is a whole rendered line, not a short error fragment).
@@ -513,7 +511,7 @@ touch "$ledger" || { echo "ledger-append.sh: cannot write $ledger" >&2; exit 2; 
 
 ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Build the record + a dedup grep key via node (safe JSON + escaping).
-# HIMMEL-3204: the program goes to node on STDIN (`node -` + heredoc), never as
+# The program goes to node on STDIN (`node -` + heredoc), never as
 # `node -e '<program>'` argv — on Windows a command line is capped at 32,767
 # chars and this ~37 KB program made every ledger write die "Argument list too
 # long". Consequence: node's stdin IS the program, so nothing inside may read
@@ -527,7 +525,7 @@ ATTEMPT_NUM="$attempt_num" DURATION_SECS="$duration_secs" ROUND="$round" DISPOSI
 CRIT_N="$crit_n" IMP_N="$imp_n" SUG_N="$sug_n" DROPPED_N="$dropped_n" RAW_PATH="$raw_path" \
 REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
   const fs=require("fs"), cp=require("child_process"), crypto=require("crypto"), e=process.env;
-  // HIMMEL-3357: the disproved-verdict bar's text test (see DISPROVAL_JS above).
+  // The disproved-verdict bar's text test (see DISPROVAL_JS above).
   const {measured,scan}=new Function(e.DISPROVAL_JS+"; return {measured,scan};")();
   // Keep this small inline copy in parity with finding-fingerprint.js. The
   // writer is intentionally standalone: anchor/fixture flows copy this one
@@ -535,14 +533,14 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
   // parity while test-finding-reraise.sh covers the shared panel helper.
   const foldWhitespace=(v)=>String(v==null?"":v).toLowerCase().replace(/\s+/g," ").trim();
   const normalizeFileAnchor=(v)=>String(v==null?"":v).replace(/\s+/g," ").trim().replace(/\\/g,"/").replace(/^\.\//,"").replace(/:(?:l)?\d+(?:-\d+)?$/i,"");
-  // HIMMEL-2901: case inside code is identity, case in prose is noise - keep
+  // Case inside code is identity, case in prose is noise - keep
   // backtick spans and identifier-shaped tokens (camelCase, snake_case, dotted)
   // case-intact, fold everything else. Parity with finding-fingerprint.js.
   const isCodeToken=(t)=>{const c=t.replace(/^[^A-Za-z0-9_$]+/,"").replace(/[^A-Za-z0-9_$]+$/,"");
     return c?(/[a-z][A-Z]/.test(c)||c.includes("_")||/^[A-Za-z0-9_$]+(?:\.[A-Za-z0-9_$]+)+$/.test(c)):false;};
-  // HIMMEL-2906: classify identifier COMPONENTS inside an expression
+  // Classify identifier COMPONENTS inside an expression
   // (`config.LOGLEVEL(value)`) rather than the whole token — parity with
-  // foldTokenCase in finding-fingerprint.js. codex-1 round 1: separator spans
+  // foldTokenCase in finding-fingerprint.js. Separator spans
   // fold too (a non-ASCII letter is itself outside [A-Za-z0-9_$.]), or
   // case-only Unicode prose escapes the fold.
   const foldTokenCase=(t)=>t.split(/([^A-Za-z0-9_$.]+)/).map((p,i)=>i%2===0&&isCodeToken(p)?p:p.toLowerCase()).join("");
@@ -552,26 +550,26 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
   const findingFingerprint=(slug,file,text)=>{
     const s=foldWhitespace(slug), a=normalizeFileAnchor(file), c=normalizeClaim(text);
     if(!s||!c) return "";
-    // fp3 (HIMMEL-2906): old fp1/fp2 rows keep their identity, append-only.
+    // fp3: old fp1/fp2 rows keep their identity, append-only.
     return "fp3:"+crypto.createHash("sha256").update([s,a,c].join(String.fromCharCode(31)),"utf8").digest("hex");
   };
   const led=e.LEDGER;
-  // HIMMEL-2078: batch rows carry spec.text straight from a caller-built JSON
+  // Batch rows carry spec.text straight from a caller-built JSON
   // file, bypassing the bash-side --text scrub/flatten/cap above entirely —
-  // this is the path critic-panel.sh actually uses (--batch-file, HIMMEL-2052)
+  // this is the path critic-panel.sh actually uses (--batch-file)
   // — so sanitize here too, same shape as the shell scrub. Single-row TEXT is
   // already scrubbed/flattened/capped by the shell before this process
   // starts; re-running it through here is a harmless no-op (a redacted
   // "[REDACTED]" marker does not match any of these patterns).
-  // Same anchored patterns as the shell scrub_secrets function above (CR
-  // round, HIMMEL-1176/HIMMEL-2078) — keep both definitions in lockstep.
+  // Same anchored patterns as the shell scrub_secrets function above —
+  // keep both definitions in lockstep.
   const scrubSecrets=(s)=>s
     .replace(/[0-9]{8,10}[ \t\v\f]*:[ \t\v\f]*[A-Za-z0-9_-]{35}/g,"[REDACTED]")
     .replace(/(Bearer|bearer)[ \t\v\f]+[A-Za-z0-9._-]{16,}/g,"$1 [REDACTED]")
     .replace(/sk-[A-Za-z0-9][A-Za-z0-9_-]{15,}/g,"[REDACTED]")
     .replace(/AKIA[0-9A-Z]{16}/g,"[REDACTED]")
     .replace(/([Aa][Pp][Ii][_-]?[Kk]ey|[Tt]oken|[Ss]ecret)[ \t]*[:=][ \t]*[A-Za-z0-9._-]{12,}/g,"$1=[REDACTED]");
-  // HIMMEL-2078 CR round (CodeRabbit): flatten BEFORE scrubbing, not after —
+  // Flatten BEFORE scrubbing, not after —
   // a token+value pair an embedded newline happens to split (e.g.
   // "Token:\nabcdefghijklmnop") must become one line before scrubSecrets
   // sees it, or the whitespace-class gap in the pattern never spans it.
@@ -579,19 +577,19 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
   const truncText=(s)=>{
     if(typeof s!=="string"||s==="") return "";
     // [\r\n] (not just \r?\n): a LONE \r also splits a token from its value
-    // the same way \n does (HIMMEL-2078 CR round 2, CodeRabbit/codex).
+    // the same way \n does.
     const flat=scrubSecrets(s.replace(/[\r\n]/g," "));
     return flat.length>500?flat.slice(0,500):flat;
   };
-  // HIMMEL-3209: flatten -> scrub for the free-text reason/deferred_to fields a
+  // Flatten -> scrub for the free-text reason/deferred_to fields a
   // batch spec (and an amend --set reason=) carries straight from caller-built
   // input; the shell twin above does the same for argv --reason. No cap (see
-  // the shell block): a ticket key like HIMMEL-1234 matches no pattern, so it
+  // the shell block): a ticket key like ABC-1234 matches no pattern, so it
   // passes through byte-identical.
   const cleanFree=(s)=>scrubSecrets(String(s).replace(/[\r\n]/g," "));
   const existing=fs.existsSync(led)?fs.readFileSync(led,"utf8").split("\n").filter(Boolean):[];
   const parsed=existing.map(l=>{try{return JSON.parse(l);}catch{return null;}}).filter(Boolean);
-  // Resolve-then-compare head matching (codex-1/2, HIMMEL-2020 round 5) -
+  // Resolve-then-compare head matching -
   // the SAME posture clear-cr-marker.sh already takes on READ (its atHead()
   // resolves an abbreviation through git rather than string-comparing it).
   // A plain === match is tried FIRST (the common case: both sides already
@@ -604,7 +602,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
   // could only ever match a row whose stored spelling happened to equal what
   // THIS caller typed, not what any other caller had typed in the past).
   //
-  // HIMMEL-2052: this used to call `git rev-parse --verify` per head, once
+  // This used to call `git rev-parse --verify` per head, once
   // per DISTINCT stored head hit during the dedup scan - on a ledger that has
   // accumulated hundreds of distinct heads (most already full, from callers
   // that pre-resolve before writing) that is hundreds of process spawns for a
@@ -654,8 +652,8 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       &&(o.artifact||"diff")===e.ARTIFACT&&(o.perspective||"off")===e.PERSPECTIVE;
   const key=(o)=>keyForHead(o,e.HEAD_);
 
-  // Resolve a finding through PRIOR amends (codex-1 round 4; hoisted out of
-  // the amend-only block HIMMEL-2020 round 2 so the finding-write verdict-only
+  // Resolve a finding through PRIOR amends (hoisted out of
+  // the amend-only block so the finding-write verdict-only
   // check below can use it too - comparing a re-append against the RAW
   // original row let a second verdict change on an already-amended finding
   // silently mint another auto-amend instead of hitting the loud "use amend"
@@ -666,18 +664,18 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
   // original row or its effective state; an emitted amend still keys on the
   // ORIGINAL head, so the reader in clear-cr-marker needs no matching logic
   // of its own.
-  // HIMMEL-2405: the amend key gains branch, so an amend recorded FOR one
+  // The amend key gains branch, so an amend recorded FOR one
   // branch's review context never silently applies while evaluating another
   // branch at the SAME head (two branches can legitimately sit on the same
-  // commit - HIMMEL-1175 - and finding ids are minted in per-producer stream
+  // commit, and finding ids are minted in per-producer stream
   // order, not globally unique, so the same id routinely exists on both).
   // Back-compat: a legacy amend row with an empty branch (written before
   // branches were stamped) still applies to ANY branch - it is looked up
   // through the SAME "" bucket every branch checks, merged under whatever
   // branch-specific amend exists for the branch being evaluated (branch-
   // specific always merges LAST so it wins field-for-field conflicts; every
-  // branch-specific amend post-dates the legacy ones, since HIMMEL-2909 made
-  // the writer always stamp a real branch).
+  // branch-specific amend post-dates the legacy ones, because the
+  // writer always stamps a real branch).
   const SEP=String.fromCharCode(31);
   const amendsByKey=new Map();
   for(const a of parsed){
@@ -698,7 +696,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     return s?Object.assign({},o,s):o;
   };
 
-  // BATCH (HIMMEL-2052): --batch-file writes N finding rows in ONE process -
+  // BATCH: --batch-file writes N finding rows in ONE process -
   // one ledger read, one head-candidate resolution (above), N in-memory dedup
   // checks - instead of paying that fixed per-invocation cost N times over. A
   // panel writing 14 rows sequentially (14 separate `bash ledger-append.sh`
@@ -731,7 +729,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
         anyFail=true; continue;
       }
       // Structural check only - a citation-less finding legitimately carries
-      // file:"" / line:"" (HIMMEL-1494), so an empty VALUE is valid; a
+      // file:"" / line:"", so an empty VALUE is valid; a
       // MISSING key is not (the row silently writes `undefined` into the
       // ledger record). "in" tests key presence, not truthiness.
       const missingFields=["branch","model","severity","file","line","verdict"].filter(f=>!(f in spec));
@@ -739,7 +737,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
         process.stderr.write("ledger-append.sh: batch row "+sid+" is missing required field(s) ("+missingFields.join(",")+") - refusing this row.\n");
         anyFail=true; continue;
       }
-      // HIMMEL-2405 (AE round-2): "branch" in spec only checks key PRESENCE
+      // "branch" in spec only checks key PRESENCE
       // (a citation-less file/line is legitimately ""), but an empty branch
       // is never legitimate here - unlike the single-row amend path, a batch
       // finding row has no caller checkout to default from, so a blank value
@@ -758,7 +756,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
           +invalidRoundFields.map(f=>f+"="+JSON.stringify(spec[f])).join(",")+") - refusing this row.\n");
         anyFail=true; continue;
       }
-      // HIMMEL-3357: the same bar the single-row path applies in bash. A refused
+      // The same bar the single-row path applies in bash. A refused
       // row is skipped like any other refusal (exit 3, siblings still written).
       // ponytail: only the measurement half of the bar runs here; the claim check
       // on spec.text (amend, below) does not. Panel and harvest batch rows carry an
@@ -778,7 +776,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
                  line:Number(spec.line)||spec.line,verdict:spec.verdict,artifact,perspective};
       if(spec.responding_model) rec.responding_model=spec.responding_model;
       if(spec.reason) rec.reason=cleanFree(spec.reason);
-      // HIMMEL-3207: same flatten -> scrub -> 200-char cap the shell applies to
+      // Same flatten -> scrub -> 200-char cap the shell applies to
       // argv --detail (:325-327); a batch spec used to store it raw.
       if(spec.detail) rec.detail=scrubSecrets(String(spec.detail).replace(/[\r\n]/g," ")).slice(0,200);
       if(spec.deferred_to) rec.deferred_to=cleanFree(spec.deferred_to);
@@ -805,7 +803,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       const prior=priorMatches.pop();
       if(prior){
         const priorEff=effective(prior,spec.branch);
-        // HIMMEL-2321 CR round 2 (codex-1): only ignore text when the
+        // Only ignore text when the
         // INCOMING record (rec) omits it - unconditionally dropping text on
         // BOTH sides let a genuinely DIFFERENT finding that reuses an id
         // (the realistic case: ids are minted in stream order, so a
@@ -854,7 +852,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       }
       fs.appendFileSync(led, JSON.stringify(rec)+"\n");
       parsed.push(rec);
-      // HIMMEL-5155: one confirmation per fresh finding row, same shape as the amend lines, so a
+      // One confirmation per fresh finding row, same shape as the amend lines, so a
       // reader (the AG-UI journal mapper) needs no inference from silence.
       process.stderr.write("ledger-append.sh: appended finding "+sid+" at "+shead.slice(0,8)
         +(rec.verdict?" -> "+JSON.stringify({verdict:rec.verdict}):"")+"\n");
@@ -869,12 +867,12 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
   // (caller sees 0, record unchanged, gate still refuses).
   if(e.KIND==="amend"){
     const findings=parsed.filter(o=>o.kind==="finding");
-    // HIMMEL-2405 (AE round-2, revised post-panel round 2 - codex-1/codex-2):
+    // When the caller gave no --branch, resolve it from the ledger BEFORE
     // when the caller gave no --branch, resolve it from the ledger BEFORE
     // computing `matches` below (matches/effective() both read e.BRANCH, so
     // this must run first, not after). Two sources feed the candidate branch
     // set: a raw head match (keyForHead) AND any amend record that RE-KEYED
-    // some finding of this id/artifact/perspective onto --head (codex-1: a
+    // some finding of this id/artifact/perspective onto --head (a
     // raw-only check misses a finding chased through `--set head=`, so a
     // follow-up amend on the re-keyed head from a different checkout could
     // not locate its owning branch and fell through to the caller's own,
@@ -882,25 +880,24 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // on the TARGET FINDING ROW's own branch (o.branch||"") - for a
     // branch-less legacy finding that collapses their "scoped" and "legacy"
     // lookup keys to the same "" bucket, so an amend must itself be
-    // branch-less to stay visible to those readers (round-3 codex-1: a prior
-    // revision here stamped the caller's checkout branch instead, believing
-    // an empty-branch match was the same cross-branch leak this ticket
-    // closes; it is not - a branch-less finding is deliberately readable
+    // branch-less to stay visible to those readers (stamping the caller's
+    // checkout branch instead would treat an empty-branch match as a
+    // cross-branch leak, but a branch-less finding is deliberately readable
     // from any branch by design, and an amend to it must inherit that same
     // scope). Exactly one DISTINCT candidate branch -> use it as-is, real or
-    // "". More than one DISTINCT REAL branch -> refuse (guessing here is the
-    // exact bug this revision fixes); a "" candidate never itself adds
+    // "". More than one DISTINCT REAL branch -> refuse (guessing here would be
+    // wrong); a "" candidate never itself adds
     // ambiguity, since it is compatible with any real one - a unique real
     // branch still wins over any "" candidates present. No candidate at all
     // -> fall back to the caller's checkout branch, refusing only if that is
     // also empty (detached HEAD).
-    // HIMMEL-3466: a re-key counts only while it is the finding's CURRENT
+    // A re-key counts only while it is the finding's CURRENT
     // effective head, resolved under the finding row's own branch (the scope
     // the readers use) - scanning every amend that ever set head=--head also
     // counted stale intermediate re-keys (A -> X -> Y still read as "at X").
     const branches=[...new Set(findings.filter(o=>keyForHead(o,e.HEAD_)
       ||keyForHead(effective(o,o.branch||""),e.HEAD_)).map(o=>o.branch||""))];
-    // HIMMEL-3467: an explicit --branch no matching finding row carries writes
+    // An explicit --branch no matching finding row carries writes
     // an amend no reader retrieves (they key on the row's own branch) - a
     // silent no-op disposition. Refuse before writing.
     if(e.BRANCH!==""&&branches.length&&!branches.includes(e.BRANCH)){
@@ -929,7 +926,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       }
     }
     const matches=findings.filter(o=>key(o)||key(effective(o)));
-    // Ambiguity (HIMMEL-2029): a stale legacy pair - a short-keyed row and a
+    // Ambiguity: a stale legacy pair - a short-keyed row and a
     // full-keyed row for the SAME finding_id, both resolving to this --head -
     // used to fall through to .pop() and silently amend whichever happened to
     // be LAST in ledger order, not the row the operator actually meant. This
@@ -939,8 +936,8 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // ARGUMENT byte-for-byte (RAW_HEAD - the literal spelling the caller
     // passed, before any bash-side resolve-to-full normalization) - an exact
     // match on what was actually typed beats a merely-resolved one. This must
-    // compare against effective(o).head, NOT the row raw o.head (codex-1 CR
-    // round 4): a row that a PRIOR amend already re-keyed elsewhere still
+    // compare against effective(o).head, NOT the row raw o.head:
+    // a row that a PRIOR amend already re-keyed elsewhere still
     // carries its ORIGINAL raw head forever (append-only), so comparing raw
     // heads could match the wrong duplicate - the one whose stale original
     // spelling happens to equal --head - while missing the row a caller
@@ -987,7 +984,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       if(k==="reason") v=cleanFree(v);
       set[k]=v;
     }
-    // HIMMEL-3357: the generic /pr-check step-4.5 reason carries no measurement,
+    // The generic /pr-check step-4.5 reason carries no measurement,
     // so the text test in the bash pre-check never fires on it. When the FINDING
     // itself names a shell/platform, the disproving evidence must name each such
     // shell with a version - a claim about dash is not answered by "busybox ash
@@ -1003,7 +1000,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
             +". Pass it in the evidence, e.g. --set 'reason=measured on "+missing[0]+" <version>: <what it showed>' (the generic --reason 'adjudicated by /pr-check step 4.5' is not evidence). NOTHING was written.\n");
           process.exit(2);
         }
-        // HIMMEL-3373: a version the finding names must be covered by the evidence
+        // A version the finding names must be covered by the evidence
         // (same major.minor; a major-only finding version by any version of that
         // major) unless the evidence states, with a reason, that it is irrelevant.
         if(!/version-irrelevant:\s*\S/i.test(evText)){
@@ -1019,8 +1016,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
         }
       }
     }
-    // HIMMEL-2405 (supersedes HIMMEL-2909, revised post-panel round 2): by
-    // this point e.BRANCH has already been resolved above - explicit
+    // By this point e.BRANCH has already been resolved above - explicit
     // --branch if given, else (for the "" case) the unique real candidate
     // branch a matching finding row or re-key amend belongs to, else the
     // CALLER's own current checkout branch, refusing before we ever got here
@@ -1031,7 +1027,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // ambiguous/cross-branch case this ticket exists to fix).
     const rec={kind:"amend",ts:e.TS,branch:e.BRANCH,target_head:target.head,finding_id:e.ID,
                artifact:e.ARTIFACT,perspective:e.PERSPECTIVE,set,reason:e.REASON};
-    // HIMMEL-2901: the round a verdict was ADJUDICATED in is not the round the
+    // The round a verdict was ADJUDICATED in is not the round the
     // finding was produced in. Record it on the amend event so the reader can
     // render "first seen rN / dispositioned rM" instead of reporting the
     // producer round as the disposition round. Only an amend that actually
@@ -1065,7 +1061,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // running /pr-check on the same head must stay idempotent); DIFFERING
     // content is now a loud refusal that names the sanctioned fix.
     //
-    // Compare against the EFFECTIVE state (codex-1, HIMMEL-2020 round 2), not
+    // Compare against the EFFECTIVE state, not
     // the raw append-only row: the raw row verdict field stays empty forever
     // once the panel writes it, so comparing against it let a SECOND verdict
     // change on an already-amended finding read as "prior verdict empty" all
@@ -1073,7 +1069,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // first adjudication instead of hitting the loud "use amend" refusal a
     // genuine re-adjudication should go through.
     //
-    // Legacy short-head rows (codex-1/2, HIMMEL-2020 rounds 3 and 5): a
+    // Legacy short-head rows: a
     // finding row written before this ticket can still carry a short head.
     // key() now resolves both sides through git before comparing (see
     // headsMatch above), so it collides with such a row regardless of
@@ -1082,13 +1078,13 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // earlier version of this fix) missed every legacy row once callers
     // (this files own pr-check.md included) always pass the full form.
     //
-    // Re-keyed findings (codex-1, HIMMEL-2020 round 5): also check
+    // Re-keyed findings: also check
     // key(effective(o)) - a finding moved by a prior amend re-key (--set
     // head=) lives, EFFECTIVELY, at its new head while its raw stored row
     // still reads the old one; matching only the raw row missed it, the same
     // gap the amend verbs own target lookup above already closes.
     //
-    // Ambiguity refusal (codex-1, HIMMEL-2020 round 4): a stale legacy pair -
+    // Ambiguity refusal: a stale legacy pair -
     // a short-keyed row AND a full-keyed row already both recorded for this
     // exact finding_id - now both resolve to the same commit and BOTH match,
     // and silently taking the last one via pop() would leave the OTHER row
@@ -1109,7 +1105,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     const prior=priorMatches.pop();
     if(prior){
       const priorEff=effective(prior);
-      // HIMMEL-2321 CR round 2 (codex-1): see the matching comment in the
+      // See the matching comment in the
       // --batch-file block above - ignore text only when rec (the incoming
       // write) omits it, never unconditionally.
       const ignoreText=!("text" in rec);
@@ -1148,7 +1144,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     dup=false;
   } else if(e.KIND==="usage"){
     // chars/4 token estimate (hermes does not expose real usage via the one-shot
-    // chokepoint — HIMMEL-485). The /4 lives here so it is computed in ONE place.
+    // chokepoint). The /4 lives here so it is computed in ONE place.
     const pc=Math.max(0, Number(e.PROMPT_CHARS)||0), rc=Math.max(0, Number(e.RESPONSE_CHARS)||0);
     const ept=Math.round(pc/4), ect=Math.round(rc/4);
     rec={kind:"usage",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,model:e.MODEL,prompt_chars:pc,response_chars:rc,est_prompt_tokens:ept,est_completion_tokens:ect,est_total_tokens:ept+ect,estimated:true,artifact:e.ARTIFACT,perspective:e.PERSPECTIVE};
@@ -1157,7 +1153,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     if(e.DETAIL) rec.detail=e.DETAIL;
     dup=existing.some(l=>{try{const o=JSON.parse(l);return o.kind==="usage"&&o.head===e.HEAD_&&o.model===e.MODEL&&(o.artifact||"diff")===e.ARTIFACT&&(o.perspective||"off")===e.PERSPECTIVE;}catch{return false;}});
   } else if(e.KIND==="attempt"){
-    // HIMMEL-1500: per-attempt timing (start/duration/outcome) for a critic
+    // Per-attempt timing (start/duration/outcome) for a critic
     // invocation — the primary try AND every fallback candidate each get their
     // OWN row, so a chain of N tries at one head produces N rows. This is
     // deliberately NOT deduped like `avail` (one authoritative row per
@@ -1174,7 +1170,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     if(e.DETAIL) rec.detail=e.DETAIL;
     dup=false;
   } else if(e.KIND==="score"){
-    // HIMMEL-3104: one row per COMPLETED critic run. Never deduped: each run
+    // One row per COMPLETED critic run. Never deduped: each run
     // owns its own raw file, so a re-run at the same head appends its own row.
     rec={kind:"score",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,model:e.MODEL,
          critical:Number(e.CRIT_N),important:Number(e.IMP_N),suggestions:Number(e.SUG_N),
@@ -1183,13 +1179,13 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     if(e.RESPONDING_MODEL) rec.responding_model=e.RESPONDING_MODEL;
     dup=false;
   } else if(e.KIND==="ci-red-unlock"){
-    // HIMMEL-5257: one row per CI-red post-cap unlock. Never deduped.
+    // One row per CI-red post-cap unlock. Never deduped.
     // Readers key on kind, so every gate and scorecard reader ignores it.
     rec={kind:"ci-red-unlock",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,reason:e.REASON};
     if(e.DETAIL) rec.detail=e.DETAIL;
     dup=false;
   } else if(e.KIND==="delegation"){
-    // HIMMEL-2335: one row per anchor->branch delegation event. NEVER
+    // One row per anchor->branch delegation event. NEVER
     // deduped, same posture as `attempt` - a repeat run at the same head
     // logs its own row rather than colliding with a prior one.
     rec={kind:"delegation",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,reason:e.REASON};
@@ -1200,12 +1196,12 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     if(e.RESPONDING_MODEL) rec.responding_model=e.RESPONDING_MODEL;
     if(e.REASON) rec.reason=e.REASON;
     if(e.DETAIL) rec.detail=e.DETAIL;
-    // Monotone supersede (HIMMEL-1613). The supersession identity is
+    // Monotone supersede. The supersession identity is
     // (head, model) ONLY — availability is a property of the critic+commit
     // pair, so a critic down at one head is down regardless of which review
     // arm (artifact/perspective) probed it. An unavailable -> ok recovery at
     // the same (head, model) therefore supersedes EVEN WHEN the two readings
-    // came back on different artifact/perspective arms (HIMMEL-1640); matching
+    // came back on different artifact/perspective arms; matching
     // on those conjuncts left stale unavailable evidence alive when the ok
     // returned on a different arm. The STATUS transition then decides the
     // outcome: the ledger is append-only, so the LAST matching line is the
@@ -1216,7 +1212,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // erase an earlier success, since that could dodge a real blocker - so it
     // is refused/dropped with its own message, same as the plain dedup above.
     //
-    // Same-status RECLASSIFICATION (HIMMEL-2128): an identical-status repeat
+    // Same-status RECLASSIFICATION: an identical-status repeat
     // used to be a flat dedup no-op regardless of `reason`/`detail`, so a lane
     // first classified unavailable(reason=quota) that later degrades to
     // unavailable(reason=config) kept showing quota forever. `reason` is now
@@ -1239,7 +1235,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     } else if(priorAvail.status==="unavailable"&&e.STATUS==="ok"){
       dup=false;
     } else if(e.STATUS==="unavailable"&&String(e.REASON||"").trim().toLowerCase()==="certify-refused"){
-      // HIMMEL-5110: a panel certify refusal (critic-panel.sh exit 6) is a
+      // A panel certify refusal (critic-panel.sh exit 6) is a
       // deliberate fail-closed hold, not a transient failure. An earlier ok at
       // this (head, model) must never swallow it: the gate would not see the
       // refusal while panel-first-pass.sh read rc 0 as "recorded".
@@ -1263,7 +1259,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     process.exit(0);
   }
   fs.appendFileSync(led, JSON.stringify(rec)+"\n");
-  // HIMMEL-5155: a finding append confirms itself (the batch loop above prints the same line).
+  // A finding append confirms itself (the batch loop above prints the same line).
   if(e.KIND==="finding") process.stderr.write("ledger-append.sh: appended finding "+e.ID+" at "+e.HEAD_.slice(0,8)
     +(rec.verdict?" -> "+JSON.stringify({verdict:rec.verdict}):"")+"\n");
 JS

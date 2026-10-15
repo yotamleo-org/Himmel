@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/triviality-gate.sh (HIMMEL-737, unwired).
+# Smoke test for scripts/cr/triviality-gate.sh (unwired).
 # The suite is the spec: override > safety > docs-only > one-liner > substantive,
 # with empty stdin failing closed. Mirrors scripts/cr/test-lane-classify.sh.
 set -euo pipefail
@@ -43,7 +43,7 @@ check "$(vverdict "$(classify_triviality "$code_one")")" trivial
 # 3. single-file 3-line code change -> nontrivial
 check "$(vverdict "$(classify_triviality "$code_three")")" nontrivial
 
-# HIMMEL-1950 — the boundary everyone gets wrong. The rule counts +/- BODY
+# The boundary everyone gets wrong. The rule counts +/- BODY
 # lines, not edited lines: a ONE-line edit is 2 diff lines and IS trivial, a
 # TWO-line edit is 4 diff lines and is NOT. Getting this backwards is what makes
 # people believe a small change "should" have been cheap-pathed when it was not.
@@ -86,7 +86,7 @@ check "$(vverdict "$(CR_TRIVIALITY_OVERRIDE=trivial classify_triviality "")")" n
 # 10. unknown override value falls through to heuristic (docs-only -> trivial)
 check "$(vverdict "$(CR_TRIVIALITY_OVERRIDE=garbage classify_triviality "$docs_multi" 2>/dev/null)")" trivial
 
-# HIMMEL-737 header-miscount regressions. Real file-header lines carry a space
+# Header-miscount regressions. Real file-header lines carry a space
 # ('--- a/...', '+++ b/...'); body changes whose CONTENT starts with '--'/'++'
 # arrive as '---...'/'+++...' (no space) and MUST be counted.
 # (a) 3 removed lines all starting with '--' -> substantive (pre-fix: swallowed
@@ -131,7 +131,7 @@ new file mode 100644
 +second"
 check "$(vverdict "$(classify_triviality "$devnull_headers")")" trivial
 
-# HIMMEL-737 CR: the safety carve-out covers the CR pipeline itself - a
+# The safety carve-out covers the CR pipeline itself - a
 # one-line change to the panel scripts, the lane registry, or the backend
 # router registry must never classify trivial (the gate cannot blind the
 # pipeline that runs it). Assert reason too: these must hit safety-path.
@@ -168,7 +168,7 @@ set -e
 check "$cli_out" trivial
 [ "$cli_rc" -eq 0 ] || { echo "FAIL: cli exit $cli_rc want 0"; fail=1; }
 
-# HIMMEL-2420: sweep across the ~64 KiB here-string deadlock band instead of
+# sweep across the ~64 KiB here-string deadlock band instead of
 # pinning one fixture size. `done <<< "$diff_text"` wedges MSYS bash forever
 # when the content sits between the real pipe capacity (65,536 B) and bash's
 # own switch-to-tempfile threshold (~65,670 B on this host): bash writes the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/handover-bridge.sh (HIMMEL-2321).
+# Smoke test for scripts/cr/handover-bridge.sh.
 #
 # Hermetic: every test sets CR_LEDGER to a private temp file, so
 # ledger-append.sh/handover-bridge.sh's git-common-dir default is never
@@ -168,7 +168,7 @@ run_bridge --head headt6 --branch b --notes "$NOTES"
 assert_contains "T6 uncitable finding recorded (dedup marker present)" "$(cat "$NOTES")" "<!-- cr:headt6:codex-6 -->"
 assert_contains "T6 uncitable finding title present" "$(cat "$NOTES")" "no citation available"
 
-# -- T16 (HIMMEL-2430): a re-run at the same head dedupes every finding, and
+# -- T16: a re-run at the same head dedupes every finding, and
 # the relayed summary must say so instead of claiming a fresh write. --
 new_item t16
 CR_LEDGER="$TMP/ledger-t16.jsonl"
@@ -210,7 +210,7 @@ run_bridge --head headt8 --branch b --notes "$NOTES"
 assert_eq "T8 missing ledger -> rc 0 (best effort)" "0" "$RC"
 assert_contains "T8 missing ledger -> 0 findings reported" "$OUT" "0 finding(s)"
 
-# -- T9 (CR round 1, codex-1): an UNPARSEABLE ledger row must not let a bug be
+# -- T9: an UNPARSEABLE ledger row must not let a bug be
 # auto-resolved. append-cr-bugs.sh resolves an open bug whose finding-id is
 # absent this run, licensed by that critic's `ok` avail row. If the finding's
 # own line is corrupt, "absent" and "unreadable" are indistinguishable -- so
@@ -229,7 +229,7 @@ assert_contains "T9 warns that a ledger row was unparseable" "$ERR" "unparseable
 assert_contains "T9 says the avail rows were withheld" "$ERR" "withholding"
 assert_eq "T9 the still-open bug is NOT auto-resolved on an incomplete finding set" "open" "$(bug_status "$BUGS" BUG-1)"
 # The relayed summary must report what was FORWARDED, not what was found
-# (CR round 3, codex-3): this line goes verbatim into the /pr-check report, so
+# This line goes verbatim into the /pr-check report, so
 # naming the original avail count would claim evidence reached bugs.md that
 # was deliberately withheld.
 assert_contains "T9 summary reports 0 avail rows forwarded, not the count found" "$OUT" "0 avail row(s) -> bugs.md"
@@ -266,7 +266,7 @@ assert_contains "T12 warns the row is unusable" "$ERR" "missing finding_id or se
 assert_contains "T12 treats it as an incomplete ledger and withholds avail" "$ERR" "withholding"
 assert_eq "T12 the still-open bug is NOT resolved off an unusable finding row" "open" "$(bug_status "$BUGS" BUG-1)"
 
-# -- T10 (CR round 1, codex-2): rows are selected on (head, branch), never head
+# -- T10: rows are selected on (head, branch), never head
 # alone. Two branches can sit at the SAME commit, so a SHA does not identify
 # whose review this is; the other branch's finding must not be copied in.
 new_item t10
@@ -281,7 +281,7 @@ assert_contains "T10 this branch's finding is recorded" "$(cat "$NOTES")" "belon
 assert_not_contains "T10 the other branch's same-head finding is NOT copied in" "$(cat "$NOTES")" "belongs to another branch"
 assert_contains "T10 a legacy row with no branch field is still accepted (head pins the commit)" "$(cat "$NOTES")" "legacy row with no branch field"
 
-# -- T11 (CR round 1, codex-3): the relayed summary counts WRITES, not
+# -- T11: the relayed summary counts WRITES, not
 # attempts. This line goes verbatim into the /pr-check report, so counting a
 # failed append as delivered is the report claiming evidence that does not
 # exist. Forced with an unwritable --notes target: its parent dir does not
@@ -297,13 +297,13 @@ assert_contains "T11 the failed write is reported as FAILED, not as delivered" "
 assert_contains "T11 summary does not claim the finding reached reviewer-notes" "$OUT" "0 finding(s) -> reviewer-notes"
 assert_not_contains "T11 a failed append is not reported as already present" "$OUT" "already present"
 
-# -- t13: avail rows are NOT branch-scoped (gate identity is (head, model),
-# HIMMEL-1613/1640). clear-cr-marker.sh (the gate) selects avail rows by
+# -- t13: avail rows are NOT branch-scoped (gate identity is (head, model)).
+# clear-cr-marker.sh (the gate) selects avail rows by
 # (head, model) only, never branch, because availability is a property of the
 # critic+commit pair, not of which review arm probed it. An avail row stamped
 # with a DIFFERENT branch than this invocation must still count, or this
 # bridge sees fewer avail rows than the gate does and the handover trail
-# disagrees with the gate about what covered a head (HIMMEL-2405).
+# disagrees with the gate about what covered a head.
 new_item t13
 bash "$BUG_SH" add --bugs "$BUGS" --symptom "vanished sym" --finding-id codex-13b >/dev/null
 CR_LEDGER="$TMP/ledger-t13.jsonl"
@@ -313,8 +313,8 @@ EOF
 run_bridge --head headt13 --branch b --bugs "$BUGS"
 assert_eq "t13 avail row from a different branch is still counted -> vanished bug resolves" "resolved" "$(bug_status "$BUGS" BUG-1)"
 
-# -- T14 (HIMMEL-2405): the amend key gains branch. Two branches can sit at
-# the SAME head (HIMMEL-1175) and finding ids are minted in per-producer
+# -- T14: the amend key gains branch. Two branches can sit at
+# the SAME head and finding ids are minted in per-producer
 # stream order, not globally unique, so an amend recorded while judging
 # branch "theirs" must never leak into what this bridge forwards for branch
 # "mine" at the same head/finding_id.
@@ -338,7 +338,7 @@ EOF
 run_bridge --head headt14b --branch mine --notes "$NOTES"
 assert_contains "T14b this branch's own amend still applies (control)" "$(cat "$NOTES")" "(deferred)"
 
-# -- T15 (HIMMEL-2405 back-compat): a legacy amend row with no branch field
+# -- T15 (back-compat): a legacy amend row with no branch field
 # (written before branches were stamped) still applies to any branch.
 new_item t15
 CR_LEDGER="$TMP/ledger-t15.jsonl"

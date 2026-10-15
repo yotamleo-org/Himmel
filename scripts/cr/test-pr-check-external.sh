@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/pr-check-external.sh (HIMMEL-750). Bash 3.2 safe.
+# Smoke test for scripts/cr/pr-check-external.sh. Bash 3.2 safe.
 # Hermetic: builds a throwaway git repo + bare origin under mktemp, and stubs
 # the critic panel via CRITIC_PANEL_CMD (FAKE_OUT/FAKE_ERR/FAKE_RC env). Never
 # touches the real $HOME, the real origin, or the real critic panel.
@@ -30,7 +30,7 @@ PANELEOF
 chmod +x "$PANEL"
 export CRITIC_PANEL_CMD="$PANEL"
 
-# HIMMEL-2704: there is NO CodeRabbit CLI seat any more — the App reviews the
+# there is NO CodeRabbit CLI seat any more — the App reviews the
 # PR after it exists, so pr-check-external.sh never shells out to a coderabbit
 # binary. Nothing below stubs one, and no case here passes merely BECAUSE a
 # binary is absent: the gate-infra cases assert the refusal on its own terms.
@@ -64,7 +64,7 @@ make_repo() {
         git commit -q -am change
         git checkout -q -b glm/empty main
         # glm/gate: a diff that TOUCHES the gate infrastructure (scripts/cr/**),
-        # used by the HIMMEL-1224 gate-infra quorum tests (T12-T14).
+        # used by the gate-infra quorum tests (T12-T14).
         git checkout -q -b glm/gate main
         mkdir -p scripts/cr
         printf 'x\n' > scripts/cr/dummy-gate.sh
@@ -132,7 +132,7 @@ else
 fi
 if [ -z "$(meta_verdict "$sd/meta.json")" ]; then ok "T4 no verdict on empty diff"; else bad "T4: verdict should not be written on empty diff"; fi
 
-# --- T4b: HIMMEL-5110 panel exit 6 = certify refusal, not "all critics failed" -
+# --- T4b: panel exit 6 = certify refusal, not "all critics failed" -
 sd="$tmp/s4b"; new_session "$sd"
 err6="$(cd "$repo" && FAKE_OUT="" FAKE_ERR="$CODEX_OK_ERR" FAKE_RC=6 \
     bash "$SCRIPT" --branch glm/x --session-dir "$sd" --base main 2>&1 >/dev/null)"
@@ -164,7 +164,7 @@ if [ -z "$(meta_verdict "$sd/meta.json")" ]; then ok "T6 no verdict when not cle
 # codex-adv (PR #1330): exit-1 alone left a prior `external_cr_verdict: pass`
 # usable by ship-branch.sh at an unchanged SHA. Seed a same-SHA pass, force a
 # failing review (a Critical>0 panel -> rc=1; the CodeRabbit CLI that used to
-# force it here is gone, HIMMEL-2704), and assert the verdict is revoked.
+# force it here is gone), and assert the verdict is revoked.
 sd="$tmp/s10"; new_session "$sd"
 seed_sha="$(git -C "$repo" rev-parse glm/x)"
 node -e 'const fs=require("fs");const m=JSON.parse(fs.readFileSync(process.argv[1]));m.external_cr_verdict="pass (sha="+process.argv[2]+"; critics=2)";fs.writeFileSync(process.argv[1],JSON.stringify(m,null,2)+"\n")' "$sd/meta.json" "$seed_sha"
@@ -210,9 +210,9 @@ case "$v" in
     *) ok "T11 no trusted pass after revocation failure" ;;
 esac
 
-# --- T12: gate-infra diff -> REFUSED outright (exit 1). HIMMEL-1224 raised the
-# floor for gate-infra diffs to a quorum of two responding cross-model
-# reviewers; the CodeRabbit CLI was the second seat and HIMMEL-2704 retired it,
+# --- T12: gate-infra diff -> REFUSED outright (exit 1). The
+# floor for gate-infra diffs is a quorum of two responding cross-model
+# reviewers; the CodeRabbit CLI was the second seat and is retired,
 # while critics.json's panel is codex-only — so the quorum has no second seat
 # left and this path refuses gate-infra diffs unconditionally. RED CONTROL: the
 # panel is CLEAN and codex RESPONDED here, so the ONLY thing producing exit 1 is
@@ -241,7 +241,7 @@ if [ -z "$(meta_verdict "$sd/meta.json")" ]; then ok "T12 no verdict written on 
 # --- T13: the SAME refusal REVOKES a pre-existing same-SHA pass, so
 # ship-branch.sh cannot ship on stale authorization. Require EXACTLY 1 so a
 # failure for any other reason is caught rather than mistaken for the gate-infra
-# outcome (HIMMEL-1224 rc-capture pattern, kept through HIMMEL-2704). ---
+# outcome (rc-capture pattern). ---
 sd="$tmp/s13"; new_session "$sd"
 seed_sha13="$(git -C "$repo" rev-parse glm/gate)"
 node -e 'const fs=require("fs");const m=JSON.parse(fs.readFileSync(process.argv[1]));m.external_cr_verdict="pass (sha="+process.argv[2]+"; critics=2)";fs.writeFileSync(process.argv[1],JSON.stringify(m,null,2)+"\n")' "$sd/meta.json" "$seed_sha13"
@@ -259,7 +259,7 @@ fi
 if [ -z "$(meta_verdict "$sd/meta.json")" ]; then ok "T13 stale verdict revoked on a refused gate-infra diff"; else bad "T13: stale external_cr_verdict survived the refusal"; fi
 
 # --- T14: NON-gate diff -> the single-codex floor is UNCHANGED (CLEAN, exit 0)
-# and the verdict carries NO coderabbit field (HIMMEL-2704). The paired half of
+# and the verdict carries NO coderabbit field. The paired half of
 # T12's RED control: identical panel inputs, only the branch differs, so T12's
 # exit 1 is attributable to the gate-infra file list and nothing else. ---
 sd="$tmp/s14"; new_session "$sd"

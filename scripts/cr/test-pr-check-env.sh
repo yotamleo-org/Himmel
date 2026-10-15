@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/pr-check-env.sh (HIMMEL-2226).
+# Smoke test for scripts/cr/pr-check-env.sh.
 #
 # Runs the script under test against isolated mktemp fixtures only - never
 # the real repo's .env, never the network. Each fixture is a throwaway copy
@@ -93,7 +93,7 @@ out5c="$(env -u CR_REQUIRE_CROSS_MODEL HIMMEL_REPO="$bare" bash "$run_bare" CR_R
 check "$out5c" "pr-check-env: CR_REQUIRE_CROSS_MODEL_NORMALISED=0" "T5c normalised=0 for truly empty"
 
 # Only policy keys may be requested: a syntactically valid secret name must
-# fail before loading or printing any value (HIMMEL-4910).
+# fail before loading or printing any value.
 printf 'TEST_ANTHROPIC_API_KEY=dummy-test\n' >> "$fixture/.env"
 rc_secret=0
 out_secret="$(env -u TEST_ANTHROPIC_API_KEY HIMMEL_REPO="$fixture" bash "$run" TEST_ANTHROPIC_API_KEY 2>"$tmp/err-secret.txt")" || rc_secret=$?
@@ -111,7 +111,7 @@ rc6b=0
 HIMMEL_REPO="$fixture" bash "$run" '1FOO' >/dev/null 2>"$tmp/err6b.txt" || rc6b=$?
 check "$rc6b" "2" "T6b digit-leading name exit code"
 
-# 7. HIMMEL-3375 - a copy that is not the HIMMEL_REPO anchor's hands off to the
+# 7. A copy that is not the HIMMEL_REPO anchor's hands off to the
 # anchor's copy BEFORE it sources or runs any other file of its own, so the
 # policy it prints is the anchor's, never the branch's. The branch tree here is
 # the real script beside a POISONED lib/load-dotenv.sh and .env (weakened

@@ -9,7 +9,7 @@ function foldWhitespace(value) {
     .trim();
 }
 
-// HIMMEL-2901: case inside code is identity, case in prose is noise. A token
+// case inside code is identity, case in prose is noise. A token
 // keeps its case when it is identifier-shaped — camelCase, snake_case, or a
 // dotted name — and everything inside a backtick span keeps its case verbatim.
 // An ALL-CAPS word outside backticks is indistinguishable from prose emphasis
@@ -17,7 +17,7 @@ function foldWhitespace(value) {
 function isCodeToken(token) {
   // Trim surrounding prose punctuation, the dot included: a sentence-ending
   // `config.LOGLEVEL.` is still a dotted identifier, and leaving the period on
-  // stopped the dotted rule matching it at all (codex-1, HIMMEL-2901 round 1).
+  // stopped the dotted rule matching it at all.
   const core = token.replace(/^[^A-Za-z0-9_$]+/, '').replace(/[^A-Za-z0-9_$]+$/, '');
   if (!core) return false;
   return /[a-z][A-Z]/.test(core) ||
@@ -25,7 +25,7 @@ function isCodeToken(token) {
     /^[A-Za-z0-9_$]+(?:\.[A-Za-z0-9_$]+)+$/.test(core);
 }
 
-// HIMMEL-2906: an identifier embedded in an expression — `config.LOGLEVEL(value)`
+// an identifier embedded in an expression — `config.LOGLEVEL(value)`
 // — fails isCodeToken on the WHOLE token: edge-trimming only strips the two
 // outer edges, so the trailing `)` survives internally and breaks the anchored
 // dotted-name regex. Split on everything outside identifier/dot characters so
@@ -33,7 +33,7 @@ function isCodeToken(token) {
 // bracket or comma is exactly the kind of boundary that should not merge two
 // components' case decisions.
 function foldTokenCase(token) {
-  // codex-1, HIMMEL-2906 round 1: the separator spans (whatever falls
+  // The separator spans (whatever falls
   // outside [A-Za-z0-9_$.]) are prose too — a non-ASCII letter like `É` is
   // itself outside that class, so leaving separators unfolded let case-only
   // Unicode prose (`Échec` vs `échec`) escape the fold. Every piece lowercases
@@ -94,7 +94,7 @@ function findingFingerprint(slug, file, text) {
   const digest = crypto.createHash('sha256')
     .update(`${normalizedSlug}${normalizedAnchor}${normalizedClaim}`, 'utf8')
     .digest('hex');
-  // fp3 (HIMMEL-2906): the claim fold changed again (component-level case
+  // fp3: the claim fold changed again (component-level case
   // classification inside expressions), so a pre-2906 fp2 row must never
   // match a claim hashed under the new rules. The ledger is append-only: old
   // rows keep their fp1/fp2 identity and simply stop inheriting across the

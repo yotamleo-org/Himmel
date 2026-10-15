@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression guard for HIMMEL-3608: the deterministic ship tail
+# Regression guard: the deterministic ship tail
 # (merge-on-green.sh, ready-check.sh, tick.sh, check-ci.sh) must never gain a
 # headless `claude -p`/`--print`/`--bg` call. See docs/internals/ship-tail-model-free.md
 # for the ruling this test encodes.
@@ -69,8 +69,7 @@ if joined2="$(sed -e ':a' -e 'N' -e '$!ba' -e 's/\\\n/ /g' -- "$fixture2")"; the
     # pipefail-ok: capture full grep output (no -q) instead of piping into
     # `grep -q` — under `set -o pipefail`, `grep -q`'s early exit on first
     # match SIGPIPEs the producer, and the pipeline status can then reflect
-    # the producer's SIGPIPE exit rather than grep's own match (HIMMEL-1430
-    # class).
+    # the producer's SIGPIPE exit rather than grep's own match.
     match2="$(printf '%s\n' "$joined2" | grep -E "$PATTERN")"
     if [ -n "$match2" ]; then
         got2="matched"
@@ -110,7 +109,7 @@ for f in "${SHIP_TAIL_FILES[@]}"; do
             violations+=("$f:sed-error")
             continue
         fi
-        # pipefail-ok: same capture-not-`-q` fix as above (HIMMEL-1430 class).
+        # pipefail-ok: same capture-not-`-q` fix as above.
         match="$(printf '%s\n' "$joined" | grep -E "$PATTERN")"
         grep_rc2=$?
         if [ "$grep_rc2" -eq 2 ]; then

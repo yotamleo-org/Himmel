@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # test-pr-check-run.sh -- orchestration-level invariants for /pr-check.
 #
-# ORIGIN AND RETARGET (HIMMEL-1944 -> HIMMEL-2226). This suite began as the S0
+# ORIGIN AND RETARGET. This suite began as the S0
 # acceptance net for a planned `scripts/cr/pr-check-run.sh --phase <name>`
 # runner. It pinned the invariants `.claude/commands/pr-check.md` asserted in
-# PROSE -- lifting the HIMMEL-1219 awk block out of the runbook at runtime and
+# PROSE -- lifting the awk block out of the runbook at runtime and
 # testing that re-derivation -- and it stubbed, behind a `--selftest` seam, the
 # phases that did not exist yet.
 #
-# That plan never landed and is now superseded. HIMMEL-2226 extracted every
-# substantive /pr-check fence into REAL scripts under scripts/cr/ (one per
+# That plan never landed and is now superseded. Every
+# substantive /pr-check fence lives in a REAL script under scripts/cr/ (one per
 # phase, each with its own suite), because `CLAUDE_PROJECT_DIR` is unset in
 # Bash-tool shells and Claude Code's worktree-isolation guard refuses most of
 # the shapes those fences used. `pr-check-run.sh` does not exist and is not
@@ -28,8 +28,8 @@
 #      candidates schema `--phase find` was to define. No `find` phase exists.
 #      Its surviving half -- an unreadable prior-blocking signal must never
 #      read as a fabricated 0 -- was asserted by invariant 4, retired below.
-#   4  the HIMMEL-1219 conservation gate. Its subject was
-#      scripts/cr/coderabbit-gate.sh, which HIMMEL-2704 DELETED: CodeRabbit is
+#   4  the conservation gate. Its subject was
+#      scripts/cr/coderabbit-gate.sh, which was DELETED: CodeRabbit is
 #      the GitHub App only, so there is no local CodeRabbit call left to
 #      conserve or to run. Nine fixture scenarios drove that script's
 #      conserve/run decision; with the script gone they have no subject, and a
@@ -38,12 +38,12 @@
 #      their own suites (test-write-verdicts.sh, test-orphan-check.sh). Deleted
 #      rather than stubbed: a case that passes because its subject is absent
 #      certifies nothing.
-#   6  the Claude-only review floor (HIMMEL-1224) at the ORCHESTRATION level.
+#   6  the Claude-only review floor at the ORCHESTRATION level.
 #      It has no executable home: the enforcing half is clear-cr-marker.sh
 #      gate 3 (covered by scripts/cr/test-clear-cr-marker.sh), and the
 #      orchestration half is the runbook's step-4.5 instruction to record
 #      `avail --model claude --status ok` -- an instruction to the agent, not
-#      code any script runs. HIMMEL-2226 extracted fences, not agent judgment,
+#      code any script runs. Only fences were extracted, not agent judgment,
 #      so nothing new became testable. A stub that skips forever asserts
 #      nothing; this comment is the honest replacement.
 #
@@ -58,7 +58,7 @@
 #
 # Each case runs in its own re-exec'd child (`--run-case <name>`) under
 # `timeout`, so a hang fails loudly instead of burning wall clock unbounded
-# (HIMMEL-1953: scripts/test-check-ci.sh has no such bound and that has cost
+# (scripts/test-check-ci.sh has no such bound and that has cost
 # real time). Child exit codes: 0 pass, anything else (incl. a
 # `timeout`-imposed 124/137) fail.
 set -uo pipefail
@@ -77,7 +77,7 @@ CLEAR="$SCRIPT_DIR/clear-cr-marker.sh"
 . "$SCRIPT_DIR/../lib/fixture-tempdir.sh"
 
 # Every fixture dir is recorded in FIXTURE_LIST (a file, so a record made inside a
-# subshell survives) and removed by the one EXIT trap (HIMMEL-4434).
+# subshell survives) and removed by the one EXIT trap.
 FIXTURE_LIST=$(mktemp "${TMPDIR:-/tmp}/himmel-fixture-list.XXXXXX") || exit 1
 _d=''
 trap 'while IFS= read -r _d; do [ -n "$_d" ] && rm -rf "$_d"; done <"$FIXTURE_LIST"; rm -f "$FIXTURE_LIST"' EXIT
@@ -123,13 +123,13 @@ make_repo() {
     [ -n "$sha" ] || { rm -rf "$tmp"; return 1; }
     mkdir -p "$tmp/scripts/cr" "$tmp/scripts/lib"
     cp "$CLEAR" "$tmp/scripts/cr/clear-cr-marker.sh" || { rm -rf "$tmp"; return 1; }
-    # HIMMEL-3914: every chokepoint fails closed without its seam-guard lib.
+    # Every chokepoint fails closed without its seam-guard lib.
     cp "$(dirname "$CLEAR")/../lib/chokepoint-seam-guard.sh" "$tmp/scripts/lib/chokepoint-seam-guard.sh" || { rm -rf "$tmp"; return 1; }
     cp "$(dirname "$CLEAR")/../chokepoints.json" "$tmp/scripts/chokepoints.json" || { rm -rf "$tmp"; return 1; }
     cp "$(dirname "$CLEAR")/anchor-handoff.sh" "$tmp/scripts/cr/anchor-handoff.sh" || { rm -rf "$tmp"; return 1; }
 }
 
-# write_marker <tmp> <sha> [lane] [endpoint] [base] -- the 7-field HIMMEL-1540
+# write_marker <tmp> <sha> [lane] [endpoint] [base] -- the 7-field
 # bound format.
 write_marker() {
     local tmp="$1" sha="$2" lane="${3:-full}" endpoint="${4:-.git/test-origin.git}" base="${5:-}"
@@ -214,7 +214,7 @@ case_inv3() {
 
 # ---------------------------------------------------------------------------
 # Invariant 5 -- marker-clear authority stays with clear-cr-marker.sh
-# (structural, HIMMEL-1064). A bare removal of the marker is byte-identical to
+# (structural). A bare removal of the marker is byte-identical to
 # self-declaring the review clean, which is why the chokepoint exists.
 #
 # Scope, stated honestly because a structural scan that overclaims is worse
@@ -249,7 +249,7 @@ case_inv5() {
 }
 
 # ---------------------------------------------------------------------------
-# Invariant 7 -- ledger single-writer (structural, HIMMEL-1944 -> HIMMEL-2226).
+# Invariant 7 -- ledger single-writer (structural).
 # EXACTLY ONE file in the repo appends to the CR critic ledger, and it is
 # scripts/cr/ledger-append.sh. Every other script that names the ledger reads
 # it, or shells out to ledger-append.sh; a second appender would fork the
@@ -339,12 +339,12 @@ fi
 
 # ---------------------------------------------------------------------------
 # Parent mode: re-exec each case under a per-case timeout so a hang FAILS
-# loudly instead of running unbounded (HIMMEL-1953). Overridable, validated.
+# loudly instead of running unbounded. Overridable, validated.
 # ---------------------------------------------------------------------------
 CASE_TIMEOUT="${CASE_TIMEOUT_SECS:-120}"
 # Zero is rejected alongside the non-numeric shapes on purpose: GNU `timeout 0`
 # means "no timeout", so accepting it would silently remove the per-case bound
-# this suite was built to have from the start (HIMMEL-1953). The zero test is
+# this suite was built to have from the start. The zero test is
 # arithmetic, not a glob, so `0`, `00` and `000` are all caught.
 if case "$CASE_TIMEOUT" in ''|*[!0-9]*) true ;; *) [ "$CASE_TIMEOUT" -eq 0 ] ;; esac; then
     echo "test-pr-check-run: CASE_TIMEOUT_SECS must be a positive integer (got '${CASE_TIMEOUT_SECS:-}') -- using default 120" >&2
@@ -354,7 +354,7 @@ fi
 # The scripts every case drives must be present. Without this a rename turns
 # the whole suite into a quiet green -- exactly the vacuous pass the retired
 # stub cases used to hide behind.
-# One script under test since HIMMEL-2704 removed invariant 4 (its subject,
+# Only one script is under test now that invariant 4 is gone (its subject,
 # scripts/cr/coderabbit-gate.sh, is deleted), so this is a plain test, not a
 # one-element loop (SC2066).
 if [ ! -f "$CLEAR" ]; then

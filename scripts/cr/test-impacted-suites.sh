@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # fixture suite bodies are single-quoted on purpose: their $vars must stay literal
-# Hermetic test for scripts/cr/impacted-suites.sh (HIMMEL-2821). Builds a
+# Hermetic test for scripts/cr/impacted-suites.sh. Builds a
 # throwaway repo shaped like PR #2261: a changed script (uninstall-plugins.sh)
 # whose end-to-end suite (test-uninstall.sh) lives one directory UP and that
 # neither a directory sweep nor "the owning suites" prose would have reached.
@@ -12,7 +12,7 @@
 set -uo pipefail
 
 # grepq <text> [grep-args...] — `grep -q` with no pipeline (pipefail SIGPIPE
-# trap, HIMMEL-1430).
+# trap).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -31,7 +31,7 @@ if [ ! -f "$IS" ]; then
 fi
 
 # SHD is first assigned in row 36b but named in the EXIT traps of rows 36/36a; declared
-# here so an early exit cannot abort that cleanup on an unbound variable (HIMMEL-5189).
+# here so an early exit cannot abort that cleanup on an unbound variable.
 SHD=""
 FX="$(fixture_mktemp_dir)" || exit 1
 trap 'rm -rf "$FX"' EXIT
@@ -205,7 +205,7 @@ change package.json
 out="$(run_is "$range")"
 if [ "$out" = "scripts/test-pkg.sh" ]; then pass "root-level package.json -> suite naming package.json"; else fail "root-level generic file reached nothing: $out"; fi
 
-# --- 11a. an extensionless reference to a changed script (HIMMEL-5160) -------
+# --- 11a. an extensionless reference to a changed script -------
 # A suite that names a hook by its stem (`guard_rc block-foo-guard`) exercises it
 # as surely as one naming `block-foo-guard.sh`. Only a stem holding `-` or `_`
 # counts (a one-word stem is a common word), and a longer name or a dotted
@@ -221,7 +221,7 @@ if grepq "$out" '^scripts/test-stem-underscore\.sh$'; then pass "underscore stem
 change scripts/hooks/gate.sh
 out="$(run_is "$range")"
 if grepq "$out" '^scripts/test-stem-gate-full\.sh$' && ! grepq "$out" 'test-stem-word\.sh'; then pass "one-word stem (gate) is not matched extensionless"; else fail "one-word stem over-listed or control missing: $out"; fi
-# HIMMEL-5167 (judge j2322a items 1, 2): the leading boundary and the escaping of
+# The leading boundary and the escaping of
 # the stem needle are each pinned by a row that goes RED when that piece is removed.
 change scripts/hooks/block-foo-guard.sh
 out="$(run_is "$range")"
@@ -230,13 +230,13 @@ change scripts/hooks/a+b-c.sh
 out="$(run_is "$range")"
 if grepq "$out" '^scripts/test-stem-plus\.sh$'; then pass "stem with a regex metacharacter (a+b-c) matches its own literal"; else fail "escaped stem a+b-c did not select its own suite: $out"; fi
 if ! grepq "$out" 'test-stem-plus-wild\.sh'; then pass "stem a+b-c is a literal, not the pattern a+b-c (aab-c unlisted)"; else fail "stem metacharacter acted as a pattern: $out"; fi
-# HIMMEL-5174 (judge j2330a item 1): the closure sourcer is named by its own stem
+# The closure sourcer is named by its own stem
 # in a suite (`guard_rc block-clo-hook`), never with .sh, so it needs its stem needle.
 change scripts/lib/clo-lib.sh
 out="$(run_is "$range")"
 if grepq "$out" '^scripts/test-clo-stem\.sh$'; then pass "a changed lib -> its sourcing hook named by stem only in a suite"; else fail "closure sourcer's stem reference not listed: $out"; fi
 
-# --- 11b. an extensionless basename takes the path rule (HIMMEL-4606) ---------
+# --- 11b. an extensionless basename takes the path rule ---------
 # `diff` is a common word: a suite that merely says `diff -u` must not be listed,
 # one that names guard-corpus/diff (or the full path) must.
 change scripts/eval/guard-corpus/diff
@@ -253,7 +253,7 @@ out="$(run_is "$range")"
 # A suite-local variable ($HERE/diff) still ends in /diff, so it stays listed.
 if grepq "$out" '^scripts/test-diff-var\.sh$'; then pass "extensionless diff: a variable-built \$HERE/diff reference stays listed"; else fail "\$HERE/diff suite under-listed: $out"; fi
 
-# --- 11c. a bare source / . / shellcheck source= of a single-word file (HIMMEL-4621) ---
+# --- 11c. a bare source / . / shellcheck source= of a single-word file ---
 # After a `cd`, the operand is the bare name with no `/` before it. Only a line
 # that sources it counts: a plain `diff a b` command and prose stay unlisted.
 if grepq "$out" '^scripts/test-diff-source\.sh$'; then pass "bare 'source diff' after a cd is listed"; else fail "source diff suite under-listed: $out"; fi
@@ -263,7 +263,7 @@ if grepq "$out" '^scripts/test-diff-dashdash\.sh$'; then pass "'source -- diff' 
 if grepq "$out" '^scripts/test-diff-helper\.sh$'; then pass "a suite reaching diff through a sourcing helper is listed"; else fail "source-closure bare-name suite under-listed: $out"; fi
 if ! grepq "$out" 'test-diff-plain\.sh' && ! grepq "$out" 'test-diff-prose\.sh' && ! grepq "$out" 'test-diff-word\.sh'; then pass "a plain 'diff a b' command and comment prose stay unlisted"; else fail "plain diff over-listed: $out"; fi
 
-# --- 11d. a changed path git would C-quote (HIMMEL-4978) ---------------------
+# --- 11d. a changed path git would C-quote ---------------------
 # `git diff --name-only` quotes a name holding a double quote, backslash or tab,
 # so no needle matched and the selector listed nothing and exited 0.
 change 'scripts/q/we"ird.sh'
@@ -294,7 +294,7 @@ change scripts/uniq-widget.sh
 out="$(run_is "$range" --shell)"
 if [ "$out" = "scripts/test-café.sh" ]; then pass "non-ASCII suite path is emitted verbatim"; else fail "non-ASCII suite path mangled: $out"; fi
 
-# --- 13b. a SUITE path git grep -l would C-quote (HIMMEL-4997) ----------------
+# --- 13b. a SUITE path git grep -l would C-quote ----------------
 # A suite file name holding a double quote, backslash or tab came back quoted
 # ("scripts/test-q\"x.sh") and the runner filtered it out as "not a suite".
 mkf scripts/uniq-quoter.sh
@@ -320,7 +320,7 @@ if [ "$rc" -eq 2 ] && [ -z "$out" ]; then pass "a failing sort -> rc2, empty std
 err="$( cd "$FX" && PATH="$SHIM2:$PATH" bash "$IS" "$range" --shell 2>&1 >/dev/null )"
 if grepq "$err" 'sorting the impacted list failed'; then pass "the failed step is named on stderr"; else fail "sort failure not named: $err"; fi
 
-# --- 15. a suite path containing spaces can receive a verdict (HIMMEL-3243) --
+# --- 15. a suite path containing spaces can receive a verdict --
 # The verdict path is everything between "SUITE " and the FIRST " = ", so a
 # spaced path is accepted; a " = " inside the reason must not move the split.
 mkf scripts/uniq-gadget.sh
@@ -340,7 +340,7 @@ if [ "$rc" -eq 1 ]; then pass "a spaced suite without its own verdict stays miss
 ( cd "$FX" && printf '%s\n%s\n' "$SP1" 'SUITE scripts/test-a=b.sh = SKIP' | bash "$IS" --check "$range" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 1 ]; then pass "a reasonless SKIP on a spaced-path row is still no verdict (rc1)"; else fail "reasonless SKIP accepted on spaced path: rc=$rc"; fi
 
-# --- 16. --runner-check: direct vitest steps + runner drift (HIMMEL-3445) ---
+# --- 16. --runner-check: direct vitest steps + runner drift ---
 # Fixture workflow files in a scratch dir under $FX, never the real
 # .github/workflows (case (c) below reads the real one as a control).
 mkdir -p "$FX/.github/workflows"
@@ -395,7 +395,7 @@ YAML
 out="$(run_rc)"; rc=$?
 if [ "$rc" -eq 1 ] && grepq "$out" 'ambiguous'; then pass "a line naming two runner families fails closed as ambiguous"; else fail "ambiguous line: rc=$rc out=$out"; fi
 
-# --- 16b. HIMMEL-4501: CI guards per-directory test presence and globs the
+# --- 16b. CI guards per-directory test presence and globs the
 # observability node tests. The guard prefixes are extracted from the REAL
 # ci.yml and executed in a scratch tree, so the row tracks the live step text.
 CI_YML="$REPO_ROOT/.github/workflows/ci.yml"
@@ -440,7 +440,7 @@ out="$(bash "$IS" --runner scripts/observability/new-thing.test.mjs 2>&1)"
 if grepq "$out" 'node --test'; then pass "--runner maps a new observability .test.mjs to node --test"; else fail "--runner observability mjs: $out"; fi
 
 # --- 17. --run: a fresh worktree's missing npm deps install before the
-# suite runs (HIMMEL-3553: worktrees are created with --no-install, so a leg
+# suite runs (worktrees are created with --no-install, so a leg
 # running an impacted suite raw sees a false SKIP/FAIL it mislabels
 # "pre-existing" — N441/N440/N446 in one shift). -----------------------------
 mkdir -p "$FX/pkg-npm"
@@ -548,7 +548,7 @@ if [ -d "$FX/pkg-bun/node_modules/picocolors" ]; then pass "--run left node_modu
 if grepq "$out" 'bun install --frozen-lockfile --ignore-scripts'; then pass "--run picks the frozen, script-ignoring bun install command"; else fail "--run bun install command not named: $out"; fi
 
 # --- 19. --run: a missing lockfile is a hard FAIL naming the package dir and
-# the suite never runs — never a SKIP, never a bare FAIL (HIMMEL-3553). ------
+# the suite never runs — never a SKIP, never a bare FAIL. ------
 mkdir -p "$FX/pkg-nolock"
 cat > "$FX/pkg-nolock/package.json" <<'JSON'
 { "name": "fixture-nolock", "version": "1.0.0", "dependencies": { "left-pad": "1.0.0" } }
@@ -574,7 +574,7 @@ git -C "$FX" commit -q -m "chore: add no-deps suite, drop root package.json"
 out="$( cd "$FX" && bash "$IS" --run scripts/test-no-deps.sh 2>&1 )"; rc=$?
 if [ "$rc" -eq 0 ] && grepq "$out" 'unaffected'; then pass "--run: a suite with no package.json ancestor runs unchanged"; else fail "--run no-deps suite: rc=$rc out=$out"; fi
 
-# --- 21. HIMMEL-3798 round 3: --check --from-file reads verdict lines from a
+# --- 21. --check --from-file reads verdict lines from a
 # path instead of stdin. -------------------------------------------------
 change scripts/machine-setup/uninstall-plugins.sh
 FF="$FX/from-file-21.txt"
@@ -603,7 +603,7 @@ else
     echo "SKIP 24: platform cannot create symlinks without elevated privilege"
 fi
 
-# --- 25. HIMMEL-3798 round 4: --from-file naming a genuinely empty regular
+# --- 25. --from-file naming a genuinely empty regular
 # file is ALLOWED (same "no candidates" semantics as empty stdin, test 9) —
 # but --check's own n_impacted/n_missing reconciliation, computed independently
 # from the diff rather than from this file, still catches it as a missing
@@ -621,7 +621,7 @@ change docs/bar/other-26.md
 out="$( cd "$FX" && bash "$IS" --check "$range" --from-file "$FX/empty-25.txt" 2>&1 )"; rc=$?
 if [ "$rc" -eq 0 ] && grepq "$out" '0 impacted'; then pass "--from-file empty path with an empty impacted set -> rc0 '0 impacted'"; else fail "--from-file empty path against no impacted suites: rc=$rc out=$out"; fi
 
-# --- 27. HIMMEL-3896: source closure. A suite that names only mid.sh must be
+# --- 27. Source closure. A suite that names only mid.sh must be
 # listed when far.sh (two source hops behind mid.sh) changes. -----------------
 mkf scripts/lib/far.sh
 mkf scripts/lib/deep.sh '. "$here/far.sh"'
@@ -668,7 +668,7 @@ change scripts/lib/cyc-b.sh
 if command -v timeout >/dev/null 2>&1; then out="$( cd "$FX" && timeout 20 bash "$IS" "$range" 2>/dev/null )"; rc=$?; else out="$(run_is "$range")"; rc=0; fi
 if [ "$rc" -eq 0 ] && grepq "$out" '^scripts/test-cyc\.sh$'; then pass "source cycle terminates and still lists test-cyc.sh"; else fail "cycle rc=$rc out=$out"; fi
 
-# --- 28. HIMMEL-3868: a file that sets the fence-lifting variable pulls in the
+# --- 28. A file that sets the fence-lifting variable pulls in the
 # path-scanning callers suite, which never names it. -------------------------
 change scripts/guard-setter.sh
 out="$(run_is "$range")"
@@ -677,7 +677,7 @@ change scripts/guard-plain.sh
 out="$(run_is "$range")"
 if ! grepq "$out" 'real-home-callers'; then pass "a file without the variable does not pull the callers scan"; else fail "callers scan over-selected: $out"; fi
 
-# --- 28b. HIMMEL-4789: a file spelling a ~/.himmel ledger path pulls in the
+# --- 28b. A file spelling a ~/.himmel ledger path pulls in the
 # ledger registry lint, which scans every script and names none of them. ------
 lg_dir=.himmel   # split so this file never spells a ledger path itself
 mkf scripts/observability/test-ledgers-registry.sh 'git ls-files scripts'
@@ -709,7 +709,7 @@ if [ "$rc" -eq 0 ] && [ -z "$out" ]; then pass "every red suite was selected -> 
 ( cd "$FX" && bash "$IS" --selector-miss "$range" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 2 ]; then pass "--selector-miss without --red-file -> rc2"; else fail "selector-miss usage rc=$rc"; fi
 
-# --- 30. HIMMEL-3963: the word "source" in a full-line COMMENT is prose, not a
+# --- 30. The word "source" in a full-line COMMENT is prose, not a
 # source edge. A comment naming the changed helper must not join the closure
 # (bank-preflight.sh:1084 "# Same source and spelling as tick.sh's ..." pulled
 # ~136 suites in for a tracker.py change); a real source line, however it is
@@ -738,7 +738,7 @@ if grepq "$out" '^scripts/test-cm-chain\.sh$'; then pass "a chained '; . x' sour
 if grepq "$out" '^scripts/test-cm-var\.sh$'; then pass "an indented variable-sourcing file is still followed"; else fail "indented var-source missed: $out"; fi
 if grepq "$out" '^scripts/test-cm-sub\.sh$'; then pass "a subshell '(source x)' is still followed"; else fail "subshell source missed: $out"; fi
 
-# --- 31. HIMMEL-4256: the PR-1734 shape. A NEW file under a tree that a suite
+# --- 31. The PR-1734 shape. A NEW file under a tree that a suite
 # walks (lint-fail-open scans scripts/lanes/) lists that suite, though no suite
 # names the file; a new file outside every declared tree does not. -----------
 mkf scripts/guardrails/test-lint-fail-open.sh 'bash "$d/lint-fail-open.sh"'
@@ -752,7 +752,7 @@ change docs/scan-31/new.sh
 out="$(run_is "$range")"
 if ! grepq "$out" 'test-lint-fail-open'; then pass "a new file outside every scan root does not list the scanning suite"; else fail "scan root over-selected: $out"; fi
 
-# --- 31b. HIMMEL-5039: the wired-hook resolution sweep reads every hook script,
+# --- 31b. The wired-hook resolution sweep reads every hook script,
 # its libs and the two wiring files without naming any of them, so a change to
 # any of those lists it. ------------------------------------------------------
 mkf scripts/hooks/test-wired-hooks-integrity-resolution.sh 'echo sweep'
@@ -766,7 +766,7 @@ for f in scripts/hooks/some-guard.sh scripts/lib/some-lib.sh scripts/guardrails/
   if grepq "$out" '^scripts/hooks/test-wired-hooks-integrity-resolution\.sh$'; then pass "$f -> test-wired-hooks-integrity-resolution.sh (scan root)"; else fail "wired-hook sweep not selected for $f: $out"; fi
 done
 
-# --- 31c. HIMMEL-5314: check-unwired-hooks walks scripts/hooks/ and reads the
+# --- 31c. check-unwired-hooks walks scripts/hooks/ and reads the
 # wiring files without naming any hook, so a hook file ADDED (or renamed) there,
 # or a wiring file edited, lists test-unwired-hooks.sh (PR 2401 merged an unwired
 # hook green; main went red on A1). RED on main: no row, suite never listed. ---
@@ -800,7 +800,7 @@ change docs/setup/unrelated.md
 out="$(run_is "$range")"
 if ! grepq "$out" "$UWH"; then pass "a file outside hooks and wiring does not list test-unwired-hooks.sh"; else fail "unwired-hooks over-selected: $out"; fi
 
-# --- 32. HIMMEL-4323: npm-licenses row (RED control) and the veto rows. -----
+# --- 32. npm-licenses row (RED control) and the veto rows. -----
 NPM=scripts/hooks/test-check-npm-licenses\\.sh
 PCR=scripts/cr/test-pr-check-run\\.sh
 LSP=scripts/lanes/test-launch-site-profiles\\.sh
@@ -834,7 +834,7 @@ out="$(run_is "$range")"
 if ! grepq "$out" "^${LSP}\$"; then pass "a dist/ file does not select launch-site-profiles"; else fail "launch-site veto (dist) missed: $out"; fi
 if grepq "$out" "^${PCR}\$"; then pass "a dist/ file still selects pr-check-run"; else fail "pr-check-run lost dist/ file: $out"; fi
 
-# --- 33. HIMMEL-4488: a changed .claude/commands/*.html selects the CR
+# --- 33. A changed .claude/commands/*.html selects the CR
 # terminology suite (RED control: the .md row alone missed it). ----------------
 TERM=scripts/ci/test-check-cr-terminology\\.sh
 mkf scripts/ci/test-check-cr-terminology.sh 'echo term'
@@ -845,7 +845,7 @@ change .claude/commands/x.html
 out="$(run_is "$range")"
 if grepq "$out" "^${TERM}\$"; then pass "a .claude/commands/x.html -> test-check-cr-terminology.sh"; else fail "commands html row missed: $out"; fi
 
-# --- 34. HIMMEL-4453: a change to the CR guarded closure selects
+# --- 34. A change to the CR guarded closure selects
 # test-cr-guarded-closure.sh (#1851: leg-jira-status.sh, reached from the
 # guarded scripts/lanes/leg-pr-open.sh, was added without selecting it). --------
 GC=scripts/cr/test-cr-guarded-closure\\.sh
@@ -876,7 +876,7 @@ change scripts/lanes/unrelated.sh
 out="$(run_is "$range")"
 if ! grepq "$out" "^${GC}\$"; then pass "an unreferenced scripts/lanes file does not select the closure suite"; else fail "closure row over-selected scripts/lanes: $out"; fi
 
-# --- 35. HIMMEL-4533/4534/4535: closure arms. -------------------------------
+# --- 35. Closure arms. -------------------------------
 # 4534: arm 1 alone. brand-new.sh sits under the guarded scripts/lib dir, no
 # guarded file names it (arm 2 cannot fire) and no scan_roots row maps
 # scripts/lib/* to the closure suite (scripts/cr/* does, so it cannot be used).
@@ -904,7 +904,7 @@ change scripts/lanes/unrelated.sh
 out="$(run_is "$range")"
 if grepq "$out" "^${GC}\$"; then pass "a head with no pr-check-context.sh still selects the closure suite"; else fail "closure suite skipped on an unreadable guarded set: $out"; fi
 
-# --- 36. HIMMEL-5167: a temp write that fails is an error, never a short list ---
+# --- 36. A temp write that fails is an error, never a short list ---
 # A full /tmp (2026-10-10, PR 2301: 56 suites against 60) made a bash here-string
 # fail with "cannot create temp file for here-document"; its rc was read as "no
 # suites" and the selector exited 0 with a partial list. RLIMIT_FSIZE (ulimit -f,
@@ -951,7 +951,7 @@ else
     if grepq "$err" 'cannot trust the impacted list'; then pass "the failed temp write is named on stderr"; else fail "failing temp write not named: $err"; fi
 fi
 
-# --- 36a. HIMMEL-5174 (judge j2330a item 3): every checked create fails closed ---
+# --- 36a. every checked create fails closed ---
 # Row 36 pins only the first temp write. Here a mktemp shim makes the work dir
 # with a DIRECTORY already sitting at one scratch file's name, so that file's
 # create cannot open: each name below must end the run at rc 2 with no list. A
@@ -1000,7 +1000,7 @@ out="$( cd "$FX" && PRECREATE_DIR=impacted PATH="$SHIM3:$PATH" bash "$IS" "$rang
 err="$(cat "$SHIM3/err")"
 if [ "$rc" -eq 2 ] && [ -z "$out" ] && grepq "$err" -F 'impacted-suites: sorting the impacted list failed'; then pass "impacted-list file cannot open -> rc 2, no list, named step"; else fail "impacted-list file: rc=$rc out=$out err=$err"; fi
 
-# --- 36b. HIMMEL-5178: final stdout write must fail closed ------------------
+# --- 36b. Final stdout write must fail closed ------------------
 # /dev/full rejects writes, but can be opened: the failure must reach the final
 # cat, not the shell redirect. Dropping cat's || io_fail returns rc 0 instead.
 if [ -c /dev/full ]; then
@@ -1011,7 +1011,7 @@ else
     echo "SKIP 36b: /dev/full is unavailable on this platform"
 fi
 
-# --- HIMMEL-4781: no range argument defaults to merge-base(default)..HEAD ----
+# --- no range argument defaults to merge-base(default)..HEAD ----
 # The default branch is resolved by scripts/lib/cr-default-base.sh (origin/HEAD,
 # else origin/main).
 run_is_err() { ( cd "$FX" && { bash "$IS" "$@" >/dev/null; } 2>&1 ); }
@@ -1054,7 +1054,7 @@ if grepq "$err" -F 'pass an explicit range' && ! grepq "$err" -F 'unshallow'; th
 # (e) the same in a shallow clone: --unshallow is the remedy.
 SHD="$(fixture_mktemp_dir)" || exit 1
 trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3"' EXIT
-# HIMMEL-5178: this replacement must retain the earlier fixture cleanup.
+# This replacement must retain the earlier fixture cleanup.
 # Source-level assertion; CI also runs the actual EXIT trap.
 exit_trap="$(trap -p EXIT)"
 if grepq "$exit_trap" -F '"$BIG"' && grepq "$exit_trap" -F '"$SHIM3"'; then pass "active EXIT trap retains BIG and SHIM3 cleanup"; else fail "active EXIT trap drops earlier fixtures: $exit_trap"; fi
@@ -1066,7 +1066,7 @@ err="$( ( cd "$SH" && { bash "$IS" >/dev/null; } 2>&1 ) )"
 if grepq "$err" -F 'git fetch --unshallow origin'; then pass "shallow clone: error names git fetch --unshallow origin"; else fail "shallow clone: no unshallow command in: $err"; fi
 git -C "$FX" update-ref -d refs/remotes/origin/main
 
-# --- 37. HIMMEL-5363: a large diff must not run the full ERE over every file --
+# --- 37. A large diff must not run the full ERE over every file --
 # `git grep -E -f` with ~1k patterns over ~1.7k .sh files was 3184 CPU-seconds on
 # PR 2430's 321-file diff. The ERE may now run only over the pre-narrowed tree
 # (--no-index); this shim logs every git grep so a full-tree ERE pass is a FAIL.
@@ -1083,7 +1083,7 @@ ctl="$(run_is "$range")"
 out="$( cd "$FX" && PATH="$SHIM4:$PATH" bash "$IS" "$range" 2>/dev/null )"
 if [ "$out" = "$ctl" ] && grepq "$out" '^scripts/test-clo-stem\.sh$'; then pass "git shim: same list, closure suite listed (37 control)"; else fail "37 control: $out"; fi
 # The control above compares the new selector with itself; this one compares it
-# with the selector as it was before HIMMEL-5363 (a full `git grep -E -f` per
+# with the selector as it was before the batching change (a full `git grep -E -f` per
 # round), read from the immutable base commit when this clone holds it.
 OLD_IS_SHA=dd22dd9f51730a1cac08ab7593f0e639160829a1
 mkdir -p "$SHIM4/oldcr"
@@ -1105,7 +1105,7 @@ full_pass="$(grep -F -e ' -E ' "$SHIM4/calls" | grep -F -e ' -f ' | grep -v -F -
 if [ -s "$SHIM4/calls" ] && [ -z "$full_pass" ]; then pass "no full-tree git grep -E -f: every pattern-file pass is --no-index over the narrowed tree"; else fail "full-tree ERE -f pass: $(cat "$SHIM4/calls")"; fi
 
 # --- 37a. a PR-2430-shaped diff (300+ changed files, many suites) stays in budget
-# The budget is the loaded figure x2 (HIMMEL-5363 PR body carries the numbers).
+# The budget is the loaded figure x2.
 LARGE_N=320
 for i in $(seq 1 "$LARGE_N"); do mkf "vendor/big/src/f$i.js" "// v$i"; done
 for i in $(seq 1 120); do mkf "scripts/test-bulk-$i.sh" "bash \"\$d/lib/clo-lib.sh\"; echo f$i.js"; done

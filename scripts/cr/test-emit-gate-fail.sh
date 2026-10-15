@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/emit-gate-fail.sh (HIMMEL-654 WS7, spec D6).
+# Smoke test for scripts/cr/emit-gate-fail.sh (WS7, spec D6).
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$DIR/emit-gate-fail.sh"

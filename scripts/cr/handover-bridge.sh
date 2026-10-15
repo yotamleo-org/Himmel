@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/handover-bridge.sh -- HIMMEL-2321: reads the CR ledger for one
+# scripts/cr/handover-bridge.sh -- reads the CR ledger for one
 # --head and drives BOTH handover bridges (scripts/handover/append-cr-findings.sh
 # for reviewer-notes.md, scripts/handover/append-cr-bugs.sh for bugs.md)
 # without ever putting reviewer-authored text (a finding title, a symptom)
@@ -17,8 +17,8 @@
 #       [--notes <path>] [--bugs <path>] [--date <YYYY-MM-DD>] [--pr <n>]
 #
 # --head/--branch are REQUIRED and are never re-derived from git here (the
-# caller pins the SHA the ledger review actually certifies, not live HEAD --
-# HIMMEL-1175). At least one of --notes/--bugs is required; each half runs
+# caller pins the SHA the ledger review actually certifies, not live HEAD).
+# At least one of --notes/--bugs is required; each half runs
 # independently of the other (only --notes given -> only reviewer-notes.md is
 # touched, and vice versa).
 #
@@ -64,7 +64,7 @@ node -e '
     try { lines=fs.readFileSync(e.LEDGER,"utf8").split("\n").filter(Boolean); }
     catch(err) { process.stderr.write("handover-bridge: ledger unreadable at "+e.LEDGER+" ("+err.message+") - treating as empty (best effort)\n"); }
     // A row we cannot parse is a row we cannot ACCOUNT FOR, and that is not
-    // the same as a row that is not there (CR round 1, codex-1).
+    // the same as a row that is not there.
     // append-cr-bugs.sh resolves an open bug whose finding-id is absent this
     // run, gated on that critic having recorded ok - so a corrupted FINDING
     // line silently dropped here, while the same critic own (still valid)
@@ -76,10 +76,10 @@ node -e '
     if (malformed) process.stderr.write("handover-bridge: "+malformed+" unparseable ledger row(s) skipped - finding set may be incomplete\n");
 
     // Same amendsByKey / amendSetFor shape as ledger-append.sh and
-    // clear-cr-marker.sh (HIMMEL-2405): collect amends FIRST, keyed by
+    // clear-cr-marker.sh: collect amends FIRST, keyed by
     // (branch, target_head, finding_id, artifact, perspective), later amends
     // shallow-merged over earlier ones for the same key. Two branches can sit
-    // at the same head (HIMMEL-1175) and finding ids are minted in
+    // at the same head and finding ids are minted in
     // per-producer stream order, not globally unique, so an amend recorded
     // for one branch must never leak into another branchs handover item. A
     // legacy row with no branch field (written before branches were stamped)
@@ -116,9 +116,7 @@ node -e '
       if (o.kind!=="finding") continue;
       const amendSet=amendSetFor(o.branch||"",o.head,o.finding_id,o.artifact||"diff",o.perspective||"off");
       const eff = amendSet ? Object.assign({}, o, amendSet) : o;
-      // Select on (head, branch), never head alone (CR round 1, codex-2).
-      // --branch was required but unused, which is exactly the hole
-      // HIMMEL-1175 names on the other side: two branches can sit at the SAME
+      // Select on (head, branch), never head alone: two branches can sit at the SAME
       // commit, so a SHA alone does not identify whose review this is, and
       // rows from the other branch would be copied into this handover item.
       // A row predating branch stamping has no branch field; accept it rather
@@ -147,10 +145,10 @@ node -e '
     // Deliberately NOT branch-scoped, unlike findings above: the gate
     // (clear-cr-marker.sh) keys availByModel on (head, model) alone -
     // availability is a property of the critic+commit pair, not of which
-    // review arm probed it (HIMMEL-1613/1640). Filtering by branch here would
+    // review arm probed it. Filtering by branch here would
     // make this bridge see FEWER avail rows than the gate does, so the
     // handover trail could disagree with the gate about what covered a head
-    // (HIMMEL-2405) - do not "restore symmetry" with the findings loop.
+    // - do not "restore symmetry" with the findings loop.
     const availByModel=new Map();
     for (const o of rows) {
       if (o.kind!=="avail" || o.head!==e.TARGET_HEAD) continue;
@@ -174,13 +172,12 @@ node -e '
           "--title", clean(f.text || ""),
           "--verdict", (f.verdict==null ? "" : f.verdict)
         );
-        // Count the WRITE, not the attempt (CR round 1, codex-3). This summary
+        // Count the WRITE, not the attempt. This summary
         // is relayed verbatim into the /pr-check report, so a failed append
         // counted as a success is the report claiming a finding reached
         // reviewer-notes when it did not - the same false-evidence class the
         // gate exists to prevent. A dedupe (exit 9: row already present at
-        // this head) is not a write either - counted apart, never as FAILED
-        // (HIMMEL-2430).
+        // this head) is not a write either - counted apart, never as FAILED.
         try {
           cp.execFileSync("bash",[e.FINDINGS_BRIDGE,...args],{stdio:["ignore","ignore","inherit"]});
           notesN++;
@@ -216,7 +213,7 @@ node -e '
         // bridge is still called, so it can resolve vanished tracked bugs
         // off the avail rows.
         fs.writeFileSync(findingsPath, blocking.map(f=>[f.finding_id||"",f.severity||"",clean(f.text||"")].join(TAB)).join("\n")+(blocking.length?"\n":""));
-        // FAIL SAFE on an incomplete finding set (CR round 1, codex-1): the
+        // FAIL SAFE on an incomplete finding set: the
         // avail rows are what LICENSE append-cr-bugs.sh to resolve a bug whose
         // finding is absent this run. If any ledger row failed to parse we
         // cannot prove a finding is genuinely gone rather than merely
@@ -231,7 +228,7 @@ node -e '
       } finally {
         fs.rmSync(tmpDir,{recursive:true,force:true});
       }
-      // Report what was FORWARDED, not what was found (CR round 3, codex-3):
+      // Report what was FORWARDED, not what was found:
       // when malformed rows withheld the avail evidence, availOut is empty and
       // saying otherwise makes this relayed line claim evidence reached
       // bugs.md that deliberately did not. Same truthfulness rule as the

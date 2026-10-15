@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # A && B || C intentional in check(); backticks in fixture strings are literal markdown/CSV
-# Test harness for known-findings.sh (HIMMEL-2058): detectors over a fixture
+# Test harness for known-findings.sh: detectors over a fixture
 # repo diff, --prompt / --list / --json shapes, --refresh on a COPY of the JSON
 # (never the shipped one), and the usage contract.
 set -uo pipefail
@@ -55,7 +55,7 @@ contains "diff: bare fence cites docs/new.md:3" "$out" "docs/new.md:3"
 contains "diff: hook-fail-direction"           "$out" "[hook-fail-direction]"
 contains "diff: grep -q pipe under pipefail"   "$out" "[grep-q-pipe-under-pipefail]"
 contains "diff: grep -q pipe cites line 13"    "$out" "scripts/foo.sh:13"
-# HIMMEL-2447 red-first pairs: each new detector must fire on its bait line AND
+# Red-first pairs: each new detector must fire on its bait line AND
 # stay silent on the correct spelling one line below it.
 contains "diff: jq // swallows false"          "$out" "[jq-alternative-swallows-false]"
 contains "diff: jq // cites line 14"           "$out" "scripts/foo.sh:14"
@@ -66,13 +66,13 @@ contains "diff: non-ASCII bracket cites line 17" "$out" "scripts/foo.sh:17"
 not_contains "diff: alternation spelling excluded" "$out" "scripts/foo.sh:18"
 contains "diff: hardcoded /usr/bin/ coreutil"  "$out" "scripts/foo.sh:19"
 not_contains "diff: bare cat control excluded" "$out" "scripts/foo.sh:20"
-# CR round 3 [codex-1]: the exclude used to carry a whole-line `| type` clause,
-# which suppressed this genuinely buggy line. Line 22 must FIRE; line 15 (the
+# The exclude must not carry a whole-line `| type` clause, which would
+# suppress this genuinely buggy line. Line 22 must FIRE; line 15 (the
 # safe `(.agent_id | type) == "string"`) must STILL stay silent — it is excluded
 # by the main pattern needing `//`, never by an exclude clause.
 contains "diff: jq // with a trailing |type still fires" "$out" "scripts/foo.sh:22"
 contains "diff: summary line counts classes"   "$out" "class(es) match this diff"
-# HIMMEL-3905 red-first bait/control pairs for the hottest rebuttal classes
+# Red-first bait/control pairs for the hottest rebuttal classes
 # (change1.sh lines 24-34): the detector pre-flags the exact shape critics
 # re-raise, and stays silent on the near-miss one line below it.
 contains "diff: errexit rebuttal pre-flagged"       "$out" "[errexit-false-positive]"
@@ -117,7 +117,7 @@ mkdir -p "$repo/scripts/testdata/kf" && cp "$FIX/change1.sh" "$repo/scripts/test
 out4="$(cd "$repo" && bash "$SCRIPT" --diff "HEAD~1...HEAD" 2>&1)"
 contains "diff3: testdata bait is skipped" "$out4" "no known class matches"
 
-# Change 4 (HIMMEL-2827): a `bin.js` CLI entry point has no natural like-named
+# Change 4: a `bin.js` CLI entry point has no natural like-named
 # test file — it's the dispatcher a whole test/ dir exercises (real case:
 # scripts/himmelctl/bin.js paired with scripts/himmelctl/test/test-wizard-questions.sh,
 # PR #2273). Any changed test under the entry point's own dir or a subdirectory
@@ -137,7 +137,7 @@ out5="$(cd "$repo" && bash "$SCRIPT" --diff "HEAD~1...HEAD" 2>&1)"
 not_contains "diff5: bin.js entry point paired with any changed test/ dir file" "$out5" "scripts/himmelctl/bin.js"
 contains "diff5 RED control: a non-bin source in the same dir still needs its own pair" "$out5" "scripts/himmelctl/wizard.js"
 
-# Change 5 (HIMMEL-2864 finding 1): the containment check
+# Change 5: the containment check
 # (tDir !== dir && !tDir.startsWith(dir + "/")) must special-case dir === "."
 # for a truly ROOT-level bin.js entry point -- path.posix.dirname of a root
 # file is ".", so a test under test/ (dirname "test") satisfies neither
@@ -176,7 +176,7 @@ not_contains "prompt: fix classes excluded" "$p" "[mktemp-no-template]"
 l="$(bash "$SCRIPT" --list 2>&1)"
 contains "list: table header" "$l" "| id | kind | rung | source | detector | title |"
 contains "list: has gnu-only-utility row" "$l" '`gnu-only-utility`'
-# HIMMEL-2450: a pipe (or newline) in any cell must not split the markdown row.
+# a pipe (or newline) in any cell must not split the markdown row.
 cat > "$tmp/pipe-kf.json" <<'KFJSON'
 {"classes":[{"id":"pipe-title","kind":"checklist","rung":"human","title":"a|b\nc","source":"s|t","globs":[],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}]}
 KFJSON
@@ -186,7 +186,7 @@ contains "list: pipe in title escaped" "$lrow" 'a\|b c'
 contains "list: pipe in source escaped" "$lrow" 's\|t'
 check "list: pipe-title is one row with 7 unescaped separators" "$(tr -cd '|' <<< "${lrow//\\|/}" | wc -c | tr -d ' ')" "7"
 
-# HIMMEL-4426: every class carries a rung (design|gate|advisory|prompt|human).
+# every class carries a rung (design|gate|advisory|prompt|human).
 # --ladder prints the count per rung, then the promotion queue (prompt/advisory
 # classes with agreed ledger recurrences); a class missing/with a bad rung is a
 # schema error (exit 2), never a silent miss.
@@ -243,7 +243,7 @@ contains "refresh with a missing ledger says so" "$rml" "ledger not readable"
 ev_after="$(node -e 'const j=require(process.argv[1]);console.log(JSON.stringify(j.classes.find(c=>c.id==="hook-fail-direction").evidence.ledger))' "$tmp/kf.json" 2>&1)"
 check "refresh with a missing ledger leaves ledger evidence unchanged" "$ev_after" "$ev_before"
 
-# HIMMEL-5465: CodeRabbit's export starts with a UTF-8 BOM (EF BB BF) — the first
+# CodeRabbit's export starts with a UTF-8 BOM (EF BB BF) — the first
 # header must still read as "Learning". BOM-free input (learn.csv above) is the control.
 { printf '\357\273\277'; cat "$tmp/learn.csv"; } > "$tmp/learn-bom.csv"
 cp "$HERE/known-findings.json" "$tmp/kf-bom.json"
@@ -251,14 +251,14 @@ rb="$(KNOWN_FINDINGS_FILE="$tmp/kf-bom.json" CR_LEDGER="$tmp/ledger.jsonl" bash 
 check "refresh: BOM-prefixed learnings csv exits 0" "$rbrc" "0"
 contains "refresh: BOM csv parses (export summary)" "$rb" "learnings export: 2 rows, 257 uses, 1 rows matched no class"
 
-# --prompt: the HIMMEL-2377 anchor-handshake rebuttal is present, and the
+# --prompt: the anchor-handshake rebuttal is present, and the
 # framing forbids re-raising it unless the code regressed.
 contains "prompt: anchor-handshake rebuttal present" "$p" "[pr-check-anchor-handshake-escalation]"
 
-# ── HIMMEL-2377: pr-check-anchor-handshake-escalation must match the REAL
+# ── pr-check-anchor-handshake-escalation must match the REAL
 # escalation-claim finding (quoted verbatim from .git/cr-critic-scores.jsonl /
 # the CodeRabbit App review on PR #2078) and must NOT match a finding shaped
-# like the HIMMEL-2378 stale-value residual -- a real, different, still-open
+# like the stale-value residual -- a real, different, still-open
 # bug this catalogue entry must never suppress. Exercised through --refresh's
 # learning_match attribution (the only place a class's regex is actually
 # tested against finding-shaped prose), on a COPY, with an absent ledger so
@@ -275,10 +275,9 @@ ar="$(KNOWN_FINDINGS_FILE="$tmp/kf-anchor.json" CR_LEDGER="$tmp/absent-ledger.js
 check "anchor rebuttal: refresh exit 0" "$arrc" "0"
 aev="$(node -e 'const j=require(process.argv[1]);const c=j.classes.find(c=>c.id==="pr-check-anchor-handshake-escalation");console.log(c.evidence.learnings_uses+" "+c.evidence.learnings_rows)' "$tmp/kf-anchor.json" 2>&1)"
 # The critical assertion: 9 uses / 1 row proves ONLY the escalation-claim CSV
-# row attributed here -- the HIMMEL-2378-shaped stale-value row (4 uses) did
+# row attributed here -- the stale-value-shaped row (4 uses) did
 # NOT. Were the entry's learning_match broadened to also catch it, this would
-# read "13 2" instead (see HIMMEL-2377 report for the red run against such a
-# broadened regex) -- silently folding a real, still-open bug into a rebuttal
+# read "13 2" instead -- silently folding a real, still-open bug into a rebuttal
 # that tells critics never to re-raise it.
 check "anchor rebuttal: ONLY the real escalation-claim learning attributes (9 uses, 1 row, not 13/2)" "$aev" "9 1"
 

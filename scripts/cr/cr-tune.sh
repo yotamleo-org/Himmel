@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # Single quotes in node -e intentional (shell vars set via env)
-# scripts/cr/cr-tune.sh — CR self-evolution ledger miner (HIMMEL-978)
+# scripts/cr/cr-tune.sh — CR self-evolution ledger miner
 # Mechanically mines the CR ledger for the signals the /cr-tune runbook turns
 # into tuning proposals: per-model verdict stats, per-(model,severity)
 # calibration flags, disproved clusters with row citations, and re-litigation

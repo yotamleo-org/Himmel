@@ -40,8 +40,8 @@ if model in ("qwen/qwen3-coder-480b-a35b-instruct", "qwen/qwen3.6-35b-a3b", "qwe
     sys.exit(0)
 elif model == "gpt-6.1-sol":
     # Current ANCHOR_MODEL (codex seat) — the anchor-fallback tests (E, I2) feed
-    # this through the stub to prove the anchor MODEL ran. Argument-sensitive
-    # (codex-adv, HIMMEL-953): the anchor-only row must parse provider=openai-codex
+    # this through the stub to prove the anchor MODEL ran. Argument-sensitive:
+    # the anchor-only row must parse provider=openai-codex
     # and NO perspective file — a tab-IFS field collapse in the anchor literal
     # shifts these and must fail here.
     if provider != "openai-codex":

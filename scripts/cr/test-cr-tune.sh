@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C intentional in check() and final assert
-# Test harness for cr-tune.sh (HIMMEL-978)
+# Test harness for cr-tune.sh
 set -uo pipefail
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
@@ -9,7 +9,7 @@ set -uo pipefail
 # then takes SIGPIPE writing the remainder, and pipefail reports the
 # PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
 # the match lands early in a large input. A here-string is not a pipeline,
-# so the status is grep's own verdict alone. (HIMMEL-1430.)
+# so the status is grep's own verdict alone.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/cr-tune.sh"
@@ -119,7 +119,7 @@ out_window1="$(CR_LEDGER="$tmp/ledger.jsonl" bash "$SCRIPT" --window 1 2>&1)"
 contains "--window 1: modelA n=1" "$out_window1" "modelA: n=1"
 contains "--window 1: modelB n=1" "$out_window1" "modelB: n=1"
 
-# ── Task-2 hardening assertions (coderabbit round 1) ──────────────────────
+# ── Task-2 hardening assertions ──────────────────────
 # 14. verdict whitelist: modelC's verdict:"n" row counts in n= totals but must
 #     not mutate any accumulator field (unguarded m[f.verdict]++ would bump n twice)
 contains "verdict whitelist: bogus verdict counts in n only" "$out" "modelC: n=2 agreed=1 (50%) disproved=0 (0%) conflict=0 unaddressed=0"

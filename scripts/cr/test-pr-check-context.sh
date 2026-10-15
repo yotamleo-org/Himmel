@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/cr/pr-check-context.sh (HIMMEL-2226, HIMMEL-2335).
-# HIMMEL-3472: the fixtures here (T13 onward) are the only CI coverage of the
+# Smoke test for scripts/cr/pr-check-context.sh.
+# The fixtures here (T13 onward) are the only CI coverage of the
 # step-0 diff decision - :(top) anchoring, merge-base scoping, the dropped
-# --exclude-standard and the HIMMEL-3472 byte comparison. The ad-hoc fixture
-# harness used while HIMMEL-3382 was reviewed was never committed; nothing
+# --exclude-standard and the byte comparison. Nothing
 # else pins these behaviours, so a row removed here is coverage lost.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$DIR/pr-check-context.sh"
-# HIMMEL-4297 — a leg shell's FORCE_COLOR=3 makes node's console.log colour a
+# A leg shell's FORCE_COLOR=3 makes node's console.log colour a
 # bare boolean/number (T13); pin it on so the suite catches a regression.
 export FORCE_COLOR=3
 
@@ -17,7 +16,7 @@ check() { [ "$1" = "$2" ] || { echo "FAIL: $3 - got '$1' want '$2'"; fail=1; }; 
 
 tmp="$(mktemp -d -t pr-check-context.XXXXXX)"; trap 'rm -rf "$tmp"' EXIT
 
-# HIMMEL-2518: every mutation control in this file goes through the RED-control
+# Every mutation control in this file goes through the RED-control
 # contract helper rather than a hand-rolled inequality. The helper asserts the
 # mutant RAN, PRODUCED a value, and produced the SPECIFIC wrong value predicted
 # - the three properties a `!=` check cannot establish, and the reason T7's
@@ -33,7 +32,7 @@ RED_CONTROL_TMPDIR="$tmp"
 # shellcheck disable=SC1091
 . "$DIR/../lib/canon-path.sh"
 
-# HIMMEL-2335: the script now requires HIMMEL_REPO (the trust anchor) to be
+# The script now requires HIMMEL_REPO (the trust anchor) to be
 # set, and every fixture repo below is a throwaway tmp dir unrelated to any
 # real himmel checkout -- so without a deliberate, TEST-OWNED anchor every
 # invocation would resolve the adopter lane against whatever HIMMEL_REPO
@@ -42,7 +41,7 @@ RED_CONTROL_TMPDIR="$tmp"
 # worktree's own root instead: none of the fixture repos below are
 # git-worktrees of it, so they all resolve to the adopter lane against this
 # anchor -- himmel_dir = this anchor -- which is exactly the value those
-# tests already asserted before HIMMEL-2335 (this script's own on-disk
+# tests assert (this script's own on-disk
 # location, unconditionally). The himmel-lane/delegation scenarios further
 # down set their OWN HIMMEL_REPO per-fixture and do not rely on this export.
 HIMMEL_ROOT_FOR_TEST="$(cd "$DIR/.." && cd .. && pwd)"
@@ -101,7 +100,7 @@ for key in himmel_dir repo branch head base marker lane anchor_lane delegated; d
   check "$count" "1" "T1a $key appears exactly once"
 done
 check "$(get_kv "$out1" himmel_dir)" "$(cd "$DIR/.." && cd .. && pwd)" "T1 himmel_dir resolves to this checkout"
-# HIMMEL-2335: the fixture repo is not a worktree of HIMMEL_ROOT_FOR_TEST, so
+# The fixture repo is not a worktree of HIMMEL_ROOT_FOR_TEST, so
 # it resolves the adopter lane against that anchor -- no delegation.
 check "$(get_kv "$out1" anchor_lane)" "adopter" "T1 anchor_lane=adopter (fixture is not a worktree of the test anchor)"
 check "$(get_kv "$out1" delegated)" "no" "T1 delegated=no (adopter lane never delegates)"
@@ -178,7 +177,7 @@ out7="$(cd "$wt" && bash "$SCRIPT")"
 check "$?" "0" "T7 rc"
 check "$(get_kv "$out7" branch)" "t7-wt" "T7 branch (worktree)"
 check "$(get_kv "$out7" repo)" "$(cd "$wt" && pwd)" "T7 repo is the worktree path"
-# HIMMEL-3179: git prints the PHYSICAL, NATIVE spelling of the common dir (macOS
+# Git prints the PHYSICAL, NATIVE spelling of the common dir (macOS
 # /private/var/..., Git Bash C:/Users/...) and pr-check-context.sh echoes it
 # verbatim into marker=, so the expected side must be canonicalised the same
 # way: a plain `cd && pwd` yields the LOGICAL /var/... (macOS) or /c/Users/...
@@ -220,9 +219,8 @@ check "$marker7" "$main_git_dir_abs/cr-pending/t7-wt" "T7 marker resolves under 
 # failed closed (exit 2) before ever reaching the marker= printf. `get_kv` on
 # that empty stdout returned "", and the control "passed" only because
 # '' != '<expected shared path>' - proving the assertion is sensitive to
-# SOMETHING, never that it actually catches a per-worktree marker (CR round 1
-# [codex-1]: "a mutant that crashes or emits no marker yields an empty value
-# and incorrectly passes the RED control via the inequality branch").
+# SOMETHING, never that it actually catches a per-worktree marker (a mutant that crashes or emits no marker yields an empty
+# value and would incorrectly pass the RED control via the inequality branch).
 #
 # Fix: build the mutant AS a fake-himmel anchor's own
 # scripts/cr/pr-check-context.sh - critic-panel.sh (only needs to exist) plus
@@ -250,7 +248,7 @@ if [ "$rc_lr_t7" -ne 0 ]; then
   echo "FAIL: T7 RED - could not build the per-worktree-marker mutant - $(cat "$tmp/literal_replace.err" 2>/dev/null)"
   fail=1
 else
-  # HIMMEL-3359: the mutant IS its own anchor - a copy run under some other
+  # The mutant IS its own anchor - a copy run under some other
   # HIMMEL_REPO hands off to that anchor's copy and never computes a marker.
   red_control_run --cwd "$wt" -- env HIMMEL_REPO="$mutant_t7_anchor" bash "$mutant_t7"
   # The expected per-worktree marker, computed fresh via --git-dir from $wt
@@ -273,14 +271,14 @@ cp "$DIR/pr-check-context.sh" "$fakehimmel/scripts/cr/pr-check-context.sh"
 # absent, so HIMMEL_ROOT resolution must fail closed before ever touching
 # guardrails/lib.sh or write-verdicts.sh.
 # HIMMEL_REPO names this tree: a NON-anchor copy hands off to the anchor
-# before the probe (HIMMEL-3359), so only the anchor's own copy reaches it.
+# before the probe, so only the anchor's own copy reaches it.
 out8="$(cd "$repo" && HIMMEL_REPO="$fakehimmel" bash "$fakehimmel/scripts/cr/pr-check-context.sh" 2>"$tmp/err8.txt")"
 rc8=$?
 check "$rc8" "2" "T8 rc (fail-closed, no critic-panel.sh)"
 check "$out8" "" "T8 no stdout on the fail-closed path"
 grep -q 'critic-panel.sh' "$tmp/err8.txt" || { echo "FAIL: T8 missing critic-panel.sh diagnostic"; fail=1; }
 
-# --- T9-T11: lane= reads the marker's 3rd field (HIMMEL-2226 round 2) -------
+# --- T9-T11: lane= reads the marker's 3rd field -------
 # The lane read used to be a step-2 awk fence substituting the marker path as
 # a literal ('<marker>') - a repo-controlled branch name embedded in that
 # path can break out of the single quote. It now happens inside this script
@@ -312,7 +310,7 @@ check "$?" "0" "T11 rc"
 check "$(get_kv "$out11" lane)" "" "T11 lane is empty when the marker does not exist"
 
 # --- T12: a branch name carrying a shell metacharacter is REFUSED (exit 3)
-# before anything is printed or any side effect runs (HIMMEL-2226). This is the
+# before anything is printed or any side effect runs. This is the
 # root guard for the substituted-literal injection: every /pr-check fence pastes
 # the branch in as literal text (--branch '<branch>'), so a repo-controlled
 # branch with an apostrophe would break out. git refuses to CREATE a branch
@@ -322,8 +320,7 @@ repo_i="$tmp/repo-inject"
 mkdir -p "$repo_i"
 # git forbids a SPACE in a ref name but legally permits an apostrophe (and $,
 # backtick, quotes) - a name with an apostrophe is the canonical break-out of a
-# `--branch '<branch>'` substituted literal, and the exact case HIMMEL-2226
-# names. No space is needed to inject; the guard refuses on the apostrophe.
+# `--branch '<branch>'` substituted literal. No space is needed to inject; the guard refuses on the apostrophe.
 inject_branch="x'y"
 (
   cd "$repo_i" || exit 1
@@ -357,7 +354,7 @@ else
   echo "SKIP: T12 - git did not accept the hostile branch name '$inject_branch' (got '$created_branch')"
 fi
 
-# --- T13-T17: HIMMEL-2335 anchor + delegation ------------------------------
+# --- T13-T17: anchor + delegation ------------------------------
 # A "fake himmel" fixture: a real git repo carrying real copies of the
 # scripts pr-check-context.sh actually needs at runtime (critic-panel.sh only
 # needs to EXIST; guardrails/lib.sh, write-verdicts.sh and ledger-append.sh
@@ -372,7 +369,7 @@ build_fake_himmel() {
   cp "$DIR/write-verdicts.sh" "$d/scripts/cr/write-verdicts.sh"
 cp "$DIR/anchor-handoff.sh" "$d/scripts/cr/anchor-handoff.sh"
   cp "$DIR/../guardrails/lib.sh" "$d/scripts/guardrails/lib.sh"
-  # HIMMEL-3493: the rest of the manifest scope (cr_guarded) - the shared
+  # The rest of the manifest scope (cr_guarded) - the shared
   # libs, check-ci.sh and resolve-active-item.sh a "no" run executes from the
   # branch.
   mkdir -p "$d/scripts/lib" "$d/scripts/handover"
@@ -500,8 +497,8 @@ check "$rc16" "2" "T16 rc (fail-closed, empty HIMMEL_REPO)"
 check "$out16" "" "T16 no stdout on the fail-closed path"
 grep -q 'HIMMEL_REPO is unset or empty' "$tmp/t16.err" || { echo "FAIL: T16 missing the named empty-anchor diagnostic"; fail=1; }
 
-# T17. HIMMEL-2378 CR round 1 [codex-1]: PR_CHECK_ANCHOR_DELEGATED preset to
-# a bare anchor path (the round-4 "verified-handshake" shape) no longer
+# T17. PR_CHECK_ANCHOR_DELEGATED preset to
+# a bare anchor path (the "verified-handshake" shape) no longer
 # verifies AT ALL - the legacy acceptance was removed (see the header
 # comment "Identity handshake, not a boolean" and the `*)` arm of the
 # case). This pins the CONVERGENCE the removal costs, so nobody re-adds the
@@ -510,10 +507,9 @@ grep -q 'HIMMEL_REPO is unset or empty' "$tmp/t16.err" || { echo "FAIL: T16 miss
 # present) re-delegates ITSELF -> the fresh hop mints the new shape and its
 # own delegate verifies that -> exactly ONE extra ledger row, delegated=yes
 # still ends up true, himmel_dir still ends up the branch - converged,
-# logged, never infinite. NOTE: this used to preset a bare `1` before
-# HIMMEL-2335 round 4 closed that unsafe-boolean shape; it was changed to
-# the real anchor path to test round 4's (now-removed) legacy acceptance
-# instead. The bare-`1`/spoofed-guard shape is covered by the T20 case.
+# logged, never infinite. NOTE: the preset is the real anchor path, not a
+# bare `1` (an unsafe-boolean shape that is refused outright). The
+# bare-`1`/spoofed-guard shape is covered by the T20 case.
 before17="$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null || echo 0)"
 out17="$(cd "$wt13" && HIMMEL_REPO="$anchor13" PR_CHECK_ANCHOR_DELEGATED="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh")"
 rc17=$?
@@ -567,7 +563,7 @@ red_control_assert --label "T17" \
   || fail=1
 cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 
-# --- T18: HIMMEL-2335 round 2 - bootstrap defect. The ANCHOR's own
+# --- T18: bootstrap defect. The ANCHOR's own
 # ledger-append.sh does not support the "delegation" kind yet (the real
 # scenario: the primary checkout is OLDER than this branch, which is what
 # ADDS the "delegation" kind - so ANY branch that both introduces a new
@@ -578,7 +574,7 @@ cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 anchor18="$tmp/fake-himmel-bootstrap"
 build_fake_himmel "$anchor18"
 # Overwrite the anchor's ledger-append.sh with a stub mirroring the REAL
-# refusal a pre-HIMMEL-2335 ledger-append.sh gives for an unknown kind (see
+# refusal an older ledger-append.sh gives for an unknown kind (see
 # the literal message in scripts/cr/ledger-append.sh's own case statement) -
 # the exact bootstrap symptom this fix exists for.
 cat > "$anchor18/scripts/cr/ledger-append.sh" <<'STUB'
@@ -610,7 +606,7 @@ done
 check "$(get_kv "$out18" head)" "$head18" "T18 head matches the worktree HEAD (ran the anchor's own path, not a delegate)"
 grep -qi 'WARNING' "$tmp/t18.err" || { echo "FAIL: T18 missing the WARNING diagnostic on stderr"; fail=1; }
 
-# T19. HIMMEL-2335 round 3 - on the soft-decline path himmel_dir must be the
+# T19. On the soft-decline path himmel_dir must be the
 # ANCHOR, not the branch/worktree: every later /pr-check fence substitutes
 # himmel_dir to locate the scripts/cr/ it runs, so leaving it pointed at the
 # branch would mean the branch's own (unlogged, un-self-reviewed) scripts/cr/
@@ -634,11 +630,11 @@ pos_control="$tmp/t18-positive-control.jsonl"
 printf '{"kind":"delegation","branch":"positive-control","head":"deadbeef"}\n' > "$pos_control"
 check "$(grep -c '"kind":"delegation"' "$pos_control" 2>/dev/null)" "1" "T18 positive control - the delegation-row counter detects a known match"
 
-# --- T20-T21: HIMMEL-2335 round 4 (CR panel [codex-2]) - the recursion guard
-# is an anchor-identity HANDSHAKE, not a bare boolean. Before this fix, the
-# precondition to even attempt delegation was `[ -z "$PR_CHECK_ANCHOR_DELEGATED" ]`
-# - so ANY pre-existing non-empty value (a stray export, a leftover from an
-# earlier run, a hostile launching shell) skipped the whole delegation IF
+# --- T20-T21: the recursion guard
+# is an anchor-identity HANDSHAKE, not a bare boolean. A precondition of
+# `[ -z "$PR_CHECK_ANCHOR_DELEGATED" ]` would let ANY pre-existing non-empty
+# value (a stray export, a leftover from an
+# earlier run, a hostile launching shell) skip the whole delegation IF
 # block AND, via the separate `[ -z ... ] || delegated=yes` line at the
 # bottom, still printed delegated=yes - all while himmel_dir stayed the
 # BRANCH (unconditional, set during lane detection before delegation is even
@@ -680,7 +676,7 @@ else
   echo "FAIL: T20 delegated= printed neither yes nor no ('$d20')"; fail=1
 fi
 
-# T21. HIMMEL-2378 CR round 1 [codex-1]: repeat of T17's exact preset (bare
+# T21. Repeat of T17's exact preset (bare
 # anchor path, still refused) on a LATER invocation, to prove the refusal is
 # consistent across repeated presentations, not a one-off - each bare-path
 # presentation converges through its OWN fresh extra hop and adds its OWN
@@ -697,12 +693,12 @@ check "$(get_kv "$out21" delegated)" "yes" "T21 delegated=yes - converges via it
 check "$(get_kv "$out21" anchor_lane)" "himmel" "T21 anchor_lane=himmel"
 check "$rows_after21" "$((rows_before21 + 1))" "T21 exactly one ADDITIONAL new row (a second, independent convergence, not a re-use of T17's)"
 
-# --- T22: HIMMEL-2335 round 5 (CR panel [codex-1]) - a FAILED merge-base
+# --- T22: a FAILED merge-base
 # (not just an unrelated diff) must ALSO fall back to himmel_dir=ANCHOR, the
 # same fallback T19 above proved for the soft-decline (failed ledger write)
-# path. Before this fix, the merge-base-failure branch set touches_cr=0 and
+# path. If the merge-base-failure branch set touches_cr=0 and
 # fell straight through the `if [ "$touches_cr" -gt 0 ]` block WITHOUT ever
-# reaching the `himmel_dir="$anchor"` line - so himmel_dir stayed the BRANCH,
+# reaching the `himmel_dir="$anchor"` line, himmel_dir would stay the BRANCH,
 # and every later /pr-check fence would run the branch's own scripts/cr/
 # UNLOGGED, on a diff this run admits it could not even compute. Fixture:
 # an orphan branch in the SAME repo as main (git checkout --orphan) - no
@@ -743,10 +739,10 @@ for key in himmel_dir repo branch head base marker lane anchor_lane delegated; d
 done
 grep -q 'could not compute merge-base' "$tmp/t22.err" || { echo "FAIL: T22 missing the merge-base-failure diagnostic on stderr"; fail=1; }
 
-# --- T23: HIMMEL-2335 round 6 - single end-of-decision assertion. Three
-# separate CR findings (soft-decline/T18-19, spoofed guard/T20, merge-base
-# failure/T22) were each patched independently in their own branch of the
-# delegation `if`. This consolidates them: the diff state is now TRI-STATE
+# --- T23: single end-of-decision assertion. Three
+# separate cases (soft-decline/T18-19, spoofed guard/T20, merge-base
+# failure/T22) each have their own branch in the
+# delegation `if`. This consolidates them: the diff state is TRI-STATE
 # (cr_diff_state=no|yes|unknown) and exactly ONE assertion at the end of the
 # decision - not three scattered `himmel_dir="$anchor"` patches - is what
 # guarantees the branch's own scripts/cr/ never runs unlogged. T23a-e below
@@ -847,14 +843,14 @@ else
   fail=1
 fi
 
-# --- T24: HIMMEL-2335 CR [codex-3] - an UNREADABLE diff (git diff itself
+# --- T24: an UNREADABLE diff (git diff itself
 # fails), NOT a merge-base failure, must ALSO fall back to himmel_dir=ANCHOR.
 # Distinct from T22 above (merge-base fails): here merge-base SUCCEEDS
 # (asserted below, both before AND after the corruption) and it is
-# specifically `git diff --name-only <mb>..HEAD` that cannot be read. Before
-# this fix, a failed `git diff` printed nothing to stdout, `grep -c` on that
-# empty stdout still returned 0 matches (its own exit status - and git diff's
-# - was never checked), so cr_diff_state was misclassified "no", "proven
+# specifically `git diff --name-only <mb>..HEAD` that cannot be read. A
+# failed `git diff` prints nothing to stdout, `grep -c` on that
+# empty stdout still returns 0 matches (its own exit status - and git diff's
+# - must be checked), or cr_diff_state is misclassified "no", "proven
 # clean" - the ONE state that lets the branch's own scripts/cr/ execute
 # unlogged. Fixture: corrupt the loose tree object HEAD's commit points at
 # (captured, then the object file removed) - `git merge-base` only walks
@@ -916,7 +912,7 @@ for key in himmel_dir repo branch head base marker lane anchor_lane delegated; d
   check "$count" "1" "T24 $key still appears exactly once (full context block still printed on stdout)"
 done
 
-# --- T25: HIMMEL-2335 grep-q-pipe-under-pipefail red-before-green ----------
+# --- T25: grep-q-pipe-under-pipefail red-before-green ----------
 # Reproduces the SIGPIPE misclassification directly: when `git diff
 # --name-only <mb>..HEAD` output exceeds the ~64 KiB pipe buffer, a
 # `producer | grep -q pattern` guard under `set -o pipefail` can report the
@@ -947,7 +943,7 @@ wt25="$tmp/fake-himmel-wt-large"
   git add -A
   git commit -q -m "touch scripts/cr for T25"
   blob="$(git hash-object -w --stdin < /dev/null)"
-  # HIMMEL-3878: every plumbing step fails loudly here - an unchecked failure
+  # Every plumbing step fails loudly here - an unchecked failure
   # used to surface only downstream as "fixture diff is only 27 bytes".
   case "$blob" in
     [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
@@ -1000,16 +996,16 @@ fi
 check "$(get_kv "$out25" anchor_lane)" "himmel" "T25 anchor_lane=himmel"
 check "$(get_kv "$out25" head)" "$head25" "T25 head matches the worktree HEAD (the >64 KiB-diff commit, never the small pre-plumbing commit)"
 
-# --- T26-T30: HIMMEL-2378 - the delegation capability is bound to (branch,
-# head), not merely to the anchor's path, is one-time, AND (fixed after
-# review: the capability file itself must be BRANCH-SCOPED, same reasoning
+# --- T26-T30: the delegation capability is bound to (branch,
+# head), not merely to the anchor's path, is one-time, AND (the capability
+# file itself must be BRANCH-SCOPED, same reasoning
 # as cr-prior-blocking/<branch> and cr-aggregate-verdicts/<branch> in
-# write-verdicts.sh - "round 1b" there) safe under the concurrent /pr-check
+# write-verdicts.sh) safe under the concurrent /pr-check
 # runs on independent branches this repo actually supports (overnight-shift).
-# T20/T21 above proved round 4's fix (anchor-path equality) closes the
-# BARE-BOOLEAN gap; T26-T29 prove the NARROWER temporal/identity gap round 4
-# left open - a value that DOES equal the resolved anchor (the shape a
-# genuine delegation now actually hands off,
+# T20/T21 above prove that anchor-path equality closes the
+# BARE-BOOLEAN gap; T26-T29 prove the NARROWER temporal/identity gap that
+# leaves open - a value that DOES equal the resolved anchor (the shape a
+# genuine delegation actually hands off,
 # "$anchor|$branch|$head|$nonce") but was minted for a DIFFERENT branch or
 # head, or has already been consumed, must still be rejected. T30 proves the
 # concurrency property specifically: two concurrent mints for DIFFERENT
@@ -1121,8 +1117,8 @@ fi
 check "$(diff "$SCRIPT" "$mutant_nobranch" | grep -c '^< ')" "2" "T27 sanity - the no-branch mutant differs from the real script by exactly 2 neutered lines (the env-side and file-side branch checks)"
 
 # mutant_noconsume: neuter the one-time consumption entirely - collapses the
-# checked `if rm -f ...; then verified_delegate=yes; fi` (CR round 1
-# [codex-3]) back to an unconditional accept that never touches the file.
+# checked `if rm -f ...; then verified_delegate=yes; fi` back to an
+# unconditional accept that never touches the file.
 mutant_noconsume="$tmp/pr-check-context.mutant-noconsume.sh"
 # shellcheck disable=SC2016  # literal match against pr-check-context.sh's own
 # source text (unexpanded $cap_file) - not a shell expansion.
@@ -1154,11 +1150,11 @@ if [ "$rc_lr1" -ne 0 ]; then
 fi
 check "$(diff "$SCRIPT" "$mutant_unscoped" | grep -c '^< ')" "1" "T30 sanity - the unscoped mutant differs from the real script by exactly 1 neutered line (branch-scoping reverted)"
 
-# mutant_ledger_first: HIMMEL-2378 CR round 1 [codex-2] - bypass the
+# mutant_ledger_first: bypass the
 # capability-write gate entirely (`if true; then` instead of the real
 # `mkdir -p ... && printf ... > "$cap_file"` condition), so the
 # ledger-append call and exec attempt run UNCONDITIONALLY, exactly
-# reproducing the pre-review-fix ordering's observable effect: a
+# reproducing the log-before-write ordering's observable effect: a
 # `delegation` row gets logged (and ledger_written=yes gets set) even when
 # the capability file was never actually written - used only by T32 below.
 mutant_ledger_first="$tmp/pr-check-context.mutant-ledger-first.sh"
@@ -1177,7 +1173,7 @@ check "$(diff "$SCRIPT" "$mutant_ledger_first" | grep -c '^< ')" "2" "T32 sanity
 
 # T26. Stale HEAD rejected: a capability CONTENT claiming headA26 (nonce
 # n1, unconsumed), written into wt26's OWN real per-(branch,head) slot
-# (cap_fix_t26cap, now scoped by CR round 3 [codex-1] to
+# (cap_fix_t26cap, scoped to
 # cr-delegation/fix/t26-cap/<headB26> - wt26's actual current head) -
 # same "right slot, wrong content" isolation technique T27 below already
 # uses for the branch field, applied here to the head field so this test
@@ -1293,19 +1289,19 @@ check "$(get_kv "$out28" himmel_dir)" "$wt28_toplevel" "T28 himmel_dir is the br
 check "$rows_after28" "$rows_before28" "T28 a verified handshake does not itself attempt a NEW delegation (recursion guard, same contract as T21 for the legacy shape)"
 cap_after28="$(cat "$cap_t28cap" 2>/dev/null)"
 check "$cap_after28" "" "T28 the capability file is truncated (consumed) immediately after a verified use"
-# HIMMEL-2378 CR round 3 [codex-2]: emptiness alone does not prove UNLINK
+# Emptiness alone does not prove UNLINK
 # happened - a truncating `: >` would look identical via `cat`. Assert
-# non-existence too; this is the assertion that would actually catch a
-# regression from the atomic unlink (CR round 2) back to truncation. See
+# non-existence too; this is the assertion that catches a
+# regression from the atomic unlink back to truncation. See
 # the RED demonstration right after T28's other assertions below.
 if [ -e "$cap_t28cap" ]; then
   echo "FAIL: T28 the capability file still EXISTS after a verified use (expected unlinked - a truncating regression would pass the emptiness check above but fail this one)"
   fail=1
 fi
 
-# T28 RED (CR round 3 [codex-2]): mutant_truncate reverts the atomic unlink
-# back to `: >` truncation - proving the NEW non-existence assertion above
-# catches exactly the regression it was added for, while the OLD emptiness
+# T28 RED: mutant_truncate reverts the atomic unlink
+# back to `: >` truncation - proving the non-existence assertion above
+# catches exactly that regression, while the emptiness
 # assertion (T28's "truncated (consumed)" check) keeps passing regardless -
 # which is the whole point: emptiness alone cannot tell unlink from
 # truncate, existence can.
@@ -1328,13 +1324,11 @@ red_control_run --cwd "$wt28" \
   --env HIMMEL_REPO="$anchor26" \
   --env PR_CHECK_ANCHOR_DELEGATED="$anchor26|t28-cap|$head28|$n4b" \
   -- bash "$anchor26/scripts/cr/pr-check-context.sh"
-# HIMMEL-2518 finding: this control's verdict used to be a bare
+# This control's verdict is not a bare
 # `[ -e "$cap_t28cap" ]` - a FILE-EXISTENCE test, which a mutant that crashed
 # before consuming anything satisfies exactly as well as one that truncated.
-# The adjacent sanity `check` on delegated= would have gone red, but the
-# "T28 RED confirmed" line itself printed either way, which is the shape this
-# ticket exists to remove. All three observations (the mutant's own
-# delegated=, the file's survival, its emptiness) are now ONE asserted tuple,
+# All three observations (the mutant's own
+# delegated=, the file's survival, its emptiness) are ONE asserted tuple,
 # so the verdict cannot be reached unless the mutant genuinely ran.
 cap_exists28t=no
 [ -e "$cap_t28cap" ] && cap_exists28t=yes
@@ -1410,7 +1404,7 @@ check "$(get_kv "$out30" himmel_dir)" "$wt26_toplevel" "T30 himmel_dir is the br
 check "$rows_added30" "0" "T30 NO spurious extra ledger row - branch-scoping means mint B never touched mint A's file, so the recursion guard held on the FIRST try"
 cap_a_after30="$(cat "$cap_fix_t26cap" 2>/dev/null)"
 check "$cap_a_after30" "" "T30 mint A's own file is truncated (consumed) by its own verified use"
-# HIMMEL-2378 CR round 3 [codex-2]: same non-existence assertion as T28's -
+# Same non-existence assertion as T28's -
 # see the RED demonstration after T28's assertions above for why emptiness
 # alone is insufficient.
 if [ -e "$cap_fix_t26cap" ]; then
@@ -1442,8 +1436,8 @@ red_control_run --cwd "$wt26" \
   --env PR_CHECK_ANCHOR_DELEGATED="$anchor26|fix/t26-cap|$headB26|$nA30r" \
   -- bash "$anchor26/scripts/cr/pr-check-context.sh"
 rows_after30r="$(grep -c '"kind":"delegation"' "$ledger26" 2>/dev/null || echo 0)"
-# HIMMEL-2518: the predicted wrong value is EXACTLY one spurious row, not the
-# old `-ge 1` - an inequality would equally accept a mutant that delegated in
+# The predicted wrong value is EXACTLY one spurious row, not
+# `-ge 1` - an inequality would equally accept a mutant that delegated in
 # a loop, which is a different defect from the collision this control claims.
 red_control_assert --label "T30" \
   --observed     "delegated=$(get_kv "$RED_CONTROL_OUT" delegated) rows_added=$((rows_after30r - rows_before30r))" \
@@ -1454,10 +1448,10 @@ red_control_assert --label "T30" \
 cp "$SCRIPT" "$anchor26/scripts/cr/pr-check-context.sh"
 cp "$SCRIPT" "$wt26/scripts/cr/pr-check-context.sh"
 
-# mutant_no_head_scope: HIMMEL-2378 CR round 3 [codex-1] - revert JUST the
-# head component (branch-scoping alone, the round-2 shape) - used only by
-# T33 below to reproduce the same-branch-different-head collision codex-1
-# flags, distinct from mutant_unscoped above (which drops branch too).
+# mutant_no_head_scope: revert JUST the
+# head component (branch-scoping alone) - used only by
+# T33 below to reproduce the same-branch-different-head collision,
+# distinct from mutant_unscoped above (which drops branch too).
 mutant_no_head_scope="$tmp/pr-check-context.mutant-no-head-scope.sh"
 # shellcheck disable=SC2016  # literal match against pr-check-context.sh's own
 # source text (unexpanded $vars) - not a shell expansion.
@@ -1471,7 +1465,7 @@ if [ "$rc_lr1" -ne 0 ]; then
 fi
 check "$(diff "$SCRIPT" "$mutant_no_head_scope" | grep -c '^< ')" "1" "T33 sanity - the no-head-scope mutant differs from the real script by exactly 1 changed line (head dropped from the path)"
 
-# T33. HIMMEL-2378 CR round 3 [codex-1]: the capability slot must be scoped
+# T33. The capability slot must be scoped
 # by (branch, head), not branch alone - mirrors T30's cross-branch
 # concurrency proof, one level down: TWO overlapping checks on the SAME
 # branch (fix/t26-cap) at DIFFERENT heads must not collide on one slot.
@@ -1532,9 +1526,9 @@ red_control_run --cwd "$wt33r" \
   --env PR_CHECK_ANCHOR_DELEGATED="$anchor26|t33-red-branch|$head33r_real|$nA33r" \
   -- bash "$anchor26/scripts/cr/pr-check-context.sh"
 rows_after33r="$(grep -c '"kind":"delegation"' "$ledger26" 2>/dev/null || echo 0)"
-# HIMMEL-2518: delegated= was previously only INTERPOLATED into the message,
-# never asserted, and the row count was an `-ge 1` inequality. Both are now
-# part of the specific predicted value.
+# delegated= is asserted (not merely INTERPOLATED into the message) and the
+# row count is exact (not an `-ge 1` inequality); both are part of the
+# specific predicted value.
 red_control_assert --label "T33" \
   --observed     "delegated=$(get_kv "$RED_CONTROL_OUT" delegated) rows_added=$((rows_after33r - rows_before33r))" \
   --expect-wrong "delegated=yes rows_added=1" \
@@ -1544,7 +1538,7 @@ red_control_assert --label "T33" \
 cp "$SCRIPT" "$anchor26/scripts/cr/pr-check-context.sh"
 cp "$SCRIPT" "$wt33r/scripts/cr/pr-check-context.sh"
 
-# T32. HIMMEL-2378 CR round 1 [codex-2]: mint the capability file BEFORE
+# T32. Mint the capability file BEFORE
 # logging the ledger row. Fixture: a fresh anchor/worktree whose
 # git-common-dir has a PLAIN FILE sitting at the exact path the mint code
 # needs to `mkdir -p` (cr-delegation/<branch>'s own parent, cr-delegation
@@ -1591,15 +1585,14 @@ red_control_run --cwd "$wt32" \
   --env HIMMEL_REPO="$anchor32" \
   -- bash -c 'bash "$0" >/dev/null; echo "exit=$?"' "$anchor32/scripts/cr/pr-check-context.sh"
 rows_after32r="$(grep -c '"kind":"delegation"' "$ledger32" 2>/dev/null || echo 0)"
-# HIMMEL-2518: was `-ge 1` on the row count alone. delegated= is now asserted
-# alongside it, and asserting it is what corrected this control's own stated
-# prediction: the migration first predicted delegated=yes, and the contract
-# rejected that as `wrong-mutation` rather than accepting it on the row count.
+# delegated= is asserted alongside the row count rather than relying on an
+# `-ge 1` row count alone: the contract rejects a wrong delegated=yes
+# prediction as `wrong-mutation`.
 # The mutant's real shape is delegated=NO with a row logged anyway - it skips
 # the write gate, appends the ledger row, then still declines - which is a
 # sharper statement of the defect than "it delegated": the ledger records a
 # delegation that never happened AND that the run itself does not claim.
-# HIMMEL-3359: the branch copy can no longer do its own work on a capability
+# The branch copy cannot do its own work on a capability
 # it cannot verify - it hands off to the (mutant) anchor once, which logs a
 # SECOND false row and delegates back, and the one-hop guard then exits 2
 # with no context. Two false rows, not one: the defect is still visible.
@@ -1611,18 +1604,17 @@ red_control_assert --label "T32" \
   || fail=1
 cp "$SCRIPT" "$anchor32/scripts/cr/pr-check-context.sh"
 
-# T17/T20/T21 (round 4's own tests, far above) are re-affirmed here as still
-# green. T20's fixture (PR_CHECK_ANCHOR_DELEGATED=1) still lands in the same
-# `*)` case arm as before and is still refused - unaffected by codex-1
-# (it was never accepted there to begin with). T17/T21's fixtures
+# T17/T20/T21 (far above) are re-affirmed here as still
+# green. T20's fixture (PR_CHECK_ANCHOR_DELEGATED=1) lands in the
+# `*)` case arm and is refused (it is never accepted there). T17/T21's fixtures
 # (PR_CHECK_ANCHOR_DELEGATED=$anchor13, the legacy bare-path shape) also
-# still land in that `*)` arm, but codex-1 changed what happens there: no
-# longer accepted, only refused-then-converged - see T17/T21's own updated
+# land in that `*)` arm, but are not accepted: only
+# refused-then-converged - see T17/T21's own
 # assertions above for that.
 check "$rc20" "0" "T26-30 re-affirm: T20 rc still 0"
 check "$rc21" "0" "T26-30 re-affirm: T21 rc still 0"
 
-# --- T35: HIMMEL-3359 - the himmel-lane RELATIVE entry keeps the anchor ------
+# --- T35: the himmel-lane RELATIVE entry keeps the anchor ------
 # A leg enters step 0 as the bare literal `bash scripts/cr/pr-check-context.sh`
 # (the one shape an allow rule can match), which executes the BRANCH's copy
 # first. The branch copy must hand straight to the ANCHOR's copy, so the
@@ -1733,15 +1725,15 @@ check "$?" "0" "T35e rc (relative entry, lib.sh-only diff)"
 check "$(get_kv "$out35e" anchor_lane)" "himmel" "T35e anchor_lane=himmel - HIMMEL_REPO still names the anchor"
 grep -q 'handing off to the anchor' "$tmp/t35e.err" || { echo "FAIL: T35e the branch copy did not hand off to the anchor"; fail=1; }
 
-# --- T36-T38: HIMMEL-3382 - one diff definition + the CodeRabbit git-env-unset
+# --- T36-T38: one diff definition + the git-env-unset
 # fix. Reuses anchor13/wt13/ledger13 (built above for T13-T17) rather than a
 # fresh fake-himmel each time, same posture as those tests.
 
 # T36 (fixture a). An UNCOMMITTED scripts/cr/ edit - never `git add`ed or
-# committed - must still be counted and delegated. Before HIMMEL-3382 the
-# diff definition was committed-history-only (merge-base..HEAD), so this
-# exact case was invisible: the working tree carries the change but no commit
-# does, and cr_diff_state stayed "no".
+# committed - must still be counted and delegated. A committed-history-only
+# diff definition (merge-base..HEAD) would miss this
+# exact case: the working tree carries the change but no commit
+# does, and cr_diff_state would stay "no".
 wt36="$tmp/fake-himmel-wt-uncommitted"
 (cd "$anchor13" && git worktree add -q -b t36-uncommitted "$wt36" main) || { echo "FAIL: T36 could not add worktree"; fail=1; }
 (
@@ -1926,12 +1918,12 @@ red_control_assert --label "T38" \
   || fail=1
 cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 
-# T39 (fixture e, HIMMEL-3382 console adversarial delta review). An inherited
+# T39 (fixture e). An inherited
 # GIT_LITERAL_PATHSPECS=1 must not turn the `:(top)scripts/cr/` magic pathspec
 # into a literal, non-existent path - that would silently empty all three
 # diff/ls-files calls above and fail cr_diff_state open to "no" on a branch
 # that genuinely edited scripts/cr/, exactly the diff this script exists to
-# catch (round-1's git-env unset fix covered GIT_DIR/GIT_CONFIG_* but not the
+# catch (the GIT_DIR/GIT_CONFIG_* unset alone does not cover the
 # pathspec-magic vars).
 wt39="$tmp/fake-himmel-wt-literal-pathspecs"
 (cd "$anchor13" && git worktree add -q -b t39-literal-pathspecs "$wt39" main) || { echo "FAIL: T39 could not add worktree"; fail=1; }
@@ -1987,13 +1979,13 @@ red_control_assert --label "T39" \
   || fail=1
 cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 
-# T40 (fixture f, HIMMEL-3382 console adversarial delta review). A gitignored,
+# T40 (fixture f). A gitignored,
 # untracked file under scripts/cr/ - never `git add`ed, excluded from
 # ordinary untracked-file listings by .gitignore - proves the twins' pinned
-# recipe (fix #2, test-pr-check-pair.sh check (ii)) and the script itself
-# decide on the SAME set: both must see it, because the round-1 fix
-# deliberately dropped --exclude-standard from the untracked-files leg
-# (finding 3) specifically so an unreviewed scripts/cr/ change cannot hide
+# recipe (test-pr-check-pair.sh check (ii)) and the script itself
+# decide on the SAME set: both must see it, because the untracked-files leg
+# deliberately omits --exclude-standard
+# so an unreviewed scripts/cr/ change cannot hide
 # behind .gitignore.
 wt40="$tmp/fake-himmel-wt-gitignored"
 (cd "$anchor13" && git worktree add -q -b t40-gitignored "$wt40" main) || { echo "FAIL: T40 could not add worktree"; fail=1; }
@@ -2016,10 +2008,10 @@ check "$((rows_after40 - rows_before40))" "1" "T40 exactly one new delegation le
 # T40 parity: run the EXACT recipe now pinned in both runbook twins
 # (test-pr-check-pair.sh check (ii)) against the same fixture and confirm it
 # names the same gitignored file - the twins and the script run the same
-# diff over the same guarded paths (HIMMEL-3493 widened both; the script
+# diff over the same guarded paths (the script
 # alone also excludes __pycache__/ and compares bytes, so the recipe's
 # silence is necessary, not sufficient, for its "no"). The recipe names
-# refs/remotes/origin/main, as the twins do (HIMMEL-3472), so the fixture
+# refs/remotes/origin/main, as the twins do, so the fixture
 # gets that ref first; main has not moved, so the merge base is unchanged.
 git -C "$anchor13" update-ref refs/remotes/origin/main refs/heads/main
 mb40="$(cd "$wt40" && git merge-base HEAD refs/remotes/origin/main)"
@@ -2031,13 +2023,13 @@ recipe40="$(
 )"
 check "$recipe40" "scripts/cr/ignored-file.sh" "T40 the twins' pinned recipe also names the gitignored file - same set as the script"
 
-# T40 RED: the OLD recipe (round-1's --exclude-standard, no :(top)) that fix
-# #2 replaced must NOT see this gitignored file - proving why the alignment
-# in fix #2 matters, not just that the new recipe happens to work.
+# T40 RED: the old recipe (--exclude-standard, no :(top)) must NOT see this
+# gitignored file - proving why the alignment matters, not just that the
+# current recipe happens to work.
 recipe40_old="$(cd "$wt40" && git ls-files --others --exclude-standard -- scripts/cr/ scripts/guardrails/lib.sh)"
 check "$recipe40_old" "" "T40 RED - the pre-3382 recipe (--exclude-standard, no :(top)) misses the gitignored file entirely"
 
-# --- T41-T50: HIMMEL-3472 - a false cr_diff_state=no is a trust-root hole ---
+# --- T41-T50: a false cr_diff_state=no is a trust-root hole ---
 # On "no" himmel_dir stays at the BRANCH, so every later /pr-check fence runs
 # the branch's own scripts/cr/ with no delegation row. Each row below is one
 # way a leg could make git's diff read clean while the branch's bytes differ
@@ -2047,8 +2039,8 @@ check "$recipe40_old" "" "T40 RED - the pre-3382 recipe (--exclude-standard, no 
 #   branch    - cr_diff_state=no: himmel_dir left at the branch, no delegation
 #   delegated - cr_diff_state=yes: the branch copy ran, logged by a ledger row
 #   anchor    - cr_diff_state=unknown: himmel_dir forced back to the anchor
-# "branch" on a mutated tree is the false no; before HIMMEL-3472 every row
-# below except the controls printed it. T43 (replace refs) and T47 (fsmonitor)
+# "branch" on a mutated tree is the false no; every row
+# below except the controls must not print it. T43 (replace refs) and T47 (fsmonitor)
 # are closed in git itself - gitd turns both off - so git sees the edit and the
 # row delegates. The rest, where the diff still reads clean (T42, T44-T46,
 # T48), expect "anchor", not "delegated": the byte comparison only turns a "no"
@@ -2087,7 +2079,7 @@ fx_outcome() {
   fi
 }
 
-# HIMMEL-3493: the "bytes differ" stderr line names the file that differs, so
+# The "bytes differ" stderr line names the file that differs, so
 # a row decided "anchor" for another reason (a failed hash, an ODD tree)
 # cannot pass as the byte comparison.
 fx_bytes_differ() { # fx_bytes_differ <path> - the last fx_run's stderr names <path> as differing
@@ -2216,9 +2208,9 @@ fx_new t49-symlink-base
 out49="$(fx_run)"
 check "$(fx_outcome "$out49")" "anchor" "T49 an edit through a symlinked scripts/cr is not read as no"
 
-# T50 (CodeRabbit on #1113, deferred to HIMMEL-3472): run from a subdirectory,
-# the untracked leg printed a cwd-relative path while both diff legs print
-# top-relative ones. cr_diff_files must spell every path from the top.
+# T50: run from a subdirectory,
+# the untracked leg must not print a cwd-relative path while both diff legs
+# print top-relative ones. cr_diff_files must spell every path from the top.
 fx_new t50-subdir
 (
   cd "$fx_wt" || exit 1
@@ -2229,7 +2221,7 @@ out50="$(fx_run docs)"
 check "$(fx_outcome "$out50")" "delegated" "T50 an untracked scripts/cr/ file is seen from a subdirectory"
 check "$(get_kv "$out50" cr_diff_files)" "scripts/cr/t50-new.sh" "T50 cr_diff_files spells the untracked path from the worktree top"
 
-# T51 (HIMMEL-3454 round-1 codex-2, carried onto HIMMEL-3472): the `sort -u`
+# T51: the `sort -u`
 # that normalizes the diff set fails. Its empty output must not read as "no".
 # The fixture makes git report a change while the branch's bytes equal the
 # anchor's (an edit committed, then undone in the working tree), so the byte
@@ -2282,7 +2274,7 @@ pr-check-context: fx_rc=$RED_CONTROL_RC")" \
   --note "HIMMEL-3454 round-1 codex-2 - an unchecked sort -u turns a failed normalization into an empty diff set, read as cr_diff_state=no, and himmel_dir stays at the branch" \
   || fail=1
 
-# T44 RED (HIMMEL-3493 test rigor): the T44 fixture against a mutant whose
+# T44 RED: the T44 fixture against a mutant whose
 # byte comparison never fires must print the false no - proof that the
 # comparison, not some other unknown, is what turns T44 into "anchor". The
 # mutant goes into both trees, and the worktree copy is hidden the same way
@@ -2315,12 +2307,12 @@ pr-check-context: fx_rc=$RED_CONTROL_RC")" \
   --note "HIMMEL-3493 - without the byte comparison an assume-unchanged scripts/cr/ edit reads as cr_diff_state=no" \
   || fail=1
 
-# --- T52-T60: HIMMEL-3493 - the manifest covers what a "no" run executes ---
+# --- T52-T60: the manifest covers what a "no" run executes ---
 # On "no" himmel_dir stays at the branch, and later /pr-check fences run
 # more than scripts/cr/ from it: the shared libs under scripts/lib/,
 # scripts/check-ci.sh and scripts/handover/resolve-active-item.sh (the
-# closure test-cr-guarded-closure.sh derives). Before HIMMEL-3493 each row
-# below printed "branch".
+# closure test-cr-guarded-closure.sh derives). A manifest covering only
+# scripts/cr/ would print "branch" for each row below.
 
 # T52 (acceptance): a branch that edits ONLY scripts/lib/load-dotenv.sh.
 fx_new t52-lib
@@ -2382,7 +2374,7 @@ for g61 in scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bug
   check "$(fx_bytes_differ "$g61")" "yes" "T61 stderr names $g61 as differing"
 done
 
-# T56 (HIMMEL-3472 review, test rigor): a hidden guardrails/lib.sh-only edit.
+# T56: a hidden guardrails/lib.sh-only edit.
 fx_new t56-guardrails-lib
 (
   cd "$fx_wt" || exit 1
@@ -2431,7 +2423,7 @@ fx_new t60-lib-symlink
 out60="$(fx_run)"
 check "$(fx_outcome "$out60")" "anchor" "T60 a symlinked scripts/lib is not read as no"
 
-# --- T62: HIMMEL-3536 - a branch that deletes its own hand-off guard still
+# --- T62: a branch that deletes its own hand-off guard still
 # cannot decide the lane. hand_off_to_anchor (top of this script) is
 # documented as defense in depth, not the trust root (see its own ponytail
 # comment): a branch that deletes it also deletes the guard. $anchor is read
@@ -2501,7 +2493,7 @@ check "$(fx_outcome "$out62b")" "delegated" "T62b a bare relative run of the gut
 rows62_after="$(grep -c '"kind":"delegation"' "$ledger62" 2>/dev/null || echo 0)"
 check "$rows62_after" "$((rows62_before + 1))" "T62b exactly one additional delegation row, still written through the anchor's own ledger-append.sh"
 
-# --- T63-T66: HIMMEL-2773 - /pr-check refuses a session resolved to the
+# --- T63-T66: /pr-check refuses a session resolved to the
 # default branch or a detached HEAD, and on success prints repo+branch FIRST.
 # ----------------------------------------------------------------------------
 
@@ -2524,7 +2516,7 @@ check "$rc63" "4" "T63 rc (fail-closed, resolved branch is the default branch)"
 check "$out63" "" "T63 no stdout on the refusal path"
 grep -q "run it from the leg's own worktree branch" "$tmp/err63.txt" || { echo "FAIL: T63 missing default-branch diagnostic"; fail=1; }
 
-# T64. Same refusal for a `master`-default fixture (HIMMEL-297: both
+# T64. Same refusal for a `master`-default fixture (both
 # protected names), proving T63 is not main-specific.
 repo_master63="$tmp/repo-master63"
 mkdir -p "$repo_master63"
@@ -2571,9 +2563,9 @@ out65b="$(cd "$repo_detached" && bash "$SCRIPT" 2>/dev/null)"
 check "$?" "0" "T65 negative control - a real feature branch on the same fixture is accepted"
 check "$(get_kv "$out65b" branch)" "feature/x65" "T65 negative control - feature branch resolved"
 
-# T66. On success, repo=/branch= are the FIRST TWO stdout lines (HIMMEL-2773:
-# "prints the resolved repo root and branch as its FIRST output line, so the
-# reviewer sees what it is certifying") - checked against T1's existing
+# T66. On success, repo=/branch= are the FIRST TWO stdout lines (the script
+# prints the resolved repo root and branch first, so the
+# reviewer sees what it is certifying) - checked against T1's existing
 # fixture/output rather than minting a new one.
 first_line="$(printf '%s\n' "$out1" | sed -n '1p')"
 second_line="$(printf '%s\n' "$out1" | sed -n '2p')"
@@ -2593,7 +2585,7 @@ else
   echo "negative control confirmed: marker '$real_marker' != deliberately wrong '$wrong_marker'"
 fi
 
-# T67 (HIMMEL-2650): git < 2.31 does NOT fail on an unsupported --path-format
+# T67: git < 2.31 does NOT fail on an unsupported --path-format
 # -- it ECHOES the option back as an ordinary output line and still exits 0
 # with a garbage, non-absolute value (proven directly: `git rev-parse
 # --totally-unknown-option --git-common-dir` on this station's real git
@@ -2611,9 +2603,9 @@ fi
 # validated by looks_like_absolute_path) correctly stays himmel.
 #
 # anchor13 is checked out on 'main' at this point (every earlier test's
-# worktree adds branch off it without switching it) -- HIMMEL-2773's
-# default-branch refusal (rc=4) fires before this fix's own code ever runs
-# there. Switch it to a non-default branch first: the "own root, not a
+# worktree adds branch off it without switching it) -- the
+# default-branch refusal (rc=4) fires before the resolution code under test ever
+# runs there. Switch it to a non-default branch first: the "own root, not a
 # linked worktree" scenario this test targets does not require main itself,
 # only that cwd's git-common-dir resolves to the anchor's own .git.
 (cd "$anchor13" && git checkout -q -b t67-anchor-root) || { echo "FAIL: T67 could not switch anchor13 off main"; fail=1; }
@@ -2638,7 +2630,7 @@ exec "$real_git67" "\${args[@]}"
 GITSHIM67
 chmod +x "$fakegit_dir67/git"
 
-# Positive control (codex-1, HIMMEL-2650): the assertion below never passes
+# Positive control: the assertion below never passes
 # --path-format=absolute to this shim (the code under test no longer calls
 # it at this site), so without this control T67 could pass even if the shim
 # were broken and never echoed anything at all. Call the shim directly with
@@ -2656,7 +2648,7 @@ rc67=$?
 check "$rc67" "0" "T67 rc"
 check "$(get_kv "$out67" anchor_lane)" "himmel" "T67 anchor_lane=himmel (a real himmel-lane run at the anchor root survives a git-2.30-shaped --path-format echo-back nearby, not silently downgraded to adopter)"
 
-# T68 (HIMMEL-2650): when the common-dir resolution genuinely cannot produce
+# T68: when the common-dir resolution genuinely cannot produce
 # an absolute value at all (not just the --path-format echo-back shape),
 # the fix must still fail CLOSED to the adopter lane -- and must say so
 # loudly on stderr, never silently (per the console's REDIRECT ruling).
@@ -2677,7 +2669,7 @@ check "$rc68" "0" "T68 rc (fails closed, not hard-abort)"
 check "$(get_kv "$out68" anchor_lane)" "adopter" "T68 anchor_lane=adopter (an unresolvable common dir fails to the conservative lane)"
 grep -q 'could not resolve an absolute git-common-dir' "$tmp/t68.err" || { echo "FAIL: T68 missing the loud stderr diagnostic naming the cause"; fail=1; }
 
-# T69 (HIMMEL-2650, console REDIRECT): the relative-common-dir resolution
+# T69: the relative-common-dir resolution
 # must not consult CDPATH. Bash's `cd` searches CDPATH for a bare relative
 # name like ".git" even when the cwd already has its own `.git` -- CDPATH
 # wins over the local match (verified empirically). Left unguarded, a
@@ -2705,7 +2697,7 @@ mkdir -p "$unrelated69"
 out69b="$(cd "$anchor13" && CDPATH="$unrelated69" HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh")"
 check "$(get_kv "$out69b" anchor_lane)" "himmel" "T69b anchor_lane=himmel (CDPATH poisoned toward an unrelated dir must not break the legitimate himmel-lane match)"
 
-# T70 (HIMMEL-5601): step 0 prints the two base-skew numbers on every lane:
+# T70: step 0 prints the two base-skew numbers on every lane:
 # behind_base= (commits the branch lacks from the diff base) and main_ahead=
 # (commits local <base> carries beyond origin/<base>).
 origin70="$tmp/origin-70.git"

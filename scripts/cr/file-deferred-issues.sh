@@ -5,7 +5,7 @@
 # lines tagged with deferred-class severities (NIT, LOW, SUGGESTION,
 # IMPROVEMENT, DEFERRED), and files each as an issue on the current repo,
 # routed through the forge seam (scripts/lib/forge.sh): GitHub issues via
-# `gh`, Bitbucket issues via the himmel `bitbucket` CLI (HIMMEL-327). On a
+# `gh`, Bitbucket issues via the himmel `bitbucket` CLI. On a
 # forge whose issue tracker is disabled (Bitbucket default → 404, spec §5.2)
 # the run degrades gracefully — it files nothing and warns, naming the
 # deferred findings, rather than erroring the CR flow. Dedupe (GitHub only)
@@ -20,8 +20,8 @@
 #
 # Bullets (`- ` / `* `) and backtick fences/spans wrapping the finding
 # line are stripped before matching. The critic panel's own shape
-# (`## Suggestions (N found)` heading + `- [id]: text [path:line]` findings,
-# HIMMEL-2068) is rewritten into the canonical shape above by a
+# (`## Suggestions (N found)` heading + `- [id]: text [path:line]` findings)
+# is rewritten into the canonical shape above by a
 # normalisation pass before matching — see normalize_panel_input() below.
 #
 # Why MEDIUM is NOT auto-filed: MEDIUM findings warrant attention before
@@ -93,7 +93,7 @@ if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 
-# Resolve the forge (github|bitbucket) from the origin remote (HIMMEL-327).
+# Resolve the forge (github|bitbucket) from the origin remote.
 # Repo-context + issue-create route through the forge seam so a Bitbucket user
 # degrades gracefully when their issue tracker is off (spec §5.2) instead of
 # hard-erroring the CR flow. forge_detect prints an actionable message + returns
@@ -144,7 +144,7 @@ if [ -z "$INPUT_CONTENT" ]; then
     exit 1
 fi
 
-# Normalisation pass (HIMMEL-2068): the critic panel (scripts/cr/critic-panel.sh)
+# Normalisation pass: the critic panel (scripts/cr/critic-panel.sh)
 # emits a different shape than the canonical `path:LINE: SEV: text` line the
 # extractor below parses — severity lives in the enclosing `## <section>`
 # HEADING, not on the finding line itself:
@@ -181,8 +181,7 @@ normalize_panel_input() {
         fi
         # Any OTHER "##" heading (a different producer's section, e.g. a
         # /pr-review-toolkit:review-pr heading combined into the same input)
-        # clears section state instead of leaving it stale (codex-2, HIMMEL-2068
-        # CR round) — without this a later `[id]: ... [path:line]` bullet under
+        # clears section state instead of leaving it stale — without this a later `[id]: ... [path:line]` bullet under
         # an unrelated heading would inherit the PRIOR panel section and be
         # auto-filed (or blocked) as though it still belonged there.
         if [[ "$line" =~ ^##[[:space:]] ]]; then
@@ -252,8 +251,7 @@ HEAD_SHA=$(git rev-parse --short HEAD)
 # Extract candidate lines. Primary pattern: `path[:line]: SEV: text`
 # — LINE is OPTIONAL (`(:[0-9]+)?`). File-only findings (typo in
 # README, missing doc section) are valid and would otherwise be
-# rejected. (HIMMEL-131: regex was already permissive; comment used
-# to imply LINE is required — drift cleared.) Use grep -E (egrep) —
+# rejected. Use grep -E (egrep) —
 # portable across gitbash + linux + macos. Strip leading bullets and
 # backtick wrappers first so `- ... :NIT: ...` or `` `...:NIT:...` ``
 # still match.
@@ -331,7 +329,7 @@ while IFS= read -r line; do
     # (rate-limit, auth expired, network down) we MUST NOT file, otherwise
     # transient gh failures produce duplicate issues.
     #
-    # HIMMEL-131: previously `2>&1` merged stderr into stdout. On rc=0
+    # previously `2>&1` merged stderr into stdout. On rc=0
     # with a non-empty stderr (deprecation banner, auth-refresh notice),
     # `existing` then held the stderr text instead of the issue number,
     # and the finding was silently skipped as a "duplicate". Now capture

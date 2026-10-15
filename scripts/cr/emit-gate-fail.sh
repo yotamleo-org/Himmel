@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# emit-gate-fail — D6 blocking-fail corpus emission (HIMMEL-654 WS7, spec D6).
+# emit-gate-fail — D6 blocking-fail corpus emission (WS7, spec D6).
 #
 # Today file-deferred-issues.sh files ONLY the deferred tier (NIT/LOW/…);
 # blocking CRITICAL/HIGH/IMPORTANT CR fails are NOT persisted (they block the

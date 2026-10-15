@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# Drift test for pr-check-context.sh's cr_guarded set (HIMMEL-3493).
+# Drift test for pr-check-context.sh's cr_guarded set.
 #
 # On a step-0 cr_diff_state=no verdict himmel_dir stays at the BRANCH, so
 # every script a later /pr-check step runs through <himmel_dir> - and every
@@ -93,7 +93,7 @@ edges() {
       [ -f "$ROOT/$cand" ] && { printf '%s\n' "$cand"; break; }
     done
   done | sort -u | while IFS= read -r target; do
-    # (HIMMEL-4452/4455: scripts/jira/dist is the Jira CLI's untracked build,
+    # (scripts/jira/dist is the Jira CLI's untracked build,
     # present only where it was built, so the closure result must not depend on
     # whether it exists. Only an edge whose parent is pinned in DIST_PRIMARY is
     # dropped - a parent that resolves dist from the PRIMARY checkout, never
@@ -243,7 +243,7 @@ else
   check "$(printf 'scripts/lib/a.sh\nscripts/lib/locked.sh\n' | ROOT="$fx" unreadable)" "scripts/lib/locked.sh" "unreadable() names a reached file edges() cannot read"
 fi
 chmod 600 "$fx/scripts/lib/locked.sh"
-# HIMMEL-4455: the jira dist filter is per-edge. A script-relative dist edge
+# the jira dist filter is per-edge. A script-relative dist edge
 # (the arm-resume.sh / breadcrumb.sh shape) must stay an edge, and a pinned
 # parent's dist edge is still dropped.
 mkdir -p "$fx/scripts/jira/dist" "$fx/scripts/handover/console-kit"
@@ -292,7 +292,7 @@ check "$(printf '%s\n' "$reached" | unreadable)" "" "every reached file was read
 escaped="$(printf '%s\n' "$reached" | outside "$cr_guarded")"
 check "$escaped" "" "every file reached on the no path lies inside cr_guarded"
 
-# RED control: the pre-HIMMEL-3493 set must fail this suite's own assertion,
+# RED control: the set without scripts/lib/load-dotenv.sh must fail this suite's own assertion,
 # naming a scripts/lib/ file - proving the check depends on the set.
 red="$(printf '%s\n' "$reached" | outside "scripts/cr scripts/guardrails/lib.sh")"
 if grep -qxF scripts/lib/load-dotenv.sh <<< "$red"; then

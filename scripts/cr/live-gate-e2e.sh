@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/live-gate-e2e.sh — on-demand LIVE end-to-end of the review gate
-# against a REAL throwaway GitHub repo (HIMMEL-5232, audit HIMMEL-5224).
+# against a REAL throwaway GitHub repo.
 #
 # Drives one canned PR through: open; a posted review finding blocks
 # (ready-check check 3); the CR ledger row lands (check 4); resolving the thread

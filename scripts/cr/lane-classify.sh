@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lane-classify — positive cheap-lane provenance classifier (HIMMEL-654 WS7,
+# lane-classify — positive cheap-lane provenance classifier (WS7,
 # spec D1.1). A branch is a cheap lane IFF it carries a POSITIVE marker:
 #   glm/*   → cheap-glm   (spawn-glm PR #843 names glm/<slug>; session meta corroborates)
 #   codex/* → cheap-codex (hermes-Codex convention, adopted in harness-compat.md)

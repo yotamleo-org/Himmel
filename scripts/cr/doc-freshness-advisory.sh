@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/doc-freshness-advisory.sh - step-2.7 doc-freshness advisory for
-# /pr-check (HIMMEL-2226, HIMMEL-587).
+# /pr-check.
 #
 # WHY a script and not a bash fence: .claude/commands/pr-check.md's step-2.7
 # fence sources scripts/lib/doc-freshness.sh (and load-dotenv.sh) with
@@ -10,7 +10,7 @@
 # CLAUDE_PROJECT_DIR is unset in Bash-tool shells anyway. Moving the source
 # into a script whose OWN location resolves the himmel root sidesteps both.
 #
-# ADVISORY ONLY - NEVER BLOCKS (HIMMEL-587): scripts/hooks/check-doc-guard.sh
+# ADVISORY ONLY - NEVER BLOCKS: scripts/hooks/check-doc-guard.sh
 # already enforces `block` rows at pre-push. This script always exits 0 - a
 # missing lib, an inactive leg, or a df_detect failure all degrade to
 # silence-plus-exit-0 rather than breaking /pr-check.
@@ -28,14 +28,14 @@
 #
 # Exit: always 0.
 set -uo pipefail
-# HIMMEL-3395: a relative-entry copy that is not the anchor's hands off to it.
+# a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# default_branch (main OR master, HIMMEL-297). Fail-open to "main" if
+# default_branch (main OR master). Fail-open to "main" if
 # guardrails/lib.sh cannot be sourced - never let a missing/broken substrate
 # turn an advisory step into a hard failure.
 db=""
@@ -48,7 +48,7 @@ fi
 
 # Pick up HIMMEL_DOC_FRESHNESS from .env for leg parity with the session/
 # morning surfaces - process env still wins. --root pins the lookup to
-# himmel's primary checkout (HIMMEL-2035); load_dotenv is a no-op on a
+# himmel's primary checkout; load_dotenv is a no-op on a
 # missing .env either way.
 # shellcheck source=../lib/load-dotenv.sh
 # shellcheck disable=SC1091

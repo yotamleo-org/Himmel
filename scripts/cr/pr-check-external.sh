@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/cr/pr-check-external.sh - Claude-free CR runner (HIMMEL-750).
+# scripts/cr/pr-check-external.sh - Claude-free CR runner.
 #
 # Runs the critic panel over a branch's diff WITHOUT a Claude validating
 # session, so review still happens when the Claude quota bank is maxed. On a
@@ -16,14 +16,14 @@
 #      flaky free critic must not clear the gate)
 #   4. zero critics responded         -> FAIL (defensive)
 #   5. Critical>0 or Important>0      -> NOT CLEAN
-# CodeRabbit is the GitHub APP ONLY (HIMMEL-2704, operator ruling 2026-09-07).
+# CodeRabbit is the GitHub APP ONLY (operator ruling 2026-09-07).
 # There is no local CodeRabbit pass on this path any more: the App reviews the
 # PR AFTER `gh pr create`, and its verdict is read post-PR by check-ci.sh (the
 # commit status via cr-signal.sh + zero unresolved review threads). The CLI leg
-# that used to run here (HIMMEL-932) is retired along with
+# that used to run here is retired along with
 # scripts/cr/coderabbit-review.sh; every CodeRabbit signal now arrives on the
 # PR, where it is commented on and tracked in GitHub.
-# Review floor (HIMMEL-1224) — stated once, per path, not left implied by which
+# Review floor — stated once, per path, not left implied by which
 # gate happens to fail-close:
 #   * interactive /pr-check (a Claude session is present): the Claude self-review
 #     backstop is the floor. It fails OPEN on the ABSENCE of external lanes
@@ -143,11 +143,11 @@ if [ ! -s "$diff_file" ]; then
     exit 0
 fi
 
-# HIMMEL-1224: the changed-file list for the gate-infra quorum check (GATE 6).
+# the changed-file list for the gate-infra quorum check (GATE 6).
 # Computed HERE, right after the diff was validated non-empty (a diff failure
 # already fail-closed above), so the quorum decision never rides on a
 # silently-empty list. Same 3-dot range as $diff_file, so the two never disagree.
-# FAIL-CLOSED on enumeration failure (CodeRabbit, HIMMEL-1224): if we cannot list
+# FAIL-CLOSED on enumeration failure: if we cannot list
 # the changed files we cannot tell a gate-infra diff from a non-gate one, so the
 # quorum must NOT be silently skipped (no `|| true` masking the failure).
 if ! changed_files="$(git diff --name-only "origin/${BASE}...${BRANCH}" 2>/dev/null)"; then
@@ -155,7 +155,7 @@ if ! changed_files="$(git diff --name-only "origin/${BASE}...${BRANCH}" 2>/dev/n
     exit 1
 fi
 
-# HIMMEL-1222 (codex-adv): a real review is about to run, so REVOKE any existing
+# A real review is about to run, so REVOKE any existing
 # external_cr_verdict for this session NOW. Otherwise a fail-closed exit below
 # (a panel/codex/CodeRabbit failure) would leave a stale 'pass (sha=X)' that
 # ship-branch.sh still trusts while the branch tip is unchanged -- defeating the
@@ -198,8 +198,8 @@ grep '^panel-availability:' "$panel_err" >&2 || true
 # GATE 1: panel non-zero exit -> FAIL.
 if [ "$panel_rc" -ne 0 ]; then
     if [ "$panel_rc" -eq 6 ]; then
-        # HIMMEL-5110: exit 6 is the panel's deliberate certify refusal, not a
-        # failed panel (HIMMEL-1932); the gate holds this SHA closed.
+        # exit 6 is the panel's deliberate certify refusal, not a
+        # failed panel; the gate holds this SHA closed.
         echo "pr-check-external: FAIL - critic panel REFUSED to certify this run (exit 6: the citation-guard digest could not be computed - fix sha256sum/shasum); the CR marker stays held at this SHA until the panel is re-run on a new HEAD" >&2
     else
         echo "pr-check-external: FAIL - critic panel exited $panel_rc (all critics failed?)" >&2
@@ -243,18 +243,18 @@ if [ "$nc" -ne 0 ] || [ "$ni" -ne 0 ]; then
     exit 1
 fi
 
-# GATE 6 — gate-infrastructure diffs are NOT clearable on this path
-# (HIMMEL-1224, narrowed by HIMMEL-2704). A diff that changes the CR/merge gate
+# GATE 6 — gate-infrastructure diffs are NOT clearable on this path.
+# A diff that changes the CR/merge gate
 # machinery is reviewed by the very gate it changes, so on this Claude-absent
-# path a lone codex reviewer (GATE 3) is not enough: 1224 required a SECOND
-# trusted cross-model reviewer to have RESPONDED, and CodeRabbit's CLI was that
-# second seat. With CodeRabbit now App-only (HIMMEL-2704) there is no local
+# path a lone codex reviewer (GATE 3) is not enough: the gate needs a SECOND
+# trusted cross-model reviewer to have RESPONDED, and CodeRabbit's CLI used to
+# be that second seat. With CodeRabbit App-only there is no local
 # CodeRabbit pass, and critics.json's panel is codex-only (the `glm` row was
-# retired 2026-08-18, HIMMEL-1904) — so the quorum has no second seat left to
+# retired 2026-08-18) — so the quorum has no second seat left to
 # fill and CANNOT be met here, for any diff, ever. Stating that outright is the
-# same disposition 1224 already produced whenever the CLI was absent (the
+# same disposition the quorum rule produced whenever the CLI was absent (the
 # overwhelmingly common case), so this is not a loosening: it is the refusal
-# 1224 wrote, minus a probe that can no longer succeed. Non-gate diffs keep the
+# the quorum rule wrote, minus a probe that can no longer succeed. Non-gate diffs keep the
 # single-codex floor, unchanged. The interactive /pr-check (Claude backstop) is
 # the path for gate-infra changes; the CodeRabbit App still reviews the PR after
 # `gh pr create`, so such a change is not merged unreviewed — it is merely not
@@ -283,7 +283,7 @@ if [ -n "$SESSION_DIR" ]; then
     # to the branch tip - an authorization gate must not accept a short-prefix
     # match a grafted commit could collide on, CR [codex-1]).
     # shellcheck disable=SC2016  # ${...} below are JS template literals, not shell
-    # FAIL-CLOSED if the verdict cannot be persisted (CodeRabbit, HIMMEL-1224):
+    # FAIL-CLOSED if the verdict cannot be persisted:
     # node exits non-zero on an unreadable meta OR an unwritable file, and the
     # script must NOT then print/exit-0 a `pass` that never reached disk. (The
     # early revocation already removed any stale verdict, so a failed write leaves

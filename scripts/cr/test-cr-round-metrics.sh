@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/test-cr-round-metrics.sh — fixture ledger with KNOWN numbers for
-# cr-round-metrics.sh (HIMMEL-5059). bash 3.2-safe.
+# cr-round-metrics.sh. bash 3.2-safe.
 # shellcheck disable=SC2015,SC2016  # A && B || C intentional; literal $var in fixture text
 set -uo pipefail
 

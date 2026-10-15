@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# Tests for cr/cr-pending-audit.sh (HIMMEL-1553). Each case builds a REAL temp
+# Tests for cr/cr-pending-audit.sh. Each case builds a REAL temp
 # git repo (the audit resolves everything from <git-common-dir>, mirroring
 # clear-cr-marker.sh's no-env-seam posture) and writes markers + ledger at the
 # fixed paths under the temp repo's own .git.
 set -uo pipefail
 
-# grep -q against text with NO pipeline (pipefail + early grep -q exit trap —
-# HIMMEL-1430; same helper as test-clear-cr-marker.sh).
+# grep -q against text with NO pipeline (pipefail + early grep -q exit trap;
+# same helper as test-clear-cr-marker.sh).
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,7 +56,7 @@ avail_ok() { printf '{"kind":"avail","branch":"feat/x","head":"%s","model":"code
 finding()  { printf '{"kind":"finding","branch":"feat/x","head":"%s","model":"codex","finding_id":"codex-1","severity":"%s","file":"a.sh","line":1,"verdict":"%s"}' "$1" "$2" "$3"; }
 
 # make_repo_sha256 — same as make_repo, but a SHA-256 object-format repo, so
-# `sha` comes back 64 hex chars instead of 40 (HIMMEL-2029).
+# `sha` comes back 64 hex chars instead of 40.
 make_repo_sha256() {
     tmp=$(fixture_mktemp_dir) || return 1
     (
@@ -222,7 +222,7 @@ out=$(cd "$tmp" && bash "$AUDIT" 2>&1); rc=$?
     && pass || fail "T14 rc=$rc out=$out"
 rm -rf "$tmp"
 
-# T15 (HIMMEL-2035 T4 SC5): foreign-repo fence — cr-pending-audit.sh resolves
+# T15: foreign-repo fence — cr-pending-audit.sh resolves
 # everything via `git rev-parse --path-format=absolute --git-common-dir` off
 # cwd (no -C — see the script header), so it already reports on whichever
 # repo the caller's cwd sits in; no --repo flag was added. Prove it: a marker

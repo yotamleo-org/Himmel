@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/cr/test-failure-classify.sh -- TDD tests for failure-classify.sh
-# (HIMMEL-1176). Bash 3.2 safe.
+# Bash 3.2 safe.
 # shellcheck disable=SC2015  # A && B || C intentional in the final assert
 set -uo pipefail
 
@@ -37,7 +37,7 @@ check "3: Z.ai 5h phrase -> quota-5h" \
     "$(classify 1 '' 'API Error: Request rejected (429) · [1316][Usage limit reached for the past 5 hours. Insufficient balance for extra usage][mock0b]')" \
     "quota-5h"
 
-# ── quota-5h: existing HIMMEL-729 exhaustion table (Alibaba examples) ──────
+# ── quota-5h: existing exhaustion table (Alibaba examples) ──────
 check "4: exceeded allocated quota -> quota-5h" \
     "$(classify 1 '' 'Alibaba: you have exceeded your allocated quota for qwen3-coder-plus')" "quota-5h"
 check "5: AllocationQuota.FreeTierOnly -> quota-5h" \
@@ -55,7 +55,7 @@ check "9: plan expired phrase -> quota-long" \
 check "10: standalone insufficient balance -> quota-long" \
     "$(classify 1 '' 'Insufficient balance for this request')" "quota-long"
 
-# ── HIMMEL-3110: codex's own usage-limit wording, verbatim captured body ───
+# ── codex's own usage-limit wording, verbatim captured body ───
 # (scripts/cr/testdata/codex-usage-limit-2026-09-16.txt). Pre-fix this
 # classified generic-rc-1 (confirmed against the pre-fix code before this
 # fix landed) — codex says "usage limit" and names an absolute reset date,
@@ -67,12 +67,12 @@ check "10b: codex captured usage-limit body (fixture, stderr) -> quota-long" \
 check "10c: same codex phrasing via stdout -> quota-long" \
     "$(classify 1 "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 19th, 2026 10:09 AM." '')" \
     "quota-long"
-# ── HIMMEL-3110 regression: "hit your usage limit" alone (no pairing phrase)
-# must NOT reach an exhaustion bucket -- the HIMMEL-729 pairing discipline
+# ── regression: "hit your usage limit" alone (no pairing phrase)
+# must NOT reach an exhaustion bucket -- the pairing discipline
 # extends to the new sentinel, not just the pre-existing ones.
 check "10d: usage-limit phrase WITHOUT purchase-credits/try-again pairing -> not quota-long" \
     "$(classify 1 '' 'You have hit your usage limit today.')" "generic-rc-1"
-# ── HIMMEL-3110 regression: a bare auth fault must still classify auth, not
+# ── regression: a bare auth fault must still classify auth, not
 # leak into quota-long because it shares no wording with the new sentinel.
 check "10e: bare 401 alongside unrelated text -> auth, NOT quota-long" \
     "$(classify 1 '' 'HTTP 401 Unauthorized: token_expired, please re-authenticate')" "auth"
@@ -80,7 +80,7 @@ check "10e: bare 401 alongside unrelated text -> auth, NOT quota-long" \
 # ── rate-limit: plain 429, no quota phrasing ───────────────────────────────
 check "11: bare 429 -> rate-limit" "$(classify 1 '' 'HTTP 429 Too Many Requests')" "rate-limit"
 
-# ── auth: 401/403/invalid-api-key/bare AccessDenied (HIMMEL-729 pairing) ───
+# ── auth: 401/403/invalid-api-key/bare AccessDenied (pairing) ───
 check "12: 401 -> auth" "$(classify 1 '' 'HTTP 401 Unauthorized')" "auth"
 check "13: 403 -> auth" "$(classify 1 '' 'HTTP 403 Forbidden')" "auth"
 check "14: invalid api key -> auth" "$(classify 1 '' 'Error: invalid API key provided')" "auth"
@@ -96,7 +96,7 @@ check "18b: 400 Bad Request (no HTTP/status/code keyword) -> still http-4xx" \
 check "18c: 500 Internal Server Error with no leading HTTP -> still http-5xx" \
     "$(classify 1 '' 'curl: (22) 500 Internal Server Error')" "http-5xx"
 
-# ── HIMMEL-2107: a ticket ID inside usage text is not an HTTP status ───────
+# ── a ticket ID inside usage text is not an HTTP status ───────
 check "16b: usage text containing HIMMEL-473 -> not http-4xx (rc=2 usage-error)" \
     "$(classify 2 '' 'critic-first-pass.sh: empty stdin — pipe a unified diff
 Usage: git diff origin/HEAD...HEAD | critic-first-pass.sh --model <name>
@@ -156,7 +156,7 @@ check "26: is_quota_exhaustion false on a non-exhaustion body" "$(cat "$tmp/qe_r
 ) > "$tmp/source_result"
 check "27: sourcing does not leak errexit" "$(cat "$tmp/source_result")" "survived"
 
-# ── sourcing does not leak nounset into the caller (HIMMEL-1176, codex CR) ──
+# ── sourcing does not leak nounset into the caller ──
 (
     set +u
     # shellcheck source=scripts/cr/failure-classify.sh
@@ -171,7 +171,7 @@ check "27: sourcing does not leak errexit" "$(cat "$tmp/source_result")" "surviv
 ) > "$tmp/source_result2" 2>/dev/null
 check "28: sourcing does not leak nounset" "$(cat "$tmp/source_result2")" "survived"
 
-# ── first_signal_line <file> (HIMMEL-3105): the FIRST line of a captured body
+# ── first_signal_line <file>: the FIRST line of a captured body
 # that carries a provider-failure signature. Feeds the ledger detail (so the
 # provider error line, not the last stderr line, is what the avail row shows)
 # and critic-first-pass.sh's "raw signal:" line for bodies whose decisive line
@@ -207,7 +207,7 @@ _fsl_missing="$(
 )"
 check "35: missing file -> empty, rc 0" "$_fsl_missing" "rc=0"
 # The signature set must cover every distinctive token classify_failure keys a
-# non-generic class on (CodeRabbit round 1): a quota-long line outside the raw
+# non-generic class on: a quota-long line outside the raw
 # tail has to surface, and a bare "usage limit" (which classify_failure alone
 # never acts on, see 3110 above) must not select prose over the real line.
 check "36: codex 'hit your usage limit' line is a signal" \
@@ -228,7 +228,7 @@ tail')" \
 check "39: a bare 'usage limit' in prose is not a signal (classify_failure never acts on it alone)" \
     "$(fsl 'The reviewer mentioned a usage limit in passing.')" ""
 
-# ── HIMMEL-4610: cfp's "Raw output: <mktemp path>" must not feed the status
+# ── cfp's "Raw output: <mktemp path>" must not feed the status
 # regexes. The random suffix can spell a status code ("cfp-raw.x412b"), which
 # flaked test-critic-panel-fallback.sh 11c (empty-response read as http-4xx).
 check "40: empty-body marker + Raw output path spelling 4xx -> empty-response" \
@@ -248,7 +248,7 @@ check "44: a real 429 on another line still classifies beside a Raw output path"
 critic-first-pass.sh: invoke failed (rc=1) — fail-open, proceed claude-only. Raw output: /tmp/cfp-raw.a123bc')" \
     "rate-limit"
 
-# ── HIMMEL-2399: critic-first-pass.sh's "upstream error" marker (a vendor error
+# ── critic-first-pass.sh's "upstream error" marker (a vendor error
 # body, not a review) is its own class, apart from malformed-output. The finer
 # classes still win when the vendor text carries a status/quota/auth signal.
 check "45: upstream error marker + vendor line -> upstream-error" \

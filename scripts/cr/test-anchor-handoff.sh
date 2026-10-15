@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# Tests for scripts/cr/anchor-handoff.sh (HIMMEL-3395): a gate writer entered
+# Tests for scripts/cr/anchor-handoff.sh: a gate writer entered
 # by a RELATIVE path from a non-anchor tree runs the anchor's copy; an
 # absolute entry runs the local copy; the relative door fails closed.
 # T1-T10, T9b, T9c exercise scripts/cr/*.sh (depth 2 under the repo root).
-# T11-T13 (HIMMEL-3437) exercise a depth-3 entry (scripts/handover/console-kit/*.sh)
+# T11-T13 exercise a depth-3 entry (scripts/handover/console-kit/*.sh)
 # to prove the git-rev-parse-based root resolution is depth-agnostic.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,7 +28,7 @@ tmp="$(mktemp -d -t anchor-handoff.XXXXXX)"; trap 'rm -rf "$tmp"' EXIT
 # writer sources the helper, the whole head is just `set -uo pipefail`, so the
 # local copy runs — the RED state.
 #
-# HIMMEL-3437: the generalized helper resolves its own root via
+# The generalized helper resolves its own root via
 # `git rev-parse --show-toplevel`, so every fixture tree must be a real git
 # repo (a bare `git init -q` — no commit needed, rev-parse works on an empty repo).
 make_tree() {  # <root> <label>
@@ -44,11 +44,11 @@ set -uo pipefail'
     fi
     rm -f "$1/scripts/cr/clear-cr-marker.sh.head"
     printf '%s\necho "RAN:%s"\n' "$head" "$2" > "$1/scripts/cr/clear-cr-marker.sh"
-    # HIMMEL-3437 (CodeRabbit, PR #1212): anchor-handoff.sh now requires the
+    # anchor-handoff.sh requires the
     # anchor's own git index to TRACK the resolved relative path before
     # trusting a self-anchor match - stage every fixture file so the genuine
     # self-anchor cases (T8) keep passing under that check.
-    # HIMMEL-3437 (CodeRabbit, PR #1212 review round 3): clear any git
+    # Clear any git
     # identity env this suite's own caller might have set before staging, so
     # fixture setup always targets $1's own default index rather than an
     # inherited alternate one - T18/T19 still set their overrides explicitly
@@ -110,7 +110,7 @@ if grep -qF 'exec "$BASH" "$_ah_anchor/$_ah_rel" "$@"' "$red/scripts/cr/anchor-h
     echo "FAIL: T9c setup — mutant exec line unchanged, control proves nothing" >&2
     fail=1
 fi
-# HIMMEL-3451: anchor-handoff.sh now byte-compares itself against the anchor's
+# anchor-handoff.sh now byte-compares itself against the anchor's
 # copy before handing off, so $red_anchor carries the SAME mutant helper as
 # $red — the control is exercising the exec-line regression, not that new
 # dependency check (which has its own dedicated tests below).
@@ -138,7 +138,7 @@ for w in $WRITERS; do
     check "$first" "$SOURCE_LINE" "T10 $w sources the hand-off first"
 done
 
-# 11-13 (HIMMEL-3437). A depth-3 entry (scripts/handover/console-kit/*.sh) —
+# 11-13. A depth-3 entry (scripts/handover/console-kit/*.sh) —
 # the source line points at ITS OWN sibling anchor-handoff.sh copy (the one
 # generalizing this file no longer requires the two hardcoded scripts/cr/
 # writers to be depth-2; real scripts/handover/*.sh sources scripts/cr/anchor-handoff.sh
@@ -163,7 +163,7 @@ check "$(run "$d3_wt" "$d3_anchor" "$d3_wt/scripts/handover/console-kit/go-stub.
 # 13. Relative entry three levels deep with HIMMEL_REPO unset fails closed.
 check "$(run "$d3_wt" - scripts/handover/console-kit/go-stub.sh | tr '\n' ' ')" "rc=2 " "T13 depth-3 unset HIMMEL_REPO exits 2"
 
-# 14 (HIMMEL-3437 F1). A worktree reached through a SYMLINKED path must still
+# 14. A worktree reached through a SYMLINKED path must still
 # hand off. `_ah_dir` is built from plain `pwd` (logical, symlink-preserving)
 # while `_ah_root` comes from `git rev-parse --show-toplevel` (physical,
 # symlink-resolved) — when the entry cwd is a symlink these diverge, and the
@@ -174,7 +174,7 @@ make_tree "$real_wt" branch
 ln -s "$real_wt" "$link_wt"
 check "$(run "$link_wt" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T14 symlinked worktree still hands off (F1)"
 
-# 15 (HIMMEL-3437 F2). A worktree nested INSIDE the anchor's own directory
+# 15. A worktree nested INSIDE the anchor's own directory
 # tree, whose own .git is corrupted (git rev-parse fails for a bad reason,
 # not because it's a genuine non-git fixture), must fail closed rather than
 # have the no-git walk-up fallback find the anchor as an ancestor and treat
@@ -187,7 +187,7 @@ printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:corrupted"\n' "$SOU
 echo "gitdir: /nonexistent/path" > "$nested/.git"
 check "$(run "$nested" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T15 corrupted nested worktree fails closed instead of self-anchoring (F2)"
 
-# 16 (HIMMEL-3437 F4). GIT_DIR / GIT_WORK_TREE pointed at the anchor from a
+# 16. GIT_DIR / GIT_WORK_TREE pointed at the anchor from a
 # worktree must not let the resolver believe it is ALREADY the anchor: both
 # `git rev-parse` calls run under `cd "$_ah_dir"`, so an inherited GIT_DIR/
 # GIT_WORK_TREE (or GIT_COMMON_DIR) overrides cwd and reports the anchor as
@@ -216,7 +216,7 @@ cp "$DIR/anchor-handoff.sh" "$nested_removed/scripts/cr/anchor-handoff.sh"
 printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:removed"\n' "$SOURCE_LINE" > "$nested_removed/scripts/cr/clear-cr-marker.sh"
 check "$(run "$nested_removed" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T17 nested worktree with .git fully removed cannot fake anchor status via untracked ls-files"
 
-# 18/19 (HIMMEL-3437 review round 2). T17's fix trusts `git -C "$_ah_anchor"
+# 18/19. T17's fix trusts `git -C "$_ah_anchor"
 # ls-files` to answer for the ANCHOR's own index — but that call ran with
 # whatever GIT_DIR/GIT_INDEX_FILE the caller inherited still live, same class
 # F4 closed for the rev-parse calls. A crafted repo whose OWN index tracks
@@ -235,12 +235,12 @@ run_index_override() {  # <cwd> <HIMMEL_REPO> <entry path> <extra env assignment
 check "$(run_index_override "$nested_removed" "$anchor" scripts/cr/clear-cr-marker.sh "GIT_DIR=$fake/.git" | tr '\n' ' ')" "rc=2 " "T18 GIT_DIR pointed at a crafted index cannot fake the ls-files tracked-path check"
 check "$(run_index_override "$nested_removed" "$anchor" scripts/cr/clear-cr-marker.sh "GIT_INDEX_FILE=$fake/.git/index" | tr '\n' ' ')" "rc=2 " "T19 GIT_INDEX_FILE alone (no GIT_DIR) cannot fake the ls-files tracked-path check"
 
-# 20 (HIMMEL-3451). A relative HIMMEL_REPO (".") is refused regardless of cwd -
+# 20. A relative HIMMEL_REPO (".") is refused regardless of cwd -
 # it would resolve against wherever `-ef` runs, letting it accidentally equal
 # $_ah_root and self-anchor a tampered branch.
 check "$(run "$wt" "." scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T20 relative HIMMEL_REPO (.) refused"
 
-# 21 (HIMMEL-3451). HIMMEL_REPO pointed at a genuine LINKED worktree (not the
+# 21. HIMMEL_REPO pointed at a genuine LINKED worktree (not the
 # primary checkout) must be refused - its git-common-dir points at some other
 # repo's .git, never its own, so the primary-checkout invariant the hand-off
 # target depends on does not hold. Without this check, a branch could point
@@ -257,7 +257,7 @@ printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:linked"\n' "$SOURCE
 git -C "$linked" add -A
 check "$(run "$wt" "$linked" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T21 HIMMEL_REPO pointed at a linked worktree (not the primary) refused"
 
-# 22 (HIMMEL-3451). A tampered helper (this tree's own copy of
+# 22. A tampered helper (this tree's own copy of
 # anchor-handoff.sh differs from the anchor's) is refused before it is
 # trusted to hand off, even when the mutation itself doesn't touch behavior.
 tampered="$tmp/tampered"
@@ -265,7 +265,7 @@ make_tree "$tampered" tampered
 printf '\n# tampered\n' >> "$tampered/scripts/cr/anchor-handoff.sh"
 check "$(run "$tampered" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T22 tampered anchor-handoff.sh itself refused before hand-off"
 
-# 23 (HIMMEL-3451). A tampered scripts/guardrails/lib.sh (present locally,
+# 23. A tampered scripts/guardrails/lib.sh (present locally,
 # differing from the anchor's copy at the same root-relative path) is refused
 # the same way - the byte-compare extends beyond the helper itself.
 depmismatch="$tmp/depmismatch"
@@ -276,7 +276,7 @@ git -C "$anchor" add -A
 printf 'echo local-lib\n' > "$depmismatch/scripts/guardrails/lib.sh"
 check "$(run "$depmismatch" "$anchor" scripts/cr/clear-cr-marker.sh | tr '\n' ' ')" "rc=2 " "T23 tampered scripts/guardrails/lib.sh refused before hand-off"
 
-# 24 (HIMMEL-3451 review round 2). Depth-3 twin of T22: a depth-3 entry
+# 24. Depth-3 twin of T22: a depth-3 entry
 # (scripts/handover/console-kit/go-stub.sh, mirroring the real go.sh, which
 # sources ../../cr/anchor-handoff.sh cross-directory - unlike T11-T13's
 # make_d3_tree fixture, which copies a SIBLING anchor-handoff.sh next to the
@@ -301,7 +301,7 @@ git -C "$d3t_anchor" add -A
 git -C "$d3t_wt" add -A
 check "$(run "$d3t_wt" "$d3t_anchor" scripts/handover/console-kit/go-stub.sh | tr '\n' ' ')" "rc=2 " "T24 depth-3 entry refuses a tampered scripts/cr/anchor-handoff.sh (the real go.sh/merge-on-green.sh shape)"
 
-# T25 (HIMMEL-3932): the hand-off source line of EVERY real entry script must
+# T25: the hand-off source line of EVERY real entry script must
 # not resolve its directory through a PATH-resolved dirname. Each entry's own
 # source line(s) are lifted verbatim into a stub at the entry's relative path;
 # a PATH-shadowed dirname points at an evil tree whose anchor-handoff.sh drops
@@ -327,15 +327,15 @@ for entry in $(git -C "$REPO_ROOT" grep -l -F '/anchor-handoff.sh" || exit 2' --
     out=$(cd "$fx" && env -i PATH="$ev/fakebin:/usr/bin:/bin" HOME="$fx" bash "$fx/$entry" 2>&1 </dev/null | tr '\n' ' ')
     check "$out|$([ -e "$sent" ] && echo sourced || echo clean)" "REACHED |clean" "T25 $entry: a PATH-shadowed dirname must not pick the sourced hand-off"
 done
-# Pin the entry set (HIMMEL-4739): a bare count let a new entry script slip in
+# Pin the entry set: a bare count let a new entry script slip in
 # or an old one drop out unnoticed. Adding an entry script means adding it here.
 t25_want="scripts/cr/clear-cr-marker.sh scripts/cr/cr-scores.sh scripts/cr/doc-freshness-advisory.sh scripts/cr/docs-audit-panel.sh scripts/cr/impacted-suites.sh scripts/cr/known-findings.sh scripts/cr/ledger-append.sh scripts/cr/orphan-check.sh scripts/cr/panel-first-pass.sh scripts/cr/review-round.sh scripts/cr/write-verdicts.sh scripts/handover/console-kit/go.sh scripts/handover/console-kit/grant-round.sh scripts/handover/console-kit/write-verdict.sh scripts/handover/merge-on-green.sh"
 t25_got=$(git -C "$REPO_ROOT" grep -l -F '/anchor-handoff.sh" || exit 2' -- scripts/cr scripts/handover ':!*test-*' | sort | tr '\n' ' ' | sed 's/ $//')
 check "$t25_got" "$t25_want" "T25 hand-off entry set matches the pinned list ($t25_n found)"
 
-# HIMMEL-5393 (c): every `env -u` rev-parse/ls-files site scrubs the FULL
-# repository-redirecting set, not the original three/four - GIT_OBJECT_DIRECTORY
-# or GIT_CONFIG_COUNT poisoned the same resolve the F4 trio did.
+# Every `env -u` rev-parse/ls-files site scrubs the FULL
+# repository-redirecting set, not just GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR -
+# GIT_OBJECT_DIRECTORY or GIT_CONFIG_COUNT poison the same resolve.
 t26_bad=0
 # shellcheck disable=SC2016
 t26_sites=$(grep -c '"$_ah_env" -u ' "$DIR/anchor-handoff.sh")

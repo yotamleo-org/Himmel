@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-floor-review.sh — the CONTEXT-FREE Claude floor review (HIMMEL-3107).
+# claude-floor-review.sh — the CONTEXT-FREE Claude floor review.
 #
 # When CR_REQUIRE_CROSS_MODEL=1 + CR_FLOOR_FALLBACK=claude-only and every
 # non-Claude lane is exhausted, clear-cr-marker.sh accepts a Claude-only floor
@@ -16,7 +16,7 @@
 # It then writes <git-common-dir>/cr-floor/<head>.json (head, base, diff hash,
 # headless session id, the dispatch id of its registry row, findings — the
 # provenance the gate checks), signed with the floor signing key only after
-# that registry row reads completed/is_error=false (HIMMEL-3220; the trust
+# that registry row reads completed/is_error=false (the trust
 # boundary is documented in scripts/cr/claude-floor.mjs), and writes
 # the findings (verdict empty: the session adjudicates them, gate 4b) plus one
 # `avail --model claude-floor --status ok` row recording same-model +
@@ -131,7 +131,7 @@ case "$unlocked" in
     OK\ *) unlocked="${unlocked#OK }" ;;
     *) echo "claude-floor-review: not eligible at ${head:0:8} — ${unlocked:-could not read the ledger at $ledger}. Nothing spent." >&2; exit 3 ;;
 esac
-# HIMMEL-3220: the gate accepts only a STAMPED artifact, so without a
+# the gate accepts only a STAMPED artifact, so without a
 # provisioned signing key the review would be spent for nothing.
 key_err=$(node "$SCRIPT_DIR/claude-floor.mjs" key-check 2>&1) ||
     die "not eligible: ${key_err#claude-floor: } Nothing spent." 3
@@ -141,7 +141,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/cr-floor.XXXXXX") || die "mktemp failed" 1
 trap 'rm -rf "$work"' EXIT
 snap="$work/snap"
 mkdir -p "$snap" || die "mkdir failed" 1
-# Every tracked file at the head, from its RAW blob (HIMMEL-3229): checkout-index
+# Every tracked file at the head, from its RAW blob: checkout-index
 # would apply smudge filters and eol conversion, and `git archive` would also
 # honour export-ignore — either way the reviewer would read bytes the diff
 # hash does not cover.
@@ -187,12 +187,12 @@ record_failure() {
 }
 
 # --- 3. the headless review ---------------------------------------------------
-# HIMMEL-4111: claude-headless.sh runs claude from the snapshot, so classify the
+# claude-headless.sh runs claude from the snapshot, so classify the
 # reviewed repo (the cwd's checkout) before a non-native lane can launch.
 # shellcheck source=scripts/lib/claude-lane.sh
 . "$REPO_ROOT/scripts/lib/claude-lane.sh" || die "cannot load scripts/lib/claude-lane.sh" 1
 claude_lane_egress "$(git rev-parse --show-toplevel)" || die "not eligible: the ${HIMMEL_CLAUDE_LANE:-native} lane may not receive this repo. Nothing spent." 3
-# HIMMEL-3107 context-free CR floor reviewer — runs only when
+# Context-free CR floor reviewer — runs only when
 # every non-Claude critic is exhausted and the operator opted in via
 # CR_FLOOR_FALLBACK=claude-only; claude-headless.sh pins native auth (native-auth-pin.sh native_auth_pin_env), does the mandatory bank
 # preflight (refuses on a non-PROCEED verdict), the explicit acceptEdits

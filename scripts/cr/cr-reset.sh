@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # cr-reset.sh <pr> — reset a PR branch's /pr-check review-round counters
-# (HIMMEL-5047, the Telegram /cr-reset break-glass op).
+# (the Telegram /cr-reset break-glass op).
 #
-# A PR parks at the round-4 cap (review-round.sh, HIMMEL-2780/4600) until the
+# A PR parks at the round-4 cap (review-round.sh) until the
 # operator resets it by hand. This is that reset as one checked-in step: it maps
 # the PR to its head branch with gh, refuses a fork and a branch with no
 # review-round state, takes the review-counter lock (the same namespace
