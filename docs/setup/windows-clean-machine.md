@@ -111,8 +111,9 @@ credential helper without it.
 > **Just installing himmel for adopter use, not the full dev + lane-fleet
 > setup below?** Clone first, then use the wizard instead:
 > `git clone https://github.com/yotamleo/himmel && cd himmel`, then
-> `powershell -ExecutionPolicy Bypass -File scripts\himmelctl\bootstrap.ps1`
-> (winget-installs node if missing, then hands off to `himmelctl install`).
+> `node scripts/himmelctl/bin.js install` (Windows is no longer supported, so
+> himmelctl exits with an unsupported-platform message here; the archived
+> bootstrap script lives under `archive/windows/`).
 > The rest of this phase runs `win11.ps1`, the machine-provisioner script this
 > remote clean-machine walkthrough uses for the full toolchain + lane-fleet +
 > luna setup — it remains in place, not superseded by the wizard.

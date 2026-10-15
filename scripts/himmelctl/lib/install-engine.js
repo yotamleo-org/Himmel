@@ -588,10 +588,6 @@ function installTimeoutMs() {
 // depth — an unwire primitive never carries `input` at all today, but gets
 // the SAME scrub for free by going through this one function).
 //
-// Platform split: POSIX and win32 need genuinely different tree-kill
-// mechanisms (see runHardenedSpawnPosix/runHardenedSpawnWin32's own
-// headers), so this dispatches to one or the other rather than cramming
-// both into a single spawnSync call shape.
 function runHardenedSpawn(entry) {
   // resolve the sudo credential HERE, at the
   // single hardened spawnSync site — immediately before the spawn — never at
@@ -642,9 +638,7 @@ function runHardenedSpawn(entry) {
   for (const key of Object.keys(childEnv)) {
     if (key.toUpperCase() === 'HIMMELCTL_SUDO_PASSWORD') delete childEnv[key];
   }
-  return process.platform === 'win32'
-    ? runHardenedSpawnWin32(entry, timeoutMs, childEnv)
-    : runHardenedSpawnPosix(entry, timeoutMs, childEnv);
+  return runHardenedSpawnPosix(entry, timeoutMs, childEnv);
 }
 
 // runHardenedSpawnPosix(entry, timeoutMs, childEnv) -> {ok:true} | {ok:false, reason}
@@ -709,143 +703,6 @@ function runHardenedSpawnPosix(entry, timeoutMs, childEnv) {
   }
   if (r.error) return { ok: false, reason: r.error.message };
   if (r.signal) return { ok: false, reason: `terminated by signal ${r.signal}` };
-  if (typeof r.status === 'number' && r.status !== 0) return { ok: false, reason: `exited ${r.status}` };
-  return { ok: true };
-}
-
-// The exit code job-run.ps1 uses to signal "I killed this on timeout" —
-// MUST match that script's own $TIMEOUT_EXIT_CODE constant exactly. Chosen
-// deliberately outside the 0-255 range most CLI tools' own exit codes stay
-// within, to minimize (not eliminate — no code is 100% collision-proof;
-// the SAME residual-ambiguity tradeoff already accepted for POSIX's own
-// ETIMEDOUT/signal-also-set nuance) the chance a genuinely-succeeding
-// wrapped command's OWN real exit code is misread as a timeout.
-const JOB_RUN_TIMEOUT_EXIT_CODE = 4217;
-
-// The exit code job-run.ps1 uses to signal "Job Object setup failed and I
-// refused to run/continue without tree-kill protection"
-// 15, item 2 — fail-closed, not a silent degrade to weaker best-effort
-// cleanup). MUST match that script's own $JOB_SETUP_FAILED_EXIT_CODE
-// constant exactly.
-const JOB_RUN_SETUP_FAILED_EXIT_CODE = 4218;
-
-// The exit code job-run.ps1 uses to signal "WaitForExit threw and I
-// couldn't confirm the wrapped command actually completed, so I killed
-// the tree defensively" (item 3
-// fail-open: the old catch treated a wait exception as "not a timeout,"
-// which released the job while the tree kept running unbounded). Distinct
-// from JOB_RUN_TIMEOUT_EXIT_CODE — this did NOT genuinely run past
-// -TimeoutSeconds, the wait itself just failed — but gets the same
-// tree-kill-then-fail treatment. MUST match job-run.ps1's own
-// $WAIT_FAILED_EXIT_CODE constant exactly.
-const JOB_RUN_WAIT_FAILED_EXIT_CODE = 4219;
-
-// The exit code job-run.ps1 uses to signal "the wrapped command succeeded,
-// but I could not clear KILL_ON_JOB_CLOSE before releasing the job, so
-// closing the handle may have killed a legitimate background descendant it
-// launched" (the same fail-OPEN class as the earlier
-// WaitForExit find: the old success branch exited with the wrapped
-// command's OWN success code, so ensure reported green immediately after
-// potentially breaking the service it just installed). This spawn is
-// classified by exit code alone — job-run's stderr warning is never read —
-// so the sentinel is the only channel that can carry it. MUST match
-// job-run.ps1's own $CLEANUP_FAILED_EXIT_CODE constant exactly.
-const JOB_RUN_CLEANUP_FAILED_EXIT_CODE = 4220;
-
-// runHardenedSpawnWin32(entry, timeoutMs, childEnv) -> {ok:true} | {ok:false, reason}
-// `taskkill /PID <pid> /T /F` (the
-// PREVIOUS win32 cleanup) walks the CURRENT process snapshot's
-// ParentProcessID chain starting from the root pid, AT KILL TIME — a
-// descendant that has already re-parented (exactly what installers and
-// package postinst/daemon scripts do: spawn a background daemon inside a
-// subshell that itself exits immediately) can be MISSED. Verified
-// empirically against a genuine re-parenting reproduction: taskkill left
-// the grandchild running; routing through job-run.ps1's Windows Job Object
-// (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE — every descendant automatically
-// joins the SAME job at creation, nested-job support, so there's no
-// re-parenting escape and no snapshot-timing race) did not. See
-// test-wizard-install-engine.sh's win32 tree-kill cases for the harness
-// that proves this both ways, and job-run.ps1's own header for the full
-// design (why PowerShell/P-Invoke rather than a native npm binding —
-// koffi/ffi-napi would violate the zero-new-deps doctrine — and the
-// base64+JSON argument transport, needed because plain multi-token
-// `-CommandArgs` binding and raw-JSON-in-argv were both tried and broke).
-//
-// entry.cmd/entry.args are passed to job-run.ps1, NOT spawned directly —
-// job-run.ps1 owns the ENTIRE spawn+wait+timeout+kill lifecycle for the
-// wrapped command internally; Node's own `timeout` here is a BACKSTOP only
-// (job-run.ps1 should always return within its own -TimeoutSeconds
-// budget), with a grace period absorbing PowerShell's own cold-start
-// overhead (Add-Type P/Invoke compilation, ~1-2s). If the backstop EVER
-// fires, killing powershell.exe still triggers the SAME Job Object
-// kill-on-close — Windows closes every handle a terminated process held,
-// including the job handle, as part of normal process teardown.
-//
-// SECURITY: entry.input (when present) is piped to POWERSHELL's OWN stdin
-// via spawnSync's `input` option — the EXACT same mechanism the POSIX
-// branch uses — and job-run.ps1 relays it verbatim, hop-by-hop, to the
-// wrapped command's stdin. It is NEVER placed in job-run.ps1's argv, in
-// ANY encoding: an earlier draft base64-encoded it into a `-InputTextB64`
-// CLI argument and was caught and reverted before shipping — base64 is
-// encoding, not encryption, and a base64'd secret in a command line is
-// still fully `ps`/Task-Manager-visible to any other user on the box,
-// trivially reversible. See job-run.ps1's own header for the full
-// before/after. entry.args (never itself secret — buildEntry's sudo entry
-// puts the password ONLY in `.input`) is fine over base64+argv; the
-// credential itself is not, under any encoding.
-function runHardenedSpawnWin32(entry, timeoutMs, childEnv) {
-  const jobRunScript = path.join(__dirname, 'job-run.ps1');
-  const psArgs = [
-    // without -ExecutionPolicy Bypass, a machine at the DEFAULT
-    // Windows client policy (Restricted) or Server default (RemoteSigned)
-    // refuses to load job-run.ps1 at all ("running scripts is disabled on
-    // this system") — EVERY win32 install/unwire would fail before the
-    // wrapper even started. Only this dev box's LocalMachine=Unrestricted
-    // policy masked it locally. Bypass (not Unrestricted) is
-    // process-scoped: it applies to this ONE invocation only, changes no
-    // machine/user policy, and prompts for nothing — mirrors the SAME flag
-    // bin.js's own setup.ps1/uninstall.ps1 invocations already carry.
-    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', jobRunScript,
-    '-Command', entry.cmd,
-    '-CommandArgsB64', Buffer.from(JSON.stringify(entry.args), 'utf8').toString('base64'),
-    '-TimeoutSeconds', String(Math.round(timeoutMs / 1000)),
-  ];
-  // NOTE: this
-  // branch is not exercised by any PRODUCTION buildEntry() case today —
-  // every credential-bearing entry (the sudo-password dep install) is
-  // Linux-only, so entry.input is currently always undefined on the win32
-  // path in real use. Deliberate parity/future-proofing with the POSIX
-  // branch above, not dead code to prune — it's exercised by
-  // test-wizard-install-engine.sh's own case m the same as everything else
-  // here, and job-run.ps1's own -HasInput relay (see its header) exists
-  // specifically so a future win32-relevant credential path has this ready
-  // rather than needing the stdin-relay design worked out from scratch.
-  if (entry.input !== undefined) psArgs.push('-HasInput');
-  const backstopMs = timeoutMs + 15000;
-  const spawnOpts = Object.assign(
-    entry.input !== undefined
-      ? { input: entry.input, stdio: ['pipe', 'inherit', 'inherit'] }
-      : { stdio: 'inherit' },
-    { env: childEnv, timeout: backstopMs, killSignal: 'SIGKILL' },
-  );
-  const r = spawnSync(resolvePowershell(childEnv), psArgs, spawnOpts);
-  if (r.error && r.error.code === 'ETIMEDOUT') {
-    return { ok: false, reason: `timed out after ${Math.round(timeoutMs / 1000)}s` };
-  }
-  if (r.error) return { ok: false, reason: r.error.message };
-  if (r.signal) return { ok: false, reason: `terminated by signal ${r.signal}` };
-  if (r.status === JOB_RUN_TIMEOUT_EXIT_CODE) {
-    return { ok: false, reason: `timed out after ${Math.round(timeoutMs / 1000)}s` };
-  }
-  if (r.status === JOB_RUN_SETUP_FAILED_EXIT_CODE) {
-    return { ok: false, reason: 'Windows Job Object setup failed — refusing to run without tree-kill protection (fail-closed)' };
-  }
-  if (r.status === JOB_RUN_WAIT_FAILED_EXIT_CODE) {
-    return { ok: false, reason: 'could not confirm completion (WaitForExit failed) — tree killed defensively' };
-  }
-  if (r.status === JOB_RUN_CLEANUP_FAILED_EXIT_CODE) {
-    return { ok: false, reason: 'command succeeded but releasing the Job Object may have killed its background descendants (failed to clear KILL_ON_JOB_CLOSE) — reporting failure rather than a false green' };
-  }
   if (typeof r.status === 'number' && r.status !== 0) return { ok: false, reason: `exited ${r.status}` };
   return { ok: true };
 }
