@@ -397,7 +397,8 @@ jobs:
           # PR tree with the BASE suite, lint and its fixtures laid over a copy of it
           # (the other guardrails files stay the PR's: the lint scans them)
           fo="$(mktemp -d "$RUNNER_TEMP/fail-open-tree.XXXXXX")" || exit 1
-          if ! git archive HEAD | tar -x -C "$fo" || ! git archive "$BASE_SHA" scripts/guardrails/lint-fail-open.sh scripts/guardrails/test-lint-fail-open.sh scripts/guardrails/fixtures/fail-open scripts/hooks/check-fail-open-lint.sh | tar -x -C "$fo"; then
+          # tracked files via tar, not git archive: a PR-added export-ignore attribute must not hide a file
+          if ! git ls-files -z | tar --null -T - -cf - | tar -x -C "$fo" || ! git archive "$BASE_SHA" scripts/guardrails/lint-fail-open.sh scripts/guardrails/test-lint-fail-open.sh scripts/guardrails/fixtures/fail-open scripts/hooks/check-fail-open-lint.sh | tar -x -C "$fo"; then
             echo "tree-only gates: fail-open suite absent at base $BASE_SHA, cannot evaluate" >&2
             exit 1
           fi

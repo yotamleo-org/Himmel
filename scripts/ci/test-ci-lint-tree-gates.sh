@@ -99,6 +99,10 @@ branch guardsurface; cp "$S/scripts/guardrails/fixtures/fail-open/instance1-unre
 run_step "$BASE"
 if [ "$RC" -ne 0 ] && has "check-git-env-scrub.sh"; then pass "PR edit to an existing guardrails file is still scanned"; else fail "guardsurface -> rc=$RC: $OUT"; fi
 
+branch exportignore; violation; printf 'scripts/hooks/zz-fail-open.sh export-ignore\n' > "$S/.gitattributes"; commit exportignore
+run_step "$BASE"
+if [ "$RC" -ne 0 ] && has "zz-fail-open.sh"; then pass "PR export-ignore attribute cannot hide a violating file"; else fail "exportignore -> rc=$RC: $OUT"; fi
+
 branch lintneuter; violation; printf '#!/usr/bin/env bash\nexit 0\n' > "$S/scripts/guardrails/lint-fail-open.sh"; commit lintneuter
 run_step "$BASE"
 if [ "$RC" -ne 0 ] && has "zz-fail-open.sh"; then pass "PR neutering lint-fail-open.sh is still judged by the base lint"; else fail "lintneuter -> rc=$RC: $OUT"; fi
