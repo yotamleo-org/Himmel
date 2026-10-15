@@ -353,7 +353,7 @@ wrap_subtree_gate() {
                     pid[n] = p; par[n] = q; row[n] = $0 }
         function wrapper(r) { return r ~ /cmd=[^ ]*(bash|zsh|sh) -c (source|\.) [^ ]*shell-snapshots\/snapshot-/ }
         END {
-            for (a = 1; a <= n; a++) if (row[a] ~ /cmd=.*console-wait\.sh/) { ex[pid[a]] = 1; w[pid[a]] = 1 }
+            for (a = 1; a <= n; a++) if (row[a] ~ /cmd=([^ ]*\/)?(bash|sh|zsh) ([^ ]*\/)?console-wait\.sh( |$)/) { ex[pid[a]] = 1; w[pid[a]] = 1 }
             for (pass = 0; pass < 8; pass++) for (a = 1; a <= n; a++) {
                 if (par[a] in ex) ex[pid[a]] = 1
                 if (wrapper(row[a])) {
@@ -373,9 +373,9 @@ wrap_subtree_gate() {
     fi
     for pid in $kills; do
         # a recycled pid must not be TERMed: only a live console-wait.sh process is
-        case "$(ps -o args= -p "$pid" 2>/dev/null)" in
-            *console-wait.sh*) kill -TERM "$pid" 2>/dev/null || true ;;
-        esac
+        if ps -o args= -p "$pid" 2>/dev/null | grep -Eq '^([^ ]*/)?(bash|sh|zsh) ([^ ]*/)?console-wait\.sh( |$)'; then
+            kill -TERM "$pid" 2>/dev/null || true
+        fi
     done
     for _ in 1 2 3 4 5 6 7 8 9 10; do
         src=0; sub=$(bash "${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}" 2>&1) || src=$?
@@ -403,10 +403,11 @@ cmd_wrap() {
         fi
         exit 4
     fi
-    wrap_subtree_gate
     # prove the token first (heartbeat refuses a wrong one and changes nothing),
-    # so neither a wrong token nor a failed append leaves a half-done wrap
+    # so neither a wrong token nor a failed append leaves a half-done wrap, and
+    # the gate below never stops the waiter for a wrap that will be refused
     bash "$HERE/../queue-lock.sh" heartbeat "$doc" "$token" >/dev/null || exit 1
+    wrap_subtree_gate
     bash "$HERE/../console-kit/append-results.sh" "$doc" "WRAPPED — $text" || exit 1
     bash "$HERE/../queue-lock.sh" release "$doc" "$token" || exit 1
 }

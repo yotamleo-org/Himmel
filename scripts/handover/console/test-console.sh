@@ -2328,6 +2328,27 @@ check "80 waiter plus foreign process: wrap refused (rc 5)" "$rc" "5"
 check "80 waiter plus foreign process: waiter left running" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "alive"
 check "80 waiter plus foreign process: WRAPPED not written" "$(grep -c WRAPPED "$doc80")" "0"
 kill "$waiter80" "$foreign80" 2>/dev/null; wait 2>/dev/null
+
+# a wrong token changes nothing: the waiter is not stopped for a wrap that is refused
+mk80 badtoken
+bash "$w80/console-wait.sh" & waiter80=$!
+sleep 0.3
+printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\n' "$waiter80" "$w80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "wrong-token")" || rc=$?
+check "80 wrong token: wrap refused" "$([ "$rc" -ne 0 ] && echo refused || echo ran)" "refused"
+check "80 wrong token: waiter left running" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "alive"
+check "80 wrong token: WRAPPED not written" "$(grep -c WRAPPED "$doc80")" "0"
+kill "$waiter80" 2>/dev/null; wait "$waiter80" 2>/dev/null
+
+# a foreign process that merely names console-wait.sh is not the waiter: refused, never TERMed
+mk80 lookalike
+sleep 300 & foreign80=$!
+sleep 0.3
+printf 'pid=%s ppid=1 etime=00:05 cmd=tail -f %s/console-wait.sh.log\n' "$foreign80" "$w80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 lookalike argv: wrap refused (rc 5)" "$rc" "5"
+check "80 lookalike argv: process left running" "$(kill -0 "$foreign80" 2>/dev/null && echo alive || echo dead)" "alive"
+kill "$foreign80" 2>/dev/null; wait "$foreign80" 2>/dev/null
 HANDOVER_DIR="$root" bash "$QL" release "$doc80" "$tok80" >/dev/null 2>&1
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
