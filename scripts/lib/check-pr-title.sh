@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/check-pr-title.sh — .
+# scripts/lib/check-pr-title.sh
 #
 # WHY. The squash merge makes the PR TITLE main's commit subject, but no gate
 # checked the title itself: check-commit-msg.sh runs at author time on local

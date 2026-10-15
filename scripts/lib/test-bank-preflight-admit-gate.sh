@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-bank-preflight-admit-gate.sh — . RED-first suite for the
+# test-bank-preflight-admit-gate.sh — RED-first suite for the
 # reclaim/release GATE around bank-preflight.sh's `.admit` admission lock.
 #
 # The bug: _fleet_steal_stale_admit's `mv admit victim` displaces WHATEVER

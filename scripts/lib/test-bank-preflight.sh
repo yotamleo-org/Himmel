@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-bank-preflight.sh — . Hermetic: fixture caches, stub producer.
+# test-bank-preflight.sh — Hermetic: fixture caches, stub producer.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="$REPO/scripts/lib/bank-preflight.sh"
@@ -357,7 +357,7 @@ else
 fi
 
 # codex-1 (CR review): a session with NO argument between "claude" and "-n"
-# (e.g. `claude -n -leg ...`) must still be counted - the old
+# (e.g. `claude -n some-leg ...`) must still be counted - the old
 # `claude .* -n ...` pattern required TWO separate whitespace runs and
 # silently missed this shape, undercounting the fleet.
 pminimal="$W/psminimal"; mk_ps_stub "$pminimal" \
@@ -371,8 +371,8 @@ check "4 legs with NO args before -n, cap=4 -> SKIPPED-FLEET (codex-1)" SKIPPED-
 # codex-3 (CR review): a WRAPPER process (e.g. konsole, comm != claude)
 # whose own argv EMBEDS the claude invocation it launched as literal text
 # must not be counted ALONGSIDE the real claude child it wraps - that would
-# double-count ONE leg (-leg here) as two. pid 9001 is konsole
-# wrapping -leg (its argv embeds the full claude command as
+# double-count ONE leg (some-leg here) as two. pid 9001 is konsole
+# wrapping some-leg (its argv embeds the full claude command as
 # text, same shape headed-arm.sh launches with); pid 9002 is the REAL
 # claude child for that SAME leg; pid 9003 is a second, distinct real leg.
 # Two genuine legs total. cap=3 differentiates: the FIXED (comm-filtered)

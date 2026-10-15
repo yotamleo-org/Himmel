@@ -68,8 +68,8 @@
 #
 # WHAT COUNTS AS "AT HEAD": a review's `.commit_id` is the SHA it reviewed.
 # outside/nitpick/additional/markers are derived from the LATEST SUBSTANTIVE
-# review at the CALLER's head SHA — NOT summed across every head review
-# . `head_reviews` still counts ALL bot reviews at the head
+# review at the CALLER's head SHA — NOT summed across every head review.
+# `head_reviews` still counts ALL bot reviews at the head
 # (callers rely on head_reviews==0 meaning "no review at head yet"). Reviews
 # at any OTHER commit_id (a prior head, before a force-push or fixup) feed
 # only `prior_outside` — enough for a caller to apply the
@@ -78,8 +78,8 @@
 # no review exists yet at the current head) without this reader making that
 # policy call itself.
 #
-# WHY LATEST-SUBSTANTIVE-WINS — not a sum, and not naive latest-wins
-# . The old derivation SUMMED outside/nitpick/additional/markers
+# WHY LATEST-SUBSTANTIVE-WINS — not a sum, and not naive latest-wins.
+# The old derivation SUMMED outside/nitpick/additional/markers
 # across every review at the head. A sum is monotonically non-decreasing at a
 # fixed head SHA, so once a finding enters it a later, cleaner review can never
 # clear it — a disproved finding BLOCKS forever unless the head moves. That is
@@ -355,7 +355,7 @@ _cbf_sha256_12() {
     printf '%s' "${h:0:12}"
 }
 
-# cr_body_outside_findings <owner> <name> <num> <head> — .
+# cr_body_outside_findings <owner> <name> <num> <head>
 # One TSV row per outside-diff finding in the SAME review cr_body_findings reads
 # (the shared $_CBF_JQ_SELECT selector: the latest substantive bot review at the
 # head):
@@ -410,7 +410,7 @@ cr_body_outside_findings() {
     return 0
 }
 
-# cr_body_prior_outside_heads <owner> <name> <num> <head> — .
+# cr_body_prior_outside_heads <owner> <name> <num> <head>
 # One commit_id per line: every PRIOR head (commit_id != <head>) whose latest
 # substantive bot review carries outside-diff findings, oldest review first.
 # prior_outside in cr_body_findings SUMS every prior review; this is the list

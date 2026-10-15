@@ -189,8 +189,8 @@ pid_gone() { # <pid> <recorded start>
 
 # True when <pid> is a zombie (state Z): exited, not yet reaped. kill -0 and ps
 # lstart still answer for it, so under a non-reaping init (container PID 1, a
-# subreaper) a killed process would otherwise hold its slot indefinitely
-# . Unknown state (ps unavailable) is not a zombie: the slot stays.
+# subreaper) a killed process would otherwise hold its slot indefinitely.
+# Unknown state (ps unavailable) is not a zombie: the slot stays.
 # A stat carrying the l flag (Zl, Z<l, ZNl) is a multithreaded process whose main thread
 # exited while other threads still run: alive, never a zombie.
 proc_zombie() {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-claude-headless-trap.sh — . Two concerns, both about
+# test-claude-headless-trap.sh — Two concerns, both about
 # claude-headless.sh's EXIT/INT/TERM trap doing process-tree damage:
 #
 #   A. The trap must never kill a pid it did not launch. `CLAUDE_PID` is

@@ -65,7 +65,7 @@ console_context_model_is_fable() {
     esac
 }
 
-# console_context_model_takes_1m_suffix <model> -- . [1m] only
+# console_context_model_takes_1m_suffix <model> — [1m] only
 # SELECTS 1M on Opus 4.6 / Sonnet 4.6 (plan-gated there). Opus 4.7+, Sonnet 5+,
 # Haiku 5.5 and Fable run 1M natively, so a bare id plus --autocompact auto is
 # the launch; a non-Anthropic id (gpt-*, glm-*, deepseek-*, anything with `/`)
@@ -118,8 +118,8 @@ console_context_autocompact() {
 
 # console_context_default <is_console 0|1> <console_context_env value>
 #
-# Only for the no-explicit-value path. exempts consoles from
-# 's standard default: consoles default to 1m, with
+# Only for the no-explicit-value path. It exempts consoles from
+# the standard default: consoles default to 1m, with
 # CONSOLE_CONTEXT=standard opting down. Non-console arms remain standard
 # and ignore the environment. A valid env choice is explicit provenance.
 # shellcheck disable=SC2034  # output-contract globals, read by sourcing callers (arm-resume.sh, headed-arm.sh, console.sh)

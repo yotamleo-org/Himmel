@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-bank-preflight-dotenv-root.sh — . RED-first regression: the
+# test-bank-preflight-dotenv-root.sh — RED-first regression: the
 # fleet cap must come from bank-preflight's OWN checkout's .env, never from
 # whatever git repo the caller's CWD happens to be inside.
 #

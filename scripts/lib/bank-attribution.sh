@@ -65,8 +65,8 @@
 #
 # --since is validated up front to a canonical UTC form
 # (YYYY-MM-DDTHH:MM:SS[.ffffff][Z], no timezone offset) so a genuinely
-# different format fails loudly instead of comparing wrong silently
-# . Both --since and every row timestamp are then
+# different format fails loudly instead of comparing wrong silently.
+# Both --since and every row timestamp are then
 # normalized to a fixed 3-fractional-digit form before the lexicographic
 # compare, so a --since value with different fractional precision than the
 # transcript rows (e.g. "...:05Z" vs a row at "...:05.500Z") does not

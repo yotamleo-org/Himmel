@@ -33,7 +33,7 @@
 # made set -e-safe with a trailing `|| true` inside the subshell so that a
 # caller running `set -e` (pr-merge.sh) does not abort on a jq parse failure
 # (a parse failure is a normal fail-open input here, not a hard error).
-# . Mirrors scripts/lib/cr-merge-gate.sh in structure + conventions.
+# Mirrors scripts/lib/cr-merge-gate.sh in structure + conventions.
 
 _cig_degrade() { echo "ci-green-gate: degraded ($*) - failing open" >&2; }
 

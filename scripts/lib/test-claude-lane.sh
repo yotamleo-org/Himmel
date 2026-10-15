@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-claude-lane.sh — . Hermetic: no claude launch.
+# test-claude-lane.sh — Hermetic: no claude launch.
 # Pins the HIMMEL_CLAUDE_LANE resolver (scripts/lib/claude-lane.sh) and that the
 # headless claude spawn sites honour it with a stubbed launcher.
 set -uo pipefail

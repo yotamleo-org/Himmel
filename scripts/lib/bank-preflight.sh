@@ -13,8 +13,8 @@
 # bank is HEALTHY. Diagnostics only.
 #
 # the fleet-size cap runs FIRST, ahead of any bank fetch —
-# concurrency, not bank exhaustion, burned the fleet on 2026-09-07
-# . See the FLEET_CAP block below for the count/bypass
+# concurrency, not bank exhaustion, burned the fleet on 2026-09-07.
+# See the FLEET_CAP block below for the count/bypass
 # contract.
 #
 # the fleet cap's REFUSAL (SKIPPED-FLEET) only fires when the
@@ -255,7 +255,7 @@ _fleet_admit_hook() { # _fleet_admit_hook <point> <path>
 # a breaker paused anywhere cannot act on two gate generations — a `mv` that
 # moved a younger generation than the one it aged out is caught by the stamp
 # re-read, and its fences die by the same successor-side delete. This replaces
-# 's in-place fence kill (panel R2): that kill held the name while
+# the earlier in-place fence kill: that kill held the name while
 # the fences died, but it resolved the gate by name in three steps, and a
 # double pause spread them over two generations. The trade: the fence kill
 # moved from the breaker to the next holder, which also sweeps a crashed
@@ -543,7 +543,7 @@ _fleet_procfs_warned=0
 # stub — the caller falls back to the ps line), 2 when it is readable but has no
 # `-n` (or the file vanished mid-read): no name, so nothing is consumed. A global,
 # not a `$(...)`, on purpose: command substitution strips trailing newlines, which
-# would turn the name "<LF>" into a plain "".
+# would turn the name "NAME<LF>" into a plain "NAME".
 _fleet_cmdline_name() {
   local _fcn_file="${FLEET_PROC:-/proc}/$1/cmdline" _fcn_arg _fcn_want=0
   _fleet_argv_name=""
@@ -828,7 +828,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       # a live name is the FULL `-n` argv element (read from
       # /proc/<pid>/cmdline), so consumption is identity on the whole name — a
       # name with whitespace is consumed only by the session with that exact
-      # name, and a live `-n "anything"` no longer consumes a
+      # name, and a live `-n "NAME anything"` no longer consumes a NAME
       # reservation. A name with a control character is never a
       # census entry (and never a reservation, see `_fleet_reserve`'s caller),
       # so it cannot forge a match.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-claude-headless.sh — . Hermetic: no live `claude` call.
+# test-claude-headless.sh — Hermetic: no live `claude` call.
 # Injects a fake HIMMEL_CLAUDE_BIN so the registry-row / artifact-check /
 # concurrency / bank-preflight-refusal logic can be verified without
 # spending bank.

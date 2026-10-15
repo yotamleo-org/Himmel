@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cygpath-stub.sh — a deterministic fake `cygpath`, so the schtasks/Windows
 # branch of the cadence scripts (cmd_arm, which refuses to run without cygpath)
-# is EXECUTABLE on a POSIX host. .
+# is EXECUTABLE on a POSIX host.
 #
 # Sourced by scripts/luna/test-{graphmap,pipeline,qmd}-cadence.sh. Never sourced
 # on a host that already has a real cygpath (Git-Bash / MSYS / Cygwin): those

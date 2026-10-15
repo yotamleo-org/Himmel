@@ -228,7 +228,7 @@ cr_ledger_carries_gate() {
     return 1
 }
 
-# cr_ledger_outside_dispositioned <full-sha> <id> <file> <line> — .
+# cr_ledger_outside_dispositioned <full-sha> <id> <file> <line>
 # Has ONE outside-diff CodeRabbit finding (id from cr_body_outside_findings) been
 # explicitly ADJUDICATED at this exact head? Outside-diff findings live only in a
 # review BODY (no thread to resolve), so the ledger row is the sole disposition

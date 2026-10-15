@@ -321,8 +321,8 @@ cadence_vbs_path() {
 }
 
 # cadence_vbs_wrapper <bat_win>
-# Emit the body of the .vbs shim that hosts the .bat under wscript //B
-# . This replaces the superseded pwsh -WindowStyle Hidden wrapper:
+# Emit the body of the .vbs shim that hosts the .bat under wscript //B.
+# This replaces the superseded pwsh -WindowStyle Hidden wrapper:
 # that shape was MEASURED to still allocate visible consoles despite Hidden,
 # while wscript //B hosting this shim allocates zero (wscript.exe is a
 # windowless host; the .bat's cmd.exe console is launched with SW_HIDE).

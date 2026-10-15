@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-bank-monitor.sh — . Deterministic one-shot tests for the
+# test-bank-monitor.sh — Deterministic one-shot tests for the
 # 30-minute bank sample ring, burn projections, wake-up suppression, resets,
 # missing data, and the claudex/codex bank input.
 #

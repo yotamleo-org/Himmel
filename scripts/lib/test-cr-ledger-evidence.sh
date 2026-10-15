@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for cr_ledger_outside_dispositioned in scripts/lib/cr-ledger-evidence.sh
-# . Hermetic: a throwaway git repo + ledger, no network, no gh.
+# Tests for cr_ledger_outside_dispositioned in scripts/lib/cr-ledger-evidence.sh.
+# Hermetic: a throwaway git repo + ledger, no network, no gh.
 #
 # The positive fixture is written by the REAL scripts/cr/ledger-append.sh — the
 # exact recipe check-ci.sh prints — so the writer->reader contract is exercised

@@ -231,7 +231,7 @@ GH_STUB_MODE=paged        t incomplete-page-blocks 2
 GH_STUB_MODE=inflight      t cr-status-pending-allows 0
 grep -q "^NOTE: CodeRabbit pending" "$TMP/out-cr-status-pending-allows" || { echo "FAIL cr-status-pending NOTE missing"; fail=$((fail+1)); }
 # (a) RED case: no CodeRabbit signal at all + 0 threads must now ALLOW (was
-# the #1243 regression fixture; supersedes 's stance).
+# the #1243 regression fixture; supersedes the earlier stance).
 GH_STUB_MODE=cr-absent     t cr-status-absent-allows 0
 grep -q "^NOTE: CodeRabbit absent" "$TMP/out-cr-status-absent-allows" || { echo "FAIL cr-status-absent NOTE missing"; fail=$((fail+1)); }
 grep -q "^BLOCK:" "$TMP/out-cr-status-absent-allows" && { echo "FAIL cr-status-absent-allows unexpectedly BLOCKed"; fail=$((fail+1)); }

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# test-bank-preflight-fleet.sh — . RED-first suite for the atomic
+# test-bank-preflight-fleet.sh — RED-first suite for the atomic
 # admission + reservation mechanism that closes the arm-time TOCTOU race:
 # two concurrent declared launches both observing the fleet under cap and
-# both proceeding, pushing the fleet over HIMMEL_FLEET_CAP (deferred from
-# 's /pr-check).
+# both proceeding, pushing the fleet over HIMMEL_FLEET_CAP (deferred from an earlier
+# /pr-check).
 #
 # SUT is a variable (FLEET_SUT) — not a hardcoded path — so this SAME suite
 # can run unmodified against the pre-fix script to produce genuine RED
@@ -458,7 +458,7 @@ fi
 check "(n) unmatched unexpired reservation with a name file stays on disk" 1 "$(count_resv "$slots_n")"
 
 # --- (o) a first token carried by TWO pending reservations is ambiguous: one
-# live `-n -shared` names neither "-shared a" nor "... b",
+# live `-n shared-name` names neither "shared-name a" nor "... b",
 # so it consumes NEITHER — whitespace names are never consumed by the name-file
 # match; the census may over-count but must never under-count. Stateless, so it
 # must hold on every later preflight too (a consume-one-per-run rule eats the
@@ -534,7 +534,7 @@ p_case() {
   p_expect "$1" "$slots" "$5"
 }
 # p1: the plain-name shape the ticket names (pre-#920 too): a live
-# `-n "anything"` shares the first token with a reservation.
+# `-n "NAME anything"` shares the first token with a NAME reservation.
 p_case "p1 plain reservation, live shares the first token" "HIMMEL-9600" "HIMMEL-9600 anything" "HIMMEL-9600 anything" kept
 # p2: a hashed-key (slash) name, live `-n "<name> other"`.
 p_case "p2 slash reservation, live shares the first token" "HIMMEL-9601/x" "HIMMEL-9601/x other" "HIMMEL-9601/x other" kept
@@ -571,7 +571,7 @@ slots_p6b="$(mktemp -d "$W/slots-p6b.XXXXXX")" || { echo "FAIL - could not creat
 run_pf "$slots_p6b" "$p0" CADENCE_BANK_LAUNCH=1 CADENCE_BANK_LEG='HIMMEL-9611"x\y' HIMMEL_FLEET_CAP=4 >/dev/null
 check "(p6b) a quote/backslash in the leg name is escaped in the ledger record" 1 "$(grep -cF 'HIMMEL-9611\"x\\y' "$W/ledger.jsonl")"
 # p7: a PRE-EXISTING (forged / older-copy) name file whose second line differs
-# is not read as its first line: it must not consume the live `/x`.
+# is not read as its first line: it must not consume the live `NAME/x`.
 slots_p7="$(mktemp -d "$W/slots-p7.XXXXXX")" || { echo "FAIL - could not create slots-p7 scratch dir" >&2; exit 1; }
 mkdir -p "$slots_p7/4242"
 printf '%s\n' "$((NOW + 600))" > "$slots_p7/4242/expires"; printf '%s\n' "$$" > "$slots_p7/4242/pid"
@@ -596,7 +596,7 @@ printf 'HIMMEL-9612-x\0other\n' > "$slots_p7c/4244/name"
 p_live "$slots_p7c" "HIMMEL-9612-x" "HIMMEL-9612-x"
 p_expect "p7c name file with an embedded NUL" "$slots_p7c" kept
 # p8: the reservation DIRECTORY name is an identity too. `$(basename)` strips a
-# trailing newline ("-x<LF>" -> "-x") and a multi-line
+# trailing newline ("NAME-x<LF>" -> "NAME-x") and a multi-line
 # name handed to `grep -F` is a LIST of patterns, so either shape would consume
 # a plain live name. A control-character directory name matches nothing.
 p8_i=0

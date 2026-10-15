@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# scripts/lib/test-bank-attribution.sh -- fixture test for bank-attribution.sh
-# . Builds synthetic sessions under mktemp -d projects roots
+# scripts/lib/test-bank-attribution.sh -- fixture test for bank-attribution.sh.
+# Builds synthetic sessions under mktemp -d projects roots
 # (never a live vault) covering: a named session (customTitle) with all three
 # wake sources plus a streamed turn with a duplicate usage row plus an inline
 # sidechain turn; an ai-title-only session; a fully unnamed session; a

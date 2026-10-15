@@ -301,7 +301,7 @@ expect_state not-configured "25. not a git repo -> not-configured, no crash" "$d
 
 # 26. NEGATIVE CONTROL — the whole point. cr_app_state must not move
 #     cr_app_configured's rc for ANY of the states above. If adding the
-# predicate changed one verdict, 's gate moved and this case
+# predicate changed one verdict, the gate moved and this case
 #     goes red before any caller notices.
 expect 0 "26a. armed still rc 0" "$(mk_repo nc_armed true)" - -
 expect 1 "26b. not-configured still rc 1" "$(mk_repo nc_bare)" - -
