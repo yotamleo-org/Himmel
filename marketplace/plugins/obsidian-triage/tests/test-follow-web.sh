@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for HIMMEL-660 Phase 2 follow-web.mjs — the WEB verification rung.
+# Tests for Phase 2 follow-web.mjs — the WEB verification rung.
 # Pure/stubbed (webFn injected); no live network. verifyWebClaims is async,
 # so the heredoc test scripts use top-level await (node ESM). Cross-platform:
 # bash on Linux/macOS/Git-Bash. Uses node (not bun) for CI.
@@ -347,7 +347,7 @@ grep -q 'HANDLE_ONLY=unverified' <<<"$out9" && r=yes || r=no; assert "corroborat
 grep -q 'NO_URL=unverified' <<<"$out9" && r=yes || r=no; assert "corroborates: found:true with empty url -> unverified" yes "$r"
 grep -q 'NO_ANCHOR=unverified' <<<"$out9" && r=yes || r=no; assert "corroborates: no salient claim token -> unverified (fail-safe)" yes "$r"
 
-# -- Test 10: Firecrawl search ledger (HIMMEL-4335) ----------------------------
+# -- Test 10: Firecrawl search ledger ----------------------------
 echo "Test 10: makeFirecrawlWebFn — one ledger line per call, no secrets"
 
 cat > "$tmpdir/ledger.mjs" <<EOF
@@ -385,7 +385,7 @@ grep -q 'LEDGER_CREDITS=2' <<<"$out10" && r=yes || r=no; assert "ledger: credits
 grep -q 'LEDGER_FAIL=true' <<<"$out10" && r=yes || r=no; assert "ledger: failed call logged with credits 0" yes "$r"
 grep -q 'LEDGER_CLEAN=true' <<<"$out10" && r=yes || r=no; assert "ledger: no key, query text or result url" yes "$r"
 
-# -- Test 11: kill switch, caps, credit ceiling on the search path (HIMMEL-4361)
+# -- Test 11: kill switch, caps, credit ceiling on the search path
 echo "Test 11: makeWebFn — HARVEST_SCRAPE_DENY, call cap, per-call credit ceiling"
 
 cat > "$tmpdir/ks.mjs" <<EOF
@@ -460,7 +460,7 @@ grep -q 'CEIL_REPORTED=true' <<<"$out11" && r=yes || r=no; assert "ceiling: the 
 grep -q 'CEIL_AT_LIMIT_FETCHES=2' <<<"$out11" && r=yes || r=no; assert "ceiling: a call AT the ceiling (5) does not trip it" yes "$r"
 grep -q 'CEIL_PARSE_FAIL_FETCHES=1' <<<"$out11" && r=yes || r=no; assert "ceiling: an unparseable billed response trips it too" yes "$r"
 
-# -- Test 11b: HIMMEL-4370 / HIMMEL-4368 hardening on the search path ---------------
+# -- Test 11b: hardening on the search path ---------------
 echo "Test 11b: makeWebFn — non-integer creditsUsed, strict env ints, deny=all drops hermes, parse-failure notice"
 
 cat > "$tmpdir/harden.mjs" <<EOF
@@ -515,7 +515,7 @@ for k in NONINT_STR NONINT_FLOAT NONINT_BOOL NONINT_NULL ABSENT_OK STRICT_PLUS S
     assert "hardening: $k" yes "$r"
 done
 
-# -- Test 12: firecrawl unavailable (402 / 429) parks queries (HIMMEL-4371) -----
+# -- Test 12: firecrawl unavailable (402 / 429) parks queries -----
 echo "Test 12: makeFirecrawlWebFn — a 402 disables search after one call and parks the queries"
 
 cat > "$tmpdir/unavail.mjs" <<EOF

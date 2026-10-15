@@ -407,7 +407,7 @@ async function processClip(clipPath, vault, dryRun) {
 
   if (dryRun) return { glyph: "v", message: `${rel} -- would enrich via ${url} [dry-run]` };
 
-  // HIMMEL-4306: spend the shared Instagram budget BEFORE the network call.
+  // spend the shared Instagram budget BEFORE the network call.
   const slot = await igAcquire();
   if (!slot.ok) {
     return { glyph: "t", message: `${rel} -- instagram throttle (${slot.reason}); stopping, clip stays pending` };

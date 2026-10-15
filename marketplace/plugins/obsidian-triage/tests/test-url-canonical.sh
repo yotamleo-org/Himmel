@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for lib/url-canonical.mjs — reddit string rule (HIMMEL-769) plus a
+# Tests for lib/url-canonical.mjs — reddit string rule plus a
 # couple of guard cases. Pure string surgery; no I/O.
 set -u -o pipefail
 
@@ -33,7 +33,7 @@ assert "redd.it not expanded (generic passthrough)" \
   "https://redd.it/abc123" \
   "$(canon 'https://redd.it/abc123')"
 
-# github: /blob/<branch>/<path> is a distinct FILE, /tree/<branch> is a repo view (HIMMEL-1735).
+# github: /blob/<branch>/<path> is a distinct FILE, /tree/<branch> is a repo view.
 assert "github keeps /blob/<branch>/<path>" \
   "https://github.com/anthropics/claude-cookbooks/blob/main/claude_agent_sdk/08_Dynamic_workflows.ipynb" \
   "$(canon 'https://github.com/anthropics/claude-cookbooks/blob/main/claude_agent_sdk/08_Dynamic_workflows.ipynb')"
@@ -56,7 +56,7 @@ assert "github repo root unchanged + trailing slash stripped" \
   "https://github.com/o/r" \
   "$(canon 'https://github.com/o/r/')"
 
-# --- JS <-> Python parity (HIMMEL-1735) -------------------------------------
+# --- JS <-> Python parity -------------------------------------
 # harvest-clip-body-batch.py carries a hand-written mirror of these rules. Three
 # copies of one rule drift silently; assert the two executable ones agree.
 py="$here/../tools/harvest-clip-body-batch.py"

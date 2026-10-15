@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# minerva-spec-gate.sh <spec.md> — HIMMEL-3996. minerva Stage 2 runs this BEFORE
+# minerva-spec-gate.sh <spec.md> — minerva Stage 2 runs this BEFORE
 # dispatching the spec critic; a non-zero exit means "do not start the critic".
 # A spec must carry:
-#   1. `Estimate record: <path>` — an effort-assess record (HIMMEL-3995) whose
+#   1. `Estimate record: <path>` — an effort-assess record whose
 #      dod.passed is true; the path is absolute or relative to the spec.
 #   2. an `## Alternatives considered` section with at least one line.
 #   3. a `## Definition of done` section with at least one line.

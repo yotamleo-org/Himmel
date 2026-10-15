@@ -123,7 +123,7 @@ export function canonicalize(rawUrl) {
       if (rest.length >= 2 && rest[0] === "tree") {
         // strip /tree/<branch>[...] — a branch/subtree VIEW of the same repo.
       } else {
-        // /blob/<branch>/<path> is kept verbatim (HIMMEL-1735): it points at one
+        // /blob/<branch>/<path> is kept verbatim: it points at one
         // specific FILE, a distinct document from the repo root. Collapsing it
         // made every github file URL dedup away against an already-clipped repo.
         kept = kept.concat(rest);

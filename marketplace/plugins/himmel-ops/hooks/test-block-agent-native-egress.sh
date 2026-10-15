@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-block-agent-native-egress.sh — suite for the PreToolUse egress guard on
-# the hosted agent-native (Builder.io) MCP (HIMMEL-4328). The suite is the spec.
+# the hosted agent-native (Builder.io) MCP. The suite is the spec.
 #
 # Hermetic: every git fixture lives under a scratch dir and HOME points at a
 # scratch dir, so the station's ~/.config/claude-glm lists and git config are
@@ -66,7 +66,7 @@ expect 2 "repo whose origin remote names salus -> denied" \
     "$(payload "$TOOL" "$REMOTE_ONLY" "hello")"
 expect 2 ".salus marker in an ancestor -> denied" \
     "$(payload "$TOOL" "$MARKED/deep/dir" "hello")"
-# Symlinks in (HIMMEL-4328 CR codex-2): non-git dirs, so only the canonical
+# Symlinks in: non-git dirs, so only the canonical
 # cwd can reveal salus / the marker.
 mkdir -p "$TMP/data/salus-exports/batch" "$TMP/data/nogit-marked/sub" "$TMP/links"
 : > "$TMP/data/nogit-marked/.salus"
@@ -88,8 +88,8 @@ expect 2 "cwd under a phi-roots root -> denied" \
     "$(payload "$TOOL" "$PHI_ROOT" "hello")"
 expect 0 "himmel cwd, unrelated payload with phi-roots configured -> allowed" \
     "$(payload "$TOOL" "$HIMMEL" "make a landing page")"
-# A symlink into a PHI root whose own path names nothing (HIMMEL-4328 CR
-# codex-2): the cwd must be canonicalized before the root comparison.
+# A symlink into a PHI root whose own path names nothing:
+# the cwd must be canonicalized before the root comparison.
 mkdir -p "$TMP/links"
 ln -s "$PHI_ROOT" "$TMP/links/records-link"
 expect 2 "cwd is a symlink into a phi-roots root -> denied (canonical cwd)" \
@@ -105,7 +105,7 @@ mkdir -p "$HIMMEL/src/app"
 expect 0 "himmel cwd, payload names an ordinary relative path -> allowed" \
     "$(payload "$TOOL" "$HIMMEL" "restyle src/app/page.tsx and https://example.com/a/b")"
 # Past the path-token cap the hook cannot inspect every path, so it fails
-# closed (CodeRabbit round 3): a PHI alias after 300 filler paths denies.
+# closed: a PHI alias after 300 filler paths denies.
 filler=""
 i=0
 while [ "$i" -lt 300 ]; do filler="$filler src/app/f$i.tsx"; i=$((i + 1)); done
@@ -137,8 +137,8 @@ printf '/\n' > "$HOME/.config/claude-glm/phi-roots"
 expect 2 "phi-roots root of / -> every call denied" \
     "$(payload "$TOOL" "$HIMMEL" "make a landing page")"
 rm -f "$HOME/.config/claude-glm/phi-roots"
-# A dangling symlink at the list path is unreadable, not absent (CodeRabbit
-# round 3): it must deny, not be skipped.
+# A dangling symlink at the list path is unreadable, not absent:
+# it must deny, not be skipped.
 ln -s "$TMP/nowhere/phi-roots" "$HOME/.config/claude-glm/egress-denylist"
 expect 2 "dangling-symlink egress-denylist -> denied (fail closed)" \
     "$(payload "$TOOL" "$HIMMEL" "make a landing page")"
@@ -187,7 +187,7 @@ head -c 1150000 /dev/urandom | base64 | tr -d '\nsS' | jq -Rsc --arg t "$TOOL" -
 expect_fast 2 5000 "1.5 MB base64 payload, himmel cwd -> denied (over the payload byte budget) in under 5 s" "$TMP/b64.json"
 rm -f "$HOME/.config/claude-glm/phi-roots"
 
-# --- fail-closed residuals (HIMMEL-4463) -------------------------------------
+# --- fail-closed residuals -------------------------------------
 printf '%s\n' "$PHI_ROOT" > "$HOME/.config/claude-glm/phi-roots"
 : > "$PHI_ROOT/patient.md"
 mkdir -p "$HIMMEL/public"
@@ -315,7 +315,7 @@ else
     fail=$((fail + 1)); echo "FAIL: hooks.json does not route $TOOL to block-agent-native-egress.sh (matcher='$matcher')"
 fi
 # Claude Code's matcher is case-sensitive while the hook lowercases, so the
-# matcher must spell its own case-insensitivity (HIMMEL-4328 CR codex-1).
+# matcher must spell its own case-insensitivity.
 for name in 'mcp__Agent-Native__x' 'mcp__plugin_builder-visual_AGENT_NATIVE-dispatch__y' 'mcp__agent_Native__z'; do
     if [ -n "$matcher" ] && printf '%s\n' "$name" | grep -Eq "^(${matcher})$"; then
         pass=$((pass + 1))

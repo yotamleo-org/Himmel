@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// follow-screen.mjs — HIMMEL-660 X-follow-list scorer, Task 4: injection
-// screen + judge-view redaction (HIMMEL-256 defense).
+// follow-screen.mjs — X-follow-list scorer: injection
+// screen + judge-view redaction.
 //
 // screenDossier concatenates every UNTRUSTED text field a dossier carries
 // (account.bio, repos.sample_descriptions[], corpus.sample_tweets[].text)
@@ -122,7 +122,7 @@ export function trimForJudge(dossier) {
     if (out.repos?.sample_descriptions) {
       out.repos.sample_descriptions = out.repos.sample_descriptions.map(() => withheld);
     }
-    // Gap C (HIMMEL-703): the tweet body is often where the injection hit
+    // Gap C: the tweet body is often where the injection hit
     // lives, yet the (top-5) tweets would otherwise still reach the judge.
     // Redact each tweet's text; the stats/shape are kept so the judge still
     // sees engagement signal, just never the untrusted body.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for HIMMEL-660 follow-list-score.mjs — judge-prep subcommand +
+# Tests for follow-list-score.mjs — judge-prep subcommand +
 # follow-judge-charter.md (Task 6, the pluggable LLM judge seam).
 # Hermetic: no network. Two dossier fixtures are written directly to disk
 # (one injection_suspect:true) so judge-prep's trimForJudge redaction can

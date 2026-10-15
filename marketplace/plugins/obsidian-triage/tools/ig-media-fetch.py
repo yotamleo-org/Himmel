@@ -42,7 +42,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-# HIMMEL-4306: every Instagram request spends the shared throttle budget.
+# every Instagram request spends the shared throttle budget.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import ig_throttle  # noqa: E402
 
@@ -57,9 +57,9 @@ DEFAULT_LIMIT = 10
 SLIDE_CAP = 20
 LONG_EDGE_MAX = 1600
 DEFAULT_WHISPER_MODEL = "base"
-# HIMMEL-3043: an audio stream at or below this mean_volume (ffmpeg
+# an audio stream at or below this mean_volume (ffmpeg
 # volumedetect) is near-digital-silence - soundless in every way that
-# matters, so it takes the same HIMMEL-786 screenshot fallback as a video
+# matters, so it takes the same screenshot fallback as a video
 # with no audio stream at all instead of a doomed transcription attempt.
 SILENCE_DB_THRESHOLD = -60.0
 DOWNLOAD_TIMEOUT = 180
@@ -70,7 +70,7 @@ SCRAPLING_HINT = (
     "install --require-hashes -r <plugin>/tools/requirements-scrapling.txt ; "
     "~/.himmel/scrapling-venv/bin/python -m patchright install chromium")
 FFMPEG_TIMEOUT = int(os.environ.get("IG_MEDIA_FFMPEG_TIMEOUT", "300"))
-# HIMMEL-805: separate seam for the soundless-video frame-extract subprocess.
+# separate seam for the soundless-video frame-extract subprocess.
 # FFMPEG_TIMEOUT is GLOBAL - it also guards extract_wav, the audio probe, and
 # recompress_slide - so cranking it down (e.g. IG_MEDIA_FFMPEG_TIMEOUT=1 in Test
 # 42) to trace the frame-extract timeout races the faster probe/wav/recompress
@@ -81,7 +81,7 @@ FFMPEG_TIMEOUT = int(os.environ.get("IG_MEDIA_FFMPEG_TIMEOUT", "300"))
 # frame-extract subprocess below; every other call site keeps FFMPEG_TIMEOUT.
 FRAME_TIMEOUT = int(os.environ.get("IG_MEDIA_FRAME_TIMEOUT", str(FFMPEG_TIMEOUT)))
 WHISPER_TIMEOUT = 1800
-# HIMMEL-4684: a wall-clock budget for the whole batch, so the run stops cleanly
+# a wall-clock budget for the whole batch, so the run stops cleanly
 # and prints its summary inside the cadence agent's foreground window (its
 # command timeout is 540s). No clip starts once it is spent, and every
 # subprocess timeout is capped by what is left of it (see _t).
@@ -664,7 +664,7 @@ def render_crawled(transcripts, slide_embeds, caption):
     for t in transcripts:
         # Mixed carousels label each video block by its slide index.
         if slide_embeds:
-            # (HIMMEL-791) This full-carousel label is intentionally decoupled
+            # This full-carousel label is intentionally decoupled
             # from render_slides' compact slide-XX filenames; unified numbering
             # is deferred.
             lines += ["### Transcript", f"**Slide {t['index']} (video):**",
@@ -897,7 +897,7 @@ def enrich_batch(args, selected, matched_total, remaining):
             # Download media
             files, error, caption, backend = fetch_media(ig, scrapling)
             if error and error.startswith("throttled:"):
-                # HIMMEL-4306: budget spent or cooldown - the clip is NOT failed,
+                # budget spent or cooldown - the clip is NOT failed,
                 # it stays pending for the next run once the throttle lifts.
                 print(f"~ {relpath}: instagram throttle ({error.split(':', 1)[1]}) - "
                       f"stopping the batch; clips stay pending")
@@ -927,8 +927,8 @@ def enrich_batch(args, selected, matched_total, remaining):
             transcripts, no_speech_videos, videos_failed = (
                 transcribe_videos(videos, args.whisper_model) if videos
                 else ([], [], []))
-            # Soundless-video screenshot fallback (HIMMEL-786; widened by
-            # HIMMEL-3043 to near-silent audio): a video that never yielded a
+            # Soundless-video screenshot fallback (widened to
+            # near-silent audio): a video that never yielded a
             # transcript - whether it errored out or whisper legitimately
             # heard nothing - becomes a slide screenshot in carousel order
             # when its audio is absent or effectively silent.
@@ -960,7 +960,7 @@ def enrich_batch(args, selected, matched_total, remaining):
                             rebuilt_images.append(f)
                     images = rebuilt_images
             # A no-speech video with audible (non-silent) audio is a
-            # PERMANENT, per-video outcome (HIMMEL-3043): it never counts
+            # PERMANENT, per-video outcome: it never counts
             # against expected_videos, whether or not other media survived -
             # a carousel whose slides survive lands ok despite it.
             expected_videos -= len(no_speech_videos)
@@ -974,7 +974,7 @@ def enrich_batch(args, selected, matched_total, remaining):
             video_frame_slides = sum(
                 1 for pos in screenshot_image_positions
                 if pos <= SLIDE_CAP and pos not in recompress_failed)
-            # Outcome-line qualifiers (HIMMEL-791): "(M video-frame)" counts
+            # Outcome-line qualifiers: "(M video-frame)" counts
             # screenshot slides that actually rendered; "(K capped)" discloses
             # SLIDE_CAP-trimmed items (log-only - cap != failure, the clip's
             # ok/partial status is untouched).
@@ -994,7 +994,7 @@ def enrich_batch(args, selected, matched_total, remaining):
             if not transcripts and not slide_embeds:
                 # Nothing survived transcode/recompress. A no-speech video with
                 # no genuinely-failed video and no failed-but-recoverable image
-                # is a PERMANENT outcome (HIMMEL-3043): whisper heard nothing
+                # is a PERMANENT outcome: whisper heard nothing
                 # and never will, so release the clip the same way as "removed"
                 # instead of stranding it. Any genuine failure (transcode/
                 # whisper/recompress error) stays retryable.

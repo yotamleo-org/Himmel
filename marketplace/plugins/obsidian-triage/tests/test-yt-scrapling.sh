@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the cookieless YouTube path (HIMMEL-4677): tools/yt-scrapling-meta.py
+# Tests for the cookieless YouTube path: tools/yt-scrapling-meta.py
 # (metadata from a recorded watch page, transcript from a recorded yt-dlp json3)
 # and its wiring into playwright-crawl-youtube.mjs as the only path.
 # Hermetic: NO network. The helper reads fixtures/yt-scrapling/; yt-dlp is a
@@ -66,7 +66,7 @@ assert "private control: the reason was planted" 0 "$?"
 helper --from-html "$tmp/private.html" >"$tmp/private.json"
 assert "private ERROR exit 4" 4 "$?"
 assert "private ERROR is a login wall (retryable), not removed" login_wall "$(jq_py "$tmp/private.json" 'd["status"]')"
-# HIMMEL-4704 codex-4: an unavailable video's player response omits
+# an unavailable video's player response omits
 # videoDetails; it must still classify, not fall through to a generic error.
 yt_page() { # $1 out file, $2 playabilityStatus JSON
   printf '<html><body><script>var ytInitialPlayerResponse = {"responseContext": {}, "playabilityStatus": %s};</script></body></html>\n' "$2" >"$1"
@@ -86,7 +86,7 @@ assert "a decoy blob is not a player response -> exit 6" 6 "$?"
 python3 "$HELPER" --video-id 'x;rm' --from-html "$FIX/watch.html" >/dev/null 2>&1
 assert "malformed video id refused" 2 "$?"
 
-# HIMMEL-4797: the private check reads English text, so the page must be asked
+# the private check reads English text, so the page must be asked
 # for in English. A stub scrapling records the URL fetch_page navigates to (the
 # stub never arms the guard, so the helper then errors - only the URL matters).
 mkdir -p "$tmp/pylib/scrapling"
@@ -125,7 +125,7 @@ assert "exact-video skip rule still denies with the hl pin" 7 "$?"
 echo "www.youtube.com/watch?v=$VID only=jina" >"$tmp/v3c/.harvest-backends"
 helper --vault "$tmp/v3c" --from-html "$FIX/watch.html" >/dev/null
 assert "exact-video only=jina rule still denies with the hl pin" 7 "$?"
-# HIMMEL-4803: the batch canonicalises to youtube.com, so an operator writes
+# the batch canonicalises to youtube.com, so an operator writes
 # host-only rules on that spelling; the helper's www.youtube.com gate must obey it.
 mkdir -p "$tmp/v3d"
 echo "youtube.com skip=local-headless" >"$tmp/v3d/.harvest-backends"
@@ -154,7 +154,7 @@ assert "yt-dlp: no config, no download, json3, URL after --" ok "$a"
 case "$calls" in *cookie*) a=cookie ;; *) a=none ;; esac
 assert "yt-dlp gets no cookie" none "$a"
 assert "en-orig track recorded as en" en "$(jq_py "$tmp/ytdlp.json" 'd["transcript_lang"]')"
-# HIMMEL-4688 codex-3: a non-English video with no English track still gets
+# a non-English video with no English track still gets
 # its original-language auto track, picked last, its language recorded.
 case "$calls" in *"--sub-langs en.*,en,.*-orig "*) a=ok ;; *) a="$calls" ;; esac
 assert "yt-dlp also asks for the original-language auto track" ok "$a"

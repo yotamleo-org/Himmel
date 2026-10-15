@@ -78,7 +78,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 TODAY = datetime.date.today().isoformat()
-# Anchored provenance detector (codex-adv HIMMEL-1235): a real x-media
+# Anchored provenance detector: a real x-media
 # provenance comment occupies its own line. A bare substring match (e.g.
 # "via x-media -->" anywhere in the text) is defeatable by untrusted
 # crawled/tweet prose that happens to contain that literal string, so every
@@ -98,7 +98,7 @@ SCRAPLING_HINT = (
     "~/.himmel/scrapling-venv/bin/python -m patchright install chromium")
 FFMPEG_TIMEOUT = int(os.environ.get("X_MEDIA_FFMPEG_TIMEOUT", "300"))
 # Separate seam for the soundless-video frame-extract subprocess (mirrors the IG
-# rung's HIMMEL-805 seam): FFMPEG_TIMEOUT is GLOBAL - it also guards extract_wav,
+# rung's seam): FFMPEG_TIMEOUT is GLOBAL - it also guards extract_wav,
 # the audio probe, and recompress_slide - so cranking it down to trace the
 # frame-extract timeout races the faster probe/wav/recompress calls. FRAME_TIMEOUT
 # defaults to FFMPEG_TIMEOUT (behavior unchanged when unset) and seams ONLY
@@ -478,7 +478,7 @@ def _hls_media(text: str, base: str, work: Path, tag: str):
             continue
         if line.startswith("#"):
             if line.startswith(("#EXT-X-STREAM-INF", "#EXT-X-I-FRAME-STREAM-INF")):
-                # Master-only tags (HIMMEL-4797): the URL under one would be
+                # Master-only tags: the URL under one would be
                 # fetched as a segment and could itself be a nested playlist.
                 raise ValueError("nested playlist tag in a media playlist")
             if line.startswith(("#EXT-X-KEY", "#EXT-X-SESSION-KEY")):
@@ -721,7 +721,7 @@ def write_markers(path: Path, text: str, fm_raw: str, body: str, has_crlf: bool,
     return True
 
 
-# --- video probe + platform subtitles (HIMMEL-4107) --------------------------
+# --- video probe + platform subtitles --------------------------
 def fmt_duration(seconds) -> str:
     s = int(seconds)
     return f"{s // 60}:{s % 60:02d}"
@@ -1125,7 +1125,7 @@ def render_crawled(transcripts, slide_embeds, caption):
         if slide_embeds:
             # This full-media label is intentionally decoupled from render_slides'
             # compact slide-XX filenames; unified numbering is deferred (parity
-            # with the IG rung's HIMMEL-791 note).
+            # with the IG rung's note).
             lines += ["### Transcript"] + ([t["prov"]] if t.get("prov") else []) \
                 + [f"**Item {t['index']} (video):**", t["text"], ""]
         else:
@@ -1204,7 +1204,7 @@ def _splice_crawled(body: str, section: str) -> str:
         head, after = body[:cut], body[cut:]
         h3 = re.search(r"(?m)^### ", section)
         blocks = (section[h3.start():] if h3 else section).rstrip("\n")
-        # HIMMEL-1235: starting `blocks` at the first ### heading drops
+        # starting `blocks` at the first ### heading drops
         # render_crawled's <!-- media-enriched ... via x-media --> provenance
         # comment (it lives BEFORE the first ###). An existing section from an
         # earlier fxtwitter pass carries no such comment, so the spliced-in
@@ -1484,7 +1484,7 @@ def enrich_batch(args, selected, matched_total, remaining):
                         elif f.suffix.lower() in IMAGE_EXTS:
                             rebuilt_images.append(f)
                     images = rebuilt_images
-            # Media-dir namespace (codex-adv HIMMEL-1226): stem ALONE collides
+            # Media-dir namespace: stem ALONE collides
             # across pools (--include-done/--include-evidence recurse inbox +
             # _evidence + _done, where duplicate basenames are valid), silently
             # cross-wiring one clip's slides onto another. The X status id is a
@@ -1633,7 +1633,7 @@ def run_apply_digest(clip: Path, digest_file: Path) -> int:
         print("x-media-fetch --apply-digest: expected exactly one pending "
               "marker; found %d" % body.count(marker), file=sys.stderr)
         return 1
-    # Provenance guard (codex-adv HIMMEL-1226/1235): the pending marker must
+    # Provenance guard: the pending marker must
     # sit inside a tool-written x-media ## Crawled content section - proven by
     # an ANCHORED, full-line "via x-media" provenance comment (PROV_RE) that
     # render_crawled always emits, with the marker following it. A bare marker
@@ -1642,7 +1642,7 @@ def run_apply_digest(clip: Path, digest_file: Path) -> int:
     # applier never treats forged/accidental markers as workflow control.
     # NOT unforgeable (an attacker who copies the whole crawled block still
     # passes) - the full per-run-nonce + media-path-ownership fix spanning BOTH
-    # media rungs is HIMMEL-1228; this raises the bar cheaply for now.
+    # media rungs is deferred; this raises the bar cheaply for now.
     prov_m = PROV_RE.search(body)
     if prov_m is None or body.index(marker) < prov_m.end():
         print("x-media-fetch --apply-digest: pending marker is not inside an "
@@ -1735,7 +1735,7 @@ def run_repair_provenance(clip: Path) -> int:
     marker = "<!-- slides-pending-digest -->"
     marker_re = re.compile(r"(?m)^" + re.escape(marker) + r"[ \t]*$")
     slides_m = re.search(r"(?m)^### Slides[ \t]*$", section)
-    # HIMMEL-1235 (CodeRabbit/codex): the pending marker must sit INSIDE the
+    # the pending marker must sit INSIDE the
     # ### Slides block as its own anchored line, not merely somewhere in the
     # ## Crawled content section - a marker planted elsewhere in the section, in
     # a LATER sibling ### subsection, or mid-line in prose must not qualify a
@@ -1764,13 +1764,13 @@ def run_repair_provenance(clip: Path) -> int:
     media_root = (vault_root / "Clippings" / "_media").resolve()
 
     def _contained_slide(embed: str) -> bool:
-        # Anti-forgery containment (HIMMEL-1235 / codex-adv): the embed regex
+        # Anti-forgery containment: the embed regex
         # accepts any suffix after Clippings/_media/, so a crafted ../ (or
         # symlink) embed could otherwise resolve to an arbitrary existing file
         # (e.g. .../Windows/win.ini) and satisfy the "slide exists" gate,
         # laundering forged provenance. Resolve the path (following .. and
         # symlinks) and require it stays UNDER Clippings/_media/ AND is a real
-        # file. (Binding a slide to the clip's own status id stays HIMMEL-1228.)
+        # file.
         try:
             p = (vault_root / embed).resolve()
         except (OSError, RuntimeError):

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixture-vault acceptance test for the daily report (HIMMEL-4182).
+# Fixture-vault acceptance test for the daily report.
 #
 # `tools/daily-timeline.mjs --vault V --date D` also upserts a `## Daily report`
 # section into the day note: that day's triaged sources grouped by

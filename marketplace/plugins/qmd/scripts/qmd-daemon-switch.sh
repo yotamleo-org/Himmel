@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# qmd-daemon-switch.sh - operator on/off for the shared qmd daemon (HIMMEL-4494).
+# qmd-daemon-switch.sh - operator on/off for the shared qmd daemon.
 #
 #   qmd-daemon-switch.sh off   create the opt-out flag and stop the daemon
 #   qmd-daemon-switch.sh on    remove the flag and run ensure-qmd-daemon.sh

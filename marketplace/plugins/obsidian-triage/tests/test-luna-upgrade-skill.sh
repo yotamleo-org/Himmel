@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Invariant tests for the obsidian-triage:luna-upgrade skill (HIMMEL-389 Phase 2).
+# Invariant tests for the obsidian-triage:luna-upgrade skill.
 #
 # Scope: validates the structural invariants the skill + its slash-command
 # wrapper must hold. Does NOT exercise the runbook end-to-end (the upgrade

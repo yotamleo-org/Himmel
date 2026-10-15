@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// follow-web.mjs — HIMMEL-660 X-follow-list scorer, Phase 2: a WEB
+// follow-web.mjs — X-follow-list scorer: a WEB
 // verification rung for the claim kinds github (follow-verify.mjs) can't
 // cover. Pure — takes an injected `webFn` backend, no network of its own.
 //
@@ -211,7 +211,7 @@ export function ledgerAppend(callSite, endpoint, credits, ok = true, env = proce
   } catch { /* ledger is best-effort */ }
 }
 
-// Firecrawl-unavailable parking (HIMMEL-4371): same state file and envelope as
+// Firecrawl-unavailable parking: same state file and envelope as
 // harvest-clip-body-batch.py's parked_append (`firecrawl-parked` in
 // scripts/observability/ledgers.json). A search that hit a 402 / quota / 429 /
 // auth response is parked as a query hash (never the query text).
@@ -533,12 +533,12 @@ export function makeHermesWebFn(env = process.env) {
   if (!env.FOLLOW_WEB_HERMES) return null;
   const scriptPath = fileURLToPath(new URL("../../../../../scripts/hermes/invoke.sh", import.meta.url));
   // Never a bare "bash": on Windows PATH resolves it to the System32 WSL stub,
-  // which cannot read the C:/ scriptPath above (HIMMEL-1992/1279). Reuses the
+  // which cannot read the C:/ scriptPath above. Reuses the
   // hook launcher's resolver -- required here, beside the script it runs, so
   // the two share one failure mode instead of adding a load-time dependency.
   // No usable bash => no hermes rung at all (same shape as the disabled case):
   // falling back to a bare "bash" would spawn the stub this line exists to
-  // avoid, and its 127 reads as "the web found nothing" (CR round 1, codex-1).
+  // avoid, and its 127 reads as "the web found nothing".
   const bashBin = createRequire(import.meta.url)("../../../../../scripts/hooks/run-hook-with-bash.js").resolveBash();
   if (!bashBin) return null;
   const toolset = (env.FOLLOW_WEB_HERMES_TOOLSET || "").trim() || HERMES_DEFAULT_TOOLSET;
@@ -665,7 +665,7 @@ export function makeWebFn(env = process.env) {
 // ---------------------------------------------------------------------------
 // STUB adapter — Agent Reach.
 //
-// Survey (HIMMEL-660 Phase 2): does not expose a callable, structured
+// Survey: does not expose a callable, structured
 // web-search interface today, so it is not wired. Left as a documented stub
 // (return null = "unavailable") so the parent can drop in a real adapter
 // if/when the interface materializes, without touching the seam.

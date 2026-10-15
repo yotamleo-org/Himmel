@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Real-ffmpeg check of the x-media-fetch.py HLS path (HIMMEL-4802). The other
+# Real-ffmpeg check of the x-media-fetch.py HLS path. The other
 # suites stub ffmpeg, so none of them shows that a playlist rewritten by
 # _resolve_hls actually stream-copies under `-protocol_whitelist file`. Here a
 # real ffmpeg builds TS and fMP4 HLS sets locally, a stub curl serves them as

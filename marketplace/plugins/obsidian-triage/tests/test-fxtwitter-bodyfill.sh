@@ -142,7 +142,7 @@ EOF
 
 # -- Clip 5: thin telegram X stub whose tweet.text is a prompt injection -
 # After body-fill writes the untrusted tweet.text into ## The Idea, the
-# enricher must re-screen the just-written clip (HIMMEL-256) and flag it.
+# enricher must re-screen the just-written clip and flag it.
 cat >"$vault_inject/Clippings/tweet-inject.md" <<'EOF'
 ---
 title: "tweet from x.com/i/status/321"
@@ -285,7 +285,7 @@ if grep -q '^## Promotion candidate' "$text_clip"; then r=no; else r=yes; fi
 check "control: text clip has no ## Promotion candidate" "$r"
 
 # -- Control: the clean text clip must NOT be flagged injection-suspect. --
-# Its tweet.text is benign prose; the post-body-fill re-screen (HIMMEL-256)
+# Its tweet.text is benign prose; the post-body-fill re-screen
 # must leave no harvest_flag:.
 if grep -q '^harvest_flag:' "$text_clip"; then r=no; else r=yes; fi
 check "control: clean text clip has no harvest_flag: (re-screen clean)" "$r"

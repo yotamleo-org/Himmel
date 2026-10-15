@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-minerva-spec-gate.sh — HIMMEL-3996: minerva-spec-gate.sh refuses the
+# test-minerva-spec-gate.sh — minerva-spec-gate.sh refuses the
 # Stage-2 spec critic unless the spec carries an estimate record (effort-assess
 # output that passed its DoD), an Alternatives section and a Definition-of-done
 # section. Fixtures: one missing each, then a filled one that passes.
@@ -49,7 +49,7 @@ bash "$gate" "$td/good.md" >/dev/null 2>&1 && ok "filled spec passes (absolute r
 mkspec "$td/rel.md" "Estimate record: est.json" yes yes
 bash "$gate" "$td/rel.md" >/dev/null 2>&1 && ok "filled spec passes (record relative to spec)" || bad "relative record should pass"
 
-# HIMMEL-4043: exact heading text, and a section ends at ANY H1 or H2
+# exact heading text, and a section ends at ANY H1 or H2
 mkspec_raw(){ # <file> <alt heading> <dod heading>; both sections get a body
   { echo "# Spec"; echo; echo "Estimate record: $td/est.json"; echo
     echo "$2"; echo "- body"; echo

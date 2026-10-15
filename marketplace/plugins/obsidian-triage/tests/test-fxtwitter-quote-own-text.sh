@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Integration test for HIMMEL-2621 — a quote-tweet must keep its OWN text.
+# Integration test for — a quote-tweet must keep its OWN text.
 #
 # Before the fix the section chooser was an exclusive if/else-if chain, so any
 # tweet carrying a `quote` never reached the body-fill path: the clip recorded
@@ -17,7 +17,7 @@
 #   - URL-only quote with no article/media → the real external link SURVIVES
 #     (the forbidden thing is the shortener, not the URL); a t.co-only quote
 #     with nothing else degrades to the no-text marker instead.
-#   - the HIMMEL-256 post-body-fill injection re-screen RUNS on the new quote
+#   - post-body-fill injection re-screen RUNS on the new quote
 #     path, and is handed the just-written body (stub screener records it).
 #   - `--reenrich-quote-only` backfill: an already-enriched quote-only clip is
 #     skipped by a normal run and re-processed under the switch — `## The Idea`
@@ -25,10 +25,10 @@
 #     and `enriched_at` is bumped rather than erased.
 #   - controls: the switch skips a clip that already has `## The Idea`, skips
 #     a clip that is not an fxtwitter quote clip, and skips a quote clip that
-#     already carries its own text elsewhere in the body (HIMMEL-2621 CR
+#     already carries its own text elsewhere in the body (CR
 #     finding: isQuoteOnlyClip must also require isThinTweetBody, or it
 #     duplicates text an unaffected clip already has).
-#   - HIMMEL-2628: a quote-only clip whose author added NO text of their own
+#   - a quote-only clip whose author added NO text of their own
 #     gets a terminal `last_error: quote_only_no_own_text` marker on re-enrich
 #     (there is nothing to body-fill), so a LATER `--reenrich-quote-only` run
 #     no longer re-fetches or rewrites it. `enrichment_status` stays `ok` -
@@ -74,7 +74,7 @@ mkdir -p "$vault_note/Clippings" "$vault_article/Clippings" "$vault_media/Clippi
          "$vault_own_text/Clippings" "$vault_no_own_text/Clippings" "$vault_heading/Clippings"
 
 # Stub screener: records the body it was handed, then exits 0 (clean). Proves
-# the HIMMEL-256 re-screen ran on the new quote path with the NEW body.
+# re-screen ran on the new quote path with the NEW body.
 screener_log="$tmpdir/screener-saw.txt"
 cat >"$tmpdir/stub-screener.py" <<'EOF'
 import sys, os
@@ -178,7 +178,7 @@ cat >"$tmpdir/fixture-media-quote.json" <<'EOF'
 EOF
 
 # -- Clip 4: already-enriched quote-only clip (the backfill target) ------
-# Byte-shape of the live LUNA clips on HIMMEL-2621: enriched, quote section
+# Byte-shape of the live LUNA clips on enriched, quote section
 # present, NO ## The Idea.
 cat >"$vault_backfill/Clippings/tweet-backfill.md" <<'EOF'
 ---
@@ -405,7 +405,7 @@ https://t.co/iDl6I25AQu
 EOF
 
 # -- Clip 11: quote-only clip whose author added NO text of their own ---
-# (HIMMEL-2628). There is nothing to body-fill; the fix marks this terminal
+# There is nothing to body-fill; the fix marks this terminal
 # so a later --reenrich-quote-only run does not refetch and rewrite it.
 cat >"$vault_no_own_text/Clippings/tweet-quote-no-text.md" <<'EOF'
 ---
@@ -467,7 +467,7 @@ cat >"$tmpdir/fixture-quote-no-text-v2.json" <<'EOF'
 EOF
 
 # -- Clip 12: backfill target whose FRESH quote text has its own `## ` ---
-# heading line. HIMMEL-2627: QUOTE_SECTION_RE's lookahead stops at the next
+# heading line. QUOTE_SECTION_RE's lookahead stops at the next
 # `\n## `. A quoted tweet's own text (untrusted, verbatim) can contain such
 # a line; rendered bare, it becomes a real markdown heading nested inside
 # the quote section, which the NEXT strip pass over this same content would
@@ -549,7 +549,7 @@ check "note+quote clip keeps tweet_has_quote: true" "$r"
 if grep -qE '^title:.*tweet from x\.com' "$note_clip"; then r=no; else r=yes; fi
 check "note+quote clip title repaired (body-fill path ran)" "$r"
 
-# HIMMEL-256: the injection re-screen ran, and saw the NEW body.
+# the injection re-screen ran, and saw the NEW body.
 [ -s "$screener_log" ] && r=yes || r=no
 check "HIMMEL-256 re-screen invoked on the quote path" "$r"
 
@@ -762,7 +762,7 @@ check "control: --reenrich-quote-only skips a quote clip with its own text elsew
 grep -q 'skipped (reenrich-quote-only: not a quote-only fxtwitter clip)' "$tmpdir/run10.out" && r=yes || r=no
 check "control: run output names the own-text clip as skipped" "$r"
 
-# -- Run 11: quote-only clip with NO own text becomes terminal (HIMMEL-2628) --
+# -- Run 11: quote-only clip with NO own text becomes terminal --
 no_own_text_clip="$vault_no_own_text/Clippings/tweet-quote-no-text.md"
 
 FXT_FIXTURE="$tmpdir/fixture-quote-no-text-v1.json" \

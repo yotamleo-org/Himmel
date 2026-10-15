@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# inject-minerva-critic.sh — PreToolUse(Skill) hook (HIMMEL-429).
+# inject-minerva-critic.sh — PreToolUse(Skill) hook.
 #
 # Closes the no-/minerva bypass: when superpowers:brainstorming,
-# superpowers:writing-plans, or grilling (HIMMEL-2039, one front door for
+# superpowers:writing-plans, or grilling (one front door for
 # grill/stress-test/brainstorm — vendored as lean-skills:grilling as of
-# HIMMEL-3064, formerly mattpocock-skills:grilling) is invoked by ANY path
+# formerly mattpocock-skills:grilling) is invoked by ANY path
 # (auto-trigger, direct /skill, or a sub-skill handoff) WITHOUT /minerva, inject a
 # scoped directive so the model still runs the matching minerva adversarial
 # critic loop (himmel-ops:minerva). This is ADVISORY context, not a permission
 # change — it cannot widen what any hook allows.
 #
-# Spike findings (HIMMEL-429 Task 1, all confirmed):
+# Spike findings:
 #   Q1 matcher:"Skill" is valid for PreToolUse.                        (docs)
 #   Q2 the invoked skill name is at tool_input.skill.   (session-transcript)
 #   Q3 PreToolUse additionalContext reaches the model — "wrapped in a
@@ -55,10 +55,10 @@ inject() {
 }
 
 case "$skill" in
-  # Namespace-agnostic ON PURPOSE (same as the two cases below): HIMMEL-2039
+  # Namespace-agnostic ON PURPOSE (same as the two cases below):
   # wants ONE front door for the grill trigger, so ANY plugin's `grilling`
   # skill routes into minerva Stage 1a, not just the vendored copy's (grilling
-  # ships from lean-skills@himmel as of HIMMEL-3064, vendored verbatim from
+  # ships from lean-skills@himmel, vendored verbatim from
   # mattpocock/skills — the matcher deliberately does not care which plugin
   # namespace it arrives under). Pinning the vendor prefix would break on a
   # rename/fork and re-open the second-front-door this ticket closed. The hook

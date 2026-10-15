@@ -21,7 +21,7 @@ def main():
     segments = list(segments)
     text = " ".join(seg.text.strip() for seg in segments).strip()
     sys.stdout.write(text + "\n")
-    # Optional side channel (x-media-fetch HIMMEL-4107): last segment end, seconds.
+    # Optional side channel: last segment end, seconds.
     meta = os.environ.get("X_TRANSCRIBE_META_FILE")
     if meta and segments:
         with open(meta, "w") as f:

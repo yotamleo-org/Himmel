@@ -182,7 +182,7 @@ tgurl="$(node -e 'console.log(require("url").pathToFileURL(process.argv[1]).href
 # IMPORTANT: alreadyFiledByUrl's FIRST arg is the Clippings dir, not the vault root.
 TGTOOL="$tgurl" CLIPDIR="$tmp/vault/Clippings" node "$tmp/t6.mjs" || { echo "equivalence test FAILED"; exit 1; }
 
-# --- Task 3x (HIMMEL-769): reddit thinness predicate + source-host override ---
+# --- Task 3x: reddit thinness predicate + source-host override ---
 cat > "$tmp/t7.mjs" <<'JS'
 const { isThinClipBody, isThinRedditBody, isRedditHost } = await import(process.env.LIB);
 const NL = "\n";

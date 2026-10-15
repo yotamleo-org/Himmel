@@ -15,7 +15,7 @@ async function info(path) {
 
 // kind 'private': himmel/bus and below, own uid and exactly 0700. kind
 // 'shared': the XDG state home and himmel/, which other tools use too; owned by
-// this uid or root and not group- or other-writable (HIMMEL-5221).
+// this uid or root and not group- or other-writable.
 async function directory(path, kind = 'private') {
   const stat = await info(path);
   if (!stat?.isDirectory() || stat.isSymbolicLink()) throw new Error(`symlink or non-directory: ${path}`);

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # autonomy-mode.sh — print "autonomous" if any autonomy flag is set, else "interactive".
-# Signals (HIMMEL-428): initiative mode (HIMMEL_INITIATIVE, HIMMEL-425) and its overnight
+# Signals: initiative mode (HIMMEL_INITIATIVE) and its overnight
 # part (HIMMEL_INITIATIVE_OVERNIGHT). HIMMEL_INITIATIVE is a CHAIN SPEC (e.g. "pr,ticket"),
 # not a boolean, so treat any non-empty, non-falsy value as active (blocklist, not allowlist).
 set -euo pipefail

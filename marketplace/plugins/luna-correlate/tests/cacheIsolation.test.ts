@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "fs";
 import { fetchKpToCache } from "../src/fetchKp";
 import { fetchFactorToCache } from "../src/fetchFactors";
 
-// HIMMEL-370: the operator's real cache lives at marketplace/plugins/luna-correlate/cache/.
+// the operator's real cache lives at marketplace/plugins/luna-correlate/cache/.
 // These paths are hardcoded (not imported from src) so the assertion holds independently
 // of whatever cache-location logic is under test.
 const OPERATOR_KP_CACHE = join(import.meta.dir, "..", "cache", "kp.json");

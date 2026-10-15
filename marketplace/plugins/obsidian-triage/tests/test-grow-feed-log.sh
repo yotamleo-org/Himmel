@@ -31,8 +31,8 @@
 #       whitespace-only --msg-id / --sender are rejected outright (not silently
 #       sanitized to an empty key); two DIFFERENT whitespace-only msg-ids must
 #       not collide into one dedup key; a msg-id carrying a char sanitizeCell
-#       would rewrite is REJECTED (round 5 superseded the round-2
-#       sanitize-and-display posture — see Test 26)
+#       would rewrite is REJECTED (not sanitized and displayed;
+#       see Test 26)
 #   18. vault-containment is checked on REAL paths too (realpathSync), not
 #       just path strings — an NTFS junction pointing outside the vault is
 #       refused (skips cleanly if junction creation needs privileges this
@@ -59,7 +59,7 @@
 #   26. msg-id is charset-restricted ([A-Za-z0-9._:-]) so the whitespace-
 #       delimited provenance id field is unambiguous BY CONSTRUCTION —
 #       `--msg-id "1 feed"` can no longer write a marker that a later
-#       legitimate `--msg-id 1 --mode feed` dedups against (round 5:
+#       legitimate `--msg-id 1 --mode feed` dedups against (that was
 #       silent data loss reported as ⊘ already-logged)
 #   27. a flag-shaped token where a value belongs is a usage error —
 #       `--water --dry-run` must not swallow --dry-run and run a REAL write
@@ -74,7 +74,7 @@
 #       the true block end; a label STARTING with '##' is rejected (the
 #       Test-13 leading-'#' door, ## flavor)
 #   32. a product BODY line starting with '##' can no longer truncate
-#       ## Products (HIMMEL-1798): the line is entity-escaped on disk
+#       ## Products: the line is entity-escaped on disk
 #       (&#35;# … — legible, rest byte-preserved), no raw '^## ' line lands
 #       inside the block, the next product's section is not spliced into
 #       the first product's body, and a product heading BELOW the escaped
@@ -155,8 +155,7 @@ assert "grow-feed-log.mjs parses" ok "$s"
 # -- Test 2: usage / arg errors ----------------------------------------------
 # Every invocation below dies before reaching vault resolution (msg-id/mode/
 # required-flag/sender checks all run before resolveVault in main()) — but
-# per the HIMMEL-130 review hardening, NO test may rely on that ordering
-# staying that way. Every one still passes an explicit --vault at a scratch
+# NO test may rely on that ordering staying that way. Every one still passes an explicit --vault at a scratch
 # dir that doesn't even need to exist (never reached), so none of them could
 # ever touch the operator's real default vault even under a future refactor.
 echo "Test 2: usage / arg errors"
@@ -433,7 +432,7 @@ grep -q '^✓ grow-feed-log: appended product section' <<<"$out" && a=ok || a=no
 assert "product-exists check ignores '###' text outside ## Products" ok "$a"
 
 # -- Test 16: resolved-target safety line, on stderr, all three branches ----
-# The safety line (HIMMEL-130 review hardening, added after the vault
+# The safety line (added after the vault
 # incident) has no other coverage — a safety mechanism with no test regresses
 # silently, and this is the one meant to catch an unannounced write before it
 # happens. Compute the expected absolute vault/target strings the SAME way
@@ -505,9 +504,8 @@ assert "second whitespace-only msg-id NOT reported as already-logged (no collisi
 n=$(grep -c '^| 2026-08-29 |\|^| 2026-08-30 |' "$TARGET")
 assert "neither whitespace-only attempt wrote a row" 0 "$n"
 
-# Round 5 superseded the round-2 sanitize-and-display posture this block
-# used to pin: a msg-id carrying ANY character sanitizeCell would rewrite
-# (here '|') is now rejected outright, because the id is the dedup key
+# A msg-id carrying ANY character sanitizeCell would rewrite
+# (here '|') is rejected outright, because the id is the dedup key
 # embedded in a whitespace-delimited provenance field — a key that needs
 # rewriting cannot be guaranteed to survive as one unambiguous field.
 # Test 26 pins the collision mechanism itself.
@@ -627,12 +625,11 @@ after_sha="$(node -e "console.log(require('crypto').createHash('sha256').update(
 assert "missing product heading: refusal leaves file byte-identical" "$before_sha" "$after_sha"
 
 # -- Test 22: containment predicate — positive-proof unit cases -------------
-# CR round 4: on Windows, path.relative() returns an ABSOLUTE path when base
+# On Windows, path.relative() returns an ABSOLUTE path when base
 # and full sit on different drives (it cannot express a cross-drive
 # traversal), so the old escape-shape predicate — "does rel start with '..',
 # does it resolve() back" — passed BOTH its guards and the write proceeded
-# outside the vault. Round 2 had already bypassed the same predicate through
-# a junction. The fix replaces shape-inference with a positive parent-chain
+# outside the vault, as did a junction. The fix replaces shape-inference with a positive parent-chain
 # membership proof (isContainedIn, exported for exactly this test); these
 # cases are pure path algebra on strings, so no D: drive has to exist —
 # which is also WHY this is a unit test: a junction to a second volume can't
@@ -711,7 +708,7 @@ assert "target byte-identical after all refused tmp-suffix attempts" "$before_sh
 # normalizeProductName validated the name for the table-cell, heading, and
 # comment contexts — but the SAME value reaches a fourth context, the
 # `[[#<name>]]` anchor. A ']]' in the name closes the link early, silently
-# detaching the feed row from the ## Products heading that round 3 made
+# detaching the feed row from the ## Products heading that is the
 # authoritative. Reject the link-breaking sequences; single brackets stay
 # legal (real product names like "Cal-Mag [10L]" must not be over-blocked).
 echo "Test 24: product name wikilink-anchor integrity"
@@ -725,7 +722,7 @@ grep -q '^### Cal-Mag \[10L\]$' "$TARGET" && a=ok || a=no
 assert "single-bracket product heading written intact" ok "$a"
 
 # -- Test 25: explicitly blank flag values are rejected, never defaulted ----
-# Round 2's defect class one level up: deciding "was this flag given?" on
+# Deciding "was this flag given?" on
 # RAW truthiness makes `--vault ""` indistinguishable from an ABSENT --vault
 # — and an absent --vault targets the operator's REAL vault by design. The
 # blank value must die as a usage error, exactly like the trailing bare
@@ -746,7 +743,7 @@ grep -q 'EC' <<<"$row" && a=DANGLING || a=ok
 assert "whitespace-only --ec leaves no dangling 'EC ' prefix in the notes cell" ok "$a"
 
 # -- Test 26: msg-id charset — the dedup key field is unambiguous ------------
-# CR round 5 (two independent critics): sanitizeCell collapses newlines to a
+# sanitizeCell collapses newlines to a
 # SPACE and internal spaces survive, so `--msg-id "1 feed"` wrote the marker
 # `<!-- tg:1 feed feed from:... -->` — which a later, LEGITIMATE
 # `--msg-id 1 --mode feed` matched via its `\s+feed\b` regex and silently
@@ -867,7 +864,7 @@ if [ -n "$albl" ] && [ -n "$nlbl" ] && [ "$albl" -lt "$nlbl" ]; then a=ok; else 
 assert "next product still lands before ## Notes (section not truncated)" ok "$a"
 
 # -- Test 32: a product BODY '##' line can no longer truncate ## Products ---
-# HIMMEL-1798 ratchet. findProductsBlock infers the end of ## Products from
+# ratchet. findProductsBlock infers the end of ## Products from
 # the next `^## ` heading-shaped line — an escape-shaped proxy over content
 # the caller controls. Product body text used to be inserted raw (apart from
 # comment neutralization), so an extracted body line like `## Usage notes`
@@ -941,7 +938,7 @@ cat > "$tmpdir/heading-cases.mjs" <<'EOF'
 import { pathToFileURL } from "node:url";
 const { neutralizeHeadings } = await import(pathToFileURL(process.argv[2]).href);
 const cases = [
-  // the HIMMEL-1798 terminator shape (what findProductsBlock keys on)
+  // terminator shape (what findProductsBlock keys on)
   ["## Usage notes", "&#35;# Usage notes"],
   // phantom product-heading door (productHeadingExists keys on ^###)
   ["### Evil product", "&#35;## Evil product"],

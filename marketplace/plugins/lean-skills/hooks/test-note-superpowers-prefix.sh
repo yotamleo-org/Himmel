@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-note-superpowers-prefix.sh — suite for the PostToolUse(Skill) prefix-hint
-# hook (HIMMEL-3100). The suite is the spec.
+# hook. The suite is the spec.
 #
 # Why the hook exists: vendored SKILL.md prose cites `superpowers:<name>`, which
 # is "Unknown skill" in a lean-skills-only install. Claude Code fires neither

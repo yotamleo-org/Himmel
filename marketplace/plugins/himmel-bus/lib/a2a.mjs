@@ -1,4 +1,4 @@
-// himmel-bus A2A v1.0.0 projection (HIMMEL-5487; design note docs/internals/himmel-bus-a2a.md).
+// himmel-bus A2A v1.0.0 projection (design note docs/internals/himmel-bus-a2a.md).
 // Pure and local: no listener, no store write, no envelope change. A bus record
 // is DATA; the `c` authority flag is carried only under metadata so nothing in
 // the A2A message can be read as a ruling, and inbound A2A text is always c=0.

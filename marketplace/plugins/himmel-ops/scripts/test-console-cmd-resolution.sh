@@ -2,7 +2,7 @@
 # shellcheck disable=SC2015,SC2016
 # test-console-cmd-resolution.sh -- plugin /console from any repo. The
 # himmel-ops plugin's console.md carries an embedded REPO-resolution snippet
-# (modeled on himmel-update.md's, HIMMEL-459) so it runs from ANY directory
+# (modeled on himmel-update.md's) so it runs from ANY directory
 # ($HIMMEL_REPO -> canonical install paths -> error; never the cwd's own git
 # toplevel, which could ship a hostile console.sh), then
 # passes the session's own cwd to console.sh as --project. This test
@@ -44,8 +44,8 @@ check "(i) HIMMEL_REPO from arbitrary dir" "$clone" "$got"
 # (ii) HIMMEL_REPO unset, CWD inside a FOREIGN repo shipping its own
 #      scripts/handover/console/console.sh, no canonical himmel present ->
 #      the resolver must refuse, never run the foreign script just because
-#      the cwd's git toplevel has one (HIMMEL-3623 verdict J1268O change 5,
-#      F6 -- this is the vulnerability the fix closes).
+#      the cwd's git toplevel has one
+#      this is the vulnerability the fix closes).
 gitclone="$td/gitclone"; mkdir -p "$gitclone/scripts/handover/console"
 git init -q "$gitclone"; : > "$gitclone/scripts/handover/console/console.sh"
 got="$( cd "$gitclone" && HOME="$empty_home" run_resolver )"; rc=$?
@@ -55,7 +55,7 @@ check "(ii) foreign repo's own console.sh never wins (non-zero exit)" "nonzero" 
 # (iii) neither HIMMEL_REPO nor a git repo nor a canonical himmel -> clear error.
 # Empty stdout alone doesn't prove the snippet errored (a genuinely empty REPO
 # would print empty too) -- assert the subshell's exit status is non-zero as
-# well (HIMMEL-3623 verdict J1268O change 8, F9).
+# well.
 got="$( cd "$td" && HOME="$empty_home" run_resolver )"; rc=$?
 check "(iii) none -> empty (errored)" "" "$got"
 check "(iii) none -> non-zero exit" "nonzero" "$( [ "$rc" -ne 0 ] && echo nonzero || echo zero )"
@@ -90,7 +90,7 @@ run_line="$(grep -n 'console.sh" \$ARGUMENTS' "$cmd")"
 check "run line: --project comes after \$ARGUMENTS" \
     "$(printf '%s\n' "$run_line" | grep -c -- '\$ARGUMENTS --project "\$PROJECT"')" "1"
 
-# codex-1 (pr-check round 2, HIMMEL-3623): a `new` whose own $ARGUMENTS
+# A `new` whose own $ARGUMENTS
 # already carries a --project must NOT also get the derived one appended --
 # console.sh keeps the LAST --project, so appending unconditionally always
 # clobbered an operator's own explicit --project on `new`. Assert the guard
@@ -100,7 +100,7 @@ check "codex-1: a *--project* guard branch exists on new" \
 check "codex-1: the *--project* new branch never appends the derived --project" \
     "$(printf '%s\n' "$run_line" | grep -c -- '\*--project\*.*--project "\$PROJECT"')" "0"
 
-# codex-2 (pr-check round 2, HIMMEL-3623): no dispatch line may `cd "$REPO"`
+# No dispatch line may `cd "$REPO"`
 # before expanding $ARGUMENTS -- that resolved any relative --doc/--project
 # the operator passed against the himmel checkout instead of their own cwd.
 check "codex-2: no cd \"\$REPO\" before dispatching console.sh" \

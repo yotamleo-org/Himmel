@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for x-media-fetch.py (HIMMEL-1226). Hermetic: NO live network, NO
+# Tests for x-media-fetch.py. Hermetic: NO live network, NO
 # ffmpeg/whisper. The only fetch backend is cookieless
 # Scrapling + curl: an adapter stands in for the Scrapling helper and a stub curl
 # serves the files, and the "gallery-dl" stubs are kept only as the fixture
@@ -114,7 +114,7 @@ type nul > "%~1"
 exit /b 0
 STUB
 
-# --- yt-dlp + fxtwitter-cmd stubs (HIMMEL-4107; bash only, Windows parked) ---
+# --- yt-dlp + fxtwitter-cmd stubs ---
 # yt-dlp stub: X_TEST_YT_MODE=none (default: no track) | subs | short (both copy the
 # fixture VTT next to the -o template; the caller sets the duration it prints).
 # X_TEST_YT_AUTO_ONLY=1 serves a track only on the --write-auto-subs pass.
@@ -714,7 +714,7 @@ assert "_done same.md -> _media/same-7002/ (distinct, no collision)" ok "$a"
 
 # --- Test 15: _splice_crawled preserves x-media provenance when splicing into
 # an EXISTING ## Crawled content section from an earlier fxtwitter pass
-# (HIMMEL-1235). Before the fix, the existing-section branch started at the
+# Before the fix, the existing-section branch started at the
 # first ### heading and dropped the <!-- media-enriched ... via x-media -->
 # comment, so --apply-digest's provenance guard refused every such clip.
 echo "Test 15: _splice_crawled preserves provenance into an EXISTING crawled section (HIMMEL-1235)"
@@ -752,7 +752,7 @@ printf 'Slide 1: repaired splice digest.\n' > "$tmp/splice-digest.txt"
 run_tool --apply-digest "$SP/Clippings/clip.md" --digest-file "$tmp/splice-digest.txt" >"$tmp/splice-apply.out" 2>"$tmp/splice-apply.err"
 assert "apply-digest succeeds after splice provenance fix" 0 "$?"
 
-# --- Test 16: --repair-provenance mechanical one-time repair (HIMMEL-1235) --
+# --- Test 16: --repair-provenance mechanical one-time repair --
 # Backfill for clips already written by the pre-fix splice: a ### Slides block
 # + pending marker sit in a ## Crawled content section with NO x-media
 # provenance. When the referenced slide file is present on disk, repair
@@ -791,7 +791,7 @@ printf 'Slide 1: repaired digest text.\n' > "$tmp/repair-digest.txt"
 run_tool --apply-digest "$RP/Clippings/clip.md" --digest-file "$tmp/repair-digest.txt" >"$tmp/repair-apply.out" 2>"$tmp/repair-apply.err"
 assert "apply-digest succeeds after repair-provenance" 0 "$?"
 
-# --- Test 17: --repair-provenance anti-forgery (missing slide file, HIMMEL-1228)
+# --- Test 17: --repair-provenance anti-forgery
 # A ### Slides embed that references a file NOT actually present on disk must
 # be refused - stamping provenance would launder a forged/planted marker into
 # a valid one for --apply-digest.
@@ -862,7 +862,7 @@ grep -qF "<!-- media-enriched" "$RT/Clippings/clip.md" && a=no || a=ok
 assert "no x-media provenance stamped on traversal embed" ok "$a"
 
 # --- Test 19: untrusted crawled prose containing the literal "via x-media -->"
-# substring must NOT be mistaken for real provenance (codex-adv HIMMEL-1235).
+# substring must NOT be mistaken for real provenance.
 # Before the anchored-regex fix, a bare substring match in _splice_crawled
 # suppressed the real provenance insert (permanently stranding the clip's
 # digest) and --apply-digest's own substring guard would also be fooled.
@@ -1000,7 +1000,7 @@ assert "decorated-heading repair clip byte-identical (no write)" "$sha_rh" "$(sh
 grep -qF "<!-- media-enriched" "$RH/Clippings/clip.md" && a=no || a=ok
 assert "no x-media provenance stamped on decorated ### Slides heading" ok "$a"
 
-# --- Test 17: HIMMEL-4107 subtitles-first transcripts ----------------------
+# --- Test 17: subtitles-first transcripts ----------------------
 echo "Test 17: VTT cleaner"
 run_tool --clean-vtt "$X_TEST_VTT" >"$tmp/clean.out" 2>"$tmp/clean.err"
 assert "--clean-vtt exit 0" 0 "$?"

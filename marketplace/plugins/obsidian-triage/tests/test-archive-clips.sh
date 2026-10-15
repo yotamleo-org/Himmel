@@ -225,7 +225,7 @@ graduate() {  # $@ = files to rewrite (must include the moved clip's NEW path)
   done
 }
 verify_clean() {  # whole-vault literal verify across ALL SIX boundary forms
-  # Six, not three (HIMMEL-1882): Phase 1 normalises the .md suffix out of the
+  # Six, not three: Phase 1 normalises the .md suffix out of the
   # citation index, so a clip cited ONLY as [[Clippings/foo.md]] is eligible to
   # graduate. A three-form verify reports clean while that citation dangles —
   # it never looked for it.
@@ -260,7 +260,7 @@ assert "B: zero stale OLD links (self-ref-only graduates cleanly)" "0" "$(verify
 # so such a clip IS eligible to graduate; if Phase 4 enumerates/rewrites/verifies
 # only the three non-.md forms, the clip moves to _done/, the verify returns zero
 # because it never looked for the .md form, and the synthesis citation is left
-# silently dangling. HIMMEL-1882 regression. ---
+# silently dangling. regression. ---
 rm -f "$tmp4/Clippings/$NEW4.md" "$tmp4/30-Resources/Tech/note.md"
 mkdir -p "$tmp4/Clippings/_synthesis"
 make_selfref_clip "$tmp4/Clippings/$OLD4.md"

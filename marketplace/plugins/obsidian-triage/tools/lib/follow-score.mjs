@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// follow-score.mjs — HIMMEL-660 X-follow-list scorer, Task 7: deterministic
+// follow-score.mjs — X-follow-list scorer: deterministic
 // scoring/tiering math + ranking + render. Pure (no filesystem, no
 // network) — the assemble subcommand (follow-list-score.mjs) is the only
 // caller that touches disk.
@@ -179,7 +179,7 @@ export function renderList(ranked, existingFileContent = "") {
   // first. Real vault files have no trailing `## ` heading (their tail is
   // an operator blockquote + `---` + footer prose + a `Related:` line), so
   // relying on a heading alone would fall through to EOF and destroy that
-  // tail (HIMMEL-660 Task 7 review).
+  // tail.
   let spanEnd = lines.length;
   for (let i = spanStart + 1; i < lines.length; i++) {
     const line = lines[i];

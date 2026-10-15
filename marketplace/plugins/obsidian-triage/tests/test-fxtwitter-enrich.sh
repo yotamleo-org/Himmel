@@ -255,7 +255,7 @@ EOF
     node "$tmpdir/smoke.mjs" 2>&1
 }
 
-# HIMMEL-3191: the hermetic case runs everywhere — a fixture cache built here,
+# the hermetic case runs everywhere — a fixture cache built here,
 # never the operator's scratch dir (absent on CI, where this used to SKIP).
 fxt_fixture="$tmpdir/fxt-fixture"
 mkdir -p "$fxt_fixture"
@@ -462,7 +462,7 @@ FXT_FIXTURE="$tmpdir/fixture-reflag-thread.json" node "$SCRIPT" --vault "$reflag
 t13c_flag=no; grep -q "needs_thread:" "$reflag_vault/Clippings/not-enriched.md" 2>/dev/null && t13c_flag=yes
 assert "Test13C: --reflag skips a non-enriched clip (no needs_thread written)" "no" "$t13c_flag"
 
-# -- Test 14: HIMMEL-3506 — unmarked self-thread escalation via /2/thread/<id> --
+# -- Test 14: unmarked self-thread escalation via /2/thread/<id> --
 echo "Test 14: unmarked self-thread caught via the fxtwitter thread API"
 
 # Post-1 text carries NO text signal (no n/N counter, no thread, no pointer) —
@@ -562,7 +562,7 @@ assert "Test14C: thread API error fails open (no needs_thread)" "no" "$t14c_flag
 t14c_ok=no; grep -q "enrichment_status: ok" "$unmarked_vault_c/Clippings/unmarked-clip-c.md" 2>/dev/null && t14c_ok=yes
 assert "Test14C: clip still enriches normally on thread-API error" "yes" "$t14c_ok"
 
-# -- Test 15: --reflag surfaces the same unmarked-self-thread miss (HIMMEL-3506 DoD) --
+# -- Test 15: --reflag surfaces the same unmarked-self-thread miss --
 echo "Test 15: --reflag backfill catches an unmarked self-thread via the thread API"
 reflag_unmarked_vault="$tmpdir/vault-reflag-unmarked"
 mkdir -p "$reflag_unmarked_vault/Clippings"
@@ -598,7 +598,7 @@ if [ "$t15_flag" != "yes" ]; then
     echo "  (debug out=$(cat "$tmpdir/t15.out" 2>/dev/null))"
 fi
 
-# -- Test 16: exit code reflects failures (HIMMEL-1136) ----------------
+# -- Test 16: exit code reflects failures ----------------
 echo "Test 16: exit code is non-zero when any clip failed"
 if [ "$(id -u)" -ne 0 ]; then
     fail_vault="$tmpdir/vault-fail"

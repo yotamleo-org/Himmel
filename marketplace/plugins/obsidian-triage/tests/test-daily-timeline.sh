@@ -16,7 +16,7 @@
 #   - a second same-day run is byte-identical (no duplicate, no double-count).
 #   - pre-existing daily-note content (`## Actions from clips`, journal) preserved.
 #   - CRLF notes keep CRLF.
-#   - a missing daily note is created (HIMMEL-4182; the report is in test-daily-report.sh).
+#   - a missing daily note is created.
 
 set -u -o pipefail
 
@@ -193,7 +193,7 @@ assert "CRLF endings preserved after upsert" "yes" "$f"
 if grep -c '^## Clip pipeline' "$CRLF_DAILY" >/dev/null && [ "$(grep -c 'Clip pipeline' "$CRLF_DAILY")" = "1" ]; then f=yes; else f=no; fi
 assert "CRLF note got exactly one pipeline section" "yes" "$f"
 
-# ── Missing daily note → created (HIMMEL-4182: the daily report needs it) ────
+# ── Missing daily note → created ────
 echo "Test 10: missing daily note is created with the pipeline section (exit 0)"
 node "$TOOL" --vault "$tmp" --date "2030-01-01" >/dev/null 2>&1
 rc=$?

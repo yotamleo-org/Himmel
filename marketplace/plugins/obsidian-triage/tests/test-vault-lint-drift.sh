@@ -25,7 +25,7 @@ fail() {
 
 echo "=== vault-lint drift guard tests ==="
 
-# HIMMEL-3191: Tests 1-3 must not depend on the live plugin cache under the real
+# Tests 1-3 must not depend on the live plugin cache under the real
 # $HOME (absent on CI, so they used to fail or self-skip there). The fixture is a
 # fake HOME holding an upstream cache whose files hash to a fixture UPSTREAM.json,
 # next to a copy of the drift script (it locates UPSTREAM.json beside itself).

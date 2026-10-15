@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# minerva-trace-lint.sh <spec.md> <plan.md> — HIMMEL-4375. minerva's terminal
+# minerva-trace-lint.sh <spec.md> <plan.md> — minerva's terminal
 # step runs this before the execute hand-off; a non-zero exit sends the run back
 # to the spec or plan stage. Rules:
 #   1. A surface-shaped spec (its H1 or first H2 section names status, report,

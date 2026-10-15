@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# note-superpowers-prefix.sh — PostToolUse(Skill) hook (HIMMEL-3100).
+# note-superpowers-prefix.sh — PostToolUse(Skill) hook.
 #
 # The vendored SKILL.md prose (verbatim from obra/superpowers) hands off to
 # siblings as `superpowers:<name>`. In a lean-skills-only install that plugin is

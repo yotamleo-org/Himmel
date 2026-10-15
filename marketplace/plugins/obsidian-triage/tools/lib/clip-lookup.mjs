@@ -114,10 +114,10 @@ const ARTICLE_SECTIONS = ["## Highlights", "## Summary", "## Key Points", "## Co
 
 export function isThinClipBody(body, type, source) {
   if (!body) return true;
-  // Source-host override (host beats type) — spec §7 (HIMMEL-769). A legacy
+  // Source-host override (host beats type) — spec §7. A legacy
   // type:article reddit clip must still route to the reddit predicate.
   if (isRedditHost(source)) return isThinRedditBody(body);
-  // instagram media rung (HIMMEL-770): host beats type — an IG clip routes to
+  // instagram media rung: host beats type — an IG clip routes to
   // the IG predicate regardless of type: (browser-clipped IG clips are type:article).
   if (isInstagramHost(source)) return isThinInstagramBody(body);
   // tweet branch: reuse the canonical predicate (spec Item C)
@@ -185,7 +185,7 @@ export function isThinRedditBody(body) {
     const h = l.match(/^#{1,6}\s+(.*)$/);
     if (h) {                                                 // heading
       // Sub-headings inside harvest template sections would exit this exclusion;
-      // current generated templates do not contain them (HIMMEL-795).
+      // current generated templates do not contain them.
       inTemplateSection = REDDIT_TEMPLATE_SECTIONS.has(h[1].trim().toLowerCase());
       continue;
     }
@@ -214,7 +214,7 @@ export function isInstagramHost(sourceUrl) {
   } catch { return false; }
 }
 
-// instagram media rung (HIMMEL-770): thin iff ## Crawled content has neither
+// instagram media rung: thin iff ## Crawled content has neither
 // a ### Transcript nor a ### Slides subsection (caption-only bodies are thin).
 export function isThinInstagramBody(body) {
   if (!body) return true;

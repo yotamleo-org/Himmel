@@ -121,7 +121,7 @@ grep -q '^telegram_msg_id: "77"$' <<<"$CLIP"      && a=ok || a=no; assert "build
 grep -q '^telegram_sender: "alice"$' <<<"$CLIP"   && a=ok || a=no; assert "buildClip sender provenance" ok "$a"
 grep -q '^clipped_via: telegram$' <<<"$CLIP"      && a=ok || a=no; assert "buildClip clipped_via" ok "$a"
 grep -q '^source: https://example.com/p$' <<<"$CLIP" && a=ok || a=no; assert "buildClip source line" ok "$a"
-# HIMMEL-769: an instagram URL must build a COMPLETE clip (not just classify) —
+# an instagram URL must build a COMPLETE clip (not just classify) —
 # guards the frozen CLIP_TYPES regression (buildClip throws on unknown type).
 IGCLIP="$(T='https://www.instagram.com/reel/Cxyz/' libcall "
 const {type,source}=lib.classifyMessage({text:process.env.T});

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for HIMMEL-660 follow-verify.mjs — claim extraction + gh-api
+# Tests for follow-verify.mjs — claim extraction + gh-api
 # resource evidence + claim verification. Pure/stubbed (ghFn/headFn
 # injected); no live network. Cross-platform: bash on Linux/macOS/Git-Bash.
 # Uses node (not bun) for CI.

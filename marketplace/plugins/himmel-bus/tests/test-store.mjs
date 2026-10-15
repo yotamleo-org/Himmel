@@ -144,7 +144,7 @@ test('permissions are rechecked on the bus parent after startup', async t => {
   await assert.rejects(store.append(root, 'leg', message()), /permission/);
 });
 
-// HIMMEL-5221: the XDG state home and himmel/ are shared; only himmel/bus and
+// the XDG state home and himmel/ are shared; only himmel/bus and
 // below must be private.
 test('HIMMEL-5221 a 0755 state home and himmel parent are accepted, and himmel/bus is created 0700', async t => {
   const state = await mkdtemp(join(tmpdir(), 'bus-shared-'));

@@ -131,7 +131,7 @@ try:
 except RuntimeError:
     check("jina: empty markdown raises", True)
 
-# HIMMEL-4351 item 4: a 200 whose preamble reports the target's own error is
+# a 200 whose preamble reports the target's own error is
 # an error page, not content — raise instead of writing it into the clip.
 reset()
 stub_urlopen(["Title: Just a moment\n\nURL Source: https://example.com/post\n\nWarning: Target URL returned error 403: Forbidden\n\nMarkdown Content:\nEnable JavaScript and cookies to continue\n"])
@@ -142,7 +142,7 @@ except RuntimeError:
     check("jina: 200 carrying a target-error warning raises", True)
 check("jina: that fetch is still ledgered (the call happened)", len(ledger_lines()) == 1)
 
-# HIMMEL-4351 item 2: a 200 whose body does not parse as JSON still spent the
+# a 200 whose body does not parse as JSON still spent the
 # call — ledger it at the documented cost, ok=false, not as a free transport error.
 reset()
 stub_urlopen(["<html>not json</html>"])
@@ -154,7 +154,7 @@ row = (ledger_lines() or [{}])[0]
 check("ledger: transport ok + parse failure counts the credit, ok=false",
       row.get("credits") == mod.FirecrawlClient.SCRAPE_COST and row.get("ok") is False)
 
-# --- local-headless slot: Scrapling stealth fetcher (HIMMEL-4344) -----------
+# --- local-headless slot: Scrapling stealth fetcher -----------
 class FakeRoute:
     def __init__(self, url, page=None):
         frame = type("Frame", (), {"page": page})()
@@ -344,7 +344,7 @@ for label, r, expect in (("HTTP 403", FetchRecorder(page=FakePage(status=403)), 
     except Exception as e:
         check(f"local-headless: {label} raises (chain falls through)", expect in str(e))
 
-# --- per-request private-host enforcement (HIMMEL-4477) ---------------------
+# --- per-request private-host enforcement ---------------------
 def verdict_for(setup, url):
     bp = FakeBrowserPage()
     setup(bp)
@@ -585,7 +585,7 @@ mod.process_clip(make_clip(THIN), False, real, mod.UrlRules(deny=[("example.com/
 check("process_clip: .harvest-deny never reaches local-headless", rec.calls == [])
 uninstall_local()
 
-# --- HIMMEL-4361: registry, per-site routing, kill switch, caps -------------
+# --- registry, per-site routing, kill switch, caps -------------
 import contextlib
 
 FC_OK = json.dumps({"success": True, "data": {"markdown": "# From fc\n\nbody"}})
@@ -645,7 +645,7 @@ _c = mod.build_scrape_chain({}, 5)
 _c.routes = mod.load_backend_routes(vault_with("x.test/** only=firecrawl\n"))
 check("routing: only= never re-adds a backend the key gate dropped", names(_c, "https://x.test/") == [])
 
-# HIMMEL-4851: each spelling (raw + canonical) is routed on its own and the
+# each spelling (raw + canonical) is routed on its own and the
 # result is their intersection, so a broad-first line never widens the gate.
 def helper_permits(routes, url):
     """The yt/ig/x helpers' local-headless gate, as in yt-scrapling-meta.py."""
@@ -821,7 +821,7 @@ reset()
 stub_urlopen([FC_OK])
 mod.build_scrape_chain({**KEYED, "HARVEST_SCRAPE_BACKEND": "firecrawl", "HARVEST_FIRECRAWL_STEALTH": "1"}, 5).scrape("https://example.com/a")
 check("stealth: HARVEST_FIRECRAWL_STEALTH=1 sends proxy=stealth", json.loads(SEEN[0].data.decode()).get("proxy") == "stealth")
-# HIMMEL-4370 (B): stealth costs 5, so a ceiling below 5 refuses stealth before any call
+# stealth costs 5, so a ceiling below 5 refuses stealth before any call
 reset()
 stub_urlopen([FC_OK])
 try:
@@ -856,12 +856,12 @@ with contextlib.redirect_stderr(err):
         except Exception:
             pass
 check("ceiling: a parse failure (cost 1) trips a ceiling of 0", len(fc_lines()) == 1)
-# HIMMEL-4368: the same stderr line as the valid-JSON path
+# the same stderr line as the valid-JSON path
 check("ceiling: the parse-failure trip prints the same stderr line as the valid-JSON path",
       "harvest-clip-body-batch: firecrawl call cost 1 credits (ceiling 0); firecrawl disabled for the rest of this run"
       in err.getvalue())
 
-# HIMMEL-4370 (A): a present but non-integer creditsUsed counts as over the ceiling
+# a present but non-integer creditsUsed counts as over the ceiling
 for label, val in (("float 30.0", 30.0), ("string '30'", "30"), ("bool true", True), ("null", None), ("float 2.5", 2.5)):
     reset()
     stub_urlopen([OSError("j"), json.dumps({"success": True, "data": {"markdown": "# From fc\n\nbody",
@@ -878,7 +878,7 @@ for label, val in (("float 30.0", 30.0), ("string '30'", "30"), ("bool true", Tr
     check(f"ceiling: creditsUsed {label} is over the ceiling (firecrawl stops, line logged)",
           len(fc_lines()) == 1 and "disabled for the rest of this run" in err.getvalue())
 
-# HIMMEL-4370 (C): strict integer env parsing, identical to the JS side (ASCII digits only)
+# strict integer env parsing, identical to the JS side (ASCII digits only)
 for bad in ("+5", "1_0", "５", "-1", "5.0", "0x5"):
     for key in ("HARVEST_FIRECRAWL_MAX_CREDITS", "HARVEST_FIRECRAWL_BUDGET"):
         try:
@@ -890,7 +890,7 @@ for bad in ("+5", "1_0", "５", "-1", "5.0", "0x5"):
 check("env int: surrounding whitespace and leading zeros are accepted", mod._env_int({"K": " 007 "}, "K", 1) == 7)
 check("env int: unset or blank falls back", mod._env_int({}, "K", 3) == 3 and mod._env_int({"K": "  "}, "K", 3) == 3)
 
-# HIMMEL-4370 (E): the JS side's name list stays in sync with BACKEND_REGISTRY
+# the JS side's name list stays in sync with BACKEND_REGISTRY
 import re
 mjs = (TOOL.parent / "lib" / "follow-web.mjs").read_text(encoding="utf-8")
 m = re.search(r"export const SCRAPE_BACKEND_NAMES = \[([^\]]*)\]", mjs)
@@ -905,7 +905,7 @@ with contextlib.redirect_stderr(err):
 check("no key: jina-only chain, nothing on stderr",
       [b.name for b in c.backends] == ["local-headless", "jina"] and err.getvalue() == "")
 
-# --- HIMMEL-4371: firecrawl unavailable (402/429) parks, never loses ---------
+# --- firecrawl unavailable (402/429) parks, never loses ---------
 import contextlib
 import urllib.error
 

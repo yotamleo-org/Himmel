@@ -47,7 +47,7 @@ PLAYER_KEY = "ytInitialPlayerResponse = "
 LOGIN_HOSTS = ("consent.youtube.com", "accounts.google.com")
 # Sub tracks in preference order: English as authored (or YouTube's own "en"
 # auto track), then the original-language auto track; any other English track
-# next, and a non-English original-language auto track last (HIMMEL-4688).
+# next, and a non-English original-language auto track last.
 SUB_PREFERENCE = (".en.json3", ".en-orig.json3")
 SUB_LANGS = "en.*,en,.*-orig"
 
@@ -132,7 +132,7 @@ def extract_meta(page_html, video_id, final_url=None):
     if play == "LOGIN_REQUIRED":
         return {"status": "login_wall", "detail": "LOGIN_REQUIRED"}
     if play == "ERROR" and _is_private(ps):
-        # A private video also reports ERROR (HIMMEL-4704): the logged-in
+        # A private video also reports ERROR: the logged-in
         # fallback may still read it, so it is a login wall, never removed.
         return {"status": "login_wall", "detail": "ERROR: private video"}
     if play == "ERROR":
@@ -247,7 +247,7 @@ def main(argv=None):
     if not VIDEO_ID_RE.match(args.video_id):
         ap.error("--video-id must be a YouTube video id")
     # Route rules match the canonical URL; the hl pin is fetch-only, or an
-    # exact-video skip/only rule would stop matching (HIMMEL-4797, j2057 F1).
+    # exact-video skip/only rule would stop matching.
     canon = f"https://www.youtube.com/watch?v={args.video_id}"
     # hl=en: _is_private reads the English reason text, so ask for English
     # (HIMMEL-4797). ponytail: no language-independent private signal is known

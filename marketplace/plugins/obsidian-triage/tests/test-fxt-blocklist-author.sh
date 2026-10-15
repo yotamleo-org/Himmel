@@ -53,7 +53,7 @@ ck "## The Idea body untouched" "grep -q 'Real body content here' \"$clip\""
 # Frontmatter parses as YAML with author still a list
 if node -e '
   // js-yaml is installed under tools/ (ensure-deps.sh), not the plugin root
-  // this script cd`s to — resolve it from tools/ (HIMMEL-3196).
+  // this script cd`s to — resolve it from tools/.
   const fs=require("fs");
   const yaml=require(require.resolve("js-yaml",{paths:[process.argv[2]]}));
   const t=fs.readFileSync(process.argv[1],"utf8").replace(/\r\n/g,"\n");

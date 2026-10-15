@@ -257,7 +257,7 @@ echo "Test 13: sibling remains visible in scans (not accidentally excluded)"
 if grep -qF "/$SIB.md" <<<"$triage_scan"; then f=visible; else f=missing; fi
 assert "prefix-sibling still visible in triage scan" "visible" "$f"
 
-# HIMMEL-770: ig_media_pending step-0 hold -- a two-clip behavioral mirror of the
+# ig_media_pending step-0 hold -- a two-clip behavioral mirror of the
 # runbook contract. Both clips are Phase-7-complete (processed: true) and would
 # otherwise be moved to _evidence/; they run through the SAME move logic as the
 # main sim above, gated by the runbook's Phase-8 step-0 eligibility filter:

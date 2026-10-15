@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for HIMMEL-660 follow-roster.mjs — handle normalization + roster
+# Tests for follow-roster.mjs — handle normalization + roster
 # resolution (list ∪ corpus, minClips threshold). Filesystem-only; no
 # network. Cross-platform: bash on Linux/macOS/Git-Bash. Uses node (not
 # bun) for CI.

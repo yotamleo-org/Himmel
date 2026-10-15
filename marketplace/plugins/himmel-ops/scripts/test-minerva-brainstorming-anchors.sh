@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-minerva-brainstorming-anchors.sh -- HIMMEL-5440. minerva Stage 1b drives
+# test-minerva-brainstorming-anchors.sh — minerva Stage 1b drives
 # the vendored lean-skills brainstorming skill and halts it at named steps. Each
 # step minerva relies on is written in its SKILL.md as
 #   brainstorming step "<text>"

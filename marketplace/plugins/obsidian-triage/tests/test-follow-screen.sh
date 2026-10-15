@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for HIMMEL-660 follow-screen.mjs — injection screen + judge-view
-# redaction (HIMMEL-256 defense). No network/python; scanFn is stubbed.
+# Tests for follow-screen.mjs — injection screen + judge-view
+# redaction. No network/python; scanFn is stubbed.
 # Cross-platform: bash on Linux/macOS/Git-Bash. Uses node (not bun) for CI.
 
 set -u -o pipefail
@@ -71,11 +71,11 @@ grep -q 'INJECTION_SUSPECT=true' <<<"$out1" && r=yes || r=no; assert "dirty: inj
 grep -q 'SCREEN_STATUS=ok' <<<"$out1" && r=yes || r=no; assert "dirty: screen_status==ok (scanner ran fine)" yes "$r"
 grep -q 'BIO=\[withheld: injection-suspect\]' <<<"$out1" && r=yes || r=no; assert "dirty: trimForJudge redacts bio" yes "$r"
 grep -q 'DESC0=\[withheld: injection-suspect\]' <<<"$out1" && r=yes || r=no; assert "dirty: trimForJudge redacts sample_descriptions[0]" yes "$r"
-# Gap C (HIMMEL-703): a suspect dossier's tweet bodies must be withheld too --
+# A suspect dossier's tweet bodies must be withheld too --
 # the injection often lives in the tweet itself.
 grep -q 'TWEET0=\[withheld: injection-suspect\]' <<<"$out1" && r=yes || r=no; assert "dirty: trimForJudge redacts sample_tweets[0].text (Gap C)" yes "$r"
 grep -q 'TWEET1=\[withheld: injection-suspect\]' <<<"$out1" && r=yes || r=no; assert "dirty: trimForJudge redacts sample_tweets[1].text (Gap C)" yes "$r"
-# CR Critical (HIMMEL-703): claims[] carry regex-extracted spans of the same
+# claims[] carry regex-extracted spans of the same
 # untrusted text and the judge reads them, so claim.text must be withheld too --
 # with kind/status preserved for the judge's verified/unverified weighting.
 grep -q 'CLAIM0=\[withheld: injection-suspect\]' <<<"$out1" && r=yes || r=no; assert "dirty: trimForJudge redacts claims[0].text (CR Critical)" yes "$r"
