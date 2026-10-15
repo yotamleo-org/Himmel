@@ -235,12 +235,14 @@ commands:
   deps upgrade            bump present declared toolchain deps toward latest;
                           qmd's model pull (~2.1 GB) is gated behind a prompt
                           or --with-models
-  report [--items <id,..>] --json
+  report [--items <id,..>] [--deep] --json
                           read-only config feed (himmel-config-feed/1): every
                           item, doctor check, cadence, plugin, lane, initiative
                           leg, bypass flag and secret as one row grammar, for
                           the config UI. --items re-probes only those row ids.
-                          Secrets show presence, never values.
+                          Secrets show presence, never values. --deep adds the
+                          wiring layers: pre-commit ids, Claude hooks, git
+                          hooks and CI workflows (fires reads unverified).
   ui [--port N]           read-only config UI on 127.0.0.1 (needs bun): serves the
                           report feed as one page and prints a URL carrying a
                           per-launch token. The OPERATOR runs this from a
@@ -328,7 +330,7 @@ const ALLOWED_OPTIONS = {
   status: ['items', 'json'],
   // the config UI's feed (himmel-config-feed/1). Its own verb,
   // never a `status` mode — status --json is a golden-tested contract.
-  report: ['items', 'json'],
+  report: ['items', 'json', 'deep'],
   // the read-only config UI server.
   ui: ['port', 'allowAgentSession', 'agui'],
   ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork'],
@@ -612,6 +614,9 @@ function parseArgs(argv) {
       }
       case '--json':
         args.json = true;
+        break;
+      case '--deep':
+        args.deep = true;
         break;
       case '--allow-agent-session':
         args.allowAgentSession = true;
@@ -5421,7 +5426,7 @@ function cmdReport(args) {
   const answers = fs.existsSync(profilePath) ? loadProfile(profilePath) : null;
   const scope = answers ? answers.scope : 'user';
   const targetPath = scope === 'user' ? repoRoot() : path.resolve(process.cwd());
-  const feed = configFeed.buildFeed({ manifest, scope, targetPath, answers, items: args.items });
+  const feed = configFeed.buildFeed({ manifest, scope, targetPath, answers, items: args.items, deep: args.deep === true });
   process.stdout.write(JSON.stringify(feed) + '\n');
   return 0;
 }
