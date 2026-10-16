@@ -44,9 +44,12 @@ NEEDS='[.hooks.SessionEnd[]?.hooks[]? | select((.command // "") | contains("sess
 # shellcheck disable=SC2016 # $min is a jq variable, not a shell expansion
 PATCH='.hooks.SessionEnd |= map(.hooks |= map(if ((.command // "") | contains("session-lifecycle-hook.mjs")) and ((.timeout // 0) < $min) then .timeout = $min else . end))'
 
+hooks_files="$(find "$CACHE" -name hooks.json)" || { echo "ERR: cannot scan $CACHE" >&2; exit 1; }
+
 scanned=0
 bumped=0
 while IFS= read -r f; do
+  [ -n "$f" ] || continue
   scanned=$((scanned + 1))
   if ! jq empty "$f" >/dev/null 2>&1; then
     echo "SKIP (unparseable): $f" >&2
@@ -67,7 +70,7 @@ while IFS= read -r f; do
     fi
   fi
   bumped=$((bumped + 1))
-done < <(find "$CACHE" -name hooks.json 2>/dev/null)
+done <<< "$hooks_files"
 
 echo ""
 if [ "$DRY_RUN" = "1" ]; then

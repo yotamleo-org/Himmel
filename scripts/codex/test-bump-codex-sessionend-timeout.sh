@@ -22,6 +22,7 @@ chk() { # chk <desc> <expected> <actual>
 TMP="$(mktemp -d)" || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
+unset MIN_TIMEOUT
 CFG="$TMP/.claude"
 BASE="$CFG/plugins/cache/openai-codex/codex"
 mkdir -p "$BASE/1.0.5/hooks" "$BASE/1.0.6/hooks" "$BASE/1.0.7/hooks" "$BASE/bad/hooks"
