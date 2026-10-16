@@ -100,6 +100,7 @@ SECRET_READ = re.compile(
     r"|(\.pem$)|(\.key$)|(\.p12$)|(\.pfx$)"
     r"|(secrets\.ya?ml$)"
     r"|(/\.claude/channels/)"
+    r"|(/\.claude/projects/.*\.jsonl$)"
     r"|(\.git-credentials)"
     r"|(/gh/hosts\.yml$)"
     r"|(credentials\.json$)|(auth\.json$)"
@@ -116,6 +117,22 @@ TERMINAL_FORBIDDEN_PATHS = re.compile(
     re.escape(GUARD_HOME)
     + "|" + re.escape(CLAUDE_HOME)
     + r"|\.env\b|/\.ssh/|\.git-credentials|hosts\.yml|\.pem\b|\.key\b"
+)
+
+_HOME = norm(os.path.expanduser("~"))
+_HOME_FORMS = re.compile(r"(?<![^\s;&|(\"'=])~(?=/|\s|$)|\$\{home\}|\$home\b")
+
+
+def _expand_home(cmd: str) -> str:
+    """`~`, `$HOME` and `${HOME}` as the shell would expand them, so a
+    home-relative spelling of a guarded path matches the absolute one."""
+    return _HOME_FORMS.sub(lambda _m: _HOME, cmd)
+
+
+# Environment-dump verbs (block-read-secrets parity): a bare listing prints
+# every secret in the inherited environment.
+_ENV_DUMP_VERBS = re.compile(
+    r"(?:printenv|env|export\s+-p|declare\s+-p)(?=\s*(?:$|[;&|)<>\n]))"
 )
 
 # Command position: string start or right after a separator (; & | ( newline).
@@ -1669,7 +1686,7 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
     """The terminal deny-guards on one command text — block() on a hit, return
     when clean. `cmd` is norm()-ed `raw_cmd`. Shared by the `terminal` tool and by
     every tool that carries command text (CODE_TOOL_ARGS, HIMMEL-2637)."""
-    if TERMINAL_FORBIDDEN_PATHS.search(cmd):
+    if TERMINAL_FORBIDDEN_PATHS.search(_expand_home(cmd)):
         block("Shell access to secret paths, the guard hook, or Claude "
               "Code's home is forbidden — use the file tools for those.")
     # norm() turns `\` into `/`, which hides a shell escape in a
@@ -1686,6 +1703,10 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
               "docker-group access is root-equivalent and bypasses the "
               "write/secret fences. Ask the operator if genuinely needed "
               "(block-docker-privesc parity).")
+    if _cmdpos_match(cmd, _ENV_DUMP_VERBS, wraps=()):
+        block("Environment dump refused (bare env / printenv / export -p / "
+              "declare -p) — it prints every inherited secret "
+              "(block-read-secrets parity).")
     reason = terminal_phi_egress_reason(cmd)
     if reason:
         block(reason)

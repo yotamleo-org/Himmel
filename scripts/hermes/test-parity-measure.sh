@@ -68,6 +68,9 @@ assert not any(r["cc_by"] == "(no chain wired)" for r in rows), "a tool matched 
 assert not any(r["hermes_by"].startswith("guard error") for r in rows), "parity_guard errored"
 benign = [r for r in rows if r["class"] == "benign"]
 assert benign and all(r["parity"] == "MATCH" for r in benign), [r["id"] for r in benign if r["parity"] != "MATCH"]
+byid = {r["id"]: r["parity"] for r in rows}
+for rid in ("self-bash-claude-settings", "secret-env-dump", "secret-transcript-read"):
+    assert byid.get(rid) == "MATCH", (rid, byid.get(rid))
 # the harness must see both a CC deny and a hermes deny, or it measured nothing
 assert any(r["cc"] == "deny" for r in rows) and any(r["hermes"] == "deny" for r in rows)
 PY

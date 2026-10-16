@@ -59,6 +59,17 @@ echo "== parity_guard: secret read fence (any arg key + classes) =="
 g ".env (path key)"      block '{"tool_name":"read_file","tool_input":{"path":"/x/.env"}}'
 g ".env (odd key)"       block '{"tool_name":"read_file","tool_input":{"whatever":"/x/.env"}}'
 g ".envrc"               block '{"tool_name":"read_file","tool_input":{"path":"/x/.envrc"}}'
+g "claude transcript .jsonl" block '{"tool_name":"read_file","tool_input":{"path":"/home/u/.claude/projects/p/s.jsonl"}}'
+g "claude projects memory .md" allow '{"tool_name":"read_file","tool_input":{"path":"/home/u/.claude/projects/p/memory/MEMORY.md"}}'
+g "bare printenv"        block '{"tool_name":"terminal","tool_input":{"command":"printenv"}}'
+g "bare env piped"       block '{"tool_name":"terminal","tool_input":{"command":"env | sort"}}'
+g "export -p"            block '{"tool_name":"terminal","tool_input":{"command":"export -p"}}'
+g "env running a command" allow '{"tool_name":"terminal","tool_input":{"command":"env FOO=1 true"}}'
+g "tilde claude settings write" block '{"tool_name":"terminal","tool_input":{"command":"echo {} > ~/.claude/settings.json"}}'
+# shellcheck disable=SC2016  # the literal $HOME is the payload under test
+g "\$HOME claude settings write" block '{"tool_name":"terminal","tool_input":{"command":"echo {} > $HOME/.claude/settings.json"}}'
+# shellcheck disable=SC2016  # the literal ${HOME} is the payload under test
+g "\${HOME} claude settings write" block '{"tool_name":"terminal","tool_input":{"command":"echo {} > ${HOME}/.claude/settings.json"}}'
 g "id_rsa"               block '{"tool_name":"read_file","tool_input":{"path":"/home/u/id_rsa"}}'
 g "relative .ssh/"       block '{"tool_name":"read_file","tool_input":{"path":".ssh/id_ed25519"}}'
 g "secrets.yaml"         block '{"tool_name":"read_file","tool_input":{"path":"/x/secrets.yaml"}}'
