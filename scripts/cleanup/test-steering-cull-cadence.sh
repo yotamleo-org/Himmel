@@ -240,6 +240,9 @@ has "runner bakes the lane switch" "HIMMEL_API_LANE=on" "$W/runner/steering-cull
 has "runner bakes the account" "HIMMEL_API_ACCOUNT=B" "$W/runner/steering-cull-cadence.sh"
 bash "$CAD" arm --force --console test-console --proposal-dir "$PROP" >"$W/arm8c.out" 2>&1
 hasnt "a default arm bakes no backend" "STEERING_CULL_BACKEND" "$W/runner/steering-cull-cadence.sh"
+bash "$CAD" arm --force --console test-console --proposal-dir "$PROP" --backend claude-cli >"$W/arm8d.out" 2>&1
+check "arm --backend claude-cli exits 0" 0 $?
+has "an explicit claude-cli arm pins the backend against an inherited env" "STEERING_CULL_BACKEND=claude-cli" "$W/runner/steering-cull-cadence.sh"
 bash "$CAD" disarm >/dev/null 2>&1
 
 echo "steering-cull-cadence: $PASSED passed, $FAILED failed"

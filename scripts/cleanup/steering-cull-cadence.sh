@@ -270,6 +270,8 @@ cmd_arm() {
         printf 'PATH=%q\nexport PATH\n' "$PATH"
         if [ "$backend" = "claude-api" ]; then
             printf 'export STEERING_CULL_BACKEND=claude-api HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=%q\n' "$acct"
+        elif [ "$backend" = "claude-cli" ]; then
+            printf 'export STEERING_CULL_BACKEND=claude-cli\n'
         fi
         printf 'log=%q\n' "$RUNNER_DIR/steering-cull-cadence.log"
         printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'
