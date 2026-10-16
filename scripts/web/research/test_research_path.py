@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -108,6 +108,28 @@ class Dating(unittest.TestCase):
             with self.subTest(html=html[:50]):
                 got = rp.extract_date(html)
                 self.assertEqual(got.date().isoformat() if got else None, want)
+
+    def test_only_the_pages_own_date_counts(self):
+        ld = '<script type="application/ld+json">%s</script>'
+        rows = [
+            # a nested comment's or related item's date is not the page date
+            (ld % '{"@type":"Article","comment":[{"datePublished":"2026-10-12"}]}', None),
+            (ld % '{"@type":"Article","datePublished":"2026-10-01","comment":[{"datePublished":"2026-10-12"}]}', "2026-10-01"),
+            (ld % '[{"@type":"Person"},{"@type":"Article","datePublished":"2026-10-02"}]', "2026-10-02"),
+            # several different <time> tags are ambiguous: unknown, not the first one
+            ('<time datetime="2026-10-12">a</time><time datetime="2026-10-14">b</time>', None),
+            ('<time datetime="2026-10-12">a</time><time datetime="2026-10-12">b</time>', "2026-10-12"),
+        ]
+        for html, want in rows:
+            with self.subTest(html=html[:60]):
+                got = rp.extract_date(html)
+                self.assertEqual(got.date().isoformat() if got else None, want)
+
+    def test_classify_uses_utc_for_now(self):
+        plus2 = timezone(timedelta(hours=2))
+        now = datetime(2026, 10, 17, 1, 0, tzinfo=plus2)  # 2026-10-16 23:00 UTC
+        edge = datetime(2026, 9, 16, tzinfo=timezone.utc)
+        self.assertEqual(rp.classify(edge, now, 30), "in-window")
 
     def test_classify(self):
         def d(s):

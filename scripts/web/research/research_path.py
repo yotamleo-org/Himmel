@@ -105,15 +105,17 @@ class _DateScan(HTMLParser):
             self.ld[-1] += data
 
 
-def _walk_date_published(node):
-    if isinstance(node, dict):
+def _own_dates_published(node):
+    """datePublished of the top-level node(s) and @graph entries only: a nested
+    comment, related article or event carries somebody else's date."""
+    if isinstance(node, list):
+        for v in node:
+            yield from _own_dates_published(v)
+    elif isinstance(node, dict):
         if "datePublished" in node:
             yield node["datePublished"]
-        for v in node.values():
-            yield from _walk_date_published(v)
-    elif isinstance(node, list):
-        for v in node:
-            yield from _walk_date_published(v)
+        if isinstance(node.get("@graph"), list):
+            yield from _own_dates_published(node["@graph"])
 
 
 def extract_date(html):
@@ -123,15 +125,17 @@ def extract_date(html):
     candidates = list(scan.meta)
     for blob in scan.ld:
         try:
-            candidates.extend(_walk_date_published(json.loads(blob)))
+            candidates.extend(_own_dates_published(json.loads(blob)))
         except ValueError:
             continue
-    candidates.extend(scan.time_tags)
     for c in candidates:
         d = _parse_iso(c)
         if d:
             return d
-    return None
+    # <time> is the weakest signal (comments carry one too): trust it only when
+    # every <time datetime> on the page agrees
+    times = {d for d in map(_parse_iso, scan.time_tags) if d}
+    return times.pop() if len(times) == 1 else None
 
 
 def classify(date, now, days):
@@ -139,7 +143,8 @@ def classify(date, now, days):
         return "unknown"
     if date.tzinfo is None:
         date = date.replace(tzinfo=timezone.utc)
-    # day granularity: page dates often carry no time of day
+    # day granularity in UTC: page dates often carry no time of day
+    now = now.astimezone(timezone.utc) if now.tzinfo else now.replace(tzinfo=timezone.utc)
     return "in-window" if (now - timedelta(days=days)).date() <= date.astimezone(timezone.utc).date() <= now.date() else "out-of-window"
 
 
