@@ -2765,7 +2765,13 @@ if [ -z "$WORKTREE_BRANCH" ] && [ "$_arm_is_console" -eq 0 ]; then
     [ -n "$_iso_cwd" ] || _iso_cwd=$(printf '%s\n' "$_iso_fm" | sed -n 's/^resume_cwd:[[:space:]]*//p' | head -1 | tr -d "\r\"'")
     _iso_tkt=$(basename "$HANDOVER_PATH" | grep -oE 'HIMMEL-[0-9]+' | head -1 || true)
     [ -n "$_iso_tkt" ] || _iso_tkt=$(printf '%s\n' "$_iso_fm" | sed -n 's/^ticket:[[:space:]]*//p' | head -1 | grep -oE 'HIMMEL-[0-9]+' | head -1 || true)
-    _iso_root=$(cd "${ARM_ISOLATION_ROOT:-$SCRIPT_DIR/../..}" && pwd)   # ARM_ISOLATION_ROOT: test seam
+    _iso_root="${ARM_ISOLATION_ROOT:-}"   # ARM_ISOLATION_ROOT: test seam
+    if [ -z "$_iso_root" ]; then
+        _iso_root=$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+        _iso_root="${_iso_root%/.git}"
+        [ -n "$_iso_root" ] || _iso_root="$SCRIPT_DIR/../.."
+    fi
+    _iso_root=$(cd "$_iso_root" && pwd)
     _iso_primary=0
     if [ -d "$_iso_root/.git" ]; then
         if [ -z "$_iso_cwd" ]; then

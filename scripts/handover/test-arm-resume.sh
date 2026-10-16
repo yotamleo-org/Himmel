@@ -101,7 +101,7 @@ T32|T32
 T33|T33
 T33c|T33c
 T38|T38
-W1-W8|W1-W8 W1 W2 W3 W4 W5 W6 W7 W8 W9 W10 W11 W12 W13 W14 W15 W16
+W1-W8|W1-W8 W1 W2 W3 W4 W5 W6 W7 W8 W9 W10 W11 W12 W13 W14 W15 W16 W17
 T33-collision|T33-collision
 T34|T34
 T35|T35
@@ -222,6 +222,9 @@ TMP=$(mktemp -d)
 # (/private/var/...); canonicalise so path assertions compare like with like.
 TMP=$(cd "$TMP" && pwd -P)
 trap 'rm -rf "$TMP"' EXIT
+# No .git under it, so the default worktree isolation never fires outside W9-W17.
+mkdir -p "$TMP/no-primary"
+export ARM_ISOLATION_ROOT="$TMP/no-primary"
 # any case below that fails to stub crontab/at must not be able
 # to silently touch the operator's REAL scheduler. Snapshot now, before any
 # case runs, and diff again right before the summary -- a change either way
@@ -2324,7 +2327,7 @@ fi
 # ---------------------------------------------------------------------------
 # W1-W5: --worktree isolation for code arms
 # ---------------------------------------------------------------------------
-if _sec_selected "W1-W8" "W1" "W2" "W3" "W4" "W5" "W6" "W7" "W8" "W9" "W10" "W11" "W12" "W13" "W14" "W15" "W16"; then
+if _sec_selected "W1-W8" "W1" "W2" "W3" "W4" "W5" "W6" "W7" "W8" "W9" "W10" "W11" "W12" "W13" "W14" "W15" "W16" "W17"; then
 # W1: --worktree dry-run computes the type+slug path, resumes there, pre-trusts it.
 HO=$(make_handover "")
 out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$HO" --worktree feat/wt-test --dry-run 2>&1)
@@ -2443,6 +2446,11 @@ assert_contains "W15 names the failed branch" "worktree create failed for branch
 out=$(_w9_run "$(_w9_ho HIMMEL-1332-w16-console.md "$W9_ROOT")")
 assert_not_contains "W16 a console doc is untouched" "would create worktree" "$out"
 assert_not_contains "W16 a console doc prints no isolation WARN" "WITHOUT worktree isolation" "$out"
+# W17: no seam, the script may sit in a linked worktree; the primary comes from the git common dir.
+W17_PRIMARY=$(git -C "$(dirname "$ARM")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+W17_PRIMARY="${W17_PRIMARY%/.git}"
+out=$(env -u ARM_ISOLATION_ROOT SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$(_w9_ho HIMMEL-1332-w17.md "$TMP/w9-other")" --cwd "$W17_PRIMARY" --dry-run 2>&1)
+assert_contains "W17 primary resolved via the git common dir isolates from a linked worktree" "would create worktree 'fix/himmel-1332-arm'" "$out"
 rm -rf "$W9_ROOT" "$TMP/w9-other" "$W14_HO"
 fi
 
