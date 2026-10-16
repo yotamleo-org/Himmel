@@ -492,6 +492,7 @@ cat > "$work/bun/bin/qmd" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$work/qmd-calls"
 printf 'key=%s\n' "\${QMD_OPENAI_API_KEY:+set}" >> "$work/qmd-env"
+printf 'provider=%s\nbatch=%s\nconc=%s\nunlisted=%s\n' "\${QMD_OPENAI_PROVIDER-}" "\${QMD_OPENAI_EMBED_BATCH_SIZE-}" "\${QMD_OPENAI_EMBED_CONCURRENCY-}" "\${QMD_OPENAI_UNLISTED-}" >> "$work/qmd-env"
 touch "$work/started"
 exit 0
 EOF
@@ -550,6 +551,26 @@ for jv in JINA_API_KEY JINA_API; do
   [ "$rc" -eq 1 ] || fail "(45) $jv only in the session env: expected rc 1, got $rc: $(cat "$work/err")"
   [ ! -e "$work/started" ] || fail "(45) launcher started a Jina daemon on a session-env $jv"
 done
+
+# (48) the non-secret tuning names in the daemon env file reach the daemon; an unlisted name does not.
+cp "$work/or1.yml" "$work/cfg/index.yml"
+printf 'QMD_OPENAI_API_KEY=sk-file-secret-11\nQMD_OPENAI_PROVIDER=openrouter-fast_1.0\nQMD_OPENAI_EMBED_BATCH_SIZE=64\nQMD_OPENAI_EMBED_CONCURRENCY=8\nQMD_OPENAI_UNLISTED=leak\n' > "$work/daemon.env"; chmod 600 "$work/daemon.env"
+launch_key; rc=$?
+[ "$rc" -eq 0 ] || fail "(48) tuning env file: expected rc 0, got $rc: $(cat "$work/err")"
+grep -q '^provider=openrouter-fast_1.0$' "$work/qmd-env" || fail "(48) PROVIDER did not reach the daemon: $(cat "$work/qmd-env")"
+grep -q '^batch=64$' "$work/qmd-env" || fail "(48) EMBED_BATCH_SIZE did not reach the daemon: $(cat "$work/qmd-env")"
+grep -q '^conc=8$' "$work/qmd-env" || fail "(48) EMBED_CONCURRENCY did not reach the daemon: $(cat "$work/qmd-env")"
+grep -q '^unlisted=$' "$work/qmd-env" || fail "(48) an unlisted name reached the daemon: $(cat "$work/qmd-env")"
+
+# (49) an invalid value is dropped, the valid ones and the key still pass.
+printf 'QMD_OPENAI_API_KEY=sk-file-secret-12\nQMD_OPENAI_PROVIDER=bad value;x\nQMD_OPENAI_EMBED_BATCH_SIZE=abc\nQMD_OPENAI_EMBED_CONCURRENCY=0\n' > "$work/daemon.env"
+launch_key; rc=$?
+[ "$rc" -eq 0 ] || fail "(49) invalid tuning values: expected rc 0, got $rc: $(cat "$work/err")"
+grep -q '^key=set$' "$work/qmd-env" || fail "(49) the key was lost: $(cat "$work/qmd-env")"
+grep -q '^provider=$' "$work/qmd-env" || fail "(49) an invalid PROVIDER reached the daemon: $(cat "$work/qmd-env")"
+grep -q '^batch=$' "$work/qmd-env" || fail "(49) a non-integer BATCH_SIZE reached the daemon: $(cat "$work/qmd-env")"
+grep -q '^conc=$' "$work/qmd-env" || fail "(49) a zero CONCURRENCY reached the daemon: $(cat "$work/qmd-env")"
+rm -f "$work/daemon.env"
 
 # (46) with no --index the fork prefers a cwd-walked project-local .qmd/index.{yaml,yml}
 # over the global config; `--resolve` makes the gate check the SAME file, not only the global one.
