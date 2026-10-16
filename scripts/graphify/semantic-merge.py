@@ -163,14 +163,15 @@ def cmd_restore(a):
     before = load_json(a.before)
     graph_path = os.path.join(a.out, "graph.json")
     g = load_json(graph_path)
-    ekey = "links" if "links" in g else "edges"
-    old_ekey = "links" if "links" in before else "edges"
-    live_ids = {n["id"] for n in g["nodes"]}
+    ekey = "edges" if "edges" in g and "links" not in g else "links"
+    old_ekey = "edges" if "edges" in before and "links" not in before else "links"
+    g.setdefault(ekey, [])
+    live_ids = {n.get("id") for n in g.get("nodes", [])}
     restored_n = restored_e = restored_h = 0
-    for n in before["nodes"]:
-        if n.get("_origin") == "semantic" and n["id"] not in live_ids:
+    for n in before.get("nodes", []):
+        if n.get("_origin") == "semantic" and n.get("id") not in live_ids:
             g["nodes"].append(n)
-            live_ids.add(n["id"])
+            live_ids.add(n.get("id"))
             restored_n += 1
     have = {edge_key(e) for e in g[ekey]}
     for e in before.get(old_ekey, []):
@@ -186,8 +187,9 @@ def cmd_restore(a):
             if len(members) >= 2:
                 g.setdefault("hyperedges", []).append(dict(h, nodes=members))
                 restored_h += 1
-    if restored_n or restored_e or restored_h:
-        write_json_atomic(graph_path, g)
+    if not (restored_n or restored_e or restored_h):
+        return
+    write_json_atomic(graph_path, g)
     run = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "name": "ast-update",
            "ast_restored_nodes": restored_n, "ast_restored_edges": restored_e, "ast_restored_hyperedges": restored_h}
     with open(os.path.join(a.out, RUNS), "a", encoding="utf-8") as f:
