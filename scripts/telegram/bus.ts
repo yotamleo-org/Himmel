@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename, appendFile, open } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, appendFile, open, stat, rm } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -195,6 +195,25 @@ export async function truncateFullyConsumed(file: string, cursorFile: string): P
   try { len2 = Buffer.byteLength(await readFile(file, "utf8"), "utf8"); } catch { return false; }
   if (len2 !== len) return false;                              // grew between reads → defer to next tick
   await atomicWrite(file, "");
+  await atomicWrite(cursorFile, "0");
+  return true;
+}
+// Per-surface rotation for a cursor-read ledger (inbound.jsonl), mirroring
+// flow-run-ledger.ts: at LEDGER_ROTATE_BYTES keep exactly one `.1` generation.
+// Unlike a write-only ledger it only rotates once the cursor has reached EOF, so
+// no unread line is ever moved out from under the reader; the cursor resets to 0
+// with the new (absent) live file. Call from the file's sole appender, before it
+// appends, so no write can land between the size check and the rename.
+export const LEDGER_ROTATE_BYTES = 10 * 1024 * 1024;
+export async function rotateConsumedLedger(file: string, cursorFile: string, threshold = LEDGER_ROTATE_BYTES): Promise<boolean> {
+  let size = 0;
+  try { size = (await stat(file)).size; } catch { return false; }
+  if (size < threshold) return false;
+  let cur = 0;
+  try { cur = Number(await readFile(cursorFile, "utf8")) || 0; } catch {}
+  if (cur < size) return false;                                // unread bytes remain → defer
+  try { await rm(file + ".1", { force: true }); await rename(file, file + ".1"); }
+  catch { return false; }                                      // best-effort, as the flow-run ledger
   await atomicWrite(cursorFile, "0");
   return true;
 }
