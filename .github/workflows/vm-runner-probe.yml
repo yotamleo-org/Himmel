@@ -28,8 +28,10 @@ jobs:
           test "$code" = 200
       - name: Non-allow-listed host is refused
         run: |
-          if curl -sS -m 8 -o /dev/null https://example.com; then
-            echo "example.com reachable: egress allow-list is NOT enforced"
-            exit 1
-          fi
-          echo "example.com unreachable, as expected"
+          rc=0
+          curl -sS -m 8 -o /dev/null https://example.com || rc=$?
+          echo "example.com -> curl exit $rc"
+          # 7 = connection refused/reset by the guest firewall, 28 = timed out.
+          # 0 means the allow-list is not enforced; DNS/TLS errors (6, 35, 60)
+          # are unrelated failures and must not read as a pass.
+          case "$rc" in 7|28) ;; *) exit 1 ;; esac
