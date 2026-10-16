@@ -895,10 +895,11 @@ if [ "$sbytes" -lt 15000 ]; then pass "25 live legs + 15 finished judges: live p
 # colour key, one recommendation per report card, the milestone done/total per Jira
 # fixVersion from the versions: line, and no nonce or lock token.
 write_v100 3
+rm -f "${DOCV%.md}.board.json"
 runv --out "$W/j-board.html" --json "$W/board.json" >/dev/null; rc=$?
 contains '--json: rc 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$W/board.json" 2>/dev/null)"
-contains '--json <path> still refreshes the board.json beside the console doc' "$(cmp -s "$W/board.json" "${DOCV%.md}.board.json" && echo same || echo differs)" 'same'
+contains '--json <path> leaves no board.json beside the console doc (the server fallback must not seed a stale sibling)' "$([ -e "${DOCV%.md}.board.json" ] && echo present || echo absent)" 'absent'
 jcheck() {  # jcheck <name> <js expression over M> -- passes when the expression is true
     if printf '%s' "$jtxt" | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>{let M;try{M=JSON.parse(s)}catch{process.exit(1)}process.exit(eval(process.argv[1])?0:1)})' "$2"; then pass "$1"; else fail "$1"; fi
 }

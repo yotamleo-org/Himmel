@@ -94,7 +94,7 @@ test("--service uninstall keeps the token when the service could not be stopped"
     writeFileSync(join(s.dir, "bin", "systemctl"), `#!/bin/sh\ncase "$2" in disable) exit 1;; is-active) echo active;; esac\nexit 0\n`);
     const r = await s.run("--service", "uninstall");
     expect(r.rc).toBe(1);
-    expect(r.err).toContain("still running");
+    expect(r.err).toContain("not confirmed stopped");
     expect(existsSync(s.token)).toBe(true);
     expect(existsSync(s.unit)).toBe(true);
   } finally { s.done(); }

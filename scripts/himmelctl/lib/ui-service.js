@@ -108,8 +108,8 @@ function uninstall({ dryRun }) {
   if (!which('systemctl')) return noSystemctl;
   if (dryRun) return { ok: true, lines: [`dry-run: would disable --now ${UNIT_NAME}, remove ${unitPath()} and ${tokenPath()}, daemon-reload`] };
   const dis = sctl('disable', '--now', UNIT_NAME); // absent unit: nothing to disable, still remove the files
-  if (dis.status !== 0 && (sctl('is-active', UNIT_NAME).stdout || '').trim() === 'active') {
-    return { ok: false, lines: [`systemctl --user disable --now ${UNIT_NAME} failed (rc=${dis.status}) and the service is still running; nothing removed: ${(dis.stderr || '').trim()}`] };
+  if (dis.status !== 0 && !['inactive', 'failed'].includes((sctl('is-active', UNIT_NAME).stdout || '').trim())) {
+    return { ok: false, lines: [`systemctl --user disable --now ${UNIT_NAME} failed (rc=${dis.status}) and the service is not confirmed stopped; nothing removed: ${(dis.stderr || '').trim()}`] };
   }
   for (const p of [unitPath(), tokenPath()]) fs.rmSync(p, { force: true });
   const rl = sctl('daemon-reload');

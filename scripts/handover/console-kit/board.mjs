@@ -1075,12 +1075,10 @@ writeFileSync(archiveTmp, archiveHtml);
 renameSync(archiveTmp, archivePath);
 // The AG-UI page reads <console doc>.board.json beside the doc, so every render also refreshes it.
 {
-    const sibling = resolve(join(bucket, `${basename(docPath, '.md')}.board.json`));
-    for (const jsonPath of new Set([sibling, ...(opt.json ? [resolve(opt.json)] : [])])) {
-        const jsonTmp = `${jsonPath}.tmp${process.pid}`;
-        writeFileSync(jsonTmp, `${JSON.stringify(boardModel, null, 1)}\n`);
-        renameSync(jsonTmp, jsonPath);
-    }
+    const jsonPath = resolve(opt.json || join(bucket, `${basename(docPath, '.md')}.board.json`));
+    const jsonTmp = `${jsonPath}.tmp${process.pid}`;
+    writeFileSync(jsonTmp, `${JSON.stringify(boardModel, null, 1)}\n`);
+    renameSync(jsonTmp, jsonPath);
 }
 if (changedFlag) {
     console.log(`${fp !== oldFp || censusSig !== oldCensusSig || esc(ciFleetSig) !== oldCiFleetSig || esc(releaseSig) !== oldReleaseSig || esc(manifestSig) !== oldManifestSig ? 'CHANGED' : 'UNCHANGED'} ${outPath}`);
