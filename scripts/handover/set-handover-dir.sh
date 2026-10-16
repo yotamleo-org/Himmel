@@ -26,6 +26,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/env-append.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+. "$SCRIPT_DIR/../lib/env-append.sh"
 
 HDIR=""
 ENV_FILE=""
@@ -88,6 +91,6 @@ if grep -qE '^[[:space:]]*HANDOVER_DIR=' "$ENV_FILE"; then
     mv "$tmp" "$ENV_FILE"
     echo "OK set-handover-dir: updated HANDOVER_DIR in $ENV_FILE"
 else
-    printf '%s\n' "$new_line" >> "$ENV_FILE"
+    env_append_line "$ENV_FILE" "$new_line"
     echo "OK set-handover-dir: appended HANDOVER_DIR to $ENV_FILE"
 fi

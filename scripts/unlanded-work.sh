@@ -347,16 +347,21 @@ while IFS= read -r branch; do
             [ "$age_hours" -gt "$AGE_THRESHOLD" ] && aged=1
         else
             if [ -n "$key_sha" ]; then
-                # KNOWN LIMITATION (deferred): this trusts ANY commit
-                # carrying "[$key]" on main as proof the branch's work landed,
-                # even when that commit is only a PARTIAL or unrelated slice
-                # of the ticket. Deliberately not tightened here — it is this
-                # ticket's own explicitly-specified rule, validated against
-                # every required acceptance branch, and the evidence text
-                # below names the exact landing commit for operator review
-                # before a human runs the printed (never auto-run) drop command.
-                class="LANDED-ELSEWHERE"
-                evidence="$key landed on main as $key_sha; delta no longer applies"
+                # A "[$key]" commit on main counts as the landing only when the
+                # [$key] commits there touch every file the branch changes; a
+                # file none of them touched is work that never landed.
+                missing_files="$(comm -23 \
+                    <(git diff --name-only "${BASE}...${branch}" 2>/dev/null | sort -u) \
+                    <(git log "$BASE" --grep="\[$key\]" -E --name-only --format= 2>/dev/null | sort -u) \
+                    | head -3 | paste -sd, -)"
+                if [ -n "$missing_files" ]; then
+                    class="UNLANDED-LIVE"
+                    evidence="partial: $key on main as $key_sha but no [$key] commit there touches $missing_files"
+                    [ "$age_hours" -gt "$AGE_THRESHOLD" ] && aged=1
+                else
+                    class="LANDED-ELSEWHERE"
+                    evidence="$key landed on main as $key_sha; delta no longer applies"
+                fi
             else
                 class="STALE"
                 evidence="delta conflicts with main; no ${key:-ticket} commit on main"

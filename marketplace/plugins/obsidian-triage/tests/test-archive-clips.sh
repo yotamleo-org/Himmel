@@ -426,6 +426,12 @@ for rb in triage-clips.md synthesize-clips.md archive-clips.md; do
     assert "$rb has no date-freshness wording (marker presence alone gates, since G-2 invalidates at harvest start)" "no" "$found"
 done
 
+echo "Test 17: run output separates structurally-stuck clips from retry-next-run skips (HIMMEL-1713)"
+if grep -qF '⊘ <clip-filename.md> — skipped (stuck):' "$CMD"; then found=yes; else found=no; fi
+assert "logging contract declares a distinct 'skipped (stuck)' line" "yes" "$found"
+if grep -qF 'archive-clips: <T> stuck in inbox' "$CMD"; then found=yes; else found=no; fi
+assert "final summary declares the stuck-in-inbox line" "yes" "$found"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 [ "$fail" -gt 0 ] && exit 1 || exit 0

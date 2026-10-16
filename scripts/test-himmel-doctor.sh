@@ -1467,28 +1467,28 @@ fi
 rm -rf "$t"
 
 echo "== C19: cmp/diff unavailable -> INFO, never claims assets match (HIMMEL-1676 regression) =="
-# A curated symlink PATH (NOGH's trick) doesn't run on Windows Git Bash (its
-# .exe symlinks don't execute — see the gh-absent case above), and copying just
-# the named tools leaves their MSYS/mingw DLL deps unresolved (colocated-DLL
-# search fails once the tool is copied out of its own dir). Copy the whole
-# /usr/bin + /mingw64/bin trees (DLLs travel with their tools) minus cmp/diff/
-# diff3, plus jq (installed outside those trees on this box), so the doctor's
-# OTHER checks still run normally while cmp/diff are genuinely absent from PATH.
-NOCMPDIFF="$FAKEROOT/nocmpdiff"
-if [ ! -d "$NOCMPDIFF" ]; then
-    mkdir -p "$NOCMPDIFF"
-    for _d in /usr/bin /mingw64/bin; do
-        [ -d "$_d" ] && cp -r "$_d/." "$NOCMPDIFF/" 2>/dev/null
-    done
-    rm -f "$NOCMPDIFF/cmp" "$NOCMPDIFF/cmp.exe" "$NOCMPDIFF/diff" "$NOCMPDIFF/diff.exe" "$NOCMPDIFF/diff3" "$NOCMPDIFF/diff3.exe"
-    _jq_src="$(command -v jq 2>/dev/null)" && cp "$_jq_src" "$NOCMPDIFF/jq.exe" 2>/dev/null
+# The normal PATH stays; a BASH_ENV file sourced by the doctor child overrides
+# command() so `command -v cmp|diff` fails and everything else delegates to the
+# builtin. No per-host PATH construction, so no host can skip this case.
+NOCMPDIFF_ENV="$FAKEROOT/nocmpdiff.env"
+cat > "$NOCMPDIFF_ENV" <<'EOF'
+command() {
+    if [ "$1" = "-v" ]; then
+        case "$2" in cmp|diff) return 1 ;; esac
+    fi
+    builtin command "$@"
+}
+EOF
+if BASH_ENV="$NOCMPDIFF_ENV" bash -c '! command -v cmp >/dev/null 2>&1 && ! command -v diff >/dev/null 2>&1 && command -v git >/dev/null 2>&1'; then
+    pass "C19 cmp/diff fixture -> BASH_ENV command() override hides cmp/diff, keeps the rest"
+else
+    fail "C19 cmp/diff fixture -> BASH_ENV command() override did not take effect"
 fi
-if PATH="$NOCMPDIFF" bash -c 'git --version >/dev/null 2>&1 && ! command -v cmp >/dev/null 2>&1 && ! command -v diff >/dev/null 2>&1' 2>/dev/null; then
-    t="$(mktemp -d -t himmel-doctor-c19.XXXXXX)"; mkdir -p "$t/claude" "$t/install/grafana-provisioning" "$t/bin"; write_settings "$t/claude" "$WRAPPER"
-    cp "$REPO_ROOT/scripts/observability/prometheus.yml" "$t/install/prometheus.yml"
-    cp "$REPO_ROOT/scripts/observability/alerts.rules.yml" "$t/install/alerts.rules.yml"
-    cp -R "$REPO_ROOT/scripts/observability/provisioning/." "$t/install/grafana-provisioning/"
-    cat > "$t/bin/curl" <<'EOF'
+t="$(mktemp -d -t himmel-doctor-c19.XXXXXX)" || exit 1; mkdir -p "$t/claude" "$t/install/grafana-provisioning" "$t/bin"; write_settings "$t/claude" "$WRAPPER"
+cp "$REPO_ROOT/scripts/observability/prometheus.yml" "$t/install/prometheus.yml"
+cp "$REPO_ROOT/scripts/observability/alerts.rules.yml" "$t/install/alerts.rules.yml"
+cp -R "$REPO_ROOT/scripts/observability/provisioning/." "$t/install/grafana-provisioning/"
+cat > "$t/bin/curl" <<'EOF'
 #!/bin/sh
 url=''
 for arg in "$@"; do url="$arg"; done
@@ -1499,22 +1499,19 @@ case "$url" in
   *) exit 22 ;;
 esac
 EOF
-    chmod +x "$t/bin/curl"
-    out="$(PATH="$NOCMPDIFF" HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_OBSERVABILITY_DESIRED=1 DOCTOR_OBSERVABILITY_INSTALL_DIR="$t/install" DOCTOR_CURL_BIN="$t/bin/curl" \
-        GRAFANA_TELEGRAM_BOT_TOKEN="test-token" GRAFANA_TELEGRAM_CHAT_ID="123" \
-        DOCTOR_WORKTREE_ROOT="$C14_WT_ROOT" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" \
-        CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"; rc=$?
-    if [ "$rc" -eq 0 ] \
-        && grepq "$out" 'cmp/diff unavailable — installed observability assets not compared' \
-        && ! grepq "$out" 'installed observability assets match the repo copies'; then
-        pass "C19 -> cmp/diff unavailable emits INFO, never claims a match it never checked"
-    else
-        fail "C19 cmp/diff-unavailable -> rc=$rc; $(printf '%s' "$out" | grep C19)"
-    fi
-    rm -rf "$t"
+chmod +x "$t/bin/curl"
+out="$(BASH_ENV="$NOCMPDIFF_ENV" HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_OBSERVABILITY_DESIRED=1 DOCTOR_OBSERVABILITY_INSTALL_DIR="$t/install" DOCTOR_CURL_BIN="$t/bin/curl" \
+    GRAFANA_TELEGRAM_BOT_TOKEN="test-token" GRAFANA_TELEGRAM_CHAT_ID="123" \
+    DOCTOR_WORKTREE_ROOT="$C14_WT_ROOT" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" \
+    CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] \
+    && grepq "$out" 'cmp/diff unavailable — installed observability assets not compared' \
+    && ! grepq "$out" 'installed observability assets match the repo copies'; then
+    pass "C19 -> cmp/diff unavailable emits INFO, never claims a match it never checked"
 else
-    pass "C19 cmp/diff-unavailable -> (skipped: could not build a cmp/diff-less PATH on this host)"
+    fail "C19 cmp/diff-unavailable -> rc=$rc; $(printf '%s' "$out" | grep C19)"
 fi
+rm -rf "$t"
 
 # ── C20: running node major vs .nvmrc ─────────────
 # The drift is a FAIL now — the doctor still never edits .nvmrc or

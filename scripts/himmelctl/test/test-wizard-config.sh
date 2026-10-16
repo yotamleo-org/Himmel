@@ -89,6 +89,7 @@ build_fixture() {
   local _d="$1"
   mkdir -p "$_d/scripts/lib" "$_d/scripts/lanes" "$_d/scripts/machine-setup"
   cp "$repo_root/scripts/lib/set-env-var.sh" "$_d/scripts/lib/set-env-var.sh"
+  cp "$repo_root/scripts/lib/env-append.sh" "$_d/scripts/lib/env-append.sh"
   cp "$repo_root/scripts/lanes/set-lane-override.mjs" "$_d/scripts/lanes/set-lane-override.mjs"
   cp "$repo_root/scripts/lanes/profile-managed.cjs" "$_d/scripts/lanes/profile-managed.cjs"
   cp "$repo_root/scripts/lanes/lanes.json" "$_d/scripts/lanes/lanes.json"

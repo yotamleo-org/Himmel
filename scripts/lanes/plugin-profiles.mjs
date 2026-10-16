@@ -490,7 +490,7 @@ export function resolveProfile(registry, name, opts = {}) {
       }
     }
     for (const rule of mcpAllow) if (!allow.includes(rule)) allow.push(rule);
-    return { enabledPlugins, permissions: { allow }, ...listingSettings(registry, [name], enabledPlugins, opts) };
+    return { enabledPlugins, permissions: { allow }, ...forkTrustSettings(opts.forkNwos), ...listingSettings(registry, [name], enabledPlugins, opts) };
   }
   return { enabledPlugins, ...(mcpAllow.length ? { permissions: { allow: mcpAllow } } : {}), ...listingSettings(registry, [name], enabledPlugins, opts) };
 }
@@ -532,7 +532,8 @@ function composeProfiles(registry, list, opts) {
   const enabledPlugins = {};
   for (const r of resolved) for (const [id, on] of Object.entries(r.enabledPlugins)) enabledPlugins[id] = enabledPlugins[id] || on;
   const allow = [...new Set(resolved.flatMap((r) => r.permissions?.allow ?? []))];
-  return { enabledPlugins, ...(allow.length ? { permissions: { allow } } : {}), ...listingSettings(registry, members, enabledPlugins, opts) };
+  const environment = [...new Set(resolved.flatMap((r) => r.autoMode?.environment ?? []))];
+  return { enabledPlugins, ...(allow.length ? { permissions: { allow } } : {}), ...(environment.length ? { autoMode: { environment } } : {}), ...listingSettings(registry, members, enabledPlugins, opts) };
 }
 
 // opts.skillEntries (a scanSkillCosts().entries scan) opts a caller
@@ -630,6 +631,35 @@ export function primaryCheckout(dir) {
   } catch {
     return null;
   }
+}
+
+// Fork trust for the auto-mode classifier. The classifier trusts
+// only the repo a session started in; a clone of one of our registered forks is
+// "external" to it, so its install, tests, push and PR are denied. The documented
+// fix is an autoMode.environment entry, read only from user, managed or --settings
+// scope (never project settings), so it rides the resolved leg --settings file.
+// Exact owner/repo names only: no org wildcard, nothing outside yotamleo.
+const FORK_NWO_RE = /^yotamleo\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
+export function forkTrustSettings(nwos) {
+  if (!Array.isArray(nwos) || nwos.length === 0) return {};
+  for (const n of nwos) {
+    if (typeof n !== 'string' || !FORK_NWO_RE.test(n) || n.includes('..')) {
+      throw new Error(`plugin-profiles: fork nwo ${JSON.stringify(n)} must be an exact yotamleo/<repo> name`);
+    }
+  }
+  const lines = [...new Set(nwos)].map((n) => `Source control: github.com/${n} is one of our own registered forks. Its clone, dependency install and test runs are trusted, and so are branch pushes and pull requests whose destination is that fork only: push only to the origin remote github.com/${n}, and open pull requests only with gh pr create --repo ${n}. Not covered: the registry upstream remote, any parent repo of the fork, force-push, branch delete and publish.`);
+  return { autoMode: { environment: ['$defaults', ...lines] } };
+}
+
+// The nwo list from the fork registry (scripts/guardrails/himmel-adapters.json,
+// the fork registry): an absent file is no forks, an unreadable one fails closed.
+export function forkNwosFromAdapters(path) {
+  if (!existsSync(path)) return [];
+  let rows;
+  try { rows = JSON.parse(readFileSync(path, 'utf8')); }
+  catch (e) { throw new Error(`plugin-profiles: cannot read himmel-adapters registry ${path}: ${e?.message ?? e}`); }
+  if (!Array.isArray(rows)) throw new Error(`plugin-profiles: himmel-adapters registry ${path} must be a JSON array`);
+  return rows.map((r) => r?.nwo);
 }
 
 // File-reading convenience for the spawn scripts / CLI: load the registry and
@@ -847,7 +877,9 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileU
     const { scanSkillCosts } = await import('./skill-cost.mjs');
     const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
     const skillEntries = scanSkillCosts({ cwd: process.cwd(), configDir }).entries;
-    const settings = resolveProfileByName(name, { addPlugins, installed, anchor: anchor ?? undefined, skillEntries, configDir, cwd: process.cwd() });
+    // Fork trust is read from the ANCHOR's registry copy, never a leg worktree's bytes.
+    const forkNwos = anchor ? forkNwosFromAdapters(join(anchor, 'scripts', 'guardrails', 'himmel-adapters.json')) : [];
+    const settings = resolveProfileByName(name, { addPlugins, installed, anchor: anchor ?? undefined, forkNwos, skillEntries, configDir, cwd: process.cwd() });
     if (settings === null) process.exit(0); // operator: nothing to inject
     process.stdout.write(JSON.stringify(settings) + '\n');
   } catch (e) {

@@ -185,6 +185,7 @@ Write-Host "setup.ps1 stub"
 exit 0
 STUB
   cp "$repo_root/scripts/handover/set-handover-dir.sh" "$_d/scripts/handover/set-handover-dir.sh"
+  cp "$repo_root/scripts/lib/env-append.sh" "$_d/scripts/lib/env-append.sh"
   chmod +x "$_d/scripts/handover/set-handover-dir.sh"
   cat > "$_d/scripts/lib/wire-luna-vault.sh" <<STUB
 #!/usr/bin/env bash
