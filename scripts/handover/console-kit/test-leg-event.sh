@@ -38,7 +38,7 @@ cat > "$W/list" <<'EOF'
 printf '%s\n' /h/HIMMEL-1-N2078-foo-2026-10-14.md /h/HIMMEL-2-N2088-bar-2026-10-14.md
 EOF
 chmod +x "$W/wrap" "$W/list"
-export LE_WRAP="$W/wrap" LE_LIST="$W/list" LE_CALLS="$W/calls"
+export LE_WRAP="$W/wrap" LE_LIST="$W/list" LE_STATION="$W/station" LE_CALLS="$W/calls"
 : > "$W/doc"
 run() { : > "$LE_CALLS"; printf '%s\n' "$1" > "$W/msg"; out="$(bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" "$W/msg" 2>/dev/null)"; rc=$?; calls="$(cat "$LE_CALLS")"; }
 
@@ -87,5 +87,32 @@ contains "7 step surfaced" "$out" "step pr-state failed"
 printf -- '- MERGED #2566 N2088\n' | bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" - >"$W/o" 2>&1; rc=$?
 check "8 stdin bullet rc" "$rc" 0
 contains "8 handled" "$(cat "$W/o")" "HANDLED wrap-merged N2088"
+
+cat > "$W/station" <<'EOF'
+#!/usr/bin/env bash
+echo "station $*" >> "$LE_CALLS"
+echo "STEP marketplace rc=0"
+echo "STATION=${LE_STATION_VAL:-OK}"
+exit "${LE_STATION_RC:-0}"
+EOF
+chmod +x "$W/station"
+
+run "MERGED #2566 → abcdef01 (N2088)"
+contains "9 station sync gets the PR" "$calls" "station --pr 2566"
+contains "9 station verdict on the line" "$out" "HANDLED wrap-merged N2088 station=OK"
+
+LE_STATION_VAL="BEHIND:luna_template,codex" run "MERGED #2566 N2088"
+contains "9 behind surfaced" "$out" "station=BEHIND:luna_template,codex"
+check "9 behind rc" "$rc" 0
+
+LE_STATION_RC=1 run "MERGED #2566 N2088"
+check "9 sync failure never fails the handling" "$rc" 0
+contains "9 sync failure named" "$out" "station=failed:rc1"
+
+run "WRAPPED N2078"
+lacks "9 WRAPPED runs no station sync" "$calls" "station"
+
+LE_WRAP_RC=3 run "MERGED #2566 N2088"
+lacks "9 failed wrap runs no station sync" "$calls" "station"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

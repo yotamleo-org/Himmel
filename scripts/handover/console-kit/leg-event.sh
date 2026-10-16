@@ -11,17 +11,21 @@
 #                        message's N<k> label; <n> is the PR in a `MERGED #<n>` line.
 #   anything else     -> ESCALATE (READY and FINDING need a judge or the console)
 #
-# Output: one line. `HANDLED wrap-merged <label>` (rc 0) or
+#   after a MERGED with a PR, station-sync.sh --pr <n> brings the station back to
+#   main and its verdict is appended: ` station=OK|BEHIND:<components>|failed:rc<n>`.
+#
+# Output: one line. `HANDLED wrap-merged <label>[ station=<verdict>]` (rc 0) or
 # `ESCALATE <reason>` (rc 10), the reason being no-label, not-in-manifest,
 # marker-<X>, or wrap-merged-failed rc=<n> with wrap-merged's stderr after it.
 # Usage errors exit 2 before anything runs.
 #
-# Test seams (env): LE_WRAP LE_LIST.
+# Test seams (env): LE_WRAP LE_LIST LE_STATION.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 if [ -n "${LE_WRAP:-}" ]; then WRAP=("$LE_WRAP"); else WRAP=(bash "$HERE/wrap-merged.sh"); fi
+if [ -n "${LE_STATION:-}" ]; then STATION=("$LE_STATION"); else STATION=(bash "$HERE/station-sync.sh"); fi
 if [ -n "${LE_LIST:-}" ]; then LIST=("$LE_LIST"); else LIST=(bash "$HERE/fleet-manifest.sh" list); fi
 
 usage() { echo "usage: leg-event.sh --doc <console doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
@@ -73,4 +77,14 @@ if [ "$rc" -ne 0 ]; then
     escalate "wrap-merged-failed rc=$rc $msg"
 fi
 rm -f "$errf"
-echo "HANDLED wrap-merged $label"
+# A merged PR leaves the station behind main until its components are updated:
+# station-sync.sh runs the matching himmel-update steps and checks --versions. Its
+# verdict rides the line; a failure there never fails the handling (the wrap is done).
+station=""
+if [ -n "$pr" ]; then
+    sout="$("${STATION[@]}" --pr "$pr" 2>/dev/null)"; src=$?
+    sval="$(printf '%s\n' "$sout" | sed -n 's/^STATION=//p' | tail -n 1)"
+    if [ "$src" -ne 0 ] || [ -z "$sval" ]; then sval="failed:rc$src"; fi
+    station=" station=$sval"
+fi
+echo "HANDLED wrap-merged $label$station"

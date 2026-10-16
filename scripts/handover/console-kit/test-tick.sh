@@ -187,6 +187,8 @@ export HANDOVER_DIR="$W/handover"
 export HIMMEL_TRUST_LEDGER_DIR="$W/trust-ledger"
 export REPO="$W/repo"
 export TICK_TMPDIR="$W"
+# station= reads this state file; never the real ~/.himmel one.
+export TICK_STATION_STATE="$W/station-sync.state"
 export PS_FIXTURE="$W/ps-none.txt"
 export TICK_BANK_CACHE_FILE="$W/bank.json"
 export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
@@ -2184,6 +2186,16 @@ case "$pk_out" in *' vmrun='*' parked=HIMMEL-333-legN70:12m') pass 'parked= foll
 contains 'verbose labels the parked leg (HIMMEL-2563)' "$(bash "$SUT" --legs 'HIMMEL-333-legN70' --verbose 2>/dev/null)" 'parked on prompt: HIMMEL-333-legN70:12m'
 printf '{"ts":"%s","kind":"outcome","session_id":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" "$pk_sid" >> "$HIMMEL_TRUST_LEDGER_DIR/ledger.jsonl"
 same 'parked= is absent once the prompt is answered (HIMMEL-2563)' "$(parked_of)" ''
+
+# --- station=BEHIND:<components>: the last station-sync.sh left a component behind main
+station_of() { bash "$SUT" --legs 'HIMMEL-333-legN70' 2>/dev/null | sed -n -E 's/.* station=([^ ]*).*/\1/p'; }
+same 'station= is absent with no sync state (HIMMEL-5945)' "$(station_of)" ''
+printf 'ok\n' > "$TICK_STATION_STATE"
+same 'station= is absent when the station is current (HIMMEL-5945)' "$(station_of)" ''
+printf 'BEHIND:luna_template,codex\n' > "$TICK_STATION_STATE"
+same 'station= names the behind components (HIMMEL-5945)' "$(station_of)" 'BEHIND:luna_template,codex'
+contains 'verbose labels the behind station (HIMMEL-5945)' "$(bash "$SUT" --legs 'HIMMEL-333-legN70' --verbose 2>/dev/null)" 'station: BEHIND:luna_template,codex'
+rm -f "$TICK_STATION_STATE"
 
 # --- orphans-wip=: In Progress / In Review tickets with no leg and no open PR.
 OW="$W/ow-mirror/HIMMEL"; mkdir -p "$OW"
