@@ -116,6 +116,9 @@ class Dating(unittest.TestCase):
             (ld % '{"@type":"Article","comment":[{"datePublished":"2026-10-12"}]}', None),
             (ld % '{"@type":"Article","datePublished":"2026-10-01","comment":[{"datePublished":"2026-10-12"}]}', "2026-10-01"),
             (ld % '[{"@type":"Person"},{"@type":"Article","datePublished":"2026-10-02"}]', "2026-10-02"),
+            # two graph entries with different dates: which one is the page is unknown
+            (ld % '{"@graph":[{"@type":"Comment","datePublished":"2026-10-12"},{"@type":"Article","datePublished":"2026-10-01"}]}', None),
+            (ld % '{"@graph":[{"@type":"Article","datePublished":"2026-10-01"},{"@type":"WebPage","datePublished":"2026-10-01T09:00:00Z"}]}', "2026-10-01"),
             # several different <time> tags are ambiguous: unknown, not the first one
             ('<time datetime="2026-10-12">a</time><time datetime="2026-10-14">b</time>', None),
             ('<time datetime="2026-10-12">a</time><time datetime="2026-10-12">b</time>', "2026-10-12"),
@@ -180,7 +183,7 @@ class RedditLane(unittest.TestCase):
         self.assertEqual(first["date"].year, 2026)
 
     def test_malformed_inputs(self):
-        for raw in ("", "not json", "[]", '{"data": null, "error": "Timeout"}', '{"data": [{"id": "x"}]}'):
+        for raw in (None, 5, b"\xff", "", "not json", "[]", '{"data": null, "error": "Timeout"}', '{"data": [{"id": "x"}]}'):
             with self.subTest(raw=raw):
                 self.assertEqual(rp.parse_reddit_posts(raw), [])
 

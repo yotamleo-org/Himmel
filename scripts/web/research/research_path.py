@@ -122,20 +122,23 @@ def extract_date(html):
     """Page date from meta published_time, JSON-LD datePublished, then <time>; None if absent."""
     scan = _DateScan()
     scan.feed(html or "")
-    candidates = list(scan.meta)
-    for blob in scan.ld:
-        try:
-            candidates.extend(_own_dates_published(json.loads(blob)))
-        except ValueError:
-            continue
-    for c in candidates:
+    for c in scan.meta:
         d = _parse_iso(c)
         if d:
             return d
-    # <time> is the weakest signal (comments carry one too): trust it only when
-    # every <time datetime> on the page agrees
-    times = {d for d in map(_parse_iso, scan.time_tags) if d}
-    return times.pop() if len(times) == 1 else None
+    ld = []
+    for blob in scan.ld:
+        try:
+            ld.extend(_own_dates_published(json.loads(blob)))
+        except ValueError:
+            continue
+    # JSON-LD and <time> can carry a comment's or a related item's date: trust
+    # a source only when every date it holds agrees, otherwise try the next
+    for source in (ld, scan.time_tags):
+        by_day = {d.astimezone(timezone.utc).date(): d for d in map(_parse_iso, source) if d}
+        if len(by_day) == 1:
+            return next(iter(by_day.values()))
+    return None
 
 
 def classify(date, now, days):
@@ -170,7 +173,7 @@ def parse_reddit_posts(raw):
     """Normalize an Arctic Shift /api/posts/search body; [] for anything malformed."""
     try:
         data = json.loads(raw).get("data")
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, TypeError):
         return []
     if not isinstance(data, list):
         return []
