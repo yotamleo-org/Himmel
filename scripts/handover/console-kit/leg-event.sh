@@ -86,5 +86,11 @@ if [ -n "$pr" ]; then
     sval="$(printf '%s\n' "$sout" | sed -n 's/^STATION=//p' | tail -n 1)"
     if [ "$src" -ne 0 ] || [ -z "$sval" ]; then sval="failed:rc$src"; fi
     station=" station=$sval"
+    # the file and hunk a refused update names go to stderr; the line carries the count
+    ldiff="$(printf '%s\n' "$sout" | grep '^LOCAL-DIFF ')" || ldiff=""
+    if [ -n "$ldiff" ]; then
+        printf '%s\n' "$ldiff" >&2
+        station="$station local-diff=$(printf '%s\n' "$ldiff" | wc -l | tr -d ' ')"
+    fi
 fi
 echo "HANDLED wrap-merged $label$station"

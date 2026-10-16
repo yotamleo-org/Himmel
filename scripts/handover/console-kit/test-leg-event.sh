@@ -109,6 +109,17 @@ LE_STATION_RC=1 run "MERGED #2566 N2088"
 check "9 sync failure never fails the handling" "$rc" 0
 contains "9 sync failure named" "$out" "station=failed:rc1"
 
+cat > "$W/station-ld" <<'EOF'
+#!/usr/bin/env bash
+echo "LOCAL-DIFF luna_template scripts/foo.sh: echo local-patch"
+echo "STATION=BEHIND:luna_template"
+EOF
+chmod +x "$W/station-ld"
+LE_STATION="$W/station-ld" run "MERGED #2566 N2088"
+contains "9 local-diff counted on the line" "$out" "station=BEHIND:luna_template local-diff=1"
+ld_err="$(printf 'MERGED #2566 N2088\n' | LE_STATION="$W/station-ld" bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" - 2>&1 >/dev/null)"
+contains "9 local-diff hunk reaches stderr" "$ld_err" "LOCAL-DIFF luna_template scripts/foo.sh: echo local-patch"
+
 run "WRAPPED N2078"
 lacks "9 WRAPPED runs no station sync" "$calls" "station"
 

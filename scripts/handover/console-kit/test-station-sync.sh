@@ -128,4 +128,35 @@ SS_QMD_CLONE="$W/clone" run "$W/ver-current" docs/x.md
 contains "8 clone edit reported" "$out" "LOCAL-DIFF qmd_fork f"
 check "8 edit kept" "$(cat "$W/clone/f")" "b"
 
+cat > "$W/update-broken" <<'EOF2'
+#!/usr/bin/env bash
+echo "update $*" >> "$SS_CALLS"
+[ "$1" = "--versions" ] && { echo "boom" >&2; exit 4; }
+exit 0
+EOF2
+chmod +x "$W/update-broken"
+SS_UPDATE="$W/update-broken" run "$W/ver-current" docs/x.md
+contains "9 unreadable --versions is not OK" "$out" "STATION=BEHIND:unverified"
+check "9 state keeps the failure" "$(cat "$SS_STATE")" "BEHIND:unverified"
+
+cat > "$W/upgrade-broken" <<'EOF2'
+#!/usr/bin/env bash
+echo "partial plan"
+exit 2
+EOF2
+chmod +x "$W/upgrade-broken"
+SS_UPGRADE="$W/upgrade-broken" run "$W/ver-behind" templates/luna-second-brain/scripts/foo.sh
+lacks "10 failed dry-run: template not applied" "$calls" "--only luna_template"
+contains "10 failed dry-run named" "$out" "LOCAL-DIFF luna_template (upgrade.sh --dry-run) rc=2"
+
+cat > "$W/gh-broken" <<'EOF2'
+#!/usr/bin/env bash
+exit 1
+EOF2
+chmod +x "$W/gh-broken"
+rm -f "$SS_STATE"
+out="$(SS_GH="$W/gh-broken" bash "$SCRIPT" --pr 7 2>&1)"
+contains "11 gh failure named" "$out" "STATION=failed:gh-pr-view"
+check "11 gh failure persisted for tick" "$(cat "$SS_STATE")" "BEHIND:unverified"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

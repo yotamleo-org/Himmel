@@ -61,7 +61,8 @@ if [ -n "${SS_UPGRADE:-}" ]; then UPGRADE=("$SS_UPGRADE"); else UPGRADE=(bash "$
 if [ -n "$PR" ]; then
     GH="${SS_GH:-gh}"
     paths="$(cd "$PRIMARY" && "$GH" pr view "$PR" --json files -q '.files[].path' 2>/dev/null)" \
-        || { echo "STATION=failed:gh-pr-view"; exit 0; }
+        || { mkdir -p "$(dirname "$STATE")" 2>/dev/null && echo "BEHIND:unverified" > "$STATE" 2>/dev/null
+             echo "STATION=failed:gh-pr-view"; exit 0; }
 elif [ "$FILES" = "-" ]; then paths="$(cat)"
 else paths="$(cat "$FILES")" || usage
 fi
@@ -88,7 +89,10 @@ local_template_diff() {
         vault="$(sed -n 's/^LUNA_VAULT_PATH=//p' "$PRIMARY/.env" | head -n 1 | tr -d "\"'")"
     fi
     [ -d "$vault" ] || return 0
-    "${UPGRADE[@]}" --template-dir "$TEMPLATE" --vault-dir "$vault" --dry-run 2>&1 | awk '
+    local plan prc
+    plan="$("${UPGRADE[@]}" --template-dir "$TEMPLATE" --vault-dir "$vault" --dry-run 2>&1)"; prc=$?
+    if [ "$prc" -ne 0 ]; then echo "(upgrade.sh --dry-run) rc=$prc: the local-edit check did not run"; return 0; fi
+    printf '%s\n' "$plan" | awk '
         /^  local edits withheld \(not overwritten\): / {
             if (rel != "" && !bad && !seen) print rel ": no hunk to read (snapshot baseline)"
             rel = $0; sub(/^  local edits withheld \(not overwritten\): /, "", rel); sub(/ \(backup:.*$/, "", rel)
@@ -133,7 +137,13 @@ if [ -d "$clone/.git" ]; then
     done
 fi
 
-behind="$("${UPDATE[@]}" --versions 2>/dev/null | awk '$2 == "behind" { print $1 }' | paste -sd, -)"
+vers="$("${UPDATE[@]}" --versions 2>/dev/null)"; vrc=$?
+behind="$(printf '%s\n' "$vers" | awk '$2 == "behind" { print $1 }' | paste -sd, -)"
+# --versions exits 0 all current, 1 any behind, 3 none behind but some undetermined;
+# anything else, or a report with no component row, is not proof the station is current.
+if { [ "$vrc" -gt 1 ] && [ "$vrc" -ne 3 ]; } || ! printf '%s\n' "$vers" | grep -qE '^ +[a-z_-]+ +(current|behind|unknown|info) '; then
+    behind="${behind:+$behind,}unverified"
+fi
 [ -z "$refused" ] || case ",$behind," in *",$refused,"*) ;; *) behind="${behind:+$behind,}$refused" ;; esac
 
 if [ -n "$behind" ]; then val="BEHIND:$behind"; echo "STATION=BEHIND:$behind"
