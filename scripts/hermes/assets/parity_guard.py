@@ -256,7 +256,7 @@ _ENV_ASSIGN = r"[a-z_][a-z0-9_]*=\S*"
 _ENV_DUMP_VERBS = re.compile(
     r"(?:command\s+(?:-p\s+)?)?" + _EXE_PREFIX
     + r"(?:printenv"
-    + r"|env(?:\s+(?:-0|--null|" + _ENV_UNSET + "|" + _ENV_ASSIGN + r"))*(?:\s+printenv)?"
+    + r"|env(?:\s+(?:-0|--null|" + _ENV_UNSET + "|" + _ENV_ASSIGN + r"))*(?:\s+--)?(?:\s+printenv)?"
     + r"|env(?:\s+(?:-0|--null|-i|--ignore-environment|" + _ENV_UNSET + "|" + _ENV_ASSIGN + r"))*"
     + r"|export\s+-p|declare\s+-p)"
     r"(?:\s+(?:-0|--null|--|-u\s+\S+|" + _ENV_ASSIGN + r"))*(?=\s*(?:$|[;&|)<>\n]))"
