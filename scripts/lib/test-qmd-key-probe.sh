@@ -197,10 +197,10 @@ run_probe "$URL"
 assert_eq "rpc401 row: exit 1" 1 "$RC"
 assert_has "rpc401 row: names the key" "QMD_OPENAI_API_KEY" "$OUT"
 
-# 12: a 401 text in a result the server did not flag isError is still the key defect.
+# 12: search content that mentions 401 in an unflagged result is a working embed.
 start_stub text401
 run_probe "$URL"
-assert_eq "text401 row: exit 1" 1 "$RC"
+assert_eq "text401 row: unflagged result text is content, exit 0" 0 "$RC"
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASS"; else echo "$FAILED FAILED"; exit 1; fi

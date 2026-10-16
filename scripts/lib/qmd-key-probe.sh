@@ -92,13 +92,15 @@ case "$code" in
 esac
 
 # A multi-event SSE reply is several JSON lines: -s reads them all and the last
-# message carrying a result or error is the answer. A failed embed is any result
-# whose text reads 401/unauthorized, flagged isError or not.
+# message carrying a result or error is the answer. A failed embed is a JSON-RPC
+# error or a result the server flags isError (the qmd daemon's contract); text of
+# an unflagged result is search content and is never read for a 401.
 err="$(printf '%s\n' "$body" | jq -rs '[.[] | select(type == "object" and (has("result") or has("error")))] | last // null
   | if . == null then "bad"
   elif (.error | type) == "object" then (.error.message // "" | tostring)
   elif (.result.content | type) != "array" then "bad"
-  else ([.result.content[]? | .text? | strings] | map(select(test("401|[Uu]nauthorized"))) | first) // (if .result.isError == true then "unreadable" else "ok" end) end' 2>/dev/null)" || err="bad"
+  elif .result.isError == true then ([.result.content[]? | .text? | strings] | first // "unreadable")
+  else "ok" end' 2>/dev/null)" || err="bad"
 [ "$code" = 200 ] || err="bad"
 case "$err" in
   ok) exit 0 ;;
