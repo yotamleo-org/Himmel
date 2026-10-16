@@ -38,16 +38,33 @@ chmod 600 "$TMP/token"
 cat > "$TMP/stub.py" <<'PY'
 import http.server, json, signal, sys, time
 signal.alarm(120)
-mode, portfile, body401 = sys.argv[1], sys.argv[2], sys.argv[3]
+mode, portfile, body401, want = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 n = 0
 class H(http.server.BaseHTTPRequestHandler):
+    def reply(self, code, data, ctype):
+        self.send_response(code)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
     def do_POST(self):
         global n
         n += 1
         self.rfile.read(int(self.headers.get('Content-Length') or 0))
         auth = self.headers.get('Authorization', '')
+        open(portfile + '.auth', 'w').write(auth)
+        if mode == 'needauth' and auth != 'Bearer ' + want:
+            return self.reply(403, b'{"error":"forbidden"}', 'application/json')
         if mode == 'hang':
             time.sleep(60)
+        if mode == 'multi':
+            note = json.dumps({"jsonrpc": "2.0", "method": "notifications/message", "params": {"data": "working"}})
+            res = json.dumps({"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "ok"}]}})
+            return self.reply(200, ("event: message\ndata: " + note + "\n\nevent: message\ndata: " + res + "\n\n").encode(), 'text/event-stream')
+        if mode == 'rpc401':
+            return self.reply(200, ("data: " + json.dumps({"jsonrpc": "2.0", "id": 2, "error": {"code": -32000, "message": "401 Unauthorized"}}) + "\n\n").encode(), 'text/event-stream')
+        if mode == 'text401':
+            return self.reply(200, ("data: " + json.dumps({"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "Error: 401 Unauthorized"}]}}) + "\n\n").encode(), 'text/event-stream')
         bad = mode == 'then-ok' and n == 1
         if mode == 'empty':
             self.send_response(200)
@@ -76,7 +93,7 @@ PY
 start_stub() {
     local mode="$1" pf="$TMP/port.$1" i=0
     rm -f "$pf"
-    python3 -I "$TMP/stub.py" "$mode" "$pf" "$REAL_401" >/dev/null 2>&1 &
+    python3 -I "$TMP/stub.py" "$mode" "$pf" "$REAL_401" "$TOKEN" >/dev/null 2>&1 &
     SRV_PIDS+=("$!")
     while [ ! -s "$pf" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
     URL="http://127.0.0.1:$(cat "$pf")/mcp"
@@ -84,7 +101,7 @@ start_stub() {
 
 # run_probe <url> [timeout] -> OUT (stdout+stderr), RC
 run_probe() {
-    OUT=$(QMD_MCP_URL="$1" QMD_HTTP_AUTH_FILE="$TMP/token" QMD_OPENAI_API_KEY="$KEY" QMD_KEY_PROBE_TIMEOUT="${2:-10}" timeout 40 bash "$PROBE" 2>&1)
+    OUT=$(QMD_MCP_URL="$1" QMD_HTTP_AUTH_FILE="${AUTH:-$TMP/token}" QMD_OPENAI_API_KEY="$KEY" QMD_KEY_PROBE_TIMEOUT="${2:-10}" timeout 40 bash "$PROBE" 2>&1)
     RC=$?
 }
 
@@ -129,6 +146,61 @@ assert_eq "leading-zero timeout row: exit 0" 0 "$RC"
 # 5: nothing listening -> exit 2.
 run_probe "http://127.0.0.1:1/mcp" 5
 assert_eq "refused row: exit 2" 2 "$RC"
+
+# 6: the bearer arrives, and a wrong one is refused with its own message.
+start_stub needauth
+run_probe "$URL"
+assert_eq "needauth row: right token exits 0" 0 "$RC"
+assert_eq "needauth row: Authorization header arrived" "Bearer $TOKEN" "$(cat "$TMP/port.needauth.auth")"
+printf 'wrong-token\n' > "$TMP/wrong"
+chmod 600 "$TMP/wrong"
+AUTH="$TMP/wrong" run_probe "$URL"
+assert_eq "bearer-refusal row: exit 2" 2 "$RC"
+assert_has "bearer-refusal row: names the token file" "QMD_HTTP_AUTH_FILE" "$OUT"
+assert_lacks "bearer-refusal row: does not blame the key" "QMD_OPENAI_API_KEY" "$OUT"
+assert_lacks "bearer-refusal row: wrong token not echoed" "wrong-token" "$OUT"
+
+# 7: a URL that starts with a dash is a URL, not a curl option.
+AUTH="$TMP/absent" run_probe "--version" 5
+assert_eq "dash-url row: exit 2" 2 "$RC"
+assert_has "dash-url row: curl treated it as a host" "curl rc=6" "$OUT"
+
+# 8: the bearer goes to loopback hosts only.
+run_probe "http://192.0.2.1:9/mcp" 2
+assert_eq "non-loopback row: exit 2" 2 "$RC"
+assert_has "non-loopback row: says loopback" "loopback" "$OUT"
+run_probe "http://127.0.0.1@192.0.2.1:9/mcp" 2
+assert_has "userinfo row: host is the part after @" "loopback" "$OUT"
+run_probe "http://127.0.0.1.example.invalid:9/mcp" 2
+assert_has "lookalike row: 127.0.0.1.example is not loopback" "loopback" "$OUT"
+run_probe "http://localhost:1/mcp" 2
+assert_lacks "localhost row: accepted" "loopback" "$OUT"
+run_probe "http://[::1]:1/mcp" 2
+assert_lacks "ipv6 loopback row: accepted" "loopback" "$OUT"
+AUTH="$TMP/absent" run_probe "http://192.0.2.1:9/mcp" 2
+assert_lacks "no-token row: no bearer, no refusal" "loopback" "$OUT"
+
+# 9: xtrace inherited from the environment must not print the bearer.
+start_stub then-ok
+run_probe "$URL" >/dev/null
+OUT=$(env SHELLOPTS=xtrace QMD_MCP_URL="$URL" QMD_HTTP_AUTH_FILE="$TMP/token" QMD_KEY_PROBE_TIMEOUT=10 timeout 40 bash "$PROBE" 2>&1)
+assert_lacks "xtrace row: bearer token not traced" "$TOKEN" "$OUT"
+
+# 10: a multi-event SSE reply (notification, then the result) is a live server.
+start_stub multi
+run_probe "$URL"
+assert_eq "multi-event row: exit 0" 0 "$RC"
+
+# 11: a JSON-RPC error carrying the 401 text, no provider body (the jq branch alone).
+start_stub rpc401
+run_probe "$URL"
+assert_eq "rpc401 row: exit 1" 1 "$RC"
+assert_has "rpc401 row: names the key" "QMD_OPENAI_API_KEY" "$OUT"
+
+# 12: a 401 text in a result the server did not flag isError is still the key defect.
+start_stub text401
+run_probe "$URL"
+assert_eq "text401 row: exit 1" 1 "$RC"
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASS"; else echo "$FAILED FAILED"; exit 1; fi
