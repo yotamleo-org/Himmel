@@ -21,7 +21,8 @@ cat > "$tmp/vms.json" <<'J'
 {
   "ubuntu_new": { "os": "ubuntu", "ssh_port": 2222, "user": "himmel" },
   "win11_base_himmel": { "os": "windows", "ssh_port": 2223 },
-  "win2": { "os": "windows", "kind": "station", "host": "win2" }
+  "win2": { "os": "windows", "kind": "station", "host": "win2" },
+  "ubuntu_station": { "os": "ubuntu", "kind": "station", "ssh_port": 2224, "user": "himmel" }
 }
 J
 run() { LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" bash "$SCRIPT" "$@" 2>&1; }
@@ -35,6 +36,8 @@ check "unregistered vm: exit 2" "$rc" "2"
 contains "unregistered vm: says so" "$out" "not a registered test VM"
 rc=0; out="$(run win2 "$tmp/prompt.txt")" || rc=$?
 check "station vm: exit 2" "$rc" "2"
+rc=0; out="$(run ubuntu_station "$tmp/prompt.txt")" || rc=$?
+check "ubuntu station with port and user: exit 2" "$rc" "2"
 rc=0; out="$(run win11_base_himmel "$tmp/prompt.txt")" || rc=$?
 check "windows vm: exit 2 (ubuntu guests only)" "$rc" "2"
 rc=0; out="$(run ubuntu_new "$tmp/missing.txt")" || rc=$?
@@ -54,6 +57,8 @@ lacks "dry-run: no bypassPermissions" "$out" "bypassPermissions"
 
 rc=0; out="$(LAUNCH_GUEST_TIMEOUT=0 run --dry-run ubuntu_new "$tmp/prompt.txt")" || rc=$?
 check "zero timeout: exit 2" "$rc" "2"
+rc=0; out="$(LAUNCH_GUEST_TIMEOUT=00 run --dry-run ubuntu_new "$tmp/prompt.txt")" || rc=$?
+check "all-zero timeout: exit 2" "$rc" "2"
 
 mkdir -p "$tmp/bin"
 printf '#!/bin/sh\necho STUB-SSH "$@"\n' > "$tmp/bin/ssh"; chmod +x "$tmp/bin/ssh"

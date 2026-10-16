@@ -35,7 +35,7 @@ fi
 VM="$1"; PROMPT="$2"
 TIMEOUT="${LAUNCH_GUEST_TIMEOUT:-1800}"
 case "$VM" in ''|*[!A-Za-z0-9_-]*) echo "launch-guest: '$VM' is not a registered test VM name" >&2; exit 2 ;; esac
-case "$TIMEOUT" in ''|*[!0-9]*|0) echo "launch-guest: LAUNCH_GUEST_TIMEOUT must be whole seconds above 0" >&2; exit 2 ;; esac
+case "$TIMEOUT" in ''|*[!0-9]*|0*) echo "launch-guest: LAUNCH_GUEST_TIMEOUT must be whole seconds above 0, no leading zero" >&2; exit 2 ;; esac
 [ -f "$PROMPT" ] || { echo "launch-guest: prompt file '$PROMPT' not found" >&2; exit 2; }
 # port and user come from the registry; a VM that is not an ubuntu guest, is a
 # station, or lacks either field prints nothing and is refused.
