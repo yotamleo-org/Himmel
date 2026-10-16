@@ -27,6 +27,18 @@
 # ever cost more than a stuck kill switch.
 set -u
 
+# Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
+# what is sourced before the seam guard.
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "vm-runner.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/handover/console-kit/vm-runner.sh || exit 96
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 REPO="${HIMMEL_CI_RUNNER_REPO:-yotamleo/Himmel}"
