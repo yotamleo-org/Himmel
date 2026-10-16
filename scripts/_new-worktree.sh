@@ -114,7 +114,7 @@ fi
 # ponytail: static default, not yet derived from measured git latency vs count; HIMMEL-1860 slice 3.
 WT_CEILING="${HIMMEL_WORKTREE_CEILING:-100}"
 case "$WT_CEILING" in ''|*[!0-9]*) WT_CEILING=100 ;; esac
-WT_LIVE=$(git -C "$PRIMARY_WORKTREE" worktree list --porcelain | grep -c "^worktree $PRIMARY_WORKTREE/\.claude/worktrees/" || true)
+WT_LIVE=$(git -C "$PRIMARY_WORKTREE" worktree list --porcelain -z | tr '\0' '\n' | grep -cF "worktree $PRIMARY_WORKTREE/.claude/worktrees/" || true)
 if [ "$WT_LIVE" -ge "$WT_CEILING" ]; then
     echo "ERR new-worktree: worktree ceiling reached ($WT_LIVE live >= $WT_CEILING) — reclaim with /clean, or raise HIMMEL_WORKTREE_CEILING" >&2
     exit 1
