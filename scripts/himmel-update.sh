@@ -504,12 +504,12 @@ update_codex() {
         return 0
     fi
     if [ "$mode" = "check" ]; then
-        echo "    codex provisioned — /himmel-update (no --check) will re-sync plugins + re-sanitize hooks.json."
+        echo "    codex provisioned — /himmel-update (no --check) will re-sync plugins."
         return 0
     fi
-    # apply: idempotent re-provision; chains sanitize-plugin-hooks as its phase 3.
+    # apply: idempotent re-provision (marketplace + plugin set only).
     if ! bash "$installer"; then
-        echo "    warn: codex re-provision/sanitize failed (non-fatal) — run bash scripts/codex/install-himmel-codex.sh yourself." >&2
+        echo "    warn: codex re-provision failed (non-fatal) — run bash scripts/codex/install-himmel-codex.sh yourself." >&2
     fi
     return 0
 }
@@ -3398,7 +3398,7 @@ fi
 # (never a clean skip) — each later item is guarded by `[ "$chain_rc" -eq 0 ]`
 # so once chain_rc flips to 1 it is never attempted, staying "not-attempted"
 # (and its own "==> [N/6] ..." header never prints). But the five pre-existing
-# advisory steps below (update_codex's security-relevant hooks re-sanitize
+# advisory steps below (update_codex's plugin re-sync
 # among them) predate this ticket and ALWAYS ran regardless of the git-pull
 # outcome — a chain failure must not skip them, so they now run
 # UNCONDITIONALLY after the chain, win or lose. The status table prints
@@ -3540,7 +3540,7 @@ ensure_bus_state_dirs() {
 # stay best-effort and never abort the script. They run here UNCONDITIONALLY, even
 # after a mid-chain failure (chain_rc=1) — keeping their behavior
 # of always running regardless of the pull/marketplace/jira/qmd/luna outcome,
-# including the security-relevant update_codex hooks.json re-sanitize.
+# including the update_codex plugin re-sync.
 update_codex apply
 sync_agent_clis apply || true
 rewire_statusline

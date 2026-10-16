@@ -216,6 +216,12 @@ ro5183() { printf '%s\n' "$a5183" | grep -A2 -x -- --ro-bind | grep -qxF "$1"; }
 check 'the jail binds the row config settings.json read-only, before it exists (first launch)' '[ ! -e "$RC5183/settings.json" ] && ro5183 "$RC5183/settings.json" && ro5183 "$H5183/.claude-deepseek/settings.json"'
 check 'the jail binds the row config hooks dir read-only' 'ro5183 "$RC5183/hooks" && ro5183 "$H5183/.claude-deepseek/hooks"'
 check 'the rest of ROWCONF stays one read-write bind' 'printf "%s\n" "$a5183" | grep -A2 -x -- --bind | grep -qxF "$RC5183"'
+# remote-settings.json is a policy source the launcher scans (disableAllHooks), so it
+# comes back read-only after the writable ROWCONF bind, the same way settings.json does.
+check 'the jail binds the row config remote-settings.json read-only, after the read-write ROWCONF bind' '[ ! -e "$RC5183/remote-settings.json" ] && ro5183 "$RC5183/remote-settings.json" && ro5183 "$H5183/.claude-deepseek/remote-settings.json" && [ "$(printf "%s\n" "$a5183" | grep -nxF -- "$RC5183" | head -1 | cut -d: -f1)" -lt "$(printf "%s\n" "$a5183" | grep -nxF -- "$RC5183/remote-settings.json" | tail -1 | cut -d: -f1)" ]'
+ln -s "$TMP/secret" "$RC5183/remote-settings.json"
+check 'a remote-settings.json the lane replaced with a symlink is refused' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
+rm -f "$RC5183/remote-settings.json"
 ln -s "$TMP/secret" "$RC5183/settings.json"
 check 'a settings.json the lane replaced with a symlink is refused' '! HOME="$H5183" bash "$HERE/sandbox.sh" argv "$TMP/row5183.env" >/dev/null 2>&1'
 rm -f "$RC5183/settings.json"
@@ -227,6 +233,9 @@ if bwrap --ro-bind / / true 2>/dev/null; then
   jr 'rm -f "$HOME/.claude-deepseek/settings.json"'; w_rm=$?
   jr 'echo {} >"$HOME/s" && mv -f "$HOME/s" "$HOME/.claude-deepseek/settings.json"'; w_mv=$?
   check 'live: the seeded settings.json can be neither removed nor replaced from the jail' '[ "$w_rm" != 0 ] && [ "$w_mv" != 0 ] && [ "$(jq -c .permissions.deny "$RC5183/settings.json")" = "[\"Bash(rm -rf *)\"]" ]'
+  jr 'echo "{\"disableAllHooks\":true}" >"$HOME/.claude-deepseek/remote-settings.json"'; w_rs=$?
+  jr 'rm -f "$HOME/.claude-deepseek/remote-settings.json"'; w_rsrm=$?
+  check 'live: remote-settings.json can be neither written nor removed from the jail' '[ "$w_rs" != 0 ] && [ "$w_rsrm" != 0 ] && ! grep -q disableAllHooks "$RC5183/remote-settings.json" 2>/dev/null'
   jr ': >"$HOME/.claude-deepseek/hooks/new.sh"'; w_new=$?
   jr 'echo x >>"$HOME/.claude-deepseek/hooks/h.sh"'; w_hook=$?
   check 'live: the seeded hooks dir cannot be written from the jail' '[ "$w_new" != 0 ] && [ "$w_hook" != 0 ] && [ ! -e "$RC5183/hooks/new.sh" ] && [ "$(cat "$RC5183/hooks/h.sh")" = ": hook" ]'

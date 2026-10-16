@@ -2265,3 +2265,29 @@ test("exporter follows a moved ledgers.json hook-chain-skips path", () => {
   const { paths } = defaultHookChainSkipLogPaths({ HIMMEL_LEDGERS_JSON: registryWithPaths({ "hook-chain-skips": "<repo>/moved-logs/skips.jsonl" }) }, join(tmp, "repo"));
   expect(paths[0]).toBe(join(tmp, "repo", "moved-logs", "skips.jsonl"));
 });
+
+test("renderMetrics and renderSessionsJson still render when the ledgers registry is missing", async () => {
+  const flow = join(tmp, "flow.jsonl");
+  writeLines(flow, [
+    serializeFlowRunStart(flowStart("reg-flow", "r1", "2026-07-13T11:00:00Z")),
+    serializeFlowRunEnd(flowEnd("reg-flow", "r1", "2026-07-13T11:05:00Z", "complete", 1)),
+  ]);
+  const env = { HOME: join(tmp, "no-home"), HIMMEL_LEDGERS_JSON: join(tmp, "absent-ledgers.json"), HIMMEL_FLOW_RUNS_LEDGER: flow };
+  const opts = { nowMs: NOW, env, configPath: join(tmp, "missing-observability.json"), lanesPath: join(tmp, "no-lanes.json"), platform: "linux" as const, procRoot: mkdtempSync(join(tmp, "empty-proc-")) };
+  expect(await renderMetrics(opts)).toContain('flow="reg-flow"');
+  expect(typeof (await renderSessionsJson(opts))).toBe("string");
+});
+
+for (const [label, text] of [["invalid JSON", "{not json"], ["a null row", '{"ledgers":[null]}'], ["a row without default_path", '{"ledgers":[{"id":"flow-runs"}]}']] as const) test(`renderMetrics and renderSessionsJson still render when the ledgers registry is malformed (${label})`, async () => {
+  const bad = join(tmp, "bad-ledgers.json");
+  writeFileSync(bad, text);
+  const flow = join(tmp, "flow.jsonl");
+  writeLines(flow, [
+    serializeFlowRunStart(flowStart("reg-flow", "r1", "2026-07-13T11:00:00Z")),
+    serializeFlowRunEnd(flowEnd("reg-flow", "r1", "2026-07-13T11:05:00Z", "complete", 1)),
+  ]);
+  const env = { HOME: join(tmp, "no-home"), HIMMEL_LEDGERS_JSON: bad, HIMMEL_FLOW_RUNS_LEDGER: flow };
+  const opts = { nowMs: NOW, env, configPath: join(tmp, "missing-observability.json"), lanesPath: join(tmp, "no-lanes.json"), platform: "linux" as const, procRoot: mkdtempSync(join(tmp, "empty-proc-")) };
+  expect(await renderMetrics(opts)).toContain('flow="reg-flow"');
+  expect(typeof (await renderSessionsJson(opts))).toBe("string");
+});

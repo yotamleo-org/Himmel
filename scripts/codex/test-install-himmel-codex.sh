@@ -78,9 +78,7 @@ mk_state() {  # $1 = state dir; seeds empty marketplaces + plugins + calls
 
 run() {  # state-dir, then installer args
   local s="$1"; shift
-  # CODEX_HOME -> an empty temp dir so the wired sanitize-plugin-hooks step
-  # finds no plugin cache and no-ops, keeping the test hermetic
-  # (never touches the real ~/.codex cache).
+  # CODEX_HOME -> a temp dir so the test never touches the real ~/.codex cache.
   CODEX_BIN="$STUB" CODEX_STUB_STATE="$s" CODEX_HOME="$TMP/codex-home" bash "$INSTALLER" "$@"
 }
 
@@ -183,6 +181,22 @@ else
   fail "phase 4 hook-set lint neither linted nor skipped"
 fi
 assert_log_lacks "$S/calls.log" "remove" "phase 4 mutates nothing"
+
+echo "== scenario L: installer never rewrites external plugin hooks.json (HIMMEL-1114) =="
+# Fixture shape = ralph-loop's real cached hooks.json plus the top-level
+# `description` that codex < rust-v0.143.0 rejected. Fixed upstream, so the
+# installer must leave third-party plugin files untouched.
+S="$TMP/L"; mk_state "$S"
+printf 'himmel\n' > "$S/marketplaces.txt"; : > "$S/plugins.txt"
+HJ="$TMP/codex-home/plugins/cache/claude-plugins-official/ralph-loop/1.0.0/hooks/hooks.json"
+mkdir -p "$(dirname "$HJ")"
+# shellcheck disable=SC2016  # literal ${CLAUDE_PLUGIN_ROOT} is the fixture content
+printf '%s\n' '{"description":"Ralph loop","hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-hook.sh\""}]}]}}' > "$HJ"
+before="$(cat "$HJ")"
+out="$(run "$S" --plugins=himmel-ops 2>&1)"
+if [ "$(cat "$HJ")" = "$before" ]; then pass "external plugin hooks.json left untouched"; else fail "installer rewrote an external plugin hooks.json"; fi
+if grepq "$out" -iE '^--- 3\. sanitize|sanitize step'; then fail "installer still runs/announces a sanitize phase"; else pass "no sanitize phase in installer output"; fi
+rm -rf "$TMP/codex-home/plugins"
 
 echo ""
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED" >&2; exit 1; fi
