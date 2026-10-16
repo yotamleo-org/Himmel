@@ -56,7 +56,8 @@ if [ -n "$need" ]; then
   for a in "$@"; do
     if [ "$skip" = 1 ]; then skip=0; continue; fi
     [ "$a" = "--budget" ] && { skip=1; continue; }
-    case "$a" in *[[:space:]]*) rerun="$rerun \"$a\"" ;; *) rerun="$rerun $a" ;; esac
+    q="$(printf '%s' "$a" | sed "s/'/'\\\\''/g")"
+    rerun="$rerun '$q'"
   done
   echo "leg-graph: TRUNCATED answer; re-run for the full set: bash scripts/graphify/leg-graph.sh $sub$rerun --budget $need" >&2
 fi

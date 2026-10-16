@@ -65,9 +65,14 @@ else fail "T6b out='$out'"; fi
 # T7: a truncated answer gets an explicit re-run line naming the wrapper.
 printf '#!/bin/sh\necho "[!] TRUNCATED: showing 60 of 223 nodes (~2000-token budget). raise the token budget to 7523 to get all 223 (CLI: --budget 7523)"\necho "NODE a"\n' > "$T/bin/graphify"
 out="$(run query "two words")"; rc=$?
-if [ "$rc" = 0 ] && grep -q 'NODE a' <<<"$out" && grep -q 'bash scripts/graphify/leg-graph.sh query "two words" --budget 7523' "$T/err"; then
+if [ "$rc" = 0 ] && grep -q 'NODE a' <<<"$out" && grep -q 'bash scripts/graphify/leg-graph.sh query '"'"'two words'"'"' --budget 7523' "$T/err"; then
   pass "T7 truncation prints a re-run line"
 else fail "T7 rc=$rc err=$(cat "$T/err")"; fi
+
+# shellcheck disable=SC2016  # the metacharacters must reach the wrapper literally
+out="$(run query 'a$(x)b')"
+if grep -qF "query 'a\$(x)b' --budget 7523" "$T/err"; then pass "T7b re-run line single-quotes shell metacharacters"
+else fail "T7b err=$(cat "$T/err")"; fi
 
 # T8: missing graph names the wrapper.
 mv "$P/graphify-out/graph.json" "$P/graphify-out/graph.json.x"
