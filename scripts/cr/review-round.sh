@@ -24,9 +24,8 @@
 # reviewed, is admitted without a judge record when that head raised critic
 # findings and every one is recorded fixed there. Consumed once: the .delta pair
 # carries trigger postcap-fixed and a post-cap round never chains into another.
-# Once the delta round (and any post-cap round) is spent, a CI-red
-# reviewed head buys ONE more bounded delta round with no judge record: the last
-# reviewed head has a COMPLETED check-run with conclusion failure (read through
+# A CI-red reviewed head (delta round spent or not) buys ONE bounded delta
+# round with no judge record: the last reviewed head has a COMPLETED check-run with conclusion failure (read through
 # gh api, none still running), the delta since it is at most 40 diff lines, and
 # the PR has not had this unlock before (.cired). Recorded in the ledger.
 # A non-empty --base-sha is verified once at intake against the
@@ -815,7 +814,7 @@ ci_red_delta_lines() {
 # head, is CI-red and <from>..<to> is within the line cap. Red means a COMPLETED
 # check-run with conclusion failure read from the API for <from>, and no
 # check-run there still running. Sets ci_red_names. The caller has already
-# established that the delta round was spent and .cired is absent.
+# established that .cired is absent and the delta state is readable.
 ci_red_cap=40
 ci_red_unlock() {
     # shellcheck source=scripts/lib/timeout-bin.sh
@@ -1046,9 +1045,9 @@ EOF
         return 0
     fi
     delta_verdict=""
-    # The delta round was spent and the last reviewed head is
-    # CI-red: one more bounded round, once per PR, no judge record needed.
-    if [ -n "$delta_used" ] && [ "$delta_used" != "unreadable" ] \
+    # The last reviewed head is CI-red: one bounded round, once per PR, no
+    # judge record needed - whether or not the delta round was spent.
+    if [ "$delta_used" != "unreadable" ] \
         && [ ! -e "$cired_state" ] && [ ! -L "$cired_state" ] \
         && ci_red_unlock "$delta_from" "$delta_to"; then
         delta_trigger="postcap-ci-red"
@@ -1129,6 +1128,8 @@ if [ "$verb" = "start" ]; then
                 # spent .delta back, so the unlock is not half-consumed.
                 if [ "$delta_trigger" = "postcap-ci-red" ] && [ -f "$bak_delta" ]; then
                     mv -f "$bak_delta" "$delta_state" 2>/dev/null || true
+                elif [ "$delta_trigger" = "postcap-ci-red" ] && [ "$had_delta" -eq 0 ]; then
+                    rm -f "$delta_state"
                 fi
                 rm -f "$tmp_delta" "$bak_delta" "$cired_tmp"
                 echo "review-round: cannot record the delta round for $branch" >&2
