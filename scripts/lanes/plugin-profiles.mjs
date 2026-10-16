@@ -79,7 +79,7 @@ const VM_LAUNCH_RULE_RE = /^Bash\(bash scripts\/vm\/launch-guest\.sh:\*\)$/;
 function validateVmLaunchAllow(errors, rules) {
   if (rules === undefined) return;
   if (!Array.isArray(rules) || rules.length === 0 || !rules.every((r) => typeof r === 'string' && VM_LAUNCH_RULE_RE.test(r))) {
-    errors.push('vmLaunchAllow must be a non-empty array holding only Bash(bash scripts/vm/launch-guest.sh:*)');
+    errors.push('vmLaunchAllow must be a non-empty array holding only the launch-guest script rule');
   }
 }
 

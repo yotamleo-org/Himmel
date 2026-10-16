@@ -677,7 +677,7 @@ fi
 
 # the leg-vm profile exists to start sessions on a test VM, so its
 # brief must name one: a key of scripts/lib/vms.json that is an ubuntu guest and
-# not kind=station, the same set scripts/vm/launch-guest.sh accepts.
+# not kind=station, the same set the guest launcher accepts.
 case ",$PROFILE," in
     *,leg-vm,*)
         if ! node -e '
