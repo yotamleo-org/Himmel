@@ -8,6 +8,12 @@
 # kills a pid it cannot independently prove belongs to that leg.
 #
 # Usage: close-wrapped-leg.sh [--check] [--console | --fleet <manifest>] <leg-doc>
+#        close-wrapped-leg.sh [--check] --sweep --fleet <manifest>
+# --sweep runs this script on every doc in the fleet manifest and closes each one
+# that is finished (lock free, tail WRAPPED); an unfinished doc is skipped, a
+# finished one that cannot be closed (no/ambiguous window, live subtree) is
+# refused and its reason printed. It prints `sweep: closed=<n> refused=<n>
+# skipped=<n>` and exits 0; the tick's closable=<n> field says when to run it.
 # --check runs every pre-close check below and stops before anything with a
 # side effect: no session-note capture, no TERM, no cost row, reap, digest or
 # prune. It prints SAFE-TO-CLOSE (rc 0) or the refusal a real close would
@@ -28,7 +34,12 @@
 #     scripts/lanes/lib/claude-sessions.sh's claude_sessions, /proc-argv
 #     based, never a flattened pgrep -af scan) carries a `-n <name>` naming
 #     the leg (names derived by scripts/lib/leg-identity.sh's leg_identity -
-#     the doc stem, its undated form, and any legacy-family derived name).
+#     the doc stem, its undated form, and any legacy-family derived name; a
+#     relaunched leg's trailing -r<N> on the session name is accepted).
+# ponytail: the window is found by session name only; the launch record
+# (launch-logs/<name>.log) holds no pid and a finished leg's lock is free, so
+# there is no recorded pid to resolve by. Upgrade path: have headed-arm-leg.sh
+# record the claude pid, then resolve by it first and keep the name as fallback.
 # TERM goes to that one pid only - it never signals a non-matching pid, and
 # 0 or >1 matches is a refusal, not a best guess.
 #
@@ -91,14 +102,18 @@ TMP_REAP="${TMP_REAP_BIN:-$HERE/../../tmp-reap.sh}"
 LIVE_SUBAGENTS="${LIVE_SUBAGENTS_BIN:-$HERE/live-subagents.sh}"
 
 usage() {
-    echo "usage: close-wrapped-leg.sh [--check] [--console | --fleet <manifest>] <doc>" >&2
+    echo "usage: close-wrapped-leg.sh [--check] [--console | --fleet <manifest>] <doc> | [--check] --sweep --fleet <manifest>" >&2
 }
 
 FLEET_MANIFEST=""
 CONSOLE_MODE=0
 CHECK_MODE=0
+SWEEP_MODE=0
 if [ "${1:-}" = --check ]; then
     CHECK_MODE=1; shift
+fi
+if [ "${1:-}" = --sweep ]; then
+    SWEEP_MODE=1; shift
 fi
 if [ "${1:-}" = --fleet ]; then
     if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then usage; exit 2; fi
@@ -115,6 +130,31 @@ close_success() {
     fi
     exit 0
 }
+
+# ---------- --sweep: close every finished leg in the manifest ----------
+if [ "$SWEEP_MODE" -eq 1 ]; then
+    if [ -z "$FLEET_MANIFEST" ] || [ "$#" -ne 0 ] || [ ! -r "$FLEET_MANIFEST" ]; then
+        usage
+        exit 2
+    fi
+    sweep_docs=$(jq -r '.legs[]?.doc // empty' "$FLEET_MANIFEST" 2>/dev/null) || { echo "close-wrapped-leg: cannot read fleet manifest $FLEET_MANIFEST" >&2; exit 1; }
+    sw_check=""
+    [ "$CHECK_MODE" -eq 1 ] && sw_check="--check"
+    sw_closed=0; sw_refused=0; sw_skipped=0
+    while IFS= read -r sw_doc; do
+        [ -n "$sw_doc" ] || continue
+        sw_out=$(bash "$HERE/close-wrapped-leg.sh" $sw_check --fleet "$FLEET_MANIFEST" "$sw_doc" 2>&1); sw_rc=$?
+        case "$sw_rc" in
+            0) sw_closed=$((sw_closed + 1)); echo "sweep: closed $sw_doc" ;;
+            3|4) sw_skipped=$((sw_skipped + 1)) ;;
+            *) sw_refused=$((sw_refused + 1)); echo "sweep: refused $sw_doc (rc=$sw_rc): $(printf '%s\n' "$sw_out" | tail -n 1)" ;;
+        esac
+    done <<EOF
+$sweep_docs
+EOF
+    echo "sweep: closed=$sw_closed refused=$sw_refused skipped=$sw_skipped"
+    exit 0
+fi
 
 if [ "$#" -ne 1 ]; then
     usage
@@ -186,8 +226,11 @@ while IFS=$'\t' read -r pid name _model _ac; do
     case "$name" in
         '#'*) continue ;;
     esac
+    # a relaunched leg runs as <name>-r<N>; the original and its relaunch both
+    # live is an ambiguity the exactly-one rule below refuses
+    base_name=$(printf '%s' "$name" | sed -E 's/-r[0-9]+$//')
     case "$names" in
-        *",${name},"*)
+        *",${name},"*|*",${base_name},"*)
             matched="$pid"
             match_count=$((match_count + 1)) ;;
     esac

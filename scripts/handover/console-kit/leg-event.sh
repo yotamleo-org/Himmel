@@ -43,6 +43,8 @@ done
 if [ "$MSG" = "-" ]; then body="$(cat)"; else body="$(cat "$MSG")" || usage; fi
 line="$(printf '%s\n' "$body" | grep -m1 -E '[^[:space:]]')" || line=""
 line="${line#- }"
+# a message may lead with its own N<k> label and ticket key before the marker
+while [[ "$line" =~ ^(N[0-9]+|[A-Z]+-[0-9]+)[[:space:]]+ ]]; do line="${line#"${BASH_REMATCH[0]}"}"; done
 marker="${line%%[^A-Za-z-]*}"
 
 case "$marker" in

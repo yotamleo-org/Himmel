@@ -1212,6 +1212,72 @@ exact_count "claudex: TERM sent" "$(cat "$CALLS")" "kill -TERM 240" "1"
 not_contains "claudex: no 'no usable session id'" "$out" "no usable session id"
 rm -rf "$W/proc/240/environ"
 
+# --- a relaunched leg carries a -r<N> session suffix -----
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkdoc "- 10:00 WRAPPED - done"
+mkcmdline 260 claude -n "${SESSION_NAME}-r1" work
+pgrep_x_stub 260
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "relaunch -r1: the one -r1 session is matched -> rc 0" "$rc" "0"
+exact_count "relaunch -r1: TERM sent to the -r1 pid" "$(cat "$CALLS")" "kill -TERM 260" "1"
+# the unsuffixed session AND its -r1 relaunch both live: ambiguous, refuse
+mkcmdline 261 claude -n "$SESSION_NAME" work
+pgrep_x_stub 260 261
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "relaunch -r1 beside the original: 2 matches -> rc 5" "$rc" "5"
+check "relaunch -r1 beside the original: nothing signaled" "$(cat "$CALLS")" ""
+# a suffix that is not -r<digits> is another session, never this leg's
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 262 claude -n "${SESSION_NAME}-rx" work
+mkcmdline 263 claude -n "${SESSION_NAME}-r" work
+mkcmdline 264 claude -n "${SESSION_NAME}-extra" work
+pgrep_x_stub 262 263 264
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "non -r<N> suffixes are not this leg: rc 5" "$rc" "5"
+check "non -r<N> suffixes: nothing signaled" "$(cat "$CALLS")" ""
+
+# --- cause 2: a judge session's doc stem is not an N<k> leg stem ---------------
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+JDOC="$W/HIMMEL-9-judge-j7y-2026-01-01-RESUME.md"
+printf '# judge\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - judging\n- 10:00 WRAPPED - verdict written, lock released\n' > "$JDOC"
+mkcmdline 265 claude -n "HIMMEL-9-judge-j7y" work
+pgrep_x_stub 265
+reset_calls
+rc=0; out=$(run "$JDOC" 2>&1) || rc=$?
+check "judge: a WRAPPED judge doc closes its session -> rc 0" "$rc" "0"
+exact_count "judge: TERM sent to the judge pid" "$(cat "$CALLS")" "kill -TERM 265" "1"
+
+# --- cause 3: --sweep closes every finished leg in the manifest ----------------
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+SW_A="$W/HIMMEL-9-N31-aaa-2026-01-01-RESUME.md"
+SW_B="$W/HIMMEL-9-N32-bbb-2026-01-01-RESUME.md"
+SW_C="$W/HIMMEL-9-N33-ccc-2026-01-01-RESUME.md"
+for d in "$SW_A" "$SW_B" "$SW_C"; do printf '# leg\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n' > "$d"; done
+echo '- 10:00 WRAPPED - done' >> "$SW_A"
+echo '- 10:00 WRAPPED - done' >> "$SW_B"
+echo '- 10:00 LIVE - still working' >> "$SW_C"
+mkcmdline 270 claude -n HIMMEL-9-N31-aaa-2026-01-01 work
+mkcmdline 271 claude -n HIMMEL-9-N32-bbb-2026-01-01-r1 work
+mkcmdline 272 claude -n HIMMEL-9-N33-ccc-2026-01-01 work
+pgrep_x_stub 270 271 272
+sweep_manifest="$W/sweep-fleet.json"
+rm -f "$sweep_manifest"
+bash "$HERE/fleet-manifest.sh" add "$sweep_manifest" "$SW_A" "$SW_B" "$SW_C"
+reset_calls
+rc=0; out=$(run --sweep --fleet "$sweep_manifest" 2>&1) || rc=$?
+check "sweep: rc 0" "$rc" "0"
+exact_count "sweep: the first WRAPPED leg is closed" "$(cat "$CALLS")" "kill -TERM 270" "1"
+exact_count "sweep: the -r1 WRAPPED leg is closed" "$(cat "$CALLS")" "kill -TERM 271" "1"
+not_contains "sweep: the still-working leg is never signaled" "$(cat "$CALLS")" "kill -TERM 272"
+contains "sweep: summary names the counts" "$out" "sweep: closed=2 refused=0 skipped=1"
+check "sweep: only the unfinished leg stays in the manifest" "$SW_C" "$(jq -r '.legs[].doc' "$sweep_manifest")"
+# a sweep without a manifest is a usage error
+rc=0; run --sweep >/dev/null 2>&1 || rc=$?
+check "sweep: no --fleet manifest -> rc 2" "$rc" "2"
+
 # --- 24: no handovers/ leaked into the real repo ----------------
 post_handovers=absent
 [ -n "$REPO_ROOT" ] && [ -e "$REPO_ROOT/handovers" ] && post_handovers=present
