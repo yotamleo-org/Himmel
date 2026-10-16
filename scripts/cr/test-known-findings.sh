@@ -216,6 +216,7 @@ cat > "$tmp/promo-kf.json" <<'KFJSON'
 {"id":"one-branch","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["onebranch/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
 {"id":"stale","kind":"fix","rung":"advisory","rung_since":"2026-09-01","title":"t","source":"s","globs":["stale/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
 {"id":"prompt-only","kind":"rebuttal","rung":"prompt","title":"t","source":"s","globs":["ponly/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":true,"evidence":{}},
+{"id":"no-branch","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["nobranch/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
 {"id":"already-gated","kind":"fix","rung":"gate","title":"t","source":"s","globs":["gated/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}
 ]}
 KFJSON
@@ -233,6 +234,9 @@ pf() { printf '{"kind":"finding","ts":"%s","branch":"%s","head":"%s","model":"co
   pf 2026-09-10T00:00:00Z b1 4444444 f10 ponly/a.md
   pf 2026-09-11T00:00:00Z b2 5555555 f11 ponly/b.md
   pf 2026-09-12T00:00:00Z b3 6666666 f12 ponly/c.md
+  pf 2026-09-10T00:00:00Z b1 abababa f16 nobranch/a.sh
+  pf 2026-09-11T00:00:00Z b1 bcbcbcb f17 nobranch/b.sh
+  pf 2026-09-12T00:00:00Z "" cdcdcdc f18 nobranch/c.sh
   pf 2026-09-10T00:00:00Z b1 7777777 f13 gated/a.sh
   pf 2026-09-11T00:00:00Z b2 8888888 f14 gated/b.sh
   pf 2026-09-12T00:00:00Z b3 9999999 f15 gated/c.sh
@@ -244,6 +248,7 @@ contains "promote: crossing class proposed with rung, counts, host" "$pl" "PROPO
 not_contains "promote: one-branch class not proposed" "$pl" "PROPOSE [one-branch]"
 not_contains "promote: recurrences before rung_since do not count" "$pl" "PROPOSE [stale]"
 contains "promote: prompt class targets advisory" "$pl" "PROPOSE [prompt-only] prompt -> advisory recurrences=3 branches=3"
+not_contains "promote: a finding with no branch is not a distinct branch" "$pl" "PROPOSE [no-branch]"
 not_contains "promote: a gate class is never proposed" "$pl" "PROPOSE [already-gated]"
 pl2="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bash "$SCRIPT" --ladder --min-recurrences 3 --min-branches 1 2>&1)"
 contains "promote: --min-branches 1 lets the one-branch class cross" "$pl2" "PROPOSE [one-branch] advisory -> gate recurrences=3 branches=1"
@@ -253,7 +258,7 @@ KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bas
 cp "$tmp/promo-kf.json" "$tmp/promo-kf-copy.json"
 pr="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf-copy.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bash "$SCRIPT" --refresh 2>&1)"
 contains "promote: --refresh prints the proposals" "$pr" "PROPOSE [spread] advisory -> gate"
-check "promote: refresh never changes a rung" "$(node -e 'console.log(require(process.argv[1]).classes.map(c=>c.rung).join())' "$tmp/promo-kf-copy.json")" "advisory,advisory,advisory,prompt,gate"
+check "promote: refresh never changes a rung" "$(node -e 'console.log(require(process.argv[1]).classes.map(c=>c.rung).join())' "$tmp/promo-kf-copy.json")" "advisory,advisory,advisory,prompt,advisory,gate"
 pn="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/absent-ledger.jsonl" bash "$SCRIPT" --ladder 2>&1)"
 contains "promote: unreadable ledger says so, no proposals" "$pn" "proposals unavailable"
 

@@ -146,7 +146,7 @@ const NEXT_RUNG = { human: "prompt", prompt: "advisory", advisory: "gate" };
 const hostFor = (c) => {
   if (c.rung === "advisory") {
     if (/shell-lint/.test(c.coverage || "")) return "scripts/lint/shell-lint.sh (wire the rule into .pre-commit-config.yaml)";
-    return (c.globs || []).some(g => /^scripts\/hooks\//.test(g)) ? "a scripts/hooks/ PreToolUse hook (wired in .claude/settings.json)" : ".pre-commit-config.yaml hook running known-findings.sh --diff";
+    return (c.globs || []).some(g => /^scripts\/hooks\//.test(g)) ? "a scripts/hooks/ PreToolUse hook (wired in .claude/settings.json)" : ".pre-commit-config.yaml hook wrapping known-findings.sh --diff (--diff exits 0 on a match, so the wrapper must fail on its output)";
   }
   return c.rung === "prompt" ? "a `detector` entry in known-findings.json (run by --diff)" : "critic-prompt text (set `prompt: true`)";
 };
@@ -165,7 +165,7 @@ const printProposals = () => {
       if (v !== "agreed" && v !== "confirmed") continue;
       if (!r.file || !matchesAny(c.globs, r.file)) continue;
       if (since !== null && !(Date.parse(r.ts) >= since)) continue;
-      rec++; branches.add(r.branch || "?");
+      rec++; if (r.branch) branches.add(r.branch);
     }
     if (rec >= N && branches.size >= M) { n++; console.log(`  PROPOSE [${c.id}] ${c.rung} -> ${NEXT_RUNG[c.rung]} recurrences=${rec} branches=${branches.size} host=${hostFor(c)}`); }
   }
