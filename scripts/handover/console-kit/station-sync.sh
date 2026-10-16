@@ -88,7 +88,7 @@ local_template_diff() {
     if [ -z "$vault" ] && [ -f "$PRIMARY/.env" ]; then
         vault="$(sed -n 's/^LUNA_VAULT_PATH=//p' "$PRIMARY/.env" | head -n 1 | tr -d "\"'")"
     fi
-    [ -d "$vault" ] || return 0
+    [ -d "$vault" ] || { echo "(vault unresolved) the local-edit check did not run"; return 0; }
     local plan prc
     plan="$("${UPGRADE[@]}" --template-dir "$TEMPLATE" --vault-dir "$vault" --dry-run 2>&1)"; prc=$?
     if [ "$prc" -ne 0 ]; then echo "(upgrade.sh --dry-run) rc=$prc: the local-edit check did not run"; return 0; fi
@@ -131,7 +131,7 @@ EOF
 done
 
 clone="${SS_QMD_CLONE:-$HOME/.himmel/qmd-fork}"
-if [ -d "$clone/.git" ]; then
+if [ -e "$clone/.git" ]; then
     git -C "$clone" status --porcelain --untracked-files=no 2>/dev/null | while IFS= read -r l; do
         echo "LOCAL-DIFF qmd_fork ${l#???}"
     done

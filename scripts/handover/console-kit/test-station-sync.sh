@@ -159,4 +159,14 @@ out="$(SS_GH="$W/gh-broken" bash "$SCRIPT" --pr 7 2>&1)"
 contains "11 gh failure named" "$out" "STATION=failed:gh-pr-view"
 check "11 gh failure persisted for tick" "$(cat "$SS_STATE")" "BEHIND:unverified"
 
+SS_VAULT="$W/no-such-vault" run "$W/ver-current" templates/luna-second-brain/scripts/foo.sh
+lacks "12 unresolved vault: template not applied" "$calls" "--only luna_template"
+contains "12 unresolved vault named" "$out" "LOCAL-DIFF luna_template (vault unresolved)"
+
+git init -q "$W/clone2" && echo a > "$W/clone2/f" && git -C "$W/clone2" add f \
+    && git -C "$W/clone2" -c user.name=t -c user.email=t@t commit -qm init \
+    && git -C "$W/clone2" worktree add -q "$W/wt" 2>/dev/null && echo b > "$W/wt/f"
+SS_QMD_CLONE="$W/wt" run "$W/ver-current" docs/x.md
+contains "13 linked-worktree clone edit reported" "$out" "LOCAL-DIFF qmd_fork f"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
