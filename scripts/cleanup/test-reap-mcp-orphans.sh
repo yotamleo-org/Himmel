@@ -27,7 +27,9 @@ cat > "$FIX" <<'T'
 200|1|node|node /home/u/.npm/_npx/y/node_modules/.bin/context7-mcp
 201|200|node|node /usr/lib/node_modules/typescript/lib/typingsInstaller.js
 300|1|bun|bun run /home/u/graphify-mcp/server.ts
-400|1|node|node /opt/qmd/dist/cli.js qmd --http
+400|1|node|node /opt/qmd/dist/cli.js qmd --http /home/u/.claude/plugins/cache/qmd
+700|1|code|code --folder /home/u/proj
+701|700|node|node /usr/lib/node_modules/typescript/lib/tsserver.js
 500|1|bash|bash scripts/foo.sh context7-mcp-docs-note
 600|1|node|node /home/u/.claude/plugins/cache/x/typescript-language-server --stdio
 T
@@ -43,6 +45,7 @@ grep -q 'ORPHAN 300 ' <<< "$out" && pass "orphan graphify-mcp flagged" || fail "
 grep -q 'ORPHAN 600 ' <<< "$out" && pass "orphan plugin-cache LSP flagged" || fail "600 not flagged"
 ! grep -q 'ORPHAN 101 \|ORPHAN 102 ' <<< "$out" && pass "claude-descended MCP/LSP spared" || fail "live-claude child flagged"
 ! grep -q 'ORPHAN 400 ' <<< "$out" && pass "qmd --http daemon whitelisted" || fail "qmd flagged"
+! grep -q 'ORPHAN 701 ' <<< "$out" && pass "editor-owned tsserver spared" || fail "editor tsserver flagged"
 ! grep -q 'ORPHAN 500 ' <<< "$out" && pass "non-MCP argv0 not matched" || fail "bash note flagged"
 grep -q 'would kill' <<< "$out" && pass "report-only says would kill" || fail "no would-kill wording"
 [ -s "$LOG" ] && pass "log appended" || fail "log empty"

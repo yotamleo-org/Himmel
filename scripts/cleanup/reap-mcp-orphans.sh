@@ -13,7 +13,9 @@
 #   2. it is not a whitelisted intentional daemon (qmd --http, telegram
 #      supervisor/poller, hermes gateway, flow-exporter, openrgb-bridge,
 #      ggs bridges), and
-#   3. NO ancestor in its parent chain is a live `claude` process.
+#   3. NO ancestor in its parent chain is a live `claude` process, and every
+#      ancestor up to init/systemd is itself an MCP/LSP match (so an editor's
+#      language server, owned by a live non-claude process, is never touched).
 # Signature + no-live-claude-ancestor is the reliable combination: an orphan is
 # reparented to init/systemd, so "parent is dead" is not directly observable.
 #
@@ -55,17 +57,25 @@ fi
 SIG='context7-mcp|graphify-mcp|tsserver|typescript-language-server|typingsInstaller|/\.claude/plugins/cache/'
 KEEP='qmd.* --http|telegram.*(supervisor|poller)|hermes.*gateway|flow-exporter|openrgb-bridge|ggs.*bridge'
 
-declare -A PPID_OF COMM_OF
-while IFS='|' read -r pid ppid comm _; do
+declare -A PPID_OF COMM_OF CMD_OF
+while IFS='|' read -r pid ppid comm cmd; do
     PPID_OF[$pid]=$ppid
     COMM_OF[$pid]=$comm
+    CMD_OF[$pid]=$cmd
 done <<< "$TABLE"
 
-has_claude_ancestor() {
+# Succeeds when an ancestor is a live claude, or any ancestor is some other
+# live process that is not itself an MCP/LSP signature match (an editor, a
+# shell, a service): that process may own the child, so it is never an orphan.
+# Only a chain of signature matches ending at init/systemd is an orphan.
+has_owner_ancestor() {
     local p=$1 hops=0
     while [ -n "${PPID_OF[$p]:-}" ] && [ "$hops" -lt 64 ]; do
         p=${PPID_OF[$p]}
-        [ "${COMM_OF[$p]:-}" = "claude" ] && return 0
+        [ "$p" = "0" ] && return 1
+        [ "$p" = "1" ] && return 1
+        case "${COMM_OF[$p]:-}" in claude) return 0 ;; systemd) return 1 ;; esac
+        grep -Eq "$SIG" <<< "${CMD_OF[$p]:-}" || return 0
         hops=$((hops+1))
     done
     return 1
@@ -82,12 +92,16 @@ while IFS='|' read -r pid ppid comm cmd; do
     case "$comm" in bash|sh|zsh|grep|ps|awk|sed) continue ;; esac
     grep -Eq "$SIG" <<< "$cmd" || continue
     grep -Eq "$KEEP" <<< "$cmd" && continue
-    has_claude_ancestor "$pid" && continue
+    has_owner_ancestor "$pid" && continue
     found=$((found+1))
     line="ORPHAN $pid ($comm) $verb: $cmd"
     echo "$line"
     printf '%s %s\n' "$(date -u +%FT%TZ)" "$line" >> "$LOG"
-    [ "$KILL" -eq 1 ] && kill "$pid" 2>/dev/null
+    # The table is a snapshot: re-read the live command line so a recycled PID
+    # is never signalled.
+    if [ "$KILL" -eq 1 ] && [ "$(ps -o args= -p "$pid" 2>/dev/null | sed 's/^ *//')" = "$cmd" ]; then
+        kill "$pid" 2>/dev/null
+    fi
 done <<< "$TABLE"
 
 summary="reap-mcp-orphans: $found orphan(s) ($verb)"
