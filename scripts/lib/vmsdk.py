@@ -487,8 +487,8 @@ class VM:
         restores over the VM's current state, so run it on a VM you can spare."""
         self._require_vm("audit-base")
         self.restore(name)
-        self.up()
         try:
+            self.up()
             self._assert_image_clean()
         finally:
             self.down()
