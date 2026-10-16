@@ -8,7 +8,8 @@
 #   1. api.github.com, resolved, so /meta can be fetched;
 #   2. GitHub's published ranges (api.github.com/meta: web, api, git, packages,
 #      actions), which cover github.com, codeload, objects, ghcr and the
-#      Actions results/cache hosts that have no stable name to resolve;
+#      Actions runner service. The artifact/cache blob storage hosts are not in
+#      /meta; whether jobs need them is settled by the live proof;
 #   3. the package mirrors the shell-unit shards use, resolved.
 # Any failure, or an empty /meta, exits non-zero: the host loop then refuses to
 # serve a job. Nothing here widens the private-range rejects in nftables.conf.
