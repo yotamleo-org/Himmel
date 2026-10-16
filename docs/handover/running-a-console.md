@@ -380,6 +380,9 @@ PR that is already `MERGED`, GitHub reports `mergeStateStatus: UNKNOWN`
 permanently, so check 1 always fails there — that is expected, not a bug;
 the script's domain is a PR that has not yet merged.
 
+`scripts/handover/console-kit/ready-go.sh [--to <leg> --token <nonce>] [--ledger <console doc>] <pr> <sha>`
+is the whole mechanical READY turn in one call: the `ready-check.sh` output, the coverage line, the trust-path result, the ticket state and the exact GO line to send. It is read-only (no GO file, no message): `go.sh` and the SendMessage stay yours.
+
 The automated review ledger is keyed by head sha, so **every push needs its own review
 round**, even a one-line fix after a judge's NO-GO. A ruling of "no new
 `/pr-check` panel" leaves check 4 with no row to find, and the marker-clear
