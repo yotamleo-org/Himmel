@@ -1779,3 +1779,30 @@ test('registry-driven trust: three registered forks are trusted, an unregistered
   assert.ok(!text.includes('github.com/yotamleo '), 'never an owner-wide entry');
   assert.ok(!/tobi\/qmd/.test(text), 'upstream is not trusted');
 });
+test('fork trust text names the destination and excludes upstream, parent, force-push, delete and publish', () => {
+  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo/qmd'] });
+  const line = s.autoMode.environment.find((e) => e !== '$defaults');
+  assert.match(line, /push only to the origin remote github\.com\/yotamleo\/qmd/);
+  assert.match(line, /gh pr create --repo yotamleo\/qmd/);
+  assert.match(line, /Not covered:[^.]*upstream/);
+  for (const word of ['parent repo', 'force-push', 'branch delete', 'publish']) assert.ok(line.includes(word), word);
+  assert.ok(!line.includes('trusted like the working repo'));
+  assert.deepEqual([...line.matchAll(/github\.com\/([\w.-]+\/[\w.-]+)/g)].map((m) => m[1].replace(/\.$/, '')), ['yotamleo/qmd', 'yotamleo/qmd']);
+});
+test('CLI reads the fork registry from the anchor, never the worktree copy', () => {
+  const { root, repo, wt } = primaryWithWorktree();
+  const put = (base, nwo) => {
+    mkdirSync(join(base, 'scripts', 'guardrails'), { recursive: true });
+    writeFileSync(join(base, 'scripts', 'guardrails', 'himmel-adapters.json'), JSON.stringify([{ nwo }]));
+  };
+  put(repo, 'yotamleo/qmd');
+  put(wt, 'yotamleo/evil');
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
+  const run = spawnSync(process.execPath, [cli, 'leg-impl'], {
+    encoding: 'utf8', cwd: wt, env: { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt },
+  });
+  assert.equal(run.status, 0, run.stderr);
+  const text = JSON.parse(run.stdout).autoMode.environment.join('\n');
+  assert.ok(text.includes('github.com/yotamleo/qmd '), text);
+  assert.ok(!text.includes('yotamleo/evil'), text);
+});

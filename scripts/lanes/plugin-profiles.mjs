@@ -647,7 +647,7 @@ export function forkTrustSettings(nwos) {
       throw new Error(`plugin-profiles: fork nwo ${JSON.stringify(n)} must be an exact yotamleo/<repo> name`);
     }
   }
-  const lines = [...new Set(nwos)].map((n) => `Source control: github.com/${n} is one of our own registered forks; its clones, dependency installs, test runs, branch pushes and pull requests against it are our own work, trusted like the working repo`);
+  const lines = [...new Set(nwos)].map((n) => `Source control: github.com/${n} is one of our own registered forks. Its clone, dependency install and test runs are trusted, and so are branch pushes and pull requests whose destination is that fork only: push only to the origin remote github.com/${n}, and open pull requests only with gh pr create --repo ${n}. Not covered: the registry upstream remote, any parent repo of the fork, force-push, branch delete and publish.`);
   return { autoMode: { environment: ['$defaults', ...lines] } };
 }
 
