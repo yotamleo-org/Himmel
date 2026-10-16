@@ -435,7 +435,7 @@ lane=$(grep '^lane ' "$WS/calls.log" | head -1)
 [ "$rc" -eq 0 ] && pass "T37 exit 0" || fail "T37 exit 0 (got $rc): $out"
 case "$lane" in
   *"graphify-semantic-"*) fail "T37 lane still sees the shim on PATH: $lane" ;;
-  "lane -p --model sonnet --permission-mode default --max-budget-usd 0.25 --effort low | stdin=extract this | cwdcorpus=no | claude="*) pass "T37 lane argv/stdin/cwd, shim off PATH" ;;
+  "lane -p --model sonnet --permission-mode default --max-budget-usd 1.00 --effort high | stdin=extract this | cwdcorpus=no | claude="*) pass "T37 lane argv/stdin/cwd, shim off PATH" ;;
   *) fail "T37 lane call: $lane" ;;
 esac
 grep -qx 'lane-tools=' "$WS/calls.log"; g37t=$?
@@ -462,10 +462,10 @@ out=$(GRAPHIFY_STUB_CHUNKFAIL=1 run --name t39b --corpus-root "$C39B" --corpus-c
 echo "T40: claude-api passes --token-budget derived from the per-call budget, capped at graphify's 60000"
 C40="$WS/c40"; new_corpus "$C40"; : > "$WS/calls.log"
 out=$(run_api --name t40 --corpus-root "$C40" --corpus-class himmel-code --backend claude-api); rc=$?
-case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 30000"*) pass "T40 default 0.25 -> 30000" ;; *) fail "T40 default: $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
+case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 30000"*) pass "T40 default 1.00 -> 30000" ;; *) fail "T40 default: $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
 C40B="$WS/c40b"; new_corpus "$C40B"; : > "$WS/calls.log"
-out=$(GRAPHIFY_API_CALL_BUDGET_USD=1.00 run_api --name t40b --corpus-root "$C40B" --corpus-class himmel-code --backend claude-api); rc=$?
-case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 60000"*) pass "T40 1.00 -> capped at 60000" ;; *) fail "T40 capped: $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
+out=$(GRAPHIFY_API_CALL_BUDGET_USD=3.00 run_api --name t40b --corpus-root "$C40B" --corpus-class himmel-code --backend claude-api); rc=$?
+case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 60000"*) pass "T40 3.00 -> capped at 60000" ;; *) fail "T40 capped: $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
 C40C="$WS/c40c"; new_corpus "$C40C"; : > "$WS/calls.log"
 out=$(run --name t40c --corpus-root "$C40C" --corpus-class himmel-code --backend claude-cli); rc=$?
 ext40c="$(grep '^graphify extract' "$WS/calls.log")"
@@ -480,40 +480,48 @@ grep -q 'error_max_budget_usd' "$WS/claude.out" && grep -q 'lane exited 1' "$WS/
 
 echo "T42: the estimate line states the per-call cap and the expected per-chunk cost"
 out=$(run_api --name t42 --corpus-root "$C36" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
-[[ "$out" == *"call-cap=0.25"* ]] && [[ "$out" == *"chunk-tokens=30000"* ]] && [[ "$out" == *"chunk-cost-est="* ]] \
+[[ "$out" == *"call-cap=1.00"* ]] && [[ "$out" == *"chunk-tokens=30000"* ]] && [[ "$out" == *"chunk-cost-est="* ]] \
   && pass "T42 estimate carries cap, chunk tokens and chunk cost" || fail "T42 (rc=$rc): $out"
-out=$(GRAPHIFY_API_CALL_BUDGET_USD=1.00 run_api --name t42b --corpus-root "$C36" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
-[[ "$out" == *"call-cap=1.00"* ]] && [[ "$out" == *"chunk-tokens=60000"* ]] && pass "T42 a bigger cap raises the chunk, capped at 60000" || fail "T42b (rc=$rc): $out"
+out=$(GRAPHIFY_API_CALL_BUDGET_USD=3.00 run_api --name t42b --corpus-root "$C36" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
+[[ "$out" == *"call-cap=3.00"* ]] && [[ "$out" == *"chunk-tokens=60000"* ]] && pass "T42 a bigger cap raises the chunk, capped at 60000" || fail "T42b (rc=$rc): $out"
 
 echo "T43: a per-call budget too small for any chunk is refused, not turned into a zero token budget"
 out=$(GRAPHIFY_API_CALL_BUDGET_USD=0.000001 run_api --name t43 --corpus-root "$C36" --corpus-class himmel-code --backend claude-api --dry-run 2>&1); rc=$?
 [ "$rc" -eq 1 ] && [[ "$out" == *"too small"* ]] && pass "T43 tiny call budget exits 1" || fail "T43 (rc=$rc): $out"
 
-echo "T44: a re-extract returning a strict subset (under half the old nodes) is refused for that file: old nodes kept, file unstamped, decision logged"
-C44="$WS/c44"; new_corpus "$C44"
-python3 - "$C44/graphify-out/graph.json" <<'PY'
+echo "T44: the lane's --effort comes from GRAPHIFY_API_EFFORT (default high); garbage is refused"
+C44="$WS/c44"; new_corpus "$C44"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(GRAPHIFY_API_EFFORT=medium GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t44 --corpus-root "$C44" --corpus-class himmel-code --backend claude-api); rc=$?
+case "$(grep '^lane ' "$WS/calls.log" | head -1)" in *"--effort medium |"*) pass "T44 GRAPHIFY_API_EFFORT=medium reaches the lane" ;; *) fail "T44 medium (rc=$rc): $(grep '^lane ' "$WS/calls.log") $out" ;; esac
+C44B="$WS/c44b"; new_corpus "$C44B"; : > "$WS/calls.log"
+out=$(GRAPHIFY_API_EFFORT=bogus run_api --name t44b --corpus-root "$C44B" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"GRAPHIFY_API_EFFORT"* ]] && [ ! -s "$WS/calls.log" ] && pass "T44 garbage effort exits 1, nothing invoked" || fail "T44b (rc=$rc): $out"
+
+echo "T45: a re-extract returning a strict subset (under half the old nodes) is refused for that file: old nodes kept, file unstamped, decision logged"
+C45="$WS/c45"; new_corpus "$C45"
+python3 - "$C45/graphify-out/graph.json" <<'PY'
 import json, sys
 p = sys.argv[1]; g = json.load(open(p))
 for i in range(4):
     g["nodes"].append({"id": "old_a_%d" % i, "label": "old %d" % i, "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
 json.dump(g, open(p, "w"))
 PY
-rm -f "$C44/b.md" "$C44/sub/c.md"
-out=$(run --name t44 --corpus-root "$C44" --corpus-class himmel-code); rc=$?
-all44=$(ids "$C44")
-for want in old_a_0 old_a_1 old_a_2 old_a_3 stale_a; do
-  case " $all44 " in *" $want "*) ;; *) fail "T44 dropped $want (rc=$rc): $all44" ;; esac
-done
-case " $all44 " in *" sem_a.md_alpha "*) fail "T44 the refused file's new node was merged: $all44" ;; *) pass "T44 old nodes survived, the shrunken extraction was not merged" ;; esac
-[ "$(lastrun "$C44" failed)" = "1" ] && pass "T44 counted as a failed (retried) file" || fail "T44 failed count: $(tail -1 "$C44/graphify-out/semantic-runs.jsonl")"
-[ "$(lastrun "$C44" shrink_refused)" = "1" ] && [[ "$out" == *"shrink guard"* ]] && pass "T44 decision logged to the run row and stderr" || fail "T44 no shrink log: $out"
-python3 -c 'import json,sys;sys.exit(0 if "a.md" not in json.load(open(sys.argv[1]))["files"] else 1)' "$C44/graphify-out/semantic-manifest.json" \
-  && pass "T44 a.md stays unstamped" || fail "T44 a.md was stamped"
-
-echo "T45: a normal re-extract (nodes not under half) still replaces the file's old nodes"
-C45="$WS/c45"; new_corpus "$C45"; rm -f "$C45/b.md" "$C45/sub/c.md"
+rm -f "$C45/b.md" "$C45/sub/c.md"
 out=$(run --name t45 --corpus-root "$C45" --corpus-class himmel-code); rc=$?
-case " $(ids "$C45") " in *" stale_a "*) fail "T45 stale node kept" ;; *" sem_a.md_alpha "*) pass "T45 stale replaced by the new extraction" ;; *) fail "T45 (rc=$rc): $(ids "$C45")" ;; esac
+all45=$(ids "$C45")
+for want in old_a_0 old_a_1 old_a_2 old_a_3 stale_a; do
+  case " $all45 " in *" $want "*) ;; *) fail "T45 dropped $want (rc=$rc): $all45" ;; esac
+done
+case " $all45 " in *" sem_a.md_alpha "*) fail "T45 the refused file's new node was merged: $all45" ;; *) pass "T45 old nodes survived, the shrunken extraction was not merged" ;; esac
+[ "$(lastrun "$C45" failed)" = "1" ] && pass "T45 counted as a failed (retried) file" || fail "T45 failed count: $(tail -1 "$C45/graphify-out/semantic-runs.jsonl")"
+[ "$(lastrun "$C45" shrink_refused)" = "1" ] && [[ "$out" == *"shrink guard"* ]] && pass "T45 decision logged to the run row and stderr" || fail "T45 no shrink log: $out"
+python3 -c 'import json,sys;sys.exit(0 if "a.md" not in json.load(open(sys.argv[1]))["files"] else 1)' "$C45/graphify-out/semantic-manifest.json" \
+  && pass "T45 a.md stays unstamped" || fail "T45 a.md was stamped"
+
+echo "T46: a normal re-extract (nodes not under half) still replaces the file's old nodes"
+C46="$WS/c46"; new_corpus "$C46"; rm -f "$C46/b.md" "$C46/sub/c.md"
+out=$(run --name t46 --corpus-root "$C46" --corpus-class himmel-code); rc=$?
+case " $(ids "$C46") " in *" stale_a "*) fail "T46 stale node kept" ;; *" sem_a.md_alpha "*) pass "T46 stale replaced by the new extraction" ;; *) fail "T46 (rc=$rc): $(ids "$C46")" ;; esac
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

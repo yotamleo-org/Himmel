@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # scripts/eval/guard-corpus/diff - run a guard-corpus JSONL through two hook
-# copies (base vs head) and report regressions (HIMMEL-4168).
+# copies (base vs head) and report regressions.
 #
 # NO EXEC MODE. This tool NEVER runs a corpus row as a command. Each row is
 # piped to a hook copy on STDIN as the hook's JSON input; the hook, not this
@@ -25,19 +25,18 @@
 # not on the allowlist is closed by default. The real primary checkout is never
 # cwd and is never written.
 #
-# HIMMEL-4912 adds a kernel boundary per hook: the materialised hook tree and
+# Each hook runs behind a kernel boundary: the materialised hook tree and
 # scratch primary are read-only inputs; HOME/HANDOVER_DIR live in fresh tmpfs.
 # Host filesystem Unix sockets are not bound, and networking is unshared.
 # ponytail: invalid-UTF-8 corpus -> uncaught UnicodeDecodeError instead of
-# setup-error 2, tracked with gen transform-fidelity/test follow-ups in
-# HIMMEL-4179 -- upgrade path: fold UTF-8 decode into the corpus-read handler.
+# setup-error 2 -- upgrade path: fold UTF-8 decode into the corpus-read handler.
 #
 # A hook source is given either as a path to a .sh file, or as `sha:PATH` where
 # PATH is a repo-relative hook path materialised from that git SHA into a
 # scratch dir via `git show`. Both forms are copied into the scratch tree so
 # the hook's sibling lib lookups resolve against a copy, not the live tree.
 #
-# ROWS (HIMMEL-4537). A row carries its own tool_name (default Bash) and
+# ROWS. A row carries its own tool_name (default Bash) and
 # tool_input object, so Write/Edit/NotebookEdit/... guards are testable; every
 # string in tool_input has @PRIMARY@ substituted. Optional per-row "cwd" is
 # "primary" (default: the scratch primary on main) or "worktree" (a scratch
@@ -68,7 +67,7 @@
 # deny-expected seeds but the base denied none of them (the positive control
 # never fired, so a clean result proves nothing). Two broken hooks, and a
 # corpus that demonstrated no deny coverage, must never read as clean.
-# Exit 4 = VACUOUS (HIMMEL-4219): deny-expected rows exist and NEITHER side
+# Exit 4 = VACUOUS: deny-expected rows exist and NEITHER side
 # denied any, so the hook fails open on both (typically a missing data
 # dependency); a "0 regressions" there is not a pass. A `VACUOUS:` line prints.
 #
@@ -97,7 +96,7 @@ from concurrent.futures import ThreadPoolExecutor
 PLACEHOLDER = "@PRIMARY@"
 WT_PLACEHOLDER = "@WORKTREE@"
 # per-row cwd: the scratch primary on main, or a scratch worktree of it on a
-# feature branch (HIMMEL-4537).
+# feature branch.
 ROW_CWDS = ("primary", "worktree")
 # per-row payload context passed to the hook verbatim when present.
 CONTEXT_KEYS = ("permission_mode", "session_id")
@@ -112,8 +111,8 @@ def run_git(args, cwd=None, check=True, env=None):
     return p.stdout.decode("utf-8", "replace").strip()
 
 
-# A positive ALLOWLIST is the structural fix for sandbox-escape-via-environment
-# (HIMMEL-4168, round 6). Popping named seam variables one at a time never
+# A positive ALLOWLIST is the structural fix for sandbox-escape-via-environment.
+# Popping named seam variables one at a time never
 # converges: BASH_ENV and ENV make bash source an arbitrary script at startup;
 # LD_PRELOAD/LD_* inject a shared object; GIT_TEMPLATE_DIR makes `git init`
 # copy external hooks into the scratch .git; GIT_DIR/GIT_CONFIG* redirect git
@@ -200,7 +199,7 @@ def _copy_tree(scripts_root, dest_dir):
     dest_scripts = os.path.join(dest_dir, "scripts")
     os.makedirs(dest_scripts, exist_ok=True)
     # top-level data files (scripts/chokepoints.json, ...): a hook that reads
-    # one beside itself fails open on BOTH sides without it (HIMMEL-4219).
+    # one beside itself fails open on BOTH sides without it.
     for name in os.listdir(scripts_root):
         s = os.path.join(scripts_root, name)
         if os.path.isfile(s):
@@ -216,7 +215,7 @@ def _materialise_tree(repo, sha, dest_dir):
     dest_scripts = os.path.join(dest_dir, "scripts")
     os.makedirs(dest_scripts, exist_ok=True)
     # "" = the top-level files of scripts/ (non-recursive, blobs only); the
-    # three subtrees are exported recursively (HIMMEL-4219).
+    # three subtrees are exported recursively.
     for sub in ("", "hooks", "guardrails", "lib"):
         # keep the tree's mode (not --name-only): a 100755 helper copied as
         # 0644 would fail only on the sha-materialised side when invoked
@@ -358,7 +357,7 @@ def decision(rc, stdout):
     if not isinstance(out, dict):
         return "pass"
     if bom:
-        # HIMMEL-4586: the hooks doc says stdout is read as JSON when it starts
+        # The hooks doc says stdout is read as JSON when it starts
         # with { "ignoring surrounding whitespace" and never mentions a BOM, so
         # whether the harness honours this decision is undocumented. Inconclusive
         # (ODD, exit 3), never `pass`: a deny must not score as an allow.
@@ -385,7 +384,7 @@ def decision(rc, stdout):
 RANK = {"approve": 0, "pass": 1, "ask": 2, "deny": 3}
 
 
-# HIMMEL-5055: one runtime mask list per run instead of a system-root walk per
+# One runtime mask list per run instead of a system-root walk per
 # launch. sandbox-run.sh validates the file (owner, mode, roots, TTL 600s,
 # directory fingerprint) and walks itself when it cannot trust it, so a stale
 # or missing list only costs time. Rebuilt at half the TTL.
@@ -445,13 +444,13 @@ def run_one_hook(hook_path, tool_name, tool_input, cwd, anchor, home,
         CLAUDE_PROJECT_DIR=tree_root,
     )
     # each side reads ITS OWN registry copy (never an inherited path): set only
-    # when the materialised tree carries one (HIMMEL-4219).
+    # when the materialised tree carries one.
     registry = os.path.join(tree_root, "scripts", "chokepoints.json")
     if os.path.isfile(registry):
         overrides["CHOKEPOINT_REGISTRY"] = registry
     env = _sandbox_env(**overrides)
     launch_env = env.copy()
-    # HIMMEL-4912: classify every row behind the kernel filesystem/network
+    # Classify every row behind the kernel filesystem/network
     # fence. Only immutable hook/cwd inputs cross it; state lives in tmpfs.
     runner = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                          "..", "..", "lib", "sandbox-run.sh"))
@@ -475,7 +474,7 @@ def run_one_hook(hook_path, tool_name, tool_input, cwd, anchor, home,
     t0 = time.time()
     # stdout goes to a temp file, not a pipe: a pipe's EOF waits on every
     # process holding the write end, so a hook that backgrounds a child would
-    # read as TIMEOUT. The hook's own exit ends the row (HIMMEL-4587); the
+    # read as TIMEOUT. The hook's own exit ends the row; the
     # group is then killed so the child never outlives the row.
     with tempfile.TemporaryFile() as outf:
         p = subprocess.Popen(["bash", runner] + argv, stdin=subprocess.PIPE,
@@ -521,7 +520,7 @@ def _record_run_row(args, rc, results, metrics):
                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout.decode().strip()
     root = top or os.path.abspath(args.repo)
     def hook_name(spec):
-        # HIMMEL-4659: repo-relative, so a checkout root does not change the identity
+        # Repo-relative, so a checkout root does not change the identity
         # and two hooks sharing a file name do not collide. sha: specs already are.
         # A hook outside the repo has no repo-relative path: its basename stays.
         if spec.startswith("sha:"):
@@ -609,7 +608,7 @@ def main(argv):
     # would raise KeyError/TypeError inside the worker and again exit 1. A
     # malformed row is a setup error -> exit 2. tool_name defaults to Bash; a
     # Bash row needs a string tool_input.command, any other tool an object
-    # tool_input (HIMMEL-4537). cwd, if given, is one of ROW_CWDS, and the
+    # tool_input. cwd, if given, is one of ROW_CWDS, and the
     # context keys, if given, are strings.
     corpus = []
     for lineno, row in raw_rows:
@@ -692,7 +691,7 @@ def main(argv):
         # runtime masks); on a cold CI disk the first parallel batch spent its
         # whole --timeout-run there (rows 0-3 TIMEOUT on both sides). Build the
         # mask list once, serially and unbounded, before the pool; launches then
-        # reuse it (HIMMEL-5055). A one-row corpus has no later rows to protect
+        # reuse it. A one-row corpus has no later rows to protect
         # and the build counts against its wall time (the bg-child test times a
         # one-row run), so it keeps the per-launch walk.
         if len(corpus) > 1:
@@ -716,7 +715,7 @@ def main(argv):
         # below, exit 3), never a confirmed regression. Same for `newly`:
         # require a CLEAN base-allow, so a base error/timeout is not misread
         # as a clean allow that the head then denied.
-        # HIMMEL-4537: both sides are now DECISIONS (deny/ask/pass/approve),
+        # Both sides are now DECISIONS (deny/ask/pass/approve),
         # read from the exit code and the JSON on stdout, so a regression is
         # any clean head looser than its clean base on RANK: a lost deny
         # (exit-2 or JSON), a deny downgraded to ask, an ask that no longer
@@ -740,10 +739,10 @@ def main(argv):
         no_deny_control = bool(deny_expected) and not deny_fired
         # VACUOUS: deny seeds exist and NEITHER side denied any -- a hook that
         # fails open (missing data dependency, broken registry) on both sides
-        # reads as 0 regressions but proved nothing (HIMMEL-4219).
+        # reads as 0 regressions but proved nothing.
         head_fired = [r for r in deny_expected if r["head"] == "deny"]
         vacuous = bool(deny_expected) and not deny_fired and not head_fired
-        # over-deny (HIMMEL-4537): allow-expected rows (the benign twins) a
+        # over-deny: allow-expected rows (the benign twins) a
         # side denied. Reported, never an exit code: over-deny is friction,
         # not an escape.
         allow_expected = [r for r in results if r.get("expect") == "allow"]

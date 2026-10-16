@@ -404,5 +404,18 @@ env FOO=1 /tmp/a){/graphify
 echo a ; /tmp/a){/graphify
 SHAPES_EOF
 
+# A fence DENY must point a leg at the wrapper that works from a worktree.
+cat > "$PROJECT/scripts/guardrails/graphify-fence.sh" <<'FENCE_EOF'
+#!/usr/bin/env bash
+echo "graphify-fence: DENY fake reason" >&2
+exit 2
+FENCE_EOF
+out="$(run_hook "cd $T/luna && graphify query q" 2>&1)"; rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'DENY fake reason' <<<"$out" && grep -q 'scripts/graphify/leg-graph.sh query|explain' <<<"$out"; then
+    ok "a fence denial keeps its reason and names leg-graph.sh"
+else
+    bad "denial hint: rc=$rc out=$out"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

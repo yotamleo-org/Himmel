@@ -42,3 +42,8 @@
    (A bare `--diff` resolves `<default-branch>...HEAD` itself — kept a literal single command on purpose, so the native permission matcher can allow-list it instead of prompting or silently denying a `$(…)`/`||` compound in auto mode, HIMMEL-203, and so the worktree-isolation guard has no runtime operand to refuse, HIMMEL-2226.)
 
    The same classes reach the critics structurally: `critic-first-pass.sh` appends the `rebuttal` classes to every diff-mode prompt as "already adjudicated — do not re-raise unless the code regressed, and then say why this instance differs" (`CRITIC_KNOWN_FINDINGS=0` opts out). A finding in a rebuttal class is adjudicated AGAINST THE CLASS RULE, not re-argued from scratch: verify the cited line — if it matches the class's non-issue shape, `disproved` with the class id as the reason; if the code genuinely regressed against the stated rule, `agreed` like any other finding (a missing "why this instance differs" is never by itself grounds to disprove).
+
+2.9. **Residue scan (HIMMEL-5869) — advisory, NEVER blocks.** Flags each ADDED line in the PR's own diff that looks like scaffolding for a one-time transition: a removal-guard test (class a), a test grepping a source file for a string (b), legacy/compat/old-path code (c), a deny row naming a retired thing (d), or "X was removed" prose (e). Deterministic, diff-scoped, no LLM call, always exits 0. Per finding: drop it before merge, keep it with `residue-keep: <security or safety reason>` on the line, or give it an expiry with `ponytail: <ceiling>, <upgrade path>`. The judgement is `/test-audit`'s "expired transition residue" item. Not a gate until its false-positive rate is measured over more PRs.
+   ```bash
+   bash "<himmel_dir>/scripts/cr/residue-scan.sh"
+   ```

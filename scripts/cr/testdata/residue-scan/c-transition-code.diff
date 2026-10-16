@@ -1,0 +1,6 @@
+diff --git a/scripts/lib/state.sh b/scripts/lib/state.sh
+--- a/scripts/lib/state.sh
++++ b/scripts/lib/state.sh
+@@ -3,0 +4,2 @@
++# legacy format reader, kept for the old path
++[ -f "$old_state" ] && migrate_old_state "$old_state"

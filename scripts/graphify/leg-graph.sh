@@ -9,6 +9,9 @@
 #
 # Usage: bash scripts/graphify/leg-graph.sh query|explain <graphify args...>
 #   `path` is refused: node ids are file-scoped, so cross-file paths are wrong.
+#   A larger default --budget (graphify's own 2000 tokens truncates most
+#   answers) is added unless you pass --budget; a TRUNCATED answer gets a
+#   re-run line naming this wrapper on stderr.
 #   If the graph's built_at_commit is behind this worktree's HEAD, a NOTE goes
 #   to stderr (the answer is still printed) so a stale graph is never silent.
 set -u
@@ -25,7 +28,7 @@ common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ||
 primary="$(dirname "$common")"
 out="$primary/graphify-out"
 if [ ! -f "$out/graph.json" ]; then
-  echo "leg-graph: no graph at $out/graph.json (build it from the primary checkout: /graph-refresh)" >&2
+  echo "leg-graph: no graph at $out/graph.json (build it from the primary checkout: /graph-refresh); once built, run: bash scripts/graphify/leg-graph.sh query|explain \"<q>\"" >&2
   exit 2
 fi
 
@@ -39,4 +42,24 @@ else
   [ "$n" -gt 0 ] && echo "leg-graph: NOTE graph built at ${built:0:9} is $n commits behind this worktree's HEAD; recent changes are missing" >&2
 fi
 
-GRAPHIFY_OUT="$out" exec graphify "$@"
+has_budget=0
+for a in "$@"; do case "$a" in --budget|--budget=*) has_budget=1 ;; esac; done
+[ "$has_budget" = 1 ] || set -- "$@" --budget 8000
+
+ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?
+printf '%s\n' "$ans"
+need="$(printf '%s\n' "$ans" | grep -m1 'TRUNCATED: showing' | sed -n 's/.*--budget \([0-9][0-9]*\).*/\1/p')"
+if [ -n "$need" ]; then
+  shift
+  rerun=""
+  skip=0
+  for a in "$@"; do
+    if [ "$skip" = 1 ]; then skip=0; continue; fi
+    [ "$a" = "--budget" ] && { skip=1; continue; }
+    case "$a" in --budget=*) continue ;; esac
+    q="$(printf '%s' "$a" | sed "s/'/'\\\\''/g")"
+    rerun="$rerun '$q'"
+  done
+  echo "leg-graph: TRUNCATED answer; re-run for the full set: bash scripts/graphify/leg-graph.sh $sub$rerun --budget $need" >&2
+fi
+exit "$rc"

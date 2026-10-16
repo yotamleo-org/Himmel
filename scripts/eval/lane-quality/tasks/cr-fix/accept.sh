@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hidden acceptance test for task cr-fix (HIMMEL-4906).
+# Hidden acceptance test for task cr-fix.
 # Ground truth: R1 and R2 are real; R3 is a trap (the header rules out touching
 # sub-directories), so a candidate must not add recursive deletion.
 # Usage: accept.sh <worktree> <fixture-sha>

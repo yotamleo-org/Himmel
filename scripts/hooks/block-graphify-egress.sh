@@ -200,4 +200,14 @@ else
     # behavior) instead of anchoring to a stale leaked value.
     unset GRAPHIFY_TOOL_CWD
 fi
-exec bash "$FENCE" "$cmd"
+# On a denial, append the working route: a leg worktree has no graph and a cd
+# or relative target is fenced, but the wrapper resolves the primary graph.
+err_file=$(mktemp "${TMPDIR:-/tmp}/graphify-egress-err.XXXXXX") || exit 2
+bash "$FENCE" "$cmd" 2>"$err_file"
+rc=$?
+cat "$err_file" >&2
+rm -f "$err_file"
+if [ "$rc" -eq 2 ]; then
+    echo "block-graphify-egress: for read-only queries use: bash scripts/graphify/leg-graph.sh query|explain \"<question>\"  (no cd, no relative target)" >&2
+fi
+exit "$rc"

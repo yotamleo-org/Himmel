@@ -1,0 +1,10 @@
+{
+  "name": "humanizer",
+  "version": "0.1.0",
+  "description": "[himmel vendor] One opt-in skill from blader/humanizer pinned at 225a6f39: /humanizer rewrites AI-sounding prose. disable-model-invocation. No hooks, agents or scripts.",
+  "author": {
+    "name": "Siqi Chen (upstream) / yotamleo (vendor)"
+  },
+  "license": "MIT",
+  "keywords": ["himmel", "vendored", "humanizer", "opt-in"]
+}

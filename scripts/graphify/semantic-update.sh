@@ -33,8 +33,16 @@
 # refuses a caller ANTHROPIC_API_KEY, and fails closed (exit 2) otherwise: it
 # never falls back to the subscription claude-cli. Spend is bounded by
 # --max-files, a per-call lane budget (GRAPHIFY_API_CALL_BUDGET_USD, default
-# 0.25) and the account cap the lane enforces; the plan's estimate line prints
+# 1.00) and the account cap the lane enforces; the plan's estimate line prints
 # before any call, and --dry-run stops right after it.
+#
+# claude-api runs the extraction at GRAPHIFY_API_EFFORT (default high; low,
+# medium, high, xhigh or max, what `claude --effort` accepts). A/B 2026-10-16:
+# low/medium missed more facts and carried about 4 weak edges in
+# 10 (high about 2); max costs over 5x and returned rc 1 rows. Measured at high:
+# about 0.36 USD per 30k-token chunk, 23.70 USD for a full 680-file himmel run.
+# A high-effort call needs a 1.00 USD cap at 30k-token chunks (at 0.50 and 60k
+# it fails the per-call budget stop), so 1.00 is the default cap.
 #
 # Usage:
 #   semantic-update.sh --name N --corpus-root R --corpus-class C
@@ -83,19 +91,22 @@ if [ -n "${GRAPHIFY_OUT:-}" ] && [ "$GRAPHIFY_OUT" != "graphify-out" ]; then
   echo "semantic-update: GRAPHIFY_OUT overrides are not supported (got '$GRAPHIFY_OUT')" >&2; exit 1
 fi
 OUT_DIR="$CORPUS_ROOT/graphify-out"
-API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-0.25}"
+API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}"
+API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
 if [ "$BACKEND" = "claude-api" ]; then
   case "$API_CALL_BUDGET" in ''|*[!0-9.]*|.|*.*.*) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
   case "$API_CALL_BUDGET" in *[1-9]*) ;; *) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
+  case "$API_EFFORT" in low|medium|high|xhigh|max) ;; *) echo "semantic-update: GRAPHIFY_API_EFFORT must be one of low, medium, high, xhigh, max (got '$API_EFFORT')" >&2; exit 1 ;; esac
 fi
 # A chunk must fit one lane call: graphify's default 60000-token chunk costs about 0.45 USD on sonnet and died
-# under the 0.25 USD cap (himmel batch 1, 8 of 9 chunks). 120000 tokens per USD keeps a chunk near 0.81 of its cap.
-# ponytail: the rate is measured on one settled call (0.2017 USD for 39k tokens in), not a table; re-measure from the lane ledger once real batches settle, HIMMEL-5871.
+# under the 0.25 USD cap (himmel batch 1, 8 of 9 chunks). At high effort a 30k-token chunk costs about 0.36 USD,
+# so 30000 tokens per USD keeps a chunk near 0.36 of its cap.
+# ponytail: the rate is measured on one A/B run (HIMMEL-5835), not a table; re-measure from the lane ledger once real batches settle, HIMMEL-5871.
 CHUNK_TOKENS=""
 if [ "$BACKEND" = "claude-api" ]; then
-  CHUNK_TOKENS="$(awk -v b="$API_CALL_BUDGET" 'BEGIN { t = int(b * 120000); if (t > 60000) t = 60000; print t }')"
+  CHUNK_TOKENS="$(awk -v b="$API_CALL_BUDGET" 'BEGIN { t = int(b * 30000); if (t > 60000) t = 60000; print t }')"
   if [ "$CHUNK_TOKENS" -lt 1000 ]; then
-    echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD=$API_CALL_BUDGET is too small for any chunk (needs at least 0.01)" >&2
+    echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD=$API_CALL_BUDGET is too small for any chunk (needs at least 0.04)" >&2
     exit 1
   fi
 fi
@@ -295,14 +306,14 @@ export HIMMEL_API_TOOLS=""
 # so the chunk-failed line carries the real reason (a budget stop, a refusal) and the exit code.
 out="$here/lane-out.$$"
 "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
-  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort low > "$out"
+  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" > "$out"
 rc=$?
 [ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2
 cat "$out"; rm -f "$out"
 exit "$rc"
 SHIM
     chmod +x "$WORK/bin/claude"
-    export GRAPHIFY_SEMANTIC_LANE_BIN="$REPO_ROOT/scripts/api-lane/claude-api.sh" GRAPHIFY_SEMANTIC_LANE_BUDGET="$API_CALL_BUDGET"
+    export GRAPHIFY_SEMANTIC_LANE_BIN="$REPO_ROOT/scripts/api-lane/claude-api.sh" GRAPHIFY_SEMANTIC_LANE_BUDGET="$API_CALL_BUDGET" GRAPHIFY_SEMANTIC_LANE_EFFORT="$API_EFFORT"
     export PATH="$WORK/bin:$PATH"
   fi
   mkdir -p "$SCRATCH/graphify-out/cache"

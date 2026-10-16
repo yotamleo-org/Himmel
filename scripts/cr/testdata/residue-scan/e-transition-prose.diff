@@ -1,0 +1,5 @@
+diff --git a/docs/lanes.md b/docs/lanes.md
+--- a/docs/lanes.md
++++ b/docs/lanes.md
+@@ -4,0 +5,1 @@
++The glm lane was removed in v1.1.

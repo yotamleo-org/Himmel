@@ -90,7 +90,7 @@ def observational(eval_id, rows):
         latest.pop(r["run_id"], None)  # a superseding row moves its run to the end
         latest[r["run_id"]] = r
     # the cohort is the newest row's configuration, so a newer row of another
-    # configuration that is not ok leaves an empty series (HIMMEL-4778)
+    # configuration that is not ok leaves an empty series
     h = list(latest.values())[-1]["confighash"]
     ok = [r for r in latest.values() if r["status"] == "ok" and r["confighash"] == h]
     print("eval-compare %s: observational series, %d runs (confighash %s), no regression verdict"

@@ -1,0 +1,17 @@
+diff --git a/scripts/lib/util.sh b/scripts/lib/util.sh
+--- a/scripts/lib/util.sh
++++ b/scripts/lib/util.sh
+@@ -1,0 +2,2 @@
++count=$((count + 1))
++printf '%s\n' "$count"
+diff --git a/scripts/lib/test-util.sh b/scripts/lib/test-util.sh
+--- a/scripts/lib/test-util.sh
++++ b/scripts/lib/test-util.sh
+@@ -1,0 +2,2 @@
++assert_not_contains "output has no secret" "$out" "hunter2"
++assert_equals "count" "$(count)" "1"
+diff --git a/docs/usage.md b/docs/usage.md
+--- a/docs/usage.md
++++ b/docs/usage.md
+@@ -1,0 +2,1 @@
++Run `util.sh` to print the count.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hidden acceptance test for task class-sweep (HIMMEL-4906).
+# Hidden acceptance test for task class-sweep.
 # Six unchecked `cd` sites in a.sh..e.sh (c.sh has two); ok1.sh and ok2.sh are
 # already correct and must stay byte-identical.
 # Usage: accept.sh <worktree> <fixture-sha>
