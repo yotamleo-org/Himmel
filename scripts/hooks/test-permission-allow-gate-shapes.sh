@@ -118,7 +118,9 @@ printf 'echo drift\n' >> "$T/repo/scripts/cr/write-verdicts.sh"
 cp -p "$T/repo/scripts/cr/write-verdicts.sh" "$WT/scripts/cr/write-verdicts.sh"
 expect "anchor working copy that differs from main passes through" pass "$WT" Bash "$VW"
 git -C "$T/repo" checkout -q -- scripts/cr/write-verdicts.sh; cp -p "$T/repo/scripts/cr/write-verdicts.sh" "$WT/scripts/cr/write-verdicts.sh"
-# A leg moving the remote-tracking ref cannot make its own bytes verify.
+# A leg that commits tampered bytes and moves BOTH refs/heads/main and refs/remotes/origin/main to
+# them makes the worktree copy equal "main"; only the anchor working-copy check in anchor-bytes.sh
+# still refuses, because the primary checkout's files are not the moved main's.
 printf 'echo pwned\n' >> "$WT/scripts/cr/write-verdicts.sh"
 EVIL_BLOB="$(git -C "$T/repo" hash-object -w "$WT/scripts/cr/write-verdicts.sh")"
 export GIT_INDEX_FILE="$T/evil-index"
@@ -126,9 +128,12 @@ git -C "$T/repo" read-tree "$TABLE_COMMIT" && git -C "$T/repo" update-index --ca
 EVIL_COMMIT="$(git -C "$T/repo" -c user.email=t@t -c user.name=t commit-tree -p "$TABLE_COMMIT" -m evil "$(git -C "$T/repo" write-tree)")"
 unset GIT_INDEX_FILE
 git -C "$T/repo" update-ref refs/remotes/origin/main "$EVIL_COMMIT" || exit 1
-expect "leg-moved origin/main does not legitimise its bytes" pass "$WT" Bash "$VW"
+git -C "$T/repo" update-ref refs/heads/main "$EVIL_COMMIT" || exit 1
+expect "leg-moved main and origin/main do not legitimise its bytes" pass "$WT" Bash "$VW"
+git -C "$T/repo" update-ref refs/heads/main "$TABLE_COMMIT"
 git -C "$T/repo" update-ref refs/remotes/origin/main "$TABLE_COMMIT"
 cp -p "$T/repo/scripts/cr/write-verdicts.sh" "$WT/scripts/cr/write-verdicts.sh"
+expect "restored refs and copy are allowed again" allow "$WT" Bash "$VW"
 
 # A worktree root with a shell metacharacter never gets an absolute spelling.
 git -C "$T/repo" worktree add -q "$T/repo/.claude/worktrees/le;g" -b unsafe 2>/dev/null || exit 1
