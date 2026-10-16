@@ -763,7 +763,9 @@ def route(name, source):
     p = tmp / name
     p.write_text(f"---\ntype: research\nsource: {source}\n---\n{body}", encoding="utf-8")
     g, msg, _ = mod.process_clip(p, dry_run=True)
-    return "luna-ingest" if "github-ingest needed" in msg else "clip-body"
+    if "github-ingest needed" in msg:
+        return "luna-ingest"
+    return "clip-body" if g == "v" and "clip-body" in msg else f"failed:{g}:{msg}"
 
 
 print("blob=" + route("blob.md", "https://github.com/o/r/blob/main/nb/a.ipynb"))
