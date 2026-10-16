@@ -1196,6 +1196,12 @@ printf 'collections:\n  himmel:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home"
     bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; printf "collections:\n  notes:\n    path: /x\n" >.qmd/sib.yml; qmd_cmd query y' >/dev/null 2>&1 )
 assert "a sibling config that changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
 rm -f "$gh_home/proj/.qmd/sib.yml"
+# the index database is part of the cache key (the gate reads its collections)
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; printf "changed" >.qmd/index.sqlite; qmd_cmd query y' >/dev/null 2>&1 )
+assert "an index database that changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+rm -f "$gh_home/proj/.qmd/index.sqlite"
 
 # a symlinked cwd: the shell walks the PHYSICAL ancestry like the fork, so it cannot early-allow on the global config
 mkdir -p "$gh_home/real/.qmd" "$gh_home/real/sub"

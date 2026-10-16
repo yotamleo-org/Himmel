@@ -733,7 +733,7 @@ _qmd_local_cfg() {
 # every himmel caller of qmd_cmd (direct CLI shapes: query, embed, update, mcp).
 # With no --index the index is the project-local one when the cwd walk finds it
 # (the gate re-walks via --resolve), else the global pair.
-# ponytail: a pass is cached 30s per shell process, keyed on config text, env and cwd; a database that gains a salus collection inside that window is not seen, drop the cache or key on the db mtime if that matters.
+# ponytail: a pass is cached 30s per shell process, keyed on config text, sibling configs, db size/mtime, env and cwd; the PHI root list files are not in the key, so an edit to them inside that window is not seen.
 _qmd_egress_ok() {
   local cfg idx gate name=index a prev="" explicit=0 local_cfg gcfg gidx rc=0 key to cont=""
   # a named index (--index NAME / --index=NAME) opens NAME.yml + NAME.sqlite, so gate those
@@ -782,14 +782,18 @@ _qmd_egress_ok() {
       [ -f "$sf" ] && { cont="$cont|$sf"; { cont="$cont$(<"$sf")"; } 2>/dev/null; }
     done
   done
-  key="$cfg|$idx|$explicit|$(pwd -P)|${QMD_EMBED_MODEL:-}|${QMD_RERANK_MODEL:-}|${QMD_GENERATE_MODEL:-}|${QMD_OPENAI_BASE_URL:-}|$cont"
+  # the gate also reads the index database's collections, so its size/mtime (and the WAL's) key the cache
+  local dbsig
+  dbsig="$(stat -c '%Y.%s' "$idx" "$idx-wal" 2>/dev/null)" || true
+  [ -n "$dbsig" ] || dbsig="$(stat -f '%m.%z' "$idx" "$idx-wal" 2>/dev/null)" || true
+  key="$cfg|$idx|$dbsig|$explicit|$(pwd -P)|${QMD_EMBED_MODEL:-}|${QMD_RERANK_MODEL:-}|${QMD_GENERATE_MODEL:-}|${QMD_OPENAI_BASE_URL:-}|$cont"
   if [ -n "${_QMDBIN_GATE_KEY:-}" ] && [ "$key" = "$_QMDBIN_GATE_KEY" ] && [ $((SECONDS - ${_QMDBIN_GATE_AT:-0})) -lt 30 ]; then
     return 0
   fi
   to="${QMD_GATE_TIMEOUT_SECS:-30}"
   if [ "$explicit" -eq 1 ]; then set -- "$gcfg" "$gidx"; else set -- --resolve "$gcfg" "$gidx"; fi
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$to" node "$gate" "$@" >&2 || rc=$?
+    timeout -k 5 "$to" node "$gate" "$@" >&2 || rc=$?
   else
     # ponytail: no timeout binary means no deadline on the gate; install coreutils timeout, or bound it in node.
     node "$gate" "$@" >&2 || rc=$?
