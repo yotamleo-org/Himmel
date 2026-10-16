@@ -1266,6 +1266,13 @@ pgrep_x_stub 270 271 272
 sweep_manifest="$W/sweep-fleet.json"
 rm -f "$sweep_manifest"
 bash "$HERE/fleet-manifest.sh" add "$sweep_manifest" "$SW_A" "$SW_B" "$SW_C"
+# --check names what it would close and signals nothing
+: > "$CALLS"
+rc=0; out=$(run --check --sweep --fleet "$sweep_manifest" 2>&1) || rc=$?
+check "sweep --check: rc 0" "$rc" "0"
+contains "sweep --check: says would close" "$out" "sweep: would close $SW_A"
+not_contains "sweep --check: never says closed for a doc" "$out" "sweep: closed $SW_A"
+not_contains "sweep --check: signals nothing" "$(cat "$CALLS")" "kill -TERM"
 reset_calls
 rc=0; out=$(run --sweep --fleet "$sweep_manifest" 2>&1) || rc=$?
 check "sweep: rc 0" "$rc" "0"

@@ -36,10 +36,10 @@
 #     the leg (names derived by scripts/lib/leg-identity.sh's leg_identity -
 #     the doc stem, its undated form, and any legacy-family derived name; a
 #     relaunched leg's trailing -r<N> on the session name is accepted).
-# ponytail: the window is found by session name only; the launch record
+# ponytail: name-only window match, upgrade path HIMMEL-5928: the launch record
 # (launch-logs/<name>.log) holds no pid and a finished leg's lock is free, so
 # there is no recorded pid to resolve by. Upgrade path: have headed-arm-leg.sh
-# record the claude pid, then resolve by it first and keep the name as fallback.
+# record the claude pid, then resolve by it first, name as fallback.
 # TERM goes to that one pid only - it never signals a non-matching pid, and
 # 0 or >1 matches is a refusal, not a best guess.
 #
@@ -145,7 +145,8 @@ if [ "$SWEEP_MODE" -eq 1 ]; then
         [ -n "$sw_doc" ] || continue
         sw_out=$(bash "$HERE/close-wrapped-leg.sh" $sw_check --fleet "$FLEET_MANIFEST" "$sw_doc" 2>&1); sw_rc=$?
         case "$sw_rc" in
-            0) sw_closed=$((sw_closed + 1)); echo "sweep: closed $sw_doc" ;;
+            0) sw_closed=$((sw_closed + 1))
+               if [ "$CHECK_MODE" -eq 1 ]; then echo "sweep: would close $sw_doc"; else echo "sweep: closed $sw_doc"; fi ;;
             3|4) sw_skipped=$((sw_skipped + 1)) ;;
             *) sw_refused=$((sw_refused + 1)); echo "sweep: refused $sw_doc (rc=$sw_rc): $(printf '%s\n' "$sw_out" | tail -n 1)" ;;
         esac

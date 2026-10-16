@@ -138,7 +138,7 @@ chain_re='^([^ ]*/)?node /[^ ]*/marketplace/plugins/claude-hud/dist/index[.]js$|
 # session (not under a shell-tool wrapper) would be exempt; legs run git inside a
 # wrapper, so not observed; tighten with the marketplace registry if it ever happens.
 # No backslashes: the value crosses awk -v.
-mkt_top_re='^([^ ]*/)?git -c core[.]fsmonitor= -c core[.]hooksPath=/dev/null -c core[.]askPass= |^([^ ]*/)?git clone .* /[^ ]*/[.]claude/plugins/cache/temp_git_[A-Za-z0-9_]+$'
+mkt_top_re='^([^ ]*/)?git -c core[.]fsmonitor= -c core[.]hooksPath=/dev/null -c core[.]askPass= (fetch|pull|ls-remote)( |$)|^([^ ]*/)?git clone .* /[^ ]*/[.]claude/plugins/cache/temp_git_[A-Za-z0-9_]+$'
 mkt_child_re='^(([^ ]*/)?git remote-https|([^ ]*/)?git-remote-https) origin https://github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
 
 ps_out="$(ps -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out=""
