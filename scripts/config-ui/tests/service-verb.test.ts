@@ -71,6 +71,35 @@ test("--service install --port N renders that port, and --dry-run writes nothing
   } finally { s.done(); }
 });
 
+test("--service install refuses an existing token file the server would reject", async () => {
+  const s = sandbox();
+  try {
+    mkdirSync(join(s.dir, ".himmel", "state"), { recursive: true });
+    writeFileSync(s.token, "not-a-token\n", { mode: 0o600 });
+    const bad = await s.run("--service", "install");
+    expect(bad.rc).toBe(1);
+    expect(bad.err).toContain("64-hex");
+    expect(existsSync(s.unit)).toBe(false);
+    chmodSync(s.token, 0o644);
+    writeFileSync(s.token, "a".repeat(64) + "\n");
+    chmodSync(s.token, 0o644);
+    expect((await s.run("--service", "install")).rc).toBe(1);
+  } finally { s.done(); }
+});
+
+test("--service uninstall keeps the token when the service could not be stopped", async () => {
+  const s = sandbox();
+  try {
+    expect((await s.run("--service", "install")).rc).toBe(0);
+    writeFileSync(join(s.dir, "bin", "systemctl"), `#!/bin/sh\ncase "$2" in disable) exit 1;; is-active) echo active;; esac\nexit 0\n`);
+    const r = await s.run("--service", "uninstall");
+    expect(r.rc).toBe(1);
+    expect(r.err).toContain("still running");
+    expect(existsSync(s.token)).toBe(true);
+    expect(existsSync(s.unit)).toBe(true);
+  } finally { s.done(); }
+});
+
 test("--service install refuses without HANDOVER_DIR, and a bad verb is rc 2", async () => {
   const s = sandbox();
   try {

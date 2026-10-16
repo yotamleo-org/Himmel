@@ -60,7 +60,14 @@ function installedPort() {
 // The token is minted by the installer so `url` works before the first start; the server reads the same file.
 function ensureToken() {
   const p = tokenPath();
-  if (fs.existsSync(p)) return p;
+  let st = null;
+  try { st = fs.lstatSync(p); } catch (_e) { /* absent: minted below */ }
+  if (st) {
+    if (!st.isFile() || (st.mode & 0o777) !== 0o600 || !/^[0-9a-f]{64}$/.test(fs.readFileSync(p, 'utf8').trim())) {
+      throw new Error(`${p} must be a regular mode-600 file holding a 64-hex token (the server refuses anything else); fix or remove it`);
+    }
+    return p;
+  }
   fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
   fs.writeFileSync(p, `${require('crypto').randomBytes(32).toString('hex')}\n`, { mode: 0o600, flag: 'wx' });
   return p;
@@ -82,7 +89,7 @@ function install({ repoRoot, port, dryRun }) {
   if (!which('systemctl')) return noSystemctl;
   const unit = renderUnit({ repoRoot, bun, handoverDir, envPath: process.env.PATH || '/usr/bin:/bin', port: port === null ? DEFAULT_PORT : port });
   if (dryRun) return { ok: true, lines: [`dry-run: would write ${unitPath()}`, `dry-run: would write ${tokenPath()} (mode 600) if absent`, 'dry-run: would run systemctl --user daemon-reload, enable --now ' + UNIT_NAME] };
-  ensureToken();
+  try { ensureToken(); } catch (e) { return { ok: false, lines: [e.message] }; }
   fs.mkdirSync(UNIT_DIR, { recursive: true });
   const tmp = `${unitPath()}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, unit, 'utf8');
@@ -100,9 +107,13 @@ function install({ repoRoot, port, dryRun }) {
 function uninstall({ dryRun }) {
   if (!which('systemctl')) return noSystemctl;
   if (dryRun) return { ok: true, lines: [`dry-run: would disable --now ${UNIT_NAME}, remove ${unitPath()} and ${tokenPath()}, daemon-reload`] };
-  sctl('disable', '--now', UNIT_NAME); // absent unit: nothing to disable, still remove the files
+  const dis = sctl('disable', '--now', UNIT_NAME); // absent unit: nothing to disable, still remove the files
+  if (dis.status !== 0 && (sctl('is-active', UNIT_NAME).stdout || '').trim() === 'active') {
+    return { ok: false, lines: [`systemctl --user disable --now ${UNIT_NAME} failed (rc=${dis.status}) and the service is still running; nothing removed: ${(dis.stderr || '').trim()}`] };
+  }
   for (const p of [unitPath(), tokenPath()]) fs.rmSync(p, { force: true });
-  sctl('daemon-reload');
+  const rl = sctl('daemon-reload');
+  if (rl.status !== 0) return { ok: false, lines: [`unit and token files removed, but systemctl --user daemon-reload failed (rc=${rl.status}): ${(rl.stderr || '').trim()}`] };
   return { ok: true, lines: [`${UNIT_NAME} removed (unit file and token file)`] };
 }
 
