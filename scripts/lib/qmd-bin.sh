@@ -77,11 +77,13 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # The pin was 7cc60404, the tip of himmel/pin-http-auth: cecc32a9 (the
 # openai: provider, an ancestor) plus the remote-embed throughput work (fork
 # #17), the update hint fix (fork #18) and the MCP query rerank-off default
-# with burst handling (fork #20). The pin is now 27907dc3, the tip
+# with burst handling (fork #20). The pin was 27907dc3, the tip
 # of himmel/pin-http-auth, adding the serial query queue with a busy refusal
-# past QMD_QUERY_MAX_QUEUED (fork #23).
+# past QMD_QUERY_MAX_QUEUED (fork #23). The pin is now 44fd0609, the tip,
+# adding the queue-test fix (fork #26) and the single vector scan for a
+# search over every collection (fork #25).
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-27907dc3b47d6c4a133d5f301b9328b04289cb13}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-44fd060907fc99c5fab075c831ca2f1c06ced3a2}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or

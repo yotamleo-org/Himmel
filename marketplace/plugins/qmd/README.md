@@ -108,7 +108,7 @@ shipped always-on. Design: `docs/internals/egress-matrix.md`.
 
 ### OpenRouter for the non-salus index (HIMMEL-5756)
 
-The fork pin carries the `openai:` provider (yotamleo/qmd, added in cecc32a9; the pin is now 27907dc3). The gate
+The fork pin carries the `openai:` provider (yotamleo/qmd, added in cecc32a9; the pin is now 44fd0609). The gate
 maps `https://openrouter.ai/...` to provider `openrouter` and accepts only the
 pinned models, `openai:qwen/qwen3-embedding-8b` (embed) and
 `openai:cohere/rerank-4-fast` (rerank); any other model, a `generate` role, an
