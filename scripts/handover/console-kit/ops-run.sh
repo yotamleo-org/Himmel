@@ -31,7 +31,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT="${OPS_KIT_DIR:-$HERE}"
-OUT_DIR="${OPS_OUT_DIR:-${TMPDIR:-/tmp}/himmel-ops}"
+OUT_DIR="${OPS_OUT_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/himmel-ops-$(id -u)}"
 
 [ "$#" -ge 1 ] || { echo "usage: ops-run.sh <script> [args...]" >&2; exit 2; }
 name="$1"; shift
@@ -49,8 +49,10 @@ dir="$KIT"
 [ "$name" = "check-ci.sh" ] && dir="${OPS_CI_DIR:-$HERE/../..}"
 [ -f "$dir/$name" ] || refuse "script-missing"
 
-mkdir -p "$OUT_DIR" || refuse "no-out-dir"
-out="$OUT_DIR/$(date +%Y%m%dT%H%M%S)-$$-$name.out"
+[ -L "$OUT_DIR" ] && refuse "out-dir-is-symlink"
+[ -d "$OUT_DIR" ] || mkdir -m 700 "$OUT_DIR" || refuse "no-out-dir"
+[ -O "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ] || refuse "out-dir-not-ours"
+out="$(mktemp "$OUT_DIR/$name.XXXXXX")" || refuse "no-out-file"
 
 case "$name" in
     *.mjs) timeout --kill-after=5 "${OPS_TIMEOUT:-300}" node "$dir/$name" "$@" >"$out" 2>&1 ;;
@@ -61,7 +63,7 @@ rc=$?
 case "$rc" in
     0) verdict=PASS ;;
     10) verdict=ESCALATE ;;
-    124) verdict=TIMEOUT ;;
+    124|137) verdict=TIMEOUT ;;
     *) verdict=FAIL ;;
 esac
 
