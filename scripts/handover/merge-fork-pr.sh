@@ -19,11 +19,16 @@
 #   3  refused: run from a console-spawned leg or a console relay
 #   6  refused: <owner/repo> is not an allowlisted himmel adapter (merge_allowed)
 #   7  refused: the live PR is not OPEN at <head> on the adapter's himmel_branch,
-#      or the merge itself failed
+#      is not CLEAN (checks green) with every review thread resolved, or the
+#      merge itself failed
 #   8  refused: no valid trust-reviewed GO for this repo, PR and head
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+, same as go.sh.
 set -u
+# a relative-entry copy that is not the anchor's hands off to it
+# (the same one-hop, fail-closed pattern go.sh uses).
+case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
+. "$_ah_d/../cr/anchor-handoff.sh" || exit 2
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
 # refuse a chokepoint seam that differs from the session's launch env.
 _csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
@@ -58,7 +63,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 if ! . "$HERE/../lib/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1 \
         || ! declare -F go_trust_gate >/dev/null 2>&1 || ! declare -F go_adapter_entry >/dev/null 2>&1 \
-        || ! declare -F go_resolve_root >/dev/null 2>&1; then
+        || ! declare -F go_resolve_root >/dev/null 2>&1 || ! declare -F go_fork_ready >/dev/null 2>&1; then
     echo "merge-fork-pr: cannot load scripts/lib/go-gate.sh - refusing" >&2
     exit 1
 fi
@@ -100,6 +105,10 @@ VIEW=$(gh pr view "$PR" --repo "$NWO" --json state,headRefOid,baseRefName 2>/dev
 LIVE=$(printf '%s' "$VIEW" | jq -r '"\(.state)|\(.headRefOid)|\(.baseRefName)"' 2>/dev/null) || LIVE=""
 if [ "$LIVE" != "OPEN|$SHA|$HBRANCH" ]; then
     echo "merge-fork-pr: refusing $NWO PR #$PR - it must be OPEN at $SHA on $HBRANCH (state|head|base read: '$LIVE'); a push after the GO needs a fresh GO. Nothing merged." >&2
+    exit 7
+fi
+if ! REASON=$(go_fork_ready "$NWO" "$PR"); then
+    echo "merge-fork-pr: refusing $NWO PR #$PR - $REASON Nothing merged." >&2
     exit 7
 fi
 

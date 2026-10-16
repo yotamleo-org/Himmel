@@ -418,11 +418,15 @@ so a worktree edit cannot widen it) and the PR targets that entry's
 `himmel_branch`. Run the judge, then, from the primary checkout:
 
 1. `bash <anchor>/scripts/handover/console-kit/go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr> <head>`
-   (exit 6 not allowlisted, 7 PR not OPEN, MERGEABLE and on the adapter branch at that head, 5 no signed judge GO).
+   (exit 6 not allowlisted or the harness repo itself, 7 PR not OPEN, CLEAN and on the adapter branch at that head
+   or a review thread still open, 5 no signed judge GO).
 2. `bash <anchor>/scripts/handover/merge-fork-pr.sh <owner/repo> <pr> <head>`
    (console only; a bare `gh pr merge --repo <fork>` stays refused).
 
-A push after the GO needs a fresh GO.
+Both scripts require GitHub's `mergeStateStatus` CLEAN (every check at the head
+passed, no conflict, up to date) and zero unresolved review threads, so a PR
+with pending or red checks gets no GO and no merge. A push after the GO needs a
+fresh GO.
 
 ## Handing over
 

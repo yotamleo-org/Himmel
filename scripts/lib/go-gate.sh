@@ -752,6 +752,10 @@ go_adapter_entry() {
         printf 'cannot resolve the harness repo and its default branch from %s, so the himmel-adapters allowlist cannot be read.\n' "$anchor"
         return 2
     fi
+    if [ "$(printf '%s' "$target" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$nwo" | tr '[:upper:]' '[:lower:]')" ]; then
+        printf '%s is the harness repo itself, not a fork - its PRs go through go.sh and merge-on-green.sh.\n' "$target"
+        return 2
+    fi
     raw=$("$gh_bin" api "repos/$nwo/contents/scripts/guardrails/himmel-adapters.json?ref=$dbranch" \
         -H 'Accept: application/vnd.github.raw' 2>/dev/null) || raw=""
     br=$(printf '%s' "$raw" | jq -r --arg n "$target" \
@@ -762,4 +766,26 @@ go_adapter_entry() {
             return 2 ;;
     esac
     printf '%s\n' "$br"
+}
+
+# go_fork_ready <target-nwo> <pr-number>. rc 0 iff the fork PR is ready to
+# merge: GitHub reports mergeStateStatus CLEAN (no conflicts, up to date, every
+# check at the head passed - UNSTABLE, BLOCKED, BEHIND and the rest refuse) AND
+# it has no unresolved review thread (more than one page of threads refuses).
+# rc 2 prints the reason. Fail closed on any unreadable answer. Read-only.
+go_fork_ready() {
+    local target="$1" pr="$2" gh_bin=${GH:-gh} mss th
+    mss=$("$gh_bin" pr view "$pr" --repo "$target" --json mergeStateStatus 2>/dev/null | jq -r '.mergeStateStatus // ""' 2>/dev/null) || mss=""
+    if [ "$mss" != "CLEAN" ]; then
+        printf 'it is not ready to merge: mergeStateStatus is '"'"'%s'"'"', not CLEAN (checks pending or red, conflicts, behind base or blocked).\n' "$mss"
+        return 2
+    fi
+    # shellcheck disable=SC2016  # a GraphQL query, not a shell expansion
+    th=$("$gh_bin" api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}' \
+        -f o="${target%%/*}" -f r="${target#*/}" -F n="$pr" 2>/dev/null \
+        | jq -r '.data.repository.pullRequest.reviewThreads | "\([.nodes[] | select(.isResolved | not)] | length) \(.pageInfo.hasNextPage)"' 2>/dev/null) || th=""
+    if [ "$th" != "0 false" ]; then
+        printf 'it is not ready to merge: unresolved review threads or an unreadable thread count (unresolved count and has-next-page read: '"'"'%s'"'"', need '"'"'0 false'"'"').\n' "$th"
+        return 2
+    fi
 }

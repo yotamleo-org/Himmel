@@ -28,7 +28,8 @@ SHA=0123456789abcdef0123456789abcdef01234567
 OLD=89abcdef0123456789abcdef0123456789abcdef
 FORK=yotamleo/qmd
 BASE=himmel/pin-http-auth
-export STUB_ALLOW="$tmp/allow.json" STUB_PRVIEW="$tmp/prview.json" STUB_LOG="$tmp/gh.log"
+export STUB_ALLOW="$tmp/allow.json" STUB_PRVIEW="$tmp/prview.json" STUB_LOG="$tmp/gh.log" STUB_THREADS="$tmp/threads.txt"
+printf '0 false\n' > "$STUB_THREADS"
 : > "$STUB_LOG"
 
 mkdir -p "$tmp/bin"
@@ -43,6 +44,11 @@ case "$1 $2" in
     "api repos/o/himmel/contents/scripts/guardrails/himmel-adapters.json?ref=main")
         cat "$STUB_ALLOW" 2>/dev/null || exit 1 ;;
     "pr view") cat "$STUB_PRVIEW" 2>/dev/null || exit 1 ;;
+    "api graphql")
+        read -r n h < "$STUB_THREADS" 2>/dev/null || exit 1
+        case "$n" in ''|*[!0-9]*) echo 'not json'; exit 0 ;; esac
+        nodes=""; i=0; while [ "$i" -lt "$n" ]; do nodes="$nodes{\"isResolved\":false},"; i=$((i+1)); done
+        printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":%s},"nodes":[%s{"isResolved":true}]}}}}}\n' "$h" "$nodes" ;;
     "pr merge")
         printf 'MERGE %s\n' "$*" >> "$STUB_LOG"
         [ -n "${STUB_NOFLIP:-}" ] || sed -i 's/"state":"OPEN"/"state":"MERGED"/' "$STUB_PRVIEW" ;;
@@ -53,7 +59,7 @@ chmod +x "$tmp/bin/gh"
 export PATH="$tmp/bin:$PATH"
 
 printf '%s\n' '[{"nwo":"yotamleo/qmd","upstream":"tobi/qmd","himmel_branch":"himmel/pin-http-auth","pin_site":"scripts/lib/qmd-bin.sh","role":"runtime-dependency","merge_allowed":true},{"nwo":"yotamleo/off","upstream":"x/off","himmel_branch":"himmel/x","pin_site":null,"role":"dormant","merge_allowed":false}]' > "$STUB_ALLOW"
-prview() { printf '{"state":"%s","headRefOid":"%s","mergeable":"%s","baseRefName":"%s"}\n' "${1:-OPEN}" "${2:-$SHA}" "${3:-MERGEABLE}" "${4:-$BASE}" > "$STUB_PRVIEW"; }
+prview() { printf '{"state":"%s","headRefOid":"%s","mergeable":"%s","baseRefName":"%s","mergeStateStatus":"%s"}\n' "${1:-OPEN}" "${2:-$SHA}" "${3:-MERGEABLE}" "${4:-$BASE}" "${5:-CLEAN}" > "$STUB_PRVIEW"; }
 prview
 
 fails=0
@@ -110,6 +116,21 @@ for st in "CLOSED $SHA MERGEABLE $BASE" "OPEN $OLD MERGEABLE $BASE" "OPEN $SHA C
   check "go --repo PR state [$st] -> exit 7" "$rc" 7
 done
 prview
+for mss in UNSTABLE BLOCKED BEHIND DIRTY UNKNOWN; do
+  prview OPEN "$SHA" MERGEABLE "$BASE" "$mss"
+  rc=0; go --repo "$FORK" --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
+  check "go --repo mergeStateStatus $mss (pending or red checks) -> exit 7" "$rc" 7
+done
+prview
+for th in "1 false" "0 true" "garbage" ""; do
+  printf '%s\n' "$th" > "$STUB_THREADS"
+  rc=0; go --repo "$FORK" --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
+  check "go --repo review threads [$th] -> exit 7" "$rc" 7
+done
+printf '0 false\n' > "$STUB_THREADS"
+printf '%s\n' '[{"nwo":"o/himmel","upstream":"x/y","himmel_branch":"main","pin_site":null,"role":"self","merge_allowed":true}]' > "$tmp/self.json"
+rc=0; STUB_ALLOW="$tmp/self.json" go --repo o/himmel --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
+check "go --repo the anchor's own repo -> exit 6" "$rc" 6
 rc=0; go --repo "$FORK" --trust-reviewed nojudge 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "go --repo no judge verdict -> exit 5" "$rc" 5
 verdict j2 GO "$SHA" 19
@@ -122,6 +143,18 @@ rc=0; out="$(go --repo "$FORK" --trust-reviewed j1 18 "$SHA" 2>&1)" || rc=$?
 check "go --repo valid -> exit 0" "$rc" 0
 check "go --repo valid prints the GO path" "$out" "$ROOT/.locks/go/18.$SHA"
 contains "go --repo valid GO is trust-reviewed" "$(cat "$ROOT/.locks/go/18.$SHA")" "trust-reviewed=j1"
+
+# e2e: the GO go.sh just signed is the one merge-fork-pr.sh accepts, and the
+# same file fails the himmel repo's own verifier (the mac binds the fork nwo).
+rc=0; bash -c '. "$1"; go_trust_gate 18 "$2" "$3" "$4" >/dev/null' _ "$HERE/../lib/go-gate.sh" "$SHA" "$ROOT" "$FORK" || rc=$?
+check "e2e: go.sh GO verifies for the fork repo" "$rc" 0
+rc=0; bash -c '. "$1"; go_trust_gate 18 "$2" "$3" "$4" >/dev/null' _ "$HERE/../lib/go-gate.sh" "$SHA" "$ROOT" o/himmel || rc=$?
+check "e2e: the same GO fails against the himmel repo" "$rc" 2
+rc=0; merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
+check "e2e: merge-fork-pr.sh accepts the GO go.sh wrote" "$rc" 0
+check "e2e: exactly one merge ran" "$(merged)" 1
+: > "$STUB_LOG"
+prview
 rm -f "$ROOT/.locks/go/18.$SHA"
 
 # --- 2. merge-fork-pr.sh -----------------------------------------------------
@@ -173,6 +206,21 @@ rc=0; merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge PR base is not the himmel_branch -> exit 7" "$rc" 7
 check "merge state refusals merged nothing" "$(merged)" 0
 
+for mss in UNSTABLE BLOCKED BEHIND DIRTY UNKNOWN; do
+  prview OPEN "$SHA" MERGEABLE "$BASE" "$mss"
+  rc=0; merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
+  check "merge mergeStateStatus $mss (pending or red checks) -> exit 7" "$rc" 7
+done
+prview
+for th in "1 false" "0 true" "garbage" ""; do
+  printf '%s\n' "$th" > "$STUB_THREADS"
+  rc=0; merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
+  check "merge review threads [$th] -> exit 7" "$rc" 7
+done
+printf '0 false\n' > "$STUB_THREADS"
+rc=0; STUB_ALLOW="$tmp/self.json" merge o/himmel 18 "$SHA" >/dev/null 2>&1 || rc=$?
+check "merge the anchor's own repo -> exit 6" "$rc" 6
+check "merge readiness refusals merged nothing" "$(merged)" 0
 prview
 rc=0; STUB_NOFLIP=1 merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge queued but not MERGED afterwards -> exit 7" "$rc" 7
@@ -182,6 +230,32 @@ rc=0; out="$(merge "$FORK" 18 "$SHA" 2>&1)" || rc=$?
 check "merge valid -> exit 0" "$rc" 0
 check "merge valid ran exactly one gh pr merge" "$(merged)" 1
 contains "merge valid squashes with the head pinned" "$(cat "$STUB_LOG")" "MERGE pr merge 18 --repo $FORK --squash --match-head-commit $SHA"
+
+# --- 3. a relative entry hands off to the anchor named by the launch env (as go.sh) ---
+# Marker copies keep everything up to the real hand-off sourcing line, then
+# echo a label: a pass proves the shipped line triggers the hand-off.
+# shellcheck disable=SC2016  # the literal line the script carries, not an expansion
+MF_SRC='. "$_ah_d/../cr/anchor-handoff.sh" || exit 2'
+mk_mf_tree() {  # <root> <label>
+  mkdir -p "$1/scripts/handover" "$1/scripts/cr"
+  git init -q "$1"
+  cp "$HERE/../cr/anchor-handoff.sh" "$1/scripts/cr/anchor-handoff.sh"
+  awk -v src="$MF_SRC" '{ print } $0 == src { exit }' "$MERGE_SH" > "$1/head.tmp"
+  if ! grep -qxF "$MF_SRC" "$1/head.tmp"; then
+    echo "FAIL - hand-off setup: the merge script does not carry the hand-off sourcing line verbatim"; fails=$((fails+1))
+  fi
+  printf '%s\necho "RAN:%s"\n' "$(cat "$1/head.tmp")" "$2" > "$1/scripts/handover/merge-fork-pr.sh"
+  rm -f "$1/head.tmp"
+}
+MF_WT="$tmp/mf-wt"; MF_ANCHOR="$tmp/mf-anchor"
+mk_mf_tree "$MF_WT" branch
+mk_mf_tree "$MF_ANCHOR" anchor
+out=$(cd "$MF_WT" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$MF_ANCHOR" bash scripts/handover/merge-fork-pr.sh 2>/dev/null)
+check "merge: relative entry hands off to the anchor" "$out" "RAN:anchor"
+out=$(cd "$MF_WT" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$MF_ANCHOR" bash "$MF_WT/scripts/handover/merge-fork-pr.sh" 2>/dev/null)
+check "merge: absolute entry runs local" "$out" "RAN:branch"
+rc=0; (cd "$MF_WT" && env -u CR_ANCHOR_HANDED_OFF -u HIMMEL_REPO bash scripts/handover/merge-fork-pr.sh >/dev/null 2>&1) || rc=$?
+check "merge: relative entry with the anchor unset exits 2" "$rc" 2
 
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-merge-fork-pr.sh"

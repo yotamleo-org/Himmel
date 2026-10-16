@@ -65,7 +65,8 @@
 #   4  refused: ready-check.sh did not PASS for <pr> at <head>
 #   5  refused: --trust-reviewed <qid> has no GO verdict for <head>
 #   6  refused: --repo names no himmel adapter with merge_allowed true
-#   7  refused: --repo PR is not OPEN at <head>, MERGEABLE and on the himmel_branch
+#   7  refused: --repo PR is not OPEN at <head>, MERGEABLE and on the himmel_branch,
+#      or is not CLEAN (checks green) with every review thread resolved
 #
 # A relative entry (`bash scripts/handover/console-kit/go.sh`, the leg
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
@@ -237,6 +238,10 @@ if [ "$FORK_SET" -eq 1 ]; then
     FSTATE=$(printf '%s' "$FVIEW" | jq -r '"\(.state)|\(.headRefOid)|\(.mergeable)|\(.baseRefName)"' 2>/dev/null) || FSTATE=""
     if [ "$FSTATE" != "OPEN|$SHA|MERGEABLE|$HBRANCH" ]; then
         echo "go: refusing the fork GO for $FORK PR #$PR - it must be OPEN at $SHA, MERGEABLE and based on $HBRANCH (state|head|mergeable|base read: '$FSTATE'). No GO written." >&2
+        exit 7
+    fi
+    if ! REASON=$(go_fork_ready "$FORK" "$PR"); then
+        echo "go: refusing the fork GO for $FORK PR #$PR - $REASON No GO written." >&2
         exit 7
     fi
 fi
