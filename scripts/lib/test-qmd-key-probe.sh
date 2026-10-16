@@ -214,12 +214,13 @@ RC=$?
 assert_eq "proxy-env row: probe still reaches the target (exit 0)" 0 "$RC"
 assert_eq "proxy-env row: no request reached the proxy" "absent" "$([ -e "$CAP.auth" ] && echo present || echo absent)"
 mkdir -p "$TMP/home"
-printf 'proxy = "%s"\n' "$CAPURL" > "$TMP/home/.curlrc"
+# connect-to is a curlrc setting that --noproxy does not override: only -q keeps it out.
+printf 'connect-to = "::127.0.0.1:%s"\n' "${CAPURL##*:}" > "$TMP/home/.curlrc"
 rm -f "$CAP.auth"
-OUT=$(no_proxy='' NO_PROXY='' HOME="$TMP/home" QMD_MCP_URL="$TARGET" QMD_HTTP_AUTH_FILE="$TMP/token" QMD_KEY_PROBE_TIMEOUT=10 timeout 40 bash "$PROBE" 2>&1)
+OUT=$(env -u CURL_HOME -u XDG_CONFIG_HOME no_proxy='' NO_PROXY='' HOME="$TMP/home" QMD_MCP_URL="$TARGET" QMD_HTTP_AUTH_FILE="$TMP/token" QMD_KEY_PROBE_TIMEOUT=10 timeout 40 bash "$PROBE" 2>&1)
 RC=$?
 assert_eq "curlrc row: probe still reaches the target (exit 0)" 0 "$RC"
-assert_eq "curlrc row: no request reached the proxy" "absent" "$([ -e "$CAP.auth" ] && echo present || echo absent)"
+assert_eq "curlrc row: no request was redirected to the capture stub" "absent" "$([ -e "$CAP.auth" ] && echo present || echo absent)"
 
 # 14: 127.x must be exactly four dotted octets; a trailing dot or extra labels are not loopback.
 run_probe "http://127.0.0.1.0.0:9/mcp" 2
@@ -232,6 +233,8 @@ run_probe "http://127.0.0.999:9/mcp" 2
 assert_has "octet-range row: 127.0.0.999 is not loopback" "loopback" "$OUT"
 run_probe "http://127.0.0.0001:9/mcp" 2
 assert_has "octet-width row: a four-digit octet is not loopback" "loopback" "$OUT"
+run_probe "http://127.0.0.08:9/mcp" 2
+assert_has "leading-zero row: 127.0.0.08 is not loopback" "loopback" "$OUT"
 
 # 15: a token that cannot sit inside a quoted curl config value is refused, unechoed.
 printf 'bad"token\n' > "$TMP/quote"

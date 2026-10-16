@@ -25,6 +25,8 @@
 set -u
 # An inherited xtrace (SHELLOPTS, BASH_ENV) would print the bearer; switch it off first.
 { set +x; } 2>/dev/null
+# byte-wise character classes: [[:cntrl:]] must not depend on the caller's locale
+LC_ALL=C
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=qmd-bounded.sh
@@ -66,7 +68,9 @@ if [ -n "$token" ]; then
       if [ -n "$host" ]; then
         IFS=. read -r o1 o2 o3 <<<"$oct"
         for n in "$o1" "$o2" "$o3"; do
-          if [ "${#n}" -gt 3 ] || [ "$((10#$n))" -gt 255 ]; then host=""; fi
+          # no leading zero (curl would read 08 as octal, or hand the name to DNS)
+          case "$n" in 0?*) host="" ;; esac
+          if [ "${#n}" -gt 3 ] || [ "$n" -gt 255 ]; then host=""; fi
         done
       fi
       ;;
