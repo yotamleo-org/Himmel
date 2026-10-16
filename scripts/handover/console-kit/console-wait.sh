@@ -31,8 +31,11 @@
 #                               `successor to <doc>.md`: the waiter runs
 #                               close-wrapped-leg.sh --console on that wrapped,
 #                               lock-free predecessor once and logs a Results
-#                               bullet; rc 3/4/6/7 retry silently next sample, any
-#                               other refusal wakes once (CONSOLE_WAIT_CLOSE = seam).
+#                               bullet; rc 3/4/6/7 retry silently next sample, and so does a
+#                               hung close (rc 124/137) until CONSOLE_WAIT_CLOSE_HANGS
+#                               (default 3) in a row, then it wakes (the streak shows
+#                               in the heartbeat as pred_hangs=<n>); any other
+#                               refusal wakes once (CONSOLE_WAIT_CLOSE = seam).
 #   WAKE tick-fail samples=<n>  CONSOLE_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. Once per streak; the re-arm stays quiet
@@ -182,6 +185,7 @@ cur_hash=""; tick_state="-"; exit_reason="unknown"
 heartbeat() { # <state> [exit reason]
     local line
     line="hb=$(date +%s) pid=$$ key=${cur_hash:--} tick=$tick_state state=$1"
+    [ "${pred_hangs:-0}" -gt 0 ] && line="$line pred_hangs=$pred_hangs"
     [ -n "${2:-}" ] && line="$line exit=$2"
     printf '%s\n' "$line" > "$hb_file.tmp" 2>/dev/null && mv -f "$hb_file.tmp" "$hb_file" 2>/dev/null
 }
@@ -490,8 +494,13 @@ tracker_stale_wake() {
 # `<state>:<doc>`) outlives the waiter, so a done predecessor is never asked twice.
 pred_file="$inbox.wait.predecessor"
 close_cmd="${CONSOLE_WAIT_CLOSE:-$HERE/close-wrapped-leg.sh}"
+pred_hangs=0
+pred_hang_max="${CONSOLE_WAIT_CLOSE_HANGS:-3}"
+case "$pred_hang_max" in ''|*[!0-9]*|0) pred_hang_max=3 ;; esac
+pred_hang_max=$((10#$pred_hang_max))
 predecessor_close() { # prints the WAKE block and returns 0 only for an unexpected refusal
-    local pred pdoc errf rc
+    local pred pdoc errf rc prev_hangs="$pred_hangs"
+    pred_hangs=0
     [ -n "$console_doc" ] && [ -f "$console_doc" ] || return 1
     pred="$(sed -n '1s/.* successor to \([^ ]*\.md\).*/\1/p' "$console_doc")"
     [ -n "$pred" ] || return 1
@@ -503,7 +512,11 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
     case "$rc" in
         0) printf 'closed:%s\n' "$pdoc" > "$pred_file"
            bash "$HERE/append-results.sh" "$console_doc" "LIVE — predecessor console ${pred%.md} was WRAPPED and lock-free; the waiter closed its window" >/dev/null 2>&1 || true ;;
-        3|4|6|7|124|137) ;;  # 124/137: the close hung past its timeout - retry next sample, never a wake
+        3|4|6|7) ;;
+        124|137) pred_hangs=$((prev_hangs + 1))  # the close hung past its timeout: retry, but only so many times in a row
+           if [ "$pred_hangs" -ge "$pred_hang_max" ]; then
+               printf 'woke:%s\n' "$pdoc" > "$pred_file"; printf 'WAKE predecessor-open rc=%s\n%s\n' "$rc" "close hung $pred_hangs samples in a row"; rm -f "$errf"; return 0
+           fi ;;
         5) if grep -Fq 'refusing - 0 live session' "$errf"; then printf 'gone:%s\n' "$pdoc" > "$pred_file"
            else printf 'woke:%s\n' "$pdoc" > "$pred_file"; printf 'WAKE predecessor-open rc=5\n%s\n' "$(head -n 1 "$errf")"; rm -f "$errf"; return 0; fi ;;
         *) printf 'woke:%s\n' "$pdoc" > "$pred_file"; printf 'WAKE predecessor-open rc=%s\n%s\n' "$rc" "$(head -n 1 "$errf")"; rm -f "$errf"; return 0 ;;

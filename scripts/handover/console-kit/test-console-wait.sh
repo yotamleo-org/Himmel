@@ -1061,6 +1061,14 @@ n=0
 while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
 check "(pc7) a hung close is killed at CONSOLE_WAIT_CLOSE_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/pc7.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+reset_stub
+CD="$(pc_console pc8 0)"; I="$(new_inbox pc8)"
+CONSOLE_WAIT_CLOSE="$STUB/close.sleep.sh" CONSOLE_WAIT_CLOSE_TIMEOUT=1 CONSOLE_WAIT_CLOSE_HANGS=2 start "$I" "$WORK/pc8.out" --doc "$CD" --legs "N1.md"
+n=0
+while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(pc8) a close that hangs every sample wakes after CONSOLE_WAIT_CLOSE_HANGS in a row" "WAKE predecessor-open rc=124" "$(head -n1 "$WORK/pc8.out")"
+check "(pc8) and it is marked woke, so it wakes once" "woke:$WORK/pc8/AS.md" "$(cat "$I.wait.predecessor" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CONSOLE_WAIT_CLOSE
 
 # --- (k) usage ---------------------------------------------------------------

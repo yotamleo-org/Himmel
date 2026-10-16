@@ -293,6 +293,13 @@ if command -v python3 >/dev/null 2>&1; then
     contains "17b: the render is cut at the timeout" "$out" "tracker=failed:render-rc124"
     contains "17b: the board still ran" "$calls" "board --doc"
 
+    printf '#!/usr/bin/env bash\necho "jira $*" >> "$WM_CALLS"\nexec sleep 30\n' > "$W/bin/jira-hang"; chmod +x "$W/bin/jira-hang"
+    tracker_fixture 'https://claude.ai/artifact/x'
+    WM_JIRA="$W/bin/jira-hang" WM_TRACKER_TIMEOUT=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    check "17d: a hung mirror never fails the wrap (rc 0)" "$rc" 0
+    contains "17d: the mirror is cut at the timeout" "$out" "tracker=failed:mirror-rc124"
+    contains "17d: the board still ran" "$calls" "board --doc"
+
     tracker_fixture 'https://claude.ai/artifact/x'
     WM_MIRROR_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
     check "17c: a failing mirror never fails the wrap (rc 0)" "$rc" 0
