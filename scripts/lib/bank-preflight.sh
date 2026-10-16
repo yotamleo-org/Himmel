@@ -81,7 +81,7 @@ emit() {
   # newline would split the record and a control character, quote or backslash
   # would make it invalid JSONL. Control characters become `?` (the ps view's own
   # convention), then `\` and `"` are escaped.
-  _leg_json="$(printf '%s' "$LEG" | tr '[:cntrl:]' '?' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+  _leg_json="$(printf '%s' "$LEG" | LC_ALL=C tr -c '[:print:]' '?' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
   # fh/sd come straight from the cache JSON and age from arithmetic: a value that
   # is not a plain number (a quote or brace from a hostile/corrupt cache) is
   # blanked so it cannot break the row. age is signed (a future stamp).
@@ -1167,10 +1167,17 @@ command -v jq >/dev/null 2>&1 || { echo "bank-preflight: jq missing" >&2; emit B
   IFS= read -r xu
   IFS= read -r stamp
 } < <(jq -r '
-  .five_hour.utilization // "",
-  .seven_day.utilization // "",
-  .extra_usage.utilization // "",
-  .primaries_refreshed_at // ""
+  # Every field is emitted as exactly one line: a number, or a string that is
+  # wholly digits/dots (\A..\z, since $ matches before a trailing newline).
+  # Anything else — notably a string holding a newline, which would shift later
+  # fields — becomes "" and falls to the BANK-UNKNOWN / BANK-STALE path.
+  def one: if type == "number" then tostring
+           elif type == "string" and test("\\A[0-9.]+\\z") then .
+           else "" end;
+  (.five_hour.utilization // "" | one),
+  (.seven_day.utilization // "" | one),
+  (.extra_usage.utilization // "" | one),
+  (.primaries_refreshed_at // "" | one)
   ' "$CACHE" 2>/dev/null)
 # Process-substitution output is CRLF-translated by some Git Bash builds.
 fh=${fh%$'\r'}; sd=${sd%$'\r'}; xu=${xu%$'\r'}; stamp=${stamp%$'\r'}

@@ -8,6 +8,8 @@
 #   plan  --root R --out O --max-files N --plan P   diff corpus vs manifest
 #   seed  --root R --out O                          stamp current hashes only
 #   merge --out O --scratch S --plan P --runtime-s T --tokens-in I --tokens-out J
+#   restore --out O --before B     put back the semantic items an AST rebuild
+#                                  (ast-update.sh) dropped from B's snapshot
 #
 # Ownership rule for the merge: the AST pass (`graphify update`, hourly) owns
 # every `_origin: ast` node/edge; this step owns only `_origin: semantic` ones.
@@ -135,6 +137,67 @@ def norm_src(src, scratch):
     return s[len(prefix):] if s.startswith(prefix) else s
 
 
+SHRINK_RATIO = 0.5
+
+
+def count_semantic(nodes, rel):
+    return sum(1 for n in nodes if n.get("_origin", "semantic") == "semantic" and n.get("source_file") == rel)
+
+
+def shrinks(old_nodes, new_nodes, rel):
+    # The one shrink guard: the merge path and the AST-restore path (below) both
+    # decide "this file lost too much" here. A single old node cannot shrink.
+    old = count_semantic(old_nodes, rel)
+    return old >= 2 and count_semantic(new_nodes, rel) < old * SHRINK_RATIO
+
+
+def edge_key(e):
+    return (e.get("source"), e.get("target"), e.get("relation"), e.get("source_file"))
+
+
+def cmd_restore(a):
+    # After an AST rebuild (`graphify update`, which re-extracts code files and
+    # replaces their nodes): put back every semantic node, edge and hyperedge the
+    # rebuilt graph lost. The AST pass owns `_origin: ast`; semantic items are
+    # never its to drop.
+    before = load_json(a.before)
+    graph_path = os.path.join(a.out, "graph.json")
+    g = load_json(graph_path)
+    ekey = "edges" if "edges" in g and "links" not in g else "links"
+    old_ekey = "edges" if "edges" in before and "links" not in before else "links"
+    g.setdefault(ekey, [])
+    live_ids = {n.get("id") for n in g.get("nodes", [])}
+    restored_n = restored_e = restored_h = 0
+    for n in before.get("nodes", []):
+        if n.get("_origin") == "semantic" and n.get("id") not in live_ids:
+            g["nodes"].append(n)
+            live_ids.add(n.get("id"))
+            restored_n += 1
+    have = {edge_key(e) for e in g[ekey]}
+    for e in before.get(old_ekey, []):
+        if e.get("_origin") == "semantic" and edge_key(e) not in have \
+                and e.get("source") in live_ids and e.get("target") in live_ids:
+            g[ekey].append(e)
+            have.add(edge_key(e))
+            restored_e += 1
+    have_h = {h.get("id") for h in g.get("hyperedges") or []}
+    for h in before.get("hyperedges") or []:
+        if h.get("_origin") == "semantic" and h.get("id") not in have_h:
+            members = [m for m in h.get("nodes", []) if m in live_ids]
+            if len(members) >= 2:
+                g.setdefault("hyperedges", []).append(dict(h, nodes=members))
+                restored_h += 1
+    if not (restored_n or restored_e or restored_h):
+        return
+    write_json_atomic(graph_path, g)
+    run = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "name": "ast-update",
+           "ast_restored_nodes": restored_n, "ast_restored_edges": restored_e, "ast_restored_hyperedges": restored_h}
+    with open(os.path.join(a.out, RUNS), "a", encoding="utf-8") as f:
+        f.write(json.dumps(run) + "\n")
+    print("semantic-merge: restored %d semantic node(s), %d edge(s), %d hyperedge(s) the AST rebuild dropped"
+          % (restored_n, restored_e, restored_h), file=sys.stderr)
+
+
 def cmd_merge(a):
     plan = load_json(a.plan)
     graph_path = os.path.join(a.out, "graph.json")
@@ -165,7 +228,21 @@ def cmd_merge(a):
     # model omitted it): it keeps its old semantic items and stays unstamped,
     # so the next run retries it. Only produced and deleted files are replaced.
     # ponytail: a file the model always omits is retried (and billed) every run, add a per-file failure count to the manifest once semantic-runs.jsonl shows `failed` not draining.
+    #
+    # Shrink guard: a produced file whose extraction holds under
+    # SHRINK_RATIO of its old semantic nodes is refused like a failed chunk --
+    # old items kept, file unstamped, retried next run. A model that returns a
+    # thin subset must not silently erase real facts (pr-check doc 25 to 1).
+    # ponytail: nodes between 50 and 100 percent of the old count still replace the file's items, add a per-node union if semantic-runs.jsonl shows losses there.
     produced = {n.get("source_file") for n in new_nodes}
+    refused = sorted(f for f in batch & produced if shrinks(g["nodes"], new_nodes, f))
+    for f in refused:
+        print("semantic-merge: shrink guard REFUSED %s: new extraction has %d semantic nodes, old has %d; keeping the old ones, file stays unstamped"
+              % (f, count_semantic(new_nodes, f), count_semantic(g["nodes"], f)), file=sys.stderr)
+    produced -= set(refused)
+    new_nodes = [n for n in new_nodes if n.get("source_file") not in refused]
+    new_edges = [e for e in new_edges if e.get("source_file") not in refused]
+    new_hyper = [h for h in new_hyper if h.get("source_file") not in refused]
     failed = sorted(batch - produced)
     touched = (batch & produced) | set(plan["deleted"])
 
@@ -220,6 +297,7 @@ def cmd_merge(a):
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "name": a.name, "changed_total": plan["changed_total"], "batch": len(batch),
         "deleted": len(plan["deleted"]), "backlog": plan["backlog"], "failed": len(failed),
+        "shrink_refused": len(refused),
         "nodes_added": nodes_added, "nodes_removed": nodes_removed,
         "edges_added": edges_added, "edges_removed": edges_removed,
         "runtime_s": a.runtime_s, "tokens_in": a.tokens_in, "tokens_out": a.tokens_out,
@@ -249,8 +327,11 @@ def main():
     m.add_argument("--runtime-s", type=int, default=0)
     m.add_argument("--tokens-in", type=int, default=0)
     m.add_argument("--tokens-out", type=int, default=0)
+    r = sub.add_parser("restore")
+    r.add_argument("--out", required=True)
+    r.add_argument("--before", required=True)
     a = ap.parse_args()
-    {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge}[a.cmd](a)
+    {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge, "restore": cmd_restore}[a.cmd](a)
 
 
 if __name__ == "__main__":

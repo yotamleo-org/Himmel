@@ -263,6 +263,15 @@ def is_github_url(url: str) -> bool:
     return host in {"github.com", "www.github.com"}
 
 
+def is_github_blob_url(url: str) -> bool:
+    """One file under /<owner>/<repo>/blob/<branch>/<path>: luna-ingest keeps
+    only owner/repo, so routing it there would re-ingest the repo README."""
+    if not is_github_url(url):
+        return False
+    parts = [seg for seg in urlparse(url.strip().strip('"')).path.split("/") if seg]
+    return len(parts) >= 5 and parts[2] == "blob"
+
+
 def _normalized_host(url: str) -> str:
     try:
         host = (urlparse(url.strip().strip('"')).hostname or "").lower()
@@ -1666,7 +1675,7 @@ def process_clip(path: Path, dry_run: bool, firecrawl=None, url_rules=None, park
     if '"' in canonical or "\n" in canonical:
         # Would corrupt the quoted YAML value. Refuse rather than write garbage.
         return flagged_early("x", f"failed (canonicalize): canonical URL contains unsafe chars: {canonical!r}")
-    if is_github_url(canonical):
+    if is_github_url(canonical) and not is_github_blob_url(canonical):
         # Phase 5 luna-ingest replaces existing harvest_* keys in place
         # (no duplication) when the LLM later harvests this clip.
         return flagged_early("o", f"skipped (github-ingest needed; deferred to LLM): {canonical}")

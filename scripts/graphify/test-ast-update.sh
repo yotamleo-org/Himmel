@@ -443,5 +443,94 @@ out15=$( unset GRAPHIFY_NO_AUTO_REFRESH; PATH="$BIN15:$PATH" bash "$SCRIPT" "$CO
   && pass "T15 graphify saw GRAPHIFY_NO_AUTO_REFRESH=1" \
   || fail "T15 graphify did not see GRAPHIFY_NO_AUTO_REFRESH=1 (rc=$rc15): $(cat "$WS/env.log") $out15"
 
+# --- T16: a semantic node survives an AST topology rebuild ----------------
+# Fixture shape copied from the live himmel graph.json (2026-10-16): a
+# semantic node, and a semantic edge from the file's AST page node, both
+# attached to marketplace/plugins/i-have-adhd/README.md. The stub's `update`
+# rewrites graph.json AST-only, as a topology rebuild does.
+echo "T16: semantic nodes/edges on a rebuilt file survive graphify update; the guard decision is logged"
+CORPUS16="$WS/c16"; OUT16="$CORPUS16/graphify-out"; mkdir -p "$OUT16"
+cat > "$OUT16/graph.json" <<'JSON'
+{"directed": false, "multigraph": false, "graph": {}, "built_at_commit": "x",
+ "nodes": [
+  {"id": "marketplace_plugins_i_have_adhd_readme", "label": "i-have-adhd/README.md", "_origin": "ast", "file_type": "document", "node_kind": "page", "source_file": "marketplace/plugins/i-have-adhd/README.md", "source_location": "L1"},
+  {"id": "ayghri_i_have_adhd_upstream", "label": "ayghri/i-have-adhd upstream repo", "_origin": "semantic", "file_type": "concept", "source_file": "marketplace/plugins/i-have-adhd/README.md", "source_location": null},
+  {"id": "ayghri_second_fact", "label": "second fact", "_origin": "semantic", "file_type": "concept", "source_file": "marketplace/plugins/i-have-adhd/README.md", "source_location": null}],
+ "links": [
+  {"source": "marketplace_plugins_i_have_adhd_readme", "target": "ayghri_i_have_adhd_upstream", "relation": "cites", "_origin": "semantic", "confidence": "EXTRACTED", "source_file": "marketplace/plugins/i-have-adhd/README.md"}],
+ "hyperedges": [
+  {"id": "h1", "label": "group", "nodes": ["marketplace_plugins_i_have_adhd_readme", "ayghri_i_have_adhd_upstream", "ayghri_second_fact"], "relation": "participate_in", "_origin": "semantic", "source_file": "marketplace/plugins/i-have-adhd/README.md"}]}
+JSON
+BIN16="$WS/bin16"; mkdir -p "$BIN16"
+cat > "$BIN16/graphify" <<'STUB'
+#!/usr/bin/env bash
+python3 - "$2" <<'PY'
+import json, os, sys
+p = os.path.join(sys.argv[1], "graphify-out", "graph.json")
+g = json.load(open(p))
+g["nodes"] = [n for n in g["nodes"] if n.get("_origin") == "ast"] + [{"id": "new_ast", "label": "n", "_origin": "ast", "file_type": "code", "source_file": "x.sh"}]
+g["links"] = [e for e in g["links"] if e.get("_origin") == "ast"]
+g["hyperedges"] = []
+json.dump(g, open(p, "w"))
+PY
+exit 0
+STUB
+chmod +x "$BIN16/graphify"
+out16=$( PATH="$BIN16:$PATH" bash "$SCRIPT" "$CORPUS16" 2>&1 ); rc16=$?
+ids16=$(python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));print(" ".join(sorted(n["id"] for n in g["nodes"])), len(g["links"]), len(g["hyperedges"]))' "$OUT16/graph.json")
+[ "$rc16" -eq 0 ] && pass "T16 exits 0" || fail "T16 should exit 0 (got $rc16): $out16"
+[ "$ids16" = "ayghri_i_have_adhd_upstream ayghri_second_fact marketplace_plugins_i_have_adhd_readme new_ast 1 1" ] \
+  && pass "T16 both semantic nodes, their edge and the hyperedge survived the rebuild; the new AST node is kept" \
+  || fail "T16 graph after rebuild: $ids16"
+[ "$(tail -1 "$OUT16/semantic-runs.jsonl" 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("ast_restored_nodes"))' 2>/dev/null)" = "2" ] \
+  && pass "T16 the restore is logged in semantic-runs.jsonl" || fail "T16 no restore row: $(cat "$OUT16/semantic-runs.jsonl" 2>/dev/null)"
+echo "$out16" | grep -q "restored 2 semantic node" && pass "T16 the restore is announced on stderr" || fail "T16 stderr: $out16"
+[ ! -e "$OUT16/.graph.pre-ast.json" ] && pass "T16 no snapshot left behind" || fail "T16 snapshot left: $(ls -A "$OUT16")"
+
+# --- T17: an existing graph that cannot be snapshotted aborts before the rebuild
+echo "T17: unreadable graph.json -> FAILED (exit 5), graphify never invoked"
+CORPUS17="$WS/c17"; OUT17="$CORPUS17/graphify-out"; mkdir -p "$OUT17"
+printf '{"nodes":[],"links":[]}' > "$OUT17/graph.json"; chmod 000 "$OUT17/graph.json"
+BIN17="$WS/bin17"; make_stub "$BIN17"; : > "$WS/call.log"
+out17=$( PATH="$BIN17:$PATH" bash "$SCRIPT" "$CORPUS17" 2>&1 ); rc17=$?
+chmod 600 "$OUT17/graph.json"
+if [ "$(id -u)" -eq 0 ]; then pass "T17 skipped (root reads any file)"
+else
+  [ "$rc17" -eq 5 ] && pass "T17 exits 5" || fail "T17 should exit 5 (got $rc17): $out17"
+  [ -s "$WS/call.log" ] && fail "T17 graphify ran without a snapshot" || pass "T17 graphify never invoked"
+fi
+
+# --- T18: graphify fails after rewriting graph.json -> the prior graph comes back
+echo "T18: failed rebuild that clobbered graph.json -> exit 5, original graph restored"
+CORPUS18="$WS/c18"; OUT18="$CORPUS18/graphify-out"; mkdir -p "$OUT18"
+printf '{"nodes":[{"id":"keep"}],"links":[]}' > "$OUT18/graph.json"
+BIN18="$WS/bin18"; mkdir -p "$BIN18"
+cat > "$BIN18/graphify" <<STUB
+#!/usr/bin/env bash
+printf 'torn' > "$OUT18/graph.json"
+exit 7
+STUB
+chmod +x "$BIN18/graphify"
+out18=$( PATH="$BIN18:$PATH" bash "$SCRIPT" "$CORPUS18" 2>&1 ); rc18=$?
+[ "$rc18" -eq 5 ] && pass "T18 exits 5" || fail "T18 should exit 5 (got $rc18): $out18"
+grep -q '"keep"' "$OUT18/graph.json" && pass "T18 original graph.json restored" || fail "T18 graph.json: $(cat "$OUT18/graph.json")"
+[ ! -e "$OUT18/.graph.pre-ast.json" ] && pass "T18 no snapshot left behind" || fail "T18 snapshot left"
+
+# --- T19: a rebuild the restore cannot repair keeps the snapshot
+echo "T19: rebuild succeeds but restore fails -> exit 5, pre-rebuild graph kept"
+CORPUS19="$WS/c19"; OUT19="$CORPUS19/graphify-out"; mkdir -p "$OUT19"
+printf '{"nodes":[{"id":"keep19"}],"links":[]}' > "$OUT19/graph.json"
+BIN19="$WS/bin19"; mkdir -p "$BIN19"
+cat > "$BIN19/graphify" <<STUB
+#!/usr/bin/env bash
+printf 'torn' > "$OUT19/graph.json"
+exit 0
+STUB
+chmod +x "$BIN19/graphify"
+out19=$( PATH="$BIN19:$PATH" bash "$SCRIPT" "$CORPUS19" 2>&1 ); rc19=$?
+[ "$rc19" -eq 5 ] && pass "T19 exits 5" || fail "T19 should exit 5 (got $rc19): $out19"
+grep -q '"keep19"' "$OUT19/graph.pre-ast.kept.json" 2>/dev/null && pass "T19 pre-rebuild graph kept" || fail "T19 nothing kept: $(ls -A "$OUT19")"
+echo "$out19" | grep -q "graph.pre-ast.kept.json" && pass "T19 stderr names the kept file" || fail "T19 stderr: $out19"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

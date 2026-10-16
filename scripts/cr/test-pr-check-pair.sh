@@ -1119,5 +1119,14 @@ else
     fail "32 does not document the opt-in CR_CLAUDE_AGENTS=blast-radius pass or its vendored procedure path"
 fi
 
+# The blast-radius pass runs by default on guard/gate diffs and has an opt-out.
+if ref_has 32-step3-reviewers.md 'scripts/hooks/' \
+    && ref_has 32-step3-reviewers.md 'CR_CLAUDE_AGENTS=blast-radius-off' \
+    && ref_has 32-step3-reviewers.md 'Default-on for guard and gate diffs'; then
+    pass "32 runs the blast-radius pass by default on guard/gate diffs with a named opt-out"
+else
+    fail "32 does not make the blast-radius pass default-on for guard/gate diffs with a CR_CLAUDE_AGENTS=blast-radius-off opt-out"
+fi
+
 echo "test-pr-check-pair: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

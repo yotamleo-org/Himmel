@@ -497,5 +497,31 @@ C44B="$WS/c44b"; new_corpus "$C44B"; : > "$WS/calls.log"
 out=$(GRAPHIFY_API_EFFORT=bogus run_api --name t44b --corpus-root "$C44B" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
 [ "$rc" -eq 1 ] && [[ "$out" == *"GRAPHIFY_API_EFFORT"* ]] && [ ! -s "$WS/calls.log" ] && pass "T44 garbage effort exits 1, nothing invoked" || fail "T44b (rc=$rc): $out"
 
+echo "T45: a re-extract returning a strict subset (under half the old nodes) is refused for that file: old nodes kept, file unstamped, decision logged"
+C45="$WS/c45"; new_corpus "$C45"
+python3 - "$C45/graphify-out/graph.json" <<'PY'
+import json, sys
+p = sys.argv[1]; g = json.load(open(p))
+for i in range(4):
+    g["nodes"].append({"id": "old_a_%d" % i, "label": "old %d" % i, "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
+json.dump(g, open(p, "w"))
+PY
+rm -f "$C45/b.md" "$C45/sub/c.md"
+out=$(run --name t45 --corpus-root "$C45" --corpus-class himmel-code); rc=$?
+all45=$(ids "$C45")
+for want in old_a_0 old_a_1 old_a_2 old_a_3 stale_a; do
+  case " $all45 " in *" $want "*) ;; *) fail "T45 dropped $want (rc=$rc): $all45" ;; esac
+done
+case " $all45 " in *" sem_a.md_alpha "*) fail "T45 the refused file's new node was merged: $all45" ;; *) pass "T45 old nodes survived, the shrunken extraction was not merged" ;; esac
+[ "$(lastrun "$C45" failed)" = "1" ] && pass "T45 counted as a failed (retried) file" || fail "T45 failed count: $(tail -1 "$C45/graphify-out/semantic-runs.jsonl")"
+[ "$(lastrun "$C45" shrink_refused)" = "1" ] && [[ "$out" == *"shrink guard"* ]] && pass "T45 decision logged to the run row and stderr" || fail "T45 no shrink log: $out"
+python3 -c 'import json,sys;sys.exit(0 if "a.md" not in json.load(open(sys.argv[1]))["files"] else 1)' "$C45/graphify-out/semantic-manifest.json" \
+  && pass "T45 a.md stays unstamped" || fail "T45 a.md was stamped"
+
+echo "T46: a normal re-extract (nodes not under half) still replaces the file's old nodes"
+C46="$WS/c46"; new_corpus "$C46"; rm -f "$C46/b.md" "$C46/sub/c.md"
+out=$(run --name t46 --corpus-root "$C46" --corpus-class himmel-code); rc=$?
+case " $(ids "$C46") " in *" stale_a "*) fail "T46 stale node kept" ;; *" sem_a.md_alpha "*) pass "T46 stale replaced by the new extraction" ;; *) fail "T46 (rc=$rc): $(ids "$C46")" ;; esac
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

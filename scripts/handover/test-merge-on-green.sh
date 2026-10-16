@@ -355,6 +355,9 @@ while [ $# -gt 0 ]; do case "$1" in --json) json="${2:-}";; --jq) jqexpr="${2:-}
 nwo="${STUB_NWO:-owner/repo}"
 def_files='[{"filename":"README.md"}]'
 case "$verb" in
+    "pr list")
+        [ "${STUB_OPEN_PRS_FAIL:-0}" = "1" ] && { echo "gh: list failed" >&2; exit 1; }
+        printf '%s' "${STUB_OPEN_PRS-}"; exit 0 ;;
     "pr view")
         [ "${STUB_NO_PR:-0}" = "1" ] && { echo 'no pull requests found for branch "x"' >&2; exit 1; }
         [ "${STUB_STATE_FAIL:-0}" = "1" ] && { echo "gh: api error" >&2; exit 1; }
@@ -389,6 +392,8 @@ case "$verb" in
                 fi
                 printf '%s|https://github.com/%s/pull/%s|%s|%s|%s|%s' \
                     "${STUB_STATE-OPEN}" "$nwo" "${STUB_NUM:-77}" "${STUB_NUM:-77}" "${STUB_SHA-abc123def456}" "${STUB_BASE-main}" "${STUB_HEAD_BRANCH-feat/stub-head}" ;;
+            body)
+                printf '%s' "${STUB_PR_BODY-}" ;;
             "mergeStateStatus,reviewDecision")
                 [ "${STUB_POLICY_FAIL:-0}" = "1" ] && { echo "gh: policy query failed" >&2; exit 1; }
                 printf '%s|%s' "${STUB_MERGE_STATE-CLEAN}" "${STUB_REVIEW_DECISION-}" ;;
@@ -671,8 +676,11 @@ fi
 case "\$1" in
     */dist/index.js)
         echo "\$*" >> "\$JIRA_LOG"
+        if [ "\$2" = "comment" ] && [ "\$4" = "--comment-file" ] && [ -f "\$5" ]; then
+            sed 's/^/comment-body: /' "\$5" >> "\$JIRA_LOG"
+        fi
         if [ "\$2" = "get" ]; then
-            printf '{"fields":{"issuetype":{"name":"%s"},"fixVersions":[%s]}}\n' "\${STUB_JIRA_ISSUE_TYPE:-Task}" "\${STUB_JIRA_FIXVERSIONS:-}"
+            printf '{"fields":{"issuetype":{"name":"%s"},"status":{"name":"%s"},"fixVersions":[%s]}}\n' "\${STUB_JIRA_ISSUE_TYPE:-Task}" "\${STUB_JIRA_STATUS-In Review}" "\${STUB_JIRA_FIXVERSIONS:-}"
             exit 0
         fi
         if [ "\$2" = "versions" ]; then
@@ -3409,8 +3417,11 @@ assert_jira_log_lacks "jira: no-tag case makes no jira transition call" "transit
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: default (no --jira-transition) only reports what it would do"
 assert_audit_has "jira: default case records the would-transition report" "jira-transition=would-transition key=HIMMEL-374 status=Done"
-assert_jira_log_lacks "jira: default case makes no jira comment call" "comment"
-assert_jira_log_lacks "jira: default case makes no jira transition call" "transition"
+# A bare (partial) merge returns the ticket to To Do with a
+# structured Remaining comment taken from the PR body; it is never Done.
+assert_jira_log_has "jira: partial merge returns the ticket to To Do" "transition HIMMEL-374 To Do"
+assert_jira_log_lacks "jira: partial merge never transitions to Done" "transition HIMMEL-374 Done"
+assert_jira_log_has "jira: partial merge comments a Remaining line" "comment-body: Remaining:"
 # A bare merge leaves the ticket open, so say so (stderr) and tell the console doc.
 assert_err_has "jira: bare merge prints the PARTIAL line" "PARTIAL HIMMEL-374: next slice not dispatched"
 mog_doc="$LAST_TMP/console-doc.md"
@@ -3424,6 +3435,66 @@ HIMMEL_CONSOLE_DOC="$mog_doc2" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIM
     run_mog 0 "jira: opted-in merge with HIMMEL_CONSOLE_DOC set" -- --jira-transition
 assert_err_lacks "jira: an opted-in merge prints no PARTIAL line" "PARTIAL"
 if grep -q 'PARTIAL' "$mog_doc2"; then fail "jira: an opted-in merge appends no PARTIAL bullet"; else pass; fi
+
+
+# The Remaining text is the PR body's own `Remaining:` line(s).
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    STUB_PR_BODY=$'## Summary\nslice 1\nRemaining: slice 2 (the closed-unmerged handler)\n' \
+    run_mog 0 "jira: partial merge quotes the PR body Remaining line"
+assert_jira_log_has "jira: Remaining text is quoted in the comment" "comment-body: Remaining: slice 2 (the closed-unmerged handler)"
+assert_jira_log_has "jira: partial merge To Do on a Remaining body" "transition HIMMEL-374 To Do"
+assert_audit_has "jira: partial merge audit records the To Do return" "jira-transition=would-transition key=HIMMEL-374 status=Done todo=ok"
+
+# No Remaining line in the body: still dispatchable, and the comment says so.
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
+    run_mog 0 "jira: partial merge with no Remaining line in the body"
+assert_jira_log_has "jira: no-note partial merge still goes To Do" "transition HIMMEL-374 To Do"
+assert_jira_log_has "jira: no-note comment names the gap" "comment-body: Remaining: not recorded"
+
+# A ticket already Done is left alone by a partial merge; an Epic never moves.
+STUB_JIRA_BUILD=1 STUB_JIRA_STATUS=Done STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: partial merge leaves an already-Done ticket alone"
+assert_jira_log_lacks "jira: Done ticket gets no transition" "transition"
+STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Epic STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: partial merge never moves an Epic"
+assert_jira_log_lacks "jira: Epic partial merge gets no transition" "transition"
+
+# A comment that fails to post means no breadcrumb: do not move the ticket.
+STUB_JIRA_BUILD=1 STUB_JIRA_COMMENT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: partial merge with a failed comment"
+assert_jira_log_lacks "jira: failed comment means no To Do transition" "transition"
+
+# A PR closed unmerged returns its In Review ticket to To Do with a comment.
+STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: closed-unmerged PR returns the ticket to To Do"
+assert_jira_log_has "jira: closed PR transitions to To Do" "transition HIMMEL-374 To Do"
+assert_jira_log_has "jira: closed PR comments why" "comment-body: PR #"
+STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_JIRA_STATUS="In Progress" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: closed-unmerged PR leaves an In Progress ticket alone"
+assert_jira_log_lacks "jira: In Progress ticket gets no transition on a closed PR" "index.js transition"
+
+# A replacement PR still open for the same ticket, or an unreadable PR list,
+# means the closed PR does not own the ticket any more: leave it alone.
+STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_OPEN_PRS="88" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: closed PR whose ticket has a replacement open PR leaves it alone"
+assert_jira_log_lacks "jira: replacement PR open means no transition" "index.js transition"
+assert_jira_log_lacks "jira: replacement PR open means no comment" "comment-body:"
+STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_OPEN_PRS_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: unreadable open-PR list leaves a closed PR's ticket alone"
+assert_jira_log_lacks "jira: open-PR lookup failure means no transition" "index.js transition"
+
+# A partial merge on a ticket already in To Do still posts its Remaining comment.
+STUB_JIRA_BUILD=1 STUB_JIRA_STATUS="To Do" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+    run_mog 0 "jira: partial merge on a To Do ticket still comments"
+assert_jira_log_has "jira: To Do ticket still gets the Remaining comment" "comment-body: Remaining: slice 2"
+assert_jira_log_lacks "jira: To Do ticket needs no transition" "index.js transition"
+STUB_JIRA_BUILD=1 STUB_JIRA_STATUS="" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+    run_mog 0 "jira: partial merge with an unreadable status touches nothing"
+assert_jira_log_lacks "jira: unreadable status gets no comment" "comment-body:"
+assert_jira_log_lacks "jira: unreadable status gets no transition" "index.js transition"
+STUB_JIRA_BUILD=1 STUB_STATE=MERGED STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: an already-MERGED PR is not treated as closed-unmerged"
+assert_jira_log_lacks "jira: MERGED NOOP makes no transition" "transition"
 
 # Ticket tag present + a built Jira CLI + matching config + --jira-transition
 # => comment THEN transition, in that order (comment-then-transition
@@ -3467,7 +3538,7 @@ assert_jira_log_has "jira: Story case transitions" "transition HIMMEL-374 Done"
 STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Story STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: Story without --jira-transition only reports would-transition"
 assert_audit_has "jira: Story bare merge records would-transition" "jira-transition=would-transition key=HIMMEL-374 status=Done"
-assert_jira_log_lacks "jira: Story bare merge makes no transition call" "transition"
+assert_jira_log_lacks "jira: Story bare merge never transitions to Done" "transition HIMMEL-374 Done"
 
 # A comment that fails to post leaves no evidence breadcrumb — skip the
 # transition rather than close the ticket silently. Requires opt-in to reach
@@ -3475,7 +3546,7 @@ assert_jira_log_lacks "jira: Story bare merge makes no transition call" "transit
 STUB_JIRA_BUILD=1 STUB_JIRA_COMMENT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: opted-in failed comment skips the transition" -- --jira-transition
 assert_audit_has "jira: failed-comment case records the skip" "jira-transition=skip=comment-failed key=HIMMEL-374"
-assert_jira_log_lacks "jira: failed-comment case makes no jira transition call" "transition"
+assert_jira_log_lacks "jira: failed-comment case makes no jira transition call" "index.js transition"
 
 # A closed ticket sitting in a later unreleased version moves to
 # the current one (earliest unreleased by release date); anything else is left.

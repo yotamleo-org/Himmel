@@ -1118,6 +1118,99 @@ for idx_args in "--index salus query x" "--index=salus query x"; do
   assert "named index ($idx_args) holding salus + remote model: refused (rc 10)" test "$rc" -eq 10
 done
 
+echo "[test-qmd-bin] qmd_cmd egress gate: project-local .qmd/index.yml, env models, timeout, node-absent (HIMMEL-5881)"
+# A refusal only counts when the GATE said so: rc 10 alone is also what "node missing" returns,
+# so a row asserting just the rc would stay green on a box without node.
+refused_by_gate() { grep -q 'qmd-jina-gate: REFUSED' <<<"$1" && grep -q "$2" <<<"$1"; }
+not_refused_by_gate() { ! refused_by_gate "$@"; }
+OR_REMOTE='  embed: openai:qwen/qwen3-embedding-8b\n  rerank: openai:cohere/rerank-4-fast\n  openai_base_url: https://openrouter.ai/api/v1\n'
+rm -f "$gh_home/.config/qmd/salus.yml" # the named-index rows above left a salus sibling whose path would overlap every fixture here
+mkdir -p "$gh_home/proj/.qmd" "$gh_home/proj/sub"
+printf 'collections:\n  notes:\n    path: %s\nmodels:\n  embed: hf:x/y.gguf\n' "$gh_home" >"$gh_home/.config/qmd/index.yml"
+# gate_run <cwd> [VAR=value...] -- qmd_cmd query x with the real node on PATH
+gate_run() {
+  local d="$1"; shift
+  ( cd "$d" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL HOME="$gh_home" PATH="$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k "$@" \
+      bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x' 2>&1 )
+}
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"
+rc=0; out="$(gate_run "$gh_home/proj")" || rc=$?
+assert "project-local salus + remote model: refused (rc 10)" test "$rc" -eq 10
+assert "project-local refusal comes from the gate and names the project-local file" refused_by_gate "$out" "$gh_home/proj/.qmd/index.yml"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "project-local refusal never reached qmd" bash -c '! grep -q "PATH-QMD" <<<"$1"' _ "$out"
+rc=0; out="$(gate_run "$gh_home/proj/sub")" || rc=$?
+assert "project-local config found by the cwd walk from a subdirectory: refused" test "$rc" -eq 10
+printf 'collections:\n  himmel:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"
+rc=0; out="$(gate_run "$gh_home/proj")" || rc=$?
+assert "project-local clean remote config: allowed (rc 0)" test "$rc" -eq 0
+assert "project-local clean remote config reached qmd through a real gate pass" grep -q '^PATH-QMD query x' <<<"$out"
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n  embed: hf:x/y.gguf\n  rerank: hf:x/z.gguf\n' "$gh_home" >"$gh_home/proj/.qmd/index.yml"
+rc=0; out="$(gate_run "$gh_home/proj" QMD_EMBED_MODEL=openai:qwen/qwen3-embedding-8b QMD_OPENAI_BASE_URL=https://openrouter.ai/api/v1)" || rc=$?
+assert "QMD_EMBED_MODEL=openai:... over a project-local salus config: refused (rc 10)" test "$rc" -eq 10
+assert "env-model refusal comes from the gate and checked the project-local file" refused_by_gate "$out" "$gh_home/proj/.qmd/index.yml"
+rc=0; out="$(gate_run "$gh_home/proj")" || rc=$?
+assert "project-local salus on local models: allowed" test "$rc" -eq 0
+
+# node absent: a remote config must fail with the node message and a refused row must NOT pass for the wrong reason
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"
+rc=0
+out="$(cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$gh_home/bin" QMD_OPENAI_API_KEY=k \
+  "$(command -v bash)" -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x' 2>&1)" || rc=$?
+assert "node absent: qmd_cmd refuses (rc 10)" test "$rc" -eq 10
+assert "node absent: the message says node is missing" grep -q 'gate or node is missing' <<<"$out"
+assert "node absent: a gate-refusal assertion would be RED (not a gate verdict)" not_refused_by_gate "$out" "$gh_home/proj/.qmd/index.yml"
+
+# a hung node must not hang qmd_cmd: bounded, fail closed
+stubn="$tmpdir/slow-node"; mkdir -p "$stubn"
+printf '#!/usr/bin/env bash\nsleep 30\n' >"$stubn/node"; chmod +x "$stubn/node"
+if command -v timeout >/dev/null 2>&1; then
+  t0=$SECONDS; rc=0
+  out="$(cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubn:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k QMD_GATE_TIMEOUT_SECS=1 \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x' 2>&1)" || rc=$?
+  assert "hung gate node: qmd_cmd fails closed (rc 10)" test "$rc" -eq 10
+  assert "hung gate node: returns within the bound" test "$((SECONDS - t0))" -lt 15
+  assert "hung gate node: the message says timed out" grep -q 'timed out' <<<"$out"
+fi
+
+# the gate verdict is cached per process: two qmd_cmd calls spawn ONE node
+cnt="$tmpdir/node-count"; : >"$cnt"
+stubc="$tmpdir/count-node"; mkdir -p "$stubc"
+printf '#!/usr/bin/env bash\necho x >>"%s"\necho "qmd-jina-gate: OK stub"\n' "$cnt" >"$stubc/node"; chmod +x "$stubc/node"
+printf 'collections:\n  himmel:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"
+rc=0
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; qmd_cmd query y' >/dev/null 2>&1 ) || rc=$?
+assert "two qmd_cmd calls in one shell: both pass" test "$rc" -eq 0
+assert "two qmd_cmd calls in one shell: the gate node ran once" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 1
+# a changed config is never served from the cache
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$tmpdir/swap.yml"
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; cp "'"$tmpdir"'/swap.yml" .qmd/index.yml; qmd_cmd query y' >/dev/null 2>&1 )
+assert "a config that changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+# a sibling config the gate reads for salus paths is part of the cache key
+printf 'collections:\n  himmel:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; printf "collections:\n  notes:\n    path: /x\n" >.qmd/sib.yml; qmd_cmd query y' >/dev/null 2>&1 )
+assert "a sibling config that changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+rm -f "$gh_home/proj/.qmd/sib.yml"
+# the index database is part of the cache key (the gate reads its collections)
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; printf "changed" >.qmd/index.sqlite; qmd_cmd query y' >/dev/null 2>&1 )
+assert "an index database that changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+rm -f "$gh_home/proj/.qmd/index.sqlite"
+
+# a symlinked cwd: the shell walks the PHYSICAL ancestry like the fork, so it cannot early-allow on the global config
+mkdir -p "$gh_home/real/.qmd" "$gh_home/real/sub"
+ln -s "$gh_home/real/sub" "$gh_home/lnk"
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/real/.qmd/index.yml"
+rc=0; out="$(gate_run "$gh_home/lnk")" || rc=$?
+assert "symlinked cwd whose physical ancestry holds a remote salus config: refused (rc 10)" test "$rc" -eq 10
+assert "symlinked cwd refusal comes from the gate and names the physical project file" refused_by_gate "$out" "$gh_home/real/.qmd/index.yml"
+
 echo "[test-qmd-bin] has_qmd matches binary presence in this env"
 if has_qmd; then
   echo "  has_qmd=true in this env (real qmd present)"

@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash, Glob, Grep, Read, Edit, Write, Skill
-description: Autonomous HARVEST pass over Clippings/ — stamp harvested_at on each new clip; github URLs go to luna-ingest.
+description: Autonomous HARVEST pass over Clippings/ — stamp harvested_at on each new clip; github repos go to luna-ingest.
 argument-hint: "[vault-path] [--dry-run] [--limit N] [--firecrawl-thin] [--firecrawl-budget N]"
 ---
 
@@ -73,15 +73,15 @@ fi
 
 Detection variable list may grow; refine during calibration cycle 1. Smoke-test in `test-harvest-clips-headless-refuse.sh`.
 
-**Env-var preflight.** Post-LUNA-26 pivot, only github URLs trigger an external skill dispatch (`obsidian-triage:luna-ingest`), which uses `gh api` and requires `gh auth status` to be ok. All other types use the **clip-body path** (described in Phase 4) and need no env vars.
+**Env-var preflight.** Post-LUNA-26 pivot, only github URLs other than `/blob/` file URLs trigger an external skill dispatch (`obsidian-triage:luna-ingest`), which uses `gh api` and requires `gh auth status` to be ok. All other types use the **clip-body path** (described in Phase 4) and need no env vars.
 
 | `type:` + URL pattern | Required env var | Skill that needs it |
 |-----------------------|------------------|---------------------|
-| `research` / `article` with `github.com/*` URL | none | `obsidian-triage:luna-ingest` (needs `gh auth status` ok) |
+| `research` / `article` with any `github.com/*` URL except a `/blob/` file (repo-root, `/tree/`, issues, pulls) | none | `obsidian-triage:luna-ingest` (needs `gh auth status` ok) |
 | thin article/web clip **with `--firecrawl-thin`** | `FIRECRAWL_API_KEY` (opt. `FIRECRAWL_BASE_URL`) | `harvest-clip-body-batch.py` firecrawl escalation |
-| every other type | none | clip-body path (no dispatch) |
+| every other type, including a `/blob/<branch>/<path>` github file clip | none | clip-body path (no dispatch) |
 
-If `gh auth status` is non-zero AND the batch contains any github URL: abort with `harvest-clips: gh not authenticated (needed for obsidian-triage:luna-ingest on github URLs); run 'gh auth login' and re-run.` Exit 2. (Skip the check if the batch has no github URLs.)
+If `gh auth status` is non-zero AND the batch contains any non-`/blob/` github URL: abort with `harvest-clips: gh not authenticated (needed for obsidian-triage:luna-ingest on github URLs); run 'gh auth login' and re-run.` Exit 2. (Skip the check if the batch has no github URLs, or only `/blob/` github URLs: no `gh auth` is needed for those, they take the clip-body path.)
 
 `--firecrawl-thin` turns the escalation on; `FIRECRAWL_API_KEY` is needed only for the `firecrawl` rung (keyless Jina Reader works without it; the batch tool exits 2 only when no backend in `HARVEST_SCRAPE_BACKEND` is usable). Default runs never need it.
 

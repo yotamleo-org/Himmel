@@ -215,10 +215,56 @@ assert_contains "qmd embedded the COPY" "INDEX_PATH=$copy " "$log"
 assert_not_contains "qmd never used the live config dir" "QMD_CONFIG_DIR=$H/.config/qmd " "$log"
 assert_contains "embed ran forced with no session cap" "ARGS=embed --force --timeout 0" "$log"
 assert_contains "embed batches 4096 docs so a remote embedder commits per batch" "--max-docs-per-batch 4096" "$log"
+if [ ! -e "$copy.partial" ]; then pass "a finished run removes the resume marker"; else fail "a finished run removes the resume marker"; fi
+# A finished copy is a snapshot of an older live index: never reused.
+sqlite3 "$copy" "CREATE TABLE resume_marker(x INT);"
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
-assert_rc "reembed refuses to overwrite an existing copy" 2 "$rc"
+assert_rc "reembed refuses a finished copy" 2 "$rc"
+assert_contains "the refusal names the finished copy" "finished copy of an older live index" "$out"
+# A copy that still carries the marker is a partial run: resume it.
+: >"$copy.partial"
+: >"$H/qmd.log"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed resumes a partial copy of the target model" 0 "$rc"
+if [ ! -e "$copy.partial" ]; then pass "the resumed run removes the resume marker"; else fail "the resumed run removes the resume marker"; fi
+assert_contains "the resume kept the copy (no new backup)" "resume_marker" "$(sqlite3 "$copy" .tables)"
+log="$(cat "$H/qmd.log")"
+assert_contains "the resume embeds without --force" "ARGS=embed --timeout 0 --max-docs-per-batch 4096" "$log"
+assert_not_contains "the resume never forces" "embed --force" "$log"
+# An interrupted first pass leaves the marker on a copy that still holds the old model: restart it forced, keep the copy.
+sqlite3 "$copy" "UPDATE content_vectors SET model='$GEMMA';"
+: >"$copy.partial"
+: >"$H/qmd.log"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed restarts an interrupted copy that still holds the old model" 0 "$rc"
+assert_contains "the restart kept the copy (no new backup)" "resume_marker" "$(sqlite3 "$copy" .tables)"
+assert_contains "the restart embeds forced" "ARGS=embed --force --timeout 0 --max-docs-per-batch 4096" "$(cat "$H/qmd.log")"
+# A copy still holding another model is not resumable.
+sqlite3 "$copy" "UPDATE content_vectors SET model='$GEMMA';"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed refuses a copy holding another model" 2 "$rc"
+assert_contains "the refusal says to remove the copy" "remove it or pick another --copy" "$out"
+sqlite3 "$copy" "UPDATE content_vectors SET model='$QWEN'; DROP TABLE resume_marker;"
+# A link to the live index is the live index: never resumed.
+ln -s "$(IDX)" "$H/.cache/qmd/link.sqlite"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --copy "$H/.cache/qmd/link.sqlite" --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed refuses a symlink to the live index as --copy" 2 "$rc"
+assert_contains "the link refusal names the live index" "same file as the live index" "$out"
+rm -f "$H/.cache/qmd/link.sqlite"
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --copy "$(IDX)" --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
 assert_rc "reembed refuses the live index as --copy" 2 "$rc"
+
+# A pre-existing marker path (here a link to the live index) is never truncated.
+rm -f "$copy" "$copy.partial"
+ln -s "$(IDX)" "$copy.partial"
+live_sum="$(cksum <"$(IDX)")"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed refuses a marker path that already exists" 2 "$rc"
+assert_contains "the marker refusal names the path" "already exists or cannot be created" "$out"
+assert_rc "the live index was not touched by the marker write" 0 "$([ "$live_sum" = "$(cksum <"$(IDX)")" ] && echo 0 || echo 1)"
+rm -f "$copy.partial"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed rebuilds the copy once the marker path is clear" 0 "$rc"
 
 echo "== swap"
 rc=0; out=$(run env FAKE_DAEMON=1 bash "$SCRIPT" swap --copy "$copy" 2>&1) || rc=$?
