@@ -1,0 +1,5 @@
+diff --git a/scripts/lanes/tests/spawn.test.mjs b/scripts/lanes/tests/spawn.test.mjs
+--- a/scripts/lanes/tests/spawn.test.mjs
++++ b/scripts/lanes/tests/spawn.test.mjs
+@@ -5,0 +6,1 @@
++expect(readFileSync(SRC, "utf8")).toContain("--permission-mode");

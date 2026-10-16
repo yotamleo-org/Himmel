@@ -33,8 +33,8 @@ hasnt() { case "$2" in *"$3"*) fail "$1: unexpected '$3' in output";; *) pass "$
 # canary and the real-hook replay, plus every single-row case). The shard jobs also set
 # GUARD_CORPUS_TIER=fast on the nightly (tier all), so a 60-minute shard never carries the
 # full replay; the scheduled-only guard-corpus-full job and a bare local run replay everything.
-# ponytail: the PR-CI subset skips the env-scrub, timeout, deny-control, JSON-decision
-# and over-deny replays, upgrade path: shard the full replay across runners (HIMMEL-5055).
+# ponytail: HIMMEL-5055 the PR-CI subset skips the env-scrub, timeout, deny-control, JSON-decision
+# and over-deny replays, upgrade path: shard the full replay across runners.
 FULL=1
 if [ "${SUITE_TIER_MODE:-}" = fast ] || [ "${GUARD_CORPUS_TIER:-}" = fast ]; then FULL=0; fi
 defer() { echo "SKIP (fast tier; the nightly full replay covers it): $1"; }

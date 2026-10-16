@@ -3570,7 +3570,17 @@ report_drift apply
 
 print_status_table
 
+# Print-only gap-audit offer; never runs the audit, never fails the update.
+gap_audit_offer_safe() {
+    local lib="$ROOT/scripts/lib/gap-audit.sh"
+    [ -f "$lib" ] || return 0
+    # shellcheck source=scripts/lib/gap-audit.sh
+    # shellcheck disable=SC1091
+    ( . "$lib" && GAP_AUDIT_ROOT="$ROOT" gap_audit_offer ) 2>/dev/null || true
+}
+
 if [ "$chain_rc" -ne 0 ]; then
+    gap_audit_offer_safe
     report_session_restart_required
     exit 1
 fi
@@ -3604,4 +3614,5 @@ case "$STATUS_luna_template" in
         echo "      template (journal/notes/clips are never touched)."
         ;;
 esac
+gap_audit_offer_safe
 report_session_restart_required

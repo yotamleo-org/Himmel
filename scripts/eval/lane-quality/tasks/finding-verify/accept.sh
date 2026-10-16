@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hidden acceptance test for task finding-verify (HIMMEL-4090).
+# Hidden acceptance test for task finding-verify.
 # Ground truth: F1 is real (the `s)` arm multiplies by 60); F2 is not real
 # (cache-probe.sh refuses --turns below 1 with a usage error).
 # Usage: accept.sh <worktree> <fixture-sha>

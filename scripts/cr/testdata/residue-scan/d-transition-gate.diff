@@ -1,0 +1,5 @@
+diff --git a/scripts/hooks/guard-lanes.sh b/scripts/hooks/guard-lanes.sh
+--- a/scripts/hooks/guard-lanes.sh
++++ b/scripts/hooks/guard-lanes.sh
+@@ -8,0 +9,1 @@
++deny "refuse the retired glm lane"

@@ -213,7 +213,8 @@ assert_contains "the live config is untouched" "embed: $GEMMA" "$(cat "$(CFG)")"
 log="$(cat "$H/qmd.log")"
 assert_contains "qmd embedded the COPY" "INDEX_PATH=$copy " "$log"
 assert_not_contains "qmd never used the live config dir" "QMD_CONFIG_DIR=$H/.config/qmd " "$log"
-assert_contains "embed ran forced with no session cap and a 4096-doc batch" "ARGS=embed --force --timeout 0 --max-docs-per-batch 4096" "$log"
+assert_contains "embed ran forced with no session cap" "ARGS=embed --force --timeout 0" "$log"
+assert_contains "embed batches 4096 docs so a remote embedder commits per batch" "--max-docs-per-batch 4096" "$log"
 if [ ! -e "$copy.partial" ]; then pass "a finished run removes the resume marker"; else fail "a finished run removes the resume marker"; fi
 # A finished copy is a snapshot of an older live index: never reused.
 sqlite3 "$copy" "CREATE TABLE resume_marker(x INT);"
