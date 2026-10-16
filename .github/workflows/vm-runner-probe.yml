@@ -1,0 +1,35 @@
+# vm-runner-probe.yml -- the dispatch target for the VM runner live proof.
+# workflow_dispatch only, no checkout, no secrets, no third-party action; the
+# job-started hook in the guest refuses anyone but the operator's accounts.
+# Static contract: scripts/ci/test-vm-runner-probe-workflow.sh.
+name: VM runner probe
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: vm-runner-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: [self-hosted, himmel-vm]
+    timeout-minutes: 5
+    steps:
+      - name: Who and where
+        run: |
+          echo "actor=$GITHUB_ACTOR runner=$RUNNER_NAME host=$(hostname)"
+      - name: Allow-listed host is reachable
+        run: |
+          code="$(curl -sS -m 15 -o /dev/null -w '%{http_code}' https://api.github.com/meta)"
+          echo "api.github.com/meta -> $code"
+          test "$code" = 200
+      - name: Non-allow-listed host is refused
+        run: |
+          if curl -sS -m 8 -o /dev/null https://example.com; then
+            echo "example.com reachable: egress allow-list is NOT enforced"
+            exit 1
+          fi
+          echo "example.com unreachable, as expected"
