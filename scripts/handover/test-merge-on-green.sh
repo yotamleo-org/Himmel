@@ -3466,6 +3466,15 @@ STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_PR_TITLE="feat(jira): [HIMMEL-374] reco
     run_mog 0 "jira: closed-unmerged PR returns the ticket to To Do"
 assert_jira_log_has "jira: closed PR transitions to To Do" "transition HIMMEL-374 To Do"
 assert_jira_log_has "jira: closed PR comments why" "comment-body: PR #"
+STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_JIRA_STATUS="In Progress" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: closed-unmerged PR leaves an In Progress ticket alone"
+assert_jira_log_lacks "jira: In Progress ticket gets no transition on a closed PR" "index.js transition"
+
+# A partial merge on a ticket already in To Do still posts its Remaining comment.
+STUB_JIRA_BUILD=1 STUB_JIRA_STATUS="To Do" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+    run_mog 0 "jira: partial merge on a To Do ticket still comments"
+assert_jira_log_has "jira: To Do ticket still gets the Remaining comment" "comment-body: Remaining: slice 2"
+assert_jira_log_lacks "jira: To Do ticket needs no transition" "index.js transition"
 STUB_JIRA_BUILD=1 STUB_STATE=MERGED STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: an already-MERGED PR is not treated as closed-unmerged"
 assert_jira_log_lacks "jira: MERGED NOOP makes no transition" "transition"

@@ -588,7 +588,7 @@ pr_base=${_rest%%|*}; head_branch=${_rest#*|}
 # no move). Prints ok | skip=already-done | skip=comment-failed | failed.
 # Never touches a ticket already Done/Closed; callers screen Epics.
 _jira_return_to_todo() {
-    local repo_root="$1" key="$2" issue_json="$3" text="$4" status
+    local repo_root="$1" key="$2" issue_json="$3" text="$4" only_status="${5:-}" status
     status=$(printf '%s' "$issue_json" | node -e '
         try {
             const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
@@ -598,14 +598,20 @@ _jira_return_to_todo() {
     ' 2>/dev/null)
     case "$status" in
         Done|Closed) echo "skip=already-done"; return 0 ;;
-        "To Do") echo "ok"; return 0 ;;
     esac
+    # A caller may restrict the move to one status (a closed PR must not pull a
+    # ticket whose work moved to another PR out of In Progress).
+    if [ -n "$only_status" ] && [ "$status" != "$only_status" ]; then
+        echo "skip=not-$only_status"; return 0
+    fi
     local tmp rc=0
     tmp=$(mktemp "${TMPDIR:-/tmp}/merge-on-green-jira-todo.XXXXXX") || { echo "failed"; return 0; }
     printf '%s\n' "$text" >"$tmp"
     ( cd "$repo_root" && node scripts/jira/dist/index.js comment "$key" --comment-file "$tmp" ) >/dev/null 2>&1 || rc=$?
     rm -f "$tmp"
     [ "$rc" -eq 0 ] || { echo "skip=comment-failed"; return 0; }
+    # The breadcrumb is posted; a ticket already in To Do needs no move.
+    [ "$status" != "To Do" ] || { echo "ok"; return 0; }
     if ( cd "$repo_root" && node scripts/jira/dist/index.js transition "$key" "To Do" ) >/dev/null 2>&1; then
         echo "ok"
     else
@@ -634,7 +640,7 @@ jira_return_closed_pr_to_todo() {
     # Fail safe like the merge path: an Epic or an unreadable type is left alone.
     case "$issue_type" in Epic|"") return 0 ;; esac
     todo=$(_jira_return_to_todo "$repo_root" "$key" "$issue_json" \
-        "PR #$pr_num ($nwo) was closed without merging; the work it carried is not done, so the ticket returns to To Do.")
+        "PR #$pr_num ($nwo) was closed without merging; the work it carried is not done, so the ticket returns to To Do." "In Review")
     echo "merge-on-green: PR #$pr_num closed unmerged, $key to To Do: $todo" >&2
     return 0
 }
