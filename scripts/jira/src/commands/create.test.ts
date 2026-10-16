@@ -288,6 +288,15 @@ describe('create — plain block rule (HIMMEL-5226)', () => {
     expect(posted()).toBe(true);
   });
 
+  it('--skeleton prints the four-heading body to fill and creates nothing', async () => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--skeleton']);
+    expect(console.log).toHaveBeenCalledWith(PLAIN_BLOCK_TEMPLATE);
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
   it('only warns for an Epic with no body, and still files it', async () => {
     await run(['--type', 'Epic']);
     expect(posted()).toBe(true);
