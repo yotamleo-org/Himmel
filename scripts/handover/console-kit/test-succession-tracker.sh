@@ -131,6 +131,20 @@ eq "a malformed legs entry beside a valid one is not complete (rc 1)" "$rc" 1
 lacks "and prints no LIVE line for it" "$out" "append-results.sh"
 has "and names the malformed entry" "$out" "malformed"
 
+# A real console doc glued `queue: none` onto the legs: line and the next
+# line is `last GO:`. Prose after the spans is tolerated, a field line is never a leg.
+# shellcheck disable=SC2016
+printf '# console\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N8:Y-N8-bb:lockB:12`queue: none\nlast GO: `2846:1874de54:x:y` (BC)\nacked: none\n\n## Results\n' > "$CDOC"
+out="$(run)"; rc=$?
+eq "trailing prose glued after the spans is not malformed: complete (rc 0)" "$rc" 0
+has "and both legs are read from the spans" "$out" "COMPLETE 2/2"
+lacks "and the queue: text is not reported as a malformed entry" "$out" "malformed"
+# shellcheck disable=SC2016
+printf '# console\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` (note: held) `N8:Y-N8-bb:lockB:12`\nqueue: `Q:a:b:c`\n' > "$CDOC"
+out="$(run)"; rc=$?
+eq "prose between spans is tolerated and a later field line's span is not a leg (rc 0)" "$rc" 0
+has "2 legs, not 3" "$out" "COMPLETE 2/2"
+
 # no legs at all is not a complete set
 printf '# console\n\n## Live state\nlegs:\n' > "$CDOC"
 out="$(run)"; rc=$?

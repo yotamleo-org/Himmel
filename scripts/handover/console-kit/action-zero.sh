@@ -4,7 +4,7 @@
 # summary, instead of six or seven Bash turns that each re-read the context.
 #
 #   action-zero.sh --doc <this console doc> --root <handover root> [--repo <path>]
-#                  [--prefix <P>] [--acquire]
+#                  [--prefix <P>] [--acquire] [--render-legs]
 #
 #   LOCKS   queue-lock.sh status --sweep at the ROOT (never the bucket)
 #   HEAD    primary head sha + remote
@@ -14,8 +14,12 @@
 #   LOAD    uptime
 #   LOCK    this document's lock state; with --acquire and state `free`, acquires
 #           it and prints the release token. `held` is never taken over.
+#   LEGS    only with --render-legs: rewrites the doc's `## Live state` legs: line
+#           from the fleet manifest through live-state.sh (lock tokens from the
+#           held locks, nonces kept) instead of a hand edit; `skipped` without a
+#           manifest next to the doc.
 #
-# Everything is read-only except --acquire. What it leaves to the console, on
+# Everything is read-only except --acquire and --render-legs. What it leaves to the console, on
 # purpose (they need its own turn and its own authority): ListAgents (step 1),
 # the relays and each leg's quote-back (step 9), sending LIVE, and starting the
 # waiter (step 10). A section that fails prints `unavailable` and the rest run.
@@ -31,8 +35,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$HERE/../../.." && pwd)"
-doc=""; root=""; prefix=""; acquire=0
-usage() { echo "usage: action-zero.sh --doc <console doc> --root <handover root> [--repo <path>] [--prefix <P>] [--acquire]" >&2; exit 2; }
+doc=""; root=""; prefix=""; acquire=0; render=0
+usage() { echo "usage: action-zero.sh --doc <console doc> --root <handover root> [--repo <path>] [--prefix <P>] [--acquire] [--render-legs]" >&2; exit 2; }
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --doc) [ "$#" -ge 2 ] || usage; doc="$2"; shift 2 ;;
@@ -40,6 +44,7 @@ while [ "$#" -gt 0 ]; do
         --repo) [ "$#" -ge 2 ] || usage; repo="$2"; shift 2 ;;
         --prefix) [ "$#" -ge 2 ] || usage; prefix="$2"; shift 2 ;;
         --acquire) acquire=1; shift ;;
+        --render-legs) render=1; shift ;;
         *) usage ;;
     esac
 done
@@ -96,6 +101,15 @@ else echo "none"; fi
 
 echo "== LOAD"
 uptime 2>&1 || echo "unavailable"
+
+if [ "$render" -eq 1 ]; then
+    echo "== LEGS"
+    if [ -f "${doc%.md}.fleet.json" ]; then
+        if HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc" 2>&1; then echo "legs: line rendered"; else echo "unavailable"; fi
+    else
+        echo "skipped (no fleet manifest next to the doc)"
+    fi
+fi
 
 echo "== LOCK (this document)"
 state="$(env HANDOVER_DIR="$root" bash "$ql" status "$doc" 2>&1)"; src=$?

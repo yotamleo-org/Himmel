@@ -56,9 +56,11 @@ block="$(awk '
 ' "$doc")"
 # shellcheck disable=SC2016
 entries="$(printf '%s\n' "$block" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`' | cut -d: -f1)"
-# anything left once the strict entries and the legs: marker are removed is a malformed entry
+# Prose may follow or sit between the spans (the tick reads it as prose); a backtick left once
+# the strict entries are removed is a near-miss span, so a malformed entry.
 # shellcheck disable=SC2016
 leftover="$(printf '%s\n' "$block" | sed -E 's/`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`//g; s/^legs://; s/[[:space:],]+//g' | tr -d '\n')"
+case "$leftover" in *'`'*) ;; *) leftover="" ;; esac
 if [ -n "$leftover" ]; then
     echo "INCOMPLETE 0/0 (malformed legs entry in $doc ## Live state: $leftover)"
     exit 1
