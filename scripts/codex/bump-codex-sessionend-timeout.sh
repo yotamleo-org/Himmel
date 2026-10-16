@@ -28,7 +28,10 @@ done
 
 command -v jq >/dev/null 2>&1 || { echo "ERR: jq required" >&2; exit 1; }
 
-MIN_TIMEOUT="${MIN_TIMEOUT:-30}"
+MIN_TIMEOUT="${MIN_TIMEOUT-30}"
+case "$MIN_TIMEOUT" in
+  ''|*[!0-9]*|0|0[0-9]*) echo "ERR: MIN_TIMEOUT must be a positive integer (got '$MIN_TIMEOUT')" >&2; exit 2 ;;
+esac
 CACHE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/openai-codex"
 if [ ! -d "$CACHE" ]; then
   echo "OK: no openai-codex plugin cache at $CACHE (nothing to bump)."

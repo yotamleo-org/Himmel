@@ -74,6 +74,14 @@ empty_rc=0
 CLAUDE_CONFIG_DIR="$TMP/empty" bash "$BUMPER" >/dev/null 2>&1 || empty_rc=$?
 chk "missing cache exits 0" "0" "$empty_rc"
 
+# --- MIN_TIMEOUT must be a positive integer ----------------------------------
+for bad in '"30"' 'abc' '0' '-5' '1.5' ''; do
+  bad_rc=0
+  MIN_TIMEOUT="$bad" CLAUDE_CONFIG_DIR="$CFG" bash "$BUMPER" >/dev/null 2>&1 || bad_rc=$?
+  chk "MIN_TIMEOUT='$bad' rejected with exit 2" "2" "$bad_rc"
+done
+chk "rejected MIN_TIMEOUT left hooks.json numeric" "number" "$(jq -r '.hooks.SessionEnd[0].hooks[0].timeout | type' "$BASE/1.0.6/hooks/hooks.json")"
+
 if [ "$fails" -eq 0 ]; then echo "PASS"; exit 0; fi
 echo "$fails failure(s)" >&2
 exit 1
