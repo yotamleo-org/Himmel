@@ -2046,6 +2046,9 @@ f4670="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'fails= follows or= (HIMMEL-4670)' "$f4670" ' or=skip fails=1/1@error/Edit*1'
 contains 'vmrun= follows fails= (HIMMEL-5037)' "$f4670" ' fails=1/1@error/Edit*1 vmrun=off'
 case "$f4670" in *' vmrun='*' '*) fail "vmrun= is the last field when spare= is absent (out='$f4670')" ;; *) pass 'vmrun= is the last field when spare= is absent (HIMMEL-5037)' ;; esac
+printf '#!/bin/sh\necho "garbage not a token"\n' > "$W/vmrun-probe-garbage.sh"
+vmrun_garbage="$(HIMMEL_VMRUN_PROBE="$W/vmrun-probe-garbage.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a probe that prints a non-token reads vmrun=unknown (HIMMEL-5641)' "$vmrun_garbage" ' vmrun=unknown'
 contains 'verbose labels leg failures (HIMMEL-4670)' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_LEG_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line (HIMMEL-4670)' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'

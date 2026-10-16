@@ -4088,7 +4088,9 @@ check_c64_vm_runner() {
         emit INFO C64-vm-runner "vm-runner.sh not found — not checked"
         return
     fi
-    rows="$(bash "$runner" doctor 2>/dev/null)" || true
+    local tbin
+    tbin="$(command -v timeout 2>/dev/null)" || tbin=""
+    rows="$(${tbin:+"$tbin" -k 2 "${DOCTOR_VM_RUNNER_TIMEOUT:-90}"} bash "$runner" doctor 2>/dev/null)" || true
     if [ -z "$rows" ]; then
         emit INFO C64-vm-runner "vm-runner.sh doctor printed nothing — not checked"
         return

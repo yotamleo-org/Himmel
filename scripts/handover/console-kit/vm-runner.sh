@@ -93,10 +93,13 @@ ensure_clone() {
     vm_lock_release "$name"
 }
 
+# sed_esc <text> — text safe as a sed replacement with the # delimiter.
+sed_esc() { printf '%s' "$1" | sed -e 's/[\\&#]/\\&/g'; }
+
 install_unit() {
     mkdir -p "$UNIT_DIR" || die "cannot create $UNIT_DIR"
     # The units get the controller's repo and stop file, so on/off and the loops agree.
-    sed -e "s#@REPO_ROOT@#$REPO_ROOT#g" -e "s#@REPO@#$REPO#g" -e "s#@STOP_FILE@#$STOP_FILE#g" -e "s#@JOB_MAX@#$JOB_MAX#g" \
+    sed -e "s#@REPO_ROOT@#$(sed_esc "$REPO_ROOT")#g" -e "s#@REPO@#$(sed_esc "$REPO")#g" -e "s#@STOP_FILE@#$(sed_esc "$STOP_FILE")#g" -e "s#@JOB_MAX@#$(sed_esc "$JOB_MAX")#g" \
         "$REPO_ROOT/scripts/vm/ci-runner/$UNIT_PREFIX@.service" \
         > "$UNIT_DIR/$UNIT_PREFIX@.service" || die "cannot write the unit template"
     systemctl --user daemon-reload || die "systemctl --user unit reload failed"

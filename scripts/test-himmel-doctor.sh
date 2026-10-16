@@ -6468,6 +6468,12 @@ if grepq "$out" -F 'OK   C64-vm-runner: fork-approval' && ! grepq "$out" -F 'FAI
 echo "== C64-vm-runner: runner script absent -> INFO =="
 out="$(c64_run "$c64_t/none.sh")"
 if grepq "$out" -F 'INFO C64-vm-runner' && ! grepq "$out" -F 'FAIL C64-vm-runner'; then pass "C64 absent -> INFO"; else fail "C64 absent -> $(printf '%s' "$out" | grep C64)"; fi
+printf '%s\n' '#!/usr/bin/env bash' 'sleep 30' > "$c64_t/runner-hang.sh"
+echo "== C64-vm-runner: a hung vm-runner.sh doctor is cut off (HIMMEL-5641) =="
+c64_start=$SECONDS
+out="$(DOCTOR_VM_RUNNER_TIMEOUT=2 c64_run "$c64_t/runner-hang.sh")"
+c64_took=$((SECONDS - c64_start))
+if [ "$c64_took" -lt 20 ] && grepq "$out" -F 'C64-vm-runner'; then pass "C64 hang -> bounded (${c64_took}s)"; else fail "C64 hang -> ${c64_took}s $(printf '%s' "$out" | grep C64)"; fi
 rm -rf "$c64_t"
 
 # --- C62-oxlint-runner: can the oxlint commit gates run? ---
