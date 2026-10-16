@@ -184,6 +184,9 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // shows up in any tool call or result. Detection twin of
   // block-read-secrets.sh; bash-regex fast path, fails open.
   'detect-token-in-output.sh',
+  // PostToolUse `Bash|Grep|Glob|mcp__qmd__.*` — advisory only: one nudge per
+  // session toward qmd/graphify after 5 search sweeps with no retrieval call.
+  'retrieval-nudge.sh',
   // PostToolUse `*` — LAST PostToolUse group: delivers any new
   // claudex console-inbox bullet as additionalContext. Fires on every tool
   // call in every session; see the script's own header for the fail-open
