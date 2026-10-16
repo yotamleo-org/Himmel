@@ -525,6 +525,39 @@ tests:
               severity: page
             exp_annotations:
               summary: 'Exporter job flow-exporter is down'
+      # t=18m: the bad samples have resumed, so the alert is still firing.
+      - eval_time: 18m
+        alertname: HimmelSessionDead
+        exp_alerts:
+          - exp_labels:
+              host: workstation1
+              severity: warn
+            exp_annotations:
+              summary: 'Host workstation1 has 1 dead session(s)'
+      - eval_time: 18m
+        alertname: HimmelWatcherDown
+        exp_alerts:
+          - exp_labels:
+              job: flow-exporter
+              severity: page
+            exp_annotations:
+              summary: 'Exporter job flow-exporter is down'
+
+  # HIMMEL-2184: once healthy for longer than keep_firing_for (10m) the
+  # alerts resolve. Last bad sample is t=11m; at 30m the grace is long gone.
+  - interval: 1m
+    input_series:
+      - series: 'session_dead_total{host="workstation1"}'
+        values: '1x12 0x30'
+      - series: 'up{job="flow-exporter"}'
+        values: '0x12 1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: HimmelSessionDead
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: HimmelWatcherDown
+        exp_alerts: []
 
   # HIMMEL-1604 healthy post-boot steady state: 2.05 GiB nonpaged + 4.08 GiB
   # paged = 6.13 GiB total, flat, and 20 GiB committed of a 64 GiB limit
