@@ -52,6 +52,20 @@ contains "dry-run: json output" "$out" "--output-format json"
 lacks "dry-run: no skip-permissions" "$out" "skip-permissions"
 lacks "dry-run: no bypassPermissions" "$out" "bypassPermissions"
 
+rc=0; out="$(LAUNCH_GUEST_TIMEOUT=0 run --dry-run ubuntu_new "$tmp/prompt.txt")" || rc=$?
+check "zero timeout: exit 2" "$rc" "2"
+
+mkdir -p "$tmp/bin"
+printf '#!/bin/sh\necho STUB-SSH "$@"\n' > "$tmp/bin/ssh"; chmod +x "$tmp/bin/ssh"
+printf '#!/bin/sh\necho SKIPPED-BANK\n' > "$tmp/pre-skip.sh"
+printf '#!/bin/sh\necho PROCEED\n' > "$tmp/pre-ok.sh"
+rc=0; out="$(PATH="$tmp/bin:$PATH" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-skip.sh" run ubuntu_new "$tmp/prompt.txt")" || rc=$?
+check "exhausted bank: exit 2" "$rc" "2"
+lacks "exhausted bank: no ssh" "$out" "STUB-SSH"
+rc=0; out="$(PATH="$tmp/bin:$PATH" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-ok.sh" run ubuntu_new "$tmp/prompt.txt")" || rc=$?
+check "bank ok: exit 0" "$rc" "0"
+contains "bank ok: ssh runs" "$out" "STUB-SSH -p 2222"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi
 echo "FAIL - test-launch-guest.sh ($fails failure(s))"; exit 1

@@ -16,7 +16,8 @@
 # stdout: the guest session's --output-format json result. rc: the guest's, or 2
 #   on a refused argument.
 # Env: LAUNCH_GUEST_VMS_JSON (registry path; default scripts/lib/vms.json),
-#      LAUNCH_GUEST_TIMEOUT (seconds, default 1800).
+#      LAUNCH_GUEST_PREFLIGHT (bank preflight script; default scripts/lib/bank-preflight.sh),
+#      LAUNCH_GUEST_TIMEOUT (seconds above 0, default 1800).
 # Platform: POSIX bash 3.2+, node, ssh with key auth to the guest.
 # launch-profile-ok-file: the claude runs on the guest's own login and config, where no host profile applies
 set -u
@@ -34,7 +35,7 @@ fi
 VM="$1"; PROMPT="$2"
 TIMEOUT="${LAUNCH_GUEST_TIMEOUT:-1800}"
 case "$VM" in ''|*[!A-Za-z0-9_-]*) echo "launch-guest: '$VM' is not a registered test VM name" >&2; exit 2 ;; esac
-case "$TIMEOUT" in ''|*[!0-9]*) echo "launch-guest: LAUNCH_GUEST_TIMEOUT must be whole seconds" >&2; exit 2 ;; esac
+case "$TIMEOUT" in ''|*[!0-9]*|0) echo "launch-guest: LAUNCH_GUEST_TIMEOUT must be whole seconds above 0" >&2; exit 2 ;; esac
 [ -f "$PROMPT" ] || { echo "launch-guest: prompt file '$PROMPT' not found" >&2; exit 2; }
 # port and user come from the registry; a VM that is not an ubuntu guest, is a
 # station, or lacks either field prints nothing and is refused.
@@ -53,4 +54,11 @@ if [ "$DRY" -eq 1 ]; then
     echo "ssh -p $PORT -o BatchMode=yes $GUSER@127.0.0.1 bash -lc \"$INNER\" < $PROMPT"
     exit 0
 fi
+# an unattended claude session draws the same subscription budget as any other:
+# preflight the bank and refuse on an exhausted verdict (unknown/stale fail open).
+PREFLIGHT="${LAUNCH_GUEST_PREFLIGHT:-$HERE/../lib/bank-preflight.sh}"
+VERDICT="$(bash "$PREFLIGHT" 2>/dev/null | tail -n 1)"
+case "$VERDICT" in
+    SKIPPED-*) echo "launch-guest: bank preflight said $VERDICT - not launching a guest session" >&2; exit 2 ;;
+esac
 exec "${CMD[@]}" < "$PROMPT"
