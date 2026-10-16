@@ -140,6 +140,7 @@ secrets-reads) + the per-layer example set:
 - **Worked escalation examples** (an instructional rule hardening into a
   structural gate) → [`enforcement.md`](enforcement.md#operator-conventions--worked-examples).
 - **The always-on enforcement surface** (hooks + gates) → [`enforcement.md`](enforcement.md).
+- **Research, comparisons and "decided not to adopt" records** (not shipped behaviour, so not in `docs/`; `check-docs-decision-records.sh` flags a new one) → the state repo at `handovers/<USER_SLUG>/himmel/specs/research/` and `specs/decisions/`, relative to the handover root and indexed by the qmd collection `luna`. Search it before re-adopting a tool you think was already evaluated.
 
 ## Maintenance — the surface re-accretes
 
