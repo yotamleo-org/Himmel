@@ -86,6 +86,7 @@ cat >"$mixed" <<'RPT'
 == pinned remotes (SHA-pin vs HEAD; fork → true-upstream release) ==
   claude-obsidian: CURRENT  (fork tracks AgriciDaniel/claude-obsidian @ v2.2.0; pin v2.2.0)
   taste-skill-core: BEHIND   (Leonxlnx/taste-skill upstream is 2 commit(s) ahead — pin a60a36d -> f624f37)
+  impeccable: BEHIND   (pbakaus/impeccable latest tag skill-v4.6.0; fork synced to skill-v4.5.2 — re-sync fork, bump synced_base + fork tag, then bump marketplace ref)
 
 == carried upstreams (registry + installed marketplaces; HIMMEL-869) ==
   mkt:ui-ux-pro-max-skill: BEHIND   (nextlevelbuilder/ui-ux-pro-max-skill upstream is 1 commit(s) ahead — 7246805 -> 6166631)  [mkt-manual]
@@ -100,8 +101,9 @@ DRIFT DETECTED — one or more plugins are behind upstream (see above).
 RPT
 out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="" bash "$SCRIPT" 2 "$mixed" 2>&1)"
 b="$(body_of "$out")"
-has '^### Needs update (3)' "$b" "mixed: body has 'Needs update (3)'"
-has '^| taste-skill-core | skill fork | a60a36d | f624f37 | /fork-resync taste-skill-core |' "$b" "mixed: skill-fork row (kind, pin, target, action)"
+has '^### Needs update (4)' "$b" "mixed: body has 'Needs update (4)'"
+has '^| taste-skill-core | upstream pin | a60a36d | f624f37 | bump the marketplace.json sha pin to f624f37 |' "$b" "mixed: plain sha-pin row is an upstream pin with the sha-bump action"
+has '^| impeccable | skill fork | skill-v4.5.2 | skill-v4.6.0 | /fork-resync impeccable |' "$b" "mixed: real skill-fork row keeps /fork-resync"
 has '^| mkt:ui-ux-pro-max-skill | carried tool | 7246805 | 6166631 | station tool: VM-first upgrade |' "$b" "mixed: carried-tool row"
 has '^| npm:react | npm package | 19.3.0 | 19.3.1 | bump scripts/config-ui/agui-web to 19.3.1 plus synced_base in scripts/upstreams.json |' "$b" "mixed: npm row with exact action"
 has 'no action unless upstream advances' "$b" "mixed: VENDORED group labelled"
@@ -110,7 +112,7 @@ has '<details>' "$b" "mixed: CURRENT rows collapsed in <details>"
 has 'claude-obsidian: CURRENT' "$b" "mixed: CURRENT row kept inside the details block"
 first="$(grep -n 'Needs update' <<<"$b" | head -1 | cut -d: -f1)"; det="$(grep -n '<details>' <<<"$b" | head -1 | cut -d: -f1)"
 if [ -n "$first" ] && [ -n "$det" ] && [ "$first" -lt "$det" ]; then ok "mixed: table precedes the details block"; else bad "mixed: table must precede details ($first / $det)"; fi
-has 'fork-drift-behind: mkt:ui-ux-pro-max-skill,npm:react,taste-skill-core' "$b" "mixed: machine marker lists BEHIND names (sorted)"
+has 'fork-drift-behind: impeccable,mkt:ui-ux-pro-max-skill,npm:react,taste-skill-core' "$b" "mixed: machine marker lists BEHIND names (sorted)"
 
 # 9b. BEHIND only (no VENDORED) -> no VENDORED group.
 only="$(mktemp)" || exit 1; printf '== x ==\n  graphify: BEHIND   (a/b upstream is 1 commit(s) ahead — pin aaaaaaa -> bbbbbbb)\n\nDRIFT DETECTED\n' >"$only"
@@ -131,9 +133,9 @@ has 'DRY: gh issue close 42' "$out" "nothing-behind: issue closes"
 # 9e. Per-run comment is a one-line delta against the previous body's marker.
 old='<!-- fork-drift-behind: npm:react,old-item -->'
 out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="42" DRY_RUN_OLD_BODY="$old" bash "$SCRIPT" 2 "$mixed" 2>&1)"
-has 'Still drifting: 3 items (+mkt:ui-ux-pro-max-skill, taste-skill-core; -old-item since last run)' "$out" "comment: count + added/cleared delta"
-out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="42" DRY_RUN_OLD_BODY="<!-- fork-drift-behind: mkt:ui-ux-pro-max-skill,npm:react,taste-skill-core -->" bash "$SCRIPT" 2 "$mixed" 2>&1)"
-has 'Still drifting: 3 items (no change since last run)' "$out" "comment: unchanged set"
+has 'Still drifting: 4 items (+impeccable, mkt:ui-ux-pro-max-skill, taste-skill-core; -old-item since last run)' "$out" "comment: count + added/cleared delta"
+out="$(DRY_RUN=1 DRY_RUN_OPEN_ISSUE="42" DRY_RUN_OLD_BODY="<!-- fork-drift-behind: impeccable,mkt:ui-ux-pro-max-skill,npm:react,taste-skill-core -->" bash "$SCRIPT" 2 "$mixed" 2>&1)"
+has 'Still drifting: 4 items (no change since last run)' "$out" "comment: unchanged set"
 rm -f "$mixed" "$only" "$ven"
 
 # 9f. The previous body is read BEFORE the issue is edited: after the edit the

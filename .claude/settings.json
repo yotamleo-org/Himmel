@@ -603,6 +603,15 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/permission-allow-gate-shapes.sh\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "Notification": [
@@ -611,6 +620,15 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/scripts/trust/shadow-ledger.mjs\" notify",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/notify-console-on-prompt.sh\"",
             "timeout": 10
           }
         ]

@@ -803,7 +803,9 @@ fi
 # ponytail: a degraded census (rc=3, unreadable=<n>) can hide a live leg's row,
 # so an unmatched= name may be a leg whose cmdline was unreadable -- the
 # appended unreadable= flag is that caveat; unmatched= is not suppressed by it.
-census_names="$(printf '%s\n' "$sessions_out" | awk -F'\t' '$1 !~ /^#/ && NF >= 4 && $2 != "" { print $2 }')"
+# a relaunched leg runs as <name>-r<N>: list the base name too, so it
+# joins to its leg for procs=, unwatched= and CLOSABLE.
+census_names="$(printf '%s\n' "$sessions_out" | awk -F'\t' '$1 !~ /^#/ && NF >= 4 && $2 != "" { print $2; b = $2; if (sub(/-r[0-9]+$/, "", b)) print b }')"
 held_n=0
 matched_n=0
 unmatched_csv=""
@@ -826,6 +828,7 @@ while IFS=$'\t' read -r m_label m_status m_cands; do
         unmatched_csv="$m_label"
     fi
 done <<< "$leg_candmap"
+closable_n=0
 # a WRAPPED leg (lock free, tail says WRAPPED) whose own
 # session process is STILL alive in this same census is CLOSABLE -- the
 # window sitting there finished but not yet closed is exactly what a console
@@ -839,6 +842,16 @@ if [ "$census_failed" -eq 0 ]; then
         for w_cand in ${w_cands//,/ }; do
             if grep -Fxq -- "$w_cand" <<< "$census_names"; then
                 legs_summary="${legs_summary//$w_label:WRAPPED/$w_label:CLOSABLE}"
+                # closable=<n>: only a window that has sat finished for
+                # TICK_CLOSABLE_MIN minutes (the doc's mtime: a wrapped leg writes
+                # nothing more), so the close the console is doing right now never wakes it.
+                w_doc="$(printf '%s' "$leg_docmap" | sed -n "s/^$w_label=//p" | head -n 1)"
+                w_mt=""
+                [ -z "$w_doc" ] || w_mt="$(stat -c %Y "$w_doc" 2>/dev/null)" || w_mt=""  # gnu-ok: Linux-only kit
+                case "${TICK_CLOSABLE_MIN:-5}" in ""|*[!0-9]*) w_min=5 ;; *) w_min=$((10#${TICK_CLOSABLE_MIN:-5})) ;; esac
+                if [ -n "$w_mt" ] && [ $(( $(date +%s) - w_mt )) -ge $(( w_min * 60 )) ]; then
+                    closable_n=$((closable_n + 1))
+                fi
                 break
             fi
         done
@@ -1325,6 +1338,10 @@ if [ -r "$station_state" ]; then
     station_val="$(head -n 1 "$station_state" 2>/dev/null)" || station_val=""
     case "$station_val" in BEHIND:*[!A-Za-z0-9._,:-]*) ;; BEHIND:*) station_tail=" station=$station_val" ;; esac
 fi
+# closable=<n>: finished windows still open past TICK_CLOSABLE_MIN minutes.
+# ABSENT when 0; run `close-wrapped-leg.sh --sweep --fleet <manifest>`.
+closable_tail=""
+[ "$closable_n" -eq 0 ] || closable_tail=" closable=$closable_n"
 
 fill="$(bash "$REPO/scripts/context-fill.sh" --percent 2>/dev/null)" || fill=""
 case "$fill" in ''|*[!0-9]*) fill='?' ;; esac
@@ -1661,6 +1678,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'vm runner: %s\n' "$vmrun_summary"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     [ -z "$parked_tail" ] || printf 'parked on prompt: %s\n' "${parked_tail# parked=}"
+    [ -z "$closable_tail" ] || printf 'closable windows: %s\n' "${closable_tail# closable=}"
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s\n' "$orphans_wip"
@@ -1679,10 +1697,10 @@ else
     # `vault=` sits between `tracker=` and `denials=`; `cloud=` follows `vault=`.
     if [ "$burn" -eq 1 ]; then
         printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s burn=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$station_tail$spare_tail"
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$burn_summary" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$closable_tail$station_tail$spare_tail"
     else
         printf 'TICK %s hb=%s legs=%s livestate=%s procs=%s models=%s %s atq=%s suites=%s prs=%s unowned-prs=%s ext-prs=%s bank=%s fill=%s tails=%s inbox=%s tick=%s fleet=%s capacity=%s gql=%s orphans=%s nonces=%s legset=%s board=%s tracker=%s vault=%s cloud=%s orphans-wip=%s denials=%s ciq=%s plan-index=%s or=%s fails=%s vmrun=%s%s\n' \
-            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$station_tail$spare_tail"
+            "$clock" "$hb" "$legs_summary" "$livestate_summary" "$procs" "$models_summary" "$ceiling_summary" "$at_count" "$suites" "$prs" "$unowned_prs" "$ext_prs" "$bank" "$fill" "$tails_summary" "$inbox_summary" "$tick_status" "$fleet" "$capacity" "$gql" "$orphans" "$nonces_summary" "$legset_summary" "$board_summary" "$tracker_summary" "$vault_summary" "$cloud_summary" "$orphans_wip" "$denials_summary" "$ciq_summary" "$plan_index_summary" "$openrouter" "$fails_summary" "$vmrun_summary" "$flakes_tail$parked_tail$closable_tail$station_tail$spare_tail"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

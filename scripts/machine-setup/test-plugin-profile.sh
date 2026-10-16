@@ -458,29 +458,6 @@ STUB_LIST_JSON=; STUB_LIVE=
 out=$(run --help); rc=$?
 assert_rc "help exits 0" 0 "$rc"
 assert_has "bash help defines full as installed-only at user scope" "Enable every installed on-demand plugin at user scope" "$out"
-PS_PROFILE="$repo_root/scripts/machine-setup/plugin-profile.ps1"
-if grep -Fq "\$seen[\$spec] = \$true" "$PS_PROFILE" && grep -Fq "\$seen.ContainsKey(\$spec)" "$PS_PROFILE"; then
-  echo "PASS PowerShell twin rejects duplicate user stanzas (static parity)"
-else
-  echo "FAIL PowerShell twin lacks the duplicate user-stanza rejection"; FAILED=$((FAILED + 1))
-fi
-if grep -Fq 'plugin list --json' "$PS_PROFILE" && grep -Fq 'Get-LiveMapJson' "$PS_PROFILE"; then
-  echo "PASS PowerShell twin prefers plugin list --json (static parity, HIMMEL-4025)"
-else
-  echo "FAIL PowerShell twin lacks the --json read"; FAILED=$((FAILED + 1))
-fi
-if grep -Fq 'Enable every installed on-demand plugin at user scope.' "$PS_PROFILE"; then
-  echo "PASS PowerShell help defines full as installed-only at user scope"
-else
-  echo "FAIL PowerShell help still overclaims full scope"; FAILED=$((FAILED + 1))
-fi
-if grep -Fq 'reconciliation input' "$PS_PROFILE" \
-   && grep -Fq 'copies it into settings.json' "$PS_PROFILE" \
-   && ! grep -Fq 'layers over settings.json' "$PS_PROFILE"; then
-  echo "PASS PowerShell on-demand advice describes reconciliation, not runtime layering"
-else
-  echo "FAIL PowerShell on-demand advice still misdescribes the user sibling as runtime layering"; FAILED=$((FAILED + 1))
-fi
 for doc in "$repo_root/docs/configuration.md" "$repo_root/docs/setup/new-machine.md"; do
   doc_text=$(tr '\n' ' ' < "$doc")
   case "$doc_text" in
@@ -604,18 +581,6 @@ out=$(run --help); rc=$?
 assert_has "contract: bash help documents the bulk aggregate exit" "lean/full: any per-plugin write refused (floor) or failed" "$out"
 assert_has "contract: bash help documents single-spec floor refusal as 2" "single disable <spec> refused by the floor" "$out"
 assert_has "contract: bash help documents the post-write re-read" "re-read" "$out"
-for phrase in 'lean/full: any per-plugin write refused (floor) or failed' 'single disable <spec> refused by the floor'; do
-  if [ "$(grep -Fc -- "$phrase" "$PS_PROFILE")" -ge 2 ]; then
-    echo "PASS PowerShell header + usage text both document: $phrase"
-  else
-    echo "FAIL PowerShell header + usage text must both document: $phrase"; FAILED=$((FAILED + 1))
-  fi
-done
-if grep -Fq 'Read-LiveMap' "$PS_PROFILE" && grep -Fq "still \$got at user scope" "$PS_PROFILE" && grep -Fq 'could not verify' "$PS_PROFILE"; then
-  echo "PASS PowerShell twin carries the post-write re-read (static parity)"
-else
-  echo "FAIL PowerShell twin lacks the post-write re-read"; FAILED=$((FAILED + 1))
-fi
 
 # ── CRLF list output must not turn installed plugins into absent no-ops ────
 STUB_CRLF=1

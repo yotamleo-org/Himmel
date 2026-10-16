@@ -704,8 +704,7 @@ assert_contains "the failed roll is still reported" "roll did not complete" "$OU
 assert_contains "and the run reaches its status table" "==> update chain status" "$OUT"
 
 echo ""
-echo "Test 14: cli-proxy pins stay equal across Windows, Linux, and upstream registry"
-PS_PIN="$(sed -n "s/^\\\$Version *= *'\\([^']*\\)'.*/\\1/p" "$SRC_SCRIPTS/setup/cli-proxy-lane.ps1" | head -1)"
+echo "Test 14: cli-proxy Linux pin stays equal to the upstream registry"
 SH_PIN="$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$SRC_SCRIPTS/setup/cli-proxy-lane.sh" | head -1)"
 REGISTRY_PIN="$(python3 - "$SRC_SCRIPTS/upstreams.json" <<'PY'
 import json, sys
@@ -714,7 +713,6 @@ with open(sys.argv[1], encoding='utf-8') as f:
 print(next(row['synced_base'] for row in rows if row['name'] == 'cli-proxy-api'))
 PY
 )"
-assert_eq "PowerShell and Linux lane pins match" "$PS_PIN" "$SH_PIN"
 assert_eq "lane pins match cli-proxy-api synced_base" "$REGISTRY_PIN" "$SH_PIN"
 
 echo ""

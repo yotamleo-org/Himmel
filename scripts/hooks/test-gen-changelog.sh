@@ -292,23 +292,6 @@ run_test "no commit line appears in two changelog sections (release-range corrup
   [ "$(grep -c "main 2\$" CHANGELOG.md)" -eq 1 ]
 '
 
-# This row shells out to a real pwsh for PowerShell/Bash parity; pwsh is not
-# provisioned on every host (e.g. this Linux station, by design). Gate on
-# tool presence, not OS -- a host that DOES have pwsh should still run it.
-if command -v pwsh >/dev/null 2>&1; then
-run_test "gen-changelog.sh and gen-changelog.ps1 agree on CORRECT section membership (parity)" '
-  setup_side_branch_tag_commits && cd "$R" || exit 1;
-  PS1GEN="$HOOKS/../gen-changelog.ps1";
-  bash "$GEN" >/dev/null 2>/dev/null && cp CHANGELOG.md sh.md &&
-  pwsh -NoProfile -File "$PS1GEN" >/dev/null 2>/dev/null && cp CHANGELOG.md ps1.md &&
-  diff -q sh.md ps1.md &&
-  [ "$(grep -c "main 1\$" sh.md)" -eq 1 ] &&
-  [ "$(grep -c "main 2\$" sh.md)" -eq 1 ]
-'
-else
-  echo "SKIP: gen-changelog.sh/.ps1 parity (CORRECT section membership) -- pwsh not installed on this host"
-fi
-
 # Fixture: a version tag ref pointing at an object that does not exist --
 # forces `git merge-base --is-ancestor` to fail with a real git error
 # (exit >1: "fatal: Not a valid commit name"), not "not an ancestor" (exit 1).
@@ -327,20 +310,6 @@ run_test "HIMMEL-2363: gen-changelog.sh fails generation (not silent-drop) on a 
   rc=$?;
   [ "$rc" -ne 0 ] && grep -q "ERROR.*v9.9.9" stderr.txt
 '
-
-# Same pwsh-presence gate as the parity row above -- this row also shells
-# out to a real pwsh, and this host does not have one installed.
-if command -v pwsh >/dev/null 2>&1; then
-run_test "HIMMEL-2363: gen-changelog.ps1 fails generation (not silent-drop) on a real merge-base error (parity)" '
-  setup_broken_tag_ref && cd "$R" || exit 1;
-  PS1GEN="$HOOKS/../gen-changelog.ps1";
-  pwsh -NoProfile -File "$PS1GEN" >out.txt 2>stderr.txt;
-  rc=$?;
-  [ "$rc" -ne 0 ] && grep -q "ERROR.*v9.9.9" stderr.txt
-'
-else
-  echo "SKIP: HIMMEL-2363 gen-changelog.ps1 merge-base-error parity -- pwsh not installed on this host"
-fi
 
 
 # Fixture: a repo carrying a version tag, plus a `git` shim on PATH that stalls

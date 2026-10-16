@@ -8,17 +8,12 @@
 # running (rc=0, never the old exit 1), says what that costs, and is still
 # visible after "Setup complete." scrolls past.
 #
-# PLATFORM GUARD — no .ps1 twin, deliberately: this is the suite for the
-# bash setup path; scripts/setup.ps1 has its own USER_SLUG step calling the
-# same check-user-slug.sh via Git Bash (see setup.ps1's [2/6] comment), and
-# is exercised manually per tests/smoke-test.md rather than by a hermetic PS
-# harness — there is none in this template today for setup.ps1 itself.
+# Bash setup path only.
 set -uo pipefail
 
 here="$(cd -- "$(dirname -- "$0")" && pwd)"
 script="$here/lib/check-user-slug.sh"
 setup_sh="$here/setup.sh"
-setup_ps1="$here/setup.ps1"
 PASS=0; FAIL=0; TMP_ROOT=""
 # shellcheck disable=SC2329,SC2317
 cleanup() { [ -n "$TMP_ROOT" ] && [ -d "$TMP_ROOT" ] && rm -rf "$TMP_ROOT" 2>/dev/null; return 0; }
@@ -124,27 +119,6 @@ if [ -n "$block" ]; then
   assert_has "the step's own stderr is WARN-shaped" "WARN user-slug" "$_step_err"
 else
   fail "skipped: could not extract the [2/6] block"
-fi
-
-# ── 6. setup.ps1: same disposition, source-text only (no PS harness here).
-echo "TEST: setup.ps1 [2/6] wiring"
-ps1_src=$(cat "$setup_ps1")
-assert_has "calls check-user-slug.sh (not the retired _print-user-slug.sh)" "lib\\check-user-slug.sh" "$ps1_src"
-assert_lacks "_print-user-slug.sh is retired" "_print-user-slug.sh" "$ps1_src"
-assert_has "an unresolved slug is recorded for the footer" "UserSlugManual = \$true" "$ps1_src"
-assert_has "the footer names the skipped step" "STILL MANUAL: USER_SLUG" "$ps1_src"
-
-s2_line=$(grep -n '\[2/6\] Resolving USER_SLUG' "$setup_ps1" | head -1 | cut -d: -f1)
-e2_line=$(grep -n '\[3/6\] Installing pre-commit' "$setup_ps1" | head -1 | cut -d: -f1)
-if [ -n "$s2_line" ] && [ -n "$e2_line" ] && [ "$e2_line" -gt "$s2_line" ]; then
-  ps1_block=$(sed -n "${s2_line},${e2_line}p" "$setup_ps1")
-  # A remaining `exit 1` in this block is fine (bash-missing is a genuine
-  # precondition failure, unrelated to slug resolution) — the removed shape
-  # was the fatal message paired with it.
-  assert_lacks "step [2/6] no longer treats an unresolved slug as fatal" \
-    "ERROR: USER_SLUG resolution failed" "$ps1_block"
-else
-  fail "could not locate the [2/6]..[3/6] block in setup.ps1" "start=$s2_line end=$e2_line"
 fi
 
 echo ""

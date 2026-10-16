@@ -808,10 +808,6 @@ step) via the platform package manager (brew/apt/winget) then hands off to
 ```bash
 bash scripts/himmelctl/bootstrap.sh --dry-run    # Linux/macOS: preview the plan
 bash scripts/himmelctl/bootstrap.sh              # then run for real
-# Windows (PowerShell — the built-in powershell works on a clean machine; pwsh needs its own
-# install. -ExecutionPolicy Bypass because a clean machine's default policy is Restricted):
-powershell -ExecutionPolicy Bypass -File scripts/himmelctl/bootstrap.ps1 -DryRun
-powershell -ExecutionPolicy Bypass -File scripts/himmelctl/bootstrap.ps1
 ```
 
 > **Deprecated setup shims — `scripts/machine-setup/win11.ps1` / `ubuntu.sh`.** These full-machine provisioning scripts are **soft-deprecated**
@@ -1023,25 +1019,7 @@ as a group on timeout, which is **best-effort** — a descendant that
 deliberately leaves that group (a `setsid`, a double-fork — routine daemon
 behaviour) is no longer reached by the group kill and survives it. Do not
 read the POSIX path as a Job-Object equivalent; it has no comparable
-structural teardown. On **Windows**, the installer and every descendant it spawns run
-inside a kill-on-close **Job Object** (`scripts/himmelctl/lib/job-run.ps1`,
-plain PowerShell + Win32 P/Invoke, zero new npm dependencies) — every
-descendant automatically joins the same job at creation, so a timeout can't
-leave a survivor even if an intermediate process has already exited and
-"re-parented" its own child (exactly what installer postinst/daemon scripts
-routinely do), a case a plain process-tree walk can miss. Job Object setup
-(creation, limit configuration, assigning the installer process to the job)
-is **fail-closed**, not best-effort: if any step of it fails, job-run.ps1
-refuses to run the installer at all (or kills it immediately if it had
-already started) rather than silently falling back to a weaker
-direct-child-only cleanup, so the primitive lands in `failed[]` instead of
-running unprotected. One residual gap this doesn't close: the installer
-process is assigned to the job in a separate call right after it starts,
-not atomically with its own creation (avoiding a `CREATE_SUSPENDED`-based
-launch, more Win32 P/Invoke surface than this file otherwise needs) — a
-descendant the installer spawns in that sub-millisecond window, before
-assignment completes, would not itself inherit job membership and could in
-principle survive a later timeout.
+structural teardown.
 
 Because the value lives in a plaintext `.env` file, treat it like any other
 secret in that file:

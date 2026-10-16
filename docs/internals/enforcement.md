@@ -121,19 +121,13 @@ Stages currently wired:
   oxlint-hardening-zero-violations (bug-class hardening — zero violations;
   pinned oxlint 1.88.0, with root/cwd diagnostics; findings and tool/JSON
   failures block, while only a missing `bunx` fails open; HIMMEL-2163/2802).
-- **Doctor check-ID + shell platform-guard gates (pre-commit):**
+- **Doctor check-ID + unchecked-mktemp gates (pre-commit):**
   doctor-check-ids (`check-doctor-check-ids.sh`, scoped to
   `scripts/himmel-doctor.sh` — every `check_cNN()` must be defined exactly
   once per numeric ID and invoked exactly once in the tail call list; catches
   a silently-shadowed ID from two branches picking the same next-free number,
   which a textually-clean merge does not surface; HIMMEL-2664),
-  new-shell-platform-guard (`check-new-shell-platform-guard.sh`, always-run —
-  refuses a commit that ADDS a `scripts/**/*.sh` with neither a `.ps1` twin
-  nor a documented platform-guard marker in its first 60 lines; the predicate
-  is shared with `scripts/parity/test-ws5-invariants.sh`'s T15 via
-  `scripts/lib/platform-guard.sh` so the two cannot drift; catches the same
-  gap at commit time instead of a paid after-report or in-guest VM run;
-  HIMMEL-2682), unchecked-mktemp (`check-unchecked-mktemp.sh`, always-run —
+  unchecked-mktemp (`check-unchecked-mktemp.sh`, always-run —
   refuses a commit whose staged diff ADDS an unguarded `T=$(mktemp -d)`
   capture: reads the STAGED blob of every staged `*.sh` (never the working
   tree), intersects the predicate's offending lines with the file's own

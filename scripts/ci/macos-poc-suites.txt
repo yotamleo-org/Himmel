@@ -141,8 +141,6 @@ scripts/luna/test-qmd-cadence.sh
 scripts/observability/test-ledgers-registry.sh
 scripts/observability/test-promtool-validation.sh
 scripts/observability/test-restart-stack.sh
-scripts/parity/test-ps-twin-oem-encoding-projection.sh
-scripts/parity/test-ps-twin-oem-encoding.sh
 scripts/parity/test-ws5-invariants.sh
 scripts/telegram/test-auto-action.sh
 scripts/telegram/test-phi-egress-guard-parity.sh

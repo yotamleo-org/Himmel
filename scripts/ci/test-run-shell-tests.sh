@@ -2163,7 +2163,7 @@ done
 # Drift guard: every top-level tree that holds a tracked test-*.sh must be
 # covered by the include list, so a new tree cannot silently stay ungated.
 trees23=$(cd "$repo23" && git ls-files | grep -E '/test-[^/]*\.sh$' \
-  | grep -v '/node_modules/' | cut -d/ -f1 | sort -u)
+  | grep -v '/node_modules/' | grep -v '^archive/' | cut -d/ -f1 | sort -u)
 missing23=""
 for tree23 in $trees23; do
   grepq "$o23" -E "^\[(RUN |SKIP)\] (\./)?${tree23}/" || missing23="$missing23 $tree23"

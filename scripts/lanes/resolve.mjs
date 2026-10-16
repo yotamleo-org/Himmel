@@ -22,7 +22,14 @@ const REGISTRY   = process.env.LANES_REGISTRY || join(SCRIPT_DIR, 'lanes.json');
 const HIMMELCTL_CACHE_DIR = process.env.HIMMELCTL_CACHE_DIR || join(homedir(), '.claude', 'himmel');
 const CACHE_LOCAL_REGISTRY = join(HIMMELCTL_CACHE_DIR, 'lanes.local.json');
 const IN_TREE_LOCAL_REGISTRY = join(SCRIPT_DIR, 'lanes.local.json');
-const LOCAL_REGISTRY = existsSync(CACHE_LOCAL_REGISTRY) ? CACHE_LOCAL_REGISTRY : IN_TREE_LOCAL_REGISTRY;
+// The overlay is one policy per clone, not per worktree: an install at the
+// primary checkout must constrain /lanes inside every linked worktree. So the
+// primary checkout's in-tree overlay is read before this worktree's own, which
+// stays only as a fallback for overlays written before the location was shared.
+const PRIMARY_ROOT = mainCheckoutRoot(REPO_ROOT);
+const PRIMARY_LOCAL_REGISTRY = PRIMARY_ROOT ? join(PRIMARY_ROOT, 'scripts', 'lanes', 'lanes.local.json') : null;
+const LOCAL_REGISTRY = [CACHE_LOCAL_REGISTRY, PRIMARY_LOCAL_REGISTRY, IN_TREE_LOCAL_REGISTRY]
+  .find((f) => f && existsSync(f)) ?? IN_TREE_LOCAL_REGISTRY;
 
 const die = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code); };
 

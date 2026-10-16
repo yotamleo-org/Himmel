@@ -390,7 +390,6 @@ scripts/hooks/test-check-lanes-inventory.sh	0
 scripts/hooks/test-check-lockfile-integrity.sh	1
 scripts/hooks/test-check-main-ref-transaction.sh	3
 scripts/hooks/test-check-mcp-plugin-refs.sh	1
-scripts/hooks/test-check-new-shell-platform-guard.sh	0
 scripts/hooks/test-check-no-force-push.sh	1
 scripts/hooks/test-check-no-headless-gemini.sh	0
 scripts/hooks/test-check-no-ticket-id-in-user-strings.sh	0
@@ -538,7 +537,6 @@ scripts/lib/test-native-auth-pin.sh	1
 scripts/lib/test-observability-registry.sh	0
 scripts/lib/test-orphan-branches.sh	6
 scripts/lib/test-override-env.sh	1
-scripts/lib/test-platform-guard.sh	0
 scripts/lib/test-proc-tree.sh	1
 scripts/lib/test-provenance-identity.sh	0
 scripts/lib/test-provenance-read.sh	18
@@ -631,9 +629,6 @@ scripts/overnight/test-self-heal.sh	3
 scripts/overnight/test-stop-marker.sh	1
 scripts/parity/test-guard-conformance.sh	0
 scripts/parity/test-launcher-context-env-parity.sh	0
-scripts/parity/test-launcher-twin-parity.sh	0
-scripts/parity/test-ps-twin-oem-encoding-projection.sh	11
-scripts/parity/test-ps-twin-oem-encoding.sh	4
 scripts/parity/test-t12-no-bloat-lib.sh	0
 scripts/parity/test-t13b-daemon-prose.sh	7
 scripts/parity/test-t13b-relocation.sh	1

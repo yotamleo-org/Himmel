@@ -43,6 +43,7 @@
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { execFileSync } = require('child_process');
 const probesLib = require('./probes.js');
 const { nodeScriptCmd, cacheDir } = require('./helpers.js');
 
@@ -305,6 +306,19 @@ function registryIdsForSelection(selected) {
   return out;
 }
 
+// The lane overlay is one policy per clone: from a linked worktree it lives in
+// the PRIMARY checkout (the git common dir's parent), where resolve.mjs reads it
+// for every worktree. Not a worktree, or not git: the root unchanged.
+function primaryCheckoutRoot(root) {
+  try {
+    const common = execFileSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return common && path.basename(common) === '.git' ? path.dirname(common) : root;
+  } catch {
+    return root;
+  }
+}
+
 function isWritableDir(dir) {
   try {
     fs.accessSync(dir, fs.constants.W_OK);
@@ -320,7 +334,7 @@ function isWritableDir(dir) {
 // load-dotenv.sh's cache-dir-first fallback. A writable git clone is
 // untouched: same path as before, byte for byte.
 function resolveLaneAllowlistFile(repoRoot) {
-  const inTree = path.join(repoRoot || process.cwd(), 'scripts', 'lanes', 'lanes.local.json');
+  const inTree = path.join(primaryCheckoutRoot(repoRoot || process.cwd()), 'scripts', 'lanes', 'lanes.local.json');
   return isWritableDir(path.dirname(inTree))
     ? { file: inTree, scope: 'clone' }
     : { file: path.join(cacheDir(), 'lanes.local.json'), scope: 'user' };
@@ -454,7 +468,10 @@ function readLaneRegistries(repoRoot) {
   // (read-only install prefix), so the reader checks there before the in-tree
   // default. An existing writable clone's in-tree overlay is unaffected.
   const cacheFile = path.join(cacheDir(), 'lanes.local.json');
-  const localFile = fs.existsSync(cacheFile) ? cacheFile : path.join(lanesDir, 'lanes.local.json');
+  // then the clone-wide overlay in the primary checkout (see
+  // primaryCheckoutRoot), then this worktree's own as the pre-sharing fallback.
+  const sharedFile = path.join(primaryCheckoutRoot(repoRoot), 'scripts', 'lanes', 'lanes.local.json');
+  const localFile = [cacheFile, sharedFile].find((f) => fs.existsSync(f)) || path.join(lanesDir, 'lanes.local.json');
   const local = readRegistryFile(localFile);
   if (local.status === 'invalid') {
     return { base: base.value, local: null, localError: { file: localFile, detail: local.detail } };

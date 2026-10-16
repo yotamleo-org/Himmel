@@ -18,6 +18,12 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUITE="$HERE/test-native-auth-pin.ps1"
 
+# ponytail: Windows is dropped (HIMMEL-5729), the .ps1 suite lives under archive/windows/; this wrapper only skips, drop it with its table row.
+if [ ! -f "$SUITE" ]; then
+  echo "[SKIP] test-native-auth-pin-pwsh.sh — test-native-auth-pin.ps1 archived under archive/windows/ (HIMMEL-5729); nothing to run."
+  exit 0
+fi
+
 if ! command -v pwsh >/dev/null 2>&1; then
   echo "[SKIP] test-native-auth-pin-pwsh.sh — pwsh not found on PATH; the PowerShell-side coverage (canonical-set clearing + screen refusal of native-auth-pin.ps1, HIMMEL-1867) did NOT run on this host."
   exit 0

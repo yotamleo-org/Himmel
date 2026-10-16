@@ -541,6 +541,44 @@ for f in leg-preface.md leg-brief-template.md; do
     fi
 done
 
+# Claude Code's own plugin-marketplace refresh forks a
+# `git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= …` directly
+# under the session, with a `git remote-https origin <github url>` child, new pids at
+# etime 00:00 on every run; a plugin-cache clone targets .../plugins/cache/temp_git_*.
+cat > "$W/mkt-fetch.txt" <<'FIX'
+    1     0 40-00:00:01 /sbin/init
+  101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work
+  500   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= fetch origin
+  501   500       00:00 git remote-https origin https://github.com/atlassian/atlassian-mcp-server.git
+  502   101       00:00 git clone --depth 1 https://github.com/kepano/obsidian-skills.git /home/u/.claude/plugins/cache/temp_git_1792105184121_b88lv6
+  503   502       00:00 /usr/lib/git-core/git-remote-https origin https://github.com/kepano/obsidian-skills.git
+FIX
+out="$(run "$W/mkt-fetch.txt" 101 2>&1)"; rc=$?
+eq 'a marketplace fetch and plugin-cache clone read CLOSABLE: rc 0 (HIMMEL-5923)' 0 "$rc"
+contains 'all four fetch/clone pids are listed as ignored (HIMMEL-5923)' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (4 harness-owned children ignored)'
+contains 'the remote-https child is listed ignored (HIMMEL-5923)' "$out" 'ignored pid=501 '
+# Anything broader still withholds: a leg push, a fetch without the three -c flags,
+# a non-github remote, a remote-https under a non-fetch parent, a wrapper that quotes it.
+cat > "$W/mkt-decoys.txt" <<'FIX'
+    1     0 40-00:00:01 /sbin/init
+  101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work
+  510   101       00:00 git push origin HEAD
+  511   510       00:00 git remote-https origin https://github.com/atlassian/atlassian-mcp-server.git
+  512   101       00:00 git fetch origin
+  513   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= fetch origin
+  514   513       00:00 git remote-https origin https://evil.example/x/y.git
+  515   101       00:00 git clone https://github.com/a/b.git /home/u/work/repo
+  516   101       00:00 /usr/bin/zsh -c source /home/u/.claude/shell-snapshots/snapshot-zsh-1-a.sh && eval 'git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= fetch'
+  517   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= push origin HEAD
+  518   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= pull origin main
+FIX
+out="$(run "$W/mkt-decoys.txt" 101 2>&1)"; rc=$?
+eq 'broader git shapes still withhold: rc 1 (HIMMEL-5923)' 1 "$rc"
+for dp in 510 511 512 514 515 516 517 518; do
+    contains "decoy pid=$dp withholds (HIMMEL-5923)" "$out" "  pid=$dp ppid="
+done
+lacks 'the exact-shape fetch beside the decoys is still ignored, not withheld (HIMMEL-5923)' "$out" '  pid=513 ppid='
+
 kill_hits="$(grep -v '^[[:space:]]*#' "$SUT" | grep -E '(^|[[:space:];&|(])(kill|pkill|killall)[[:space:]]')"
 if [ -n "$kill_hits" ]; then
     fail 'wrap-subtree-check.sh must be read-only (found a kill)'
