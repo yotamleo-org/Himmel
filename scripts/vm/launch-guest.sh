@@ -11,7 +11,9 @@
 #   <vm>          a key of scripts/lib/vms.json that is an ubuntu guest with an
 #                 ssh_port and a user, and not kind=station. Anything else exits 2
 #                 before any connection.
-#   <prompt-file> a host file sent to the guest claude on stdin.
+#   <prompt-file> a host file sent to the guest claude on stdin; it must resolve
+#                 under the cwd's git worktree or the session scratchpad and not
+#                 have a secret-shaped name (.env*, *.pem, *.key, id_*, credentials*).
 #   --dry-run     print the ssh command instead of running it.
 # stdout: the guest session's --output-format json result. rc: the guest's, or 2
 #   on a refused argument.
@@ -37,6 +39,25 @@ TIMEOUT="${LAUNCH_GUEST_TIMEOUT:-1800}"
 case "$VM" in ''|*[!A-Za-z0-9_-]*) echo "launch-guest: '$VM' is not a registered test VM name" >&2; exit 2 ;; esac
 case "$TIMEOUT" in ''|*[!0-9]*|0*) echo "launch-guest: LAUNCH_GUEST_TIMEOUT must be whole seconds above 0, no leading zero" >&2; exit 2 ;; esac
 [ -f "$PROMPT" ] || { echo "launch-guest: prompt file '$PROMPT' not found" >&2; exit 2; }
+# the prompt is read on the host and its answer comes back, so it is confined to
+# the cwd's git worktree or the session scratchpad, after resolving symlinks and
+# dotdot, and a secret-shaped name is refused anywhere.
+TOP="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+# shellcheck disable=SC2016  # the dollar signs are javascript regex syntax
+if ! RESOLVED="$(node -e '
+const fs = require("fs"), path = require("path");
+const [p, top, tmp] = process.argv.slice(1);
+const real = (x) => { try { return fs.realpathSync(x); } catch { return ""; } };
+const r = real(p), t = real(top), s = real(tmp);
+const secret = /^\.env|\.pem$|\.key$|^id_|^credentials/i;
+if (!r || secret.test(path.basename(p)) || secret.test(path.basename(r))) process.exit(1);
+const scratch = s && new RegExp("^" + s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "/claude-" + process.getuid() + "/[^/]+/[^/]+/scratchpad/");
+if ((t && r.startsWith(t + path.sep)) || (scratch && scratch.test(r))) console.log(r); else process.exit(1);
+' "$PROMPT" "$TOP" "${TMPDIR:-/tmp}" 2>/dev/null)" || [ -z "$RESOLVED" ]; then
+    echo "launch-guest: prompt file '$PROMPT' must live under the worktree or the session scratchpad and not be a secret-shaped file" >&2
+    exit 2
+fi
+PROMPT="$RESOLVED"
 # port and user come from the registry; a VM that is not an ubuntu guest, is a
 # station, or lacks either field prints nothing and is refused.
 if ! ROW="$(node -e '
@@ -49,9 +70,9 @@ if (e && e.os === "ubuntu" && e.kind !== "station" && Number.isInteger(e.ssh_por
 fi
 PORT="${ROW%% *}"; GUSER="${ROW#* }"
 INNER="cd $GUEST_REPO && timeout --signal=KILL $TIMEOUT claude -p --permission-mode acceptEdits --allowedTools '$ALLOWED_TOOLS' --output-format json"
-CMD=(ssh -p "$PORT" -o BatchMode=yes "$GUSER@127.0.0.1" "bash -lc \"$INNER\"")
+CMD=(ssh -p "$PORT" -o BatchMode=yes -o ConnectTimeout=15 "$GUSER@127.0.0.1" "bash -lc \"$INNER\"")
 if [ "$DRY" -eq 1 ]; then
-    echo "ssh -p $PORT -o BatchMode=yes $GUSER@127.0.0.1 bash -lc \"$INNER\" < $PROMPT"
+    echo "ssh -p $PORT -o BatchMode=yes -o ConnectTimeout=15 $GUSER@127.0.0.1 bash -lc \"$INNER\" < $PROMPT"
     exit 0
 fi
 # an unattended claude session draws the same subscription budget as any other:
