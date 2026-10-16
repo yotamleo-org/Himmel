@@ -500,5 +500,21 @@ else
   [ -s "$WS/call.log" ] && fail "T17 graphify ran without a snapshot" || pass "T17 graphify never invoked"
 fi
 
+# --- T18: graphify fails after rewriting graph.json -> the prior graph comes back
+echo "T18: failed rebuild that clobbered graph.json -> exit 5, original graph restored"
+CORPUS18="$WS/c18"; OUT18="$CORPUS18/graphify-out"; mkdir -p "$OUT18"
+printf '{"nodes":[{"id":"keep"}],"links":[]}' > "$OUT18/graph.json"
+BIN18="$WS/bin18"; mkdir -p "$BIN18"
+cat > "$BIN18/graphify" <<STUB
+#!/usr/bin/env bash
+printf 'torn' > "$OUT18/graph.json"
+exit 7
+STUB
+chmod +x "$BIN18/graphify"
+out18=$( PATH="$BIN18:$PATH" bash "$SCRIPT" "$CORPUS18" 2>&1 ); rc18=$?
+[ "$rc18" -eq 5 ] && pass "T18 exits 5" || fail "T18 should exit 5 (got $rc18): $out18"
+grep -q '"keep"' "$OUT18/graph.json" && pass "T18 original graph.json restored" || fail "T18 graph.json: $(cat "$OUT18/graph.json")"
+[ ! -e "$OUT18/.graph.pre-ast.json" ] && pass "T18 no snapshot left behind" || fail "T18 snapshot left"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

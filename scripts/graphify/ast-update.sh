@@ -375,6 +375,9 @@ if [ -f "$_pre_ast" ]; then
     echo "ast-update: FAILED -- graphify update succeeded but restoring the semantic nodes it dropped failed (see above); the graph may have lost semantic nodes. Exiting 5" >&2
     exit 5
   fi
+  if [ "$_graphify_rc" -ne 0 ] && mv -f "$_pre_ast" "$OUT_DIR/graph.json" 2>/dev/null; then
+    echo "ast-update: graphify update failed; put the pre-rebuild graph.json back" >&2
+  fi
   rm -f "$_pre_ast"
 fi
 # This does NOT run harden-graph.py. `graphify update --force`
