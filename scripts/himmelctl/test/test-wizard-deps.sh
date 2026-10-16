@@ -930,6 +930,27 @@ echo "$outU" | jq -e '. == ["bun","qmd"]' >/dev/null \
   || fail "case u: expected deps.json's declared order to place bun before qmd (preserved by the order-preserving filter/map construction ensure's plan uses) (got: $outU)"
 echo "ok: case u — deps.json declares bun before qmd; the order-preserving plan construction keeps it that way"
 
+# ── case cc: depStatus — a present dep whose version probe prints no x.y
+# token (Ubuntu's apt gitleaks: "version is set by build process") is green
+# when no minVersion is declared, and stays degraded when one is. ──────────
+stubV="$work/bin-versionless"; mkdir -p "$stubV"
+printf '#!/usr/bin/env bash\necho "version is set by build process"\nexit 0\n' > "$stubV/novertool"
+chmod +x "$stubV/novertool"
+link_hermetic_tool bash "$stubV"
+outV=$(STUB_V="$stubV" "$node_bin" -e "
+const { depStatus } = require(process.env.DEPS_ENGINE_LIB);
+const ctx = { repoRoot: '/fake/repo', platform: 'linux', env: { ...process.env, PATH: process.env.STUB_V + ':' + process.env.PATH } };
+console.log(JSON.stringify([
+  depStatus({ id: 'novertool', cmd: 'novertool', minVersion: null }, ctx),
+  depStatus({ id: 'novertool', cmd: 'novertool', minVersion: '1.0.0' }, ctx),
+]));
+")
+echo "$outV" | jq -e '.[0].severity == "green" and .[0].version == null and (.[0].detail | contains("version not reported"))' >/dev/null \
+  || fail "case cc: versionless dep with no minVersion should be green ('present (version not reported)') (got: $outV)"
+echo "$outV" | jq -e '.[1].severity == "degraded" and (.[1].detail | contains("could not be determined"))' >/dev/null \
+  || fail "case cc: versionless dep WITH a declared minVersion must stay degraded (got: $outV)"
+echo "ok: case cc — versionless present dep is green without a minVersion, degraded with one"
+
 # ── case bb: deps.json — gitleaks installs via the package manager on linux
 # (it used to be manager:"hint" with no apt recipe at
 # all, despite shellcheck already using the same apt-get path), keeping its
