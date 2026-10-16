@@ -254,6 +254,18 @@ rm -f "$H/.cache/qmd/link.sqlite"
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --copy "$(IDX)" --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
 assert_rc "reembed refuses the live index as --copy" 2 "$rc"
 
+# A pre-existing marker path (here a link to the live index) is never truncated.
+rm -f "$copy" "$copy.partial"
+ln -s "$(IDX)" "$copy.partial"
+live_sum="$(cksum <"$(IDX)")"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed refuses a marker path that already exists" 2 "$rc"
+assert_contains "the marker refusal names the path" "already exists or cannot be created" "$out"
+assert_rc "the live index was not touched by the marker write" 0 "$([ "$live_sum" = "$(cksum <"$(IDX)")" ] && echo 0 || echo 1)"
+rm -f "$copy.partial"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed rebuilds the copy once the marker path is clear" 0 "$rc"
+
 echo "== swap"
 rc=0; out=$(run env FAKE_DAEMON=1 bash "$SCRIPT" swap --copy "$copy" 2>&1) || rc=$?
 assert_rc "swap refuses while a qmd mcp daemon runs" 2 "$rc"

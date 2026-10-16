@@ -415,7 +415,8 @@ cmd_reembed() {
     else
         say "[1/4] consistent copy of $live to $copy"
         sqlite3 -readonly "$live" ".backup '$copy'" || { rm -f "$copy"; die 5 "sqlite3 .backup failed"; }
-        : >"$copy.partial" || die 5 "could not write the resume marker $copy.partial"
+        # noclobber makes the redirect O_EXCL: it never truncates or follows a pre-existing path
+        ( set -C; : >"$copy.partial" ) 2>/dev/null || { rm -f "$copy"; die 2 "$copy.partial already exists or cannot be created; remove it and retry"; }
     fi
 
     # qmd reads models.embed from the config BEFORE QMD_EMBED_MODEL, so the
