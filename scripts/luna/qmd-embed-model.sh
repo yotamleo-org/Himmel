@@ -389,12 +389,22 @@ cmd_reembed() {
     [ -n "$copy" ] || copy="$(dirname "$live")/index.reembed-$name.sqlite"
     case "$copy" in /*) : ;; *) die 1 "--copy must be an absolute path" ;; esac
     [ "$copy" != "$live" ] || die 2 "--copy is the live index; reembed never writes the live index"
-    [ ! -e "$copy" ] || die 2 "$copy already exists; remove it or pick another --copy"
     need_sqlite
+    # An existing copy that holds only the target model is a partial run:
+    # resume it (no new backup, no --force) so finished vectors are kept.
+    local resume=0
+    if [ -e "$copy" ]; then
+        compare_index "$copy" "$uri" >/dev/null 2>&1 || die 2 "$copy already exists and does not hold only $name vectors; remove it or pick another --copy"
+        resume=1
+    fi
     resolve_qmd
 
-    say "[1/4] consistent copy of $live to $copy"
-    sqlite3 -readonly "$live" ".backup '$copy'" || { rm -f "$copy"; die 5 "sqlite3 .backup failed"; }
+    if [ "$resume" -eq 1 ]; then
+        say "[1/4] resuming the partial copy $copy (already holds only $name vectors)"
+    else
+        say "[1/4] consistent copy of $live to $copy"
+        sqlite3 -readonly "$live" ".backup '$copy'" || { rm -f "$copy"; die 5 "sqlite3 .backup failed"; }
+    fi
 
     # qmd reads models.embed from the config BEFORE QMD_EMBED_MODEL, so the
     # override needs its own config dir: a copy of the real one with only
@@ -405,8 +415,11 @@ cmd_reembed() {
     [ -f "$(config_file)" ] && cp "$(config_file)" "$scratch/index.yml"
     write_yml_embed "$scratch/index.yml" "$uri" || die 2 "the egress gate refused the config copy; nothing was re-embedded"
 
-    say "[2/4] qmd embed --force on the copy with $uri (long: about 2 h for our corpus on a 4090)"
-    INDEX_PATH="$copy" QMD_CONFIG_DIR="$scratch" run_qmd embed --force --timeout 0 || rc=$?
+    local force="--force"
+    [ "$resume" -eq 1 ] && force=""
+    say "[2/4] qmd embed ${force:+$force }on the copy with $uri (long: about 2 h for our corpus on a 4090)"
+    # shellcheck disable=SC2086  # $force is empty or the single word --force
+    INDEX_PATH="$copy" QMD_CONFIG_DIR="$scratch" run_qmd embed $force --timeout 0 --max-docs-per-batch 4096 || rc=$?
     [ "$rc" -eq 0 ] || die 5 "qmd embed failed on the copy (rc=$rc); the live index is untouched. Remove $copy and retry."
 
     say "[3/4] completeness: a second embed pass must find nothing to do"

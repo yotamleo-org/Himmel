@@ -213,9 +213,22 @@ assert_contains "the live config is untouched" "embed: $GEMMA" "$(cat "$(CFG)")"
 log="$(cat "$H/qmd.log")"
 assert_contains "qmd embedded the COPY" "INDEX_PATH=$copy " "$log"
 assert_not_contains "qmd never used the live config dir" "QMD_CONFIG_DIR=$H/.config/qmd " "$log"
-assert_contains "embed ran forced with no session cap" "ARGS=embed --force --timeout 0" "$log"
+assert_contains "embed ran forced with no session cap and a 4096-doc batch" "ARGS=embed --force --timeout 0 --max-docs-per-batch 4096" "$log"
+# A copy that already holds the target model is a partial run: resume it.
+sqlite3 "$copy" "CREATE TABLE resume_marker(x INT);"
+: >"$H/qmd.log"
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
-assert_rc "reembed refuses to overwrite an existing copy" 2 "$rc"
+assert_rc "reembed resumes an existing copy of the target model" 0 "$rc"
+assert_contains "the resume kept the copy (no new backup)" "resume_marker" "$(sqlite3 "$copy" .tables)"
+log="$(cat "$H/qmd.log")"
+assert_contains "the resume embeds without --force" "ARGS=embed --timeout 0 --max-docs-per-batch 4096" "$log"
+assert_not_contains "the resume never forces" "embed --force" "$log"
+# A copy still holding another model is not resumable.
+sqlite3 "$copy" "UPDATE content_vectors SET model='$GEMMA';"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed refuses a copy holding another model" 2 "$rc"
+assert_contains "the refusal says to remove the copy" "remove it or pick another --copy" "$out"
+sqlite3 "$copy" "UPDATE content_vectors SET model='$QWEN'; DROP TABLE resume_marker;"
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --copy "$(IDX)" --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
 assert_rc "reembed refuses the live index as --copy" 2 "$rc"
 
