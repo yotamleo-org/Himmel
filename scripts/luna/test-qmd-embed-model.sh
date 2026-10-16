@@ -214,6 +214,7 @@ log="$(cat "$H/qmd.log")"
 assert_contains "qmd embedded the COPY" "INDEX_PATH=$copy " "$log"
 assert_not_contains "qmd never used the live config dir" "QMD_CONFIG_DIR=$H/.config/qmd " "$log"
 assert_contains "embed ran forced with no session cap" "ARGS=embed --force --timeout 0" "$log"
+assert_contains "embed batches 4096 docs so a remote embedder commits per batch" "--max-docs-per-batch 4096" "$log"
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
 assert_rc "reembed refuses to overwrite an existing copy" 2 "$rc"
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --copy "$(IDX)" --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
