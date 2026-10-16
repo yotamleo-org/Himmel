@@ -16,8 +16,8 @@
 #          on a directory above it, or a package.json above it has a "test" script
 #          whose runner's discovery reaches it (path args narrow; node --test
 #          reaches only JS unless the script loads a TS transform; node may carry
-#          flags before --test, e.g. node --import tsx --test; one {a,b} group in
-#          a path arg is expanded, a nested brace group narrows by directory only;
+#          flags before --test, e.g. node --import tsx --test; {a,b} groups in
+#          a path arg are expanded, a nested brace group narrows by directory only;
 #          a single * also matches across / — ponytail: over-accepts a nested file
 #          for node --test, upgrade = a segment-aware glob matcher).
 #   hooklib scripts/hooks/<subdir>/*: a wired hook, or another live library under
@@ -79,6 +79,10 @@ brace_expand() {
   done
 }
 
+# one flag before node's --test: only these take a value word (--import tsx, -r ./x.js);
+# any other flag is bare, so `node --no-warnings build.js --test` is not a runner
+node_flag='(--(import|loader|experimental-loader|require|conditions)([ =][^ -][^ ]*)|-r +[^ -][^ ]*|--[a-z-]+(=[^ ]*)?)'
+
 # pkg_runs <pkg dir, "" = root> <file> — the package.json test script runs a known
 # runner whose discovery reaches <file> (path args narrow it; bare = whole package)
 pkg_runs() {
@@ -88,14 +92,14 @@ pkg_runs() {
   # a runner counts only as the start of a command (echo bun test runs nothing)
   printf '%s\n' "$ts" | sed -E 's/&&|;|\|\|?/\n/g' \
     | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*((npx|bunx|pnpm exec|yarn)[[:space:]]+)?//' \
-    | grep -qE '^(bun test|node( +--[a-z-]+([ =][^ -][^ ]*)?)* +--test|vitest|jest)([[:space:]]|$)' || return 1
+    | grep -qE "^(bun test|node( +$node_flag)* +--test|vitest|jest)([[:space:]]|\$)" || return 1
   case "$ts" in  # node --test globs only reach JS unless the script loads a TS transform
     *"bun test"*|*vitest*|*jest*) ;;
     *) case "${f##*/}" in *.js|*.mjs|*.cjs) ;; *) case "$ts" in *strip-types*|*tsx*|*--import*|*--loader*) ;; *) return 1 ;; esac ;; esac ;;
   esac
   rel="$f"; [ -z "$pd" ] || rel="${f#"$pd"/}"
   # only the words after the runner, up to the next command, can narrow discovery
-  ts=$(printf '%s' "$ts" | sed -E 's/.*(bun test|node( +--[a-z-]+([ =][^ -][^ ]*)?)* +--test([[:space:]]|$)|vitest( run)?|jest)//; s/(&&|;|\|).*//')
+  ts=$(printf '%s' "$ts" | sed -E "s/.*(bun test|node( +$node_flag)* +--test([[:space:]]|\$)|vitest( run)?|jest)//; s/(&&|;|\\|).*//")
   set -f
   for tok0 in $ts; do for tok in $(brace_expand "${tok0//[\"\']/}"); do
     tok="${tok#./}"
@@ -249,8 +253,9 @@ judge() {  # <path> <kind> -> prints a reason when unwired
       # an added referencer still unwired itself does not count
       while IFS= read -r r; do
         [ -n "$r" ] || continue
+        # sample data names scripts without running them
+        printf '%s\n' "$r" | grep -qE "$ALLOW_PATH_RE" && continue
         # a doc the same PR adds only describes the file; it is not independent wiring
-        printf '%s\n' "$r" | grep -qE "$ALLOW_PATH_RE" && continue  # sample data names scripts without running them
         case "$r" in *.md|*.txt|*.rst|*.adoc) grep -qxF -- "$r" "$tmp/added" && continue ;; esac
         is_pending "$r" || return 0
       done < "$tmp/refs"

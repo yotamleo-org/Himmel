@@ -1000,6 +1000,19 @@ contains "node --test with --import discovers a .ts file: passes" "$out" "[PASS]
 UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --test --loader ts-node\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
 unw_run scripts/cfg/tests/a.test.ts
 contains "node --test with --loader discovers a .ts file: passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --require tsx/cjs --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "node --test with only a tsx marker discovers a .ts file: passes" "$out" "[PASS] 11."
+# a flag takes the next word only when it is a valued flag; --test after a script is its argument
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --no-warnings build.js --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.mjs
+contains "node --no-warnings build.js --test is not a test runner: file fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --no-warnings --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.mjs
+contains "node --no-warnings --test is a runner: file passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node -r ./setup.js --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.mjs
+contains "node -r ./setup.js --test is a runner: file passes" "$out" "[PASS] 11."
 
 # mutation pins: hook-library referencer branches
 UNW_EXTRA="printf 'source h.sh\n' > \"\$REPO/scripts/hooks/test-hk.sh\""
