@@ -2,10 +2,16 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export type Escalation = { escalation_id: string; sessionDir: string; capability: string; step: string | number; ts: string; shape: "read" | "write"; raw: Record<string, unknown> };
+export type Escalation = { escalation_id: string; resume_token: string; sessionDir: string; capability: string; step: string | number; ts: string; shape: "read" | "write"; raw: Record<string, unknown> };
 
 export function escalationId(e: { sessionDir: string; step: string | number; capability: string; ts: string }): string {
   return createHash("sha256").update([e.sessionDir, String(e.step), e.capability, e.ts].join("\0")).digest("hex").slice(0, 12);
+}
+
+// The resume token is the handle a paused worker (or the Telegram bridge) quotes
+// to find its escalation again; it extends the escalation_id schema, never forks it.
+export function resumeToken(escalation_id: string): string {
+  return createHash("sha256").update(`${escalation_id}\0resume`).digest("hex").slice(0, 16);
 }
 
 export function capabilityShape(capability: string): "read" | "write" {
@@ -33,10 +39,10 @@ function jsonl(path: string, onParseError: () => void): Record<string, unknown>[
   });
 }
 
-export function readEscalations(bridgeRoot: string): EscalationsResult {
+function scan(bridgeRoot: string): { all: { escalation: Escalation; closed: boolean }[]; parseErrors: number } {
   const root = join(bridgeRoot, "glm-sessions");
-  if (!existsSync(root)) return { escalations: [], parseErrors: 0 };
-  const out: Escalation[] = [];
+  if (!existsSync(root)) return { all: [], parseErrors: 0 };
+  const all: { escalation: Escalation; closed: boolean }[] = [];
   let parseErrors = 0;
   const bump = () => { parseErrors++; };
   for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -48,9 +54,18 @@ export function readEscalations(bridgeRoot: string): EscalationsResult {
       const step = (typeof row.step === "string" || typeof row.step === "number") ? row.step : "";
       const ts = String(row.ts ?? "");
       const escalation_id = escalationId({ sessionDir, step, capability: row.capability, ts });
-      if (closed.has(escalation_id)) continue;
-      out.push({ escalation_id, sessionDir, capability: row.capability, step, ts, shape: capabilityShape(row.capability), raw: row });
+      all.push({ escalation: { escalation_id, resume_token: resumeToken(escalation_id), sessionDir, capability: row.capability, step, ts, shape: capabilityShape(row.capability), raw: row }, closed: closed.has(escalation_id) });
     }
   }
-  return { escalations: out, parseErrors };
+  return { all, parseErrors };
+}
+
+export function readEscalations(bridgeRoot: string): EscalationsResult {
+  const { all, parseErrors } = scan(bridgeRoot);
+  return { escalations: all.filter((r) => !r.closed).map((r) => r.escalation), parseErrors };
+}
+
+export function findByResumeToken(bridgeRoot: string, token: string): { state: "open" | "closed"; escalation: Escalation } | undefined {
+  const hit = scan(bridgeRoot).all.find((r) => r.escalation.resume_token === token);
+  return hit && { state: hit.closed ? "closed" : "open", escalation: hit.escalation };
 }
