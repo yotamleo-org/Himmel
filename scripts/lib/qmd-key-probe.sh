@@ -53,14 +53,14 @@ reply="$(printf 'header = "Authorization: Bearer %s"\n' "$token" |
 rc=$?
 [ "$rc" -eq 124 ] || [ "$rc" -eq 28 ] && fail 2 "no embedding reply from $url within ${secs}s"
 [ "$rc" -eq 7 ] && fail 2 "nothing listening on $url"
-[ "$rc" -ne 0 ] && fail 2 "daemon call failed (curl rc=$rc) on $url"
+[ "$rc" -ne 0 ] && fail 2 "qmd server call failed (curl rc=$rc) on $url"
 
 code="${reply##*$'\n'}"
 body="${reply%$'\n'*}"
 sse="$(printf '%s\n' "$body" | sed -n 's/^data:[[:space:]]*//p')"
 [ -n "$sse" ] && body="$sse"
 
-key_msg="the qmd daemon's embedding provider answered 401 - it was started without QMD_OPENAI_API_KEY; restart it with the key (marketplace/plugins/qmd/README.md, OpenRouter section)"
+key_msg="the qmd server's embedding provider answered 401 - it was started without QMD_OPENAI_API_KEY; restart it with the key (marketplace/plugins/qmd/README.md, OpenRouter section)"
 
 # The provider's 401 text, wherever the daemon carries it (HTTP status, tool error
 # text or JSON-RPC error message).
@@ -68,7 +68,7 @@ case "$body" in
   *'No cookie auth credentials found'*) fail 1 "$key_msg" ;;
 esac
 case "$code" in
-  401 | 403) fail 2 "the qmd daemon refused the bearer token (HTTP $code) - set QMD_HTTP_AUTH_FILE to its token file" ;;
+  401 | 403) fail 2 "the qmd server refused the bearer token (HTTP $code) - set QMD_HTTP_AUTH_FILE to its token file" ;;
 esac
 
 err="$(printf '%s' "$body" | jq -r 'if type != "object" then "bad"
@@ -81,5 +81,5 @@ case "$err" in
   '') fail 2 "empty reply from $url (HTTP $code)" ;;
   *401* | *[Uu]nauthorized*) fail 1 "$key_msg" ;;
   bad) fail 2 "unreadable reply from $url (HTTP $code)" ;;
-  *) fail 2 "the qmd daemon's embedding query failed (HTTP $code)" ;;
+  *) fail 2 "the qmd server's embedding query failed (HTTP $code)" ;;
 esac
