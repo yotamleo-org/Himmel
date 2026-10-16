@@ -206,7 +206,12 @@ aliases, resolved by `scripts/lib/llm-backend.sh`. Any other value refuses (rc 1
 | 0 | ok, or no change since the last pass (no-op) | green; clears the `graph-semantic-<slug>` alert |
 | 3 | subscription usage budget at/over threshold, nothing touched (claude-cli only; the ollama path skips the usage budget check) | benign skip: green, no alert, an existing alert is left standing |
 | 4 | promote lock held by another graph refresh, nothing touched | benign skip: green, no alert, an existing alert is left standing |
+| 5 | one or more semantic chunks failed (the good chunks merged, the failed files stay unstamped, HIMMEL-5871) | alerts (`semantic-update-rc-5`), `action=failed`, rc 3 |
 | 1, 2, other | usage/IO, fence deny, graphify or merge failure | alerts (`semantic-update-rc-<n>`), `action=failed`, rc 3 |
+
+On `claude-api`, `semantic-update.sh` passes graphify `--token-budget` derived from `GRAPHIFY_API_CALL_BUDGET_USD`
+(120000 tokens per USD, capped at graphify's 60000), so a chunk fits one lane call; the default 0.25 USD gives
+30000. The estimate line prints the cap, the chunk size and the expected per-chunk cost.
 
 A skip is not a recovery, so it never clears a standing alert; only a clean rc 0
 does. On the local ollama path `semantic-update.sh` exports the placeholder
