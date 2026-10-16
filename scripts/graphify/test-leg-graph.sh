@@ -28,7 +28,7 @@ run() { (cd "$T/wt" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>"$T/err"); }
 
 # T1: query from the worktree resolves to the primary's graphify-out.
 out="$(run query "what is X")"; rc=$?
-if [ "$rc" = 0 ] && [ "$out" = "STUB GRAPHIFY_OUT=$P/graphify-out ARGS=query what is X" ]; then
+if [ "$rc" = 0 ] && [ "$out" = "STUB GRAPHIFY_OUT=$P/graphify-out ARGS=query what is X --budget 8000" ]; then
   pass "T1 query from a worktree targets the primary graph"
 else fail "T1 rc=$rc out='$out'"; fi
 
@@ -52,6 +52,28 @@ mv "$P/graphify-out/graph.json" "$P/graphify-out/graph.json.x"
 run query q >/dev/null; rc=$?
 if [ "$rc" = 2 ] && grep -q 'no graph' "$T/err"; then pass "T5 missing graph is loud"
 else fail "T5 rc=$rc err=$(cat "$T/err")"; fi
+
+# T6: a larger default --budget is passed; an explicit --budget wins.
+mv "$P/graphify-out/graph.json.x" "$P/graphify-out/graph.json"
+out="$(run query "q")"
+if grep -q -- '--budget [0-9]\{4,\}' <<<"$out"; then pass "T6 default budget is raised"
+else fail "T6 out='$out'"; fi
+out="$(run query "q" --budget 123)"
+if grep -q -- '--budget 123$' <<<"$out" && ! grep -q -- '--budget [0-9]* .*--budget' <<<"$out"; then pass "T6b explicit --budget is respected"
+else fail "T6b out='$out'"; fi
+
+# T7: a truncated answer gets an explicit re-run line naming the wrapper.
+printf '#!/bin/sh\necho "[!] TRUNCATED: showing 60 of 223 nodes (~2000-token budget). raise the token budget to 7523 to get all 223 (CLI: --budget 7523)"\necho "NODE a"\n' > "$T/bin/graphify"
+out="$(run query "two words")"; rc=$?
+if [ "$rc" = 0 ] && grep -q 'NODE a' <<<"$out" && grep -q 'bash scripts/graphify/leg-graph.sh query "two words" --budget 7523' "$T/err"; then
+  pass "T7 truncation prints a re-run line"
+else fail "T7 rc=$rc err=$(cat "$T/err")"; fi
+
+# T8: missing graph names the wrapper.
+mv "$P/graphify-out/graph.json" "$P/graphify-out/graph.json.x"
+run query q >/dev/null
+if grep -q 'leg-graph.sh' "$T/err"; then pass "T8 missing-graph message names leg-graph.sh"
+else fail "T8 err=$(cat "$T/err")"; fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
