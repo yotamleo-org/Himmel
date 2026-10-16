@@ -18,6 +18,7 @@
 # Env: LAUNCH_GUEST_VMS_JSON (registry path; default scripts/lib/vms.json),
 #      LAUNCH_GUEST_TIMEOUT (seconds, default 1800).
 # Platform: POSIX bash 3.2+, node, ssh with key auth to the guest.
+# launch-profile-ok-file: the claude runs on the guest's own login and config, where no host profile applies
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 VMS_JSON="${LAUNCH_GUEST_VMS_JSON:-$HERE/../lib/vms.json}"
