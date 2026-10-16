@@ -19,6 +19,10 @@ FABLE_CAP="${JUDGE_LADDER_FABLE_CAP:-2}"
 WINDOW="${JUDGE_LADDER_WINDOW:-3600}"
 NOW="${JUDGE_LADDER_NOW:-$(date +%s)}"
 
+for v in "$SONNET_CAP" "$OPUS_CAP" "$FABLE_CAP" "$WINDOW" "$NOW"; do
+  case "$v" in '' | *[!0-9]*) echo "judge-ladder: non-numeric cap, window or clock '$v'" >&2; exit 2 ;; esac
+done
+
 state_file() {
   if [ -n "${JUDGE_LADDER_STATE:-}" ]; then printf '%s\n' "$JUDGE_LADDER_STATE"; return 0; fi
   # shellcheck source=/dev/null
@@ -53,10 +57,20 @@ case "$cmd" in
     cap="$(cap_for "$tier")" || { echo "judge-ladder: unknown tier '$tier'" >&2; exit 2; }
     state="$(state_file)" || { echo "judge-ladder: no state dir" >&2; exit 2; }
     mkdir -p "$(dirname "$state")" || exit 2
+    # mkdir is atomic: one convening at a time reads, checks and appends.
+    lock="$state.lock"
+    tries=0
+    until mkdir "$lock" 2>/dev/null; do
+      tries=$((tries + 1))
+      [ "$tries" -lt 100 ] || { echo "judge-ladder: state lock busy; refusing" >&2; exit 3; }
+      sleep 0.1
+    done
+    trap 'rmdir "$lock" 2>/dev/null' EXIT
     used=0
     if [ -f "$state" ]; then
       used="$(awk -v now="$NOW" -v win="$WINDOW" -v s="$seat" -v t="$tier" \
-        '$2 == s && $3 == t && now - $1 < win { n++ } END { print n + 0 }' "$state")"
+        '$2 == s && $3 == t && now - $1 < win { n++ } END { print n + 0 }' "$state")" \
+        || { echo "judge-ladder: cannot count the budget; refusing" >&2; exit 3; }
     fi
     if [ "$used" -ge "$cap" ]; then
       echo "judge-ladder: convening budget exhausted for seat $seat at $tier ($used/$cap in ${WINDOW}s); refusing" >&2

@@ -39,6 +39,14 @@ JUDGE_LADDER_NOW=$((1000000 + 7200)) run convene seatA fable >/dev/null
 run convene seatC sonnet >/dev/null; run convene seatC sonnet >/dev/null; run convene seatC sonnet >/dev/null
 run convene seatC sonnet >/dev/null; [ "$?" = 3 ] && pass "sonnet cap enforced" || fail "sonnet cap not enforced"
 
+JUDGE_LADDER_FABLE_CAP=abc run convene seatD fable >/dev/null
+[ "$?" = 2 ] && pass "a non-numeric cap is refused, not read as unlimited" || fail "non-numeric cap accepted"
+
+mkdir "$WORK/state.lock"
+out="$(JUDGE_LADDER_STATE="$WORK/state" run convene seatE sonnet)"; rc=$?
+rmdir "$WORK/state.lock"
+[ "$rc" = 3 ] && pass "a held state lock refuses the convening (rc 3)" || fail "held lock did not refuse (rc=$rc)"
+
 out="$(run breakglass guard-no-fire)"; rc=$?
 [ "$rc" = 0 ] && has "a guard that did not fire reaches the operator" "$out" "operator" || fail "breakglass guard-no-fire rc=$rc"
 out="$(run breakglass invariant-regression)"; has "an invariant regression reaches the operator" "$out" "operator"
