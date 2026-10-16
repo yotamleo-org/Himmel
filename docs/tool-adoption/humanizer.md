@@ -52,4 +52,4 @@ PILOT-MEASURE exit: after two weeks of use, count documents where `/humanizer` c
 
 ## Decision
 
-Vendor as `marketplace/plugins/humanizer/` with `disable-model-invocation: true` (one frontmatter line added, recorded in `VENDORED.md`), in no profile. Operator installs by hand. Removal is `claude plugin disable humanizer@himmel`.
+Vendor as `marketplace/plugins/humanizer/` with `disable-model-invocation: true` (one frontmatter line added, recorded in `VENDORED.md`), in no profile. The adopter template installs it on-demand (installed, disabled); the operator enables it by hand. Removal is `claude plugin disable humanizer@himmel`.
