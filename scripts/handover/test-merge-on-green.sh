@@ -677,7 +677,7 @@ case "\$1" in
             sed 's/^/comment-body: /' "\$5" >> "\$JIRA_LOG"
         fi
         if [ "\$2" = "get" ]; then
-            printf '{"fields":{"issuetype":{"name":"%s"},"status":{"name":"%s"},"fixVersions":[%s]}}\n' "\${STUB_JIRA_ISSUE_TYPE:-Task}" "\${STUB_JIRA_STATUS:-In Review}" "\${STUB_JIRA_FIXVERSIONS:-}"
+            printf '{"fields":{"issuetype":{"name":"%s"},"status":{"name":"%s"},"fixVersions":[%s]}}\n' "\${STUB_JIRA_ISSUE_TYPE:-Task}" "\${STUB_JIRA_STATUS-In Review}" "\${STUB_JIRA_FIXVERSIONS:-}"
             exit 0
         fi
         if [ "\$2" = "versions" ]; then
@@ -3475,6 +3475,10 @@ STUB_JIRA_BUILD=1 STUB_JIRA_STATUS="To Do" STUB_PR_TITLE="feat(jira): [HIMMEL-37
     run_mog 0 "jira: partial merge on a To Do ticket still comments"
 assert_jira_log_has "jira: To Do ticket still gets the Remaining comment" "comment-body: Remaining: slice 2"
 assert_jira_log_lacks "jira: To Do ticket needs no transition" "index.js transition"
+STUB_JIRA_BUILD=1 STUB_JIRA_STATUS="" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+    run_mog 0 "jira: partial merge with an unreadable status touches nothing"
+assert_jira_log_lacks "jira: unreadable status gets no comment" "comment-body:"
+assert_jira_log_lacks "jira: unreadable status gets no transition" "index.js transition"
 STUB_JIRA_BUILD=1 STUB_STATE=MERGED STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: an already-MERGED PR is not treated as closed-unmerged"
 assert_jira_log_lacks "jira: MERGED NOOP makes no transition" "transition"

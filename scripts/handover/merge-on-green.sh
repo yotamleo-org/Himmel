@@ -598,6 +598,7 @@ _jira_return_to_todo() {
     ' 2>/dev/null)
     case "$status" in
         Done|Closed) echo "skip=already-done"; return 0 ;;
+        '') echo "skip=status-unreadable"; return 0 ;;
     esac
     # A caller may restrict the move to one status (a closed PR must not pull a
     # ticket whose work moved to another PR out of In Progress).
