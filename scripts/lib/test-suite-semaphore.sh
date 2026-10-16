@@ -14,7 +14,10 @@
 #     an unrelated process does not;
 #   - HIMMEL_SUITE_SLOTS=N admits N concurrent suites;
 #   - run-shell-tests.sh takes a slot too;
-#   - the default (HIMMEL_SUITE_SLOTS unset) admits 3 concurrent suites;
+#   - the default (HIMMEL_SUITE_SLOTS unset) admits 6 concurrent suites;
+#   - a mixed fleet (old 3-slot and new 6-slot processes on one slot dir)
+#     never deadlocks;
+#   - the rc 75 message names SUITE_LOCK_WAIT=<secs> as the way to queue;
 #   - SUITE_LOCK_WAIT with a leading zero (octal-looking) is read as decimal.
 #
 # Every case runs against its own sandbox HIMMEL_SUITE_SEMAPHORE_DIR, with the
@@ -106,7 +109,8 @@ ERR=$(qr "$SEM" HIMMEL_SUITE_SLOTS=1 -- true 2>&1 >/dev/null); RC=$?
 if [ "$RC" = "75" ] \
    && grep -q "pid ${QR_PID:-none}" <<<"$ERR" \
    && grep -q "label suite" <<<"$ERR" \
-   && grep -qF "SUITE_LOCK_WAIT=60 bash scripts/quiet-run.sh suite -- true" <<<"$ERR"; then
+   && grep -qF "SUITE_LOCK_WAIT=60 bash scripts/quiet-run.sh suite -- true" <<<"$ERR" \
+   && grep -qF "SUITE_LOCK_WAIT=<secs>" <<<"$ERR"; then
     pass "second concurrent suite -> rc 75 naming holder pid, label and retry shape"
 else
     fail "second concurrent suite -- expected rc 75 + holder pid ${QR_PID:-none} + retry line, got rc=$RC err: $ERR"
@@ -230,31 +234,56 @@ else
 fi
 stop_holder
 
-# --- 11: default (HIMMEL_SUITE_SLOTS unset) admits 3, refuses the 4th ---
+# --- 11: default (HIMMEL_SUITE_SLOTS unset) admits 6, refuses the 7th ---
 new_sem
-start_holder "$SEM" def-a
-H1=$HOLDER; S1=$SLEEPER_FILE
-start_holder "$SEM" def-b
-H2=$HOLDER; S2=$SLEEPER_FILE
-start_holder "$SEM" def-c
-H3=$HOLDER
-if [ -e "$SEM/slot-1" ] && [ -e "$SEM/slot-2" ] && [ -e "$SEM/slot-3" ]; then
-    pass "default HIMMEL_SUITE_SLOTS admits 3 concurrent suites"
+DEF_HOLDERS=''; DEF_SLEEPERS=''
+for t in a b c d e f; do
+    start_holder "$SEM" "def-$t"
+    DEF_HOLDERS="$DEF_HOLDERS $HOLDER"; DEF_SLEEPERS="$DEF_SLEEPERS $SLEEPER_FILE"
+done
+if [ -e "$SEM/slot-1" ] && [ -e "$SEM/slot-6" ] && [ ! -e "$SEM/slot-7" ]; then
+    pass "default HIMMEL_SUITE_SLOTS admits 6 concurrent suites"
 else
-    fail "default HIMMEL_SUITE_SLOTS did not admit 3 concurrent suites"
+    fail "default HIMMEL_SUITE_SLOTS did not admit exactly 6 concurrent suites"
 fi
 qr "$SEM" -- true >/dev/null 2>&1; RC=$?
 if [ "$RC" = "75" ]; then
-    pass "default HIMMEL_SUITE_SLOTS refuses the 4th (rc 75)"
+    pass "default HIMMEL_SUITE_SLOTS refuses the 7th (rc 75)"
 else
-    fail "default HIMMEL_SUITE_SLOTS 4th suite -- expected rc 75, got rc=$RC"
+    fail "default HIMMEL_SUITE_SLOTS 7th suite -- expected rc 75, got rc=$RC"
 fi
-stop_holder
-HOLDER=$H2; SLEEPER_FILE=$S2
-stop_holder
-HOLDER=$H1; SLEEPER_FILE=$S1
-stop_holder
-wait "$H3" 2>/dev/null || true
+for sp in $DEF_SLEEPERS; do kill -TERM "$(cat "$sp" 2>/dev/null)" 2>/dev/null; done
+for h in $DEF_HOLDERS; do wait "$h" 2>/dev/null || true; done
+
+# --- 11b: mixed fleet (rollout): an OLD process counts 3 slots, a NEW one 6,
+# against the same slot dir. Old holders fill slot-1..3; a new (default)
+# process takes slot-4; an old process is refused (rc 75, no hang) while 1..4
+# are held, and proceeds the moment an old holder leaves -- no deadlock. ---
+new_sem
+OLD_HOLDERS=''; OLD_SLEEPERS=''
+for t in a b c; do
+    start_holder "$SEM" "old-$t" HIMMEL_SUITE_SLOTS=3
+    OLD_HOLDERS="$OLD_HOLDERS $HOLDER"; OLD_SLEEPERS="$OLD_SLEEPERS $SLEEPER_FILE"
+    [ -n "${OLD1_HOLDER:-}" ] || { OLD1_HOLDER=$HOLDER; OLD1_SLEEPER=$SLEEPER_FILE; }
+done
+start_holder "$SEM" new-a
+NEW_HOLDER=$HOLDER; NEW_SLEEPER=$SLEEPER_FILE
+qr "$SEM" HIMMEL_SUITE_SLOTS=3 -- true >/dev/null 2>&1; RC_OLD=$?
+if [ -e "$SEM/slot-4" ] && [ "$RC_OLD" = "75" ]; then
+    pass "mixed fleet: new process takes slot-4, an old 3-slot process is refused (rc 75, no hang)"
+else
+    fail "mixed fleet -- expected slot-4 held and old rc 75, got slot-4=$([ -e "$SEM/slot-4" ] && echo present || echo absent) rc=$RC_OLD"
+fi
+kill -TERM "$(cat "$OLD1_SLEEPER")" 2>/dev/null
+wait "$OLD1_HOLDER" 2>/dev/null || true
+qr "$SEM" HIMMEL_SUITE_SLOTS=3 -- true >/dev/null 2>&1; RC_OLD=$?
+if [ "$RC_OLD" = "0" ]; then
+    pass "mixed fleet: an old process proceeds once an old holder releases (no deadlock)"
+else
+    fail "mixed fleet -- expected old rc 0 after an old holder left, got rc=$RC_OLD"
+fi
+for sp in $OLD_SLEEPERS $NEW_SLEEPER; do kill -TERM "$(cat "$sp" 2>/dev/null)" 2>/dev/null; done
+for h in $OLD_HOLDERS $NEW_HOLDER; do wait "$h" 2>/dev/null || true; done
 
 # --- 12: SUITE_LOCK_WAIT with a leading zero is read as decimal, not octal.
 # A bad base-8 arithmetic expansion aborts suite_sem_acquire before it ever

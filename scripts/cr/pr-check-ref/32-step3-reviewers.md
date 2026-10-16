@@ -21,6 +21,8 @@
    bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS
    ```
 
+   **Opt-in blast-radius pass (`CR_CLAUDE_AGENTS=blast-radius`, HIMMEL-5851 POC).** That exact value runs ONE extra pass and dispatches NO agent matrix (the matrix below needs `1`). After adjudicating the panel, read `marketplace/plugins/pstack/skills/blast-radius/SKILL.md` from `<himmel_dir>` (the plugin may be disabled in your profile; the file is read, not invoked) and apply it to the diff YOURSELF: name the one or two facts the change's safety depends on and prove them by running code. A proven breakage becomes a `[claude-N]` finding adjudicated like any panel candidate; an unproven worry is reported as a note, never counted. Report the tokens and wall time the pass took beside the step-4 counts. Unset, empty or `0` is unchanged.
+
    **Opt-in (`CR_CLAUDE_AGENTS=1`): ALSO dispatch the per-agent matrix below** (the pre-HIMMEL-926 default). All dispatches use the upstream `pr-review-toolkit:*` agent types — the himmel fork's `pr-review-toolkit-himmel:code-reviewer` is NOT registered as an Agent-tool type (verified HIMMEL-283; dispatching it errors `Agent type ... not found`). The HIMMEL-178 verify-before-critical rule is carried by prepending the directive below to EVERY agent prompt, code-reviewer included.
 
    Do NOT spawn `claude --print` as a subprocess (HIMMEL-128 billing — interactive only). Sole exception: `scripts/cr/claude-floor-review.sh` above (HIMMEL-3107).
