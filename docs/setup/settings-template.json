@@ -110,7 +110,8 @@
     "luna-correlate@himmel": false,
     "obsidian-triage@himmel": false,
     "telegram-himmel@himmel": false,
-    "himmel-bus@himmel": false
+    "himmel-bus@himmel": false,
+    "humanizer@himmel": false
   },
   "_onDemandPluginsComment": "HIMMEL-2733 ON-DEMAND tier: INSTALLED by install-plugins.sh but left DISABLED, so the plugin is reachable (`/profile enable <spec>`, or a cadence's own force-enable fragment) without costing session-start context on every launch. `neededBy` names WHO wants it, so discovery can say 'enable X for Y'. Every key here MUST also appear in enabledPlugins as `false` (check-template-himmel-plugins.sh enforces that), and its marketplace MUST be in extraKnownMarketplaces.",
   "onDemandPlugins": {
@@ -137,6 +138,9 @@
     },
     "himmel-bus@himmel": {
       "neededBy": "The himmel-bus skill and MCP server (send/read) for the leg-bus and console lane profiles (HIMMEL-4830). Opt-in is per profile via mcpServers; installed but disabled by default."
+    },
+    "humanizer@himmel": {
+      "neededBy": "/humanizer, the opt-in rewrite pass for AI-sounding prose. Installed but disabled by default; enable with /profile enable humanizer@himmel."
     },
     "codex@openai-codex": {
       "neededBy": "The codex worker lanes resolve this plugin's CACHED companion (~/.claude/plugins/cache/openai-codex/*/codex-companion.mjs) — so they need the plugin INSTALLED, never enabled. (The codex adversarial /pr-check lane that also used it was removed in HIMMEL-3818.)"

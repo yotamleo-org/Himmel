@@ -51,6 +51,9 @@
 # cloud= (class only, wakes ONLY on a move to STALL -- never on a
 # change of the ticket list, nor a move back to ok/skip; absent from an older
 # tick line, never a failure),
+# orphans-wip= (in-work tickets with no leg and no open PR; `n:KEY,...`, `?` or
+# `skip`) is in the key whole, so any change of its value wakes; absent from an older
+# tick line, never a failure.
 # unowned-prs= is NOT in the action key (its minutes grow every tick): a
 # non-empty list wakes on first sight (`WAKE unowned-prs <list>`), again at once when
 # a PR joins it, and again every CONSOLE_WAIT_UNOWNED_REWAKE_MIN (default 60) while it
@@ -254,12 +257,12 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails legset board tracker vault cloud vmrun parked denials; do
+    for f in legs livestate prs tails legset board tracker vault cloud orphans-wip vmrun parked denials; do
         v="$(field "$f" "$tick_line")"
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = vmrun ] || [ "$f" = parked ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = vmrun ] || [ "$f" = parked ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi

@@ -240,6 +240,29 @@ contains 'a READY-TO-OPEN leg awaits the console' "$html" 'data-need="N6"'
 # tail === 'FINDING' before lostLock, so the lock text never rendered.
 contains 'a FINDING leg with a lost lock still shows the lock (issue #1336)' "$html" '<b>N12</b> FINDING — needs a ruling · lock STALE — lost or stale'
 contains 'the Live-state decisions: line renders as open operator decisions' "$html" 'widen the fleet cap to 20?'
+# orphans-wip=: in-work tickets nobody holds are listed under the supervisor panel.
+cat > "$W/bin/tick-stub-ow" <<'STUB'
+#!/usr/bin/env bash
+"$(dirname "$0")/tick-stub" "$@" | sed "s/^TICK .*/& orphans-wip=$TICK_STUB_OW/"
+STUB
+chmod +x "$W/bin/tick-stub-ow"
+run_ow() {  # run_ow <orphans-wip value> -- the rendered board html
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-ow" TICK_STUB_OW="$1" TICK_ARGV_LOG="$W/argv-ow.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$DOC" --repo "$W/repo" --out "$W/ow-board.html" >/dev/null 2>"$W/stderr.log"
+    cat "$W/ow-board.html"
+}
+ow_panel() { printf '%s\n' "$1" | sed -n '/Needs the supervisor session/,/<\/section>/p'; }
+ow_html="$(run_ow '2:HIMMEL-901,HIMMEL-902')"
+contains 'an orphaned in-work ticket is listed under Needs the supervisor session' "$(ow_panel "$ow_html")" 'data-orphan="HIMMEL-901"'
+contains 'every named orphan is listed' "$(ow_panel "$ow_html")" 'data-orphan="HIMMEL-902"'
+ow_html="$(run_ow 6)"
+contains 'an orphan count above five reads as a count line' "$(ow_panel "$ow_html")" 'data-orphans="6"'
+ow_html="$(run_ow 0)"
+lacks 'zero orphans adds no orphan row' "$(ow_panel "$ow_html")" 'data-orphan'
+ow_html="$(run_ow '?')"
+lacks 'an unknown orphan read adds no orphan row' "$(ow_panel "$ow_html")" 'data-orphan'
 # a ';' inside parentheses does not split a decision.
 DOCD="$B/HIMMEL-nextleg-2026-09-21V-console-d.md"
 sed 's/^decisions: .*/decisions: A (x; y); B?/' "$DOC" > "$DOCD"  # gnu-ok: console kit is Linux-only

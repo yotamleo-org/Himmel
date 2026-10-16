@@ -152,6 +152,21 @@
       ]
     },
     {
+      "name": "humanizer",
+      "source": "./plugins/humanizer",
+      "description": "[himmel vendor] One opt-in skill from blader/humanizer, pinned at 225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8 (/humanizer: rewrite AI-sounding prose). disable-model-invocation; no hooks, agents or scripts. Off in every profile; one-step disable. See marketplace/plugins/humanizer/README.md.",
+      "author": {
+        "name": "Siqi Chen (upstream) / yotamleo (vendor)"
+      },
+      "license": "MIT",
+      "keywords": [
+        "himmel",
+        "vendored",
+        "humanizer",
+        "opt-in"
+      ]
+    },
+    {
       "name": "claude-obsidian",
       "source": {
         "source": "url",
