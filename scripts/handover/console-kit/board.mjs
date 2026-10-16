@@ -1073,8 +1073,9 @@ renameSync(tmp, outPath);
 const archiveTmp = `${archivePath}.tmp${process.pid}`;
 writeFileSync(archiveTmp, archiveHtml);
 renameSync(archiveTmp, archivePath);
-if (opt.json) {
-    const jsonPath = resolve(opt.json);
+// The AG-UI page reads <console doc>.board.json beside the doc, so every render also refreshes it.
+{
+    const jsonPath = resolve(opt.json || join(bucket, `${basename(docPath, '.md')}.board.json`));
     const jsonTmp = `${jsonPath}.tmp${process.pid}`;
     writeFileSync(jsonTmp, `${JSON.stringify(boardModel, null, 1)}\n`);
     renameSync(jsonTmp, jsonPath);

@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { applyKey, BOARD_URL, BRIEF_URL, openAt, stageSegments, STAGES, type Board, type BoardLeg, type Drawer, type Joined, type Stage } from "./board-model";
 import { runHash } from "./fleet-model";
 
-const POLL_MS = 30_000;
+const POLL_MS = 5_000;
 // legend colours are theme token names; `vio` is the PR stage's violet.
 const TOKEN: Record<string, string> = { acc: "var(--accent)", ok: "var(--ok)", warn: "var(--warn)", bad: "var(--fail)", mut: "var(--dim)", vio: "var(--vio)" };
 const tone = (b: Board, group: string, key: string) => TOKEN[b.legend[group]?.[key]?.color ?? "mut"] ?? TOKEN.mut;
