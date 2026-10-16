@@ -753,11 +753,11 @@ _qmd_egress_ok() {
       --context | --n | --min-score | --format | --collection | --filter | --name | --mask | --glob | --max-docs-per-batch | --max-batch-mb | --timeout | --l | --from | --max-bytes | --candidate-limit | --intent | --chunk-strategy | --port | --host) take=1 ;;
       --*) ;;
       -?*)
-        # a short cluster: c and C take a string (the rest of the cluster, else the next argument)
+        # a short cluster: the string options c C n l take the rest of the cluster, else the next argument
         i=1
         while [ "$i" -lt "${#a}" ]; do
           case "${a:$i:1}" in
-            c | C) [ $((i + 1)) -eq "${#a}" ] && take=1; break ;;
+            c | C | n | l) [ $((i + 1)) -eq "${#a}" ] && take=1; break ;;
           esac
           i=$((i + 1))
         done ;;
@@ -801,8 +801,8 @@ _qmd_egress_ok() {
     return 10
   fi
   { cont="$(<"$cfg")"; } 2>/dev/null
-  # the gate also reads sibling *.yml configs (salus collection paths), so they key the cache too
-  for sd in "${gcfg%/*}" "${cfg%/*}"; do
+  # the gate also reads sibling *.yml configs (salus collection paths) from QMD_CONFIG_DIR or ~/.config/qmd and from the config's own dir, so they key the cache too
+  for sd in "${QMD_CONFIG_DIR:-$HOME/.config/qmd}" "${gcfg%/*}" "${cfg%/*}"; do
     for sf in "$sd"/*.yml; do
       [ -f "$sf" ] && { cont="$cont|$sf"; { cont="$cont$(<"$sf")"; } 2>/dev/null; }
     done
@@ -816,8 +816,12 @@ _qmd_egress_ok() {
   for lf in phi-roots egress-denylist; do
     [ -f "$glm/$lf" ] && { lists="$lists|$lf"; { lists="$lists$(<"$glm/$lf")"; } 2>/dev/null; }
   done
-  key="$cfg|$idx|$dbsig|$explicit|$(pwd -P)|${QMD_EMBED_MODEL:-}|${QMD_RERANK_MODEL:-}|${QMD_GENERATE_MODEL:-}|${QMD_OPENAI_BASE_URL:-}|${QMD_GATE_REQUIRE_KEY:-}|${QMD_OPENAI_API_KEY:-}|$glm|$lists|$cont"
-  if [ -n "${_QMDBIN_GATE_KEY:-}" ] && [ "$key" = "$_QMDBIN_GATE_KEY" ] && [ $((SECONDS - ${_QMDBIN_GATE_AT:-0})) -lt 30 ]; then
+  key="$cfg|$idx|$dbsig|$explicit|$(pwd -P)|${QMD_EMBED_MODEL:-}|${QMD_RERANK_MODEL:-}|${QMD_GENERATE_MODEL:-}|${QMD_OPENAI_BASE_URL:-}|${QMD_GATE_REQUIRE_KEY:-}|${QMD_OPENAI_API_KEY:-}|${JINA_API_KEY:-}|${JINA_API:-}|$glm|$lists|$cont"
+  # hold a digest, never the API keys in the clear; with no hashing tool the pass is simply not cached
+  if command -v sha256sum >/dev/null 2>&1; then key="$(printf '%s' "$key" | sha256sum)"
+  elif command -v shasum >/dev/null 2>&1; then key="$(printf '%s' "$key" | shasum -a 256)"
+  else key=""; fi
+  if [ -n "$key" ] && [ -n "${_QMDBIN_GATE_KEY:-}" ] && [ "$key" = "$_QMDBIN_GATE_KEY" ] && [ $((SECONDS - ${_QMDBIN_GATE_AT:-0})) -lt 30 ]; then
     return 0
   fi
   to="${QMD_GATE_TIMEOUT_SECS:-30}"
