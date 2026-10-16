@@ -279,6 +279,17 @@ assert_contains "jira body carries both findings" "$desc" "docs/readme.md: LOW: 
 assert_contains "jira body names the PR" "$desc" "PR #1"
 assert_contains "jira body carries the dedupe marker" "$desc" "crbatch"
 
+echo "TEST: tracker=jira dedupe marker is repo-scoped (same findings, another repo, another marker)"
+git -C "$REPO" config remote.origin.url "https://example.test/one/repo.git"
+run_mode jira github --dry-run >/dev/null
+marker_one=$(grep -o 'crbatch[0-9a-f]*' "$JLOG" | head -n1)
+git -C "$REPO" config remote.origin.url "https://example.test/two/repo.git"
+run_mode jira github --dry-run >/dev/null
+marker_two=$(grep -o 'crbatch[0-9a-f]*' "$JLOG" | head -n1)
+git -C "$REPO" config --unset remote.origin.url
+assert_contains "repo-scoped marker present" "$marker_one" "crbatch"
+if [ "$marker_one" != "$marker_two" ]; then pass "markers differ across repos"; else fail "markers equal across repos" "$marker_one"; fi
+
 echo "TEST: tracker=jira dry-run creates nothing"
 out=$(run_mode jira github --dry-run); rc=$?
 assert_eq "jira dry-run → exit 0" "0" "$rc"

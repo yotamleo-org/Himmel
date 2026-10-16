@@ -308,7 +308,8 @@ fi
 # Batch identity for the jira/none paths: one hash over every candidate line,
 # so re-running on the same review output finds the same ticket. The marker is
 # a single alphanumeric word because Jira's text search tokenises punctuation.
-batch_hash=$(printf '%s\n' "$candidates" | $HASH_CMD | awk '{print $1}')
+batch_repo=$(git config --get remote.origin.url 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || echo unknown-repo)
+batch_hash=$(printf '%s\n%s\n' "$batch_repo" "$candidates" | $HASH_CMD | awk '{print $1}')
 batch_short="${batch_hash:0:12}"
 batch_marker="crbatch${batch_short}"
 batch_list=$(printf '%s\n' "$candidates" | awk '{printf "%d. %s\n", NR, $0}')
@@ -380,7 +381,7 @@ if [ "$TRACKER_MODE" = jira ]; then
         "They were flagged NIT / LOW / SUGGESTION / IMPROVEMENT / DEFERRED during pre-merge review and did not block the merge." \
         "" \
         "## Agent detail" \
-        "Origin: PR #${PR_NUMBER} (HEAD ${HEAD_SHA})." \
+        "Origin: PR #${PR_NUMBER} (HEAD ${HEAD_SHA}) in ${batch_repo}." \
         "Filed by: scripts/cr/file-deferred-issues.sh (HIMMEL-30, HIMMEL-5921)." \
         "Dedupe marker: ${batch_marker}" \
         "" \
