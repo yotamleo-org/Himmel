@@ -58,6 +58,17 @@ else
     _fail "$NAME" "left=$left: $(ls "$TMPDIR")"
 fi
 
+NAME="inherited GIT_CONFIG_COUNT/PARAMETERS cannot redirect the scratch repo"
+rc=0
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.worktree GIT_CONFIG_VALUE_0=/nonexistent \
+    GIT_CONFIG_PARAMETERS="'core.worktree=/nonexistent'" \
+    bash "$SUT" --steps 2 --max 4 >"$TMPBASE/out" 2>"$TMPBASE/err" || rc=$?
+if [ "$rc" -eq 0 ] && [ "$(grep -vc '^#' "$TMPBASE/out" || true)" -eq 1 ]; then
+    _pass "$NAME"
+else
+    _fail "$NAME" "rc=$rc out=[$(cat "$TMPBASE/out")] err=[$(cat "$TMPBASE/err")]"
+fi
+
 NAME="--max below the largest step refuses with rc 2, no rows"
 rc=0; bash "$SUT" --steps 2,4 --max 3 >"$TMPBASE/out" 2>"$TMPBASE/err" || rc=$?
 if [ "$rc" -eq 2 ] && [ "$(grep -vc '^#' "$TMPBASE/out" || true)" -eq 0 ]; then
