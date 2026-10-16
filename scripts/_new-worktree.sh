@@ -109,6 +109,17 @@ if git -C "$PRIMARY_WORKTREE" show-ref --verify --quiet "refs/heads/$BRANCH"; th
     exit 1
 fi
 
+# Live-worktree ceiling: refuse rather than degrade. Counts registered worktrees
+# under .claude/worktrees (the primary checkout is not counted).
+# ponytail: static default, not yet derived from measured git latency vs count; HIMMEL-1860 slice 3.
+WT_CEILING="${HIMMEL_WORKTREE_CEILING:-100}"
+case "$WT_CEILING" in ''|*[!0-9]*) WT_CEILING=100 ;; esac
+WT_LIVE=$(git -C "$PRIMARY_WORKTREE" worktree list --porcelain -z | tr '\0' '\n' | grep -cF "worktree $PRIMARY_WORKTREE/.claude/worktrees/" || true)
+if [ "$WT_LIVE" -ge "$WT_CEILING" ]; then
+    echo "ERR new-worktree: worktree ceiling reached ($WT_LIVE live >= $WT_CEILING) — reclaim with /clean, or raise HIMMEL_WORKTREE_CEILING" >&2
+    exit 1
+fi
+
 # refuse creating a worktree for a branch that maps to a merged PR.
 # Run BEFORE the network fetch so the refusal is cheap and early.
 # FORGE / GH_CMD must be exported to propagate into branch_has_merged_pr's

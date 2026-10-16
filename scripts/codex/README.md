@@ -68,8 +68,9 @@ pwsh -NoProfile -File scripts\codex\sanitize-plugin-hooks.ps1 -DryRun
 
 The openai-codex plugin's `SessionEnd` hook ships with `timeout: 5`, shorter than
 its broker teardown, so Claude Code cancels it at every session end. This raises
-that one timeout (only upward) in the installed plugin cache; re-run after a
-plugin update. Env overrides: `CLAUDE_CONFIG_DIR` (default `~/.claude`),
+that one timeout (only upward) in the installed plugin cache. `himmel-update.sh`
+re-runs it after the marketplace re-sync; run it by hand after any other
+plugin update. Exits 1 if any hooks.json was skipped. Env overrides: `CLAUDE_CONFIG_DIR` (default `~/.claude`),
 `MIN_TIMEOUT` (positive integer, default `30`).
 
 ```sh

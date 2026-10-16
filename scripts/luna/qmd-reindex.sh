@@ -413,6 +413,28 @@ if [ "$remote_model" -eq 1 ]; then
         echo "ERR qmd-reindex: a remote model is configured but the egress gate or node is missing — index NOT refreshed." >&2
         exit 10
     fi
+    # The provider key is the daemon's: take it from the same env file the
+    # daemon launcher reads (one line, mode 0600/0400, never sourced), else
+    # `qmd embed` sends no Authorization header and the provider answers 401.
+    if [ -z "${QMD_OPENAI_API_KEY:-}" ] && { case "${QMD_OPENAI_BASE_URL:-}" in *openrouter.ai*) true ;; *) false ;; esac || grep -qs '^[^#]*openrouter\.ai' "$QMD_CFG_FILE"; }; then
+        key_env_file="${QMD_DAEMON_ENV_FILE:-$HOME/.himmel/state/qmd-daemon.env}"
+        if [ -f "$key_env_file" ]; then
+            # shellcheck disable=SC2012  # the mode string is the point; the path is fixed
+            case "$(ls -ld "$key_env_file" 2>/dev/null | cut -c1-10)" in
+                -rw-------|-r--------) ;;
+                *)
+                    echo "ERR qmd-reindex: $key_env_file holds the provider key but is readable by others - index NOT refreshed (chmod 600 it)." >&2
+                    exit 10 ;;
+            esac
+            QMD_OPENAI_API_KEY="$(sed -n 's/^QMD_OPENAI_API_KEY=//p' "$key_env_file" | head -n 1)"
+            [ -n "$QMD_OPENAI_API_KEY" ] && export QMD_OPENAI_API_KEY
+        fi
+        if [ -z "${QMD_OPENAI_API_KEY:-}" ]; then
+            echo "ERR qmd-reindex: a remote model is configured but no provider key was found - index NOT refreshed." >&2
+            echo "    Put a QMD_OPENAI_API_KEY=... line (mode 0600) in $key_env_file, or export QMD_OPENAI_API_KEY for this run." >&2
+            exit 10
+        fi
+    fi
     if ! node "$GATE_JS" "$QMD_CFG_FILE" "$QMD_INDEX_PATH" >&2; then
         echo "ERR qmd-reindex: EGRESS REFUSED — index NOT refreshed; see docs/internals/egress-matrix.md." >&2
         exit 10

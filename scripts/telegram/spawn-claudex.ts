@@ -312,7 +312,11 @@ export type EffortLevel = "low" | "medium" | "high" | "xhigh";
 // Broader launcher-side validation (against the proxy's LIVE /v1/models) stays
 // open.
 export type CodexModelTier = "gpt-5.6-sol" | "gpt-5.6-terra" | "gpt-5.6-luna";
-export type ClaudexParsedArgs = { task?: string; briefFile?: string; cwd: string; name?: string; branch?: string; timeoutMins?: number; permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; force: boolean; skipAuthPreflight: boolean; profile: string; addPlugins: string[]; roundsOverride?: string };
+// Per-dispatch context tier: maps to the launcher's CODEX_CONTEXT_WINDOW. Input
+// past 272k bills at a higher rate, so 272k is the cheapest tier and the default.
+export type CodexContextTier = "272k" | "353k" | "900k";
+export const CODEX_CONTEXT_TIER_WINDOW: Record<CodexContextTier, string> = { "272k": "272000", "353k": "353000", "900k": "900000" };
+export type ClaudexParsedArgs = { task?: string; briefFile?: string; cwd: string; name?: string; branch?: string; timeoutMins?: number; permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; contextTier?: CodexContextTier; force: boolean; skipAuthPreflight: boolean; profile: string; addPlugins: string[]; roundsOverride?: string };
 
 // the declarative flag table for parseClaudexArgs — mirrors
 // spawn-glm.ts's GLM_FLAG_TABLE (shared loop mechanics live in
@@ -361,6 +365,16 @@ const CLAUDEX_FLAG_TABLE: FlagTable<ClaudexParsedArgs> = {
     apply: (s, v) => {
       if (v !== "gpt-5.6-sol" && v !== "gpt-5.6-terra" && v !== "gpt-5.6-luna") return `--model must be one of gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna (got "${v}"); see docs/tooling-catalog.md#claude-codex`;
       s.model = v;
+      return undefined;
+    },
+  },
+  // --context-tier: the window this dispatch pays for. Unstated => 272k, never the
+  // largest; 353k/900k bill past the 272k cliff (docs/tooling-catalog.md#claude-codex).
+  "--context-tier": {
+    kind: "value",
+    apply: (s, v) => {
+      if (v !== "272k" && v !== "353k" && v !== "900k") return `--context-tier must be one of 272k|353k|900k (got "${v}"); see docs/tooling-catalog.md#claude-codex`;
+      s.contextTier = v;
       return undefined;
     },
   },
@@ -751,13 +765,15 @@ export function buildClaudexRunArgs(launcherPath: string, prompt: string, permMo
 // plus stripping TELEGRAM_OWN_POLLER so a spawned worker never adopts poller
 // ownership (mirrors run.ts's sessionEnv/glmChildEnv). `base` is injected so
 // this is testable without touching the real process.env.
-export function claudexChildEnv(base: Record<string, string | undefined>, effort?: EffortLevel, model?: CodexModelTier): Record<string, string | undefined> {
+export function claudexChildEnv(base: Record<string, string | undefined>, effort?: EffortLevel, model?: CodexModelTier, contextTier?: CodexContextTier): Record<string, string | undefined> {
   // same no-op-editor pin as the glm/default lanes (see
   // NON_INTERACTIVE_EDITOR_ENV in run.ts) — a claudex worker also spawns with
   // stdin closed and could otherwise block behind an editor window.
   const env: Record<string, string | undefined> = { ...base, ...NON_INTERACTIVE_EDITOR_ENV };
   if (effort) env.CLAUDE_CODE_EFFORT_LEVEL = effort;
   if (model) env.CODEX_MODEL = model;
+  // Always set: an ambient CODEX_CONTEXT_WINDOW must not silently buy a pricier tier.
+  env.CODEX_CONTEXT_WINDOW = CODEX_CONTEXT_TIER_WINDOW[contextTier ?? "272k"];
   // this lane had NO worker-ness marker at all — buildGlmEnv's
   // HIMMEL_GLM_WORKER only ever reached the GLM lane, so a native (Sonnet/
   // Opus-via-codex-proxy) dispatched worker carried no positive signal a hook
@@ -783,7 +799,7 @@ export type ClaudexRunResult = {
 };
 
 type ClaudexRunOpts = {
-  permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; repoRoot: string; settings?: string;
+  permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; contextTier?: CodexContextTier; repoRoot: string; settings?: string;
   runLogPath?: string; timeoutForensicsPath?: string;
   // byte count of every stdout/stderr chunk as it arrives — the
   // startup watchdog's "real output beyond the banner" disarm signal.
@@ -976,7 +992,7 @@ export function createClaudexLiveLogAppender(
 export async function runClaudexSession(prompt: string, cwd: string, opts: ClaudexRunOpts, onSpawn?: (pid: number) => void): Promise<ClaudexRunResult> {
   const launcherPath = claudexLauncherPath(opts.repoRoot);
   const { cmd } = buildClaudexRunArgs(launcherPath, prompt, opts.permMode, opts.settings);
-  const env = claudexChildEnv(process.env, opts.effort, opts.model);
+  const env = claudexChildEnv(process.env, opts.effort, opts.model, opts.contextTier);
   const startedAt = Date.now();
   // SPAWN_OWN_GROUP: killTree's POSIX half signals the process
   // GROUP, which only exists if the child leads one. Without it a timed-out
@@ -1087,7 +1103,7 @@ export function claudexTranscriptDirFor(worktree: string): string {
 // response is not startup-class and is still caught only by RUN_TIMEOUT_MS.
 export async function executeClaudexRun(deps: {
   run: (prompt: string, cwd: string, opts: ClaudexRunOpts, onSpawn?: (pid: number) => void) => Promise<ClaudexRunResult>;
-  prompt: string; worktree: string; permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; repoRoot: string;
+  prompt: string; worktree: string; permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; contextTier?: CodexContextTier; repoRoot: string;
   sessionDir: string; metaPath: string; runningMeta: Record<string, unknown>;
   // the resolved --settings plugin-profile payload (undefined = operator / no injection).
   settings?: string;
@@ -1125,7 +1141,7 @@ export async function executeClaudexRun(deps: {
       });
     }
     const onOutput = (bytes: number) => { outputBytes += bytes; if (outputBytes > 512) disarmWatch(); };
-    const res = await deps.run(deps.prompt, deps.worktree, { permMode: deps.permMode, effort: deps.effort, model: deps.model, repoRoot: deps.repoRoot, settings: deps.settings, runLogPath, timeoutForensicsPath, onOutput }, recordLivePid);
+    const res = await deps.run(deps.prompt, deps.worktree, { permMode: deps.permMode, effort: deps.effort, model: deps.model, contextTier: deps.contextTier, repoRoot: deps.repoRoot, settings: deps.settings, runLogPath, timeoutForensicsPath, onOutput }, recordLivePid);
     disarmWatch(); // the run is over either way — never let the interval outlive it
     // run.log append is COSMETIC persistence — isolated so an I/O failure here
     // never flips a successful run to failed. Real runs stream live; injected
@@ -1217,13 +1233,13 @@ export async function runClaudexSharedDispatch(p: {
 // still comes from claude-codex --guard-check, D1 intact) · 4 =
 // shared-branch-lock acquire failure (parity with spawn-glm).
 async function main(): Promise<void> {
-  const usage = "usage: spawn-claudex [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] [--force] [--skip-auth-preflight] (the prompt is the task brief, inline, or read verbatim from --brief-file — HIMMEL-1780; default --permission-mode: dontAsk; bypassPermissions is refused — HIMMEL-1378)";
+  const usage = "usage: spawn-claudex [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--context-tier 272k|353k|900k] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] [--force] [--skip-auth-preflight] (the prompt is the task brief, inline, or read verbatim from --brief-file — HIMMEL-1780; default --permission-mode: dontAsk; bypassPermissions is refused — HIMMEL-1378)";
   const rawArgv = process.argv.slice(2);
   // help short-circuit — before parseClaudexArgs, before any side effect.
   if (isHelpFlag(rawArgv)) { console.log(usage); process.exit(0); }
   const parsed = parseClaudexArgs(rawArgv);
   if (!parsed.ok) { console.error(`spawn-claudex: ${parsed.error}`); console.error(usage); process.exit(2); }
-  const { task: taskArg, briefFile, cwd, name, branch: branchArg, timeoutMins, permMode: permModeArg, effort, model, force, skipAuthPreflight, profile, addPlugins, roundsOverride } = parsed.args;
+  const { task: taskArg, briefFile, cwd, name, branch: branchArg, timeoutMins, permMode: permModeArg, effort, model, contextTier, force, skipAuthPreflight, profile, addPlugins, roundsOverride } = parsed.args;
   // --brief-file's contents BECOME the task (readBriefFile is
   // spawn-glm's exported fail-closed helper — one implementation across both
   // lanes). Read here — before any side effect and before every task-consuming
@@ -1441,7 +1457,7 @@ async function main(): Promise<void> {
     // checkpoint_worker_worktree reads before signalling a worker -- without
     // it every Claudex session refused the stop (exit 5, "no worker worktree
     // recorded"). Same field spawn-glm.ts's baseMeta already writes.
-    const baseMeta = { status: "running", pid: 0, started_at, lane: "codex", task_name: slug, worker_worktree: worktree };
+    const baseMeta = { status: "running", pid: 0, started_at, lane: "codex", task_name: slug, worker_worktree: worktree, context_tier: contextTier ?? "272k" };
     const runningMeta = sharedMode ? { ...baseMeta, shared_branch: branch } : baseMeta;
     writeFileSync(metaPath, JSON.stringify(runningMeta, null, 2));
 
@@ -1456,7 +1472,7 @@ async function main(): Promise<void> {
     // effects). No retry wrapper here.
     const head0 = gitCapture(["rev-parse", "HEAD"], worktree);
     baseSha = head0.code === 0 ? head0.stdout.trim() : undefined;
-    const { code } = await executeClaudexRun({ run: runClaudexSession, prompt, worktree, permMode, effort, model, repoRoot: REPO_ROOT, sessionDir, metaPath, runningMeta, settings });
+    const { code } = await executeClaudexRun({ run: runClaudexSession, prompt, worktree, permMode, effort, model, contextTier, repoRoot: REPO_ROOT, sessionDir, metaPath, runningMeta, settings });
     return code;
   };
 

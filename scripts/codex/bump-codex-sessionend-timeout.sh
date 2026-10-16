@@ -8,8 +8,10 @@
 # timeout to MIN_TIMEOUT seconds in the installed plugin cache.
 #
 # Only the SessionEnd lifecycle-hook timeout is touched, and only upward: a
-# larger existing value is kept. Idempotent; a plugin update rewrites the cache,
-# so re-run after one.
+# larger existing value is kept. Idempotent. Exits 1 (and does not print a final
+# OK) when any hooks.json was skipped (unparseable, temp-file or write failure).
+#
+# ponytail: re-applies only when run (himmel-update.sh after the marketplace re-sync, or by hand); Claude Code background plugin auto-update is not hooked, HIMMEL-5994.
 #
 #   bump-codex-sessionend-timeout.sh            # patch in place, report
 #   bump-codex-sessionend-timeout.sh --dry-run  # report what WOULD change
@@ -42,30 +44,37 @@ fi
 # shellcheck disable=SC2016 # $min is a jq variable, not a shell expansion
 NEEDS='[.hooks.SessionEnd[]?.hooks[]? | select((.command // "") | contains("session-lifecycle-hook.mjs")) | select((.timeout // 0) < $min)] | length > 0'
 # shellcheck disable=SC2016 # $min is a jq variable, not a shell expansion
-PATCH='.hooks.SessionEnd |= map(.hooks |= map(if ((.command // "") | contains("session-lifecycle-hook.mjs")) and ((.timeout // 0) < $min) then .timeout = $min else . end))'
+PATCH='.hooks.SessionEnd |= map(if has("hooks") then .hooks |= map(if ((.command // "") | contains("session-lifecycle-hook.mjs")) and ((.timeout // 0) < $min) then .timeout = $min else . end) else . end)'
 
 hooks_files="$(find "$CACHE" -name hooks.json)" || { echo "ERR: cannot scan $CACHE" >&2; exit 1; }
 
 scanned=0
 bumped=0
+skipped=0
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   scanned=$((scanned + 1))
   if ! jq empty "$f" >/dev/null 2>&1; then
     echo "SKIP (unparseable): $f" >&2
+    skipped=$((skipped + 1))
     continue
   fi
   jq -e --argjson min "$MIN_TIMEOUT" "$NEEDS" "$f" >/dev/null 2>&1 || continue
   if [ "$DRY_RUN" = "1" ]; then
     echo "WOULD BUMP  : $f"
   else
-    tmp="$(mktemp "$(dirname "$f")/.hooks.json.XXXXXX")" || { echo "SKIP (mktemp failed): $f" >&2; continue; }
-    if jq --argjson min "$MIN_TIMEOUT" "$PATCH" "$f" > "$tmp"; then
-      mv "$tmp" "$f"
+    # Replace the symlink TARGET atomically (temp file in the same dir, original
+    # mode copied, mv over it): a symlinked hooks.json stays a symlink, and an
+    # interrupted write never leaves the real file truncated.
+    real="$(readlink -f "$f" 2>/dev/null)" || real="$f"
+    tmp="$(mktemp "$(dirname "$real")/.hooks.json.XXXXXX")" || { echo "SKIP (mktemp failed): $f" >&2; skipped=$((skipped + 1)); continue; }
+    mode="$(stat -c %a "$real" 2>/dev/null || stat -f %Lp "$real" 2>/dev/null || echo 644)"
+    if jq --argjson min "$MIN_TIMEOUT" "$PATCH" "$real" > "$tmp" && chmod "$mode" "$tmp" && mv "$tmp" "$real"; then
       echo "BUMPED      : $f"
     else
       rm -f "$tmp"
       echo "SKIP (write failed): $f" >&2
+      skipped=$((skipped + 1))
       continue
     fi
   fi
@@ -73,7 +82,10 @@ while IFS= read -r f; do
 done <<< "$hooks_files"
 
 echo ""
-if [ "$DRY_RUN" = "1" ]; then
+if [ "$skipped" -gt 0 ]; then
+  echo "ERR: skipped $skipped of $scanned hooks.json (see SKIP lines); bumped $bumped." >&2
+  exit 1
+elif [ "$DRY_RUN" = "1" ]; then
   echo "DRY-RUN: $bumped of $scanned hooks.json would be bumped."
 elif [ "$bumped" -eq 0 ]; then
   echo "OK: nothing to bump ($scanned hooks.json already >= ${MIN_TIMEOUT}s or without the hook)."

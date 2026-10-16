@@ -14,10 +14,14 @@
 #     wired through the run-job wrapper's environment;
 #   - /usr/local/sbin/himmel-ci-run-job, the one entry the host loop calls:
 #     it reads the JIT config from stdin and runs ONE job as `runner`;
-#   - an nftables egress filter: the guest may reach the internet (GitHub,
-#     package mirrors) and the VirtualBox NAT DNS, but no private, link-local
-#     or CGNAT range — so no station LAN. The host loop additionally sets
-#     `--nat-localhostreachable1 off` after every restore, so 10.0.2.2 is not  # leak-allow: private-lan-ip VBox NAT address
+#   - an nftables egress allow-list: output policy drop; the guest
+#     reaches the VirtualBox NAT DNS and whatever egress-refresh.sh (installed
+#     as himmel-ci-egress-refresh, run by the host loop after every boot) puts
+#     in the allowed4/allowed6 sets: GitHub's published ranges and the package
+#     mirrors the shell-unit shards use. The private, link-local and CGNAT
+#     ranges stay explicitly rejected, so no station LAN. The host loop
+#     additionally sets `--nat-localhostreachable1 off` after every restore, so
+#     10.0.2.2 is not  # leak-allow: private-lan-ip VBox NAT address
 #     the station's loopback either.
 #   - no VirtualBox Guest Additions userspace: the base image carries
 #     virtualbox-guest-utils (clipboard and drag-and-drop services), which a
@@ -25,8 +29,6 @@
 #     needs it. The host also sets both off as machine config.
 #   - the packages the ubuntu shell-unit shard otherwise installs with sudo
 #     (at/atd, ffmpeg 6.1, pre-commit 4.7.0), since `runner` has no sudo.
-# ponytail: egress is a deny-private list, not a GitHub/mirror allow-list (IPs
-# rotate); upgrade to a GitHub + package-mirror allow-list per HIMMEL-5041.
 set -eu
 
 virt=$(systemd-detect-virt --vm 2>/dev/null || true)
@@ -91,6 +93,8 @@ install -o root -g root -m 0755 "$here/job-started-hook.sh" /opt/himmel-ci/job-s
 printf '%s\n' "$repo" > /opt/himmel-ci/repo
 chmod 0644 /opt/himmel-ci/repo
 
+install -o root -g root -m 0755 "$here/egress-refresh.sh" /usr/local/sbin/himmel-ci-egress-refresh
+
 cat > /usr/local/sbin/himmel-ci-run-job <<'EOF'
 #!/usr/bin/env bash
 # One job as `runner`. Arg: max seconds. Stdin: the single-use JIT config,
@@ -120,17 +124,23 @@ chmod 0755 /usr/local/sbin/himmel-ci-run-job
 
 cat > /etc/nftables.conf <<'EOF'
 #!/usr/sbin/nft -f
-# the CI runner guest reaches the internet and the NAT DNS only.
+# the CI runner guest reaches the NAT DNS and the allow-listed hosts only. The
+# sets start empty; himmel-ci-egress-refresh fills them after each boot.
 flush ruleset
 table inet himmel_egress {
+    set allowed4 { type ipv4_addr; flags interval; auto-merge; }
+    set allowed6 { type ipv6_addr; flags interval; auto-merge; }
     chain output {
-        type filter hook output priority 0; policy accept;
+        type filter hook output priority 0; policy drop;
         oifname "lo" accept
         ct state established,related accept
         ip daddr 10.0.2.3 udp dport 53 accept  # leak-allow: private-lan-ip egress filter ranges
         ip daddr 10.0.2.3 tcp dport 53 accept  # leak-allow: private-lan-ip egress filter ranges
         ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10, 224.0.0.0/4 } counter reject  # leak-allow: private-lan-ip egress filter ranges
         ip6 daddr { fc00::/7, fe80::/10, ff00::/8 } counter reject
+        ip daddr @allowed4 accept
+        ip6 daddr @allowed6 accept
+        counter reject
     }
 }
 EOF

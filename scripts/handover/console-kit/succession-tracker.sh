@@ -54,14 +54,60 @@ block="$(awk '
     b && (/^[[:space:]]*$/ || /^[0-9]+\. / || /^[A-Za-z][A-Za-z ]*:/ || /^[-*+>#]/) { b = 0 }
     b { print }
 ' "$doc")"
+# Prose may sit on or between the spans (the tick reads it as prose). Malformed is only a
+# label-shaped colon span that is not four non-empty fields, a bare (un-backticked) label plus
+# three more colon fields, or a stray backtick: each would otherwise vanish as prose.
+label_shaped() { [[ $1 =~ ^N[0-9]+[a-z]*$ ]] || [[ $1 =~ -N[0-9]+[a-z]*- ]]; }
+entries=""; malformed=""
 # shellcheck disable=SC2016
-entries="$(printf '%s\n' "$block" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`' | cut -d: -f1)"
-# anything left once the strict entries and the legs: marker are removed is a malformed entry
+spans="$(printf '%s\n' "$block" | grep -oE '`[^`]*`' | tr -d '`')"
+while IFS= read -r span; do
+    case "$span" in ''|*[[:space:]]*) continue ;; esac
+    f1="${span%%:*}"
+    [ "$f1" != "$span" ] || continue
+    case "$f1" in *[!A-Za-z0-9_.-]*) continue ;; esac
+    colons="${span//[!:]/}"
+    case ":$span:" in
+        *::*) ok4=0 ;;
+        *) if [ "${#colons}" -eq 3 ]; then ok4=1; else ok4=0; fi ;;
+    esac
+    if [ "$ok4" -eq 1 ]; then
+        entries="${entries}${f1}
+"
+    elif label_shaped "$f1"; then
+        malformed="${malformed}${malformed:+ }$f1"
+    fi
+done <<EOS
+$spans
+EOS
 # shellcheck disable=SC2016
-leftover="$(printf '%s\n' "$block" | sed -E 's/`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`//g; s/^legs://; s/[[:space:],]+//g' | tr -d '\n')"
-if [ -n "$leftover" ]; then
-    echo "INCOMPLETE 0/0 (malformed legs entry in $doc ## Live state: $leftover)"
+rest="$(printf '%s\n' "$block" | sed -E 's/`[^`]*`/ /g; s/^legs://')"
+# shellcheck disable=SC2016
+case "$rest" in *'`'*) malformed="${malformed}${malformed:+ }unbalanced-backtick" ;; esac
+set -f
+for word in $rest; do
+    word="${word%%[,.;]}"
+    colons="${word//[!:]/}"
+    [ "${#colons}" -eq 3 ] || continue
+    if label_shaped "${word%%:*}"; then malformed="${malformed}${malformed:+ }${word%%:*}"; fi
+done
+set +f
+if [ -n "$malformed" ]; then
+    echo "INCOMPLETE 0/0 (malformed legs entry in $doc ## Live state: $malformed)"
     exit 1
+fi
+entries="$(printf '%s' "$entries" | awk 'NF && !seen[$0]++')"
+# A manifest leg the Live state does not list still counts as inherited (relay-batch.sh reports
+# the same legs as NOT-IN-LIVE-STATE), so a dropped entry cannot make the set read complete.
+if [ -n "$entries" ] && [ -f "$manifest" ]; then
+    if ! mlabels="$(jq -r '.legs[] | select(.lockless == true | not) | .label' "$manifest" 2>/dev/null)"; then
+        echo "INCOMPLETE 0/0 (fleet manifest $manifest is unreadable: cannot cross-check the legs)"
+        exit 1
+    fi
+    for ml in $mlabels; do
+        printf '%s\n' "$entries" | grep -Fxq -- "$ml" || entries="${entries}${entries:+
+}$ml"
+    done
 fi
 
 # state of one leg doc: prints quoted-back or missing

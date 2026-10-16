@@ -42,6 +42,10 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > treated as prose even when malformed, so a truncated entry under such a label
 > reads as absent (`DRIFT`) rather than `MALFORMED`.
 >
+> **Write the `legs:` line by script, not by hand:** `action-zero.sh --render-legs`
+> (or `live-state.sh <this doc>`) rebuilds it from the fleet manifest, with lock
+> tokens read from the held locks and the nonces kept.
+>
 > **The `legs:` block may wrap**. The tick reads the whole block:
 > every line that starts with `legs:`, plus the lines wrapped directly under it,
 > up to the first blank line or the next `field:` line (`queue:`, `last GO:`,

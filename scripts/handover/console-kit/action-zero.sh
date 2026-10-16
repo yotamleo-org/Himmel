@@ -4,7 +4,7 @@
 # summary, instead of six or seven Bash turns that each re-read the context.
 #
 #   action-zero.sh --doc <this console doc> --root <handover root> [--repo <path>]
-#                  [--prefix <P>] [--acquire]
+#                  [--prefix <P>] [--acquire] [--render-legs]
 #
 #   LOCKS   queue-lock.sh status --sweep at the ROOT (never the bucket)
 #   HEAD    primary head sha + remote
@@ -14,8 +14,13 @@
 #   LOAD    uptime
 #   LOCK    this document's lock state; with --acquire and state `free`, acquires
 #           it and prints the release token. `held` is never taken over.
+#   LEGS    only with --render-legs: rewrites the doc's `## Live state` legs: line
+#           from the fleet manifest through live-state.sh (lock tokens from the
+#           held locks, nonces kept) instead of a hand edit, bounded by
+#           ACTION_ZERO_LEGS_TIMEOUT (default 60s); `unavailable` and exit 1 when
+#           it cannot render (no manifest next to the doc, a failure or a timeout).
 #
-# Everything is read-only except --acquire. What it leaves to the console, on
+# Everything is read-only except --acquire and --render-legs. What it leaves to the console, on
 # purpose (they need its own turn and its own authority): ListAgents (step 1),
 # the relays and each leg's quote-back (step 9), sending LIVE, and starting the
 # waiter (step 10). A section that fails prints `unavailable` and the rest run.
@@ -25,14 +30,14 @@
 # default 60s; ACTION_ZERO_DOCTOR_TIMEOUT, default 120s). A hung probe prints
 # `TIMEOUT <bank|doctor> after <n>s` in its section and the summary carries on.
 # No timeout binary: the probes run unbounded, with a WARN line.
-# Exit: 0; 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe.
+# Exit: 0; 1 if --render-legs could not render; 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe.
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$HERE/../../.." && pwd)"
-doc=""; root=""; prefix=""; acquire=0
-usage() { echo "usage: action-zero.sh --doc <console doc> --root <handover root> [--repo <path>] [--prefix <P>] [--acquire]" >&2; exit 2; }
+doc=""; root=""; prefix=""; acquire=0; render=0; render_rc=0
+usage() { echo "usage: action-zero.sh --doc <console doc> --root <handover root> [--repo <path>] [--prefix <P>] [--acquire] [--render-legs]" >&2; exit 2; }
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --doc) [ "$#" -ge 2 ] || usage; doc="$2"; shift 2 ;;
@@ -40,6 +45,7 @@ while [ "$#" -gt 0 ]; do
         --repo) [ "$#" -ge 2 ] || usage; repo="$2"; shift 2 ;;
         --prefix) [ "$#" -ge 2 ] || usage; prefix="$2"; shift 2 ;;
         --acquire) acquire=1; shift ;;
+        --render-legs) render=1; shift ;;
         *) usage ;;
     esac
 done
@@ -50,7 +56,7 @@ ql="$repo/scripts/handover/queue-lock.sh"
 # timeout-bin.sh's consumers (check-ci-watch.sh) without their own sources.
 tb_lib="$repo/scripts/lib/timeout-bin.sh"
 _TIMEOUT_BIN="$(bash -c '. "$1" >/dev/null 2>&1; printf %s "$_TIMEOUT_BIN"' _ "$tb_lib" 2>/dev/null)"
-bank_t="${ACTION_ZERO_BANK_TIMEOUT:-60}"; doctor_t="${ACTION_ZERO_DOCTOR_TIMEOUT:-120}"
+bank_t="${ACTION_ZERO_BANK_TIMEOUT:-60}"; doctor_t="${ACTION_ZERO_DOCTOR_TIMEOUT:-120}"; legs_t="${ACTION_ZERO_LEGS_TIMEOUT:-60}"
 # bounded <name> <secs> <cmd...>: output on stdout; a timeout prints the TIMEOUT line.
 bounded() {
     local name="$1" secs="$2" brc; shift 2
@@ -97,6 +103,15 @@ else echo "none"; fi
 echo "== LOAD"
 uptime 2>&1 || echo "unavailable"
 
+if [ "$render" -eq 1 ]; then
+    echo "== LEGS"
+    if [ -f "${doc%.md}.fleet.json" ]; then
+        if bounded legs "$legs_t" env HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc"; then echo "legs: line rendered"; else render_rc=1; echo "unavailable"; fi
+    else
+        render_rc=1; echo "unavailable (no fleet manifest next to the doc)"
+    fi
+fi
+
 echo "== LOCK (this document)"
 state="$(env HANDOVER_DIR="$root" bash "$ql" status "$doc" 2>&1)"; src=$?
 printf '%s\n' "$state"
@@ -107,4 +122,4 @@ if [ "$acquire" -eq 1 ]; then
         echo "NOT ACQUIRED — the lock is not free: find its holder, do not take it over"
     fi
 fi
-exit 0
+exit "$render_rc"
