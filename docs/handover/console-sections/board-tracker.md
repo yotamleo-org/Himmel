@@ -9,7 +9,10 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     alive — derived from an independent process census, since tick.sh's `procs=`
     only counts HELD legs), what needs you, epic merged/total, the operator's
     open decisions — so the operator sees progress and convergence without
-    asking. Render it with `node "<kit>/board.mjs" --doc "<this file>" --changed`: `--changed` re-renders and prints `CHANGED <path>` or
+    asking. The published page shows live work only: WRAPPED and MERGED legs
+    and the merged PRs are written to `console-board-archive.html` beside it
+    (local, never published, one item per line — `grep` it for a ticket key,
+    PR or last bullet), so a successor republishes a small page. Render it with `node "<kit>/board.mjs" --doc "<this file>" --changed`: `--changed` re-renders and prints `CHANGED <path>` or
     `UNCHANGED <path>` instead of the bare path, so you know from one line
     whether the render moved after a dispatch, verdict, GO, MERGED or WRAPPED
     (nonces and lock tokens are redacted from the file either way). Rendering

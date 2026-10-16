@@ -33,6 +33,14 @@
 //   decisions: first?; second?              open operator decisions, ';'-separated
 //   versions: v1.0.0, v1.0.1                one `Release <v>` panel per Jira fixVersion
 //
+// The published page shows live work only. WRAPPED and MERGED legs and the merged PRs
+// go to <out>-archive.html beside it (console-board-archive.html by default): local,
+// never published, one item per line so a grep finds a ticket key, a PR or a last bullet.
+//
+// ponytail: the archive is rebuilt from the fleet manifest and the 24 h merged-PR list each
+// render, so a merged PR older than 24 h survives there only as its leg's line; upgrade
+// path: merge the previous archive's PR lines into the new one.
+//
 // PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only (tick.sh
 // reads pgrep, atq and the konsole launch logs). Node ESM, no dependencies.
 //
@@ -480,7 +488,11 @@ const releasePanel = (r) => {
     return `<section data-release="${esc(r.version)}" data-done="${r.done}" data-total="${r.total}"><h2>Release ${safe(r.version)}</h2><b>${r.done}/${r.total}</b><div class="bar"><i style="width:${pct}%"></i></div><p class="status">${breakdown}</p>${blockers ? `<ul>${blockers}</ul>` : '<p class="none">no open v1-blocker tickets</p>'}</section>`;
 };
 const prRows = (openPrs || []).map((p) => `<li data-ci="${ciOf(p)}"><b>#${p.number}</b> ${safe(p.title, 90)} <span class="pr">${ciOf(p)}${p.isDraft ? ' · draft' : ''}</span></li>`).join('\n');
-const mergedRows = (mergedPrs || []).map((p) => `<li><b>#${p.number}</b> ${safe(p.title, 90)}</li>`).join('\n');
+// Done work never reaches the published page: a WRAPPED or MERGED leg and the merged PRs
+// go to a local archive file beside it (written below), one self-contained line each.
+const doneLegs = legs.filter((l) => l.phase === 'WRAPPED' || l.phase === 'MERGED');
+const liveLegs = legs.filter((l) => l.phase !== 'WRAPPED' && l.phase !== 'MERGED');
+const archivePath = `${outPath.replace(/\.html$/, '')}-archive.html`;
 const logRows = consoleResults.map((l) => `<li>${safe(l.slice(2), 200)}</li>`).join('\n');
 const panel = (title, body, empty) => `<section><h2>${title}</h2>${body ? `<ul>${body}</ul>` : `<p class="none">${empty}</p>`}</section>`;
 
@@ -682,6 +694,22 @@ const flakesSection = (() => {
     } catch { return `<section data-flakes="?">${title}<p class="none">suite flakes unavailable</p></section>`; }
 })();
 
+const archiveHtml = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Supervisor Session Board — archive</title></head>
+<body>
+<h1>Supervisor Session Board — archive</h1>
+<p>${safe(consoleName)} · rendered ${stamp} · local only, never published · one item per line: grep it</p>
+<h2>Done legs</h2>
+<ul>
+${doneLegs.map((l) => `<li data-archive-leg="${esc(l.label)}">${esc(l.label)} ${esc(l.ticket || '-')} ${esc(l.phase)}${l.prNum ? ` PR #${l.prNum}` : ''} — ${safe(l.last || 'no handover bullet', 400)}</li>`).join('\n')}
+</ul>
+<h2>Merged PRs</h2>
+<ul>
+${(mergedPrs || []).map((p) => `<li data-archive-pr="${p.number}">PR #${p.number} merged — ${safe(p.title, 200)}${p.mergedAt ? ` · ${safe(String(p.mergedAt).slice(0, 10))}` : ''}</li>`).join('\n')}
+</ul>
+</body></html>
+`;
+
 const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -721,6 +749,7 @@ table { width:100%; border-collapse:collapse; font-size:.85rem; } th, td { text-
 <main>
 <h1>Supervisor Session Board</h1>
 <p class="sub">${safe(consoleName)} · rendered ${stamp}${lastGo ? ` · last GO ${safe(lastGo)}` : ''}${queueLine ? ` · queue ${safe(queueLine)}` : ''}</p>
+<p class="sub" data-archive="${doneLegs.length}">${doneLegs.length} done leg${doneLegs.length === 1 ? '' : 's'} and the merged PRs are in ${safe(basename(archivePath))} (local, not published)</p>
 ${fp ? '' : '<p class="banner">tick unavailable — this board has no state fingerprint and will read STALE until it is re-rendered.</p>'}
 ${labelFailure ? `<p class="banner" data-banner="labels-unavailable">leg labels unavailable — ${safe(labelFailure)}; the legs below may be missing or incomplete, not an empty fleet.</p>` : ''}
 <div class="grid">
@@ -745,11 +774,10 @@ ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).j
 ${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}
 <section class="wide">
 <h2>Worker sessions</h2>
-${legs.length ? `<ul>${legs.map(legCard).join('\n')}</ul>` : `<p class="none">${labelFailure ? 'worker-session labels unavailable' : 'no worker sessions'}</p>`}
+${liveLegs.length ? `<ul>${liveLegs.map(legCard).join('\n')}</ul>` : `<p class="none">${labelFailure ? 'worker-session labels unavailable' : 'no live worker sessions'}</p>`}
 </section>
 ${cloudPanel}
 ${panel('Open PRs', prRows, openPrs ? 'none open' : 'gh unavailable')}
-${panel('Merged in the last 24 hours', mergedRows, mergedPrs ? 'none' : 'gh unavailable')}
 ${panel('Supervisor session log — newest last', logRows, 'no Results yet')}
 </div>
 </main>
@@ -777,6 +805,9 @@ if (changedFlag && existsSync(outPath)) {
 const tmp = `${outPath}.tmp${process.pid}`;
 writeFileSync(tmp, html);
 renameSync(tmp, outPath);
+const archiveTmp = `${archivePath}.tmp${process.pid}`;
+writeFileSync(archiveTmp, archiveHtml);
+renameSync(archiveTmp, archivePath);
 if (changedFlag) {
     console.log(`${fp !== oldFp || censusSig !== oldCensusSig || esc(ciFleetSig) !== oldCiFleetSig || esc(releaseSig) !== oldReleaseSig || esc(manifestSig) !== oldManifestSig ? 'CHANGED' : 'UNCHANGED'} ${outPath}`);
 } else {
