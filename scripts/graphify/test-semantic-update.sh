@@ -483,5 +483,9 @@ out=$(run_api --name t42 --corpus-root "$C36" --corpus-class himmel-code --backe
 out=$(GRAPHIFY_API_CALL_BUDGET_USD=1.00 run_api --name t42b --corpus-root "$C36" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
 [[ "$out" == *"call-cap=1.00"* ]] && [[ "$out" == *"chunk-tokens=60000"* ]] && pass "T42 a bigger cap raises the chunk, capped at 60000" || fail "T42b (rc=$rc): $out"
 
+echo "T43: a per-call budget too small for any chunk is refused, not turned into a zero token budget"
+out=$(GRAPHIFY_API_CALL_BUDGET_USD=0.000001 run_api --name t43 --corpus-root "$C36" --corpus-class himmel-code --backend claude-api --dry-run 2>&1); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"too small"* ]] && pass "T43 tiny call budget exits 1" || fail "T43 (rc=$rc): $out"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
