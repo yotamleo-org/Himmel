@@ -24,7 +24,7 @@ checkout's .env (the gitignored .env is NOT copied into worktrees, so it is
 resolved via the parent of `git rev-parse --git-common-dir`, matching
 scripts/lib/load-dotenv.sh).
 
-CLI: python scripts/lib/vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|restore NAME|
+CLI: python scripts/lib/vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|restore NAME|audit-base NAME|
                                       baseline NAME|clone [REF]|provision|e2e|
                                       push FILE [DEST]|
                                       trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]>
@@ -468,6 +468,31 @@ class VM:
                 f"REFUSING: secret-bearing files on {self.name} under {root}: "
                 + ", ".join(hits[:10]) + (" ..." if len(hits) > 10 else ""))
 
+    def _assert_image_clean(self):
+        """The snapshot scan surface: ~ (env profile) plus any staged tree (full)."""
+        self.assert_guest_clean(_SNAPSHOT_HOME_ROOT, "env")
+        for root in _SNAPSHOT_STAGING_ROOTS:
+            # `test -d` rc 1 = nothing staged there. Any other rc (e.g. an
+            # ssh failure) is not "absent" — let the scan itself refuse.
+            rc, _ = self.run(f"test -d {root}")
+            # A staged tree carries the whole secret set (the copy excludes
+            # *.local.json); only ~ is scanned with the narrower env profile.
+            if rc != 1:
+                self.assert_guest_clean(root, "full")
+
+    def audit_base(self, name):
+        """Restore snapshot `name`, scan it for host secrets, power off.
+
+        Raises VMError (REFUSING) on a hit or an unscannable guest. The audit
+        restores over the VM's current state, so run it on a VM you can spare."""
+        self._require_vm("audit-base")
+        self.restore(name)
+        self.up()
+        try:
+            self._assert_image_clean()
+        finally:
+            self.down()
+
     def snapshot(self, name, skip_secret_scan=False):
         """Take a named snapshot — after asserting the guest carries no .env.
 
@@ -484,15 +509,7 @@ class VM:
                 "cannot be scanned for host secrets (.env). Bring it up first, "
                 "or pass --no-secret-scan if you verified the image another way.")
         else:
-            self.assert_guest_clean(_SNAPSHOT_HOME_ROOT, "env")
-            for root in _SNAPSHOT_STAGING_ROOTS:
-                # `test -d` rc 1 = nothing staged there. Any other rc (e.g. an
-                # ssh failure) is not "absent" — let the scan itself refuse.
-                rc, _ = self.run(f"test -d {root}")
-                # A staged tree carries the whole secret set (the copy excludes
-                # *.local.json); only ~ is scanned with the narrower env profile.
-                if rc != 1:
-                    self.assert_guest_clean(root, "full")
+            self._assert_image_clean()
         vbox.take_snapshot(self.name, name)
         current = _current_snapshot(self.name)
         if current != name:
@@ -938,7 +955,7 @@ class VM:
 
 
 _USAGE = ("usage: vmsdk.py <vm> "
-          "<up|down|snapshot NAME [--no-secret-scan]|restore NAME|baseline NAME|clone [REF]|provision|e2e|"
+          "<up|down|snapshot NAME [--no-secret-scan]|restore NAME|audit-base NAME|baseline NAME|clone [REF]|provision|e2e|"
           "push FILE [DEST]|"
           "trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]>")
 
@@ -998,6 +1015,8 @@ def main(argv):
             vm.snapshot(rest[0], skip_secret_scan="--no-secret-scan" in rest[1:])
         elif cmd == "restore" and rest:
             vm.restore(rest[0])
+        elif cmd == "audit-base" and rest:
+            vm.audit_base(rest[0])
         elif cmd == "baseline" and rest:
             print(vm.baseline(rest[0]))
         elif cmd == "clone":
