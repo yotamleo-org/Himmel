@@ -33,6 +33,17 @@ class RelevanceFloor(unittest.TestCase):
             with self.subTest(entity=entity, title=title, snippet=snippet):
                 self.assertEqual(rp.passes_floor(entity, title, snippet), want)
 
+    def test_non_latin_and_accented_entities(self):
+        rows = [
+            ("日本語", "日本語 の hooks", "", True),
+            ("日本語", "other", "中文", False),
+            ("café", "Best café guide", "", True),
+            ("café", "Best cafe guide", "", False),
+        ]
+        for entity, title, snippet, want in rows:
+            with self.subTest(entity=entity, title=title):
+                self.assertEqual(rp.passes_floor(entity, title, snippet), want)
+
     def test_apply_floor_splits(self):
         items = [{"title": "Claude Code x", "snippet": ""}, {"title": "other", "snippet": "n/a"}]
         kept, dropped = rp.apply_floor("Claude Code", items)
@@ -57,6 +68,19 @@ class Ladder(unittest.TestCase):
         h = r.header()
         for s in ("ddg-html=error: HTTP 202", "ddg-lite=empty", "bing=ok", "answered by: bing"):
             self.assertIn(s, h)
+
+    def test_generator_rungs_are_materialized_inside_the_try(self):
+        def empty_gen(q):
+            return
+            yield  # pragma: no cover
+
+        def dying_gen(q):
+            yield {"url": "u"}
+            raise RuntimeError("mid-iteration")
+
+        r = rp.run_ladder("q", [("a", empty_gen), ("b", dying_gen), ("c", lambda q: [{"url": "v"}])])
+        self.assertEqual(r.rung, "c")
+        self.assertEqual(r.attempts, [("a", "empty"), ("b", "error: mid-iteration"), ("c", "ok")])
 
     def test_none_answered_is_loud(self):
         r = rp.run_ladder("q", [("a", lambda q: [])])
@@ -137,6 +161,22 @@ class RedditLane(unittest.TestCase):
         for raw in ("", "not json", "[]", '{"data": null, "error": "Timeout"}', '{"data": [{"id": "x"}]}'):
             with self.subTest(raw=raw):
                 self.assertEqual(rp.parse_reddit_posts(raw), [])
+
+    def test_bad_field_values_degrade_per_post(self):
+        base = {"id": "a", "title": "T", "permalink": "/r/x/comments/a/t"}
+        rows = [
+            ({"score": "abc"}, {"score": 0}),
+            ({"num_comments": [1]}, {"num_comments": 0}),
+            ({"created_utc": 10**30}, {"date": None}),
+            ({"created_utc": "-5"}, {"date": None}),
+            ({"created_utc": 1792154260.5}, {"date": datetime.fromtimestamp(1792154260, timezone.utc)}),
+        ]
+        for extra, want in rows:
+            with self.subTest(extra=extra):
+                items = rp.parse_reddit_posts(json.dumps({"data": [{**base, **extra}, {**base, "id": "b"}]}))
+                self.assertEqual(len(items), 2)
+                for k, v in want.items():
+                    self.assertEqual(items[0][k], v)
 
     def test_missing_date_stays_unknown(self):
         raw = json.dumps({"data": [{"id": "a", "title": "T", "permalink": "/r/x/comments/a/t"}]})

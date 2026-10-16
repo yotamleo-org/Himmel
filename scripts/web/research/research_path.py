@@ -23,7 +23,7 @@ REDDIT_ENDPOINT_HOSTS = ("arctic-shift.photon-reddit.com", "www.reddit.com")
 
 
 def _norm(text):
-    return " ".join(re.sub(r"[^0-9a-z]+", " ", (text or "").lower()).split())
+    return " ".join(re.sub(r"[\W_]+", " ", (text or "").lower()).split())
 
 
 def passes_floor(entity, title, snippet):
@@ -55,7 +55,7 @@ def run_ladder(query, rungs):
     attempts = []
     for name, fn in rungs:
         try:
-            results = fn(query)
+            results = list(fn(query))
         except Exception as exc:  # a failing rung must never abort the ladder
             attempts.append((name, f"error: {exc}"))
             continue
@@ -63,7 +63,7 @@ def run_ladder(query, rungs):
             attempts.append((name, "empty"))
             continue
         attempts.append((name, "ok"))
-        return LadderResult(name, list(results), attempts)
+        return LadderResult(name, results, attempts)
     return LadderResult(None, [], attempts)
 
 
@@ -171,20 +171,37 @@ def parse_reddit_posts(raw):
         return []
     items = []
     for p in data:
-        if not isinstance(p, dict) or not p.get("title") or not p.get("permalink"):
+        if not isinstance(p, dict):
             continue
-        ts = p.get("created_utc")
+        title, permalink, selftext = p.get("title"), p.get("permalink"), p.get("selftext")
+        if not isinstance(title, str) or not title or not isinstance(permalink, str) or not permalink:
+            continue
         items.append({
             "source": "reddit",
-            "title": p["title"],
-            "snippet": (p.get("selftext") or "")[:300],
-            "url": "https://www.reddit.com" + p["permalink"],
+            "title": title,
+            "snippet": selftext[:300] if isinstance(selftext, str) else "",
+            "url": "https://www.reddit.com" + permalink,
             "subreddit": p.get("subreddit"),
-            "score": int(p.get("score") or 0),
-            "num_comments": int(p.get("num_comments") or 0),
-            "date": datetime.fromtimestamp(int(ts), timezone.utc) if isinstance(ts, (int, float, str)) and str(ts).isdigit() else None,
+            "score": _to_int(p.get("score")),
+            "num_comments": _to_int(p.get("num_comments")),
+            "date": _to_utc(p.get("created_utc")),
         })
     return items
+
+
+def _to_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _to_utc(ts):
+    try:
+        secs = int(float(ts))
+        return datetime.fromtimestamp(secs, timezone.utc) if secs > 0 else None
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
 
 
 def research(query, entity, rungs, now, days=30):
