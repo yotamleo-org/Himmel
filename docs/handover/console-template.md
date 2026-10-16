@@ -18,11 +18,10 @@ Run these, in order, and write the result as the first bullet under
 1. **`ListAgents`** — who is alive. Legs the handoff claims alive but absent here
    are gone; never relay a window as live without checking.
 > **One command for steps 2–6 and 8:**
-> `bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} [--acquire] [--render-legs]`
+> `bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} [--acquire]`
 > prints the lock sweep, head/remote, bank, leg processes, C29, load and this
 > document's lock state (read-only; `--acquire` takes a `free` lock and prints the
-> token, never a held one; `--render-legs` rewrites the `legs:` line from the fleet
-> manifest through `live-state.sh`, never a hand edit). `ListAgents`, the relays and quote-backs (step 9),
+> token, never a held one). `ListAgents`, the relays and quote-backs (step 9),
 > LIVE and the waiter (step 10) stay yours.
 
 2. **Locks at the ROOT, not your bucket** (the bucket reports a false "no held
