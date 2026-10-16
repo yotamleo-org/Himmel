@@ -28,7 +28,7 @@
 # Output: `STEP <step> rc=<n>` per step, any LOCAL-DIFF lines, then
 # `STATION=OK` or `STATION=BEHIND:<component>,...`. The same value (`ok` or
 # `BEHIND:...`) is written to the state file tick.sh reads as station=; it
-# clears on the next sync. While a run is in flight the state reads
+# clears on the next sync. Runs are serialized on a flock next to the state file. While a run is in flight the state reads
 # `BEHIND:pending`, so a run that is killed never leaves a stale `ok`. Exit 0 whatever the station state; 2 on usage.
 #
 # Test seams (env): SS_UPDATE SS_UPGRADE SS_GH SS_PRIMARY SS_VAULT SS_QMD_CLONE SS_STATE.
@@ -63,8 +63,12 @@ STATE="${SS_STATE:-$HOME/.himmel/state/station-sync.state}"
 TEMPLATE="$PRIMARY/templates/luna-second-brain"
 if [ -n "${SS_UPGRADE:-}" ]; then UPGRADE=("$SS_UPGRADE"); else UPGRADE=(bash "$TEMPLATE/scripts/upgrade.sh"); fi
 
+# One sync at a time: two merges close together queue here, so the update steps never
+# run twice at once and an earlier run's verdict never lands over a later run's pending.
+mkdir -p "$(dirname "$STATE")" 2>/dev/null
+exec 9>"$STATE.lock" && flock 9
 # Pending until the run ends: a sync killed mid-way must not leave the previous `ok`.
-mkdir -p "$(dirname "$STATE")" 2>/dev/null && echo "BEHIND:pending" > "$STATE" 2>/dev/null
+echo "BEHIND:pending" > "$STATE" 2>/dev/null
 
 if [ -n "$PR" ]; then
     GH="${SS_GH:-gh}"

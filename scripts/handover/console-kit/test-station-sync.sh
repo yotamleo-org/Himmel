@@ -206,4 +206,26 @@ contains "16 pending while the step runs" "$snap" "state-during --only: BEHIND:p
 contains "16 pending while versions run" "$snap" "state-during --versions: BEHIND:pending"
 check "16 final state replaces pending" "$(cat "$SS_STATE")" "ok"
 
+# two merges close together start two syncs: they must run one after the other, and the
+# earlier run's verdict must not be the last word while the later run is still going
+cat > "$W/update-slow" <<'EOF2'
+#!/usr/bin/env bash
+if [ "$1" = "--versions" ]; then
+    echo "enter $$" >> "$SS_CALLS"; sleep 1; echo "exit $$" >> "$SS_CALLS"
+    cat "$SS_T_VERSIONS"; exit 0
+fi
+exit 0
+EOF2
+chmod +x "$W/update-slow"
+: > "$SS_CALLS"; rm -f "$SS_STATE"; export SS_T_VERSIONS="$W/ver-current"
+printf '%s\n' marketplace/plugins/foo/skill.md > "$W/files"
+SS_UPDATE="$W/update-slow" bash "$SCRIPT" --files "$W/files" >/dev/null 2>&1 &
+p1=$!
+SS_UPDATE="$W/update-slow" bash "$SCRIPT" --files "$W/files" >/dev/null 2>&1 &
+p2=$!
+wait "$p1" "$p2"
+seq="$(awk '{ print $1 }' "$SS_CALLS" | paste -sd, -)"
+check "17 two syncs do not overlap" "$seq" "enter,exit,enter,exit"
+check "17 final state after both runs" "$(cat "$SS_STATE")" "ok"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

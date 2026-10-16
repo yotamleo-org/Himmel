@@ -89,7 +89,7 @@ station=""
 if [ -n "$pr" ]; then
     slog="${LE_STATION_LOG:-$HOME/.himmel/state/station-sync.out}"
     mkdir -p "$(dirname "$slog")" 2>/dev/null || true
-    setsid "${STATION[@]}" --pr "$pr" >"$slog" 2>&1 </dev/null &
+    setsid "${STATION[@]}" --pr "$pr" >>"$slog" 2>&1 </dev/null &
     station=" station=pending log=$slog"
 fi
 echo "HANDLED wrap-merged $label$station"
