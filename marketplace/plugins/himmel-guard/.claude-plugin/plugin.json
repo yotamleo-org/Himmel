@@ -1,0 +1,14 @@
+{
+  "name": "himmel-guard",
+  "version": "0.1.0",
+  "description": "Standalone himmel safety guards, installable with no himmel checkout. POC slice: the destructive-command guard denies a Bash call before it runs (HIMMEL-5960). Needs bash and jq.",
+  "author": {
+    "name": "yotamleo"
+  },
+  "keywords": [
+    "himmel",
+    "guardrails",
+    "safety",
+    "destructive-commands"
+  ]
+}

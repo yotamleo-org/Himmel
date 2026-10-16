@@ -35,6 +35,20 @@
       ]
     },
     {
+      "name": "himmel-guard",
+      "source": "./plugins/himmel-guard",
+      "description": "Standalone himmel safety guards, installable with no himmel checkout. POC slice: the destructive-command guard (rm -rf, force-push, hard reset and the like) denies a Bash call before it runs (HIMMEL-5960). Needs bash and jq.",
+      "author": {
+        "name": "yotamleo"
+      },
+      "keywords": [
+        "himmel",
+        "guardrails",
+        "safety",
+        "destructive-commands"
+      ]
+    },
+    {
       "name": "himmel-bus",
       "source": "./plugins/himmel-bus",
       "description": "Local chained message bus between himmel sessions (console, legs, paired judge): send and read tools over a stdio MCP server plus the `bus` CLI. Ships no .mcp.json: the server is defined in the plugin-profiles mcpCatalog and only profiles that opt in load it (HIMMEL-4830).",
