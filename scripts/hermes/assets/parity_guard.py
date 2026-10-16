@@ -100,7 +100,7 @@ SECRET_READ = re.compile(
     r"|(\.pem$)|(\.key$)|(\.p12$)|(\.pfx$)"
     r"|(secrets\.ya?ml$)"
     r"|(/\.claude/channels/)"
-    r"|(/\.claude/projects/.*\.jsonl$)"
+    r"|((^|/)\.claude/projects/.*\.jsonl$)"
     r"|(\.git-credentials)"
     r"|(/gh/hosts\.yml$)"
     r"|(credentials\.json$)|(auth\.json$)"
@@ -119,8 +119,25 @@ TERMINAL_FORBIDDEN_PATHS = re.compile(
     + r"|\.env\b|/\.ssh/|\.git-credentials|hosts\.yml|\.pem\b|\.key\b"
 )
 
+def _transcript_tree(p: str) -> bool:
+    """A search root that reaches Claude session transcripts: `.claude/projects`
+    or anything below it, except one slug's `memory/` subtree (block-read-secrets
+    is_transcript_tree parity). A `..` anywhere in such a path denies."""
+    p = p.rstrip("/")
+    m = re.search(r"(?:^|/)\.claude/projects(?:/(.*))?$", p)
+    if not m:
+        return False
+    rel = m.group(1) or ""
+    if ".." in ("/" + p + "/").split("/"):
+        return True
+    slug, _, rest = rel.partition("/")
+    if slug not in ("", ".") and (rest == "memory" or rest.startswith("memory/")):
+        return False
+    return True
+
+
 _HOME = norm(os.path.expanduser("~"))
-_HOME_FORMS = re.compile(r"(?<![^\s;&|(\"'=])~(?=/|\s|$)|\$\{home\}|\$home\b")
+_HOME_FORMS = re.compile(r"(?<![^\s;&|(\"'=<>])~(?=/|\s|$)|\$\{home\}|\$home\b")
 
 
 def _expand_home(cmd: str) -> str:
@@ -129,12 +146,6 @@ def _expand_home(cmd: str) -> str:
     return _HOME_FORMS.sub(lambda _m: _HOME, cmd)
 
 
-# Environment-dump verbs (block-read-secrets parity): a bare listing prints
-# every secret in the inherited environment.
-_ENV_DUMP_VERBS = re.compile(
-    r"(?:printenv|env(?:\s+(?:-0|--null|[a-z_][a-z0-9_]*=\S*))*(?:\s+printenv)?|export\s+-p|declare\s+-p)"
-    r"(?:\s+(?:-0|--null|--|-u\s+\S+|[a-z_][a-z0-9_]*=\S*))*(?=\s*(?:$|[;&|)<>\n]))"
-)
 
 # Command position: string start or right after a separator (; & | ( newline).
 # Deliberately NOT a plain space/quote, so a blocked verb quoted inside a
@@ -233,6 +244,25 @@ _CMDPOS_WRAPS = tuple(
      tuple(re.compile(r"\s+" + st) for st in steps),
      tuple(re.compile(x + r"\s+") for x in (exits or ("",))))
     for heads, steps, exits in _WRAPPERS)
+
+
+# Environment-dump verbs (block-read-secrets parity): a bare listing prints
+# every secret in the inherited environment.
+# `env -i printenv` clears the environment first, so only the bare
+# `env -i` / `env --ignore-environment` listing is denied; with a verb after it
+# the -i form is allowed. A path prefix and `command` reach the verb too.
+_ENV_UNSET = r"(?:-u\s+\S+|--unset=\S+)"
+_ENV_ASSIGN = r"[a-z_][a-z0-9_]*=\S*"
+_ENV_DUMP_VERBS = re.compile(
+    r"(?:command\s+(?:-p\s+)?)?" + _EXE_PREFIX
+    + r"(?:printenv"
+    + r"|env(?:\s+(?:-0|--null|" + _ENV_UNSET + "|" + _ENV_ASSIGN + r"))*(?:\s+printenv)?"
+    + r"|env(?:\s+(?:-0|--null|-i|--ignore-environment|" + _ENV_UNSET + "|" + _ENV_ASSIGN + r"))*"
+    + r"|export\s+-p|declare\s+-p)"
+    r"(?:\s+(?:-0|--null|--|-u\s+\S+|" + _ENV_ASSIGN + r"))*(?=\s*(?:$|[;&|)<>\n]))"
+)
+# Every wrapper except `env`, whose flags the verb regex above reads itself.
+_ENV_DUMP_WRAPS = tuple(w for i, w in enumerate(_CMDPOS_WRAPS) if _WRAPPERS[i][0] != ("env",))
 
 
 # The hermes hook times out at 10s and fails OPEN, so a slow scan turns a deny
@@ -1704,7 +1734,7 @@ def _command_checks(raw_cmd: str, cmd: str, payload: dict, args: dict) -> None:
               "docker-group access is root-equivalent and bypasses the "
               "write/secret fences. Ask the operator if genuinely needed "
               "(block-docker-privesc parity).")
-    if _cmdpos_match(cmd, _ENV_DUMP_VERBS, wraps=()):
+    if _cmdpos_match(cmd, _ENV_DUMP_VERBS, wraps=_ENV_DUMP_WRAPS):
         block("Environment dump refused (bare env / printenv / export -p / "
               "declare -p) — it prints every inherited secret "
               "(block-read-secrets parity).")
@@ -1780,6 +1810,10 @@ def main() -> None:
                 if SECRET_READ.search(norm(v)):
                     block("Secret material (.env / keys / credential stores / "
                           "channel tokens) is off-limits to read.")
+                if tool == "search_files" and _transcript_tree(norm(v)):
+                    block("A search over Claude session transcripts "
+                          "(~/.claude/projects) is off-limits — they hold "
+                          "earlier tool results verbatim.")
                 reason = phi_egress_reason(v)  # raw v — real path for fs checks
                 if reason:
                     block(reason)
