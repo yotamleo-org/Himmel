@@ -516,5 +516,21 @@ out18=$( PATH="$BIN18:$PATH" bash "$SCRIPT" "$CORPUS18" 2>&1 ); rc18=$?
 grep -q '"keep"' "$OUT18/graph.json" && pass "T18 original graph.json restored" || fail "T18 graph.json: $(cat "$OUT18/graph.json")"
 [ ! -e "$OUT18/.graph.pre-ast.json" ] && pass "T18 no snapshot left behind" || fail "T18 snapshot left"
 
+# --- T19: a rebuild the restore cannot repair keeps the snapshot
+echo "T19: rebuild succeeds but restore fails -> exit 5, pre-rebuild graph kept"
+CORPUS19="$WS/c19"; OUT19="$CORPUS19/graphify-out"; mkdir -p "$OUT19"
+printf '{"nodes":[{"id":"keep19"}],"links":[]}' > "$OUT19/graph.json"
+BIN19="$WS/bin19"; mkdir -p "$BIN19"
+cat > "$BIN19/graphify" <<STUB
+#!/usr/bin/env bash
+printf 'torn' > "$OUT19/graph.json"
+exit 0
+STUB
+chmod +x "$BIN19/graphify"
+out19=$( PATH="$BIN19:$PATH" bash "$SCRIPT" "$CORPUS19" 2>&1 ); rc19=$?
+[ "$rc19" -eq 5 ] && pass "T19 exits 5" || fail "T19 should exit 5 (got $rc19): $out19"
+grep -q '"keep19"' "$OUT19/graph.pre-ast.kept.json" 2>/dev/null && pass "T19 pre-rebuild graph kept" || fail "T19 nothing kept: $(ls -A "$OUT19")"
+echo "$out19" | grep -q "graph.pre-ast.kept.json" && pass "T19 stderr names the kept file" || fail "T19 stderr: $out19"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

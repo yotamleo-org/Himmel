@@ -369,16 +369,25 @@ graphify update "$CORPUS_ROOT" --force
 _graphify_rc=$?
 set -e
 if [ -f "$_pre_ast" ]; then
+  # A snapshot the script could not use is the only copy of the semantic data:
+  # keep it under a name the next run does not delete.
+  _kept="$OUT_DIR/graph.pre-ast.kept.json"
   if [ "$_graphify_rc" -eq 0 ] && [ -f "$OUT_DIR/graph.json" ] \
      && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" restore --out "$OUT_DIR" --before "$_pre_ast"; then
-    rm -f "$_pre_ast"
-    echo "ast-update: FAILED -- graphify update succeeded but restoring the semantic nodes it dropped failed (see above); the graph may have lost semantic nodes. Exiting 5" >&2
+    mv -f "$_pre_ast" "$_kept" 2>/dev/null || _kept="$_pre_ast"
+    echo "ast-update: FAILED -- graphify update succeeded but restoring the semantic nodes it dropped failed (see above); the graph may have lost semantic nodes. The pre-rebuild graph is kept at $_kept. Exiting 5" >&2
     exit 5
   fi
-  if [ "$_graphify_rc" -ne 0 ] && mv -f "$_pre_ast" "$OUT_DIR/graph.json" 2>/dev/null; then
-    echo "ast-update: graphify update failed; put the pre-rebuild graph.json back" >&2
+  if [ "$_graphify_rc" -ne 0 ]; then
+    if mv -f "$_pre_ast" "$OUT_DIR/graph.json" 2>/dev/null; then
+      echo "ast-update: graphify update failed; put the pre-rebuild graph.json back" >&2
+    else
+      mv -f "$_pre_ast" "$_kept" 2>/dev/null || _kept="$_pre_ast"
+      echo "ast-update: graphify update failed and the pre-rebuild graph.json could not be put back; it is kept at $_kept" >&2
+    fi
+  elif [ -f "$_pre_ast" ]; then
+    rm -f "$_pre_ast"
   fi
-  rm -f "$_pre_ast"
 fi
 # This does NOT run harden-graph.py. `graphify update --force`
 # rewrites this OUT_DIR in place with no scratch/promote staging (unlike
