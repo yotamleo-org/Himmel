@@ -23,6 +23,9 @@ expect 1 "heading 'Why not'" "$FIX/by-heading.md"
 expect 1 "research-comparison filename" "$FIX/foo-research-comparison.md"
 expect 1 "verdict table with Rejected row" "$FIX/verdict-table.md"
 
+expect 1 "HTML heading 'Why not'" "$FIX/html-heading.html"
+expect 1 "verdict in the first table column" "$FIX/first-column.md"
+
 echo "== clean reference doc =="
 expect 0 "clean-reference.md" "$FIX/clean-reference.md"
 

@@ -35,8 +35,8 @@ else
 fi
 
 name_re='(research|comparison|rejected|rejection|decision-record|-vs-)'
-head_re='^#{1,6}[[:space:]]+.*(rejected|why not|alternatives considered|decision record|not adopted|comparison)'
-row_re='^\|.*\|[[:space:]]*(rejected|not adopted|declined)[[:space:]]*(\||$)'
+head_re='(^#{1,6}[[:space:]]+|<h[1-6][^>]*>[[:space:]]*).*(rejected|why not|alternatives considered|decision record|not adopted|comparison)'
+row_re='^\|([^|]*\|)*[[:space:]]*(rejected|not adopted|declined)[[:space:]]*(\||$)'
 
 flagged=0
 for f in "${files[@]}"; do
