@@ -122,8 +122,14 @@ if ! PM_TRACKER=$(project_mode_tracker); then
     echo "ERR file-deferred-issues: invalid tracker setting (see above); nothing filed." >&2
     exit 2
 fi
+# An EXPLICIT tracker choice (TRACKER env or git config himmel.tracker) of
+# none|local means "file nothing remote", even on a GitHub origin; forge issue
+# filing is only the fallback for a repo that never chose a tracker.
+tracker_explicit="${TRACKER:-$(git config --get himmel.tracker 2>/dev/null || true)}"
 if [ "$PM_TRACKER" = jira ]; then
     TRACKER_MODE=jira
+elif [ -n "$tracker_explicit" ]; then
+    TRACKER_MODE=none
 else
     if ! PM_FORGE=$(project_mode_forge --quiet); then
         echo "ERR file-deferred-issues: invalid forge setting (see above); nothing filed." >&2
@@ -332,7 +338,9 @@ if [ "$TRACKER_MODE" = jira ]; then
             $JIRA_CMD "$@"
             return $?
         fi
-        common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || {
+        # Resolved from THIS script's checkout, not the cwd repo, so a non-himmel
+        # Jira repo still reaches the himmel CLI.
+        common=$(git -C "$FDI_LIB_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || {
             echo "cannot locate the Jira CLI (set JIRA_CMD)" >&2
             return 1
         }
