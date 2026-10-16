@@ -69,6 +69,19 @@ else
     _fail "$NAME" "rc=$rc out=[$(cat "$TMPBASE/out")] err=[$(cat "$TMPBASE/err")]"
 fi
 
+NAME="inherited GIT_CONFIG and GIT_TEMPLATE_DIR cannot reach outside the scratch repo"
+mkdir -p "$TMPBASE/tpl/hooks"
+printf '#!/bin/sh\ntouch "%s/hook-ran"\n' "$TMPBASE" > "$TMPBASE/tpl/hooks/post-commit"
+chmod +x "$TMPBASE/tpl/hooks/post-commit"
+rc=0
+GIT_CONFIG="$TMPBASE/outside.cfg" GIT_TEMPLATE_DIR="$TMPBASE/tpl" \
+    bash "$SUT" --steps 2 --max 4 >"$TMPBASE/out" 2>"$TMPBASE/err" || rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$TMPBASE/outside.cfg" ] && [ ! -e "$TMPBASE/hook-ran" ]; then
+    _pass "$NAME"
+else
+    _fail "$NAME" "rc=$rc cfg=$(ls "$TMPBASE/outside.cfg" 2>&1) hook=$(ls "$TMPBASE/hook-ran" 2>&1)"
+fi
+
 NAME="--max below the largest step refuses with rc 2, no rows"
 rc=0; bash "$SUT" --steps 2,4 --max 3 >"$TMPBASE/out" 2>"$TMPBASE/err" || rc=$?
 if [ "$rc" -eq 2 ] && [ "$(grep -vc '^#' "$TMPBASE/out" || true)" -eq 0 ]; then
