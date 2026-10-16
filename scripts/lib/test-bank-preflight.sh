@@ -140,6 +140,21 @@ check "non-numeric seven_day -> verdict unchanged (PROCEED)" PROCEED "$bad_out"
 check "non-numeric seven_day -> ledger row is valid JSON" true "$(tail -1 "$W/ledger.jsonl" | jq -e . >/dev/null 2>&1 && echo true || echo false)"
 check "non-numeric seven_day -> numeric five_hour kept" 55 "$(tail -1 "$W/ledger.jsonl" | jq -r '.five_hour' 2>/dev/null)"
 
+# A newline inside a utilization STRING must not shift later
+# lines into sd/xu/stamp. five_hour "10\n10" would otherwise forge sd=10 and
+# hide the real, spent seven_day=95.
+nl_out=$(verdict "{\"five_hour\":{\"utilization\":\"10\\n10\\n\\n$NOW\"},\"seven_day\":{\"utilization\":95},\"primaries_refreshed_at\":1}")
+check "newline in five_hour string cannot forge sd+stamp -> BANK-STALE" BANK-STALE "$nl_out"
+# ...and a newline in seven_day must not forge the stamp (xu/stamp shift).
+nl_stamp_out=$(verdict "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":\"20\\n\\n$NOW\"},\"primaries_refreshed_at\":1}")
+check "newline in seven_day string cannot forge stamp -> BANK-STALE" BANK-STALE "$nl_stamp_out"
+# A non-UTF-8 byte in LEG must not give a strict-invalid ledger row.
+rm -f "$W/ledger.jsonl"
+printf '%s' "$(stamp_account "$(fx 10 20 "$NOW")")" > "$W/c.json"
+CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" \
+  CADENCE_BANK_LEG="$(printf 'leg\377x')" FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null >/dev/null 2>&1
+check "non-UTF-8 LEG -> ledger row is strict-valid JSON" true "$(LC_ALL=C.UTF-8 jq -e . "$W/ledger.jsonl" >/dev/null 2>&1 && echo true || echo false)"
+
 future=$(( $(date +%s) + 86400 ))
 printf '%s' "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":20},\"primaries_refreshed_at\":$future,\"account\":\"$ACCT\"}" > "$W/c.json"
 future_out=$(CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
