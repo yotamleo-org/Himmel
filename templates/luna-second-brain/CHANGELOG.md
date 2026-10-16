@@ -8,6 +8,15 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.74] — 2026-10-16
+
+### Fixed
+- `.gitleaks.toml`: allowlist an anchored 64-hex sha256 digest (plus one optional
+  trailing punctuation char), the same class and anchoring as the 40-hex commit
+  SHA. Pinned release digests in handoffs and briefs no longer trip
+  generic-api-key and stall the autosync commit. A longer or mixed-case token is
+  still caught.
+
 ## [0.4.73] — 2026-10-15
 
 ### Fixed

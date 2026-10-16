@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Regression: .gitleaks.toml allowlists a bare 40-hex commit SHA and the exact
-# literal runClaudexSharedDispatch, while a longer or mixed-case hex token is
+# Regression: .gitleaks.toml allowlists a bare 40-hex commit SHA, a bare 64-hex
+# sha256 digest and the exact literal runClaudexSharedDispatch, while a longer or mixed-case hex token is
 # still caught. POSIX bash 3.2+.
 set -uo pipefail
 
@@ -29,6 +29,11 @@ sha="6dcfd2469d17afd771a77f90a37fd0f122b8e857"
 scan "bare 40-hex SHA is allowed" "secret = $sha" clean
 scan "40-hex SHA with trailing punctuation is allowed" "secret = $sha." clean
 scan "runClaudexSharedDispatch literal is allowed" "Jira: runClaudexSharedDispatch" clean
+sha256="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+scan "bare 64-hex sha256 digest is allowed" "secret = $sha256" clean
+scan "64-hex sha256 digest with trailing punctuation is allowed" "secret = $sha256." clean
+scan "longer 64+-hex token still flagged" "secret = ${sha256}9f86d08188" flag
+scan "mixed-case 64-char token still flagged" "secret = $(printf '%s' "${sha256:0:8}" | tr 'a-f' 'A-F')${sha256:8}" flag
 scan "longer hex token still flagged" "secret = ${sha}6dcfd2469d17afd771" flag
 upper="$(printf '%s' "${sha:0:8}" | tr 'a-f' 'A-F')${sha:8}"
 scan "mixed-case 40-char token still flagged" "secret = $upper" flag
