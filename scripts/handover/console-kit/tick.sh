@@ -1583,9 +1583,10 @@ if [ -f "$ciq_probe" ]; then
     fi
 fi
 
-# vmrun=off|ok:<up>/<want>,busy=<n>|DEAD|STUCK: the himmel-vm
+# vmrun=off|ok:<up>/<want>,busy=<n>|DEAD|STUCK|FAILING: the himmel-vm
 # self-hosted runner, one bounded `vm-runner.sh status --tick` call. DEAD = the
-# repo variable is on but no unit is up; STUCK = a job past JOB_MAX+600 s.
+# repo variable is on but no unit is up; STUCK = a job past JOB_MAX+600 s;
+# FAILING = a unit is up but its newest ci-runner journal line is an error.
 # console-wait.sh wakes only on those two. unknown = the probe is missing,
 # failed or timed out.
 vmrun_summary=unknown
@@ -1595,7 +1596,7 @@ if [ -f "$vmrun_probe" ]; then
     . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
     vmrun_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 30} bash "$vmrun_probe" status --tick 2>/dev/null)" || vmrun_out=""
     case "$vmrun_out" in
-        off|DEAD|STUCK|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
+        off|DEAD|STUCK|FAILING|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
     esac
 fi
 

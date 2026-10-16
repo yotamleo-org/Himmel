@@ -11,7 +11,7 @@
 #                                powers its VM off on the way out)
 #   vm-runner.sh status          units up/idle/busy, current job, last error
 #   vm-runner.sh status --tick   the one tick token (tick.sh's vmrun= field):
-#                                off | ok:<up>/<want>,busy=<n> | DEAD | STUCK
+#                                off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING
 #   vm-runner.sh doctor          `<OK|WARN|FAIL><TAB><id><TAB><message>` rows
 #                                for himmel-doctor's C64 check
 #
@@ -208,6 +208,15 @@ unit_last_error() {
     unit_journal "$1" | grep -E 'ci-runner: ' | grep -vE 'registered on|done \(rc=0|deregistered' | tail -n 1 | cut -d' ' -f2-
 }
 
+# unit_failing <i> — true when the newest `ci-runner:` line is an error, so the
+# loop is up but minting nothing. Ephemeral runners register only while a job
+# runs, so GitHub's runner count cannot say this; the journal can.
+unit_failing() {
+    local last
+    last="$(unit_journal "$1" | grep -E 'ci-runner: ' | tail -n 1)"
+    [ -n "$last" ] && ! printf '%s\n' "$last" | grep -qE 'registered on|done \(rc=0|deregistered'
+}
+
 # runners_busy — how many himmel-vm runners GitHub reports busy, cached.
 runners_busy() {
     local f="$STATE_DIR/tick-vmrun-cache" now ts val
@@ -221,9 +230,9 @@ runners_busy() {
     printf '%s\n' "$val"
 }
 
-# tick_token — off | ok:<up>/<want>,busy=<n> | DEAD | STUCK
+# tick_token — off | ok:<up>/<want>,busy=<n> | DEAD | STUCK | FAILING
 tick_token() {
-    local var up=0 want i=1 stuck=0 j
+    local var up=0 want i=1 stuck=0 failing=0 j
     # Never set up on this station: no gh call, nothing to report.
     [ -e "$UNIT_DIR/$UNIT_PREFIX@.service" ] || { echo off; return; }
     var="$(vmrun_var)" || var=""
@@ -231,6 +240,7 @@ tick_token() {
     while [ "$i" -le "$MAX_VMS" ]; do
         if unit_active "$i"; then
             up=$((up + 1))
+            ! unit_failing "$i" || failing=1
             j="$(unit_job "$i")"
             case "$j" in idle) ;; *) [ "$j" -gt $((JOB_MAX + 600)) ] && stuck=1 ;; esac
         fi
@@ -248,6 +258,7 @@ tick_token() {
     fi
     if [ "$up" -eq 0 ]; then echo DEAD; return; fi
     if [ "$stuck" -eq 1 ]; then echo STUCK; return; fi
+    if [ "$failing" -eq 1 ]; then echo FAILING; return; fi
     echo "ok:$up/$want,busy=$(runners_busy)"
 }
 
