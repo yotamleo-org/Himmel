@@ -85,6 +85,9 @@ write_go() {
 go() { HANDOVER_DIR="$ROOT" bash "$GO_SH" "$@"; }
 merge() { HANDOVER_DIR="$ROOT" bash "$MERGE_SH" "$@"; }
 merged() { grep -c '^MERGE ' "$STUB_LOG"; }
+# A leg always runs under its claude session; without a claude ancestor the
+# chokepoint seam guard refuses a leg marker with 96 before the leg check runs.
+_as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
 
 # --- 1. go.sh --repo ---------------------------------------------------------
 verdict j1 GO "$SHA" 18
@@ -112,7 +115,7 @@ check "go --repo no judge verdict -> exit 5" "$rc" 5
 verdict j2 GO "$SHA" 19
 rc=0; go --repo "$FORK" --trust-reviewed j2 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "go --repo verdict names another PR -> exit 5" "$rc" 5
-rc=0; HIMMEL_CONSOLE_LEG=1 go --repo "$FORK" --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
+rc=0; HANDOVER_DIR="$ROOT" HIMMEL_CONSOLE_LEG=1 _as_claude bash "$GO_SH" --repo "$FORK" --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "go --repo from a leg -> exit 3" "$rc" 3
 check "go --repo refusals wrote nothing" "$(ls -A "$ROOT/.locks/go" 2>/dev/null)" ""
 rc=0; out="$(go --repo "$FORK" --trust-reviewed j1 18 "$SHA" 2>&1)" || rc=$?
@@ -129,7 +132,7 @@ for args in "" "$FORK" "$FORK 18" "$FORK 18 $SHA x" "$FORK x18 $SHA" "$FORK 018 
   check "merge usage [$args] -> exit 2" "$rc" 2
 done
 write_go "$FORK" 18 "$SHA" j1
-rc=0; HIMMEL_CONSOLE_LEG=1 merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
+rc=0; HANDOVER_DIR="$ROOT" HIMMEL_CONSOLE_LEG=1 _as_claude bash "$MERGE_SH" "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge from a leg -> exit 3" "$rc" 3
 rc=0; HIMMEL_CONSOLE_RELAY=1 merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge from a relay -> exit 3" "$rc" 3
