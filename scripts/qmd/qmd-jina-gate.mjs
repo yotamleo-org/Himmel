@@ -199,13 +199,13 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
     continue;
   }
   if (urlHasUserinfo && !refusals.some((r) => r.startsWith("the base URL carries")))
-    refusals.push("the base URL carries credentials (userinfo): the provider key belongs only in the daemon's environment (QMD_OPENAI_API_KEY)");
+    refusals.push("the base URL carries credentials (userinfo): the provider key belongs only in the qmd service's environment (QMD_OPENAI_API_KEY)");
   // The fork sends content even when no key is set, so a launcher that asks (QMD_GATE_REQUIRE_KEY=1)
   // gets a refusal instead of an unauthenticated remote request.
   if (process.env.QMD_GATE_REQUIRE_KEY === "1" && !process.env.QMD_OPENAI_API_KEY
       && !(provider === "jina" && (process.env.JINA_API_KEY || process.env.JINA_API))
       && !refusals.some((r) => r.includes("no provider key")))
-    refusals.push("a remote model is configured but no provider key is in this process environment (QMD_OPENAI_API_KEY): the daemon would send content unauthenticated");
+    refusals.push("a remote model is configured but no provider key is in this process environment (QMD_OPENAI_API_KEY): the service would send content unauthenticated");
   if (PINNED[provider]) {
     const pin = PINNED[provider][role];
     for (const value of [models[role] ?? "", process.env[ENV_ROLE[role]] ?? ""]) {

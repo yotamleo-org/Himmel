@@ -295,7 +295,7 @@ remote_models=0
 # The provider key is the DAEMON's, never a session's: drop whatever the launching session carries, and
 # take the key only from the daemon env file (mode 0600), handed to the daemon start below and nowhere else.
 unset QMD_OPENAI_API_KEY JINA_API_KEY JINA_API
-daemon_key=""
+provider_key=""
 # Case-insensitive: OpenAI: / OPENAI: model strings must reach the gate too.
 env_models="$(printf '%s' "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" | tr '[:upper:]' '[:lower:]')"
 case "$env_models" in *openai:*) remote_models=1 ;; esac
@@ -303,17 +303,17 @@ if [ "$remote_models" -eq 0 ] && grep -Eqis '^[^#]*(openai:|\\)' "$qmd_cfg"; the
   remote_models=1
 fi
 if [ "$remote_models" -eq 1 ]; then
-  daemon_env_file="${QMD_DAEMON_ENV_FILE:-$HOME/.himmel/state/qmd-daemon.env}"
-  if [ -f "$daemon_env_file" ]; then
+  key_env_file="${QMD_DAEMON_ENV_FILE:-$HOME/.himmel/state/qmd-daemon.env}" # t13b-ok: variable assignment of a file path, starts nothing
+  if [ -f "$key_env_file" ]; then
     # shellcheck disable=SC2012  # the mode string is the point; the path is fixed
-    case "$(ls -ld "$daemon_env_file" 2>/dev/null | cut -c1-10)" in
+    case "$(ls -ld "$key_env_file" 2>/dev/null | cut -c1-10)" in
       -rw-------|-r--------) ;;
       *)
-        echo "ensure-qmd-daemon: ERROR - $daemon_env_file holds the provider key but is readable by others - NOT starting qmd (chmod 600 it)." >&2 # t13b-ok: message text only, starts nothing
+        echo "ensure-qmd-daemon: ERROR - $key_env_file holds the provider key but is readable by others - NOT starting qmd (chmod 600 it)." >&2 # t13b-ok: message text only, starts nothing
         exit 1 ;;
     esac
     # Read the one line; never source the file.
-    daemon_key="$(sed -n 's/^QMD_OPENAI_API_KEY=//p' "$daemon_env_file" | head -n 1)"
+    provider_key="$(sed -n 's/^QMD_OPENAI_API_KEY=//p' "$key_env_file" | head -n 1)"
   fi
   qmd_gate="${QMD_JINA_GATE:-$(dirname -- "${BASH_SOURCE[0]}")/../../../../scripts/qmd/qmd-jina-gate.mjs}"
   if [ ! -f "$qmd_gate" ] || ! command -v node >/dev/null 2>&1; then
@@ -322,7 +322,7 @@ if [ "$remote_models" -eq 1 ]; then
     exit 1
   fi
   qmd_db="${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/$QMD_INDEX_NAME.sqlite}"
-  if ! QMD_GATE_REQUIRE_KEY=1 QMD_OPENAI_API_KEY="$daemon_key" node "$qmd_gate" "$qmd_cfg" "$qmd_db" >&2; then
+  if ! QMD_GATE_REQUIRE_KEY=1 QMD_OPENAI_API_KEY="$provider_key" node "$qmd_gate" "$qmd_cfg" "$qmd_db" >&2; then
     echo "ensure-qmd-daemon: ERROR - the egress matrix refuses this index's remote model - NOT starting qmd." >&2 # t13b-ok: message text only, starts nothing
     exit 1
   fi
@@ -456,7 +456,7 @@ done
 # caller's cwd.
 cd "$HOME" 2>/dev/null || cd / || exit 1
 # Only a gate-approved remote-model daemon is handed the key.
-[ -n "$daemon_key" ] && export QMD_OPENAI_API_KEY="$daemon_key"
+[ -n "$provider_key" ] && export QMD_OPENAI_API_KEY="$provider_key"
 start_rc=0
 # A named index starts its own daemon on the port in QMD_MCP_URL.
 idx_flag=""
