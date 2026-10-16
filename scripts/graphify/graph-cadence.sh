@@ -180,8 +180,10 @@
 #   GRAPH_CADENCE_GRAPH_PUBLISH   override the graph-publish.sh path.
 #   GRAPH_CADENCE_MERGE_ON_GREEN  override the merge-on-green.sh path.
 #   GRAPH_CADENCE_SEMANTIC_UPDATE override the semantic-update.sh path.
-#   GRAPH_CADENCE_SEMANTIC_BACKEND semantic backend, claude-cli (default) or
-#                                 ollama; any other value refuses rc=1.
+#   GRAPH_CADENCE_SEMANTIC_BACKEND semantic backend, claude-cli (default),
+#                                 claude-api (needs HIMMEL_API_LANE=on and
+#                                 HIMMEL_API_ACCOUNT) or ollama; `api` and `cli`
+#                                 are aliases; any other value refuses rc=1.
 #   GRAPH_CADENCE_LEDGER_ROOT     override the handover-root resolution
 #                                 entirely (bypasses handover_root_ensure AND
 #                                 the HANDOVER_DIR-unset refusal below).
@@ -347,14 +349,19 @@ AST_UPDATE="${GRAPH_CADENCE_AST_UPDATE:-$SCRIPT_DIR/ast-update.sh}"
 GRAPH_PUBLISH="${GRAPH_CADENCE_GRAPH_PUBLISH:-$SCRIPT_DIR/graph-publish.sh}"
 MERGE_ON_GREEN="${GRAPH_CADENCE_MERGE_ON_GREEN:-$REPO_ROOT/scripts/handover/merge-on-green.sh}"
 SEMANTIC_UPDATE="${GRAPH_CADENCE_SEMANTIC_UPDATE:-$SCRIPT_DIR/semantic-update.sh}"
-# the semantic backend is claude-cli unless opted into ollama.
-# Anything else refuses before any work (fail closed, no silent fallback).
-SEMANTIC_BACKEND="${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}"
-case "$SEMANTIC_BACKEND" in
-    claude-cli|ollama) ;;
-    *) echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND='$SEMANTIC_BACKEND' is not accepted -- claude-cli or ollama only" >&2
-       exit 1 ;;
-esac
+# the semantic backend is claude-cli unless opted into claude-api (or its
+# `api` alias) or ollama, resolved by the shared scripts/lib/llm-backend.sh.
+# Anything else refuses before any work (fail closed, no silent fallback), and
+# claude-api refuses unless the API lane is on (never a fallback to the bank).
+. "$REPO_ROOT/scripts/lib/llm-backend.sh"
+SEMANTIC_BACKEND="$(llm_backend_resolve "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}")" || {
+    echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND='${GRAPH_CADENCE_SEMANTIC_BACKEND:-}' is not accepted -- claude-cli, claude-api or ollama only" >&2
+    exit 1
+}
+if [ "$SEMANTIC_BACKEND" = "claude-api" ] && ! llm_backend_api_ready; then
+    echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment -- refusing, no claude-cli fallback" >&2
+    exit 1
+fi
 CADENCE_ALERT="$REPO_ROOT/scripts/luna/cadence-alert.sh"
 for _f in "$AST_UPDATE" "$GRAPH_PUBLISH" "$MERGE_ON_GREEN"; do
     [ -f "$_f" ] || { echo "ERR graph-cadence: required script missing: $_f" >&2; exit 2; }

@@ -739,7 +739,8 @@ CACHE_HARD="$TMP/cache-hard.json"; mkcache "$CACHE_HARD" 85
 RC17=$(run_hook bank-hard "$REG_NONE" "$(payload general-purpose sonnet 'Implement the fix' 'Write the code.')" IMPL_GUARD_CACHE_PATH="$CACHE_HARD")
 assert_rc "no lane + live HARD bank refuses" 2 "$RC17"
 assert_contains "bank refusal keeps HIMMEL-920 message" "5-hour bank at 85%" "$(cat "$TMP/err-bank-hard")"
-assert_contains "bank refusal names cheaper-lane choices" "himmel-ops:glm-subagent" "$(cat "$TMP/err-bank-hard")"
+assert_contains "bank refusal names cheaper-lane choices" "native subagents on a cheaper Claude tier" "$(cat "$TMP/err-bank-hard")"
+assert_not_contains "bank refusal does not advise the dropped glm lane" "glm-subagent" "$(cat "$TMP/err-bank-hard")"
 
 CACHE_WARN="$TMP/cache-warn.json"; mkcache "$CACHE_WARN" 70
 RC18=$(run_hook bank-warn "$REG_NONE" "$(payload general-purpose sonnet 'Implement the fix' 'Write the code.')" IMPL_GUARD_CACHE_PATH="$CACHE_WARN")
@@ -934,7 +935,8 @@ CACHE_WEEKLY_HARD="$TMP/cache-weekly-hard.json"; mkcache_both "$CACHE_WEEKLY_HAR
 RC71=$(run_hook weekly-hard "$REG_NONE" "$(payload general-purpose sonnet 'Implement the fix' 'Write the code.')" IMPL_GUARD_CACHE_PATH="$CACHE_WEEKLY_HARD")
 assert_rc "weekly HARD (90) with quiet five-hour (10) denies" 2 "$RC71"
 assert_contains "weekly HARD refusal names the 7-day window" "7-day bank at 90% (>= HARD 85%)" "$(cat "$TMP/err-weekly-hard")"
-assert_contains "weekly HARD refusal keeps lane-routing advice" "himmel-ops:glm-subagent" "$(cat "$TMP/err-weekly-hard")"
+assert_contains "weekly HARD refusal keeps lane-routing advice" "native subagents on a cheaper Claude tier" "$(cat "$TMP/err-weekly-hard")"
+assert_not_contains "weekly HARD refusal does not advise the dropped glm lane" "glm-subagent" "$(cat "$TMP/err-weekly-hard")"
 
 # The exact case the live gate missed all day: 74% weekly (>= WARN 70%) with a
 # quiet 45% five-hour reading must WARN, not stay silent.
