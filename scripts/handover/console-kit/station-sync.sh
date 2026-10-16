@@ -113,7 +113,7 @@ local_template_diff() {
     '
 }
 
-refused=""
+refused=""; failed=""
 for step in marketplace jira_cli qmd_fork graphify luna_template; do
     case " $want " in *" $step "*) ;; *) continue ;; esac
     if [ "$step" = luna_template ]; then
@@ -128,6 +128,7 @@ EOF
     fi
     "${UPDATE[@]}" --only "$step" >/dev/null 2>&1; rc=$?
     echo "STEP $step rc=$rc"
+    [ "$rc" -eq 0 ] || failed="${failed:+$failed,}$step-failed"
 done
 
 clone="${SS_QMD_CLONE:-$HOME/.himmel/qmd-fork}"
@@ -139,11 +140,12 @@ fi
 
 vers="$("${UPDATE[@]}" --versions 2>/dev/null)"; vrc=$?
 behind="$(printf '%s\n' "$vers" | awk '$2 == "behind" { print $1 }' | paste -sd, -)"
-# --versions exits 0 all current, 1 any behind, 3 none behind but some undetermined;
-# anything else, or a report with no component row, is not proof the station is current.
-if { [ "$vrc" -gt 1 ] && [ "$vrc" -ne 3 ]; } || ! printf '%s\n' "$vers" | grep -qE '^ +[a-z_-]+ +(current|behind|unknown|info) '; then
+# --versions exits 0 all current, 1 any behind; 3 (some undetermined), any other code, or
+# a report with no component row is not proof the station is current.
+if [ "$vrc" -gt 1 ] || ! printf '%s\n' "$vers" | grep -qE '^ +[a-z_-]+ +(current|behind|unknown|info) '; then
     behind="${behind:+$behind,}unverified"
 fi
+[ -z "$failed" ] || behind="${behind:+$behind,}$failed"
 [ -z "$refused" ] || case ",$behind," in *",$refused,"*) ;; *) behind="${behind:+$behind,}$refused" ;; esac
 
 if [ -n "$behind" ]; then val="BEHIND:$behind"; echo "STATION=BEHIND:$behind"

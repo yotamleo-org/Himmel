@@ -169,4 +169,24 @@ git init -q "$W/clone2" && echo a > "$W/clone2/f" && git -C "$W/clone2" add f \
 SS_QMD_CLONE="$W/wt" run "$W/ver-current" docs/x.md
 contains "13 linked-worktree clone edit reported" "$out" "LOCAL-DIFF qmd_fork f"
 
+cat > "$W/update-unknown" <<'EOF2'
+#!/usr/bin/env bash
+echo "update $*" >> "$SS_CALLS"
+if [ "$1" = "--versions" ]; then cat "$SS_T_VERSIONS"; exit 3; fi
+exit 0
+EOF2
+chmod +x "$W/update-unknown"
+SS_UPDATE="$W/update-unknown" run "$W/ver-current" docs/x.md
+contains "14 undetermined components are not OK" "$out" "STATION=BEHIND:unverified"
+
+cat > "$W/update-failstep" <<'EOF2'
+#!/usr/bin/env bash
+echo "update $*" >> "$SS_CALLS"
+if [ "$1" = "--versions" ]; then cat "$SS_T_VERSIONS"; exit 0; fi
+exit 1
+EOF2
+chmod +x "$W/update-failstep"
+SS_UPDATE="$W/update-failstep" run "$W/ver-current" marketplace/plugins/foo/skill.md
+contains "15 failed step is not OK" "$out" "STATION=BEHIND:marketplace-failed"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
