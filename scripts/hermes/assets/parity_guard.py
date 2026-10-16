@@ -133,7 +133,7 @@ def _expand_home(cmd: str) -> str:
 # every secret in the inherited environment.
 _ENV_DUMP_VERBS = re.compile(
     r"(?:printenv|env(?:\s+printenv)?|export\s+-p|declare\s+-p)"
-    r"(?:\s+(?:-0|--null))*(?=\s*(?:$|[;&|)<>\n]))"
+    r"(?:\s+(?:-0|--null|--|-u\s+\S+|[a-z_][a-z0-9_]*=\S*))*(?=\s*(?:$|[;&|)<>\n]))"
 )
 
 # Command position: string start or right after a separator (; & | ( newline).
