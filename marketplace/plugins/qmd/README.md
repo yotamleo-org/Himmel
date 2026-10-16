@@ -135,6 +135,25 @@ a `QMD_OPENAI_API_KEY=...` line, mode 0600 or 0400, else the file is refused),
 and it will not start a remote daemon without it. Salus keeps its own
 local-only index (`QMD_INDEX_NAME=salus`, `salus.yml`, port 8182).
 
+### Starting the salus daemon and proving it stays local (HIMMEL-5756)
+
+Start it with its own index name and port (no provider key, local models only):
+
+```bash
+env QMD_INDEX_NAME=salus QMD_MCP_URL=http://localhost:8182/mcp bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh
+```
+
+Prove a salus query sends nothing out by running it in a network-less
+namespace; any remote call would fail there, so hits coming back is the proof:
+
+```bash
+env QMD_TIMEOUT_SECS=240 unshare -rn bash scripts/lib/qmd-bounded.sh --index salus vsearch "egress matrix denied hosts" -n 3
+```
+
+Measured 2026-10-16: the salus daemon listened on 8182 next to the shared one
+on 8181, and the namespaced query returned salus documents. The daemon requires
+the fork's HTTP auth token like the shared one.
+
 Keep generated and boilerplate paths out of a code collection with an
 `ignore:` list in its `index.yml` entry (for example `graphify-out/**`,
 `**/fixtures/**`, `marketplace/plugins/*/README*.md` on the `himmel`
