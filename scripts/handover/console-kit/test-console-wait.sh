@@ -1115,6 +1115,12 @@ check "(su3) a tally silent past --silent-min wakes once, rc 0" "0" "$rc"
 check "(su3) the partial wake names k/n and the window" "WAKE succession partial 1/2 silent 0 min" "$(head -n1 "$WORK/su3.out")"
 check "(su3) the block names the leg still out" "yes" "$(grep -q 'waiting on: N2' "$WORK/su3.out" && echo yes)"
 
+printf 'tracker blew up\n' > "$STUB/su.out"
+I="$(new_inbox su3b)"
+start "$I" "$WORK/su3b.out" --doc "$SUCD" --succession S2 --silent-min 0 --legs "N1.md"
+wait_exit "$WPID"
+check "(su3b) a tracker with no summary still wakes at the silence limit" "WAKE succession partial tracker-error silent 0 min" "$(head -n1 "$WORK/su3b.out")"
+
 I="$(new_inbox su4)"
 bash "$WAIT" "$I" --succession S2 >/dev/null 2>&1; rc=$?
 check "(su4) --succession without --doc is a usage error (rc 2)" "2" "$rc"

@@ -1691,7 +1691,9 @@ cmd_next() {
         echo "handover-mode: $pred_inbox.handover"
         # --relay-on-live: the outgoing waiter wakes its console once, when the successor
         # holds its lock, with the relay lines (line 1 successor session, line 2 its doc).
-        if [ "$RELAY_ON_LIVE" -eq 1 ] && printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live" 2>/dev/null; then
+        # Written to a temp name then renamed, so the waiter never reads half a marker.
+        if [ "$RELAY_ON_LIVE" -eq 1 ] && printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live.tmp" 2>/dev/null \
+            && mv -f "$pred_inbox.relay-on-live.tmp" "$pred_inbox.relay-on-live" 2>/dev/null; then
             echo "relay-on-live: $pred_inbox.relay-on-live"
         fi
     fi

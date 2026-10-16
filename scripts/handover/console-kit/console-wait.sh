@@ -618,11 +618,12 @@ while :; do
             COMPLETE*)
                 printf 'WAKE succession complete %s\n%s\n' "${succ_sum#COMPLETE }" "$succ_out"
                 rm -f "$succ_file"; exit_reason='wake-succession'; exit 0 ;;
-            INCOMPLETE*)
+            *)  # INCOMPLETE, or a tracker that printed no summary: both age toward the silence wake
                 succ_since="$(sed -n 1p "$succ_file" 2>/dev/null)"
                 case "$succ_since" in ''|*[!0-9]*) succ_since="$(date +%s)" ;; esac
                 if [ $(( $(date +%s) - succ_since )) -ge $(( 10#$silent_min * 60 )) ]; then
-                    printf 'WAKE succession partial %s silent %s min\n%s\n' "$(printf '%s' "$succ_sum" | sed -E 's/^INCOMPLETE ([0-9]+\/[0-9]+).*/\1/')" "$silent_min" "$succ_out"
+                    succ_tally="$(printf '%s' "$succ_sum" | sed -nE 's/^INCOMPLETE ([0-9]+\/[0-9]+).*/\1/p')"
+                    printf 'WAKE succession partial %s silent %s min\n%s\n' "${succ_tally:-tracker-error}" "$silent_min" "$succ_out"
                     rm -f "$succ_file"; exit_reason='wake-succession-partial'; exit 0
                 fi ;;
         esac
