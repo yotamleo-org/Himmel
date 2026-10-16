@@ -1732,3 +1732,50 @@ test('design core carries the motion-budget note', () => {
   const ver = JSON.parse(readFileSync(join(plugin, '.claude-plugin', 'plugin.json'), 'utf8')).version;
   assert.notEqual(ver, '0.1.0', 'plugin version bumped for the new skill');
 });
+
+// Legs on our own registered forks get the classifier's
+// autoMode.environment trust through the resolved --settings file, never blanket.
+test('forkNwos adds one exact autoMode.environment entry per fork on a gateAllow profile', () => {
+  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo/qmd', 'yotamleo/graphify'] });
+  assert.equal(s.autoMode.environment[0], '$defaults');
+  assert.equal(s.autoMode.environment.length, 3);
+  assert.match(s.autoMode.environment[1], /^Source control: github\.com\/yotamleo\/qmd /);
+  assert.match(s.autoMode.environment[2], /^Source control: github\.com\/yotamleo\/graphify /);
+});
+test('no forkNwos, or a profile without gateAllow, emits no autoMode key', () => {
+  assert.equal(resolveProfile(REG, 'leg-impl').autoMode, undefined);
+  assert.equal(resolveProfile(REG, 'leg-impl', { forkNwos: [] }).autoMode, undefined);
+  assert.equal(resolveProfile(REG, 'bare', { forkNwos: ['yotamleo/qmd'] }).autoMode, undefined);
+});
+test('forkNwos refuses anything but an exact owner/repo under yotamleo', () => {
+  for (const bad of ['yotamleo', 'yotamleo/', 'yotamleo/*', 'tobi/qmd', 'yotamleo/a b', 'github.com/yotamleo/qmd', 'yotamleo/../x', '']) {
+    assert.throws(() => resolveProfile(REG, 'leg-impl', { forkNwos: [bad] }), /fork nwo/, bad);
+  }
+});
+test('a composed profile list unions the autoMode entries once', () => {
+  const s = resolveProfile(REG, 'leg-impl,code-ui', { forkNwos: ['yotamleo/qmd'] });
+  assert.deepEqual(s.autoMode.environment.filter((e) => e === '$defaults'), ['$defaults']);
+  assert.equal(s.autoMode.environment.length, 2);
+});
+test('forkNwosFromAdapters reads exact nwo entries from a registry file shape', () => {
+  const dir = makeTmpDir('fork-trust');
+  const f = join(dir, 'himmel-adapters.json');
+  writeFileSync(f, JSON.stringify([{ nwo: 'yotamleo/qmd', upstream: 'tobi/qmd', himmel_branch: 'x', pin_site: 'y', role: 'runtime-dependency', merge_allowed: true }]));
+  assert.deepEqual(PP.forkNwosFromAdapters(f), ['yotamleo/qmd']);
+  assert.deepEqual(PP.forkNwosFromAdapters(join(dir, 'absent.json')), []);
+  writeFileSync(f, '{not json');
+  assert.throws(() => PP.forkNwosFromAdapters(f), /himmel-adapters/);
+});
+test('registry-driven trust: three registered forks are trusted, an unregistered nwo is not', () => {
+  const dir = makeTmpDir('fork-trust-three');
+  const f = join(dir, 'himmel-adapters.json');
+  const row = (nwo) => ({ nwo, upstream: 'u/x', himmel_branch: 'b', pin_site: 'p', role: 'runtime-dependency', merge_allowed: true });
+  writeFileSync(f, JSON.stringify([row('yotamleo/qmd'), row('yotamleo/graphify'), row('yotamleo/third-fork')]));
+  const s = resolveProfile(REG, 'leg-impl', { forkNwos: PP.forkNwosFromAdapters(f) });
+  const text = s.autoMode.environment.join('\n');
+  for (const nwo of ['yotamleo/qmd', 'yotamleo/graphify', 'yotamleo/third-fork']) assert.ok(text.includes(`github.com/${nwo} `), nwo);
+  assert.equal(s.autoMode.environment.length, 4);
+  assert.ok(!text.includes('yotamleo/not-registered'));
+  assert.ok(!text.includes('github.com/yotamleo '), 'never an owner-wide entry');
+  assert.ok(!/tobi\/qmd/.test(text), 'upstream is not trusted');
+});
