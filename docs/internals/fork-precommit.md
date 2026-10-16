@@ -51,9 +51,12 @@ pre-commit install -c .himmel/pre-commit-config.yaml -t pre-commit -t commit-msg
 Why this shape:
 
 - `.himmel/` is a path upstream never writes, so `git rebase upstream/<branch>`
-  has nothing to conflict on. The fork's own `.pre-commit-config.yaml` (core
-  and graphify have one) is untouched; `pre-commit install` backs up an existing
-  hook as `.legacy` and still runs it.
+  has nothing to conflict on. A clone runs ONE pre-commit config: the install
+  bakes its `-c` path into `.git/hooks/pre-commit`, and installing over a
+  pre-commit-generated hook replaces it (no `.legacy` copy; only a non-pre-commit
+  hook is backed up that way). So for a fork with its own
+  `.pre-commit-config.yaml` (core and graphify), adopting this core stops that
+  config running unless its hooks are merged in (see "Adopting a fork").
 - Zero scripts: gitleaks and `no-commit-to-branch` are upstream repos, the
   ticket check is a `pygrep` regex. Nothing to vendor or keep in sync.
 - Per fork, set `--branch` in `no-commit-to-branch` to the fork's default branch.
@@ -95,8 +98,10 @@ Archived forks (`claude-statusline`, `claude-squad`) and the de-forked
    scratch repo).
 6. Open the fork PR through the himmel flow (judge, signed GO, console merge).
 
-A fork with its own `.pre-commit-config.yaml` (core, graphify) needs step 4's
-`-c` flag exactly as written; do not edit its own config.
+A fork with its own `.pre-commit-config.yaml` (core, graphify) must keep its
+hooks running: append that file's `repos:` entries to `.himmel/pre-commit-config.yaml`
+(keeping the fork's file itself untouched, so rebases stay clean) before step 4,
+and re-do the merge when upstream changes its config.
 
 ## Pilot
 
