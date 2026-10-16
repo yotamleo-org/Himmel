@@ -429,7 +429,7 @@ lang_of() {
         *.sh|*.bash) printf 'sh' ;;
         *.mjs) printf 'mjs' ;;
         *.js|*.ts|*.cjs) printf 'js' ;;
-        claude-codex|claude-glm|claude-routed) printf 'sh' ;;
+        claude-codex|claude-glm) printf 'sh' ;;
         *) return 1 ;;
     esac
 }
@@ -480,7 +480,7 @@ else
         done < <(printf '%s\n' "$find_out" | sort)
     done
     for f in "$root/scripts/graphify/refresh-graph-map.sh" \
-             "$root/scripts/claude-codex" "$root/scripts/claude-glm" "$root/scripts/claude-routed"; do
+             "$root/scripts/claude-codex" "$root/scripts/claude-glm"; do
         [ -f "$f" ] || { echo "lint-fail-open.sh: expected guard-surface file missing: $f" >&2; exit 2; }
         shell_files+=("$f")
     done
