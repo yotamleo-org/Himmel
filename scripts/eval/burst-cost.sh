@@ -10,7 +10,8 @@
 # Usage: burst-cost.sh [--idle SECS] -- CMD [ARGS...]
 #   --idle SECS   length of the idle baseline window (default 5)
 # Env: BURST_PROC_ROOT overrides /proc (tests).
-# Exit: 0 ok, 2 usage, 3 /proc unreadable (command not run), 4 the command failed (table still printed).
+# Exit: 0 ok, 2 usage, 3 /proc unreadable (command not run), 4 the command failed (table still printed),
+#       5 the command ran but the final /proc read failed (no table).
 #
 # ponytail: Linux /proc only; Windows Defender / MsMpEng and conhost are not sampled,
 # upgrade path = a separate sampler if a Windows station returns.
@@ -42,7 +43,7 @@ snap() {
     /^cpu / { t = 0; for (i = 2; i <= 9; i++) t += $i; busy = t - $5 - $6; seen++ }
     /^processes / { f = $2; seen++ }
     /^ctxt / { c = $2; seen++ }
-    END { if (seen < 3) exit 1; print now, f, c, t, busy, psi }' "$PROC/stat"
+    END { if (seen < 3) exit 1; printf "%s %s %s %.0f %.0f %s\n", now, f, c, t, busy, psi }' "$PROC/stat"
 }
 
 row() { # label start-snap end-snap
@@ -57,7 +58,7 @@ A=$(snap) || { echo "burst-cost: cannot read $PROC/stat" >&2; exit 3; }
 sleep "$IDLE" || exit 3
 B=$(snap) || { echo "burst-cost: cannot read $PROC/stat" >&2; exit 3; }
 "$@"; RC=$?
-C=$(snap) || { echo "burst-cost: cannot read $PROC/stat" >&2; exit 3; }
+C=$(snap) || { echo "burst-cost: command ran (exit $RC) but the final $PROC/stat read failed" >&2; exit 5; }
 
 echo "| window | secs | forks | forks/s | ctx-switches/s | cpu busy % | cpu PSI stall ms |"
 echo "|---|---|---|---|---|---|---|"

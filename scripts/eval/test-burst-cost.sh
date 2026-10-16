@@ -51,6 +51,19 @@ BURST_PROC_ROOT="$TMP/nope" bash "$SCRIPT" --idle 0 -- touch "$TMP/ran" >/dev/nu
 eq "missing proc/stat: exit 3" "$RC" "3"
 eq "missing proc/stat: command not run" "$([ -e "$TMP/ran" ] && echo ran || echo clean)" "clean"
 
+# The command ran but the closing read fails: distinct exit 5, not the not-run exit 3.
+mkdir -p "$TMP/f"
+printf 'cpu  1 0 0 1 0 0 0 0 0 0\nctxt 1\nprocesses 1\n' > "$TMP/f/stat"
+BURST_PROC_ROOT="$TMP/f" bash "$SCRIPT" --idle 0 -- rm "$TMP/f/stat" >/dev/null 2>&1; RC=$?
+eq "final read fails after the command: exit 5" "$RC" "5"
+
+# Counters past six significant digits keep their exact delta (a 7-tick burst).
+mkdir -p "$TMP/b"
+printf 'cpu  123456789000 0 0 100 0 0 0 0 0 0\nctxt 1\nprocesses 1\n' > "$TMP/b/stat"
+printf 'cpu  123456789007 0 0 100 0 0 0 0 0 0\nctxt 1\nprocesses 1\n' > "$TMP/b.next"
+OUT=$(BURST_PROC_ROOT="$TMP/b" bash "$SCRIPT" --idle 0 -- cp "$TMP/b.next" "$TMP/b/stat" 2>&1)
+eq "large cpu counters: exact busy delta" "$(printf '%s\n' "$OUT" | grep '^| burst ' | awk -F'|' '{gsub(/ /, "", $7); print $7}')" "100.0"
+
 # guest/guest_nice (fields 10-11) are inside user/nice and must not enter the total:
 # 100 user + 100 idle of 200 total = 50 % busy; counting guest 100 would give 33.3.
 mkdir -p "$TMP/g/pressure"
