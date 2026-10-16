@@ -20,6 +20,7 @@ import { readQuota } from "./quota-sources";
 import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
+import { findDoc, readBoard, scrub, validName } from "./agui/board";
 import { legSync, readRoadmap } from "./roadmap";
 import { readVm, writeVm } from "./vm-config";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
@@ -152,7 +153,7 @@ export type ServerOpts = {
   port?: number; token?: string; hostname?: string; env?: Env; onIdle?: () => void;
   root?: string; now?: () => number; actionTimeoutMs?: number; reprobeBudgetMs?: number; feedWaitMs?: number; feedTimeoutMs?: number;
   backgroundFeed?: boolean; feedRefreshMs?: number;
-  legsScript?: string; legsTimeoutMs?: number; fleetScript?: string; aguiPollMs?: number; aguiIdleMs?: number; aguiMaxMs?: number; aguiDist?: string; aguiWeb?: string;
+  legsScript?: string; legsTimeoutMs?: number; fleetScript?: string; boardScript?: string; aguiPollMs?: number; aguiIdleMs?: number; aguiMaxMs?: number; aguiDist?: string; aguiWeb?: string;
 };
 type Preview = Resolved & { expires: number };
 type Probe = Record<string, { installed: string; health: string }>;
@@ -449,6 +450,18 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           script: opts.fleetScript ?? join(CHECKOUT, "scripts/config-ui/fleet.sh"), env, home: env.HOME || homedir(), now: now(),
           redact: (v) => String(redactDeep(v, { literals })),
         }));
+      }
+      // the console board (board.mjs --json, schema himmel.board/1) for the Fleet page, and a leg's doc for its brief link.
+      if (path === "/api/agui/board" || path === "/api/agui/brief") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        const q = new URL(req.url).searchParams, board = path.endsWith("board");
+        const name = q.get(board ? "console" : "leg");
+        if (!validName(name)) return new Response(board ? "bad console" : "bad leg", { status: 400 });
+        const doc = await findDoc(env.HANDOVER_DIR || "", name);
+        if (!doc) return new Response("no such doc", { status: 404 });
+        if (!board) return new Response(String(scrub(readFileSync(doc, "utf8").slice(0, 200_000), (v) => redactOut(v))), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+        const r = await readBoard({ script: opts.boardScript ?? join(CHECKOUT, "scripts/handover/console-kit/board.mjs"), doc, checkout: CHECKOUT, env: { ...env }, now: now() });
+        return "error" in r ? json({ error: "the board could not be built", detail: String(scrub(r.error)) }, 502) : json(scrub(r.body, (v) => redactOut(v)));
       }
       if (path.startsWith("/api/agui/")) {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });

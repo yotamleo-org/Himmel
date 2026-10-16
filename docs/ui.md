@@ -39,6 +39,21 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   text, tool-call cards, subagents, failures. The page needs a one-time build
   (`cd scripts/config-ui/agui-web && bun install && bun run build`); without it
   `himmelctl ui` prints the config page instead.
+- **Console board on the Fleet page.** Start `himmelctl ui` with `HANDOVER_DIR` set and open
+  `/agui/#t=<token>&console=<console doc name>`. The page then shows the supervisor
+  session's board (the `board.mjs --json` output, served read-only and redacted at the
+  token-gated `GET /api/agui/board?console=<name>`, cached 30 s). **Fleet** tab: verb-led
+  rows for what needs you, and on each running row its goal, six stage dots (dispatch,
+  live, PR, ready, go, merged) and a state chip. **Trends** tab (`&tab=trends`): four cards
+  (Fleet velocity, Fleet health, Tool health, Roadmap reality), each with a recommendation
+  line and a colour legend; a milestone is a Jira fixVersion, console cost sits beside
+  fleet cost, and Tool health carries the console-succession row. A card opens its table in
+  the side drawer. Clicking a stage dot opens that leg's drill-in in the drawer (run header,
+  stage strip, transcript, the needs-you finding with its exact `go.sh` command). Keys: left
+  and right move between stages, up and down between legs, Backspace goes back, Esc closes.
+  Deep link: `&k=s.<leg>.<stage>`. `GET /api/agui/brief?leg=<doc name>` returns that
+  leg's handover doc as redacted text. Both routes look a doc up by name under
+  `HANDOVER_DIR`, never by a path from the request.
 
 Full reference, endpoints and environment overrides:
 [scripts/config-ui/README.md](../scripts/config-ui/README.md).

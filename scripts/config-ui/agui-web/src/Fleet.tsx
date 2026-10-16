@@ -8,11 +8,13 @@
 // sections from fleet-model's fleetSections — Needs attention, Orphans, Running per live console, and
 // Finished (closed by default) — narrowed by the rail's filters. A card is one line: its name opens the session's run
 // page, its chevron expands it in place to the status (left) and lineage (right) columns.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 // @ts-expect-error: plain ES module shared with the console (no types).
 import { pageHref } from "../../public/nav.js";
 import { FLEET_URL } from "./stream";
 import { chainKey, cloudPhase, fleetSections, NO_FILTERS, rowHref, runHash, shortName, type Filters, type ProcessOrphan, type Row } from "./fleet-model";
+import { BoardContext, cardOf, DrawerView, Legend, StageDots, StateChip, Swatch, Trends, useBoard, useBoardCtx, useDrawerKeys, type BoardCtx, type Panel } from "./Board";
+import { joinBoard, openAt, parseView, viewHash, type Drawer, type Stage } from "./board-model";
 export { rowHref, orphanReason, visibleRows, consoleGroups, type Row } from "./fleet-model";
 type Node = { row: Row; kids: Node[] };
 
@@ -131,8 +133,29 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   const { counts } = s;
   const unavailable = fleet?.census === "unavailable";
   const known = !selected || all.some((r) => r.name === selected || r.console === selected || r.parent === selected);
+
+  // the console board: the named console, else the newest live one. The page works without it (its fetch may fail).
+  const boardConsole = selected ?? all.filter((r) => r.role === "console" && r.live !== false && r.state !== "wrapped").sort((a, b) => (b.runtime?.startedAt ?? 0) - (a.runtime?.startedAt ?? 0))[0]?.name ?? null;
+  const { board, error: boardError } = useBoard(token, boardConsole);
+  const joined = useMemo(() => (board ? joinBoard(all, board) : []), [all, board]);
+  const [tab, setTab] = useState(() => parseView(location.hash).tab);
+  const initial = parseView(location.hash).k;
+  const [drawer, setDrawer] = useState<Drawer | null>(initial ? openAt(null, initial.leg, initial.stage) : null);
+  const [panel, setPanel] = useState<Panel | null>(initial ? { kind: "leg" } : null);
+  // the fragment follows the view (replaceState: no history entry per key press, and no hashchange to re-route the page).
+  useEffect(() => {
+    const h = viewHash(token, boardConsole, tab, panel?.kind === "leg" && drawer ? { leg: drawer.leg, stage: drawer.stage } : null);
+    if (h !== location.hash) history.replaceState(null, "", h);
+  }, [token, boardConsole, tab, drawer, panel]);
+  const closeDrawer = () => { setDrawer(null); setPanel(null); };
+  const legOrder = joined.map((j) => j.leg.leg);
+  useDrawerKeys(drawer, panel, legOrder, setDrawer, closeDrawer);
+  const ctx: BoardCtx = useMemo(() => ({
+    board, cards: new Map(joined.flatMap((j) => (j.row ? [[j.row.name, j] as const] : []))),
+    open: (leg, stage = "live") => { setDrawer((d) => openAt(d, leg, stage as Stage)); setPanel({ kind: "leg" }); },
+  }), [board, joined]);
   return (
-    <>
+    <BoardContext.Provider value={ctx}>
       <header className="top">
         <span className="brand">himmel</span>
         <span className="run">{selected ?? "fleet"}</span>
@@ -156,8 +179,16 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {fleet?.census === "degraded" && <p className="quiet">Some sessions could not be read; the list may be incomplete.</p>}
         {!fleet && !error && <div className="fleet-skel" aria-hidden="true"><i /><i /><i /></div>}
         {selected && fleet && !known && <p className="quiet">Supervisor session not found: {selected}. <a href={`#t=${encodeURIComponent(token)}`}>The whole fleet</a></p>}
-        {s.attention.length > 0 && <Section id="attention" title="Needs attention" count={counts.attention} initial={true} className="fleet-attention">
-          <Attention items={s.attention} token={token} now={now} />
+        {boardConsole && <nav className="bd-tabs" aria-label="Fleet views">
+          {(["fleet", "trends"] as const).map((t) => <button key={t} type="button" aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>{t === "fleet" ? "Fleet" : "Trends"}</button>)}
+          {boardError && <span className="quiet" role="status">{`board: ${boardError}`}</span>}
+        </nav>}
+        {tab === "trends" && board && <Trends board={board} onCard={(card) => setPanel({ kind: "card", card })} />}
+        {tab === "trends" && !board && <p className="quiet">{boardError ? `The board could not be read: ${boardError}.` : "Loading the board…"}</p>}
+        {tab === "fleet" && board && <Legend board={board} groups={["verb", "stage", "state"]} />}
+        {tab === "fleet" && <>
+        {(s.attention.length > 0 || joined.some((j) => j.need)) && <Section id="attention" title="Needs attention" count={counts.attention + joined.filter((j) => j.need).length} initial={true} className="fleet-attention">
+          <Attention items={s.attention} needs={joined.filter((j) => j.need)} token={token} now={now} />
         </Section>}
         {fleet && (s.orphans.length > 0 || s.processOrphans.length > 0 || fleet.processOrphans === null) &&
           <Section id="orphans" title="Orphans" count={counts.orphaned} initial={true} className="fleet-orphans">
@@ -170,8 +201,10 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {s.finished.length > 0 && <Section id="finished" title="Finished" count={counts.finished} initial={false} force={filters.finished} className="fleet-closed">
           <Finished entries={s.finished} token={token} now={now} />
         </Section>}
+        </>}
       </main>
-    </>
+      {board && <DrawerView token={token} board={board} joined={joined} drawer={drawer} panel={panel} now={now} set={setDrawer} setPanel={setPanel} close={closeDrawer} />}
+    </BoardContext.Provider>
   );
 }
 
@@ -223,8 +256,15 @@ function NameLink({ row, token, className = "" }: { row: Row; token: string; cla
 }
 
 // One line per item, by severity.
-function Attention({ items, token, now }: { items: ReturnType<typeof fleetSections>["attention"]; token: string; now: number }) {
+function Attention({ items, needs, token, now }: { items: ReturnType<typeof fleetSections>["attention"]; needs: ReturnType<typeof joinBoard>; token: string; now: number }) {
+  const ctx = useBoardCtx();
   return <ul className="fleet-attn-list" aria-label="Needs attention">
+    {needs.map(({ leg, need }) => ctx.board && need && <li key={`need:${leg.leg}`} className="fleet-attn bd-need-row">
+      <Swatch board={ctx.board} group="verb" k={need.verb} />
+      {" · "}<button type="button" className="bd-link" onClick={() => ctx.open(leg.leg, leg.stage)}>{leg.leg}</button>
+      {` · ${need.action}`}
+      {need.since && <span className="fleet-age">{` · ${ago(now - Date.parse(need.since))}`}</span>}
+    </li>)}
     {items.map((a) => {
       const at = a.row.activity?.at;
       return <li key={a.row.name} className="fleet-attn">
@@ -349,6 +389,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
   const state = row.cloud ? cloudPhase(row, live) : row.marker && LOUD.has(row.marker) ? `${row.state} · ${row.marker}` : row.state;
   const cls = row.marker === "BLOCKED" || row.cloud?.phase === "blocked" ? "blocked" : CLS[row.state];
   const href = rowHref(token, row);
+  const bctx = useBoardCtx(), card = cardOf(bctx, row.name);
   return (
     <div className={`fleet-row ${cls}${open ? " open" : ""}`} id={rowId(row.name)} tabIndex={-1}>
       <div className="fleet-line">
@@ -360,6 +401,11 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
           {row.pr !== null && <span className="fleet-age">{`PR ${row.pr}`}</span>}
           {hops.length > 0 && <span className="fleet-hops-badge">{`${hops.length + 1} hops`}</span>}
         </span>
+        {card && bctx.board && <span className="bd-goalcell">
+          <button type="button" className="bd-link" onClick={() => bctx.open(card.leg.leg, card.leg.stage)} title="open the leg's stages">{card.leg.goal || card.leg.ticket}</button>
+          <StageDots leg={card.leg} board={bctx.board} onPick={(s) => bctx.open(card.leg.leg, s)} />
+          <StateChip board={bctx.board} state={card.leg.state} />
+        </span>}
         <span className="fleet-act">
           {row.cloud ? PHASE[row.cloud.phase] : row.activity ? `${row.activity.tool} · ${row.activity.summary}` : "no activity yet"}
         </span>
