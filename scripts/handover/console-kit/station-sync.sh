@@ -15,6 +15,10 @@
 #   scripts/lib/graphify-bin.sh     graphify      (the graphify pin)
 #   templates/luna-second-brain/    luna_template (only after the local-edit check)
 #
+# Not mapped: the hermes step and plugin pins outside marketplace/ have no single
+# path that identifies them, so a merge touching only those is caught by the
+# --versions check below (a behind row), not by a step run here.
+#
 # luna_template check: `upgrade.sh --dry-run` names each file it would withhold for
 # a local edit and prints the hunk. A hunk with any non-comment changed line, or a
 # withheld edit with no hunk to read (snapshot baseline), refuses the apply and
@@ -24,7 +28,8 @@
 # Output: `STEP <step> rc=<n>` per step, any LOCAL-DIFF lines, then
 # `STATION=OK` or `STATION=BEHIND:<component>,...`. The same value (`ok` or
 # `BEHIND:...`) is written to the state file tick.sh reads as station=; it
-# clears on the next sync. Exit 0 whatever the station state; 2 on usage.
+# clears on the next sync. While a run is in flight the state reads
+# `BEHIND:pending`, so a run that is killed never leaves a stale `ok`. Exit 0 whatever the station state; 2 on usage.
 #
 # Test seams (env): SS_UPDATE SS_UPGRADE SS_GH SS_PRIMARY SS_VAULT SS_QMD_CLONE SS_STATE.
 # Platform guard: Linux bash 3.2+.
@@ -57,6 +62,9 @@ if [ -n "${SS_UPDATE:-}" ]; then UPDATE=("$SS_UPDATE"); else UPDATE=(bash "$PRIM
 STATE="${SS_STATE:-$HOME/.himmel/state/station-sync.state}"
 TEMPLATE="$PRIMARY/templates/luna-second-brain"
 if [ -n "${SS_UPGRADE:-}" ]; then UPGRADE=("$SS_UPGRADE"); else UPGRADE=(bash "$TEMPLATE/scripts/upgrade.sh"); fi
+
+# Pending until the run ends: a sync killed mid-way must not leave the previous `ok`.
+mkdir -p "$(dirname "$STATE")" 2>/dev/null && echo "BEHIND:pending" > "$STATE" 2>/dev/null
 
 if [ -n "$PR" ]; then
     GH="${SS_GH:-gh}"

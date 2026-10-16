@@ -189,4 +189,21 @@ chmod +x "$W/update-failstep"
 SS_UPDATE="$W/update-failstep" run "$W/ver-current" marketplace/plugins/foo/skill.md
 contains "15 failed step is not OK" "$out" "STATION=BEHIND:marketplace-failed"
 
+# a sync killed mid-run must not leave the previous `ok` standing: the state reads
+# BEHIND:pending while the steps run and is overwritten at the end
+cat > "$W/update-snap" <<'EOF2'
+#!/usr/bin/env bash
+echo "state-during $1: $(cat "$SS_STATE" 2>/dev/null)" >> "$SS_CALLS"
+if [ "$1" = "--versions" ]; then cat "$SS_T_VERSIONS"; exit 0; fi
+exit 0
+EOF2
+chmod +x "$W/update-snap"
+: > "$SS_CALLS"; echo ok > "$SS_STATE"; export SS_T_VERSIONS="$W/ver-current"
+printf '%s\n' marketplace/plugins/foo/skill.md > "$W/files"
+SS_UPDATE="$W/update-snap" bash "$SCRIPT" --files "$W/files" >/dev/null 2>&1
+snap="$(cat "$SS_CALLS")"
+contains "16 pending while the step runs" "$snap" "state-during --only: BEHIND:pending"
+contains "16 pending while versions run" "$snap" "state-during --versions: BEHIND:pending"
+check "16 final state replaces pending" "$(cat "$SS_STATE")" "ok"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

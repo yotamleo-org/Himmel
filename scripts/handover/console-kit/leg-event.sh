@@ -11,15 +11,16 @@
 #                        message's N<k> label; <n> is the PR in a `MERGED #<n>` line.
 #   anything else     -> ESCALATE (READY and FINDING need a judge or the console)
 #
-#   after a MERGED with a PR, station-sync.sh --pr <n> brings the station back to
-#   main and its verdict is appended: ` station=OK|BEHIND:<components>|failed:rc<n>`.
+#   after a MERGED with a PR, station-sync.sh --pr <n> runs detached to bring the
+#   station back to main: ` station=pending log=<file>` is appended at once, its
+#   output goes to the log and its verdict to the state file tick.sh shows.
 #
-# Output: one line. `HANDLED wrap-merged <label>[ station=<verdict>]` (rc 0) or
+# Output: one line. `HANDLED wrap-merged <label>[ station=pending log=<file>]` (rc 0) or
 # `ESCALATE <reason>` (rc 10), the reason being no-label, not-in-manifest,
 # marker-<X>, or wrap-merged-failed rc=<n> with wrap-merged's stderr after it.
 # Usage errors exit 2 before anything runs.
 #
-# Test seams (env): LE_WRAP LE_LIST LE_STATION.
+# Test seams (env): LE_WRAP LE_LIST LE_STATION LE_STATION_LOG.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
@@ -80,19 +81,15 @@ if [ "$rc" -ne 0 ]; then
 fi
 rm -f "$errf"
 # A merged PR leaves the station behind main until its components are updated:
-# station-sync.sh runs the matching himmel-update steps and checks --versions. Its
-# verdict rides the line; a failure there never fails the handling (the wrap is done).
+# station-sync.sh runs the matching himmel-update steps and checks --versions. Those
+# fetch and rebuild without a bound, so it runs detached: the line returns at once
+# with station=pending, the sync's output (STEP, LOCAL-DIFF, STATION=) goes to the
+# log, and its verdict lands in the state file tick.sh reads as station=.
 station=""
 if [ -n "$pr" ]; then
-    sout="$("${STATION[@]}" --pr "$pr" 2>/dev/null)"; src=$?
-    sval="$(printf '%s\n' "$sout" | sed -n 's/^STATION=//p' | tail -n 1)"
-    if [ "$src" -ne 0 ] || [ -z "$sval" ]; then sval="failed:rc$src"; fi
-    station=" station=$sval"
-    # the file and hunk a refused update names go to stderr; the line carries the count
-    ldiff="$(printf '%s\n' "$sout" | grep '^LOCAL-DIFF ')" || ldiff=""
-    if [ -n "$ldiff" ]; then
-        printf '%s\n' "$ldiff" >&2
-        station="$station local-diff=$(printf '%s\n' "$ldiff" | wc -l | tr -d ' ')"
-    fi
+    slog="${LE_STATION_LOG:-$HOME/.himmel/state/station-sync.log}"
+    mkdir -p "$(dirname "$slog")" 2>/dev/null || true
+    setsid "${STATION[@]}" --pr "$pr" >"$slog" 2>&1 </dev/null &
+    station=" station=pending log=$slog"
 fi
 echo "HANDLED wrap-merged $label$station"

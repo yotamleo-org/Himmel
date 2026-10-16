@@ -102,17 +102,17 @@ exit "${LE_STATION_RC:-0}"
 EOF
 chmod +x "$W/station"
 
+# The sync runs detached (its --versions fetches and rebuilds are unbounded): the
+# line comes back at once with station=pending, the sync's output lands in the log
+# and its verdict in the state file tick.sh reads.
+export LE_STATION_LOG="$W/station.log"
+await() { local i=0; while [ "$i" -lt 50 ]; do grep -qF -- "$2" "$1" 2>/dev/null && return 0; sleep 0.1; i=$((i+1)); done; return 1; }
+
+: > "$LE_STATION_LOG"
 run "MERGED #2566 → abcdef01 (N2088)"
-contains "9 station sync gets the PR" "$calls" "station --pr 2566"
-contains "9 station verdict on the line" "$out" "HANDLED wrap-merged N2088 station=OK"
-
-LE_STATION_VAL="BEHIND:luna_template,codex" run "MERGED #2566 N2088"
-contains "9 behind surfaced" "$out" "station=BEHIND:luna_template,codex"
-check "9 behind rc" "$rc" 0
-
-LE_STATION_RC=1 run "MERGED #2566 N2088"
-check "9 sync failure never fails the handling" "$rc" 0
-contains "9 sync failure named" "$out" "station=failed:rc1"
+await "$LE_CALLS" "station --pr 2566"; check "9 station sync gets the PR" "$?" 0
+contains "9 line says pending and names the log" "$out" "HANDLED wrap-merged N2088 station=pending log=$LE_STATION_LOG"
+await "$LE_STATION_LOG" "STATION=OK"; check "9 sync output lands in the log" "$?" 0
 
 cat > "$W/station-ld" <<'EOF'
 #!/usr/bin/env bash
@@ -120,10 +120,21 @@ echo "LOCAL-DIFF luna_template scripts/foo.sh: echo local-patch"
 echo "STATION=BEHIND:luna_template"
 EOF
 chmod +x "$W/station-ld"
+: > "$LE_STATION_LOG"
 LE_STATION="$W/station-ld" run "MERGED #2566 N2088"
-contains "9 local-diff counted on the line" "$out" "station=BEHIND:luna_template local-diff=1"
-ld_err="$(printf 'MERGED #2566 N2088\n' | LE_STATION="$W/station-ld" bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" - 2>&1 >/dev/null)"
-contains "9 local-diff hunk reaches stderr" "$ld_err" "LOCAL-DIFF luna_template scripts/foo.sh: echo local-patch"
+await "$LE_STATION_LOG" "LOCAL-DIFF luna_template scripts/foo.sh: echo local-patch"; check "9 local-diff hunk reaches the log" "$?" 0
+
+cat > "$W/station-hang" <<'EOF'
+#!/usr/bin/env bash
+sleep 6
+EOF
+chmod +x "$W/station-hang"
+t0=$SECONDS
+LE_STATION="$W/station-hang" run "MERGED #2566 N2088"
+check "9 a hanging sync does not delay the handling" "$(( SECONDS - t0 < 4 ))" 1
+check "9 hanging sync handled rc" "$rc" 0
+contains "9 hanging sync still prints HANDLED" "$out" "HANDLED wrap-merged N2088 station=pending"
+pkill -f "$W/station-hang" 2>/dev/null || true
 
 run "WRAPPED N2078"
 lacks "9 WRAPPED runs no station sync" "$calls" "station"
