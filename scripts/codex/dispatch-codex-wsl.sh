@@ -247,9 +247,7 @@ fi
 # The context tier is always pinned (unstated = 272k, the cheapest); the env
 # assignment rides the in-distro command because wsl.exe does not carry ours.
 CTX_ENV="CODEX_CONTEXT_WINDOW=$CAF_CONTEXT_WINDOW"
-if [ "$CAF_CONTEXT_TIER_SET" -eq 1 ]; then
-    pin_args="$pin_args -c model_context_window=$CAF_CONTEXT_WINDOW"
-fi
+pin_args="$pin_args -c model_context_window=$CAF_CONTEXT_WINDOW"
 
 # --- Ledger start row (spec B2.7; fixed schema, task_name is the audit). ---
 RUN_ID="codex-wsl-$(date +%s)-$$"

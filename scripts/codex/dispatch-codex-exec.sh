@@ -331,7 +331,6 @@ have_sandbox="$CAF_HAVE_SANDBOX"
 reasoning_effort="$CAF_REASONING_EFFORT"
 # Invariant 10: the context tier is ALWAYS pinned (unstated = 272k, the cheapest),
 # so an ambient CODEX_CONTEXT_WINDOW can never buy a pricier tier.
-context_tier_set="$CAF_CONTEXT_TIER_SET"
 context_window="$CAF_CONTEXT_WINDOW"
 export CODEX_CONTEXT_WINDOW="$context_window"
 NEW_ARGS=()
@@ -902,11 +901,10 @@ if [ -n "$reasoning_effort" ]; then
     # shellcheck disable=SC2089  # the embedded quotes are intentional TOML string syntax for the -c override; see SC2090 note below where pin_args is expanded
     pin_args="$pin_args -c model_reasoning_effort=\"$reasoning_effort\""
 fi
-# Invariant 10: a stated --context-tier also reaches codex itself as the trusted
-# model_context_window override; unstated adds no argv (the env pin above stands).
-if [ "$context_tier_set" -eq 1 ]; then
-    pin_args="$pin_args -c model_context_window=$context_window"
-fi
+# Invariant 10: the tier also reaches codex itself as the trusted
+# model_context_window override, unstated included (272k): native codex ignores
+# CODEX_CONTEXT_WINDOW and would otherwise use its configured window.
+pin_args="$pin_args -c model_context_window=$context_window"
 # the argv codex is finally launched with never carries a refused
 # trust/sandbox bypass flag, whatever built it (the caller args were already
 # filtered; this covers the pin args and any later change to either).

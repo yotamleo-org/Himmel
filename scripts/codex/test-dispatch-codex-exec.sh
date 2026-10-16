@@ -149,7 +149,7 @@ if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite --backgrou
 run_dispatch --worktree "$WT" do-the-task
 assert_rc 0 "default dispatch exits 0" "default rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  "exec --model $CRITIC_MODEL --sandbox workspace-write do-the-task") pass "$CRITIC_MODEL pin + sandbox pin injected" ;;
+  "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_context_window=272000 do-the-task") pass "$CRITIC_MODEL pin + sandbox pin injected" ;;
   *) fail "codex args: $(cat "$TMP/codex.args")" ;;
 esac
 case "$(tr '\n' ' ' < "$LOG")" in
@@ -173,7 +173,7 @@ esac
 run_dispatch --worktree "$WT" --model qwen-plus do-it
 assert_rc 0 "caller model dispatch exits 0" "caller-model rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  "exec --sandbox workspace-write --model qwen-plus do-it") pass "caller model preserved, sandbox still pinned" ;;
+  "exec --sandbox workspace-write -c model_context_window=272000 --model qwen-plus do-it") pass "caller model preserved, sandbox still pinned" ;;
   *) fail "caller-model codex args: $(cat "$TMP/codex.args")" ;;
 esac
 case "$OUT" in *WARN*) fail "plain caller model unexpectedly warns: $OUT";; *) pass "plain caller model does not warn";; esac
@@ -194,12 +194,12 @@ export CODEX_CRITICS_FILE="$TMP/critics.json"
 run_dispatch --worktree "$WT" do-it
 assert_rc 0 "alternate critic registry accepted" "critic drift rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  'exec --model fixture-next --sandbox workspace-write do-it') pass "dispatch default follows changed critic model" ;;
+  'exec --model fixture-next --sandbox workspace-write -c model_context_window=272000 do-it') pass "dispatch default follows changed critic model" ;;
   *) fail "critic drift argv: $(cat "$TMP/codex.args")" ;;
 esac
 run_dispatch --worktree "$WT" --model explicit-model do-it
 case "$(cat "$TMP/codex.args")" in
-  'exec --sandbox workspace-write --model explicit-model do-it') pass "explicit model wins over critic registry" ;;
+  'exec --sandbox workspace-write -c model_context_window=272000 --model explicit-model do-it') pass "explicit model wins over critic registry" ;;
   *) fail "override argv: $(cat "$TMP/codex.args")" ;;
 esac
 for invalid_registry in 'not json' '{"panel":[]}' '{"panel":[{"slug":"codex","model":""}]}' \
@@ -217,7 +217,7 @@ export CODEX_CRITICS_FILE="$TMP/missing-critics.json"
 run_dispatch --worktree "$WT" do-it
 assert_rc 0 "unreadable registry uses fallback" "missing registry rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  'exec --model gpt-6.1-sol --sandbox workspace-write do-it') pass "unreadable registry uses named fallback model" ;;
+  'exec --model gpt-6.1-sol --sandbox workspace-write -c model_context_window=272000 do-it') pass "unreadable registry uses named fallback model" ;;
   *) fail "fallback argv: $(cat "$TMP/codex.args")" ;;
 esac
 unset CODEX_CRITICS_FILE
@@ -248,7 +248,7 @@ done
 run_dispatch --worktree "$WT" --sandbox workspace-write do-it
 assert_rc 0 "--sandbox workspace-write allowed" "sandbox-ok rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  "exec --model $CRITIC_MODEL --sandbox workspace-write do-it") pass "workspace-write passed through with pin" ;;
+  "exec --model $CRITIC_MODEL -c model_context_window=272000 --sandbox workspace-write do-it") pass "workspace-write passed through with pin" ;;
   *) fail "sandbox-ok codex args: $(cat "$TMP/codex.args")" ;;
 esac
 # attached short forms of the ALLOWED values still register (no double pin)
@@ -256,14 +256,14 @@ esac
 run_dispatch --worktree "$WT" -sworkspace-write do-it
 assert_rc 0 "-sworkspace-write (attached) allowed" "s-attach rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  "exec --model $CRITIC_MODEL -sworkspace-write do-it") pass "-s attached registers have_sandbox (no injected --sandbox)" ;;
+  "exec --model $CRITIC_MODEL -c model_context_window=272000 -sworkspace-write do-it") pass "-s attached registers have_sandbox (no injected --sandbox)" ;;
   *) fail "s-attach codex args: $(cat "$TMP/codex.args")" ;;
 esac
 : > "$LOG"
 run_dispatch --worktree "$WT" -mqwen-plus do-it
 assert_rc 0 "-mqwen-plus (attached) allowed" "m-attach rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  "exec --sandbox workspace-write -mqwen-plus do-it") pass "-m attached registers have_model (no injected pin)" ;;
+  "exec --sandbox workspace-write -c model_context_window=272000 -mqwen-plus do-it") pass "-m attached registers have_model (no injected pin)" ;;
   *) fail "m-attach codex args: $(cat "$TMP/codex.args")" ;;
 esac
 
@@ -279,14 +279,14 @@ if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite preflight 
 run_dispatch --worktree "$WT" --model=qwen-plus do-it
 assert_rc 0 "--model= equals form exits 0" "model-eq rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  "exec --sandbox workspace-write --model=qwen-plus do-it") pass "--model= form preserved, sandbox still pinned" ;;
+  "exec --sandbox workspace-write -c model_context_window=272000 --model=qwen-plus do-it") pass "--model= form preserved, sandbox still pinned" ;;
   *) fail "model-eq codex args: $(cat "$TMP/codex.args")" ;;
 esac
 : > "$LOG"
 run_dispatch --worktree "$WT" -m qwen-plus do-it
 assert_rc 0 "-m short form exits 0" "m-short rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  "exec --sandbox workspace-write -m qwen-plus do-it") pass "-m form preserved, sandbox still pinned" ;;
+  "exec --sandbox workspace-write -c model_context_window=272000 -m qwen-plus do-it") pass "-m form preserved, sandbox still pinned" ;;
   *) fail "m-short codex args: $(cat "$TMP/codex.args")" ;;
 esac
 
@@ -485,7 +485,7 @@ esac
 run_dispatch --worktree "$WT" --reasoning-effort high do-it
 assert_rc 0 "--reasoning-effort two-word form exits 0" "reff-two rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_reasoning_effort=\"high\" do-it") pass "--reasoning-effort translated to -c override, stripped from passthrough" ;;
+  "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_reasoning_effort=\"high\" -c model_context_window=272000 do-it") pass "--reasoning-effort translated to -c override, stripped from passthrough" ;;
   *) fail "reff-two codex args: $(cat "$TMP/codex.args")" ;;
 esac
 
@@ -494,7 +494,7 @@ esac
 run_dispatch --worktree "$WT" --reasoning-effort=xhigh do-it
 assert_rc 0 "--reasoning-effort= equals form exits 0" "reff-eq rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_reasoning_effort=\"xhigh\" do-it") pass "--reasoning-effort= translated to -c override" ;;
+  "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_reasoning_effort=\"xhigh\" -c model_context_window=272000 do-it") pass "--reasoning-effort= translated to -c override" ;;
   *) fail "reff-eq codex args: $(cat "$TMP/codex.args")" ;;
 esac
 
@@ -522,7 +522,7 @@ if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite --reasonin
 : > "$LOG"
 run_dispatch --worktree "$WT" do-it
 case "$(cat "$TMP/codex.args")" in
-  "exec --model $CRITIC_MODEL --sandbox workspace-write do-it") pass "no --reasoning-effort -> no -c override injected" ;;
+  "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_context_window=272000 do-it") pass "no --reasoning-effort -> no -c override injected" ;;
   *) fail "no-reff codex args: $(cat "$TMP/codex.args")" ;;
 esac
 
@@ -540,7 +540,7 @@ if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite raw -c alo
 run_dispatch --worktree "$WT" --reasoning-effort medium
 assert_rc 0 "--reasoning-effort as sole arg exits 0 (empty positional rebuild)" "reff-only rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_reasoning_effort=\"medium\"") pass "empty-args rebuild after stripping the only two tokens" ;;
+  "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_reasoning_effort=\"medium\" -c model_context_window=272000") pass "empty-args rebuild after stripping the only two tokens" ;;
   *) fail "reff-only codex args: $(cat "$TMP/codex.args")" ;;
 esac
 
@@ -560,7 +560,7 @@ CODEX_CONTEXT_WINDOW=900000 run_dispatch --worktree "$WT" do-it
 assert_rc 0 "ambient CODEX_CONTEXT_WINDOW run exits 0" "ctx-ambient rc=$RC out=$OUT"
 if [ "$(cat "$TMP/codex.ctx")" = "272000" ]; then pass "unstated tier pins 272000 over an ambient 900000"; else fail "ctx-ambient env: $(cat "$TMP/codex.ctx")"; fi
 case "$(cat "$TMP/codex.args")" in
-  "exec --model $CRITIC_MODEL --sandbox workspace-write do-it") pass "unstated tier adds no -c override" ;;
+  "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_context_window=272000 do-it") pass "unstated tier still pins the 272000 -c override" ;;
   *) fail "ctx-ambient codex args: $(cat "$TMP/codex.args")" ;;
 esac
 for pair in 272k:272000 353k:353000 900k:900000; do
@@ -812,7 +812,7 @@ else
   fail "explicit stdin brief lost or changed"
 fi
 case "$(cat "$TMP/codex.args")" in
-  "exec --model $CRITIC_MODEL --sandbox workspace-write do-it") pass "wrapper strips --stdin-brief from codex argv" ;;
+  "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_context_window=272000 do-it") pass "wrapper strips --stdin-brief from codex argv" ;;
   *) fail "stdin-brief codex args: $(cat "$TMP/codex.args")" ;;
 esac
 run_stdin_dispatch "$TMP/brief.txt"

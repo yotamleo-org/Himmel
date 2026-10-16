@@ -14,8 +14,7 @@
 #   codex_filter_passthrough_args "$@"
 #     rc=0: CAF_NEW_ARGS (array), CAF_HAVE_MODEL, CAF_HAVE_SANDBOX,
 #           CAF_REASONING_EFFORT, CAF_CONTEXT_TIER (default 272k),
-#           CAF_CONTEXT_WINDOW (its token count) and CAF_CONTEXT_TIER_SET
-#           (1 when the caller stated --context-tier) are set.
+#           and CAF_CONTEXT_WINDOW (its token count) are set.
 #     rc=1: a refusal was printed to stderr; caller exits 2.
 #
 # Bash 3.2 safe.
@@ -43,7 +42,6 @@ caf_set_context_tier() {  # caf_set_context_tier <self> <value>
     fi
     CAF_CONTEXT_TIER="$2"
     CAF_CONTEXT_WINDOW="$w"
-    CAF_CONTEXT_TIER_SET=1
 }
 
 codex_filter_passthrough_args() {
@@ -57,7 +55,6 @@ codex_filter_passthrough_args() {
     CAF_REASONING_EFFORT=""
     CAF_CONTEXT_TIER="272k"
     CAF_CONTEXT_WINDOW="$(caf_context_window 272k)"
-    CAF_CONTEXT_TIER_SET=0
     CAF_NEW_ARGS=()
 
     local a prev="" rev_val

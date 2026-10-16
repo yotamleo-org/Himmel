@@ -19,7 +19,7 @@ run_filter() {  # run_filter <args...> — runs in a subshell, prints RC + globa
     . "$LIB"
     if codex_filter_passthrough_args "$@" 2>"$TMP/err"; then
       echo "rc=0"
-      echo "model=$CAF_HAVE_MODEL sandbox=$CAF_HAVE_SANDBOX effort=$CAF_REASONING_EFFORT tier=$CAF_CONTEXT_TIER window=$CAF_CONTEXT_WINDOW explicit=$CAF_CONTEXT_TIER_SET"
+      echo "model=$CAF_HAVE_MODEL sandbox=$CAF_HAVE_SANDBOX effort=$CAF_REASONING_EFFORT tier=$CAF_CONTEXT_TIER window=$CAF_CONTEXT_WINDOW"
       if [ "${#CAF_NEW_ARGS[@]}" -gt 0 ]; then printf 'arg:%s\n' "${CAF_NEW_ARGS[@]}"; fi
     else
       echo "rc=1"
@@ -58,12 +58,12 @@ case "$OUT" in *"model=1"*) pass "model detected";; *) fail "model not detected:
 
 echo "test: --context-tier validated + stripped, unstated = 272k (HIMMEL-1907)"
 OUT="$(run_filter hi)"
-case "$OUT" in *"tier=272k window=272000 explicit=0"*) pass "unstated tier = 272k/272000";; *) fail "default tier: $OUT";; esac
+case "$OUT" in *"tier=272k window=272000"*) pass "unstated tier = 272k/272000";; *) fail "default tier: $OUT";; esac
 OUT="$(run_filter --context-tier 353k hi)"
-case "$OUT" in *"tier=353k window=353000 explicit=1"*) pass "two-word tier";; *) fail "two-word tier: $OUT";; esac
+case "$OUT" in *"tier=353k window=353000"*) pass "two-word tier";; *) fail "two-word tier: $OUT";; esac
 case "$OUT" in *"arg:--context-tier"*|*"arg:353k"*) fail "tier flag leaked into args";; *) pass "tier flag stripped";; esac
 OUT="$(run_filter --context-tier=900k hi)"
-case "$OUT" in *"tier=900k window=900000 explicit=1"*) pass "equals-form tier";; *) fail "equals tier: $OUT";; esac
+case "$OUT" in *"tier=900k window=900000"*) pass "equals-form tier";; *) fail "equals tier: $OUT";; esac
 OUT="$(run_filter --context-tier 1m hi)"
 case "$OUT" in *"rc=1"*) pass "bad tier refused";; *) fail "bad tier accepted";; esac
 grep -q -- '--context-tier must be one of 272k|353k|900k (got "1m")' "$TMP/err" || fail "bad-tier message missing"
