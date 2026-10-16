@@ -73,11 +73,11 @@ fi
 
 Detection variable list may grow; refine during calibration cycle 1. Smoke-test in `test-harvest-clips-headless-refuse.sh`.
 
-**Env-var preflight.** Post-LUNA-26 pivot, only github repo-root and `/tree/` URLs trigger an external skill dispatch (`obsidian-triage:luna-ingest`), which uses `gh api` and requires `gh auth status` to be ok. All other types use the **clip-body path** (described in Phase 4) and need no env vars.
+**Env-var preflight.** Post-LUNA-26 pivot, only github URLs other than `/blob/` file URLs trigger an external skill dispatch (`obsidian-triage:luna-ingest`), which uses `gh api` and requires `gh auth status` to be ok. All other types use the **clip-body path** (described in Phase 4) and need no env vars.
 
 | `type:` + URL pattern | Required env var | Skill that needs it |
 |-----------------------|------------------|---------------------|
-| `research` / `article` with a repo-root or `/tree/` `github.com/*` URL | none | `obsidian-triage:luna-ingest` (needs `gh auth status` ok) |
+| `research` / `article` with any `github.com/*` URL except a `/blob/` file (repo-root, `/tree/`, issues, pulls) | none | `obsidian-triage:luna-ingest` (needs `gh auth status` ok) |
 | thin article/web clip **with `--firecrawl-thin`** | `FIRECRAWL_API_KEY` (opt. `FIRECRAWL_BASE_URL`) | `harvest-clip-body-batch.py` firecrawl escalation |
 | every other type, including a `/blob/<branch>/<path>` github file clip | none | clip-body path (no dispatch) |
 

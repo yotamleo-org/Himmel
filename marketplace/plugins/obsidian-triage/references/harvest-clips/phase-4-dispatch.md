@@ -6,7 +6,7 @@ Pick ONE of two paths per clip:
 
 | `type:` + URL pattern | Path | Skill |
 |-----------------------|------|-------|
-| `research` / `article` with a repo-root or `/tree/<branch>` `github.com/*` URL | **github-ingest** | `obsidian-triage:luna-ingest` |
+| `research` / `article` with any `github.com/*` URL except a `/blob/` file (repo-root, `/tree/<branch>`, issues, pulls) | **github-ingest** | `obsidian-triage:luna-ingest` |
 | `research` / `article` with a `github.com/<owner>/<repo>/blob/<branch>/<path>` URL (one file, HIMMEL-1735) | **clip-body** | none — luna-ingest keeps only owner/repo and would re-ingest the README, so the clip's own captured body is the harvest |
 | every other case (tweet, youtube, reddit, newsletter, non-github research/article, unrecognised `type:`) | **clip-body** | none — clip body IS the harvest |
 
