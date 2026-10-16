@@ -43,7 +43,7 @@ else
 fi
 
 has_budget=0
-for a in "$@"; do [ "$a" = "--budget" ] && has_budget=1; done
+for a in "$@"; do case "$a" in --budget|--budget=*) has_budget=1 ;; esac; done
 [ "$has_budget" = 1 ] || set -- "$@" --budget 8000
 
 ans="$(GRAPHIFY_OUT="$out" graphify "$@")"; rc=$?
@@ -56,6 +56,7 @@ if [ -n "$need" ]; then
   for a in "$@"; do
     if [ "$skip" = 1 ]; then skip=0; continue; fi
     [ "$a" = "--budget" ] && { skip=1; continue; }
+    case "$a" in --budget=*) continue ;; esac
     q="$(printf '%s' "$a" | sed "s/'/'\\\\''/g")"
     rerun="$rerun '$q'"
   done

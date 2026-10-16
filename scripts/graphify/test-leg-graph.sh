@@ -62,6 +62,10 @@ out="$(run query "q" --budget 123)"
 if grep -q -- '--budget 123$' <<<"$out" && ! grep -q -- '--budget [0-9]* .*--budget' <<<"$out"; then pass "T6b explicit --budget is respected"
 else fail "T6b out='$out'"; fi
 
+out="$(run query "q" --budget=123)"
+if grep -q -- '--budget=123$' <<<"$out" && ! grep -q -- '--budget 8000' <<<"$out"; then pass "T6c --budget=N is respected"
+else fail "T6c out='$out'"; fi
+
 # T7: a truncated answer gets an explicit re-run line naming the wrapper.
 printf '#!/bin/sh\necho "[!] TRUNCATED: showing 60 of 223 nodes (~2000-token budget). raise the token budget to 7523 to get all 223 (CLI: --budget 7523)"\necho "NODE a"\n' > "$T/bin/graphify"
 out="$(run query "two words")"; rc=$?
