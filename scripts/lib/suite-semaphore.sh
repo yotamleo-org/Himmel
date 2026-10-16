@@ -11,7 +11,7 @@
 # any two processes with different TMPDIR values (e.g. two login sessions) --
 # each gets its own N-slot budget instead of sharing one. Upgrade path tracked
 # as the round-3 TMPDIR sharding axis.
-# N = HIMMEL_SUITE_SLOTS (default 3). A slot is taken by an atomic `mkdir` and
+# N = HIMMEL_SUITE_SLOTS (default 6). A slot is taken by an atomic `mkdir` and
 # carries an `owner` file: pid, start-time identity (proc-tree.sh), label,
 # started epoch. Liveness is pid + identity, not a TTL alone -- unlike
 # shared-branch-lock.sh, which deliberately does no pid probing. A slot is
@@ -250,7 +250,8 @@ _suite_sem_busy_report() {
         done
         printf 'Retry, waiting up to 60s for a slot:\n'
         printf '  SUITE_LOCK_WAIT=60 %s\n' "$hint"
-        printf 'The budget is HIMMEL_SUITE_SLOTS (default 3), set in the LAUNCHING shell.\n'
+        printf 'To queue instead of retrying, run once with SUITE_LOCK_WAIT=<secs> (e.g. 1800); do not loop on rc 75.\n'
+        printf 'The budget is HIMMEL_SUITE_SLOTS (default 6), set in the LAUNCHING shell.\n'
     } >&2
 }
 
@@ -260,7 +261,7 @@ suite_sem_acquire() {
         return 0
     fi
     dir=$(suite_sem_dir)
-    n=$(_suite_sem_uint "${HIMMEL_SUITE_SLOTS:-}" 3)
+    n=$(_suite_sem_uint "${HIMMEL_SUITE_SLOTS:-}" 6)
     wait=${SUITE_LOCK_WAIT:-0}
     case "$wait" in ''|*[!0-9]*) wait=0 ;; esac
     wait=$((10#$wait))
