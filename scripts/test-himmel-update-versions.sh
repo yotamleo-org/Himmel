@@ -402,6 +402,7 @@ assert_eq "codex current: rc 0" "0" "$rc"
 assert_contains "codex current: row current" "^ *codex  *current  *0\\.163\\.0" "$out"
 rc=0; out=$(CODEX_BIN="$TMP/no-such-codex" LUNA_VAULT_PATH="$TMP/vault" run_update "$fh8" "$TMP/claude-versions" --versions) || rc=$?
 assert_eq "codex absent: rc 0" "0" "$rc"
+assert_contains "codex absent: row reports not on PATH" "^ *codex  *n/a .*not on PATH" "$out"
 assert_not_contains "codex absent: nothing behind" "  behind " "$out"
 
 echo ""
