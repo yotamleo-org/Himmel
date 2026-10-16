@@ -16,9 +16,16 @@
 #   known-findings.sh --list                    markdown table (human index)
 #   known-findings.sh --ladder                  class count per rung (design|gate|advisory|prompt|human),
 #                                               then the promotion queue: prompt/advisory classes with
-#                                               agreed ledger recurrences, most first
-#   known-findings.sh --refresh [--learnings <export.csv>]
-# Env: KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json),
+#                                               agreed ledger recurrences, most first, then PROMOTION
+#                                               PROPOSALS: PROPOSE lines for classes whose agreed
+#                                               recurrences since the rung was set reach N across M branches
+#   known-findings.sh --refresh [--learnings <export.csv>]   (also prints the promotion proposals)
+#   Proposal thresholds (--ladder, --refresh): --min-recurrences N (default 3), --min-branches M (default 2).
+#   A class counts agreed findings dated at/after its optional `rung_since` (YYYY-MM-DD; absent = the whole
+#   ledger). The target is one rung up (human->prompt, prompt->advisory, advisory->gate) with a hosting
+#   suggestion. Proposals are printed only; no rung, gate, hook or setting is ever changed.
+# Env: KNOWN_FINDINGS_PROMOTE_N / KNOWN_FINDINGS_PROMOTE_M (defaults for the flags above),
+#      KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json),
 #      CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
 # Exit: 0 (advisory — a match is NOT a failure), 2 usage / missing input.
 set -uo pipefail
@@ -29,6 +36,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KF="${KNOWN_FINDINGS_FILE:-$SCRIPT_DIR/known-findings.json}"
 MODE="" RANGE="" JSON=0 LEARNINGS=""
+PROMO_N="${KNOWN_FINDINGS_PROMOTE_N:-3}" PROMO_M="${KNOWN_FINDINGS_PROMOTE_M:-2}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --diff)      MODE="diff"
@@ -42,12 +50,16 @@ while [ $# -gt 0 ]; do
     --ladder)    MODE=ladder; shift;;
     --refresh)   MODE=refresh; shift;;
     --learnings) [ $# -ge 2 ] || { echo "known-findings.sh: --learnings requires a csv path" >&2; exit 2; }; LEARNINGS="$2"; shift 2;;
+    --min-recurrences) [ $# -ge 2 ] || { echo "known-findings.sh: --min-recurrences requires a number" >&2; exit 2; }; PROMO_N="$2"; shift 2;;
+    --min-branches)    [ $# -ge 2 ] || { echo "known-findings.sh: --min-branches requires a number" >&2; exit 2; }; PROMO_M="$2"; shift 2;;
     --json)      JSON=1; shift;;
-    -h|--help)   sed -n '2,23p' "$0"; exit 0;;
+    -h|--help)   sed -n '2,30p' "$0"; exit 0;;
     *) echo "known-findings.sh: unknown option $1" >&2; exit 2;;
   esac
 done
 [ -n "$MODE" ] || { echo "known-findings.sh: one of --diff <range> | --prompt | --list | --ladder | --refresh is required" >&2; exit 2; }
+case "$PROMO_N" in ''|*[!0-9]*) echo "known-findings.sh: promotion N must be a non-negative integer (got '$PROMO_N')" >&2; exit 2;; esac
+case "$PROMO_M" in ''|*[!0-9]*) echo "known-findings.sh: promotion M must be a non-negative integer (got '$PROMO_M')" >&2; exit 2;; esac
 [ -f "$KF" ] || { echo "known-findings.sh: not found: $KF" >&2; exit 2; }
 command -v node >/dev/null 2>&1 || { echo "known-findings.sh: node is required" >&2; exit 2; }
 
@@ -72,7 +84,7 @@ if [ "$MODE" = refresh ] && [ -n "$LEARNINGS" ] && [ ! -f "$LEARNINGS" ]; then
   echo "known-findings.sh: learnings export not found: $LEARNINGS" >&2; exit 2
 fi
 
-MODE="$MODE" KF="$KF" JSON="$JSON" DIFF_FILE="$DIFF_FILE" RANGE="$RANGE" LEDGER="$LEDGER" LEARNINGS="$LEARNINGS" REPO_ROOT="$REPO_ROOT" node -e '
+MODE="$MODE" KF="$KF" JSON="$JSON" DIFF_FILE="$DIFF_FILE" RANGE="$RANGE" LEDGER="$LEDGER" PROMO_N="$PROMO_N" PROMO_M="$PROMO_M" LEARNINGS="$LEARNINGS" REPO_ROOT="$REPO_ROOT" node -e '
 const fs = require("fs"), path = require("path");
 const MODE = process.env.MODE, KF = process.env.KF, JSON_OUT = process.env.JSON === "1";
 const ROOT = process.env.REPO_ROOT;
@@ -112,6 +124,54 @@ if (MODE === "list") {
   process.exit(0);
 }
 
+// Ledger read shared by --ladder proposals and --refresh: rows parsed in append order; the verdict of a finding
+// is the last NON-EMPTY write (finding row or amend); `first` keeps the first row of each finding.
+const readLedger = () => {
+  const out = { ok: false, malformed: 0, first: {}, verdict: {} };
+  const rows = [];
+  try { for (const l of fs.readFileSync(process.env.LEDGER, "utf8").split("\n")) { if (!l.trim()) continue; try { rows.push(JSON.parse(l)); } catch { out.malformed++; } } out.ok = true; }
+  catch (e) { out.err = e.message; return out; }
+  const key = (h, id) => `${(h || "").slice(0, 7)}|${id}`;
+  for (const r of rows) {
+    if (r.kind === "finding") { const k = key(r.head, r.finding_id); if (!out.first[k]) out.first[k] = r; if (r.verdict) out.verdict[k] = r.verdict; else if (!(k in out.verdict)) out.verdict[k] = ""; }
+    else if (r.kind === "amend" && r.set && r.set.verdict) { const k = key(r.target_head, r.finding_id); if (k in out.verdict) out.verdict[k] = r.set.verdict; }
+  }
+  return out;
+};
+
+// Promotion proposals: per non-gate class, agreed findings (file matches globs, dated at/after the optional
+// `rung_since`) and the distinct branches they came from. N recurrences across M branches => a PROPOSE line
+// with the next rung up and a hosting suggestion. Print-only.
+const NEXT_RUNG = { human: "prompt", prompt: "advisory", advisory: "gate" };
+const hostFor = (c) => {
+  if (c.rung === "advisory") {
+    if (/shell-lint/.test(c.coverage || "")) return "scripts/lint/shell-lint.sh (wire the rule into .pre-commit-config.yaml)";
+    return (c.globs || []).some(g => /^scripts\/hooks\//.test(g)) ? "a scripts/hooks/ PreToolUse hook (wired in .claude/settings.json)" : ".pre-commit-config.yaml hook running known-findings.sh --diff";
+  }
+  return c.rung === "prompt" ? "a `detector` entry in known-findings.json (run by --diff)" : "critic-prompt text (set `prompt: true`)";
+};
+const printProposals = () => {
+  const N = +process.env.PROMO_N, M = +process.env.PROMO_M;
+  console.log(`\npromotion proposals (agreed recurrences >= ${N} across >= ${M} branches since the rung was set; printed only, nothing is changed):`);
+  const L = readLedger();
+  if (!L.ok) { console.log(`  proposals unavailable: ledger not readable (${process.env.LEDGER})`); return; }
+  let n = 0;
+  for (const c of classes) {
+    if (!NEXT_RUNG[c.rung]) continue;
+    const since = c.rung_since ? Date.parse(c.rung_since) : null;
+    const branches = new Set(); let rec = 0;
+    for (const k of Object.keys(L.first)) {
+      const r = L.first[k], v = L.verdict[k];
+      if (v !== "agreed" && v !== "confirmed") continue;
+      if (!r.file || !matchesAny(c.globs, r.file)) continue;
+      if (since !== null && !(Date.parse(r.ts) >= since)) continue;
+      rec++; branches.add(r.branch || "?");
+    }
+    if (rec >= N && branches.size >= M) { n++; console.log(`  PROPOSE [${c.id}] ${c.rung} -> ${NEXT_RUNG[c.rung]} recurrences=${rec} branches=${branches.size} host=${hostFor(c)}`); }
+  }
+  if (!n) console.log("  none");
+};
+
 if (MODE === "ladder") {
   // Count per rung, then the promotion queue: a class whose top rung is prompt
   // or advisory and that has agreed recurrences in the ledger evidence (the
@@ -125,6 +185,7 @@ if (MODE === "ladder") {
     .sort((a, b) => agreedOf(b) - agreedOf(a));
   console.log(`\npromotion queue (prompt/advisory classes with agreed ledger recurrences, most first): ${queue.length}`);
   for (const c of queue) console.log(`  [${c.id}] rung=${c.rung} kind=${c.kind} agreed=${agreedOf(c)}`);
+  printProposals();
   process.exit(0);
 }
 
@@ -314,6 +375,7 @@ if (MODE === "refresh") {
   for (const c of classes) { const l = c.evidence.ledger || {}; console.log(`  ${c.id}: ledger findings=${l.findings} agreed=${l.agreed} disproved=${l.disproved} (${l.disproved_pct == null ? "-" : l.disproved_pct + "%"}) deferred=${l.deferred} unadjudicated=${l.unadjudicated}` + (process.env.LEARNINGS ? ` | learnings rows=${c.evidence.learnings_rows} uses=${c.evidence.learnings_uses}` : "")); }
   if (process.env.LEARNINGS) { console.log(`\nlearnings export: ${db.learnings_export.rows} rows, ${db.learnings_export.total_uses} uses, ${unmatched.length} rows matched no class. Top unmatched (new class candidates):`);
     for (const u of unmatched.slice(0, 10)) console.log(`  ${u.uses}\t${u.repo}\t${u.file}\t${u.text}`); }
+  printProposals();
   process.exit(0);
 }
 '

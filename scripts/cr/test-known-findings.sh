@@ -208,6 +208,55 @@ KNOWN_FINDINGS_FILE="$tmp/norung-kf.json" bash "$SCRIPT" --ladder >/dev/null 2>&
 sed 's/"kind":"checklist"/"kind":"checklist","rung":"bogus"/' "$tmp/norung-kf.json" > "$tmp/badrung-kf.json"
 KNOWN_FINDINGS_FILE="$tmp/badrung-kf.json" bash "$SCRIPT" --ladder >/dev/null 2>&1; check "schema: class with an invalid rung fails" "$?" "2"
 
+# promotion proposals: agreed recurrences since the rung was set (optional
+# `rung_since`, else the whole ledger) across distinct branches; PROPOSE when >= N and >= M.
+cat > "$tmp/promo-kf.json" <<'KFJSON'
+{"classes":[
+{"id":"spread","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["spread/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"shell-lint [x] (advisory)","prompt":false,"evidence":{}},
+{"id":"one-branch","kind":"fix","rung":"advisory","title":"t","source":"s","globs":["onebranch/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
+{"id":"stale","kind":"fix","rung":"advisory","rung_since":"2026-09-01","title":"t","source":"s","globs":["stale/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}},
+{"id":"prompt-only","kind":"rebuttal","rung":"prompt","title":"t","source":"s","globs":["ponly/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":true,"evidence":{}},
+{"id":"already-gated","kind":"fix","rung":"gate","title":"t","source":"s","globs":["gated/**"],"detector":null,"learning_match":null,"canonical":"c","coverage":"c","prompt":false,"evidence":{}}
+]}
+KFJSON
+pf() { printf '{"kind":"finding","ts":"%s","branch":"%s","head":"%s","model":"codex","finding_id":"%s","severity":"imp","file":"%s","line":1,"verdict":"agreed"}\n' "$@"; }
+{
+  pf 2026-09-10T00:00:00Z b1 aaaaaaa f1 spread/a.sh
+  pf 2026-09-11T00:00:00Z b2 bbbbbbb f2 spread/b.sh
+  pf 2026-09-12T00:00:00Z b2 ccccccc f3 spread/c.sh
+  pf 2026-09-10T00:00:00Z b1 ddddddd f4 onebranch/a.sh
+  pf 2026-09-11T00:00:00Z b1 eeeeeee f5 onebranch/b.sh
+  pf 2026-09-12T00:00:00Z b1 fffffff f6 onebranch/c.sh
+  pf 2026-08-10T00:00:00Z b1 1111111 f7 stale/a.sh
+  pf 2026-08-11T00:00:00Z b2 2222222 f8 stale/b.sh
+  pf 2026-08-12T00:00:00Z b3 3333333 f9 stale/c.sh
+  pf 2026-09-10T00:00:00Z b1 4444444 f10 ponly/a.md
+  pf 2026-09-11T00:00:00Z b2 5555555 f11 ponly/b.md
+  pf 2026-09-12T00:00:00Z b3 6666666 f12 ponly/c.md
+  pf 2026-09-10T00:00:00Z b1 7777777 f13 gated/a.sh
+  pf 2026-09-11T00:00:00Z b2 8888888 f14 gated/b.sh
+  pf 2026-09-12T00:00:00Z b3 9999999 f15 gated/c.sh
+} > "$tmp/promo-ledger.jsonl"
+pl="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bash "$SCRIPT" --ladder 2>&1)"; plrc=$?
+check "promote: --ladder exit 0" "$plrc" "0"
+contains "promote: section header names N and M" "$pl" "promotion proposals (agreed recurrences >= 3 across >= 2 branches"
+contains "promote: crossing class proposed with rung, counts, host" "$pl" "PROPOSE [spread] advisory -> gate recurrences=3 branches=2 host=scripts/lint/shell-lint.sh"
+not_contains "promote: one-branch class not proposed" "$pl" "PROPOSE [one-branch]"
+not_contains "promote: recurrences before rung_since do not count" "$pl" "PROPOSE [stale]"
+contains "promote: prompt class targets advisory" "$pl" "PROPOSE [prompt-only] prompt -> advisory recurrences=3 branches=3"
+not_contains "promote: a gate class is never proposed" "$pl" "PROPOSE [already-gated]"
+pl2="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bash "$SCRIPT" --ladder --min-recurrences 3 --min-branches 1 2>&1)"
+contains "promote: --min-branches 1 lets the one-branch class cross" "$pl2" "PROPOSE [one-branch] advisory -> gate recurrences=3 branches=1"
+pl3="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/promo-ledger.jsonl" KNOWN_FINDINGS_PROMOTE_N=4 bash "$SCRIPT" --ladder 2>&1)"
+not_contains "promote: env N=4 raises the bar" "$pl3" "PROPOSE [spread]"
+KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bash "$SCRIPT" --ladder --min-recurrences x >/dev/null 2>&1; check "promote: non-numeric N exits 2" "$?" "2"
+cp "$tmp/promo-kf.json" "$tmp/promo-kf-copy.json"
+pr="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf-copy.json" CR_LEDGER="$tmp/promo-ledger.jsonl" bash "$SCRIPT" --refresh 2>&1)"
+contains "promote: --refresh prints the proposals" "$pr" "PROPOSE [spread] advisory -> gate"
+check "promote: refresh never changes a rung" "$(node -e 'console.log(require(process.argv[1]).classes.map(c=>c.rung).join())' "$tmp/promo-kf-copy.json")" "advisory,advisory,advisory,prompt,gate"
+pn="$(KNOWN_FINDINGS_FILE="$tmp/promo-kf.json" CR_LEDGER="$tmp/absent-ledger.jsonl" bash "$SCRIPT" --ladder 2>&1)"
+contains "promote: unreadable ledger says so, no proposals" "$pn" "proposals unavailable"
+
 # --refresh on a COPY: ledger + learnings evidence rewritten; shipped JSON untouched
 cp "$HERE/known-findings.json" "$tmp/kf.json"
 before_sum="$(cksum < "$HERE/known-findings.json")"
