@@ -76,6 +76,19 @@ writeFileSync(a[a.indexOf("--json") + 1], "{}");
   expect(Bun.file(runs).size).toBe(1);
 });
 
+test("board: a build that fails before it starts is not cached", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agui-board-fail-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const { readBoard } = await import("../agui/board");
+  const o = { script: join(dir, "board.mjs"), doc: join(dir, "fail-doc.md"), checkout: dir, ttlMs: 60_000 };
+  const saved = process.env.TMPDIR;
+  process.env.TMPDIR = join(dir, "no-such-dir"); // mkdtemp cannot create its dir
+  try { expect("error" in (await readBoard({ ...o, env: { PATH: process.env.PATH }, now: 0 }))).toBe(true); }
+  finally { if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved; }
+  writeFileSync(o.script, `import { writeFileSync } from "node:fs";\nconst a = process.argv.slice(2);\nwriteFileSync(a[a.indexOf("--json") + 1], "{}");\n`);
+  expect("body" in (await readBoard({ ...o, env: { PATH: process.env.PATH }, now: 1 }))).toBe(true); // the next poll retries
+});
+
 test("brief: a leg doc, token-gated, read-only, redacted, names only", async () => {
   const { port } = boot();
   expect((await get(port, `/api/agui/brief?leg=${LEG}`, {})).status).toBe(401);

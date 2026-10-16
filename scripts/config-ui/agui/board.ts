@@ -44,8 +44,9 @@ export function readBoard(o: { script: string; doc: string; checkout: string; en
   if (hit && (hit.at === null || o.now - hit.at < (o.ttlMs ?? BOARD_TTL_MS))) return hit.p;
   const started = Date.now();
   const p = (async () => {
-    const dir = await mkdtemp(join(tmpdir(), "agui-board-"));
+    let dir = "";
     try {
+      dir = await mkdtemp(join(tmpdir(), "agui-board-"));
       const out = join(dir, "board.json");
       await new Promise<void>((ok, fail) => execFile("node", [o.script, "--doc", o.doc, "--json", out, "--out", join(dir, "board.html"), "--repo", o.checkout],
         { env: o.env, timeout: o.timeoutMs ?? BOARD_TIMEOUT_MS, maxBuffer: 1 << 20 }, (e, _so, se) => (e ? fail(new Error(String(se || e.message).trim().split("\n").pop())) : ok())));
@@ -56,7 +57,7 @@ export function readBoard(o: { script: string; doc: string; checkout: string; en
     } catch (e) {
       cache.delete(o.doc); // a failure is not cached: the next poll retries
       return { error: String((e as Error).message ?? e) };
-    } finally { rm(dir, { recursive: true, force: true }).catch(() => undefined); }
+    } finally { if (dir) rm(dir, { recursive: true, force: true }).catch(() => undefined); }
   })();
   cache.set(o.doc, { at: null, p });
   return p;

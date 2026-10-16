@@ -1,7 +1,7 @@
 // The console board inside the Fleet page: the legend, a leg's stage dots, the Trends tab (four cards, each opening
 // its table in the drawer) and the per-stage drill-in drawer. Everything here renders himmel.board/1; the colours and
 // their labels come from its `legend`, the recommendations from its `cards`. Read-only.
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { applyKey, BOARD_URL, BRIEF_URL, openAt, stageSegments, STAGES, type Board, type BoardLeg, type Drawer, type Joined, type Stage } from "./board-model";
 import { runHash } from "./fleet-model";
 
@@ -17,7 +17,8 @@ export type BoardState = { board: Board | null; error: string | null };
 export function useBoard(token: string, console: string | null): BoardState {
   const [st, setSt] = useState<BoardState>({ board: null, error: null });
   useEffect(() => {
-    if (!console) { setSt({ board: null, error: null }); return; }
+    setSt({ board: null, error: null }); // another console's board is never shown for this one
+    if (!console) return;
     let live = true, timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       try {
@@ -226,9 +227,12 @@ export function DrawerView({ token, board, joined, drawer, panel, now, set, setP
 
 function Transcript({ board, leg, stage, segs }: { board: Board; leg: BoardLeg; stage: Stage; segs: { stage: Stage; from: number; to: number }[] }) {
   const groups = STAGES.filter((s) => leg.timeline.some((b) => b.stage === s) || leg.stages[s]);
-  return <div className="bd-transcript">{groups.map((s) => {
+  const root = useRef<HTMLDivElement>(null);
+  // scroll only when the stage or the leg changes, not on every poll or clock render
+  useEffect(() => { root.current?.querySelector(".sel")?.scrollIntoView?.({ block: "nearest" }); }, [leg.leg, stage]);
+  return <div className="bd-transcript" ref={root}>{groups.map((s) => {
     const at = leg.stages[s], bullets = leg.timeline.filter((b) => b.stage === s), seg = segs.find((g) => g.stage === s);
-    return <section key={s} className={s === stage ? "sel" : ""} ref={(el) => { if (el && s === stage) el.scrollIntoView?.({ block: "nearest" }); }}>
+    return <section key={s} className={s === stage ? "sel" : ""}>
       <h4 style={{ ["--c" as string]: tone(board, "stage", s) }}>{label(board, "stage", s)}<small>{` ${hm(at)}${seg ? ` · ${dur(seg.from, seg.to)}` : ""}`}</small></h4>
       {bullets.map((b, i) => <p key={i} className="bd-bullet"><span className="bd-chip" style={{ ["--c" as string]: tone(board, "marker", b.marker) }}>{label(board, "marker", b.marker)}</span>{` ${b.text}`}</p>)}
     </section>;
