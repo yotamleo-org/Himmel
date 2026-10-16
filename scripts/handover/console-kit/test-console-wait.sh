@@ -1158,13 +1158,14 @@ check "(rol2) the block carries the relay lines" "yes" "$(grep -q '^SENDMESSAGE 
 check "(rol2) the marker is consumed" "no" "$([ -e "$I.relay-on-live" ] && echo yes || echo no)"
 check "(rol2) the exit reason is logged" "yes" "$(grep -q 'exit=wake-relay-on-live' "$I.wait" && echo yes)"
 
-# a failing relay-batch must neither wake nor consume the marker
+# a failing relay-batch wakes once with its rc and consumes the marker (no resend)
 printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB/rol-relay.sh"
 I="$(new_inbox rol3)"
 printf 'S2\n%s\n' "$WORK/rol-succ.md" > "$I.relay-on-live"
 timeout 4 bash "$WAIT" "$I" --doc "$ROLD" --legs "N1.md" > "$WORK/rol3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
-check "(rol3) a failing relay yields no wake (rc 124)" "124" "$rc"
-check "(rol3) and the marker is kept for a retry" "yes" "$([ -s "$I.relay-on-live" ] && echo yes)"
+check "(rol3) a failing relay still wakes once, rc 0" "0" "$rc"
+check "(rol3) the wake carries the relay rc" "WAKE relay-on-live successor=S2 relay-failed rc=1" "$(head -n1 "$WORK/rol3.out")"
+check "(rol3) and the marker is consumed, so nothing is resent" "no" "$([ -e "$I.relay-on-live" ] && echo yes || echo no)"
 unset CONSOLE_WAIT_LOCK_STATUS CONSOLE_WAIT_RELAY CONSOLE_WAIT_SUCCESSION_SEC
 
 # --- (k) usage ---------------------------------------------------------------

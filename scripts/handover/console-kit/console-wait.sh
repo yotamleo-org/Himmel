@@ -631,7 +631,8 @@ while :; do
     # <inbox>.relay-on-live (written by `console.sh next --relay-on-live`; line 1 the
     # successor session, line 2 its doc): once the successor's queue lock is held
     # fresh it is live, so wake this console ONCE with relay-batch.sh's lines. The
-    # waiter sends nothing; the console sends each SENDMESSAGE line itself.
+    # waiter sends no SendMessage (relay-batch writes a claudex leg's inbox itself, as it
+    # does when the console runs it); the console sends each SENDMESSAGE line.
     if [ -n "$console_doc" ] && [ -s "$inbox.relay-on-live" ] && [ "$(date +%s)" -ge "${next_rol:-0}" ]; then
         next_rol=$(( $(date +%s) + ${CONSOLE_WAIT_SUCCESSION_SEC:-15} ))
         rol_succ="$(sed -n 1p "$inbox.relay-on-live" 2>/dev/null)"
@@ -639,11 +640,15 @@ while :; do
         if [ -n "$rol_succ" ] && [ -n "$rol_doc" ]; then
             bash "${CONSOLE_WAIT_LOCK_STATUS:-$HERE/../queue-lock.sh}" status "$rol_doc" </dev/null >/dev/null 2>&1 9>&-; rol_rc=$?
             if [ "$rol_rc" -eq 11 ]; then
-                # a failed relay keeps the marker so the next sample retries it
-                if rol_out="$(bash "${CONSOLE_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"; then
+                # relay-batch may deliver a claudex leg by inbox-send (never re-run it: a retry
+                # would resend), so a failure still wakes, carrying its rc and output for the console.
+                rol_out="$(bash "${CONSOLE_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"; rol_brc=$?
+                if [ "$rol_brc" -eq 0 ]; then
                     printf 'WAKE relay-on-live successor=%s\n%s\n' "$rol_succ" "$rol_out"
-                    rm -f "$inbox.relay-on-live"; exit_reason='wake-relay-on-live'; exit 0
+                else
+                    printf 'WAKE relay-on-live successor=%s relay-failed rc=%s\n%s\n' "$rol_succ" "$rol_brc" "$rol_out"
                 fi
+                rm -f "$inbox.relay-on-live"; exit_reason='wake-relay-on-live'; exit 0
             fi
         else
             rm -f "$inbox.relay-on-live"
