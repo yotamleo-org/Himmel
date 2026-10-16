@@ -813,10 +813,13 @@ check guard-judge-writes Bash 0 "gi""t status" "allow a read in a judge session"
 # ── guard-console-foreground.sh — console long-script nudge ───
 # The listed-name match ends at a tail class; a terminal CR must not glue itself
 # to the script name.
+printf 'claude\0-n\0N-console\0' > "$TMP/cmdline-console"
 check guard-console-foreground Bash 2 "bash scripts/handover/console-kit/wrap-merged.sh --pr 12" \
-    "deny a foreground long kit script in a console" HIMMEL_CONSOLE_DOC=/x/N-console.md
+    "deny a foreground long kit script in a console" HIMMEL_CONSOLE_DOC=/x/N-console.md \
+    CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-console"
 check guard-console-foreground Bash 0 "bash scripts/handover/console-kit/go.sh x" \
-    "allow a short kit script in a console" HIMMEL_CONSOLE_DOC=/x/N-console.md
+    "allow a short kit script in a console" HIMMEL_CONSOLE_DOC=/x/N-console.md \
+    CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-console"
 
 # guard-leg-context-handoff reads the fill through the transcript, so its rows
 # run against a leg fixture at 90 % with the guard on (it is off by default,
