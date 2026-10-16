@@ -55,7 +55,8 @@
 // STALE on one -- only --changed (the versions fingerprint meta) reports it. Upgrade
 // path: have tick.sh fold the counts into board-fp once #1421 lands.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitClean } from '../../lanes/git-clean.mjs';
@@ -65,7 +66,7 @@ import { collect as collectCloud } from './cloud-liveness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const USAGE = 'usage: board.mjs --doc <console doc> [--legs "<leg doc> ..."] [--out <file>] [--repo <dir>] [--changed]';
+const USAGE = 'usage: board.mjs --doc <console doc> [--legs "<leg doc> ..."] [--out <file>] [--repo <dir>] [--json <file>] [--changed]';
 const rawArgs = process.argv.slice(2);
 // --changed (Ask 1) is the one console step that both re-renders
 // and says whether the render moved: a boolean flag, pulled out before the
@@ -74,7 +75,7 @@ const changedFlag = rawArgs.includes('--changed');
 const args = rawArgs.filter((a) => a !== '--changed');
 const opt = {};
 for (let i = 0; i < args.length; i += 2) {
-    if (!['--doc', '--legs', '--out', '--repo'].includes(args[i]) || args[i + 1] === undefined) {
+    if (!['--doc', '--legs', '--out', '--repo', '--json'].includes(args[i]) || args[i + 1] === undefined) {
         console.error(USAGE);
         process.exit(2);
     }
@@ -213,7 +214,8 @@ if (opt.legs === undefined && existsSync(manifestPath)) {
 }
 // --changed folds this in: the tick fingerprint only moves with a lock or tail, so a leg
 // added to the manifest before it holds a lock would otherwise read UNCHANGED.
-const manifestSig = manifestDocs ? manifestDocs.join(',') : '';
+// A digest, not the paths: a fleet of 40 docs would put kilobytes of file names on the page.
+const manifestSig = manifestDocs ? createHash('sha256').update(manifestDocs.join(',')).digest('hex').slice(0, 16) : '';
 let legFiles;
 if (opt.legs !== undefined || manifestDocs) {
     legFiles = (opt.legs !== undefined ? opt.legs.split(/[\s,]+/).filter(Boolean) : manifestDocs).map((f) => resolve(f));
@@ -242,6 +244,7 @@ if (opt.legs !== undefined || manifestDocs) {
 if (labelFailure) console.error(`board: warning: leg labels unavailable — ${labelFailure}; the board renders the unavailable state, not an empty fleet`);
 const liveLabels = [...new Set(liveEntries.map((e) => labelOf(e.stem)).filter(Boolean))];
 const legInfo = new Map();
+const markerOf = (b) => (/^- (?:\d{1,2}:\d{2}\s+)?([A-Z][A-Z-]*[A-Z])\b/.exec(b) || [])[1] || '';
 for (const f of legFiles) {
     const label = labelOf(basename(f));
     if (!label || !existsSync(f)) continue;
@@ -256,7 +259,8 @@ for (const f of legFiles) {
         const m = /^- (?:\d{1,2}:\d{2}\s+)?(?:LIVE\s*[-–—:]?\s*PR\s*#?(\d{2,})\s+open\b|READY\s+#?(\d{2,})\s+[0-9a-f]{7,}|MERGED\s+#(\d{2,})\b)/.exec(b);
         if (m) pr = Number(m[1] || m[2] || m[3]);
     }
-    legInfo.set(label, { file: f, ticket: ticketOf(f), last: bullets.length ? bullets[bullets.length - 1].slice(2) : '', pr });
+    const last = bullets.length ? bullets[bullets.length - 1] : '';
+    legInfo.set(label, { file: f, ticket: ticketOf(f), last: last.slice(2), marker: markerOf(last), bullets, pr });
 }
 
 // ---------------------------------------------------------------- tick
@@ -384,8 +388,11 @@ const legs = labels.map((label) => {
     // tick marks a READY past the GO-hold `READY!stale`; the board's phase is READY either way.
     const tail = (tails.get(label) || '').replace(/!stale$/, '');
     const lock = locks.get(label) || '';
+    // A judge's label is its doc stem, which tick's tails= never carries: with no tail,
+    // the doc's own last marker says whether it finished (WRAPPED, or a judge's VERDICT).
+    const docDone = !tails.has(label) && (info.marker === 'WRAPPED' || info.marker === 'VERDICT');
     let phase;
-    if (tail === 'WRAPPED' || lock === 'WRAPPED') phase = 'WRAPPED';
+    if (tail === 'WRAPPED' || lock === 'WRAPPED' || docDone) phase = 'WRAPPED';
     else if (info.pr && mergedNums.has(info.pr)) phase = 'MERGED';
     else if (tail === 'BLOCKED' || tail === 'HALTED') phase = 'BLOCKED';
     else if (tail === 'PARKED-BANK') phase = 'PARKED-BANK';
@@ -449,10 +456,8 @@ const now = new Date();
 const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 const consoleName = basename(docPath, '.md');
 
-const legCard = (l) => `<li class="leg" data-label="${esc(l.label)}" data-phase="${esc(l.phase)}"${l.ci ? ` data-ci="${l.ci}"` : ''}>
-  <div class="leg-head"><b>${esc(l.label)}</b> <span class="tk">${esc(l.ticket)}</span> <span class="ph">${esc(l.phase)}</span>${l.prNum ? ` <span class="pr">PR #${l.prNum}${l.ci ? ` · ${l.ci}` : ''}</span>` : ''}</div>
-  <div class="leg-last">${l.last ? safe(l.last, 220) : '<i>no handover bullet yet</i>'}</div>
-</li>`;
+// One compact card per live leg: a 25-leg fleet must fit the 15 KB page.
+const legCard = (l) => `<li data-label="${esc(l.label)}" data-phase="${esc(l.phase)}"${l.ci ? ` data-ci="${l.ci}"` : ''}><b>${esc(l.label)}</b> <span class="tk">${esc(l.ticket)}</span> <span class="ph">${esc(l.phase)}</span>${l.prNum ? ` <span class="pr">PR #${l.prNum}${l.ci ? ` · ${l.ci}` : ''}</span>` : ''}<p>${l.last ? safe(l.last, 130) : '<i>no handover bullet yet</i>'}</p></li>`;
 const ladder = LADDER.map((p) => `<li data-ladder="${esc(p)}" data-count="${legs.filter((l) => l.phase === p).length}"><span>${esc(p)}</span><b>${legs.filter((l) => l.phase === p).length}</b></li>`).join('\n');
 const needRows = legs.filter((l) => l.needs).map((l) => {
     const tailWhy = l.phase === 'READY' ? `READY${l.prNum ? ` · PR #${l.prNum}` : ''} — awaiting GO`
@@ -466,7 +471,8 @@ const needRows = legs.filter((l) => l.needs).map((l) => {
     // etc. AND lock-lost at once, and the lock is the one thing the console must never miss.
     const lockWhy = l.lostLock ? `lock ${l.lock} — lost or stale` : '';
     const why = [tailWhy, lockWhy].filter(Boolean).join(' · ');
-    return `<li data-need="${esc(l.label)}"><b>${esc(l.label)}</b> ${esc(why)}<div class="leg-last">${safe(l.last, 160)}</div></li>`;
+    // The bullet itself is on the leg's own card below; repeating it here doubled the page.
+    return `<li data-need="${esc(l.label)}"><b>${esc(l.label)}</b> ${esc(why)}</li>`;
 }).join('\n');
 // orphans-wip=<n[:KEY,...]> from the tick: In Progress / In Review tickets with no leg and no
 // open PR. Keys are named for n <= 5; above that only the count is known. 0, `?` and `skip` add no row.
@@ -543,6 +549,11 @@ const bankLiftLine = (() => {
     } catch { return row('?', 'unavailable'); }
 })();
 
+// The stats sections below also leave their numbers here for --json, and their full
+// tables for the archive: the live page shows only the top rows.
+const trend = { cost: null, exploration: null, failures: null };
+const archiveTables = [];
+
 // Cost today: one line from the leg cost ledger close-wrapped-leg.sh
 // appends to (LEG_COST_LEDGER, else $HANDOVER_DIR/.ledger/leg-cost.jsonl). An absent
 // or unreadable ledger, or no usable row dated today, renders nothing and never fails
@@ -568,6 +579,7 @@ const costSection = (() => {
         if (!n) return '';
         const fmt = (v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(Math.round(v)));
         const median = (a) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+        trend.cost = { unit: 'cost-eq', sessions: n, total, median_by_class: Object.fromEntries(Object.keys(byClass).sort().map((c) => [redact(c), median(byClass[c])])) };
         const per = Object.keys(byClass).sort().map((c) => `${safe(c, 20)} ${fmt(median(byClass[c]))}`).join(', ');
         return `<section data-cost-legs="${n}"><h2>Cost today</h2><p class="sub">${n} worker session${n === 1 ? '' : 's'} · ${fmt(total)} cost-eq · median ${per}</p></section>`;
     } catch { return ''; }
@@ -606,8 +618,12 @@ const explorationSection = (() => {
         const median = asc.length % 2 ? asc[m] : (asc[m - 1] + asc[m]) / 2;
         const fmt = (v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(Math.round(v)));
         const over = rows.filter((r) => r.tokens > flagAt).length;
-        const tr = rows.slice(0, 5).map((r) => `<tr data-session="${safe(r.id, 8)}"><td>${safe(r.id, 8)}</td><td>${safe(r.model, 40)}</td><td>${fmt(r.tokens)}</td><td>${Number.isFinite(r.reads) ? r.reads : '-'}r ${Number.isFinite(r.searches) ? r.searches : '-'}s</td><td>${r.tokens > flagAt ? 'OVER' : ''}</td></tr>`).join('\n');
-        return `<section data-exploration="${rows.length}" data-exploration-over="${over}"><h2>Exploration cost</h2><p class="sub">${rows.length} session${rows.length === 1 ? '' : 's'} · median ${fmt(median)} tokens before first edit · ${over} over ${fmt(flagAt)}</p><div class="tscroll"><table><tr><th>session</th><th>model</th><th>tokens</th><th>reads/searches</th><th>flag</th></tr>\n${tr}</table></div></section>`;
+        trend.exploration = { window_h: hours > 0 ? hours : 24, flag_tokens: flagAt, sessions: rows.length, median_tokens: median, over_flag: over,
+            worst: rows.slice(0, 10).map((r) => ({ session: redact(r.id), model: redact(r.model), tokens: r.tokens })) };
+        const trOf = (r) => `<tr data-session="${safe(r.id, 8)}"><td>${safe(r.id, 8)}</td><td>${safe(r.model, 40)}</td><td>${fmt(r.tokens)}</td><td>${Number.isFinite(r.reads) ? r.reads : '-'}r ${Number.isFinite(r.searches) ? r.searches : '-'}s</td><td>${r.tokens > flagAt ? 'OVER' : ''}</td></tr>`;
+        const head = '<tr><th>session</th><th>model</th><th>tokens</th><th>reads/searches</th><th>flag</th></tr>';
+        archiveTables.push(`<h2>Exploration cost — every session</h2>\n<table>${head}\n${rows.map(trOf).join('\n')}\n</table>`);
+        return `<section data-exploration="${rows.length}" data-exploration-over="${over}"><h2>Exploration cost</h2><p class="sub">${rows.length} session${rows.length === 1 ? '' : 's'} · median ${fmt(median)} tokens before first edit · ${over} over ${fmt(flagAt)}${rows.length > 5 ? ' · top 5, the rest in the archive' : ''}</p><div class="tscroll"><table>${head}\n${rows.slice(0, 5).map(trOf).join('\n')}</table></div></section>`;
     } catch { return ''; }
 })();
 
@@ -653,7 +669,7 @@ const failuresSection = (() => {
         }
         const lastRoute = new Map();
         for (const r of routes) if (typeof r.decision === 'string') lastRoute.set(r.class, r);
-        const sorted = [...byClass].sort(([a, x], [b, y]) => y.legs.size - x.legs.size || y.events - x.events || (a < b ? -1 : a > b ? 1 : 0)).slice(0, 10);
+        const sorted = [...byClass].sort(([a, x], [b, y]) => y.legs.size - x.legs.size || y.events - x.events || (a < b ? -1 : a > b ? 1 : 0));
         const route = (cls) => {
             const r = lastRoute.get(cls);
             if (!r) return 'signal';
@@ -664,11 +680,18 @@ const failuresSection = (() => {
         const inboxPath = join(bucket, 'failure-loop', 'memory-inbox.md');
         if (existsSync(inboxPath)) inbox = readFileSync(inboxPath, 'utf8').split('\n').filter((l) => l.startsWith('- ')).length;
         const inboxLine = `<p class="sub">memory inbox: ${inbox} pending</p>`;
+        trend.failures = { since: start, memory_inbox: inbox, classes: [] };
         if (!sorted.length) return `<section data-failures="0">${title}<p class="none">no leg failures this shift</p>${inboxLine}</section>`;
         const toolHealth = readToolHealth(process.env, new URLSearchParams({ since: start }));
         const rates = toolHealth.class_rates || {}, counts = toolHealth.class_counts || {};
-        const tr = sorted.map(([cls, c]) => `<tr data-class="${safe(cls, 80)}"><td>${safe(cls, 80)}</td><td>${c.legs.size}</td><td>${c.events}</td><td>${typeof rates[cls] === 'number' && counts[cls] === c.events ? `${(rates[cls] * 100).toFixed(1)} %` : '—'}</td><td>${c.known ? `${Math.round((c.rec / c.known) * 100)} %` : '—'}</td><td>${safe(route(cls), 60)}</td></tr>`).join('\n');
-        return `<section class="wide" data-failures="${sorted.length}">${title}<div class="tscroll"><table><tr><th>class</th><th>worker sessions</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>\n${tr}\n</table></div>${inboxLine}</section>`;
+        const rateOf = (cls, c) => (typeof rates[cls] === 'number' && counts[cls] === c.events ? rates[cls] : null);
+        trend.failures.classes = sorted.map(([cls, c]) => ({ class: redact(cls), sessions: c.legs.size, events: c.events, rate: rateOf(cls, c),
+            recovered: c.known ? c.rec / c.known : null, route: redact(route(cls)) }));
+        const trOf = ([cls, c]) => `<tr data-class="${safe(cls, 80)}"><td>${safe(cls, 80)}</td><td>${c.legs.size}</td><td>${c.events}</td><td>${rateOf(cls, c) === null ? '—' : `${(rateOf(cls, c) * 100).toFixed(1)} %`}</td><td>${c.known ? `${Math.round((c.rec / c.known) * 100)} %` : '—'}</td><td>${safe(route(cls), 60)}</td></tr>`;
+        const head = '<tr><th>class</th><th>worker sessions</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>';
+        archiveTables.push(`<h2>Failure classes — this shift, every class</h2>\n<table>${head}\n${sorted.map(trOf).join('\n')}\n</table>`);
+        const more = sorted.length > 5 ? `<p class="sub">top 5 of ${sorted.length} classes; the rest in the archive</p>` : '';
+        return `<section class="wide" data-failures="${sorted.length}">${title}<div class="tscroll"><table>${head}\n${sorted.slice(0, 5).map(trOf).join('\n')}\n</table></div>${more}${inboxLine}</section>`;
     } catch { return unavailable; }
 })();
 
@@ -707,6 +730,7 @@ ${doneLegs.map((l) => `<li data-archive-leg="${esc(l.label)}">${esc(l.label)} ${
 <ul>
 ${(mergedPrs || []).map((p) => `<li data-archive-pr="${p.number}">PR #${p.number} merged — ${safe(p.title, 200)}${p.mergedAt ? ` · ${safe(String(p.mergedAt).slice(0, 10))}` : ''}</li>`).join('\n')}
 </ul>
+${archiveTables.join('\n')}
 </body></html>
 `;
 
@@ -735,7 +759,7 @@ ul { list-style:none; margin:0; padding:0; } li { padding:6px 0; border-top:1px 
 .ladder li { display:flex; justify-content:space-between; gap:8px; padding:3px 0; } .ladder li[data-count="0"] { opacity:.45; }
 .fleet { font-size:1.6rem; font-weight:650; } .fleet small { font-size:.85rem; color:var(--muted); font-weight:400; }
 .idle { color:var(--warn); font-weight:600; }
-.tk, .pr, .leg-last { color:var(--muted); font-size:.85rem; } .ph { color:var(--accent); font-weight:600; }
+.tk, .pr, li[data-label] p { color:var(--muted); font-size:.85rem; } li[data-label] p { margin:2px 0 0; } .ph { color:var(--accent); font-weight:600; }
 li[data-phase="BLOCKED"] .ph, li[data-phase="WRAPPED, window still open"] .ph, li[data-ci="failing"] .pr { color:var(--bad); } li[data-phase="WRAPPED"] .ph, li[data-phase="MERGED"] .ph, li[data-ci="green"] .pr { color:var(--ok); } li[data-ci="pending"] .pr { color:var(--warn); }
 .bar { height:6px; background:var(--line); border-radius:3px; margin-top:4px; } .bar i { display:block; height:100%; background:var(--accent); border-radius:3px; }
 .wide { grid-column:1 / -1; }
@@ -785,6 +809,248 @@ ${panel('Supervisor session log — newest last', logRows, 'no Results yet')}
 </html>
 `;
 
+// ---------------------------------------------------------------- --json model
+// himmel.board/1: the reads above as data, for the always-on UI to render. Fields are
+// only ever added within /1; a rename or removal bumps the schema. Times are ISO with
+// the local offset, or null. Every bullet passes redact(): no nonce, no lock token.
+const p2 = (n) => String(n).padStart(2, '0');
+const isoOf = (ms) => {
+    if (!Number.isFinite(ms)) return null;
+    const d = new Date(ms), o = -d.getTimezoneOffset();
+    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}${o < 0 ? '-' : '+'}${p2(Math.floor(Math.abs(o) / 60))}:${p2(Math.abs(o) % 60)}`;
+};
+// A bullet's first HH:MM on its doc's date (the stem's YYYY-MM-DD, else fallbackMs's day);
+// a time earlier than the bullet before it rolled past midnight.
+const bulletTimes = (bullets, file, fallbackMs) => {
+    const ymd = /(\d{4})-(\d{2})-(\d{2})/.exec(basename(file));
+    const day = ymd ? new Date(+ymd[1], +ymd[2] - 1, +ymd[3]) : Number.isFinite(fallbackMs) ? new Date(fallbackMs) : null;
+    let prev = -Infinity, roll = 0;
+    return bullets.map((b) => {
+        const m = /^- (\d{1,2}):(\d{2})\b/.exec(b);
+        if (!m || !day) return null;
+        let t = new Date(day.getFullYear(), day.getMonth(), day.getDate() + roll, +m[1], +m[2]).getTime();
+        if (t < prev) { roll += 1; t = new Date(day.getFullYear(), day.getMonth(), day.getDate() + roll, +m[1], +m[2]).getTime(); }
+        prev = t;
+        return t;
+    });
+};
+const docResults = section('## Results').filter((l) => l.startsWith('- '));
+const docTimes = bulletTimes(docResults, docPath);
+const goAt = new Map();
+docResults.forEach((b, i) => {
+    const m = /^- \d{1,2}:\d{2}(?:\s+\d{1,2}:\d{2})?\s+GO\s+#?(\d{2,})\s+[0-9a-f]{7,}/.exec(b);
+    if (m && docTimes[i] !== null && !goAt.has(Number(m[1]))) goAt.set(Number(m[1]), docTimes[i]);
+});
+// GitHub blob/PR links from a checkout's origin remote; anything else reads null.
+const githubOf = (dir) => {
+    try {
+        const url = gitClean(['-C', dir, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        const m = /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?$/.exec(url);
+        if (!m) return null;
+        const top = gitClean(['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        return { base: `https://github.com/${m[1]}/${m[2]}`, top };
+    } catch { return null; }
+};
+// The model's extra reads (git remotes, transcripts) run only for --json.
+const bucketGh = opt.json ? githubOf(bucket) : null;
+const prGh = opt.json ? githubOf(prRepo) : null;
+const briefUrl = (file) => (bucketGh && file && file.startsWith(`${bucketGh.top}/`) ? `${bucketGh.base}/blob/main/${file.slice(bucketGh.top.length + 1)}` : null);
+const PR_OPEN = /^- (?:\d{1,2}:\d{2}\s+)?LIVE\s*[-–—:]?\s*PR\s*#?\d{2,}\s+open\b/;
+const STAGES = ['dispatch', 'live', 'pr', 'ready', 'go', 'merged'];
+const legModel = (l) => {
+    const info = legInfo.get(l.label) || { bullets: [], file: '' };
+    const bullets = info.bullets || [];
+    const times = bulletTimes(bullets, info.file || '');
+    const firstAt = (re) => { const i = bullets.findIndex((b) => re.test(b)); return i < 0 ? null : times[i]; };
+    const stages = { dispatch: null, live: times.find((t) => t !== null) ?? null, pr: null, ready: firstAt(/^- (?:\d{1,2}:\d{2}\s+)?READY\b(?!-)/), go: null, merged: firstAt(/^- (?:\d{1,2}:\d{2}\s+)?MERGED\b/) };
+    const prAt = firstAt(PR_OPEN);
+    stages.pr = prAt !== null && (stages.ready === null || prAt <= stages.ready) ? prAt : stages.ready;
+    if (l.prNum && goAt.has(l.prNum)) stages.go = goAt.get(l.prNum);
+    let stage = 'dispatch';
+    for (const s of STAGES) if (stages[s] !== null) stage = s;
+    let at = 'live';
+    const timeline = bullets.map((b, i) => {
+        if (PR_OPEN.test(b)) at = 'pr';
+        const mk = markerOf(b);
+        if (mk === 'READY') at = 'ready';
+        if (mk === 'MERGED') at = 'merged';
+        return { at: isoOf(times[i]), stage: at, marker: mk.toLowerCase(), text: redact(b.slice(2)).slice(0, 400) };
+    });
+    const state = l.phase === 'BLOCKED' ? 'blocked'
+        : l.tail === 'FINDING' ? 'needs-decision'
+            : l.lostLock || l.phase === 'READY-TO-OPEN' || l.phase === 'WRAPPED, window still open' ? 'needs-operator'
+                : l.phase === 'READY' ? (l.prNum && lastGo.startsWith(`${l.prNum}:`) ? 'merging' : 'ready-for-go')
+                    : l.phase === 'PR open' ? 'in-review' : 'building';
+    const pr = l.prNum ? openByNum.get(l.prNum) : null;
+    const goal = pr ? redact(String(pr.title).replace(/^[a-z]+(?:\([^)]*\))?!?:\s*/i, '').replace(/\[[A-Z][A-Z0-9]*-\d+\]\s*/g, '')) : '';
+    return { leg: l.label, ticket: l.ticket || '', goal, state, stage, stages: Object.fromEntries(STAGES.map((s) => [s, isoOf(stages[s] ?? NaN)])),
+        pr: l.prNum ? { number: l.prNum, url: prGh ? `${prGh.base}/pull/${l.prNum}` : null } : null,
+        links: { ticket: l.ticket && process.env.JIRA_BASE_URL ? `${process.env.JIRA_BASE_URL.replace(/\/$/, '')}/browse/${l.ticket}` : null, brief: briefUrl(info.file) },
+        timeline, lastAt: [...times].reverse().find((t) => t !== null) ?? null };
+};
+const legRows = liveLegs.map((l) => ({ l, m: legModel(l) }));
+const needOf = ({ l, m }) => {
+    const readyB = [...(legInfo.get(l.label)?.bullets || [])].reverse().find((b) => markerOf(b) === 'READY') || '';
+    const head = (/READY\s+#?\d{2,}\s+([0-9a-f]{7,40})\b/.exec(readyB) || [])[1];
+    const [verb, action, command] = m.state === 'ready-for-go' ? ['go', `judge and GO PR #${l.prNum}`, head ? `bash scripts/handover/console-kit/go.sh ${l.prNum} ${head}` : null]
+        : m.state === 'blocked' ? ['unblock', 'clear the BLOCKED leg', null]
+            : m.state === 'needs-decision' ? ['decide', 'rule on the FINDING', null]
+                : l.lostLock ? ['act', `lock ${l.lock.toLowerCase()}: re-arm or wrap the leg`, null]
+                    : l.phase === 'READY-TO-OPEN' ? ['act', 'open the PR', null]
+                        : ['act', 'close the leg window', null];
+    return { leg: l.label, verb, action: action.slice(0, 90), detail: redact(l.last || ''), command, since: isoOf(m.lastAt ?? NaN) };
+};
+const needsYou = legRows.filter(({ l }) => l.needs).map(needOf).sort((a, b) => String(a.since).localeCompare(String(b.since)));
+const STAGE_RANK = Object.fromEntries(STAGES.map((s, i) => [s, i]));
+const needSet = new Set(needsYou.map((n) => n.leg));
+const legsOut = legRows.map(({ m }) => m).sort((a, b) => (needSet.has(b.leg) - needSet.has(a.leg)) || STAGE_RANK[b.stage] - STAGE_RANK[a.stage])
+    .map(({ lastAt, ...m }) => m);
+const ciRows = (openPrs || []).map((p) => (!(p.statusCheckRollup || []).length ? 'no_checks' : ciOf(p) === 'failing' ? 'red' : ciOf(p)));
+const ciOut = { open: ciRows.length, green: 0, pending: 0, no_checks: 0, red: 0 };
+for (const c of ciRows) ciOut[c] += 1;
+const pct = (re) => { const m = re.exec(field.bank || ''); return m ? Number(m[1]) : null; };
+const bankOut = { week_pct: pct(/wk(\d+)/), five_hour_pct: pct(/5h(\d+)/) };
+const todayKey = stamp.slice(0, 10);
+const mergedToday = (mergedPrs || []).filter((p) => p.mergedAt && isoOf(Date.parse(p.mergedAt))?.slice(0, 10) === todayKey).length;
+const milestones = releases.map((r) => (r.unavailable ? { version: r.version, unavailable: true }
+    : { version: r.version, done: r.done, total: r.total, open_blockers: r.blockers.map((b) => b.key) }));
+
+// Session transcripts: one jsonl per session under BOARD_TRANSCRIPTS (else this checkout's
+// ~/.claude/projects dir); line 1 names the session (custom-title = a console doc stem).
+// Only files touched in the last 48 h are opened. A message is counted once by id, in
+// Opus-eq: input + cache_read x0.1 + cache_write x2 + output x5. Unreadable reads empty.
+const txByTitle = new Map();
+if (opt.json) try {
+    const TX_DIR = process.env.BOARD_TRANSCRIPTS || join(process.env.HOME || '', '.claude', 'projects', primaryRoot().replace(/[^A-Za-z0-9]/g, '-'));
+    const cutoff = Date.now() - 48 * 3600e3;
+    for (const f of readdirSync(TX_DIR)) {
+        if (!f.endsWith('.jsonl')) continue;
+        const p = join(TX_DIR, f);
+        try {
+            if (statSync(p).mtimeMs < cutoff) continue;
+            const fd = openSync(p, 'r'), buf = Buffer.alloc(4096);
+            const n = readSync(fd, buf, 0, 4096, 0);
+            closeSync(fd);
+            const t = JSON.parse(buf.toString('utf8', 0, n).split('\n')[0]).customTitle;
+            if (typeof t === 'string') txByTitle.set(t, [...(txByTitle.get(t) || []), p]);
+        } catch { /* not a titled transcript */ }
+    }
+} catch { /* no transcript dir: no console cost, no succession row */ }
+const messagesOf = (title) => {
+    const byId = new Map();
+    for (const p of txByTitle.get(title) || []) {
+        let text = '';
+        try { text = readFileSync(p, 'utf8'); } catch { continue; }
+        for (const line of text.split('\n')) {
+            if (!line.includes('"usage"')) continue;
+            let r;
+            try { r = JSON.parse(line); } catch { continue; }
+            const u = r && r.message && r.message.usage, id = r && r.message && r.message.id, ts = Date.parse(r && r.timestamp);
+            if (!u || !id || !Number.isFinite(ts)) continue;
+            const eq = Math.round((u.input_tokens || 0) + (u.cache_read_input_tokens || 0) * 0.1 + (u.cache_creation_input_tokens || 0) * 2 + (u.output_tokens || 0) * 5);
+            byId.set(id, { ts: byId.has(id) ? byId.get(id).ts : ts, eq });
+        }
+    }
+    return [...byId.values()].sort((a, b) => a.ts - b.ts);
+};
+const sumEq = (ms) => ms.reduce((s, m) => s + m.eq, 0);
+const consoleMsgs = messagesOf(consoleName);
+const consoleCost = (() => {
+    if (!consoleMsgs.length) return null;
+    const hourly = new Map();
+    for (const m of consoleMsgs) {
+        const d = new Date(m.ts);
+        const h = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()).getTime();
+        hourly.set(h, (hourly.get(h) || 0) + m.eq);
+    }
+    const eq = sumEq(consoleMsgs);
+    const span = (consoleMsgs[consoleMsgs.length - 1].ts - consoleMsgs[0].ts) / 3600e3;
+    return { unit: 'opus-eq', since: isoOf(consoleMsgs[0].ts), messages: consoleMsgs.length, eq, per_hour: Math.round(eq / Math.max(1, span)),
+        hourly: [...hourly].sort((a, b) => a[0] - b[0]).map(([h, v]) => ({ hour: isoOf(h), eq: v })), fleet_eq: trend.cost ? Math.round(trend.cost.total) : null };
+})();
+// The succession into this console as a tool-eval row: the predecessor is the one the
+// live legs' `SUCCESSION accepted: <this console> replaces <pred>` bullets name. The window
+// runs from this session's first message to its first `LIVE` Results bullet (the
+// `<code> LIVE sent to <pred>` line); the predecessor's messages count from the same
+// start to its last.
+const SUCCESSION_TARGET = { eq: 457000, turns: 20 };
+const succession = (() => {
+    const accepts = liveLegs.map((l) => [...(legInfo.get(l.label)?.bullets || [])].reverse()
+        .map((b) => /SUCCESSION accepted:\s*(\S+)\s+replaces\s+(\S+)/.exec(b)).find((m) => m && m[1] === consoleName)).filter(Boolean);
+    if (!accepts.length || !consoleMsgs.length) return [];
+    const pred = accepts[0][2].replace(/[.,;]+$/, '');
+    const start = consoleMsgs[0].ts;
+    const liveIdx = docResults.findIndex((b) => /^- \d{1,2}:\d{2}(?:\s+\d{1,2}:\d{2})?\s+(?:[A-Z]{1,3}\s+)?LIVE\b/.test(b));
+    const liveAt = liveIdx < 0 ? null : bulletTimes(docResults, docPath, start)[liveIdx];
+    const end = liveAt === null ? Infinity : liveAt;
+    const win = [...consoleMsgs.filter((m) => m.ts <= end), ...messagesOf(pred).filter((m) => m.ts >= start)];
+    const eq = sumEq(win), turns = win.length;
+    const silent = Math.max(0, liveLegs.length - accepts.length);
+    const pass = liveAt !== null && eq <= SUCCESSION_TARGET.eq && turns <= SUCCESSION_TARGET.turns;
+    const recommendation = liveAt === null ? 'succession still running: no LIVE bullet yet'
+        : `${pass ? 'within target' : `over target (${Math.round(eq / 1e3)}k eq, ${turns} turns vs ${SUCCESSION_TARGET.eq / 1e3}k, ${SUCCESSION_TARGET.turns}): script the hand-off steps (HIMMEL-5969)`}${silent ? `; re-brief the ${silent} silent leg${silent === 1 ? '' : 's'} from the predecessor` : ''}`;
+    return [{ tool: 'console-succession', from: redact(pred), to: consoleName, started: isoOf(start), live_at: isoOf(liveAt ?? NaN), wall_min: liveAt === null ? null : Math.round((liveAt - start) / 60000),
+        turns, eq, legs_quoted: accepts.length, legs_silent: silent, target: SUCCESSION_TARGET, pass, recommendation }];
+})();
+
+// The legend keys every colour the UI draws; colours are theme token names (--acc, --ok, ...).
+const LEGEND = {
+    stage: { dispatch: ['mut', 'dispatched'], live: ['acc', 'LIVE'], pr: ['vio', 'PR open'], ready: ['warn', 'READY'], go: ['ok', 'GO'], merged: ['ok', 'merged'] },
+    state: { building: ['acc', 'building'], 'in-review': ['vio', 'in review · CI'], 'needs-decision': ['bad', 'needs a decision'], 'needs-operator': ['bad', 'needs the operator'],
+        'ready-for-go': ['warn', 'waiting for GO'], blocked: ['bad', 'blocked'], merging: ['ok', 'merging'] },
+    verb: { decide: ['acc', 'Decide'], act: ['bad', 'Act'], go: ['warn', 'GO'], unblock: ['bad', 'Unblock'] },
+    ci: { green: ['ok', 'green'], pending: ['warn', 'pending'], no_checks: ['mut', 'no checks yet'], red: ['bad', 'red'] },
+    budget: { ok: ['ok', 'under 70 %'], high: ['warn', '70 to 84 %'], critical: ['bad', '85 % and over'] },
+    failure: { denial: ['warn', 'guard denial'], error: ['bad', 'tool error'] },
+    marker: { live: ['acc', 'LIVE'], finding: ['warn', 'FINDING'], resolved: ['ok', 'RESOLVED'], ready: ['ok', 'READY'], blocked: ['bad', 'BLOCKED'], halted: ['bad', 'HALTED'], wrapped: ['mut', 'WRAPPED'] },
+};
+const legend = Object.fromEntries(Object.entries(LEGEND).map(([k, v]) => [k, Object.fromEntries(Object.entries(v).map(([n, [color, label]]) => [n, { color, label }]))]));
+
+// One recommended action per report card, derived from the data above; the UI only renders it.
+const countState = (s) => legsOut.filter((l) => l.state === s).length;
+const cards = {
+    velocity: { recommendation: countState('ready-for-go') ? `${mergedToday} merged today; ${countState('ready-for-go')} READY wait for GO: judge them first`
+        : countState('in-review') ? `${mergedToday} merged today; ${countState('in-review')} in review: keep /pr-check and CI moving`
+            : mergedToday ? `${mergedToday} merged today; nothing waits for GO` : 'none merged today: check what the live legs are stuck on' },
+    health: { recommendation: needsYou.length ? `${needsYou.length} leg${needsYou.length === 1 ? '' : 's'} need you: start with ${needsYou[0].leg} (${needsYou[0].verb})`
+        : ciOut.red ? `${ciOut.red} open PR${ciOut.red === 1 ? '' : 's'} red: triage the CI`
+            : bankOut.week_pct !== null && bankOut.week_pct >= 85 ? `weekly budget at ${bankOut.week_pct} %: hold new dispatches`
+                : idle ? `${idle} idle slot${idle === 1 ? '' : 's'}: dispatch the next ticket` : 'fleet healthy: nothing to do' },
+    tools: { recommendation: succession.length && !succession[0].pass ? `console succession: ${succession[0].recommendation}`
+        : trend.failures && trend.failures.classes.length ? `${trend.failures.classes[0].class} hit ${trend.failures.classes[0].sessions} session${trend.failures.classes[0].sessions === 1 ? '' : 's'}: ${trend.failures.classes[0].route === 'signal' ? 'file a ticket or a memory for it' : `follow ${trend.failures.classes[0].route}`}`
+            : trend.exploration && trend.exploration.over_flag ? `${trend.exploration.over_flag} session${trend.exploration.over_flag === 1 ? '' : 's'} explored past the flag: tighten their briefs`
+                : 'no tool failures this shift' },
+    roadmap: { recommendation: (() => {
+        const ok = milestones.filter((m) => !m.unavailable);
+        const blocked = ok.find((m) => m.open_blockers.length);
+        if (blocked) return `${blocked.version}: ${blocked.done}/${blocked.total} done; clear ${blocked.open_blockers.join(', ')} first`;
+        const open = ok.find((m) => m.done < m.total);
+        if (open) return `${open.version}: ${open.total - open.done} ticket${open.total - open.done === 1 ? '' : 's'} left`;
+        if (!milestones.length) return 'add a versions: line to Live state to track milestones';
+        return ok.length ? 'every milestone is done' : 'milestones unavailable: check the Jira CLI';
+    })() },
+};
+const legTimeToday = legRows.map(({ m }) => m).concat(doneLegs.map((l) => legModel(l)))
+    .filter((m) => m.stages.merged && m.stages.merged.slice(0, 10) === todayKey)
+    .map((m) => {
+        const min = (a, b) => (m.stages[a] && m.stages[b] ? Math.round((Date.parse(m.stages[b]) - Date.parse(m.stages[a])) / 60000) : null);
+        return { leg: m.leg, live_at: m.stages.live, merged_at: m.stages.merged, live_to_merged_min: min('live', 'merged'), to_pr_min: min('live', 'pr'), ready_to_merged_min: min('ready', 'merged') };
+    });
+const boardModel = {
+    schema: 'himmel.board/1',
+    generated_at: isoOf(now.getTime()),
+    console: { name: consoleName, archive_legs: doneLegs.length },
+    headline: { live: fleetOk ? fleetLive : liveLegs.length, cap: fleetOk ? fleetCap : null, merged_today: mergedToday, needs_you: needsYou.length, blocked: countState('blocked') },
+    bank: bankOut,
+    ci: ciOut,
+    milestones,
+    needs_you: needsYou,
+    legs: legsOut,
+    trends: { leg_time: { unit: 'min', today: legTimeToday }, cost: trend.cost, console_cost: consoleCost, exploration: trend.exploration, failures: trend.failures, tools: succession },
+    legend,
+    cards,
+};
+
 // Ask 1: --changed reads the PREVIOUS render's embedded
 // fingerprint before overwriting it, so a console can call this after every
 // Live-state mutation and know from one line whether the render moved --
@@ -808,6 +1074,12 @@ renameSync(tmp, outPath);
 const archiveTmp = `${archivePath}.tmp${process.pid}`;
 writeFileSync(archiveTmp, archiveHtml);
 renameSync(archiveTmp, archivePath);
+if (opt.json) {
+    const jsonPath = resolve(opt.json);
+    const jsonTmp = `${jsonPath}.tmp${process.pid}`;
+    writeFileSync(jsonTmp, `${JSON.stringify(boardModel, null, 1)}\n`);
+    renameSync(jsonTmp, jsonPath);
+}
 if (changedFlag) {
     console.log(`${fp !== oldFp || censusSig !== oldCensusSig || esc(ciFleetSig) !== oldCiFleetSig || esc(releaseSig) !== oldReleaseSig || esc(manifestSig) !== oldManifestSig ? 'CHANGED' : 'UNCHANGED'} ${outPath}`);
 } else {
