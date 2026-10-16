@@ -28,6 +28,16 @@ then briefly overcount around a slide. For the war-room panels (7d ranges over
 a 14d window, low row churn) that artifact is small and accepted; if it ever
 misleads, the fix is in-process monotonic accumulation in the collector child, not a family rename here.
 
+The truncated / error / stalled alerts do NOT read `flow_run_outcome_total`
+(HIMMEL-1634). They read two event-time families built from the same fold:
+`flow_run_last_failure_timestamp{flow,outcome}` (epoch seconds of the newest
+`truncated` or `error` end row in the window; absent when there is none, so an
+expiring old failure simply disappears and cannot page) and
+`flow_run_stalled_current{flow}` (unpaired starts past their deadline right now,
+0 once the run ends or ages out). `HimmelFlowRunTruncated` / `HimmelFlowRunError`
+fire while `time() - flow_run_last_failure_timestamp < 900`; `HimmelFlowRunStalled`
+fires on `flow_run_stalled_current > 0`. `flow_run_outcome_total` stays for dashboards.
+
 Unpaired `start` rows older than a flow deadline are split by liveness: a row whose pid is confirmed dead on this host is exported as
 `abandoned` — real hygiene information, but nothing is hung and no human can
 act, so it must not page; every other expired row (pid alive, unprobeable, no
@@ -874,9 +884,10 @@ against `{state="alerting"} 0` while sending ~125 Telegram messages/day for
 `HimmelScheduledTaskDisabled`, `HimmelWatcherDown`, `HimmelKernelPoolCritical`,
 `HimmelAgentTreeRamRunaway`, `HimmelLunaInboxBacklogRising`,
 `HimmelKernelPoolHigh`, `HimmelKernelPoolLeakRate`, `HimmelCommitPressure`) now
-use `noDataState: OK`. `HimmelFlowStalled` keeps `KeepLast` (see
-its comment in `rules.yaml`); the remaining 7 (`HimmelFlowRunTruncated`,
-`HimmelFlowRunError`, `HimmelOrphanProcesses`, `HimmelSessionDead`, and the
+use `noDataState: OK`, as do `HimmelFlowRunTruncated` and `HimmelFlowRunError`
+since HIMMEL-1634 (their refId A is now a recency filter). `HimmelFlowStalled`
+keeps `KeepLast` (see its comment in `rules.yaml`); the remaining 5
+(`HimmelOrphanProcesses`, `HimmelSessionDead`, and the
 three hook-chain rules — `HimmelHookChainBudgetPressure`,
 `HimmelHookChainBudgetDenials`, `HimmelHookChainLogUnreadable`) keep the
 `NoData` default — for the hook-chain rules, refId A IS a bare metric
@@ -985,7 +996,7 @@ these can carry ledger `note` free text; `flow-exporter.ts` never turns
   `agent_tree_rss_bytes` series for the dashboard, just excluded from this
   alert.
 - `HimmelFlowRunStalled`'s alerting bucket
-  (`flow_run_outcome_total{outcome="stalled"}`) is capped at
+  (`flow_run_stalled_current`) is capped at
   `FLOW_STALLED_ALERT_TTL_SECONDS` (24h) measured from when a
   row became stalled — same shape as `SESSION_DEAD_ALERT_TTL_SECONDS` above.
   Without it a single killed worker paged on the alert's 12h interval for up
