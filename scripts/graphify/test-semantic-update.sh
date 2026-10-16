@@ -468,7 +468,9 @@ out=$(GRAPHIFY_API_CALL_BUDGET_USD=1.00 run_api --name t40b --corpus-root "$C40B
 case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 60000"*) pass "T40 1.00 -> capped at 60000" ;; *) fail "T40 capped: $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
 C40C="$WS/c40c"; new_corpus "$C40C"; : > "$WS/calls.log"
 out=$(run --name t40c --corpus-root "$C40C" --corpus-class himmel-code --backend claude-cli); rc=$?
-case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget"*) fail "T40 claude-cli got a token budget" ;; *) pass "T40 claude-cli path unchanged" ;; esac
+ext40c="$(grep '^graphify extract' "$WS/calls.log")"
+if [ "$rc" -ne 0 ] || [ -z "$ext40c" ]; then fail "T40 claude-cli control did not reach graphify extract (rc=$rc): $out"
+else case "$ext40c" in *"--token-budget"*) fail "T40 claude-cli got a token budget" ;; *) pass "T40 claude-cli path unchanged" ;; esac; fi
 
 echo "T41: a failed lane call shows its result and exit code on the shim's stderr (what graphify prints in the chunk-failed line)"
 C41="$WS/c41"; new_corpus "$C41"; : > "$WS/calls.log"; : > "$WS/claude.out"
