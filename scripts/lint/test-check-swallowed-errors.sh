@@ -93,6 +93,14 @@ if [ "$RC" -eq 2 ]; then pass "missing baseline -> exit 2"; else fail "missing b
 R="$T/empty"; mkdir -p "$R"; : > "$R/base.txt"; run
 if [ "$RC" -eq 2 ]; then pass "no scan roots -> exit 2"; else fail "no scan roots -> rc=$RC: $OUT"; fi
 
+# 9b. a traversal that fails part-way is exit 2, not a clean scan of what was listed
+newroot unreadable; put scripts/cr/ok.sh '#!/usr/bin/env bash' 'echo ok'
+mkdir "$R/scripts/hooks/locked"; chmod 000 "$R/scripts/hooks/locked"
+run
+chmod 755 "$R/scripts/hooks/locked"
+if [ "$(id -u)" -eq 0 ]; then pass "unreadable dir skipped (root can read it)"
+elif [ "$RC" -eq 2 ]; then pass "partial find failure -> exit 2"; else fail "partial find failure -> rc=$RC: $OUT"; fi
+
 # 10. --write-baseline round trip
 newroot wb; put scripts/handover/h.sh '#!/usr/bin/env bash' "$L_ZERO" "$L_DEVNULL"
 bash "$LINT" --root "$R" --baseline "$R/base.txt" --write-baseline >/dev/null 2>&1

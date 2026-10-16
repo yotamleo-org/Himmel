@@ -9,7 +9,8 @@
 # for three shapes, one count per (file, shape):
 #   cmdsub-devnull   2>/dev/null inside a $(...) on one line
 #   true-after-read  `|| true` / `|| :` on a line that reads ($(...) or `read`)
-#   default-zero     `|| echo 0` / `|| echo []` (also printf, quoted forms)
+#   default-zero     `|| echo 0` / `|| echo []` (also `printf 0`, quoted forms; a formatted
+#                    `printf '%s\n' 0` is not matched)
 # A line is exempt with `swallow-ok: <reason>` on it or on the comment line above.
 # Existing findings live in the baseline (path, shape, count); only a count ABOVE
 # its baseline row fails, so the lint lands green and refuses only new ones.
@@ -44,7 +45,9 @@ trap 'rm -rf "$WORK"' EXIT
 
 FILES="$WORK/files"
 ( cd "$ROOT" && find scripts/hooks scripts/cr scripts/handover scripts/ci -type f -name '*.sh' \
-    ! -name 'test-*.sh' ! -path '*/fixtures/*' ! -path '*/testdata/*' 2>/dev/null ) | LC_ALL=C sort > "$FILES"
+    ! -name 'test-*.sh' ! -path '*/fixtures/*' ! -path '*/testdata/*' ) > "$FILES.raw" \
+    || { echo "check-swallowed-errors: file listing failed under $ROOT (fail-closed)" >&2; exit 2; }
+LC_ALL=C sort "$FILES.raw" > "$FILES" || { echo "check-swallowed-errors: sort failed" >&2; exit 2; }
 [ -s "$FILES" ] || { echo "check-swallowed-errors: no scripts found under $ROOT/scripts/{hooks,cr,handover,ci}" >&2; exit 2; }
 
 export P_DEVNULL='\$\(.*2>/dev/null.*\)'
