@@ -107,4 +107,13 @@ if ! gh pr merge "$PR" --repo "$NWO" --squash --match-head-commit "$SHA"; then
     echo "merge-fork-pr: gh pr merge failed for $NWO PR #$PR at $SHA" >&2
     exit 7
 fi
+# gh can enqueue or arm auto-merge without merging, and a retarget between the
+# read above and the merge is not constrained by --match-head-commit: report
+# only what the fork now says happened.
+VIEW=$(gh pr view "$PR" --repo "$NWO" --json state,baseRefName 2>/dev/null) || VIEW=""
+DONE=$(printf '%s' "$VIEW" | jq -r '"\(.state)|\(.baseRefName)"' 2>/dev/null) || DONE=""
+if [ "$DONE" != "MERGED|$HBRANCH" ]; then
+    echo "merge-fork-pr: $NWO PR #$PR is not confirmed MERGED into $HBRANCH after gh pr merge (state|base read: '$DONE') - check the fork now" >&2
+    exit 7
+fi
 echo "merge-fork-pr: merged $NWO PR #$PR at $SHA into $HBRANCH"

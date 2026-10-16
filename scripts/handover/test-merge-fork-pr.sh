@@ -43,7 +43,9 @@ case "$1 $2" in
     "api repos/o/himmel/contents/scripts/guardrails/himmel-adapters.json?ref=main")
         cat "$STUB_ALLOW" 2>/dev/null || exit 1 ;;
     "pr view") cat "$STUB_PRVIEW" 2>/dev/null || exit 1 ;;
-    "pr merge") printf 'MERGE %s\n' "$*" >> "$STUB_LOG" ;;
+    "pr merge")
+        printf 'MERGE %s\n' "$*" >> "$STUB_LOG"
+        [ -n "${STUB_NOFLIP:-}" ] || sed -i 's/"state":"OPEN"/"state":"MERGED"/' "$STUB_PRVIEW" ;;
     *) exit 91 ;;
 esac
 STUB
@@ -168,6 +170,10 @@ rc=0; merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge PR base is not the himmel_branch -> exit 7" "$rc" 7
 check "merge state refusals merged nothing" "$(merged)" 0
 
+prview
+rc=0; STUB_NOFLIP=1 merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
+check "merge queued but not MERGED afterwards -> exit 7" "$rc" 7
+: > "$STUB_LOG"
 prview
 rc=0; out="$(merge "$FORK" 18 "$SHA" 2>&1)" || rc=$?
 check "merge valid -> exit 0" "$rc" 0
