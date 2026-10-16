@@ -986,6 +986,10 @@ UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --import tsx build.js\"}}\n' > 
 unw_run scripts/cfg/tests/a.test.ts
 contains "node --import tsx build.js is not a test runner: file fails" "$out" "[FAIL] 11."
 
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --test tests --test-name-pattern=foo\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/other/z.test.mjs
+contains "a later --test-name-pattern flag does not drop the tests path: outside file fails" "$out" "[FAIL] 11."
+
 # mutation pins: the TS-transform markers in the test script
 UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --test --experimental-strip-types\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
 unw_run scripts/cfg/tests/a.test.ts

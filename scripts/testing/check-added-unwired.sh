@@ -95,7 +95,7 @@ pkg_runs() {
   esac
   rel="$f"; [ -z "$pd" ] || rel="${f#"$pd"/}"
   # only the words after the runner, up to the next command, can narrow discovery
-  ts=$(printf '%s' "$ts" | sed -E 's/.*(bun test|node( +--[a-z-]+([ =][^ -][^ ]*)?)* +--test|vitest( run)?|jest)//; s/(&&|;|\|).*//')
+  ts=$(printf '%s' "$ts" | sed -E 's/.*(bun test|node( +--[a-z-]+([ =][^ -][^ ]*)?)* +--test([[:space:]]|$)|vitest( run)?|jest)//; s/(&&|;|\|).*//')
   set -f
   for tok0 in $ts; do for tok in $(brace_expand "${tok0//[\"\']/}"); do
     tok="${tok#./}"
