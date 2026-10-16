@@ -88,6 +88,17 @@ const forms = (p) => {
   try { out.push(lc(realpathSync(abs))); } catch { /* not on disk: the lexical form is all there is */ }
   return out;
 };
+// A .salus marker anywhere BELOW a collection path makes the collection PHI too. Symlinks are not followed.
+const SKIP_DIRS = new Set([".git", "node_modules"]);
+// ponytail: the walk stops 6 levels down, so a vault deeper than that is not seen; raise the depth or index the vault as its own collection.
+function hasMarkerBelow(dir, depth = 6) {
+  if (depth < 0) return false;
+  let ents;
+  // a directory we cannot read may hide a vault: treat it as marked (a path that vanished mid-walk has nothing to hide)
+  try { ents = readdirSync(dir, { withFileTypes: true }); } catch (e) { return e?.code !== "ENOENT"; }
+  if (ents.some((e) => e.name === ".salus")) return true;
+  return ents.some((e) => e.isDirectory() && !SKIP_DIRS.has(e.name) && hasMarkerBelow(join(dir, e.name), depth - 1));
+}
 const under = (a, b) => a === b || a.startsWith(b.endsWith(sep) ? b : b + sep);
 const overlaps = (a, b) => under(a, b) || under(b, a);
 
@@ -121,7 +132,7 @@ for (const line of text.split("\n")) {
   if (section === "collections") {
     const m = line.trim().match(/^("[^"]+"|'[^']+'|[^\s:#]+):\s*(#.*)?$/);
     if (m) collections.push(unquote(m[1]));
-    else unsupported.push(`unparsed collections entry: ${line.trim()}`);
+    else unsupported.push("unparsed collections entry (text withheld)");
   } else {
     const m = line.trim().match(/^(["']?)([A-Za-z_]+)\1:\s*(.+)$/);
     if (m) models[m[2]] = unquote(m[3]);
@@ -147,6 +158,9 @@ if (dbPath && existsSync(dbPath)) {
 }
 
 const baseUrl = models.openai_base_url || process.env.QMD_OPENAI_BASE_URL || "";
+// Refusals print only scheme and host: a key pasted into the URL (userinfo, path or query) must never reach a log.
+const urlHasUserinfo = (() => { try { const u = new URL(baseUrl); return !!(u.username || u.password); } catch { return false; } })();
+const shownBase = (() => { try { const u = new URL(baseUrl); return `${u.protocol}//${u.host}`; } catch { return "(unparseable URL, text withheld)"; } })();
 function providerOf() {
   if (!baseUrl) return "openai-unconfigured"; // cannot be proven local
   let url;
@@ -173,7 +187,7 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
   const provider = providerOf();
   if (provider === null) continue;
   if (provider.includes("-insecure-")) {
-    refusals.push(`${role} endpoint ${baseUrl} is not https and not loopback`);
+    refusals.push(`${role} endpoint ${shownBase} is not https and not loopback`);
     continue;
   }
   if (provider === "openai-unconfigured" || provider === "openai-unparseable") {
@@ -181,9 +195,17 @@ for (const [role, purpose] of Object.entries(PURPOSE)) {
     continue;
   }
   if (provider.endsWith("-unrecognised")) {
-    refusals.push(`${role} endpoint ${baseUrl} is not a recognised provider (jina, openrouter)`);
+    refusals.push(`${role} endpoint ${shownBase} is not a recognised provider (jina, openrouter)`);
     continue;
   }
+  if (urlHasUserinfo && !refusals.some((r) => r.startsWith("the base URL carries")))
+    refusals.push("the base URL carries credentials (userinfo): the provider key belongs only in the qmd service's environment (QMD_OPENAI_API_KEY)");
+  // The fork sends content even when no key is set, so a launcher that asks (QMD_GATE_REQUIRE_KEY=1)
+  // gets a refusal instead of an unauthenticated remote request.
+  if (process.env.QMD_GATE_REQUIRE_KEY === "1" && !process.env.QMD_OPENAI_API_KEY
+      && !(provider === "jina" && (process.env.JINA_API_KEY || process.env.JINA_API))
+      && !refusals.some((r) => r.includes("no provider key")))
+    refusals.push("a remote model is configured but no provider key is in this process environment (QMD_OPENAI_API_KEY): the service would send content unauthenticated");
   if (PINNED[provider]) {
     const pin = PINNED[provider][role];
     for (const value of [models[role] ?? "", process.env[ENV_ROLE[role]] ?? ""]) {
@@ -215,6 +237,9 @@ const pathRefusals = [];
 if (remoteRoles > 0) {
   const roots = [];
   const cfgDir = process.env.CLAUDE_GLM_CONFIG_DIR || join(homedir(), ".config", "claude-glm");
+  if (existsSync(cfgDir)) {
+    try { accessSync(cfgDir, constants.R_OK | constants.X_OK); } catch { pathRefusals.push(`cannot read the claude-glm config dir ${cfgDir} (the PHI root lists cannot be proven absent)`); }
+  }
   for (const name of ["phi-roots", "egress-denylist"]) {
     const f = join(cfgDir, name);
     if (!existsSync(f)) continue;
@@ -242,6 +267,10 @@ if (remoteRoles > 0) {
   }
   const rootForms = roots.flatMap(forms);
   const own = collectionPaths(text);
+  for (const col of collections) {
+    if (cfgCollections.includes(col) || (map[col] ?? []).includes("salus")) continue;
+    pathRefusals.push(`collection "${col}" exists only in the index database: it has no configured path to check against the PHI roots`);
+  }
   for (const col of cfgCollections) {
     if ((map[col] ?? []).includes("salus")) continue; // a salus corpus is judged by the matrix above
     const p = own[col];
@@ -254,10 +283,19 @@ if (remoteRoles > 0) {
       for (let d = start, prev = ""; d !== prev && !marked; prev = d, d = dirname(d)) if (existsSync(join(d, ".salus"))) marked = true;
     }
     if (marked) pathRefusals.push(`collection "${col}" path ${p} is inside a .salus vault`);
+    else if (hasMarkerBelow(real)) pathRefusals.push(`collection "${col}" path ${p} contains a .salus vault`);
     else if (forms(p).some((a) => rootForms.some((b) => overlaps(a, b)))) pathRefusals.push(`collection "${col}" path ${p} overlaps a PHI root (salus)`);
   }
 }
 refusals.push(...pathRefusals);
+
+// An index that holds salus pins its models explicitly, so no env fallback or qmd default can pick them.
+if (collections.some((c) => (map[c] ?? []).includes("salus"))) {
+  for (const role of ["embed", "rerank"]) {
+    const v = models[role] ?? "";
+    if (v === "" || !(isLocalModel(v) || (/^openai:/.test(v) && providerOf() === null))) refusals.push(`a salus index needs an explicit local models.${role} (hf: URI or a .gguf path)`);
+  }
+}
 
 // Fail closed on a layout this reader does not understand: an `openai:` URI it
 // did not attribute to a role, an unreadable collections/models block, or a

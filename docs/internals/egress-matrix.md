@@ -324,8 +324,17 @@ Granting it is an operator call. Defense in depth around it:
   yaml; a missing or unparseable base URL is refused like an unrecognised one.
   The gate also refuses by path: a collection whose path overlaps a PHI root
   (graphify fence lists, a sibling salus config's paths, a `.salus` vault) is
-  PHI whatever it is called. The key lives only in the daemon environment
-  (`QMD_OPENAI_API_KEY`).
+  PHI whatever it is called. The gate also refuses a collection that exists
+  only in the index database, a directory holding a `.salus` vault below it,
+  an unreadable claude-glm config dir, a base URL carrying credentials, and a
+  salus index without explicit local `embed` and `rerank` models; refusal text
+  never echoes a URL's userinfo or an unparsed config line. The key lives only
+  in the daemon environment (`QMD_OPENAI_API_KEY`); `QMD_GATE_REQUIRE_KEY=1`
+  (set by the launcher) refuses a remote role with no key. `qmd_cmd`
+  (`scripts/lib/qmd-bin.sh`) runs the gate before any himmel-launched qmd
+  process when the config names a remote model. A hand-typed `qmd` on PATH
+  bypasses it: salus is protected by living in its own local-only index.
+  Windows launchers are out of scope (Windows is dropped).
 - **qmd enforcement (HIMMEL-5683).** qmd's model config is per index, not per
   collection, so salus lives in its own index (`qmd --index salus`, own
   `salus.yml`/db/daemon port, local models). `scripts/qmd/qmd-jina-gate.mjs`

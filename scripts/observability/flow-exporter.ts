@@ -22,9 +22,30 @@ import { defaultClaudeCachePath, readClaudeBank, readCodexBank, readGlmBank, rea
 // HIMMEL_LEDGERS_JSON points at an alternate registry (tests).
 type LedgerRegistryRow = { id: string; default_path: string; override_env?: string };
 
+const FALLBACK_LEDGER_ROWS: LedgerRegistryRow[] = [
+  { id: "flow-runs", default_path: "~/.himmel/flow-runs.jsonl", override_env: "HIMMEL_FLOW_RUNS_LEDGER" },
+  { id: "quota-gauge", default_path: "~/.himmel/quota-gauge.jsonl", override_env: "HIMMEL_QUOTA_GAUGE_LEDGER" },
+  { id: "session-runs", default_path: "~/.himmel/session-runs.jsonl", override_env: "HIMMEL_SESSION_RUNS_LEDGER" },
+  { id: "tool-call-census", default_path: "~/.himmel/tool-call-census.jsonl", override_env: "HIMMEL_TOOL_CENSUS" },
+  { id: "hook-chain-skips", default_path: "<repo>/.claude/logs/hook-chain-skips.jsonl", override_env: "RUN_HOOK_CHAIN_SKIP_LOG" },
+  { id: "eval-runs", default_path: "~/.himmel/eval-runs.jsonl", override_env: "HIMMEL_EVAL_RUNS_LEDGER" },
+];
+const warnedRegistryFiles = new Set<string>();
+
 export function registryLedgerPath(id: string, env: Record<string, string | undefined>, repoRoot: string = join(import.meta.dir, "..", "..")): string {
   const registryFile = env.HIMMEL_LEDGERS_JSON?.trim() || join(import.meta.dir, "ledgers.json");
-  const rows = (JSON.parse(readFileSync(registryFile, "utf-8")) as { ledgers: LedgerRegistryRow[] }).ledgers;
+  let rows: LedgerRegistryRow[];
+  try {
+    rows = (JSON.parse(readFileSync(registryFile, "utf-8")) as { ledgers: LedgerRegistryRow[] }).ledgers;
+    if (!Array.isArray(rows) || rows.some((r) => !r || typeof r.id !== "string" || typeof r.default_path !== "string" || (r.override_env !== undefined && typeof r.override_env !== "string"))) throw new Error("ledgers is not an array of {id, default_path, override_env?} rows");
+  } catch (e) {
+    // One unreadable registry must cost the registry's configurability, not every render.
+    if (!warnedRegistryFiles.has(registryFile)) {
+      warnedRegistryFiles.add(registryFile);
+      console.error(`flow-exporter: ledger registry ${registryFile} unreadable (${(e as Error).message}); using built-in default paths`);
+    }
+    rows = FALLBACK_LEDGER_ROWS;
+  }
   const row = rows.find((r) => r.id === id);
   if (!row) throw new Error(`ledger '${id}' has no row in ${registryFile}`);
   const override = row.override_env ? env[row.override_env] : undefined;

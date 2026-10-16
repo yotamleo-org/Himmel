@@ -216,19 +216,22 @@ done < <(compgen -e)
 # the jail, never on the host, so a symlink a row planted cannot take a host write out;
 # a planted symlink is refused before the seed and again before the bind.
 if [ "$mode" != check ]; then
-  for p in settings.json hooks; do [ ! -L "$ROWCONF/$p" ] || die "$ROWCONF/$p is a symlink"; done
+  for p in settings.json hooks remote-settings.json; do [ ! -L "$ROWCONF/$p" ] || die "$ROWCONF/$p is a symlink"; done
   if [ "$mode" != argv ]; then
     mkdir -p "$ROWCONF" "$TX" || die "cannot create $ROWCONF or $TX"
     env "$KEY=seed-only" bwrap "${A[@]}" --chdir "$JWT" -- "$LAUNCHER" --seed-only >/dev/null \
       || die "the lane config seed failed (launcher --seed-only)"
-    for p in settings.json hooks; do [ ! -L "$ROWCONF/$p" ] || die "$ROWCONF/$p is a symlink"; done
+    for p in settings.json hooks remote-settings.json; do [ ! -L "$ROWCONF/$p" ] || die "$ROWCONF/$p is a symlink"; done
     # A launcher that seeded no policy still gets one bound: the row cannot create its own.
     [ -f "$ROWCONF/settings.json" ] || { printf '{}\n' >"$RUN/empty-settings.json" || die "cannot write $RUN/empty-settings.json"; }
+    # remote-settings.json is a policy source the launcher scans too, so it is bound the same way.
+    [ -f "$ROWCONF/remote-settings.json" ] || { printf '{}\n' >"$RUN/empty-remote-settings.json" || die "cannot write $RUN/empty-remote-settings.json"; }
     [ -d "$ROWCONF/hooks" ] || mkdir -p "$RUN/empty-hooks" || die "cannot create $RUN/empty-hooks"
   fi
   if [ "$mode" != argv ] && [ ! -f "$ROWCONF/settings.json" ]; then s_src="$RUN/empty-settings.json"; else s_src="$ROWCONF/settings.json"; fi
   if [ "$mode" != argv ] && [ ! -d "$ROWCONF/hooks" ]; then h_src="$RUN/empty-hooks"; else h_src="$ROWCONF/hooks"; fi
-  A+=(--ro-bind "$s_src" "$CONF/settings.json" --ro-bind "$h_src" "$CONF/hooks")
+  if [ "$mode" != argv ] && [ ! -f "$ROWCONF/remote-settings.json" ]; then r_src="$RUN/empty-remote-settings.json"; else r_src="$ROWCONF/remote-settings.json"; fi
+  A+=(--ro-bind "$s_src" "$CONF/settings.json" --ro-bind "$h_src" "$CONF/hooks" --ro-bind "$r_src" "$CONF/remote-settings.json")
 fi
 
 # The jail must not put back anything it exists to hide.

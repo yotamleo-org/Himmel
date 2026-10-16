@@ -1021,7 +1021,10 @@ if [ "${_tg_keep_one:-0}" = "1" ]; then
 fi
 
 # Write diff to a temp file so each member can read it via stdin redirect
-tmp="$(mktemp -t critic-panel.XXXXXX)"
+tmp="$(mktemp -t critic-panel.XXXXXX)" || {
+    echo "critic-panel: mktemp failed" >&2
+    exit 2
+}
 _seq_out=""
 _seq_err=""
 outdir=""
