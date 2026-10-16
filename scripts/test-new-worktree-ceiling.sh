@@ -104,6 +104,9 @@ else
 fi
 
 NAME="two concurrent creators at ceiling-1: exactly one succeeds"
+if ! command -v flock >/dev/null 2>&1; then
+    printf 'SKIP  %s (no flock: creation is unlocked by design)\n' "$NAME"
+else
 LIVE_BEFORE=$(git -C "$REPO" worktree list --porcelain | grep -c '^worktree .*/\.claude/worktrees/' || true)
 CEIL=$(( LIVE_BEFORE + 1 ))
 ( cd "$REPO" && GIT_SHIM_SLOW_ADD=2 HIMMEL_WORKTREE_CEILING=$CEIL PATH="$SHIMDIR:$PATH" bash "$NEW_WT" fix/nwc-raceA --no-install >/dev/null 2>"$TMPBASE/errA" ) & PA=$!
@@ -115,6 +118,7 @@ if [ "$LIVE_AFTER" -eq "$CEIL" ] && { [ "$rcA" -eq 0 ] || [ "$rcB" -eq 0 ]; } &&
     _pass "$NAME"
 else
     _fail "$NAME" "rcA=$rcA rcB=$rcB live_after=$LIVE_AFTER ceiling=$CEIL errA=[$(cat "$TMPBASE/errA")] errB=[$(cat "$TMPBASE/errB")]"
+fi
 fi
 
 echo ""
