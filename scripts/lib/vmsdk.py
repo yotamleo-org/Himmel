@@ -490,8 +490,14 @@ class VM:
         try:
             self.up()
             self._assert_image_clean()
-        finally:
-            self.down()
+        except VMError:
+            # The refusal is the result; a failed power-off must not replace it.
+            try:
+                self.down()
+            except VMError:
+                pass
+            raise
+        self.down()
 
     def snapshot(self, name, skip_secret_scan=False):
         """Take a named snapshot — after asserting the guest carries no .env.
