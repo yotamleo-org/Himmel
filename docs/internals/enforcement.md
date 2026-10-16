@@ -2676,7 +2676,30 @@ never contains `>`. Heredocs are not a channel here, because the main path
 judges their body as raw text. The residuals are a file written by the
 Write/Edit tools (this is a Bash matcher) and text that never spells a target;
 the backstop's `ponytail:` names them. Running either matches no allow rule,
-so the classifier decides.
+so the classifier decides. One git exception: a single git command with no
+quotes, substitution or heredoc, whose words are pathspec-only and that
+redirects into a file not named like a target (`git show HEAD:<target> >
+/tmp/x`), is allowed. git's output is not the quoted-text channel the
+backstop guards.
+
+**Command position and the dispatcher (HIMMEL-6015).** Before the text scan,
+a command whose every command word provably runs no gate directly is allowed:
+an inert reader, an inert `sed`, a pathspec-only `git`, `echo`, `printf`
+without `-v`, `cd`, a `python` whose text holds no process-spawning name, or
+`bash` running `scripts/handover/console-kit/himmel-gate.sh` by its exact
+anchored spelling (`bash "$HIMMEL_REPO/…/himmel-gate.sh" <name> <args>`, with
+`HIMMEL_REPO` absolute and every other `HIMMEL_REPO` reference refused). Such a
+command has no `VAR=` word, no substitution, `$'…'` or comment, no write
+redirect other than an fd dup or `/dev/null`, and a live `$` only as a plain
+`$NAME` reference. A dispatcher run may be followed by `&&` or `|`, but not by
+`;`, `||` or `&`. So a target named in a commit message, `git grep`, `sed -n`,
+a python or `cat` heredoc no longer denies. The dispatcher runs a registered
+gate or ledger writer by name from the anchor. Before the exec it refuses an
+unknown name, a relative `HIMMEL_REPO`, an anchor off `refs/heads/main` or
+whose copy of the script, the dispatcher or `anchor-handoff.sh` differs from
+main's committed bytes, and a piped stdout (a lone `--help` is exempt). The
+python check reads names, not code, so an obfuscated spawn passes. The hook's
+`ponytail:` names this.
 
 **Why the anchor, not a ref.** The compare base is the anchor's working-tree
 bytes, never `refs/remotes/origin/main`. Refs live in the common git dir, which
