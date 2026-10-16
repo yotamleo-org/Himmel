@@ -16,8 +16,8 @@ fails closed (the call is denied).
 ## Layout
 
 The hook and its libraries are copies of `scripts/hooks/` and
-`scripts/guardrails/` in the harness, keeping their relative layout so the
-hook's own `source` lines resolve unchanged. Only ticket references in
+`scripts/guardrails/` in the harness, placing the guardrails library under hooks/guardrails/ so the
+hook resolves it from its own directory. Only ticket references in
 comments were removed from the two `hooks/lib/` files; the code is identical. Every path in `hooks/hooks.json`
 is rooted at `${CLAUDE_PLUGIN_ROOT}`; nothing reaches `$CLAUDE_PROJECT_DIR`.
 The harness keeps its own wiring: this plugin copies the hook, it does not move it.
