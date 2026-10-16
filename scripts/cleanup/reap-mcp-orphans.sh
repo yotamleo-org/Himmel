@@ -79,6 +79,7 @@ has_owner_ancestor() {
         [ "$p" = "0" ] && return 1
         [ "$p" = "1" ] && return 1
         [ "${COMM_OF[$p]:-}" = "claude" ] && return 0
+        grep -Eq "$KEEP" <<< "${CMD_OF[$p]:-}" && return 0
         grep -Eq "$SIG" <<< "${CMD_OF[$p]:-}" || return 0
         hops=$((hops+1))
     done
@@ -107,7 +108,7 @@ while IFS='|' read -r pid ppid comm cmd; do
     live=$(ps -o args= -p "$pid" 2>/dev/null | tr -s '[:space:]' ' ')
     snap=$(tr -s '[:space:]' ' ' <<< "$cmd")
     if [ "$KILL" -eq 1 ] && [ "${live# }" = "${snap# }" ] && [ -n "$live" ]; then
-        kill "$pid" 2>/dev/null
+        kill "$pid" 2>/dev/null || printf '%s kill FAILED for %s\n' "$(date -u +%FT%TZ)" "$pid" | tee -a "$LOG" >&2
     fi
 done <<< "$TABLE"
 

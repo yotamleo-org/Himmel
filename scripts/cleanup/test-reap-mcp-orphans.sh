@@ -32,6 +32,7 @@ cat > "$FIX" <<'T'
 701|700|node|node /usr/lib/node_modules/typescript/lib/tsserver.js
 800|1|systemd|systemd --user
 801|800|node|node /home/u/.npm/_npx/z/node_modules/.bin/context7-mcp
+401|400|node|node /home/u/.npm/_npx/q/node_modules/.bin/context7-mcp
 900|999|node|node /home/u/.npm/_npx/w/node_modules/.bin/context7-mcp
 500|1|bash|bash scripts/foo.sh context7-mcp-docs-note
 600|1|node|node /home/u/.claude/plugins/cache/x/typescript-language-server --stdio
@@ -50,6 +51,7 @@ grep -q 'ORPHAN 600 ' <<< "$out" && pass "orphan plugin-cache LSP flagged" || fa
 ! grep -q 'ORPHAN 400 ' <<< "$out" && pass "qmd --http daemon whitelisted" || fail "qmd flagged"
 ! grep -q 'ORPHAN 701 ' <<< "$out" && pass "editor-owned tsserver spared" || fail "editor tsserver flagged"
 ! grep -q 'ORPHAN 801 ' <<< "$out" && pass "user-systemd-owned service spared" || fail "systemd --user child flagged"
+! grep -q 'ORPHAN 401 ' <<< "$out" && pass "child of a whitelisted daemon spared" || fail "whitelisted daemon child flagged"
 ! grep -q 'ORPHAN 900 ' <<< "$out" && pass "unknown parent chain spared" || fail "unresolved chain flagged"
 ! grep -q 'ORPHAN 500 ' <<< "$out" && pass "non-MCP argv0 not matched" || fail "bash note flagged"
 grep -q 'would kill' <<< "$out" && pass "report-only says would kill" || fail "no would-kill wording"
