@@ -2691,8 +2691,10 @@ anchored spelling (`bash "$HIMMEL_REPO/…/himmel-gate.sh" <name> <args>`, with
 `HIMMEL_REPO` absolute and every other `HIMMEL_REPO` reference refused). Such a
 command has no `VAR=` word, no substitution, `$'…'` or comment, no write
 redirect other than an fd dup or `/dev/null`, and a live `$` only as a plain
-`$NAME` reference. A dispatcher run may be followed by `&&` or `|`, but not by
-`;`, `||` or `&`. So a target named in a commit message, `git grep`, `sed -n`,
+`$NAME` reference. From a dispatcher run on, segments join only by `&&` or
+`|`, never `;`, `||`, `&` or a newline, and a pipe straight after the
+dispatcher needs a lone `--help` (an fd dup such as `1>&2` hides the pipe from
+the dispatcher's own check). So a target named in a commit message, `git grep`, `sed -n`,
 a python or `cat` heredoc no longer denies. The dispatcher runs a registered
 gate or ledger writer by name from the anchor. Before the exec it refuses an
 unknown name, a relative `HIMMEL_REPO`, an anchor off `refs/heads/main` or

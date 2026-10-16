@@ -1514,7 +1514,8 @@ edhook_deny() {
 # inert sed, a pathspec-only git, echo, printf without -v, cd, python, or
 # `bash` running the dispatcher by its exact anchored spelling - the
 # dispatcher owns the byte and no-pipe checks, so only an rc-masking separator
-# after it (`;`, `||`, `&`) is refused here. No VAR= word, no substitution,
+# anywhere after it (`;`, `||`, `&`, a newline) and a pipe straight after it
+# (but for a lone --help) are refused here. No VAR= word, no substitution,
 # no $'…', no comment, no write redirect but an fd dup or /dev/null, and a
 # live `$` only as a plain $NAME / ${NAME} reference. A heredoc body is not a
 # word and is allowed. Anything else falls through unchanged.
@@ -1543,7 +1544,7 @@ cmdpos_git() {
     return "$rc"
 }
 cmdpos_clean() { # true when no segment of $cmd executes a script but the dispatcher
-    local k j sg=-1 cw=-1 kind='' dk=-1 gates=0 w t raw
+    local k j sg=-1 cw=-1 kind='' dk=-1 gates=0 gseg=-1 w t raw
     # shellcheck disable=SC2016 # the literal anchored spellings, never expanded
     local s1="\"\$HIMMEL_REPO/$GATE_REL\"" s2="\"\${HIMMEL_REPO}/$GATE_REL\""
     st_tokenize "$cmd" || return 1
@@ -1577,7 +1578,15 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
                     [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 110 ] || return 1
                     # shellcheck disable=SC2016 # literal text, never expanded
                     case "${ST_W[j]}" in '$HIMMEL_REPO/'"$GATE_REL" | '${HIMMEL_REPO}/'"$GATE_REL") ;; *) return 1 ;; esac
-                    case "${ST_SEP[sg]}" in '' | '&&' | '|') ;; *) return 1 ;; esac
+                    # A pipe only after a lone --help: an fd dup (1>&2, 1>&-)
+                    # hides the pipe from the dispatcher's own check.
+                    if [ "${ST_SEP[sg]}" = '|' ]; then
+                        [ "$((j + 3))" -le "$ST_N" ] && [ "${ST_S[j + 2]}" = "$sg" ] || return 1
+                        [ "$((j + 3))" = "$ST_N" ] || [ "${ST_S[j + 3]}" != "$sg" ] || return 1
+                        case "${ST_W[j + 2]}" in --help | -h) ;; *) return 1 ;; esac
+                        case "${ST_RO[j + 1]}${ST_RO[j + 2]}" in '') ;; *) return 1 ;; esac
+                    fi
+                    [ "$gseg" -ge 0 ] || gseg=$sg
                     dk=$j
                     gates=$((gates + 1))
                     ;;
@@ -1592,6 +1601,13 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
         k=$((k + 1))
     done
     [ "$gates" -gt 0 ] || return 0
+    # From the first dispatcher on, only && or a pipe joins segments, so no
+    # later command replaces a failed gate's rc.
+    k=$gseg
+    while [ "$k" -lt "$ST_NSEG" ]; do
+        case "${ST_SEP[k]}" in '' | '&&' | '|') ;; *) return 1 ;; esac
+        k=$((k + 1))
+    done
     # Every dispatcher word is one of the two raw spellings above (a `"$"`
     # or quoted-away `$` reads the same once tokenized), the command names
     # HIMMEL_REPO nowhere else, and this hook's own value is an anchor that
