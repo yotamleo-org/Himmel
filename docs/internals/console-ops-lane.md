@@ -49,9 +49,10 @@ Exactly one line, sent to the console by `SendMessage` as an escalation id:
 E-<relay>-<seq> OPS <script> rc=<n> <PASS|FAIL|ESCALATE|TIMEOUT> out=<file> :: <fact>
 ```
 
-`<fact>` is the script's last output line only when it is an upper-case verdict
-token line; any other last line may carry PR or leg text and is replaced by
-`see out file`. The console reads `<file>` only when the verdict is not `PASS`
+`<fact>` is only a fixed verdict phrase (`READY-CHECK PASS|FAIL`,
+`COVERAGE-LINT PASS|FAIL`, `HANDLED`, `ESCALATE`, `CLOSABLE`, `WITHHELD`) that
+the script's last line starts with; the rest of that line is dropped, and any
+other last line may carry PR or leg text and is replaced by `see out file`. The console reads `<file>` only when the verdict is not `PASS`
 or when it needs the evidence for a ruling. One event costs the console one
 turn: the verdict wake.
 

@@ -10,9 +10,10 @@
 # Output (stdout, exactly one line):
 #   OPS <script> rc=<n> <PASS|FAIL|ESCALATE|TIMEOUT> out=<file> :: <fact>
 #   OPS <script> rc=2 REFUSED <reason>
-# <fact> is the script's last output line ONLY when it is an upper-case verdict
-# token line (READY-CHECK PASS, CLOSABLE: ..., HANDLED ...); any other last line
-# may carry PR or leg text, which must never ride a relay line, so the fact is
+# <fact> is ONLY a fixed verdict phrase the script's last line starts with
+# (READY-CHECK PASS|FAIL, COVERAGE-LINT PASS|FAIL, HANDLED, ESCALATE, CLOSABLE,
+# WITHHELD); everything after the phrase is dropped. Any other last line may
+# carry PR or leg text, which must never ride a relay line, so the fact is
 # `see out file`. The full output is in <file>. rc: the script's own; 124 on
 # timeout; 2 refused/usage.
 #
@@ -52,8 +53,8 @@ mkdir -p "$OUT_DIR" || refuse "no-out-dir"
 out="$OUT_DIR/$(date +%Y%m%dT%H%M%S)-$$-$name.out"
 
 case "$name" in
-    *.mjs) timeout "${OPS_TIMEOUT:-300}" node "$dir/$name" "$@" >"$out" 2>&1 ;;
-    *)     timeout "${OPS_TIMEOUT:-300}" bash "$dir/$name" "$@" >"$out" 2>&1 ;;
+    *.mjs) timeout --kill-after=5 "${OPS_TIMEOUT:-300}" node "$dir/$name" "$@" >"$out" 2>&1 ;;
+    *)     timeout --kill-after=5 "${OPS_TIMEOUT:-300}" bash "$dir/$name" "$@" >"$out" 2>&1 ;;
 esac
 rc=$?
 
@@ -65,11 +66,8 @@ case "$rc" in
 esac
 
 last="$(grep -v '^[[:space:]]*$' "$out" | tail -n 1 | tr -d '\000-\010\013-\037')"
-if printf '%s' "$last" | grep -Eq '^[A-Z][A-Z0-9_-]{2,}([: ]|$)'; then
-    fact="$(printf '%s' "$last" | cut -c1-160)"
-else
-    fact="see out file"
-fi
+fact="$(printf '%s' "$last" | sed -E -n 's/^((READY-CHECK|COVERAGE-LINT) (PASS|FAIL)|HANDLED|ESCALATE|CLOSABLE|WITHHELD)([^A-Za-z0-9_-].*)?$/\1/p')"
+[ -n "$fact" ] || fact="see out file"
 
 echo "OPS $name rc=$rc $verdict out=$out :: $fact"
 exit "$rc"
