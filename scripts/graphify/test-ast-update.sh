@@ -487,5 +487,18 @@ ids16=$(python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));print(" ".joi
 echo "$out16" | grep -q "restored 2 semantic node" && pass "T16 the restore is announced on stderr" || fail "T16 stderr: $out16"
 [ ! -e "$OUT16/.graph.pre-ast.json" ] && pass "T16 no snapshot left behind" || fail "T16 snapshot left: $(ls -A "$OUT16")"
 
+# --- T17: an existing graph that cannot be snapshotted aborts before the rebuild
+echo "T17: unreadable graph.json -> FAILED (exit 5), graphify never invoked"
+CORPUS17="$WS/c17"; OUT17="$CORPUS17/graphify-out"; mkdir -p "$OUT17"
+printf '{"nodes":[],"links":[]}' > "$OUT17/graph.json"; chmod 000 "$OUT17/graph.json"
+BIN17="$WS/bin17"; make_stub "$BIN17"; : > "$WS/call.log"
+out17=$( PATH="$BIN17:$PATH" bash "$SCRIPT" "$CORPUS17" 2>&1 ); rc17=$?
+chmod 600 "$OUT17/graph.json"
+if [ "$(id -u)" -eq 0 ]; then pass "T17 skipped (root reads any file)"
+else
+  [ "$rc17" -eq 5 ] && pass "T17 exits 5" || fail "T17 should exit 5 (got $rc17): $out17"
+  [ -s "$WS/call.log" ] && fail "T17 graphify ran without a snapshot" || pass "T17 graphify never invoked"
+fi
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

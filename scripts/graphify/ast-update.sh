@@ -359,7 +359,11 @@ export GRAPHIFY_NO_AUTO_REFRESH=1
 # script's lock owns, and is removed on every path.
 _pre_ast="$OUT_DIR/.graph.pre-ast.json"
 rm -f "$_pre_ast"
-if [ -f "$OUT_DIR/graph.json" ]; then cp "$OUT_DIR/graph.json" "$_pre_ast" 2>/dev/null || rm -f "$_pre_ast"; fi
+if [ -f "$OUT_DIR/graph.json" ] && ! cp "$OUT_DIR/graph.json" "$_pre_ast" 2>/dev/null; then
+  rm -f "$_pre_ast"
+  echo "ast-update: FAILED -- could not snapshot $OUT_DIR/graph.json before the rebuild (unreadable or disk full), so the semantic nodes it would drop could not be restored; nothing run. Exiting 5" >&2
+  exit 5
+fi
 set +e
 graphify update "$CORPUS_ROOT" --force
 _graphify_rc=$?
