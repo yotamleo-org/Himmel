@@ -11,7 +11,7 @@
 # a console inherits the env var, so the name is the real identity) AND the Bash command runs a script named in
 # scripts/handover/console-kit/long-running.txt AND tool_input.run_in_background
 # is not true. "Runs" means the name follows an interpreter (bash, sh, node,
-# bun, python) or sits in command position behind a path; a grep or cat that
+# bun, python) in command position or sits in command position behind a path; a grep or cat that
 # merely names the script is not a run.
 # ponytail: a textual match, not a shell parser — a script run through eval, a
 # wrapper script or a quoted path slips past, and a listed name fed to an
@@ -66,7 +66,7 @@ while IFS= read -r name; do
     case "$name" in ''|'#'*) continue ;; esac
     esc=$(printf '%s' "$name" | sed 's/[.[\*^$]/\\&/g')
     tail='($|[[:space:];&|)])'
-    via_interp="(^|[[:space:];&|(])(bash|sh|node|bun|python3?)[[:space:]]+([^[:space:]]*/)?${esc}${tail}"
+    via_interp="(^|[;&|(])[[:space:]]*(bash|sh|node|bun|python3?)[[:space:]]+([^[:space:]]*/)?${esc}${tail}"
     via_path="(^|[;&|(])[[:space:]]*[^[:space:]]*/${esc}${tail}"
     if printf '%s' "$cmd" | grep -Eq -e "$via_interp" -e "$via_path"; then
         hit="$name"

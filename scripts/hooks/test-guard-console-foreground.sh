@@ -97,6 +97,8 @@ expect "console, chained after another command: denied" 2 \
 # --- a mention is not a run
 expect "console, git grep naming a listed script: allowed" 0 \
     "$(run_hook yes "git grep -n wrap-merged.sh -- scripts" absent)"
+expect "console, grep with an interpreter-named argument: allowed" 0 \
+    "$(run_hook yes "grep bash scripts/handover/console-kit/ready-check.sh" absent)"
 expect "console, longer name sharing a prefix: allowed" 0 \
     "$(run_hook yes "$K/wrap-merged.sh.bak" absent)"
 expect "console, unrelated command: allowed" 0 "$(run_hook yes "ls -la" absent)"

@@ -3808,7 +3808,8 @@ Spec: `scripts/hooks/test-guard-console-dispatch.sh`.
 A foreground run of a slow console-kit script blocks the console turn for minutes
 and every leg's `SendMessage` queues behind it. Fires on `Bash`, only when
 `HIMMEL_CONSOLE_DOC` is set (`headed-arm.sh` exports it into a `--role console`
-session alone, so a leg never sees it), and denies a command that runs a script
+session, but a leg launched from a console can inherit it) and the resolved session
+name ends in `-console` (an unresolvable name is allowed), and denies a command that runs a script
 named in `scripts/handover/console-kit/long-running.txt` unless
 `tool_input.run_in_background` is true. The deny message gives the re-issue shape.
 A textual match (interpreter + name, or a path in command position), so a grep that
