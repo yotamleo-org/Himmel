@@ -283,6 +283,25 @@ class RedditFetchLane(unittest.TestCase):
             rp.reddit_rung("  ", self.fetch_html, self.fetch_json)
         self.assertEqual(self.calls, [])
 
+    def test_failed_discovery_fetch_is_a_recorded_rung_error(self):
+        def down(url):
+            raise OSError("timeout")
+        rung = rp.reddit_rung("claude code hooks", down, self.fetch_json)
+        out = rp.research("claude code hooks", "claude code", [("reddit", rung)], NOW, 60)
+        self.assertIn("reddit=error: timeout", out["header"])
+        self.assertIn("answered by: NONE", out["header"])
+
+    def test_arctic_fetch_refuses_an_off_host_redirect(self):
+        import urllib.request
+        handler = rp._same_host_redirect("arctic-shift.photon-reddit.com")
+        req = urllib.request.Request("https://arctic-shift.photon-reddit.com/api/posts/ids?ids=a")
+        for target in ("https://example.com/x", "http://arctic-shift.photon-reddit.com/x"):
+            with self.subTest(target=target):
+                with self.assertRaises(ValueError):
+                    handler.redirect_request(req, None, 302, "Found", {}, target)
+        ok = handler.redirect_request(req, None, 302, "Found", {}, "https://arctic-shift.photon-reddit.com/y")
+        self.assertEqual(ok.full_url, "https://arctic-shift.photon-reddit.com/y")
+
     def test_fetchers_refuse_other_hosts(self):
         for fn in (rp.fetch_reddit_html, rp.fetch_arctic_json):
             for url in ("https://example.com/x", "http://www.reddit.com/x", "https://www.reddit.com.evil.io/x"):

@@ -323,7 +323,9 @@ def reddit_rung(operator_query, fetch_html, fetch_json, enrich_limit=REDDIT_ENRI
 
     The returned rung refuses any other query: the lane sends only what the
     operator typed to the two Reddit hosts, never text taken from a note.
-    fetch_html / fetch_json take a URL; failures degrade, never abort the rung.
+    fetch_html / fetch_json take a URL. A failed discovery fetch raises (the
+    ladder records it as that rung's error); failed backfill or enrichment
+    fetches degrade to the data already in hand.
     """
     if not isinstance(operator_query, str) or not operator_query.strip():
         raise ValueError("reddit_rung needs the operator's own non-empty query")
@@ -373,12 +375,24 @@ def fetch_reddit_html(url, timeout_ms=60000):
     return getattr(page, "html_content", None) or ""
 
 
+def _same_host_redirect(host):
+    import urllib.request
+
+    class _SameHostRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            _pinned(newurl, host)
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    return _SameHostRedirect()
+
+
 def fetch_arctic_json(url, timeout_s=60):
-    """Keyless GET of the Arctic Shift API."""
+    """Keyless GET of the Arctic Shift API; a redirect off its host is refused."""
     _pinned(url, "arctic-shift.photon-reddit.com")
     import urllib.request
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (himmel research)"})
-    with urllib.request.urlopen(req, timeout=timeout_s) as r:
+    opener = urllib.request.build_opener(_same_host_redirect("arctic-shift.photon-reddit.com"))
+    with opener.open(req, timeout=timeout_s) as r:
         return r.read(8_000_000).decode("utf-8", "replace")
 
 
