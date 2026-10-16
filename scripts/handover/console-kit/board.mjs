@@ -971,8 +971,7 @@ const consoleCost = (() => {
 // The succession into this console as a tool-eval row: the predecessor is the one the
 // live legs' `SUCCESSION accepted: <this console> replaces <pred>` bullets name. The window
 // runs from this session's first message to its first `LIVE` Results bullet (the
-// `<code> LIVE sent to <pred>` line); the predecessor's messages count from the same
-// start to its last.
+// `<code> LIVE sent to <pred>` line), for both sessions.
 const SUCCESSION_TARGET = { eq: 457000, turns: 20 };
 const succession = (() => {
     const accepts = liveLegs.map((l) => [...(legInfo.get(l.label)?.bullets || [])].reverse()
@@ -983,7 +982,7 @@ const succession = (() => {
     const liveIdx = docResults.findIndex((b) => /^- \d{1,2}:\d{2}(?:\s+\d{1,2}:\d{2})?\s+(?:[A-Z]{1,3}\s+)?LIVE\b/.test(b));
     const liveAt = liveIdx < 0 ? null : bulletTimes(docResults, docPath, start)[liveIdx];
     const end = liveAt === null ? Infinity : liveAt;
-    const win = [...consoleMsgs.filter((m) => m.ts <= end), ...messagesOf(pred).filter((m) => m.ts >= start)];
+    const win = [...consoleMsgs, ...messagesOf(pred)].filter((m) => m.ts >= start && m.ts <= end);
     const eq = sumEq(win), turns = win.length;
     const silent = Math.max(0, liveLegs.length - accepts.length);
     const pass = liveAt !== null && eq <= SUCCESSION_TARGET.eq && turns <= SUCCESSION_TARGET.turns;

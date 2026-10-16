@@ -928,7 +928,7 @@ txmsg() {  # txmsg <id> <utc time>
 } > "$TX/succ.jsonl"
 {
     printf '%s\n' '{"type":"custom-title","customTitle":"console-prev","sessionId":"s0"}'
-    txmsg m9 09:50:00; txmsg m10 10:03:00
+    txmsg m9 09:50:00; txmsg m10 10:03:00; txmsg m11 10:30:00
 } > "$TX/pred.jsonl"
 printf '%s\n' '{"type":"custom-title","customTitle":"someone-else","sessionId":"s9"}' "$(txmsg m50 10:01:00)" > "$TX/other.jsonl"
 TZ=UTC BOARD_TRANSCRIPTS="$TX" PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-size" TICK_ARGV_LOG="$W/argv.log" \
