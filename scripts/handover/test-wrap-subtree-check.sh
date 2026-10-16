@@ -570,10 +570,11 @@ cat > "$W/mkt-decoys.txt" <<'FIX'
   515   101       00:00 git clone https://github.com/a/b.git /home/u/work/repo
   516   101       00:00 /usr/bin/zsh -c source /home/u/.claude/shell-snapshots/snapshot-zsh-1-a.sh && eval 'git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= fetch'
   517   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= push origin HEAD
+  518   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= pull origin main
 FIX
 out="$(run "$W/mkt-decoys.txt" 101 2>&1)"; rc=$?
 eq 'broader git shapes still withhold: rc 1 (HIMMEL-5923)' 1 "$rc"
-for dp in 510 511 512 514 515 516 517; do
+for dp in 510 511 512 514 515 516 517 518; do
     contains "decoy pid=$dp withholds (HIMMEL-5923)" "$out" "  pid=$dp ppid="
 done
 lacks 'the exact-shape fetch beside the decoys is still ignored, not withheld (HIMMEL-5923)' "$out" '  pid=513 ppid='

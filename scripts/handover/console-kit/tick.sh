@@ -844,7 +844,8 @@ if [ "$census_failed" -eq 0 ]; then
                 w_doc="$(printf '%s' "$leg_docmap" | sed -n "s/^$w_label=//p" | head -n 1)"
                 w_mt=""
                 [ -z "$w_doc" ] || w_mt="$(stat -c %Y "$w_doc" 2>/dev/null)" || w_mt=""  # gnu-ok: Linux-only kit
-                if [ -n "$w_mt" ] && [ $(( $(date +%s) - w_mt )) -ge $(( ${TICK_CLOSABLE_MIN:-5} * 60 )) ]; then
+                case "${TICK_CLOSABLE_MIN:-5}" in ""|*[!0-9]*) w_min=5 ;; *) w_min=$((10#${TICK_CLOSABLE_MIN:-5})) ;; esac
+                if [ -n "$w_mt" ] && [ $(( $(date +%s) - w_mt )) -ge $(( w_min * 60 )) ]; then
                     closable_n=$((closable_n + 1))
                 fi
                 break
