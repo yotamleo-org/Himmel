@@ -421,7 +421,7 @@ cmd_reembed() {
     say "[2/4] qmd embed ${force:+$force }on the copy with $uri (long: about 2 h for our corpus on a 4090)"
     # shellcheck disable=SC2086  # $force is empty or the single word --force
     INDEX_PATH="$copy" QMD_CONFIG_DIR="$scratch" run_qmd embed $force --timeout 0 --max-docs-per-batch 4096 || rc=$?
-    [ "$rc" -eq 0 ] || die 5 "qmd embed failed on the copy (rc=$rc); the live index is untouched. Remove $copy and retry."
+    [ "$rc" -eq 0 ] || die 5 "qmd embed failed on the copy (rc=$rc); the live index is untouched. Re-run the same command to resume from $copy (finished vectors are kept)."
 
     say "[3/4] completeness: a second embed pass must find nothing to do"
     out="$(INDEX_PATH="$copy" QMD_CONFIG_DIR="$scratch" run_qmd embed 2>&1)" || die 5 "completeness pass failed"
