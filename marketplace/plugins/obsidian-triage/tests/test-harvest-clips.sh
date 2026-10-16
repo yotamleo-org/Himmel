@@ -746,6 +746,43 @@ else
 fi
 assert "G-2 also invalidates the provisional marker" "yes" "$marker_g2_prov"
 
+echo "Test 18: github /blob/ file clips take the clip-body path, repo-root and /tree/ stay on luna-ingest (HIMMEL-1735)"
+blob_tmp="$(mktemp -d "${TMPDIR:-/tmp}/harvest-blob.XXXXXX")" || exit 1
+cat > "$blob_tmp/t.py" <<'PY'
+import importlib.util, sys
+from pathlib import Path
+
+tool, tmp = sys.argv[1], Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location("harvest_batch", tool)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+body = "".join(f"Line {i} of a captured notebook body with real content.\n" for i in range(1, 15))
+
+
+def route(name, source):
+    p = tmp / name
+    p.write_text(f"---\ntype: research\nsource: {source}\n---\n{body}", encoding="utf-8")
+    g, msg, _ = mod.process_clip(p, dry_run=True)
+    if "github-ingest needed" in msg:
+        return "luna-ingest"
+    return "clip-body" if g == "v" and "clip-body" in msg else f"failed:{g}:{msg}"
+
+
+print("blob=" + route("blob.md", "https://github.com/o/r/blob/main/nb/a.ipynb"))
+print("root=" + route("root.md", "https://github.com/o/r"))
+print("tree=" + route("tree.md", "https://github.com/o/r/tree/main"))
+PY
+route_out=$(python3 "$blob_tmp/t.py" "$PLUGIN_DIR/tools/harvest-clip-body-batch.py" "$blob_tmp" 2>&1)
+rm -rf "$blob_tmp"
+assert "blob clip routes to clip-body" "blob=clip-body" "$(grep '^blob=' <<<"$route_out" || echo "$route_out")"
+assert "repo-root clip still routes to luna-ingest" "root=luna-ingest" "$(grep '^root=' <<<"$route_out" || echo "$route_out")"
+assert "/tree/ clip still routes to luna-ingest" "tree=luna-ingest" "$(grep '^tree=' <<<"$route_out" || echo "$route_out")"
+
+grep -qE "github\.com/.*/blob/.*\*\*clip-body\*\*|/blob/.*clip-body" "$PLUGIN_DIR/references/harvest-clips/phase-4-dispatch.md" && found=yes || found=no
+assert "phase-4 dispatch table routes /blob/ to clip-body" "yes" "$found"
+grep -qE "/blob/.*(no|skip|only).*gh auth|gh auth.*/blob/" "$PLUGIN_DIR/commands/harvest-clips.md" && found=yes || found=no
+assert "gh-auth preflight skipped for blob-only batches" "yes" "$found"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 if [ "$fail" -gt 0 ]; then
