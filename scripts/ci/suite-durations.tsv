@@ -673,7 +673,6 @@ scripts/test-claude-codex.sh	1
 scripts/test-claude-glm.sh	8
 scripts/test-claude-openrouter-pwsh.sh	11
 scripts/test-claude-openrouter.sh	2
-scripts/test-claude-routed.sh	6
 scripts/test-clean-fresh-lock.sh	4
 scripts/test-clean-garden-accounting.sh	10
 scripts/test-clean-only.sh	7
@@ -696,7 +695,6 @@ scripts/test-luna-upgrade-all.sh	16
 scripts/test-merge-public-on-green.sh	0
 scripts/test-new-worktree-branch-tracking.sh	0
 scripts/test-new-worktree-uniqueness.sh	0
-scripts/test-omniroute-config-lint.sh	1
 scripts/test-plugin-eval-preflight.sh	0
 scripts/test-preflight-adopter.sh	0
 scripts/test-quiet-run.sh	10

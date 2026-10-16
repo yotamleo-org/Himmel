@@ -44,7 +44,7 @@ apply_salus_overlay() {
   fi
   printf 'salus medical-vault profile - managed by setup --medical / upgrade\n' > "$repo_root/.salus-profile"
   # PHI guard marker: the 7 PHI launcher guards (claude-glm/
-  # claude-codex/claude-routed + their .ps1 twins + the hermes parity guard)
+  # claude-codex + their .ps1 twins + the hermes parity guard)
   # were written to test for .salus, not .salus-profile — without this, a
   # fresh salus deployment shipped an inert guard (marker present, but the
   # wrong one). The guards now accept .salus-profile too (part 2 of this

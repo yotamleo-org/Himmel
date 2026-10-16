@@ -66,17 +66,13 @@ grafts the GLM lane onto that path via a standalone CLI
   so Claude Code stops auto-compacting/rejecting at the ~200k default (the
   documented "prompt too long" deaths). `spawn-glm --context big|small` (default
   `big`) picks the preset per dispatch: big = `glm-5.2[1m]` + 1M; small = `glm-5.2`
-  + 200k. The interactive `claude-glm{,.ps1}` / `claude-routed{,.ps1}` launchers
-  expose the same pair as raw env knobs (`GLM_MODEL` / `GLM_CONTEXT_WINDOW`,
-  `ROUTED_MODEL` / `ROUTED_CONTEXT_WINDOW`) — override both together; HAIKU stays
-  `glm-4.7` (1M is main-only). The routed pilot is GLM-only loopback so `[1m]`
-  passes through; if a future deployment routes to a non-GLM backend, override
-  both knobs to match that backend's real window.
-- **The "per-token blocked" decision applies to the ROUTER only, not this lane.**
-  That decision gates the WS2 OmniRoute router (a proxy may not terminate the
-  Coding-Plan key per Z.ai ToS). Direct claude-CLI use of the Coding-Plan key —
-  what this loop does — is the same posture as the shipped `claude-glm` launcher
-  and is **not** blocked. The framing is "keep working on flat-rate quota",
+  + 200k. The interactive `claude-glm{,.ps1}` launchers
+  expose the same pair as raw env knobs (`GLM_MODEL` / `GLM_CONTEXT_WINDOW`) —
+  override both together; HAIKU stays `glm-4.7` (1M is main-only).
+- **The "per-token blocked" decision applies to proxies, not this lane.**
+  A proxy may not terminate the Coding-Plan key per Z.ai ToS. Direct claude-CLI
+  use of the Coding-Plan key — what this loop does — is the same posture as the
+  shipped `claude-glm` launcher and is **not** blocked. The framing is "keep working on flat-rate quota",
   never "cheaper per-token".
 
 ## The loop: spawn → inspect → validate → push-by-validator

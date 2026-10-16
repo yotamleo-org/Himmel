@@ -16,7 +16,6 @@ No launcher has a `--force` bypass around it.
 | Launcher | Backend | Status |
 |---|---|---|
 | `scripts/claude-codex` | Codex subscription through a local CLIProxyAPI proxy | Supported |
-| `scripts/claude-routed` | A local loopback OmniRoute router | Supported (pilot) |
 | `scripts/claude-openrouter` | OpenRouter, metered | Available, **not health-checked** |
 | `scripts/claude-deepseek` | DeepSeek's Anthropic-compatible endpoint, metered | Available, **not health-checked** |
 | `scripts/claude-glm` | Z.ai GLM | **Removed** from the supported set (see below) |
@@ -52,14 +51,6 @@ reference: the `claude-codex` section of [tooling-catalog.md](tooling-catalog.md
 | `CODEX_HAIKU`, `CODEX_SUBAGENT_MODEL` | `CODEX_MODEL` | Small-model and subagent slugs |
 | `CODEX_CONTEXT_WINDOW` | `272000` | Compaction window. Above about 272k input is billed at a higher rate; above about 372k exceeds the backend window and warns |
 
-## `claude-routed`
-
-Runs Claude Code against a local OmniRoute router on loopback only. The host is
-fixed to `127.0.0.1`; only the port is configurable (`OMNIROUTE_PORT`, default
-`20128`). The launcher carries only the router's client key,
-`OMNIROUTE_API_KEY`, never a provider key. Exit 2 when it is unset. Lint the
-router config with `scripts/omniroute-config-lint.sh`.
-
 ## `claude-openrouter`
 
 Runs Claude Code on OpenRouter's native Anthropic-compatible endpoint with a
@@ -94,7 +85,7 @@ The Z.ai GLM lane has been dropped and is **not supported**. The launcher and
 its historical notes remain in the tree, but do not plan on it:
 [glm-offload.md](glm-offload.md) and the `claude-glm` section of
 [tooling-catalog.md](tooling-catalog.md) describe the retired design. Use
-`claude-codex`, `claude-routed`, or a native Claude subagent instead.
+`claude-codex` or a native Claude subagent instead.
 
 ## Not a lane: `himmel-run`
 

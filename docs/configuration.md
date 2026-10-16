@@ -45,7 +45,6 @@ sites are changed here.
 | DeepSeek launcher (bash/PowerShell) | `DEEPSEEK_API_KEY` |
 | GLM launcher (bash/PowerShell), `telegram/glm-env.ts`, graph-map refresh | `ZAI_API_KEY` |
 | OpenRouter launcher (bash/PowerShell), `lanes/openrouter-cost.sh` | `OPENROUTER_API_KEY` |
-| Routed launcher (bash/PowerShell) | `OMNIROUTE_API_KEY` |
 | CR artifact critic / provider-selected panel credentials | `GLM_API_KEY`, `ZAI_API_KEY`, `Z_AI_API_KEY`; panel additionally `CLIPROXY_API_KEY` when Codex is selected |
 | CR policy readers | `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `HIMMEL_DOC_FRESHNESS` as required by each reader; `pr-check-env.sh` permits only those plus `CR_CLAUDE_AGENTS` |
 | Handover tools, graph cadence, graphify fence, Hermes egress, overnight report, config-ui fleet/legs, statusline, lane-cost rows | `HANDOVER_DIR`; hop, leg-timeline, auto-action and leg-relaunch additionally `USER_SLUG`; console additionally `JIRA_PROJECT_KEY` |
@@ -622,12 +621,12 @@ written only into `.env` is not read (`load-dotenv.sh` bridges neither).
 | `ZAI_API_KEY` | unset (lane absent) | `.env` | makes the `glm` lane *detectable*; the registry marks it dormant, so dispatching it also needs `GLM_LANE_OK=1`. Legacy aliases `GLM_API_KEY`/`Z_AI_API_KEY` also accepted by the critic panel |
 | `CLIPROXY_API_KEY` | unset (lane absent) | `.env` | makes the `claudex` lane *detectable*; the registry marks it dormant, so dispatching it also needs `CLAUDEX_LANE_OK=1` |
 | `OPENROUTER_API_KEY` | unset (lane absent) | `.env` | enables the openrouter-free lane |
-| `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `OMNIROUTE_API_KEY` | unset | `.env` | auth for the gemini helper (`scripts/gemini/invoke.sh`) and the `claude-routed` launcher — both real, but *outside* the `lanes.json` registry (`/lanes` does not list them) |
+| `GEMINI_API_KEY`/`GOOGLE_API_KEY` | unset | `.env` | auth for the gemini helper (`scripts/gemini/invoke.sh`) — real, but *outside* the `lanes.json` registry (`/lanes` does not list it) |
 | `scripts/lanes/lanes.local.json` | absent | `node scripts/lanes/set-lane-override.mjs <lane> <always\|never>` | per-machine forced lane override — the sanctioned way to turn a lane off (`never`) without touching the shared registry |
 | `LANES_REGISTRY` | unset | env | full registry-path override (test/CI; skips the local overlay) |
 | `HIMMEL_IMPL_LANE` | registry/overlay `defaultImplLane` | env | preferred implementation lane for `scripts/telegram/dispatch-lane.sh`; an explicit `--lane` still wins, and an unavailable selection is refused rather than substituted |
-| `GLM_MODEL` / `GLM_CONTEXT_WINDOW`, `ROUTED_MODEL` / `ROUTED_CONTEXT_WINDOW`, `OMNIROUTE_PORT` | `glm-5.2[1m]` / 1M / … | env | lane launcher tuning (`scripts/claude-glm`, `scripts/claude-routed`) |
-| `CLAUDE_LANE_AUTO_RESEED` | ON | shell | `0` stops the lane config dirs (`~/.claude-glm`, `~/.claude-routed`, `~/.claude-codex`) auto-reseeding from `~/.claude` |
+| `GLM_MODEL` / `GLM_CONTEXT_WINDOW` | `glm-5.2[1m]` / 1M | env | lane launcher tuning (`scripts/claude-glm`) |
+| `CLAUDE_LANE_AUTO_RESEED` | ON | shell | `0` stops the lane config dirs (`~/.claude-glm`, `~/.claude-codex`) auto-reseeding from `~/.claude` |
 | `CLAUDEX_BANK_WARN_PCT` / `CLAUDEX_BANK_REFUSE_PCT` / `CLAUDEX_BANK_OK` | 80 / 90 / unset | env | claudex codex weekly usage budget preflight thresholds/override; the refuse point is shared with `bank-status`'s codex verdict (`LANE_FUNDED_MAX_PCT` wins; other banks keep 99) |
 | `IMPL_GUARD_HARD` / `IMPL_GUARD_WARN` / `IMPL_GUARD_CACHE_*` | 80 / 65 / … | env | implementor-dispatch cost-guard thresholds |
 | `HIMMEL_QUOTA_GAUGE_LEDGER` | `~/.himmel/quota-gauge.jsonl` | env | cross-lane quota observation ledger path |

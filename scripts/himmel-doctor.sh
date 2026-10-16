@@ -1749,7 +1749,7 @@ $seen"
 # --- C26: salus profile marker present but PHI guard marker absent (advisory) ---
 # The salus medical-vault profile installer/upgrade drops `.salus-profile`
 # (template machinery) at the vault root; the PHI launcher guards (claude-glm/
-# claude-codex/claude-routed + their .ps1 twins + the hermes parity guard, and
+# claude-codex + their .ps1 twins + the hermes parity guard, and
 # scripts/telegram/phi-egress-guard.ts) test for `.salus` before refusing a cloud/
 # codex launch there (now `.salus-profile` too, as a defense
 # part 2). A vault that carries the profile marker but no `.salus` looks

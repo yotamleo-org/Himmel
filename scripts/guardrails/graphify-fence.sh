@@ -102,7 +102,7 @@
 #                          (matrix cell + ledger apply; no silent
 #                          Anthropic-labelled Z.ai egress)
 #                        any other host (lookalikes, unknown gateways, the
-#                          claude-routed loopback router) -> undeclared -> default
+#                          local loopback routers) -> undeclared -> default
 #                          deny. EXACT-host match, not substring (spoof-proof)
 #   anything else   -> the literal backend string (undeclared -> default deny)
 #
@@ -1170,8 +1170,8 @@ _claude_reroute_var() {
 # backend honors ANTHROPIC_BASE_URL ("claude also reaches custom
 # Anthropic-compatible endpoints (LiteLLM proxy, gateways): set
 # ANTHROPIC_BASE_URL and ANTHROPIC_MODEL"), so the backend NAME alone does not
-# prove the traffic reaches Anthropic: the claude-glm / claude-routed launchers
-# set ANTHROPIC_BASE_URL to a Z.ai/GLM gateway (scripts/claude-glm; parity_guard
+# prove the traffic reaches Anthropic: the claude-glm launcher
+# sets ANTHROPIC_BASE_URL to a Z.ai/GLM gateway (scripts/claude-glm; parity_guard
 # checks `api.z.ai in ANTHROPIC_BASE_URL`). Mirror the openai->deepseek endpoint
 # check so a claude extraction under those launchers is classified by its REAL
 # provider (zai-glm) and hits the matrix's zai-glm cell + ledger, instead of
@@ -1187,7 +1187,7 @@ _claude_reroute_var() {
 #   host in {api.z.ai, open.bigmodel.cn} -> zai-glm (the GLM gateway
 #                                         scripts/claude-glm points at; the
 #                                         matrix zai-glm cell + ledger apply)
-#   any other host (incl. lookalikes, the claude-routed 127.0.0.1 loopback
+#   any other host (incl. lookalikes, a 127.0.0.1 loopback
 #     router, unknown gateways, a scheme-less/malformed value) -> the literal
 #     "anthropic-custom" (undeclared -> matrix default deny; fail-closed)
 _map_anthropic_endpoint() {

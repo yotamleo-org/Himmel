@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermetic tests for scripts/claude-openrouter. bash 3.2-safe.
-# Twin of test-claude-routed.sh's harness, adapted for the OpenRouter lane's
+# Harness adapted for the OpenRouter lane's
 # defining behavior: the egress-matrix HARD gate. The real egress matrix
 # declares the `openrouter` provider with allow cells for himmel-code +
 # handover-state ONLY: an unclassified cwd
