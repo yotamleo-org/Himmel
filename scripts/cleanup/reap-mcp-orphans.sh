@@ -67,18 +67,22 @@ done <<< "$TABLE"
 # Succeeds when an ancestor is a live claude, or any ancestor is some other
 # live process that is not itself an MCP/LSP signature match (an editor, a
 # shell, a service): that process may own the child, so it is never an orphan.
-# Only a chain of signature matches ending at init/systemd is an orphan.
+# Only a chain of signature matches ending at pid 1 is an orphan. A per-user
+# systemd manager is NOT treated as init: it also owns real user services.
+# ponytail: orphans adopted by a subreaper (systemd --user) are never reaped, add a unit-ownership check to cover them.
+# An unfinished walk (hop cap, or a parent missing from the table) is "owned".
 has_owner_ancestor() {
     local p=$1 hops=0
-    while [ -n "${PPID_OF[$p]:-}" ] && [ "$hops" -lt 64 ]; do
+    while [ "$hops" -lt 64 ]; do
+        [ -n "${PPID_OF[$p]:-}" ] || return 0
         p=${PPID_OF[$p]}
         [ "$p" = "0" ] && return 1
         [ "$p" = "1" ] && return 1
-        case "${COMM_OF[$p]:-}" in claude) return 0 ;; systemd) return 1 ;; esac
+        [ "${COMM_OF[$p]:-}" = "claude" ] && return 0
         grep -Eq "$SIG" <<< "${CMD_OF[$p]:-}" || return 0
         hops=$((hops+1))
     done
-    return 1
+    return 0
 }
 
 mkdir -p "$(dirname "$LOG")" 2>/dev/null
@@ -97,9 +101,12 @@ while IFS='|' read -r pid ppid comm cmd; do
     line="ORPHAN $pid ($comm) $verb: $cmd"
     echo "$line"
     printf '%s %s\n' "$(date -u +%FT%TZ)" "$line" >> "$LOG"
-    # The table is a snapshot: re-read the live command line so a recycled PID
-    # is never signalled.
-    if [ "$KILL" -eq 1 ] && [ "$(ps -o args= -p "$pid" 2>/dev/null | sed 's/^ *//')" = "$cmd" ]; then
+    # The table is a snapshot: re-read the live command line, whitespace folded
+    # the same way as the snapshot, so a recycled PID is not signalled.
+    # ponytail: a replacement with identical args can still pass; a start-time handle (pidfd, /proc starttime) would close it.
+    live=$(ps -o args= -p "$pid" 2>/dev/null | tr -s '[:space:]' ' ')
+    snap=$(tr -s '[:space:]' ' ' <<< "$cmd")
+    if [ "$KILL" -eq 1 ] && [ "${live# }" = "${snap# }" ] && [ -n "$live" ]; then
         kill "$pid" 2>/dev/null
     fi
 done <<< "$TABLE"
