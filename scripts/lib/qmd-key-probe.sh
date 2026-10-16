@@ -30,7 +30,9 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 url="${QMD_MCP_URL:-http://localhost:8181/mcp}"
 secs="${QMD_KEY_PROBE_TIMEOUT:-90}"
-case "$secs" in '' | *[!0-9]* | 0) secs=90 ;; esac
+case "$secs" in '' | *[!0-9]*) secs=90 ;; esac
+secs=$((10#$secs))
+[ "$secs" -eq 0 ] && secs=90
 
 fail() { echo "qmd-key-probe: $2" >&2; exit "$1"; }
 
@@ -72,9 +74,11 @@ esac
 err="$(printf '%s' "$body" | jq -r 'if type != "object" then "bad"
   elif (.error | type) == "object" then (.error.message // "" | tostring)
   elif .result.isError == true then ([.result.content[]? | .text? | strings] | first // "unreadable")
-  elif (.result.content | type) == "array" then "" else "bad" end' 2>/dev/null)" || err="bad"
+  elif (.result.content | type) == "array" then "ok" else "bad" end' 2>/dev/null)" || err="bad"
+[ "$code" = 200 ] || err="bad"
 case "$err" in
-  '') exit 0 ;;
+  ok) exit 0 ;;
+  '') fail 2 "empty reply from $url (HTTP $code)" ;;
   *401* | *[Uu]nauthorized*) fail 1 "$key_msg" ;;
   bad) fail 2 "unreadable reply from $url (HTTP $code)" ;;
   *) fail 2 "the qmd daemon's embedding query failed (HTTP $code)" ;;

@@ -48,6 +48,11 @@ class H(http.server.BaseHTTPRequestHandler):
         if mode == 'hang':
             time.sleep(60)
         bad = mode == 'then-ok' and n == 1
+        if mode == 'empty':
+            self.send_response(200)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
         if mode == 'http401':
             code, out = 401, body401
         elif bad:
@@ -108,6 +113,17 @@ start_stub hang
 run_probe "$URL" 2
 assert_eq "hang row: bounded exit 2" 2 "$RC"
 assert_lacks "hang row: does not blame the key" "QMD_OPENAI_API_KEY" "$OUT"
+
+# 4b: an empty 200 reply embedded nothing -> exit 2, never success.
+start_stub empty
+run_probe "$URL"
+assert_eq "empty row: exit 2" 2 "$RC"
+
+# 4c: a zero-padded deadline is decimal, not an octal arithmetic error.
+start_stub then-ok
+run_probe "$URL" >/dev/null
+run_probe "$URL" 08
+assert_eq "leading-zero timeout row: exit 0" 0 "$RC"
 
 # 5: nothing listening -> exit 2.
 run_probe "http://127.0.0.1:1/mcp" 5
