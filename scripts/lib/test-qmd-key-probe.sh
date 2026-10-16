@@ -3,7 +3,7 @@
 # Tests for scripts/lib/qmd-key-probe.sh.
 # Usage: bash scripts/lib/test-qmd-key-probe.sh
 # Hermetic: a python3 stub HTTP server on a throwaway port stands in for the qmd
-# daemon. The 401 body is the real OpenRouter reply to a keyless embeddings call
+# daemon (it arms its own 120 s alarm and is killed directly by pid on exit). The 401 body is the real OpenRouter reply to a keyless embeddings call
 # (curl -X POST https://openrouter.ai/api/v1/embeddings, no Authorization,
 # 2026-10-16: HTTP 401). Every server and probe runs under a deadline.
 # Platform guard (gitbash-only): POSIX bash 3.2+; a test fixture needs no .ps1
@@ -36,7 +36,8 @@ printf '%s\n' "$TOKEN" > "$TMP/token"
 chmod 600 "$TMP/token"
 
 cat > "$TMP/stub.py" <<'PY'
-import http.server, json, sys, time
+import http.server, json, signal, sys, time
+signal.alarm(120)
 mode, portfile, body401 = sys.argv[1], sys.argv[2], sys.argv[3]
 n = 0
 class H(http.server.BaseHTTPRequestHandler):
@@ -75,7 +76,7 @@ PY
 start_stub() {
     local mode="$1" pf="$TMP/port.$1" i=0
     rm -f "$pf"
-    timeout 120 python3 -I "$TMP/stub.py" "$mode" "$pf" "$REAL_401" >/dev/null 2>&1 &
+    python3 -I "$TMP/stub.py" "$mode" "$pf" "$REAL_401" >/dev/null 2>&1 &
     SRV_PIDS+=("$!")
     while [ ! -s "$pf" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
     URL="http://127.0.0.1:$(cat "$pf")/mcp"
