@@ -340,7 +340,7 @@ do_arm() {
 # naming each one. The console's own console-wait.sh waiter (and what it forked)
 # is the one exemption: it is stopped here, and only after nothing else blocks.
 wrap_subtree_gate() {
-    local sub src=0 plan kills blocks pid
+    local sub src=0 plan kills blocks pid subs sp cmd now
     sub=$(bash "${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}" 2>&1) || src=$?
     [ "$src" -ne 0 ] || return 0
     if [ "$src" -ne 1 ]; then
@@ -362,10 +362,13 @@ wrap_subtree_gate() {
                     if (kids > 0 && !bad) ex[pid[a]] = 1
                 }
             }
-            for (a = 1; a <= n; a++) { if (pid[a] in w) print "KILL " pid[a]; else if (!(pid[a] in ex)) print "BLOCK " row[a] }
+            for (a = 1; a <= n; a++) if (pid[a] in w) dep[pid[a]] = 0
+            for (pass = 0; pass < 8; pass++) for (a = 1; a <= n; a++) if ((par[a] in dep) && !(pid[a] in dep)) dep[pid[a]] = dep[par[a]] + 1
+            for (a = 1; a <= n; a++) { if (pid[a] in w) print "KILL " pid[a]; else if (pid[a] in dep) { c = row[a]; sub(/^.*cmd=/, "", c); print "SUB " dep[pid[a]] " " pid[a] " " c } else if (!(pid[a] in ex)) print "BLOCK " row[a] }
         }')
     blocks=$(printf '%s\n' "$plan" | sed -n 's/^BLOCK //p')
     kills=$(printf '%s\n' "$plan" | sed -n 's/^KILL //p')
+    subs=$(printf '%s\n' "$plan" | sed -n 's/^SUB //p' | sort -rn)
     if [ -n "$blocks" ] || [ -z "$kills" ]; then
         printf '%s\n' "$sub" >&2
         err "wrap refused: this session has live non-harness processes (above) - stop them or let them finish, then re-run"
@@ -374,9 +377,33 @@ wrap_subtree_gate() {
     for pid in $kills; do
         # a recycled pid must not be TERMed: only a live console-wait.sh process is
         if ps -o args= -p "$pid" 2>/dev/null | grep -Eq '^([^ ]*/)?(bash|sh|zsh) ([^ ]*/)?console-wait\.sh( |$)'; then
-            # its direct children first, so none outlives it as an orphan the
-            # re-check below can no longer see
-            pkill -TERM -P "$pid" 2>/dev/null || true
+            # its whole subtree first, deepest-first, each pid confirmed gone, so
+            # no descendant outlives it as an orphan the re-check below can no
+            # longer see
+            while read -r _ sp cmd; do
+                # a gone pid is skipped; a live one whose argv no longer matches its
+                # snapshot row (reused pid, or an exec) is never signalled, and the
+                # wrap is refused with the waiter left running
+                now=$(ps -o args= -p "$sp" 2>/dev/null) || now=""
+                [ -n "$now" ] || continue
+                # an empty snapshot cmd would match any live process at that pid
+                case "$now" in "$cmd"*) [ -n "$cmd" ] || { err "wrap refused: descendant $sp of the console-wait waiter has no recorded command - waiter left running, re-run"; exit 5; } ;; *)
+                    err "wrap refused: descendant $sp of the console-wait waiter changed since the check (now: $now) - waiter left running, re-run"
+                    exit 5 ;;
+                esac
+                kill -TERM "$sp" 2>/dev/null || true
+                for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$sp" 2>/dev/null || break; sleep 0.2; done
+                if kill -0 "$sp" 2>/dev/null; then
+                    kill -KILL "$sp" 2>/dev/null || true
+                    sleep 0.2
+                fi
+                if kill -0 "$sp" 2>/dev/null; then
+                    err "wrap refused: descendant $sp of the console-wait waiter survived TERM and KILL - waiter left running, re-run once it exits"
+                    exit 5
+                fi
+            done <<EOS
+$subs
+EOS
             kill -TERM "$pid" 2>/dev/null || true
         fi
     done

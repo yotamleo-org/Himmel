@@ -70,6 +70,8 @@ EOF
 cat > "$W/bin/jira" <<'EOF'
 #!/usr/bin/env bash
 echo "jira $*" >> "$WM_CALLS"
+[ "$1" != versions ] || { printf 'v1.0.1\tfalse\t2026-12-01\n'; exit 0; }
+[ "$1" != mirror ] || exit "${WM_MIRROR_RC:-0}"
 printf 'HIMMEL-5594\tTask\tIn Review\ttitle\n'
 EOF
 chmod +x "$W"/bin/*
@@ -240,4 +242,75 @@ check "14: rc 6" "$rc" 6
 contains "14: names the step" "$out" "append-results"
 lacks "14: board not run" "$calls" "board "
 
+# --- 15-18. tracker refresh ------------------------------------
+# On MERGED the wrap re-mirrors Jira, snapshots the versions and re-renders the
+# roadmap tracker the console doc names, prints tracker=CHANGED|UNCHANGED|failed:<why>
+# and never fails the wrap. RED on main: no tracker step, so the page stays stale.
+if command -v python3 >/dev/null 2>&1; then
+    printf '#!/usr/bin/env bash\nexit 3\n' > "$W/bin/boom"; chmod +x "$W/bin/boom"
+    TR="$W/tracker"; TPLAN="$TR/plan"; TMIR="$TR/mirror"
+    mkdir -p "$TPLAN/stage1" "$TPLAN/stage3" "$TMIR"
+    printf '%s\n' '{"main_sha_at_build":"abcdef123456"}' > "$TPLAN/stage3/meta.json"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+        v1.0.1 0.1 0 0 0 0 0.1 1 > "$TPLAN/stage3/versions.tsv"
+    printf '%s\t%s\t%s\t%s\n' key version layer effort_mid HIMMEL-1 v1.0.1 bugs 1 > "$TPLAN/stage3/placement.tsv"
+    printf '%s\t%s\t%s\n' key close_flag close_evidence > "$TPLAN/stage3/closures.tsv"
+    printf '%s\t%s\n' key reason > "$TPLAN/stage3/unplaced.tsv"
+    printf '%s\t%s\n' key theme HIMMEL-1 tooling > "$TPLAN/stage1/C01.tsv"
+    printf '%s\n' '---' 'key: "HIMMEL-1"' 'updated: "2026-09-30T11:30:00.000+0000"' 'statusCategory: "Done"' 'fixVersions: ["v1.0.1"]' 'type: "Bug"' '---' '# HIMMEL-1: a planned bug' > "$TMIR/HIMMEL-1.md"
+    export TICK_TRACKER_MIRROR_DIR="$TMIR" TRACKER_HANDOVERS_DIR="$TR/luna/handovers/tester/himmel"
+    tracker_fixture() {  # tracker_fixture [tracker: value]
+        fixture
+        printf '# console\n\n## Live state\n\n%s\ntracker-plan: %s\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE console\n' \
+            "${1:+tracker: $1}" "$TPLAN" > "$CONSOLE"
+    }
+    fp_now() { python3 "$HERE/tracker.py" --emit-fp --plan-dir "$TPLAN" --out "$W/roadmap-tracker.html" --luna-map "$W/roadmap-luna-map.json" --mirror-dir "$TMIR"; }
+    rm -f "$W/roadmap-tracker.html" "$W/roadmap-tracker.html.fp"
+
+    tracker_fixture 'https://claude.ai/artifact/x'
+    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    check "15: rc 0" "$rc" 0
+    contains "15: a stale tracker is re-rendered, tracker=CHANGED" "$out" "tracker=CHANGED"
+    check "15: the page's fp now matches what tick derives (tick reads tracker=ok)" "$(fp_now)" "$(cat "$W/roadmap-tracker.html.fp" 2>/dev/null)"
+    contains "15: the mirror was refreshed into the mirror dir" "$calls" "jira mirror --root $TMIR"
+    contains "15: the versions snapshot was taken" "$calls" "jira versions"
+    check "15: versions snapshot written next to the mirror" "v1.0.1	false	2026-12-01" "$(cat "$TMIR.versions.tsv" 2>/dev/null)"
+
+    tracker_fixture 'https://claude.ai/artifact/x'
+    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    contains "16: a second wrap over an unchanged tracker is tracker=UNCHANGED" "$out" "tracker=UNCHANGED"
+
+    tracker_fixture 'https://claude.ai/artifact/x'
+    WM_TRACKER_PY="$W/bin/boom" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    check "17: a failing render never fails the wrap (rc 0)" "$rc" 0
+    contains "17: and says why" "$out" "tracker=failed:"
+    contains "17: the bullet and board still ran" "$calls" "board --doc"
+
+    printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$W/bin/sleeper"; chmod +x "$W/bin/sleeper"
+    tracker_fixture 'https://claude.ai/artifact/x'
+    WM_TRACKER_PY="$W/bin/sleeper" WM_TRACKER_TIMEOUT=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    check "17b: a hung render never fails the wrap (rc 0)" "$rc" 0
+    contains "17b: the render is cut at the timeout" "$out" "tracker=failed:render-rc124"
+    contains "17b: the board still ran" "$calls" "board --doc"
+
+    printf '#!/usr/bin/env bash\necho "jira $*" >> "$WM_CALLS"\nexec sleep 30\n' > "$W/bin/jira-hang"; chmod +x "$W/bin/jira-hang"
+    tracker_fixture 'https://claude.ai/artifact/x'
+    WM_JIRA="$W/bin/jira-hang" WM_TRACKER_TIMEOUT=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    check "17d: a hung mirror never fails the wrap (rc 0)" "$rc" 0
+    contains "17d: the mirror is cut at the timeout" "$out" "tracker=failed:mirror-rc124"
+    contains "17d: the board still ran" "$calls" "board --doc"
+
+    tracker_fixture 'https://claude.ai/artifact/x'
+    WM_MIRROR_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    check "17c: a failing mirror never fails the wrap (rc 0)" "$rc" 0
+    contains "17c: and says why" "$out" "tracker=failed:mirror-rc1"
+    contains "17c: the board still ran" "$calls" "board --doc"
+
+    tracker_fixture
+    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    contains "18: a console with no tracker: line prints tracker=skip" "$out" "tracker=skip"
+    unset TICK_TRACKER_MIRROR_DIR TRACKER_HANDOVERS_DIR
+else
+    echo "skip - 15-18 tracker rows: no python3"
+fi
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails FAILED"; exit 1; }
