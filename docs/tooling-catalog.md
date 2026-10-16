@@ -611,15 +611,19 @@ tool, so `.codex/hooks.json` carries no twin.
 
 ## research path (`scripts/web/research/research_path.py`)
 
-Stdlib-only, network-free pieces of the research path: a relevance floor (the
+Pieces of the research path: a relevance floor (the
 primary entity must appear in a result's title or snippet), a search ladder
 whose header names the rung that answered (rungs are injected callables, never
 a silent fall-through), a dated-in-window check with a dated-share report (an
-unknown date stays unknown, never in-window), and a parser and normalizer for an
-Arctic Shift style Reddit JSON response (`scripts/web/research/fixtures/`). One
-entry function, `research(query, entity, rungs, now, days=30)`; nothing here
-fetches, and the Reddit endpoint hosts (`REDDIT_ENDPOINT_HOSTS`) are pending
-egress review. Lean-invoke: no CLI or skill wiring until the research-path
+unknown date stays unknown, never in-window), and the keyless Reddit lane:
+`reddit_rung(query, fetch_html, fetch_json)` discovers threads through the
+www.reddit.com site search, enriches the top ones from the shreddit thread page
+(score, comment count, top comments) and backfills scores from Arctic Shift.
+The rung is bound to the operator's own query and refuses any other
+(`docs/internals/egress-matrix.md`, "Reviewed outside the matrix"). Only
+`fetch_reddit_html` (Scrapling, venv from `fetch-url.sh`) and `fetch_arctic_json`
+touch the network, each pinned to one host. One entry function,
+`research(query, entity, rungs, now, days=30)`. Lean-invoke: no CLI or skill wiring until the research-path
 decision picks one. Suite: `scripts/web/research/test-research-path.sh`, which
 runs `scripts/web/research/test_research_path.py`.
 

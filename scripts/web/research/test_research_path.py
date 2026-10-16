@@ -213,6 +213,84 @@ class RedditLane(unittest.TestCase):
         self.assertEqual(rp.REDDIT_ENDPOINT_HOSTS, ("arctic-shift.photon-reddit.com", "www.reddit.com"))
 
 
+class RedditFetchLane(unittest.TestCase):
+    """Fixtures are verbatim excerpts of live keyless responses (fixtures/README.md)."""
+
+    def setUp(self):
+        self.search = (HERE / "fixtures" / "reddit-search.html").read_text(encoding="utf-8")
+        self.thread = (HERE / "fixtures" / "reddit-thread.html").read_text(encoding="utf-8")
+        self.ids = (HERE / "fixtures" / "arctic-shift-ids.json").read_text(encoding="utf-8")
+        self.calls = []
+
+    def fetch_html(self, url):
+        self.calls.append(url)
+        if "/search/" in url:
+            return self.search
+        if "/comments/1wn7qdj/" in url:
+            return self.thread
+        raise OSError("no fixture for " + url)
+
+    def fetch_json(self, url):
+        self.calls.append(url)
+        return self.ids
+
+    def test_search_page_parses(self):
+        items = rp.parse_reddit_search_html(self.search)
+        self.assertEqual(len(items), 3)
+        self.assertEqual(items[0]["source"], "reddit")
+        self.assertEqual(items[0]["subreddit"], "technology")
+        self.assertTrue(items[0]["url"].startswith("https://www.reddit.com/r/technology/comments/1wn7qdj/"))
+        self.assertIn("Claude Code", items[0]["title"])
+        self.assertEqual(rp.parse_reddit_search_html("<html>"), [])
+        self.assertEqual(rp.parse_reddit_search_html(None), [])
+
+    def test_thread_page_parses(self):
+        info = rp.parse_reddit_thread_html(self.thread)
+        self.assertEqual(info["score"], 17634)
+        self.assertEqual(info["num_comments"], 1363)
+        self.assertEqual(info["date"].year, 2026)
+        self.assertEqual(len(info["comments"]), 3)
+        self.assertIn("automatic", info["comments"][0])
+        self.assertIsNone(rp.parse_reddit_thread_html("<html>"))
+
+    def test_rung_end_to_end_has_score_and_comments(self):
+        rung = rp.reddit_rung("claude code hooks", self.fetch_html, self.fetch_json)
+        out = rp.research("claude code hooks", "claude code", [("reddit", rung)], NOW, 60)
+        self.assertIn("answered by: reddit", out["header"])
+        self.assertTrue(out["items"])
+        top = out["items"][0]
+        self.assertEqual((top["score"], top["num_comments"]), (17634, 1363))
+        self.assertTrue(top["comments"])
+        raw = rung("claude code hooks")
+        self.assertEqual([i["score"] for i in raw], [17634, 1, 15166])
+        self.assertEqual(raw[2]["num_comments"], 152)
+        self.assertEqual(out["dropped_by_floor"], 2)
+
+    def test_failed_enrichment_degrades_to_backfill(self):
+        def only_search(url):
+            if "/search/" not in url:
+                raise OSError("down")
+            return self.search
+        items = rp.reddit_rung("claude code hooks", only_search, self.fetch_json)("claude code hooks")
+        self.assertTrue(items)
+        self.assertTrue(all(i["score"] is not None for i in items))
+
+    def test_only_the_operator_query_is_sent(self):
+        rung = rp.reddit_rung("claude code hooks", self.fetch_html, self.fetch_json)
+        with self.assertRaises(ValueError):
+            rung("text taken from a vault note")
+        with self.assertRaises(ValueError):
+            rp.reddit_rung("  ", self.fetch_html, self.fetch_json)
+        self.assertEqual(self.calls, [])
+
+    def test_fetchers_refuse_other_hosts(self):
+        for fn in (rp.fetch_reddit_html, rp.fetch_arctic_json):
+            for url in ("https://example.com/x", "http://www.reddit.com/x", "https://www.reddit.com.evil.io/x"):
+                with self.subTest(fn=fn.__name__, url=url):
+                    with self.assertRaises(ValueError):
+                        fn(url)
+
+
 class Entry(unittest.TestCase):
     def test_research_end_to_end(self):
         def rung(q):
