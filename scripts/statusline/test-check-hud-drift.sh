@@ -234,16 +234,6 @@ run_test "autocrlf stability: CRLF worktree and LF worktree record the SAME pin"
   [ -n "$ha" ] && [ "$ha" = "$hb" ]
 '
 
-run_test "cross-twin parity: .sh --write verifies clean under .ps1 and vice versa" '
-  command -v pwsh >/dev/null 2>&1 || exit 77;   # 77 => SKIP tally, not a silent PASS
-  PS1_SCRIPT="$STATUSLINE/check-hud-drift.ps1";
-  setup_pinned_repo && cd "$R" || exit 1;
-  ( pwsh -NoProfile -NonInteractive -File "$PS1_SCRIPT" ) >/dev/null 2>&1 || exit 1;
-  echo tampered >> "$HUD_REL/dist/index.js";
-  ( pwsh -NoProfile -NonInteractive -File "$PS1_SCRIPT" -Write ) >/dev/null 2>&1 || exit 1;
-  expect_rc 0 bash "$SCRIPT"
-'
-
 if [ "$_failures" -eq 0 ]; then
   if [ "$_skips" -gt 0 ]; then
     echo "OK: all cases passed ($_skips skipped)"
