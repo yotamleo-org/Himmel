@@ -32,6 +32,10 @@
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/git-clean.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/git-clean.sh"
+git_env_scrub
 ANCHOR="${READY_GO_ANCHOR:-$(cd "$HERE/../../.." && pwd)}"
 usage() { echo "usage: ready-go.sh [--to <leg session> --token <nonce>] [--ledger <console doc>] <pr-number> <full-40-hex-head-sha>" >&2; exit 2; }
 
@@ -100,7 +104,10 @@ else
     if [ -n "${JIRA_CMD:-}" ]; then
         JOUT=$("$JIRA_CMD" get "$KEY" 2>&1) || JOUT=""
     else
-        JOUT=$(node "$ANCHOR/scripts/jira/dist/index.js" get "$KEY" 2>&1) || JOUT=""
+        # dist/ is an untracked build in the primary checkout, absent from a worktree
+        JCOMMON=$(git -C "$ANCHOR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || JCOMMON=""
+        JANCHOR="$ANCHOR"; [ -z "$JCOMMON" ] || JANCHOR=$(dirname "$JCOMMON")
+        JOUT=$(node "$JANCHOR/scripts/jira/dist/index.js" get "$KEY" 2>&1) || JOUT=""
     fi
     # the first line is "<KEY>\t<type>\t<status>\t<summary>"
     STATUS=$(printf '%s\n' "$JOUT" | head -n 1 | awk -F'\t' -v k="$KEY" '$1 == k { print $3 }')
