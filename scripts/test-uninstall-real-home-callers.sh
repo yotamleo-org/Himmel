@@ -99,7 +99,7 @@ home_is_scratch() {
     if [[ "$val" =~ $mk_re ]]; then
       rest="${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}"
       [[ "$rest" =~ $end_re ]] || return 1
-      [ "$3" -eq 0 ] || return 1   # declared on the same line: the guard cannot fire
+      [ "$3" -eq 0 ] || [ "$2" -eq 0 ] || return 1   # declared on the same line: the guard cannot fire
       [ "$2" -eq 0 ] || [[ "$rest" =~ $guard_re ]]
       return
     fi
@@ -216,6 +216,8 @@ printf '#!/usr/bin/env bash\ntmp="$(mktemp -d /tmp/x.XXXXXX)"\nother=/somewhere/
 printf '#!/usr/bin/env bash\ntd="$(mktemp -d /tmp/x.XXXXXX)" || exit 1\nctl="$td/ctlhome"\nHOME="$ctl" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-transitive.sh"
 # the split form (declare, then guard on its own plain line) passes: the fix is no loosening.
 printf '#!/usr/bin/env bash\nlocal td\ntd=$(mktemp -d /tmp/x.XXXXXX) || exit 1\nHOME="$td/home" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-split-decl.sh"
+# a declared HOME needs no guard (guard=0 on the HOME assignment): still passes.
+printf '#!/usr/bin/env bash\nexport HOME="$(mktemp -d /tmp/x.XXXXXX)"\n%s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-export-home.sh"
 # a literal mktemp on the HOME assignment passes.
 printf '#!/usr/bin/env bash\nHOME="$(mktemp -d /tmp/x.XXXXXX)" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-literal.sh"
 # an expansion operator can swap the scratch value for the real one.
@@ -402,6 +404,8 @@ check "HOME derived from mktemp through a second variable passes" \
   "$(printf '%s' "$got" | grep -c 'scripts/test-scratch-transitive.sh')" "0"
 check "the split declare-then-guard form passes" \
   "$(printf '%s' "$got" | grep -c 'scripts/test-scratch-split-decl.sh')" "0"
+check "a declared HOME=\$(mktemp -d) needs no guard and passes" \
+  "$(printf '%s' "$got" | grep -c 'scripts/test-scratch-export-home.sh')" "0"
 check "a literal mktemp on the HOME assignment passes" \
   "$(printf '%s' "$got" | grep -c 'scripts/test-scratch-literal.sh')" "0"
 check "a scratch variable behind an expansion operator (\${td:+\$HOME}) is flagged" \
