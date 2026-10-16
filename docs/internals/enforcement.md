@@ -3803,6 +3803,24 @@ after `/himmel-update` (marketplace re-sync) + a fresh session.
 
 Spec: `scripts/hooks/test-guard-console-dispatch.sh`.
 
+### `guard-console-foreground.sh` — console runs long kit scripts in the background (HIMMEL-5821)
+
+A foreground run of a slow console-kit script blocks the console turn for minutes
+and every leg's `SendMessage` queues behind it. Fires on `Bash`, only when
+`HIMMEL_CONSOLE_DOC` is set (`headed-arm.sh` exports it into a `--role console`
+session, but a leg launched from a console can inherit it) and the resolved session
+name ends in `-console` (an unresolvable name is allowed), and denies a command that runs a script
+named in `scripts/handover/console-kit/long-running.txt` unless
+`tool_input.run_in_background` is true. The deny message gives the re-issue shape.
+A textual match (interpreter + name, or a path in command position), so a grep that
+names a script is allowed. A workflow nudge: fails open on missing `jq` or an
+unparseable payload.
+
+**Bypass:** `CONSOLE_FG_OK=1` in the LAUNCHING shell, session-sticky.
+
+**Delivery:** himmel-ops plugin `hooks.json` (matcher `Bash`), the same lane as
+`guard-console-dispatch.sh`. Spec: `scripts/hooks/test-guard-console-foreground.sh`.
+
 ### `block-glm-external-writes.sh` — GLM-lane external-write deny (HIMMEL-654)
 
 Fires on `Bash|PowerShell|mcp__.*`. The deterministic classifier substitute for

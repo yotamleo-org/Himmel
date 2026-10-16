@@ -75,6 +75,14 @@
       "remedy": "CONSOLE_DISPATCH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "CONSOLE_FG_OK",
+      "hooks": [
+        "scripts/hooks/guard-console-foreground.sh"
+      ],
+      "bypasses": "Skips the \"guard console foreground\" guard (scripts/hooks/guard-console-foreground.sh).",
+      "remedy": "CONSOLE_FG_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "CR_MERGE_GATE_OK",
       "hooks": [
         "scripts/hooks/block-unresolved-cr-merge.sh"

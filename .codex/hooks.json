@@ -118,6 +118,17 @@
             "timeout": 60
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".codex/run-hook.sh --sandbox retrieval-nudge.sh",
+            "commandWindows": ".codex/run-hook.cmd --sandbox retrieval-nudge.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [
