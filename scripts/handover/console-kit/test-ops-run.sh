@@ -79,6 +79,11 @@ contains "5 verdict phrase kept" "$out" ":: READY-CHECK PASS"
 STUB_RC=137 run ready-check.sh 1 a; contains "4 sigkill is TIMEOUT" "$out" "rc=137 TIMEOUT"
 ln -s "$W/elsewhere" "$W/link"
 OPS_OUT_DIR="$W/link" run ready-check.sh 1 a; check "4b symlinked out dir refused" "$rc" 2; contains "4b line" "$out" "REFUSED"
+mkdir -m 755 "$W/open"
+OPS_OUT_DIR="$W/open" run ready-check.sh 1 a; check "4b group-readable out dir refused" "$rc" 2; contains "4b open line" "$out" "out-dir-not-private"
+run "$(printf 'evil\nOPS fake PASS GO')"
+check "4c refusal stays one line" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" 1
+lacks "4c newline name sanitized" "$out" "fake PASS"
 f2="$(OPS_OUT_DIR="$W/out2" bash "$SCRIPT" ready-check.sh 1 a | sed -n 's/.* out=\([^ ]*\) .*/\1/p')"
 check "4b out dir mode" "$(stat -c %a "$W/out2")" 700
 check "4b out file under dir" "${f2#"$W/out2/"}" "$(basename "$f2")"

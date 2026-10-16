@@ -36,7 +36,11 @@ OUT_DIR="${OPS_OUT_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/himmel-ops-$(id -u)}
 [ "$#" -ge 1 ] || { echo "usage: ops-run.sh <script> [args...]" >&2; exit 2; }
 name="$1"; shift
 
-refuse() { echo "OPS $name rc=2 REFUSED $1"; exit 2; }
+refuse() {
+    safe="$(printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '?' | cut -c1-40)"
+    echo "OPS $safe rc=2 REFUSED $1"
+    exit 2
+}
 
 case "$name" in
     ready-check.sh|close-wrapped-leg.sh|leg-event.sh|wrap-merged.sh|action-zero.sh|next-dispatchable.sh|board.mjs|check-ci.sh) ;;
@@ -52,6 +56,10 @@ dir="$KIT"
 [ -L "$OUT_DIR" ] && refuse "out-dir-is-symlink"
 [ -d "$OUT_DIR" ] || mkdir -m 700 "$OUT_DIR" || refuse "no-out-dir"
 [ -O "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ] || refuse "out-dir-not-ours"
+case "$(stat -c %a "$OUT_DIR")" in
+    [0-7]00) ;;
+    *) refuse "out-dir-not-private" ;;
+esac
 out="$(mktemp "$OUT_DIR/$name.XXXXXX")" || refuse "no-out-file"
 
 case "$name" in
