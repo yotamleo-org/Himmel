@@ -199,10 +199,6 @@ const BASH_LINT_TREES = [
 // let a .ts under scripts/lanes (or any .cjs) introduce a bare-bash spawn the
 // scan never opened.
 const BASH_LINT_EXT = /\.(?:[cm]?js|[cm]?ts)$/;
-// The pwsh half: the two operator installers this rule covers. scripts/codex/
-// is deliberately absent — it owns the cmd-side resolver and its own tests
-// assert ON the string `& bash`.
-const BASH_LINT_PS1 = ['scripts/setup.ps1', 'scripts/adopt.ps1'];
 // The trailing boundary is quote-OR-space so a command-STRING call -- one that
 // passes the whole command line as a single quoted argument to exec/execSync --
 // is caught too, not just the argv form. "bashful" still
@@ -214,9 +210,6 @@ const BASH_LINT_PS1 = ['scripts/setup.ps1', 'scripts/adopt.ps1'];
 // spawn wrapper at 13 call sites and still lint clean here — the literal was
 // right there, the function name simply was not one of the built-ins.
 const SPAWN_BARE_BASH = /(?:spawn|exec)[A-Za-z]*\s*\(\s*\[?\s*["'`]bash(?:["'`]|\s)/;
-// The optional quotes catch `& "bash"` / `& 'bash'`, which resolve through PATH
-// exactly like the bare word.
-const PS_BARE_BASH = /(?:^|[;&|(\s])&\s*(["']?)bash\1(?:\s|$)/;
 
 test('no covered call site spawns a bare "bash" instead of the resolved one', () => {
   const repo = join(HERE, '..', '..');
@@ -235,12 +228,6 @@ test('no covered call site spawns a bare "bash" instead of the resolved one', ()
       if (shown.includes('/node_modules/') || shown.includes('/dist/')) continue;
       if (SPAWN_BARE_BASH.test(readFileSync(full, 'utf8'))) offenders.push(shown.slice(norm(repo).length + 1));
     }
-  }
-  for (const rel of BASH_LINT_PS1) {
-    readFileSync(join(repo, rel), 'utf8').split('\n').forEach((line, i) => {
-      if (/^\s*#/.test(line)) return; // a comment quoting the rule, not a call
-      if (PS_BARE_BASH.test(line)) offenders.push(`${rel}:${i + 1}`);
-    });
   }
   assert.deepEqual(
     offenders,

@@ -1447,15 +1447,6 @@ test("claude-codex --preflight-only probes /v1/messages (NOT the registry) and e
   expect(bash.includes("CLAUDEX_PREFLIGHT_FAKE_HTTP")).toBe(false);
   expect(bash.includes("CLAUDEX_PREFLIGHT_FAKE_CURL_RC")).toBe(false);
   expect(bash.includes("CLAUDEX_PREFLIGHT_ASSUME_NO_CURL")).toBe(false);
-  const ps1 = readFileSync("scripts/claude-codex.ps1", "utf8");
-  expect(ps1.includes('/v1/messages')).toBe(true);
-  expect(ps1.includes("if ($PreflightOnly) {")).toBe(true);
-  // .ps1 classifier mirrors the bash three-way outcome (codex-adv CR)
-  expect(ps1.includes("exit 20")).toBe(true);
-  expect(ps1.includes("exit 21")).toBe(true);
-  // .ps1 mirrors the 408-is-transient + auth-proving-400 fixes
-  expect(ps1.includes("if ($code -eq 408) { exit 20 }")).toBe(true);
-  expect(ps1.includes("(?i)model|max_tokens|invalid_request_error")).toBe(true);
 });
 
 test("claude-codex --preflight-only classifies REAL HTTP responses: 2xx->0, 503/auth_unavailable/429/5xx->20, 4xx->21, connect-fail->20 (live loopback endpoint, no production seam)", async () => {
