@@ -57,7 +57,9 @@
 #                      (no merge)
 #   --jira-transition  opt IN to auto-transitioning the ticket on this merge
 #                      (see "Jira auto-transition is opt-in"
-#                      below; default is to report what it would have done)
+#                      below; default is a PARTIAL merge: the ticket goes back
+#                      to To Do with the PR body's `Remaining:` line, never Done)
+#   A PR found CLOSED unmerged sends its In Review ticket back to To Do too.
 #
 # After a CONFIRMED merge it best-effort prunes the local worktree checked out
 # on the PR's head branch — plain `git worktree remove`, never
@@ -581,10 +583,70 @@ sha=${_rest%%|*}; _rest=${_rest#*|}
 # rather than truncating it — base branches here are the repo default and never
 # contain one.
 pr_base=${_rest%%|*}; head_branch=${_rest#*|}
+# Return an open ticket to To Do after a partial merge or a PR closed
+# unmerged: comment first, then transition (no comment means no breadcrumb, so
+# no move). Prints ok | skip=already-done | skip=comment-failed | failed.
+# Never touches a ticket already Done/Closed; callers screen Epics.
+_jira_return_to_todo() {
+    local repo_root="$1" key="$2" issue_json="$3" text="$4" status
+    status=$(printf '%s' "$issue_json" | node -e '
+        try {
+            const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const s = d.fields && d.fields.status && d.fields.status.name;
+            if (s) process.stdout.write(s);
+        } catch {}
+    ' 2>/dev/null)
+    case "$status" in
+        Done|Closed) echo "skip=already-done"; return 0 ;;
+        "To Do") echo "ok"; return 0 ;;
+    esac
+    local tmp rc=0
+    tmp=$(mktemp "${TMPDIR:-/tmp}/merge-on-green-jira-todo.XXXXXX") || { echo "failed"; return 0; }
+    printf '%s\n' "$text" >"$tmp"
+    ( cd "$repo_root" && node scripts/jira/dist/index.js comment "$key" --comment-file "$tmp" ) >/dev/null 2>&1 || rc=$?
+    rm -f "$tmp"
+    [ "$rc" -eq 0 ] || { echo "skip=comment-failed"; return 0; }
+    if ( cd "$repo_root" && node scripts/jira/dist/index.js transition "$key" "To Do" ) >/dev/null 2>&1; then
+        echo "ok"
+    else
+        echo "failed"
+    fi
+}
+
+# A PR closed unmerged leaves its ticket In Review: send it back to To Do with
+# a comment. Best-effort like jira_auto_transition_on_merge; never fails the run.
+jira_return_closed_pr_to_todo() {
+    local nwo="$1" pr_num="$2" title key common repo_root issue_json issue_type todo
+    title=$("$GH" pr view "$pr_num" --repo "$nwo" --json title -q .title 2>/dev/null) || return 0
+    key=$(printf '%s' "$title" | grep -oE '\[[A-Za-z]+-[0-9]+\]' | head -1 | tr -d '[]')
+    [ -n "$key" ] || return 0
+    common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+    repo_root=$(cd "$(dirname "$common")" 2>/dev/null && pwd) || return 0
+    [ -f "$repo_root/scripts/jira/dist/index.js" ] || return 0
+    issue_json=$(cd "$repo_root" && node scripts/jira/dist/index.js get "$key" --json 2>/dev/null)
+    issue_type=$(printf '%s' "$issue_json" | node -e '
+        try {
+            const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const t = d.fields && d.fields.issuetype && d.fields.issuetype.name;
+            if (t) process.stdout.write(t);
+        } catch {}
+    ' 2>/dev/null)
+    # Fail safe like the merge path: an Epic or an unreadable type is left alone.
+    case "$issue_type" in Epic|"") return 0 ;; esac
+    todo=$(_jira_return_to_todo "$repo_root" "$key" "$issue_json" \
+        "PR #$pr_num ($nwo) was closed without merging; the work it carried is not done, so the ticket returns to To Do.")
+    echo "merge-on-green: PR #$pr_num closed unmerged, $key to To Do: $todo" >&2
+    return 0
+}
+
 case "$pr_state" in
     OPEN) ;;
     ''|*)
         echo "merge-on-green: PR is ${pr_state:-<unknown>} (not OPEN) — nothing to merge."
+        if [ "$pr_state" = "CLOSED" ]; then
+            _closed_nwo=$(printf '%s' "$pr_url" | sed -n 's|^https://[^/]*/\([^/]*/[^/]*\)/pull/.*|\1|p')
+            [ -z "$_closed_nwo" ] || jira_return_closed_pr_to_todo "$_closed_nwo" "$pr_num"
+        fi
         audit "NOOP reason=pr-not-open state=${pr_state:-unknown} selector=${selector:-<cwd-branch>}"
         exit 0 ;;
 esac
@@ -1825,8 +1887,8 @@ jira_auto_transition_on_merge() {
     esac
 
     # Opt-in per merge, not a heuristic (see the file header).
-    # Report what WOULD have happened and stop — no comment, no transition —
-    # so the console can act on it instead of the ticket silently closing.
+    # Report what WOULD have happened and stop short of Done, so a sliced
+    # ticket is never closed by a merge that did not ask for it.
     if ! _truthy "$JIRA_TRANSITION_OPT_IN"; then
         JIRA_AUTO_TRANSITION_RESULT="would-transition key=$key status=$target_status"
         # A bare merge leaves the ticket open: say so, so a sliced ticket's next
@@ -1836,6 +1898,16 @@ jira_auto_transition_on_merge() {
         if [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && [ -x "$_csg_dir/console-kit/append-results.sh" ]; then
             bash "$_csg_dir/console-kit/append-results.sh" "$HIMMEL_CONSOLE_DOC" "$partial" >/dev/null 2>&1 || true
         fi
+        # Back to To Do with the PR body's `Remaining:` line, so the ticket is
+        # dispatchable instead of sitting In Review.
+        local remaining todo
+        remaining=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null \
+            | sed -nE 's/^[[:space:]]*[Rr]emaining:[[:space:]]*/Remaining: /p')
+        [ -n "$remaining" ] || remaining="Remaining: not recorded in the PR body, see PR #$pr_num."
+        todo=$(_jira_return_to_todo "$repo_root" "$key" "$issue_type_json" \
+            "PR #$pr_num ($nwo) merged @ $pr_sha as a partial merge; the ticket is not complete.
+$remaining")
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT todo=$todo"
         return 0
     fi
 
