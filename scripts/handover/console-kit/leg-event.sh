@@ -71,7 +71,8 @@ else
     while IFS= read -r cand; do
         [ -n "$cand" ] || continue
         stem="${cand##*/}"; stem="${stem%.md}"
-        case "$body" in *"$stem"*) legs="$legs$cand"$'\n' ;; esac
+        # the stem must stand alone: a longer, unlisted session name never matches a listed one
+        [[ $body =~ (^|[^A-Za-z0-9_-])"$stem"([^A-Za-z0-9_-]|$) ]] && legs="$legs$cand"$'\n'
     done <<EOF
 $("${LIST[@]}" "$FLEET" 2>/dev/null)
 EOF

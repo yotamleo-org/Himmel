@@ -108,6 +108,8 @@ check "9b two sessions rc" "$rc" 10
 run "WRAPPED HIMMEL-3-qux-2026-10-14 lock released"
 check "9d label-less session rc" "$rc" 0
 contains "9d label-less session leg doc" "$calls" "/h/HIMMEL-3-qux-2026-10-14.md"
+run "WRAPPED HIMMEL-3-qux-2026-10-14-retry lock released"
+contains "9e longer unlisted session does not match a listed stem" "$out" "ESCALATE no-label"
 run "WRAPPED HIMMEL-9-nobody-2026-10-14"
 contains "9c unknown session still no-label" "$out" "ESCALATE no-label"
 
