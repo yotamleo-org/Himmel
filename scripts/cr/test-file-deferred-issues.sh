@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Tests for file-deferred-issues.sh routing through the forge seam.
+# Tests for file-deferred-issues.sh: tracker routing (jira | forge | none) and,
+# on the forge path, routing through the forge seam. A Jira-configured repo must
+# never reach `gh issue create`.
 # Exercises the GitHub path (FORGE=github via a `gh` stub on PATH + GH_CMD) and
 # the Bitbucket issues-disabled graceful degrade (FORGE=bitbucket, CLI exit 3 →
 # warn + exit 0, spec §5.2). No network: every forge call is stubbed.
@@ -75,7 +77,7 @@ STUB
 chmod +x "$GH_STUB"
 
 run_gh() {  # runs the filer on the GitHub path; echoes combined stdout+stderr
-    ( cd "$REPO" && PATH="$BIN_UNIX:$PATH" FORGE=github GH_CMD="$GH_STUB" \
+    ( cd "$REPO" && PATH="$BIN_UNIX:$PATH" JIRA_PROJECT_KEY='' TRACKER='' FORGE=github GH_CMD="$GH_STUB" \
         ISSUE_LIST_RESULT="${ISSUE_LIST_RESULT:-}" \
         bash "$FDI" --pr 1 --input "$INPUT" "$@" 2>&1 )
 }
@@ -115,7 +117,7 @@ STUB
 chmod +x "$BIN2/gh"
 
 echo "TEST: GitHub path surfaces a real create failure (exit 3, not a degrade)"
-out=$( cd "$REPO" && PATH="$BIN2_UNIX:$PATH" FORGE=github GH_CMD="$BIN2/gh" \
+out=$( cd "$REPO" && PATH="$BIN2_UNIX:$PATH" JIRA_PROJECT_KEY='' TRACKER='' FORGE=github GH_CMD="$BIN2/gh" \
     bash "$FDI" --pr 1 --input "$INPUT" 2>&1 ); rc=$?
 assert_eq "github create-fail → exit 3" "3" "$rc"
 assert_contains "github FAILED line" "$out" "FAILED"
@@ -134,7 +136,7 @@ STUB
 chmod +x "$BB_STUB"
 
 echo "TEST: Bitbucket issues-disabled degrades gracefully (spec §5.2)"
-out=$( cd "$REPO" && FORGE=bitbucket BITBUCKET_CMD="$BB_STUB" \
+out=$( cd "$REPO" && JIRA_PROJECT_KEY='' TRACKER='' FORGE=bitbucket BITBUCKET_CMD="$BB_STUB" \
     bash "$FDI" --pr 1 --input "$INPUT" 2>&1 ); rc=$?
 assert_eq "bitbucket degrade → exit 0" "0" "$rc"
 assert_contains "bitbucket warns issues disabled" "$out" "issue tracker appears disabled on this bitbucket repository"
@@ -164,7 +166,7 @@ cat >"$PANEL_INPUT" <<'EOF'
 EOF
 
 run_gh_input() {  # runs the filer against a given --input file on the GitHub path
-    ( cd "$REPO" && PATH="$BIN_UNIX:$PATH" FORGE=github GH_CMD="$GH_STUB" \
+    ( cd "$REPO" && PATH="$BIN_UNIX:$PATH" JIRA_PROJECT_KEY='' TRACKER='' FORGE=github GH_CMD="$GH_STUB" \
         ISSUE_LIST_RESULT="${ISSUE_LIST_RESULT:-}" \
         bash "$FDI" --pr 1 --input "$1" --dry-run 2>&1 )
 }
@@ -217,6 +219,164 @@ assert_eq "canonical dry-run → exit 0" "0" "$rc"
 assert_contains "canonical finding 1 still planned" "$out" "src/a.ts:10: NIT: rename foo. use bar."
 assert_contains "canonical finding 2 still planned" "$out" "docs/readme.md: LOW: missing example. add one."
 
+
+# ── Tracker routing. A gh stub that LOGS every call proves a
+# Jira-configured or tracker-less repo never reaches `gh issue create`; a jira
+# stub logs its argv and captures the --desc-file body.
+GLOG="$TMP_ROOT/gh.log"
+LBIN="$TMP_ROOT/logbin"; mkdir -p "$LBIN"
+LBIN_UNIX=$(cygpath -u "$LBIN" 2>/dev/null || printf '%s' "$LBIN")
+cat >"$LBIN/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$GLOG"
+case "$* " in
+    *"repo view"*nameWithOwner*) echo "owner/repo" ;;
+    *"issue list"*)              printf '' ;;
+    *"issue create"*)            echo "https://github.com/owner/repo/issues/99" ;;
+esac
+STUB
+chmod +x "$LBIN/gh"
+
+JLOG="$TMP_ROOT/jira.log"
+JDESC="$TMP_ROOT/jira.desc"
+JSTUB="$TMP_ROOT/jira-stub.sh"
+cat >"$JSTUB" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$JLOG"
+case "$1" in
+    list)   [ "${JIRA_LIST_FAIL:-}" = 1 ] && { echo "jira: 500" >&2; exit 1; }
+            printf '%s' "${JIRA_LIST_RESULT:-}" ;;
+    create) [ "${JIRA_CREATE_FAIL:-}" = 1 ] && { echo "jira: create refused" >&2; exit 1; }
+            while [ $# -gt 0 ]; do [ "$1" = --desc-file ] && cp "$2" "$JDESC"; shift; done
+            echo "Created TST-7" ;;
+esac
+STUB
+chmod +x "$JSTUB"
+
+run_mode() {  # run_mode <TRACKER> <FORGE> [args...] — gh+jira stubs, logs reset
+    local t="$1" f="$2"; shift 2
+    : >"$GLOG"; : >"$JLOG"; rm -f "$JDESC"
+    ( cd "$REPO" && PATH="$LBIN_UNIX:$PATH" TRACKER="$t" FORGE="$f" GH_CMD="$LBIN/gh" \
+        JIRA_PROJECT_KEY="${JKEY-TST}" JIRA_CMD="$JSTUB" GLOG="$GLOG" JLOG="$JLOG" JDESC="$JDESC" \
+        JIRA_LIST_RESULT="${JIRA_LIST_RESULT:-}" JIRA_LIST_FAIL="${JIRA_LIST_FAIL:-}" JIRA_CREATE_FAIL="${JIRA_CREATE_FAIL:-}" \
+        bash "$FDI" --pr 1 --input "$INPUT" "$@" 2>&1 )
+}
+
+echo "TEST: tracker=jira files ONE ticket, never calls gh (RED: gh issue create)"
+out=$(run_mode jira github); rc=$?
+assert_eq "jira → exit 0" "0" "$rc"
+assert_contains "jira prints tracker=jira" "$out" "tracker=jira"
+assert_contains "jira prints the created key" "$out" "filed TST-7"
+assert_eq "jira never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+assert_eq "jira creates exactly one ticket" "1" "$(grep -c '^create' "$JLOG")"
+assert_contains "jira create labels cr-deferred" "$(cat "$JLOG")" "--labels cr-deferred"
+desc=$(cat "$JDESC" 2>/dev/null || true)
+assert_contains "jira body has Impact" "$desc" "## Impact"
+assert_contains "jira body has Agent detail" "$desc" "## Agent detail"
+assert_contains "jira body numbers finding 1" "$desc" "1. "
+assert_contains "jira body numbers finding 2" "$desc" "2. "
+assert_contains "jira body carries both findings" "$desc" "docs/readme.md: LOW: missing example."
+assert_contains "jira body names the PR" "$desc" "PR #1"
+assert_contains "jira body carries the dedupe marker" "$desc" "crbatch"
+
+echo "TEST: tracker=jira dedupe marker is repo-scoped (same findings, another repo, another marker)"
+git -C "$REPO" config remote.origin.url "https://example.test/one/repo.git"
+run_mode jira github --dry-run >/dev/null
+marker_one=$(grep -o 'crbatch[0-9a-f]*' "$JLOG" | head -n1)
+git -C "$REPO" config remote.origin.url "https://example.test/two/repo.git"
+run_mode jira github --dry-run >/dev/null
+marker_two=$(grep -o 'crbatch[0-9a-f]*' "$JLOG" | head -n1)
+git -C "$REPO" config --unset remote.origin.url
+assert_contains "repo-scoped marker present" "$marker_one" "crbatch"
+if [ "$marker_one" != "$marker_two" ]; then pass "markers differ across repos"; else fail "markers equal across repos" "$marker_one"; fi
+
+echo "TEST: tracker=jira dry-run creates nothing"
+out=$(run_mode jira github --dry-run); rc=$?
+assert_eq "jira dry-run → exit 0" "0" "$rc"
+assert_contains "jira dry-run plan" "$out" "skipped (dry-run)"
+assert_eq "jira dry-run no create" "0" "$(grep -c '^create' "$JLOG")"
+assert_eq "jira dry-run never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+
+echo "TEST: tracker=jira dedupes on an existing ticket"
+out=$(JIRA_LIST_RESULT="TST-3	Task	Done	old" run_mode jira github); rc=$?
+assert_eq "jira dedupe → exit 0" "0" "$rc"
+assert_contains "jira skipped duplicate" "$out" "skipped (duplicate, TST-3)"
+assert_eq "jira dedupe no create" "0" "$(grep -c '^create' "$JLOG")"
+
+echo "TEST: tracker=jira dedupe lookup failure is fail-closed (exit 4)"
+out=$(JIRA_LIST_FAIL=1 run_mode jira github); rc=$?
+assert_eq "jira lookup-fail → exit 4" "4" "$rc"
+assert_eq "jira lookup-fail no create" "0" "$(grep -c '^create' "$JLOG")"
+assert_eq "jira lookup-fail never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+
+echo "TEST: tracker=jira create failure exits 3 and does NOT fall back to GitHub"
+out=$(JIRA_CREATE_FAIL=1 run_mode jira github); rc=$?
+assert_eq "jira create-fail → exit 3" "3" "$rc"
+assert_contains "jira FAILED line" "$out" "FAILED"
+assert_eq "jira create-fail never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+
+echo "TEST: tracker=none (local tracker, no remote forge) files nothing remote"
+out=$(run_mode local local-git); rc=$?
+assert_eq "none → exit 0" "0" "$rc"
+assert_contains "none prints tracker=none" "$out" "tracker=none"
+assert_contains "none lists finding 1" "$out" "1. src/a.ts:10: NIT: rename foo. use bar."
+assert_contains "none lists finding 2" "$out" "2. docs/readme.md: LOW: missing example."
+assert_contains "none points at Ticket coverage" "$out" "Ticket coverage"
+assert_eq "none never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+assert_eq "none never calls jira" "0" "$(wc -c <"$JLOG" | tr -d ' ')"
+
+echo "TEST: tracker=forge (no Jira, github forge) keeps issue filing"
+out=$(JKEY='' run_mode "" github); rc=$?
+assert_eq "forge → exit 0" "0" "$rc"
+assert_contains "forge prints tracker=forge" "$out" "tracker=forge"
+assert_contains "forge files an issue" "$out" "filed https://github.com/owner/repo/issues/99"
+assert_eq "forge never calls jira" "0" "$(wc -c <"$JLOG" | tr -d ' ')"
+
+echo "TEST: TRACKER=jira without JIRA_PROJECT_KEY is refused, never falls back to forge"
+: >"$GLOG"
+out=$( cd "$REPO" && env -u JIRA_PROJECT_KEY PATH="$LBIN_UNIX:$PATH" TRACKER=jira FORGE=github GH_CMD="$LBIN/gh" \
+    GLOG="$GLOG" bash "$FDI" --pr 1 --input "$INPUT" 2>&1 ); rc=$?
+assert_eq "jira-unconfigured → exit 2" "2" "$rc"
+assert_eq "jira-unconfigured never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+
+echo "TEST: default path — no TRACKER, no himmel.tracker, key only in the .env — resolves jira (RED without load_dotenv)"
+printf 'JIRA_PROJECT_KEY=TST\n' >"$REPO/.env"
+: >"$GLOG"; : >"$JLOG"
+out=$( cd "$REPO" && env -u JIRA_PROJECT_KEY -u TRACKER PATH="$LBIN_UNIX:$PATH" FORGE=github GH_CMD="$LBIN/gh" \
+    JIRA_CMD="$JSTUB" GLOG="$GLOG" JLOG="$JLOG" JDESC="$JDESC" \
+    bash "$FDI" --pr 1 --input "$INPUT" --dry-run 2>&1 ); rc=$?
+rm -f "$REPO/.env"
+assert_eq "dotenv default → exit 0" "0" "$rc"
+assert_contains "dotenv default prints tracker=jira" "$out" "tracker=jira"
+assert_eq "dotenv default never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+
+echo "TEST: explicit TRACKER=none or local on a GitHub forge files nothing remote (RED: tracker=forge)"
+for explicit in none local; do
+    out=$(JKEY='' run_mode "$explicit" github); rc=$?
+    assert_eq "explicit $explicit → exit 0" "0" "$rc"
+    assert_contains "explicit $explicit prints tracker=none" "$out" "tracker=none"
+    assert_eq "explicit $explicit never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+done
+git -C "$REPO" config himmel.tracker none
+out=$(JKEY='' run_mode "" github); rc=$?
+git -C "$REPO" config --unset himmel.tracker
+assert_contains "git config himmel.tracker=none prints tracker=none" "$out" "tracker=none"
+assert_eq "git config himmel.tracker=none never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+
+echo "TEST: no JIRA_CMD — the Jira CLI comes from the script's own checkout, not the cwd repo (RED: exit 4)"
+FAKE="$TMP_ROOT/fakehimmel"
+mkdir -p "$FAKE/scripts/cr" "$FAKE/scripts/jira/dist"
+cp "$FDI" "$FAKE/scripts/cr/file-deferred-issues.sh"
+cp -R "$SCRIPT_DIR/../lib" "$FAKE/scripts/lib"
+git init -q "$FAKE"
+cat >"$FAKE/scripts/jira/dist/index.js" <<'STUB'
+require('fs').appendFileSync(process.env.JLOG, process.argv.slice(2).join(' ') + '\n');
+STUB
+: >"$JLOG"
+out=$( cd "$REPO" && env -u JIRA_CMD -u TRACKER JIRA_PROJECT_KEY=TST JLOG="$JLOG" \
+    bash "$FAKE/scripts/cr/file-deferred-issues.sh" --pr 1 --input "$INPUT" --dry-run 2>&1 ); rc=$?
+assert_eq "own-checkout CLI → exit 0" "0" "$rc"
+assert_contains "own-checkout CLI was called for the dedupe lookup" "$(cat "$JLOG")" "list --project TST"
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

@@ -205,22 +205,23 @@ bare `clean.sh` sweep for one leg. long-running.txt: `run_in_background`. Hand s
 
 ## Standing rules
 
-- **Operator messages are additive**; pivot only on an explicit halt or redirect.
+- **Operator messages are additive**; pivot only on a halt or redirect.
 - **Idle capacity is your duty.** On `WAKE underfilled`, take the wake's
   `next-dispatchable.sh` list, write briefs with `gen-briefs.py`, launch up to
   `<slack>` legs; `capacity=unknown` means the census failed.
 - **A leg's BLOCKED, permission prompt, or question comes to the console first** —
   say so in every brief. **One session = one worktree.**
-- **Impacted suites, not directory sweeps:** a brief names every suite that
-  *references* a changed file and requires a verdict per suite.
-- **Agent consent needs quote-back**; treat silence as non-consent.
-- **Never assume a lane is down:** diagnose the local credential or config first.
-- **With a relay live, ack every escalation** (`ack <escalation id>`), keep the
+- **Impacted suites, not directory sweeps:** a brief names every suite
+  *referencing* a changed file, with a verdict per suite.
+- **Agent consent needs quote-back**; silence is non-consent.
+- **Shape refused:** `console-sections/refused-shapes.md`.
+- **Never assume a lane is down:** diagnose local credential/config first.
+- **With a relay live, ack every escalation** (`ack <id>`), keep
   ids on `acked:`, reply `duplicate <id>` to a repeat.
-- **Keep the board and tracker current** on every dispatch, GO, MERGED and
+- **Keep board and tracker current** on every dispatch, GO, MERGED and
   WRAPPED (step 12); `board=STALE` is a skipped step.
 - **Every judge question leaves four fields and persists its verdict**, and a judge
-  call is `console-judge-ro`, never the built-in Explore: `console-sections/judge.md`.
+  call is `console-judge-ro`, never built-in Explore: `console-sections/judge.md`.
 
 ## Handing over
 

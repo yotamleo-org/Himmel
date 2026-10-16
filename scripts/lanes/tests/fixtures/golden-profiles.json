@@ -63,7 +63,8 @@
       "shadcn-mcp@himmel": false,
       "emilkowalski-skills@himmel": false,
       "pstack@himmel": true,
-      "humanizer@himmel": false
+      "humanizer@himmel": false,
+      "himmel-guard@himmel": false
     }
   },
   "lane-impl": {
@@ -129,7 +130,8 @@
       "shadcn-mcp@himmel": false,
       "emilkowalski-skills@himmel": false,
       "pstack@himmel": false,
-      "humanizer@himmel": false
+      "humanizer@himmel": false,
+      "himmel-guard@himmel": false
     }
   },
   "lane-review": {
@@ -195,7 +197,8 @@
       "shadcn-mcp@himmel": false,
       "emilkowalski-skills@himmel": false,
       "pstack@himmel": false,
-      "humanizer@himmel": false
+      "humanizer@himmel": false,
+      "himmel-guard@himmel": false
     }
   },
   "lane-content": {
@@ -261,7 +264,8 @@
       "shadcn-mcp@himmel": false,
       "emilkowalski-skills@himmel": false,
       "pstack@himmel": false,
-      "humanizer@himmel": false
+      "humanizer@himmel": false,
+      "himmel-guard@himmel": false
     }
   },
   "bare": {
@@ -327,7 +331,8 @@
       "shadcn-mcp@himmel": false,
       "emilkowalski-skills@himmel": false,
       "pstack@himmel": false,
-      "humanizer@himmel": false
+      "humanizer@himmel": false,
+      "himmel-guard@himmel": false
     }
   }
 }

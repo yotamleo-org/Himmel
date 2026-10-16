@@ -57,7 +57,7 @@ default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _q
 assert "default QMD_FORK_REPO is the carried fork yotamleo/qmd" \
   test "$default_repo" = "https://github.com/yotamleo/qmd.git"
 assert "default QMD_FORK_REF is the himmel/pin-http-auth commit" \
-  test "$default_ref" = "7cc60404e9107652e5ae1621866e35d5a84c111e"
+  test "$default_ref" = "27907dc3b47d6c4a133d5f301b9328b04289cb13"
 
 echo "[test-qmd-bin] qmd_cmd resolver — prefer bun"
 tmpdir="$(mktemp -d)"
@@ -1210,6 +1210,94 @@ printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" 
 rc=0; out="$(gate_run "$gh_home/lnk")" || rc=$?
 assert "symlinked cwd whose physical ancestry holds a remote salus config: refused (rc 10)" test "$rc" -eq 10
 assert "symlinked cwd refusal comes from the gate and names the physical project file" refused_by_gate "$out" "$gh_home/real/.qmd/index.yml"
+
+echo "[test-qmd-bin] qmd_cmd egress gate: --index read the way the fork's parseArgs reads it (HIMMEL-5927)"
+# gate_args <cwd> <qmd args...> -- qmd_cmd with those args from <cwd>, real node on PATH
+gate_args() {
+  local d="$1"; shift
+  ( cd "$d" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL HOME="$gh_home" PATH="$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+      bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd "$@"' _ "$@" 2>&1 )
+}
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"
+rm -f "$gh_home/.config/qmd/foo.yml"
+for argset in "query -- --index foo" "query -c --index foo" "query --intent --index foo" "query --index=foo" "query --index foo"; do
+  rc=0; # shellcheck disable=SC2086  # the word split builds qmd's argv
+  out="$(gate_args "$gh_home/proj" $argset)" || rc=$?
+  assert "project-local salus remote, args '$argset' (no foo.yml): refused (rc 10)" test "$rc" -eq 10
+  assert "project-local salus remote, args '$argset': the gate named the project file" refused_by_gate "$out" "$gh_home/proj/.qmd/index.yml"
+done
+# a real named index still wins: its own config is what the fork opens, and it is clean here
+printf 'collections:\n  himmel:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/.config/qmd/clean.yml"
+rc=0; out="$(gate_args "$gh_home/proj" query --index clean x)" || rc=$?
+assert "an existing clean named index over a salus project config: allowed (rc 0)" test "$rc" -eq 0
+assert "an existing clean named index reached qmd" grep -q '^PATH-QMD query --index clean x' <<<"$out"
+# the one-letter string options n and l swallow what follows (the rest of the cluster, else the next argument)
+for argset in "query -n --index clean x" "query -fn --index clean x" "query -l --index clean x"; do
+  rc=0; # shellcheck disable=SC2086  # the word split builds qmd's argv
+  out="$(gate_args "$gh_home/proj" $argset)" || rc=$?
+  assert "short string option, args '$argset': the project config is gated and refused (rc 10)" test "$rc" -eq 10
+  assert "short string option, args '$argset': the gate named the project file" refused_by_gate "$out" "$gh_home/proj/.qmd/index.yml"
+done
+rm -f "$gh_home/.config/qmd/clean.yml"
+# a cluster whose string option takes the rest of the cluster leaves --index as a real option
+mkdir -p "$gh_home/clean-proj/.qmd"
+printf 'collections:\n  himmel:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/clean-proj/.qmd/index.yml"
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/.config/qmd/salusremote.yml"
+for argset in "query -nc --index salusremote x" "query -lC --index salusremote x"; do
+  rc=0; # shellcheck disable=SC2086  # the word split builds qmd's argv
+  out="$(gate_args "$gh_home/clean-proj" $argset)" || rc=$?
+  assert "cluster '$argset': --index is read, the named remote config is refused (rc 10)" test "$rc" -eq 10
+  assert "cluster '$argset': the gate named the named config" refused_by_gate "$out" "$gh_home/.config/qmd/salusremote.yml"
+done
+rm -f "$gh_home/.config/qmd/salusremote.yml"
+# a zero or non-numeric QMD_GATE_TIMEOUT_SECS never disables the deadline
+stubt="$tmpdir/log-timeout"; mkdir -p "$stubt"; tlog="$tmpdir/timeout-arg"
+# shellcheck disable=SC2016  # the stub's $3 and $@ expand when the stub runs
+printf '#!/usr/bin/env bash\necho "$3" >"%s"\nshift 3\nexec "$@"\n' "$tlog" >"$stubt/timeout"; chmod +x "$stubt/timeout"
+printf 'collections:\n  himmel:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"
+for tv in 0 abc; do
+  : >"$tlog"
+  ( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubt:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k QMD_GATE_TIMEOUT_SECS="$tv" \
+      bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x' >/dev/null 2>&1 )
+  assert "QMD_GATE_TIMEOUT_SECS=$tv: the gate still runs under a positive deadline" test "$(tr -d '\n' <"$tlog")" = 30
+done
+# cache key: inputs the gate reads must re-run it when they change between calls
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; export QMD_GATE_REQUIRE_KEY=1; qmd_cmd query y' >/dev/null 2>&1 )
+assert "QMD_GATE_REQUIRE_KEY changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; export QMD_OPENAI_API_KEY=other; qmd_cmd query y' >/dev/null 2>&1 )
+assert "QMD_OPENAI_API_KEY changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+glmd="$tmpdir/glm-cfg"; mkdir -p "$glmd"
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k CLAUDE_GLM_CONFIG_DIR="$glmd" \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; printf "%s\n" "'"$gh_home"'" >"'"$glmd"'/phi-roots"; qmd_cmd query y' >/dev/null 2>&1 )
+assert "a PHI root list edited between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+# the sibling-config dir follows XDG_CONFIG_HOME like the gate's own config lookup
+xdgd="$tmpdir/xdg-home"; mkdir -p "$xdgd/qmd"
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u INDEX_PATH HOME="$gh_home" XDG_CONFIG_HOME="$xdgd" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; printf "collections:\n  salus:\n    path: /x\n" >"'"$xdgd"'/qmd/sib.yml"; qmd_cmd query y' >/dev/null 2>&1 )
+assert "a sibling config under XDG_CONFIG_HOME changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+# the gate's own sibling lookup is QMD_CONFIG_DIR or ~/.config/qmd, whatever XDG_CONFIG_HOME says
+mkdir -p "$gh_home/.config/qmd"
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u INDEX_PATH HOME="$gh_home" XDG_CONFIG_HOME="$xdgd" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; printf "collections:\n  salus:\n    path: /x\n" >"'"$gh_home"'/.config/qmd/sib2.yml"; qmd_cmd query y' >/dev/null 2>&1 )
+assert "a sibling config under ~/.config/qmd (XDG set elsewhere) changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+rm -f "$gh_home/.config/qmd/sib2.yml"
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; export JINA_API_KEY=j; qmd_cmd query y' >/dev/null 2>&1 )
+assert "JINA_API_KEY changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+# the cached key never holds the API key in the clear
+# shellcheck disable=SC2016  # the inner shell expands _QMDBIN_GATE_KEY
+keyout="$(cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=sekrit-key-value \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x >/dev/null 2>&1; printf "[%s]" "$_QMDBIN_GATE_KEY"' 2>/dev/null)"
+assert "the cached gate key is set after a pass" test "$keyout" != "[]"
+assert "the cached gate key does not hold the API key in the clear" test "${keyout#*sekrit-key-value}" = "$keyout"
 
 echo "[test-qmd-bin] has_qmd matches binary presence in this env"
 if has_qmd; then

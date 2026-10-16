@@ -91,7 +91,7 @@ if [ -n "${LEG_PRETRUST_CONFIG:-}" ]; then
     cfgdir="$(cd -P "$(dirname "$cfg")" 2>/dev/null && pwd -P)" || cfgdir=""
     [ -n "$cfgdir" ] || { echo "leg-pretrust: lane config dir absent (launcher not seeded yet): $(dirname "$cfg")" >&2; exit 4; }
     case "$cfgdir" in
-        "$home"|"$home/.claude-codex"|"$home/.claude-openrouter"|"$home/.claude-deepseek"|"$home/.claude-glm"|"$home/.claude-routed") refuse "LEG_PRETRUST_CONFIG is a real lane config" ;;
+        "$home"|"$home/.claude-codex"|"$home/.claude-openrouter"|"$home/.claude-deepseek"|"$home/.claude-glm") refuse "LEG_PRETRUST_CONFIG is a real lane config" ;;
     esac
     [ -O "$cfgdir" ] || refuse "LEG_PRETRUST_CONFIG dir is not owned by the current user"
     for f in "$cfg" "$cfg.lock" "$cfg.leg-pretrust.owner"; do

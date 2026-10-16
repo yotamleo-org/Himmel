@@ -157,7 +157,12 @@ one_job() {
     # Per boot, not per image: a guest whose egress filter did not load would
     # reach the station LAN.
     # Every private-range reject must be loaded, not just the LAN one.
+    # The allow-list sets start empty each boot: fill them first, fail closed.
+    vm_ssh "sudo /usr/local/sbin/himmel-ci-egress-refresh" \
+        || die "the egress allow-list could not be loaded in $CLONE_NAME — not minting a runner"
     local r chk="sudo nft list table inet himmel_egress | grep -q 'hook output'"
+    chk="$chk && sudo nft list table inet himmel_egress | grep -q 'policy drop'"
+    chk="$chk && sudo nft list set inet himmel_egress allowed4 | grep -q 'elements'"
     for r in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10; do  # leak-allow: private-lan-ip egress filter ranges
         # Anchored on the set delimiters so a range cannot match a longer one it is a suffix of.
         chk="$chk && sudo nft list table inet himmel_egress | grep -qE '[{ ,]${r//./\\.}[ ,}].*reject'"
@@ -212,7 +217,7 @@ build() {
     clipboard_dnd_off || die "could not turn the clipboard and drag-and-drop off on $CLONE_NAME"
     vm_boot
     vm_ssh "rm -rf $stage && mkdir -p $stage" || die "could not stage in the guest"
-    for f in guest-provision.sh job-started-hook.sh; do
+    for f in guest-provision.sh job-started-hook.sh egress-refresh.sh; do
         vm_ssh "cat > $stage/$f" < "$REPO_ROOT/scripts/vm/ci-runner/$f" || die "staging $f failed"
     done
     vm_ssh "sudo bash $stage/guest-provision.sh $REPO" || die "guest provisioning failed"

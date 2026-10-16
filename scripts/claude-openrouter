@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # claude-openrouter — thin launcher: Claude Code on the OpenRouter metered lane
-# (HIMMEL-1774). bash 3.2-safe. Copy-and-edit of scripts/claude-routed (the WS1
+# (HIMMEL-1774). bash 3.2-safe. Copy-and-edit of scripts/claude-glm (the WS1
 # extensibility seam: a new backend plugged into the same launcher skeleton),
 # with TWO OpenRouter-specific gates the siblings do not carry:
 #   1. An egress-matrix consultation (HARD REQUIREMENT) — REFUSES fail-closed
@@ -18,13 +18,13 @@
 # translation proxy, and the 1M Claude tiers are natively 1M (no `:extended`
 # suffix). See the backend block for the selectable tiers.
 # Everything else (PHI guard, config-dir seeding, arg handling, exit codes) is
-# behaviour-identical to claude-routed. Exit codes: 2 = missing key / claude not
+# behaviour-identical to claude-glm. Exit codes: 2 = missing key / claude not
 # on PATH, 3 = egress or PHI refusal (or node missing — the matrix cannot be
 # consulted), 4 = failed seed, 5 = credit below the floor or unknown.
 # shellcheck disable=SC1091  # load-dotenv.sh path issue
 set -u
 
-# --- backend block (DIFFERS from claude-routed; this is the whole variant) ------
+# --- backend block (DIFFERS from claude-glm; this is the whole variant) ------
 # Claude Code speaks the Anthropic Messages API (/v1/messages). OpenRouter
 # exposes a NATIVE Anthropic-compatible endpoint at https://openrouter.ai/api
 # (verified against OpenRouter's live API + docs, 2026-08-15) — NO loopback
@@ -132,7 +132,7 @@ done
 # --- tiered egress guard (PHI) -------------------------------------------------
 # Guard config dir is DELIBERATELY SHARED with claude-glm (~/.config/claude-glm),
 # NOT a per-lane dir: one guard source of truth means a PHI/egress rule written
-# once governs every launcher variant (matches claude-routed).
+# once governs every launcher variant.
 # HIMMEL-1773 caveat: this guard matches the sibling STRUCTURE but is NOT
 # proven-correct on the real corpus — it keys on a `.salus` marker file, while
 # the live vault carries `.salus-profile`, and the phi-roots fallback list does

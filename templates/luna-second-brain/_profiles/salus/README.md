@@ -21,7 +21,7 @@ skill runbook, the egress-floor hook, and templates.
   vault is on the medical profile and may carry medic-asset updates.
 - `.salus` — the PHI guard marker (HIMMEL-2173), dropped alongside
   `.salus-profile` (never overwritten if already present). This is the marker
-  the `claude-glm`/`claude-codex`/`claude-routed` launchers and the hermes
+  the `claude-glm`/`claude-codex` launchers and the hermes
   parity guard test for before refusing a cloud/codex launch from this vault.
 
 ## How to create a Salus vault

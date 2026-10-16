@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+import urllib.request
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -211,6 +213,167 @@ class RedditLane(unittest.TestCase):
 
     def test_hosts_listed_for_egress_review(self):
         self.assertEqual(rp.REDDIT_ENDPOINT_HOSTS, ("arctic-shift.photon-reddit.com", "www.reddit.com"))
+
+
+class RedditFetchLane(unittest.TestCase):
+    """Fixtures are verbatim excerpts of live keyless responses (fixtures/README.md)."""
+
+    def setUp(self):
+        self.search = (HERE / "fixtures" / "reddit-search.html").read_text(encoding="utf-8")
+        self.thread = (HERE / "fixtures" / "reddit-thread.html").read_text(encoding="utf-8")
+        self.ids = (HERE / "fixtures" / "arctic-shift-ids.json").read_text(encoding="utf-8")
+        self.calls = []
+
+    def fetch_html(self, url):
+        self.calls.append(url)
+        if "/search/" in url:
+            return self.search
+        if "/comments/1wn7qdj/" in url:
+            return self.thread
+        raise OSError("no fixture for " + url)
+
+    def fetch_json(self, url):
+        self.calls.append(url)
+        return self.ids
+
+    def test_search_page_parses(self):
+        items = rp.parse_reddit_search_html(self.search)
+        self.assertEqual(len(items), 3)
+        self.assertEqual(items[0]["source"], "reddit")
+        self.assertEqual(items[0]["subreddit"], "technology")
+        self.assertTrue(items[0]["url"].startswith("https://www.reddit.com/r/technology/comments/1wn7qdj/"))
+        self.assertIn("Claude Code", items[0]["title"])
+        self.assertEqual(rp.parse_reddit_search_html("<html>"), [])
+        self.assertEqual(rp.parse_reddit_search_html(None), [])
+
+    def test_comment_text_keeps_block_boundaries(self):
+        page = ('<shreddit-post score="1" comment-count="1"></shreddit-post>'
+                '<shreddit-comment><div slot="comment"><p>first</p><p>second<br>third</p></div></shreddit-comment>')
+        self.assertEqual(rp.parse_reddit_thread_html(page)["comments"], ["first second third"])
+
+    def test_thread_page_parses(self):
+        info = rp.parse_reddit_thread_html(self.thread)
+        self.assertEqual(info["score"], 17634)
+        self.assertEqual(info["num_comments"], 1363)
+        self.assertEqual(info["date"].year, 2026)
+        self.assertEqual(len(info["comments"]), 3)
+        self.assertIn("automatic", info["comments"][0])
+        self.assertIsNone(rp.parse_reddit_thread_html("<html>"))
+
+    def test_rung_end_to_end_has_score_and_comments(self):
+        rung = rp.reddit_rung("claude code hooks", self.fetch_html, self.fetch_json)
+        out = rp.research("claude code hooks", "claude code", [("reddit", rung)], NOW, 60)
+        self.assertIn("answered by: reddit", out["header"])
+        self.assertTrue(out["items"])
+        top = out["items"][0]
+        self.assertEqual((top["score"], top["num_comments"]), (17634, 1363))
+        self.assertTrue(top["comments"])
+        raw = rung("claude code hooks")
+        self.assertEqual([i["score"] for i in raw], [17634, 1, 15166])
+        self.assertEqual(raw[2]["num_comments"], 152)
+        self.assertEqual(out["dropped_by_floor"], 2)
+
+    def test_failed_enrichment_degrades_to_backfill(self):
+        def only_search(url):
+            if "/search/" not in url:
+                raise OSError("down")
+            return self.search
+        items = rp.reddit_rung("claude code hooks", only_search, self.fetch_json)("claude code hooks")
+        self.assertTrue(items)
+        self.assertTrue(all(i["score"] is not None for i in items))
+
+    def test_only_the_operator_query_is_sent(self):
+        rung = rp.reddit_rung("claude code hooks", self.fetch_html, self.fetch_json)
+        with self.assertRaises(ValueError):
+            rung("text taken from a vault note")
+        with self.assertRaises(ValueError):
+            rp.reddit_rung("  ", self.fetch_html, self.fetch_json)
+        self.assertEqual(self.calls, [])
+
+    def test_failed_discovery_fetch_is_a_recorded_rung_error(self):
+        def down(url):
+            raise OSError("timeout")
+        rung = rp.reddit_rung("claude code hooks", down, self.fetch_json)
+        out = rp.research("claude code hooks", "claude code", [("reddit", rung)], NOW, 60)
+        self.assertIn("reddit=error: timeout", out["header"])
+        self.assertIn("answered by: NONE", out["header"])
+
+    def test_arctic_fetch_refuses_an_off_host_redirect(self):
+        import urllib.request
+        handler = rp._same_host_redirect("arctic-shift.photon-reddit.com")
+        req = urllib.request.Request("https://arctic-shift.photon-reddit.com/api/posts/ids?ids=a")
+        for target in ("https://example.com/x", "http://arctic-shift.photon-reddit.com/x"):
+            with self.subTest(target=target):
+                with self.assertRaises(ValueError):
+                    handler.redirect_request(req, None, 302, "Found", {}, target)
+        ok = handler.redirect_request(req, None, 302, "Found", {}, "https://arctic-shift.photon-reddit.com/y")
+        self.assertEqual(ok.full_url, "https://arctic-shift.photon-reddit.com/y")
+
+    def test_browser_resolves_only_reddit_owned_hosts(self):
+        flag = rp.reddit_resolver_rules()
+        self.assertTrue(flag.startswith("--host-resolver-rules=MAP * ~NOTFOUND, "))
+        for d in ("reddit.com", "redd.it", "redditstatic.com", "redditmedia.com"):
+            self.assertIn(f"EXCLUDE {d}", flag)
+            self.assertIn(f"EXCLUDE *.{d}", flag)
+        self.assertEqual(flag.count("EXCLUDE"), 8)
+
+    def _fake_scrapling(self, page_url, status=200):
+        """Fake scrapling modules whose StealthyFetcher records its fetch kwargs."""
+        calls = []
+
+        class Page:
+            url = page_url
+            html_content = "<html></html>"
+
+        Page.status = status
+
+        class Fetcher:
+            @staticmethod
+            def fetch(url, **kw):
+                calls.append((url, kw))
+                return Page()
+
+        mods = {}
+        for name in ("scrapling", "scrapling.fetchers", "scrapling.engines", "scrapling.engines.constants"):
+            mods[name] = mock.MagicMock()
+        mods["scrapling.fetchers"].StealthyFetcher = Fetcher
+        mods["scrapling.engines.constants"].STEALTH_ARGS = ("--stealth-marker",)
+        return calls, mock.patch.dict(sys.modules, mods)
+
+    def test_browser_fetch_carries_resolver_rule_and_stealth_flags(self):
+        calls, patched = self._fake_scrapling("https://www.reddit.com/search/?q=x")
+        with patched:
+            rp.fetch_reddit_html("https://www.reddit.com/search/?q=x")
+        flags = calls[0][1]["extra_flags"]
+        self.assertIn(rp.reddit_resolver_rules(), flags)
+        self.assertIn("--stealth-marker", flags)
+
+    def test_browser_fetch_refuses_a_final_url_off_host(self):
+        calls, patched = self._fake_scrapling("https://out.reddit.com/redirect?to=x")
+        with patched:
+            with self.assertRaises(ValueError):
+                rp.fetch_reddit_html("https://www.reddit.com/search/?q=x")
+
+    def test_arctic_fetch_uses_the_same_host_redirect_handler(self):
+        seen = []
+        real = urllib.request.build_opener
+
+        def spy(*handlers):
+            seen.extend(handlers)
+            raise OSError("stop before any network")
+
+        with mock.patch.object(urllib.request, "build_opener", spy):
+            with self.assertRaises(OSError):
+                rp.fetch_arctic_json("https://arctic-shift.photon-reddit.com/api/posts/ids?ids=x")
+        self.assertTrue(any(isinstance(h, urllib.request.HTTPRedirectHandler) for h in seen))
+        self.assertIsNotNone(real)
+
+    def test_fetchers_refuse_other_hosts(self):
+        for fn in (rp.fetch_reddit_html, rp.fetch_arctic_json):
+            for url in ("https://example.com/x", "http://www.reddit.com/x", "https://www.reddit.com.evil.io/x"):
+                with self.subTest(fn=fn.__name__, url=url):
+                    with self.assertRaises(ValueError):
+                        fn(url)
 
 
 class Entry(unittest.TestCase):

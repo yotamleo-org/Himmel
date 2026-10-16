@@ -46,6 +46,10 @@ if [ -n "${BANK_LIFT_STUB_OUT:-}" ]; then cat "$BANK_LIFT_STUB_OUT"; else printf
 STUB
 chmod +x "$W/bin/bank-lift-stub"
 export BOARD_BANK_LIFT="$W/bin/bank-lift-stub"
+# Session transcripts (console cost, succession eval) come from BOARD_TRANSCRIPTS: an
+# empty dir here, so no row ever reads the operator's own ~/.claude/projects.
+mkdir -p "$W/tx-none"
+export BOARD_TRANSCRIPTS="$W/tx-none"
 
 # The tick stub records its argv and prints a fixed line + fingerprint. N1..N7
 # cover every phase; the fleet is 9/15 with six idle slots. N12 (issue #1336):
@@ -117,9 +121,9 @@ mkleg() {  # mkleg <name> <bullet>...
     local name="$1"; shift
     printf '%s\n' '# leg' '## Results' "$@" > "$B/$name-2026-09-21-RESUME.md"
 }
-# A lock token that straddles the 220-char clip must not survive as a fragment.
+# A lock token that straddles the 130-char clip must not survive as a fragment.
 pad190="$(printf '%190s' '' | tr ' ' x)"
-mkleg HIMMEL-3340-N1-alpha "- 12:00 LIVE — working ${pad190:0:176} lock cachyos-x8664-pid424242 after"
+mkleg HIMMEL-3340-N1-alpha "- 12:00 LIVE — working ${pad190:0:93} lock cachyos-x8664-pid424242 after"
 # A later section's bullet naming another (merged) PR must not overwrite the leg's PR.
 printf '%s\n' '# leg' '## Results' '- 12:00 LIVE — PR 2002 open, watching CI' '' '## Notes' \
     '- 13:00 unrelated later-section bullet: see PR 1990 merged' \
@@ -222,10 +226,10 @@ lacks 'a <b> in a Results bullet is escaped' "$html" '<b>bold</b>'
 contains 'no PR, no marker: LIVE' "$html" 'data-label="N1" data-phase="LIVE"'
 contains 'an open PR the leg names: PR open' "$html" 'data-label="N2" data-phase="PR open"'
 contains 'READY tail + open PR: READY' "$html" 'data-label="N3" data-phase="READY"'
-contains 'the leg names a merged PR: MERGED' "$html" 'data-label="N4" data-phase="MERGED"'
-contains 'a FINDING bullet citing a merged PR keeps its phase and gets no PR (HIMMEL-3374)' "$html" '<b>N10</b> <span class="tk">HIMMEL-3377</span> <span class="ph">LIVE</span></div>'
-contains 'a LIVE bullet citing a merged PR gets no PR either (HIMMEL-3374)' "$html" '<b>N11</b> <span class="tk">HIMMEL-3378</span> <span class="ph">LIVE</span></div>'
-contains 'lock released + WRAPPED tail: WRAPPED' "$html" 'data-label="N5" data-phase="WRAPPED"'
+contains 'the leg names a merged PR: MERGED (archive)' "$(cat "$B/console-board-archive.html")" 'N4 HIMMEL-3348 MERGED'
+contains 'a FINDING bullet citing a merged PR keeps its phase and gets no PR (HIMMEL-3374)' "$html" '<b>N10</b> <span class="tk">HIMMEL-3377</span> <span class="ph">LIVE</span><p>'
+contains 'a LIVE bullet citing a merged PR gets no PR either (HIMMEL-3374)' "$html" '<b>N11</b> <span class="tk">HIMMEL-3378</span> <span class="ph">LIVE</span><p>'
+contains 'lock released + WRAPPED tail: WRAPPED (archive)' "$(cat "$B/console-board-archive.html")" 'N5 HIMMEL-3300 WRAPPED'
 contains 'READY tail with no PR anywhere: READY-TO-OPEN' "$html" 'data-label="N6" data-phase="READY-TO-OPEN"'
 contains 'a CI-red PR is flagged on its leg' "$html" 'data-ci="failing"'
 contains 'a green PR (check runs + a commit status) reads green' "$html" 'data-label="N3" data-phase="READY" data-ci="green"'
@@ -283,7 +287,7 @@ contains 'fleet renders N/cap' "$html" 'data-fleet="9/15"'
 contains 'idle capacity is highlighted' "$html" 'data-idle="6"'
 
 # --- merged this shift + fingerprint + title
-contains 'merged PRs this shift are listed' "$html" '#1995'
+contains 'merged PRs this shift are listed in the archive' "$(cat "$B/console-board-archive.html")" 'PR #1995 merged'
 contains 'the tick fingerprint is embedded for tick.sh board=' "$html" '<meta name="console-board-fp" content="deadbeefdeadbeef">'
 contains 'the page has a name title, not a summary' "$html" '<title>Supervisor Session Board</title>'
 contains 'the page themes for dark mode' "$html" 'prefers-color-scheme: dark'
@@ -308,7 +312,7 @@ lacks 'and embeds no fingerprint that would read ok' "$(cat "$board")" 'name="co
 # Results parse is section-bounded: a later section's bullet is not the leg's Results.
 lacks "a later section's bullet is not the leg's last Results bullet" "$html" 'unrelated later-section'
 # Merged detection reads the PR itself, not the 24 h merged panel.
-contains 'a PR merged outside the 24 h panel still reads MERGED (gh pr view)' "$html" 'data-label="N8" data-phase="MERGED"'
+contains 'a PR merged outside the 24 h panel still reads MERGED (gh pr view, archive)' "$(cat "$B/console-board-archive.html")" 'N8 HIMMEL-3370 MERGED'
 contains 'a closed-unmerged PR does not read MERGED' "$html" 'data-label="N9" data-phase="LIVE"'
 # READY-TO-OPEN says what it is waiting for, not "lost lock".
 contains 'a READY-TO-OPEN leg is explained as awaiting the PR open' "$html" 'awaiting PR open'
@@ -380,7 +384,7 @@ STUB
 out="$(BOARD_SESSIONS="$W/bin/sessions-fail.sh" run --out "$W/n5-census-fail-board.html")"; rc=$?
 n5failhtml="$(cat "$W/n5-census-fail-board.html" 2>/dev/null)"
 contains 'an unavailable census still renders the board (rc 0)' "rc=$rc" 'rc=0'
-contains 'and leaves the WRAPPED leg as plain WRAPPED' "$n5failhtml" 'data-label="N5" data-phase="WRAPPED"'
+contains 'and leaves the WRAPPED leg as plain WRAPPED (archive)' "$(cat "$W/n5-census-fail-board-archive.html")" 'N5 HIMMEL-3300 WRAPPED'
 lacks 'never flags "still open" on a census it could not read' "$n5failhtml" 'data-label="N5" data-phase="WRAPPED, window still open"'
 
 # --- (Ask 1): --changed re-renders and reports whether the render moved,
@@ -698,7 +702,9 @@ same 'failures panel: unreadable ledger, rc 0' "$rc" "0"
 contains 'failures panel: unreadable ledger reads unavailable' "$(cat "$M/board.html")" 'leg failures unavailable'
 for i in $(seq 1 12); do frow 2026-10-07T03:10:00Z "N$i" "c/k$(printf '%02d' "$i")" 1 false; done > "$FL"
 QL_STUB_STARTED=2026-10-07T03:00:00Z mrun >/dev/null
-same 'failures panel: at most 10 rows' "$(grep -o '<tr data-class=' "$M/board.html" | wc -l | tr -d ' ')" "10"
+same 'failures panel: the live page shows the top 5 rows' "$(grep -o '<tr data-class=' "$M/board.html" | wc -l | tr -d ' ')" "5"
+contains 'failures panel: it says the rest are in the archive' "$(cat "$M/board.html")" 'top 5 of 12 classes; the rest in the archive'
+same 'failures panel: the archive holds every class' "$(grep -o '<tr data-class=' "$M/board-archive.html" | wc -l | tr -d ' ')" "12"
 : > "$FL"
 
 # --- the suite-flake panel reads the checkout's own reader script.
@@ -814,6 +820,129 @@ contains 'cloud: a session with no branch or PR reads no-branch (HIMMEL-5163)' "
 html="$(cloud_html cloud-gh-down)"
 contains 'cloud: an unreadable forge says so, never fatal (HIMMEL-5163)' "$html" 'data-cloud-panel="unavailable"'
 rm -f "$M/cloud-sessions.tsv"
+
+# --- the published board shows live work only; WRAPPED/MERGED legs and
+# merged PRs go to a local, never-published, grep-friendly archive beside it.
+out="$(run --out "$W/live-only-board.html")"; rc=$?
+lhtml="$(cat "$W/live-only-board.html" 2>/dev/null)"
+arch="$W/live-only-board-archive.html"
+if [ -f "$arch" ]; then ahtml="$(cat "$arch")"; else ahtml=''; fail 'the archive file is written beside the board'; fi
+lacks 'live page: a MERGED leg is not rendered (N4)' "$lhtml" 'data-label="N4"'
+lacks 'live page: a MERGED leg (PR outside the 24 h window) is not rendered (N8)' "$lhtml" 'data-label="N8"'
+lacks 'live page: a WRAPPED leg is not rendered (N5)' "$lhtml" 'data-label="N5"'
+lacks 'live page: no merged-PR panel' "$lhtml" 'Merged in the last 24 hours'
+lacks 'live page: no merged PR row' "$lhtml" '<b>#1995</b>'
+contains 'live page: a live leg stays (N1)' "$lhtml" 'data-label="N1" data-phase="LIVE"'
+contains 'live page: a READY leg stays (N3)' "$lhtml" 'data-label="N3" data-phase="READY"'
+contains 'live page: open PRs stay' "$lhtml" '<b>#2001</b>'
+contains 'live page: the phase ladder stays' "$lhtml" 'data-ladder="READY" data-count="1"'
+contains 'live page: the tick fingerprint meta stays' "$lhtml" '<meta name="console-board-fp" content="deadbeefdeadbeef">'
+contains 'live page: points at the archive by file name' "$lhtml" 'live-only-board-archive.html'
+lacks 'live page: carries none of the archive prose (N4 last bullet)' "$lhtml" '0123abc'
+contains 'archive: names the MERGED leg on ONE line with ticket, PR and last bullet' "$ahtml" 'N4 HIMMEL-3348 MERGED PR #1995 — 12:00 MERGED #1995'
+contains 'archive: names the out-of-window MERGED leg' "$ahtml" 'N8 HIMMEL-3370 MERGED PR #1700'
+contains 'archive: names the WRAPPED leg' "$ahtml" 'N5 HIMMEL-3300 WRAPPED'
+contains 'archive: lists merged PRs, one per line' "$ahtml" 'PR #1995 merged — fix(w): [HIMMEL-3348] harden'
+lacks 'archive: holds no live leg' "$ahtml" 'N1 HIMMEL-3340 LIVE'
+lacks 'archive: nonces and lock tokens are redacted too' "$ahtml" 'pid111111'
+lacks 'archive: carries no fingerprint meta (it is never the tick board)' "$ahtml" 'console-board-fp'
+lbytes="$(printf '%s' "$lhtml" | wc -c)"
+if [ "$lbytes" -lt 15000 ]; then pass "live page stays under 15 KB ($lbytes bytes)"; else fail "live page is $lbytes bytes, want under 15000"; fi
+
+# --- a finished judge doc (last marker VERDICT or WRAPPED) goes to the archive like a
+# WRAPPED leg. Its label is the doc stem, which tick.sh's tails= never carries, so the
+# board reads the doc's own last marker. The size gate is a real-sized fleet: 25 live
+# legs with full-length bullets plus 15 finished judges.
+S="$W/size"
+mkdir -p "$S"
+printf '%s\n' '# console' '## Live state' 'epics: none' '' '## Results' '- 10:10 S LIVE sent to prev: 2 of 25 quoted back' > "$S/console-s.md"
+pad300="$(printf '%300s' '' | tr ' ' w)"
+mf=''
+for n in $(seq 701 725); do
+    f="$S/HIMMEL-6$n-N$n-work-2026-10-16-RESUME.md"
+    succb=''
+    [ "$n" -le 702 ] && succb='- 10:04 LIVE — SUCCESSION accepted: console-s replaces console-prev'
+    printf '%s\n' "# leg N$n" '## Results' "- 10:00 LIVE — building ${pad300}" ${succb:+"$succb"} "- 11:00 FINDING — question ${pad300}" > "$f"
+    mf="$mf{\"doc\":\"$f\",\"label\":\"N$n\"},"
+done
+for n in $(seq 801 815); do
+    f="$S/HIMMEL-7$n-judge-j$n-2026-10-16-RESUME.md"
+    if [ $((n % 2)) -eq 0 ]; then tailb="- 12:00 WRAPPED — verdict sent ${pad300}"; else tailb="- 12:00 VERDICT /x/verdicts/j$n.md — GO for 2$n ${pad300}"; fi
+    printf '%s\n' "# judge j$n" '## Results' '- 11:00 LIVE — reading the diff' "$tailb" > "$f"
+    mf="$mf{\"doc\":\"$f\",\"label\":\"j$n\"},"
+done
+printf '{"schema":1,"legs":[%s]}\n' "${mf%,}" > "$S/console-s.fleet.json"
+# This fleet's own tick: the 25 legs held and FINDING, the fleet full.
+slocks=''; stails=''
+for n in $(seq 701 725); do slocks="${slocks}N$n:FRESH,"; stails="${stails}N$n:FINDING,"; done
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "TICK 12:34 hb=skip legs=%s bank=5h8/wk42/codex=? tails=%s fleet=25/25 gql=4321/13:00"\nprintf "%%s\\n" board-fp=feedfacefeedface\n' "${slocks%,}" "${stails%,}" > "$W/bin/tick-stub-size"
+chmod +x "$W/bin/tick-stub-size"
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-size" TICK_ARGV_LOG="$W/argv.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+    GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$S/console-s.md" --repo "$W/repo" --out "$S/board.html" >/dev/null 2>"$W/stderr.log"
+shtml="$(cat "$S/board.html" 2>/dev/null)"
+sarch="$(cat "$S/board-archive.html" 2>/dev/null)"
+lacks 'judge: a VERDICT-tailed judge doc is not on the live page (HIMMEL-5955)' "$shtml" 'HIMMEL-7801-judge-j801'
+lacks 'judge: a WRAPPED-tailed judge doc is not on the live page (HIMMEL-5955)' "$shtml" 'HIMMEL-7802-judge-j802'
+contains 'judge: the VERDICT-tailed judge is in the archive (HIMMEL-5955)' "$sarch" 'HIMMEL-7801-judge-j801-2026-10-16-RESUME HIMMEL-7801 WRAPPED'
+contains 'judge: the WRAPPED-tailed judge is in the archive (HIMMEL-5955)' "$sarch" 'HIMMEL-7802-judge-j802-2026-10-16-RESUME HIMMEL-7802 WRAPPED'
+contains 'judge: a live leg of the same fleet stays on the page' "$shtml" 'data-label="N725"'
+sbytes="$(printf '%s' "$shtml" | wc -c)"
+if [ "$sbytes" -lt 15000 ]; then pass "25 live legs + 15 finished judges: live page under 15 KB ($sbytes bytes, HIMMEL-5955)"; else fail "25 live legs + 15 finished judges: live page is $sbytes bytes, want under 15000 (HIMMEL-5955)"; fi
+
+# --- --json <path> writes the board model (schema himmel.board/1): a legend for every
+# colour key, one recommendation per report card, the milestone done/total per Jira
+# fixVersion from the versions: line, and no nonce or lock token.
+write_v100 3
+runv --out "$W/j-board.html" --json "$W/board.json" >/dev/null; rc=$?
+contains '--json: rc 0' "rc=$rc" 'rc=0'
+jtxt="$(cat "$W/board.json" 2>/dev/null)"
+jcheck() {  # jcheck <name> <js expression over M> -- passes when the expression is true
+    if printf '%s' "$jtxt" | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>{let M;try{M=JSON.parse(s)}catch{process.exit(1)}process.exit(eval(process.argv[1])?0:1)})' "$2"; then pass "$1"; else fail "$1"; fi
+}
+jcheck '--json: schema himmel.board/1' 'M.schema === "himmel.board/1"'
+jcheck '--json: legend keys for stage, state, verb, ci, budget and failure' '["stage","state","verb","ci","budget","failure"].every((k) => M.legend[k] && Object.values(M.legend[k]).every((v) => v.color && v.label))'
+jcheck '--json: one recommendation per report card' '["velocity","health","tools","roadmap"].every((k) => typeof M.cards[k].recommendation === "string" && M.cards[k].recommendation.length > 0)'
+jcheck '--json: milestones are done/total per fixVersion' 'M.milestones.length === 2 && M.milestones[0].version === "v1.0.0" && M.milestones[0].done === 3 && M.milestones[0].total === 6 && M.milestones[1].done === 1 && M.milestones[1].total === 2'
+jcheck '--json: roadmap recommendation names the open blockers' 'M.cards.roadmap.recommendation.includes("HIMMEL-9001")'
+jcheck '--json: every live leg is a row with a state and stage' 'M.legs.some((l) => l.leg === "N3" && l.state === "ready-for-go" && l.stage === "ready") && M.legs.every((l) => l.state && l.stage)'
+jcheck '--json: a READY leg is a go need' 'M.needs_you.some((n) => n.leg === "N3" && n.verb === "go")'
+jcheck '--json: finished legs are counted, not listed' 'M.console.archive_legs >= 2 && !M.legs.some((l) => l.leg === "N4" || l.leg === "N5")'
+for secret in aaaa1111 pid111111 pid777777 cafe1919 x8664; do
+    lacks "--json: no nonce/lock-token text: $secret" "$jtxt" "$secret"
+done
+
+# --- console cost and the succession eval come from session transcripts: line 1 names
+# the session (custom-title = console doc stem), assistant lines carry message.usage,
+# a streamed message repeats its id. Opus-eq = input + cache_read x0.1 + cache_write x2
+# + output x5, so each message below is 1000 + 10000 + 20000 + 5000 = 36000.
+TX="$W/tx"
+mkdir -p "$TX"
+txmsg() {  # txmsg <id> <utc time>
+    printf '{"type":"assistant","timestamp":"2026-10-16T%s.000Z","message":{"id":"%s","usage":{"input_tokens":1000,"cache_read_input_tokens":100000,"cache_creation_input_tokens":10000,"output_tokens":1000}}}\n' "$2" "$1"
+}
+{
+    printf '%s\n' '{"type":"custom-title","customTitle":"console-s","sessionId":"s1"}'
+    txmsg m1 10:00:00; txmsg m1 10:00:01; txmsg m2 10:05:00; txmsg m3 11:30:00
+} > "$TX/succ.jsonl"
+{
+    printf '%s\n' '{"type":"custom-title","customTitle":"console-prev","sessionId":"s0"}'
+    txmsg m9 09:50:00; txmsg m10 10:03:00; txmsg m11 10:30:00
+} > "$TX/pred.jsonl"
+printf '%s\n' '{"type":"custom-title","customTitle":"someone-else","sessionId":"s9"}' "$(txmsg m50 10:01:00)" > "$TX/other.jsonl"
+TZ=UTC BOARD_TRANSCRIPTS="$TX" PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-size" TICK_ARGV_LOG="$W/argv.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+    GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$S/console-s.md" --repo "$W/repo" --out "$S/board.html" --json "$S/board.json" >/dev/null 2>"$W/stderr.log"
+jtxt="$(cat "$S/board.json" 2>/dev/null)"
+jcheck '--json: console cost sums its own messages once each (HIMMEL-5955 5e)' 'M.trends.console_cost.eq === 108000 && M.trends.console_cost.messages === 3'
+jcheck '--json: console cost has an hourly trend' 'M.trends.console_cost.hourly.length === 2 && M.trends.console_cost.hourly[0].eq === 72000 && M.trends.console_cost.hourly[1].eq === 36000'
+jcheck '--json: console cost sits next to fleet spend' '"fleet_eq" in M.trends.console_cost'
+jcheck '--json: succession is a tool-eval row' 'M.trends.tools.length === 1 && M.trends.tools[0].tool === "console-succession" && M.trends.tools[0].from === "console-prev" && M.trends.tools[0].to === "console-s"'
+jcheck '--json: succession counts both sessions from successor start to LIVE' 'M.trends.tools[0].turns === 3 && M.trends.tools[0].eq === 108000 && M.trends.tools[0].wall_min === 10'
+jcheck '--json: succession counts legs quoted back vs silent' 'M.trends.tools[0].legs_quoted === 2 && M.trends.tools[0].legs_silent === 23'
+jcheck '--json: succession passes against the target with a recommendation' 'M.trends.tools[0].pass === true && M.trends.tools[0].target.eq === 457000 && M.trends.tools[0].target.turns === 20 && M.trends.tools[0].recommendation.length > 0'
 
 # --- usage
 PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?

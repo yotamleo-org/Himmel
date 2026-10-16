@@ -46,7 +46,7 @@ cp "$REPO_ROOT/.pre-commit-config.yaml" "$S/"
 # the other guard surfaces the fail-open suite expects to find
 mkdir -p "$S/scripts/graphify" "$S/scripts/telegram"
 cp "$REPO_ROOT/scripts/graphify/refresh-graph-map.sh" "$S/scripts/graphify/"
-cp "$REPO_ROOT/scripts/claude-codex" "$REPO_ROOT/scripts/claude-glm" "$REPO_ROOT/scripts/claude-routed" "$S/scripts/"
+cp "$REPO_ROOT/scripts/claude-codex" "$REPO_ROOT/scripts/claude-glm" "$S/scripts/"
 cp "$REPO_ROOT/scripts/telegram/spawn-glm.ts" "$S/scripts/telegram/"
 printf 'pkg==1.0 --hash=sha256:abc\n' > "$S/requirements.txt"
 printf 'x\n' > "$S/a.txt"

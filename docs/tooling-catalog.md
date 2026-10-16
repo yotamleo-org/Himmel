@@ -611,15 +611,19 @@ tool, so `.codex/hooks.json` carries no twin.
 
 ## research path (`scripts/web/research/research_path.py`)
 
-Stdlib-only, network-free pieces of the research path: a relevance floor (the
+Pieces of the research path: a relevance floor (the
 primary entity must appear in a result's title or snippet), a search ladder
 whose header names the rung that answered (rungs are injected callables, never
 a silent fall-through), a dated-in-window check with a dated-share report (an
-unknown date stays unknown, never in-window), and a parser and normalizer for an
-Arctic Shift style Reddit JSON response (`scripts/web/research/fixtures/`). One
-entry function, `research(query, entity, rungs, now, days=30)`; nothing here
-fetches, and the Reddit endpoint hosts (`REDDIT_ENDPOINT_HOSTS`) are pending
-egress review. Lean-invoke: no CLI or skill wiring until the research-path
+unknown date stays unknown, never in-window), and the keyless Reddit lane:
+`reddit_rung(query, fetch_html, fetch_json)` discovers threads through the
+www.reddit.com site search, enriches the top ones from the shreddit thread page
+(score, comment count, top comments) and backfills scores from Arctic Shift.
+The rung is bound to the operator's own query and refuses any other
+(`docs/internals/egress-matrix.md`, "Reviewed outside the matrix"). Only
+`fetch_reddit_html` (Scrapling, venv from `fetch-url.sh`) and `fetch_arctic_json`
+touch the network, each pinned to one host. One entry function,
+`research(query, entity, rungs, now, days=30)`. Lean-invoke: no CLI or skill wiring until the research-path
 decision picks one. Suite: `scripts/web/research/test-research-path.sh`, which
 runs `scripts/web/research/test_research_path.py`.
 
@@ -1209,48 +1213,6 @@ construction against `claude-codex` with no `ANTHROPIC_*` var, shared-branch
 lock lifecycle against a real temp repo + the real lock script).
 
 **Bash convenience shims:** `scripts/shell/himmel-offload-shims.sh` installs idempotent `cc-codex` / `cc-glm` functions into `~/.bashrc` for Git Bash and WSL.
-
----
-
-## claude-routed + omniroute-config-lint (`scripts/claude-routed`, `scripts/omniroute-config-lint.sh`, `.ps1` twins)
-
-**What:** the WS2 OmniRoute-pilot wiring pair. `claude-routed` is a
-copy-and-edit variant of `claude-glm` (the WS1 extensibility seam): identical
-PHI/egress guard, config-dir seeding, flag handling and exit codes — only the
-backend block differs. It points Claude Code at the LOCAL loopback OmniRoute
-router (`ANTHROPIC_BASE_URL=http://127.0.0.1:$OMNIROUTE_PORT`, default port
-`20128`; host fixed — the router is loopback-only by charter), authenticates
-with a router-issued client key `OMNIROUTE_API_KEY` (shell env first, else the
-himmel repo `.env`; the Z.ai key never appears in this launcher), keeps the
-GLM tier-alias mapping (`glm-5.2[1m]`/`glm-4.7`), and seeds its own isolated
-`$HOME/.claude-routed`. Guard config is **deliberately shared** with
-claude-glm at `~/.config/claude-glm/{phi-roots,egress-denylist}` — one guard
-source of truth across launcher lanes. A bare `ANTHROPIC_BASE_URL` export is
-not acceptable wiring; the launcher IS the wiring.
-
-`omniroute-config-lint` is WS2 guardrail 1 (WS6 dedup invariant — one
-optimizer per boundary): a **positive assertion** over the authoritative
-engine-key set from the Task-1 source-read (OmniRoute pin
-`b729a8f`, v3.8.43). It reads an exported pilot-config JSON (`compression`
-object + top-level `autoRoutingEnabled`) and FAILs loudly, one line per
-offending key, when any expected key is missing (default-ON engines must
-never pass as "nothing enabled found"), any entry is enabled, any unknown
-key appears inside `compression` (a renamed engine can't sneak in;
-`optimization` = SQLite tuning, excluded), or the free-lane switch
-`autoRoutingEnabled` is not explicitly `false`. Exit codes: 0 PASS / 1
-findings / 2 usage / unreadable / unparseable input (mirrors the script
-header; covers wrong arg count, an unreadable file, invalid JSON, and a
-non-object JSON root).
-
-**Status:** the router deploy itself (Task 2) is operator-gated
-(per-token lane decision) — these artifacts are built-and-tested ahead of it;
-the lint has NOT yet approved a real deployed config (plan Task 3 Step 4
-pending deploy).
-
-**Acceptance:** hermetic twin suites `scripts/test-claude-routed.{sh,ps1}`
-(mock `claude`; guard red paths incl. `.salus` refusal surviving the variant)
-and `scripts/test-omniroute-config-lint.{sh,ps1}` (fixture matrix incl. the
-omitted-key and unknown-key red paths).
 
 ---
 
@@ -2049,7 +2011,7 @@ Full reference: [`scripts/ci/README.md`](../scripts/ci/README.md).
 
 Shell scripts that implement `/pr-check` sub-steps. Called by the `/pr-check` command; not invoked standalone in normal workflows.
 
-- `scripts/cr/file-deferred-issues.sh` — reads `/pr-review-toolkit:review-pr` output, dedupes low-severity findings by content hash, and files them as GitHub issues tagged `cr-deferred`. Called by `/pr-check` step 7. Idempotent; `--dry-run` mode for inspection.
+- `scripts/cr/file-deferred-issues.sh` — reads `/pr-review-toolkit:review-pr` output, dedupes low-severity findings by content hash, and files them on the repo's tracker, tagged `cr-deferred`: one Jira ticket per run when Jira is configured, forge issues otherwise, nothing remote with no tracker (prints `tracker=jira|forge|none`). Called by `/pr-check` step 7. Idempotent; `--dry-run` mode for inspection.
 - `scripts/cr/critic-first-pass.sh` — generic model-parametrized automated reviewer (supersedes retired `gemini-first-pass.sh`): diff on stdin → findings with stable `[<slug>-N]` IDs; routes through `scripts/hermes/invoke.sh`; `--model`/`--slug` flags select the model. **Senior-reviewer routing:** the gpt/codex-family critic runs under the `himmel_agent` hermes profile (main-tier SOUL) instead of the user-default junior SOUL — the junior framing produced shallow/discarded codex output. Only the gpt family by default because `himmel_agent` is Codex-provider-bound (a non-OpenAI model like the free qwen3coder anchor 400s under it); open/claude critics stay on the hermes default profile and take their senior framing from the role-prompt. Override with `CR_CRITIC_PROFILE` (applies to every family when set; `none`/empty → hermes default). `invoke.sh --profile` is fail-open (missing profile warns + falls back). Tests: `scripts/cr/test-critic-first-pass.sh` (deterministic, PATH-stubbed fake hermes).
 - `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` currently holds ONE row — `codex`/`gpt-6.1-sol`, tier `paid` — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (operator decision, 12%/13% ledger agreed-rate — noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (operator decision: accepted). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
 - `scripts/cr/ledger-append.sh` — appends `finding` / `avail` / `usage` records to the CR ledger (`cr-critic-scores.jsonl`); called by `/pr-check` adjudication step. The `usage` kind records a chars/4 **estimated** token count for a critic (hermes does not expose real usage through the one-shot sanctioned script); written best-effort by `critic-first-pass.sh` when `CR_USAGE_LOG=1`. The `score` kind is one row per COMPLETED critic run (rc 0 or the all-dropped rc 4; a failed run writes none): `critical`/`important`/`suggestions` counts (+ `dropped`), `model`, `head`, and `raw_path` — so a clean 0/0/0 verdict is distinguishable from a non-run. `critic-first-pass.sh` writes it, and keeps the raw critic response at `raw_path` under `cr-panel-raw/` beside the ledger (`<head12>.<slug>.<diff|artifact>.<UTC ts>.<pid>.raw`, mode 0600); files older than `CR_RAW_RETAIN_DAYS` (default 30) are pruned on each write — no separate sweeper process. Fail-open: a raw/ledger write failure warns and never changes the critic's stdout or exit code. Every ledger reader filters on `kind`, so a `score` row changes no gate verdict.

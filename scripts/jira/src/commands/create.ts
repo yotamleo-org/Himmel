@@ -7,7 +7,7 @@ import type { CreateIssueResponse } from '../types.js';
 import { uploadAll } from './attach-helper.js';
 import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
-import { lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict } from '../plain-block.js';
+import { lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions } from './versions.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -55,8 +55,13 @@ export function registerCreate(program: Command): void {
     )
     .option('--project <key>', 'Project key (default: JIRA_PROJECT_KEY env var)')
     .option('--attach <path>', 'File to attach (repeatable)', collect, [])
+    .option(
+      '--skeleton',
+      'Print the four-heading body (Impact, What, Why, Agent detail) to fill, then exit; creates nothing',
+    )
     .action(
       async (options: {
+        skeleton?: boolean;
         type: string;
         title?: string;
         summary?: string;
@@ -69,6 +74,10 @@ export function registerCreate(program: Command): void {
         project?: string;
         attach: string[];
       }) => {
+        if (options.skeleton) {
+          console.log(PLAIN_BLOCK_TEMPLATE);
+          return;
+        }
         const fields: Record<string, unknown> = {
           project: { key: options.project ?? projectKey() },
           summary: resolveTitle(options),

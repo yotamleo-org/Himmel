@@ -3,7 +3,7 @@ import { existsSync, readFileSync, lstatSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
-import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, type Meta, type OnCursorReset } from "./bus";
+import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, type ConsoleRouteGate, type ConsoleReplyFn } from "./console-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
@@ -351,6 +351,7 @@ export async function ingestUpdates(root: string, updates: any[], allow: AllowFn
 // for THIS function, in poller.test.ts, is what pins the production ordering.
 export async function repairThenIngest(root: string, updates: any[], allow: AllowFn, fetchImage?: FetchImageFn, fetchVoice?: FetchVoiceFn, fetchDoc?: FetchDocFn, notifyDocFail?: NotifyDocFailFn, onCursorReset?: OnCursorReset): Promise<void> {
   await repairCursorBeyondEof(join(root, "inbound.jsonl"), join(root, "inbound.jsonl.cursor"), onCursorReset);
+  await rotateConsumedLedger(join(root, "inbound.jsonl"), join(root, "inbound.jsonl.cursor"));
   await ingestUpdates(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail);
 }
 

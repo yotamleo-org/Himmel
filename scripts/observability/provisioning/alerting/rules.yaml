@@ -446,6 +446,7 @@ groups:
         noDataState: OK
         execErrState: Alerting
         for: 10m
+        keepFiringFor: 10m
         labels:
           severity: page
         annotations:
@@ -520,6 +521,7 @@ groups:
         noDataState: NoData
         execErrState: Alerting
         for: 10m
+        keepFiringFor: 10m
         labels:
           severity: warn
         annotations:

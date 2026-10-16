@@ -51,13 +51,10 @@ live bulk lane to sample until WS1 ships and the routing work defines the classe
 ## Invariants (normative)
 
 1. **One optimizer owns each boundary.** Two tools on one boundary = pick
-   the stronger, disable the other. Concretely: any OmniRoute deployment
-   (WS2) MUST disable its whole bundled compression stack —
+   the stronger, disable the other. Concretely: any router or proxy
+   deployment MUST disable its whole bundled compression stack —
    himmel owns the dev-output boundary with RTK, and no other optimizer may
-   claim a boundary without clearing invariant 3 — enforced by a structural
-   config-lint at deploy time (a
-   positive assertion over the source-read-discovered engine set; an
-   omitted key FAILS), not by prose.
+   claim a boundary without clearing invariant 3.
 2. **License gate precedes measurement gate.** NOASSERTION / non-OSI /
    noncommercial licenses are REJECT-for-adoption on himmel's public MIT
    path; at most personal-internal pilot, never wired into shipped config.

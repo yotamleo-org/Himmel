@@ -15,18 +15,24 @@
 #   station back to main: ` station=pending log=<file>` is appended at once, its
 #   output goes to the log and its verdict to the state file tick.sh shows.
 #
-# Output: one line. `HANDLED wrap-merged <label>[ station=pending log=<file>]` (rc 0) or
+# The leg is found by its N<k> label, else by its session name (the leg doc's
+# stem) quoted in the message. After a handled event the script runs
+# live-state.sh <doc>, which rewrites the `## Live state` legs: line; its failure
+# is appended as ` live-state=failed <why>` (the wrap is done, so rc stays 0).
+#
+# Output: one line. `HANDLED wrap-merged <label>[ station=pending log=<file>][ live-state=failed <why>]` (rc 0) or
 # `ESCALATE <reason>` (rc 10), the reason being no-label, not-in-manifest,
 # marker-<X>, or wrap-merged-failed rc=<n> with wrap-merged's stderr after it.
 # Usage errors exit 2 before anything runs.
 #
-# Test seams (env): LE_WRAP LE_LIST LE_STATION LE_STATION_LOG.
+# Test seams (env): LE_WRAP LE_LIST LE_LIVE LE_STATION LE_STATION_LOG.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 if [ -n "${LE_WRAP:-}" ]; then WRAP=("$LE_WRAP"); else WRAP=(bash "$HERE/wrap-merged.sh"); fi
 if [ -n "${LE_STATION:-}" ]; then STATION=("$LE_STATION"); else STATION=(bash "$HERE/station-sync.sh"); fi
+if [ -n "${LE_LIVE:-}" ]; then LIVE=("$LE_LIVE"); else LIVE=(bash "$HERE/live-state.sh"); fi
 if [ -n "${LE_LIST:-}" ]; then LIST=("$LE_LIST"); else LIST=(bash "$HERE/fleet-manifest.sh" list); fi
 
 usage() { echo "usage: leg-event.sh --doc <console doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
@@ -57,13 +63,31 @@ case "$marker" in
     *) escalate "marker-${marker:-none}" ;;
 esac
 
+# the leg is named by its N<k> label, or failing that by its session name (the
+# leg doc's stem, which a wrap message may quote without any N<k>)
 labels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)" || labels=""
-[ -n "$labels" ] || escalate "no-label"
-[ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
-label="$labels"
-
-leg="$("${LIST[@]}" "$FLEET" 2>/dev/null | grep -F -- "-${label}-" | head -n 1)" || leg=""
-[ -n "$leg" ] || escalate "not-in-manifest $label"
+if [ -n "$labels" ]; then
+    [ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
+    label="$labels"
+    leg="$("${LIST[@]}" "$FLEET" 2>/dev/null | grep -F -- "-${label}-" | head -n 1)" || leg=""
+    [ -n "$leg" ] || escalate "not-in-manifest $label"
+else
+    legs=""
+    while IFS= read -r cand; do
+        [ -n "$cand" ] || continue
+        stem="${cand##*/}"; stem="${stem%.md}"
+        # the stem must stand alone: a longer, unlisted session name never matches a listed one
+        [[ $body =~ (^|[^A-Za-z0-9_-])"$stem"([^A-Za-z0-9_-]|$) ]] && legs="$legs$cand"$'\n'
+    done <<EOF
+$("${LIST[@]}" "$FLEET" 2>/dev/null)
+EOF
+    [ -n "$legs" ] || escalate "no-label"
+    [ "$(printf '%s' "$legs" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
+    leg="${legs%$'\n'}"
+    stem="${leg##*/}"; stem="${stem%.md}"
+    label="$stem"
+    [[ $stem =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
+fi
 
 pr=""
 if [ "$marker" = MERGED ]; then
@@ -92,4 +116,9 @@ if [ -n "$pr" ]; then
     setsid "${STATION[@]}" --pr "$pr" >>"$slog" 2>&1 </dev/null &
     station=" station=pending log=$slog"
 fi
-echo "HANDLED wrap-merged $label$station"
+# re-render the legs: line so a wrapped leg is dropped by the script, not by a console Edit turn
+live=""
+if ! lerr="$("${LIVE[@]}" "$DOC" 2>&1 >/dev/null)"; then
+    live=" live-state=failed $(printf '%s' "$lerr" | tr '\n' ' ')"
+fi
+echo "HANDLED wrap-merged $label$station$live"

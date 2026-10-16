@@ -2329,6 +2329,17 @@ CLOSED on missing `jq` or malformed JSON. PowerShell is unguarded (ponytail in
 the hook). Bypass: `QMD_UNBOUNDED_OK=1` (launching shell). Spec:
 `scripts/hooks/test-block-bare-qmd-query.sh`.
 
+Before a leg or preflight depends on qmd retrieval, run
+`bash scripts/lib/qmd-key-probe.sh` (HIMMEL-5895): one real vec query against
+the qmd server (`QMD_MCP_URL`, default `http://localhost:8181/mcp`), bounded by
+`QMD_KEY_PROBE_TIMEOUT` seconds (default 90). Exit 0 = the server embedded the
+probe query. Exit 1 = the embedding provider answered 401 (`No cookie auth
+credentials found`): the server was started without `QMD_OPENAI_API_KEY`, so
+every vec query fails; restart it with the key. Exit 2 = anything else (nothing
+listening, deadline, bearer-token refusal, unreadable reply). The output is
+fixed text and never carries the key or the Authorization header. Spec:
+`scripts/lib/test-qmd-key-probe.sh`.
+
 ### `block-bank-lift-writes.sh` — operator-only weekly budget override (HIMMEL-4445)
 
 Fires on Bash and on `Edit|Write|MultiEdit|NotebookEdit` (Codex: Bash and the

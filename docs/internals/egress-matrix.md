@@ -284,6 +284,23 @@ Granting it is an operator call. Defense in depth around it:
 | `scripts/eval/leg-digest/failure_router.py` | the `leg-failure-metadata` × `jira` × `ticketing` row (conditional): the router files and comments only a summary and body its own closed-alphabet check (`check-body`) passes, through the Jira CLI by absolute path, and logs one decision line per send. It does not read the matrix at runtime; `test-egress-matrix.mjs` 5d pins the conditional row |
 | Atlassian MCP catalog capture (a one-off station script, not a shipped consumer) | the `mcp-tool-catalog` × `atlassian-mcp` × `catalog-fetch` row (allow, operator ruling 2026-10-08): an auth-only `initialize` + `tools/list` call to `https://mcp.atlassian.com/v1/mcp`, no ticket, vault or corpus content. Every `tools/call`, other purpose and other corpus stays default-deny; `test-egress-matrix.mjs` 6 pins the scope |
 
+## Reviewed outside the matrix: the research path's Reddit lane
+
+`scripts/web/research/research_path.py` (HIMMEL-5862) fetches two hosts,
+`www.reddit.com` (Scrapling, keyless) and `arctic-shift.photon-reddit.com`
+(plain GET, keyless). They carry no row here: the matrix keys corpus content
+leaving the machine, and this lane sends none. **Boundary:** the only text sent
+is the research query the operator typed, URL-encoded into a search URL, plus
+public thread ids and permalinks read back from Reddit's own results. Text taken
+from a vault or corpus (luna, salus, handover state) is never sent. The code
+enforces consistency, not provenance: `reddit_rung()` is built with one query
+and raises on any other, the two fetchers refuse any URL outside their own
+https host, and the browser may load Reddit-owned hosts only (a final URL off
+`www.reddit.com` is refused). That the bound query is the operator's own is the
+caller's contract: a caller that feeds the path from notes must still pass the
+operator's typed query. Widening the lane to a third host or a derived query is a matrix
+review, not a code edit.
+
 ## Invariants (enforced by the test)
 
 - `default` is `deny`; salus × any-cloud × anything is a **hard** deny with

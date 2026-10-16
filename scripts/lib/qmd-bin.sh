@@ -74,12 +74,14 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # commit of fork PR #14), not fork main. The pin was the merge
 # commit of fork PR #15 (b1858ca on himmel/pin-http-auth; it brings c5cc17b, the
 # HTTP daemon start honouring the embed-swap lock, onto 791fdf8).
-# The pin is now 7cc60404, the tip of himmel/pin-http-auth: cecc32a9 (the
+# The pin was 7cc60404, the tip of himmel/pin-http-auth: cecc32a9 (the
 # openai: provider, an ancestor) plus the remote-embed throughput work (fork
 # #17), the update hint fix (fork #18) and the MCP query rerank-off default
-# with burst handling (fork #20).
+# with burst handling (fork #20). The pin is now 27907dc3, the tip
+# of himmel/pin-http-auth, adding the serial query queue with a busy refusal
+# past QMD_QUERY_MAX_QUEUED (fork #23).
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-7cc60404e9107652e5ae1621866e35d5a84c111e}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-27907dc3b47d6c4a133d5f301b9328b04289cb13}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or
@@ -735,17 +737,41 @@ _qmd_local_cfg() {
 # every himmel caller of qmd_cmd (direct CLI shapes: query, embed, update, mcp).
 # With no --index the index is the project-local one when the cwd walk finds it
 # (the gate re-walks via --resolve), else the global pair.
-# ponytail: a pass is cached 30s per shell process, keyed on config text, sibling configs, db size/mtime, env and cwd; the PHI root list files are not in the key, so an edit to them inside that window is not seen; BSD stat gives whole-second mtime only, so on macOS a same-size same-second db write is not seen either.
+# ponytail: a pass is cached 30s per shell process, keyed on config text, sibling configs, db size/mtime, PHI root lists, env and cwd; a new .salus marker under a collection path is not in the key, so adding one inside that window is not seen; BSD stat gives whole-second mtime only, so on macOS a same-size same-second db write is not seen either.
 _qmd_egress_ok() {
-  local cfg idx gate name=index a prev="" explicit=0 local_cfg gcfg gidx rc=0 key to cont=""
-  # a named index (--index NAME / --index=NAME) opens NAME.yml + NAME.sqlite, so gate those
+  local cfg idx gate name=index a explicit=0 local_cfg gcfg gidx rc=0 key to cont="" take=0 take_index=0 i sd sf
+  # a named index (--index NAME / --index=NAME) opens NAME.yml + NAME.sqlite, so gate those.
+  # Scan the way the fork's util.parseArgs does: stop at --, a string option swallows the next
+  # argument whatever it looks like, and the last --index wins.
   for a in "$@"; do
+    if [ "$take" -eq 1 ]; then
+      take=0
+      [ "$take_index" -eq 1 ] && { name="$a"; explicit=1; }
+      continue
+    fi
+    take_index=0
     case "$a" in
+      --) break ;;
       --index=*) name="${a#--index=}"; explicit=1 ;;
-      *) if [ "$prev" = "--index" ]; then name="$a"; explicit=1; fi ;;
+      --index) take=1; take_index=1 ;;
+      --context | --n | --min-score | --format | --collection | --filter | --name | --mask | --glob | --max-docs-per-batch | --max-batch-mb | --timeout | --l | --from | --max-bytes | --candidate-limit | --intent | --chunk-strategy | --port | --host) take=1 ;;
+      --*) ;;
+      -?*)
+        # a short cluster: the string options c C n l take the rest of the cluster, else the next argument
+        i=1
+        while [ "$i" -lt "${#a}" ]; do
+          case "${a:$i:1}" in
+            c | C | n | l) [ $((i + 1)) -eq "${#a}" ] && take=1; break ;;
+          esac
+          i=$((i + 1))
+        done ;;
     esac
-    prev="$a"
   done
+  # a trailing --index with no value: the fork reads it as a bare flag and opens a name we cannot predict
+  if [ "$take" -eq 1 ] && [ "$take_index" -eq 1 ]; then
+    echo "qmd-bin: --index needs a name - qmd not started." >&2
+    return 10
+  fi
   case "$name" in
     *[!A-Za-z0-9._-]* | '')
       echo "qmd-bin: --index name must match [A-Za-z0-9._-]+ - qmd not started." >&2
@@ -755,6 +781,8 @@ _qmd_egress_ok() {
   gidx="${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/$name.sqlite}"
   cfg="$gcfg"
   idx="$gidx"
+  # an explicit name whose config is missing must not allow while a project-local config exists: gate that one
+  if [ "$explicit" -eq 1 ] && [ ! -f "$gcfg" ] && _qmd_local_cfg >/dev/null; then explicit=0; fi
   if [ "$explicit" -eq 0 ] && local_cfg="$(_qmd_local_cfg)"; then
     cfg="$local_cfg"
     idx="${local_cfg%/*}/index.sqlite"
@@ -777,9 +805,8 @@ _qmd_egress_ok() {
     return 10
   fi
   { cont="$(<"$cfg")"; } 2>/dev/null
-  # the gate also reads sibling *.yml configs (salus collection paths), so they key the cache too
-  local sd sf
-  for sd in "${QMD_CONFIG_DIR:-$HOME/.config/qmd}" "${cfg%/*}"; do
+  # the gate also reads sibling *.yml configs (salus collection paths) from QMD_CONFIG_DIR or ~/.config/qmd and from the config's own dir, so they key the cache too
+  for sd in "${QMD_CONFIG_DIR:-$HOME/.config/qmd}" "${gcfg%/*}" "${cfg%/*}"; do
     for sf in "$sd"/*.yml; do
       [ -f "$sf" ] && { cont="$cont|$sf"; { cont="$cont$(<"$sf")"; } 2>/dev/null; }
     done
@@ -788,11 +815,22 @@ _qmd_egress_ok() {
   local dbsig
   dbsig="$(stat -c '%.9Y.%s' "$idx" "$idx-wal" 2>/dev/null)" || true
   [ -n "$dbsig" ] || dbsig="$(stat -f '%m.%z' "$idx" "$idx-wal" 2>/dev/null)" || true
-  key="$cfg|$idx|$dbsig|$explicit|$(pwd -P)|${QMD_EMBED_MODEL:-}|${QMD_RERANK_MODEL:-}|${QMD_GENERATE_MODEL:-}|${QMD_OPENAI_BASE_URL:-}|$cont"
-  if [ -n "${_QMDBIN_GATE_KEY:-}" ] && [ "$key" = "$_QMDBIN_GATE_KEY" ] && [ $((SECONDS - ${_QMDBIN_GATE_AT:-0})) -lt 30 ]; then
+  # the gate also reads the PHI root lists, the provider key and the require-key switch from the environment
+  local glm="${CLAUDE_GLM_CONFIG_DIR:-$HOME/.config/claude-glm}" lists="" lf
+  for lf in phi-roots egress-denylist; do
+    [ -f "$glm/$lf" ] && { lists="$lists|$lf"; { lists="$lists$(<"$glm/$lf")"; } 2>/dev/null; }
+  done
+  key="$cfg|$idx|$dbsig|$explicit|$(pwd -P)|${QMD_EMBED_MODEL:-}|${QMD_RERANK_MODEL:-}|${QMD_GENERATE_MODEL:-}|${QMD_OPENAI_BASE_URL:-}|${QMD_GATE_REQUIRE_KEY:-}|${QMD_OPENAI_API_KEY:-}|${JINA_API_KEY:-}|${JINA_API:-}|$glm|$lists|$cont"
+  # hold a digest, never the API keys in the clear; with no hashing tool the pass is simply not cached
+  if command -v sha256sum >/dev/null 2>&1; then key="$(printf '%s' "$key" | sha256sum)"
+  elif command -v shasum >/dev/null 2>&1; then key="$(printf '%s' "$key" | shasum -a 256)"
+  else key=""; fi
+  if [ -n "$key" ] && [ -n "${_QMDBIN_GATE_KEY:-}" ] && [ "$key" = "$_QMDBIN_GATE_KEY" ] && [ $((SECONDS - ${_QMDBIN_GATE_AT:-0})) -lt 30 ]; then
     return 0
   fi
   to="${QMD_GATE_TIMEOUT_SECS:-30}"
+  # 0 means no deadline to timeout(1) and junk is no deadline either: only a positive integer overrides
+  case "$to" in '' | *[!0-9]* | 0* ) to=30 ;; esac
   if [ "$explicit" -eq 1 ]; then set -- "$gcfg" "$gidx"; else set -- --resolve "$gcfg" "$gidx"; fi
   if command -v timeout >/dev/null 2>&1; then
     timeout -k 5 "$to" node "$gate" "$@" >&2 || rc=$?

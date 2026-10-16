@@ -227,6 +227,12 @@ GH_STUB_MODE=clean t xrepo-same-repo-R-host-allows 0 Bash "gh pr merge 42 --squa
 CR_MERGE_GATE_OK=1 PAYLOAD_CWD="$TMP/other" GH_STUB_MODE=clean t xrepo-bypass-skips-refusal 2 Bash "gh pr merge 42 --squash $PIN2141"
 if grep -q "project repo" "$TMP/err-xrepo-bypass-skips-refusal"; then fail=$((fail+1)); echo "FAIL xrepo-bypass-names-no-refusal"; else pass=$((pass+1)); echo "ok   xrepo-bypass-names-no-refusal"; fi
 
+# A bare fork merge stays refused; the fork path is merge-fork-pr.sh, whose own gh call is not a PreToolUse event.
+FORK_SHA="0123456789abcdef0123456789abcdef01234567"
+GH_STUB_MODE=clean t fork-bare-merge-refuses 2 Bash "gh pr merge 18 --repo yotamleo/qmd --squash --match-head-commit $FORK_SHA"
+if grep -q "project repo" "$TMP/err-fork-bare-merge-refuses"; then pass=$((pass+1)); echo "ok   fork-bare-merge-names-repos"; else fail=$((fail+1)); echo "FAIL fork-bare-merge-names-repos"; fi
+GH_STUB_MODE=clean t fork-chokepoint-passes 0 Bash "bash scripts/handover/merge-fork-pr.sh yotamleo/qmd 18 $FORK_SHA"
+
 GH_STUB_MODE=unresolved t merge-with-unresolved-blocks   2 Bash "gh pr merge 42 --squash"
 GH_STUB_MODE=clean      t merge-clean-allows             0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 # the contract is split. The PR LOOKUP fails closed on a real merge

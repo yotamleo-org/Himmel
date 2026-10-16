@@ -1749,7 +1749,7 @@ $seen"
 # --- C26: salus profile marker present but PHI guard marker absent (advisory) ---
 # The salus medical-vault profile installer/upgrade drops `.salus-profile`
 # (template machinery) at the vault root; the PHI launcher guards (claude-glm/
-# claude-codex/claude-routed + their .ps1 twins + the hermes parity guard, and
+# claude-codex + their .ps1 twins + the hermes parity guard, and
 # scripts/telegram/phi-egress-guard.ts) test for `.salus` before refusing a cloud/
 # codex launch there (now `.salus-profile` too, as a defense
 # part 2). A vault that carries the profile marker but no `.salus` looks
@@ -4088,7 +4088,9 @@ check_c64_vm_runner() {
         emit INFO C64-vm-runner "vm-runner.sh not found — not checked"
         return
     fi
-    rows="$(bash "$runner" doctor 2>/dev/null)" || true
+    local tbin
+    tbin="$(command -v timeout 2>/dev/null)" || tbin=""
+    rows="$(${tbin:+"$tbin" -k 2 "${DOCTOR_VM_RUNNER_TIMEOUT:-90}"} bash "$runner" doctor 2>/dev/null)" || true
     if [ -z "$rows" ]; then
         emit INFO C64-vm-runner "vm-runner.sh doctor printed nothing — not checked"
         return

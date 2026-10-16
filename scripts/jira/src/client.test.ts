@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { uploadAttachment, normalizeEnv, baseUrl } from './client.js';
+import { uploadAttachment, normalizeEnv, baseUrl, loadEnvFile } from './client.js';
 
 describe('uploadAttachment', () => {
   let dir: string;
@@ -223,5 +223,34 @@ describe('resolveAccountId (HIMMEL-437)', () => {
     const { resolveAccountId } = await import('./client.js');
     expect(await resolveAccountId('a@b.com')).toBe('abc');
     expect(decodeURIComponent(String(fetchMock.mock.calls[0][0]))).toContain('/user/search?query=a@b.com');
+  });
+});
+
+describe('loadEnvFile', () => {
+  const orig = process.env.JIRA_BASE_URL;
+  let dir: string;
+  let file: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'jira-dotenv-'));
+    file = join(dir, '.env');
+    writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.example\n');
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    if (orig === undefined) delete process.env.JIRA_BASE_URL; else process.env.JIRA_BASE_URL = orig;
+  });
+
+  it('fills a key that is exported but EMPTY (an empty value is not a usable one)', () => {
+    process.env.JIRA_BASE_URL = '';
+    loadEnvFile(file);
+    expect(process.env.JIRA_BASE_URL).toBe('https://from-dotenv.example');
+  });
+
+  it('keeps a live non-empty value over the file', () => {
+    process.env.JIRA_BASE_URL = 'https://live.example';
+    loadEnvFile(file);
+    expect(process.env.JIRA_BASE_URL).toBe('https://live.example');
   });
 });

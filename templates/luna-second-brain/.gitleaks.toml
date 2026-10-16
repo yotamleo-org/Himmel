@@ -71,6 +71,9 @@ regexes = [
   # Anchored to exactly 40 lowercase hex plus one optional trailing
   # punctuation char; a longer or mixed-case token is still caught.
   '''^[0-9a-f]{40}[.,;:)]?$''',
+  # Full 64-hex sha256 checksums (pinned release digests in handoffs and
+  # briefs, e.g. CLIPROXY_API_SHA256=<digest>), same class and anchoring.
+  '''^[0-9a-f]{64}[.,;:)]?$''',
   # atlassian-api-token false positive on a function name. Exact literal only.
   '''^runClaudexSharedDispatch$''',
 ]

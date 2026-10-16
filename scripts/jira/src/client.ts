@@ -29,15 +29,16 @@ const DOTENV_KEYS = new Set([
   'JIRA_SEVERITY_FIELD', 'JIRA_BOARD_ID', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN',
 ]);
 
-function loadEnv(): void {
-  const envPath = `${repoRoot()}/.env`;
+export function loadEnvFile(envPath: string): void {
   if (!existsSync(envPath)) return;
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
     const [key, ...rest] = trimmed.split('=');
     if (!DOTENV_KEYS.has(key.trim())) continue;
-    process.env[key.trim()] ??= rest.join('=').trim();
+    // An exported-but-empty value is not usable (baseUrl() rejects it), so it
+    // must not shadow the file: `||=`, not `??=`.
+    process.env[key.trim()] ||= rest.join('=').trim();
   }
 }
 
@@ -73,7 +74,7 @@ export function normalizeEnv(): void {
   }
 }
 
-loadEnv();
+loadEnvFile(`${repoRoot()}/.env`);
 normalizeEnv();
 
 export const baseUrl = (): string => {

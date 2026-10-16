@@ -11,6 +11,7 @@
 #
 # Usage: go.sh [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>
 #        go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>
+#        go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>
 # Prints the written path. Re-running overwrites (idempotent).
 #
 # --fix-main-red: writes a FIX-GO instead of a GO - the console's
@@ -32,7 +33,17 @@
 # <root>/<user>/<bucket>/verdicts/<qid>/*.md rules GO on that exact head
 # (go-gate.sh's go_trust_verdict holds the parse).
 #
-# every GO, trust-reviewed or not, first runs this directory's
+# --repo: the GO for a PR on a himmel adapter (a fork we own, listed with
+# merge_allowed true in scripts/guardrails/himmel-adapters.json, read from the
+# DEFAULT branch so a worktree edit cannot widen it) that merge-fork-pr.sh
+# merges. The mac signs THAT repo, so the GO validates nowhere else. It replaces
+# the himmel-only ready-check.sh below (ledger, trailers, coverage) with: the PR
+# is OPEN at <head>, MERGEABLE and based on the entry's himmel_branch, and
+# --trust-reviewed names a judge whose write-verdict.sh record rules GO on
+# <head> for this PR - required, because that judge IS the review of a fork that
+# has no reviewer or CI gate of its own.
+#
+# every himmel GO, trust-reviewed or not, first runs this directory's
 # ready-check.sh <pr> <head> from the caller's cwd and refuses (exit 4) unless
 # it PASSes - head, CI, threads, the CR-ledger ok row at that head (check 4),
 # trailers, ticket ids, coverage. Run it from the checkout /pr-check wrote the
@@ -53,6 +64,9 @@
 #   3  refused: run from a console relay - only the console writes a GO
 #   4  refused: ready-check.sh did not PASS for <pr> at <head>
 #   5  refused: --trust-reviewed <qid> has no GO verdict for <head>
+#   6  refused: --repo names no himmel adapter with merge_allowed true
+#   7  refused: --repo PR is not OPEN at <head>, MERGEABLE and on the himmel_branch,
+#      or is not CLEAN (checks green) with every review thread resolved
 #
 # A relative entry (`bash scripts/handover/console-kit/go.sh`, the leg
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
@@ -83,13 +97,16 @@ chokepoint_seam_guard scripts/handover/console-kit/go.sh || exit 96
 usage() {
     echo "usage: go.sh [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>" >&2
+    echo "       go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>" >&2
 }
 
 TRUST=""
 TRUST_SET=0
 FIXRUN=""
 FIX_SET=0
-# Either option, in either order, each at most once (a repeat is a usage error).
+FORK=""
+FORK_SET=0
+# Each option, in any order, at most once (a repeat is a usage error).
 while :; do
     case "${1:-}" in
         --trust-reviewed)
@@ -99,6 +116,10 @@ while :; do
         --fix-main-red)
             [ "$FIX_SET" -eq 0 ] || { usage; exit 2; }
             FIXRUN="${2:-}"; FIX_SET=1
+            shift 2 2>/dev/null || shift "$#" ;;
+        --repo)
+            [ "$FORK_SET" -eq 0 ] || { usage; exit 2; }
+            FORK="${2:-}"; FORK_SET=1
             shift 2 2>/dev/null || shift "$#" ;;
         *) break ;;
     esac
@@ -118,6 +139,19 @@ if [ "$FIX_SET" -eq 1 ]; then
     if [ "$TRUST_SET" -eq 1 ]; then
         usage
         echo "go: --fix-main-red and --trust-reviewed are mutually exclusive" >&2
+        exit 2
+    fi
+fi
+
+if [ "$FORK_SET" -eq 1 ]; then
+    case "$FORK" in
+        */*/*|/*|*/|*[!A-Za-z0-9._/-]*|'') FORK_BAD=1 ;;
+        */*) FORK_BAD=0 ;;
+        *) FORK_BAD=1 ;;
+    esac
+    if [ "$FORK_BAD" -eq 1 ] || [ "$FIX_SET" -eq 1 ] || [ "$TRUST_SET" -eq 0 ]; then
+        usage
+        echo "go: --repo needs an owner/name and --trust-reviewed <judge-qid>, and excludes --fix-main-red (got '$FORK')" >&2
         exit 2
     fi
 fi
@@ -145,13 +179,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # gate against, so it must use their exact rule, not a hand-rolled copy of it.
 # Fail closed: this write is sensitive enough that a broken/missing shared lib
 # must never be read as "not a leg".
-unset -f console_leg go_gate _go_gate_verify go_trust_gate go_trust_id_ok go_trust_verdict go_verdict_scope go_mac go_msg_mac go_verdict_mac go_verdict_mac_ok _go_sha256 go_key_file go_resolve_root _go_in_harness go_fixred_gate go_fixred_file 2>/dev/null || true
+unset -f go_adapter_entry console_leg go_gate _go_gate_verify go_trust_gate go_trust_id_ok go_trust_verdict go_verdict_scope go_mac go_msg_mac go_verdict_mac go_verdict_mac_ok _go_sha256 go_key_file go_resolve_root _go_in_harness go_fixred_gate go_fixred_file 2>/dev/null || true
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1 \
         || ! declare -F go_mac >/dev/null 2>&1 || ! declare -F go_resolve_root >/dev/null 2>&1 \
         || ! declare -F go_trust_id_ok >/dev/null 2>&1 || ! declare -F go_trust_verdict >/dev/null 2>&1 \
-        || ! declare -F go_verdict_scope >/dev/null 2>&1 || ! declare -F go_fixred_file >/dev/null 2>&1; then
+        || ! declare -F go_verdict_scope >/dev/null 2>&1 || ! declare -F go_fixred_file >/dev/null 2>&1 \
+        || ! declare -F go_adapter_entry >/dev/null 2>&1; then
     echo "go: cannot load scripts/lib/go-gate.sh - refusing (the console-leg marker check must fail closed, not silently no-op)" >&2
     exit 1
 fi
@@ -192,6 +227,25 @@ if _go_in_harness "$ROOT" "$ANCHOR"; then
     echo "go: note - writing the GO under the harness repo's inline handovers/ ($ROOT): no external HANDOVER_DIR is configured, so this is Mode A" >&2
 fi
 
+# a fork GO only for an allowlisted adapter, and only for a PR
+# that is OPEN at this head, MERGEABLE and based on the adapter's himmel_branch.
+if [ "$FORK_SET" -eq 1 ]; then
+    if ! HBRANCH=$(go_adapter_entry "$ANCHOR" "$FORK"); then
+        echo "go: refusing the fork GO for $FORK PR #$PR - $HBRANCH No GO written." >&2
+        exit 6
+    fi
+    FVIEW=$(gh pr view "$PR" --repo "$FORK" --json state,headRefOid,mergeable,baseRefName 2>/dev/null) || FVIEW=""
+    FSTATE=$(printf '%s' "$FVIEW" | jq -r '"\(.state)|\(.headRefOid)|\(.mergeable)|\(.baseRefName)"' 2>/dev/null) || FSTATE=""
+    if [ "$FSTATE" != "OPEN|$SHA|MERGEABLE|$HBRANCH" ]; then
+        echo "go: refusing the fork GO for $FORK PR #$PR - it must be OPEN at $SHA, MERGEABLE and based on $HBRANCH (state|head|mergeable|base read: '$FSTATE'). No GO written." >&2
+        exit 7
+    fi
+    if ! REASON=$(go_fork_ready "$FORK" "$PR"); then
+        echo "go: refusing the fork GO for $FORK PR #$PR - $REASON No GO written." >&2
+        exit 7
+    fi
+fi
+
 # a trust-reviewed GO only on the named judge's GO verdict for
 # this exact head (go_trust_verdict parses it, failing closed). and
 # for this PR - a verdict that names another PR, or none, refuses.
@@ -204,7 +258,7 @@ fi
 # CR-ledger ok row at this head (read from this cwd's git-common-dir, as when
 # the console runs it by hand), so a push after /pr-check cannot get a GO
 # without a fresh review. Run from $HERE: the anchor's copy, never a worktree's.
-if ! READY_OUT=$(bash "$HERE/ready-check.sh" "$PR" "$SHA" 2>&1); then
+if [ "$FORK_SET" -eq 0 ] && ! READY_OUT=$(bash "$HERE/ready-check.sh" "$PR" "$SHA" 2>&1); then
     printf '%s\n' "$READY_OUT" >&2
     echo "go: refusing - ready-check.sh did not PASS for PR #$PR at $SHA (above); fix what it names, re-run /pr-check for a new head, then re-run go.sh. No GO written." >&2
     exit 4
@@ -222,6 +276,9 @@ fi
 # PR, but the case is unhandled -- upgrade: HIMMEL-3582 resolves nwo
 # per-target-repo instead of always from ANCHOR.
 NWO=$(cd "$ANCHOR" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || NWO=""
+# A fork GO signs the fork's nwo (already allowlisted above): it validates for
+# that repo's PR only, never for a himmel PR of the same number and sha.
+[ "$FORK_SET" -eq 0 ] || [ -z "$NWO" ] || NWO="$FORK"
 if [ -z "$NWO" ]; then
     echo "go: cannot resolve this repo's owner/name (gh repo view failed) - no GO written; the mac binds the repo (HIMMEL-3578)" >&2
     exit 1

@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """research_path.py - deterministic pieces of the himmel research path (HIMMEL-5863/5864/5865/5862).
 
-Pure, stdlib-only, no network: callers inject the search rungs as callables
-and hand in raw HTML / JSON. Entry point: research(). PS3 (HIMMEL-5751)
-decides how it is wired; nothing here fetches anything.
+Stdlib-only apart from a lazy Scrapling import in fetch_reddit_html: callers
+inject the search rungs as callables and hand in raw HTML / JSON. Entry point:
+research(). PS3 (HIMMEL-5751) decides how it is wired. Only the two Reddit
+fetchers touch the network, each pinned to one of REDDIT_ENDPOINT_HOSTS.
 
 - Relevance floor: the topic's primary entity must appear in title or snippet.
 - Search ladder: rungs tried in order, the header names the one that answered.
 - Dated-in-window: unknown date is "unknown", never "in-window".
-- Reddit lane: parser/normalizer for an Arctic Shift style JSON response.
+- Reddit lane: keyless site-search discovery (www.reddit.com via Scrapling),
+  shreddit thread enrichment (score, comment count, top comments) and an
+  Arctic Shift score backfill. reddit_rung() binds the operator's own query
+  and refuses any other, so no vault or corpus text can reach the two hosts.
 """
 from __future__ import annotations
 
@@ -17,9 +21,12 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
+from urllib.parse import quote, urlparse
 
 LADDER_ORDER = ("ddg-html", "ddg-lite", "startpage", "searxng", "bing")
 REDDIT_ENDPOINT_HOSTS = ("arctic-shift.photon-reddit.com", "www.reddit.com")
+REDDIT_ENRICH_LIMIT = 3
+_THREAD_PATH = re.compile(r"^/r/([A-Za-z0-9_]+)/comments/([a-z0-9]+)/")
 
 
 def _norm(text):
@@ -210,6 +217,205 @@ def _to_utc(ts):
         return datetime.fromtimestamp(secs, timezone.utc) if secs > 0 else None
     except (TypeError, ValueError, OverflowError, OSError):
         return None
+
+
+class _SearchScan(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.found = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "a" and a.get("data-testid") == "post-title" and a.get("href") and a.get("aria-label"):
+            self.found.append((a["href"], a["aria-label"]))
+
+
+def parse_reddit_search_html(page_html):
+    """Thread hits from a www.reddit.com/search page; [] for anything unparsable."""
+    scan = _SearchScan()
+    try:
+        scan.feed(page_html)
+    except (TypeError, AssertionError):
+        return []
+    items, seen = [], set()
+    for href, title in scan.found:
+        m = _THREAD_PATH.match(href)
+        if not m or href in seen or not title.strip():
+            continue
+        seen.add(href)
+        items.append({"source": "reddit", "title": title.strip(), "snippet": "",
+                      "url": "https://www.reddit.com" + href, "subreddit": m.group(1),
+                      "score": None, "num_comments": None, "date": None, "id": m.group(2)})
+    return items
+
+
+class _ThreadScan(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.post = None
+        self.comments = []
+        self._tag = None
+        self._depth = 0
+        self._buf = []
+
+    def flush(self):
+        text = " ".join("".join(self._buf).split())
+        if text:
+            self.comments.append(text)
+        self._tag, self._depth, self._buf = None, 0, []
+
+    def handle_starttag(self, tag, attrs):
+        a = {k: (v or "") for k, v in attrs}
+        if self._tag:
+            self._buf.append(" ")
+        if tag == "shreddit-post" and self.post is None:
+            self.post = a
+        elif tag == "shreddit-comment":
+            self.flush()
+        elif self._tag is None and a.get("slot") == "comment":
+            self._tag, self._depth = tag, 1
+        elif self._tag == tag:
+            self._depth += 1
+
+    def handle_endtag(self, tag):
+        if self._tag:
+            self._buf.append(" ")
+        if self._tag == tag:
+            self._depth -= 1
+            if self._depth == 0:
+                self.flush()
+
+    def handle_data(self, data):
+        if self._tag:
+            self._buf.append(data)
+
+
+def parse_reddit_thread_html(page_html, max_comments=3):
+    """{score, num_comments, date, comments} from a shreddit thread page; None if no post."""
+    scan = _ThreadScan()
+    try:
+        scan.feed(page_html)
+        scan.close()
+    except (TypeError, AssertionError):
+        return None
+    scan.flush()
+    if not scan.post:
+        return None
+    return {
+        "score": _to_int(scan.post.get("score")),
+        "num_comments": _to_int(scan.post.get("comment-count")),
+        "date": _parse_iso(scan.post.get("created-timestamp")),
+        "comments": [c[:300] for c in scan.comments[:max_comments]],
+    }
+
+
+def _backfill(items, arctic_raw):
+    """Fill score / num_comments / date / snippet that discovery left empty from an Arctic ids body."""
+    by_url = {i["url"]: i for i in parse_reddit_posts(arctic_raw)}
+    for it in items:
+        known = by_url.get(it["url"])
+        if not known:
+            continue
+        for k in ("score", "num_comments", "date", "snippet"):
+            if it.get(k) in (None, ""):
+                it[k] = known[k]
+    return items
+
+
+def reddit_rung(operator_query, fetch_html, fetch_json, enrich_limit=REDDIT_ENRICH_LIMIT):
+    """Search-ladder rung for Reddit, bound to the operator's own query.
+
+    The returned rung refuses any query other than the one it was built with,
+    so the lane cannot be fed text mid-flight. That the bound query is the
+    operator's own is the caller's contract (docs/internals/egress-matrix.md).
+    fetch_html / fetch_json take a URL. A failed discovery fetch raises (the
+    ladder records it as that rung's error); failed backfill or enrichment
+    fetches degrade to the data already in hand.
+    """
+    if not isinstance(operator_query, str) or not operator_query.strip():
+        raise ValueError("reddit_rung needs the operator's own non-empty query")
+
+    def rung(query):
+        if query != operator_query:
+            raise ValueError("reddit rung refuses a query the operator did not type")
+        items = parse_reddit_search_html(fetch_html(
+            "https://www.reddit.com/search/?q=" + quote(operator_query) + "&sort=top&t=month"))
+        if not items:
+            return []
+        try:
+            _backfill(items, fetch_json(
+                "https://arctic-shift.photon-reddit.com/api/posts/ids?ids=" + ",".join(i["id"] for i in items)))
+        except Exception:  # backfill is best effort
+            pass
+        for it in items[:enrich_limit]:
+            try:
+                info = parse_reddit_thread_html(fetch_html(it["url"]))
+            except Exception:  # one dead thread must not drop the rest
+                continue
+            if info:
+                it.update({k: info[k] for k in ("score", "num_comments", "date") if info[k] not in (None, "")})
+                it["comments"] = info["comments"]
+        return items
+
+    return rung
+
+
+def _pinned(url, host):
+    u = urlparse(url)
+    if u.scheme != "https" or u.hostname != host:
+        raise ValueError("refusing a url outside https://" + host + ": " + str(u.hostname))
+
+
+REDDIT_OWNED_DOMAINS = ("reddit.com", "redd.it", "redditstatic.com", "redditmedia.com")
+
+
+def reddit_resolver_rules():
+    """Chromium flag that resolves Reddit-owned names only.
+
+    Applied below the page, so it also covers every redirect hop and
+    subresource: any other host fails to resolve before a request leaves.
+    """
+    keep = ", ".join(f"EXCLUDE {d}, EXCLUDE *.{d}" for d in REDDIT_OWNED_DOMAINS)
+    return f"--host-resolver-rules=MAP * ~NOTFOUND, {keep}"
+
+
+def fetch_reddit_html(url, timeout_ms=60000):
+    """Keyless Scrapling fetch of www.reddit.com; ImportError when scrapling is missing.
+
+    The browser resolves Reddit-owned hosts only (redirect hops and
+    subresources included), and a final URL off www.reddit.com is refused.
+    """
+    _pinned(url, "www.reddit.com")
+    from scrapling.engines.constants import STEALTH_ARGS
+    from scrapling.fetchers import StealthyFetcher
+    # extra_flags replaces Scrapling's own stealth flags, so carry them along.
+    page = StealthyFetcher.fetch(url, headless=True, network_idle=True, timeout=timeout_ms,
+                                 extra_flags=[*STEALTH_ARGS, reddit_resolver_rules()])
+    _pinned(str(getattr(page, "url", "") or url), "www.reddit.com")
+    if getattr(page, "status", 200) >= 400:
+        raise OSError(f"HTTP {page.status}")
+    return getattr(page, "html_content", None) or ""
+
+
+def _same_host_redirect(host):
+    import urllib.request
+
+    class _SameHostRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            _pinned(newurl, host)
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    return _SameHostRedirect()
+
+
+def fetch_arctic_json(url, timeout_s=60):
+    """Keyless GET of the Arctic Shift API; a redirect off its host is refused."""
+    _pinned(url, "arctic-shift.photon-reddit.com")
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (himmel research)"})
+    opener = urllib.request.build_opener(_same_host_redirect("arctic-shift.photon-reddit.com"))
+    with opener.open(req, timeout=timeout_s) as r:
+        return r.read(8_000_000).decode("utf-8", "replace")
 
 
 def research(query, entity, rungs, now, days=30):

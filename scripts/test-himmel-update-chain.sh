@@ -390,6 +390,26 @@ assert_contains "restart warning: channel pull printed" "RESTART CLAUDE NOW" "$o
 assert_contains "restart warning: names the changed pinned file" "(e.g. scripts/hooks/channel-guard.sh)" "$out"
 assert_eq "restart warning: is the closing line" "    (re-pin refused: not the anchor tip). Exit claude and start a new session." "$(printf '%s\n' "$out" | tail -n 1)"
 
+# ─── Test 8: marketplace re-sync re-applies the codex SessionEnd bump ────────
+echo "Test 8: apply run re-raises the openai-codex SessionEnd timeout (HIMMEL-5965)"
+make_mock_clone
+mkdir -p "$CHECKOUT_DIR/scripts/codex"
+cp "$(dirname "$SCRIPT")/codex/bump-codex-sessionend-timeout.sh" "$CHECKOUT_DIR/scripts/codex/"
+git -C "$CHECKOUT_DIR" add -A
+git -C "$CHECKOUT_DIR" commit --quiet -m "add bumper"
+git -C "$CHECKOUT_DIR" push --quiet origin HEAD 2>/dev/null
+fake_home_8="$TMP/fake-home-test8"
+hooks_8="$fake_home_8/.claude/plugins/cache/openai-codex/codex/1.0.6/hooks"
+mkdir -p "$hooks_8"
+printf '%s\n' '{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"node session-lifecycle-hook.mjs SessionEnd","timeout":5}]}]}}' > "$hooks_8/hooks.json"
+claude_ok_8="$TMP/claude-ok-test8"; make_claude_stub "$claude_ok_8" 0
+rc=0
+out=$(USERPROFILE='' HOME="$fake_home_8" HIMMEL_UPDATE_CLAUDE_BIN="$claude_ok_8" HERMES_HOME="$TMP/no-hermes" \
+      CLAUDE_USER_SETTINGS="$fake_home_8/.claude/settings.json" CLAUDE_CONFIG_DIR="$fake_home_8/.claude" \
+      bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || rc=$?
+assert_eq "bump wiring: rc 0" "0" "$rc"
+assert_eq "bump wiring: SessionEnd timeout raised to 30" "30" "$(jq -r '.hooks.SessionEnd[0].hooks[0].timeout' "$hooks_8/hooks.json")"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "RESULTS: $pass passed, $fail failed"

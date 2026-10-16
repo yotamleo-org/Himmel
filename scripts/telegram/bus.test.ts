@@ -415,3 +415,32 @@ test("peekNewLines does not advance the cursor; ends are per-record commit offse
   const second = await peekNewLines<any>(f, cur);
   expect(second.records.map((o: any) => o.n)).toEqual([2]);
 });
+
+import { rotateConsumedLedger, LEDGER_ROTATE_BYTES } from "./bus";
+
+test("rotateConsumedLedger rotates to .1 at the threshold only once fully consumed, and resets the cursor", async () => {
+  const r = root();
+  const f = join(r, "inbound.jsonl"); const cur = f + ".cursor";
+  const big = (JSON.stringify({ n: 1, pad: "x".repeat(200) }) + "\n").repeat(5);
+  const size = Buffer.byteLength(big, "utf8");
+  writeFileSync(f, big);
+  writeFileSync(f + ".1", "old");
+  // below threshold → untouched
+  await atomicWrite(cur, String(size));
+  expect(await rotateConsumedLedger(f, cur, size + 1)).toBe(false);
+  expect(readFileSync(f + ".1", "utf8")).toBe("old");
+  // at threshold but unconsumed bytes remain → deferred, nothing lost
+  await atomicWrite(cur, "10");
+  expect(await rotateConsumedLedger(f, cur, size)).toBe(false);
+  expect(readFileSync(f, "utf8")).toBe(big);
+  // at threshold and fully consumed → one .1 (replaced), live file gone, cursor 0
+  await atomicWrite(cur, String(size));
+  expect(await rotateConsumedLedger(f, cur, size)).toBe(true);
+  expect(readFileSync(f + ".1", "utf8")).toBe(big);
+  expect(existsSync(f)).toBe(false);
+  expect(readFileSync(cur, "utf8")).toBe("0");
+  // appends after rotation are read from offset 0
+  await appendLine(f, JSON.stringify({ n: 2 }));
+  expect((await readNewLines(f, cur)).map((o: any) => o.n)).toEqual([2]);
+  expect(LEDGER_ROTATE_BYTES).toBe(10 * 1024 * 1024);
+});

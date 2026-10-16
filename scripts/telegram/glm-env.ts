@@ -2,7 +2,7 @@
 // GLM lane env builder (offload spike, spec: state repo
 // specs/design/glm-worker-spawn.md D1).
 // KEEP IN SYNC with the launcher family: scripts/claude-glm{,.ps1} (env block
-// + .env quote-strip semantics) and scripts/claude-routed{,.ps1}.
+// + .env quote-strip semantics).
 // CLAUDE_CONFIG_DIR is deliberately NOT set: workers share ~/.claude so himmel
 // hooks load; the settings-conflict preflight below replaces trust in
 // process-env-vs-settings precedence (the launcher strips instead of trusting).

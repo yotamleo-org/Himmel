@@ -863,6 +863,7 @@ scripts/telegram/test-phi-egress-guard-parity.sh  bun  # cross-language parity c
 scripts/test-template-nostash-hooks.sh  pre-commit  # exercises the real pre-commit binary against install-nostash-hooks.sh (HIMMEL-2223); runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-push shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-check-commit-msg-precommit.sh  pre-commit  # real commit-msg shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
+scripts/hooks/test-fork-precommit-core.sh  pre-commit  # real git commits through the fork pre-commit core (HIMMEL-5978): its own guard exits 0 without pre-commit, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
 scripts/guardrails/test-gitleaks-retired-org.sh  gitleaks  # its own guard exits 0 without the real scanner (HIMMEL-2475 sweep); runs wherever gitleaks exists, loud-skips where it does not
 scripts/handover/console-kit/test-leg-doc-lock.sh  flock  # its own guard exits 0 without flock, the lock under test (HIMMEL-2475 sweep); runs wherever flock exists, loud-skips where it does not
 scripts/hooks/test-check-hook-lib-suites.sh  node  # its own guard exits 0 without node (HIMMEL-2475 sweep); runs wherever node exists, loud-skips where it does not

@@ -30,7 +30,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [tooling-catalog.md](tooling-catalog.md) — every tool, script, and plugin in active use.
 - [himmelctl.md](himmelctl.md) — every `himmelctl` verb (status, ensure, update, scope, profile, config, deps, gaps, trust, `--version --all`) with its exit codes.
 - [cadences.md](cadences.md) — every recurring job you can arm: what it does, when the wizard offers it, how to arm, status and disarm it.
-- [launchers.md](launchers.md) — the `claude-codex`, `claude-routed`, `claude-openrouter` and `claude-deepseek` launchers, their gates and exit codes; the GLM lane is removed.
+- [launchers.md](launchers.md) — the `claude-codex`, `claude-openrouter` and `claude-deepseek` launchers, their gates and exit codes; the GLM lane is removed.
 - [himmel-bus.md](himmel-bus.md) — **early.** The local session-to-session message bus: CLI, MCP tools, identity, delivery guarantees.
 - [jarvis-subsystems.md](jarvis-subsystems.md) — adopter usage map of the optional agentic-OS subsystems (GLM lane, quota-gauge, escalation channel, statusline, clipper pipeline).
 - [voice.md](voice.md) — **BETA.** Local speech I/O: `/speak`, the off-by-default `Stop` hook, the daemon, wake word and push-to-talk. Detached and hand-launched — not a `himmelctl` install item, not in the adopter template, and it needs a local runtime that is not in the repo.

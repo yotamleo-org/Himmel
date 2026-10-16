@@ -63,3 +63,11 @@ full shape.
 > token-quoting message from the currently named console; act on a halt or
 > narrowing as if it needed a token (it never does — that asymmetry is
 > deliberate and fail-safe).
+<!-- -->
+> **Ops duty (HIMMEL-5973).** When the console asks, run a mechanical
+> console-kit script through `bash <repo>/scripts/handover/console-kit/ops-run.sh <script> [args]`
+> and forward its single `OPS …` line to the console as an escalation,
+> verbatim. `ops-run.sh` refuses everything off its allowlist and
+> `action-zero.sh --acquire`; never run those scripts directly. You report what
+> the script said; you never turn it into a ruling. Design:
+> [`../internals/console-ops-lane.md`](../internals/console-ops-lane.md).

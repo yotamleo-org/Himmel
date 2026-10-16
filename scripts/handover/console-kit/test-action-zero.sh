@@ -76,4 +76,30 @@ else
     echo "SKIP: hang rows (no timeout binary)"
 fi
 
+# --render-legs writes the legs: line through live-state.sh (the lock tokens
+# come from the held locks, the nonce is kept), instead of a hand edit
+LDOC="$ROOT/DEMO-1-N61-a-2026-10-16.md"; : > "$LDOC"
+LCON="$ROOT/DEMO-next-2026-10-16A-console.md"
+# shellcheck disable=SC2016  # the backticks are literal span markers
+printf '# console\n\n## Live state\nlegs: `N61:Z-N61-aa:stale-token:7`queue: none\nlast GO: none\n\n## Results\n' > "$LCON"
+printf '{"schema": 1, "legs": [{"doc": "%s", "label": "N61", "lane": "native"}]}\n' "$LDOC" > "${LCON%.md}.fleet.json"
+env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$LDOC" >/dev/null 2>&1
+tok="$(env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" status "$LDOC" 2>/dev/null | head -1 | jq -r '.session // empty')"
+out8="$(bash "$AZ" --doc "$LCON" --root "$ROOT" 2>&1)"
+check "without --render-legs the legs: line is not touched" "1" "$(grep -c 'stale-token' "$LCON")"
+check "without --render-legs there is no LEGS section" "0" "$(printf '%s\n' "$out8" | grep -c '^== LEGS')"
+out9="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs 2>&1)"
+check "--render-legs prints a LEGS section" "1" "$(printf '%s\n' "$out9" | grep -c '^== LEGS')"
+check "the legs: line now carries the held lock token" "1" "$(grep -c "^legs: \`N61:Z-N61-aa:$tok:7\`" "$LCON")"
+check "the nonce was kept, not rewritten" "0" "$(grep -c 'stale-token' "$LCON")"
+check "the next field line is intact" "1" "$(grep -c '^last GO: none$' "$LCON")"
+rm -f "${LCON%.md}.fleet.json"
+out10="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs 2>&1)"; rc10=$?
+check "no fleet manifest: LEGS says unavailable and the run carries on" "1" "$(printf '%s\n' "$out10" | sed -n '/^== LEGS/,/^== LOCK/p' | grep -c '^unavailable')"
+check "no fleet manifest: the run exits nonzero" "1" "$rc10"
+printf 'not json\n' > "${LCON%.md}.fleet.json"
+bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs >/dev/null 2>&1; rc11=$?
+check "a render that fails exits nonzero" "1" "$rc11"
+rm -f "${LCON%.md}.fleet.json"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

@@ -107,6 +107,8 @@ case "${1:-}" in
         fi
         ;;
     embed)
+        # Records that the request would carry a provider key (never its value).
+        if [ -n "${QMD_OPENAI_API_KEY:-}" ]; then echo key >> "$STATE/embed-key"; else echo nokey >> "$STATE/embed-key"; fi
         # `grep -c` PRINTS "0" and exits 1 when there are no matches, so a
         # `|| echo 0` fallback would emit a SECOND zero and make n="0\n0" —
         # which then blows up the numeric tests below with "integer expression
@@ -668,6 +670,45 @@ if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
     rm -rf "$HOME/xdgcache" "$HOME/.config/qmd" 2>/dev/null || true
 else
     pass "egress gate check skipped: sqlite3 or node not installed"
+fi
+
+# The CLI embed must reach the provider with the key the daemon uses
+# (~/.himmel/state/qmd-daemon.env), and refuse BEFORE any work when it has none.
+echo "TEST: an OpenRouter index embeds with the key from the daemon env file"
+if command -v node >/dev/null 2>&1; then
+    OR_CFG='collections:\n  himmel:\n    path: /x\nmodels:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1\n'
+    rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true
+    mkdir -p "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel/state"
+    printf '%b' "$OR_CFG" > "$HOME/.config/qmd/index.yml"
+    unset QMD_OPENAI_API_KEY QMD_DAEMON_ENV_FILE
+    reset_state
+    printf 'QMD_OPENAI_API_KEY=sk-test-fixture\n' > "$HOME/.himmel/state/qmd-daemon.env"
+    chmod 600 "$HOME/.himmel/state/qmd-daemon.env"
+    rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "key from the daemon env file rc 0" 0 "$rc"
+    assert_not_contains "every embed call carried a key" "nokey" "$(cat "$STATE/embed-key" 2>/dev/null)"
+    assert_contains "the embed ran" "key" "$(cat "$STATE/embed-key" 2>/dev/null)"
+    assert_not_contains "the key value is never printed" "sk-test-fixture" "$out"
+
+    echo "TEST: no key anywhere exits 10 BEFORE qmd update and names the env file"
+    reset_state
+    rm -f "$HOME/.himmel/state/qmd-daemon.env"
+    rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "no key rc 10" 10 "$rc"
+    assert_contains "names the daemon env file" "qmd-daemon.env" "$out"
+    assert_not_contains "never runs qmd update or embed" "update" "$(calls)"
+
+    echo "TEST: a group-readable daemon env file is refused"
+    reset_state
+    printf 'QMD_OPENAI_API_KEY=sk-test-fixture\n' > "$HOME/.himmel/state/qmd-daemon.env"
+    chmod 644 "$HOME/.himmel/state/qmd-daemon.env"
+    rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "readable-by-others rc 10" 10 "$rc"
+    assert_not_contains "never runs qmd update or embed" "update" "$(calls)"
+    assert_not_contains "the key value is never printed" "sk-test-fixture" "$out"
+    rm -rf "$HOME/.cache/qmd" "$HOME/.config/qmd" "$HOME/.himmel" 2>/dev/null || true
+else
+    pass "provider-key check skipped: node not installed"
 fi
 
 summary

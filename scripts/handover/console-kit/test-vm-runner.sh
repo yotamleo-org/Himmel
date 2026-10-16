@@ -217,6 +217,16 @@ echo "T9 usage"
 run bogus >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && ok "unknown subcommand: rc=2" || bad "usage rc=$rc"
 
+echo "T15 review notes (HIMMEL-5641, j2574f)"
+reset
+HIMMEL_CI_RUNNER_JOB_MAX='45&0#x' run on >"$TMP/out" 2>&1; rc=$?
+if [ "$rc" -eq 0 ] && grep -qxF 'Environment="HIMMEL_CI_RUNNER_JOB_MAX=45&0#x"' "$TMP/units/himmel-ci-runner@.service"; then ok "install_unit writes sed-special characters literally"; else bad "install_unit escape: rc=$rc $(grep JOB_MAX "$TMP/units/himmel-ci-runner@.service" 2>/dev/null)"; fi
+CHOKE="$REPO_ROOT/scripts/chokepoints.json"
+for pair in "scripts/handover/console-kit/vm-runner.sh HIMMEL_VM_RUNNER_VM_LIB" "scripts/handover/console-kit/tick.sh HIMMEL_VMRUN_PROBE"; do
+    key="${pair% *}"; seam="${pair#* }"
+    if jq -e --arg k "$key" --arg v "$seam" '.[$k].seam_env_vars | index($v)' "$CHOKE" >/dev/null 2>&1; then ok "chokepoints registers $seam on ${key##*/}"; else bad "chokepoints lacks $seam on ${key##*/}"; fi
+done
+
 echo
 echo "vm-runner: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

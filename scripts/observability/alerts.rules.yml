@@ -218,9 +218,14 @@ groups:
       # — the rest were bursts long enough to cross it). `for: 10m` absorbs
       # a bigger burst while staying well under the 15m ceiling for a real
       # exporter death.
+      # HIMMEL-2184: `for:` resets on every dip, so on a high-churn day the
+      # alert oscillated pending/inactive without ever settling.
+      # `keep_firing_for: 10m` holds a fired alert through a sub-window
+      # flap instead of resolving and re-firing.
       - alert: HimmelWatcherDown
         expr: up{job=~"flow-exporter|windows_exporter"} == 0
         for: 10m
+        keep_firing_for: 10m
         labels:
           severity: page
         annotations:
@@ -290,9 +295,12 @@ groups:
       # irrelevant to that, since each episode is a new crossing, not a
       # repeat. `for: 10m` debounces that; the exporter's own cleanup/TTL
       # usually clears a false-positive well inside 10m.
+      # HIMMEL-2184: `keep_firing_for: 10m` stops a gauge that oscillates
+      # around 0 on a high session-churn day from resolving and re-firing.
       - alert: HimmelSessionDead
         expr: session_dead_total > 0
         for: 10m
+        keep_firing_for: 10m
         labels:
           severity: warn
         annotations:

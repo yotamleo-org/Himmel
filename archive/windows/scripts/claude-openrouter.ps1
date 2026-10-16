@@ -2,7 +2,7 @@
 <#
   claude-openrouter.ps1 - thin launcher: Claude Code on the OpenRouter metered
   lane (HIMMEL-1774). PowerShell twin of scripts/claude-openrouter (bash), itself
-  a copy-and-edit of claude-routed where the backend block differs (OpenRouter
+  a copy-and-edit of claude-glm where the backend block differs (OpenRouter
   Anthropic-Messages-compatible endpoint + OPENROUTER_API_KEY + Claude 1M model
   pin). Behaviour-parallel: same env contract; same exit codes on the enumerated
   paths (2 = missing key / claude not on PATH, 3 = egress or PHI refusal / node
@@ -32,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 # and written back corrupted.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# --- backend block (DIFFERS from claude-routed; this is the whole variant) ------
+# --- backend block (DIFFERS from claude-glm; this is the whole variant) ------
 # Claude Code speaks the Anthropic Messages API. OpenRouter exposes a NATIVE
 # Anthropic-compatible endpoint at https://openrouter.ai/api (verified against
 # OpenRouter's live API + docs, 2026-08-15) — NO loopback translation proxy is
@@ -164,8 +164,8 @@ foreach ($a in $args) {
 }
 
 # --- tiered egress guard (PHI) -------------------------------------------------
-# Guard config dir is SHARED with claude-glm (~/.config/claude-glm), matching
-# claude-routed: one guard source of truth governs every variant.
+# Guard config dir is SHARED with claude-glm (~/.config/claude-glm):
+# one guard source of truth governs every variant.
 # matches sibling STRUCTURE, NOT proven-correct on the real
 # corpus — keys on a `.salus` marker the live vault lacks (it has .salus-profile)
 # and the phi-roots fallback list is absent. Inherited defect; the egress

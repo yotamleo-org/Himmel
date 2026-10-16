@@ -341,6 +341,7 @@ else
     # Add an entry only on an operator ruling, never to quiet a red.
     t13a_allow=(
         "marketplace/plugins/i-have-adhd/hooks/hooks.json|SessionStart|HIMMEL-5239 operator always-on ruling 2026-10-11: flag-gated, prints SKILL.md, no network, no writes"
+        "marketplace/plugins/himmel-guard/hooks/hooks.json|PreToolUse|HIMMEL-5960 operator ruling 2026-10-16 (adapter split option A): guard-only plugin, opt-in, one destructive-command denial hook, no network, no writes"
     )
     t13a_allowed() { # <path> <event>
         local e

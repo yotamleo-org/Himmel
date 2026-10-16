@@ -136,18 +136,31 @@ fi
 # the cache JSON would make the line invalid JSONL for every ledger reader).
 rm -f "$W/ledger.jsonl"
 bad_out=$(verdict "{\"five_hour\":{\"utilization\":55},\"seven_day\":{\"utilization\":\"5\\\"}x\"},\"primaries_refreshed_at\":$NOW}")
-check "non-numeric seven_day -> verdict unchanged (PROCEED)" PROCEED "$bad_out"
+check "non-numeric seven_day -> BANK-UNKNOWN (malformed primary refuses)" BANK-UNKNOWN "$bad_out"
 check "non-numeric seven_day -> ledger row is valid JSON" true "$(tail -1 "$W/ledger.jsonl" | jq -e . >/dev/null 2>&1 && echo true || echo false)"
 check "non-numeric seven_day -> numeric five_hour kept" 55 "$(tail -1 "$W/ledger.jsonl" | jq -r '.five_hour' 2>/dev/null)"
 
 # A newline inside a utilization STRING must not shift later
 # lines into sd/xu/stamp. five_hour "10\n10" would otherwise forge sd=10 and
 # hide the real, spent seven_day=95.
-nl_out=$(verdict "{\"five_hour\":{\"utilization\":\"10\\n10\\n\\n$NOW\"},\"seven_day\":{\"utilization\":95},\"primaries_refreshed_at\":1}")
-check "newline in five_hour string cannot forge sd+stamp -> BANK-STALE" BANK-STALE "$nl_out"
+# The stamp is fresh so a forged shift would PROCEED; the ledger row proves the
+# real seven_day=95 was read, not a forged one.
+rm -f "$W/ledger.jsonl"
+nl_out=$(verdict "{\"five_hour\":{\"utilization\":\"10\\n10\\n\\n$NOW\"},\"seven_day\":{\"utilization\":95},\"primaries_refreshed_at\":$NOW}")
+check "newline in five_hour string cannot forge sd+stamp -> BANK-UNKNOWN" BANK-UNKNOWN "$nl_out"
+check "newline in five_hour string -> real seven_day=95 was read" 95 "$(tail -1 "$W/ledger.jsonl" | jq -r '.seven_day' 2>/dev/null)"
 # ...and a newline in seven_day must not forge the stamp (xu/stamp shift).
+rm -f "$W/ledger.jsonl"
 nl_stamp_out=$(verdict "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":\"20\\n\\n$NOW\"},\"primaries_refreshed_at\":1}")
-check "newline in seven_day string cannot forge stamp -> BANK-STALE" BANK-STALE "$nl_stamp_out"
+check "newline in seven_day string cannot forge stamp -> BANK-UNKNOWN" BANK-UNKNOWN "$nl_stamp_out"
+check "newline in seven_day string -> real five_hour=10 was read" 10 "$(tail -1 "$W/ledger.jsonl" | jq -r '.five_hour' 2>/dev/null)"
+# One malformed primary must not let the other carry the verdict alone.
+check "malformed five_hour, healthy seven_day -> BANK-UNKNOWN" BANK-UNKNOWN \
+ "$(verdict "{\"five_hour\":{\"utilization\":\"95\\n\"},\"seven_day\":{\"utilization\":10},\"primaries_refreshed_at\":$NOW}")"
+# A 20-digit stamp wraps in $((10#...)): 2^64 + NOW would read as NOW.
+WRAP_STAMP=$(python3 -c "print(2**64 + $NOW)")
+check "oversized stamp (wraps to now) -> BANK-STALE" BANK-STALE \
+ "$(verdict "$(fx 10 20 "$WRAP_STAMP" "")")"
 # A non-UTF-8 byte in LEG must not give a strict-invalid ledger row.
 rm -f "$W/ledger.jsonl"
 printf '%s' "$(stamp_account "$(fx 10 20 "$NOW")")" > "$W/c.json"
