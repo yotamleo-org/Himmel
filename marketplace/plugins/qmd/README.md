@@ -128,7 +128,11 @@ models:
 
 The provider key goes ONLY in the daemon's environment
 (`QMD_OPENAI_API_KEY`, set in the shell that launches the daemon), never in
-`index.yml`, a committed file or a leg's environment. Salus keeps its own
+`index.yml`, a committed file or a leg's environment. The SessionStart hook
+never forwards a session's `QMD_OPENAI_API_KEY`: for a remote config it reads
+the key from `~/.himmel/state/qmd-daemon.env` (override: `QMD_DAEMON_ENV_FILE`;
+a `QMD_OPENAI_API_KEY=...` line, mode 0600 or 0400, else the file is refused),
+and it will not start a remote daemon without it. Salus keeps its own
 local-only index (`QMD_INDEX_NAME=salus`, `salus.yml`, port 8182).
 
 Switching an existing index is copy-and-swap, never in place: the index must

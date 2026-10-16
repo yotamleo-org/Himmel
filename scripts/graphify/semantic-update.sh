@@ -88,6 +88,17 @@ if [ "$BACKEND" = "claude-api" ]; then
   case "$API_CALL_BUDGET" in ''|*[!0-9.]*|.|*.*.*) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
   case "$API_CALL_BUDGET" in *[1-9]*) ;; *) echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD must be a positive decimal" >&2; exit 1 ;; esac
 fi
+# A chunk must fit one lane call: graphify's default 60000-token chunk costs about 0.45 USD on sonnet and died
+# under the 0.25 USD cap (himmel batch 1, 8 of 9 chunks). 120000 tokens per USD keeps a chunk near 0.81 of its cap.
+# ponytail: the rate is measured on one settled call (0.2017 USD for 39k tokens in), not a table; re-measure from the lane ledger once real batches settle, HIMMEL-5871.
+CHUNK_TOKENS=""
+if [ "$BACKEND" = "claude-api" ]; then
+  CHUNK_TOKENS="$(awk -v b="$API_CALL_BUDGET" 'BEGIN { t = int(b * 120000); if (t > 60000) t = 60000; print t }')"
+  if [ "$CHUNK_TOKENS" -lt 1000 ]; then
+    echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD=$API_CALL_BUDGET is too small for any chunk (needs at least 0.01)" >&2
+    exit 1
+  fi
+fi
 MERGE=(python3 "$HERE/semantic-merge.py")
 
 # --backend ollama: local model, zero egress, no bank draw. This
@@ -191,9 +202,9 @@ plan_or_noop
 if [ "$BACKEND" = "claude-api" ]; then
   # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
   # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
-  python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" <<'PY' >&2
+  python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" <<'PY' >&2
 import json, os, sys
-plan, root, model, budget = sys.argv[1:5]
+plan, root, model, budget, chunk = sys.argv[1:6]
 files = json.load(open(plan))["batch"]
 size = sum(os.path.getsize(os.path.join(root, f)) for f in files)
 tin = size // 4 + 2000 * len(files)
@@ -201,6 +212,9 @@ tout = tin // 4
 usd = (tin * 3 + tout * 15) / 1e6
 print("semantic-update: estimate: files=%d bytes=%d ~tokens_in=%d ~tokens_out=%d ~usd=%.2f model=%s per-call-budget-usd=%s"
       % (len(files), size, tin, tout, usd, model, budget))
+ct = int(chunk)
+print("semantic-update: chunk: call-cap=%s chunk-tokens=%d chunk-cost-est=~%.2f chunks~%d"
+      % (budget, ct, (ct * 3 + ct // 4 * 15) / 1e6, -(-tin // ct)))
 PY
 fi
 [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; exit 0; }
@@ -217,7 +231,7 @@ acquire_promote_lock
 # while we waited, and the pre-lock plan would re-extract a stale batch.
 plan_or_noop
 
-TOKENS_IN=0 TOKENS_OUT=0 START="$(date +%s)"
+TOKENS_IN=0 TOKENS_OUT=0 FAILED_CHUNKS="" START="$(date +%s)"
 SCRATCH="$WORK/corpus"
 if [ "$N_BATCH" -gt 0 ]; then
   case "$BACKEND" in
@@ -277,8 +291,15 @@ export PATH="$newpath"
 cd "$here" || exit 2
 # Corpus text is untrusted prompt input, so the extraction runs tool-free (the lane's narrow-only override).
 export HIMMEL_API_TOOLS=""
-exec "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
-  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort low
+# The lane's result goes to stdout, where graphify never shows it on a failed call; echo its tail to stderr
+# so the chunk-failed line carries the real reason (a budget stop, a refusal) and the exit code.
+out="$here/lane-out.$$"
+"$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
+  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort low > "$out"
+rc=$?
+[ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2
+cat "$out"; rm -f "$out"
+exit "$rc"
 SHIM
     chmod +x "$WORK/bin/claude"
     export GRAPHIFY_SEMANTIC_LANE_BIN="$REPO_ROOT/scripts/api-lane/claude-api.sh" GRAPHIFY_SEMANTIC_LANE_BUDGET="$API_CALL_BUDGET"
@@ -298,6 +319,7 @@ PY
   EXTRA=()
   # One request at a time: the local model holds the whole GPU.
   if [ "$BACKEND" = "ollama" ]; then EXTRA=(--max-concurrency 1); fi
+  if [ "$BACKEND" = "claude-api" ]; then EXTRA=(--token-budget "$CHUNK_TOKENS"); fi
   # GRAPHIFY_NO_AUTO_REFRESH=1: no skill-dir rewrite from a cadence run.
   export GRAPHIFY_NO_AUTO_REFRESH=1
   set +e
@@ -305,6 +327,7 @@ PY
   rc=$?
   set -e
   cat "$WORK/extract.log" >&2
+  FAILED_CHUNKS="$(sed -n 's|.*WARNING: \([0-9]*/[0-9]*\) semantic chunk(s) failed.*|\1|p' "$WORK/extract.log" | tail -1)"
   [ "$rc" -eq 0 ] || { echo "semantic-update: graphify extract exited $rc -- graph and manifest untouched" >&2; exit 2; }
   read -r TOKENS_IN TOKENS_OUT < <(sed -n 's/.*tokens: \([0-9,]*\) in \/ \([0-9,]*\) out.*/\1 \2/p' "$WORK/extract.log" | tr -d , | tail -1; echo)
   : "${TOKENS_IN:=0}" "${TOKENS_OUT:=0}"
@@ -319,3 +342,9 @@ if [ -d "$SCRATCH/graphify-out/cache/semantic" ]; then
 fi
 python3 "$HERE/harden-graph.py" --out "$OUT_DIR" >&2 \
   || echo "semantic-update: WARN harden-graph.py failed; the merged graph stands, the next refresh re-hardens it" >&2
+# The chunks that did land are merged and stamped; the failed ones stay unstamped and retry next run. Exit 5 so a
+# loop on the exit code stops instead of re-billing the same failure.
+if [ -n "$FAILED_CHUNKS" ]; then
+  echo "semantic-update: FAILED: $FAILED_CHUNKS semantic chunks failed -- the good chunks merged, the failed files stay unstamped; do not rerun until the cause is fixed" >&2
+  exit 5
+fi

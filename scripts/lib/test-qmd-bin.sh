@@ -1088,6 +1088,36 @@ desc_unset_rc=0
 assert "qmd_bin_desc: unset QMD_BIN/QMD_JS under set -u does not abort the caller" \
   test "$desc_unset_rc" -eq 0
 
+echo "[test-qmd-bin] qmd_cmd egress gate: a remote-model config that holds salus never reaches qmd (HIMMEL-5756)"
+gh_home="$tmpdir/gate-home"
+mkdir -p "$gh_home/.config/qmd" "$gh_home/bin"
+printf '#!/usr/bin/env bash\necho "PATH-QMD $*"\n' >"$gh_home/bin/qmd"
+chmod +x "$gh_home/bin/qmd"
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1\n' "$gh_home" >"$gh_home/.config/qmd/index.yml"
+rc=0
+out="$(env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+  bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x' 2>&1)" || rc=$?
+assert "remote config holding salus: qmd_cmd refuses (rc 10)" test "$rc" -eq 10
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "the refusal never reached qmd" bash -c '! grep -q "PATH-QMD" <<<"$1"' _ "$out"
+printf 'collections:\n  notes:\n    path: %s\nmodels:\n  embed: hf:x/y.gguf\n' "$gh_home" >"$gh_home/.config/qmd/index.yml"
+rc=0
+out="$(env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$gh_home/bin:$PATH" \
+  bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x' 2>&1)" || rc=$?
+assert "a local config is not gated" test "$rc" -eq 0
+assert "a local config still reaches qmd" grep -q '^PATH-QMD query x' <<<"$out"
+
+# a named index (--index NAME / --index=NAME) opens NAME.yml + NAME.sqlite: the gate checks THOSE
+printf 'collections:\n  notes:\n    path: %s\nmodels:\n  embed: hf:x/y.gguf\n' "$gh_home" >"$gh_home/.config/qmd/index.yml"
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1\n' "$gh_home" >"$gh_home/.config/qmd/salus.yml"
+for idx_args in "--index salus query x" "--index=salus query x"; do
+  rc=0
+  # shellcheck disable=SC2086  # the word split is the point: it builds qmd's argv
+  out="$(env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd '"$idx_args" 2>&1)" || rc=$?
+  assert "named index ($idx_args) holding salus + remote model: refused (rc 10)" test "$rc" -eq 10
+done
+
 echo "[test-qmd-bin] has_qmd matches binary presence in this env"
 if has_qmd; then
   echo "  has_qmd=true in this env (real qmd present)"
