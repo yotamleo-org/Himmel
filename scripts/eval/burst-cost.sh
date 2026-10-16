@@ -10,7 +10,7 @@
 # Usage: burst-cost.sh [--idle SECS] -- CMD [ARGS...]
 #   --idle SECS   length of the idle baseline window (default 5)
 # Env: BURST_PROC_ROOT overrides /proc (tests).
-# Exit: 0 ok, 2 usage, 4 the command failed (table still printed).
+# Exit: 0 ok, 2 usage, 3 /proc unreadable (command not run), 4 the command failed (table still printed).
 #
 # ponytail: Linux /proc only; Windows Defender / MsMpEng and conhost are not sampled,
 # upgrade path = a separate sampler if a Windows station returns.
@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ $# -gt 0 ] || usage
-case "$IDLE" in ''|*[!0-9.]*) usage ;; esac
+printf '%s' "$IDLE" | grep -Eq '^[0-9]+(\.[0-9]+)?$' || usage
 
 # One line: now_ns forks ctxt cpu_total cpu_busy psi_some_us
 snap() {
@@ -38,10 +38,11 @@ snap() {
     psi=$(awk '/^some/ { for (i = 2; i <= NF; i++) if ($i ~ /^total=/) { sub("total=", "", $i); print $i } }' "$PROC/pressure/cpu")
   fi
   awk -v now="$(date +%s%N)" -v psi="${psi:-0}" '
-    /^cpu / { t = 0; for (i = 2; i <= NF; i++) t += $i; busy = t - $5 - $6 }
-    /^processes / { f = $2 }
-    /^ctxt / { c = $2 }
-    END { print now, f, c, t, busy, psi }' "$PROC/stat"
+    # fields 2-9 only: guest and guest_nice are already counted in user and nice
+    /^cpu / { t = 0; for (i = 2; i <= 9; i++) t += $i; busy = t - $5 - $6; seen++ }
+    /^processes / { f = $2; seen++ }
+    /^ctxt / { c = $2; seen++ }
+    END { if (seen < 3) exit 1; print now, f, c, t, busy, psi }' "$PROC/stat"
 }
 
 row() { # label start-snap end-snap
@@ -52,9 +53,11 @@ row() { # label start-snap end-snap
   }'
 }
 
-A=$(snap); sleep "$IDLE"; B=$(snap)
+A=$(snap) || { echo "burst-cost: cannot read $PROC/stat" >&2; exit 3; }
+sleep "$IDLE" || exit 3
+B=$(snap) || { echo "burst-cost: cannot read $PROC/stat" >&2; exit 3; }
 "$@"; RC=$?
-C=$(snap)
+C=$(snap) || { echo "burst-cost: cannot read $PROC/stat" >&2; exit 3; }
 
 echo "| window | secs | forks | forks/s | ctx-switches/s | cpu busy % | cpu PSI stall ms |"
 echo "|---|---|---|---|---|---|---|"

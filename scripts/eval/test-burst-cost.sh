@@ -41,6 +41,23 @@ bash "$SCRIPT" >/dev/null 2>&1; RC=$?
 eq "no command: usage exit 2" "$RC" "2"
 bash "$SCRIPT" --idle abc -- true >/dev/null 2>&1; RC=$?
 eq "bad --idle: usage exit 2" "$RC" "2"
+bash "$SCRIPT" --idle . -- true >/dev/null 2>&1; RC=$?
+eq "--idle '.': usage exit 2" "$RC" "2"
+bash "$SCRIPT" --idle 1.2.3 -- true >/dev/null 2>&1; RC=$?
+eq "--idle 1.2.3: usage exit 2" "$RC" "2"
+
+# An unreadable /proc/stat stops before the command runs.
+BURST_PROC_ROOT="$TMP/nope" bash "$SCRIPT" --idle 0 -- touch "$TMP/ran" >/dev/null 2>&1; RC=$?
+eq "missing proc/stat: exit 3" "$RC" "3"
+eq "missing proc/stat: command not run" "$([ -e "$TMP/ran" ] && echo ran || echo clean)" "clean"
+
+# guest/guest_nice (fields 10-11) are inside user/nice and must not enter the total:
+# 100 user + 100 idle of 200 total = 50 % busy; counting guest 100 would give 33.3.
+mkdir -p "$TMP/g/pressure"
+printf 'cpu  100 0 0 100 0 0 0 0 100 0\nctxt 1\nprocesses 1\n' > "$TMP/g/stat"
+printf 'cpu  200 0 0 200 0 0 0 0 200 0\nctxt 2\nprocesses 2\n' > "$TMP/g.next"
+OUT=$(BURST_PROC_ROOT="$TMP/g" bash "$SCRIPT" --idle 0 -- cp "$TMP/g.next" "$TMP/g/stat" 2>&1)
+eq "guest cpu not double-counted" "$(printf '%s\n' "$OUT" | grep '^| burst ' | awk -F'|' '{gsub(/ /, "", $7); print $7}')" "50.0"
 
 # Live: 200 external /bin/true spawns must show at least 200 forks in the burst row.
 OUT=$(bash "$SCRIPT" --idle 0 -- bash -c 'for i in $(seq 200); do /bin/true; done' 2>&1)
