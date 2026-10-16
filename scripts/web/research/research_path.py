@@ -266,6 +266,8 @@ class _ThreadScan(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         a = {k: (v or "") for k, v in attrs}
+        if self._tag:
+            self._buf.append(" ")
         if tag == "shreddit-post" and self.post is None:
             self.post = a
         elif tag == "shreddit-comment":
@@ -276,6 +278,8 @@ class _ThreadScan(HTMLParser):
             self._depth += 1
 
     def handle_endtag(self, tag):
+        if self._tag:
+            self._buf.append(" ")
         if self._tag == tag:
             self._depth -= 1
             if self._depth == 0:
@@ -362,31 +366,29 @@ def _pinned(url, host):
         raise ValueError("refusing a url outside https://" + host + ": " + str(u.hostname))
 
 
-def reddit_owned_host(host):
-    host = host or ""
-    return any(host == d or host.endswith("." + d) for d in ("reddit.com", "redd.it", "redditstatic.com", "redditmedia.com"))
+REDDIT_OWNED_DOMAINS = ("reddit.com", "redd.it", "redditstatic.com", "redditmedia.com")
 
 
-def _reddit_only_routes(page):
-    """Abort every browser request to a host Reddit does not own (sign-in widgets, trackers)."""
-    def gate(route):
-        if reddit_owned_host(urlparse(route.request.url).hostname):
-            route.continue_()
-        else:
-            route.abort()
-    page.route("**/*", gate)
+def reddit_resolver_rules():
+    """Chromium flag that resolves Reddit-owned names only.
+
+    Applied below the page, so it also covers every redirect hop and
+    subresource: any other host fails to resolve before a request leaves.
+    """
+    keep = ", ".join(f"EXCLUDE {d}, EXCLUDE *.{d}" for d in REDDIT_OWNED_DOMAINS)
+    return f"--host-resolver-rules=MAP * ~NOTFOUND, {keep}"
 
 
 def fetch_reddit_html(url, timeout_ms=60000):
     """Keyless Scrapling fetch of www.reddit.com; ImportError when scrapling is missing.
 
-    The browser may load Reddit-owned subresources only, and a final URL off
-    www.reddit.com is refused.
+    The browser resolves Reddit-owned hosts only (redirect hops and
+    subresources included), and a final URL off www.reddit.com is refused.
     """
     _pinned(url, "www.reddit.com")
     from scrapling.fetchers import StealthyFetcher
     page = StealthyFetcher.fetch(url, headless=True, network_idle=True, timeout=timeout_ms,
-                                 page_setup=_reddit_only_routes)
+                                 extra_flags=[reddit_resolver_rules()])
     _pinned(str(getattr(page, "url", "") or url), "www.reddit.com")
     if getattr(page, "status", 200) >= 400:
         raise OSError(f"HTTP {page.status}")

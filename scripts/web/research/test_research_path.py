@@ -244,6 +244,11 @@ class RedditFetchLane(unittest.TestCase):
         self.assertEqual(rp.parse_reddit_search_html("<html>"), [])
         self.assertEqual(rp.parse_reddit_search_html(None), [])
 
+    def test_comment_text_keeps_block_boundaries(self):
+        page = ('<shreddit-post score="1" comment-count="1"></shreddit-post>'
+                '<shreddit-comment><div slot="comment"><p>first</p><p>second<br>third</p></div></shreddit-comment>')
+        self.assertEqual(rp.parse_reddit_thread_html(page)["comments"], ["first second third"])
+
     def test_thread_page_parses(self):
         info = rp.parse_reddit_thread_html(self.thread)
         self.assertEqual(info["score"], 17634)
@@ -302,33 +307,13 @@ class RedditFetchLane(unittest.TestCase):
         ok = handler.redirect_request(req, None, 302, "Found", {}, "https://arctic-shift.photon-reddit.com/y")
         self.assertEqual(ok.full_url, "https://arctic-shift.photon-reddit.com/y")
 
-    def test_browser_gate_admits_only_reddit_owned_hosts(self):
-        for host in ("www.reddit.com", "reddit.com", "i.redd.it", "www.redditstatic.com", "styles.redditmedia.com"):
-            self.assertTrue(rp.reddit_owned_host(host), host)
-        for host in ("accounts.google.com", "reddit.com.evil.io", "evilreddit.com", "", None):
-            self.assertFalse(rp.reddit_owned_host(host), host)
-
-        class Route:
-            def __init__(self, url):
-                self.request = type("R", (), {"url": url})()
-                self.done = None
-
-            def continue_(self):
-                self.done = "continue"
-
-            def abort(self):
-                self.done = "abort"
-
-        class Page:
-            def route(self, pattern, handler):
-                self.handler = handler
-
-        page = Page()
-        rp._reddit_only_routes(page)
-        for url, want in (("https://www.reddit.com/x", "continue"), ("https://www.google.com/x", "abort")):
-            r = Route(url)
-            page.handler(r)
-            self.assertEqual(r.done, want)
+    def test_browser_resolves_only_reddit_owned_hosts(self):
+        flag = rp.reddit_resolver_rules()
+        self.assertTrue(flag.startswith("--host-resolver-rules=MAP * ~NOTFOUND, "))
+        for d in ("reddit.com", "redd.it", "redditstatic.com", "redditmedia.com"):
+            self.assertIn(f"EXCLUDE {d}", flag)
+            self.assertIn(f"EXCLUDE *.{d}", flag)
+        self.assertEqual(flag.count("EXCLUDE"), 8)
 
     def test_fetchers_refuse_other_hosts(self):
         for fn in (rp.fetch_reddit_html, rp.fetch_arctic_json):
