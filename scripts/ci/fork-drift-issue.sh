@@ -118,7 +118,10 @@ parse_report() {
       else
         name="${rest%%: *}"
         case "$sec" in
-          remote) kind="skill fork"; action="/fork-resync $name" ;;
+          remote) case "$detail" in
+                    *"re-sync fork"*) kind="skill fork"; action="/fork-resync $name" ;;
+                    *) kind="upstream pin"; action="bump the marketplace.json sha pin to $tgt" ;;
+                  esac ;;
           vendored) kind="vendored fork"; action="/fork-resync $name" ;;
           *) kind="carried tool"
              case "$detail" in
