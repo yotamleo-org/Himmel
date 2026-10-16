@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename, appendFile, open, stat, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, appendFile, open, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -212,7 +212,7 @@ export async function rotateConsumedLedger(file: string, cursorFile: string, thr
   let cur = 0;
   try { cur = Number(await readFile(cursorFile, "utf8")) || 0; } catch {}
   if (cur < size) return false;                                // unread bytes remain → defer
-  try { await rm(file + ".1", { force: true }); await rename(file, file + ".1"); }
+  try { await rename(file, file + ".1"); }                     // atomically replaces the old generation, so a failed rename keeps it
   catch { return false; }                                      // best-effort, as the flow-run ledger
   await atomicWrite(cursorFile, "0");
   return true;
