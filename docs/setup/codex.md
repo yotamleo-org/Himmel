@@ -41,19 +41,14 @@ there. Verify your `~/.codex/config.toml` registers the himmel
 marketplace and enables `himmel-ops@himmel`. A few external plugins (warp,
 hookify, ralph-loop, security-guidance) ship a top-level `description` in their
 `hooks.json` that Codex **before `rust-v0.143.0`** rejects ("unknown field
-description") and skips with a boot warning. `install-himmel-codex.{sh,ps1}`
-strips it automatically as its final phase via
-`scripts/codex/sanitize-plugin-hooks.{sh,ps1}`; re-run that script
-standalone after a `codex` plugin update re-adds the field
-(`bash scripts/codex/sanitize-plugin-hooks.sh`, or the `.ps1` twin). See
-harness-compat.md §3.
+description") and skips with a boot warning. The installer does not touch those
+files. See harness-compat.md §3.
 
-> **Deprecated — prefer upgrading codex.** Upstream fixed the
-> parser: codex PR #30229 added `description` to the `HooksFile` schema, shipping
-> in **`rust-v0.143.0`**. On that version or newer the key is accepted, the boot
-> warning does not occur, and the sanitizer only mutates external upstream plugin
-> files for no benefit. It is retained as a manual escape hatch for installs
-> pinned below `rust-v0.143.0`. Removing the automatic phase is a planned follow-up.
+> **Prefer upgrading codex.** Upstream fixed the parser: codex PR #30229 added
+> `description` to the `HooksFile` schema, shipping in **`rust-v0.143.0`**. On
+> that version or newer the boot warning does not occur. Installs pinned below
+> it can run the manual escape hatch `bash scripts/codex/sanitize-plugin-hooks.sh`
+> (re-run after a `codex` plugin update re-adds the field).
 
 ## 4. Hooks — the PreToolUse guardrails
 

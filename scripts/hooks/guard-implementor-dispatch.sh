@@ -914,9 +914,9 @@ detected).
 At this utilization, route implementation / CR-fix work through a cheaper
 lane instead of burning the scarce Sonnet/Opus/Fable weekly quota:
 
-    himmel-ops:glm-subagent   — shared-branch mode (CR-fix rounds)
-    codex:codex-rescue        — Codex lane
-    /lanes                    — live lane inventory for this machine
+    native subagents on a cheaper Claude tier — shared-branch mode (CR-fix rounds)
+    codex:codex-rescue                        — Codex lane
+    /lanes                                    — live lane inventory for this machine
 
 Deliberate override: relaunch with IMPL_GUARD_OK=1 in the launching shell.
 EOF
@@ -942,7 +942,7 @@ if [ -n "$warn_window" ]; then
     else
         win_label="5-hour"; win_disp="$FIVE_DISP"; win_thresh="$WARN_T"
     fi
-    reason=$(printf '%s' "guard-implementor-dispatch: ${win_label} bank at ${win_disp}% (>= WARN ${win_thresh}%) — this $shape implementor dispatch is costly; consider himmel-ops:glm-subagent / codex:codex-rescue / /lanes instead. (IMPL_GUARD_OK=1 to silence)" | jq -Rs . 2>/dev/null) \
+    reason=$(printf '%s' "guard-implementor-dispatch: ${win_label} bank at ${win_disp}% (>= WARN ${win_thresh}%) — this $shape implementor dispatch is costly; consider native subagents on a cheaper Claude tier / codex:codex-rescue / /lanes instead. (IMPL_GUARD_OK=1 to silence)" | jq -Rs . 2>/dev/null) \
         || reason='"guard-implementor-dispatch: costly implementor dispatch — consider a cheaper lane"'
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":%s}}\n' "$reason"
 fi

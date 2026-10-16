@@ -556,7 +556,7 @@ add_needle() {
     { needle_ere "$1"; printf '\n'; } >> "$pats" || io_fail "writing a needle"
     printf '%s\n' "$1" >> "$lits" || io_fail "writing a needle literal"
 }
-# add_stem_needle <path> a suite often names a script without its
+# add_stem_needle <path> — a suite often names a script without its
 # extension (`guard_rc block-chokepoint-env-prefix`), so a changed *.sh whose
 # stem holds a `-` or `_` also gets its bare stem as a needle. A one-word stem
 # (`gate`, `run`) is a common word and is skipped. The leading boundary is

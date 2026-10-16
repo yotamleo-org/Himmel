@@ -55,7 +55,7 @@
 #      `deferred` verdict clears ONLY with a ticket key AND a reason, so a bare
 #      "deferred" is still blocking.
 #   4b. The ledger records NO finding at that SHA with an EMPTY/missing verdict
-# — including `sug`, which gate 4 never blocks on. `amend`
+#      — including `sug`, which gate 4 never blocks on. `amend`
 #      records are applied first, same as gate 4. A cleared head must carry a
 #      decision for every finding, not just crit|imp.
 #   4d. Every finding stamped with this branch whose effective verdict is
@@ -469,8 +469,8 @@ ledger="$git_dir/cr-critic-scores.jsonl"
 # of its own to buy (a judge NO-GO binds only to an open PR, and gh pr create
 # waits on this marker), so it deadlocked. When the tip has NO ledger row at all
 # and is a trivial descendant of the head the last counted round ran on, in
-# --tests-only mode (every changed path is a test path; the comment-only branch of
-# is NOT used here, because this clears with no critic review of the
+# --tests-only mode (every changed path is a test path; the comment-only branch
+# of the tip check is NOT used here, because this clears with no critic review of the
 # delta and a comment-prefixed line in a non-test script still executes), every
 # ledger gate below is evaluated at that reviewed head instead. A tip a panel ran
 # on is judged on its own rows, and any other unreviewed delta keeps the
@@ -818,7 +818,7 @@ verdict=$(LEDGER="$ledger" SWEEPS="${check_sweeps:-$git_dir/cr-class-sweeps/$bra
   //    least two text files (a search scoped to the finding file alone cannot
   //    find a sibling), and its hits may only be the finding file (or one file
   //    at most when the finding names none).
-  // ponytail: residual forgeability - a search with zero hits still passes, and
+  // ponytail: (HIMMEL-5364) residual forgeability - a search with zero hits still passes, and
   // a sites list may name real files nobody opened; the gate proves the record
   // is consistent with the tree, not that a sweep happened. Zero hits is kept
   // on purpose: a sweep of a FIXED class legitimately finds
@@ -1258,7 +1258,7 @@ if [ -n "$blocking" ]; then
     # file was absent from the diff revealed it. So check the row against the
     # head it is blocking and SAY so. Diagnostic only: the gate still refuses.
     # Auto-ignoring an out-of-diff row would be a false-clean hole of exactly
-    # the kind closed. An unreadable/empty diff prints nothing —
+    # the kind this check closes. An unreadable/empty diff prints nothing —
     # a wrong misattribution claim would push a real finding to be deferred.
     #
     # NUL-delimited end to end. Plain `git diff --name-only`
@@ -1389,7 +1389,7 @@ esac
 # ledger, and the console's own pre-merge check makes this exact call), but
 # `--dry-run`'s contract is "run every gate, report the verdict, never write".
 # `review-round.sh` has no check-only mode to ask for instead (out of scope
-# to add one touches only this file and its test), and the
+# to add one here, since a check-only mode would touch review-round.sh), and the
 # ledger it amends is a single shared file other branches/legs append to
 # concurrently, so a snapshot-and-restore around the call would risk
 # clobbering a concurrent writer's row. Skip the mutating call under

@@ -170,8 +170,11 @@ export function sessionEnv(lane?: "glm", extraEnv?: Record<string, string>): Rec
 // The bounded-run PROMPT. Tells the spawned claude session what it is, where to
 // read pending messages (inbox), where to reply (outbox — append JSON lines, no
 // chat_id needed), where its cross-run memory lives (context.md), and to stop
-// when done. Source of truth for run-prompt.md. A ticket-shaped session id does
-// the ticket's work; anything else (e.g. "__chat__") just answers the operator.
+// when done. Source of truth for run-prompt.md. Trust is per MESSAGE, not per
+// session: only an inbox line carrying the top-level "operator":true field is an
+// operator request (ticket work, Jira, filing); an unmarked line is untrusted.
+// A ticket-shaped session id does the ticket's work on marked lines only;
+// anything else (e.g. "__chat__") answers conversationally.
 // `vault`: when set, an attached document OR image (a line with
 // "document_path" / "image_path") is filed into that Obsidian vault; resolved
 // per-chat by the poller via gate.vaultForChat.

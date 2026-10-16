@@ -289,6 +289,91 @@ cfg "$work/u2.yml" "openai:unpinned-model" "$LOCAL_EMBED" "not a url" himmel
 run_gate "$work/u2.yml"; rc=$?
 [ "$rc" -eq 3 ] || fail "(32b) remote model with an unparseable base URL: expected rc 3, got $rc"
 
+# (33) a symlink whose LEXICAL parents carry no marker but whose target sits in a .salus
+# vault is caught only by the realpath branch of the walk; (31i) cannot tell, its link parent resolves.
+ln -s "$work/marked/sub" "$work/link-direct"
+pcfg "$work/p10.yml" himmel "$work/link-direct"
+run_path "$work/p10.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(33) a symlink straight onto a path inside a .salus vault: expected rc 3, got $rc"
+grep -q '.salus vault' "$work/err" || fail "(33) the refusal must name the .salus vault: $(cat "$work/err")"
+
+# (34) a .salus marker BELOW the collection path is PHI too (downward check).
+mkdir -p "$work/above/deep/er/vault" "$work/clean/deep/er"
+: > "$work/above/deep/er/vault/.salus"
+pcfg "$work/p11.yml" luna "$work/above"
+run_path "$work/p11.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(34a) a collection containing a .salus vault below it: expected rc 3, got $rc"
+grep -q 'contains a .salus vault' "$work/err" || fail "(34a) the refusal must say the vault is below: $(cat "$work/err")"
+pcfg "$work/p12.yml" luna "$work/clean"
+run_path "$work/p12.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(34b) a clean tree must pass the downward check: rc $rc: $(cat "$work/err")"
+if [ "$(id -u)" -ne 0 ]; then
+  # (34d) a sub-directory the walk cannot read may hide a .salus vault: fail closed.
+  mkdir -p "$work/locked-tree/sub/hidden"
+  chmod 000 "$work/locked-tree/sub"
+  pcfg "$work/p13.yml" luna "$work/locked-tree"
+  run_path "$work/p13.yml"; rc=$?
+  chmod 755 "$work/locked-tree/sub"
+  [ "$rc" -eq 3 ] || fail "(34d) an unreadable sub-directory under a remote collection: expected rc 3, got $rc"
+  # (34c) an unreadable claude-glm config dir cannot prove "no PHI roots": fail closed.
+  mkdir -p "$work/glm-locked"
+  chmod 000 "$work/glm-locked"
+  CLAUDE_GLM_CONFIG_DIR="$work/glm-locked" QMD_CONFIG_DIR="$work/qc" node "$gate" "$work/p4.yml" 2>"$work/err"; rc=$?
+  chmod 700 "$work/glm-locked"
+  [ "$rc" -eq 3 ] || fail "(34c) an unreadable claude-glm config dir must fail closed: expected rc 3, got $rc"
+  grep -q 'claude-glm' "$work/err" || fail "(34c) the refusal must name the config dir: $(cat "$work/err")"
+fi
+
+# (35) a collection that exists only in the database has no path to check: refused.
+sqlite3 "$work/db4.sqlite" "CREATE TABLE documents(collection TEXT, active INTEGER); INSERT INTO documents VALUES('himmel',1),('skills',1);"
+pcfg "$work/p13.yml" himmel "$work/vault/other"
+run_path "$work/p13.yml" "$work/db4.sqlite"; rc=$?
+[ "$rc" -eq 3 ] || fail "(35) a DB-only collection (no path to check): expected rc 3, got $rc"
+grep -q 'skills' "$work/err" || fail "(35) the refusal must name the DB-only collection: $(cat "$work/err")"
+
+# (36) refusals never print an unparsed collections line or a key in base URL userinfo.
+printf 'collections:\n  himmel:\n    path: /nonexistent/himmel\n  - sk-line-secret-3\nmodels:\n  embed: %s\n  rerank: %s\n  openai_base_url: %s\n' "$OR_EMBED" "$OR_RERANK" "$OR_BASE" > "$work/leak1.yml"
+run_gate "$work/leak1.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(36a) an unparsed collections line: expected rc 3, got $rc"
+if grep -q 'sk-line-secret-3' "$work/err"; then fail "(36a) the refusal printed the unparsed line"; fi
+cfg "$work/leak2.yml" "$OR_EMBED" "$OR_RERANK" 'https://user:sk-url-secret-4@openrouter.ai/api/v1' himmel
+run_gate "$work/leak2.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(36b) userinfo in the base URL: expected rc 3, got $rc"
+if grep -q 'sk-url-secret-4' "$work/err"; then fail "(36b) the refusal printed the base URL userinfo"; fi
+cfg "$work/leak3.yml" "$OR_EMBED" "$OR_RERANK" 'http://user:sk-url-secret-5@evil.example/v1' himmel
+run_gate "$work/leak3.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(36c) insecure base URL with userinfo: expected rc 3, got $rc"
+if grep -q 'sk-url-secret-5' "$work/err"; then fail "(36c) the insecure-endpoint refusal printed the userinfo"; fi
+cfg "$work/leak4.yml" "$OR_EMBED" "$OR_RERANK" 'http://evil.example/sk-path-secret-7/v1' himmel
+run_gate "$work/leak4.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(36d) insecure base URL with a secret in the path: expected rc 3, got $rc"
+if grep -q 'sk-path-secret-7' "$work/err"; then fail "(36d) the insecure-endpoint refusal printed the URL path"; fi
+
+# (37) an index that holds salus must pin explicit local models for every role.
+printf 'collections:\n  salus:\n    path: /nonexistent/salus\n' > "$work/s1.yml"
+run_gate "$work/s1.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(37a) a salus index with no models block: expected rc 3, got $rc"
+grep -q 'explicit local' "$work/err" || fail "(37a) the refusal must ask for explicit local models: $(cat "$work/err")"
+printf 'collections:\n  salus:\n    path: /nonexistent/salus\nmodels:\n  embed: %s\n' "$LOCAL_EMBED" > "$work/s2.yml"
+run_gate "$work/s2.yml"; rc=$?
+[ "$rc" -eq 3 ] || fail "(37b) a salus index missing the rerank model: expected rc 3, got $rc"
+printf 'collections:\n  salus:\n    path: /nonexistent/salus\nmodels:\n  embed: %s\n  rerank: hf:x/y/z.gguf\n' "$LOCAL_EMBED" > "$work/s3.yml"
+run_gate "$work/s3.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(37c) a salus index with explicit local embed and rerank: expected rc 0, got $rc: $(cat "$work/err")"
+
+# (38) a non-loopback remote role needs the provider key in THIS process env when the
+# caller asks (the launcher does); loopback needs none.
+cfg "$work/k1.yml" "$OR_EMBED" "$OR_RERANK" "$OR_BASE" himmel
+( unset QMD_OPENAI_API_KEY JINA_API_KEY JINA_API; QMD_GATE_REQUIRE_KEY=1 run_gate "$work/k1.yml" ); rc=$?
+[ "$rc" -eq 3 ] || fail "(38a) remote role with no key in the env: expected rc 3, got $rc"
+grep -q 'QMD_OPENAI_API_KEY' "$work/err" || fail "(38a) the refusal must name QMD_OPENAI_API_KEY: $(cat "$work/err")"
+QMD_GATE_REQUIRE_KEY=1 QMD_OPENAI_API_KEY=sk-env-secret-6 run_gate "$work/k1.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(38b) remote role with the key in the env: expected rc 0, got $rc: $(cat "$work/err")"
+if grep -q 'sk-env-secret-6' "$work/err"; then fail "(38b) the gate printed the key"; fi
+cfg "$work/k3.yml" "openai:local-embed" "$LOCAL_EMBED" http://127.0.0.1:8080/v1 himmel
+QMD_GATE_REQUIRE_KEY=1 run_gate "$work/k3.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(38c) a loopback endpoint needs no key: expected rc 0, got $rc: $(cat "$work/err")"
+
 # ---- the daemon launcher -------------------------------------------------
 mkdir -p "$work/bun/bin" "$work/home" "$work/cfg" "$work/cache"
 cat > "$work/bun/bin/qmd" <<EOF
@@ -312,7 +397,7 @@ launch() { # launch <index name|-> ; QMD_JINA_GATE inherited from the caller
   local idx="${1:-index}"
   env -i PATH="$PATH" HOME="$work/home" BUN_INSTALL="$work/bun" QMD_CONFIG_DIR="$work/cfg" \
     XDG_CACHE_HOME="$work/cache" QMD_CURL="$work/curl" QMD_MCP_URL=http://localhost:1/mcp \
-    QMD_INDEX_NAME="$idx" ${QMD_JINA_GATE:+QMD_JINA_GATE="$QMD_JINA_GATE"} \
+    QMD_DAEMON_ENV_FILE="$work/daemon0.env" QMD_INDEX_NAME="$idx" ${QMD_JINA_GATE:+QMD_JINA_GATE="$QMD_JINA_GATE"} \
     bash "$ensure" >"$work/out" 2>"$work/err"
 }
 
@@ -323,7 +408,8 @@ launch index; rc=$?
 [ ! -e "$work/started" ] || fail "(11) launcher STARTED qmd despite the refusal"
 grep -q 'salus' "$work/err" || fail "(11) the launcher refusal must name salus"
 
-# (12) launcher starts normally on the non-salus Jina index.
+# (12) launcher starts normally on the non-salus Jina index (a remote daemon needs its key file).
+printf 'QMD_OPENAI_API_KEY=sk-test-jina\n' > "$work/daemon0.env"; chmod 600 "$work/daemon0.env"
 cp "$work/c.yml" "$work/cfg/index.yml"
 launch index; rc=$?
 [ "$rc" -eq 0 ] || fail "(12) launcher on the non-salus Jina index: expected rc 0, got $rc: $(cat "$work/err")"
@@ -400,4 +486,69 @@ launch index; rc=$?
 grep -q 'salus' "$work/err" || fail "(21) the launcher refusal must name salus"
 rm -f "$work/cache/qmd/index.sqlite"
 
-echo "PASS: test-qmd-jina-gate.sh (43 checks)"
+# ---- the provider key reaches ONLY a remote-model daemon, and only from the daemon env file ----
+# the mock qmd records whether the key was in the environment it started with
+cat > "$work/bun/bin/qmd" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$work/qmd-calls"
+printf 'key=%s\n' "\${QMD_OPENAI_API_KEY:+set}" >> "$work/qmd-env"
+touch "$work/started"
+exit 0
+EOF
+launch_key() { # launch_key <extra VAR=val>...
+  rm -f "$work/started" "$work/qmd-calls" "$work/qmd-env"
+  env -i PATH="$PATH" HOME="$work/home" BUN_INSTALL="$work/bun" QMD_CONFIG_DIR="$work/cfg" \
+    XDG_CACHE_HOME="$work/cache" QMD_CURL="$work/curl" QMD_MCP_URL=http://localhost:1/mcp \
+    QMD_DAEMON_ENV_FILE="$work/daemon.env" "$@" \
+    bash "$ensure" >"$work/out" 2>"$work/err"
+}
+cp "$work/or1.yml" "$work/cfg/index.yml"
+
+# (39) remote-model config, no key anywhere: refuse to start (the fork would send content unauthenticated).
+rm -f "$work/daemon.env"
+launch_key; rc=$?
+[ "$rc" -eq 1 ] || fail "(39) remote config with no daemon key: expected rc 1, got $rc: $(cat "$work/err")"
+[ ! -e "$work/started" ] || fail "(39) launcher STARTED a remote-model daemon with no key"
+
+# (40) a key that is only in the SESSION env is not the daemon's key: refused, never forwarded.
+launch_key QMD_OPENAI_API_KEY=sk-session-secret-7; rc=$?
+[ "$rc" -eq 1 ] || fail "(40) key only in the session env: expected rc 1, got $rc"
+[ ! -e "$work/started" ] || fail "(40) launcher started a daemon on a session-env key"
+if grep -q 'sk-session-secret-7' "$work/err" "$work/out"; then fail "(40) the launcher printed the key"; fi
+
+# (41) the key in the daemon env file reaches the daemon (and only it).
+printf 'QMD_OPENAI_API_KEY=sk-file-secret-8\n' > "$work/daemon.env"; chmod 600 "$work/daemon.env"
+launch_key; rc=$?
+[ "$rc" -eq 0 ] || fail "(41) remote config with the daemon env file: expected rc 0, got $rc: $(cat "$work/err")"
+grep -q '^key=set$' "$work/qmd-env" || fail "(41) the daemon did not get the key: $(cat "$work/qmd-env")"
+if grep -q 'sk-file-secret-8' "$work/err" "$work/out" "$work/qmd-calls"; then fail "(41) the key leaked into argv or output"; fi
+
+# (42) a group/world-readable env file is refused (the key must not sit in an open file).
+chmod 644 "$work/daemon.env"
+launch_key; rc=$?
+[ "$rc" -eq 1 ] || fail "(42) a 0644 daemon env file: expected rc 1, got $rc"
+[ ! -e "$work/started" ] || fail "(42) launcher used a world-readable key file"
+chmod 600 "$work/daemon.env"
+
+# (43) a LOCAL-only config never gets the key, whatever the session env or the file holds.
+cp "$work/d.yml" "$work/cfg/index.yml"
+launch_key QMD_OPENAI_API_KEY=sk-session-secret-9; rc=$?
+[ "$rc" -eq 0 ] || fail "(43) local config: expected rc 0, got $rc: $(cat "$work/err")"
+grep -q '^key=$' "$work/qmd-env" || fail "(43) a local daemon was handed a provider key: $(cat "$work/qmd-env")"
+
+# (44) a mixed-case model prefix (OpenAI:, OPENAI:) still reaches the gate.
+printf 'collections:\n  salus:\n    path: /nonexistent/salus\n    pattern: "**/*.md"\nmodels:\n  embed: OpenAI:qwen/qwen3-embedding-8b\n  rerank: %s\n  openai_base_url: %s\n' "$LOCAL_EMBED" "$OR_BASE" > "$work/cfg/index.yml"
+launch_key; rc=$?
+[ "$rc" -eq 1 ] || fail "(44) OpenAI: (mixed case) model on a salus index: expected rc 1, got $rc: $(cat "$work/err")"
+[ ! -e "$work/started" ] || fail "(44) launcher STARTED qmd on a mixed-case remote salus config"
+rm -f "$work/daemon.env"
+
+# (45) a Jina key in the SESSION env (JINA_API_KEY / JINA_API) is not the daemon's key either.
+cfg "$work/cfg/index.yml" "$JINA_EMBED" "$JINA_RERANK" https://api.jina.ai/v1 himmel
+for jv in JINA_API_KEY JINA_API; do
+  launch_key "$jv=jina-session-secret-10"; rc=$?
+  [ "$rc" -eq 1 ] || fail "(45) $jv only in the session env: expected rc 1, got $rc: $(cat "$work/err")"
+  [ ! -e "$work/started" ] || fail "(45) launcher started a Jina daemon on a session-env $jv"
+done
+
+echo "PASS: test-qmd-jina-gate.sh"
