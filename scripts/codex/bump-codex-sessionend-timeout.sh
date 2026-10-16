@@ -63,12 +63,13 @@ while IFS= read -r f; do
   if [ "$DRY_RUN" = "1" ]; then
     echo "WOULD BUMP  : $f"
   else
-    tmp="$(mktemp "$(dirname "$f")/.hooks.json.XXXXXX")" || { echo "SKIP (mktemp failed): $f" >&2; skipped=$((skipped + 1)); continue; }
-    # Write THROUGH the path (cat >) rather than mv: keeps the original mode and
-    # a symlinked hooks.json a symlink. jq finishes into $tmp first, so a jq
-    # failure never truncates the real file.
-    if jq --argjson min "$MIN_TIMEOUT" "$PATCH" "$f" > "$tmp" && cat "$tmp" > "$f"; then
-      rm -f "$tmp"
+    # Replace the symlink TARGET atomically (temp file in the same dir, original
+    # mode copied, mv over it): a symlinked hooks.json stays a symlink, and an
+    # interrupted write never leaves the real file truncated.
+    real="$(readlink -f "$f" 2>/dev/null)" || real="$f"
+    tmp="$(mktemp "$(dirname "$real")/.hooks.json.XXXXXX")" || { echo "SKIP (mktemp failed): $f" >&2; skipped=$((skipped + 1)); continue; }
+    mode="$(stat -c %a "$real" 2>/dev/null || stat -f %Lp "$real" 2>/dev/null || echo 644)"
+    if jq --argjson min "$MIN_TIMEOUT" "$PATCH" "$real" > "$tmp" && chmod "$mode" "$tmp" && mv "$tmp" "$real"; then
       echo "BUMPED      : $f"
     else
       rm -f "$tmp"

@@ -405,7 +405,7 @@ printf '%s\n' '{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"no
 claude_ok_8="$TMP/claude-ok-test8"; make_claude_stub "$claude_ok_8" 0
 rc=0
 out=$(USERPROFILE='' HOME="$fake_home_8" HIMMEL_UPDATE_CLAUDE_BIN="$claude_ok_8" HERMES_HOME="$TMP/no-hermes" \
-      CLAUDE_USER_SETTINGS="$fake_home_8/.claude/settings.json" \
+      CLAUDE_USER_SETTINGS="$fake_home_8/.claude/settings.json" CLAUDE_CONFIG_DIR="$fake_home_8/.claude" \
       bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || rc=$?
 assert_eq "bump wiring: rc 0" "0" "$rc"
 assert_eq "bump wiring: SessionEnd timeout raised to 30" "30" "$(jq -r '.hooks.SessionEnd[0].hooks[0].timeout' "$hooks_8/hooks.json")"
