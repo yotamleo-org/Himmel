@@ -22,6 +22,7 @@ NOW="${JUDGE_LADDER_NOW:-$(date +%s)}"
 for v in "$SONNET_CAP" "$OPUS_CAP" "$FABLE_CAP" "$WINDOW" "$NOW"; do
   case "$v" in '' | *[!0-9]*) echo "judge-ladder: non-numeric cap, window or clock '$v'" >&2; exit 2 ;; esac
 done
+[ "$WINDOW" -gt 0 ] || { echo "judge-ladder: JUDGE_LADDER_WINDOW must be positive" >&2; exit 2; }
 
 state_file() {
   if [ -n "${JUDGE_LADDER_STATE:-}" ]; then printf '%s\n' "$JUDGE_LADDER_STATE"; return 0; fi
@@ -53,7 +54,7 @@ case "$cmd" in
     ;;
   convene)
     seat="${2:-}"; tier="${3:-}"
-    [ -n "$seat" ] || { echo "judge-ladder: convene needs a seat" >&2; exit 2; }
+    case "$seat" in '' | *[[:space:]]*) echo "judge-ladder: convene needs a seat without whitespace" >&2; exit 2 ;; esac
     cap="$(cap_for "$tier")" || { echo "judge-ladder: unknown tier '$tier'" >&2; exit 2; }
     state="$(state_file)" || { echo "judge-ladder: no state dir" >&2; exit 2; }
     mkdir -p "$(dirname "$state")" || exit 2

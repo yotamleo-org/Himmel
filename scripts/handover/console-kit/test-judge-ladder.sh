@@ -42,6 +42,11 @@ run convene seatC sonnet >/dev/null; [ "$?" = 3 ] && pass "sonnet cap enforced" 
 JUDGE_LADDER_FABLE_CAP=abc run convene seatD fable >/dev/null
 [ "$?" = 2 ] && pass "a non-numeric cap is refused, not read as unlimited" || fail "non-numeric cap accepted"
 
+run convene "seat F" sonnet >/dev/null
+[ "$?" = 2 ] && pass "a seat with whitespace is refused" || fail "whitespace seat accepted"
+JUDGE_LADDER_WINDOW=0 run convene seatG sonnet >/dev/null
+[ "$?" = 2 ] && pass "a zero window is refused" || fail "zero window accepted"
+
 mkdir "$WORK/state.lock"
 out="$(JUDGE_LADDER_STATE="$WORK/state" run convene seatE sonnet)"; rc=$?
 rmdir "$WORK/state.lock"
