@@ -63,6 +63,12 @@ if [ -n "$token" ]; then
       dots="${oct//[!.]/}"
       case "$oct" in *[!0-9.]* | .* | *. | *..*) host="" ;; esac
       [ "${#dots}" -eq 2 ] || host=""
+      if [ -n "$host" ]; then
+        IFS=. read -r o1 o2 o3 <<<"$oct"
+        for n in "$o1" "$o2" "$o3"; do
+          if [ "${#n}" -gt 3 ] || [ "$((10#$n))" -gt 255 ]; then host=""; fi
+        done
+      fi
       ;;
     *) host="" ;;
   esac

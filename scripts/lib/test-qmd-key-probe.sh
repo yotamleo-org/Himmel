@@ -209,14 +209,14 @@ start_stub capture
 CAP="$TMP/port.capture"
 CAPURL="http://127.0.0.1:$(cat "$CAP")"
 rm -f "$CAP.auth"
-OUT=$(http_proxy="$CAPURL" HTTP_PROXY="$CAPURL" ALL_PROXY="$CAPURL" all_proxy="$CAPURL" QMD_MCP_URL="$TARGET" QMD_HTTP_AUTH_FILE="$TMP/token" QMD_KEY_PROBE_TIMEOUT=10 timeout 40 bash "$PROBE" 2>&1)
+OUT=$(no_proxy='' NO_PROXY='' http_proxy="$CAPURL" HTTP_PROXY="$CAPURL" ALL_PROXY="$CAPURL" all_proxy="$CAPURL" QMD_MCP_URL="$TARGET" QMD_HTTP_AUTH_FILE="$TMP/token" QMD_KEY_PROBE_TIMEOUT=10 timeout 40 bash "$PROBE" 2>&1)
 RC=$?
 assert_eq "proxy-env row: probe still reaches the target (exit 0)" 0 "$RC"
 assert_eq "proxy-env row: no request reached the proxy" "absent" "$([ -e "$CAP.auth" ] && echo present || echo absent)"
 mkdir -p "$TMP/home"
 printf 'proxy = "%s"\n' "$CAPURL" > "$TMP/home/.curlrc"
 rm -f "$CAP.auth"
-OUT=$(HOME="$TMP/home" QMD_MCP_URL="$TARGET" QMD_HTTP_AUTH_FILE="$TMP/token" QMD_KEY_PROBE_TIMEOUT=10 timeout 40 bash "$PROBE" 2>&1)
+OUT=$(no_proxy='' NO_PROXY='' HOME="$TMP/home" QMD_MCP_URL="$TARGET" QMD_HTTP_AUTH_FILE="$TMP/token" QMD_KEY_PROBE_TIMEOUT=10 timeout 40 bash "$PROBE" 2>&1)
 RC=$?
 assert_eq "curlrc row: probe still reaches the target (exit 0)" 0 "$RC"
 assert_eq "curlrc row: no request reached the proxy" "absent" "$([ -e "$CAP.auth" ] && echo present || echo absent)"
@@ -228,6 +228,10 @@ run_probe "http://127.0.0.1.:9/mcp" 2
 assert_has "trailing-dot row: 127.0.0.1. is not loopback" "loopback" "$OUT"
 run_probe "http://127.0.0:9/mcp" 2
 assert_has "three-octet row: 127.0.0 is not loopback" "loopback" "$OUT"
+run_probe "http://127.0.0.999:9/mcp" 2
+assert_has "octet-range row: 127.0.0.999 is not loopback" "loopback" "$OUT"
+run_probe "http://127.0.0.0001:9/mcp" 2
+assert_has "octet-width row: a four-digit octet is not loopback" "loopback" "$OUT"
 
 # 15: a token that cannot sit inside a quoted curl config value is refused, unechoed.
 printf 'bad"token\n' > "$TMP/quote"
