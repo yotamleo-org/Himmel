@@ -394,6 +394,7 @@ cmd_reembed() {
     # resume it (no new backup, no --force) so finished vectors are kept.
     local resume=0
     if [ -e "$copy" ]; then
+        [ ! "$copy" -ef "$live" ] || die 2 "--copy is the same file as the live index (link); reembed never writes the live index"
         compare_index "$copy" "$uri" >/dev/null 2>&1 || die 2 "$copy already exists and does not hold only $name vectors; remove it or pick another --copy"
         resume=1
     fi

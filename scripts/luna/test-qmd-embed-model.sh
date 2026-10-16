@@ -229,6 +229,12 @@ rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1)
 assert_rc "reembed refuses a copy holding another model" 2 "$rc"
 assert_contains "the refusal says to remove the copy" "remove it or pick another --copy" "$out"
 sqlite3 "$copy" "UPDATE content_vectors SET model='$QWEN'; DROP TABLE resume_marker;"
+# A link to the live index is the live index: never resumed.
+ln -s "$(IDX)" "$H/.cache/qmd/link.sqlite"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --copy "$H/.cache/qmd/link.sqlite" --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed refuses a symlink to the live index as --copy" 2 "$rc"
+assert_contains "the link refusal names the live index" "same file as the live index" "$out"
+rm -f "$H/.cache/qmd/link.sqlite"
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --copy "$(IDX)" --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
 assert_rc "reembed refuses the live index as --copy" 2 "$rc"
 
