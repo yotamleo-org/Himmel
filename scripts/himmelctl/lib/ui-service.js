@@ -88,13 +88,13 @@ function install({ repoRoot, port, dryRun }) {
   if (!handoverDir) return { ok: false, lines: ['HANDOVER_DIR is not set; the console board needs it (see docs/handover/running-a-console.md)'] };
   if (!which('systemctl')) return noSystemctl;
   const unit = renderUnit({ repoRoot, bun, handoverDir, envPath: process.env.PATH || '/usr/bin:/bin', port: port === null ? DEFAULT_PORT : port });
-  if (dryRun) return { ok: true, lines: [`dry-run: would write ${unitPath()}`, `dry-run: would write ${tokenPath()} (mode 600) if absent`, 'dry-run: would run systemctl --user daemon-reload, enable --now ' + UNIT_NAME] };
+  if (dryRun) return { ok: true, lines: [`dry-run: would write ${unitPath()}`, `dry-run: would write ${tokenPath()} (mode 600) if absent`, 'dry-run: would run systemctl --user daemon-reload, enable --now ' + UNIT_NAME] }; // t13b-ok: dry-run message text only, starts no process
   try { ensureToken(); } catch (e) { return { ok: false, lines: [e.message] }; }
   fs.mkdirSync(UNIT_DIR, { recursive: true });
   const tmp = `${unitPath()}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, unit, 'utf8');
   fs.renameSync(tmp, unitPath());
-  for (const a of [['daemon-reload'], ['enable', '--now', UNIT_NAME]]) {
+  for (const a of [['daemon-reload'], ['enable', '--now', UNIT_NAME]]) { // t13b-ok: installs the user unit, operator-run verb
     const r = sctl(...a);
     if (r.status !== 0) return { ok: false, lines: [`unit file written at ${unitPath()}, but systemctl --user ${a.join(' ')} failed (rc=${r.status}): ${(r.stderr || '').trim()}`] };
   }
@@ -106,14 +106,14 @@ function install({ repoRoot, port, dryRun }) {
 
 function uninstall({ dryRun }) {
   if (!which('systemctl')) return noSystemctl;
-  if (dryRun) return { ok: true, lines: [`dry-run: would disable --now ${UNIT_NAME}, remove ${unitPath()} and ${tokenPath()}, daemon-reload`] };
+  if (dryRun) return { ok: true, lines: [`dry-run: would disable --now ${UNIT_NAME}, remove ${unitPath()} and ${tokenPath()}, daemon-reload`] }; // t13b-ok: dry-run message text only, starts no process
   const dis = sctl('disable', '--now', UNIT_NAME); // absent unit: nothing to disable, still remove the files
   if (dis.status !== 0 && !['inactive', 'failed'].includes((sctl('is-active', UNIT_NAME).stdout || '').trim())) {
     return { ok: false, lines: [`systemctl --user disable --now ${UNIT_NAME} failed (rc=${dis.status}) and the service is not confirmed stopped; nothing removed: ${(dis.stderr || '').trim()}`] };
   }
   for (const p of [unitPath(), tokenPath()]) fs.rmSync(p, { force: true });
-  const rl = sctl('daemon-reload');
-  if (rl.status !== 0) return { ok: false, lines: [`unit and token files removed, but systemctl --user daemon-reload failed (rc=${rl.status}): ${(rl.stderr || '').trim()}`] };
+  const rl = sctl('daemon-reload'); // t13b-ok: unit reload after uninstall, starts no process
+  if (rl.status !== 0) return { ok: false, lines: [`unit and token files removed, but systemctl --user daemon-reload failed (rc=${rl.status}): ${(rl.stderr || '').trim()}`] }; // t13b-ok: failure message text only, starts no process
   return { ok: true, lines: [`${UNIT_NAME} removed (unit file and token file)`] };
 }
 
