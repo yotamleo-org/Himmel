@@ -7,8 +7,9 @@
 # commit on the default branch is refused, a normal ticketed commit passes, and
 # a 64-hex digest (a sha256) is not mistaken for a secret.
 #
-# Skips (exit 0, loud) where pre-commit or gitleaks is absent; read the
-# `== Summary ==` block, not the rc.
+# Skips (exit 0, loud) where pre-commit is absent; read the `== Summary ==`
+# block, not the rc. gitleaks needs no PATH binary: pre-commit builds it
+# (language: golang), so a missing toolchain fails the install arm instead.
 #
 # Platform guard (gitbash-only): POSIX bash fixture, no .ps1 twin (project
 # convention).
@@ -18,8 +19,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEMPLATE="${FORK_PRECOMMIT_TEMPLATE:-$REPO_ROOT/templates/fork-precommit}"
 
-if ! command -v pre-commit >/dev/null 2>&1 || ! command -v gitleaks >/dev/null 2>&1; then
-  echo "SKIP: pre-commit or gitleaks not installed - nothing was tested"
+if ! command -v pre-commit >/dev/null 2>&1; then
+  echo "SKIP: pre-commit not installed - nothing was tested"
   echo "== Summary =="
   echo "0 passed, 0 failed, SKIPPED"
   exit 0

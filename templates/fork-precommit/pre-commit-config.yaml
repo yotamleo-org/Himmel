@@ -2,7 +2,8 @@
 # Copy to <fork>/.himmel/pre-commit-config.yaml next to gitleaks.toml, then:
 #   pre-commit install -c .himmel/pre-commit-config.yaml -t pre-commit -t commit-msg
 # It lives under .himmel/ so upstream never touches it and rebases stay clean;
-# the fork's own .pre-commit-config.yaml (if any) is left alone and still runs.
+# the fork's own .pre-commit-config.yaml (if any) is left alone, but a clone runs
+# ONE config: append that file's repos: here, or its hooks stop running.
 # Security and process only: no lint, no formatting. A fork's own linters win.
 repos:
   - repo: https://github.com/gitleaks/gitleaks
