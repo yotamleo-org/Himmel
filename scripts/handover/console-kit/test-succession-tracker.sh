@@ -145,6 +145,41 @@ out="$(run)"; rc=$?
 eq "prose between spans is tolerated and a later field line's span is not a leg (rc 0)" "$rc" 0
 has "2 legs, not 3" "$out" "COMPLETE 2/2"
 
+# an un-backticked four-field entry is a malformed entry, never prose: the leg would vanish
+# from the set and the tally would read complete without its quote-back
+# shellcheck disable=SC2016
+printf '# console\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` N2:Y-N2-bb:lockB:12\n' > "$CDOC"
+out="$(run)"; rc=$?
+eq "a bare four-field entry beside a valid one is not complete (rc 1)" "$rc" 1
+lacks "and prints no LIVE line for a bare entry" "$out" "append-results.sh"
+has "and names it as malformed" "$out" "malformed"
+
+# quoted tick fields and bare leg names are prose, not malformed entries
+# shellcheck disable=SC2016
+printf '# console\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` (tick said `procs:2`, `livestate=DRIFT:N8`, see `N8`) `N8:Y-N8-bb:lockB:12`\n' > "$CDOC"
+out="$(run)"; rc=$?
+eq "quoted tick fields and a bare label are prose (rc 0)" "$rc" 0
+has "and the two real entries are the set" "$out" "COMPLETE 2/2"
+
+# a manifest leg missing from the legs: line still counts, so a dropped entry cannot
+# make the set read complete
+cp "$MAN" "$MAN.keep"
+printf '{"schema": 1, "legs": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}, {"doc": "%s/N2.md", "label": "N2", "lane": "native"}]}\n' "$WORK" "$WORK" > "$MAN"
+# shellcheck disable=SC2016
+printf '# console\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11`\n' > "$CDOC"
+out="$(run)"; rc=$?
+eq "a manifest leg absent from the legs: line keeps the set incomplete (rc 1)" "$rc" 1
+has "and names the absent leg as waiting" "$out" "waiting on: N2"
+
+# a duplicated span counts its leg once
+printf '{"schema": 1, "legs": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}]}\n' "$WORK" > "$MAN"
+# shellcheck disable=SC2016
+printf '# console\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N1:Y-N1-aa:lockA:11`\n' > "$CDOC"
+out="$(run)"; rc=$?
+eq "a duplicated span is one leg (rc 0)" "$rc" 0
+has "and it reads COMPLETE 1/1" "$out" "COMPLETE 1/1"
+mv "$MAN.keep" "$MAN"
+
 # no legs at all is not a complete set
 printf '# console\n\n## Live state\nlegs:\n' > "$CDOC"
 out="$(run)"; rc=$?

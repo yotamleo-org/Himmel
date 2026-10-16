@@ -16,8 +16,9 @@
 #           it and prints the release token. `held` is never taken over.
 #   LEGS    only with --render-legs: rewrites the doc's `## Live state` legs: line
 #           from the fleet manifest through live-state.sh (lock tokens from the
-#           held locks, nonces kept) instead of a hand edit; `skipped` without a
-#           manifest next to the doc.
+#           held locks, nonces kept) instead of a hand edit, bounded by
+#           ACTION_ZERO_LEGS_TIMEOUT (default 60s); `unavailable` and exit 1 when
+#           it cannot render (no manifest next to the doc, a failure or a timeout).
 #
 # Everything is read-only except --acquire and --render-legs. What it leaves to the console, on
 # purpose (they need its own turn and its own authority): ListAgents (step 1),
@@ -55,7 +56,7 @@ ql="$repo/scripts/handover/queue-lock.sh"
 # timeout-bin.sh's consumers (check-ci-watch.sh) without their own sources.
 tb_lib="$repo/scripts/lib/timeout-bin.sh"
 _TIMEOUT_BIN="$(bash -c '. "$1" >/dev/null 2>&1; printf %s "$_TIMEOUT_BIN"' _ "$tb_lib" 2>/dev/null)"
-bank_t="${ACTION_ZERO_BANK_TIMEOUT:-60}"; doctor_t="${ACTION_ZERO_DOCTOR_TIMEOUT:-120}"
+bank_t="${ACTION_ZERO_BANK_TIMEOUT:-60}"; doctor_t="${ACTION_ZERO_DOCTOR_TIMEOUT:-120}"; legs_t="${ACTION_ZERO_LEGS_TIMEOUT:-60}"
 # bounded <name> <secs> <cmd...>: output on stdout; a timeout prints the TIMEOUT line.
 bounded() {
     local name="$1" secs="$2" brc; shift 2
@@ -105,9 +106,9 @@ uptime 2>&1 || echo "unavailable"
 if [ "$render" -eq 1 ]; then
     echo "== LEGS"
     if [ -f "${doc%.md}.fleet.json" ]; then
-        if HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc" 2>&1; then echo "legs: line rendered"; else render_rc=1; echo "unavailable"; fi
+        if bounded legs "$legs_t" env HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc"; then echo "legs: line rendered"; else render_rc=1; echo "unavailable"; fi
     else
-        echo "skipped (no fleet manifest next to the doc)"
+        render_rc=1; echo "unavailable (no fleet manifest next to the doc)"
     fi
 fi
 

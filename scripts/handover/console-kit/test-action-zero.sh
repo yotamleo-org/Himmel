@@ -94,8 +94,9 @@ check "the legs: line now carries the held lock token" "1" "$(grep -c "^legs: \`
 check "the nonce was kept, not rewritten" "0" "$(grep -c 'stale-token' "$LCON")"
 check "the next field line is intact" "1" "$(grep -c '^last GO: none$' "$LCON")"
 rm -f "${LCON%.md}.fleet.json"
-out10="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs 2>&1)"
-check "no fleet manifest: LEGS says skipped and the run carries on" "1" "$(printf '%s\n' "$out10" | sed -n '/^== LEGS/,/^== LOCK/p' | grep -c '^skipped')"
+out10="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs 2>&1)"; rc10=$?
+check "no fleet manifest: LEGS says unavailable and the run carries on" "1" "$(printf '%s\n' "$out10" | sed -n '/^== LEGS/,/^== LOCK/p' | grep -c '^unavailable')"
+check "no fleet manifest: the run exits nonzero" "1" "$rc10"
 printf 'not json\n' > "${LCON%.md}.fleet.json"
 bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs >/dev/null 2>&1; rc11=$?
 check "a render that fails exits nonzero" "1" "$rc11"
