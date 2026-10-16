@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/lane-quality/test-lane-quality.sh - hermetic suite for the
-# lane-quality eval harness (HIMMEL-4090). No real claude call: a fake binary
+# lane-quality eval harness. No real claude call: a fake binary
 # stands in for the agent and the judge, and a fake bank preflight for the bank.
 #  1. every hidden acceptance test FAILS on its untouched fixture and PASSES on
 #     its reference solution (a test that cannot fail is not evidence);
@@ -75,7 +75,7 @@ esac
 # Record the steering file the agent started with; a BREAK variant makes the agent fail the task.
 [ ! -f CLAUDE.md ] || cat CLAUDE.md >>"$LQ_FAKE_LOG.claudemd"
 if ! grep -q BREAK CLAUDE.md 2>/dev/null; then bash "$LQ_FAKE_RUN" materialize "$t" "$PWD" --reference >/dev/null; fi
-# HIMMEL-5069 R3: the candidate script dumps its env when acceptance runs it.
+# the candidate script dumps its env when acceptance runs it.
 if [ -n "${LQ_FAKE_ACCEPTENV:-}" ]; then
   { head -n 1 lq-work/cleanup-old.sh; echo "env >\"$LQ_FAKE_ACCEPTENV\""; tail -n +2 lq-work/cleanup-old.sh; } >lq-work/cleanup-old.new
   mv lq-work/cleanup-old.new lq-work/cleanup-old.sh
@@ -172,7 +172,7 @@ for lane in deepseek claudex; do
   check "$lane lane refused (exit 3)" '[ "$rc" -eq 3 ]'
 done
 check "refused lanes launch nothing" '[ ! -s "$TMP/fake.log" ]'
-# HIMMEL-4906: claudex runs with the per-dispatch opt-in, through its launcher,
+# claudex runs with the per-dispatch opt-in, through its launcher,
 # and an unpriced gpt slug does not stop the sweep.
 cp "$TMP/bin/claude" "$TMP/bin/claude-codex"
 CLAUDEX_LANE_OK=1 LQ_LANE_BIN="$TMP/bin/claude-codex" LQ_FAKE_MU='{"gpt-6.1-sol":{"inputTokens":1000,"outputTokens":200,"cacheReadInputTokens":3000,"cacheCreationInputTokens":0}}' \
@@ -182,9 +182,9 @@ check "claudex lane runs with CLAUDEX_LANE_OK=1" '[ "$rc" -eq 0 ] && [ "$(wc -l 
 check "claudex rows record token counts" '[ "$(jq -s -r ".[0].tokens | \"\(.input) \(.output) \(.cache_read)\"" "$TMP/out-cx/runs.jsonl")" = "1000 200 3000" ]'
 check "new tasks pass acceptance end to end" '[ "$(jq -s "map(.accept_ok) | all" "$TMP/out-cx/runs.jsonl")" = true ]'
 
-# HIMMEL-4986: --lane api routes the agent through scripts/api-lane/claude-api.sh with a
+# --lane api routes the agent through scripts/api-lane/claude-api.sh with a
 # hard $1 cap in code, no judge, and no subscription OAuth token in the launcher's env.
-# HIMMEL-5069 R4 / judge B1: the api lane takes its launcher from the harness's own location ($HERE/../../api-lane),
+# the api lane takes its launcher from the harness's own location ($HERE/../../api-lane),
 # never from LQ_REPO or LQ_LANE_BIN. The harness is copied into $TMP/tree so a fake launcher can stand where
 # run.sh looks, while LQ_REPO (the git repo) holds a poisoned launcher that must never run.
 TREE="$TMP/tree"; mkdir -p "$TREE/scripts/eval" "$TREE/scripts/lib" "$TREE/scripts/api-lane"
@@ -243,7 +243,7 @@ LQ_FAKE_API_REFUSE=1 api_run "$TMP/out-api6" --no-judge --tasks cr-fix,class-swe
 rc=$?
 check "a launcher refusal is recorded as an error and stops the sweep" '[ "$(wc -l <"$TMP/out-api6/runs.jsonl" | tr -d " ")" = 1 ] && [ "$(jq -s ".[0].is_error" "$TMP/out-api6/runs.jsonl")" = true ] && grep -q "unknown" "$TMP/api6.log"'
 
-# HIMMEL-5069 R3: acceptance runs agent-written code; the API key must not be in its environment.
+# acceptance runs agent-written code; the API key must not be in its environment.
 ACCENV="$TMP/accept.env"; rm -f "$ACCENV" "$APIENV"
 LQ_FAKE_ACCEPTENV="$ACCENV" api_run "$TMP/out-api7" --no-judge --tasks cr-fix >"$TMP/api7.log" 2>&1
 check "acceptance code ran (the env dump exists)" '[ -s "$ACCENV" ]'
@@ -254,7 +254,7 @@ printf '#!/usr/bin/env bash\ncase "$*" in *accept.sh*) env >"%s/timeout.env" ;; 
 rm -f "$TMP/timeout.env"
 PATH="$TMP/tbin:$PATH" api_run "$TMP/out-api7b" --no-judge --tasks cr-fix >"$TMP/api7b.log" 2>&1
 check "accept.sh's timeout parent carries no API key or lane selector" '[ -s "$TMP/timeout.env" ] && nogrep -q "^ANTHROPIC_API_KEY=" "$TMP/timeout.env" && nogrep -q "^HIMMEL_API_" "$TMP/timeout.env"'
-# HIMMEL-5069 R4: LQ_LANE_BIN must not replace the launcher on the api lane.
+# LQ_LANE_BIN must not replace the launcher on the api lane.
 printf '#!/usr/bin/env bash\ntouch "%s/poison.ran"\nexit 0\n' "$TMP" >"$TMP/bin/poison"; chmod +x "$TMP/bin/poison"
 rm -f "$APIENV" "$TMP/poison.ran"
 LQ_LANE_BIN="$TMP/bin/poison" api_run "$TMP/out-api8" --no-judge --tasks cr-fix >"$TMP/api8.log" 2>&1
@@ -284,7 +284,7 @@ check "a hook in LQ_REPO sees no API key or lane selector from run.sh's git call
 check "an agent-written core.fsmonitor sees no API key or lane selector" '[ -s "$TMP/fsmon.env" ] && nogrep -q "^ANTHROPIC_API_KEY=\|^HIMMEL_API_" "$TMP/fsmon.env"'
 check "the launcher still receives the key and selectors" 'grep -q "^key=sk-ant-dummy-0000$" "$APIENV" && grep -q "^sel=on/B/key-b$" "$APIENV"'
 
-# judge j2229c B1: run.sh's base-sha check is a git call on LQ_REPO; in a partial clone a missing object makes git run
+# run.sh's base-sha check is a git call on LQ_REPO; in a partial clone a missing object makes git run
 # the repo's core.sshCommand (a lazy fetch), so the key must be out of the environment before ANY git call on the repo.
 LZ="$TMP/lzrepo"; rm -f "$TMP/lz.env"
 git init -q "$LZ"; echo a >"$LZ/a"
@@ -299,7 +299,7 @@ git -C "$LZ" config core.sshCommand "$TMP/lzssh"
 LQ_REPO="$LZ" LQ_BASE_SHA=1111111111111111111111111111111111111111 api_run "$TMP/out-lz1" --no-judge --dry-run --tasks cr-fix >"$TMP/lz1.log" 2>&1
 check "a partial-clone lazy fetch from the base-sha check sees no API key or lane selector" '[ -s "$TMP/lz.env" ] && nogrep -q "^ANTHROPIC_API_KEY=\|^HIMMEL_API_" "$TMP/lz.env"'
 
-# judge j2229c B2: an exported LQ_API_KEY (even empty) on entry must not stay exported: hooks, the preflight and
+# an exported LQ_API_KEY (even empty) on entry must not stay exported: hooks, the preflight and
 # accept.sh would inherit it.
 for v in "" leak-lq-key; do
   rm -f "$TMP/hook.env" "$TMP/pf.env" "$ACCENV" "$APIENV"
@@ -313,7 +313,7 @@ for v in "" leak-lq-key; do
   check "the launcher still receives the key after an inherited LQ_API_KEY ('$v')" 'grep -q "^key=sk-ant-dummy-0000$" "$APIENV"'
 done
 
-# HIMMEL-4906: run --config FILE seam (tasks_dir under this dir, base_sha, transcripts).
+# run --config FILE seam (tasks_dir under this dir, base_sha, transcripts).
 printf '{"tasks_dir":"../../../etc"}' >"$TMP/cfg-out.json"
 bash "$RUN" run --lane native --model haiku --config "$TMP/cfg-out.json" --out "$TMP/out-cfg1" >"$TMP/cfg1.log" 2>&1
 rc=$?
@@ -328,7 +328,7 @@ rc=$?
 check "--config with a valid tasks_dir, base_sha and transcripts runs" '[ "$rc" -eq 0 ] && [ "$(wc -l <"$TMP/out-cfg3/runs.jsonl" | tr -d " ")" = 1 ]'
 check "--config base_sha is the one recorded" '[ "$(jq -s -r ".[0].base_sha" "$TMP/out-cfg3/runs.jsonl")" = "$BASE" ]'
 
-# HIMMEL-4459: exported exit/return/unset shadows must never reach the agent or
+# exported exit/return/unset shadows must never reach the agent or
 # judge launch. The control (no ambient proxy) proves the shadowed runner still
 # launches, so the proxied run staying empty is not vacuous.
 shadow_lq() { # <proxy-url|-> <outdir>
@@ -535,7 +535,7 @@ check "a stored second-judge result is reused, never re-judged" 'nogrep -q -- "-
 : >"$FX/a.r2.judge2.sonnet__low.json"; : >"$TMP/fake.log"
 bash "$RUN" calibration "$FX" --judge2-model sonnet --judge2-effort low --json --no-ledger >/dev/null 2>&1
 check "an empty second-judge result is judged again" '[ "$(grep -c -- "--json-schema" "$TMP/fake.log")" = 1 ] && [ -s "$FX/a.r2.judge2.sonnet__low.json" ]'
-# HIMMEL-4665: model "a-b" with no effort and model "a" at effort "b" once
+# model "a-b" with no effort and model "a" at effort "b" once
 # shared one label, so the second silently reused the first's scores.
 : >"$TMP/fake.log"
 bash "$RUN" calibration "$FX" --judge2-model a-b --json --no-ledger >/dev/null 2>&1
@@ -553,7 +553,7 @@ mkdir -p "$TMP/rel/fxr" && cp "$FX/runs.jsonl" "$FX"/*.judge-packet.md "$TMP/rel
 (cd "$TMP/rel" && bash "$RUN" calibration fxr --judge2-model haiku --json --no-ledger >/dev/null 2>&1)
 rc=$?
 check "a relative run dir still feeds the second judge its packet" '[ "$rc" -eq 0 ] && grep -q "packet b.r2" "$TMP/fake.log.judge"'
-# HIMMEL-4667: a failed judge launch fails judge_call (not the cleanup's rc 0),
+# a failed judge launch fails judge_call (not the cleanup's rc 0),
 # and --timeout 00 is refused (GNU timeout 00 would disable the cap).
 printf '#!/usr/bin/env bash\necho "judge launch failed" >&2\nexit 3\n' >"$TMP/bin/claude-fail"; chmod +x "$TMP/bin/claude-fail"
 LQ_CLAUDE_BIN="$TMP/bin/claude-fail" bash "$RUN" calibration "$FX" --judge2-model opus --json --no-ledger >/dev/null 2>"$TMP/cal-fail.err"

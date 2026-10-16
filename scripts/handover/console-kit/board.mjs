@@ -460,6 +460,14 @@ const needRows = legs.filter((l) => l.needs).map((l) => {
     const why = [tailWhy, lockWhy].filter(Boolean).join(' · ');
     return `<li data-need="${esc(l.label)}"><b>${esc(l.label)}</b> ${esc(why)}<div class="leg-last">${safe(l.last, 160)}</div></li>`;
 }).join('\n');
+// orphans-wip=<n[:KEY,...]> from the tick: In Progress / In Review tickets with no leg and no
+// open PR. Keys are named for n <= 5; above that only the count is known. 0, `?` and `skip` add no row.
+const orphanField = /(?:^|\s)orphans-wip=(\S*)/.exec(tickLine);
+const orphanMatch = orphanField && /^([1-9]\d*)(?::(\S+))?$/.exec(orphanField[1]);
+const orphanRows = !orphanMatch ? ''
+    : orphanMatch[2]
+        ? orphanMatch[2].split(',').filter((k) => /^[A-Z][A-Z0-9]*-\d+$/.test(k)).map((k) => `<li data-orphan="${esc(k)}"><b>${esc(k)}</b> in work, no leg, no open PR — dispatch as RESUME</li>`).join('\n')
+        : `<li data-orphans="${esc(orphanMatch[1])}"><b>${esc(orphanMatch[1])} tickets</b> in work, no leg, no open PR — run next-dispatchable.sh</li>`;
 const epicRows = epics.map((e) => {
     const pct = e.merged === '?' ? 0 : Math.min(100, Math.round((e.merged / Math.max(1, e.total)) * 100));
     return `<li data-epic="${esc(e.key)}" data-merged="${e.merged}" data-total="${e.total}"><b>${esc(e.key)}</b> ${e.merged}/${e.total}<div class="bar"><i style="width:${pct}%"></i></div></li>`;
@@ -732,7 +740,7 @@ ${costSection}
 ${explorationSection}
 ${failuresSection}
 ${flakesSection}
-${panel('Needs the supervisor session', needRows, 'nothing waiting on the supervisor session')}
+${panel('Needs the supervisor session', [needRows, orphanRows].filter(Boolean).join('\n'),'nothing waiting on the supervisor session')}
 ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).join('\n'), 'none recorded (Live state decisions:)')}
 ${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}
 <section class="wide">

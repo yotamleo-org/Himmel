@@ -26,10 +26,11 @@ export HIMMEL_FLOW_RUNS_LEDGER="$W/flow-runs.jsonl"
 
 # A primary checkout carrying the script under test and the alert sink.
 P="$W/primary"
-mkdir -p "$P/scripts/cleanup" "$P/scripts/luna"
+mkdir -p "$P/scripts/cleanup" "$P/scripts/luna" "$P/scripts/lib"
 git init -q "$P"
 cp "$DIR/steering-cull-cadence.sh" "$P/scripts/cleanup/" 2>/dev/null || true
 cp "$REAL_ROOT/scripts/luna/cadence-alert.sh" "$P/scripts/luna/"
+cp "$REAL_ROOT/scripts/lib/llm-backend.sh" "$P/scripts/lib/"
 printf '# project rules\n' > "$P/CLAUDE.md"
 git -C "$P" add -A
 git -C "$P" -c user.name=t -c user.email=t@t commit -q -m fixture
@@ -191,6 +192,58 @@ bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run7c.out" 2>&1
 check "no live console exits 1 (alert path)" 1 $?
 has "no live console delivers via the shared cadence alert" "no-console" "$W/alerts.log"
 has "no live console: the alert names the proposal doc" "$DOC" "$W/alerts.log"
+
+# ---- 8. backend switch: claude-api runs on the API lane, not the bank ---------
+# Stub lane: logs argv, the tool grant and the account; prints $W/claude.json.
+cat > "$W/lane.sh" <<'SH'
+#!/usr/bin/env bash
+{ printf 'cwd=%s\n' "$PWD"; printf 'arg=%s\n' "$@"; printf 'tools=%s\n' "${HIMMEL_API_TOOLS:-}"; printf 'acct=%s\n' "${HIMMEL_API_ACCOUNT:-}"; } >> "$STUB_DIR/lane-argv"
+cat "$STUB_DIR/claude.json"
+SH
+chmod +x "$W/lane.sh"
+export STEERING_CULL_API_LANE="$W/lane.sh"
+node -e 'console.log(JSON.stringify({type:"result",is_error:false,result:"- [LOW] CLAUDE.md:1 - x\n"}))' > "$W/claude.json"
+rm -f "$W/argv" "$W/lane-argv"
+: > "$INB_B"; : > "$W/alerts.log"
+printf 'slug=u__himmel__new-console session=s host=h age=40s status=OK\n' > "$W/sweep.txt"
+
+STEERING_CULL_BACKEND=bogus bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8a.out" 2>&1
+check "unknown backend exits 1" 1 $?
+[ ! -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "unknown backend calls no model" || fail "model called for an unknown backend"
+
+STEERING_CULL_BACKEND=claude-api bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8b.out" 2>&1
+check "claude-api with the lane off exits 1" 1 $?
+has "lane-off refusal says no fallback" "no claude-cli fallback" "$W/run8b.out"
+[ ! -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "lane-off calls no model, no subscription fallback" || fail "model called with the lane off"
+
+echo "HOLD bank at 91%" > "$W/preflight"
+HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=B STEERING_CULL_BACKEND=api bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8c.out" 2>&1
+check "api backend runs even while the bank is held" 0 $?
+rm -f "$W/preflight"
+has "lane gets -p" "arg=-p" "$W/lane-argv"
+has "lane gets json output" "arg=json" "$W/lane-argv"
+has "lane gets plan permission mode" "arg=plan" "$W/lane-argv"
+has "lane gets a budget cap" "arg=--max-budget-usd" "$W/lane-argv"
+has "lane tool grant is Read only" "tools=Read" "$W/lane-argv"
+has "lane runs on the chosen account" "acct=B" "$W/lane-argv"
+hasnt "lane argv never carries bypassPermissions" "bypassPermissions" "$W/lane-argv"
+hasnt "lane argv never carries --tools (the lane adds its own)" "arg=--tools" "$W/lane-argv"
+[ ! -e "$W/argv" ] && pass "api backend never runs the subscription claude" || fail "subscription claude ran on the api backend"
+has "api run still delivers to the console" "[steering-cull]" "$INB_B"
+
+bash "$CAD" arm --force --console test-console --proposal-dir "$PROP" --backend claude-api >"$W/arm8a.out" 2>&1
+check "arm --backend claude-api without an account is refused" 1 $?
+bash "$CAD" arm --force --console test-console --proposal-dir "$PROP" --backend claude-api --api-account B >"$W/arm8b.out" 2>&1
+check "arm --backend claude-api --api-account B exits 0" 0 $?
+has "runner bakes the backend" "STEERING_CULL_BACKEND=claude-api" "$W/runner/steering-cull-cadence.sh"
+has "runner bakes the lane switch" "HIMMEL_API_LANE=on" "$W/runner/steering-cull-cadence.sh"
+has "runner bakes the account" "HIMMEL_API_ACCOUNT=B" "$W/runner/steering-cull-cadence.sh"
+bash "$CAD" arm --force --console test-console --proposal-dir "$PROP" >"$W/arm8c.out" 2>&1
+hasnt "a default arm bakes no backend" "STEERING_CULL_BACKEND" "$W/runner/steering-cull-cadence.sh"
+bash "$CAD" arm --force --console test-console --proposal-dir "$PROP" --backend claude-cli >"$W/arm8d.out" 2>&1
+check "arm --backend claude-cli exits 0" 0 $?
+has "an explicit claude-cli arm pins the backend against an inherited env" "STEERING_CULL_BACKEND=claude-cli" "$W/runner/steering-cull-cadence.sh"
+bash "$CAD" disarm >/dev/null 2>&1
 
 echo "steering-cull-cadence: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

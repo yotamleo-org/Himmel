@@ -2318,6 +2318,68 @@ check "80 console-wait waiter: stopped by the wrap" "$(kill -0 "$waiter80" 2>/de
 check "80 console-wait waiter: its child is stopped too" "$(kill -0 "$child80" 2>/dev/null && echo alive || echo dead)" "dead"
 kill "$waiter80" "$child80" 2>/dev/null; wait "$waiter80" 2>/dev/null
 
+# a grandchild of the waiter (waiter -> bash child -> sleep) dies too, not only the direct child
+mk80 grandchild
+# shellcheck disable=SC2016  # the fixture script body must keep $0 literal
+printf '#!/usr/bin/env bash\nbash "$(dirname "$0")/mid.sh" &\nwait\n' > "$w80/console-wait.sh"
+printf '#!/usr/bin/env bash\nsleep 300\ntrue\n' > "$w80/mid.sh"
+bash "$w80/console-wait.sh" & waiter80=$!
+sleep 0.5
+mid80="$(pgrep -P "$waiter80" | head -n 1)"
+grand80="$(pgrep -P "$mid80" | head -n 1)"
+check "80 waiter grandchild: fixture pids found" "$([ -n "$mid80" ] && [ -n "$grand80" ] && echo yes || echo no)" "yes"
+printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=%s etime=00:05 cmd=bash %s/mid.sh\npid=%s ppid=%s etime=00:05 cmd=sleep 300\n' "$waiter80" "$w80" "$mid80" "$waiter80" "$w80" "$grand80" "$mid80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 waiter grandchild: wrap succeeds" "$rc" "0"
+check "80 waiter grandchild: waiter stopped" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "dead"
+check "80 waiter grandchild: direct child stopped" "$(kill -0 "$mid80" 2>/dev/null && echo alive || echo dead)" "dead"
+check "80 waiter grandchild: grandchild stopped" "$(kill -0 "$grand80" 2>/dev/null && echo alive || echo dead)" "dead"
+kill "$waiter80" "$mid80" "$grand80" 2>/dev/null; wait "$waiter80" 2>/dev/null
+
+# a descendant that ignores TERM is KILLed, so it never outlives the waiter
+mk80 stubborn
+printf '#!/usr/bin/env bash\ntrap "" TERM\nsleep 300\ntrue\n' > "$w80/mid.sh"
+# shellcheck disable=SC2016  # the fixture script body must keep $0 literal
+printf '#!/usr/bin/env bash\nbash "$(dirname "$0")/mid.sh" &\nwait\n' > "$w80/console-wait.sh"
+bash "$w80/console-wait.sh" & waiter80=$!
+sleep 0.5
+mid80="$(pgrep -P "$waiter80" | head -n 1)"
+grand80="$(pgrep -P "$mid80" | head -n 1)"
+check "80 TERM-ignoring descendant: fixture pids found" "$([ -n "$mid80" ] && [ -n "$grand80" ] && echo yes || echo no)" "yes"
+printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=%s etime=00:05 cmd=bash %s/mid.sh\npid=%s ppid=%s etime=00:05 cmd=sleep 300\n' "$waiter80" "$w80" "$mid80" "$waiter80" "$w80" "$grand80" "$mid80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 TERM-ignoring descendant: wrap succeeds" "$rc" "0"
+check "80 TERM-ignoring descendant: stopped" "$(kill -0 "$mid80" 2>/dev/null && echo alive || echo dead)" "dead"
+kill -KILL "$waiter80" "$mid80" "$grand80" 2>/dev/null; wait "$waiter80" 2>/dev/null
+
+# a descendant whose live argv no longer matches its snapshot row (a reused or exec'd pid)
+# is never signalled: the wrap is refused and the waiter is left running
+mk80 argvchanged
+bash "$w80/console-wait.sh" & waiter80=$!
+sleep 300 & foreign80=$!
+sleep 0.3
+printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=%s etime=00:05 cmd=bash %s/other.sh\n' "$waiter80" "$w80" "$foreign80" "$waiter80" "$w80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 changed descendant argv: wrap refused (rc 5)" "$rc" "5"
+check "80 changed descendant argv: names the reason" "$(printf '%s\n' "$out" | grep -c 'descendant .* changed since the check')" "1"
+check "80 changed descendant argv: descendant left running" "$(kill -0 "$foreign80" 2>/dev/null && echo alive || echo dead)" "alive"
+check "80 changed descendant argv: waiter left running" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "alive"
+check "80 changed descendant argv: lock still held" "$(lock80)" "held"
+kill "$waiter80" "$foreign80" 2>/dev/null; wait 2>/dev/null
+
+# an empty snapshot cmd would match any live process at that pid: refused the same way
+mk80 emptycmd
+bash "$w80/console-wait.sh" & waiter80=$!
+sleep 300 & foreign80=$!
+sleep 0.3
+printf 'pid=%s ppid=1 etime=00:05 cmd=bash %s/console-wait.sh /x/inbox\npid=%s ppid=%s etime=00:05 cmd=\n' "$waiter80" "$w80" "$foreign80" "$waiter80" > "$w80/rows"
+rc=0; out="$(wrap80 "$doc80" "$tok80")" || rc=$?
+check "80 empty descendant cmd: wrap refused (rc 5)" "$rc" "5"
+check "80 empty descendant cmd: descendant left running" "$(kill -0 "$foreign80" 2>/dev/null && echo alive || echo dead)" "alive"
+check "80 empty descendant cmd: waiter left running" "$(kill -0 "$waiter80" 2>/dev/null && echo alive || echo dead)" "alive"
+check "80 empty descendant cmd: lock still held" "$(lock80)" "held"
+kill "$waiter80" "$foreign80" 2>/dev/null; wait 2>/dev/null
+
 # the waiter does NOT hide a second, foreign process, and is left running on a refusal
 mk80 mixed
 bash "$w80/console-wait.sh" & waiter80=$!

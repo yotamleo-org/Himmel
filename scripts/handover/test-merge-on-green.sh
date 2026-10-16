@@ -245,6 +245,9 @@ mog_build_fixture() {
     # in merge-on-green.sh's own guard). Defaults to the real file, so every
     # existing case that never sets it is unaffected.
     cp "${WT_INUSE_SRC:-$SCRIPT_DIR/../lib/worktree-inuse.sh}" "$tmp/scripts/lib/worktree-inuse.sh"
+    # The PARTIAL report appends to the console doc through this sibling.
+    mkdir -p "$tmp/scripts/handover/console-kit"
+    cp "$SCRIPT_DIR/console-kit/append-results.sh" "$tmp/scripts/handover/console-kit/append-results.sh"
     # merge-on-green now records the repo's CodeRabbit-availability
     # state on its audit lines, and reads it from this sibling. Without the copy
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion
@@ -3408,6 +3411,19 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
 assert_audit_has "jira: default case records the would-transition report" "jira-transition=would-transition key=HIMMEL-374 status=Done"
 assert_jira_log_lacks "jira: default case makes no jira comment call" "comment"
 assert_jira_log_lacks "jira: default case makes no jira transition call" "transition"
+# A bare merge leaves the ticket open, so say so (stderr) and tell the console doc.
+assert_err_has "jira: bare merge prints the PARTIAL line" "PARTIAL HIMMEL-374: next slice not dispatched"
+mog_doc="$LAST_TMP/console-doc.md"
+printf '# console\n\n## Results\n' > "$mog_doc"
+HIMMEL_CONSOLE_DOC="$mog_doc" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: bare merge with HIMMEL_CONSOLE_DOC set"
+if grep -q 'PARTIAL HIMMEL-374: next slice not dispatched' "$mog_doc"; then pass; else fail "jira: bare merge appends PARTIAL to the console Results (doc: $(cat "$mog_doc"))"; fi
+mog_doc2="$LAST_TMP/console-doc2.md"
+printf '# console\n\n## Results\n' > "$mog_doc2"
+HIMMEL_CONSOLE_DOC="$mog_doc2" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: opted-in merge with HIMMEL_CONSOLE_DOC set" -- --jira-transition
+assert_err_lacks "jira: an opted-in merge prints no PARTIAL line" "PARTIAL"
+if grep -q 'PARTIAL' "$mog_doc2"; then fail "jira: an opted-in merge appends no PARTIAL bullet"; else pass; fi
 
 # Ticket tag present + a built Jira CLI + matching config + --jira-transition
 # => comment THEN transition, in that order (comment-then-transition

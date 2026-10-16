@@ -1109,5 +1109,15 @@ else
     fail "70 tells the reader to re-invoke /pr-check to file, which only repeats the dry run (HIMMEL-5536)"
 fi
 
+# The opt-in blast-radius pass in step 3.5 names its switch value and the
+# vendored procedure it reads, and that file exists.
+if ref_has 32-step3-reviewers.md 'CR_CLAUDE_AGENTS=blast-radius' \
+    && ref_has 32-step3-reviewers.md 'marketplace/plugins/pstack/skills/blast-radius/SKILL.md' \
+    && [ -f "$ROOT/marketplace/plugins/pstack/skills/blast-radius/SKILL.md" ]; then
+    pass "32 documents the opt-in blast-radius pass and its vendored procedure"
+else
+    fail "32 does not document the opt-in CR_CLAUDE_AGENTS=blast-radius pass or its vendored procedure path"
+fi
+
 echo "test-pr-check-pair: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

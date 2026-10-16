@@ -1,0 +1,11 @@
+diff --git a/scripts/lanes/spawn.sh b/scripts/lanes/spawn.sh
+--- a/scripts/lanes/spawn.sh
++++ b/scripts/lanes/spawn.sh
+@@ -10,2 +10,1 @@
+-lanes="claude glm codex"
++lanes="claude codex"
+diff --git a/scripts/lanes/test-spawn.sh b/scripts/lanes/test-spawn.sh
+--- a/scripts/lanes/test-spawn.sh
++++ b/scripts/lanes/test-spawn.sh
+@@ -20,0 +21,1 @@
++assert_not_contains "refusal no longer names the dropped lane" "$out" "glm"

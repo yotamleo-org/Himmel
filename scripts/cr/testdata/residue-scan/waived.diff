@@ -1,0 +1,6 @@
+diff --git a/docs/lanes.md b/docs/lanes.md
+--- a/docs/lanes.md
++++ b/docs/lanes.md
+@@ -4,0 +5,2 @@
++The glm lane was removed in v1.1. ponytail: kept until v1.3, drop then
++The old path was dropped. residue-keep: callers outside the repo still read it

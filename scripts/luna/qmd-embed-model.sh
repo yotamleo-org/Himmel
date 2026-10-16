@@ -406,7 +406,7 @@ cmd_reembed() {
     write_yml_embed "$scratch/index.yml" "$uri" || die 2 "the egress gate refused the config copy; nothing was re-embedded"
 
     say "[2/4] qmd embed --force on the copy with $uri (long: about 2 h for our corpus on a 4090)"
-    INDEX_PATH="$copy" QMD_CONFIG_DIR="$scratch" run_qmd embed --force --timeout 0 || rc=$?
+    INDEX_PATH="$copy" QMD_CONFIG_DIR="$scratch" run_qmd embed --force --timeout 0 --max-docs-per-batch 4096 || rc=$?
     [ "$rc" -eq 0 ] || die 5 "qmd embed failed on the copy (rc=$rc); the live index is untouched. Remove $copy and retry."
 
     say "[3/4] completeness: a second embed pass must find nothing to do"

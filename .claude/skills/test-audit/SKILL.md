@@ -39,6 +39,10 @@ description: "Invoke when writing, changing, reviewing or sweeping tests: author
 >    Authoring gate for new tests plus audit workflow for low-value,
 >    implementation-coupled, or duplicative tests and the test-only
 >    production seams they demand."
+> 7. An "expired transition residue" item is added (HIMMEL-5869, from the
+>    HIMMEL-5868 audit): one bullet at the end of Junk patterns and one
+>    paragraph at the end of the Authoring gate. The PR-time counterpart is
+>    `scripts/cr/residue-scan.sh` (/pr-check step 2.9, advisory).
 >
 > No other rule text differs from the pinned commit.
 
@@ -84,6 +88,16 @@ deliberate one-line mutation of the owner), then passing against the real one,
 and put that RED excerpt in the PR body. A suite that stays green when its
 subject is deleted or inverted is the defect this skill exists to catch.
 
+**Transition gate (himmel).** A PR that removes, renames or migrates something
+must not leave residue (junk pattern "expired transition residue") behind: the
+deletion itself is the proof. Drop each guard, shim, one-time check and "was
+removed" line before merge, keep it with `residue-keep: <security or safety
+reason>` (a secret, PHI, egress or bypass path that must not return), or give
+it an expiry with `ponytail: <ceiling>, <upgrade path>`. `scripts/cr/residue-scan.sh`
+flags the mechanical cases at PR time; do not flag `RED CONTROL` rows, "never X"
+rows on a destructive operation, or anything guarding a `guard-*` hook,
+`.gitleaks.toml` or `egress-matrix.json`.
+
 ## Junk patterns
 
 The shared checklist for both modes: the authoring gate rejects a new test that
@@ -108,7 +122,14 @@ matches one, and audits hunt for existing tests that do.
 - negative controls that pass for an unrelated reason, such as a denial from a
   different guard or a rejection the production path never reaches;
 - names or fixtures that promise more than the input exercises, such as a
-  "retires the window" test asserting the window was not cleared.
+  "retires the window" test asserting the window was not cleared;
+- expired transition residue (himmel): anything added to manage a one-time
+  removal, rename or migration that outlives it, in five classes: (a) removal
+  guards, a negative assertion on a removed name, lane, flag or string; (b)
+  literal source greps standing in for behaviour; (c) migration or compat
+  shims, legacy readers and deprecation handling past their window; (d)
+  doctor checks, gates or deny rows whose only target is already gone; (e)
+  prose that only says X was removed, dropped or renamed.
 
 ## Value bar
 

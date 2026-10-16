@@ -22,7 +22,9 @@ Read on demand from `console-template.md` step 10. `<kit>` is the kit path in st
     180 s and wakes only when two consecutive samples differ from the action
     key you last saw: `legs=` (a leg FRESH → STALE / FREE / WRAPPED …),
     `livestate=` (DRIFT / MALFORMED), `prs=` (the repo's open-PR set — any
-    PR opening or merging, yours or not), `tails=` (a leg's marker: FINDING, READY …),
+    PR opening or merging, yours or not), `orphans-wip=` (an In Progress /
+    In Review ticket nobody holds — no leg, no open PR: dispatch it as a RESUME
+    row of `next-dispatchable.sh`), `tails=` (a leg's marker: FINDING, READY …),
     `legset=`, `board=` (its class — the STALE age alone does not wake, and a
     move TO `ok` never wakes on its own either, since that's just the console's
     own render; the key still saves, so a later move to STALE/MISSING wakes

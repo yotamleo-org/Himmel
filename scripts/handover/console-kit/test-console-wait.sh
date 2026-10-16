@@ -606,6 +606,20 @@ wait_exit "$WPID"
 check "(w3) a tick line with no tracker= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# --- (w4) orphans-wip= wakes on any change of its value, and a tick
+# line without it stays a valid sample (the (w3) case covers the absent field) ----
+orph_line() { sed "s/ denials=none/ orphans-wip=$1 denials=none/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
+reset_stub
+orph_line 0
+I="$(new_inbox w4)"
+start "$I" "$WORK/w4.out" --legs "N1.md"
+wait_hb "$I" || fail "(w4) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+orph_line 1:HIMMEL-9
+wait_exit "$WPID"
+check "(w4) an orphans-wip change ends the wait" "0" "$rc"
+check "(w4) the wake names orphans-wip" "WAKE tick changed=orphans-wip bank=PROCEED" "$(head -n1 "$WORK/w4.out")"
+
 # --- (x) vault= wakes on a class change TO STALL or PUSH-LAG, never on
 # age/count alone, never on a move back to ok/skip/unknown, and its absence
 # (an older tick.sh) is still a valid sample. The wake names the reproduce
@@ -961,6 +975,115 @@ wait_hb "$I" || fail "(u5542-5) no baseline heartbeat"
 wait_exit "$WPID"
 check "(u5542-5) a tick line with no unowned-prs= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (ts): a tracker that STAYS stale re-wakes once per streak ---
+# tracker= class changes wake once (w); after the first STALE the class never moves
+# again, so a console that did not act stayed unwoken for hours. The marker
+# <inbox>.wait.trackerstale holds the epoch the streak was first seen; it wakes once
+# past CONSOLE_WAIT_TRACKER_STALE_MIN (default 30) and clears when tracker leaves STALE.
+reset_stub; tracker_line STALE:3h
+I="$(new_inbox ts1)"
+printf '%s\n' "$(( $(date +%s) - 2400 ))" > "$I.wait.trackerstale"
+start "$I" "$WORK/ts1.out" --legs "N1.md"
+wait_exit "$WPID"
+check "(ts1) a tracker STALE for 40 min wakes (rc 0)" "0" "$rc"
+check "(ts1) the wake names tracker-stale" "WAKE tracker-stale tracker=STALE:3h" "$(head -n1 "$WORK/ts1.out")"
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/ts1b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ts2) the re-arm inside the same streak stays quiet" "" "$(cat "$WORK/ts1b.out")"
+check "(ts2) and is still waiting (rc 124)" "124" "$rc"
+reset_stub; tracker_line STALE:5m
+I="$(new_inbox ts3)"
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/ts3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ts3) a tracker first seen STALE does not re-wake yet" "" "$(cat "$WORK/ts3.out")"
+check "(ts3) but the streak is recorded" "present" "$([ -e "$I.wait.trackerstale" ] && echo present)"
+reset_stub; tracker_line ok
+timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/ts4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ts4) tracker back to ok clears the streak marker" "absent" "$([ -e "$I.wait.trackerstale" ] && echo present || echo absent)"
+
+reset_stub; tracker_line STALE:3h
+I="$(new_inbox ts5)"
+printf '%s\n' "$(( $(date +%s) - 2400 ))" > "$I.wait.trackerstale"
+CONSOLE_WAIT_TRACKER_STALE_MIN=08 start "$I" "$WORK/ts5.out" --legs "N1.md"
+wait_exit "$WPID"
+check "(ts5) a leading-zero threshold (08) is decimal, not an octal error" "WAKE tracker-stale tracker=STALE:3h" "$(head -n1 "$WORK/ts5.out")"
+
+# --- (pc): the waiter closes a wrapped predecessor console -------
+# The console doc's first line names its predecessor (`successor to <doc>.md`). The
+# waiter runs close-wrapped-leg.sh --console on it once, logs a Results bullet; exit
+# 6/7 retry on the next sample; an unfinished predecessor (3 lock held, 4 not WRAPPED)
+# is left alone; any other refusal wakes the console once (WAKE predecessor-open).
+cat > "$STUB/close.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB/close.calls"
+n="$(wc -l < "$STUB/close.calls" | tr -d ' ')"
+rc="$(sed -n "${n}p" "$STUB/close.rcs" 2>/dev/null)"; [ -n "$rc" ] || rc="$(tail -n 1 "$STUB/close.rcs")"
+[ -z "$rc" ] || [ "$rc" -eq 0 ] || { [ -f "$STUB/close.msg" ] && cat "$STUB/close.msg" >&2 || echo "close-wrapped-leg: refusing - stub rc $rc" >&2; }
+exit "${rc:-0}"
+EOF
+export CONSOLE_WAIT_CLOSE="$STUB/close.sh"
+pc_console() { # <dir name>: fixture console doc naming predecessor AS.md; prints the console doc path
+    mkdir -p "$WORK/$1"
+    printf '# AT — CONSOLE — successor to AS.md (fill signal 45 %%)\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE AT\n' > "$WORK/$1/AT.md"
+    printf '# AS\n\n## Results (newest at the bottom)\n\n- 09:00 WRAPPED\n' > "$WORK/$1/AS.md"
+    : > "$STUB/close.calls"; printf '%s\n' "$2" > "$STUB/close.rcs"
+    printf '%s' "$WORK/$1/AT.md"
+}
+reset_stub
+CD="$(pc_console pc1 0)"; I="$(new_inbox pc1)"
+timeout 4 bash "$WAIT" "$I" --doc "$CD" --legs "N1.md" > "$WORK/pc1.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(pc1) a wrapped predecessor is closed through close-wrapped-leg --console, once" "--console $WORK/pc1/AS.md" "$(cat "$STUB/close.calls")"
+check "(pc1) the close logs a Results bullet in the console doc" "1" "$(tail -n +4 "$CD" | grep -c 'predecessor.*AS.*closed')"
+check "(pc1) a closed predecessor is not a wake (still waiting, rc 124)" "124" "$rc"
+reset_stub
+CD="$(pc_console pc2 6)"; I="$(new_inbox pc2)"; printf '6\n0\n' > "$STUB/close.rcs"
+timeout 6 bash "$WAIT" "$I" --doc "$CD" --legs "N1.md" > "$WORK/pc2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(pc2) exit 6 (live subtree) retries on the next sample, then closes" "2" "$(wc -l < "$STUB/close.calls" | tr -d ' ')"
+check "(pc2) a retryable refusal wakes nothing" "" "$(cat "$WORK/pc2.out")"
+reset_stub
+CD="$(pc_console pc3 5)"; I="$(new_inbox pc3)"
+start "$I" "$WORK/pc3.out" --doc "$CD" --legs "N1.md"
+wait_exit "$WPID"
+check "(pc3) any other refusal wakes the console (rc 0)" "0" "$rc"
+check "(pc3) the wake is WAKE predecessor-open" "WAKE predecessor-open rc=5" "$(head -n1 "$WORK/pc3.out")"
+timeout 4 bash "$WAIT" "$I" --doc "$CD" --legs "N1.md" > "$WORK/pc3b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(pc3) it wakes once: the re-arm is quiet" "" "$(cat "$WORK/pc3b.out")"
+reset_stub
+CD="$(pc_console pc4 3)"; I="$(new_inbox pc4)"; printf '3\n4\n' > "$STUB/close.rcs"
+timeout 6 bash "$WAIT" "$I" --doc "$CD" --legs "N1.md" > "$WORK/pc4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(pc4) a held-lock or not-WRAPPED predecessor is asked, then left alone: no wake" "" "$(cat "$WORK/pc4.out")"
+check "(pc4) and nothing is logged" "0" "$(tail -n +4 "$CD" | grep -c 'predecessor')"
+check "(pc4) and it is retried (the predecessor may wrap later)" "yes" "$([ "$(wc -l < "$STUB/close.calls" | tr -d ' ')" -ge 2 ] && echo yes)"
+reset_stub
+mkdir -p "$WORK/pc5"; printf '# AT — CONSOLE — successor to none — first console of the chain\n\n## Results (newest at the bottom)\n' > "$WORK/pc5/AT.md"
+: > "$STUB/close.calls"; I="$(new_inbox pc5)"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/pc5/AT.md" --legs "N1.md" > "$WORK/pc5.out" 2>/dev/null
+check "(pc5) a console with no predecessor doc closes nothing" "0" "$(wc -l < "$STUB/close.calls" | tr -d ' ')"
+reset_stub
+CD="$(pc_console pc6 5)"; I="$(new_inbox pc6)"
+echo "close-wrapped-leg: refusing - 10 live session(s) matched leg names [x] (need exactly 1)" > "$STUB/close.msg"
+start "$I" "$WORK/pc6.out" --doc "$CD" --legs "N1.md"
+wait_exit "$WPID"
+rm -f "$STUB/close.msg"
+check "(pc6) 10 live sessions is not 0: the ambiguous refusal wakes" "WAKE predecessor-open rc=5" "$(head -n1 "$WORK/pc6.out")"
+reset_stub
+CD="$(pc_console pc7 0)"; I="$(new_inbox pc7)"
+printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$STUB/close.sleep.sh"; chmod +x "$STUB/close.sleep.sh"
+CONSOLE_WAIT_CLOSE="$STUB/close.sleep.sh" CONSOLE_WAIT_CLOSE_TIMEOUT=1 start "$I" "$WORK/pc7.out" --doc "$CD" --legs "N1.md"
+sleep 0.5
+printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
+n=0
+while [ "$n" -lt 100 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(pc7) a hung close is killed at CONSOLE_WAIT_CLOSE_TIMEOUT: the Telegram line still wakes within 10 s" "WAKE telegram" "$(head -n1 "$WORK/pc7.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+reset_stub
+CD="$(pc_console pc8 0)"; I="$(new_inbox pc8)"
+CONSOLE_WAIT_CLOSE="$STUB/close.sleep.sh" CONSOLE_WAIT_CLOSE_TIMEOUT=1 CONSOLE_WAIT_CLOSE_HANGS=2 start "$I" "$WORK/pc8.out" --doc "$CD" --legs "N1.md"
+n=0
+while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(pc8) a close that hangs every sample wakes after CONSOLE_WAIT_CLOSE_HANGS in a row" "WAKE predecessor-open rc=124" "$(head -n1 "$WORK/pc8.out")"
+check "(pc8) and it is marked woke, so it wakes once" "woke:$WORK/pc8/AS.md" "$(cat "$I.wait.predecessor" 2>/dev/null)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+unset CONSOLE_WAIT_CLOSE
 
 # --- (k) usage ---------------------------------------------------------------
 bash "$WAIT" >/dev/null 2>&1; rc=$?

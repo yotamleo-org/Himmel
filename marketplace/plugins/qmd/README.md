@@ -135,6 +135,12 @@ a `QMD_OPENAI_API_KEY=...` line, mode 0600 or 0400, else the file is refused),
 and it will not start a remote daemon without it. Salus keeps its own
 local-only index (`QMD_INDEX_NAME=salus`, `salus.yml`, port 8182).
 
+Keep generated and boilerplate paths out of a code collection with an
+`ignore:` list in its `index.yml` entry (for example `graphify-out/**`,
+`**/fixtures/**`, `marketplace/plugins/*/README*.md` on the `himmel`
+collection); the next `qmd update` drops the matching documents. Measured on
+12 fixed queries, this removed noise but did not change any top-5 hit.
+
 Switching an existing index is copy-and-swap, never in place: the index must
 never mix local and remote vectors (qmd checks no vector's model at query time).
 `scripts/luna/qmd-embed-model.sh reembed|swap` builds the copy, holds the swap
