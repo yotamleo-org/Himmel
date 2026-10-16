@@ -443,5 +443,49 @@ out15=$( unset GRAPHIFY_NO_AUTO_REFRESH; PATH="$BIN15:$PATH" bash "$SCRIPT" "$CO
   && pass "T15 graphify saw GRAPHIFY_NO_AUTO_REFRESH=1" \
   || fail "T15 graphify did not see GRAPHIFY_NO_AUTO_REFRESH=1 (rc=$rc15): $(cat "$WS/env.log") $out15"
 
+# --- T16: a semantic node survives an AST topology rebuild ----------------
+# Fixture shape copied from the live himmel graph.json (2026-10-16): a
+# semantic node, and a semantic edge from the file's AST page node, both
+# attached to marketplace/plugins/i-have-adhd/README.md. The stub's `update`
+# rewrites graph.json AST-only, as a topology rebuild does.
+echo "T16: semantic nodes/edges on a rebuilt file survive graphify update; the guard decision is logged"
+CORPUS16="$WS/c16"; OUT16="$CORPUS16/graphify-out"; mkdir -p "$OUT16"
+cat > "$OUT16/graph.json" <<'JSON'
+{"directed": false, "multigraph": false, "graph": {}, "built_at_commit": "x",
+ "nodes": [
+  {"id": "marketplace_plugins_i_have_adhd_readme", "label": "i-have-adhd/README.md", "_origin": "ast", "file_type": "document", "node_kind": "page", "source_file": "marketplace/plugins/i-have-adhd/README.md", "source_location": "L1"},
+  {"id": "ayghri_i_have_adhd_upstream", "label": "ayghri/i-have-adhd upstream repo", "_origin": "semantic", "file_type": "concept", "source_file": "marketplace/plugins/i-have-adhd/README.md", "source_location": null},
+  {"id": "ayghri_second_fact", "label": "second fact", "_origin": "semantic", "file_type": "concept", "source_file": "marketplace/plugins/i-have-adhd/README.md", "source_location": null}],
+ "links": [
+  {"source": "marketplace_plugins_i_have_adhd_readme", "target": "ayghri_i_have_adhd_upstream", "relation": "cites", "_origin": "semantic", "confidence": "EXTRACTED", "source_file": "marketplace/plugins/i-have-adhd/README.md"}],
+ "hyperedges": [
+  {"id": "h1", "label": "group", "nodes": ["marketplace_plugins_i_have_adhd_readme", "ayghri_i_have_adhd_upstream", "ayghri_second_fact"], "relation": "participate_in", "_origin": "semantic", "source_file": "marketplace/plugins/i-have-adhd/README.md"}]}
+JSON
+BIN16="$WS/bin16"; mkdir -p "$BIN16"
+cat > "$BIN16/graphify" <<'STUB'
+#!/usr/bin/env bash
+python3 - "$2" <<'PY'
+import json, os, sys
+p = os.path.join(sys.argv[1], "graphify-out", "graph.json")
+g = json.load(open(p))
+g["nodes"] = [n for n in g["nodes"] if n.get("_origin") == "ast"] + [{"id": "new_ast", "label": "n", "_origin": "ast", "file_type": "code", "source_file": "x.sh"}]
+g["links"] = [e for e in g["links"] if e.get("_origin") == "ast"]
+g["hyperedges"] = []
+json.dump(g, open(p, "w"))
+PY
+exit 0
+STUB
+chmod +x "$BIN16/graphify"
+out16=$( PATH="$BIN16:$PATH" bash "$SCRIPT" "$CORPUS16" 2>&1 ); rc16=$?
+ids16=$(python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));print(" ".join(sorted(n["id"] for n in g["nodes"])), len(g["links"]), len(g["hyperedges"]))' "$OUT16/graph.json")
+[ "$rc16" -eq 0 ] && pass "T16 exits 0" || fail "T16 should exit 0 (got $rc16): $out16"
+[ "$ids16" = "ayghri_i_have_adhd_upstream ayghri_second_fact marketplace_plugins_i_have_adhd_readme new_ast 1 1" ] \
+  && pass "T16 both semantic nodes, their edge and the hyperedge survived the rebuild; the new AST node is kept" \
+  || fail "T16 graph after rebuild: $ids16"
+[ "$(tail -1 "$OUT16/semantic-runs.jsonl" 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("ast_restored_nodes"))' 2>/dev/null)" = "2" ] \
+  && pass "T16 the restore is logged in semantic-runs.jsonl" || fail "T16 no restore row: $(cat "$OUT16/semantic-runs.jsonl" 2>/dev/null)"
+echo "$out16" | grep -q "restored 2 semantic node" && pass "T16 the restore is announced on stderr" || fail "T16 stderr: $out16"
+[ ! -e "$OUT16/.graph.pre-ast.json" ] && pass "T16 no snapshot left behind" || fail "T16 snapshot left: $(ls -A "$OUT16")"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
