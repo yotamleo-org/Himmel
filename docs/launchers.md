@@ -49,7 +49,7 @@ reference: the `claude-codex` section of [tooling-catalog.md](tooling-catalog.md
 |---|---|---|
 | `CODEX_MODEL` | the proxy's current Codex model | Main model slug |
 | `CODEX_HAIKU`, `CODEX_SUBAGENT_MODEL` | `CODEX_MODEL` | Small-model and subagent slugs |
-| `CODEX_CONTEXT_WINDOW` | `272000` | Compaction window. Above about 272k input is billed at a higher rate; above about 372k exceeds the backend window and warns. `spawn-claudex --context-tier 272k\|353k\|900k` sets it per dispatch and always overrides an ambient value (unstated = 272k, the cheapest); the tier used is recorded as `context_tier` in the session `meta.json` |
+| `CODEX_CONTEXT_WINDOW` | `272000` | Compaction window. Above about 272k input is billed at a higher rate; above about 372k exceeds the backend window and warns. `spawn-claudex --context-tier 272k\|353k\|900k` sets it per dispatch and always overrides an ambient value (unstated = 272k, the cheapest); `dispatch-codex-exec.sh` and `dispatch-codex-wsl.sh` take the same flag with the same rule, and `/lanes` shows the default and the enum on each of those lanes; the tier used is recorded as `context_tier` in the session `meta.json` |
 
 ## `claude-openrouter`
 

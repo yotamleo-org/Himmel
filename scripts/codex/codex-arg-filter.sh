@@ -13,11 +13,38 @@
 #     CAF_ADDDIR_HINT     --add-dir refusal hint (default names the ACL preflight)
 #   codex_filter_passthrough_args "$@"
 #     rc=0: CAF_NEW_ARGS (array), CAF_HAVE_MODEL, CAF_HAVE_SANDBOX,
-#           CAF_REASONING_EFFORT are set.
+#           CAF_REASONING_EFFORT, CAF_CONTEXT_TIER (default 272k),
+#           CAF_CONTEXT_WINDOW (its token count) and CAF_CONTEXT_TIER_SET
+#           (1 when the caller stated --context-tier) are set.
 #     rc=1: a refusal was printed to stderr; caller exits 2.
 #
 # Bash 3.2 safe.
 # shellcheck disable=SC2034 # CAF_* globals are the sourced function output contract.
+
+# The context tiers a dispatch may buy, cheapest first, and their window. Input
+# past 272k bills at a higher rate, so 272k is the default. Twin of
+# CODEX_CONTEXT_TIER_WINDOW in scripts/telegram/spawn-claudex.ts; the filter
+# suite fails if the two maps disagree.
+CAF_CONTEXT_TIERS="272k 353k 900k"
+caf_context_window() {
+    case "$1" in
+        272k) echo 272000 ;;
+        353k) echo 353000 ;;
+        900k) echo 900000 ;;
+        *) return 1 ;;
+    esac
+}
+
+caf_set_context_tier() {  # caf_set_context_tier <self> <value>
+    local w
+    if ! w="$(caf_context_window "$2")"; then
+        echo "$1: --context-tier must be one of 272k|353k|900k (got \"$2\"); see docs/tooling-catalog.md#claude-codex" >&2
+        return 1
+    fi
+    CAF_CONTEXT_TIER="$2"
+    CAF_CONTEXT_WINDOW="$w"
+    CAF_CONTEXT_TIER_SET=1
+}
 
 codex_filter_passthrough_args() {
     local self="${CAF_SELF_NAME:-dispatch-codex-exec.sh}"
@@ -28,6 +55,9 @@ codex_filter_passthrough_args() {
     CAF_HAVE_MODEL=0
     CAF_HAVE_SANDBOX=0
     CAF_REASONING_EFFORT=""
+    CAF_CONTEXT_TIER="272k"
+    CAF_CONTEXT_WINDOW="$(caf_context_window 272k)"
+    CAF_CONTEXT_TIER_SET=0
     CAF_NEW_ARGS=()
 
     local a prev="" rev_val
@@ -54,6 +84,11 @@ codex_filter_passthrough_args() {
                 prev="$a"
                 continue
                 ;;
+            --context-tier)
+                caf_set_context_tier "$self" "$a" || return 1
+                prev="$a"
+                continue
+                ;;
         esac
         # ALLOW-LIST (codex-adv final round): deny-listing clap's option
         # surface is unwinnable. Specific deny cases stay for their
@@ -66,6 +101,12 @@ codex_filter_passthrough_args() {
                     none|low|medium|high|xhigh|max) CAF_REASONING_EFFORT="$rev_val" ;;
                     *) echo "$self: --reasoning-effort value '$rev_val' not in none|low|medium|high|xhigh|max" >&2; return 1 ;;
                 esac
+                prev="$a"
+                continue
+                ;;
+            --context-tier) prev="$a"; continue ;;
+            --context-tier=*)
+                caf_set_context_tier "$self" "${a#--context-tier=}" || return 1
                 prev="$a"
                 continue
                 ;;
@@ -82,7 +123,7 @@ codex_filter_passthrough_args() {
             --model|--model=*|-m|-m?*) CAF_HAVE_MODEL=1 ;;
             --sandbox|--sandbox=*|-s|-s=*|-s?*) CAF_HAVE_SANDBOX=1 ;;
             --json) ;;  # structured output - inert
-            -*) echo "$self: flag '$a' is not in the lane allow-list (--model/-m, --sandbox/-s safe values, --reasoning-effort, --json) - refused" >&2; return 1 ;;
+            -*) echo "$self: flag '$a' is not in the lane allow-list (--model/-m, --sandbox/-s safe values, --reasoning-effort, --context-tier, --json) - refused" >&2; return 1 ;;
         esac
         CAF_NEW_ARGS+=("$a")
         prev="$a"
@@ -91,6 +132,10 @@ codex_filter_passthrough_args() {
     # the flag vanishes silently and the run proceeds at default effort.
     if [ "$prev" = "--reasoning-effort" ]; then
         echo "$self: --reasoning-effort requires a value (none|low|medium|high|xhigh|max)" >&2
+        return 1
+    fi
+    if [ "$prev" = "--context-tier" ]; then
+        echo "$self: --context-tier requires a value (272k|353k|900k)" >&2
         return 1
     fi
     return 0

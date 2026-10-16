@@ -47,6 +47,7 @@ cat > "$CODEX_STUB" <<EOF
 echo "codex" >> "$LOG"
 printf '%s\n' "\$*" > "$TMP/codex.args"
 pwd > "$TMP/codex.cwd"
+printf '%s\n' "\${CODEX_CONTEXT_WINDOW-unset}" > "$TMP/codex.ctx"
 exit 0
 EOF
 chmod +x "$CODEX_STUB"
@@ -424,6 +425,7 @@ cat > "$CODEX_STUB" <<EOF
 echo "codex" >> "$LOG"
 printf '%s\n' "\$*" > "$TMP/codex.args"
 pwd > "$TMP/codex.cwd"
+printf '%s\n' "\${CODEX_CONTEXT_WINDOW-unset}" > "$TMP/codex.ctx"
 exit 0
 EOF
 
@@ -550,6 +552,38 @@ esac
 run_dispatch --worktree "$WT" do-it --reasoning-effort
 assert_rc 2 "trailing --reasoning-effort with no value refused" "trailing-reff rc=$RC out=$OUT"
 if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite trailing bare --reasoning-effort"; else pass "codex not invoked on trailing bare --reasoning-effort"; fi
+
+# --- 16j: --context-tier ----------------------------------------------------
+# An ambient CODEX_CONTEXT_WINDOW must never buy a pricier tier: unstated pins 272000.
+: > "$LOG"
+CODEX_CONTEXT_WINDOW=900000 run_dispatch --worktree "$WT" do-it
+assert_rc 0 "ambient CODEX_CONTEXT_WINDOW run exits 0" "ctx-ambient rc=$RC out=$OUT"
+if [ "$(cat "$TMP/codex.ctx")" = "272000" ]; then pass "unstated tier pins 272000 over an ambient 900000"; else fail "ctx-ambient env: $(cat "$TMP/codex.ctx")"; fi
+case "$(cat "$TMP/codex.args")" in
+  "exec --model $CRITIC_MODEL --sandbox workspace-write do-it") pass "unstated tier adds no -c override" ;;
+  *) fail "ctx-ambient codex args: $(cat "$TMP/codex.args")" ;;
+esac
+for pair in 272k:272000 353k:353000 900k:900000; do
+  : > "$LOG"
+  run_dispatch --worktree "$WT" --context-tier "${pair%%:*}" do-it
+  assert_rc 0 "--context-tier ${pair%%:*} exits 0" "ctx-${pair%%:*} rc=$RC out=$OUT"
+  if [ "$(cat "$TMP/codex.ctx")" = "${pair##*:}" ]; then pass "--context-tier ${pair%%:*} exports ${pair##*:}"; else fail "ctx env ${pair%%:*}: $(cat "$TMP/codex.ctx")"; fi
+  case "$(cat "$TMP/codex.args")" in
+    "exec --model $CRITIC_MODEL --sandbox workspace-write -c model_context_window=${pair##*:} do-it") pass "--context-tier ${pair%%:*} becomes the trusted -c override, stripped from passthrough" ;;
+    *) fail "ctx codex args ${pair%%:*}: $(cat "$TMP/codex.args")" ;;
+  esac
+done
+: > "$LOG"
+run_dispatch --worktree "$WT" --context-tier=353k do-it
+if [ "$(cat "$TMP/codex.ctx")" = "353000" ]; then pass "--context-tier=353k equals form"; else fail "ctx-eq env: $(cat "$TMP/codex.ctx")"; fi
+: > "$LOG"
+run_dispatch --worktree "$WT" --context-tier 1m do-it
+assert_rc 2 "--context-tier 1m refused" "ctx-bad rc=$RC out=$OUT"
+case "$OUT" in *'--context-tier must be one of 272k|353k|900k (got "1m")'*) pass "bad tier names the closed enum" ;; *) fail "ctx-bad out: $OUT" ;; esac
+if grep -q codex "$LOG" 2>/dev/null; then fail "codex invoked despite bad --context-tier"; else pass "codex not invoked on bad --context-tier"; fi
+: > "$LOG"
+run_dispatch --worktree "$WT" do-it --context-tier
+assert_rc 2 "trailing bare --context-tier refused" "ctx-trailing rc=$RC out=$OUT"
 
 # --- 17: watchdog + ledger + evidence ----
 # 17a: the default budget must equal the codex-exec lane's own timeoutSeconds.

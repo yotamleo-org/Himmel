@@ -29,7 +29,7 @@
 #
 # Usage:
 #   dispatch-codex-wsl.sh --distro <name> --clone <in-distro-abs-path> \
-#       [--brief-file <path>] [--reasoning-effort <enum>] [codex args...]
+#       [--brief-file <path>] [--reasoning-effort <enum>] [--context-tier <272k|353k|900k>] [codex args...]
 #
 # Environment:
 #   CODEX_WSL_BIN                 wsl binary override (tests; default wsl.exe)
@@ -58,7 +58,7 @@ LOCKS_DIR="${CODEX_WSL_LOCKS_DIR:-$HOME/.himmel/state/codex-wsl-locks}"
 . "$SCRIPT_DIR/../lib/flow-run-ledger.sh"
 
 usage() {
-    echo "usage: dispatch-codex-wsl.sh --distro <name> --clone <in-distro-abs-path> [--brief-file <path>] [--reasoning-effort <enum>] [codex exec args...]" >&2
+    echo "usage: dispatch-codex-wsl.sh --distro <name> --clone <in-distro-abs-path> [--brief-file <path>] [--reasoning-effort <enum>] [--context-tier <272k|353k|900k>] [codex exec args...]" >&2
     exit 2
 }
 
@@ -244,6 +244,12 @@ fi
 if [ -n "$CAF_REASONING_EFFORT" ]; then
     pin_args="$pin_args -c model_reasoning_effort=\"$CAF_REASONING_EFFORT\""
 fi
+# The context tier is always pinned (unstated = 272k, the cheapest); the env
+# assignment rides the in-distro command because wsl.exe does not carry ours.
+CTX_ENV="CODEX_CONTEXT_WINDOW=$CAF_CONTEXT_WINDOW"
+if [ "$CAF_CONTEXT_TIER_SET" -eq 1 ]; then
+    pin_args="$pin_args -c model_context_window=$CAF_CONTEXT_WINDOW"
+fi
 
 # --- Ledger start row (spec B2.7; fixed schema, task_name is the audit). ---
 RUN_ID="codex-wsl-$(date +%s)-$$"
@@ -273,9 +279,9 @@ fi
 # metachar refusal is the belt-and-suspenders early gate). Matches the
 # per-word single-quoting of IN_ARGS.
 if [ -n "$BRIEF_FILE" ]; then
-    IN_CMD="cd '$CLONE' && codex exec $pin_args$IN_ARGS \"\$(cat)\""
+    IN_CMD="cd '$CLONE' && $CTX_ENV codex exec $pin_args$IN_ARGS \"\$(cat)\""
 else
-    IN_CMD="cd '$CLONE' && codex exec $pin_args$IN_ARGS"
+    IN_CMD="cd '$CLONE' && $CTX_ENV codex exec $pin_args$IN_ARGS"
 fi
 
 if [ -n "$BRIEF_FILE" ]; then

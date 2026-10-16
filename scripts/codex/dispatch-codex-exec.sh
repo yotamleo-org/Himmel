@@ -85,7 +85,7 @@
 #      CODEX_BIN script naming it is refused too.
 #
 # Usage:
-#   dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [--reasoning-effort <none|low|medium|high|xhigh|max>] [codex exec args...]
+#   dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [--reasoning-effort <none|low|medium|high|xhigh|max>] [--context-tier <272k|353k|900k>] [codex exec args...]
 #
 # Exit: codex rc, or stdout-relay rc if codex succeeded; watchdog timeout wins.
 # Wrapper codes: 2 usage/refusal | 4 lock held | 124 watchdog timeout | 127 no codex
@@ -329,6 +329,11 @@ fi
 have_model="$CAF_HAVE_MODEL"
 have_sandbox="$CAF_HAVE_SANDBOX"
 reasoning_effort="$CAF_REASONING_EFFORT"
+# Invariant 10: the context tier is ALWAYS pinned (unstated = 272k, the cheapest),
+# so an ambient CODEX_CONTEXT_WINDOW can never buy a pricier tier.
+context_tier_set="$CAF_CONTEXT_TIER_SET"
+context_window="$CAF_CONTEXT_WINDOW"
+export CODEX_CONTEXT_WINDOW="$context_window"
 NEW_ARGS=()
 if [ "${#CAF_NEW_ARGS[@]}" -gt 0 ]; then
     NEW_ARGS=("${CAF_NEW_ARGS[@]}")
@@ -896,6 +901,11 @@ fi
 if [ -n "$reasoning_effort" ]; then
     # shellcheck disable=SC2089  # the embedded quotes are intentional TOML string syntax for the -c override; see SC2090 note below where pin_args is expanded
     pin_args="$pin_args -c model_reasoning_effort=\"$reasoning_effort\""
+fi
+# Invariant 10: a stated --context-tier also reaches codex itself as the trusted
+# model_context_window override; unstated adds no argv (the env pin above stands).
+if [ "$context_tier_set" -eq 1 ]; then
+    pin_args="$pin_args -c model_context_window=$context_window"
 fi
 # the argv codex is finally launched with never carries a refused
 # trust/sandbox bypass flag, whatever built it (the caller args were already

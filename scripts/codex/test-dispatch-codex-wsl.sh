@@ -218,6 +218,17 @@ echo "test: --reasoning-effort becomes the trusted -c override"
 STUB_VERIFY_OUT="/home/u/work/himmel" run_dispatch --distro Ubuntu --clone /home/u/work/himmel --reasoning-effort xhigh "hi"
 grep -q 'model_reasoning_effort' "$TMP/codex.args" || fail "effort -c override missing"
 
+echo "test: --context-tier pins CODEX_CONTEXT_WINDOW in the in-distro command (HIMMEL-1907)"
+STUB_VERIFY_OUT="/home/u/work/himmel" run_dispatch --distro Ubuntu --clone /home/u/work/himmel "hi"
+grep -q 'CODEX_CONTEXT_WINDOW=272000 codex exec' "$TMP/codex.args" || fail "unstated tier does not pin 272000"
+STUB_VERIFY_OUT="/home/u/work/himmel" run_dispatch --distro Ubuntu --clone /home/u/work/himmel --context-tier 900k "hi"
+grep -q 'CODEX_CONTEXT_WINDOW=900000 codex exec' "$TMP/codex.args" || fail "900k tier not pinned"
+grep -q 'model_context_window=900000' "$TMP/codex.args" || fail "900k -c override missing"
+if grep -q -- '--context-tier' "$TMP/codex.args"; then fail "--context-tier leaked into passthrough"; fi
+STUB_VERIFY_OUT="/home/u/work/himmel" run_dispatch --distro Ubuntu --clone /home/u/work/himmel --context-tier 1m "hi"
+assert_rc 2 "bad tier refused" "bad tier accepted"
+grep -q -- '--context-tier must be one of 272k|353k|900k (got "1m")' "$TMP/err" || fail "bad-tier message missing"
+
 echo "test: exit-code propagation"
 STUB_VERIFY_OUT="/home/u/work/himmel" STUB_CODEX_RC=7 run_dispatch --distro Ubuntu --clone /home/u/work/himmel "hi"
 assert_rc 7 "codex rc propagated" "codex rc not propagated"
