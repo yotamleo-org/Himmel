@@ -5,7 +5,7 @@
 #   convene <seat> <tier>           spend one convening from the seat's per-window budget
 #   breakglass <finding-class>      route a substrate-lying finding class straight to the operator
 #
-# Exit: 0 ok · 2 bad usage or an ordinary class · 3 budget exhausted (refusing is fail-safe).
+# Exit: 0 ok · 2 bad usage or an ordinary class · 3 refused: budget exhausted, state lock busy or budget uncountable (refusing is fail-safe).
 # State: one "<epoch> <seat> <tier>" line per convening in $JUDGE_LADDER_STATE (default
 # <handover_root>/.judge-ladder). Knobs: JUDGE_LADDER_{SONNET,OPUS,FABLE}_CAP per seat per
 # JUDGE_LADDER_WINDOW seconds; JUDGE_LADDER_NOW pins the clock for tests. bash 3.2-safe.
@@ -69,8 +69,9 @@ case "$cmd" in
     trap 'rmdir "$lock" 2>/dev/null' EXIT
     used=0
     if [ -f "$state" ]; then
-      used="$(awk -v now="$NOW" -v win="$WINDOW" -v s="$seat" -v t="$tier" \
-        '$2 == s && $3 == t && now - $1 < win { n++ } END { print n + 0 }' "$state")" \
+      # ENVIRON, not -v: awk -v would interpret backslash escapes in the seat.
+      used="$(JL_SEAT="$seat" awk -v now="$NOW" -v win="$WINDOW" -v t="$tier" \
+        '$2 == ENVIRON["JL_SEAT"] && $3 == t && now - $1 < win { n++ } END { print n + 0 }' "$state")" \
         || { echo "judge-ladder: cannot count the budget; refusing" >&2; exit 3; }
     fi
     if [ "$used" -ge "$cap" ]; then

@@ -47,6 +47,10 @@ run convene "seat F" sonnet >/dev/null
 JUDGE_LADDER_WINDOW=0 run convene seatG sonnet >/dev/null
 [ "$?" = 2 ] && pass "a zero window is refused" || fail "zero window accepted"
 
+run convene 'seat\tH' sonnet >/dev/null; run convene 'seat\tH' sonnet >/dev/null; run convene 'seat\tH' sonnet >/dev/null
+run convene 'seat\tH' sonnet >/dev/null
+[ "$?" = 3 ] && pass "a backslash in the seat still counts against the cap" || fail "backslash seat bypassed the cap"
+
 mkdir "$WORK/state.lock"
 out="$(JUDGE_LADDER_STATE="$WORK/state" run convene seatE sonnet)"; rc=$?
 rmdir "$WORK/state.lock"
