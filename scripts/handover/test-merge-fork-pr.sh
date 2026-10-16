@@ -51,7 +51,7 @@ case "$1 $2" in
         printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":%s},"nodes":[%s{"isResolved":true}]}}}}}\n' "$h" "$nodes" ;;
     "pr merge")
         printf 'MERGE %s\n' "$*" >> "$STUB_LOG"
-        [ -n "${STUB_NOFLIP:-}" ] || sed -i 's/"state":"OPEN"/"state":"MERGED"/' "$STUB_PRVIEW" ;;
+        [ -n "${STUB_NOFLIP:-}" ] || { sed 's/"state":"OPEN"/"state":"MERGED"/' "$STUB_PRVIEW" > "$STUB_PRVIEW.tmp" && mv "$STUB_PRVIEW.tmp" "$STUB_PRVIEW"; } ;;
     *) exit 91 ;;
 esac
 STUB
