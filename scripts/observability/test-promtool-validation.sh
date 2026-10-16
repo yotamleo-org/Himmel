@@ -106,6 +106,34 @@ do
     fi
 done
 
+# Case 0.2 (hysteresis): HimmelSessionDead and HimmelWatcherDown carry a
+# keep_firing_for grace (Grafana twin: keepFiringFor), so a gauge/scrape
+# oscillation around the threshold cannot resolve and re-fire the alert.
+# Both twins must carry the same value. Needs no binary.
+extract_keep() {
+    local file="$1" marker="$2"
+    awk -v marker="$marker" '
+        $0 ~ ("^[[:space:]]*" marker "$") { found=1; next }
+        found && /^[[:space:]]*- (uid|alert):/ { exit }
+        found && /^[[:space:]]*(keep_firing_for|keepFiringFor):[[:space:]]*[0-9]/ {
+            sub(/^[[:space:]]*(keep_firing_for|keepFiringFor):[[:space:]]*/, "")
+            print $1
+            exit
+        }
+    ' "$file"
+}
+echo "=== 0.2. HYSTERESIS (HIMMEL-2184): keep_firing_for is set and matches between the twins ==="
+for pair in \
+    "himmel_session_dead|- uid: himmel_session_dead|- alert: HimmelSessionDead" \
+    "himmel_watcher_down|- uid: himmel_watcher_down|- alert: HimmelWatcherDown"
+do
+    IFS='|' read -r label grafana_marker prom_marker <<<"$pair"
+    grafana_keep="$(extract_keep "$SCRIPT_DIR/provisioning/alerting/rules.yaml" "$grafana_marker")"
+    prom_keep="$(extract_keep "$SCRIPT_DIR/alerts.rules.yml" "$prom_marker")"
+    assert_eq "$label: keep_firing_for is 10m in alerts.rules.yml" "10m" "$prom_keep"
+    assert_eq "$label: keepFiringFor matches between rules.yaml and alerts.rules.yml" "$prom_keep" "$grafana_keep"
+done
+
 # Case 0.5 (noDataState policy): every rule in rules.yaml
 # must carry the noDataState this table expects, matching rules.yaml's own
 # header comment (NoData only when refId A is a bare metric selector; OK

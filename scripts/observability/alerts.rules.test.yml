@@ -498,6 +498,34 @@ tests:
             exp_annotations:
               summary: 'Host workstation1 has 1 dead session(s)'
 
+  # HIMMEL-2184: keep_firing_for: 10m holds both alerts through a sub-window
+  # flap. Each series is bad for 12 samples (past for: 10m, so it fires),
+  # good for 4, then bad again; at 14m (2m into the good gap) the alert must
+  # still be firing instead of resolving and re-entering pending.
+  - interval: 1m
+    input_series:
+      - series: 'session_dead_total{host="workstation1"}'
+        values: '1x12 0x4 1x10'
+      - series: 'up{job="flow-exporter"}'
+        values: '0x12 1x4 0x10'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: HimmelSessionDead
+        exp_alerts:
+          - exp_labels:
+              host: workstation1
+              severity: warn
+            exp_annotations:
+              summary: 'Host workstation1 has 1 dead session(s)'
+      - eval_time: 14m
+        alertname: HimmelWatcherDown
+        exp_alerts:
+          - exp_labels:
+              job: flow-exporter
+              severity: page
+            exp_annotations:
+              summary: 'Exporter job flow-exporter is down'
+
   # HIMMEL-1604 healthy post-boot steady state: 2.05 GiB nonpaged + 4.08 GiB
   # paged = 6.13 GiB total, flat, and 20 GiB committed of a 64 GiB limit
   # (0.31). None of the four pool/commit rules may fire on this.
