@@ -184,6 +184,6 @@ Token numbers stay an input (§1): a re-audit ADOPT still needs an outcome
 gain, not only a token drop.
 
 **Record** the verdict (a §3 re-audit state), the measured-on model IDs
-and the re-open trigger in the registry's
-[re-audit ledger](registry.md#re-audit-ledger), with the
+and the re-open trigger in the re-audit ledger kept with the
+rejected-tool record in the state repo, with the
 evidence in a dated `reaudit-<yyyy-mm>-sprint<n>.md` beside it.
