@@ -28,7 +28,8 @@
 #
 # Usage: bash scripts/cleanup/reap-mcp-orphans.sh [--kill]
 # Env:   REAP_ORPHANS_LOG  log file (default ~/.cache/himmel/reap-mcp-orphans.log)
-# Exit:  0 done; 2 usage error / no way to enumerate / --kill on the seam.
+# Exit:  0 done; 1 a kill failed or the log is not writable; 2 usage error /
+#        no way to enumerate / --kill on the seam.
 set -uo pipefail
 
 KILL=0
@@ -57,12 +58,27 @@ fi
 SIG='context7-mcp|graphify-mcp|tsserver|typescript-language-server|typingsInstaller|/\.claude/plugins/cache/'
 KEEP='qmd.* --http|telegram.*(supervisor|poller)|hermes.*gateway|flow-exporter|openrgb-bridge|ggs.*bridge'
 
-declare -A PPID_OF COMM_OF CMD_OF
+# Indexed arrays keyed by numeric PID (bash 3.2 has no associative arrays).
+PPID_OF=(); COMM_OF=(); CMD_OF=()
 while IFS='|' read -r pid ppid comm cmd; do
-    PPID_OF[$pid]=$ppid
-    COMM_OF[$pid]=$comm
-    CMD_OF[$pid]=$cmd
+    PPID_OF[pid]=$ppid
+    COMM_OF[pid]=$comm
+    CMD_OF[pid]=$cmd
 done <<< "$TABLE"
+
+# Succeeds when the launched program matches a signature: the first words of the
+# command line up to the first option, so an unrelated process that merely
+# carries an MCP name in an argument (--note=context7-mcp) is not selected.
+sig_match() {
+    local head="" tok n=0
+    for tok in $1; do
+        case "$tok" in -*) break ;; esac
+        head="$head $tok"
+        n=$((n+1))
+        [ "$n" -ge 3 ] && break
+    done
+    grep -Eq "$SIG" <<< "$head"
+}
 
 # Succeeds when an ancestor is a live claude, or any ancestor is some other
 # live process that is not itself an MCP/LSP signature match (an editor, a
@@ -74,45 +90,51 @@ done <<< "$TABLE"
 has_owner_ancestor() {
     local p=$1 hops=0
     while [ "$hops" -lt 64 ]; do
-        [ -n "${PPID_OF[$p]:-}" ] || return 0
-        p=${PPID_OF[$p]}
+        [ -n "${PPID_OF[p]:-}" ] || return 0
+        p=${PPID_OF[p]}
         [ "$p" = "0" ] && return 1
         [ "$p" = "1" ] && return 1
-        [ "${COMM_OF[$p]:-}" = "claude" ] && return 0
-        grep -Eq "$KEEP" <<< "${CMD_OF[$p]:-}" && return 0
-        grep -Eq "$SIG" <<< "${CMD_OF[$p]:-}" || return 0
+        [ "${COMM_OF[p]:-}" = "claude" ] && return 0
+        grep -Eq "$KEEP" <<< "${CMD_OF[p]:-}" && return 0
+        sig_match "${CMD_OF[p]:-}" || return 0
         hops=$((hops+1))
     done
     return 0
 }
 
-mkdir -p "$(dirname "$LOG")" 2>/dev/null
+mkdir -p "$(dirname "$LOG")" || { echo "reap-mcp-orphans: cannot create log dir for $LOG" >&2; exit 1; }
 verb="would kill"; [ "$KILL" -eq 1 ] && verb="killing"
-found=0
+found=0; killed=0; failed=0
+logw() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$1" >> "$LOG" || { echo "reap-mcp-orphans: cannot write $LOG" >&2; exit 1; }; }
 while IFS='|' read -r pid ppid comm cmd; do
     [ "$pid" = "$$" ] && continue
     [ "$comm" = "claude" ] && continue
-    # Match the signature on the program + args, not on a bare mention inside
-    # a shell string: require the first word to be an interpreter/binary, not a shell.
     case "$comm" in bash|sh|zsh|grep|ps|awk|sed) continue ;; esac
-    grep -Eq "$SIG" <<< "$cmd" || continue
+    sig_match "$cmd" || continue
     grep -Eq "$KEEP" <<< "$cmd" && continue
     has_owner_ancestor "$pid" && continue
     found=$((found+1))
     line="ORPHAN $pid ($comm) $verb: $cmd"
     echo "$line"
-    printf '%s %s\n' "$(date -u +%FT%TZ)" "$line" >> "$LOG"
+    logw "$line"
     # The table is a snapshot: re-read the live command line, whitespace folded
     # the same way as the snapshot, so a recycled PID is not signalled.
     # ponytail: a replacement with identical args can still pass; a start-time handle (pidfd, /proc starttime) would close it.
     live=$(ps -o args= -p "$pid" 2>/dev/null | tr -s '[:space:]' ' ')
     snap=$(tr -s '[:space:]' ' ' <<< "$cmd")
     if [ "$KILL" -eq 1 ] && [ "${live# }" = "${snap# }" ] && [ -n "$live" ]; then
-        kill "$pid" 2>/dev/null || printf '%s kill FAILED for %s\n' "$(date -u +%FT%TZ)" "$pid" | tee -a "$LOG" >&2
+        if kill "$pid" 2>/dev/null; then
+            killed=$((killed+1))
+        else
+            failed=$((failed+1))
+            echo "reap-mcp-orphans: kill FAILED for $pid" >&2
+            logw "kill FAILED for $pid"
+        fi
     fi
 done <<< "$TABLE"
 
 summary="reap-mcp-orphans: $found orphan(s) ($verb)"
+[ "$KILL" -eq 1 ] && summary="$summary, $killed signalled, $failed failed"
 echo "$summary"
-printf '%s %s\n' "$(date -u +%FT%TZ)" "$summary" >> "$LOG"
-exit 0
+logw "$summary"
+[ "$failed" -eq 0 ]

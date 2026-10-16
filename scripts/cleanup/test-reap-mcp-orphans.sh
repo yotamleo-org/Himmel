@@ -36,6 +36,7 @@ cat > "$FIX" <<'T'
 900|999|node|node /home/u/.npm/_npx/w/node_modules/.bin/context7-mcp
 500|1|bash|bash scripts/foo.sh context7-mcp-docs-note
 600|1|node|node /home/u/.claude/plugins/cache/x/typescript-language-server --stdio
+550|1|node|node /usr/bin/worker --note=context7-mcp
 T
 
 run() { REAP_ORPHANS_INPUT="$FIX" REAP_ORPHANS_LOG="$LOG" bash "$REAPER" 2>&1; }
@@ -54,11 +55,15 @@ grep -q 'ORPHAN 600 ' <<< "$out" && pass "orphan plugin-cache LSP flagged" || fa
 ! grep -q 'ORPHAN 401 ' <<< "$out" && pass "child of a whitelisted daemon spared" || fail "whitelisted daemon child flagged"
 ! grep -q 'ORPHAN 900 ' <<< "$out" && pass "unknown parent chain spared" || fail "unresolved chain flagged"
 ! grep -q 'ORPHAN 500 ' <<< "$out" && pass "non-MCP argv0 not matched" || fail "bash note flagged"
+! grep -q 'ORPHAN 550 ' <<< "$out" && pass "signature in an option argument not matched" || fail "option-argument mention flagged"
 grep -q 'would kill' <<< "$out" && pass "report-only says would kill" || fail "no would-kill wording"
 [ -s "$LOG" ] && pass "log appended" || fail "log empty"
 
 out=$(REAP_ORPHANS_INPUT="$FIX" bash "$REAPER" --kill 2>&1); rc=$?
 [ "$rc" -eq 2 ] && pass "--kill refuses the canned-table seam" || fail "--kill on seam rc=$rc"
+
+out=$(REAP_ORPHANS_INPUT="$FIX" REAP_ORPHANS_LOG="/proc/no-such-dir/x.log" bash "$REAPER" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && pass "unwritable log exits 1" || fail "unwritable log rc=$rc"
 
 [ "$failures" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$failures failed"; exit 1
