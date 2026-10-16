@@ -21,11 +21,13 @@ repos:
   - repo: local
     hooks:
       # commit-msg: conventional subject carrying a HIMMEL-<n> ticket; merge and
-      # revert messages pass. pygrep --negate fails when no line matches.
+      # revert messages pass. --multiline matches the whole message, so \A pins
+      # the check to the subject (a ticketed body line cannot satisfy it);
+      # --negate fails when there is no match.
       - id: himmel-ticket-id
         name: conventional commit subject with a HIMMEL-<n> ticket ID
         language: pygrep
-        entry: '^((feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?!?: .*HIMMEL-[0-9]+|(Merge|Revert) )'
-        args: [--negate]
+        entry: '\A((feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)\n]+\))?!?: [^\n]*HIMMEL-[0-9]+|(Merge|Revert) )'
+        args: [--negate, --multiline]
         always_run: true
         stages: [commit-msg]

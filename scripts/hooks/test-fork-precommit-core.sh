@@ -58,7 +58,11 @@ commit() { # commit <msg> -> rc; stages a fresh file so "nothing to commit" can 
   N=$((N + 1))
   echo "change $N" > "$FORK/change-$N.txt"
   git -C "$FORK" add "change-$N.txt"
-  (cd "$FORK" && git commit -q -m "$1" >"$WORK/out" 2>&1)
+  if [ -n "${2:-}" ]; then
+    (cd "$FORK" && git commit -q -m "$1" -m "$2" >"$WORK/out" 2>&1)
+  else
+    (cd "$FORK" && git commit -q -m "$1" >"$WORK/out" 2>&1)
+  fi
 }
 
 # 1. default branch refused (the first commit also carries .himmel itself)
@@ -82,6 +86,13 @@ if commit "[HIMMEL-5978] add core"; then
   bad "non-conventional subject is refused"
 else
   ok "non-conventional subject is refused"
+fi
+
+# 3b. a ticketed line in the BODY must not satisfy the check for the subject
+if commit "update things" "chore(hooks): [HIMMEL-5978] add core"; then
+  bad "ticketed body line does not excuse an unticketed subject"
+else
+  ok "ticketed body line does not excuse an unticketed subject"
 fi
 
 # 4. normal ticketed commit passes
