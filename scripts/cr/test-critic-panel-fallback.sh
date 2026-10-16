@@ -727,7 +727,8 @@ else
 fi
 
 # --- Case 16b: the budget is SHARED, not merely the attempt count. FB1 burns
-# >=1s then fails; FB2 must then be handed LESS than the full member timeout.
+# >=1s then fails (a large CRITIC_TIMEOUT_SECS leaves slack so a loaded box still
+# reaches FB2); FB2 must then be handed LESS than the full member timeout.
 # The stub reads the timeout it was given off its parent's command line
 # (`timeout -k <grace> <secs> bash ...`) — a structural check, not wall clock:
 # load can only shrink the remaining budget, never grow it past the full one. ---
@@ -745,17 +746,17 @@ given="\$(ps -o args= -p "\$PPID" | awk '{for(i=1;i<=NF;i++) if(\$i=="-k"){print
 printf '%s %s\n' "\$model" "\$given" >> "$tmp/cap16b"
 [ "\$model" = "$PRI" ] && exit 1
 [ "\$model" = "$FB" ] && { sleep 1; exit 1; }
-exec sleep 999
+exit 1
 STUBEOF
     chmod +x "$STUB_SHARE"
     : > "$tmp/cap16b"
     printf '%s' "$DIFF" | CRITICS_JSON="$JSON_SHARE" CRITIC_FIRST_PASS="$STUB_SHARE" \
-        CRITIC_TIMEOUT_SECS=3 bash "$PANEL" >"$tmp/out16b" 2>"$tmp/err16b"
+        CRITIC_TIMEOUT_SECS=60 bash "$PANEL" >"$tmp/out16b" 2>"$tmp/err16b"
     _t16b_fb2="$(awk -v m="$FB2" '$1==m{print $2}' "$tmp/cap16b")"
     check "16b: last candidate was reached after FB1 failed" \
         "$(grep -cF -- "$FB2" "$tmp/cap16b")" "1"
     check "16b: last candidate handed less than the full member timeout (shared budget)" \
-        "$([ -n "$_t16b_fb2" ] && [ "$_t16b_fb2" -ge 1 ] && [ "$_t16b_fb2" -lt 3 ] && echo yes)" "yes"
+        "$([ -n "$_t16b_fb2" ] && [ "$_t16b_fb2" -ge 1 ] && [ "$_t16b_fb2" -lt 60 ] && echo yes)" "yes"
 else
     skip "16b: no timeout/ps binary"
 fi
