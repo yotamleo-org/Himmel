@@ -2,7 +2,8 @@
 
 The seven vendored pstack skills (`marketplace/plugins/pstack`, pinned
 `99743e9c`, [`VENDORED.md`](../../marketplace/plugins/pstack/VENDORED.md)) are
-installed for interactive sessions only. This page maps each one onto the himmel
+installed for interactive sessions only (route and per-skill adopt decisions: the
+HIMMEL-5802 audit, follow-ups HIMMEL-5803 to HIMMEL-5807). This page maps each one onto the himmel
 flow it should strengthen, names the overlap, and records which one gets the
 measured POC. Verdicts live in [`registry.md`](registry.md) once the POC has run.
 
@@ -17,6 +18,16 @@ measured POC. Verdicts live in [`registry.md`](registry.md) once the POC has run
 | `benchmark-checklist` | Eval scorecards, cost reports, leg-digest | Stops an unvetted number reaching a report | Rubric measurement protocol (`rubric.md` §4), `docs/tool-adoption/telemetry.md` | No: candidate for a later wiring into the A/B scorecard |
 | `principle-explain-the-number` | Same as `benchmark-checklist` (its shorter principle form) | Names the limiter before a number is trusted | `benchmark-checklist` (it points to it for perf numbers) | No: fold with `benchmark-checklist` |
 | `in-your-own-words` | `brainstorming` and `minerva` grill stages | Forces a restatement of the goal | `lean-skills:brainstorming`, `grilling` already open with goal restatement; one line of text, no leverage | No |
+
+## Related take-parts tickets (not duplicated here)
+
+Four pstack skills outside the seven are being taken in part, nothing installed;
+their scope stays in their own tickets: HIMMEL-5808 (`interrogate` verdict
+buckets into adversarial-verify), HIMMEL-5809 (`reflect` routing step into the
+wrap flow), HIMMEL-5810 (six-principle digest), HIMMEL-5811 (`arena` base
+selection and graft rule). The unvendored `poteto-mode` and the fork's
+SessionStart hook stay out: they grant autonomy the console, RETASK and GO rails
+own (HIMMEL-5697, A1).
 
 No overlap with `unslop`, `no-comments` or `comment-sicko`: those edit prose and
 comments, none of the seven reviews behaviour, measures numbers or generates
