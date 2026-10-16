@@ -100,6 +100,6 @@ A fork with its own `.pre-commit-config.yaml` (core, graphify) needs step 4's
 
 ## Pilot
 
-`yotamleo/qmd` on branch `himmel/fork-precommit-core`: PR linked from
-HIMMEL-5978. qmd has no hook setup of its own and uses oxlint, so the core adds
+`yotamleo/qmd` on branch `himmel/fork-precommit-core`:
+[PR 24](https://github.com/yotamleo/qmd/pull/24). qmd has no hook setup of its own and uses oxlint, so the core adds
 no overlap.
