@@ -31,7 +31,7 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 diff_file=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --diff-file) diff_file="${2:-}"; shift 2 ;;
+        --diff-file) shift; if [ $# -gt 0 ]; then diff_file="$1"; shift; fi ;;
         *) shift ;;
     esac
 done

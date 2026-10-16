@@ -24,12 +24,20 @@ for c in a:a-removal-guard b:b-source-grep c:c-transition-code d:d-transition-ga
     check "class $cls: total findings 1" "$(count_all "$out")" "1"
 done
 
+summary0='residue-scan (advisory): 0 finding(s)'
+
 out="$(scan clean.diff)"; rc=$?
 check "clean: exit 0" "$rc" "0"
 check "clean: no finding" "$(count_all "$out")" "0"
+check "clean: summary line" "$(printf '%s\n' "$out" | grep -cF "$summary0")" "1"
 
-out="$(scan waived.diff)"
+out="$(scan waived.diff)"; rc=$?
+check "waived: exit 0" "$rc" "0"
 check "waived (ponytail / residue-keep): no finding" "$(count_all "$out")" "0"
+check "waived: summary line" "$(printf '%s\n' "$out" | grep -cF "$summary0")" "1"
+
+out="$(timeout 10 bash "$SCAN" --diff-file </dev/null)"; rc=$?
+check "--diff-file with no value: terminates, exit 0" "$rc" "0"
 
 out="$(scan a-removal-guard.diff)"
 check "finding names file:line" "$(printf '%s\n' "$out" | grep -c 'scripts/lanes/test-spawn.sh:21')" "1"
