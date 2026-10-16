@@ -1,0 +1,12 @@
+# himmel fork-adapter gitleaks config (HIMMEL-5978): the full built-in ruleset
+# plus an ANCHORED allowlist (^...$ on the matched secret), so a SHA pin is not
+# flagged but a secret merely containing one still is.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "git SHA-1 and sha256 digests, exact match only"
+regexes = [
+  '''^[0-9a-f]{40}$''',
+  '''^[0-9a-f]{64}$''',
+]
