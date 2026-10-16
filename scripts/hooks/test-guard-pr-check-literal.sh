@@ -61,6 +61,7 @@ done
 # it in the anchor's own console-kit/, so they must be guarded too.
 echo 'echo mog' >"$ORIGIN/scripts/handover/merge-on-green.sh"
 echo 'echo go' >"$ORIGIN/scripts/handover/console-kit/go.sh"
+echo 'echo gate' >"$ORIGIN/scripts/handover/console-kit/himmel-gate.sh"
 echo ': go-gate' >"$ORIGIN/scripts/lib/go-gate.sh"
 echo ': handover-path' >"$ORIGIN/scripts/lib/handover-path.sh"
 echo 'doc' >"$ORIGIN/docs/a.md"
@@ -1464,7 +1465,9 @@ print(glob.glob('*/node_modules/*'))
 PY
 ENVELOPE
 )
-run "HIMMEL-4367 cd + python3 heredoc with a */ glob stays judged (python runs its body) -> deny" 2 "$(payload "$H4367_CD_PY" "$WT")" "$HR"
+# Allowed by command position: cd and a python whose text holds
+# no process-spawning name (the PY_SPAWN_RE denylist) run no gate.
+run "HIMMEL-6015 cd + python3 heredoc with a */ glob, no spawn name -> allow" 0 "$(payload "$H4367_CD_PY" "$WT")" "$HR"
 H4367_CAT=$(cat <<'ENVELOPE'
 cat > /tmp/rows.txt <<'EOF'
 echo x | xargs -I{} sh -c 'y {}'
@@ -1516,7 +1519,6 @@ for v in \
     "cat <<EOF > /tmp/x.sh${NL}bash scripts/{cr,x}/clear-cr-marker.sh b${NL}EOF" \
     "python3 - <<EOF${NL}import os; os.system('bash scripts/c?/clear-cr-marker.sh b')${NL}EOF" \
     "node - <<EOF${NL}require('child_process').execSync('bash scripts/c?/clear-cr-marker.sh b')${NL}EOF" \
-    "grep -f - /tmp/f <<EOF${NL}scripts/c?/clear*${NL}EOF" \
     "cat <<'EOF' | bash${NL}bash scripts/c?/clear-cr-marker.sh b${NL}EOF" \
     "bash scripts/c?/clear-cr-marker.sh b" \
     "echo {url}; bash scripts/c?/clear-cr-marker.sh b" \
@@ -1528,6 +1530,10 @@ for v in \
     "cat <<EOF${NL}print([x*2 for x in range(3)])${NL}EOF"; do
     run "HIMMEL-4367 probe [${v%%"$NL"*}] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 done
+# grep reads its patterns from the body and runs nothing (an inert
+# reader at command position).
+v="grep -f - /tmp/f <<EOF${NL}scripts/c?/clear*${NL}EOF"
+run "HIMMEL-6015 grep -f - heredoc of a glob pattern -> allow" 0 "$(payload "$v" "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/cr/pr-check-context.sh
 
 # a message argument (gh pr/issue comment|create|edit|review|view,
@@ -1555,10 +1561,15 @@ for v in \
     "printf -v x %s '\$(bash scripts/cr/write-verdicts.sh sweep)'; cat <<EOF${NL}\${x@P}${NL}EOF" \
     "printf -v 'BASH_CMDS[cat]' %s /bin/bash; cat <<'EOF'${NL}bash scripts/cr/write-verdicts.sh sweep${NL}EOF" \
     "cd '/tmp/\$(bash scripts/cr/write-verdicts.sh)' && echo \"\${PWD@P}\"" \
-    "cat <<'EOF'${NL}then run bash scripts/cr/write-verdicts.sh sweep${NL}EOF" \
-    "cat <<'EOF' | head -3${NL}run bash scripts/handover/console-kit/go.sh 12 abc${NL}EOF" \
     "node /tmp/x/scripts/jira/dist/index.js comment HIMMEL-1 \"bash scripts/cr/write-verdicts.sh sweep\""; do
     run "HIMMEL-4574 j2064 control [${v%%"$NL"*}] -> deny" 2 "$(payload "$v" "$TMP")" "$HR"
+done
+# cat (and head) print a quoted heredoc body to stdout and run
+# nothing; the printf -v / cd rebinding shapes above stay denied.
+for v in \
+    "cat <<'EOF'${NL}then run bash scripts/cr/write-verdicts.sh sweep${NL}EOF" \
+    "cat <<'EOF' | head -3${NL}run bash scripts/handover/console-kit/go.sh 12 abc${NL}EOF"; do
+    run "HIMMEL-6015 inert cat heredoc [${v%%"$NL"*}] -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
 done
 # A list or pipeline of readers (grep, cat, sed with inert scripts, git
 # grep/log/show/diff, ...) runs nothing, whatever its patterns and file
@@ -1593,8 +1604,13 @@ done
 # ... but the same text piped or substituted into an interpreter, a real
 # separator outside the quotes, a non-message gh/node, a VAR= prefix, a write
 # and git commit's message (it lands in .git/COMMIT_EDITMSG; -F is the remedy)
-# all stay denied. The python3 heredoc is a deliberate keep: python runs its
-# body as code.
+# all stay denied.
+# A python heredoc with no process-spawning name (PY_SPAWN_RE)
+# runs no gate and is allowed; one that calls os.system on a gate is denied.
+v="python3 - <<'EOF'${NL}print('bash scripts/handover/console-kit/go.sh 1 abc')${NL}EOF"
+run "HIMMEL-6015 python3 heredoc printing a gate path -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
+v="python3 - <<'EOF'${NL}import os; os.system('bash scripts/handover/console-kit/go.sh 1 abc')${NL}EOF"
+run "HIMMEL-6015 python3 heredoc os.system on go.sh -> deny" 2 "$(payload "$v" "$TMP")" "$HR"
 # shellcheck disable=SC2016 # the literal `$(...)` text, never expanded here
 for v in \
     "cat <<'EOF' | bash${NL}bash scripts/cr/write-verdicts.sh sweep${NL}EOF" \
@@ -1603,7 +1619,6 @@ for v in \
     "bash -c \"\$(cat <<'EOF'${NL}bash scripts/cr/write-verdicts.sh sweep${NL}EOF${NL})\"" \
     "eval \"\$(cat <<'EOF'${NL}bash scripts/cr/write-verdicts.sh sweep${NL}EOF${NL})\"" \
     "cat <<'EOF'; bash scripts/cr/write-verdicts.sh sweep${NL}x${NL}EOF" \
-    "python3 - <<'EOF'${NL}print('bash scripts/handover/console-kit/go.sh 1 abc')${NL}EOF" \
     "cat > /tmp/x.md <<'EOF'${NL}then run bash scripts/cr/write-verdicts.sh sweep${NL}EOF" \
     'gh pr comment 1 --body "x"; bash scripts/cr/write-verdicts.sh sweep' \
     'gh pr comment 1 --body "x" | bash scripts/cr/write-verdicts.sh sweep' \
@@ -2196,6 +2211,22 @@ run "4932: control [quoted-variable path] -> deny" 2 "$(payload 'bash "$X/script
 run "4932: control [command substitution in path] -> deny" 2 "$(payload 'bash scripts/cr/$(echo write-verdicts).sh' "$WT")" "$HR"
 run "4932: control [pr-check script name] -> deny" 2 "$(payload 'bash scripts/cr/pr-check-context.sh > /tmp/o4932' "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
+
+# ---- command-position match: the audit sample shapes ----------------------
+# Each fixture file holds one command; its name prefix is the verdict: allow-*
+# must pass (a mention, or a himmel-gate run from the anchor), deny-* must stay
+# refused (the intended catches). Two rows need a dirty worktree copy first.
+FX_CMDPOS="$(cd "$(dirname "$0")" && pwd)/fixtures/guard-pr-check-literal-cmdpos"
+for f in "$FX_CMDPOS"/*.cmd; do
+    name="${f##*/}"
+    case "$name" in allow-*) want=0 ;; *) want=2 ;; esac
+    case "$name" in
+    deny-catch-anchor-mismatch.cmd) echo changed >>"$WT/scripts/cr/ledger-append.sh" ;;
+    deny-gate-relative-dirty.cmd) echo changed >>"$WT/scripts/handover/console-kit/himmel-gate.sh" ;;
+    esac
+    run "6015: [$name]" "$want" "$(payload "$(cat "$f")" "$WT")" "$HR"
+    g -C "$WT" checkout -q -- .
+done
 
 echo
 if [ "$FAILED" -eq 0 ]; then
