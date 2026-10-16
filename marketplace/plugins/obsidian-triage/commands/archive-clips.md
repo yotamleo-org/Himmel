@@ -38,13 +38,15 @@ Every per-clip outcome MUST emit exactly one line to stdout BEFORE the final sum
 
 - Graduated: `✓ <clip-filename.md> — graduated → Clippings/_done/<YYYY-MM>/, {L} inbound links rewritten`
 - Skip (not eligible): `⊘ <clip-filename.md> — skipped (not-eligible): <missing — harvested_at | processed | in-synthesis>`
+- Skip (stuck): `⊘ <clip-filename.md> — skipped (stuck): <evidence_pending — triage drains it | legacy, needs manual Phase 8 | not synthesis-cited, never moved to _evidence/>; NOT a retry-next-run skip, listed in _deferred.md § Stuck in inbox` — emitted for every Phase 2 stuck-in-inbox clip INSTEAD of the generic `(not-eligible)` line; counts toward `S`.
 - Skip (dedup): `⊘ <clip-filename.md> — skipped (dedup): canonical URL matches <[[…done clip]] | sibling in batch>; left in inbox for operator`
 - Skip (collision): `⊘ <clip-filename.md> — skipped (collision): <dest path> already exists and differs; left in inbox`
 - Failed: `✗ <clip-filename.md> — failed (<phase>): <reason>; reverted`
 
-The final summary is two lines:
+The final summary is two lines (three when any clip is stuck):
 1. `archive-clips: N graduated, D deduped, S skipped, F failed. (See ✓ / ⊘ / ✗ lines above.)` — `N`/`D`/`S`/`F` MUST equal the count of `✓` / `⊘`(dedup) / `⊘`(other) / `✗` per-clip glyph lines respectively. If they disagree, abort with a clear error.
 2. `archive-clips: _deferred.md written with <X> fan-out, <Y> tail-skipped, <Z> safety entries.` — `X`/`Y`/`Z` are the entry counts written into `_deferred.md` in Phase 5 (sourced from external records, NOT from per-clip glyph lines), so this line is NOT cross-checked against the glyphs.
+3. Only when ≥1 clip was logged `(stuck)`: `archive-clips: <T> stuck in inbox (structurally ineligible, will not clear by re-running) — see _deferred.md § Stuck in inbox.` — `T` MUST equal the count of `(stuck)` lines. This keeps a quiet `0 graduated, S skipped, 0 failed` from reading as a healthy no-op while clips are stuck (HIMMEL-1713).
 
 Exit codes:
 - 0: all eligible clips graduated or correctly skipped; `_deferred.md` written
@@ -152,7 +154,7 @@ eligible regardless of the three conditions above, and it MUST NOT enter
 Phase 3 dedup: a dedup-skip would collide with the drain (the drain would
 move the clip to `_evidence/` and the next `_deferred.md` regeneration would
 silently drop its Duplicates entry — the two intents must never share a
-clip). Log `⊘ … (not-eligible): evidence_pending — owes Phase 8, triage owns it`
+clip). Log `⊘ … (stuck): evidence_pending — owes Phase 8, triage owns it`
 and record it for Phase 5's Stuck-in-inbox list.
 
 **Stuck-in-inbox tracking (HIMMEL-1713).** Under the 3-state model (LUNA-83/84)
@@ -163,7 +165,7 @@ therefore not "waiting its turn" — it is a clip whose move to `_evidence/`
 never completed. With `evidence_pending: true` present, `/triage-clips`' debt
 drain will sweep it; WITHOUT the marker it is a legacy clip (triaged before
 the marker existed) that is deliberately NOT auto-drained and needs a manual
-Phase 8. Record every such clip (basename, `triaged_at`, current
+Phase 8. Log each as `⊘ … (stuck): …` (not `(not-eligible)`) and record every such clip (basename, `triaged_at`, current
 `ig_media_pending` value, current `evidence_pending` value) for Phase 5 —
 this is what stops the deadlock from being silent.
 
