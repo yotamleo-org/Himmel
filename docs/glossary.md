@@ -15,7 +15,9 @@ layers enforce each invariant. Per-hook behaviour lives in
 Each headword is the plain name people read in the docs and UI. The repo's own
 name, the one that ids, env vars, file names, flags and command names use, is
 the alias in brackets. Keep repo identifiers in code spans (`/console`,
-`HIMMEL_CONSOLE_LEG`, `headed-arm-leg.sh`, `go.sh`); they are never renamed.
+`HIMMEL_CONSOLE_LEG`, `headed-arm-leg.sh`, `go.sh`). Repo identifiers are being
+renamed to the plain names (HIMMEL-5689); every old name stays a read-both alias
+for one release, listed in [Identifier aliases](#identifier-aliases).
 In prose, say the plain name, and the old name once in brackets the first time.
 
 | Term | Meaning |
@@ -68,6 +70,39 @@ the plain name, and say the old name once, the first time, in brackets.
 Not renamed on purpose: handover (the command, the directory and the doc keep
 the word; "handoff" already has four senses), attestation trailer ("trailer" is
 git's own term), floor, anchor, arm, lane, queue lock.
+
+## Identifier aliases
+
+Rename plan: [`internals/identifier-rename-inventory.md`](internals/identifier-rename-inventory.md)
+(HIMMEL-5689). Names ruled 2026-10-17. Each old name keeps working through the
+alias mechanism below until the removal release, the release after v1.1.3.
+Mechanisms: **env** = read-both via `scripts/lib/env-alias.sh` (`alias_env NEW OLD`;
+writers export both; a guard keyed on an identity marker uses `env_alias_any`
+and denies when either name is set); **wrapper** = a script at the old path that
+`exec`s the new one; **symlink** = the old directory links to the new one;
+**command alias** = a slash-command file forwarding to the new one.
+
+| Family | Old name | New name | Alias mechanism | Removed in |
+|---|---|---|---|---|
+| F1 | `HIMMEL_CONSOLE_LEG`, `_RELAY`, `_JUDGE` | `HIMMEL_CHIEF_WORKER`, `_RELAY`, `_JUDGE` | env | release after v1.1.3 |
+| F1b | `HIMMEL_CONSOLE_{DOC,NAME,WORKDIR,RUNDIR}`, `HIMMEL_CONSOLE_JUDGE_{DOC,QID,EFFORT}` | `HIMMEL_CHIEF_*` | env | release after v1.1.3 |
+| F2 | `HIMMEL_LEG_*`, `HIMMEL_LEAN_LEG` | `HIMMEL_WORKER_*`, `HIMMEL_LEAN_WORKER` | env | release after v1.1.3 |
+| F3 | `CADENCE_BANK_*`, `BANK_LIFT_*`, `CODEX_BANK_*`, `CLAUDEX_BANK_*`, `PARKED-BANK` | `CADENCE_BUDGET_*`, `BUDGET_LIFT_*`, `CODEX_BUDGET_*`, `CLAUDEX_BUDGET_*`, `PARKED-BUDGET` | env; the marker token is accepted in both spellings, the old one is emitted until the removal release | release after v1.1.3 |
+| F4 | `bank-preflight.sh`, `bank-lift.sh`, `bank-monitor.sh`, `bank-attribution.sh`, `bank-status` | `budget-*` | wrapper | release after v1.1.3 |
+| F5 | `clear-cr-marker.sh`, `cr-*.sh`, `CR_MARKER*`, `<git-dir>/cr-pending/` | `clear-review-marker.sh`, `review-*.sh`, `REVIEW_MARKER*`, the new marker dir | wrapper; readers check both marker dirs | release after v1.1.3 |
+| F6 | `headed-arm-leg.sh` | `headed-arm-worker.sh` | wrapper | release after v1.1.3 |
+| F7 | `leg-*.sh` helpers, `leg-digest*`, `close-wrapped-leg.sh` | `worker-*` | wrapper | release after v1.1.3 |
+| F8 | `scripts/handover/console-kit/`, `leg-preface*.md`, `console-template.md` | `scripts/handover/chief-kit/` | symlink | release after v1.1.3 |
+| F9 | `/console`, `console.sh`, `console-context.sh` | `/chief` | command alias; wrapper | release after v1.1.3 |
+| F10 | `overnight-shift`, `overnight-mode.md`, `OVERNIGHT_*` | `afk-shift`, `afk-mode.md` | command alias; env; redirect stub | release after v1.1.3 |
+| F11 | `watchdog` (auto-arm hooks only) | `auto-relaunch` | env; wrapper | release after v1.1.3 |
+| F13 | `class-sweep`, `SWEEP` ledger keyword, `missing-class-sweep` | `sibling-sweep` | env; the ledger keyword and exit reason are accepted in both spellings | release after v1.1.3 |
+| F14 | `speed bump` (message text) | `soft block` | none; text only | n/a |
+| F15 | `HIMMEL_*_WAVE`, `*_CHAIN`, `wave-` files | `sequence`, `batch` | env | release after v1.1.3 |
+
+F12 (`chokepoint-*`, docs-only) is on hold. Session-name suffixes (`-console`,
+`-relay`, `-N<k>-`, `-judge-<qid>`) are data contracts and are not renamed;
+`-chief` may only be accepted in addition.
 
 ## Who holds what
 
