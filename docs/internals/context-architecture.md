@@ -149,3 +149,18 @@ time. Treat root-file growth as debt. Before adding anything to the
 always-loaded surface, ask which row of the layering table it belongs to — the
 answer is rarely the root file. When reference detail already exists in a
 `docs/` file, the root should carry a **pointer**, not a copy.
+
+## Rule tags — enforced vs prose
+
+Every rule line (a column-0 `-`/`*` bullet) of `CLAUDE.md` (outside the
+upstream-owned `## graphify` section), `docs/handover/leg-preface.md` and
+`docs/handover/console-template.md` ends with a tag on its last line:
+`[enforced: <name>]` when a hook or gate backs it, else `[prose]`. A `[prose]`
+rule is the escalation backlog: its second drift moves it to a hook, gate or
+classifier. For an enforced rule the file keeps a one-line pointer; the detail
+lives in the hook's own header.
+
+- `bash scripts/lint/list-enforced-rules.sh` prints the enforced-rule table
+  (name, event, matcher) generated from the hook config and `.pre-commit-config.yaml`.
+- `bash scripts/lint/check-rule-tags.sh` fails on an untagged rule line or an
+  `[enforced: X]` whose X is not a row of that table. Not yet in pre-commit.
