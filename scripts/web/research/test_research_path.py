@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+import urllib.request
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -314,6 +316,57 @@ class RedditFetchLane(unittest.TestCase):
             self.assertIn(f"EXCLUDE {d}", flag)
             self.assertIn(f"EXCLUDE *.{d}", flag)
         self.assertEqual(flag.count("EXCLUDE"), 8)
+
+    def _fake_scrapling(self, page_url, status=200):
+        """Fake scrapling modules whose StealthyFetcher records its fetch kwargs."""
+        calls = []
+
+        class Page:
+            url = page_url
+            html_content = "<html></html>"
+
+        Page.status = status
+
+        class Fetcher:
+            @staticmethod
+            def fetch(url, **kw):
+                calls.append((url, kw))
+                return Page()
+
+        mods = {}
+        for name in ("scrapling", "scrapling.fetchers", "scrapling.engines", "scrapling.engines.constants"):
+            mods[name] = mock.MagicMock()
+        mods["scrapling.fetchers"].StealthyFetcher = Fetcher
+        mods["scrapling.engines.constants"].STEALTH_ARGS = ("--stealth-marker",)
+        return calls, mock.patch.dict(sys.modules, mods)
+
+    def test_browser_fetch_carries_resolver_rule_and_stealth_flags(self):
+        calls, patched = self._fake_scrapling("https://www.reddit.com/search/?q=x")
+        with patched:
+            rp.fetch_reddit_html("https://www.reddit.com/search/?q=x")
+        flags = calls[0][1]["extra_flags"]
+        self.assertIn(rp.reddit_resolver_rules(), flags)
+        self.assertIn("--stealth-marker", flags)
+
+    def test_browser_fetch_refuses_a_final_url_off_host(self):
+        calls, patched = self._fake_scrapling("https://out.reddit.com/redirect?to=x")
+        with patched:
+            with self.assertRaises(ValueError):
+                rp.fetch_reddit_html("https://www.reddit.com/search/?q=x")
+
+    def test_arctic_fetch_uses_the_same_host_redirect_handler(self):
+        seen = []
+        real = urllib.request.build_opener
+
+        def spy(*handlers):
+            seen.extend(handlers)
+            raise OSError("stop before any network")
+
+        with mock.patch.object(urllib.request, "build_opener", spy):
+            with self.assertRaises(OSError):
+                rp.fetch_arctic_json("https://arctic-shift.photon-reddit.com/api/posts/ids?ids=x")
+        self.assertTrue(any(isinstance(h, urllib.request.HTTPRedirectHandler) for h in seen))
+        self.assertIsNotNone(real)
 
     def test_fetchers_refuse_other_hosts(self):
         for fn in (rp.fetch_reddit_html, rp.fetch_arctic_json):

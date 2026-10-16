@@ -386,9 +386,11 @@ def fetch_reddit_html(url, timeout_ms=60000):
     subresources included), and a final URL off www.reddit.com is refused.
     """
     _pinned(url, "www.reddit.com")
+    from scrapling.engines.constants import STEALTH_ARGS
     from scrapling.fetchers import StealthyFetcher
+    # extra_flags replaces Scrapling's own stealth flags, so carry them along.
     page = StealthyFetcher.fetch(url, headless=True, network_idle=True, timeout=timeout_ms,
-                                 extra_flags=[reddit_resolver_rules()])
+                                 extra_flags=[*STEALTH_ARGS, reddit_resolver_rules()])
     _pinned(str(getattr(page, "url", "") or url), "www.reddit.com")
     if getattr(page, "status", 200) >= 400:
         raise OSError(f"HTTP {page.status}")
