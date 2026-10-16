@@ -121,19 +121,13 @@ Stages currently wired:
   oxlint-hardening-zero-violations (bug-class hardening — zero violations;
   pinned oxlint 1.88.0, with root/cwd diagnostics; findings and tool/JSON
   failures block, while only a missing `bunx` fails open; HIMMEL-2163/2802).
-- **Doctor check-ID + shell platform-guard gates (pre-commit):**
+- **Doctor check-ID + unchecked-mktemp gates (pre-commit):**
   doctor-check-ids (`check-doctor-check-ids.sh`, scoped to
   `scripts/himmel-doctor.sh` — every `check_cNN()` must be defined exactly
   once per numeric ID and invoked exactly once in the tail call list; catches
   a silently-shadowed ID from two branches picking the same next-free number,
   which a textually-clean merge does not surface; HIMMEL-2664),
-  new-shell-platform-guard (`check-new-shell-platform-guard.sh`, always-run —
-  refuses a commit that ADDS a `scripts/**/*.sh` with neither a `.ps1` twin
-  nor a documented platform-guard marker in its first 60 lines; the predicate
-  is shared with `scripts/parity/test-ws5-invariants.sh`'s T15 via
-  `scripts/lib/platform-guard.sh` so the two cannot drift; catches the same
-  gap at commit time instead of a paid after-report or in-guest VM run;
-  HIMMEL-2682), unchecked-mktemp (`check-unchecked-mktemp.sh`, always-run —
+  unchecked-mktemp (`check-unchecked-mktemp.sh`, always-run —
   refuses a commit whose staged diff ADDS an unguarded `T=$(mktemp -d)`
   capture: reads the STAGED blob of every staged `*.sh` (never the working
   tree), intersects the predicate's offending lines with the file's own
@@ -3802,6 +3796,24 @@ the test seam).
 after `/himmel-update` (marketplace re-sync) + a fresh session.
 
 Spec: `scripts/hooks/test-guard-console-dispatch.sh`.
+
+### `guard-console-foreground.sh` — console runs long kit scripts in the background (HIMMEL-5821)
+
+A foreground run of a slow console-kit script blocks the console turn for minutes
+and every leg's `SendMessage` queues behind it. Fires on `Bash`, only when
+`HIMMEL_CONSOLE_DOC` is set (`headed-arm.sh` exports it into a `--role console`
+session, but a leg launched from a console can inherit it) and the resolved session
+name ends in `-console` (an unresolvable name is allowed), and denies a command that runs a script
+named in `scripts/handover/console-kit/long-running.txt` unless
+`tool_input.run_in_background` is true. The deny message gives the re-issue shape.
+A textual match (interpreter + name, or a path in command position), so a grep that
+names a script is allowed. A workflow nudge: fails open on missing `jq` or an
+unparseable payload.
+
+**Bypass:** `CONSOLE_FG_OK=1` in the LAUNCHING shell, session-sticky.
+
+**Delivery:** himmel-ops plugin `hooks.json` (matcher `Bash`), the same lane as
+`guard-console-dispatch.sh`. Spec: `scripts/hooks/test-guard-console-foreground.sh`.
 
 ### `block-glm-external-writes.sh` — GLM-lane external-write deny (HIMMEL-654)
 

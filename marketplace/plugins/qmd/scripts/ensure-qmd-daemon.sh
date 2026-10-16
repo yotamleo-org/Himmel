@@ -296,6 +296,7 @@ remote_models=0
 # take the key only from the daemon env file (mode 0600), handed to the daemon start below and nowhere else.
 unset QMD_OPENAI_API_KEY JINA_API_KEY JINA_API
 provider_key=""
+tune_provider="" tune_batch="" tune_conc=""
 # Case-insensitive: OpenAI: / OPENAI: model strings must reach the gate too.
 env_models="$(printf '%s' "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" | tr '[:upper:]' '[:lower:]')"
 case "$env_models" in *openai:*) remote_models=1 ;; esac
@@ -314,6 +315,10 @@ if [ "$remote_models" -eq 1 ]; then
     esac
     # Read the one line; never source the file.
     provider_key="$(sed -n 's/^QMD_OPENAI_API_KEY=//p' "$key_env_file" | head -n 1)"
+    # The non-secret tuning names, also by line: an allowlist, each value validated before it is exported.
+    tune_provider="$(sed -n 's/^QMD_OPENAI_PROVIDER=//p' "$key_env_file" | head -n 1)"
+    tune_batch="$(sed -n 's/^QMD_OPENAI_EMBED_BATCH_SIZE=//p' "$key_env_file" | head -n 1)"
+    tune_conc="$(sed -n 's/^QMD_OPENAI_EMBED_CONCURRENCY=//p' "$key_env_file" | head -n 1)"
   fi
   qmd_gate="${QMD_JINA_GATE:-$(dirname -- "${BASH_SOURCE[0]}")/../../../../scripts/qmd/qmd-jina-gate.mjs}"
   if [ ! -f "$qmd_gate" ] || ! command -v node >/dev/null 2>&1; then
@@ -457,6 +462,10 @@ done
 cd "$HOME" 2>/dev/null || cd / || exit 1
 # Only a gate-approved remote-model daemon is handed the key.
 [ -n "$provider_key" ] && export QMD_OPENAI_API_KEY="$provider_key"
+# The daemon env file's tuning follows the same rule; an invalid value is dropped, not exported.
+case "$tune_provider" in ''|*[!A-Za-z0-9._-]*) ;; *) export QMD_OPENAI_PROVIDER="$tune_provider" ;; esac
+case "$tune_batch" in ''|*[!0-9]*|0*) ;; *) export QMD_OPENAI_EMBED_BATCH_SIZE="$tune_batch" ;; esac
+case "$tune_conc" in ''|*[!0-9]*|0*) ;; *) export QMD_OPENAI_EMBED_CONCURRENCY="$tune_conc" ;; esac
 start_rc=0
 # A named index starts its own daemon on the port in QMD_MCP_URL.
 idx_flag=""

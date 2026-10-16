@@ -2207,6 +2207,33 @@ cired_case ciredrun 'in_progress\t\tlint\ncompleted\tfailure\tshell-unit (2)\n'
 cired_out="$(postcap_start ciredrun)"; cired_rc=$?
 assert_eq "$cired_rc" "8" "a check-run still in progress refuses the CI-red round"
 
+# With no delta state and no finding at the reviewed head, no fix or
+# merge-forward trigger fits: the CI-red unlock alone admits the one bounded round.
+three_rounds cirednd clean
+git -C "$repo" push -q -u origin cirednd
+cired_rows "$RED"
+fix_commit cirednd
+postcap_f_head="$cap_fix_head"
+cired_out="$(postcap_start cirednd)"; cired_rc=$?
+assert_eq "$cired_rc" "0" "a CI-red reviewed head buys the round even when no delta round was spent ($cired_out)"
+assert_has "$cired_out" "pr-check: delta round 4 on cirednd (from $cap_r3_head)" "the unspent CI-red round names its scope"
+assert_has "$(cat "$git_dir/cr-review-rounds/cirednd.delta" 2>/dev/null)" "$cap_r3_head $cap_fix_head postcap-ci-red" "the unspent CI-red round is recorded in .delta"
+assert_has "$(ls "$git_dir/cr-review-rounds/" 2>/dev/null)" "cirednd.cired" "the unspent CI-red round writes the once-per-PR marker"
+printf 'again\n' >> "$repo/cirednd.txt"
+git -C "$repo" commit -q -am "cirednd again"
+postcap_f_head="$(git -C "$repo" rev-parse cirednd)"
+cired_out="$(postcap_start cirednd)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "a second CI-red unlock after an unspent-delta one is refused"
+
+three_rounds ciredndgreen clean
+git -C "$repo" push -q -u origin ciredndgreen
+cired_rows 'completed\tsuccess\tlint\ncompleted\tsuccess\tshell-unit (2)\n'
+fix_commit ciredndgreen
+postcap_f_head="$cap_fix_head"
+cired_out="$(postcap_start ciredndgreen)"; cired_rc=$?
+assert_eq "$cired_rc" "8" "a green reviewed head with no delta spent buys no CI-red round"
+assert_eq "$(ls "$git_dir/cr-review-rounds/ciredndgreen.delta" 2>/dev/null)" "" "a refused unspent CI-red unlock leaves no .delta"
+
 postcap_setup ciredbig suggestion
 cired_rows "$RED"
 n=0

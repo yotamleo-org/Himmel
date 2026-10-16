@@ -12,7 +12,6 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RECONCILE="$SCRIPT_DIR/reconcile-workers.sh"
 CADENCE="$SCRIPT_DIR/reconcile-cadence.sh"
-CADENCE_PS1="$SCRIPT_DIR/reconcile-cadence.ps1"
 
 PASSED=0
 FAILED=0
@@ -256,17 +255,6 @@ rc=$?
 assert_rc "C7 runner tick exits 0" 0 "$rc"
 assert_file_contains "C7 runner tick logs the DIED seat" "SEAT DIED codex/c7-killed pid=4110" "$RECONCILE_CADENCE_LOG"
 assert_file_contains "C7 runner tick stamps the fire time" "[fired " "$RECONCILE_CADENCE_LOG"
-
-# --- C8: the Windows twin parses (only where pwsh exists).
-if command -v pwsh >/dev/null 2>&1; then
-    # -Command does not bind trailing args to $args, so the path goes by env.
-    # shellcheck disable=SC2016  # PowerShell source, not shell expansion.
-    out=$(CADENCE_PS1_PATH="$CADENCE_PS1" pwsh -NoProfile -Command '$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile($env:CADENCE_PS1_PATH,[ref]$null,[ref]$e); if ($e.Count) { $e | ForEach-Object { $_.Message }; exit 1 }' 2>&1)
-    rc=$?
-    assert_rc "C8 reconcile-cadence.ps1 parses ($out)" 0 "$rc"
-else
-    if [ -f "$CADENCE_PS1" ]; then pass "C8 reconcile-cadence.ps1 present (pwsh absent; parse skipped)"; else fail "C8 reconcile-cadence.ps1 missing"; fi
-fi
 
 echo "---"
 echo "PASSED=$PASSED FAILED=$FAILED"

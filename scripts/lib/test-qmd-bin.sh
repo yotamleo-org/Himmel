@@ -57,7 +57,7 @@ default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _q
 assert "default QMD_FORK_REPO is the carried fork yotamleo/qmd" \
   test "$default_repo" = "https://github.com/yotamleo/qmd.git"
 assert "default QMD_FORK_REF is the himmel/pin-http-auth commit" \
-  test "$default_ref" = "cecc32a9ec5cf5a8a518c71d151e2795a027ebe0"
+  test "$default_ref" = "7cc60404e9107652e5ae1621866e35d5a84c111e"
 
 echo "[test-qmd-bin] qmd_cmd resolver — prefer bun"
 tmpdir="$(mktemp -d)"

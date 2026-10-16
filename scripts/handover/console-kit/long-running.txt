@@ -1,0 +1,11 @@
+# Console-kit scripts a CONSOLE session must run with run_in_background: true.
+# One basename per line; read by scripts/hooks/guard-console-foreground.sh.
+# Add a script here when a console run of it blocks the turn for
+# more than about 30 s; leave short scripts (append-results.sh, go.sh,
+# write-verdict.sh, fleet-manifest.sh) out.
+wrap-merged.sh
+close-wrapped-leg.sh
+ready-check.sh
+verdict-go.sh
+action-zero.sh
+board.mjs

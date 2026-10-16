@@ -26,7 +26,7 @@
 #      are on PATH (the */plugins/cache/qmd/* glob), NOR when a relocated
 #      cache root defeats that glob (structural marker guard); argv passes
 #      through exactly (per-line fakes — count, order, space boundaries).
-#  10. Consumers (setup.sh, setup.ps1, ubuntu.sh) invoke the fixer.
+#  10. Consumers (setup.sh, ubuntu.sh) invoke the fixer.
 
 set -uo pipefail
 
@@ -410,7 +410,6 @@ assert "error mentions the qmd-bin.sh install hint" grep -q 'qmd-bin.sh install'
 echo "[test-fix-qmd-stub] consumer integration — setup scripts invoke the fixer"
 repo_root="$(cd "$SCRIPT_DIR/../.." && pwd)"
 assert "setup.sh calls fix-qmd-stub.sh" grep -q 'lib/fix-qmd-stub.sh' "$repo_root/scripts/setup.sh"
-assert "setup.ps1 calls fix-qmd-stub.sh" grep -q 'lib/fix-qmd-stub.sh' "$repo_root/scripts/setup.ps1"
 # ubuntu.sh delegates himmel/luna wiring to `himmelctl bootstrap`
 # (the NOTICE at ubuntu.sh) -- it no longer sources lib/fix-qmd-stub.sh directly.
 # Assert the delegation instead of the removed direct call.

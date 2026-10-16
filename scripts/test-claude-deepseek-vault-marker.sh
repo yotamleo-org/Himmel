@@ -8,7 +8,7 @@ const fs=require('fs'),path=require('path'),cp=require('child_process'),assert=r
 const scripts=process.argv[2],roots=[];
 let passed=0,failed=0;
 function test(name,fn){try{fn();passed++;console.log('ok: '+name);}catch(e){failed++;console.error('FAIL: '+name+' — '+e.message);}}
-for(const lane of ['deepseek','openrouter']) for(const twin of ['bash','ps-js']) for(const kind of ['root','nested','symlink','override','file-control','outside-control']) test(lane+' '+twin+' '+kind,()=>{
+for(const lane of ['deepseek','openrouter']) for(const twin of ['bash']) for(const kind of ['root','nested','symlink','override','file-control','outside-control']) test(lane+' '+twin+' '+kind,()=>{
  const root=fs.mkdtempSync(path.join(process.env.TMPDIR,'vault-marker-'));roots.push(root);
  const home=path.join(root,'home'),bin=path.join(root,'bin'),vault=path.join(root,'vault'),nested=path.join(vault,'nested');
  for(const d of [home,bin,nested])fs.mkdirSync(d,{recursive:true});

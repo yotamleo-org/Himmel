@@ -1,0 +1,14 @@
+# gate-shapes.tsv — the exact himmel gate command shapes the PermissionRequest
+# hook scripts/hooks/permission-allow-gate-shapes.sh allows.
+# Columns (TAB-separated): id <TAB> ERE matched against the WHOLE command <TAB> fence that already guards the action <TAB> verify.
+# verify=<rel,rel,...>: every listed worktree path must equal the primary checkout's main-committed copy, byte for byte and mode for mode (hooks/lib/anchor-bytes.sh), else the hook passes through. List every script the command runs from the worktree; a row whose full source set cannot be listed does not belong here.
+# {WT} expands to an optional "<registered worktree toplevel>/" prefix, so both
+# the relative spelling and the unquoted absolute-worktree spelling match.
+# Evidence: ~/.himmel/state/classifier-denials.jsonl (2026-10-15 mining) and the
+# console docs/HANDOFFs under the himmel handover bucket ('[CI Bypass]' denials).
+# An argument class never admits a shell metacharacter; add a row, never widen one.
+# Not listed (full source set not bounded): append-results.sh, check-ci.sh, quiet-run.sh suite runs.
+impacted-suites-check	^bash {WT}scripts/cr/impacted-suites\.sh --check [0-9a-f]{40}\.\.[0-9a-f]{40} --from-file /?[A-Za-z0-9_./+-]+$	read-only suite enumeration	verify=scripts/cr/impacted-suites.sh,scripts/cr/anchor-handoff.sh
+review-round-promote	^bash {WT}scripts/cr/review-round\.sh promote --branch '?[A-Za-z0-9_./+-]+'? --head [0-9a-f]{40}$	review-round.sh validates branch and head against the round ledger	verify=scripts/cr/review-round.sh,scripts/cr/anchor-handoff.sh
+write-verdicts	^bash {WT}scripts/cr/write-verdicts\.sh (aggregate|sweep) --branch '?[A-Za-z0-9_./+-]+'? --from-file /?[A-Za-z0-9_./+-]+$	write-verdicts.sh validates every verdict line before writing; the CR marker clear still gates the merge	verify=scripts/cr/write-verdicts.sh,scripts/cr/anchor-handoff.sh
+skip-history-commit	^SKIP=no-history-comments git commit -F /?[A-Za-z0-9_./+-]+$	check-commit-msg and the CI range gate still run; only the console-ruled history-comment hook is skipped	none

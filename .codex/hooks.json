@@ -7,18 +7,6 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox auto-approve-safe-bash.sh+check-cr-marker-on-pr-create.sh+block-read-secrets.sh+read-clamp.sh+block-destructive-commands.sh+block-git-stash.sh+block-bare-qmd-query.sh+block-rogue-claude-schedule.sh+require-quiet-run.sh+block-edit-live-settings.sh+block-docker-privesc.sh+block-infra-destroy.sh+block-merged-pr-commit.sh+block-terminal-write-fence.sh+block-lesson-enforcement-writes.sh+block-bank-lift-writes.sh+block-himmel-config-writes.sh+guard-pr-check-literal.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox auto-approve-safe-bash.sh+check-cr-marker-on-pr-create.sh+block-read-secrets.sh+read-clamp.sh+block-destructive-commands.sh+block-git-stash.sh+block-bare-qmd-query.sh+block-rogue-claude-schedule.sh+require-quiet-run.sh+block-edit-live-settings.sh+block-docker-privesc.sh+block-infra-destroy.sh+block-merged-pr-commit.sh+block-terminal-write-fence.sh+block-lesson-enforcement-writes.sh+block-bank-lift-writes.sh+block-himmel-config-writes.sh+guard-pr-check-literal.sh",
-            "timeout": 60
-          }
-        ]
-      },
-      {
-        "matcher": "PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".codex/run-hook.sh --sandbox block-read-secrets.sh+block-destructive-commands.sh+block-git-stash.sh+block-rogue-claude-schedule.sh+block-edit-live-settings.sh+block-docker-privesc.sh+block-infra-destroy.sh+block-merged-pr-commit.sh+block-terminal-write-fence.sh+block-lesson-enforcement-writes.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox block-read-secrets.sh+block-destructive-commands.sh+block-git-stash.sh+block-rogue-claude-schedule.sh+block-edit-live-settings.sh+block-docker-privesc.sh+block-infra-destroy.sh+block-merged-pr-commit.sh+block-terminal-write-fence.sh+block-lesson-enforcement-writes.sh",
             "timeout": 60
           }
         ]
@@ -29,7 +17,6 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox block-read-secrets.sh+read-clamp.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox block-read-secrets.sh+read-clamp.sh",
             "timeout": 60
           }
         ]
@@ -40,7 +27,6 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox block-edit-on-main.sh+block-lesson-enforcement-writes.sh+block-bank-lift-writes.sh+block-himmel-config-writes.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox block-edit-on-main.sh+block-lesson-enforcement-writes.sh+block-bank-lift-writes.sh+block-himmel-config-writes.sh",
             "timeout": 60
           }
         ]
@@ -51,7 +37,6 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox mcp-policy.sh+block-backend-tier.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox mcp-policy.sh+block-backend-tier.sh",
             "timeout": 60
           }
         ]
@@ -62,7 +47,6 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox auto-arm-on-cap.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox auto-arm-on-cap.sh",
             "timeout": 60
           }
         ]
@@ -73,7 +57,6 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox guard-leg-context-handoff.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox guard-leg-context-handoff.sh",
             "timeout": 15
           }
         ]
@@ -86,7 +69,6 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox auto-arm-on-subagent-cap.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox auto-arm-on-subagent-cap.sh",
             "timeout": 60
           }
         ]
@@ -97,13 +79,11 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox detect-dirty-primary.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox detect-dirty-primary.sh",
             "timeout": 15
           },
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox memory-bash-line-check.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox memory-bash-line-check.sh",
             "timeout": 15
           }
         ]
@@ -114,8 +94,18 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox detect-token-in-output.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox detect-token-in-output.sh",
             "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".codex/run-hook.sh --sandbox retrieval-nudge.sh",
+            "commandWindows": ".codex/run-hook.cmd --sandbox retrieval-nudge.sh",
+            "timeout": 10
           }
         ]
       }
@@ -126,7 +116,6 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox --lifecycle check-update-available.sh+inject-initiative.sh+inject-where-are-we.sh+inject-doc-freshness.sh+record-primary-baseline.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox --lifecycle check-update-available.sh+inject-initiative.sh+inject-where-are-we.sh+inject-doc-freshness.sh+record-primary-baseline.sh",
             "timeout": 60
           }
         ]
@@ -138,19 +127,16 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox --lifecycle refresh-where-are-we-on-end.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox --lifecycle refresh-where-are-we-on-end.sh",
             "timeout": 15
           },
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox --lifecycle jira-nudge-on-end.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox --lifecycle jira-nudge-on-end.sh",
             "timeout": 15
           },
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox --lifecycle end-session-wiki.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox --lifecycle end-session-wiki.sh",
             "timeout": 30
           }
         ]
@@ -162,7 +148,6 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox --lifecycle telegram-session-end.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox --lifecycle telegram-session-end.sh",
             "timeout": 3
           }
         ]

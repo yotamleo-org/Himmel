@@ -127,10 +127,7 @@ JSON
 sh_help=$(bash "$repo_root/scripts/uninstall.sh" --help 2>&1)
 grepq "$sh_help" -F -- '--yes' \
   || fail "flag-assertion: uninstall.sh --help is missing derivable flag '--yes' (script-flag drift)"
-ps1_usage=$(head -n 20 "$repo_root/scripts/uninstall.ps1")
-grepq "$ps1_usage" -F -- '-Yes' \
-  || fail "flag-assertion: uninstall.ps1's usage comment is missing derivable flag '-Yes' (script-flag drift)"
-echo "ok: caseA flag-assertion guard -- uninstall.sh/uninstall.ps1 usage surfaces carry the --yes/-Yes flag the wizard always derives"
+echo "ok: caseA flag-assertion guard -- uninstall.sh usage carries the --yes flag the wizard always derives"
 
 # ── Case B: --dry-run -> prints the plan, asks/executes nothing ────────────
 # win32 launches uninstall.ps1 through resolvePowershell, which

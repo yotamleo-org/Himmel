@@ -4,7 +4,6 @@
     {
       "name": "AGENTS_MD_OK",
       "hooks": [
-        "scripts/hooks/check-agents-md-fresh.ps1",
         "scripts/hooks/check-agents-md-fresh.sh"
       ],
       "bypasses": "Skips the \"check agents md fresh\" guard (scripts/hooks/check-agents-md-fresh.sh).",
@@ -75,6 +74,14 @@
       "remedy": "CONSOLE_DISPATCH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "CONSOLE_FG_OK",
+      "hooks": [
+        "scripts/hooks/guard-console-foreground.sh"
+      ],
+      "bypasses": "Skips the \"guard console foreground\" guard (scripts/hooks/guard-console-foreground.sh).",
+      "remedy": "CONSOLE_FG_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "CR_MERGE_GATE_OK",
       "hooks": [
         "scripts/hooks/block-unresolved-cr-merge.sh"
@@ -109,7 +116,6 @@
     {
       "name": "DOC_GUARD_OK",
       "hooks": [
-        "scripts/hooks/check-doc-guard.ps1",
         "scripts/hooks/check-doc-guard.sh"
       ],
       "bypasses": "Skips the \"check doc guard\" guard (scripts/hooks/check-doc-guard.sh).",
@@ -213,7 +219,6 @@
     {
       "name": "HOOKSPATH_OK",
       "hooks": [
-        "scripts/hooks/check-hookspath.ps1",
         "scripts/hooks/check-hookspath.sh"
       ],
       "bypasses": "Skips the \"check hookspath\" guard (scripts/hooks/check-hookspath.sh).",
@@ -346,14 +351,6 @@
       ],
       "bypasses": "Skips the \"block merged pr commit\" guard (scripts/hooks/block-merged-pr-commit.sh).",
       "remedy": "MERGED_PR_COMMIT_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
-    },
-    {
-      "name": "NEW_SHELL_PLATFORM_GUARD_OK",
-      "hooks": [
-        "scripts/hooks/check-new-shell-platform-guard.sh"
-      ],
-      "bypasses": "Skips the \"check new shell platform guard\" guard (scripts/hooks/check-new-shell-platform-guard.sh).",
-      "remedy": "NEW_SHELL_PLATFORM_GUARD_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
       "name": "PLATFORMS_TESTED_OK",

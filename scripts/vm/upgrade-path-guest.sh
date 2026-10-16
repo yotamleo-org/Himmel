@@ -60,6 +60,10 @@ doctor_valid() {
 # first_semver <text> -- the first x.y.z token, so "0.9.8" never matches "0.9.85".
 first_semver() { printf '%s\n' "$1" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1; }
 
+# both_ok <updater-rc> <check-rc> -- 0 only when the command AND its follow-up check
+# succeeded, so a failed updater cannot ride on a leftover binary or a stale artefact.
+both_ok() { [ "$1" -eq 0 ] && [ "$2" -eq 0 ]; }
+
 # doctor_regressions <before-file> <after-file> [allow-id ...]
 # Prints one line per violation; returns 1 if there is any:
 #   NEW-FAIL <id>   a check is FAIL after and was not FAIL before (never allowlisted)
@@ -180,8 +184,9 @@ if [ -n "$TREE_PROXY" ] && [ "$BASE_PROXY" = "$TREE_PROXY" ]; then pass "baselin
 # qmd is part of the baseline so doctor-before sees the same qmd-dependent checks
 # (C44/C49) as doctor-after; without it they flip INFO -> FAIL merely because qmd appeared.
 note "baseline: qmd fork (himmel-update --only qmd_fork)"
-bash scripts/himmel-update.sh --only qmd_fork >"$WORK/qmd-base.log" 2>&1
-( . scripts/lib/qmd-bin.sh && qmd_cmd --version >/dev/null 2>&1 ); verdict $? "baseline qmd present" "baseline qmd not installed (see $WORK/qmd-base.log)"
+bash scripts/himmel-update.sh --only qmd_fork >"$WORK/qmd-base.log" 2>&1; urc=$?
+( . scripts/lib/qmd-bin.sh && qmd_cmd --version >/dev/null 2>&1 ); crc=$?
+both_ok "$urc" "$crc"; verdict $? "baseline qmd present" "baseline qmd updater rc=$urc, present check rc=$crc (see $WORK/qmd-base.log)"
 
 note "baseline: himmel-update.sh --versions (read-only table)"
 bash scripts/himmel-update.sh --versions >"$WORK/versions-before.txt" 2>&1
@@ -245,8 +250,10 @@ fi
 note "assert: graphify update + query"
 mkdir -p "$WORK/gsmoke"
 printf 'def alpha():\n    return beta()\n\ndef beta():\n    return 1\n' > "$WORK/gsmoke/m.py"
-graphify update "$WORK/gsmoke" >"$WORK/graphify-update.log" 2>&1
-if [ -f "$WORK/gsmoke/graphify-out/graph.json" ]; then
+graphify update "$WORK/gsmoke" >"$WORK/graphify-update.log" 2>&1; urc=$?
+if [ "$urc" -ne 0 ]; then
+  fail "graphify update rc=$urc (see $WORK/graphify-update.log)"
+elif [ -f "$WORK/gsmoke/graphify-out/graph.json" ]; then
   Q="$(graphify query "what does alpha call" --graph "$WORK/gsmoke/graphify-out/graph.json" 2>"$WORK/graphify-query.err")"; qrc=$?
   if [ "$qrc" -eq 0 ] && [ -n "$Q" ]; then pass "graphify update built a graph and query answered"; else fail "graphify query rc=$qrc or empty (see $WORK/graphify-query.err)"; fi
 else

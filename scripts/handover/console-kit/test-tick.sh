@@ -1539,6 +1539,24 @@ chmod +x "$W/bin-3747c/pgrep"
 o3747c="$(PATH="$W/bin-3747c:$PATH" bash "$SUT" --legs "$W/handover/$w3747c.md")"
 contains 'a fatal census must not promote a live-looking leg to CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747c" 'legs=N642:WRAPPED'
 
+# --- a relaunched leg (-r<N> session suffix) reads CLOSABLE too, and
+# closable=<n> counts CLOSABLE legs whose doc has sat untouched past TICK_CLOSABLE_MIN
+# minutes (default 5): the windows a console missed, not the one it is closing now.
+w5923a="HIMMEL-5923-N650-relaunch-2026-10-16-RESUME"
+printf '%s\n' '# leg' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$w5923a.md"
+mkcmdline 142 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-5923-N650-relaunch-2026-10-16-r1 work
+mk_pgrep_x "$W/bin-5923a" 142
+touch -d '20 minutes ago' "$W/handover/$w5923a.md"
+o5923a="$(PATH="$W/bin-5923a:$PATH" bash "$SUT" --legs "$W/handover/$w5923a.md")"
+contains 'a WRAPPED leg running as <name>-r1 reads CLOSABLE (HIMMEL-5923)' "$o5923a" 'legs=N650:CLOSABLE'
+contains 'an old CLOSABLE leg is counted in closable=1 (HIMMEL-5923)' "$o5923a" ' closable=1'
+touch "$W/handover/$w5923a.md"
+o5923b="$(PATH="$W/bin-5923a:$PATH" bash "$SUT" --legs "$W/handover/$w5923a.md")"
+contains 'a freshly WRAPPED CLOSABLE leg is still CLOSABLE (HIMMEL-5923)' "$o5923b" 'legs=N650:CLOSABLE'
+case "$o5923b" in *' closable='*) fail 'a fresh CLOSABLE leg must not be counted in closable= (HIMMEL-5923)' ;; *) pass 'a fresh CLOSABLE leg is not counted in closable= (HIMMEL-5923)' ;; esac
+o5923c="$(PATH="$W/bin-3747b:$PATH" bash "$SUT" --legs "$W/handover/$w3747b.md")"
+case "$o5923c" in *' closable='*) fail 'no CLOSABLE leg: closable= must be absent (HIMMEL-5923)' ;; *) pass 'no CLOSABLE leg: closable= is absent (HIMMEL-5923)' ;; esac
+
 # --- denials= (classifier-denial jsonl -> tick line, SHIP-STEP /
 # REPEAT / PAUSE-RISK / none / skip). mkdenial writes one row at an offset
 # (minutes before "now") so tests control window inclusion without a stale

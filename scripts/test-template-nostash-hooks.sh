@@ -625,7 +625,8 @@ else
   check "template ships install-nostash-hooks.sh (executable)" "no" yes
 fi
 
-for twin in scripts/setup.sh scripts/setup.ps1; do
+# shellcheck disable=SC2043
+for twin in scripts/setup.sh; do
   f="$TEMPLATE/$twin"
   if grep -q "install-nostash-hooks.sh" "$f" 2>/dev/null; then
     check "$twin wires install-nostash-hooks.sh" yes yes

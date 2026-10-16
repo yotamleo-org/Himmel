@@ -335,7 +335,10 @@ gathering, per the rule below.>
 > `docs/handover/verdict-template.md` — for a merge question, through
 > `bash <primary checkout>/scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <the PR number> --evidence-file <scratch file> --judge <your session name>`
 > (`--pr` is required), which emits the exact line `go.sh --trust-reviewed` parses
-> and refuses a path outside `verdicts/<qid>/` — release your own-doc lock, and **end
+> and refuses a path outside `verdicts/<qid>/` — release your own-doc lock, append a
+> closing bullet to your own doc with
+> `bash <primary checkout>/scripts/handover/console-kit/append-results.sh <your doc> "WRAPPED verdict written, lock released"`
+> (the console's sweep closes only a window whose doc tail says `WRAPPED`), and **end
 > your turn.** Do not wait for an ack, do not open a PR, do not merge
 > anything. The console kills your window when it reads the verdict — a
 > finished session still holds a fleet slot until it does, so ending your

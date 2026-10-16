@@ -175,12 +175,12 @@ rule; batch rulings per decision point.
 ## Merges — READY → GO → merge
 
 A leg reports `READY <pr> <head> GREEN`. Verify independently with
-`console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (all check-runs success
+`console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`run_in_background`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
 your judgement), then `console-kit/go.sh <pr> <head>`: that write IS the GO
 (`gh pr merge` is gated on the file; `GO` over SendMessage only notifies). `go.sh`
 refuses (exit 4) unless `ready-check.sh` passes; a head with no ok CR-ledger row
-cannot get a GO. The leg merges and reports `MERGED #<n> → <sha>`; you pull the
+cannot get a GO. The leg merges, reports `MERGED #<n> → <sha>`; you pull the
 primary and the leg wraps.
 
 The Jira close is the leg's call from the brief's `completes-ticket: yes|no` line
@@ -200,7 +200,7 @@ file and run
 `HANDLED ...` is done, `ESCALATE <reason>` means by hand: on `WRAPPED`, confirm
 the lock is free at the ROOT sweep, then
 `bash scripts/handover/console-kit/close-wrapped-leg.sh <leg-doc>`. Never run the
-bare `clean.sh` sweep for one leg. Hand sequence and the `digest=` line:
+bare `clean.sh` sweep for one leg. long-running.txt: `run_in_background`. Hand sequence and the `digest=` line:
 `console-sections/wrapping.md`.
 
 ## Standing rules

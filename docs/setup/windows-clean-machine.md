@@ -1,5 +1,9 @@
 # Windows clean-machine runbook — full himmel dev + lane fleet, remote-driven
 
+> **Historical.** Windows is no longer supported. The PowerShell scripts this
+> walkthrough runs (`win11.ps1` and the wire/unwire helpers) now live under
+> `archive/windows/`; the steps below are kept as a record, not a working path.
+
 End-to-end walkthrough for taking a **factory-clean Windows 11 machine** to a
 full himmel dev machine — base toolchain, himmel + luna, ported credentials,
 the delegation-lane fleet (hermes, codex, copilot, antigravity, ollama, GLM),
@@ -111,8 +115,9 @@ credential helper without it.
 > **Just installing himmel for adopter use, not the full dev + lane-fleet
 > setup below?** Clone first, then use the wizard instead:
 > `git clone https://github.com/yotamleo/himmel && cd himmel`, then
-> `powershell -ExecutionPolicy Bypass -File scripts\himmelctl\bootstrap.ps1`
-> (winget-installs node if missing, then hands off to `himmelctl install`).
+> `node scripts/himmelctl/bin.js install` (Windows is no longer supported, so
+> himmelctl exits with an unsupported-platform message here; the archived
+> bootstrap script lives under `archive/windows/`).
 > The rest of this phase runs `win11.ps1`, the machine-provisioner script this
 > remote clean-machine walkthrough uses for the full toolchain + lane-fleet +
 > luna setup — it remains in place, not superseded by the wizard.

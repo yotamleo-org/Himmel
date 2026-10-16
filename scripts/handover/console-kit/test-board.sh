@@ -222,10 +222,10 @@ lacks 'a <b> in a Results bullet is escaped' "$html" '<b>bold</b>'
 contains 'no PR, no marker: LIVE' "$html" 'data-label="N1" data-phase="LIVE"'
 contains 'an open PR the leg names: PR open' "$html" 'data-label="N2" data-phase="PR open"'
 contains 'READY tail + open PR: READY' "$html" 'data-label="N3" data-phase="READY"'
-contains 'the leg names a merged PR: MERGED' "$html" 'data-label="N4" data-phase="MERGED"'
+contains 'the leg names a merged PR: MERGED (archive)' "$(cat "$B/console-board-archive.html")" 'N4 HIMMEL-3348 MERGED'
 contains 'a FINDING bullet citing a merged PR keeps its phase and gets no PR (HIMMEL-3374)' "$html" '<b>N10</b> <span class="tk">HIMMEL-3377</span> <span class="ph">LIVE</span></div>'
 contains 'a LIVE bullet citing a merged PR gets no PR either (HIMMEL-3374)' "$html" '<b>N11</b> <span class="tk">HIMMEL-3378</span> <span class="ph">LIVE</span></div>'
-contains 'lock released + WRAPPED tail: WRAPPED' "$html" 'data-label="N5" data-phase="WRAPPED"'
+contains 'lock released + WRAPPED tail: WRAPPED (archive)' "$(cat "$B/console-board-archive.html")" 'N5 HIMMEL-3300 WRAPPED'
 contains 'READY tail with no PR anywhere: READY-TO-OPEN' "$html" 'data-label="N6" data-phase="READY-TO-OPEN"'
 contains 'a CI-red PR is flagged on its leg' "$html" 'data-ci="failing"'
 contains 'a green PR (check runs + a commit status) reads green' "$html" 'data-label="N3" data-phase="READY" data-ci="green"'
@@ -283,7 +283,7 @@ contains 'fleet renders N/cap' "$html" 'data-fleet="9/15"'
 contains 'idle capacity is highlighted' "$html" 'data-idle="6"'
 
 # --- merged this shift + fingerprint + title
-contains 'merged PRs this shift are listed' "$html" '#1995'
+contains 'merged PRs this shift are listed in the archive' "$(cat "$B/console-board-archive.html")" 'PR #1995 merged'
 contains 'the tick fingerprint is embedded for tick.sh board=' "$html" '<meta name="console-board-fp" content="deadbeefdeadbeef">'
 contains 'the page has a name title, not a summary' "$html" '<title>Supervisor Session Board</title>'
 contains 'the page themes for dark mode' "$html" 'prefers-color-scheme: dark'
@@ -308,7 +308,7 @@ lacks 'and embeds no fingerprint that would read ok' "$(cat "$board")" 'name="co
 # Results parse is section-bounded: a later section's bullet is not the leg's Results.
 lacks "a later section's bullet is not the leg's last Results bullet" "$html" 'unrelated later-section'
 # Merged detection reads the PR itself, not the 24 h merged panel.
-contains 'a PR merged outside the 24 h panel still reads MERGED (gh pr view)' "$html" 'data-label="N8" data-phase="MERGED"'
+contains 'a PR merged outside the 24 h panel still reads MERGED (gh pr view, archive)' "$(cat "$B/console-board-archive.html")" 'N8 HIMMEL-3370 MERGED'
 contains 'a closed-unmerged PR does not read MERGED' "$html" 'data-label="N9" data-phase="LIVE"'
 # READY-TO-OPEN says what it is waiting for, not "lost lock".
 contains 'a READY-TO-OPEN leg is explained as awaiting the PR open' "$html" 'awaiting PR open'
@@ -380,7 +380,7 @@ STUB
 out="$(BOARD_SESSIONS="$W/bin/sessions-fail.sh" run --out "$W/n5-census-fail-board.html")"; rc=$?
 n5failhtml="$(cat "$W/n5-census-fail-board.html" 2>/dev/null)"
 contains 'an unavailable census still renders the board (rc 0)' "rc=$rc" 'rc=0'
-contains 'and leaves the WRAPPED leg as plain WRAPPED' "$n5failhtml" 'data-label="N5" data-phase="WRAPPED"'
+contains 'and leaves the WRAPPED leg as plain WRAPPED (archive)' "$(cat "$W/n5-census-fail-board-archive.html")" 'N5 HIMMEL-3300 WRAPPED'
 lacks 'never flags "still open" on a census it could not read' "$n5failhtml" 'data-label="N5" data-phase="WRAPPED, window still open"'
 
 # --- (Ask 1): --changed re-renders and reports whether the render moved,
@@ -814,6 +814,34 @@ contains 'cloud: a session with no branch or PR reads no-branch (HIMMEL-5163)' "
 html="$(cloud_html cloud-gh-down)"
 contains 'cloud: an unreadable forge says so, never fatal (HIMMEL-5163)' "$html" 'data-cloud-panel="unavailable"'
 rm -f "$M/cloud-sessions.tsv"
+
+# --- the published board shows live work only; WRAPPED/MERGED legs and
+# merged PRs go to a local, never-published, grep-friendly archive beside it.
+out="$(run --out "$W/live-only-board.html")"; rc=$?
+lhtml="$(cat "$W/live-only-board.html" 2>/dev/null)"
+arch="$W/live-only-board-archive.html"
+if [ -f "$arch" ]; then ahtml="$(cat "$arch")"; else ahtml=''; fail 'the archive file is written beside the board'; fi
+lacks 'live page: a MERGED leg is not rendered (N4)' "$lhtml" 'data-label="N4"'
+lacks 'live page: a MERGED leg (PR outside the 24 h window) is not rendered (N8)' "$lhtml" 'data-label="N8"'
+lacks 'live page: a WRAPPED leg is not rendered (N5)' "$lhtml" 'data-label="N5"'
+lacks 'live page: no merged-PR panel' "$lhtml" 'Merged in the last 24 hours'
+lacks 'live page: no merged PR row' "$lhtml" '<b>#1995</b>'
+contains 'live page: a live leg stays (N1)' "$lhtml" 'data-label="N1" data-phase="LIVE"'
+contains 'live page: a READY leg stays (N3)' "$lhtml" 'data-label="N3" data-phase="READY"'
+contains 'live page: open PRs stay' "$lhtml" '<b>#2001</b>'
+contains 'live page: the phase ladder stays' "$lhtml" 'data-ladder="READY" data-count="1"'
+contains 'live page: the tick fingerprint meta stays' "$lhtml" '<meta name="console-board-fp" content="deadbeefdeadbeef">'
+contains 'live page: points at the archive by file name' "$lhtml" 'live-only-board-archive.html'
+lacks 'live page: carries none of the archive prose (N4 last bullet)' "$lhtml" '0123abc'
+contains 'archive: names the MERGED leg on ONE line with ticket, PR and last bullet' "$ahtml" 'N4 HIMMEL-3348 MERGED PR #1995 — 12:00 MERGED #1995'
+contains 'archive: names the out-of-window MERGED leg' "$ahtml" 'N8 HIMMEL-3370 MERGED PR #1700'
+contains 'archive: names the WRAPPED leg' "$ahtml" 'N5 HIMMEL-3300 WRAPPED'
+contains 'archive: lists merged PRs, one per line' "$ahtml" 'PR #1995 merged — fix(w): [HIMMEL-3348] harden'
+lacks 'archive: holds no live leg' "$ahtml" 'N1 HIMMEL-3340 LIVE'
+lacks 'archive: nonces and lock tokens are redacted too' "$ahtml" 'pid111111'
+lacks 'archive: carries no fingerprint meta (it is never the tick board)' "$ahtml" 'console-board-fp'
+lbytes="$(printf '%s' "$lhtml" | wc -c)"
+if [ "$lbytes" -lt 15000 ]; then pass "live page stays under 15 KB ($lbytes bytes)"; else fail "live page is $lbytes bytes, want under 15000"; fi
 
 # --- usage
 PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?

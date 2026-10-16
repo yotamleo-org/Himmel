@@ -693,3 +693,44 @@ test('mergeLocalOverlay: never applied against the REAL lanes.json base + a synt
   assert.ok(!ids.includes('haiku'), 'a never-overridden lane must not resolve even though its base probe (always) would');
   assert.ok(ids.includes('sonnet'), 'every other always-on lane still resolves');
 });
+
+// The machine-local lane overlay is ONE policy shared by every worktree of a clone. An install at the primary checkout must constrain /lanes inside a linked worktree.
+function makeClonePair() {
+  const root = makeTmpDir('lanes-shared-overlay-');
+  const primary = join(root, 'primary');
+  const wt = join(root, 'wt');
+  const git = (cwd, ...a) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd, stdio: 'pipe' });
+  mkdirSync(join(primary, 'scripts', 'lanes'), { recursive: true });
+  for (const f of ['resolve.mjs', 'probe.mjs', 'bank-status-core.mjs', 'profile-managed.cjs', 'lanes.json']) {
+    writeFileSync(join(primary, 'scripts', 'lanes', f), readFileSync(join(TEST_DIR, '..', f)));
+  }
+  git(primary, 'init', '-q', '-b', 'main');
+  git(primary, 'add', '-A');
+  git(primary, 'commit', '-q', '-m', 'seed');
+  git(primary, 'worktree', 'add', '-q', '-b', 'feat', wt);
+  return { primary, wt, cache: join(root, 'cache') };
+}
+const SHARED_OVERLAY_LANES = [{ id: 'zz-extra', label: 'zz', class: 'impl', bestFor: 'x', effort: 'low', probe: { kind: 'always' } }];
+const laneIdsFrom = (clone, dir) => JSON.parse(execFileSync(process.execPath, [join(dir, 'scripts', 'lanes', 'resolve.mjs'), '--json'],
+  { env: { ...process.env, HIMMELCTL_CACHE_DIR: clone.cache, LANES_REGISTRY: '' }, encoding: 'utf8' })).map((l) => l.id);
+
+test('HIMMEL-1450: an overlay written in the primary checkout is read in a linked worktree', () => {
+  const clone = makeClonePair();
+  writeFileSync(join(clone.primary, 'scripts', 'lanes', 'lanes.local.json'), JSON.stringify({ lanes: SHARED_OVERLAY_LANES }));
+  assert.ok(laneIdsFrom(clone, clone.primary).includes('zz-extra'), 'primary reads its own overlay');
+  assert.ok(laneIdsFrom(clone, clone.wt).includes('zz-extra'), 'linked worktree reads the primary overlay');
+});
+
+test('HIMMEL-1450: a pre-existing per-worktree overlay is still read when the primary has none', () => {
+  const clone = makeClonePair();
+  writeFileSync(join(clone.wt, 'scripts', 'lanes', 'lanes.local.json'), JSON.stringify({ lanes: SHARED_OVERLAY_LANES }));
+  assert.ok(laneIdsFrom(clone, clone.wt).includes('zz-extra'), 'legacy in-worktree overlay fallback');
+});
+
+test('HIMMEL-1450: the adopter install targets the primary checkout overlay from a linked worktree', () => {
+  const clone = makeClonePair();
+  const { resolveLaneAllowlistFile } = createRequire(import.meta.url)('../../himmelctl/lib/adopter-profile.js');
+  const want = join(clone.primary, 'scripts', 'lanes', 'lanes.local.json');
+  assert.equal(resolveLaneAllowlistFile(clone.wt).file, want);
+  assert.equal(resolveLaneAllowlistFile(clone.primary).file, want);
+});

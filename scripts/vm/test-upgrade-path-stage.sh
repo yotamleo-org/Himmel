@@ -99,6 +99,14 @@ if [ "$SV" = "0.9.8" ]; then rc=0; else rc=1; fi; expect_rc "0.9.85 does not equ
 SV="$(first_semver "graphify: command not found")"
 if [ -z "$SV" ]; then rc=0; else rc=1; fi; expect_rc "no version in an error line" 0 "$rc"
 
+# A step is green only when the updater command AND its follow-up check both succeeded
+# a failed qmd baseline updater or graphify update must not ride on a leftover binary
+# or a stale graph.json.
+both_ok 0 0; expect_rc "updater rc=0 and check ok passes" 0 $?
+both_ok 1 0; expect_rc "RED control: updater rc!=0 with the check ok still fails" 1 $?
+both_ok 0 1; expect_rc "updater rc=0 with the check failing fails" 1 $?
+both_ok 3 1; expect_rc "updater and check both failing fails" 1 $?
+
 # --- guest input refusal (exit 2 before anything is installed) -----------------
 GOOD_SHA="744000a1a4f9ce19f5964774f853d029797b87ef53796d054389258c66cb1224"
 run_guest() { # env assignments as args

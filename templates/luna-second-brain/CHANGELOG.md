@@ -8,7 +8,7 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.74] — 2026-10-16
+## [0.4.76] — 2026-10-16
 
 ### Changed
 - The salus profile README and PHI-marker overlay comment name only the

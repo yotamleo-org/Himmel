@@ -128,13 +128,26 @@ harness_re="${WRAP_SUBTREE_HARNESS_RE:-(^|[ /])(mcp-server[^ ]*|[^ ]*qmd([.][a-z
 # No backslashes: the value crosses awk -v.
 chain_re='^([^ ]*/)?node /[^ ]*/marketplace/plugins/claude-hud/dist/index[.]js$|^([^ ]*/)?(bash|sh) /[^ ]*/scripts/statusline/hud-custom-lines[.]sh$|^(timeout [0-9]+ )?([^ ]*/)?(bash|sh) /[^ ]*/scripts/where-are-we/statusline-segment[.]sh( --cwd [^ ].*)?$|^(timeout [0-9]+ )?([^ ]*/)?node /[^ ]*/scripts/where-are-we/provision[.]mjs slice( .*)?$'
 
+# Claude Code's own plugin-marketplace refresh: a direct
+# child of the session `git -c core.fsmonitor= -c core.hooksPath=/dev/null -c
+# core.askPass= …`, or a `git clone … <home>/.claude/plugins/cache/temp_git_<id>`,
+# whose only child is a `git remote-https origin https://github.com/<owner>/<repo>`.
+# New pids at etime 00:00 on every run. Matched by shape and parentage only (no
+# marketplace registry read); anything broader, a wrapper, or a `/..` still withholds.
+# ponytail: a leg that types this exact three-flag git prefix as a DIRECT child of the
+# session (not under a shell-tool wrapper) would be exempt; legs run git inside a
+# wrapper, so not observed; tighten with the marketplace registry if it ever happens.
+# No backslashes: the value crosses awk -v.
+mkt_top_re='^([^ ]*/)?git -c core[.]fsmonitor= -c core[.]hooksPath=/dev/null -c core[.]askPass= (fetch|ls-remote)( |$)|^([^ ]*/)?git clone .* /[^ ]*/[.]claude/plugins/cache/temp_git_[A-Za-z0-9_]+$'
+mkt_child_re='^(([^ ]*/)?git remote-https|([^ ]*/)?git-remote-https) origin https://github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+
 ps_out="$(ps -eo pid=,ppid=,etime=,args= 2>/dev/null)" || ps_out=""
 if [ -z "$ps_out" ]; then
     printf 'WITHHELD: cannot read the process table (ps failed) — not declaring CLOSABLE\n'
     exit 2
 fi
 
-result="$(printf '%s\n' "$ps_out" | awk -v root="$root" -v self="$self" -v hre="$harness_re" -v chainpat="$chain_re" -v win="$window" '
+result="$(printf '%s\n' "$ps_out" | awk -v root="$root" -v self="$self" -v hre="$harness_re" -v chainpat="$chain_re" -v mkttop="$mkt_top_re" -v mktchild="$mkt_child_re" -v win="$window" '
 function iswrap(a) {
     return a ~ /^[^ ]*(bash|zsh|sh) -c (source|\.) [^ ]*shell-snapshots\/snapshot-(bash|zsh)-/
 }
@@ -146,6 +159,14 @@ function isclaude(a,   t, n, b) {
 function isharness(p) {
     if (iswrap(arg[p])) return 0
     return arg[p] ~ hre
+}
+function ismkttop(p) {
+    return !iswrap(arg[p]) && arg[p] ~ mkttop && index(arg[p], "/..") == 0 && ppid[p] == root
+}
+function ismkt(p) {
+    if (iswrap(arg[p]) || index(arg[p], "/..") != 0) return 0
+    if (ismkttop(p)) return 1
+    return arg[p] ~ mktchild && (ppid[p] in ppid) && ismkttop(ppid[p])
 }
 function ischain(p) {
     return arg[p] ~ chainpat && index(arg[p], "/..") == 0
@@ -209,6 +230,7 @@ END {
         # process is outside the subtree, so count it (fail closed).
         if (h >= maxh) under = 1
         if (!under || skip) continue
+        if (!harness && ismkt(pid)) { harness = 1; why = "marketplace-refresh"; via = pid }
         if (!harness && allchain) { harness = 1; why = "statusline-chain"; via = pid }
         # a descendant of a chain node that is itself the session'"'"'s direct
         # child (claude-hud'"'"'s `git status --porcelain`) inherits the ignore by its

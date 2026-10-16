@@ -1697,8 +1697,6 @@ assert "adopt.sh forwards its SCOPE to register" grep -q 'graphify_register_mcp 
 # Project scope must NOT embed a machine-specific absolute path in the committed
 # .mcp.json — the helper branches to the bare name for project scope (CR C14).
 assert "graphify_register_mcp uses bare name for project scope" grep -q 'mcp_arg="graphify-mcp"' "$SCRIPT_DIR/graphify-bin.sh"
-assert "setup.ps1 delegates register-mcp to bash" grep -q 'graphify-bin.sh" register-mcp' "$repo_root/scripts/setup.ps1"
-assert "adopt.ps1 delegates register-mcp to bash" grep -q 'graphify-bin.sh" register-mcp' "$repo_root/scripts/adopt.ps1"
 
 # set -e regression: a nonzero `claude mcp add` — the
 # COMMON "already exists" idempotent case (rc=1) — must NOT abort a set -e caller
@@ -2033,8 +2031,6 @@ echo "[test-graphify-bin] graphify_price_hooks: consumer wiring regression guard
 assert "setup.sh calls graphify_price_hooks" grep -q 'graphify_price_hooks' "$repo_root/scripts/setup.sh"
 assert "adopt.sh calls graphify_price_hooks" grep -q 'graphify_price_hooks' "$repo_root/scripts/adopt.sh"
 assert "himmel-update.sh calls graphify_price_hooks" grep -q 'graphify_price_hooks' "$repo_root/scripts/himmel-update.sh"
-assert "setup.ps1 references price-hooks" grep -q 'price-hooks' "$repo_root/scripts/setup.ps1"
-assert "adopt.ps1 references price-hooks" grep -q 'price-hooks' "$repo_root/scripts/adopt.ps1"
 
 echo "[test-graphify-bin] graphify_price_hooks: operator hints are copy-pasteable (HIMMEL-2480 CR finding 3)"
 # ' -- then ' in a pasted shell line ends option parsing for `graphify install`

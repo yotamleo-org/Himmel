@@ -946,6 +946,102 @@ unw_run scripts/tools/target.sh scripts/tools/aXb.sh
 notcontains "wired referencer a.b.sh is not mistaken for the pending aXb.sh" "$out" "UNWIRED scripts/tools/target.sh"
 UNW_EXTRA=''
 
+# referencer, glob and runner corners
+# a fixture file naming a script is sample data, not wiring
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/tools/fixtures\"; printf 'bash scripts/tools/fxd.sh\n' > \"\$REPO/scripts/tools/fixtures/run.txt\""
+unw_run scripts/tools/fxd.sh
+contains "script named only by a fixtures/ file: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/tools/fixtures\"; printf 'bash scripts/tools/fxd.sh\n' > \"\$REPO/scripts/tools/fixtures/run.txt\"; printf 'run: bash scripts/tools/fxd.sh\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/tools/fxd.sh
+contains "script named by a fixtures/ file AND a CI job: check 11 passes" "$out" "[PASS] 11."
+
+# a brace glob arg is expanded: only its alternatives reach the file
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test tests/{a,b}.test.ts\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/zzz.test.ts
+contains "brace glob {a,b}.test.ts does not reach zzz.test.ts: file fails" "$out" "[FAIL] 11."
+unw_run scripts/cfg/tests/b.test.ts
+contains "brace glob {a,b}.test.ts reaches b.test.ts: file passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test {src,tests}/a.test.ts\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "brace glob in the directory part: a file under an alternative passes" "$out" "[PASS] 11."
+
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test {,src/}tests\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "brace glob with an empty alternative: the empty one still matches" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test tests/a{,x}.test.ts\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "brace glob with an empty alternative inside a name: a.test.ts matches" "$out" "[PASS] 11."
+
+# node --import tsx --test is a test runner that loads a TS transform
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --import tsx --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "node --import tsx --test discovers a .ts file: passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --import=tsx --test tests\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "node --import=tsx --test tests: file under it passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --import tsx --test src\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "node --import tsx --test src: file outside it fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --import tsx build.js\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "node --import tsx build.js is not a test runner: file fails" "$out" "[FAIL] 11."
+
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --test tests --test-name-pattern=foo\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/other/z.test.mjs
+contains "a later --test-name-pattern flag does not drop the tests path: outside file fails" "$out" "[FAIL] 11."
+
+# mutation pins: the TS-transform markers in the test script
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --test --experimental-strip-types\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "node --test with strip-types discovers a .ts file: passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --test --import tsimp\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "node --test with --import discovers a .ts file: passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --test --loader ts-node\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "node --test with --loader discovers a .ts file: passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --require tsx/cjs --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "node --test with only a tsx marker discovers a .ts file: passes" "$out" "[PASS] 11."
+# a flag takes the next word only when it is a valued flag; --test after a script is its argument
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --no-warnings build.js --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.mjs
+contains "node --no-warnings build.js --test is not a test runner: file fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --no-warnings --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.mjs
+contains "node --no-warnings --test is a runner: file passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node -r ./setup.js --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.mjs
+contains "node -r ./setup.js --test is a runner: file passes" "$out" "[PASS] 11."
+
+# mutation pins: hook-library referencer branches
+UNW_EXTRA="printf 'source h.sh\n' > \"\$REPO/scripts/hooks/test-hk.sh\""
+unw_run scripts/hooks/test-hk.sh scripts/hooks/tests/h.sh
+contains "hook lib in tests/ named by its wired suite: check 11 passes" "$out" "[PASS] 11."
+unw_run scripts/hooks/test-hk.sh scripts/hooks/sub/h.sh
+contains "hook lib outside a test dir named only by a suite: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf '{\"hooks\":\"scripts/hooks/new-hook.sh\"}\n' > \"\$REPO/.claude/settings.json\"; printf 'source lib/a.sh\n' > \"\$REPO/scripts/hooks/new-hook.sh\"; printf 'source b.sh\n' > \"\$REPO/scripts/hooks/lib/a.sh\""
+unw_run scripts/hooks/new-hook.sh scripts/hooks/lib/a.sh scripts/hooks/lib/b.sh
+contains "hook lib sourced by a lib a wired hook sources: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf 'source b.sh\n' > \"\$REPO/scripts/hooks/lib/a.sh\""
+unw_run scripts/hooks/lib/a.sh scripts/hooks/lib/b.sh
+contains "hook lib sourced only by an unwired added lib: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf 'source b.sh\n' > \"\$REPO/scripts/hooks/lib/old.sh\""
+unw_run scripts/hooks/lib/b.sh
+contains "hook lib sourced by a lib already in the tree: check 11 passes" "$out" "[PASS] 11."
+
+# mutation pins: a non-generic TS stem is matched as an extensionless import
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/src\"; printf \"import x from './sector.js'\\n\" > \"\$REPO/scripts/cfg/src/consumer.ts\""
+unw_run scripts/cfg/src/sector.ts
+contains "non-generic sector.ts imported as ./sector.js: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/src\"; printf \"import x from './sector'\\n\" > \"\$REPO/scripts/cfg/src/consumer.ts\""
+unw_run scripts/cfg/src/sector.ts
+contains "non-generic sector.ts imported as ./sector: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/src\"; printf \"import x from './sectors'\\n\" > \"\$REPO/scripts/cfg/src/consumer.ts\""
+unw_run scripts/cfg/src/sector.ts
+contains "non-generic sector.ts is not wired by ./sectors: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA=''
+
 # an unreadable ref exits 2 even when the only file is an extensionless executable
 rc=0; out=$(cd "$REPO" && bash "$HERE/../../testing/check-added-unwired.sh" 0000000000000000000000000000000000000000 scripts/tools/runme 2>&1) || rc=$?
 check "unreadable ref with an extensionless file: exit 2" "$rc" "2"
