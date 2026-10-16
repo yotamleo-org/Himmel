@@ -144,9 +144,10 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   const [panel, setPanel] = useState<Panel | null>(initial ? { kind: "leg" } : null);
   // the fragment follows the view (replaceState: no history entry per key press, and no hashchange to re-route the page).
   useEffect(() => {
-    const h = viewHash(token, boardConsole, tab, panel?.kind === "leg" && drawer ? { leg: drawer.leg, stage: drawer.stage } : null);
+    // `selected`, not boardConsole: an auto-picked console must not turn an unscoped fleet URL into a scoped one.
+    const h = viewHash(token, selected, tab, panel?.kind === "leg" && drawer ? { leg: drawer.leg, stage: drawer.stage } : null);
     if (h !== location.hash) history.replaceState(null, "", h);
-  }, [token, boardConsole, tab, drawer, panel]);
+  }, [token, selected, tab, drawer, panel]);
   const closeDrawer = () => { setDrawer(null); setPanel(null); };
   const legOrder = joined.map((j) => j.leg.leg);
   useDrawerKeys(drawer, panel, legOrder, setDrawer, closeDrawer);

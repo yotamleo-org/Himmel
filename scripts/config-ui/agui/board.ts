@@ -35,24 +35,29 @@ export async function findDoc(root: string, name: string): Promise<string | null
 export const scrub = (v: unknown, extra: (v: unknown) => unknown = (x) => x): unknown =>
   extra(JSON.parse(JSON.stringify(v), (_k, x) => (typeof x === "string" ? redact(x) : x)));
 
-type Entry = { at: number; p: Promise<{ body: unknown } | { error: string }> };
+// `at` is null while the build is pending (every poll shares it), then the time it finished.
+type Entry = { at: number | null; p: Promise<{ body: unknown } | { error: string }> };
 const cache = new Map<string, Entry>();
 
 export function readBoard(o: { script: string; doc: string; checkout: string; env: NodeJS.ProcessEnv; now: number; ttlMs?: number; timeoutMs?: number }): Promise<{ body: unknown } | { error: string }> {
   const hit = cache.get(o.doc);
-  if (hit && o.now - hit.at < (o.ttlMs ?? BOARD_TTL_MS)) return hit.p;
+  if (hit && (hit.at === null || o.now - hit.at < (o.ttlMs ?? BOARD_TTL_MS))) return hit.p;
+  const started = Date.now();
   const p = (async () => {
     const dir = await mkdtemp(join(tmpdir(), "agui-board-"));
     try {
       const out = join(dir, "board.json");
       await new Promise<void>((ok, fail) => execFile("node", [o.script, "--doc", o.doc, "--json", out, "--out", join(dir, "board.html"), "--repo", o.checkout],
         { env: o.env, timeout: o.timeoutMs ?? BOARD_TIMEOUT_MS, maxBuffer: 1 << 20 }, (e, _so, se) => (e ? fail(new Error(String(se || e.message).trim().split("\n").pop())) : ok())));
-      return { body: JSON.parse(await readFile(out, "utf8")) as unknown };
+      const body = JSON.parse(await readFile(out, "utf8")) as unknown;
+      const e = cache.get(o.doc);
+      if (e) e.at = o.now + (Date.now() - started); // the TTL runs from when the build finished
+      return { body };
     } catch (e) {
       cache.delete(o.doc); // a failure is not cached: the next poll retries
       return { error: String((e as Error).message ?? e) };
     } finally { rm(dir, { recursive: true, force: true }).catch(() => undefined); }
   })();
-  cache.set(o.doc, { at: o.now, p });
+  cache.set(o.doc, { at: null, p });
   return p;
 }

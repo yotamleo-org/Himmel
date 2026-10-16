@@ -57,6 +57,25 @@ test("board: serves the model of the named console's doc, with no nonce and no l
   expect(text).not.toContain(LOCK);
 });
 
+test("board: a build still running when the TTL has passed is shared, not started twice", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agui-board-slow-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const runs = join(dir, "runs");
+  const script = join(dir, "board.mjs");
+  writeFileSync(script, `import { appendFileSync, writeFileSync } from "node:fs";
+const a = process.argv.slice(2);
+appendFileSync(${JSON.stringify(runs)}, "x");
+await new Promise((r) => setTimeout(r, 300));
+writeFileSync(a[a.indexOf("--json") + 1], "{}");
+`);
+  const { readBoard } = await import("../agui/board");
+  const o = { script, doc: join(dir, "slow-doc.md"), checkout: dir, env: { PATH: process.env.PATH } };
+  const first = readBoard({ ...o, now: 0, ttlMs: 50 });
+  const second = readBoard({ ...o, now: 100, ttlMs: 50 }); // past the TTL, but the first build is still pending
+  await Promise.all([first, second]);
+  expect(Bun.file(runs).size).toBe(1);
+});
+
 test("brief: a leg doc, token-gated, read-only, redacted, names only", async () => {
   const { port } = boot();
   expect((await get(port, `/api/agui/brief?leg=${LEG}`, {})).status).toBe(401);
