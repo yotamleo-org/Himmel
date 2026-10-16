@@ -142,6 +142,22 @@ else
 fi
 rm -rf "$t"
 
+echo "== branch conflicts with main, key on main but landing covers only part of the branch's files -> UNLANDED-LIVE =="
+t="$(mktemp -d)" || exit 1; make_repo "$t/repo"
+git -C "$t/repo" checkout -q -b fix/himmel-9103-thing
+commit_dated "$t/repo" 0 conflict.md "branch version"
+commit_dated "$t/repo" 0 extra-only-on-branch.md "never landed"
+git -C "$t/repo" checkout -q main
+commit_dated "$t/repo" 0 conflict.md "main version, different content" "fix: [HIMMEL-9103] first slice only"
+out="$(cd "$t/repo" && bash "$SCRIPT" --no-forge --base main --tsv 2>&1)"
+row="$(tsv_row "$out" fix/himmel-9103-thing)"
+if grepq "$row" '^UNLANDED-LIVE' && grepq "$row" -F 'extra-only-on-branch.md'; then
+    pass "conflict + key-on-main covering only part of the delta -> UNLANDED-LIVE"
+else
+    fail "partial key landing -> $row"
+fi
+rm -rf "$t"
+
 echo "== branch conflicts with main, ticket key NOT on main -> STALE =="
 t="$(mktemp -d)"; make_repo "$t/repo"
 git -C "$t/repo" checkout -q -b fix/himmel-9102-thing
