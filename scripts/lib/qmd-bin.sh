@@ -74,10 +74,12 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # commit of fork PR #14), not fork main. The pin was the merge
 # commit of fork PR #15 (b1858ca on himmel/pin-http-auth; it brings c5cc17b, the
 # HTTP daemon start honouring the embed-swap lock, onto 791fdf8).
-# The pin is now cecc32a9, which adds the openai: provider (b1858ca is its
-# ancestor).
+# The pin is now 7cc60404, the tip of himmel/pin-http-auth: cecc32a9 (the
+# openai: provider, an ancestor) plus the remote-embed throughput work (fork
+# #17), the update hint fix (fork #18) and the MCP query rerank-off default
+# with burst handling (fork #20).
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-cecc32a9ec5cf5a8a518c71d151e2795a027ebe0}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-7cc60404e9107652e5ae1621866e35d5a84c111e}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or
