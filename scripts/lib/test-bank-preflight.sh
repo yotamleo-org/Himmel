@@ -153,7 +153,12 @@ rm -f "$W/ledger.jsonl"
 printf '%s' "$(stamp_account "$(fx 10 20 "$NOW")")" > "$W/c.json"
 CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" \
   CADENCE_BANK_LEG="$(printf 'leg\377x')" FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null >/dev/null 2>&1
-check "non-UTF-8 LEG -> ledger row is strict-valid JSON" true "$(LC_ALL=C.UTF-8 jq -e . "$W/ledger.jsonl" >/dev/null 2>&1 && echo true || echo false)"
+# jq silently repairs invalid UTF-8, so decode strictly. Positive control: the
+# same decoder must reject a raw invalid byte.
+strict_utf8() { python3 -I -c 'import sys; sys.stdin.buffer.read().decode("utf-8")' < "$1" >/dev/null 2>&1 && echo true || echo false; }
+printf 'leg\377x\n' > "$W/badbyte.txt"
+check "strict decoder rejects a raw invalid byte (control)" false "$(strict_utf8 "$W/badbyte.txt")"
+check "non-UTF-8 LEG -> ledger row is strict-valid UTF-8" true "$(strict_utf8 "$W/ledger.jsonl")"
 
 future=$(( $(date +%s) + 86400 ))
 printf '%s' "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":20},\"primaries_refreshed_at\":$future,\"account\":\"$ACCT\"}" > "$W/c.json"
