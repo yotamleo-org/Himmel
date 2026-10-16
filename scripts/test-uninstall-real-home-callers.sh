@@ -78,22 +78,28 @@ home_is_scratch() {
   # `;`-separated with no `&&` / `||` / `&` / `|` bar a `>&N` redirect (`{ false && exit 1; }` falls through).
   local guard_re='^[[:space:]]*\|\|[[:space:]]*((exit|return)([[:space:]]+[0-9]+)?[[:space:]]*([;)#]|$)|\{(([^};&|]|>&[0-9])*;)*[[:space:]]*(exit|return)([[:space:]]+[0-9]+)?[[:space:]]*;[[:space:]]*\})'
   local drop_re='(^|[^A-Za-z0-9_])(unset([[:space:]]+-[A-Za-z]+)*([[:space:]]+[A-Za-z_][A-Za-z0-9_]*)*[[:space:]]+HOME|export[[:space:]]+-[A-Za-z]*n[A-Za-z]*([[:space:]]+[A-Za-z_][A-Za-z0-9_]*)*[[:space:]]+HOME|env[[:space:]].*(-u[[:space:]]*|--unset=)HOME)([^A-Za-z0-9_]|$)|(^|[^A-Za-z0-9_])(env([[:space:]]+-[A-Za-z]*i[A-Za-z]*|[[:space:]]+--ignore-environment|[[:space:]]+-)|exec[[:space:]]+-[A-Za-z]*c[A-Za-z]*)([[:space:]]|$)'
-  local scratch=" " names=() vals=()
+  local decl_re='(^|[^A-Za-z0-9_./-])(local|export|declare|readonly|typeset)[[:space:]]([^;&|]*)$'
+  local scratch=" " names=() vals=() decls=() before m
   while IFS= read -r line || [ -n "$line" ]; do
     [[ "$line" =~ $drop_re || "${line//[\"\']/}" =~ $drop_re ]] && return 1   # quotes deleted too: `unset "HOME"`
     rest="$line"
     while [[ "$rest" =~ $assign_re ]]; do
-      names+=("${BASH_REMATCH[2]}"); rest="${BASH_REMATCH[5]}"
+      # a declaration builtin returns its own status: a guard after its mktemp never fires.
+      m=("${BASH_REMATCH[@]}")
+      before="${line:0:${#line}-${#m[0]}+${#m[1]}}"
+      if [[ "$before" =~ $decl_re ]]; then decls+=(1); else decls+=(0); fi
+      names+=("${m[2]}"); rest="${m[5]}"
       # `v+=`, `v[i]=`, `${v:=...}`: never a scratch shape (`<op>` matches none).
-      if [ -n "${BASH_REMATCH[3]}${BASH_REMATCH[4]}" ]; then vals+=("<op>"); else vals+=("$rest"); fi
+      if [ -n "${m[3]}${m[4]}" ]; then vals+=("<op>"); else vals+=("$rest"); fi
     done
   done < <(join_continued "$file")
-  # scratch_value <value> <guard:0|1> -- the value (the text after `=`) is a scratch shape.
+  # scratch_value <value> <guard:0|1> <decl:0|1> -- the value (the text after `=`) is a scratch shape.
   scratch_value() {
     local val="$1" rest r
     if [[ "$val" =~ $mk_re ]]; then
       rest="${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}"
       [[ "$rest" =~ $end_re ]] || return 1
+      [ "$3" -eq 0 ] || return 1   # declared on the same line: the guard cannot fire
       [ "$2" -eq 0 ] || [[ "$rest" =~ $guard_re ]]
       return
     fi
@@ -114,7 +120,7 @@ home_is_scratch() {
       ok=1
       for ((j=0; j<${#names[@]}; j++)); do
         [ "${names[$j]}" = "$name" ] || continue
-        scratch_value "${vals[$j]}" 1 || { ok=0; break; }
+        scratch_value "${vals[$j]}" 1 "${decls[$j]}" || { ok=0; break; }
       done
       [ "$ok" -eq 1 ] && { scratch="$scratch$name "; changed=1; }
     done
@@ -122,7 +128,7 @@ home_is_scratch() {
   done
   for ((i=0; i<${#names[@]}; i++)); do
     [ "${names[$i]}" = HOME ] || continue
-    scratch_value "${vals[$i]}" 0 || return 1
+    scratch_value "${vals[$i]}" 0 "${decls[$i]}" || return 1
     homes=$((homes+1))
   done
   [ "$homes" -gt 0 ]
@@ -208,6 +214,8 @@ printf '#!/usr/bin/env bash\ntmp="$(mktemp -d /tmp/x.XXXXXX)"\nother=/somewhere/
 # HOME derived from a mktemp variable through a second variable
 # (the shape of test-e2e-symmetry-isolation.sh) passes.
 printf '#!/usr/bin/env bash\ntd="$(mktemp -d /tmp/x.XXXXXX)" || exit 1\nctl="$td/ctlhome"\nHOME="$ctl" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-transitive.sh"
+# the split form (declare, then guard on its own plain line) passes: the fix is no loosening.
+printf '#!/usr/bin/env bash\nlocal td\ntd=$(mktemp -d /tmp/x.XXXXXX) || exit 1\nHOME="$td/home" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-split-decl.sh"
 # a literal mktemp on the HOME assignment passes.
 printf '#!/usr/bin/env bash\nHOME="$(mktemp -d /tmp/x.XXXXXX)" %s=1 bash uninstall.sh --yes\n' "$V" > "$fx/scripts/test-scratch-literal.sh"
 # an expansion operator can swap the scratch value for the real one.
@@ -313,6 +321,13 @@ pin h-td-reassigned.sh 'td=$(mktemp -d)' 'td=@H@' 'HOME="$(dirname "$td")/overlo
 pin h-td-real.sh 'td=$HOME' 'HOME="$td"' '@V@=1 bash uninstall.sh --yes'
 pin h-td-tilde.sh 'td=~' 'HOME="$td"' '@V@=1 bash uninstall.sh --yes'
 pin h-tmpdir.sh 'td=$(TMPDIR=@H@ mktemp -d)' 'HOME="$(dirname "$td")"' '@V@=1 bash uninstall.sh --yes'
+# a declaration builtin returns its own status, so a trailing guard never fires on a failed mktemp.
+pin h-local-guard.sh 'local td=$(mktemp -d /nonexistent/x.XXXXXX) || exit 1' 'HOME="$td/home/someone" @V@=1 bash uninstall.sh --yes'
+pin h-export-guard.sh 'export td=$(mktemp -d /nonexistent/x.XXXXXX) || exit 1' 'HOME="$td/home/someone" @V@=1 bash uninstall.sh --yes'
+pin h-declare-guard.sh 'declare -r td=$(mktemp -d /nonexistent/x.XXXXXX) || exit 1' 'HOME="$td/home/someone" @V@=1 bash uninstall.sh --yes'
+pin h-readonly-guard.sh 'readonly td=$(mktemp -d /nonexistent/x.XXXXXX) || exit 1' 'HOME="$td/home/someone" @V@=1 bash uninstall.sh --yes'
+pin h-typeset-guard.sh 'typeset -x td=$(mktemp -d /nonexistent/x.XXXXXX) || exit 1' 'HOME="$td/home/someone" @V@=1 bash uninstall.sh --yes'
+pin h-local-guard-second.sh 'local a=1 td=$(mktemp -d /nonexistent/x.XXXXXX) || exit 1' 'HOME="$td/home/someone" @V@=1 bash uninstall.sh --yes'
 # the eleven false passes of the enumerating matcher (the console's review of #1069).
 # shellcheck disable=SC1003  # the backslash is the fixture
 pin v-backslash.sh '@V@=\1 bash uninstall.sh --yes'
@@ -385,6 +400,8 @@ check "HOME assigned from a non-mktemp variable is flagged" \
   "$(printf '%s' "$got" | grep -c 'scripts/test-home-from-other.sh')" "1"
 check "HOME derived from mktemp through a second variable passes" \
   "$(printf '%s' "$got" | grep -c 'scripts/test-scratch-transitive.sh')" "0"
+check "the split declare-then-guard form passes" \
+  "$(printf '%s' "$got" | grep -c 'scripts/test-scratch-split-decl.sh')" "0"
 check "a literal mktemp on the HOME assignment passes" \
   "$(printf '%s' "$got" | grep -c 'scripts/test-scratch-literal.sh')" "0"
 check "a scratch variable behind an expansion operator (\${td:+\$HOME}) is flagged" \
