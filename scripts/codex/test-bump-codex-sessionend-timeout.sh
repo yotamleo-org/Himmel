@@ -48,14 +48,16 @@ end_t() { jq -r '.hooks.SessionEnd[0].hooks[0].timeout' "$BASE/$1/hooks/hooks.js
 start_t() { jq -r '.hooks.SessionStart[0].hooks[0].timeout' "$BASE/$1/hooks/hooks.json"; }
 
 # --- dry-run mutates nothing -------------------------------------------------
-out=$(CLAUDE_CONFIG_DIR="$CFG" bash "$BUMPER" --dry-run 2>&1)
+out=$(CLAUDE_CONFIG_DIR="$CFG" bash "$BUMPER" --dry-run 2>&1 || true)
 chk "dry-run leaves timeout 5" "5" "$(end_t 1.0.6)"
 chk "dry-run reports WOULD BUMP" "yes" "$(grep -q "WOULD BUMP" <<< "$out" && echo yes || echo no)"
 
 # --- real run ----------------------------------------------------------------
 run_rc=0
 CLAUDE_CONFIG_DIR="$CFG" bash "$BUMPER" > "$TMP/run.out" 2>&1 || run_rc=$?
-chk "bumper exits 0" "0" "$run_rc"
+chk "skipped (unparseable) file makes the run exit 1" "1" "$run_rc"
+chk "skipped run does not end with OK" "no" "$(tail -n1 "$TMP/run.out" | grep -q '^OK' && echo yes || echo no)"
+chk "skipped run reports the skip count" "yes" "$(grep -q 'skipped 1' "$TMP/run.out" && echo yes || echo no)"
 chk "1.0.5 SessionEnd raised to 30" "30" "$(end_t 1.0.5)"
 chk "1.0.6 SessionEnd raised to 30" "30" "$(end_t 1.0.6)"
 chk "larger timeout kept" "120" "$(end_t 1.0.7)"
@@ -64,9 +66,28 @@ chk "Stop untouched" "900" "$(jq -r '.hooks.Stop[0].hooks[0].timeout' "$BASE/1.0
 chk "top-level description preserved" "Optional stop-time review gate for Codex Companion." "$(jq -r '.description' "$BASE/1.0.6/hooks/hooks.json")"
 chk "malformed file untouched" "{ not json" "$(cat "$BASE/bad/hooks/hooks.json")"
 
+# --- file mode preserved, symlink kept, entry without .hooks -----------------
+mkdir -p "$BASE/mode/hooks" "$BASE/sym/hooks" "$BASE/nokey/hooks" "$TMP/real"
+mk mode 5
+chmod 0644 "$BASE/mode/hooks/hooks.json"
+mk sym 5
+mv "$BASE/sym/hooks/hooks.json" "$TMP/real/hooks.json"
+ln -s "$TMP/real/hooks.json" "$BASE/sym/hooks/hooks.json"
+cat > "$BASE/nokey/hooks/hooks.json" <<'JSON'
+{ "hooks": { "SessionEnd": [ { "matcher": "x" }, { "hooks": [ { "type": "command", "command": "node session-lifecycle-hook.mjs SessionEnd", "timeout": 5 } ] } ] } }
+JSON
+CLAUDE_CONFIG_DIR="$CFG" bash "$BUMPER" > "$TMP/run2.out" 2>&1 || true
+chk "mode 0644 preserved" "644" "$(stat -c %a "$BASE/mode/hooks/hooks.json")"
+chk "mode-fixture bumped" "30" "$(end_t mode)"
+chk "symlink still a symlink" "yes" "$([ -L "$BASE/sym/hooks/hooks.json" ] && echo yes || echo no)"
+chk "symlink target patched" "30" "$(jq -r '.hooks.SessionEnd[0].hooks[0].timeout' "$TMP/real/hooks.json")"
+chk "entry without .hooks kept" "x" "$(jq -r '.hooks.SessionEnd[0].matcher' "$BASE/nokey/hooks/hooks.json")"
+chk "entry without .hooks does not block bump" "30" "$(jq -r '.hooks.SessionEnd[1].hooks[0].timeout' "$BASE/nokey/hooks/hooks.json")"
+
 # --- idempotent --------------------------------------------------------------
+rm -rf "$BASE/bad"   # the unparseable fixture has done its job; a clean cache lets the rerun reach "nothing to bump"
 before=$(cat "$BASE/1.0.6/hooks/hooks.json")
-out2=$(CLAUDE_CONFIG_DIR="$CFG" bash "$BUMPER" 2>&1)
+out2=$(CLAUDE_CONFIG_DIR="$CFG" bash "$BUMPER" 2>&1 || true)
 chk "rerun is a no-op" "$before" "$(cat "$BASE/1.0.6/hooks/hooks.json")"
 chk "rerun reports nothing to bump" "yes" "$(grep -q "nothing to bump" <<< "$out2" && echo yes || echo no)"
 

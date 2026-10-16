@@ -1321,6 +1321,14 @@ update_marketplace() {
     local sweep_detail=""
     [ "$swept" -eq 0 ] || sweep_detail="; swept $swept stale temp_git_* dir(s) from plugin cache"
 
+    # A plugin re-sync rewrites the openai-codex cache and restores its 5 s
+    # SessionEnd timeout; re-raise it. Best-effort: a skipped
+    # hooks.json is advisory here, never a failed marketplace update.
+    local bump="$ROOT/scripts/codex/bump-codex-sessionend-timeout.sh"
+    if [ -f "$bump" ]; then
+        bash "$bump" >/dev/null 2>&1 || sweep_detail="$sweep_detail; codex SessionEnd bump skipped a file, run scripts/codex/bump-codex-sessionend-timeout.sh"
+    fi
+
     if [ "$update_rc" -eq 0 ]; then
         STATUS_marketplace="updated"; DETAIL_marketplace="re-synced from local dir$sweep_detail"
         return 0
