@@ -965,6 +965,13 @@ UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test {src,tests}/a.test.ts\"}}\n
 unw_run scripts/cfg/tests/a.test.ts
 contains "brace glob in the directory part: a file under an alternative passes" "$out" "[PASS] 11."
 
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test {,src/}tests\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "brace glob with an empty alternative: the empty one still matches" "$out" "[PASS] 11."
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test tests/a{,x}.test.ts\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "brace glob with an empty alternative inside a name: a.test.ts matches" "$out" "[PASS] 11."
+
 # node --import tsx --test is a test runner that loads a TS transform
 UNW_EXTRA="printf '{\"scripts\":{\"test\":\"node --import tsx --test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
 unw_run scripts/cfg/tests/a.test.ts

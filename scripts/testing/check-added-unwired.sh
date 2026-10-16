@@ -73,7 +73,10 @@ brace_expand() {
   case "$w" in *\{*,*\}*) ;; *) printf '%s\n' "$w"; return ;; esac
   pre="${w%%\{*}"; rest="${w#*\{}"; in="${rest%%\}*}"; post="${rest#*\}}"
   case "$in" in *\{*) printf '%s\n' "$w"; return ;; esac
-  for a in $(printf '%s' "$in" | tr ',' ' '); do brace_expand "$pre$a$post"; done
+  while :; do  # parameter-expansion split keeps an empty alternative ({,src/})
+    a="${in%%,*}"; brace_expand "$pre$a$post"
+    case "$in" in *,*) in="${in#*,}" ;; *) break ;; esac
+  done
 }
 
 # pkg_runs <pkg dir, "" = root> <file> — the package.json test script runs a known
