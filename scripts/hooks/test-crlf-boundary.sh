@@ -833,6 +833,7 @@ check guard-leg-context-handoff Bash 0 "bash scripts/handover/wrap-subtree-check
     HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-console HIMMEL_LEG_CONTEXT_MODE=compact \
     "CLAUDE_CONFIG_DIR=$LCX/cfg" "HANDOVER_DIR=$LCX/handovers"
 CRLF_TP=""
+check retrieval-nudge Bash 0 "gi""t status" "advisory hook exits 0 on a plain command"
 
 # ── Completeness guard ──────────────────────────────────────────────────────
 # The audit's real deliverable. Enumerate the command-text hooks FROM THE
