@@ -214,11 +214,18 @@ log="$(cat "$H/qmd.log")"
 assert_contains "qmd embedded the COPY" "INDEX_PATH=$copy " "$log"
 assert_not_contains "qmd never used the live config dir" "QMD_CONFIG_DIR=$H/.config/qmd " "$log"
 assert_contains "embed ran forced with no session cap and a 4096-doc batch" "ARGS=embed --force --timeout 0 --max-docs-per-batch 4096" "$log"
-# A copy that already holds the target model is a partial run: resume it.
+if [ ! -e "$copy.partial" ]; then pass "a finished run removes the resume marker"; else fail "a finished run removes the resume marker"; fi
+# A finished copy is a snapshot of an older live index: never reused.
 sqlite3 "$copy" "CREATE TABLE resume_marker(x INT);"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed refuses a finished copy" 2 "$rc"
+assert_contains "the refusal names the finished copy" "finished copy of an older live index" "$out"
+# A copy that still carries the marker is a partial run: resume it.
+: >"$copy.partial"
 : >"$H/qmd.log"
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
-assert_rc "reembed resumes an existing copy of the target model" 0 "$rc"
+assert_rc "reembed resumes a partial copy of the target model" 0 "$rc"
+if [ ! -e "$copy.partial" ]; then pass "the resumed run removes the resume marker"; else fail "the resumed run removes the resume marker"; fi
 assert_contains "the resume kept the copy (no new backup)" "resume_marker" "$(sqlite3 "$copy" .tables)"
 log="$(cat "$H/qmd.log")"
 assert_contains "the resume embeds without --force" "ARGS=embed --timeout 0 --max-docs-per-batch 4096" "$log"

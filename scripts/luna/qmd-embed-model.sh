@@ -396,6 +396,7 @@ cmd_reembed() {
     if [ -e "$copy" ]; then
         [ ! "$copy" -ef "$live" ] || die 2 "--copy is the same file as the live index (link); reembed never writes the live index"
         compare_index "$copy" "$uri" >/dev/null 2>&1 || die 2 "$copy already exists and does not hold only $name vectors; remove it or pick another --copy"
+        [ -e "$copy.partial" ] || die 2 "$copy is a finished copy of an older live index; swap it in, or remove it to copy the current live index"
         resume=1
     fi
     resolve_qmd
@@ -405,6 +406,7 @@ cmd_reembed() {
     else
         say "[1/4] consistent copy of $live to $copy"
         sqlite3 -readonly "$live" ".backup '$copy'" || { rm -f "$copy"; die 5 "sqlite3 .backup failed"; }
+        : >"$copy.partial" || die 5 "could not write the resume marker $copy.partial"
     fi
 
     # qmd reads models.embed from the config BEFORE QMD_EMBED_MODEL, so the
@@ -432,6 +434,7 @@ cmd_reembed() {
     rc=0
     compare_index "$copy" "$uri" || rc=$?
     [ "$rc" -eq 0 ] || die 5 "the copy failed its model check"
+    rm -f "$copy.partial"
     say "built $copy with $name. To switch this host: bash $HERE/qmd-embed-model.sh swap --copy $copy"
 }
 
