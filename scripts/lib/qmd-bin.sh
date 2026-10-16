@@ -712,16 +712,34 @@ _qmd_global_dir() {
   echo "$bun_root/install/global/node_modules/@tobilu/qmd"
 }
 
+# _qmd_local_cfg: print the project-local config the fork opens when no --index
+# is given: the first .qmd/index.yaml (else index.yml) walking up from the cwd.
+# Same lookup as findLocalConfigPath in the fork (src/collections.ts); rc 1 if none.
+_qmd_local_cfg() {
+  local d="$PWD" n
+  while :; do
+    for n in index.yaml index.yml; do
+      [ -e "$d/.qmd/$n" ] && { printf '%s\n' "$d/.qmd/$n"; return 0; }
+    done
+    [ "$d" = / ] && return 1
+    d="${d%/*}"
+    [ -n "$d" ] || d=/
+  done
+}
+
 # _qmd_egress_ok: a config naming a remote (openai:) model must pass the egress
 # gate against the index this call would open, or no qmd process starts. Covers
 # every himmel caller of qmd_cmd (direct CLI shapes: query, embed, update, mcp).
+# With no --index the index is the project-local one when the cwd walk finds it
+# (the gate re-walks via --resolve), else the global pair.
+# ponytail: a pass is cached 30s per shell process, keyed on config text, env and cwd; a database that gains a salus collection inside that window is not seen, drop the cache or key on the db mtime if that matters.
 _qmd_egress_ok() {
-  local cfg idx gate name=index a prev=""
+  local cfg idx gate name=index a prev="" explicit=0 local_cfg gcfg gidx rc=0 key to cont=""
   # a named index (--index NAME / --index=NAME) opens NAME.yml + NAME.sqlite, so gate those
   for a in "$@"; do
     case "$a" in
-      --index=*) name="${a#--index=}" ;;
-      *) [ "$prev" = "--index" ] && name="$a" ;;
+      --index=*) name="${a#--index=}"; explicit=1 ;;
+      *) if [ "$prev" = "--index" ]; then name="$a"; explicit=1; fi ;;
     esac
     prev="$a"
   done
@@ -730,7 +748,14 @@ _qmd_egress_ok() {
       echo "qmd-bin: --index name must match [A-Za-z0-9._-]+ - qmd not started." >&2
       return 10 ;;
   esac
-  cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/$name.yml"
+  gcfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/$name.yml"
+  gidx="${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/$name.sqlite}"
+  cfg="$gcfg"
+  idx="$gidx"
+  if [ "$explicit" -eq 0 ] && local_cfg="$(_qmd_local_cfg)"; then
+    cfg="$local_cfg"
+    idx="${local_cfg%/*}/index.sqlite"
+  fi
   case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in
     *[Oo][Pp][Ee][Nn][Aa][Ii]:*) : ;;
     *)
@@ -743,16 +768,32 @@ _qmd_egress_ok() {
       done <"$cfg"
       [ "$found" -eq 0 ] || return 0 ;;
   esac
-  idx="${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/$name.sqlite}"
   gate="$_QMDBIN_LIB_DIR/../qmd/qmd-jina-gate.mjs"
   if [ ! -f "$gate" ] || ! command -v node >/dev/null 2>&1; then
     echo "qmd-bin: a remote model is configured but the egress gate or node is missing - qmd not started." >&2
     return 10
   fi
-  node "$gate" "$cfg" "$idx" >&2 || {
+  { cont="$(<"$cfg")"; } 2>/dev/null
+  key="$cfg|$idx|$explicit|$PWD|${QMD_EMBED_MODEL:-}|${QMD_RERANK_MODEL:-}|${QMD_GENERATE_MODEL:-}|${QMD_OPENAI_BASE_URL:-}|$cont"
+  if [ -n "${_QMDBIN_GATE_KEY:-}" ] && [ "$key" = "$_QMDBIN_GATE_KEY" ] && [ $((SECONDS - ${_QMDBIN_GATE_AT:-0})) -lt 30 ]; then
+    return 0
+  fi
+  to="${QMD_GATE_TIMEOUT_SECS:-30}"
+  if [ "$explicit" -eq 1 ]; then set -- "$gcfg" "$gidx"; else set -- --resolve "$gcfg" "$gidx"; fi
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$to" node "$gate" "$@" >&2 || rc=$?
+  else
+    node "$gate" "$@" >&2 || rc=$?
+  fi
+  if [ "$rc" -eq 124 ]; then
+    echo "qmd-bin: the egress gate timed out after ${to}s - qmd not started." >&2
+    return 10
+  elif [ "$rc" -ne 0 ]; then
     echo "qmd-bin: EGRESS REFUSED - qmd not started; see docs/internals/egress-matrix.md." >&2
     return 10
-  }
+  fi
+  _QMDBIN_GATE_KEY="$key"
+  _QMDBIN_GATE_AT=$SECONDS
 }
 
 qmd_cmd() {

@@ -21,7 +21,7 @@
 // the path or any ancestor, and the path of every salus collection in the
 // sibling index configs next to the checked one.
 //
-// Usage: node qmd-jina-gate.mjs <index.yml> [<index.sqlite>]
+// Usage: node qmd-jina-gate.mjs [--resolve] <index.yml> [<index.sqlite>]
 // Exit 0 allowed (also when no role is remote), 3 refused, 2 usage/unreadable.
 // qmd reads the config first and these environment variables only when the
 // config sets nothing: QMD_EMBED_MODEL, QMD_RERANK_MODEL, QMD_GENERATE_MODEL,
@@ -42,7 +42,20 @@ const PINNED = { openrouter: { embed: "openai:qwen/qwen3-embedding-8b", rerank: 
 const PURPOSE = { embed: "embedding", rerank: "rerank", generate: "inference" };
 const ENV_ROLE = { embed: "QMD_EMBED_MODEL", rerank: "QMD_RERANK_MODEL", generate: "QMD_GENERATE_MODEL" };
 
-const cfgPath = process.argv[2];
+// --resolve <index.yml> [<index.sqlite>]: with no --index the fork opens the first
+// .qmd/index.yaml (else index.yml) found walking up from the cwd, and its sibling
+// index.sqlite, in preference to the global pair; check that file, not the global one.
+const args = process.argv.slice(2);
+let cfgPath, dbPath;
+if (args[0] === "--resolve") {
+  [, cfgPath, dbPath] = args;
+  for (let d = resolve(process.cwd()), prev = ""; d !== prev; prev = d, d = dirname(d)) {
+    const hit = ["index.yaml", "index.yml"].map((n) => join(d, ".qmd", n)).find((f) => existsSync(f));
+    if (hit) { cfgPath = hit; dbPath = join(dirname(hit), "index.sqlite"); break; }
+  }
+} else {
+  [cfgPath, dbPath] = args;
+}
 if (!cfgPath) {
   process.stderr.write("qmd-jina-gate: need <index.yml>\n");
   process.exit(2);
@@ -146,7 +159,6 @@ for (const line of text.split("\n")) {
 // read fails closed; a database that does not exist yet holds nothing, since
 // its collections can only come from the config checked above.
 const cfgCollections = collections.slice();
-const dbPath = process.argv[3];
 const dbProblems = [];
 if (dbPath && existsSync(dbPath)) {
   try {

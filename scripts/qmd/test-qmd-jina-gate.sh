@@ -551,4 +551,52 @@ for jv in JINA_API_KEY JINA_API; do
   [ ! -e "$work/started" ] || fail "(45) launcher started a Jina daemon on a session-env $jv"
 done
 
+# (46) with no --index the fork prefers a cwd-walked project-local .qmd/index.{yaml,yml}
+# over the global config; `--resolve` makes the gate check the SAME file, not only the global one.
+OR_PIN_E='openai:qwen/qwen3-embedding-8b'
+OR_PIN_R='openai:cohere/rerank-4-fast'
+OR_URL='https://openrouter.ai/api/v1'
+mkdir -p "$work/proj/.qmd" "$work/proj/sub/deep" "$work/clean" "$work/yamlproj/.qmd"
+cfg "$work/glob.yml" "$LOCAL_EMBED" "$LOCAL_EMBED" - himmel
+# a project-local config that sends the salus collection to a remote route
+printf 'collections:\n  salus:\n    path: /nonexistent/salus\nmodels:\n  embed: %s\n  rerank: %s\n  openai_base_url: %s\n' "$OR_PIN_E" "$OR_PIN_R" "$OR_URL" > "$work/proj/.qmd/index.yml"
+# run_res <cwd> [VAR=value...]: the gate in --resolve mode, started from <cwd>
+run_res() {
+  local d="$1"; shift
+  ( cd "$d" && env -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL -u QMD_OPENAI_BASE_URL CLAUDE_GLM_CONFIG_DIR="$work/none" QMD_CONFIG_DIR="$work/qc-none" "$@" node "$gate" --resolve "$work/glob.yml" 2>"$work/err" )
+}
+run_res "$work/proj"; rc=$?
+[ "$rc" -eq 3 ] || fail "(46a) project-local salus + remote route from its own dir: expected rc 3, got $rc: $(cat "$work/err")"
+grep -q 'salus' "$work/err" || fail "(46a) the refusal must name salus: $(cat "$work/err")"
+grep -q "$work/proj/.qmd/index.yml" "$work/err" || fail "(46a) the refusal must name the project-local file: $(cat "$work/err")"
+run_res "$work/proj/sub/deep"; rc=$?
+[ "$rc" -eq 3 ] || fail "(46b) the cwd walk must find .qmd/index.yml from a deeper dir: expected rc 3, got $rc"
+run_res "$work/clean"; rc=$?
+[ "$rc" -eq 0 ] || fail "(46c) no project-local config: the global (local-model) config applies: expected rc 0, got $rc: $(cat "$work/err")"
+# index.yaml wins over index.yml, as the fork orders them
+printf 'collections:\n  himmel:\n    path: /nonexistent/h\nmodels:\n  embed: %s\n  rerank: %s\n  openai_base_url: %s\n' "$OR_PIN_E" "$OR_PIN_R" "$OR_URL" > "$work/yamlproj/.qmd/index.yml"
+printf 'collections:\n  salus:\n    path: /nonexistent/salus\nmodels:\n  embed: %s\n  rerank: %s\n  openai_base_url: %s\n' "$OR_PIN_E" "$OR_PIN_R" "$OR_URL" > "$work/yamlproj/.qmd/index.yaml"
+run_res "$work/yamlproj"; rc=$?
+[ "$rc" -eq 3 ] || fail "(46d) index.yaml must be the file checked when both exist: expected rc 3, got $rc"
+# a clean remote project-local config (non-salus, pinned openrouter models) is allowed: the positive control
+printf 'collections:\n  himmel:\n    path: /nonexistent/h\nmodels:\n  embed: %s\n  rerank: %s\n  openai_base_url: %s\n' "$OR_PIN_E" "$OR_PIN_R" "$OR_URL" > "$work/proj/.qmd/index.yml"
+run_res "$work/proj"; rc=$?
+[ "$rc" -eq 0 ] || fail "(46e) clean remote project-local config: expected rc 0, got $rc: $(cat "$work/err")"
+# an unreadable project-local config fails closed
+if [ "$(id -u)" -ne 0 ]; then
+  chmod 000 "$work/proj/.qmd/index.yml"
+  run_res "$work/proj"; rc=$?
+  chmod 600 "$work/proj/.qmd/index.yml"
+  [ "$rc" -ne 0 ] || fail "(46f) an unreadable project-local config must fail closed, got rc 0"
+fi
+
+# (47) a remote value in ANY QMD_*_MODEL env refuses a salus index, whichever config file applies.
+printf 'collections:\n  salus:\n    path: /nonexistent/salus\nmodels:\n  embed: %s\n  rerank: %s\n' "$LOCAL_EMBED" "$LOCAL_EMBED" > "$work/proj/.qmd/index.yml"
+for ev in QMD_EMBED_MODEL QMD_RERANK_MODEL QMD_GENERATE_MODEL; do
+  run_res "$work/proj" "$ev=$OR_PIN_E" "QMD_OPENAI_BASE_URL=$OR_URL"; rc=$?
+  [ "$rc" -eq 3 ] || fail "(47) $ev=openai:... with a project-local salus config: expected rc 3, got $rc: $(cat "$work/err")"
+done
+run_res "$work/proj"; rc=$?
+[ "$rc" -eq 0 ] || fail "(47) project-local salus on local models, no env: expected rc 0, got $rc: $(cat "$work/err")"
+
 echo "PASS: test-qmd-jina-gate.sh"
