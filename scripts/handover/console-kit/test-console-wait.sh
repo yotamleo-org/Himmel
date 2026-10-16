@@ -1120,6 +1120,10 @@ bash "$WAIT" "$I" --succession S2 >/dev/null 2>&1; rc=$?
 check "(su4) --succession without --doc is a usage error (rc 2)" "2" "$rc"
 bash "$WAIT" "$I" --doc "$SUCD" --succession 'bad name' >/dev/null 2>&1; rc=$?
 check "(su4) a --succession that is not a session name is a usage error (rc 2)" "2" "$rc"
+bash "$WAIT" "$I" --doc "$SUCD" --succession >/dev/null 2>&1; rc=$?
+check "(su4) a trailing --succession with no value is a usage error (rc 2)" "2" "$rc"
+bash "$WAIT" "$I" --doc "$SUCD" --succession S2 --silent-min >/dev/null 2>&1; rc=$?
+check "(su4) a trailing --silent-min with no value is a usage error (rc 2)" "2" "$rc"
 unset CONSOLE_WAIT_TRACKER CONSOLE_WAIT_SUCCESSION_SEC
 
 # --- (rol) <inbox>.relay-on-live: the outgoing console's one wake ------------------
@@ -1147,6 +1151,14 @@ check "(rol2) the wake names the successor" "WAKE relay-on-live successor=S2" "$
 check "(rol2) the block carries the relay lines" "yes" "$(grep -q '^SENDMESSAGE to=N1' "$WORK/rol2.out" && echo yes)"
 check "(rol2) the marker is consumed" "no" "$([ -e "$I.relay-on-live" ] && echo yes || echo no)"
 check "(rol2) the exit reason is logged" "yes" "$(grep -q 'exit=wake-relay-on-live' "$I.wait" && echo yes)"
+
+# a failing relay-batch must neither wake nor consume the marker
+printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB/rol-relay.sh"
+I="$(new_inbox rol3)"
+printf 'S2\n%s\n' "$WORK/rol-succ.md" > "$I.relay-on-live"
+timeout 4 bash "$WAIT" "$I" --doc "$ROLD" --legs "N1.md" > "$WORK/rol3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(rol3) a failing relay yields no wake (rc 124)" "124" "$rc"
+check "(rol3) and the marker is kept for a retry" "yes" "$([ -s "$I.relay-on-live" ] && echo yes)"
 unset CONSOLE_WAIT_LOCK_STATUS CONSOLE_WAIT_RELAY CONSOLE_WAIT_SUCCESSION_SEC
 
 # --- (k) usage ---------------------------------------------------------------

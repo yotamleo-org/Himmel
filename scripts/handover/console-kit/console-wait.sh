@@ -239,6 +239,7 @@ for a in "$@"; do
     rest_args+=("$a")
 done
 set -- ${rest_args[@]+"${rest_args[@]}"}
+case "$prev_arg" in --succession|--silent-min) echo "console-wait: $prev_arg needs a value" >&2; exit 2 ;; esac
 if [ -n "$succession" ]; then
     case "$succession" in *[!A-Za-z0-9_.-]*) echo "console-wait: --succession must be a session name" >&2; exit 2 ;; esac
     case "$silent_min" in ''|*[!0-9]*) echo "console-wait: --silent-min must be whole minutes" >&2; exit 2 ;; esac
@@ -637,9 +638,11 @@ while :; do
         if [ -n "$rol_succ" ] && [ -n "$rol_doc" ]; then
             bash "${CONSOLE_WAIT_LOCK_STATUS:-$HERE/../queue-lock.sh}" status "$rol_doc" </dev/null >/dev/null 2>&1 9>&-; rol_rc=$?
             if [ "$rol_rc" -eq 11 ]; then
-                rol_out="$(bash "${CONSOLE_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"
-                printf 'WAKE relay-on-live successor=%s\n%s\n' "$rol_succ" "$rol_out"
-                rm -f "$inbox.relay-on-live"; exit_reason='wake-relay-on-live'; exit 0
+                # a failed relay keeps the marker so the next sample retries it
+                if rol_out="$(bash "${CONSOLE_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"; then
+                    printf 'WAKE relay-on-live successor=%s\n%s\n' "$rol_succ" "$rol_out"
+                    rm -f "$inbox.relay-on-live"; exit_reason='wake-relay-on-live'; exit 0
+                fi
             fi
         else
             rm -f "$inbox.relay-on-live"
