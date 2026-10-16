@@ -15,7 +15,11 @@
 #          it), a .github/workflows job runs bun test / node --test / vitest / jest
 #          on a directory above it, or a package.json above it has a "test" script
 #          whose runner's discovery reaches it (path args narrow; node --test
-#          reaches only JS unless the script loads a TS transform).
+#          reaches only JS unless the script loads a TS transform; node may carry
+#          flags before --test, e.g. node --import tsx --test; one {a,b} group in
+#          a path arg is expanded, a nested brace group narrows by directory only;
+#          a single * also matches across / — ponytail: over-accepts a nested file
+#          for node --test, upgrade = a segment-aware glob matcher).
 #   hooklib scripts/hooks/<subdir>/*: a wired hook, or another live library under
 #          scripts/hooks/, names its basename (sourced). Judged read-only.
 #   skill  SKILL.md under <plugin>/skills/<name>/ where <plugin> has
@@ -23,12 +27,13 @@
 #          marketplace/.claude-plugin/marketplace.json), or under .claude/skills/ or
 #          .agents/skills/ (discovered by directory).
 #   script a .sh/.mjs/.js/.ts/.py file under scripts/, or any scripts/ file with the
-#          executable bit: some OTHER non-test, non-doc file at <ref> names its
-#          basename (settings, runner, CI job, doctor check, caller, a sourcing
-#          script, or a runbook/cadence doc: operator-run tools are wired by the doc
-#          that says when to run them; a suite or handovers/ file never counts).
+#          executable bit: some OTHER file at <ref> names its basename (settings,
+#          runner, CI job, doctor check, caller, a sourcing script, or a runbook/
+#          cadence doc already in the tree: operator-run tools are wired by the doc
+#          that says when to run them). Never counted: a test or suite (test-*,
+#          *.test.*), a handovers/ file, a fixtures/testdata/node_modules file.
 #          A referencer that is itself an unwired added file does not count, nor does
-#          a doc the same PR adds. A generic TS/JS stem (index, utils) is matched by
+#          a .md/.txt/.rst/.adoc doc the same PR adds. A generic TS/JS stem (index, utils) is matched by
 #          directory/stem in an extensionless import, not the bare stem.
 #          A test helper (under a tests?/ or *-cases/ dir, or named testlib-*) is also
 #          wired by a suite that names it; an added suite still unwired does not count.
@@ -61,26 +66,36 @@ bn_re() { printf '(^|[^A-Za-z0-9._-])%s([^A-Za-z0-9._-]|$)' "${1//./\\.}"; }
 # is_pending <path> — the path is an added file still judged unwired (literal match)
 is_pending() { P="$1" awk -F'|' '$2 == ENVIRON["P"] {f=1} END {exit !f}' "$tmp/pending"; }
 
+# brace_expand <word> — the word's {a,b} alternatives one per line (call under set -f);
+# a word with no comma group, or a nested one, is printed unchanged
+brace_expand() {
+  local w="$1" pre rest in post a
+  case "$w" in *\{*,*\}*) ;; *) printf '%s\n' "$w"; return ;; esac
+  pre="${w%%\{*}"; rest="${w#*\{}"; in="${rest%%\}*}"; post="${rest#*\}}"
+  case "$in" in *\{*) printf '%s\n' "$w"; return ;; esac
+  for a in $(printf '%s' "$in" | tr ',' ' '); do brace_expand "$pre$a$post"; done
+}
+
 # pkg_runs <pkg dir, "" = root> <file> — the package.json test script runs a known
 # runner whose discovery reaches <file> (path args narrow it; bare = whole package)
 pkg_runs() {
-  local pd="$1" f="$2" ts rel tok prev="" pre reach have=0 hit=0 pj="package.json"
+  local pd="$1" f="$2" ts rel tok tok0 prev="" pre reach have=0 hit=0 pj="package.json"
   [ -z "$pd" ] || pj="$pd/package.json"
   ts=$(show "$pj" | jq -r '.scripts.test // empty' 2>/dev/null)
   # a runner counts only as the start of a command (echo bun test runs nothing)
   printf '%s\n' "$ts" | sed -E 's/&&|;|\|\|?/\n/g' \
     | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*((npx|bunx|pnpm exec|yarn)[[:space:]]+)?//' \
-    | grep -qE '^(bun test|node --test|vitest|jest)([[:space:]]|$)' || return 1
+    | grep -qE '^(bun test|node( +--[a-z-]+([ =][^ -][^ ]*)?)* +--test|vitest|jest)([[:space:]]|$)' || return 1
   case "$ts" in  # node --test globs only reach JS unless the script loads a TS transform
     *"bun test"*|*vitest*|*jest*) ;;
     *) case "${f##*/}" in *.js|*.mjs|*.cjs) ;; *) case "$ts" in *strip-types*|*tsx*|*--import*|*--loader*) ;; *) return 1 ;; esac ;; esac ;;
   esac
   rel="$f"; [ -z "$pd" ] || rel="${f#"$pd"/}"
   # only the words after the runner, up to the next command, can narrow discovery
-  ts=$(printf '%s' "$ts" | sed -E 's/.*(bun test|node --test|vitest( run)?|jest)//; s/(&&|;|\|).*//')
+  ts=$(printf '%s' "$ts" | sed -E 's/.*(bun test|node( +--[a-z-]+([ =][^ -][^ ]*)?)* +--test|vitest( run)?|jest)//; s/(&&|;|\|).*//')
   set -f
-  for tok in $ts; do
-    tok="${tok//[\"\']/}"; tok="${tok#./}"
+  for tok0 in $ts; do for tok in $(brace_expand "${tok0//[\"\']/}"); do
+    tok="${tok#./}"
     case "$tok" in -*|'&&'|';'|'|'|'||'|'') prev="$tok"; continue ;; esac
     # a bare word is a path when it exists, or when it is not an option's value (--reporter dot)
     case "$tok" in *[/*?\{[]*) ;; *) exists "${pd:+$pd/}$tok" || case "$prev" in -*) prev="$tok"; continue ;; esac ;; esac
@@ -100,7 +115,7 @@ pkg_runs() {
         case "$rel" in $tok|${tok//\*\*\//}|$tok/*) ;; *) reach=0 ;; esac ;;
     esac
     [ "$reach" -eq 0 ] || hit=1
-  done
+  done; done
   set +f
   [ "$have" -eq 0 ] || [ "$hit" -eq 1 ]
 }
@@ -232,6 +247,7 @@ judge() {  # <path> <kind> -> prints a reason when unwired
       while IFS= read -r r; do
         [ -n "$r" ] || continue
         # a doc the same PR adds only describes the file; it is not independent wiring
+        printf '%s\n' "$r" | grep -qE "$ALLOW_PATH_RE" && continue  # sample data names scripts without running them
         case "$r" in *.md|*.txt|*.rst|*.adoc) grep -qxF -- "$r" "$tmp/added" && continue ;; esac
         is_pending "$r" || return 0
       done < "$tmp/refs"
