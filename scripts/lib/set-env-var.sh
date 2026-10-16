@@ -22,6 +22,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/env-append.sh
+# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+. "$SCRIPT_DIR/env-append.sh"
 
 KEY=""
 VALUE=""
@@ -98,6 +101,6 @@ if grep -qE "^[[:space:]]*${KEY}=" "$ENV_FILE"; then
     trap - EXIT
     echo "OK set-env-var: updated $KEY in $ENV_FILE"
 else
-    printf '%s\n' "$new_line" >> "$ENV_FILE"
+    env_append_line "$ENV_FILE" "$new_line"
     echo "OK set-env-var: appended $KEY to $ENV_FILE"
 fi
