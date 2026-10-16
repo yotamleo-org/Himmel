@@ -118,7 +118,7 @@ contains "clean: READY-GO PASS" "$OUT" "READY-GO PASS"
 contains "clean: COVERAGE line" "$OUT" "COVERAGE: [PASS] 7."
 contains "clean: TRUST none" "$OUT" "TRUST: none"
 contains "clean: TICKET key and status" "$OUT" "TICKET: HIMMEL-1 In Review"
-contains "clean: NEXT names go.sh" "$OUT" "NEXT: bash $HERE/go.sh 77 $SHA"
+contains "clean: NEXT names go.sh" "$OUT" "NEXT: bash $(printf '%q' "$HERE")/go.sh 77 $SHA"
 contains "clean: exact GO line" "$OUT" "SENDMESSAGE to=HIMMEL-9-leg :: GO 77 $SHA, token BE-N1-abc"
 
 # --- 3. no pair -> no guessed line -------------------------------------------
