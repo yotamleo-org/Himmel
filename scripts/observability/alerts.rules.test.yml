@@ -499,9 +499,10 @@ tests:
               summary: 'Host workstation1 has 1 dead session(s)'
 
   # HIMMEL-2184: keep_firing_for: 10m holds both alerts through a sub-window
-  # flap. Each series is bad for 12 samples (past for: 10m, so it fires),
-  # good for 4, then bad again; at 14m (2m into the good gap) the alert must
-  # still be firing instead of resolving and re-entering pending.
+  # flap. `axN` yields N+1 samples, so each series is bad for t=0..12m (past
+  # for: 10m, so it fires), good for t=13..17m, then bad again; at 14m (1m
+  # into the good gap) the alert must still be firing instead of resolving
+  # and re-entering pending.
   - interval: 1m
     input_series:
       - series: 'session_dead_total{host="workstation1"}'
@@ -544,7 +545,7 @@ tests:
               summary: 'Exporter job flow-exporter is down'
 
   # HIMMEL-2184: once healthy for longer than keep_firing_for (10m) the
-  # alerts resolve. Last bad sample is t=11m; at 30m the grace is long gone.
+  # alerts resolve. Last bad sample is t=12m; at 30m the grace is long gone.
   - interval: 1m
     input_series:
       - series: 'session_dead_total{host="workstation1"}'
