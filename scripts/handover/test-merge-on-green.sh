@@ -355,6 +355,9 @@ while [ $# -gt 0 ]; do case "$1" in --json) json="${2:-}";; --jq) jqexpr="${2:-}
 nwo="${STUB_NWO:-owner/repo}"
 def_files='[{"filename":"README.md"}]'
 case "$verb" in
+    "pr list")
+        [ "${STUB_OPEN_PRS_FAIL:-0}" = "1" ] && { echo "gh: list failed" >&2; exit 1; }
+        printf '%s' "${STUB_OPEN_PRS-}"; exit 0 ;;
     "pr view")
         [ "${STUB_NO_PR:-0}" = "1" ] && { echo 'no pull requests found for branch "x"' >&2; exit 1; }
         [ "${STUB_STATE_FAIL:-0}" = "1" ] && { echo "gh: api error" >&2; exit 1; }
@@ -3469,6 +3472,16 @@ assert_jira_log_has "jira: closed PR comments why" "comment-body: PR #"
 STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_JIRA_STATUS="In Progress" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: closed-unmerged PR leaves an In Progress ticket alone"
 assert_jira_log_lacks "jira: In Progress ticket gets no transition on a closed PR" "index.js transition"
+
+# A replacement PR still open for the same ticket, or an unreadable PR list,
+# means the closed PR does not own the ticket any more: leave it alone.
+STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_OPEN_PRS="88" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: closed PR whose ticket has a replacement open PR leaves it alone"
+assert_jira_log_lacks "jira: replacement PR open means no transition" "index.js transition"
+assert_jira_log_lacks "jira: replacement PR open means no comment" "comment-body:"
+STUB_JIRA_BUILD=1 STUB_STATE=CLOSED STUB_OPEN_PRS_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: unreadable open-PR list leaves a closed PR's ticket alone"
+assert_jira_log_lacks "jira: open-PR lookup failure means no transition" "index.js transition"
 
 # A partial merge on a ticket already in To Do still posts its Remaining comment.
 STUB_JIRA_BUILD=1 STUB_JIRA_STATUS="To Do" STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \

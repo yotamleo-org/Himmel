@@ -623,7 +623,7 @@ _jira_return_to_todo() {
 # A PR closed unmerged leaves its ticket In Review: send it back to To Do with
 # a comment. Best-effort like jira_auto_transition_on_merge; never fails the run.
 jira_return_closed_pr_to_todo() {
-    local nwo="$1" pr_num="$2" title key common repo_root issue_json issue_type todo
+    local nwo="$1" pr_num="$2" title key common repo_root issue_json issue_type todo open_prs
     title=$("$GH" pr view "$pr_num" --repo "$nwo" --json title -q .title 2>/dev/null) || return 0
     key=$(printf '%s' "$title" | grep -oE '\[[A-Za-z]+-[0-9]+\]' | head -1 | tr -d '[]')
     [ -n "$key" ] || return 0
@@ -640,6 +640,10 @@ jira_return_closed_pr_to_todo() {
     ' 2>/dev/null)
     # Fail safe like the merge path: an Epic or an unreadable type is left alone.
     case "$issue_type" in Epic|"") return 0 ;; esac
+    # Another open PR for the same ticket means the work moved on: leave it be.
+    # A failed lookup is treated the same way (cannot show the ticket is orphaned).
+    open_prs=$("$GH" pr list --repo "$nwo" --state open --search "$key in:title" --json number -q '.[].number' 2>/dev/null) || return 0
+    [ -z "$open_prs" ] || return 0
     todo=$(_jira_return_to_todo "$repo_root" "$key" "$issue_json" \
         "PR #$pr_num ($nwo) was closed without merging; the work it carried is not done, so the ticket returns to To Do." "In Review")
     echo "merge-on-green: PR #$pr_num closed unmerged, $key to To Do: $todo" >&2
