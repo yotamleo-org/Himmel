@@ -716,7 +716,8 @@ _qmd_global_dir() {
 # is given: the first .qmd/index.yaml (else index.yml) walking up from the cwd.
 # Same lookup as findLocalConfigPath in the fork (src/collections.ts); rc 1 if none.
 _qmd_local_cfg() {
-  local d="$PWD" n
+  local d n
+  d="$(pwd -P)" || return 1
   while :; do
     for n in index.yaml index.yml; do
       [ -e "$d/.qmd/$n" ] && { printf '%s\n' "$d/.qmd/$n"; return 0; }
@@ -774,7 +775,14 @@ _qmd_egress_ok() {
     return 10
   fi
   { cont="$(<"$cfg")"; } 2>/dev/null
-  key="$cfg|$idx|$explicit|$PWD|${QMD_EMBED_MODEL:-}|${QMD_RERANK_MODEL:-}|${QMD_GENERATE_MODEL:-}|${QMD_OPENAI_BASE_URL:-}|$cont"
+  # the gate also reads sibling *.yml configs (salus collection paths), so they key the cache too
+  local sd sf
+  for sd in "${QMD_CONFIG_DIR:-$HOME/.config/qmd}" "${cfg%/*}"; do
+    for sf in "$sd"/*.yml; do
+      [ -f "$sf" ] && { cont="$cont|$sf"; { cont="$cont$(<"$sf")"; } 2>/dev/null; }
+    done
+  done
+  key="$cfg|$idx|$explicit|$(pwd -P)|${QMD_EMBED_MODEL:-}|${QMD_RERANK_MODEL:-}|${QMD_GENERATE_MODEL:-}|${QMD_OPENAI_BASE_URL:-}|$cont"
   if [ -n "${_QMDBIN_GATE_KEY:-}" ] && [ "$key" = "$_QMDBIN_GATE_KEY" ] && [ $((SECONDS - ${_QMDBIN_GATE_AT:-0})) -lt 30 ]; then
     return 0
   fi
@@ -783,6 +791,7 @@ _qmd_egress_ok() {
   if command -v timeout >/dev/null 2>&1; then
     timeout "$to" node "$gate" "$@" >&2 || rc=$?
   else
+    # ponytail: no timeout binary means no deadline on the gate; install coreutils timeout, or bound it in node.
     node "$gate" "$@" >&2 || rc=$?
   fi
   if [ "$rc" -eq 124 ]; then

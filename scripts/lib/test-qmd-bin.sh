@@ -1189,6 +1189,21 @@ printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" 
 ( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
     bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; cp "'"$tmpdir"'/swap.yml" .qmd/index.yml; qmd_cmd query y' >/dev/null 2>&1 )
 assert "a config that changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+# a sibling config the gate reads for salus paths is part of the cache key
+printf 'collections:\n  himmel:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/proj/.qmd/index.yml"
+: >"$cnt"
+( cd "$gh_home/proj" && env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME -u INDEX_PATH HOME="$gh_home" PATH="$stubc:$gh_home/bin:$PATH" QMD_OPENAI_API_KEY=k \
+    bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd query x; printf "collections:\n  notes:\n    path: /x\n" >.qmd/sib.yml; qmd_cmd query y' >/dev/null 2>&1 )
+assert "a sibling config that changed between calls re-runs the gate" test "$(wc -l <"$cnt" | tr -d ' ')" -eq 2
+rm -f "$gh_home/proj/.qmd/sib.yml"
+
+# a symlinked cwd: the shell walks the PHYSICAL ancestry like the fork, so it cannot early-allow on the global config
+mkdir -p "$gh_home/real/.qmd" "$gh_home/real/sub"
+ln -s "$gh_home/real/sub" "$gh_home/lnk"
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$gh_home" >"$gh_home/real/.qmd/index.yml"
+rc=0; out="$(gate_run "$gh_home/lnk")" || rc=$?
+assert "symlinked cwd whose physical ancestry holds a remote salus config: refused (rc 10)" test "$rc" -eq 10
+assert "symlinked cwd refusal comes from the gate and names the physical project file" refused_by_gate "$out" "$gh_home/real/.qmd/index.yml"
 
 echo "[test-qmd-bin] has_qmd matches binary presence in this env"
 if has_qmd; then
