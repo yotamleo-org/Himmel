@@ -29,7 +29,11 @@ export HANDOVER_DIR="$tmp/root"; mkdir -p "$HANDOVER_DIR"
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { printf '%s' "$2" | grep -qF -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
-lacks()    { printf '%s' "$2" | grep -qF -e "$3" && { echo "FAIL - $1: output contains [$3]"; fails=$((fails+1)); } || echo "ok - $1"; }
+lacks()    { printf '%s' "$2" | grep -qF -e "$3"; case $? in
+                1) echo "ok - $1" ;;
+                0) echo "FAIL - $1: output contains [$3]"; fails=$((fails+1)) ;;
+                *) echo "FAIL - $1: grep errored"; fails=$((fails+1)) ;;
+            esac; }
 
 # shellcheck source=scripts/handover/console-kit/testlib-ready-pass.sh
 # shellcheck disable=SC1091

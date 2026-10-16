@@ -22,8 +22,9 @@
 # unreadable or refused trust check exits 5. --ledger appends one bullet to the
 # console doc through append-results.sh and only on a clean result.
 #
-# Exit: 0 printed (a GO line, or a trust-reviewed route); 2 usage; 4 ready-check
-# did not PASS; 5 the trust check refused or could not run.
+# Exit: 0 printed (a GO line, or a trust-reviewed route); 1 the --ledger bullet
+# could not be appended; 2 usage; 4 ready-check did not PASS; 5 the trust check
+# refused or could not run.
 # Seams (tests): GH_CMD and JIRA_CMD, as in ready-check.sh; READY_GO_ANCHOR
 # replaces the harness anchor that trust_path_check and the Jira CLI are read from.
 #
@@ -109,10 +110,10 @@ fi
 # 4. the GO: file by go.sh (console only), notification by SendMessage (console only)
 case "$TRUST_OUT" in
     "hit "*)
-        printf 'NEXT: trust-path hit (%s) - no plain GO. Dispatch the opus judge; on its GO verdict for this head run: bash %s/go.sh --trust-reviewed <judge qid> %s %s\n' \
+        printf 'NEXT: trust-path hit (%s) - no plain GO. Dispatch the opus judge; on its GO verdict for this head run: bash %q/go.sh --trust-reviewed <judge qid> %s %s\n' \
             "${TRUST_OUT#hit }" "$HERE" "$PR" "$SHA" ;;
     *)
-        printf 'NEXT: bash %s/go.sh %s %s\n' "$HERE" "$PR" "$SHA"
+        printf 'NEXT: bash %q/go.sh %s %s\n' "$HERE" "$PR" "$SHA"
         if [ -n "$TO" ]; then
             printf 'SENDMESSAGE to=%s :: GO %s %s, token %s\n' "$TO" "$PR" "$SHA" "$TOKEN"
         else
