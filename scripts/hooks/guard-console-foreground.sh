@@ -6,10 +6,9 @@
 # quote-backs) queues behind it. Prose ("run it in the background") drifted
 # twice, so per root CLAUDE.md's "Adding a rule" it is a hook.
 #
-# TRIP CONDITION: HIMMEL_CONSOLE_DOC is set (headed-arm.sh exports it only into
-# a --role console session, so a leg never sees it and this hook is a silent
-# no-op there; the marker check is the FIRST statement, before stdin is read)
-# AND the Bash command runs a script named in
+# TRIP CONDITION: HIMMEL_CONSOLE_DOC is set (a cheap first gate, before stdin is
+# read) AND the session's own `-n` name ends in `-console` (a leg launched from
+# a console inherits the env var, so the name is the real identity) AND the Bash command runs a script named in
 # scripts/handover/console-kit/long-running.txt AND tool_input.run_in_background
 # is not true. "Runs" means the name follows an interpreter (bash, sh, node,
 # bun, python) or sits in command position behind a path; a grep or cat that
@@ -49,6 +48,16 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) |
 [ -n "$cmd" ] || exit 0
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# A leg launched from a console's Bash inherits HIMMEL_CONSOLE_DOC as ambient env,
+# so the env var alone cannot tell them apart: only a session named `*-console`
+# is a console (the console-compact-reinject.sh rule). Unresolvable name: allow.
+lib="$HERE/../lib/session-name.sh"
+# shellcheck source=scripts/lib/session-name.sh
+{ [ -r "$lib" ] && . "$lib"; } 2>/dev/null || exit 0
+sname=$(current_session_name 2>/dev/null) || exit 0
+case "$sname" in *-console) ;; *) exit 0 ;; esac
+
 list="${CONSOLE_FG_LIST:-$HERE/../handover/console-kit/long-running.txt}"
 [ -r "$list" ] || exit 0
 

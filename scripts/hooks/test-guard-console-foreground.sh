@@ -14,6 +14,10 @@ trap 'rm -rf "$TMP"' EXIT
 pass=0
 fail=0
 
+# NUL-delimited argv fixtures for the session-name seam (scripts/lib/session-name.sh)
+printf 'claude\0-n\0N-console\0' > "$TMP/cmdline-console"
+printf 'claude\0-n\0N2262-HIMMEL-5821-leg\0' > "$TMP/cmdline-leg"
+
 ok()  { echo "ok   $1"; pass=$((pass + 1)); }
 bad() { echo "FAIL $1"; fail=$((fail + 1)); }
 
@@ -28,7 +32,7 @@ run_hook() {
         *)      payload=$(jq -nc --arg c "$cmd" '{tool_name:"Bash",tool_input:{command:$c}}') ;;
     esac
     if [ "$console" = yes ]; then
-        out=$(printf '%s' "$payload" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CONSOLE_FG_LIST="$LIST" "$@" bash "$HOOK" 2>&1)
+        out=$(printf '%s' "$payload" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-console" CONSOLE_FG_LIST="$LIST" "$@" bash "$HOOK" 2>&1)
     else
         out=$(printf '%s' "$payload" | env -u HIMMEL_CONSOLE_DOC CONSOLE_FG_LIST="$LIST" "$@" bash "$HOOK" 2>&1)
     fi
@@ -66,6 +70,13 @@ expect "console, wrap-merged.sh with run_in_background=true: allowed" 0 \
     "$(run_hook yes "$K/wrap-merged.sh --pr 12" true)"
 expect "leg (no HIMMEL_CONSOLE_DOC), foreground wrap-merged.sh: allowed" 0 \
     "$(run_hook no "$K/wrap-merged.sh --pr 12" absent)"
+
+# a leg launched from the console inherits HIMMEL_CONSOLE_DOC; only the session name tells them apart
+payload_leg=$(jq -nc --arg c "$K/ready-check.sh --only 7 12" '{tool_name:"Bash",tool_input:{command:$c}}')
+out=$(printf '%s' "$payload_leg" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-leg" CONSOLE_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
+expect "leg session name with inherited HIMMEL_CONSOLE_DOC, foreground ready-check.sh: allowed" 0 "$rc|$out"
+out=$(printf '%s' "$payload_leg" | env -u CLAUDE_PID HIMMEL_CONSOLE_DOC=/x/N-console.md CONSOLE_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
+expect "unresolvable session name: fails open" 0 "$rc|$out"
 
 # --- the short scripts stay foreground
 for s in append-results.sh go.sh write-verdict.sh fleet-manifest.sh; do

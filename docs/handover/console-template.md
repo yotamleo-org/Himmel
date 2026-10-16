@@ -175,12 +175,12 @@ rule; batch rulings per decision point.
 ## Merges — READY → GO → merge
 
 A leg reports `READY <pr> <head> GREEN`. Verify independently with
-`console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (all check-runs success
+`console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`run_in_background`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
 your judgement), then `console-kit/go.sh <pr> <head>`: that write IS the GO
 (`gh pr merge` is gated on the file; `GO` over SendMessage only notifies). `go.sh`
 refuses (exit 4) unless `ready-check.sh` passes; a head with no ok CR-ledger row
-cannot get a GO (`run_in_background`). The leg merges, reports `MERGED #<n> → <sha>`; you pull the
+cannot get a GO. The leg merges, reports `MERGED #<n> → <sha>`; you pull the
 primary and the leg wraps.
 
 The Jira close is the leg's call from the brief's `completes-ticket: yes|no` line
