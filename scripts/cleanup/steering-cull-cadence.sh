@@ -11,7 +11,8 @@
 #
 #   steering-cull-cadence.sh run  --proposal-dir <dir> [--console <session>] [--repo <path>]
 #   steering-cull-cadence.sh arm  --proposal-dir <dir> [--console <session>]
-#                                 [--day 0-6] [--time HH:MM] [--force] [--dry-run]
+#                                 [--day 0-6] [--time HH:MM] [--backend claude-cli|claude-api]
+#                                 [--api-account A|B|auto] [--force] [--dry-run]
 #   steering-cull-cadence.sh status
 #   steering-cull-cadence.sh disarm [--dry-run]
 #
@@ -34,7 +35,15 @@
 # budget as interactive use, so a run first asks scripts/lib/bank-preflight.sh
 # and skips (rc 0) unless it prints PROCEED.
 #
-# Seams (tests): STEERING_CULL_CLAUDE, STEERING_CULL_PREFLIGHT_CMD,
+# Backend (STEERING_CULL_BACKEND, resolved by scripts/lib/llm-backend.sh): claude-cli
+# is the default and the bank-preflight path above. claude-api sends the same call
+# through scripts/api-lane/claude-api.sh (API credit, Read tool only, plan mode, a
+# per-call budget STEERING_CULL_API_BUDGET_USD, default 0.50); it needs
+# HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT, skips bank-preflight (it draws no
+# subscription budget) and never falls back to claude-cli. `arm --backend claude-api
+# --api-account A|B|auto` bakes those three into the cron runner.
+#
+# Seams (tests): STEERING_CULL_CLAUDE, STEERING_CULL_API_LANE, STEERING_CULL_PREFLIGHT_CMD,
 # STEERING_CULL_STATE_DIR, STEERING_CULL_DATE, STEERING_CULL_CRONTAB,
 # STEERING_CULL_RUNNER_DIR, STEERING_CULL_SWEEP_CMD, BRIDGE_ROOT, plus cadence-alert.sh's CADENCE_ALERT_*.
 # Platform: cron (Linux/macOS). Windows development is parked.
@@ -43,6 +52,8 @@ set -uo pipefail
 TASK_NAME="HIMMEL-SteeringCull"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALERT="$SCRIPT_DIR/../luna/cadence-alert.sh"
+# shellcheck source=../lib/llm-backend.sh
+. "$SCRIPT_DIR/../lib/llm-backend.sh"
 STATE_DIR="${STEERING_CULL_STATE_DIR:-${HOME:-}/.himmel/state/steering-cull}"
 CRONTAB_BIN="${STEERING_CULL_CRONTAB:-crontab}"
 RUNNER_DIR="${STEERING_CULL_RUNNER_DIR:-${HOME:-}/.claude/steering-cull-cadence}"
@@ -86,7 +97,7 @@ json_field() {
 
 cmd_run() {
     local repo="" pdir="" console="" claude pf out rc result err iserr date doc
-    local files="" f mem low=0 esc=0 cut path risk line inbox root
+    local files="" f mem low=0 esc=0 cut path risk line inbox root backend prompt
     while [ $# -gt 0 ]; do
         case "$1" in
             --repo|--proposal-dir|--console)
@@ -99,16 +110,28 @@ cmd_run() {
     [ -n "$repo" ] || repo="$(resolve_primary)" || { echo "ERR steering-cull: cannot resolve the repo" >&2; return 64; }
     [ -n "$pdir" ] || { echo "ERR steering-cull: --proposal-dir is required" >&2; return 64; }
 
-    # bank-preflight gate: anything but PROCEED is a quiet skip, not a failure.
-    if [ -n "${STEERING_CULL_PREFLIGHT_CMD:-}" ]; then pf="$("$STEERING_CULL_PREFLIGHT_CMD" 2>/dev/null | tail -n 1)"
-    else pf="$(bash "$repo/scripts/lib/bank-preflight.sh" 2>/dev/null | tail -n 1)"; fi
-    case "$pf" in
-        PROCEED*) ;;
-        *) echo "steering-cull: skipped, bank-preflight said: ${pf:-<nothing>}"; return 0 ;;
+    backend="$(llm_backend_resolve "${STEERING_CULL_BACKEND:-claude-cli}")" || {
+        echo "ERR steering-cull: STEERING_CULL_BACKEND='${STEERING_CULL_BACKEND:-}' is not accepted: claude-cli or claude-api only" >&2; return 1; }
+    case "$backend" in
+        claude-cli)
+            # bank-preflight gate: anything but PROCEED is a quiet skip, not a failure.
+            if [ -n "${STEERING_CULL_PREFLIGHT_CMD:-}" ]; then pf="$("$STEERING_CULL_PREFLIGHT_CMD" 2>/dev/null | tail -n 1)"
+            else pf="$(bash "$repo/scripts/lib/bank-preflight.sh" 2>/dev/null | tail -n 1)"; fi
+            case "$pf" in
+                PROCEED*) ;;
+                *) echo "steering-cull: skipped, bank-preflight said: ${pf:-<nothing>}"; return 0 ;;
+            esac
+            claude="${STEERING_CULL_CLAUDE:-$(command -v claude 2>/dev/null)}"
+            [ -n "$claude" ] || { echo "ERR steering-cull: claude not on PATH" >&2; bash "$ALERT" fail steering-cull no-claude ""; return 1; }
+            ;;
+        claude-api)
+            llm_backend_api_ready || {
+                echo "ERR steering-cull: STEERING_CULL_BACKEND=claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment: refusing, no claude-cli fallback" >&2; return 1; }
+            claude="${STEERING_CULL_API_LANE:-$SCRIPT_DIR/../api-lane/claude-api.sh}"
+            [ -f "$claude" ] || { echo "ERR steering-cull: api lane launcher missing: $claude" >&2; bash "$ALERT" fail steering-cull no-api-lane ""; return 1; }
+            ;;
+        *) echo "ERR steering-cull: backend '$backend' is not supported here: claude-cli or claude-api only" >&2; return 1 ;;
     esac
-
-    claude="${STEERING_CULL_CLAUDE:-$(command -v claude 2>/dev/null)}"
-    [ -n "$claude" ] || { echo "ERR steering-cull: claude not on PATH" >&2; bash "$ALERT" fail steering-cull no-claude ""; return 1; }
 
     mem="${HOME:-}/.claude/projects/$(printf '%s' "$repo" | tr / -)/memory/MEMORY.md"
     for f in "$repo/CLAUDE.md" "${HOME:-}/.claude/CLAUDE.md" "${HOME:-}/.claude/RTK.md" "$mem"; do
@@ -118,10 +141,17 @@ cmd_run() {
 
     mkdir -p "$STATE_DIR" || return 2
     out="$STATE_DIR/last-run.json"
-    ( cd "$repo" && "$claude" -p "Run the vendored writing-for-agents skill (.claude/skills/writing-for-agents/SKILL.md) READ-ONLY to find ways to cull these steering files. Never edit anything. Files (use absolute paths exactly as listed; for the repo CLAUDE.md write the path as CLAUDE.md):
+    prompt="Run the vendored writing-for-agents skill (.claude/skills/writing-for-agents/SKILL.md) READ-ONLY to find ways to cull these steering files. Never edit anything. Files (use absolute paths exactly as listed; for the repo CLAUDE.md write the path as CLAUDE.md):
 ${files}
-Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines> — <why>. LOW = a line that is duplicated, derivable from the repo, or a stale pointer. MEDIUM = anything that changes behaviour or needs judgement." \
-        --model sonnet --output-format json --permission-mode plan --tools Read --allowedTools Read ) > "$out" 2> "$STATE_DIR/last-run.err"
+Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines> — <why>. LOW = a line that is duplicated, derivable from the repo, or a stale pointer. MEDIUM = anything that changes behaviour or needs judgement."
+    if [ "$backend" = "claude-api" ]; then
+        # the lane owns --tools/--allowedTools: HIMMEL_API_TOOLS=Read is its Read-only grant.
+        ( cd "$repo" && HIMMEL_API_TOOLS=Read "$claude" -p "$prompt" \
+            --model sonnet --output-format json --permission-mode plan --max-budget-usd "${STEERING_CULL_API_BUDGET_USD:-0.50}" ) > "$out" 2> "$STATE_DIR/last-run.err"
+    else
+        ( cd "$repo" && "$claude" -p "$prompt" \
+            --model sonnet --output-format json --permission-mode plan --tools Read --allowedTools Read ) > "$out" 2> "$STATE_DIR/last-run.err"
+    fi
     rc=$?
     iserr="$(json_field is_error < "$out" 2>/dev/null)"
     if [ "$rc" -ne 0 ] || [ "$iserr" != "false" ]; then
@@ -188,13 +218,14 @@ cron_read() {
 cron_entry() { printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_NAME" || true; }
 
 cmd_arm() {
-    local pdir="" console="" day=1 time="07:00" force=0 dry=0 root runner bash_bin entry
+    local pdir="" console="" day=1 time="07:00" force=0 dry=0 root runner bash_bin entry backend="" acct=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            --proposal-dir|--console|--day|--time)
+            --proposal-dir|--console|--day|--time|--backend|--api-account)
                 [ $# -ge 2 ] || { echo "ERR steering-cull: $1 needs a value" >&2; return 1; }
                 case "$1" in
                     --proposal-dir) pdir="$2" ;; --console) console="$2" ;;
+                    --backend) backend="$2" ;; --api-account) acct="$2" ;;
                     --day) day="$2" ;; --time) time="$2" ;;
                 esac
                 shift 2 ;;
@@ -207,6 +238,15 @@ cmd_arm() {
     case "$pdir" in /*) ;; *) pdir="$PWD/$pdir" ;; esac  # cron runs from another cwd
     [[ "$day" =~ ^[0-6]$ ]] || { echo "ERR steering-cull: --day must be 0-6, got: $day" >&2; return 1; }
     [[ "$time" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "ERR steering-cull: --time must be HH:MM, got: $time" >&2; return 1; }
+    if [ -n "$backend" ]; then
+        backend="$(llm_backend_resolve "$backend")" || { echo "ERR steering-cull: --backend must be claude-cli or claude-api" >&2; return 1; }
+        [ "$backend" != "ollama" ] || { echo "ERR steering-cull: --backend must be claude-cli or claude-api" >&2; return 1; }
+    fi
+    if [ "$backend" = "claude-api" ]; then
+        case "$acct" in A|B|auto) ;; *) echo "ERR steering-cull: --backend claude-api needs --api-account A|B|auto" >&2; return 1 ;; esac
+    elif [ -n "$acct" ]; then
+        echo "ERR steering-cull: --api-account only applies to --backend claude-api" >&2; return 1
+    fi
     case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) echo "ERR steering-cull: cron only; Windows is parked (HIMMEL-4102)" >&2; return 2 ;; esac
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || { echo "ERR steering-cull: '$CRONTAB_BIN' not on PATH" >&2; return 2; }
     root="$(resolve_primary)" || { echo "ERR steering-cull: cannot resolve the primary checkout" >&2; return 2; }
@@ -228,6 +268,9 @@ cmd_arm() {
     {
         printf '#!/usr/bin/env bash\n# steering-cull-cadence runner — generated by steering-cull-cadence.sh arm (HIMMEL-5634)\n'
         printf 'PATH=%q\nexport PATH\n' "$PATH"
+        if [ "$backend" = "claude-api" ]; then
+            printf 'export STEERING_CULL_BACKEND=claude-api HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=%q\n' "$acct"
+        fi
         printf 'log=%q\n' "$RUNNER_DIR/steering-cull-cadence.log"
         printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'
         printf '%q %q run --repo %q --proposal-dir %q' \
