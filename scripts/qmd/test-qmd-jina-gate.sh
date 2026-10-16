@@ -492,7 +492,7 @@ cat > "$work/bun/bin/qmd" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$work/qmd-calls"
 printf 'key=%s\n' "\${QMD_OPENAI_API_KEY:+set}" >> "$work/qmd-env"
-printf 'provider=%s\nbatch=%s\nconc=%s\nunlisted=%s\n' "\${QMD_OPENAI_PROVIDER-}" "\${QMD_OPENAI_EMBED_BATCH_SIZE-}" "\${QMD_OPENAI_EMBED_CONCURRENCY-}" "\${QMD_OPENAI_UNLISTED-}" >> "$work/qmd-env"
+printf 'provider=%s\nbatch=%s\nconc=%s\nunlisted=%s\nqueue=%s\n' "\${QMD_OPENAI_PROVIDER-}" "\${QMD_OPENAI_EMBED_BATCH_SIZE-}" "\${QMD_OPENAI_EMBED_CONCURRENCY-}" "\${QMD_OPENAI_UNLISTED-}" "\${QMD_QUERY_MAX_QUEUED-}" >> "$work/qmd-env"
 touch "$work/started"
 exit 0
 EOF
@@ -570,6 +570,17 @@ grep -q '^key=set$' "$work/qmd-env" || fail "(49) the key was lost: $(cat "$work
 grep -q '^provider=$' "$work/qmd-env" || fail "(49) an invalid PROVIDER reached the daemon: $(cat "$work/qmd-env")"
 grep -q '^batch=$' "$work/qmd-env" || fail "(49) a non-integer BATCH_SIZE reached the daemon: $(cat "$work/qmd-env")"
 grep -q '^conc=$' "$work/qmd-env" || fail "(49) a zero CONCURRENCY reached the daemon: $(cat "$work/qmd-env")"
+rm -f "$work/daemon.env"
+
+# (50) the query-queue cap reaches the daemon from the env file; a non-positive or non-integer value is dropped.
+printf 'QMD_OPENAI_API_KEY=sk-file-secret-13\nQMD_QUERY_MAX_QUEUED=2\n' > "$work/daemon.env"; chmod 600 "$work/daemon.env"
+launch_key; rc=$?
+[ "$rc" -eq 0 ] || fail "(50) queue cap env file: expected rc 0, got $rc: $(cat "$work/err")"
+grep -q '^queue=2$' "$work/qmd-env" || fail "(50) QUERY_MAX_QUEUED did not reach the daemon: $(cat "$work/qmd-env")"
+printf 'QMD_OPENAI_API_KEY=sk-file-secret-14\nQMD_QUERY_MAX_QUEUED=0\n' > "$work/daemon.env"; chmod 600 "$work/daemon.env"
+launch_key; rc=$?
+[ "$rc" -eq 0 ] || fail "(50) zero queue cap: expected rc 0, got $rc: $(cat "$work/err")"
+grep -q '^queue=$' "$work/qmd-env" || fail "(50) a zero QUERY_MAX_QUEUED reached the daemon: $(cat "$work/qmd-env")"
 rm -f "$work/daemon.env"
 
 # (46) with no --index the fork prefers a cwd-walked project-local .qmd/index.{yaml,yml}
