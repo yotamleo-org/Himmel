@@ -3,6 +3,9 @@
 
 ## [Unreleased]
 
+### Removed
+- [HIMMEL-5915] remove the unused OmniRoute pilot
+
 ### Fixed
 - [HIMMEL-3906] macos shard uploads failed.txt only after a completion sentinel (#1492)
 - [HIMMEL-3916] shard-manifest-verify fails closed on a suite path containing whitespace (#1493)
