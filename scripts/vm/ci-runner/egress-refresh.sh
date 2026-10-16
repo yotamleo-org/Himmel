@@ -17,7 +17,7 @@
 # its address mid-job can make a later fetch fail closed (the shard goes red,
 # nothing leaks), and DNS itself stays an open channel to the NAT resolver;
 # upgrade is an allow-listing HTTP(S) proxy on the host.
-set -eu
+set -euo pipefail
 
 BOOTSTRAP_HOST=api.github.com
 MIRROR_HOSTS="archive.ubuntu.com security.ubuntu.com pypi.org files.pythonhosted.org registry.npmjs.org"
@@ -41,17 +41,21 @@ load() {
     v4=""; v6=""
 }
 
-collect < <(resolve "$BOOTSTRAP_HOST")
+addrs="$(resolve "$BOOTSTRAP_HOST")" || addrs=""
+collect <<<"$addrs"
 [ -n "$v4$v6" ] || { echo "egress-refresh: $BOOTSTRAP_HOST did not resolve" >&2; exit 1; }
 load
 
 meta="$(curl -fsS --max-time 30 "https://$BOOTSTRAP_HOST/meta")" || { echo "egress-refresh: could not fetch $BOOTSTRAP_HOST/meta" >&2; exit 1; }
-collect < <(printf '%s' "$meta" | jq -r '[.web, .api, .git, .packages, .actions] | map(. // []) | add | .[]')
+ranges="$(printf '%s' "$meta" | jq -r '[.web, .api, .git, .packages, .actions] | map(. // []) | add | .[]')" \
+    || { echo "egress-refresh: could not parse $BOOTSTRAP_HOST/meta" >&2; exit 1; }
+collect <<<"$ranges"
 [ -n "$v4$v6" ] || { echo "egress-refresh: /meta carried no ranges" >&2; exit 1; }
 load
 
 for h in $MIRROR_HOSTS; do
-    collect < <(resolve "$h")
+    addrs="$(resolve "$h")" && [ -n "$addrs" ] || { echo "egress-refresh: mirror host $h did not resolve" >&2; exit 1; }
+    collect <<<"$addrs"
 done
 load
 echo "egress-refresh: allow-list loaded"

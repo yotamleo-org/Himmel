@@ -392,6 +392,7 @@ EOF
 cat > "$TMP/rbin/getent" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$2" >> "$STUB_LOG/getent.hosts"
+[ "$2" != "${STUB_NO_RESOLVE:-}" ] || exit 2
 case "$2" in
     api.github.com) printf '%s STREAM api.github.com\n' 140.82.112.5 ;;
     archive.ubuntu.com) printf '%s STREAM archive.ubuntu.com\n%s STREAM archive.ubuntu.com\n' 185.125.190.82 2620:2d:4000:1::1a ;;
@@ -430,6 +431,15 @@ reset_log
 META="$TMP/empty-meta.json" run_refresh >"$TMP/out" 2>&1
 rc=$?
 if [ "$rc" -ne 0 ]; then ok "an empty /meta fails closed (rc=$rc)"; else bad "empty /meta exited 0"; fi
+reset_log
+STUB_NO_RESOLVE=pypi.org run_refresh >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then ok "a mirror host that does not resolve fails closed (rc=$rc)"; else bad "unresolvable mirror host exited 0"; fi
+printf 'not json' > "$TMP/bad-meta.json"
+reset_log
+META="$TMP/bad-meta.json" run_refresh >"$TMP/out" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then ok "an unparseable /meta fails closed (rc=$rc)"; else bad "unparseable /meta exited 0"; fi
 
 echo
 echo "test-ci-runner: $pass passed, $fail failed"
