@@ -64,6 +64,19 @@ bash scripts/codex/sanitize-plugin-hooks.sh --dry-run    # report, change nothin
 pwsh -NoProfile -File scripts\codex\sanitize-plugin-hooks.ps1 -DryRun
 ```
 
+## bump-codex-sessionend-timeout.sh — stop the SessionEnd "Hook cancelled" noise
+
+The openai-codex plugin's `SessionEnd` hook ships with `timeout: 5`, shorter than
+its broker teardown, so Claude Code cancels it at every session end. This raises
+that one timeout (only upward) in the installed plugin cache; re-run after a
+plugin update. Env overrides: `CLAUDE_CONFIG_DIR` (default `~/.claude`),
+`MIN_TIMEOUT` (positive integer, default `30`).
+
+```sh
+bash scripts/codex/bump-codex-sessionend-timeout.sh              # patch in place
+bash scripts/codex/bump-codex-sessionend-timeout.sh --dry-run    # report, change nothing
+```
+
 ## probe-codex-hooks.ps1 — Windows pwsh-runner hook lint
 
 codex-cli on Windows runs every hook command as
