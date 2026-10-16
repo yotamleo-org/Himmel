@@ -141,6 +141,26 @@ run_update() {   # <fake-home> <claude-stub> args...
         bash "$CHECKOUT_DIR/scripts/himmel-update.sh" "$@" 2>&1
 }
 
+# Hermetic codex row: the report reads the installed codex (`$CODEX_BIN --version`)
+# and the registry's latest (`npm view @openai/codex version`). Both are stubbed so
+# no row depends on the host's codex or the network. Default = current (0.163.0
+# both sides); the 0.162.1 / 0.163.0 pair is the stale row from a real
+# `himmel-update.sh --versions` run on a station whose codex trails upstream.
+REAL_NPM="$(command -v npm 2>/dev/null || true)"
+mkdir -p "$TMP/shim"
+cat > "$TMP/shim/npm" <<EOF
+#!/bin/sh
+if [ "\$1" = view ] && [ "\$2" = "@openai/codex" ]; then echo "\${STUB_CODEX_LATEST:-0.163.0}"; exit 0; fi
+[ -n "$REAL_NPM" ] && exec "$REAL_NPM" "\$@"
+exit 127
+EOF
+cat > "$TMP/shim/codex" <<'EOF'
+#!/bin/sh
+echo "codex-cli ${STUB_CODEX_INSTALLED:-0.163.0}"
+EOF
+chmod +x "$TMP/shim/npm" "$TMP/shim/codex"
+export PATH="$TMP/shim:$PATH" CODEX_BIN="$TMP/shim/codex"
+
 # ─── 1 + 2: --help / -h / unknown flag run NOTHING ───────────────────────────
 echo "Test 1: --help / -h print usage, exit 0, run nothing"
 make_mock_clone; commit_scaffold
@@ -367,6 +387,22 @@ git -C "$seed7" tag v9.9.10; git -C "$seed7" push --quiet origin v9.9.10 2>/dev/
 rc=0; out=$(HIMMEL_UPDATE_CHANNEL=stable LUNA_VAULT_PATH="$TMP/vault" run_update "$fh7" "$TMP/claude-versions" --versions) || rc=$?
 assert_eq "channel: a newer tag -> rc 1" "1" "$rc"
 assert_contains "channel: behind the newer tag" "^ *himmel  *behind .*v9\\.9\\.10" "$out"
+
+# ─── 8: codex row is hermetic — stale / current / absent stubs ───────────────
+echo "Test 8: codex row follows the stubs, never the host's codex"
+make_mock_clone
+make_luna_fixture "0.4.47" "0.4.47"
+commit_scaffold
+fh8="$TMP/home-codex"; mkdir -p "$fh8"
+rc=0; out=$(STUB_CODEX_INSTALLED=0.162.1 STUB_CODEX_LATEST=0.163.0 LUNA_VAULT_PATH="$TMP/vault" run_update "$fh8" "$TMP/claude-versions" --versions) || rc=$?
+assert_eq "codex stale: rc 1" "1" "$rc"
+assert_contains "codex stale: row behind installed vs latest" "^ *codex  *behind  *0\\.162\\.1  *0\\.163\\.0" "$out"
+rc=0; out=$(LUNA_VAULT_PATH="$TMP/vault" run_update "$fh8" "$TMP/claude-versions" --versions) || rc=$?
+assert_eq "codex current: rc 0" "0" "$rc"
+assert_contains "codex current: row current" "^ *codex  *current  *0\\.163\\.0" "$out"
+rc=0; out=$(CODEX_BIN="$TMP/no-such-codex" LUNA_VAULT_PATH="$TMP/vault" run_update "$fh8" "$TMP/claude-versions" --versions) || rc=$?
+assert_eq "codex absent: rc 0" "0" "$rc"
+assert_not_contains "codex absent: nothing behind" "  behind " "$out"
 
 echo ""
 echo "Results: $pass passed, $fail failed"
