@@ -58,7 +58,11 @@ export function buildFanoutPlan(items, liveLanes) {
       errors.push(`${id}: destructive/irreversible item routed to '${type}' — REFUSED. Destructive or irreversible work must be type 'judgement' (routes to Fable).`);
       continue;
     }
-    if (type === 'bulk' && item?.spawnsChildren) {
+    // An implementation item the caller marks `mechanical` (a specified edit
+    // list, rename sweep, fixture regeneration) defaults to Haiku; an explicit
+    // `lane` still wins, and unmarked implementation stays Sonnet.
+    const toHaiku = type === 'bulk' || (type === 'implementation' && item?.mechanical && !item?.lane);
+    if (toHaiku && item?.spawnsChildren) {
       errors.push(`${id}: bulk/Haiku item requests further spawning — Haiku does NOT spawn further.`);
       continue;
     }
@@ -74,7 +78,7 @@ export function buildFanoutPlan(items, liveLanes) {
       }
     }
 
-    const laneId = type === 'implementation' ? (item?.lane || TYPE_LANE.implementation) : TYPE_LANE[type];
+    const laneId = toHaiku ? TYPE_LANE.bulk : type === 'implementation' ? (item?.lane || TYPE_LANE.implementation) : TYPE_LANE[type];
     const lane = byId.get(laneId);
     if (!lane) {
       errors.push(`${id}: lane '${laneId}' is not in the LIVE roster on this machine (run /lanes) — refusing to route to an unavailable lane.`);

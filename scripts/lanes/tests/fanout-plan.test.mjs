@@ -106,3 +106,24 @@ test('bulk item requesting further spawning is refused — Haiku does not spawn'
   assert.deepEqual(plan, []);
   assert.match(errors[0], /does NOT spawn/);
 });
+
+test('implementation item marked mechanical defaults to Haiku; unmarked stays Sonnet', () => {
+  const { plan, errors } = buildFanoutPlan(
+    [
+      { id: 'rename', type: 'implementation', mechanical: true },
+      { id: 'feature', type: 'implementation' },
+    ],
+    LIVE,
+  );
+  assert.deepEqual(errors, []);
+  assert.deepEqual(plan.map((p) => p.lane), ['haiku', 'sonnet']);
+});
+
+test('mechanical never overrides a caller-named lane, and Haiku mechanical items cannot spawn', () => {
+  const named = buildFanoutPlan([{ id: 'hard', type: 'implementation', mechanical: true, lane: 'opus' }], LIVE);
+  assert.deepEqual(named.errors, []);
+  assert.equal(named.plan[0].lane, 'opus');
+  const spawn = buildFanoutPlan([{ id: 'm', type: 'implementation', mechanical: true, spawnsChildren: true }], LIVE);
+  assert.deepEqual(spawn.plan, []);
+  assert.match(spawn.errors[0], /Haiku does NOT spawn/);
+});
