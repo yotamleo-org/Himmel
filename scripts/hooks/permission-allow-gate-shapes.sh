@@ -68,19 +68,23 @@ tab="$(printf '\t')"
 # shell metacharacter gets only the relative spelling.
 wt_re=""
 case "$top" in *[!A-Za-z0-9_./+-]*) ;; *) wt_re="(${esc_top}/)?" ;; esac
-while IFS="$tab" read -r id re _fence needs; do
+while IFS="$tab" read -r id re _fence verify; do
     case "$id" in ''|'#'*) continue ;; esac
     [ -n "$re" ] || continue
     re="${re//\{WT\}/$wt_re}"
     if [[ "$cmd" =~ $re ]]; then
-        if [ "$needs" = "tracked-sh" ]; then
-            # Every .sh the command names must be a file in the worktree's git index.
-            set -f
-            for w in $cmd; do
-                case "$w" in *.sh) git -C "$top" ls-files --error-unmatch -- "${w#"$top"/}" >/dev/null 2>&1 || { set +f; exit 0; } ;; esac
-            done
-            set +f
-        fi
+        # A row that runs a worktree script allows only when every script it names is the
+        # primary checkout's main-committed copy. No verify= list, or a failed match: pass through.
+        case "$verify" in
+            none) ;;
+            verify=?*)
+                [ "${own_common##*/}" = ".git" ] || exit 0
+                # shellcheck source=lib/anchor-bytes.sh
+                { [ -r "$here/lib/anchor-bytes.sh" ] && . "$here/lib/anchor-bytes.sh"; } 2>/dev/null || exit 0
+                IFS=, read -r -a vpaths <<< "${verify#verify=}"
+                anchor_bytes_match "${own_common%/.git}" "$top" "${vpaths[@]}" || exit 0 ;;
+            *) exit 0 ;;
+        esac
         printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'
         exit 0
     fi
