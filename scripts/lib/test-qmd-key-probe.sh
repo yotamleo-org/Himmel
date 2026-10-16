@@ -202,5 +202,40 @@ start_stub text401
 run_probe "$URL"
 assert_eq "text401 row: unflagged result text is content, exit 0" 0 "$RC"
 
+# 13: the bearer must not reach a proxy named by the environment or ~/.curlrc.
+start_stub multi
+TARGET="$URL"
+start_stub capture
+CAP="$TMP/port.capture"
+CAPURL="http://127.0.0.1:$(cat "$CAP")"
+rm -f "$CAP.auth"
+OUT=$(http_proxy="$CAPURL" HTTP_PROXY="$CAPURL" ALL_PROXY="$CAPURL" all_proxy="$CAPURL" QMD_MCP_URL="$TARGET" QMD_HTTP_AUTH_FILE="$TMP/token" QMD_KEY_PROBE_TIMEOUT=10 timeout 40 bash "$PROBE" 2>&1)
+RC=$?
+assert_eq "proxy-env row: probe still reaches the target (exit 0)" 0 "$RC"
+assert_eq "proxy-env row: no request reached the proxy" "absent" "$([ -e "$CAP.auth" ] && echo present || echo absent)"
+mkdir -p "$TMP/home"
+printf 'proxy = "%s"\n' "$CAPURL" > "$TMP/home/.curlrc"
+rm -f "$CAP.auth"
+OUT=$(HOME="$TMP/home" QMD_MCP_URL="$TARGET" QMD_HTTP_AUTH_FILE="$TMP/token" QMD_KEY_PROBE_TIMEOUT=10 timeout 40 bash "$PROBE" 2>&1)
+RC=$?
+assert_eq "curlrc row: probe still reaches the target (exit 0)" 0 "$RC"
+assert_eq "curlrc row: no request reached the proxy" "absent" "$([ -e "$CAP.auth" ] && echo present || echo absent)"
+
+# 14: 127.x must be exactly four dotted octets; a trailing dot or extra labels are not loopback.
+run_probe "http://127.0.0.1.0.0:9/mcp" 2
+assert_has "five-label row: 127.0.0.1.0.0 is not loopback" "loopback" "$OUT"
+run_probe "http://127.0.0.1.:9/mcp" 2
+assert_has "trailing-dot row: 127.0.0.1. is not loopback" "loopback" "$OUT"
+run_probe "http://127.0.0:9/mcp" 2
+assert_has "three-octet row: 127.0.0 is not loopback" "loopback" "$OUT"
+
+# 15: a token that cannot sit inside a quoted curl config value is refused, unechoed.
+printf 'bad"token\n' > "$TMP/quote"
+chmod 600 "$TMP/quote"
+AUTH="$TMP/quote" run_probe "$URL"
+assert_eq "quote-token row: exit 2" 2 "$RC"
+assert_has "quote-token row: names the token file" "QMD_HTTP_AUTH_FILE" "$OUT"
+assert_lacks "quote-token row: token not echoed" 'bad"token' "$OUT"
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASS"; else echo "$FAILED FAILED"; exit 1; fi

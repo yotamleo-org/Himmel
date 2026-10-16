@@ -57,17 +57,30 @@ if [ -n "$token" ]; then
   esac
   case "$host" in
     localhost | '[::1]') ;;
-    127.*) case "$host" in *[!0-9.]*) host="" ;; esac ;;
+    127.*)
+      # exactly four dotted decimal octets: no letters, empty labels or extra labels
+      oct="${host#127.}"
+      dots="${oct//[!.]/}"
+      case "$oct" in *[!0-9.]* | .* | *. | *..*) host="" ;; esac
+      [ "${#dots}" -eq 2 ] || host=""
+      ;;
     *) host="" ;;
   esac
   [ -n "$host" ] || fail 2 "refusing to send the bearer token to a non-loopback host in QMD_MCP_URL; point it at localhost or unset QMD_HTTP_AUTH_FILE"
+  # the token sits in a quoted curl config value: a quote, backslash or control character would break out of it
+  # shellcheck disable=SC1003  # '\' is a literal backslash, not an escaped quote
+  case "$token" in
+    *'"'* | *'\'* | *[[:cntrl:]]*) fail 2 "the bearer token in QMD_HTTP_AUTH_FILE has a quote, backslash or control character; use a plain token" ;;
+  esac
   auth=(-K -)
 fi
 
+# -q (the first argument) skips ~/.curlrc and --noproxy '*' ignores http_proxy and
+# ALL_PROXY: either could otherwise carry the bearer to a proxy.
 # curl's own -m sits just inside the whole-tree deadline so the usual timeout
 # is a clean curl rc 28; qmd_bounded is the backstop that kills the group.
 reply="$(printf 'header = "Authorization: Bearer %s"\n' "$token" |
-  qmd_bounded "$((secs + 5))" curl ${auth[@]+"${auth[@]}"} -s -m "$secs" -w '\n%{http_code}' -X POST \
+  qmd_bounded "$((secs + 5))" curl -q --noproxy '*' ${auth[@]+"${auth[@]}"} -s -m "$secs" -w '\n%{http_code}' -X POST \
     -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
     -d "$payload" -- "$url" 2>/dev/null)"
 rc=$?
@@ -93,7 +106,8 @@ esac
 
 # A multi-event SSE reply is several JSON lines: -s reads them all and the last
 # message carrying a result or error is the answer. A failed embed is a JSON-RPC
-# error or a result the server flags isError (the qmd daemon's contract); text of
+# error or a result the server flags isError (@tobilu/qmd dist/mcp/server.js returns
+# `isError: true` from a failed tool call); text of
 # an unflagged result is search content and is never read for a 401.
 err="$(printf '%s\n' "$body" | jq -rs '[.[] | select(type == "object" and (has("result") or has("error")))] | last // null
   | if . == null then "bad"
