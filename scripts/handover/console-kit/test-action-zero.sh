@@ -96,5 +96,9 @@ check "the next field line is intact" "1" "$(grep -c '^last GO: none$' "$LCON")"
 rm -f "${LCON%.md}.fleet.json"
 out10="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs 2>&1)"
 check "no fleet manifest: LEGS says skipped and the run carries on" "1" "$(printf '%s\n' "$out10" | sed -n '/^== LEGS/,/^== LOCK/p' | grep -c '^skipped')"
+printf 'not json\n' > "${LCON%.md}.fleet.json"
+bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs >/dev/null 2>&1; rc11=$?
+check "a render that fails exits nonzero" "1" "$rc11"
+rm -f "${LCON%.md}.fleet.json"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

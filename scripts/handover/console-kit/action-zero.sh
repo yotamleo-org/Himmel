@@ -29,13 +29,13 @@
 # default 60s; ACTION_ZERO_DOCTOR_TIMEOUT, default 120s). A hung probe prints
 # `TIMEOUT <bank|doctor> after <n>s` in its section and the summary carries on.
 # No timeout binary: the probes run unbounded, with a WARN line.
-# Exit: 0; 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe.
+# Exit: 0; 1 if --render-legs could not render; 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe.
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$HERE/../../.." && pwd)"
-doc=""; root=""; prefix=""; acquire=0; render=0
+doc=""; root=""; prefix=""; acquire=0; render=0; render_rc=0
 usage() { echo "usage: action-zero.sh --doc <console doc> --root <handover root> [--repo <path>] [--prefix <P>] [--acquire] [--render-legs]" >&2; exit 2; }
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -105,7 +105,7 @@ uptime 2>&1 || echo "unavailable"
 if [ "$render" -eq 1 ]; then
     echo "== LEGS"
     if [ -f "${doc%.md}.fleet.json" ]; then
-        if HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc" 2>&1; then echo "legs: line rendered"; else echo "unavailable"; fi
+        if HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc" 2>&1; then echo "legs: line rendered"; else render_rc=1; echo "unavailable"; fi
     else
         echo "skipped (no fleet manifest next to the doc)"
     fi
@@ -121,4 +121,4 @@ if [ "$acquire" -eq 1 ]; then
         echo "NOT ACQUIRED — the lock is not free: find its holder, do not take it over"
     fi
 fi
-exit 0
+exit "$render_rc"
