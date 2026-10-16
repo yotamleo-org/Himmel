@@ -410,6 +410,20 @@ only path through is the admin bypass, which the merge script refuses by
 design — so the supervisor session hands the merge to the operator and sends `MERGED`
 back when it lands.
 
+### Fork PRs (himmel adapters)
+
+A PR on a fork we own merges only when the repo is listed with `merge_allowed`
+true in `scripts/guardrails/himmel-adapters.json` (read from the default branch,
+so a worktree edit cannot widen it) and the PR targets that entry's
+`himmel_branch`. Run the judge, then, from the primary checkout:
+
+1. `bash <anchor>/scripts/handover/console-kit/go.sh --repo <owner/repo> --trust-reviewed <judge-qid> <pr> <head>`
+   (exit 6 not allowlisted, 7 PR not OPEN, MERGEABLE and on the adapter branch at that head, 5 no signed judge GO).
+2. `bash <anchor>/scripts/handover/merge-fork-pr.sh <owner/repo> <pr> <head>`
+   (console only; a bare `gh pr merge --repo <fork>` stays refused).
+
+A push after the GO needs a fresh GO.
+
 ## Handing over
 
 Supervisor sessions hand over at **45 % context fill, or 90 k input tokens in one turn**.

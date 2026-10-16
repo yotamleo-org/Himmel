@@ -724,3 +724,42 @@ parse_ready_line() {
     [ "$cid" != br- ] || return 1
     printf '%s\t%s\t%s\n' "$kind" "$cid" "$sha"
 }
+
+# --- himmel adapters: the forks the console may merge ----------------------
+# go_adapter_entry <anchor> <target-nwo>. rc 0 prints the one branch a console
+# merge into <target-nwo> may land on (its himmel_branch); rc 2 prints the
+# reason. The allowlist scripts/guardrails/himmel-adapters.json is read from the
+# DEFAULT branch of the harness repo the anchor is a checkout of, through the
+# API - never a worktree, a PR head or a local ref - so a leg cannot widen it by
+# editing its own copy. An entry counts only with merge_allowed true; a repo
+# listed twice, an unreadable file or an unreadable branch name refuses. gh is
+# ${GH:-gh}. Read-only.
+go_adapter_entry() {
+    local anchor="$1" target="$2" gh_bin=${GH:-gh} meta nwo dbranch raw br
+    case "$target" in
+        */*/*|/*|*/|*[!A-Za-z0-9._/-]*|'') target="" ;;
+        */*) ;;
+        *) target="" ;;
+    esac
+    if [ -z "$target" ]; then
+        printf 'the repo '"'"'%s'"'"' is not an owner/name.\n' "$2"
+        return 2
+    fi
+    meta=$(cd "$anchor" 2>/dev/null && "$gh_bin" repo view --json nameWithOwner,defaultBranchRef \
+        --jq '"\(.nameWithOwner)|\(.defaultBranchRef.name // "")"' 2>/dev/null) || meta=""
+    nwo=${meta%%|*}; dbranch=${meta#*|}
+    if [ -z "$meta" ] || [ -z "$nwo" ] || [ -z "$dbranch" ]; then
+        printf 'cannot resolve the harness repo and its default branch from %s, so the himmel-adapters allowlist cannot be read.\n' "$anchor"
+        return 2
+    fi
+    raw=$("$gh_bin" api "repos/$nwo/contents/scripts/guardrails/himmel-adapters.json?ref=$dbranch" \
+        -H 'Accept: application/vnd.github.raw' 2>/dev/null) || raw=""
+    br=$(printf '%s' "$raw" | jq -r --arg n "$target" \
+        '[.[]? | select(.nwo == $n)] | if length == 1 and .[0].merge_allowed == true then (.[0].himmel_branch // "") else "" end' 2>/dev/null) || br=""
+    case "$br" in
+        ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._/-]*|*..*)
+            printf '%s is not a himmel adapter with merge_allowed true (or its himmel_branch is unreadable) in scripts/guardrails/himmel-adapters.json on %s@%s - the console merges only allowlisted forks.\n' "$target" "$nwo" "$dbranch"
+            return 2 ;;
+    esac
+    printf '%s\n' "$br"
+}
