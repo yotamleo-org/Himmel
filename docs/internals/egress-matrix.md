@@ -292,11 +292,13 @@ Granting it is an operator call. Defense in depth around it:
 leaving the machine, and this lane sends none. **Boundary:** the only text sent
 is the research query the operator typed, URL-encoded into a search URL, plus
 public thread ids and permalinks read back from Reddit's own results. Text taken
-from a vault or corpus (luna, salus, handover state) is never sent. `reddit_rung()`
-enforces it in code: it is built from the operator's query and raises on any
-other query, and the two fetchers refuse any URL outside their own https host.
-A caller that feeds the path from notes must still pass the operator's query
-explicitly. Widening the lane to a third host or a derived query is a matrix
+from a vault or corpus (luna, salus, handover state) is never sent. The code
+enforces consistency, not provenance: `reddit_rung()` is built with one query
+and raises on any other, the two fetchers refuse any URL outside their own
+https host, and the browser may load Reddit-owned hosts only (a final URL off
+`www.reddit.com` is refused). That the bound query is the operator's own is the
+caller's contract: a caller that feeds the path from notes must still pass the
+operator's typed query. Widening the lane to a third host or a derived query is a matrix
 review, not a code edit.
 
 ## Invariants (enforced by the test)

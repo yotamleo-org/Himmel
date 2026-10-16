@@ -321,8 +321,9 @@ def _backfill(items, arctic_raw):
 def reddit_rung(operator_query, fetch_html, fetch_json, enrich_limit=REDDIT_ENRICH_LIMIT):
     """Search-ladder rung for Reddit, bound to the operator's own query.
 
-    The returned rung refuses any other query: the lane sends only what the
-    operator typed to the two Reddit hosts, never text taken from a note.
+    The returned rung refuses any query other than the one it was built with,
+    so the lane cannot be fed text mid-flight. That the bound query is the
+    operator's own is the caller's contract (docs/internals/egress-matrix.md).
     fetch_html / fetch_json take a URL. A failed discovery fetch raises (the
     ladder records it as that rung's error); failed backfill or enrichment
     fetches degrade to the data already in hand.
@@ -350,10 +351,6 @@ def reddit_rung(operator_query, fetch_html, fetch_json, enrich_limit=REDDIT_ENRI
             if info:
                 it.update({k: info[k] for k in ("score", "num_comments", "date") if info[k] not in (None, "")})
                 it["comments"] = info["comments"]
-        for it in items:
-            for k in ("score", "num_comments"):
-                if it[k] is None:
-                    it[k] = 0
         return items
 
     return rung
@@ -365,11 +362,32 @@ def _pinned(url, host):
         raise ValueError("refusing a url outside https://" + host + ": " + str(u.hostname))
 
 
+def reddit_owned_host(host):
+    host = host or ""
+    return any(host == d or host.endswith("." + d) for d in ("reddit.com", "redd.it", "redditstatic.com", "redditmedia.com"))
+
+
+def _reddit_only_routes(page):
+    """Abort every browser request to a host Reddit does not own (sign-in widgets, trackers)."""
+    def gate(route):
+        if reddit_owned_host(urlparse(route.request.url).hostname):
+            route.continue_()
+        else:
+            route.abort()
+    page.route("**/*", gate)
+
+
 def fetch_reddit_html(url, timeout_ms=60000):
-    """Keyless Scrapling fetch of www.reddit.com; ImportError when scrapling is missing."""
+    """Keyless Scrapling fetch of www.reddit.com; ImportError when scrapling is missing.
+
+    The browser may load Reddit-owned subresources only, and a final URL off
+    www.reddit.com is refused.
+    """
     _pinned(url, "www.reddit.com")
     from scrapling.fetchers import StealthyFetcher
-    page = StealthyFetcher.fetch(url, headless=True, network_idle=True, timeout=timeout_ms)
+    page = StealthyFetcher.fetch(url, headless=True, network_idle=True, timeout=timeout_ms,
+                                 page_setup=_reddit_only_routes)
+    _pinned(str(getattr(page, "url", "") or url), "www.reddit.com")
     if getattr(page, "status", 200) >= 400:
         raise OSError(f"HTTP {page.status}")
     return getattr(page, "html_content", None) or ""
