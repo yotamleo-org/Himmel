@@ -236,6 +236,19 @@ else
   bad "internal ticket key(s) in reader-facing text" "$ticket_hits"
 fi
 
+# --- 5. NO THIRD-PARTY REQUEST ---------------------------------------------------
+
+# Opening the page must not contact any other host: a stylesheet, script, font or
+# image on an external origin discloses the visit to it (the page used to pull
+# Google Fonts). Anchor hrefs are navigation, not loads, so they are not checked.
+# The font-family rules carry local fallback stacks, so nothing needs fetching.
+ext_loads="$(perl -0777 -ne 'print "$&\n" while /<(?:link|script|img|source|iframe)\b[^>]*\b(?:href|src|srcset)="(?:https?:)?\/\/[^"]*"|\burl\(\s*["\x27]?(?:https?:)?\/\/[^)]*\)|\@import\s+(?:url\()?["\x27]?(?:https?:)?\/\/[^;]*/gi' "$PAGE" | cut -c1-120)"
+if [ -z "$ext_loads" ]; then
+  ok "the page loads no stylesheet, script, font or image from an external host"
+else
+  bad "the page requests a third-party resource when opened (fonts.googleapis.com, gstatic, a CDN)" "$ext_loads"
+fi
+
 echo
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
