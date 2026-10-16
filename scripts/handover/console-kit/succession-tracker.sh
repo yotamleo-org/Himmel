@@ -100,7 +100,10 @@ entries="$(printf '%s' "$entries" | awk 'NF && !seen[$0]++')"
 # A manifest leg the Live state does not list still counts as inherited (relay-batch.sh reports
 # the same legs as NOT-IN-LIVE-STATE), so a dropped entry cannot make the set read complete.
 if [ -n "$entries" ] && [ -f "$manifest" ]; then
-    mlabels="$(jq -r '.legs[] | select(.lockless == true | not) | .label' "$manifest" 2>/dev/null)"
+    if ! mlabels="$(jq -r '.legs[] | select(.lockless == true | not) | .label' "$manifest" 2>/dev/null)"; then
+        echo "INCOMPLETE 0/0 (fleet manifest $manifest is unreadable: cannot cross-check the legs)"
+        exit 1
+    fi
     for ml in $mlabels; do
         printf '%s\n' "$entries" | grep -Fxq -- "$ml" || entries="${entries}${entries:+
 }$ml"

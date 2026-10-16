@@ -178,6 +178,13 @@ printf '# console\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N1:Y-N1-aa:lock
 out="$(run)"; rc=$?
 eq "a duplicated span is one leg (rc 0)" "$rc" 0
 has "and it reads COMPLETE 1/1" "$out" "COMPLETE 1/1"
+
+# an unreadable manifest cannot be cross-checked, so the set is never complete
+printf 'not json\n' > "$MAN"
+out="$(run)"; rc=$?
+eq "an unreadable manifest is not complete (rc 1)" "$rc" 1
+lacks "and prints no LIVE line for it" "$out" "append-results.sh"
+has "and says the manifest is unreadable" "$out" "unreadable"
 mv "$MAN.keep" "$MAN"
 
 # no legs at all is not a complete set
