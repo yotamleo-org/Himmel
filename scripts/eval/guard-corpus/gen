@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # scripts/eval/guard-corpus/gen - deterministic adversarial fixture generator
-# for guard/hook PRs (HIMMEL-4168, operator option b, 2026-10-03).
+# for guard/hook PRs.
 #
 # WHAT THIS IS. An independent judge reviewing a guard/hook PR needs a corpus
 # of hook-input fixtures to feed base vs head and watch for a regression. When
@@ -62,11 +62,11 @@ BENIGN_SEEDS = [
     ("benign", "grep", "allow", "grep -rn needle src"),
     ("benign", "echo-data", "allow", "echo 'this is just data, not a command'"),
     # a heredoc commit message carrying apostrophes - the shape that has
-    # tripped quote-walking guards (HIMMEL-4138), but entirely benign.
+    # tripped quote-walking guards, but entirely benign.
     ("benign", "heredoc-commit", "allow",
      "git commit -F - <<'EOF'\nfix: it's a message, don't block me\nEOF"),
-    # read-only shapes real guards over-denied during the HIMMEL-4537
-    # hardening pass (2026-10-06): a path held in a shell variable then read,
+    # read-only shapes real guards over-denied during a
+    # hardening pass: a path held in a shell variable then read,
     # a glob grep with stderr dropped, and a grep over a hook filename glob.
     ("benign", "var-path-read", "allow",
      "f=scripts/eval/guard-corpus/gen; sed -n 1,20p \"$f\""),
