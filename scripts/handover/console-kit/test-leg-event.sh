@@ -35,12 +35,18 @@ exit "${LE_WRAP_RC:-0}"
 EOF
 cat > "$W/list" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' /h/HIMMEL-1-N2078-foo-2026-10-14.md /h/HIMMEL-2-N2088-bar-2026-10-14.md
+printf '%s\n' /h/HIMMEL-1-N2078-foo-2026-10-14.md /h/HIMMEL-2-N2088-bar-2026-10-14.md /h/HIMMEL-3-qux-2026-10-14.md
 EOF
-chmod +x "$W/wrap" "$W/list"
-export LE_WRAP="$W/wrap" LE_LIST="$W/list" LE_CALLS="$W/calls"
+cat > "$W/live" <<'EOF2'
+#!/usr/bin/env bash
+echo "live $*" >> "$LE_LIVE_CALLS"
+[ -z "${LE_LIVE_ERR:-}" ] || echo "$LE_LIVE_ERR" >&2
+exit "${LE_LIVE_RC:-0}"
+EOF2
+chmod +x "$W/wrap" "$W/list" "$W/live"
+export LE_WRAP="$W/wrap" LE_LIST="$W/list" LE_CALLS="$W/calls" LE_LIVE="$W/live" LE_LIVE_CALLS="$W/live-calls"
 : > "$W/doc"
-run() { : > "$LE_CALLS"; printf '%s\n' "$1" > "$W/msg"; out="$(bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" "$W/msg" 2>/dev/null)"; rc=$?; calls="$(cat "$LE_CALLS")"; }
+run() { : > "$LE_CALLS"; : > "$LE_LIVE_CALLS"; printf '%s\n' "$1" > "$W/msg"; out="$(bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" "$W/msg" 2>/dev/null)"; rc=$?; calls="$(cat "$LE_CALLS")"; }
 
 bash "$SCRIPT" >/dev/null 2>&1; check "1 no args rc" "$?" 2
 bash "$SCRIPT" --doc "$W/doc" "$W/msg" >/dev/null 2>&1; check "1 no fleet rc" "$?" 2
@@ -92,5 +98,43 @@ contains "7 step surfaced" "$out" "step pr-state failed"
 printf -- '- MERGED #2566 N2088\n' | bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" - >"$W/o" 2>&1; rc=$?
 check "8 stdin bullet rc" "$rc" 0
 contains "8 handled" "$(cat "$W/o")" "HANDLED wrap-merged N2088"
+
+# 9. the leg named only by its session name (the leg doc's stem) routes
+run "WRAPPED HIMMEL-2-N2088-bar-2026-10-14 lock released"
+check "9 session-name rc" "$rc" 0
+contains "9 session-name leg doc" "$calls" "/h/HIMMEL-2-N2088-bar-2026-10-14.md"
+run "WRAPPED HIMMEL-1-N2078-foo-2026-10-14 and HIMMEL-2-N2088-bar-2026-10-14"
+check "9b two sessions rc" "$rc" 10
+run "WRAPPED HIMMEL-3-qux-2026-10-14 lock released"
+check "9d label-less session rc" "$rc" 0
+contains "9d label-less session leg doc" "$calls" "/h/HIMMEL-3-qux-2026-10-14.md"
+run "WRAPPED HIMMEL-9-nobody-2026-10-14"
+contains "9c unknown session still no-label" "$out" "ESCALATE no-label"
+
+# 10. a handled event re-renders the legs line; an escalated one does not
+run "WRAPPED N2078"
+contains "10 live-state ran" "$(cat "$LE_LIVE_CALLS")" "live $W/doc"
+run "READY 1 abc N2078"
+check "10b no live-state on escalate" "$(cat "$LE_LIVE_CALLS")" ""
+LE_WRAP_RC=3 run "WRAPPED N2078"
+check "10c no live-state when wrap failed" "$(cat "$LE_LIVE_CALLS")" ""
+LE_LIVE_RC=1 LE_LIVE_ERR="live-state: boom" run "WRAPPED N2078"
+check "10d live-state failure rc" "$rc" 0
+contains "10d live-state failure surfaced" "$out" "live-state=failed"
+
+# 11. end to end with the real live-state.sh: the wrapped leg leaves the legs line
+cat > "$W/c.md" <<'EOF2'
+# console
+
+## Live state
+legs: `N2078:nonce1:tok:11`
+tick: x
+EOF2
+printf '{"legs":[]}\n' > "$W/c.fleet.json"
+printf 'WRAPPED N2078\n' > "$W/msg"
+out="$(LE_LIVE='' bash "$SCRIPT" --doc "$W/c.md" --fleet "$W/c.fleet.json" "$W/msg" 2>/dev/null)"; rc=$?
+check "11 rc" "$rc" 0
+lacks "11 legs line drops the wrapped leg" "$(cat "$W/c.md")" "N2078:"
+contains "11 legs line is none" "$(cat "$W/c.md")" "legs: none"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
