@@ -211,7 +211,7 @@ judge() {  # <path> <kind> -> prints a reason when unwired
               imp="${p%/*}"; imp="${imp##*/}/${b%.*}"; imp="${imp//./\\.}"
               pat="$pat|/${imp}(\\.[jt]sx?|\\.mjs)?['\"]"
               # a sibling's ./index is this file; any other ./index is not
-              generic_pat="\\./${b%.*}(\\.[jt]sx?|\\.mjs)?['\"]" ;;
+              generic_pat="['\"]\\./${b%.*}(\\.[jt]sx?|\\.mjs)?['\"]" ;;
             *) imp="${b%.*}"; imp="${imp//./\\.}"; pat="$pat|/${imp}(\\.[jt]sx?|\\.mjs)?['\"]" ;;
           esac ;;
       esac
@@ -221,9 +221,12 @@ judge() {  # <path> <kind> -> prints a reason when unwired
       else
         git grep -lIE -e "$pat" "$ref" -- . ':(exclude)handovers' ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*' 2>/dev/null
       fi | sed "s#^$ref:##" | grep -vxF "$p" > "$tmp/refs" || true
-      if [ -n "$generic_pat" ]; then  # ponytail: a parent's ../index import is not matched, add a resolver if one appears
-        git grep -lIE -e "$generic_pat" "$ref" -- "${p%/*}" ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*' 2>/dev/null \
-          | sed "s#^$ref:##" | while IFS= read -r r; do [ "${r%/*}" = "${p%/*}" ] && [ "$r" != "$p" ] && printf '%s\n' "$r"; done >> "$tmp/refs"
+      if [ -n "$generic_pat" ]; then  # ponytail: only a sibling's ./stem import is resolved; a child's ../stem needs a real resolver
+        if printf '%s\n' "$p" | grep -qE "$TEST_HELPER_RE"; then
+          git grep -lIE -e "$generic_pat" "$ref" -- "${p%/*}" 2>/dev/null
+        else
+          git grep -lIE -e "$generic_pat" "$ref" -- "${p%/*}" ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*' 2>/dev/null
+        fi | sed "s#^$ref:##" | while IFS= read -r r; do [ "${r%/*}" = "${p%/*}" ] && [ "$r" != "$p" ] && printf '%s\n' "$r"; done >> "$tmp/refs"
       fi
       # an added referencer still unwired itself does not count
       while IFS= read -r r; do

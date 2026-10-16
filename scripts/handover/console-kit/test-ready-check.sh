@@ -905,7 +905,13 @@ contains "generic index.ts imported through its own directory: check 11 passes" 
 UNW_EXTRA="printf \"import x from './index'\\n\" > \"\$REPO/scripts/cfg/src/consumer.ts\""
 unw_run scripts/cfg/src/index.ts
 contains "generic index.ts imported as ./index by a sibling: check 11 passes" "$out" "[PASS] 11."
-UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/a.b\"; printf \"import x from './aXb/index'\\n\" > \"\$REPO/scripts/cfg/other.ts\""
+UNW_EXTRA="printf \"import x from '../index'\\n\" > \"\$REPO/scripts/cfg/src/consumer.ts\""
+unw_run scripts/cfg/src/index.ts
+contains "a sibling's ../index is the parent's index, not this one: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/tests\"; printf \"import x from './utils'\\n\" > \"\$REPO/scripts/cfg/tests/a.test.ts\""
+unw_run scripts/cfg/tests/utils.ts
+contains "test helper utils.ts imported as ./utils by its test: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/a.b\";printf \"import x from './aXb/index'\\n\" > \"\$REPO/scripts/cfg/other.ts\""
 unw_run scripts/cfg/a.b/index.ts
 contains "directory dot is literal: aXb/index does not wire a.b/index.ts" "$out" "[FAIL] 11."
 
