@@ -1646,6 +1646,26 @@ test("claudexChildEnv: sets CODEX_MODEL when a model is passed and omits it when
   expect(both.CODEX_MODEL).toBe("gpt-5.6-terra");
 });
 
+test("parseClaudexArgs: --context-tier accepts 272k|353k|900k, refuses the rest (HIMMEL-1907)", () => {
+  for (const v of ["272k", "353k", "900k"] as const) {
+    const ok = parseClaudexArgs(["p", "--context-tier", v]);
+    expect(ok.ok).toBe(true);
+    expect((ok as any).args.contextTier).toBe(v);
+  }
+  const bad = parseClaudexArgs(["p", "--context-tier", "1m"]);
+  expect(bad.ok).toBe(false);
+  expect((bad as any).error).toMatch(/must be one of 272k\|353k\|900k/);
+  const none = parseClaudexArgs(["p"]);
+  expect((none as any).args.contextTier).toBeUndefined();
+});
+
+test("claudexChildEnv: context tier maps to CODEX_CONTEXT_WINDOW; unstated pins the cheapest 272000 over an ambient value (HIMMEL-1907)", () => {
+  expect(claudexChildEnv({}, undefined, undefined, "353k").CODEX_CONTEXT_WINDOW).toBe("353000");
+  expect(claudexChildEnv({}, undefined, undefined, "900k").CODEX_CONTEXT_WINDOW).toBe("900000");
+  expect(claudexChildEnv({}).CODEX_CONTEXT_WINDOW).toBe("272000");
+  expect(claudexChildEnv({ CODEX_CONTEXT_WINDOW: "900000" }).CODEX_CONTEXT_WINDOW).toBe("272000");
+});
+
 // --- executeClaudexRun (finalMeta transitions, mirrors spawn-glm's F6 suite) ----
 
 const seedRunningMeta = () => {
