@@ -437,6 +437,14 @@ file=$(cat "$OUT_GHF")
 assert_contains "gh-down banner"          "gh PR state unavailable"      "$file"
 assert_contains "gh-down stale message"   "stale detection unavailable"  "$file"
 
+echo "TEST: unparseable gh merged-PR list → count unknown, never 0"
+OUT_PRU="$TMP_ROOT/prunknown.md"
+out=$( cd "$REPO"; FAKE_GH_PR_JSON="not json" GH_CMD="$FAKE_GH_FAIL" JIRA_CMD="$FAKE_JIRA" \
+       bash "$SCRIPT" --since "$MARKER" --out "$OUT_PRU" )
+file=$(cat "$OUT_PRU")
+assert_contains "pr count rendered unknown" "Completed (unknown PRs merged" "$file"
+if grepq "$file" -F -- "Completed (0 PRs merged"; then fail "unparseable list rendered as 0 PRs"; else pass "unparseable list not rendered as 0 PRs"; fi
+
 # BSD awk (macOS) rejects a newline inside `-v`; the catch-all
 # must not hand awk the raw newline-joined branch list.
 echo "TEST: no awk -v carries the raw multi-line annotated_branches"

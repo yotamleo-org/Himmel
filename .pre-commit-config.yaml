@@ -208,6 +208,13 @@ repos:
         files: \.(sh|bash|zsh|ps1|psm1|py|js|mjs|cjs|ts|tsx|mts|cts)$
         pass_filenames: false
 
+      - id: no-new-swallowed-errors
+        name: no new swallowed error in gate/hook scripts (baseline-first; swallow-ok exempts) (himmel-dev only)
+        entry: bash scripts/lint/check-swallowed-errors.sh
+        language: system
+        files: ^scripts/(hooks|cr|handover|ci)/.*\.sh$|^scripts/lint/swallowed-errors-baseline\.txt$
+        pass_filenames: false
+
       - id: no-ticket-id-in-user-strings
         name: adopter-facing strings stay free of raw ticket IDs (himmel-dev only)
         # HIMMEL-2371
