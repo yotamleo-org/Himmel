@@ -295,7 +295,7 @@ else
 fi
 
 # ─── update_codex ───────────────────────────────────────────
-echo "Test 6: update_codex → skips when codex absent/unprovisioned, re-sanitizes when provisioned"
+echo "Test 6: update_codex → skips when codex absent/unprovisioned, re-syncs when provisioned"
 
 run_update_codex() {   # <mode>; caller sets CODEX_BIN / CODEX_HOME in the env
     (
@@ -308,7 +308,7 @@ run_update_codex() {   # <mode>; caller sets CODEX_BIN / CODEX_HOME in the env
 
 # Stub codex CLI: accepts any subcommand, exits 0. install-himmel-codex.sh drives
 # `codex plugin marketplace list/add` + `codex plugin list/add`; the re-provision
-# path needs no real output — phase 3 (sanitize) is what this test asserts.
+# path needs no real output — this test asserts the cache is not rewritten.
 CODEX_STUB="$TMP/codex-stub"
 printf '#!/bin/sh\nexit 0\n' > "$CODEX_STUB"
 chmod +x "$CODEX_STUB"
@@ -326,7 +326,7 @@ assert_eq "update_codex cache-absent: rc 0" "0" "$rc"
 assert_contains "update_codex cache-absent: skip notice" "no codex plugin cache" "$out"
 
 # Case c: codex present + cache with a description-bearing hooks.json → after
-# apply, the top-level description key is stripped (installer phase 3 ran).
+# apply, the third-party file is left untouched (the installer no longer sanitizes).
 CODEX_HOME_C="$TMP/codex-present"
 CACHE_C="$CODEX_HOME_C/plugins/cache/ext-desc/hooks"
 mkdir -p "$CACHE_C"
@@ -337,9 +337,9 @@ rc=0
 out=$(CODEX_BIN="$CODEX_STUB" CODEX_HOME="$CODEX_HOME_C" run_update_codex apply 2>&1) || rc=$?
 assert_eq "update_codex provisioned: rc 0" "0" "$rc"
 if jq -e 'has("description")' "$CACHE_C/hooks.json" >/dev/null 2>&1; then
-    assert_fail "update_codex provisioned: description NOT stripped"
+    assert_pass "update_codex provisioned: external hooks.json left untouched"
 else
-    assert_pass "update_codex provisioned: description stripped"
+    assert_fail "update_codex provisioned: external hooks.json was rewritten"
 fi
 assert_eq "update_codex provisioned: hooks block preserved" "echo hi" "$(jq -r '.hooks.Stop[0].hooks[0].command' "$CACHE_C/hooks.json")"
 

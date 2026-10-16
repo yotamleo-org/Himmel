@@ -16,9 +16,9 @@
 #
 # Subcommands:
 #   capability                 classify this host: build | query | none
-#   set gemma|qwen [--force]   write models.embed into the qmd config
+#   set gemma|qwen|remote [--force]   write models.embed into the qmd config
 #   check [--index P]          configured model vs the index's vectors
-#   reembed --model gemma|qwen [--copy F] [--qmd-bin P [--qmd-js P]]
+#   reembed --model gemma|qwen|remote [--copy F] [--qmd-bin P [--qmd-js P]]
 #                              build a re-embedded COPY of the index (never the live one)
 #   swap --copy F              swap a re-embedded copy in atomically and flip the config
 #
@@ -43,6 +43,9 @@ set -euo pipefail
 
 GEMMA_URI='hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf'
 QWEN_URI='hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf'
+# The remote route (the measured A/B winner, served by OpenRouter). The qmd fork gives
+# any qwen*embed* model id the Qwen3 query-instruction prefix, openai: included.
+REMOTE_URI="${QMD_REMOTE_EMBED_MODEL:-openai:qwen/qwen3-embedding-8b}"
 MIN_VRAM_MIB=4096
 MIN_RAM_KIB=4194304
 
@@ -72,7 +75,10 @@ model_uri() {
     case "$1" in
         gemma) printf '%s\n' "$GEMMA_URI" ;;
         qwen)  printf '%s\n' "$QWEN_URI" ;;
-        *) die 1 "unknown model '$1' (expected gemma or qwen)" ;;
+        remote)
+            case "$REMOTE_URI" in openai:?*) printf '%s\n' "$REMOTE_URI" ;;
+                *) die 1 "QMD_REMOTE_EMBED_MODEL must be an openai:<model id> URI" ;; esac ;;
+        *) die 1 "unknown model '$1' (expected gemma, qwen or remote)" ;;
     esac
 }
 
@@ -293,11 +299,11 @@ cmd_set() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --force) force=1; shift ;;
-            gemma|qwen) name="$1"; shift ;;
+            gemma|qwen|remote) name="$1"; shift ;;
             *) die 1 "set: unknown arg '$1'" ;;
         esac
     done
-    [ -n "$name" ] || die 1 "set needs a model: gemma or qwen"
+    [ -n "$name" ] || die 1 "set needs a model: gemma, qwen or remote"
     uri="$(model_uri "$name")"
     if [ "$name" = qwen ]; then
         local CAP_CLASS CAP_REASON
@@ -376,7 +382,7 @@ cmd_reembed() {
             *) die 1 "reembed: unknown arg '$1'" ;;
         esac
     done
-    [ -n "$name" ] || die 1 "reembed needs --model gemma|qwen"
+    [ -n "$name" ] || die 1 "reembed needs --model gemma|qwen|remote"
     uri="$(model_uri "$name")"
     live="$(index_file)"
     [ -f "$live" ] || die 5 "no live index at $live to copy"

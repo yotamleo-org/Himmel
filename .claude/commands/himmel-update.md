@@ -33,7 +33,7 @@ the script exits non-zero.
 
 After the chain (win or lose — these never abort and always run, restoring
 their pre-existing best-effort behavior even on a chain failure) come seven
-advisory steps: a **codex plugin re-sync + hooks.json re-sanitize**
+advisory steps: a **codex plugin re-sync**
 (HIMMEL-742), a **statusLine hud re-wire** (HIMMEL-718), a **graphify pin
 sync** (HIMMEL-1048) — rolls an EXISTING `uv`-managed graphify install
 forward to the pinned version, so a pin bump in this checkout actually

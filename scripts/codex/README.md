@@ -26,23 +26,14 @@ line endings). It is **idempotent** and **non-destructive**:
    `himmel-ops` is the one that delivers the minerva / stuck-playbook / vm /
    himmel-doctor / himmel-update skills + the himmel-ops hooks to Codex.
 
-3. **Sanitizes external-plugin `hooks.json`** as a final phase: a
-   few external plugins (warp, hookify, ralph-loop, security-guidance) ship a
-   top-level `description` that Codex versions **before `rust-v0.143.0`** reject
-   ("unknown field description"), skipping those hooks with a boot warning. The
-   installer strips it via `sanitize-plugin-hooks.{sh,ps1}` (idempotent;
-   non-fatal). himmel-owned plugins never ship that shape.
-
-   > **Deprecated.** Upstream fixed this: codex PR #30229 added
-   > `description` to the `HooksFile` schema, shipping in **`rust-v0.143.0`**. On
-   > that version or newer the key is accepted and this phase mutates external
-   > upstream plugin files for no benefit — prefer upgrading codex. Removing the
-   > automatic invocation is a planned follow-up.
+The installer does **not** touch external plugins' `hooks.json`. A few of them
+(warp, hookify, ralph-loop, security-guidance) ship a top-level `description`
+that Codex versions **before `rust-v0.143.0`** reject ("unknown field
+description"); upstream fixed that in codex PR #30229, so the fix is to upgrade
+codex. Installs pinned below it can run the manual sanitizer (see Usage).
 
 For plugin enablement it only ever *adds* — it never removes or disables a
-plugin, and a re-run on a provisioned machine is a no-op. (The sanitize phase
-edits external-plugin cache files in place, removing only the offending
-`description` key.)
+plugin, and a re-run on a provisioned machine is a no-op.
 
 ## Usage
 
@@ -61,8 +52,8 @@ pwsh -NoProfile -File scripts\codex\install-himmel-codex.ps1 -All
 Env override: `CODEX_BIN` (path to the `codex` CLI). After a change, restart
 Codex so the plugins load; new project hooks are trust-hashed on first use.
 
-Run the hooks sanitizer standalone (e.g. after a `codex` plugin update re-adds a
-`description`) — env override `CODEX_HOME` (default `~/.codex`):
+Manual escape hatch, only for codex pinned below `rust-v0.143.0` (re-run after
+a plugin update re-adds a `description`) — env override `CODEX_HOME` (default `~/.codex`):
 
 ```sh
 bash scripts/codex/sanitize-plugin-hooks.sh              # strip in place

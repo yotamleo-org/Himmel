@@ -43,7 +43,7 @@
 # script at the same root-relative path, exits 2 rather than letting the
 # branch's copy decide. One hop only: a hand-off that lands on a copy which is
 # still not the anchor refuses instead of looping.
-# ponytail: this file and the one line sourcing it are branch bytes. For the
+# ponytail: (HIMMEL-3437) this file and the one line sourcing it are branch bytes. For the
 # nine original scripts/cr/ writers, guard-pr-check-literal.sh
 # denies a relative run unless the entry script and this file equal the
 # anchor's byte for byte, so a branch that deletes either is refused before it
