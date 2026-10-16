@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-tmp="$(mktemp -d)" || exit 0
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/residue-scan.XXXXXX")" || exit 0
 trap 'rm -rf "$tmp"' EXIT
 
 if [ -z "$diff_file" ]; then
