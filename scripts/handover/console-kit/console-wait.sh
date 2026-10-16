@@ -36,6 +36,16 @@
 #                               (default 3) in a row, then it wakes (the streak shows
 #                               in the heartbeat as pred_hangs=<n>); any other
 #                               refusal wakes once (CONSOLE_WAIT_CLOSE = seam).
+#   WAKE succession complete <k/n>   with --succession <successor> --doc <console doc>
+#   <tracker output>            (the successor's waiter): every inherited leg quoted
+#                               back; the block carries succession-tracker.sh's table
+#                               and the printed append-results.sh line for the LIVE
+#                               bullet. Once, and it prints only: nothing is sent.
+#   WAKE succession partial <k/n> silent <T> min   the tally stayed short for
+#   <tracker output>            --silent-min T minutes (default 20); the table names
+#                               the legs still out. Once. CONSOLE_WAIT_SUCCESSION_SEC
+#                               (default 15) paces the tally; CONSOLE_WAIT_TRACKER
+#                               replaces the tracker (tests).
 #   WAKE tick-fail samples=<n>  CONSOLE_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. Once per streak; the re-arm stays quiet
@@ -127,6 +137,12 @@
 #                        skips tick/bank/page sampling and wakes only on Telegram.
 #                        That mutes classifier-denial pages for up to that long;
 #                        `rm <inbox>.handover` ends the mode early.
+#   <inbox>.relay-on-live  (`console.sh next --relay-on-live`; needs --doc) line 1 the
+#                        successor session, line 2 its doc. When that doc's queue lock
+#                        is held fresh the waiter prints one `WAKE relay-on-live
+#                        successor=<s>` block (relay-batch.sh's output), removes the
+#                        marker and exits 0. It works in handover mode. Seams:
+#                        CONSOLE_WAIT_LOCK_STATUS, CONSOLE_WAIT_RELAY (tests).
 #
 # Exit: 0 = a WAKE block was printed; 1 = the inbox could not be drained;
 # 2 = usage; 3 = another waiter is already live on this inbox (its pid is named).
@@ -207,11 +223,29 @@ trap "exit_reason='signal-HUP'; exit 129" HUP
 legs_from="${LEGS_FROM:-}"
 console_doc=""
 prev_arg=""
+# --succession / --silent-min belong to this waiter, not to tick.sh: take them out of
+# the tick args before anything hashes or forwards them.
+succession=""; silent_min=20
+rest_args=()
 for a in "$@"; do
+    case "$prev_arg" in
+        --succession) succession="$a"; prev_arg="$a"; continue ;;
+        --silent-min) silent_min="$a"; prev_arg="$a"; continue ;;
+    esac
+    case "$a" in --succession|--silent-min) prev_arg="$a"; continue ;; esac
     [ "$prev_arg" = --legs-from ] && legs_from="$a"
     [ "$prev_arg" = --doc ] && console_doc="$a"
     prev_arg="$a"
+    rest_args+=("$a")
 done
+set -- ${rest_args[@]+"${rest_args[@]}"}
+if [ -n "$succession" ]; then
+    case "$succession" in *[!A-Za-z0-9_.-]*) echo "console-wait: --succession must be a session name" >&2; exit 2 ;; esac
+    case "$silent_min" in ''|*[!0-9]*) echo "console-wait: --silent-min must be whole minutes" >&2; exit 2 ;; esac
+    if [ -z "$console_doc" ] || [ ! -f "$console_doc" ]; then
+        echo "console-wait: --succession needs --doc <console doc>" >&2; exit 2
+    fi
+fi
 args_hash_of() { # <tick args...>
     local set=""
     # In manifest order, not sorted: tick prints legs in that order, so a
@@ -547,6 +581,7 @@ fail_woke() {
     [ "$(sed -n 1p "$key_file" 2>/dev/null)" = "$args_hash" ] && [ "$(sed -n 3p "$key_file" 2>/dev/null)" = failwoke ]
 }
 
+succ_file="$inbox.wait.succession"
 pending=""
 fail_streak=0
 fail_wake="${CONSOLE_WAIT_FAIL_WAKE:-3}"
@@ -569,6 +604,46 @@ while :; do
         exit_reason='wake-telegram'; exit 0
     elif [ "$rc" -ne 1 ]; then
         exit_reason='inbox-error'; exit 1
+    fi
+    # --succession: the successor's one wake. Tally the inherited legs' quote-backs
+    # (succession-tracker.sh); wake once when all are in, or once when the tally has
+    # sat short for --silent-min minutes, naming the legs still out.
+    if [ -n "$succession" ] && [ "$(date +%s)" -ge "${next_succ:-0}" ]; then
+        next_succ=$(( $(date +%s) + ${CONSOLE_WAIT_SUCCESSION_SEC:-15} ))
+        [ -s "$succ_file" ] || date +%s > "$succ_file" 2>/dev/null
+        succ_out="$(bash "${CONSOLE_WAIT_TRACKER:-$HERE/succession-tracker.sh}" "$console_doc" --successor "$succession" </dev/null 2>/dev/null 9>&-)"
+        succ_sum="$(printf '%s\n' "$succ_out" | grep -E '^(COMPLETE|INCOMPLETE) ' | head -n 1)"
+        case "$succ_sum" in
+            COMPLETE*)
+                printf 'WAKE succession complete %s\n%s\n' "${succ_sum#COMPLETE }" "$succ_out"
+                rm -f "$succ_file"; exit_reason='wake-succession'; exit 0 ;;
+            INCOMPLETE*)
+                succ_since="$(sed -n 1p "$succ_file" 2>/dev/null)"
+                case "$succ_since" in ''|*[!0-9]*) succ_since="$(date +%s)" ;; esac
+                if [ $(( $(date +%s) - succ_since )) -ge $(( 10#$silent_min * 60 )) ]; then
+                    printf 'WAKE succession partial %s silent %s min\n%s\n' "$(printf '%s' "$succ_sum" | sed -E 's/^INCOMPLETE ([0-9]+\/[0-9]+).*/\1/')" "$silent_min" "$succ_out"
+                    rm -f "$succ_file"; exit_reason='wake-succession-partial'; exit 0
+                fi ;;
+        esac
+    fi
+    # <inbox>.relay-on-live (written by `console.sh next --relay-on-live`; line 1 the
+    # successor session, line 2 its doc): once the successor's queue lock is held
+    # fresh it is live, so wake this console ONCE with relay-batch.sh's lines. The
+    # waiter sends nothing; the console sends each SENDMESSAGE line itself.
+    if [ -n "$console_doc" ] && [ -s "$inbox.relay-on-live" ] && [ "$(date +%s)" -ge "${next_rol:-0}" ]; then
+        next_rol=$(( $(date +%s) + ${CONSOLE_WAIT_SUCCESSION_SEC:-15} ))
+        rol_succ="$(sed -n 1p "$inbox.relay-on-live" 2>/dev/null)"
+        rol_doc="$(sed -n 2p "$inbox.relay-on-live" 2>/dev/null)"
+        if [ -n "$rol_succ" ] && [ -n "$rol_doc" ]; then
+            bash "${CONSOLE_WAIT_LOCK_STATUS:-$HERE/../queue-lock.sh}" status "$rol_doc" </dev/null >/dev/null 2>&1 9>&-; rol_rc=$?
+            if [ "$rol_rc" -eq 11 ]; then
+                rol_out="$(bash "${CONSOLE_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"
+                printf 'WAKE relay-on-live successor=%s\n%s\n' "$rol_succ" "$rol_out"
+                rm -f "$inbox.relay-on-live"; exit_reason='wake-relay-on-live'; exit 0
+            fi
+        else
+            rm -f "$inbox.relay-on-live"
+        fi
     fi
     # <inbox>.handover (written by `console.sh next` once the
     # successor validated) puts this waiter in handover mode: no tick, bank or

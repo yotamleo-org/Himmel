@@ -318,6 +318,22 @@ check "6c HANDOFF says a relay MAY keep the leg's token" \
     "$(tr '\n' ' ' < "$handoff6A" | tr -s ' ' | grep -c 'MAY keep')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc6A" "$token6a" >/dev/null 2>&1
 
+# --- 6d: --relay-on-live leaves a marker (line 1 successor, line 2 its doc) beside the
+# predecessor's inbox; a plain `next` leaves none; the flag is next-only.
+out6da="$(console new --bucket reldemo)"
+token6da="$(token_of "$out6da")"
+doc6dA="$root/tester/reldemo/DEMO-nextleg-${today}A-console.md"
+doc6dB="$root/tester/reldemo/DEMO-nextleg-${today}B-console.md"
+mark6d="$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.relay-on-live"
+console next --bucket reldemo >/dev/null
+check "6d plain next leaves no relay-on-live marker" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.handover"
+console next --bucket reldemo --relay-on-live >/dev/null
+check "6d next --relay-on-live writes the successor session on line 1" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-console"
+check "6d next --relay-on-live writes the successor doc on line 2" "$(sed -n 2p "$mark6d" 2>/dev/null)" "$doc6dB"
+check "6d --relay-on-live is next-only" "$(console new --bucket reldemo2 --relay-on-live >/dev/null 2>&1; echo $?)" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$doc6dA" "$token6da" >/dev/null 2>&1
+
 # --- 6b: --doc outside the successor's own state dir --------------------
 # The predecessor lives under a DIFFERENT bucket than the one this `next`
 # invocation targets; its HANDOFF must land beside the predecessor doc, not
@@ -400,7 +416,7 @@ leak_free() {
 # every such line must carry a token this run actually saw `new` print — an
 # unrelated
 # leak, or a line that merely LOOKS token-shaped, still fails loudly.
-known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token7a" "$tokenInbox")
+known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$tokenInbox")
 token_residual() {
     local token
     for token in "$@"; do
