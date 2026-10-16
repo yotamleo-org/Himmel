@@ -30,7 +30,7 @@ SessionStart hook stay out: they grant autonomy the console, RETASK and GO rails
 own (HIMMEL-5697, A1).
 
 No overlap with `unslop`, `no-comments` or `comment-sicko`: those edit prose and
-comments, none of the seven reviews behaviour, measures numbers or generates
+comments, while the seven review behaviour, vet numbers or generate
 verification skills. `correct` is the nearest neighbour to `no-comments` (both
 remove a repeated mistake class) but acts on process, not on text.
 
