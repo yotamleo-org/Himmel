@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { BASH_BIN } from './lib/resolve-bash.mjs';
 import { resolveLanes, resolveLaneInventory, formatCodexHealth, buildCtx, fmtCtx, formatContextAnnotation, formatQuotaAnnotation, mergeLocalOverlay, unknownOverlayKeys } from '../resolve.mjs';
 import { applyLaneOverride, applyProfileAllowlist, writeProfileAllowlist } from '../set-lane-override.mjs';
 
@@ -469,7 +470,7 @@ test('context annotation names the tier a dispatch gets and the closed enum (HIM
 });
 test('the codex dispatcher lanes declare the tiers the shell filter accepts (HIMMEL-1907)', () => {
   const filter = join(TEST_DIR, '..', '..', 'codex', 'codex-arg-filter.sh');
-  const shellTiers = execFileSync('bash', ['-c', '. "$1"; echo $CAF_CONTEXT_TIERS', '_', filter], { encoding: 'utf8' }).trim().split(' ');
+  const shellTiers = execFileSync(BASH_BIN, ['-c', '. "$1"; echo $CAF_CONTEXT_TIERS', '_', filter], { encoding: 'utf8' }).trim().split(' ');
   for (const id of ['claudex', 'codex-exec', 'codex-wsl']) {
     const lane = REG.lanes.find((l) => l.id === id);
     assert.deepEqual(lane.context.tiers, shellTiers, `${id} context.tiers must equal CAF_CONTEXT_TIERS`);
