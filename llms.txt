@@ -50,7 +50,7 @@ Data egress from graph extraction is fenced by one policy file, `scripts/guardra
 - [docs/architecture.md](docs/architecture.md) — the enforcement, handover, fleet and observability diagrams.
 - [docs/handover/overnight-mode.md](docs/handover/overnight-mode.md) — unattended end-to-end execution of a scoped ticket.
 - [docs/commands-catalog.md](docs/commands-catalog.md) · [docs/tooling-catalog.md](docs/tooling-catalog.md) — the slash commands, and every tool/script/plugin in use.
-- [docs/ui.md](docs/ui.md) — the UI surfaces: `himmelctl ui` config console (Config, Health, Fleet with the console board and its Trends tab, Roadmap, AG-UI run view; operator runs it, needs bun), the console board (`board.mjs`), the roadmap tracker (`tracker.py`).
+- [docs/ui.md](docs/ui.md) — the UI surfaces: `himmelctl ui` config console (Config, Health, Fleet, Roadmap, AG-UI run view; operator runs it, needs bun), the console board (`board.mjs`), the roadmap tracker (`tracker.py`).
 - [docs/setup/new-machine.md](docs/setup/new-machine.md) — fresh-machine setup and the contributor path.
 - [.env.example](.env.example) — every operator flag, grouped by how it reaches code.
 - [marketplace/plugins/handover/README.md](marketplace/plugins/handover/README.md) — cross-session handover state.
