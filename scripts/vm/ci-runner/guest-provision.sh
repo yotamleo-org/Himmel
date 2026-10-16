@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # guest-provision.sh — runs ONCE, as root, INSIDE the himmel-ci-1 test VM
-# while scripts/vm/ci-runner.sh build bakes the ci-runner-v1
+# while scripts/vm/ci-runner.sh build bakes the ci-runner-v2
 # snapshot. Never run it on a station host: it refuses anything
 # systemd-detect-virt does not call a VM.
 #

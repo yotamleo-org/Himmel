@@ -160,8 +160,8 @@ reset_log
 GH_KILL=on run_loop run --once >"$TMP/out" 2>&1
 rc=$?
 if [ "$rc" -eq 0 ]; then ok "run --once exits 0"; else bad "run --once rc=$rc: $(cat "$TMP/out")"; fi
-if [ "$(tr '\n' '|' < "$TMP/log/vm.calls" 2>/dev/null)" = "restore ci-runner-v1|nat-localhost-off|clipboard-dnd-off|boot|poweroff|release|" ]; then
-    ok "restored ci-runner-v1, hid the station loopback, turned clipboard and drag-and-drop off, booted, powered off, released the lock"
+if [ "$(tr '\n' '|' < "$TMP/log/vm.calls" 2>/dev/null)" = "restore ci-runner-v2|nat-localhost-off|clipboard-dnd-off|boot|poweroff|release|" ]; then
+    ok "restored ci-runner-v2, hid the station loopback, turned clipboard and drag-and-drop off, booted, powered off, released the lock"
 else
     bad "vm calls: $(tr '\n' '|' < "$TMP/log/vm.calls" 2>/dev/null)"
 fi
