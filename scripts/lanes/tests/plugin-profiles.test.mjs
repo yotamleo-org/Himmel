@@ -1806,3 +1806,39 @@ test('CLI reads the fork registry from the anchor, never the worktree copy', () 
   assert.ok(text.includes('github.com/yotamleo/qmd '), text);
   assert.ok(!text.includes('yotamleo/evil'), text);
 });
+
+// leg-vm: leg-impl plus ONE rule for the sanctioned guest-launch script.
+const VM_LAUNCH_RULE = 'Bash(bash scripts/vm/launch-guest.sh:*)';
+test('leg-vm emits the guest-launch rule on top of every leg-impl rule; leg-impl lacks it', () => {
+  const vm = resolveProfile(REG, 'leg-vm', { installed: [] });
+  const impl = resolveProfile(REG, 'leg-impl', { installed: [] });
+  assert.ok(vm.permissions.allow.includes(VM_LAUNCH_RULE), 'leg-vm must carry the rule');
+  assert.ok(!impl.permissions.allow.includes(VM_LAUNCH_RULE), 'leg-impl must not carry the rule');
+  assert.deepEqual(vm.permissions.allow.filter((r) => r !== VM_LAUNCH_RULE), impl.permissions.allow);
+  assert.deepEqual(vm.enabledPlugins, impl.enabledPlugins);
+});
+test('no profile other than leg-vm carries a vm launch rule', () => {
+  for (const name of Object.keys(REG.profiles).filter((n) => n !== 'leg-vm' && REG.profiles[n] !== null)) {
+    const allow = resolveProfile(REG, name, { installed: [] }).permissions?.allow ?? [];
+    assert.ok(!allow.some((r) => r.includes('launch-guest')), `${name} must not carry a launch-guest rule`);
+  }
+});
+for (const [shape, rule] of [
+  ['wildcard ssh', 'Bash(ssh:*)'],
+  ['ssh to a vm', 'Bash(ssh -p 2222 himmel@127.0.0.1:*)'],
+  ['claude launch', 'Bash(claude:*)'],
+  ['station path', 'Bash(bash ~/Documents/github/himmel/scripts/vm/launch-guest.sh:*)'],
+  ['other vm script', 'Bash(bash scripts/vm/vm-lock.sh:*)'],
+  ['skip-permissions tail', 'Bash(bash scripts/vm/launch-guest.sh --dangerously-skip-permissions:*)'],
+]) {
+  test(`vmLaunchAllow rejects ${shape}`, () => {
+    const registry = structuredClone(REG);
+    registry.vmLaunchAllow = [rule];
+    assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunchAllow')), rule);
+  });
+}
+test('vmLaunch is restricted to leg-vm', () => {
+  const registry = structuredClone(REG);
+  registry.profiles['leg-impl'].vmLaunch = true;
+  assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunch')));
+});

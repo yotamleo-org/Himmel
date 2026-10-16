@@ -27,6 +27,7 @@ export const ROLE_REQUIRES = {
   'leg-impl': ['pr-review-toolkit-himmel@himmel'],
   'leg-bus': ['pr-review-toolkit-himmel@himmel'],
   'leg-e2e': ['pr-review-toolkit-himmel@himmel'],
+  'leg-vm': ['pr-review-toolkit-himmel@himmel'],
   'lane-review': ['pr-review-toolkit-himmel@himmel'],
   'lane-content': ['claude-obsidian@himmel', 'obsidian-triage@himmel'],
   telegram: ['obsidian-triage@himmel'],
