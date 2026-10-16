@@ -390,19 +390,28 @@ cmd_reembed() {
     case "$copy" in /*) : ;; *) die 1 "--copy must be an absolute path" ;; esac
     [ "$copy" != "$live" ] || die 2 "--copy is the live index; reembed never writes the live index"
     need_sqlite
-    # An existing copy that holds only the target model is a partial run:
-    # resume it (no new backup, no --force) so finished vectors are kept.
-    local resume=0
+    # A copy carrying the .partial marker is an interrupted run: reuse it (no new
+    # backup). It resumes without --force once it holds only the target model;
+    # a run interrupted before the first vectors landed still holds the old
+    # model and restarts forced on the same copy.
+    local resume=0 reuse=0
     if [ -e "$copy" ]; then
         [ ! "$copy" -ef "$live" ] || die 2 "--copy is the same file as the live index (link); reembed never writes the live index"
-        compare_index "$copy" "$uri" >/dev/null 2>&1 || die 2 "$copy already exists and does not hold only $name vectors; remove it or pick another --copy"
-        [ -e "$copy.partial" ] || die 2 "$copy is a finished copy of an older live index; swap it in, or remove it to copy the current live index"
-        resume=1
+        if [ -e "$copy.partial" ]; then
+            reuse=1
+            ! compare_index "$copy" "$uri" >/dev/null 2>&1 || resume=1
+        elif compare_index "$copy" "$uri" >/dev/null 2>&1; then
+            die 2 "$copy is a finished copy of an older live index; swap it in, or remove it to copy the current live index"
+        else
+            die 2 "$copy already exists and does not hold only $name vectors; remove it or pick another --copy"
+        fi
     fi
     resolve_qmd
 
     if [ "$resume" -eq 1 ]; then
         say "[1/4] resuming the partial copy $copy (already holds only $name vectors)"
+    elif [ "$reuse" -eq 1 ]; then
+        say "[1/4] restarting the interrupted copy $copy (no $name vectors yet)"
     else
         say "[1/4] consistent copy of $live to $copy"
         sqlite3 -readonly "$live" ".backup '$copy'" || { rm -f "$copy"; die 5 "sqlite3 .backup failed"; }

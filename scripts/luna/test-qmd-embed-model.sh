@@ -230,6 +230,14 @@ assert_contains "the resume kept the copy (no new backup)" "resume_marker" "$(sq
 log="$(cat "$H/qmd.log")"
 assert_contains "the resume embeds without --force" "ARGS=embed --timeout 0 --max-docs-per-batch 4096" "$log"
 assert_not_contains "the resume never forces" "embed --force" "$log"
+# An interrupted first pass leaves the marker on a copy that still holds the old model: restart it forced, keep the copy.
+sqlite3 "$copy" "UPDATE content_vectors SET model='$GEMMA';"
+: >"$copy.partial"
+: >"$H/qmd.log"
+rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+assert_rc "reembed restarts an interrupted copy that still holds the old model" 0 "$rc"
+assert_contains "the restart kept the copy (no new backup)" "resume_marker" "$(sqlite3 "$copy" .tables)"
+assert_contains "the restart embeds forced" "ARGS=embed --force --timeout 0 --max-docs-per-batch 4096" "$(cat "$H/qmd.log")"
 # A copy still holding another model is not resumable.
 sqlite3 "$copy" "UPDATE content_vectors SET model='$GEMMA';"
 rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
