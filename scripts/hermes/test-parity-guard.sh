@@ -63,7 +63,9 @@ g "claude transcript .jsonl" block '{"tool_name":"read_file","tool_input":{"path
 g "claude projects memory .md" allow '{"tool_name":"read_file","tool_input":{"path":"/home/u/.claude/projects/p/memory/MEMORY.md"}}'
 g "bare printenv"        block '{"tool_name":"terminal","tool_input":{"command":"printenv"}}'
 g "bare env piped"       block '{"tool_name":"terminal","tool_input":{"command":"env | sort"}}'
-g "export -p"            block '{"tool_name":"terminal","tool_input":{"command":"export -p"}}'
+g "printenv -0"          block '{"tool_name":"terminal","tool_input":{"command":"printenv -0"}}'
+g "env printenv"         block '{"tool_name":"terminal","tool_input":{"command":"env printenv"}}'
+g "export -p"           block '{"tool_name":"terminal","tool_input":{"command":"export -p"}}'
 g "env running a command" allow '{"tool_name":"terminal","tool_input":{"command":"env FOO=1 true"}}'
 g "tilde claude settings write" block '{"tool_name":"terminal","tool_input":{"command":"echo {} > ~/.claude/settings.json"}}'
 # shellcheck disable=SC2016  # the literal $HOME is the payload under test

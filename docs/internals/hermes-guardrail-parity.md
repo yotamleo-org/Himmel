@@ -41,7 +41,7 @@ Re-run: `python3 -I scripts/hermes/parity-measure.py [--gaps-only]
 `HERMES_EXTERNAL_WRITES_OK=1` (what `dispatch-trusted.sh` does).
 
 Result, default env: **MATCH 29, GAP 9, OVER-DENY 5**
-(GAP 13 / OVER-DENY 2 with `--external-writes`: the write fence lifts, and
+(GAP 10 / OVER-DENY 2 with `--external-writes`: the write fence lifts, and
 `gh auth token` becomes a GAP).
 
 ## GAPs — Claude Code denies, hermes allows (ranked)

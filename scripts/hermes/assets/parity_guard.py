@@ -132,7 +132,8 @@ def _expand_home(cmd: str) -> str:
 # Environment-dump verbs (block-read-secrets parity): a bare listing prints
 # every secret in the inherited environment.
 _ENV_DUMP_VERBS = re.compile(
-    r"(?:printenv|env|export\s+-p|declare\s+-p)(?=\s*(?:$|[;&|)<>\n]))"
+    r"(?:printenv|env(?:\s+printenv)?|export\s+-p|declare\s+-p)"
+    r"(?:\s+(?:-0|--null))*(?=\s*(?:$|[;&|)<>\n]))"
 )
 
 # Command position: string start or right after a separator (; & | ( newline).
