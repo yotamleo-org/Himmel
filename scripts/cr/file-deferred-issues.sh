@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
-# file-deferred-issues — auto-file low-severity CR findings as issues.
+# file-deferred-issues — file low-severity CR findings on the repo's tracker.
 #
-# Reads CR review output from --input (file or `-` for stdin), extracts
+# Reads CR review output from --input (file or `-` for stdin) and extracts
 # lines tagged with deferred-class severities (NIT, LOW, SUGGESTION,
-# IMPROVEMENT, DEFERRED), and files each as an issue on the current repo,
-# routed through the forge seam (scripts/lib/forge.sh): GitHub issues via
-# `gh`, Bitbucket issues via the himmel `bitbucket` CLI. On a
-# forge whose issue tracker is disabled (Bitbucket default → 404, spec §5.2)
-# the run degrades gracefully — it files nothing and warns, naming the
-# deferred findings, rather than erroring the CR flow. Dedupe (GitHub only)
-# is content-hash based: re-running on the same review output is a no-op
-# (closed/won't-fix issues count too — a closed nit stays closed). On a
-# Bitbucket repo whose tracker is *enabled* (not the §5.2 default-off case)
-# there is no dedupe, so re-runs would duplicate — acceptable for Phase 2,
-# which targets the disabled-tracker default.
+# IMPROVEMENT, DEFERRED). Where they go is decided by an EXPLICIT, printed
+# tracker mode (`tracker=jira|forge|none`) built on the one resolver,
+# scripts/lib/project-mode.sh (TRACKER / himmel.tracker / JIRA_PROJECT_KEY):
+#   tracker=jira   Jira is configured: ONE ticket per run (label cr-deferred,
+#                  all findings as a numbered list). Never a GitHub issue: a
+#                  failed lookup or create exits non-zero, with no fallback.
+#   tracker=forge  No Jira, but the repo's forge is github|bitbucket: one issue
+#                  per finding via the forge seam (scripts/lib/forge.sh). A
+#                  forge whose tracker is disabled (Bitbucket default → 404,
+#                  spec §5.2) degrades: nothing filed, findings warned.
+#   tracker=none   Local tickets / no remote tracker: nothing is filed; the
+#                  numbered batch is printed for the PR's Ticket coverage and
+#                  the console.
+# Dedupe is content-hash based: re-running on the same review output is a
+# no-op (closed tickets/issues count too). On a Bitbucket repo whose tracker
+# is *enabled* there is no dedupe, so re-runs would duplicate.
 #
 # Source format expected (matches our heavy-CR pattern):
 #     path/to/file.ext:LINE: <SEVERITY>: <problem>. <fix>.
@@ -30,11 +35,12 @@
 # tracking" tier. CRITICAL / HIGH / IMPORTANT block the PR via the
 # existing /pr-check marker flow.
 #
-# Output: one line per finding (stdout unless noted) —
-#     filed <url> <hash>
-#     skipped (duplicate, issue #N) <hash>
+# Output: `tracker=<mode>` first, then one line per finding (forge) or per
+# batch (jira), stdout unless noted —
+#     filed <url|JIRA-KEY> <hash>
+#     skipped (duplicate, issue #N | JIRA-KEY) <hash>
 #     skipped (dry-run) <hash> — would file: <title>
-#     skipped (gh-dedupe-check-failed) <hash> — fail-closed: <reason>   (stderr)
+#     skipped (gh-dedupe-check-failed | jira-dedupe-check-failed) <hash> — fail-closed: <reason>   (stderr)
 #     FAILED <hash>: <reason>                                           (stderr)
 #
 # Exit codes:
@@ -42,8 +48,10 @@
 #         issues-disabled graceful degrade — nothing filed, findings warned)
 #     1 — usage / input error
 #     2 — required tool missing or environment unusable (git always; gh on
-#         the GitHub path; sha1sum/shasum) or the forge could not be detected
-#     3 — issue creation failed for at least one finding
+#         the GitHub path; sha1sum/shasum), the tracker setting is invalid
+#         (e.g. TRACKER=jira without JIRA_PROJECT_KEY) or the forge could not
+#         be detected
+#     3 — ticket/issue creation failed for at least one finding
 #     4 — at least one dedupe check failed (fail-closed, nothing filed
 #         for that finding — operator should re-run after investigating)
 set -euo pipefail
@@ -63,9 +71,13 @@ Required:
   --input <file|->      Review output to scan. `-` reads from stdin.
 
 Optional:
-  --label <name>        GitHub label to apply (default: cr-deferred).
-                        Auto-created on first non-dry-run invocation.
-  --dry-run             Parse + show plan, don't create issues or labels.
+  --label <name>        Label to apply (default: cr-deferred). On the forge
+                        path it is auto-created on first non-dry-run invocation.
+  --dry-run             Parse + show plan, don't create tickets, issues or labels.
+
+Tracker (printed as tracker=jira|forge|none): jira when Jira is configured
+(one ticket per run), else forge issues on a github/bitbucket forge, else
+nothing is filed (the batch is printed for the PR's Ticket coverage).
 
 Severity tiers auto-filed: NIT, LOW, SUGGESTION, IMPROVEMENT, DEFERRED.
 MEDIUM and above are NOT touched — they need to block the PR.
@@ -93,18 +105,48 @@ if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 
-# Resolve the forge (github|bitbucket) from the origin remote.
-# Repo-context + issue-create route through the forge seam so a Bitbucket user
-# degrades gracefully when their issue tracker is off (spec §5.2) instead of
-# hard-erroring the CR flow. forge_detect prints an actionable message + returns
-# non-zero when no forge can be determined; `if !` guards set -e.
+# Resolve the tracker explicitly: jira | forge | none. The resolver owns the
+# Jira-vs-local answer (TRACKER, git config himmel.tracker, JIRA_PROJECT_KEY);
+# JIRA_PROJECT_KEY is read from the primary checkout's .env the way the Jira CLI
+# does. There is deliberately NO fallback from jira to forge: a Jira repo
+# files to Jira or fails.
 FDI_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
-# shellcheck source=scripts/lib/forge.sh
+# shellcheck source=scripts/lib/project-mode.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-. "$FDI_LIB_DIR/forge.sh"
-if ! FORGE=$(forge_detect); then
-    echo "ERR file-deferred-issues: could not determine the forge (see above)." >&2
+. "$FDI_LIB_DIR/project-mode.sh"
+# shellcheck source=scripts/lib/load-dotenv.sh
+# shellcheck disable=SC1091
+. "$FDI_LIB_DIR/load-dotenv.sh"
+load_dotenv JIRA_PROJECT_KEY >/dev/null 2>&1 || true
+if ! PM_TRACKER=$(project_mode_tracker); then
+    echo "ERR file-deferred-issues: invalid tracker setting (see above); nothing filed." >&2
     exit 2
+fi
+if [ "$PM_TRACKER" = jira ]; then
+    TRACKER_MODE=jira
+else
+    if ! PM_FORGE=$(project_mode_forge --quiet); then
+        echo "ERR file-deferred-issues: invalid forge setting (see above); nothing filed." >&2
+        exit 2
+    fi
+    case "$PM_FORGE" in
+        github|bitbucket) TRACKER_MODE=forge ;;
+        *)                TRACKER_MODE=none ;;
+    esac
+fi
+echo "tracker=${TRACKER_MODE}"
+
+# Forge path only: resolve the forge (github|bitbucket) through the seam.
+# forge_detect prints an actionable message + returns non-zero when no forge
+# can be determined; `if !` guards set -e.
+if [ "$TRACKER_MODE" = forge ]; then
+    # shellcheck source=scripts/lib/forge.sh
+    # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
+    . "$FDI_LIB_DIR/forge.sh"
+    if ! FORGE=$(forge_detect); then
+        echo "ERR file-deferred-issues: could not determine the forge (see above)." >&2
+        exit 2
+    fi
 fi
 
 # Tool detection. `git` is always needed; `gh` only on the GitHub path (the
@@ -112,7 +154,7 @@ fi
 # which runs under node — guaranteed present). sha1sum is present on Linux +
 # gitbash; macOS only ships `shasum`. Feature-detect rather than hard-require.
 req_tools="git"
-[ "$FORGE" = "github" ] && req_tools="git gh"
+[ "$TRACKER_MODE" = forge ] && [ "$FORGE" = "github" ] && req_tools="git gh"
 for tool in $req_tools; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "ERR file-deferred-issues: required tool '$tool' not on PATH" >&2
@@ -231,21 +273,6 @@ normalize_panel_input() {
 }
 NORMALIZED_CONTENT=$(normalize_panel_input "$INPUT_CONTENT")
 
-# Resolve repo identity via the forge seam — owner/repo on GitHub, workspace/repo
-# on Bitbucket. Used for the GitHub dedupe/label/create calls below; the
-# Bitbucket CLI derives its own ws/repo from the origin remote, so REPO is a
-# GitHub-path detail. Capture stdout (REPO) + stderr (error message) separately
-# so auth-expired vs no-remote vs network failures stay distinguishable.
-repo_err_file=$(mktemp -t fdi-repo.err.XXXXXX)
-# shellcheck disable=SC2119  # forge_repo_nwo takes no positional args
-if ! REPO=$(forge_repo_nwo 2>"$repo_err_file"); then
-    echo "ERR file-deferred-issues: could not resolve repo via forge ($FORGE):" >&2
-    sed 's/^/    /' "$repo_err_file" >&2
-    rm -f "$repo_err_file"
-    exit 2
-fi
-rm -f "$repo_err_file"
-
 HEAD_SHA=$(git rev-parse --short HEAD)
 
 # Extract candidate lines. Primary pattern: `path[:line]: SEV: text`
@@ -277,6 +304,121 @@ if [ -z "$candidates" ]; then
     echo "file-deferred-issues: no deferred-class findings detected in input — nothing to file."
     exit 0
 fi
+
+# Batch identity for the jira/none paths: one hash over every candidate line,
+# so re-running on the same review output finds the same ticket. The marker is
+# a single alphanumeric word because Jira's text search tokenises punctuation.
+batch_hash=$(printf '%s\n' "$candidates" | $HASH_CMD | awk '{print $1}')
+batch_short="${batch_hash:0:12}"
+batch_marker="crbatch${batch_short}"
+batch_list=$(printf '%s\n' "$candidates" | awk '{printf "%d. %s\n", NR, $0}')
+batch_count=$(printf '%s\n' "$candidates" | grep -c .)
+
+if [ "$TRACKER_MODE" = none ]; then
+    echo "file-deferred-issues: no remote tracker is configured here — nothing filed. Put these ${batch_count} deferred finding(s) in the PR's Ticket coverage as 'deferred → <ticket>' and report them to the console (batch ${batch_short}):"
+    printf '%s\n' "$batch_list"
+    exit 0
+fi
+
+if [ "$TRACKER_MODE" = jira ]; then
+    # The Jira CLI: JIRA_CMD (test seam, word-split on purpose) else the PRIMARY
+    # checkout's dist, which a worktree lacks. The resolver already refused
+    # TRACKER=jira without JIRA_PROJECT_KEY.
+    jira_run() {
+        local common
+        if [ -n "${JIRA_CMD:-}" ]; then
+            # shellcheck disable=SC2086
+            $JIRA_CMD "$@"
+            return $?
+        fi
+        common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || {
+            echo "cannot locate the Jira CLI (set JIRA_CMD)" >&2
+            return 1
+        }
+        node "$(dirname "$common")/scripts/jira/dist/index.js" "$@"
+    }
+    jira_title="[CR PR #${PR_NUMBER}] Deferred review findings (${batch_count})"
+
+    # Dedupe — fail-closed. A lookup error must NOT file (a transient failure
+    # would otherwise duplicate the ticket) and must NOT fall back to GitHub.
+    # No status filter: a closed ticket counts, so a closed batch stays closed.
+    jira_err_file=$(mktemp -t fdi-jira.err.XXXXXX) || exit 1
+    if ! existing=$(jira_run list --project "$JIRA_PROJECT_KEY" --limit 1 \
+            --jql "project = ${JIRA_PROJECT_KEY} AND labels = \"${LABEL}\" AND text ~ \"${batch_marker}\"" 2>"$jira_err_file"); then
+        dedupe_err=$(cat "$jira_err_file" 2>/dev/null || true)
+        rm -f "$jira_err_file"
+        echo "skipped (jira-dedupe-check-failed) ${batch_short} — fail-closed: ${dedupe_err}" >&2
+        echo "file-deferred-issues: summary — 0 filed, 0 duplicates, 0 dry-run, 0 failed, 1 dedupe-check-failed"
+        exit 4
+    fi
+    rm -f "$jira_err_file"
+    existing_key=$(printf '%s\n' "$existing" | awk 'NF{print $1; exit}')
+    if [ -n "$existing_key" ]; then
+        echo "skipped (duplicate, ${existing_key}) ${batch_short}"
+        echo "file-deferred-issues: summary — 0 filed, 1 duplicates, 0 dry-run, 0 failed, 0 dedupe-check-failed"
+        exit 0
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "skipped (dry-run) ${batch_short} — would file Jira ticket: ${jira_title}"
+        printf '%s\n' "$batch_list"
+        echo "file-deferred-issues: summary — 0 filed, 0 duplicates, 1 dry-run, 0 failed, 0 dedupe-check-failed"
+        exit 0
+    fi
+
+    # printf, not a heredoc: the findings are review text and must not be
+    # expanded. The body carries the plain Impact/What/Why/Agent detail shape
+    # the Jira CLI's ticket-shape check requires.
+    jira_body_file=$(mktemp -t fdi-jira.body.XXXXXX) || exit 1
+    printf '%s\n' \
+        "## Impact" \
+        "Non-blocking review findings from PR #${PR_NUMBER} would otherwise be lost once it merges." \
+        "" \
+        "## What" \
+        "Triage these ${batch_count} deferred finding(s): fix each, or close it as won't-fix." \
+        "" \
+        "## Why" \
+        "They were flagged NIT / LOW / SUGGESTION / IMPROVEMENT / DEFERRED during pre-merge review and did not block the merge." \
+        "" \
+        "## Agent detail" \
+        "Origin: PR #${PR_NUMBER} (HEAD ${HEAD_SHA})." \
+        "Filed by: scripts/cr/file-deferred-issues.sh (HIMMEL-30, HIMMEL-5921)." \
+        "Dedupe marker: ${batch_marker}" \
+        "" \
+        "Findings:" \
+        "" \
+        "$batch_list" >"$jira_body_file"
+
+    jira_err_file=$(mktemp -t fdi-jira.err.XXXXXX) || exit 1
+    create_rc=0
+    created=$(jira_run create --type Task --title "$jira_title" --labels "$LABEL" \
+        --project "$JIRA_PROJECT_KEY" --desc-file "$jira_body_file" 2>"$jira_err_file") || create_rc=$?
+    create_err=$(cat "$jira_err_file" 2>/dev/null || true)
+    rm -f "$jira_err_file" "$jira_body_file"
+    new_key=$(printf '%s\n' "$created" | sed -n 's/^Created \([A-Za-z][A-Za-z0-9]*-[0-9][0-9]*\).*/\1/p' | head -n1)
+    if [ "$create_rc" -ne 0 ] || [ -z "$new_key" ]; then
+        echo "FAILED ${batch_short}: ${create_err:-no 'Created <KEY>' line in the Jira CLI output: $created}" >&2
+        echo "file-deferred-issues: summary — 0 filed, 0 duplicates, 0 dry-run, 1 failed, 0 dedupe-check-failed"
+        exit 3
+    fi
+    echo "filed ${new_key} ${batch_short}"
+    echo "file-deferred-issues: summary — 1 filed, 0 duplicates, 0 dry-run, 0 failed, 0 dedupe-check-failed"
+    exit 0
+fi
+
+# Resolve repo identity via the forge seam — owner/repo on GitHub, workspace/repo
+# on Bitbucket. Used for the GitHub dedupe/label/create calls below; the
+# Bitbucket CLI derives its own ws/repo from the origin remote, so REPO is a
+# GitHub-path detail. Capture stdout (REPO) + stderr (error message) separately
+# so auth-expired vs no-remote vs network failures stay distinguishable.
+repo_err_file=$(mktemp -t fdi-repo.err.XXXXXX) || exit 1
+# shellcheck disable=SC2119  # forge_repo_nwo takes no positional args
+if ! REPO=$(forge_repo_nwo 2>"$repo_err_file"); then
+    echo "ERR file-deferred-issues: could not resolve repo via forge ($FORGE):" >&2
+    sed 's/^/    /' "$repo_err_file" >&2
+    rm -f "$repo_err_file"
+    exit 2
+fi
+rm -f "$repo_err_file"
 
 # Ensure the label exists. GitHub-only: Bitbucket issues carry only a `kind`,
 # not free-form labels, so the seam's label arg is a no-op there. gh emits
