@@ -459,32 +459,6 @@ else
     echo "FAIL plugin-list-failure retry promoted installer-written true values"; FAILED=$((FAILED + 1))
 fi
 
-# The PowerShell twin must normalize before its list invocation too. This is a
-# static ordering assertion here because this host has no pwsh runtime.
-PS_SCRIPT="$repo_root/scripts/machine-setup/install-plugins.ps1"
-PS_NORMALIZE_LINE=$(grep -n '^# ── Register on-demand plugins as disabled' "$PS_SCRIPT" | cut -d: -f1)
-PS_LIST_LINE=$(grep -n "^\\\$listLines = & claude plugin list" "$PS_SCRIPT" | cut -d: -f1)
-if [ -n "$PS_NORMALIZE_LINE" ] && [ -n "$PS_LIST_LINE" ] && [ "$PS_NORMALIZE_LINE" -lt "$PS_LIST_LINE" ]; then
-    echo "PASS PowerShell twin normalizes on-demand plugins before presence listing"
-else
-    echo "FAIL PowerShell twin still verifies before on-demand normalization"; FAILED=$((FAILED + 1))
-fi
-# Literal PowerShell variable in source assertion.
-# shellcheck disable=SC2016
-PS_NORMALIZE_CONDITION=$(grep '^if (\$onDemandKeys.Count -gt 0' "$PS_SCRIPT" || true)
-if [ -n "$PS_NORMALIZE_CONDITION" ] && ! grep -Fq "settingsFileBasenameLc -ne 'settings.local.json'" <<< "$PS_NORMALIZE_CONDITION"; then
-    echo "PASS PowerShell twin allows on-demand normalization for its resolved local target"
-else
-    echo "FAIL PowerShell twin still excludes settings.local.json from on-demand normalization"; FAILED=$((FAILED + 1))
-fi
-# Literal PowerShell variable in source assertion.
-# shellcheck disable=SC2016
-if grep -Fq "if (\$Scope -ceq 'user')" "$PS_SCRIPT" \
-   && grep -Fq 'claude plugin enable <spec> --scope $Scope' "$PS_SCRIPT"; then
-    echo "PASS PowerShell twin branches the activation recipe by actual scope"
-else
-    echo "FAIL PowerShell twin does not branch the activation recipe by actual scope"; FAILED=$((FAILED + 1))
-fi
 
 # ── 8: install summary names on-demand specs + neededBy + enable recipe, and
 #      the onDemandConnectors tier ───────────────────────────────────────────

@@ -63,7 +63,6 @@ test('exact balance floor accepted',()=>{const f=setup();f.env.BALANCE_RESPONSE=
 test('custom balance floor enforced',()=>{const f=setup();f.env.DEEPSEEK_MIN_BALANCE_USD='51';run(f,5);});
 test('missing key refuses',()=>{const f=setup();delete f.env.DEEPSEEK_API_KEY;run(f,2);});
 test('malformed seed refuses',()=>{const f=setup();fs.mkdirSync(path.join(f.home,'.claude-deepseek'));fs.writeFileSync(path.join(f.home,'.claude-deepseek','.claude.json'),'{');run(f,4);});
-test('PowerShell mirrored settings use the real sanitizer predicate',()=>{const f=setup();const source=fs.readFileSync(path.join(scripts,'claude-deepseek.ps1'),'utf8');const m=source.match(/\$SanitizerJs = @'\r?\n([\s\S]*?)\r?\n'@/);assert(m,'PowerShell cannot mirror sanitized settings without its sanitizer');const out=path.join(f.root,'sanitized.json');cp.execFileSync('node',['-e',m[1],path.join(f.home,'.claude','settings.json'),out],{env:f.env});const j=JSON.parse(fs.readFileSync(out,'utf8'));assert(!j.model);assert(!j.env.ANTHROPIC_AUTH_TOKEN);assert.strictEqual(j.env.KEEP,'yes');});
 for(const root of roots)fs.rmSync(root,{recursive:true,force:true});
 console.log(count+' passed; '+fails+' failed');process.exit(fails?1:0);
 NODE

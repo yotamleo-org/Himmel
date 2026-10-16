@@ -56,9 +56,7 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 repo_root=$(git rev-parse --show-toplevel)
 bootstrap_sh="$repo_root/scripts/himmelctl/bootstrap.sh"
-bootstrap_ps1="$repo_root/scripts/himmelctl/bootstrap.ps1"
 [ -f "$bootstrap_sh" ] || { echo "FAIL: $bootstrap_sh not found" >&2; exit 1; }
-[ -f "$bootstrap_ps1" ] || { echo "FAIL: $bootstrap_ps1 not found" >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
 command -v bash >/dev/null 2>&1 || { echo "FAIL: bash required" >&2; exit 1; }
 
@@ -323,140 +321,17 @@ grepq "$out" -i 'Linux' \
   && fail "caseH(sh): the installer (sudo apt-get) must NOT be invoked when apt-get is absent (got: $out)"
 echo "ok: caseH(sh) non-Darwin host without apt-get -> fail-closed manual-install pointer, no sudo apt-get"
 
-# ── bootstrap.ps1 cases (skipped if pwsh isn't on this host, or when the
-# host isn't Windows — the winget.cmd/node.exe stubs are Windows-only) ─────
-# ps51-ok: this picks the interpreter that runs THESE test
-# fixtures, mirroring bootstrap.ps1's own real-world constraint (a stock,
-# node-less Windows box may not have pwsh installed yet): prefer Windows
-# PowerShell 5.1 (powershell.exe, always present on stock Windows) over pwsh
-# (PowerShell 7, a separate install) so the .ps1 cases run on a stock Windows
-# host; fall back to pwsh. The variable keeps the
-# pwsh_bin name for minimal churn; it holds whichever interpreter was chosen.
-pwsh_bin=""
-if command -v powershell >/dev/null 2>&1; then
-  pwsh_bin=$(command -v powershell)
-elif command -v pwsh >/dev/null 2>&1; then
-  pwsh_bin=$(command -v pwsh)
-fi
-win_host=0
-# WSL reports uname=Linux, so this intentionally false-skips the Windows-only .ps1 stubs there.
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) win_host=1 ;;
-esac
-
-if [ -z "$pwsh_bin" ]; then
-  echo "skip: no PowerShell interpreter (powershell/pwsh) found -- bootstrap.ps1 hermetic cases skipped"
-elif [ "$win_host" -ne 1 ]; then
-  echo "skip: non-Windows host -- bootstrap.ps1 hermetic cases need Windows-only winget.cmd/node.exe stubs"
-else
-  # ── bootstrap.ps1 — Case A: node present -> short-circuit, no winget ─────
-  stubA2="$work/psA"; mkdir -p "$stubA2"
-  cp "$node_bin" "$stubA2/node.exe"
-  fixtureA2="$work/psA-fixture"; build_bin_js_fixture "$fixtureA2"
-  set +e
-  out=$(PATH="$stubA2:$PATH" HIMMELCTL_REPO_ROOT="$(winpath "$fixtureA2")" \
-        "$pwsh_bin" -NoProfile -File "$(winpath "$bootstrap_ps1")" -DefaultScope user 2>&1); rc=$?
-  set -e
-  [ "$rc" -eq 0 ] || fail "caseA(ps1): node-present should exit 0 (got rc=$rc): $out"
-  grepq "$out" 'node found' \
-    || fail "caseA(ps1): expected the node-found hand-off message (got: $out)"
-  [ -f "$fixtureA2/scripts/himmelctl/bin-js-calls.log" ] \
-    || fail "caseA(ps1): expected bin.js to be invoked (out: $out)"
-  grep -q '^bin.js: install --default-scope user$' "$fixtureA2/scripts/himmelctl/bin-js-calls.log" \
-    || fail "caseA(ps1): expected bin.js invoked with 'install --default-scope user'"
-  [ -f "$stubA2/install-calls.log" ] \
-    && fail "caseA(ps1): node-present short-circuit must NOT invoke winget"
-  echo "ok: caseA(ps1) node present -> short-circuits straight to hand-off, winget never invoked"
-
-  # ── bootstrap.ps1 — Case B: -DryRun, node absent -> plan+hand-off only ───
-  stubB2="$work/psB"; mkdir -p "$stubB2"
-  cat > "$stubB2/winget.cmd" <<'STUB'
-@echo off
-echo winget: %* >> "%~dp0install-calls.log"
-STUB
-  scrubbedB2=$(scrub_path "$PATH" node)
-  fixtureB2="$work/psB-fixture"; build_bin_js_fixture "$fixtureB2"
-  set +e
-  out=$(PATH="$stubB2:$scrubbedB2" HIMMELCTL_REPO_ROOT="$(winpath "$fixtureB2")" \
-        "$pwsh_bin" -NoProfile -File "$(winpath "$bootstrap_ps1")" -DryRun 2>&1); rc=$?
-  set -e
-  [ "$rc" -eq 0 ] || fail "caseB(ps1): -DryRun should exit 0 (got rc=$rc): $out"
-  grepq "$out" 'install plan' \
-    || fail "caseB(ps1): expected the install-plan line (got: $out)"
-  grepq "$out" 'hand-off after install' \
-    || fail "caseB(ps1): expected the hand-off line (got: $out)"
-  [ -f "$stubB2/install-calls.log" ] \
-    && fail "caseB(ps1): -DryRun must NOT invoke winget"
-  [ -f "$fixtureB2/scripts/himmelctl/bin-js-calls.log" ] \
-    && fail "caseB(ps1): -DryRun must NOT invoke bin.js"
-  echo "ok: caseB(ps1) -DryRun node-absent -> plan+hand-off printed, nothing mutated"
-
-  # ── bootstrap.ps1 — Case C: node absent, winget doesn't refresh PATH ─────
-  stubC2="$work/psC"; mkdir -p "$stubC2"
-  cat > "$stubC2/winget.cmd" <<'STUB'
-@echo off
-echo winget: %* >> "%~dp0install-calls.log"
-STUB
-  scrubbedC2=$(scrub_path "$PATH" node)
-  fixtureC2="$work/psC-fixture"; build_bin_js_fixture "$fixtureC2"
-  set +e
-  out=$(PATH="$stubC2:$scrubbedC2" HIMMELCTL_REPO_ROOT="$(winpath "$fixtureC2")" \
-        "$pwsh_bin" -NoProfile -File "$(winpath "$bootstrap_ps1")" 2>&1); rc=$?
-  set -e
-  [ "$rc" -ne 0 ] || fail "caseC(ps1): node-still-absent-after-install should exit nonzero (got rc=$rc): $out"
-  [ -f "$stubC2/install-calls.log" ] \
-    || fail "caseC(ps1): expected winget to have been invoked (out: $out)"
-  reruns2=$(printf '%s' "$out" | grep -c 're-run')
-  [ "$reruns2" -eq 1 ] \
-    || fail "caseC(ps1): expected exactly ONE re-run line, got $reruns2 (out: $out)"
-  [ -f "$fixtureC2/scripts/himmelctl/bin-js-calls.log" ] \
-    && fail "caseC(ps1): must NOT chain to bin.js when node is still unresolvable"
-  echo "ok: caseC(ps1) node absent, winget doesn't refresh PATH -> single re-run line, no blind chain"
-
-  # ── bootstrap.ps1 — Case F: FIX 2 -- winget plan targets the explicit id ─
-  stubF2="$work/psF"; mkdir -p "$stubF2"
-  cat > "$stubF2/winget.cmd" <<'STUB'
-@echo off
-echo winget: %* >> "%~dp0install-calls.log"
-STUB
-  scrubbedF2=$(scrub_path "$PATH" node)
-  fixtureF2="$work/psF-fixture"; build_bin_js_fixture "$fixtureF2"
-  set +e
-  out=$(PATH="$stubF2:$scrubbedF2" HIMMELCTL_REPO_ROOT="$(winpath "$fixtureF2")" \
-        "$pwsh_bin" -NoProfile -File "$(winpath "$bootstrap_ps1")" -DryRun 2>&1); rc=$?
-  set -e
-  [ "$rc" -eq 0 ] || fail "caseF(ps1): -DryRun should exit 0 (got rc=$rc): $out"
-  grepq "$out" -F -- '--id OpenJS.NodeJS.LTS -e' \
-    || fail "caseF(ps1): expected the explicit '--id OpenJS.NodeJS.LTS -e' winget plan (got: $out)"
-  grepq "$out" -i 'bun' \
-    && fail "caseF(ps1): the winget plan/dry-run preview must NOT mention bun (got: $out)"
-  echo "ok: caseF(ps1) winget plan targets --id OpenJS.NodeJS.LTS -e, no bare 'node bun' query"
-
-  # ── bootstrap.ps1 — Case G: FIX 2/-- winget nonzero exit fail-closes ─
-  stubG2="$work/psG"; mkdir -p "$stubG2"
-  cat > "$stubG2/winget.cmd" <<'STUB'
-@echo off
-echo winget: %* >> "%~dp0install-calls.log"
-exit /b 1
-STUB
-  scrubbedG2=$(scrub_path "$PATH" node)
-  fixtureG2="$work/psG-fixture"; build_bin_js_fixture "$fixtureG2"
-  set +e
-  out=$(PATH="$stubG2:$scrubbedG2" HIMMELCTL_REPO_ROOT="$(winpath "$fixtureG2")" \
-        "$pwsh_bin" -NoProfile -File "$(winpath "$bootstrap_ps1")" 2>&1); rc=$?
-  set -e
-  [ "$rc" -ne 0 ] || fail "caseG(ps1): a genuinely failed winget should exit non-zero (got rc=$rc): $out"
-  [ -f "$stubG2/install-calls.log" ] \
-    || fail "caseG(ps1): expected winget to have been invoked (out: $out)"
-  grepq "$out" -i 'exited 1' \
-    || fail "caseG(ps1): expected the Write-Warning 'exited 1' message (got: $out)"
-  grepq "$out" -i 'winget install failed' \
-    || fail "caseG(ps1): expected the fail-closed 'winget install failed' message (HIMMEL-935) (got: $out)"
-  grepq "$out" 'open a new terminal' \
-    && fail "caseG(ps1): a genuine winget failure must NOT print the PATH-refresh re-run line (would loop forever) (got: $out)"
-  [ -f "$fixtureG2/scripts/himmelctl/bin-js-calls.log" ] \
-    && fail "caseG(ps1): must NOT chain to bin.js when node is still unresolvable after a failed winget"
-  echo "ok: caseG(ps1) a failed winget install -> Write-Warning + fail-closed Write-Error, NO re-run/PATH-refresh loop (HIMMEL-935)"
-fi
+# ── caseW: Windows is unsupported -- himmelctl install exits non-zero with ONE
+# unsupported-platform message. process.platform is forced to
+# 'win32' by a preload; the real host stays Linux/macOS.
+dirW="$(mktemp -d)" || exit 1
+preloadW="$dirW/force-win32.js"
+printf '%s\n' "Object.defineProperty(process, 'platform', { value: 'win32' });" > "$preloadW"
+outW=$(node -r "$preloadW" "$repo_root/scripts/himmelctl/bin.js" install --dry-run 2>&1) && rcW=0 || rcW=$?
+[ "$rcW" -ne 0 ] || fail "caseW: install on win32 must exit non-zero (got rc=$rcW: $outW)"
+grepq "$outW" -i 'not supported' || fail "caseW: expected an unsupported-platform message (got: $outW)"
+[ "$(printf '%s\n' "$outW" | grep -c .)" -eq 1 ] || fail "caseW: expected exactly ONE message line (got: $outW)"
+rm -rf "$dirW"
+echo "ok: caseW win32 -> install exits non-zero with one unsupported-platform message"
 
 echo "PASS"

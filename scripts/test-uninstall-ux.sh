@@ -517,51 +517,6 @@ assert_has "H1 dry-run carries --purge-state" "--purge-state" "$h1_args"
 assert_not_has "H1 dry-run never passes --yes" "--yes" "$h1_args"
 fi
 
-# ── P1 — the PowerShell twin carries the same split ────────────────────────
-# pwsh is not available on every runner, so this is a source-level check of the
-# contract: the switch exists, contradicts -KeepTelegramState, and step 2 is
-# gated on the derived $RemoveState. Execution proof is the nightly.
-if grep -q 'PurgeState' "$SCRIPTS/uninstall.ps1"; then pass "P1 uninstall.ps1 has -PurgeState"
-else fail "P1 uninstall.ps1 lacks -PurgeState"; fi
-# shellcheck disable=SC2016 # the PowerShell $-variables are literal grep patterns
-if grep -Fq '$RemoveState = $PurgeState -and (-not $KeepTelegramState)' "$SCRIPTS/uninstall.ps1"; then pass "P1 uninstall.ps1 derives RemoveState from -PurgeState"
-else fail "P1 uninstall.ps1 does not derive RemoveState from -PurgeState"; fi
-# shellcheck disable=SC2016 # the PowerShell $-variables are literal grep patterns
-if grep -Fq 'if (-not $RemoveState) {' "$SCRIPTS/uninstall.ps1"; then pass "P1 uninstall.ps1 step 2 is gated on RemoveState"
-else fail "P1 uninstall.ps1 step 2 is not gated on RemoveState"; fi
-
-# ── P2 — a skipped purge is an INCOMPLETE step (ps1) ─────
-# Source-level (no pwsh here): the -PurgeState + bridge-maybe-running branch
-# must record an incomplete step, or the run ends "Uninstall complete." with
-# the bot token still on disk. The suite's own cache redirect is asserted too.
-# shellcheck disable=SC2016 # the PowerShell $-variables are literal grep patterns
-if grep -Fq "\$StepsIncomplete.Add('[2/7] telegram pairing + bridge state" "$SCRIPTS/uninstall.ps1"; then pass "P2 uninstall.ps1 records a skipped purge as an incomplete step"
-else fail "P2 uninstall.ps1 skips the purge without recording an incomplete step"; fi
-# shellcheck disable=SC2016 # the PowerShell $-variables are literal grep patterns
-if grep -Fq '$SavedCacheDir = $env:HIMMELCTL_CACHE_DIR' "$SCRIPTS/test-uninstall.ps1" \
-    && grep -Fq "\$env:HIMMELCTL_CACHE_DIR = Join-Path \$Tmp 'cache-default'" "$SCRIPTS/test-uninstall.ps1" \
-    && grep -Fq '$env:HIMMELCTL_CACHE_DIR = $SavedCacheDir' "$SCRIPTS/test-uninstall.ps1"; then
-    pass "P2 test-uninstall.ps1 redirects the cache dir under \$Tmp and restores the operator's value"
-else fail "P2 test-uninstall.ps1 lets the wet default runs inherit the operator's HIMMELCTL_CACHE_DIR"; fi
-
-# ── P3 — the ps1 suite expects the new incomplete-purge exit (tests 8 + 9) ──
-# A -PurgeState run that skips the purge because the bridge may still be
-# running now exits 2 with an INCOMPLETE summary; the suite must say so, not
-# assert the old exit 0. Source-level (no pwsh here); the nightly is the proof.
-# shellcheck disable=SC2016 # the PowerShell $-variables are literal grep patterns
-if grep -Fq "Assert-Rc 'kill-failure run is INCOMPLETE (exit 2)' 2 \$script:Rc" "$SCRIPTS/test-uninstall.ps1" \
-    && grep -Fq "Assert-Rc 'bun-missing run is INCOMPLETE (exit 2)' 2 \$script:Rc" "$SCRIPTS/test-uninstall.ps1"; then
-    pass "P3 test-uninstall.ps1 tests 8 + 9 expect exit 2 for a skipped purge"
-else fail "P3 test-uninstall.ps1 still asserts exit 0 for a purge skipped under a possibly-running bridge"; fi
-if [ "$(grep -Fc '[2/7] telegram pairing + bridge state: not purged' "$SCRIPTS/test-uninstall.ps1")" -ge 2 ] \
-    && [ "$(grep -Fc 'Uninstall INCOMPLETE' "$SCRIPTS/test-uninstall.ps1")" -ge 2 ]; then
-    pass "P3 test-uninstall.ps1 tests 8 + 9 assert the not-purged and INCOMPLETE lines"
-else fail "P3 test-uninstall.ps1 tests 8 + 9 do not assert the not-purged / INCOMPLETE output"; fi
-if ! grep -Fq "Assert-Rc 'kill-failure run still exits 0'" "$SCRIPTS/test-uninstall.ps1" \
-    && ! grep -Fq "Assert-Rc 'bun-missing run still exits 0'" "$SCRIPTS/test-uninstall.ps1"; then
-    pass "P3 the stale 'still exits 0' assertions are gone"
-else fail "P3 test-uninstall.ps1 keeps a stale 'still exits 0' assertion for tests 8/9"; fi
-
 # ── L2 — the loader checks each required row's structural contract ─────────
 # Kind/step each valid on their own is not enough: a cache row of path '-' and
 # step '-' targets the literal '-' and reports the real cache absent.

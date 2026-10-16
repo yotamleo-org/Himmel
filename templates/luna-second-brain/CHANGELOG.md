@@ -8,7 +8,7 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.74] — 2026-10-16
+## [0.4.76] — 2026-10-16
 
 ### Fixed
 - `.gitleaks.toml`: allowlist an anchored 64-hex sha256 digest (plus one optional

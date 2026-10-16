@@ -2479,23 +2479,4 @@ run_wizard_suite himmelctl/test/test-wizard-deps.sh             "test-wizard-dep
 run_wizard_suite himmelctl/test/test-wizard-deps-lint.sh        "test-wizard-deps-lint"
 run_wizard_suite machine-setup/test-ubuntu-shim.sh             "test-ubuntu-shim"
 
-# The win11 shim suite is a .ps1 (static source-parse of win11.ps1
-# T8) — needs pwsh. Skip (not fail) when pwsh is absent, same guard as the
-# bootstrap.ps1 cases in test-wizard-bootstrap.sh.
-_win11_shim="$repo_root/scripts/machine-setup/test-win11-shim.ps1"
-[ -f "$_win11_shim" ] || fail "wizard suite not found: $_win11_shim"
-if command -v pwsh >/dev/null 2>&1; then
-  set +e
-  PATH="$saved_path" pwsh -NoProfile -File "$_win11_shim" >"$work/wizard-suite.log" 2>&1
-  _win11_rc=$?
-  set -e
-  if [ "$_win11_rc" -ne 0 ]; then
-    tail -20 "$work/wizard-suite.log" >&2
-    fail "wizard suite failed (rc=$_win11_rc): test-win11-shim.ps1"
-  fi
-  echo "ok: wizard suite green: test-win11-shim.ps1"
-else
-  echo "ok: wizard suite skipped (pwsh not found): test-win11-shim.ps1"
-fi
-
 echo "PASS"

@@ -196,7 +196,7 @@ $firstLine = (($msg -split "`n")[0]).TrimEnd("`r")
 
 # Git-generated revert commits are exempt from both checks. fixup/squash retain
 # their generated shape, but strict mode still requires the referenced ticket.
-# HIMMEL-1483 CR1: the reverted hash must resolve to a real commit object
+# the reverted hash must resolve to a real commit object
 # (git cat-file -e <hash>^{commit}); a revert-shaped MESSAGE alone is not
 # enough, or a hand-typed revert with a fabricated hash bypasses both checks.
 # On resolution failure fall through to normal validation.

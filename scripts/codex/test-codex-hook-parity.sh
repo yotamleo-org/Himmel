@@ -215,36 +215,17 @@ const commandEntries = (hooksObj) => {
 const scriptBasenames = (command) =>
   [...command.matchAll(/([\w.-]+\.(?:sh|ts))/g)].map((m) => m[1]);
 
-// Codex side: command selects the Unix .sh wrapper; commandWindows selects the
-// Windows .cmd wrapper. Their arguments must remain identical, and one entry may
-// CHAIN several guardrails into a single adapter invocation.
+// Codex side: command selects the Unix .sh wrapper. One entry may CHAIN several
+// guardrails into a single adapter invocation.
 const codexJson = read(".codex/hooks.json");
 const codex = new Set();
 const unparsed = [];
-const platformMissing = [];
-const platformMismatch = [];
 const dupes = [];
-const commas = [];
 for (const h of commandEntries(codexJson)) {
   const c = String(h.command || "");
-  const cw = String(h.commandWindows || "");
-  if (!c || !cw) {
-    platformMissing.push("command=" + c + " commandWindows=" + cw);
-    continue;
-  }
-  // cmd.exe splits arguments on `,`, so a comma chain reaches the adapter
-  // truncated to its first element with every later guardrail silently skipped —
-  // and nothing downstream can tell. It has to be refused here or nowhere.
-  if (c.includes(",") || cw.includes(",")) { commas.push(c + " | " + cw); continue; }
+  if (!c) { unparsed.push(c); continue; }
   const m = c.match(/run-hook\.sh\s+(?:--\S+\s+)*((?:[\w.-]+\.sh)(?:\+[\w.-]+\.sh)*)\s*$/);
-  const mw = cw.match(/run-hook\.cmd\s+(?:--\S+\s+)*((?:[\w.-]+\.sh)(?:\+[\w.-]+\.sh)*)\s*$/);
-  if (!m || !mw) { unparsed.push(c + " | " + cw); continue; }
-  const unixArgs = c.slice(c.indexOf(" "));
-  const windowsArgs = cw.slice(cw.indexOf(" "));
-  if (unixArgs !== windowsArgs) {
-    platformMismatch.push(c + " | " + cw);
-    continue;
-  }
+  if (!m) { unparsed.push(c); continue; }
   const members = m[1].split("+");
   // A guardrail listed twice in one chain would run twice per tool call.
   const seen = new Set();
@@ -301,9 +282,6 @@ for (const s of [...claudeEndAllow].sort()) {
 // One line per offender, `|`-joined by the shell side, so a command containing
 // spaces still reads as one item.
 for (const c of unparsed) lines.push("UNPARSED " + c);
-for (const c of platformMissing) lines.push("PLATFORM-MISSING " + c);
-for (const c of platformMismatch) lines.push("PLATFORM-MISMATCH " + c);
-for (const c of commas) lines.push("COMMA " + c);
 for (const d of dupes) lines.push("DUPE " + d);
 
 // The point of the dispatcher is ONE chained invocation per tool
@@ -336,10 +314,7 @@ console.log(lines.join("\n"));
 
 field() { printf '%s\n' "$report" | sed -n "s/^$1 //p" | tr '\n' "${2:- }"; }
 
-assert_empty "every .codex/hooks.json entry carries both platform commands" "$(field PLATFORM-MISSING '|')"
-assert_empty "every .codex/hooks.json entry uses the platform wrapper shapes" "$(field UNPARSED '|')"
-assert_empty "Unix and Windows wrapper arguments stay identical" "$(field PLATFORM-MISMATCH '|')"
-assert_empty "no guardrail chain uses a comma - cmd.exe would truncate it" "$(field COMMA '|')"
+assert_empty "every .codex/hooks.json entry uses the wrapper shape" "$(field UNPARSED '|')"
 assert_empty "no guardrail appears twice in one chain" "$(field DUPE '|')"
 assert_empty "every PreToolUse matcher is a valid regex" "$(field BADMATCHER '|')"
 assert_empty "PreToolUse matchers stay disjoint - one chained invocation per tool" "$(field OVERLAP '|')"

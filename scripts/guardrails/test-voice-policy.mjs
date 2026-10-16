@@ -151,7 +151,6 @@ assert(evaluate(p, "some-future-capability").verdict === "confirm",
   //     real call shape instead.
   const runtime = [
     ["jarvis.py", /"--settings",\s*settings/, /"--permission-mode",\s*"plan"/, /REFUSED|return\s+"My permission profile is missing/],
-    ["voice-loop.ps1", /\$claudeArgs\s*\+=\s*@\('--settings'/, /ValidateSet\('plan'\)/, /throw\s+"voice-permissions\.json missing/],
   ];
   for (const [f, passesProfile, pinsPlan, failsClosed] of runtime) {
     let src = "";
@@ -173,16 +172,6 @@ assert(evaluate(p, "some-future-capability").verdict === "confirm",
       [/"--append-system-prompt",\s*VOICE_PROMPT,\s*"--",\s*text/,
         "must pass `--` immediately before the transcript — it shares an argv with the permission floor"],
     ]],
-    ["voice-loop.ps1", [
-      [/'--strict-mcp-config'/,
-        "must pass --strict-mcp-config — an MCP tool is not Read/Bash/Grep, so no deny rule can reach it"],
-      [/\$claudeArgs\s*\+=\s*'--'\s*\r?\n\s*\$claudeArgs\s*\+=\s*\$said/,
-        "must pass `--` immediately before the transcript — it shares an argv with the permission floor"],
-      [/\$claudeArgs\s*\+=\s*@\('--session-id',\s*\$voiceSessionId\)/,
-        "must create a voice-OWNED session id"],
-      [/\$claudeArgs\s*\+=\s*@\('--resume',\s*\$voiceSessionId\)/,
-        "must resume only its own session id"],
-    ]],
   ];
   for (const [f, checks] of round6) {
     let src = "";
@@ -202,17 +191,6 @@ assert(evaluate(p, "some-future-capability").verdict === "confirm",
       .join("\n");
     assert(!/--mcp-config/.test(code),
       `${f} must NOT pass --mcp-config — it re-opens the MCP surface that --strict-mcp-config closes`);
-  }
-
-  // Directory-global `--continue` resumes whatever session ran last in the cwd
-  // — including the operator's own typed session, whose context could then be
-  // spoken aloud with no file read at all. Assert the ARGV shape specifically,
-  // so the explanatory comments naming `--continue` do not satisfy it.
-  {
-    let src = "";
-    try { src = readFileSync(join(here, "..", "voice", "voice-loop.ps1"), "utf8"); } catch { /* reported above */ }
-    assert(!/\$claudeArgs\s*\+=\s*'--continue'/.test(src),
-      "voice-loop.ps1 must NOT pass claude's directory-global --continue — it can resume the operator's own session");
   }
 }
 

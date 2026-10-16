@@ -22,7 +22,6 @@
 # Hermetic: docker/podman are never invoked (the guard only inspects the
 # command string); the forge is stubbed (GH_CMD), so no network. bash 3.2-safe.
 #
-# The Windows run-hook.cmd wrapper is covered by the .ps1 twin.
 set -uo pipefail
 
 HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -88,8 +87,8 @@ for g in block-docker-privesc.sh block-merged-pr-commit.sh; do
   case "$c" in *run-hook.sh*) ok "$g routed through run-hook.sh";; *) bad "$g routed through run-hook.sh (got: ${c:-<none>})";; esac
   m="$(wired_matchers "$g")"
   case "$m" in
-    *Bash*PowerShell*|*PowerShell*Bash*) ok "$g matches both Bash and PowerShell";;
-    *) bad "$g matches both Bash and PowerShell (got: ${m:-<none>})";;
+    *Bash*) ok "$g matches Bash";;
+    *) bad "$g matches Bash (got: ${m:-<none>})";;
   esac
 done
 

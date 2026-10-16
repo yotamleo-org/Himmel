@@ -55,6 +55,11 @@ check "3 rc" "$rc" 0
 contains "3 leg doc" "$calls" "/h/HIMMEL-1-N2078-foo-2026-10-14.md"
 lacks "3 no --pr" "$calls" "--pr"
 
+# a leg message that leads with its label and ticket key still routes
+run "N2088 HIMMEL-2 MERGED #2566 → abcdef01 WRAPPED: lock released"
+check "3b label-first rc" "$rc" 0
+contains "3b label-first args" "$calls" "--pr 2566"
+
 for m in "READY 2553 0780b95dcad44fe293c7798066626cd52bb2dce N2088" "FINDING N2088 (token x): q" "PUSHED abc N2088"; do
     run "$m"
     check "4 rc [$m]" "$rc" 10

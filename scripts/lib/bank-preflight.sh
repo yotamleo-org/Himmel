@@ -1170,14 +1170,15 @@ command -v jq >/dev/null 2>&1 || { echo "bank-preflight: jq missing" >&2; emit B
   # Every field is emitted as exactly one line: a number, or a string that is
   # wholly digits/dots (\A..\z, since $ matches before a trailing newline).
   # Anything else — notably a string holding a newline, which would shift later
-  # fields — becomes "" and falls to the BANK-UNKNOWN / BANK-STALE path.
+  # fields — becomes "!" (present but malformed, never numeric) and falls to the
+  # BANK-UNKNOWN / BANK-STALE path. Absent or null stays "" (a missing window).
   def one: if type == "number" then tostring
            elif type == "string" and test("\\A[0-9.]+\\z") then .
-           else "" end;
-  (.five_hour.utilization // "" | one),
-  (.seven_day.utilization // "" | one),
-  (.extra_usage.utilization // "" | one),
-  (.primaries_refreshed_at // "" | one)
+           else "!" end;
+  (.five_hour.utilization | if . == null then "" else one end),
+  (.seven_day.utilization | if . == null then "" else one end),
+  (.extra_usage.utilization | if . == null then "" else one end),
+  (.primaries_refreshed_at | if . == null then "" else one end)
   ' "$CACHE" 2>/dev/null)
 # Process-substitution output is CRLF-translated by some Git Bash builds.
 fh=${fh%$'\r'}; sd=${sd%$'\r'}; xu=${xu%$'\r'}; stamp=${stamp%$'\r'}
@@ -1186,6 +1187,11 @@ usable=0
 is_num "$fh" && usable=$((usable+1))
 is_num "$sd" && usable=$((usable+1))
 [ "$usable" -gt 0 ] || { echo "bank-preflight: no usable primary" >&2; emit BANK-UNKNOWN; }
+# A present-but-malformed primary is corrupt data, not a missing window: refuse
+# rather than let the other primary carry the verdict alone.
+if { [ -n "$fh" ] && ! is_num "$fh"; } || { [ -n "$sd" ] && ! is_num "$sd"; }; then
+  echo "bank-preflight: malformed primary" >&2; emit BANK-UNKNOWN
+fi
 
 # a cache stamped by a different account is unusable here for
 # the same reason "no usable primary" is above — don't gate on someone
@@ -1204,6 +1210,8 @@ is_int "$stamp" || { echo "bank-preflight: no usable primaries_refreshed_at" >&2
 # 10# forces base-10: a leading-zero stamp ("0123") would otherwise be read as
 # octal and a value like "089" errors outright. Not reachable from the real
 # producer (--argjson integer), but it fails open loudly rather than quietly.
+# 15 digits bounds the arithmetic below inside 64-bit; longer wraps.
+[ "${#stamp}" -le 15 ] || { echo "bank-preflight: oversized primaries_refreshed_at" >&2; emit BANK-STALE; }
 stamp=$((10#$stamp))
 age=$(( $(date +%s) - stamp ))
 if [ "$age" -lt 0 ] || [ "$age" -gt "$MAX_AGE" ]; then

@@ -5,8 +5,7 @@
 # gets node+npm and bun stays an optional post-bootstrap step) via the
 # platform package manager (darwin: brew, linux: apt), then hand off to
 # `node scripts/himmelctl/bin.js install`. Nothing else — himmelctl's own
-# preflight covers every other hard-gate tool. win32 machines use
-# bootstrap.ps1 instead (winget).
+# preflight covers every other hard-gate tool. Windows is unsupported.
 #
 # Usage:
 #   bash scripts/himmelctl/bootstrap.sh [--dry-run] [--default-scope project|user]

@@ -239,8 +239,6 @@ expect_red   "T51 an unscrubbed .cjs entry point fails"                         
 expect_red   "T52 an unscrubbed .ts entry point fails"                          unscrubbed.ts
 expect_red   "T53 an unscrubbed .py entry point fails"                          unscrubbed.py
 expect_green "T54 a .py entry point dropping every var passes (control)"        scrubbed.py
-expect_red   "T55 an unscrubbed .ps1 entry point fails"                         unscrubbed.ps1
-expect_green "T56 a .ps1 entry point removing every var passes (control)"       scrubbed.ps1
 
 # Item 5 -- the gate does not trust its inherited environment.
 # T57: a baseline named only by the inherited GIT_ENV_SCRUB_BASELINE must not

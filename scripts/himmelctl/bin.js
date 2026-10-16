@@ -8218,6 +8218,11 @@ async function main() {
     console.log(USAGE);
     return 0;
   }
+  // Windows is unsupported: one message, non-zero, before any subcommand runs.
+  if (process.platform === 'win32') {
+    console.error('himmelctl: Windows is not supported; use Linux or macOS.');
+    return 1;
+  }
   // --version (anywhere) → `himmel <semver>`, exit 0. Special-cased here for
   // the same reason -h/--help is: parseArgs below only understands the shared
   // flag grammar, and this must answer before any subcommand dispatch.
