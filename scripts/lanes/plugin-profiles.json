@@ -132,7 +132,8 @@
     "anthropic-design-skills@himmel",
     "hallmark@himmel",
     "shadcn-mcp@himmel",
-    "emilkowalski-skills@himmel"
+    "emilkowalski-skills@himmel",
+    "pstack@himmel"
   ],
   "_comment_contextBudget": "HIMMEL-4021 calibration audit 2026-10-02: 813 merged PR bodies searched; 738 bodies contain numeric leg-burn (739 leg records, including two explicitly separate legs in #1113), none names its author's profile unambiguously. Every profile has n=0 attributable merged legs and retains contextBudget under the n<3 rule; user/design/design-* /lane-* /bare/console-relay/console-judge/console have no additional profile-specific observation here. leg-impl has one historical 70500 first-turn observation (HIMMEL-2935, #777); telegram has one 32541 observation (HIMMEL-2961, #680). These probes are not three measured legs. Sources/date range, aggregation and exclusions: docs/internals/lane-calibration.md, HIMMEL-4021 audit. Operator stays null and resolves standard/200000 by default. No child autocompact inheritance measurement was made: UNMEASURED.",
   "profiles": {
@@ -141,7 +142,8 @@
       "_comment": "HIMMEL-3064: lean-skills@himmel replaces superpowers@claude-plugins-official + mattpocock-skills@claude-plugins-official (restated here for audit-clarity though base already carries it, same convention as telegram's pr-review-toolkit-himmel restatement). plannotator-effective-html@himmel moved OUT to the new design profile -- its 6 skills cost ~630 tok every session for 1 invocation in 1628 transcripts, so design/UI work now opts in via --profile design instead of every session paying for it. HIMMEL-4018: obsidian-second-brain@himmel (~2.2k tok listing) is enabled here, in lane-content and in telegram — the vault-working profiles — and stays off in every lean leg and console profile.",
       "enable": [
         "lean-skills@himmel",
-        "obsidian-second-brain@himmel"
+        "obsidian-second-brain@himmel",
+        "pstack@himmel"
       ],
       "contextBudget": 50000,
       "contextMode": "standard",

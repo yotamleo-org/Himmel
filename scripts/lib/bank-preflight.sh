@@ -82,8 +82,14 @@ emit() {
   # would make it invalid JSONL. Control characters become `?` (the ps view's own
   # convention), then `\` and `"` are escaped.
   _leg_json="$(printf '%s' "$LEG" | tr '[:cntrl:]' '?' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+  # fh/sd come straight from the cache JSON and age from arithmetic: a value that
+  # is not a plain number (a quote or brace from a hostile/corrupt cache) is
+  # blanked so it cannot break the row. age is signed (a future stamp).
+  _fh_json="${fh:-}"; is_num "$_fh_json" || _fh_json=""
+  _sd_json="${sd:-}"; is_num "$_sd_json" || _sd_json=""
+  _age_json="${age:-}"; is_int "${_age_json#-}" || _age_json=""
   printf '{"ts":"%s","leg":"%s","verdict":"%s","five_hour":"%s","seven_day":"%s","age":"%s","degraded":%s,"lift":%s}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_leg_json" "$1" "${fh:-}" "${sd:-}" "${age:-}" "$degraded" "${lift:-false}" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_leg_json" "$1" "$_fh_json" "$_sd_json" "$_age_json" "$degraded" "${lift:-false}" \
     >> "$LEDGER" 2>/dev/null
   printf '%s\n' "$1"
   exit 0

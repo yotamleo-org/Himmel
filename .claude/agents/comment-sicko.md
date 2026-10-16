@@ -7,7 +7,7 @@ tools: Read, Edit, Bash
 
 <!--
 Vendored, pinned to a commit (HIMMEL-5630). Source: cursor/plugins (pstack),
-commit 1e5c90a4b6f249917bd21fe361b3a2a7deb741b8, path pstack/agents/comment-sicko.md.
+commit 99743e9c151c8537cbbf1f98bb38f34ef3368453, path pstack/agents/comment-sicko.md.
 License: MIT, (c) 2026 Lauren Tan (.claude/skills/no-comments/LICENSE).
 Deviations from upstream: frontmatter model/tools added; the /how and /why
 skills are not shipped, so the hunt reads nearby code and `git grep`s callers

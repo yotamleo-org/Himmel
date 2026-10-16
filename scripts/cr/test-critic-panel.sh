@@ -2366,6 +2366,40 @@ m3492_rc=$?
 check "HIMMEL-3492: failed spool mktemp exits 2" "$m3492_rc" "2"
 check_contains "HIMMEL-3492: failed spool mktemp names the failure" "$m3492_err" "critic-panel: mktemp failed"
 
+# A failed diff temp-file mktemp must stop the panel with the same
+# clear message, not build review input from an empty path. The stub fails ONLY
+# the diff mktemp (not the -spool one) and delegates the rest to the real binary.
+M5830_BIN="$tmp/m5830-bin"; mkdir -p "$M5830_BIN"
+cat > "$M5830_BIN/mktemp" <<STUBEOF
+#!/usr/bin/env bash
+case "\$*" in *critic-panel.XXXXXX*) exit 1 ;; esac
+exec "$M3492_REAL" "\$@"
+STUBEOF
+chmod +x "$M5830_BIN/mktemp"
+m5830_err="$(printf '%s' "$DIFF" | PATH="$M5830_BIN:$PATH" CRITICS_JSON="$tmp/critics-all.json" \
+    CRITIC_FIRST_PASS="$STUB" bash "$PANEL" 2>&1 >/dev/null)"
+m5830_rc=$?
+check "HIMMEL-5830: failed diff temp mktemp exits 2" "$m5830_rc" "2"
+check_contains "HIMMEL-5830: failed diff temp mktemp names the failure" "$m5830_err" "critic-panel: mktemp failed"
+
+# The ledger helper runs inside `while read ... < spool` loops; a helper
+# that reads stdin must not consume the remaining spool lines. Two
+# slugs (a/b, a_b) share one avail bucket, so the bucket holds two rows; a stub
+# helper that drains stdin must still be called once per row.
+H1505_JSON="$tmp/critics-1505.json"
+printf '%s' '{"panel":[{"slug":"a/b","model":"fake/one","provider":"test","tier":"free"},{"slug":"a_b","model":"fake/two","provider":"test","tier":"free"}]}' > "$H1505_JSON"
+H1505_APPEND="$tmp/append-drain-stdin.sh"
+H1505_CALLS="$tmp/h1505-calls"; : > "$H1505_CALLS"
+cat > "$H1505_APPEND" <<EOSTUB
+#!/usr/bin/env bash
+cat >/dev/null
+printf '%s\n' "\$1" >> "$H1505_CALLS"
+EOSTUB
+CRITIC_LEDGER_APPEND="$H1505_APPEND" CRITICS_JSON="$H1505_JSON" CRITIC_FIRST_PASS="$STUB" \
+    bash "$PANEL" <<< "$DIFF" > /dev/null 2>&1
+check "HIMMEL-1505: stdin-draining ledger helper is called once per spooled avail row" \
+    "$(grep -c '^avail$' "$H1505_CALLS" || true)" "2"
+
 if [ "$fails" -eq 0 ]; then
     if [ "$_skips" -gt 0 ]; then
         echo "ALL PASS ($_skips skipped)"

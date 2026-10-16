@@ -894,6 +894,58 @@ UNW_EXTRA="printf 'source lib/newlib.sh\n' > \"\$REPO/scripts/hooks/new-hook.sh\
 unw_run scripts/hooks/new-hook.sh scripts/hooks/lib/newlib.sh
 contains "hook library sourced by an unwired hook: names the library" "$out" "scripts/hooks/lib/newlib.sh"
 
+# precision: each of these is a false wired verdict
+# a generic extensionless import (./index) of some OTHER module does not wire an added index.ts
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/src\"; printf \"import x from './index'\\n\" > \"\$REPO/scripts/cfg/other.ts\""
+unw_run scripts/cfg/src/index.ts
+contains "generic index.ts imported as some other ./index: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/src\"; printf \"import x from './src/index'\\n\" > \"\$REPO/scripts/cfg/other.ts\""
+unw_run scripts/cfg/src/index.ts
+contains "generic index.ts imported through its own directory: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf \"import x from './index'\\n\" > \"\$REPO/scripts/cfg/src/consumer.ts\""
+unw_run scripts/cfg/src/index.ts
+contains "generic index.ts imported as ./index by a sibling: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="printf \"import x from '../index'\\n\" > \"\$REPO/scripts/cfg/src/consumer.ts\""
+unw_run scripts/cfg/src/index.ts
+contains "a sibling's ../index is the parent's index, not this one: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/tests\"; printf \"import x from './utils'\\n\" > \"\$REPO/scripts/cfg/tests/a.test.ts\""
+unw_run scripts/cfg/tests/utils.ts
+contains "test helper utils.ts imported as ./utils by its test: check 11 passes" "$out" "[PASS] 11."
+UNW_EXTRA="mkdir -p \"\$REPO/scripts/cfg/a.b\";printf \"import x from './aXb/index'\\n\" > \"\$REPO/scripts/cfg/other.ts\""
+unw_run scripts/cfg/a.b/index.ts
+contains "directory dot is literal: aXb/index does not wire a.b/index.ts" "$out" "[FAIL] 11."
+
+# cd X && node build.js is not a test runner in a CI job
+UNW_EXTRA="printf 'run: cd scripts/cfg && node build.js\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/cfg/a.test.ts
+contains "cd dir then node build.js is not a test runner: check 11 fails" "$out" "[FAIL] 11."
+UNW_EXTRA="printf 'run: cd scripts/cfg && bun test\n' > \"\$REPO/.github/workflows/ci.yml\""
+unw_run scripts/cfg/a.test.ts
+contains "cd dir then bun test is a test runner: check 11 passes" "$out" "[PASS] 11."
+
+# a doc added in the same PR does not wire a script; a doc already in the tree does
+UNW_EXTRA="mkdir -p \"\$REPO/docs\"; printf 'run bash scripts/tools/docd.sh\n' > \"\$REPO/docs/run-docd.md\""
+unw_run scripts/tools/docd.sh docs/run-docd.md
+contains "script named only by a doc added in the same PR: check 11 fails" "$out" "[FAIL] 11."
+unw_run scripts/tools/docd.sh
+contains "script named by a doc already in the tree: check 11 passes" "$out" "[PASS] 11."
+
+# a test script that merely echoes a runner name runs nothing
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"echo bun test\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/a.test.ts
+contains "echo bun test is not a runner: file fails" "$out" "[FAIL] 11."
+
+# a glob arg is matched against the file name, not just its directory
+UNW_EXTRA="printf '{\"scripts\":{\"test\":\"bun test tests/a*.test.ts\"}}\n' > \"\$REPO/scripts/cfg/package.json\""
+unw_run scripts/cfg/tests/zzz.test.ts
+contains "glob arg a*.test.ts does not match zzz.test.ts: file fails" "$out" "[FAIL] 11."
+
+# a wired referencer's dot is literal: a.b.sh is not the pending file aXb.sh
+UNW_EXTRA="printf 'run: bash scripts/tools/a.b.sh\\n' > \"\$REPO/.github/workflows/ci.yml\"; printf 'bash target.sh\\n' > \"\$REPO/scripts/tools/a.b.sh\""
+unw_run scripts/tools/target.sh scripts/tools/aXb.sh
+notcontains "wired referencer a.b.sh is not mistaken for the pending aXb.sh" "$out" "UNWIRED scripts/tools/target.sh"
+UNW_EXTRA=''
+
 # an unreadable ref exits 2 even when the only file is an extensionless executable
 rc=0; out=$(cd "$REPO" && bash "$HERE/../../testing/check-added-unwired.sh" 0000000000000000000000000000000000000000 scripts/tools/runme 2>&1) || rc=$?
 check "unreadable ref with an extensionless file: exit 2" "$rc" "2"

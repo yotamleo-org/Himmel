@@ -61,7 +61,8 @@
       "anthropic-design-skills@himmel": false,
       "hallmark@himmel": false,
       "shadcn-mcp@himmel": false,
-      "emilkowalski-skills@himmel": false
+      "emilkowalski-skills@himmel": false,
+      "pstack@himmel": true
     }
   },
   "lane-impl": {
@@ -125,7 +126,8 @@
       "anthropic-design-skills@himmel": false,
       "hallmark@himmel": false,
       "shadcn-mcp@himmel": false,
-      "emilkowalski-skills@himmel": false
+      "emilkowalski-skills@himmel": false,
+      "pstack@himmel": false
     }
   },
   "lane-review": {
@@ -189,7 +191,8 @@
       "anthropic-design-skills@himmel": false,
       "hallmark@himmel": false,
       "shadcn-mcp@himmel": false,
-      "emilkowalski-skills@himmel": false
+      "emilkowalski-skills@himmel": false,
+      "pstack@himmel": false
     }
   },
   "lane-content": {
@@ -253,7 +256,8 @@
       "anthropic-design-skills@himmel": false,
       "hallmark@himmel": false,
       "shadcn-mcp@himmel": false,
-      "emilkowalski-skills@himmel": false
+      "emilkowalski-skills@himmel": false,
+      "pstack@himmel": false
     }
   },
   "bare": {
@@ -317,7 +321,8 @@
       "anthropic-design-skills@himmel": false,
       "hallmark@himmel": false,
       "shadcn-mcp@himmel": false,
-      "emilkowalski-skills@himmel": false
+      "emilkowalski-skills@himmel": false,
+      "pstack@himmel": false
     }
   }
 }

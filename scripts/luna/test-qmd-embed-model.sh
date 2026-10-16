@@ -363,6 +363,21 @@ for copy in "$SCRIPT" "$PLUGIN_DAEMON"; do
     else fail "swap_lock_stale in $(basename "$copy") classifies lock dirs" "got: $got"; fi
 done
 
+echo "== remote model (HIMMEL-5756)"
+REMOTE='openai:qwen/qwen3-embedding-8b'
+new_home 40
+printf 'collections:\n  notes:\n    path: %s\nmodels:\n  openai_base_url: http://127.0.0.1:9\n' "$H" >"$(CFG)"
+rc=0; out=$(run bash "$SCRIPT" set remote 2>&1) || rc=$?
+assert_rc "set remote writes the OpenRouter qwen3 embed model" 0 "$rc"
+assert_contains "the config names the remote model" "embed: $REMOTE" "$(cat "$(CFG)")"
+new_home 41
+rc=0; out=$(run env QMD_REMOTE_EMBED_MODEL='hf:evil/x.gguf' bash "$SCRIPT" set remote 2>&1) || rc=$?
+assert_rc "QMD_REMOTE_EMBED_MODEL must be an openai: URI" 1 "$rc"
+new_home 42
+printf 'collections:\n  salus:\n    path: /x\nmodels:\n  openai_base_url: https://openrouter.ai/api/v1\n' >"$(CFG)"
+rc=0; out=$(run bash "$SCRIPT" set remote 2>&1) || rc=$?
+assert_rc "set remote on a config holding salus is refused by the egress gate" 2 "$rc"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

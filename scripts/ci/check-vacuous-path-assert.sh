@@ -229,14 +229,13 @@ for f in "${files[@]}"; do
             # without stripping the comment first, either shape would
             # falsely open heredoc state and silently skip every real line
             # after it, including the assertion this detector exists to
-            # catch (both whole-line and
-            # trailing). A here-string (`cat <<<EOF`) is a single self-
-            # contained expression, never a multi-line redirect -- its
-            # third `<` would otherwise let the `<<` half of the pattern
-            # match starting one character in, wrongly opening heredoc-skip
-            # state with no real terminator to ever close it
-            # Strip any `<<<` run before the heredoc-open check so
-            # only a genuine `<<`/`<<-` survives.
+            # catch (both whole-line and trailing). A here-string
+            # (`cat <<<EOF`) is a single self-contained expression, never a
+            # multi-line redirect -- its third `<` would otherwise let the
+            # `<<` half of the pattern match starting one character in,
+            # wrongly opening heredoc-skip state with no real terminator to
+            # ever close it. So strip any `<<<` run before the heredoc-open
+            # check, so only a genuine `<<`/`<<-` survives.
             hd_line = line
             sub(/(^[ \t]*|[ \t])#.*$/, "", hd_line)
             gsub(/<<</, "", hd_line)

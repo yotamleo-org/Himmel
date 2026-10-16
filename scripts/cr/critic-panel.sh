@@ -90,6 +90,9 @@ usage() {
     cat >&2 <<'USAGE'
 usage: critic-panel.sh [--worktree <path>] [--head <sha>] [--branch <name>] [--base <name>] [--base-sha <sha>] [--check [--all-tiers]]
   stdin                    review the unified diff read from stdin (back-compat)
+                           ledger rows are stamped with the CWD repo's HEAD, not the
+                           diff's source: pipe a diff from the same repo (or use
+                           --worktree), or the stamped head is misleading
   --worktree <path>        review `git -C <path> diff <base>...HEAD` (sanctioned)
                            <base> = CR_BASE_BRANCH env, else the remote's default
                            branch (refs/remotes/origin/HEAD), else main
@@ -1018,7 +1021,10 @@ if [ "${_tg_keep_one:-0}" = "1" ]; then
 fi
 
 # Write diff to a temp file so each member can read it via stdin redirect
-tmp="$(mktemp -t critic-panel.XXXXXX)"
+tmp="$(mktemp -t critic-panel.XXXXXX)" || {
+    echo "critic-panel: mktemp failed" >&2
+    exit 2
+}
 _seq_out=""
 _seq_err=""
 outdir=""
@@ -1162,7 +1168,7 @@ _append_panel_ledger() {
             [ -n "$_apl_responding" ] && set -- "$@" --responding-model "$_apl_responding"
             [ -n "$_apl_reason" ] && set -- "$@" --reason "$_apl_reason"
             [ -n "$_apl_detail" ] && set -- "$@" --detail "$_apl_detail"
-            CR_LEDGER="$PANEL_LEDGER" bash "$LEDGER_APPEND" "$@" || _apl_failed=1
+            CR_LEDGER="$PANEL_LEDGER" bash "$LEDGER_APPEND" "$@" </dev/null || _apl_failed=1
         done < "$_apl_spool"
     done
 
@@ -1179,7 +1185,7 @@ _append_panel_ledger() {
             [ -n "$_apl_attempt" ] && set -- "$@" --attempt "$_apl_attempt"
             [ -n "$_apl_duration" ] && set -- "$@" --duration-secs "$_apl_duration"
             [ -n "$_apl_detail" ] && set -- "$@" --detail "$_apl_detail"
-            CR_LEDGER="$PANEL_LEDGER" bash "$LEDGER_APPEND" "$@" || _apl_failed=1
+            CR_LEDGER="$PANEL_LEDGER" bash "$LEDGER_APPEND" "$@" </dev/null || _apl_failed=1
         done < "$_apl_spool"
     done
 

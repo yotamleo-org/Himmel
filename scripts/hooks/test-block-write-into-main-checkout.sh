@@ -1525,6 +1525,14 @@ for _cd4359 in "cd $FIX/wt &&" "cd \"\$D\" &&"; do
     _r4359 "$_cd4359 env HOME=$_P4359 sh -c 'cd ~ && ls > x' denies" block \
         "$_cd4359 env HOME=$_P4359 sh -c 'cd ~ && ls > x'"
 done
+# A HOME name split by an empty command or `$(...)` substitution still
+# assigns HOME once the shell expands it.
+# shellcheck disable=SC2088,SC2016  # literal ~ / $HOME / substitutions: the command text under test
+for _s4359 in 'H$(true)OME' 'H`true`OME' 'HO$(:)ME' 'export H$(true)OME'; do
+    for _t4359 in '~/x' '$HOME/x'; do
+        _r4359 "$_s4359=primary; ls > $_t4359 denies" block "$_s4359=$_P4359; ls > $_t4359"
+    done
+done
 # ALLOW controls: the assignment alone, reads of ~, unrelated absolute writes,
 # a non-HOME variable, and `$HOME=` text that is no assignment.
 _r4359 "HOME=/tmp/h; echo hi allows" allow "HOME=/tmp/h; echo hi"

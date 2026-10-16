@@ -185,6 +185,27 @@ test("composeClaudexPointerPrompt is SHORT and points at the brief file, not the
 
 // --- planClaudexSpawn ---------------------------------------------------------
 
+test("planClaudexSpawn: default slugs minted under a frozen Date.now differ and stay sanitised (HIMMEL-1745)", () => {
+  const dateSpy = spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+  try {
+    const a = planClaudexSpawn("/repo", undefined, { isHimmelCheckout: () => true });
+    const b = planClaudexSpawn("/repo", undefined, { isHimmelCheckout: () => true });
+    expect(a.ok && b.ok).toBe(true);
+    const sa = (a as any).slug as string;
+    const sb = (b as any).slug as string;
+    expect(sa).not.toBe(sb);
+    expect(sa).toMatch(/^[a-zA-Z0-9-]+$/);
+  } finally {
+    dateSpy.mockRestore();
+  }
+});
+
+test("spawn-claudex session dir mints through the shared collision-proof stamp (HIMMEL-1745)", () => {
+  const src = readFileSync(join(import.meta.dir, "spawn-claudex.ts"), "utf8");
+  expect(src).toContain("claudex-${slug}-${mintSpawnStamp()}");
+  expect(src).not.toContain("claudex-${slug}-${Date.now()}");
+});
+
 test("planClaudexSpawn refuses a non-himmel cwd", () => {
   const r = planClaudexSpawn("/some/dir", undefined, { isHimmelCheckout: () => false });
   expect(r.ok).toBe(false);

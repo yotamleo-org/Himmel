@@ -178,6 +178,22 @@ function invokeWithTimeout(invokeP: Promise<string>, timeoutMs: number): Promise
   });
 }
 
+// In-process counters (per poller run): a classifier that ran and said
+// spawn-high vs one that broke and fell open are indistinguishable in the
+// verdict alone. Exposing them as metrics is not wired yet.
+export type TriageCounters = { spawnHighVerdict: number; failOpen: number; total: number };
+const counters: TriageCounters = { spawnHighVerdict: 0, failOpen: 0, total: 0 };
+
+export function getTriageCounters(): TriageCounters {
+  return { ...counters };
+}
+
+export function resetTriageCounters(): void {
+  counters.spawnHighVerdict = 0;
+  counters.failOpen = 0;
+  counters.total = 0;
+}
+
 export async function classifyForSpawn(text: string, deps: TriageDeps = {}): Promise<TriageVerdict> {
   // deepseek-v4-flash defaults to thinking mode; the Hermes invoke chokepoint
   // does not expose a thinking toggle, so this bulk classifier accepts that
@@ -198,8 +214,18 @@ export async function classifyForSpawn(text: string, deps: TriageDeps = {}): Pro
     const output = deps.invoke
       ? await invokeWithTimeout(deps.invoke(args, prompt), timeoutMs)
       : await defaultInvoke(args, prompt, timeoutMs);
-    return parseTriageVerdict(output);
+    const verdict = parseTriageVerdict(output);
+    counters.total++;
+    // parseTriageVerdict fails open to spawn-high on garbage; only a literal
+    // spawn-high token is a legit verdict.
+    if (verdict === "spawn-high") {
+      if (output.trim() === "spawn-high") counters.spawnHighVerdict++;
+      else counters.failOpen++;
+    }
+    return verdict;
   } catch (e) {
+    counters.total++;
+    counters.failOpen++;
     // sessionLabel: correlate the fail-open to the session so a
     // dropped-to-spawn-high chatter is traceable in the log alongside the poller state.
     //
@@ -210,7 +236,7 @@ export async function classifyForSpawn(text: string, deps: TriageDeps = {}): Pro
     // costs spend, not work. This log line is therefore the WHOLE
     // operator-visible surface of the failure, which is why the message it
     // carries (classifierFailureMessage, above) now has to carry the reason.
-    console.error(`[telegram-triage] fail-open for ${label}: ${e}`);
+    console.error(`[telegram-triage] fail-open for ${label} (fail-open ${counters.failOpen}/${counters.total}): ${e}`);
     return "spawn-high";
   }
 }

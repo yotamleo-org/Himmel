@@ -167,29 +167,72 @@ export async function unlinkIssueLink(
 
 export function registerLink(program: Command): void {
   program
-    .command('link <inwardKey> <outwardKey>')
+    .command('link <key> [otherKey]')
     .description(
-      'Create an issue link. For directional types the FIRST key is the inward ' +
-      'issue (reads "is blocked by" for Blocks) and the SECOND the outward ' +
-      'issue (reads "blocks"): `link A B --type Blocks` stores "A is blocked by B".',
+      'Create an issue link: `link A B [--type T]` (first key is the inward issue). ' +
+      'Blocks is refused in the bare two-key form because it stores "A is blocked ' +
+      'by B"; use `link A --blocks B` ("A blocks B") or `link A --blocked-by B` ' +
+      '("A is blocked by B").',
     )
     .option(
       '--type <type>',
       'Link type name (Relates, Blocks, Duplicate, Cloners)',
-      'Relates',
     )
+    .option('--blocks <key>', 'Create `link A --blocks B`: A blocks B')
+    .option('--blocked-by <key>', 'Create `link A --blocked-by B`: A is blocked by B')
     .action(
-      async (inwardKey: string, outwardKey: string, opts: { type: string }) => {
+      async (
+        key: string,
+        otherKey: string | undefined,
+        opts: { type?: string; blocks?: string; blockedBy?: string },
+      ) => {
+        const fail = (msg: string): never => {
+          console.error(msg);
+          process.exit(1);
+        };
+        const explicit = opts.blocks !== undefined || opts.blockedBy !== undefined;
+        if (opts.blocks !== undefined && opts.blockedBy !== undefined) {
+          fail('Use only one of --blocks and --blocked-by.');
+        }
+        if (explicit && otherKey !== undefined) {
+          fail('--blocks/--blocked-by take the other key as their value; drop the second positional key.');
+        }
+        if (explicit && opts.type !== undefined && opts.type.toLowerCase() !== 'blocks') {
+          fail(`--blocks/--blocked-by create Blocks links; --type ${opts.type} conflicts.`);
+        }
+        if (!explicit && otherKey === undefined) {
+          fail('Missing second key: `link A B` (Relates), `link A --blocks B` or `link A --blocked-by B`.');
+        }
+        const typeName = explicit ? 'Blocks' : (opts.type ?? 'Relates');
         // Validate the type up front so an unknown --type yields the list of
         // valid types instead of a raw 404 from the create call.
         const { issueLinkTypes } = await request<{
           issueLinkTypes: IssueLinkType[];
         }>('GET', '/issueLinkType');
-        const match = findLinkType(issueLinkTypes, opts.type);
+        const match = findLinkType(issueLinkTypes, typeName);
         if (!match) {
-          console.error(`Link type "${opts.type}" not found. Available:`);
+          console.error(`Link type "${typeName}" not found. Available:`);
           for (const t of issueLinkTypes) console.error(`- ${t.name}`);
           process.exit(1);
+        }
+        let inwardKey: string;
+        let outwardKey: string;
+        if (opts.blocks !== undefined) {
+          // "key blocks X": X is the inward ("is blocked by") issue.
+          inwardKey = opts.blocks;
+          outwardKey = key;
+        } else if (opts.blockedBy !== undefined) {
+          inwardKey = key;
+          outwardKey = opts.blockedBy;
+        } else {
+          if (match.name.toLowerCase() === 'blocks') {
+            fail(
+              'The bare two-key form is ambiguous for Blocks (it stores "A is blocked by B"). ' +
+              'Use `link A --blocks B` (A blocks B) or `link A --blocked-by B` (A is blocked by B).',
+            );
+          }
+          inwardKey = key;
+          outwardKey = otherKey as string;
         }
         const line = await createIssueLink(inwardKey, outwardKey, match);
         writeJiraBreadcrumb(inwardKey);

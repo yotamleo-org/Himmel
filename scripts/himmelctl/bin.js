@@ -1055,6 +1055,10 @@ const VAULT_HELP = {
   existing: 'point at the Obsidian vault you already have (in-place, STAMPED-gated upgrade)',
 };
 
+const HANDOVER_REGISTER_HELP = {
+  yes: 'registers this repo in ~/.claude/handover/registry.json and seeds the state dir (same flow as /handover register)',
+  no: 'leave the registry alone; run /handover-setup later',
+};
 const HANDOVER_HELP = {
   inline: "no-op — handover state stays in this repo's own handovers/ (adopt.sh/setup.sh default)",
   external: 'persists HANDOVER_DIR to an external state repo you point at next',
@@ -1679,9 +1683,14 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
   // 4. handover. T2 collects only; the write is T4.5.
   const handoverMode = await askNumberedEnum(ask, 'handover', ['inline', 'external'], preset.handoverMode, HANDOVER_HELP);
   let handoverPath = '';
+  let handoverRegister = '';
   if (handoverMode === 'external') {
     const hd = process.env.HANDOVER_DIR || '~/.claude/handover-state';
     handoverPath = await askPath(ask, `? handover path (default: ${hd})\n> `, hd);
+    // Ask-first: only when the registry has no entry for this repo yet.
+    if (!handoverRegistered()) {
+      handoverRegister = await askNumberedEnum(ask, 'handover register', ['yes', 'no'], 'yes', HANDOVER_REGISTER_HELP);
+    }
   }
 
   // 5. pluginSet. 'full' is DROPPED — the full-plugin-enable.json
@@ -1886,7 +1895,9 @@ async function askQuestions(defaultScope, laneOpts, devOverlay) {
   }
 
   rl.close();
-  return buildAnswers(profile, devOverlay, scope, vaultMode, vaultPath, handoverMode, handoverPath, pluginSet, lanes, alwaysOn, luna, secretsWalk, bridge, cadences, vm);
+  const answers = buildAnswers(profile, devOverlay, scope, vaultMode, vaultPath, handoverMode, handoverPath, pluginSet, lanes, alwaysOn, luna, secretsWalk, bridge, cadences, vm);
+  if (handoverRegister) answers.handover.register = handoverRegister;
+  return answers;
 }
 
 // All-default answers (no prompts) for --dry-run previews.
@@ -2000,6 +2011,7 @@ function loadProfile(p) {
   if (obj.handover.mode === 'external' && (typeof obj.handover.path !== 'string' || obj.handover.path === '')) {
     profileError(p, "field 'handover.path' is required when handover.mode=external");
   }
+  if (obj.handover.register !== undefined) checkEnum('handover.register', obj.handover.register, ['yes', 'no']);
   // lanes/alwaysOn join the strictly-validated set for the same
   // reason every other field is in it — --from-profile is unattended-execution
   // consent, so a skewed field must fail loud BEFORE any side effect rather
@@ -2729,6 +2741,34 @@ function writeHandoverDir(p) {
   return true;
 }
 
+// registry registration goes through register-state.sh, the single writer of
+// registry.json shared with the /handover skill.
+function registerStateScript() {
+  return path.join(repoRoot(), 'scripts', 'handover', 'register-state.sh');
+}
+
+// true when the registry already has an entry for this repo (or the script is
+// absent, in which case there is nothing to offer).
+function handoverRegistered() {
+  const script = registerStateScript();
+  if (!fs.existsSync(script)) return true;
+  const r = spawnSync(resolveBash(), [toBashPath(script), '--check', '--repo-path', toBashPath(repoRoot())], { encoding: 'utf8' });
+  return r.status === 0;
+}
+
+function registerHandoverState(p) {
+  const target = expandHome(p);
+  const script = registerStateScript();
+  const r = spawnSync(resolveBash(), [toBashPath(script), '--repo-path', toBashPath(repoRoot()), '--state-host', toBashPath(target), '--init-if-empty'], { encoding: 'utf8' });
+  if (r.error || r.status !== 0) {
+    const detail = (r.stderr || (r.error && r.error.message) || '').trim();
+    console.error(`himmelctl: failed to register handover state via ${script}${detail ? `: ${detail}` : ''}`);
+    return false;
+  }
+  console.log(`handover state registered (${(r.stdout || '').trim()})`);
+  return true;
+}
+
 // Load the documented full-plugin-enable table from data, rather than keeping
 // a second inline copy that can drift. the wizard no longer
 // offers pluginSet=full (its enable step is gone — applyPluginStep() is now
@@ -2786,6 +2826,7 @@ function previewHandoverAndPlugins(answers) {
   if (answers.handover && answers.handover.mode === 'external') {
     const envFile = path.join(repoRoot(), '.env');
     console.log(`DRY: HANDOVER_DIR -> ${expandHome(answers.handover.path)} (would write to ${envFile})`);
+    if (answers.handover.register === 'yes') console.log(`DRY: would register handover state for ${repoRoot()} via scripts/handover/register-state.sh`);
   }
 }
 
@@ -4208,7 +4249,8 @@ async function printAdopterEpilogue(answers, derived, dryRun, pluginResult, vaul
 // Shared by the main path and the T5b existing-vault path (FIX 5).
 function applyHandoverStep(answers) {
   if (answers.handover && answers.handover.mode === 'external') {
-    return writeHandoverDir(answers.handover.path);
+    if (!writeHandoverDir(answers.handover.path)) return false;
+    if (answers.handover.register === 'yes') return registerHandoverState(answers.handover.path);
   }
   return true;
 }

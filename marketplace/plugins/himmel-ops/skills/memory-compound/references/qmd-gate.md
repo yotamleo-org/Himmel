@@ -12,7 +12,7 @@ fresh with `qmd_cmd update -c luna-curated`), full `luna` only as a fallback on
 a miss. **⚠ The flag is `-c` / `--collection` (singular) — `--collections`
 (plural) is NOT a qmd flag and is SILENTLY IGNORED**, so a gate run with
 `--collections luna-curated` searches *everything* while looking scoped and
-"confirms" a false pass. Set `minScore: 0.5` and an `intent`.
+"confirms" a false pass. Set a minimum score of 0.5 and an intent: on the CLI pass `--min-score 0.5` and `--intent "<what you are looking for>"`; on the MCP `query` tool set the JSON fields `"minScore": 0.5` and `"intent": "<what you are looking for>"`.
 
 **Branch caveat (BOTH collections):** qmd indexes the PRIMARY checkouts, not
 worktrees — a doc landed on a himmel PR branch AND a vault note landed on a

@@ -1,12 +1,10 @@
 // Passive Prometheus exporter over local flow/quota ledgers.
 // Pure reader: no ledger writes, no process control, no enforcement.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { homedir, hostname } from "node:os";
-import { ledgerPath as flowRunLedgerPath, type FlowRunEnd, type FlowRunRow, type FlowRunStart } from "../telegram/flow-run-ledger";
-import { ledgerPath as quotaGaugeLedgerPath } from "../telegram/quota-gauge";
+import type { FlowRunEnd, FlowRunRow, FlowRunStart } from "../telegram/flow-run-ledger";
 import {
-  ledgerPath as sessionRunLedgerPath,
   SESSION_END_REASONS,
   SUBAGENT_OUTCOMES,
   type SessionCloseRow,
@@ -18,6 +16,48 @@ import {
 } from "./session-run-ledger";
 import { scanQuietRunOrphans } from "./quiet-run-orphans";
 import { defaultClaudeCachePath, readClaudeBank, readCodexBank, readGlmBank, readLaneQuotaTargets, type BankId, type BankResult } from "./quota-sources";
+
+// Ledger paths come from the registry (ledgers.json), not from a second copy of
+// each writer's default: a row whose default_path moves moves this read with it.
+// HIMMEL_LEDGERS_JSON points at an alternate registry (tests).
+type LedgerRegistryRow = { id: string; default_path: string; override_env?: string };
+
+const FALLBACK_LEDGER_ROWS: LedgerRegistryRow[] = [
+  { id: "flow-runs", default_path: "~/.himmel/flow-runs.jsonl", override_env: "HIMMEL_FLOW_RUNS_LEDGER" },
+  { id: "quota-gauge", default_path: "~/.himmel/quota-gauge.jsonl", override_env: "HIMMEL_QUOTA_GAUGE_LEDGER" },
+  { id: "session-runs", default_path: "~/.himmel/session-runs.jsonl", override_env: "HIMMEL_SESSION_RUNS_LEDGER" },
+  { id: "tool-call-census", default_path: "~/.himmel/tool-call-census.jsonl", override_env: "HIMMEL_TOOL_CENSUS" },
+  { id: "hook-chain-skips", default_path: "<repo>/.claude/logs/hook-chain-skips.jsonl", override_env: "RUN_HOOK_CHAIN_SKIP_LOG" },
+  { id: "eval-runs", default_path: "~/.himmel/eval-runs.jsonl", override_env: "HIMMEL_EVAL_RUNS_LEDGER" },
+];
+const warnedRegistryFiles = new Set<string>();
+
+export function registryLedgerPath(id: string, env: Record<string, string | undefined>, repoRoot: string = join(import.meta.dir, "..", "..")): string {
+  const registryFile = env.HIMMEL_LEDGERS_JSON?.trim() || join(import.meta.dir, "ledgers.json");
+  let rows: LedgerRegistryRow[];
+  try {
+    rows = (JSON.parse(readFileSync(registryFile, "utf-8")) as { ledgers: LedgerRegistryRow[] }).ledgers;
+    if (!Array.isArray(rows) || rows.some((r) => !r || typeof r.id !== "string" || typeof r.default_path !== "string" || (r.override_env !== undefined && typeof r.override_env !== "string"))) throw new Error("ledgers is not an array of {id, default_path, override_env?} rows");
+  } catch (e) {
+    // One unreadable registry must cost the registry's configurability, not every render.
+    if (!warnedRegistryFiles.has(registryFile)) {
+      warnedRegistryFiles.add(registryFile);
+      console.error(`flow-exporter: ledger registry ${registryFile} unreadable (${(e as Error).message}); using built-in default paths`);
+    }
+    rows = FALLBACK_LEDGER_ROWS;
+  }
+  const row = rows.find((r) => r.id === id);
+  if (!row) throw new Error(`ledger '${id}' has no row in ${registryFile}`);
+  const override = row.override_env ? env[row.override_env] : undefined;
+  if (override && override.trim()) return override;
+  // census and eval-runs have always resolved USERPROFILE first; the rest HOME first.
+  const home = (id === "tool-call-census" || id === "eval-runs")
+    ? (env.USERPROFILE ?? env.HOME ?? homedir())
+    : (env.HOME ?? env.USERPROFILE ?? homedir());
+  if (row.default_path.startsWith("~/")) return join(home, row.default_path.slice(2));
+  if (row.default_path.startsWith("<repo>/")) return join(repoRoot, row.default_path.slice("<repo>/".length));
+  return row.default_path;
+}
 
 const LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
 const DEFAULT_STALL_DEADLINE_SECONDS = 6 * 60 * 60;
@@ -870,7 +910,7 @@ export function renderSessionsJson(options: RenderMetricsOptions = {}): string {
   const nowMs = options.nowMs ?? Date.now();
   const cfg = readConfig(options.configPath ?? configPath(env));
   const staleAfterSeconds = sessionStaleAfterSeconds(cfg);
-  const path = options.sessionLedgerPath ?? sessionRunLedgerPath(env);
+  const path = options.sessionLedgerPath ?? registryLedgerPath("session-runs", env);
   const { rows, ledgerRows } = parseSessionLedgerRows(path, nowMs);
   const fold = foldSessionLedger(rows, nowMs, staleAfterSeconds);
   return JSON.stringify({
@@ -945,9 +985,7 @@ const TOOL_CENSUS_WINDOW_MS = 24 * 60 * 60 * 1000;
 const TOOL_CENSUS_FUTURE_GRACE_MS = 5 * 60 * 1000;
 
 function defaultToolCensusPath(env: Record<string, string | undefined>): string {
-  const override = env.HIMMEL_TOOL_CENSUS;
-  if (override && override.trim()) return override;
-  return join(env.USERPROFILE ?? env.HOME ?? homedir(), ".himmel", "tool-call-census.jsonl");
+  return registryLedgerPath("tool-call-census", env);
 }
 
 function bump(counts: Map<string, Map<string, number>>, project: string, key: string, by: number): void {
@@ -1077,10 +1115,15 @@ const HOOK_CHAIN_ACTIONS = ["deny", "skip"] as const;
 export function defaultHookChainSkipLogPaths(env: Record<string, string | undefined>, repoRoot: string = join(import.meta.dir, "..", "..")): { paths: string[]; worktreesDirUnreadable: boolean } {
   const override = env.RUN_HOOK_CHAIN_SKIP_LOG;
   if (override && override.trim()) return { paths: [override], worktreesDirUnreadable: false };
-  const paths = [join(repoRoot, ".claude", "logs", "hook-chain-skips.jsonl")];
+  // The registry row is `<repo>/<rel>`; the same <rel> repeats under each worktree.
+  const repoLog = registryLedgerPath("hook-chain-skips", env, repoRoot);
+  const paths = [repoLog];
+  // A registry path outside the checkout has no per-worktree twin to scan.
+  const insideRepo = repoLog.startsWith(repoRoot + sep);
+  const relLog = insideRepo ? repoLog.slice(repoRoot.length + 1) : "";
   const worktreesDir = join(repoRoot, ".claude", "worktrees");
   let worktreesDirUnreadable = false;
-  if (existsSync(worktreesDir)) {
+  if (insideRepo && existsSync(worktreesDir)) {
     try {
       for (const name of readdirSync(worktreesDir)) {
         const dir = join(worktreesDir, name);
@@ -1089,7 +1132,7 @@ export function defaultHookChainSkipLogPaths(env: Record<string, string | undefi
         } catch {
           continue;
         }
-        paths.push(join(dir, ".claude", "logs", "hook-chain-skips.jsonl"));
+        paths.push(join(dir, relLog));
       }
     } catch {
       // Present but unreadable (permissions, a race after existsSync, etc.)
@@ -1918,9 +1961,7 @@ type EvalSpec = { higher_is_better?: boolean; band?: number; band_rel?: number }
 type EvalBound = { lo: number; hi: number };
 
 function defaultEvalRunsLedgerPath(env: Record<string, string | undefined>): string {
-  const override = env.HIMMEL_EVAL_RUNS_LEDGER;
-  if (override && override.trim()) return override;
-  return join(env.USERPROFILE ?? env.HOME ?? homedir(), ".himmel", "eval-runs.jsonl");
+  return registryLedgerPath("eval-runs", env);
 }
 
 function defaultEvalThresholdsPath(env: Record<string, string | undefined>): string {
@@ -2095,8 +2136,8 @@ export async function renderMetrics(options: RenderMetricsOptions = {}): Promise
   const nowMs = options.nowMs ?? Date.now();
   const cache = options.cache ?? createExporterCache();
   const cfg = readConfig(options.configPath ?? configPath(env));
-  const flowPath = options.flowLedgerPath ?? flowRunLedgerPath(env);
-  const quotaPath = options.quotaLedgerPath ?? quotaGaugeLedgerPath(env);
+  const flowPath = options.flowLedgerPath ?? registryLedgerPath("flow-runs", env);
+  const quotaPath = options.quotaLedgerPath ?? registryLedgerPath("quota-gauge", env);
   const evalRunsPath = options.evalRunsLedgerPath ?? defaultEvalRunsLedgerPath(env);
   const lanesPath = options.lanesPath ?? defaultLanesPath();
 
@@ -2104,7 +2145,7 @@ export async function renderMetrics(options: RenderMetricsOptions = {}): Promise
   const flow = buildFlowMetrics(flowPath, cfg, nowMs, options.pidLivenessRunner, options.localHost);
   lines.push(...flow.lines);
 
-  const sessionPath = options.sessionLedgerPath ?? sessionRunLedgerPath(env);
+  const sessionPath = options.sessionLedgerPath ?? registryLedgerPath("session-runs", env);
   const sessions = buildSessionMetrics(sessionPath, cfg, nowMs);
   lines.push(...sessions.lines);
 

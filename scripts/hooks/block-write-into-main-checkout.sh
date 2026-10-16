@@ -4407,6 +4407,11 @@ else
     case "$cmd" in
         *OME*|*"\$'"*) [[ "$(_bwimc_unq "$cmd")" =~ $_bwimc_home_re ]] && _bwimc_home_taint=1 ;;
     esac
+    # a name split by a substitution (`H$(true)OME=x`, ``H`:`OME=x``) expands to HOME
+    # shellcheck disable=SC2016  # literal ERE
+    _bwimc_sub='(\$\([^)]*\)|`[^`]*`)*'
+    _bwimc_home_split_re="(^|[^A-Za-z0-9_\$])H${_bwimc_sub}O${_bwimc_sub}M${_bwimc_sub}E${_bwimc_sub}[+]?="
+    [[ "$cmd" =~ $_bwimc_home_split_re ]] && _bwimc_home_taint=1
 fi
 
 # a CD-search-path assignment (or one inherited by the hook) makes

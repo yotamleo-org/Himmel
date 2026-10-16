@@ -39,6 +39,11 @@ cat > "$REPO/scripts/api-lane/claude-api.sh" <<EOF
 #!/usr/bin/env bash
 echo "lane-tools=\${HIMMEL_API_TOOLS-UNSET}" >> "$WS/calls.log"
 echo "lane \$* | stdin=\$(cat) | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
+if [ -n "\${LANE_STUB_FAIL:-}" ]; then
+  echo '{"type":"result","subtype":"error_max_budget_usd","is_error":true}'
+  echo "lane-stub-stderr-banner" >&2
+  exit 1
+fi
 echo '{"result":"{}","usage":{"input_tokens":1,"output_tokens":1}}'
 EOF
 chmod +x "$REPO/scripts/api-lane/claude-api.sh"
@@ -64,6 +69,12 @@ if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ]; then
 fi
 [ "\$1" = extract ] || exit 0
 [ -z "\${GRAPHIFY_STUB_RC:-}" ] || exit "\$GRAPHIFY_STUB_RC"
+# GRAPHIFY_STUB_CHUNKFAIL: the two lines graphify printed (verbatim) when 8 of 9 chunks died under the
+# 0.25 USD per-call cap (himmel batch 1, 2026-10-16); the run still wrote a graph and exited 0.
+if [ -n "\${GRAPHIFY_STUB_CHUNKFAIL:-}" ]; then
+  echo '[graphify] chunk 1/9 failed: claude -p exited 1: bank-preflight: FLEET native=21 claudex=0 openrouter=0 reserved=0 total=21/31'
+  echo '[graphify] WARNING: 8/9 semantic chunk(s) failed — see errors above. Partial results returned.'
+fi
 python3 - "\$2" <<'PY'
 import json, os, sys
 root = sys.argv[1]
@@ -437,6 +448,46 @@ echo "T38: salus stays denied on the claude-api path (exit 2 before any copy or 
 C38="$WS/c38"; new_corpus "$C38"; touch "$C38/.salus"; : > "$WS/calls.log"
 out=$(run_api --name t38 --corpus-root "$C38" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 2 ] && [ ! -s "$WS/calls.log" ] && [ -z "$(scratch)" ] && pass "T38 salus refused" || fail "T38 (rc=$rc): $out"
+
+echo "T39: any failed chunk exits 5 after the good chunks merge; a caller looping on the exit code stops"
+C39="$WS/c39"; new_corpus "$C39"
+out=$(GRAPHIFY_STUB_CHUNKFAIL=1 run_api --name t39 --corpus-root "$C39" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 5 ] && pass "T39 exit 5" || fail "T39 exit 5 (got $rc): $out"
+[[ "$out" == *"FAILED: 8/9"* ]] && pass "T39 FAILED line names the chunk count" || fail "T39 FAILED line: $out"
+case "$(ids "$C39")" in *sem_a.md_alpha*) pass "T39 the good chunks still merged" ;; *) fail "T39 merge skipped: $(ids "$C39")" ;; esac
+C39B="$WS/c39b"; new_corpus "$C39B"
+out=$(GRAPHIFY_STUB_CHUNKFAIL=1 run --name t39b --corpus-root "$C39B" --corpus-class himmel-code --backend claude-cli); rc=$?
+[ "$rc" -eq 5 ] && pass "T39 claude-cli path exits 5 too" || fail "T39 cli exit 5 (got $rc): $out"
+
+echo "T40: claude-api passes --token-budget derived from the per-call budget, capped at graphify's 60000"
+C40="$WS/c40"; new_corpus "$C40"; : > "$WS/calls.log"
+out=$(run_api --name t40 --corpus-root "$C40" --corpus-class himmel-code --backend claude-api); rc=$?
+case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 30000"*) pass "T40 default 0.25 -> 30000" ;; *) fail "T40 default: $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
+C40B="$WS/c40b"; new_corpus "$C40B"; : > "$WS/calls.log"
+out=$(GRAPHIFY_API_CALL_BUDGET_USD=1.00 run_api --name t40b --corpus-root "$C40B" --corpus-class himmel-code --backend claude-api); rc=$?
+case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 60000"*) pass "T40 1.00 -> capped at 60000" ;; *) fail "T40 capped: $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
+C40C="$WS/c40c"; new_corpus "$C40C"; : > "$WS/calls.log"
+out=$(run --name t40c --corpus-root "$C40C" --corpus-class himmel-code --backend claude-cli); rc=$?
+ext40c="$(grep '^graphify extract' "$WS/calls.log")"
+if [ "$rc" -ne 0 ] || [ -z "$ext40c" ]; then fail "T40 claude-cli control did not reach graphify extract (rc=$rc): $out"
+else case "$ext40c" in *"--token-budget"*) fail "T40 claude-cli got a token budget" ;; *) pass "T40 claude-cli path unchanged" ;; esac; fi
+
+echo "T41: a failed lane call shows its result and exit code on the shim's stderr (what graphify prints in the chunk-failed line)"
+C41="$WS/c41"; new_corpus "$C41"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(LANE_STUB_FAIL=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t41 --corpus-root "$C41" --corpus-class himmel-code --backend claude-api); rc=$?
+grep -q 'error_max_budget_usd' "$WS/claude.out" && grep -q 'lane exited 1' "$WS/claude.out" && grep -qx 'claude-shim-rc=1' "$WS/calls.log" \
+  && pass "T41 shim stderr carries the lane result and keeps rc 1" || fail "T41: $(cat "$WS/claude.out") / $(cat "$WS/calls.log")"
+
+echo "T42: the estimate line states the per-call cap and the expected per-chunk cost"
+out=$(run_api --name t42 --corpus-root "$C36" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
+[[ "$out" == *"call-cap=0.25"* ]] && [[ "$out" == *"chunk-tokens=30000"* ]] && [[ "$out" == *"chunk-cost-est="* ]] \
+  && pass "T42 estimate carries cap, chunk tokens and chunk cost" || fail "T42 (rc=$rc): $out"
+out=$(GRAPHIFY_API_CALL_BUDGET_USD=1.00 run_api --name t42b --corpus-root "$C36" --corpus-class himmel-code --backend claude-api --dry-run); rc=$?
+[[ "$out" == *"call-cap=1.00"* ]] && [[ "$out" == *"chunk-tokens=60000"* ]] && pass "T42 a bigger cap raises the chunk, capped at 60000" || fail "T42b (rc=$rc): $out"
+
+echo "T43: a per-call budget too small for any chunk is refused, not turned into a zero token budget"
+out=$(GRAPHIFY_API_CALL_BUDGET_USD=0.000001 run_api --name t43 --corpus-root "$C36" --corpus-class himmel-code --backend claude-api --dry-run 2>&1); rc=$?
+[ "$rc" -eq 1 ] && [[ "$out" == *"too small"* ]] && pass "T43 tiny call budget exits 1" || fail "T43 (rc=$rc): $out"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

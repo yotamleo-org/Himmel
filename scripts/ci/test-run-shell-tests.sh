@@ -35,7 +35,7 @@
 #       trailing-slash root, zero discovered suites, a masked discovery error
 #       in either stage, and an all-skipped EXECUTION root.
 #   11. path-specific slow-suite budgets vs an explicit SUITE_TIMEOUT,
-# plus the malformed-value fallback.
+#       plus the malformed-value fallback.
 #   12/13. conditional-suite filter and SUITE_REQUIRE_TOOL
 #       capability gating.
 #   14. SUITE_TIER / SUITE_TIER_MODE: fast/extended/all filter
