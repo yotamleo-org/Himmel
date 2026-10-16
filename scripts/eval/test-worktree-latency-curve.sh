@@ -74,5 +74,23 @@ else
     _fail "$NAME" "rc=$rc"
 fi
 
+for bad_steps in ',' ' ' '2,,4' '2,4,'; do
+    NAME="--steps '$bad_steps' (no or empty step) refuses with rc 2"
+    rc=0; bash "$SUT" --steps "$bad_steps" --max 4 >"$TMPBASE/out" 2>"$TMPBASE/err" || rc=$?
+    if [ "$rc" -eq 2 ] && [ "$(grep -vc '^#' "$TMPBASE/out" || true)" -eq 0 ]; then
+        _pass "$NAME"
+    else
+        _fail "$NAME" "rc=$rc out=[$(cat "$TMPBASE/out")]"
+    fi
+done
+
+NAME="even --samples refuses with rc 2"
+rc=0; bash "$SUT" --steps 2 --max 4 --samples 2 >"$TMPBASE/out" 2>"$TMPBASE/err" || rc=$?
+if [ "$rc" -eq 2 ]; then
+    _pass "$NAME"
+else
+    _fail "$NAME" "rc=$rc"
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

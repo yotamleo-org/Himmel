@@ -42,6 +42,10 @@ is_pos_int() { case "$1" in ''|*[!0-9]*|0*) return 1 ;; *) return 0 ;; esac; }
 is_pos_int "$MAX" || die "--max must be a positive integer: $MAX"
 is_pos_int "$TIMEOUT" || die "--timeout must be a positive integer: $TIMEOUT"
 is_pos_int "$SAMPLES" || die "--samples must be a positive integer: $SAMPLES"
+[ $(( SAMPLES % 2 )) -eq 1 ] || die "--samples must be odd so the median is one sample: $SAMPLES"
+case "$STEPS" in
+    ''|,*|*,|*,,*|*[!0-9,]*) die "--steps must be comma-separated positive integers: '$STEPS'" ;;
+esac
 prev=0
 for s in $(printf '%s' "$STEPS" | tr ',' ' '); do
     is_pos_int "$s" || die "step must be a positive integer: $s"
@@ -49,7 +53,6 @@ for s in $(printf '%s' "$STEPS" | tr ',' ' '); do
     [ "$s" -le "$MAX" ] || die "step $s exceeds --max $MAX"
     prev="$s"
 done
-[ -n "$STEPS" ] || die "--steps is empty"
 command -v python3 >/dev/null 2>&1 || die "python3 is required for the clock"
 
 # Re-run under a hard wall-clock bound; the marker stops the recursion.
