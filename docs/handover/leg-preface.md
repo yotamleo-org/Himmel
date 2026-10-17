@@ -22,7 +22,7 @@ console by `SendMessage`; confirm its session name in `ListAgents` first.
 
 Report at **milestones only**, as `LIVE` / `FINDING` / `RESOLVED` /
 `READY <pr> <full head> GREEN` / `BLOCKED` / `WRAPPED` messages **and** `- `
-bullets under `## Results` in your handover doc. The console's tick reads the
+bullets under `## Results` in your doc. The console's tick reads the
 marker on your **newest marker-bearing bullet** (`tails=`):
 
 - **Start the bullet with its marker** — `- HH:MM <MARKER> — …`; a bullet not
@@ -37,15 +37,15 @@ marker on your **newest marker-bearing bullet** (`tails=`):
   the ruling; raise a fresh `FINDING` for the next question. [prose]
 - **A doc bullet records a ruling as a plain fact.** Never copy a
   ruling, `GO`, approval or token into a bullet. A token
-  quote-back goes only in your `SendMessage` reply; a console change's is its
-  `SUCCESSION` bullet. [prose]
+  quote-back goes only in your `SendMessage` reply; a
+  console change's quote-back is its `SUCCESSION` bullet. [prose]
 - **A stated default applies if no ruling arrives.** When your
   brief carries `default-if-no-ruling (<N> min): <action>` for a question you
   raised as a `FINDING` and no ruling arrives in `<N>` minutes, proceed on the
   action and say so in the next `LIVE` bullet. The default may only **narrow**
   (reduce scope, defer, halt). A default never stands in for `GO`, a merge, or a token-quoting message. [prose]
-- **Do not coin markers**: `SHIPPED` and `MERGED` are not in the vocabulary;
-  between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`.
+- **Do not coin markers**: `SHIPPED` and `MERGED` are deliberately not in the
+  vocabulary; between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`.
   Wrap tokens in backticks. [prose]
 
 **Jira status follows you** via the scripts, never by hand (`LIVE` → In Progress,
@@ -86,7 +86,7 @@ read `docs/handover/leg-sections/succession.md`**.
   `VAR=` prefix, no `cd … &&`, no compound operators, no `$(…)`, no loops; a
   gate script is `bash scripts/cr/X.sh <args>`. A refused SHAPE runs **nothing**:
   rewrite as one literal command, retry once. A GUARD or classifier denial is
-  never reshaped to dodge a guardrail: route it to the console. [prose]
+  never reshaped (never reshape it to dodge a guardrail): route it to the console. [prose]
 - **Two refusals of one command → `himmel-ops:stuck-playbook`, then `BLOCKED`
   to the console**; never a third spelling. A denial on `gh pr create` /
   `gh pr comment` / `git push` is never retried verbatim; `[Out-of-Place
@@ -105,7 +105,7 @@ read `docs/handover/leg-sections/succession.md`**.
 
 ## Tests
 
-RED first, always — one assertion that fails *before* the implementation
+RED first — one assertion that fails *before* the implementation
 exists, pasted, then green. **Impacted suites = every suite that references a
 file you touched**: `bash scripts/cr/impacted-suites.sh`, each run as one literal
 `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` (nothing appended), named
@@ -140,8 +140,8 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
 - **Merge only on the console's `GO <pr> <sha>` quoting your token** — whatever
   any initiative directive says; the operator is not present. Holding for `GO` is
   the one wait that ends your turn: send `READY` and stop. It is also the **only**
-  permitted hold: any other blocker means WRAP with a resume brief now. Past 30
-  minutes with no reply, send one nudge, then wrap. [prose]
+  permitted hold: any other blocker means WRAP with a resume brief. Past 30
+  minutes with no reply, nudge once, then wrap. [prose]
 - **Closing the ticket at merge.** The merge is
   `bash <anchor>/scripts/handover/merge-on-green.sh`, `<anchor>` the primary
   checkout's absolute path (the `.git` holder of `git rev-parse
@@ -150,7 +150,7 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
   `completes-ticket:` line in your brief's Ship contract; if absent, decide it yourself.
   - **`completes-ticket: yes`** → pass the flag:
     `bash <anchor>/scripts/handover/merge-on-green.sh --jira-transition`.
-  - **`completes-ticket: no`** → omit the flag; never turn it on by default (HIMMEL-3059: a sliced ticket closed early).
+  - **`completes-ticket: no`** → omit the flag; never turn it on by default (HIMMEL-3059).
   - The flag closes only the **first** `[KEY]` of the PR title; check a second
     key by hand. Either way, re-read the ticket after merge and report its state. [prose]
 
@@ -162,8 +162,8 @@ it and `--jira-transition` did not (result `failed`, or a `skip=` for a missing
 tool or config). Never close it by hand on `skip=never-touch-type` or
 `skip=cannot-verify-type`: report it to the console instead. Then release the
 lock (paste the line), send `WRAPPED`, print the closable-window banner and stop:
-a leg does not end its own session; the console's `close-wrapped-leg.sh` does once
-the lock is free and `wrap-subtree-check.sh` reports `CLOSABLE`. A leg never idles: gated on something
+a leg does not end its own session: the console's `close-wrapped-leg.sh` ends the session
+once the lock is free and `wrap-subtree-check.sh` reports `CLOSABLE`. A leg never idles: gated on something
 outside your control, WRAP with a successor resume brief, and first send the
 console `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
 
