@@ -60,8 +60,9 @@ export function gitProbe(args: string[], cwd: string): { code: number; stdout: s
   const t0 = Date.now();
   const r = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe", env: process.env, timeout, killSignal: "SIGKILL" });
   const stderr = r.stderr.toString();
-  // A killed child has no exit code: report it as a nonzero (fail-open) result.
-  if (r.exitCode === null && Date.now() - t0 >= timeout) {
+  // A killed child has no exit code (or a signal-derived one): any failure that
+  // ran the full bound was the kill, reported as a nonzero (fail-open) result.
+  if (r.exitCode !== 0 && Date.now() - t0 >= timeout) {
     return { code: -1, stdout: "", stderr: `git ${args[0] ?? ""} ${PROBE_TIMED_OUT} after ${timeout}ms${stderr ? `: ${stderr}` : ""}` };
   }
   return { code: r.exitCode ?? -1, stdout: r.stdout.toString(), stderr };
