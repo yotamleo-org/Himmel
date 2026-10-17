@@ -54,7 +54,7 @@ while [ "$#" -gt 0 ]; do
         *) [ -z "$MSG" ] || usage; MSG="$1"; shift ;;
     esac
 done
-[ -n "$DOC" ] && [ -n "$FLEET" ] && [ -n "$MSG" ] || usage
+if [ -z "$DOC" ] || [ -z "$FLEET" ] || [ -z "$MSG" ]; then usage; fi
 
 if [ "$MSG" = "-" ]; then body="$(cat)"; else body="$(cat "$MSG")" || usage; fi
 line="$(printf '%s\n' "$body" | grep -m1 -E '[^[:space:]]')" || line=""
