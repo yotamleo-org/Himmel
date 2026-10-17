@@ -212,6 +212,7 @@ make_claude_stub() {   # <path> <exit-code> [call-log]
 run_update() {   # <clone> <fake-home> <claude-stub> [args...]
     local clone="$1" fh="$2" stub="$3"; shift 3
     mkdir -p "$fh"
+    unset CLAUDE_CONFIG_DIR
     USERPROFILE='' HOME="$fh" \
     HIMMEL_UPDATE_CLAUDE_BIN="$stub" \
     HERMES_HOME="$TMP/no-hermes" \
@@ -776,6 +777,11 @@ assert_contains "held guard: status row is skipped with count + versions" "graph
 assert_contains "held guard: status row names the clearing command" "pin NOT advanced; clear: bash scripts/himmel-update.sh --graphify-only" "$OUT"
 OUT="$(PATH="$HELD_BIN:$NO_UV_BIN" GRAPHIFY_MCP_HOLDERS=2 UV_TOOL_DIR="$TMP/held-tools" run_update "$CLONE15" "$FH15H" "$STUB15" --graphify-only)"
 assert_contains "held guard: second run reads 2 consecutive" "graphify  *skipped  *2 consecutive skip(s)" "$OUT"
+
+# An exported CLAUDE_CONFIG_DIR (the lane wrappers set it) must not receive the skip counter.
+LEAK15="$TMP/leak15"; mkdir -p "$LEAK15"
+OUT="$(CLAUDE_CONFIG_DIR="$LEAK15" PATH="$HELD_BIN:$NO_UV_BIN" GRAPHIFY_MCP_HOLDERS=2 UV_TOOL_DIR="$TMP/held-tools" run_update "$CLONE15" "$TMP/home15i" "$STUB15" --graphify-only)"
+assert_eq "held guard: exported CLAUDE_CONFIG_DIR is not written to" "0" "$(find "$LEAK15" -type f | wc -l | tr -d ' ')"
 
 echo ""
 echo "$pass passed, $fail failed"
