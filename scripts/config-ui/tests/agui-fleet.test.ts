@@ -199,6 +199,14 @@ test("a wrap line quoted above ## Results never retires a console whose lock is 
   expect(row).toMatchObject({ lock: "held", live: true, state: "running" });
 });
 
+test("a wrap line quoted above ## Results with the lock free is not an own wrap", async () => {
+  const s = boot();
+  const file = join(s.dir, "handover", "yotam", "himmel", `${FLEET.console.name}.md`);
+  writeFileSync(file, "# console\n- 08:00 WRAPPED — predecessor handoff\n## Results\n- 09:00 LIVE — lock `fixture-lock`\n");
+  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
+  expect(row).toMatchObject({ lock: "released", live: false, state: "unknown" });
+});
+
 test("an own wrap line with the lock still held leaves the console live", async () => {
   const s = boot();
   const root = join(s.dir, "handover");
