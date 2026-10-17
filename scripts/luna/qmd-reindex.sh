@@ -119,8 +119,9 @@
 #      refresh stamp is written; only the orphaned chunks remain
 #  10  EGRESS REFUSED — a remote (openai:) model is configured and the egress
 #      gate (scripts/qmd/qmd-jina-gate.mjs) denies a collection the config or
-#      the index database holds, or no provider key was found in the daemon
-#      env file (absent, empty, or readable by others); nothing was run
+#      the index database holds, or an OpenRouter config has no provider key
+#      in the daemon env file (absent or empty), or that file is readable by
+#      others; nothing was run
 #   9  BUSY — another embed process holds the lock after one retry;
 #      completeness is not verified and no refresh stamp is written
 set -euo pipefail
