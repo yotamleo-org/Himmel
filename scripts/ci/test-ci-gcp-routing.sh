@@ -2,7 +2,7 @@
 # scripts/ci/test-ci-gcp-routing.sh -- regression suite: the shell-unit-shard
 # runs-on expression in ci.yml resolves to the ephemeral GCP runner
 # [self-hosted, gcp] only when repo variable CI_GCP is 'on' AND the event is a
-# push or a same-repo pull_request. The repo is public: a fork PR must never
+# workflow_dispatch or a same-repo pull_request. The repo is public: a fork PR must never
 # reach a self-hosted runner, and the switch off must always fall back to the
 # GitHub-hosted matrix.os, so an empty pool can never wedge CI.
 #
@@ -58,7 +58,7 @@ chk() { # <label> <want> <event> <head> <ci_gcp> <vm>
 if [ -n "$runs_on" ] && [ "$(wc -l <<< "$runs_on")" -eq 1 ]; then ok "shell-unit-shard has exactly one runs-on"; else bad "runs-on missing or repeated"; fi
 
 chk "same-repo PR, CI_GCP on -> gcp"          "$GCP"    pull_request yotamleo/Himmel on  ""
-chk "push, CI_GCP on -> gcp"                  "$GCP"    push         ""              on  ""
+chk "push (no such trigger), CI_GCP on -> hosted" "$HOSTED" push     ""              on  ""
 chk "fork PR, CI_GCP on -> hosted"            "$HOSTED" pull_request someone/Himmel  on  ""
 chk "same-repo PR, CI_GCP off -> hosted"      "$HOSTED" pull_request yotamleo/Himmel off ""
 chk "same-repo PR, CI_GCP unset -> hosted"    "$HOSTED" pull_request yotamleo/Himmel ""  ""
