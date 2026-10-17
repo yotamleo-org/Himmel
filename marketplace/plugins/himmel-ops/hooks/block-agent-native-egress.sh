@@ -311,9 +311,11 @@ for tok in $payload_text; do
         esac
         k=$((k + 1))
     done
-    case "$tok" in
-        ?*/) deny "a path token ends in more than $strip_cap trailing slashes or dots; cannot inspect it" ;;
-    esac
+    if [ "$k" -ge "$strip_cap" ]; then
+        case "$tok" in
+            ?*/|*\"|*\'|*\`|*\)|*\>|*\]|*,|*.|*\;|*:) deny "a path token has more than $strip_cap trailing strippable characters; cannot inspect it" ;;
+        esac
+    fi
     [ -n "$tok" ] || continue
     if [ "$bare" = 1 ]; then
         case "$tok" in */*) ;; *) [ -L "$cwd/$tok" ] || continue ;; esac

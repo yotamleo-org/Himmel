@@ -275,6 +275,10 @@ expect 2 "bare leaf symlink token with a doubled trailing slash -> denied" \
     "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md//")"
 expect 2 "bare leaf symlink token with more trailing slashes than the strip cap -> denied" \
     "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md//////////////")"
+expect 2 "bare leaf symlink token with a long /./ run -> denied" \
+    "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md/./././././.")"
+expect 2 "leaf symlink token with /. then more slashes than the strip cap -> denied" \
+    "$(payload "$TOOL" "$HIMMEL" "summarise public/alias.md/.////////")"
 expect 2 "bare leaf symlink token with a trailing /./ -> denied" \
     "$(payload "$TOOL" "$HIMMEL/public" "summarise alias.md/./")"
 expect 2 "leaf symlink token with a trailing /. -> denied" \
