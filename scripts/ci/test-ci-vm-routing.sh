@@ -47,9 +47,9 @@ need "the kill switch on" "vars.HIMMEL_VM_RUNNER == 'on'"
 # 2b. The conditions are mandatory conjunctions, not just present: pin the whole
 #     expression, so turning one `&&` into `||` (a route open to any fork PR or
 #     any author) fails here. A deliberate routing change edits this line too.
-want_expr="\${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.event.pull_request.user.login) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.actor) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.triggering_actor) && vars.HIMMEL_VM_RUNNER == 'on') && fromJSON('[\"self-hosted\",\"himmel-vm\"]') || matrix.os }}"
+want_expr="\${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.event.pull_request.user.login) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.actor) && contains(fromJSON('[\"yotamleo\",\"yotamleo11-test\"]'), github.triggering_actor) && vars.HIMMEL_VM_RUNNER == 'on') && fromJSON('[\"self-hosted\",\"himmel-vm\"]') || (vars.CI_GCP == 'on' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))) && fromJSON('[\"self-hosted\",\"gcp\"]') || matrix.os }}"
 if [ "$runs_on" = "$want_expr" ]; then ok "the routing expression is exactly the reviewed all-conditions-and form"; else bad "runs-on differs from the reviewed expression: $runs_on"; fi
-if [ "$(grep -o '||' <<< "$runs_on" | wc -l)" -eq 1 ]; then ok "the only || is the matrix.os fallback"; else bad "runs-on carries an extra ||: $runs_on"; fi
+if [ "$(grep -o '||' <<< "$runs_on" | wc -l)" -eq 4 ]; then ok "the || are the gcp fallback, the gcp event list (2) and the matrix.os fallback"; else bad "runs-on carries an unreviewed ||: $runs_on"; fi
 
 # 3. The operator list matches the runner-side hook's, so the two cannot drift.
 for who in yotamleo yotamleo11-test; do
