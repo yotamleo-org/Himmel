@@ -211,12 +211,10 @@ async function main() {
     case 'send': await send(root, name, extra, values); return;
     case 'wait': await wait(root, values.timeout); return;
     case 'gc': await gc(root); return;
-    case 'unread': {
-      // Read-only: the cursor is never committed. A halted log counts as 0 (nothing to wake for).
-      const { records, notice } = await store.read(root, need(name));
-      console.log(notice ? 0 : records.length);
+    case 'unread':
+      // Read-only presence flag: store.read would persist a halt and swallow its notice, so use pending.
+      console.log((await store.pending(root, need(name))) ? 1 : 0);
       return;
-    }
     case 'adopt': case 'peers': {
       // Both act as the calling session: a descendant of a bound claude.
       const me = await identity.resolveIdentity(root);

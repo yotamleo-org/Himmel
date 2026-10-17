@@ -65,7 +65,7 @@ else fail "inbox wake: $(cat "$QLOG")"; fi
 # A consumed inbox line (cursor at EOF) wakes nothing.
 wc -c < "$HANDOVER_DIR/inbox/legX.md" | tr -d ' \n' > "$HANDOVER_DIR/inbox/.cursor/legX"
 BUS_N=0 run 4 0
-[ ! -s "$QLOG" ] && pass "a consumed inbox line sends nothing" || fail "consumed inbox woke"
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a consumed inbox line sends nothing" || fail "consumed inbox woke"
 
 # Exit when the konsole session is gone (fail-safe: no endless loop).
 cat > "$tmp/qdbus-dead" <<'EOF'
@@ -73,7 +73,7 @@ cat > "$tmp/qdbus-dead" <<'EOF'
 exit 1
 EOF
 chmod +x "$tmp/qdbus-dead"
-BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-dead" BUS_WAKER_BUS="$tmp/bus" timeout 20 bash "$WAKER" --name legX --service s --session /S --poll 0.2 --grace 0 --rewake 0 >/dev/null 2>&1
+BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-dead" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name legX --service s --session /S --poll 0.2 --grace 0 --rewake 0 --max-polls 50 >/dev/null 2>&1
 rc=$?
 [ "$rc" -eq 1 ] && pass "a dead session ends the waker with rc=1" || fail "dead session: expected rc=1, got rc=$rc"
 
@@ -85,8 +85,21 @@ bash "$WAKER" --name legX --service s --session /S --poll abc >/dev/null 2>&1
 rc=$?
 [ "$rc" -eq 64 ] && pass "a non-numeric --poll is refused (rc=64)" || fail "bad --poll: expected rc=64, got rc=$rc"
 
+bash "$WAKER" --name legX --service s --session /S --poll 0 >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 64 ] && pass "--poll 0 is refused (rc=64)" || fail "--poll 0: expected rc=64, got rc=$rc"
+
+bash "$WAKER" --name legX --service s --session /S --max-polls 0.5 >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 64 ] && pass "a fractional --max-polls is refused (rc=64)" || fail "--max-polls 0.5: expected rc=64, got rc=$rc"
+
+printf '08' > "$HANDOVER_DIR/inbox/.cursor/legX"
+printf 'aaaaaaa\nbbb\n' > "$HANDOVER_DIR/inbox/legX.md"
+BUS_N=0 run 8 0.5
+grep -qF 'You have 1 unread himmel messages' "$QLOG" && pass "a zero-padded cursor still counts bytes in decimal" || fail "08 cursor: $(cat "$QLOG")"
+
 echo "== succession doc =="
-if grep -q 'bus adopt' "$REPO/docs/handover/leg-sections/succession.md"; then pass "succession.md tells the leg to run bus adopt"; else fail "succession.md has no bus adopt step"; fi
+if grep -q 'run `bus adopt <new console>` as the leg' "$REPO/docs/handover/leg-sections/succession.md" && grep -q 'no edge to' "$REPO/docs/handover/leg-sections/succession.md"; then pass "succession.md tells the leg to run bus adopt and why"; else fail "succession.md lacks the bus adopt instruction"; fi
 
 echo "bus-idle-waker: $failures failure(s)"
 exit "$failures"

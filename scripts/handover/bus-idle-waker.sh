@@ -41,8 +41,10 @@ done
 [ -n "$NAME" ] && [ -n "$SERVICE" ] && [ -n "$SESSION" ] || { echo "bus-idle-waker: --name, --service and --session are required" >&2; exit 64; }
 case "$NAME" in *[!A-Za-z0-9._-]*|'') echo "bus-idle-waker: invalid --name" >&2; exit 64 ;; esac
 for v in "$POLL" "$GRACE" "$REWAKE" "$MAX"; do
-    case "$v" in ''|*[!0-9.]*|*.*.*) echo "bus-idle-waker: --poll, --grace, --rewake and --max-polls take a number" >&2; exit 64 ;; esac
+    case "$v" in ''|*[!0-9.]*|*.*.*|.) echo "bus-idle-waker: --poll, --grace, --rewake and --max-polls take a number" >&2; exit 64 ;; esac
 done
+case "$MAX" in *.*) echo "bus-idle-waker: --max-polls takes an integer" >&2; exit 64 ;; esac
+[ "$(awk -v p="$POLL" 'BEGIN{print (p > 0)}')" = 1 ] || { echo "bus-idle-waker: --poll must be above 0" >&2; exit 64; }
 
 num() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }
 
@@ -56,7 +58,7 @@ unread() { # prints the unread total, or nothing when a count is unreadable
         off="$(cat "$root/inbox/.cursor/$NAME" 2>/dev/null)" # swallow-ok: no cursor yet = offset 0 (num below)
         num "$off" || off=0
         size="$(wc -c < "$root/inbox/$NAME.md" | tr -d ' ')"
-        [ "$size" -gt "$off" ] && i="$(tail -c +"$((off + 1))" "$root/inbox/$NAME.md" | wc -l | tr -d ' ')"
+        [ "$size" -gt "$((10#$off))" ] && i="$(tail -c +"$((10#$off + 1))" "$root/inbox/$NAME.md" | wc -l | tr -d ' ')"
     fi
     echo $((b + i))
 }
