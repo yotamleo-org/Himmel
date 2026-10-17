@@ -459,9 +459,12 @@ if [ ! -s "$H/gate.log" ]; then pass "the gate shim was never called"; else fail
 
 new_home 52
 make_index "$(IDX)" 768 "$GEMMA"
-printf '%s\n' "$LOCAL_CFG" >"$(CFG)"; chmod 000 "$(CFG)"
-rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
-chmod 600 "$(CFG)"
+printf '%s\n' "$LOCAL_CFG" >"$(CFG)"
+# A failing cp shim, not chmod: file modes do not stop root from reading the config.
+printf '#!/usr/bin/env bash\nexit 1\n' >"$GSTUBS/cp"
+chmod +x "$GSTUBS/cp"
+rc=0; out=$(grun bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+rm -f "$GSTUBS/cp"
 assert_rc "reembed aborts when the config copy fails" 2 "$rc"
 assert_contains "the abort names the config copy" "could not copy the qmd config" "$out"
 assert_rc "the live config is untouched by the failed copy" 0 "$([ "$(cat "$(CFG)")" = "$LOCAL_CFG" ] && echo 0 || echo 1)"
