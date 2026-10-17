@@ -51,7 +51,7 @@ case "$MAX" in *.*) echo "bus-idle-waker: --max-polls takes an integer" >&2; exi
 [ "$(awk -v p="$POLL" 'BEGIN{print (p > 0)}')" = 1 ] || { echo "bus-idle-waker: --poll must be above 0" >&2; exit 64; }
 
 num() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }
-[ -z "$PID" ] || num "$PID" || { echo "bus-idle-waker: --pid takes a process id" >&2; exit 64; }
+[ -z "$PID" ] || { num "$PID" && [ "$PID" -gt 0 ]; } || { echo "bus-idle-waker: --pid takes a process id" >&2; exit 64; }
 
 unread() { # prints the unread total, or nothing when a count is unreadable
     local b i=0 root off size

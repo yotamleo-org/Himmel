@@ -119,6 +119,9 @@ rc=$?
 if [ "$rc" -eq 0 ] && grep -qxF "bus-idle-waker: konsole pid $dead gone, stopping: legX" "$tmp/pid-err"; then
   pass "--pid: a gone konsole ends the waker with rc=0"
 else fail "--pid gone: expected rc=0 and the stop line, got rc=$rc: $(cat "$tmp/pid-err")"; fi
+bash "$WAKER" --name legX --service s --session /S --pid 0 >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 64 ] && pass "--pid 0 is refused (rc=64): kill -0 0 would probe the process group" || fail "--pid 0: expected rc=64, got rc=$rc"
 BUS_N=2 run 3 0 --pid "$$"
 [ "$RUN_RC" -eq 0 ] && grep -qF 'unread himmel messages: read them now.' "$QLOG" && pass "--pid: a live konsole still gets the wake" || fail "--pid live: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 
