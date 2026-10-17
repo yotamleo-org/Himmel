@@ -75,15 +75,13 @@ else
 fi
 env_atime_before="$(atime_of "$FAKE_HOME/.env")"
 
-timeout -k 30 "$TIMEOUT_S" env HOME="$FAKE_HOME" USERPROFILE="$FAKE_HOME" bash "$RUNNER" "$@" 2>&1 | tee "$LOG" | sed -u "s/$TOKEN/<honeytoken>/g"
-ps=("${PIPESTATUS[@]}")
-rc="${ps[0]}"
+# Output goes to a file, not a pipe: an orphaned suite child holding a pipe open would
+# keep the step alive past the timeout. The redacted log is printed after the run.
+timeout -k 30 "$TIMEOUT_S" env HOME="$FAKE_HOME" USERPROFILE="$FAKE_HOME" bash "$RUNNER" "$@" > "$LOG" 2>&1
+rc=$?
+sed "s/$TOKEN/<honeytoken>/g" "$LOG"
 
 fail=0
-if [ "${ps[1]}" -ne 0 ] || [ "${ps[2]}" -ne 0 ]; then
-  fail=1
-  echo "home-canary: FAIL log capture or redaction broke (tee rc=${ps[1]}, sed rc=${ps[2]})" >&2
-fi
 if grep -qF "$TOKEN" "$LOG"; then
   fail=1
   echo "home-canary: FAIL honeytoken reached the runner output (a suite printed the sandbox .env); lines:" >&2

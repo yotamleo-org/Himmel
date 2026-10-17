@@ -198,7 +198,7 @@ jobs:
   # no plan group. No secrets; the checkout does not persist the token.
   home-canary:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # estimate: impacted suites ~3-10m, canary bound 1500s; confirm p95 after first runs
+    timeout-minutes: 40 # estimate: impacted suites ~3-10m, canary bound 1500s (25m) plus the log print; confirm p95 after first runs
     steps:
       - uses: actions/checkout@v7
         with:
