@@ -4044,7 +4044,7 @@ check_c66_hermes_cron_hooks() {
         emit INFO C66-hermes-cron-hooks "no external cron worker entrypoint in $f — cron jobs run in-process in the gateway, not checked"
         return
     fi
-    if printf '%s\n' "$body" | grep -qE 'register_from_config|_register_config_hooks'; then
+    if grep -qE 'register_from_config|_register_config_hooks' <<< "$body"; then
         emit OK C66-hermes-cron-hooks "hermes external cron worker registers the profile's config hooks"
     else
         emit FAIL C66-hermes-cron-hooks "hermes external cron worker at $f never registers the profile's config hooks — scheduled jobs run with no pre_tool_call guard" \

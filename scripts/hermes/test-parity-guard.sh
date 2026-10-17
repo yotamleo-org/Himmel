@@ -1160,7 +1160,8 @@ echo "== wire_parity_guard: ensure makes the parity_guard entry fail closed =="
 # that crashes or cannot start would let the call through.
 printf 'hooks:\n  pre_tool_call:\n  - matcher: .*\n    command: /x/agent-hooks/parity_guard.py\n    fail_closed: false\n  - matcher: .*\n    command: /x/other-hook.sh\n    fail_closed: false\n' > "$cfg"
 "$PY" "$WIRE" ensure "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
-if [ "$(grep -c -xF "    fail_closed: true" "$cfg")" = 1 ] && grep -A1 -F "other-hook.sh" "$cfg" | grep -qF "fail_closed: false"; then
+other="$(grep -A1 -F "other-hook.sh" "$cfg" || true)"
+if [ "$(grep -c -xF "    fail_closed: true" "$cfg")" = 1 ] && grep -qF "fail_closed: false" <<< "$other"; then
   echo "  ok: an explicit fail_closed: false on parity_guard is flipped, another hook kept"; else
   echo "  FAIL: ensure did not make only the parity_guard entry fail closed" >&2; fails=$((fails + 1)); fi
 printf 'hooks:\n  pre_tool_call:\n  - command: /x/agent-hooks/parity_guard.py' > "$cfg"
