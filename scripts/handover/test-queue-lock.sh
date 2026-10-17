@@ -2244,6 +2244,7 @@ mkdir -p "$X_ROOT/.locks/queue/HIMMEL-2409-test__fresh.lock"
 x_hb="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 printf '{"session":"x-fresh","host":"h","handover":"f.md","started":"%s","heartbeat":"%s"}\n' \
     "$x_hb" "$x_hb" > "$X_ROOT/.locks/queue/HIMMEL-2409-test__fresh.lock/owner.json"
+# intentional: handover_root_ensure, not handover_root, mirrors T37 and exercises the resolver path the zero-operand status --sweep command itself uses; the root already existing does not make the two interchangeable
 x_resolved=$(HANDOVER_DIR="$X_ROOT" bash -c '. "$1"; handover_root_ensure' _ "$SCRIPT_DIR/../lib/handover-path.sh")
 if [ "$x_resolved" = "$X_ROOT" ]; then
     pass "T70: fixture root actually resolves as the handover root (not real state)"
