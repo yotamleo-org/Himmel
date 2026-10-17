@@ -2469,6 +2469,9 @@ assert_deny "6015 control: a real env prefix still denies" "$(j "${SW_VAR}=0 bas
 assert_deny "6015 control: unset before the chokepoint still denies" "$(j "unset HIMMEL_REPO; bash $MERGE_ON_GREEN")"
 assert_deny "6015 control: git submodule foreach running it still denies" "$(j "git submodule foreach '${SW_VAR}=0 bash $STOP_WORKER'")"
 assert_deny "6015 control: an unquoted heredoc substitution still denies" "$(j "cat <<EOF"$'\n'"\$(${SW_VAR}=0 bash $STOP_WORKER)"$'\n'"EOF")"
+assert_deny "6015 control: printf %n assigns a variable, so no relief" "$(j "printf '%n' PATH; grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
+assert_deny "6015 control: printf %5n assigns a variable too" "$(j "printf -- '%5n' PATH; grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
+assert_allow "6015 printf with no %n conversion keeps the relief" "$(j "printf '%s\n' x; grep -n 'unset HIMMEL_REPO' $MERGE_ON_GREEN")"
 
 CASES=$((CASES + 1))
 if grep -q "block-chokepoint-env-prefix.sh" "$REPO_ROOT/.claude/settings.json" 2>/dev/null; then
