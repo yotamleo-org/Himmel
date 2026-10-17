@@ -234,7 +234,7 @@ scrub_endpoint() {
 # caller must fail closed rather than persist an endpoint that could not be
 # pinned to an absolute location.
 canonicalize_endpoint() {
-    local ep="$1" abs before_colon
+    local ep="$1" before_colon
     case "$ep" in
         *://*|/*) printf '%s\n' "$ep"; return 0 ;;
     esac
@@ -247,31 +247,37 @@ canonicalize_endpoint() {
             esac
             ;;
     esac
-    # Resolve in git's own order: the path itself (a directory, or a gitfile
-    # whose first line "gitdir: <path>" names a directory relative to the
-    # gitfile's own directory), and only then the path with a .git suffix.
-    if abs=$(cd "$ep" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a failed cd falls through to the next git resolution rule, then fails closed
+    # Resolve in git's own order: the path itself, then the path with a .git
+    # suffix; each is a directory or a gitfile (see follow_gitpath).
+    follow_gitpath "$ep" && return 0
+    follow_gitpath "$ep.git" && return 0
+    return 1
+}
+
+# One candidate path, resolved the way git does: a directory, or a regular
+# file whose first line "gitdir: <path>" names a directory (relative to the
+# gitfile's own directory). Physical (cd -P) so the printed absolute path is
+# the one git reaches through symlinks and "..". Returns 1 if neither.
+follow_gitpath() {
+    local p="$1" abs line gdir
+    if abs=$(cd -P "$p" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a failed cd falls through to the gitfile rule, then the next candidate, then fails closed
         printf '%s\n' "$abs"; return 0
     fi
-    if [ -f "$ep" ]; then
-        local line gdir
-        IFS= read -r line < "$ep" || true # swallow-ok: an unreadable file leaves line empty, which matches no gitdir: case and fails closed
+    if [ -f "$p" ]; then
+        IFS= read -r line < "$p" || true # swallow-ok: an unreadable file leaves line empty, which matches no gitdir: case and fails closed
         line="${line%$'\r'}"
         case "$line" in
             "gitdir: "?*)
                 gdir="${line#gitdir: }"
                 case "$gdir" in
                     /*) ;;
-                    *) gdir="$(dirname "$ep")/$gdir" ;;
+                    *) gdir="$(dirname "$p")/$gdir" ;;
                 esac
-                if abs=$(cd "$gdir" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a gitdir that does not resolve falls to return 1 (fail closed)
+                if abs=$(cd -P "$gdir" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a gitdir that does not resolve falls to the next candidate, then fails closed
                     printf '%s\n' "$abs"; return 0
                 fi
                 ;;
         esac
-    fi
-    if abs=$(cd "$ep.git" 2>/dev/null && pwd -P) && [ -n "$abs" ]; then # swallow-ok: a failed cd means no .git sibling, so the endpoint fails closed
-        printf '%s\n' "$abs"; return 0
     fi
     return 1
 }
