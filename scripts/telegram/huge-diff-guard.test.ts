@@ -818,6 +818,101 @@ test.skipIf(!HAS_GRAPHIFY_FIXTURE)("(REAL GIT): a branch NAME may legally carry 
   } finally { rmQuiet(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
+// ── measure the worker's diff, never infer it ──────────────
+//
+// Git only attributes a rename at >=50% similarity (and only while the
+// rename limit holds), so a >1 MiB file MOVED while most of its content
+// changes reaches the worker as a full deletion plus a full addition whatever
+// diff.renames says. The guard asks the worker-shaped `git diff` what it
+// attributes and weighs the un-attributed delete+add as ONE hazard. Files are
+// built here, never committed as blobs.
+
+const bigLines = (tag: string, n: number) => Array.from({ length: n }, (_, i) => `${tag}-line-${i}-${"x".repeat(40)}`).join("\n") + "\n";
+
+// ~1.4 MiB: lines x ~60 bytes
+const MOVE_LINES = 24_000;
+
+function makeMoveRepo(movedContent: (old: string) => string): { repo: string; git: (args: string[]) => { code: number; stdout: string; stderr: string } } {
+  const repo = mkdtempSync(join(tmpdir(), "hugediff-move-"));
+  const git = (args: string[]) => {
+    const r = Bun.spawnSync(["git", "-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: repo, stdout: "pipe", stderr: "pipe" });
+    return { code: r.exitCode ?? -1, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+  };
+  git(["init", "-b", "main"]);
+  const old = bigLines("old", MOVE_LINES);
+  writeFileSync(join(repo, "big-old.txt"), old);
+  git(["add", "."]);
+  git(["commit", "-m", "seed"]);
+  git(["checkout", "-b", "feat/move"]);
+  git(["rm", "-q", "big-old.txt"]);
+  writeFileSync(join(repo, "big-new.txt"), movedContent(old));
+  return { repo, git };
+}
+
+// keeps the first ~20% of the lines, rewrites the rest: similarity well under 50%
+const mostlyRewritten = (old: string) => {
+  const lines = old.split("\n");
+  const keep = Math.floor(lines.length * 0.2);
+  return lines.map((l, i) => (i < keep ? l : l.replace(/^old/, "new"))).join("\n");
+};
+
+for (const renames of ["true", "false"]) {
+  test(`(REAL GIT): a >1 MiB file moved below 50% similarity is NOTICED under diff.renames=${renames}`, () => {
+    const { repo, git } = makeMoveRepo(mostlyRewritten);
+    try {
+      git(["add", "."]);
+      git(["commit", "-m", "move + rewrite"]);
+      git(["config", "diff.renames", renames]);
+      // premise: git itself does NOT attribute this move, so the worker eats both blobs
+      expect(git(["diff", "--name-status", "main...feat/move"]).stdout).not.toMatch(/^R/m);
+      const res = checkHugeDiff("spawn-claudex", { cwd: repo, branch: "feat/move" });
+      expect(res.note).toBeDefined();
+      expect(res.note).toContain("big-old.txt -> big-new.txt");
+    } finally { rmQuiet(repo); }
+  }, GIT_TEST_TIMEOUT_MS);
+}
+
+test("(REAL GIT): rename-limit exhaustion leaves the move un-attributed and the guard NOTICES it", () => {
+  // ~95% similar, so only the exhaustive pass could pair it; limit 1 with two
+  // creates skips that pass and the worker's diff is a full delete plus add.
+  const { repo, git } = makeMoveRepo((old) => old.replace(/^old-line-1\d{3}-/gm, "chg-line-"));
+  try {
+    writeFileSync(join(repo, "extra.txt"), "one more new file\n");
+    git(["add", "."]);
+    git(["commit", "-m", "move with a tweak + extra file"]);
+    git(["config", "diff.renames", "true"]);
+    git(["config", "diff.renameLimit", "1"]);
+    expect(git(["diff", "--name-status", "main...feat/move"]).stdout).not.toMatch(/^R/m);
+    const res = checkHugeDiff("spawn-glm", { cwd: repo, branch: "feat/move" });
+    expect(res.note).toBeDefined();
+    expect(res.note).toContain("big-old.txt -> big-new.txt");
+  } finally { rmQuiet(repo); }
+}, GIT_TEST_TIMEOUT_MS);
+
+test("(REAL GIT): a clean 100% rename the worker's diff attributes stays SILENT", () => {
+  const { repo, git } = makeMoveRepo((old) => old);
+  try {
+    git(["add", "."]);
+    git(["commit", "-m", "pure move"]);
+    git(["config", "diff.renames", "true"]);
+    expect(git(["diff", "--name-status", "main...feat/move"]).stdout).toMatch(/^R100/m);
+    expect(checkHugeDiff("spawn-claudex", { cwd: repo, branch: "feat/move" })).toEqual({});
+  } finally { rmQuiet(repo); }
+}, GIT_TEST_TIMEOUT_MS);
+
+test("(REAL GIT): a normal small diff stays SILENT and a git error stays fail-open", () => {
+  const { repo, git } = makeMoveRepo((old) => old);
+  try {
+    git(["reset", "-q", "--hard", "main"]); // drop the move: only a tiny file differs from main
+    rmQuiet(join(repo, "big-new.txt"));
+    writeFileSync(join(repo, "small.txt"), "tiny\n");
+    git(["add", "."]);
+    git(["commit", "-m", "small"]);
+    expect(checkHugeDiff("spawn-glm", { cwd: repo, branch: "feat/move", base: "main" })).toEqual({});
+    expect(checkHugeDiff("spawn-glm", { cwd: repo, branch: "no-such-branch" })).toEqual({});
+  } finally { rmQuiet(repo); }
+}, GIT_TEST_TIMEOUT_MS);
+
 // ── shared-seam pin ───────────────────────────────────────────────────────────
 
 test("the predicate lives ONCE, in the shared module — both spawners import it, neither re-defines it (copy-paste drift: PR #1680, #1691)", () => {
