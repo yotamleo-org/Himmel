@@ -61,5 +61,16 @@ case "$msg" in *"reg-read"*UNKNOWN*) pass "require_ok names label and UNKNOWN on
 msg="$(require_ok "reg-read" true 2>&1)"
 check "require_ok ok is silent" "$msg" ""
 
+# CI has no glob for scripts/lib/*.test.mjs, so this suite carries the node twin.
+if command -v node >/dev/null 2>&1; then
+    if node_out="$(node --test "$SELF_DIR/result.test.mjs" 2>&1)"; then
+        pass "node twin: result.test.mjs passes"
+    else
+        fail "node twin: result.test.mjs:"; printf '%s\n' "$node_out" | sed 's/^/    /'
+    fi
+else
+    fail "node not found, the node twin went unchecked"
+fi
+
 echo "test-result: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
