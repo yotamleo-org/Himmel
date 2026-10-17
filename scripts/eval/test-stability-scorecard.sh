@@ -75,6 +75,8 @@ HANDOVER_DIR="" USER_SLUG=tester bash "$tool" arm >/dev/null 2>&1; rc=$?
 check "arm refuses an empty HANDOVER_DIR" "$rc" 1
 HANDOVER_DIR="$td/ho" USER_SLUG="" USER="" bash "$tool" arm >/dev/null 2>&1; rc=$?
 check "arm refuses an empty USER_SLUG" "$rc" 1
+env -u USER_SLUG HANDOVER_DIR="$td/ho" USER=someone bash "$tool" arm >/dev/null 2>&1; rc=$?
+check "arm refuses an unset USER_SLUG even when USER is set" "$rc" 1
 check "refused arm leaves the crontab alone" "$(wc -l <"$td/tab" | tr -d ' ')" 3
 [ ! -f "$td/runner/stability-scorecard.sh" ] && ok "refused arm writes no runner" || bad "refused arm writes no runner"
 
