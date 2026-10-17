@@ -560,15 +560,12 @@ REG_MATCH=$(REG="$REGISTRY_FILE" HROOT="$HIMMEL_ROOT_FOR_BUCKET" node -e '
     // an MSYS artifact; on Linux a real top-level `/c/` directory must stay a
     // path, not become a drive letter.
     //
-    // KNOWN LIMIT: process.platform is a proxy for FS case-sensitivity, not a
-    // measurement of it. A default APFS/HFS+ macOS volume IS case-insensitive
-    // (and a macOS volume can be formatted case-sensitive, and a Linux box can
-    // mount a case-insensitive one), so a registry path differing only in case
-    // is rejected there rather than matched. Refusing is the fail-closed
-    // direction -- the run exits 2 with the state untouched and no report is
-    // misfiled -- and folding case unconditionally is what caused the bug this
-    // gate replaced. Doing it properly means comparing the two paths by
-    // identity (stat dev+ino) rather than by string; not done yet.
+    // process.platform is only a proxy for FS case-sensitivity (a default
+    // macOS volume is case-insensitive, a Linux box can mount one), so the
+    // string compare below is the fast path and a miss falls back to an
+    // IDENTITY compare: stat both paths and accept when dev AND ino agree.
+    // That matches a case-differing or symlinked entry on a case-insensitive
+    // volume and never matches two different checkouts on a case-sensitive one.
     const isWin = process.platform === "win32";
     function norm(p) {
         if (!p) return "";
@@ -581,6 +578,13 @@ REG_MATCH=$(REG="$REGISTRY_FILE" HROOT="$HIMMEL_ROOT_FOR_BUCKET" node -e '
         return s;
     }
     const target = norm(e.HROOT);
+    // A path that does not exist here (or any stat error) means "not this
+    // entry", never a fatal error.
+    function ident(p) {
+        try { const st = fs.statSync(p); return st.dev + ":" + st.ino; }
+        catch (err) { return null; }
+    }
+    const targetId = ident(e.HROOT);
     const repos = (j && j.repos) || {};
     for (const k of Object.keys(repos)) {
         const entry = repos[k];
@@ -602,7 +606,7 @@ REG_MATCH=$(REG="$REGISTRY_FILE" HROOT="$HIMMEL_ROOT_FOR_BUCKET" node -e '
             process.exit(2);
         }
         const p = norm(entry.path);
-        if (p && p === target) {
+        if (p && (p === target || (targetId && ident(entry.path) === targetId))) {
             const bucket = entry.bucket_name || k;
             process.stdout.write((entry.user || "") + "\t" + bucket);
             process.exit(0);
