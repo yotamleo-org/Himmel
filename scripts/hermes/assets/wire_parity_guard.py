@@ -213,6 +213,11 @@ def do_add(cfg_path: str, guard: str, interp: str) -> None:
     print(f"added parity_guard hook to {cfg_path}")
 
 
+def _insignificant(line: str) -> bool:
+    """A blank or comment-only line: YAML allows either between an entry's keys."""
+    return not line.strip() or line.lstrip().startswith("#")
+
+
 def migrate_matcher(cfg_path: str) -> None:
     """Rewrite the pre-HIMMEL-2637 hand-listed matcher to MATCHER (idempotent).
 
@@ -228,8 +233,8 @@ def migrate_matcher(cfg_path: str) -> None:
             continue
         # the entry's own keys: up to the next list item or the end of the block
         j = i + 1
-        while j < len(lines) and lines[j].strip() and not lines[j].lstrip().startswith("- ") \
-                and lines[j][:1].isspace():
+        while j < len(lines) and (_insignificant(lines[j]) or (
+                not lines[j].lstrip().startswith("- ") and lines[j][:1].isspace())):
             j += 1
         if any("parity_guard.py" in body for body in lines[i + 1:j]):
             lines[i] = ln.replace(old, f"- matcher: {MATCHER}\n")
@@ -256,7 +261,10 @@ def migrate_fail_closed(cfg_path: str) -> None:
     while i < len(lines):
         ln = lines[i]
         indent = len(ln) - len(ln.lstrip())
-        if ln.strip() and not ln[:1].isspace():
+        if _insignificant(ln):
+            i += 1
+            continue
+        if not ln[:1].isspace():
             hooks, event_pre = ln.startswith("hooks:"), False
             i += 1
             continue
@@ -269,11 +277,15 @@ def migrate_fail_closed(cfg_path: str) -> None:
             i += 1
             continue
         # the entry: this list item plus its deeper-indented keys
+        # a blank or comment line inside the entry does not end it
         key_indent = indent + 2
-        j = i + 1
-        while j < len(lines) and lines[j].strip() \
-                and len(lines[j]) - len(lines[j].lstrip()) >= key_indent:
+        j = end = i + 1
+        while j < len(lines) and (_insignificant(lines[j])
+                                  or len(lines[j]) - len(lines[j].lstrip()) >= key_indent):
             j += 1
+            if not _insignificant(lines[j - 1]):
+                end = j
+        j = end
         if any("parity_guard.py" in body for body in lines[i:j]):
             fc = [k for k in range(i, j)
                   if lines[k].strip().lstrip("- ").startswith(("fail_closed:", "failClosed:"))]

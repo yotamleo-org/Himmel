@@ -1169,6 +1169,17 @@ printf 'hooks:\n  pre_tool_call:\n  - command: /x/agent-hooks/parity_guard.py' >
 if grep -qxF "  - command: /x/agent-hooks/parity_guard.py" "$cfg" && grep -qxF "    fail_closed: true" "$cfg"; then
   echo "  ok: fail_closed added after an entry with no trailing newline"; else
   echo "  FAIL: fail_closed insertion broke an entry with no trailing newline" >&2; fails=$((fails + 1)); fi
+# YAML allows blank and comment lines between an entry's keys
+printf 'hooks:\n  pre_tool_call:\n  - matcher: .*\n\n    # the guard\n    command: /x/agent-hooks/parity_guard.py\n\n    fail_closed: false\n' > "$cfg"
+"$PY" "$WIRE" ensure "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
+if [ "$(grep -c "fail_closed:" "$cfg")" = 1 ] && grep -qxF "    fail_closed: true" "$cfg"; then
+  echo "  ok: blank and comment lines inside the entry do not hide parity_guard or duplicate fail_closed"; else
+  echo "  FAIL: a blank or comment line inside the entry broke the fail_closed migration" >&2; fails=$((fails + 1)); fi
+printf 'hooks:\n  pre_tool_call:\n  - matcher: %s\n\n    command: /x/agent-hooks/parity_guard.py\n' "$OLD_MATCHER" > "$cfg"
+"$PY" "$WIRE" ensure "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
+if grep -qxF "  - matcher: .*" "$cfg" && grep -qxF "    fail_closed: true" "$cfg"; then
+  echo "  ok: a blank line inside the entry does not hide the legacy matcher"; else
+  echo "  FAIL: a blank line inside the entry kept the legacy matcher or skipped fail_closed" >&2; fails=$((fails + 1)); fi
 
 echo ""
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED" >&2; exit 1; fi
