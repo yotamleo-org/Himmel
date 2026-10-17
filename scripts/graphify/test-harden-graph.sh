@@ -373,6 +373,11 @@ out="$(printf x | env -u GUARD_OK "$@" bash "$HERE/t_env.sh")"
 for G in "$HERE/t_for1.sh" "$HERE/t_for2.sh"; do
   bash "$G"
 done
+bash \
+  "$HERE/t_cont.sh"
+echo "<<EOF"
+echo ok # <<EOF2
+bash '$HERE/n_squote.sh'
 # bash "$HERE/n_comment.sh"
 echo "bash $HERE/n_echo.sh"
 cat <<EOF
@@ -381,7 +386,7 @@ EOF
 bash "$1"
 bash "$UNSET_DIR/x.sh"
 SH
-for f in a/t_here a/t_var b/t_root a/t_scriptdir a/t_dirname a/t_bsource scripts/t_literal a/t_subst a/t_direct a/t_exec scripts/t_tail a/t_multi a/t_env a/t_bashvar a/t_for1 a/t_for2 a/n_comment a/n_echo a/n_heredoc; do
+for f in a/t_here a/t_var b/t_root a/t_scriptdir a/t_dirname a/t_bsource scripts/t_literal a/t_subst a/t_direct a/t_exec scripts/t_tail a/t_multi a/t_env a/t_bashvar a/t_for1 a/t_for2 a/t_cont a/n_squote a/n_comment a/n_echo a/n_heredoc; do
   printf '#!/usr/bin/env bash\n' > "$C15/$f.sh"
 done
 python3 - "$D15" <<'PY'
@@ -399,7 +404,7 @@ json.dump({"directed": False, "multigraph": False, "graph": {}, "nodes": nodes, 
 PY
 out15=$( python3 "$SCRIPT" --out "$D15" --root "$C15" 2>&1 ); rc15=$?
 [ "$rc15" -eq 0 ] || fail "T15 exit 0 (got $rc15): $out15"
-echo "$out15" | grep -qF "shell-calls=12 shell-sources=4 shell-unresolved=2" \
+echo "$out15" | grep -qF "shell-calls=13 shell-sources=4 shell-unresolved=3" \
   && pass "T15 summary counts shell calls, sources and unresolved" \
   || fail "T15 summary wrong: $out15"
 if python3 - "$D15/graph.json" <<'PY'
@@ -411,7 +416,7 @@ want = {("a_caller_sh", t, r) for t, r in [
     ("a_t_scriptdir_sh", "sources"), ("a_t_dirname_sh", "sources"), ("a_t_bsource_sh", "sources"),
     ("scripts_t_literal_sh", "calls"), ("a_t_subst_sh", "calls"), ("a_t_direct_sh", "calls"),
     ("a_t_exec_sh", "calls"), ("scripts_t_tail_sh", "calls"), ("a_t_multi_sh", "sources"),
-    ("a_t_env_sh", "calls"), ("a_t_bashvar_sh", "calls"), ("a_t_for1_sh", "calls"), ("a_t_for2_sh", "calls")]}
+    ("a_t_env_sh", "calls"), ("a_t_bashvar_sh", "calls"), ("a_t_for1_sh", "calls"), ("a_t_for2_sh", "calls"), ("a_t_cont_sh", "calls")]}
 missing, extra = want - got, got - want
 for m in sorted(missing):
     print(f"  missing case: {m[1]} ({m[2]})")
@@ -420,7 +425,7 @@ for x in sorted(extra):
 sys.exit(1 if missing or extra else 0)
 PY
 then
-  pass "T15 every call form is an edge and no comment/echo/heredoc path is"
+  pass "T15 every call form is an edge and no comment/echo/heredoc/single-quoted path is"
 else
   fail "T15 shell edges wrong"
 fi

@@ -57,10 +57,33 @@ def blank_heredocs(src):
             out.append("")
             continue
         out.append(line)
-        if "<<" in line and not line.lstrip().startswith("#"):
-            for m in HEREDOC_RE.finditer(line):
+        if "<<" in line:
+            for m in HEREDOC_RE.finditer(_unquoted_code(line)):
                 pending.append((m.group(1) == "-", m.group(3)))
     return "\n".join(out)
+
+
+def _unquoted_code(line):
+    """line with quoted spans and a trailing comment removed, so a << inside
+    a string or a comment never opens a heredoc."""
+    out, i, n = [], 0, len(line)
+    while i < n:
+        c = line[i]
+        if c == "\\":
+            i += 2
+        elif c in "'\"":
+            j = line.find(c, i + 1)
+            body = line[i + 1:n if j < 0 else j]
+            i = n if j < 0 else j + 1
+            heredoc_word = "".join(out).rstrip(" \t-").endswith("<<")
+            subst = c == '"' and "$(" in body
+            out.append(c + body + c if heredoc_word else body if subst else " ")
+        elif c == "#" and (i == 0 or line[i - 1] in " \t;&|("):
+            break
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
 
 
 class _Scanner:
@@ -150,6 +173,10 @@ class _Scanner:
                 if not fd_dup and s[self.i:self.i + 1] not in ("(", "\n", ""):
                     redirect_target = True
                 continue
+            if c == "\\" and s[self.i + 1:self.i + 2] == "\n":
+                self.line += 1
+                self.i += 2
+                continue
             if cur is None:
                 cur = []
                 if not words:
@@ -207,6 +234,8 @@ class _Scanner:
         while self.i < len(s) and s[self.i] != '"':
             c = s[self.i]
             if c == "\\":
+                if s[self.i + 1:self.i + 2] == "\n":
+                    self.line += 1
                 self.i += 2
             elif c == "$" and s[self.i + 1:self.i + 2] == "(":
                 self._subst()
@@ -223,6 +252,27 @@ class _Scanner:
         return s[b:self.i]
 
 
+def _single_quoted_expansion(word):
+    """True when a $ or backtick sits inside a top-level '...' span, where the
+    shell keeps it literal."""
+    i, n, dq = 0, len(word), False
+    while i < n:
+        c = word[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == '"':
+            dq = not dq
+        elif c == "'" and not dq:
+            j = word.find("'", i + 1)
+            j = n if j < 0 else j
+            if "$" in word[i:j] or "`" in word[i:j]:
+                return True
+            i = j
+        i += 1
+    return False
+
+
 def _unquote(word):
     return word.replace('"', "").replace("'", "")
 
@@ -235,6 +285,8 @@ class _Resolver:
     def word(self, word, seen=frozenset()):
         """Set of absolute (ROOT-prefixed) paths a word can evaluate to;
         empty when it cannot be resolved."""
+        if _single_quoted_expansion(word):
+            return set()
         text = _unquote(word)
         if "$" not in text and "`" not in text:
             if not text or text.startswith("/") or text.startswith("~"):
