@@ -118,14 +118,15 @@ def arm_grep(q, repo, timeout, k):
             d, c = score.get(f, (0, 0))
             score[f] = (d + 1, c + int(n or 0))
     files = sorted(score, key=lambda f: (-score[f][0], -score[f][1], f))[:k]
-    text = []
+    text, to, err = [], False, False
     for f in files:
         argv = ["git", "-C", repo, "grep", "-n", "-I", "-i", "-F"]
         for w in kws:
             argv += ["-e", w]
-        out, _, _ = run_cmd(argv + ["--", f], timeout)
+        out, t, rc = run_cmd(argv + ["--", f], max(1, timeout - (time.time() - t0)))
+        to, err = to or t, err or (not t and rc not in (0, 1))
         text += out.splitlines()[:8]
-    return files, "\n".join(text), False, False
+    return files, "\n".join(text), to, err
 
 
 def qmd_token():
@@ -156,7 +157,9 @@ def _mcp_post(url, body, headers, timeout):
 
 
 def qmd_daemon(args, timeout):
-    """One MCP query against the daemon -> list of {file, snippet}."""
+    """One MCP query against the daemon -> list of {file, snippet}. The whole exchange shares one deadline."""
+    end = time.time() + timeout
+    left = lambda: max(0.1, end - time.time())  # noqa: E731
     url = os.environ.get("QMD_URL", "http://localhost:8181/mcp")
     h = {}
     t = qmd_token()
@@ -165,16 +168,25 @@ def qmd_daemon(args, timeout):
     init = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
             "params": {"protocolVersion": "2025-06-18", "capabilities": {},
                        "clientInfo": {"name": "retrieval-eval", "version": "1"}}}
-    _, sid = _mcp_post(url, init, h, timeout)
+    _, sid = _mcp_post(url, init, h, left())
     if sid:
         h["mcp-session-id"] = sid
     try:
-        _mcp_post(url, {"jsonrpc": "2.0", "method": "notifications/initialized"}, h, timeout)
+        _mcp_post(url, {"jsonrpc": "2.0", "method": "notifications/initialized"}, h, left())
     except Exception:
         pass
     msg, _ = _mcp_post(url, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-                             "params": {"name": "query", "arguments": args}}, h, timeout)
-    res = (msg or {}).get("result") or {}
+                             "params": {"name": "query", "arguments": args}}, h, left())
+    return mcp_rows(msg)
+
+
+def mcp_rows(msg):
+    """The rows of a tools/call reply; an error reply raises RuntimeError."""
+    if not isinstance(msg, dict) or msg.get("error"):
+        raise RuntimeError("qmd error reply: %s" % (msg or {}).get("error"))
+    res = msg.get("result") or {}
+    if res.get("isError"):
+        raise RuntimeError("qmd tool error")
     sc = res.get("structuredContent") or {}
     rows = sc.get("results") if isinstance(sc, dict) else None
     if rows is None:
@@ -331,7 +343,8 @@ def cmd_run(a):
     with open(os.path.join(a.out, "results.jsonl"), "w") as fh:
         for r in rows:
             fh.write(json.dumps(r) + "\n")
-    cols = ["arm", "n", "recall@5", "reason_carried", "reason_n", "tokens_mean", "ms_median", "ms_total", "timeouts",
+    rk = "recall@%d" % a.k
+    cols = ["arm", "n", rk,"reason_carried", "reason_n", "tokens_mean", "ms_median", "ms_total", "timeouts",
             "errors"]
     lines = ["\t".join(cols)]
     metrics, cases = {}, {}
@@ -347,7 +360,7 @@ def cmd_run(a):
         er = sum(r["error"] for r in rs)
         lines.append("\t".join([arm, str(len(rs)), "%.2f" % rec, "%.2f" % rea, str(len(rr)),
                                 "%d" % tk, "%d" % msm, "%d" % mst, str(to), str(er)]))
-        metrics.update({arm + ".recall@5": rec, arm + ".reason_carried": rea, arm + ".tokens_mean": tk,
+        metrics.update({arm + "." + rk: rec, arm + ".reason_carried": rea, arm + ".tokens_mean": tk,
                         arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er})
         for r in rs:
             cases.setdefault(r["id"], {})[arm + ".hit"] = r["hit"]

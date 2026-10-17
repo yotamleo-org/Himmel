@@ -106,6 +106,21 @@ eq "failed backend row carries error" "True" "$(py -c 'import json,sys; print(js
 # 8d. grep never returns the tracked question set.
 eq "grep skips the question set" "0" "$(grep -c 'retrieval-eval/questions' "$W/out/results.jsonl")"
 
+# 8e. an MCP error reply (JSON-RPC error or isError) raises, so the arm scores an error.
+mcp() { py -c 'import importlib.util,json,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+try:
+    m.mcp_rows(json.loads(sys.argv[2])); print("ok")
+except RuntimeError:
+    print("raised")' "$EV" "$1"; }
+eq "MCP isError result raises" "raised" "$(mcp '{"result":{"isError":true,"content":[{"type":"text","text":"boom"}]}}')"
+eq "MCP JSON-RPC error raises" "raised" "$(mcp '{"error":{"code":-32603,"message":"boom"}}')"
+eq "MCP results parse" "ok" "$(mcp '{"result":{"structuredContent":{"results":[]}}}')"
+
+# 8f. the recall column names the --k cutoff.
+py "$EV" run --repo "$R" --questions "$Q" --out "$W/out6" --arms grep --k 3 > /dev/null 2>&1
+eq "recall column follows --k" "recall@3" "$(head -1 "$W/out6/scores.tsv" | cut -f3)"
+
 # 9. usage errors.
 py "$EV" run --repo "$R" --questions "$Q" --out "$W/o9" --arms nosuch > /dev/null 2>&1
 eq "unknown arm exits 64" "64" "$?"
