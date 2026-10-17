@@ -188,6 +188,12 @@ test('two confirmed reports on one line the judge says are different defects: ca
   assert.match(calls.judge[0].prompt, /error dropped/);
 });
 
+test('review and verify agents name an explicit model', async () => {
+  const { calls } = await exec({ reviews: { correctness: [F('n.js', 1)] }, judge: () => ({ judgments: [] }) });
+  assert.ok(calls.review.length >= 2 && calls.verify.length >= 1);
+  for (const c of [...calls.review, ...calls.verify]) assert.equal(c.opts.model, 'sonnet');
+});
+
 test('a confirmed finding the judge leaves out falls to consider, not dropped', async () => {
   const { out } = await exec({
     reviews: { correctness: [F('i.js', 6, 'minor')] },

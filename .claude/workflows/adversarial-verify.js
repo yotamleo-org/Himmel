@@ -43,10 +43,10 @@ const SEVERITY_RANK = { critical: 0, important: 1, minor: 2 }
 
 const results = await pipeline(
   DIMENSIONS,
-  d => agent(d.prompt, { label: `review:${d.key}`, phase: 'Review', schema: FINDINGS }),
+  d => agent(d.prompt, { label: `review:${d.key}`, phase: 'Review', model: 'sonnet', schema: FINDINGS }),
   (review, d) => parallel((review?.findings ?? []).map(f => () =>
     agent(`Try to refute this finding with cited evidence from the file at ${f.file}:${f.line}: ${f.title}. Check whether a caller can actually reach the path: a hypothetical no caller reaches is refuted. Default to refuted=true if uncertain.`,
-      { label: `verify:${f.file}`, phase: 'Verify', schema: VERDICT })
+      { label: `verify:${f.file}`, phase: 'Verify', model: 'sonnet', schema: VERDICT })
       .then(v => ({ dim: d.key, finding: { ...f, verdict: v } }))))
 )
 const raw = results.flat().filter(Boolean)
