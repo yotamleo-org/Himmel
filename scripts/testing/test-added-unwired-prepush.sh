@@ -58,6 +58,15 @@ git -C "$R" checkout -q main
 rc=0; out=$(cd "$R" && eval "$ENTRY" 2>&1) || rc=$?
 { [ "$rc" -eq 0 ] && grep -q 'adds no files' <<<"$out"; } && ok "B4 a branch adding nothing passes" || no "B4 (rc=$rc): $out"
 
+git -C "$R" checkout -q -b feat/y main
+mkdir -p "$R/scripts/tools"
+printf '#!/usr/bin/env bash\n' > "$R/scripts/tools/othertool.sh"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: add othertool"
+git -C "$R" checkout -q main
+rc=0; out=$(cd "$R" && PRE_COMMIT_TO_REF=feat/y eval "$ENTRY" 2>&1) || rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED scripts/tools/othertool.sh' <<<"$out"; } \
+  && ok "B6 the pushed tip, not the checked-out HEAD, is judged" || no "B6 (rc=$rc): $out"
+
 R2="$T/nobase"; git init -q -b topic "$R2"; git -C "$R2" config user.email t@t; git -C "$R2" config user.name t
 git -C "$R2" commit -q --allow-empty -m "chore: x"
 rc=0; out=$(cd "$R2" && bash "$CHECK" --branch-diff 2>&1) || rc=$?

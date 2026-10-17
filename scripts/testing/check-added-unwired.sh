@@ -40,9 +40,9 @@
 # Standalone by design (no reference needed): fixtures/testdata paths, ALLOW_PATH_RE.
 #
 # Usage: check-added-unwired.sh <ref> <added-file>...   (run inside the repo)
-#        check-added-unwired.sh --branch-diff           (pre-push: HEAD vs its merge-base
-#          with origin/main, else main, else $ADDED_UNWIRED_BASE; the status-A files of
-#          that diff. No resolvable base or no added file: exit 0, nothing to judge.)
+#        check-added-unwired.sh --branch-diff           (pre-push: the pushed tip, $PRE_COMMIT_TO_REF
+#          else HEAD, vs its merge-base with $ADDED_UNWIRED_BASE, else origin/main, else
+#          main; the status-A files of that diff. No resolvable base or no added file: exit 0, nothing to judge.)
 # Exit: 0 clean, 1 unwired file(s), 2 usage / unreadable ref.
 # Platform guard (gitbash-only): POSIX bash 3.2+, no mapfile.
 set -uo pipefail
@@ -51,17 +51,18 @@ ALLOW_PATH_RE='(^|/)(fixtures|testdata|node_modules)/'
 TEST_HELPER_RE='(^|/)(tests?|[^/]*-cases)/|(^|/)testlib-[^/]*$'
 
 if [ "${1:-}" = "--branch-diff" ] && [ "$#" -eq 1 ]; then
+  bd_tip="${PRE_COMMIT_TO_REF:-HEAD}"
   bd_base=""
   for bd_cand in "${ADDED_UNWIRED_BASE:-}" origin/main main; do
-    [ -n "$bd_cand" ] && bd_base=$(git merge-base "$bd_cand" HEAD 2>/dev/null) && break
+    [ -n "$bd_cand" ] && bd_base=$(git merge-base "$bd_cand" "$bd_tip" 2>/dev/null) && break
     bd_base=""
   done
   [ -n "$bd_base" ] || { echo "ADDED-UNWIRED SKIPPED (no base to diff against)"; exit 0; }
-  bd_added=$(git diff --name-only --diff-filter=A "$bd_base" HEAD) || exit 2
+  bd_added=$(git diff --name-only --diff-filter=A "$bd_base" "$bd_tip") || exit 2
   [ -n "$bd_added" ] || { echo "ADDED-UNWIRED OK (the branch adds no files)"; exit 0; }
   bd_rc=0
   # shellcheck disable=SC2086  # word-splitting the added paths IS the point (repo paths carry no whitespace)
-  bd_out=$(bash "${BASH_SOURCE[0]}" HEAD $bd_added 2>&1) || bd_rc=$?
+  bd_out=$(bash "${BASH_SOURCE[0]}" "$bd_tip" $bd_added 2>&1) || bd_rc=$?
   [ "$bd_rc" -eq 0 ] && { printf '%s\n' "$bd_out"; exit 0; }
   echo "added but unwired (wire it, or allowlist it in the diff):"
   printf '%s\n' "$bd_out" | sed 's/^/       /'
