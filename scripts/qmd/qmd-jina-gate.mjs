@@ -124,6 +124,8 @@ let childIndent = 0;
 for (const line of text.split("\n")) {
   if (/^\s*(#.*)?$/.test(line)) continue;
   const inline = line.match(/^(collections|models):\s*([^#\s].*)$/);
+  // `models: null` (what qmd's saveConfig can write) and `models: {}` are an empty block, not a hidden one
+  if (inline && inline[1] === "models" && /^(null|\{\})\s*(#.*)?$/.test(inline[2])) { section = ""; continue; }
   if (inline) {
     unsupported.push(`"${inline[1]}:" uses a flow/inline value`);
     // an inline models value can name a remote role the line reader never sees, even through a YAML escape
@@ -135,6 +137,8 @@ for (const line of text.split("\n")) {
   if (top) { section = top[1]; childIndent = 0; continue; }
   if (/^\S/.test(line)) {
     if (/^["']\s*(collections|models)\s*["']\s*:/.test(line)) modelsUnreadable.push("quoted top-level key (text withheld)");
+    // a YAML escape can spell collections/models without the literal word, so any escaped quoted key is refused
+    else if (/^(["'])(?:(?!\1).)*\\(?:(?!\1).)*\1\s*:/.test(line)) modelsUnreadable.push("escaped quoted top-level key (text withheld)");
     section = "";
     continue;
   }
