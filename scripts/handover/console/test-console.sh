@@ -2463,6 +2463,8 @@ check "81 shorter line plus DECISIONS-DROP bullet passes" "$rc81" "0"
 mk81 dec81d2 "rename ruling 00:05; keep N2" "keep N2"; printf -- '- DECISIONS-DROP: not in Results\n' >> "$root/tester/dec81d2/DEMO-nextleg-${today}B-console.md"
 sed -i 's/^## Results$/## Other/' "$root/tester/dec81d2/DEMO-nextleg-${today}B-console.md"; run81 dec81d2
 check "81 DECISIONS-DROP bullet outside Results does not exempt" "$rc81" "1"
+mk81 dec81d3 "rename ruling 00:05; keep N2" "keep N2" "- 10:00 FINDING — DECISIONS-DROP: <reason>"; run81 dec81d3
+check "81 DECISIONS-DROP with a placeholder reason does not exempt" "$rc81" "1"
 mk81 dec81e "rename ruling 00:05" "-"; run81 dec81e
 check "81 missing line when predecessor had one refuses" "$rc81" "1"
 mk81 dec81f "rename ruling 00:05" "none"; run81 dec81f
