@@ -81,10 +81,15 @@ export function graphOf(role: FleetRow["role"], doc: string): { parent: string |
   let parent = plain(/your console is\W*`([^`]+)`/i.exec(doc)?.[1]);
   if (role === "judge" || role === "consult") parent ??= plain(/dispatched by\s*(?:>\s*)?`([^`]+)`/.exec(doc)?.[1]);
   if (role === "leg" || role === "judge" || role === "consult") {
-    for (const m of doc.matchAll(/^- (?:[\d:]+ )?(?:LIVE — )?SUCCESSION accepted: `?([^\s`]+)`? replaces/gm)) parent = plain(m[1]) ?? parent;
+    // canonical `accepted: <new> replaces <old>`, or the relay wording `accepted — relay from <old>, new console <new>`
+    for (const m of doc.matchAll(/^- (?:[\d:]+ )?(?:LIVE — )?SUCCESSION accepted(?:: `?([^\s`]+)`? replaces| — relay from \S+, new console `?([^\s`,]+))/gm)) parent = plain(m[1] ?? m[2]) ?? parent;
   }
   return { parent, predecessor: null };
 }
+
+// A console's own wrap is the line console.sh wrap writes (`WRAPPED — <text>`); `WRAPPED N2470 (#2951 → …)` in a
+// console's doc is a note about a leg, not the console wrapping.
+const ownWrap = (doc: string) => /^- (?:[\d:]+ )?WRAPPED —/m.test(doc);
 
 const WINDOW_1M = 1_000_000, WINDOW = 200_000;
 type Tally = Omit<Usage, "costEq" | "ceiling" | "ceilingFrom" | "fill">;
@@ -368,23 +373,26 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     // A wrapped leg's window is closed: its codex price must not grow with later account usage (priced only while live).
     const ids = { session: run ?? `pid ${c.pid}`, leg: name, ticket, model: backendModel };
     const graph = graphOf(role, doc);
+    // a console's state is its lock and its own wrap line; every other role's is the last bullet's marker
+    const wrapped = role === "console" ? ownWrap(doc) : c.status === "WRAPPED";
+    const status = role === "console" ? (wrapped ? "WRAPPED" : c.status === "WRAPPED" ? "" : c.status) : c.status;
     // Accepted succession in the doc overrides the original launch environment.
     const parent = role === "console" ? null : graph.parent ?? plain(launch.HIMMEL_CONSOLE_NAME) ?? edges.get(c.doc)?.console ?? null;
     return {
       run, pid: Number(c.pid), name, role, model: c.model || null,
       ticket, pr: role === "leg" ? prOf(doc) : null,
-      state: stateOf(c.status, rec.status === "busy"),
+      state: stateOf(status, rec.status === "busy"),
       activity: tools[0] && t0 !== undefined ? { tool: tools[0].name, summary: opts.redact(summarize(tools[0].args)).slice(0, 120), at: t0 + tools[0].start } : null,
       lastEventAt: view && t0 !== undefined ? t0 + view.elapsed : null,
       subagents: { total: subs.length, running: view ? subs.filter((id) => agentState(view!, id) === "running").length : 0 },
       failures: view?.failures.length ?? 0,
-      ...graph, parent, console: role === "console" ? name : parent, live: c.status !== "WRAPPED", lock: role === "console" ? await lockOf(c.doc, doc, c.status === "WRAPPED") : "unknown",
-      lane, laneFrom, backendModel, marker: c.status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS,
+      ...graph, parent, console: role === "console" ? name : parent, live: !wrapped, lock: role === "console" ? await lockOf(c.doc, doc, wrapped) : "unknown",
+      lane, laneFrom, backendModel, marker: status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS,
       agents: subs.map((id) => ({ name: opts.redact(view!.agents[id]?.name ?? id).slice(0, 80), role: view!.agents[id]?.role ?? "subagent", state: agentState(view!, id) })),
       usage: finish(tally, { autocompact: c.autocompact ?? "", model: c.model, window: launch.CLAUDE_CODE_MAX_CONTEXT_TOKENS, priced: lane === "native" }), cloud: null,
-      cost: tally ? costRowOf({ ...ids, lane, tally, codexStart: codexStartOf(launch), codexNow: lane === "claudex" && c.status !== "WRAPPED" ? codex : null }) : null,
+      cost: tally ? costRowOf({ ...ids, lane, tally, codexStart: codexStartOf(launch), codexNow: lane === "claudex" && !wrapped ? codex : null }) : null,
       eval: role === "leg" || role === "judge" ? evalRowOf({ ...ids, lane, rounds, view, doc }) : null,
-      runtime: runtimeOf(rec.startedAt ?? c.startedAt, edges.get(c.doc)?.at ?? t0, doc, c.status === "WRAPPED", opts.now, docAt),
+      runtime: runtimeOf(rec.startedAt ?? c.startedAt, edges.get(c.doc)?.at ?? t0, doc, wrapped, opts.now, docAt),
     };
   }));
   for (const file of census.consoleDocs ?? []) {
@@ -394,7 +402,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       const s = await stat(file);
       if (opts.now - s.mtimeMs > 72 * RECENT_MS) continue;
       const doc = await readFile(file, "utf8");
-      const wrapped = /^- (?:[\d:]+ )?WRAPPED\b/m.test(doc);
+      const wrapped = ownWrap(doc);
       rows.push({
         name, role: "console", pid: null, run: null, model: null, ticket: null, pr: null,
         state: wrapped ? "wrapped" : "unknown", activity: null, lastEventAt: null,
