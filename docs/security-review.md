@@ -68,7 +68,7 @@ For emergencies or when the gate is wrong:
 | Gate | Layer | What it catches |
 |---|---|---|
 | `gitleaks` | pre-commit | Hardcoded secrets in the diff |
-| `code-review-before-push` | pre-push | Multi-agent automated review (correctness, code quality, silent failures) |
+| `code-review-before-push` | pre-push | Writes a review-owed marker; the review itself runs in `/pr-check` before the PR opens |
 | `security-reviewed` | pre-push | **THIS** — security-lens attestation (operator-driven) |
 | `platforms-tested` | pre-push | Cross-platform behaviour (shell/script changes) |
 
