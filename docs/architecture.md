@@ -261,7 +261,7 @@ flowchart LR
 
     ALERT --> TG["Telegram"]
 
-    EXP -.-> M["families: flow_run_in_flight · flow_run_outcome_total<br/>flow_run_last_success_timestamp · session_active_total<br/>session_dead_total · session_end_outcome_total<br/>himmel_tool_calls_total · himmel_tool_denials_total"]
+    EXP -.-> M["families: flow_run_in_flight · flow_run_outcome_total<br/>flow_run_last_success_timestamp · session_active_total<br/>session_dead_total · session_end_outcome_total<br/>himmel_tool_calls_total · himmel_tool_denials_total<br/>himmel_tool_denial_sessions · himmel_tool_denial_max_per_session"]
 ```
 
 **The record that never gets written is the important one.** `SessionEnd` is a

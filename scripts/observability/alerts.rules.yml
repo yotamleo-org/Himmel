@@ -442,6 +442,30 @@ groups:
         annotations:
           summary: '{{ $value }} hook-chain skip log(s) unreadable — hook_chain_budget_events_recent may be under-counting'
 
+      # ---- HIMMEL-6036: per-guard denial friction -----------------------------
+      # himmel_tool_denial_sessions / himmel_tool_sessions come from the same
+      # 24h tool-call census fold as himmel_tool_denials_total, but count
+      # DISTINCT sessions, so a guard that fires thousands of times on a few
+      # sessions reads differently from one that hits most of them. The
+      # `and on(project) ... > 0` clause keeps the division off a zero
+      # denominator. Both rules are filters (empty = healthy), so the Grafana
+      # twins use noDataState: OK.
+      - alert: HimmelGuardDenialShareHigh
+        expr: himmel_tool_denial_sessions / on(project) group_left() himmel_tool_sessions > 0.25 and on(project) himmel_tool_sessions > 0
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'guard {{ $labels.guard }} denied {{ $value | humanizePercentage }} of {{ $labels.project }} sessions in the last day'
+
+      - alert: HimmelGuardDenialRepeat
+        expr: himmel_tool_denial_max_per_session >= 3
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: 'one {{ $labels.project }} session was denied {{ $value }} times by guard {{ $labels.guard }} in the last day'
+
       # ---- HIMMEL-4652: eval drift ------------------------------------------
       # himmel_eval_* come from flow-exporter.ts reading the eval-runs ledger
       # (scripts/eval/lib/eval_runs.py). The regression gauge is the exporter's
