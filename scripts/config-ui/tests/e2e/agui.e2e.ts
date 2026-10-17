@@ -133,6 +133,7 @@ test("6. long tool output shows its head with a control for the rest", async ({ 
   await spaced(h);
   await page.goto(h.url);
   await expect(page.getByRole("status")).toHaveText(IDLE);
+  await page.locator(".block.sub .fold-head").click(); // the finished subagent's block is folded
   const read = page.locator(".call", { hasText: "Read" });
   await read.locator(".call-head").click();
   await expect(read.locator(".call-body pre").last()).not.toContainText("line 40");
@@ -179,6 +180,29 @@ test("8. a running subagent shows running with its current call, then flips to d
   h.append(J.end());
   await expect(page.locator(".agents-running")).toHaveText("0 running");
   await expect(page.getByRole("status")).toHaveText(IDLE);
+});
+
+test("8b. a running subagent is listed in the Now panel; once finished its block folds and opens on click", async ({ page }) => {
+  h = await bootAgui();
+  await page.goto(h.url);
+  const sub = { sub: "b4d2f1", model: "claude-sonnet-5-5" };
+  h.append(J.prompt("Check the diff with a critic."));
+  h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "pr-review-toolkit-himmel:code-reviewer", prompt: "Read check-ci.sh" }));
+  h.appendSub("b4d2f1", J.prompt("Read check-ci.sh", sub));
+  h.appendSub("b4d2f1", J.tool("toolu_r", "Read", { file_path: "scripts/check-ci.sh" }, sub));
+  const row = page.locator(".now li", { has: page.locator(".agent-name", { hasText: "diff critic" }) });
+  await expect(row.locator(".agent-now")).toContainText("Read scripts/check-ci.sh");
+  await expect(page.locator(".block.sub .msg")).toBeVisible(); // running: open
+
+  h.appendSub("b4d2f1", J.result("toolu_r", "ok", sub));
+  h.appendSub("b4d2f1", J.text("Looks right.", "end_turn", sub));
+  h.append(J.result("toolu_agent", "Looks right.", { use: { status: "completed", agentId: "b4d2f1" } }));
+  await expect(row).toHaveCount(0);
+  const fold = page.locator(".block.sub .fold-head");
+  await expect(fold).toContainText("from Agent");
+  await expect(page.locator(".block.sub .msg")).toHaveCount(0); // finished: folded
+  await fold.click();
+  await expect(page.locator(".block.sub .msg").last()).toContainText("Looks right.");
 });
 
 // `himmelctl ui --agui` with no session id opens the fleet landing over the fixture fleet (3 live +

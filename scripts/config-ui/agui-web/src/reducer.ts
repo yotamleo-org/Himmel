@@ -225,6 +225,10 @@ export const runningCount = (v: View) => v.agentOrder.filter((id) => agentState(
 // The agent's newest call still open, if any.
 export const currentCall = (v: View, id: string): Tool | undefined =>
   Object.values(v.tools).filter((t) => t.agent === id && t.status === "running").sort((a, b) => b.start - a.start)[0];
+// The agents with a call open right now, each with that call, the newest call first.
+export const runningAgents = (v: View): { id: string; call: Tool }[] =>
+  v.agentOrder.flatMap((id) => { const call = currentCall(v, id); return call ? [{ id, call }] : []; })
+    .sort((a, b) => b.call.start - a.call.start);
 
 // The top bar's state word. A live page keeps tailing the journal after a turn ends, so it is never "finished"
 // until the stream itself closes: between turns it is idle, with the age of the last event.

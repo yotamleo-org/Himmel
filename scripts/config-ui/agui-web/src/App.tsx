@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { agentState, currentCall, initialView, liveness, reduce, runClock, runningCount, settledCount, type Agent, type ClockAnchor, type Entry, type Failure, type Text, type Tool, type View } from "./reducer";
+import { agentState, currentCall, initialView, liveness, reduce, runClock, runningAgents, runningCount, settledCount, type Agent, type ClockAnchor, type Entry, type Failure, type Text, type Tool, type View } from "./reducer";
 import type { Source } from "./stream";
 
 // A transport failure ends the run the same way RUN_ERROR does, so calls still running are marked failed too.
@@ -37,7 +37,8 @@ export function App({ source }: { source: Source }) {
   });
   const focus = (id: string) => { pendingFocus.current = id; };
   const reveal = (id: string) => {
-    setOpen((o) => ({ ...o, [id]: true }));
+    const owner = view.tools[id]?.agent;
+    setOpen((o) => ({ ...o, [id]: true, ...(owner ? { [`fold-${owner}`]: true } : {}) })); // a folded block opens around its call
     focus(`call-${id}`);
   };
   // Jumps through the failures in stream order, showing everyone if the filter hides the next one.
@@ -65,6 +66,7 @@ export function App({ source }: { source: Source }) {
           {view.status === "error" && <p className="run-error" role="alert">The run stopped: {view.error || "the stream failed"}.</p>}
         </main>
         <aside className="side">
+          <NowPanel view={view} now={now} only={only} onOnly={setOnly} />
           <Agents view={view} now={now} only={only} onOnly={setOnly} />
           {view.state?.review && <ReviewPanel review={view.state.review} />}
         </aside>
@@ -156,6 +158,30 @@ const ROLE: Record<Agent["role"], string> = { console: "supervisor session", leg
 // "claude-opus-5-5" reads as "opus 5.5"; an alias or anything else stays as written.
 const model = (m?: string) => m?.replace(/^claude-([a-z]+)-(\d+)-(\d+)(?:-\d{8})?$/, "$1 $2.$3");
 
+// What is running right now: one row per agent with a call open, the newest call first. Click focuses that agent, as in the list below.
+function NowPanel({ view, now, only, onOnly }: { view: View; now: number; only: string | null; onOnly: (id: string | null) => void }) {
+  const rows = runningAgents(view);
+  if (rows.length === 0) return null;
+  return (
+    <section className="now" aria-labelledby="now-title">
+      <h2 id="now-title">Now <span className="now-running">{rows.length} running</span></h2>
+      <ul>
+        {rows.map(({ id, call }) => (
+          <li key={id} style={agentStyle(view, id)}>
+            <button className="now-row" aria-pressed={only === id} onClick={() => onOnly(only === id ? null : id)}
+              title={only === id ? "Show every agent" : `Show only ${view.agents[id].name}`}>
+              <i className="dot" aria-hidden="true" />
+              <span className="agent-name">{view.agents[id].name}</span>
+              <span className="now-age">{secs(now - call.start)}</span>
+              <span className="agent-now">{call.name} {summarize(call)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 // The agent list doubles as the legend and the filter: click one to show only what it did.
 // each agent's state; a running one shows the call it is in and for how long, a finished one when it last acted.
 function Agents({ view, now, only, onOnly }: { view: View; now: number; only: string | null; onOnly: (id: string | null) => void }) {
@@ -204,6 +230,8 @@ function Transcript({ view, now, only, open, onToggle }: {
     if (last && a !== null && last.agent === a) last.entries.push(en);
     else blocks.push({ agent: a, entries: [en] });
   }
+  // A finished subagent's block is one header line until opened; a running or failed one is always open.
+  const folded = (id: string) => !!view.agents[id]?.parentToolCallId && agentState(view, id) === "done" && !open[`fold-${id}`];
   return (
     <>
       {blocks.map((b, i) => b.agent === null
@@ -212,7 +240,8 @@ function Transcript({ view, now, only, open, onToggle }: {
           <section key={`${b.agent}-${i}`} className={`block${view.agents[b.agent]?.parentToolCallId ? " sub" : ""}`}
             style={agentStyle(view, b.agent)} aria-label={`${view.agents[b.agent]?.name ?? "agent"}`}>
             <AgentHead agent={view.agents[b.agent]} />
-            {b.entries.map((en) =>
+            {folded(b.agent) ? <FoldHead agent={view.agents[b.agent]} parent={view.tools[view.agents[b.agent].parentToolCallId!]}
+              count={b.entries.length} onToggle={() => onToggle(`fold-${b.agent}`)} /> : b.entries.map((en) =>
               en.kind === "text" ? <Message key={en.id} t={view.texts[en.id]} sub={!!view.agents[b.agent!]?.parentToolCallId} />
               : en.kind === "tools" ? <CallGroup key={en.ids[0]} tools={en.ids.map((id) => view.tools[id])} now={now} open={open} onToggle={onToggle} />
               : null)}
@@ -228,6 +257,15 @@ const AgentHead = ({ agent }: { agent?: Agent }) => agent ? (
   <p className="agent-head"><i className="dot" aria-hidden="true" /><b>{agent.name}</b>
     <span>{[ROLE[agent.role], model(agent.model)].filter(Boolean).join(" · ")}</span></p>
 ) : null;
+
+function FoldHead({ agent, parent, count, onToggle }: { agent: Agent; parent?: Tool; count: number; onToggle: () => void }) {
+  return (
+    <button className="fold-head" aria-expanded={false} onClick={onToggle}>
+      <span>Show {plural(count, "entry", "entries")}</span>
+      {parent && <span className="fold-from">from {parent.name} {summarize(parent)}</span>}
+    </button>
+  );
+}
 
 const FAILURE: Record<Failure, string> = { denied: "denied", suite: "suite failed", blocked: "blocked", error: "error" };
 
