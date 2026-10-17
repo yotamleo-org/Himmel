@@ -42,7 +42,7 @@ while [ $# -gt 0 ]; do
         *) echo "bus-idle-waker: unknown argument: $1" >&2; exit 64 ;;
     esac
 done
-[ -n "$NAME" ] && [ -n "$SERVICE" ] && [ -n "$SESSION" ] || { echo "bus-idle-waker: --name, --service and --session are required" >&2; exit 64; }
+if [ -z "$NAME" ] || [ -z "$SERVICE" ] || [ -z "$SESSION" ]; then echo "bus-idle-waker: --name, --service and --session are required" >&2; exit 64; fi
 case "$NAME" in *[!A-Za-z0-9._-]*|'') echo "bus-idle-waker: invalid --name" >&2; exit 64 ;; esac
 for v in "$POLL" "$GRACE" "$REWAKE" "$MAX"; do
     case "$v" in ''|*[!0-9.]*|*.*.*|.) echo "bus-idle-waker: --poll, --grace, --rewake and --max-polls take a number" >&2; exit 64 ;; esac
