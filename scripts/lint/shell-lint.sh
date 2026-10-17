@@ -293,6 +293,7 @@ if [ -n "$BASELINE" ] || [ "$STAGED" -eq 1 ] || [ -n "$CHANGED" ]; then
 fi
 if [ -n "$BASELINE" ] && [ "$WRITE_BASELINE" -eq 0 ]; then
     [ -f "$BASELINE" ] || { printf 'shell-lint: baseline file not found: %s\n' "$BASELINE" >&2; exit 2; }
+    # read-sink-ok: operator-supplied baseline path for a lint run, read-only and never executed
     BASE_TEXT="$(cat "$BASELINE")" || { printf 'shell-lint: cannot read baseline: %s\n' "$BASELINE" >&2; exit 2; }
 fi
 
