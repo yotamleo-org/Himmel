@@ -199,7 +199,7 @@ paths). This appendix gives the top directories, up to six per row.
 For row `<rx>` (the regex is in the extraction list, one per row; the family
 regexes in the inventory recipe are the coarse versions):
 
-```
+```bash
 git grep -c -I -E -e '<rx>' -- . ':!docs/glossary.md' ':!handovers' \
   ':!docs/internals/identifier-rename-inventory.md' ':!docs/internals/identifier-rename-proposal.md'
 ```
