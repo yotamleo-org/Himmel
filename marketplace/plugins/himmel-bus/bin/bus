@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// himmel-bus CLI: register | bind | rebind | adopt | status | peers | send | wait | gc
+// himmel-bus CLI: register | bind | rebind | adopt | status | peers | send | wait | unread | gc
 import { parseArgs } from 'node:util';
 import { constants } from 'node:fs';
 import { readFile, readdir, lstat, mkdtemp, writeFile, rm, stat } from 'node:fs/promises';
@@ -18,6 +18,7 @@ const USAGE = `usage: bus register <name> --role leg|console|judge|consult [--co
        bus bind <name> <pid> | rebind <name> <pid> | adopt <new-console> | status <name> | peers
        bus send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]
        bus wait [--timeout <seconds, default 300>]   (exit 3 on timeout)
+       bus unread <name>   (count of undelivered records; read-only, for the idle waker)
        bus status [--unacked] [--for <console>] | gc`;
 
 // Same limits as the MCP server's `send` (spec §4).
@@ -210,12 +211,18 @@ async function main() {
     case 'send': await send(root, name, extra, values); return;
     case 'wait': await wait(root, values.timeout); return;
     case 'gc': await gc(root); return;
+    case 'unread':
+      // Read-only presence flag: store.read would persist a halt and swallow its notice, so use pending.
+      console.log((await store.pending(root, need(name))) ? 1 : 0);
+      return;
     case 'adopt': case 'peers': {
       // Both act as the calling session: a descendant of a bound claude.
       const me = await identity.resolveIdentity(root);
       if (me.error) throw new Error(me.error);
       if (verb === 'peers') { console.log(edges.edgeList(await identity.loadPeers(root), me.name).join('\n')); return; }
+      const before = (await identity.loadPeers(root))[me.name]?.console;
       await identity.adopt(root, me.name, need(name));
+      console.log(`adopted: ${me.name} console ${before} -> ${name}`);
       return;
     }
     default: throw new Error(USAGE);

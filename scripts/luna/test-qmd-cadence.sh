@@ -384,6 +384,39 @@ assert_not_contains "installed entry is not the daily shape" "00 05 * * *" "$tab
 assert_contains "installed entry still marker-tagged" "# HIMMEL-Qmd-Reindex" "$tab"
 run_cron disarm >/dev/null
 
+# Test C4d: --every-hours N fires every N hours; the nightly full reindex (with
+# cleanup) rides the anchor hour of the SAME task.
+
+echo "TEST: --every-hours 2 emits a 2-hourly entry whose hour list contains the anchor hour"
+out=$(run_cron arm --every-hours 2 --dry-run)
+assert_contains "2-hourly entry: odd hours from the anchor parity, anchor 05 included" "00 1-23/2 * * *" "$out"
+assert_not_contains "2-hourly entry is not the daily shape" "00 05 * * *" "$out"
+assert_contains "2-hourly entry marker-tagged" "# HIMMEL-Qmd-Reindex" "$out"
+out=$(run_cron arm --every-hours 2)
+assert_contains "2-hourly banner names the cadence" "every 2 h" "$out"
+tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
+assert_contains "installed 2-hourly entry" "00 1-23/2 * * *" "$tab"
+run_cron disarm >/dev/null
+out=$(run_cron arm --every-hours 2 --time 04:10 --dry-run)
+assert_contains "even anchor hour starts the list at 0" "10 0-23/2 * * *" "$out"
+
+echo "TEST: the 2-hourly runner is incremental except at the anchor hour"
+assert_contains "runner passes --no-cleanup off the anchor hour" "--no-cleanup" "$out"
+# shellcheck disable=SC2016  # the runner text is matched literally
+assert_contains "runner compares the hour to the anchor" '"$(date +%H)" = 04' "$out"
+
+echo "TEST: --every-hours rejects a non-divisor of 24 and a non-number"
+rc=0; out=$(run_cron arm --every-hours 5 --dry-run 2>&1) || rc=$?
+assert_rc "--every-hours 5 -> rc 1" 1 "$rc"
+rc=0; out=$(run_cron arm --every-hours x --dry-run 2>&1) || rc=$?
+assert_rc "--every-hours x -> rc 1" 1 "$rc"
+rc=0; out=$(run_cron arm --every-hours 2 --hourly --dry-run 2>&1) || rc=$?
+assert_rc "--every-hours with --hourly -> rc 1" 1 "$rc"
+
+echo "TEST: without --every-hours the runner carries no incremental branch (regression guard)"
+out=$(run_cron arm --dry-run)
+assert_not_contains "default runner has no --no-cleanup" "--no-cleanup" "$out"
+
 # Test C5: arm installs a marker-tagged entry, preserves unrelated lines ------
 
 echo "TEST: cron arm installs the entry with defaults, preserves unrelated lines"

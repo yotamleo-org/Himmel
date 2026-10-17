@@ -20,7 +20,7 @@ pre-push gate `scripts/hooks/check-npm-licenses.sh` enforces this allowlist on
 every push:
 
 ```
-MIT  ISC  BSD-2-Clause  BSD-3-Clause  Apache-2.0  CC0-1.0  Unlicense  0BSD  Python-2.0
+MIT  ISC  BSD-2-Clause  BSD-3-Clause  Apache-2.0  CC0-1.0  Unlicense  0BSD  Python-2.0  PSF-2.0
 ```
 
 As of the HIMMEL-309 audit, the production dependency tree resolved almost

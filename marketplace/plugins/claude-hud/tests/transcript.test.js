@@ -201,6 +201,24 @@ test('a notification missing <tool-use-id> still completes its agent via the lau
   assert.deepEqual([fork1.background, fork1.status, fork1.endTime?.toISOString()], [true, 'completed', '2026-10-01T00:01:00.000Z']);
 });
 
+test('a queued_command attachment also completes its agent, keeping the earliest of both carriers', async () => {
+  const launch = [
+    toolUse('qc1', 'Agent', {}, '2026-10-01T00:00:01.000Z'),
+    toolResult('qc1', { timestamp: '2026-10-01T00:00:02.000Z', toolUseResult: { status: 'async_launched', agentId: 'a1' } }),
+  ];
+  const notice = '<task-notification>\n<task-id>a1</task-id>\n<tool-use-id>qc1</tool-use-id>\n<status>completed</status>\n</task-notification>';
+  const enqueue = { type: 'queue-operation', operation: 'enqueue', timestamp: '2026-10-01T00:01:00.000Z', content: notice };
+  const attachment = (prompt, type = 'queued_command', timestamp = '2026-10-01T00:05:00.000Z') => ({ type: 'attachment', timestamp, attachment: { type, prompt } });
+  const endOf = async (...entries) => (await parse([...launch, ...entries])).agents[0].endTime?.toISOString();
+
+  assert.equal(await endOf(attachment(notice)), '2026-10-01T00:05:00.000Z');
+  assert.equal(await endOf(enqueue, attachment(notice)), '2026-10-01T00:01:00.000Z');
+  assert.equal(await endOf(attachment(notice), enqueue), '2026-10-01T00:01:00.000Z');
+  for (const ignored of [attachment('is the agent done yet?'), attachment([{ type: 'text', text: notice }]), attachment(notice, 'other'), attachment(notice, 'queued_command', null)]) {
+    assert.equal(await endOf(ignored), undefined);
+  }
+});
+
 test('TaskCreate ids survive TodoWrite rewrites, including duplicate content', async () => {
   const r = await parse([
     toolUse('c1', 'TaskCreate', { subject: 'Ship', taskId: 'task-a' }),

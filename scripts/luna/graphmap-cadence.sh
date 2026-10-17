@@ -162,6 +162,8 @@ resolve_user_home() {
 # tasks recur daily and %TEMP% / /tmp are subject to cleanup sweeps that would
 # silently kill the cadence (same rationale as pipeline-cadence's BAT_DIR).
 BAT_DIR="${GRAPHMAP_BAT_DIR:-$(resolve_user_home)/.claude/graphmap-cadence}"
+# touch "$BAT_DIR/$SEMANTIC_PAUSE_MARKER" pauses the publish leg's semantic pass; rm resumes it.
+SEMANTIC_PAUSE_MARKER="semantic.paused"
 
 # Resolve the himmel root from this script's own location (scripts/luna/..),
 # so the runner fires the shipped refresh-graph-map.sh by absolute path.
@@ -276,6 +278,11 @@ AST_ONLY=0
 # `arm` registers it only when asked for explicitly. disarm still removes
 # it unconditionally if present (idempotent either way).
 WITH_PUBLISH=0
+# --publish-every-hours N / --publish-semantic: the publish leg's cron interval
+# (default 6) and the claude-api semantic pass on top of it.
+PUBLISH_EVERY_HOURS=6
+PUBLISH_SEMANTIC=0
+SEMANTIC_ACTIVE=0
 
 # Fixed per-corpus map identity (titles/slugs/tags). ASCII-only: the .bat is
 # parsed by cmd.exe under the OEM codepage where UTF-8 punctuation mojibakes.
@@ -354,6 +361,14 @@ Flags (arm only, except --dry-run):
   --with-publish         Also register the publish leg
                          (HIMMEL-GraphPublish-Himmel, every 6h). Opt-in
                          (HIMMEL-3075): arm leaves it out by default.
+  --publish-every-hours N  Publish leg interval in hours (1,2,3,4,6,8,12;
+                         default 6). Cron only.
+  --publish-semantic     With --with-publish: the publish leg also runs the
+                         claude-api semantic pass (graph-cadence --semantic).
+                         Cron only. Arms PAUSED: arm writes the
+                         semantic.paused marker; rm it to resume.
+  --semantic-active      With --publish-semantic: arm without the marker, so
+                         the semantic pass runs from the first fire.
 
 The structural (AST) pair's offsets (luna daily 00:05, himmel hourly at :15)
 are NOT flags — see WEEKLY_DAY_*/AST_*_TIME in this script.
@@ -398,6 +413,10 @@ while [ $# -gt 0 ]; do
         --dry-run)       DRY_RUN=1; shift ;;
         --ast-only)      AST_ONLY=1; shift ;;
         --with-publish)  WITH_PUBLISH=1; shift ;;
+        --publish-every-hours)   PUBLISH_EVERY_HOURS="${2:-}"; shift 2 ;;
+        --publish-every-hours=*) PUBLISH_EVERY_HOURS="${1#--publish-every-hours=}"; shift ;;
+        --publish-semantic)      PUBLISH_SEMANTIC=1; shift ;;
+        --semantic-active)       SEMANTIC_ACTIVE=1; shift ;;
         -h|--help)       usage; exit 0 ;;
         *)
             echo "ERR graphmap-cadence: unknown arg: $1" >&2
@@ -433,6 +452,17 @@ case "$PLATFORM" in
         exit 2
         ;;
 esac
+
+case "$PUBLISH_EVERY_HOURS" in
+    1|2|3|4|6|8|12) ;;
+    *) echo "ERR graphmap-cadence: --publish-every-hours must be one of 1 2 3 4 6 8 12 (got '$PUBLISH_EVERY_HOURS')" >&2; exit 1 ;;
+esac
+if [ "$PUBLISH_SEMANTIC" -eq 1 ] && [ "$WITH_PUBLISH" -ne 1 ]; then
+    echo "ERR graphmap-cadence: --publish-semantic needs --with-publish" >&2; exit 1
+fi
+if [ "$PLATFORM" = "windows" ] && { [ "$PUBLISH_SEMANTIC" -eq 1 ] || [ "$PUBLISH_EVERY_HOURS" -ne 6 ]; }; then
+    echo "ERR graphmap-cadence: --publish-every-hours / --publish-semantic are cron-only" >&2; exit 1
+fi
 
 # MSYS_NO_PATHCONV=1 per call: without it gitbash mangles /query, /create etc.
 # into Windows-rooted paths before schtasks sees them.
@@ -550,7 +580,7 @@ task_summary() {
         "$TASK_HIMMEL")     printf ' -> refresh-graph-map himmel (weekly, semantic, %s)' "$(installed_semantic_backend graphmap-himmel)" ;;
         "$TASK_AST_LUNA")   printf ' -> graphify update luna (daily, structural, free)' ;;
         "$TASK_AST_HIMMEL") printf ' -> graphify update himmel (hourly, structural, free)' ;;
-        "$TASK_PUBLISH_HIMMEL") printf ' -> graph-cadence publish himmel (every 6h, free, auto-merge)' ;;
+        "$TASK_PUBLISH_HIMMEL") printf ' -> graph-cadence publish himmel (auto-merge; interval = cron schedule; --publish-semantic adds a billed claude-api pass)' ;;
     esac
 }
 
@@ -1866,7 +1896,17 @@ ast_cron_payload() {
 # not a bare positional -- see publish_bat_payload's identical note.
 publish_cron_payload() {
     local q_bash="$1" q_script="$2" q_corpus="$3"
-    printf '%s %s --corpus-root %s --flow-name %q' "$q_bash" "$q_script" "$q_corpus" "$PUBLISH_FLOW_NAME"
+    local base
+    base=$(printf '%s %s --corpus-root %s --flow-name %q' "$q_bash" "$q_script" "$q_corpus" "$PUBLISH_FLOW_NAME")
+    if [ "$PUBLISH_SEMANTIC" -ne 1 ]; then
+        printf '%s' "$base"
+        return 0
+    fi
+    # The pause marker is read at fire time: while it exists the fire runs the
+    # publish leg without --semantic and without the api-lane env.
+    local q_pause
+    q_pause=$(printf '%q' "$BAT_DIR/$SEMANTIC_PAUSE_MARKER")
+    printf 'if [ -e %s ]; then echo "[semantic paused: marker present]"; %s; else echo "[semantic active]"; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api %s --semantic; fi' "$q_pause" "$base" "$base"
 }
 
 # Emit the runner .sh body for one cadence task: stamp the format version,
@@ -2112,7 +2152,7 @@ cron_arm() {
     entry_ast_himmel="$ast_himmel_mm * * * * $q_runner_ast_himmel # $TASK_AST_HIMMEL"
     # Publish leg: every 6h at its fixed minute (cron's
     # `*/6` hour-field step, standard vixie-cron syntax).
-    entry_publish_himmel="$publish_himmel_mm */6 * * * $q_runner_publish_himmel # $TASK_PUBLISH_HIMMEL"
+    entry_publish_himmel="$publish_himmel_mm */$PUBLISH_EVERY_HOURS * * * $q_runner_publish_himmel # $TASK_PUBLISH_HIMMEL"
 
     if [ "$DRY_RUN" -eq 1 ]; then
         if [ "$AST_ONLY" -eq 1 ]; then
@@ -2148,6 +2188,12 @@ cron_arm() {
     fi
 
     mkdir -p "$BAT_DIR"
+    # Arm --publish-semantic PAUSED: the marker exists before the first fire, so
+    # billed semantic never starts on its own; resume is a manual rm.
+    if [ "$PUBLISH_SEMANTIC" -eq 1 ] && [ "$SEMANTIC_ACTIVE" -ne 1 ]; then
+        : > "$BAT_DIR/$SEMANTIC_PAUSE_MARKER"
+        echo "graphmap-cadence: semantic armed PAUSED ($BAT_DIR/$SEMANTIC_PAUSE_MARKER); rm it to resume"
+    fi
     # Stage the runners at temp paths and promote (mv) them only after the
     # crontab install succeeds: writing them in place first would let a failed
     # install (exit 4) leave the OLD crontab live while the runner files already
@@ -2226,7 +2272,7 @@ cron_arm() {
     # the same corpus-slug computation instead of a hardcoded literal).
     if [ "$WITH_PUBLISH" -eq 1 ]; then
         mv -f "$tmp_publish_himmel" "$CRON_RUNNER_PUBLISH_HIMMEL"
-        observability_register_cadence "$PUBLISH_FLOW_NAME" 21600 "$TASK_PUBLISH_HIMMEL"
+        observability_register_cadence "$PUBLISH_FLOW_NAME" $((PUBLISH_EVERY_HOURS * 3600)) "$TASK_PUBLISH_HIMMEL"
         cadence_prov_record "$TASK_PUBLISH_HIMMEL"
     fi
 
@@ -2267,7 +2313,10 @@ $himmel_line"
     fi
     local publish_lines=""
     if [ "$WITH_PUBLISH" -eq 1 ]; then
-        publish_lines="  $TASK_PUBLISH_HIMMEL  every 6h at :$publish_himmel_mm   -> graph-cadence publish himmel (free, auto-merge)"
+        publish_lines="  $TASK_PUBLISH_HIMMEL  every ${PUBLISH_EVERY_HOURS}h at :$publish_himmel_mm   -> graph-cadence publish himmel (free, auto-merge)"
+        if [ "$PUBLISH_SEMANTIC" -eq 1 ]; then
+            publish_lines="  $TASK_PUBLISH_HIMMEL  every ${PUBLISH_EVERY_HOURS}h at :$publish_himmel_mm   -> graph-cadence publish himmel (+ claude-api semantic, auto-merge)"
+        fi
     fi
     cat <<EOF
 

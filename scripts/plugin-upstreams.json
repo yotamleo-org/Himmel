@@ -14,7 +14,7 @@
   "obsidian-second-brain": {
     "upstream_repo": "eugeniughelbur/obsidian-second-brain",
     "track": "release",
-    "synced_base": "v0.17.0"
+    "synced_base": "v0.18.0"
   },
   "ui-ux-pro-max": {
     "upstream_repo": "nextlevelbuilder/ui-ux-pro-max-skill",
@@ -59,7 +59,7 @@
     "standalone": true,
     "upstream_repo": "DietrichGebert/ponytail",
     "track": "release",
-    "synced_base": "v5.3.1",
-    "ref": "6f1c2bfff0c837d268929a7c4e490918eb4fab29"
+    "synced_base": "v5.3.2",
+    "ref": "16352ac229eb08a9598dcae48fe9f2b342567d86"
   }
 }

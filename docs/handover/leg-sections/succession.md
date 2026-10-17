@@ -37,7 +37,12 @@ that is the successor the relay names (the sender is the outgoing console,
 which is leaving), on a chain (2) it is the sender. Adopt a fresh token as your
 token if one came. If none did (a relay may omit it), keep the one you hold and
 you are fully authenticated to the new console: a fresh token adds no
-authentication, so its absence is not a gap and needs no rotation. Write
+authentication, so its absence is not a gap and needs no rotation. If you hold a himmel-bus identity, run `bus adopt <new console>` as the leg
+before the bullet, so the new console has an edge to you (without it `bus send`
+to you is refused: `no edge to <you>`). Add its printed line (`adopted: …`) or its
+refusal text (`old console … is not gone and sent no relay naming …`, `identity
+unbound`) to the bullet: a refusal is a recorded fact, not a reason to park, and
+you retry `bus adopt` once the old console is gone. Write
 `- SUCCESSION accepted: <new console session> replaces <old>` under
 `## Results` (names and grammar only, no token). **That bullet is the
 quote-back:** the new console's `succession-tracker.sh` tallies it and its

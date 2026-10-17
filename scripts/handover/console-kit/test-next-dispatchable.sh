@@ -217,5 +217,39 @@ rm -f "$GH_FAIL"
 has "a failed open-PR read is reported on the RESUME read" "$rf" "open PRs unknown"
 lacks "a failed open-PR read lists no RESUME row" "$rf" "RESUME	"
 
+# Windows and WSL are dropped: a To Do candidate whose summary names them is skipped (one counted
+# line) unless it carries the windows-removal label; 'context window' style titles are untouched.
+M6="$WORK/jira-mirror6/HIMMEL"; mkdir -p "$M6"
+M_SAVE="$M"; M="$M6"
+mk HIMMEL-70 "To Do" High '[]' '[]' '[]' "WSL station triage" "Edit scripts/lib/p70.sh only."
+mk HIMMEL-71 "To Do" High '["windows-removal"]' '[]' '[]' "WSL station triage removal" "Edit scripts/lib/p71.sh only."
+mk HIMMEL-72 "To Do" High '[]' '[]' '[]' "Handle Windows cwd separators" "Edit scripts/lib/p72.sh only."
+mk HIMMEL-73 "To Do" High '[]' '[]' '[]' "cap the context window" "Edit scripts/lib/p73.sh only."
+mk HIMMEL-74 "To Do" High '[]' '[]' '[]' "Windowed rate limit" "Edit scripts/lib/p74.sh only."
+mk HIMMEL-75 "To Do" High '[]' '[]' '[]' "Close WRAPPED console windows and leg windows" "Edit scripts/lib/p75.sh only."
+mk HIMMEL-76 "To Do" High '[]' '[]' '[]' "Spread work over 5-hour windows" "Edit scripts/lib/p76.sh only."
+mk HIMMEL-77 "To Do" High '[]' '[]' '[]' "Trim the context-windows report" "Edit scripts/lib/p77.sh only."
+M="$M_SAVE"
+pw="$(NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify 2>/dev/null)"; pw_rc=$?
+[ "$pw_rc" = 0 ] && pass "the platform-filter run exits 0" || fail "platform-filter run rc=$pw_rc"
+lacks "a WSL candidate is omitted" "$pw" "HIMMEL-70	"
+lacks "a Windows candidate is omitted" "$pw" "HIMMEL-72	"
+has "a windows-removal labelled candidate is kept" "$pw" "HIMMEL-71	"
+has "a 'context window' title is kept" "$pw" "HIMMEL-73	"
+has "a 'Windowed' title is kept" "$pw" "HIMMEL-74	"
+has "a 'console windows' title is kept" "$pw" "HIMMEL-75	"
+has "a '5-hour windows' title is kept" "$pw" "HIMMEL-76	"
+has "a 'context-windows' title is kept" "$pw" "HIMMEL-77	"
+has "the skipped line counts and names the skipped keys" "$pw" "# skipped 2 windows/wsl ticket(s): HIMMEL-70 HIMMEL-72"
+pw0="$(run --legs-from "$WORK/fleet.json")"; pw0_rc=$?
+[ "$pw0_rc" = 0 ] && pass "the unrelated run exits 0" || fail "unrelated run rc=$pw0_rc"
+lacks "no skipped line when nothing matched" "$pw0" "# skipped"
+
+# Fail closed: with the pattern file gone the script exits 2 rather than dispatching unfiltered.
+NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/console-kit"
+cp "$SUT" "$NF/scripts/handover/console-kit/next-dispatchable.sh"
+NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$NF/scripts/handover/console-kit/next-dispatchable.sh" --no-classify >/dev/null 2>&1; nf_rc=$?
+[ "$nf_rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$nf_rc"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

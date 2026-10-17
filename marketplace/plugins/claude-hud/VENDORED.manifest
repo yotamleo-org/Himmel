@@ -1,5 +1,5 @@
-71919d73fab95ce567545a7f6b0b1bae5b6e7984  .claude-plugin/marketplace.json
-45a5c1391a740311d1f9f7281002632dfd879bad  .claude-plugin/plugin.json
+6a2b109c7541db7991237b80fe07fab5abda844c  .claude-plugin/marketplace.json
+e56592b4d43fb971adedb004ebef2849689140f3  .claude-plugin/plugin.json
 1014ba78880c899e842b397cb89a878be4671f7d  .editorconfig
 0f84e752fb58bca72b25d5a1075cf598912c5c1c  .github/CODEOWNERS
 7f05038234ebcf35b4bffcf4fb2ea9e84e442b2b  .github/ISSUE_TEMPLATE/bug_report.md
@@ -10,13 +10,13 @@ f990b4a1981eaeaa563e038c74fb4b1b3125ca24  .github/dependabot.yml
 18eff094cefe82186a4b0a1ef3a06a8528845a3b  .github/workflows/build-dist.yml
 7849fcd66e2afb69c8137ad6fb5da8a783c5adf3  .github/workflows/ci.yml
 608c4bb9cfddffcfc41204d0a8d340b8c96f7ce0  .github/workflows/release.yml
-090aad68fa86270176fa69121888ba202bb81154  CHANGELOG.md
+a535c2077832d479d2ff492ff4c69a4acb88a788  CHANGELOG.md
 bfa9138c1332df4d333ee937834de9f2e5159314  CLAUDE.md
 e4cb50521d2e838987476eaed76d4e428c34405c  CODE_OF_CONDUCT.md
 b012c7b5917c43a7fe03977f4be8f5e496bb6f60  CONTRIBUTING.md
 7a0b1b9776599ace74a2a8bb6edab488ee660c35  LICENSE
-7e42abdc4971592890623a01ef74ff320aac3c9d  README.md
-d6e8a50f389a0535b112d63151e0d59143d29861  README.zh.md
+fb8dbb1cad2fa13d9d32fdce10011de42b41f71b  README.md
+9c68f0a82bc4a50bbb6ea1c7e587a102ff19f865  README.zh.md
 4077f5de4183e1770f42247384e651f7ce3baa2f  RELEASING.md
 e1af8f95958d513782eb9f45266710bca7805c7a  SECURITY.md
 e318c15b34c4ad2bde64fbabde2fcb560250de29  claude-hud-preview-16-9.png
@@ -188,9 +188,9 @@ dddf006896ca3a9108a2e8d36f852047c771617c  dist/stdin.d.ts.map
 9358c0c5148bc04378e1ff39e561e9f2a995e51d  dist/stdin.js
 355d96cf74d19b1230b3eac0073607ecedae9bc4  dist/stdin.js.map
 6b95ac4554e6bfe80d63965490e7d9709e5efff7  dist/transcript.d.ts
-04868387d97ee9d908f171a0e2d6f60d2b809c6b  dist/transcript.d.ts.map
-44f5f711d6545f6b4321ac0cc9e1bd3211bad546  dist/transcript.js
-beafc48dd94f56dafbf6e365b00937f9cedff978  dist/transcript.js.map
+cf8dd5705ed32c7a92b45fa3f509ea33f723f8bb  dist/transcript.d.ts.map
+7ff4de1cdec9e60e662c25ff93149b9257b6cfe3  dist/transcript.js
+bd0a2730ddc26be0e108156c806ea152d6d7d804  dist/transcript.js.map
 c0a77d0ad0ed0ad42826e3cf6041d3fe1365236c  dist/types.d.ts
 b6e24d2baa53754c3eefb5f56a6db1442918e51f  dist/types.d.ts.map
 6f773f93644037feed40245614526b6d6900c98e  dist/types.js
@@ -223,8 +223,8 @@ a4851faf428d0bff4402772ee1e06eed0c44a917  dist/utils/sanitize.js.map
 b8b044dd8b215d1acb86011d4ed406a40c365808  dist/windows-git-worker.d.ts.map
 f9c87e37687ed525030840604b70e36eea9707ad  dist/windows-git-worker.js
 df1edb5ea2856c8cd5842e2b45ea825853379cea  dist/windows-git-worker.js.map
-5143c7753925f44ab528cdd438d369d7807a4e9d  package-lock.json
-68f51e21dbc57b53b79cf0f3b255f64c06524e0e  package.json
+d5e0375c85e6cf0f263cc80e1098e7ba3210341d  package-lock.json
+04dd8a7e84b60f7fb5f6bfd4b2039e9790ca661c  package.json
 ae323f37c223573fbbe914b4713a349400dfe1e5  scripts/clean-dist.mjs
 4d7f97b3248c4824585b019cf95cf4e3db035c9c  scripts/setup.mjs
 2e5e9cb6f71f2ebeade76e9da80ff1bb8424d297  scripts/statusline.mjs
@@ -269,7 +269,7 @@ c02574a59507f54bce7a53028474fbb6f0274193  src/render/usage.ts
 c586775341aa0b9758dbb8cd315c41e974c68fd1  src/render/vcs.ts
 c042d8abe2343119222fbc713dc9993a6b48d0d0  src/speed.ts
 08fafa25e06ac6b18c8bdd63dc1dcfe184733c62  src/stdin.ts
-09351d1b6551ca89ccf85fd7af29458a0b8633b3  src/transcript.ts
+9e8529fecc8da3d8bc51080aa95abf7c03cbe892  src/transcript.ts
 5bf9500a86faf4fdd129c4025521d826690c7e01  src/types.ts
 eb3c8277d2e11ce2eed7f87e20801d893670cc5a  src/usage-pace.ts
 759d31189a0bc94af195c83ab54f0ff9e139847e  src/utils/format.ts
@@ -316,6 +316,6 @@ d0efca32629ec29d4f5e93e8dc09eb25e0191eef  tests/memory.test.js
 45eba79a11260387f3c6bb671d649961208cb0ec  tests/speed.test.js
 29fabb4d968fb48f63fb5232a8137eb08e4efcdc  tests/stdin.test.js
 e3ae6995c3d8d48eb8c992253261458d8686ac2d  tests/terminal.test.js
-e959531cb264a7d57622b4a238533d010c94dca6  tests/transcript.test.js
+baf4f85b591cc6b0cb7b7d9fe09777c4ca7a67cd  tests/transcript.test.js
 090340f1e58208f98301b2884fab3480c01dfbdb  tests/usage-pace.test.js
 10fca1f3f7d96f7f140b29ce8334fe1be65eef40  tsconfig.json
