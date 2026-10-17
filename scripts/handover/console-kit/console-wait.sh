@@ -22,7 +22,9 @@
 #   WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity
 #   <tick line>                 field says live < cap with no launch for
 #   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; once per streak, with the
-#                               ranked dispatchable list (CONSOLE_WAIT_DISPATCH
+#                               priority-pool list (--priority-pool-only, plus
+#                               --doc when given; POOL-EMPTY when nothing is in
+#                               the pool) (CONSOLE_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
 #   WAKE tracker-stale tracker=<STALE:..>  tracker= stayed STALE past
 #                               CONSOLE_WAIT_TRACKER_STALE_MIN (default 30); once
@@ -470,9 +472,10 @@ dispatch_cmd="${CONSOLE_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
 underfill_wake() { # prints the WAKE block; fail-open on the dispatchable list
     printf 'WAKE underfilled capacity=%s\n%s\n' "$cap_val" "$tick_line"
     [ -r "$dispatch_cmd" ] || return 0
-    local lf=()
-    [ -z "$legs_from" ] || lf=(--legs-from "$legs_from")  # live legs' files must reach the collision check
-    timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" ${lf[@]+"${lf[@]}"} </dev/null 2>/dev/null 9>&- || true  # gnu-ok: Linux-only kit
+    local lf=(--priority-pool-only)  # free slots fill only from the operator's priority pool
+    [ -z "$console_doc" ] || lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
+    [ -z "$legs_from" ] || lf+=(--legs-from "$legs_from")  # live legs' files must reach the collision check
+    timeout -k 2 "${CONSOLE_WAIT_DISPATCH_TIMEOUT:-420}" bash "$dispatch_cmd" "${lf[@]}" </dev/null 2>/dev/null 9>&- || true  # gnu-ok: Linux-only kit
 }
 
 # unowned_wake: <unowned-prs value> — succeeds (and refreshes the marker) when the list is

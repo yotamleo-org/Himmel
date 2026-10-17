@@ -206,8 +206,10 @@ bare `clean.sh` sweep for one leg. long-running.txt: `run_in_background`. Hand s
 
 - **Operator messages are additive**; pivot only on a halt or redirect. [prose]
 - **Idle capacity is your duty.** On `WAKE underfilled`, take the wake's
-  `next-dispatchable.sh` list, write briefs with `gen-briefs.py`, launch up to
-  `<slack>` legs; `capacity=unknown` means the census failed. [prose]
+  `next-dispatchable.sh --priority-pool-only` list, write briefs with `gen-briefs.py`,
+  launch up to `<slack>` legs; `capacity=unknown` means the census failed. Free slots
+  fill ONLY from that pool; on `POOL-EMPTY` unblock collisions, draft specs for the
+  next priority items, else idle. [prose]
 - **A leg's BLOCKED, permission prompt, or question comes to the console first** —
   say so in every brief. **One session = one worktree.** [prose]
 - **Impacted suites, not directory sweeps:** a brief names every suite
