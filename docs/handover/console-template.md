@@ -174,7 +174,7 @@ rule; batch rulings per decision point.
 ## Merges — READY → GO → merge
 
 A leg reports `READY <pr> <head> GREEN`. Verify with
-`console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`run_in_background`; all check-runs success
+`console-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`timeout 90 bash`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
 your judgement), then `console-kit/go.sh <pr> <head>`: that write IS the GO
 (`gh pr merge` is gated on the file; `GO` over SendMessage only notifies). `go.sh`
@@ -185,11 +185,10 @@ primary and the leg wraps.
 The Jira close is the leg's call from the brief's `completes-ticket: yes|no` line
 (`--jira-transition` for `yes`, omitted for `no`): fill it in when you write the
 brief. After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
-of the PR title, so check a second key by hand. Never merge on open
-threads or a handoff's "clean": query it yourself. **A PR whose diff
+of the PR title, so check a second key by hand. **A PR whose diff
 matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs an adversarial review and
 `go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21); a pre-release
-tag is `cut-tag.sh <version> <sha>` (`--dry-run` first): `console-sections/merges.md`.
+tag is `cut-tag.sh <version> <sha>`: `console-sections/merges.md`.
 
 ## Wrapping a leg
 
@@ -199,7 +198,7 @@ file and run
 `HANDLED ...` is done, `ESCALATE <reason>` means by hand: on `WRAPPED`, confirm
 the lock is free at the ROOT sweep, then
 `bash scripts/handover/console-kit/close-wrapped-leg.sh <leg-doc>`. Never run the
-bare `clean.sh` sweep for one leg. long-running.txt: `timeout 90 bash <script>` or `run_in_background`. Hand sequence and the `digest=` line:
+bare `clean.sh` sweep for one leg. long-running.txt: `timeout 90 bash <script>` or `run_in_background`; go.sh, leg-event.sh, write-verdict.sh, append-results.sh, fleet-manifest.sh run in the foreground. Hand sequence and the `digest=` line:
 `console-sections/wrapping.md`.
 
 ## Standing rules

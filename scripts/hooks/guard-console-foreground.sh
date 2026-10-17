@@ -66,7 +66,7 @@ while IFS= read -r name; do
     case "$name" in ''|'#'*) continue ;; esac
     esc=$(printf '%s' "$name" | sed 's/[.[\*^$]/\\&/g')
     tail='($|[[:space:];&|)])'
-    wrap='((timeout|nohup)([[:space:]]+[^[:space:];&|()]+)*[[:space:]]+)?'
+    wrap='(((timeout|nohup)([[:space:]]+(-[^[:space:];&|()]*|[0-9.]+[smhd]?|[A-Z]+))*)[[:space:]]+)*'
     via_interp="(^|[;&|(])[[:space:]]*${wrap}(bash|sh|node|bun|python3?)[[:space:]]+([^[:space:]]*/)?${esc}${tail}"
     via_path="(^|[;&|(])[[:space:]]*${wrap}[^[:space:]]*/${esc}${tail}"
     if printf '%s' "$cmd" | grep -Eq -e "$via_interp" -e "$via_path"; then
@@ -107,7 +107,7 @@ handling leg messages meanwhile and read the result when the notification lands.
 A bounded run is allowed in the foreground: make \`timeout 90\` (1 to 90 s) the outermost command, e.g.
   timeout 90 bash scripts/handover/console-kit/ready-check.sh <args>
 console-wait.sh and suites stay background. Short scripts (append-results.sh, go.sh, write-verdict.sh,
-fleet-manifest.sh) are not on the list and stay foreground. The list is scripts/handover/console-kit/long-running.txt.
+fleet-manifest.sh, leg-event.sh) are not on the list and stay foreground. The list is scripts/handover/console-kit/long-running.txt.
 
 Bypass for one session: relaunch with CONSOLE_FG_OK=1 in the launching shell (a per-call prefix
 does not reach this hook)."
