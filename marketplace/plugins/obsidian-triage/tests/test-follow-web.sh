@@ -596,8 +596,11 @@ const srv = http.createServer((req, res) => {
     res.setHeader("content-type", "application/json");
     if (req.url === "/v1/tools/search") {
       hits.deepseek.push({ url: req.url, auth: req.headers.authorization });
-      const results = dsMode === "hit" ? [{ title: "Acme Labs", url: "https://acme.dev", snippet: "founder of Acme" }] : [];
+      const results = dsMode === "hit" ? [{ title: "Acme Labs", url: "https://acme.dev", snippet: "founder of Acme" }]
+        : dsMode === "fetch429" ? [{ title: "Acme Labs", url: "https://acme.dev" }] : [];
       res.end(JSON.stringify({ results }));
+    } else if (req.url === "/v1/tools/fetch") {
+      res.statusCode = 429; res.end("{}");
     } else if (req.url === "/v2/search") {
       hits.firecrawl += 1;
       res.end(JSON.stringify({ success: true, data: [{ url: "https://fc.example/acme", title: "Acme", description: "founder of Acme" }] }));
@@ -631,6 +634,15 @@ reset(); dsMode = "miss";
 w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1", FOLLOW_WEB_VAULT_ROOT: process.env.T_VAULT });
 r = await w("q miss");
 console.log("MISS_FALLS_TO_FIRECRAWL=" + (hits.deepseek.length === 1 && hits.firecrawl === 1 && r.url === "https://fc.example/acme"));
+const missRows = fs.readFileSync(process.env.T_LEDGER, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((x) => x.source === "deepseek");
+console.log("EMPTY_SEARCH_PRICED=" + (missRows.length >= 1 && missRows.every((x) => x.endpoint !== "/v1/tools/search" || x.usd > 0)));
+
+// a rate-limited Fetch disables the rung for the rest of the run, like a rate-limited Search
+reset(); dsMode = "fetch429";
+w = makeWebFn({ ...env0, FOLLOW_WEB_DEEPSEEK: "1", FOLLOW_WEB_VAULT_ROOT: process.env.T_VAULT });
+await w("q fetch429 one");
+await w("q fetch429 two");
+console.log("FETCH_429_DISABLES=" + (hits.deepseek.length === 1));
 dsMode = "hit";
 
 // a free rung that hits keeps DeepSeek and Firecrawl untouched
@@ -689,7 +701,7 @@ console.log("NO_SECRET_LOGGED=" + (!JSON.stringify(rows).includes("ds-secret-key
 srv.close();
 EOF
 out13="$(T_HOME="$tmpdir/home13" T_LEDGER="$tmpdir/ledger13.jsonl" T_PARKED="$tmpdir/parked13.jsonl" T_GLM="$tmpdir/glm" T_VAULT="$tmpdir/vault" T_SALUS="$tmpdir/salusvault" T_GOODCLI="$tmpdir/good-cli.sh" T_BADCLI="$tmpdir/garbage-cli.sh" node "$tmpdir/deepseek.mjs" 2>&1)"
-for k in DEFAULT_NO_DEEPSEEK OPTIN_DEEPSEEK_FIRST OPTIN_BEARER FREE_HIT_SKIPS_DEEPSEEK FREE_MISS_TO_DEEPSEEK MISS_FALLS_TO_FIRECRAWL SALUS_MARKER_REFUSED SALUS_PHIROOTS_REFUSED UNMAPPED_REFUSED OPTS_ROOT_REACHES_RUNG OPTS_SALUS_REFUSED OPTS_UNMAPPED_REFUSED LEDGER_ROW NO_SECRET_LOGGED; do
+for k in DEFAULT_NO_DEEPSEEK OPTIN_DEEPSEEK_FIRST OPTIN_BEARER FREE_HIT_SKIPS_DEEPSEEK FREE_MISS_TO_DEEPSEEK MISS_FALLS_TO_FIRECRAWL EMPTY_SEARCH_PRICED FETCH_429_DISABLES SALUS_MARKER_REFUSED SALUS_PHIROOTS_REFUSED UNMAPPED_REFUSED OPTS_ROOT_REACHES_RUNG OPTS_SALUS_REFUSED OPTS_UNMAPPED_REFUSED LEDGER_ROW NO_SECRET_LOGGED; do
     grep -q "^$k=true" <<<"$out13" && r=yes || r=no
     assert "deepseek: $k" yes "$r"
 done

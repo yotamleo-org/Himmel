@@ -518,14 +518,18 @@ export function makeDeepseekWebFn(env = process.env, { vaultRoot } = {}) {
     }
     const results = res.data && Array.isArray(res.data.results) ? res.data.results : [];
     const top = results[0];
-    deepseekLedgerAppend("/v1/tools/search", top ? DEEPSEEK_CALL_USD : 0, true, env);
+    deepseekLedgerAppend("/v1/tools/search", DEEPSEEK_CALL_USD, true, env); // priced per successful call, hit or not
     if (!top || !top.url) return { found: false };
     let snippet = top.snippet || top.summary || "";
     if (!snippet) {
       const f = await post("/v1/tools/fetch", { url: top.url });
-      const content = f && f.data && typeof f.data.content === "string" ? f.data.content : "";
-      deepseekLedgerAppend("/v1/tools/fetch", content ? DEEPSEEK_CALL_USD : 0, !!f && f.status >= 200 && f.status < 300, env);
-      snippet = content.slice(0, DEEPSEEK_FETCH_CHARS);
+      const fetched = !!f && f.status >= 200 && f.status < 300;
+      deepseekLedgerAppend("/v1/tools/fetch", fetched ? DEEPSEEK_CALL_USD : 0, fetched, env);
+      if (f && [401, 402, 403, 429].includes(f.status)) {
+        disabled = true;
+        console.error(`follow-web: deepseek unavailable (HTTP ${f.status}); search disabled for the rest of this run`);
+      }
+      snippet = f && f.data && typeof f.data.content === "string" ? f.data.content.slice(0, DEEPSEEK_FETCH_CHARS) : "";
     }
     return { found: true, url: top.url, title: top.title || "", snippet };
   };
